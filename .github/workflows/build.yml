@@ -3,6 +3,12 @@ on:
   push:
     tags:
       - '*'
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Release tag to build and publish
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -18,8 +24,14 @@ jobs:
         with:
           fetch-depth: 0
       - id: version
+        shell: bash
         run: |
-          VERSION=$(git describe --tags --exact-match 2>/dev/null || echo "0.$(date +%d%m%Y)")
+          INPUT_VERSION="${{ inputs.release_tag || '' }}"
+          if [ -n "$INPUT_VERSION" ]; then
+            VERSION="$INPUT_VERSION"
+          else
+            VERSION=$(git describe --tags --exact-match 2>/dev/null || echo "0.$(date +%d%m%Y)")
+          fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
   build:
@@ -82,7 +94,7 @@ jobs:
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4.6.2
         with:
-          name: release-files-${{ github.ref_name }}-${{ matrix.package_type }}
+          name: release-files-${{ needs.preparation.outputs.version }}-${{ matrix.package_type }}
           path: ./filtered-bin/${{ matrix.package_type }}/*.${{ matrix.package_type }}
           retention-days: 1
           if-no-files-found: error
@@ -90,7 +102,9 @@ jobs:
   release:
     name: Create Release
     runs-on: ubuntu-latest
-    needs: build
+    needs:
+      - preparation
+      - build
     steps:
       - uses: actions/checkout@v5.0.0
       - name: Create release dir
@@ -99,13 +113,13 @@ jobs:
       - name: Download ipk artifacts
         uses: actions/download-artifact@v4
         with:
-          name: release-files-${{ github.ref_name }}-ipk
+          name: release-files-${{ needs.preparation.outputs.version }}-ipk
           path: ./filtered-bin/release
 
       - name: Download apk artifacts
         uses: actions/download-artifact@v4
         with:
-          name: release-files-${{ github.ref_name }}-apk
+          name: release-files-${{ needs.preparation.outputs.version }}-apk
           path: ./filtered-bin/release
 
       - name: Release
@@ -114,5 +128,5 @@ jobs:
           files: ./filtered-bin/release/*.*
           draft: false
           prerelease: false
-          name: ${{ github.ref_name }}
-          tag_name: ${{ github.ref_name }}
+          name: ${{ needs.preparation.outputs.version }}
+          tag_name: ${{ needs.preparation.outputs.version }}
