@@ -6,8 +6,6 @@ COPY ./podkop /builder/package/feeds/utilities/podkop-plus
 COPY ./luci-app-podkop-plus /builder/package/feeds/luci/luci-app-podkop-plus
 
 RUN export PODKOP_VERSION="${PODKOP_VERSION}" && \
-    ./scripts/feeds update -a && \
-    ./scripts/feeds install -a && \
     make defconfig && \
     make package/podkop-plus/compile V=s -j4 && \
     make package/luci-app-podkop-plus/compile V=s -j4
