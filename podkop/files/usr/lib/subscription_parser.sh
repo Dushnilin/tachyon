@@ -593,6 +593,39 @@ subscription_normalize_uri_list_file_lua() {
     return 1
 }
 
+subscription_normalize_clash_yaml_file_lua() {
+    local input="$1"
+    local output="$2"
+    local parser_path="${PODKOP_LIB:-/usr/lib/podkop-plus}/subscription_parser.lua"
+    local tmp_output skipped
+
+    command -v lua >/dev/null 2>&1 || {
+        log "Lua interpreter is required to parse Clash YAML subscriptions" "error"
+        return 1
+    }
+    [ -r "$parser_path" ] || {
+        log "Lua subscription parser not found: $parser_path" "error"
+        return 1
+    }
+
+    tmp_output="$(mktemp)" || return 1
+    if lua "$parser_path" normalize-clash-yaml "$input" "$tmp_output"; then
+        skipped="$(jq -r '.skipped // 0' "$tmp_output" 2>/dev/null)"
+        case "$skipped" in
+        '' | *[!0-9]*) skipped=0 ;;
+        esac
+        if [ "$skipped" -gt 0 ]; then
+            log "Skipped $skipped invalid or unsupported Clash proxy entries" "warn"
+        fi
+        mv "$tmp_output" "$output"
+        return 0
+    fi
+
+    rm -f "$tmp_output"
+    log "Lua Clash YAML parser failed" "error"
+    return 1
+}
+
 subscription_clash_yaml_records() {
     local input="$1"
 
@@ -1012,6 +1045,12 @@ subscription_normalize_clash_yaml_file() {
     local input="$1"
     local output="$2"
     local records jsonl record added skipped
+
+    if subscription_normalize_clash_yaml_file_lua "$input" "$output"; then
+        return 0
+    fi
+
+    return 1
 
     records="$(mktemp)" || return 1
     jsonl="$(mktemp)" || {

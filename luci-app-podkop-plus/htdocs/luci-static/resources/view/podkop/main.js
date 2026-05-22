@@ -755,6 +755,7 @@ var Podkop;
     AvailableMethods2["CHECK_SING_BOX_LOGS"] = "check_sing_box_logs";
     AvailableMethods2["GET_SYSTEM_INFO"] = "get_system_info";
     AvailableMethods2["SUBSCRIPTION_UPDATE"] = "subscription_update";
+    AvailableMethods2["SUBSCRIPTION_UPDATE_ASYNC"] = "subscription_update_async";
   })(AvailableMethods = Podkop2.AvailableMethods || (Podkop2.AvailableMethods = {}));
   let AvailableClashAPIMethods;
   ((AvailableClashAPIMethods2) => {
@@ -881,10 +882,18 @@ var PodkopShellMethods = {
       success: true,
       data: response.stdout
     };
-  }
+  },
+  subscriptionUpdateAsync: async (section, sourceIndex) => callBaseMethod(
+    Podkop.AvailableMethods.SUBSCRIPTION_UPDATE_ASYNC,
+    [
+      ...section ? [section] : [],
+      ...section && sourceIndex !== void 0 ? [String(sourceIndex)] : []
+    ]
+  )
 };
 
 // src/podkop/methods/custom/getDashboardSections.ts
+var DASHBOARD_SECTION_CACHE_DIR = "/var/run/podkop-plus/section-cache";
 function getDisplayName(section) {
   return section.label || section[".name"];
 }
@@ -959,7 +968,35 @@ function sortUrlTestFirst(outbounds) {
     ...outbounds.filter((outbound) => !isUrlTestOutbound(outbound))
   ];
 }
-function buildProxyGroupOutbounds(section, proxies, outboundMetadata) {
+function isSafeSectionName(sectionName) {
+  return /^[A-Za-z0-9_-]+$/.test(sectionName);
+}
+function objectMap(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+  return Object.fromEntries(
+    Object.entries(value).filter(([, item]) => typeof item === "string").map(([key, item]) => [key, item])
+  );
+}
+async function readDashboardSectionCache(sectionName) {
+  if (!isSafeSectionName(sectionName)) {
+    return void 0;
+  }
+  try {
+    const raw = await fs.read(
+      `${DASHBOARD_SECTION_CACHE_DIR}/${sectionName}.json`
+    );
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return void 0;
+    }
+    return parsed;
+  } catch (_error) {
+    return void 0;
+  }
+}
+function buildProxyGroupOutbounds(section, proxies, outboundMetadata, subscriptionCopyableCodes = /* @__PURE__ */ new Set()) {
   const sectionName = section[".name"];
   const proxyByCode = getProxyEntryByCode(proxies);
   const selector = proxyByCode.get(`${sectionName}-out`);
@@ -974,6 +1011,7 @@ function buildProxyGroupOutbounds(section, proxies, outboundMetadata) {
     }
     const isFastest = item.code === `${sectionName}-urltest-out`;
     const link = manualLinkByCode.get(item.code) || "";
+    const canCopyLink = isCopyableProxyLink(link) || subscriptionCopyableCodes.has(item.code);
     return [
       {
         code: item.code,
@@ -982,7 +1020,7 @@ function buildProxyGroupOutbounds(section, proxies, outboundMetadata) {
         type: item.value.type || "",
         selected: selector?.value?.now === item.code,
         link,
-        canCopyLink: isCopyableProxyLink(link),
+        canCopyLink,
         country: outboundMetadata?.countries?.[item.code]
       }
     ];
@@ -991,54 +1029,6 @@ function buildProxyGroupOutbounds(section, proxies, outboundMetadata) {
     selector,
     outbounds: sortUrlTestFirst(outbounds)
   };
-}
-var SUBSCRIPTION_LINK_CACHE_TTL_MS = 60 * 1e3;
-var subscriptionLinkCache = /* @__PURE__ */ new Map();
-async function getSubscriptionOutboundLinkStates(sectionName) {
-  const response = await PodkopShellMethods.getOutboundLinkStates(sectionName);
-  if (response.success && response.data) {
-    return response.data;
-  }
-  return {};
-}
-async function getSubscriptionOutboundCopyState(sectionName, outbound, linkStates) {
-  if (!outbound.code) {
-    return false;
-  }
-  if (linkStates && Object.prototype.hasOwnProperty.call(linkStates, outbound.code)) {
-    return Boolean(linkStates[outbound.code]);
-  }
-  if (!isCopyableProxyOutboundType(outbound.type)) {
-    return false;
-  }
-  const cacheKey = `${sectionName}:${outbound.code}`;
-  const cached = subscriptionLinkCache.get(cacheKey);
-  const now = Date.now();
-  if (cached && cached.expiresAt > now) {
-    return cached.canCopyLink;
-  }
-  const response = await PodkopShellMethods.getOutboundLink(
-    sectionName,
-    outbound.code
-  );
-  const canCopyLink = response.success && isCopyableProxyLink(response.data.link);
-  subscriptionLinkCache.set(cacheKey, {
-    canCopyLink,
-    expiresAt: now + SUBSCRIPTION_LINK_CACHE_TTL_MS
-  });
-  return canCopyLink;
-}
-async function markSubscriptionCopyableOutbounds(sectionName, outbounds, linkStates) {
-  return Promise.all(
-    outbounds.map(async (outbound) => ({
-      ...outbound,
-      canCopyLink: Boolean(outbound.canCopyLink) || isCopyableProxyLink(outbound.link) || await getSubscriptionOutboundCopyState(
-        sectionName,
-        outbound,
-        linkStates
-      )
-    }))
-  );
 }
 function metadataMatchesCurrentSource(sectionName, sourceCount, metadata) {
   const legacyMetadata = metadata;
@@ -1072,12 +1062,11 @@ function metadataMatchesCurrentSource(sectionName, sourceCount, metadata) {
   }
   return true;
 }
-async function getSubscriptionMetadata(sectionName, sourceCount) {
-  const response = await PodkopShellMethods.getSubscriptionMetadata(sectionName);
-  if (!response.success || !response.data) {
+function getSubscriptionMetadata(sectionName, sourceCount, dashboardCache) {
+  if (!dashboardCache?.subscriptionMetadata) {
     return void 0;
   }
-  const metadataItems = Array.isArray(response.data) ? response.data : [response.data];
+  const metadataItems = Array.isArray(dashboardCache.subscriptionMetadata) ? dashboardCache.subscriptionMetadata : [dashboardCache.subscriptionMetadata];
   const visibleMetadataItems = metadataItems.filter(
     (metadata) => metadata && Object.keys(metadata).length > 1 && metadataMatchesCurrentSource(sectionName, sourceCount, metadata)
   );
@@ -1086,12 +1075,26 @@ async function getSubscriptionMetadata(sectionName, sourceCount) {
   }
   return void 0;
 }
-async function getOutboundMetadata(sectionName) {
-  const response = await PodkopShellMethods.getOutboundMetadata(sectionName);
-  if (!response.success || !response.data) {
+function getOutboundMetadata(dashboardCache) {
+  const metadata = dashboardCache?.outboundMetadata;
+  if (!metadata || typeof metadata !== "object") {
     return void 0;
   }
-  return response.data;
+  return {
+    names: objectMap(metadata.names),
+    countries: objectMap(metadata.countries)
+  };
+}
+function getSubscriptionCopyableCodes(dashboardCache) {
+  const legacyLinks = objectMap(dashboardCache?.links);
+  const linkRefs = dashboardCache?.linkRefs;
+  const codes = new Set(
+    Object.entries(legacyLinks).filter(([, link]) => isCopyableProxyLink(link)).map(([code]) => code)
+  );
+  if (linkRefs && typeof linkRefs === "object" && !Array.isArray(linkRefs)) {
+    Object.keys(linkRefs).forEach((code) => codes.add(code));
+  }
+  return codes;
 }
 async function getDashboardSections(options = {}) {
   const includeSubscriptionCopyState = options.includeSubscriptionCopyState ?? true;
@@ -1185,15 +1188,19 @@ async function getDashboardSections(options = {}) {
       if (sectionAction === "proxy" && shouldUseProxyGroup(section)) {
         const subscriptionSourceCount = getSubscriptionSourceCount(section);
         const subscriptionEnabled = subscriptionSourceCount > 0;
-        const [outboundMetadata, subscriptionMetadata, outboundLinkStates] = await Promise.all([
-          subscriptionEnabled ? getOutboundMetadata(sectionName) : Promise.resolve(void 0),
-          subscriptionEnabled ? getSubscriptionMetadata(sectionName, subscriptionSourceCount) : Promise.resolve(void 0),
-          includeSubscriptionCopyState ? getSubscriptionOutboundLinkStates(sectionName) : Promise.resolve({})
-        ]);
+        const dashboardCache = subscriptionEnabled ? await readDashboardSectionCache(sectionName) : void 0;
+        const outboundMetadata = getOutboundMetadata(dashboardCache);
+        const subscriptionMetadata = subscriptionEnabled ? getSubscriptionMetadata(
+          sectionName,
+          subscriptionSourceCount,
+          dashboardCache
+        ) : void 0;
+        const subscriptionCopyableCodes = includeSubscriptionCopyState ? getSubscriptionCopyableCodes(dashboardCache) : /* @__PURE__ */ new Set();
         const { selector, outbounds } = buildProxyGroupOutbounds(
           section,
           proxies,
-          outboundMetadata
+          outboundMetadata,
+          subscriptionCopyableCodes
         );
         return {
           withTagSelect: true,
@@ -1203,11 +1210,7 @@ async function getDashboardSections(options = {}) {
           proxyConfigType,
           subscriptionSourceCount,
           subscriptionMetadata,
-          outbounds: includeSubscriptionCopyState ? await markSubscriptionCopyableOutbounds(
-            sectionName,
-            outbounds,
-            outboundLinkStates
-          ) : outbounds
+          outbounds
         };
       }
       return {
@@ -3182,6 +3185,8 @@ async function fetchPodkopStatus() {
 
 // src/podkop/tabs/dashboard/initController.ts
 var SECTIONS_REFRESH_INTERVAL_MS = 1e4;
+var SUBSCRIPTION_UPDATE_POLL_INTERVAL_MS = 3e3;
+var SUBSCRIPTION_UPDATE_WAIT_TIMEOUT_MS = 15 * 60 * 1e3;
 var sectionsRefreshTimer = null;
 var sectionsRefreshPromise = null;
 var sectionsRefreshQueued = false;
@@ -3275,6 +3280,34 @@ function setSubscriptionUpdating(sectionName, updating) {
       subscriptionUpdatingSections
     }
   });
+}
+function delay(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+async function waitForSubscriptionUpdateCompletion() {
+  const startedAt = Date.now();
+  let sawBusy = false;
+  while (Date.now() - startedAt < SUBSCRIPTION_UPDATE_WAIT_TIMEOUT_MS) {
+    await delay(SUBSCRIPTION_UPDATE_POLL_INTERVAL_MS);
+    const status = await PodkopShellMethods.getStatus();
+    if (!status.success) {
+      continue;
+    }
+    const isSubscriptionUpdate = status.data.lifecycle_action === "subscription_update";
+    if (isSubscriptionUpdate && status.data.lifecycle_busy) {
+      sawBusy = true;
+      continue;
+    }
+    if (isSubscriptionUpdate && status.data.lifecycle_state === "failed") {
+      return false;
+    }
+    if (sawBusy || Date.now() - startedAt > SUBSCRIPTION_UPDATE_POLL_INTERVAL_MS) {
+      return true;
+    }
+  }
+  return false;
 }
 async function connectToClashSockets() {
   const clashApiSecret = await getClashApiSecret();
@@ -3410,14 +3443,18 @@ async function handleUpdateSubscription(section) {
   }
   setSubscriptionUpdating(section.sectionName, true);
   try {
-    const response = await PodkopShellMethods.subscriptionUpdate(
+    const response = await PodkopShellMethods.subscriptionUpdateAsync(
       section.sectionName
     );
-    if (!response.success) {
+    if (!response.success || response.data?.error || !response.data?.started && !response.data?.busy) {
       showToast(_("Failed to update subscriptions"), "error");
       return;
     }
-    showToast(_("Subscription update completed"), "success");
+    const completed = await waitForSubscriptionUpdateCompletion();
+    showToast(
+      completed ? _("Subscription update completed") : _("Failed to update subscriptions"),
+      completed ? "success" : "error"
+    );
   } catch (error) {
     logger.error("[DASHBOARD]", "handleUpdateSubscription: failed", error);
     showToast(_("Failed to update subscriptions"), "error");

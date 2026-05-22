@@ -76,6 +76,7 @@ export namespace Podkop {
     CHECK_SING_BOX_LOGS = 'check_sing_box_logs',
     GET_SYSTEM_INFO = 'get_system_info',
     SUBSCRIPTION_UPDATE = 'subscription_update',
+    SUBSCRIPTION_UPDATE_ASYNC = 'subscription_update_async',
   }
 
   export enum AvailableClashAPIMethods {
@@ -250,6 +251,13 @@ export namespace Podkop {
 
   export interface GetOutboundLink {
     link: string;
+  }
+
+  export interface SubscriptionUpdateStart {
+    started?: boolean;
+    busy?: boolean;
+    pid?: number;
+    error?: string;
   }
 
   export type GetOutboundLinkStates = Record<string, boolean>;

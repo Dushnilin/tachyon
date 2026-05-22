@@ -609,17 +609,21 @@ sing_box_cf_prepare_subscription_batch() {
                     | select((($taken[.] // false) | not)))
             end;
 
-        reduce .[] as $outbound (
+        . as $subscription_outbounds |
+        reduce range(0; ($subscription_outbounds | length)) as $source_index (
             {
                 outbounds: [],
                 tags: [],
                 names: [],
                 servers: [],
                 links: [],
+                source_indices: [],
                 skipped: 0,
                 skipped_reason_counts: {},
                 taken: (reduce $existing_tags[] as $tag ({}; .[$tag] = true))
             };
+            $subscription_outbounds[$source_index] as $outbound
+            |
             ((.outbounds | length) + 1) as $index
             | safe_string($outbound.remark // $outbound.tag; "server-\($index)") as $display_name
             | prefilter_skip_reason($outbound) as $skip_reason
@@ -634,6 +638,7 @@ sing_box_cf_prepare_subscription_batch() {
                 | .names += [$display_name]
                 | .servers += [($outbound.server // "")]
                 | .links += [($outbound.share_link // "")]
+                | .source_indices += [($source_index + 1)]
                 | .taken[$tag] = true
               end
         )
@@ -711,15 +716,24 @@ sing_box_cf_try_subscription_outbounds_batch() {
     return 0
 }
 
-sing_box_cf_prepared_links_json() {
+sing_box_cf_prepared_link_refs_json() {
     local prepared_json="$1"
+    local source_section="${2:-}"
 
-    printf '%s' "$prepared_json" | jq -c '
+    printf '%s' "$prepared_json" | jq -c --arg source_section "$source_section" '
         (.tags // []) as $tags
-        | (.links // []) as $links
+        | (.source_indices // []) as $source_indices
+        | $source_section as $source_section
         | reduce range(0; ($tags | length)) as $index (
             {};
-            .[$tags[$index]] = ($links[$index] // "")
+            if $source_section != "" then
+                .[$tags[$index]] = {
+                    sourceSection: $source_section,
+                    sourceIndex: (($source_indices[$index] // ($index + 1)) | tonumber)
+                }
+              else
+                .
+              end
         )
     ' 2>/dev/null
 }
@@ -769,6 +783,7 @@ sing_box_cf_subscription_prepared_slice() {
             names: ((.names // [])[$start:$end]),
             servers: ((.servers // [])[$start:$end]),
             links: ((.links // [])[$start:$end]),
+            source_indices: ((.source_indices // [])[$start:$end]),
             skipped: 0,
             skipped_reason_counts: {}
         }
@@ -777,13 +792,13 @@ sing_box_cf_subscription_prepared_slice() {
 
 sing_box_cf_append_subscription_prepared_metadata() {
     local prepared_json="$1"
-    local tags_json links_json names_json servers_json names
+    local tags_json link_refs_json names_json servers_json names
 
     tags_json="$(printf '%s' "$prepared_json" | jq -c '.tags // []' 2>/dev/null)"
     [ -n "$tags_json" ] || tags_json="[]"
 
-    links_json="$(sing_box_cf_prepared_links_json "$prepared_json")"
-    [ -n "$links_json" ] || links_json="{}"
+    link_refs_json="$(sing_box_cf_prepared_link_refs_json "$prepared_json" "$SING_BOX_CF_SOURCE_SECTION")"
+    [ -n "$link_refs_json" ] || link_refs_json="{}"
     names_json="$(sing_box_cf_prepared_names_json "$prepared_json")"
     [ -n "$names_json" ] || names_json="{}"
     servers_json="$(sing_box_cf_prepared_servers_json "$prepared_json")"
@@ -793,9 +808,9 @@ sing_box_cf_append_subscription_prepared_metadata() {
         jq -c --argjson tags "$tags_json" '. + $tags' 2>/dev/null)"
     [ -n "$SUBSCRIPTION_OUTBOUND_TAGS_JSON" ] || SUBSCRIPTION_OUTBOUND_TAGS_JSON="[]"
 
-    SUBSCRIPTION_OUTBOUND_LINKS_JSON="$(printf '%s' "$SUBSCRIPTION_OUTBOUND_LINKS_JSON" |
-        jq -c --argjson links "$links_json" '. + $links' 2>/dev/null)"
-    [ -n "$SUBSCRIPTION_OUTBOUND_LINKS_JSON" ] || SUBSCRIPTION_OUTBOUND_LINKS_JSON="{}"
+    SUBSCRIPTION_OUTBOUND_LINK_REFS_JSON="$(printf '%s' "$SUBSCRIPTION_OUTBOUND_LINK_REFS_JSON" |
+        jq -c --argjson link_refs "$link_refs_json" '. + $link_refs' 2>/dev/null)"
+    [ -n "$SUBSCRIPTION_OUTBOUND_LINK_REFS_JSON" ] || SUBSCRIPTION_OUTBOUND_LINK_REFS_JSON="{}"
 
     SUBSCRIPTION_OUTBOUND_NAMES_JSON="$(printf '%s' "$SUBSCRIPTION_OUTBOUND_NAMES_JSON" |
         jq -c --argjson names "$names_json" '. + $names' 2>/dev/null)"
@@ -835,8 +850,8 @@ sing_box_cf_apply_subscription_batch() {
     [ -n "$SUBSCRIPTION_OUTBOUND_TAGS_JSON" ] || SUBSCRIPTION_OUTBOUND_TAGS_JSON="[]"
     SUBSCRIPTION_OUTBOUND_TAGS="$(printf '%s' "$SUBSCRIPTION_OUTBOUND_TAGS_JSON" | jq -r 'join(",")' 2>/dev/null)"
     SUBSCRIPTION_OUTBOUND_NAMES="$(sing_box_cf_prepared_names_lines "$prepared_json")"
-    SUBSCRIPTION_OUTBOUND_LINKS_JSON="$(sing_box_cf_prepared_links_json "$prepared_json")"
-    [ -n "$SUBSCRIPTION_OUTBOUND_LINKS_JSON" ] || SUBSCRIPTION_OUTBOUND_LINKS_JSON="{}"
+    SUBSCRIPTION_OUTBOUND_LINK_REFS_JSON="$(sing_box_cf_prepared_link_refs_json "$prepared_json" "$SING_BOX_CF_SOURCE_SECTION")"
+    [ -n "$SUBSCRIPTION_OUTBOUND_LINK_REFS_JSON" ] || SUBSCRIPTION_OUTBOUND_LINK_REFS_JSON="{}"
     SUBSCRIPTION_OUTBOUND_NAMES_JSON="$(sing_box_cf_prepared_names_json "$prepared_json")"
     [ -n "$SUBSCRIPTION_OUTBOUND_NAMES_JSON" ] || SUBSCRIPTION_OUTBOUND_NAMES_JSON="{}"
     SUBSCRIPTION_OUTBOUND_SERVERS_JSON="$(sing_box_cf_prepared_servers_json "$prepared_json")"
@@ -915,7 +930,7 @@ sing_box_cf_apply_subscription_outbounds_chunked() {
     SING_BOX_CF_FALLBACK_ADDED_COUNT=0
     SING_BOX_CF_FALLBACK_SKIPPED_COUNT=0
     SUBSCRIPTION_OUTBOUND_TAGS_JSON="[]"
-    SUBSCRIPTION_OUTBOUND_LINKS_JSON="{}"
+    SUBSCRIPTION_OUTBOUND_LINK_REFS_JSON="{}"
     SUBSCRIPTION_OUTBOUND_NAMES_JSON="{}"
     SUBSCRIPTION_OUTBOUND_SERVERS_JSON="{}"
     SUBSCRIPTION_OUTBOUND_NAMES=""
@@ -948,14 +963,16 @@ sing_box_cf_add_subscription_outbounds() {
     local config="$1"
     local section="$2"
     local subscription_json_path="$3"
+    local source_section="${4:-}"
     local outbounds_json outbounds_count prepared_json skipped_count
 
     SUBSCRIPTION_OUTBOUND_TAGS=""
     SUBSCRIPTION_OUTBOUND_TAGS_JSON="[]"
-    SUBSCRIPTION_OUTBOUND_LINKS_JSON="{}"
+    SUBSCRIPTION_OUTBOUND_LINK_REFS_JSON="{}"
     SUBSCRIPTION_OUTBOUND_NAMES_JSON="{}"
     SUBSCRIPTION_OUTBOUND_SERVERS_JSON="{}"
     SUBSCRIPTION_OUTBOUND_NAMES=""
+    SING_BOX_CF_SOURCE_SECTION="$source_section"
     SING_BOX_CF_LAST_CONFIG="$config"
 
     if [ ! -f "$subscription_json_path" ]; then

@@ -1,10 +1,6 @@
 import { getConfigSections } from './getConfigSections';
 import { ClashAPI, Podkop } from '../../types';
-import {
-  getProxyUrlName,
-  isCopyableProxyLink,
-  isCopyableProxyOutboundType,
-} from '../../../helpers';
+import { getProxyUrlName, isCopyableProxyLink } from '../../../helpers';
 import { PodkopShellMethods } from '../shell';
 
 interface IGetDashboardSectionsResponse {
@@ -20,6 +16,19 @@ type ClashProxyEntry = {
   code: string;
   value: ClashAPI.ProxyBase;
 };
+
+type DashboardSectionCache = {
+  version?: number;
+  section?: string;
+  links?: Record<string, string>;
+  linkRefs?: Record<string, unknown>;
+  outboundMetadata?: Podkop.GetOutboundMetadata;
+  subscriptionMetadata?:
+    | Podkop.SubscriptionMetadata
+    | Podkop.SubscriptionMetadata[];
+};
+
+const DASHBOARD_SECTION_CACHE_DIR = '/var/run/podkop-plus/section-cache';
 
 function getDisplayName(section: Podkop.ConfigSection) {
   return section.label || section['.name'];
@@ -121,10 +130,50 @@ function sortUrlTestFirst(outbounds: Podkop.Outbound[]) {
   ];
 }
 
+function isSafeSectionName(sectionName: string) {
+  return /^[A-Za-z0-9_-]+$/.test(sectionName);
+}
+
+function objectMap(value: unknown): Record<string, string> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .filter(([, item]) => typeof item === 'string')
+      .map(([key, item]) => [key, item as string]),
+  );
+}
+
+async function readDashboardSectionCache(
+  sectionName: string,
+): Promise<DashboardSectionCache | undefined> {
+  if (!isSafeSectionName(sectionName)) {
+    return undefined;
+  }
+
+  try {
+    const raw = await fs.read(
+      `${DASHBOARD_SECTION_CACHE_DIR}/${sectionName}.json`,
+    );
+    const parsed = JSON.parse(raw) as DashboardSectionCache;
+
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return undefined;
+    }
+
+    return parsed;
+  } catch (_error) {
+    return undefined;
+  }
+}
+
 function buildProxyGroupOutbounds(
   section: Podkop.ConfigSection,
   proxies: ClashProxyEntry[],
   outboundMetadata?: Podkop.GetOutboundMetadata,
+  subscriptionCopyableCodes: Set<string> = new Set(),
 ) {
   const sectionName = section['.name'];
   const proxyByCode = getProxyEntryByCode(proxies);
@@ -144,6 +193,8 @@ function buildProxyGroupOutbounds(
 
     const isFastest = item.code === `${sectionName}-urltest-out`;
     const link = manualLinkByCode.get(item.code) || '';
+    const canCopyLink =
+      isCopyableProxyLink(link) || subscriptionCopyableCodes.has(item.code);
 
     return [
       {
@@ -158,7 +209,7 @@ function buildProxyGroupOutbounds(
         type: item.value.type || '',
         selected: selector?.value?.now === item.code,
         link,
-        canCopyLink: isCopyableProxyLink(link),
+        canCopyLink,
         country: outboundMetadata?.countries?.[item.code],
       },
     ];
@@ -168,85 +219,6 @@ function buildProxyGroupOutbounds(
     selector,
     outbounds: sortUrlTestFirst(outbounds),
   };
-}
-
-const SUBSCRIPTION_LINK_CACHE_TTL_MS = 60 * 1000;
-const subscriptionLinkCache = new Map<
-  string,
-  { canCopyLink: boolean; expiresAt: number }
->();
-
-async function getSubscriptionOutboundLinkStates(sectionName: string) {
-  const response = await PodkopShellMethods.getOutboundLinkStates(sectionName);
-
-  if (response.success && response.data) {
-    return response.data;
-  }
-
-  return {};
-}
-
-async function getSubscriptionOutboundCopyState(
-  sectionName: string,
-  outbound: Podkop.Outbound,
-  linkStates?: Podkop.GetOutboundLinkStates,
-) {
-  if (!outbound.code) {
-    return false;
-  }
-
-  if (
-    linkStates &&
-    Object.prototype.hasOwnProperty.call(linkStates, outbound.code)
-  ) {
-    return Boolean(linkStates[outbound.code]);
-  }
-
-  if (!isCopyableProxyOutboundType(outbound.type)) {
-    return false;
-  }
-
-  const cacheKey = `${sectionName}:${outbound.code}`;
-  const cached = subscriptionLinkCache.get(cacheKey);
-  const now = Date.now();
-
-  if (cached && cached.expiresAt > now) {
-    return cached.canCopyLink;
-  }
-
-  const response = await PodkopShellMethods.getOutboundLink(
-    sectionName,
-    outbound.code,
-  );
-  const canCopyLink =
-    response.success && isCopyableProxyLink(response.data.link);
-
-  subscriptionLinkCache.set(cacheKey, {
-    canCopyLink,
-    expiresAt: now + SUBSCRIPTION_LINK_CACHE_TTL_MS,
-  });
-
-  return canCopyLink;
-}
-
-async function markSubscriptionCopyableOutbounds(
-  sectionName: string,
-  outbounds: Podkop.Outbound[],
-  linkStates?: Podkop.GetOutboundLinkStates,
-) {
-  return Promise.all(
-    outbounds.map(async (outbound) => ({
-      ...outbound,
-      canCopyLink:
-        Boolean(outbound.canCopyLink) ||
-        isCopyableProxyLink(outbound.link) ||
-        (await getSubscriptionOutboundCopyState(
-          sectionName,
-          outbound,
-          linkStates,
-        )),
-    })),
-  );
 }
 
 function metadataMatchesCurrentSource(
@@ -303,20 +275,18 @@ function metadataMatchesCurrentSource(
   return true;
 }
 
-async function getSubscriptionMetadata(
+function getSubscriptionMetadata(
   sectionName: string,
   sourceCount: number,
+  dashboardCache?: DashboardSectionCache,
 ) {
-  const response =
-    await PodkopShellMethods.getSubscriptionMetadata(sectionName);
-
-  if (!response.success || !response.data) {
+  if (!dashboardCache?.subscriptionMetadata) {
     return undefined;
   }
 
-  const metadataItems = Array.isArray(response.data)
-    ? response.data
-    : [response.data];
+  const metadataItems = Array.isArray(dashboardCache.subscriptionMetadata)
+    ? dashboardCache.subscriptionMetadata
+    : [dashboardCache.subscriptionMetadata];
   const visibleMetadataItems = metadataItems.filter(
     (metadata) =>
       metadata &&
@@ -331,14 +301,33 @@ async function getSubscriptionMetadata(
   return undefined;
 }
 
-async function getOutboundMetadata(sectionName: string) {
-  const response = await PodkopShellMethods.getOutboundMetadata(sectionName);
+function getOutboundMetadata(dashboardCache?: DashboardSectionCache) {
+  const metadata = dashboardCache?.outboundMetadata;
 
-  if (!response.success || !response.data) {
+  if (!metadata || typeof metadata !== 'object') {
     return undefined;
   }
 
-  return response.data;
+  return {
+    names: objectMap(metadata.names),
+    countries: objectMap(metadata.countries),
+  };
+}
+
+function getSubscriptionCopyableCodes(dashboardCache?: DashboardSectionCache) {
+  const legacyLinks = objectMap(dashboardCache?.links);
+  const linkRefs = dashboardCache?.linkRefs;
+  const codes = new Set(
+    Object.entries(legacyLinks)
+      .filter(([, link]) => isCopyableProxyLink(link))
+      .map(([code]) => code),
+  );
+
+  if (linkRefs && typeof linkRefs === 'object' && !Array.isArray(linkRefs)) {
+    Object.keys(linkRefs).forEach((code) => codes.add(code));
+  }
+
+  return codes;
 }
 
 export async function getDashboardSections(
@@ -452,22 +441,25 @@ export async function getDashboardSections(
         if (sectionAction === 'proxy' && shouldUseProxyGroup(section)) {
           const subscriptionSourceCount = getSubscriptionSourceCount(section);
           const subscriptionEnabled = subscriptionSourceCount > 0;
-          const [outboundMetadata, subscriptionMetadata, outboundLinkStates] =
-            await Promise.all([
-              subscriptionEnabled
-                ? getOutboundMetadata(sectionName)
-                : Promise.resolve(undefined),
-              subscriptionEnabled
-                ? getSubscriptionMetadata(sectionName, subscriptionSourceCount)
-                : Promise.resolve(undefined),
-              includeSubscriptionCopyState
-                ? getSubscriptionOutboundLinkStates(sectionName)
-                : Promise.resolve({}),
-            ]);
+          const dashboardCache = subscriptionEnabled
+            ? await readDashboardSectionCache(sectionName)
+            : undefined;
+          const outboundMetadata = getOutboundMetadata(dashboardCache);
+          const subscriptionMetadata = subscriptionEnabled
+            ? getSubscriptionMetadata(
+                sectionName,
+                subscriptionSourceCount,
+                dashboardCache,
+              )
+            : undefined;
+          const subscriptionCopyableCodes = includeSubscriptionCopyState
+            ? getSubscriptionCopyableCodes(dashboardCache)
+            : new Set<string>();
           const { selector, outbounds } = buildProxyGroupOutbounds(
             section,
             proxies,
             outboundMetadata,
+            subscriptionCopyableCodes,
           );
 
           return {
@@ -478,13 +470,7 @@ export async function getDashboardSections(
             proxyConfigType,
             subscriptionSourceCount,
             subscriptionMetadata,
-            outbounds: includeSubscriptionCopyState
-              ? await markSubscriptionCopyableOutbounds(
-                  sectionName,
-                  outbounds,
-                  outboundLinkStates,
-                )
-              : outbounds,
+            outbounds,
           };
         }
 

@@ -149,4 +149,12 @@ export const PodkopShellMethods = {
       data: response.stdout,
     } as Podkop.MethodSuccessResponse<string>;
   },
+  subscriptionUpdateAsync: async (section?: string, sourceIndex?: number) =>
+    callBaseMethod<Podkop.SubscriptionUpdateStart>(
+      Podkop.AvailableMethods.SUBSCRIPTION_UPDATE_ASYNC,
+      [
+        ...(section ? [section] : []),
+        ...(section && sourceIndex !== undefined ? [String(sourceIndex)] : []),
+      ],
+    ),
 };

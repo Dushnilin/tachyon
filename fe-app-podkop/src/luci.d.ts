@@ -14,6 +14,7 @@ type HtmlAttributes<T extends HtmlTag = 'div'> = Partial<
 
 declare global {
   const fs: {
+    read(path: string): Promise<string>;
     exec(
       command: string,
       args?: string[],

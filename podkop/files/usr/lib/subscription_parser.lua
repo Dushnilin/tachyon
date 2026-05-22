@@ -1020,6 +1020,502 @@ local function parse_share_link(line)
     return nil
 end
 
+local function clean_scalar(value)
+    value = trim(value)
+    local first = value:sub(1, 1)
+    local last = value:sub(-1)
+    if #value >= 2 and ((first == "\"" and last == "\"") or (first == "'" and last == "'")) then
+        return value:sub(2, -2)
+    end
+    return value
+end
+
+local function leading_indent(value)
+    local prefix = tostring(value or ""):match("^[ \t]*") or ""
+    return #prefix
+end
+
+local function find_top_level_colon(value)
+    local depth = 0
+    local quote = ""
+    local escaped = false
+
+    for index = 1, #value do
+        local char = value:sub(index, index)
+        if quote ~= "" then
+            if escaped then
+                escaped = false
+            elseif char == "\\" then
+                escaped = true
+            elseif char == quote then
+                quote = ""
+            end
+        elseif char == "\"" or char == "'" then
+            quote = char
+        elseif char == "{" or char == "[" then
+            depth = depth + 1
+        elseif char == "}" or char == "]" then
+            depth = depth - 1
+        elseif char == ":" and depth == 0 then
+            return index
+        end
+    end
+
+    return nil
+end
+
+local function split_top_level(value, separator)
+    local result = {}
+    local depth = 0
+    local quote = ""
+    local escaped = false
+    local start = 1
+
+    for index = 1, #value do
+        local char = value:sub(index, index)
+        if quote ~= "" then
+            if escaped then
+                escaped = false
+            elseif char == "\\" then
+                escaped = true
+            elseif char == quote then
+                quote = ""
+            end
+        elseif char == "\"" or char == "'" then
+            quote = char
+        elseif char == "{" or char == "[" then
+            depth = depth + 1
+        elseif char == "}" or char == "]" then
+            depth = depth - 1
+        elseif char == separator and depth == 0 then
+            result[#result + 1] = value:sub(start, index - 1)
+            start = index + 1
+        end
+    end
+
+    result[#result + 1] = value:sub(start)
+    return result
+end
+
+local function set_record_field(record, key, value)
+    key = clean_scalar(key)
+    value = clean_scalar(value)
+    if key == "" then
+        return
+    end
+
+    if record.fields[key] == nil then
+        record.keys[#record.keys + 1] = key
+    end
+    record.fields[key] = value
+end
+
+local parse_clash_map
+
+local function parse_clash_pair(record, part, prefix)
+    part = trim(part)
+    local colon = find_top_level_colon(part)
+    if not colon then
+        return
+    end
+
+    local key = clean_scalar(part:sub(1, colon - 1))
+    local value = trim(part:sub(colon + 1))
+    if value:sub(1, 1) == "{" and value:sub(-1) == "}" then
+        parse_clash_map(record, value, prefix .. key .. ".")
+    else
+        set_record_field(record, prefix .. key, value)
+    end
+end
+
+parse_clash_map = function(record, value, prefix)
+    value = trim(value)
+    if value:sub(1, 1) == "{" then
+        value = value:sub(2)
+    end
+    if value:sub(-1) == "}" then
+        value = value:sub(1, -2)
+    end
+
+    for _, part in ipairs(split_top_level(value, ",")) do
+        parse_clash_pair(record, part, prefix)
+    end
+end
+
+local function empty_clash_record()
+    return {
+        fields = {},
+        keys = {},
+        context = "",
+        context_indent = -1
+    }
+end
+
+local function clash_record_has_fields(record)
+    return #record.keys > 0
+end
+
+local function emit_clash_record(records, record)
+    if not clash_record_has_fields(record) then
+        return empty_clash_record()
+    end
+
+    local item = {}
+    for _, key in ipairs(record.keys) do
+        if record.fields[key] ~= nil then
+            item[key] = record.fields[key]
+        end
+    end
+    records[#records + 1] = item
+    return empty_clash_record()
+end
+
+local clash_nested_keys = {
+    ["ws-opts"] = true,
+    ["grpc-opts"] = true,
+    ["reality-opts"] = true,
+    ["obfs-opts"] = true,
+    headers = true
+}
+
+local function parse_clash_block_line(record, line)
+    local indent = leading_indent(line)
+    local text = trim(line)
+    if text == "" then
+        return
+    end
+
+    local colon = text:find(":", 1, true)
+    if not colon then
+        return
+    end
+
+    local key = clean_scalar(text:sub(1, colon - 1))
+    local value = trim(text:sub(colon + 1))
+
+    if record.context ~= "" and indent <= record.context_indent then
+        record.context = ""
+        record.context_indent = -1
+    end
+
+    if value == "" then
+        if clash_nested_keys[key] then
+            if record.context ~= "" and indent > record.context_indent then
+                record.context = record.context .. "." .. key
+            else
+                record.context = key
+            end
+            record.context_indent = indent
+        end
+        return
+    end
+
+    local full_key = key
+    if record.context ~= "" and indent > record.context_indent then
+        full_key = record.context .. "." .. key
+    end
+    set_record_field(record, full_key, value)
+end
+
+local function is_clash_proxies_header(line)
+    local text = trim(line)
+    return text == "proxies:" or text:match("^proxies:%s*#") ~= nil
+end
+
+local function clash_yaml_records(input_file)
+    local input = assert(io.open(input_file, "r"))
+    local records = {}
+    local record = empty_clash_record()
+    local in_proxies = false
+
+    for line in input:lines() do
+        local proxies_header = is_clash_proxies_header(line)
+
+        if in_proxies and line:match("^[^ \t]") and not proxies_header and not line:match("^%-[ \t]") then
+            record = emit_clash_record(records, record)
+            in_proxies = false
+        end
+
+        if proxies_header then
+            record = emit_clash_record(records, record)
+            in_proxies = true
+        elseif in_proxies then
+            if line:match("^[ \t]*%-[ \t]*%{") then
+                record = emit_clash_record(records, record)
+                record = empty_clash_record()
+                local map_value = line:gsub("^[ \t]*%-[ \t]*", "", 1)
+                parse_clash_map(record, map_value, "")
+                record = emit_clash_record(records, record)
+            elseif line:match("^[ \t]*%-[ \t]*") then
+                record = emit_clash_record(records, record)
+                record = empty_clash_record()
+                local rest = line:gsub("^[ \t]*%-[ \t]*", "", 1)
+                if trim(rest) ~= "" then
+                    parse_clash_block_line(record, rest)
+                end
+            elseif clash_record_has_fields(record) then
+                parse_clash_block_line(record, line)
+            end
+        end
+    end
+
+    input:close()
+    emit_clash_record(records, record)
+    return records
+end
+
+local function lower(value)
+    return tostring(value or ""):lower()
+end
+
+local function normalize_packet_encoding(value)
+    value = tostring(value or "")
+    if value == "xudp" or value == "packetaddr" then
+        return value
+    end
+    return ""
+end
+
+local function clash_vless_flow_supported(flow)
+    return flow == nil or flow == "" or flow == "xtls-rprx-vision"
+end
+
+local function normalized_clash_alpn(value)
+    value = tostring(value or ""):gsub("^%[", ""):gsub("%]$", ""):gsub("%s+", "")
+    return value
+end
+
+local function add_clash_tls(outbound, options)
+    local enabled = options.always or is_true(options.tls) or options.sni ~= "" or
+        options.alpn ~= "" or options.fingerprint ~= "" or options.reality_public_key ~= ""
+
+    if not enabled then
+        return
+    end
+
+    local tls = { enabled = true }
+    if options.sni ~= "" then
+        tls.server_name = options.sni
+    end
+    if is_true(options.skip_verify) then
+        tls.insecure = true
+    end
+    if options.alpn ~= "" then
+        tls.alpn = split_csv(options.alpn)
+    end
+
+    if options.reality_public_key ~= "" then
+        tls.utls = {
+            enabled = true,
+            fingerprint = options.fingerprint ~= "" and options.fingerprint or "chrome"
+        }
+        tls.reality = { enabled = true, public_key = options.reality_public_key }
+        if options.reality_short_id ~= "" then
+            tls.reality.short_id = options.reality_short_id
+        end
+    elseif options.fingerprint ~= "" then
+        tls.utls = { enabled = true, fingerprint = options.fingerprint }
+    end
+
+    outbound.tls = tls
+end
+
+local function add_clash_transport(outbound, options)
+    if options.network == "ws" then
+        outbound.transport = {
+            type = "ws",
+            path = options.ws_path ~= "" and options.ws_path or "/"
+        }
+        if options.ws_host ~= "" then
+            outbound.transport.headers = { Host = options.ws_host }
+        end
+    elseif options.network == "grpc" then
+        outbound.transport = { type = "grpc" }
+        if options.grpc_service_name ~= "" then
+            outbound.transport.service_name = options.grpc_service_name
+        end
+    end
+end
+
+local function parse_clash_record(record)
+    local proxy_type = lower(record.type)
+    local name = tostring(record.name or "")
+    local server = tostring(record.server or "")
+    local port = tonumber(record.port)
+    if name == "" then
+        name = server .. ":" .. tostring(record.port or "")
+    end
+    if proxy_type == "" or server == "" or not valid_port(port) then
+        return nil
+    end
+
+    local options = {
+        tls = tostring(record.tls or ""),
+        skip_verify = tostring(record["skip-cert-verify"] or ""),
+        sni = tostring(record.sni or record.servername or ""),
+        network = lower(record.network),
+        ws_path = tostring(record["ws-opts.path"] or ""),
+        ws_host = tostring(record["ws-opts.headers.Host"] or ""),
+        grpc_service_name = tostring(record["grpc-opts.grpc-service-name"] or ""),
+        reality_public_key = tostring(record["reality-opts.public-key"] or ""),
+        reality_short_id = tostring(record["reality-opts.short-id"] or ""),
+        alpn = normalized_clash_alpn(record.alpn or ""),
+        fingerprint = normalize_utls_fingerprint(tostring(record["client-fingerprint"] or record.fingerprint or ""))
+    }
+
+    if proxy_type == "ss" or proxy_type == "shadowsocks" then
+        local method = tostring(record.cipher or "")
+        local password = tostring(record.password or "")
+        if method == "" or method == "ss" or password == "" then
+            return nil
+        end
+        return {
+            type = "shadowsocks",
+            tag = name,
+            server = server,
+            server_port = port,
+            method = method,
+            password = password
+        }
+    elseif proxy_type == "vmess" then
+        local uuid = tostring(record.uuid or "")
+        if uuid == "" then
+            return nil
+        end
+        local outbound = {
+            type = "vmess",
+            tag = name,
+            server = server,
+            server_port = port,
+            uuid = uuid,
+            security = tostring(record.cipher or "") ~= "" and tostring(record.cipher) or "auto"
+        }
+        local alter_id = tonumber(record.alterId or record["alter-id"])
+        if alter_id then
+            outbound.alter_id = alter_id
+        end
+        add_clash_tls(outbound, options)
+        add_clash_transport(outbound, options)
+        return outbound
+    elseif proxy_type == "vless" then
+        local uuid = tostring(record.uuid or "")
+        local flow = tostring(record.flow or "")
+        local packet_encoding = normalize_packet_encoding(record["packet-encoding"] or record.packetEncoding or "")
+        if uuid == "" or not clash_vless_flow_supported(flow) then
+            return nil
+        end
+        local outbound = {
+            type = "vless",
+            tag = name,
+            server = server,
+            server_port = port,
+            uuid = uuid
+        }
+        if flow ~= "" then
+            outbound.flow = flow
+        end
+        if packet_encoding ~= "" then
+            outbound.packet_encoding = packet_encoding
+        end
+        add_clash_tls(outbound, options)
+        add_clash_transport(outbound, options)
+        return outbound
+    elseif proxy_type == "trojan" then
+        local password = tostring(record.password or "")
+        if password == "" then
+            return nil
+        end
+        local outbound = {
+            type = "trojan",
+            tag = name,
+            server = server,
+            server_port = port,
+            password = password
+        }
+        options.always = true
+        add_clash_tls(outbound, options)
+        add_clash_transport(outbound, options)
+        return outbound
+    elseif proxy_type == "hysteria2" or proxy_type == "hy2" then
+        local password = tostring(record.password or "")
+        if password == "" then
+            return nil
+        end
+        local outbound = {
+            type = "hysteria2",
+            tag = name,
+            server = server,
+            server_port = port,
+            password = password,
+            tls = { enabled = true }
+        }
+        if options.sni ~= "" then
+            outbound.tls.server_name = options.sni
+        end
+        if is_true(options.skip_verify) then
+            outbound.tls.insecure = true
+        end
+        if options.alpn ~= "" then
+            outbound.tls.alpn = split_csv(options.alpn)
+        end
+        local obfs = tostring(record.obfs or "")
+        local obfs_password = tostring(record["obfs-password"] or record["obfs-opts.password"] or "")
+        if obfs ~= "" and obfs ~= "none" then
+            outbound.obfs = { type = obfs }
+            if obfs_password ~= "" then
+                outbound.obfs.password = obfs_password
+            end
+        end
+        return outbound
+    elseif proxy_type == "socks5" or proxy_type == "socks" then
+        local outbound = {
+            type = "socks",
+            tag = name,
+            server = server,
+            server_port = port,
+            version = "5"
+        }
+        if tostring(record.username or "") ~= "" then
+            outbound.username = tostring(record.username)
+        end
+        if tostring(record.password or "") ~= "" then
+            outbound.password = tostring(record.password)
+        end
+        return outbound
+    end
+
+    return nil
+end
+
+local function normalize_clash_yaml(input_file, output_file)
+    local outbounds = json_array()
+    local skipped = 0
+
+    for _, record in ipairs(clash_yaml_records(input_file)) do
+        local outbound = parse_clash_record(record)
+        if outbound then
+            outbounds[#outbounds + 1] = outbound
+        else
+            skipped = skipped + 1
+        end
+    end
+
+    if #outbounds == 0 then
+        os.remove(output_file)
+        return false
+    end
+
+    local output = assert(io.open(output_file, "w"))
+    output:write(json_encode({
+        version = 1,
+        format = "clash-yaml",
+        skipped = skipped,
+        outbounds = outbounds
+    }), "\n")
+    output:close()
+    return true
+end
+
 local function normalize_uri_list(input_file, output_file)
     local input = assert(io.open(input_file, "r"))
     local output = assert(io.open(output_file, "w"))
@@ -1216,6 +1712,7 @@ local function prepare_subscription(config_file, outbounds_file, output_file, su
     local names = json_array()
     local servers = json_array()
     local links = json_array()
+    local source_indices = json_array()
     local skipped = 0
     local skipped_reason_counts = {}
     local output = assert(io.open(output_file, "w"))
@@ -1223,7 +1720,7 @@ local function prepare_subscription(config_file, outbounds_file, output_file, su
 
     output:write("{\"outbounds\":[")
 
-    for _, outbound in ipairs(outbounds) do
+    for source_index, outbound in ipairs(outbounds) do
         local index = added + 1
         local display_name = safe_string(outbound and (outbound.remark or outbound.tag), "server-" .. tostring(index))
         local skip_reason = prefilter_skip_reason(outbound, supports_xhttp, plugin_supports)
@@ -1244,11 +1741,13 @@ local function prepare_subscription(config_file, outbounds_file, output_file, su
             names[#names + 1] = display_name
             servers[#servers + 1] = outbound.server or ""
             links[#links + 1] = outbound.share_link or ""
+            source_indices[#source_indices + 1] = source_index
             taken[tag] = true
         end
     end
 
     output:write("],\"links\":", json_encode(links))
+    output:write(",\"source_indices\":", json_encode(source_indices))
     output:write(",\"names\":", json_encode(names))
     output:write(",\"servers\":", json_encode(servers))
     output:write(",\"skipped\":", tostring(skipped))
@@ -1264,12 +1763,15 @@ local ok = false
 
 if mode == "normalize-uri-list" then
     ok = normalize_uri_list(arg[2], arg[3])
+elseif mode == "normalize-clash-yaml" then
+    ok = normalize_clash_yaml(arg[2], arg[3])
 elseif mode == "prepare" then
     ok = prepare_subscription(arg[2], arg[3], arg[4], arg[5], arg[6])
 elseif arg[1] and arg[2] then
     ok = normalize_uri_list(arg[1], arg[2])
 else
     io.stderr:write("Usage: subscription_parser.lua normalize-uri-list <input> <output>\n")
+    io.stderr:write("       subscription_parser.lua normalize-clash-yaml <input> <output>\n")
     io.stderr:write("       subscription_parser.lua prepare <config> <outbounds> <output> <supports_xhttp> <plugin_supports>\n")
     os.exit(2)
 end

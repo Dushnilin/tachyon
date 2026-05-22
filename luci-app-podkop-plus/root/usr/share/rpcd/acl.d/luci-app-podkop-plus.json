@@ -6,6 +6,9 @@
         "/etc/init.d/podkop-plus": [
           "exec"
         ],
+        "/var/run/podkop-plus/section-cache/*": [
+          "read"
+        ],
         "/usr/bin/podkop-plus": [
           "exec"
         ]
