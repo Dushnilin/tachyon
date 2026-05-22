@@ -20,6 +20,7 @@ check_required_file "$PODKOP_LIB/zapret.sh"
 check_required_file "$PODKOP_LIB/byedpi.sh"
 check_required_file "$PODKOP_LIB/sing_box_config_manager.sh"
 check_required_file "$PODKOP_LIB/sing_box_config_facade.sh"
+check_required_file "$PODKOP_LIB/subscription_cache.lua"
 check_required_file "$PODKOP_LIB/subscription_parser.sh"
 check_required_file "$PODKOP_LIB/logging.sh"
 check_required_file "$PODKOP_LIB/rulesets.sh"
@@ -49,6 +50,8 @@ PODKOP_SUBSCRIPTION_UPDATE_STATE_DIR="$PODKOP_RUNTIME_STATE_DIR/subscription-upd
 PODKOP_SUBSCRIPTION_LINKS_DIR="$PODKOP_RUNTIME_STATE_DIR/subscription-links"
 PODKOP_SUBSCRIPTION_METADATA_DIR="$PODKOP_RUNTIME_STATE_DIR/subscription-metadata"
 PODKOP_OUTBOUND_METADATA_DIR="$PODKOP_RUNTIME_STATE_DIR/outbound-metadata"
+PODKOP_SECTION_CACHE_DIR="$PODKOP_RUNTIME_STATE_DIR/section-cache"
+PODKOP_RUNTIME_CACHE_FORMAT_FILE="$PODKOP_RUNTIME_STATE_DIR/cache-format"
 PODKOP_SERVER_COUNTRY_CACHE_FILE="$PODKOP_RUNTIME_STATE_DIR/server-country-cache.json"
 PODKOP_SUBSCRIPTION_UPDATE_LOCK_DIR="$PODKOP_RUNTIME_STATE_DIR/subscription-update.lock"
 PODKOP_RELOAD_LOCK_DIR="/var/run/podkop-plus.reload.lock"
@@ -60,6 +63,7 @@ SING_BOX_DISABLED_UPDATE_INTERVAL="876000h"
 SING_BOX_URLTEST_DEFAULT_IDLE_TIMEOUT="30m"
 PODKOP_RELOAD_STATE_FORMAT=1
 PODKOP_RUNTIME_STATUS_FORMAT=1
+PODKOP_RUNTIME_CACHE_FORMAT=3
 PODKOP_RUNTIME_TRANSITION_MAX_AGE=300
 PODKOP_RUNTIME_TRANSITION_DEAD_PID_GRACE=15
 PODKOP_RUNTIME_STABLE_MIN_AGE=2
@@ -80,6 +84,7 @@ ensure_runtime_dirs() {
     mkdir -p "$PODKOP_SUBSCRIPTION_LINKS_DIR"
     mkdir -p "$PODKOP_SUBSCRIPTION_METADATA_DIR"
     mkdir -p "$PODKOP_OUTBOUND_METADATA_DIR"
+    mkdir -p "$PODKOP_SECTION_CACHE_DIR"
 }
 
 get_subscription_json_path() {
@@ -124,49 +129,120 @@ get_outbound_metadata_path() {
     echo "$PODKOP_OUTBOUND_METADATA_DIR/${section}.json"
 }
 
-write_subscription_outbound_links() {
+get_section_cache_path() {
+    local section="$1"
+
+    echo "$PODKOP_SECTION_CACHE_DIR/${section}.json"
+}
+
+clear_subscription_runtime_cache() {
+    rm -rf \
+        "$TMP_SUBSCRIPTION_FOLDER" \
+        "$PODKOP_SUBSCRIPTION_LINKS_DIR" \
+        "$PODKOP_SUBSCRIPTION_METADATA_DIR" \
+        "$PODKOP_OUTBOUND_METADATA_DIR" \
+        "$PODKOP_SECTION_CACHE_DIR"
+}
+
+ensure_runtime_cache_format() {
+    local current_format
+
+    mkdir -p "$PODKOP_RUNTIME_STATE_DIR"
+    current_format="$(sed -n '1p' "$PODKOP_RUNTIME_CACHE_FORMAT_FILE" 2>/dev/null)"
+
+    if [ "$current_format" != "$PODKOP_RUNTIME_CACHE_FORMAT" ]; then
+        log "Runtime subscription cache format changed; clearing old subscription cache" "info"
+        clear_subscription_runtime_cache
+        ensure_runtime_dirs
+        printf '%s\n' "$PODKOP_RUNTIME_CACHE_FORMAT" > "$PODKOP_RUNTIME_CACHE_FORMAT_FILE"
+    fi
+}
+
+subscription_cache_lua() {
+    lua "$PODKOP_LIB/subscription_cache.lua" "$@"
+}
+
+subscription_cache_tmpfile() {
+    local section="$1"
+    local kind="$2"
+
+    mktemp "$TMP_SUBSCRIPTION_FOLDER/${section}.${kind}.XXXXXX" 2>/dev/null
+}
+
+write_subscription_outbound_link_cache() {
     local section="$1"
     local links_json="$2"
-    local links_path tmpfile
+    local link_refs_json="${3:-}"
+    local links_tmp link_refs_tmp status
 
-    mkdir -p "$PODKOP_SUBSCRIPTION_LINKS_DIR"
-    links_path="$(get_subscription_links_path "$section")"
-    tmpfile="${links_path}.$$"
+    ensure_runtime_dirs
+    [ -n "$links_json" ] || links_json="{}"
+    [ -n "$link_refs_json" ] || link_refs_json="{}"
 
-    if [ -n "$links_json" ] && printf '%s' "$links_json" | jq -e 'type == "object"' >/dev/null 2>&1; then
-        printf '%s\n' "$links_json" > "$tmpfile" && mv "$tmpfile" "$links_path"
-    else
-        rm -f "$links_path" "$tmpfile"
-    fi
+    links_tmp="$(subscription_cache_tmpfile "$section" "links")" || return 1
+    link_refs_tmp="$(subscription_cache_tmpfile "$section" "link-refs")" || {
+        rm -f "$links_tmp"
+        return 1
+    }
+
+    printf '%s' "$links_json" > "$links_tmp" || {
+        rm -f "$links_tmp" "$link_refs_tmp"
+        return 1
+    }
+    printf '%s' "$link_refs_json" > "$link_refs_tmp" || {
+        rm -f "$links_tmp" "$link_refs_tmp"
+        return 1
+    }
+
+    subscription_cache_lua write-link-cache \
+        "$PODKOP_SECTION_CACHE_DIR" "$PODKOP_RUNTIME_CACHE_FORMAT" "$section" \
+        "$links_tmp" "$link_refs_tmp"
+    status=$?
+    rm -f "$links_tmp" "$link_refs_tmp"
+    return "$status"
 }
 
 write_outbound_metadata() {
     local section="$1"
     local names_json="$2"
     local countries_json="$3"
-    local metadata_path tmpfile
+    local servers_json="${4:-}"
+    local names_tmp countries_tmp servers_tmp status
 
-    mkdir -p "$PODKOP_OUTBOUND_METADATA_DIR"
-    metadata_path="$(get_outbound_metadata_path "$section")"
-    tmpfile="${metadata_path}.$$"
+    ensure_runtime_dirs
     [ -n "$names_json" ] || names_json="{}"
     [ -n "$countries_json" ] || countries_json="{}"
+    [ -n "$servers_json" ] || servers_json="{}"
 
-    if ! printf '%s' "$names_json" | jq -e 'type == "object"' >/dev/null 2>&1; then
-        log "Invalid outbound name metadata for rule '$section'; writing empty names" "warn"
-        names_json="{}"
-    fi
-    if ! printf '%s' "$countries_json" | jq -e 'type == "object"' >/dev/null 2>&1; then
-        log "Invalid outbound country metadata for rule '$section'; writing empty countries" "warn"
-        countries_json="{}"
-    fi
+    names_tmp="$(subscription_cache_tmpfile "$section" "names")" || return 1
+    countries_tmp="$(subscription_cache_tmpfile "$section" "countries")" || {
+        rm -f "$names_tmp"
+        return 1
+    }
+    servers_tmp="$(subscription_cache_tmpfile "$section" "servers")" || {
+        rm -f "$names_tmp" "$countries_tmp"
+        return 1
+    }
 
-    if jq -cn --argjson names "$names_json" --argjson countries "$countries_json" \
-        '{names: ($names // {}), countries: ($countries // {})}' > "$tmpfile" 2>/dev/null; then
-        mv "$tmpfile" "$metadata_path"
-    else
-        rm -f "$tmpfile"
-    fi
+    printf '%s' "$names_json" > "$names_tmp" || {
+        rm -f "$names_tmp" "$countries_tmp" "$servers_tmp"
+        return 1
+    }
+    printf '%s' "$countries_json" > "$countries_tmp" || {
+        rm -f "$names_tmp" "$countries_tmp" "$servers_tmp"
+        return 1
+    }
+    printf '%s' "$servers_json" > "$servers_tmp" || {
+        rm -f "$names_tmp" "$countries_tmp" "$servers_tmp"
+        return 1
+    }
+
+    subscription_cache_lua write-outbound-metadata \
+        "$PODKOP_SECTION_CACHE_DIR" "$PODKOP_RUNTIME_CACHE_FORMAT" "$section" \
+        "$names_tmp" "$countries_tmp" "$servers_tmp"
+    status=$?
+    rm -f "$names_tmp" "$countries_tmp" "$servers_tmp"
+    return "$status"
 }
 
 subscription_metadata_append_file() {
@@ -174,22 +250,11 @@ subscription_metadata_append_file() {
     local metadata_path="$2"
     local source_index="${3:-0}"
     local source_section="${4:-}"
-    local tmpfile
 
     [ -n "$array_path" ] || return 0
     [ -n "$metadata_path" ] || return 0
-    [ -s "$metadata_path" ] || return 0
 
-    if ! jq -e 'type == "object" and (keys | length > 1)' "$metadata_path" >/dev/null 2>&1; then
-        return 0
-    fi
-
-    tmpfile="${array_path}.$$"
-    jq -cn --slurpfile array "$array_path" --slurpfile metadata "$metadata_path" \
-        --argjson source_index "$source_index" \
-        --arg source_section "$source_section" \
-        '($array[0] // []) + [($metadata[0] + {sourceIndex: $source_index, sourceSection: $source_section})]' > "$tmpfile" 2>/dev/null &&
-        mv "$tmpfile" "$array_path" || rm -f "$tmpfile"
+    subscription_cache_lua append-metadata-file "$array_path" "$metadata_path" "$source_index" "$source_section" || true
 }
 
 subscription_metadata_append_cached_source() {
@@ -197,89 +262,26 @@ subscription_metadata_append_cached_source() {
     local section="$2"
     local source_index="${3:-0}"
     local source_section="${4:-}"
-    local target_path existing_metadata_input tmpfile
+    local legacy_target_path
 
     [ -n "$array_path" ] || return 0
     [ -n "$section" ] || return 0
 
-    target_path="$(get_subscription_metadata_path "$section")"
-    existing_metadata_input="$target_path"
-    [ -f "$existing_metadata_input" ] || existing_metadata_input="/dev/null"
-
-    tmpfile="${array_path}.$$"
-    if jq -cn \
-        --slurpfile array "$array_path" \
-        --slurpfile existing "$existing_metadata_input" \
-        --argjson source_index "$source_index" \
-        --arg source_section "$source_section" '
-            def source_index_of: (.sourceIndex? // .source_index? // null);
-            def source_section_of: (.sourceSection? // .source_section? // "");
-            ($array[0] // []) as $current |
-            (
-                ($existing[0] // [])
-                | if type == "array" then . elif type == "object" then [.] else [] end
-            ) as $items |
-            ($items | any(type == "object" and (source_section_of != "" or source_index_of != null))) as $has_source_markers |
-            (
-                if $has_source_markers then
-                    $items
-                    | map(select(
-                        type == "object" and
-                        (keys | length > 1) and
-                        (
-                            (source_section_of != "" and source_section_of == $source_section) or
-                            (source_section_of == "" and source_index_of == $source_index)
-                        )
-                    ))
-                    | first
-                else
-                    $items[$source_index - 1]
-                end
-            ) as $item |
-            if $item == null then
-                empty
-            else
-                $current + [($item + {sourceIndex: $source_index, sourceSection: $source_section})]
-            end
-        ' > "$tmpfile" 2>/dev/null &&
-        [ -s "$tmpfile" ] &&
-        jq -e 'type == "array"' "$tmpfile" >/dev/null 2>&1; then
-        mv "$tmpfile" "$array_path" || {
-            rm -f "$tmpfile"
-            return 1
-        }
-    else
-        rm -f "$tmpfile"
-        return 1
-    fi
+    legacy_target_path="$(get_subscription_metadata_path "$section")"
+    subscription_cache_lua append-cached-metadata \
+        "$array_path" "$PODKOP_SECTION_CACHE_DIR" "$section" "$legacy_target_path" \
+        "$source_index" "$source_section"
 }
 
 write_subscription_metadata_json() {
     local section="$1"
     local metadata_json_path="$2"
-    local target_path tmpfile metadata_count
 
-    mkdir -p "$PODKOP_SUBSCRIPTION_METADATA_DIR"
-    target_path="$(get_subscription_metadata_path "$section")"
-    tmpfile="${target_path}.$$"
+    ensure_runtime_dirs
+    [ -n "$metadata_json_path" ] || metadata_json_path="/dev/null"
 
-    if [ -n "$metadata_json_path" ] &&
-        [ -s "$metadata_json_path" ] &&
-        jq -e 'type == "array" and length > 0' "$metadata_json_path" >/dev/null 2>&1; then
-        if jq -c 'map(select(type == "object" and (keys | length > 1)))' "$metadata_json_path" > "$tmpfile" 2>/dev/null; then
-            metadata_count="$(jq -r 'length' "$tmpfile" 2>/dev/null)"
-            if [ -n "$metadata_count" ] && [ "$metadata_count" -gt 0 ]; then
-                mv "$tmpfile" "$target_path"
-            else
-                rm -f "$target_path" "$tmpfile"
-            fi
-        else
-            rm -f "$target_path" "$tmpfile"
-        fi
-    else
-        rm -f "$target_path" "$tmpfile"
-    fi
-
+    subscription_cache_lua write-subscription-metadata \
+        "$PODKOP_SECTION_CACHE_DIR" "$PODKOP_RUNTIME_CACHE_FORMAT" "$section" "$metadata_json_path"
 }
 
 write_subscription_source_metadata_json() {
@@ -287,77 +289,15 @@ write_subscription_source_metadata_json() {
     local source_index="$2"
     local source_section="$3"
     local metadata_json_path="$4"
-    local target_path existing_tmp metadata_input_tmp tmpfile metadata_valid metadata_count
+    local legacy_target_path
 
-    mkdir -p "$PODKOP_SUBSCRIPTION_METADATA_DIR"
-    target_path="$(get_subscription_metadata_path "$section")"
-    existing_tmp="$(mktemp "$TMP_SUBSCRIPTION_FOLDER/${section}.metadata-existing.XXXXXX" 2>/dev/null || true)"
-    tmpfile="${target_path}.$$"
+    ensure_runtime_dirs
+    [ -n "$metadata_json_path" ] || metadata_json_path="/dev/null"
+    legacy_target_path="$(get_subscription_metadata_path "$section")"
 
-    [ -n "$existing_tmp" ] || return 1
-
-    if [ -f "$target_path" ] && jq -e 'type == "array"' "$target_path" >/dev/null 2>&1; then
-        cp "$target_path" "$existing_tmp" || printf '[]\n' > "$existing_tmp"
-    else
-        printf '[]\n' > "$existing_tmp"
-    fi
-
-    metadata_valid=0
-    metadata_input_tmp="$metadata_json_path"
-    if [ -n "$metadata_json_path" ] &&
-        [ -s "$metadata_json_path" ] &&
-        jq -e 'type == "object" and (keys | length > 1)' "$metadata_json_path" >/dev/null 2>&1; then
-        metadata_valid=1
-    else
-        metadata_input_tmp="$(mktemp "$TMP_SUBSCRIPTION_FOLDER/${section}.metadata-empty.XXXXXX" 2>/dev/null || true)"
-        if [ -z "$metadata_input_tmp" ]; then
-            rm -f "$existing_tmp"
-            return 1
-        fi
-        printf '{}\n' > "$metadata_input_tmp"
-    fi
-
-    if jq -cn --slurpfile existing "$existing_tmp" --slurpfile metadata "$metadata_input_tmp" \
-        --argjson has_metadata "$metadata_valid" \
-        --argjson source_index "$source_index" \
-        --arg source_section "$source_section" '
-            ($existing[0] // []) as $items |
-            ($items | any(type == "object" and (((.sourceIndex? // .source_index? // null) != null) or ((.sourceSection? // .source_section? // "") != "")))) as $has_source_markers |
-            (
-                if $has_source_markers then
-                    $items
-                    | map(select(
-                        ((.sourceIndex? // .source_index? // -1) != $source_index) and
-                        ((.sourceSection? // .source_section? // "") != $source_section)
-                    ))
-                else
-                    $items
-                    | to_entries
-                    | map(select(.key != ($source_index - 1)) | .value)
-                end
-            ) as $kept |
-            (
-                if $has_metadata == 1 then
-                    $kept + [($metadata[0] + {sourceIndex: $source_index, sourceSection: $source_section})]
-                else
-                    $kept
-                end
-            )
-            | sort_by(.sourceIndex? // .source_index? // 999999)
-            | map(select(type == "object" and (keys | length > 1)))
-        ' > "$tmpfile" 2>/dev/null; then
-        metadata_count="$(jq -r 'length' "$tmpfile" 2>/dev/null)"
-        if [ -n "$metadata_count" ] && [ "$metadata_count" -gt 0 ]; then
-            mv "$tmpfile" "$target_path"
-        else
-            rm -f "$target_path" "$tmpfile"
-        fi
-    else
-        rm -f "$tmpfile"
-    fi
-
-    [ "$metadata_valid" -eq 1 ] || rm -f "$metadata_input_tmp"
-    rm -f "$existing_tmp"
+    subscription_cache_lua write-source-metadata \
+        "$PODKOP_SECTION_CACHE_DIR" "$PODKOP_RUNTIME_CACHE_FORMAT" "$section" \
+        "$source_index" "$source_section" "$metadata_json_path" "$legacy_target_path"
 }
 
 trim_string() {
@@ -807,6 +747,14 @@ release_runtime_dir_lock() {
     rmdir "$lock_dir" 2>/dev/null
 }
 
+runtime_dir_lock_is_active() {
+    local lock_dir="$1"
+    local owner_pid
+
+    owner_pid="$(sed -n '1p' "$lock_dir/pid" 2>/dev/null)"
+    [ -n "$owner_pid" ] && kill -0 "$owner_pid" 2>/dev/null
+}
+
 mark_pending_reload() {
     local reason="${1:-pending}"
     local now
@@ -970,6 +918,7 @@ runtime_status_write() {
     local state="$1"
     local action="${2:-none}"
     local message="${3:-}"
+    local pid="${4:-$$}"
     local now tmpfile
 
     ensure_runtime_dirs
@@ -1001,7 +950,7 @@ runtime_status_write() {
         printf 'state=%s\n' "$state"
         printf 'action=%s\n' "$action"
         printf 'updated_at=%s\n' "$now"
-        printf 'pid=%s\n' "$$"
+        printf 'pid=%s\n' "$pid"
         printf 'message=%s\n' "$message"
     } > "$tmpfile" && mv "$tmpfile" "$PODKOP_RUNTIME_STATUS_FILE"
 }
@@ -2104,13 +2053,21 @@ EOF
 migrate_0_7_17_8_delete_subscription_cache() {
     local section="$1"
 
+    case "$section" in
+    "" | */* | *..*) return 0 ;;
+    esac
+
     rm -f \
         "$(get_subscription_json_path "$section")" \
         "$(get_subscription_url_cache_path "$section")" \
         "$(get_subscription_user_agent_cache_path "$section")" \
         "$(get_subscription_metadata_path "$section")" \
         "$(get_subscription_links_path "$section")" \
-        "$(get_outbound_metadata_path "$section")"
+        "$(get_outbound_metadata_path "$section")" \
+        "$(get_section_cache_path "$section")" \
+        "$TMP_SUBSCRIPTION_FOLDER/${section}-subscription-"*.json \
+        "$TMP_SUBSCRIPTION_FOLDER/${section}-subscription-"*.url \
+        "$TMP_SUBSCRIPTION_FOLDER/${section}-subscription-"*.user_agent
 }
 
 migrate_0_7_17_8_subscription_url() {
@@ -2872,6 +2829,8 @@ uninstall() {
 migration() {
     podkop_config_migration_changed=0
     podkop_config_migration_added_lists=""
+
+    ensure_runtime_cache_format
 
     config_foreach migrate_0_7_17_8_rule_section "rule"
     config_foreach migrate_0_7_17_8_rule "section"
@@ -4223,8 +4182,7 @@ subscription_update_section() {
     fi
 
     if [ -n "$metadata_tmpfile" ]; then
-        if [ "$SUBSCRIPTION_SECTION_UPDATE_FAILED" -eq 0 ] &&
-            [ "$SUBSCRIPTION_SECTION_UPDATE_SUPERSEDED" -eq 0 ]; then
+        if [ "$SUBSCRIPTION_SECTION_UPDATE_SUPERSEDED" -eq 0 ]; then
             metadata_count="$(jq -r 'length' "$metadata_tmpfile" 2>/dev/null)"
             if [ -n "$metadata_count" ] && [ "$metadata_count" -gt 0 ]; then
                 write_subscription_metadata_json "$section" "$metadata_tmpfile"
@@ -4307,6 +4265,7 @@ subscription_update_source_handler() {
         SUBSCRIPTION_SECTION_UPDATE_SUPERSEDED=$((SUBSCRIPTION_SECTION_UPDATE_SUPERSEDED + 1))
         ;;
     *)
+        subscription_metadata_append_cached_source "$SUBSCRIPTION_SECTION_METADATA_TMP" "$section" "$index" "$source_section" || true
         SUBSCRIPTION_SECTION_UPDATE_FAILED=$((SUBSCRIPTION_SECTION_UPDATE_FAILED + 1))
         ;;
     esac
@@ -4591,6 +4550,54 @@ subscription_update() {
         echolog "Starting subscription update..."
     fi
     subscription_update_common 1 "$target_section" "$target_source_index"
+}
+
+subscription_update_async() {
+    local target_section="${1:-}"
+    local target_source_index="${2:-}"
+    local stored_format stored_state stored_updated_at stored_pid pid
+
+    ensure_runtime_dirs
+
+    case "$target_section" in
+    */* | *..*)
+        printf '{"started":false,"busy":false,"error":"invalid_section"}\n'
+        return 1
+        ;;
+    esac
+
+    case "$target_source_index" in
+    *[!0-9]*)
+        [ -z "$target_source_index" ] || {
+            printf '{"started":false,"busy":false,"error":"invalid_source_index"}\n'
+            return 1
+        }
+        ;;
+    esac
+
+    stored_format="$(runtime_status_read_value "format" 2>/dev/null)"
+    if [ "$stored_format" = "$PODKOP_RUNTIME_STATUS_FORMAT" ]; then
+        stored_state="$(runtime_status_read_value "state" 2>/dev/null)"
+        stored_updated_at="$(runtime_status_read_value "updated_at" 2>/dev/null)"
+        stored_pid="$(runtime_status_read_value "pid" 2>/dev/null)"
+        if runtime_status_transition_is_active "$stored_state" "$stored_updated_at" "$stored_pid"; then
+            printf '{"started":false,"busy":true,"pid":%s}\n' "${stored_pid:-0}"
+            return 0
+        fi
+    fi
+
+    if runtime_dir_lock_is_active "$PODKOP_SUBSCRIPTION_UPDATE_LOCK_DIR"; then
+        printf '{"started":false,"busy":true,"pid":0}\n'
+        return 0
+    fi
+
+    (
+        close_inherited_service_lock_fd
+        "$PODKOP_BIN" subscription_update "$target_section" "$target_source_index" >/dev/null 2>&1
+    ) &
+    pid=$!
+    runtime_status_write "updating_subscription" "subscription_update" "" "$pid"
+    printf '{"started":true,"busy":true,"pid":%s}\n' "$pid"
 }
 
 # sing-box funcs
@@ -5460,7 +5467,7 @@ proxy_group_add_subscription_source() {
         "$section" "$source_section" "$SUBSCRIPTION_SOURCE_URL" "$SUBSCRIPTION_SOURCE_USER_AGENT" 1 "$index"
 
     subscription_json_path="$(get_subscription_json_path "$source_section")"
-    if ! sing_box_cf_add_subscription_outbounds "$config" "$section" "$subscription_json_path" > /dev/null; then
+    if ! sing_box_cf_add_subscription_outbounds "$config" "$section" "$subscription_json_path" "$source_section" > /dev/null; then
         log "No proxy outbounds found in subscription for rule '$section'. Aborted." "fatal"
         exit 1
     fi
@@ -5470,8 +5477,8 @@ proxy_group_add_subscription_source() {
         log "Failed to merge subscription outbounds for rule '$section'. Aborted." "fatal"
         exit 1
     }
-    PROXY_GROUP_LINKS_JSON="$(json_objects_merge "$PROXY_GROUP_LINKS_JSON" "$SUBSCRIPTION_OUTBOUND_LINKS_JSON")" || {
-        log "Failed to merge subscription outbound links for rule '$section'. Aborted." "fatal"
+    PROXY_GROUP_LINK_REFS_JSON="$(json_objects_merge "$PROXY_GROUP_LINK_REFS_JSON" "$SUBSCRIPTION_OUTBOUND_LINK_REFS_JSON")" || {
+        log "Failed to merge subscription outbound link refs for rule '$section'. Aborted." "fatal"
         exit 1
     }
     PROXY_GROUP_NAMES_JSON="$(json_objects_merge "$PROXY_GROUP_NAMES_JSON" "$SUBSCRIPTION_OUTBOUND_NAMES_JSON")" || {
@@ -5542,7 +5549,7 @@ configure_outbound_handler() {
         fi
 
         config=$(sing_box_cf_add_json_outbound "$config" "$section" "$outbound_json")
-        write_subscription_outbound_links "$section" "{}"
+        write_subscription_outbound_link_cache "$section" "{}" "{}"
         write_subscription_metadata_json "$section" ""
         return 0
     fi
@@ -5563,6 +5570,7 @@ configure_outbound_handler() {
         PROXY_GROUP_MANUAL_INDEX=0
         PROXY_GROUP_OUTBOUND_TAGS_JSON="[]"
         PROXY_GROUP_LINKS_JSON="{}"
+        PROXY_GROUP_LINK_REFS_JSON="{}"
         PROXY_GROUP_NAMES_JSON="{}"
         PROXY_GROUP_SERVERS_JSON="{}"
         PROXY_GROUP_COUNTRIES_JSON="{}"
@@ -5652,8 +5660,8 @@ configure_outbound_handler() {
             config="$(sing_box_cm_add_selector_outbound "$config" "$selector_tag" "$PROXY_GROUP_OUTBOUND_TAGS_JSON" "$selector_default" "true")"
         fi
 
-        write_subscription_outbound_links "$section" "$PROXY_GROUP_LINKS_JSON"
-        write_outbound_metadata "$section" "$PROXY_GROUP_NAMES_JSON" "$PROXY_GROUP_COUNTRIES_JSON"
+        write_subscription_outbound_link_cache "$section" "$PROXY_GROUP_LINKS_JSON" "$PROXY_GROUP_LINK_REFS_JSON"
+        write_outbound_metadata "$section" "$PROXY_GROUP_NAMES_JSON" "$PROXY_GROUP_COUNTRIES_JSON" "$PROXY_GROUP_SERVERS_JSON"
         return 0
     fi
 
@@ -7941,29 +7949,22 @@ get_status() {
 get_outbound_link() {
     local section="$1"
     local outbound_tag="$2"
-    local links_path link
 
     ensure_runtime_dirs
     case "$section" in
     "" | */* | *..*)
-        jq -cn '{link: ""}'
+        printf '{"link":""}\n'
         return 0
         ;;
     esac
 
-    links_path="$(get_subscription_links_path "$section")"
-    link=""
-
-    if [ -f "$links_path" ]; then
-        link="$(jq -r --arg tag "$outbound_tag" '.[$tag] // empty' "$links_path" 2>/dev/null)"
-    fi
-
-    jq -cn --arg link "$link" '{link: $link}'
+    subscription_cache_lua get-link \
+        "$PODKOP_SECTION_CACHE_DIR" "$TMP_SUBSCRIPTION_FOLDER" "$section" "$outbound_tag" "$PODKOP_SUBSCRIPTION_LINKS_DIR" ||
+        printf '{"link":""}\n'
 }
 
 get_outbound_link_states() {
     local section="$1"
-    local links_path
 
     ensure_runtime_dirs
     case "$section" in
@@ -7973,36 +7974,8 @@ get_outbound_link_states() {
         ;;
     esac
 
-    links_path="$(get_subscription_links_path "$section")"
-    if [ -f "$links_path" ]; then
-        jq -c '
-            if type == "object" then
-                with_entries(
-                    .value = (
-                        ((.value // "") | tostring | ascii_downcase)
-                        | (
-                            startswith("vless://") or
-                            startswith("vmess://") or
-                            startswith("trojan://") or
-                            startswith("ss://") or
-                            startswith("ssr://") or
-                            startswith("hysteria2://") or
-                            startswith("hy2://") or
-                            startswith("tuic://") or
-                            startswith("socks4://") or
-                            startswith("socks4a://") or
-                            startswith("socks5://")
-                        )
-                    )
-                )
-            else
-                {}
-            end
-        ' "$links_path" 2>/dev/null || printf '{}\n'
-        return 0
-    fi
-
-    printf '{}\n'
+    subscription_cache_lua get-link-states "$PODKOP_SECTION_CACHE_DIR" "$section" "$PODKOP_SUBSCRIPTION_LINKS_DIR" ||
+        printf '{}\n'
 }
 
 get_outbound_metadata() {
@@ -8018,21 +7991,8 @@ get_outbound_metadata() {
     esac
 
     metadata_path="$(get_outbound_metadata_path "$section")"
-    if [ -f "$metadata_path" ]; then
-        jq -c '
-            if type == "object" then
-                {
-                    names: (if (.names | type) == "object" then .names else {} end),
-                    countries: (if (.countries | type) == "object" then .countries else {} end)
-                }
-            else
-                {names:{}, countries:{}}
-            end
-        ' "$metadata_path" 2>/dev/null || printf '{"names":{},"countries":{}}\n'
-        return 0
-    fi
-
-    printf '{"names":{},"countries":{}}\n'
+    subscription_cache_lua get-outbound-metadata "$PODKOP_SECTION_CACHE_DIR" "$section" "$metadata_path" ||
+        printf '{"names":{},"countries":{}}\n'
 }
 
 get_subscription_metadata() {
@@ -8049,20 +8009,8 @@ get_subscription_metadata() {
     esac
 
     metadata_path="$(get_subscription_metadata_path "$section")"
-    if [ -f "$metadata_path" ]; then
-        jq -c '
-            if type == "array" then
-                map(select(type == "object" and (keys | length > 1)))
-            elif type == "object" and (keys | length > 1) then
-                .
-            else
-                {}
-            end
-        ' "$metadata_path" 2>/dev/null || printf '{}\n'
-        return 0
-    fi
-
-    printf '{}\n'
+    subscription_cache_lua get-subscription-metadata "$PODKOP_SECTION_CACHE_DIR" "$section" "$metadata_path" ||
+        printf '{}\n'
 }
 
 validate_nfqws_strategy_json() {
@@ -8858,6 +8806,8 @@ Available commands:
     list_update_if_due      Update remote lists only when the configured interval has elapsed
     subscription_update [rule] [source_index]
                             Update all subscription proxies, one rule, or one source in a rule
+    subscription_update_async [rule] [source_index]
+                            Start forced subscription update in background and print JSON state
     subscription_update_if_due
                             Update subscription proxies only when per-rule intervals have elapsed
     check_proxy             Check proxy connectivity
@@ -8928,6 +8878,9 @@ list_update_if_due)
     ;;
 subscription_update)
     subscription_update "$2" "$3"
+    ;;
+subscription_update_async)
+    subscription_update_async "$2" "$3"
     ;;
 subscription_update_if_due)
     subscription_update_if_due
