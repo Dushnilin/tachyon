@@ -871,7 +871,7 @@ var PodkopShellMethods = {
       args,
       timeout: SUBSCRIPTION_UPDATE_TIMEOUT_MS
     });
-    if (response.stderr || response.code && response.code !== 0) {
+    if ((response.code ?? 0) !== 0) {
       return {
         success: false,
         error: response.stderr || _("Subscription update failed")
@@ -4570,7 +4570,7 @@ async function runZapretCheck() {
     },
     {
       state: unexpectedRuntime || !podkopRuntimeReady ? "error" : "success",
-      key: hasZapretRules ? podkopRuntimeReady ? _("Podkop-managed nfqws runtime is ready") : _("Podkop-managed nfqws runtime is not ready") : unexpectedRuntime ? _("Unexpected Podkop-managed nfqws runtime is running") : _("Podkop-managed nfqws runtime is not running"),
+      key: hasZapretRules ? podkopRuntimeReady ? _("Podkop Plus-managed nfqws runtime is ready") : _("Podkop Plus-managed nfqws runtime is not ready") : unexpectedRuntime ? _("Unexpected Podkop Plus-managed nfqws runtime is running") : _("Podkop Plus-managed nfqws runtime is not running"),
       value: ""
     },
     {
@@ -4580,7 +4580,9 @@ async function runZapretCheck() {
     },
     {
       state: standaloneConflict ? "warning" : "success",
-      key: standaloneServiceRunning ? hasZapretRules ? _("Standalone Zapret is active together with Podkop Zapret rules") : _("Standalone Zapret service is active") : _("Standalone Zapret service is inactive"),
+      key: standaloneServiceRunning ? hasZapretRules ? _(
+        "Standalone Zapret is active together with Podkop Plus Zapret rules"
+      ) : _("Standalone Zapret service is active") : _("Standalone Zapret service is inactive"),
       value: ""
     }
   ];
@@ -4674,7 +4676,7 @@ async function runByedpiCheck() {
     },
     {
       state: unexpectedRuntime || !podkopRuntimeReady ? "error" : runtimeUnstable ? "warning" : "success",
-      key: hasByedpiRules ? runtimeUnstable ? _("Podkop-managed ciadpi runtime has restarted") : podkopRuntimeReady ? _("Podkop-managed ciadpi runtime is ready") : _("Podkop-managed ciadpi runtime is not ready") : unexpectedRuntime ? _("Unexpected Podkop-managed ciadpi runtime is running") : _("Podkop-managed ciadpi runtime is not running"),
+      key: hasByedpiRules ? runtimeUnstable ? _("Podkop Plus-managed ciadpi runtime has restarted") : podkopRuntimeReady ? _("Podkop Plus-managed ciadpi runtime is ready") : _("Podkop Plus-managed ciadpi runtime is not ready") : unexpectedRuntime ? _("Unexpected Podkop Plus-managed ciadpi runtime is running") : _("Podkop Plus-managed ciadpi runtime is not running"),
       value: hasByedpiRules ? runtimeUnstable ? `${restartCount}` : `${runningProcesses}/${expectedProcesses}` : ""
     },
     {
@@ -4689,7 +4691,9 @@ async function runByedpiCheck() {
     },
     {
       state: standaloneConflict ? "error" : standaloneAutostartRisk ? "warning" : "success",
-      key: standaloneServiceRunning ? hasByedpiRules ? _("Standalone ByeDPI is active together with Podkop ByeDPI rules") : _("Standalone ByeDPI service is active") : standaloneAutostartRisk ? _("Standalone ByeDPI autostart is enabled") : _("Standalone ByeDPI service is inactive"),
+      key: standaloneServiceRunning ? hasByedpiRules ? _(
+        "Standalone ByeDPI is active together with Podkop Plus ByeDPI rules"
+      ) : _("Standalone ByeDPI service is active") : standaloneAutostartRisk ? _("Standalone ByeDPI autostart is enabled") : _("Standalone ByeDPI service is inactive"),
       value: ""
     }
   ];
@@ -6693,7 +6697,8 @@ async function executeShellCommand({
     );
   } catch (err) {
     const error = err;
-    return { stdout: "", stderr: error?.message, code: 0 };
+    const code = typeof error?.code === "number" ? error.code : 1;
+    return { stdout: "", stderr: error?.message, code };
   }
 }
 

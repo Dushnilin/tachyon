@@ -114,13 +114,13 @@ export async function runByedpiCheck() {
             : 'success',
       key: hasByedpiRules
         ? runtimeUnstable
-          ? _('Podkop-managed ciadpi runtime has restarted')
+          ? _('Podkop Plus-managed ciadpi runtime has restarted')
           : podkopRuntimeReady
-          ? _('Podkop-managed ciadpi runtime is ready')
-          : _('Podkop-managed ciadpi runtime is not ready')
+            ? _('Podkop Plus-managed ciadpi runtime is ready')
+            : _('Podkop Plus-managed ciadpi runtime is not ready')
         : unexpectedRuntime
-          ? _('Unexpected Podkop-managed ciadpi runtime is running')
-          : _('Podkop-managed ciadpi runtime is not running'),
+          ? _('Unexpected Podkop Plus-managed ciadpi runtime is running')
+          : _('Podkop Plus-managed ciadpi runtime is not running'),
       value: hasByedpiRules
         ? runtimeUnstable
           ? `${restartCount}`
@@ -149,11 +149,13 @@ export async function runByedpiCheck() {
           : 'success',
       key: standaloneServiceRunning
         ? hasByedpiRules
-          ? _('Standalone ByeDPI is active together with Podkop ByeDPI rules')
+          ? _(
+              'Standalone ByeDPI is active together with Podkop Plus ByeDPI rules',
+            )
           : _('Standalone ByeDPI service is active')
         : standaloneAutostartRisk
           ? _('Standalone ByeDPI autostart is enabled')
-        : _('Standalone ByeDPI service is inactive'),
+          : _('Standalone ByeDPI service is inactive'),
       value: '',
     },
   ];
