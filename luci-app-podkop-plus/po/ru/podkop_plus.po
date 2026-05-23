@@ -51,7 +51,7 @@ msgid "Allows access to YACD from the WAN. Make sure to open the appropriate por
 msgstr "Обеспечивает доступ к YACD из WAN. Убедитесь, что в брандмауэре открыт соответствующий порт."
 
 msgid "Allows limiting the list of servers for URLTest"
-msgstr ""
+msgstr "Позволяет ограничить список серверов для URLTest"
 
 msgid "Applicable for SOCKS and Shadowsocks links"
 msgstr "Применимо для ссылок SOCKS и Shadowsocks"
@@ -78,7 +78,7 @@ msgid "Binary file"
 msgstr "Бинарный файл"
 
 msgid "Blacklist"
-msgstr ""
+msgstr "Чёрный список"
 
 msgid "Bootsrap DNS"
 msgstr "Bootstrap DNS"
@@ -234,7 +234,7 @@ msgid "Disable the QUIC protocol to improve compatibility or fix issues with vid
 msgstr "Отключить QUIC протокол для улучшения совместимости или исправления видео стриминга"
 
 msgid "Disabled"
-msgstr ""
+msgstr "Отключено"
 
 msgid "DNS on router"
 msgstr "DNS на роутере"
@@ -408,7 +408,7 @@ msgid "HTTP error"
 msgstr "Ошибка HTTP"
 
 msgid "Include country in URLTest"
-msgstr ""
+msgstr "Включить страну в URLTest"
 
 msgid "Include server by regular expression in URLTest"
 msgstr "Включить сервер по регулярному выражению в URLTest"
@@ -663,7 +663,7 @@ msgid "Not running"
 msgstr "Не запущено"
 
 msgid "Only servers from selected countries will be tested by URLTest"
-msgstr ""
+msgstr "Только серверы из выбранных стран будут проверяться через URLTest"
 
 msgid "Only servers whose names match these regular expressions will be checked through URLTest"
 msgstr "Только те серверы, имена которых совпадают с этими регулярными выражениями, будут проверяться через URLTest"
@@ -1119,7 +1119,7 @@ msgid "URLTest interval"
 msgstr "Интервал URLTest"
 
 msgid "URLTest server filtering"
-msgstr ""
+msgstr "Фильтрация серверов URLTest"
 
 msgid "URLTest tolerance"
 msgstr "Допуск URLTest"
@@ -1158,7 +1158,7 @@ msgid "What Podkop Plus should do when this section matches"
 msgstr "Что Podkop Plus должен делать при совпадении этой секции"
 
 msgid "Whitelist"
-msgstr ""
+msgstr "Белый список"
 
 msgid "YACD Secret Key"
 msgstr "Секретный ключ YACD"
