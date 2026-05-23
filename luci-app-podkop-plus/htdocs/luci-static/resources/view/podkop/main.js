@@ -755,7 +755,6 @@ var Podkop;
     AvailableMethods2["CHECK_SING_BOX_LOGS"] = "check_sing_box_logs";
     AvailableMethods2["GET_SYSTEM_INFO"] = "get_system_info";
     AvailableMethods2["SUBSCRIPTION_UPDATE"] = "subscription_update";
-    AvailableMethods2["SUBSCRIPTION_UPDATE_ASYNC"] = "subscription_update_async";
   })(AvailableMethods = Podkop2.AvailableMethods || (Podkop2.AvailableMethods = {}));
   let AvailableClashAPIMethods;
   ((AvailableClashAPIMethods2) => {
@@ -882,14 +881,7 @@ var PodkopShellMethods = {
       success: true,
       data: response.stdout
     };
-  },
-  subscriptionUpdateAsync: async (section, sourceIndex) => callBaseMethod(
-    Podkop.AvailableMethods.SUBSCRIPTION_UPDATE_ASYNC,
-    [
-      ...section ? [section] : [],
-      ...section && sourceIndex !== void 0 ? [String(sourceIndex)] : []
-    ]
-  )
+  }
 };
 
 // src/podkop/methods/custom/getDashboardSections.ts
@@ -1610,10 +1602,7 @@ var initialStore = {
       singbox: 0,
       podkopRunning: 0,
       podkopEnabled: 0,
-      podkopStatus: "",
-      podkopLifecycleState: "unknown",
-      podkopLifecycleAction: "none",
-      podkopLifecycleBusy: 0
+      podkopStatus: ""
     }
   },
   sectionsWidget: {
@@ -3178,7 +3167,6 @@ function copyToClipboard(text) {
 
 // src/podkop/fetchers/fetchServicesInfo.ts
 var latestServicesInfoRequestId = 0;
-var latestPodkopStatusRequestId = 0;
 function getSettledMethodResponse(scope, result) {
   if (result.status === "fulfilled") {
     return result.value;
@@ -3208,44 +3196,14 @@ async function fetchServicesInfo() {
         singbox: singbox.success ? singbox.data.running : 0,
         podkopRunning: podkop.success ? podkop.data.running : 0,
         podkopEnabled: podkop.success ? podkop.data.enabled : 0,
-        podkopStatus: podkop.success ? podkop.data.status : "",
-        podkopLifecycleState: podkop.success ? podkop.data.lifecycle_state || "unknown" : "unknown",
-        podkopLifecycleAction: podkop.success ? podkop.data.lifecycle_action || "none" : "none",
-        podkopLifecycleBusy: podkop.success ? podkop.data.lifecycle_busy || 0 : 0
+        podkopStatus: podkop.success ? podkop.data.status : ""
       }
     }
   });
-}
-async function fetchPodkopStatus() {
-  const requestId = ++latestPodkopStatusRequestId;
-  const podkop = await PodkopShellMethods.getStatus();
-  if (requestId !== latestPodkopStatusRequestId) {
-    return podkop.success ? podkop.data : null;
-  }
-  const previous = store.get().servicesInfoWidget;
-  const previousData = previous.data;
-  store.set({
-    servicesInfoWidget: {
-      loading: false,
-      failed: !podkop.success,
-      data: {
-        ...previousData,
-        podkopRunning: podkop.success ? podkop.data.running : previousData.podkopRunning,
-        podkopEnabled: podkop.success ? podkop.data.enabled : previousData.podkopEnabled,
-        podkopStatus: podkop.success ? podkop.data.status : previousData.podkopStatus || "unknown",
-        podkopLifecycleState: podkop.success ? podkop.data.lifecycle_state || "unknown" : "unknown",
-        podkopLifecycleAction: podkop.success ? podkop.data.lifecycle_action || "none" : "none",
-        podkopLifecycleBusy: podkop.success ? podkop.data.lifecycle_busy || 0 : 0
-      }
-    }
-  });
-  return podkop.success ? podkop.data : null;
 }
 
 // src/podkop/tabs/dashboard/initController.ts
 var SECTIONS_REFRESH_INTERVAL_MS = 1e4;
-var SUBSCRIPTION_UPDATE_POLL_INTERVAL_MS = 3e3;
-var SUBSCRIPTION_UPDATE_WAIT_TIMEOUT_MS = 15 * 60 * 1e3;
 var sectionsRefreshTimer = null;
 var sectionsRefreshPromise = null;
 var sectionsRefreshQueued = false;
@@ -3339,34 +3297,6 @@ function setSubscriptionUpdating(sectionName, updating) {
       subscriptionUpdatingSections
     }
   });
-}
-function delay(ms) {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
-}
-async function waitForSubscriptionUpdateCompletion() {
-  const startedAt = Date.now();
-  let sawBusy = false;
-  while (Date.now() - startedAt < SUBSCRIPTION_UPDATE_WAIT_TIMEOUT_MS) {
-    await delay(SUBSCRIPTION_UPDATE_POLL_INTERVAL_MS);
-    const status = await PodkopShellMethods.getStatus();
-    if (!status.success) {
-      continue;
-    }
-    const isSubscriptionUpdate = status.data.lifecycle_action === "subscription_update";
-    if (isSubscriptionUpdate && status.data.lifecycle_busy) {
-      sawBusy = true;
-      continue;
-    }
-    if (isSubscriptionUpdate && status.data.lifecycle_state === "failed") {
-      return false;
-    }
-    if (sawBusy || Date.now() - startedAt > SUBSCRIPTION_UPDATE_POLL_INTERVAL_MS) {
-      return true;
-    }
-  }
-  return false;
 }
 async function connectToClashSockets() {
   const clashApiSecret = await getClashApiSecret();
@@ -3502,18 +3432,14 @@ async function handleUpdateSubscription(section) {
   }
   setSubscriptionUpdating(section.sectionName, true);
   try {
-    const response = await PodkopShellMethods.subscriptionUpdateAsync(
+    const response = await PodkopShellMethods.subscriptionUpdate(
       section.sectionName
     );
-    if (!response.success || response.data?.error || !response.data?.started && !response.data?.busy) {
+    if (!response.success) {
       showToast(_("Failed to update subscriptions"), "error");
       return;
     }
-    const completed = await waitForSubscriptionUpdateCompletion();
-    showToast(
-      completed ? _("Subscription update completed") : _("Failed to update subscriptions"),
-      completed ? "success" : "error"
-    );
+    showToast(_("Subscription update completed"), "success");
   } catch (error) {
     logger.error("[DASHBOARD]", "handleUpdateSubscription: failed", error);
     showToast(_("Failed to update subscriptions"), "error");
@@ -5584,15 +5510,11 @@ var UNKNOWN_DIAGNOSTICS_SYSTEM_INFO = {
   openwrt_version: _("unknown"),
   device_model: _("unknown")
 };
-var DIAGNOSTIC_STATUS_POLL_INTERVAL_MS = 2e3;
-var DIAGNOSTIC_STATUS_SETTLE_DELAY_MS = 1e3;
-var DIAGNOSTIC_STATUS_SETTLE_TIMEOUT_MS = 45e3;
+var SERVICE_ACTION_REFRESH_DELAY_MS = 5e3;
 var latestProviderInfoRequestId = 0;
 var latestSystemInfoRequestId = 0;
 var diagnosticLifecycleRegistered = false;
 var diagnosticControllerInitialized = false;
-var diagnosticStatusPollTimer = null;
-var restartStartStopSnapshot = null;
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -5622,30 +5544,9 @@ function setDiagnosticActionLoading(action, loading) {
     }
   });
 }
-async function waitForPodkopStatusToSettle(desiredRunning) {
-  const startedAt = Date.now();
-  let sawBackendTransition = false;
-  while (Date.now() - startedAt < DIAGNOSTIC_STATUS_SETTLE_TIMEOUT_MS) {
-    const status = await fetchPodkopStatus();
-    if (!status) {
-      return;
-    }
-    if (status.lifecycle_busy) {
-      sawBackendTransition = true;
-      await sleep(DIAGNOSTIC_STATUS_SETTLE_DELAY_MS);
-      continue;
-    }
-    if (status.lifecycle_state === "failed") {
-      return;
-    }
-    if (desiredRunning === void 0 || Boolean(status.running) === desiredRunning) {
-      if (sawBackendTransition || Date.now() - startedAt > 1500) {
-        return;
-      }
-    }
-    await sleep(DIAGNOSTIC_STATUS_SETTLE_DELAY_MS);
-  }
-  await fetchPodkopStatus();
+async function refreshServicesInfoAfterServiceAction() {
+  await sleep(SERVICE_ACTION_REFRESH_DELAY_MS);
+  await fetchServicesInfo();
 }
 async function fetchSystemInfo() {
   const requestId = ++latestSystemInfoRequestId;
@@ -5775,15 +5676,13 @@ function renderDiagnosticRunActionWidget() {
   });
 }
 async function handleRestart() {
-  restartStartStopSnapshot = store.get().servicesInfoWidget.data.podkopRunning ? "stop" : "start";
   setDiagnosticActionLoading("restart", true);
   try {
     await PodkopShellMethods.restart();
-    await waitForPodkopStatusToSettle(true);
+    await refreshServicesInfoAfterServiceAction();
   } catch (e) {
     logger.error("[DIAGNOSTIC]", "handleRestart - e", e);
   } finally {
-    restartStartStopSnapshot = null;
     setDiagnosticActionLoading("restart", false);
     resetDiagnosticsChecks();
   }
@@ -5792,7 +5691,7 @@ async function handleStop() {
   setDiagnosticActionLoading("stop", true);
   try {
     await PodkopShellMethods.stop();
-    await waitForPodkopStatusToSettle(false);
+    await refreshServicesInfoAfterServiceAction();
   } catch (e) {
     logger.error("[DIAGNOSTIC]", "handleStop - e", e);
   } finally {
@@ -5804,7 +5703,7 @@ async function handleStart() {
   setDiagnosticActionLoading("start", true);
   try {
     await PodkopShellMethods.start();
-    await waitForPodkopStatusToSettle(true);
+    await refreshServicesInfoAfterServiceAction();
   } catch (e) {
     logger.error("[DIAGNOSTIC]", "handleStart - e", e);
   } finally {
@@ -5819,7 +5718,7 @@ async function handleEnable() {
   } catch (e) {
     logger.error("[DIAGNOSTIC]", "handleEnable - e", e);
   } finally {
-    await fetchPodkopStatus();
+    await fetchServicesInfo();
     setDiagnosticActionLoading("enable", false);
   }
 }
@@ -5830,7 +5729,7 @@ async function handleDisable() {
   } catch (e) {
     logger.error("[DIAGNOSTIC]", "handleDisable - e", e);
   } finally {
-    await fetchPodkopStatus();
+    await fetchServicesInfo();
     setDiagnosticActionLoading("disable", false);
   }
 }
@@ -5937,20 +5836,10 @@ function renderDiagnosticAvailableActionsWidget() {
   logger.debug("[DIAGNOSTIC]", "renderDiagnosticAvailableActionsWidget");
   const podkopEnabled = Boolean(servicesInfoWidget.data.podkopEnabled);
   const podkopRunning = Boolean(servicesInfoWidget.data.podkopRunning);
-  const lifecycleBusy = Boolean(servicesInfoWidget.data.podkopLifecycleBusy);
-  const lifecycleAction = servicesInfoWidget.data.podkopLifecycleAction;
-  const isStarting = lifecycleBusy && lifecycleAction === "start";
-  const isStopping = lifecycleBusy && lifecycleAction === "stop";
-  const isRestarting = lifecycleBusy && lifecycleAction === "restart";
-  const isReloading = lifecycleBusy && lifecycleAction === "reload";
-  const backendRestartLikeLoading = isRestarting || isReloading;
-  const restartLoading = diagnosticsActions.restart.loading || backendRestartLikeLoading;
+  const restartLoading = diagnosticsActions.restart.loading;
   const atLeastOneMutatingActionLoading = restartLoading || diagnosticsActions.start.loading || diagnosticsActions.stop.loading || diagnosticsActions.enable.loading || diagnosticsActions.disable.loading;
-  const serviceControlsDisabled = servicesInfoWidget.loading || lifecycleBusy || atLeastOneMutatingActionLoading;
-  const utilityActionsDisabled = lifecycleBusy || atLeastOneMutatingActionLoading;
-  const startVisible = isStarting || !podkopRunning && !isStopping && !isRestarting && !isReloading;
-  const stopVisible = isStopping || podkopRunning && !isStarting && !isRestarting && !isReloading;
-  const frozenStartStop = restartLoading && (restartStartStopSnapshot || (backendRestartLikeLoading ? "stop" : podkopRunning ? "stop" : "start"));
+  const serviceControlsDisabled = servicesInfoWidget.loading || atLeastOneMutatingActionLoading;
+  const utilityActionsDisabled = atLeastOneMutatingActionLoading;
   const container = document.getElementById("pdk_diagnostic-page-actions");
   const renderedActions = renderAvailableActions({
     restart: {
@@ -5960,14 +5849,14 @@ function renderDiagnosticAvailableActionsWidget() {
       disabled: serviceControlsDisabled
     },
     start: {
-      loading: frozenStartStop ? false : diagnosticsActions.start.loading || isStarting,
-      visible: frozenStartStop ? frozenStartStop === "start" : startVisible,
+      loading: diagnosticsActions.start.loading,
+      visible: !podkopRunning,
       onClick: handleStart,
       disabled: serviceControlsDisabled
     },
     stop: {
-      loading: frozenStartStop ? false : diagnosticsActions.stop.loading || isStopping,
-      visible: frozenStartStop ? frozenStartStop === "stop" : stopVisible,
+      loading: diagnosticsActions.stop.loading,
+      visible: podkopRunning,
       onClick: handleStop,
       disabled: serviceControlsDisabled
     },
@@ -6103,20 +5992,6 @@ async function loadInitialDiagnosticData() {
     await ensureDiagnosticsProviderInfo();
   }
 }
-function startDiagnosticStatusPolling() {
-  stopDiagnosticStatusPolling();
-  void fetchPodkopStatus();
-  diagnosticStatusPollTimer = setInterval(() => {
-    void fetchPodkopStatus();
-  }, DIAGNOSTIC_STATUS_POLL_INTERVAL_MS);
-}
-function stopDiagnosticStatusPolling() {
-  if (diagnosticStatusPollTimer === null) {
-    return;
-  }
-  clearInterval(diagnosticStatusPollTimer);
-  diagnosticStatusPollTimer = null;
-}
 function onPageMount2() {
   onPageUnmount2();
   store.subscribe(onStoreUpdate2);
@@ -6125,12 +6000,11 @@ function onPageMount2() {
   renderDiagnosticAvailableActionsWidget();
   renderDiagnosticSystemInfoWidget();
   renderWikiDisclaimerWidget();
-  startDiagnosticStatusPolling();
+  void fetchServicesInfo();
   void loadInitialDiagnosticData();
 }
 function onPageUnmount2() {
   store.unsubscribe(onStoreUpdate2);
-  stopDiagnosticStatusPolling();
   store.reset(["diagnosticsActions", "diagnosticsRunAction"]);
   resetDiagnosticsChecks();
 }

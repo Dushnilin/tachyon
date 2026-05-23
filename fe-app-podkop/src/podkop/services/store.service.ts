@@ -164,9 +164,6 @@ export interface StoreType {
       podkopRunning: number;
       podkopEnabled: number;
       podkopStatus: string;
-      podkopLifecycleState: string;
-      podkopLifecycleAction: string;
-      podkopLifecycleBusy: number;
     };
   };
   sectionsWidget: {
@@ -234,9 +231,6 @@ const initialStore: StoreType = {
       podkopRunning: 0,
       podkopEnabled: 0,
       podkopStatus: '',
-      podkopLifecycleState: 'unknown',
-      podkopLifecycleAction: 'none',
-      podkopLifecycleBusy: 0,
     },
   },
   sectionsWidget: {
