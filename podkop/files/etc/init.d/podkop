@@ -12,7 +12,6 @@ PODKOP_SERVICE_INIT="/etc/init.d/podkop-plus"
 PODKOP_RELOAD_LOCK_DIR="/var/run/podkop-plus.reload.lock"
 PODKOP_RUNTIME_STATE_DIR="/var/run/podkop-plus"
 PODKOP_PENDING_RELOAD_FILE="$PODKOP_RUNTIME_STATE_DIR/reload.pending"
-PODKOP_RESTART_INTENT_FILE="$PODKOP_RUNTIME_STATE_DIR/restart.intent"
 PODKOP_INTERNAL_CONFIG_TRIGGER_GUARD="/var/run/podkop-plus.internal-config-change"
 PODKOP_CONFIG_CHANGE_REASON="on_config_change"
 config_load "$CONFIG_NAME"
@@ -69,56 +68,6 @@ run_pending_reload_if_requested() {
     "$PODKOP_SERVICE_INIT" reload pending >/dev/null 2>&1 &
 }
 
-begin_restart_intent() {
-    local now
-
-    mkdir -p "$PODKOP_RUNTIME_STATE_DIR"
-    now="$(date +%s 2>/dev/null)"
-    case "$now" in
-        '' | *[!0-9]*)
-            now=0
-            ;;
-    esac
-
-    {
-        printf 'updated_at=%s\n' "$now"
-        printf 'pid=%s\n' "$$"
-    } > "$PODKOP_RESTART_INTENT_FILE"
-}
-
-end_restart_intent() {
-    rm -f "$PODKOP_RESTART_INTENT_FILE" 2>/dev/null
-}
-
-restart_intent_is_active() {
-    local now updated_at age
-
-    [ -f "$PODKOP_RESTART_INTENT_FILE" ] || return 1
-
-    updated_at="$(awk -F= '$1 == "updated_at" { print $2; exit }' "$PODKOP_RESTART_INTENT_FILE" 2>/dev/null)"
-    case "$updated_at" in
-        '' | *[!0-9]*)
-            rm -f "$PODKOP_RESTART_INTENT_FILE" 2>/dev/null
-            return 1
-            ;;
-    esac
-
-    now="$(date +%s 2>/dev/null)"
-    case "$now" in
-        '' | *[!0-9]*)
-            return 0
-            ;;
-    esac
-
-    age=$((now - updated_at))
-    if [ "$age" -lt 0 ] || [ "$age" -gt 300 ]; then
-        rm -f "$PODKOP_RESTART_INTENT_FILE" 2>/dev/null
-        return 1
-    fi
-
-    return 0
-}
-
 sync_service_triggers() {
     config_load "$CONFIG_NAME"
     _procd_call sync_service_triggers_payload
@@ -142,8 +91,8 @@ runtime_is_running() {
     "$PODKOP_BIN" get_status 2> /dev/null | grep -q '"running":1'
 }
 
-runtime_lifecycle_is_busy() {
-    "$PODKOP_BIN" get_status 2> /dev/null | grep -q '"lifecycle_busy":1'
+service_is_enabled() {
+    [ -x "/etc/rc.d/S99$NAME" ]
 }
 
 consume_internal_config_guard() {
@@ -187,20 +136,13 @@ should_skip_internal_config_reload() {
 }
 
 start_service() {
-    local lifecycle_action="${PODKOP_LIFECYCLE_ACTION:-}"
-
     echo "Start Podkop Plus"
 
     config_get enable_badwan_interface_monitoring "settings" "enable_badwan_interface_monitoring"
     config_get badwan_monitored_interfaces "settings" "badwan_monitored_interfaces"
 
-    if [ -z "$lifecycle_action" ] && restart_intent_is_active; then
-        lifecycle_action="restart"
-    fi
-
     procd_open_instance
     procd_set_param command "$PODKOP_BIN" start
-    [ -n "$lifecycle_action" ] && procd_set_param env "PODKOP_LIFECYCLE_ACTION=$lifecycle_action"
     [ "$enable_badwan_interface_monitoring" = "1" ] && [ -n "$badwan_monitored_interfaces" ] &&
         procd_set_param netdev "$badwan_monitored_interfaces"
     procd_set_param stdout 1
@@ -212,30 +154,6 @@ stop_service() {
     "$PODKOP_BIN" stop
 }
 
-restart() {
-    local status
-
-    begin_restart_intent
-    export PODKOP_LIFECYCLE_ACTION=restart
-    trap 'end_restart_intent; unset PODKOP_LIFECYCLE_ACTION' EXIT INT TERM
-
-    trap '' TERM
-    stop "$@"
-    status="$?"
-    trap - TERM
-
-    if [ "$status" -eq 0 ]; then
-        start "$@"
-        status="$?"
-    fi
-
-    trap - EXIT INT TERM
-    end_restart_intent
-    unset PODKOP_LIFECYCLE_ACTION
-
-    return "$status"
-}
-
 reload_service() {
     local reason="$1"
 
@@ -243,12 +161,7 @@ reload_service() {
         return 0
     fi
 
-    if runtime_lifecycle_is_busy; then
-        mark_pending_reload "${reason:-reload_busy}"
-        return 0
-    fi
-
-    if is_config_change_reload "$reason" && ! runtime_is_running; then
+    if is_config_change_reload "$reason" && ! runtime_is_running && ! service_is_enabled; then
         return 0
     fi
 

@@ -15,8 +15,6 @@ import { getClashApiSecret } from '../../methods/custom/getClashApiSecret';
 import { Podkop } from '../../types';
 
 const SECTIONS_REFRESH_INTERVAL_MS = 10000;
-const SUBSCRIPTION_UPDATE_POLL_INTERVAL_MS = 3000;
-const SUBSCRIPTION_UPDATE_WAIT_TIMEOUT_MS = 15 * 60 * 1000;
 let sectionsRefreshTimer: ReturnType<typeof setInterval> | null = null;
 let sectionsRefreshPromise: Promise<boolean> | null = null;
 let sectionsRefreshQueued = false;
@@ -138,44 +136,6 @@ function setSubscriptionUpdating(sectionName: string, updating: boolean) {
       subscriptionUpdatingSections,
     },
   });
-}
-
-function delay(ms: number) {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
-}
-
-async function waitForSubscriptionUpdateCompletion() {
-  const startedAt = Date.now();
-  let sawBusy = false;
-
-  while (Date.now() - startedAt < SUBSCRIPTION_UPDATE_WAIT_TIMEOUT_MS) {
-    await delay(SUBSCRIPTION_UPDATE_POLL_INTERVAL_MS);
-
-    const status = await PodkopShellMethods.getStatus();
-    if (!status.success) {
-      continue;
-    }
-
-    const isSubscriptionUpdate =
-      status.data.lifecycle_action === 'subscription_update';
-
-    if (isSubscriptionUpdate && status.data.lifecycle_busy) {
-      sawBusy = true;
-      continue;
-    }
-
-    if (isSubscriptionUpdate && status.data.lifecycle_state === 'failed') {
-      return false;
-    }
-
-    if (sawBusy || Date.now() - startedAt > SUBSCRIPTION_UPDATE_POLL_INTERVAL_MS) {
-      return true;
-    }
-  }
-
-  return false;
 }
 
 async function connectToClashSockets() {
@@ -338,26 +298,16 @@ async function handleUpdateSubscription(section: Podkop.OutboundGroup) {
   setSubscriptionUpdating(section.sectionName, true);
 
   try {
-    const response = await PodkopShellMethods.subscriptionUpdateAsync(
+    const response = await PodkopShellMethods.subscriptionUpdate(
       section.sectionName,
     );
 
-    if (
-      !response.success ||
-      response.data?.error ||
-      (!response.data?.started && !response.data?.busy)
-    ) {
+    if (!response.success) {
       showToast(_('Failed to update subscriptions'), 'error');
       return;
     }
 
-    const completed = await waitForSubscriptionUpdateCompletion();
-    showToast(
-      completed
-        ? _('Subscription update completed')
-        : _('Failed to update subscriptions'),
-      completed ? 'success' : 'error',
-    );
+    showToast(_('Subscription update completed'), 'success');
   } catch (error) {
     logger.error('[DASHBOARD]', 'handleUpdateSubscription: failed', error);
     showToast(_('Failed to update subscriptions'), 'error');

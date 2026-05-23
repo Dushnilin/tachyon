@@ -40,11 +40,9 @@ check_required_file "$PODKOP_LIB/rulesets.sh"
 
 PODKOP_INTERNAL_CONFIG_TRIGGER_GUARD="/var/run/podkop-plus.internal-config-change"
 PODKOP_RUNTIME_STATE_DIR="/var/run/podkop-plus"
-PODKOP_RUNTIME_STATUS_FILE="$PODKOP_RUNTIME_STATE_DIR/status"
 PODKOP_SYSTEM_INFO_CACHE_FILE="$PODKOP_RUNTIME_STATE_DIR/system-info.json"
 PODKOP_RELOAD_STATE_FILE="$PODKOP_RUNTIME_STATE_DIR/reload-state"
 PODKOP_PENDING_RELOAD_FILE="$PODKOP_RUNTIME_STATE_DIR/reload.pending"
-PODKOP_RESTART_INTENT_FILE="$PODKOP_RUNTIME_STATE_DIR/restart.intent"
 PODKOP_LIST_UPDATE_STATE_FILE="$PODKOP_RUNTIME_STATE_DIR/list-update.timestamp"
 PODKOP_SUBSCRIPTION_UPDATE_STATE_DIR="$PODKOP_RUNTIME_STATE_DIR/subscription-update"
 PODKOP_SUBSCRIPTION_LINKS_DIR="$PODKOP_RUNTIME_STATE_DIR/subscription-links"
@@ -62,12 +60,8 @@ PODKOP_SUBSCRIPTION_UPDATE_CRON_MARKER="# podkop-plus-subscription-update"
 SING_BOX_DISABLED_UPDATE_INTERVAL="876000h"
 SING_BOX_URLTEST_DEFAULT_IDLE_TIMEOUT="30m"
 PODKOP_RELOAD_STATE_FORMAT=1
-PODKOP_RUNTIME_STATUS_FORMAT=1
 PODKOP_RUNTIME_CACHE_FORMAT=3
-PODKOP_RUNTIME_TRANSITION_MAX_AGE=300
-PODKOP_RUNTIME_TRANSITION_DEAD_PID_GRACE=15
 PODKOP_RUNTIME_STABLE_MIN_AGE=2
-PODKOP_RUNTIME_STABLE_WAIT_TIMEOUT=8
 PODKOP_SYSTEM_INFO_CACHE_TTL=3600
 PODKOP_NFT_POPULATE_ENABLED=1
 PODKOP_ZAPRET_MISSING_WARNING_EMITTED=0
@@ -747,14 +741,6 @@ release_runtime_dir_lock() {
     rmdir "$lock_dir" 2>/dev/null
 }
 
-runtime_dir_lock_is_active() {
-    local lock_dir="$1"
-    local owner_pid
-
-    owner_pid="$(sed -n '1p' "$lock_dir/pid" 2>/dev/null)"
-    [ -n "$owner_pid" ] && kill -0 "$owner_pid" 2>/dev/null
-}
-
 mark_pending_reload() {
     local reason="${1:-pending}"
     local now
@@ -876,211 +862,6 @@ podkop_is_running() {
 podkop_is_stably_running() {
     sing_box_service_is_stable &&
         podkop_runtime_network_is_configured
-}
-
-podkop_wait_until_stably_running() {
-    local timeout="${1:-$PODKOP_RUNTIME_STABLE_WAIT_TIMEOUT}"
-    local started_at now
-
-    started_at="$(date +%s 2>/dev/null)"
-    case "$started_at" in
-    '' | *[!0-9]*) started_at=0 ;;
-    esac
-
-    while true; do
-        podkop_is_stably_running && return 0
-
-        now="$(date +%s 2>/dev/null)"
-        case "$now" in
-        '' | *[!0-9]*) now=0 ;;
-        esac
-
-        [ "$started_at" -gt 0 ] && [ "$now" -gt 0 ] && [ $((now - started_at)) -ge "$timeout" ] && return 1
-        sleep 1
-    done
-}
-
-runtime_status_action_expects_running() {
-    case "$1" in
-    start | restart | reload)
-        return 0
-        ;;
-    esac
-
-    return 1
-}
-
-runtime_status_restart_action_is_active() {
-    [ "${PODKOP_LIFECYCLE_ACTION:-}" = "restart" ] || restart_intent_is_active
-}
-
-runtime_status_write() {
-    local state="$1"
-    local action="${2:-none}"
-    local message="${3:-}"
-    local pid="${4:-$$}"
-    local now tmpfile
-
-    ensure_runtime_dirs
-    if runtime_status_restart_action_is_active; then
-        case "$action" in
-        start | stop | restart)
-            action="restart"
-            ;;
-        esac
-
-        case "$state" in
-        starting | stopping | restarting)
-            state="restarting"
-            ;;
-        stopped)
-            [ "$action" = "restart" ] && state="restarting"
-            ;;
-        esac
-    fi
-
-    now="$(date +%s 2>/dev/null)"
-    case "$now" in
-    '' | *[!0-9]*) now=0 ;;
-    esac
-
-    tmpfile="${PODKOP_RUNTIME_STATUS_FILE}.$$"
-    {
-        printf 'format=%s\n' "$PODKOP_RUNTIME_STATUS_FORMAT"
-        printf 'state=%s\n' "$state"
-        printf 'action=%s\n' "$action"
-        printf 'updated_at=%s\n' "$now"
-        printf 'pid=%s\n' "$pid"
-        printf 'message=%s\n' "$message"
-    } > "$tmpfile" && mv "$tmpfile" "$PODKOP_RUNTIME_STATUS_FILE"
-}
-
-runtime_status_mark_failure() {
-    local action="${1:-unknown}"
-
-    if podkop_is_stably_running; then
-        runtime_status_write "running" "$action"
-    else
-        runtime_status_write "failed" "$action" "operation did not complete"
-    fi
-}
-
-runtime_status_finish_action() {
-    local action="${1:-none}"
-    local status="${2:-0}"
-
-    trap - EXIT INT TERM
-
-    if [ "$status" -eq 0 ]; then
-        if runtime_status_action_expects_running "$action" && ! podkop_wait_until_stably_running; then
-            runtime_status_write "failed" "$action" "runtime did not become ready"
-            return 0
-        fi
-
-        if podkop_is_stably_running; then
-            runtime_status_write "running" "$action"
-        else
-            runtime_status_write "stopped" "$action"
-        fi
-        return 0
-    fi
-
-    runtime_status_mark_failure "$action"
-    return "$status"
-}
-
-runtime_status_read_value() {
-    local key="$1"
-
-    [ -f "$PODKOP_RUNTIME_STATUS_FILE" ] || return 1
-
-    awk -F= -v key="$key" '$1 == key { print substr($0, index($0, "=") + 1); exit }' "$PODKOP_RUNTIME_STATUS_FILE"
-}
-
-runtime_status_is_transition() {
-    case "$1" in
-    starting | stopping | restarting | reloading | updating_subscription)
-        return 0
-        ;;
-    esac
-
-    return 1
-}
-
-runtime_status_transition_is_active() {
-    local state="$1"
-    local updated_at="$2"
-    local pid="$3"
-    local now age
-
-    runtime_status_is_transition "$state" || return 1
-
-    case "$updated_at" in
-    '' | *[!0-9]*) return 1 ;;
-    esac
-
-    now="$(date +%s 2>/dev/null)"
-    case "$now" in
-    '' | *[!0-9]*) now=0 ;;
-    esac
-
-    case "$pid" in
-    '' | *[!0-9]*)
-        [ "$now" -gt 0 ] || return 0
-        ;;
-    *)
-        if [ "$state" = "updating_subscription" ]; then
-            kill -0 "$pid" 2>/dev/null
-            return "$?"
-        fi
-        ;;
-    esac
-
-    [ "$now" -gt 0 ] || return 0
-    age=$((now - updated_at))
-    [ "$age" -ge 0 ] || return 1
-    [ "$age" -le "$PODKOP_RUNTIME_TRANSITION_MAX_AGE" ] || return 1
-
-    case "$pid" in
-    '' | *[!0-9]*) return 0 ;;
-    esac
-
-    kill -0 "$pid" 2>/dev/null && return 0
-
-    case "$state" in
-    starting | stopping | restarting | reloading)
-        [ "$age" -le "$PODKOP_RUNTIME_TRANSITION_DEAD_PID_GRACE" ] && return 0
-        ;;
-    esac
-
-    return 1
-}
-
-restart_intent_is_active() {
-    local now updated_at age
-
-    [ -f "$PODKOP_RESTART_INTENT_FILE" ] || return 1
-
-    updated_at="$(awk -F= '$1 == "updated_at" { print $2; exit }' "$PODKOP_RESTART_INTENT_FILE" 2>/dev/null)"
-    case "$updated_at" in
-    '' | *[!0-9]*)
-        rm -f "$PODKOP_RESTART_INTENT_FILE" 2>/dev/null
-        return 1
-        ;;
-    esac
-
-    now="$(date +%s 2>/dev/null)"
-    case "$now" in
-    '' | *[!0-9]*) return 0 ;;
-    esac
-
-    age=$((now - updated_at))
-    if [ "$age" -lt 0 ] || [ "$age" -gt "$PODKOP_RUNTIME_TRANSITION_MAX_AGE" ]; then
-        rm -f "$PODKOP_RESTART_INTENT_FILE" 2>/dev/null
-        return 1
-    fi
-
-    return 0
 }
 
 clear_reload_state() {
@@ -2494,13 +2275,9 @@ start_impl() {
 start() {
     local status
 
-    runtime_status_write "starting" "start"
-    trap 'runtime_status_mark_failure "start"' EXIT INT TERM
-
     start_impl
     status="$?"
 
-    runtime_status_finish_action "start" "$status"
     [ "$status" -eq 0 ] && podkop_is_stably_running && run_pending_reload_if_requested
     return "$status"
 }
@@ -2522,13 +2299,10 @@ stop_impl() {
 stop() {
     local status
 
-    runtime_status_write "stopping" "stop"
-    trap 'runtime_status_mark_failure "stop"' EXIT INT TERM
-
     stop_impl
     status="$?"
 
-    runtime_status_finish_action "stop" "$status"
+    return "$status"
 }
 
 restart_runtime_for_reload() {
@@ -2563,8 +2337,6 @@ reload() {
     local changed_service_triggers changed_dnsmasq changed_sing_box changed_nft changed_zapret_queue changed_zapret_runtime changed_byedpi_runtime changed_cron changed_list
 
     log "Podkop Plus reload"
-    runtime_status_write "reloading" "reload"
-    trap 'runtime_status_mark_failure "reload"' EXIT INT TERM
 
     [ "$reload_reason" = "on_config_change" ] || force_runtime_reload=1
 
@@ -2579,7 +2351,6 @@ reload() {
         log "Podkop runtime is incomplete, falling back to in-process restart"
         restart_runtime_for_reload
         status="$?"
-        runtime_status_finish_action "reload" "$status"
         return "$status"
     fi
 
@@ -2587,7 +2358,6 @@ reload() {
         log "Reload state is missing or incompatible, falling back to in-process restart"
         restart_runtime_for_reload
         status="$?"
-        runtime_status_finish_action "reload" "$status"
         return "$status"
     fi
 
@@ -2698,7 +2468,6 @@ reload() {
         [ "$needs_list_update" -eq 0 ]; then
         write_reload_state
         log "Reload skipped: runtime-relevant configuration is unchanged"
-        runtime_status_finish_action "reload" 0
         return 0
     fi
 
@@ -2753,27 +2522,23 @@ reload() {
     fi
 
     write_reload_state
-    runtime_status_finish_action "reload" 0
+    return 0
 }
 
 restart() {
     local status
 
     log "Podkop Plus restart"
-    runtime_status_write "restarting" "restart"
-    trap 'runtime_status_mark_failure "restart"' EXIT INT TERM
 
     stop_impl
     status="$?"
     if [ "$status" -ne 0 ]; then
-        runtime_status_finish_action "restart" "$status"
         return "$status"
     fi
 
     start_impl
     status="$?"
 
-    runtime_status_finish_action "restart" "$status"
     [ "$status" -eq 0 ] && podkop_is_stably_running && run_pending_reload_if_requested
     return "$status"
 }
@@ -4412,7 +4177,6 @@ subscription_update_abort_cleanup() {
     local status="${1:-1}"
 
     trap - EXIT INT TERM
-    runtime_status_mark_failure "subscription_update"
     release_runtime_dir_lock "$PODKOP_RELOAD_LOCK_DIR"
     release_runtime_dir_lock "$PODKOP_SUBSCRIPTION_UPDATE_LOCK_DIR"
     exit "$status"
@@ -4520,14 +4284,12 @@ subscription_update_common() {
         return 0
     fi
 
-    runtime_status_write "updating_subscription" "subscription_update"
     trap 'subscription_update_abort_cleanup "$?"' EXIT INT TERM
 
     subscription_update_common_locked "$force" "$target_section" "$target_source_index"
     result=$?
 
     trap - EXIT INT TERM
-    runtime_status_finish_action "subscription_update" "$result"
 
     release_runtime_dir_lock "$PODKOP_RELOAD_LOCK_DIR"
     release_runtime_dir_lock "$PODKOP_SUBSCRIPTION_UPDATE_LOCK_DIR"
@@ -4550,54 +4312,6 @@ subscription_update() {
         echolog "Starting subscription update..."
     fi
     subscription_update_common 1 "$target_section" "$target_source_index"
-}
-
-subscription_update_async() {
-    local target_section="${1:-}"
-    local target_source_index="${2:-}"
-    local stored_format stored_state stored_updated_at stored_pid pid
-
-    ensure_runtime_dirs
-
-    case "$target_section" in
-    */* | *..*)
-        printf '{"started":false,"busy":false,"error":"invalid_section"}\n'
-        return 1
-        ;;
-    esac
-
-    case "$target_source_index" in
-    *[!0-9]*)
-        [ -z "$target_source_index" ] || {
-            printf '{"started":false,"busy":false,"error":"invalid_source_index"}\n'
-            return 1
-        }
-        ;;
-    esac
-
-    stored_format="$(runtime_status_read_value "format" 2>/dev/null)"
-    if [ "$stored_format" = "$PODKOP_RUNTIME_STATUS_FORMAT" ]; then
-        stored_state="$(runtime_status_read_value "state" 2>/dev/null)"
-        stored_updated_at="$(runtime_status_read_value "updated_at" 2>/dev/null)"
-        stored_pid="$(runtime_status_read_value "pid" 2>/dev/null)"
-        if runtime_status_transition_is_active "$stored_state" "$stored_updated_at" "$stored_pid"; then
-            printf '{"started":false,"busy":true,"pid":%s}\n' "${stored_pid:-0}"
-            return 0
-        fi
-    fi
-
-    if runtime_dir_lock_is_active "$PODKOP_SUBSCRIPTION_UPDATE_LOCK_DIR"; then
-        printf '{"started":false,"busy":true,"pid":0}\n'
-        return 0
-    fi
-
-    (
-        close_inherited_service_lock_fd
-        "$PODKOP_BIN" subscription_update "$target_section" "$target_source_index" >/dev/null 2>&1
-    ) &
-    pid=$!
-    runtime_status_write "updating_subscription" "subscription_update" "" "$pid"
-    printf '{"started":true,"busy":true,"pid":%s}\n' "$pid"
 }
 
 # sing-box funcs
@@ -7841,10 +7555,8 @@ get_status() {
     local enabled=0
     local status=""
     local dns_configured=0
-    local lifecycle_state lifecycle_action lifecycle_busy lifecycle_updated_at lifecycle_pid
-    local stored_format stored_state stored_action stored_updated_at stored_pid
 
-    if podkop_is_stably_running; then
+    if podkop_is_running; then
         running=1
     fi
 
@@ -7857,59 +7569,7 @@ get_status() {
         dns_configured=1
     fi
 
-    lifecycle_state=""
-    lifecycle_action="none"
-    lifecycle_busy=0
-    lifecycle_updated_at=0
-    lifecycle_pid=0
-
-    stored_format="$(runtime_status_read_value "format" 2>/dev/null)"
-    if [ "$stored_format" = "$PODKOP_RUNTIME_STATUS_FORMAT" ]; then
-        stored_state="$(runtime_status_read_value "state" 2>/dev/null)"
-        stored_action="$(runtime_status_read_value "action" 2>/dev/null)"
-        stored_updated_at="$(runtime_status_read_value "updated_at" 2>/dev/null)"
-        stored_pid="$(runtime_status_read_value "pid" 2>/dev/null)"
-
-        case "$stored_updated_at" in
-        '' | *[!0-9]*) stored_updated_at=0 ;;
-        esac
-
-        case "$stored_pid" in
-        '' | *[!0-9]*) stored_pid=0 ;;
-        esac
-
-        if runtime_status_transition_is_active "$stored_state" "$stored_updated_at" "$stored_pid"; then
-            lifecycle_state="$stored_state"
-            lifecycle_action="${stored_action:-none}"
-            lifecycle_busy=1
-            lifecycle_updated_at="$stored_updated_at"
-            lifecycle_pid="$stored_pid"
-        elif [ "$stored_state" = "failed" ] && [ "$running" -eq 0 ]; then
-            lifecycle_state="failed"
-            lifecycle_action="${stored_action:-none}"
-            lifecycle_updated_at="$stored_updated_at"
-            lifecycle_pid="$stored_pid"
-        elif [ "$stored_state" = "running" ] && [ "$running" -eq 0 ]; then
-            lifecycle_state="failed"
-            lifecycle_action="${stored_action:-none}"
-            lifecycle_updated_at="$stored_updated_at"
-            lifecycle_pid="$stored_pid"
-        fi
-    fi
-
-    if [ -z "$lifecycle_state" ]; then
-        if [ "$running" -eq 1 ]; then
-            lifecycle_state="running"
-        else
-            lifecycle_state="stopped"
-        fi
-    fi
-
-    if [ "$lifecycle_busy" -eq 1 ]; then
-        status="$lifecycle_state"
-    elif [ "$lifecycle_state" = "failed" ]; then
-        status="failed"
-    elif [ "$running" -eq 1 ]; then
+    if [ "$running" -eq 1 ]; then
         if [ "$enabled" -eq 1 ]; then
             status="running & enabled"
         else
@@ -7928,21 +7588,11 @@ get_status() {
         --argjson enabled "$enabled" \
         --arg status "$status" \
         --argjson dns_configured "$dns_configured" \
-        --arg lifecycle_state "$lifecycle_state" \
-        --arg lifecycle_action "$lifecycle_action" \
-        --argjson lifecycle_busy "$lifecycle_busy" \
-        --argjson lifecycle_updated_at "$lifecycle_updated_at" \
-        --argjson lifecycle_pid "$lifecycle_pid" \
         '{
             running: $running,
             enabled: $enabled,
             status: $status,
-            dns_configured: $dns_configured,
-            lifecycle_state: $lifecycle_state,
-            lifecycle_action: $lifecycle_action,
-            lifecycle_busy: $lifecycle_busy,
-            lifecycle_updated_at: $lifecycle_updated_at,
-            lifecycle_pid: $lifecycle_pid
+            dns_configured: $dns_configured
         }'
 }
 
@@ -8806,8 +8456,6 @@ Available commands:
     list_update_if_due      Update remote lists only when the configured interval has elapsed
     subscription_update [rule] [source_index]
                             Update all subscription proxies, one rule, or one source in a rule
-    subscription_update_async [rule] [source_index]
-                            Start forced subscription update in background and print JSON state
     subscription_update_if_due
                             Update subscription proxies only when per-rule intervals have elapsed
     check_proxy             Check proxy connectivity
@@ -8878,9 +8526,6 @@ list_update_if_due)
     ;;
 subscription_update)
     subscription_update "$2" "$3"
-    ;;
-subscription_update_async)
-    subscription_update_async "$2" "$3"
     ;;
 subscription_update_if_due)
     subscription_update_if_due

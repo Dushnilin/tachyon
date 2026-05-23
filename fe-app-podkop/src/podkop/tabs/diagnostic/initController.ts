@@ -18,7 +18,7 @@ import {
   renderSystemInfo,
 } from './partials';
 import { PodkopShellMethods } from '../../methods';
-import { fetchPodkopStatus } from '../../fetchers';
+import { fetchServicesInfo } from '../../fetchers';
 import { normalizeCompiledVersion } from '../../../helpers/normalizeCompiledVersion';
 import { renderModal } from '../../../partials';
 import { PODKOP_LUCI_APP_VERSION } from '../../../constants';
@@ -41,16 +41,12 @@ const UNKNOWN_DIAGNOSTICS_SYSTEM_INFO = {
   device_model: _('unknown'),
 };
 
-const DIAGNOSTIC_STATUS_POLL_INTERVAL_MS = 2000;
-const DIAGNOSTIC_STATUS_SETTLE_DELAY_MS = 1000;
-const DIAGNOSTIC_STATUS_SETTLE_TIMEOUT_MS = 45000;
+const SERVICE_ACTION_REFRESH_DELAY_MS = 5000;
 
 let latestProviderInfoRequestId = 0;
 let latestSystemInfoRequestId = 0;
 let diagnosticLifecycleRegistered = false;
 let diagnosticControllerInitialized = false;
-let diagnosticStatusPollTimer: ReturnType<typeof setInterval> | null = null;
-let restartStartStopSnapshot: 'start' | 'stop' | null = null;
 
 function sleep(ms: number) {
   return new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -95,40 +91,9 @@ function setDiagnosticActionLoading(
   });
 }
 
-async function waitForPodkopStatusToSettle(desiredRunning?: boolean) {
-  const startedAt = Date.now();
-  let sawBackendTransition = false;
-
-  while (Date.now() - startedAt < DIAGNOSTIC_STATUS_SETTLE_TIMEOUT_MS) {
-    const status = await fetchPodkopStatus();
-
-    if (!status) {
-      return;
-    }
-
-    if (status.lifecycle_busy) {
-      sawBackendTransition = true;
-      await sleep(DIAGNOSTIC_STATUS_SETTLE_DELAY_MS);
-      continue;
-    }
-
-    if (status.lifecycle_state === 'failed') {
-      return;
-    }
-
-    if (
-      desiredRunning === undefined ||
-      Boolean(status.running) === desiredRunning
-    ) {
-      if (sawBackendTransition || Date.now() - startedAt > 1500) {
-        return;
-      }
-    }
-
-    await sleep(DIAGNOSTIC_STATUS_SETTLE_DELAY_MS);
-  }
-
-  await fetchPodkopStatus();
+async function refreshServicesInfoAfterServiceAction() {
+  await sleep(SERVICE_ACTION_REFRESH_DELAY_MS);
+  await fetchServicesInfo();
 }
 
 async function fetchSystemInfo() {
@@ -291,18 +256,14 @@ function renderDiagnosticRunActionWidget() {
 }
 
 async function handleRestart() {
-  restartStartStopSnapshot = store.get().servicesInfoWidget.data.podkopRunning
-    ? 'stop'
-    : 'start';
   setDiagnosticActionLoading('restart', true);
 
   try {
     await PodkopShellMethods.restart();
-    await waitForPodkopStatusToSettle(true);
+    await refreshServicesInfoAfterServiceAction();
   } catch (e) {
     logger.error('[DIAGNOSTIC]', 'handleRestart - e', e);
   } finally {
-    restartStartStopSnapshot = null;
     setDiagnosticActionLoading('restart', false);
     resetDiagnosticsChecks();
   }
@@ -313,7 +274,7 @@ async function handleStop() {
 
   try {
     await PodkopShellMethods.stop();
-    await waitForPodkopStatusToSettle(false);
+    await refreshServicesInfoAfterServiceAction();
   } catch (e) {
     logger.error('[DIAGNOSTIC]', 'handleStop - e', e);
   } finally {
@@ -327,7 +288,7 @@ async function handleStart() {
 
   try {
     await PodkopShellMethods.start();
-    await waitForPodkopStatusToSettle(true);
+    await refreshServicesInfoAfterServiceAction();
   } catch (e) {
     logger.error('[DIAGNOSTIC]', 'handleStart - e', e);
   } finally {
@@ -344,7 +305,7 @@ async function handleEnable() {
   } catch (e) {
     logger.error('[DIAGNOSTIC]', 'handleEnable - e', e);
   } finally {
-    await fetchPodkopStatus();
+    await fetchServicesInfo();
     setDiagnosticActionLoading('enable', false);
   }
 }
@@ -357,7 +318,7 @@ async function handleDisable() {
   } catch (e) {
     logger.error('[DIAGNOSTIC]', 'handleDisable - e', e);
   } finally {
-    await fetchPodkopStatus();
+    await fetchServicesInfo();
     setDiagnosticActionLoading('disable', false);
   }
 }
@@ -485,15 +446,7 @@ function renderDiagnosticAvailableActionsWidget() {
 
   const podkopEnabled = Boolean(servicesInfoWidget.data.podkopEnabled);
   const podkopRunning = Boolean(servicesInfoWidget.data.podkopRunning);
-  const lifecycleBusy = Boolean(servicesInfoWidget.data.podkopLifecycleBusy);
-  const lifecycleAction = servicesInfoWidget.data.podkopLifecycleAction;
-  const isStarting = lifecycleBusy && lifecycleAction === 'start';
-  const isStopping = lifecycleBusy && lifecycleAction === 'stop';
-  const isRestarting = lifecycleBusy && lifecycleAction === 'restart';
-  const isReloading = lifecycleBusy && lifecycleAction === 'reload';
-  const backendRestartLikeLoading = isRestarting || isReloading;
-  const restartLoading =
-    diagnosticsActions.restart.loading || backendRestartLikeLoading;
+  const restartLoading = diagnosticsActions.restart.loading;
   const atLeastOneMutatingActionLoading =
     restartLoading ||
     diagnosticsActions.start.loading ||
@@ -501,21 +454,8 @@ function renderDiagnosticAvailableActionsWidget() {
     diagnosticsActions.enable.loading ||
     diagnosticsActions.disable.loading;
   const serviceControlsDisabled =
-    servicesInfoWidget.loading ||
-    lifecycleBusy ||
-    atLeastOneMutatingActionLoading;
-  const utilityActionsDisabled =
-    lifecycleBusy || atLeastOneMutatingActionLoading;
-  const startVisible =
-    isStarting ||
-    (!podkopRunning && !isStopping && !isRestarting && !isReloading);
-  const stopVisible =
-    isStopping ||
-    (podkopRunning && !isStarting && !isRestarting && !isReloading);
-  const frozenStartStop =
-    restartLoading &&
-    (restartStartStopSnapshot ||
-      (backendRestartLikeLoading ? 'stop' : podkopRunning ? 'stop' : 'start'));
+    servicesInfoWidget.loading || atLeastOneMutatingActionLoading;
+  const utilityActionsDisabled = atLeastOneMutatingActionLoading;
 
   const container = document.getElementById('pdk_diagnostic-page-actions');
 
@@ -527,18 +467,14 @@ function renderDiagnosticAvailableActionsWidget() {
       disabled: serviceControlsDisabled,
     },
     start: {
-      loading: frozenStartStop
-        ? false
-        : diagnosticsActions.start.loading || isStarting,
-      visible: frozenStartStop ? frozenStartStop === 'start' : startVisible,
+      loading: diagnosticsActions.start.loading,
+      visible: !podkopRunning,
       onClick: handleStart,
       disabled: serviceControlsDisabled,
     },
     stop: {
-      loading: frozenStartStop
-        ? false
-        : diagnosticsActions.stop.loading || isStopping,
-      visible: frozenStartStop ? frozenStartStop === 'stop' : stopVisible,
+      loading: diagnosticsActions.stop.loading,
+      visible: podkopRunning,
       onClick: handleStop,
       disabled: serviceControlsDisabled,
     },
@@ -699,24 +635,6 @@ async function loadInitialDiagnosticData() {
   }
 }
 
-function startDiagnosticStatusPolling() {
-  stopDiagnosticStatusPolling();
-
-  void fetchPodkopStatus();
-  diagnosticStatusPollTimer = setInterval(() => {
-    void fetchPodkopStatus();
-  }, DIAGNOSTIC_STATUS_POLL_INTERVAL_MS);
-}
-
-function stopDiagnosticStatusPolling() {
-  if (diagnosticStatusPollTimer === null) {
-    return;
-  }
-
-  clearInterval(diagnosticStatusPollTimer);
-  diagnosticStatusPollTimer = null;
-}
-
 function onPageMount() {
   // Cleanup before mount
   onPageUnmount();
@@ -739,14 +657,13 @@ function onPageMount() {
   // Initial Wiki disclaimer render
   renderWikiDisclaimerWidget();
 
-  startDiagnosticStatusPolling();
+  void fetchServicesInfo();
   void loadInitialDiagnosticData();
 }
 
 function onPageUnmount() {
   // Remove old listener
   store.unsubscribe(onStoreUpdate);
-  stopDiagnosticStatusPolling();
 
   // Clear store
   store.reset(['diagnosticsActions', 'diagnosticsRunAction']);
