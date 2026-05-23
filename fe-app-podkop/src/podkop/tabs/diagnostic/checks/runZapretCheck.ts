@@ -104,11 +104,11 @@ export async function runZapretCheck() {
       state: unexpectedRuntime || !podkopRuntimeReady ? 'error' : 'success',
       key: hasZapretRules
         ? podkopRuntimeReady
-          ? _('Podkop-managed nfqws runtime is ready')
-          : _('Podkop-managed nfqws runtime is not ready')
+          ? _('Podkop Plus-managed nfqws runtime is ready')
+          : _('Podkop Plus-managed nfqws runtime is not ready')
         : unexpectedRuntime
-          ? _('Unexpected Podkop-managed nfqws runtime is running')
-          : _('Podkop-managed nfqws runtime is not running'),
+          ? _('Unexpected Podkop Plus-managed nfqws runtime is running')
+          : _('Podkop Plus-managed nfqws runtime is not running'),
       value: '',
     },
     {
@@ -122,7 +122,9 @@ export async function runZapretCheck() {
       state: standaloneConflict ? 'warning' : 'success',
       key: standaloneServiceRunning
         ? hasZapretRules
-          ? _('Standalone Zapret is active together with Podkop Zapret rules')
+          ? _(
+              'Standalone Zapret is active together with Podkop Plus Zapret rules',
+            )
           : _('Standalone Zapret service is active')
         : _('Standalone Zapret service is inactive'),
       value: '',

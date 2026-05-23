@@ -1,15 +1,15 @@
 # SOME DESCRIPTIVE TITLE.
 # Copyright (C) 2026 THE PACKAGE'S COPYRIGHT HOLDER
 # This file is distributed under the same license as the PODKOP PLUS package.
-# ushan0v <ushanov2209@gmail.com>, 2026.
+# ushan0v <ushanov2204@gmail.com>, 2026.
 #, fuzzy
 msgid ""
 msgstr ""
 "Project-Id-Version: PODKOP PLUS\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-05-23 04:37+0300\n"
-"PO-Revision-Date: 2026-05-23 04:37+0300\n"
-"Last-Translator: ushan0v <ushanov2209@gmail.com>\n"
+"POT-Creation-Date: 2026-05-23 13:32+0300\n"
+"PO-Revision-Date: 2026-05-23 13:32+0300\n"
+"Last-Translator: ushan0v <ushanov2204@gmail.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
 "MIME-Version: 1.0\n"
@@ -1028,31 +1028,31 @@ msgid "Podkop Plus will not modify your DHCP configuration"
 msgstr ""
 
 #: src/podkop/tabs/diagnostic/checks/runByedpiCheck.ts:117
-msgid "Podkop-managed ciadpi runtime has restarted"
+msgid "Podkop Plus-managed ciadpi runtime has restarted"
 msgstr ""
 
 #: src/podkop/tabs/diagnostic/checks/runByedpiCheck.ts:120
-msgid "Podkop-managed ciadpi runtime is not ready"
+msgid "Podkop Plus-managed ciadpi runtime is not ready"
 msgstr ""
 
 #: src/podkop/tabs/diagnostic/checks/runByedpiCheck.ts:123
-msgid "Podkop-managed ciadpi runtime is not running"
+msgid "Podkop Plus-managed ciadpi runtime is not running"
 msgstr ""
 
 #: src/podkop/tabs/diagnostic/checks/runByedpiCheck.ts:119
-msgid "Podkop-managed ciadpi runtime is ready"
+msgid "Podkop Plus-managed ciadpi runtime is ready"
 msgstr ""
 
 #: src/podkop/tabs/diagnostic/checks/runZapretCheck.ts:108
-msgid "Podkop-managed nfqws runtime is not ready"
+msgid "Podkop Plus-managed nfqws runtime is not ready"
 msgstr ""
 
 #: src/podkop/tabs/diagnostic/checks/runZapretCheck.ts:111
-msgid "Podkop-managed nfqws runtime is not running"
+msgid "Podkop Plus-managed nfqws runtime is not running"
 msgstr ""
 
 #: src/podkop/tabs/diagnostic/checks/runZapretCheck.ts:107
-msgid "Podkop-managed nfqws runtime is ready"
+msgid "Podkop Plus-managed nfqws runtime is ready"
 msgstr ""
 
 #: ../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/section.js:2981
@@ -1309,31 +1309,31 @@ msgstr ""
 msgid "Specify local IP addresses or subnets whose traffic will always be routed through the configured route"
 msgstr ""
 
-#: src/podkop/tabs/diagnostic/checks/runByedpiCheck.ts:155
+#: src/podkop/tabs/diagnostic/checks/runByedpiCheck.ts:157
 msgid "Standalone ByeDPI autostart is enabled"
 msgstr ""
 
 #: src/podkop/tabs/diagnostic/checks/runByedpiCheck.ts:152
-msgid "Standalone ByeDPI is active together with Podkop ByeDPI rules"
+msgid "Standalone ByeDPI is active together with Podkop Plus ByeDPI rules"
 msgstr ""
 
-#: src/podkop/tabs/diagnostic/checks/runByedpiCheck.ts:153
+#: src/podkop/tabs/diagnostic/checks/runByedpiCheck.ts:155
 msgid "Standalone ByeDPI service is active"
 msgstr ""
 
-#: src/podkop/tabs/diagnostic/checks/runByedpiCheck.ts:156
+#: src/podkop/tabs/diagnostic/checks/runByedpiCheck.ts:158
 msgid "Standalone ByeDPI service is inactive"
 msgstr ""
 
 #: src/podkop/tabs/diagnostic/checks/runZapretCheck.ts:125
-msgid "Standalone Zapret is active together with Podkop Zapret rules"
+msgid "Standalone Zapret is active together with Podkop Plus Zapret rules"
 msgstr ""
 
-#: src/podkop/tabs/diagnostic/checks/runZapretCheck.ts:126
+#: src/podkop/tabs/diagnostic/checks/runZapretCheck.ts:128
 msgid "Standalone Zapret service is active"
 msgstr ""
 
-#: src/podkop/tabs/diagnostic/checks/runZapretCheck.ts:127
+#: src/podkop/tabs/diagnostic/checks/runZapretCheck.ts:129
 msgid "Standalone Zapret service is inactive"
 msgstr ""
 
@@ -1488,11 +1488,11 @@ msgid "Unexpected ByeDPI strategy argument: %s"
 msgstr ""
 
 #: src/podkop/tabs/diagnostic/checks/runByedpiCheck.ts:122
-msgid "Unexpected Podkop-managed ciadpi runtime is running"
+msgid "Unexpected Podkop Plus-managed ciadpi runtime is running"
 msgstr ""
 
 #: src/podkop/tabs/diagnostic/checks/runZapretCheck.ts:110
-msgid "Unexpected Podkop-managed nfqws runtime is running"
+msgid "Unexpected Podkop Plus-managed nfqws runtime is running"
 msgstr ""
 
 #: ../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/section.js:1586

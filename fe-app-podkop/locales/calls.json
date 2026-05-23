@@ -1725,50 +1725,50 @@
     ]
   },
   {
-    "call": "Podkop-managed ciadpi runtime has restarted",
-    "key": "Podkop-managed ciadpi runtime has restarted",
+    "call": "Podkop Plus-managed ciadpi runtime has restarted",
+    "key": "Podkop Plus-managed ciadpi runtime has restarted",
     "places": [
       "src/podkop/tabs/diagnostic/checks/runByedpiCheck.ts:117"
     ]
   },
   {
-    "call": "Podkop-managed ciadpi runtime is not ready",
-    "key": "Podkop-managed ciadpi runtime is not ready",
+    "call": "Podkop Plus-managed ciadpi runtime is not ready",
+    "key": "Podkop Plus-managed ciadpi runtime is not ready",
     "places": [
       "src/podkop/tabs/diagnostic/checks/runByedpiCheck.ts:120"
     ]
   },
   {
-    "call": "Podkop-managed ciadpi runtime is not running",
-    "key": "Podkop-managed ciadpi runtime is not running",
+    "call": "Podkop Plus-managed ciadpi runtime is not running",
+    "key": "Podkop Plus-managed ciadpi runtime is not running",
     "places": [
       "src/podkop/tabs/diagnostic/checks/runByedpiCheck.ts:123"
     ]
   },
   {
-    "call": "Podkop-managed ciadpi runtime is ready",
-    "key": "Podkop-managed ciadpi runtime is ready",
+    "call": "Podkop Plus-managed ciadpi runtime is ready",
+    "key": "Podkop Plus-managed ciadpi runtime is ready",
     "places": [
       "src/podkop/tabs/diagnostic/checks/runByedpiCheck.ts:119"
     ]
   },
   {
-    "call": "Podkop-managed nfqws runtime is not ready",
-    "key": "Podkop-managed nfqws runtime is not ready",
+    "call": "Podkop Plus-managed nfqws runtime is not ready",
+    "key": "Podkop Plus-managed nfqws runtime is not ready",
     "places": [
       "src/podkop/tabs/diagnostic/checks/runZapretCheck.ts:108"
     ]
   },
   {
-    "call": "Podkop-managed nfqws runtime is not running",
-    "key": "Podkop-managed nfqws runtime is not running",
+    "call": "Podkop Plus-managed nfqws runtime is not running",
+    "key": "Podkop Plus-managed nfqws runtime is not running",
     "places": [
       "src/podkop/tabs/diagnostic/checks/runZapretCheck.ts:111"
     ]
   },
   {
-    "call": "Podkop-managed nfqws runtime is ready",
-    "key": "Podkop-managed nfqws runtime is ready",
+    "call": "Podkop Plus-managed nfqws runtime is ready",
+    "key": "Podkop Plus-managed nfqws runtime is ready",
     "places": [
       "src/podkop/tabs/diagnostic/checks/runZapretCheck.ts:107"
     ]
@@ -2220,12 +2220,12 @@
     "call": "Standalone ByeDPI autostart is enabled",
     "key": "Standalone ByeDPI autostart is enabled",
     "places": [
-      "src/podkop/tabs/diagnostic/checks/runByedpiCheck.ts:155"
+      "src/podkop/tabs/diagnostic/checks/runByedpiCheck.ts:157"
     ]
   },
   {
-    "call": "Standalone ByeDPI is active together with Podkop ByeDPI rules",
-    "key": "Standalone ByeDPI is active together with Podkop ByeDPI rules",
+    "call": "Standalone ByeDPI is active together with Podkop Plus ByeDPI rules",
+    "key": "Standalone ByeDPI is active together with Podkop Plus ByeDPI rules",
     "places": [
       "src/podkop/tabs/diagnostic/checks/runByedpiCheck.ts:152"
     ]
@@ -2234,19 +2234,19 @@
     "call": "Standalone ByeDPI service is active",
     "key": "Standalone ByeDPI service is active",
     "places": [
-      "src/podkop/tabs/diagnostic/checks/runByedpiCheck.ts:153"
+      "src/podkop/tabs/diagnostic/checks/runByedpiCheck.ts:155"
     ]
   },
   {
     "call": "Standalone ByeDPI service is inactive",
     "key": "Standalone ByeDPI service is inactive",
     "places": [
-      "src/podkop/tabs/diagnostic/checks/runByedpiCheck.ts:156"
+      "src/podkop/tabs/diagnostic/checks/runByedpiCheck.ts:158"
     ]
   },
   {
-    "call": "Standalone Zapret is active together with Podkop Zapret rules",
-    "key": "Standalone Zapret is active together with Podkop Zapret rules",
+    "call": "Standalone Zapret is active together with Podkop Plus Zapret rules",
+    "key": "Standalone Zapret is active together with Podkop Plus Zapret rules",
     "places": [
       "src/podkop/tabs/diagnostic/checks/runZapretCheck.ts:125"
     ]
@@ -2255,14 +2255,14 @@
     "call": "Standalone Zapret service is active",
     "key": "Standalone Zapret service is active",
     "places": [
-      "src/podkop/tabs/diagnostic/checks/runZapretCheck.ts:126"
+      "src/podkop/tabs/diagnostic/checks/runZapretCheck.ts:128"
     ]
   },
   {
     "call": "Standalone Zapret service is inactive",
     "key": "Standalone Zapret service is inactive",
     "places": [
-      "src/podkop/tabs/diagnostic/checks/runZapretCheck.ts:127"
+      "src/podkop/tabs/diagnostic/checks/runZapretCheck.ts:129"
     ]
   },
   {
@@ -2527,15 +2527,15 @@
     ]
   },
   {
-    "call": "Unexpected Podkop-managed ciadpi runtime is running",
-    "key": "Unexpected Podkop-managed ciadpi runtime is running",
+    "call": "Unexpected Podkop Plus-managed ciadpi runtime is running",
+    "key": "Unexpected Podkop Plus-managed ciadpi runtime is running",
     "places": [
       "src/podkop/tabs/diagnostic/checks/runByedpiCheck.ts:122"
     ]
   },
   {
-    "call": "Unexpected Podkop-managed nfqws runtime is running",
-    "key": "Unexpected Podkop-managed nfqws runtime is running",
+    "call": "Unexpected Podkop Plus-managed nfqws runtime is running",
+    "key": "Unexpected Podkop Plus-managed nfqws runtime is running",
     "places": [
       "src/podkop/tabs/diagnostic/checks/runZapretCheck.ts:110"
     ]

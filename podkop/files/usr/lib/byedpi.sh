@@ -586,11 +586,11 @@ start_byedpi_runtime() {
     fi
 
     if is_byedpi_standalone_service_running; then
-        log "Stopping standalone byedpi service before starting Podkop-managed ciadpi runtime"
+        log "Stopping standalone byedpi service before starting Podkop Plus-managed ciadpi runtime"
         "$BYEDPI_SERVICE_INIT" stop >/dev/null 2>&1 || true
         sleep 1
         if is_byedpi_standalone_service_running; then
-            log "Standalone byedpi service is still running and may conflict with Podkop-managed ciadpi runtime. Aborted." "fatal"
+            log "Standalone byedpi service is still running and may conflict with Podkop Plus-managed ciadpi runtime. Aborted." "fatal"
             exit 1
         fi
     fi
@@ -797,17 +797,17 @@ get_byedpi_status_json() {
     if [ "$configured" -eq 1 ] && [ "$provider_available" -eq 0 ]; then
         status_message="action=byedpi is configured, but ciadpi is not available at $BYEDPI_BIN"
     elif [ "$configured" -eq 1 ] && [ "$standalone_service_running" -eq 1 ]; then
-        status_message="standalone byedpi service is active together with podkop action=byedpi; port conflicts are possible"
+        status_message="standalone byedpi service is active together with Podkop Plus action=byedpi; port conflicts are possible"
         conflict=1
     elif [ "$configured" -eq 1 ] && [ "$standalone_service_enabled" -eq 1 ]; then
-        status_message="standalone byedpi service autostart is enabled; disable it to avoid boot-time port conflicts with podkop action=byedpi"
+        status_message="standalone byedpi service autostart is enabled; disable it to avoid boot-time port conflicts with Podkop Plus action=byedpi"
     elif [ "${running_process_count:-0}" -gt "${expected_process_count:-0}" ] ||
         [ "${supervisor_process_count:-0}" -gt "${expected_process_count:-0}" ]; then
-        status_message="unexpected podkop-managed ciadpi processes are running without matching action=byedpi rules"
+        status_message="unexpected Podkop Plus-managed ciadpi processes are running without matching action=byedpi rules"
     elif [ "$configured" -eq 1 ] && [ "$runtime_unstable" -eq 1 ]; then
-        status_message="podkop-managed ciadpi has restarted after exiting; the ByeDPI strategy or traffic load may be unstable"
+        status_message="Podkop Plus-managed ciadpi has restarted after exiting; the ByeDPI strategy or traffic load may be unstable"
     elif [ "$configured" -eq 1 ] && [ "$ready" -eq 0 ]; then
-        status_message="action=byedpi is configured, but the podkop-managed ciadpi runtime is not ready"
+        status_message="action=byedpi is configured, but the Podkop Plus-managed ciadpi runtime is not ready"
     elif [ "$configured" -eq 0 ] && [ "$provider_available" -eq 0 ] && [ "$package_installed" -eq 1 ]; then
         status_message="byedpi package is installed, but ciadpi is not available at $BYEDPI_BIN"
     elif [ "$configured" -eq 0 ] && [ "$provider_available" -eq 0 ]; then

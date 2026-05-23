@@ -25,8 +25,9 @@ export async function executeShellCommand({
       [command, ...args].join(' '),
     );
   } catch (err) {
-    const error = err as Error;
+    const error = err as Error & { code?: unknown };
+    const code = typeof error?.code === 'number' ? error.code : 1;
 
-    return { stdout: '', stderr: error?.message, code: 0 };
+    return { stdout: '', stderr: error?.message, code };
   }
 }

@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PODKOP PLUS\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-05-23 07:37+0300\n"
-"PO-Revision-Date: 2026-05-23 07:37+0300\n"
+"POT-Creation-Date: 2026-05-23 16:32+0300\n"
+"PO-Revision-Date: 2026-05-23 16:32+0300\n"
 "Last-Translator: ushan0v\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -731,25 +731,25 @@ msgstr "Настройки Podkop Plus"
 msgid "Podkop Plus will not modify your DHCP configuration"
 msgstr "Podkop Plus не будет изменять вашу конфигурацию DHCP"
 
-msgid "Podkop-managed ciadpi runtime has restarted"
+msgid "Podkop Plus-managed ciadpi runtime has restarted"
 msgstr "ciadpi Podkop Plus перезапускался"
 
-msgid "Podkop-managed ciadpi runtime is not ready"
+msgid "Podkop Plus-managed ciadpi runtime is not ready"
 msgstr "ciadpi Podkop Plus не готов"
 
-msgid "Podkop-managed ciadpi runtime is not running"
+msgid "Podkop Plus-managed ciadpi runtime is not running"
 msgstr "ciadpi Podkop Plus не запущен"
 
-msgid "Podkop-managed ciadpi runtime is ready"
+msgid "Podkop Plus-managed ciadpi runtime is ready"
 msgstr "ciadpi Podkop Plus готов"
 
-msgid "Podkop-managed nfqws runtime is not ready"
+msgid "Podkop Plus-managed nfqws runtime is not ready"
 msgstr "NFQWS Podkop Plus не готов"
 
-msgid "Podkop-managed nfqws runtime is not running"
+msgid "Podkop Plus-managed nfqws runtime is not running"
 msgstr "NFQWS Podkop Plus не запущен"
 
-msgid "Podkop-managed nfqws runtime is ready"
+msgid "Podkop Plus-managed nfqws runtime is ready"
 msgstr "NFQWS Podkop Plus готов"
 
 msgid "Port cannot be empty"
@@ -944,7 +944,7 @@ msgstr "Укажите локальные IP-адреса или подсети,
 msgid "Standalone ByeDPI autostart is enabled"
 msgstr "Автозапуск отдельной службы ByeDPI включен"
 
-msgid "Standalone ByeDPI is active together with Podkop ByeDPI rules"
+msgid "Standalone ByeDPI is active together with Podkop Plus ByeDPI rules"
 msgstr "Отдельная служба ByeDPI активна вместе с правилами ByeDPI в Podkop Plus"
 
 msgid "Standalone ByeDPI service is active"
@@ -953,7 +953,7 @@ msgstr "Отдельная служба ByeDPI активна"
 msgid "Standalone ByeDPI service is inactive"
 msgstr "Отдельная служба ByeDPI неактивна"
 
-msgid "Standalone Zapret is active together with Podkop Zapret rules"
+msgid "Standalone Zapret is active together with Podkop Plus Zapret rules"
 msgstr "Отдельная служба Zapret активна вместе с правилами Zapret в Podkop Plus"
 
 msgid "Standalone Zapret service is active"
@@ -1073,10 +1073,10 @@ msgstr "Не удалось проверить стратегию NFQWS чере
 msgid "Unexpected ByeDPI strategy argument: %s"
 msgstr "Неожиданный аргумент стратегии ByeDPI: %s"
 
-msgid "Unexpected Podkop-managed ciadpi runtime is running"
+msgid "Unexpected Podkop Plus-managed ciadpi runtime is running"
 msgstr "Обнаружен лишний ciadpi Podkop Plus"
 
-msgid "Unexpected Podkop-managed nfqws runtime is running"
+msgid "Unexpected Podkop Plus-managed nfqws runtime is running"
 msgstr "Обнаружен лишний NFQWS Podkop Plus"
 
 msgid "Unexpected standalone token. Use explicit flags such as --name or --name=value."

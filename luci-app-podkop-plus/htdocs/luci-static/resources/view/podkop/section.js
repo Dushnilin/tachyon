@@ -2500,7 +2500,7 @@ function createSectionContent(section) {
     ),
   );
   o.depends("action", "byedpi");
-  o.rows = 5;
+  o.rows = 6;
   o.wrap = "soft";
   o.textarea = true;
   o.modalonly = true;

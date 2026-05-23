@@ -137,7 +137,7 @@ export const PodkopShellMethods = {
       timeout: SUBSCRIPTION_UPDATE_TIMEOUT_MS,
     });
 
-    if (response.stderr || (response.code && response.code !== 0)) {
+    if ((response.code ?? 0) !== 0) {
       return {
         success: false,
         error: response.stderr || _('Subscription update failed'),
