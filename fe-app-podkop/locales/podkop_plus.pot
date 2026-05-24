@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PODKOP PLUS\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-05-23 21:44+0300\n"
-"PO-Revision-Date: 2026-05-23 21:44+0300\n"
+"POT-Creation-Date: 2026-05-24 01:10+0300\n"
+"PO-Revision-Date: 2026-05-24 01:10+0300\n"
 "Last-Translator: ushan0v <ushanov2204@gmail.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -36,7 +36,7 @@ msgstr ""
 msgid "Action"
 msgstr ""
 
-#: src/podkop/tabs/monitoring/initController.ts:497
+#: src/podkop/tabs/monitoring/initController.ts:501
 #: src/podkop/tabs/monitoring/render.ts:20
 msgid "Active"
 msgstr ""
@@ -65,7 +65,7 @@ msgstr ""
 msgid "Additional marking rules found"
 msgstr ""
 
-#: src/podkop/tabs/monitoring/initController.ts:460
+#: src/podkop/tabs/monitoring/initController.ts:464
 #: src/podkop/tabs/monitoring/render.ts:39
 msgid "All"
 msgstr ""
@@ -211,7 +211,7 @@ msgstr ""
 msgid "Cannot receive checks result"
 msgstr ""
 
-#: src/podkop/tabs/updates/initController.ts:192
+#: src/podkop/tabs/updates/initController.ts:269
 msgid "Check update"
 msgstr ""
 
@@ -254,8 +254,8 @@ msgid "CIDR must be between 0 and 32"
 msgstr ""
 
 #: src/partials/modal/renderModal.ts:195
-#: src/podkop/tabs/monitoring/initController.ts:641
-#: src/podkop/tabs/monitoring/initController.ts:693
+#: src/podkop/tabs/monitoring/initController.ts:645
+#: src/podkop/tabs/monitoring/initController.ts:695
 msgid "Close"
 msgstr ""
 
@@ -264,27 +264,28 @@ msgstr ""
 msgid "Close all connections"
 msgstr ""
 
-#: src/podkop/tabs/monitoring/initController.ts:608
-#: src/podkop/tabs/monitoring/initController.ts:609
+#: src/podkop/tabs/monitoring/initController.ts:612
+#: src/podkop/tabs/monitoring/initController.ts:613
 msgid "Close connection"
 msgstr ""
 
-#: src/podkop/tabs/monitoring/initController.ts:503
+#: src/podkop/tabs/monitoring/initController.ts:507
 #: src/podkop/tabs/monitoring/render.ts:29
 msgid "Closed"
 msgstr ""
 
-#: src/podkop/tabs/updates/initController.ts:166
+#: src/podkop/tabs/updates/initController.ts:235
+#: src/podkop/tabs/updates/initController.ts:243
 msgid "Component action completed"
 msgstr ""
 
-#: src/podkop/methods/shell/index.ts:37
-#: src/podkop/tabs/updates/initController.ts:141
-#: src/podkop/tabs/updates/initController.ts:171
+#: src/podkop/methods/shell/index.ts:59
+#: src/podkop/tabs/updates/initController.ts:206
+#: src/podkop/tabs/updates/initController.ts:248
 msgid "Component action failed"
 msgstr ""
 
-#: src/podkop/methods/shell/index.ts:241
+#: src/podkop/methods/shell/index.ts:255
 msgid "Component action timed out"
 msgstr ""
 
@@ -304,7 +305,7 @@ msgstr ""
 msgid "Connection URL"
 msgstr ""
 
-#: src/podkop/tabs/monitoring/initController.ts:746
+#: src/podkop/tabs/monitoring/initController.ts:748
 msgid "Connections are unavailable"
 msgstr ""
 
@@ -341,7 +342,7 @@ msgstr ""
 msgid "Detect server country"
 msgstr ""
 
-#: src/podkop/tabs/updates/initController.ts:63
+#: src/podkop/tabs/updates/initController.ts:60
 msgid "Dev"
 msgstr ""
 
@@ -360,7 +361,7 @@ msgstr ""
 
 #: ../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/ruleset.js:66
 #: ../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/ruleset.js:73
-#: src/podkop/tabs/monitoring/initController.ts:115
+#: src/podkop/tabs/monitoring/initController.ts:119
 msgid "Direct"
 msgstr ""
 
@@ -471,8 +472,8 @@ msgstr ""
 msgid "Download Node"
 msgstr ""
 
-#: src/podkop/tabs/monitoring/initController.ts:634
-#: src/podkop/tabs/monitoring/initController.ts:690
+#: src/podkop/tabs/monitoring/initController.ts:638
+#: src/podkop/tabs/monitoring/initController.ts:692
 msgid "Downloaded"
 msgstr ""
 
@@ -579,13 +580,13 @@ msgstr ""
 msgid "External nfqws config files bypass Podkop Plus queue management and explicit validation."
 msgstr ""
 
-#: src/podkop/tabs/monitoring/initController.ts:905
-#: src/podkop/tabs/monitoring/initController.ts:920
+#: src/podkop/tabs/monitoring/initController.ts:1010
+#: src/podkop/tabs/monitoring/initController.ts:1025
 msgid "Failed to close connection"
 msgstr ""
 
-#: src/podkop/tabs/monitoring/initController.ts:939
-#: src/podkop/tabs/monitoring/initController.ts:952
+#: src/podkop/tabs/monitoring/initController.ts:1044
+#: src/podkop/tabs/monitoring/initController.ts:1057
 msgid "Failed to close connections"
 msgstr ""
 
@@ -629,8 +630,8 @@ msgstr ""
 msgid "Global check"
 msgstr ""
 
-#: src/podkop/tabs/monitoring/initController.ts:624
-#: src/podkop/tabs/monitoring/initController.ts:686
+#: src/podkop/tabs/monitoring/initController.ts:628
+#: src/podkop/tabs/monitoring/initController.ts:688
 msgid "Host"
 msgstr ""
 
@@ -654,21 +655,25 @@ msgstr ""
 msgid "Include server in URLTest"
 msgstr ""
 
-#: src/podkop/tabs/updates/initController.ts:183
-#: src/podkop/tabs/updates/initController.ts:262
-#: src/podkop/tabs/updates/initController.ts:287
+#: src/podkop/tabs/updates/initController.ts:76
+#: src/podkop/tabs/updates/initController.ts:344
+#: src/podkop/tabs/updates/initController.ts:373
 msgid "Install"
 msgstr ""
 
-#: src/podkop/tabs/updates/initController.ts:214
+#: src/podkop/tabs/updates/initController.ts:73
+msgid "Install %s"
+msgstr ""
+
+#: src/podkop/tabs/updates/initController.ts:292
 msgid "Install extended"
 msgstr ""
 
-#: src/podkop/tabs/updates/initController.ts:207
+#: src/podkop/tabs/updates/initController.ts:285
 msgid "Install stable"
 msgstr ""
 
-#: src/podkop/tabs/updates/initController.ts:115
+#: src/podkop/tabs/updates/initController.ts:128
 msgid "Installed version is newer than upstream release"
 msgstr ""
 
@@ -892,7 +897,7 @@ msgstr ""
 msgid "Keyword must not contain spaces"
 msgstr ""
 
-#: src/podkop/tabs/updates/initController.ts:56
+#: src/podkop/tabs/updates/initController.ts:53
 msgid "Latest"
 msgstr ""
 
@@ -904,7 +909,7 @@ msgstr ""
 msgid "List Update Frequency"
 msgstr ""
 
-#: src/podkop/tabs/monitoring/initController.ts:736
+#: src/podkop/tabs/monitoring/initController.ts:738
 #: src/podkop/tabs/monitoring/render.ts:88
 msgid "Loading connections"
 msgstr ""
@@ -993,11 +998,11 @@ msgstr ""
 msgid "NFQWS strategy cannot be empty"
 msgstr ""
 
-#: src/podkop/tabs/monitoring/initController.ts:760
+#: src/podkop/tabs/monitoring/initController.ts:762
 msgid "No active connections"
 msgstr ""
 
-#: src/podkop/tabs/monitoring/initController.ts:761
+#: src/podkop/tabs/monitoring/initController.ts:763
 msgid "No closed connections"
 msgstr ""
 
@@ -1017,9 +1022,9 @@ msgstr ""
 msgid "Not implement yet"
 msgstr ""
 
-#: src/podkop/tabs/updates/initController.ts:232
-#: src/podkop/tabs/updates/initController.ts:246
-#: src/podkop/tabs/updates/initController.ts:271
+#: src/podkop/tabs/updates/initController.ts:310
+#: src/podkop/tabs/updates/initController.ts:328
+#: src/podkop/tabs/updates/initController.ts:357
 msgid "Not installed"
 msgstr ""
 
@@ -1072,7 +1077,7 @@ msgstr ""
 msgid "Outbound JSON cannot be empty"
 msgstr ""
 
-#: src/podkop/tabs/updates/initController.ts:60
+#: src/podkop/tabs/updates/initController.ts:57
 msgid "Outdated"
 msgstr ""
 
@@ -1100,7 +1105,7 @@ msgstr ""
 msgid "Path must end with cache.db"
 msgstr ""
 
-#: src/podkop/tabs/monitoring/initController.ts:516
+#: src/podkop/tabs/monitoring/initController.ts:520
 #: src/podkop/tabs/monitoring/render.ts:70
 #: src/podkop/tabs/monitoring/render.ts:71
 msgid "Pause updates"
@@ -1198,8 +1203,8 @@ msgstr ""
 msgid "Remote URL to a sing-box rule set"
 msgstr ""
 
-#: src/podkop/tabs/updates/initController.ts:253
-#: src/podkop/tabs/updates/initController.ts:278
+#: src/podkop/tabs/updates/initController.ts:335
+#: src/podkop/tabs/updates/initController.ts:364
 msgid "Remove"
 msgstr ""
 
@@ -1227,12 +1232,12 @@ msgstr ""
 msgid "Restart Podkop Plus"
 msgstr ""
 
-#: src/podkop/tabs/monitoring/initController.ts:516
+#: src/podkop/tabs/monitoring/initController.ts:520
 msgid "Resume updates"
 msgstr ""
 
-#: src/podkop/tabs/monitoring/initController.ts:628
-#: src/podkop/tabs/monitoring/initController.ts:688
+#: src/podkop/tabs/monitoring/initController.ts:632
+#: src/podkop/tabs/monitoring/initController.ts:690
 msgid "Route"
 msgstr ""
 
@@ -1418,8 +1423,8 @@ msgstr ""
 msgid "Sing-box version is compatible (newer than 1.12.4)"
 msgstr ""
 
-#: src/podkop/tabs/monitoring/initController.ts:640
-#: src/podkop/tabs/monitoring/initController.ts:692
+#: src/podkop/tabs/monitoring/initController.ts:644
+#: src/podkop/tabs/monitoring/initController.ts:694
 msgid "Source"
 msgstr ""
 
@@ -1487,7 +1492,7 @@ msgstr ""
 msgid "Subscription update completed"
 msgstr ""
 
-#: src/podkop/methods/shell/index.ts:259
+#: src/podkop/methods/shell/index.ts:273
 msgid "Subscription update failed"
 msgstr ""
 
@@ -1531,7 +1536,7 @@ msgstr ""
 msgid "The DNS server used to look up the IP address of an upstream DNS server"
 msgstr ""
 
-#: src/podkop/tabs/updates/initController.ts:118
+#: src/podkop/tabs/updates/initController.ts:131
 msgid "The latest version is installed"
 msgstr ""
 
@@ -1567,8 +1572,8 @@ msgstr ""
 msgid "This option requires a value."
 msgstr ""
 
-#: src/podkop/tabs/monitoring/initController.ts:631
-#: src/podkop/tabs/monitoring/initController.ts:689
+#: src/podkop/tabs/monitoring/initController.ts:635
+#: src/podkop/tabs/monitoring/initController.ts:691
 msgid "Time"
 msgstr ""
 
@@ -1602,8 +1607,8 @@ msgid "TTL value cannot be empty"
 msgstr ""
 
 #: ../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/ruleset.js:15
-#: src/podkop/tabs/monitoring/initController.ts:625
-#: src/podkop/tabs/monitoring/initController.ts:687
+#: src/podkop/tabs/monitoring/initController.ts:629
+#: src/podkop/tabs/monitoring/initController.ts:689
 msgid "Type"
 msgstr ""
 
@@ -1652,6 +1657,7 @@ msgstr ""
 #: src/podkop/services/systemInfo.service.ts:16
 #: src/podkop/services/systemInfo.service.ts:18
 #: src/podkop/services/systemInfo.service.ts:19
+#: src/podkop/tabs/updates/initController.ts:148
 msgid "unknown"
 msgstr ""
 
@@ -1677,7 +1683,7 @@ msgstr ""
 msgid "Update interval"
 msgstr ""
 
-#: src/podkop/tabs/updates/initController.ts:111
+#: src/podkop/tabs/updates/initController.ts:124
 msgid "Update is available"
 msgstr ""
 
@@ -1695,8 +1701,8 @@ msgstr ""
 msgid "Uplink"
 msgstr ""
 
-#: src/podkop/tabs/monitoring/initController.ts:637
-#: src/podkop/tabs/monitoring/initController.ts:691
+#: src/podkop/tabs/monitoring/initController.ts:641
+#: src/podkop/tabs/monitoring/initController.ts:693
 msgid "Uploaded"
 msgstr ""
 
@@ -1763,7 +1769,7 @@ msgstr ""
 msgid "Validation errors:"
 msgstr ""
 
-#: src/podkop/tabs/updates/initController.ts:343
+#: src/podkop/tabs/updates/initController.ts:430
 msgid "Version"
 msgstr ""
 

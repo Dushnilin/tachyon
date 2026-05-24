@@ -455,6 +455,9 @@ msgstr "Включить сервер в URLTest"
 msgid "Install"
 msgstr "Установить"
 
+msgid "Install %s"
+msgstr "Установить %s"
+
 msgid "Install extended"
 msgstr "Установить extended"
 

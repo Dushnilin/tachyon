@@ -10,6 +10,8 @@ export const PODKOP_LUCI_VIEW_DIR = `/www/luci-static/resources/view/${PODKOP_LU
 export const PODKOP_LUCI_I18N_DOMAIN = 'podkop_plus';
 export const PODKOP_CBI_PREFIX = PODKOP_UCI_PACKAGE;
 export const PODKOP_LUCI_APP_VERSION = '__COMPILED_VERSION_VARIABLE__';
+export const PODKOP_ACTION_PROVIDERS_AVAILABILITY_EVENT =
+  'podkop:action-providers-availability';
 export const FAKEIP_CHECK_DOMAIN = 'fakeip.podkop.fyi';
 export const IP_CHECK_DOMAIN = 'ip.podkop.fyi';
 

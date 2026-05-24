@@ -9,6 +9,9 @@
 "require view.podkop_plus.main as main";
 
 const UCI_PACKAGE = main.PODKOP_UCI_PACKAGE;
+const ACTION_PROVIDERS_AVAILABILITY_EVENT =
+  main.PODKOP_ACTION_PROVIDERS_AVAILABILITY_EVENT ||
+  "podkop:action-providers-availability";
 
 function valuesToText(values) {
   if (!values) {
@@ -257,6 +260,55 @@ const REGION_NAME_FALLBACKS = {
   XK: "Kosovo",
 };
 let regionDisplayNamesCache = {};
+
+function updateActionProvidersAvailabilityState(nextState) {
+  if (!nextState) {
+    return;
+  }
+
+  actionProvidersAvailabilityState.loaded = true;
+
+  if (typeof nextState.zapretInstalled !== "undefined") {
+    actionProvidersAvailabilityState.zapretInstalled = Boolean(
+      nextState.zapretInstalled,
+    );
+  }
+
+  if (typeof nextState.byedpiInstalled !== "undefined") {
+    actionProvidersAvailabilityState.byedpiInstalled = Boolean(
+      nextState.byedpiInstalled,
+    );
+  }
+
+  actionProvidersAvailabilityPromise = null;
+}
+
+function updateActionProvidersAvailabilityFromSystemInfo(systemInfo) {
+  if (!systemInfo || !systemInfo.providerInfoLoaded) {
+    return;
+  }
+
+  updateActionProvidersAvailabilityState({
+    zapretInstalled: Boolean(systemInfo.zapret_installed),
+    byedpiInstalled: Boolean(systemInfo.byedpi_installed),
+  });
+}
+
+if (typeof window !== "undefined") {
+  window.addEventListener(ACTION_PROVIDERS_AVAILABILITY_EVENT, (event) => {
+    updateActionProvidersAvailabilityState(event.detail);
+  });
+}
+
+if (main.store && typeof main.store.subscribe === "function") {
+  main.store.subscribe((next, _prev, diff) => {
+    if (!diff || diff.diagnosticsSystemInfo) {
+      updateActionProvidersAvailabilityFromSystemInfo(
+        next.diagnosticsSystemInfo,
+      );
+    }
+  });
+}
 
 function getLuciLanguage() {
   if (typeof L !== "undefined" && L.env && L.env.lang) {
