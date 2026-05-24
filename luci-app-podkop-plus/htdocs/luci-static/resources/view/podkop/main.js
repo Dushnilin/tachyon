@@ -578,6 +578,7 @@ var PODKOP_LUCI_VIEW_DIR = `/www/luci-static/resources/view/${PODKOP_LUCI_VIEW_N
 var PODKOP_LUCI_I18N_DOMAIN = "podkop_plus";
 var PODKOP_CBI_PREFIX = PODKOP_UCI_PACKAGE;
 var PODKOP_LUCI_APP_VERSION = "__COMPILED_VERSION_VARIABLE__";
+var PODKOP_ACTION_PROVIDERS_AVAILABILITY_EVENT = "podkop:action-providers-availability";
 var FAKEIP_CHECK_DOMAIN = "fakeip.podkop.fyi";
 var IP_CHECK_DOMAIN = "ip.podkop.fyi";
 var REGIONAL_OPTIONS = [
@@ -8241,6 +8242,13 @@ function shouldShowInstallAfterCheck(component) {
   const status = store.get().updatesChecks[component].status;
   return status === "outdated" || status === "dev";
 }
+function getInstallActionText(component) {
+  const checkResult = store.get().updatesChecks[component];
+  if (shouldShowInstallAfterCheck(component) && checkResult.latest_version) {
+    return _("Install %s").replace("%s", checkResult.latest_version);
+  }
+  return _("Install");
+}
 function isAnyActionLoading() {
   return Object.values(store.get().updatesActions).some((item) => item.loading);
 }
@@ -8284,6 +8292,19 @@ function getCheckToastMessage(status) {
 async function refreshSystemInfoAfterMutation() {
   await ensureSystemInfo({ force: true, silent: true });
 }
+function notifyActionProvidersAvailabilityChanged(systemInfo) {
+  if (typeof window === "undefined" || typeof CustomEvent === "undefined") {
+    return;
+  }
+  window.dispatchEvent(
+    new CustomEvent(PODKOP_ACTION_PROVIDERS_AVAILABILITY_EVENT, {
+      detail: {
+        zapretInstalled: Boolean(systemInfo.zapret_installed),
+        byedpiInstalled: Boolean(systemInfo.byedpi_installed)
+      }
+    })
+  );
+}
 function reloadPageAfterPodkopUpdate() {
   window.setTimeout(() => {
     window.location.reload();
@@ -8306,6 +8327,7 @@ function patchSystemInfoAfterMutation(result) {
     }
   }
   if (result.component === "zapret") {
+    nextSystemInfo.providerInfoLoaded = true;
     if (result.action === "remove") {
       nextSystemInfo.zapret_installed = 0;
       nextSystemInfo.zapret_version = "not installed";
@@ -8315,6 +8337,7 @@ function patchSystemInfoAfterMutation(result) {
     }
   }
   if (result.component === "byedpi") {
+    nextSystemInfo.providerInfoLoaded = true;
     if (result.action === "remove") {
       nextSystemInfo.byedpi_installed = 0;
       nextSystemInfo.byedpi_version = "not installed";
@@ -8326,6 +8349,9 @@ function patchSystemInfoAfterMutation(result) {
   store.set({
     diagnosticsSystemInfo: nextSystemInfo
   });
+  if (result.component === "zapret" || result.component === "byedpi") {
+    notifyActionProvidersAvailabilityChanged(nextSystemInfo);
+  }
 }
 async function handleComponentAction(button) {
   if (isAnyActionLoading()) {
@@ -8380,7 +8406,7 @@ function getPrimaryUpdateAction(component, checkKey, installKey) {
   if (shouldShowInstallAfterCheck(component)) {
     return {
       key: installKey,
-      text: _("Install"),
+      text: getInstallActionText(component),
       icon: renderRotateCcwIcon24,
       component,
       action: "install"
@@ -9063,6 +9089,7 @@ return baseclass.extend({
   IP_CHECK_DOMAIN,
   Logger,
   MonitoringTab,
+  PODKOP_ACTION_PROVIDERS_AVAILABILITY_EVENT,
   PODKOP_CBI_PREFIX,
   PODKOP_LUCI_APP_VERSION,
   PODKOP_LUCI_I18N_DOMAIN,

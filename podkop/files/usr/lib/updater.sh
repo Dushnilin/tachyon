@@ -21,6 +21,7 @@ UPDATES_SING_BOX_EXTENDED_ASSET_NAME=""
 UPDATES_JOB_DIR="/var/run/podkop-plus/component-actions"
 UPDATES_LOCK_DIR="/var/run/podkop-plus/component-action.lock"
 UPDATES_LOCK_HELD=0
+UPDATES_PODKOP_WAS_RUNNING=0
 
 updates_log() {
     local message="$1"
@@ -629,10 +630,25 @@ updates_clear_version_caches() {
     rm -f /tmp/podkop-plus/system-info.json
 }
 
+updates_capture_podkop_running_state() {
+    UPDATES_PODKOP_WAS_RUNNING=0
+
+    [ -x "$PODKOP_SERVICE_INIT" ] || return 0
+
+    if "$PODKOP_SERVICE_INIT" status >/dev/null 2>&1; then
+        UPDATES_PODKOP_WAS_RUNNING=1
+    fi
+}
+
 updates_restart_podkop_after_successful_change() {
     local waited=0
 
     [ -x "$PODKOP_SERVICE_INIT" ] || return 0
+
+    if [ "$UPDATES_PODKOP_WAS_RUNNING" != "1" ]; then
+        updates_log "Podkop Plus was not running before component change; restart skipped"
+        return 0
+    fi
 
     updates_log_command "Restarting Podkop Plus after successful component change" "$PODKOP_SERVICE_INIT" restart || true
 
@@ -1350,6 +1366,7 @@ repo="$1"
 latest_version="$2"
 current_version="$3"
 action="${4:-install}"
+podkop_was_running="${5:-1}"
 tmp_dir="$(mktemp -d /tmp/podkop-plus-self-update.XXXXXX 2>/dev/null || true)"
 [ -n "$tmp_dir" ] || tmp_dir="/tmp/podkop-plus-self-update.$$"
 mkdir -p "$tmp_dir" || exit 1
@@ -1437,7 +1454,7 @@ if [ "$status" -ne 0 ]; then
     exit "$status"
 fi
 
-if [ -x /etc/init.d/podkop-plus ]; then
+if [ "$podkop_was_running" = "1" ] && [ -x /etc/init.d/podkop-plus ]; then
     log_line "Restarting Podkop Plus after successful component change" "info"
     /etc/init.d/podkop-plus restart >/dev/null 2>&1 || log_line "Podkop Plus restart command failed" "warn"
     waited=0
@@ -1449,6 +1466,8 @@ if [ -x /etc/init.d/podkop-plus ]; then
         sleep 1
         waited=$((waited + 1))
     done
+else
+    log_line "Podkop Plus was not running before component change; restart skipped" "info"
 fi
 
 new_version="$(/usr/bin/podkop-plus show_version 2>/dev/null || true)"
@@ -1459,7 +1478,7 @@ exit 0
 EOF
 
     chmod 0755 "$runner" || updates_fail "podkop" "$action" "Failed to prepare update runner" "$PODKOP_VERSION" "$latest_version"
-    exec sh "$runner" "$PODKOP_RELEASE_REPO" "$latest_version" "$PODKOP_VERSION" "$action"
+    exec sh "$runner" "$PODKOP_RELEASE_REPO" "$latest_version" "$PODKOP_VERSION" "$action" "$UPDATES_PODKOP_WAS_RUNNING"
 }
 
 updates_check_podkop_plus() {
@@ -1534,6 +1553,7 @@ component_action() {
     trap updates_component_action_cleanup EXIT HUP INT TERM
 
     updates_acquire_component_lock || updates_fail "${component:-unknown}" "${action:-unknown}" "Another component action is already running"
+    updates_capture_podkop_running_state
 
     case "$component:$action" in
     podkop:check_update)
