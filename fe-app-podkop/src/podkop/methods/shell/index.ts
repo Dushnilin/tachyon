@@ -56,7 +56,7 @@ function componentActionFailure(
     error:
       parsedResponse?.message ||
       response.stderr ||
-      _('Component action failed'),
+      _('Failed to execute'),
   } as Podkop.MethodFailureResponse;
 }
 
@@ -252,7 +252,7 @@ export const PodkopShellMethods = {
 
     return {
       success: false,
-      error: _('Component action timed out'),
+      error: _('Operation timed out'),
     } as Podkop.MethodFailureResponse;
   },
   subscriptionUpdate: async (section?: string, sourceIndex?: number) => {

@@ -127,11 +127,13 @@ function setDisplayedPodkopRunning(running: boolean) {
 async function refreshDiagnosticServicesInfo({
   force = false,
   mountId = diagnosticMountId,
+  allowInactive = false,
 }: {
   force?: boolean;
   mountId?: number;
+  allowInactive?: boolean;
 } = {}) {
-  if (!isDiagnosticMountActive(mountId)) {
+  if (!allowInactive && !isDiagnosticMountActive(mountId)) {
     return;
   }
 
@@ -161,14 +163,11 @@ async function refreshDiagnosticServicesInfo({
   return promise;
 }
 
-async function waitForPodkopRunningState(
-  expectedRunning: boolean,
-  mountId: number,
-) {
+async function waitForPodkopRunningState(expectedRunning: boolean) {
   const startedAt = Date.now();
 
-  while (isDiagnosticMountActive(mountId)) {
-    await refreshDiagnosticServicesInfo({ force: true, mountId });
+  while (Date.now() - startedAt < SERVICE_ACTION_STATUS_TIMEOUT_MS) {
+    await refreshDiagnosticServicesInfo({ force: true, allowInactive: true });
 
     const podkopRunning = Boolean(
       store.get().servicesInfoWidget.data.podkopRunning,
@@ -176,10 +175,6 @@ async function waitForPodkopRunningState(
 
     if (podkopRunning === expectedRunning) {
       return true;
-    }
-
-    if (Date.now() - startedAt >= SERVICE_ACTION_STATUS_TIMEOUT_MS) {
-      return false;
     }
 
     await sleep(SERVICE_STATUS_REFRESH_INTERVAL_MS);
@@ -336,7 +331,7 @@ async function handleServiceRuntimeAction({
   expectedRunning: boolean;
   optimisticRunning?: boolean;
 }) {
-  const mountId = diagnosticMountId;
+  const actionMountId = diagnosticMountId;
 
   setDiagnosticActionLoading(action, true);
 
@@ -347,12 +342,10 @@ async function handleServiceRuntimeAction({
   try {
     await command();
 
-    const reachedExpectedState = await waitForPodkopRunningState(
-      expectedRunning,
-      mountId,
-    );
+    const reachedExpectedState =
+      await waitForPodkopRunningState(expectedRunning);
 
-    if (!reachedExpectedState && isDiagnosticMountActive(mountId)) {
+    if (!reachedExpectedState && isDiagnosticMountActive(actionMountId)) {
       logger.error(
         '[DIAGNOSTIC]',
         `${action} did not reach expected running state`,
@@ -362,10 +355,8 @@ async function handleServiceRuntimeAction({
   } catch (e) {
     logger.error('[DIAGNOSTIC]', `handleServiceRuntimeAction(${action})`, e);
   } finally {
-    if (isDiagnosticMountActive(mountId)) {
-      setDiagnosticActionLoading(action, false);
-      resetDiagnosticsChecks();
-    }
+    setDiagnosticActionLoading(action, false);
+    resetDiagnosticsChecks();
   }
 }
 
@@ -395,8 +386,6 @@ async function handleStop() {
 }
 
 async function handleEnable() {
-  const mountId = diagnosticMountId;
-
   setDiagnosticActionLoading('enable', true);
 
   try {
@@ -404,17 +393,15 @@ async function handleEnable() {
   } catch (e) {
     logger.error('[DIAGNOSTIC]', 'handleEnable - e', e);
   } finally {
-    await refreshDiagnosticServicesInfo({ force: true, mountId });
-
-    if (isDiagnosticMountActive(mountId)) {
-      setDiagnosticActionLoading('enable', false);
-    }
+    await refreshDiagnosticServicesInfo({
+      force: true,
+      allowInactive: true,
+    });
+    setDiagnosticActionLoading('enable', false);
   }
 }
 
 async function handleDisable() {
-  const mountId = diagnosticMountId;
-
   setDiagnosticActionLoading('disable', true);
 
   try {
@@ -422,11 +409,11 @@ async function handleDisable() {
   } catch (e) {
     logger.error('[DIAGNOSTIC]', 'handleDisable - e', e);
   } finally {
-    await refreshDiagnosticServicesInfo({ force: true, mountId });
-
-    if (isDiagnosticMountActive(mountId)) {
-      setDiagnosticActionLoading('disable', false);
-    }
+    await refreshDiagnosticServicesInfo({
+      force: true,
+      allowInactive: true,
+    });
+    setDiagnosticActionLoading('disable', false);
   }
 }
 
@@ -785,7 +772,7 @@ function onPageUnmount() {
   store.unsubscribe(onStoreUpdate);
 
   // Clear store
-  store.reset(['diagnosticsActions', 'diagnosticsRunAction']);
+  store.reset(['diagnosticsRunAction']);
   resetDiagnosticsChecks();
 }
 

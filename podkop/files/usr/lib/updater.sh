@@ -217,7 +217,7 @@ updates_write_finished_job_state() {
     rm -f "$json_file"
 
     raw_output="$(tr '\n' ' ' <"$output_file" 2>/dev/null | cut -c1-240)"
-    [ -n "$raw_output" ] || raw_output="Component action failed"
+    [ -n "$raw_output" ] || raw_output="Failed to execute"
 
     jq -cn \
         --argjson success false \
@@ -577,7 +577,7 @@ updates_check_success_compared() {
 
     case "$status" in
     latest)
-        message="The latest version is installed"
+        message="Latest version is installed"
         updates_log "$component is up to date ($current_version)"
         ;;
     outdated)
@@ -585,7 +585,7 @@ updates_check_success_compared() {
         updates_log "$component update is available: $current_version -> $latest_version"
         ;;
     dev)
-        message="Installed version is newer than upstream release"
+        message="Installed version is newer than release"
         updates_log "$component installed version is newer than upstream release: $current_version -> $latest_version"
         ;;
     esac
@@ -641,8 +641,6 @@ updates_capture_podkop_running_state() {
 }
 
 updates_restart_podkop_after_successful_change() {
-    local waited=0
-
     [ -x "$PODKOP_SERVICE_INIT" ] || return 0
 
     if [ "$UPDATES_PODKOP_WAS_RUNNING" != "1" ]; then
@@ -651,17 +649,6 @@ updates_restart_podkop_after_successful_change() {
     fi
 
     updates_log_command "Restarting Podkop Plus after successful component change" "$PODKOP_SERVICE_INIT" restart || true
-
-    while [ "$waited" -lt 60 ]; do
-        if "$PODKOP_SERVICE_INIT" status >/dev/null 2>&1; then
-            return 0
-        fi
-
-        sleep 1
-        waited=$((waited + 1))
-    done
-
-    updates_log "Podkop Plus did not report running after component change restart" "warn"
 }
 
 updates_append_arch_candidate() {
@@ -1457,15 +1444,6 @@ fi
 if [ "$podkop_was_running" = "1" ] && [ -x /etc/init.d/podkop-plus ]; then
     log_line "Restarting Podkop Plus after successful component change" "info"
     /etc/init.d/podkop-plus restart >/dev/null 2>&1 || log_line "Podkop Plus restart command failed" "warn"
-    waited=0
-    while [ "$waited" -lt 60 ]; do
-        if /etc/init.d/podkop-plus status >/dev/null 2>&1; then
-            break
-        fi
-
-        sleep 1
-        waited=$((waited + 1))
-    done
 else
     log_line "Podkop Plus was not running before component change; restart skipped" "info"
 fi
@@ -1499,7 +1477,7 @@ updates_check_podkop_plus() {
 
     if ! is_podkop_release_version "$PODKOP_VERSION"; then
         updates_log "Podkop Plus current version is not a release version ($PODKOP_VERSION)"
-        updates_success "podkop" "check_update" "Installed version is newer than upstream release" "$PODKOP_VERSION" "$latest_version" 0 "dev"
+        updates_success "podkop" "check_update" "Installed version is newer than release" "$PODKOP_VERSION" "$latest_version" 0 "dev"
     fi
 
     compare_result="$(podkop_release_version_compare "$PODKOP_VERSION" "$latest_version" 2>/dev/null || true)"
@@ -1510,7 +1488,7 @@ updates_check_podkop_plus() {
     status="$(updates_status_from_compare "$compare_result")" || updates_fail "podkop" "check_update" "Failed to compare Podkop Plus versions" "$PODKOP_VERSION" "$latest_version"
     case "$status" in
     latest)
-        message="The latest version is installed"
+        message="Latest version is installed"
         updates_log "Podkop Plus is already up to date ($PODKOP_VERSION)"
         ;;
     outdated)
@@ -1518,7 +1496,7 @@ updates_check_podkop_plus() {
         updates_log "Podkop Plus update found: $PODKOP_VERSION -> $latest_version"
         ;;
     dev)
-        message="Installed version is newer than upstream release"
+        message="Installed version is newer than release"
         updates_log "Podkop Plus installed version is newer than upstream release: $PODKOP_VERSION -> $latest_version"
         ;;
     esac
