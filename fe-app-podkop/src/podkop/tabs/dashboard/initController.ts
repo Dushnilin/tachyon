@@ -51,7 +51,6 @@ async function fetchDashboardSectionsOnce(mountId: number) {
     store.set({
       sectionsWidget: {
         ...current,
-        latencyFetching: false,
         loading: false,
         failed: false,
         data,
@@ -71,7 +70,6 @@ async function fetchDashboardSectionsOnce(mountId: number) {
     store.set({
       sectionsWidget: {
         ...current,
-        latencyFetching: false,
         loading: false,
         failed: current.data.length === 0,
         data: current.data,
@@ -154,6 +152,26 @@ function setSelectorSwitching(sectionName: string, tag?: string) {
     sectionsWidget: {
       ...sectionsWidget,
       selectorSwitchingSections,
+    },
+  });
+}
+
+function setLatencyFetching(sectionName: string, fetching: boolean) {
+  const sectionsWidget = store.get().sectionsWidget;
+  const latencyFetchingSections = {
+    ...sectionsWidget.latencyFetchingSections,
+  };
+
+  if (fetching) {
+    latencyFetchingSections[sectionName] = true;
+  } else {
+    delete latencyFetchingSections[sectionName];
+  }
+
+  store.set({
+    sectionsWidget: {
+      ...sectionsWidget,
+      latencyFetchingSections,
     },
   });
 }
@@ -271,42 +289,34 @@ async function handleChooseOutbound(
   }
 }
 
-async function handleTestGroupLatency(tag: string) {
-  store.set({
-    sectionsWidget: {
-      ...store.get().sectionsWidget,
-      latencyFetching: true,
-    },
-  });
+async function handleTestGroupLatency(sectionName: string, tag: string) {
+  if (store.get().sectionsWidget.latencyFetchingSections[sectionName]) {
+    return;
+  }
 
-  await PodkopShellMethods.getClashApiGroupLatency(tag);
-  await fetchDashboardSections({ force: true });
+  setLatencyFetching(sectionName, true);
 
-  store.set({
-    sectionsWidget: {
-      ...store.get().sectionsWidget,
-      latencyFetching: false,
-    },
-  });
+  try {
+    await PodkopShellMethods.getClashApiGroupLatency(tag);
+    await fetchDashboardSections({ force: true });
+  } finally {
+    setLatencyFetching(sectionName, false);
+  }
 }
 
-async function handleTestProxyLatency(tag: string) {
-  store.set({
-    sectionsWidget: {
-      ...store.get().sectionsWidget,
-      latencyFetching: true,
-    },
-  });
+async function handleTestProxyLatency(sectionName: string, tag: string) {
+  if (store.get().sectionsWidget.latencyFetchingSections[sectionName]) {
+    return;
+  }
 
-  await PodkopShellMethods.getClashApiProxyLatency(tag);
-  await fetchDashboardSections({ force: true });
+  setLatencyFetching(sectionName, true);
 
-  store.set({
-    sectionsWidget: {
-      ...store.get().sectionsWidget,
-      latencyFetching: false,
-    },
-  });
+  try {
+    await PodkopShellMethods.getClashApiProxyLatency(tag);
+    await fetchDashboardSections({ force: true });
+  } finally {
+    setLatencyFetching(sectionName, false);
+  }
 }
 
 async function handleCopyOutbound(
@@ -390,7 +400,7 @@ async function renderSectionsWidget() {
       onChooseOutbound: () => {},
       onCopyOutbound: () => {},
       onUpdateSubscription: () => {},
-      latencyFetching: sectionsWidget.latencyFetching,
+      latencyFetching: false,
       subscriptionUpdating: false,
       selectorSwitchingTag: undefined,
     });
@@ -405,7 +415,9 @@ async function renderSectionsWidget() {
       loading: sectionsWidget.loading,
       failed: sectionsWidget.failed,
       section,
-      latencyFetching: sectionsWidget.latencyFetching,
+      latencyFetching: Boolean(
+        sectionsWidget.latencyFetchingSections[section.sectionName],
+      ),
       subscriptionUpdating: Boolean(
         sectionsWidget.subscriptionUpdatingSections[section.sectionName],
       ),
@@ -413,10 +425,10 @@ async function renderSectionsWidget() {
         sectionsWidget.selectorSwitchingSections[section.sectionName],
       onTestLatency: (tag) => {
         if (section.withTagSelect) {
-          return handleTestGroupLatency(tag);
+          return handleTestGroupLatency(section.sectionName, tag);
         }
 
-        return handleTestProxyLatency(tag);
+        return handleTestProxyLatency(section.sectionName, tag);
       },
       onChooseOutbound: (sectionName, selector, tag) => {
         void handleChooseOutbound(sectionName, selector, tag);

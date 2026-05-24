@@ -1053,11 +1053,31 @@ function uniqueCodes(codes) {
 function isUrlTestOutbound(outbound) {
   return outbound.type?.toLowerCase() === "urltest";
 }
-function sortUrlTestFirst(outbounds) {
-  return [
-    ...outbounds.filter(isUrlTestOutbound),
-    ...outbounds.filter((outbound) => !isUrlTestOutbound(outbound))
-  ];
+function getLatencySortValue(outbound) {
+  const latency = Number(outbound.latency);
+  return Number.isFinite(latency) && latency > 0 ? latency : Number.POSITIVE_INFINITY;
+}
+function getOutboundSortBucket(outbound) {
+  if (isUrlTestOutbound(outbound)) {
+    return 0;
+  }
+  return getLatencySortValue(outbound) === Number.POSITIVE_INFINITY ? 2 : 1;
+}
+function sortOutboundsForDashboard(outbounds) {
+  return outbounds.map((outbound, index) => ({ outbound, index })).sort((left, right) => {
+    const leftBucket = getOutboundSortBucket(left.outbound);
+    const rightBucket = getOutboundSortBucket(right.outbound);
+    if (leftBucket !== rightBucket) {
+      return leftBucket - rightBucket;
+    }
+    if (leftBucket === 1) {
+      const latencyDiff = getLatencySortValue(left.outbound) - getLatencySortValue(right.outbound);
+      if (latencyDiff !== 0) {
+        return latencyDiff;
+      }
+    }
+    return left.index - right.index;
+  }).map((item) => item.outbound);
 }
 function isSafeSectionName(sectionName) {
   return /^[A-Za-z0-9_-]+$/.test(sectionName);
@@ -1118,7 +1138,7 @@ function buildProxyGroupOutbounds(section, proxies, outboundMetadata, subscripti
   });
   return {
     selector,
-    outbounds: sortUrlTestFirst(outbounds)
+    outbounds: sortOutboundsForDashboard(outbounds)
   };
 }
 function metadataMatchesCurrentSource(sectionName, sourceCount, metadata) {
@@ -1729,7 +1749,7 @@ var initialStore = {
   sectionsWidget: {
     loading: true,
     failed: false,
-    latencyFetching: false,
+    latencyFetchingSections: {},
     selectorSwitchingSections: {},
     subscriptionUpdatingSections: {},
     data: []
@@ -3127,16 +3147,19 @@ function renderDefaultState({
         },
         [
           ...subscriptionUpdateAction ? [subscriptionUpdateAction] : [],
-          latencyFetching ? E("div", {
-            class: "skeleton",
-            style: "width: 99px; height: 28px"
-          }) : E(
+          E(
             "button",
             {
               class: "btn dashboard-sections-grid-item-test-latency",
-              click: () => testLatency()
+              disabled: latencyFetching ? true : void 0,
+              click: () => {
+                if (latencyFetching) {
+                  return;
+                }
+                testLatency();
+              }
             },
-            _("Test latency")
+            latencyFetching ? [renderLoaderCircleIcon24(), _("Test latency")] : _("Test latency")
           )
         ]
       )
@@ -3274,7 +3297,8 @@ function render() {
           onUpdateSubscription: () => {
           },
           latencyFetching: false,
-          subscriptionUpdating: false
+          subscriptionUpdating: false,
+          selectorSwitchingTag: void 0
         })
       )
     ]
@@ -3382,7 +3406,6 @@ async function fetchDashboardSectionsOnce(mountId) {
     store.set({
       sectionsWidget: {
         ...current,
-        latencyFetching: false,
         loading: false,
         failed: false,
         data
@@ -3398,7 +3421,6 @@ async function fetchDashboardSectionsOnce(mountId) {
     store.set({
       sectionsWidget: {
         ...current,
-        latencyFetching: false,
         loading: false,
         failed: current.data.length === 0,
         data: current.data
@@ -3463,6 +3485,23 @@ function setSelectorSwitching(sectionName, tag) {
     sectionsWidget: {
       ...sectionsWidget,
       selectorSwitchingSections
+    }
+  });
+}
+function setLatencyFetching(sectionName, fetching) {
+  const sectionsWidget = store.get().sectionsWidget;
+  const latencyFetchingSections = {
+    ...sectionsWidget.latencyFetchingSections
+  };
+  if (fetching) {
+    latencyFetchingSections[sectionName] = true;
+  } else {
+    delete latencyFetchingSections[sectionName];
+  }
+  store.set({
+    sectionsWidget: {
+      ...sectionsWidget,
+      latencyFetchingSections
     }
   });
 }
@@ -3560,37 +3599,29 @@ async function handleChooseOutbound(sectionName, selector, tag) {
     setSelectorSwitching(sectionName);
   }
 }
-async function handleTestGroupLatency(tag) {
-  store.set({
-    sectionsWidget: {
-      ...store.get().sectionsWidget,
-      latencyFetching: true
-    }
-  });
-  await PodkopShellMethods.getClashApiGroupLatency(tag);
-  await fetchDashboardSections({ force: true });
-  store.set({
-    sectionsWidget: {
-      ...store.get().sectionsWidget,
-      latencyFetching: false
-    }
-  });
+async function handleTestGroupLatency(sectionName, tag) {
+  if (store.get().sectionsWidget.latencyFetchingSections[sectionName]) {
+    return;
+  }
+  setLatencyFetching(sectionName, true);
+  try {
+    await PodkopShellMethods.getClashApiGroupLatency(tag);
+    await fetchDashboardSections({ force: true });
+  } finally {
+    setLatencyFetching(sectionName, false);
+  }
 }
-async function handleTestProxyLatency(tag) {
-  store.set({
-    sectionsWidget: {
-      ...store.get().sectionsWidget,
-      latencyFetching: true
-    }
-  });
-  await PodkopShellMethods.getClashApiProxyLatency(tag);
-  await fetchDashboardSections({ force: true });
-  store.set({
-    sectionsWidget: {
-      ...store.get().sectionsWidget,
-      latencyFetching: false
-    }
-  });
+async function handleTestProxyLatency(sectionName, tag) {
+  if (store.get().sectionsWidget.latencyFetchingSections[sectionName]) {
+    return;
+  }
+  setLatencyFetching(sectionName, true);
+  try {
+    await PodkopShellMethods.getClashApiProxyLatency(tag);
+    await fetchDashboardSections({ force: true });
+  } finally {
+    setLatencyFetching(sectionName, false);
+  }
 }
 async function handleCopyOutbound(section, outbound) {
   const link = outbound.link;
@@ -3658,7 +3689,7 @@ async function renderSectionsWidget() {
       },
       onUpdateSubscription: () => {
       },
-      latencyFetching: sectionsWidget.latencyFetching,
+      latencyFetching: false,
       subscriptionUpdating: false,
       selectorSwitchingTag: void 0
     });
@@ -3671,16 +3702,18 @@ async function renderSectionsWidget() {
       loading: sectionsWidget.loading,
       failed: sectionsWidget.failed,
       section,
-      latencyFetching: sectionsWidget.latencyFetching,
+      latencyFetching: Boolean(
+        sectionsWidget.latencyFetchingSections[section.sectionName]
+      ),
       subscriptionUpdating: Boolean(
         sectionsWidget.subscriptionUpdatingSections[section.sectionName]
       ),
       selectorSwitchingTag: sectionsWidget.selectorSwitchingSections[section.sectionName],
       onTestLatency: (tag) => {
         if (section.withTagSelect) {
-          return handleTestGroupLatency(tag);
+          return handleTestGroupLatency(section.sectionName, tag);
         }
-        return handleTestProxyLatency(tag);
+        return handleTestProxyLatency(section.sectionName, tag);
       },
       onChooseOutbound: (sectionName, selector, tag) => {
         void handleChooseOutbound(sectionName, selector, tag);
@@ -4034,6 +4067,27 @@ var styles = `
 }
 
 .pdk_dashboard-page__outbound-section__subscription-update[disabled] {
+    cursor: not-allowed;
+    opacity: 0.65;
+}
+
+.pdk_dashboard-page .btn.dashboard-sections-grid-item-test-latency {
+    min-width: 99px;
+    min-height: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+}
+
+.pdk_dashboard-page .btn.dashboard-sections-grid-item-test-latency svg {
+    width: 15px;
+    height: 15px;
+    display: block;
+    flex: 0 0 auto;
+}
+
+.pdk_dashboard-page .btn.dashboard-sections-grid-item-test-latency[disabled] {
     cursor: not-allowed;
     opacity: 0.65;
 }

@@ -480,19 +480,23 @@ export function renderDefaultState({
         },
         [
           ...(subscriptionUpdateAction ? [subscriptionUpdateAction] : []),
-          latencyFetching
-            ? E('div', {
-                class: 'skeleton',
-                style: 'width: 99px; height: 28px',
-              })
-            : E(
-                'button',
-                {
-                  class: 'btn dashboard-sections-grid-item-test-latency',
-                  click: () => testLatency(),
-                },
-                _('Test latency'),
-              ),
+          E(
+            'button',
+            {
+              class: 'btn dashboard-sections-grid-item-test-latency',
+              disabled: latencyFetching ? true : undefined,
+              click: () => {
+                if (latencyFetching) {
+                  return;
+                }
+
+                testLatency();
+              },
+            },
+            latencyFetching
+              ? [renderLoaderCircleIcon24(), _('Test latency')]
+              : _('Test latency'),
+          ),
         ],
       ),
     ]),
