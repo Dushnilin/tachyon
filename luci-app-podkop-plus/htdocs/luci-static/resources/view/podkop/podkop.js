@@ -21,6 +21,9 @@
 // Diagnostic
 "require view.podkop_plus.diagnostic as diagnostic";
 
+// Updates
+"require view.podkop_plus.updates as updates";
+
 const UCI_PACKAGE = main.PODKOP_UCI_PACKAGE;
 const CBI_PREFIX = main.PODKOP_CBI_PREFIX;
 
@@ -164,6 +167,18 @@ const EntryPoint = {
       return ["monitoring"];
     };
     monitoring.createMonitoringContent(monitoringSection);
+
+    const updatesSection = podkopMap.section(
+      form.TypedSection,
+      "updates",
+      _("Updates"),
+    );
+    updatesSection.anonymous = true;
+    updatesSection.addremove = false;
+    updatesSection.cfgsections = function () {
+      return ["updates"];
+    };
+    updates.createUpdatesContent(updatesSection);
 
     main.coreService();
 

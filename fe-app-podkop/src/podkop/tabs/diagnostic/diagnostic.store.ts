@@ -62,14 +62,18 @@ export const initialDiagnosticStore: Pick<
   | 'diagnosticsRunAction'
   | 'diagnosticsActions'
   | 'diagnosticsSystemInfo'
+  | 'updatesActions'
+  | 'updatesChecks'
 > = {
   diagnosticsSystemInfo: {
     loading: true,
+    loaded: false,
     providerInfoLoaded: false,
     podkop_version: 'loading',
     podkop_latest_version: 'loading',
     luci_app_version: 'loading',
     sing_box_version: 'loading',
+    sing_box_extended: 0,
     zapret_version: 'loading',
     zapret_installed: 0,
     byedpi_version: 'loading',
@@ -105,4 +109,24 @@ export const initialDiagnosticStore: Pick<
   },
   diagnosticsRunAction: { loading: false },
   diagnosticsChecks: getDiagnosticsChecks(_('Not running')),
+  updatesActions: {
+    podkopCheck: { loading: false },
+    podkopInstall: { loading: false },
+    singBoxCheck: { loading: false },
+    singBoxInstall: { loading: false },
+    singBoxInstallExtended: { loading: false },
+    singBoxInstallStable: { loading: false },
+    zapretCheck: { loading: false },
+    zapretInstall: { loading: false },
+    zapretRemove: { loading: false },
+    byedpiCheck: { loading: false },
+    byedpiInstall: { loading: false },
+    byedpiRemove: { loading: false },
+  },
+  updatesChecks: {
+    podkop: { status: null, latest_version: '' },
+    sing_box: { status: null, latest_version: '' },
+    zapret: { status: null, latest_version: '' },
+    byedpi: { status: null, latest_version: '' },
+  },
 };

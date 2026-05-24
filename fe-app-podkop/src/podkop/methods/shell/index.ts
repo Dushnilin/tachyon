@@ -3,6 +3,62 @@ import { ClashAPI, Podkop } from '../../types';
 import { executeShellCommand } from '../../../helpers';
 
 const SUBSCRIPTION_UPDATE_TIMEOUT_MS = 10 * 60 * 1000;
+const COMPONENT_ACTION_TIMEOUT_MS = 10 * 60 * 1000;
+const COMPONENT_ACTION_RPC_TIMEOUT_MS = 15000;
+const COMPONENT_ACTION_POLL_INTERVAL_MS = 1500;
+
+function sleep(ms: number) {
+  return new Promise<void>((resolve) => setTimeout(resolve, ms));
+}
+
+function parseComponentActionResult(
+  response: Awaited<ReturnType<typeof executeShellCommand>>,
+) {
+  if (!response.stdout) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(response.stdout) as Podkop.ComponentActionResult;
+  } catch (_error) {
+    const jsonMatch = response.stdout.match(/(\{[\s\S]*\})\s*$/);
+
+    if (!jsonMatch) {
+      return null;
+    }
+
+    try {
+      return JSON.parse(jsonMatch[1]) as Podkop.ComponentActionResult;
+    } catch (_jsonError) {
+      return null;
+    }
+  }
+}
+
+function parseComponentActionStartResult(
+  response: Awaited<ReturnType<typeof executeShellCommand>>,
+) {
+  const parsedResponse = parseComponentActionResult(response);
+
+  if (!parsedResponse) {
+    return null;
+  }
+
+  return parsedResponse as unknown as Podkop.ComponentActionStartResult;
+}
+
+function componentActionFailure(
+  response: Awaited<ReturnType<typeof executeShellCommand>>,
+  parsedResponse?: Pick<Podkop.ComponentActionResult, 'message'> | null,
+) {
+  return {
+    success: false,
+    error:
+      parsedResponse?.message ||
+      response.stderr ||
+      _('Component action failed'),
+  } as Podkop.MethodFailureResponse;
+}
 
 export const PodkopShellMethods = {
   checkDNSAvailable: async () =>
@@ -138,6 +194,67 @@ export const PodkopShellMethods = {
     callBaseMethod<Podkop.GetSystemInfo>(
       Podkop.AvailableMethods.GET_SYSTEM_INFO,
     ),
+  componentAction: async (
+    component: Podkop.ComponentName,
+    action: Podkop.ComponentAction,
+  ) => {
+    const startedAt = Date.now();
+    const startResponse = await executeShellCommand({
+      command: '/usr/bin/podkop-plus',
+      args: [
+        Podkop.AvailableMethods.COMPONENT_ACTION_ASYNC,
+        component,
+        action,
+      ],
+      timeout: COMPONENT_ACTION_RPC_TIMEOUT_MS,
+    });
+
+    const parsedStartResponse = parseComponentActionStartResult(startResponse);
+
+    if (
+      (startResponse.code ?? 0) !== 0 ||
+      !parsedStartResponse?.success ||
+      !parsedStartResponse.job_id
+    ) {
+      return componentActionFailure(startResponse, parsedStartResponse);
+    }
+
+    while (Date.now() - startedAt < COMPONENT_ACTION_TIMEOUT_MS) {
+      await sleep(COMPONENT_ACTION_POLL_INTERVAL_MS);
+
+      const statusResponse = await executeShellCommand({
+        command: '/usr/bin/podkop-plus',
+        args: [
+          Podkop.AvailableMethods.COMPONENT_ACTION_STATUS,
+          parsedStartResponse.job_id,
+        ],
+        timeout: COMPONENT_ACTION_RPC_TIMEOUT_MS,
+      });
+      const parsedResponse = parseComponentActionResult(statusResponse);
+
+      if ((statusResponse.code ?? 0) !== 0 || parsedResponse?.success === false) {
+        return componentActionFailure(statusResponse, parsedResponse);
+      }
+
+      if (!parsedResponse) {
+        return componentActionFailure(statusResponse);
+      }
+
+      if (parsedResponse.running) {
+        continue;
+      }
+
+      return {
+        success: true,
+        data: parsedResponse,
+      } as Podkop.MethodSuccessResponse<Podkop.ComponentActionResult>;
+    }
+
+    return {
+      success: false,
+      error: _('Component action timed out'),
+    } as Podkop.MethodFailureResponse;
+  },
   subscriptionUpdate: async (section?: string, sourceIndex?: number) => {
     const args = [
       Podkop.AvailableMethods.SUBSCRIPTION_UPDATE,

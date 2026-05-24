@@ -75,6 +75,9 @@ export namespace Podkop {
     CHECK_LOGS = 'check_logs',
     CHECK_SING_BOX_LOGS = 'check_sing_box_logs',
     GET_SYSTEM_INFO = 'get_system_info',
+    COMPONENT_ACTION = 'component_action',
+    COMPONENT_ACTION_ASYNC = 'component_action_async',
+    COMPONENT_ACTION_STATUS = 'component_action_status',
     SUBSCRIPTION_UPDATE = 'subscription_update',
   }
 
@@ -268,6 +271,7 @@ export namespace Podkop {
     podkop_latest_version: string;
     luci_app_version: string;
     sing_box_version: string;
+    sing_box_extended: 0 | 1;
     zapret_version: string;
     zapret_installed: 0 | 1;
     byedpi_version: string;
@@ -275,6 +279,34 @@ export namespace Podkop {
     openwrt_version: string;
     device_model: string;
     generated_at?: number;
+  }
+
+  export type ComponentName = 'podkop' | 'sing_box' | 'zapret' | 'byedpi';
+
+  export type ComponentAction =
+    | 'check_update'
+    | 'install'
+    | 'remove'
+    | 'install_extended'
+    | 'install_stable';
+
+  export interface ComponentActionResult {
+    success: boolean;
+    running?: boolean;
+    component: ComponentName;
+    action: ComponentAction;
+    message: string;
+    current_version: string;
+    latest_version: string;
+    changed: boolean;
+    status?: 'latest' | 'outdated' | 'dev' | '';
+    exit_code?: number | null;
+  }
+
+  export interface ComponentActionStartResult {
+    success: boolean;
+    job_id: string;
+    message: string;
   }
 
   export interface GetZapretStatus {

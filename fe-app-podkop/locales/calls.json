@@ -11,16 +11,16 @@
     "call": "✔ Running",
     "key": "✔ Running",
     "places": [
-      "src/podkop/tabs/dashboard/initController.ts:580",
-      "src/podkop/tabs/dashboard/initController.ts:591"
+      "src/podkop/tabs/dashboard/initController.ts:581",
+      "src/podkop/tabs/dashboard/initController.ts:592"
     ]
   },
   {
     "call": "✘ Stopped",
     "key": "✘ Stopped",
     "places": [
-      "src/podkop/tabs/dashboard/initController.ts:581",
-      "src/podkop/tabs/dashboard/initController.ts:592"
+      "src/podkop/tabs/dashboard/initController.ts:582",
+      "src/podkop/tabs/dashboard/initController.ts:593"
     ]
   },
   {
@@ -43,14 +43,14 @@
     "call": "Active Connections",
     "key": "Active Connections",
     "places": [
-      "src/podkop/tabs/dashboard/initController.ts:538"
+      "src/podkop/tabs/dashboard/initController.ts:539"
     ]
   },
   {
     "call": "Add a section",
     "key": "Add a section",
     "places": [
-      "../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/podkop.js:116"
+      "../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/podkop.js:119"
     ]
   },
   {
@@ -330,18 +330,10 @@
     ]
   },
   {
-    "call": "Check unavailable",
-    "key": "Check unavailable",
+    "call": "Check update",
+    "key": "Check update",
     "places": [
-      "src/podkop/tabs/diagnostic/helpers/getPodkopVersionRow.ts:53",
-      "src/podkop/tabs/diagnostic/helpers/getPodkopVersionRow.ts:66"
-    ]
-  },
-  {
-    "call": "Checking",
-    "key": "Checking",
-    "places": [
-      "src/podkop/tabs/diagnostic/helpers/getPodkopVersionRow.ts:31"
+      "src/podkop/tabs/updates/initController.ts:192"
     ]
   },
   {
@@ -434,6 +426,29 @@
     ]
   },
   {
+    "call": "Component action completed",
+    "key": "Component action completed",
+    "places": [
+      "src/podkop/tabs/updates/initController.ts:166"
+    ]
+  },
+  {
+    "call": "Component action failed",
+    "key": "Component action failed",
+    "places": [
+      "src/podkop/methods/shell/index.ts:37",
+      "src/podkop/tabs/updates/initController.ts:141",
+      "src/podkop/tabs/updates/initController.ts:171"
+    ]
+  },
+  {
+    "call": "Component action timed out",
+    "key": "Component action timed out",
+    "places": [
+      "src/podkop/methods/shell/index.ts:241"
+    ]
+  },
+  {
     "call": "Conditions",
     "key": "Conditions",
     "places": [
@@ -451,7 +466,7 @@
     "call": "Configuration for Podkop Plus service",
     "key": "Configuration for Podkop Plus service",
     "places": [
-      "../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/podkop.js:102"
+      "../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/podkop.js:105"
     ]
   },
   {
@@ -494,7 +509,7 @@
     "call": "Dashboard",
     "key": "Dashboard",
     "places": [
-      "../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/podkop.js:147"
+      "../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/podkop.js:150"
     ]
   },
   {
@@ -529,8 +544,7 @@
     "call": "Dev",
     "key": "Dev",
     "places": [
-      "src/podkop/tabs/diagnostic/helpers/getPodkopVersionRow.ts:42",
-      "src/podkop/tabs/diagnostic/helpers/getPodkopVersionRow.ts:88"
+      "src/podkop/tabs/updates/initController.ts:63"
     ]
   },
   {
@@ -552,7 +566,7 @@
     "call": "Diagnostics",
     "key": "Diagnostics",
     "places": [
-      "../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/podkop.js:135"
+      "../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/podkop.js:138"
     ]
   },
   {
@@ -710,8 +724,8 @@
     "call": "Downlink",
     "key": "Downlink",
     "places": [
-      "src/podkop/tabs/dashboard/initController.ts:464",
-      "src/podkop/tabs/dashboard/initController.ts:502"
+      "src/podkop/tabs/dashboard/initController.ts:465",
+      "src/podkop/tabs/dashboard/initController.ts:503"
     ]
   },
   {
@@ -768,7 +782,7 @@
     "call": "Drag rows to change priority. The rule at the top is checked first.",
     "key": "Drag rows to change priority. The rule at the top is checked first.",
     "places": [
-      "../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/podkop.js:110"
+      "../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/podkop.js:113"
     ]
   },
   {
@@ -784,7 +798,7 @@
     "call": "Edit rule action",
     "key": "Edit rule action",
     "places": [
-      "../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/podkop.js:62"
+      "../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/podkop.js:65"
     ]
   },
   {
@@ -911,7 +925,7 @@
     "call": "Expecting: %s",
     "key": "Expecting: %s",
     "places": [
-      "../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/podkop.js:48"
+      "../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/podkop.js:51"
     ]
   },
   {
@@ -962,21 +976,21 @@
     "call": "Failed to execute!",
     "key": "Failed to execute!",
     "places": [
-      "src/podkop/tabs/diagnostic/initController.ts:416",
-      "src/podkop/tabs/diagnostic/initController.ts:502",
-      "src/podkop/tabs/diagnostic/initController.ts:506",
-      "src/podkop/tabs/diagnostic/initController.ts:541",
-      "src/podkop/tabs/diagnostic/initController.ts:545",
-      "src/podkop/tabs/diagnostic/initController.ts:571",
-      "src/podkop/tabs/diagnostic/initController.ts:575"
+      "src/podkop/tabs/diagnostic/initController.ts:360",
+      "src/podkop/tabs/diagnostic/initController.ts:446",
+      "src/podkop/tabs/diagnostic/initController.ts:450",
+      "src/podkop/tabs/diagnostic/initController.ts:485",
+      "src/podkop/tabs/diagnostic/initController.ts:489",
+      "src/podkop/tabs/diagnostic/initController.ts:515",
+      "src/podkop/tabs/diagnostic/initController.ts:519"
     ]
   },
   {
     "call": "Failed to update subscriptions",
     "key": "Failed to update subscriptions",
     "places": [
-      "src/podkop/tabs/dashboard/initController.ts:351",
-      "src/podkop/tabs/dashboard/initController.ts:358"
+      "src/podkop/tabs/dashboard/initController.ts:352",
+      "src/podkop/tabs/dashboard/initController.ts:363"
     ]
   },
   {
@@ -1012,7 +1026,7 @@
     "call": "Global check",
     "key": "Global check",
     "places": [
-      "src/podkop/tabs/diagnostic/initController.ts:497"
+      "src/podkop/tabs/diagnostic/initController.ts:441"
     ]
   },
   {
@@ -1056,6 +1070,36 @@
     "key": "Include server in URLTest",
     "places": [
       "../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/section.js:2812"
+    ]
+  },
+  {
+    "call": "Install",
+    "key": "Install",
+    "places": [
+      "src/podkop/tabs/updates/initController.ts:183",
+      "src/podkop/tabs/updates/initController.ts:262",
+      "src/podkop/tabs/updates/initController.ts:287"
+    ]
+  },
+  {
+    "call": "Install extended",
+    "key": "Install extended",
+    "places": [
+      "src/podkop/tabs/updates/initController.ts:214"
+    ]
+  },
+  {
+    "call": "Install stable",
+    "key": "Install stable",
+    "places": [
+      "src/podkop/tabs/updates/initController.ts:207"
+    ]
+  },
+  {
+    "call": "Installed version is newer than upstream release",
+    "key": "Installed version is newer than upstream release",
+    "places": [
+      "src/podkop/tabs/updates/initController.ts:115"
     ]
   },
   {
@@ -1441,7 +1485,7 @@
     "call": "Latest",
     "key": "Latest",
     "places": [
-      "src/podkop/tabs/diagnostic/helpers/getPodkopVersionRow.ts:98"
+      "src/podkop/tabs/updates/initController.ts:56"
     ]
   },
   {
@@ -1547,7 +1591,7 @@
     "call": "Memory Usage",
     "key": "Memory Usage",
     "places": [
-      "src/podkop/tabs/dashboard/initController.ts:542"
+      "src/podkop/tabs/dashboard/initController.ts:543"
     ]
   },
   {
@@ -1568,7 +1612,7 @@
     "call": "Monitoring",
     "key": "Monitoring",
     "places": [
-      "../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/podkop.js:159"
+      "../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/podkop.js:162"
     ]
   },
   {
@@ -1656,6 +1700,15 @@
     ]
   },
   {
+    "call": "Not installed",
+    "key": "Not installed",
+    "places": [
+      "src/podkop/tabs/updates/initController.ts:232",
+      "src/podkop/tabs/updates/initController.ts:246",
+      "src/podkop/tabs/updates/initController.ts:271"
+    ]
+  },
+  {
     "call": "Not responding",
     "key": "Not responding",
     "places": [
@@ -1668,10 +1721,10 @@
     "call": "Not running",
     "key": "Not running",
     "places": [
-      "src/podkop/tabs/diagnostic/diagnostic.store.ts:107",
-      "src/podkop/tabs/diagnostic/initController.ts:76",
-      "src/podkop/tabs/diagnostic/initController.ts:253",
-      "src/podkop/tabs/diagnostic/initController.ts:321"
+      "src/podkop/tabs/diagnostic/diagnostic.store.ts:111",
+      "src/podkop/tabs/diagnostic/initController.ts:61",
+      "src/podkop/tabs/diagnostic/initController.ts:215",
+      "src/podkop/tabs/diagnostic/initController.ts:265"
     ]
   },
   {
@@ -1741,7 +1794,7 @@
     "call": "Outdated",
     "key": "Outdated",
     "places": [
-      "src/podkop/tabs/diagnostic/helpers/getPodkopVersionRow.ts:77"
+      "src/podkop/tabs/updates/initController.ts:60"
     ]
   },
   {
@@ -1834,7 +1887,7 @@
     "call": "Podkop Plus Settings",
     "key": "Podkop Plus Settings",
     "places": [
-      "../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/podkop.js:101"
+      "../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/podkop.js:104"
     ]
   },
   {
@@ -1954,6 +2007,14 @@
     "key": "Remote URL to a sing-box rule set",
     "places": [
       "../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/ruleset.js:49"
+    ]
+  },
+  {
+    "call": "Remove",
+    "key": "Remove",
+    "places": [
+      "src/podkop/tabs/updates/initController.ts:253",
+      "src/podkop/tabs/updates/initController.ts:278"
     ]
   },
   {
@@ -2122,7 +2183,7 @@
     "call": "Section",
     "key": "Section",
     "places": [
-      "../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/podkop.js:115"
+      "../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/podkop.js:118"
     ]
   },
   {
@@ -2136,7 +2197,7 @@
     "call": "Sections",
     "key": "Sections",
     "places": [
-      "../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/podkop.js:109"
+      "../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/podkop.js:112"
     ]
   },
   {
@@ -2255,14 +2316,14 @@
     "call": "Services info",
     "key": "Services info",
     "places": [
-      "src/podkop/tabs/dashboard/initController.ts:575"
+      "src/podkop/tabs/dashboard/initController.ts:576"
     ]
   },
   {
     "call": "Settings",
     "key": "Settings",
     "places": [
-      "../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/podkop.js:123",
+      "../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/podkop.js:126",
       "../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/section.js:2398"
     ]
   },
@@ -2270,7 +2331,7 @@
     "call": "Show sing-box config",
     "key": "Show sing-box config",
     "places": [
-      "src/podkop/tabs/diagnostic/initController.ts:559",
+      "src/podkop/tabs/diagnostic/initController.ts:503",
       "src/podkop/tabs/diagnostic/partials/renderAvailableActions.ts:116"
     ]
   },
@@ -2447,14 +2508,14 @@
     "call": "Subscription update completed",
     "key": "Subscription update completed",
     "places": [
-      "src/podkop/tabs/dashboard/initController.ts:355"
+      "src/podkop/tabs/dashboard/initController.ts:357"
     ]
   },
   {
     "call": "Subscription update failed",
     "key": "Subscription update failed",
     "places": [
-      "src/podkop/methods/shell/index.ts:156"
+      "src/podkop/methods/shell/index.ts:259"
     ]
   },
   {
@@ -2489,7 +2550,7 @@
     "call": "System info",
     "key": "System info",
     "places": [
-      "src/podkop/tabs/dashboard/initController.ts:535"
+      "src/podkop/tabs/dashboard/initController.ts:536"
     ]
   },
   {
@@ -2525,6 +2586,13 @@
     "key": "The DNS server used to look up the IP address of an upstream DNS server",
     "places": [
       "../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/settings.js:53"
+    ]
+  },
+  {
+    "call": "The latest version is installed",
+    "key": "The latest version is installed",
+    "places": [
+      "src/podkop/tabs/updates/initController.ts:118"
     ]
   },
   {
@@ -2602,7 +2670,7 @@
     "call": "Traffic",
     "key": "Traffic",
     "places": [
-      "src/podkop/tabs/dashboard/initController.ts:461",
+      "src/podkop/tabs/dashboard/initController.ts:462",
       "src/podkop/tabs/dashboard/partials/renderSections.ts:216"
     ]
   },
@@ -2610,7 +2678,7 @@
     "call": "Traffic Total",
     "key": "Traffic Total",
     "places": [
-      "src/podkop/tabs/dashboard/initController.ts:495"
+      "src/podkop/tabs/dashboard/initController.ts:496"
     ]
   },
   {
@@ -2711,22 +2779,21 @@
     "call": "unique UCI identifier",
     "key": "unique UCI identifier",
     "places": [
-      "../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/podkop.js:48"
+      "../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/podkop.js:51"
     ]
   },
   {
     "call": "unknown",
     "key": "unknown",
     "places": [
-      "src/podkop/tabs/diagnostic/initController.ts:31",
-      "src/podkop/tabs/diagnostic/initController.ts:32",
-      "src/podkop/tabs/diagnostic/initController.ts:33",
-      "src/podkop/tabs/diagnostic/initController.ts:34",
-      "src/podkop/tabs/diagnostic/initController.ts:36",
-      "src/podkop/tabs/diagnostic/initController.ts:38",
-      "src/podkop/tabs/diagnostic/initController.ts:40",
-      "src/podkop/tabs/diagnostic/initController.ts:41",
-      "src/podkop/tabs/diagnostic/helpers/getPodkopVersionRow.ts:10"
+      "src/podkop/services/systemInfo.service.ts:9",
+      "src/podkop/services/systemInfo.service.ts:10",
+      "src/podkop/services/systemInfo.service.ts:11",
+      "src/podkop/services/systemInfo.service.ts:12",
+      "src/podkop/services/systemInfo.service.ts:14",
+      "src/podkop/services/systemInfo.service.ts:16",
+      "src/podkop/services/systemInfo.service.ts:18",
+      "src/podkop/services/systemInfo.service.ts:19"
     ]
   },
   {
@@ -2767,6 +2834,13 @@
     ]
   },
   {
+    "call": "Update is available",
+    "key": "Update is available",
+    "places": [
+      "src/podkop/tabs/updates/initController.ts:111"
+    ]
+  },
+  {
     "call": "Update subscriptions",
     "key": "Update subscriptions",
     "places": [
@@ -2775,11 +2849,18 @@
     ]
   },
   {
+    "call": "Updates",
+    "key": "Updates",
+    "places": [
+      "../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/podkop.js:174"
+    ]
+  },
+  {
     "call": "Uplink",
     "key": "Uplink",
     "places": [
-      "src/podkop/tabs/dashboard/initController.ts:463",
-      "src/podkop/tabs/dashboard/initController.ts:498"
+      "src/podkop/tabs/dashboard/initController.ts:464",
+      "src/podkop/tabs/dashboard/initController.ts:499"
     ]
   },
   {
@@ -2884,10 +2965,17 @@
     ]
   },
   {
+    "call": "Version",
+    "key": "Version",
+    "places": [
+      "src/podkop/tabs/updates/initController.ts:343"
+    ]
+  },
+  {
     "call": "View logs",
     "key": "View logs",
     "places": [
-      "src/podkop/tabs/diagnostic/initController.ts:530",
+      "src/podkop/tabs/diagnostic/initController.ts:474",
       "src/podkop/tabs/diagnostic/partials/renderAvailableActions.ts:107"
     ]
   },

@@ -348,18 +348,19 @@ async function handleUpdateSubscription(section: Podkop.OutboundGroup) {
     );
 
     if (!response.success) {
+      setSubscriptionUpdating(section.sectionName, false);
       showToast(_('Failed to update subscriptions'), 'error');
       return;
     }
 
-    showToast(_('Subscription update completed'), 'success');
-  } catch (error) {
-    logger.error('[DASHBOARD]', 'handleUpdateSubscription: failed', error);
-    showToast(_('Failed to update subscriptions'), 'error');
-  } finally {
     setSubscriptionUpdating(section.sectionName, false);
+    showToast(_('Subscription update completed'), 'success');
     void fetchDashboardSections({ force: true });
     void fetchServicesInfo();
+  } catch (error) {
+    logger.error('[DASHBOARD]', 'handleUpdateSubscription: failed', error);
+    setSubscriptionUpdating(section.sectionName, false);
+    showToast(_('Failed to update subscriptions'), 'error');
   }
 }
 
