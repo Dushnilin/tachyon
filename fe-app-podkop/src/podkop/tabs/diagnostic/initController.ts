@@ -11,6 +11,7 @@ import {
   getLoadingDiagnosticsChecks,
 } from './diagnostic.store';
 import { logger, store, StoreType } from '../../services';
+import { ensureSystemInfo } from '../../services/systemInfo.service';
 import {
   renderAvailableActions,
   renderCheckSection,
@@ -25,27 +26,11 @@ import { PODKOP_LUCI_APP_VERSION } from '../../../constants';
 import { showToast } from '../../../helpers/showToast';
 import { renderWikiDisclaimer } from './partials/renderWikiDisclaimer';
 import { runSectionsCheck } from './checks/runSectionsCheck';
-import { getPodkopVersionRow } from './helpers/getPodkopVersionRow';
-
-const UNKNOWN_DIAGNOSTICS_SYSTEM_INFO = {
-  podkop_version: _('unknown'),
-  podkop_latest_version: _('unknown'),
-  luci_app_version: _('unknown'),
-  sing_box_version: _('unknown'),
-  providerInfoLoaded: false,
-  zapret_version: _('unknown'),
-  zapret_installed: 0,
-  byedpi_version: _('unknown'),
-  byedpi_installed: 0,
-  openwrt_version: _('unknown'),
-  device_model: _('unknown'),
-};
 
 const SERVICE_STATUS_REFRESH_INTERVAL_MS = 2000;
 const SERVICE_ACTION_STATUS_TIMEOUT_MS = 45000;
 
 let latestProviderInfoRequestId = 0;
-let latestSystemInfoRequestId = 0;
 let diagnosticLifecycleRegistered = false;
 let diagnosticControllerInitialized = false;
 let diagnosticMounted = false;
@@ -223,55 +208,14 @@ function stopServicesInfoRefreshTimer() {
 }
 
 async function fetchSystemInfo() {
-  const requestId = ++latestSystemInfoRequestId;
-  const currentSystemInfo = store.get().diagnosticsSystemInfo;
+  const systemInfo = await ensureSystemInfo();
 
   store.set({
-    diagnosticsSystemInfo: {
-      ...currentSystemInfo,
-      loading: true,
-    },
+    diagnosticsChecks: getDiagnosticsChecks(
+      _('Not running'),
+      getDiagnosticsProviderOptions(systemInfo),
+    ),
   });
-
-  try {
-    const systemInfo = await PodkopShellMethods.getSystemInfo();
-
-    if (requestId !== latestSystemInfoRequestId) {
-      return;
-    }
-
-    if (systemInfo.success) {
-      const nextSystemInfo = {
-        loading: false,
-        providerInfoLoaded: true,
-        ...systemInfo.data,
-      };
-
-      store.set({
-        diagnosticsSystemInfo: nextSystemInfo,
-        diagnosticsChecks: getDiagnosticsChecks(
-          _('Not running'),
-          getDiagnosticsProviderOptions(nextSystemInfo),
-        ),
-      });
-      return;
-    }
-  } catch (error) {
-    logger.error('[DIAGNOSTIC]', 'fetchSystemInfo failed', error);
-  }
-
-  if (requestId === latestSystemInfoRequestId) {
-    const currentSystemInfo = store.get().diagnosticsSystemInfo;
-    store.set({
-      diagnosticsSystemInfo: {
-        ...UNKNOWN_DIAGNOSTICS_SYSTEM_INFO,
-        loading: false,
-        providerInfoLoaded: currentSystemInfo.providerInfoLoaded,
-        zapret_installed: currentSystemInfo.zapret_installed,
-        byedpi_installed: currentSystemInfo.byedpi_installed,
-      },
-    });
-  }
 }
 
 async function fetchDiagnosticsProviderInfo() {
@@ -685,7 +629,10 @@ function renderDiagnosticSystemInfoWidget() {
   const container = document.getElementById('pdk_diagnostic-page-system-info');
 
   const items = [
-    getPodkopVersionRow(diagnosticsSystemInfo),
+    {
+      key: 'Podkop Plus',
+      value: normalizeCompiledVersion(diagnosticsSystemInfo.podkop_version),
+    },
     {
       key: 'Luci App',
       value: normalizeCompiledVersion(PODKOP_LUCI_APP_VERSION),
@@ -793,7 +740,7 @@ async function loadInitialDiagnosticData() {
   const diagnosticStatus = document.getElementById('diagnostic-status');
 
   if (diagnosticStatus?.isConnected && diagnosticStatus.offsetParent !== null) {
-    void fetchSystemInfo();
+    await fetchSystemInfo();
     await ensureDiagnosticsProviderInfo();
   }
 }

@@ -754,6 +754,9 @@ var Podkop;
     AvailableMethods2["CHECK_LOGS"] = "check_logs";
     AvailableMethods2["CHECK_SING_BOX_LOGS"] = "check_sing_box_logs";
     AvailableMethods2["GET_SYSTEM_INFO"] = "get_system_info";
+    AvailableMethods2["COMPONENT_ACTION"] = "component_action";
+    AvailableMethods2["COMPONENT_ACTION_ASYNC"] = "component_action_async";
+    AvailableMethods2["COMPONENT_ACTION_STATUS"] = "component_action_status";
     AvailableMethods2["SUBSCRIPTION_UPDATE"] = "subscription_update";
   })(AvailableMethods = Podkop2.AvailableMethods || (Podkop2.AvailableMethods = {}));
   let AvailableClashAPIMethods;
@@ -770,6 +773,43 @@ var Podkop;
 
 // src/podkop/methods/shell/index.ts
 var SUBSCRIPTION_UPDATE_TIMEOUT_MS = 10 * 60 * 1e3;
+var COMPONENT_ACTION_TIMEOUT_MS = 10 * 60 * 1e3;
+var COMPONENT_ACTION_RPC_TIMEOUT_MS = 15e3;
+var COMPONENT_ACTION_POLL_INTERVAL_MS = 1500;
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+function parseComponentActionResult(response) {
+  if (!response.stdout) {
+    return null;
+  }
+  try {
+    return JSON.parse(response.stdout);
+  } catch (_error) {
+    const jsonMatch = response.stdout.match(/(\{[\s\S]*\})\s*$/);
+    if (!jsonMatch) {
+      return null;
+    }
+    try {
+      return JSON.parse(jsonMatch[1]);
+    } catch (_jsonError) {
+      return null;
+    }
+  }
+}
+function parseComponentActionStartResult(response) {
+  const parsedResponse = parseComponentActionResult(response);
+  if (!parsedResponse) {
+    return null;
+  }
+  return parsedResponse;
+}
+function componentActionFailure(response, parsedResponse) {
+  return {
+    success: false,
+    error: parsedResponse?.message || response.stderr || _("Component action failed")
+  };
+}
 var PodkopShellMethods = {
   checkDNSAvailable: async () => callBaseMethod(
     Podkop.AvailableMethods.CHECK_DNS_AVAILABLE
@@ -873,6 +913,51 @@ var PodkopShellMethods = {
   getSystemInfo: async () => callBaseMethod(
     Podkop.AvailableMethods.GET_SYSTEM_INFO
   ),
+  componentAction: async (component, action) => {
+    const startedAt = Date.now();
+    const startResponse = await executeShellCommand({
+      command: "/usr/bin/podkop-plus",
+      args: [
+        Podkop.AvailableMethods.COMPONENT_ACTION_ASYNC,
+        component,
+        action
+      ],
+      timeout: COMPONENT_ACTION_RPC_TIMEOUT_MS
+    });
+    const parsedStartResponse = parseComponentActionStartResult(startResponse);
+    if ((startResponse.code ?? 0) !== 0 || !parsedStartResponse?.success || !parsedStartResponse.job_id) {
+      return componentActionFailure(startResponse, parsedStartResponse);
+    }
+    while (Date.now() - startedAt < COMPONENT_ACTION_TIMEOUT_MS) {
+      await sleep(COMPONENT_ACTION_POLL_INTERVAL_MS);
+      const statusResponse = await executeShellCommand({
+        command: "/usr/bin/podkop-plus",
+        args: [
+          Podkop.AvailableMethods.COMPONENT_ACTION_STATUS,
+          parsedStartResponse.job_id
+        ],
+        timeout: COMPONENT_ACTION_RPC_TIMEOUT_MS
+      });
+      const parsedResponse = parseComponentActionResult(statusResponse);
+      if ((statusResponse.code ?? 0) !== 0 || parsedResponse?.success === false) {
+        return componentActionFailure(statusResponse, parsedResponse);
+      }
+      if (!parsedResponse) {
+        return componentActionFailure(statusResponse);
+      }
+      if (parsedResponse.running) {
+        continue;
+      }
+      return {
+        success: true,
+        data: parsedResponse
+      };
+    }
+    return {
+      success: false,
+      error: _("Component action timed out")
+    };
+  },
   subscriptionUpdate: async (section, sourceIndex) => {
     const args = [
       Podkop.AvailableMethods.SUBSCRIPTION_UPDATE,
@@ -1456,11 +1541,13 @@ function getLoadingDiagnosticsChecks(options = {}) {
 var initialDiagnosticStore = {
   diagnosticsSystemInfo: {
     loading: true,
+    loaded: false,
     providerInfoLoaded: false,
     podkop_version: "loading",
     podkop_latest_version: "loading",
     luci_app_version: "loading",
     sing_box_version: "loading",
+    sing_box_extended: 0,
     zapret_version: "loading",
     zapret_installed: 0,
     byedpi_version: "loading",
@@ -1495,7 +1582,27 @@ var initialDiagnosticStore = {
     }
   },
   diagnosticsRunAction: { loading: false },
-  diagnosticsChecks: getDiagnosticsChecks(_("Not running"))
+  diagnosticsChecks: getDiagnosticsChecks(_("Not running")),
+  updatesActions: {
+    podkopCheck: { loading: false },
+    podkopInstall: { loading: false },
+    singBoxCheck: { loading: false },
+    singBoxInstall: { loading: false },
+    singBoxInstallExtended: { loading: false },
+    singBoxInstallStable: { loading: false },
+    zapretCheck: { loading: false },
+    zapretInstall: { loading: false },
+    zapretRemove: { loading: false },
+    byedpiCheck: { loading: false },
+    byedpiInstall: { loading: false },
+    byedpiRemove: { loading: false }
+  },
+  updatesChecks: {
+    podkop: { status: null, latest_version: "" },
+    sing_box: { status: null, latest_version: "" },
+    zapret: { status: null, latest_version: "" },
+    byedpi: { status: null, latest_version: "" }
+  }
 };
 
 // src/podkop/services/store.service.ts
@@ -3510,17 +3617,18 @@ async function handleUpdateSubscription(section) {
       section.sectionName
     );
     if (!response.success) {
+      setSubscriptionUpdating(section.sectionName, false);
       showToast(_("Failed to update subscriptions"), "error");
       return;
     }
-    showToast(_("Subscription update completed"), "success");
-  } catch (error) {
-    logger.error("[DASHBOARD]", "handleUpdateSubscription: failed", error);
-    showToast(_("Failed to update subscriptions"), "error");
-  } finally {
     setSubscriptionUpdating(section.sectionName, false);
+    showToast(_("Subscription update completed"), "success");
     void fetchDashboardSections({ force: true });
     void fetchServicesInfo();
+  } catch (error) {
+    logger.error("[DASHBOARD]", "handleUpdateSubscription: failed", error);
+    setSubscriptionUpdating(section.sectionName, false);
+    showToast(_("Failed to update subscriptions"), "error");
   }
 }
 async function renderSectionsWidget() {
@@ -4729,6 +4837,98 @@ async function runByedpiCheck() {
   });
 }
 
+// src/podkop/services/systemInfo.service.ts
+var UNKNOWN_SYSTEM_INFO = {
+  loading: false,
+  loaded: false,
+  providerInfoLoaded: false,
+  podkop_version: _("unknown"),
+  podkop_latest_version: _("unknown"),
+  luci_app_version: _("unknown"),
+  sing_box_version: _("unknown"),
+  sing_box_extended: 0,
+  zapret_version: _("unknown"),
+  zapret_installed: 0,
+  byedpi_version: _("unknown"),
+  byedpi_installed: 0,
+  openwrt_version: _("unknown"),
+  device_model: _("unknown")
+};
+var systemInfoPromise = null;
+var latestSystemInfoRequestId = 0;
+function hasLoadedSystemInfo() {
+  const systemInfo = store.get().diagnosticsSystemInfo;
+  return Boolean(systemInfo.loaded) && !systemInfo.loading;
+}
+async function ensureSystemInfo({
+  force = false,
+  silent = false
+} = {}) {
+  if (!force && hasLoadedSystemInfo()) {
+    return store.get().diagnosticsSystemInfo;
+  }
+  if (systemInfoPromise && !force) {
+    return systemInfoPromise;
+  }
+  const requestId = ++latestSystemInfoRequestId;
+  const currentSystemInfo = store.get().diagnosticsSystemInfo;
+  if (!silent) {
+    store.set({
+      diagnosticsSystemInfo: {
+        ...currentSystemInfo,
+        loading: true
+      }
+    });
+  }
+  const promise = (async () => {
+    try {
+      const systemInfo = await PodkopShellMethods.getSystemInfo();
+      if (requestId !== latestSystemInfoRequestId) {
+        return store.get().diagnosticsSystemInfo;
+      }
+      if (systemInfo.success) {
+        const nextSystemInfo = {
+          ...UNKNOWN_SYSTEM_INFO,
+          loading: false,
+          loaded: true,
+          providerInfoLoaded: true,
+          ...systemInfo.data
+        };
+        store.set({
+          diagnosticsSystemInfo: nextSystemInfo
+        });
+        return nextSystemInfo;
+      }
+    } catch (error) {
+      logger.error("[SYSTEM_INFO]", "ensureSystemInfo failed", error);
+    }
+    if (requestId === latestSystemInfoRequestId && !silent) {
+      const latestSystemInfo = store.get().diagnosticsSystemInfo;
+      const nextSystemInfo = {
+        ...UNKNOWN_SYSTEM_INFO,
+        loading: false,
+        loaded: false,
+        providerInfoLoaded: latestSystemInfo.providerInfoLoaded,
+        zapret_installed: latestSystemInfo.zapret_installed,
+        byedpi_installed: latestSystemInfo.byedpi_installed
+      };
+      store.set({
+        diagnosticsSystemInfo: nextSystemInfo
+      });
+      return nextSystemInfo;
+    }
+    return store.get().diagnosticsSystemInfo;
+  })();
+  systemInfoPromise = promise;
+  try {
+    return await promise;
+  } finally {
+    if (systemInfoPromise === promise) {
+      systemInfoPromise = null;
+    }
+  }
+}
+
 // src/partials/button/styles.ts
 var styles2 = `
 .pdk-partial-button {
@@ -5511,152 +5711,17 @@ async function runSectionsCheck() {
   }
 }
 
-// src/helpers/compareReleaseVersions.ts
-function normalizeReleaseVersion(version) {
-  return version.trim().replace(/^v/i, "").replace(/-r(\d+)$/i, "-$1");
-}
-function parseReleaseVersion(version) {
-  const normalized = normalizeReleaseVersion(version);
-  const match = normalized.match(/^(\d+(?:\.\d+)*)(?:-(\d+))?$/);
-  if (!match) {
-    return null;
-  }
-  const baseParts = match[1].split(".").map((part) => Number(part));
-  const releasePart = match[2] ? Number(match[2]) : 0;
-  const parts = [...baseParts, releasePart];
-  return parts.every((part) => Number.isSafeInteger(part)) ? parts : null;
-}
-function compareReleaseVersions(currentVersion, latestVersion) {
-  const currentParts = parseReleaseVersion(currentVersion);
-  const latestParts = parseReleaseVersion(latestVersion);
-  if (!currentParts || !latestParts) {
-    return null;
-  }
-  const length = Math.max(currentParts.length, latestParts.length);
-  for (let index = 0; index < length; index += 1) {
-    const currentPart = currentParts[index] ?? 0;
-    const latestPart = latestParts[index] ?? 0;
-    if (currentPart < latestPart) {
-      return -1;
-    }
-    if (currentPart > latestPart) {
-      return 1;
-    }
-  }
-  return 0;
-}
-function isDevVersion(version) {
-  return version === "dev" || /(?:^|[.+-])dev(?:$|[.+-])/i.test(version) || version.includes("COMPILED");
-}
-
-// src/podkop/tabs/diagnostic/helpers/getPodkopVersionRow.ts
-function isUnknownVersion(version) {
-  return version === "unknown" || version === _("unknown");
-}
-function getPodkopVersionRow(diagnosticsSystemInfo) {
-  const loading2 = diagnosticsSystemInfo.loading;
-  const unknown = isUnknownVersion(diagnosticsSystemInfo.podkop_version);
-  const hasActualVersion = Boolean(diagnosticsSystemInfo.podkop_latest_version) && !isUnknownVersion(diagnosticsSystemInfo.podkop_latest_version);
-  const version = normalizeCompiledVersion(
-    diagnosticsSystemInfo.podkop_version
-  );
-  const latestVersion = diagnosticsSystemInfo.podkop_latest_version || "";
-  if (loading2) {
-    return {
-      key: "Podkop Plus",
-      value: version,
-      tag: {
-        label: _("Checking"),
-        kind: "neutral"
-      }
-    };
-  }
-  if (isDevVersion(version)) {
-    return {
-      key: "Podkop Plus",
-      value: version,
-      tag: {
-        label: _("Dev"),
-        kind: "neutral"
-      }
-    };
-  }
-  if (unknown || !hasActualVersion) {
-    return {
-      key: "Podkop Plus",
-      value: version,
-      tag: {
-        label: _("Check unavailable"),
-        kind: "neutral"
-      }
-    };
-  }
-  const versionCompareResult = compareReleaseVersions(version, latestVersion);
-  if (versionCompareResult === null) {
-    return {
-      key: "Podkop Plus",
-      value: version,
-      tag: {
-        label: _("Check unavailable"),
-        kind: "neutral"
-      }
-    };
-  }
-  if (versionCompareResult < 0) {
-    return {
-      key: "Podkop Plus",
-      value: version,
-      tag: {
-        label: _("Outdated"),
-        kind: "warning"
-      }
-    };
-  }
-  if (versionCompareResult > 0) {
-    return {
-      key: "Podkop Plus",
-      value: version,
-      tag: {
-        label: _("Dev"),
-        kind: "neutral"
-      }
-    };
-  }
-  return {
-    key: "Podkop Plus",
-    value: version,
-    tag: {
-      label: _("Latest"),
-      kind: "success"
-    }
-  };
-}
-
 // src/podkop/tabs/diagnostic/initController.ts
-var UNKNOWN_DIAGNOSTICS_SYSTEM_INFO = {
-  podkop_version: _("unknown"),
-  podkop_latest_version: _("unknown"),
-  luci_app_version: _("unknown"),
-  sing_box_version: _("unknown"),
-  providerInfoLoaded: false,
-  zapret_version: _("unknown"),
-  zapret_installed: 0,
-  byedpi_version: _("unknown"),
-  byedpi_installed: 0,
-  openwrt_version: _("unknown"),
-  device_model: _("unknown")
-};
 var SERVICE_STATUS_REFRESH_INTERVAL_MS = 2e3;
 var SERVICE_ACTION_STATUS_TIMEOUT_MS = 45e3;
 var latestProviderInfoRequestId = 0;
-var latestSystemInfoRequestId = 0;
 var diagnosticLifecycleRegistered = false;
 var diagnosticControllerInitialized = false;
 var diagnosticMounted = false;
 var diagnosticMountId = 0;
 var servicesInfoRefreshTimer = null;
 var servicesInfoRefreshPromise = null;
-function sleep(ms) {
+function sleep2(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 function getDiagnosticsProviderOptions(systemInfo = store.get().diagnosticsSystemInfo) {
@@ -5753,7 +5818,7 @@ async function waitForPodkopRunningState(expectedRunning, mountId) {
     if (Date.now() - startedAt >= SERVICE_ACTION_STATUS_TIMEOUT_MS) {
       return false;
     }
-    await sleep(SERVICE_STATUS_REFRESH_INTERVAL_MS);
+    await sleep2(SERVICE_STATUS_REFRESH_INTERVAL_MS);
   }
   return false;
 }
@@ -5773,49 +5838,13 @@ function stopServicesInfoRefreshTimer() {
   servicesInfoRefreshTimer = null;
 }
 async function fetchSystemInfo() {
-  const requestId = ++latestSystemInfoRequestId;
-  const currentSystemInfo = store.get().diagnosticsSystemInfo;
+  const systemInfo = await ensureSystemInfo();
   store.set({
-    diagnosticsSystemInfo: {
-      ...currentSystemInfo,
-      loading: true
-    }
+    diagnosticsChecks: getDiagnosticsChecks(
+      _("Not running"),
+      getDiagnosticsProviderOptions(systemInfo)
+    )
   });
-  try {
-    const systemInfo = await PodkopShellMethods.getSystemInfo();
-    if (requestId !== latestSystemInfoRequestId) {
-      return;
-    }
-    if (systemInfo.success) {
-      const nextSystemInfo = {
-        loading: false,
-        providerInfoLoaded: true,
-        ...systemInfo.data
-      };
-      store.set({
-        diagnosticsSystemInfo: nextSystemInfo,
-        diagnosticsChecks: getDiagnosticsChecks(
-          _("Not running"),
-          getDiagnosticsProviderOptions(nextSystemInfo)
-        )
-      });
-      return;
-    }
-  } catch (error) {
-    logger.error("[DIAGNOSTIC]", "fetchSystemInfo failed", error);
-  }
-  if (requestId === latestSystemInfoRequestId) {
-    const currentSystemInfo2 = store.get().diagnosticsSystemInfo;
-    store.set({
-      diagnosticsSystemInfo: {
-        ...UNKNOWN_DIAGNOSTICS_SYSTEM_INFO,
-        loading: false,
-        providerInfoLoaded: currentSystemInfo2.providerInfoLoaded,
-        zapret_installed: currentSystemInfo2.zapret_installed,
-        byedpi_installed: currentSystemInfo2.byedpi_installed
-      }
-    });
-  }
 }
 async function fetchDiagnosticsProviderInfo() {
   const requestId = ++latestProviderInfoRequestId;
@@ -6149,7 +6178,10 @@ function renderDiagnosticSystemInfoWidget() {
   const diagnosticsSystemInfo = store.get().diagnosticsSystemInfo;
   const container = document.getElementById("pdk_diagnostic-page-system-info");
   const items = [
-    getPodkopVersionRow(diagnosticsSystemInfo),
+    {
+      key: "Podkop Plus",
+      value: normalizeCompiledVersion(diagnosticsSystemInfo.podkop_version)
+    },
     {
       key: "Luci App",
       value: normalizeCompiledVersion(PODKOP_LUCI_APP_VERSION)
@@ -6237,7 +6269,7 @@ async function runChecks() {
 async function loadInitialDiagnosticData() {
   const diagnosticStatus = document.getElementById("diagnostic-status");
   if (diagnosticStatus?.isConnected && diagnosticStatus.offsetParent !== null) {
-    void fetchSystemInfo();
+    await fetchSystemInfo();
     await ensureDiagnosticsProviderInfo();
   }
 }
@@ -8049,11 +8081,508 @@ var MonitoringTab = {
   styles: styles5
 };
 
+// src/podkop/tabs/updates/render.ts
+function render4() {
+  return E("div", { id: "updates-status", class: "pdk_updates-page" }, [
+    E("div", {
+      id: "pdk_updates-components",
+      class: "pdk_updates-page__components"
+    })
+  ]);
+}
+
+// src/podkop/tabs/updates/initController.ts
+var updatesLifecycleRegistered = false;
+var updatesControllerInitialized = false;
+var updatesMounted = false;
+function isNotInstalled(version) {
+  return !version || version === "not installed";
+}
+function getCheckTag(component) {
+  const status = store.get().updatesChecks[component].status;
+  if (!status) {
+    return void 0;
+  }
+  if (status === "latest") {
+    return { label: _("Latest"), kind: "success" };
+  }
+  if (status === "outdated") {
+    return { label: _("Outdated"), kind: "warning" };
+  }
+  return { label: _("Dev"), kind: "neutral" };
+}
+function shouldShowInstallAfterCheck(component) {
+  const status = store.get().updatesChecks[component].status;
+  return status === "outdated" || status === "dev";
+}
+function isAnyActionLoading() {
+  return Object.values(store.get().updatesActions).some((item) => item.loading);
+}
+function isSystemInfoLoading() {
+  const systemInfo = store.get().diagnosticsSystemInfo;
+  return systemInfo.loading || !systemInfo.loaded;
+}
+function setActionLoading(action, loading2) {
+  const updatesActions = store.get().updatesActions;
+  store.set({
+    updatesActions: {
+      ...updatesActions,
+      [action]: { loading: loading2 }
+    }
+  });
+}
+function setCheckResult(component, status, latestVersion) {
+  const updatesChecks = store.get().updatesChecks;
+  store.set({
+    updatesChecks: {
+      ...updatesChecks,
+      [component]: {
+        status,
+        latest_version: latestVersion
+      }
+    }
+  });
+}
+function resetCheckResult(component) {
+  setCheckResult(component, null, "");
+}
+function getCheckToastMessage(status) {
+  if (status === "outdated") {
+    return _("Update is available");
+  }
+  if (status === "dev") {
+    return _("Installed version is newer than upstream release");
+  }
+  return _("The latest version is installed");
+}
+async function refreshSystemInfoAfterMutation() {
+  await ensureSystemInfo({ force: true, silent: true });
+}
+function reloadPageAfterPodkopUpdate() {
+  window.setTimeout(() => {
+    window.location.reload();
+  }, 1200);
+}
+function patchSystemInfoAfterMutation(result) {
+  const systemInfo = store.get().diagnosticsSystemInfo;
+  const nextSystemInfo = { ...systemInfo, loading: false, loaded: true };
+  const version = result.current_version || result.latest_version || _("unknown");
+  if (result.component === "podkop" && result.action === "install") {
+    nextSystemInfo.podkop_version = version;
+  }
+  if (result.component === "sing_box") {
+    nextSystemInfo.sing_box_version = version;
+    if (result.action === "install_extended") {
+      nextSystemInfo.sing_box_extended = 1;
+    }
+    if (result.action === "install_stable") {
+      nextSystemInfo.sing_box_extended = 0;
+    }
+  }
+  if (result.component === "zapret") {
+    if (result.action === "remove") {
+      nextSystemInfo.zapret_installed = 0;
+      nextSystemInfo.zapret_version = "not installed";
+    } else {
+      nextSystemInfo.zapret_installed = 1;
+      nextSystemInfo.zapret_version = version;
+    }
+  }
+  if (result.component === "byedpi") {
+    if (result.action === "remove") {
+      nextSystemInfo.byedpi_installed = 0;
+      nextSystemInfo.byedpi_version = "not installed";
+    } else {
+      nextSystemInfo.byedpi_installed = 1;
+      nextSystemInfo.byedpi_version = version;
+    }
+  }
+  store.set({
+    diagnosticsSystemInfo: nextSystemInfo
+  });
+}
+async function handleComponentAction(button) {
+  if (isAnyActionLoading()) {
+    return;
+  }
+  setActionLoading(button.key, true);
+  try {
+    const response = await PodkopShellMethods.componentAction(
+      button.component,
+      button.action
+    );
+    if (!response.success) {
+      setActionLoading(button.key, false);
+      showToast(response.error || _("Component action failed"), "error");
+      return;
+    }
+    const result = response.data;
+    if (button.action === "check_update") {
+      const status = result.status || null;
+      if (status === "latest" || status === "outdated" || status === "dev") {
+        setCheckResult(button.component, status, result.latest_version || "");
+      }
+      setActionLoading(button.key, false);
+      showToast(getCheckToastMessage(status), "success");
+      return;
+    }
+    if (button.action === "install" || button.action.startsWith("install_")) {
+      setCheckResult(button.component, "latest", result.latest_version || "");
+    } else {
+      resetCheckResult(button.component);
+    }
+    patchSystemInfoAfterMutation(result);
+    setActionLoading(button.key, false);
+    if (result.component === "podkop" && result.action === "install") {
+      showToast(
+        result.message || _("Component action completed"),
+        "success",
+        1200
+      );
+      reloadPageAfterPodkopUpdate();
+      return;
+    }
+    showToast(result.message || _("Component action completed"), "success");
+    void refreshSystemInfoAfterMutation();
+  } catch (error) {
+    logger.error("[UPDATES]", "handleComponentAction failed", error);
+    setActionLoading(button.key, false);
+    showToast(_("Component action failed"), "error");
+  }
+}
+function getPrimaryUpdateAction(component, checkKey, installKey) {
+  if (shouldShowInstallAfterCheck(component)) {
+    return {
+      key: installKey,
+      text: _("Install"),
+      icon: renderRotateCcwIcon24,
+      component,
+      action: "install"
+    };
+  }
+  return {
+    key: checkKey,
+    text: _("Check update"),
+    icon: renderSearchIcon24,
+    component,
+    action: "check_update"
+  };
+}
+function getComponentCards() {
+  const systemInfo = store.get().diagnosticsSystemInfo;
+  const systemInfoLoading = isSystemInfoLoading();
+  const zapretInstalled = Boolean(systemInfo.zapret_installed);
+  const byedpiInstalled = Boolean(systemInfo.byedpi_installed);
+  const singBoxInstallAction = systemInfo.sing_box_extended ? {
+    key: "singBoxInstallStable",
+    text: _("Install stable"),
+    icon: renderRotateCcwIcon24,
+    component: "sing_box",
+    action: "install_stable"
+  } : {
+    key: "singBoxInstallExtended",
+    text: _("Install extended"),
+    icon: renderRotateCcwIcon24,
+    component: "sing_box",
+    action: "install_extended"
+  };
+  return [
+    {
+      title: "Podkop Plus",
+      version: normalizeCompiledVersion(systemInfo.podkop_version),
+      tag: getCheckTag("podkop"),
+      actions: [
+        getPrimaryUpdateAction("podkop", "podkopCheck", "podkopInstall")
+      ]
+    },
+    {
+      title: "Sing-box",
+      version: isNotInstalled(systemInfo.sing_box_version) ? _("Not installed") : systemInfo.sing_box_version,
+      tag: getCheckTag("sing_box"),
+      actions: [
+        getPrimaryUpdateAction(
+          "sing_box",
+          "singBoxCheck",
+          "singBoxInstall"
+        ),
+        singBoxInstallAction
+      ]
+    },
+    {
+      title: "Zapret",
+      version: systemInfoLoading ? "loading" : zapretInstalled ? systemInfo.zapret_version : _("Not installed"),
+      tag: zapretInstalled ? getCheckTag("zapret") : void 0,
+      actions: zapretInstalled ? [
+        getPrimaryUpdateAction("zapret", "zapretCheck", "zapretInstall"),
+        {
+          key: "zapretRemove",
+          text: _("Remove"),
+          icon: renderXIcon24,
+          component: "zapret",
+          action: "remove"
+        }
+      ] : [
+        {
+          key: "zapretInstall",
+          text: _("Install"),
+          icon: renderRotateCcwIcon24,
+          component: "zapret",
+          action: "install"
+        }
+      ]
+    },
+    {
+      title: "ByeDPI",
+      version: systemInfoLoading ? "loading" : byedpiInstalled ? systemInfo.byedpi_version : _("Not installed"),
+      tag: byedpiInstalled ? getCheckTag("byedpi") : void 0,
+      actions: byedpiInstalled ? [
+        getPrimaryUpdateAction("byedpi", "byedpiCheck", "byedpiInstall"),
+        {
+          key: "byedpiRemove",
+          text: _("Remove"),
+          icon: renderXIcon24,
+          component: "byedpi",
+          action: "remove"
+        }
+      ] : [
+        {
+          key: "byedpiInstall",
+          text: _("Install"),
+          icon: renderRotateCcwIcon24,
+          component: "byedpi",
+          action: "install"
+        }
+      ]
+    }
+  ];
+}
+function renderComponentTag(card) {
+  if (!card.tag) {
+    return null;
+  }
+  return E(
+    "span",
+    {
+      class: [
+        "pdk_updates-page__component__tag",
+        card.tag.kind === "success" ? "pdk_updates-page__component__tag--success" : "",
+        card.tag.kind === "warning" ? "pdk_updates-page__component__tag--warning" : ""
+      ].filter(Boolean).join(" ")
+    },
+    card.tag.label
+  );
+}
+function renderComponentCard(card) {
+  const updatesActions = store.get().updatesActions;
+  const anyActionLoading = isAnyActionLoading();
+  const systemInfoLoading = isSystemInfoLoading();
+  const tag = renderComponentTag(card);
+  const headerChildren = [
+    E("b", { class: "pdk_updates-page__component__title" }, card.title)
+  ];
+  if (tag) {
+    headerChildren.push(tag);
+  }
+  return E("div", { class: "pdk_updates-page__component" }, [
+    E(
+      "div",
+      { class: "pdk_updates-page__component__header" },
+      headerChildren
+    ),
+    E("div", { class: "pdk_updates-page__component__version" }, [
+      E(
+        "span",
+        { class: "pdk_updates-page__component__version__label" },
+        _("Version")
+      ),
+      E(
+        "span",
+        { class: "pdk_updates-page__component__version__value" },
+        card.version
+      )
+    ]),
+    E(
+      "div",
+      { class: "pdk_updates-page__component__actions" },
+      card.actions.map((action) => {
+        const loading2 = updatesActions[action.key].loading;
+        return renderButton({
+          text: action.text,
+          icon: action.icon,
+          loading: loading2,
+          disabled: systemInfoLoading || anyActionLoading && !loading2,
+          onClick: () => void handleComponentAction(action)
+        });
+      })
+    )
+  ]);
+}
+function renderUpdatesComponents() {
+  const container = document.getElementById("pdk_updates-components");
+  if (!container) {
+    return;
+  }
+  const renderedComponents = getComponentCards().map(renderComponentCard);
+  return preserveScrollForPage(() => {
+    container.replaceChildren(...renderedComponents);
+  });
+}
+function onStoreUpdate3(next, prev, diff) {
+  if (diff.diagnosticsSystemInfo || diff.updatesActions || diff.updatesChecks) {
+    renderUpdatesComponents();
+  }
+}
+function onPageMount4() {
+  onPageUnmount4();
+  updatesMounted = true;
+  store.subscribe(onStoreUpdate3);
+  renderUpdatesComponents();
+  void ensureSystemInfo();
+}
+function onPageUnmount4() {
+  updatesMounted = false;
+  store.unsubscribe(onStoreUpdate3);
+  store.reset(["updatesActions", "updatesChecks"]);
+}
+function registerLifecycleListeners4() {
+  if (updatesLifecycleRegistered) {
+    return;
+  }
+  updatesLifecycleRegistered = true;
+  store.subscribe((next, prev, diff) => {
+    if (diff.tabService && next.tabService.current !== prev.tabService.current) {
+      const isUpdatesVisible = next.tabService.current === "updates";
+      if (isUpdatesVisible) {
+        return onPageMount4();
+      }
+      if (updatesMounted) {
+        return onPageUnmount4();
+      }
+    }
+  });
+}
+async function initController4() {
+  if (updatesControllerInitialized) {
+    return;
+  }
+  updatesControllerInitialized = true;
+  onMount("updates-status").then(() => {
+    logger.debug("[UPDATES]", "initController", "onMount");
+    onPageMount4();
+    registerLifecycleListeners4();
+  });
+}
+
+// src/podkop/tabs/updates/styles.ts
+var styles6 = `
+#cbi-${PODKOP_CBI_PREFIX}-updates-_mount_node > div {
+    width: 100%;
+}
+
+#cbi-${PODKOP_CBI_PREFIX}-updates > h3 {
+    display: none;
+}
+
+.pdk_updates-page {
+    width: 100%;
+}
+
+.pdk_updates-page__components {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(240px, 1fr));
+    grid-gap: 10px;
+}
+
+@media (max-width: 760px) {
+    .pdk_updates-page__components {
+        grid-template-columns: 1fr;
+    }
+}
+
+.pdk_updates-page__component {
+    border: 2px var(--background-color-low, lightgray) solid;
+    border-radius: 4px;
+    padding: 10px;
+    min-width: 0;
+    display: grid;
+    grid-template-columns: 1fr;
+    grid-row-gap: 10px;
+}
+
+.pdk_updates-page__component__header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+    min-width: 0;
+}
+
+.pdk_updates-page__component__title {
+    color: var(--text-color-high);
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+}
+
+.pdk_updates-page__component__version {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    grid-column-gap: 6px;
+    align-items: baseline;
+    min-width: 0;
+}
+
+.pdk_updates-page__component__version__label {
+    color: var(--text-color-medium);
+}
+
+.pdk_updates-page__component__version__value {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.pdk_updates-page__component__tag {
+    flex: 0 0 auto;
+    padding: 2px 5px;
+    border: 1px var(--background-color-high, gray) solid;
+    border-radius: 4px;
+    color: var(--text-color-medium, gray);
+    line-height: 1.2;
+}
+
+.pdk_updates-page__component__tag--success {
+    border-color: var(--success-color-medium, green);
+    color: var(--success-color-medium, green);
+}
+
+.pdk_updates-page__component__tag--warning {
+    border-color: var(--warn-color-medium, orange);
+    color: var(--warn-color-medium, orange);
+}
+
+.pdk_updates-page__component__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.pdk_updates-page__component__actions > .pdk-partial-button {
+    margin-left: 0;
+}
+`;
+
+// src/podkop/tabs/updates/index.ts
+var UpdatesTab = {
+  render: render4,
+  initController: initController4,
+  styles: styles6
+};
+
 // src/styles.ts
 var GlobalStyles = `
 ${DashboardTab.styles}
 ${DiagnosticTab.styles}
 ${MonitoringTab.styles}
+${UpdatesTab.styles}
 ${PartialStyles}
 
 
@@ -8421,6 +8950,7 @@ return baseclass.extend({
   TabService,
   TabServiceInstance,
   UPDATE_INTERVAL_OPTIONS,
+  UpdatesTab,
   bulkValidate,
   coreService,
   executeShellCommand,

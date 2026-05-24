@@ -190,11 +190,13 @@ export interface StoreType {
   };
   diagnosticsSystemInfo: {
     loading: boolean;
+    loaded: boolean;
     providerInfoLoaded: boolean;
     podkop_version: string;
     podkop_latest_version: string;
     luci_app_version: string;
     sing_box_version: string;
+    sing_box_extended: number;
     zapret_version: string;
     zapret_installed: number;
     byedpi_version: string;
@@ -202,6 +204,27 @@ export interface StoreType {
     openwrt_version: string;
     device_model: string;
   };
+  updatesActions: {
+    podkopCheck: { loading: boolean };
+    podkopInstall: { loading: boolean };
+    singBoxCheck: { loading: boolean };
+    singBoxInstall: { loading: boolean };
+    singBoxInstallExtended: { loading: boolean };
+    singBoxInstallStable: { loading: boolean };
+    zapretCheck: { loading: boolean };
+    zapretInstall: { loading: boolean };
+    zapretRemove: { loading: boolean };
+    byedpiCheck: { loading: boolean };
+    byedpiInstall: { loading: boolean };
+    byedpiRemove: { loading: boolean };
+  };
+  updatesChecks: Record<
+    Podkop.ComponentName,
+    {
+      status: 'latest' | 'outdated' | 'dev' | null;
+      latest_version: string;
+    }
+  >;
 }
 
 const initialStore: StoreType = {

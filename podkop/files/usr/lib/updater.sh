@@ -1,0 +1,1579 @@
+# shellcheck shell=ash
+
+UPDATES_TMP_DIR=""
+UPDATES_TARGET_ARCH=""
+UPDATES_ARCH_CANDIDATES=""
+UPDATES_ZAPRET_ARCH=""
+UPDATES_ZAPRET_BUNDLE_URL=""
+UPDATES_ZAPRET_BUNDLE_NAME=""
+UPDATES_ZAPRET_PACKAGE_FILE=""
+UPDATES_ZAPRET_PACKAGE_NAME=""
+UPDATES_ZAPRET_PACKAGE_VERSION=""
+UPDATES_BYEDPI_ARCH=""
+UPDATES_BYEDPI_PACKAGE_URL=""
+UPDATES_BYEDPI_PACKAGE_NAME=""
+UPDATES_BYEDPI_PACKAGE_FILE=""
+UPDATES_BYEDPI_PACKAGE_VERSION=""
+UPDATES_SING_BOX_EXTENDED_RELEASE_TAG=""
+UPDATES_SING_BOX_EXTENDED_ARCH_SUFFIX=""
+UPDATES_SING_BOX_EXTENDED_ASSET_URL=""
+UPDATES_SING_BOX_EXTENDED_ASSET_NAME=""
+UPDATES_JOB_DIR="/var/run/podkop-plus/component-actions"
+UPDATES_LOCK_DIR="/var/run/podkop-plus/component-action.lock"
+UPDATES_LOCK_HELD=0
+
+updates_log() {
+    local message="$1"
+    local level="${2:-info}"
+
+    log "Updates: $message" "$level"
+}
+
+updates_init_tmp_dir() {
+    [ -n "$UPDATES_TMP_DIR" ] && return 0
+
+    UPDATES_TMP_DIR="$(mktemp -d /tmp/podkop-plus-updates.XXXXXX 2>/dev/null || true)"
+    if [ -z "$UPDATES_TMP_DIR" ]; then
+        UPDATES_TMP_DIR="/tmp/podkop-plus-updates.$$"
+        mkdir -p "$UPDATES_TMP_DIR" || return 1
+    fi
+}
+
+updates_cleanup() {
+    [ -n "$UPDATES_TMP_DIR" ] && rm -rf "$UPDATES_TMP_DIR"
+}
+
+updates_acquire_component_lock() {
+    local owner_pid
+
+    mkdir -p /var/run/podkop-plus || return 1
+
+    if mkdir "$UPDATES_LOCK_DIR" 2>/dev/null; then
+        printf '%s\n' "$$" >"$UPDATES_LOCK_DIR/pid"
+        UPDATES_LOCK_HELD=1
+        return 0
+    fi
+
+    owner_pid="$(sed -n '1p' "$UPDATES_LOCK_DIR/pid" 2>/dev/null)"
+    if [ -n "$owner_pid" ] && kill -0 "$owner_pid" 2>/dev/null; then
+        return 1
+    fi
+
+    rm -f "$UPDATES_LOCK_DIR/pid" 2>/dev/null
+    rmdir "$UPDATES_LOCK_DIR" 2>/dev/null || return 1
+
+    mkdir "$UPDATES_LOCK_DIR" 2>/dev/null || return 1
+    printf '%s\n' "$$" >"$UPDATES_LOCK_DIR/pid"
+    UPDATES_LOCK_HELD=1
+}
+
+updates_release_component_lock() {
+    [ "$UPDATES_LOCK_HELD" -eq 1 ] || return 0
+
+    rm -f "$UPDATES_LOCK_DIR/pid" 2>/dev/null
+    rmdir "$UPDATES_LOCK_DIR" 2>/dev/null
+    UPDATES_LOCK_HELD=0
+}
+
+updates_component_action_cleanup() {
+    updates_cleanup
+    updates_release_component_lock
+}
+
+updates_json_response() {
+    local success="$1"
+    local component="$2"
+    local action="$3"
+    local message="$4"
+    local current_version="${5:-}"
+    local latest_version="${6:-}"
+    local changed="${7:-0}"
+    local status="${8:-}"
+
+    jq -cn \
+        --argjson success "$success" \
+        --arg component "$component" \
+        --arg action "$action" \
+        --arg message "$message" \
+        --arg current_version "$current_version" \
+        --arg latest_version "$latest_version" \
+        --argjson changed "$changed" \
+        --arg status "$status" \
+        '{
+            success: $success,
+            component: $component,
+            action: $action,
+            message: $message,
+            current_version: $current_version,
+            latest_version: $latest_version,
+            changed: $changed,
+            status: $status
+        }'
+}
+
+updates_success() {
+    updates_json_response true "$@"
+    exit 0
+}
+
+updates_fail() {
+    local component="$1"
+    local action="$2"
+    local message="$3"
+    local current_version="${4:-}"
+    local latest_version="${5:-}"
+
+    updates_log "$message" "error"
+    updates_json_response false "$component" "$action" "$message" "$current_version" "$latest_version" 0
+    exit 1
+}
+
+updates_job_json_response() {
+    local success="$1"
+    local job_id="$2"
+    local message="${3:-}"
+
+    jq -cn \
+        --argjson success "$success" \
+        --arg job_id "$job_id" \
+        --arg message "$message" \
+        '{
+            success: $success,
+            job_id: $job_id,
+            message: $message
+        }'
+}
+
+updates_job_state_path() {
+    local job_id="$1"
+
+    case "$job_id" in
+    *[!A-Za-z0-9._-]* | "" | "." | "..")
+        return 1
+        ;;
+    esac
+
+    printf '%s/%s.json\n' "$UPDATES_JOB_DIR" "$job_id"
+}
+
+updates_write_running_job_state() {
+    local state_file="$1"
+    local component="$2"
+    local action="$3"
+
+    mkdir -p "$UPDATES_JOB_DIR" || return 1
+    jq -cn \
+        --argjson success true \
+        --argjson running true \
+        --arg component "$component" \
+        --arg action "$action" \
+        --arg message "Component action is running" \
+        '{
+            success: $success,
+            running: $running,
+            component: $component,
+            action: $action,
+            message: $message,
+            current_version: "",
+            latest_version: "",
+            changed: 0,
+            status: "",
+            exit_code: null
+        }' >"$state_file"
+}
+
+updates_write_finished_job_state() {
+    local state_file="$1"
+    local component="$2"
+    local action="$3"
+    local exit_code="$4"
+    local output_file="$5"
+    local tmp_file json_file raw_output
+
+    tmp_file="${state_file}.$$"
+    json_file="$output_file.json"
+
+    if jq -e . "$output_file" >/dev/null 2>&1; then
+        jq -c \
+            --argjson running false \
+            --argjson exit_code "$exit_code" \
+            '. + {running: $running, exit_code: $exit_code}' \
+            "$output_file" >"$tmp_file" && mv "$tmp_file" "$state_file"
+        rm -f "$tmp_file" "$output_file"
+        return 0
+    fi
+
+    sed -n 's/^[^{]*\({.*\)$/\1/p' "$output_file" 2>/dev/null | tail -n 1 >"$json_file"
+    if [ -s "$json_file" ] && jq -e . "$json_file" >/dev/null 2>&1; then
+        jq -c \
+            --argjson running false \
+            --argjson exit_code "$exit_code" \
+            '. + {running: $running, exit_code: $exit_code}' \
+            "$json_file" >"$tmp_file" && mv "$tmp_file" "$state_file"
+        rm -f "$tmp_file" "$json_file" "$output_file"
+        return 0
+    fi
+    rm -f "$json_file"
+
+    raw_output="$(tr '\n' ' ' <"$output_file" 2>/dev/null | cut -c1-240)"
+    [ -n "$raw_output" ] || raw_output="Component action failed"
+
+    jq -cn \
+        --argjson success false \
+        --argjson running false \
+        --arg component "$component" \
+        --arg action "$action" \
+        --arg message "$raw_output" \
+        --argjson exit_code "$exit_code" \
+        '{
+            success: $success,
+            running: $running,
+            component: $component,
+            action: $action,
+            message: $message,
+            current_version: "",
+            latest_version: "",
+            changed: 0,
+            status: "",
+            exit_code: $exit_code
+        }' >"$tmp_file" && mv "$tmp_file" "$state_file"
+
+    rm -f "$tmp_file" "$output_file"
+}
+
+component_action_async() {
+    local component="$1"
+    local action="$2"
+    local job_id state_file output_file
+
+    mkdir -p "$UPDATES_JOB_DIR" || {
+        updates_job_json_response false "" "Failed to create component action state directory"
+        exit 1
+    }
+
+    find "$UPDATES_JOB_DIR" -type f \( -name '*.json' -o -name '*.out' \) -mmin +60 -delete 2>/dev/null || true
+    job_id="$(date +%s 2>/dev/null)-$$"
+    state_file="$(updates_job_state_path "$job_id")" || {
+        updates_job_json_response false "" "Failed to prepare component action job"
+        exit 1
+    }
+    output_file="$UPDATES_JOB_DIR/$job_id.out"
+
+    updates_write_running_job_state "$state_file" "$component" "$action" || {
+        updates_job_json_response false "" "Failed to write component action state"
+        exit 1
+    }
+
+    (
+        trap '' HUP
+        /usr/bin/podkop-plus component_action "$component" "$action" >"$output_file" 2>&1
+        updates_write_finished_job_state "$state_file" "$component" "$action" "$?" "$output_file"
+    ) >/dev/null 2>&1 &
+
+    updates_job_json_response true "$job_id" "Component action started"
+}
+
+component_action_status() {
+    local job_id="$1"
+    local state_file
+
+    state_file="$(updates_job_state_path "$job_id")" || {
+        updates_json_response false "unknown" "status" "Invalid component action job id" "" "" 0 ""
+        exit 1
+    }
+
+    if [ ! -f "$state_file" ]; then
+        updates_json_response false "unknown" "status" "Component action job was not found" "" "" 0 ""
+        exit 1
+    fi
+
+    cat "$state_file"
+}
+
+updates_command_exists() {
+    command -v "$1" >/dev/null 2>&1
+}
+
+updates_is_apk() {
+    updates_command_exists apk
+}
+
+updates_read_openwrt_release_value() {
+    local key="$1"
+
+    [ -f /etc/openwrt_release ] || return 0
+    sed -n "s/^${key}='\(.*\)'/\1/p" /etc/openwrt_release 2>/dev/null | head -n 1
+}
+
+updates_http_get() {
+    local url="$1"
+
+    if updates_command_exists curl; then
+        curl --connect-timeout 5 -m 30 -fsSL "$url"
+        return $?
+    fi
+
+    if updates_command_exists wget; then
+        wget -T 30 -qO- "$url"
+        return $?
+    fi
+
+    return 1
+}
+
+updates_download_file_once() {
+    local url="$1"
+    local output_path="$2"
+
+    if updates_command_exists curl; then
+        curl --connect-timeout 5 -m 120 -fsSL "$url" -o "$output_path"
+        return $?
+    fi
+
+    if updates_command_exists wget; then
+        wget -T 120 -q -O "$output_path" "$url"
+        return $?
+    fi
+
+    return 1
+}
+
+updates_download_with_retry() {
+    local url="$1"
+    local output_path="$2"
+    local label="$3"
+    local attempt=1
+    local max_attempts=3
+
+    while [ "$attempt" -le "$max_attempts" ]; do
+        updates_log "Downloading $label ($attempt/$max_attempts)"
+
+        if updates_download_file_once "$url" "$output_path" && [ -s "$output_path" ]; then
+            return 0
+        fi
+
+        rm -f "$output_path"
+        updates_log "Retrying $label" "warn"
+        attempt=$((attempt + 1))
+    done
+
+    return 1
+}
+
+updates_log_command() {
+    local description="$1"
+    local status output_file line level
+    shift
+
+    output_file="$(mktemp /tmp/podkop-plus-updates-command.XXXXXX 2>/dev/null || true)"
+    [ -n "$output_file" ] || output_file="/tmp/podkop-plus-updates-command.$$"
+
+    updates_log "$description"
+    "$@" >"$output_file" 2>&1
+    status=$?
+
+    level="info"
+    [ "$status" -eq 0 ] || level="error"
+
+    while IFS= read -r line; do
+        [ -n "$line" ] && updates_log "$line" "$level"
+    done <"$output_file"
+
+    rm -f "$output_file"
+    return "$status"
+}
+
+updates_pkg_is_installed() {
+    local package_name="$1"
+
+    if updates_is_apk; then
+        apk info -e "$package_name" >/dev/null 2>&1
+        return $?
+    fi
+
+    opkg list-installed 2>/dev/null | grep -Eq "^${package_name}([[:space:]-]|$)"
+}
+
+updates_get_installed_package_version() {
+    local package_name="$1"
+
+    if updates_is_apk; then
+        apk info -e "$package_name" >/dev/null 2>&1 || return 0
+        apk info -v "$package_name" 2>/dev/null | sed "s/^${package_name}-//" | sed -n '1p'
+        return 0
+    fi
+
+    opkg list-installed 2>/dev/null | awk -v pkg="$package_name" '$1 == pkg && $2 == "-" {print $3; exit}'
+}
+
+updates_get_available_package_version() {
+    local package_name="$1"
+
+    if updates_is_apk; then
+        apk policy "$package_name" 2>/dev/null |
+            awk '
+                /^  [^[:space:]][^[:space:]]*:/ {
+                    version=$1
+                    sub(/:$/, "", version)
+                    print version
+                    exit
+                }
+            '
+        return 0
+    fi
+
+    opkg list "$package_name" 2>/dev/null |
+        awk -v pkg="$package_name" '$1 == pkg && $2 == "-" {print $3; exit}'
+}
+
+updates_pkg_list_update() {
+    if updates_is_apk; then
+        apk update </dev/null
+    else
+        opkg update </dev/null
+    fi
+}
+
+updates_pkg_install_name() {
+    local package_name="$1"
+
+    if updates_is_apk; then
+        apk add "$package_name" </dev/null
+    else
+        opkg install "$package_name" </dev/null
+    fi
+}
+
+updates_pkg_install_name_downgrade() {
+    local package_name="$1"
+
+    if updates_is_apk; then
+        apk add "$package_name" </dev/null
+    else
+        opkg install --force-reinstall --force-downgrade "$package_name" </dev/null ||
+            opkg install --force-downgrade "$package_name" </dev/null
+    fi
+}
+
+updates_pkg_install_files() {
+    if updates_is_apk; then
+        apk add --allow-untrusted "$@" </dev/null
+    else
+        opkg install --force-overwrite --force-downgrade "$@" </dev/null
+    fi
+}
+
+updates_pkg_remove_name() {
+    local package_name="$1"
+
+    if ! updates_pkg_is_installed "$package_name"; then
+        return 0
+    fi
+
+    if updates_is_apk; then
+        apk del "$package_name" </dev/null
+    else
+        opkg remove --force-depends "$package_name" </dev/null
+    fi
+}
+
+updates_package_version_newer() {
+    local candidate_version="$1"
+    local installed_version="$2"
+    local apk_compare_result newest
+
+    [ -n "$candidate_version" ] || return 1
+    [ -n "$installed_version" ] || return 1
+    [ "$candidate_version" != "$installed_version" ] || return 1
+
+    if updates_is_apk; then
+        apk_compare_result="$(apk version -t "$candidate_version" "$installed_version" 2>/dev/null || true)"
+        [ "$apk_compare_result" = ">" ]
+        return $?
+    fi
+
+    if updates_command_exists opkg; then
+        opkg compare-versions "$candidate_version" ">" "$installed_version" >/dev/null 2>&1
+        return $?
+    fi
+
+    newest="$(printf '%s\n%s\n' "$installed_version" "$candidate_version" | sort -V | tail -n 1)"
+    [ "$newest" = "$candidate_version" ]
+}
+
+updates_compare_versions() {
+    local lhs="$1"
+    local rhs="$2"
+    local newest
+
+    [ -n "$lhs" ] || return 1
+    [ -n "$rhs" ] || return 1
+
+    [ "$lhs" = "$rhs" ] && echo 0 && return 0
+
+    if updates_is_apk; then
+        case "$(apk version -t "$lhs" "$rhs" 2>/dev/null || true)" in
+        ">") echo 1 && return 0 ;;
+        "<") echo -1 && return 0 ;;
+        "=") echo 0 && return 0 ;;
+        esac
+    fi
+
+    if updates_command_exists opkg; then
+        if opkg compare-versions "$lhs" ">" "$rhs" >/dev/null 2>&1; then
+            echo 1
+            return 0
+        fi
+        if opkg compare-versions "$lhs" "<" "$rhs" >/dev/null 2>&1; then
+            echo -1
+            return 0
+        fi
+        if opkg compare-versions "$lhs" "=" "$rhs" >/dev/null 2>&1; then
+            echo 0
+            return 0
+        fi
+    fi
+
+    newest="$(printf '%s\n%s\n' "$rhs" "$lhs" | sort -V | tail -n 1)"
+    if [ "$newest" = "$lhs" ]; then
+        echo 1
+    else
+        echo -1
+    fi
+}
+
+updates_status_from_compare() {
+    local compare_result="$1"
+
+    case "$compare_result" in
+    -1) printf '%s\n' "outdated" ;;
+    0) printf '%s\n' "latest" ;;
+    1) printf '%s\n' "dev" ;;
+    *) return 1 ;;
+    esac
+}
+
+updates_check_success() {
+    local component="$1"
+    local current_version="$2"
+    local latest_version="$3"
+
+    updates_check_success_compared "$component" "$current_version" "$latest_version" "$current_version" "$latest_version"
+}
+
+updates_check_success_compared() {
+    local component="$1"
+    local current_version="$2"
+    local latest_version="$3"
+    local compare_current_version="$4"
+    local compare_latest_version="$5"
+    local compare_result status message
+
+    compare_result="$(updates_compare_versions "$compare_current_version" "$compare_latest_version" 2>/dev/null || true)"
+    [ -n "$compare_result" ] || updates_fail "$component" "check_update" "Failed to compare versions" "$current_version" "$latest_version"
+
+    status="$(updates_status_from_compare "$compare_result")" || updates_fail "$component" "check_update" "Failed to compare versions" "$current_version" "$latest_version"
+
+    case "$status" in
+    latest)
+        message="The latest version is installed"
+        updates_log "$component is up to date ($current_version)"
+        ;;
+    outdated)
+        message="Update is available"
+        updates_log "$component update is available: $current_version -> $latest_version"
+        ;;
+    dev)
+        message="Installed version is newer than upstream release"
+        updates_log "$component installed version is newer than upstream release: $current_version -> $latest_version"
+        ;;
+    esac
+
+    updates_success "$component" "check_update" "$message" "$current_version" "$latest_version" 0 "$status"
+}
+
+updates_ensure_package_tool() {
+    local tool_name="$1"
+    local package_name="$2"
+
+    if updates_command_exists "$tool_name"; then
+        return 0
+    fi
+
+    updates_log_command "Updating package lists before installing $package_name" updates_pkg_list_update || return 1
+    updates_log_command "Installing bootstrap package $package_name" updates_pkg_install_name "$package_name"
+}
+
+updates_retry_resolve() {
+    local description="$1"
+    local command_name="$2"
+    local attempt=1
+    local max_attempts=3
+
+    while [ "$attempt" -le "$max_attempts" ]; do
+        if "$command_name"; then
+            return 0
+        fi
+
+        updates_log "$description failed ($attempt/$max_attempts)" "warn"
+        attempt=$((attempt + 1))
+        sleep 2
+    done
+
+    return 1
+}
+
+updates_clear_version_caches() {
+    rm -f /tmp/podkop-plus.latest-version.cache
+    rm -f "$PODKOP_SYSTEM_INFO_CACHE_FILE"
+    rm -f /tmp/podkop-plus/system-info.json
+}
+
+updates_restart_podkop_after_successful_change() {
+    local waited=0
+
+    [ -x "$PODKOP_SERVICE_INIT" ] || return 0
+
+    updates_log_command "Restarting Podkop Plus after successful component change" "$PODKOP_SERVICE_INIT" restart || true
+
+    while [ "$waited" -lt 60 ]; do
+        if "$PODKOP_SERVICE_INIT" status >/dev/null 2>&1; then
+            return 0
+        fi
+
+        sleep 1
+        waited=$((waited + 1))
+    done
+
+    updates_log "Podkop Plus did not report running after component change restart" "warn"
+}
+
+updates_append_arch_candidate() {
+    local candidate="$1"
+
+    [ -n "$candidate" ] || return 0
+
+    case "$candidate" in
+    all | noarch)
+        return 0
+        ;;
+    esac
+
+    case " $UPDATES_ARCH_CANDIDATES " in
+    *" $candidate "*)
+        return 0
+        ;;
+    esac
+
+    if [ -n "$UPDATES_ARCH_CANDIDATES" ]; then
+        UPDATES_ARCH_CANDIDATES="$UPDATES_ARCH_CANDIDATES $candidate"
+    else
+        UPDATES_ARCH_CANDIDATES="$candidate"
+    fi
+}
+
+updates_append_arch_candidate_variants() {
+    local candidate="$1"
+    local base_candidate suffix
+
+    [ -n "$candidate" ] || return 0
+
+    updates_append_arch_candidate "$candidate"
+
+    case "$candidate" in
+    *+*)
+        updates_append_arch_candidate "${candidate%%+*}"
+        ;;
+    esac
+
+    for suffix in _musl _uclibc _glibc -musl -uclibc -glibc .musl .uclibc .glibc; do
+        case "$candidate" in
+        *"$suffix")
+            base_candidate="${candidate%"$suffix"}"
+            updates_append_arch_candidate "$base_candidate"
+            ;;
+        esac
+    done
+}
+
+updates_add_arch_family_fallbacks() {
+    local arch="$1"
+
+    updates_append_arch_candidate_variants "$arch"
+
+    case "$arch" in
+    aarch64_*)
+        updates_append_arch_candidate_variants "aarch64_generic"
+        ;;
+    riscv64_*)
+        updates_append_arch_candidate_variants "riscv64_generic"
+        ;;
+    arm_cortex-a7_neon-vfpv4)
+        updates_append_arch_candidate_variants "arm_cortex-a7_vfpv4"
+        updates_append_arch_candidate_variants "arm_cortex-a7"
+        ;;
+    arm_cortex-a7_*)
+        updates_append_arch_candidate_variants "arm_cortex-a7"
+        ;;
+    arm_cortex-a9_*)
+        updates_append_arch_candidate_variants "arm_cortex-a9"
+        ;;
+    mipsel_24kc_24kf)
+        updates_append_arch_candidate_variants "mipsel_24kc"
+        ;;
+    esac
+}
+
+updates_resolve_arch_candidates() {
+    local arch_list apk_arch_list release_arch arch
+
+    UPDATES_TARGET_ARCH=""
+    UPDATES_ARCH_CANDIDATES=""
+
+    if updates_is_apk; then
+        if [ -f /etc/apk/arch ]; then
+            apk_arch_list="$(tr '\r\n' '  ' </etc/apk/arch)"
+            [ -n "$apk_arch_list" ] && arch_list="$arch_list $apk_arch_list"
+        fi
+
+        apk_arch_list="$(apk --print-arch 2>/dev/null || true)"
+        [ -n "$apk_arch_list" ] && arch_list="$arch_list $apk_arch_list"
+    else
+        arch_list="$(opkg print-architecture 2>/dev/null | awk '$1 == "arch" && $2 !~ /^(all|noarch)$/ {print $2 " " $3}' | sort -k2,2nr | awk '{print $1}')"
+    fi
+
+    release_arch="$(updates_read_openwrt_release_value "DISTRIB_ARCH")"
+    [ -n "$release_arch" ] && arch_list="$arch_list $release_arch"
+
+    if [ -z "$(printf '%s' "$arch_list" | tr -d '[:space:]')" ]; then
+        arch_list="$(uname -m 2>/dev/null || true)"
+    fi
+
+    for arch in $arch_list; do
+        case "$arch" in
+        all | noarch)
+            continue
+            ;;
+        esac
+
+        [ -n "$UPDATES_TARGET_ARCH" ] || UPDATES_TARGET_ARCH="$arch"
+        updates_add_arch_family_fallbacks "$arch"
+    done
+
+    [ -n "$UPDATES_TARGET_ARCH" ] || return 1
+    updates_log "Detected package architecture candidates: $UPDATES_ARCH_CANDIDATES"
+}
+
+updates_fetch_github_release_json() {
+    local owner="$1"
+    local repo="$2"
+    local response message
+
+    response="$(updates_http_get "https://api.github.com/repos/${owner}/${repo}/releases/latest" 2>/dev/null || true)"
+    [ -n "$response" ] || return 1
+    printf '%s' "$response" | jq -e . >/dev/null 2>&1 || return 1
+
+    message="$(printf '%s' "$response" | jq -r 'if type == "object" then (.message // empty) else empty end' 2>/dev/null)"
+    case "$message" in
+    *"API rate limit"* | *"rate limit exceeded"* | "Not Found")
+        return 1
+        ;;
+    esac
+
+    printf '%s' "$response"
+}
+
+updates_fetch_github_releases_json() {
+    local owner="$1"
+    local repo="$2"
+    local per_page="${3:-30}"
+    local response message
+
+    response="$(updates_http_get "https://api.github.com/repos/${owner}/${repo}/releases?per_page=${per_page}" 2>/dev/null || true)"
+    [ -n "$response" ] || return 1
+    printf '%s' "$response" | jq -e . >/dev/null 2>&1 || return 1
+
+    message="$(printf '%s' "$response" | jq -r 'if type == "object" then (.message // empty) else empty end' 2>/dev/null)"
+    case "$message" in
+    *"API rate limit"* | *"rate limit exceeded"* | "Not Found")
+        return 1
+        ;;
+    esac
+
+    printf '%s' "$response"
+}
+
+updates_extract_package_version() {
+    local package_name="$1"
+
+    case "$package_name" in
+    podkop-plus_*.ipk) printf '%s\n' "$package_name" | sed 's/^podkop-plus_//;s/_[^_]*\.ipk$//' ;;
+    podkop-plus_*.apk) printf '%s\n' "$package_name" | sed 's/^podkop-plus_//;s/\.apk$//' ;;
+    podkop-plus-*.ipk) printf '%s\n' "$package_name" | sed 's/^podkop-plus-//;s/-[^-]*\.ipk$//' ;;
+    podkop-plus-*.apk) printf '%s\n' "$package_name" | sed 's/^podkop-plus-//;s/\.apk$//' ;;
+    zapret_*.ipk) printf '%s\n' "$package_name" | sed 's/^zapret_//;s/_[^_]*\.ipk$//' ;;
+    zapret-*.apk) printf '%s\n' "$package_name" | sed 's/^zapret-//;s/\.apk$//' ;;
+    byedpi_*.ipk) printf '%s\n' "$package_name" | sed 's/^byedpi_//;s/_[^_]*\.ipk$//' ;;
+    byedpi_*.apk) printf '%s\n' "$package_name" | sed 's/^byedpi_//;s/\.apk$//' ;;
+    byedpi-*.ipk) printf '%s\n' "$package_name" | sed 's/^byedpi-//;s/-[^-]*\.ipk$//' ;;
+    byedpi-*.apk) printf '%s\n' "$package_name" | sed 's/^byedpi-//;s/\.apk$//' ;;
+    *) printf '%s\n' "$package_name" ;;
+    esac
+}
+
+updates_extract_arch_package_version() {
+    local package_name="$1"
+    local package_arch="$2"
+    local version
+
+    version="$(printf '%s\n' "$package_name" | sed 's/\.ipk$//;s/\.apk$//')"
+
+    case "$version" in
+    zapret_*) version="${version#zapret_}" ;;
+    zapret-*) version="${version#zapret-}" ;;
+    byedpi_*) version="${version#byedpi_}" ;;
+    byedpi-*) version="${version#byedpi-}" ;;
+    esac
+
+    if [ -n "$package_arch" ]; then
+        case "$version" in
+        *_$package_arch) version="${version%_$package_arch}" ;;
+        *-$package_arch) version="${version%-$package_arch}" ;;
+        esac
+    fi
+
+    printf '%s\n' "$version"
+}
+
+updates_extract_ipk_control_field() {
+    local package_file="$1"
+    local field_name="$2"
+    local control_dir value
+
+    [ -f "$package_file" ] || return 0
+
+    control_dir="$UPDATES_TMP_DIR/control.$$"
+    rm -rf "$control_dir"
+    mkdir -p "$control_dir" || return 0
+
+    if tar -xzf "$package_file" -C "$control_dir" ./control.tar.gz >/dev/null 2>&1 &&
+        tar -xzf "$control_dir/control.tar.gz" -C "$control_dir" ./control >/dev/null 2>&1; then
+        value="$(awk -v field="$field_name" '
+            index($0, field ":") == 1 {
+                sub("^[^:]*:[[:space:]]*", "")
+                print
+                exit
+            }
+        ' "$control_dir/control" 2>/dev/null)"
+    fi
+
+    rm -rf "$control_dir"
+    printf '%s\n' "$value"
+}
+
+updates_extract_apk_control_field() {
+    local package_file="$1"
+    local field_name="$2"
+    local metadata_key
+
+    case "$field_name" in
+    Package) metadata_key="name" ;;
+    Version) metadata_key="version" ;;
+    *) return 0 ;;
+    esac
+
+    updates_command_exists apk || return 0
+    apk adbdump "$package_file" 2>/dev/null | sed -n "s/^  ${metadata_key}:[[:space:]]*//p" | sed -n '1p'
+}
+
+updates_extract_package_control_field() {
+    local package_file="$1"
+    local field_name="$2"
+
+    case "$package_file" in
+    *.ipk) updates_extract_ipk_control_field "$package_file" "$field_name" ;;
+    *.apk) updates_extract_apk_control_field "$package_file" "$field_name" ;;
+    esac
+}
+
+updates_get_openwrt_release_series() {
+    local release
+
+    release="$(updates_read_openwrt_release_value "DISTRIB_RELEASE")"
+    printf '%s\n' "$release" | sed -n 's/^\([0-9][0-9]*\.[0-9][0-9]*\).*/\1/p'
+}
+
+updates_resolve_zapret_release() {
+    local release_json candidate_name arch url
+
+    UPDATES_ZAPRET_ARCH=""
+    UPDATES_ZAPRET_BUNDLE_URL=""
+    UPDATES_ZAPRET_BUNDLE_NAME=""
+    UPDATES_ZAPRET_PACKAGE_VERSION=""
+
+    release_json="$(updates_fetch_github_release_json "remittor" "zapret-openwrt")" || return 1
+
+    for arch in $UPDATES_ARCH_CANDIDATES; do
+        candidate_name="$(printf '%s' "$release_json" | jq -r --arg arch "$arch" '[.assets[] | select(.name | endswith("_" + $arch + ".zip")) | .name][0] // empty')"
+        if [ -n "$candidate_name" ]; then
+            UPDATES_ZAPRET_ARCH="$arch"
+            UPDATES_ZAPRET_BUNDLE_NAME="$candidate_name"
+            break
+        fi
+    done
+
+    [ -n "$UPDATES_ZAPRET_BUNDLE_NAME" ] || return 1
+
+    url="$(printf '%s' "$release_json" | jq -r --arg name "$UPDATES_ZAPRET_BUNDLE_NAME" '[.assets[] | select(.name == $name) | .browser_download_url][0] // empty')"
+    [ -n "$url" ] || return 1
+    UPDATES_ZAPRET_BUNDLE_URL="$url"
+    UPDATES_ZAPRET_PACKAGE_VERSION="$(updates_extract_zapret_bundle_version "$UPDATES_ZAPRET_BUNDLE_NAME")"
+    [ -n "$UPDATES_ZAPRET_PACKAGE_VERSION" ] || UPDATES_ZAPRET_PACKAGE_VERSION="$(printf '%s\n' "$UPDATES_ZAPRET_BUNDLE_NAME" | sed 's/\.zip$//')"
+}
+
+updates_download_and_extract_zapret_package() {
+    local bundle_file inner_package_path
+
+    UPDATES_ZAPRET_PACKAGE_FILE=""
+    UPDATES_ZAPRET_PACKAGE_NAME=""
+    UPDATES_ZAPRET_PACKAGE_VERSION=""
+
+    bundle_file="$UPDATES_TMP_DIR/$UPDATES_ZAPRET_BUNDLE_NAME"
+    updates_download_with_retry "$UPDATES_ZAPRET_BUNDLE_URL" "$bundle_file" "$UPDATES_ZAPRET_BUNDLE_NAME" || return 1
+
+    if updates_is_apk; then
+        inner_package_path="$(unzip -l "$bundle_file" | awk '{print $4}' | grep -E '^apk/zapret-.*\.apk$' | sed -n '1p')"
+    else
+        inner_package_path="$(unzip -l "$bundle_file" | awk '{print $4}' | grep -E "^zapret_.*_${UPDATES_ZAPRET_ARCH}\.ipk$" | sed -n '1p')"
+        [ -n "$inner_package_path" ] || inner_package_path="$(unzip -l "$bundle_file" | awk '{print $4}' | grep -E '^zapret_.*\.ipk$' | sed -n '1p')"
+    fi
+
+    [ -n "$inner_package_path" ] || return 1
+
+    UPDATES_ZAPRET_PACKAGE_NAME="$(basename "$inner_package_path")"
+    UPDATES_ZAPRET_PACKAGE_FILE="$UPDATES_TMP_DIR/$UPDATES_ZAPRET_PACKAGE_NAME"
+
+    unzip -p "$bundle_file" "$inner_package_path" >"$UPDATES_ZAPRET_PACKAGE_FILE" || return 1
+    [ -s "$UPDATES_ZAPRET_PACKAGE_FILE" ] || return 1
+
+    [ -n "$UPDATES_ZAPRET_PACKAGE_VERSION" ] || UPDATES_ZAPRET_PACKAGE_VERSION="$(updates_extract_zapret_bundle_version "$UPDATES_ZAPRET_BUNDLE_NAME")"
+    [ -n "$UPDATES_ZAPRET_PACKAGE_VERSION" ] || UPDATES_ZAPRET_PACKAGE_VERSION="$(updates_extract_arch_package_version "$UPDATES_ZAPRET_PACKAGE_NAME" "$UPDATES_ZAPRET_ARCH")"
+}
+
+updates_resolve_byedpi_release() {
+    local response release_series asset_ext resolved
+
+    UPDATES_BYEDPI_ARCH=""
+    UPDATES_BYEDPI_PACKAGE_URL=""
+    UPDATES_BYEDPI_PACKAGE_NAME=""
+    UPDATES_BYEDPI_PACKAGE_VERSION=""
+
+    asset_ext="ipk"
+    updates_is_apk && asset_ext="apk"
+    release_series="$(updates_get_openwrt_release_series)"
+
+    response="$(updates_fetch_github_releases_json "DPITrickster" "ByeDPI-OpenWrt" 30)" || return 1
+
+    if [ -n "$release_series" ]; then
+        resolved="$(printf '%s' "$response" | jq -c --arg series "$release_series" '
+            .[]
+            | select(((.draft // false) | not) and ((.prerelease // false) | not))
+            | select(((.tag_name // "") | contains($series)) or ((.name // "") | contains($series)))
+        ' | updates_select_byedpi_asset "$asset_ext")"
+    fi
+
+    if [ -z "$resolved" ]; then
+        resolved="$(printf '%s' "$response" | jq -c '
+            .[]
+            | select(((.draft // false) | not) and ((.prerelease // false) | not))
+        ' | updates_select_byedpi_asset "$asset_ext")"
+    fi
+
+    [ -n "$resolved" ] || return 1
+
+    UPDATES_BYEDPI_ARCH="$(printf '%s\n' "$resolved" | cut -f1)"
+    UPDATES_BYEDPI_PACKAGE_NAME="$(printf '%s\n' "$resolved" | cut -f2)"
+    UPDATES_BYEDPI_PACKAGE_URL="$(printf '%s\n' "$resolved" | cut -f3)"
+
+    [ -n "$UPDATES_BYEDPI_ARCH" ] || return 1
+    [ -n "$UPDATES_BYEDPI_PACKAGE_NAME" ] || return 1
+    [ -n "$UPDATES_BYEDPI_PACKAGE_URL" ] || return 1
+
+    UPDATES_BYEDPI_PACKAGE_VERSION="$(updates_extract_arch_package_version "$UPDATES_BYEDPI_PACKAGE_NAME" "$UPDATES_BYEDPI_ARCH")"
+}
+
+updates_select_byedpi_asset() {
+    local asset_ext="$1"
+    local release_json candidate_name arch url resolved
+
+    while IFS= read -r release_json; do
+        [ -n "$release_json" ] || continue
+        [ -n "$resolved" ] && continue
+
+        for arch in $UPDATES_ARCH_CANDIDATES; do
+            candidate_name="$(printf '%s' "$release_json" | jq -r --arg arch "$arch" --arg ext "$asset_ext" '
+                [
+                    (.assets // [])[]
+                    | select(((.name | startswith("byedpi_")) or (.name | startswith("byedpi-"))) and (.name | endswith("." + $ext)))
+                    | select((.name | contains("_" + $arch + "." + $ext)) or (.name | contains("-" + $arch + "." + $ext)))
+                    | .name
+                ][0] // empty
+            ')"
+
+            if [ -n "$candidate_name" ]; then
+                url="$(printf '%s' "$release_json" | jq -r --arg name "$candidate_name" '[(.assets // [])[] | select(.name == $name) | .browser_download_url][0] // empty')"
+                [ -n "$url" ] || continue
+                resolved="$(printf '%s\t%s\t%s\n' "$arch" "$candidate_name" "$url")"
+                break
+            fi
+        done
+    done
+
+    [ -n "$resolved" ] && printf '%s\n' "$resolved"
+}
+
+updates_download_byedpi_package() {
+    UPDATES_BYEDPI_PACKAGE_FILE="$UPDATES_TMP_DIR/$UPDATES_BYEDPI_PACKAGE_NAME"
+    updates_download_with_retry "$UPDATES_BYEDPI_PACKAGE_URL" "$UPDATES_BYEDPI_PACKAGE_FILE" "$UPDATES_BYEDPI_PACKAGE_NAME" || return 1
+    [ -s "$UPDATES_BYEDPI_PACKAGE_FILE" ] || return 1
+
+    [ -n "$UPDATES_BYEDPI_PACKAGE_VERSION" ] || UPDATES_BYEDPI_PACKAGE_VERSION="$(updates_extract_arch_package_version "$UPDATES_BYEDPI_PACKAGE_NAME" "$UPDATES_BYEDPI_ARCH")"
+}
+
+updates_disable_standalone_zapret_service() {
+    [ -x /etc/init.d/zapret ] || return 0
+
+    updates_log_command "Stopping standalone zapret service" /etc/init.d/zapret stop || true
+    updates_log_command "Disabling standalone zapret autostart" /etc/init.d/zapret disable || true
+}
+
+updates_disable_standalone_byedpi_service() {
+    [ -x /etc/init.d/byedpi ] || return 0
+
+    updates_log_command "Stopping standalone byedpi service" /etc/init.d/byedpi stop || true
+    updates_log_command "Disabling standalone byedpi autostart" /etc/init.d/byedpi disable || true
+}
+
+updates_install_zapret() {
+    local action="$1"
+    local current_version installed normalized_current normalized_latest
+
+    updates_init_tmp_dir || updates_fail "zapret" "$action" "Failed to create temporary directory"
+    updates_resolve_arch_candidates || updates_fail "zapret" "$action" "Failed to detect package architecture"
+    updates_retry_resolve "Resolving zapret package" updates_resolve_zapret_release ||
+        updates_fail "zapret" "$action" "Failed to resolve zapret package for this router architecture"
+
+    installed=0
+    is_zapret_installed && installed=1
+    current_version="$(get_zapret_package_version)"
+
+    if [ "$action" = "check_update" ]; then
+        [ "$installed" -eq 1 ] || updates_fail "zapret" "$action" "zapret is not installed" "$current_version" "$UPDATES_ZAPRET_PACKAGE_VERSION"
+        normalized_current="$(updates_normalize_zapret_version "$current_version")"
+        normalized_latest="$(updates_normalize_zapret_version "$UPDATES_ZAPRET_PACKAGE_VERSION")"
+        updates_check_success_compared "zapret" "$current_version" "$UPDATES_ZAPRET_PACKAGE_VERSION" "$normalized_current" "$normalized_latest"
+    fi
+
+    updates_ensure_package_tool "unzip" "unzip" || updates_fail "zapret" "$action" "Failed to install unzip"
+    updates_download_and_extract_zapret_package || updates_fail "zapret" "$action" "Failed to download zapret package"
+
+    if ! updates_log_command "Installing zapret package $UPDATES_ZAPRET_PACKAGE_NAME" updates_pkg_install_files "$UPDATES_ZAPRET_PACKAGE_FILE"; then
+        updates_fail "zapret" "$action" "Failed to install zapret package" "$current_version" "$UPDATES_ZAPRET_PACKAGE_VERSION"
+    fi
+
+    updates_disable_standalone_zapret_service
+    updates_restart_podkop_after_successful_change
+    updates_clear_version_caches
+
+    current_version="$(get_zapret_package_version)"
+    updates_success "zapret" "$action" "zapret package has been installed" "$current_version" "$UPDATES_ZAPRET_PACKAGE_VERSION" 1 "latest"
+}
+
+updates_install_byedpi() {
+    local action="$1"
+    local current_version installed
+
+    updates_init_tmp_dir || updates_fail "byedpi" "$action" "Failed to create temporary directory"
+    updates_resolve_arch_candidates || updates_fail "byedpi" "$action" "Failed to detect package architecture"
+    updates_retry_resolve "Resolving ByeDPI package" updates_resolve_byedpi_release ||
+        updates_fail "byedpi" "$action" "Failed to resolve ByeDPI package for this router architecture"
+
+    installed=0
+    is_byedpi_installed && installed=1
+    current_version="$(get_byedpi_package_version)"
+
+    if [ "$action" = "check_update" ]; then
+        [ "$installed" -eq 1 ] || updates_fail "byedpi" "$action" "ByeDPI is not installed" "$current_version" "$UPDATES_BYEDPI_PACKAGE_VERSION"
+        updates_check_success "byedpi" "$current_version" "$UPDATES_BYEDPI_PACKAGE_VERSION"
+    fi
+
+    updates_download_byedpi_package || updates_fail "byedpi" "$action" "Failed to download ByeDPI package"
+
+    if ! updates_log_command "Installing ByeDPI package $UPDATES_BYEDPI_PACKAGE_NAME" updates_pkg_install_files "$UPDATES_BYEDPI_PACKAGE_FILE"; then
+        updates_fail "byedpi" "$action" "Failed to install ByeDPI package" "$current_version" "$UPDATES_BYEDPI_PACKAGE_VERSION"
+    fi
+
+    updates_disable_standalone_byedpi_service
+    updates_restart_podkop_after_successful_change
+    updates_clear_version_caches
+
+    current_version="$(get_byedpi_package_version)"
+    updates_success "byedpi" "$action" "ByeDPI package has been installed" "$current_version" "$UPDATES_BYEDPI_PACKAGE_VERSION" 1 "latest"
+}
+
+updates_remove_optional_component() {
+    local component="$1"
+    local action="remove"
+    local package_name="$2"
+    local label="$3"
+    local provider_check="$4"
+    local version_getter="$5"
+    local current_version
+
+    if ! updates_pkg_is_installed "$package_name"; then
+        if "$provider_check"; then
+            updates_fail "$component" "$action" "$label exists outside the package manager and was not removed automatically"
+        fi
+
+        updates_success "$component" "$action" "$label is already removed" "" "" 0
+    fi
+
+    current_version="$("$version_getter")"
+
+    if ! updates_log_command "Removing $label package" updates_pkg_remove_name "$package_name"; then
+        updates_fail "$component" "$action" "Failed to remove $label package" "$current_version"
+    fi
+
+    updates_clear_version_caches
+
+    if "$provider_check"; then
+        updates_fail "$component" "$action" "$label package was removed, but provider files are still present" "$current_version"
+    fi
+
+    updates_restart_podkop_after_successful_change
+
+    updates_success "$component" "$action" "$label package has been removed" "$current_version" "" 1
+}
+
+updates_normalize_sing_box_version() {
+    printf '%s\n' "$1" |
+        sed 's/^v//;s/+.*$//;s/[[:space:]].*$//'
+}
+
+updates_extract_zapret_bundle_version() {
+    local bundle_name="$1"
+    local version
+
+    version="$(basename "$bundle_name" | sed -n 's/^zapret_v\([^_][^_]*\)_.*/\1/p')"
+    [ -n "$version" ] || version="$(basename "$bundle_name" | sed -n 's/^zapret_\([^_][^_]*\)_.*/\1/p')"
+
+    printf '%s\n' "$version" | sed 's/^v//'
+}
+
+updates_normalize_zapret_version() {
+    printf '%s\n' "$1" |
+        sed 's/^v//;s/-r[0-9][0-9]*$//;s/+.*$//;s/[[:space:]].*$//'
+}
+
+updates_version_newer_sort() {
+    local candidate="$1"
+    local installed="$2"
+    local newest
+
+    [ -n "$candidate" ] || return 1
+    [ -n "$installed" ] || return 1
+    [ "$candidate" != "$installed" ] || return 1
+
+    newest="$(printf '%s\n%s\n' "$installed" "$candidate" | sort -V | tail -n 1)"
+    [ "$newest" = "$candidate" ]
+}
+
+updates_resolve_sing_box_extended_arch_suffix() {
+    local host_arch distrib_arch
+
+    host_arch="$(uname -m 2>/dev/null || true)"
+    distrib_arch="$(updates_read_openwrt_release_value "DISTRIB_ARCH")"
+
+    case "$distrib_arch" in
+    *mipsel* | *mipsle*) host_arch="mipsel" ;;
+    *mips64el* | *mips64le*) host_arch="mips64el" ;;
+    esac
+
+    case "$host_arch" in
+    aarch64) UPDATES_SING_BOX_EXTENDED_ARCH_SUFFIX="arm64" ;;
+    armv7*) UPDATES_SING_BOX_EXTENDED_ARCH_SUFFIX="armv7" ;;
+    armv6*) UPDATES_SING_BOX_EXTENDED_ARCH_SUFFIX="armv6" ;;
+    x86_64) UPDATES_SING_BOX_EXTENDED_ARCH_SUFFIX="amd64" ;;
+    i386 | i686) UPDATES_SING_BOX_EXTENDED_ARCH_SUFFIX="386" ;;
+    mips) UPDATES_SING_BOX_EXTENDED_ARCH_SUFFIX="mips-softfloat" ;;
+    mipsel | mipsle) UPDATES_SING_BOX_EXTENDED_ARCH_SUFFIX="mipsle-softfloat" ;;
+    mips64) UPDATES_SING_BOX_EXTENDED_ARCH_SUFFIX="mips64" ;;
+    mips64el | mips64le) UPDATES_SING_BOX_EXTENDED_ARCH_SUFFIX="mips64le" ;;
+    riscv64) UPDATES_SING_BOX_EXTENDED_ARCH_SUFFIX="riscv64" ;;
+    s390x) UPDATES_SING_BOX_EXTENDED_ARCH_SUFFIX="s390x" ;;
+    *) return 1 ;;
+    esac
+}
+
+updates_resolve_sing_box_extended_release() {
+    local response tag release_json asset_pattern
+
+    UPDATES_SING_BOX_EXTENDED_RELEASE_TAG=""
+    UPDATES_SING_BOX_EXTENDED_ASSET_URL=""
+    UPDATES_SING_BOX_EXTENDED_ASSET_NAME=""
+
+    updates_resolve_sing_box_extended_arch_suffix || return 1
+    response="$(updates_fetch_github_releases_json "shtorm-7" "sing-box-extended" 30)" || return 1
+
+    tag="$(printf '%s' "$response" | jq -r '
+        [
+            .[]
+            | select(((.prerelease // false) | not) and ((.draft // false) | not))
+            | .tag_name // empty
+            | select(((ascii_downcase | contains("alpha")) or (ascii_downcase | contains("beta")) or (ascii_downcase | contains("rc"))) | not)
+        ][0] // empty
+    ')"
+
+    [ -n "$tag" ] || return 1
+    UPDATES_SING_BOX_EXTENDED_RELEASE_TAG="$tag"
+    release_json="$(printf '%s' "$response" | jq -c --arg tag "$tag" '[.[] | select(.tag_name == $tag)][0] // empty')"
+    asset_pattern="linux-${UPDATES_SING_BOX_EXTENDED_ARCH_SUFFIX}.tar.gz"
+    UPDATES_SING_BOX_EXTENDED_ASSET_URL="$(printf '%s' "$release_json" | jq -r --arg pattern "$asset_pattern" '
+        [(.assets // [])[] | select(.name | endswith($pattern)) | .browser_download_url][0] // empty
+    ')"
+
+    [ -n "$UPDATES_SING_BOX_EXTENDED_ASSET_URL" ] || return 1
+    UPDATES_SING_BOX_EXTENDED_ASSET_NAME="$(basename "$UPDATES_SING_BOX_EXTENDED_ASSET_URL")"
+}
+
+updates_install_sing_box_extended() {
+    local action="$1"
+    local current_version latest_version normalized_current normalized_latest archive_file binary_path target_binary extract_error new_version
+
+    updates_init_tmp_dir || updates_fail "sing_box" "$action" "Failed to create temporary directory"
+    current_version="$(get_sing_box_version)"
+    updates_resolve_sing_box_extended_release || updates_fail "sing_box" "$action" "Failed to resolve sing-box-extended release" "$current_version"
+    latest_version="$(updates_normalize_sing_box_version "$UPDATES_SING_BOX_EXTENDED_RELEASE_TAG")"
+    normalized_current="$(updates_normalize_sing_box_version "$current_version")"
+    normalized_latest="$(updates_normalize_sing_box_version "$latest_version")"
+
+    if [ "$action" = "check_update" ]; then
+        is_sing_box_extended "$current_version" || updates_fail "sing_box" "$action" "sing-box-extended is not installed" "$current_version" "$latest_version"
+        updates_check_success "sing_box" "$normalized_current" "$normalized_latest"
+    fi
+
+    archive_file="$UPDATES_TMP_DIR/$UPDATES_SING_BOX_EXTENDED_ASSET_NAME"
+    updates_download_with_retry "$UPDATES_SING_BOX_EXTENDED_ASSET_URL" "$archive_file" "$UPDATES_SING_BOX_EXTENDED_ASSET_NAME" ||
+        updates_fail "sing_box" "$action" "Failed to download sing-box-extended" "$current_version" "$latest_version"
+
+    binary_path="$(tar -tzf "$archive_file" 2>/dev/null | grep -E '(^|/)sing-box$' | sed -n '1p')"
+    [ -n "$binary_path" ] || updates_fail "sing_box" "$action" "sing-box binary was not found in the downloaded archive" "$current_version" "$latest_version"
+
+    target_binary="/usr/bin/.sing-box.new.$$"
+    extract_error="$UPDATES_TMP_DIR/sing-box-extract.err"
+
+    if ! tar -xzf "$archive_file" -O "$binary_path" >"$target_binary" 2>"$extract_error"; then
+        while IFS= read -r line; do
+            [ -n "$line" ] && updates_log "$line" "error"
+        done <"$extract_error"
+        rm -f "$target_binary"
+        updates_fail "sing_box" "$action" "Failed to extract sing-box-extended" "$current_version" "$latest_version"
+    fi
+
+    if [ ! -s "$target_binary" ]; then
+        rm -f "$target_binary"
+        updates_fail "sing_box" "$action" "sing-box binary was empty after extraction" "$current_version" "$latest_version"
+    fi
+
+    if ! chmod 0755 "$target_binary"; then
+        rm -f "$target_binary"
+        updates_fail "sing_box" "$action" "Failed to prepare sing-box-extended binary" "$current_version" "$latest_version"
+    fi
+
+    if ! mv -f "$target_binary" /usr/bin/sing-box; then
+        rm -f "$target_binary"
+        updates_fail "sing_box" "$action" "Failed to install sing-box-extended" "$current_version" "$latest_version"
+    fi
+
+    updates_restart_podkop_after_successful_change
+    updates_clear_version_caches
+    new_version="$(get_sing_box_version)"
+    updates_log "Installed sing-box-extended ${new_version:-unknown}"
+    updates_success "sing_box" "$action" "sing-box-extended has been installed" "$new_version" "$latest_version" 1 "latest"
+}
+
+updates_install_stable_sing_box() {
+    local action="$1"
+    local current_version latest_version new_version changed
+
+    current_version="$(updates_get_installed_package_version "sing-box")"
+    [ -n "$current_version" ] || current_version="$(get_sing_box_version)"
+    latest_version="$(updates_get_available_package_version "sing-box")"
+    [ -n "$latest_version" ] || latest_version="$(updates_get_installed_package_version "sing-box")"
+    [ -n "$latest_version" ] || updates_fail "sing_box" "$action" "Failed to resolve stable sing-box package version" "$current_version"
+
+    if [ "$action" = "check_update" ]; then
+        updates_check_success "sing_box" "$current_version" "$latest_version"
+    fi
+
+    updates_log_command "Updating package lists before sing-box installation" updates_pkg_list_update ||
+        updates_fail "sing_box" "$action" "Failed to update package lists" "$current_version" "$latest_version"
+
+    latest_version="$(updates_get_available_package_version "sing-box")"
+    [ -n "$latest_version" ] || latest_version="$(updates_get_installed_package_version "sing-box")"
+    [ -n "$latest_version" ] || updates_fail "sing_box" "$action" "Failed to resolve stable sing-box package version" "$current_version"
+
+    if ! updates_log_command "Installing stable sing-box package" updates_pkg_install_name_downgrade "sing-box"; then
+        updates_fail "sing_box" "$action" "Failed to install stable sing-box" "$current_version" "$latest_version"
+    fi
+
+    updates_restart_podkop_after_successful_change
+    updates_clear_version_caches
+
+    new_version="$(get_sing_box_version)"
+    changed=1
+    [ "$new_version" = "$current_version" ] && changed=0
+
+    updates_success "sing_box" "$action" "stable sing-box has been installed" "$new_version" "$latest_version" "$changed" "latest"
+}
+
+updates_run_podkop_update_installer() {
+    local latest_version="$1"
+    local action="${2:-install}"
+    local runner
+
+    runner="/tmp/podkop-plus-update-runner.$$"
+    cat >"$runner" <<'EOF'
+#!/bin/sh
+
+repo="$1"
+latest_version="$2"
+current_version="$3"
+action="${4:-install}"
+tmp_dir="$(mktemp -d /tmp/podkop-plus-self-update.XXXXXX 2>/dev/null || true)"
+[ -n "$tmp_dir" ] || tmp_dir="/tmp/podkop-plus-self-update.$$"
+mkdir -p "$tmp_dir" || exit 1
+
+log_line() {
+    logger -t "podkop-plus" "[$2] Updates: $1"
+}
+
+json_response() {
+    jq -cn \
+        --argjson success "$1" \
+        --arg component "podkop" \
+        --arg action "$action" \
+        --arg message "$2" \
+        --arg current_version "$3" \
+        --arg latest_version "$4" \
+        --argjson changed "$5" \
+        --arg status "$6" \
+        '{
+            success: $success,
+            component: $component,
+            action: $action,
+            message: $message,
+            current_version: $current_version,
+            latest_version: $latest_version,
+            changed: $changed,
+            status: $status
+        }'
+}
+
+download_file() {
+    if command -v curl >/dev/null 2>&1; then
+        curl --connect-timeout 5 -m 60 -fsSL "$1" -o "$2"
+        return $?
+    fi
+
+    if command -v wget >/dev/null 2>&1; then
+        wget -T 60 -q -O "$2" "$1"
+        return $?
+    fi
+
+    return 1
+}
+
+cleanup() {
+    rm -rf "$tmp_dir"
+    rm -f "$0"
+}
+
+installer="$tmp_dir/install.sh"
+output="$tmp_dir/install.log"
+installer_url="https://raw.githubusercontent.com/$repo/main/install.sh"
+
+trap cleanup EXIT HUP INT TERM
+
+log_line "Downloading Podkop Plus installer from $installer_url" "info"
+if ! download_file "$installer_url" "$installer" || [ ! -s "$installer" ]; then
+    log_line "Failed to download Podkop Plus installer" "error"
+    json_response false "Failed to download Podkop Plus installer" "$current_version" "$latest_version" 0 ""
+    exit 1
+fi
+
+chmod 0755 "$installer" 2>/dev/null || true
+log_line "Running Podkop Plus update to $latest_version" "info"
+
+if sh "$installer" --without-zapret --without-byedpi --without-awg --sing-box=keep >"$output" 2>&1; then
+    status=0
+else
+    status=$?
+fi
+
+while IFS= read -r line; do
+    [ -n "$line" ] && log_line "$line" "info"
+done <"$output"
+
+rm -f /tmp/podkop-plus.latest-version.cache
+rm -f /var/run/podkop-plus/system-info.json
+rm -f /tmp/podkop-plus/system-info.json
+
+if [ "$status" -ne 0 ]; then
+    tail_message="$(tail -n 5 "$output" 2>/dev/null | tr '\n' ' ' | cut -c1-240)"
+    [ -n "$tail_message" ] || tail_message="Podkop Plus update failed"
+    log_line "$tail_message" "error"
+    json_response false "$tail_message" "$current_version" "$latest_version" 0 ""
+    exit "$status"
+fi
+
+if [ -x /etc/init.d/podkop-plus ]; then
+    log_line "Restarting Podkop Plus after successful component change" "info"
+    /etc/init.d/podkop-plus restart >/dev/null 2>&1 || log_line "Podkop Plus restart command failed" "warn"
+    waited=0
+    while [ "$waited" -lt 60 ]; do
+        if /etc/init.d/podkop-plus status >/dev/null 2>&1; then
+            break
+        fi
+
+        sleep 1
+        waited=$((waited + 1))
+    done
+fi
+
+new_version="$(/usr/bin/podkop-plus show_version 2>/dev/null || true)"
+[ -n "$new_version" ] || new_version="$latest_version"
+log_line "Podkop Plus updated to $new_version" "info"
+json_response true "Podkop Plus has been installed" "$new_version" "$latest_version" 1 "latest"
+exit 0
+EOF
+
+    chmod 0755 "$runner" || updates_fail "podkop" "$action" "Failed to prepare update runner" "$PODKOP_VERSION" "$latest_version"
+    exec sh "$runner" "$PODKOP_RELEASE_REPO" "$latest_version" "$PODKOP_VERSION" "$action"
+}
+
+updates_check_podkop_plus() {
+    local latest_version compare_result status message now
+
+    latest_version="$(fetch_latest_podkop_version)"
+    [ -n "$latest_version" ] || latest_version="unknown"
+
+    if [ "$latest_version" = "unknown" ]; then
+        updates_fail "podkop" "check_update" "Failed to check Podkop Plus updates" "$PODKOP_VERSION" "$latest_version"
+    fi
+
+    now="$(date +%s 2>/dev/null)"
+    case "$now" in
+    '' | *[!0-9]*) now=0 ;;
+    esac
+    write_podkop_latest_version_cache "$latest_version" "$now"
+
+    if ! is_podkop_release_version "$PODKOP_VERSION"; then
+        updates_log "Podkop Plus current version is not a release version ($PODKOP_VERSION)"
+        updates_success "podkop" "check_update" "Installed version is newer than upstream release" "$PODKOP_VERSION" "$latest_version" 0 "dev"
+    fi
+
+    compare_result="$(podkop_release_version_compare "$PODKOP_VERSION" "$latest_version" 2>/dev/null || true)"
+    if [ -z "$compare_result" ]; then
+        updates_fail "podkop" "check_update" "Failed to compare Podkop Plus versions" "$PODKOP_VERSION" "$latest_version"
+    fi
+
+    status="$(updates_status_from_compare "$compare_result")" || updates_fail "podkop" "check_update" "Failed to compare Podkop Plus versions" "$PODKOP_VERSION" "$latest_version"
+    case "$status" in
+    latest)
+        message="The latest version is installed"
+        updates_log "Podkop Plus is already up to date ($PODKOP_VERSION)"
+        ;;
+    outdated)
+        message="Update is available"
+        updates_log "Podkop Plus update found: $PODKOP_VERSION -> $latest_version"
+        ;;
+    dev)
+        message="Installed version is newer than upstream release"
+        updates_log "Podkop Plus installed version is newer than upstream release: $PODKOP_VERSION -> $latest_version"
+        ;;
+    esac
+
+    updates_success "podkop" "check_update" "$message" "$PODKOP_VERSION" "$latest_version" 0 "$status"
+}
+
+updates_install_podkop_plus() {
+    local latest_version now
+
+    latest_version="$(fetch_latest_podkop_version)"
+    [ -n "$latest_version" ] || latest_version="unknown"
+
+    if [ "$latest_version" = "unknown" ]; then
+        updates_fail "podkop" "install" "Failed to resolve Podkop Plus release" "$PODKOP_VERSION" "$latest_version"
+    fi
+
+    now="$(date +%s 2>/dev/null)"
+    case "$now" in
+    '' | *[!0-9]*) now=0 ;;
+    esac
+    write_podkop_latest_version_cache "$latest_version" "$now"
+
+    updates_log "Installing Podkop Plus release $latest_version"
+    updates_run_podkop_update_installer "$latest_version" "install"
+}
+
+component_action() {
+    local component="$1"
+    local action="$2"
+
+    trap updates_component_action_cleanup EXIT HUP INT TERM
+
+    updates_acquire_component_lock || updates_fail "${component:-unknown}" "${action:-unknown}" "Another component action is already running"
+
+    case "$component:$action" in
+    podkop:check_update)
+        updates_check_podkop_plus
+        ;;
+    podkop:install)
+        updates_install_podkop_plus
+        ;;
+    sing_box:check_update)
+        if is_sing_box_extended "$(get_sing_box_version)"; then
+            updates_install_sing_box_extended "$action"
+        fi
+        updates_install_stable_sing_box "$action"
+        ;;
+    sing_box:install)
+        if is_sing_box_extended "$(get_sing_box_version)"; then
+            updates_install_sing_box_extended "$action"
+        fi
+        updates_install_stable_sing_box "$action"
+        ;;
+    sing_box:install_extended)
+        updates_install_sing_box_extended "$action"
+        ;;
+    sing_box:install_stable)
+        updates_install_stable_sing_box "$action"
+        ;;
+    zapret:check_update | zapret:install)
+        updates_install_zapret "$action"
+        ;;
+    zapret:remove)
+        updates_remove_optional_component "zapret" "zapret" "zapret" is_zapret_installed get_zapret_package_version
+        ;;
+    byedpi:check_update | byedpi:install)
+        updates_install_byedpi "$action"
+        ;;
+    byedpi:remove)
+        updates_remove_optional_component "byedpi" "byedpi" "ByeDPI" is_byedpi_installed get_byedpi_package_version
+        ;;
+    *)
+        updates_fail "${component:-unknown}" "${action:-unknown}" "Unknown component action"
+        ;;
+    esac
+}

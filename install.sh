@@ -328,6 +328,50 @@ get_installed_package_version() {
     fi
 }
 
+get_zapret_installed_version() {
+    version="$(get_installed_package_version "zapret")"
+
+    if [ -z "$version" ] && [ -x /opt/zapret/nfq/nfqws ]; then
+        version="$(/opt/zapret/nfq/nfqws --version 2>/dev/null | sed -n '1s/^.*version[[:space:]]*//p' | awk '{ print $1; exit }')"
+    fi
+
+    printf '%s\n' "$version"
+}
+
+get_byedpi_installed_version() {
+    version="$(get_installed_package_version "byedpi")"
+
+    if [ -z "$version" ] && [ -x /usr/bin/ciadpi ]; then
+        version="$(/usr/bin/ciadpi --version 2>/dev/null | awk 'NF { print $1; exit }')"
+    fi
+
+    printf '%s\n' "$version"
+}
+
+get_optional_installed_version() {
+    package_name="$1"
+
+    case "$package_name" in
+        zapret) get_zapret_installed_version ;;
+        byedpi) get_byedpi_installed_version ;;
+        *) get_installed_package_version "$package_name" ;;
+    esac
+}
+
+normalize_zapret_version() {
+    printf '%s\n' "$1" | sed 's/^v//;s/-r[0-9][0-9]*$//;s/+.*$//;s/[[:space:]].*$//'
+}
+
+normalize_optional_package_version() {
+    package_name="$1"
+    version="$2"
+
+    case "$package_name" in
+        zapret) normalize_zapret_version "$version" ;;
+        *) printf '%s\n' "$version" ;;
+    esac
+}
+
 package_version_newer() {
     candidate_version="$1"
     installed_version="$2"
@@ -355,20 +399,25 @@ optional_package_update_needed() {
     provider_label="$1"
     package_name="$2"
     candidate_version="$3"
+    candidate_compare_version=""
+    installed_compare_version=""
 
     if [ -z "$candidate_version" ]; then
         warn "$provider_label release was found, but the package version could not be parsed."
         return 2
     fi
 
-    OPTIONAL_INSTALLED_VERSION="$(get_installed_package_version "$package_name")"
+    OPTIONAL_INSTALLED_VERSION="$(get_optional_installed_version "$package_name")"
 
     if [ -z "$OPTIONAL_INSTALLED_VERSION" ]; then
         warn "$provider_label is already present, but the installed package version could not be detected."
         return 2
     fi
 
-    if package_version_newer "$candidate_version" "$OPTIONAL_INSTALLED_VERSION"; then
+    candidate_compare_version="$(normalize_optional_package_version "$package_name" "$candidate_version")"
+    installed_compare_version="$(normalize_optional_package_version "$package_name" "$OPTIONAL_INSTALLED_VERSION")"
+
+    if package_version_newer "$candidate_compare_version" "$installed_compare_version"; then
         msg "Found $provider_label update: $OPTIONAL_INSTALLED_VERSION -> $candidate_version"
         return 0
     fi
@@ -817,6 +866,16 @@ extract_arch_package_version() {
     printf '%s\n' "$version"
 }
 
+extract_zapret_bundle_version() {
+    bundle_name="$1"
+    version=""
+
+    version="$(basename "$bundle_name" | sed -n 's/^zapret_v\([^_][^_]*\)_.*/\1/p')"
+    [ -n "$version" ] || version="$(basename "$bundle_name" | sed -n 's/^zapret_\([^_][^_]*\)_.*/\1/p')"
+
+    printf '%s\n' "$version" | sed 's/^v//'
+}
+
 fetch_github_release_json() {
     owner="$1"
     repo="$2"
@@ -972,6 +1031,10 @@ sing_box_version_is_extended() {
     esac
 
     return 1
+}
+
+normalize_sing_box_extended_version() {
+    printf '%s\n' "$1" | sed 's/^v//;s/+.*$//;s/[[:space:]].*$//'
 }
 
 detect_sing_box_flavor() {
@@ -1134,17 +1197,13 @@ resolve_sing_box_extended_release() {
     printf '%s' "$response" | jq -e . >/dev/null 2>&1 || fail "GitHub returned an invalid response for sing-box-extended"
 
     tag="$(printf '%s' "$response" | jq -r '
-        .[]
-        | select(((.prerelease // false) | not) and ((.draft // false) | not))
-        | .tag_name // empty
-    ' | while IFS= read -r candidate_tag; do
-        candidate_tag_lc="$(printf '%s' "$candidate_tag" | tr '[:upper:]' '[:lower:]')"
-        case "$candidate_tag_lc" in
-            *alpha* | *beta* | *rc*) continue ;;
-        esac
-        printf '%s\n' "$candidate_tag"
-        break
-    done)"
+        [
+            .[]
+            | select(((.prerelease // false) | not) and ((.draft // false) | not))
+            | .tag_name // empty
+            | select(((ascii_downcase | contains("alpha")) or (ascii_downcase | contains("beta")) or (ascii_downcase | contains("rc"))) | not)
+        ][0] // empty
+    ')"
     [ -n "$tag" ] || fail "No stable sing-box-extended release was found"
 
     SING_BOX_EXTENDED_RELEASE_TAG="$tag"
@@ -1157,10 +1216,8 @@ resolve_sing_box_extended_release() {
 
     asset_pattern="linux-${SING_BOX_EXTENDED_ARCH_SUFFIX}.tar.gz"
     SING_BOX_EXTENDED_ASSET_URL="$(printf '%s' "$SING_BOX_EXTENDED_RELEASE_JSON" | jq -r --arg pattern "$asset_pattern" '
-        .assets[]
-        | select(.name | endswith($pattern))
-        | .browser_download_url
-    ' | sed -n '1p')"
+        [(.assets // [])[] | select(.name | endswith($pattern)) | .browser_download_url][0] // empty
+    ')"
     [ -n "$SING_BOX_EXTENDED_ASSET_URL" ] || fail "No sing-box-extended asset was found for architecture suffix $SING_BOX_EXTENDED_ARCH_SUFFIX"
 
     SING_BOX_EXTENDED_ASSET_NAME="$(basename "$SING_BOX_EXTENDED_ASSET_URL")"
@@ -1200,21 +1257,50 @@ prepare_sing_box_action_before_install() {
 install_sing_box_extended_binary() {
     archive_file=""
     binary_path=""
+    target_binary=""
+    current_version=""
+    latest_version=""
     new_version=""
 
     resolve_sing_box_extended_release
+    latest_version="$(normalize_sing_box_extended_version "$SING_BOX_EXTENDED_RELEASE_TAG")"
+    current_version="$(get_sing_box_binary_version)"
+
+    if sing_box_version_is_extended "$current_version" &&
+        ! package_version_newer "$latest_version" "$(normalize_sing_box_extended_version "$current_version")"; then
+        msg "sing-box-extended is already up to date ($current_version)"
+        return 0
+    fi
+
     select_sing_box_extended_work_dir
 
     archive_file="$SING_BOX_EXTENDED_WORK_DIR/$SING_BOX_EXTENDED_ASSET_NAME"
     download_with_retry "$SING_BOX_EXTENDED_ASSET_URL" "$archive_file" "$SING_BOX_EXTENDED_ASSET_NAME" || fail "Failed to download sing-box-extended"
 
-    tar -xzf "$archive_file" -C "$SING_BOX_EXTENDED_WORK_DIR" || fail "Failed to extract sing-box-extended archive"
-    binary_path="$(find "$SING_BOX_EXTENDED_WORK_DIR" -type f -name sing-box | sed -n '1p')"
+    binary_path="$(tar -tzf "$archive_file" 2>/dev/null | grep -E '(^|/)sing-box$' | sed -n '1p')"
     [ -n "$binary_path" ] || fail "sing-box binary was not found in the sing-box-extended archive"
 
+    target_binary="/usr/bin/.sing-box.new.$$"
+    if ! tar -xzf "$archive_file" -O "$binary_path" >"$target_binary"; then
+        rm -f "$target_binary"
+        fail "Failed to extract sing-box-extended archive"
+    fi
+
+    if [ ! -s "$target_binary" ]; then
+        rm -f "$target_binary"
+        fail "The extracted sing-box-extended binary is empty"
+    fi
+
+    chmod 0755 "$target_binary" || {
+        rm -f "$target_binary"
+        fail "Failed to mark sing-box-extended binary executable"
+    }
+
     stop_sing_box_dependant_services
-    mv -f "$binary_path" /usr/bin/sing-box || fail "Failed to install sing-box-extended binary"
-    chmod 0755 /usr/bin/sing-box || fail "Failed to mark sing-box binary executable"
+    if ! mv -f "$target_binary" /usr/bin/sing-box; then
+        rm -f "$target_binary"
+        fail "Failed to install sing-box-extended binary"
+    fi
 
     new_version="$(get_sing_box_binary_version)"
     msg "Installed sing-box-extended ${new_version:-unknown} from shtorm-7/sing-box-extended@$SING_BOX_EXTENDED_RELEASE_TAG"
@@ -1508,7 +1594,7 @@ resolve_zapret_release() {
     fi
 
     for arch in $ZAPRET_ARCH_CANDIDATES; do
-        candidate_name="$(printf '%s' "$ZAPRET_RELEASE_JSON" | jq -r --arg arch "$arch" '.assets[] | select(.name | endswith("_" + $arch + ".zip")) | .name' | sed -n '1p')"
+        candidate_name="$(printf '%s' "$ZAPRET_RELEASE_JSON" | jq -r --arg arch "$arch" '[.assets[] | select(.name | endswith("_" + $arch + ".zip")) | .name][0] // empty')"
 
         if [ -n "$candidate_name" ]; then
             ZAPRET_ARCH="$arch"
@@ -1524,12 +1610,39 @@ resolve_zapret_release() {
         return 0
     fi
 
-    ZAPRET_BUNDLE_URL="$(printf '%s' "$ZAPRET_RELEASE_JSON" | jq -r --arg name "$ZAPRET_BUNDLE_NAME" '.assets[] | select(.name == $name) | .browser_download_url' | sed -n '1p')"
+    ZAPRET_BUNDLE_URL="$(printf '%s' "$ZAPRET_RELEASE_JSON" | jq -r --arg name "$ZAPRET_BUNDLE_NAME" '[.assets[] | select(.name == $name) | .browser_download_url][0] // empty')"
     if [ -z "$ZAPRET_BUNDLE_URL" ]; then
         warn_zapret_unavailable "Failed to resolve the zapret download URL for $ZAPRET_BUNDLE_NAME."
         ZAPRET_SKIPPED_REASON="download URL unavailable"
         clear_zapret_download_state
         return 0
+    fi
+
+    ZAPRET_PACKAGE_VERSION="$(extract_zapret_bundle_version "$ZAPRET_BUNDLE_NAME")"
+    [ -n "$ZAPRET_PACKAGE_VERSION" ] || ZAPRET_PACKAGE_VERSION="$(printf '%s\n' "$ZAPRET_RELEASE_TAG_RESOLVED" | sed 's/^v//')"
+
+    if [ "$ZAPRET_ALREADY_PRESENT" -eq 1 ]; then
+        optional_package_update_needed "zapret" "zapret" "$ZAPRET_PACKAGE_VERSION"
+        update_status=$?
+        ZAPRET_INSTALLED_VERSION="$OPTIONAL_INSTALLED_VERSION"
+
+        case "$update_status" in
+            0)
+                return 0
+                ;;
+            1)
+                ZAPRET_UP_TO_DATE=1
+                ZAPRET_BUNDLE_URL=""
+                ZAPRET_BUNDLE_NAME=""
+                ZAPRET_PACKAGE_VERSION=""
+                return 0
+                ;;
+            *)
+                ZAPRET_SKIPPED_REASON="installed version unavailable"
+                clear_zapret_download_state
+                return 0
+                ;;
+        esac
     fi
 }
 
@@ -2203,33 +2316,8 @@ download_and_extract_zapret_package() {
         return 0
     fi
 
-    ZAPRET_PACKAGE_VERSION="$(extract_package_control_field "$ZAPRET_PACKAGE_FILE" "Version")"
+    [ -n "$ZAPRET_PACKAGE_VERSION" ] || ZAPRET_PACKAGE_VERSION="$(extract_zapret_bundle_version "$ZAPRET_BUNDLE_NAME")"
     [ -n "$ZAPRET_PACKAGE_VERSION" ] || ZAPRET_PACKAGE_VERSION="$(extract_arch_package_version "$ZAPRET_PACKAGE_NAME" "$ZAPRET_ARCH")"
-
-    if [ "$ZAPRET_ALREADY_PRESENT" -eq 1 ]; then
-        optional_package_update_needed "zapret" "zapret" "$ZAPRET_PACKAGE_VERSION"
-        update_status=$?
-        ZAPRET_INSTALLED_VERSION="$OPTIONAL_INSTALLED_VERSION"
-
-        case "$update_status" in
-            0)
-                return 0
-                ;;
-            1)
-                ZAPRET_UP_TO_DATE=1
-                rm -f "$ZAPRET_PACKAGE_FILE"
-                ZAPRET_PACKAGE_FILE=""
-                ZAPRET_PACKAGE_NAME=""
-                ZAPRET_PACKAGE_VERSION=""
-                return 0
-                ;;
-            *)
-                ZAPRET_SKIPPED_REASON="installed version unavailable"
-                clear_zapret_download_state
-                return 0
-                ;;
-        esac
-    fi
 }
 
 download_byedpi_package() {

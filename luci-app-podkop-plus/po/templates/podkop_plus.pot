@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PODKOP PLUS\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-05-23 20:24+0300\n"
-"PO-Revision-Date: 2026-05-23 20:24+0300\n"
+"POT-Creation-Date: 2026-05-23 21:44+0300\n"
+"PO-Revision-Date: 2026-05-23 21:44+0300\n"
 "Last-Translator: ushan0v <ushanov2204@gmail.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -21,13 +21,13 @@ msgstr ""
 msgid "-- Select --"
 msgstr ""
 
-#: src/podkop/tabs/dashboard/initController.ts:580
-#: src/podkop/tabs/dashboard/initController.ts:591
+#: src/podkop/tabs/dashboard/initController.ts:581
+#: src/podkop/tabs/dashboard/initController.ts:592
 msgid "✔ Running"
 msgstr ""
 
-#: src/podkop/tabs/dashboard/initController.ts:581
-#: src/podkop/tabs/dashboard/initController.ts:592
+#: src/podkop/tabs/dashboard/initController.ts:582
+#: src/podkop/tabs/dashboard/initController.ts:593
 msgid "✘ Stopped"
 msgstr ""
 
@@ -41,11 +41,11 @@ msgstr ""
 msgid "Active"
 msgstr ""
 
-#: src/podkop/tabs/dashboard/initController.ts:538
+#: src/podkop/tabs/dashboard/initController.ts:539
 msgid "Active Connections"
 msgstr ""
 
-#: ../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/podkop.js:116
+#: ../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/podkop.js:119
 msgid "Add a section"
 msgstr ""
 
@@ -211,13 +211,8 @@ msgstr ""
 msgid "Cannot receive checks result"
 msgstr ""
 
-#: src/podkop/tabs/diagnostic/helpers/getPodkopVersionRow.ts:53
-#: src/podkop/tabs/diagnostic/helpers/getPodkopVersionRow.ts:66
-msgid "Check unavailable"
-msgstr ""
-
-#: src/podkop/tabs/diagnostic/helpers/getPodkopVersionRow.ts:31
-msgid "Checking"
+#: src/podkop/tabs/updates/initController.ts:192
+msgid "Check update"
 msgstr ""
 
 #: src/podkop/tabs/diagnostic/checks/runByedpiCheck.ts:15
@@ -279,6 +274,20 @@ msgstr ""
 msgid "Closed"
 msgstr ""
 
+#: src/podkop/tabs/updates/initController.ts:166
+msgid "Component action completed"
+msgstr ""
+
+#: src/podkop/methods/shell/index.ts:37
+#: src/podkop/tabs/updates/initController.ts:141
+#: src/podkop/tabs/updates/initController.ts:171
+msgid "Component action failed"
+msgstr ""
+
+#: src/podkop/methods/shell/index.ts:241
+msgid "Component action timed out"
+msgstr ""
+
 #: ../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/section.js:2399
 msgid "Conditions"
 msgstr ""
@@ -287,7 +296,7 @@ msgstr ""
 msgid "Config File Path"
 msgstr ""
 
-#: ../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/podkop.js:102
+#: ../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/podkop.js:105
 msgid "Configuration for Podkop Plus service"
 msgstr ""
 
@@ -312,7 +321,7 @@ msgstr ""
 msgid "Currently unavailable"
 msgstr ""
 
-#: ../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/podkop.js:147
+#: ../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/podkop.js:150
 msgid "Dashboard"
 msgstr ""
 
@@ -332,8 +341,7 @@ msgstr ""
 msgid "Detect server country"
 msgstr ""
 
-#: src/podkop/tabs/diagnostic/helpers/getPodkopVersionRow.ts:42
-#: src/podkop/tabs/diagnostic/helpers/getPodkopVersionRow.ts:88
+#: src/podkop/tabs/updates/initController.ts:63
 msgid "Dev"
 msgstr ""
 
@@ -346,7 +354,7 @@ msgstr ""
 msgid "DHCP has DNS server"
 msgstr ""
 
-#: ../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/podkop.js:135
+#: ../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/podkop.js:138
 msgid "Diagnostics"
 msgstr ""
 
@@ -438,8 +446,8 @@ msgstr ""
 msgid "Dont Touch My DHCP!"
 msgstr ""
 
-#: src/podkop/tabs/dashboard/initController.ts:464
-#: src/podkop/tabs/dashboard/initController.ts:502
+#: src/podkop/tabs/dashboard/initController.ts:465
+#: src/podkop/tabs/dashboard/initController.ts:503
 msgid "Downlink"
 msgstr ""
 
@@ -472,7 +480,7 @@ msgstr ""
 msgid "Downloading all lists via specific Proxy/VPN"
 msgstr ""
 
-#: ../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/podkop.js:110
+#: ../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/podkop.js:113
 msgid "Drag rows to change priority. The rule at the top is checked first."
 msgstr ""
 
@@ -482,7 +490,7 @@ msgstr ""
 msgid "Duplicate value"
 msgstr ""
 
-#: ../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/podkop.js:62
+#: ../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/podkop.js:65
 msgid "Edit rule action"
 msgstr ""
 
@@ -555,7 +563,7 @@ msgstr ""
 msgid "Exclude server from URLTest"
 msgstr ""
 
-#: ../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/podkop.js:48
+#: ../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/podkop.js:51
 msgid "Expecting: %s"
 msgstr ""
 
@@ -585,18 +593,18 @@ msgstr ""
 msgid "Failed to copy!"
 msgstr ""
 
-#: src/podkop/tabs/diagnostic/initController.ts:416
-#: src/podkop/tabs/diagnostic/initController.ts:502
-#: src/podkop/tabs/diagnostic/initController.ts:506
-#: src/podkop/tabs/diagnostic/initController.ts:541
-#: src/podkop/tabs/diagnostic/initController.ts:545
-#: src/podkop/tabs/diagnostic/initController.ts:571
-#: src/podkop/tabs/diagnostic/initController.ts:575
+#: src/podkop/tabs/diagnostic/initController.ts:360
+#: src/podkop/tabs/diagnostic/initController.ts:446
+#: src/podkop/tabs/diagnostic/initController.ts:450
+#: src/podkop/tabs/diagnostic/initController.ts:485
+#: src/podkop/tabs/diagnostic/initController.ts:489
+#: src/podkop/tabs/diagnostic/initController.ts:515
+#: src/podkop/tabs/diagnostic/initController.ts:519
 msgid "Failed to execute!"
 msgstr ""
 
-#: src/podkop/tabs/dashboard/initController.ts:351
-#: src/podkop/tabs/dashboard/initController.ts:358
+#: src/podkop/tabs/dashboard/initController.ts:352
+#: src/podkop/tabs/dashboard/initController.ts:363
 msgid "Failed to update subscriptions"
 msgstr ""
 
@@ -617,7 +625,7 @@ msgstr ""
 msgid "Get global check"
 msgstr ""
 
-#: src/podkop/tabs/diagnostic/initController.ts:497
+#: src/podkop/tabs/diagnostic/initController.ts:441
 msgid "Global check"
 msgstr ""
 
@@ -644,6 +652,24 @@ msgstr ""
 
 #: ../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/section.js:2812
 msgid "Include server in URLTest"
+msgstr ""
+
+#: src/podkop/tabs/updates/initController.ts:183
+#: src/podkop/tabs/updates/initController.ts:262
+#: src/podkop/tabs/updates/initController.ts:287
+msgid "Install"
+msgstr ""
+
+#: src/podkop/tabs/updates/initController.ts:214
+msgid "Install extended"
+msgstr ""
+
+#: src/podkop/tabs/updates/initController.ts:207
+msgid "Install stable"
+msgstr ""
+
+#: src/podkop/tabs/updates/initController.ts:115
+msgid "Installed version is newer than upstream release"
 msgstr ""
 
 #: ../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/settings.js:194
@@ -866,7 +892,7 @@ msgstr ""
 msgid "Keyword must not contain spaces"
 msgstr ""
 
-#: src/podkop/tabs/diagnostic/helpers/getPodkopVersionRow.ts:98
+#: src/podkop/tabs/updates/initController.ts:56
 msgid "Latest"
 msgstr ""
 
@@ -927,7 +953,7 @@ msgstr ""
 msgid "Maximum response time delta in milliseconds"
 msgstr ""
 
-#: src/podkop/tabs/dashboard/initController.ts:542
+#: src/podkop/tabs/dashboard/initController.ts:543
 msgid "Memory Usage"
 msgstr ""
 
@@ -939,7 +965,7 @@ msgstr ""
 msgid "Monitored Interfaces"
 msgstr ""
 
-#: ../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/podkop.js:159
+#: ../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/podkop.js:162
 msgid "Monitoring"
 msgstr ""
 
@@ -991,16 +1017,22 @@ msgstr ""
 msgid "Not implement yet"
 msgstr ""
 
+#: src/podkop/tabs/updates/initController.ts:232
+#: src/podkop/tabs/updates/initController.ts:246
+#: src/podkop/tabs/updates/initController.ts:271
+msgid "Not installed"
+msgstr ""
+
 #: src/podkop/tabs/diagnostic/checks/runSectionsCheck.ts:109
 #: src/podkop/tabs/diagnostic/checks/runSectionsCheck.ts:115
 #: src/podkop/tabs/diagnostic/checks/runSectionsCheck.ts:134
 msgid "Not responding"
 msgstr ""
 
-#: src/podkop/tabs/diagnostic/diagnostic.store.ts:107
-#: src/podkop/tabs/diagnostic/initController.ts:76
-#: src/podkop/tabs/diagnostic/initController.ts:253
-#: src/podkop/tabs/diagnostic/initController.ts:321
+#: src/podkop/tabs/diagnostic/diagnostic.store.ts:111
+#: src/podkop/tabs/diagnostic/initController.ts:61
+#: src/podkop/tabs/diagnostic/initController.ts:215
+#: src/podkop/tabs/diagnostic/initController.ts:265
 msgid "Not running"
 msgstr ""
 
@@ -1040,7 +1072,7 @@ msgstr ""
 msgid "Outbound JSON cannot be empty"
 msgstr ""
 
-#: src/podkop/tabs/diagnostic/helpers/getPodkopVersionRow.ts:77
+#: src/podkop/tabs/updates/initController.ts:60
 msgid "Outdated"
 msgstr ""
 
@@ -1094,7 +1126,7 @@ msgstr ""
 msgid "Podkop Plus manages the nfqws process lifecycle itself, so daemon mode is not allowed here."
 msgstr ""
 
-#: ../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/podkop.js:101
+#: ../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/podkop.js:104
 msgid "Podkop Plus Settings"
 msgstr ""
 
@@ -1164,6 +1196,11 @@ msgstr ""
 
 #: ../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/ruleset.js:49
 msgid "Remote URL to a sing-box rule set"
+msgstr ""
+
+#: src/podkop/tabs/updates/initController.ts:253
+#: src/podkop/tabs/updates/initController.ts:278
+msgid "Remove"
 msgstr ""
 
 #: ../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/section.js:2997
@@ -1259,7 +1296,7 @@ msgstr ""
 msgid "Secret key for authenticating remote access to YACD when WAN access is enabled."
 msgstr ""
 
-#: ../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/podkop.js:115
+#: ../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/podkop.js:118
 msgid "Section"
 msgstr ""
 
@@ -1267,7 +1304,7 @@ msgstr ""
 msgid "Section name"
 msgstr ""
 
-#: ../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/podkop.js:109
+#: ../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/podkop.js:112
 msgid "Sections"
 msgstr ""
 
@@ -1335,16 +1372,16 @@ msgstr ""
 msgid "Service list"
 msgstr ""
 
-#: src/podkop/tabs/dashboard/initController.ts:575
+#: src/podkop/tabs/dashboard/initController.ts:576
 msgid "Services info"
 msgstr ""
 
-#: ../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/podkop.js:123
+#: ../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/podkop.js:126
 #: ../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/section.js:2398
 msgid "Settings"
 msgstr ""
 
-#: src/podkop/tabs/diagnostic/initController.ts:559
+#: src/podkop/tabs/diagnostic/initController.ts:503
 #: src/podkop/tabs/diagnostic/partials/renderAvailableActions.ts:116
 msgid "Show sing-box config"
 msgstr ""
@@ -1446,11 +1483,11 @@ msgstr ""
 msgid "Subscription info:"
 msgstr ""
 
-#: src/podkop/tabs/dashboard/initController.ts:355
+#: src/podkop/tabs/dashboard/initController.ts:357
 msgid "Subscription update completed"
 msgstr ""
 
-#: src/podkop/methods/shell/index.ts:156
+#: src/podkop/methods/shell/index.ts:259
 msgid "Subscription update failed"
 msgstr ""
 
@@ -1470,7 +1507,7 @@ msgstr ""
 msgid "Successfully copied!"
 msgstr ""
 
-#: src/podkop/tabs/dashboard/initController.ts:535
+#: src/podkop/tabs/dashboard/initController.ts:536
 msgid "System info"
 msgstr ""
 
@@ -1492,6 +1529,10 @@ msgstr ""
 
 #: ../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/settings.js:53
 msgid "The DNS server used to look up the IP address of an upstream DNS server"
+msgstr ""
+
+#: src/podkop/tabs/updates/initController.ts:118
+msgid "The latest version is installed"
 msgstr ""
 
 #: ../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/section.js:1425
@@ -1535,12 +1576,12 @@ msgstr ""
 msgid "Time in seconds for DNS record caching (default: 60)"
 msgstr ""
 
-#: src/podkop/tabs/dashboard/initController.ts:461
+#: src/podkop/tabs/dashboard/initController.ts:462
 #: src/podkop/tabs/dashboard/partials/renderSections.ts:216
 msgid "Traffic"
 msgstr ""
 
-#: src/podkop/tabs/dashboard/initController.ts:495
+#: src/podkop/tabs/dashboard/initController.ts:496
 msgid "Traffic Total"
 msgstr ""
 
@@ -1599,19 +1640,18 @@ msgstr ""
 msgid "Unexpected standalone token. Use explicit flags such as --name or --name=value."
 msgstr ""
 
-#: ../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/podkop.js:48
+#: ../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/podkop.js:51
 msgid "unique UCI identifier"
 msgstr ""
 
-#: src/podkop/tabs/diagnostic/initController.ts:31
-#: src/podkop/tabs/diagnostic/initController.ts:32
-#: src/podkop/tabs/diagnostic/initController.ts:33
-#: src/podkop/tabs/diagnostic/initController.ts:34
-#: src/podkop/tabs/diagnostic/initController.ts:36
-#: src/podkop/tabs/diagnostic/initController.ts:38
-#: src/podkop/tabs/diagnostic/initController.ts:40
-#: src/podkop/tabs/diagnostic/initController.ts:41
-#: src/podkop/tabs/diagnostic/helpers/getPodkopVersionRow.ts:10
+#: src/podkop/services/systemInfo.service.ts:9
+#: src/podkop/services/systemInfo.service.ts:10
+#: src/podkop/services/systemInfo.service.ts:11
+#: src/podkop/services/systemInfo.service.ts:12
+#: src/podkop/services/systemInfo.service.ts:14
+#: src/podkop/services/systemInfo.service.ts:16
+#: src/podkop/services/systemInfo.service.ts:18
+#: src/podkop/services/systemInfo.service.ts:19
 msgid "unknown"
 msgstr ""
 
@@ -1637,13 +1677,21 @@ msgstr ""
 msgid "Update interval"
 msgstr ""
 
+#: src/podkop/tabs/updates/initController.ts:111
+msgid "Update is available"
+msgstr ""
+
 #: src/podkop/tabs/dashboard/partials/renderSections.ts:305
 #: src/podkop/tabs/dashboard/partials/renderSections.ts:306
 msgid "Update subscriptions"
 msgstr ""
 
-#: src/podkop/tabs/dashboard/initController.ts:463
-#: src/podkop/tabs/dashboard/initController.ts:498
+#: ../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/podkop.js:174
+msgid "Updates"
+msgstr ""
+
+#: src/podkop/tabs/dashboard/initController.ts:464
+#: src/podkop/tabs/dashboard/initController.ts:499
 msgid "Uplink"
 msgstr ""
 
@@ -1715,7 +1763,11 @@ msgstr ""
 msgid "Validation errors:"
 msgstr ""
 
-#: src/podkop/tabs/diagnostic/initController.ts:530
+#: src/podkop/tabs/updates/initController.ts:343
+msgid "Version"
+msgstr ""
+
+#: src/podkop/tabs/diagnostic/initController.ts:474
 #: src/podkop/tabs/diagnostic/partials/renderAvailableActions.ts:107
 msgid "View logs"
 msgstr ""

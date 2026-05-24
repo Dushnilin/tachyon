@@ -24,6 +24,7 @@ check_required_file "$PODKOP_LIB/subscription_cache.lua"
 check_required_file "$PODKOP_LIB/subscription_parser.sh"
 check_required_file "$PODKOP_LIB/logging.sh"
 check_required_file "$PODKOP_LIB/rulesets.sh"
+check_required_file "$PODKOP_LIB/updater.sh"
 . /lib/functions.sh
 . /lib/config/uci.sh
 . /lib/functions/network.sh
@@ -37,6 +38,7 @@ check_required_file "$PODKOP_LIB/rulesets.sh"
 . "$PODKOP_LIB/subscription_parser.sh"
 . "$PODKOP_LIB/logging.sh"
 . "$PODKOP_LIB/rulesets.sh"
+. "$PODKOP_LIB/updater.sh"
 
 PODKOP_INTERNAL_CONFIG_TRIGGER_GUARD="/var/run/podkop-plus.internal-config-change"
 PODKOP_RUNTIME_STATE_DIR="/var/run/podkop-plus"
@@ -7203,6 +7205,15 @@ refresh_podkop_latest_version_cache() {
     write_podkop_latest_version_cache "$fetched_value" "$now"
 }
 
+get_cached_podkop_latest_version() {
+    local cache_file="/tmp/podkop-plus.latest-version.cache"
+    local cache_value
+
+    cache_value="$(sed -n '1p' "$cache_file" 2>/dev/null)"
+    [ -n "$cache_value" ] || cache_value="unknown"
+    echo "$cache_value"
+}
+
 get_podkop_latest_version() {
     local cache_file="/tmp/podkop-plus.latest-version.cache"
     local cache_ttl=21600
@@ -7261,7 +7272,7 @@ get_luci_app_version() {
 }
 
 system_info_cache_is_valid() {
-    local now cached_at cached_latest luci_app_version
+    local now cached_at luci_app_version
 
     [ -s "$PODKOP_SYSTEM_INFO_CACHE_FILE" ] || return 1
     jq -e . "$PODKOP_SYSTEM_INFO_CACHE_FILE" >/dev/null 2>&1 || return 1
@@ -7288,11 +7299,6 @@ system_info_cache_is_valid() {
         '.podkop_version == $podkop_version and .luci_app_version == $luci_app_version' \
         "$PODKOP_SYSTEM_INFO_CACHE_FILE" >/dev/null 2>&1 || return 1
 
-    cached_latest="$(jq -r '.podkop_latest_version // "unknown"' "$PODKOP_SYSTEM_INFO_CACHE_FILE" 2>/dev/null)"
-    [ "$cached_latest" = "unknown" ] && return 1
-    podkop_latest_version_is_older_than_current "$cached_latest" && return 1
-    podkop_latest_version_is_newer_than_current "$cached_latest" || return 1
-
     return 0
 }
 
@@ -7311,7 +7317,7 @@ build_system_info() {
 
     podkop_version="$PODKOP_VERSION"
 
-    podkop_latest_version="$(get_podkop_latest_version)"
+    podkop_latest_version="$(get_cached_podkop_latest_version)"
     [ -n "$podkop_latest_version" ] || podkop_latest_version="unknown"
 
     luci_app_version="$(get_luci_app_version)"
@@ -8489,6 +8495,9 @@ Available commands:
     get_zapret_status       Get zapret provider and Podkop Plus-managed nfqws status
     get_byedpi_status       Get ByeDPI provider and Podkop Plus-managed ciadpi status
     get_system_info         Get system information in JSON format
+    component_action        Manage Podkop Plus, sing-box, zapret, and ByeDPI components
+    component_action_async  Start a component action in the background
+    component_action_status Get background component action status
     check_dns_available     Check DNS server availability
     global_check            Run global system check
     validate_nfqws_strategy_json
@@ -8609,6 +8618,15 @@ get_byedpi_status)
     ;;
 get_system_info)
     get_system_info
+    ;;
+component_action)
+    component_action "$2" "$3"
+    ;;
+component_action_async)
+    component_action_async "$2" "$3"
+    ;;
+component_action_status)
+    component_action_status "$2"
     ;;
 check_dns_available)
     check_dns_available
