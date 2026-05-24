@@ -808,7 +808,7 @@ function parseComponentActionStartResult(response) {
 function componentActionFailure(response, parsedResponse) {
   return {
     success: false,
-    error: parsedResponse?.message || response.stderr || _("Component action failed")
+    error: parsedResponse?.message || response.stderr || _("Failed to execute")
   };
 }
 var PodkopShellMethods = {
@@ -956,7 +956,7 @@ var PodkopShellMethods = {
     }
     return {
       success: false,
-      error: _("Component action timed out")
+      error: _("Operation timed out")
     };
   },
   subscriptionUpdate: async (section, sourceIndex) => {
@@ -5835,9 +5835,10 @@ function setDisplayedPodkopRunning(running) {
 }
 async function refreshDiagnosticServicesInfo({
   force = false,
-  mountId = diagnosticMountId
+  mountId = diagnosticMountId,
+  allowInactive = false
 } = {}) {
-  if (!isDiagnosticMountActive(mountId)) {
+  if (!allowInactive && !isDiagnosticMountActive(mountId)) {
     return;
   }
   if (!force && isMutatingServiceActionLoading()) {
@@ -5860,18 +5861,15 @@ async function refreshDiagnosticServicesInfo({
   servicesInfoRefreshPromise = promise;
   return promise;
 }
-async function waitForPodkopRunningState(expectedRunning, mountId) {
+async function waitForPodkopRunningState(expectedRunning) {
   const startedAt = Date.now();
-  while (isDiagnosticMountActive(mountId)) {
-    await refreshDiagnosticServicesInfo({ force: true, mountId });
+  while (Date.now() - startedAt < SERVICE_ACTION_STATUS_TIMEOUT_MS) {
+    await refreshDiagnosticServicesInfo({ force: true, allowInactive: true });
     const podkopRunning = Boolean(
       store.get().servicesInfoWidget.data.podkopRunning
     );
     if (podkopRunning === expectedRunning) {
       return true;
-    }
-    if (Date.now() - startedAt >= SERVICE_ACTION_STATUS_TIMEOUT_MS) {
-      return false;
     }
     await sleep2(SERVICE_STATUS_REFRESH_INTERVAL_MS);
   }
@@ -5989,18 +5987,15 @@ async function handleServiceRuntimeAction({
   expectedRunning,
   optimisticRunning
 }) {
-  const mountId = diagnosticMountId;
+  const actionMountId = diagnosticMountId;
   setDiagnosticActionLoading(action, true);
   if (optimisticRunning !== void 0) {
     setDisplayedPodkopRunning(optimisticRunning);
   }
   try {
     await command();
-    const reachedExpectedState = await waitForPodkopRunningState(
-      expectedRunning,
-      mountId
-    );
-    if (!reachedExpectedState && isDiagnosticMountActive(mountId)) {
+    const reachedExpectedState = await waitForPodkopRunningState(expectedRunning);
+    if (!reachedExpectedState && isDiagnosticMountActive(actionMountId)) {
       logger.error(
         "[DIAGNOSTIC]",
         `${action} did not reach expected running state`
@@ -6010,10 +6005,8 @@ async function handleServiceRuntimeAction({
   } catch (e) {
     logger.error("[DIAGNOSTIC]", `handleServiceRuntimeAction(${action})`, e);
   } finally {
-    if (isDiagnosticMountActive(mountId)) {
-      setDiagnosticActionLoading(action, false);
-      resetDiagnosticsChecks();
-    }
+    setDiagnosticActionLoading(action, false);
+    resetDiagnosticsChecks();
   }
 }
 async function handleRestart() {
@@ -6039,31 +6032,31 @@ async function handleStop() {
   });
 }
 async function handleEnable() {
-  const mountId = diagnosticMountId;
   setDiagnosticActionLoading("enable", true);
   try {
     await PodkopShellMethods.enable();
   } catch (e) {
     logger.error("[DIAGNOSTIC]", "handleEnable - e", e);
   } finally {
-    await refreshDiagnosticServicesInfo({ force: true, mountId });
-    if (isDiagnosticMountActive(mountId)) {
-      setDiagnosticActionLoading("enable", false);
-    }
+    await refreshDiagnosticServicesInfo({
+      force: true,
+      allowInactive: true
+    });
+    setDiagnosticActionLoading("enable", false);
   }
 }
 async function handleDisable() {
-  const mountId = diagnosticMountId;
   setDiagnosticActionLoading("disable", true);
   try {
     await PodkopShellMethods.disable();
   } catch (e) {
     logger.error("[DIAGNOSTIC]", "handleDisable - e", e);
   } finally {
-    await refreshDiagnosticServicesInfo({ force: true, mountId });
-    if (isDiagnosticMountActive(mountId)) {
-      setDiagnosticActionLoading("disable", false);
-    }
+    await refreshDiagnosticServicesInfo({
+      force: true,
+      allowInactive: true
+    });
+    setDiagnosticActionLoading("disable", false);
   }
 }
 async function handleShowGlobalCheck() {
@@ -6348,7 +6341,7 @@ function onPageUnmount2() {
   stopServicesInfoRefreshTimer();
   servicesInfoRefreshPromise = null;
   store.unsubscribe(onStoreUpdate2);
-  store.reset(["diagnosticsActions", "diagnosticsRunAction"]);
+  store.reset(["diagnosticsRunAction"]);
   resetDiagnosticsChecks();
 }
 function registerLifecycleListeners2() {
@@ -8339,9 +8332,9 @@ function getCheckToastMessage(status) {
     return _("Update is available");
   }
   if (status === "dev") {
-    return _("Installed version is newer than upstream release");
+    return _("Installed version is newer than release");
   }
-  return _("The latest version is installed");
+  return _("Latest version is installed");
 }
 async function refreshSystemInfoAfterMutation() {
   await ensureSystemInfo({ force: true, silent: true });
@@ -8419,7 +8412,7 @@ async function handleComponentAction(button) {
     );
     if (!response.success) {
       setActionLoading(button.key, false);
-      showToast(response.error || _("Component action failed"), "error");
+      showToast(response.error || _("Failed to execute"), "error");
       return;
     }
     const result = response.data;
@@ -8440,20 +8433,20 @@ async function handleComponentAction(button) {
     patchSystemInfoAfterMutation(result);
     setActionLoading(button.key, false);
     if (result.component === "podkop" && result.action === "install") {
-      showToast(
-        result.message || _("Component action completed"),
-        "success",
-        1200
-      );
+      if (result.message) {
+        showToast(result.message, "success", 1200);
+      }
       reloadPageAfterPodkopUpdate();
       return;
     }
-    showToast(result.message || _("Component action completed"), "success");
+    if (result.message) {
+      showToast(result.message, "success");
+    }
     void refreshSystemInfoAfterMutation();
   } catch (error) {
     logger.error("[UPDATES]", "handleComponentAction failed", error);
     setActionLoading(button.key, false);
-    showToast(_("Component action failed"), "error");
+    showToast(_("Failed to execute"), "error");
   }
 }
 function getPrimaryUpdateAction(component, checkKey, installKey) {
@@ -8648,7 +8641,6 @@ function onPageMount4() {
 function onPageUnmount4() {
   updatesMounted = false;
   store.unsubscribe(onStoreUpdate3);
-  store.reset(["updatesActions", "updatesChecks"]);
 }
 function registerLifecycleListeners4() {
   if (updatesLifecycleRegistered) {

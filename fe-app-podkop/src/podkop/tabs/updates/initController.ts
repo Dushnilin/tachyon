@@ -126,10 +126,10 @@ function getCheckToastMessage(status: UpdateStatus) {
   }
 
   if (status === 'dev') {
-    return _('Installed version is newer than upstream release');
+    return _('Installed version is newer than release');
   }
 
-  return _('The latest version is installed');
+  return _('Latest version is installed');
 }
 
 async function refreshSystemInfoAfterMutation() {
@@ -229,7 +229,7 @@ async function handleComponentAction(button: ComponentActionButton) {
 
     if (!response.success) {
       setActionLoading(button.key, false);
-      showToast(response.error || _('Component action failed'), 'error');
+      showToast(response.error || _('Failed to execute'), 'error');
       return;
     }
 
@@ -257,21 +257,23 @@ async function handleComponentAction(button: ComponentActionButton) {
     setActionLoading(button.key, false);
 
     if (result.component === 'podkop' && result.action === 'install') {
-      showToast(
-        result.message || _('Component action completed'),
-        'success',
-        1200,
-      );
+      if (result.message) {
+        showToast(result.message, 'success', 1200);
+      }
+
       reloadPageAfterPodkopUpdate();
       return;
     }
 
-    showToast(result.message || _('Component action completed'), 'success');
+    if (result.message) {
+      showToast(result.message, 'success');
+    }
+
     void refreshSystemInfoAfterMutation();
   } catch (error) {
     logger.error('[UPDATES]', 'handleComponentAction failed', error);
     setActionLoading(button.key, false);
-    showToast(_('Component action failed'), 'error');
+    showToast(_('Failed to execute'), 'error');
   }
 }
 
@@ -515,7 +517,6 @@ function onPageMount() {
 function onPageUnmount() {
   updatesMounted = false;
   store.unsubscribe(onStoreUpdate);
-  store.reset(['updatesActions', 'updatesChecks']);
 }
 
 function registerLifecycleListeners() {
