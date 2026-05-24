@@ -99,6 +99,10 @@ function formatEndpoint(address?: string, port?: string | number): string {
     return normalizedAddress;
   }
 
+  if (normalizedPort === '443') {
+    return normalizedAddress;
+  }
+
   if (normalizedAddress.includes(':') && !normalizedAddress.startsWith('[')) {
     return `[${normalizedAddress}]:${normalizedPort}`;
   }
@@ -215,8 +219,8 @@ function getSourceCellParts(connection: MonitoredConnection) {
   if (deviceName) {
     return {
       primary: deviceName,
-      ip,
-      copyValue: `${deviceName} ${ip}`,
+      ip: '',
+      copyValue: deviceName,
       searchValue: `${deviceName} ${ip}`,
     };
   }
@@ -648,9 +652,7 @@ function renderStateRow(text: string, className = '') {
     E(
       'td',
       {
-        class: ['pdk_monitoring-page__state-cell', className]
-          .filter(Boolean)
-          .join(' '),
+        class: 'pdk_monitoring-page__state-cell',
         colSpan: 8,
       },
       [
@@ -799,8 +801,98 @@ function setMonitoringPaused(paused: boolean) {
   renderConnections();
 }
 
-function isMonitoringValueOverflowing(element: HTMLElement): boolean {
+function isElementOverflowing(element: HTMLElement): boolean {
   return element.scrollWidth > element.clientWidth + 1;
+}
+
+function getMonitoringValueOverflowElements(
+  element: HTMLElement,
+): HTMLElement[] {
+  return [
+    element,
+    ...Array.from(element.querySelectorAll<HTMLElement>('*')),
+  ].filter(isElementOverflowing);
+}
+
+function getElementCopyText(element: HTMLElement, fallback: string): string {
+  return (
+    element.getAttribute('data-copy-value') || element.textContent || fallback
+  );
+}
+
+function compactMonitoringText(value: string): string {
+  return value
+    .replace(/\u2026/g, '')
+    .trim()
+    .replace(/\s+/g, '');
+}
+
+function getMonitoringValueTextElements(element: HTMLElement): HTMLElement[] {
+  const children = Array.from(element.children).filter(
+    (child): child is HTMLElement => child instanceof HTMLElement,
+  );
+
+  if (children.length === 0) {
+    return [element];
+  }
+
+  const textElements = children
+    .flatMap(getMonitoringValueTextElements)
+    .filter((child) => compactMonitoringText(getElementCopyText(child, '')));
+
+  return textElements.length > 0 ? textElements : [element];
+}
+
+function estimateVisibleMonitoringTextLength(
+  element: HTMLElement,
+  fallbackText: string,
+): number {
+  const text = compactMonitoringText(getElementCopyText(element, fallbackText));
+
+  if (!text) {
+    return 0;
+  }
+
+  if (!isElementOverflowing(element)) {
+    return text.length;
+  }
+
+  return Math.floor(
+    (element.clientWidth / Math.max(element.scrollWidth, 1)) * text.length,
+  );
+}
+
+function getEstimatedVisibleMonitoringTextLength(
+  element: HTMLElement,
+  fallbackText: string,
+): number {
+  const textElements = getMonitoringValueTextElements(element);
+
+  if (textElements.length === 1 && textElements[0] === element) {
+    return estimateVisibleMonitoringTextLength(element, fallbackText);
+  }
+
+  return textElements.reduce(
+    (total, textElement) =>
+      total + estimateVisibleMonitoringTextLength(textElement, fallbackText),
+    0,
+  );
+}
+
+function isCompactTextSubsequence(needle: string, haystack: string): boolean {
+  let haystackIndex = 0;
+
+  for (let needleIndex = 0; needleIndex < needle.length; needleIndex += 1) {
+    haystackIndex = haystack.indexOf(needle[needleIndex], haystackIndex);
+
+    if (haystackIndex === -1) {
+      return false;
+    }
+
+    haystackIndex += 1;
+  }
+
+  return true;
 }
 
 function getSelectionValueElements(selection: Selection): HTMLElement[] {
@@ -835,8 +927,10 @@ function shouldCopyFullMonitoringValue(
 ): boolean {
   const normalizedSelectedText = selectedText.replace(/\u2026/g, '').trim();
   const normalizedFullText = fullText.trim();
-  const compactSelectedText = normalizedSelectedText.replace(/\s+/g, '');
-  const compactFullText = normalizedFullText.replace(/\s+/g, '');
+  const compactSelectedText = compactMonitoringText(selectedText);
+  const compactFullText = compactMonitoringText(fullText);
+  const overflowElements = getMonitoringValueOverflowElements(element);
+  const hasCompositeText = getMonitoringValueTextElements(element).length > 1;
 
   if (!normalizedSelectedText || !normalizedFullText) {
     return false;
@@ -846,21 +940,32 @@ function shouldCopyFullMonitoringValue(
     return true;
   }
 
-  if (
-    !isMonitoringValueOverflowing(element) ||
-    !compactFullText.startsWith(compactSelectedText)
-  ) {
+  if (overflowElements.length === 0) {
     return false;
   }
 
-  const estimatedVisibleChars = Math.floor(
-    (element.clientWidth / Math.max(element.scrollWidth, 1)) *
-      normalizedFullText.length,
+  if (hasCompositeText) {
+    const selectedPrefix = compactSelectedText.slice(
+      0,
+      Math.min(4, compactSelectedText.length),
+    );
+
+    if (
+      !compactFullText.startsWith(selectedPrefix) ||
+      !isCompactTextSubsequence(compactSelectedText, compactFullText)
+    ) {
+      return false;
+    }
+  } else if (!compactFullText.startsWith(compactSelectedText)) {
+    return false;
+  }
+
+  const estimatedVisibleChars = getEstimatedVisibleMonitoringTextLength(
+    element,
+    normalizedFullText,
   );
 
-  return (
-    normalizedSelectedText.length >= Math.max(4, estimatedVisibleChars - 2)
-  );
+  return compactSelectedText.length >= Math.max(4, estimatedVisibleChars - 2);
 }
 
 function handleMonitoringValueCopy(event: ClipboardEvent) {
