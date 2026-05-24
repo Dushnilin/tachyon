@@ -6684,6 +6684,9 @@ function formatEndpoint(address, port) {
   if (!normalizedPort) {
     return normalizedAddress;
   }
+  if (normalizedPort === "443") {
+    return normalizedAddress;
+  }
   if (normalizedAddress.includes(":") && !normalizedAddress.startsWith("[")) {
     return `[${normalizedAddress}]:${normalizedPort}`;
   }
@@ -6771,8 +6774,8 @@ function getSourceCellParts(connection) {
   if (deviceName) {
     return {
       primary: deviceName,
-      ip,
-      copyValue: `${deviceName} ${ip}`,
+      ip: "",
+      copyValue: deviceName,
       searchValue: `${deviceName} ${ip}`
     };
   }
@@ -7112,7 +7115,7 @@ function renderStateRow(text, className = "") {
     E(
       "td",
       {
-        class: ["pdk_monitoring-page__state-cell", className].filter(Boolean).join(" "),
+        class: "pdk_monitoring-page__state-cell",
         colSpan: 8
       },
       [
@@ -7227,8 +7230,63 @@ function setMonitoringPaused(paused) {
   }
   renderConnections();
 }
-function isMonitoringValueOverflowing(element) {
+function isElementOverflowing(element) {
   return element.scrollWidth > element.clientWidth + 1;
+}
+function getMonitoringValueOverflowElements(element) {
+  return [
+    element,
+    ...Array.from(element.querySelectorAll("*"))
+  ].filter(isElementOverflowing);
+}
+function getElementCopyText(element, fallback) {
+  return element.getAttribute("data-copy-value") || element.textContent || fallback;
+}
+function compactMonitoringText(value) {
+  return value.replace(/\u2026/g, "").trim().replace(/\s+/g, "");
+}
+function getMonitoringValueTextElements(element) {
+  const children = Array.from(element.children).filter(
+    (child) => child instanceof HTMLElement
+  );
+  if (children.length === 0) {
+    return [element];
+  }
+  const textElements = children.flatMap(getMonitoringValueTextElements).filter((child) => compactMonitoringText(getElementCopyText(child, "")));
+  return textElements.length > 0 ? textElements : [element];
+}
+function estimateVisibleMonitoringTextLength(element, fallbackText) {
+  const text = compactMonitoringText(getElementCopyText(element, fallbackText));
+  if (!text) {
+    return 0;
+  }
+  if (!isElementOverflowing(element)) {
+    return text.length;
+  }
+  return Math.floor(
+    element.clientWidth / Math.max(element.scrollWidth, 1) * text.length
+  );
+}
+function getEstimatedVisibleMonitoringTextLength(element, fallbackText) {
+  const textElements = getMonitoringValueTextElements(element);
+  if (textElements.length === 1 && textElements[0] === element) {
+    return estimateVisibleMonitoringTextLength(element, fallbackText);
+  }
+  return textElements.reduce(
+    (total, textElement) => total + estimateVisibleMonitoringTextLength(textElement, fallbackText),
+    0
+  );
+}
+function isCompactTextSubsequence(needle, haystack) {
+  let haystackIndex = 0;
+  for (let needleIndex = 0; needleIndex < needle.length; needleIndex += 1) {
+    haystackIndex = haystack.indexOf(needle[needleIndex], haystackIndex);
+    if (haystackIndex === -1) {
+      return false;
+    }
+    haystackIndex += 1;
+  }
+  return true;
 }
 function getSelectionValueElements(selection) {
   const root = document.getElementById("monitoring-status");
@@ -7255,21 +7313,35 @@ function getSelectionValueElements(selection) {
 function shouldCopyFullMonitoringValue(element, selectedText, fullText) {
   const normalizedSelectedText = selectedText.replace(/\u2026/g, "").trim();
   const normalizedFullText = fullText.trim();
-  const compactSelectedText = normalizedSelectedText.replace(/\s+/g, "");
-  const compactFullText = normalizedFullText.replace(/\s+/g, "");
+  const compactSelectedText = compactMonitoringText(selectedText);
+  const compactFullText = compactMonitoringText(fullText);
+  const overflowElements = getMonitoringValueOverflowElements(element);
+  const hasCompositeText = getMonitoringValueTextElements(element).length > 1;
   if (!normalizedSelectedText || !normalizedFullText) {
     return false;
   }
   if (normalizedSelectedText === normalizedFullText) {
     return true;
   }
-  if (!isMonitoringValueOverflowing(element) || !compactFullText.startsWith(compactSelectedText)) {
+  if (overflowElements.length === 0) {
     return false;
   }
-  const estimatedVisibleChars = Math.floor(
-    element.clientWidth / Math.max(element.scrollWidth, 1) * normalizedFullText.length
+  if (hasCompositeText) {
+    const selectedPrefix = compactSelectedText.slice(
+      0,
+      Math.min(4, compactSelectedText.length)
+    );
+    if (!compactFullText.startsWith(selectedPrefix) || !isCompactTextSubsequence(compactSelectedText, compactFullText)) {
+      return false;
+    }
+  } else if (!compactFullText.startsWith(compactSelectedText)) {
+    return false;
+  }
+  const estimatedVisibleChars = getEstimatedVisibleMonitoringTextLength(
+    element,
+    normalizedFullText
   );
-  return normalizedSelectedText.length >= Math.max(4, estimatedVisibleChars - 2);
+  return compactSelectedText.length >= Math.max(4, estimatedVisibleChars - 2);
 }
 function handleMonitoringValueCopy(event) {
   const selection = window.getSelection?.();
@@ -7562,9 +7634,13 @@ var styles5 = `
 
 .pdk_monitoring-page {
     --pdk-monitoring-control-height: 34px;
+    --pdk-monitoring-row-action-size: 24px;
     --pdk-monitoring-divider-color: rgba(127, 127, 127, 0.22);
     --pdk-monitoring-soft-bg: rgba(127, 127, 127, 0.08);
     --pdk-monitoring-soft-bg-hover: rgba(127, 127, 127, 0.14);
+    --pdk-monitoring-danger-color: var(--error-color-medium, #d32f2f);
+    --pdk-monitoring-success-color: var(--success-color-medium, #2e7d32);
+    --pdk-monitoring-paused-color: var(--primary-color-high, #1976d2);
 
     width: 100%;
     min-width: 0;
@@ -7613,6 +7689,42 @@ var styles5 = `
 .pdk_monitoring-page .btn.pdk_monitoring-page__icon-button:disabled {
     opacity: 0.45;
     cursor: not-allowed;
+}
+
+.pdk_monitoring-page #monitoring-close-all.btn.pdk_monitoring-page__icon-button {
+    border-color: var(--pdk-monitoring-danger-color) !important;
+    background: var(--pdk-monitoring-soft-bg) !important;
+    color: var(--pdk-monitoring-danger-color) !important;
+}
+
+.pdk_monitoring-page #monitoring-close-all.btn.pdk_monitoring-page__icon-button:hover:not(:disabled) {
+    border-color: var(--pdk-monitoring-danger-color) !important;
+    background: var(--pdk-monitoring-soft-bg-hover) !important;
+    color: var(--pdk-monitoring-danger-color) !important;
+}
+
+.pdk_monitoring-page #monitoring-pause-toggle.btn.pdk_monitoring-page__icon-button {
+    border-color: var(--pdk-monitoring-success-color) !important;
+    background: var(--pdk-monitoring-soft-bg) !important;
+    color: var(--pdk-monitoring-success-color) !important;
+}
+
+.pdk_monitoring-page #monitoring-pause-toggle.btn.pdk_monitoring-page__icon-button:hover:not(:disabled) {
+    border-color: var(--pdk-monitoring-success-color) !important;
+    background: var(--pdk-monitoring-soft-bg-hover) !important;
+    color: var(--pdk-monitoring-success-color) !important;
+}
+
+.pdk_monitoring-page #monitoring-pause-toggle.btn.pdk_monitoring-page__icon-button--active {
+    border-color: var(--pdk-monitoring-paused-color) !important;
+    background: var(--pdk-monitoring-soft-bg) !important;
+    color: var(--pdk-monitoring-paused-color) !important;
+}
+
+.pdk_monitoring-page #monitoring-pause-toggle.btn.pdk_monitoring-page__icon-button--active:hover:not(:disabled) {
+    border-color: var(--pdk-monitoring-paused-color) !important;
+    background: var(--pdk-monitoring-soft-bg-hover) !important;
+    color: var(--pdk-monitoring-paused-color) !important;
 }
 
 .pdk_monitoring-page__icon-button svg,
@@ -7774,6 +7886,7 @@ var styles5 = `
 .pdk_monitoring-page__table-wrap {
     width: 100%;
     overflow-x: auto;
+    margin-bottom: 0;
 }
 
 .pdk_monitoring-page__table {
@@ -7782,6 +7895,7 @@ var styles5 = `
     table-layout: fixed;
     border-collapse: collapse;
     border-spacing: 0;
+    margin-bottom: 0;
 }
 
 .pdk_monitoring-page__table th,
@@ -7838,6 +7952,11 @@ var styles5 = `
     border-bottom: 0;
 }
 
+.pdk_monitoring-page__table td:last-child {
+    padding-top: 0;
+    padding-bottom: 0;
+}
+
 .pdk_monitoring-page__value {
     display: block;
     max-width: 100%;
@@ -7876,7 +7995,7 @@ var styles5 = `
 }
 
 .pdk_monitoring-page__source-value--ip-only {
-    color: var(--text-color-medium);
+    color: var(--text-color-high);
 }
 
 .pdk_monitoring-page__cell-main {
@@ -7901,10 +8020,10 @@ var styles5 = `
 }
 
 .pdk_monitoring-page .btn.pdk_monitoring-page__row-action {
-    width: 28px;
-    height: 28px;
-    min-width: 28px;
-    min-height: 28px;
+    width: var(--pdk-monitoring-row-action-size);
+    height: var(--pdk-monitoring-row-action-size);
+    min-width: var(--pdk-monitoring-row-action-size);
+    min-height: var(--pdk-monitoring-row-action-size);
     padding: 0;
     box-sizing: border-box;
     display: inline-flex;
@@ -7915,14 +8034,19 @@ var styles5 = `
     border: 0 !important;
     border-radius: 999px;
     background: transparent !important;
-    color: var(--text-color-medium) !important;
+    color: var(--pdk-monitoring-danger-color) !important;
     box-shadow: none;
     cursor: pointer;
 }
 
+.pdk_monitoring-page__row-action svg {
+    width: 14px;
+    height: 14px;
+}
+
 .pdk_monitoring-page .btn.pdk_monitoring-page__row-action:hover:not(:disabled) {
     background: var(--pdk-monitoring-soft-bg-hover) !important;
-    color: var(--text-color-high) !important;
+    color: var(--pdk-monitoring-danger-color) !important;
 }
 
 .pdk_monitoring-page .btn.pdk_monitoring-page__row-action:disabled {
@@ -8020,6 +8144,8 @@ var styles5 = `
         grid-template-columns: minmax(92px, 34%) minmax(0, 1fr);
         align-items: center;
         border-bottom: 0;
+        min-height: var(--pdk-monitoring-row-action-size);
+        padding: 0;
     }
 
     .pdk_monitoring-page__value {

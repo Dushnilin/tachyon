@@ -26,9 +26,13 @@ export const styles = `
 
 .pdk_monitoring-page {
     --pdk-monitoring-control-height: 34px;
+    --pdk-monitoring-row-action-size: 24px;
     --pdk-monitoring-divider-color: rgba(127, 127, 127, 0.22);
     --pdk-monitoring-soft-bg: rgba(127, 127, 127, 0.08);
     --pdk-monitoring-soft-bg-hover: rgba(127, 127, 127, 0.14);
+    --pdk-monitoring-danger-color: var(--error-color-medium, #d32f2f);
+    --pdk-monitoring-success-color: var(--success-color-medium, #2e7d32);
+    --pdk-monitoring-paused-color: var(--primary-color-high, #1976d2);
 
     width: 100%;
     min-width: 0;
@@ -77,6 +81,42 @@ export const styles = `
 .pdk_monitoring-page .btn.pdk_monitoring-page__icon-button:disabled {
     opacity: 0.45;
     cursor: not-allowed;
+}
+
+.pdk_monitoring-page #monitoring-close-all.btn.pdk_monitoring-page__icon-button {
+    border-color: var(--pdk-monitoring-danger-color) !important;
+    background: var(--pdk-monitoring-soft-bg) !important;
+    color: var(--pdk-monitoring-danger-color) !important;
+}
+
+.pdk_monitoring-page #monitoring-close-all.btn.pdk_monitoring-page__icon-button:hover:not(:disabled) {
+    border-color: var(--pdk-monitoring-danger-color) !important;
+    background: var(--pdk-monitoring-soft-bg-hover) !important;
+    color: var(--pdk-monitoring-danger-color) !important;
+}
+
+.pdk_monitoring-page #monitoring-pause-toggle.btn.pdk_monitoring-page__icon-button {
+    border-color: var(--pdk-monitoring-success-color) !important;
+    background: var(--pdk-monitoring-soft-bg) !important;
+    color: var(--pdk-monitoring-success-color) !important;
+}
+
+.pdk_monitoring-page #monitoring-pause-toggle.btn.pdk_monitoring-page__icon-button:hover:not(:disabled) {
+    border-color: var(--pdk-monitoring-success-color) !important;
+    background: var(--pdk-monitoring-soft-bg-hover) !important;
+    color: var(--pdk-monitoring-success-color) !important;
+}
+
+.pdk_monitoring-page #monitoring-pause-toggle.btn.pdk_monitoring-page__icon-button--active {
+    border-color: var(--pdk-monitoring-paused-color) !important;
+    background: var(--pdk-monitoring-soft-bg) !important;
+    color: var(--pdk-monitoring-paused-color) !important;
+}
+
+.pdk_monitoring-page #monitoring-pause-toggle.btn.pdk_monitoring-page__icon-button--active:hover:not(:disabled) {
+    border-color: var(--pdk-monitoring-paused-color) !important;
+    background: var(--pdk-monitoring-soft-bg-hover) !important;
+    color: var(--pdk-monitoring-paused-color) !important;
 }
 
 .pdk_monitoring-page__icon-button svg,
@@ -238,6 +278,7 @@ export const styles = `
 .pdk_monitoring-page__table-wrap {
     width: 100%;
     overflow-x: auto;
+    margin-bottom: 0;
 }
 
 .pdk_monitoring-page__table {
@@ -246,6 +287,7 @@ export const styles = `
     table-layout: fixed;
     border-collapse: collapse;
     border-spacing: 0;
+    margin-bottom: 0;
 }
 
 .pdk_monitoring-page__table th,
@@ -302,6 +344,11 @@ export const styles = `
     border-bottom: 0;
 }
 
+.pdk_monitoring-page__table td:last-child {
+    padding-top: 0;
+    padding-bottom: 0;
+}
+
 .pdk_monitoring-page__value {
     display: block;
     max-width: 100%;
@@ -340,7 +387,7 @@ export const styles = `
 }
 
 .pdk_monitoring-page__source-value--ip-only {
-    color: var(--text-color-medium);
+    color: var(--text-color-high);
 }
 
 .pdk_monitoring-page__cell-main {
@@ -365,10 +412,10 @@ export const styles = `
 }
 
 .pdk_monitoring-page .btn.pdk_monitoring-page__row-action {
-    width: 28px;
-    height: 28px;
-    min-width: 28px;
-    min-height: 28px;
+    width: var(--pdk-monitoring-row-action-size);
+    height: var(--pdk-monitoring-row-action-size);
+    min-width: var(--pdk-monitoring-row-action-size);
+    min-height: var(--pdk-monitoring-row-action-size);
     padding: 0;
     box-sizing: border-box;
     display: inline-flex;
@@ -379,14 +426,19 @@ export const styles = `
     border: 0 !important;
     border-radius: 999px;
     background: transparent !important;
-    color: var(--text-color-medium) !important;
+    color: var(--pdk-monitoring-danger-color) !important;
     box-shadow: none;
     cursor: pointer;
 }
 
+.pdk_monitoring-page__row-action svg {
+    width: 14px;
+    height: 14px;
+}
+
 .pdk_monitoring-page .btn.pdk_monitoring-page__row-action:hover:not(:disabled) {
     background: var(--pdk-monitoring-soft-bg-hover) !important;
-    color: var(--text-color-high) !important;
+    color: var(--pdk-monitoring-danger-color) !important;
 }
 
 .pdk_monitoring-page .btn.pdk_monitoring-page__row-action:disabled {
@@ -484,6 +536,8 @@ export const styles = `
         grid-template-columns: minmax(92px, 34%) minmax(0, 1fr);
         align-items: center;
         border-bottom: 0;
+        min-height: var(--pdk-monitoring-row-action-size);
+        padding: 0;
     }
 
     .pdk_monitoring-page__value {
