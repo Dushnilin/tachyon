@@ -115,6 +115,27 @@ export const styles = `
     opacity: 0.65;
 }
 
+.pdk_dashboard-page .btn.dashboard-sections-grid-item-test-latency {
+    min-width: 99px;
+    min-height: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+}
+
+.pdk_dashboard-page .btn.dashboard-sections-grid-item-test-latency svg {
+    width: 15px;
+    height: 15px;
+    display: block;
+    flex: 0 0 auto;
+}
+
+.pdk_dashboard-page .btn.dashboard-sections-grid-item-test-latency[disabled] {
+    cursor: not-allowed;
+    opacity: 0.65;
+}
+
 .pdk_dashboard-page__outbound-grid {
     margin-top: 5px;
     display: grid;

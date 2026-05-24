@@ -123,11 +123,46 @@ function isUrlTestOutbound(outbound: Podkop.Outbound) {
   return outbound.type?.toLowerCase() === 'urltest';
 }
 
-function sortUrlTestFirst(outbounds: Podkop.Outbound[]) {
-  return [
-    ...outbounds.filter(isUrlTestOutbound),
-    ...outbounds.filter((outbound) => !isUrlTestOutbound(outbound)),
-  ];
+function getLatencySortValue(outbound: Podkop.Outbound) {
+  const latency = Number(outbound.latency);
+
+  return Number.isFinite(latency) && latency > 0
+    ? latency
+    : Number.POSITIVE_INFINITY;
+}
+
+function getOutboundSortBucket(outbound: Podkop.Outbound) {
+  if (isUrlTestOutbound(outbound)) {
+    return 0;
+  }
+
+  return getLatencySortValue(outbound) === Number.POSITIVE_INFINITY ? 2 : 1;
+}
+
+function sortOutboundsForDashboard(outbounds: Podkop.Outbound[]) {
+  return outbounds
+    .map((outbound, index) => ({ outbound, index }))
+    .sort((left, right) => {
+      const leftBucket = getOutboundSortBucket(left.outbound);
+      const rightBucket = getOutboundSortBucket(right.outbound);
+
+      if (leftBucket !== rightBucket) {
+        return leftBucket - rightBucket;
+      }
+
+      if (leftBucket === 1) {
+        const latencyDiff =
+          getLatencySortValue(left.outbound) -
+          getLatencySortValue(right.outbound);
+
+        if (latencyDiff !== 0) {
+          return latencyDiff;
+        }
+      }
+
+      return left.index - right.index;
+    })
+    .map((item) => item.outbound);
 }
 
 function isSafeSectionName(sectionName: string) {
@@ -217,7 +252,7 @@ function buildProxyGroupOutbounds(
 
   return {
     selector,
-    outbounds: sortUrlTestFirst(outbounds),
+    outbounds: sortOutboundsForDashboard(outbounds),
   };
 }
 
