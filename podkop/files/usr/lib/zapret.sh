@@ -599,32 +599,12 @@ validate_rule_nfqws_opt() {
     validate_nfqws_strategy "$raw_opt" "Zapret rule '$section'"
 }
 
-_find_zapret_optional_file() {
-    local base_path="$1"
-
-    if [ -f "${base_path}.gz" ]; then
-        echo "${base_path}.gz"
-        return 0
-    fi
-
-    if [ -f "$base_path" ]; then
-        echo "$base_path"
-        return 0
-    fi
-
-    echo ""
-}
-
-build_zapret_hostlist_params() {
-    echo ""
-}
-
 escape_sed_replacement() {
     printf '%s' "$1" | sed 's/[\/&]/\\&/g'
 }
 
 prepare_zapret_runtime() {
-    mkdir -p "$ZAPRET_STATE_DIR" "$ZAPRET_PID_DIR" "$ZAPRET_CHILD_PID_DIR" "$ZAPRET_LOG_DIR" "$ZAPRET_HOSTLIST_DIR"
+    mkdir -p "$ZAPRET_STATE_DIR" "$ZAPRET_PID_DIR" "$ZAPRET_CHILD_PID_DIR" "$ZAPRET_LOG_DIR"
 }
 
 is_zapret_provider_available() {
@@ -676,210 +656,6 @@ rewrite_legacy_zapret_runtime_paths() {
 
 expand_zapret_nfqws_opt() {
     rewrite_legacy_zapret_runtime_paths "$1"
-}
-
-get_zapret_rule_hostlist_path() {
-    local section="$1"
-
-    echo "$ZAPRET_HOSTLIST_DIR/$section.hostlist"
-}
-
-get_zapret_community_hostlist_url() {
-    local reference="$1"
-
-    case "$reference" in
-    russia_inside)
-        echo "$GITHUB_RAW_URL/Russia/inside-raw.lst"
-        ;;
-    russia_outside)
-        echo "$GITHUB_RAW_URL/Russia/outside-raw.lst"
-        ;;
-    ukraine_inside)
-        echo "$GITHUB_RAW_URL/Ukraine/inside-raw.lst"
-        ;;
-    *)
-        echo "$GITHUB_RAW_URL/Services/$reference.lst"
-        ;;
-    esac
-}
-
-normalize_zapret_hostlist_line() {
-    local line="$1"
-    local normalized
-
-    line="$(printf '%s' "$line" | sed 's/\r$//; s/#.*$//; s/^[[:space:]]*//; s/[[:space:]]*$//')"
-    [ -n "$line" ] || return 1
-
-    normalized="${line#.}"
-    is_domain_suffix "$normalized" || return 1
-
-    printf '%s\n' "$normalized"
-}
-
-append_zapret_hostlist_line() {
-    local line="$1"
-    local output_file="$2"
-    local normalized
-
-    normalized="$(normalize_zapret_hostlist_line "$line")" || return 0
-    printf '%s\n' "$normalized" >>"$output_file"
-}
-
-_append_zapret_uci_hostlist_item_handler() {
-    local value="$1"
-    local output_file="$2"
-
-    append_zapret_hostlist_line "$value" "$output_file"
-}
-
-append_zapret_hostlist_from_plain_file() {
-    local input_file="$1"
-    local output_file="$2"
-    local line
-
-    [ -f "$input_file" ] || return 0
-
-    while IFS= read -r line; do
-        append_zapret_hostlist_line "$line" "$output_file"
-    done <"$input_file"
-}
-
-append_zapret_hostlist_from_json_ruleset() {
-    local json_file="$1"
-    local output_file="$2"
-    local tmpfile
-
-    [ -f "$json_file" ] || return 0
-
-    tmpfile="$(mktemp)"
-    if ! extract_domains_from_json_ruleset_to_file "$json_file" "$tmpfile"; then
-        rm -f "$tmpfile"
-        return 1
-    fi
-
-    append_zapret_hostlist_from_plain_file "$tmpfile" "$output_file"
-    rm -f "$tmpfile"
-}
-
-append_zapret_hostlist_from_url() {
-    local url="$1"
-    local output_file="$2"
-    local http_proxy_address tmpfile json_tmpfile extension
-
-    http_proxy_address="$(get_service_proxy_address)"
-    tmpfile="$(mktemp)"
-
-    if ! download_to_file "$url" "$tmpfile" "$http_proxy_address" || [ ! -s "$tmpfile" ]; then
-        log "Failed to download Zapret hostlist source: $url" "warn"
-        rm -f "$tmpfile"
-        return 0
-    fi
-
-    convert_crlf_to_lf "$tmpfile"
-    extension="$(url_get_file_extension "$url")"
-
-    case "$extension" in
-    srs)
-        json_tmpfile="$(mktemp)"
-        if decompile_binary_ruleset "$tmpfile" "$json_tmpfile"; then
-            append_zapret_hostlist_from_json_ruleset "$json_tmpfile" "$output_file"
-        else
-            log "Failed to decompile Zapret hostlist ruleset: $url" "warn"
-        fi
-        rm -f "$json_tmpfile"
-        ;;
-    json)
-        append_zapret_hostlist_from_json_ruleset "$tmpfile" "$output_file"
-        ;;
-    *)
-        append_zapret_hostlist_from_plain_file "$tmpfile" "$output_file"
-        ;;
-    esac
-
-    rm -f "$tmpfile"
-}
-
-append_zapret_hostlist_from_reference() {
-    local reference="$1"
-    local output_file="$2"
-    local community_url json_tmpfile
-
-    if printf '%s\n' "$COMMUNITY_SERVICES" | tr ' ' '\n' | grep -Fxq "$reference"; then
-        community_url="$(get_zapret_community_hostlist_url "$reference")"
-        append_zapret_hostlist_from_url "$community_url" "$output_file"
-        return 0
-    fi
-
-    case "$reference" in
-    http://* | https://*)
-        append_zapret_hostlist_from_url "$reference" "$output_file"
-        ;;
-    *.srs)
-        if [ -f "$reference" ]; then
-            json_tmpfile="$(mktemp)"
-            if decompile_binary_ruleset "$reference" "$json_tmpfile"; then
-                append_zapret_hostlist_from_json_ruleset "$json_tmpfile" "$output_file"
-            fi
-            rm -f "$json_tmpfile"
-        fi
-        ;;
-    *.json)
-        append_zapret_hostlist_from_json_ruleset "$reference" "$output_file"
-        ;;
-    *)
-        append_zapret_hostlist_from_plain_file "$reference" "$output_file"
-        ;;
-    esac
-}
-
-_append_zapret_hostlist_reference_handler() {
-    local reference="$1"
-    local output_file="$2"
-
-    append_zapret_hostlist_from_reference "$reference" "$output_file"
-}
-
-append_zapret_hostlist_from_inline_domains() {
-    local items="$1"
-    local output_file="$2"
-    local item
-
-    printf '%s' "$items" | tr ', \t' '\n\n\n' | while IFS= read -r item; do
-        append_zapret_hostlist_line "$item" "$output_file"
-    done
-}
-
-build_generated_zapret_hostlist() {
-    local section="$1"
-    local hostlist_path tmpfile user_domain_list_type items
-
-    hostlist_path="$(get_zapret_rule_hostlist_path "$section")"
-    tmpfile="$(mktemp)"
-
-    : >"$hostlist_path"
-
-    config_list_foreach "$section" "domain" _append_zapret_uci_hostlist_item_handler "$tmpfile"
-    config_list_foreach "$section" "domain_suffix" _append_zapret_uci_hostlist_item_handler "$tmpfile"
-    config_list_foreach "$section" "community_lists" _append_zapret_hostlist_reference_handler "$tmpfile"
-    config_list_foreach "$section" "local_domain_lists" _append_zapret_hostlist_reference_handler "$tmpfile"
-    config_list_foreach "$section" "remote_domain_lists" _append_zapret_hostlist_reference_handler "$tmpfile"
-    config_list_foreach "$section" "rule_set" _append_zapret_hostlist_reference_handler "$tmpfile"
-    config_list_foreach "$section" "domain_ip_lists" _append_zapret_hostlist_reference_handler "$tmpfile"
-
-    config_get user_domain_list_type "$section" "user_domain_list_type" "disabled"
-    case "$user_domain_list_type" in
-    dynamic) config_get items "$section" "user_domains" ;;
-    text) config_get items "$section" "user_domains_text" ;;
-    *) items="" ;;
-    esac
-    [ -n "$items" ] && append_zapret_hostlist_from_inline_domains "$items" "$tmpfile"
-
-    if [ -s "$tmpfile" ]; then
-        sort -u "$tmpfile" >"$hostlist_path"
-    fi
-
-    rm -f "$tmpfile"
-    echo "$hostlist_path"
 }
 
 check_zapret_requirements() {
@@ -1454,6 +1230,6 @@ start_zapret_runtime() {
     is_zapret_provider_available || return 0
 
     check_zapret_requirements
-    mkdir -p "$ZAPRET_PID_DIR" "$ZAPRET_CHILD_PID_DIR" "$ZAPRET_LOG_DIR" "$ZAPRET_HOSTLIST_DIR"
+    mkdir -p "$ZAPRET_PID_DIR" "$ZAPRET_CHILD_PID_DIR" "$ZAPRET_LOG_DIR"
     config_foreach _start_zapret_runtime_handler "section"
 }

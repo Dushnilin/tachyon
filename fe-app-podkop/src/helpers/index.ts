@@ -6,7 +6,6 @@ export * from './maskIP';
 export * from './getProxyUrlName';
 export * from './onMount';
 export * from './getClashApiUrl';
-export * from './splitProxyString';
 export * from './preserveScrollForPage';
 export * from './parseQueryString';
 export * from './svgEl';

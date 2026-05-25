@@ -320,19 +320,6 @@ sing_box_cf_add_json_outbound() {
     echo "$config"
 }
 
-sing_box_cf_add_interface_outbound() {
-    local config="$1"
-    local section="$2"
-    local interface_name="$3"
-
-    local tag
-    tag=$(get_outbound_tag_by_section "$section")
-
-    config=$(sing_box_cm_add_interface_outbound "$config" "$tag" "$interface_name")
-
-    echo "$config"
-}
-
 sing_box_cf_proxy_domain() {
     local config="$1"
     local inbound="$2"

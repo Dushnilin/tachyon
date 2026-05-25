@@ -1,5 +1,5 @@
 // language=CSS
-import { PODKOP_CBI_PREFIX } from '../../../constants';
+import { PODKOP_UCI_PACKAGE as PODKOP_CBI_PREFIX } from '../../../constants';
 
 export const styles = `
 

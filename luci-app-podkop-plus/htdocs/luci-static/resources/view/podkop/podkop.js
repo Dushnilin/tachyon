@@ -25,7 +25,7 @@
 "require view.podkop_plus.updates as updates";
 
 const UCI_PACKAGE = main.PODKOP_UCI_PACKAGE;
-const CBI_PREFIX = main.PODKOP_CBI_PREFIX;
+const CBI_PREFIX = UCI_PACKAGE;
 
 function renderSectionAdd(sectionRef, extra_class) {
   const el = form.GridSection.prototype.renderSectionAdd.apply(sectionRef, [

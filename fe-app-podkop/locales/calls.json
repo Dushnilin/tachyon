@@ -154,13 +154,6 @@
     ]
   },
   {
-    "call": "Binary file",
-    "key": "Binary file",
-    "places": [
-      "../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/ruleset.js:23"
-    ]
-  },
-  {
     "call": "Blacklist",
     "key": "Blacklist",
     "places": [
@@ -550,8 +543,6 @@
     "call": "Direct",
     "key": "Direct",
     "places": [
-      "../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/ruleset.js:66",
-      "../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/ruleset.js:73",
       "src/podkop/tabs/monitoring/initController.ts:119"
     ]
   },
@@ -734,13 +725,6 @@
     ]
   },
   {
-    "call": "Download Node",
-    "key": "Download Node",
-    "places": [
-      "../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/ruleset.js:63"
-    ]
-  },
-  {
     "call": "Downloaded",
     "key": "Downloaded",
     "places": [
@@ -782,7 +766,6 @@
     "call": "Enable",
     "key": "Enable",
     "places": [
-      "../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/ruleset.js:10",
       "../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/section.js:2453"
     ]
   },
@@ -988,13 +971,6 @@
     ]
   },
   {
-    "call": "Format",
-    "key": "Format",
-    "places": [
-      "../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/ruleset.js:22"
-    ]
-  },
-  {
     "call": "Fully Routed IPs",
     "key": "Fully Routed IPs",
     "places": [
@@ -1021,13 +997,6 @@
     "places": [
       "src/podkop/tabs/monitoring/initController.ts:628",
       "src/podkop/tabs/monitoring/initController.ts:688"
-    ]
-  },
-  {
-    "call": "How often this remote rule set should be refreshed",
-    "key": "How often this remote rule set should be refreshed",
-    "places": [
-      "../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/ruleset.js:87"
     ]
   },
   {
@@ -1511,20 +1480,6 @@
     ]
   },
   {
-    "call": "Local",
-    "key": "Local",
-    "places": [
-      "../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/ruleset.js:16"
-    ]
-  },
-  {
-    "call": "Local file path to a sing-box rule set",
-    "key": "Local file path to a sing-box rule set",
-    "places": [
-      "../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/ruleset.js:33"
-    ]
-  },
-  {
     "call": "Log Level",
     "key": "Log Level",
     "places": [
@@ -1764,13 +1719,6 @@
     ]
   },
   {
-    "call": "Optional node used to download this remote rule set",
-    "key": "Optional node used to download this remote rule set",
-    "places": [
-      "../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/ruleset.js:64"
-    ]
-  },
-  {
     "call": "Optional values must be attached with '=' here; a separate token would be ignored by nfqws.",
     "key": "Optional values must be attached with '=' here; a separate token would be ignored by nfqws.",
     "places": [
@@ -1803,13 +1751,6 @@
     "key": "Output Network Interface",
     "places": [
       "../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/settings.js:142"
-    ]
-  },
-  {
-    "call": "Path",
-    "key": "Path",
-    "places": [
-      "../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/ruleset.js:32"
     ]
   },
   {
@@ -1997,20 +1938,6 @@
     ]
   },
   {
-    "call": "Remote",
-    "key": "Remote",
-    "places": [
-      "../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/ruleset.js:17"
-    ]
-  },
-  {
-    "call": "Remote URL to a sing-box rule set",
-    "key": "Remote URL to a sing-box rule set",
-    "places": [
-      "../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/ruleset.js:49"
-    ]
-  },
-  {
     "call": "Remove",
     "key": "Remove",
     "places": [
@@ -2087,13 +2014,6 @@
     "key": "Rule set must be an HTTP(S) URL or a local .srs / .json path",
     "places": [
       "../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/section.js:2406"
-    ]
-  },
-  {
-    "call": "Rule set URL",
-    "key": "Rule set URL",
-    "places": [
-      "../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/ruleset.js:48"
     ]
   },
   {
@@ -2401,13 +2321,6 @@
     ]
   },
   {
-    "call": "Source file",
-    "key": "Source file",
-    "places": [
-      "../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/ruleset.js:24"
-    ]
-  },
-  {
     "call": "Source IPs",
     "key": "Source IPs",
     "places": [
@@ -2708,7 +2621,6 @@
     "call": "Type",
     "key": "Type",
     "places": [
-      "../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/ruleset.js:15",
       "src/podkop/tabs/monitoring/initController.ts:629",
       "src/podkop/tabs/monitoring/initController.ts:689"
     ]
@@ -2823,13 +2735,6 @@
     ]
   },
   {
-    "call": "Update interval",
-    "key": "Update interval",
-    "places": [
-      "../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/ruleset.js:86"
-    ]
-  },
-  {
     "call": "Update is available",
     "key": "Update is available",
     "places": [
@@ -2868,8 +2773,8 @@
     ]
   },
   {
-    "call": "URL must start with vless://, ss://, trojan://, socks4/5://, or hysteria2://hy2://",
-    "key": "URL must start with vless://, ss://, trojan://, socks4/5://, or hysteria2://hy2://",
+    "call": "URL must start with vless://, ss://, trojan://, socks4://, socks4a://, socks5://, hysteria2://, or hy2://",
+    "key": "URL must start with vless://, ss://, trojan://, socks4://, socks4a://, socks5://, hysteria2://, or hy2://",
     "places": [
       "src/validators/validateProxyUrl.ts:37"
     ]

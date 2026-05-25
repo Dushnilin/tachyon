@@ -35,7 +35,7 @@ export function validateProxyUrl(url: string): ValidationResult {
   return {
     valid: false,
     message: _(
-      'URL must start with vless://, ss://, trojan://, socks4/5://, or hysteria2://hy2://',
+      'URL must start with vless://, ss://, trojan://, socks4://, socks4a://, socks5://, hysteria2://, or hy2://',
     ),
   };
 }

@@ -3,7 +3,7 @@ export interface ValidationResult {
   message: string;
 }
 
-export interface BulkValidationResultItem<T> extends ValidationResult {
+interface BulkValidationResultItem<T> extends ValidationResult {
   value: T;
 }
 

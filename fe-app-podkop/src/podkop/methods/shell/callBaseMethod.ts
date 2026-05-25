@@ -1,17 +1,34 @@
 import { executeShellCommand } from '../../../helpers';
 import { Podkop } from '../../types';
 
+interface CallBaseMethodOptions {
+  allowNonZeroWithStdout?: boolean;
+  timeout?: number;
+}
+
 export async function callBaseMethod<T>(
   method: Podkop.AvailableMethods,
   args: string[] = [],
   command: string = '/usr/bin/podkop-plus',
+  options: CallBaseMethodOptions = {},
 ): Promise<Podkop.MethodResponse<T>> {
   try {
     const response = await executeShellCommand({
       command,
       args: [method as string, ...args],
-      timeout: 15000,
+      timeout: options.timeout ?? 15000,
     });
+    const exitCode = response.code ?? 0;
+
+    if (
+      exitCode !== 0 &&
+      !(options.allowNonZeroWithStdout && response.stdout)
+    ) {
+      return {
+        success: false,
+        error: response.stderr || response.stdout || '',
+      };
+    }
 
     if (response.stdout) {
       try {

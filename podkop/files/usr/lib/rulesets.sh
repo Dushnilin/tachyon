@@ -140,23 +140,6 @@ import_plain_subnet_list_to_local_source_ruleset_chunked() {
     fi
 }
 
-# Determines the ruleset format based on the file extension (json → source, srs → binary)
-get_ruleset_format_by_file_extension() {
-    local file_extension="$1"
-
-    local format
-    case "$file_extension" in
-    json) format="source" ;;
-    srs) format="binary" ;;
-    *)
-        log "Unsupported file extension: .$file_extension" "error"
-        return 1
-        ;;
-    esac
-
-    echo "$format"
-}
-
 # Decompiles a sing-box SRS binary file into a JSON ruleset file
 decompile_binary_ruleset() {
     local binary_filepath="$1"
@@ -177,17 +160,4 @@ extract_ip_cidr_from_json_ruleset_to_file() {
 
     log "Extracting ip_cidr entries from $json_file to $output_file" "debug"
     jq -r '.rules[]? | select(has("ip_cidr")) | .ip_cidr[]?' "$json_file" > "$output_file"
-}
-
-# Extracts plain domain/domain_suffix entries from a JSON ruleset file and writes them to an output file.
-# Domain keyword/regex matchers are intentionally skipped because zapret hostlists only support suffix-style hosts.
-extract_domains_from_json_ruleset_to_file() {
-    local json_file="$1"
-    local output_file="$2"
-
-    log "Extracting domain entries from $json_file to $output_file" "debug"
-    jq -r '
-        .rules[]? |
-        (.domain[]?, .domain_suffix[]?) // empty
-    ' "$json_file" > "$output_file"
 }

@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PODKOP PLUS\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-05-24 20:56+0300\n"
-"PO-Revision-Date: 2026-05-24 20:56+0300\n"
+"POT-Creation-Date: 2026-05-25 22:14+0300\n"
+"PO-Revision-Date: 2026-05-25 22:14+0300\n"
 "Last-Translator: ushan0v\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -79,9 +79,6 @@ msgstr "Доступные действия"
 
 msgid "Backend validation failed: %s"
 msgstr "Backend-проверка завершилась ошибкой: %s"
-
-msgid "Binary file"
-msgstr "Бинарный файл"
 
 msgid "Blacklist"
 msgstr "Чёрный список"
@@ -314,9 +311,6 @@ msgstr "Скачивать списки через Proxy/VPN"
 msgid "Download Lists via specific proxy/VPN/JSON outbound section"
 msgstr "Скачивать списки через конкретную секцию proxy/VPN/JSON outbound"
 
-msgid "Download Node"
-msgstr "Узел для скачивания"
-
 msgid "Downloaded"
 msgstr "Загружено"
 
@@ -416,9 +410,6 @@ msgstr "Не удалось обновить подписки"
 msgid "Fastest"
 msgstr "Самый быстрый"
 
-msgid "Format"
-msgstr "Формат"
-
 msgid "Fully Routed IPs"
 msgstr "Полностью маршрутизированные IP-адреса"
 
@@ -430,9 +421,6 @@ msgstr "Глобальная проверка"
 
 msgid "Host"
 msgstr "Хост"
-
-msgid "How often this remote rule set should be refreshed"
-msgstr "Как часто обновлять этот удалённый набор правил"
 
 msgid "HTTP error"
 msgstr "Ошибка HTTP"
@@ -635,12 +623,6 @@ msgstr "Частота обновления списков"
 msgid "Loading connections"
 msgstr "Загрузка подключений"
 
-msgid "Local"
-msgstr "Локальный"
-
-msgid "Local file path to a sing-box rule set"
-msgstr "Локальный путь к набору правил sing-box"
-
 msgid "Log Level"
 msgstr "Уровень логов"
 
@@ -740,9 +722,6 @@ msgstr "Время ожидания истекло"
 msgid "Option \"%s\" contains an invalid input value."
 msgstr "Параметр \"%s\" содержит некорректное значение."
 
-msgid "Optional node used to download this remote rule set"
-msgstr "Необязательный узел, через который скачивается этот удалённый набор правил"
-
 msgid "Optional values must be attached with '=' here; a separate token would be ignored by nfqws."
 msgstr "Необязательное значение здесь нужно передавать только через '='; отдельный токен nfqws проигнорирует."
 
@@ -757,9 +736,6 @@ msgstr "Устаревшая"
 
 msgid "Output Network Interface"
 msgstr "Выходной сетевой интерфейс"
-
-msgid "Path"
-msgstr "Путь"
 
 msgid "Path cannot be empty"
 msgstr "Путь не может быть пустым"
@@ -839,12 +815,6 @@ msgstr "Сброс"
 msgid "Regional options cannot be used together"
 msgstr "Нельзя использовать несколько региональных опций одновременно"
 
-msgid "Remote"
-msgstr "Удалённый"
-
-msgid "Remote URL to a sing-box rule set"
-msgstr "Удалённый URL к набору правил sing-box"
-
 msgid "Remove"
 msgstr "Удалить"
 
@@ -877,9 +847,6 @@ msgstr "Исключённые из маршрутизации IP-адреса"
 
 msgid "Rule set must be an HTTP(S) URL or a local .srs / .json path"
 msgstr "Набор правил должен быть HTTP(S) URL или локальным путём .srs / .json"
-
-msgid "Rule set URL"
-msgstr "URL набора правил"
 
 msgid "Rule sets (domains and subnets)"
 msgstr "Наборы правил (домены и подсети)"
@@ -1009,9 +976,6 @@ msgstr "Версия Sing-box совместима (новее 1.12.4)"
 
 msgid "Source"
 msgstr "Источник"
-
-msgid "Source file"
-msgstr "Исходный файл"
 
 msgid "Source IPs"
 msgstr "Исходные IP-адреса"
@@ -1184,9 +1148,6 @@ msgstr "Неизвестная ошибка"
 msgid "Unknown NFQWS flag."
 msgstr "Неизвестный флаг NFQWS."
 
-msgid "Update interval"
-msgstr "Интервал обновления"
-
 msgid "Update is available"
 msgstr "Доступно обновление"
 
@@ -1202,8 +1163,8 @@ msgstr "Исходящий"
 msgid "Uploaded"
 msgstr "Отдано"
 
-msgid "URL must start with vless://, ss://, trojan://, socks4/5://, or hysteria2://hy2://"
-msgstr "URL должен начинаться с vless://, ss://, trojan://, socks4/5:// или hysteria2:// hy2://"
+msgid "URL must start with vless://, ss://, trojan://, socks4://, socks4a://, socks5://, hysteria2://, or hy2://"
+msgstr ""
 
 msgid "URL must use one of the following protocols:"
 msgstr "URL должен использовать один из следующих протоколов:"

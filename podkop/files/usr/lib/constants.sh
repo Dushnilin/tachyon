@@ -1,13 +1,11 @@
 # shellcheck disable=SC2034
 
-PODKOP_APP_NAME="Podkop Plus"
 PODKOP_VERSION="__COMPILED_VERSION_VARIABLE__"
 PODKOP_CONFIG_NAME="podkop-plus"
 PODKOP_CONFIG="/etc/config/$PODKOP_CONFIG_NAME"
 PODKOP_BIN="/usr/bin/podkop-plus"
 PODKOP_SERVICE_NAME="podkop-plus"
 PODKOP_SERVICE_INIT="/etc/init.d/podkop-plus"
-PODKOP_LIB_DIR="/usr/lib/podkop-plus"
 PODKOP_RELEASE_REPO="ushan0v/podkop-plus"
 PODKOP_LUCI_VIEW_NAMESPACE="podkop_plus"
 PODKOP_LUCI_VIEW_DIR="/www/luci-static/resources/view/$PODKOP_LUCI_VIEW_NAMESPACE"
@@ -15,7 +13,6 @@ PODKOP_LUCI_I18N_DOMAIN="podkop_plus"
 PODKOP_DNSMASQ_SECTION="podkop_plus"
 ## Common
 RESOLV_CONF="/etc/resolv.conf"
-DNS_RESOLVERS="1.1.1.1 1.0.0.1 8.8.8.8 8.8.4.4 9.9.9.9 9.9.9.11 94.140.14.14 94.140.15.15 208.67.220.220 208.67.222.222 77.88.8.1 77.88.8.8"
 CHECK_PROXY_IP_DOMAIN="ip.podkop.fyi"
 FAKEIP_TEST_DOMAIN="fakeip.podkop.fyi"
 TMP_SING_BOX_FOLDER="/tmp/sing-box"
@@ -45,7 +42,6 @@ SB_BOOTSTRAP_SERVER_TAG="bootstrap-dns-server"
 SB_FAKEIP_DNS_RULE_TAG="fakeip-dns-rule-tag"
 SB_FAKEIP_RULESET_DNS_RULE_TAG="fakeip-ruleset-dns-rule-tag"
 SB_SERVICE_FAKEIP_DNS_RULE_TAG="service-fakeip-dns-rule-tag"
-SB_INVERT_FAKEIP_DNS_RULE_TAG="invert-fakeip-dns-rule-tag"
 # Inbounds
 SB_TPROXY_INBOUND_TAG="tproxy-in"
 SB_TPROXY_INBOUND_ADDRESS="127.0.0.1"
@@ -58,9 +54,6 @@ SB_SERVICE_MIXED_INBOUND_ADDRESS="127.0.0.1"
 SB_SERVICE_MIXED_INBOUND_PORT=4534
 # Outbounds
 SB_DIRECT_OUTBOUND_TAG="direct-out"
-# Route
-SB_REJECT_RULE_TAG="reject-rule-tag"
-SB_EXCLUSION_RULE_TAG="exclusion-rule-tag"
 # Experimental
 SB_CLASH_API_CONTROLLER_PORT=9090
 
@@ -107,7 +100,6 @@ ZAPRET_DEFAULT_NFQWS_OPT="--filter-tcp=80 --dpi-desync=fake,fakedsplit --dpi-des
 ## ByeDPI
 BYEDPI_BIN="/usr/bin/ciadpi"
 BYEDPI_SERVICE_INIT="/etc/init.d/byedpi"
-BYEDPI_CONFIG="/etc/config/byedpi"
 BYEDPI_STATE_DIR="/var/run/podkop-plus/byedpi"
 BYEDPI_PID_DIR="$BYEDPI_STATE_DIR/pid"
 BYEDPI_CHILD_PID_DIR="$BYEDPI_STATE_DIR/child-pid"

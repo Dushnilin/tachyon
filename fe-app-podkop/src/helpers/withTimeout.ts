@@ -1,4 +1,4 @@
-import { logger } from '../podkop';
+import { logger } from '../podkop/services/logger.service';
 
 export async function withTimeout<T>(
   promise: Promise<T>,

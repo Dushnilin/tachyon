@@ -425,30 +425,6 @@ subscription_cache_is_usable() {
     validate_subscription_file "$subscription_json_path"
 }
 
-wait_for_subscription_connectivity() {
-    local section="$1"
-    local subscription_url="$2"
-    local service_proxy_address="$3"
-    local attempts="${4:-3}"
-    local wait="${5:-5}"
-    local timeout="${6:-5}"
-    local subscription_user_agent="${7:-}"
-    local attempt
-
-    for attempt in $(seq 1 "$attempts"); do
-        if check_subscription_connectivity "$subscription_url" "$service_proxy_address" 1 0 "$timeout" "$subscription_user_agent"; then
-            log "Subscription connectivity check passed for rule '$section'" "info"
-            return 0
-        fi
-
-        log "Subscription source is unavailable for rule '$section' [$attempt/$attempts]" "warn"
-        [ "$attempt" -lt "$attempts" ] && sleep "$wait"
-    done
-
-    log "Subscription connectivity check failed for rule '$section' after $attempts attempts" "error"
-    return 1
-}
-
 download_subscription_into_cache() {
     local section="$1"
     local subscription_url="$2"
@@ -1407,26 +1383,6 @@ get_settings_update_interval() {
         printf '%s\n' "$update_interval"
     else
         printf '1d\n'
-    fi
-}
-
-get_duration_option_with_default_if_unset() {
-    local section="$1"
-    local option="$2"
-    local default_value="$3"
-    local disabled value
-
-    config_get_bool disabled "$section" "${option}_disabled" 0
-    if [ "$disabled" -eq 1 ]; then
-        printf '\n'
-        return 0
-    fi
-
-    config_get value "$section" "$option"
-    if [ -n "$value" ]; then
-        printf '%s\n' "$value"
-    else
-        printf '%s\n' "$default_value"
     fi
 }
 
@@ -3145,55 +3101,6 @@ ensure_builtin_ruleset() {
     fi
 }
 
-ensure_custom_ruleset() {
-    local section="$1"
-    local tag="$section"
-
-    ENSURED_RULESET_TAG="$tag"
-    ENSURED_RULESET_KIND="unknown"
-
-    if ruleset_registered "$tag"; then
-        return 0
-    fi
-
-    local enabled type format path url outbound update_interval detour kind
-    config_get_bool enabled "$section" "enabled" 1
-    [ "$enabled" -eq 1 ] || return 1
-
-    config_get type "$section" "type" "remote"
-    config_get format "$section" "format" "binary"
-    config_get path "$section" "path"
-    config_get url "$section" "url"
-    config_get outbound "$section" "outbound"
-    config_get update_interval "$section" "update_interval"
-
-    case "$type" in
-    local)
-        if [ "$format" = "binary" ]; then
-            kind="$(detect_local_binary_ruleset_kind "$path")"
-        else
-            kind="$(detect_local_source_ruleset_kind "$path")"
-        fi
-        config=$(sing_box_cm_add_local_ruleset "$config" "$tag" "$format" "$path")
-        ;;
-    remote)
-        kind="$(ruleset_kind_from_reference_hint "$url")"
-        [ "$kind" = "unknown" ] && kind="domains"
-        [ -z "$update_interval" ] && update_interval="$SING_BOX_DISABLED_UPDATE_INTERVAL"
-        [ -n "$outbound" ] && detour="$(get_outbound_tag_by_section "$outbound")"
-        config=$(sing_box_cm_add_remote_ruleset "$config" "$tag" "$format" "$url" "$detour" "$update_interval")
-        ;;
-    *)
-        log "Unknown rule set type '$type' for '$section'. Aborted." "fatal"
-        exit 1
-        ;;
-    esac
-
-    ENSURED_RULESET_KIND="$kind"
-
-    register_ruleset_tag "$tag"
-}
-
 ensure_inline_custom_ruleset() {
     local reference="$1"
     local tag hash detour update_interval extension format
@@ -3364,17 +3271,6 @@ create_nft_rules() {
     if [ "$exclude_ntp" -eq 1 ]; then
         log "NTP traffic exclude for proxy"
         nft insert rule inet "$NFT_TABLE_NAME" mangle udp dport 123 return
-    fi
-}
-
-backup_dnsmasq_config_option() {
-    local key="$1"
-    local backup_key="$2"
-    local value
-    value="$(uci_get "dhcp" "@dnsmasq[0]" "$key")"
-
-    if [ -n "$value" ]; then
-        uci_set "dhcp" "@dnsmasq[0]" "$backup_key" "$value"
     fi
 }
 
@@ -4437,20 +4333,6 @@ sing_box_configure_outbounds() {
     config_foreach configure_outbound_handler "section"
 }
 
-sing_box_get_unique_outbound_tag() {
-    local config="$1"
-    local base_tag="$2"
-    local candidate="$base_tag"
-    local tag_suffix=1
-
-    while printf '%s' "$config" | jq -e --arg tag "$candidate" '.outbounds[]? | select(.tag == $tag)' > /dev/null 2>&1; do
-        candidate="${base_tag}-${tag_suffix}"
-        tag_suffix=$((tag_suffix + 1))
-    done
-
-    echo "$candidate"
-}
-
 json_array_append_string() {
     local array_json="$1"
     local value="$2"
@@ -4613,10 +4495,6 @@ get_urltest_regex_matching_tags_json() {
     done
 
     printf '%s\n' "$result_json"
-}
-
-get_urltest_regex_excluded_tags_json() {
-    get_urltest_regex_matching_tags_json "$@"
 }
 
 is_ipv6_literal() {
@@ -4998,18 +4876,6 @@ filter_urltest_outbounds() {
     fi
 
     printf '%s\n' "$filtered_json"
-}
-
-is_truthy_option() {
-    local value="$1"
-
-    case "$value" in
-    1 | true | TRUE | True | on | ON | yes | YES | enabled | ENABLED)
-        return 0
-        ;;
-    esac
-
-    return 1
 }
 
 get_urltest_check_interval_for_config() {
@@ -5465,24 +5331,6 @@ create_route_rule_for_action() {
     esac
 }
 
-patch_route_rule_item_handler() {
-    local value="$1"
-    local rule_tag="$2"
-    local key="$3"
-
-    config=$(sing_box_cm_patch_route_rule "$config" "$rule_tag" "$key" "$value")
-}
-
-patch_route_and_dns_rule_item_handler() {
-    local value="$1"
-    local rule_tag="$2"
-    local key="$3"
-
-    config=$(sing_box_cm_patch_route_rule "$config" "$rule_tag" "$key" "$value")
-    ensure_fakeip_dns_route_rule "$SB_FAKEIP_DNS_RULE_TAG"
-    config=$(sing_box_cm_patch_dns_route_rule "$config" "$SB_FAKEIP_DNS_RULE_TAG" "$key" "$value")
-}
-
 dns_route_rule_exists() {
     local tag="$1"
 
@@ -5837,152 +5685,6 @@ configure_community_list_handler() {
     config=$(sing_box_cm_patch_dns_route_rule "$config" "$SB_FAKEIP_RULESET_DNS_RULE_TAG" "rule_set" "$ruleset_tag")
 }
 
-prepare_source_ruleset() {
-    local section="$1"
-    local name="$2"
-    local type="$3"
-    local route_rule_tag="$4"
-
-    log "Preparing a $name $type rule set for '$section' section" "debug"
-    ruleset_tag=$(get_ruleset_tag "$section" "$name" "$type")
-    ruleset_filepath="$TMP_RULESET_FOLDER/$ruleset_tag.json"
-    create_source_rule_set "$ruleset_filepath"
-    case $? in
-    0)
-        config=$(sing_box_cm_add_local_ruleset "$config" "$ruleset_tag" "source" "$ruleset_filepath")
-        config=$(sing_box_cm_patch_route_rule "$config" "$route_rule_tag" "rule_set" "$ruleset_tag")
-        case "$type" in
-        domains)
-            ensure_fakeip_dns_route_rule "$SB_FAKEIP_RULESET_DNS_RULE_TAG"
-            config=$(sing_box_cm_patch_dns_route_rule "$config" "$SB_FAKEIP_RULESET_DNS_RULE_TAG" "rule_set" "$ruleset_tag")
-            ;;
-        subnets) ;;
-        *)
-            log "Unsupported remote rule set type: $type" "error"
-            return 1
-            ;;
-        esac
-        ;;
-    3) log "Source rule set $ruleset_filepath already exists, skipping." "debug" ;;
-    esac
-}
-
-configure_user_domain_list() {
-    local section="$1"
-    local route_rule_tag="$2"
-
-    prepare_source_ruleset "$section" "user" "domains" "$route_rule_tag"
-
-    local user_domain_list_type items json_array
-    config_get user_domain_list_type "$section" "user_domain_list_type"
-    case "$user_domain_list_type" in
-    dynamic) config_get items "$section" "user_domains" ;;
-    text) config_get items "$section" "user_domains_text" ;;
-    esac
-
-    items="$(parse_domain_or_subnet_string_to_commas_string "$items" "domains")"
-    json_array="$(comma_string_to_json_array "$items")"
-    patch_source_ruleset_rules "$ruleset_filepath" "domain_suffix" "$json_array"
-}
-
-configure_user_subnet_list() {
-    local section="$1"
-    local route_rule_tag="$2"
-
-    prepare_source_ruleset "$section" "user" "subnets" "$route_rule_tag"
-
-    local user_subnet_list_type items json_array
-    config_get user_subnet_list_type "$section" "user_subnet_list_type"
-    case "$user_subnet_list_type" in
-    dynamic) config_get items "$section" "user_subnets" ;;
-    text) config_get items "$section" "user_subnets_text" ;;
-    esac
-
-    items="$(parse_domain_or_subnet_string_to_commas_string "$items" "subnets")"
-    json_array="$(comma_string_to_json_array "$items")"
-    patch_source_ruleset_rules "$ruleset_filepath" "ip_cidr" "$json_array"
-    nft_add_set_elements "$NFT_TABLE_NAME" "$NFT_COMMON_SET_NAME" "$items"
-}
-
-configure_local_domain_lists() {
-    local section="$1"
-    local route_rule_tag="$2"
-
-    prepare_source_ruleset "$section" "local" "domains" "$route_rule_tag"
-
-    config_list_foreach "$section" "local_domain_lists" import_local_domain_list_handler "$ruleset_filepath"
-}
-
-import_local_domain_list_handler() {
-    local local_domain_list_filepath="$1"
-    local ruleset_filepath="$2"
-
-    if ! file_exists "$local_domain_list_filepath"; then
-        log "Local domain list file $local_domain_list_filepath not found" "error"
-        return 1
-    fi
-
-    import_plain_domain_list_to_local_source_ruleset_chunked "$local_domain_list_filepath" "$ruleset_filepath"
-}
-
-configure_local_subnet_lists() {
-    local section="$1"
-    local route_rule_tag="$2"
-
-    prepare_source_ruleset "$section" "local" "subnets" "$route_rule_tag"
-
-    config_list_foreach "$section" "local_subnet_lists" import_local_subnets_list_handler "$ruleset_filepath"
-}
-
-import_local_subnets_list_handler() {
-    local local_subnet_list_filepath="$1"
-    local ruleset_filepath="$2"
-
-    if ! file_exists "$local_subnet_list_filepath"; then
-        log "Local subnet list file $local_subnet_list_filepath not found" "error"
-        return 1
-    fi
-
-    import_plain_subnet_list_to_local_source_ruleset_chunked "$local_subnet_list_filepath" "$ruleset_filepath"
-    nft_add_set_elements_from_file_chunked "$local_subnet_list_filepath" "$NFT_TABLE_NAME" "$NFT_COMMON_SET_NAME"
-}
-
-configure_remote_domain_or_subnet_list_handler() {
-    local url="$1"
-    local type="$2"
-    local section="$3"
-    local route_rule_tag="$4"
-
-    local file_extension
-    file_extension=$(url_get_file_extension "$url")
-    log "Detected file extension: '$file_extension'" "debug"
-    case "$file_extension" in
-    json | srs)
-        log "Creating a remote $type ruleset from the source URL" "info"
-        local basename ruleset_tag format detour update_interval
-        basename=$(url_get_basename "$url")
-        ruleset_tag=$(get_ruleset_tag "$section" "$basename" "remote-$type")
-        format="$(get_ruleset_format_by_file_extension "$file_extension")"
-        detour="$(get_download_detour_tag)"
-        update_interval="$(get_remote_ruleset_update_interval)"
-
-        config=$(sing_box_cm_add_remote_ruleset "$config" "$ruleset_tag" "$format" "$url" "$detour" "$update_interval")
-        config=$(sing_box_cm_patch_route_rule "$config" "$route_rule_tag" "rule_set" "$ruleset_tag")
-        case "$type" in
-        domains)
-            ensure_fakeip_dns_route_rule "$SB_FAKEIP_RULESET_DNS_RULE_TAG"
-            config=$(sing_box_cm_patch_dns_route_rule "$config" "$SB_FAKEIP_RULESET_DNS_RULE_TAG" "rule_set" "$ruleset_tag")
-            ;;
-        subnets) ;;
-        *) log "Unsupported remote rule set type: $type" "error" ;;
-        esac
-        ;;
-    *)
-        prepare_source_ruleset "$section" "remote" "$type" "$route_rule_tag"
-        ;;
-    esac
-}
-
 sing_box_configure_experimental() {
     log "Configure the experimental section of a sing-box JSON configuration"
 
@@ -6133,42 +5835,6 @@ import_builtin_subnets_reference_handler() {
     fi
 }
 
-import_inline_custom_ruleset_subnets_from_rule() {
-    local section="$1"
-
-    rule_is_enabled "$section" || return 0
-    config_list_foreach "$section" "rule_set" import_inline_custom_ruleset_subnets_reference_handler
-}
-
-import_inline_custom_ruleset_subnets_reference_handler() {
-    local reference="$1"
-    local extension format
-
-    case "$reference" in
-    /*.srs)
-        import_custom_ruleset_subnets_from_local "$reference" "binary"
-        ;;
-    /*.json)
-        import_custom_ruleset_subnets_from_local "$reference" "source"
-        ;;
-    http://* | https://*)
-        extension="$(url_get_file_extension "$reference")"
-        case "$extension" in
-        srs)
-            import_custom_ruleset_subnets_from_remote "$reference" "binary"
-            ;;
-        json)
-            import_custom_ruleset_subnets_from_remote "$reference" "source"
-            ;;
-        *)
-            format="$(get_inline_remote_ruleset_format "$reference")"
-            import_custom_ruleset_subnets_from_remote "$reference" "$format"
-            ;;
-        esac
-        ;;
-    esac
-}
-
 import_rule_sets_with_subnets_from_rule() {
     local section="$1"
     local rule_set_with_subnets
@@ -6222,28 +5888,6 @@ import_rule_set_with_subnets_reference_handler() {
     esac
 
     return 0
-}
-
-import_custom_ruleset_subnets() {
-    local section="$1"
-    local enabled type format path url
-
-    config_get_bool enabled "$section" "enabled" 1
-    [ "$enabled" -eq 1 ] || return 0
-
-    config_get type "$section" "type" "remote"
-    config_get format "$section" "format" "binary"
-    config_get path "$section" "path"
-    config_get url "$section" "url"
-
-    case "$type" in
-    local)
-        import_custom_ruleset_subnets_from_local "$path" "$format"
-        ;;
-    remote)
-        import_custom_ruleset_subnets_from_remote "$url" "$format"
-        ;;
-    esac
 }
 
 import_custom_ruleset_subnets_from_local() {
@@ -6343,19 +5987,6 @@ import_custom_ruleset_subnets_from_remote() {
     fi
 
     rm -f "$remote_tmpfile" "$json_tmpfile" "$subnets_tmpfile"
-}
-
-import_community_subnet_lists() {
-    local section="$1"
-    local community_lists
-
-    rule_is_enabled "$section" || return 0
-
-    config_get community_lists "$section" "community_lists"
-    if [ -n "$community_lists" ]; then
-        log "Importing community subnet lists for '$section' section"
-        config_list_foreach "$section" "community_lists" import_community_service_subnet_list_handler
-    fi
 }
 
 ensure_discord_udp_fakeip_rule() {
@@ -6668,46 +6299,6 @@ get_first_outbound_section() {
     config_foreach _determine_first_outbound_section "section"
 
     echo "$first_section"
-}
-
-section_has_enabled_lists() {
-    local section="$1"
-    local domain domain_suffix domain_keyword domain_regex community_lists user_domain_list_type user_subnet_list_type \
-        local_domain_lists local_subnet_lists remote_domain_lists remote_subnet_lists rule_set_with_subnets domain_ip_lists
-
-    rule_is_enabled "$section" || return 1
-
-    config_get domain "$section" "domain"
-    config_get domain_suffix "$section" "domain_suffix"
-    config_get domain_keyword "$section" "domain_keyword"
-    config_get domain_regex "$section" "domain_regex"
-    config_get community_lists "$section" "community_lists"
-    config_get user_domain_list_type "$section" "user_domain_list_type" "disabled"
-    config_get user_subnet_list_type "$section" "user_subnet_list_type" "disabled"
-    config_get local_domain_lists "$section" "local_domain_lists"
-    config_get local_subnet_lists "$section" "local_subnet_lists"
-    config_get remote_domain_lists "$section" "remote_domain_lists"
-    config_get remote_subnet_lists "$section" "remote_subnet_lists"
-    config_get rule_set_with_subnets "$section" "rule_set_with_subnets"
-    config_get domain_ip_lists "$section" "domain_ip_lists"
-
-    if [ -n "$domain" ] ||
-        [ -n "$domain_suffix" ] ||
-        [ -n "$domain_keyword" ] ||
-        [ -n "$domain_regex" ] ||
-        [ -n "$community_lists" ] ||
-        [ "$user_domain_list_type" != "disabled" ] ||
-        [ "$user_subnet_list_type" != "disabled" ] ||
-        [ -n "$local_domain_lists" ] ||
-        [ -n "$local_subnet_lists" ] ||
-        [ -n "$remote_domain_lists" ] ||
-        [ -n "$remote_subnet_lists" ] ||
-        [ -n "$rule_set_with_subnets" ] ||
-        [ -n "$domain_ip_lists" ]; then
-        return 0
-    else
-        return 1
-    fi
 }
 
 get_service_listen_address() {
@@ -7148,17 +6739,6 @@ podkop_release_version_compare() {
     echo 0
 }
 
-podkop_latest_version_is_newer_than_current() {
-    local latest_version="$1"
-    local compare_result
-
-    is_podkop_release_version "$latest_version" || return 1
-    is_podkop_release_version "$PODKOP_VERSION" || return 1
-
-    compare_result="$(podkop_release_version_compare "$latest_version" "$PODKOP_VERSION")" || return 1
-    [ "$compare_result" -gt 0 ]
-}
-
 write_podkop_latest_version_cache() {
     local value="$1"
     local timestamp="$2"
@@ -7179,54 +6759,6 @@ get_cached_podkop_latest_version() {
     cache_value="$(sed -n '1p' "$cache_file" 2>/dev/null)"
     [ -n "$cache_value" ] || cache_value="unknown"
     echo "$cache_value"
-}
-
-get_podkop_latest_version() {
-    local cache_file="/tmp/podkop-plus.latest-version.cache"
-    local cache_ttl=21600
-    local now cache_value cache_timestamp cache_is_recent fetched_value
-
-    now="$(date +%s 2>/dev/null)"
-    cache_value="$(sed -n '1p' "$cache_file" 2>/dev/null)"
-    cache_timestamp="$(sed -n '2p' "$cache_file" 2>/dev/null)"
-
-    case "$now" in
-    '' | *[!0-9]*) now=0 ;;
-    esac
-
-    case "$cache_timestamp" in
-    '' | *[!0-9]*) cache_timestamp=0 ;;
-    esac
-
-    cache_is_recent=0
-    if [ -n "$cache_value" ] && [ "$now" -gt 0 ] &&
-        [ $((now - cache_timestamp)) -lt "$cache_ttl" ]; then
-        cache_is_recent=1
-    fi
-
-    if [ "$cache_is_recent" -eq 1 ] && podkop_latest_version_is_newer_than_current "$cache_value"; then
-        echo "$cache_value"
-        return 0
-    fi
-
-    fetched_value="$(fetch_latest_podkop_version)"
-    if [ -n "$fetched_value" ]; then
-        now="$(date +%s 2>/dev/null)"
-        case "$now" in
-        '' | *[!0-9]*) now=0 ;;
-        esac
-
-        write_podkop_latest_version_cache "$fetched_value" "$now"
-        echo "$fetched_value"
-        return 0
-    fi
-
-    if [ -n "$cache_value" ] && podkop_latest_version_is_newer_than_current "$cache_value"; then
-        echo "$cache_value"
-        return 0
-    fi
-
-    echo "unknown"
 }
 
 get_luci_app_version() {

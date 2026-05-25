@@ -30,16 +30,6 @@ is_domain_suffix() {
     is_domain "$normalized"
 }
 
-# Checks if the given string is a valid base64-encoded sequence
-is_base64() {
-    local str="$1"
-
-    if echo "$str" | base64 -d > /dev/null 2>&1; then
-        return 0
-    fi
-    return 1
-}
-
 # Checks if the given string looks like a Shadowsocks userinfo
 is_shadowsocks_userinfo_format() {
     local str="$1"
@@ -176,17 +166,6 @@ url_get_query_param() {
     [ -z "$raw" ] && echo "" && return
 
     echo "$raw"
-}
-
-# Extracts the basename (filename without extension) from a URL
-url_get_basename() {
-    local url="$1"
-
-    local filename="${url##*/}"
-    filename="${filename%%[?#]*}"
-    local basename="${filename%%.*}"
-
-    echo "$basename"
 }
 
 # Extracts and returns the file extension from the given URL
@@ -408,47 +387,6 @@ download_subscription() {
 
     rm -f "$tmpfile"
     [ -n "$headers_tmpfile" ] && rm -f "$headers_tmpfile"
-    return 1
-}
-
-check_subscription_connectivity() {
-    local url="$1"
-    local http_proxy_address="$2"
-    local retries="${3:-3}"
-    local wait="${4:-2}"
-    local timeout="${5:-5}"
-    local custom_user_agent="${6:-}"
-    local attempt user_agent
-
-    user_agent="$(get_subscription_user_agent "$custom_user_agent")"
-
-    for attempt in $(seq 1 "$retries"); do
-        if [ -n "$http_proxy_address" ]; then
-            http_proxy="http://$http_proxy_address" https_proxy="http://$http_proxy_address" \
-                wget -q -T "$timeout" -O /dev/null \
-                    --header "User-Agent: $user_agent" \
-                    --header "X-HWID: $(generate_hwid)" \
-                    --header "X-Device-OS: OpenWrt Linux" \
-                    --header "X-Device-Model: $(get_device_model)" \
-                    --header "X-Ver-OS: $(get_kernel_version)" \
-                    --header "Accept-Language: ru-RU,en,*" \
-                    --header "X-Device-Locale: EN" \
-                    "$url" && return 0
-        else
-            wget -q -T "$timeout" -O /dev/null \
-                --header "User-Agent: $user_agent" \
-                --header "X-HWID: $(generate_hwid)" \
-                --header "X-Device-OS: OpenWrt Linux" \
-                --header "X-Device-Model: $(get_device_model)" \
-                --header "X-Ver-OS: $(get_kernel_version)" \
-                --header "Accept-Language: ru-RU,en,*" \
-                --header "X-Device-Locale: EN" \
-                "$url" && return 0
-        fi
-
-        [ "$attempt" -lt "$retries" ] && sleep "$wait"
-    done
-
     return 1
 }
 

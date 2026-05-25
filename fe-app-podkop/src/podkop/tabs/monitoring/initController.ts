@@ -16,7 +16,7 @@ type MonitoringTabId = 'active' | 'closed';
 
 type LocalDeviceChoices = Record<string, string>;
 
-export interface MonitoringControllerDependencies {
+interface MonitoringControllerDependencies {
   loadLocalDeviceChoices?: () => Promise<LocalDeviceChoices>;
 }
 

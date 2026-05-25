@@ -33,12 +33,10 @@ class StoreService<T extends Record<string, any>> {
   private value: T;
   private readonly initial: T;
   private listeners = new Set<Listener<T>>();
-  private lastHash = '';
 
   constructor(initial: T) {
     this.value = initial;
     this.initial = structuredClone(initial);
-    this.lastHash = jsonStableStringify(initial);
   }
 
   get(): T {
@@ -52,7 +50,6 @@ class StoreService<T extends Record<string, any>> {
     if (jsonEqual(prev, merged)) return;
 
     this.value = merged;
-    this.lastHash = jsonStableStringify(merged);
 
     const diff: Partial<T> = {};
     for (const key in merged) {
@@ -77,7 +74,6 @@ class StoreService<T extends Record<string, any>> {
     if (jsonEqual(prev, next)) return;
 
     this.value = next;
-    this.lastHash = jsonStableStringify(next);
 
     const diff: Partial<T> = {};
     for (const key in next) {

@@ -10,7 +10,7 @@ import { prettyBytes } from '../../../helpers/prettyBytes';
 import { CustomPodkopMethods, PodkopShellMethods } from '../../methods';
 import { logger, socket, store, StoreType } from '../../services';
 import { renderSections, renderWidget } from './partials';
-import { fetchServicesInfo } from '../../fetchers';
+import { fetchServicesInfo } from '../../fetchers/fetchServicesInfo';
 import { getClashApiSecret } from '../../methods/custom/getClashApiSecret';
 import { Podkop } from '../../types';
 
@@ -616,8 +616,8 @@ async function renderServicesInfoWidget() {
 }
 
 async function onStoreUpdate(
-  next: StoreType,
-  prev: StoreType,
+  _next: StoreType,
+  _prev: StoreType,
   diff: Partial<StoreType>,
 ) {
   if (diff.sectionsWidget) {

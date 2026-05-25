@@ -6,22 +6,22 @@ const SUBSCRIPTION_UPDATE_TIMEOUT_MS = 10 * 60 * 1000;
 const COMPONENT_ACTION_TIMEOUT_MS = 10 * 60 * 1000;
 const COMPONENT_ACTION_RPC_TIMEOUT_MS = 15000;
 const COMPONENT_ACTION_POLL_INTERVAL_MS = 1500;
+const COMPONENT_ACTION_SELF_UPDATE_SETTLE_MS = 30000;
+const COMPONENT_ACTION_STATE_DIR = '/var/run/podkop-plus/component-actions';
 
 function sleep(ms: number) {
   return new Promise<void>((resolve) => setTimeout(resolve, ms));
 }
 
-function parseComponentActionResult(
-  response: Awaited<ReturnType<typeof executeShellCommand>>,
-) {
-  if (!response.stdout) {
+function parseComponentActionOutput(output: string) {
+  if (!output) {
     return null;
   }
 
   try {
-    return JSON.parse(response.stdout) as Podkop.ComponentActionResult;
+    return JSON.parse(output) as Podkop.ComponentActionResult;
   } catch (_error) {
-    const jsonMatch = response.stdout.match(/(\{[\s\S]*\})\s*$/);
+    const jsonMatch = output.match(/(\{[\s\S]*\})\s*$/);
 
     if (!jsonMatch) {
       return null;
@@ -35,6 +35,12 @@ function parseComponentActionResult(
   }
 }
 
+function parseComponentActionResult(
+  response: Awaited<ReturnType<typeof executeShellCommand>>,
+) {
+  return parseComponentActionOutput(response.stdout);
+}
+
 function parseComponentActionStartResult(
   response: Awaited<ReturnType<typeof executeShellCommand>>,
 ) {
@@ -45,6 +51,38 @@ function parseComponentActionStartResult(
   }
 
   return parsedResponse as unknown as Podkop.ComponentActionStartResult;
+}
+
+function isComponentActionJobId(jobId: string) {
+  return /^[A-Za-z0-9._-]+$/.test(jobId) && jobId !== '.' && jobId !== '..';
+}
+
+async function readComponentActionState(jobId: string) {
+  if (!isComponentActionJobId(jobId)) {
+    return null;
+  }
+
+  try {
+    return parseComponentActionOutput(
+      await fs.read(`${COMPONENT_ACTION_STATE_DIR}/${jobId}.json`),
+    );
+  } catch (_error) {
+    return null;
+  }
+}
+
+async function readPodkopVersion() {
+  const response = await executeShellCommand({
+    command: '/usr/bin/podkop-plus',
+    args: ['show_version'],
+    timeout: COMPONENT_ACTION_RPC_TIMEOUT_MS,
+  });
+
+  if ((response.code ?? 0) !== 0 || !response.stdout) {
+    return '';
+  }
+
+  return response.stdout.trim();
 }
 
 function componentActionFailure(
@@ -197,8 +235,10 @@ export const PodkopShellMethods = {
   componentAction: async (
     component: Podkop.ComponentName,
     action: Podkop.ComponentAction,
+    expectedLatestVersion?: string,
   ) => {
     const startedAt = Date.now();
+    let selfUpdateVersionMatchedAt = 0;
     const startResponse = await executeShellCommand({
       command: '/usr/bin/podkop-plus',
       args: [
@@ -219,24 +259,82 @@ export const PodkopShellMethods = {
       return componentActionFailure(startResponse, parsedStartResponse);
     }
 
+    const jobId = parsedStartResponse.job_id;
+
     while (Date.now() - startedAt < COMPONENT_ACTION_TIMEOUT_MS) {
       await sleep(COMPONENT_ACTION_POLL_INTERVAL_MS);
+
+      const stateResponse = await readComponentActionState(jobId);
+
+      if (stateResponse) {
+        if (stateResponse.success === false) {
+          return {
+            success: false,
+            error: stateResponse.message || _('Failed to execute'),
+          } as Podkop.MethodFailureResponse;
+        }
+
+        if (stateResponse.running) {
+          continue;
+        }
+
+        return {
+          success: true,
+          data: stateResponse,
+        } as Podkop.MethodSuccessResponse<Podkop.ComponentActionResult>;
+      }
 
       const statusResponse = await executeShellCommand({
         command: '/usr/bin/podkop-plus',
         args: [
           Podkop.AvailableMethods.COMPONENT_ACTION_STATUS,
-          parsedStartResponse.job_id,
+          jobId,
         ],
         timeout: COMPONENT_ACTION_RPC_TIMEOUT_MS,
       });
       const parsedResponse = parseComponentActionResult(statusResponse);
 
-      if ((statusResponse.code ?? 0) !== 0 || parsedResponse?.success === false) {
+      if (parsedResponse?.success === false) {
         return componentActionFailure(statusResponse, parsedResponse);
       }
 
-      if (!parsedResponse) {
+      if ((statusResponse.code ?? 0) !== 0 || !parsedResponse) {
+        if (component === 'podkop' && action === 'install') {
+          const installedVersion = expectedLatestVersion
+            ? await readPodkopVersion()
+            : '';
+
+          if (
+            expectedLatestVersion &&
+            installedVersion === expectedLatestVersion
+          ) {
+            if (!selfUpdateVersionMatchedAt) {
+              selfUpdateVersionMatchedAt = Date.now();
+            }
+
+            if (
+              Date.now() - selfUpdateVersionMatchedAt >=
+              COMPONENT_ACTION_SELF_UPDATE_SETTLE_MS
+            ) {
+              return {
+                success: true,
+                data: {
+                  success: true,
+                  component,
+                  action,
+                  message: _('Podkop Plus has been installed'),
+                  current_version: installedVersion,
+                  latest_version: expectedLatestVersion,
+                  changed: true,
+                  status: 'latest',
+                },
+              } as Podkop.MethodSuccessResponse<Podkop.ComponentActionResult>;
+            }
+          }
+
+          continue;
+        }
+
         return componentActionFailure(statusResponse);
       }
 
