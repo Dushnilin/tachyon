@@ -1,6 +1,6 @@
 // eslint-disable-next-line @typescript-eslint/no-namespace
 export namespace ClashAPI {
-  export interface ProxyHistoryEntry {
+  interface ProxyHistoryEntry {
     time: string;
     delay: number;
   }
@@ -112,7 +112,7 @@ export namespace Podkop {
     outbounds: Outbound[];
   }
 
-  export interface SubscriptionTraffic {
+  interface SubscriptionTraffic {
     upload?: number;
     download?: number;
     used?: number;
@@ -136,7 +136,7 @@ export namespace Podkop {
     sourceSection?: string;
   }
 
-  export type RuleAction =
+  type RuleAction =
     | 'proxy'
     | 'outbound'
     | 'vpn'
@@ -144,8 +144,8 @@ export namespace Podkop {
     | 'block'
     | 'zapret'
     | 'byedpi';
-  export type LegacyConnectionType = 'proxy' | 'vpn' | 'block' | 'exclusion';
-  export type ProxyConfigType =
+  type LegacyConnectionType = 'proxy' | 'vpn' | 'block' | 'exclusion';
+  type ProxyConfigType =
     | 'urltest'
     | 'selector'
     | 'url'

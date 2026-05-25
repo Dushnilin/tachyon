@@ -2,7 +2,7 @@ import { PodkopShellMethods } from '../methods';
 import { logger } from './logger.service';
 import { store, StoreType } from './store.service';
 
-export const UNKNOWN_SYSTEM_INFO: StoreType['diagnosticsSystemInfo'] = {
+const UNKNOWN_SYSTEM_INFO: StoreType['diagnosticsSystemInfo'] = {
   loading: false,
   loaded: false,
   providerInfoLoaded: false,
@@ -27,18 +27,6 @@ function hasLoadedSystemInfo() {
   const systemInfo = store.get().diagnosticsSystemInfo;
 
   return Boolean(systemInfo.loaded) && !systemInfo.loading;
-}
-
-export function invalidateSystemInfo() {
-  const currentSystemInfo = store.get().diagnosticsSystemInfo;
-
-  store.set({
-    diagnosticsSystemInfo: {
-      ...currentSystemInfo,
-      loaded: false,
-      providerInfoLoaded: false,
-    },
-  });
 }
 
 export async function ensureSystemInfo({

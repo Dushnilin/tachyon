@@ -1,6 +1,6 @@
 import { insertIf } from '../../../../helpers';
 
-export interface IRenderSystemInfoRow {
+interface IRenderSystemInfoRow {
   key: string;
   value: string;
   tag?: {

@@ -14,6 +14,15 @@ UPDATES_BYEDPI_PACKAGE_URL=""
 UPDATES_BYEDPI_PACKAGE_NAME=""
 UPDATES_BYEDPI_PACKAGE_FILE=""
 UPDATES_BYEDPI_PACKAGE_VERSION=""
+UPDATES_PODKOP_BACKEND_URL=""
+UPDATES_PODKOP_BACKEND_NAME=""
+UPDATES_PODKOP_BACKEND_FILE=""
+UPDATES_PODKOP_APP_URL=""
+UPDATES_PODKOP_APP_NAME=""
+UPDATES_PODKOP_APP_FILE=""
+UPDATES_PODKOP_I18N_URL=""
+UPDATES_PODKOP_I18N_NAME=""
+UPDATES_PODKOP_I18N_FILE=""
 UPDATES_SING_BOX_EXTENDED_RELEASE_TAG=""
 UPDATES_SING_BOX_EXTENDED_ARCH_SUFFIX=""
 UPDATES_SING_BOX_EXTENDED_ASSET_URL=""
@@ -981,55 +990,102 @@ updates_extract_arch_package_version() {
     printf '%s\n' "$version"
 }
 
-updates_extract_ipk_control_field() {
-    local package_file="$1"
-    local field_name="$2"
-    local control_dir value
+updates_select_release_asset_name() {
+    local release_json="$1"
+    local package_prefix="$2"
+    local asset_ext="$3"
 
-    [ -f "$package_file" ] || return 0
+    printf '%s' "$release_json" | jq -r \
+        --arg prefix "$package_prefix" \
+        --arg ext "$asset_ext" \
+        '[
+            .assets[]
+            | select(
+                ((.name | startswith($prefix + "_")) or (.name | startswith($prefix + "-")))
+                and (.name | endswith("." + $ext))
+            )
+            | .name
+        ][0] // empty'
+}
 
-    control_dir="$UPDATES_TMP_DIR/control.$$"
-    rm -rf "$control_dir"
-    mkdir -p "$control_dir" || return 0
+updates_select_release_asset_url() {
+    local release_json="$1"
+    local asset_name="$2"
 
-    if tar -xzf "$package_file" -C "$control_dir" ./control.tar.gz >/dev/null 2>&1 &&
-        tar -xzf "$control_dir/control.tar.gz" -C "$control_dir" ./control >/dev/null 2>&1; then
-        value="$(awk -v field="$field_name" '
-            index($0, field ":") == 1 {
-                sub("^[^:]*:[[:space:]]*", "")
-                print
-                exit
-            }
-        ' "$control_dir/control" 2>/dev/null)"
+    printf '%s' "$release_json" | jq -r \
+        --arg name "$asset_name" \
+        '.assets[] | select(.name == $name) | .browser_download_url' |
+        sed -n '1p'
+}
+
+updates_resolve_podkop_plus_release() {
+    local latest_version="$1"
+    local owner repo asset_ext response release_json
+
+    UPDATES_PODKOP_BACKEND_URL=""
+    UPDATES_PODKOP_BACKEND_NAME=""
+    UPDATES_PODKOP_APP_URL=""
+    UPDATES_PODKOP_APP_NAME=""
+    UPDATES_PODKOP_I18N_URL=""
+    UPDATES_PODKOP_I18N_NAME=""
+
+    owner="${PODKOP_RELEASE_REPO%%/*}"
+    repo="${PODKOP_RELEASE_REPO#*/}"
+    [ -n "$owner" ] || return 1
+    [ -n "$repo" ] || return 1
+    [ "$owner" != "$repo" ] || return 1
+
+    asset_ext="ipk"
+    updates_is_apk && asset_ext="apk"
+
+    response="$(updates_fetch_github_releases_json "$owner" "$repo" 50)" || return 1
+    release_json="$(printf '%s' "$response" | jq -c \
+        --arg tag "$latest_version" \
+        '.[] | select(
+            ((.draft // false) | not)
+            and ((.prerelease // false) | not)
+            and (.tag_name == $tag)
+        )' | sed -n '1p')"
+    [ -n "$release_json" ] || return 1
+
+    UPDATES_PODKOP_BACKEND_NAME="$(updates_select_release_asset_name "$release_json" "podkop-plus" "$asset_ext")"
+    UPDATES_PODKOP_APP_NAME="$(updates_select_release_asset_name "$release_json" "luci-app-podkop-plus" "$asset_ext")"
+    [ -n "$UPDATES_PODKOP_BACKEND_NAME" ] || return 1
+    [ -n "$UPDATES_PODKOP_APP_NAME" ] || return 1
+
+    UPDATES_PODKOP_BACKEND_URL="$(updates_select_release_asset_url "$release_json" "$UPDATES_PODKOP_BACKEND_NAME")"
+    UPDATES_PODKOP_APP_URL="$(updates_select_release_asset_url "$release_json" "$UPDATES_PODKOP_APP_NAME")"
+    [ -n "$UPDATES_PODKOP_BACKEND_URL" ] || return 1
+    [ -n "$UPDATES_PODKOP_APP_URL" ] || return 1
+
+    if updates_pkg_is_installed "luci-i18n-podkop-plus-ru"; then
+        UPDATES_PODKOP_I18N_NAME="$(updates_select_release_asset_name "$release_json" "luci-i18n-podkop-plus-ru" "$asset_ext")"
+        [ -n "$UPDATES_PODKOP_I18N_NAME" ] || return 1
+        UPDATES_PODKOP_I18N_URL="$(updates_select_release_asset_url "$release_json" "$UPDATES_PODKOP_I18N_NAME")"
+        [ -n "$UPDATES_PODKOP_I18N_URL" ] || return 1
     fi
-
-    rm -rf "$control_dir"
-    printf '%s\n' "$value"
 }
 
-updates_extract_apk_control_field() {
-    local package_file="$1"
-    local field_name="$2"
-    local metadata_key
+updates_download_podkop_plus_packages() {
+    UPDATES_PODKOP_BACKEND_FILE="$UPDATES_TMP_DIR/$UPDATES_PODKOP_BACKEND_NAME"
+    UPDATES_PODKOP_APP_FILE="$UPDATES_TMP_DIR/$UPDATES_PODKOP_APP_NAME"
+    UPDATES_PODKOP_I18N_FILE=""
 
-    case "$field_name" in
-    Package) metadata_key="name" ;;
-    Version) metadata_key="version" ;;
-    *) return 0 ;;
-    esac
+    updates_download_with_retry "$UPDATES_PODKOP_BACKEND_URL" "$UPDATES_PODKOP_BACKEND_FILE" "$UPDATES_PODKOP_BACKEND_NAME" || return 1
+    updates_download_with_retry "$UPDATES_PODKOP_APP_URL" "$UPDATES_PODKOP_APP_FILE" "$UPDATES_PODKOP_APP_NAME" || return 1
 
-    updates_command_exists apk || return 0
-    apk adbdump "$package_file" 2>/dev/null | sed -n "s/^  ${metadata_key}:[[:space:]]*//p" | sed -n '1p'
+    if [ -n "$UPDATES_PODKOP_I18N_URL" ]; then
+        UPDATES_PODKOP_I18N_FILE="$UPDATES_TMP_DIR/$UPDATES_PODKOP_I18N_NAME"
+        updates_download_with_retry "$UPDATES_PODKOP_I18N_URL" "$UPDATES_PODKOP_I18N_FILE" "$UPDATES_PODKOP_I18N_NAME" || return 1
+    fi
 }
 
-updates_extract_package_control_field() {
-    local package_file="$1"
-    local field_name="$2"
-
-    case "$package_file" in
-    *.ipk) updates_extract_ipk_control_field "$package_file" "$field_name" ;;
-    *.apk) updates_extract_apk_control_field "$package_file" "$field_name" ;;
-    esac
+updates_refresh_luci_after_app_update() {
+    rm -f /var/luci-indexcache* /tmp/luci-indexcache* 2>/dev/null || true
+    rm -rf /tmp/luci-modulecache/ 2>/dev/null || true
+    [ -x /etc/init.d/rpcd ] && /etc/init.d/rpcd reload >/dev/null 2>&1 && return 0
+    [ -x /etc/init.d/rpcd ] && /etc/init.d/rpcd restart >/dev/null 2>&1 && return 0
+    killall -HUP rpcd 2>/dev/null || true
 }
 
 updates_get_openwrt_release_series() {
@@ -1460,125 +1516,6 @@ updates_install_stable_sing_box() {
     updates_success "sing_box" "$action" "stable sing-box has been installed" "$new_version" "$latest_version" "$changed" "latest"
 }
 
-updates_run_podkop_update_installer() {
-    local latest_version="$1"
-    local action="${2:-install}"
-    local runner
-
-    runner="/tmp/podkop-plus-update-runner.$$"
-    cat >"$runner" <<'EOF'
-#!/bin/sh
-
-repo="$1"
-latest_version="$2"
-current_version="$3"
-action="${4:-install}"
-podkop_was_running="${5:-1}"
-tmp_dir="$(mktemp -d /tmp/podkop-plus-self-update.XXXXXX 2>/dev/null || true)"
-[ -n "$tmp_dir" ] || tmp_dir="/tmp/podkop-plus-self-update.$$"
-mkdir -p "$tmp_dir" || exit 1
-
-log_line() {
-    logger -t "podkop-plus" "[$2] Updates: $1"
-}
-
-json_response() {
-    jq -cn \
-        --argjson success "$1" \
-        --arg component "podkop" \
-        --arg action "$action" \
-        --arg message "$2" \
-        --arg current_version "$3" \
-        --arg latest_version "$4" \
-        --argjson changed "$5" \
-        --arg status "$6" \
-        '{
-            success: $success,
-            component: $component,
-            action: $action,
-            message: $message,
-            current_version: $current_version,
-            latest_version: $latest_version,
-            changed: $changed,
-            status: $status
-        }'
-}
-
-download_file() {
-    if command -v curl >/dev/null 2>&1; then
-        curl --connect-timeout 5 -m 60 -fsSL "$1" -o "$2"
-        return $?
-    fi
-
-    if command -v wget >/dev/null 2>&1; then
-        wget -T 60 -q -O "$2" "$1"
-        return $?
-    fi
-
-    return 1
-}
-
-cleanup() {
-    rm -rf "$tmp_dir"
-    rm -f "$0"
-}
-
-installer="$tmp_dir/install.sh"
-output="$tmp_dir/install.log"
-installer_url="https://raw.githubusercontent.com/$repo/main/install.sh"
-
-trap cleanup EXIT HUP INT TERM
-
-log_line "Downloading Podkop Plus installer from $installer_url" "info"
-if ! download_file "$installer_url" "$installer" || [ ! -s "$installer" ]; then
-    log_line "Failed to download Podkop Plus installer" "error"
-    json_response false "Failed to download Podkop Plus installer" "$current_version" "$latest_version" 0 ""
-    exit 1
-fi
-
-chmod 0755 "$installer" 2>/dev/null || true
-log_line "Running Podkop Plus update to $latest_version" "info"
-
-if sh "$installer" >"$output" 2>&1; then
-    status=0
-else
-    status=$?
-fi
-
-while IFS= read -r line; do
-    [ -n "$line" ] && log_line "$line" "info"
-done <"$output"
-
-rm -f /tmp/podkop-plus.latest-version.cache
-rm -f /var/run/podkop-plus/system-info.json
-rm -f /tmp/podkop-plus/system-info.json
-
-if [ "$status" -ne 0 ]; then
-    tail_message="$(tail -n 5 "$output" 2>/dev/null | tr '\n' ' ' | cut -c1-240)"
-    [ -n "$tail_message" ] || tail_message="Podkop Plus update failed"
-    log_line "$tail_message" "error"
-    json_response false "$tail_message" "$current_version" "$latest_version" 0 ""
-    exit "$status"
-fi
-
-if [ "$podkop_was_running" = "1" ] && [ -x /etc/init.d/podkop-plus ]; then
-    log_line "Restarting Podkop Plus after successful component change" "info"
-    /etc/init.d/podkop-plus restart >/dev/null 2>&1 || log_line "Podkop Plus restart command failed" "warn"
-else
-    log_line "Podkop Plus was not running before component change; restart skipped" "info"
-fi
-
-new_version="$(/usr/bin/podkop-plus show_version 2>/dev/null || true)"
-[ -n "$new_version" ] || new_version="$latest_version"
-log_line "Podkop Plus updated to $new_version" "info"
-json_response true "Podkop Plus has been installed" "$new_version" "$latest_version" 1 "latest"
-exit 0
-EOF
-
-    chmod 0755 "$runner" || updates_fail "podkop" "$action" "Failed to prepare update runner" "$PODKOP_VERSION" "$latest_version"
-    exec sh "$runner" "$PODKOP_RELEASE_REPO" "$latest_version" "$PODKOP_VERSION" "$action" "$UPDATES_PODKOP_WAS_RUNNING"
-}
-
 updates_check_podkop_plus() {
     local latest_version compare_result status message now
 
@@ -1625,7 +1562,7 @@ updates_check_podkop_plus() {
 }
 
 updates_install_podkop_plus() {
-    local latest_version now
+    local latest_version now new_version
 
     latest_version="$(fetch_latest_podkop_version)"
     [ -n "$latest_version" ] || latest_version="unknown"
@@ -1640,8 +1577,35 @@ updates_install_podkop_plus() {
     esac
     write_podkop_latest_version_cache "$latest_version" "$now"
 
-    updates_log "Installing Podkop Plus release $latest_version"
-    updates_run_podkop_update_installer "$latest_version" "install"
+    updates_init_tmp_dir || updates_fail "podkop" "install" "Failed to create temporary directory" "$PODKOP_VERSION" "$latest_version"
+    updates_log "Resolving Podkop Plus release $latest_version packages"
+    updates_resolve_podkop_plus_release "$latest_version" ||
+        updates_fail "podkop" "install" "Failed to resolve Podkop Plus release packages" "$PODKOP_VERSION" "$latest_version"
+    updates_download_podkop_plus_packages ||
+        updates_fail "podkop" "install" "Failed to download Podkop Plus release packages" "$PODKOP_VERSION" "$latest_version"
+
+    if ! updates_log_command "Installing LuCI app package $UPDATES_PODKOP_APP_NAME" updates_pkg_install_files "$UPDATES_PODKOP_APP_FILE"; then
+        updates_fail "podkop" "install" "Failed to install LuCI app package" "$PODKOP_VERSION" "$latest_version"
+    fi
+
+    if [ -n "$UPDATES_PODKOP_I18N_FILE" ]; then
+        if ! updates_log_command "Installing LuCI Russian i18n package $UPDATES_PODKOP_I18N_NAME" updates_pkg_install_files "$UPDATES_PODKOP_I18N_FILE"; then
+            updates_fail "podkop" "install" "Failed to install LuCI Russian i18n package" "$PODKOP_VERSION" "$latest_version"
+        fi
+    fi
+
+    if ! updates_log_command "Installing Podkop Plus package $UPDATES_PODKOP_BACKEND_NAME" updates_pkg_install_files "$UPDATES_PODKOP_BACKEND_FILE"; then
+        updates_fail "podkop" "install" "Failed to install Podkop Plus package" "$PODKOP_VERSION" "$latest_version"
+    fi
+
+    updates_refresh_luci_after_app_update
+    updates_restart_podkop_after_successful_change
+    updates_clear_version_caches
+
+    new_version="$(updates_get_installed_package_version "podkop-plus")"
+    [ -n "$new_version" ] || new_version="$latest_version"
+    updates_log "Podkop Plus updated to $new_version"
+    updates_success "podkop" "install" "Podkop Plus has been installed" "$new_version" "$latest_version" 1 "latest"
 }
 
 component_action() {

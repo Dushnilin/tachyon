@@ -9,6 +9,9 @@
         "/var/run/podkop-plus/section-cache/*": [
           "read"
         ],
+        "/var/run/podkop-plus/component-actions/*": [
+          "read"
+        ],
         "/usr/bin/podkop-plus": [
           "exec"
         ]

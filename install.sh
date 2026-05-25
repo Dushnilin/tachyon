@@ -666,11 +666,15 @@ cleanup_legacy_installation() {
 decide_i18n_installation() {
     luci_lang="$(get_luci_main_lang)"
 
+    if pkg_is_installed "luci-i18n-podkop-plus-ru"; then
+        PODKOP_PLUS_I18N_REQUESTED=1
+        msg "The Russian interface package is already installed and will be updated."
+        return 0
+    fi
+
     case "$luci_lang" in
         ru|ru_*|ru-*)
-            PODKOP_PLUS_I18N_REQUESTED=1
-            msg "LuCI language is Russian. The Russian interface package will be installed."
-            return 0
+            msg "LuCI language is Russian."
             ;;
     esac
 

@@ -1,12 +1,10 @@
 // language=CSS
-import {
-  DashboardTab,
-  DiagnosticTab,
-  MonitoringTab,
-  UpdatesTab,
-} from './podkop';
+import { DashboardTab } from './podkop/tabs/dashboard';
+import { DiagnosticTab } from './podkop/tabs/diagnostic';
+import { MonitoringTab } from './podkop/tabs/monitoring';
+import { UpdatesTab } from './podkop/tabs/updates';
 import { PartialStyles } from './partials';
-import { PODKOP_CBI_PREFIX } from './constants';
+import { PODKOP_UCI_PACKAGE as PODKOP_CBI_PREFIX } from './constants';
 
 export const GlobalStyles = `
 ${DashboardTab.styles}
@@ -23,16 +21,6 @@ ${PartialStyles}
 
 /* Hide extra H3 for rules tab */
 #cbi-${PODKOP_CBI_PREFIX}-section > h3:nth-child(1) {
-    display: none;
-}
-
-/* Hide extra H3 for nodes tab */
-#cbi-${PODKOP_CBI_PREFIX}-node > h3:nth-child(1) {
-    display: none;
-}
-
-/* Hide extra H3 for rule set tab */
-#cbi-${PODKOP_CBI_PREFIX}-ruleset > h3:nth-child(1) {
     display: none;
 }
 
@@ -87,12 +75,6 @@ ${PartialStyles}
 
 #cbi-${PODKOP_CBI_PREFIX}-section .cbi-section-table-row.drag-over-below::after {
     bottom: -1px;
-}
-
-/* Vertical align for remove node action button */
-#cbi-${PODKOP_CBI_PREFIX}-node > .cbi-section-remove,
-#cbi-${PODKOP_CBI_PREFIX}-ruleset > .cbi-section-remove {
-    margin-bottom: -32px;
 }
 
 /* Centered class helper */

@@ -137,6 +137,16 @@ function bulkValidate(values, validate) {
   };
 }
 
+// src/validators/validateOutboundJson.ts
+function validateOutboundJson(value) {
+  try {
+    JSON.parse(value);
+    return { valid: true, message: _("Valid") };
+  } catch {
+    return { valid: false, message: _("Invalid JSON format") };
+  }
+}
+
 // src/validators/validateShadowsocksUrl.ts
 function validateShadowsocksUrl(url) {
   if (!url.startsWith("ss://")) {
@@ -322,16 +332,6 @@ function validateVlessUrl(url) {
     return { valid: true, message: _("Valid") };
   } catch (_e) {
     return { valid: false, message: _("Invalid VLESS URL: parsing failed") };
-  }
-}
-
-// src/validators/validateOutboundJson.ts
-function validateOutboundJson(value) {
-  try {
-    JSON.parse(value);
-    return { valid: true, message: _("Valid") };
-  } catch {
-    return { valid: false, message: _("Invalid JSON format") };
   }
 }
 
@@ -556,7 +556,7 @@ function validateProxyUrl(url) {
   return {
     valid: false,
     message: _(
-      "URL must start with vless://, ss://, trojan://, socks4/5://, or hysteria2://hy2://"
+      "URL must start with vless://, ss://, trojan://, socks4://, socks4a://, socks5://, hysteria2://, or hy2://"
     )
   };
 }
@@ -565,1198 +565,6 @@ function validateProxyUrl(url) {
 function parseValueList(value) {
   return value.split(/\n/).map((line) => line.split("//")[0].split("#")[0]).join(" ").split(/[,\s]+/).map((s) => s.trim()).filter(Boolean);
 }
-
-// src/constants.ts
-var STATUS_COLORS = {
-  SUCCESS: "#4caf50",
-  ERROR: "#f44336",
-  WARNING: "#ff9800"
-};
-var PODKOP_UCI_PACKAGE = "podkop-plus";
-var PODKOP_LUCI_VIEW_NAMESPACE = "podkop_plus";
-var PODKOP_LUCI_VIEW_DIR = `/www/luci-static/resources/view/${PODKOP_LUCI_VIEW_NAMESPACE}`;
-var PODKOP_LUCI_I18N_DOMAIN = "podkop_plus";
-var PODKOP_CBI_PREFIX = PODKOP_UCI_PACKAGE;
-var PODKOP_LUCI_APP_VERSION = "__COMPILED_VERSION_VARIABLE__";
-var PODKOP_ACTION_PROVIDERS_AVAILABILITY_EVENT = "podkop:action-providers-availability";
-var FAKEIP_CHECK_DOMAIN = "fakeip.podkop.fyi";
-var IP_CHECK_DOMAIN = "ip.podkop.fyi";
-var REGIONAL_OPTIONS = [
-  "russia_inside",
-  "russia_outside",
-  "ukraine_inside"
-];
-var ALLOWED_WITH_RUSSIA_INSIDE = [
-  "russia_inside",
-  "meta",
-  "twitter",
-  "discord",
-  "telegram",
-  "cloudflare",
-  "google_ai",
-  "google_play",
-  "hetzner",
-  "ovh",
-  "hodca",
-  "roblox",
-  "digitalocean",
-  "cloudfront"
-];
-var DOMAIN_LIST_OPTIONS = {
-  russia_inside: "Russia inside",
-  russia_outside: "Russia outside",
-  ukraine_inside: "Ukraine",
-  geoblock: "Geo Block",
-  block: "Block",
-  porn: "Porn",
-  news: "News",
-  anime: "Anime",
-  youtube: "Youtube",
-  discord: "Discord",
-  meta: "Meta",
-  twitter: "Twitter (X)",
-  hdrezka: "HDRezka",
-  tiktok: "Tik-Tok",
-  telegram: "Telegram",
-  cloudflare: "Cloudflare",
-  google_ai: "Google AI",
-  google_play: "Google Play",
-  hodca: "H.O.D.C.A",
-  roblox: "Roblox",
-  ads_hagezi_pro: "Ads (Hagezi Pro)",
-  supercell: "Supercell",
-  hetzner: "Hetzner ASN",
-  ovh: "OVH ASN",
-  digitalocean: "Digital Ocean ASN",
-  cloudfront: "CloudFront ASN"
-};
-var UPDATE_INTERVAL_OPTIONS = {
-  "1h": "Every hour",
-  "3h": "Every 3 hours",
-  "12h": "Every 12 hours",
-  "1d": "Every day",
-  "3d": "Every 3 days"
-};
-var DNS_SERVER_OPTIONS = {
-  "1.1.1.1": "1.1.1.1 (Cloudflare)",
-  "8.8.8.8": "8.8.8.8 (Google)",
-  "9.9.9.9": "9.9.9.9 (Quad9)",
-  "dns.adguard-dns.com": "dns.adguard-dns.com (AdGuard Default)",
-  "unfiltered.adguard-dns.com": "unfiltered.adguard-dns.com (AdGuard Unfiltered)",
-  "family.adguard-dns.com": "family.adguard-dns.com (AdGuard Family)"
-};
-var BOOTSTRAP_DNS_SERVER_OPTIONS = {
-  "77.88.8.8": "77.88.8.8 (Yandex DNS)",
-  "77.88.8.1": "77.88.8.1 (Yandex DNS)",
-  "1.1.1.1": "1.1.1.1 (Cloudflare DNS)",
-  "1.0.0.1": "1.0.0.1 (Cloudflare DNS)",
-  "8.8.8.8": "8.8.8.8 (Google DNS)",
-  "8.8.4.4": "8.8.4.4 (Google DNS)",
-  "9.9.9.9": "9.9.9.9 (Quad9 DNS)",
-  "9.9.9.11": "9.9.9.11 (Quad9 DNS)"
-};
-var DIAGNOSTICS_UPDATE_INTERVAL = 1e4;
-var CACHE_TIMEOUT = DIAGNOSTICS_UPDATE_INTERVAL - 1e3;
-var ERROR_POLL_INTERVAL = 1e4;
-var COMMAND_TIMEOUT = 1e4;
-var FETCH_TIMEOUT = 1e4;
-var BUTTON_FEEDBACK_TIMEOUT = 1e3;
-var DIAGNOSTICS_INITIAL_DELAY = 100;
-var COMMAND_SCHEDULING = {
-  P0_PRIORITY: 0,
-  // Highest priority (no delay)
-  P1_PRIORITY: 100,
-  // Very high priority
-  P2_PRIORITY: 300,
-  // High priority
-  P3_PRIORITY: 500,
-  // Above average
-  P4_PRIORITY: 700,
-  // Standard priority
-  P5_PRIORITY: 900,
-  // Below average
-  P6_PRIORITY: 1100,
-  // Low priority
-  P7_PRIORITY: 1300,
-  // Very low priority
-  P8_PRIORITY: 1500,
-  // Background execution
-  P9_PRIORITY: 1700,
-  // Idle mode execution
-  P10_PRIORITY: 1900
-  // Lowest priority
-};
-
-// src/podkop/methods/custom/getConfigSections.ts
-async function getConfigSections() {
-  return uci.load(PODKOP_UCI_PACKAGE).then(() => uci.sections(PODKOP_UCI_PACKAGE));
-}
-
-// src/podkop/methods/shell/callBaseMethod.ts
-async function callBaseMethod(method, args = [], command = "/usr/bin/podkop-plus") {
-  try {
-    const response = await executeShellCommand({
-      command,
-      args: [method, ...args],
-      timeout: 15e3
-    });
-    if (response.stdout) {
-      try {
-        return {
-          success: true,
-          data: JSON.parse(response.stdout)
-        };
-      } catch (_e) {
-        return {
-          success: true,
-          data: response.stdout
-        };
-      }
-    }
-    return {
-      success: false,
-      error: response.stderr || ""
-    };
-  } catch (error) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : ""
-    };
-  }
-}
-
-// src/podkop/types.ts
-var Podkop;
-((Podkop2) => {
-  let AvailableMethods;
-  ((AvailableMethods2) => {
-    AvailableMethods2["CHECK_DNS_AVAILABLE"] = "check_dns_available";
-    AvailableMethods2["CHECK_FAKEIP"] = "check_fakeip";
-    AvailableMethods2["CHECK_NFT_RULES"] = "check_nft_rules";
-    AvailableMethods2["CHECK_ZAPRET_RUNTIME"] = "check_zapret_runtime";
-    AvailableMethods2["CHECK_BYEDPI_RUNTIME"] = "check_byedpi_runtime";
-    AvailableMethods2["GET_STATUS"] = "get_status";
-    AvailableMethods2["GET_OUTBOUND_LINK"] = "get_outbound_link";
-    AvailableMethods2["GET_OUTBOUND_LINK_STATES"] = "get_outbound_link_states";
-    AvailableMethods2["GET_OUTBOUND_METADATA"] = "get_outbound_metadata";
-    AvailableMethods2["GET_SUBSCRIPTION_METADATA"] = "get_subscription_metadata";
-    AvailableMethods2["CHECK_SING_BOX"] = "check_sing_box";
-    AvailableMethods2["GET_SING_BOX_STATUS"] = "get_sing_box_status";
-    AvailableMethods2["GET_ZAPRET_STATUS"] = "get_zapret_status";
-    AvailableMethods2["GET_BYEDPI_STATUS"] = "get_byedpi_status";
-    AvailableMethods2["CLASH_API"] = "clash_api";
-    AvailableMethods2["RESTART"] = "restart";
-    AvailableMethods2["START"] = "start";
-    AvailableMethods2["STOP"] = "stop";
-    AvailableMethods2["ENABLE"] = "enable";
-    AvailableMethods2["DISABLE"] = "disable";
-    AvailableMethods2["GLOBAL_CHECK"] = "global_check";
-    AvailableMethods2["SHOW_SING_BOX_CONFIG"] = "show_sing_box_config";
-    AvailableMethods2["CHECK_LOGS"] = "check_logs";
-    AvailableMethods2["CHECK_SING_BOX_LOGS"] = "check_sing_box_logs";
-    AvailableMethods2["GET_SYSTEM_INFO"] = "get_system_info";
-    AvailableMethods2["COMPONENT_ACTION"] = "component_action";
-    AvailableMethods2["COMPONENT_ACTION_ASYNC"] = "component_action_async";
-    AvailableMethods2["COMPONENT_ACTION_STATUS"] = "component_action_status";
-    AvailableMethods2["SUBSCRIPTION_UPDATE"] = "subscription_update";
-  })(AvailableMethods = Podkop2.AvailableMethods || (Podkop2.AvailableMethods = {}));
-  let AvailableClashAPIMethods;
-  ((AvailableClashAPIMethods2) => {
-    AvailableClashAPIMethods2["GET_PROXIES"] = "get_proxies";
-    AvailableClashAPIMethods2["GET_CONNECTIONS"] = "get_connections";
-    AvailableClashAPIMethods2["GET_PROXY_LATENCY"] = "get_proxy_latency";
-    AvailableClashAPIMethods2["GET_GROUP_LATENCY"] = "get_group_latency";
-    AvailableClashAPIMethods2["SET_GROUP_PROXY"] = "set_group_proxy";
-    AvailableClashAPIMethods2["CLOSE_CONNECTION"] = "close_connection";
-    AvailableClashAPIMethods2["CLOSE_ALL_CONNECTIONS"] = "close_all_connections";
-  })(AvailableClashAPIMethods = Podkop2.AvailableClashAPIMethods || (Podkop2.AvailableClashAPIMethods = {}));
-})(Podkop || (Podkop = {}));
-
-// src/podkop/methods/shell/index.ts
-var SUBSCRIPTION_UPDATE_TIMEOUT_MS = 10 * 60 * 1e3;
-var COMPONENT_ACTION_TIMEOUT_MS = 10 * 60 * 1e3;
-var COMPONENT_ACTION_RPC_TIMEOUT_MS = 15e3;
-var COMPONENT_ACTION_POLL_INTERVAL_MS = 1500;
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-function parseComponentActionResult(response) {
-  if (!response.stdout) {
-    return null;
-  }
-  try {
-    return JSON.parse(response.stdout);
-  } catch (_error) {
-    const jsonMatch = response.stdout.match(/(\{[\s\S]*\})\s*$/);
-    if (!jsonMatch) {
-      return null;
-    }
-    try {
-      return JSON.parse(jsonMatch[1]);
-    } catch (_jsonError) {
-      return null;
-    }
-  }
-}
-function parseComponentActionStartResult(response) {
-  const parsedResponse = parseComponentActionResult(response);
-  if (!parsedResponse) {
-    return null;
-  }
-  return parsedResponse;
-}
-function componentActionFailure(response, parsedResponse) {
-  return {
-    success: false,
-    error: parsedResponse?.message || response.stderr || _("Failed to execute")
-  };
-}
-var PodkopShellMethods = {
-  checkDNSAvailable: async () => callBaseMethod(
-    Podkop.AvailableMethods.CHECK_DNS_AVAILABLE
-  ),
-  checkFakeIP: async () => callBaseMethod(
-    Podkop.AvailableMethods.CHECK_FAKEIP
-  ),
-  checkNftRules: async () => callBaseMethod(
-    Podkop.AvailableMethods.CHECK_NFT_RULES
-  ),
-  checkZapretRuntime: async () => callBaseMethod(
-    Podkop.AvailableMethods.CHECK_ZAPRET_RUNTIME
-  ),
-  checkByedpiRuntime: async () => callBaseMethod(
-    Podkop.AvailableMethods.CHECK_BYEDPI_RUNTIME
-  ),
-  getStatus: async () => callBaseMethod(Podkop.AvailableMethods.GET_STATUS),
-  getOutboundLink: async (section, tag) => callBaseMethod(
-    Podkop.AvailableMethods.GET_OUTBOUND_LINK,
-    [section, tag]
-  ),
-  getOutboundLinkStates: async (section) => callBaseMethod(
-    Podkop.AvailableMethods.GET_OUTBOUND_LINK_STATES,
-    [section]
-  ),
-  getOutboundMetadata: async (section) => callBaseMethod(
-    Podkop.AvailableMethods.GET_OUTBOUND_METADATA,
-    [section]
-  ),
-  getSubscriptionMetadata: async (section) => callBaseMethod(
-    Podkop.AvailableMethods.GET_SUBSCRIPTION_METADATA,
-    [section]
-  ),
-  checkSingBox: async () => callBaseMethod(
-    Podkop.AvailableMethods.CHECK_SING_BOX
-  ),
-  getSingBoxStatus: async () => callBaseMethod(
-    Podkop.AvailableMethods.GET_SING_BOX_STATUS
-  ),
-  getZapretStatus: async () => callBaseMethod(
-    Podkop.AvailableMethods.GET_ZAPRET_STATUS
-  ),
-  getByedpiStatus: async () => callBaseMethod(
-    Podkop.AvailableMethods.GET_BYEDPI_STATUS
-  ),
-  getClashApiProxies: async () => callBaseMethod(Podkop.AvailableMethods.CLASH_API, [
-    Podkop.AvailableClashAPIMethods.GET_PROXIES
-  ]),
-  getClashApiConnections: async () => callBaseMethod(Podkop.AvailableMethods.CLASH_API, [
-    Podkop.AvailableClashAPIMethods.GET_CONNECTIONS
-  ]),
-  getClashApiProxyLatency: async (tag) => callBaseMethod(
-    Podkop.AvailableMethods.CLASH_API,
-    [Podkop.AvailableClashAPIMethods.GET_PROXY_LATENCY, tag, "5000"]
-  ),
-  getClashApiGroupLatency: async (tag) => callBaseMethod(
-    Podkop.AvailableMethods.CLASH_API,
-    [Podkop.AvailableClashAPIMethods.GET_GROUP_LATENCY, tag, "10000"]
-  ),
-  setClashApiGroupProxy: async (group, proxy) => callBaseMethod(Podkop.AvailableMethods.CLASH_API, [
-    Podkop.AvailableClashAPIMethods.SET_GROUP_PROXY,
-    group,
-    proxy
-  ]),
-  closeClashApiConnection: async (connectionId) => callBaseMethod(Podkop.AvailableMethods.CLASH_API, [
-    Podkop.AvailableClashAPIMethods.CLOSE_CONNECTION,
-    connectionId
-  ]),
-  closeAllClashApiConnections: async () => callBaseMethod(Podkop.AvailableMethods.CLASH_API, [
-    Podkop.AvailableClashAPIMethods.CLOSE_ALL_CONNECTIONS
-  ]),
-  restart: async () => callBaseMethod(
-    Podkop.AvailableMethods.RESTART,
-    [],
-    "/etc/init.d/podkop-plus"
-  ),
-  start: async () => callBaseMethod(
-    Podkop.AvailableMethods.START,
-    [],
-    "/etc/init.d/podkop-plus"
-  ),
-  stop: async () => callBaseMethod(
-    Podkop.AvailableMethods.STOP,
-    [],
-    "/etc/init.d/podkop-plus"
-  ),
-  enable: async () => callBaseMethod(
-    Podkop.AvailableMethods.ENABLE,
-    [],
-    "/etc/init.d/podkop-plus"
-  ),
-  disable: async () => callBaseMethod(
-    Podkop.AvailableMethods.DISABLE,
-    [],
-    "/etc/init.d/podkop-plus"
-  ),
-  globalCheck: async () => callBaseMethod(Podkop.AvailableMethods.GLOBAL_CHECK),
-  showSingBoxConfig: async () => callBaseMethod(Podkop.AvailableMethods.SHOW_SING_BOX_CONFIG),
-  checkLogs: async () => callBaseMethod(Podkop.AvailableMethods.CHECK_LOGS),
-  checkSingBoxLogs: async () => callBaseMethod(Podkop.AvailableMethods.CHECK_SING_BOX_LOGS),
-  getSystemInfo: async () => callBaseMethod(
-    Podkop.AvailableMethods.GET_SYSTEM_INFO
-  ),
-  componentAction: async (component, action) => {
-    const startedAt = Date.now();
-    const startResponse = await executeShellCommand({
-      command: "/usr/bin/podkop-plus",
-      args: [
-        Podkop.AvailableMethods.COMPONENT_ACTION_ASYNC,
-        component,
-        action
-      ],
-      timeout: COMPONENT_ACTION_RPC_TIMEOUT_MS
-    });
-    const parsedStartResponse = parseComponentActionStartResult(startResponse);
-    if ((startResponse.code ?? 0) !== 0 || !parsedStartResponse?.success || !parsedStartResponse.job_id) {
-      return componentActionFailure(startResponse, parsedStartResponse);
-    }
-    while (Date.now() - startedAt < COMPONENT_ACTION_TIMEOUT_MS) {
-      await sleep(COMPONENT_ACTION_POLL_INTERVAL_MS);
-      const statusResponse = await executeShellCommand({
-        command: "/usr/bin/podkop-plus",
-        args: [
-          Podkop.AvailableMethods.COMPONENT_ACTION_STATUS,
-          parsedStartResponse.job_id
-        ],
-        timeout: COMPONENT_ACTION_RPC_TIMEOUT_MS
-      });
-      const parsedResponse = parseComponentActionResult(statusResponse);
-      if ((statusResponse.code ?? 0) !== 0 || parsedResponse?.success === false) {
-        return componentActionFailure(statusResponse, parsedResponse);
-      }
-      if (!parsedResponse) {
-        return componentActionFailure(statusResponse);
-      }
-      if (parsedResponse.running) {
-        continue;
-      }
-      return {
-        success: true,
-        data: parsedResponse
-      };
-    }
-    return {
-      success: false,
-      error: _("Operation timed out")
-    };
-  },
-  subscriptionUpdate: async (section, sourceIndex) => {
-    const args = [
-      Podkop.AvailableMethods.SUBSCRIPTION_UPDATE,
-      ...section ? [section] : [],
-      ...section && sourceIndex !== void 0 ? [String(sourceIndex)] : []
-    ];
-    const response = await executeShellCommand({
-      command: "/usr/bin/podkop-plus",
-      args,
-      timeout: SUBSCRIPTION_UPDATE_TIMEOUT_MS
-    });
-    if ((response.code ?? 0) !== 0) {
-      return {
-        success: false,
-        error: response.stderr || _("Subscription update failed")
-      };
-    }
-    return {
-      success: true,
-      data: response.stdout
-    };
-  }
-};
-
-// src/podkop/methods/custom/getDashboardSections.ts
-var DASHBOARD_SECTION_CACHE_DIR = "/var/run/podkop-plus/section-cache";
-function getDisplayName(section) {
-  return section.label || section[".name"];
-}
-function getSectionAction(section) {
-  return section.action || "";
-}
-function getListValues(value) {
-  if (!value) {
-    return [];
-  }
-  if (Array.isArray(value)) {
-    return value.map((item) => `${item}`.trim()).filter(Boolean);
-  }
-  return `${value}`.split(/\s+/).map((item) => item.trim()).filter(Boolean);
-}
-function getManualProxyLinks(section) {
-  return getListValues(section.selector_proxy_links);
-}
-function hasSubscriptionSources(section) {
-  return getSubscriptionSourceCount(section) > 0;
-}
-function getSubscriptionSourceCount(section) {
-  return getListValues(section.subscription_urls).length;
-}
-function isUrlTestEnabled(section) {
-  return section.urltest_enabled === "1";
-}
-function shouldUseProxyGroup(section) {
-  return getManualProxyLinks(section).length > 0 || hasSubscriptionSources(section);
-}
-function getSectionProxyConfigType(section) {
-  if (hasSubscriptionSources(section)) {
-    return "subscription";
-  }
-  if (isUrlTestEnabled(section) && shouldUseProxyGroup(section)) {
-    return "urltest";
-  }
-  if (getManualProxyLinks(section).length > 0) {
-    return "selector";
-  }
-  return void 0;
-}
-function getJsonOutboundDisplayName(section) {
-  try {
-    const parsedOutbound = JSON.parse(section.outbound_json || "{}");
-    return parsedOutbound?.tag ? decodeURIComponent(parsedOutbound.tag) : "";
-  } catch (_error) {
-    return "";
-  }
-}
-function buildManualLinkByCode(section) {
-  const sectionName = section[".name"];
-  return new Map(
-    getManualProxyLinks(section).map((link, index) => [
-      `${sectionName}-${index + 1}-out`,
-      link
-    ])
-  );
-}
-function getProxyEntryByCode(proxies) {
-  return new Map(proxies.map((proxy) => [proxy.code, proxy]));
-}
-function uniqueCodes(codes) {
-  return Array.from(new Set(codes.filter(Boolean)));
-}
-function isUrlTestOutbound(outbound) {
-  return outbound.type?.toLowerCase() === "urltest";
-}
-function getLatencySortValue(outbound) {
-  const latency = Number(outbound.latency);
-  return Number.isFinite(latency) && latency > 0 ? latency : Number.POSITIVE_INFINITY;
-}
-function getOutboundSortBucket(outbound) {
-  if (isUrlTestOutbound(outbound)) {
-    return 0;
-  }
-  return getLatencySortValue(outbound) === Number.POSITIVE_INFINITY ? 2 : 1;
-}
-function sortOutboundsForDashboard(outbounds) {
-  return outbounds.map((outbound, index) => ({ outbound, index })).sort((left, right) => {
-    const leftBucket = getOutboundSortBucket(left.outbound);
-    const rightBucket = getOutboundSortBucket(right.outbound);
-    if (leftBucket !== rightBucket) {
-      return leftBucket - rightBucket;
-    }
-    if (leftBucket === 1) {
-      const latencyDiff = getLatencySortValue(left.outbound) - getLatencySortValue(right.outbound);
-      if (latencyDiff !== 0) {
-        return latencyDiff;
-      }
-    }
-    return left.index - right.index;
-  }).map((item) => item.outbound);
-}
-function isSafeSectionName(sectionName) {
-  return /^[A-Za-z0-9_-]+$/.test(sectionName);
-}
-function objectMap(value) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return {};
-  }
-  return Object.fromEntries(
-    Object.entries(value).filter(([, item]) => typeof item === "string").map(([key, item]) => [key, item])
-  );
-}
-async function readDashboardSectionCache(sectionName) {
-  if (!isSafeSectionName(sectionName)) {
-    return void 0;
-  }
-  try {
-    const raw = await fs.read(
-      `${DASHBOARD_SECTION_CACHE_DIR}/${sectionName}.json`
-    );
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      return void 0;
-    }
-    return parsed;
-  } catch (_error) {
-    return void 0;
-  }
-}
-function buildProxyGroupOutbounds(section, proxies, outboundMetadata, subscriptionCopyableCodes = /* @__PURE__ */ new Set()) {
-  const sectionName = section[".name"];
-  const proxyByCode = getProxyEntryByCode(proxies);
-  const selector = proxyByCode.get(`${sectionName}-out`);
-  const fallbackUrltest = proxyByCode.get(`${sectionName}-urltest-out`);
-  const manualLinkByCode = buildManualLinkByCode(section);
-  const selectorCodes = selector?.value?.all ?? [];
-  const groupCodes = selectorCodes.length ? selectorCodes : [fallbackUrltest?.code || "", ...fallbackUrltest?.value?.all ?? []];
-  const outbounds = uniqueCodes(groupCodes).flatMap((code) => {
-    const item = proxyByCode.get(code);
-    if (!item) {
-      return [];
-    }
-    const isFastest = item.code === `${sectionName}-urltest-out`;
-    const link = manualLinkByCode.get(item.code) || "";
-    const canCopyLink = isCopyableProxyLink(link) || subscriptionCopyableCodes.has(item.code);
-    return [
-      {
-        code: item.code,
-        displayName: isFastest ? _("Fastest") : getProxyUrlName(link) || outboundMetadata?.names?.[item.code] || item.value.name || item.code,
-        latency: item.value.history?.[0]?.delay || 0,
-        type: item.value.type || "",
-        selected: selector?.value?.now === item.code,
-        link,
-        canCopyLink,
-        country: outboundMetadata?.countries?.[item.code]
-      }
-    ];
-  });
-  return {
-    selector,
-    outbounds: sortOutboundsForDashboard(outbounds)
-  };
-}
-function metadataMatchesCurrentSource(sectionName, sourceCount, metadata) {
-  const legacyMetadata = metadata;
-  const sourceIndex = metadata.sourceIndex ?? legacyMetadata.source_index;
-  const sourceSection = metadata.sourceSection || legacyMetadata.source_section || "";
-  const hasSourceIndex = typeof sourceIndex === "number";
-  const hasSourceSection = sourceSection !== "";
-  if (!hasSourceIndex && !hasSourceSection) {
-    return sourceCount <= 1;
-  }
-  if (sourceCount > 1 && !hasSourceSection) {
-    return false;
-  }
-  if (hasSourceIndex && (sourceIndex < 1 || sourceIndex > sourceCount)) {
-    return false;
-  }
-  if (hasSourceSection) {
-    const expectedSourcePrefix = `${sectionName}-subscription-`;
-    if (!sourceSection.startsWith(expectedSourcePrefix)) {
-      return false;
-    }
-    const sourceSectionIndex = Number(
-      sourceSection.slice(expectedSourcePrefix.length)
-    );
-    if (!Number.isInteger(sourceSectionIndex) || sourceSectionIndex < 1 || sourceSectionIndex > sourceCount) {
-      return false;
-    }
-    if (hasSourceIndex && sourceIndex !== sourceSectionIndex) {
-      return false;
-    }
-  }
-  return true;
-}
-function getSubscriptionMetadata(sectionName, sourceCount, dashboardCache) {
-  if (!dashboardCache?.subscriptionMetadata) {
-    return void 0;
-  }
-  const metadataItems = Array.isArray(dashboardCache.subscriptionMetadata) ? dashboardCache.subscriptionMetadata : [dashboardCache.subscriptionMetadata];
-  const visibleMetadataItems = metadataItems.filter(
-    (metadata) => metadata && Object.keys(metadata).length > 1 && metadataMatchesCurrentSource(sectionName, sourceCount, metadata)
-  );
-  if (visibleMetadataItems.length > 0) {
-    return visibleMetadataItems;
-  }
-  return void 0;
-}
-function getOutboundMetadata(dashboardCache) {
-  const metadata = dashboardCache?.outboundMetadata;
-  if (!metadata || typeof metadata !== "object") {
-    return void 0;
-  }
-  return {
-    names: objectMap(metadata.names),
-    countries: objectMap(metadata.countries)
-  };
-}
-function getSubscriptionCopyableCodes(dashboardCache) {
-  const legacyLinks = objectMap(dashboardCache?.links);
-  const linkRefs = dashboardCache?.linkRefs;
-  const codes = new Set(
-    Object.entries(legacyLinks).filter(([, link]) => isCopyableProxyLink(link)).map(([code]) => code)
-  );
-  if (linkRefs && typeof linkRefs === "object" && !Array.isArray(linkRefs)) {
-    Object.keys(linkRefs).forEach((code) => codes.add(code));
-  }
-  return codes;
-}
-async function getDashboardSections(options = {}) {
-  const includeSubscriptionCopyState = options.includeSubscriptionCopyState ?? true;
-  const configSections = await getConfigSections();
-  const clashProxies = await PodkopShellMethods.getClashApiProxies();
-  if (!clashProxies.success || !clashProxies.data?.proxies) {
-    return {
-      success: false,
-      data: []
-    };
-  }
-  const proxies = Object.entries(clashProxies.data.proxies).map(
-    ([key, value]) => ({
-      code: key,
-      value
-    })
-  );
-  const data = await Promise.all(
-    configSections.filter(
-      (section) => section.enabled !== "0" && ["proxy", "outbound", "vpn", "byedpi"].includes(
-        getSectionAction(section)
-      )
-    ).map(async (section) => {
-      const displayName = getDisplayName(section);
-      const sectionName = section[".name"];
-      const sectionAction = getSectionAction(section);
-      const proxyConfigType = getSectionProxyConfigType(section);
-      if (sectionAction === "vpn") {
-        const outbound = proxies.find(
-          (proxy) => proxy.code === `${sectionName}-out`
-        );
-        return {
-          withTagSelect: false,
-          code: outbound?.code || sectionName,
-          sectionName,
-          displayName,
-          outbounds: [
-            {
-              code: outbound?.code || sectionName,
-              displayName: section.interface || outbound?.value?.name || "",
-              latency: outbound?.value?.history?.[0]?.delay || 0,
-              type: outbound?.value?.type || "",
-              selected: true,
-              canCopyLink: false
-            }
-          ]
-        };
-      }
-      if (sectionAction === "byedpi") {
-        const outbound = proxies.find(
-          (proxy) => proxy.code === `${sectionName}-out`
-        );
-        return {
-          withTagSelect: false,
-          code: outbound?.code || sectionName,
-          sectionName,
-          displayName,
-          outbounds: [
-            {
-              code: outbound?.code || sectionName,
-              displayName: "ByeDPI",
-              latency: outbound?.value?.history?.[0]?.delay || 0,
-              type: outbound?.value?.type || "",
-              selected: true,
-              canCopyLink: false
-            }
-          ]
-        };
-      }
-      if (sectionAction === "outbound") {
-        const outbound = proxies.find(
-          (proxy) => proxy.code === `${sectionName}-out`
-        );
-        return {
-          withTagSelect: false,
-          code: outbound?.code || sectionName,
-          sectionName,
-          displayName,
-          outbounds: [
-            {
-              code: outbound?.code || sectionName,
-              displayName: getJsonOutboundDisplayName(section) || outbound?.value?.name || "",
-              latency: outbound?.value?.history?.[0]?.delay || 0,
-              type: outbound?.value?.type || "",
-              selected: true,
-              canCopyLink: false
-            }
-          ]
-        };
-      }
-      if (sectionAction === "proxy" && shouldUseProxyGroup(section)) {
-        const subscriptionSourceCount = getSubscriptionSourceCount(section);
-        const subscriptionEnabled = subscriptionSourceCount > 0;
-        const dashboardCache = await readDashboardSectionCache(sectionName);
-        const outboundMetadata = getOutboundMetadata(dashboardCache);
-        const subscriptionMetadata = subscriptionEnabled ? getSubscriptionMetadata(
-          sectionName,
-          subscriptionSourceCount,
-          dashboardCache
-        ) : void 0;
-        const subscriptionCopyableCodes = includeSubscriptionCopyState ? getSubscriptionCopyableCodes(dashboardCache) : /* @__PURE__ */ new Set();
-        const { selector, outbounds } = buildProxyGroupOutbounds(
-          section,
-          proxies,
-          outboundMetadata,
-          subscriptionCopyableCodes
-        );
-        return {
-          withTagSelect: true,
-          code: selector?.code || sectionName,
-          sectionName,
-          displayName,
-          proxyConfigType,
-          subscriptionSourceCount,
-          subscriptionMetadata,
-          outbounds
-        };
-      }
-      return {
-        withTagSelect: false,
-        code: sectionName,
-        sectionName,
-        displayName,
-        outbounds: []
-      };
-    })
-  );
-  return {
-    success: true,
-    data
-  };
-}
-
-// src/podkop/methods/custom/getClashApiSecret.ts
-async function getClashApiSecret() {
-  const sections = await getConfigSections();
-  const settings = sections.find((section) => section[".type"] === "settings");
-  return settings?.yacd_secret_key || "";
-}
-
-// src/podkop/methods/custom/index.ts
-var CustomPodkopMethods = {
-  getConfigSections,
-  getDashboardSections,
-  getClashApiSecret
-};
-
-// src/podkop/api.ts
-async function createBaseApiRequest(fetchFn, options) {
-  const wrappedFn = () => options?.timeoutMs && options?.operationName ? withTimeout(
-    fetchFn(),
-    options.timeoutMs,
-    options.operationName,
-    options.timeoutMessage
-  ) : fetchFn();
-  try {
-    const response = await wrappedFn();
-    if (!response.ok) {
-      return {
-        success: false,
-        message: `${_("HTTP error")} ${response.status}: ${response.statusText}`
-      };
-    }
-    const data = await response.json();
-    return {
-      success: true,
-      data
-    };
-  } catch (e) {
-    return {
-      success: false,
-      message: e instanceof Error ? e.message : _("Unknown error")
-    };
-  }
-}
-
-// src/podkop/methods/fakeip/getFakeIpCheck.ts
-async function getFakeIpCheck() {
-  return createBaseApiRequest(
-    () => fetch(`https://${FAKEIP_CHECK_DOMAIN}/check`, {
-      method: "GET",
-      headers: { "Content-Type": "application/json" }
-    }),
-    {
-      operationName: "getFakeIpCheck",
-      timeoutMs: 5e3
-    }
-  );
-}
-
-// src/podkop/methods/fakeip/getIpCheck.ts
-async function getIpCheck() {
-  return createBaseApiRequest(
-    () => fetch(`https://${IP_CHECK_DOMAIN}/check`, {
-      method: "GET",
-      headers: { "Content-Type": "application/json" }
-    }),
-    {
-      operationName: "getIpCheck",
-      timeoutMs: 5e3
-    }
-  );
-}
-
-// src/podkop/methods/fakeip/index.ts
-var RemoteFakeIPMethods = {
-  getFakeIpCheck,
-  getIpCheck
-};
-
-// src/podkop/services/tab.service.ts
-var TabService = class _TabService {
-  constructor() {
-    this.observer = null;
-    this.lastActiveId = null;
-    this.init();
-  }
-  static getInstance() {
-    if (!_TabService.instance) {
-      _TabService.instance = new _TabService();
-    }
-    return _TabService.instance;
-  }
-  init() {
-    this.observer = new MutationObserver(() => this.handleMutations());
-    this.observer.observe(document.body, {
-      subtree: true,
-      childList: true,
-      attributes: true,
-      attributeFilter: ["class"]
-    });
-    this.notify();
-  }
-  handleMutations() {
-    this.notify();
-  }
-  getTabsInfo() {
-    const tabs = Array.from(
-      document.querySelectorAll(".cbi-tab, .cbi-tab-disabled")
-    );
-    return tabs.map((el) => ({
-      el,
-      id: el.dataset.tab || "",
-      active: el.classList.contains("cbi-tab") && !el.classList.contains("cbi-tab-disabled")
-    }));
-  }
-  getActiveTabId() {
-    const active = document.querySelector(
-      ".cbi-tab:not(.cbi-tab-disabled)"
-    );
-    return active?.dataset.tab || null;
-  }
-  notify() {
-    const tabs = this.getTabsInfo();
-    const activeId = this.getActiveTabId();
-    if (activeId !== this.lastActiveId) {
-      this.lastActiveId = activeId;
-      this.callback?.(activeId, tabs);
-    }
-  }
-  onChange(callback) {
-    this.callback = callback;
-    this.notify();
-  }
-  getAllTabs() {
-    return this.getTabsInfo();
-  }
-  getActiveTab() {
-    return this.getActiveTabId();
-  }
-  disconnect() {
-    this.observer?.disconnect();
-    this.observer = null;
-  }
-};
-var TabServiceInstance = TabService.getInstance();
-
-// src/podkop/tabs/diagnostic/helpers/getCheckTitle.ts
-function getCheckTitle(name) {
-  return `${name} ${_("checks")}`;
-}
-
-// src/podkop/tabs/diagnostic/checks/contstants.ts
-var DIAGNOSTICS_CHECKS_MAP = {
-  ["DNS" /* DNS */]: {
-    order: 1,
-    title: getCheckTitle("DNS"),
-    code: "DNS" /* DNS */
-  },
-  ["SINGBOX" /* SINGBOX */]: {
-    order: 2,
-    title: getCheckTitle("Sing-box"),
-    code: "SINGBOX" /* SINGBOX */
-  },
-  ["NFT" /* NFT */]: {
-    order: 3,
-    title: getCheckTitle("Nftables"),
-    code: "NFT" /* NFT */
-  },
-  ["ZAPRET" /* ZAPRET */]: {
-    order: 4,
-    title: getCheckTitle("Zapret"),
-    code: "ZAPRET" /* ZAPRET */
-  },
-  ["BYEDPI" /* BYEDPI */]: {
-    order: 5,
-    title: getCheckTitle("ByeDPI"),
-    code: "BYEDPI" /* BYEDPI */
-  },
-  ["OUTBOUNDS" /* OUTBOUNDS */]: {
-    order: 6,
-    title: getCheckTitle("Outbounds"),
-    code: "OUTBOUNDS" /* OUTBOUNDS */
-  },
-  ["FAKEIP" /* FAKEIP */]: {
-    order: 7,
-    title: getCheckTitle("FakeIP"),
-    code: "FAKEIP" /* FAKEIP */
-  }
-};
-
-// src/podkop/tabs/diagnostic/diagnostic.store.ts
-function createDiagnosticCheck(code, description) {
-  const meta = DIAGNOSTICS_CHECKS_MAP[code];
-  return {
-    code,
-    title: meta.title,
-    order: meta.order,
-    description,
-    items: [],
-    state: "skipped"
-  };
-}
-function getDiagnosticsChecks(description, options = {}) {
-  const checks = [
-    "DNS" /* DNS */,
-    "SINGBOX" /* SINGBOX */,
-    "NFT" /* NFT */
-  ];
-  if (options.includeZapret) {
-    checks.push("ZAPRET" /* ZAPRET */);
-  }
-  if (options.includeByedpi) {
-    checks.push("BYEDPI" /* BYEDPI */);
-  }
-  checks.push("OUTBOUNDS" /* OUTBOUNDS */, "FAKEIP" /* FAKEIP */);
-  return checks.map((code) => createDiagnosticCheck(code, description));
-}
-function getLoadingDiagnosticsChecks(options = {}) {
-  return {
-    diagnosticsChecks: getDiagnosticsChecks(_("Pending"), options)
-  };
-}
-var initialDiagnosticStore = {
-  diagnosticsSystemInfo: {
-    loading: true,
-    loaded: false,
-    providerInfoLoaded: false,
-    podkop_version: "loading",
-    podkop_latest_version: "loading",
-    luci_app_version: "loading",
-    sing_box_version: "loading",
-    sing_box_extended: 0,
-    zapret_version: "loading",
-    zapret_installed: 0,
-    byedpi_version: "loading",
-    byedpi_installed: 0,
-    openwrt_version: "loading",
-    device_model: "loading"
-  },
-  diagnosticsActions: {
-    restart: {
-      loading: false
-    },
-    start: {
-      loading: false
-    },
-    stop: {
-      loading: false
-    },
-    enable: {
-      loading: false
-    },
-    disable: {
-      loading: false
-    },
-    globalCheck: {
-      loading: false
-    },
-    viewLogs: {
-      loading: false
-    },
-    showSingBoxConfig: {
-      loading: false
-    }
-  },
-  diagnosticsRunAction: { loading: false },
-  diagnosticsChecks: getDiagnosticsChecks(_("Not running")),
-  updatesActions: {
-    podkopCheck: { loading: false },
-    podkopInstall: { loading: false },
-    singBoxCheck: { loading: false },
-    singBoxInstall: { loading: false },
-    singBoxInstallExtended: { loading: false },
-    singBoxInstallStable: { loading: false },
-    zapretCheck: { loading: false },
-    zapretInstall: { loading: false },
-    zapretRemove: { loading: false },
-    byedpiCheck: { loading: false },
-    byedpiInstall: { loading: false },
-    byedpiRemove: { loading: false }
-  },
-  updatesChecks: {
-    podkop: { status: null, latest_version: "" },
-    sing_box: { status: null, latest_version: "" },
-    zapret: { status: null, latest_version: "" },
-    byedpi: { status: null, latest_version: "" }
-  }
-};
-
-// src/podkop/services/store.service.ts
-function jsonStableStringify(obj) {
-  return JSON.stringify(obj, (_2, value) => {
-    if (value && typeof value === "object" && !Array.isArray(value)) {
-      return Object.keys(value).sort().reduce(
-        (acc, key) => {
-          acc[key] = value[key];
-          return acc;
-        },
-        {}
-      );
-    }
-    return value;
-  });
-}
-function jsonEqual(a, b) {
-  try {
-    return jsonStableStringify(a) === jsonStableStringify(b);
-  } catch {
-    return false;
-  }
-}
-var StoreService = class {
-  constructor(initial) {
-    this.listeners = /* @__PURE__ */ new Set();
-    this.lastHash = "";
-    this.value = initial;
-    this.initial = structuredClone(initial);
-    this.lastHash = jsonStableStringify(initial);
-  }
-  get() {
-    return this.value;
-  }
-  set(next) {
-    const prev = this.value;
-    const merged = { ...prev, ...next };
-    if (jsonEqual(prev, merged)) return;
-    this.value = merged;
-    this.lastHash = jsonStableStringify(merged);
-    const diff = {};
-    for (const key in merged) {
-      if (!jsonEqual(merged[key], prev[key])) diff[key] = merged[key];
-    }
-    this.listeners.forEach((cb) => cb(this.value, prev, diff));
-  }
-  reset(keys) {
-    const prev = this.value;
-    const next = structuredClone(this.value);
-    if (keys && keys.length > 0) {
-      keys.forEach((key) => {
-        next[key] = structuredClone(this.initial[key]);
-      });
-    } else {
-      Object.assign(next, structuredClone(this.initial));
-    }
-    if (jsonEqual(prev, next)) return;
-    this.value = next;
-    this.lastHash = jsonStableStringify(next);
-    const diff = {};
-    for (const key in next) {
-      if (!jsonEqual(next[key], prev[key])) diff[key] = next[key];
-    }
-    this.listeners.forEach((cb) => cb(this.value, prev, diff));
-  }
-  subscribe(cb) {
-    this.listeners.add(cb);
-    cb(this.value, this.value, {});
-    return () => this.listeners.delete(cb);
-  }
-  unsubscribe(cb) {
-    this.listeners.delete(cb);
-  }
-  patch(key, value) {
-    this.set({ [key]: value });
-  }
-  getKey(key) {
-    return this.value[key];
-  }
-  subscribeKey(key, cb) {
-    let prev = this.value[key];
-    const wrapper = (val) => {
-      if (!jsonEqual(val[key], prev)) {
-        prev = val[key];
-        cb(val[key]);
-      }
-    };
-    this.listeners.add(wrapper);
-    return () => this.listeners.delete(wrapper);
-  }
-};
-var initialStore = {
-  tabService: {
-    current: "",
-    all: []
-  },
-  bandwidthWidget: {
-    loading: true,
-    failed: false,
-    data: { up: 0, down: 0 }
-  },
-  trafficTotalWidget: {
-    loading: true,
-    failed: false,
-    data: { downloadTotal: 0, uploadTotal: 0 }
-  },
-  systemInfoWidget: {
-    loading: true,
-    failed: false,
-    data: { connections: 0, memory: 0 }
-  },
-  servicesInfoWidget: {
-    loading: true,
-    failed: false,
-    data: {
-      singbox: 0,
-      podkopRunning: 0,
-      podkopEnabled: 0,
-      podkopStatus: ""
-    }
-  },
-  sectionsWidget: {
-    loading: true,
-    failed: false,
-    latencyFetchingSections: {},
-    selectorSwitchingSections: {},
-    subscriptionUpdatingSections: {},
-    data: []
-  },
-  ...initialDiagnosticStore
-};
-var store = new StoreService(initialStore);
 
 // src/helpers/downloadAsTxt.ts
 function downloadAsTxt(text, filename) {
@@ -1826,379 +634,203 @@ var Logger = class {
 };
 var logger = new Logger();
 
-// src/podkop/services/podkopLogWatcher.service.ts
-var PodkopLogWatcher = class _PodkopLogWatcher {
-  constructor() {
-    this.intervalMs = 5e3;
-    this.lastLines = [];
-    this.suppressInitialLogs = false;
-    this.initialized = false;
-    this.maxTrackedLines = 500;
-    this.running = false;
-    this.paused = false;
-    this.checking = false;
-    if (typeof document !== "undefined") {
-      document.addEventListener("visibilitychange", () => {
-        if (document.hidden) this.pause();
-        else this.resume();
-      });
-    }
+// src/helpers/withTimeout.ts
+async function withTimeout(promise, timeoutMs, operationName, timeoutMessage = _("Operation timed out")) {
+  let timeoutId;
+  const start = performance.now();
+  const timeoutPromise = new Promise((_2, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs);
+  });
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    clearTimeout(timeoutId);
+    const elapsed = performance.now() - start;
+    logger.info("[SHELL]", `[${operationName}] took ${elapsed.toFixed(2)} ms`);
   }
-  static getInstance() {
-    if (!_PodkopLogWatcher.instance) {
-      _PodkopLogWatcher.instance = new _PodkopLogWatcher();
-    }
-    return _PodkopLogWatcher.instance;
-  }
-  init(fetcher, options) {
-    this.fetcher = fetcher;
-    this.onNewLog = options?.onNewLog;
-    this.intervalMs = options?.intervalMs ?? 5e3;
-    this.suppressInitialLogs = options?.suppressInitialLogs ?? false;
-    this.maxTrackedLines = options?.maxTrackedLines ?? 500;
-    this.lastLines = [];
-    this.initialized = false;
-    logger.info(
-      "[PodkopLogWatcher]",
-      `initialized (interval: ${this.intervalMs}ms)`
-    );
-  }
-  normalizeLines(raw) {
-    return raw.split("\n").filter(Boolean).slice(-this.maxTrackedLines);
-  }
-  findOverlapLength(lines) {
-    const maxOverlap = Math.min(this.lastLines.length, lines.length);
-    for (let length = maxOverlap; length > 0; length--) {
-      let matches = true;
-      const previousStart = this.lastLines.length - length;
-      for (let index = 0; index < length; index++) {
-        if (this.lastLines[previousStart + index] !== lines[index]) {
-          matches = false;
-          break;
-        }
-      }
-      if (matches) {
-        return length;
-      }
-    }
-    return 0;
-  }
-  async checkOnce() {
-    if (!this.fetcher) {
-      logger.warn("[PodkopLogWatcher]", "fetcher not found");
-      return;
-    }
-    if (this.paused) {
-      logger.debug("[PodkopLogWatcher]", "skipped check \u2014 tab not visible");
-      return;
-    }
-    if (this.checking) {
-      logger.debug(
-        "[PodkopLogWatcher]",
-        "skipped check \u2014 previous check is running"
-      );
-      return;
-    }
-    this.checking = true;
-    try {
-      const raw = await this.fetcher();
-      const lines = this.normalizeLines(raw);
-      if (!this.initialized) {
-        this.initialized = true;
-        this.lastLines = lines;
-        if (this.suppressInitialLogs) {
-          return;
-        }
-        for (const line of lines) {
-          this.onNewLog?.(line);
-        }
-        return;
-      }
-      const overlapLength = this.findOverlapLength(lines);
-      const newLines = this.lastLines.length ? lines.slice(overlapLength) : lines;
-      for (const line of newLines) {
-        this.onNewLog?.(line);
-      }
-      this.lastLines = lines;
-    } catch (err) {
-      logger.error("[PodkopLogWatcher]", "failed to read logs:", err);
-    } finally {
-      this.checking = false;
-    }
-  }
-  start() {
-    if (this.running) return;
-    if (!this.fetcher) {
-      logger.warn("[PodkopLogWatcher]", "attempted to start without fetcher");
-      return;
-    }
-    this.running = true;
-    void this.checkOnce();
-    this.timer = setInterval(() => this.checkOnce(), this.intervalMs);
-    logger.info(
-      "[PodkopLogWatcher]",
-      `started (interval: ${this.intervalMs}ms)`
-    );
-  }
-  stop() {
-    if (!this.running) return;
-    this.running = false;
-    if (this.timer) clearInterval(this.timer);
-    logger.info("[PodkopLogWatcher]", "stopped");
-  }
-  pause() {
-    if (!this.running || this.paused) return;
-    this.paused = true;
-    logger.info("[PodkopLogWatcher]", "paused (tab not visible)");
-  }
-  resume() {
-    if (!this.running || !this.paused) return;
-    this.paused = false;
-    logger.info("[PodkopLogWatcher]", "resumed (tab active)");
-    this.checkOnce();
-  }
-  reset() {
-    this.lastLines = [];
-    this.initialized = false;
-    this.checking = false;
-    logger.info("[PodkopLogWatcher]", "log history reset");
-  }
-};
+}
 
-// src/podkop/services/core.service.ts
-var LOG_NOTIFICATION_DEDUPE_WINDOW_MS = 15e3;
-var recentErrorNotifications = /* @__PURE__ */ new Map();
-var activeErrorNotifications = /* @__PURE__ */ new Map();
-function isErrorLogLine(line) {
-  const lower = line.toLowerCase();
-  return lower.includes("[error]") || lower.includes("[fatal]");
-}
-function isLogLifecycleBoundary(line) {
-  const lower = line.toLowerCase();
-  return lower.includes("[info] starting podkop plus") || lower.includes("[info] stopping podkop plus") || lower.includes("[info] podkop plus reload") || lower.includes("[info] podkop plus restart");
-}
-function getNotificationKey(line) {
-  const lower = line.toLowerCase();
-  const errorIndex = lower.indexOf("[error]");
-  const fatalIndex = lower.indexOf("[fatal]");
-  const markerIndex = errorIndex >= 0 && fatalIndex >= 0 ? Math.min(errorIndex, fatalIndex) : Math.max(errorIndex, fatalIndex);
-  return (markerIndex >= 0 ? line.slice(markerIndex) : line).trim();
-}
-function shouldNotifyAboutLogLine(line) {
-  const key = getNotificationKey(line);
-  const now = Date.now();
-  const lastShownAt = recentErrorNotifications.get(key) ?? 0;
-  recentErrorNotifications.forEach((shownAt, storedKey) => {
-    if (now - shownAt > LOG_NOTIFICATION_DEDUPE_WINDOW_MS) {
-      recentErrorNotifications.delete(storedKey);
-    }
-  });
-  if (now - lastShownAt < LOG_NOTIFICATION_DEDUPE_WINDOW_MS) {
-    return false;
+// src/constants.ts
+var PODKOP_UCI_PACKAGE = "podkop-plus";
+var PODKOP_LUCI_APP_VERSION = "__COMPILED_VERSION_VARIABLE__";
+var PODKOP_ACTION_PROVIDERS_AVAILABILITY_EVENT = "podkop:action-providers-availability";
+var FAKEIP_CHECK_DOMAIN = "fakeip.podkop.fyi";
+var IP_CHECK_DOMAIN = "ip.podkop.fyi";
+var REGIONAL_OPTIONS = [
+  "russia_inside",
+  "russia_outside",
+  "ukraine_inside"
+];
+var ALLOWED_WITH_RUSSIA_INSIDE = [
+  "russia_inside",
+  "meta",
+  "twitter",
+  "discord",
+  "telegram",
+  "cloudflare",
+  "google_ai",
+  "google_play",
+  "hetzner",
+  "ovh",
+  "hodca",
+  "roblox",
+  "digitalocean",
+  "cloudfront"
+];
+var DOMAIN_LIST_OPTIONS = {
+  russia_inside: "Russia inside",
+  russia_outside: "Russia outside",
+  ukraine_inside: "Ukraine",
+  geoblock: "Geo Block",
+  block: "Block",
+  porn: "Porn",
+  news: "News",
+  anime: "Anime",
+  youtube: "Youtube",
+  discord: "Discord",
+  meta: "Meta",
+  twitter: "Twitter (X)",
+  hdrezka: "HDRezka",
+  tiktok: "Tik-Tok",
+  telegram: "Telegram",
+  cloudflare: "Cloudflare",
+  google_ai: "Google AI",
+  google_play: "Google Play",
+  hodca: "H.O.D.C.A",
+  roblox: "Roblox",
+  ads_hagezi_pro: "Ads (Hagezi Pro)",
+  supercell: "Supercell",
+  hetzner: "Hetzner ASN",
+  ovh: "OVH ASN",
+  digitalocean: "Digital Ocean ASN",
+  cloudfront: "CloudFront ASN"
+};
+var DNS_SERVER_OPTIONS = {
+  "1.1.1.1": "1.1.1.1 (Cloudflare)",
+  "8.8.8.8": "8.8.8.8 (Google)",
+  "9.9.9.9": "9.9.9.9 (Quad9)",
+  "dns.adguard-dns.com": "dns.adguard-dns.com (AdGuard Default)",
+  "unfiltered.adguard-dns.com": "unfiltered.adguard-dns.com (AdGuard Unfiltered)",
+  "family.adguard-dns.com": "family.adguard-dns.com (AdGuard Family)"
+};
+var BOOTSTRAP_DNS_SERVER_OPTIONS = {
+  "77.88.8.8": "77.88.8.8 (Yandex DNS)",
+  "77.88.8.1": "77.88.8.1 (Yandex DNS)",
+  "1.1.1.1": "1.1.1.1 (Cloudflare DNS)",
+  "1.0.0.1": "1.0.0.1 (Cloudflare DNS)",
+  "8.8.8.8": "8.8.8.8 (Google DNS)",
+  "8.8.4.4": "8.8.4.4 (Google DNS)",
+  "9.9.9.9": "9.9.9.9 (Quad9 DNS)",
+  "9.9.9.11": "9.9.9.11 (Quad9 DNS)"
+};
+var COMMAND_TIMEOUT = 1e4;
+
+// src/helpers/executeShellCommand.ts
+async function executeShellCommand({
+  command,
+  args,
+  timeout = COMMAND_TIMEOUT
+}) {
+  try {
+    return await withTimeout(
+      fs.exec(command, args),
+      timeout,
+      [command, ...args].join(" ")
+    );
+  } catch (err) {
+    const error = err;
+    const code = typeof error?.code === "number" ? error.code : 1;
+    return { stdout: "", stderr: error?.message, code };
   }
-  recentErrorNotifications.set(key, now);
-  return true;
 }
-function removeNotification(notification) {
-  if (!notification.parentNode) {
-    return;
-  }
-  notification.classList.add("fade-out");
-  notification.classList.remove("fade-in");
-  setTimeout(() => notification.remove(), 500);
-}
-function clearLogErrorNotifications() {
-  activeErrorNotifications.forEach(removeNotification);
-  activeErrorNotifications.clear();
-  recentErrorNotifications.clear();
-}
-function showLogErrorNotification(line) {
-  const key = getNotificationKey(line);
-  const existingNotification = activeErrorNotifications.get(key);
-  if (existingNotification) {
-    removeNotification(existingNotification);
-  }
-  const notification = ui.addNotification(
-    _("Podkop Plus Error"),
-    E("div", {}, line),
-    "error",
-    "pdk-log-error-notification"
-  );
-  activeErrorNotifications.set(key, notification);
-}
-function coreService() {
-  TabServiceInstance.onChange((activeId, tabs) => {
-    logger.info("[TAB]", activeId);
-    store.set({
-      tabService: {
-        current: activeId || "",
-        all: tabs.map((tab) => tab.id)
-      }
-    });
-  });
-  const watcher = PodkopLogWatcher.getInstance();
-  watcher.init(
-    async () => {
-      const logs = await PodkopShellMethods.checkLogs();
-      if (logs.success) {
-        return logs.data;
-      }
+
+// src/helpers/getProxyUrlName.ts
+function getProxyUrlName(url) {
+  try {
+    const [_link, hash] = url.split("#");
+    if (!hash) {
       return "";
-    },
-    {
-      intervalMs: 3e3,
-      suppressInitialLogs: true,
-      onNewLog: (line) => {
-        if (isLogLifecycleBoundary(line)) {
-          clearLogErrorNotifications();
-        }
-        if (isErrorLogLine(line) && shouldNotifyAboutLogLine(line)) {
-          showLogErrorNotification(line);
-        }
-      }
     }
-  );
-  watcher.start();
+    return decodeURIComponent(hash);
+  } catch {
+    return "";
+  }
 }
 
-// src/podkop/services/socket.service.ts
-var SocketManager = class _SocketManager {
-  constructor() {
-    this.sockets = /* @__PURE__ */ new Map();
-    this.listeners = /* @__PURE__ */ new Map();
-    this.connected = /* @__PURE__ */ new Map();
-    this.errorListeners = /* @__PURE__ */ new Map();
+// src/helpers/onMount.ts
+function getTarget(target) {
+  if (typeof target === "string") {
+    return document.getElementById(target);
   }
-  static getInstance() {
-    if (!_SocketManager.instance) {
-      _SocketManager.instance = new _SocketManager();
-    }
-    return _SocketManager.instance;
-  }
-  resetAll() {
-    for (const [url, ws] of this.sockets.entries()) {
-      try {
-        if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
-          ws.close();
-        }
-      } catch (err) {
-        logger.error(
-          "[SOCKET]",
-          `resetAll: failed to close socket ${url}`,
-          err
-        );
+  return target;
+}
+async function onMount(target) {
+  return new Promise((resolve) => {
+    let observer = null;
+    const resolveIfMountedAndVisible = () => {
+      const mountedTarget = getTarget(target);
+      if (mountedTarget && mountedTarget.isConnected && mountedTarget.offsetParent !== null) {
+        observer?.disconnect();
+        resolve(mountedTarget);
+        return true;
       }
-    }
-    this.sockets.clear();
-    this.listeners.clear();
-    this.errorListeners.clear();
-    this.connected.clear();
-    logger.info("[SOCKET]", "All connections and state have been reset.");
-  }
-  connect(url) {
-    if (this.sockets.has(url)) return;
-    let ws;
-    try {
-      ws = new WebSocket(url);
-    } catch (err) {
-      logger.error(
-        "[SOCKET]",
-        `failed to construct WebSocket for ${url}:`,
-        err
-      );
-      this.triggerError(url, err instanceof Event ? err : String(err));
+      return false;
+    };
+    if (resolveIfMountedAndVisible()) {
       return;
     }
-    this.sockets.set(url, ws);
-    this.connected.set(url, false);
-    this.listeners.set(url, /* @__PURE__ */ new Set());
-    this.errorListeners.set(url, /* @__PURE__ */ new Set());
-    ws.addEventListener("open", () => {
-      this.connected.set(url, true);
-      logger.info("[SOCKET]", "Connected to", url);
+    observer = new MutationObserver(() => {
+      resolveIfMountedAndVisible();
     });
-    ws.addEventListener("message", (event) => {
-      const handlers = this.listeners.get(url);
-      if (handlers) {
-        for (const handler of handlers) {
-          try {
-            handler(event.data);
-          } catch (err) {
-            logger.error("[SOCKET]", `Handler error for ${url}:`, err);
-          }
-        }
-      }
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["class", "style", "hidden"]
     });
-    ws.addEventListener("close", () => {
-      this.connected.set(url, false);
-      logger.warn("[SOCKET]", `Disconnected: ${url}`);
-      this.triggerError(url, "Connection closed");
-    });
-    ws.addEventListener("error", (err) => {
-      logger.error("[SOCKET]", `Socket error for ${url}:`, err);
-      this.triggerError(url, err);
-    });
+  });
+}
+
+// src/helpers/getClashApiUrl.ts
+function getClashWsUrl() {
+  const { hostname } = window.location;
+  return `ws://${hostname}:9090`;
+}
+function getClashUIUrl() {
+  const { hostname } = window.location;
+  return `http://${hostname}:9090/ui`;
+}
+
+// src/helpers/preserveScrollForPage.ts
+function preserveScrollForPage(renderFn) {
+  const scrollY = window.scrollY;
+  renderFn();
+  requestAnimationFrame(() => {
+    window.scrollTo({ top: scrollY });
+  });
+}
+
+// src/helpers/svgEl.ts
+function svgEl(tag, attrs = {}, children = []) {
+  const NS = "http://www.w3.org/2000/svg";
+  const el = document.createElementNS(NS, tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (v != null) el.setAttribute(k, String(v));
   }
-  subscribe(url, listener, onError) {
-    if (!this.errorListeners.has(url)) {
-      this.errorListeners.set(url, /* @__PURE__ */ new Set());
-    }
-    if (onError) {
-      this.errorListeners.get(url)?.add(onError);
-    }
-    if (!this.sockets.has(url)) {
-      this.connect(url);
-    }
-    if (!this.listeners.has(url)) {
-      this.listeners.set(url, /* @__PURE__ */ new Set());
-    }
-    this.listeners.get(url)?.add(listener);
-  }
-  unsubscribe(url, listener, onError) {
-    this.listeners.get(url)?.delete(listener);
-    if (onError) {
-      this.errorListeners.get(url)?.delete(onError);
-    }
-  }
-  // eslint-disable-next-line
-  send(url, data) {
-    const ws = this.sockets.get(url);
-    if (ws && this.connected.get(url)) {
-      ws.send(typeof data === "string" ? data : JSON.stringify(data));
-    } else {
-      logger.warn("[SOCKET]", `Cannot send: not connected to ${url}`);
-      this.triggerError(url, "Not connected");
-    }
-  }
-  disconnect(url) {
-    const ws = this.sockets.get(url);
-    if (ws) {
-      ws.close();
-      this.sockets.delete(url);
-      this.listeners.delete(url);
-      this.errorListeners.delete(url);
-      this.connected.delete(url);
-    }
-  }
-  disconnectAll() {
-    for (const url of this.sockets.keys()) {
-      this.disconnect(url);
-    }
-  }
-  triggerError(url, err) {
-    const handlers = this.errorListeners.get(url);
-    if (handlers) {
-      for (const cb of handlers) {
-        try {
-          cb(err);
-        } catch (e) {
-          logger.error("[SOCKET]", `Error handler threw for ${url}:`, e);
-        }
-      }
-    }
-  }
-};
-var socket = SocketManager.getInstance();
+  (Array.isArray(children) ? children : [children]).filter(Boolean).forEach((ch) => el.appendChild(ch));
+  return el;
+}
+
+// src/helpers/insertIf.ts
+function insertIf(condition, elements) {
+  return condition ? elements : [];
+}
+
+// src/helpers/isCopyableProxyLink.ts
+var COPYABLE_PROXY_URI_RE = /^(vless|vmess|trojan|ss|ssr|hysteria2|hy2|tuic|socks4|socks4a|socks5):\/\//i;
+function isCopyableProxyLink(link) {
+  return COPYABLE_PROXY_URI_RE.test((link || "").trim());
+}
 
 // src/icons/renderLoaderCircleIcon24.ts
 function renderLoaderCircleIcon24() {
@@ -2715,17 +1347,6 @@ function renderBookOpenTextIcon24() {
       svgEl("path", { d: "M6 8h2" })
     ]
   );
-}
-
-// src/helpers/svgEl.ts
-function svgEl(tag, attrs = {}, children = []) {
-  const NS = "http://www.w3.org/2000/svg";
-  const el = document.createElementNS(NS, tag);
-  for (const [k, v] of Object.entries(attrs)) {
-    if (v != null) el.setAttribute(k, String(v));
-  }
-  (Array.isArray(children) ? children : [children]).filter(Boolean).forEach((ch) => el.appendChild(ch));
-  return el;
 }
 
 // src/icons/renderCopyIcon24.ts
@@ -3340,6 +1961,1517 @@ function copyToClipboard(text) {
   document.body.removeChild(textarea);
 }
 
+// src/podkop/methods/custom/getConfigSections.ts
+async function getConfigSections() {
+  return uci.load(PODKOP_UCI_PACKAGE).then(() => uci.sections(PODKOP_UCI_PACKAGE));
+}
+
+// src/podkop/methods/shell/callBaseMethod.ts
+async function callBaseMethod(method, args = [], command = "/usr/bin/podkop-plus", options = {}) {
+  try {
+    const response = await executeShellCommand({
+      command,
+      args: [method, ...args],
+      timeout: options.timeout ?? 15e3
+    });
+    const exitCode = response.code ?? 0;
+    if (exitCode !== 0 && !(options.allowNonZeroWithStdout && response.stdout)) {
+      return {
+        success: false,
+        error: response.stderr || response.stdout || ""
+      };
+    }
+    if (response.stdout) {
+      try {
+        return {
+          success: true,
+          data: JSON.parse(response.stdout)
+        };
+      } catch (_e) {
+        return {
+          success: true,
+          data: response.stdout
+        };
+      }
+    }
+    return {
+      success: false,
+      error: response.stderr || ""
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : ""
+    };
+  }
+}
+
+// src/podkop/types.ts
+var Podkop;
+((Podkop2) => {
+  let AvailableMethods;
+  ((AvailableMethods2) => {
+    AvailableMethods2["CHECK_DNS_AVAILABLE"] = "check_dns_available";
+    AvailableMethods2["CHECK_FAKEIP"] = "check_fakeip";
+    AvailableMethods2["CHECK_NFT_RULES"] = "check_nft_rules";
+    AvailableMethods2["CHECK_ZAPRET_RUNTIME"] = "check_zapret_runtime";
+    AvailableMethods2["CHECK_BYEDPI_RUNTIME"] = "check_byedpi_runtime";
+    AvailableMethods2["GET_STATUS"] = "get_status";
+    AvailableMethods2["GET_OUTBOUND_LINK"] = "get_outbound_link";
+    AvailableMethods2["GET_OUTBOUND_LINK_STATES"] = "get_outbound_link_states";
+    AvailableMethods2["GET_OUTBOUND_METADATA"] = "get_outbound_metadata";
+    AvailableMethods2["GET_SUBSCRIPTION_METADATA"] = "get_subscription_metadata";
+    AvailableMethods2["CHECK_SING_BOX"] = "check_sing_box";
+    AvailableMethods2["GET_SING_BOX_STATUS"] = "get_sing_box_status";
+    AvailableMethods2["GET_ZAPRET_STATUS"] = "get_zapret_status";
+    AvailableMethods2["GET_BYEDPI_STATUS"] = "get_byedpi_status";
+    AvailableMethods2["CLASH_API"] = "clash_api";
+    AvailableMethods2["RESTART"] = "restart";
+    AvailableMethods2["START"] = "start";
+    AvailableMethods2["STOP"] = "stop";
+    AvailableMethods2["ENABLE"] = "enable";
+    AvailableMethods2["DISABLE"] = "disable";
+    AvailableMethods2["GLOBAL_CHECK"] = "global_check";
+    AvailableMethods2["SHOW_SING_BOX_CONFIG"] = "show_sing_box_config";
+    AvailableMethods2["CHECK_LOGS"] = "check_logs";
+    AvailableMethods2["CHECK_SING_BOX_LOGS"] = "check_sing_box_logs";
+    AvailableMethods2["GET_SYSTEM_INFO"] = "get_system_info";
+    AvailableMethods2["COMPONENT_ACTION"] = "component_action";
+    AvailableMethods2["COMPONENT_ACTION_ASYNC"] = "component_action_async";
+    AvailableMethods2["COMPONENT_ACTION_STATUS"] = "component_action_status";
+    AvailableMethods2["SUBSCRIPTION_UPDATE"] = "subscription_update";
+  })(AvailableMethods = Podkop2.AvailableMethods || (Podkop2.AvailableMethods = {}));
+  let AvailableClashAPIMethods;
+  ((AvailableClashAPIMethods2) => {
+    AvailableClashAPIMethods2["GET_PROXIES"] = "get_proxies";
+    AvailableClashAPIMethods2["GET_CONNECTIONS"] = "get_connections";
+    AvailableClashAPIMethods2["GET_PROXY_LATENCY"] = "get_proxy_latency";
+    AvailableClashAPIMethods2["GET_GROUP_LATENCY"] = "get_group_latency";
+    AvailableClashAPIMethods2["SET_GROUP_PROXY"] = "set_group_proxy";
+    AvailableClashAPIMethods2["CLOSE_CONNECTION"] = "close_connection";
+    AvailableClashAPIMethods2["CLOSE_ALL_CONNECTIONS"] = "close_all_connections";
+  })(AvailableClashAPIMethods = Podkop2.AvailableClashAPIMethods || (Podkop2.AvailableClashAPIMethods = {}));
+})(Podkop || (Podkop = {}));
+
+// src/podkop/methods/shell/index.ts
+var SUBSCRIPTION_UPDATE_TIMEOUT_MS = 10 * 60 * 1e3;
+var COMPONENT_ACTION_TIMEOUT_MS = 10 * 60 * 1e3;
+var COMPONENT_ACTION_RPC_TIMEOUT_MS = 15e3;
+var COMPONENT_ACTION_POLL_INTERVAL_MS = 1500;
+var COMPONENT_ACTION_SELF_UPDATE_SETTLE_MS = 3e4;
+var COMPONENT_ACTION_STATE_DIR = "/var/run/podkop-plus/component-actions";
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+function parseComponentActionOutput(output) {
+  if (!output) {
+    return null;
+  }
+  try {
+    return JSON.parse(output);
+  } catch (_error) {
+    const jsonMatch = output.match(/(\{[\s\S]*\})\s*$/);
+    if (!jsonMatch) {
+      return null;
+    }
+    try {
+      return JSON.parse(jsonMatch[1]);
+    } catch (_jsonError) {
+      return null;
+    }
+  }
+}
+function parseComponentActionResult(response) {
+  return parseComponentActionOutput(response.stdout);
+}
+function parseComponentActionStartResult(response) {
+  const parsedResponse = parseComponentActionResult(response);
+  if (!parsedResponse) {
+    return null;
+  }
+  return parsedResponse;
+}
+function isComponentActionJobId(jobId) {
+  return /^[A-Za-z0-9._-]+$/.test(jobId) && jobId !== "." && jobId !== "..";
+}
+async function readComponentActionState(jobId) {
+  if (!isComponentActionJobId(jobId)) {
+    return null;
+  }
+  try {
+    return parseComponentActionOutput(
+      await fs.read(`${COMPONENT_ACTION_STATE_DIR}/${jobId}.json`)
+    );
+  } catch (_error) {
+    return null;
+  }
+}
+async function readPodkopVersion() {
+  const response = await executeShellCommand({
+    command: "/usr/bin/podkop-plus",
+    args: ["show_version"],
+    timeout: COMPONENT_ACTION_RPC_TIMEOUT_MS
+  });
+  if ((response.code ?? 0) !== 0 || !response.stdout) {
+    return "";
+  }
+  return response.stdout.trim();
+}
+function componentActionFailure(response, parsedResponse) {
+  return {
+    success: false,
+    error: parsedResponse?.message || response.stderr || _("Failed to execute")
+  };
+}
+var PodkopShellMethods = {
+  checkDNSAvailable: async () => callBaseMethod(
+    Podkop.AvailableMethods.CHECK_DNS_AVAILABLE
+  ),
+  checkFakeIP: async () => callBaseMethod(
+    Podkop.AvailableMethods.CHECK_FAKEIP
+  ),
+  checkNftRules: async () => callBaseMethod(
+    Podkop.AvailableMethods.CHECK_NFT_RULES
+  ),
+  checkZapretRuntime: async () => callBaseMethod(
+    Podkop.AvailableMethods.CHECK_ZAPRET_RUNTIME
+  ),
+  checkByedpiRuntime: async () => callBaseMethod(
+    Podkop.AvailableMethods.CHECK_BYEDPI_RUNTIME
+  ),
+  getStatus: async () => callBaseMethod(Podkop.AvailableMethods.GET_STATUS),
+  getOutboundLink: async (section, tag) => callBaseMethod(
+    Podkop.AvailableMethods.GET_OUTBOUND_LINK,
+    [section, tag]
+  ),
+  getOutboundLinkStates: async (section) => callBaseMethod(
+    Podkop.AvailableMethods.GET_OUTBOUND_LINK_STATES,
+    [section]
+  ),
+  getOutboundMetadata: async (section) => callBaseMethod(
+    Podkop.AvailableMethods.GET_OUTBOUND_METADATA,
+    [section]
+  ),
+  getSubscriptionMetadata: async (section) => callBaseMethod(
+    Podkop.AvailableMethods.GET_SUBSCRIPTION_METADATA,
+    [section]
+  ),
+  checkSingBox: async () => callBaseMethod(
+    Podkop.AvailableMethods.CHECK_SING_BOX
+  ),
+  getSingBoxStatus: async () => callBaseMethod(
+    Podkop.AvailableMethods.GET_SING_BOX_STATUS
+  ),
+  getZapretStatus: async () => callBaseMethod(
+    Podkop.AvailableMethods.GET_ZAPRET_STATUS
+  ),
+  getByedpiStatus: async () => callBaseMethod(
+    Podkop.AvailableMethods.GET_BYEDPI_STATUS
+  ),
+  getClashApiProxies: async () => callBaseMethod(Podkop.AvailableMethods.CLASH_API, [
+    Podkop.AvailableClashAPIMethods.GET_PROXIES
+  ]),
+  getClashApiConnections: async () => callBaseMethod(Podkop.AvailableMethods.CLASH_API, [
+    Podkop.AvailableClashAPIMethods.GET_CONNECTIONS
+  ]),
+  getClashApiProxyLatency: async (tag) => callBaseMethod(
+    Podkop.AvailableMethods.CLASH_API,
+    [Podkop.AvailableClashAPIMethods.GET_PROXY_LATENCY, tag, "5000"]
+  ),
+  getClashApiGroupLatency: async (tag) => callBaseMethod(
+    Podkop.AvailableMethods.CLASH_API,
+    [Podkop.AvailableClashAPIMethods.GET_GROUP_LATENCY, tag, "10000"]
+  ),
+  setClashApiGroupProxy: async (group, proxy) => callBaseMethod(Podkop.AvailableMethods.CLASH_API, [
+    Podkop.AvailableClashAPIMethods.SET_GROUP_PROXY,
+    group,
+    proxy
+  ]),
+  closeClashApiConnection: async (connectionId) => callBaseMethod(Podkop.AvailableMethods.CLASH_API, [
+    Podkop.AvailableClashAPIMethods.CLOSE_CONNECTION,
+    connectionId
+  ]),
+  closeAllClashApiConnections: async () => callBaseMethod(Podkop.AvailableMethods.CLASH_API, [
+    Podkop.AvailableClashAPIMethods.CLOSE_ALL_CONNECTIONS
+  ]),
+  restart: async () => callBaseMethod(
+    Podkop.AvailableMethods.RESTART,
+    [],
+    "/etc/init.d/podkop-plus"
+  ),
+  start: async () => callBaseMethod(
+    Podkop.AvailableMethods.START,
+    [],
+    "/etc/init.d/podkop-plus"
+  ),
+  stop: async () => callBaseMethod(
+    Podkop.AvailableMethods.STOP,
+    [],
+    "/etc/init.d/podkop-plus"
+  ),
+  enable: async () => callBaseMethod(
+    Podkop.AvailableMethods.ENABLE,
+    [],
+    "/etc/init.d/podkop-plus"
+  ),
+  disable: async () => callBaseMethod(
+    Podkop.AvailableMethods.DISABLE,
+    [],
+    "/etc/init.d/podkop-plus"
+  ),
+  globalCheck: async () => callBaseMethod(Podkop.AvailableMethods.GLOBAL_CHECK),
+  showSingBoxConfig: async () => callBaseMethod(Podkop.AvailableMethods.SHOW_SING_BOX_CONFIG),
+  checkLogs: async () => callBaseMethod(Podkop.AvailableMethods.CHECK_LOGS),
+  checkSingBoxLogs: async () => callBaseMethod(Podkop.AvailableMethods.CHECK_SING_BOX_LOGS),
+  getSystemInfo: async () => callBaseMethod(
+    Podkop.AvailableMethods.GET_SYSTEM_INFO
+  ),
+  componentAction: async (component, action, expectedLatestVersion) => {
+    const startedAt = Date.now();
+    let selfUpdateVersionMatchedAt = 0;
+    const startResponse = await executeShellCommand({
+      command: "/usr/bin/podkop-plus",
+      args: [
+        Podkop.AvailableMethods.COMPONENT_ACTION_ASYNC,
+        component,
+        action
+      ],
+      timeout: COMPONENT_ACTION_RPC_TIMEOUT_MS
+    });
+    const parsedStartResponse = parseComponentActionStartResult(startResponse);
+    if ((startResponse.code ?? 0) !== 0 || !parsedStartResponse?.success || !parsedStartResponse.job_id) {
+      return componentActionFailure(startResponse, parsedStartResponse);
+    }
+    const jobId = parsedStartResponse.job_id;
+    while (Date.now() - startedAt < COMPONENT_ACTION_TIMEOUT_MS) {
+      await sleep(COMPONENT_ACTION_POLL_INTERVAL_MS);
+      const stateResponse = await readComponentActionState(jobId);
+      if (stateResponse) {
+        if (stateResponse.success === false) {
+          return {
+            success: false,
+            error: stateResponse.message || _("Failed to execute")
+          };
+        }
+        if (stateResponse.running) {
+          continue;
+        }
+        return {
+          success: true,
+          data: stateResponse
+        };
+      }
+      const statusResponse = await executeShellCommand({
+        command: "/usr/bin/podkop-plus",
+        args: [
+          Podkop.AvailableMethods.COMPONENT_ACTION_STATUS,
+          jobId
+        ],
+        timeout: COMPONENT_ACTION_RPC_TIMEOUT_MS
+      });
+      const parsedResponse = parseComponentActionResult(statusResponse);
+      if (parsedResponse?.success === false) {
+        return componentActionFailure(statusResponse, parsedResponse);
+      }
+      if ((statusResponse.code ?? 0) !== 0 || !parsedResponse) {
+        if (component === "podkop" && action === "install") {
+          const installedVersion = expectedLatestVersion ? await readPodkopVersion() : "";
+          if (expectedLatestVersion && installedVersion === expectedLatestVersion) {
+            if (!selfUpdateVersionMatchedAt) {
+              selfUpdateVersionMatchedAt = Date.now();
+            }
+            if (Date.now() - selfUpdateVersionMatchedAt >= COMPONENT_ACTION_SELF_UPDATE_SETTLE_MS) {
+              return {
+                success: true,
+                data: {
+                  success: true,
+                  component,
+                  action,
+                  message: _("Podkop Plus has been installed"),
+                  current_version: installedVersion,
+                  latest_version: expectedLatestVersion,
+                  changed: true,
+                  status: "latest"
+                }
+              };
+            }
+          }
+          continue;
+        }
+        return componentActionFailure(statusResponse);
+      }
+      if (parsedResponse.running) {
+        continue;
+      }
+      return {
+        success: true,
+        data: parsedResponse
+      };
+    }
+    return {
+      success: false,
+      error: _("Operation timed out")
+    };
+  },
+  subscriptionUpdate: async (section, sourceIndex) => {
+    const args = [
+      Podkop.AvailableMethods.SUBSCRIPTION_UPDATE,
+      ...section ? [section] : [],
+      ...section && sourceIndex !== void 0 ? [String(sourceIndex)] : []
+    ];
+    const response = await executeShellCommand({
+      command: "/usr/bin/podkop-plus",
+      args,
+      timeout: SUBSCRIPTION_UPDATE_TIMEOUT_MS
+    });
+    if ((response.code ?? 0) !== 0) {
+      return {
+        success: false,
+        error: response.stderr || _("Subscription update failed")
+      };
+    }
+    return {
+      success: true,
+      data: response.stdout
+    };
+  }
+};
+
+// src/podkop/methods/custom/getDashboardSections.ts
+var DASHBOARD_SECTION_CACHE_DIR = "/var/run/podkop-plus/section-cache";
+function getDisplayName(section) {
+  return section.label || section[".name"];
+}
+function getSectionAction(section) {
+  return section.action || "";
+}
+function getListValues(value) {
+  if (!value) {
+    return [];
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => `${item}`.trim()).filter(Boolean);
+  }
+  return `${value}`.split(/\s+/).map((item) => item.trim()).filter(Boolean);
+}
+function getManualProxyLinks(section) {
+  return getListValues(section.selector_proxy_links);
+}
+function hasSubscriptionSources(section) {
+  return getSubscriptionSourceCount(section) > 0;
+}
+function getSubscriptionSourceCount(section) {
+  return getListValues(section.subscription_urls).length;
+}
+function isUrlTestEnabled(section) {
+  return section.urltest_enabled === "1";
+}
+function shouldUseProxyGroup(section) {
+  return getManualProxyLinks(section).length > 0 || hasSubscriptionSources(section);
+}
+function getSectionProxyConfigType(section) {
+  if (hasSubscriptionSources(section)) {
+    return "subscription";
+  }
+  if (isUrlTestEnabled(section) && shouldUseProxyGroup(section)) {
+    return "urltest";
+  }
+  if (getManualProxyLinks(section).length > 0) {
+    return "selector";
+  }
+  return void 0;
+}
+function getJsonOutboundDisplayName(section) {
+  try {
+    const parsedOutbound = JSON.parse(section.outbound_json || "{}");
+    return parsedOutbound?.tag ? decodeURIComponent(parsedOutbound.tag) : "";
+  } catch (_error) {
+    return "";
+  }
+}
+function buildManualLinkByCode(section) {
+  const sectionName = section[".name"];
+  return new Map(
+    getManualProxyLinks(section).map((link, index) => [
+      `${sectionName}-${index + 1}-out`,
+      link
+    ])
+  );
+}
+function getProxyEntryByCode(proxies) {
+  return new Map(proxies.map((proxy) => [proxy.code, proxy]));
+}
+function uniqueCodes(codes) {
+  return Array.from(new Set(codes.filter(Boolean)));
+}
+function isUrlTestOutbound(outbound) {
+  return outbound.type?.toLowerCase() === "urltest";
+}
+function getLatencySortValue(outbound) {
+  const latency = Number(outbound.latency);
+  return Number.isFinite(latency) && latency > 0 ? latency : Number.POSITIVE_INFINITY;
+}
+function getOutboundSortBucket(outbound) {
+  if (isUrlTestOutbound(outbound)) {
+    return 0;
+  }
+  return getLatencySortValue(outbound) === Number.POSITIVE_INFINITY ? 2 : 1;
+}
+function sortOutboundsForDashboard(outbounds) {
+  return outbounds.map((outbound, index) => ({ outbound, index })).sort((left, right) => {
+    const leftBucket = getOutboundSortBucket(left.outbound);
+    const rightBucket = getOutboundSortBucket(right.outbound);
+    if (leftBucket !== rightBucket) {
+      return leftBucket - rightBucket;
+    }
+    if (leftBucket === 1) {
+      const latencyDiff = getLatencySortValue(left.outbound) - getLatencySortValue(right.outbound);
+      if (latencyDiff !== 0) {
+        return latencyDiff;
+      }
+    }
+    return left.index - right.index;
+  }).map((item) => item.outbound);
+}
+function isSafeSectionName(sectionName) {
+  return /^[A-Za-z0-9_-]+$/.test(sectionName);
+}
+function objectMap(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+  return Object.fromEntries(
+    Object.entries(value).filter(([, item]) => typeof item === "string").map(([key, item]) => [key, item])
+  );
+}
+async function readDashboardSectionCache(sectionName) {
+  if (!isSafeSectionName(sectionName)) {
+    return void 0;
+  }
+  try {
+    const raw = await fs.read(
+      `${DASHBOARD_SECTION_CACHE_DIR}/${sectionName}.json`
+    );
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return void 0;
+    }
+    return parsed;
+  } catch (_error) {
+    return void 0;
+  }
+}
+function buildProxyGroupOutbounds(section, proxies, outboundMetadata, subscriptionCopyableCodes = /* @__PURE__ */ new Set()) {
+  const sectionName = section[".name"];
+  const proxyByCode = getProxyEntryByCode(proxies);
+  const selector = proxyByCode.get(`${sectionName}-out`);
+  const fallbackUrltest = proxyByCode.get(`${sectionName}-urltest-out`);
+  const manualLinkByCode = buildManualLinkByCode(section);
+  const selectorCodes = selector?.value?.all ?? [];
+  const groupCodes = selectorCodes.length ? selectorCodes : [fallbackUrltest?.code || "", ...fallbackUrltest?.value?.all ?? []];
+  const outbounds = uniqueCodes(groupCodes).flatMap((code) => {
+    const item = proxyByCode.get(code);
+    if (!item) {
+      return [];
+    }
+    const isFastest = item.code === `${sectionName}-urltest-out`;
+    const link = manualLinkByCode.get(item.code) || "";
+    const canCopyLink = isCopyableProxyLink(link) || subscriptionCopyableCodes.has(item.code);
+    return [
+      {
+        code: item.code,
+        displayName: isFastest ? _("Fastest") : getProxyUrlName(link) || outboundMetadata?.names?.[item.code] || item.value.name || item.code,
+        latency: item.value.history?.[0]?.delay || 0,
+        type: item.value.type || "",
+        selected: selector?.value?.now === item.code,
+        link,
+        canCopyLink,
+        country: outboundMetadata?.countries?.[item.code]
+      }
+    ];
+  });
+  return {
+    selector,
+    outbounds: sortOutboundsForDashboard(outbounds)
+  };
+}
+function metadataMatchesCurrentSource(sectionName, sourceCount, metadata) {
+  const legacyMetadata = metadata;
+  const sourceIndex = metadata.sourceIndex ?? legacyMetadata.source_index;
+  const sourceSection = metadata.sourceSection || legacyMetadata.source_section || "";
+  const hasSourceIndex = typeof sourceIndex === "number";
+  const hasSourceSection = sourceSection !== "";
+  if (!hasSourceIndex && !hasSourceSection) {
+    return sourceCount <= 1;
+  }
+  if (sourceCount > 1 && !hasSourceSection) {
+    return false;
+  }
+  if (hasSourceIndex && (sourceIndex < 1 || sourceIndex > sourceCount)) {
+    return false;
+  }
+  if (hasSourceSection) {
+    const expectedSourcePrefix = `${sectionName}-subscription-`;
+    if (!sourceSection.startsWith(expectedSourcePrefix)) {
+      return false;
+    }
+    const sourceSectionIndex = Number(
+      sourceSection.slice(expectedSourcePrefix.length)
+    );
+    if (!Number.isInteger(sourceSectionIndex) || sourceSectionIndex < 1 || sourceSectionIndex > sourceCount) {
+      return false;
+    }
+    if (hasSourceIndex && sourceIndex !== sourceSectionIndex) {
+      return false;
+    }
+  }
+  return true;
+}
+function getSubscriptionMetadata(sectionName, sourceCount, dashboardCache) {
+  if (!dashboardCache?.subscriptionMetadata) {
+    return void 0;
+  }
+  const metadataItems = Array.isArray(dashboardCache.subscriptionMetadata) ? dashboardCache.subscriptionMetadata : [dashboardCache.subscriptionMetadata];
+  const visibleMetadataItems = metadataItems.filter(
+    (metadata) => metadata && Object.keys(metadata).length > 1 && metadataMatchesCurrentSource(sectionName, sourceCount, metadata)
+  );
+  if (visibleMetadataItems.length > 0) {
+    return visibleMetadataItems;
+  }
+  return void 0;
+}
+function getOutboundMetadata(dashboardCache) {
+  const metadata = dashboardCache?.outboundMetadata;
+  if (!metadata || typeof metadata !== "object") {
+    return void 0;
+  }
+  return {
+    names: objectMap(metadata.names),
+    countries: objectMap(metadata.countries)
+  };
+}
+function getSubscriptionCopyableCodes(dashboardCache) {
+  const legacyLinks = objectMap(dashboardCache?.links);
+  const linkRefs = dashboardCache?.linkRefs;
+  const codes = new Set(
+    Object.entries(legacyLinks).filter(([, link]) => isCopyableProxyLink(link)).map(([code]) => code)
+  );
+  if (linkRefs && typeof linkRefs === "object" && !Array.isArray(linkRefs)) {
+    Object.keys(linkRefs).forEach((code) => codes.add(code));
+  }
+  return codes;
+}
+async function getDashboardSections(options = {}) {
+  const includeSubscriptionCopyState = options.includeSubscriptionCopyState ?? true;
+  const configSections = await getConfigSections();
+  const clashProxies = await PodkopShellMethods.getClashApiProxies();
+  if (!clashProxies.success || !clashProxies.data?.proxies) {
+    return {
+      success: false,
+      data: []
+    };
+  }
+  const proxies = Object.entries(clashProxies.data.proxies).map(
+    ([key, value]) => ({
+      code: key,
+      value
+    })
+  );
+  const data = await Promise.all(
+    configSections.filter(
+      (section) => section.enabled !== "0" && ["proxy", "outbound", "vpn", "byedpi"].includes(
+        getSectionAction(section)
+      )
+    ).map(async (section) => {
+      const displayName = getDisplayName(section);
+      const sectionName = section[".name"];
+      const sectionAction = getSectionAction(section);
+      const proxyConfigType = getSectionProxyConfigType(section);
+      if (sectionAction === "vpn") {
+        const outbound = proxies.find(
+          (proxy) => proxy.code === `${sectionName}-out`
+        );
+        return {
+          withTagSelect: false,
+          code: outbound?.code || sectionName,
+          sectionName,
+          displayName,
+          outbounds: [
+            {
+              code: outbound?.code || sectionName,
+              displayName: section.interface || outbound?.value?.name || "",
+              latency: outbound?.value?.history?.[0]?.delay || 0,
+              type: outbound?.value?.type || "",
+              selected: true,
+              canCopyLink: false
+            }
+          ]
+        };
+      }
+      if (sectionAction === "byedpi") {
+        const outbound = proxies.find(
+          (proxy) => proxy.code === `${sectionName}-out`
+        );
+        return {
+          withTagSelect: false,
+          code: outbound?.code || sectionName,
+          sectionName,
+          displayName,
+          outbounds: [
+            {
+              code: outbound?.code || sectionName,
+              displayName: "ByeDPI",
+              latency: outbound?.value?.history?.[0]?.delay || 0,
+              type: outbound?.value?.type || "",
+              selected: true,
+              canCopyLink: false
+            }
+          ]
+        };
+      }
+      if (sectionAction === "outbound") {
+        const outbound = proxies.find(
+          (proxy) => proxy.code === `${sectionName}-out`
+        );
+        return {
+          withTagSelect: false,
+          code: outbound?.code || sectionName,
+          sectionName,
+          displayName,
+          outbounds: [
+            {
+              code: outbound?.code || sectionName,
+              displayName: getJsonOutboundDisplayName(section) || outbound?.value?.name || "",
+              latency: outbound?.value?.history?.[0]?.delay || 0,
+              type: outbound?.value?.type || "",
+              selected: true,
+              canCopyLink: false
+            }
+          ]
+        };
+      }
+      if (sectionAction === "proxy" && shouldUseProxyGroup(section)) {
+        const subscriptionSourceCount = getSubscriptionSourceCount(section);
+        const subscriptionEnabled = subscriptionSourceCount > 0;
+        const dashboardCache = await readDashboardSectionCache(sectionName);
+        const outboundMetadata = getOutboundMetadata(dashboardCache);
+        const subscriptionMetadata = subscriptionEnabled ? getSubscriptionMetadata(
+          sectionName,
+          subscriptionSourceCount,
+          dashboardCache
+        ) : void 0;
+        const subscriptionCopyableCodes = includeSubscriptionCopyState ? getSubscriptionCopyableCodes(dashboardCache) : /* @__PURE__ */ new Set();
+        const { selector, outbounds } = buildProxyGroupOutbounds(
+          section,
+          proxies,
+          outboundMetadata,
+          subscriptionCopyableCodes
+        );
+        return {
+          withTagSelect: true,
+          code: selector?.code || sectionName,
+          sectionName,
+          displayName,
+          proxyConfigType,
+          subscriptionSourceCount,
+          subscriptionMetadata,
+          outbounds
+        };
+      }
+      return {
+        withTagSelect: false,
+        code: sectionName,
+        sectionName,
+        displayName,
+        outbounds: []
+      };
+    })
+  );
+  return {
+    success: true,
+    data
+  };
+}
+
+// src/podkop/methods/custom/getClashApiSecret.ts
+async function getClashApiSecret() {
+  const sections = await getConfigSections();
+  const settings = sections.find((section) => section[".type"] === "settings");
+  return settings?.yacd_secret_key || "";
+}
+
+// src/podkop/methods/custom/index.ts
+var CustomPodkopMethods = {
+  getConfigSections,
+  getDashboardSections,
+  getClashApiSecret
+};
+
+// src/podkop/api.ts
+async function createBaseApiRequest(fetchFn, options) {
+  const wrappedFn = () => options?.timeoutMs && options?.operationName ? withTimeout(
+    fetchFn(),
+    options.timeoutMs,
+    options.operationName,
+    options.timeoutMessage
+  ) : fetchFn();
+  try {
+    const response = await wrappedFn();
+    if (!response.ok) {
+      return {
+        success: false,
+        message: `${_("HTTP error")} ${response.status}: ${response.statusText}`
+      };
+    }
+    const data = await response.json();
+    return {
+      success: true,
+      data
+    };
+  } catch (e) {
+    return {
+      success: false,
+      message: e instanceof Error ? e.message : _("Unknown error")
+    };
+  }
+}
+
+// src/podkop/methods/fakeip/getFakeIpCheck.ts
+async function getFakeIpCheck() {
+  return createBaseApiRequest(
+    () => fetch(`https://${FAKEIP_CHECK_DOMAIN}/check`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" }
+    }),
+    {
+      operationName: "getFakeIpCheck",
+      timeoutMs: 5e3
+    }
+  );
+}
+
+// src/podkop/methods/fakeip/getIpCheck.ts
+async function getIpCheck() {
+  return createBaseApiRequest(
+    () => fetch(`https://${IP_CHECK_DOMAIN}/check`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" }
+    }),
+    {
+      operationName: "getIpCheck",
+      timeoutMs: 5e3
+    }
+  );
+}
+
+// src/podkop/methods/fakeip/index.ts
+var RemoteFakeIPMethods = {
+  getFakeIpCheck,
+  getIpCheck
+};
+
+// src/podkop/services/tab.service.ts
+var TabService = class _TabService {
+  constructor() {
+    this.observer = null;
+    this.lastActiveId = null;
+    this.init();
+  }
+  static getInstance() {
+    if (!_TabService.instance) {
+      _TabService.instance = new _TabService();
+    }
+    return _TabService.instance;
+  }
+  init() {
+    this.observer = new MutationObserver(() => this.handleMutations());
+    this.observer.observe(document.body, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ["class"]
+    });
+    this.notify();
+  }
+  handleMutations() {
+    this.notify();
+  }
+  getTabsInfo() {
+    const tabs = Array.from(
+      document.querySelectorAll(".cbi-tab, .cbi-tab-disabled")
+    );
+    return tabs.map((el) => ({
+      el,
+      id: el.dataset.tab || "",
+      active: el.classList.contains("cbi-tab") && !el.classList.contains("cbi-tab-disabled")
+    }));
+  }
+  getActiveTabId() {
+    const active = document.querySelector(
+      ".cbi-tab:not(.cbi-tab-disabled)"
+    );
+    return active?.dataset.tab || null;
+  }
+  notify() {
+    const tabs = this.getTabsInfo();
+    const activeId = this.getActiveTabId();
+    if (activeId !== this.lastActiveId) {
+      this.lastActiveId = activeId;
+      this.callback?.(activeId, tabs);
+    }
+  }
+  onChange(callback) {
+    this.callback = callback;
+    this.notify();
+  }
+};
+var TabServiceInstance = TabService.getInstance();
+
+// src/podkop/tabs/diagnostic/helpers/getCheckTitle.ts
+function getCheckTitle(name) {
+  return `${name} ${_("checks")}`;
+}
+
+// src/podkop/tabs/diagnostic/checks/contstants.ts
+var DIAGNOSTICS_CHECKS_MAP = {
+  ["DNS" /* DNS */]: {
+    order: 1,
+    title: getCheckTitle("DNS"),
+    code: "DNS" /* DNS */
+  },
+  ["SINGBOX" /* SINGBOX */]: {
+    order: 2,
+    title: getCheckTitle("Sing-box"),
+    code: "SINGBOX" /* SINGBOX */
+  },
+  ["NFT" /* NFT */]: {
+    order: 3,
+    title: getCheckTitle("Nftables"),
+    code: "NFT" /* NFT */
+  },
+  ["ZAPRET" /* ZAPRET */]: {
+    order: 4,
+    title: getCheckTitle("Zapret"),
+    code: "ZAPRET" /* ZAPRET */
+  },
+  ["BYEDPI" /* BYEDPI */]: {
+    order: 5,
+    title: getCheckTitle("ByeDPI"),
+    code: "BYEDPI" /* BYEDPI */
+  },
+  ["OUTBOUNDS" /* OUTBOUNDS */]: {
+    order: 6,
+    title: getCheckTitle("Outbounds"),
+    code: "OUTBOUNDS" /* OUTBOUNDS */
+  },
+  ["FAKEIP" /* FAKEIP */]: {
+    order: 7,
+    title: getCheckTitle("FakeIP"),
+    code: "FAKEIP" /* FAKEIP */
+  }
+};
+
+// src/podkop/tabs/diagnostic/diagnostic.store.ts
+function createDiagnosticCheck(code, description) {
+  const meta = DIAGNOSTICS_CHECKS_MAP[code];
+  return {
+    code,
+    title: meta.title,
+    order: meta.order,
+    description,
+    items: [],
+    state: "skipped"
+  };
+}
+function getDiagnosticsChecks(description, options = {}) {
+  const checks = [
+    "DNS" /* DNS */,
+    "SINGBOX" /* SINGBOX */,
+    "NFT" /* NFT */
+  ];
+  if (options.includeZapret) {
+    checks.push("ZAPRET" /* ZAPRET */);
+  }
+  if (options.includeByedpi) {
+    checks.push("BYEDPI" /* BYEDPI */);
+  }
+  checks.push("OUTBOUNDS" /* OUTBOUNDS */, "FAKEIP" /* FAKEIP */);
+  return checks.map((code) => createDiagnosticCheck(code, description));
+}
+function getLoadingDiagnosticsChecks(options = {}) {
+  return {
+    diagnosticsChecks: getDiagnosticsChecks(_("Pending"), options)
+  };
+}
+var initialDiagnosticStore = {
+  diagnosticsSystemInfo: {
+    loading: true,
+    loaded: false,
+    providerInfoLoaded: false,
+    podkop_version: "loading",
+    podkop_latest_version: "loading",
+    luci_app_version: "loading",
+    sing_box_version: "loading",
+    sing_box_extended: 0,
+    zapret_version: "loading",
+    zapret_installed: 0,
+    byedpi_version: "loading",
+    byedpi_installed: 0,
+    openwrt_version: "loading",
+    device_model: "loading"
+  },
+  diagnosticsActions: {
+    restart: {
+      loading: false
+    },
+    start: {
+      loading: false
+    },
+    stop: {
+      loading: false
+    },
+    enable: {
+      loading: false
+    },
+    disable: {
+      loading: false
+    },
+    globalCheck: {
+      loading: false
+    },
+    viewLogs: {
+      loading: false
+    },
+    showSingBoxConfig: {
+      loading: false
+    }
+  },
+  diagnosticsRunAction: { loading: false },
+  diagnosticsChecks: getDiagnosticsChecks(_("Not running")),
+  updatesActions: {
+    podkopCheck: { loading: false },
+    podkopInstall: { loading: false },
+    singBoxCheck: { loading: false },
+    singBoxInstall: { loading: false },
+    singBoxInstallExtended: { loading: false },
+    singBoxInstallStable: { loading: false },
+    zapretCheck: { loading: false },
+    zapretInstall: { loading: false },
+    zapretRemove: { loading: false },
+    byedpiCheck: { loading: false },
+    byedpiInstall: { loading: false },
+    byedpiRemove: { loading: false }
+  },
+  updatesChecks: {
+    podkop: { status: null, latest_version: "" },
+    sing_box: { status: null, latest_version: "" },
+    zapret: { status: null, latest_version: "" },
+    byedpi: { status: null, latest_version: "" }
+  }
+};
+
+// src/podkop/services/store.service.ts
+function jsonStableStringify(obj) {
+  return JSON.stringify(obj, (_2, value) => {
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      return Object.keys(value).sort().reduce(
+        (acc, key) => {
+          acc[key] = value[key];
+          return acc;
+        },
+        {}
+      );
+    }
+    return value;
+  });
+}
+function jsonEqual(a, b) {
+  try {
+    return jsonStableStringify(a) === jsonStableStringify(b);
+  } catch {
+    return false;
+  }
+}
+var StoreService = class {
+  constructor(initial) {
+    this.listeners = /* @__PURE__ */ new Set();
+    this.value = initial;
+    this.initial = structuredClone(initial);
+  }
+  get() {
+    return this.value;
+  }
+  set(next) {
+    const prev = this.value;
+    const merged = { ...prev, ...next };
+    if (jsonEqual(prev, merged)) return;
+    this.value = merged;
+    const diff = {};
+    for (const key in merged) {
+      if (!jsonEqual(merged[key], prev[key])) diff[key] = merged[key];
+    }
+    this.listeners.forEach((cb) => cb(this.value, prev, diff));
+  }
+  reset(keys) {
+    const prev = this.value;
+    const next = structuredClone(this.value);
+    if (keys && keys.length > 0) {
+      keys.forEach((key) => {
+        next[key] = structuredClone(this.initial[key]);
+      });
+    } else {
+      Object.assign(next, structuredClone(this.initial));
+    }
+    if (jsonEqual(prev, next)) return;
+    this.value = next;
+    const diff = {};
+    for (const key in next) {
+      if (!jsonEqual(next[key], prev[key])) diff[key] = next[key];
+    }
+    this.listeners.forEach((cb) => cb(this.value, prev, diff));
+  }
+  subscribe(cb) {
+    this.listeners.add(cb);
+    cb(this.value, this.value, {});
+    return () => this.listeners.delete(cb);
+  }
+  unsubscribe(cb) {
+    this.listeners.delete(cb);
+  }
+  patch(key, value) {
+    this.set({ [key]: value });
+  }
+  getKey(key) {
+    return this.value[key];
+  }
+  subscribeKey(key, cb) {
+    let prev = this.value[key];
+    const wrapper = (val) => {
+      if (!jsonEqual(val[key], prev)) {
+        prev = val[key];
+        cb(val[key]);
+      }
+    };
+    this.listeners.add(wrapper);
+    return () => this.listeners.delete(wrapper);
+  }
+};
+var initialStore = {
+  tabService: {
+    current: "",
+    all: []
+  },
+  bandwidthWidget: {
+    loading: true,
+    failed: false,
+    data: { up: 0, down: 0 }
+  },
+  trafficTotalWidget: {
+    loading: true,
+    failed: false,
+    data: { downloadTotal: 0, uploadTotal: 0 }
+  },
+  systemInfoWidget: {
+    loading: true,
+    failed: false,
+    data: { connections: 0, memory: 0 }
+  },
+  servicesInfoWidget: {
+    loading: true,
+    failed: false,
+    data: {
+      singbox: 0,
+      podkopRunning: 0,
+      podkopEnabled: 0,
+      podkopStatus: ""
+    }
+  },
+  sectionsWidget: {
+    loading: true,
+    failed: false,
+    latencyFetchingSections: {},
+    selectorSwitchingSections: {},
+    subscriptionUpdatingSections: {},
+    data: []
+  },
+  ...initialDiagnosticStore
+};
+var store = new StoreService(initialStore);
+
+// src/podkop/services/podkopLogWatcher.service.ts
+var PodkopLogWatcher = class _PodkopLogWatcher {
+  constructor() {
+    this.intervalMs = 5e3;
+    this.lastLines = [];
+    this.suppressInitialLogs = false;
+    this.initialized = false;
+    this.maxTrackedLines = 500;
+    this.running = false;
+    this.paused = false;
+    this.checking = false;
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", () => {
+        if (document.hidden) this.pause();
+        else this.resume();
+      });
+    }
+  }
+  static getInstance() {
+    if (!_PodkopLogWatcher.instance) {
+      _PodkopLogWatcher.instance = new _PodkopLogWatcher();
+    }
+    return _PodkopLogWatcher.instance;
+  }
+  init(fetcher, options) {
+    this.fetcher = fetcher;
+    this.onNewLog = options?.onNewLog;
+    this.intervalMs = options?.intervalMs ?? 5e3;
+    this.suppressInitialLogs = options?.suppressInitialLogs ?? false;
+    this.maxTrackedLines = options?.maxTrackedLines ?? 500;
+    this.lastLines = [];
+    this.initialized = false;
+    logger.info(
+      "[PodkopLogWatcher]",
+      `initialized (interval: ${this.intervalMs}ms)`
+    );
+  }
+  normalizeLines(raw) {
+    return raw.split("\n").filter(Boolean).slice(-this.maxTrackedLines);
+  }
+  findOverlapLength(lines) {
+    const maxOverlap = Math.min(this.lastLines.length, lines.length);
+    for (let length = maxOverlap; length > 0; length--) {
+      let matches = true;
+      const previousStart = this.lastLines.length - length;
+      for (let index = 0; index < length; index++) {
+        if (this.lastLines[previousStart + index] !== lines[index]) {
+          matches = false;
+          break;
+        }
+      }
+      if (matches) {
+        return length;
+      }
+    }
+    return 0;
+  }
+  async checkOnce() {
+    if (!this.fetcher) {
+      logger.warn("[PodkopLogWatcher]", "fetcher not found");
+      return;
+    }
+    if (this.paused) {
+      logger.debug("[PodkopLogWatcher]", "skipped check \u2014 tab not visible");
+      return;
+    }
+    if (this.checking) {
+      logger.debug(
+        "[PodkopLogWatcher]",
+        "skipped check \u2014 previous check is running"
+      );
+      return;
+    }
+    this.checking = true;
+    try {
+      const raw = await this.fetcher();
+      const lines = this.normalizeLines(raw);
+      if (!this.initialized) {
+        this.initialized = true;
+        this.lastLines = lines;
+        if (this.suppressInitialLogs) {
+          return;
+        }
+        for (const line of lines) {
+          this.onNewLog?.(line);
+        }
+        return;
+      }
+      const overlapLength = this.findOverlapLength(lines);
+      const newLines = this.lastLines.length ? lines.slice(overlapLength) : lines;
+      for (const line of newLines) {
+        this.onNewLog?.(line);
+      }
+      this.lastLines = lines;
+    } catch (err) {
+      logger.error("[PodkopLogWatcher]", "failed to read logs:", err);
+    } finally {
+      this.checking = false;
+    }
+  }
+  start() {
+    if (this.running) return;
+    if (!this.fetcher) {
+      logger.warn("[PodkopLogWatcher]", "attempted to start without fetcher");
+      return;
+    }
+    this.running = true;
+    void this.checkOnce();
+    this.timer = setInterval(() => this.checkOnce(), this.intervalMs);
+    logger.info(
+      "[PodkopLogWatcher]",
+      `started (interval: ${this.intervalMs}ms)`
+    );
+  }
+  stop() {
+    if (!this.running) return;
+    this.running = false;
+    if (this.timer) clearInterval(this.timer);
+    logger.info("[PodkopLogWatcher]", "stopped");
+  }
+  pause() {
+    if (!this.running || this.paused) return;
+    this.paused = true;
+    logger.info("[PodkopLogWatcher]", "paused (tab not visible)");
+  }
+  resume() {
+    if (!this.running || !this.paused) return;
+    this.paused = false;
+    logger.info("[PodkopLogWatcher]", "resumed (tab active)");
+    this.checkOnce();
+  }
+  reset() {
+    this.lastLines = [];
+    this.initialized = false;
+    this.checking = false;
+    logger.info("[PodkopLogWatcher]", "log history reset");
+  }
+};
+
+// src/podkop/services/core.service.ts
+var LOG_NOTIFICATION_DEDUPE_WINDOW_MS = 15e3;
+var recentErrorNotifications = /* @__PURE__ */ new Map();
+var activeErrorNotifications = /* @__PURE__ */ new Map();
+function isErrorLogLine(line) {
+  const lower = line.toLowerCase();
+  return lower.includes("[error]") || lower.includes("[fatal]");
+}
+function isLogLifecycleBoundary(line) {
+  const lower = line.toLowerCase();
+  return lower.includes("[info] starting podkop plus") || lower.includes("[info] stopping podkop plus") || lower.includes("[info] podkop plus reload") || lower.includes("[info] podkop plus restart");
+}
+function getNotificationKey(line) {
+  const lower = line.toLowerCase();
+  const errorIndex = lower.indexOf("[error]");
+  const fatalIndex = lower.indexOf("[fatal]");
+  const markerIndex = errorIndex >= 0 && fatalIndex >= 0 ? Math.min(errorIndex, fatalIndex) : Math.max(errorIndex, fatalIndex);
+  return (markerIndex >= 0 ? line.slice(markerIndex) : line).trim();
+}
+function shouldNotifyAboutLogLine(line) {
+  const key = getNotificationKey(line);
+  const now = Date.now();
+  const lastShownAt = recentErrorNotifications.get(key) ?? 0;
+  recentErrorNotifications.forEach((shownAt, storedKey) => {
+    if (now - shownAt > LOG_NOTIFICATION_DEDUPE_WINDOW_MS) {
+      recentErrorNotifications.delete(storedKey);
+    }
+  });
+  if (now - lastShownAt < LOG_NOTIFICATION_DEDUPE_WINDOW_MS) {
+    return false;
+  }
+  recentErrorNotifications.set(key, now);
+  return true;
+}
+function removeNotification(notification) {
+  if (!notification.parentNode) {
+    return;
+  }
+  notification.classList.add("fade-out");
+  notification.classList.remove("fade-in");
+  setTimeout(() => notification.remove(), 500);
+}
+function clearLogErrorNotifications() {
+  activeErrorNotifications.forEach(removeNotification);
+  activeErrorNotifications.clear();
+  recentErrorNotifications.clear();
+}
+function showLogErrorNotification(line) {
+  const key = getNotificationKey(line);
+  const existingNotification = activeErrorNotifications.get(key);
+  if (existingNotification) {
+    removeNotification(existingNotification);
+  }
+  const notification = ui.addNotification(
+    _("Podkop Plus Error"),
+    E("div", {}, line),
+    "error",
+    "pdk-log-error-notification"
+  );
+  activeErrorNotifications.set(key, notification);
+}
+function coreService() {
+  TabServiceInstance.onChange((activeId, tabs) => {
+    logger.info("[TAB]", activeId);
+    store.set({
+      tabService: {
+        current: activeId || "",
+        all: tabs.map((tab) => tab.id)
+      }
+    });
+  });
+  const watcher = PodkopLogWatcher.getInstance();
+  watcher.init(
+    async () => {
+      const logs = await PodkopShellMethods.checkLogs();
+      if (logs.success) {
+        return logs.data;
+      }
+      return "";
+    },
+    {
+      intervalMs: 3e3,
+      suppressInitialLogs: true,
+      onNewLog: (line) => {
+        if (isLogLifecycleBoundary(line)) {
+          clearLogErrorNotifications();
+        }
+        if (isErrorLogLine(line) && shouldNotifyAboutLogLine(line)) {
+          showLogErrorNotification(line);
+        }
+      }
+    }
+  );
+  watcher.start();
+}
+
+// src/podkop/services/socket.service.ts
+var SocketManager = class _SocketManager {
+  constructor() {
+    this.sockets = /* @__PURE__ */ new Map();
+    this.listeners = /* @__PURE__ */ new Map();
+    this.connected = /* @__PURE__ */ new Map();
+    this.errorListeners = /* @__PURE__ */ new Map();
+  }
+  static getInstance() {
+    if (!_SocketManager.instance) {
+      _SocketManager.instance = new _SocketManager();
+    }
+    return _SocketManager.instance;
+  }
+  resetAll() {
+    for (const [url, ws] of this.sockets.entries()) {
+      try {
+        if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+          ws.close();
+        }
+      } catch (err) {
+        logger.error(
+          "[SOCKET]",
+          `resetAll: failed to close socket ${url}`,
+          err
+        );
+      }
+    }
+    this.sockets.clear();
+    this.listeners.clear();
+    this.errorListeners.clear();
+    this.connected.clear();
+    logger.info("[SOCKET]", "All connections and state have been reset.");
+  }
+  connect(url) {
+    if (this.sockets.has(url)) return;
+    let ws;
+    try {
+      ws = new WebSocket(url);
+    } catch (err) {
+      logger.error(
+        "[SOCKET]",
+        `failed to construct WebSocket for ${url}:`,
+        err
+      );
+      this.triggerError(url, err instanceof Event ? err : String(err));
+      return;
+    }
+    this.sockets.set(url, ws);
+    this.connected.set(url, false);
+    this.listeners.set(url, /* @__PURE__ */ new Set());
+    this.errorListeners.set(url, /* @__PURE__ */ new Set());
+    ws.addEventListener("open", () => {
+      this.connected.set(url, true);
+      logger.info("[SOCKET]", "Connected to", url);
+    });
+    ws.addEventListener("message", (event) => {
+      const handlers = this.listeners.get(url);
+      if (handlers) {
+        for (const handler of handlers) {
+          try {
+            handler(event.data);
+          } catch (err) {
+            logger.error("[SOCKET]", `Handler error for ${url}:`, err);
+          }
+        }
+      }
+    });
+    ws.addEventListener("close", () => {
+      this.connected.set(url, false);
+      logger.warn("[SOCKET]", `Disconnected: ${url}`);
+      this.triggerError(url, "Connection closed");
+    });
+    ws.addEventListener("error", (err) => {
+      logger.error("[SOCKET]", `Socket error for ${url}:`, err);
+      this.triggerError(url, err);
+    });
+  }
+  subscribe(url, listener, onError) {
+    if (!this.errorListeners.has(url)) {
+      this.errorListeners.set(url, /* @__PURE__ */ new Set());
+    }
+    if (onError) {
+      this.errorListeners.get(url)?.add(onError);
+    }
+    if (!this.sockets.has(url)) {
+      this.connect(url);
+    }
+    if (!this.listeners.has(url)) {
+      this.listeners.set(url, /* @__PURE__ */ new Set());
+    }
+    this.listeners.get(url)?.add(listener);
+  }
+  unsubscribe(url, listener, onError) {
+    this.listeners.get(url)?.delete(listener);
+    if (onError) {
+      this.errorListeners.get(url)?.delete(onError);
+    }
+  }
+  // eslint-disable-next-line
+  send(url, data) {
+    const ws = this.sockets.get(url);
+    if (ws && this.connected.get(url)) {
+      ws.send(typeof data === "string" ? data : JSON.stringify(data));
+    } else {
+      logger.warn("[SOCKET]", `Cannot send: not connected to ${url}`);
+      this.triggerError(url, "Not connected");
+    }
+  }
+  disconnect(url) {
+    const ws = this.sockets.get(url);
+    if (ws) {
+      ws.close();
+      this.sockets.delete(url);
+      this.listeners.delete(url);
+      this.errorListeners.delete(url);
+      this.connected.delete(url);
+    }
+  }
+  disconnectAll() {
+    for (const url of this.sockets.keys()) {
+      this.disconnect(url);
+    }
+  }
+  triggerError(url, err) {
+    const handlers = this.errorListeners.get(url);
+    if (handlers) {
+      for (const cb of handlers) {
+        try {
+          cb(err);
+        } catch (e) {
+          logger.error("[SOCKET]", `Error handler threw for ${url}:`, e);
+        }
+      }
+    }
+  }
+};
+var socket = SocketManager.getInstance();
+
 // src/podkop/fetchers/fetchServicesInfo.ts
 var latestServicesInfoRequestId = 0;
 function getSettledMethodResponse(scope, result) {
@@ -3862,7 +3994,7 @@ async function renderServicesInfoWidget() {
   });
   container.replaceChildren(renderedWidget);
 }
-async function onStoreUpdate(next, prev, diff) {
+async function onStoreUpdate(_next, _prev, diff) {
   if (diff.sectionsWidget) {
     renderSectionsWidget();
   }
@@ -3958,11 +4090,11 @@ async function initController() {
 
 // src/podkop/tabs/dashboard/styles.ts
 var styles = `
-#cbi-${PODKOP_CBI_PREFIX}-dashboard-_mount_node > div {
+#cbi-${PODKOP_UCI_PACKAGE}-dashboard-_mount_node > div {
     width: 100%;
 }
 
-#cbi-${PODKOP_CBI_PREFIX}-dashboard > h3 {
+#cbi-${PODKOP_UCI_PACKAGE}-dashboard > h3 {
     display: none;
 }
 
@@ -6268,7 +6400,7 @@ function renderDiagnosticSystemInfoWidget() {
     container.replaceChildren(renderedSystemInfo);
   });
 }
-async function onStoreUpdate2(next, prev, diff) {
+async function onStoreUpdate2(_next, _prev, diff) {
   if (diff.diagnosticsChecks) {
     renderDiagnosticsChecks();
     renderWikiDisclaimerWidget();
@@ -6391,11 +6523,11 @@ async function initController2() {
 // src/podkop/tabs/diagnostic/styles.ts
 var styles4 = `
 
-#cbi-${PODKOP_CBI_PREFIX}-diagnostic-_mount_node > div {
+#cbi-${PODKOP_UCI_PACKAGE}-diagnostic-_mount_node > div {
     width: 100%;
 }
 
-#cbi-${PODKOP_CBI_PREFIX}-diagnostic > h3 {
+#cbi-${PODKOP_UCI_PACKAGE}-diagnostic > h3 {
     display: none;
 }
 
@@ -7658,25 +7790,25 @@ async function initController3(controllerDependencies = {}) {
 
 // src/podkop/tabs/monitoring/styles.ts
 var styles5 = `
-#cbi-${PODKOP_CBI_PREFIX}-monitoring-_mount_node {
+#cbi-${PODKOP_UCI_PACKAGE}-monitoring-_mount_node {
     margin: 16px 0 22px;
     padding: 0;
 }
 
-#cbi-${PODKOP_CBI_PREFIX}-monitoring-_mount_node > .cbi-value-title {
+#cbi-${PODKOP_UCI_PACKAGE}-monitoring-_mount_node > .cbi-value-title {
     display: none;
 }
 
-#cbi-${PODKOP_CBI_PREFIX}-monitoring-_mount_node > .cbi-value-field {
+#cbi-${PODKOP_UCI_PACKAGE}-monitoring-_mount_node > .cbi-value-field {
     margin-left: 0;
     width: 100%;
 }
 
-#cbi-${PODKOP_CBI_PREFIX}-monitoring-_mount_node > div {
+#cbi-${PODKOP_UCI_PACKAGE}-monitoring-_mount_node > div {
     width: 100%;
 }
 
-#cbi-${PODKOP_CBI_PREFIX}-monitoring > h3 {
+#cbi-${PODKOP_UCI_PACKAGE}-monitoring > h3 {
     display: none;
 }
 
@@ -8327,6 +8459,12 @@ function setCheckResult(component, status, latestVersion) {
 function resetCheckResult(component) {
   setCheckResult(component, null, "");
 }
+function getExpectedLatestVersionForAction(button) {
+  if (button.component !== "podkop" || button.action !== "install") {
+    return void 0;
+  }
+  return store.get().updatesChecks[button.component].latest_version || void 0;
+}
 function getCheckToastMessage(status) {
   if (status === "outdated") {
     return _("Update is available");
@@ -8408,7 +8546,8 @@ async function handleComponentAction(button) {
   try {
     const response = await PodkopShellMethods.componentAction(
       button.component,
-      button.action
+      button.action,
+      getExpectedLatestVersionForAction(button)
     );
     if (!response.success) {
       setActionLoading(button.key, false);
@@ -8626,7 +8765,7 @@ function renderUpdatesComponents() {
     container.replaceChildren(...renderedComponents);
   });
 }
-function onStoreUpdate3(next, prev, diff) {
+function onStoreUpdate3(_next, _prev, diff) {
   if (diff.diagnosticsSystemInfo || diff.updatesActions || diff.updatesChecks) {
     renderUpdatesComponents();
   }
@@ -8673,11 +8812,11 @@ async function initController4() {
 
 // src/podkop/tabs/updates/styles.ts
 var styles6 = `
-#cbi-${PODKOP_CBI_PREFIX}-updates-_mount_node > div {
+#cbi-${PODKOP_UCI_PACKAGE}-updates-_mount_node > div {
     width: 100%;
 }
 
-#cbi-${PODKOP_CBI_PREFIX}-updates > h3 {
+#cbi-${PODKOP_UCI_PACKAGE}-updates > h3 {
     display: none;
 }
 
@@ -8785,59 +8924,49 @@ ${PartialStyles}
 
 
 /* Hide extra H3 for settings tab */
-#cbi-${PODKOP_CBI_PREFIX}-settings > h3 {
+#cbi-${PODKOP_UCI_PACKAGE}-settings > h3 {
     display: none;
 }
 
 /* Hide extra H3 for rules tab */
-#cbi-${PODKOP_CBI_PREFIX}-section > h3:nth-child(1) {
-    display: none;
-}
-
-/* Hide extra H3 for nodes tab */
-#cbi-${PODKOP_CBI_PREFIX}-node > h3:nth-child(1) {
-    display: none;
-}
-
-/* Hide extra H3 for rule set tab */
-#cbi-${PODKOP_CBI_PREFIX}-ruleset > h3:nth-child(1) {
+#cbi-${PODKOP_UCI_PACKAGE}-section > h3:nth-child(1) {
     display: none;
 }
 
 /* Vertical align for remove rule action button */
-#cbi-${PODKOP_CBI_PREFIX}-section > .cbi-section-remove {
+#cbi-${PODKOP_UCI_PACKAGE}-section > .cbi-section-remove {
     margin-bottom: -32px;
 }
 
-#cbi-${PODKOP_CBI_PREFIX}-section .cbi-section-actions > div {
+#cbi-${PODKOP_UCI_PACKAGE}-section .cbi-section-actions > div {
     display: inline-flex;
     align-items: center;
     gap: 4px;
 }
 
-#cbi-${PODKOP_CBI_PREFIX}-section .cbi-section-actions {
+#cbi-${PODKOP_UCI_PACKAGE}-section .cbi-section-actions {
     text-align: right;
 }
 
 /* Rule reorder visuals */
-#cbi-${PODKOP_CBI_PREFIX}-section {
+#cbi-${PODKOP_UCI_PACKAGE}-section {
     position: relative;
 }
 
-#cbi-${PODKOP_CBI_PREFIX}-section .cbi-section-table-row {
+#cbi-${PODKOP_UCI_PACKAGE}-section .cbi-section-table-row {
     position: relative;
 }
 
-#cbi-${PODKOP_CBI_PREFIX}-section .cbi-section-table-row.placeholder {
+#cbi-${PODKOP_UCI_PACKAGE}-section .cbi-section-table-row.placeholder {
     opacity: 1;
 }
 
-#cbi-${PODKOP_CBI_PREFIX}-section .cbi-section-table-row.placeholder em {
+#cbi-${PODKOP_UCI_PACKAGE}-section .cbi-section-table-row.placeholder em {
     font-style: italic;
 }
 
-#cbi-${PODKOP_CBI_PREFIX}-section .cbi-section-table-row.drag-over-above::after,
-#cbi-${PODKOP_CBI_PREFIX}-section .cbi-section-table-row.drag-over-below::after {
+#cbi-${PODKOP_UCI_PACKAGE}-section .cbi-section-table-row.drag-over-above::after,
+#cbi-${PODKOP_UCI_PACKAGE}-section .cbi-section-table-row.drag-over-below::after {
     content: '';
     position: absolute;
     left: 10px;
@@ -8849,18 +8978,12 @@ ${PartialStyles}
     z-index: 2;
 }
 
-#cbi-${PODKOP_CBI_PREFIX}-section .cbi-section-table-row.drag-over-above::after {
+#cbi-${PODKOP_UCI_PACKAGE}-section .cbi-section-table-row.drag-over-above::after {
     top: -1px;
 }
 
-#cbi-${PODKOP_CBI_PREFIX}-section .cbi-section-table-row.drag-over-below::after {
+#cbi-${PODKOP_UCI_PACKAGE}-section .cbi-section-table-row.drag-over-below::after {
     bottom: -1px;
-}
-
-/* Vertical align for remove node action button */
-#cbi-${PODKOP_CBI_PREFIX}-node > .cbi-section-remove,
-#cbi-${PODKOP_CBI_PREFIX}-ruleset > .cbi-section-remove {
-    margin-bottom: -32px;
 }
 
 /* Centered class helper */
@@ -8967,221 +9090,34 @@ function injectGlobalStyles() {
   );
 }
 
-// src/helpers/withTimeout.ts
-async function withTimeout(promise, timeoutMs, operationName, timeoutMessage = _("Operation timed out")) {
-  let timeoutId;
-  const start = performance.now();
-  const timeoutPromise = new Promise((_2, reject) => {
-    timeoutId = setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs);
-  });
-  try {
-    return await Promise.race([promise, timeoutPromise]);
-  } finally {
-    clearTimeout(timeoutId);
-    const elapsed = performance.now() - start;
-    logger.info("[SHELL]", `[${operationName}] took ${elapsed.toFixed(2)} ms`);
-  }
-}
-
-// src/helpers/executeShellCommand.ts
-async function executeShellCommand({
-  command,
-  args,
-  timeout = COMMAND_TIMEOUT
-}) {
-  try {
-    return await withTimeout(
-      fs.exec(command, args),
-      timeout,
-      [command, ...args].join(" ")
-    );
-  } catch (err) {
-    const error = err;
-    const code = typeof error?.code === "number" ? error.code : 1;
-    return { stdout: "", stderr: error?.message, code };
-  }
-}
-
-// src/helpers/maskIP.ts
-function maskIP(ip = "") {
-  const ipv4Regex = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
-  return ip.replace(ipv4Regex, (_match, _p1, _p2, _p3, p4) => `XX.XX.XX.${p4}`);
-}
-
-// src/helpers/getProxyUrlName.ts
-function getProxyUrlName(url) {
-  try {
-    const [_link, hash] = url.split("#");
-    if (!hash) {
-      return "";
-    }
-    return decodeURIComponent(hash);
-  } catch {
-    return "";
-  }
-}
-
-// src/helpers/onMount.ts
-function getTarget(target) {
-  if (typeof target === "string") {
-    return document.getElementById(target);
-  }
-  return target;
-}
-async function onMount(target) {
-  return new Promise((resolve) => {
-    let observer = null;
-    const resolveIfMountedAndVisible = () => {
-      const mountedTarget = getTarget(target);
-      if (mountedTarget && mountedTarget.isConnected && mountedTarget.offsetParent !== null) {
-        observer?.disconnect();
-        resolve(mountedTarget);
-        return true;
-      }
-      return false;
-    };
-    if (resolveIfMountedAndVisible()) {
-      return;
-    }
-    observer = new MutationObserver(() => {
-      resolveIfMountedAndVisible();
-    });
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true,
-      attributes: true,
-      attributeFilter: ["class", "style", "hidden"]
-    });
-  });
-}
-
-// src/helpers/getClashApiUrl.ts
-function getClashWsUrl() {
-  const { hostname } = window.location;
-  return `ws://${hostname}:9090`;
-}
-function getClashUIUrl() {
-  const { hostname } = window.location;
-  return `http://${hostname}:9090/ui`;
-}
-
-// src/helpers/splitProxyString.ts
-function splitProxyString(str) {
-  return str.split("\n").map((line) => line.trim()).filter((line) => !line.startsWith("//")).filter(Boolean);
-}
-
-// src/helpers/preserveScrollForPage.ts
-function preserveScrollForPage(renderFn) {
-  const scrollY = window.scrollY;
-  renderFn();
-  requestAnimationFrame(() => {
-    window.scrollTo({ top: scrollY });
-  });
-}
-
-// src/helpers/insertIf.ts
-function insertIf(condition, elements) {
-  return condition ? elements : [];
-}
-function insertIfObj(condition, object) {
-  return condition ? object : {};
-}
-
-// src/helpers/isCopyableProxyLink.ts
-var COPYABLE_PROXY_URI_RE = /^(vless|vmess|trojan|ss|ssr|hysteria2|hy2|tuic|socks4|socks4a|socks5):\/\//i;
-var COPYABLE_PROXY_OUTBOUND_TYPES = /* @__PURE__ */ new Set([
-  "vless",
-  "vmess",
-  "trojan",
-  "shadowsocks",
-  "ss",
-  "shadowsocksr",
-  "ssr",
-  "hysteria2",
-  "hy2",
-  "tuic",
-  "socks",
-  "socks4",
-  "socks4a",
-  "socks5"
-]);
-function isCopyableProxyLink(link) {
-  return COPYABLE_PROXY_URI_RE.test((link || "").trim());
-}
-function isCopyableProxyOutboundType(type) {
-  return COPYABLE_PROXY_OUTBOUND_TYPES.has((type || "").trim().toLowerCase());
-}
-
 // src/main.ts
 if (typeof structuredClone !== "function")
   globalThis.structuredClone = (obj) => JSON.parse(JSON.stringify(obj));
 return baseclass.extend({
   ALLOWED_WITH_RUSSIA_INSIDE,
   BOOTSTRAP_DNS_SERVER_OPTIONS,
-  BUTTON_FEEDBACK_TIMEOUT,
-  CACHE_TIMEOUT,
-  COMMAND_SCHEDULING,
-  COMMAND_TIMEOUT,
-  CustomPodkopMethods,
-  DIAGNOSTICS_INITIAL_DELAY,
-  DIAGNOSTICS_UPDATE_INTERVAL,
   DNS_SERVER_OPTIONS,
   DOMAIN_LIST_OPTIONS,
   DashboardTab,
   DiagnosticTab,
-  ERROR_POLL_INTERVAL,
-  FAKEIP_CHECK_DOMAIN,
-  FETCH_TIMEOUT,
-  IP_CHECK_DOMAIN,
-  Logger,
   MonitoringTab,
   PODKOP_ACTION_PROVIDERS_AVAILABILITY_EVENT,
-  PODKOP_CBI_PREFIX,
-  PODKOP_LUCI_APP_VERSION,
-  PODKOP_LUCI_I18N_DOMAIN,
-  PODKOP_LUCI_VIEW_DIR,
-  PODKOP_LUCI_VIEW_NAMESPACE,
   PODKOP_UCI_PACKAGE,
   PodkopShellMethods,
   REGIONAL_OPTIONS,
-  RemoteFakeIPMethods,
-  STATUS_COLORS,
-  TabService,
-  TabServiceInstance,
-  UPDATE_INTERVAL_OPTIONS,
   UpdatesTab,
   bulkValidate,
   coreService,
-  executeShellCommand,
   getClashUIUrl,
-  getClashWsUrl,
-  getProxyUrlName,
   injectGlobalStyles,
-  insertIf,
-  insertIfObj,
-  isCopyableProxyLink,
-  isCopyableProxyOutboundType,
-  logger,
-  maskIP,
-  onMount,
-  parseQueryString,
   parseValueList,
-  preserveScrollForPage,
-  socket,
-  splitProxyString,
   store,
-  svgEl,
   validateDNS,
   validateDomain,
   validateIPV4,
   validateOutboundJson,
   validatePath,
   validateProxyUrl,
-  validateShadowsocksUrl,
-  validateSocksUrl,
   validateSubnet,
-  validateTrojanUrl,
-  validateUrl,
-  validateVlessUrl,
-  withTimeout
+  validateUrl
 });

@@ -6,7 +6,7 @@ type TabInfo = {
 
 type TabChangeCallback = (activeId: string | null, allTabs: TabInfo[]) => void;
 
-export class TabService {
+class TabService {
   private static instance: TabService;
   private observer: MutationObserver | null = null;
   private callback?: TabChangeCallback;
@@ -73,19 +73,6 @@ export class TabService {
   public onChange(callback: TabChangeCallback) {
     this.callback = callback;
     this.notify();
-  }
-
-  public getAllTabs(): TabInfo[] {
-    return this.getTabsInfo();
-  }
-
-  public getActiveTab(): string | null {
-    return this.getActiveTabId();
-  }
-
-  public disconnect() {
-    this.observer?.disconnect();
-    this.observer = null;
   }
 }
 

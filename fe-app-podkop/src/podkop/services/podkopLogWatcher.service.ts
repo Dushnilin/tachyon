@@ -1,8 +1,8 @@
 import { logger } from './logger.service';
 
-export type LogFetcher = () => Promise<string> | string;
+type LogFetcher = () => Promise<string> | string;
 
-export interface PodkopLogWatcherOptions {
+interface PodkopLogWatcherOptions {
   intervalMs?: number;
   onNewLog?: (line: string) => void;
   suppressInitialLogs?: boolean;

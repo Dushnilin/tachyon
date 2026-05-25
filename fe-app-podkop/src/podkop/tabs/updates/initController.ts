@@ -120,6 +120,14 @@ function resetCheckResult(component: Podkop.ComponentName) {
   setCheckResult(component, null, '');
 }
 
+function getExpectedLatestVersionForAction(button: ComponentActionButton) {
+  if (button.component !== 'podkop' || button.action !== 'install') {
+    return undefined;
+  }
+
+  return store.get().updatesChecks[button.component].latest_version || undefined;
+}
+
 function getCheckToastMessage(status: UpdateStatus) {
   if (status === 'outdated') {
     return _('Update is available');
@@ -225,6 +233,7 @@ async function handleComponentAction(button: ComponentActionButton) {
     const response = await PodkopShellMethods.componentAction(
       button.component,
       button.action,
+      getExpectedLatestVersionForAction(button),
     );
 
     if (!response.success) {
@@ -496,8 +505,8 @@ function renderUpdatesComponents() {
 }
 
 function onStoreUpdate(
-  next: StoreType,
-  prev: StoreType,
+  _next: StoreType,
+  _prev: StoreType,
   diff: Partial<StoreType>,
 ) {
   if (diff.diagnosticsSystemInfo || diff.updatesActions || diff.updatesChecks) {

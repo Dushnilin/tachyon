@@ -19,7 +19,7 @@ import {
   renderSystemInfo,
 } from './partials';
 import { PodkopShellMethods } from '../../methods';
-import { fetchServicesInfo } from '../../fetchers';
+import { fetchServicesInfo } from '../../fetchers/fetchServicesInfo';
 import { normalizeCompiledVersion } from '../../../helpers/normalizeCompiledVersion';
 import { renderModal } from '../../../partials';
 import { PODKOP_LUCI_APP_VERSION } from '../../../constants';
@@ -665,8 +665,8 @@ function renderDiagnosticSystemInfoWidget() {
 }
 
 async function onStoreUpdate(
-  next: StoreType,
-  prev: StoreType,
+  _next: StoreType,
+  _prev: StoreType,
   diff: Partial<StoreType>,
 ) {
   if (diff.diagnosticsChecks) {

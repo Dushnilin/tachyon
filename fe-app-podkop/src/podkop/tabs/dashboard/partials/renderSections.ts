@@ -318,7 +318,7 @@ function renderSubscriptionUpdateAction(
   );
 }
 
-export function renderDefaultState({
+function renderDefaultState({
   section,
   onChooseOutbound,
   onCopyOutbound,
