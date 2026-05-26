@@ -122,6 +122,154 @@ http_get() {
     esac
 }
 
+install_json_helper_path() {
+    helper_path="$TMP_DIR/install-json.uc"
+
+    if [ ! -s "$helper_path" ]; then
+        cat > "$helper_path" <<'EOF'
+#!/usr/bin/env ucode
+
+let fs = require("fs");
+
+function as_string(value) {
+    return value == null ? "" : "" + value;
+}
+
+function read_stdin() {
+    let input = fs.open("/dev/stdin", "r");
+    if (!input)
+        return "";
+    let data = input.read("all");
+    input.close();
+    return data == null ? "" : data;
+}
+
+function read_json_file(path) {
+    try {
+        return json(fs.readfile(path));
+    }
+    catch (e) {
+        return null;
+    }
+}
+
+function read_stdin_json() {
+    try {
+        return json(read_stdin());
+    }
+    catch (e) {
+        return null;
+    }
+}
+
+function starts_with(value, prefix) {
+    value = as_string(value);
+    prefix = as_string(prefix);
+    return substr(value, 0, length(prefix)) == prefix;
+}
+
+function ends_with(value, suffix) {
+    value = as_string(value);
+    suffix = as_string(suffix);
+    return length(value) >= length(suffix) && substr(value, length(value) - length(suffix)) == suffix;
+}
+
+function asset_matches(name, kind, ext) {
+    let suffix = "." + ext;
+    if (!ends_with(name, suffix))
+        return false;
+
+    if (kind == "backend")
+        return starts_with(name, "podkop-plus_") || starts_with(name, "podkop-plus-");
+    if (kind == "app")
+        return starts_with(name, "luci-app-podkop-plus_") || starts_with(name, "luci-app-podkop-plus-");
+    if (kind == "i18n")
+        return starts_with(name, "luci-i18n-podkop-plus-ru_") || starts_with(name, "luci-i18n-podkop-plus-ru-");
+    return false;
+}
+
+function release_has_asset(release, kind, ext) {
+    if (type(release) != "object" || type(release.assets) != "array")
+        return false;
+    for (let asset in release.assets)
+        if (type(asset) == "object" && asset_matches(asset.name, kind, ext))
+            return true;
+    return false;
+}
+
+function github_message() {
+    let value = read_stdin_json();
+    if (value == null)
+        exit(2);
+    if (type(value) == "object" && value.message != null)
+        print(as_string(value.message), "\n");
+}
+
+function release_tags(path, ext) {
+    for (let release in (read_json_file(path) || [])) {
+        if (type(release) != "object")
+            continue;
+        if (release.draft === true || release.prerelease === true)
+            continue;
+        if (!release_has_asset(release, "backend", ext) || !release_has_asset(release, "app", ext))
+            continue;
+        let tag = as_string(release.tag_name || "");
+        if (tag != "")
+            print(tag, "\n");
+    }
+}
+
+function release_by_tag(path, tag) {
+    for (let release in (read_json_file(path) || [])) {
+        if (type(release) == "object" && as_string(release.tag_name || "") == tag) {
+            print(sprintf("%J", release), "\n");
+            return;
+        }
+    }
+}
+
+function release_tag() {
+    let release = read_stdin_json();
+    if (type(release) == "object" && release.tag_name != null)
+        print(as_string(release.tag_name), "\n");
+}
+
+function release_asset_url(kind, ext) {
+    let release = read_stdin_json();
+    if (type(release) != "object" || type(release.assets) != "array")
+        return;
+    for (let asset in release.assets) {
+        if (type(asset) == "object" && asset_matches(asset.name, kind, ext)) {
+            print(as_string(asset.browser_download_url || ""), "\n");
+            return;
+        }
+    }
+}
+
+let mode = ARGV[0] || "";
+
+if (mode == "github-message")
+    github_message();
+else if (mode == "release-tags")
+    release_tags(ARGV[1], ARGV[2]);
+else if (mode == "release-by-tag")
+    release_by_tag(ARGV[1], ARGV[2]);
+else if (mode == "release-tag")
+    release_tag();
+else if (mode == "release-asset-url")
+    release_asset_url(ARGV[1], ARGV[2]);
+else
+    exit(1);
+EOF
+    fi
+
+    printf '%s\n' "$helper_path"
+}
+
+install_json_ucode() {
+    ucode "$(install_json_helper_path)" "$@"
+}
+
 download_file_once() {
     case "$FETCHER" in
         wget)
@@ -487,9 +635,8 @@ fetch_github_releases_json() {
     response="$(http_get "$url" 2>/dev/null || true)"
     [ -n "$response" ] || fail "Failed to query GitHub releases metadata for ${owner}/${repo}"
 
-    printf '%s' "$response" | jq -e . >/dev/null 2>&1 || fail "GitHub returned an invalid response for ${owner}/${repo}"
-
-    message="$(printf '%s' "$response" | jq -r 'if type == "object" then (.message // empty) else empty end' 2>/dev/null)"
+    message="$(printf '%s' "$response" | install_json_ucode github-message 2>/dev/null)" ||
+        fail "GitHub returned an invalid response for ${owner}/${repo}"
     case "$message" in
         *"API rate limit"*|*"rate limit exceeded"*)
             fail "GitHub API rate limit reached. Try again later."
@@ -511,13 +658,7 @@ select_latest_podkop_plus_release_json() {
     releases_file="$(mktemp)"
     cat > "$releases_file"
 
-    for tag in $(jq -r --arg ext "$asset_ext" '
-        .[]
-        | select(((.draft // false) | not) and ((.prerelease // false) | not))
-        | select(any(.assets[]?; ((.name | startswith("podkop-plus_")) or (.name | startswith("podkop-plus-"))) and (.name | endswith("." + $ext))))
-        | select(any(.assets[]?; ((.name | startswith("luci-app-podkop-plus_")) or (.name | startswith("luci-app-podkop-plus-"))) and (.name | endswith("." + $ext))))
-        | .tag_name // empty
-    ' "$releases_file"); do
+    for tag in $(install_json_ucode release-tags "$releases_file" "$asset_ext"); do
         podkop_plus_release_version_parts "$tag" >/dev/null 2>&1 || continue
 
         if [ -z "$best_tag" ] || podkop_plus_release_version_lt "$best_tag" "$tag"; then
@@ -526,7 +667,7 @@ select_latest_podkop_plus_release_json() {
     done
 
     if [ -n "$best_tag" ]; then
-        jq -c --arg tag "$best_tag" '.[] | select(.tag_name == $tag)' "$releases_file" | sed -n '1p'
+        install_json_ucode release-by-tag "$releases_file" "$best_tag" | sed -n '1p'
     fi
 
     rm -f "$releases_file"
@@ -538,13 +679,13 @@ resolve_podkop_plus_release() {
     [ "$PKG_IS_APK" -eq 1 ] && asset_ext="apk"
 
     PODKOP_PLUS_RELEASE_JSON="$(fetch_github_releases_json "$REPO_OWNER" "$REPO_NAME" | select_latest_podkop_plus_release_json "$asset_ext")"
-    PODKOP_PLUS_RELEASE_TAG="$(printf '%s' "$PODKOP_PLUS_RELEASE_JSON" | jq -r '.tag_name // empty')"
+    PODKOP_PLUS_RELEASE_TAG="$(printf '%s' "$PODKOP_PLUS_RELEASE_JSON" | install_json_ucode release-tag 2>/dev/null)"
     [ -n "$PODKOP_PLUS_RELEASE_TAG" ] || fail "Failed to detect the Podkop Plus release tag"
 
-    PODKOP_PLUS_BACKEND_URL="$(printf '%s' "$PODKOP_PLUS_RELEASE_JSON" | jq -r --arg ext "$asset_ext" '.assets[] | select(((.name | startswith("podkop-plus_")) or (.name | startswith("podkop-plus-"))) and (.name | endswith("." + $ext))) | .browser_download_url' | sed -n '1p')"
+    PODKOP_PLUS_BACKEND_URL="$(printf '%s' "$PODKOP_PLUS_RELEASE_JSON" | install_json_ucode release-asset-url backend "$asset_ext" 2>/dev/null | sed -n '1p')"
     [ -n "$PODKOP_PLUS_BACKEND_URL" ] || fail "The Podkop Plus release does not contain a podkop-plus .$asset_ext package"
 
-    PODKOP_PLUS_APP_URL="$(printf '%s' "$PODKOP_PLUS_RELEASE_JSON" | jq -r --arg ext "$asset_ext" '.assets[] | select(((.name | startswith("luci-app-podkop-plus_")) or (.name | startswith("luci-app-podkop-plus-"))) and (.name | endswith("." + $ext))) | .browser_download_url' | sed -n '1p')"
+    PODKOP_PLUS_APP_URL="$(printf '%s' "$PODKOP_PLUS_RELEASE_JSON" | install_json_ucode release-asset-url app "$asset_ext" 2>/dev/null | sed -n '1p')"
     [ -n "$PODKOP_PLUS_APP_URL" ] || fail "The Podkop Plus release does not contain a luci-app-podkop-plus .$asset_ext package"
 
     PODKOP_PLUS_BACKEND_NAME="$(basename "$PODKOP_PLUS_BACKEND_URL")"
@@ -555,7 +696,7 @@ resolve_podkop_plus_release() {
     PODKOP_PLUS_I18N_NAME=""
 
     if [ "$PODKOP_PLUS_I18N_REQUESTED" -eq 1 ]; then
-        PODKOP_PLUS_I18N_URL="$(printf '%s' "$PODKOP_PLUS_RELEASE_JSON" | jq -r --arg ext "$asset_ext" '.assets[] | select(((.name | startswith("luci-i18n-podkop-plus-ru_")) or (.name | startswith("luci-i18n-podkop-plus-ru-"))) and (.name | endswith("." + $ext))) | .browser_download_url' | sed -n '1p')"
+        PODKOP_PLUS_I18N_URL="$(printf '%s' "$PODKOP_PLUS_RELEASE_JSON" | install_json_ucode release-asset-url i18n "$asset_ext" 2>/dev/null | sed -n '1p')"
         [ -n "$PODKOP_PLUS_I18N_URL" ] || fail "The Podkop Plus release does not contain a luci-i18n-podkop-plus-ru .$asset_ext package"
         PODKOP_PLUS_I18N_NAME="$(basename "$PODKOP_PLUS_I18N_URL")"
     fi
@@ -740,7 +881,7 @@ main() {
     deactivate_original_podkop_if_present
 
     pkg_list_update || fail "Failed to update package lists"
-    ensure_bootstrap_tool "jq" "jq"
+    ensure_bootstrap_tool "ucode" "ucode"
 
     resolve_podkop_plus_release
     remove_conflicting_dns_proxy

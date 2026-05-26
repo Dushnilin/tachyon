@@ -1,6 +1,97 @@
-PODKOP_LIB="/usr/lib/podkop-plus"
+PODKOP_LIB="${PODKOP_LIB:-/usr/lib/podkop-plus}"
 . "$PODKOP_LIB/helpers.sh"
 . "$PODKOP_LIB/sing_box_config_manager.sh"
+
+sing_box_cf_ucode() {
+    ucode "${PODKOP_LIB:-/usr/lib/podkop-plus}/sing_box_config_facade.uc" "$@"
+}
+
+sing_box_cf_ucode_input() {
+    local operation="$1"
+    local input="$2"
+    shift 2
+
+    printf '%s' "$input" |
+        ucode "${PODKOP_LIB:-/usr/lib/podkop-plus}/sing_box_config_facade.uc" "$operation" "$@"
+}
+
+sing_box_cf_tags_json_object() {
+    printf '{"tags":%s}' "${1:-[]}"
+}
+
+sing_box_cf_tags_json_count() {
+    sing_box_cf_ucode_input prepared-length "$(sing_box_cf_tags_json_object "$1")" tags 2>/dev/null
+}
+
+sing_box_cf_tags_json_csv() {
+    sing_box_cf_ucode_input prepared-tags-csv "$(sing_box_cf_tags_json_object "$1")" 2>/dev/null
+}
+
+sing_box_cf_outbounds_json_object() {
+    printf '{"outbounds":%s}' "${1:-[]}"
+}
+
+sing_box_cf_outbounds_json_count() {
+    sing_box_cf_ucode_input prepared-length "$(sing_box_cf_outbounds_json_object "$1")" outbounds 2>/dev/null
+}
+
+sing_box_cf_json_arrays_concat() {
+    local first_json="$1"
+    local second_json="$2"
+    local first_tmp second_tmp result status
+
+    first_tmp="$(mktemp)" || return 1
+    second_tmp="$(mktemp)" || {
+        rm -f "$first_tmp"
+        return 1
+    }
+
+    printf '%s' "$first_json" > "$first_tmp" || {
+        rm -f "$first_tmp" "$second_tmp"
+        return 1
+    }
+    printf '%s' "$second_json" > "$second_tmp" || {
+        rm -f "$first_tmp" "$second_tmp"
+        return 1
+    }
+
+    result="$(ucode "$PODKOP_LIB/json_utils.uc" arrays-concat "$first_tmp" "$second_tmp" 2>/dev/null)"
+    status=$?
+    rm -f "$first_tmp" "$second_tmp"
+
+    [ "$status" -eq 0 ] || return 1
+    [ -n "$result" ] || return 1
+    printf '%s\n' "$result"
+}
+
+sing_box_cf_json_objects_merge() {
+    local first_json="$1"
+    local second_json="$2"
+    local first_tmp second_tmp result status
+
+    first_tmp="$(mktemp)" || return 1
+    second_tmp="$(mktemp)" || {
+        rm -f "$first_tmp"
+        return 1
+    }
+
+    printf '%s' "$first_json" > "$first_tmp" || {
+        rm -f "$first_tmp" "$second_tmp"
+        return 1
+    }
+    printf '%s' "$second_json" > "$second_tmp" || {
+        rm -f "$first_tmp" "$second_tmp"
+        return 1
+    }
+
+    result="$(ucode "$PODKOP_LIB/json_utils.uc" objects-merge "$first_tmp" "$second_tmp" 2>/dev/null)"
+    status=$?
+    rm -f "$first_tmp" "$second_tmp"
+
+    [ "$status" -eq 0 ] || return 1
+    [ -n "$result" ] || return 1
+    printf '%s\n' "$result"
+}
 
 sing_box_cf_add_dns_server() {
     local config="$1"
@@ -362,14 +453,7 @@ sing_box_cf_add_single_key_reject_rule() {
 sing_box_cf_subscription_candidate_outbounds() {
     local subscription_json_path="$1"
 
-    jq -c '[.outbounds[]? | select(
-        type == "object" and
-        .type != "selector" and
-        .type != "urltest" and
-        .type != "direct" and
-        .type != "dns" and
-        .type != "block"
-    )]' "$subscription_json_path" 2>/dev/null
+    sing_box_cf_ucode candidate-outbounds "$subscription_json_path" 2>/dev/null
 }
 
 sing_box_cf_log_subscription_skips() {
@@ -377,19 +461,13 @@ sing_box_cf_log_subscription_skips() {
     local context="$2"
     local skipped_count reason_summary
 
-    skipped_count="$(printf '%s' "$prepared_json" | jq -r '.skipped // 0' 2>/dev/null)"
+    skipped_count="$(sing_box_cf_ucode_input skip-count "$prepared_json" 2>/dev/null)"
     case "$skipped_count" in
     '' | *[!0-9]*) return 0 ;;
     esac
     [ "$skipped_count" -gt 0 ] || return 0
 
-    reason_summary="$(printf '%s' "$prepared_json" | jq -r '
-        (.skipped_reason_counts // {})
-        | to_entries
-        | sort_by([-.value, .key])
-        | map("\(.value)x \(.key)")
-        | join("; ")
-    ' 2>/dev/null)"
+    reason_summary="$(sing_box_cf_ucode_input skip-summary "$prepared_json" 2>/dev/null)"
 
     if [ -n "$reason_summary" ]; then
         log "Skipped $skipped_count subscription outbounds $context: $reason_summary" "warn"
@@ -400,43 +478,21 @@ sing_box_cf_log_subscription_skips() {
 
 sing_box_cf_subscription_plugin_supports() {
     local outbounds_json="$1"
-    local plugins_tmp records_tmp plugin_name plugin_supports_json supported
+    local records_tmp plugin_name plugin_supports_json supported
 
-    plugins_tmp="$(mktemp)" || return 1
-    records_tmp="$(mktemp)" || {
-        rm -f "$plugins_tmp"
-        return 1
-    }
-
-    printf '%s' "$outbounds_json" | jq -r '
-        .[]?
-        | select(.type == "shadowsocks")
-        | (.plugin // empty)
-        | tostring
-        | split(";")[0]
-        | select(. != "")
-    ' 2>/dev/null | sort -u > "$plugins_tmp"
+    records_tmp="$(mktemp)" || return 1
 
     : > "$records_tmp"
+    sing_box_cf_ucode_input plugin-names "$outbounds_json" 2>/dev/null |
     while IFS= read -r plugin_name || [ -n "$plugin_name" ]; do
         [ -n "$plugin_name" ] || continue
         command -v "$plugin_name" >/dev/null 2>&1 && supported=true || supported=false
         printf '%s\t%s\n' "$plugin_name" "$supported" >> "$records_tmp"
-    done < "$plugins_tmp"
+    done
 
-    plugin_supports_json="$(jq -Rn '
-        reduce inputs as $line (
-            {};
-            ($line | split("\t")) as $parts
-            | if ($parts | length) >= 2 and $parts[0] != "" then
-                .[$parts[0]] = ($parts[1] == "true")
-              else
-                .
-              end
-        )
-    ' < "$records_tmp" 2>/dev/null)"
+    plugin_supports_json="$(sing_box_cf_ucode plugin-supports-from-records "$records_tmp" 2>/dev/null)"
 
-    rm -f "$plugins_tmp" "$records_tmp"
+    rm -f "$records_tmp"
     [ -n "$plugin_supports_json" ] || plugin_supports_json="{}"
     printf '%s\n' "$plugin_supports_json"
 }
@@ -444,8 +500,7 @@ sing_box_cf_subscription_plugin_supports() {
 sing_box_cf_prepare_subscription_batch() {
     local config="$1"
     local outbounds_json="$2"
-    local existing_tags_json existing_tags_tmp outbounds_tmp prepared_json jq_status supports_xhttp plugin_supports_json \
-        parser_path config_tmp plugin_supports_tmp prepared_tmp
+    local outbounds_tmp prepared_json supports_xhttp plugin_supports_json config_tmp plugin_supports_tmp prepared_tmp
 
     supports_xhttp=false
     if is_sing_box_extended; then
@@ -454,189 +509,42 @@ sing_box_cf_prepare_subscription_batch() {
     plugin_supports_json="$(sing_box_cf_subscription_plugin_supports "$outbounds_json")"
     [ -n "$plugin_supports_json" ] || plugin_supports_json="{}"
 
-    existing_tags_json="$(printf '%s' "$config" | jq -c '[.outbounds[]?.tag // empty]' 2>/dev/null)"
-    [ -n "$existing_tags_json" ] || existing_tags_json="[]"
-
-    existing_tags_tmp="$(mktemp)" || return 1
-    outbounds_tmp="$(mktemp)" || {
-        rm -f "$existing_tags_tmp"
-        return 1
-    }
-
-    printf '%s' "$existing_tags_json" > "$existing_tags_tmp" || {
-        rm -f "$existing_tags_tmp" "$outbounds_tmp"
-        return 1
-    }
+    outbounds_tmp="$(mktemp)" || return 1
     printf '%s' "$outbounds_json" > "$outbounds_tmp" || {
-        rm -f "$existing_tags_tmp" "$outbounds_tmp"
+        rm -f "$outbounds_tmp"
         return 1
     }
 
-    parser_path="${PODKOP_LIB:-/usr/lib/podkop-plus}/subscription_parser.lua"
-    if command -v lua >/dev/null 2>&1 && [ -r "$parser_path" ]; then
-        config_tmp="$(mktemp)" || {
-            rm -f "$existing_tags_tmp" "$outbounds_tmp"
-            return 1
-        }
-        plugin_supports_tmp="$(mktemp)" || {
-            rm -f "$existing_tags_tmp" "$outbounds_tmp" "$config_tmp"
-            return 1
-        }
-        prepared_tmp="$(mktemp)" || {
-            rm -f "$existing_tags_tmp" "$outbounds_tmp" "$config_tmp" "$plugin_supports_tmp"
-            return 1
-        }
+    command -v ucode >/dev/null 2>&1 || {
+        rm -f "$outbounds_tmp"
+        return 1
+    }
 
-        if printf '%s' "$config" > "$config_tmp" &&
-            printf '%s' "$plugin_supports_json" > "$plugin_supports_tmp" &&
-            lua "$parser_path" prepare "$config_tmp" "$outbounds_tmp" "$prepared_tmp" "$supports_xhttp" "$plugin_supports_tmp" &&
-            prepared_json="$(cat "$prepared_tmp" 2>/dev/null)" &&
-            [ -n "$prepared_json" ]; then
-            rm -f "$existing_tags_tmp" "$outbounds_tmp" "$config_tmp" "$plugin_supports_tmp" "$prepared_tmp"
-            printf '%s\n' "$prepared_json"
-            return 0
-        fi
+    config_tmp="$(mktemp)" || {
+        rm -f "$outbounds_tmp"
+        return 1
+    }
+    plugin_supports_tmp="$(mktemp)" || {
+        rm -f "$outbounds_tmp" "$config_tmp"
+        return 1
+    }
+    prepared_tmp="$(mktemp)" || {
+        rm -f "$outbounds_tmp" "$config_tmp" "$plugin_supports_tmp"
+        return 1
+    }
 
-        rm -f "$config_tmp" "$plugin_supports_tmp" "$prepared_tmp"
-        log "Lua subscription batch preparation failed; falling back to jq preparation" "warn"
+    if printf '%s' "$config" > "$config_tmp" &&
+        printf '%s' "$plugin_supports_json" > "$plugin_supports_tmp" &&
+        sing_box_cf_ucode prepare-subscription "$config_tmp" "$outbounds_tmp" "$prepared_tmp" "$supports_xhttp" "$plugin_supports_tmp" &&
+        prepared_json="$(cat "$prepared_tmp" 2>/dev/null)" &&
+        [ -n "$prepared_json" ]; then
+        rm -f "$outbounds_tmp" "$config_tmp" "$plugin_supports_tmp" "$prepared_tmp"
+        printf '%s\n' "$prepared_json"
+        return 0
     fi
 
-    prepared_json="$(jq -c --slurpfile existing_tags "$existing_tags_tmp" \
-        --argjson supports_xhttp "$supports_xhttp" \
-        --argjson plugin_supports "$plugin_supports_json" '
-        ($existing_tags[0] // []) as $existing_tags
-        |
-        def safe_string($value; $fallback):
-            (($value // $fallback) | tostring) as $result
-            | if $result == "" or $result == "null" then $fallback else $result end;
-
-        def non_empty_string($value):
-            ($value | type) == "string" and $value != "";
-
-        def valid_server($outbound):
-            non_empty_string($outbound.server // null);
-
-        def valid_server_port($outbound):
-            ($outbound.server_port | type) == "number" and
-            (($outbound.server_port | floor) == $outbound.server_port) and
-            $outbound.server_port >= 1 and
-            $outbound.server_port <= 65535;
-
-        def type_requires_server($type):
-            ["vless", "vmess", "trojan", "shadowsocks", "socks", "hysteria2"] | index($type) != null;
-
-        def supported_flow($flow):
-            ($flow == null) or ($flow == "") or ($flow == "xtls-rprx-vision");
-
-        def supported_transport_type($transport):
-            ["http", "ws", "quic", "grpc", "httpupgrade", "xhttp", "kcp"] | index($transport) != null;
-
-        def supported_shadowsocks_method($method):
-            [
-                "none",
-                "aes-128-gcm", "aes-192-gcm", "aes-256-gcm",
-                "chacha20-ietf-poly1305", "xchacha20-ietf-poly1305",
-                "2022-blake3-aes-128-gcm", "2022-blake3-aes-256-gcm", "2022-blake3-chacha20-poly1305",
-                "aes-128-cfb", "aes-192-cfb", "aes-256-cfb",
-                "aes-128-ctr", "aes-192-ctr", "aes-256-ctr",
-                "chacha20", "chacha20-ietf", "xchacha20",
-                "salsa20", "rc4-md5"
-            ] | index($method) != null;
-
-        def reality_enabled($outbound):
-            ($outbound.tls.reality? | type) == "object" and (($outbound.tls.reality.enabled // true) == true);
-
-        def plugin_name($plugin):
-            ($plugin | tostring | split(";")[0]);
-
-        def prefilter_skip_reason($outbound):
-            ($outbound.type // "" | tostring) as $type
-            | if $type == "" then
-                "missing outbound type"
-              elif ($outbound.type != ($outbound.type | tostring)) then
-                "outbound type must be a string"
-              elif type_requires_server($type) and (valid_server($outbound) | not) then
-                "missing or empty server"
-              elif type_requires_server($type) and (valid_server_port($outbound) | not) then
-                "missing or invalid server_port"
-              elif ($type == "vless" or $type == "vmess") and (non_empty_string($outbound.uuid // null) | not) then
-                "missing uuid"
-              elif ($type == "trojan" or $type == "hysteria2") and (non_empty_string($outbound.password // null) | not) then
-                "missing password"
-              elif $type == "shadowsocks" and (non_empty_string($outbound.method // null) | not) then
-                "missing shadowsocks method"
-              elif $type == "shadowsocks" and (non_empty_string($outbound.password // null) | not) then
-                "missing shadowsocks password"
-              elif $type == "shadowsocks" and (supported_shadowsocks_method($outbound.method) | not) then
-                "unsupported shadowsocks method: \($outbound.method)"
-              elif $type == "shadowsocks" and non_empty_string($outbound.plugin // null) and (($plugin_supports[plugin_name($outbound.plugin)] // false) | not) then
-                "shadowsocks plugin is not installed: \(plugin_name($outbound.plugin))"
-              elif reality_enabled($outbound) and (non_empty_string($outbound.tls.reality.public_key // null) | not) then
-                "reality public_key is missing"
-              elif ($type == "vless") and (supported_flow($outbound.flow // "") | not) then
-                "unsupported vless flow: \($outbound.flow)"
-              elif (($outbound.transport? | type) == "object") and (($outbound.transport.type // "" | tostring) == "") then
-                "missing transport type"
-              elif (($outbound.transport? | type) == "object") and (supported_transport_type(($outbound.transport.type // "") | tostring) | not) then
-                "unknown transport type: \($outbound.transport.type)"
-              elif (($outbound.transport? | type) == "object") and (($outbound.transport.type // "" | tostring) == "xhttp") and ($supports_xhttp | not) then
-                "transport xhttp requires sing-box-extended"
-              elif ($type == "shadowsocks" and (($outbound.tls.enabled // false) == true)) then
-                "shadowsocks with TLS is not supported"
-              else
-                ""
-              end;
-
-        def unique_tag($base; $taken):
-            if (($taken[$base] // false) | not) then
-                $base
-            else
-                first(range(1; 100000) as $n
-                    | "\($base)-\($n)"
-                    | select((($taken[.] // false) | not)))
-            end;
-
-        . as $subscription_outbounds |
-        reduce range(0; ($subscription_outbounds | length)) as $source_index (
-            {
-                outbounds: [],
-                tags: [],
-                names: [],
-                servers: [],
-                links: [],
-                source_indices: [],
-                skipped: 0,
-                skipped_reason_counts: {},
-                taken: (reduce $existing_tags[] as $tag ({}; .[$tag] = true))
-            };
-            $subscription_outbounds[$source_index] as $outbound
-            |
-            ((.outbounds | length) + 1) as $index
-            | safe_string($outbound.remark // $outbound.tag; "server-\($index)") as $display_name
-            | prefilter_skip_reason($outbound) as $skip_reason
-            | if $skip_reason != "" then
-                .skipped += 1
-                | .skipped_reason_counts[$skip_reason] = ((.skipped_reason_counts[$skip_reason] // 0) + 1)
-              else
-                safe_string($outbound.tag // $outbound.remark; "server-\($index)") as $base_tag
-                | (.taken as $taken | unique_tag($base_tag; $taken)) as $tag
-                | .outbounds += [($outbound | del(.tag, .remark, .share_link) + {tag: $tag})]
-                | .tags += [$tag]
-                | .names += [$display_name]
-                | .servers += [($outbound.server // "")]
-                | .links += [($outbound.share_link // "")]
-                | .source_indices += [($source_index + 1)]
-                | .taken[$tag] = true
-              end
-        )
-        | del(.taken)
-    ' "$outbounds_tmp" 2>/dev/null)"
-    jq_status=$?
-    rm -f "$existing_tags_tmp" "$outbounds_tmp"
-
-    [ "$jq_status" -eq 0 ] || return 1
-    [ -n "$prepared_json" ] || return 1
-    printf '%s\n' "$prepared_json"
+    rm -f "$outbounds_tmp" "$config_tmp" "$plugin_supports_tmp" "$prepared_tmp"
+    return 1
 }
 
 sing_box_cf_validation_error_summary() {
@@ -654,52 +562,47 @@ sing_box_cf_validation_error_summary() {
 sing_box_cf_try_subscription_outbounds_batch() {
     local config="$1"
     local new_outbounds="$2"
-    local new_outbounds_tmp config_tmp validation_tmp validation_config updated_config jq_status check_output
+    local new_outbounds_tmp updated_tmp validation_tmp check_tmp validation_config check_output
 
     SING_BOX_CF_VALIDATED_CONFIG=""
     SING_BOX_CF_VALIDATION_ERROR=""
 
     new_outbounds_tmp="$(mktemp)" || return 1
-    config_tmp="$(mktemp)" || {
+    updated_tmp="$(mktemp)" || {
         rm -f "$new_outbounds_tmp"
         return 1
     }
-
-    printf '%s' "$new_outbounds" > "$new_outbounds_tmp" || {
-        rm -f "$new_outbounds_tmp" "$config_tmp"
+    validation_tmp="$(mktemp)" || {
+        rm -f "$new_outbounds_tmp" "$updated_tmp"
         return 1
     }
-    printf '%s' "$config" > "$config_tmp" || {
-        rm -f "$new_outbounds_tmp" "$config_tmp"
+    check_tmp="$(mktemp)" || {
+        rm -f "$new_outbounds_tmp" "$updated_tmp" "$validation_tmp"
         return 1
     }
 
-    updated_config="$(jq -c --slurpfile new_outbounds "$new_outbounds_tmp" \
-        '.outbounds += ($new_outbounds[0] // [])' "$config_tmp" 2>/dev/null)"
-    jq_status=$?
-    rm -f "$new_outbounds_tmp" "$config_tmp"
-
-    [ "$jq_status" -eq 0 ] || return 1
-    [ -n "$updated_config" ] || return 1
-    updated_config="$(printf '%s' "$updated_config" | jq -c 'del(.outbounds[]?.share_link, .outbounds[]?.remark)' 2>/dev/null)" || return 1
-    [ -n "$updated_config" ] || return 1
-
-    validation_config="$(printf '%s' "$updated_config" | jq -c '
-        (first(.outbounds[]? | select(.type == "direct") | .tag) // "direct-out") as $direct
-        | .route = ((.route // {}) + {rules: [], rule_set: [], final: $direct})
-    ' 2>/dev/null)" || return 1
-    [ -n "$validation_config" ] || return 1
-
-    validation_tmp="$(mktemp)" || return 1
-    sing_box_cm_save_config_to_file "$validation_config" "$validation_tmp"
-    if ! check_output="$(sing-box -c "$validation_tmp" check 2>&1)"; then
-        SING_BOX_CF_VALIDATION_ERROR="$(sing_box_cf_validation_error_summary "$check_output")"
-        rm -f "$validation_tmp"
+    if ! printf '%s' "$new_outbounds" > "$new_outbounds_tmp" ||
+        ! sing_box_cf_ucode_input prepare-validation "$config" "$new_outbounds_tmp" "$updated_tmp" "$validation_tmp"; then
+        rm -f "$new_outbounds_tmp" "$updated_tmp" "$validation_tmp" "$check_tmp"
         return 1
     fi
-    rm -f "$validation_tmp"
 
-    SING_BOX_CF_VALIDATED_CONFIG="$updated_config"
+    validation_config="$(cat "$validation_tmp" 2>/dev/null)" || validation_config=""
+    [ -n "$validation_config" ] || {
+        rm -f "$new_outbounds_tmp" "$updated_tmp" "$validation_tmp" "$check_tmp"
+        return 1
+    }
+
+    sing_box_cm_save_config_to_file "$validation_config" "$check_tmp"
+    if ! check_output="$(sing-box -c "$check_tmp" check 2>&1)"; then
+        SING_BOX_CF_VALIDATION_ERROR="$(sing_box_cf_validation_error_summary "$check_output")"
+        rm -f "$new_outbounds_tmp" "$updated_tmp" "$validation_tmp" "$check_tmp"
+        return 1
+    fi
+
+    SING_BOX_CF_VALIDATED_CONFIG="$(cat "$updated_tmp" 2>/dev/null)"
+    rm -f "$new_outbounds_tmp" "$updated_tmp" "$validation_tmp" "$check_tmp"
+    [ -n "$SING_BOX_CF_VALIDATED_CONFIG" ] || return 1
     return 0
 }
 
@@ -707,55 +610,25 @@ sing_box_cf_prepared_link_refs_json() {
     local prepared_json="$1"
     local source_section="${2:-}"
 
-    printf '%s' "$prepared_json" | jq -c --arg source_section "$source_section" '
-        (.tags // []) as $tags
-        | (.source_indices // []) as $source_indices
-        | $source_section as $source_section
-        | reduce range(0; ($tags | length)) as $index (
-            {};
-            if $source_section != "" then
-                .[$tags[$index]] = {
-                    sourceSection: $source_section,
-                    sourceIndex: (($source_indices[$index] // ($index + 1)) | tonumber)
-                }
-              else
-                .
-              end
-        )
-    ' 2>/dev/null
+    sing_box_cf_ucode_input prepared-link-refs "$prepared_json" "$source_section" 2>/dev/null
 }
 
 sing_box_cf_prepared_names_json() {
     local prepared_json="$1"
 
-    printf '%s' "$prepared_json" | jq -c '
-        (.tags // []) as $tags
-        | (.names // []) as $names
-        | reduce range(0; ($tags | length)) as $index (
-            {};
-            .[$tags[$index]] = (($names[$index] // $tags[$index]) | tostring)
-        )
-    ' 2>/dev/null
+    sing_box_cf_ucode_input prepared-names "$prepared_json" 2>/dev/null
 }
 
 sing_box_cf_prepared_servers_json() {
     local prepared_json="$1"
 
-    printf '%s' "$prepared_json" | jq -c '
-        (.tags // []) as $tags
-        | (.servers // []) as $servers
-        | reduce range(0; ($tags | length)) as $index (
-            {};
-            (($servers[$index] // "") | tostring) as $server
-            | if $server != "" then .[$tags[$index]] = $server else . end
-        )
-    ' 2>/dev/null
+    sing_box_cf_ucode_input prepared-servers "$prepared_json" 2>/dev/null
 }
 
 sing_box_cf_prepared_names_lines() {
     local prepared_json="$1"
 
-    printf '%s' "$prepared_json" | jq -r '.names[]?' 2>/dev/null
+    sing_box_cf_ucode_input prepared-names-lines "$prepared_json" 2>/dev/null
 }
 
 sing_box_cf_subscription_prepared_slice() {
@@ -763,25 +636,14 @@ sing_box_cf_subscription_prepared_slice() {
     local start="$2"
     local end="$3"
 
-    printf '%s' "$prepared_json" | jq -c --argjson start "$start" --argjson end "$end" '
-        . + {
-            outbounds: ((.outbounds // [])[$start:$end]),
-            tags: ((.tags // [])[$start:$end]),
-            names: ((.names // [])[$start:$end]),
-            servers: ((.servers // [])[$start:$end]),
-            links: ((.links // [])[$start:$end]),
-            source_indices: ((.source_indices // [])[$start:$end]),
-            skipped: 0,
-            skipped_reason_counts: {}
-        }
-    ' 2>/dev/null
+    sing_box_cf_ucode_input prepared-slice "$prepared_json" "$start" "$end" 2>/dev/null
 }
 
 sing_box_cf_append_subscription_prepared_metadata() {
     local prepared_json="$1"
     local tags_json link_refs_json names_json servers_json names
 
-    tags_json="$(printf '%s' "$prepared_json" | jq -c '.tags // []' 2>/dev/null)"
+    tags_json="$(sing_box_cf_ucode_input prepared-field "$prepared_json" tags 2>/dev/null)"
     [ -n "$tags_json" ] || tags_json="[]"
 
     link_refs_json="$(sing_box_cf_prepared_link_refs_json "$prepared_json" "$SING_BOX_CF_SOURCE_SECTION")"
@@ -791,20 +653,16 @@ sing_box_cf_append_subscription_prepared_metadata() {
     servers_json="$(sing_box_cf_prepared_servers_json "$prepared_json")"
     [ -n "$servers_json" ] || servers_json="{}"
 
-    SUBSCRIPTION_OUTBOUND_TAGS_JSON="$(printf '%s' "$SUBSCRIPTION_OUTBOUND_TAGS_JSON" |
-        jq -c --argjson tags "$tags_json" '. + $tags' 2>/dev/null)"
+    SUBSCRIPTION_OUTBOUND_TAGS_JSON="$(sing_box_cf_json_arrays_concat "$SUBSCRIPTION_OUTBOUND_TAGS_JSON" "$tags_json" 2>/dev/null)"
     [ -n "$SUBSCRIPTION_OUTBOUND_TAGS_JSON" ] || SUBSCRIPTION_OUTBOUND_TAGS_JSON="[]"
 
-    SUBSCRIPTION_OUTBOUND_LINK_REFS_JSON="$(printf '%s' "$SUBSCRIPTION_OUTBOUND_LINK_REFS_JSON" |
-        jq -c --argjson link_refs "$link_refs_json" '. + $link_refs' 2>/dev/null)"
+    SUBSCRIPTION_OUTBOUND_LINK_REFS_JSON="$(sing_box_cf_json_objects_merge "$SUBSCRIPTION_OUTBOUND_LINK_REFS_JSON" "$link_refs_json" 2>/dev/null)"
     [ -n "$SUBSCRIPTION_OUTBOUND_LINK_REFS_JSON" ] || SUBSCRIPTION_OUTBOUND_LINK_REFS_JSON="{}"
 
-    SUBSCRIPTION_OUTBOUND_NAMES_JSON="$(printf '%s' "$SUBSCRIPTION_OUTBOUND_NAMES_JSON" |
-        jq -c --argjson names "$names_json" '. + $names' 2>/dev/null)"
+    SUBSCRIPTION_OUTBOUND_NAMES_JSON="$(sing_box_cf_json_objects_merge "$SUBSCRIPTION_OUTBOUND_NAMES_JSON" "$names_json" 2>/dev/null)"
     [ -n "$SUBSCRIPTION_OUTBOUND_NAMES_JSON" ] || SUBSCRIPTION_OUTBOUND_NAMES_JSON="{}"
 
-    SUBSCRIPTION_OUTBOUND_SERVERS_JSON="$(printf '%s' "$SUBSCRIPTION_OUTBOUND_SERVERS_JSON" |
-        jq -c --argjson servers "$servers_json" '. + $servers' 2>/dev/null)"
+    SUBSCRIPTION_OUTBOUND_SERVERS_JSON="$(sing_box_cf_json_objects_merge "$SUBSCRIPTION_OUTBOUND_SERVERS_JSON" "$servers_json" 2>/dev/null)"
     [ -n "$SUBSCRIPTION_OUTBOUND_SERVERS_JSON" ] || SUBSCRIPTION_OUTBOUND_SERVERS_JSON="{}"
 
     names="$(sing_box_cf_prepared_names_lines "$prepared_json")"
@@ -823,9 +681,9 @@ sing_box_cf_apply_subscription_batch() {
     local prepared_json="$2"
     local new_outbounds new_outbounds_count
 
-    new_outbounds="$(printf '%s' "$prepared_json" | jq -c '.outbounds // []' 2>/dev/null)"
+    new_outbounds="$(sing_box_cf_ucode_input prepared-field "$prepared_json" outbounds 2>/dev/null)"
     [ -n "$new_outbounds" ] || return 1
-    new_outbounds_count="$(printf '%s' "$new_outbounds" | jq -r 'length' 2>/dev/null)"
+    new_outbounds_count="$(sing_box_cf_ucode_input prepared-length "$prepared_json" outbounds 2>/dev/null)"
     [ -n "$new_outbounds_count" ] || return 1
     [ "$new_outbounds_count" -gt 0 ] || return 1
 
@@ -833,9 +691,9 @@ sing_box_cf_apply_subscription_batch() {
         return 1
     fi
 
-    SUBSCRIPTION_OUTBOUND_TAGS_JSON="$(printf '%s' "$prepared_json" | jq -c '.tags // []' 2>/dev/null)"
+    SUBSCRIPTION_OUTBOUND_TAGS_JSON="$(sing_box_cf_ucode_input prepared-field "$prepared_json" tags 2>/dev/null)"
     [ -n "$SUBSCRIPTION_OUTBOUND_TAGS_JSON" ] || SUBSCRIPTION_OUTBOUND_TAGS_JSON="[]"
-    SUBSCRIPTION_OUTBOUND_TAGS="$(printf '%s' "$SUBSCRIPTION_OUTBOUND_TAGS_JSON" | jq -r 'join(",")' 2>/dev/null)"
+    SUBSCRIPTION_OUTBOUND_TAGS="$(sing_box_cf_ucode_input prepared-tags-csv "$prepared_json" 2>/dev/null)"
     SUBSCRIPTION_OUTBOUND_NAMES="$(sing_box_cf_prepared_names_lines "$prepared_json")"
     SUBSCRIPTION_OUTBOUND_LINK_REFS_JSON="$(sing_box_cf_prepared_link_refs_json "$prepared_json" "$SING_BOX_CF_SOURCE_SECTION")"
     [ -n "$SUBSCRIPTION_OUTBOUND_LINK_REFS_JSON" ] || SUBSCRIPTION_OUTBOUND_LINK_REFS_JSON="{}"
@@ -861,7 +719,7 @@ sing_box_cf_apply_subscription_outbounds_range() {
         return 0
     }
 
-    outbounds_json="$(printf '%s' "$chunk" | jq -c '.outbounds // []' 2>/dev/null)"
+    outbounds_json="$(sing_box_cf_ucode_input prepared-field "$chunk" outbounds 2>/dev/null)"
     [ -n "$outbounds_json" ] || {
         SING_BOX_CF_FALLBACK_SKIPPED_COUNT=$((SING_BOX_CF_FALLBACK_SKIPPED_COUNT + count))
         return 0
@@ -875,10 +733,7 @@ sing_box_cf_apply_subscription_outbounds_range() {
     fi
 
     if [ "$count" -eq 1 ]; then
-        display_name="$(printf '%s' "$chunk" |
-            jq -r '(.names[0] // .outbounds[0].tag // "unknown") | tostring' 2>/dev/null |
-            tr '\r\n\t' '   ' |
-            sed 's/[[:space:]][[:space:]]*/ /g;s/^[[:space:]]*//;s/[[:space:]]*$//')"
+        display_name="$(sing_box_cf_ucode_input prepared-display-name "$chunk" 2>/dev/null)"
         [ -n "$display_name" ] || display_name="unknown"
         [ -n "$SING_BOX_CF_VALIDATION_ERROR" ] || SING_BOX_CF_VALIDATION_ERROR="sing-box check failed"
         log "Skipped unsupported subscription outbound '$display_name': $SING_BOX_CF_VALIDATION_ERROR" "warn"
@@ -908,7 +763,7 @@ sing_box_cf_apply_subscription_outbounds_chunked() {
     local prepared_json="$2"
     local outbounds_count half rest
 
-    outbounds_count="$(printf '%s' "$prepared_json" | jq -r '(.outbounds // []) | length' 2>/dev/null)"
+    outbounds_count="$(sing_box_cf_ucode_input prepared-length "$prepared_json" outbounds 2>/dev/null)"
     [ -n "$outbounds_count" ] || return 1
     [ "$outbounds_count" -gt 0 ] || return 1
 
@@ -940,7 +795,7 @@ sing_box_cf_apply_subscription_outbounds_chunked() {
         log "Skipped $SING_BOX_CF_FALLBACK_SKIPPED_COUNT unsupported subscription outbounds during chunked fallback validation" "warn"
     fi
 
-    SUBSCRIPTION_OUTBOUND_TAGS="$(printf '%s' "$SUBSCRIPTION_OUTBOUND_TAGS_JSON" | jq -r 'join(",")' 2>/dev/null)"
+    SUBSCRIPTION_OUTBOUND_TAGS="$(sing_box_cf_tags_json_csv "$SUBSCRIPTION_OUTBOUND_TAGS_JSON")"
     SING_BOX_CF_LAST_CONFIG="$SING_BOX_CF_FALLBACK_WORKING_CONFIG"
 
     return 0
@@ -969,7 +824,7 @@ sing_box_cf_add_subscription_outbounds() {
     fi
 
     outbounds_json="$(sing_box_cf_subscription_candidate_outbounds "$subscription_json_path")"
-    outbounds_count="$(printf '%s' "$outbounds_json" | jq -r 'length' 2>/dev/null)"
+    outbounds_count="$(sing_box_cf_outbounds_json_count "$outbounds_json")"
 
     if [ -z "$outbounds_count" ] || [ "$outbounds_count" -eq 0 ]; then
         log "No proxy outbounds found in subscription JSON" "error"
@@ -981,13 +836,13 @@ sing_box_cf_add_subscription_outbounds() {
 
     prepared_json="$(sing_box_cf_prepare_subscription_batch "$config" "$outbounds_json")"
     if [ -n "$prepared_json" ]; then
-        skipped_count="$(printf '%s' "$prepared_json" | jq -r '.skipped // 0' 2>/dev/null)"
+        skipped_count="$(sing_box_cf_ucode_input skip-count "$prepared_json" 2>/dev/null)"
         if [ "${skipped_count:-0}" -gt 0 ]; then
             sing_box_cf_log_subscription_skips "$prepared_json" "before validation"
         fi
 
         if sing_box_cf_apply_subscription_batch "$config" "$prepared_json"; then
-            log "Added $(printf '%s' "$SUBSCRIPTION_OUTBOUND_TAGS_JSON" | jq -r 'length' 2>/dev/null) subscription outbounds for rule '$section'" "info"
+            log "Added $(sing_box_cf_tags_json_count "$SUBSCRIPTION_OUTBOUND_TAGS_JSON") subscription outbounds for rule '$section'" "info"
             echo "$SING_BOX_CF_LAST_CONFIG"
             return 0
         fi
@@ -995,7 +850,7 @@ sing_box_cf_add_subscription_outbounds() {
 
     log "Batch subscription validation failed for rule '$section', trying chunked fallback validation" "warn"
     if [ -n "$prepared_json" ] && sing_box_cf_apply_subscription_outbounds_chunked "$config" "$prepared_json"; then
-        log "Added $(printf '%s' "$SUBSCRIPTION_OUTBOUND_TAGS_JSON" | jq -r 'length' 2>/dev/null) subscription outbounds for rule '$section'" "info"
+        log "Added $(sing_box_cf_tags_json_count "$SUBSCRIPTION_OUTBOUND_TAGS_JSON") subscription outbounds for rule '$section'" "info"
         echo "$SING_BOX_CF_LAST_CONFIG"
         return 0
     fi

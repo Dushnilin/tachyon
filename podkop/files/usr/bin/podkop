@@ -16,14 +16,20 @@ check_required_file /lib/functions/network.sh
 check_required_file "$PODKOP_LIB/constants.sh"
 check_required_file "$PODKOP_LIB/nft.sh"
 check_required_file "$PODKOP_LIB/helpers.sh"
+check_required_file "$PODKOP_LIB/json_utils.uc"
+check_required_file "$PODKOP_LIB/provider_status.uc"
 check_required_file "$PODKOP_LIB/zapret.sh"
 check_required_file "$PODKOP_LIB/byedpi.sh"
 check_required_file "$PODKOP_LIB/sing_box_config_manager.sh"
+check_required_file "$PODKOP_LIB/sing_box_config_manager.uc"
 check_required_file "$PODKOP_LIB/sing_box_config_facade.sh"
-check_required_file "$PODKOP_LIB/subscription_cache.lua"
+check_required_file "$PODKOP_LIB/sing_box_config_facade.uc"
+check_required_file "$PODKOP_LIB/subscription_cache.uc"
+check_required_file "$PODKOP_LIB/subscription_parser.uc"
 check_required_file "$PODKOP_LIB/subscription_parser.sh"
 check_required_file "$PODKOP_LIB/logging.sh"
 check_required_file "$PODKOP_LIB/rulesets.sh"
+check_required_file "$PODKOP_LIB/rulesets.uc"
 check_required_file "$PODKOP_LIB/updater.sh"
 . /lib/functions.sh
 . /lib/config/uci.sh
@@ -159,8 +165,8 @@ remove_legacy_server_country_cache() {
     rm -f "$PODKOP_RUNTIME_STATE_DIR/server-country-cache.json"
 }
 
-subscription_cache_lua() {
-    lua "$PODKOP_LIB/subscription_cache.lua" "$@"
+subscription_cache_ucode() {
+    ucode "$PODKOP_LIB/subscription_cache.uc" "$@"
 }
 
 subscription_cache_tmpfile() {
@@ -195,7 +201,7 @@ write_subscription_outbound_link_cache() {
         return 1
     }
 
-    subscription_cache_lua write-link-cache \
+    subscription_cache_ucode write-link-cache \
         "$PODKOP_SECTION_CACHE_DIR" "$PODKOP_RUNTIME_CACHE_FORMAT" "$section" \
         "$links_tmp" "$link_refs_tmp"
     status=$?
@@ -238,7 +244,7 @@ write_outbound_metadata() {
         return 1
     }
 
-    subscription_cache_lua write-outbound-metadata \
+    subscription_cache_ucode write-outbound-metadata \
         "$PODKOP_SECTION_CACHE_DIR" "$PODKOP_RUNTIME_CACHE_FORMAT" "$section" \
         "$names_tmp" "$countries_tmp" "$servers_tmp"
     status=$?
@@ -255,7 +261,7 @@ subscription_metadata_append_file() {
     [ -n "$array_path" ] || return 0
     [ -n "$metadata_path" ] || return 0
 
-    subscription_cache_lua append-metadata-file "$array_path" "$metadata_path" "$source_index" "$source_section" || true
+    subscription_cache_ucode append-metadata-file "$array_path" "$metadata_path" "$source_index" "$source_section" || true
 }
 
 subscription_metadata_append_cached_source() {
@@ -269,7 +275,7 @@ subscription_metadata_append_cached_source() {
     [ -n "$section" ] || return 0
 
     legacy_target_path="$(get_subscription_metadata_path "$section")"
-    subscription_cache_lua append-cached-metadata \
+    subscription_cache_ucode append-cached-metadata \
         "$array_path" "$PODKOP_SECTION_CACHE_DIR" "$section" "$legacy_target_path" \
         "$source_index" "$source_section"
 }
@@ -281,7 +287,7 @@ write_subscription_metadata_json() {
     ensure_runtime_dirs
     [ -n "$metadata_json_path" ] || metadata_json_path="/dev/null"
 
-    subscription_cache_lua write-subscription-metadata \
+    subscription_cache_ucode write-subscription-metadata \
         "$PODKOP_SECTION_CACHE_DIR" "$PODKOP_RUNTIME_CACHE_FORMAT" "$section" "$metadata_json_path"
 }
 
@@ -296,7 +302,7 @@ write_subscription_source_metadata_json() {
     [ -n "$metadata_json_path" ] || metadata_json_path="/dev/null"
     legacy_target_path="$(get_subscription_metadata_path "$section")"
 
-    subscription_cache_lua write-source-metadata \
+    subscription_cache_ucode write-source-metadata \
         "$PODKOP_SECTION_CACHE_DIR" "$PODKOP_RUNTIME_CACHE_FORMAT" "$section" \
         "$source_index" "$source_section" "$metadata_json_path" "$legacy_target_path"
 }
@@ -486,8 +492,7 @@ download_subscription_into_cache() {
 
     subscription_extract_ui_metadata "$headers_tmpfile" "$raw_tmpfile" "$metadata_tmpfile" >/dev/null 2>&1 || rm -f "$metadata_tmpfile"
     if [ -n "$metadata_output_path" ]; then
-        if [ -s "$metadata_tmpfile" ] &&
-            jq -e 'type == "object" and (keys | length > 1)' "$metadata_tmpfile" >/dev/null 2>&1; then
+        if [ -s "$metadata_tmpfile" ] && json_utils_ucode object-has-extra-keys "$metadata_tmpfile" >/dev/null 2>&1; then
             cp "$metadata_tmpfile" "$metadata_output_path" || rm -f "$metadata_output_path"
         else
             rm -f "$metadata_output_path"
@@ -697,7 +702,7 @@ prepare_subscription_cache_for_startup() {
     fi
 
     if [ -n "$metadata_tmpfile" ]; then
-        metadata_count="$(jq -r 'length' "$metadata_tmpfile" 2>/dev/null)"
+        metadata_count="$(json_utils_ucode length "$metadata_tmpfile" 2>/dev/null)"
         if [ -n "$metadata_count" ] && [ "$metadata_count" -gt 0 ]; then
             write_subscription_metadata_json "$section" "$metadata_tmpfile"
         else
@@ -843,7 +848,7 @@ sing_box_service_pid() {
     local service_json='{"name":"sing-box"}'
 
     ubus call service list "$service_json" 2>/dev/null |
-        jq -r '.["sing-box"].instances // {} | to_entries[] | select((.value.running // false) == true and ((.value.pid // 0) > 0)) | .value.pid' 2>/dev/null |
+        json_utils_ucode sing-box-service-pid 2>/dev/null |
         sed -n '1p'
 }
 
@@ -1726,7 +1731,7 @@ apply_urltest_selector_switch() {
     attempt=1
     while [ "$attempt" -le 10 ]; do
         response="$(clash_api set_group_proxy "$selector_tag" "$urltest_tag" 2>/dev/null || true)"
-        if printf '%s' "$response" | jq -e '.success == true' >/dev/null 2>&1; then
+        if printf '%s' "$response" | json_utils_ucode response-success >/dev/null 2>&1; then
             log "Selected URLTest outbound '$urltest_tag' for selector '$selector_tag'"
             return 0
         fi
@@ -2232,9 +2237,8 @@ migrate_list_update_enabled() {
 check_requirements() {
     log "Check Requirements"
 
-    local sing_box_version jq_version coreutils_base64_version
+    local sing_box_version coreutils_base64_version
     sing_box_version="$(sing-box version | head -n1 | awk '{print $NF}')"
-    jq_version="$(jq --version | awk -F- '{print $2}')"
     coreutils_base64_version="$(base64 --version | head -n1 | awk '{print $4}')"
 
     if [ -z "$sing_box_version" ]; then
@@ -2250,14 +2254,6 @@ check_requirements() {
             log "Service 'sing-box' is missing. Please install the official package to ensure the service is available. Aborted." "error"
             exit 1
         fi
-    fi
-
-    if [ -z "$jq_version" ]; then
-        log "Package 'jq' is not installed. Aborted." "error"
-        exit 1
-    elif ! is_min_package_version "$jq_version" "$JQ_REQUIRED_VERSION"; then
-        log "Package 'jq' version ($jq_version) is lower than the required minimum ($JQ_REQUIRED_VERSION). Aborted." "error"
-        exit 1
     fi
 
     if [ -z "$coreutils_base64_version" ]; then
@@ -2754,7 +2750,7 @@ uninstall() {
     rm -f /tmp/luci-indexcache*
     [ -x /etc/init.d/rpcd ] && /etc/init.d/rpcd reload >/dev/null 2>&1 || true
 
-    echo '{"removed":true}' | jq .
+    printf '%s\n' '{"removed":true}'
 }
 
 # Migrations and validation funcs
@@ -2933,14 +2929,7 @@ ruleset_kind_from_reference_hint() {
 json_ruleset_has_domain_matchers() {
     local filepath="$1"
 
-    jq -e '
-        .. | objects | to_entries[]? |
-        select(.key == "domain" or .key == "domain_suffix" or .key == "domain_keyword" or .key == "domain_regex") |
-        .value |
-        if type == "array" then length > 0
-        elif type == "string" then . != ""
-        else false end
-    ' "$filepath" > /dev/null 2>&1
+    ucode "$PODKOP_LIB/rulesets.uc" has-domain-matchers "$filepath" >/dev/null 2>&1
 }
 
 detect_local_binary_ruleset_kind() {
@@ -3056,7 +3045,7 @@ validate_outbound_json_rule() {
         exit 1
     fi
 
-    if ! printf '%s' "$outbound_json" | jq -e 'type == "object" and (.type? | type == "string")' >/dev/null 2>&1; then
+    if ! printf '%s' "$outbound_json" | json_utils_ucode valid-outbound >/dev/null 2>&1; then
         log "JSON outbound rule '$section' must contain a valid sing-box outbound JSON object with a type field. Aborted." "fatal"
         exit 1
     fi
@@ -4058,7 +4047,7 @@ subscription_update_section() {
 
     if [ -n "$metadata_tmpfile" ]; then
         if [ "$SUBSCRIPTION_SECTION_UPDATE_SUPERSEDED" -eq 0 ]; then
-            metadata_count="$(jq -r 'length' "$metadata_tmpfile" 2>/dev/null)"
+            metadata_count="$(json_utils_ucode length "$metadata_tmpfile" 2>/dev/null)"
             if [ -n "$metadata_count" ] && [ "$metadata_count" -gt 0 ]; then
                 write_subscription_metadata_json "$section" "$metadata_tmpfile"
             else
@@ -4501,7 +4490,7 @@ sing_box_configure_outbounds() {
 json_array_append_string() {
     local array_json="$1"
     local value="$2"
-    local array_tmp result jq_status
+    local array_tmp result status
 
     array_tmp="$(mktemp)" || return 1
     printf '%s' "$array_json" > "$array_tmp" || {
@@ -4509,12 +4498,11 @@ json_array_append_string() {
         return 1
     }
 
-    result="$(jq -cn --slurpfile array "$array_tmp" --arg value "$value" \
-        '($array[0] // []) + [$value]' 2>/dev/null)"
-    jq_status=$?
+    result="$(ucode "$PODKOP_LIB/json_utils.uc" array-append-string "$array_tmp" "$value" 2>/dev/null)"
+    status=$?
     rm -f "$array_tmp"
 
-    [ "$jq_status" -eq 0 ] || return 1
+    [ "$status" -eq 0 ] || return 1
     [ -n "$result" ] || return 1
     printf '%s\n' "$result"
 }
@@ -4522,7 +4510,7 @@ json_array_append_string() {
 json_arrays_concat() {
     local first_json="$1"
     local second_json="$2"
-    local first_tmp second_tmp result jq_status
+    local first_tmp second_tmp result status
 
     first_tmp="$(mktemp)" || return 1
     second_tmp="$(mktemp)" || {
@@ -4539,12 +4527,11 @@ json_arrays_concat() {
         return 1
     }
 
-    result="$(jq -cn --slurpfile first "$first_tmp" --slurpfile second "$second_tmp" \
-        '($first[0] // []) + ($second[0] // [])' 2>/dev/null)"
-    jq_status=$?
+    result="$(ucode "$PODKOP_LIB/json_utils.uc" arrays-concat "$first_tmp" "$second_tmp" 2>/dev/null)"
+    status=$?
     rm -f "$first_tmp" "$second_tmp"
 
-    [ "$jq_status" -eq 0 ] || return 1
+    [ "$status" -eq 0 ] || return 1
     [ -n "$result" ] || return 1
     printf '%s\n' "$result"
 }
@@ -4553,7 +4540,7 @@ json_object_set_string() {
     local object_json="$1"
     local key="$2"
     local value="$3"
-    local object_tmp result jq_status
+    local object_tmp result status
 
     object_tmp="$(mktemp)" || return 1
     printf '%s' "$object_json" > "$object_tmp" || {
@@ -4561,12 +4548,11 @@ json_object_set_string() {
         return 1
     }
 
-    result="$(jq -cn --slurpfile object "$object_tmp" --arg key "$key" --arg value "$value" \
-        '($object[0] // {}) + {($key): $value}' 2>/dev/null)"
-    jq_status=$?
+    result="$(ucode "$PODKOP_LIB/json_utils.uc" object-set-string "$object_tmp" "$key" "$value" 2>/dev/null)"
+    status=$?
     rm -f "$object_tmp"
 
-    [ "$jq_status" -eq 0 ] || return 1
+    [ "$status" -eq 0 ] || return 1
     [ -n "$result" ] || return 1
     printf '%s\n' "$result"
 }
@@ -4574,7 +4560,7 @@ json_object_set_string() {
 json_objects_merge() {
     local first_json="$1"
     local second_json="$2"
-    local first_tmp second_tmp result jq_status
+    local first_tmp second_tmp result status
 
     first_tmp="$(mktemp)" || return 1
     second_tmp="$(mktemp)" || {
@@ -4591,12 +4577,11 @@ json_objects_merge() {
         return 1
     }
 
-    result="$(jq -cn --slurpfile first "$first_tmp" --slurpfile second "$second_tmp" \
-        '($first[0] // {}) + ($second[0] // {})' 2>/dev/null)"
-    jq_status=$?
+    result="$(ucode "$PODKOP_LIB/json_utils.uc" objects-merge "$first_tmp" "$second_tmp" 2>/dev/null)"
+    status=$?
     rm -f "$first_tmp" "$second_tmp"
 
-    [ "$jq_status" -eq 0 ] || return 1
+    [ "$status" -eq 0 ] || return 1
     [ -n "$result" ] || return 1
     printf '%s\n' "$result"
 }
@@ -4623,8 +4608,8 @@ get_urltest_regex_matching_tags_json() {
     local tag_count regex_count index regex_index tag name regex result_json
 
     result_json="[]"
-    tag_count="$(printf '%s' "$tags_json" | jq -r 'length' 2>/dev/null)"
-    regex_count="$(printf '%s' "$regex_json" | jq -r 'length' 2>/dev/null)"
+    tag_count="$(printf '%s' "$tags_json" | json_utils_ucode stdin-length 2>/dev/null)"
+    regex_count="$(printf '%s' "$regex_json" | json_utils_ucode stdin-length 2>/dev/null)"
     case "$tag_count:$regex_count" in
     *[!0-9:]* | :* | *:)
         printf '[]\n'
@@ -4639,16 +4624,16 @@ get_urltest_regex_matching_tags_json() {
 
     index=0
     while [ "$index" -lt "$tag_count" ]; do
-        tag="$(printf '%s' "$tags_json" | jq -r --argjson index "$index" '.[$index] // empty' 2>/dev/null)"
+        tag="$(printf '%s' "$tags_json" | json_utils_ucode array-item "$index" 2>/dev/null)"
         index=$((index + 1))
         [ -n "$tag" ] || continue
 
-        name="$(printf '%s' "$names_json" | jq -r --arg tag "$tag" '.[$tag] // $tag' 2>/dev/null)"
+        name="$(printf '%s' "$names_json" | json_utils_ucode object-get "$tag" 2>/dev/null)"
         [ -n "$name" ] || name="$tag"
 
         regex_index=0
         while [ "$regex_index" -lt "$regex_count" ]; do
-            regex="$(printf '%s' "$regex_json" | jq -r --argjson index "$regex_index" '.[$index] // empty' 2>/dev/null)"
+            regex="$(printf '%s' "$regex_json" | json_utils_ucode array-item "$regex_index" 2>/dev/null)"
             regex_index=$((regex_index + 1))
             [ -n "$regex" ] || continue
 
@@ -4660,6 +4645,57 @@ get_urltest_regex_matching_tags_json() {
     done
 
     printf '%s\n' "$result_json"
+}
+
+urltest_filter_json() {
+    local mode="$1"
+    local tags_json="$2"
+    local names_json="$3"
+    local countries_json="$4"
+    local match_names_json="$5"
+    local regex_tags_json="$6"
+    local match_countries_json="$7"
+    local tags_tmp names_tmp countries_tmp match_names_tmp regex_tags_tmp match_countries_tmp result status
+
+    tags_tmp="$(mktemp)" || return 1
+    names_tmp="$(mktemp)" || {
+        rm -f "$tags_tmp"
+        return 1
+    }
+    countries_tmp="$(mktemp)" || {
+        rm -f "$tags_tmp" "$names_tmp"
+        return 1
+    }
+    match_names_tmp="$(mktemp)" || {
+        rm -f "$tags_tmp" "$names_tmp" "$countries_tmp"
+        return 1
+    }
+    regex_tags_tmp="$(mktemp)" || {
+        rm -f "$tags_tmp" "$names_tmp" "$countries_tmp" "$match_names_tmp"
+        return 1
+    }
+    match_countries_tmp="$(mktemp)" || {
+        rm -f "$tags_tmp" "$names_tmp" "$countries_tmp" "$match_names_tmp" "$regex_tags_tmp"
+        return 1
+    }
+
+    if ! printf '%s' "$tags_json" > "$tags_tmp" ||
+        ! printf '%s' "$names_json" > "$names_tmp" ||
+        ! printf '%s' "$countries_json" > "$countries_tmp" ||
+        ! printf '%s' "$match_names_json" > "$match_names_tmp" ||
+        ! printf '%s' "$regex_tags_json" > "$regex_tags_tmp" ||
+        ! printf '%s' "$match_countries_json" > "$match_countries_tmp"; then
+        rm -f "$tags_tmp" "$names_tmp" "$countries_tmp" "$match_names_tmp" "$regex_tags_tmp" "$match_countries_tmp"
+        return 1
+    fi
+
+    result="$(json_utils_ucode urltest-filter "$mode" "$tags_tmp" "$names_tmp" "$countries_tmp" "$match_names_tmp" "$regex_tags_tmp" "$match_countries_tmp" 2>/dev/null)"
+    status=$?
+    rm -f "$tags_tmp" "$names_tmp" "$countries_tmp" "$match_names_tmp" "$regex_tags_tmp" "$match_countries_tmp"
+
+    [ "$status" -eq 0 ] || return 1
+    [ -n "$result" ] || result="[]"
+    printf '%s\n' "$result"
 }
 
 is_ipv6_literal() {
@@ -4723,11 +4759,8 @@ read_section_outbound_country_cache() {
     esac
 
     cache_path="$(get_section_cache_path "$section")"
-    if [ -s "$cache_path" ] && jq -e 'type == "object"' "$cache_path" >/dev/null 2>&1; then
-        countries_json="$(jq -c '
-            def object_or_empty: if type == "object" then . else {} end;
-            .outboundMetadata.countries | object_or_empty
-        ' "$cache_path" 2>/dev/null)"
+    if [ -s "$cache_path" ]; then
+        countries_json="$(json_utils_ucode section-countries "$cache_path" 2>/dev/null)"
         if [ -n "$countries_json" ]; then
             printf '%s\n' "$countries_json"
             return 0
@@ -4740,15 +4773,21 @@ read_section_outbound_country_cache() {
 country_is_lookup_ips() {
     local ips_json="$1"
     local ip_count start end batch_json body_tmp http_code body_error
-    local result_tmp result_json jq_status
+    local ips_tmp result_tmp result_json status
 
+    ips_tmp="$(mktemp)" || return 1
     result_tmp="$(mktemp)" || return 1
     : > "$result_tmp"
 
-    ip_count="$(printf '%s' "$ips_json" | jq -r 'length' 2>/dev/null)"
+    printf '%s' "$ips_json" > "$ips_tmp" || {
+        rm -f "$ips_tmp" "$result_tmp"
+        return 1
+    }
+
+    ip_count="$(printf '%s' "$ips_json" | json_utils_ucode stdin-length 2>/dev/null)"
     case "$ip_count" in
     '' | *[!0-9]*)
-        rm -f "$result_tmp"
+        rm -f "$ips_tmp" "$result_tmp"
         return 1
         ;;
     esac
@@ -4756,13 +4795,13 @@ country_is_lookup_ips() {
     start=0
     while [ "$start" -lt "$ip_count" ]; do
         end=$((start + 100))
-        batch_json="$(printf '%s' "$ips_json" | jq -c --argjson start "$start" --argjson end "$end" '.[$start:$end]' 2>/dev/null)"
+        batch_json="$(json_utils_ucode array-slice-file "$ips_tmp" "$start" "$end" 2>/dev/null)"
         if [ -z "$batch_json" ] || [ "$batch_json" = "[]" ]; then
             break
         fi
 
         body_tmp="$(mktemp)" || {
-            rm -f "$result_tmp"
+            rm -f "$ips_tmp" "$result_tmp"
             return 1
         }
 
@@ -4771,7 +4810,7 @@ country_is_lookup_ips() {
             -d "$batch_json" \
             'https://api.country.is/' 2>/dev/null || true)"
 
-        body_error="$(jq -r '.error.code // .code // .error // empty' "$body_tmp" 2>/dev/null)"
+        body_error="$(json_utils_ucode body-error "$body_tmp" 2>/dev/null)"
         if [ "$body_error" = "rate_limit" ]; then
             log "Server country lookup is rate-limited" "warn"
             rm -f "$body_tmp"
@@ -4779,8 +4818,7 @@ country_is_lookup_ips() {
         fi
 
         if [ "$http_code" = "200" ]; then
-            jq -r '.[]? | select((.ip // "") != "" and (.country // "") != "") | [.ip, .country] | @tsv' \
-                "$body_tmp" >> "$result_tmp" 2>/dev/null || true
+            json_utils_ucode ip-country-tsv "$body_tmp" >> "$result_tmp" 2>/dev/null || true
         elif [ "$http_code" = "429" ]; then
             log "Server country lookup is rate-limited" "warn"
             rm -f "$body_tmp"
@@ -4794,17 +4832,11 @@ country_is_lookup_ips() {
         [ "$start" -lt "$ip_count" ] && sleep 1
     done
 
-    result_json="$(jq -Rn '
-        reduce inputs as $line (
-            {};
-            ($line | split("\t")) as $parts
-            | if ($parts | length) >= 2 then .[$parts[0]] = $parts[1] else . end
-        )
-    ' < "$result_tmp" 2>/dev/null)"
-    jq_status=$?
-    rm -f "$result_tmp"
+    result_json="$(json_utils_ucode tsv-to-object "$result_tmp" 2>/dev/null)"
+    status=$?
+    rm -f "$ips_tmp" "$result_tmp"
 
-    [ "$jq_status" -eq 0 ] || return 1
+    [ "$status" -eq 0 ] || return 1
     [ -n "$result_json" ] || result_json="{}"
     printf '%s\n' "$result_json"
 }
@@ -4812,11 +4844,15 @@ country_is_lookup_ips() {
 detect_server_countries_for_tags() {
     local servers_json="$1"
     local section="${2:-}"
-    local cache_json cached_countries_json missing_tmp resolved_tmp ips_json ip_country_json
+    local cache_tmp servers_tmp cache_json cached_countries_json missing_tmp resolved_tmp ips_json ip_country_json ip_country_tmp
     local resolved_countries_json tag server ip
     local server_count missing_count resolved_count unresolved_count log_prefix
 
-    if [ -z "$servers_json" ] || ! printf '%s' "$servers_json" | jq -e 'type == "object"' >/dev/null 2>&1; then
+    server_count="$(printf '%s' "$servers_json" | json_utils_ucode stdin-length 2>/dev/null)"
+    case "$server_count" in
+    '' | *[!0-9]*) server_count=0 ;;
+    esac
+    if [ -z "$servers_json" ] || [ "$server_count" -eq 0 ]; then
         printf '{}\n'
         return 0
     fi
@@ -4827,46 +4863,43 @@ detect_server_countries_for_tags() {
         log_prefix="current proxy rule"
     fi
 
-    server_count="$(printf '%s' "$servers_json" | jq -r 'length' 2>/dev/null)"
-    case "$server_count" in
-    '' | *[!0-9]*) server_count=0 ;;
-    esac
-    if [ "$server_count" -eq 0 ]; then
-        log "Server country detection skipped for $log_prefix" "debug"
-        printf '{}\n'
-        return 0
-    fi
-
     log "Detecting server countries for $log_prefix" "info"
 
     cache_json="$(read_section_outbound_country_cache "$section")"
-    cached_countries_json="$(jq -cn --argjson servers "$servers_json" --argjson cache "$cache_json" '
-        reduce ($servers | to_entries[]) as $entry (
-            {};
-            ($cache[$entry.key] // "") as $country
-            | if $country != "" then .[$entry.key] = $country else . end
-        )
-    ' 2>/dev/null)"
+    servers_tmp="$(mktemp)" || {
+        printf '{}\n'
+        return 0
+    }
+    cache_tmp="$(mktemp)" || {
+        rm -f "$servers_tmp"
+        printf '{}\n'
+        return 0
+    }
+    printf '%s' "$servers_json" > "$servers_tmp" || {
+        rm -f "$servers_tmp" "$cache_tmp"
+        printf '{}\n'
+        return 0
+    }
+    printf '%s' "$cache_json" > "$cache_tmp" || {
+        rm -f "$servers_tmp" "$cache_tmp"
+        printf '{}\n'
+        return 0
+    }
+    cached_countries_json="$(json_utils_ucode cached-countries-for-servers "$servers_tmp" "$cache_tmp" 2>/dev/null)"
     [ -n "$cached_countries_json" ] || cached_countries_json="{}"
 
     missing_tmp="$(mktemp)" || {
+        rm -f "$servers_tmp" "$cache_tmp"
         printf '%s\n' "$cached_countries_json"
         return 0
     }
     resolved_tmp="$(mktemp)" || {
-        rm -f "$missing_tmp"
+        rm -f "$servers_tmp" "$cache_tmp" "$missing_tmp"
         printf '%s\n' "$cached_countries_json"
         return 0
     }
 
-    jq -r --argjson cache "$cache_json" '
-        to_entries[]?
-        | (.value | tostring | ascii_downcase) as $server
-        | select($server != "" and (($cache[.key] // "") == ""))
-        | [.key, .value] | @tsv
-    ' <<EOF > "$missing_tmp" 2>/dev/null
-$servers_json
-EOF
+    json_utils_ucode missing-servers-tsv "$servers_tmp" "$cache_tmp" > "$missing_tmp" 2>/dev/null || true
 
     missing_count="$(wc -l < "$missing_tmp" 2>/dev/null | tr -d ' ')"
     case "$missing_count" in
@@ -4888,7 +4921,7 @@ EOF
         if [ "$missing_count" -gt 0 ]; then
             log "Server country detection for $log_prefix could not resolve some servers" "warn"
         fi
-        rm -f "$missing_tmp" "$resolved_tmp"
+        rm -f "$servers_tmp" "$cache_tmp" "$missing_tmp" "$resolved_tmp"
         printf '%s\n' "$cached_countries_json"
         return 0
     fi
@@ -4896,31 +4929,30 @@ EOF
     unresolved_count=$((missing_count - resolved_count))
     [ "$unresolved_count" -le 0 ] || log "Server country detection for $log_prefix could not resolve some servers" "warn"
 
-    ips_json="$(cut -f 2 "$resolved_tmp" | sort -u | jq -R -s -c 'split("\n") | map(select(length > 0))' 2>/dev/null)"
+    ips_json="$(json_utils_ucode tsv-second-column-array "$resolved_tmp" 2>/dev/null)"
     [ -n "$ips_json" ] || ips_json="[]"
     ip_country_json="$(country_is_lookup_ips "$ips_json" 2>/dev/null || printf '{}')"
     [ -n "$ip_country_json" ] || ip_country_json="{}"
-    if ! printf '%s' "$ip_country_json" | jq -e 'length > 0' >/dev/null 2>&1; then
+    if ! printf '%s' "$ip_country_json" | json_utils_ucode object-nonempty >/dev/null 2>&1; then
         log "Server country detection for $log_prefix returned no countries" "warn"
     fi
 
-    resolved_countries_json="$(jq -Rn --argjson ip_country "$ip_country_json" '
-        reduce inputs as $line (
-            {};
-            ($line | split("\t")) as $parts
-            | if ($parts | length) >= 2 then
-                ($ip_country[$parts[1]] // "") as $country
-                | if $country != "" then .[$parts[0]] = $country else . end
-              else
-                .
-              end
-        )
-    ' < "$resolved_tmp" 2>/dev/null)"
+    ip_country_tmp="$(mktemp)" || {
+        rm -f "$servers_tmp" "$cache_tmp" "$missing_tmp" "$resolved_tmp"
+        printf '%s\n' "$cached_countries_json"
+        return 0
+    }
+    printf '%s' "$ip_country_json" > "$ip_country_tmp" || {
+        rm -f "$servers_tmp" "$cache_tmp" "$missing_tmp" "$resolved_tmp" "$ip_country_tmp"
+        printf '%s\n' "$cached_countries_json"
+        return 0
+    }
+    resolved_countries_json="$(json_utils_ucode resolved-countries-from-tsv "$resolved_tmp" "$ip_country_tmp" 2>/dev/null)"
     [ -n "$resolved_countries_json" ] || resolved_countries_json="{}"
 
-    rm -f "$missing_tmp" "$resolved_tmp"
+    rm -f "$servers_tmp" "$cache_tmp" "$missing_tmp" "$resolved_tmp" "$ip_country_tmp"
     log "Server country detection for $log_prefix completed" "info"
-    jq -cn --argjson cached "$cached_countries_json" --argjson resolved "$resolved_countries_json" '$cached + $resolved' 2>/dev/null ||
+    json_objects_merge "$cached_countries_json" "$resolved_countries_json" 2>/dev/null ||
         printf '%s\n' "$cached_countries_json"
 }
 
@@ -4939,33 +4971,12 @@ select_urltest_included_outbounds() {
     include_countries_json="[]"
     if [ "$country_filter_enabled" -eq 1 ]; then
         include_countries_json="$(config_list_to_json "$section" "urltest_include_countries" |
-            jq -c 'map(tostring | ascii_upcase | select(length == 2))' 2>/dev/null)"
+            json_utils_ucode normalized-country-list 2>/dev/null)"
         [ -n "$include_countries_json" ] || include_countries_json="[]"
     fi
 
-    filtered_json="$(jq -cn \
-        --argjson tags "$tags_json" \
-        --argjson names "$names_json" \
-        --argjson countries "$countries_json" \
-        --argjson include_names "$include_names_json" \
-        --argjson include_regex_tags "$include_regex_tags_json" \
-        --argjson include_countries "$include_countries_json" '
-        reduce ($tags // [])[] as $tag (
-            [];
-            ($names[$tag] // $tag) as $name
-            | (($countries[$tag] // "") | ascii_upcase) as $country
-            | if
-                (($include_names | index($name)) != null) or
-                (($include_names | index($tag)) != null) or
-                ($country != "" and (($include_countries | index($country)) != null)) or
-                (($include_regex_tags | index($tag)) != null)
-              then
-                . + [$tag]
-              else
-                .
-              end
-        )
-    ' 2>/dev/null)"
+    filtered_json="$(urltest_filter_json include "$tags_json" "$names_json" "$countries_json" \
+        "$include_names_json" "$include_regex_tags_json" "$include_countries_json")"
 
     [ -n "$filtered_json" ] || filtered_json="[]"
     printf '%s\n' "$filtered_json"
@@ -4986,33 +4997,12 @@ exclude_urltest_outbounds() {
     exclude_countries_json="[]"
     if [ "$country_filter_enabled" -eq 1 ]; then
         exclude_countries_json="$(config_list_to_json "$section" "urltest_exclude_countries" |
-            jq -c 'map(tostring | ascii_upcase | select(length == 2))' 2>/dev/null)"
+            json_utils_ucode normalized-country-list 2>/dev/null)"
         [ -n "$exclude_countries_json" ] || exclude_countries_json="[]"
     fi
 
-    filtered_json="$(jq -cn \
-        --argjson tags "$tags_json" \
-        --argjson names "$names_json" \
-        --argjson countries "$countries_json" \
-        --argjson exclude_names "$exclude_names_json" \
-        --argjson exclude_regex_tags "$exclude_regex_tags_json" \
-        --argjson exclude_countries "$exclude_countries_json" '
-        reduce ($tags // [])[] as $tag (
-            [];
-            ($names[$tag] // $tag) as $name
-            | (($countries[$tag] // "") | ascii_upcase) as $country
-            | if
-                (($exclude_names | index($name)) != null) or
-                (($exclude_names | index($tag)) != null) or
-                ($country != "" and (($exclude_countries | index($country)) != null)) or
-                (($exclude_regex_tags | index($tag)) != null)
-              then
-                .
-              else
-                . + [$tag]
-              end
-        )
-    ' 2>/dev/null)"
+    filtered_json="$(urltest_filter_json exclude "$tags_json" "$names_json" "$countries_json" \
+        "$exclude_names_json" "$exclude_regex_tags_json" "$exclude_countries_json")"
 
     [ -n "$filtered_json" ] || filtered_json="[]"
     printf '%s\n' "$filtered_json"
@@ -5051,8 +5041,8 @@ filter_urltest_outbounds() {
     esac
 
     [ -n "$filtered_json" ] || filtered_json="$tags_json"
-    filtered_count="$(printf '%s' "$filtered_json" | jq -r 'length' 2>/dev/null)"
-    original_count="$(printf '%s' "$tags_json" | jq -r 'length' 2>/dev/null)"
+    filtered_count="$(printf '%s' "$filtered_json" | json_utils_ucode stdin-length 2>/dev/null)"
+    original_count="$(printf '%s' "$tags_json" | json_utils_ucode stdin-length 2>/dev/null)"
 
     if [ -z "$filtered_count" ] || [ "$filtered_count" -eq 0 ]; then
         if [ "$filter_mode" = "include" ]; then
@@ -5156,7 +5146,7 @@ proxy_group_add_manual_link() {
     outbound_tag="$(get_outbound_tag_by_section "$section-$PROXY_GROUP_MANUAL_INDEX")"
     display_name="$(subscription_url_get_fragment "$link")"
     [ -n "$display_name" ] || display_name="$outbound_tag"
-    server="$(printf '%s' "$config" | jq -r --arg tag "$outbound_tag" '.outbounds[]? | select(.tag == $tag) | .server // empty' 2>/dev/null)"
+    server="$(printf '%s' "$config" | json_utils_ucode outbound-server-by-tag "$outbound_tag" 2>/dev/null)"
     proxy_group_append_outbound "$outbound_tag" "$link" "$display_name" "$server"
 }
 
@@ -5309,7 +5299,7 @@ configure_outbound_handler() {
             SUBSCRIPTION_SECTION_METADATA_TMP=""
 
             if [ -n "$metadata_tmpfile" ]; then
-                metadata_count="$(jq -r 'length' "$metadata_tmpfile" 2>/dev/null)"
+                metadata_count="$(json_utils_ucode length "$metadata_tmpfile" 2>/dev/null)"
                 if [ -n "$metadata_count" ] && [ "$metadata_count" -gt 0 ]; then
                     write_subscription_metadata_json "$section" "$metadata_tmpfile"
                 else
@@ -5326,7 +5316,7 @@ configure_outbound_handler() {
             [ -n "$PROXY_GROUP_COUNTRIES_JSON" ] || PROXY_GROUP_COUNTRIES_JSON="{}"
         fi
 
-        outbounds_count="$(printf '%s' "$PROXY_GROUP_OUTBOUND_TAGS_JSON" | jq -r 'length' 2>/dev/null)"
+        outbounds_count="$(printf '%s' "$PROXY_GROUP_OUTBOUND_TAGS_JSON" | json_utils_ucode stdin-length 2>/dev/null)"
         if [ -z "$outbounds_count" ] || [ "$outbounds_count" -eq 0 ]; then
             log "Proxy rule '$section' has no usable proxy outbounds configured. Aborted." "fatal"
             exit 1
@@ -5343,7 +5333,7 @@ configure_outbound_handler() {
             urltest_outbounds="$(filter_urltest_outbounds "$section" "$PROXY_GROUP_OUTBOUND_TAGS_JSON" \
                 "$PROXY_GROUP_NAMES_JSON" "$PROXY_GROUP_COUNTRIES_JSON" "$detect_server_country")"
             [ -n "$urltest_outbounds" ] || urltest_outbounds="[]"
-            urltest_outbounds_count="$(printf '%s' "$urltest_outbounds" | jq -r 'length' 2>/dev/null)"
+            urltest_outbounds_count="$(printf '%s' "$urltest_outbounds" | json_utils_ucode stdin-length 2>/dev/null)"
             case "$urltest_outbounds_count" in
             '' | *[!0-9]*) urltest_outbounds_count=0 ;;
             esac
@@ -5363,7 +5353,7 @@ configure_outbound_handler() {
                 fi
                 config="$(sing_box_cm_add_selector_outbound "$config" "$selector_tag" "$selector_outbounds" "$urltest_tag" "true")"
             else
-                selector_default="$(printf '%s' "$PROXY_GROUP_OUTBOUND_TAGS_JSON" | jq -r '.[0] // empty' 2>/dev/null)"
+                selector_default="$(printf '%s' "$PROXY_GROUP_OUTBOUND_TAGS_JSON" | json_utils_ucode array-item 0 2>/dev/null)"
                 if [ -z "$selector_default" ]; then
                     log "Unable to determine default selector outbound for rule '$section'. Aborted." "fatal"
                     exit 1
@@ -5372,7 +5362,7 @@ configure_outbound_handler() {
                 config="$(sing_box_cm_add_selector_outbound "$config" "$selector_tag" "$PROXY_GROUP_OUTBOUND_TAGS_JSON" "$selector_default" "true")"
             fi
         else
-            selector_default="$(printf '%s' "$PROXY_GROUP_OUTBOUND_TAGS_JSON" | jq -r '.[0] // empty' 2>/dev/null)"
+            selector_default="$(printf '%s' "$PROXY_GROUP_OUTBOUND_TAGS_JSON" | json_utils_ucode array-item 0 2>/dev/null)"
             if [ -z "$selector_default" ]; then
                 log "Unable to determine default selector outbound for rule '$section'. Aborted." "fatal"
                 exit 1
@@ -5547,10 +5537,7 @@ create_route_rule_for_action() {
 dns_route_rule_exists() {
     local tag="$1"
 
-    echo "$config" | jq -e \
-        --arg service_tag "$SERVICE_TAG" \
-        --arg tag "$tag" \
-        '.dns.rules[]? | select(.[$service_tag] == $tag)' >/dev/null 2>&1
+    printf '%s' "$config" | json_utils_ucode dns-route-rule-exists "$SERVICE_TAG" "$tag" >/dev/null 2>&1
 }
 
 ensure_fakeip_dns_route_rule() {
@@ -5567,18 +5554,7 @@ ensure_fakeip_dns_route_rule() {
 route_rule_has_resolve_matchers() {
     local tag="$1"
 
-    echo "$config" | jq -e \
-        --arg service_tag "$SERVICE_TAG" \
-        --arg tag "$tag" \
-        '.route.rules[]? |
-            select(.[$service_tag] == $tag) |
-            (
-                has("domain") or
-                has("domain_suffix") or
-                has("domain_keyword") or
-                has("domain_regex") or
-                has("rule_set")
-            )' >/dev/null 2>&1
+    printf '%s' "$config" | json_utils_ucode route-rule-has-resolve-matchers "$SERVICE_TAG" "$tag" >/dev/null 2>&1
 }
 
 configure_rule_set_reference_handler() {
@@ -6580,30 +6556,7 @@ check_proxy() {
         return 1
     fi
 
-    jq '
-    walk(
-        if type == "object" then
-            with_entries(
-                if .key == "uuid" then
-                    .value = "MASKED"
-                elif .key == "server" then
-                    .value = "MASKED"
-                elif .key == "server_name" then
-                    .value = "MASKED"
-                elif .key == "password" then
-                    .value = "MASKED"
-                elif .key == "public_key" then
-                    .value = "MASKED"
-                elif .key == "short_id" then
-                    .value = "MASKED"
-                elif .key == "fingerprint" then
-                    .value = "MASKED"
-                elif .key == "server_port" then
-                    .value = "MASKED"
-                else . end
-            )
-        else . end
-    )' "$sing_box_config_path"
+    json_utils_ucode mask-sing-box-config "$sing_box_config_path"
 
     nolog "Checking proxy connection..."
 
@@ -6614,22 +6567,13 @@ check_proxy() {
 
     cleanup_check_proxy_dir "$check_proxy_dir"
     mkdir -p "$check_proxy_dir"
-    if ! jq --arg cache_path "$check_proxy_cache" '
-        .inbounds = []
-        | .services = []
-        | (if .experimental.cache_file? then .experimental.cache_file.path = $cache_path else . end)
-        | del(.experimental.clash_api)
-    ' "$sing_box_config_path" > "$check_proxy_config"; then
+    if ! json_utils_ucode prepare-check-proxy-config "$sing_box_config_path" "$check_proxy_config" "$check_proxy_cache"; then
         nolog "Failed to prepare temporary configuration"
         cleanup_check_proxy_dir "$check_proxy_dir"
         return 1
     fi
 
-    check_proxy_outbound_tag=$(jq -r --arg domain "$CHECK_PROXY_IP_DOMAIN" '
-        .route.rules[]?
-        | select((.domain // []) | index($domain))
-        | .outbound // empty
-    ' "$check_proxy_config" | sed -n '1p')
+    check_proxy_outbound_tag="$(json_utils_ucode check-proxy-outbound-tag "$check_proxy_config" "$CHECK_PROXY_IP_DOMAIN" 2>/dev/null | sed -n '1p')"
 
     for attempt in $(seq 1 5); do
         if [ -n "$check_proxy_outbound_tag" ]; then
@@ -6793,30 +6737,7 @@ show_sing_box_config() {
         return 1
     fi
 
-    jq '
-    walk(
-        if type == "object" then
-            with_entries(
-                if .key == "uuid" then
-                    .value = "MASKED"
-                elif .key == "server" then
-                    .value = "MASKED"
-                elif .key == "server_name" then
-                    .value = "MASKED"
-                elif .key == "password" then
-                    .value = "MASKED"
-                elif .key == "public_key" then
-                    .value = "MASKED"
-                elif .key == "short_id" then
-                    .value = "MASKED"
-                elif .key == "fingerprint" then
-                    .value = "MASKED"
-                elif .key == "server_port" then
-                    .value = "MASKED"
-                else . end
-            )
-        else . end
-    )' "$sing_box_config_path"
+    json_utils_ucode mask-sing-box-config "$sing_box_config_path"
 }
 
 show_config() {
@@ -6857,25 +6778,22 @@ fetch_latest_podkop_version() {
 
     command -v curl >/dev/null 2>&1 || return 1
 
-    if command -v jq >/dev/null 2>&1; then
-        releases_file="$(mktemp)"
-        if curl --connect-timeout 2 -m 5 -fsSL "https://api.github.com/repos/$PODKOP_RELEASE_REPO/releases?per_page=50" > "$releases_file" 2>/dev/null; then
-            best_tag=""
-            for tag in $(jq -r '.[] | select(((.draft // false) | not) and ((.prerelease // false) | not)) | .tag_name // empty' "$releases_file" 2>/dev/null); do
-                is_podkop_release_version "$tag" || continue
+    releases_file="$(mktemp)"
+    if curl --connect-timeout 2 -m 5 -fsSL "https://api.github.com/repos/$PODKOP_RELEASE_REPO/releases?per_page=50" > "$releases_file" 2>/dev/null; then
+        best_tag=""
+        for tag in $(json_utils_ucode github-release-tags "$releases_file" 2>/dev/null); do
+            is_podkop_release_version "$tag" || continue
 
-                if [ -z "$best_tag" ] || [ "$(podkop_release_version_compare "$best_tag" "$tag" 2>/dev/null)" -lt 0 ]; then
-                    best_tag="$tag"
-                fi
-            done
+            if [ -z "$best_tag" ] || [ "$(podkop_release_version_compare "$best_tag" "$tag" 2>/dev/null)" -lt 0 ]; then
+                best_tag="$tag"
+            fi
+        done
 
-            rm -f "$releases_file"
-            [ -n "$best_tag" ] && echo "$best_tag"
-        else
-            rm -f "$releases_file"
-        fi
+        rm -f "$releases_file"
+        [ -n "$best_tag" ] && echo "$best_tag"
         return 0
     fi
+    rm -f "$releases_file"
 
     curl --connect-timeout 2 -m 5 -fsSL "https://api.github.com/repos/$PODKOP_RELEASE_REPO/releases/latest" 2>/dev/null |
         sed -n 's/^[[:space:]]*"tag_name":[[:space:]]*"\([^"]*\)".*/\1/p' |
@@ -6984,34 +6902,17 @@ get_luci_app_version() {
 }
 
 system_info_cache_is_valid() {
-    local now cached_at luci_app_version
+    local now luci_app_version
 
     [ -s "$PODKOP_SYSTEM_INFO_CACHE_FILE" ] || return 1
-    jq -e . "$PODKOP_SYSTEM_INFO_CACHE_FILE" >/dev/null 2>&1 || return 1
 
     now="$(date +%s 2>/dev/null)"
     case "$now" in
     '' | *[!0-9]*) now=0 ;;
     esac
 
-    cached_at="$(jq -r '.generated_at // 0' "$PODKOP_SYSTEM_INFO_CACHE_FILE" 2>/dev/null)"
-    case "$cached_at" in
-    '' | *[!0-9]*) cached_at=0 ;;
-    esac
-
-    if [ "$now" -gt 0 ] && [ "$cached_at" -gt 0 ] &&
-        [ $((now - cached_at)) -ge "$PODKOP_SYSTEM_INFO_CACHE_TTL" ]; then
-        return 1
-    fi
-
     luci_app_version="$(get_luci_app_version)"
-    jq -e \
-        --arg podkop_version "$PODKOP_VERSION" \
-        --arg luci_app_version "$luci_app_version" \
-        '.podkop_version == $podkop_version and .luci_app_version == $luci_app_version' \
-        "$PODKOP_SYSTEM_INFO_CACHE_FILE" >/dev/null 2>&1 || return 1
-
-    return 0
+    json_utils_ucode system-info-cache-valid "$PODKOP_SYSTEM_INFO_CACHE_FILE" "$PODKOP_VERSION" "$luci_app_version" "$PODKOP_SYSTEM_INFO_CACHE_TTL" "$now" >/dev/null 2>&1
 }
 
 write_system_info_cache() {
@@ -7080,33 +6981,12 @@ build_system_info() {
     '' | *[!0-9]*) generated_at=0 ;;
     esac
 
-    jq -cn \
-        --arg podkop_version "$podkop_version" \
-        --arg podkop_latest_version "$podkop_latest_version" \
-        --arg luci_app_version "$luci_app_version" \
-        --arg sing_box_version "$sing_box_version" \
-        --argjson sing_box_extended "$sing_box_extended" \
-        --arg zapret_version "$zapret_version" \
-        --argjson zapret_installed "$zapret_installed" \
-        --arg byedpi_version "$byedpi_version" \
-        --argjson byedpi_installed "$byedpi_installed" \
-        --arg openwrt_version "$openwrt_version" \
-        --arg device_model "$device_model" \
-        --argjson generated_at "$generated_at" \
-        '{
-            podkop_version: $podkop_version,
-            podkop_latest_version: $podkop_latest_version,
-            luci_app_version: $luci_app_version,
-            sing_box_version: $sing_box_version,
-            sing_box_extended: $sing_box_extended,
-            zapret_version: $zapret_version,
-            zapret_installed: $zapret_installed,
-            byedpi_version: $byedpi_version,
-            byedpi_installed: $byedpi_installed,
-            openwrt_version: $openwrt_version,
-            device_model: $device_model,
-            generated_at: $generated_at
-        }'
+    json_utils_ucode system-info-json \
+        "$podkop_version" "$podkop_latest_version" "$luci_app_version" \
+        "$sing_box_version" "$sing_box_extended" \
+        "$zapret_version" "$zapret_installed" \
+        "$byedpi_version" "$byedpi_installed" \
+        "$openwrt_version" "$device_model" "$generated_at"
 }
 
 refresh_system_info_cache() {
@@ -7227,17 +7107,11 @@ get_status() {
         fi
     fi
 
-    jq -cn \
-        --argjson running "$running" \
-        --argjson enabled "$enabled" \
-        --arg status "$status" \
-        --argjson dns_configured "$dns_configured" \
-        '{
-            running: $running,
-            enabled: $enabled,
-            status: $status,
-            dns_configured: $dns_configured
-        }'
+    json_utils_ucode object-json \
+        running n "$running" \
+        enabled n "$enabled" \
+        status s "$status" \
+        dns_configured n "$dns_configured"
 }
 
 get_outbound_link() {
@@ -7252,7 +7126,7 @@ get_outbound_link() {
         ;;
     esac
 
-    subscription_cache_lua get-link \
+    subscription_cache_ucode get-link \
         "$PODKOP_SECTION_CACHE_DIR" "$TMP_SUBSCRIPTION_FOLDER" "$section" "$outbound_tag" "$PODKOP_SUBSCRIPTION_LINKS_DIR" ||
         printf '{"link":""}\n'
 }
@@ -7268,7 +7142,7 @@ get_outbound_link_states() {
         ;;
     esac
 
-    subscription_cache_lua get-link-states "$PODKOP_SECTION_CACHE_DIR" "$section" "$PODKOP_SUBSCRIPTION_LINKS_DIR" ||
+    subscription_cache_ucode get-link-states "$PODKOP_SECTION_CACHE_DIR" "$section" "$PODKOP_SUBSCRIPTION_LINKS_DIR" ||
         printf '{}\n'
 }
 
@@ -7285,7 +7159,7 @@ get_outbound_metadata() {
     esac
 
     metadata_path="$(get_outbound_metadata_path "$section")"
-    subscription_cache_lua get-outbound-metadata "$PODKOP_SECTION_CACHE_DIR" "$section" "$metadata_path" ||
+    subscription_cache_ucode get-outbound-metadata "$PODKOP_SECTION_CACHE_DIR" "$section" "$metadata_path" ||
         printf '{"names":{},"countries":{}}\n'
 }
 
@@ -7303,7 +7177,7 @@ get_subscription_metadata() {
     esac
 
     metadata_path="$(get_subscription_metadata_path "$section")"
-    subscription_cache_lua get-subscription-metadata "$PODKOP_SECTION_CACHE_DIR" "$section" "$metadata_path" ||
+    subscription_cache_ucode get-subscription-metadata "$PODKOP_SECTION_CACHE_DIR" "$section" "$metadata_path" ||
         printf '{}\n'
 }
 
@@ -7311,15 +7185,11 @@ validate_nfqws_strategy_json() {
     local raw_opt="${1:-}"
 
     if check_nfqws_strategy "$raw_opt"; then
-        jq -cn '{valid:true,message:"",needle:"",needles:[]}'
+        json_utils_ucode nfqws-strategy-validation true "" "" ""
         return 0
     fi
 
-    jq -cn \
-        --arg message "$NFQWS_VALIDATE_ERROR" \
-        --arg needle "$NFQWS_VALIDATE_NEEDLE" \
-        --arg needles "$NFQWS_VALIDATE_NEEDLES" \
-        '{valid:false,message:$message,needle:$needle,needles:($needles | split("\n") | map(select(length > 0)))}'
+    json_utils_ucode nfqws-strategy-validation false "$NFQWS_VALIDATE_ERROR" "$NFQWS_VALIDATE_NEEDLE" "$NFQWS_VALIDATE_NEEDLES"
 }
 
 check_dns_available() {
@@ -7385,7 +7255,14 @@ check_dns_available() {
     check_dhcp_has_podkop_dns
     config_load "$PODKOP_CONFIG_NAME"
 
-    echo "{\"dns_type\":\"$dns_type\",\"dns_server\":\"$display_dns_server\",\"dns_status\":$dns_status,\"dns_on_router\":$dns_on_router,\"bootstrap_dns_server\":\"$bootstrap_dns_server\",\"bootstrap_dns_status\":$bootstrap_dns_status,\"dhcp_config_status\":$dhcp_config_status}" | jq .
+    json_utils_ucode object-json \
+        dns_type s "$dns_type" \
+        dns_server s "$display_dns_server" \
+        dns_status n "$dns_status" \
+        dns_on_router n "$dns_on_router" \
+        bootstrap_dns_server s "$bootstrap_dns_server" \
+        bootstrap_dns_status n "$bootstrap_dns_status" \
+        dhcp_config_status n "$dhcp_config_status"
 }
 
 check_dhcp_has_podkop_dns() {
@@ -7517,7 +7394,15 @@ check_nft_rules() {
         rm -f /tmp/podkop_mark_check.$$
     fi
 
-    echo "{\"table_exist\":$table_exist,\"rules_mangle_exist\":$rules_mangle_exist,\"rules_mangle_counters\":$rules_mangle_counters,\"rules_mangle_output_exist\":$rules_mangle_output_exist,\"rules_mangle_output_counters\":$rules_mangle_output_counters,\"rules_proxy_exist\":$rules_proxy_exist,\"rules_proxy_counters\":$rules_proxy_counters,\"rules_other_mark_exist\":$rules_other_mark_exist}" | jq .
+    json_utils_ucode object-json \
+        table_exist n "$table_exist" \
+        rules_mangle_exist n "$rules_mangle_exist" \
+        rules_mangle_counters n "$rules_mangle_counters" \
+        rules_mangle_output_exist n "$rules_mangle_output_exist" \
+        rules_mangle_output_counters n "$rules_mangle_output_counters" \
+        rules_proxy_exist n "$rules_proxy_exist" \
+        rules_proxy_counters n "$rules_proxy_counters" \
+        rules_other_mark_exist n "$rules_other_mark_exist"
 }
 
 check_sing_box() {
@@ -7577,7 +7462,14 @@ check_sing_box() {
         sing_box_ports_listening=1
     fi
 
-    echo "{\"sing_box_installed\":$sing_box_installed,\"sing_box_version_ok\":$sing_box_version_ok,\"sing_box_extended\":$sing_box_extended,\"sing_box_service_exist\":$sing_box_service_exist,\"sing_box_autostart_disabled\":$sing_box_autostart_disabled,\"sing_box_process_running\":$sing_box_process_running,\"sing_box_ports_listening\":$sing_box_ports_listening}" | jq .
+    json_utils_ucode object-json \
+        sing_box_installed n "$sing_box_installed" \
+        sing_box_version_ok n "$sing_box_version_ok" \
+        sing_box_extended n "$sing_box_extended" \
+        sing_box_service_exist n "$sing_box_service_exist" \
+        sing_box_autostart_disabled n "$sing_box_autostart_disabled" \
+        sing_box_process_running n "$sing_box_process_running" \
+        sing_box_ports_listening n "$sing_box_ports_listening"
 }
 
 check_fakeip() {
@@ -7593,8 +7485,7 @@ check_fakeip() {
         fakeip_status=true
     fi
 
-    jq -n --argjson fakeip "$fakeip_status" --arg IP "$fakeip_address" \
-        '{fakeip: $fakeip, IP: $IP}'
+    json_utils_ucode object-json fakeip b "$fakeip_status" IP s "$fakeip_address"
 }
 
 #######################################
@@ -7617,7 +7508,7 @@ check_fakeip() {
 #######################################
 
 clash_api_urlencode_path_segment() {
-    jq -nr --arg value "$1" '$value|@uri'
+    json_utils_ucode url-encode "$1"
 }
 
 clash_api() {
@@ -7642,11 +7533,11 @@ clash_api() {
 
     case "$action" in
     get_proxies)
-        curl -s --header "$auth_header" "$CLASH_URL/proxies" | jq .
+        curl -s --header "$auth_header" "$CLASH_URL/proxies" | json_utils_ucode stdin-json
         ;;
 
     get_connections)
-        curl -s --header "$auth_header" "$CLASH_URL/connections" | jq .
+        curl -s --header "$auth_header" "$CLASH_URL/connections" | json_utils_ucode stdin-json
         ;;
 
     get_proxy_latency)
@@ -7654,14 +7545,14 @@ clash_api() {
         local timeout="${3:-2000}"
 
         if [ -z "$proxy_tag" ]; then
-            echo '{"error":"proxy_tag required"}' | jq .
+            json_utils_ucode object-json error s "proxy_tag required"
             return 1
         fi
 
         curl -G -s "$CLASH_URL/proxies/$proxy_tag/delay" \
             --header "$auth_header" \
             --data-urlencode "url=$TEST_URL" \
-            --data-urlencode "timeout=$timeout" | jq .
+            --data-urlencode "timeout=$timeout" | json_utils_ucode stdin-json
         ;;
 
     get_group_latency)
@@ -7669,14 +7560,14 @@ clash_api() {
         local timeout="${3:-5000}"
 
         if [ -z "$group_tag" ]; then
-            echo '{"error":"group_tag required"}' | jq .
+            json_utils_ucode object-json error s "group_tag required"
             return 1
         fi
 
         curl -G -s "$CLASH_URL/group/$group_tag/delay" \
             --header "$auth_header" \
             --data-urlencode "url=$TEST_URL" \
-            --data-urlencode "timeout=$timeout" | jq .
+            --data-urlencode "timeout=$timeout" | json_utils_ucode stdin-json
         ;;
 
     set_group_proxy)
@@ -7684,7 +7575,7 @@ clash_api() {
         local proxy_tag="$3"
 
         if [ -z "$group_tag" ] || [ -z "$proxy_tag" ]; then
-            echo '{"error":"group_tag and proxy_tag required"}' | jq .
+            json_utils_ucode object-json error s "group_tag and proxy_tag required"
             return 1
         fi
 
@@ -7692,7 +7583,7 @@ clash_api() {
         response=$(
             curl -X PUT -s -w "\n%{http_code}" "$CLASH_URL/proxies/$group_tag" \
                 --header "$auth_header" \
-                --data-raw "{\"name\":\"$proxy_tag\"}"
+                --data-raw "$(json_utils_ucode object-json name s "$proxy_tag")"
         )
 
         local http_code
@@ -7702,27 +7593,25 @@ clash_api() {
 
         case "$http_code" in
         204)
-            echo "{\"success\":true,\"group\":\"$group_tag\",\"proxy\":\"$proxy_tag\"}" | jq .
+            json_utils_ucode object-json success b true group s "$group_tag" proxy s "$proxy_tag"
             ;;
         404)
-            echo "{\"success\":false,\"error\":\"group_not_found\",\"message\":\"$group_tag does not exist\"}" | jq .
+            json_utils_ucode object-json success b false error s "group_not_found" message s "$group_tag does not exist"
             return 1
             ;;
         400)
             if echo "$body" | grep -q "not found"; then
-                echo "{\"success\":false,\"error\":\"proxy_not_found\",\"message\":\"$proxy_tag not found in group $group_tag\"}" | jq .
+                json_utils_ucode object-json success b false error s "proxy_not_found" message s "$proxy_tag not found in group $group_tag"
             else
-                echo '{"success":false,"error":"bad_request","message":"Invalid request"}' | jq .
+                json_utils_ucode object-json success b false error s "bad_request" message s "Invalid request"
             fi
             return 1
             ;;
         *)
             if [ -n "$body" ]; then
-                local body_json
-                body_json=$(echo "$body" | jq -c .)
-                echo "{\"success\":false,\"http_code\":$http_code,\"body\":$body_json}" | jq .
+                json_utils_ucode object-json success b false http_code n "$http_code" body a "$body"
             else
-                echo "{\"success\":false,\"http_code\":$http_code}" | jq .
+                json_utils_ucode object-json success b false http_code n "$http_code"
             fi
             return 1
             ;;
@@ -7733,7 +7622,7 @@ clash_api() {
         local connection_id="$2"
 
         if [ -z "$connection_id" ]; then
-            echo '{"error":"connection_id required"}' | jq .
+            json_utils_ucode object-json error s "connection_id required"
             return 1
         fi
 
@@ -7748,21 +7637,17 @@ clash_api() {
 
         case "$http_code" in
         200 | 204)
-            jq -n --arg connection_id "$connection_id" '{success:true, connection_id:$connection_id}'
+            json_utils_ucode object-json success b true connection_id s "$connection_id"
             ;;
         404)
-            jq -n --arg connection_id "$connection_id" \
-                '{success:false, error:"connection_not_found", connection_id:$connection_id}'
+            json_utils_ucode object-json success b false error s "connection_not_found" connection_id s "$connection_id"
             return 1
             ;;
         *)
             if [ -n "$body" ]; then
-                local body_json
-                body_json=$(echo "$body" | jq -c . 2> /dev/null || jq -Rn --arg body "$body" '$body')
-                jq -n --arg http_code "$http_code" --argjson body "$body_json" \
-                    '{success:false, http_code:$http_code, body:$body}'
+                json_utils_ucode object-json success b false http_code n "$http_code" body a "$body"
             else
-                jq -n --arg http_code "$http_code" '{success:false, http_code:$http_code}'
+                json_utils_ucode object-json success b false http_code n "$http_code"
             fi
             return 1
             ;;
@@ -7780,16 +7665,13 @@ clash_api() {
 
         case "$http_code" in
         200 | 204)
-            echo '{"success":true}' | jq .
+            json_utils_ucode object-json success b true
             ;;
         *)
             if [ -n "$body" ]; then
-                local body_json
-                body_json=$(echo "$body" | jq -c . 2> /dev/null || jq -Rn --arg body "$body" '$body')
-                jq -n --arg http_code "$http_code" --argjson body "$body_json" \
-                    '{success:false, http_code:$http_code, body:$body}'
+                json_utils_ucode object-json success b false http_code n "$http_code" body a "$body"
             else
-                jq -n --arg http_code "$http_code" '{success:false, http_code:$http_code}'
+                json_utils_ucode object-json success b false http_code n "$http_code"
             fi
             return 1
             ;;
@@ -7797,7 +7679,9 @@ clash_api() {
         ;;
 
     *)
-        echo '{"error":"unknown action","available":["get_proxies","get_connections","get_proxy_latency","get_group_latency","set_group_proxy","close_connection","close_all_connections"]}' | jq .
+        json_utils_ucode object-json \
+            error s "unknown action" \
+            available j '["get_proxies","get_connections","get_proxy_latency","get_group_latency","set_group_proxy","close_connection","close_all_connections"]'
         return 1
         ;;
     esac
@@ -7806,6 +7690,14 @@ clash_api() {
 print_global() {
     local message="$1"
     echo "$message"
+}
+
+json_get_default() {
+    local json="$1"
+    local key="$2"
+    local fallback="$3"
+
+    printf '%s' "$json" | json_utils_ucode object-get-default "$key" "$fallback" 2>/dev/null
 }
 
 global_check() {
@@ -7822,17 +7714,17 @@ global_check() {
     if [ -n "$system_info_json" ]; then
         local podkop_version podkop_latest_version luci_app_version sing_box_version sing_box_extended zapret_version zapret_installed byedpi_version byedpi_installed openwrt_version device_model
 
-        podkop_version=$(echo "$system_info_json" | jq -r '.podkop_version // "unknown"')
-        podkop_latest_version=$(echo "$system_info_json" | jq -r '.podkop_latest_version // "unknown"')
-        luci_app_version=$(echo "$system_info_json" | jq -r '.luci_app_version // "unknown"')
-        sing_box_version=$(echo "$system_info_json" | jq -r '.sing_box_version // "unknown"')
-        sing_box_extended=$(echo "$system_info_json" | jq -r '.sing_box_extended // 0')
-        zapret_version=$(echo "$system_info_json" | jq -r '.zapret_version // "unknown"')
-        zapret_installed=$(echo "$system_info_json" | jq -r '.zapret_installed // 0')
-        byedpi_version=$(echo "$system_info_json" | jq -r '.byedpi_version // "unknown"')
-        byedpi_installed=$(echo "$system_info_json" | jq -r '.byedpi_installed // 0')
-        openwrt_version=$(echo "$system_info_json" | jq -r '.openwrt_version // "unknown"')
-        device_model=$(echo "$system_info_json" | jq -r '.device_model // "unknown"')
+        podkop_version=$(json_get_default "$system_info_json" podkop_version "unknown")
+        podkop_latest_version=$(json_get_default "$system_info_json" podkop_latest_version "unknown")
+        luci_app_version=$(json_get_default "$system_info_json" luci_app_version "unknown")
+        sing_box_version=$(json_get_default "$system_info_json" sing_box_version "unknown")
+        sing_box_extended=$(json_get_default "$system_info_json" sing_box_extended 0)
+        zapret_version=$(json_get_default "$system_info_json" zapret_version "unknown")
+        zapret_installed=$(json_get_default "$system_info_json" zapret_installed 0)
+        byedpi_version=$(json_get_default "$system_info_json" byedpi_version "unknown")
+        byedpi_installed=$(json_get_default "$system_info_json" byedpi_installed 0)
+        openwrt_version=$(json_get_default "$system_info_json" openwrt_version "unknown")
+        device_model=$(json_get_default "$system_info_json" device_model "unknown")
         if [ "$sing_box_extended" -eq 1 ]; then
             print_global "Sing-box core: extended"
         else
@@ -7863,13 +7755,13 @@ global_check() {
     if [ -n "$dns_check_json" ]; then
         local dns_type dns_server dns_status dns_on_router bootstrap_dns_server bootstrap_dns_status dhcp_config_status
 
-        dns_type=$(echo "$dns_check_json" | jq -r '.dns_type // "unknown"')
-        dns_server=$(echo "$dns_check_json" | jq -r '.dns_server // "unknown"')
-        dns_status=$(echo "$dns_check_json" | jq -r '.dns_status // 0')
-        dns_on_router=$(echo "$dns_check_json" | jq -r '.dns_on_router // 0')
-        bootstrap_dns_server=$(echo "$dns_check_json" | jq -r '.bootstrap_dns_server // ""')
-        bootstrap_dns_status=$(echo "$dns_check_json" | jq -r '.bootstrap_dns_status // 0')
-        dhcp_config_status=$(echo "$dns_check_json" | jq -r '.dhcp_config_status // 0')
+        dns_type=$(json_get_default "$dns_check_json" dns_type "unknown")
+        dns_server=$(json_get_default "$dns_check_json" dns_server "unknown")
+        dns_status=$(json_get_default "$dns_check_json" dns_status 0)
+        dns_on_router=$(json_get_default "$dns_check_json" dns_on_router 0)
+        bootstrap_dns_server=$(json_get_default "$dns_check_json" bootstrap_dns_server "")
+        bootstrap_dns_status=$(json_get_default "$dns_check_json" bootstrap_dns_status 0)
+        dhcp_config_status=$(json_get_default "$dns_check_json" dhcp_config_status 0)
 
         # Bootstrap DNS
         if [ -n "$bootstrap_dns_server" ]; then
@@ -7920,13 +7812,13 @@ global_check() {
     if [ -n "$singbox_check_json" ]; then
         local sing_box_installed sing_box_version_ok sing_box_extended sing_box_service_exist sing_box_autostart_disabled sing_box_process_running sing_box_ports_listening
 
-        sing_box_installed=$(echo "$singbox_check_json" | jq -r '.sing_box_installed // 0')
-        sing_box_version_ok=$(echo "$singbox_check_json" | jq -r '.sing_box_version_ok // 0')
-        sing_box_extended=$(echo "$singbox_check_json" | jq -r '.sing_box_extended // 0')
-        sing_box_service_exist=$(echo "$singbox_check_json" | jq -r '.sing_box_service_exist // 0')
-        sing_box_autostart_disabled=$(echo "$singbox_check_json" | jq -r '.sing_box_autostart_disabled // 0')
-        sing_box_process_running=$(echo "$singbox_check_json" | jq -r '.sing_box_process_running // 0')
-        sing_box_ports_listening=$(echo "$singbox_check_json" | jq -r '.sing_box_ports_listening // 0')
+        sing_box_installed=$(json_get_default "$singbox_check_json" sing_box_installed 0)
+        sing_box_version_ok=$(json_get_default "$singbox_check_json" sing_box_version_ok 0)
+        sing_box_extended=$(json_get_default "$singbox_check_json" sing_box_extended 0)
+        sing_box_service_exist=$(json_get_default "$singbox_check_json" sing_box_service_exist 0)
+        sing_box_autostart_disabled=$(json_get_default "$singbox_check_json" sing_box_autostart_disabled 0)
+        sing_box_process_running=$(json_get_default "$singbox_check_json" sing_box_process_running 0)
+        sing_box_ports_listening=$(json_get_default "$singbox_check_json" sing_box_ports_listening 0)
 
         if [ "$sing_box_installed" -eq 1 ]; then
             print_global "✅ Sing-box installed"
@@ -7976,7 +7868,7 @@ global_check() {
     local zapret_check_json
     zapret_check_json=$(check_zapret_runtime)
 
-    if [ -n "$zapret_check_json" ] && [ "$(echo "$zapret_check_json" | jq -r '.zapret_installed // 0')" = "1" ]; then
+    if [ -n "$zapret_check_json" ] && [ "$(json_get_default "$zapret_check_json" zapret_installed 0)" = "1" ]; then
         print_global "━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         print_global "🧵 Zapret status"
         print_global "✅ Zapret provider available"
@@ -7985,7 +7877,7 @@ global_check() {
     local byedpi_check_json
     byedpi_check_json=$(check_byedpi_runtime)
 
-    if [ -n "$byedpi_check_json" ] && [ "$(echo "$byedpi_check_json" | jq -r '.byedpi_installed // 0')" = "1" ]; then
+    if [ -n "$byedpi_check_json" ] && [ "$(json_get_default "$byedpi_check_json" byedpi_installed 0)" = "1" ]; then
         print_global "━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         print_global "🧵 ByeDPI status"
         print_global "✅ ByeDPI provider available"
@@ -8000,14 +7892,14 @@ global_check() {
     if [ -n "$nft_check_json" ]; then
         local table_exist rules_mangle_exist rules_mangle_counters rules_mangle_output_exist rules_mangle_output_counters rules_proxy_exist rules_proxy_counters rules_other_mark_exist
 
-        table_exist=$(echo "$nft_check_json" | jq -r '.table_exist // 0')
-        rules_mangle_exist=$(echo "$nft_check_json" | jq -r '.rules_mangle_exist // 0')
-        rules_mangle_counters=$(echo "$nft_check_json" | jq -r '.rules_mangle_counters // 0')
-        rules_mangle_output_exist=$(echo "$nft_check_json" | jq -r '.rules_mangle_output_exist // 0')
-        rules_mangle_output_counters=$(echo "$nft_check_json" | jq -r '.rules_mangle_output_counters // 0')
-        rules_proxy_exist=$(echo "$nft_check_json" | jq -r '.rules_proxy_exist // 0')
-        rules_proxy_counters=$(echo "$nft_check_json" | jq -r '.rules_proxy_counters // 0')
-        rules_other_mark_exist=$(echo "$nft_check_json" | jq -r '.rules_other_mark_exist // 0')
+        table_exist=$(json_get_default "$nft_check_json" table_exist 0)
+        rules_mangle_exist=$(json_get_default "$nft_check_json" rules_mangle_exist 0)
+        rules_mangle_counters=$(json_get_default "$nft_check_json" rules_mangle_counters 0)
+        rules_mangle_output_exist=$(json_get_default "$nft_check_json" rules_mangle_output_exist 0)
+        rules_mangle_output_counters=$(json_get_default "$nft_check_json" rules_mangle_output_counters 0)
+        rules_proxy_exist=$(json_get_default "$nft_check_json" rules_proxy_exist 0)
+        rules_proxy_counters=$(json_get_default "$nft_check_json" rules_proxy_counters 0)
+        rules_other_mark_exist=$(json_get_default "$nft_check_json" rules_other_mark_exist 0)
 
         if [ "$table_exist" -eq 1 ]; then
             print_global "✅ Table exist"
@@ -8149,8 +8041,8 @@ global_check() {
     if [ -n "$fakeip_check_json" ]; then
         local fakeip_status fakeip_address
 
-        fakeip_status=$(echo "$fakeip_check_json" | jq -r '.fakeip // false')
-        fakeip_address=$(echo "$fakeip_check_json" | jq -r '.IP // ""')
+        fakeip_status=$(json_get_default "$fakeip_check_json" fakeip false)
+        fakeip_address=$(json_get_default "$fakeip_check_json" IP "")
 
         if [ "$fakeip_status" = "true" ]; then
             print_global "✅ Sing-box FakeIP DNS works: $fakeip_address"

@@ -820,12 +820,7 @@ zapret_rule_outbound_present() {
 
     outbound_tag="$(get_outbound_tag_by_section "$section")"
 
-    jq -e \
-        --arg tag "$outbound_tag" \
-        --argjson routing_mark "$routing_mark" \
-        '.outbounds[]? |
-            select(.type == "direct" and .tag == $tag and (.routing_mark // empty) == $routing_mark)' \
-        "$ZAPRET_SINGBOX_CONFIG_PATH" >/dev/null 2>&1
+    provider_status_ucode has-direct-mark-outbound "$ZAPRET_SINGBOX_CONFIG_PATH" "$outbound_tag" "$routing_mark" >/dev/null 2>&1
 }
 
 zapret_rule_route_rule_present() {
@@ -836,12 +831,7 @@ zapret_rule_route_rule_present() {
 
     outbound_tag="$(get_outbound_tag_by_section "$section")"
 
-    jq -e \
-        --arg inbound "$SB_TPROXY_INBOUND_TAG" \
-        --arg outbound "$outbound_tag" \
-        '.route.rules[]? |
-            select(.action == "route" and .inbound == $inbound and .outbound == $outbound)' \
-        "$ZAPRET_SINGBOX_CONFIG_PATH" >/dev/null 2>&1
+    provider_status_ucode has-route-rule "$ZAPRET_SINGBOX_CONFIG_PATH" "$SB_TPROXY_INBOUND_TAG" "$outbound_tag" >/dev/null 2>&1
 }
 
 _collect_zapret_runtime_status_handler() {
@@ -992,57 +982,33 @@ get_zapret_status_json() {
         status_message="zapret provider status is normal"
     fi
 
-    jq -cn \
-        --arg version "$version" \
-        --arg provider_path "$ZAPRET_PROVIDER_NFQWS_BIN" \
-        --arg status_message "$status_message" \
-        --argjson installed "$installed" \
-        --argjson package_installed "$package_installed" \
-        --argjson provider_available "$provider_available" \
-        --argjson files_available "$files_available" \
-        --argjson ipset_available "$ipset_available" \
-        --argjson configured "$configured" \
-        --argjson enabled_rule_count "${enabled_rule_count:-0}" \
-        --argjson expected_process_count "${expected_process_count:-0}" \
-        --argjson running_process_count "${running_process_count:-0}" \
-        --argjson supervisor_process_count "${supervisor_process_count:-0}" \
-        --argjson standalone_service_enabled "$standalone_service_enabled" \
-        --argjson standalone_service_running "$standalone_service_running" \
-        --argjson standalone_config_present "$standalone_config_present" \
-        --argjson standalone_conflict "$standalone_conflict" \
-        --argjson luci_app_installed "$luci_app_installed" \
-        --argjson queue_base "$ZAPRET_QUEUE_BASE" \
-        --argjson queue_range_end "$queue_range_end" \
-        --argjson queue_overlap "$queue_overlap" \
-        --argjson legacy_runtime_present "$legacy_runtime_present" \
-        --argjson ready "$ready" \
-        --argjson conflict "$conflict" \
-        '{
-            installed: $installed,
-            package_installed: $package_installed,
-            provider_available: $provider_available,
-            provider_path: $provider_path,
-            files_available: $files_available,
-            ipset_available: $ipset_available,
-            version: $version,
-            configured: $configured,
-            enabled_rule_count: $enabled_rule_count,
-            expected_process_count: $expected_process_count,
-            running_process_count: $running_process_count,
-            supervisor_process_count: $supervisor_process_count,
-            standalone_service_enabled: $standalone_service_enabled,
-            standalone_service_running: $standalone_service_running,
-            standalone_config_present: $standalone_config_present,
-            standalone_conflict: $standalone_conflict,
-            luci_app_installed: $luci_app_installed,
-            queue_base: $queue_base,
-            queue_range_end: $queue_range_end,
-            queue_overlap: $queue_overlap,
-            legacy_runtime_present: $legacy_runtime_present,
-            ready: $ready,
-            conflict: $conflict,
-            status_message: $status_message
-        }'
+    provider_status_ucode zapret-status \
+        "$installed" \
+        "$package_installed" \
+        "$provider_available" \
+        "$ZAPRET_PROVIDER_NFQWS_BIN" \
+        "$files_available" \
+        "$ipset_available" \
+        "$version" \
+        "$configured" \
+        "${enabled_rule_count:-0}" \
+        "${expected_process_count:-0}" \
+        "${running_process_count:-0}" \
+        "${supervisor_process_count:-0}" \
+        "$standalone_service_enabled" \
+        "$standalone_service_running" \
+        "$standalone_config_present" \
+        "$standalone_conflict" \
+        "$luci_app_installed" \
+        "$ZAPRET_QUEUE_BASE" \
+        "$queue_range_end" \
+        "$queue_overlap" \
+        "$legacy_runtime_present" \
+        "$ready" \
+        "$conflict" \
+        "$outbounds_configured" \
+        "$routes_configured" \
+        "$status_message"
 }
 
 check_zapret_runtime_json() {
@@ -1056,15 +1022,7 @@ check_zapret_runtime_json() {
         package_installed=1
     fi
 
-    jq -cn \
-        --argjson zapret_installed "$installed" \
-        --argjson zapret_package_installed "$package_installed" \
-        --arg zapret_provider_path "$ZAPRET_PROVIDER_NFQWS_BIN" \
-        '{
-            zapret_installed: $zapret_installed,
-            zapret_package_installed: $zapret_package_installed,
-            zapret_provider_path: $zapret_provider_path
-        }'
+    provider_status_ucode zapret-check "$installed" "$package_installed" "$ZAPRET_PROVIDER_NFQWS_BIN"
 }
 
 _create_zapret_nft_rule_handler() {

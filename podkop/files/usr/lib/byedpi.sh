@@ -428,14 +428,12 @@ validate_byedpi_strategy_json() {
     local raw_opt="$1"
 
     if check_byedpi_strategy "$raw_opt"; then
-        jq -cn '{valid: true, message: "", needle: "", needles: []}'
+        provider_status_ucode byedpi-validation 1 "" ""
         return 0
     fi
 
-    printf '%s\n' "$BYEDPI_VALIDATE_NEEDLES" | jq -R . | jq -sc \
-        --arg message "$BYEDPI_VALIDATE_ERROR" \
-        --arg needle "$BYEDPI_VALIDATE_NEEDLE" \
-        '{valid: false, message: $message, needle: $needle, needles: .}'
+    printf '%s\n' "$BYEDPI_VALIDATE_NEEDLES" |
+        provider_status_ucode byedpi-validation 0 "$BYEDPI_VALIDATE_ERROR" "$BYEDPI_VALIDATE_NEEDLE"
 }
 
 stop_byedpi_pidfile_process() {
@@ -668,13 +666,7 @@ byedpi_rule_outbound_present() {
 
     outbound_tag="$(get_outbound_tag_by_section "$section")"
 
-    jq -e \
-        --arg tag "$outbound_tag" \
-        --arg address "$BYEDPI_LISTEN_ADDRESS" \
-        --argjson port "$port" \
-        '.outbounds[]? |
-            select(.type == "socks" and .tag == $tag and .server == $address and (.server_port // empty) == $port)' \
-        "$BYEDPI_SINGBOX_CONFIG_PATH" >/dev/null 2>&1
+    provider_status_ucode has-socks-outbound "$BYEDPI_SINGBOX_CONFIG_PATH" "$outbound_tag" "$BYEDPI_LISTEN_ADDRESS" "$port" >/dev/null 2>&1
 }
 
 byedpi_rule_route_rule_present() {
@@ -685,12 +677,7 @@ byedpi_rule_route_rule_present() {
 
     outbound_tag="$(get_outbound_tag_by_section "$section")"
 
-    jq -e \
-        --arg inbound "$SB_TPROXY_INBOUND_TAG" \
-        --arg outbound "$outbound_tag" \
-        '.route.rules[]? |
-            select(.action == "route" and .inbound == $inbound and .outbound == $outbound)' \
-        "$BYEDPI_SINGBOX_CONFIG_PATH" >/dev/null 2>&1
+    provider_status_ucode has-route-rule "$BYEDPI_SINGBOX_CONFIG_PATH" "$SB_TPROXY_INBOUND_TAG" "$outbound_tag" >/dev/null 2>&1
 }
 
 _collect_byedpi_runtime_status_handler() {
@@ -816,51 +803,28 @@ get_byedpi_status_json() {
         status_message="byedpi provider status is normal"
     fi
 
-    jq -cn \
-        --arg version "$version" \
-        --arg provider_path "$BYEDPI_BIN" \
-        --arg listen_address "$BYEDPI_LISTEN_ADDRESS" \
-        --arg status_message "$status_message" \
-        --argjson installed "$installed" \
-        --argjson package_installed "$package_installed" \
-        --argjson provider_available "$provider_available" \
-        --argjson configured "$configured" \
-        --argjson enabled_rule_count "${enabled_rule_count:-0}" \
-        --argjson expected_process_count "${expected_process_count:-0}" \
-        --argjson running_process_count "${running_process_count:-0}" \
-        --argjson supervisor_process_count "${supervisor_process_count:-0}" \
-        --argjson restart_count "${restart_count:-0}" \
-        --argjson runtime_unstable "$runtime_unstable" \
-        --argjson standalone_service_enabled "$standalone_service_enabled" \
-        --argjson standalone_service_running "$standalone_service_running" \
-        --argjson port_base "$BYEDPI_PORT_BASE" \
-        --argjson outbounds_configured "$outbounds_configured" \
-        --argjson routes_configured "$routes_configured" \
-        --argjson ready "$ready" \
-        --argjson conflict "$conflict" \
-        '{
-            installed: $installed,
-            package_installed: $package_installed,
-            provider_available: $provider_available,
-            provider_path: $provider_path,
-            version: $version,
-            configured: $configured,
-            enabled_rule_count: $enabled_rule_count,
-            expected_process_count: $expected_process_count,
-            running_process_count: $running_process_count,
-            supervisor_process_count: $supervisor_process_count,
-            restart_count: $restart_count,
-            runtime_unstable: $runtime_unstable,
-            standalone_service_enabled: $standalone_service_enabled,
-            standalone_service_running: $standalone_service_running,
-            listen_address: $listen_address,
-            port_base: $port_base,
-            outbounds_configured: $outbounds_configured,
-            routes_configured: $routes_configured,
-            ready: $ready,
-            conflict: $conflict,
-            status_message: $status_message
-        }'
+    provider_status_ucode byedpi-status \
+        "$installed" \
+        "$package_installed" \
+        "$provider_available" \
+        "$BYEDPI_BIN" \
+        "$version" \
+        "$configured" \
+        "${enabled_rule_count:-0}" \
+        "${expected_process_count:-0}" \
+        "${running_process_count:-0}" \
+        "${supervisor_process_count:-0}" \
+        "${restart_count:-0}" \
+        "$runtime_unstable" \
+        "$standalone_service_enabled" \
+        "$standalone_service_running" \
+        "$BYEDPI_LISTEN_ADDRESS" \
+        "$BYEDPI_PORT_BASE" \
+        "$outbounds_configured" \
+        "$routes_configured" \
+        "$ready" \
+        "$conflict" \
+        "$status_message"
 }
 
 check_byedpi_runtime_json() {
@@ -874,13 +838,5 @@ check_byedpi_runtime_json() {
         package_installed=1
     fi
 
-    jq -cn \
-        --argjson byedpi_installed "$installed" \
-        --argjson byedpi_package_installed "$package_installed" \
-        --arg byedpi_provider_path "$BYEDPI_BIN" \
-        '{
-            byedpi_installed: $byedpi_installed,
-            byedpi_package_installed: $byedpi_package_installed,
-            byedpi_provider_path: $byedpi_provider_path
-        }'
+    provider_status_ucode byedpi-check "$installed" "$package_installed" "$BYEDPI_BIN"
 }
