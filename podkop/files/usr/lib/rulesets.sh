@@ -20,7 +20,7 @@ create_source_rule_set() {
         return 3
     fi
 
-    jq -n '{version: 3, rules: []}' > "$ruleset_filepath"
+    ucode "${PODKOP_LIB:-/usr/lib/podkop-plus}/rulesets.uc" create-source "$ruleset_filepath"
 }
 
 #######################################
@@ -38,17 +38,15 @@ patch_source_ruleset_rules() {
     local key="$2"
     local value="$3"
 
-    local tmpfile=$(mktemp)
+    local tmpfile
+    tmpfile="$(mktemp)" || return 1
 
-    jq --arg key "$key" --argjson value "$value" \
-        '( .rules | map(has($key)) | index(true) ) as $idx |
-        if $idx != null then
-            .rules[$idx][$key] = (.rules[$idx][$key] + $value | unique)
-        else
-            .rules += [{ ($key): $value }]
-        end' "$filepath" > "$tmpfile"
+    cp "$filepath" "$tmpfile" || {
+        rm -f "$tmpfile"
+        return 1
+    }
 
-    if [ $? -ne 0 ]; then
+    if ! ucode "${PODKOP_LIB:-/usr/lib/podkop-plus}/rulesets.uc" patch-source "$tmpfile" "$key" "$value"; then
         rm -f "$tmpfile"
         return 1
     fi
@@ -159,5 +157,5 @@ extract_ip_cidr_from_json_ruleset_to_file() {
     local output_file="$2"
 
     log "Extracting ip_cidr entries from $json_file to $output_file" "debug"
-    jq -r '.rules[]? | select(has("ip_cidr")) | .ip_cidr[]?' "$json_file" > "$output_file"
+    ucode "${PODKOP_LIB:-/usr/lib/podkop-plus}/rulesets.uc" extract-ip-cidr "$json_file" "$output_file"
 }

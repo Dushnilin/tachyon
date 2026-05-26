@@ -425,16 +425,20 @@ download_subscription() {
     return 1
 }
 
+json_utils_ucode() {
+    ucode "${PODKOP_LIB:-/usr/lib/podkop-plus}/json_utils.uc" "$@"
+}
+
 validate_subscription_file() {
     local filepath="$1"
 
     [ -s "$filepath" ] || return 1
 
-    jq -e '
-        type == "object" and
-        (.outbounds | type == "array") and
-        ((.outbounds | length) > 0)
-    ' "$filepath" > /dev/null 2>&1
+    json_utils_ucode validate-subscription "$filepath" >/dev/null 2>&1
+}
+
+provider_status_ucode() {
+    ucode "${PODKOP_LIB:-/usr/lib/podkop-plus}/provider_status.uc" "$@"
 }
 
 # Converts Windows-style line endings (CRLF) to Unix-style (LF)

@@ -42,6 +42,21 @@ updates_log() {
     log "Updates: $message" "$level"
 }
 
+updates_json_file_get_default() {
+    local json_file="$1"
+    local key="$2"
+    local fallback="$3"
+
+    json_utils_ucode json-file-field "$json_file" "$key" "$fallback" 2>/dev/null
+}
+
+updates_json_file_running_is() {
+    local json_file="$1"
+    local expected="$2"
+
+    json_utils_ucode job-running-is "$json_file" "$expected" >/dev/null 2>&1
+}
+
 updates_init_tmp_dir() {
     [ -n "$UPDATES_TMP_DIR" ] && return 0
 
@@ -103,25 +118,15 @@ updates_json_response() {
     local changed="${7:-0}"
     local status="${8:-}"
 
-    jq -cn \
-        --argjson success "$success" \
-        --arg component "$component" \
-        --arg action "$action" \
-        --arg message "$message" \
-        --arg current_version "$current_version" \
-        --arg latest_version "$latest_version" \
-        --argjson changed "$changed" \
-        --arg status "$status" \
-        '{
-            success: $success,
-            component: $component,
-            action: $action,
-            message: $message,
-            current_version: $current_version,
-            latest_version: $latest_version,
-            changed: $changed,
-            status: $status
-        }'
+    json_utils_ucode object-json \
+        success b "$success" \
+        component s "$component" \
+        action s "$action" \
+        message s "$message" \
+        current_version s "$current_version" \
+        latest_version s "$latest_version" \
+        changed n "$changed" \
+        status s "$status"
 }
 
 updates_success() {
@@ -146,15 +151,10 @@ updates_job_json_response() {
     local job_id="$2"
     local message="${3:-}"
 
-    jq -cn \
-        --argjson success "$success" \
-        --arg job_id "$job_id" \
-        --arg message "$message" \
-        '{
-            success: $success,
-            job_id: $job_id,
-            message: $message
-        }'
+    json_utils_ucode object-json \
+        success b "$success" \
+        job_id s "$job_id" \
+        message s "$message"
 }
 
 updates_job_state_path() {
@@ -194,7 +194,7 @@ updates_cleanup_component_jobs() {
 
             if [ -f "$state_file" ]; then
                 updates_refresh_running_job_state "$state_file"
-                if jq -e '(.running // false) == true' "$state_file" >/dev/null 2>&1; then
+                if updates_json_file_running_is "$state_file" true; then
                     continue
                 fi
             fi
@@ -207,7 +207,7 @@ updates_cleanup_component_jobs() {
     find "$UPDATES_JOB_DIR" -type f -name '*.json' -mmin "+$UPDATES_JOB_FINISHED_TTL_MINUTES" 2>/dev/null |
         while IFS= read -r state_file; do
             [ -f "$state_file" ] || continue
-            if jq -e '(.running // false) == false' "$state_file" >/dev/null 2>&1; then
+            if updates_json_file_running_is "$state_file" false; then
                 rm -f "$state_file" 2>/dev/null || true
             fi
         done
@@ -228,28 +228,35 @@ updates_write_running_job_state() {
     mkdir -p "$UPDATES_JOB_DIR" || return 1
     tmp_file="$(updates_job_tmp_file "$state_file")" || return 1
 
-    jq -cn \
-        --argjson success true \
-        --argjson running true \
-        --arg component "$component" \
-        --arg action "$action" \
-        --arg message "Component action is running" \
-        --arg pid "$pid" \
-        --argjson started_at "$started_at" \
-        '{
-            success: $success,
-            running: $running,
-            component: $component,
-            action: $action,
-            message: $message,
-            pid: (if $pid == "" then null else $pid end),
-            started_at: $started_at,
-            current_version: "",
-            latest_version: "",
-            changed: 0,
-            status: "",
-            exit_code: null
-        }' >"$tmp_file" && mv "$tmp_file" "$state_file"
+    if [ -n "$pid" ]; then
+        json_utils_ucode object-json \
+            success b true \
+            running b true \
+            component s "$component" \
+            action s "$action" \
+            message s "Component action is running" \
+            pid s "$pid" \
+            started_at n "$started_at" \
+            current_version s "" \
+            latest_version s "" \
+            changed n 0 \
+            status s "" \
+            exit_code j null >"$tmp_file" && mv "$tmp_file" "$state_file"
+    else
+        json_utils_ucode object-json \
+            success b true \
+            running b true \
+            component s "$component" \
+            action s "$action" \
+            message s "Component action is running" \
+            pid j null \
+            started_at n "$started_at" \
+            current_version s "" \
+            latest_version s "" \
+            changed n 0 \
+            status s "" \
+            exit_code j null >"$tmp_file" && mv "$tmp_file" "$state_file"
+    fi
 
     local rc=$?
     rm -f "$tmp_file" 2>/dev/null
@@ -266,10 +273,7 @@ updates_update_running_job_pid() {
     esac
 
     tmp_file="$(updates_job_tmp_file "$state_file")" || return 1
-    jq -c \
-        --arg pid "$pid" \
-        'if (.running // false) == true then . + {pid: $pid} else . end' \
-        "$state_file" >"$tmp_file" && mv "$tmp_file" "$state_file"
+    json_utils_ucode updates-set-running-job-pid "$state_file" "$pid" >"$tmp_file" && mv "$tmp_file" "$state_file"
 
     local rc=$?
     rm -f "$tmp_file" 2>/dev/null
@@ -281,23 +285,7 @@ updates_mark_stale_job_state() {
     local tmp_file
 
     tmp_file="$(updates_job_tmp_file "$state_file")" || return 1
-    jq -c \
-        --argjson success false \
-        --argjson running false \
-        --arg message "Component action job is stale or the worker process exited unexpectedly" \
-        'if (.running // false) == true then
-            . + {
-                success: $success,
-                running: $running,
-                message: $message,
-                changed: 0,
-                status: "",
-                exit_code: null
-            }
-        else
-            .
-        end' \
-        "$state_file" >"$tmp_file" && mv "$tmp_file" "$state_file"
+    json_utils_ucode updates-mark-stale-job-state "$state_file" >"$tmp_file" && mv "$tmp_file" "$state_file"
 
     local rc=$?
     rm -f "$tmp_file" 2>/dev/null
@@ -326,10 +314,10 @@ updates_refresh_running_job_state() {
     local state_file="$1"
     local pid started_at
 
-    jq -e '(.running // false) == true' "$state_file" >/dev/null 2>&1 || return 0
+    updates_json_file_running_is "$state_file" true || return 0
 
-    pid="$(jq -r '.pid // empty' "$state_file" 2>/dev/null)"
-    started_at="$(jq -r '.started_at // 0' "$state_file" 2>/dev/null)"
+    pid="$(updates_json_file_get_default "$state_file" pid "")"
+    started_at="$(updates_json_file_get_default "$state_file" started_at 0)"
     case "$pid" in
     "" | *[!0-9]*)
         updates_mark_stale_job_state "$state_file"
@@ -342,7 +330,7 @@ updates_refresh_running_job_state() {
     fi
 
     updates_started_at_is_within_stale_grace "$started_at" && return 0
-    jq -e '(.running // false) == true' "$state_file" >/dev/null 2>&1 || return 0
+    updates_json_file_running_is "$state_file" true || return 0
 
     updates_mark_stale_job_state "$state_file"
 }
@@ -362,25 +350,15 @@ updates_write_finished_job_state() {
     "" | *[!0-9]*) updated_at=0 ;;
     esac
 
-    if jq -e . "$output_file" >/dev/null 2>&1; then
-        jq -c \
-            --argjson running false \
-            --argjson exit_code "$exit_code" \
-            --argjson updated_at "$updated_at" \
-            '. + {running: $running, exit_code: $exit_code, updated_at: $updated_at}' \
-            "$output_file" >"$tmp_file" && mv "$tmp_file" "$state_file"
+    if json_utils_ucode file-json-valid "$output_file" >/dev/null 2>&1; then
+        json_utils_ucode updates-finish-job-state "$output_file" "$exit_code" "$updated_at" >"$tmp_file" && mv "$tmp_file" "$state_file"
         rm -f "$tmp_file" "$output_file"
         return 0
     fi
 
     sed -n 's/^[^{]*\({.*\)$/\1/p' "$output_file" 2>/dev/null | tail -n 1 >"$json_file"
-    if [ -s "$json_file" ] && jq -e . "$json_file" >/dev/null 2>&1; then
-        jq -c \
-            --argjson running false \
-            --argjson exit_code "$exit_code" \
-            --argjson updated_at "$updated_at" \
-            '. + {running: $running, exit_code: $exit_code, updated_at: $updated_at}' \
-            "$json_file" >"$tmp_file" && mv "$tmp_file" "$state_file"
+    if [ -s "$json_file" ] && json_utils_ucode file-json-valid "$json_file" >/dev/null 2>&1; then
+        json_utils_ucode updates-finish-job-state "$json_file" "$exit_code" "$updated_at" >"$tmp_file" && mv "$tmp_file" "$state_file"
         rm -f "$tmp_file" "$json_file" "$output_file"
         return 0
     fi
@@ -389,27 +367,7 @@ updates_write_finished_job_state() {
     raw_output="$(tr '\n' ' ' <"$output_file" 2>/dev/null | cut -c1-240)"
     [ -n "$raw_output" ] || raw_output="Failed to execute"
 
-    jq -cn \
-        --argjson success false \
-        --argjson running false \
-        --arg component "$component" \
-        --arg action "$action" \
-        --arg message "$raw_output" \
-        --argjson exit_code "$exit_code" \
-        --argjson updated_at "$updated_at" \
-        '{
-            success: $success,
-            running: $running,
-            component: $component,
-            action: $action,
-            message: $message,
-            current_version: "",
-            latest_version: "",
-            changed: 0,
-            status: "",
-            exit_code: $exit_code,
-            updated_at: $updated_at
-        }' >"$tmp_file" && mv "$tmp_file" "$state_file"
+    json_utils_ucode updates-fallback-job-state "$component" "$action" "$raw_output" "$exit_code" "$updated_at" >"$tmp_file" && mv "$tmp_file" "$state_file"
 
     rm -f "$tmp_file" "$output_file"
 }
@@ -930,18 +888,11 @@ updates_resolve_arch_candidates() {
 updates_fetch_github_release_json() {
     local owner="$1"
     local repo="$2"
-    local response message
+    local response
 
     response="$(updates_http_get "https://api.github.com/repos/${owner}/${repo}/releases/latest" 2>/dev/null || true)"
     [ -n "$response" ] || return 1
-    printf '%s' "$response" | jq -e . >/dev/null 2>&1 || return 1
-
-    message="$(printf '%s' "$response" | jq -r 'if type == "object" then (.message // empty) else empty end' 2>/dev/null)"
-    case "$message" in
-    *"API rate limit"* | *"rate limit exceeded"* | "Not Found")
-        return 1
-        ;;
-    esac
+    printf '%s' "$response" | json_utils_ucode github-response-ok >/dev/null 2>&1 || return 1
 
     printf '%s' "$response"
 }
@@ -950,18 +901,11 @@ updates_fetch_github_releases_json() {
     local owner="$1"
     local repo="$2"
     local per_page="${3:-30}"
-    local response message
+    local response
 
     response="$(updates_http_get "https://api.github.com/repos/${owner}/${repo}/releases?per_page=${per_page}" 2>/dev/null || true)"
     [ -n "$response" ] || return 1
-    printf '%s' "$response" | jq -e . >/dev/null 2>&1 || return 1
-
-    message="$(printf '%s' "$response" | jq -r 'if type == "object" then (.message // empty) else empty end' 2>/dev/null)"
-    case "$message" in
-    *"API rate limit"* | *"rate limit exceeded"* | "Not Found")
-        return 1
-        ;;
-    esac
+    printf '%s' "$response" | json_utils_ucode github-response-ok >/dev/null 2>&1 || return 1
 
     printf '%s' "$response"
 }
@@ -995,27 +939,14 @@ updates_select_release_asset_name() {
     local package_prefix="$2"
     local asset_ext="$3"
 
-    printf '%s' "$release_json" | jq -r \
-        --arg prefix "$package_prefix" \
-        --arg ext "$asset_ext" \
-        '[
-            .assets[]
-            | select(
-                ((.name | startswith($prefix + "_")) or (.name | startswith($prefix + "-")))
-                and (.name | endswith("." + $ext))
-            )
-            | .name
-        ][0] // empty'
+    printf '%s' "$release_json" | json_utils_ucode release-asset-name "$package_prefix" "$asset_ext"
 }
 
 updates_select_release_asset_url() {
     local release_json="$1"
     local asset_name="$2"
 
-    printf '%s' "$release_json" | jq -r \
-        --arg name "$asset_name" \
-        '.assets[] | select(.name == $name) | .browser_download_url' |
-        sed -n '1p'
+    printf '%s' "$release_json" | json_utils_ucode release-asset-url "$asset_name" | sed -n '1p'
 }
 
 updates_resolve_podkop_plus_release() {
@@ -1039,13 +970,7 @@ updates_resolve_podkop_plus_release() {
     updates_is_apk && asset_ext="apk"
 
     response="$(updates_fetch_github_releases_json "$owner" "$repo" 50)" || return 1
-    release_json="$(printf '%s' "$response" | jq -c \
-        --arg tag "$latest_version" \
-        '.[] | select(
-            ((.draft // false) | not)
-            and ((.prerelease // false) | not)
-            and (.tag_name == $tag)
-        )' | sed -n '1p')"
+    release_json="$(printf '%s' "$response" | json_utils_ucode release-by-tag "$latest_version" | sed -n '1p')"
     [ -n "$release_json" ] || return 1
 
     UPDATES_PODKOP_BACKEND_NAME="$(updates_select_release_asset_name "$release_json" "podkop-plus" "$asset_ext")"
@@ -1106,7 +1031,7 @@ updates_resolve_zapret_release() {
     release_json="$(updates_fetch_github_release_json "remittor" "zapret-openwrt")" || return 1
 
     for arch in $UPDATES_ARCH_CANDIDATES; do
-        candidate_name="$(printf '%s' "$release_json" | jq -r --arg arch "$arch" '[.assets[] | select(.name | endswith("_" + $arch + ".zip")) | .name][0] // empty')"
+        candidate_name="$(printf '%s' "$release_json" | json_utils_ucode release-asset-name-by-suffix "_${arch}.zip" 2>/dev/null)"
         if [ -n "$candidate_name" ]; then
             UPDATES_ZAPRET_ARCH="$arch"
             UPDATES_ZAPRET_BUNDLE_NAME="$candidate_name"
@@ -1116,7 +1041,7 @@ updates_resolve_zapret_release() {
 
     [ -n "$UPDATES_ZAPRET_BUNDLE_NAME" ] || return 1
 
-    url="$(printf '%s' "$release_json" | jq -r --arg name "$UPDATES_ZAPRET_BUNDLE_NAME" '[.assets[] | select(.name == $name) | .browser_download_url][0] // empty')"
+    url="$(printf '%s' "$release_json" | json_utils_ucode release-asset-url "$UPDATES_ZAPRET_BUNDLE_NAME" 2>/dev/null)"
     [ -n "$url" ] || return 1
     UPDATES_ZAPRET_BUNDLE_URL="$url"
     UPDATES_ZAPRET_PACKAGE_VERSION="$(updates_extract_zapret_bundle_version "$UPDATES_ZAPRET_BUNDLE_NAME")"
@@ -1166,20 +1091,7 @@ updates_resolve_byedpi_release() {
 
     response="$(updates_fetch_github_releases_json "DPITrickster" "ByeDPI-OpenWrt" 30)" || return 1
 
-    if [ -n "$release_series" ]; then
-        resolved="$(printf '%s' "$response" | jq -c --arg series "$release_series" '
-            .[]
-            | select(((.draft // false) | not) and ((.prerelease // false) | not))
-            | select(((.tag_name // "") | contains($series)) or ((.name // "") | contains($series)))
-        ' | updates_select_byedpi_asset "$asset_ext")"
-    fi
-
-    if [ -z "$resolved" ]; then
-        resolved="$(printf '%s' "$response" | jq -c '
-            .[]
-            | select(((.draft // false) | not) and ((.prerelease // false) | not))
-        ' | updates_select_byedpi_asset "$asset_ext")"
-    fi
+    resolved="$(printf '%s' "$response" | json_utils_ucode byedpi-select-asset "$release_series" "$asset_ext" "$UPDATES_ARCH_CANDIDATES" 2>/dev/null)"
 
     [ -n "$resolved" ] || return 1
 
@@ -1192,36 +1104,6 @@ updates_resolve_byedpi_release() {
     [ -n "$UPDATES_BYEDPI_PACKAGE_URL" ] || return 1
 
     UPDATES_BYEDPI_PACKAGE_VERSION="$(updates_extract_arch_package_version "$UPDATES_BYEDPI_PACKAGE_NAME" "$UPDATES_BYEDPI_ARCH")"
-}
-
-updates_select_byedpi_asset() {
-    local asset_ext="$1"
-    local release_json candidate_name arch url resolved
-
-    while IFS= read -r release_json; do
-        [ -n "$release_json" ] || continue
-        [ -n "$resolved" ] && continue
-
-        for arch in $UPDATES_ARCH_CANDIDATES; do
-            candidate_name="$(printf '%s' "$release_json" | jq -r --arg arch "$arch" --arg ext "$asset_ext" '
-                [
-                    (.assets // [])[]
-                    | select(((.name | startswith("byedpi_")) or (.name | startswith("byedpi-"))) and (.name | endswith("." + $ext)))
-                    | select((.name | contains("_" + $arch + "." + $ext)) or (.name | contains("-" + $arch + "." + $ext)))
-                    | .name
-                ][0] // empty
-            ')"
-
-            if [ -n "$candidate_name" ]; then
-                url="$(printf '%s' "$release_json" | jq -r --arg name "$candidate_name" '[(.assets // [])[] | select(.name == $name) | .browser_download_url][0] // empty')"
-                [ -n "$url" ] || continue
-                resolved="$(printf '%s\t%s\t%s\n' "$arch" "$candidate_name" "$url")"
-                break
-            fi
-        done
-    done
-
-    [ -n "$resolved" ] && printf '%s\n' "$resolved"
 }
 
 updates_download_byedpi_package() {
@@ -1404,22 +1286,13 @@ updates_resolve_sing_box_extended_release() {
     updates_resolve_sing_box_extended_arch_suffix || return 1
     response="$(updates_fetch_github_releases_json "shtorm-7" "sing-box-extended" 30)" || return 1
 
-    tag="$(printf '%s' "$response" | jq -r '
-        [
-            .[]
-            | select(((.prerelease // false) | not) and ((.draft // false) | not))
-            | .tag_name // empty
-            | select(((ascii_downcase | contains("alpha")) or (ascii_downcase | contains("beta")) or (ascii_downcase | contains("rc"))) | not)
-        ][0] // empty
-    ')"
+    tag="$(printf '%s' "$response" | json_utils_ucode sing-box-extended-release-tag 2>/dev/null)"
 
     [ -n "$tag" ] || return 1
     UPDATES_SING_BOX_EXTENDED_RELEASE_TAG="$tag"
-    release_json="$(printf '%s' "$response" | jq -c --arg tag "$tag" '[.[] | select(.tag_name == $tag)][0] // empty')"
+    release_json="$(printf '%s' "$response" | json_utils_ucode release-by-tag "$tag" 2>/dev/null)"
     asset_pattern="linux-${UPDATES_SING_BOX_EXTENDED_ARCH_SUFFIX}.tar.gz"
-    UPDATES_SING_BOX_EXTENDED_ASSET_URL="$(printf '%s' "$release_json" | jq -r --arg pattern "$asset_pattern" '
-        [(.assets // [])[] | select(.name | endswith($pattern)) | .browser_download_url][0] // empty
-    ')"
+    UPDATES_SING_BOX_EXTENDED_ASSET_URL="$(printf '%s' "$release_json" | json_utils_ucode release-asset-url-by-suffix "$asset_pattern" 2>/dev/null)"
 
     [ -n "$UPDATES_SING_BOX_EXTENDED_ASSET_URL" ] || return 1
     UPDATES_SING_BOX_EXTENDED_ASSET_NAME="$(basename "$UPDATES_SING_BOX_EXTENDED_ASSET_URL")"
