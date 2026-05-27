@@ -964,6 +964,19 @@ build_service_trigger_signature() {
     signature_finish
 }
 
+dnsmasq_inherited_default_options() {
+    echo "domain local expandhosts localise_queries domainneeded add_local_domain add_local_hostname add_local_fqdn"
+}
+
+append_dnsmasq_inherited_options_signature() {
+    local option value
+
+    for option in $(dnsmasq_inherited_default_options); do
+        value="$(uci_get "dhcp" "@dnsmasq[0]" "$option")"
+        signature_add "dhcp.@dnsmasq[0].$option" "$value"
+    done
+}
+
 build_dnsmasq_signature() {
     local dont_touch_dhcp source_network_interfaces
 
@@ -972,6 +985,7 @@ build_dnsmasq_signature() {
     config_get source_network_interfaces "settings" "source_network_interfaces" "br-lan"
     signature_add "settings.dont_touch_dhcp" "$dont_touch_dhcp"
     signature_add "settings.source_network_interfaces" "$source_network_interfaces"
+    append_dnsmasq_inherited_options_signature
     signature_finish
 }
 
@@ -3710,6 +3724,16 @@ restore_dnsmasq_config_list_option() {
     uci_remove "dhcp" "@dnsmasq[0]" "$backup_key"
 }
 
+dnsmasq_inherit_default_options() {
+    local option value
+
+    for option in $(dnsmasq_inherited_default_options); do
+        value="$(uci_get "dhcp" "@dnsmasq[0]" "$option")"
+        [ -n "$value" ] || continue
+        uci_set "dhcp" "$PODKOP_DNSMASQ_SECTION" "$option" "$value"
+    done
+}
+
 dnsmasq_server_list_has_podkop_dns() {
     local server_list="$1"
     local server
@@ -3783,6 +3807,7 @@ dnsmasq_configure_split_instance() {
     uci set "dhcp.$PODKOP_DNSMASQ_SECTION=dnsmasq"
     uci_set "dhcp" "$PODKOP_DNSMASQ_SECTION" "noresolv" 1
     uci_set "dhcp" "$PODKOP_DNSMASQ_SECTION" "cachesize" 0
+    dnsmasq_inherit_default_options
     uci_add_list "dhcp" "$PODKOP_DNSMASQ_SECTION" "server" "$SB_DNS_INBOUND_ADDRESS"
     uci_add_list "dhcp" "$PODKOP_DNSMASQ_SECTION" "notinterface" "lo"
 
