@@ -88,7 +88,7 @@ is_config_change_reload() {
 }
 
 runtime_is_running() {
-    "$PODKOP_BIN" get_status 2> /dev/null | grep -q '"running":1'
+    "$PODKOP_BIN" get_status 2> /dev/null | grep -q '"running"[[:space:]]*:[[:space:]]*1'
 }
 
 service_is_enabled() {
@@ -184,7 +184,7 @@ reload_service() {
 }
 
 status_service() {
-    if "$PODKOP_BIN" get_status 2> /dev/null | grep -q '"running":1'; then
+    if runtime_is_running; then
         echo "running"
         return 0
     fi
