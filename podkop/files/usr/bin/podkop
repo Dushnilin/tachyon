@@ -4526,17 +4526,18 @@ dnsmasq_restore() {
 
 build_list_update_cron_job() {
     local update_interval
+    local interval_seconds
     local cron_schedule
 
     update_interval="$(get_settings_update_interval)"
     [ -n "$update_interval" ] || return 1
 
-    if ! duration_to_seconds "$update_interval" >/dev/null 2>&1; then
+    interval_seconds="$(duration_to_seconds "$update_interval")" || {
         log "Invalid update_interval value: $update_interval" "error"
         return 1
-    fi
+    }
 
-    cron_schedule="$(duration_to_cron_schedule "$update_interval")" || cron_schedule="* * * * *"
+    cron_schedule="$(seconds_to_due_check_cron_schedule "$interval_seconds")"
     printf '%s %s list_update_if_due %s\n' "$cron_schedule" "$PODKOP_BIN" "$PODKOP_LIST_UPDATE_CRON_MARKER"
 }
 
@@ -4573,7 +4574,7 @@ collect_subscription_update_interval_seconds() {
     fi
 }
 
-seconds_to_subscription_cron_schedule() {
+seconds_to_due_check_cron_schedule() {
     local seconds="$1"
     local minutes hours
 
@@ -4612,6 +4613,10 @@ seconds_to_subscription_cron_schedule() {
     fi
 
     printf '* * * * *\n'
+}
+
+seconds_to_subscription_cron_schedule() {
+    seconds_to_due_check_cron_schedule "$1"
 }
 
 remove_cron_job() {
@@ -4674,41 +4679,6 @@ duration_to_seconds() {
     done
 
     awk -v total="$total" 'BEGIN { if (total <= 0) exit 1; printf "%d\n", int(total + 0.5) }' || return 1
-}
-
-duration_to_cron_schedule() {
-    local input="$1"
-    local value unit
-
-    value="$(printf '%s' "$input" | sed -n 's/^\([0-9][0-9]*\)\([mhd]\)$/\1/p')"
-    unit="$(printf '%s' "$input" | sed -n 's/^\([0-9][0-9]*\)\([mhd]\)$/\2/p')"
-    [ -n "$value" ] || return 1
-
-    case "$unit" in
-    m)
-        [ "$value" -ge 1 ] && [ "$value" -le 59 ] || return 1
-        if [ "$value" -eq 1 ]; then
-            echo "* * * * *"
-        else
-            echo "*/$value * * * *"
-        fi
-        ;;
-    h)
-        [ "$value" -ge 1 ] && [ "$value" -le 23 ] || return 1
-        if [ "$value" -eq 1 ]; then
-            echo "0 * * * *"
-        else
-            echo "0 */$value * * *"
-        fi
-        ;;
-    d)
-        [ "$value" -eq 1 ] || return 1
-        echo "0 0 * * *"
-        ;;
-    *)
-        return 1
-        ;;
-    esac
 }
 
 read_list_update_timestamp() {
