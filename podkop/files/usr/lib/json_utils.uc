@@ -355,7 +355,7 @@ function select_byedpi_asset_from_release(release, asset_ext, arch_candidates) {
             let name = as_string(asset.name || "");
             let url = as_string(asset.browser_download_url || "");
             if (url != "" && byedpi_asset_matches(name, arch, asset_ext)) {
-                print(arch, "\t", name, "\t", url, "\n");
+                print(arch, "\t", name, "\t", url, "\t", as_string(release.html_url || ""), "\n");
                 return true;
             }
         }

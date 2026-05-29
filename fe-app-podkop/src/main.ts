@@ -18,6 +18,7 @@ export { validateOutboundJson } from './validators/validateOutboundJson';
 export { validateProxyUrl } from './validators/validateProxyUrl';
 export { parseValueList } from './helpers/parseValueList';
 export { injectGlobalStyles } from './helpers/injectGlobalStyles';
+export { showToast } from './helpers/showToast';
 export { getClashUIUrl } from './helpers/getClashApiUrl';
 export { PodkopShellMethods } from './podkop/methods/shell';
 export { coreService } from './podkop/services/core.service';

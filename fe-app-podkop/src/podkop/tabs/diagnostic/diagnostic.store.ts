@@ -124,9 +124,9 @@ export const initialDiagnosticStore: Pick<
     byedpiRemove: { loading: false },
   },
   updatesChecks: {
-    podkop: { status: null, latest_version: '' },
-    sing_box: { status: null, latest_version: '' },
-    zapret: { status: null, latest_version: '' },
-    byedpi: { status: null, latest_version: '' },
+    podkop: { status: null, latest_version: '', release_url: '' },
+    sing_box: { status: null, latest_version: '', release_url: '' },
+    zapret: { status: null, latest_version: '', release_url: '' },
+    byedpi: { status: null, latest_version: '', release_url: '' },
   },
 };

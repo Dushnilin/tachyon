@@ -1,5 +1,6 @@
 .idea
 fe-app-podkop/node_modules
+fe-app-podkop/.yarn/
 fe-app-podkop/.env
 .DS_Store
 
