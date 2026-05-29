@@ -8913,6 +8913,22 @@ check_inbounds_server_handler() {
     INBOUNDS_CHECK_ITEMS_JSON="${INBOUNDS_CHECK_ITEMS_JSON}${separator}${item_json}"
 }
 
+check_inbounds_config_server_handler() {
+    local section="$1"
+
+    server_is_enabled "$section" || return 0
+    INBOUNDS_CONFIG_ENABLED_COUNT=$((INBOUNDS_CONFIG_ENABLED_COUNT + 1))
+}
+
+check_inbounds_config() {
+    INBOUNDS_CONFIG_ENABLED_COUNT=0
+
+    config_foreach check_inbounds_config_server_handler "server"
+
+    json_utils_ucode object-json \
+        enabled_count n "$INBOUNDS_CONFIG_ENABLED_COUNT"
+}
+
 check_inbounds() {
     local sing_box_config_path wan_ip wan_public
 
@@ -10626,6 +10642,7 @@ Available commands:
     check_nft               Check NFT rules
     check_nft_rules         Check NFT rules status
     check_sing_box          Check sing-box installation and status
+    check_inbounds_config   Check whether enabled server inbounds are configured
     check_inbounds          Check server inbounds from the Servers tab
     check_logs              Show Podkop Plus logs from system journal
     check_sing_box_logs     Show sing-box logs
@@ -10710,6 +10727,9 @@ check_nft_rules)
     ;;
 check_sing_box)
     check_sing_box
+    ;;
+check_inbounds_config)
+    check_inbounds_config
     ;;
 check_inbounds)
     check_inbounds

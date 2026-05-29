@@ -47,12 +47,13 @@ function sleep(ms: number) {
 function getDiagnosticsProviderOptions(
   systemInfo: Pick<
     StoreType['diagnosticsSystemInfo'],
-    'zapret_installed' | 'byedpi_installed'
+    'zapret_installed' | 'byedpi_installed' | 'server_inbounds_enabled_count'
   > = store.get().diagnosticsSystemInfo,
 ): DiagnosticsProviderOptions {
   return {
     includeZapret: Boolean(systemInfo.zapret_installed),
     includeByedpi: Boolean(systemInfo.byedpi_installed),
+    includeInbounds: systemInfo.server_inbounds_enabled_count !== 0,
   };
 }
 
@@ -217,9 +218,10 @@ async function fetchDiagnosticsProviderInfo() {
   const requestId = ++latestProviderInfoRequestId;
 
   try {
-    const [zapretRuntime, byedpiRuntime] = await Promise.all([
+    const [zapretRuntime, byedpiRuntime, inboundsConfig] = await Promise.all([
       PodkopShellMethods.checkZapretRuntime(),
       PodkopShellMethods.checkByedpiRuntime(),
+      PodkopShellMethods.checkInboundsConfig(),
     ]);
 
     if (requestId !== latestProviderInfoRequestId) {
@@ -236,6 +238,9 @@ async function fetchDiagnosticsProviderInfo() {
       byedpi_installed: byedpiRuntime.success
         ? byedpiRuntime.data.byedpi_installed
         : currentSystemInfo.byedpi_installed,
+      server_inbounds_enabled_count: inboundsConfig.success
+        ? inboundsConfig.data.enabled_count
+        : -1,
     };
 
     if (!zapretRuntime.success) {
@@ -244,6 +249,10 @@ async function fetchDiagnosticsProviderInfo() {
 
     if (!byedpiRuntime.success) {
       logger.error('[DIAGNOSTIC]', 'fetchByedpiRuntime failed', byedpiRuntime);
+    }
+
+    if (!inboundsConfig.success) {
+      logger.error('[DIAGNOSTIC]', 'fetchInboundsConfig failed', inboundsConfig);
     }
 
     if (!nextSystemInfo.zapret_installed) {
@@ -271,18 +280,11 @@ async function fetchDiagnosticsProviderInfo() {
         diagnosticsSystemInfo: {
           ...currentSystemInfo,
           providerInfoLoaded: true,
+          server_inbounds_enabled_count: -1,
         },
       });
     }
   }
-}
-
-async function ensureDiagnosticsProviderInfo() {
-  if (store.get().diagnosticsSystemInfo.providerInfoLoaded) {
-    return;
-  }
-
-  await fetchDiagnosticsProviderInfo();
 }
 
 function renderDiagnosticsChecks() {
@@ -672,13 +674,13 @@ async function onStoreUpdate(
 
 async function runChecks() {
   try {
-    await ensureDiagnosticsProviderInfo();
+    await fetchDiagnosticsProviderInfo();
 
     const providerOptions = getDiagnosticsProviderOptions();
     const runners = [
       runDnsCheck,
       runSingBoxCheck,
-      runInboundsCheck,
+      ...(providerOptions.includeInbounds ? [runInboundsCheck] : []),
       runNftCheck,
       ...(providerOptions.includeZapret ? [runZapretCheck] : []),
       ...(providerOptions.includeByedpi ? [runByedpiCheck] : []),
@@ -711,7 +713,7 @@ async function loadInitialDiagnosticData() {
 
   if (diagnosticStatus?.isConnected && diagnosticStatus.offsetParent !== null) {
     await fetchSystemInfo();
-    await ensureDiagnosticsProviderInfo();
+    await fetchDiagnosticsProviderInfo();
   }
 }
 

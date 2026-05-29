@@ -2071,6 +2071,7 @@ var Podkop;
     AvailableMethods2["CHECK_NFT_RULES"] = "check_nft_rules";
     AvailableMethods2["CHECK_ZAPRET_RUNTIME"] = "check_zapret_runtime";
     AvailableMethods2["CHECK_BYEDPI_RUNTIME"] = "check_byedpi_runtime";
+    AvailableMethods2["CHECK_INBOUNDS_CONFIG"] = "check_inbounds_config";
     AvailableMethods2["GET_STATUS"] = "get_status";
     AvailableMethods2["GET_OUTBOUND_LINK"] = "get_outbound_link";
     AvailableMethods2["GET_OUTBOUND_LINK_STATES"] = "get_outbound_link_states";
@@ -2194,6 +2195,9 @@ var PodkopShellMethods = {
   ),
   checkByedpiRuntime: async () => callBaseMethod(
     Podkop.AvailableMethods.CHECK_BYEDPI_RUNTIME
+  ),
+  checkInboundsConfig: async () => callBaseMethod(
+    Podkop.AvailableMethods.CHECK_INBOUNDS_CONFIG
   ),
   getStatus: async () => callBaseMethod(Podkop.AvailableMethods.GET_STATUS),
   getOutboundLink: async (section, tag) => callBaseMethod(
@@ -2992,12 +2996,11 @@ function createDiagnosticCheck(code, description) {
   };
 }
 function getDiagnosticsChecks(description, options = {}) {
-  const checks = [
-    "DNS" /* DNS */,
-    "SINGBOX" /* SINGBOX */,
-    "INBOUNDS" /* INBOUNDS */,
-    "NFT" /* NFT */
-  ];
+  const checks = ["DNS" /* DNS */, "SINGBOX" /* SINGBOX */];
+  if (options.includeInbounds !== false) {
+    checks.push("INBOUNDS" /* INBOUNDS */);
+  }
+  checks.push("NFT" /* NFT */);
   if (options.includeZapret) {
     checks.push("ZAPRET" /* ZAPRET */);
   }
@@ -3026,6 +3029,7 @@ var initialDiagnosticStore = {
     zapret_installed: 0,
     byedpi_version: "loading",
     byedpi_installed: 0,
+    server_inbounds_enabled_count: -1,
     openwrt_version: "loading",
     device_model: "loading"
   },
@@ -5296,6 +5300,7 @@ var UNKNOWN_SYSTEM_INFO = {
   zapret_installed: 0,
   byedpi_version: _("unknown"),
   byedpi_installed: 0,
+  server_inbounds_enabled_count: -1,
   openwrt_version: _("unknown"),
   device_model: _("unknown")
 };
@@ -5337,6 +5342,7 @@ async function ensureSystemInfo({
           loading: false,
           loaded: true,
           providerInfoLoaded: true,
+          server_inbounds_enabled_count: currentSystemInfo.server_inbounds_enabled_count,
           ...systemInfo.data
         };
         store.set({
@@ -5355,7 +5361,8 @@ async function ensureSystemInfo({
         loaded: false,
         providerInfoLoaded: latestSystemInfo.providerInfoLoaded,
         zapret_installed: latestSystemInfo.zapret_installed,
-        byedpi_installed: latestSystemInfo.byedpi_installed
+        byedpi_installed: latestSystemInfo.byedpi_installed,
+        server_inbounds_enabled_count: latestSystemInfo.server_inbounds_enabled_count
       };
       store.set({
         diagnosticsSystemInfo: nextSystemInfo
@@ -6172,7 +6179,8 @@ function sleep2(ms) {
 function getDiagnosticsProviderOptions(systemInfo = store.get().diagnosticsSystemInfo) {
   return {
     includeZapret: Boolean(systemInfo.zapret_installed),
-    includeByedpi: Boolean(systemInfo.byedpi_installed)
+    includeByedpi: Boolean(systemInfo.byedpi_installed),
+    includeInbounds: systemInfo.server_inbounds_enabled_count !== 0
   };
 }
 function getNotRunningDiagnosticsChecks() {
@@ -6292,9 +6300,10 @@ async function fetchSystemInfo() {
 async function fetchDiagnosticsProviderInfo() {
   const requestId = ++latestProviderInfoRequestId;
   try {
-    const [zapretRuntime, byedpiRuntime] = await Promise.all([
+    const [zapretRuntime, byedpiRuntime, inboundsConfig] = await Promise.all([
       PodkopShellMethods.checkZapretRuntime(),
-      PodkopShellMethods.checkByedpiRuntime()
+      PodkopShellMethods.checkByedpiRuntime(),
+      PodkopShellMethods.checkInboundsConfig()
     ]);
     if (requestId !== latestProviderInfoRequestId) {
       return;
@@ -6304,13 +6313,17 @@ async function fetchDiagnosticsProviderInfo() {
       ...currentSystemInfo,
       providerInfoLoaded: true,
       zapret_installed: zapretRuntime.success ? zapretRuntime.data.zapret_installed : currentSystemInfo.zapret_installed,
-      byedpi_installed: byedpiRuntime.success ? byedpiRuntime.data.byedpi_installed : currentSystemInfo.byedpi_installed
+      byedpi_installed: byedpiRuntime.success ? byedpiRuntime.data.byedpi_installed : currentSystemInfo.byedpi_installed,
+      server_inbounds_enabled_count: inboundsConfig.success ? inboundsConfig.data.enabled_count : -1
     };
     if (!zapretRuntime.success) {
       logger.error("[DIAGNOSTIC]", "fetchZapretRuntime failed", zapretRuntime);
     }
     if (!byedpiRuntime.success) {
       logger.error("[DIAGNOSTIC]", "fetchByedpiRuntime failed", byedpiRuntime);
+    }
+    if (!inboundsConfig.success) {
+      logger.error("[DIAGNOSTIC]", "fetchInboundsConfig failed", inboundsConfig);
     }
     if (!nextSystemInfo.zapret_installed) {
       nextSystemInfo.zapret_version = "not installed";
@@ -6332,17 +6345,12 @@ async function fetchDiagnosticsProviderInfo() {
       store.set({
         diagnosticsSystemInfo: {
           ...currentSystemInfo,
-          providerInfoLoaded: true
+          providerInfoLoaded: true,
+          server_inbounds_enabled_count: -1
         }
       });
     }
   }
-}
-async function ensureDiagnosticsProviderInfo() {
-  if (store.get().diagnosticsSystemInfo.providerInfoLoaded) {
-    return;
-  }
-  await fetchDiagnosticsProviderInfo();
 }
 function renderDiagnosticsChecks() {
   logger.debug("[DIAGNOSTIC]", "renderDiagnosticsChecks");
@@ -6662,12 +6670,12 @@ async function onStoreUpdate2(_next, _prev, diff) {
 }
 async function runChecks() {
   try {
-    await ensureDiagnosticsProviderInfo();
+    await fetchDiagnosticsProviderInfo();
     const providerOptions = getDiagnosticsProviderOptions();
     const runners = [
       runDnsCheck,
       runSingBoxCheck,
-      runInboundsCheck,
+      ...providerOptions.includeInbounds ? [runInboundsCheck] : [],
       runNftCheck,
       ...providerOptions.includeZapret ? [runZapretCheck] : [],
       ...providerOptions.includeByedpi ? [runByedpiCheck] : [],
@@ -6695,7 +6703,7 @@ async function loadInitialDiagnosticData() {
   const diagnosticStatus = document.getElementById("diagnostic-status");
   if (diagnosticStatus?.isConnected && diagnosticStatus.offsetParent !== null) {
     await fetchSystemInfo();
-    await ensureDiagnosticsProviderInfo();
+    await fetchDiagnosticsProviderInfo();
   }
 }
 function onPageMount2() {

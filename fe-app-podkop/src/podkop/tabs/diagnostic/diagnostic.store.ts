@@ -7,6 +7,7 @@ import { IDiagnosticsChecksStoreItem, StoreType } from '../../services';
 export interface DiagnosticsProviderOptions {
   includeZapret?: boolean;
   includeByedpi?: boolean;
+  includeInbounds?: boolean;
 }
 
 function createDiagnosticCheck(
@@ -29,12 +30,13 @@ export function getDiagnosticsChecks(
   description: string,
   options: DiagnosticsProviderOptions = {},
 ): Array<IDiagnosticsChecksStoreItem> {
-  const checks = [
-    DIAGNOSTICS_CHECKS.DNS,
-    DIAGNOSTICS_CHECKS.SINGBOX,
-    DIAGNOSTICS_CHECKS.INBOUNDS,
-    DIAGNOSTICS_CHECKS.NFT,
-  ];
+  const checks = [DIAGNOSTICS_CHECKS.DNS, DIAGNOSTICS_CHECKS.SINGBOX];
+
+  if (options.includeInbounds !== false) {
+    checks.push(DIAGNOSTICS_CHECKS.INBOUNDS);
+  }
+
+  checks.push(DIAGNOSTICS_CHECKS.NFT);
 
   if (options.includeZapret) {
     checks.push(DIAGNOSTICS_CHECKS.ZAPRET);
@@ -79,6 +81,7 @@ export const initialDiagnosticStore: Pick<
     zapret_installed: 0,
     byedpi_version: 'loading',
     byedpi_installed: 0,
+    server_inbounds_enabled_count: -1,
     openwrt_version: 'loading',
     device_model: 'loading',
   },
