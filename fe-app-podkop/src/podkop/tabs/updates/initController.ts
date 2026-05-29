@@ -28,6 +28,7 @@ interface ComponentActionButton {
 interface ComponentCard {
   title: string;
   version: string;
+  releaseUrl?: string;
   tag?: {
     label: string;
     kind: 'neutral' | 'success' | 'warning';
@@ -77,6 +78,16 @@ function getInstallActionText(component: Podkop.ComponentName) {
   return _('Install');
 }
 
+function getGitHubReleaseUrl(component: Podkop.ComponentName) {
+  const checkResult = store.get().updatesChecks[component];
+
+  if (!shouldShowInstallAfterCheck(component) || !checkResult.release_url) {
+    return undefined;
+  }
+
+  return checkResult.release_url;
+}
+
 function isAnyActionLoading() {
   return Object.values(store.get().updatesActions).some((item) => item.loading);
 }
@@ -102,6 +113,7 @@ function setCheckResult(
   component: Podkop.ComponentName,
   status: UpdateStatus,
   latestVersion: string,
+  releaseUrl: string = '',
 ) {
   const updatesChecks = store.get().updatesChecks;
 
@@ -111,6 +123,7 @@ function setCheckResult(
       [component]: {
         status,
         latest_version: latestVersion,
+        release_url: releaseUrl,
       },
     },
   });
@@ -248,7 +261,12 @@ async function handleComponentAction(button: ComponentActionButton) {
       const status = result.status || null;
 
       if (status === 'latest' || status === 'outdated' || status === 'dev') {
-        setCheckResult(button.component, status, result.latest_version || '');
+        setCheckResult(
+          button.component,
+          status,
+          result.latest_version || '',
+          result.release_url || '',
+        );
       }
 
       setActionLoading(button.key, false);
@@ -336,6 +354,7 @@ function getComponentCards(): ComponentCard[] {
     {
       title: 'Podkop Plus',
       version: normalizeCompiledVersion(systemInfo.podkop_version),
+      releaseUrl: getGitHubReleaseUrl('podkop'),
       tag: getCheckTag('podkop'),
       actions: [
         getPrimaryUpdateAction('podkop', 'podkopCheck', 'podkopInstall'),
@@ -346,6 +365,7 @@ function getComponentCards(): ComponentCard[] {
       version: isNotInstalled(systemInfo.sing_box_version)
         ? _('Not installed')
         : systemInfo.sing_box_version,
+      releaseUrl: getGitHubReleaseUrl('sing_box'),
       tag: getCheckTag('sing_box'),
       actions: [
         getPrimaryUpdateAction(
@@ -363,6 +383,7 @@ function getComponentCards(): ComponentCard[] {
         : zapretInstalled
           ? systemInfo.zapret_version
           : _('Not installed'),
+      releaseUrl: getGitHubReleaseUrl('zapret'),
       tag: zapretInstalled ? getCheckTag('zapret') : undefined,
       actions: zapretInstalled
         ? [
@@ -392,6 +413,7 @@ function getComponentCards(): ComponentCard[] {
         : byedpiInstalled
           ? systemInfo.byedpi_version
           : _('Not installed'),
+      releaseUrl: getGitHubReleaseUrl('byedpi'),
       tag: byedpiInstalled ? getCheckTag('byedpi') : undefined,
       actions: byedpiInstalled
         ? [
@@ -449,9 +471,35 @@ function renderComponentCard(card: ComponentCard) {
   const headerChildren: Node[] = [
     E('b', { class: 'pdk_updates-page__component__title' }, card.title),
   ];
+  const statusChildren: Node[] = [];
+
+  if (card.releaseUrl) {
+    statusChildren.push(
+      E(
+        'a',
+        {
+          class: 'pdk_updates-page__component__release-link',
+          href: card.releaseUrl,
+          target: '_blank',
+          rel: 'noopener noreferrer',
+        },
+        _('GitHub release'),
+      ),
+    );
+  }
 
   if (tag) {
-    headerChildren.push(tag);
+    statusChildren.push(tag);
+  }
+
+  if (statusChildren.length > 0) {
+    headerChildren.push(
+      E(
+        'div',
+        { class: 'pdk_updates-page__component__status' },
+        statusChildren,
+      ),
+    );
   }
 
   return E('div', { class: 'pdk_updates-page__component' }, [

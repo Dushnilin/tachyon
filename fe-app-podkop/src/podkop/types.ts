@@ -301,6 +301,7 @@ export namespace Podkop {
     message: string;
     current_version: string;
     latest_version: string;
+    release_url?: string;
     changed: boolean;
     status?: 'latest' | 'outdated' | 'dev' | '';
     exit_code?: number | null;

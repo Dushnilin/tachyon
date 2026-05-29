@@ -9,12 +9,15 @@ UPDATES_ZAPRET_BUNDLE_NAME=""
 UPDATES_ZAPRET_PACKAGE_FILE=""
 UPDATES_ZAPRET_PACKAGE_NAME=""
 UPDATES_ZAPRET_PACKAGE_VERSION=""
+UPDATES_ZAPRET_RELEASE_URL=""
 UPDATES_BYEDPI_ARCH=""
 UPDATES_BYEDPI_PACKAGE_URL=""
 UPDATES_BYEDPI_PACKAGE_NAME=""
 UPDATES_BYEDPI_PACKAGE_FILE=""
 UPDATES_BYEDPI_PACKAGE_VERSION=""
+UPDATES_BYEDPI_RELEASE_URL=""
 UPDATES_PODKOP_BACKEND_URL=""
+UPDATES_PODKOP_RELEASE_URL=""
 UPDATES_PODKOP_BACKEND_NAME=""
 UPDATES_PODKOP_BACKEND_FILE=""
 UPDATES_PODKOP_APP_URL=""
@@ -24,6 +27,7 @@ UPDATES_PODKOP_I18N_URL=""
 UPDATES_PODKOP_I18N_NAME=""
 UPDATES_PODKOP_I18N_FILE=""
 UPDATES_SING_BOX_EXTENDED_RELEASE_TAG=""
+UPDATES_SING_BOX_EXTENDED_RELEASE_URL=""
 UPDATES_SING_BOX_EXTENDED_ARCH_SUFFIX=""
 UPDATES_SING_BOX_EXTENDED_ASSET_URL=""
 UPDATES_SING_BOX_EXTENDED_ASSET_NAME=""
@@ -117,6 +121,7 @@ updates_json_response() {
     local latest_version="${6:-}"
     local changed="${7:-0}"
     local status="${8:-}"
+    local release_url="${9:-}"
 
     json_utils_ucode object-json \
         success b "$success" \
@@ -126,7 +131,8 @@ updates_json_response() {
         current_version s "$current_version" \
         latest_version s "$latest_version" \
         changed n "$changed" \
-        status s "$status"
+        status s "$status" \
+        release_url s "$release_url"
 }
 
 updates_success() {
@@ -759,8 +765,9 @@ updates_check_success() {
     local component="$1"
     local current_version="$2"
     local latest_version="$3"
+    local release_url="${4:-}"
 
-    updates_check_success_compared "$component" "$current_version" "$latest_version" "$current_version" "$latest_version"
+    updates_check_success_compared "$component" "$current_version" "$latest_version" "$current_version" "$latest_version" "$release_url"
 }
 
 updates_check_success_compared() {
@@ -769,6 +776,7 @@ updates_check_success_compared() {
     local latest_version="$3"
     local compare_current_version="$4"
     local compare_latest_version="$5"
+    local release_url="${6:-}"
     local compare_result status message
 
     compare_result="$(updates_compare_versions "$compare_current_version" "$compare_latest_version" 2>/dev/null || true)"
@@ -791,7 +799,18 @@ updates_check_success_compared() {
         ;;
     esac
 
-    updates_success "$component" "check_update" "$message" "$current_version" "$latest_version" 0 "$status"
+    updates_success "$component" "check_update" "$message" "$current_version" "$latest_version" 0 "$status" "$release_url"
+}
+
+updates_fetch_podkop_latest_release_metadata() {
+    local release_json tag release_url
+
+    release_json="$(fetch_latest_podkop_release_json)" || return 1
+    tag="$(printf '%s' "$release_json" | json_utils_ucode object-get-default tag_name "" 2>/dev/null)"
+    [ -n "$tag" ] || return 1
+    release_url="$(printf '%s' "$release_json" | json_utils_ucode object-get-default html_url "" 2>/dev/null)"
+
+    printf '%s\t%s\n' "$tag" "$release_url"
 }
 
 updates_ensure_package_tool() {
@@ -1037,6 +1056,7 @@ updates_resolve_podkop_plus_release() {
     local owner repo asset_ext release_json release_tag
 
     UPDATES_PODKOP_BACKEND_URL=""
+    UPDATES_PODKOP_RELEASE_URL=""
     UPDATES_PODKOP_BACKEND_NAME=""
     UPDATES_PODKOP_APP_URL=""
     UPDATES_PODKOP_APP_NAME=""
@@ -1056,6 +1076,7 @@ updates_resolve_podkop_plus_release() {
     [ -n "$release_json" ] || return 1
     release_tag="$(printf '%s' "$release_json" | json_utils_ucode object-get-default tag_name "" 2>/dev/null)"
     [ "$release_tag" = "$latest_version" ] || return 1
+    UPDATES_PODKOP_RELEASE_URL="$(printf '%s' "$release_json" | json_utils_ucode object-get-default html_url "" 2>/dev/null)"
 
     UPDATES_PODKOP_BACKEND_NAME="$(updates_select_release_asset_name "$release_json" "podkop-plus" "$asset_ext")"
     UPDATES_PODKOP_APP_NAME="$(updates_select_release_asset_name "$release_json" "luci-app-podkop-plus" "$asset_ext")"
@@ -1111,8 +1132,10 @@ updates_resolve_zapret_release() {
     UPDATES_ZAPRET_BUNDLE_URL=""
     UPDATES_ZAPRET_BUNDLE_NAME=""
     UPDATES_ZAPRET_PACKAGE_VERSION=""
+    UPDATES_ZAPRET_RELEASE_URL=""
 
     release_json="$(updates_fetch_github_release_json "remittor" "zapret-openwrt")" || return 1
+    UPDATES_ZAPRET_RELEASE_URL="$(printf '%s' "$release_json" | json_utils_ucode object-get-default html_url "" 2>/dev/null)"
 
     for arch in $UPDATES_ARCH_CANDIDATES; do
         candidate_name="$(printf '%s' "$release_json" | json_utils_ucode release-asset-name-by-suffix "_${arch}.zip" 2>/dev/null)"
@@ -1168,6 +1191,7 @@ updates_resolve_byedpi_release() {
     UPDATES_BYEDPI_PACKAGE_URL=""
     UPDATES_BYEDPI_PACKAGE_NAME=""
     UPDATES_BYEDPI_PACKAGE_VERSION=""
+    UPDATES_BYEDPI_RELEASE_URL=""
 
     asset_ext="ipk"
     updates_is_apk && asset_ext="apk"
@@ -1182,6 +1206,7 @@ updates_resolve_byedpi_release() {
     UPDATES_BYEDPI_ARCH="$(printf '%s\n' "$resolved" | cut -f1)"
     UPDATES_BYEDPI_PACKAGE_NAME="$(printf '%s\n' "$resolved" | cut -f2)"
     UPDATES_BYEDPI_PACKAGE_URL="$(printf '%s\n' "$resolved" | cut -f3)"
+    UPDATES_BYEDPI_RELEASE_URL="$(printf '%s\n' "$resolved" | cut -f4)"
 
     [ -n "$UPDATES_BYEDPI_ARCH" ] || return 1
     [ -n "$UPDATES_BYEDPI_PACKAGE_NAME" ] || return 1
@@ -1229,7 +1254,7 @@ updates_install_zapret() {
         [ "$installed" -eq 1 ] || updates_fail "zapret" "$action" "zapret is not installed" "$current_version" "$UPDATES_ZAPRET_PACKAGE_VERSION"
         normalized_current="$(updates_normalize_zapret_version "$current_version")"
         normalized_latest="$(updates_normalize_zapret_version "$UPDATES_ZAPRET_PACKAGE_VERSION")"
-        updates_check_success_compared "zapret" "$current_version" "$UPDATES_ZAPRET_PACKAGE_VERSION" "$normalized_current" "$normalized_latest"
+        updates_check_success_compared "zapret" "$current_version" "$UPDATES_ZAPRET_PACKAGE_VERSION" "$normalized_current" "$normalized_latest" "$UPDATES_ZAPRET_RELEASE_URL"
     fi
 
     updates_ensure_package_tool "unzip" "unzip" || updates_fail "zapret" "$action" "Failed to install unzip"
@@ -1262,7 +1287,7 @@ updates_install_byedpi() {
 
     if [ "$action" = "check_update" ]; then
         [ "$installed" -eq 1 ] || updates_fail "byedpi" "$action" "ByeDPI is not installed" "$current_version" "$UPDATES_BYEDPI_PACKAGE_VERSION"
-        updates_check_success "byedpi" "$current_version" "$UPDATES_BYEDPI_PACKAGE_VERSION"
+        updates_check_success "byedpi" "$current_version" "$UPDATES_BYEDPI_PACKAGE_VERSION" "$UPDATES_BYEDPI_RELEASE_URL"
     fi
 
     updates_download_byedpi_package || updates_fail "byedpi" "$action" "Failed to download ByeDPI package"
@@ -1364,6 +1389,7 @@ updates_resolve_sing_box_extended_release() {
     local response tag release_json asset_pattern
 
     UPDATES_SING_BOX_EXTENDED_RELEASE_TAG=""
+    UPDATES_SING_BOX_EXTENDED_RELEASE_URL=""
     UPDATES_SING_BOX_EXTENDED_ASSET_URL=""
     UPDATES_SING_BOX_EXTENDED_ASSET_NAME=""
 
@@ -1375,6 +1401,7 @@ updates_resolve_sing_box_extended_release() {
     [ -n "$tag" ] || return 1
     UPDATES_SING_BOX_EXTENDED_RELEASE_TAG="$tag"
     release_json="$(printf '%s' "$response" | json_utils_ucode release-by-tag "$tag" 2>/dev/null)"
+    UPDATES_SING_BOX_EXTENDED_RELEASE_URL="$(printf '%s' "$release_json" | json_utils_ucode object-get-default html_url "" 2>/dev/null)"
     asset_pattern="linux-${UPDATES_SING_BOX_EXTENDED_ARCH_SUFFIX}.tar.gz"
     UPDATES_SING_BOX_EXTENDED_ASSET_URL="$(printf '%s' "$release_json" | json_utils_ucode release-asset-url-by-suffix "$asset_pattern" 2>/dev/null)"
 
@@ -1395,7 +1422,7 @@ updates_install_sing_box_extended() {
 
     if [ "$action" = "check_update" ]; then
         is_sing_box_extended "$current_version" || updates_fail "sing_box" "$action" "sing-box-extended is not installed" "$current_version" "$latest_version"
-        updates_check_success "sing_box" "$normalized_current" "$normalized_latest"
+        updates_check_success "sing_box" "$normalized_current" "$normalized_latest" "$UPDATES_SING_BOX_EXTENDED_RELEASE_URL"
     fi
 
     archive_file="$UPDATES_TMP_DIR/$UPDATES_SING_BOX_EXTENDED_ASSET_NAME"
@@ -1474,9 +1501,11 @@ updates_install_stable_sing_box() {
 }
 
 updates_check_podkop_plus() {
-    local latest_version compare_result status message now
+    local release_metadata latest_version release_url compare_result status message now
 
-    latest_version="$(fetch_latest_podkop_version)"
+    release_metadata="$(updates_fetch_podkop_latest_release_metadata 2>/dev/null || true)"
+    latest_version="$(printf '%s\n' "$release_metadata" | cut -f1)"
+    release_url="$(printf '%s\n' "$release_metadata" | cut -f2)"
     [ -n "$latest_version" ] || latest_version="unknown"
 
     if [ "$latest_version" = "unknown" ]; then
@@ -1491,7 +1520,7 @@ updates_check_podkop_plus() {
 
     if ! is_podkop_release_version "$PODKOP_VERSION"; then
         updates_log "Podkop Plus current version is not a release version ($PODKOP_VERSION)"
-        updates_success "podkop" "check_update" "Installed version is newer than release" "$PODKOP_VERSION" "$latest_version" 0 "dev"
+        updates_success "podkop" "check_update" "Installed version is newer than release" "$PODKOP_VERSION" "$latest_version" 0 "dev" "$release_url"
     fi
 
     compare_result="$(podkop_release_version_compare "$PODKOP_VERSION" "$latest_version" 2>/dev/null || true)"
@@ -1515,7 +1544,7 @@ updates_check_podkop_plus() {
         ;;
     esac
 
-    updates_success "podkop" "check_update" "$message" "$PODKOP_VERSION" "$latest_version" 0 "$status"
+    updates_success "podkop" "check_update" "$message" "$PODKOP_VERSION" "$latest_version" 0 "$status" "$release_url"
 }
 
 updates_install_podkop_plus() {
@@ -1562,7 +1591,7 @@ updates_install_podkop_plus() {
     new_version="$(updates_get_installed_package_version "podkop-plus")"
     [ -n "$new_version" ] || new_version="$latest_version"
     updates_log "Podkop Plus updated to $new_version"
-    updates_success "podkop" "install" "Podkop Plus has been installed" "$new_version" "$latest_version" 1 "latest"
+    updates_success "podkop" "install" "Podkop Plus has been installed" "$new_version" "$latest_version" 1 "latest" "$UPDATES_PODKOP_RELEASE_URL"
 }
 
 component_action() {

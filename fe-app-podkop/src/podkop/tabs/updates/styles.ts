@@ -50,6 +50,14 @@ export const styles = `
     overflow-wrap: anywhere;
 }
 
+.pdk_updates-page__component__status {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    flex: 0 0 auto;
+}
+
 .pdk_updates-page__component__version {
     display: grid;
     grid-template-columns: auto 1fr;
@@ -94,5 +102,12 @@ export const styles = `
 
 .pdk_updates-page__component__actions > .pdk-partial-button {
     margin-left: 0;
+}
+
+.pdk_updates-page__component__release-link {
+    font-size: 11px;
+    line-height: 1.2;
+    text-align: right;
+    white-space: nowrap;
 }
 `;

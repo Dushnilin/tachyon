@@ -440,18 +440,34 @@ function injectServerStyles() {
 .pdk-server-icon-button{box-sizing:border-box;vertical-align:middle}
 .pdk-server-icon-button__glyph{display:inline-block;line-height:1;transform:scale(1.55);transform-origin:center}
 .pdk-server-icon-button--done{outline:2px solid var(--success-color,#37a969);outline-offset:1px}
-.pdk-server-qr-modal{display:flex;justify-content:center;padding:12px}
-.pdk-server-qr-modal__image{width:260px;height:260px;max-width:80vw;max-height:80vw;image-rendering:pixelated}
-.pdk-server-info-modal{display:flex;flex-direction:column;gap:14px;min-width:min(560px,86vw)}
-.pdk-server-info-modal__block{display:flex;flex-direction:column;gap:8px}
-.pdk-server-info-modal__link-row{display:flex;gap:8px;align-items:flex-start}
-.pdk-server-info-modal__link{min-height:5.2em;resize:vertical}
 .pdk-server-validation-summary{margin:0 0 12px}
 #cbi-${UCI_PACKAGE}-server > h3:nth-child(1){display:none}
 #cbi-${UCI_PACKAGE}-server > .cbi-section-remove{margin-bottom:-32px}
 #cbi-${UCI_PACKAGE}-server .cbi-section-actions > div{display:inline-flex;align-items:center;gap:4px}
 #cbi-${UCI_PACKAGE}-server .cbi-section-actions{text-align:right}
-@media (max-width:720px){.pdk-server-info-modal__link-row{flex-direction:column}.pdk-server-info-modal__link-row .btn{align-self:flex-start}}
+
+.pdk-server-info-modal{display:flex;flex-direction:column;gap:14px;width:560px;max-width:100%;box-sizing:border-box}
+.pdk-server-info-modal__container{display:flex;gap:24px;align-items:flex-start;width:100%;box-sizing:border-box}
+.pdk-server-info-modal__qr-col{display:flex;flex-direction:column;align-items:center;gap:12px;flex-shrink:0;width:180px}
+.pdk-server-info-modal__qr-image{width:180px;height:180px;display:block;image-rendering:pixelated}
+.pdk-server-info-modal__details-col{display:flex;flex-direction:column;gap:16px;flex-grow:1;min-width:0;box-sizing:border-box}
+.pdk-server-info-modal__details-grid{display:flex;flex-direction:column;gap:10px;background:rgba(128,128,128,0.08);padding:14px;border:1px solid rgba(128,128,128,0.15);box-sizing:border-box}
+.pdk-server-info-modal__detail-item{display:flex;justify-content:space-between;align-items:center;gap:16px}
+.pdk-server-info-modal__detail-label{font-size:11px;opacity:0.65;text-transform:uppercase;letter-spacing:0.05em;font-weight:700}
+.pdk-server-info-modal__detail-value{font-size:13px;font-weight:500}
+.pdk-server-info-modal__detail-value--title{font-weight:600}
+.pdk-server-info-modal__detail-value--mono{font-family:monospace;font-size:12px;background:rgba(128,128,128,0.12);padding:2px 6px;border-radius:4px;word-break:break-all}
+.pdk-server-info-modal__badge{display:inline-flex;align-items:center;padding:2px 8px;font-size:11px;font-weight:600;border-radius:4px;border:1px solid var(--border-color,rgba(128,128,128,0.25));background:rgba(128,128,128,0.08);line-height:1.2}
+.pdk-server-info-modal__link-section{display:flex;flex-direction:column;gap:8px;box-sizing:border-box}
+.pdk-server-info-modal__link{width:100% !important;max-width:100% !important;font-family:monospace;font-size:11px;padding:8px 10px;resize:none;min-height:54px;box-sizing:border-box;margin:0 !important;line-height:1.4;word-break:break-all;float:none !important;position:static !important;border-radius:0 !important;background-color:transparent !important}
+.pdk-server-info-modal__copy-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;align-self:flex-start;padding:3px 10px !important;font-size:11px !important;height:auto !important;min-height:24px !important;float:none !important;position:static !important;margin:0 !important}
+
+@media (max-width:640px){
+.pdk-server-info-modal{width:100%}
+.pdk-server-info-modal__container{flex-direction:column;align-items:center;gap:20px}
+.pdk-server-info-modal__qr-col{width:100%;max-width:180px}
+.pdk-server-info-modal__details-col{width:100%}
+}
 `,
     ),
   );
@@ -1142,6 +1158,12 @@ function iconSvg(name) {
     ]);
   }
 
+  if (name === "check") {
+    return svgEl("svg", attrs, [
+      svgEl("polyline", { points: "20 6 9 17 4 12" }),
+    ]);
+  }
+
   if (name === "info") {
     return svgEl("svg", attrs, [
       svgEl("circle", { cx: "12", cy: "12", r: "10" }),
@@ -1160,27 +1182,21 @@ function iconSvg(name) {
   ]);
 }
 
-function markButtonDone(button) {
-  if (!button) {
-    return;
-  }
-
-  button.classList.add("pdk-server-icon-button--done");
-  window.setTimeout(() => {
-    button.classList.remove("pdk-server-icon-button--done");
-  }, 700);
-}
-
-function copyText(text, button) {
+function copyText(text) {
   const textarea = document.createElement("textarea");
   textarea.value = text;
+  textarea.style.position = "fixed";
+  textarea.style.top = "0";
+  textarea.style.left = "0";
+  textarea.style.opacity = "0";
   document.body.appendChild(textarea);
   textarea.select();
 
   try {
     document.execCommand("copy");
-    markButtonDone(button);
+    main.showToast(_("Successfully copied!"), "success");
   } catch (error) {
+    main.showToast(_("Failed to copy!"), "error");
     console.warn("Failed to copy server client link", error);
   }
 
@@ -1195,41 +1211,108 @@ function renderInfoClientLink(sectionId) {
   }
 
   const qr = qrSvgDataUri(link);
+  const protocol = getProtocol(sectionId);
+  const security = getEffectiveSecurity(sectionId);
+  const host = getPublicHost(sectionId);
+  const port = uci.get(UCI_PACKAGE, sectionId, "listen_port") || "";
+  const name = getServerName(sectionId);
 
-  return E("div", { class: "pdk-server-info-modal__block" }, [
-    E("strong", {}, _("Client link QR code")),
-    E("div", { class: "pdk-server-qr-modal" }, [
+  const securitySuffix =
+    security && security !== "none" ? ` + ${getSecurityLabel(security)}` : "";
+  const protocolText = `${getProtocolLabel(protocol)}${securitySuffix}`;
+
+  return E("div", { class: "pdk-server-info-modal__container" }, [
+    // Left column: QR code
+    E("div", { class: "pdk-server-info-modal__qr-col" }, [
       qr
         ? E("img", {
-            class: "pdk-server-qr-modal__image",
+            class: "pdk-server-info-modal__qr-image",
             src: qr,
             alt: _("Client link QR code"),
           })
         : E("em", {}, _("QR code is too large")),
     ]),
-    E("strong", {}, _("Client link")),
-    E("div", { class: "pdk-server-info-modal__link-row" }, [
-      E(
-        "textarea",
-        {
-          class: "cbi-input-textarea pdk-server-info-modal__link",
-          readonly: "readonly",
-          rows: 3,
-        },
-        link,
-      ),
-      E(
-        "button",
-        {
-          class: "btn cbi-button cbi-button-neutral",
-          type: "button",
-          click: (ev) => {
-            ev.preventDefault();
-            copyText(link, ev.currentTarget);
+
+    // Right column: Details and Copy Box
+    E("div", { class: "pdk-server-info-modal__details-col" }, [
+      E("div", { class: "pdk-server-info-modal__details-grid" }, [
+        E("div", { class: "pdk-server-info-modal__detail-item" }, [
+          E(
+            "span",
+            { class: "pdk-server-info-modal__detail-label" },
+            _("Server name"),
+          ),
+          E(
+            "span",
+            {
+              class:
+                "pdk-server-info-modal__detail-value pdk-server-info-modal__detail-value--title",
+            },
+            name,
+          ),
+        ]),
+        E("div", { class: "pdk-server-info-modal__detail-item" }, [
+          E(
+            "span",
+            { class: "pdk-server-info-modal__detail-label" },
+            _("Type"),
+          ),
+          E(
+            "span",
+            {
+              class:
+                "pdk-server-info-modal__detail-value pdk-server-info-modal__badge",
+            },
+            protocolText,
+          ),
+        ]),
+        E("div", { class: "pdk-server-info-modal__detail-item" }, [
+          E(
+            "span",
+            { class: "pdk-server-info-modal__detail-label" },
+            _("Address"),
+          ),
+          E(
+            "span",
+            {
+              class:
+                "pdk-server-info-modal__detail-value pdk-server-info-modal__detail-value--mono",
+            },
+            `${host}:${port}`,
+          ),
+        ]),
+      ]),
+
+      E("div", { class: "pdk-server-info-modal__link-section" }, [
+        E(
+          "span",
+          { class: "pdk-server-info-modal__detail-label" },
+          _("Client link"),
+        ),
+        E(
+          "textarea",
+          {
+            class: "cbi-input-textarea pdk-server-info-modal__link",
+            readonly: "readonly",
+            rows: 3,
+            click: (ev) => ev.currentTarget.select(),
           },
-        },
-        [iconSvg("copy"), " ", _("Copy")],
-      ),
+          link,
+        ),
+        E(
+          "button",
+          {
+            class:
+              "btn cbi-button cbi-button-neutral pdk-server-info-modal__copy-btn",
+            type: "button",
+            click: (ev) => {
+              ev.preventDefault();
+              copyText(link);
+            },
+          },
+          [iconSvg("copy"), " ", E("span", {}, _("Copy"))],
+        ),
+      ]),
     ]),
   ]);
 }

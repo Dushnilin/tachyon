@@ -3062,10 +3062,10 @@ var initialDiagnosticStore = {
     byedpiRemove: { loading: false }
   },
   updatesChecks: {
-    podkop: { status: null, latest_version: "" },
-    sing_box: { status: null, latest_version: "" },
-    zapret: { status: null, latest_version: "" },
-    byedpi: { status: null, latest_version: "" }
+    podkop: { status: null, latest_version: "", release_url: "" },
+    sing_box: { status: null, latest_version: "", release_url: "" },
+    zapret: { status: null, latest_version: "", release_url: "" },
+    byedpi: { status: null, latest_version: "", release_url: "" }
   }
 };
 
@@ -8553,6 +8553,13 @@ function getInstallActionText(component) {
   }
   return _("Install");
 }
+function getGitHubReleaseUrl(component) {
+  const checkResult = store.get().updatesChecks[component];
+  if (!shouldShowInstallAfterCheck(component) || !checkResult.release_url) {
+    return void 0;
+  }
+  return checkResult.release_url;
+}
 function isAnyActionLoading() {
   return Object.values(store.get().updatesActions).some((item) => item.loading);
 }
@@ -8569,14 +8576,15 @@ function setActionLoading(action, loading2) {
     }
   });
 }
-function setCheckResult(component, status, latestVersion) {
+function setCheckResult(component, status, latestVersion, releaseUrl = "") {
   const updatesChecks = store.get().updatesChecks;
   store.set({
     updatesChecks: {
       ...updatesChecks,
       [component]: {
         status,
-        latest_version: latestVersion
+        latest_version: latestVersion,
+        release_url: releaseUrl
       }
     }
   });
@@ -8683,7 +8691,12 @@ async function handleComponentAction(button) {
     if (button.action === "check_update") {
       const status = result.status || null;
       if (status === "latest" || status === "outdated" || status === "dev") {
-        setCheckResult(button.component, status, result.latest_version || "");
+        setCheckResult(
+          button.component,
+          status,
+          result.latest_version || "",
+          result.release_url || ""
+        );
       }
       setActionLoading(button.key, false);
       showToast(getCheckToastMessage(status), "success");
@@ -8753,6 +8766,7 @@ function getComponentCards() {
     {
       title: "Podkop Plus",
       version: normalizeCompiledVersion(systemInfo.podkop_version),
+      releaseUrl: getGitHubReleaseUrl("podkop"),
       tag: getCheckTag("podkop"),
       actions: [
         getPrimaryUpdateAction("podkop", "podkopCheck", "podkopInstall")
@@ -8761,6 +8775,7 @@ function getComponentCards() {
     {
       title: "Sing-box",
       version: isNotInstalled(systemInfo.sing_box_version) ? _("Not installed") : systemInfo.sing_box_version,
+      releaseUrl: getGitHubReleaseUrl("sing_box"),
       tag: getCheckTag("sing_box"),
       actions: [
         getPrimaryUpdateAction(
@@ -8774,6 +8789,7 @@ function getComponentCards() {
     {
       title: "Zapret",
       version: systemInfoLoading ? "loading" : zapretInstalled ? systemInfo.zapret_version : _("Not installed"),
+      releaseUrl: getGitHubReleaseUrl("zapret"),
       tag: zapretInstalled ? getCheckTag("zapret") : void 0,
       actions: zapretInstalled ? [
         getPrimaryUpdateAction("zapret", "zapretCheck", "zapretInstall"),
@@ -8797,6 +8813,7 @@ function getComponentCards() {
     {
       title: "ByeDPI",
       version: systemInfoLoading ? "loading" : byedpiInstalled ? systemInfo.byedpi_version : _("Not installed"),
+      releaseUrl: getGitHubReleaseUrl("byedpi"),
       tag: byedpiInstalled ? getCheckTag("byedpi") : void 0,
       actions: byedpiInstalled ? [
         getPrimaryUpdateAction("byedpi", "byedpiCheck", "byedpiInstall"),
@@ -8843,8 +8860,32 @@ function renderComponentCard(card) {
   const headerChildren = [
     E("b", { class: "pdk_updates-page__component__title" }, card.title)
   ];
+  const statusChildren = [];
+  if (card.releaseUrl) {
+    statusChildren.push(
+      E(
+        "a",
+        {
+          class: "pdk_updates-page__component__release-link",
+          href: card.releaseUrl,
+          target: "_blank",
+          rel: "noopener noreferrer"
+        },
+        _("GitHub release")
+      )
+    );
+  }
   if (tag) {
-    headerChildren.push(tag);
+    statusChildren.push(tag);
+  }
+  if (statusChildren.length > 0) {
+    headerChildren.push(
+      E(
+        "div",
+        { class: "pdk_updates-page__component__status" },
+        statusChildren
+      )
+    );
   }
   return E("div", { class: "pdk_updates-page__component" }, [
     E(
@@ -8985,6 +9026,14 @@ var styles6 = `
     overflow-wrap: anywhere;
 }
 
+.pdk_updates-page__component__status {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    flex: 0 0 auto;
+}
+
 .pdk_updates-page__component__version {
     display: grid;
     grid-template-columns: auto 1fr;
@@ -9029,6 +9078,13 @@ var styles6 = `
 
 .pdk_updates-page__component__actions > .pdk-partial-button {
     margin-left: 0;
+}
+
+.pdk_updates-page__component__release-link {
+    font-size: 11px;
+    line-height: 1.2;
+    text-align: right;
+    white-space: nowrap;
 }
 `;
 
@@ -9236,6 +9292,7 @@ return baseclass.extend({
   getClashUIUrl,
   injectGlobalStyles,
   parseValueList,
+  showToast,
   store,
   validateDNS,
   validateDomain,

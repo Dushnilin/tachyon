@@ -220,6 +220,7 @@ export interface StoreType {
     {
       status: 'latest' | 'outdated' | 'dev' | null;
       latest_version: string;
+      release_url: string;
     }
   >;
 }

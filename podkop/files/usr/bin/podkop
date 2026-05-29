@@ -8778,8 +8778,8 @@ show_sing_box_version() {
     echo "$version"
 }
 
-fetch_latest_podkop_version() {
-    local owner repo response tag
+fetch_latest_podkop_release_json() {
+    local owner repo
 
     owner="${PODKOP_RELEASE_REPO%%/*}"
     repo="${PODKOP_RELEASE_REPO#*/}"
@@ -8787,7 +8787,13 @@ fetch_latest_podkop_version() {
     [ -n "$repo" ] || return 1
     [ "$owner" != "$repo" ] || return 1
 
-    response="$(updates_fetch_github_release_json "$owner" "$repo")" || return 1
+    updates_fetch_github_release_json "$owner" "$repo"
+}
+
+fetch_latest_podkop_version() {
+    local response tag
+
+    response="$(fetch_latest_podkop_release_json)" || return 1
     tag="$(printf '%s' "$response" | json_utils_ucode object-get-default tag_name "" 2>/dev/null)"
 
     [ -n "$tag" ] || return 1
