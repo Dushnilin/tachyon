@@ -119,6 +119,10 @@ export const PodkopShellMethods = {
     callBaseMethod<Podkop.ByedpiCheckResult>(
       Podkop.AvailableMethods.CHECK_BYEDPI_RUNTIME,
     ),
+  checkInboundsConfig: async () =>
+    callBaseMethod<Podkop.InboundsConfigCheckResult>(
+      Podkop.AvailableMethods.CHECK_INBOUNDS_CONFIG,
+    ),
   getStatus: async () =>
     callBaseMethod<Podkop.GetStatus>(Podkop.AvailableMethods.GET_STATUS),
   getOutboundLink: async (section: string, tag: string) =>

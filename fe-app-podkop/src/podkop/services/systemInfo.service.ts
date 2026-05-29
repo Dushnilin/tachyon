@@ -15,6 +15,7 @@ const UNKNOWN_SYSTEM_INFO: StoreType['diagnosticsSystemInfo'] = {
   zapret_installed: 0,
   byedpi_version: _('unknown'),
   byedpi_installed: 0,
+  server_inbounds_enabled_count: -1,
   openwrt_version: _('unknown'),
   device_model: _('unknown'),
 };
@@ -70,6 +71,8 @@ export async function ensureSystemInfo({
           loading: false,
           loaded: true,
           providerInfoLoaded: true,
+          server_inbounds_enabled_count:
+            currentSystemInfo.server_inbounds_enabled_count,
           ...systemInfo.data,
         };
 
@@ -92,6 +95,8 @@ export async function ensureSystemInfo({
         providerInfoLoaded: latestSystemInfo.providerInfoLoaded,
         zapret_installed: latestSystemInfo.zapret_installed,
         byedpi_installed: latestSystemInfo.byedpi_installed,
+        server_inbounds_enabled_count:
+          latestSystemInfo.server_inbounds_enabled_count,
       };
 
       store.set({

@@ -35,6 +35,7 @@ export namespace Podkop {
   // check_nft               Check NFT rules
   // check_nft_rules         Check NFT rules status
   // check_sing_box          Check sing-box installation and status
+  // check_inbounds_config   Check whether enabled server inbounds are configured
   // check_inbounds          Check server inbounds from the Servers tab
   // check_logs              Show podkop logs from system journal
   // check_sing_box_logs     Show sing-box logs
@@ -55,6 +56,7 @@ export namespace Podkop {
     CHECK_NFT_RULES = 'check_nft_rules',
     CHECK_ZAPRET_RUNTIME = 'check_zapret_runtime',
     CHECK_BYEDPI_RUNTIME = 'check_byedpi_runtime',
+    CHECK_INBOUNDS_CONFIG = 'check_inbounds_config',
     GET_STATUS = 'get_status',
     GET_OUTBOUND_LINK = 'get_outbound_link',
     GET_OUTBOUND_LINK_STATES = 'get_outbound_link_states',
@@ -274,6 +276,10 @@ export namespace Podkop {
     wan_ip: string;
     wan_public: 0 | 1;
     items: InboundCheckItem[];
+  }
+
+  export interface InboundsConfigCheckResult {
+    enabled_count: number;
   }
 
   export interface FakeIPCheckResult {
