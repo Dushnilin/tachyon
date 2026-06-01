@@ -1,34 +1,34 @@
 #!/bin/sh
 
 PODKOP_CONFIG_NAME="${PODKOP_CONFIG_NAME:-podkop-plus}"
-PODKOP_DNSMASQ_SECTION="${PODKOP_DNSMASQ_SECTION:-podkop_plus}"
 SB_DNS_INBOUND_ADDRESS="${SB_DNS_INBOUND_ADDRESS:-127.0.0.42}"
 
 podkop_dnsmasq_failsafe_restore() {
-    local podkop_interfaces default_servers backup_servers backup_notinterfaces value
+    local legacy_dnsmasq_section legacy_interfaces default_servers backup_servers backup_notinterfaces value
     local default_has_podkop_dns noresolv cachesize changed
-    local split_instance_present
+    local legacy_instance_present
 
     command -v uci >/dev/null 2>&1 || return 0
 
+    legacy_dnsmasq_section="podkop_plus"
     changed=0
     default_has_podkop_dns=0
-    split_instance_present=0
-    podkop_interfaces="$(uci -q get "dhcp.$PODKOP_DNSMASQ_SECTION.interface" 2>/dev/null)"
-    [ -n "$podkop_interfaces" ] ||
-        podkop_interfaces="$(uci -q get "$PODKOP_CONFIG_NAME.settings.source_network_interfaces" 2>/dev/null)"
-    [ -n "$podkop_interfaces" ] || podkop_interfaces="br-lan"
+    legacy_instance_present=0
+    legacy_interfaces="$(uci -q get "dhcp.$legacy_dnsmasq_section.interface" 2>/dev/null)"
+    [ -n "$legacy_interfaces" ] ||
+        legacy_interfaces="$(uci -q get "$PODKOP_CONFIG_NAME.settings.source_network_interfaces" 2>/dev/null)"
+    [ -n "$legacy_interfaces" ] || legacy_interfaces="br-lan"
 
     default_servers="$(uci -q get 'dhcp.@dnsmasq[0].server' 2>/dev/null)"
     for value in $default_servers; do
         [ "$value" = "$SB_DNS_INBOUND_ADDRESS" ] && default_has_podkop_dns=1
     done
 
-    if uci -q show "dhcp.$PODKOP_DNSMASQ_SECTION" >/dev/null 2>&1; then
-        split_instance_present=1
+    if uci -q show "dhcp.$legacy_dnsmasq_section" >/dev/null 2>&1; then
+        legacy_instance_present=1
         changed=1
     fi
-    uci -q delete "dhcp.$PODKOP_DNSMASQ_SECTION" >/dev/null 2>&1 || true
+    uci -q delete "dhcp.$legacy_dnsmasq_section" >/dev/null 2>&1 || true
 
     backup_notinterfaces="$(uci -q get 'dhcp.@dnsmasq[0].podkop_notinterface' 2>/dev/null)"
     if [ -n "$backup_notinterfaces" ]; then
@@ -39,8 +39,8 @@ podkop_dnsmasq_failsafe_restore() {
         uci -q delete 'dhcp.@dnsmasq[0].podkop_notinterface' >/dev/null 2>&1 || true
         changed=1
     else
-        if [ "$split_instance_present" -eq 1 ] || [ "$default_has_podkop_dns" -eq 1 ]; then
-            for value in $podkop_interfaces; do
+        if [ "$legacy_instance_present" -eq 1 ]; then
+            for value in $legacy_interfaces; do
                 uci -q del_list "dhcp.@dnsmasq[0].notinterface=$value" >/dev/null 2>&1 && changed=1
             done
         fi

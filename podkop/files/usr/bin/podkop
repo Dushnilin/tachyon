@@ -2,34 +2,34 @@
 
 PODKOP_COMMAND="${1:-}"
 PODKOP_CONFIG_NAME="${PODKOP_CONFIG_NAME:-podkop-plus}"
-PODKOP_DNSMASQ_SECTION="${PODKOP_DNSMASQ_SECTION:-podkop_plus}"
 SB_DNS_INBOUND_ADDRESS="${SB_DNS_INBOUND_ADDRESS:-127.0.0.42}"
 
 podkop_dnsmasq_failsafe_restore_raw() {
-    local podkop_interfaces default_servers backup_servers backup_notinterfaces value
+    local legacy_dnsmasq_section legacy_interfaces default_servers backup_servers backup_notinterfaces value
     local default_has_podkop_dns noresolv cachesize changed
-    local split_instance_present
+    local legacy_instance_present
 
     command -v uci >/dev/null 2>&1 || return 0
 
+    legacy_dnsmasq_section="podkop_plus"
     changed=0
     default_has_podkop_dns=0
-    split_instance_present=0
-    podkop_interfaces="$(uci -q get "dhcp.$PODKOP_DNSMASQ_SECTION.interface" 2>/dev/null)"
-    [ -n "$podkop_interfaces" ] ||
-        podkop_interfaces="$(uci -q get "$PODKOP_CONFIG_NAME.settings.source_network_interfaces" 2>/dev/null)"
-    [ -n "$podkop_interfaces" ] || podkop_interfaces="br-lan"
+    legacy_instance_present=0
+    legacy_interfaces="$(uci -q get "dhcp.$legacy_dnsmasq_section.interface" 2>/dev/null)"
+    [ -n "$legacy_interfaces" ] ||
+        legacy_interfaces="$(uci -q get "$PODKOP_CONFIG_NAME.settings.source_network_interfaces" 2>/dev/null)"
+    [ -n "$legacy_interfaces" ] || legacy_interfaces="br-lan"
 
     default_servers="$(uci -q get 'dhcp.@dnsmasq[0].server' 2>/dev/null)"
     for value in $default_servers; do
         [ "$value" = "$SB_DNS_INBOUND_ADDRESS" ] && default_has_podkop_dns=1
     done
 
-    if uci -q show "dhcp.$PODKOP_DNSMASQ_SECTION" >/dev/null 2>&1; then
-        split_instance_present=1
+    if uci -q show "dhcp.$legacy_dnsmasq_section" >/dev/null 2>&1; then
+        legacy_instance_present=1
         changed=1
     fi
-    uci -q delete "dhcp.$PODKOP_DNSMASQ_SECTION" >/dev/null 2>&1 || true
+    uci -q delete "dhcp.$legacy_dnsmasq_section" >/dev/null 2>&1 || true
 
     backup_notinterfaces="$(uci -q get 'dhcp.@dnsmasq[0].podkop_notinterface' 2>/dev/null)"
     if [ -n "$backup_notinterfaces" ]; then
@@ -40,8 +40,8 @@ podkop_dnsmasq_failsafe_restore_raw() {
         uci -q delete 'dhcp.@dnsmasq[0].podkop_notinterface' >/dev/null 2>&1 || true
         changed=1
     else
-        if [ "$split_instance_present" -eq 1 ] || [ "$default_has_podkop_dns" -eq 1 ]; then
-            for value in $podkop_interfaces; do
+        if [ "$legacy_instance_present" -eq 1 ]; then
+            for value in $legacy_interfaces; do
                 uci -q del_list "dhcp.@dnsmasq[0].notinterface=$value" >/dev/null 2>&1 && changed=1
             done
         fi
@@ -1609,66 +1609,21 @@ build_service_trigger_signature() {
     signature_finish
 }
 
-dnsmasq_inherited_default_options() {
-    echo "domain local expandhosts localise_queries domainneeded add_local_domain add_local_hostname add_local_fqdn rebind_protection rebind_localhost"
-}
-
-dnsmasq_inherited_default_list_options() {
-    echo "rebind_domain"
-}
-
-dnsmasq_server_is_domain_forward() {
-    local server="$1"
-
-    case "$server" in
-    /#/* | /./* | //*)
-        return 1
-        ;;
-    /*/*)
-        return 0
-        ;;
-    esac
-
-    return 1
-}
-
-dnsmasq_default_domain_forward_servers() {
-    local server
-
-    for server in $(uci_get "dhcp" "@dnsmasq[0]" "server"); do
-        dnsmasq_server_is_domain_forward "$server" || continue
-        printf '%s\n' "$server"
-    done
-}
-
-dnsmasq_default_domain_forward_servers_signature() {
-    dnsmasq_default_domain_forward_servers | tr '\n' ' '
-}
-
-append_dnsmasq_inherited_options_signature() {
-    local option value
-
-    for option in $(dnsmasq_inherited_default_options); do
-        value="$(uci_get "dhcp" "@dnsmasq[0]" "$option")"
-        signature_add "dhcp.@dnsmasq[0].$option" "$value"
-    done
-
-    for option in $(dnsmasq_inherited_default_list_options); do
-        value="$(uci_get "dhcp" "@dnsmasq[0]" "$option")"
-        signature_add "dhcp.@dnsmasq[0].$option" "$value"
-    done
-}
-
 build_dnsmasq_signature() {
-    local dont_touch_dhcp source_network_interfaces
+    local dont_touch_dhcp legacy_dnsmasq_present
 
     signature_begin
     config_get_bool dont_touch_dhcp "settings" "dont_touch_dhcp" 0
-    config_get source_network_interfaces "settings" "source_network_interfaces" "br-lan"
     signature_add "settings.dont_touch_dhcp" "$dont_touch_dhcp"
-    signature_add "settings.source_network_interfaces" "$source_network_interfaces"
-    append_dnsmasq_inherited_options_signature
-    signature_add "dhcp.@dnsmasq[0].domain_forward_servers" "$(dnsmasq_default_domain_forward_servers_signature)"
+    signature_add "dhcp.@dnsmasq[0].server" "$(uci_get "dhcp" "@dnsmasq[0]" "server")"
+    signature_add "dhcp.@dnsmasq[0].noresolv" "$(uci_get "dhcp" "@dnsmasq[0]" "noresolv")"
+    signature_add "dhcp.@dnsmasq[0].cachesize" "$(uci_get "dhcp" "@dnsmasq[0]" "cachesize")"
+    signature_add "dhcp.@dnsmasq[0].podkop_server" "$(uci_get "dhcp" "@dnsmasq[0]" "podkop_server")"
+    signature_add "dhcp.@dnsmasq[0].podkop_noresolv" "$(uci_get "dhcp" "@dnsmasq[0]" "podkop_noresolv")"
+    signature_add "dhcp.@dnsmasq[0].podkop_cachesize" "$(uci_get "dhcp" "@dnsmasq[0]" "podkop_cachesize")"
+    legacy_dnsmasq_present=0
+    uci -q show "dhcp.podkop_plus" >/dev/null 2>&1 && legacy_dnsmasq_present=1
+    signature_add "dhcp.podkop_plus.present" "$legacy_dnsmasq_present"
     signature_finish
 }
 
@@ -4578,19 +4533,6 @@ list_has_item() {
     return 1
 }
 
-uci_add_list_unique() {
-    local package="$1"
-    local section="$2"
-    local option="$3"
-    local value="$4"
-    local current_values
-
-    current_values="$(uci_get "$package" "$section" "$option")"
-    list_has_item "$current_values" "$value" && return 0
-
-    uci_add_list "$package" "$section" "$option" "$value"
-}
-
 uci_del_list_value() {
     local package="$1"
     local section="$2"
@@ -4608,13 +4550,65 @@ uci_remove_quiet() {
     uci -q delete "$package.$section${option:+.$option}" >/dev/null 2>&1
 }
 
-backup_dnsmasq_config_list_option() {
+dnsmasq_server_list_has_podkop_dns() {
+    local server_list="$1"
+    local server
+
+    for server in $server_list; do
+        [ "$server" = "$SB_DNS_INBOUND_ADDRESS" ] && return 0
+    done
+
+    return 1
+}
+
+dnsmasq_default_has_podkop_dns() {
+    dnsmasq_server_list_has_podkop_dns "$(uci_get "dhcp" "@dnsmasq[0]" "server")"
+}
+
+dnsmasq_legacy_instance_exists() {
+    uci -q show "dhcp.podkop_plus" >/dev/null 2>&1
+}
+
+dnsmasq_has_podkop_dns() {
+    dnsmasq_default_has_podkop_dns || dnsmasq_legacy_instance_exists
+}
+
+dnsmasq_default_config_is_complete() {
+    local cachesize noresolv
+
+    noresolv="$(uci_get "dhcp" "@dnsmasq[0]" "noresolv")"
+    cachesize="$(uci_get "dhcp" "@dnsmasq[0]" "cachesize")"
+
+    dnsmasq_default_has_podkop_dns || return 1
+    [ "$noresolv" = "1" ] || return 1
+    [ "$cachesize" = "0" ] || return 1
+    ! dnsmasq_legacy_instance_exists || return 1
+
+    return 0
+}
+
+backup_dnsmasq_config_option() {
     local key="$1"
     local backup_key="$2"
     local value
 
-    for value in $(uci_get "dhcp" "@dnsmasq[0]" "$key"); do
-        uci_add_list_unique "dhcp" "@dnsmasq[0]" "$backup_key" "$value"
+    [ -n "$(uci_get "dhcp" "@dnsmasq[0]" "$backup_key")" ] && return 0
+
+    value="$(uci_get "dhcp" "@dnsmasq[0]" "$key")"
+    [ -n "$value" ] || return 0
+
+    uci_set "dhcp" "@dnsmasq[0]" "$backup_key" "$value"
+}
+
+backup_dnsmasq_server_list() {
+    local server backup_servers
+
+    backup_servers="$(uci_get "dhcp" "@dnsmasq[0]" "podkop_server")"
+    [ -n "$backup_servers" ] && return 0
+
+    for server in $(uci_get "dhcp" "@dnsmasq[0]" "server"); do
+        [ "$server" = "$SB_DNS_INBOUND_ADDRESS" ] && continue
+        uci_add_list "dhcp" "@dnsmasq[0]" "podkop_server" "$server"
     done
 }
 
@@ -4635,98 +4629,71 @@ restore_dnsmasq_config_option() {
     fi
 }
 
-restore_dnsmasq_config_list_option() {
-    local key="$1"
-    local backup_key="$2"
-    local fallback_values="${3:-}"
-    local backup_values
-    local value
+dnsmasq_legacy_interfaces() {
+    local interfaces
 
-    backup_values="$(uci_get "dhcp" "@dnsmasq[0]" "$backup_key")"
-    if [ -n "$backup_values" ]; then
-        uci_remove_quiet "dhcp" "@dnsmasq[0]" "$key"
-        for value in $backup_values; do
-            uci_add_list "dhcp" "@dnsmasq[0]" "$key" "$value"
+    interfaces="$(uci_get "dhcp" "podkop_plus" "interface")"
+    if [ -z "$interfaces" ]; then
+        config_get interfaces "settings" "source_network_interfaces" "br-lan"
+    fi
+
+    printf '%s\n' "$interfaces"
+}
+
+dnsmasq_cleanup_legacy_instance() {
+    local legacy_instance_present legacy_interfaces backup_notinterfaces value
+
+    legacy_instance_present=0
+    legacy_interfaces=""
+    if dnsmasq_legacy_instance_exists; then
+        legacy_instance_present=1
+        legacy_interfaces="$(dnsmasq_legacy_interfaces)"
+    fi
+
+    uci_remove_quiet "dhcp" "podkop_plus"
+
+    backup_notinterfaces="$(uci_get "dhcp" "@dnsmasq[0]" "podkop_notinterface")"
+    if [ -n "$backup_notinterfaces" ]; then
+        uci_remove_quiet "dhcp" "@dnsmasq[0]" "notinterface"
+        for value in $backup_notinterfaces; do
+            uci_add_list "dhcp" "@dnsmasq[0]" "notinterface" "$value"
         done
-        uci_remove_quiet "dhcp" "@dnsmasq[0]" "$backup_key"
+        uci_remove_quiet "dhcp" "@dnsmasq[0]" "podkop_notinterface"
         return 0
     fi
 
-    for value in $fallback_values; do
-        uci_del_list_value "dhcp" "@dnsmasq[0]" "$key" "$value"
+    [ "$legacy_instance_present" -eq 1 ] || return 0
+    for value in $legacy_interfaces; do
+        uci_del_list_value "dhcp" "@dnsmasq[0]" "notinterface" "$value"
     done
-    uci_remove_quiet "dhcp" "@dnsmasq[0]" "$backup_key"
+    uci_remove_quiet "dhcp" "@dnsmasq[0]" "podkop_notinterface"
 }
 
-dnsmasq_restore_fallback_interfaces() {
-    local podkop_interfaces
+dnsmasq_configure_default_instance() {
+    local default_has_podkop_dns
 
-    podkop_interfaces="$(uci_get "dhcp" "$PODKOP_DNSMASQ_SECTION" "interface")"
-    if [ -z "$podkop_interfaces" ]; then
-        config_get podkop_interfaces "settings" "source_network_interfaces" "br-lan"
+    default_has_podkop_dns=0
+    dnsmasq_default_has_podkop_dns && default_has_podkop_dns=1
+
+    backup_dnsmasq_server_list
+    if [ "$default_has_podkop_dns" -eq 0 ]; then
+        backup_dnsmasq_config_option "noresolv" "podkop_noresolv"
+        backup_dnsmasq_config_option "cachesize" "podkop_cachesize"
     fi
 
-    printf '%s\n' "$podkop_interfaces"
-}
-
-dnsmasq_inherit_default_options() {
-    local option value
-
-    for option in $(dnsmasq_inherited_default_options); do
-        value="$(uci_get "dhcp" "@dnsmasq[0]" "$option")"
-        [ -n "$value" ] || continue
-        uci_set "dhcp" "$PODKOP_DNSMASQ_SECTION" "$option" "$value"
-    done
-}
-
-dnsmasq_inherit_default_list_options() {
-    local option value
-
-    for option in $(dnsmasq_inherited_default_list_options); do
-        for value in $(uci_get "dhcp" "@dnsmasq[0]" "$option"); do
-            uci_add_list "dhcp" "$PODKOP_DNSMASQ_SECTION" "$option" "$value"
-        done
-    done
-}
-
-dnsmasq_inherit_default_domain_forward_servers() {
-    local server
-
-    for server in $(dnsmasq_default_domain_forward_servers); do
-        uci_add_list "dhcp" "$PODKOP_DNSMASQ_SECTION" "server" "$server"
-    done
-}
-
-dnsmasq_server_list_has_podkop_dns() {
-    local server_list="$1"
-    local server
-
-    for server in $server_list; do
-        [ "$server" = "$SB_DNS_INBOUND_ADDRESS" ] && return 0
-    done
-
-    return 1
-}
-
-dnsmasq_default_has_podkop_dns() {
-    dnsmasq_server_list_has_podkop_dns "$(uci_get "dhcp" "@dnsmasq[0]" "server")"
-}
-
-dnsmasq_split_has_podkop_dns() {
-    dnsmasq_server_list_has_podkop_dns "$(uci_get "dhcp" "$PODKOP_DNSMASQ_SECTION" "server")"
-}
-
-dnsmasq_has_podkop_dns() {
-    dnsmasq_split_has_podkop_dns || dnsmasq_default_has_podkop_dns
+    uci_remove_quiet "dhcp" "@dnsmasq[0]" "server"
+    uci_add_list "dhcp" "@dnsmasq[0]" "server" "$SB_DNS_INBOUND_ADDRESS"
+    uci_set "dhcp" "@dnsmasq[0]" "noresolv" 1
+    uci_set "dhcp" "@dnsmasq[0]" "cachesize" 0
 }
 
 dnsmasq_restore_default_instance() {
-    local server_list backup_servers server legacy_global_dns noresolv cachesize
+    local server_list backup_servers server managed_global_dns noresolv cachesize
 
     server_list="$(uci_get "dhcp" "@dnsmasq[0]" "server")"
     backup_servers="$(uci_get "dhcp" "@dnsmasq[0]" "podkop_server")"
-    legacy_global_dns=0
-    dnsmasq_server_list_has_podkop_dns "$server_list" && legacy_global_dns=1
+    managed_global_dns=0
+    dnsmasq_server_list_has_podkop_dns "$server_list" && managed_global_dns=1
 
     uci_remove_quiet "dhcp" "@dnsmasq[0]" "server"
     if [ -n "$backup_servers" ]; then
@@ -4740,57 +4707,21 @@ dnsmasq_restore_default_instance() {
             uci_add_list "dhcp" "@dnsmasq[0]" "server" "$server"
         done
     fi
+    uci_remove_quiet "dhcp" "@dnsmasq[0]" "podkop_server"
 
     noresolv="$(uci_get "dhcp" "@dnsmasq[0]" "podkop_noresolv")"
     if [ -n "$noresolv" ]; then
         restore_dnsmasq_config_option "noresolv" "podkop_noresolv"
-    elif [ "$legacy_global_dns" -eq 1 ]; then
+    elif [ "$managed_global_dns" -eq 1 ]; then
         uci_set "dhcp" "@dnsmasq[0]" "noresolv" 0
     fi
 
     cachesize="$(uci_get "dhcp" "@dnsmasq[0]" "podkop_cachesize")"
     if [ -n "$cachesize" ]; then
         restore_dnsmasq_config_option "cachesize" "podkop_cachesize"
-    elif [ "$legacy_global_dns" -eq 1 ]; then
+    elif [ "$managed_global_dns" -eq 1 ]; then
         uci_set "dhcp" "@dnsmasq[0]" "cachesize" 150
     fi
-}
-
-dnsmasq_configure_split_instance() {
-    local source_network_interfaces interface
-
-    config_get source_network_interfaces "settings" "source_network_interfaces" "br-lan"
-
-    backup_dnsmasq_config_list_option "notinterface" "podkop_notinterface"
-    for interface in $source_network_interfaces; do
-        uci_add_list_unique "dhcp" "@dnsmasq[0]" "notinterface" "$interface"
-    done
-
-    uci -q delete "dhcp.$PODKOP_DNSMASQ_SECTION"
-    uci set "dhcp.$PODKOP_DNSMASQ_SECTION=dnsmasq"
-    uci_set "dhcp" "$PODKOP_DNSMASQ_SECTION" "noresolv" 1
-    uci_set "dhcp" "$PODKOP_DNSMASQ_SECTION" "cachesize" 0
-    dnsmasq_inherit_default_options
-    dnsmasq_inherit_default_list_options
-    uci_add_list "dhcp" "$PODKOP_DNSMASQ_SECTION" "server" "$SB_DNS_INBOUND_ADDRESS"
-    dnsmasq_inherit_default_domain_forward_servers
-    uci_add_list "dhcp" "$PODKOP_DNSMASQ_SECTION" "notinterface" "lo"
-
-    for interface in $source_network_interfaces; do
-        uci_add_list "dhcp" "$PODKOP_DNSMASQ_SECTION" "interface" "$interface"
-    done
-}
-
-dnsmasq_restore_split_instance() {
-    local fallback_interfaces
-
-    if uci -q show "dhcp.$PODKOP_DNSMASQ_SECTION" >/dev/null 2>&1; then
-        fallback_interfaces="$(dnsmasq_restore_fallback_interfaces)"
-    else
-        fallback_interfaces=""
-    fi
-    uci -q delete "dhcp.$PODKOP_DNSMASQ_SECTION"
-    restore_dnsmasq_config_list_option "notinterface" "podkop_notinterface" "$fallback_interfaces"
 }
 
 dnsmasq_configure() {
@@ -4798,24 +4729,17 @@ dnsmasq_configure() {
     local shutdown_correctly
     config_get shutdown_correctly "settings" "shutdown_correctly"
     if [ "$force" != "force" ] && [ "$shutdown_correctly" -eq 0 ]; then
-        if dnsmasq_split_has_podkop_dns; then
+        if dnsmasq_default_config_is_complete; then
             log "Previous shutdown of Podkop Plus was not correct, dnsmasq is already configured"
             return 0
+        else
+            log "Previous shutdown of Podkop Plus was not correct, but dnsmasq is not configured correctly. Applying Podkop Plus DNS settings"
         fi
-
-        log "Previous shutdown of Podkop Plus was not correct, but dnsmasq is not configured. Applying Podkop Plus DNS settings"
     fi
 
     log "Configure dnsmasq for sing-box"
-    if dnsmasq_split_has_podkop_dns; then
-        log "Refreshing existing interface-scoped Podkop Plus DNS settings"
-        dnsmasq_restore_split_instance
-    fi
-    if dnsmasq_default_has_podkop_dns; then
-        log "Migrating legacy global dnsmasq DNS settings to interface-scoped Podkop Plus DNS"
-        dnsmasq_restore_default_instance
-    fi
-    dnsmasq_configure_split_instance
+    dnsmasq_cleanup_legacy_instance
+    dnsmasq_configure_default_instance
     uci_commit "dhcp"
 
     /etc/init.d/dnsmasq restart
@@ -4835,7 +4759,7 @@ dnsmasq_restore() {
         log "Previous shutdown of Podkop Plus was correct, but Podkop Plus DNS is still present. Restoring dnsmasq"
     fi
 
-    dnsmasq_restore_split_instance
+    dnsmasq_cleanup_legacy_instance
     dnsmasq_restore_default_instance
 
     uci_commit "dhcp"
@@ -4848,7 +4772,7 @@ dnsmasq_restore_fail_safe() {
 
     dnsmasq_restore force >/dev/null 2>&1 || true
 
-    if dnsmasq_has_podkop_dns || uci -q show "dhcp.$PODKOP_DNSMASQ_SECTION" >/dev/null 2>&1; then
+    if dnsmasq_has_podkop_dns; then
         podkop_dnsmasq_failsafe_restore_raw
     fi
 
@@ -10744,7 +10668,7 @@ check_dns_available() {
         fi
     fi
 
-    # Check if dnsmasq sends only selected source interfaces through Podkop DNS.
+    # Check if dnsmasq sends DNS requests through Podkop DNS.
     config_load dhcp
     check_dhcp_has_podkop_dns
     config_load "$PODKOP_CONFIG_NAME"
@@ -10760,57 +10684,7 @@ check_dns_available() {
 }
 
 check_dhcp_has_podkop_dns() {
-    local source_network_interfaces podkop_interfaces podkop_notinterfaces default_notinterfaces server_list cachesize noresolv
-    local server server_found interface default_domain_forward_servers
-
-    source_network_interfaces="$(uci_get "$PODKOP_CONFIG_NAME" "settings" "source_network_interfaces")"
-    [ -n "$source_network_interfaces" ] || source_network_interfaces="br-lan"
-
-    server_list="$(uci_get "dhcp" "$PODKOP_DNSMASQ_SECTION" "server")"
-    cachesize="$(uci_get "dhcp" "$PODKOP_DNSMASQ_SECTION" "cachesize")"
-    noresolv="$(uci_get "dhcp" "$PODKOP_DNSMASQ_SECTION" "noresolv")"
-    podkop_interfaces="$(uci_get "dhcp" "$PODKOP_DNSMASQ_SECTION" "interface")"
-    podkop_notinterfaces="$(uci_get "dhcp" "$PODKOP_DNSMASQ_SECTION" "notinterface")"
-    default_notinterfaces="$(uci_get "dhcp" "@dnsmasq[0]" "notinterface")"
-    default_domain_forward_servers="$(dnsmasq_default_domain_forward_servers)"
-
-    server_found=0
-
-    if [ -n "$server_list" ]; then
-        for server in $server_list; do
-            if [ "$server" = "$SB_DNS_INBOUND_ADDRESS" ]; then
-                server_found=1
-                break
-            fi
-        done
-    fi
-
-    if [ "$cachesize" != "0" ] || [ "$noresolv" != "1" ] || [ "$server_found" != "1" ]; then
-        dhcp_config_status=0
-        return 0
-    fi
-
-    for server in $default_domain_forward_servers; do
-        if ! list_has_item "$server_list" "$server"; then
-            dhcp_config_status=0
-            return 0
-        fi
-    done
-
-    if ! list_has_item "$podkop_notinterfaces" "lo"; then
-        dhcp_config_status=0
-        return 0
-    fi
-
-    for interface in $source_network_interfaces; do
-        if ! list_has_item "$podkop_interfaces" "$interface" ||
-            ! list_has_item "$default_notinterfaces" "$interface"; then
-            dhcp_config_status=0
-            return 0
-        fi
-    done
-
-    if dnsmasq_default_has_podkop_dns; then
+    if ! dnsmasq_default_config_is_complete; then
         dhcp_config_status=0
     fi
 }

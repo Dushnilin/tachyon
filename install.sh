@@ -607,30 +607,30 @@ remove_old_sing_box_if_needed() {
 }
 
 restore_podkop_dnsmasq_failsafe_raw() {
-    podkop_dnsmasq_section="podkop_plus"
+    podkop_legacy_dnsmasq_section="podkop_plus"
     podkop_dns_address="127.0.0.42"
     podkop_config_name="podkop-plus"
     podkop_dnsmasq_changed=0
     podkop_default_has_dns=0
-    podkop_split_instance_present=0
+    podkop_legacy_instance_present=0
 
     command_exists uci || return 0
 
-    podkop_interfaces="$(uci -q get "dhcp.$podkop_dnsmasq_section.interface" 2>/dev/null)"
-    [ -n "$podkop_interfaces" ] ||
-        podkop_interfaces="$(uci -q get "$podkop_config_name.settings.source_network_interfaces" 2>/dev/null)"
-    [ -n "$podkop_interfaces" ] || podkop_interfaces="br-lan"
+    podkop_legacy_interfaces="$(uci -q get "dhcp.$podkop_legacy_dnsmasq_section.interface" 2>/dev/null)"
+    [ -n "$podkop_legacy_interfaces" ] ||
+        podkop_legacy_interfaces="$(uci -q get "$podkop_config_name.settings.source_network_interfaces" 2>/dev/null)"
+    [ -n "$podkop_legacy_interfaces" ] || podkop_legacy_interfaces="br-lan"
 
     podkop_default_servers="$(uci -q get 'dhcp.@dnsmasq[0].server' 2>/dev/null)"
     for podkop_value in $podkop_default_servers; do
         [ "$podkop_value" = "$podkop_dns_address" ] && podkop_default_has_dns=1
     done
 
-    if uci -q show "dhcp.$podkop_dnsmasq_section" >/dev/null 2>&1; then
-        podkop_split_instance_present=1
+    if uci -q show "dhcp.$podkop_legacy_dnsmasq_section" >/dev/null 2>&1; then
+        podkop_legacy_instance_present=1
         podkop_dnsmasq_changed=1
     fi
-    uci -q delete "dhcp.$podkop_dnsmasq_section" >/dev/null 2>&1 || true
+    uci -q delete "dhcp.$podkop_legacy_dnsmasq_section" >/dev/null 2>&1 || true
 
     podkop_backup_notinterfaces="$(uci -q get 'dhcp.@dnsmasq[0].podkop_notinterface' 2>/dev/null)"
     if [ -n "$podkop_backup_notinterfaces" ]; then
@@ -641,8 +641,8 @@ restore_podkop_dnsmasq_failsafe_raw() {
         uci -q delete 'dhcp.@dnsmasq[0].podkop_notinterface' >/dev/null 2>&1 || true
         podkop_dnsmasq_changed=1
     else
-        if [ "$podkop_split_instance_present" -eq 1 ] || [ "$podkop_default_has_dns" -eq 1 ]; then
-            for podkop_value in $podkop_interfaces; do
+        if [ "$podkop_legacy_instance_present" -eq 1 ]; then
+            for podkop_value in $podkop_legacy_interfaces; do
                 uci -q del_list "dhcp.@dnsmasq[0].notinterface=$podkop_value" >/dev/null 2>&1 && podkop_dnsmasq_changed=1
             done
         fi
