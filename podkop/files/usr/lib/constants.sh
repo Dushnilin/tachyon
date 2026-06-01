@@ -10,7 +10,6 @@ PODKOP_RELEASE_REPO="ushan0v/podkop-plus"
 PODKOP_LUCI_VIEW_NAMESPACE="podkop_plus"
 PODKOP_LUCI_VIEW_DIR="/www/luci-static/resources/view/$PODKOP_LUCI_VIEW_NAMESPACE"
 PODKOP_LUCI_I18N_DOMAIN="podkop_plus"
-PODKOP_DNSMASQ_SECTION="podkop_plus"
 ## Common
 RESOLV_CONF="/etc/resolv.conf"
 CHECK_PROXY_IP_DOMAIN="ip.podkop.fyi"
