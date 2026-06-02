@@ -8118,7 +8118,6 @@ sing_box_configure_dns() {
     service_domains=$(comma_string_to_json_array "$FAKEIP_TEST_DOMAIN,$CHECK_PROXY_IP_DOMAIN")
 
     config=$(sing_box_cm_add_dns_reject_rule "$config" "query_type" "HTTPS")
-    config=$(sing_box_cm_add_dns_reject_rule "$config" "query_type" "AAAA")
     config=$(sing_box_cm_add_dns_reject_rule "$config" "domain_suffix" '"use-application-dns.net"')
     configure_tailscale_server_dns_bypass
     config=$(sing_box_cm_add_dns_route_rule "$config" "$SB_FAKEIP_DNS_SERVER_TAG" "$SB_SERVICE_FAKEIP_DNS_RULE_TAG")
