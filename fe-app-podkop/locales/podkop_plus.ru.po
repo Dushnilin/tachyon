@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PODKOP PLUS\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-05-31 06:41+0300\n"
-"PO-Revision-Date: 2026-05-31 06:41+0300\n"
+"POT-Creation-Date: 2026-06-02 17:11+0300\n"
+"PO-Revision-Date: 2026-06-02 17:11+0300\n"
 "Last-Translator: ushan0v\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -809,6 +809,9 @@ msgstr "Нет активных подключений"
 msgid "No closed connections"
 msgstr "Нет закрытых подключений"
 
+msgid "No conflict detected"
+msgstr "Конфликт не обнаружен"
+
 msgid "No enabled server inbounds configured"
 msgstr "Включённые серверные inbounds не настроены"
 
@@ -967,6 +970,9 @@ msgstr "NFQWS Podkop Plus готов"
 
 msgid "Port cannot be empty"
 msgstr "Порт не может быть пустым"
+
+msgid "Port conflict"
+msgstr "Конфликт порта"
 
 msgid "Port for the local mixed proxy of this section"
 msgstr "Порт локального смешанного прокси для этой секции"
@@ -1513,6 +1519,9 @@ msgstr "Используйте буквы, цифры, точки, подчёр�
 
 msgid "Use sing-box duration format like 1d, 12h or 30m"
 msgstr "Используйте формат длительности sing-box, например 1d, 12h или 30m"
+
+msgid "Used by"
+msgstr "Используется"
 
 msgid "Username"
 msgstr "Имя пользователя"

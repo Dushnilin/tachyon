@@ -5889,7 +5889,7 @@ sing_box_configure_inbounds() {
 
 configure_server_inbound() {
     local section="$1"
-    local protocol listen listen_port public_host inbound_tag users_tmp status \
+    local protocol listen listen_port public_host inbound_tag required_proto port_conflict_owners users_tmp status \
         shadowsocks_method server_password hysteria2_up_mbps hysteria2_down_mbps \
         hysteria2_obfs_type hysteria2_obfs_password mtproto_faketls mtproto_padding mtproto_concurrency \
         mtproto_domain_fronting_port mtproto_domain_fronting_ip \
@@ -5927,6 +5927,13 @@ configure_server_inbound() {
     fi
     if [ -n "$public_host" ] && ! server_host_is_valid "$public_host"; then
         log "Server '$section' has invalid public host '$public_host'. Use a domain name or IPv4 address. Aborted." "fatal"
+        exit 1
+    fi
+
+    required_proto="$(server_required_inbound_proto "$protocol")"
+    port_conflict_owners="$(server_required_port_conflict_owners "$listen" "$listen_port" "$required_proto")"
+    if [ -n "$port_conflict_owners" ]; then
+        log "Server '$section' cannot listen on $listen:$listen_port [$required_proto]: port is already used by $port_conflict_owners. Aborted." "fatal"
         exit 1
     fi
 
@@ -9594,6 +9601,79 @@ server_port_is_listening_for_proto() {
     '
 }
 
+server_non_sing_box_port_listener_owners_for_proto() {
+    local listen="$1"
+    local port="$2"
+    local proto="$3"
+
+    netstat -lnp 2>/dev/null | awk -v proto="$proto" -v listen="$listen" -v port="$port" '
+        function addr_port(addr, result) {
+            result = addr
+            sub(/^.*:/, "", result)
+            return result
+        }
+
+        function addr_host(addr, result) {
+            result = addr
+            sub(/:[^:]*$/, "", result)
+            return result
+        }
+
+        function is_ipv4(value) {
+            return value ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/
+        }
+
+        function addr_matches(addr, host) {
+            if (addr_port(addr) != port)
+                return 0
+
+            host = addr_host(addr)
+            if (host == "0.0.0.0" || host == "::")
+                return 1
+            if (listen == "0.0.0.0")
+                return is_ipv4(host)
+
+            return host == listen
+        }
+
+        function owner_is_sing_box(owner) {
+            return owner ~ /\/sing-box$/
+        }
+
+        NR == 2 {
+            owner_supported = ($0 ~ /PID\/Program/)
+            next
+        }
+
+        !owner_supported {
+            next
+        }
+
+        $1 ~ "^" proto && addr_matches($4) {
+            owner = $NF
+            if (owner == "" || owner == "-" || owner == "LISTEN")
+                owner = "unknown"
+            if (!owner_is_sing_box(owner))
+                print owner
+        }
+    ' | sort -u | tr '\n' ' ' | sed 's/[[:space:]]*$//'
+}
+
+server_required_port_conflict_owners() {
+    local listen="$1"
+    local port="$2"
+    local required_proto="$3"
+    local proto proto_owners owners
+
+    for proto in $required_proto; do
+        proto_owners="$(server_non_sing_box_port_listener_owners_for_proto "$listen" "$port" "$proto")"
+        [ -n "$proto_owners" ] || continue
+        owners="${owners}${owners:+ }${proto_owners}"
+    done
+
+    printf '%s\n' "$owners"
+}
+
 server_required_ports_listening() {
     local listen="$1"
     local port="$2"
@@ -9627,7 +9707,7 @@ check_inbounds_server_handler() {
     local section="$1"
     local label protocol listen listen_port public_host routing_mode inbound_tag expected_type required_proto
     local runtime_json runtime_exists runtime_type runtime_listen runtime_port runtime_ok listening routes_configured
-    local firewall_required firewall_open public_host_ips public_host_resolved public_host_public public_host_matches_wan
+    local firewall_required firewall_open port_conflict port_conflict_owners public_host_ips public_host_resolved public_host_public public_host_matches_wan
     local host_ip item_json separator
 
     server_is_enabled "$section" || return 0
@@ -9667,7 +9747,12 @@ check_inbounds_server_handler() {
     listening=-1
     firewall_required=0
     firewall_open=-1
+    port_conflict=0
+    port_conflict_owners=""
     if [ "$protocol" != "tailscale" ]; then
+        port_conflict_owners="$(server_required_port_conflict_owners "$listen" "$listen_port" "$required_proto")"
+        [ -z "$port_conflict_owners" ] || port_conflict=1
+
         if server_required_ports_listening "$listen" "$listen_port" "$required_proto"; then
             listening=1
         else
@@ -9736,6 +9821,8 @@ check_inbounds_server_handler() {
             listening n "$listening" \
             firewall_required n "$firewall_required" \
             firewall_open n "$firewall_open" \
+            port_conflict n "$port_conflict" \
+            port_conflict_owners s "$port_conflict_owners" \
             routes_configured n "$routes_configured" \
             public_host_resolved n "$public_host_resolved" \
             public_host_public n "$public_host_public" \
@@ -11306,7 +11393,7 @@ global_check() {
             if [ -n "$inbounds_tmp" ] && printf '%s' "$inbounds_check_json" > "$inbounds_tmp"; then
                 index=0
                 while [ "$index" -lt "$enabled_count" ]; do
-                    local label protocol listen listen_port public_host tag required_proto runtime_ok listening firewall_required firewall_open routes_configured public_host_resolved public_host_public public_host_matches_wan public_host_ips
+                    local label protocol listen listen_port public_host tag required_proto runtime_ok listening firewall_required firewall_open port_conflict port_conflict_owners routes_configured public_host_resolved public_host_public public_host_matches_wan public_host_ips
 
                     label="$(jsonfilter -i "$inbounds_tmp" -e "@.items[$index].label" 2>/dev/null)"
                     protocol="$(jsonfilter -i "$inbounds_tmp" -e "@.items[$index].protocol" 2>/dev/null)"
@@ -11319,6 +11406,8 @@ global_check() {
                     listening="$(jsonfilter -i "$inbounds_tmp" -e "@.items[$index].listening" 2>/dev/null)"
                     firewall_required="$(jsonfilter -i "$inbounds_tmp" -e "@.items[$index].firewall_required" 2>/dev/null)"
                     firewall_open="$(jsonfilter -i "$inbounds_tmp" -e "@.items[$index].firewall_open" 2>/dev/null)"
+                    port_conflict="$(jsonfilter -i "$inbounds_tmp" -e "@.items[$index].port_conflict" 2>/dev/null)"
+                    port_conflict_owners="$(jsonfilter -i "$inbounds_tmp" -e "@.items[$index].port_conflict_owners" 2>/dev/null)"
                     routes_configured="$(jsonfilter -i "$inbounds_tmp" -e "@.items[$index].routes_configured" 2>/dev/null)"
                     public_host_resolved="$(jsonfilter -i "$inbounds_tmp" -e "@.items[$index].public_host_resolved" 2>/dev/null)"
                     public_host_public="$(jsonfilter -i "$inbounds_tmp" -e "@.items[$index].public_host_public" 2>/dev/null)"
@@ -11336,6 +11425,12 @@ global_check() {
                             print_global "[OK] $label: listening on $listen:$listen_port [$required_proto]"
                         else
                             print_global "[FAIL] $label: not listening on $listen:$listen_port [$required_proto]"
+                        fi
+
+                        if [ "$port_conflict" = "1" ]; then
+                            print_global "[FAIL] $label: $listen:$listen_port [$required_proto] is already used by $port_conflict_owners"
+                        else
+                            print_global "[OK] $label: no local port conflict detected"
                         fi
 
                         if [ "$firewall_required" = "1" ]; then

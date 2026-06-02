@@ -4877,6 +4877,21 @@ function serverPrefix(item) {
 function formatListen(item) {
   return `${item.listen}:${Number(item.listen_port || 0)} [${item.required_proto}]`;
 }
+function getPortConflictItem(item) {
+  const key = `${serverPrefix(item)} ${_("Port conflict")}`;
+  if (item.port_conflict === 1) {
+    return {
+      state: "error",
+      key,
+      value: `${_("Used by")}: ${item.port_conflict_owners || _("unknown")}`
+    };
+  }
+  return {
+    state: "success",
+    key,
+    value: _("No conflict detected")
+  };
+}
 function getPublicHostItem(item, wanIp) {
   const key = `${serverPrefix(item)} ${_("Public host")}`;
   if (!item.public_host) {
@@ -4939,10 +4954,11 @@ function getServerItems(item, wanIp) {
   }
   items.push(
     {
-      state: item.listening === 1 ? "success" : "error",
+      state: item.listening === 1 && item.port_conflict !== 1 ? "success" : "error",
       key: `${prefix} ${_("Listening port")}`,
       value: formatListen(item)
     },
+    getPortConflictItem(item),
     {
       state: item.firewall_required === 0 ? "warning" : item.firewall_open === 1 ? "success" : "error",
       key: `${prefix} ${_("Firewall WAN port")}`,
