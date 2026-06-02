@@ -269,6 +269,8 @@ export namespace Podkop {
     listening: -1 | 0 | 1;
     firewall_required: 0 | 1;
     firewall_open: -1 | 0 | 1;
+    port_conflict: 0 | 1;
+    port_conflict_owners: string;
     routes_configured: 0 | 1;
     public_host_resolved: -1 | 0 | 1;
     public_host_public: -1 | 0 | 1;
