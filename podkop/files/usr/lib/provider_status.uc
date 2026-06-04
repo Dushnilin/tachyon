@@ -46,6 +46,46 @@ function write_json(value) {
     print(sprintf("%J", value), "\n");
 }
 
+function first_field(line) {
+    let fields = split(trim(as_string(line)), /[ \t\r\n]+/);
+    return length(fields) > 0 ? as_string(fields[0]) : "";
+}
+
+function stdin_first_nonempty_field() {
+    for (let line in split(read_stdin(), "\n")) {
+        let field = first_field(line);
+        if (field != "") {
+            print(field, "\n");
+            return;
+        }
+    }
+}
+
+function stdin_first_line_version_field() {
+    let data = read_stdin();
+    let newline = index(data, "\n");
+    let line = newline >= 0 ? substr(data, 0, newline) : data;
+
+    if (match(line, /^.*version[ \t]*/) == null)
+        return;
+
+    let field = first_field(replace(line, /^.*version[ \t]*/, ""));
+    if (field != "")
+        print(field, "\n");
+}
+
+function byedpi_restart_count_file(path) {
+    let data = fs.readfile(path);
+    let count = 0;
+
+    if (data != null)
+        for (let line in split(data, "\n"))
+            if (match(as_string(line), /ciadpi for rule .* exited with code/) != null)
+                count++;
+
+    print(count, "\n");
+}
+
 function byedpi_validation_result(valid, message, needle) {
     let needles = [];
     if (!bool_arg(valid)) {
@@ -267,6 +307,12 @@ let mode = ARGV[0] || "";
 
 if (mode == "byedpi-validation")
     byedpi_validation_result(ARGV[1], ARGV[2], ARGV[3]);
+else if (mode == "stdin-first-nonempty-field")
+    stdin_first_nonempty_field();
+else if (mode == "stdin-first-line-version-field")
+    stdin_first_line_version_field();
+else if (mode == "byedpi-restart-count-file")
+    byedpi_restart_count_file(ARGV[1]);
 else if (mode == "has-socks-outbound")
     exit(has_socks_outbound(ARGV[1], ARGV[2], ARGV[3], ARGV[4]) ? 0 : 1);
 else if (mode == "has-direct-mark-outbound")

@@ -93,9 +93,9 @@ function create_source(path) {
         exit(1);
 }
 
-function patch_source(path, key, value_text) {
+function patch_source_values(path, key, values) {
     let ruleset = object_or_empty(read_json_file(path));
-    let values = array_or_empty(json_decode_text(value_text));
+    values = array_or_empty(values);
 
     if (type(ruleset.rules) != "array")
         ruleset.rules = [];
@@ -122,6 +122,123 @@ function patch_source(path, key, value_text) {
 
     if (!write_json_file(path, ruleset))
         exit(1);
+}
+
+function patch_source(path, key, value_text) {
+    patch_source_values(path, key, json_decode_text(value_text));
+}
+
+function numeric_string(value) {
+    let text = as_string(value);
+    return text != "" && !match(text, /[^0-9]/);
+}
+
+function decimal_without_leading_zero(value) {
+    let text = as_string(value);
+    return numeric_string(text) && (length(text) == 1 || substr(text, 0, 1) != "0");
+}
+
+function is_ipv4_text(value, allow_trailing_dot) {
+    let text = as_string(value);
+
+    if (allow_trailing_dot && length(text) > 0 && substr(text, length(text) - 1, 1) == ".")
+        text = substr(text, 0, length(text) - 1);
+
+    let parts = split(text, ".");
+    if (length(parts) != 4)
+        return false;
+
+    for (let part in parts) {
+        if (!decimal_without_leading_zero(part))
+            return false;
+
+        let octet = int(part);
+        if (octet < 0 || octet > 255)
+            return false;
+    }
+
+    return true;
+}
+
+function is_ipv4_cidr_text(value) {
+    let text = as_string(value);
+    let slash = index(text, "/");
+    if (slash <= 0 || index(substr(text, slash + 1), "/") >= 0)
+        return false;
+
+    let prefix = substr(text, slash + 1);
+    if (!decimal_without_leading_zero(prefix))
+        return false;
+
+    let prefix_number = int(prefix);
+    return is_ipv4_text(substr(text, 0, slash), false) && prefix_number >= 0 && prefix_number <= 32;
+}
+
+function is_domain_suffix_text(value) {
+    let text = as_string(value);
+    if (substr(text, 0, 1) == ".")
+        text = substr(text, 1);
+
+    return match(text, /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/);
+}
+
+function is_plain_ruleset_value(value, kind) {
+    if (kind == "domains")
+        return is_domain_suffix_text(value);
+    if (kind == "subnets")
+        return is_ipv4_text(value, true) || is_ipv4_cidr_text(value);
+
+    return false;
+}
+
+function write_optional_lines(path, lines) {
+    if (path == null || path == "")
+        return;
+
+    if (!write_text_file(path, length(lines) > 0 ? join("\n", lines) + "\n" : ""))
+        exit(1);
+}
+
+function import_plain_list(plain_path, ruleset_path, key, kind, chunk_size_text, invalid_path, counts_path) {
+    let data = fs.readfile(plain_path);
+    if (data == null)
+        exit(1);
+
+    let chunk_size = int(chunk_size_text || 5000);
+    if (chunk_size < 1)
+        chunk_size = 5000;
+
+    let chunk = [];
+    let invalid = [];
+    let counts = [];
+
+    for (let line in split(as_string(data), "\n")) {
+        line = trim_string(line);
+
+        if (line == "")
+            continue;
+
+        if (!is_plain_ruleset_value(line, kind)) {
+            push(invalid, line);
+            continue;
+        }
+
+        push(chunk, line);
+
+        if (length(chunk) == chunk_size) {
+            push(counts, "" + length(chunk));
+            patch_source_values(ruleset_path, key, chunk);
+            chunk = [];
+        }
+    }
+
+    if (length(chunk) > 0) {
+        push(counts, "" + length(chunk));
+        patch_source_values(ruleset_path, key, chunk);
+    }
+
+    write_optional_lines(invalid_path, invalid);
+    write_optional_lines(counts_path, counts);
 }
 
 function extract_ip_cidr(json_path, output_path) {
@@ -427,6 +544,8 @@ if (mode == "create-source")
     create_source(ARGV[1]);
 else if (mode == "patch-source")
     patch_source(ARGV[1], ARGV[2], ARGV[3]);
+else if (mode == "import-plain-list")
+    import_plain_list(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5], ARGV[6], ARGV[7]);
 else if (mode == "extract-ip-cidr")
     extract_ip_cidr(ARGV[1], ARGV[2]);
 else if (mode == "extract-ip-cidr-nft")
@@ -434,6 +553,6 @@ else if (mode == "extract-ip-cidr-nft")
 else if (mode == "has-domain-matchers")
     exit(has_domain_matchers(ARGV[1]) ? 0 : 1);
 else {
-    warn("Usage: rulesets.uc <create-source|patch-source|extract-ip-cidr|extract-ip-cidr-nft> ...\n");
+    warn("Usage: rulesets.uc <create-source|patch-source|import-plain-list|extract-ip-cidr|extract-ip-cidr-nft> ...\n");
     exit(1);
 }

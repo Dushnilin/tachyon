@@ -52,7 +52,7 @@ get_byedpi_rule_port() {
 }
 
 normalize_byedpi_strategy_whitespace() {
-    printf '%s' "$1" | tr '\t\r\n' '   ' | tr -s ' ' | sed 's/^ //; s/ $//'
+    normalize_strategy_whitespace "$1"
 }
 
 get_rule_byedpi_cmd_opts() {
@@ -73,7 +73,7 @@ byedpi_package_installed() {
         return 0
     fi
 
-    if command -v opkg >/dev/null 2>&1 && opkg list-installed 2>/dev/null | grep -Eq '^byedpi[[:space:]-]'; then
+    if opkg_package_is_installed "byedpi"; then
         return 0
     fi
 
@@ -94,11 +94,11 @@ get_byedpi_package_version() {
     if command -v apk >/dev/null 2>&1 && apk info -e byedpi >/dev/null 2>&1; then
         version="$(get_apk_installed_package_version "byedpi")"
     elif command -v opkg >/dev/null 2>&1; then
-        version="$(opkg list-installed 2>/dev/null | awk '$1 == "byedpi" { print $3; exit }')"
+        version="$(get_opkg_installed_package_version "byedpi")"
     fi
 
     if [ -z "$version" ] && [ -x "$BYEDPI_BIN" ]; then
-        version="$("$BYEDPI_BIN" --version 2>/dev/null | awk 'NF { print $1; exit }')"
+        version="$("$BYEDPI_BIN" --version 2>/dev/null | provider_status_ucode stdin-first-nonempty-field)"
     fi
 
     echo "$version"
@@ -650,7 +650,7 @@ get_byedpi_restart_count() {
 
     for logfile in "$BYEDPI_LOG_DIR"/*.log; do
         [ -f "$logfile" ] || continue
-        lines="$(grep -c 'ciadpi for rule .* exited with code' "$logfile" 2>/dev/null || true)"
+        lines="$(provider_status_ucode byedpi-restart-count-file "$logfile" 2>/dev/null || true)"
         count=$((count + ${lines:-0}))
     done
 

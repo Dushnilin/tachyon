@@ -54,46 +54,55 @@ patch_source_ruleset_rules() {
     mv "$tmpfile" "$filepath"
 }
 
+log_plain_ruleset_import_counts() {
+    local counts_filepath="$1"
+    local ruleset_filepath="$2"
+    local noun="$3"
+
+    [ -s "$counts_filepath" ] || return 0
+
+    while IFS= read -r count; do
+        [ -z "$count" ] && continue
+        log "Adding $count elements to $noun at $ruleset_filepath" "debug"
+    done < "$counts_filepath"
+}
+
+log_plain_ruleset_import_invalid() {
+    local invalid_filepath="$1"
+    local message="$2"
+
+    [ -s "$invalid_filepath" ] || return 0
+
+    while IFS= read -r line; do
+        [ -z "$line" ] && continue
+        log "'$line' $message" "debug"
+    done < "$invalid_filepath"
+}
+
 # Imports a plain domain list into a ruleset in chunks, validating domains and appending them as domain_suffix rules
 import_plain_domain_list_to_local_source_ruleset_chunked() {
     local plain_list_filepath="$1"
     local ruleset_filepath="$2"
     local chunk_size="${3:-5000}"
 
-    local array count json_array
-    count=0
-    while IFS= read -r line; do
-        line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+    local invalid_filepath counts_filepath
+    invalid_filepath="$(mktemp)" || return 1
+    counts_filepath="$(mktemp)" || {
+        rm -f "$invalid_filepath"
+        return 1
+    }
 
-        [ -z "$line" ] && continue
-
-        if ! is_domain_suffix "$line"; then
-            log "'$line' is not a valid domain" "debug"
-            continue
-        fi
-
-        if [ -z "$array" ]; then
-            array="$line"
-        else
-            array="$array,$line"
-        fi
-
-        count=$((count + 1))
-
-        if [ "$count" = "$chunk_size" ]; then
-            log "Adding $count elements to rule set at $ruleset_filepath" "debug"
-            json_array="$(comma_string_to_json_array "$array")"
-            patch_source_ruleset_rules "$ruleset_filepath" "domain_suffix" "$json_array"
-            array=""
-            count=0
-        fi
-    done < "$plain_list_filepath"
-
-    if [ -n "$array" ]; then
-        log "Adding $count elements to rule set at $ruleset_filepath" "debug"
-        json_array="$(comma_string_to_json_array "$array")"
-        patch_source_ruleset_rules "$ruleset_filepath" "domain_suffix" "$json_array"
+    if ! ucode "${PODKOP_LIB:-/usr/lib/podkop-plus}/rulesets.uc" import-plain-list \
+        "$plain_list_filepath" "$ruleset_filepath" "domain_suffix" "domains" "$chunk_size" \
+        "$invalid_filepath" "$counts_filepath"; then
+        rm -f "$invalid_filepath" "$counts_filepath"
+        return 1
     fi
+
+    log_plain_ruleset_import_counts "$counts_filepath" "$ruleset_filepath" "rule set"
+    log_plain_ruleset_import_invalid "$invalid_filepath" "is not a valid domain"
+
+    rm -f "$invalid_filepath" "$counts_filepath"
 }
 
 # Imports a plain IPv4/CIDR list into a ruleset in chunks, validating entries and appending them as ip_cidr rules
@@ -102,40 +111,24 @@ import_plain_subnet_list_to_local_source_ruleset_chunked() {
     local ruleset_filepath="$2"
     local chunk_size="${3:-5000}"
 
-    local array count json_array
-    count=0
-    while IFS= read -r line; do
-        line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+    local invalid_filepath counts_filepath
+    invalid_filepath="$(mktemp)" || return 1
+    counts_filepath="$(mktemp)" || {
+        rm -f "$invalid_filepath"
+        return 1
+    }
 
-        [ -z "$line" ] && continue
-
-        if ! is_ipv4 "$line" && ! is_ipv4_cidr "$line"; then
-            log "'$line' is not IPv4 or IPv4 CIDR" "debug"
-            continue
-        fi
-
-        if [ -z "$array" ]; then
-            array="$line"
-        else
-            array="$array,$line"
-        fi
-
-        count=$((count + 1))
-
-        if [ "$count" = "$chunk_size" ]; then
-            log "Adding $count elements to ruleset at $ruleset_filepath" "debug"
-            json_array="$(comma_string_to_json_array "$array")"
-            patch_source_ruleset_rules "$ruleset_filepath" "ip_cidr" "$json_array"
-            array=""
-            count=0
-        fi
-    done < "$plain_list_filepath"
-
-    if [ -n "$array" ]; then
-        log "Adding $count elements to ruleset at $ruleset_filepath" "debug"
-        json_array="$(comma_string_to_json_array "$array")"
-        patch_source_ruleset_rules "$ruleset_filepath" "ip_cidr" "$json_array"
+    if ! ucode "${PODKOP_LIB:-/usr/lib/podkop-plus}/rulesets.uc" import-plain-list \
+        "$plain_list_filepath" "$ruleset_filepath" "ip_cidr" "subnets" "$chunk_size" \
+        "$invalid_filepath" "$counts_filepath"; then
+        rm -f "$invalid_filepath" "$counts_filepath"
+        return 1
     fi
+
+    log_plain_ruleset_import_counts "$counts_filepath" "$ruleset_filepath" "ruleset"
+    log_plain_ruleset_import_invalid "$invalid_filepath" "is not IPv4 or IPv4 CIDR"
+
+    rm -f "$invalid_filepath" "$counts_filepath"
 }
 
 # Decompiles a sing-box SRS binary file into a JSON ruleset file
@@ -145,7 +138,7 @@ decompile_binary_ruleset() {
 
     log "Decompiling $binary_filepath to $output_filepath" "debug"
     sing-box rule-set decompile "$binary_filepath" -o "$output_filepath"
-    if [[ $? -ne 0 ]]; then
+    if [ $? -ne 0 ]; then
         log "Decompilation command failed for $binary_filepath" "error"
         return 1
     fi

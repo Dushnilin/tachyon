@@ -102,8 +102,17 @@ function read_json_file(path) {
     return data == null ? null : json_decode_text(data);
 }
 
+function validate_subscription(path) {
+    let value = read_json_file(path);
+    return type(value) == "object" && type(value.outbounds) == "array" && length(value.outbounds) > 0;
+}
+
 function write_json_file(path, value) {
     return fs.writefile(path, sprintf("%J", value) + "\n");
+}
+
+function write_json(value) {
+    print(sprintf("%J", value), "\n");
 }
 
 function canonical_runtime_value(value) {
@@ -222,6 +231,22 @@ function urldecode_fragment(value) {
     let decoded = urldecode(value);
     fragment_decode_cache[value] = decoded;
     return decoded;
+}
+
+function subscription_url_fragment(url) {
+    url = as_string(url);
+    let marker = index(url, "#");
+    if (marker < 0) {
+        print("\n");
+        return true;
+    }
+
+    let fragment = substr(url, marker + 1);
+    if (index(fragment, "%") >= 0 || index(fragment, "+") >= 0)
+        print(urldecode_fragment(fragment));
+    else
+        print(fragment, "\n");
+    return true;
 }
 
 function parse_query(query) {
@@ -1311,6 +1336,324 @@ let metadata_allowed_keys = {
     "content-disposition": true
 };
 
+function metadata_new_store() {
+    return {
+        values: {},
+        seen: {},
+        order: []
+    };
+}
+
+function write_metadata_compact_json(store) {
+    print("{");
+    for (let i = 0; i < length(store.order); i++) {
+        let key = store.order[i];
+        if (i > 0)
+            print(",");
+        print(sprintf("%J", key), ":", sprintf("%J", store.values[key]));
+    }
+    print("}\n");
+}
+
+function add_metadata_entry(store, key, value) {
+    key = lc(trim(key));
+    value = replace(trim(value), /\r/g, "");
+    if (!metadata_allowed_keys[key] || value == "")
+        return;
+
+    if (!store.seen[key]) {
+        push(store.order, key);
+        store.seen[key] = true;
+    }
+    store.values[key] = value;
+}
+
+function parse_metadata_line(store, line) {
+    line = trim(line);
+    let colon = index(line, ":");
+    if (colon <= 0)
+        return;
+
+    add_metadata_entry(store, substr(line, 0, colon), substr(line, colon + 1));
+}
+
+function metadata_headers_store(input_file) {
+    let data = read_file(input_file);
+    let store = metadata_new_store();
+
+    if (data != null) {
+        for (let line in split(data, "\n"))
+            parse_metadata_line(store, line);
+    }
+
+    return store;
+}
+
+function metadata_headers_json(input_file) {
+    write_metadata_compact_json(metadata_headers_store(input_file));
+    return true;
+}
+
+function metadata_body_store_from_data(data) {
+    let store = metadata_new_store();
+    let line_no = 0;
+
+    if (data != null) {
+        for (let line in split(data, "\n")) {
+            line_no++;
+            if (line_no > 20)
+                break;
+
+            line = trim(line);
+            if (starts_with(line, "#"))
+                line = replace(line, /^#[ \t]*/g, "");
+            else if (starts_with(line, "//"))
+                line = replace(line, /^\/\/[ \t]*/g, "");
+            else
+                continue;
+
+            parse_metadata_line(store, line);
+        }
+    }
+
+    return store;
+}
+
+function metadata_body_store(input_file) {
+    return metadata_body_store_from_data(read_file(input_file));
+}
+
+function metadata_body_store_with_base64_fallback(input_file) {
+    let store = metadata_body_store(input_file);
+    if (length(store.order) > 0)
+        return store;
+
+    let data = read_file(input_file);
+    if (data == null)
+        return store;
+
+    let decoded = base64_decode(replace(as_string(data), /[\r\n\t ]/g, ""));
+    if (decoded == null || decoded == "")
+        return store;
+
+    return metadata_body_store_from_data(decoded);
+}
+
+function metadata_body_json(input_file) {
+    write_metadata_compact_json(metadata_body_store(input_file));
+    return true;
+}
+
+function metadata_trim_text(value) {
+    return trim(as_string(value));
+}
+
+function metadata_clean_text(value, max, decode_base64) {
+    value = as_string(value);
+    if (decode_base64 && lc(substr(value, 0, 7)) == "base64:") {
+        let decoded = base64_decode(substr(value, 7));
+        value = decoded == null ? "" : decoded;
+    }
+
+    let cleaned = "";
+    let last_space = false;
+    for (let i = 0; i < length(value); i++) {
+        let char = substr(value, i, 1);
+        let code = ord(char);
+        if (code < 32 || code == 127)
+            char = " ";
+
+        if (char == " ") {
+            if (!last_space)
+                cleaned += " ";
+            last_space = true;
+        }
+        else {
+            cleaned += char;
+            last_space = false;
+        }
+    }
+
+    cleaned = trim(cleaned);
+    if (cleaned == "")
+        return null;
+    return length(cleaned) > max ? substr(cleaned, 0, max) : cleaned;
+}
+
+function metadata_has_control_or_space(value) {
+    value = as_string(value);
+    for (let i = 0; i < length(value); i++) {
+        let code = ord(substr(value, i, 1));
+        if (code <= 32 || code == 127)
+            return true;
+    }
+    return false;
+}
+
+function metadata_clean_url(value) {
+    let cleaned = metadata_trim_text(value);
+    if (cleaned == "" || length(cleaned) > 2048)
+        return null;
+    if (!starts_with(cleaned, "http://") && !starts_with(cleaned, "https://"))
+        return null;
+    return metadata_has_control_or_space(cleaned) ? null : cleaned;
+}
+
+function metadata_clean_number(value) {
+    value = metadata_trim_text(value);
+    if (value == "")
+        return null;
+    for (let i = 0; i < length(value); i++) {
+        let code = ord(substr(value, i, 1));
+        if (code < 48 || code > 57)
+            return null;
+    }
+    return value;
+}
+
+function metadata_replace_path_separators(value) {
+    let result = "";
+    for (let i = 0; i < length(value); i++) {
+        let char = substr(value, i, 1);
+        result += (char == "/" || char == "\\") ? "_" : char;
+    }
+    return result;
+}
+
+function metadata_content_disposition_filename(value) {
+    value = as_string(value);
+    let filename = null;
+    let quoted_marker = "filename=\"";
+    let quoted_pos = index(value, quoted_marker);
+    if (quoted_pos >= 0) {
+        let rest = substr(value, quoted_pos + length(quoted_marker));
+        let quote_end = index(rest, "\"");
+        filename = quote_end >= 0 ? substr(rest, 0, quote_end) : rest;
+    }
+    else {
+        let marker = "filename=";
+        let pos = index(value, marker);
+        if (pos < 0)
+            return null;
+
+        let rest = substr(value, pos + length(marker));
+        let semicolon = index(rest, ";");
+        filename = semicolon >= 0 ? substr(rest, 0, semicolon) : rest;
+        if (length(filename) > 0 && substr(filename, 0, 1) == "\"")
+            filename = substr(filename, 1);
+        if (length(filename) > 0 && substr(filename, length(filename) - 1) == "\"")
+            filename = substr(filename, 0, length(filename) - 1);
+    }
+
+    filename = metadata_clean_text(filename, 120, false);
+    if (filename == null)
+        return null;
+
+    filename = metadata_replace_path_separators(filename);
+    return filename == "" ? null : filename;
+}
+
+function metadata_number_value(value) {
+    return value == null ? 0 : int(value, 10);
+}
+
+function metadata_parse_userinfo(value) {
+    let result = {};
+
+    for (let item in split(as_string(value), ";")) {
+        item = trim(item);
+        let equals = index(item, "=");
+        if (equals < 0)
+            continue;
+
+        let key = lc(trim(substr(item, 0, equals)));
+        let number = metadata_clean_number(substr(item, equals + 1));
+        if (number == null)
+            continue;
+
+        if (key == "upload" || key == "download" || key == "total" || key == "expire")
+            result[key] = number;
+    }
+
+    return result;
+}
+
+function metadata_ui_object(raw) {
+    raw = object_or_empty(raw);
+
+    let title = metadata_clean_text(raw["profile-title"], 120, true);
+    let web_page_url = metadata_clean_url(raw["profile-web-page-url"]);
+    let support_url = metadata_clean_url(raw["support-url"]);
+    let announce = metadata_clean_text(raw["announce"], 500, true);
+    let announce_url = metadata_clean_url(raw["announce-url"]);
+    let refill_date = metadata_clean_number(raw["subscription-refill-date"]);
+    let file_name = metadata_content_disposition_filename(raw["content-disposition"]);
+    let userinfo = metadata_parse_userinfo(raw["subscription-userinfo"]);
+
+    let upload = userinfo.upload;
+    let download = userinfo.download;
+    let total = userinfo.total;
+    let expire = userinfo.expire;
+    let has_traffic = upload != null || download != null || total != null || expire != null;
+    let used = metadata_number_value(upload) + metadata_number_value(download);
+    let total_value = metadata_number_value(total);
+
+    let result = { version: 1 };
+    if (title != null)
+        result.title = title;
+    if (has_traffic) {
+        let traffic = {
+            used: used,
+            isUnlimited: !(total != null && total_value > 0)
+        };
+        if (upload != null)
+            traffic.upload = metadata_number_value(upload);
+        if (download != null)
+            traffic.download = metadata_number_value(download);
+        if (total != null && total_value > 0) {
+            traffic.total = total_value;
+            let remaining = total_value - used;
+            traffic.remaining = remaining < 0 ? 0 : remaining;
+        }
+        result.traffic = traffic;
+    }
+    if (expire != null && metadata_number_value(expire) > 0)
+        result.expire = metadata_number_value(expire);
+    if (refill_date != null && metadata_number_value(refill_date) > 0)
+        result.refillDate = metadata_number_value(refill_date);
+    if (web_page_url != null)
+        result.webPageUrl = web_page_url;
+    if (support_url != null)
+        result.supportUrl = support_url;
+    if (announce != null)
+        result.announce = announce;
+    if (announce_url != null)
+        result.announceUrl = announce_url;
+    if (file_name != null)
+        result.fileName = file_name;
+
+    return result;
+}
+
+function metadata_ui_json(raw_path) {
+    let result = metadata_ui_object(read_json_file(raw_path));
+    if (length(keys(result)) > 1)
+        write_json(result);
+    return true;
+}
+
+function metadata_extract_ui_json(headers_file, body_file) {
+    let raw = metadata_body_store_with_base64_fallback(body_file).values;
+    let headers = metadata_headers_store(headers_file).values;
+    for (let key, value in headers)
+        raw[key] = value;
+
+    let result = metadata_ui_object(raw);
+    if (length(keys(result)) > 1)
+        write_json(result);
+    return true;
+}
+
 function is_metadata_preamble_line(line) {
     let trimmed = trim(line);
     let m = match(trimmed, /^(#|\/\/)[ \t]*([A-Za-z0-9][A-Za-z0-9_-]*)[ \t]*:/);
@@ -1526,10 +1869,31 @@ function normalize_content_file(input_file, output_file) {
     return data == null ? false : normalize_content_data(data, output_file, 0);
 }
 
+function normalized_skipped_warning(path) {
+    let value = read_json_file(path);
+    if (type(value) != "object")
+        return true;
+
+    let skipped = as_string(value.skipped != null ? value.skipped : "0");
+    if (match(skipped, /^[0-9]+$/) == null || int(skipped) <= 0)
+        return true;
+
+    if (as_string(value.format != null ? value.format : "") == "clash-yaml")
+        print("Skipped ", skipped, " invalid or unsupported Clash proxy entries\n");
+    else
+        print("Skipped ", skipped, " invalid or unsupported subscription links\n");
+
+    return true;
+}
+
 let mode = ARGV[0];
 let ok = false;
 
-if (mode == "normalize-uri-list")
+if (mode == "validate-subscription")
+    ok = validate_subscription(ARGV[1]);
+else if (mode == "url-fragment")
+    ok = subscription_url_fragment(ARGV[1]);
+else if (mode == "normalize-uri-list")
     ok = normalize_uri_list(ARGV[1], ARGV[2]);
 else if (mode == "normalize-clash-yaml")
     ok = normalize_clash_yaml(ARGV[1], ARGV[2]);
@@ -1537,13 +1901,30 @@ else if (mode == "normalize-content")
     ok = normalize_content_file(ARGV[1], ARGV[2]);
 else if (mode == "runtime-outbounds-equal")
     ok = runtime_outbounds_equal(ARGV[1], ARGV[2]);
+else if (mode == "normalized-skipped-warning")
+    ok = normalized_skipped_warning(ARGV[1]);
+else if (mode == "metadata-headers-json")
+    ok = metadata_headers_json(ARGV[1]);
+else if (mode == "metadata-body-json")
+    ok = metadata_body_json(ARGV[1]);
+else if (mode == "metadata-ui-json")
+    ok = metadata_ui_json(ARGV[1]);
+else if (mode == "metadata-extract-ui-json")
+    ok = metadata_extract_ui_json(ARGV[1], ARGV[2]);
 else if (ARGV[0] && ARGV[1])
     ok = normalize_uri_list(ARGV[0], ARGV[1]);
 else {
-    warn("Usage: subscription_parser.uc normalize-uri-list <input> <output>\n");
+    warn("Usage: subscription_parser.uc validate-subscription <normalized-json>\n");
+    warn("       subscription_parser.uc url-fragment <url>\n");
+    warn("       subscription_parser.uc normalize-uri-list <input> <output>\n");
     warn("       subscription_parser.uc normalize-clash-yaml <input> <output>\n");
     warn("       subscription_parser.uc normalize-content <input> <output>\n");
     warn("       subscription_parser.uc runtime-outbounds-equal <left> <right>\n");
+    warn("       subscription_parser.uc normalized-skipped-warning <normalized-json>\n");
+    warn("       subscription_parser.uc metadata-headers-json <input>\n");
+    warn("       subscription_parser.uc metadata-body-json <input>\n");
+    warn("       subscription_parser.uc metadata-ui-json <raw-json>\n");
+    warn("       subscription_parser.uc metadata-extract-ui-json <headers> <body>\n");
     exit(2);
 }
 
