@@ -26,6 +26,7 @@ LUCI_LANG.ru:=Русский (Russian)
 LUCI_LANG.en:=English
 LUCI_MAINTAINER:=ushan0v <ushan0v@users.noreply.github.com>
 LUCI_DESCRIPTION:=Rule-based Podkop Plus LuCI app with hybrid sing-box + zapret orchestration
+LUCI_MINIFY_JS:=0
 
 PKG_LICENSE:=GPL-2.0-or-later
 LUCI_LANGUAGES:=en ru
@@ -38,3 +39,5 @@ define Build/Prepare/$(PKG_NAME)
 endef
 
 include $(TOPDIR)/feeds/luci/luci.mk
+
+# call BuildPackage - OpenWrt buildroot signature
