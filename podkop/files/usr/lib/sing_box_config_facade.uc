@@ -37,6 +37,57 @@ function write_json(value) {
     print(sprintf("%J", value), "\n");
 }
 
+function write_compact_string_array(values) {
+    print("[");
+    for (let i = 0; i < length(values); i++) {
+        if (i > 0)
+            print(",");
+        print(sprintf("%J", as_string(values[i])));
+    }
+    print("]\n");
+}
+
+function csv_to_json_array(value) {
+    value = as_string(value);
+    write_compact_string_array(value == "" ? [] : split(value, ","));
+}
+
+function hex_digit_value(value) {
+    value = ord(lc(as_string(value)));
+    if (value >= 48 && value <= 57)
+        return value - 48;
+    if (value >= 97 && value <= 102)
+        return value - 87;
+    return -1;
+}
+
+function url_decode(value) {
+    value = as_string(value);
+
+    for (let i = 0; i < length(value); i++) {
+        let c = substr(value, i, 1);
+        if (c == "+") {
+            print(" ");
+            continue;
+        }
+
+        if (c == "%") {
+            let high = i + 1 < length(value) ? hex_digit_value(substr(value, i + 1, 1)) : -1;
+            let low = i + 2 < length(value) ? hex_digit_value(substr(value, i + 2, 1)) : -1;
+            if (high >= 0 && low >= 0) {
+                print(chr(high * 16 + low));
+                i += 2;
+            }
+            else {
+                print("\\x");
+            }
+            continue;
+        }
+
+        print(c);
+    }
+}
+
 function write_file_json(path, value) {
     return fs.writefile(path, sprintf("%J", value) + "\n");
 }
@@ -68,6 +119,22 @@ function non_empty_string(value) {
     return type(value) == "string" && value != "";
 }
 
+function strip_ansi_sgr(value) {
+    return replace(as_string(value), /\x1b\[[0-9;]*m/g, "");
+}
+
+function validation_error_summary() {
+    for (let line in split(read_stdin(), "\n")) {
+        line = trim(strip_ansi_sgr(replace(as_string(line), /\r/g, "")));
+        if (line != "") {
+            print(line, "\n");
+            return;
+        }
+    }
+
+    print("sing-box check failed\n");
+}
+
 function valid_server_port(value) {
     return type(value) == "int" && value >= 1 && value <= 65535;
 }
@@ -78,6 +145,10 @@ function valid_server_port_text(value) {
         return false;
 
     return valid_server_port(int(value, 10));
+}
+
+function shadowsocks_userinfo_format_valid(value) {
+    return match(as_string(value), /^[^:]+:[^:]+(:[^:]+)?$/) != null;
 }
 
 function valid_hysteria2_server_ports(value) {
@@ -438,16 +509,29 @@ function prepared_servers(prepared) {
     return result;
 }
 
-function prepared_names_lines(prepared) {
-    for (let name in array_or_empty(prepared.names))
-        print(as_string(name), "\n");
-}
-
 function prepared_names_text(prepared) {
     let lines = [];
     for (let name in array_or_empty(prepared.names))
         push(lines, as_string(name));
     return length(lines) > 0 ? join("\n", lines) + "\n" : "";
+}
+
+function trim_trailing_newlines(value) {
+    value = as_string(value);
+    while (length(value) > 0) {
+        let last = substr(value, length(value) - 1, 1);
+        if (last != "\n" && last != "\r")
+            break;
+        value = substr(value, 0, length(value) - 1);
+    }
+    return value;
+}
+
+function merge_object_values(target, source) {
+    target = object_or_empty(target);
+    for (let key, value in object_or_empty(source))
+        target[key] = value;
+    return target;
 }
 
 function prepared_slice(start, end) {
@@ -494,24 +578,28 @@ function field_length(field) {
         print(length(value), "\n");
 }
 
-function tags_csv() {
-    let prepared = object_or_empty(read_stdin_json());
+function stdin_collection_length() {
+    let value = read_stdin_json();
+    if (type(value) != "array" && type(value) != "object")
+        print("0\n");
+    else
+        print(length(value), "\n");
+}
+
+function print_string_array_csv(values) {
     let tags = [];
-    for (let tag in array_or_empty(prepared.tags))
+    for (let tag in values)
         push(tags, as_string(tag));
     print(join(",", tags), "\n");
 }
 
-function metadata_command(kind, source_section) {
+function tags_csv() {
     let prepared = object_or_empty(read_stdin_json());
-    if (kind == "link-refs")
-        write_json(prepared_link_refs(prepared, source_section));
-    else if (kind == "names")
-        write_json(prepared_names(prepared));
-    else if (kind == "servers")
-        write_json(prepared_servers(prepared));
-    else if (kind == "names-lines")
-        prepared_names_lines(prepared);
+    print_string_array_csv(array_or_empty(prepared.tags));
+}
+
+function stdin_string_array_csv() {
+    print_string_array_csv(array_or_empty(read_stdin_json()));
 }
 
 function prepared_state_to_files(source_section, tags_path, tags_csv_path, names_lines_path, link_refs_path, names_path, servers_path) {
@@ -527,6 +615,25 @@ function prepared_state_to_files(source_section, tags_path, tags_csv_path, names
         !write_file_json(link_refs_path, prepared_link_refs(prepared, source_section)) ||
         !write_file_json(names_path, prepared_names(prepared)) ||
         !write_file_json(servers_path, prepared_servers(prepared)))
+        exit(1);
+}
+
+function append_prepared_state_to_files(source_section, tags_path, names_lines_path, link_refs_path, names_path, servers_path) {
+    let prepared = object_or_empty(read_stdin_json());
+    let tags = array_or_empty(read_json_file(tags_path));
+    for (let tag in array_or_empty(prepared.tags))
+        push(tags, tag);
+
+    let names_lines = trim_trailing_newlines(fs.readfile(names_lines_path));
+    let next_names_lines = trim_trailing_newlines(prepared_names_text(prepared));
+    if (next_names_lines != "")
+        names_lines = names_lines == "" ? next_names_lines : names_lines + "\n" + next_names_lines;
+
+    if (!write_file_json(tags_path, tags) ||
+        !write_text_file(names_lines_path, names_lines) ||
+        !write_file_json(link_refs_path, merge_object_values(read_json_file(link_refs_path), prepared_link_refs(prepared, source_section))) ||
+        !write_file_json(names_path, merge_object_values(read_json_file(names_path), prepared_names(prepared))) ||
+        !write_file_json(servers_path, merge_object_values(read_json_file(servers_path), prepared_servers(prepared))))
         exit(1);
 }
 
@@ -549,6 +656,12 @@ let mode = ARGV[0] || "";
 
 if (mode == "candidate-outbounds")
     candidate_outbounds(ARGV[1]);
+else if (mode == "csv-to-json-array")
+    csv_to_json_array(ARGV[1]);
+else if (mode == "url-decode")
+    url_decode(ARGV[1]);
+else if (mode == "shadowsocks-userinfo-format-valid")
+    exit(shadowsocks_userinfo_format_valid(ARGV[1]) ? 0 : 1);
 else if (mode == "skip-count")
     skip_count();
 else if (mode == "skip-summary")
@@ -561,14 +674,6 @@ else if (mode == "prepare-subscription")
     prepare_subscription(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5]);
 else if (mode == "prepare-validation")
     prepare_validation(ARGV[1], ARGV[2], ARGV[3]);
-else if (mode == "prepared-link-refs")
-    metadata_command("link-refs", as_string(ARGV[1]));
-else if (mode == "prepared-names")
-    metadata_command("names", "");
-else if (mode == "prepared-servers")
-    metadata_command("servers", "");
-else if (mode == "prepared-names-lines")
-    metadata_command("names-lines", "");
 else if (mode == "prepared-slice")
     prepared_slice(ARGV[1], ARGV[2]);
 else if (mode == "prepared-field")
@@ -579,8 +684,16 @@ else if (mode == "prepared-length")
     field_length(ARGV[1]);
 else if (mode == "prepared-tags-csv")
     tags_csv();
+else if (mode == "stdin-collection-length")
+    stdin_collection_length();
+else if (mode == "stdin-string-array-csv")
+    stdin_string_array_csv();
+else if (mode == "validation-error-summary")
+    validation_error_summary();
 else if (mode == "prepared-state-to-files")
     prepared_state_to_files(as_string(ARGV[1]), ARGV[2], ARGV[3], ARGV[4], ARGV[5], ARGV[6], ARGV[7]);
+else if (mode == "append-prepared-state-to-files")
+    append_prepared_state_to_files(as_string(ARGV[1]), ARGV[2], ARGV[3], ARGV[4], ARGV[5], ARGV[6]);
 else if (mode == "prepared-display-name")
     display_name();
 else {

@@ -82,7 +82,7 @@ get_rule_nfqws2_opt() {
 }
 
 normalize_nfqws2_strategy_whitespace() {
-    printf '%s' "$1" | tr '\t\r\n' '   ' | tr -s ' ' | sed 's/^ //; s/ $//'
+    normalize_strategy_whitespace "$1"
 }
 
 nfqws2_option_argument_mode() {
@@ -216,211 +216,16 @@ get_nfqws2_unsupported_token_reason() {
     return 1
 }
 
-normalize_nfqws2_validation_output() {
-    printf '%s\n' "$1" | sed 's/\r$//'
+zapret_validation_ucode() {
+    ucode "${PODKOP_LIB:-/usr/lib/podkop-plus}/zapret_validation.uc" "$@"
 }
 
 extract_nfqws2_validation_summary() {
-    local output="$1"
-    local summary
-
-    summary="$(normalize_nfqws2_validation_output "$output" | grep -m1 -E 'unrecognized option:|option requires an argument:|option does not take an argument:|[Ii]nvalid |bad [^ ]|must be |fooling allowed values|incompatible|only one |No such file|not found|cannot |failed to |unable to |should be |Too much splits|out of memory|not supported|value error' | sed 's#^.*/nfqws2: ##; s/^nfqws2: //')"
-    if [ -n "$summary" ]; then
-        printf '%s\n' "$summary"
-        return 0
-    fi
-
-    normalize_nfqws2_validation_output "$output" | awk '
-        /^github version / { next }
-        /^we have [0-9]+ user defined desync profile/ { next }
-        /^Running as UID=/ { next }
-        /^command line parameters verified$/ { next }
-        /^[[:space:]]*$/ { next }
-        {
-            sub(/^.*\/nfqws2:[[:space:]]*/, "", $0)
-            sub(/^nfqws2:[[:space:]]*/, "", $0)
-            print
-            exit
-        }
-    '
-}
-
-extract_nfqws2_validation_value_hint() {
-    local summary="$1"
-    local value=""
-
-    case "$summary" in
-    *"Invalid port filter :"* | *"Invalid l7 filter :"* | *"invalid debug mode :"* | \
-        *"invalid ip_id mode :"* | *"Invalid fakedsplit mod :"* | \
-        *"Invalid hostfakesplit mod :"* | *"Invalid tcp mod :"* | \
-        *"Invalid tls mod :"* | *"invalid dup ip_id mode :"*)
-        value="$(printf '%s\n' "$summary" | sed -n 's/.*:[[:space:]]*\([^[:space:]]\+\).*/\1/p' | head -n 1)"
-        ;;
-    esac
-
-    printf '%s\n' "$value"
-}
-
-extract_nfqws2_validation_option_hint() {
-    local summary="$1"
-    local option=""
-
-    option="$(printf '%s\n' "$summary" | grep -oE -- '--[[:alnum:]][[:alnum:]-]*' | head -n 1)"
-    if [ -n "$option" ]; then
-        printf '%s\n' "$option"
-        return 0
-    fi
-
-    case "$summary" in
-    *"unrecognized option:"*)
-        option="$(printf '%s\n' "$summary" | sed -n 's/.*unrecognized option:[[:space:]]*\([^[:space:]]\+\).*/\1/p' | head -n 1)"
-        case "$option" in
-        "") ;;
-        --*) ;;
-        -*) option="-$option" ;;
-        *) option="--$option" ;;
-        esac
-        ;;
-    *"option requires an argument:"*)
-        option="$(printf '%s\n' "$summary" | sed -n 's/.*option requires an argument:[[:space:]]*\([^[:space:]]\+\).*/--\1/p' | head -n 1)"
-        ;;
-    *"option does not take an argument:"*)
-        option="$(printf '%s\n' "$summary" | sed -n 's/.*option does not take an argument:[[:space:]]*\([^[:space:]]\+\).*/--\1/p' | head -n 1)"
-        ;;
-    *"invalid debug mode :"*)
-        option="--debug"
-        ;;
-    *"hostspell must be exactly 4 chars long"*)
-        option="--hostspell"
-        ;;
-    *"invalid ip_id mode :"*)
-        option="--ip-id"
-        ;;
-    *"invalid dup ip_id mode :"*)
-        option="--dup-ip-id"
-        ;;
-    *"dup-autottl value error"*)
-        option="--dup-autottl"
-        ;;
-    *"dup-autottl6 value error"*)
-        option="--dup-autottl6"
-        ;;
-    *"dpi-desync-autottl value error"*)
-        option="--dpi-desync-autottl"
-        ;;
-    *"dpi-desync-autottl6 value error"*)
-        option="--dpi-desync-autottl6"
-        ;;
-    *"orig-autottl value error"*)
-        option="--orig-autottl"
-        ;;
-    *"orig-autottl6 value error"*)
-        option="--orig-autottl6"
-        ;;
-    *"invalid dpi-desync mode"* | *"invalid desync combo :"*)
-        option="--dpi-desync"
-        ;;
-    *"invalid wssize-cutoff value"*)
-        option="--wssize-cutoff"
-        ;;
-    *"invalid synack-split value"*)
-        option="--synack-split"
-        ;;
-    *"invalid ctrack-timeouts value"*)
-        option="--ctrack-timeouts"
-        ;;
-    *"invalid ipcache-lifetime value"*)
-        option="--ipcache-lifetime"
-        ;;
-    *"dpi-desync-repeats must be within "*)
-        option="--dpi-desync-repeats"
-        ;;
-    *"dup-repeats must be within "*)
-        option="--dup"
-        ;;
-    *"invalid desync-cutoff value"*)
-        option="--dpi-desync-cutoff"
-        ;;
-    *"invalid desync-start value"*)
-        option="--dpi-desync-start"
-        ;;
-    *"Invalid fakedsplit mod :"*)
-        option="--dpi-desync-fakedsplit-mod"
-        ;;
-    *"Invalid hostfakesplit mod :"*)
-        option="--dpi-desync-hostfakesplit-mod"
-        ;;
-    *"Invalid tcp mod :"*)
-        option="--dpi-desync-fake-tcp-mod"
-        ;;
-    *"Invalid tls mod :"*)
-        option="--dpi-desync-fake-tls-mod"
-        ;;
-    *"Invalid argument for dpi-desync-split-http-req"*)
-        option="--dpi-desync-split-http-req"
-        ;;
-    *"Invalid argument for dpi-desync-split-tls"*)
-        option="--dpi-desync-split-tls"
-        ;;
-    *"Invalid argument for dpi-desync-split-seqovl"*)
-        option="--dpi-desync-split-seqovl"
-        ;;
-    *"Invalid argument for dpi-desync-hostfakesplit-midhost"*)
-        option="--dpi-desync-hostfakesplit-midhost"
-        ;;
-    *"dpi-desync-ipfrag-pos-tcp must be within "* | *"dpi-desync-ipfrag-pos-tcp must be multiple of 8"*)
-        option="--dpi-desync-ipfrag-pos-tcp"
-        ;;
-    *"dpi-desync-ipfrag-pos-udp must be within "* | *"dpi-desync-ipfrag-pos-udp must be multiple of 8"*)
-        option="--dpi-desync-ipfrag-pos-udp"
-        ;;
-    *"dpi-desync-ts-increment should be "*)
-        option="--dpi-desync-ts-increment"
-        ;;
-    *"dpi-desync-badseq-increment should be "*)
-        option="--dpi-desync-badseq-increment"
-        ;;
-    *"dpi-desync-badack-increment should be "*)
-        option="--dpi-desync-badack-increment"
-        ;;
-    *"dup-ts-increment should be "*)
-        option="--dup-ts-increment"
-        ;;
-    *"dup-badseq-increment should be "*)
-        option="--dup-badseq-increment"
-        ;;
-    *"dup-badack-increment should be "*)
-        option="--dup-badack-increment"
-        ;;
-    *"bad value for --filter-l3"*)
-        option="--filter-l3"
-        ;;
-    *"auto hostlist fail time is not valid"*)
-        option="--hostlist-auto-fail-time"
-        ;;
-    *"auto hostlist fail threshold must be within 1..20"*)
-        option="--hostlist-auto-fail-threshold"
-        ;;
-    *"auto hostlist fail threshold must be within 2..10"*)
-        option="--hostlist-auto-retrans-threshold"
-        ;;
-    *"dpi-desync-udplen-increment must be integer within "*)
-        option="--dpi-desync-udplen-increment"
-        ;;
-    esac
-
-    printf '%s\n' "$option"
+    printf '%s' "$1" | zapret_validation_ucode summary nfqws2 2>/dev/null
 }
 
 collect_nfqws2_validation_needles() {
-    local summary="$1"
-    local option value
-
-    option="$(extract_nfqws2_validation_option_hint "$summary")"
-    value="$(extract_nfqws2_validation_value_hint "$summary")"
-
-    [ -n "$option" ] && printf '%s\n' "$option"
-    [ -n "$value" ] && printf '%s\n' "$value"
+    zapret_validation_ucode needles "$1" 2>/dev/null
 }
 
 run_nfqws2_dry_run_validation() {
@@ -611,7 +416,7 @@ zapret2_package_installed() {
         return 0
     fi
 
-    if command -v opkg >/dev/null 2>&1 && opkg list-installed 2>/dev/null | grep -Eq '^zapret2[[:space:]-]'; then
+    if opkg_package_is_installed "zapret2"; then
         return 0
     fi
 
@@ -623,7 +428,7 @@ luci_app_zapret2_installed() {
         return 0
     fi
 
-    if command -v opkg >/dev/null 2>&1 && opkg list-installed 2>/dev/null | grep -Eq '^luci-app-zapret2[[:space:]-]'; then
+    if opkg_package_is_installed "luci-app-zapret2"; then
         return 0
     fi
 
@@ -655,11 +460,11 @@ get_zapret2_package_version() {
     if command -v apk >/dev/null 2>&1 && apk info -e zapret2 >/dev/null 2>&1; then
         version="$(get_apk_installed_package_version "zapret2")"
     elif command -v opkg >/dev/null 2>&1; then
-        version="$(opkg list-installed 2>/dev/null | awk '$1 == "zapret2" { print $3; exit }')"
+        version="$(get_opkg_installed_package_version "zapret2")"
     fi
 
     if [ -z "$version" ] && [ -x "$ZAPRET2_PROVIDER_NFQWS2_BIN" ]; then
-        version="$("$ZAPRET2_PROVIDER_NFQWS2_BIN" --version 2>/dev/null | sed -n '1s/^.*version[[:space:]]*//p' | awk '{ print $1; exit }')"
+        version="$("$ZAPRET2_PROVIDER_NFQWS2_BIN" --version 2>/dev/null | provider_status_ucode stdin-first-line-version-field)"
     fi
 
     echo "$version"
@@ -730,42 +535,8 @@ zapret2_external_queue_overlap_present() {
     local range_end
 
     range_end="$(get_zapret2_queue_range_end)"
-    nft list ruleset 2>/dev/null | awk \
-        -v own_table="$NFT_TABLE_NAME" \
-        -v range_start="$ZAPRET2_QUEUE_BASE" \
-        -v range_end="$range_end" '
-        function token_queue_overlap(token, first, last, parts) {
-            gsub(/[{},;]/, "", token)
-            if (token !~ /^[0-9]+(-[0-9]+)?$/) {
-                return 0
-            }
-
-            split(token, parts, "-")
-            first = parts[1] + 0
-            last = (parts[2] == "" ? first : parts[2] + 0)
-
-            return first <= range_end && last >= range_start
-        }
-        $1 == "table" {
-            in_own_table = ($2 == "inet" && $3 == own_table)
-        }
-        !in_own_table {
-            for (i = 1; i <= NF; i++) {
-                if ($i != "queue") {
-                    continue
-                }
-
-                for (j = i + 1; j <= NF; j++) {
-                    if (($j == "num" || $j == "to") && token_queue_overlap($(j + 1))) {
-                        found = 1
-                    } else if (token_queue_overlap($j)) {
-                        found = 1
-                    }
-                }
-            }
-        }
-        END { exit(found ? 0 : 1) }
-    '
+    nft list ruleset 2>/dev/null |
+        zapret_validation_ucode nft-queue-overlap "$NFT_TABLE_NAME" "$ZAPRET2_QUEUE_BASE" "$range_end" >/dev/null 2>&1
 }
 
 zapret2_standalone_conflict_present() {

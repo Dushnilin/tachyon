@@ -16,24 +16,16 @@ sing_box_cf_ucode_input() {
         ucode "${PODKOP_LIB:-/usr/lib/podkop-plus}/sing_box_config_facade.uc" "$operation" "$@"
 }
 
-sing_box_cf_tags_json_object() {
-    printf '{"tags":%s}' "${1:-[]}"
-}
-
 sing_box_cf_tags_json_count() {
-    sing_box_cf_ucode_input prepared-length "$(sing_box_cf_tags_json_object "$1")" tags 2>/dev/null
+    sing_box_cf_ucode_input stdin-collection-length "${1:-[]}" 2>/dev/null
 }
 
 sing_box_cf_tags_json_csv() {
-    sing_box_cf_ucode_input prepared-tags-csv "$(sing_box_cf_tags_json_object "$1")" 2>/dev/null
-}
-
-sing_box_cf_outbounds_json_object() {
-    printf '{"outbounds":%s}' "${1:-[]}"
+    sing_box_cf_ucode_input stdin-string-array-csv "${1:-[]}" 2>/dev/null
 }
 
 sing_box_cf_outbounds_json_count() {
-    sing_box_cf_ucode_input prepared-length "$(sing_box_cf_outbounds_json_object "$1")" outbounds 2>/dev/null
+    sing_box_cf_ucode_input stdin-collection-length "${1:-[]}" 2>/dev/null
 }
 
 sing_box_cf_subscription_outbound_count() {
@@ -47,64 +39,6 @@ sing_box_cf_subscription_outbound_count() {
         printf '%s\n' "$count"
         ;;
     esac
-}
-
-sing_box_cf_json_arrays_concat() {
-    local first_json="$1"
-    local second_json="$2"
-    local first_tmp second_tmp result status
-
-    first_tmp="$(mktemp)" || return 1
-    second_tmp="$(mktemp)" || {
-        rm -f "$first_tmp"
-        return 1
-    }
-
-    printf '%s' "$first_json" > "$first_tmp" || {
-        rm -f "$first_tmp" "$second_tmp"
-        return 1
-    }
-    printf '%s' "$second_json" > "$second_tmp" || {
-        rm -f "$first_tmp" "$second_tmp"
-        return 1
-    }
-
-    result="$(ucode "$PODKOP_LIB/json_utils.uc" arrays-concat "$first_tmp" "$second_tmp" 2>/dev/null)"
-    status=$?
-    rm -f "$first_tmp" "$second_tmp"
-
-    [ "$status" -eq 0 ] || return 1
-    [ -n "$result" ] || return 1
-    printf '%s\n' "$result"
-}
-
-sing_box_cf_json_objects_merge() {
-    local first_json="$1"
-    local second_json="$2"
-    local first_tmp second_tmp result status
-
-    first_tmp="$(mktemp)" || return 1
-    second_tmp="$(mktemp)" || {
-        rm -f "$first_tmp"
-        return 1
-    }
-
-    printf '%s' "$first_json" > "$first_tmp" || {
-        rm -f "$first_tmp" "$second_tmp"
-        return 1
-    }
-    printf '%s' "$second_json" > "$second_tmp" || {
-        rm -f "$first_tmp" "$second_tmp"
-        return 1
-    }
-
-    result="$(ucode "$PODKOP_LIB/json_utils.uc" objects-merge "$first_tmp" "$second_tmp" 2>/dev/null)"
-    status=$?
-    rm -f "$first_tmp" "$second_tmp"
-
-    [ "$status" -eq 0 ] || return 1
-    [ -n "$result" ] || return 1
-    printf '%s\n' "$result"
 }
 
 sing_box_cf_add_dns_server() {
@@ -168,7 +102,7 @@ sing_box_cf_add_proxy_outbound() {
     local url="$3"
     local udp_over_tcp="$4"
 
-    url=$(url_decode "$url")
+    url=$(sing_box_cf_ucode url-decode "$url")
     url=$(url_strip_fragment "$url")
 
     local scheme
@@ -221,7 +155,7 @@ sing_box_cf_add_proxy_outbound() {
         local userinfo tag host port method password udp_over_tcp
 
         userinfo=$(url_get_userinfo "$url")
-        if ! is_shadowsocks_userinfo_format "$userinfo"; then
+        if ! sing_box_cf_ucode shadowsocks-userinfo-format-valid "$userinfo"; then
             userinfo=$(base64_decode "$userinfo")
             if [ $? -ne 0 ]; then
                 log "Cannot decode shadowsocks userinfo or it does not match the expected format. Aborted." "fatal"
@@ -303,7 +237,7 @@ _add_outbound_security() {
         local sni insecure alpn fingerprint public_key short_id
         sni=$(url_get_query_param "$url" "sni")
         insecure=$(_get_insecure_query_param_from_url "$url")
-        alpn=$(comma_string_to_json_array "$(url_get_query_param "$url" "alpn")")
+        alpn=$(sing_box_cf_ucode csv-to-json-array "$(url_get_query_param "$url" "alpn")")
         if [ "$alpn" = "[]" ] && [ "$(url_get_query_param "$url" "type")" = "xhttp" ]; then
             alpn='["h2","http/1.1"]'
         fi
@@ -359,7 +293,7 @@ _add_outbound_transport() {
     http | h2)
         local http_path http_hosts
         http_path=$(url_get_query_param "$url" "path")
-        http_hosts=$(comma_string_to_json_array "$(url_get_query_param "$url" "host")")
+        http_hosts=$(sing_box_cf_ucode csv-to-json-array "$(url_get_query_param "$url" "host")")
 
         config=$(
             sing_box_cm_set_http_transport_for_outbound "$config" "$outbound_tag" "$http_path" "$http_hosts"
@@ -572,10 +506,7 @@ sing_box_cf_validation_error_summary() {
     local output="$1"
     local summary
 
-    summary="$(printf '%s\n' "$output" |
-        sed 's/\x1b\[[0-9;]*m//g;s/^[[:space:]]*//;s/[[:space:]]*$//' |
-        sed '/^$/d' |
-        sed -n '1p')"
+    summary="$(sing_box_cf_ucode_input validation-error-summary "$output" 2>/dev/null)"
     [ -n "$summary" ] || summary="sing-box check failed"
     printf '%s\n' "$summary"
 }
@@ -639,31 +570,6 @@ sing_box_cf_try_subscription_outbounds_batch() {
     status=$?
     rm -f "$new_outbounds_tmp"
     return "$status"
-}
-
-sing_box_cf_prepared_link_refs_json() {
-    local prepared_json="$1"
-    local source_section="${2:-}"
-
-    sing_box_cf_ucode_input prepared-link-refs "$prepared_json" "$source_section" 2>/dev/null
-}
-
-sing_box_cf_prepared_names_json() {
-    local prepared_json="$1"
-
-    sing_box_cf_ucode_input prepared-names "$prepared_json" 2>/dev/null
-}
-
-sing_box_cf_prepared_servers_json() {
-    local prepared_json="$1"
-
-    sing_box_cf_ucode_input prepared-servers "$prepared_json" 2>/dev/null
-}
-
-sing_box_cf_prepared_names_lines() {
-    local prepared_json="$1"
-
-    sing_box_cf_ucode_input prepared-names-lines "$prepared_json" 2>/dev/null
 }
 
 sing_box_cf_subscription_prepared_slice() {
@@ -734,39 +640,49 @@ sing_box_cf_load_prepared_state() {
 
 sing_box_cf_append_subscription_prepared_metadata() {
     local prepared_json="$1"
-    local tags_json link_refs_json names_json servers_json names
+    local tags_tmp names_lines_tmp link_refs_tmp names_tmp servers_tmp status
 
-    tags_json="$(sing_box_cf_ucode_input prepared-field "$prepared_json" tags 2>/dev/null)"
-    [ -n "$tags_json" ] || tags_json="[]"
+    tags_tmp="$(mktemp)" || return 1
+    names_lines_tmp="$(mktemp)" || {
+        rm -f "$tags_tmp"
+        return 1
+    }
+    link_refs_tmp="$(mktemp)" || {
+        rm -f "$tags_tmp" "$names_lines_tmp"
+        return 1
+    }
+    names_tmp="$(mktemp)" || {
+        rm -f "$tags_tmp" "$names_lines_tmp" "$link_refs_tmp"
+        return 1
+    }
+    servers_tmp="$(mktemp)" || {
+        rm -f "$tags_tmp" "$names_lines_tmp" "$link_refs_tmp" "$names_tmp"
+        return 1
+    }
 
-    link_refs_json="$(sing_box_cf_prepared_link_refs_json "$prepared_json" "$SING_BOX_CF_SOURCE_SECTION")"
-    [ -n "$link_refs_json" ] || link_refs_json="{}"
-    names_json="$(sing_box_cf_prepared_names_json "$prepared_json")"
-    [ -n "$names_json" ] || names_json="{}"
-    servers_json="$(sing_box_cf_prepared_servers_json "$prepared_json")"
-    [ -n "$servers_json" ] || servers_json="{}"
-
-    SUBSCRIPTION_OUTBOUND_TAGS_JSON="$(sing_box_cf_json_arrays_concat "$SUBSCRIPTION_OUTBOUND_TAGS_JSON" "$tags_json" 2>/dev/null)"
-    [ -n "$SUBSCRIPTION_OUTBOUND_TAGS_JSON" ] || SUBSCRIPTION_OUTBOUND_TAGS_JSON="[]"
-
-    SUBSCRIPTION_OUTBOUND_LINK_REFS_JSON="$(sing_box_cf_json_objects_merge "$SUBSCRIPTION_OUTBOUND_LINK_REFS_JSON" "$link_refs_json" 2>/dev/null)"
-    [ -n "$SUBSCRIPTION_OUTBOUND_LINK_REFS_JSON" ] || SUBSCRIPTION_OUTBOUND_LINK_REFS_JSON="{}"
-
-    SUBSCRIPTION_OUTBOUND_NAMES_JSON="$(sing_box_cf_json_objects_merge "$SUBSCRIPTION_OUTBOUND_NAMES_JSON" "$names_json" 2>/dev/null)"
-    [ -n "$SUBSCRIPTION_OUTBOUND_NAMES_JSON" ] || SUBSCRIPTION_OUTBOUND_NAMES_JSON="{}"
-
-    SUBSCRIPTION_OUTBOUND_SERVERS_JSON="$(sing_box_cf_json_objects_merge "$SUBSCRIPTION_OUTBOUND_SERVERS_JSON" "$servers_json" 2>/dev/null)"
-    [ -n "$SUBSCRIPTION_OUTBOUND_SERVERS_JSON" ] || SUBSCRIPTION_OUTBOUND_SERVERS_JSON="{}"
-
-    names="$(sing_box_cf_prepared_names_lines "$prepared_json")"
-    if [ -n "$names" ]; then
-        if [ -z "$SUBSCRIPTION_OUTBOUND_NAMES" ]; then
-            SUBSCRIPTION_OUTBOUND_NAMES="$names"
-        else
-            SUBSCRIPTION_OUTBOUND_NAMES="$SUBSCRIPTION_OUTBOUND_NAMES
-$names"
-        fi
+    status=1
+    if printf '%s' "${SUBSCRIPTION_OUTBOUND_TAGS_JSON:-[]}" > "$tags_tmp" &&
+        printf '%s' "$SUBSCRIPTION_OUTBOUND_NAMES" > "$names_lines_tmp" &&
+        printf '%s' "${SUBSCRIPTION_OUTBOUND_LINK_REFS_JSON:-{}}" > "$link_refs_tmp" &&
+        printf '%s' "${SUBSCRIPTION_OUTBOUND_NAMES_JSON:-{}}" > "$names_tmp" &&
+        printf '%s' "${SUBSCRIPTION_OUTBOUND_SERVERS_JSON:-{}}" > "$servers_tmp" &&
+        printf '%s' "$prepared_json" |
+            ucode "$PODKOP_LIB/sing_box_config_facade.uc" append-prepared-state-to-files "$SING_BOX_CF_SOURCE_SECTION" \
+                "$tags_tmp" "$names_lines_tmp" "$link_refs_tmp" "$names_tmp" "$servers_tmp"; then
+        SUBSCRIPTION_OUTBOUND_TAGS_JSON="$(cat "$tags_tmp" 2>/dev/null)"
+        [ -n "$SUBSCRIPTION_OUTBOUND_TAGS_JSON" ] || SUBSCRIPTION_OUTBOUND_TAGS_JSON="[]"
+        SUBSCRIPTION_OUTBOUND_NAMES="$(cat "$names_lines_tmp" 2>/dev/null)"
+        SUBSCRIPTION_OUTBOUND_LINK_REFS_JSON="$(cat "$link_refs_tmp" 2>/dev/null)"
+        [ -n "$SUBSCRIPTION_OUTBOUND_LINK_REFS_JSON" ] || SUBSCRIPTION_OUTBOUND_LINK_REFS_JSON="{}"
+        SUBSCRIPTION_OUTBOUND_NAMES_JSON="$(cat "$names_tmp" 2>/dev/null)"
+        [ -n "$SUBSCRIPTION_OUTBOUND_NAMES_JSON" ] || SUBSCRIPTION_OUTBOUND_NAMES_JSON="{}"
+        SUBSCRIPTION_OUTBOUND_SERVERS_JSON="$(cat "$servers_tmp" 2>/dev/null)"
+        [ -n "$SUBSCRIPTION_OUTBOUND_SERVERS_JSON" ] || SUBSCRIPTION_OUTBOUND_SERVERS_JSON="{}"
+        status=0
     fi
+
+    rm -f "$tags_tmp" "$names_lines_tmp" "$link_refs_tmp" "$names_tmp" "$servers_tmp"
+    return "$status"
 }
 
 sing_box_cf_apply_subscription_batch() {
@@ -832,7 +748,10 @@ sing_box_cf_apply_subscription_outbounds_range() {
 
     if sing_box_cf_try_subscription_outbounds_batch "$SING_BOX_CF_FALLBACK_WORKING_CONFIG" "$outbounds_json"; then
         SING_BOX_CF_FALLBACK_WORKING_CONFIG="$SING_BOX_CF_VALIDATED_CONFIG"
-        sing_box_cf_append_subscription_prepared_metadata "$chunk"
+        if ! sing_box_cf_append_subscription_prepared_metadata "$chunk"; then
+            log "Failed to append subscription metadata for rule '$SING_BOX_CF_SOURCE_SECTION'. Aborted." "fatal"
+            exit 1
+        fi
         SING_BOX_CF_FALLBACK_ADDED_COUNT=$((SING_BOX_CF_FALLBACK_ADDED_COUNT + count))
         return 0
     fi

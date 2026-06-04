@@ -43,192 +43,72 @@ nft_add_set_elements() {
     nft add element inet "$table" "$set" "{ $elements }"
 }
 
-nft_add_port_set_elements_from_file_chunked() {
+nft_log_prepared_invalid_elements() {
+    local invalid_filepath="$1"
+
+    [ -s "$invalid_filepath" ] || return 0
+
+    while IFS="$(printf '\t')" read -r value message || [ -n "$value" ]; do
+        [ -n "$value" ] || continue
+        log "'$value' $message" "debug"
+    done < "$invalid_filepath"
+}
+
+nft_add_prepared_chunks_to_set() {
+    local chunks_filepath="$1"
+    local nft_table_name="$2"
+    local nft_set_name="$3"
+    local count elements
+
+    [ -s "$chunks_filepath" ] || return 0
+
+    while read -r count elements || [ -n "$count" ]; do
+        [ -n "$elements" ] || continue
+        log "Adding $count elements to nft set $nft_set_name" "debug"
+        nft_add_set_elements "$nft_table_name" "$nft_set_name" "$elements"
+    done < "$chunks_filepath"
+}
+
+nft_add_file_chunks_to_set() {
     local filepath="$1"
     local nft_table_name="$2"
     local nft_set_name="$3"
-    local chunk_size="${4:-5000}"
+    local kind="$4"
+    local ports="$5"
+    local chunk_size="$6"
 
-    local array count line
-    count=0
-    while IFS= read -r line; do
-        line="$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+    local chunks_filepath invalid_filepath status
+    chunks_filepath="$(mktemp)" || return 1
+    invalid_filepath="$(mktemp)" || {
+        rm -f "$chunks_filepath"
+        return 1
+    }
 
-        [ -z "$line" ] && continue
-
-        if ! normalize_port_condition_for_nft "$line" > /dev/null 2>&1; then
-            log "'$line' is not a valid port or port range" "debug"
-            continue
-        fi
-
-        line="$(normalize_port_condition_for_nft "$line")"
-
-        if [ -z "$array" ]; then
-            array="$line"
-        else
-            array="$array,$line"
-        fi
-
-        count=$((count + 1))
-
-        if [ "$count" = "$chunk_size" ]; then
-            log "Adding $count elements to nft set $nft_set_name" "debug"
-            nft_add_set_elements "$nft_table_name" "$nft_set_name" "$array"
-            array=""
-            count=0
-        fi
-    done < "$filepath"
-
-    if [ -n "$array" ]; then
-        log "Adding $count elements to nft set $nft_set_name" "debug"
-        nft_add_set_elements "$nft_table_name" "$nft_set_name" "$array"
+    if ! rules_nft_runtime_ucode nft-prepare-chunks "$filepath" "$kind" "$ports" "$chunk_size" "$chunks_filepath" "$invalid_filepath"; then
+        rm -f "$chunks_filepath" "$invalid_filepath"
+        return 1
     fi
+
+    nft_log_prepared_invalid_elements "$invalid_filepath"
+    nft_add_prepared_chunks_to_set "$chunks_filepath" "$nft_table_name" "$nft_set_name"
+    status=$?
+
+    rm -f "$chunks_filepath" "$invalid_filepath"
+    return "$status"
+}
+
+nft_add_port_set_elements_from_file_chunked() {
+    nft_add_file_chunks_to_set "$1" "$2" "$3" "ports" "" "${4:-5000}"
 }
 
 nft_add_ip_port_set_elements_from_file_chunked() {
-    local filepath="$1"
-    local nft_table_name="$2"
-    local nft_set_name="$3"
-    local chunk_size="${4:-5000}"
-
-    local array count line ip port
-    count=0
-    while IFS= read -r line; do
-        line="$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
-
-        [ -z "$line" ] && continue
-
-        ip="${line%% . *}"
-        port="${line##* . }"
-
-        if [ "$ip" = "$line" ] || [ "$port" = "$line" ]; then
-            log "'$line' is not an IPv4/CIDR and port nft tuple" "debug"
-            continue
-        fi
-
-        if ! is_ipv4 "$ip" && ! is_ipv4_cidr "$ip"; then
-            log "'$ip' is not IPv4 or IPv4 CIDR" "debug"
-            continue
-        fi
-
-        if ! normalize_port_condition_for_nft "$port" > /dev/null 2>&1; then
-            log "'$port' is not a valid port or port range" "debug"
-            continue
-        fi
-
-        port="$(normalize_port_condition_for_nft "$port")"
-        line="$ip . $port"
-
-        if [ -z "$array" ]; then
-            array="$line"
-        else
-            array="$array,$line"
-        fi
-
-        count=$((count + 1))
-
-        if [ "$count" = "$chunk_size" ]; then
-            log "Adding $count elements to nft set $nft_set_name" "debug"
-            nft_add_set_elements "$nft_table_name" "$nft_set_name" "$array"
-            array=""
-            count=0
-        fi
-    done < "$filepath"
-
-    if [ -n "$array" ]; then
-        log "Adding $count elements to nft set $nft_set_name" "debug"
-        nft_add_set_elements "$nft_table_name" "$nft_set_name" "$array"
-    fi
+    nft_add_file_chunks_to_set "$1" "$2" "$3" "ip-ports" "" "${4:-5000}"
 }
 
 nft_add_ip_port_set_elements_from_ip_file_chunked() {
-    local filepath="$1"
-    local nft_table_name="$2"
-    local nft_set_name="$3"
-    local ports="$4"
-    local chunk_size="${5:-5000}"
-
-    local array count line port
-    count=0
-    while IFS= read -r line; do
-        line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-
-        [ -z "$line" ] && continue
-
-        if ! is_ipv4 "$line" && ! is_ipv4_cidr "$line"; then
-            log "'$line' is not IPv4 or IPv4 CIDR" "debug"
-            continue
-        fi
-
-        for port in $(printf '%s\n' "$ports" | tr ',' ' '); do
-            [ -z "$port" ] && continue
-
-            if ! normalize_port_condition_for_nft "$port" > /dev/null 2>&1; then
-                log "'$port' is not a valid port or port range" "debug"
-                continue
-            fi
-
-            port="$(normalize_port_condition_for_nft "$port")"
-
-            if [ -z "$array" ]; then
-                array="$line . $port"
-            else
-                array="$array,$line . $port"
-            fi
-
-            count=$((count + 1))
-
-            if [ "$count" = "$chunk_size" ]; then
-                log "Adding $count elements to nft set $nft_set_name" "debug"
-                nft_add_set_elements "$nft_table_name" "$nft_set_name" "$array"
-                array=""
-                count=0
-            fi
-        done
-    done < "$filepath"
-
-    if [ -n "$array" ]; then
-        log "Adding $count elements to nft set $nft_set_name" "debug"
-        nft_add_set_elements "$nft_table_name" "$nft_set_name" "$array"
-    fi
+    nft_add_file_chunks_to_set "$1" "$2" "$3" "ip-port-from-ip" "$4" "${5:-5000}"
 }
 
 nft_add_set_elements_from_file_chunked() {
-    local filepath="$1"
-    local nft_table_name="$2"
-    local nft_set_name="$3"
-    local chunk_size="${4:-5000}"
-
-    local array count
-    count=0
-    while IFS= read -r line; do
-        line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-
-        [ -z "$line" ] && continue
-
-        if ! is_ipv4 "$line" && ! is_ipv4_cidr "$line"; then
-            log "'$line' is not IPv4 or IPv4 CIDR" "debug"
-            continue
-        fi
-
-        if [ -z "$array" ]; then
-            array="$line"
-        else
-            array="$array,$line"
-        fi
-
-        count=$((count + 1))
-
-        if [ "$count" = "$chunk_size" ]; then
-            log "Adding $count elements to nft set $nft_set_name" "debug"
-            nft_add_set_elements "$nft_table_name" "$nft_set_name" "$array"
-            array=""
-            count=0
-        fi
-    done < "$filepath"
-
-    if [ -n "$array" ]; then
-        log "Adding $count elements to nft set $nft_set_name" "debug"
-        nft_add_set_elements "$nft_table_name" "$nft_set_name" "$array"
-    fi
+    nft_add_file_chunks_to_set "$1" "$2" "$3" "ips" "" "${4:-5000}"
 }

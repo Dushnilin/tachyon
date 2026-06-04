@@ -1,15 +1,19 @@
+helpers_ucode() {
+    ucode "${PODKOP_LIB:-/usr/lib/podkop-plus}/helpers.uc" "$@"
+}
+
+trim_string() {
+    helpers_ucode stdin-trim-string
+}
+
 # Check if string is valid IPv4
 is_ipv4() {
-    local ip="$1"
-    local regex="^((25[0-5]|(2[0-4]|1\d|[1-9]|)\d)\.?\b){4}$"
-    [[ "$ip" =~ $regex ]]
+    helpers_ucode valid-ipv4 "$1" >/dev/null 2>&1
 }
 
 # Check if string is valid IPv4 with CIDR mask
 is_ipv4_cidr() {
-    local ip="$1"
-    local regex="^((25[0-5]|(2[0-4]|1\d|[1-9]|)\d)\.?\b){4}(\/(3[0-2]|2[0-9]|1[0-9]|[0-9]))$"
-    [[ "$ip" =~ $regex ]]
+    helpers_ucode valid-ipv4-cidr "$1" >/dev/null 2>&1
 }
 
 is_ipv4_ip_or_ipv4_cidr() {
@@ -17,25 +21,11 @@ is_ipv4_ip_or_ipv4_cidr() {
 }
 
 is_domain() {
-    local str="$1"
-    local regex='^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$'
-
-    [[ "$str" =~ $regex ]]
+    helpers_ucode valid-domain "$1" >/dev/null 2>&1
 }
 
 is_domain_suffix() {
-    local str="$1"
-    local normalized="${str#.}"
-
-    is_domain "$normalized"
-}
-
-# Checks if the given string looks like a Shadowsocks userinfo
-is_shadowsocks_userinfo_format() {
-    local str="$1"
-    local regex='^[^:]+:[^:]+(:[^:]+)?$'
-
-    [[ "$str" =~ $regex ]]
+    helpers_ucode valid-domain-suffix "$1" >/dev/null 2>&1
 }
 
 # Compares the current package version with the required minimum
@@ -43,10 +33,7 @@ is_min_package_version() {
     local current="$1"
     local required="$2"
 
-    local lowest
-    lowest="$(printf '%s\n' "$current" "$required" | sort -V | head -n1)"
-
-    [ "$lowest" = "$required" ]
+    helpers_ucode version-at-least "$current" "$required" >/dev/null 2>&1
 }
 
 get_apk_installed_package_version() {
@@ -55,13 +42,13 @@ get_apk_installed_package_version() {
 
     version="$(
         apk list --installed --manifest "$package_name" 2>/dev/null |
-            awk -v pkg="$package_name" '$1 == pkg { print $2; exit }'
+            updates_ucode updates-apk-manifest-package-version "$package_name"
     )"
 
     if [ -z "$version" ]; then
         version="$(
             apk list --installed --manifest 2>/dev/null |
-                awk -v pkg="$package_name" '$1 == pkg { print $2; exit }'
+                updates_ucode updates-apk-manifest-package-version "$package_name"
         )"
     fi
 
@@ -71,24 +58,14 @@ get_apk_installed_package_version() {
     fi
 
     apk info -v "$package_name" 2>/dev/null |
-        awk -v pkg="$package_name" '
-            NR == 1 {
-                prefix = pkg "-"
-                if (index($0, prefix) == 1) {
-                    version = substr($0, length(prefix) + 1)
-                    sub(/[[:space:]].*$/, "", version)
-                    print version
-                }
-                exit
-            }
-        '
+        updates_ucode updates-apk-info-package-version "$package_name"
 }
 
 # Checks if the given file exists
 file_exists() {
     local filepath="$1"
 
-    if [[ -f "$filepath" ]]; then
+    if [ -f "$filepath" ]; then
         return 0
     else
         return 1
@@ -106,11 +83,19 @@ service_exists() {
     fi
 }
 
-runtime_tag_is_reserved() {
-    local tag="$1"
-    local reserved
+list_has_item() {
+    local list="$1"
+    local needle="$2"
+    helpers_ucode whitespace-list-contains "$list" "$needle" >/dev/null 2>&1
+}
 
-    for reserved in \
+allocate_runtime_tag() {
+    local base="$1"
+    local postfix="$2"
+
+    helpers_ucode allocate-runtime-tag \
+        "$base" \
+        "$postfix" \
         "${SB_DNS_SERVER_TAG:-dns-server}" \
         "${SB_FAKEIP_DNS_SERVER_TAG:-fakeip-server}" \
         "${SB_BOOTSTRAP_SERVER_TAG:-bootstrap-dns-server}" \
@@ -120,35 +105,7 @@ runtime_tag_is_reserved() {
         "${SB_TPROXY_INBOUND_TAG:-tproxy-in}" \
         "${SB_DNS_INBOUND_TAG:-dns-in}" \
         "${SB_SERVICE_MIXED_INBOUND_TAG:-service-mixed-in}" \
-        "${SB_DIRECT_OUTBOUND_TAG:-direct-out}"; do
-        [ "$tag" = "$reserved" ] && return 0
-    done
-
-    return 1
-}
-
-allocate_runtime_tag() {
-    local base="$1"
-    local postfix="$2"
-    local candidate="$base-$postfix"
-    local suffix=1
-    local parent
-
-    case "$base" in
-    *-[0-9]*)
-        parent="${base%-*}"
-        if runtime_tag_is_reserved "$parent-$postfix"; then
-            candidate="$base-$suffix-$postfix"
-            suffix=$((suffix + 1))
-        fi
-        ;;
-    esac
-    while runtime_tag_is_reserved "$candidate"; do
-        candidate="$base-$suffix-$postfix"
-        suffix=$((suffix + 1))
-    done
-
-    echo "$candidate"
+        "${SB_DIRECT_OUTBOUND_TAG:-direct-out}"
 }
 
 # Returns the inbound tag name by appending the postfix to the given section
@@ -184,182 +141,68 @@ get_domain_resolver_tag() {
     allocate_runtime_tag "$section" "domain-resolver"
 }
 
-# Converts a comma-separated string into a JSON array string
-comma_string_to_json_array() {
-    local input="$1"
+config_list_to_json() {
+    local section="$1"
+    local option="$2"
+    local value
 
-    if [ -z "$input" ]; then
-        echo "[]"
-        return
-    fi
-
-    local replaced="${input//,/\",\"}"
-
-    echo "[\"$replaced\"]"
-}
-
-normalize_port_number() {
-    local value="$1"
-
-    value="$(printf '%s' "$value" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
-    [ -n "$value" ] || return 1
-
-    case "$value" in
-    *[!0-9]*) return 1 ;;
-    esac
-
-    awk -v value="$value" 'BEGIN {
-        if (value ~ /^[0-9]+$/) {
-            number = value + 0
-            if (number >= 1 && number <= 65535) {
-                print number
-                exit 0
-            }
-        }
-        exit 1
-    }'
-}
-
-normalize_port_condition_for_nft() {
-    local value="$1"
-    local start end
-
-    value="$(printf '%s' "$value" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
-    [ -n "$value" ] || return 1
-
-    case "$value" in
-    *-*)
-        start="${value%%-*}"
-        end="${value#*-}"
-        [ "$start-$end" = "$value" ] || return 1
-        start="$(normalize_port_number "$start")" || return 1
-        end="$(normalize_port_number "$end")" || return 1
-        [ "$start" -le "$end" ] || return 1
-
-        if [ "$start" = "$end" ]; then
-            printf '%s\n' "$start"
-        else
-            printf '%s-%s\n' "$start" "$end"
+    CONFIG_LIST_VALUES_SEEN=0
+    {
+        config_list_foreach "$section" "$option" config_list_print_value
+        if [ "$CONFIG_LIST_VALUES_SEEN" -eq 0 ]; then
+            config_get value "$section" "$option"
+            if [ -n "$value" ]; then
+                printf '%s\n' "$value"
+            fi
         fi
-        ;;
-    *)
-        normalize_port_number "$value"
-        ;;
-    esac
+    } | helpers_ucode stdin-lines-to-json-array
 }
 
-normalize_port_range_for_sing_box() {
+config_list_print_value() {
     local value="$1"
-    local start end
 
-    value="$(printf '%s' "$value" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
-    case "$value" in
-    *-*)
-        start="${value%%-*}"
-        end="${value#*-}"
-        [ "$start-$end" = "$value" ] || return 1
-        start="$(normalize_port_number "$start")" || return 1
-        end="$(normalize_port_number "$end")" || return 1
-        [ "$start" -le "$end" ] || return 1
-        printf '%s:%s\n' "$start" "$end"
-        ;;
-    *)
-        return 1
-        ;;
-    esac
-}
-
-is_port_condition() {
-    normalize_port_condition_for_nft "$1" > /dev/null 2>&1
-}
-
-port_numbers_to_json_array() {
-    local input="$1"
-
-    if [ -z "$input" ]; then
-        echo "[]"
-        return
-    fi
-
-    printf '[%s]\n' "$input"
-}
-
-# Decodes a URL-encoded string
-url_decode() {
-    local encoded="$1"
-    printf '%b' "$(echo "$encoded" | sed 's/+/ /g; s/%/\\x/g')"
+    CONFIG_LIST_VALUES_SEEN=1
+    printf '%s\n' "$value"
 }
 
 # Returns the scheme (protocol) part of a URL
 url_get_scheme() {
-    local url="$1"
-    echo "${url%%://*}"
+    helpers_ucode url-get-scheme "$1"
 }
 
 # Extracts the userinfo (username[:password]) part from a URL
 url_get_userinfo() {
-    local url="$1"
-    echo "$url" | sed -n -e 's#^[^:/?]*://##' -e '/@/!d' -e 's/@.*//p'
+    helpers_ucode url-get-userinfo "$1"
 }
 
 # Extracts the host part from a URL
 url_get_host() {
-    local url="$1"
-
-    url="${url#*://}"
-    url="${url#*@}"
-    url="${url%%[/?#]*}"
-
-    echo "${url%%:*}"
+    helpers_ucode url-get-host "$1"
 }
 
 # Extracts the port number from a URL
 url_get_port() {
-    local url="$1"
-
-    url="${url#*://}"
-    url="${url#*@}"
-    url="${url%%[/?#]*}"
-
-    [[ "$url" == *:* ]] && echo "${url#*:}" || echo ""
+    helpers_ucode url-get-port "$1"
 }
 
 # Extracts the path from a URL (without query or fragment; returns "/" if empty)
 url_get_path() {
-    local url="$1"
-    echo "$url" | sed -n -e 's#^[^:/?]*://##' -e 's#^[^/]*##' -e 's#\([^?]*\).*#\1#p'
+    helpers_ucode url-get-path "$1"
 }
 
 # Extracts the value of a specific query parameter from a URL
 url_get_query_param() {
-    local url="$1"
-    local param="$2"
-
-    local raw
-    raw=$(echo "$url" | sed -n "s/.*[?&]$param=\([^&?#]*\).*/\1/p")
-
-    [ -z "$raw" ] && echo "" && return
-
-    echo "$raw"
+    helpers_ucode url-get-query-param "$1" "$2"
 }
 
 # Extracts and returns the file extension from the given URL
 url_get_file_extension() {
-    local url="$1"
-
-    local basename="${url##*/}"
-    basename="${basename%%[?#]*}"
-    case "$basename" in
-    *.*) echo "${basename##*.}" | tr '[:upper:]' '[:lower:]' ;;
-    *) echo "" ;;
-    esac
+    helpers_ucode url-file-extension "$1"
 }
 
 # Remove url fragment (everything after the first '#')
 url_strip_fragment() {
-    local url="$1"
-
-    echo "${url%%#*}"
+    helpers_ucode url-strip-fragment "$1"
 }
 
 # Decodes and returns a base64-encoded string
@@ -374,7 +217,7 @@ base64_decode() {
 
 # Generates a unique 16-character ID based on the current timestamp and a random number
 gen_id() {
-    printf '%s%s' "$(date +%s)" "$RANDOM" | md5sum | cut -c1-16
+    printf '%s%s' "$(date +%s)" "$RANDOM" | md5sum | helpers_ucode md5sum-hex-prefix 16
 }
 
 # Download URL to file
@@ -385,7 +228,8 @@ download_to_file() {
     local retries="${4:-3}"
     local wait="${5:-2}"
 
-    for attempt in $(seq 1 "$retries"); do
+    attempt=1
+    while [ "$attempt" -le "$retries" ]; do
         if [ -n "$http_proxy_address" ]; then
             http_proxy="http://$http_proxy_address" https_proxy="http://$http_proxy_address" wget -O "$filepath" "$url" && break
         else
@@ -394,6 +238,7 @@ download_to_file() {
 
         log "Attempt $attempt/$retries to download $url failed" "warn"
         sleep "$wait"
+        attempt=$((attempt + 1))
     done
 }
 
@@ -415,7 +260,7 @@ get_sing_box_version() {
     local version=""
 
     if command -v sing-box >/dev/null 2>&1; then
-        version="$(sing-box version 2>/dev/null | head -1 | awk '{print $NF}')"
+        version="$(sing-box version 2>/dev/null | helpers_ucode stdin-first-line-last-field)"
     fi
 
     echo "$version"
@@ -425,12 +270,7 @@ is_sing_box_extended() {
     local version="${1:-}"
 
     [ -n "$version" ] || version="$(get_sing_box_version)"
-
-    case "$version" in
-    *extended*) return 0 ;;
-    esac
-
-    return 1
+    helpers_ucode sing-box-version-is-extended "$version" >/dev/null 2>&1
 }
 
 get_subscription_user_agent() {
@@ -449,8 +289,12 @@ get_subscription_user_agent() {
     printf 'sing-box/%s' "$sing_box_version"
 }
 
+normalize_strategy_whitespace() {
+    helpers_ucode normalize-strategy-whitespace "$1"
+}
+
 generate_hwid() {
-    local mac="" model="" raw_hash=""
+    local mac="" model=""
 
     if [ -f /sys/class/net/eth0/address ]; then
         mac="$(cat /sys/class/net/eth0/address 2>/dev/null)"
@@ -459,13 +303,7 @@ generate_hwid() {
     fi
 
     model="$(get_device_model)"
-    raw_hash="$(printf '%s-%s' "$mac" "$model" | md5sum | cut -c1-16)"
-
-    printf '%s-%s-%s-%s' \
-        "$(echo "$raw_hash" | cut -c1-4)" \
-        "$(echo "$raw_hash" | cut -c5-8)" \
-        "$(echo "$raw_hash" | cut -c9-12)" \
-        "$(echo "$raw_hash" | cut -c13-16)"
+    printf '%s-%s' "$mac" "$model" | md5sum | helpers_ucode md5sum-hwid
 }
 
 download_subscription() {
@@ -486,7 +324,8 @@ download_subscription() {
     rm -f "$tmpfile"
     [ -n "$headers_tmpfile" ] && rm -f "$headers_tmpfile"
 
-    for attempt in $(seq 1 "$retries"); do
+    attempt=1
+    while [ "$attempt" -le "$retries" ]; do
         if [ -n "$http_proxy_address" ]; then
             if [ -n "$headers_tmpfile" ]; then
                 curl -fL -sS \
@@ -563,6 +402,7 @@ download_subscription() {
         [ -n "$headers_tmpfile" ] && rm -f "$headers_tmpfile"
         log "Attempt $attempt/$retries to download subscription failed" "warn"
         sleep "$wait"
+        attempt=$((attempt + 1))
     done
 
     rm -f "$tmpfile"
@@ -570,8 +410,22 @@ download_subscription() {
     return 1
 }
 
-json_utils_ucode() {
-    ucode "${PODKOP_LIB:-/usr/lib/podkop-plus}/json_utils.uc" "$@"
+updates_ucode() {
+    ucode "${PODKOP_LIB:-/usr/lib/podkop-plus}/updater.uc" "$@"
+}
+
+opkg_package_is_installed() {
+    local package_name="$1"
+
+    command -v opkg >/dev/null 2>&1 || return 1
+    opkg list-installed 2>/dev/null | updates_ucode updates-opkg-package-installed "$package_name"
+}
+
+get_opkg_installed_package_version() {
+    local package_name="$1"
+
+    command -v opkg >/dev/null 2>&1 || return 0
+    opkg list-installed 2>/dev/null | updates_ucode updates-opkg-package-version "$package_name"
 }
 
 validate_subscription_file() {
@@ -579,7 +433,7 @@ validate_subscription_file() {
 
     [ -s "$filepath" ] || return 1
 
-    json_utils_ucode validate-subscription "$filepath" >/dev/null 2>&1
+    ucode "${PODKOP_LIB:-/usr/lib/podkop-plus}/subscription_parser.uc" validate-subscription "$filepath" >/dev/null 2>&1
 }
 
 provider_status_ucode() {
@@ -590,118 +444,8 @@ provider_status_ucode() {
 convert_crlf_to_lf() {
     local filepath="$1"
 
-    if grep -q $'\r' "$filepath"; then
+    if helpers_ucode file-has-cr "$filepath" >/dev/null 2>&1; then
         log "File '$filepath' contains CRLF line endings. Converting to LF..." "debug"
-        local tmpfile
-        tmpfile=$(mktemp)
-        tr -d '\r' < "$filepath" > "$tmpfile" && mv "$tmpfile" "$filepath" || rm -f "$tmpfile"
+        helpers_ucode file-remove-cr "$filepath" >/dev/null 2>&1
     fi
-}
-
-#######################################
-# Parses a whitespace-separated string, validates items as either domains
-# or IPv4 addresses/subnets, and returns a comma-separated string of valid items.
-# Arguments:
-#   $1 - Input string (space-separated list of items)
-#   $2 - Type of validation ("domains" or "subnets")
-# Outputs:
-#   Comma-separated string of valid domains or subnets
-#######################################
-parse_domain_or_subnet_string_to_commas_string() {
-    local string="$1"
-    local type="$2"
-
-    tmpfile=$(mktemp)
-    printf "%s\n" "$string" | sed -e 's/[[:space:]]*\/\/.*$//' -e 's/[[:space:]]*#.*$//' | tr ', ' '\n' | grep -v '^$' > "$tmpfile"
-
-    result="$(parse_domain_or_subnet_file_to_comma_string "$tmpfile" "$type")"
-    rm -f "$tmpfile"
-
-    echo "$result"
-}
-
-#######################################
-# Parses a file line by line, validates entries as either domains or subnets,
-# and returns a single comma-separated string of valid items.
-# Arguments:
-#   $1 - Path to the input file
-#   $2 - Type of validation ("domains" or "subnets")
-# Outputs:
-#   Comma-separated string of valid domains or subnets
-#######################################
-parse_domain_or_subnet_file_to_comma_string() {
-    local filepath="$1"
-    local type="$2"
-
-    local result
-    while IFS= read -r line; do
-        line=$(printf "%s\n" "$line" | sed -e 's/[[:space:]]*\/\/.*$//' -e 's/[[:space:]]*#.*$//')
-        line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-
-        [ -z "$line" ] && continue
-
-        case "$type" in
-        domains)
-            if ! is_domain_suffix "$line"; then
-                log "'$line' is not a valid domain" "debug"
-                continue
-            fi
-            ;;
-        subnets)
-            if ! is_ipv4 "$line" && ! is_ipv4_cidr "$line"; then
-                log "'$line' is not IPv4 or IPv4 CIDR" "debug"
-                continue
-            fi
-            ;;
-        *)
-            log "Unknown type: $type" "error"
-            return 1
-            ;;
-        esac
-
-        if [ -z "$result" ]; then
-            result="$line"
-        else
-            result="$result,$line"
-        fi
-    done < "$filepath"
-
-    echo "$result"
-}
-
-#######################################
-# Splits a plain list file into separate domain and subnet files.
-# Invalid items are skipped.
-# Arguments:
-#   $1 - Path to the input file
-#   $2 - Output file for domains
-#   $3 - Output file for IPv4 / IPv4 CIDR entries
-#######################################
-split_domain_or_subnet_file() {
-    local filepath="$1"
-    local domains_output="$2"
-    local subnets_output="$3"
-    local line
-
-    : > "$domains_output"
-    : > "$subnets_output"
-
-    while IFS= read -r line; do
-        line=$(printf "%s\n" "$line" | sed -e 's/[[:space:]]*\/\/.*$//' -e 's/[[:space:]]*#.*$//')
-        line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-
-        [ -z "$line" ] && continue
-
-        if is_domain_suffix "$line"; then
-            printf '%s\n' "$line" >> "$domains_output"
-            continue
-        fi
-
-        if is_ipv4_ip_or_ipv4_cidr "$line"; then
-            printf '%s\n' "$line" >> "$subnets_output"
-            continue
-        fi
-
-        log "'$line' is neither a valid domain nor IPv4 / IPv4 CIDR" "debug"
-    done < "$filepath"
 }

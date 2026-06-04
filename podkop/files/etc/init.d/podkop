@@ -17,6 +17,7 @@ PODKOP_PENDING_RELOAD_FILE="$PODKOP_RUNTIME_STATE_DIR/reload.pending"
 PODKOP_INTERNAL_CONFIG_TRIGGER_GUARD="/var/run/podkop-plus.internal-config-change"
 PODKOP_CONFIG_CHANGE_REASON="on_config_change"
 PODKOP_DNSMASQ_FAILSAFE="/usr/lib/podkop-plus/dnsmasq_failsafe_restore.sh"
+PODKOP_STATUS_DIAGNOSTICS_UC="/usr/lib/podkop-plus/status_diagnostics.uc"
 config_load "$CONFIG_NAME"
 
 restore_dnsmasq_failsafe() {
@@ -136,7 +137,8 @@ is_config_change_reload() {
 }
 
 runtime_is_running() {
-    "$PODKOP_BIN" get_status 2> /dev/null | grep -q '"running"[[:space:]]*:[[:space:]]*1'
+    "$PODKOP_BIN" get_status 2> /dev/null |
+        ucode "$PODKOP_STATUS_DIAGNOSTICS_UC" service-status-running >/dev/null 2>&1
 }
 
 service_is_enabled() {

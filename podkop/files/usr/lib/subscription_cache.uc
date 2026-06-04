@@ -34,6 +34,39 @@ function write_stdout_json(value) {
     print(sprintf("%J", value), "\n");
 }
 
+function file_first_line(path) {
+    let data = fs.readfile(path);
+    if (data == null)
+        exit(1);
+
+    let newline = index(data, "\n");
+    print(newline >= 0 ? substr(data, 0, newline) : data, "\n");
+}
+
+function file_has_exact_line(path, needle) {
+    let data = fs.readfile(path);
+    if (data == null)
+        return false;
+
+    needle = as_string(needle);
+    for (let line in split(data, "\n"))
+        if (as_string(line) == needle)
+            return true;
+
+    return false;
+}
+
+function write_empty_link() {
+    write_stdout_json({ link: "" });
+}
+
+function write_empty_outbound_metadata() {
+    write_stdout_json({
+        names: {},
+        countries: {}
+    });
+}
+
 function is_array(value) {
     return type(value) == "array";
 }
@@ -52,6 +85,18 @@ function object_key_count(value) {
 
 function valid_metadata_object(value) {
     return type(value) == "object" && object_key_count(value) > 1;
+}
+
+function json_length(path) {
+    let value = read_json(path);
+    if (type(value) == "array" || type(value) == "object")
+        print(length(value), "\n");
+    else
+        print("0\n");
+}
+
+function object_has_extra_keys(path) {
+    return object_key_count(read_json(path)) > 1;
 }
 
 function safe_section(section) {
@@ -656,6 +701,18 @@ if (mode == "write-link-cache") {
         exit(1);
     write_link_cache(cache_dir, format_version, section, ARGV[4], ARGV[5]);
 }
+else if (mode == "file-first-line") {
+    file_first_line(ARGV[1]);
+}
+else if (mode == "file-has-exact-line") {
+    exit(file_has_exact_line(ARGV[1], ARGV[2]) ? 0 : 1);
+}
+else if (mode == "json-length") {
+    json_length(ARGV[1]);
+}
+else if (mode == "object-has-extra-keys") {
+    exit(object_has_extra_keys(ARGV[1]) ? 0 : 1);
+}
 else if (mode == "write-outbound-metadata") {
     let cache_dir = ARGV[1], format_version = ARGV[2], section = ARGV[3];
     if (!safe_section(section))
@@ -683,7 +740,7 @@ else if (mode == "write-source-metadata") {
 else if (mode == "get-link") {
     let cache_dir = ARGV[1], subscription_dir = ARGV[2], section = ARGV[3];
     if (!safe_section(section))
-        print("{\"link\":\"\"}\n");
+        write_empty_link();
     else
         get_link(cache_dir, subscription_dir, section, ARGV[4] || "", ARGV[5] || "");
 }
@@ -697,9 +754,15 @@ else if (mode == "get-link-states") {
 else if (mode == "get-outbound-metadata") {
     let cache_dir = ARGV[1], section = ARGV[2];
     if (!safe_section(section))
-        print("{\"names\":{},\"countries\":{}}\n");
+        write_empty_outbound_metadata();
     else
         get_outbound_metadata(cache_dir, section, ARGV[3]);
+}
+else if (mode == "empty-link") {
+    write_empty_link();
+}
+else if (mode == "empty-outbound-metadata") {
+    write_empty_outbound_metadata();
 }
 else if (mode == "get-subscription-metadata") {
     let cache_dir = ARGV[1], section = ARGV[2];
