@@ -4041,9 +4041,7 @@ function formatSingBoxVersion(value) {
   const normalizedValue = normalizeSingBoxVariantFields(value);
   let variant = "";
   if (normalizedValue.sing_box_extended && normalizedValue.sing_box_compressed) {
-    variant = _("extended compressed");
-  } else if (normalizedValue.sing_box_extended) {
-    variant = _("extended");
+    variant = _("compressed");
   } else if (normalizedValue.sing_box_tiny) {
     variant = _("tiny");
   }
@@ -4096,7 +4094,9 @@ function getEmptyDiagnosticsActions() {
 }
 function applyServiceState(uiState) {
   const currentSystemInfo = store.get().diagnosticsSystemInfo;
-  const singBoxComponentActionRunning = (uiState.actions.component || []).some((state) => state.component === "sing_box" && state.running === true);
+  const singBoxComponentActionRunning = (uiState.actions.component || []).find(
+    (state) => state.component === "sing_box" && state.running === true
+  );
   const nextSystemInfo = {
     ...currentSystemInfo,
     providerInfoLoaded: true,
@@ -4105,9 +4105,30 @@ function applyServiceState(uiState) {
     byedpi_installed: uiState.capabilities.byedpi_installed,
     server_inbounds_enabled_count: uiState.capabilities.server_inbounds_enabled_count
   };
-  if (!singBoxComponentActionRunning) {
+  if (singBoxComponentActionRunning?.action === "install_extended") {
+    nextSystemInfo.sing_box_extended = 1;
+    nextSystemInfo.sing_box_tiny = 0;
+    nextSystemInfo.sing_box_compressed = 0;
+    nextSystemInfo.sing_box_tailscale = 1;
+  } else if (singBoxComponentActionRunning?.action === "install_extended_compressed") {
+    nextSystemInfo.sing_box_extended = 1;
+    nextSystemInfo.sing_box_tiny = 0;
+    nextSystemInfo.sing_box_compressed = 1;
+    nextSystemInfo.sing_box_tailscale = 1;
+  } else if (singBoxComponentActionRunning?.action === "install_stable") {
+    nextSystemInfo.sing_box_extended = 0;
+    nextSystemInfo.sing_box_tiny = 0;
+    nextSystemInfo.sing_box_compressed = 0;
+    nextSystemInfo.sing_box_tailscale = 1;
+  } else if (singBoxComponentActionRunning?.action === "install_tiny") {
+    nextSystemInfo.sing_box_extended = 0;
+    nextSystemInfo.sing_box_tiny = 1;
+    nextSystemInfo.sing_box_compressed = 0;
+    nextSystemInfo.sing_box_tailscale = 0;
+  } else {
     nextSystemInfo.sing_box_extended = uiState.capabilities.sing_box_extended;
     nextSystemInfo.sing_box_tiny = uiState.capabilities.sing_box_tiny;
+    nextSystemInfo.sing_box_compressed = uiState.capabilities.sing_box_compressed;
     nextSystemInfo.sing_box_tailscale = uiState.capabilities.sing_box_tailscale;
   }
   store.set({
@@ -7651,7 +7672,7 @@ function renderDiagnosticAvailableActionsWidget() {
   });
   const viewLogsDisabled = shouldDisableAvailableAction({
     actionDisabled: false,
-    componentActionLoading
+    componentActionLoading: false
   });
   const startVisible = shouldShowStartAction({
     podkopRunning,
@@ -9947,6 +9968,8 @@ function render4() {
 var updatesLifecycleRegistered = false;
 var updatesControllerInitialized = false;
 var updatesMounted = false;
+var updatesInitialActionStateLoaded = false;
+var updatesMountGeneration = 0;
 var pageUnloading2 = false;
 var componentActionStateRefreshTimer = null;
 var componentActionStateRefreshPromise = null;
@@ -9998,9 +10021,16 @@ function getGitHubReleaseUrl(component) {
 function isAnyActionLoading() {
   return Object.values(store.get().updatesActions).some((item) => item.loading);
 }
+function isServiceRuntimeActionLoading() {
+  const state = store.get();
+  return hasLocalMutatingServiceActionLoading(state.diagnosticsActions) || isServiceTransitionStatus(state.servicesInfoWidget.data.podkopStatus);
+}
 function isSystemInfoLoading() {
   const systemInfo = store.get().diagnosticsSystemInfo;
   return systemInfo.loading || !systemInfo.loaded;
+}
+function isInitialActionStateLoading() {
+  return updatesMounted && !updatesInitialActionStateLoaded;
 }
 function setActionLoading(action, loading2) {
   const updatesActions = store.get().updatesActions;
@@ -10484,6 +10514,8 @@ function renderComponentTag(card) {
 function renderComponentCard(card) {
   const updatesActions = store.get().updatesActions;
   const anyActionLoading = isAnyActionLoading();
+  const serviceRuntimeActionLoading = isServiceRuntimeActionLoading();
+  const initialActionStateLoading = isInitialActionStateLoading();
   const systemInfoLoading = isSystemInfoLoading();
   const tag = renderComponentTag(card);
   const headerChildren = [
@@ -10539,7 +10571,7 @@ function renderComponentCard(card) {
           text: action.text,
           icon: action.icon,
           loading: loading2,
-          disabled: systemInfoLoading || anyActionLoading && !loading2,
+          disabled: initialActionStateLoading || systemInfoLoading || serviceRuntimeActionLoading || anyActionLoading && !loading2,
           onClick: () => void handleComponentAction(action)
         });
       })
@@ -10563,24 +10595,39 @@ function renderUpdatesComponents() {
   });
 }
 function onStoreUpdate3(_next, _prev, diff) {
-  if (diff.diagnosticsSystemInfo || diff.updatesActions || diff.updatesChecks) {
+  if (diff.diagnosticsSystemInfo || diff.updatesActions || diff.updatesChecks || diff.diagnosticsActions || diff.servicesInfoWidget) {
     renderUpdatesComponents();
+  }
+}
+async function loadInitialActionState(mountGeneration) {
+  try {
+    await refreshComponentActionState();
+  } finally {
+    if (updatesMounted && updatesMountGeneration === mountGeneration) {
+      updatesInitialActionStateLoaded = true;
+      renderUpdatesComponents();
+      startComponentActionStateRefresh();
+    }
   }
 }
 function onPageMount4() {
   onPageUnmount4();
   updatesMounted = true;
+  updatesInitialActionStateLoaded = false;
+  updatesMountGeneration += 1;
+  const mountGeneration = updatesMountGeneration;
   if (!isAnyActionLoading()) {
     store.reset(["updatesChecks"]);
   }
   store.subscribe(onStoreUpdate3);
   renderUpdatesComponents();
   void ensureSystemInfo();
-  void refreshComponentActionState();
-  startComponentActionStateRefresh();
+  void loadInitialActionState(mountGeneration);
 }
 function onPageUnmount4() {
   updatesMounted = false;
+  updatesInitialActionStateLoaded = false;
+  updatesMountGeneration += 1;
   stopComponentActionStateRefresh();
   store.unsubscribe(onStoreUpdate3);
 }

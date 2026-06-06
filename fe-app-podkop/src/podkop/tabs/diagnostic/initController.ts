@@ -760,7 +760,7 @@ function renderDiagnosticAvailableActionsWidget() {
   });
   const viewLogsDisabled = shouldDisableAvailableAction({
     actionDisabled: false,
-    componentActionLoading,
+    componentActionLoading: false,
   });
   const startVisible = shouldShowStartAction({
     podkopRunning,

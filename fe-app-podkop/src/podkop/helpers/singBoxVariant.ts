@@ -49,9 +49,7 @@ export function formatSingBoxVersion(value: SingBoxVariantFields) {
     normalizedValue.sing_box_extended &&
     normalizedValue.sing_box_compressed
   ) {
-    variant = _('extended compressed');
-  } else if (normalizedValue.sing_box_extended) {
-    variant = _('extended');
+    variant = _('compressed');
   } else if (normalizedValue.sing_box_tiny) {
     variant = _('tiny');
   }

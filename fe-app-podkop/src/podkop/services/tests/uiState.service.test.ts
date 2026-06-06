@@ -24,6 +24,7 @@ function createUiState(
     capabilities: {
       sing_box_extended: 1,
       sing_box_tiny: 0,
+      sing_box_compressed: 0,
       sing_box_tailscale: 1,
       zapret_installed: 1,
       zapret2_installed: 0,
@@ -166,6 +167,7 @@ describe('applyUiStateToStore', () => {
       createUiState(undefined, {
         sing_box_extended: 0,
         sing_box_tiny: 1,
+        sing_box_compressed: 0,
         sing_box_tailscale: 0,
       }),
     );
@@ -186,6 +188,7 @@ describe('applyUiStateToStore', () => {
         sing_box_version: '1.13.12-extended-2.3.2',
         sing_box_extended: 1,
         sing_box_tiny: 0,
+        sing_box_compressed: 0,
         sing_box_tailscale: 1,
         zapret_installed: 0,
         zapret2_installed: 0,
@@ -214,6 +217,7 @@ describe('applyUiStateToStore', () => {
         {
           sing_box_extended: 0,
           sing_box_tiny: 1,
+          sing_box_compressed: 0,
           sing_box_tailscale: 0,
           zapret_installed: 1,
           zapret2_installed: 1,
@@ -228,11 +232,47 @@ describe('applyUiStateToStore', () => {
       sing_box_version: '1.13.12-extended-2.3.2',
       sing_box_extended: 1,
       sing_box_tiny: 0,
+      sing_box_compressed: 1,
       sing_box_tailscale: 1,
       zapret_installed: 1,
       zapret2_installed: 1,
       byedpi_installed: 0,
       server_inbounds_enabled_count: 2,
+    });
+  });
+
+  it('uses the running sing-box install action as the immediate target variant', () => {
+    applyUiStateToStore(
+      createUiState(
+        {
+          component: [
+            {
+              success: true,
+              running: true,
+              job_id: 'sing-box-install',
+              component: 'sing_box',
+              action: 'install_extended',
+              message: 'Install is running',
+              current_version: '',
+              latest_version: '',
+              changed: false,
+            },
+          ],
+        },
+        {
+          sing_box_extended: 0,
+          sing_box_tiny: 1,
+          sing_box_compressed: 0,
+          sing_box_tailscale: 0,
+        },
+      ),
+    );
+
+    expect(store.get().diagnosticsSystemInfo).toMatchObject({
+      sing_box_extended: 1,
+      sing_box_tiny: 0,
+      sing_box_compressed: 0,
+      sing_box_tailscale: 1,
     });
   });
 });

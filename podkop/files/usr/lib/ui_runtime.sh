@@ -417,11 +417,12 @@ ui_runtime_write_ui_state() {
     local sing_box_status="$7"
     local sing_box_extended="$8"
     local sing_box_tiny="$9"
-    local sing_box_tailscale="${10}"
-    local zapret_installed="${11}"
-    local zapret2_installed="${12}"
-    local byedpi_installed="${13}"
-    local server_inbounds_enabled_count="${14}"
+    local sing_box_compressed="${10}"
+    local sing_box_tailscale="${11}"
+    local zapret_installed="${12}"
+    local zapret2_installed="${13}"
+    local byedpi_installed="${14}"
+    local server_inbounds_enabled_count="${15}"
 
     ui_runtime_state_paths | ui_runtime_ucode ui-state-json \
         "$podkop_running" \
@@ -433,6 +434,7 @@ ui_runtime_write_ui_state() {
         "$sing_box_status" \
         "$sing_box_extended" \
         "$sing_box_tiny" \
+        "$sing_box_compressed" \
         "$sing_box_tailscale" \
         "$zapret_installed" \
         "$zapret2_installed" \

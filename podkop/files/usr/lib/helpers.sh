@@ -298,7 +298,8 @@ sing_box_has_build_tag() {
 is_sing_box_extended() {
     local version="${1:-}"
 
-    if [ -z "$version" ] && command -v sing-box >/dev/null 2>&1 && is_sing_box_compressed_marker_set; then
+    if [ -z "$version" ] && command -v sing-box >/dev/null 2>&1 &&
+        { is_sing_box_compressed_marker_set || is_sing_box_extended_marker_set; }; then
         return 0
     fi
 
@@ -327,6 +328,11 @@ is_sing_box_full_package_installed() {
 is_sing_box_compressed_marker_set() {
     [ -r "${SB_VARIANT_STATE_FILE:-/etc/podkop-plus/sing-box-variant}" ] || return 1
     [ "$(cat "${SB_VARIANT_STATE_FILE:-/etc/podkop-plus/sing-box-variant}" 2>/dev/null)" = "extended-compressed" ]
+}
+
+is_sing_box_extended_marker_set() {
+    [ -r "${SB_VARIANT_STATE_FILE:-/etc/podkop-plus/sing-box-variant}" ] || return 1
+    [ "$(cat "${SB_VARIANT_STATE_FILE:-/etc/podkop-plus/sing-box-variant}" 2>/dev/null)" = "extended" ]
 }
 
 read_sing_box_version_state() {

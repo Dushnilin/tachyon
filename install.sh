@@ -29,6 +29,7 @@ PODKOP_PLUS_I18N_NAME=""
 PODKOP_PLUS_I18N_FILE=""
 PODKOP_PLUS_PACKAGE_VERSION=""
 SING_BOX_VARIANT_STATE_FILE="/etc/podkop-plus/sing-box-variant"
+SING_BOX_VERSION_STATE_FILE="/etc/podkop-plus/sing-box-version"
 SING_BOX_EXTENDED_RELEASE_JSON=""
 SING_BOX_EXTENDED_RELEASE_TAG=""
 SING_BOX_EXTENDED_ARCH_SUFFIX=""
@@ -813,7 +814,7 @@ remove_old_sing_box_if_needed() {
 
     command_exists sing-box || return 0
 
-    installed_version="$(sing-box version 2>/dev/null | head -n 1 | awk '{print $3}')"
+    installed_version="$(sing_box_version_value)"
     [ -n "$installed_version" ] || return 0
 
     if version_ge "$installed_version" "$REQUIRED_SING_BOX_VERSION"; then
@@ -830,11 +831,29 @@ remove_old_sing_box_if_needed() {
 
 sing_box_version_value() {
     command_exists sing-box || return 0
-    sing-box version 2>/dev/null | head -n 1 | awk '{print $3}'
+
+    if sing_box_compressed_marker_set; then
+        read_sing_box_version_state 2>/dev/null || true
+        return 0
+    fi
+
+    if sing_box_extended_marker_set; then
+        read_sing_box_version_state 2>/dev/null && return 0
+    fi
+
+    read_sing_box_binary_version /usr/bin/sing-box
 }
 
 sing_box_is_extended() {
-    case "$(sing_box_version_value)" in
+    version="${1:-}"
+
+    if [ -z "$version" ] && command_exists sing-box &&
+        { sing_box_compressed_marker_set || sing_box_extended_marker_set; }; then
+        return 0
+    fi
+
+    [ -n "$version" ] || version="$(sing_box_version_value)"
+    case "$version" in
         *extended*) return 0 ;;
     esac
     return 1
@@ -845,9 +864,37 @@ sing_box_compressed_marker_set() {
     [ "$(cat "$SING_BOX_VARIANT_STATE_FILE" 2>/dev/null)" = "extended-compressed" ]
 }
 
+sing_box_extended_marker_set() {
+    [ -r "$SING_BOX_VARIANT_STATE_FILE" ] || return 1
+    [ "$(cat "$SING_BOX_VARIANT_STATE_FILE" 2>/dev/null)" = "extended" ]
+}
+
 sing_box_tiny_marker_set() {
     [ -r "$SING_BOX_VARIANT_STATE_FILE" ] || return 1
     [ "$(cat "$SING_BOX_VARIANT_STATE_FILE" 2>/dev/null)" = "tiny" ]
+}
+
+read_sing_box_version_state() {
+    [ -r "$SING_BOX_VERSION_STATE_FILE" ] || return 1
+    sed -n '1p' "$SING_BOX_VERSION_STATE_FILE" 2>/dev/null
+}
+
+read_sing_box_variant_marker() {
+    [ -r "$SING_BOX_VARIANT_STATE_FILE" ] || return 1
+    sed -n '1p' "$SING_BOX_VARIANT_STATE_FILE" 2>/dev/null
+}
+
+read_sing_box_binary_version() {
+    binary_path="$1"
+    library_dir="${2:-}"
+
+    [ -x "$binary_path" ] || return 1
+
+    if [ -n "$library_dir" ]; then
+        LD_LIBRARY_PATH="$library_dir${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" "$binary_path" version 2>/dev/null | head -n 1 | awk '{print $3}'
+    else
+        "$binary_path" version 2>/dev/null | head -n 1 | awk '{print $3}'
+    fi
 }
 
 sing_box_supports_tailscale() {
@@ -862,12 +909,13 @@ sing_box_active_variant() {
         return 0
     fi
 
-    if sing_box_is_extended; then
-        if sing_box_compressed_marker_set; then
-            printf '%s\n' "extended-compressed"
-        else
-            printf '%s\n' "extended"
-        fi
+    if sing_box_compressed_marker_set; then
+        printf '%s\n' "extended-compressed"
+        return 0
+    fi
+
+    if sing_box_extended_marker_set || sing_box_is_extended; then
+        printf '%s\n' "extended"
         return 0
     fi
 
@@ -882,13 +930,18 @@ sing_box_active_variant() {
 select_sing_box_installation() {
     active_variant="$(sing_box_active_variant)"
     answer=""
-    skip_choice=1
-    next_choice=2
+    skip_choice=""
+    default_choice=1
+    next_choice=1
     stable_choice=""
     tiny_choice=""
     extended_choice=""
     extended_compressed_choice=""
 
+    if [ "$active_variant" != "none" ]; then
+        skip_choice="$next_choice"
+        next_choice=$((next_choice + 1))
+    fi
     if [ "$active_variant" != "stable" ]; then
         stable_choice="$next_choice"
         next_choice=$((next_choice + 1))
@@ -907,23 +960,28 @@ select_sing_box_installation() {
     fi
 
     if [ ! -t 0 ]; then
-        SING_BOX_INSTALL_VARIANT=""
-        msg "$(installer_text sing_box_prompt): $skip_choice ($(installer_text sing_box_skip), non-interactive)"
+        if [ "$active_variant" = "none" ]; then
+            SING_BOX_INSTALL_VARIANT="stable"
+            msg "$(installer_text sing_box_prompt): $default_choice ($(installer_text sing_box_stable), non-interactive)"
+        else
+            SING_BOX_INSTALL_VARIANT=""
+            msg "$(installer_text sing_box_prompt): $default_choice ($(installer_text sing_box_skip), non-interactive)"
+        fi
         return 0
     fi
 
     while :; do
         printf '\n%s\n' "$(installer_text sing_box_prompt)"
-        printf '  %s) %s\n' "$skip_choice" "$(installer_text sing_box_skip)"
+        [ -n "$skip_choice" ] && printf '  %s) %s\n' "$skip_choice" "$(installer_text sing_box_skip)"
         [ -n "$stable_choice" ] && printf '  %s) %s\n' "$stable_choice" "$(installer_text sing_box_stable)"
         [ -n "$tiny_choice" ] && printf '  %s) %s\n' "$tiny_choice" "$(installer_text sing_box_tiny)"
         [ -n "$extended_choice" ] && printf '  %s) %s\n' "$extended_choice" "$(installer_text sing_box_extended)"
         [ -n "$extended_compressed_choice" ] && printf '  %s) %s\n' "$extended_compressed_choice" "$(installer_text sing_box_extended_compressed)"
-        printf '%s [1]: ' "$(installer_text select)"
+        printf '%s [%s]: ' "$(installer_text select)" "$default_choice"
         read -r answer || return 1
-        [ -n "$answer" ] || answer="$skip_choice"
+        [ -n "$answer" ] || answer="$default_choice"
 
-        if [ "$answer" = "$skip_choice" ]; then
+        if [ -n "$skip_choice" ] && [ "$answer" = "$skip_choice" ]; then
             SING_BOX_INSTALL_VARIANT=""
             return 0
         fi
@@ -953,11 +1011,11 @@ pkg_install_sing_box_variant() {
     conflict_pkg="$2"
 
     if [ "$PKG_IS_APK" -eq 1 ]; then
-        apk add "$target_pkg" </dev/null && return 0
+        pkg_install_name_downgrade "$target_pkg" && return 0
         if [ -n "$conflict_pkg" ] && pkg_is_installed "$conflict_pkg"; then
             apk del --force-broken-world "$conflict_pkg" </dev/null || return 1
         fi
-        apk add "$target_pkg" </dev/null
+        pkg_install_name_downgrade "$target_pkg"
         return $?
     fi
 
@@ -974,6 +1032,35 @@ write_sing_box_variant_marker() {
 
     mkdir -p "$marker_dir" || return 1
     printf '%s\n' "$variant" >"$SING_BOX_VARIANT_STATE_FILE"
+}
+
+write_sing_box_version_state() {
+    version="$1"
+    state_dir="$(dirname "$SING_BOX_VERSION_STATE_FILE")"
+
+    [ -n "$version" ] || return 1
+    mkdir -p "$state_dir" || return 1
+    printf '%s\n' "$version" >"$SING_BOX_VERSION_STATE_FILE"
+}
+
+restore_sing_box_variant_marker() {
+    previous_marker="$1"
+
+    if [ -n "$previous_marker" ]; then
+        write_sing_box_variant_marker "$previous_marker"
+    else
+        rm -f "$SING_BOX_VARIANT_STATE_FILE" 2>/dev/null || true
+    fi
+}
+
+restore_sing_box_version_state() {
+    previous_version="$1"
+
+    if [ -n "$previous_version" ]; then
+        write_sing_box_version_state "$previous_version"
+    else
+        rm -f "$SING_BOX_VERSION_STATE_FILE" 2>/dev/null || true
+    fi
 }
 
 system_uses_musl() {
@@ -1008,11 +1095,7 @@ validate_extended_sing_box_binary() {
 
     [ -x "$binary_path" ] || return 1
 
-    if [ -n "$library_dir" ]; then
-        version="$(LD_LIBRARY_PATH="$library_dir${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" "$binary_path" version 2>/dev/null | head -n 1 | awk '{print $3}')"
-    else
-        version="$("$binary_path" version 2>/dev/null | head -n 1 | awk '{print $3}')"
-    fi
+    version="$(read_sing_box_binary_version "$binary_path" "$library_dir")"
 
     case "$version" in
         *extended*) printf '%s\n' "$version"; return 0 ;;
@@ -1021,14 +1104,96 @@ validate_extended_sing_box_binary() {
     return 1
 }
 
+move_file_to_backup() {
+    target_path="$1"
+    backup_path="$2"
+
+    [ -e "$target_path" ] || return 0
+    rm -f "$backup_path"
+    mv -f "$target_path" "$backup_path"
+}
+
+restore_file_backup() {
+    target_path="$1"
+    backup_path="$2"
+
+    if [ -n "$backup_path" ] && [ -s "$backup_path" ]; then
+        mv -f "$backup_path" "$target_path"
+        return $?
+    fi
+
+    rm -f "$target_path"
+}
+
+full_sing_box_package_is_active() {
+    pkg_is_installed "sing-box" && ! pkg_is_installed "sing-box-tiny"
+}
+
+ensure_full_sing_box_package() {
+    full_sing_box_package_is_active && return 0
+    pkg_install_sing_box_variant "sing-box" "sing-box-tiny"
+}
+
+restore_sing_box_package_variant() {
+    previous_variant="$1"
+
+    case "$previous_variant" in
+        tiny)
+            pkg_install_sing_box_variant "sing-box-tiny" "sing-box"
+            ;;
+        stable)
+            pkg_install_sing_box_variant "sing-box" "sing-box-tiny"
+            ;;
+        none)
+            pkg_remove_if_installed "sing-box"
+            pkg_remove_if_installed "sing-box-tiny"
+            rm -f /usr/bin/sing-box
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+restore_sing_box_after_failed_extended_install() {
+    previous_variant="$1"
+    backup_binary="$2"
+    backup_cronet="$3"
+    previous_marker="$4"
+    previous_version_state="$5"
+    archive_file="${6:-}"
+    cronet_touched="${7:-0}"
+
+    [ -n "$archive_file" ] && rm -f "$archive_file"
+
+    if [ "$cronet_touched" -eq 1 ]; then
+        restore_file_backup /usr/lib/libcronet.so "$backup_cronet" >/dev/null 2>&1 || true
+    fi
+
+    if [ -n "$backup_binary" ]; then
+        restore_file_backup /usr/bin/sing-box "$backup_binary" >/dev/null 2>&1 || true
+        [ -x /usr/bin/sing-box ] && chmod 0755 /usr/bin/sing-box >/dev/null 2>&1 || true
+    else
+        restore_sing_box_package_variant "$previous_variant" >/dev/null 2>&1 || true
+    fi
+
+    restore_sing_box_variant_marker "$previous_marker" >/dev/null 2>&1 || true
+    restore_sing_box_version_state "$previous_version_state" >/dev/null 2>&1 || true
+    rm -f /var/run/podkop-plus/ui-state/sing-box-version 2>/dev/null || true
+}
+
 install_sing_box_extended_binary() {
     compressed="$1"
     label="sing-box-extended"
     marker_variant="extended"
+    current_variant="$(sing_box_active_variant)"
+    previous_marker="$(read_sing_box_variant_marker 2>/dev/null || true)"
+    previous_version_state="$(read_sing_box_version_state 2>/dev/null || true)"
     binary_path=""
     cronet_path=""
     backup_binary=""
     backup_cronet=""
+    cronet_touched=0
     extract_error="$TMP_DIR/sing-box-extract.err"
 
     if [ "$compressed" -eq 1 ]; then
@@ -1045,60 +1210,90 @@ install_sing_box_extended_binary() {
     [ -n "$binary_path" ] || fail "sing-box binary was not found in $SING_BOX_EXTENDED_ASSET_NAME"
     cronet_path="$(tar -tzf "$SING_BOX_EXTENDED_ARCHIVE_FILE" 2>/dev/null | install_json_ucode archive-member-path libcronet.so 2>/dev/null)"
 
-    if [ -e /usr/bin/sing-box ]; then
-        backup_binary="$TMP_DIR/sing-box.backup.$$"
-        cp -p /usr/bin/sing-box "$backup_binary" || fail "Failed to backup current sing-box binary"
-    fi
+    case "$current_variant" in
+        extended|extended-compressed)
+            if ! full_sing_box_package_is_active && [ -e /usr/bin/sing-box ]; then
+                backup_binary="/usr/bin/sing-box.podkop-backup.$$"
+                move_file_to_backup /usr/bin/sing-box "$backup_binary" || {
+                    rm -f "$backup_binary"
+                    fail "Failed to backup current sing-box binary"
+                }
+            fi
+            ;;
+    esac
 
-    pkg_install_sing_box_variant "sing-box" "sing-box-tiny" || {
-        [ -n "$backup_binary" ] && mv -f "$backup_binary" /usr/bin/sing-box
+    ensure_full_sing_box_package || {
+        restore_sing_box_after_failed_extended_install "$current_variant" "$backup_binary" "$backup_cronet" "$previous_marker" "$previous_version_state" "$SING_BOX_EXTENDED_ARCHIVE_FILE" "$cronet_touched"
         fail "Failed to install full sing-box package before $label"
     }
 
-    if [ -z "$backup_binary" ] && [ -e /usr/bin/sing-box ]; then
-        backup_binary="$TMP_DIR/sing-box.package-backup.$$"
-        cp -p /usr/bin/sing-box "$backup_binary" || fail "Failed to backup package sing-box binary"
+    if [ -z "$backup_binary" ] && [ "$current_variant" != "tiny" ] && [ "$current_variant" != "none" ] && [ -e /usr/bin/sing-box ]; then
+        backup_binary="/usr/bin/sing-box.podkop-backup.$$"
+        move_file_to_backup /usr/bin/sing-box "$backup_binary" || {
+            rm -f "$backup_binary"
+            backup_binary=""
+            restore_sing_box_after_failed_extended_install "$current_variant" "$backup_binary" "$backup_cronet" "$previous_marker" "$previous_version_state" "$SING_BOX_EXTENDED_ARCHIVE_FILE" "$cronet_touched"
+            fail "Failed to backup package sing-box binary"
+        }
     fi
 
     rm -f /usr/bin/sing-box
     if ! tar -xzf "$SING_BOX_EXTENDED_ARCHIVE_FILE" -O "$binary_path" >/usr/bin/sing-box 2>"$extract_error"; then
         [ -s "$extract_error" ] && cat "$extract_error" >&2
         rm -f /usr/bin/sing-box
-        [ -n "$backup_binary" ] && mv -f "$backup_binary" /usr/bin/sing-box
+        restore_sing_box_after_failed_extended_install "$current_variant" "$backup_binary" "$backup_cronet" "$previous_marker" "$previous_version_state" "$SING_BOX_EXTENDED_ARCHIVE_FILE" "$cronet_touched"
         fail "Failed to extract $label"
     fi
+    if [ ! -s /usr/bin/sing-box ]; then
+        rm -f /usr/bin/sing-box
+        restore_sing_box_after_failed_extended_install "$current_variant" "$backup_binary" "$backup_cronet" "$previous_marker" "$previous_version_state" "$SING_BOX_EXTENDED_ARCHIVE_FILE" "$cronet_touched"
+        fail "Extracted $label binary is empty"
+    fi
     if ! chmod 0755 /usr/bin/sing-box; then
-        [ -n "$backup_binary" ] && mv -f "$backup_binary" /usr/bin/sing-box
+        restore_sing_box_after_failed_extended_install "$current_variant" "$backup_binary" "$backup_cronet" "$previous_marker" "$previous_version_state" "$SING_BOX_EXTENDED_ARCHIVE_FILE" "$cronet_touched"
         fail "Failed to prepare $label binary"
     fi
 
     if [ -n "$cronet_path" ]; then
+        cronet_touched=1
         if [ -e /usr/lib/libcronet.so ]; then
-            backup_cronet="$TMP_DIR/libcronet.so.backup.$$"
-            cp -p /usr/lib/libcronet.so "$backup_cronet" || fail "Failed to backup current libcronet.so"
+            backup_cronet="/usr/lib/libcronet.so.podkop-backup.$$"
+            move_file_to_backup /usr/lib/libcronet.so "$backup_cronet" || {
+                rm -f "$backup_cronet"
+                backup_cronet=""
+                cronet_touched=0
+                restore_sing_box_after_failed_extended_install "$current_variant" "$backup_binary" "$backup_cronet" "$previous_marker" "$previous_version_state" "$SING_BOX_EXTENDED_ARCHIVE_FILE" "$cronet_touched"
+                fail "Failed to backup current libcronet.so"
+            }
         fi
 
         if ! tar -xzf "$SING_BOX_EXTENDED_ARCHIVE_FILE" -O "$cronet_path" >/usr/lib/libcronet.so 2>"$extract_error"; then
             [ -s "$extract_error" ] && cat "$extract_error" >&2
-            [ -n "$backup_binary" ] && mv -f "$backup_binary" /usr/bin/sing-box
-            [ -n "$backup_cronet" ] && mv -f "$backup_cronet" /usr/lib/libcronet.so
+            restore_sing_box_after_failed_extended_install "$current_variant" "$backup_binary" "$backup_cronet" "$previous_marker" "$previous_version_state" "$SING_BOX_EXTENDED_ARCHIVE_FILE" "$cronet_touched"
             fail "Failed to extract libcronet.so from $label"
         fi
+        if [ ! -s /usr/lib/libcronet.so ]; then
+            rm -f /usr/lib/libcronet.so
+            restore_sing_box_after_failed_extended_install "$current_variant" "$backup_binary" "$backup_cronet" "$previous_marker" "$previous_version_state" "$SING_BOX_EXTENDED_ARCHIVE_FILE" "$cronet_touched"
+            fail "Extracted libcronet.so is empty"
+        fi
         if ! chmod 0644 /usr/lib/libcronet.so; then
-            [ -n "$backup_binary" ] && mv -f "$backup_binary" /usr/bin/sing-box
-            [ -n "$backup_cronet" ] && mv -f "$backup_cronet" /usr/lib/libcronet.so
+            restore_sing_box_after_failed_extended_install "$current_variant" "$backup_binary" "$backup_cronet" "$previous_marker" "$previous_version_state" "$SING_BOX_EXTENDED_ARCHIVE_FILE" "$cronet_touched"
             fail "Failed to prepare libcronet.so"
         fi
     fi
 
+    rm -f "$SING_BOX_EXTENDED_ARCHIVE_FILE"
+
     new_version="$(validate_extended_sing_box_binary /usr/bin/sing-box /usr/lib)" || {
-        [ -n "$backup_binary" ] && mv -f "$backup_binary" /usr/bin/sing-box
-        [ -n "$backup_cronet" ] && mv -f "$backup_cronet" /usr/lib/libcronet.so
+        restore_sing_box_after_failed_extended_install "$current_variant" "$backup_binary" "$backup_cronet" "$previous_marker" "$previous_version_state" "$SING_BOX_EXTENDED_ARCHIVE_FILE" "$cronet_touched"
         fail "Installed $label failed validation"
     }
 
     rm -f "$backup_binary" "$backup_cronet"
     write_sing_box_variant_marker "$marker_variant" || warn "Failed to write sing-box variant marker"
+    write_sing_box_version_state "$new_version" || warn "Failed to write sing-box version state"
+    rm -f /var/run/podkop-plus/ui-state/sing-box-version 2>/dev/null || true
     msg "Installed $label $new_version"
 }
 
@@ -1116,12 +1311,22 @@ install_selected_sing_box() {
         stable)
             stop_podkop_for_sing_box_install
             pkg_install_sing_box_variant "sing-box" "sing-box-tiny" || fail "Failed to install stable sing-box"
+            new_version="$(read_sing_box_binary_version /usr/bin/sing-box)"
+            [ -n "$new_version" ] || fail "Stable sing-box package was installed, but sing-box binary is not available"
+            sing_box_is_extended "$new_version" && fail "Stable sing-box package was installed, but the active binary is still sing-box-extended"
             write_sing_box_variant_marker "stable" || warn "Failed to write sing-box variant marker"
+            write_sing_box_version_state "$new_version" || warn "Failed to write sing-box version state"
+            rm -f /var/run/podkop-plus/ui-state/sing-box-version 2>/dev/null || true
             ;;
         tiny)
             stop_podkop_for_sing_box_install
             pkg_install_sing_box_variant "sing-box-tiny" "sing-box" || fail "Failed to install sing-box-tiny"
+            new_version="$(read_sing_box_binary_version /usr/bin/sing-box)"
+            [ -n "$new_version" ] || fail "sing-box-tiny package was installed, but sing-box binary is not available"
+            sing_box_is_extended "$new_version" && fail "sing-box-tiny package was installed, but the active binary is still sing-box-extended"
             write_sing_box_variant_marker "tiny" || warn "Failed to write sing-box variant marker"
+            write_sing_box_version_state "$new_version" || warn "Failed to write sing-box version state"
+            rm -f /var/run/podkop-plus/ui-state/sing-box-version 2>/dev/null || true
             ;;
         extended)
             stop_podkop_for_sing_box_install
@@ -1357,6 +1562,7 @@ post_install() {
     rm -f /tmp/podkop-plus.latest-version.cache
     rm -f /var/run/podkop-plus/system-info.json
     rm -f /var/run/podkop-plus/server-country-cache.json
+    rm -f /var/run/podkop-plus/ui-state/sing-box-version
     rm -f /tmp/podkop-plus/system-info.json
     [ -x /etc/init.d/rpcd ] && /etc/init.d/rpcd reload >/dev/null 2>&1 || true
 
@@ -1380,12 +1586,12 @@ main() {
     check_system
 
     decide_i18n_installation
+    select_sing_box_installation
     deactivate_original_podkop_if_present
 
     pkg_list_update || fail "Failed to update package lists"
     ensure_bootstrap_tool "ucode" "ucode"
 
-    select_sing_box_installation
     resolve_podkop_plus_release
     remove_conflicting_dns_proxy
     remove_old_sing_box_if_needed
