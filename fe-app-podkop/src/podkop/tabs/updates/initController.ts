@@ -49,12 +49,12 @@ interface ComponentCard {
 let updatesLifecycleRegistered = false;
 let updatesControllerInitialized = false;
 let updatesMounted = false;
-let updatesInitialActionStateLoaded = false;
 let updatesMountGeneration = 0;
 let pageUnloading = false;
 let componentActionStateRefreshTimer: ReturnType<typeof setInterval> | null =
   null;
 let componentActionStateRefreshPromise: Promise<void> | null = null;
+let activeComponentActionKey: UpdatesActionKey | null = null;
 const followedComponentJobs = new Set<string>();
 const handledComponentJobs = new Set<string>();
 const COMPONENT_ACTION_STATE_REFRESH_INTERVAL_MS = 1500;
@@ -117,7 +117,10 @@ function getGitHubReleaseUrl(component: Podkop.ComponentName) {
 }
 
 function isAnyActionLoading() {
-  return Object.values(store.get().updatesActions).some((item) => item.loading);
+  return (
+    activeComponentActionKey !== null ||
+    Object.values(store.get().updatesActions).some((item) => item.loading)
+  );
 }
 
 function isServiceRuntimeActionLoading() {
@@ -135,10 +138,6 @@ function isSystemInfoLoading() {
   return systemInfo.loading || !systemInfo.loaded;
 }
 
-function isInitialActionStateLoading() {
-  return updatesMounted && !updatesInitialActionStateLoaded;
-}
-
 function setActionLoading(action: UpdatesActionKey, loading: boolean) {
   const updatesActions = store.get().updatesActions;
 
@@ -148,6 +147,22 @@ function setActionLoading(action: UpdatesActionKey, loading: boolean) {
       [action]: { loading },
     },
   });
+}
+
+function beginComponentAction(button: ComponentActionButton) {
+  if (isAnyActionLoading()) {
+    return false;
+  }
+
+  activeComponentActionKey = button.key;
+  setActionLoading(button.key, true);
+  return true;
+}
+
+function endComponentAction(key: UpdatesActionKey) {
+  if (activeComponentActionKey === key) {
+    activeComponentActionKey = null;
+  }
 }
 
 function setCheckResult(
@@ -385,6 +400,7 @@ async function completeComponentActionJob(
   response: Podkop.MethodResponse<Podkop.ComponentActionResult>,
 ) {
   if (pageUnloading) {
+    endComponentAction(key);
     return;
   }
 
@@ -393,6 +409,7 @@ async function completeComponentActionJob(
   if (alreadyHandled) {
     await ackComponentActionJob(jobId);
     setActionLoading(key, false);
+    endComponentAction(key);
     return;
   }
 
@@ -400,6 +417,7 @@ async function completeComponentActionJob(
 
   if (!response.success || response.data.success === false) {
     setActionLoading(key, false);
+    endComponentAction(key);
     showToast(
       response.success
         ? response.data.message || _('Failed to execute')
@@ -412,6 +430,7 @@ async function completeComponentActionJob(
 
   await ackComponentActionJob(jobId);
   await applyCompletedComponentAction(key, response.data);
+  endComponentAction(key);
 }
 
 async function followComponentActionState(state: Podkop.ComponentActionResult) {
@@ -423,6 +442,7 @@ async function followComponentActionState(state: Podkop.ComponentActionResult) {
   }
 
   followedComponentJobs.add(jobId);
+  activeComponentActionKey = key;
   setActionLoading(key, true);
 
   try {
@@ -443,11 +463,42 @@ async function followComponentActionState(state: Podkop.ComponentActionResult) {
     logger.error('[UPDATES]', 'followComponentActionState failed', error);
     if (!pageUnloading) {
       setActionLoading(key, false);
+      endComponentAction(key);
       showToast(getErrorMessage(error, _('Failed to execute')), 'error');
     }
   } finally {
     followedComponentJobs.delete(jobId);
   }
+}
+
+async function followAlreadyRunningComponentAction(button: ComponentActionButton) {
+  const response = await PodkopShellMethods.getUiState();
+
+  if (!response.success) {
+    return false;
+  }
+
+  applyUiStateToStore(response.data);
+
+  const state = response.data.actions.component.find(
+    (item) =>
+      item.running &&
+      item.component === button.component &&
+      item.action === button.action,
+  );
+
+  if (!state) {
+    return false;
+  }
+
+  await followComponentActionState(state);
+  return true;
+}
+
+function isComponentActionAlreadyRunningError(message: string | undefined) {
+  return Boolean(
+    message && message.includes('Another component action is already running'),
+  );
 }
 
 async function refreshComponentActionState() {
@@ -500,12 +551,12 @@ function stopComponentActionStateRefresh() {
 }
 
 async function handleComponentAction(button: ComponentActionButton) {
-  if (isAnyActionLoading()) {
+  if (!beginComponentAction(button)) {
     return;
   }
 
-  setActionLoading(button.key, true);
   let jobId = '';
+  let ownsJobFollow = false;
 
   try {
     const startResponse = await PodkopShellMethods.componentActionStart(
@@ -514,10 +565,24 @@ async function handleComponentAction(button: ComponentActionButton) {
     );
 
     if (!startResponse.success) {
+      if (
+        isComponentActionAlreadyRunningError(startResponse.error) &&
+        (await followAlreadyRunningComponentAction(button))
+      ) {
+        return;
+      }
+
       throw new Error(startResponse.error);
     }
 
     jobId = startResponse.data.job_id;
+    if (followedComponentJobs.has(jobId)) {
+      return;
+    }
+
+    followedComponentJobs.add(jobId);
+    ownsJobFollow = true;
+
     const response = await PodkopShellMethods.waitComponentActionJob(
       jobId,
       button.component,
@@ -530,8 +595,13 @@ async function handleComponentAction(button: ComponentActionButton) {
     logger.error('[UPDATES]', 'handleComponentAction failed', error);
     if (!pageUnloading) {
       setActionLoading(button.key, false);
+      endComponentAction(button.key);
       showToast(getErrorMessage(error, _('Failed to execute')), 'error');
       void refreshComponentActionState();
+    }
+  } finally {
+    if (ownsJobFollow) {
+      followedComponentJobs.delete(jobId);
     }
   }
 }
@@ -761,7 +831,6 @@ function renderComponentCard(card: ComponentCard) {
   const updatesActions = store.get().updatesActions;
   const anyActionLoading = isAnyActionLoading();
   const serviceRuntimeActionLoading = isServiceRuntimeActionLoading();
-  const initialActionStateLoading = isInitialActionStateLoading();
   const systemInfoLoading = isSystemInfoLoading();
   const tag = renderComponentTag(card);
   const headerChildren: Node[] = [
@@ -823,7 +892,6 @@ function renderComponentCard(card: ComponentCard) {
           icon: action.icon,
           loading,
           disabled:
-            initialActionStateLoading ||
             systemInfoLoading ||
             serviceRuntimeActionLoading ||
             (anyActionLoading && !loading),
@@ -875,8 +943,6 @@ async function loadInitialActionState(mountGeneration: number) {
     await refreshComponentActionState();
   } finally {
     if (updatesMounted && updatesMountGeneration === mountGeneration) {
-      updatesInitialActionStateLoaded = true;
-      renderUpdatesComponents();
       startComponentActionStateRefresh();
     }
   }
@@ -886,7 +952,6 @@ function onPageMount() {
   onPageUnmount();
 
   updatesMounted = true;
-  updatesInitialActionStateLoaded = false;
   updatesMountGeneration += 1;
   const mountGeneration = updatesMountGeneration;
 
@@ -901,7 +966,6 @@ function onPageMount() {
 
 function onPageUnmount() {
   updatesMounted = false;
-  updatesInitialActionStateLoaded = false;
   updatesMountGeneration += 1;
   stopComponentActionStateRefresh();
   store.unsubscribe(onStoreUpdate);
