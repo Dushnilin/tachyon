@@ -260,15 +260,32 @@ get_sing_box_version() {
     local version=""
 
     if command -v sing-box >/dev/null 2>&1; then
-        version="$(sing-box version 2>/dev/null | helpers_ucode stdin-first-line-last-field)"
+        if is_sing_box_compressed_marker_set; then
+            read_sing_box_version_state 2>/dev/null || true
+            return 0
+        fi
+
+        version="$(sing_box_version_output | sing_box_version_from_output)"
     fi
 
     echo "$version"
 }
 
+sing_box_version_from_output() {
+    helpers_ucode stdin-first-line-last-field
+}
+
 sing_box_version_output() {
     command -v sing-box >/dev/null 2>&1 || return 1
     sing-box version 2>/dev/null
+}
+
+sing_box_output_has_build_tag() {
+    local output="$1"
+    local tag="$2"
+
+    [ -n "$tag" ] || return 1
+    printf '%s\n' "$output" | grep -Eq "(^|[,:[:space:]])${tag}([,[:space:]]|$)"
 }
 
 sing_box_has_build_tag() {
@@ -280,6 +297,10 @@ sing_box_has_build_tag() {
 
 is_sing_box_extended() {
     local version="${1:-}"
+
+    if [ -z "$version" ] && command -v sing-box >/dev/null 2>&1 && is_sing_box_compressed_marker_set; then
+        return 0
+    fi
 
     [ -n "$version" ] || version="$(get_sing_box_version)"
     helpers_ucode sing-box-version-is-extended "$version" >/dev/null 2>&1
@@ -308,31 +329,76 @@ is_sing_box_compressed_marker_set() {
     [ "$(cat "${SB_VARIANT_STATE_FILE:-/etc/podkop-plus/sing-box-variant}" 2>/dev/null)" = "extended-compressed" ]
 }
 
+read_sing_box_version_state() {
+    local state_file="${SB_VERSION_STATE_FILE:-/etc/podkop-plus/sing-box-version}"
+
+    [ -r "$state_file" ] || return 1
+    sed -n '1p' "$state_file" 2>/dev/null
+}
+
 is_sing_box_tiny_marker_set() {
     [ -r "${SB_VARIANT_STATE_FILE:-/etc/podkop-plus/sing-box-variant}" ] || return 1
     [ "$(cat "${SB_VARIANT_STATE_FILE:-/etc/podkop-plus/sing-box-variant}" 2>/dev/null)" = "tiny" ]
 }
 
 is_sing_box_tiny() {
-    is_sing_box_extended && return 1
+    local version="${1:-}"
+    local version_output="${2:-}"
+
+    if command -v sing-box >/dev/null 2>&1 && is_sing_box_compressed_marker_set; then
+        return 1
+    fi
+
+    if [ -n "$version" ]; then
+        is_sing_box_extended "$version" && return 1
+    else
+        is_sing_box_extended && return 1
+    fi
+
     is_sing_box_tiny_package_installed && return 0
     is_sing_box_tiny_marker_set || return 1
-    sing_box_supports_tailscale && return 1
+    sing_box_supports_tailscale "$version" "$version_output" && return 1
     return 0
 }
 
 sing_box_supports_tailscale() {
-    is_sing_box_extended && return 0
+    local version="${1:-}"
+    local version_output="${2:-}"
+
+    if command -v sing-box >/dev/null 2>&1 && is_sing_box_compressed_marker_set; then
+        return 0
+    fi
+
+    if [ -n "$version" ]; then
+        is_sing_box_extended "$version" && return 0
+    else
+        is_sing_box_extended && return 0
+    fi
+
+    if [ -n "$version_output" ]; then
+        sing_box_output_has_build_tag "$version_output" with_tailscale
+        return $?
+    fi
+
     sing_box_has_build_tag with_tailscale
 }
 
 get_sing_box_variant() {
+    local version
+
     if ! command -v sing-box >/dev/null 2>&1; then
         printf '%s\n' "not-installed"
         return 0
     fi
 
-    if is_sing_box_extended; then
+    if is_sing_box_compressed_marker_set; then
+        printf '%s\n' "extended-compressed"
+        return 0
+    fi
+
+    version="$(get_sing_box_version)"
+
+    if is_sing_box_extended "$version"; then
         if is_sing_box_compressed_marker_set; then
             printf '%s\n' "extended-compressed"
         else
@@ -341,7 +407,7 @@ get_sing_box_variant() {
         return 0
     fi
 
-    if is_sing_box_tiny; then
+    if is_sing_box_tiny "$version"; then
         printf '%s\n' "tiny"
         return 0
     fi

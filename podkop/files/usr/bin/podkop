@@ -148,20 +148,29 @@ podkop_fast_collect_ui_capabilities() {
     PODKOP_FAST_SERVER_INBOUNDS_ENABLED_COUNT=0
 
     if command -v sing-box >/dev/null 2>&1; then
-        sing_box_output="$(sing-box version 2>/dev/null || true)"
-        sing_box_version="$(printf '%s\n' "$sing_box_output" | sed -n '1{s/.*[[:space:]]//;p;q;}')"
-        case "$sing_box_version" in
-        *extended*)
+        if ui_runtime_sing_box_compressed_marker_set || ui_runtime_sing_box_marker_is extended; then
             PODKOP_FAST_SING_BOX_EXTENDED=1
             PODKOP_FAST_SING_BOX_TAILSCALE=1
-            ;;
-        *)
-            sing_box_tags="$(printf '%s\n' "$sing_box_output" | sed -n 's/^Tags:[[:space:]]*//p' | head -n 1)"
-            printf '%s\n' "$sing_box_tags" | grep -Eq '(^|[,:[:space:]])with_tailscale([,[:space:]]|$)' &&
+        elif ui_runtime_sing_box_tiny_package_installed || ui_runtime_sing_box_marker_is tiny; then
+            PODKOP_FAST_SING_BOX_TINY=1
+        elif ui_runtime_component_action_running_for sing_box; then
+            PODKOP_FAST_SING_BOX_TAILSCALE=1
+        else
+            sing_box_output="$(sing-box version 2>/dev/null || true)"
+            sing_box_version="$(printf '%s\n' "$sing_box_output" | sed -n '1{s/.*[[:space:]]//;p;q;}')"
+            case "$sing_box_version" in
+            *extended*)
+                PODKOP_FAST_SING_BOX_EXTENDED=1
                 PODKOP_FAST_SING_BOX_TAILSCALE=1
-            [ "$PODKOP_FAST_SING_BOX_TAILSCALE" -eq 0 ] && PODKOP_FAST_SING_BOX_TINY=1
-            ;;
-        esac
+                ;;
+            *)
+                sing_box_tags="$(printf '%s\n' "$sing_box_output" | sed -n 's/^Tags:[[:space:]]*//p' | head -n 1)"
+                printf '%s\n' "$sing_box_tags" | grep -Eq '(^|[,:[:space:]])with_tailscale([,[:space:]]|$)' &&
+                    PODKOP_FAST_SING_BOX_TAILSCALE=1
+                [ "$PODKOP_FAST_SING_BOX_TAILSCALE" -eq 0 ] && PODKOP_FAST_SING_BOX_TINY=1
+                ;;
+            esac
+        fi
     fi
 
     [ -x "$ZAPRET_PROVIDER_NFQWS_BIN" ] && PODKOP_FAST_ZAPRET_INSTALLED=1
