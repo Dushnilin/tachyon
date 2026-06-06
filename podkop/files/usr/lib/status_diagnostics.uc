@@ -998,10 +998,11 @@ function write_server_capabilities_json(sing_box_extended, sing_box_tiny, sing_b
     });
 }
 
-function write_ui_capabilities_json(sing_box_extended, sing_box_tiny, sing_box_tailscale, zapret_installed, zapret2_installed, byedpi_installed, server_inbounds_enabled_count) {
+function write_ui_capabilities_json(sing_box_extended, sing_box_tiny, sing_box_compressed, sing_box_tailscale, zapret_installed, zapret2_installed, byedpi_installed, server_inbounds_enabled_count) {
     write_json({
         sing_box_extended: arg_number(sing_box_extended),
         sing_box_tiny: arg_number(sing_box_tiny),
+        sing_box_compressed: arg_number(sing_box_compressed),
         sing_box_tailscale: arg_number(sing_box_tailscale),
         zapret_installed: arg_number(zapret_installed),
         zapret2_installed: arg_number(zapret2_installed),
@@ -1148,11 +1149,19 @@ function render_flag_line(value, key, ok_message, fail_message) {
     print_line((flag_is_one(value[key]) ? ok_message : fail_message));
 }
 
-function sing_box_variant_label(value) {
+function sing_box_core_label(value) {
     if (flag_is_one(value.sing_box_extended) && flag_is_one(value.sing_box_compressed))
         return "extended compressed";
     if (flag_is_one(value.sing_box_extended))
         return "extended";
+    if (flag_is_one(value.sing_box_tiny))
+        return "tiny";
+    return "";
+}
+
+function sing_box_version_note_label(value) {
+    if (flag_is_one(value.sing_box_extended) && flag_is_one(value.sing_box_compressed))
+        return "compressed";
     if (flag_is_one(value.sing_box_tiny))
         return "tiny";
     return "";
@@ -1171,7 +1180,7 @@ function format_sing_box_version(value, version) {
     if (!sing_box_version_is_known(version))
         return version;
 
-    let variant = sing_box_variant_label(value);
+    let variant = sing_box_version_note_label(value);
     return variant != "" ? version + " (" + variant + ")" : version;
 }
 
@@ -1203,7 +1212,7 @@ function render_global_system_info() {
     let openwrt_version = object_value(value, "openwrt_version") || "unknown";
     let device_model = object_value(value, "device_model") || "unknown";
 
-    let sing_box_core = sing_box_variant_label(value) || "regular";
+    let sing_box_core = sing_box_core_label(value) || "regular";
     print_line("Sing-box core: " + sing_box_core);
 
     print_line("\ud83d\udd73\ufe0f Podkop Plus:   " + podkop_version);
@@ -1709,7 +1718,7 @@ else if (mode == "inbounds-check-json")
 else if (mode == "server-capabilities-json")
     write_server_capabilities_json(ARGV[1], ARGV[2], ARGV[3]);
 else if (mode == "ui-capabilities-json")
-    write_ui_capabilities_json(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5], ARGV[6], ARGV[7]);
+    write_ui_capabilities_json(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5], ARGV[6], ARGV[7], ARGV[8]);
 else if (mode == "service-status-json")
     write_service_status_json(ARGV[1], ARGV[2], ARGV[3], ARGV[4]);
 else if (mode == "service-status-running")

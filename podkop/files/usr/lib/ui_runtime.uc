@@ -136,11 +136,12 @@ function ui_state_json() {
         capabilities: {
             sing_box_extended: arg_number(ARGV[8]),
             sing_box_tiny: arg_number(ARGV[9]),
-            sing_box_tailscale: arg_number(ARGV[10]),
-            zapret_installed: arg_number(ARGV[11]),
-            zapret2_installed: arg_number(ARGV[12]),
-            byedpi_installed: arg_number(ARGV[13]),
-            server_inbounds_enabled_count: arg_number(ARGV[14])
+            sing_box_compressed: arg_number(ARGV[10]),
+            sing_box_tailscale: arg_number(ARGV[11]),
+            zapret_installed: arg_number(ARGV[12]),
+            zapret2_installed: arg_number(ARGV[13]),
+            byedpi_installed: arg_number(ARGV[14]),
+            server_inbounds_enabled_count: arg_number(ARGV[15])
         },
         actions: action_state
     });

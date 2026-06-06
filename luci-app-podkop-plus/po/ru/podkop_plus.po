@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PODKOP PLUS\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-06-06 17:04+0300\n"
-"PO-Revision-Date: 2026-06-06 17:04+0300\n"
+"POT-Creation-Date: 2026-06-06 23:39+0300\n"
+"PO-Revision-Date: 2026-06-06 23:39+0300\n"
 "Last-Translator: ushan0v\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -236,6 +236,9 @@ msgstr "Закрыть подключение"
 msgid "Closed"
 msgstr "Закрытые"
 
+msgid "compressed"
+msgstr "compressed"
+
 msgid "Concurrency"
 msgstr "Параллелизм"
 
@@ -451,12 +454,6 @@ msgstr "Истекает"
 
 msgid "Expose this section as a local HTTP+SOCKS proxy"
 msgstr "Открыть эту секцию как локальный HTTP+SOCKS прокси"
-
-msgid "extended"
-msgstr "extended"
-
-msgid "extended compressed"
-msgstr "extended compressed"
 
 msgid "External nfqws config files bypass Podkop Plus queue management and explicit validation."
 msgstr "Внешние конфиги nfqws обходят управление очередями и явную валидацию Podkop Plus."
@@ -988,9 +985,6 @@ msgstr "Ожидает запуска"
 
 msgid "Podkop Plus Error"
 msgstr "Ошибка Podkop Plus"
-
-msgid "Podkop Plus has been installed"
-msgstr "Podkop Plus установлен"
 
 msgid "Podkop Plus manages ciadpi pid files itself, so pidfile options are not allowed here."
 msgstr "Podkop Plus сам управляет pid-файлами ciadpi, поэтому параметры pidfile здесь запрещены."

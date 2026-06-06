@@ -744,7 +744,7 @@ get_server_capabilities() {
 }
 
 get_ui_capabilities() {
-    local sing_box_version sing_box_version_output sing_box_extended=0 sing_box_tiny=0 sing_box_tailscale=0 zapret_installed=0 zapret2_installed=0 byedpi_installed=0 capability_flags
+    local sing_box_version sing_box_version_output sing_box_extended=0 sing_box_tiny=0 sing_box_compressed=0 sing_box_tailscale=0 zapret_installed=0 zapret2_installed=0 byedpi_installed=0 capability_flags
 
     if status_diagnostics_sing_box_live_probe_disabled; then
         sing_box_version="$(read_sing_box_version_state 2>/dev/null || true)"
@@ -758,6 +758,9 @@ get_ui_capabilities() {
     sing_box_extended="${1:-0}"
     sing_box_tiny="${2:-0}"
     sing_box_tailscale="${3:-0}"
+    if [ "$sing_box_extended" -eq 1 ] && is_sing_box_compressed_marker_set; then
+        sing_box_compressed=1
+    fi
     is_zapret_installed && zapret_installed=1
     is_zapret2_installed && zapret2_installed=1
     is_byedpi_installed && byedpi_installed=1
@@ -768,6 +771,7 @@ get_ui_capabilities() {
     status_diagnostics_ucode ui-capabilities-json \
         "$sing_box_extended" \
         "$sing_box_tiny" \
+        "$sing_box_compressed" \
         "$sing_box_tailscale" \
         "$zapret_installed" \
         "$zapret2_installed" \

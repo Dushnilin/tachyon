@@ -15,6 +15,10 @@ import {
   formatSingBoxVersion,
   normalizeSingBoxVariantFields,
 } from '../../helpers/singBoxVariant';
+import {
+  hasLocalMutatingServiceActionLoading,
+  isServiceTransitionStatus,
+} from '../diagnostic/serviceTransition';
 import { PodkopShellMethods } from '../../methods';
 import { logger, store, StoreType } from '../../services';
 import { ensureSystemInfo } from '../../services/systemInfo.service';
@@ -45,6 +49,8 @@ interface ComponentCard {
 let updatesLifecycleRegistered = false;
 let updatesControllerInitialized = false;
 let updatesMounted = false;
+let updatesInitialActionStateLoaded = false;
+let updatesMountGeneration = 0;
 let pageUnloading = false;
 let componentActionStateRefreshTimer: ReturnType<typeof setInterval> | null =
   null;
@@ -114,10 +120,23 @@ function isAnyActionLoading() {
   return Object.values(store.get().updatesActions).some((item) => item.loading);
 }
 
+function isServiceRuntimeActionLoading() {
+  const state = store.get();
+
+  return (
+    hasLocalMutatingServiceActionLoading(state.diagnosticsActions) ||
+    isServiceTransitionStatus(state.servicesInfoWidget.data.podkopStatus)
+  );
+}
+
 function isSystemInfoLoading() {
   const systemInfo = store.get().diagnosticsSystemInfo;
 
   return systemInfo.loading || !systemInfo.loaded;
+}
+
+function isInitialActionStateLoading() {
+  return updatesMounted && !updatesInitialActionStateLoaded;
 }
 
 function setActionLoading(action: UpdatesActionKey, loading: boolean) {
@@ -741,6 +760,8 @@ function renderComponentTag(card: ComponentCard) {
 function renderComponentCard(card: ComponentCard) {
   const updatesActions = store.get().updatesActions;
   const anyActionLoading = isAnyActionLoading();
+  const serviceRuntimeActionLoading = isServiceRuntimeActionLoading();
+  const initialActionStateLoading = isInitialActionStateLoading();
   const systemInfoLoading = isSystemInfoLoading();
   const tag = renderComponentTag(card);
   const headerChildren: Node[] = [
@@ -801,7 +822,11 @@ function renderComponentCard(card: ComponentCard) {
           text: action.text,
           icon: action.icon,
           loading,
-          disabled: systemInfoLoading || (anyActionLoading && !loading),
+          disabled:
+            initialActionStateLoading ||
+            systemInfoLoading ||
+            serviceRuntimeActionLoading ||
+            (anyActionLoading && !loading),
           onClick: () => void handleComponentAction(action),
         });
       }),
@@ -834,8 +859,26 @@ function onStoreUpdate(
   _prev: StoreType,
   diff: Partial<StoreType>,
 ) {
-  if (diff.diagnosticsSystemInfo || diff.updatesActions || diff.updatesChecks) {
+  if (
+    diff.diagnosticsSystemInfo ||
+    diff.updatesActions ||
+    diff.updatesChecks ||
+    diff.diagnosticsActions ||
+    diff.servicesInfoWidget
+  ) {
     renderUpdatesComponents();
+  }
+}
+
+async function loadInitialActionState(mountGeneration: number) {
+  try {
+    await refreshComponentActionState();
+  } finally {
+    if (updatesMounted && updatesMountGeneration === mountGeneration) {
+      updatesInitialActionStateLoaded = true;
+      renderUpdatesComponents();
+      startComponentActionStateRefresh();
+    }
   }
 }
 
@@ -843,18 +886,23 @@ function onPageMount() {
   onPageUnmount();
 
   updatesMounted = true;
+  updatesInitialActionStateLoaded = false;
+  updatesMountGeneration += 1;
+  const mountGeneration = updatesMountGeneration;
+
   if (!isAnyActionLoading()) {
     store.reset(['updatesChecks']);
   }
   store.subscribe(onStoreUpdate);
   renderUpdatesComponents();
   void ensureSystemInfo();
-  void refreshComponentActionState();
-  startComponentActionStateRefresh();
+  void loadInitialActionState(mountGeneration);
 }
 
 function onPageUnmount() {
   updatesMounted = false;
+  updatesInitialActionStateLoaded = false;
+  updatesMountGeneration += 1;
   stopComponentActionStateRefresh();
   store.unsubscribe(onStoreUpdate);
 }

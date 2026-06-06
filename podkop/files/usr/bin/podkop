@@ -141,6 +141,7 @@ podkop_fast_collect_ui_capabilities() {
 
     PODKOP_FAST_SING_BOX_EXTENDED=0
     PODKOP_FAST_SING_BOX_TINY=0
+    PODKOP_FAST_SING_BOX_COMPRESSED=0
     PODKOP_FAST_SING_BOX_TAILSCALE=0
     PODKOP_FAST_ZAPRET_INSTALLED=0
     PODKOP_FAST_ZAPRET2_INSTALLED=0
@@ -148,7 +149,11 @@ podkop_fast_collect_ui_capabilities() {
     PODKOP_FAST_SERVER_INBOUNDS_ENABLED_COUNT=0
 
     if command -v sing-box >/dev/null 2>&1; then
-        if ui_runtime_sing_box_compressed_marker_set || ui_runtime_sing_box_marker_is extended; then
+        if ui_runtime_sing_box_compressed_marker_set; then
+            PODKOP_FAST_SING_BOX_EXTENDED=1
+            PODKOP_FAST_SING_BOX_COMPRESSED=1
+            PODKOP_FAST_SING_BOX_TAILSCALE=1
+        elif ui_runtime_sing_box_marker_is extended; then
             PODKOP_FAST_SING_BOX_EXTENDED=1
             PODKOP_FAST_SING_BOX_TAILSCALE=1
         elif ui_runtime_sing_box_tiny_package_installed || ui_runtime_sing_box_marker_is tiny; then
@@ -187,6 +192,7 @@ podkop_fast_get_ui_capabilities() {
     podkop_fast_status_diagnostics_ucode ui-capabilities-json \
         "$PODKOP_FAST_SING_BOX_EXTENDED" \
         "$PODKOP_FAST_SING_BOX_TINY" \
+        "$PODKOP_FAST_SING_BOX_COMPRESSED" \
         "$PODKOP_FAST_SING_BOX_TAILSCALE" \
         "$PODKOP_FAST_ZAPRET_INSTALLED" \
         "$PODKOP_FAST_ZAPRET2_INSTALLED" \
@@ -230,6 +236,7 @@ podkop_fast_get_ui_state() {
         "$sing_box_status" \
         "$PODKOP_FAST_SING_BOX_EXTENDED" \
         "$PODKOP_FAST_SING_BOX_TINY" \
+        "$PODKOP_FAST_SING_BOX_COMPRESSED" \
         "$PODKOP_FAST_SING_BOX_TAILSCALE" \
         "$PODKOP_FAST_ZAPRET_INSTALLED" \
         "$PODKOP_FAST_ZAPRET2_INSTALLED" \
