@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   getServiceTransition,
+  hasComponentActionLoading,
   hasLocalMutatingServiceActionLoading,
   isServiceTransitionStatus,
+  shouldDisableAvailableAction,
+  shouldDisableDiagnosticRunAction,
   shouldSkipServicesInfoAutoRefresh,
   shouldShowRestartAction,
   shouldShowStartAction,
@@ -85,6 +88,46 @@ describe('diagnostic service transitions', () => {
         restartLoading: true,
       }),
     ).toBe(true);
+  });
+
+  it('allows diagnostics while the service is running even when autostart is disabled', () => {
+    expect(
+      shouldDisableDiagnosticRunAction({
+        providerInfoLoaded: true,
+        servicesInfoLoading: false,
+        podkopRunning: true,
+        mutatingServiceActionLoading: false,
+      }),
+    ).toBe(false);
+    expect(
+      shouldDisableDiagnosticRunAction({
+        providerInfoLoaded: true,
+        servicesInfoLoading: false,
+        podkopRunning: false,
+        mutatingServiceActionLoading: false,
+      }),
+    ).toBe(true);
+  });
+
+  it('blocks available actions while component actions are running', () => {
+    expect(
+      hasComponentActionLoading({
+        podkopCheck: { loading: false },
+        zapretInstall: { loading: true },
+      }),
+    ).toBe(true);
+    expect(
+      shouldDisableAvailableAction({
+        actionDisabled: false,
+        componentActionLoading: true,
+      }),
+    ).toBe(true);
+    expect(
+      shouldDisableAvailableAction({
+        actionDisabled: false,
+        componentActionLoading: false,
+      }),
+    ).toBe(false);
   });
 
   it('keeps the lower service action visible while restart is running', () => {

@@ -5,7 +5,6 @@ type LogFetcher = () => Promise<string> | string;
 interface PodkopLogWatcherOptions {
   intervalMs?: number;
   onNewLog?: (line: string) => void;
-  suppressInitialLogs?: boolean;
   maxTrackedLines?: number;
 }
 
@@ -14,9 +13,7 @@ export class PodkopLogWatcher {
   private fetcher?: LogFetcher;
   private onNewLog?: (line: string) => void;
   private intervalMs = 5000;
-  private lastLines: string[] = [];
-  private suppressInitialLogs = false;
-  private initialized = false;
+  private lastLines = new Set<string>();
   private maxTrackedLines = 500;
   private timer?: ReturnType<typeof setInterval>;
   private running = false;
@@ -43,10 +40,8 @@ export class PodkopLogWatcher {
     this.fetcher = fetcher;
     this.onNewLog = options?.onNewLog;
     this.intervalMs = options?.intervalMs ?? 5000;
-    this.suppressInitialLogs = options?.suppressInitialLogs ?? false;
     this.maxTrackedLines = options?.maxTrackedLines ?? 500;
-    this.lastLines = [];
-    this.initialized = false;
+    this.lastLines = new Set();
     logger.info(
       '[PodkopLogWatcher]',
       `initialized (interval: ${this.intervalMs}ms)`,
@@ -55,28 +50,6 @@ export class PodkopLogWatcher {
 
   private normalizeLines(raw: string): string[] {
     return raw.split('\n').filter(Boolean).slice(-this.maxTrackedLines);
-  }
-
-  private findOverlapLength(lines: string[]): number {
-    const maxOverlap = Math.min(this.lastLines.length, lines.length);
-
-    for (let length = maxOverlap; length > 0; length--) {
-      let matches = true;
-      const previousStart = this.lastLines.length - length;
-
-      for (let index = 0; index < length; index++) {
-        if (this.lastLines[previousStart + index] !== lines[index]) {
-          matches = false;
-          break;
-        }
-      }
-
-      if (matches) {
-        return length;
-      }
-    }
-
-    return 0;
   }
 
   async checkOnce(): Promise<void> {
@@ -104,31 +77,20 @@ export class PodkopLogWatcher {
       const raw = await this.fetcher();
       const lines = this.normalizeLines(raw);
 
-      if (!this.initialized) {
-        this.initialized = true;
-        this.lastLines = lines;
-
-        if (this.suppressInitialLogs) {
-          return;
+      for (const line of lines) {
+        if (this.lastLines.has(line)) {
+          continue;
         }
 
-        for (const line of lines) {
-          this.onNewLog?.(line);
-        }
-
-        return;
-      }
-
-      const overlapLength = this.findOverlapLength(lines);
-      const newLines = this.lastLines.length
-        ? lines.slice(overlapLength)
-        : lines;
-
-      for (const line of newLines) {
+        this.lastLines.add(line);
         this.onNewLog?.(line);
       }
 
-      this.lastLines = lines;
+      if (this.lastLines.size > this.maxTrackedLines) {
+        this.lastLines = new Set(
+          Array.from(this.lastLines).slice(-this.maxTrackedLines),
+        );
+      }
     } catch (err) {
       logger.error('[PodkopLogWatcher]', 'failed to read logs:', err);
     } finally {
@@ -173,8 +135,7 @@ export class PodkopLogWatcher {
   }
 
   reset(): void {
-    this.lastLines = [];
-    this.initialized = false;
+    this.lastLines = new Set();
     this.checking = false;
     logger.info('[PodkopLogWatcher]', 'log history reset');
   }

@@ -10,6 +10,8 @@ type DiagnosticServiceActions = {
   disable: LoadingActionState;
 };
 
+type ComponentActions = Record<string, LoadingActionState>;
+
 export function isServiceTransitionStatus(status: string) {
   return ['starting', 'stopping', 'restarting', 'reloading'].includes(status);
 }
@@ -42,6 +44,39 @@ export function shouldSkipServicesInfoAutoRefresh({
   localMutatingActionLoading: boolean;
 }) {
   return !force && localMutatingActionLoading;
+}
+
+export function shouldDisableDiagnosticRunAction({
+  providerInfoLoaded,
+  servicesInfoLoading,
+  podkopRunning,
+  mutatingServiceActionLoading,
+}: {
+  providerInfoLoaded: boolean;
+  servicesInfoLoading: boolean;
+  podkopRunning: boolean;
+  mutatingServiceActionLoading: boolean;
+}) {
+  return (
+    !providerInfoLoaded ||
+    servicesInfoLoading ||
+    !podkopRunning ||
+    mutatingServiceActionLoading
+  );
+}
+
+export function hasComponentActionLoading(actions: ComponentActions) {
+  return Object.values(actions).some((action) => action.loading);
+}
+
+export function shouldDisableAvailableAction({
+  actionDisabled,
+  componentActionLoading,
+}: {
+  actionDisabled: boolean;
+  componentActionLoading: boolean;
+}) {
+  return actionDisabled || componentActionLoading;
 }
 
 export function shouldShowRestartAction({

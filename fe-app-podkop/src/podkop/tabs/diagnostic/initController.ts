@@ -31,8 +31,11 @@ import { runSectionsCheck } from './checks/runSectionsCheck';
 import { Podkop } from '../../types';
 import {
   getServiceTransition,
+  hasComponentActionLoading,
   hasLocalMutatingServiceActionLoading,
   isServiceTransitionStatus,
+  shouldDisableAvailableAction,
+  shouldDisableDiagnosticRunAction,
   shouldSkipServicesInfoAutoRefresh,
   shouldShowRestartAction,
   shouldShowStartAction,
@@ -493,17 +496,16 @@ function renderDiagnosticRunActionWidget() {
     store.get().diagnosticsSystemInfo.providerInfoLoaded;
   const servicesInfoWidget = store.get().servicesInfoWidget;
   const podkopRunning = Boolean(servicesInfoWidget.data.podkopRunning);
-  const podkopEnabled = Boolean(servicesInfoWidget.data.podkopEnabled);
   const container = document.getElementById('pdk_diagnostic-page-run-check');
 
   const renderedAction = renderRunAction({
     loading,
-    disabled:
-      !providerInfoLoaded ||
-      servicesInfoWidget.loading ||
-      !podkopEnabled ||
-      !podkopRunning ||
-      isMutatingServiceActionLoading(),
+    disabled: shouldDisableDiagnosticRunAction({
+      providerInfoLoaded,
+      servicesInfoLoading: servicesInfoWidget.loading,
+      podkopRunning,
+      mutatingServiceActionLoading: isMutatingServiceActionLoading(),
+    }),
     click: () => runChecks(),
   });
 
@@ -725,6 +727,7 @@ function renderWikiDisclaimerWidget() {
 
 function renderDiagnosticAvailableActionsWidget() {
   const diagnosticsActions = store.get().diagnosticsActions;
+  const updatesActions = store.get().updatesActions;
   const servicesInfoWidget = store.get().servicesInfoWidget;
   logger.debug('[DIAGNOSTIC]', 'renderDiagnosticAvailableActionsWidget');
 
@@ -745,23 +748,32 @@ function renderDiagnosticAvailableActionsWidget() {
     stopLoading ||
     diagnosticsActions.enable.loading ||
     diagnosticsActions.disable.loading;
-  const serviceControlsDisabled =
-    servicesInfoWidget.loading || atLeastOneMutatingActionLoading;
-  const utilityActionsDisabled = atLeastOneMutatingActionLoading;
-  const startVisible =
-    shouldShowStartAction({
-      podkopRunning,
-      restartLoading,
-      startLoading,
-      stopLoading,
-    });
-  const stopVisible =
-    shouldShowStopAction({
-      podkopRunning,
-      restartLoading,
-      startLoading,
-      stopLoading,
-    });
+  const componentActionLoading = hasComponentActionLoading(updatesActions);
+  const serviceControlsDisabled = shouldDisableAvailableAction({
+    actionDisabled:
+      servicesInfoWidget.loading || atLeastOneMutatingActionLoading,
+    componentActionLoading,
+  });
+  const utilityActionsDisabled = shouldDisableAvailableAction({
+    actionDisabled: atLeastOneMutatingActionLoading,
+    componentActionLoading,
+  });
+  const viewLogsDisabled = shouldDisableAvailableAction({
+    actionDisabled: false,
+    componentActionLoading,
+  });
+  const startVisible = shouldShowStartAction({
+    podkopRunning,
+    restartLoading,
+    startLoading,
+    stopLoading,
+  });
+  const stopVisible = shouldShowStopAction({
+    podkopRunning,
+    restartLoading,
+    startLoading,
+    stopLoading,
+  });
 
   const container = document.getElementById('pdk_diagnostic-page-actions');
 
@@ -809,7 +821,7 @@ function renderDiagnosticAvailableActionsWidget() {
       loading: diagnosticsActions.viewLogs.loading,
       visible: true,
       onClick: handleViewLogs,
-      disabled: false,
+      disabled: viewLogsDisabled,
     },
     showSingBoxConfig: {
       loading: diagnosticsActions.showSingBoxConfig.loading,
@@ -900,8 +912,15 @@ async function onStoreUpdate(
     renderDiagnosticRunActionWidget();
   }
 
-  if (diff.diagnosticsActions || diff.servicesInfoWidget) {
+  if (
+    diff.diagnosticsActions ||
+    diff.servicesInfoWidget ||
+    diff.updatesActions
+  ) {
     renderDiagnosticAvailableActionsWidget();
+  }
+
+  if (diff.diagnosticsActions || diff.servicesInfoWidget) {
     renderDiagnosticRunActionWidget();
   }
 
@@ -942,8 +961,8 @@ async function runChecks() {
 
   store.set({
     diagnosticsRunAction: { loading: true },
-    diagnosticsChecks: getLoadingDiagnosticsChecks(providerOptions)
-      .diagnosticsChecks,
+    diagnosticsChecks:
+      getLoadingDiagnosticsChecks(providerOptions).diagnosticsChecks,
   });
 
   try {

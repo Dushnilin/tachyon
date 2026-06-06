@@ -3627,9 +3627,7 @@ var store = new StoreService(initialStore);
 var PodkopLogWatcher = class _PodkopLogWatcher {
   constructor() {
     this.intervalMs = 5e3;
-    this.lastLines = [];
-    this.suppressInitialLogs = false;
-    this.initialized = false;
+    this.lastLines = /* @__PURE__ */ new Set();
     this.maxTrackedLines = 500;
     this.running = false;
     this.paused = false;
@@ -3651,10 +3649,8 @@ var PodkopLogWatcher = class _PodkopLogWatcher {
     this.fetcher = fetcher;
     this.onNewLog = options?.onNewLog;
     this.intervalMs = options?.intervalMs ?? 5e3;
-    this.suppressInitialLogs = options?.suppressInitialLogs ?? false;
     this.maxTrackedLines = options?.maxTrackedLines ?? 500;
-    this.lastLines = [];
-    this.initialized = false;
+    this.lastLines = /* @__PURE__ */ new Set();
     logger.info(
       "[PodkopLogWatcher]",
       `initialized (interval: ${this.intervalMs}ms)`
@@ -3662,23 +3658,6 @@ var PodkopLogWatcher = class _PodkopLogWatcher {
   }
   normalizeLines(raw) {
     return raw.split("\n").filter(Boolean).slice(-this.maxTrackedLines);
-  }
-  findOverlapLength(lines) {
-    const maxOverlap = Math.min(this.lastLines.length, lines.length);
-    for (let length = maxOverlap; length > 0; length--) {
-      let matches = true;
-      const previousStart = this.lastLines.length - length;
-      for (let index = 0; index < length; index++) {
-        if (this.lastLines[previousStart + index] !== lines[index]) {
-          matches = false;
-          break;
-        }
-      }
-      if (matches) {
-        return length;
-      }
-    }
-    return 0;
   }
   async checkOnce() {
     if (!this.fetcher) {
@@ -3700,23 +3679,18 @@ var PodkopLogWatcher = class _PodkopLogWatcher {
     try {
       const raw = await this.fetcher();
       const lines = this.normalizeLines(raw);
-      if (!this.initialized) {
-        this.initialized = true;
-        this.lastLines = lines;
-        if (this.suppressInitialLogs) {
-          return;
+      for (const line of lines) {
+        if (this.lastLines.has(line)) {
+          continue;
         }
-        for (const line of lines) {
-          this.onNewLog?.(line);
-        }
-        return;
-      }
-      const overlapLength = this.findOverlapLength(lines);
-      const newLines = this.lastLines.length ? lines.slice(overlapLength) : lines;
-      for (const line of newLines) {
+        this.lastLines.add(line);
         this.onNewLog?.(line);
       }
-      this.lastLines = lines;
+      if (this.lastLines.size > this.maxTrackedLines) {
+        this.lastLines = new Set(
+          Array.from(this.lastLines).slice(-this.maxTrackedLines)
+        );
+      }
     } catch (err) {
       logger.error("[PodkopLogWatcher]", "failed to read logs:", err);
     } finally {
@@ -3755,73 +3729,84 @@ var PodkopLogWatcher = class _PodkopLogWatcher {
     this.checkOnce();
   }
   reset() {
-    this.lastLines = [];
-    this.initialized = false;
+    this.lastLines = /* @__PURE__ */ new Set();
     this.checking = false;
     logger.info("[PodkopLogWatcher]", "log history reset");
   }
 };
 
-// src/podkop/services/core.service.ts
-var LOG_NOTIFICATION_DEDUPE_WINDOW_MS = 15e3;
-var recentErrorNotifications = /* @__PURE__ */ new Map();
-var activeErrorNotifications = /* @__PURE__ */ new Map();
+// src/podkop/services/logNotificationDeduper.service.ts
+var LOG_NOTIFICATION_STORAGE_KEY = "podkop-plus:shown-log-error-notifications:v1";
+var MAX_STORED_LOG_NOTIFICATIONS = 500;
+function getSessionStorage() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  try {
+    return window.sessionStorage;
+  } catch {
+    return null;
+  }
+}
+function readStoredKeys(storage) {
+  if (!storage) {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(
+      storage.getItem(LOG_NOTIFICATION_STORAGE_KEY) || "[]"
+    );
+    return Array.isArray(parsed) ? parsed.filter((item) => typeof item === "string") : [];
+  } catch {
+    return [];
+  }
+}
+function writeStoredKeys(storage, keys) {
+  if (!storage) {
+    return;
+  }
+  try {
+    storage.setItem(
+      LOG_NOTIFICATION_STORAGE_KEY,
+      JSON.stringify(keys.slice(-MAX_STORED_LOG_NOTIFICATIONS))
+    );
+  } catch {
+  }
+}
 function isErrorLogLine(line) {
   const lower = line.toLowerCase();
   return lower.includes("[error]") || lower.includes("[fatal]");
 }
-function isLogLifecycleBoundary(line) {
-  const lower = line.toLowerCase();
-  return lower.includes("[info] starting podkop plus") || lower.includes("[info] stopping podkop plus") || lower.includes("[info] podkop plus reload") || lower.includes("[info] podkop plus restart");
+function getLogNotificationKey(line) {
+  return line.trim();
 }
-function getNotificationKey(line) {
-  const lower = line.toLowerCase();
-  const errorIndex = lower.indexOf("[error]");
-  const fatalIndex = lower.indexOf("[fatal]");
-  const markerIndex = errorIndex >= 0 && fatalIndex >= 0 ? Math.min(errorIndex, fatalIndex) : Math.max(errorIndex, fatalIndex);
-  return (markerIndex >= 0 ? line.slice(markerIndex) : line).trim();
-}
-function shouldNotifyAboutLogLine(line) {
-  const key = getNotificationKey(line);
-  const now = Date.now();
-  const lastShownAt = recentErrorNotifications.get(key) ?? 0;
-  recentErrorNotifications.forEach((shownAt, storedKey) => {
-    if (now - shownAt > LOG_NOTIFICATION_DEDUPE_WINDOW_MS) {
-      recentErrorNotifications.delete(storedKey);
+var LogNotificationDeduper = class {
+  constructor(storage = getSessionStorage()) {
+    this.storage = storage;
+    this.seenKeys = new Set(readStoredKeys(storage));
+  }
+  shouldNotify(line) {
+    if (!isErrorLogLine(line)) {
+      return false;
     }
-  });
-  if (now - lastShownAt < LOG_NOTIFICATION_DEDUPE_WINDOW_MS) {
-    return false;
+    const key = getLogNotificationKey(line);
+    if (!key || this.seenKeys.has(key)) {
+      return false;
+    }
+    this.seenKeys.add(key);
+    writeStoredKeys(this.storage, Array.from(this.seenKeys));
+    return true;
   }
-  recentErrorNotifications.set(key, now);
-  return true;
-}
-function removeNotification(notification) {
-  if (!notification.parentNode) {
-    return;
-  }
-  notification.classList.add("fade-out");
-  notification.classList.remove("fade-in");
-  setTimeout(() => notification.remove(), 500);
-}
-function clearLogErrorNotifications() {
-  activeErrorNotifications.forEach(removeNotification);
-  activeErrorNotifications.clear();
-  recentErrorNotifications.clear();
-}
+};
+
+// src/podkop/services/core.service.ts
 function showLogErrorNotification(line) {
-  const key = getNotificationKey(line);
-  const existingNotification = activeErrorNotifications.get(key);
-  if (existingNotification) {
-    removeNotification(existingNotification);
-  }
-  const notification = ui.addNotification(
+  ui.addNotification(
     _("Podkop Plus Error"),
     E("div", {}, line),
     "error",
     "pdk-log-error-notification"
   );
-  activeErrorNotifications.set(key, notification);
 }
 function coreService(options = {}) {
   TabServiceInstance.onChange((activeId, tabs) => {
@@ -3834,6 +3819,7 @@ function coreService(options = {}) {
     });
   });
   const watcher = PodkopLogWatcher.getInstance();
+  const logNotificationDeduper = new LogNotificationDeduper();
   watcher.init(
     async () => {
       const logs = await PodkopShellMethods.checkLogs();
@@ -3844,12 +3830,8 @@ function coreService(options = {}) {
     },
     {
       intervalMs: 3e3,
-      suppressInitialLogs: true,
       onNewLog: (line) => {
-        if (isLogLifecycleBoundary(line)) {
-          clearLogErrorNotifications();
-        }
-        if (isErrorLogLine(line) && shouldNotifyAboutLogLine(line)) {
+        if (logNotificationDeduper.shouldNotify(line)) {
           showLogErrorNotification(line);
         }
       }
@@ -3860,7 +3842,10 @@ function coreService(options = {}) {
     window.setTimeout(() => {
       if (options.waitForLogWatcherStart) {
         Promise.resolve().then(() => options.waitForLogWatcherStart?.()).catch(() => null).finally(
-          () => window.setTimeout(startWatcher, options.logWatcherStartDelayMs ?? 0)
+          () => window.setTimeout(
+            startWatcher,
+            options.logWatcherStartDelayMs ?? 0
+          )
         );
         return;
       }
@@ -7076,6 +7061,23 @@ function shouldSkipServicesInfoAutoRefresh({
 }) {
   return !force && localMutatingActionLoading;
 }
+function shouldDisableDiagnosticRunAction({
+  providerInfoLoaded,
+  servicesInfoLoading,
+  podkopRunning,
+  mutatingServiceActionLoading
+}) {
+  return !providerInfoLoaded || servicesInfoLoading || !podkopRunning || mutatingServiceActionLoading;
+}
+function hasComponentActionLoading(actions) {
+  return Object.values(actions).some((action) => action.loading);
+}
+function shouldDisableAvailableAction({
+  actionDisabled,
+  componentActionLoading
+}) {
+  return actionDisabled || componentActionLoading;
+}
 function shouldShowRestartAction({
   podkopRunning,
   restartLoading
@@ -7432,11 +7434,15 @@ function renderDiagnosticRunActionWidget() {
   const providerInfoLoaded = store.get().diagnosticsSystemInfo.providerInfoLoaded;
   const servicesInfoWidget = store.get().servicesInfoWidget;
   const podkopRunning = Boolean(servicesInfoWidget.data.podkopRunning);
-  const podkopEnabled = Boolean(servicesInfoWidget.data.podkopEnabled);
   const container = document.getElementById("pdk_diagnostic-page-run-check");
   const renderedAction = renderRunAction({
     loading: loading2,
-    disabled: !providerInfoLoaded || servicesInfoWidget.loading || !podkopEnabled || !podkopRunning || isMutatingServiceActionLoading(),
+    disabled: shouldDisableDiagnosticRunAction({
+      providerInfoLoaded,
+      servicesInfoLoading: servicesInfoWidget.loading,
+      podkopRunning,
+      mutatingServiceActionLoading: isMutatingServiceActionLoading()
+    }),
     click: () => runChecks()
   });
   return preserveScrollForPage(() => {
@@ -7618,6 +7624,7 @@ function renderWikiDisclaimerWidget() {
 }
 function renderDiagnosticAvailableActionsWidget() {
   const diagnosticsActions = store.get().diagnosticsActions;
+  const updatesActions = store.get().updatesActions;
   const servicesInfoWidget = store.get().servicesInfoWidget;
   logger.debug("[DIAGNOSTIC]", "renderDiagnosticAvailableActionsWidget");
   const podkopEnabled = Boolean(servicesInfoWidget.data.podkopEnabled);
@@ -7629,8 +7636,19 @@ function renderDiagnosticAvailableActionsWidget() {
   const startLoading = diagnosticsActions.start.loading || serviceTransition.starting;
   const stopLoading = diagnosticsActions.stop.loading || serviceTransition.stopping;
   const atLeastOneMutatingActionLoading = restartLoading || startLoading || stopLoading || diagnosticsActions.enable.loading || diagnosticsActions.disable.loading;
-  const serviceControlsDisabled = servicesInfoWidget.loading || atLeastOneMutatingActionLoading;
-  const utilityActionsDisabled = atLeastOneMutatingActionLoading;
+  const componentActionLoading = hasComponentActionLoading(updatesActions);
+  const serviceControlsDisabled = shouldDisableAvailableAction({
+    actionDisabled: servicesInfoWidget.loading || atLeastOneMutatingActionLoading,
+    componentActionLoading
+  });
+  const utilityActionsDisabled = shouldDisableAvailableAction({
+    actionDisabled: atLeastOneMutatingActionLoading,
+    componentActionLoading
+  });
+  const viewLogsDisabled = shouldDisableAvailableAction({
+    actionDisabled: false,
+    componentActionLoading
+  });
   const startVisible = shouldShowStartAction({
     podkopRunning,
     restartLoading,
@@ -7688,7 +7706,7 @@ function renderDiagnosticAvailableActionsWidget() {
       loading: diagnosticsActions.viewLogs.loading,
       visible: true,
       onClick: handleViewLogs,
-      disabled: false
+      disabled: viewLogsDisabled
     },
     showSingBoxConfig: {
       loading: diagnosticsActions.showSingBoxConfig.loading,
@@ -7762,8 +7780,10 @@ async function onStoreUpdate2(_next, _prev, diff) {
   if (diff.diagnosticsRunAction) {
     renderDiagnosticRunActionWidget();
   }
-  if (diff.diagnosticsActions || diff.servicesInfoWidget) {
+  if (diff.diagnosticsActions || diff.servicesInfoWidget || diff.updatesActions) {
     renderDiagnosticAvailableActionsWidget();
+  }
+  if (diff.diagnosticsActions || diff.servicesInfoWidget) {
     renderDiagnosticRunActionWidget();
   }
   if (diff.diagnosticsSystemInfo) {
@@ -9924,7 +9944,11 @@ var updatesLifecycleRegistered = false;
 var updatesControllerInitialized = false;
 var updatesMounted = false;
 var pageUnloading2 = false;
+var componentActionStateRefreshTimer = null;
+var componentActionStateRefreshPromise = null;
 var followedComponentJobs = /* @__PURE__ */ new Set();
+var handledComponentJobs = /* @__PURE__ */ new Set();
+var COMPONENT_ACTION_STATE_REFRESH_INTERVAL_MS = 1500;
 if (typeof window !== "undefined") {
   window.addEventListener("pagehide", () => {
     pageUnloading2 = true;
@@ -9998,6 +10022,19 @@ function setCheckResult(component, status, latestVersion, releaseUrl = "") {
 }
 function resetCheckResult(component) {
   setCheckResult(component, null, "");
+}
+function getErrorMessage(error, fallback) {
+  return error instanceof Error && error.message ? error.message : fallback;
+}
+async function ackComponentActionJob(jobId) {
+  try {
+    const response = await PodkopShellMethods.uiActionAck("component", jobId);
+    if (!response.success) {
+      logger.debug("[UPDATES]", "component action ack failed", response.error);
+    }
+  } catch (error) {
+    logger.debug("[UPDATES]", "component action ack failed", error);
+  }
 }
 function getExpectedLatestVersionForAction(button) {
   if (button.component !== "podkop" || button.action !== "install") {
@@ -10146,15 +10183,23 @@ async function completeComponentActionJob(key, jobId, response) {
   if (pageUnloading2) {
     return;
   }
+  const alreadyHandled = handledComponentJobs.has(jobId);
+  if (alreadyHandled) {
+    await ackComponentActionJob(jobId);
+    setActionLoading(key, false);
+    return;
+  }
+  handledComponentJobs.add(jobId);
   if (!response.success || response.data.success === false) {
     setActionLoading(key, false);
     showToast(
       response.success ? response.data.message || _("Failed to execute") : response.error || _("Failed to execute"),
       "error"
     );
+    await ackComponentActionJob(jobId);
     return;
   }
-  await PodkopShellMethods.uiActionAck("component", jobId);
+  await ackComponentActionJob(jobId);
   await applyCompletedComponentAction(key, response.data);
 }
 async function followComponentActionState(state) {
@@ -10180,23 +10225,49 @@ async function followComponentActionState(state) {
     logger.error("[UPDATES]", "followComponentActionState failed", error);
     if (!pageUnloading2) {
       setActionLoading(key, false);
-      showToast(_("Failed to execute"), "error");
+      showToast(getErrorMessage(error, _("Failed to execute")), "error");
     }
   } finally {
     followedComponentJobs.delete(jobId);
   }
 }
-async function restoreComponentActionState() {
-  const response = await PodkopShellMethods.getUiState();
-  if (!response.success) {
+async function refreshComponentActionState() {
+  if (componentActionStateRefreshPromise) {
+    return componentActionStateRefreshPromise;
+  }
+  componentActionStateRefreshPromise = (async () => {
+    if (!updatesMounted) {
+      return;
+    }
+    const response = await PodkopShellMethods.getUiState();
+    if (!response.success) {
+      return;
+    }
+    applyUiStateToStore(response.data);
+    for (const state of response.data.actions.component || []) {
+      if (state.running === false || state.running) {
+        void followComponentActionState(state);
+      }
+    }
+  })().finally(() => {
+    componentActionStateRefreshPromise = null;
+  });
+  return componentActionStateRefreshPromise;
+}
+function startComponentActionStateRefresh() {
+  if (componentActionStateRefreshTimer) {
     return;
   }
-  applyUiStateToStore(response.data);
-  for (const state of response.data.actions.component || []) {
-    if (state.running === false || state.running) {
-      void followComponentActionState(state);
-    }
+  componentActionStateRefreshTimer = setInterval(() => {
+    void refreshComponentActionState();
+  }, COMPONENT_ACTION_STATE_REFRESH_INTERVAL_MS);
+}
+function stopComponentActionStateRefresh() {
+  if (!componentActionStateRefreshTimer) {
+    return;
   }
+  clearInterval(componentActionStateRefreshTimer);
+  componentActionStateRefreshTimer = null;
 }
 async function handleComponentAction(button) {
   if (isAnyActionLoading()) {
@@ -10224,7 +10295,8 @@ async function handleComponentAction(button) {
     logger.error("[UPDATES]", "handleComponentAction failed", error);
     if (!pageUnloading2) {
       setActionLoading(button.key, false);
-      showToast(_("Failed to execute"), "error");
+      showToast(getErrorMessage(error, _("Failed to execute")), "error");
+      void refreshComponentActionState();
     }
   }
 }
@@ -10500,10 +10572,12 @@ function onPageMount4() {
   store.subscribe(onStoreUpdate3);
   renderUpdatesComponents();
   void ensureSystemInfo();
-  void restoreComponentActionState();
+  void refreshComponentActionState();
+  startComponentActionStateRefresh();
 }
 function onPageUnmount4() {
   updatesMounted = false;
+  stopComponentActionStateRefresh();
   store.unsubscribe(onStoreUpdate3);
 }
 function registerLifecycleListeners4() {

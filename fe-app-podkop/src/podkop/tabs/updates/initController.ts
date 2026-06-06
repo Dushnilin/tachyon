@@ -46,7 +46,12 @@ let updatesLifecycleRegistered = false;
 let updatesControllerInitialized = false;
 let updatesMounted = false;
 let pageUnloading = false;
+let componentActionStateRefreshTimer: ReturnType<typeof setInterval> | null =
+  null;
+let componentActionStateRefreshPromise: Promise<void> | null = null;
 const followedComponentJobs = new Set<string>();
+const handledComponentJobs = new Set<string>();
+const COMPONENT_ACTION_STATE_REFRESH_INTERVAL_MS = 1500;
 
 if (typeof window !== 'undefined') {
   window.addEventListener('pagehide', () => {
@@ -148,6 +153,22 @@ function setCheckResult(
 
 function resetCheckResult(component: Podkop.ComponentName) {
   setCheckResult(component, null, '');
+}
+
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error && error.message ? error.message : fallback;
+}
+
+async function ackComponentActionJob(jobId: string) {
+  try {
+    const response = await PodkopShellMethods.uiActionAck('component', jobId);
+
+    if (!response.success) {
+      logger.debug('[UPDATES]', 'component action ack failed', response.error);
+    }
+  } catch (error) {
+    logger.debug('[UPDATES]', 'component action ack failed', error);
+  }
 }
 
 function getExpectedLatestVersionForAction(button: ComponentActionButton) {
@@ -348,6 +369,16 @@ async function completeComponentActionJob(
     return;
   }
 
+  const alreadyHandled = handledComponentJobs.has(jobId);
+
+  if (alreadyHandled) {
+    await ackComponentActionJob(jobId);
+    setActionLoading(key, false);
+    return;
+  }
+
+  handledComponentJobs.add(jobId);
+
   if (!response.success || response.data.success === false) {
     setActionLoading(key, false);
     showToast(
@@ -356,10 +387,11 @@ async function completeComponentActionJob(
         : response.error || _('Failed to execute'),
       'error',
     );
+    await ackComponentActionJob(jobId);
     return;
   }
 
-  await PodkopShellMethods.uiActionAck('component', jobId);
+  await ackComponentActionJob(jobId);
   await applyCompletedComponentAction(key, response.data);
 }
 
@@ -392,27 +424,60 @@ async function followComponentActionState(state: Podkop.ComponentActionResult) {
     logger.error('[UPDATES]', 'followComponentActionState failed', error);
     if (!pageUnloading) {
       setActionLoading(key, false);
-      showToast(_('Failed to execute'), 'error');
+      showToast(getErrorMessage(error, _('Failed to execute')), 'error');
     }
   } finally {
     followedComponentJobs.delete(jobId);
   }
 }
 
-async function restoreComponentActionState() {
-  const response = await PodkopShellMethods.getUiState();
+async function refreshComponentActionState() {
+  if (componentActionStateRefreshPromise) {
+    return componentActionStateRefreshPromise;
+  }
 
-  if (!response.success) {
+  componentActionStateRefreshPromise = (async () => {
+    if (!updatesMounted) {
+      return;
+    }
+
+    const response = await PodkopShellMethods.getUiState();
+
+    if (!response.success) {
+      return;
+    }
+
+    applyUiStateToStore(response.data);
+
+    for (const state of response.data.actions.component || []) {
+      if (state.running === false || state.running) {
+        void followComponentActionState(state);
+      }
+    }
+  })().finally(() => {
+    componentActionStateRefreshPromise = null;
+  });
+
+  return componentActionStateRefreshPromise;
+}
+
+function startComponentActionStateRefresh() {
+  if (componentActionStateRefreshTimer) {
     return;
   }
 
-  applyUiStateToStore(response.data);
+  componentActionStateRefreshTimer = setInterval(() => {
+    void refreshComponentActionState();
+  }, COMPONENT_ACTION_STATE_REFRESH_INTERVAL_MS);
+}
 
-  for (const state of response.data.actions.component || []) {
-    if (state.running === false || state.running) {
-      void followComponentActionState(state);
-    }
+function stopComponentActionStateRefresh() {
+  if (!componentActionStateRefreshTimer) {
+    return;
   }
+
+  clearInterval(componentActionStateRefreshTimer);
+  componentActionStateRefreshTimer = null;
 }
 
 async function handleComponentAction(button: ComponentActionButton) {
@@ -446,7 +511,8 @@ async function handleComponentAction(button: ComponentActionButton) {
     logger.error('[UPDATES]', 'handleComponentAction failed', error);
     if (!pageUnloading) {
       setActionLoading(button.key, false);
-      showToast(_('Failed to execute'), 'error');
+      showToast(getErrorMessage(error, _('Failed to execute')), 'error');
+      void refreshComponentActionState();
     }
   }
 }
@@ -489,8 +555,7 @@ function getComponentCards(): ComponentCard[] {
     !systemInfo.sing_box_extended &&
     !systemInfo.sing_box_tiny;
   const singBoxExtended =
-    Boolean(systemInfo.sing_box_extended) &&
-    !systemInfo.sing_box_compressed;
+    Boolean(systemInfo.sing_box_extended) && !systemInfo.sing_box_compressed;
   const singBoxExtendedCompressed =
     Boolean(systemInfo.sing_box_extended) &&
     Boolean(systemInfo.sing_box_compressed);
@@ -784,11 +849,13 @@ function onPageMount() {
   store.subscribe(onStoreUpdate);
   renderUpdatesComponents();
   void ensureSystemInfo();
-  void restoreComponentActionState();
+  void refreshComponentActionState();
+  startComponentActionStateRefresh();
 }
 
 function onPageUnmount() {
   updatesMounted = false;
+  stopComponentActionStateRefresh();
   store.unsubscribe(onStoreUpdate);
 }
 
