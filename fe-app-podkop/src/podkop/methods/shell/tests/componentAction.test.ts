@@ -86,4 +86,22 @@ describe('PodkopShellMethods.componentAction', () => {
       },
     });
   });
+
+  it('returns the backend component action start error message', async () => {
+    mocks.executeShellCommand.mockResolvedValue({
+      stdout: JSON.stringify({
+        success: false,
+        message: 'Another component action is already running',
+      }),
+      stderr: '',
+      code: 1,
+    });
+
+    await expect(
+      PodkopShellMethods.componentActionStart('zapret', 'install'),
+    ).resolves.toEqual({
+      success: false,
+      error: 'Another component action is already running',
+    });
+  });
 });
