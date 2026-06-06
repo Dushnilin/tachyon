@@ -104,4 +104,108 @@ describe('PodkopShellMethods.componentAction', () => {
       error: 'Another component action is already running',
     });
   });
+
+  it('keeps waiting when status polling briefly fails but UI state still reports the job running', async () => {
+    mocks.fsRead
+      .mockRejectedValueOnce(new Error('State is temporarily unavailable'))
+      .mockResolvedValueOnce(
+        JSON.stringify({
+          success: true,
+          running: false,
+          component: 'sing_box',
+          action: 'install_extended',
+          message: 'sing-box-extended has been installed',
+          current_version: '1.13.12-extended-2.3.2',
+          latest_version: '1.13.12-extended-2.3.2',
+          changed: true,
+          status: 'latest',
+        }),
+      );
+
+    mocks.executeShellCommand.mockImplementation(({ args }) => {
+      if (args[0] === 'component_action_status') {
+        return Promise.resolve({
+          stdout: '',
+          stderr: 'Component action job was not found',
+          code: 1,
+        });
+      }
+
+      if (args[0] === 'get_ui_state') {
+        return Promise.resolve({
+          stdout: JSON.stringify({
+            service: {
+              podkop: {
+                running: 0,
+                enabled: 1,
+                status: 'stopped but enabled',
+                dns_configured: 0,
+              },
+              sing_box: {
+                running: 0,
+                enabled: 1,
+                status: 'stopped but enabled',
+              },
+            },
+            capabilities: {
+              sing_box_extended: 0,
+              sing_box_tiny: 1,
+              sing_box_compressed: 0,
+              sing_box_tailscale: 0,
+              zapret_installed: 1,
+              zapret2_installed: 1,
+              byedpi_installed: 0,
+              server_inbounds_enabled_count: 0,
+            },
+            actions: {
+              service: [],
+              latency: [],
+              component: [
+                {
+                  success: true,
+                  running: true,
+                  component: 'sing_box',
+                  action: 'install_extended',
+                  message: 'Component action is running',
+                  job_id: 'job-1',
+                },
+              ],
+              subscription: [],
+            },
+          }),
+          stderr: '',
+          code: 0,
+        });
+      }
+
+      return Promise.resolve({
+        stdout: '',
+        stderr: 'Unexpected command',
+        code: 1,
+      });
+    });
+
+    const responsePromise = PodkopShellMethods.waitComponentActionJob(
+      'job-1',
+      'sing_box',
+      'install_extended',
+    );
+
+    await vi.advanceTimersByTimeAsync(3000);
+
+    await expect(responsePromise).resolves.toEqual({
+      success: true,
+      data: {
+        success: true,
+        running: false,
+        component: 'sing_box',
+        action: 'install_extended',
+        message: 'sing-box-extended has been installed',
+        current_version: '1.13.12-extended-2.3.2',
+        latest_version: '1.13.12-extended-2.3.2',
+        changed: true,
+        status: 'latest',
+      },
+    });
+  });
 });

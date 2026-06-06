@@ -134,6 +134,27 @@ async function readPodkopVersion() {
   return response.stdout.trim();
 }
 
+async function isComponentActionStillRunning(
+  jobId: string,
+  component: Podkop.ComponentName,
+  action: Podkop.ComponentAction,
+) {
+  const response = await callBaseMethod<Podkop.UiState>(
+    Podkop.AvailableMethods.GET_UI_STATE,
+  );
+
+  return (
+    response.success &&
+    response.data.actions.component.some(
+      (state) =>
+        state.job_id === jobId &&
+        state.component === component &&
+        state.action === action &&
+        state.running === true,
+    )
+  );
+}
+
 function componentActionFailure(
   response: Awaited<ReturnType<typeof executeShellCommand>>,
   parsedResponse?: Pick<Podkop.ComponentActionResult, 'message'> | null,
@@ -595,6 +616,10 @@ export const PodkopShellMethods = {
       const parsedResponse = parseComponentActionResult(statusResponse);
 
       if ((statusResponse.code ?? 0) !== 0 || !parsedResponse) {
+        if (await isComponentActionStillRunning(jobId, component, action)) {
+          continue;
+        }
+
         if (component === 'podkop' && action === 'install') {
           const installedVersion = expectedLatestVersion
             ? await readPodkopVersion()
