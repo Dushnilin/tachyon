@@ -555,9 +555,65 @@ write_system_info_cache() {
     cat > "$tmpfile" && mv "$tmpfile" "$PODKOP_SYSTEM_INFO_CACHE_FILE"
 }
 
+status_diagnostics_sing_box_marker_is() {
+    local expected="$1"
+    local marker="${SB_VARIANT_STATE_FILE:-/etc/podkop-plus/sing-box-variant}"
+
+    [ -r "$marker" ] || return 1
+    [ "$(sed -n '1p' "$marker" 2>/dev/null)" = "$expected" ]
+}
+
+status_diagnostics_sing_box_tiny_package_installed() {
+    if command -v apk >/dev/null 2>&1; then
+        apk info -e sing-box-tiny >/dev/null 2>&1
+        return $?
+    fi
+
+    opkg_package_is_installed sing-box-tiny
+}
+
+status_diagnostics_sing_box_component_action_running() {
+    command -v ui_runtime_component_action_running_for >/dev/null 2>&1 || return 1
+    ui_runtime_component_action_running_for sing_box
+}
+
+status_diagnostics_sing_box_live_probe_disabled() {
+    is_sing_box_compressed_marker_set && return 0
+    status_diagnostics_sing_box_component_action_running
+}
+
+status_diagnostics_sing_box_capability_flags() {
+    local sing_box_version="$1"
+    local sing_box_version_output="$2"
+    local extended=0 tiny=0 tailscale=0
+
+    if status_diagnostics_sing_box_marker_is extended ||
+        status_diagnostics_sing_box_marker_is extended-compressed ||
+        is_sing_box_extended "$sing_box_version"; then
+        extended=1
+    fi
+
+    if [ "$extended" -eq 0 ]; then
+        if status_diagnostics_sing_box_tiny_package_installed ||
+            status_diagnostics_sing_box_marker_is tiny; then
+            tiny=1
+        fi
+    fi
+
+    if [ "$extended" -eq 1 ]; then
+        tailscale=1
+    elif [ -n "$sing_box_version_output" ]; then
+        sing_box_supports_tailscale "$sing_box_version" "$sing_box_version_output" && tailscale=1
+    elif [ "$tiny" -eq 0 ] && status_diagnostics_sing_box_component_action_running; then
+        tailscale=1
+    fi
+
+    printf '%s %s %s\n' "$extended" "$tiny" "$tailscale"
+}
+
 build_system_info() {
-    local podkop_version podkop_latest_version luci_app_version sing_box_version sing_box_extended sing_box_tiny sing_box_compressed sing_box_tailscale zapret_version zapret_installed zapret2_version zapret2_installed byedpi_version byedpi_installed openwrt_version device_model
-    local generated_at
+    local podkop_version podkop_latest_version luci_app_version sing_box_version sing_box_version_output sing_box_extended sing_box_tiny sing_box_compressed sing_box_tailscale zapret_version zapret_installed zapret2_version zapret2_installed byedpi_version byedpi_installed openwrt_version device_model
+    local generated_at capability_flags
 
     podkop_version="$PODKOP_VERSION"
 
@@ -567,21 +623,27 @@ build_system_info() {
     luci_app_version="$(get_luci_app_version)"
 
     if command -v sing-box > /dev/null 2>&1; then
-        sing_box_version="$(get_sing_box_version)"
+        if status_diagnostics_sing_box_live_probe_disabled; then
+            sing_box_version="$(read_sing_box_version_state 2>/dev/null || true)"
+            sing_box_version_output=""
+        else
+            sing_box_version_output="$(sing_box_version_output)"
+            sing_box_version="$(printf '%s\n' "$sing_box_version_output" | sing_box_version_from_output)"
+        fi
         [ -z "$sing_box_version" ] && sing_box_version="unknown"
     else
         sing_box_version="not installed"
+        sing_box_version_output=""
     fi
-    sing_box_extended=0
-    is_sing_box_extended "$sing_box_version" && sing_box_extended=1
-    sing_box_tiny=0
-    is_sing_box_tiny && sing_box_tiny=1
+    capability_flags="$(status_diagnostics_sing_box_capability_flags "$sing_box_version" "$sing_box_version_output")"
+    set -- $capability_flags
+    sing_box_extended="${1:-0}"
+    sing_box_tiny="${2:-0}"
+    sing_box_tailscale="${3:-0}"
     sing_box_compressed=0
     if [ "$sing_box_extended" -eq 1 ] && is_sing_box_compressed_marker_set; then
         sing_box_compressed=1
     fi
-    sing_box_tailscale=0
-    sing_box_supports_tailscale && sing_box_tailscale=1
 
     zapret_installed=0
     if is_zapret_installed; then
@@ -663,23 +725,39 @@ get_system_info() {
 }
 
 get_server_capabilities() {
-    local sing_box_version sing_box_extended=0 sing_box_tiny=0 sing_box_tailscale=0
+    local sing_box_version sing_box_version_output sing_box_extended=0 sing_box_tiny=0 sing_box_tailscale=0 capability_flags
 
-    sing_box_version="$(get_sing_box_version)"
-    is_sing_box_extended "$sing_box_version" && sing_box_extended=1
-    is_sing_box_tiny && sing_box_tiny=1
-    sing_box_supports_tailscale && sing_box_tailscale=1
+    if status_diagnostics_sing_box_live_probe_disabled; then
+        sing_box_version="$(read_sing_box_version_state 2>/dev/null || true)"
+        sing_box_version_output=""
+    else
+        sing_box_version_output="$(sing_box_version_output)"
+        sing_box_version="$(printf '%s\n' "$sing_box_version_output" | sing_box_version_from_output)"
+    fi
+    capability_flags="$(status_diagnostics_sing_box_capability_flags "$sing_box_version" "$sing_box_version_output")"
+    set -- $capability_flags
+    sing_box_extended="${1:-0}"
+    sing_box_tiny="${2:-0}"
+    sing_box_tailscale="${3:-0}"
 
     status_diagnostics_ucode server-capabilities-json "$sing_box_extended" "$sing_box_tiny" "$sing_box_tailscale"
 }
 
 get_ui_capabilities() {
-    local sing_box_version sing_box_extended=0 sing_box_tiny=0 sing_box_tailscale=0 zapret_installed=0 zapret2_installed=0 byedpi_installed=0
+    local sing_box_version sing_box_version_output sing_box_extended=0 sing_box_tiny=0 sing_box_tailscale=0 zapret_installed=0 zapret2_installed=0 byedpi_installed=0 capability_flags
 
-    sing_box_version="$(get_sing_box_version)"
-    is_sing_box_extended "$sing_box_version" && sing_box_extended=1
-    is_sing_box_tiny && sing_box_tiny=1
-    sing_box_supports_tailscale && sing_box_tailscale=1
+    if status_diagnostics_sing_box_live_probe_disabled; then
+        sing_box_version="$(read_sing_box_version_state 2>/dev/null || true)"
+        sing_box_version_output=""
+    else
+        sing_box_version_output="$(sing_box_version_output)"
+        sing_box_version="$(printf '%s\n' "$sing_box_version_output" | sing_box_version_from_output)"
+    fi
+    capability_flags="$(status_diagnostics_sing_box_capability_flags "$sing_box_version" "$sing_box_version_output")"
+    set -- $capability_flags
+    sing_box_extended="${1:-0}"
+    sing_box_tiny="${2:-0}"
+    sing_box_tailscale="${3:-0}"
     is_zapret_installed && zapret_installed=1
     is_zapret2_installed && zapret2_installed=1
     is_byedpi_installed && byedpi_installed=1
@@ -1196,11 +1274,15 @@ check_sing_box() {
         version="$(get_sing_box_version)"
         if [ -n "$version" ]; then
             version="$(status_diagnostics_ucode strip-leading-v "$version")"
-            is_sing_box_extended "$version" && sing_box_extended=1
+            if is_sing_box_compressed_marker_set || is_sing_box_extended "$version"; then
+                sing_box_extended=1
+            fi
 
             if is_min_package_version "$version" "1.12.4"; then
                 sing_box_version_ok=1
             fi
+        elif is_sing_box_compressed_marker_set; then
+            sing_box_extended=1
         fi
     fi
 

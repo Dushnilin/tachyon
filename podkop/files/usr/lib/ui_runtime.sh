@@ -4,6 +4,8 @@ PODKOP_UI_STATE_DIR="${PODKOP_UI_STATE_DIR:-/var/run/podkop-plus/ui-state}"
 PODKOP_UI_SERVICE_ACTION_DIR="${PODKOP_UI_SERVICE_ACTION_DIR:-$PODKOP_UI_STATE_DIR/service-actions}"
 PODKOP_UI_LATENCY_ACTION_DIR="${PODKOP_UI_LATENCY_ACTION_DIR:-$PODKOP_UI_STATE_DIR/latency-actions}"
 PODKOP_UI_SING_BOX_VERSION_CACHE_FILE="${PODKOP_UI_SING_BOX_VERSION_CACHE_FILE:-$PODKOP_UI_STATE_DIR/sing-box-version}"
+PODKOP_UI_SING_BOX_VERSION_STATE_FILE="${PODKOP_UI_SING_BOX_VERSION_STATE_FILE:-/etc/podkop-plus/sing-box-version}"
+PODKOP_UI_SING_BOX_VARIANT_STATE_FILE="${PODKOP_UI_SING_BOX_VARIANT_STATE_FILE:-/etc/podkop-plus/sing-box-variant}"
 PODKOP_UI_ACTION_FINISHED_TTL_MINUTES="${PODKOP_UI_ACTION_FINISHED_TTL_MINUTES:-60}"
 PODKOP_UI_ACTION_STALE_GRACE_SECONDS="${PODKOP_UI_ACTION_STALE_GRACE_SECONDS:-5}"
 PODKOP_UI_SERVICE_ACTION_TIMEOUT_SECONDS="${PODKOP_UI_SERVICE_ACTION_TIMEOUT_SECONDS:-120}"
@@ -302,10 +304,55 @@ ui_runtime_sing_box_signature() {
     printf '%s:%s:%s:%s\n' "${5:-}" "${6:-}" "${7:-}" "${8:-}"
 }
 
+ui_runtime_sing_box_compressed_marker_set() {
+    [ -r "$PODKOP_UI_SING_BOX_VARIANT_STATE_FILE" ] || return 1
+    [ "$(sed -n '1p' "$PODKOP_UI_SING_BOX_VARIANT_STATE_FILE" 2>/dev/null)" = "extended-compressed" ]
+}
+
+ui_runtime_sing_box_marker_is() {
+    local expected="$1"
+
+    [ -r "$PODKOP_UI_SING_BOX_VARIANT_STATE_FILE" ] || return 1
+    [ "$(sed -n '1p' "$PODKOP_UI_SING_BOX_VARIANT_STATE_FILE" 2>/dev/null)" = "$expected" ]
+}
+
+ui_runtime_sing_box_tiny_package_installed() {
+    if command -v apk >/dev/null 2>&1; then
+        apk info -e sing-box-tiny >/dev/null 2>&1
+        return $?
+    fi
+
+    opkg list-installed sing-box-tiny >/dev/null 2>&1
+}
+
+ui_runtime_component_action_running_for() {
+    local component="$1"
+    local state_file
+
+    [ -d "$PODKOP_UI_COMPONENT_ACTION_DIR" ] || return 1
+    for state_file in "$PODKOP_UI_COMPONENT_ACTION_DIR"/*.json; do
+        [ -f "$state_file" ] || continue
+        [ "$(ui_runtime_json_field "$state_file" running false)" = "true" ] || continue
+        [ "$(ui_runtime_json_field "$state_file" component "")" = "$component" ] && return 0
+    done
+
+    return 1
+}
+
+ui_runtime_sing_box_version_state() {
+    [ -r "$PODKOP_UI_SING_BOX_VERSION_STATE_FILE" ] || return 1
+    sed -n '1p' "$PODKOP_UI_SING_BOX_VERSION_STATE_FILE" 2>/dev/null
+}
+
 ui_runtime_sing_box_version() {
     local signature cache_signature cache_version version_line version
 
     command -v sing-box >/dev/null 2>&1 || return 1
+
+    if ui_runtime_sing_box_compressed_marker_set; then
+        ui_runtime_sing_box_version_state
+        return $?
+    fi
 
     signature="$(ui_runtime_sing_box_signature 2>/dev/null || true)"
     if [ -n "$signature" ] && [ -r "$PODKOP_UI_SING_BOX_VERSION_CACHE_FILE" ]; then

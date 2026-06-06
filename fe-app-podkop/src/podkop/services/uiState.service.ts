@@ -43,6 +43,24 @@ function getEmptyDiagnosticsActions(): StoreType['diagnosticsActions'] {
 
 function applyServiceState(uiState: Podkop.UiState) {
   const currentSystemInfo = store.get().diagnosticsSystemInfo;
+  const singBoxComponentActionRunning = (
+    uiState.actions.component || []
+  ).some((state) => state.component === 'sing_box' && state.running === true);
+  const nextSystemInfo = {
+    ...currentSystemInfo,
+    providerInfoLoaded: true,
+    zapret_installed: uiState.capabilities.zapret_installed,
+    zapret2_installed: uiState.capabilities.zapret2_installed,
+    byedpi_installed: uiState.capabilities.byedpi_installed,
+    server_inbounds_enabled_count:
+      uiState.capabilities.server_inbounds_enabled_count,
+  };
+
+  if (!singBoxComponentActionRunning) {
+    nextSystemInfo.sing_box_extended = uiState.capabilities.sing_box_extended;
+    nextSystemInfo.sing_box_tiny = uiState.capabilities.sing_box_tiny;
+    nextSystemInfo.sing_box_tailscale = uiState.capabilities.sing_box_tailscale;
+  }
 
   store.set({
     servicesInfoWidget: {
@@ -55,18 +73,7 @@ function applyServiceState(uiState: Podkop.UiState) {
         podkopStatus: uiState.service.podkop.status,
       },
     },
-    diagnosticsSystemInfo: normalizeSingBoxVariantFields({
-      ...currentSystemInfo,
-      providerInfoLoaded: true,
-      sing_box_extended: uiState.capabilities.sing_box_extended,
-      sing_box_tiny: uiState.capabilities.sing_box_tiny,
-      sing_box_tailscale: uiState.capabilities.sing_box_tailscale,
-      zapret_installed: uiState.capabilities.zapret_installed,
-      zapret2_installed: uiState.capabilities.zapret2_installed,
-      byedpi_installed: uiState.capabilities.byedpi_installed,
-      server_inbounds_enabled_count:
-        uiState.capabilities.server_inbounds_enabled_count,
-    }),
+    diagnosticsSystemInfo: normalizeSingBoxVariantFields(nextSystemInfo),
   });
 }
 

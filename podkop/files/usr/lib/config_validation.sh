@@ -560,21 +560,21 @@ check_requirements() {
     coreutils_base64_version="$(base64 --version 2>/dev/null | config_validation_ucode stdin-first-line-field 4)"
 
     if [ -z "$sing_box_version" ]; then
-        log "Package 'sing-box' is not installed. Aborted." "error"
+        if ! command -v sing-box >/dev/null 2>&1 || ! is_sing_box_compressed_marker_set; then
+            log "Package 'sing-box' is not installed. Aborted." "error"
+            exit 1
+        fi
+    elif ! is_min_package_version "$sing_box_version" "$SB_REQUIRED_VERSION"; then
+        log "Package 'sing-box' version ($sing_box_version) is lower than the required minimum ($SB_REQUIRED_VERSION). Update sing-box: opkg update && opkg remove sing-box && opkg install sing-box. Aborted." "error"
         exit 1
-    else
-        if ! is_min_package_version "$sing_box_version" "$SB_REQUIRED_VERSION"; then
-            log "Package 'sing-box' version ($sing_box_version) is lower than the required minimum ($SB_REQUIRED_VERSION). Update sing-box: opkg update && opkg remove sing-box && opkg install sing-box. Aborted." "error"
-            exit 1
-        fi
-
-        if ! service_exists "sing-box"; then
-            log "Service 'sing-box' is missing. Please install the official package to ensure the service is available. Aborted." "error"
-            exit 1
-        fi
-
-        validate_extended_server_features "$sing_box_version"
     fi
+
+    if ! service_exists "sing-box"; then
+        log "Service 'sing-box' is missing. Please install the official package to ensure the service is available. Aborted." "error"
+        exit 1
+    fi
+
+    validate_extended_server_features "$sing_box_version"
 
     if [ -z "$coreutils_base64_version" ]; then
         log "Package 'coreutils-base64' is not installed. Aborted." "error"
