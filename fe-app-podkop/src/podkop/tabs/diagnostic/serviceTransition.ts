@@ -69,14 +69,21 @@ export function hasComponentActionLoading(actions: ComponentActions) {
   return Object.values(actions).some((action) => action.loading);
 }
 
-export function shouldDisableAvailableAction({
-  actionDisabled,
+export function getAvailableActionsDisabledState({
+  servicesInfoLoading,
+  mutatingServiceActionLoading,
   componentActionLoading,
 }: {
-  actionDisabled: boolean;
+  servicesInfoLoading: boolean;
+  mutatingServiceActionLoading: boolean;
   componentActionLoading: boolean;
 }) {
-  return actionDisabled || componentActionLoading;
+  return {
+    serviceControlsDisabled:
+      servicesInfoLoading || mutatingServiceActionLoading || componentActionLoading,
+    utilityActionsDisabled: mutatingServiceActionLoading || componentActionLoading,
+    viewLogsDisabled: false,
+  };
 }
 
 export function shouldShowRestartAction({

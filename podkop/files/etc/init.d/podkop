@@ -11,6 +11,7 @@ NAME="$(basename ${script:-$initscript})"
 CONFIG_NAME="podkop-plus"
 PODKOP_BIN="/usr/bin/podkop-plus"
 PODKOP_SERVICE_INIT="/etc/init.d/podkop-plus"
+PODKOP_CONFIG_FILE="/etc/config/$CONFIG_NAME"
 PODKOP_RELOAD_LOCK_DIR="/var/run/podkop-plus.reload.lock"
 PODKOP_RUNTIME_STATE_DIR="/var/run/podkop-plus"
 PODKOP_PENDING_RELOAD_FILE="$PODKOP_RUNTIME_STATE_DIR/reload.pending"
@@ -159,8 +160,20 @@ consume_internal_config_guard() {
     rm -f "$PODKOP_INTERNAL_CONFIG_TRIGGER_GUARD" 2> /dev/null
 }
 
-internal_config_guard_is_recent() {
-    local now guard_timestamp
+current_config_hash() {
+    local hash
+
+    [ -r "$PODKOP_CONFIG_FILE" ] || return 1
+
+    hash="$(md5sum "$PODKOP_CONFIG_FILE" 2>/dev/null)"
+    hash="${hash%% *}"
+    [ -n "$hash" ] || return 1
+
+    printf "%s\n" "$hash"
+}
+
+internal_config_guard_matches_current_config() {
+    local now guard_timestamp guard_hash current_hash
 
     guard_timestamp="$(sed -n '1p' "$PODKOP_INTERNAL_CONFIG_TRIGGER_GUARD" 2>/dev/null)"
     case "$guard_timestamp" in
@@ -176,7 +189,13 @@ internal_config_guard_is_recent() {
             ;;
     esac
 
-    [ $((now - guard_timestamp)) -le 30 ]
+    [ $((now - guard_timestamp)) -le 30 ] || return 1
+
+    guard_hash="$(sed -n '2p' "$PODKOP_INTERNAL_CONFIG_TRIGGER_GUARD" 2>/dev/null)"
+    [ -n "$guard_hash" ] || return 1
+
+    current_hash="$(current_config_hash)" || return 1
+    [ "$guard_hash" = "$current_hash" ]
 }
 
 should_skip_internal_config_reload() {
@@ -185,7 +204,7 @@ should_skip_internal_config_reload() {
     [ "$reason" = "on_config_change" ] || return 1
     [ -f "$PODKOP_INTERNAL_CONFIG_TRIGGER_GUARD" ] || return 1
 
-    if internal_config_guard_is_recent; then
+    if internal_config_guard_matches_current_config; then
         consume_internal_config_guard
         return 0
     fi

@@ -131,7 +131,7 @@ export class PodkopLogWatcher {
     if (!this.running || !this.paused) return;
     this.paused = false;
     logger.info('[PodkopLogWatcher]', 'resumed (tab active)');
-    this.checkOnce(); // сразу проверить, не появились ли новые логи
+    void this.checkOnce();
   }
 
   reset(): void {

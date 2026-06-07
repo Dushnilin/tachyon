@@ -72,12 +72,54 @@ validate_runtime_settings() {
     validate_download_lists_via_proxy_section
 }
 
+podkop_current_config_hash() {
+    local config_file hash
+
+    config_file="/etc/config/$PODKOP_CONFIG_NAME"
+    [ -r "$config_file" ] || return 1
+
+    hash="$(md5sum "$config_file" 2>/dev/null)"
+    hash="${hash%% *}"
+    [ -n "$hash" ] || return 1
+
+    printf "%s\n" "$hash"
+}
+
+mark_internal_config_guard() {
+    local now config_hash tmp_file
+
+    config_hash="$(podkop_current_config_hash)" || {
+        rm -f "$PODKOP_INTERNAL_CONFIG_TRIGGER_GUARD" 2>/dev/null
+        return 0
+    }
+
+    now="$(date +%s 2>/dev/null)"
+    case "$now" in
+        '' | *[!0-9]*)
+            now=0
+            ;;
+    esac
+
+    tmp_file="$PODKOP_INTERNAL_CONFIG_TRIGGER_GUARD.$$"
+    {
+        printf "%s\n" "$now"
+        printf "%s\n" "$config_hash"
+    } > "$tmp_file" 2>/dev/null &&
+        mv "$tmp_file" "$PODKOP_INTERNAL_CONFIG_TRIGGER_GUARD" 2>/dev/null
+    rm -f "$tmp_file" 2>/dev/null
+}
+
 commit_podkop_config() {
-    # Podkop updates a small runtime flag in its own UCI config while starting
-    # and stopping. Mark these commits so the init trigger can ignore the
-    # self-induced config.change event instead of scheduling another reload.
-    date +%s > "$PODKOP_INTERNAL_CONFIG_TRIGGER_GUARD" 2>/dev/null || echo 0 > "$PODKOP_INTERNAL_CONFIG_TRIGGER_GUARD"
-    uci commit "$PODKOP_CONFIG_NAME" && config_load "$PODKOP_CONFIG_NAME"
+    local status
+
+    uci commit "$PODKOP_CONFIG_NAME"
+    status="$?"
+    if [ "$status" -eq 0 ]; then
+        mark_internal_config_guard
+        config_load "$PODKOP_CONFIG_NAME"
+    fi
+
+    return "$status"
 }
 
 podkop_uci_option_exists() {

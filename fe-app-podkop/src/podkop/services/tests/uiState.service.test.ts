@@ -2,6 +2,13 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { applyUiStateToStore } from '../uiState.service';
 import { store } from '../store.service';
 import { Podkop } from '../../types';
+import {
+  clearLocalActionOverlay,
+  setLocalComponentAction,
+  setLocalLatencyAction,
+  setLocalServiceAction,
+  setLocalSubscriptionAction,
+} from '../localActionOverlay.service';
 
 function createUiState(
   actions: Partial<Podkop.UiState['actions']> = {},
@@ -44,6 +51,7 @@ function createUiState(
 
 describe('applyUiStateToStore', () => {
   beforeEach(() => {
+    clearLocalActionOverlay();
     store.reset();
   });
 
@@ -151,6 +159,50 @@ describe('applyUiStateToStore', () => {
     expect(state.sectionsWidget.subscriptionUpdatingSections).toEqual({});
     expect(state.sectionsWidget.latencyFetchingSections).toEqual({});
     expect(state.updatesActions.zapretInstall.loading).toBe(false);
+  });
+
+  it('keeps locally started actions loading until their owner clears them', () => {
+    setLocalComponentAction('zapretInstall', true);
+    setLocalSubscriptionAction('proxy', true);
+    setLocalLatencyAction('gemini', true);
+    setLocalServiceAction('restart', true);
+
+    applyUiStateToStore(createUiState());
+
+    expect(store.get().updatesActions.zapretInstall.loading).toBe(true);
+    expect(store.get().sectionsWidget.subscriptionUpdatingSections).toEqual({
+      proxy: true,
+    });
+    expect(store.get().sectionsWidget.latencyFetchingSections).toEqual({
+      gemini: true,
+    });
+    expect(store.get().diagnosticsActions.restart.loading).toBe(true);
+
+    clearLocalActionOverlay();
+    applyUiStateToStore(createUiState());
+
+    expect(store.get().updatesActions.zapretInstall.loading).toBe(false);
+    expect(store.get().sectionsWidget.subscriptionUpdatingSections).toEqual({});
+    expect(store.get().sectionsWidget.latencyFetchingSections).toEqual({});
+    expect(store.get().diagnosticsActions.restart.loading).toBe(false);
+  });
+
+  it('maps a running reload action to the restart control', () => {
+    applyUiStateToStore(
+      createUiState({
+        service: [
+          {
+            success: true,
+            running: true,
+            kind: 'service',
+            action: 'reload',
+            job_id: 'service-reload',
+          },
+        ],
+      }),
+    );
+
+    expect(store.get().diagnosticsActions.restart.loading).toBe(true);
   });
 
   it('does not combine a stale extended version with tiny capabilities', () => {

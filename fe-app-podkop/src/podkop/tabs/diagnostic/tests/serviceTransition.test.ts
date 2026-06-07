@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  getAvailableActionsDisabledState,
   getServiceTransition,
   hasComponentActionLoading,
   hasLocalMutatingServiceActionLoading,
   isServiceTransitionStatus,
-  shouldDisableAvailableAction,
   shouldDisableDiagnosticRunAction,
   shouldSkipServicesInfoAutoRefresh,
   shouldShowRestartAction,
@@ -109,25 +109,41 @@ describe('diagnostic service transitions', () => {
     ).toBe(true);
   });
 
-  it('blocks available actions while component actions are running', () => {
+  it('detects running component actions', () => {
     expect(
       hasComponentActionLoading({
         podkopCheck: { loading: false },
         zapretInstall: { loading: true },
       }),
     ).toBe(true);
+  });
+
+  it('blocks mutating available actions while component actions are running', () => {
     expect(
-      shouldDisableAvailableAction({
-        actionDisabled: false,
+      getAvailableActionsDisabledState({
+        servicesInfoLoading: false,
+        mutatingServiceActionLoading: false,
         componentActionLoading: true,
       }),
-    ).toBe(true);
+    ).toEqual({
+      serviceControlsDisabled: true,
+      utilityActionsDisabled: true,
+      viewLogsDisabled: false,
+    });
+  });
+
+  it('keeps logs available during service-only mutations', () => {
     expect(
-      shouldDisableAvailableAction({
-        actionDisabled: false,
+      getAvailableActionsDisabledState({
+        servicesInfoLoading: false,
+        mutatingServiceActionLoading: true,
         componentActionLoading: false,
       }),
-    ).toBe(false);
+    ).toEqual({
+      serviceControlsDisabled: true,
+      utilityActionsDisabled: true,
+      viewLogsDisabled: false,
+    });
   });
 
   it('keeps the lower service action visible while restart is running', () => {

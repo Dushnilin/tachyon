@@ -64,6 +64,10 @@ function job_id_from_path(path) {
     return str_remove_suffix(path_basename(path), ".json");
 }
 
+function valid_action_state(value) {
+    return type(value) == "object" && (value.running === true || value.running === false);
+}
+
 function read_state_paths() {
     let result = {
         service: [],
@@ -84,7 +88,7 @@ function read_state_paths() {
         let kind = substr(line, 0, tab);
         let path = substr(line, tab + 1);
         let value = read_json_file(path);
-        if (type(value) != "object")
+        if (!valid_action_state(value))
             continue;
 
         value.job_id = job_id_from_path(path);
@@ -215,6 +219,13 @@ function stale_action_state(path, message, updated_at) {
     write_json(value);
 }
 
+function ack_action_state(path, acked_at) {
+    let value = object_or_empty(read_json_file(path));
+    if (value.running === false)
+        value.acked_at = arg_number(acked_at);
+    write_json(value);
+}
+
 function json_file_field(path, key, fallback) {
     let value = read_json_file(path);
     if (type(value) == "object" && value[key] != null)
@@ -239,6 +250,8 @@ else if (mode == "finished-action-state")
     finished_action_state(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5]);
 else if (mode == "stale-action-state")
     stale_action_state(ARGV[1], ARGV[2], ARGV[3]);
+else if (mode == "ack-action-state")
+    ack_action_state(ARGV[1], ARGV[2]);
 else if (mode == "json-file-field")
     json_file_field(ARGV[1], ARGV[2], ARGV[3]);
 else {

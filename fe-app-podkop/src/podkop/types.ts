@@ -71,9 +71,6 @@ export namespace Podkop {
     GET_ZAPRET2_STATUS = 'get_zapret2_status',
     GET_BYEDPI_STATUS = 'get_byedpi_status',
     CLASH_API = 'clash_api',
-    RESTART = 'restart',
-    START = 'start',
-    STOP = 'stop',
     ENABLE = 'enable',
     DISABLE = 'disable',
     GLOBAL_CHECK = 'global_check',
@@ -89,10 +86,8 @@ export namespace Podkop {
     LATENCY_TEST_ASYNC = 'latency_test_async',
     LATENCY_TEST_STATUS = 'latency_test_status',
     UI_ACTION_ACK = 'ui_action_ack',
-    COMPONENT_ACTION = 'component_action',
     COMPONENT_ACTION_ASYNC = 'component_action_async',
     COMPONENT_ACTION_STATUS = 'component_action_status',
-    SUBSCRIPTION_UPDATE = 'subscription_update',
     SUBSCRIPTION_UPDATE_ASYNC = 'subscription_update_async',
     SUBSCRIPTION_UPDATE_STATUS = 'subscription_update_status',
   }
@@ -431,6 +426,7 @@ export namespace Podkop {
   export interface ComponentActionResult {
     success: boolean;
     running?: boolean;
+    kind?: 'component';
     job_id?: string;
     component: ComponentName;
     action: ComponentAction;
@@ -451,6 +447,7 @@ export namespace Podkop {
   export type SubscriptionUpdateStartResult = UiActionStartResult;
 
   export interface SubscriptionUpdateJobState extends UiActionState {
+    kind?: 'subscription';
     success: boolean;
     running?: boolean;
     message?: string;

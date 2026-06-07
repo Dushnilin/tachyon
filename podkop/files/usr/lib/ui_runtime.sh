@@ -2,12 +2,14 @@
 
 PODKOP_UI_STATE_DIR="${PODKOP_UI_STATE_DIR:-/var/run/podkop-plus/ui-state}"
 PODKOP_UI_SERVICE_ACTION_DIR="${PODKOP_UI_SERVICE_ACTION_DIR:-$PODKOP_UI_STATE_DIR/service-actions}"
+PODKOP_UI_SERVICE_ACTION_LOCK_DIR="${PODKOP_UI_SERVICE_ACTION_LOCK_DIR:-$PODKOP_UI_STATE_DIR/service-actions.lock}"
 PODKOP_UI_LATENCY_ACTION_DIR="${PODKOP_UI_LATENCY_ACTION_DIR:-$PODKOP_UI_STATE_DIR/latency-actions}"
 PODKOP_UI_SING_BOX_VERSION_CACHE_FILE="${PODKOP_UI_SING_BOX_VERSION_CACHE_FILE:-$PODKOP_UI_STATE_DIR/sing-box-version}"
 PODKOP_UI_SING_BOX_VERSION_STATE_FILE="${PODKOP_UI_SING_BOX_VERSION_STATE_FILE:-/etc/podkop-plus/sing-box-version}"
 PODKOP_UI_SING_BOX_VARIANT_STATE_FILE="${PODKOP_UI_SING_BOX_VARIANT_STATE_FILE:-/etc/podkop-plus/sing-box-variant}"
 PODKOP_UI_ACTION_FINISHED_TTL_MINUTES="${PODKOP_UI_ACTION_FINISHED_TTL_MINUTES:-60}"
-PODKOP_UI_ACTION_STALE_GRACE_SECONDS="${PODKOP_UI_ACTION_STALE_GRACE_SECONDS:-5}"
+PODKOP_UI_ACTION_ACKED_TTL_SECONDS="${PODKOP_UI_ACTION_ACKED_TTL_SECONDS:-15}"
+PODKOP_UI_ACTION_STALE_GRACE_SECONDS="${PODKOP_UI_ACTION_STALE_GRACE_SECONDS:-15}"
 PODKOP_UI_SERVICE_ACTION_TIMEOUT_SECONDS="${PODKOP_UI_SERVICE_ACTION_TIMEOUT_SECONDS:-120}"
 PODKOP_UI_SERVICE_ACTION_SETTLE_SECONDS="${PODKOP_UI_SERVICE_ACTION_SETTLE_SECONDS:-2}"
 PODKOP_UI_COMPONENT_ACTION_DIR="${UPDATES_JOB_DIR:-/var/run/podkop-plus/component-actions}"
@@ -34,6 +36,33 @@ ui_runtime_ensure_dirs() {
         "$PODKOP_UI_LATENCY_ACTION_DIR" \
         "$PODKOP_UI_COMPONENT_ACTION_DIR" \
         "$PODKOP_UI_SUBSCRIPTION_ACTION_DIR"
+}
+
+ui_runtime_acquire_dir_lock() {
+    local lock_dir="$1"
+    local owner_pid
+
+    if mkdir "$lock_dir" 2>/dev/null; then
+        printf '%s\n' "$$" >"$lock_dir/pid"
+        return 0
+    fi
+
+    owner_pid="$(sed -n '1p' "$lock_dir/pid" 2>/dev/null)"
+    if [ -n "$owner_pid" ] && kill -0 "$owner_pid" 2>/dev/null; then
+        return 1
+    fi
+
+    rm -f "$lock_dir/pid" 2>/dev/null
+    rmdir "$lock_dir" 2>/dev/null || return 1
+    mkdir "$lock_dir" 2>/dev/null || return 1
+    printf '%s\n' "$$" >"$lock_dir/pid"
+}
+
+ui_runtime_release_dir_lock() {
+    local lock_dir="$1"
+
+    rm -f "$lock_dir/pid" 2>/dev/null
+    rmdir "$lock_dir" 2>/dev/null
 }
 
 ui_runtime_job_id() {
@@ -80,6 +109,12 @@ ui_runtime_write_state() {
     local rc=$?
     rm -f "$tmp_file" 2>/dev/null
     return "$rc"
+}
+
+ui_runtime_remove_state_file() {
+    local state_file="$1"
+
+    rm -f "$state_file" "${state_file%.json}.out" "${state_file%.json}.out.json" 2>/dev/null || true
 }
 
 ui_runtime_json_field() {
@@ -150,6 +185,8 @@ ui_runtime_refresh_pid_job_state() {
 
     case "$pid" in
     "" | *[!0-9]*)
+        ui_runtime_started_at_is_younger_than "$started_at" "$PODKOP_UI_ACTION_STALE_GRACE_SECONDS" && return 0
+        [ "$(ui_runtime_json_field "$state_file" running false)" = "true" ] || return 0
         ui_runtime_mark_stale_state "$state_file" "$stale_message"
         return 0
         ;;
@@ -209,18 +246,59 @@ ui_runtime_refresh_latency_state_file() {
     ui_runtime_refresh_pid_job_state "$1" "Latency test worker exited unexpectedly"
 }
 
+ui_runtime_refresh_component_state_file() {
+    ui_runtime_refresh_pid_job_state "$1" "Component action worker exited unexpectedly"
+}
+
+ui_runtime_refresh_subscription_state_file() {
+    ui_runtime_refresh_pid_job_state "$1" "Subscription update worker exited unexpectedly"
+}
+
 ui_runtime_cleanup_dir() {
     local dir="$1"
-    local state_file
+    local state_file running
 
     [ -d "$dir" ] || return 0
+
+    for state_file in "$dir"/*.json; do
+        [ -f "$state_file" ] || continue
+        running="$(ui_runtime_json_field "$state_file" running "")"
+        case "$running" in
+        true | false) ;;
+        *)
+            ui_runtime_remove_state_file "$state_file"
+            continue
+            ;;
+        esac
+
+        if [ "$running" = "false" ] &&
+            ui_runtime_state_file_ack_expired "$state_file"; then
+            ui_runtime_remove_state_file "$state_file"
+        fi
+    done
+
     find "$dir" -type f -name '*.json' -mmin "+$PODKOP_UI_ACTION_FINISHED_TTL_MINUTES" 2>/dev/null |
         while IFS= read -r state_file; do
             [ -f "$state_file" ] || continue
             if [ "$(ui_runtime_json_field "$state_file" running false)" = "false" ]; then
-                rm -f "$state_file" 2>/dev/null || true
+                ui_runtime_remove_state_file "$state_file"
             fi
         done
+}
+
+ui_runtime_state_file_ack_expired() {
+    local state_file="$1"
+    local acked_at now
+
+    acked_at="$(ui_runtime_json_field "$state_file" acked_at "" 2>/dev/null)"
+    case "$acked_at" in
+    "" | *[!0-9]*) return 1 ;;
+    esac
+
+    now="$(ui_runtime_now)"
+    [ "$now" -gt 0 ] || return 1
+
+    [ $((now - acked_at)) -ge "$PODKOP_UI_ACTION_ACKED_TTL_SECONDS" ]
 }
 
 ui_runtime_refresh_action_dirs() {
@@ -228,6 +306,8 @@ ui_runtime_refresh_action_dirs() {
 
     ui_runtime_cleanup_dir "$PODKOP_UI_SERVICE_ACTION_DIR"
     ui_runtime_cleanup_dir "$PODKOP_UI_LATENCY_ACTION_DIR"
+    ui_runtime_cleanup_dir "$PODKOP_UI_COMPONENT_ACTION_DIR"
+    ui_runtime_cleanup_dir "$PODKOP_UI_SUBSCRIPTION_ACTION_DIR"
 
     if [ -d "$PODKOP_UI_SERVICE_ACTION_DIR" ]; then
         for state_file in "$PODKOP_UI_SERVICE_ACTION_DIR"/*.json; do
@@ -240,6 +320,20 @@ ui_runtime_refresh_action_dirs() {
         for state_file in "$PODKOP_UI_LATENCY_ACTION_DIR"/*.json; do
             [ -f "$state_file" ] || continue
             ui_runtime_refresh_latency_state_file "$state_file"
+        done
+    fi
+
+    if [ -d "$PODKOP_UI_COMPONENT_ACTION_DIR" ]; then
+        for state_file in "$PODKOP_UI_COMPONENT_ACTION_DIR"/*.json; do
+            [ -f "$state_file" ] || continue
+            ui_runtime_refresh_component_state_file "$state_file"
+        done
+    fi
+
+    if [ -d "$PODKOP_UI_SUBSCRIPTION_ACTION_DIR" ]; then
+        for state_file in "$PODKOP_UI_SUBSCRIPTION_ACTION_DIR"/*.json; do
+            [ -f "$state_file" ] || continue
+            ui_runtime_refresh_subscription_state_file "$state_file"
         done
     fi
 }
@@ -468,6 +562,28 @@ ui_runtime_service_action_begin() {
     printf '%s\n' "$job_id"
 }
 
+ui_runtime_service_action_begin_if_idle() {
+    local action="$1"
+    local source="${2:-ui}"
+    local job_id result
+
+    ui_runtime_ensure_dirs || return 1
+    ui_runtime_acquire_dir_lock "$PODKOP_UI_SERVICE_ACTION_LOCK_DIR" || return 2
+
+    ui_runtime_refresh_action_dirs
+    if ui_runtime_active_service_action >/dev/null 2>&1; then
+        ui_runtime_release_dir_lock "$PODKOP_UI_SERVICE_ACTION_LOCK_DIR"
+        return 2
+    fi
+
+    job_id="$(ui_runtime_service_action_begin "$action" "$source")"
+    result=$?
+    ui_runtime_release_dir_lock "$PODKOP_UI_SERVICE_ACTION_LOCK_DIR"
+    [ "$result" -eq 0 ] || return "$result"
+
+    printf '%s\n' "$job_id"
+}
+
 ui_runtime_service_action_finish_job() {
     local job_id="$1"
     local success="${2:-true}"
@@ -490,10 +606,19 @@ ui_runtime_service_action_async() {
         exit 1
     }
 
-    job_id="$(ui_runtime_service_action_begin "$action" "ui")" || {
+    job_id="$(ui_runtime_service_action_begin_if_idle "$action" "ui")"
+    case "$?" in
+    0) ;;
+    2)
+        ui_runtime_ucode action-start-response false "" "Another service action is already running"
+        exit 1
+        ;;
+    *)
         ui_runtime_ucode action-start-response false "" "Failed to write service action state"
         exit 1
-    }
+        ;;
+    esac
+
     state_file="$(ui_runtime_job_state_path "$PODKOP_UI_SERVICE_ACTION_DIR" "$job_id")" || {
         ui_runtime_ucode action-start-response false "" "Failed to prepare service action state"
         exit 1
@@ -632,7 +757,7 @@ ui_runtime_latency_test_status() {
 ui_runtime_action_ack() {
     local kind="$1"
     local job_id="$2"
-    local dir state_file
+    local dir state_file now
 
     case "$kind" in
     service) dir="$PODKOP_UI_SERVICE_ACTION_DIR" ;;
@@ -650,6 +775,21 @@ ui_runtime_action_ack() {
         exit 1
     }
 
-    rm -f "$state_file" "${state_file%.json}.out" "${state_file%.json}.out.json" 2>/dev/null || true
+    if [ ! -f "$state_file" ]; then
+        ui_runtime_ucode action-start-response true "$job_id" "UI action already acknowledged"
+        return 0
+    fi
+
+    if [ "$(ui_runtime_json_field "$state_file" running false)" = "true" ]; then
+        ui_runtime_ucode action-start-response false "$job_id" "UI action is still running"
+        exit 1
+    fi
+
+    now="$(ui_runtime_now)"
+    ui_runtime_write_state "$state_file" ui_runtime_ucode ack-action-state "$state_file" "$now" || {
+        ui_runtime_ucode action-start-response false "$job_id" "Failed to acknowledge UI action"
+        exit 1
+    }
+
     ui_runtime_ucode action-start-response true "$job_id" "UI action acknowledged"
 }

@@ -46,6 +46,8 @@ UPDATES_TMP_STALE_TTL_MINUTES=30
 UPDATES_TMP_FILE_STALE_TTL_MINUTES=10
 UPDATES_LOCK_DIR="/var/run/podkop-plus/component-action.lock"
 UPDATES_LOCK_HELD=0
+UPDATES_DIRECT_JOB_ID=""
+UPDATES_DIRECT_JOB_STATE_FILE=""
 UPDATES_PODKOP_WAS_RUNNING=0
 UPDATES_PODKOP_STOPPED_FOR_SING_BOX_CHANGE=0
 
@@ -151,6 +153,45 @@ updates_json_response() {
     local changed="${7:-0}"
     local status="${8:-}"
     local release_url="${9:-}"
+    local response_file tmp_file updated_at exit_code
+
+    if [ -n "$UPDATES_DIRECT_JOB_STATE_FILE" ]; then
+        response_file="$(updates_job_tmp_file "${UPDATES_DIRECT_JOB_STATE_FILE}.response" 2>/dev/null || true)"
+        if [ -n "$response_file" ] &&
+            updates_ucode updates-json-response \
+                "$success" \
+                "$component" \
+                "$action" \
+                "$message" \
+                "$current_version" \
+                "$latest_version" \
+                "$changed" \
+                "$status" \
+                "$release_url" >"$response_file"; then
+            cat "$response_file"
+
+            updated_at="$(date +%s 2>/dev/null)"
+            case "$updated_at" in
+            "" | *[!0-9]*) updated_at=0 ;;
+            esac
+            case "$success" in
+            true | 1) exit_code=0 ;;
+            *) exit_code=1 ;;
+            esac
+
+            tmp_file="$(updates_job_tmp_file "$UPDATES_DIRECT_JOB_STATE_FILE" 2>/dev/null || true)"
+            if [ -n "$tmp_file" ]; then
+                updates_ucode updates-finish-job-state "$response_file" "$exit_code" "$updated_at" >"$tmp_file" &&
+                    mv "$tmp_file" "$UPDATES_DIRECT_JOB_STATE_FILE"
+                rm -f "$tmp_file" 2>/dev/null
+            fi
+
+            rm -f "$response_file" 2>/dev/null
+            return 0
+        fi
+
+        rm -f "$response_file" 2>/dev/null
+    fi
 
     updates_ucode updates-json-response \
         "$success" \
@@ -314,6 +355,24 @@ updates_update_running_job_pid() {
     return $rc
 }
 
+updates_begin_direct_component_job_state() {
+    local component="$1"
+    local action="$2"
+    local state_file
+
+    [ "${PODKOP_UI_COMPONENT_ACTION_TRACKED:-0}" = "1" ] && return 0
+
+    mkdir -p "$UPDATES_JOB_DIR" || return 0
+    updates_cleanup_component_jobs
+
+    UPDATES_DIRECT_JOB_ID="$(date +%s 2>/dev/null)-$$"
+    state_file="$(updates_job_state_path "$UPDATES_DIRECT_JOB_ID" 2>/dev/null || true)"
+    [ -n "$state_file" ] || return 0
+
+    updates_write_running_job_state "$state_file" "$component" "$action" "$$" || return 0
+    UPDATES_DIRECT_JOB_STATE_FILE="$state_file"
+}
+
 updates_mark_stale_job_state() {
     local state_file="$1"
     local tmp_file
@@ -354,6 +413,8 @@ updates_refresh_running_job_state() {
     started_at="$(updates_json_file_get_default "$state_file" started_at 0)"
     case "$pid" in
     "" | *[!0-9]*)
+        updates_started_at_is_within_stale_grace "$started_at" && return 0
+        updates_json_file_running_is "$state_file" true || return 0
         updates_mark_stale_job_state "$state_file"
         return 0
         ;;
@@ -431,7 +492,7 @@ component_action_async() {
 
     (
         trap '' HUP
-        /usr/bin/podkop-plus component_action "$component" "$action" >"$output_file" 2>&1
+        PODKOP_UI_COMPONENT_ACTION_TRACKED=1 /usr/bin/podkop-plus component_action "$component" "$action" >"$output_file" 2>&1
         updates_write_finished_job_state "$state_file" "$component" "$action" "$?" "$output_file"
     ) >/dev/null 2>&1 &
     job_pid="$!"
@@ -2185,6 +2246,7 @@ component_action() {
     trap updates_component_action_cleanup EXIT HUP INT TERM
 
     updates_acquire_component_lock || updates_fail "${component:-unknown}" "${action:-unknown}" "Another component action is already running"
+    updates_begin_direct_component_job_state "$component" "$action"
     updates_init_tmp_dir || updates_fail "${component:-unknown}" "${action:-unknown}" "Failed to create temporary directory"
     updates_capture_podkop_running_state
 

@@ -3,6 +3,7 @@ import { PODKOP_ACTION_PROVIDERS_AVAILABILITY_EVENT } from '../../../constants';
 import { normalizeCompiledVersion } from '../../../helpers/normalizeCompiledVersion';
 import { showToast } from '../../../helpers/showToast';
 import {
+  renderDownloadIcon24,
   renderRotateCcwIcon24,
   renderSearchIcon24,
   renderXIcon24,
@@ -19,10 +20,22 @@ import {
   hasLocalMutatingServiceActionLoading,
   isServiceTransitionStatus,
 } from '../diagnostic/serviceTransition';
+import { shouldApplyCompletedComponentActionResult } from './componentActionCompletion';
 import { PodkopShellMethods } from '../../methods';
-import { logger, store, StoreType } from '../../services';
+import {
+  logger,
+  markUiActionOwned,
+  setLocalComponentAction,
+  shouldNotifyOwnedUiAction,
+  store,
+  StoreType,
+} from '../../services';
 import { ensureSystemInfo } from '../../services/systemInfo.service';
-import { applyUiStateToStore } from '../../services/uiState.service';
+import {
+  getCachedRuntimeUiState,
+  refreshRuntimeUiState,
+  subscribeRuntimeUiState,
+} from '../../services/runtimeUiState.service';
 import { Podkop } from '../../types';
 
 type UpdateStatus = StoreType['updatesChecks'][Podkop.ComponentName]['status'];
@@ -49,15 +62,12 @@ interface ComponentCard {
 let updatesLifecycleRegistered = false;
 let updatesControllerInitialized = false;
 let updatesMounted = false;
-let updatesMountGeneration = 0;
+let updatesMountId = 0;
 let pageUnloading = false;
-let componentActionStateRefreshTimer: ReturnType<typeof setInterval> | null =
-  null;
+let componentActionStateUnsubscribe: (() => void) | null = null;
 let componentActionStateRefreshPromise: Promise<void> | null = null;
-let activeComponentActionKey: UpdatesActionKey | null = null;
 const followedComponentJobs = new Set<string>();
 const handledComponentJobs = new Set<string>();
-const COMPONENT_ACTION_STATE_REFRESH_INTERVAL_MS = 1500;
 
 if (typeof window !== 'undefined') {
   window.addEventListener('pagehide', () => {
@@ -100,7 +110,7 @@ function getInstallActionText(component: Podkop.ComponentName) {
   const checkResult = store.get().updatesChecks[component];
 
   if (shouldShowInstallAfterCheck(component) && checkResult.latest_version) {
-    return _('Install %s').replace('%s', checkResult.latest_version);
+    return _('Update to %s').replace('%s', checkResult.latest_version);
   }
 
   return _('Install');
@@ -117,9 +127,8 @@ function getGitHubReleaseUrl(component: Podkop.ComponentName) {
 }
 
 function isAnyActionLoading() {
-  return (
-    activeComponentActionKey !== null ||
-    Object.values(store.get().updatesActions).some((item) => item.loading)
+  return Object.values(store.get().updatesActions).some(
+    (item) => item.loading,
   );
 }
 
@@ -138,7 +147,15 @@ function isSystemInfoLoading() {
   return systemInfo.loading || !systemInfo.loaded;
 }
 
-function setActionLoading(action: UpdatesActionKey, loading: boolean) {
+function setActionLoading(
+  action: UpdatesActionKey,
+  loading: boolean,
+  local = false,
+) {
+  if (local || !loading) {
+    setLocalComponentAction(action, loading && local);
+  }
+
   const updatesActions = store.get().updatesActions;
 
   store.set({
@@ -154,15 +171,8 @@ function beginComponentAction(button: ComponentActionButton) {
     return false;
   }
 
-  activeComponentActionKey = button.key;
-  setActionLoading(button.key, true);
+  setActionLoading(button.key, true, true);
   return true;
-}
-
-function endComponentAction(key: UpdatesActionKey) {
-  if (activeComponentActionKey === key) {
-    activeComponentActionKey = null;
-  }
 }
 
 function setCheckResult(
@@ -348,11 +358,22 @@ function patchSystemInfoAfterMutation(result: Podkop.ComponentActionResult) {
   }
 }
 
-async function applyCompletedComponentAction(
-  key: UpdatesActionKey,
-  result: Podkop.ComponentActionResult,
-) {
+async function applyCompletedComponentAction({
+  key,
+  result,
+  notify,
+}: {
+  key: UpdatesActionKey;
+  result: Podkop.ComponentActionResult;
+  notify: boolean;
+}) {
   if (result.action === 'check_update') {
+    setActionLoading(key, false);
+
+    if (!shouldApplyCompletedComponentActionResult(result, notify)) {
+      return;
+    }
+
     const status = result.status || null;
 
     if (status === 'latest' || status === 'outdated' || status === 'dev') {
@@ -364,8 +385,9 @@ async function applyCompletedComponentAction(
       );
     }
 
-    setActionLoading(key, false);
-    showToast(getCheckToastMessage(status), 'success');
+    if (notify) {
+      showToast(getCheckToastMessage(status), 'success');
+    }
     return;
   }
 
@@ -379,15 +401,17 @@ async function applyCompletedComponentAction(
   setActionLoading(key, false);
 
   if (result.component === 'podkop' && result.action === 'install') {
-    if (result.message) {
+    if (notify && result.message) {
       showToast(result.message, 'success', 1200);
     }
 
-    reloadPageAfterPodkopUpdate();
+    if (notify) {
+      reloadPageAfterPodkopUpdate();
+    }
     return;
   }
 
-  if (result.message) {
+  if (notify && result.message) {
     showToast(result.message, 'success');
   }
 
@@ -400,37 +424,40 @@ async function completeComponentActionJob(
   response: Podkop.MethodResponse<Podkop.ComponentActionResult>,
 ) {
   if (pageUnloading) {
-    endComponentAction(key);
+    setActionLoading(key, false);
     return;
   }
 
   const alreadyHandled = handledComponentJobs.has(jobId);
 
   if (alreadyHandled) {
-    await ackComponentActionJob(jobId);
     setActionLoading(key, false);
-    endComponentAction(key);
     return;
   }
 
   handledComponentJobs.add(jobId);
+  const shouldNotify = shouldNotifyOwnedUiAction('component', jobId);
 
   if (!response.success || response.data.success === false) {
     setActionLoading(key, false);
-    endComponentAction(key);
-    showToast(
-      response.success
-        ? response.data.message || _('Failed to execute')
-        : response.error || _('Failed to execute'),
-      'error',
-    );
+    if (shouldNotify) {
+      showToast(
+        response.success
+          ? response.data.message || _('Failed to execute')
+          : response.error || _('Failed to execute'),
+        'error',
+      );
+    }
     await ackComponentActionJob(jobId);
     return;
   }
 
   await ackComponentActionJob(jobId);
-  await applyCompletedComponentAction(key, response.data);
-  endComponentAction(key);
+  await applyCompletedComponentAction({
+    key,
+    result: response.data,
+    notify: shouldNotify,
+  });
 }
 
 async function followComponentActionState(state: Podkop.ComponentActionResult) {
@@ -441,8 +468,11 @@ async function followComponentActionState(state: Podkop.ComponentActionResult) {
     return;
   }
 
+  if (!state.running && handledComponentJobs.has(jobId)) {
+    return;
+  }
+
   followedComponentJobs.add(jobId);
-  activeComponentActionKey = key;
   setActionLoading(key, true);
 
   try {
@@ -463,7 +493,6 @@ async function followComponentActionState(state: Podkop.ComponentActionResult) {
     logger.error('[UPDATES]', 'followComponentActionState failed', error);
     if (!pageUnloading) {
       setActionLoading(key, false);
-      endComponentAction(key);
       showToast(getErrorMessage(error, _('Failed to execute')), 'error');
     }
   } finally {
@@ -471,16 +500,16 @@ async function followComponentActionState(state: Podkop.ComponentActionResult) {
   }
 }
 
-async function followAlreadyRunningComponentAction(button: ComponentActionButton) {
-  const response = await PodkopShellMethods.getUiState();
+async function followAlreadyRunningComponentAction(
+  button: ComponentActionButton,
+) {
+  const uiState = await refreshRuntimeUiState({ force: true });
 
-  if (!response.success) {
+  if (!uiState) {
     return false;
   }
 
-  applyUiStateToStore(response.data);
-
-  const state = response.data.actions.component.find(
+  const state = uiState.actions.component.find(
     (item) =>
       item.running &&
       item.component === button.component &&
@@ -491,6 +520,9 @@ async function followAlreadyRunningComponentAction(button: ComponentActionButton
     return false;
   }
 
+  if (state.job_id) {
+    markUiActionOwned('component', state.job_id);
+  }
   await followComponentActionState(state);
   return true;
 }
@@ -499,6 +531,12 @@ function isComponentActionAlreadyRunningError(message: string | undefined) {
   return Boolean(
     message && message.includes('Another component action is already running'),
   );
+}
+
+function handleComponentUiState(uiState: Podkop.UiState) {
+  for (const state of uiState.actions.component || []) {
+    void followComponentActionState(state);
+  }
 }
 
 async function refreshComponentActionState() {
@@ -511,19 +549,13 @@ async function refreshComponentActionState() {
       return;
     }
 
-    const response = await PodkopShellMethods.getUiState();
+    const state = await refreshRuntimeUiState({ force: true });
 
-    if (!response.success) {
+    if (!state) {
       return;
     }
 
-    applyUiStateToStore(response.data);
-
-    for (const state of response.data.actions.component || []) {
-      if (state.running === false || state.running) {
-        void followComponentActionState(state);
-      }
-    }
+    handleComponentUiState(state);
   })().finally(() => {
     componentActionStateRefreshPromise = null;
   });
@@ -531,23 +563,25 @@ async function refreshComponentActionState() {
   return componentActionStateRefreshPromise;
 }
 
-function startComponentActionStateRefresh() {
-  if (componentActionStateRefreshTimer) {
+function startComponentActionStateWatcher() {
+  if (componentActionStateUnsubscribe) {
     return;
   }
 
-  componentActionStateRefreshTimer = setInterval(() => {
-    void refreshComponentActionState();
-  }, COMPONENT_ACTION_STATE_REFRESH_INTERVAL_MS);
+  componentActionStateUnsubscribe = subscribeRuntimeUiState((uiState) => {
+    if (updatesMounted) {
+      handleComponentUiState(uiState);
+    }
+  });
 }
 
-function stopComponentActionStateRefresh() {
-  if (!componentActionStateRefreshTimer) {
+function stopComponentActionStateWatcher() {
+  if (!componentActionStateUnsubscribe) {
     return;
   }
 
-  clearInterval(componentActionStateRefreshTimer);
-  componentActionStateRefreshTimer = null;
+  componentActionStateUnsubscribe();
+  componentActionStateUnsubscribe = null;
 }
 
 async function handleComponentAction(button: ComponentActionButton) {
@@ -565,10 +599,11 @@ async function handleComponentAction(button: ComponentActionButton) {
     );
 
     if (!startResponse.success) {
-      if (
-        isComponentActionAlreadyRunningError(startResponse.error) &&
-        (await followAlreadyRunningComponentAction(button))
-      ) {
+      if (isComponentActionAlreadyRunningError(startResponse.error)) {
+        setActionLoading(button.key, false);
+        if (!(await followAlreadyRunningComponentAction(button))) {
+          await refreshComponentActionState();
+        }
         return;
       }
 
@@ -576,6 +611,7 @@ async function handleComponentAction(button: ComponentActionButton) {
     }
 
     jobId = startResponse.data.job_id;
+    markUiActionOwned('component', jobId);
     if (followedComponentJobs.has(jobId)) {
       return;
     }
@@ -595,7 +631,6 @@ async function handleComponentAction(button: ComponentActionButton) {
     logger.error('[UPDATES]', 'handleComponentAction failed', error);
     if (!pageUnloading) {
       setActionLoading(button.key, false);
-      endComponentAction(button.key);
       showToast(getErrorMessage(error, _('Failed to execute')), 'error');
       void refreshComponentActionState();
     }
@@ -657,7 +692,7 @@ function getComponentCards(): ComponentCard[] {
     singBoxActions.push({
       key: 'singBoxInstallStable',
       text: _('Install stable'),
-      icon: renderRotateCcwIcon24,
+      icon: renderDownloadIcon24,
       component: 'sing_box',
       action: 'install_stable',
     });
@@ -667,7 +702,7 @@ function getComponentCards(): ComponentCard[] {
     singBoxActions.push({
       key: 'singBoxInstallTiny',
       text: _('Install tiny'),
-      icon: renderRotateCcwIcon24,
+      icon: renderDownloadIcon24,
       component: 'sing_box',
       action: 'install_tiny',
     });
@@ -677,7 +712,7 @@ function getComponentCards(): ComponentCard[] {
     singBoxActions.push({
       key: 'singBoxInstallExtended',
       text: _('Install extended'),
-      icon: renderRotateCcwIcon24,
+      icon: renderDownloadIcon24,
       component: 'sing_box',
       action: 'install_extended',
     });
@@ -687,7 +722,7 @@ function getComponentCards(): ComponentCard[] {
     singBoxActions.push({
       key: 'singBoxInstallExtendedCompressed',
       text: _('Install extended compressed'),
-      icon: renderRotateCcwIcon24,
+      icon: renderDownloadIcon24,
       component: 'sing_box',
       action: 'install_extended_compressed',
     });
@@ -734,7 +769,7 @@ function getComponentCards(): ComponentCard[] {
             {
               key: 'zapretInstall',
               text: _('Install'),
-              icon: renderRotateCcwIcon24,
+              icon: renderDownloadIcon24,
               component: 'zapret',
               action: 'install',
             },
@@ -764,7 +799,7 @@ function getComponentCards(): ComponentCard[] {
             {
               key: 'zapret2Install',
               text: _('Install'),
-              icon: renderRotateCcwIcon24,
+              icon: renderDownloadIcon24,
               component: 'zapret2',
               action: 'install',
             },
@@ -794,7 +829,7 @@ function getComponentCards(): ComponentCard[] {
             {
               key: 'byedpiInstall',
               text: _('Install'),
-              icon: renderRotateCcwIcon24,
+              icon: renderDownloadIcon24,
               component: 'byedpi',
               action: 'install',
             },
@@ -938,36 +973,38 @@ function onStoreUpdate(
   }
 }
 
-async function loadInitialActionState(mountGeneration: number) {
-  try {
-    await refreshComponentActionState();
-  } finally {
-    if (updatesMounted && updatesMountGeneration === mountGeneration) {
-      startComponentActionStateRefresh();
-    }
-  }
-}
-
-function onPageMount() {
+async function onPageMount() {
   onPageUnmount();
 
   updatesMounted = true;
-  updatesMountGeneration += 1;
-  const mountGeneration = updatesMountGeneration;
+  updatesMountId += 1;
+  const mountId = updatesMountId;
+  const hasRuntimeSnapshot = Boolean(getCachedRuntimeUiState());
+
+  if (!hasRuntimeSnapshot) {
+    await refreshRuntimeUiState({ force: true });
+
+    if (!updatesMounted || mountId !== updatesMountId) {
+      return;
+    }
+  }
 
   if (!isAnyActionLoading()) {
     store.reset(['updatesChecks']);
   }
   store.subscribe(onStoreUpdate);
+  startComponentActionStateWatcher();
   renderUpdatesComponents();
   void ensureSystemInfo();
-  void loadInitialActionState(mountGeneration);
+  if (hasRuntimeSnapshot) {
+    void refreshRuntimeUiState({ force: true });
+  }
 }
 
 function onPageUnmount() {
   updatesMounted = false;
-  updatesMountGeneration += 1;
-  stopComponentActionStateRefresh();
+  updatesMountId += 1;
+  stopComponentActionStateWatcher();
   store.unsubscribe(onStoreUpdate);
 }
 

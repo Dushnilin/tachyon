@@ -20,7 +20,7 @@ describe('PodkopShellMethods.subscriptionUpdate', () => {
     vi.useRealTimers();
   });
 
-  it('keeps waiting until the background subscription update job succeeds', async () => {
+  it('starts a targeted background subscription update and waits for its state', async () => {
     mocks.executeShellCommand.mockImplementation(({ args }) => {
       if (args[0] === 'subscription_update_async') {
         return Promise.resolve({
@@ -54,13 +54,28 @@ describe('PodkopShellMethods.subscriptionUpdate', () => {
       });
     });
 
-    const responsePromise = PodkopShellMethods.subscriptionUpdate('main');
+    await expect(PodkopShellMethods.subscriptionUpdateStart('main')).resolves.toEqual({
+      success: true,
+      data: {
+        success: true,
+        job_id: 'job-1',
+        message: 'Subscription update started',
+      },
+    });
+
+    const responsePromise =
+      PodkopShellMethods.waitSubscriptionUpdateJob('job-1');
 
     await vi.advanceTimersByTimeAsync(1500);
 
     await expect(responsePromise).resolves.toEqual({
       success: true,
-      data: 'Subscription update completed',
+      data: {
+        success: true,
+        running: false,
+        message: 'Subscription update completed',
+        exit_code: 0,
+      },
     });
     expect(mocks.executeShellCommand).toHaveBeenNthCalledWith(1, {
       command: '/usr/bin/podkop-plus',
@@ -74,47 +89,21 @@ describe('PodkopShellMethods.subscriptionUpdate', () => {
     });
   });
 
-  it('fails when the background job reports a failed subscription update', async () => {
-    mocks.executeShellCommand.mockImplementation(({ args }) => {
-      if (args[0] === 'subscription_update_async') {
-        return Promise.resolve({
-          stdout: JSON.stringify({
-            success: true,
-            job_id: 'job-1',
-            message: 'Subscription update started',
-          }),
-          stderr: '',
-          code: 0,
-        });
-      }
-
-      if (args[0] === 'subscription_update_status') {
-        return Promise.resolve({
-          stdout: JSON.stringify({
-            success: false,
-            running: false,
-            message: 'Failed to download subscriptions',
-            exit_code: 1,
-          }),
-          stderr: '',
-          code: 0,
-        });
-      }
-
-      return Promise.resolve({
-        stdout: '',
-        stderr: 'Unexpected command',
-        code: 1,
-      });
+  it('returns the backend subscription start error message', async () => {
+    mocks.executeShellCommand.mockResolvedValue({
+      stdout: JSON.stringify({
+        success: false,
+        message: 'Subscription update is already running',
+      }),
+      stderr: '',
+      code: 1,
     });
 
-    const responsePromise = PodkopShellMethods.subscriptionUpdate('main');
-
-    await vi.advanceTimersByTimeAsync(1500);
-
-    await expect(responsePromise).resolves.toEqual({
+    await expect(
+      PodkopShellMethods.subscriptionUpdateStart('main'),
+    ).resolves.toEqual({
       success: false,
-      error: 'Failed to download subscriptions',
+      error: 'Subscription update is already running',
     });
   });
 

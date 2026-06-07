@@ -1508,6 +1508,35 @@ function renderLinkIcon24() {
   );
 }
 
+// src/icons/renderDownloadIcon24.ts
+function renderDownloadIcon24() {
+  const NS = "http://www.w3.org/2000/svg";
+  return svgEl(
+    "svg",
+    {
+      xmlns: NS,
+      viewBox: "0 0 24 24",
+      fill: "none",
+      stroke: "currentColor",
+      "stroke-width": "2",
+      "stroke-linecap": "round",
+      "stroke-linejoin": "round",
+      class: "lucide lucide-download-icon lucide-download"
+    },
+    [
+      svgEl("path", {
+        d: "M12 15V3"
+      }),
+      svgEl("path", {
+        d: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"
+      }),
+      svgEl("path", {
+        d: "m7 10 5 5 5-5"
+      })
+    ]
+  );
+}
+
 // src/helpers/prettyBytes.ts
 function prettyBytes(n) {
   const UNITS = ["B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"];
@@ -2164,9 +2193,6 @@ var Podkop;
     AvailableMethods2["GET_ZAPRET2_STATUS"] = "get_zapret2_status";
     AvailableMethods2["GET_BYEDPI_STATUS"] = "get_byedpi_status";
     AvailableMethods2["CLASH_API"] = "clash_api";
-    AvailableMethods2["RESTART"] = "restart";
-    AvailableMethods2["START"] = "start";
-    AvailableMethods2["STOP"] = "stop";
     AvailableMethods2["ENABLE"] = "enable";
     AvailableMethods2["DISABLE"] = "disable";
     AvailableMethods2["GLOBAL_CHECK"] = "global_check";
@@ -2182,10 +2208,8 @@ var Podkop;
     AvailableMethods2["LATENCY_TEST_ASYNC"] = "latency_test_async";
     AvailableMethods2["LATENCY_TEST_STATUS"] = "latency_test_status";
     AvailableMethods2["UI_ACTION_ACK"] = "ui_action_ack";
-    AvailableMethods2["COMPONENT_ACTION"] = "component_action";
     AvailableMethods2["COMPONENT_ACTION_ASYNC"] = "component_action_async";
     AvailableMethods2["COMPONENT_ACTION_STATUS"] = "component_action_status";
-    AvailableMethods2["SUBSCRIPTION_UPDATE"] = "subscription_update";
     AvailableMethods2["SUBSCRIPTION_UPDATE_ASYNC"] = "subscription_update_async";
     AvailableMethods2["SUBSCRIPTION_UPDATE_STATUS"] = "subscription_update_status";
   })(AvailableMethods = Podkop2.AvailableMethods || (Podkop2.AvailableMethods = {}));
@@ -2215,6 +2239,7 @@ var COMPONENT_ACTION_RPC_TIMEOUT_MS = 15e3;
 var COMPONENT_ACTION_POLL_INTERVAL_MS = 1500;
 var COMPONENT_ACTION_SELF_UPDATE_SETTLE_MS = 3e4;
 var COMPONENT_ACTION_STATE_DIR = "/var/run/podkop-plus/component-actions";
+var GET_UI_STATE_RPC_TIMEOUT_MS = 3e3;
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -2299,7 +2324,10 @@ async function readPodkopVersion() {
 }
 async function isComponentActionStillRunning(jobId, component, action) {
   const response = await callBaseMethod(
-    Podkop.AvailableMethods.GET_UI_STATE
+    Podkop.AvailableMethods.GET_UI_STATE,
+    [],
+    "/usr/bin/podkop-plus",
+    { timeout: GET_UI_STATE_RPC_TIMEOUT_MS }
   );
   return response.success && response.data.actions.component.some(
     (state) => state.job_id === jobId && state.component === component && state.action === action && state.running === true
@@ -2400,21 +2428,6 @@ var PodkopShellMethods = {
   closeAllClashApiConnections: async () => callBaseMethod(Podkop.AvailableMethods.CLASH_API, [
     Podkop.AvailableClashAPIMethods.CLOSE_ALL_CONNECTIONS
   ]),
-  restart: async () => callBaseMethod(
-    Podkop.AvailableMethods.RESTART,
-    [],
-    "/etc/init.d/podkop-plus"
-  ),
-  start: async () => callBaseMethod(
-    Podkop.AvailableMethods.START,
-    [],
-    "/etc/init.d/podkop-plus"
-  ),
-  stop: async () => callBaseMethod(
-    Podkop.AvailableMethods.STOP,
-    [],
-    "/etc/init.d/podkop-plus"
-  ),
   enable: async () => callBaseMethod(
     Podkop.AvailableMethods.ENABLE,
     [],
@@ -2438,7 +2451,12 @@ var PodkopShellMethods = {
   getUiCapabilities: async () => callBaseMethod(
     Podkop.AvailableMethods.GET_UI_CAPABILITIES
   ),
-  getUiState: async () => callBaseMethod(Podkop.AvailableMethods.GET_UI_STATE),
+  getUiState: async () => callBaseMethod(
+    Podkop.AvailableMethods.GET_UI_STATE,
+    [],
+    "/usr/bin/podkop-plus",
+    { timeout: GET_UI_STATE_RPC_TIMEOUT_MS }
+  ),
   serviceActionStart: async (action) => {
     const response = await executeShellCommand({
       command: "/usr/bin/podkop-plus",
@@ -2493,26 +2511,6 @@ var PodkopShellMethods = {
       success: false,
       error: _("Operation timed out")
     };
-  },
-  serviceAction: async (action) => {
-    const startResponse = await PodkopShellMethods.serviceActionStart(action);
-    if (!startResponse.success) {
-      return startResponse;
-    }
-    return PodkopShellMethods.waitServiceActionJob(
-      startResponse.data.job_id
-    ).then((response) => {
-      if (!response.success) {
-        return response;
-      }
-      if (response.data.success === false) {
-        return {
-          success: false,
-          error: response.data.message || _("Service action failed")
-        };
-      }
-      return response;
-    });
   },
   latencyTestStart: async (latencyType, section, tag) => {
     const response = await executeShellCommand({
@@ -2573,17 +2571,6 @@ var PodkopShellMethods = {
       success: false,
       error: _("Operation timed out")
     };
-  },
-  latencyTest: async (latencyType, section, tag) => {
-    const startResponse = await PodkopShellMethods.latencyTestStart(
-      latencyType,
-      section,
-      tag
-    );
-    if (!startResponse.success) {
-      return startResponse;
-    }
-    return PodkopShellMethods.waitLatencyTestJob(startResponse.data.job_id);
   },
   uiActionAck: async (kind, jobId) => {
     const response = await executeShellCommand({
@@ -2693,32 +2680,6 @@ var PodkopShellMethods = {
       error: _("Operation timed out")
     };
   },
-  componentAction: async (component, action, expectedLatestVersion) => {
-    const startResponse = await PodkopShellMethods.componentActionStart(
-      component,
-      action
-    );
-    if (!startResponse.success) {
-      return startResponse;
-    }
-    return PodkopShellMethods.waitComponentActionJob(
-      startResponse.data.job_id,
-      component,
-      action,
-      expectedLatestVersion
-    ).then((response) => {
-      if (!response.success) {
-        return response;
-      }
-      if (response.data.success === false) {
-        return {
-          success: false,
-          error: response.data.message || _("Failed to execute")
-        };
-      }
-      return response;
-    });
-  },
   subscriptionUpdateStart: async (section, sourceIndex) => {
     const startArgs = [
       Podkop.AvailableMethods.SUBSCRIPTION_UPDATE_ASYNC,
@@ -2775,31 +2736,6 @@ var PodkopShellMethods = {
     return {
       success: false,
       error: _("Operation timed out")
-    };
-  },
-  subscriptionUpdate: async (section, sourceIndex) => {
-    const startResponse = await PodkopShellMethods.subscriptionUpdateStart(
-      section,
-      sourceIndex
-    );
-    if (!startResponse.success) {
-      return startResponse;
-    }
-    const response = await PodkopShellMethods.waitSubscriptionUpdateJob(
-      startResponse.data.job_id
-    );
-    if (!response.success) {
-      return response;
-    }
-    if (response.data.success === false) {
-      return {
-        success: false,
-        error: response.data.message || _("Subscription update failed")
-      };
-    }
-    return {
-      success: true,
-      data: response.data.message || startResponse.data.message || _("Subscription update completed")
     };
   }
 };
@@ -3342,6 +3278,18 @@ function getCheckTitle(name) {
 }
 
 // src/podkop/tabs/diagnostic/checks/contstants.ts
+var DIAGNOSTICS_CHECKS = /* @__PURE__ */ ((DIAGNOSTICS_CHECKS2) => {
+  DIAGNOSTICS_CHECKS2["DNS"] = "DNS";
+  DIAGNOSTICS_CHECKS2["SINGBOX"] = "SINGBOX";
+  DIAGNOSTICS_CHECKS2["NFT"] = "NFT";
+  DIAGNOSTICS_CHECKS2["ZAPRET"] = "ZAPRET";
+  DIAGNOSTICS_CHECKS2["ZAPRET2"] = "ZAPRET2";
+  DIAGNOSTICS_CHECKS2["BYEDPI"] = "BYEDPI";
+  DIAGNOSTICS_CHECKS2["FAKEIP"] = "FAKEIP";
+  DIAGNOSTICS_CHECKS2["OUTBOUNDS"] = "OUTBOUNDS";
+  DIAGNOSTICS_CHECKS2["INBOUNDS"] = "INBOUNDS";
+  return DIAGNOSTICS_CHECKS2;
+})(DIAGNOSTICS_CHECKS || {});
 var DIAGNOSTICS_CHECKS_MAP = {
   ["DNS" /* DNS */]: {
     order: 1,
@@ -3737,7 +3685,7 @@ var PodkopLogWatcher = class _PodkopLogWatcher {
     if (!this.running || !this.paused) return;
     this.paused = false;
     logger.info("[PodkopLogWatcher]", "resumed (tab active)");
-    this.checkOnce();
+    void this.checkOnce();
   }
   reset() {
     this.lastLines = /* @__PURE__ */ new Set();
@@ -3810,7 +3758,356 @@ var LogNotificationDeduper = class {
   }
 };
 
+// src/podkop/helpers/getComponentActionKey.ts
+var componentActionKeyMap = {
+  "podkop:check_update": "podkopCheck",
+  "podkop:install": "podkopInstall",
+  "sing_box:check_update": "singBoxCheck",
+  "sing_box:install": "singBoxInstall",
+  "sing_box:install_extended": "singBoxInstallExtended",
+  "sing_box:install_extended_compressed": "singBoxInstallExtendedCompressed",
+  "sing_box:install_tiny": "singBoxInstallTiny",
+  "sing_box:install_stable": "singBoxInstallStable",
+  "zapret:check_update": "zapretCheck",
+  "zapret:install": "zapretInstall",
+  "zapret:remove": "zapretRemove",
+  "zapret2:check_update": "zapret2Check",
+  "zapret2:install": "zapret2Install",
+  "zapret2:remove": "zapret2Remove",
+  "byedpi:check_update": "byedpiCheck",
+  "byedpi:install": "byedpiInstall",
+  "byedpi:remove": "byedpiRemove"
+};
+function getComponentActionKey(component, action) {
+  return componentActionKeyMap[`${component}:${action}`];
+}
+
+// src/podkop/helpers/singBoxVariant.ts
+function isExtendedSingBoxVersion(version) {
+  return String(version || "").includes("extended");
+}
+function isVersionPlaceholder(version) {
+  const normalized = String(version || "").trim().toLowerCase();
+  if (!normalized || normalized === "loading" || normalized === "unknown" || normalized === "not installed") {
+    return true;
+  }
+  return typeof _ === "function" && normalized === _("unknown").toLowerCase() || typeof _ === "function" && normalized === _("Not installed").toLowerCase();
+}
+function formatSingBoxVersion(value) {
+  const version = String(value.sing_box_version || "");
+  if (!version || version === "not installed") {
+    return _("Not installed");
+  }
+  if (isVersionPlaceholder(version)) {
+    return version;
+  }
+  const normalizedValue = normalizeSingBoxVariantFields(value);
+  let variant = "";
+  if (normalizedValue.sing_box_extended && normalizedValue.sing_box_compressed) {
+    variant = _("compressed");
+  } else if (normalizedValue.sing_box_tiny) {
+    variant = _("tiny");
+  }
+  return variant ? `${version} (${variant})` : version;
+}
+function normalizeSingBoxVariantFields(value) {
+  const versionExtended = isExtendedSingBoxVersion(value.sing_box_version);
+  const singBoxExtended = Boolean(value.sing_box_extended) || versionExtended;
+  return {
+    ...value,
+    sing_box_extended: singBoxExtended ? 1 : 0,
+    sing_box_tiny: singBoxExtended ? 0 : value.sing_box_tiny ? 1 : 0,
+    sing_box_compressed: singBoxExtended && value.sing_box_compressed ? 1 : 0,
+    sing_box_tailscale: singBoxExtended || value.sing_box_tailscale ? 1 : 0
+  };
+}
+
+// src/podkop/services/localActionOverlay.service.ts
+var componentActions = /* @__PURE__ */ new Set();
+var subscriptionSections = /* @__PURE__ */ new Set();
+var latencySections = /* @__PURE__ */ new Set();
+var serviceActions = /* @__PURE__ */ new Set();
+function setMembership(set, value, active) {
+  if (active) {
+    set.add(value);
+  } else {
+    set.delete(value);
+  }
+}
+function setLocalComponentAction(action, active) {
+  setMembership(componentActions, action, active);
+}
+function setLocalSubscriptionAction(section, active) {
+  if (section) {
+    setMembership(subscriptionSections, section, active);
+  }
+}
+function setLocalLatencyAction(section, active) {
+  if (section) {
+    setMembership(latencySections, section, active);
+  }
+}
+function setLocalServiceAction(action, active) {
+  if (action === "restart" || action === "start" || action === "stop") {
+    setMembership(serviceActions, action, active);
+  }
+}
+function getLocalActionOverlay() {
+  return {
+    componentActions: new Set(componentActions),
+    subscriptionSections: new Set(subscriptionSections),
+    latencySections: new Set(latencySections),
+    serviceActions: new Set(serviceActions)
+  };
+}
+
+// src/podkop/services/uiState.service.ts
+function isRunningAction(state) {
+  return state.running === true;
+}
+function getEmptyUpdatesActions() {
+  return {
+    podkopCheck: { loading: false },
+    podkopInstall: { loading: false },
+    singBoxCheck: { loading: false },
+    singBoxInstall: { loading: false },
+    singBoxInstallExtended: { loading: false },
+    singBoxInstallExtendedCompressed: { loading: false },
+    singBoxInstallTiny: { loading: false },
+    singBoxInstallStable: { loading: false },
+    zapretCheck: { loading: false },
+    zapretInstall: { loading: false },
+    zapretRemove: { loading: false },
+    zapret2Check: { loading: false },
+    zapret2Install: { loading: false },
+    zapret2Remove: { loading: false },
+    byedpiCheck: { loading: false },
+    byedpiInstall: { loading: false },
+    byedpiRemove: { loading: false }
+  };
+}
+function getEmptyDiagnosticsActions() {
+  return {
+    ...store.get().diagnosticsActions,
+    restart: { loading: false },
+    start: { loading: false },
+    stop: { loading: false }
+  };
+}
+function applyServiceState(uiState) {
+  const currentSystemInfo = store.get().diagnosticsSystemInfo;
+  const nextSystemInfo = {
+    ...currentSystemInfo,
+    providerInfoLoaded: true,
+    zapret_installed: uiState.capabilities.zapret_installed,
+    zapret2_installed: uiState.capabilities.zapret2_installed,
+    byedpi_installed: uiState.capabilities.byedpi_installed,
+    server_inbounds_enabled_count: uiState.capabilities.server_inbounds_enabled_count
+  };
+  nextSystemInfo.sing_box_extended = uiState.capabilities.sing_box_extended;
+  nextSystemInfo.sing_box_tiny = uiState.capabilities.sing_box_tiny;
+  nextSystemInfo.sing_box_compressed = uiState.capabilities.sing_box_compressed;
+  nextSystemInfo.sing_box_tailscale = uiState.capabilities.sing_box_tailscale;
+  store.set({
+    servicesInfoWidget: {
+      loading: false,
+      failed: false,
+      data: {
+        singbox: uiState.service.sing_box.running,
+        podkopRunning: uiState.service.podkop.running,
+        podkopEnabled: uiState.service.podkop.enabled,
+        podkopStatus: uiState.service.podkop.status
+      }
+    },
+    diagnosticsSystemInfo: normalizeSingBoxVariantFields(nextSystemInfo)
+  });
+}
+function applyActionState(actions = {}) {
+  const current = store.get();
+  const localOverlay = getLocalActionOverlay();
+  const subscriptionUpdatingSections = {};
+  const latencyFetchingSections = {};
+  const updatesActions = getEmptyUpdatesActions();
+  const diagnosticsActions = getEmptyDiagnosticsActions();
+  for (const state of actions.subscription || []) {
+    if (isRunningAction(state) && state.section) {
+      subscriptionUpdatingSections[state.section] = true;
+    }
+  }
+  for (const state of actions.latency || []) {
+    if (isRunningAction(state) && state.section) {
+      latencyFetchingSections[state.section] = true;
+    }
+  }
+  for (const state of actions.component || []) {
+    if (!isRunningAction(state)) {
+      continue;
+    }
+    const key = getComponentActionKey(state.component, state.action);
+    if (key) {
+      updatesActions[key] = { loading: true };
+    }
+  }
+  for (const state of actions.service || []) {
+    if (!isRunningAction(state)) {
+      continue;
+    }
+    if (state.action === "start") {
+      diagnosticsActions.start = { loading: true };
+    } else if (state.action === "stop") {
+      diagnosticsActions.stop = { loading: true };
+    } else if (state.action === "restart" || state.action === "reload") {
+      diagnosticsActions.restart = { loading: true };
+    }
+  }
+  for (const section of localOverlay.subscriptionSections) {
+    subscriptionUpdatingSections[section] = true;
+  }
+  for (const section of localOverlay.latencySections) {
+    latencyFetchingSections[section] = true;
+  }
+  for (const key of localOverlay.componentActions) {
+    updatesActions[key] = { loading: true };
+  }
+  for (const action of localOverlay.serviceActions) {
+    diagnosticsActions[action] = { loading: true };
+  }
+  store.set({
+    sectionsWidget: {
+      ...current.sectionsWidget,
+      subscriptionUpdatingSections,
+      latencyFetchingSections
+    },
+    updatesActions,
+    diagnosticsActions
+  });
+}
+function applyUiStateToStore(uiState) {
+  applyServiceState(uiState);
+  applyActionState(uiState.actions);
+}
+
+// src/podkop/services/runtimeUiState.service.ts
+var RUNTIME_UI_STATE_REFRESH_MIN_INTERVAL_MS = 500;
+var RUNTIME_UI_STATE_IDLE_POLL_INTERVAL_MS = 1e3;
+var RUNTIME_UI_STATE_ACTIVE_POLL_INTERVAL_MS = 500;
+var runtimeUiStateRefreshPromise = null;
+var lastRuntimeUiStateRefreshAt = 0;
+var lastRuntimeUiState;
+var runtimeStateResumeRefreshRegistered = false;
+var runtimeStatePollTimer = null;
+var runtimeStatePollingStarted = false;
+var runtimeStateHasRunningAction = false;
+var runtimeUiStateListeners = /* @__PURE__ */ new Set();
+function isDocumentVisible() {
+  return typeof document === "undefined" || !document.visibilityState || document.visibilityState === "visible";
+}
+function hasRunningAction(uiState) {
+  return Object.values(uiState.actions).some(
+    (actions) => actions.some((action) => action.running)
+  );
+}
+function getNextPollDelay() {
+  return runtimeStateHasRunningAction ? RUNTIME_UI_STATE_ACTIVE_POLL_INTERVAL_MS : RUNTIME_UI_STATE_IDLE_POLL_INTERVAL_MS;
+}
+function scheduleRuntimeUiStatePoll(delay = getNextPollDelay()) {
+  if (!runtimeStatePollingStarted || runtimeStatePollTimer || typeof window === "undefined") {
+    return;
+  }
+  runtimeStatePollTimer = window.setTimeout(() => {
+    runtimeStatePollTimer = null;
+    void refreshRuntimeUiState().catch(() => void 0).finally(() => {
+      scheduleRuntimeUiStatePoll();
+    });
+  }, delay);
+}
+function notifyRuntimeUiStateListeners(uiState) {
+  for (const listener of runtimeUiStateListeners) {
+    try {
+      listener(uiState);
+    } catch (error) {
+      logger.error("[RUNTIME_UI_STATE]", "listener failed", error);
+    }
+  }
+}
+async function refreshRuntimeUiState({
+  force = false
+} = {}) {
+  if (!isDocumentVisible()) {
+    return void 0;
+  }
+  if (runtimeUiStateRefreshPromise) {
+    return runtimeUiStateRefreshPromise;
+  }
+  const now = Date.now();
+  if (!force && now - lastRuntimeUiStateRefreshAt < RUNTIME_UI_STATE_REFRESH_MIN_INTERVAL_MS) {
+    return void 0;
+  }
+  lastRuntimeUiStateRefreshAt = now;
+  const promise = PodkopShellMethods.getUiState().then((response) => {
+    if (!response.success) {
+      return void 0;
+    }
+    applyUiStateToStore(response.data);
+    lastRuntimeUiState = response.data;
+    runtimeStateHasRunningAction = hasRunningAction(response.data);
+    notifyRuntimeUiStateListeners(response.data);
+    return response.data;
+  }).catch((error) => {
+    logger.error("[RUNTIME_UI_STATE]", "refresh failed", error);
+    return void 0;
+  }).finally(() => {
+    if (runtimeUiStateRefreshPromise === promise) {
+      runtimeUiStateRefreshPromise = null;
+    }
+  });
+  runtimeUiStateRefreshPromise = promise;
+  return runtimeUiStateRefreshPromise;
+}
+function subscribeRuntimeUiState(listener) {
+  runtimeUiStateListeners.add(listener);
+  if (lastRuntimeUiState) {
+    try {
+      listener(lastRuntimeUiState);
+    } catch (error) {
+      logger.error("[RUNTIME_UI_STATE]", "listener failed", error);
+    }
+  }
+  return () => {
+    runtimeUiStateListeners.delete(listener);
+  };
+}
+function getCachedRuntimeUiState() {
+  return lastRuntimeUiState;
+}
+function registerRuntimeStateResumeRefresh() {
+  if (runtimeStateResumeRefreshRegistered || typeof window === "undefined") {
+    return;
+  }
+  runtimeStateResumeRefreshRegistered = true;
+  const refreshOnResume = () => {
+    if (!isDocumentVisible()) {
+      return;
+    }
+    void refreshRuntimeUiState({ force: true });
+  };
+  document.addEventListener("visibilitychange", refreshOnResume);
+  window.addEventListener("pageshow", refreshOnResume);
+  window.addEventListener("focus", refreshOnResume);
+}
+function startRuntimeUiStatePolling() {
+  if (runtimeStatePollingStarted || typeof window === "undefined") {
+    return;
+  }
+  runtimeStatePollingStarted = true;
+  void refreshRuntimeUiState({ force: true }).finally(() => {
+    scheduleRuntimeUiStatePoll();
+  });
+}
+
 // src/podkop/services/core.service.ts
+var LOG_WATCHER_INTERVAL_MS = 1e4;
+var LOG_WATCHER_START_DELAY_MS = 5e3;
 function showLogErrorNotification(line) {
   ui.addNotification(
     _("Podkop Plus Error"),
@@ -3840,7 +4137,7 @@ function coreService(options = {}) {
       return "";
     },
     {
-      intervalMs: 3e3,
+      intervalMs: LOG_WATCHER_INTERVAL_MS,
       onNewLog: (line) => {
         if (logNotificationDeduper.shouldNotify(line)) {
           showLogErrorNotification(line);
@@ -3849,22 +4146,21 @@ function coreService(options = {}) {
     }
   );
   const startWatcher = () => watcher.start();
+  const scheduleStartWatcher = () => window.setTimeout(
+    startWatcher,
+    options.logWatcherStartDelayMs ?? LOG_WATCHER_START_DELAY_MS
+  );
   if (typeof window !== "undefined") {
-    window.setTimeout(() => {
-      if (options.waitForLogWatcherStart) {
-        Promise.resolve().then(() => options.waitForLogWatcherStart?.()).catch(() => null).finally(
-          () => window.setTimeout(
-            startWatcher,
-            options.logWatcherStartDelayMs ?? 0
-          )
-        );
-        return;
-      }
-      startWatcher();
-    }, 0);
+    if (options.waitForLogWatcherStart) {
+      Promise.resolve().then(() => options.waitForLogWatcherStart?.()).catch(() => null).finally(scheduleStartWatcher);
+    } else {
+      scheduleStartWatcher();
+    }
   } else {
     startWatcher();
   }
+  registerRuntimeStateResumeRefresh();
+  startRuntimeUiStatePolling();
 }
 
 // src/podkop/services/socket.service.ts
@@ -4006,181 +4302,111 @@ var SocketManager = class _SocketManager {
 };
 var socket = SocketManager.getInstance();
 
-// src/podkop/helpers/getComponentActionKey.ts
-var componentActionKeyMap = {
-  "podkop:check_update": "podkopCheck",
-  "podkop:install": "podkopInstall",
-  "sing_box:check_update": "singBoxCheck",
-  "sing_box:install": "singBoxInstall",
-  "sing_box:install_extended": "singBoxInstallExtended",
-  "sing_box:install_extended_compressed": "singBoxInstallExtendedCompressed",
-  "sing_box:install_tiny": "singBoxInstallTiny",
-  "sing_box:install_stable": "singBoxInstallStable",
-  "zapret:check_update": "zapretCheck",
-  "zapret:install": "zapretInstall",
-  "zapret:remove": "zapretRemove",
-  "zapret2:check_update": "zapret2Check",
-  "zapret2:install": "zapret2Install",
-  "zapret2:remove": "zapret2Remove",
-  "byedpi:check_update": "byedpiCheck",
-  "byedpi:install": "byedpiInstall",
-  "byedpi:remove": "byedpiRemove"
-};
-function getComponentActionKey(component, action) {
-  return componentActionKeyMap[`${component}:${action}`];
+// src/podkop/services/uiActionNotification.service.ts
+var UI_ACTION_NOTIFICATION_STORAGE_KEY = "podkop-plus:owned-ui-action-notifications:v1";
+var MAX_STORED_UI_ACTION_NOTIFICATIONS = 100;
+function getSessionStorage2() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  try {
+    return window.sessionStorage;
+  } catch {
+    return null;
+  }
 }
-
-// src/podkop/helpers/singBoxVariant.ts
-function isExtendedSingBoxVersion(version) {
-  return String(version || "").includes("extended");
+function getNotificationKey(kind, jobId) {
+  return `${kind}:${jobId}`;
 }
-function isVersionPlaceholder(version) {
-  const normalized = String(version || "").trim().toLowerCase();
-  if (!normalized || normalized === "loading" || normalized === "unknown" || normalized === "not installed") {
+function isStoredNotification(value) {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const candidate = value;
+  return (candidate.kind === "component" || candidate.kind === "subscription") && typeof candidate.jobId === "string" && typeof candidate.notified === "boolean" && typeof candidate.updatedAt === "number";
+}
+function readStoredNotifications(storage) {
+  if (!storage) {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(
+      storage.getItem(UI_ACTION_NOTIFICATION_STORAGE_KEY) || "[]"
+    );
+    return Array.isArray(parsed) ? parsed.filter(isStoredNotification) : [];
+  } catch {
+    return [];
+  }
+}
+function writeStoredNotifications(storage, notifications) {
+  if (!storage) {
+    return;
+  }
+  try {
+    storage.setItem(
+      UI_ACTION_NOTIFICATION_STORAGE_KEY,
+      JSON.stringify(
+        notifications.sort((a, b) => a.updatedAt - b.updatedAt).slice(-MAX_STORED_UI_ACTION_NOTIFICATIONS)
+      )
+    );
+  } catch {
+  }
+}
+var UiActionNotificationTracker = class {
+  constructor(storage = getSessionStorage2()) {
+    this.notifications = /* @__PURE__ */ new Map();
+    this.storage = storage;
+    for (const notification of readStoredNotifications(storage)) {
+      this.notifications.set(
+        getNotificationKey(notification.kind, notification.jobId),
+        notification
+      );
+    }
+  }
+  markOwned(kind, jobId) {
+    if (!jobId) {
+      return;
+    }
+    const key = getNotificationKey(kind, jobId);
+    const current = this.notifications.get(key);
+    this.notifications.set(key, {
+      kind,
+      jobId,
+      notified: current?.notified ?? false,
+      updatedAt: Date.now()
+    });
+    this.persist();
+  }
+  shouldNotify(kind, jobId) {
+    if (!jobId) {
+      return false;
+    }
+    const key = getNotificationKey(kind, jobId);
+    const current = this.notifications.get(key);
+    if (!current || current.notified) {
+      return false;
+    }
+    this.notifications.set(key, {
+      ...current,
+      notified: true,
+      updatedAt: Date.now()
+    });
+    this.persist();
     return true;
   }
-  return typeof _ === "function" && normalized === _("unknown").toLowerCase() || typeof _ === "function" && normalized === _("Not installed").toLowerCase();
-}
-function formatSingBoxVersion(value) {
-  const version = String(value.sing_box_version || "");
-  if (!version || version === "not installed") {
-    return _("Not installed");
+  persist() {
+    writeStoredNotifications(
+      this.storage,
+      Array.from(this.notifications.values())
+    );
   }
-  if (isVersionPlaceholder(version)) {
-    return version;
-  }
-  const normalizedValue = normalizeSingBoxVariantFields(value);
-  let variant = "";
-  if (normalizedValue.sing_box_extended && normalizedValue.sing_box_compressed) {
-    variant = _("compressed");
-  } else if (normalizedValue.sing_box_tiny) {
-    variant = _("tiny");
-  }
-  return variant ? `${version} (${variant})` : version;
+};
+var uiActionNotifications = new UiActionNotificationTracker();
+function markUiActionOwned(kind, jobId) {
+  uiActionNotifications.markOwned(kind, jobId);
 }
-function normalizeSingBoxVariantFields(value) {
-  const versionExtended = isExtendedSingBoxVersion(value.sing_box_version);
-  const singBoxExtended = Boolean(value.sing_box_extended) || versionExtended;
-  return {
-    ...value,
-    sing_box_extended: singBoxExtended ? 1 : 0,
-    sing_box_tiny: singBoxExtended ? 0 : value.sing_box_tiny ? 1 : 0,
-    sing_box_compressed: singBoxExtended && value.sing_box_compressed ? 1 : 0,
-    sing_box_tailscale: singBoxExtended || value.sing_box_tailscale ? 1 : 0
-  };
-}
-
-// src/podkop/services/uiState.service.ts
-function isRunningAction(state) {
-  return state.running === true;
-}
-function getEmptyUpdatesActions() {
-  return {
-    podkopCheck: { loading: false },
-    podkopInstall: { loading: false },
-    singBoxCheck: { loading: false },
-    singBoxInstall: { loading: false },
-    singBoxInstallExtended: { loading: false },
-    singBoxInstallExtendedCompressed: { loading: false },
-    singBoxInstallTiny: { loading: false },
-    singBoxInstallStable: { loading: false },
-    zapretCheck: { loading: false },
-    zapretInstall: { loading: false },
-    zapretRemove: { loading: false },
-    zapret2Check: { loading: false },
-    zapret2Install: { loading: false },
-    zapret2Remove: { loading: false },
-    byedpiCheck: { loading: false },
-    byedpiInstall: { loading: false },
-    byedpiRemove: { loading: false }
-  };
-}
-function getEmptyDiagnosticsActions() {
-  return {
-    ...store.get().diagnosticsActions,
-    restart: { loading: false },
-    start: { loading: false },
-    stop: { loading: false }
-  };
-}
-function applyServiceState(uiState) {
-  const currentSystemInfo = store.get().diagnosticsSystemInfo;
-  const nextSystemInfo = {
-    ...currentSystemInfo,
-    providerInfoLoaded: true,
-    zapret_installed: uiState.capabilities.zapret_installed,
-    zapret2_installed: uiState.capabilities.zapret2_installed,
-    byedpi_installed: uiState.capabilities.byedpi_installed,
-    server_inbounds_enabled_count: uiState.capabilities.server_inbounds_enabled_count
-  };
-  nextSystemInfo.sing_box_extended = uiState.capabilities.sing_box_extended;
-  nextSystemInfo.sing_box_tiny = uiState.capabilities.sing_box_tiny;
-  nextSystemInfo.sing_box_compressed = uiState.capabilities.sing_box_compressed;
-  nextSystemInfo.sing_box_tailscale = uiState.capabilities.sing_box_tailscale;
-  store.set({
-    servicesInfoWidget: {
-      loading: false,
-      failed: false,
-      data: {
-        singbox: uiState.service.sing_box.running,
-        podkopRunning: uiState.service.podkop.running,
-        podkopEnabled: uiState.service.podkop.enabled,
-        podkopStatus: uiState.service.podkop.status
-      }
-    },
-    diagnosticsSystemInfo: normalizeSingBoxVariantFields(nextSystemInfo)
-  });
-}
-function applyActionState(actions = {}) {
-  const current = store.get();
-  const subscriptionUpdatingSections = {};
-  const latencyFetchingSections = {};
-  const updatesActions = getEmptyUpdatesActions();
-  const diagnosticsActions = getEmptyDiagnosticsActions();
-  for (const state of actions.subscription || []) {
-    if (isRunningAction(state) && state.section) {
-      subscriptionUpdatingSections[state.section] = true;
-    }
-  }
-  for (const state of actions.latency || []) {
-    if (isRunningAction(state) && state.section) {
-      latencyFetchingSections[state.section] = true;
-    }
-  }
-  for (const state of actions.component || []) {
-    if (!isRunningAction(state)) {
-      continue;
-    }
-    const key = getComponentActionKey(state.component, state.action);
-    if (key) {
-      updatesActions[key] = { loading: true };
-    }
-  }
-  for (const state of actions.service || []) {
-    if (!isRunningAction(state)) {
-      continue;
-    }
-    if (state.action === "start") {
-      diagnosticsActions.start = { loading: true };
-    } else if (state.action === "stop") {
-      diagnosticsActions.stop = { loading: true };
-    } else if (state.action === "restart" || state.action === "reload") {
-      diagnosticsActions.restart = { loading: true };
-    }
-  }
-  store.set({
-    sectionsWidget: {
-      ...current.sectionsWidget,
-      subscriptionUpdatingSections,
-      latencyFetchingSections
-    },
-    updatesActions,
-    diagnosticsActions
-  });
-}
-function applyUiStateToStore(uiState) {
-  applyServiceState(uiState);
-  applyActionState(uiState.actions);
+function shouldNotifyOwnedUiAction(kind, jobId) {
+  return uiActionNotifications.shouldNotify(kind, jobId);
 }
 
 // src/podkop/fetchers/fetchServicesInfo.ts
@@ -4197,13 +4423,12 @@ function getSettledMethodResponse(scope, result) {
 }
 async function fetchServicesInfo() {
   const requestId = ++latestServicesInfoRequestId;
-  const uiState = await PodkopShellMethods.getUiState();
+  const uiState = await refreshRuntimeUiState({ force: true });
   if (requestId !== latestServicesInfoRequestId) {
     return;
   }
-  if (uiState.success) {
-    applyUiStateToStore(uiState.data);
-    return uiState.data;
+  if (uiState) {
+    return uiState;
   }
   const [podkopResult, singboxResult] = await Promise.allSettled([
     PodkopShellMethods.getStatus(),
@@ -4214,15 +4439,16 @@ async function fetchServicesInfo() {
   }
   const podkop = getSettledMethodResponse("getStatus", podkopResult);
   const singbox = getSettledMethodResponse("getSingBoxStatus", singboxResult);
+  const previousData = store.get().servicesInfoWidget.data;
   store.set({
     servicesInfoWidget: {
       loading: false,
       failed: !podkop.success || !singbox.success,
       data: {
-        singbox: singbox.success ? singbox.data.running : 0,
-        podkopRunning: podkop.success ? podkop.data.running : 0,
-        podkopEnabled: podkop.success ? podkop.data.enabled : 0,
-        podkopStatus: podkop.success ? podkop.data.status : ""
+        singbox: singbox.success ? singbox.data.running : previousData.singbox,
+        podkopRunning: podkop.success ? podkop.data.running : previousData.podkopRunning,
+        podkopEnabled: podkop.success ? podkop.data.enabled : previousData.podkopEnabled,
+        podkopStatus: podkop.success ? podkop.data.status : previousData.podkopStatus
       }
     }
   });
@@ -4246,11 +4472,14 @@ var SECTIONS_REFRESH_INTERVAL_MS = 1e4;
 var sectionsRefreshTimer = null;
 var sectionsRefreshPromise = null;
 var sectionsRefreshQueued = false;
+var actionStateUnsubscribe = null;
 var dashboardMounted = false;
 var dashboardMountId = 0;
 var pageUnloading = false;
 var followedSubscriptionJobs = /* @__PURE__ */ new Set();
 var followedLatencyJobs = /* @__PURE__ */ new Set();
+var handledSubscriptionJobs = /* @__PURE__ */ new Set();
+var handledLatencyJobs = /* @__PURE__ */ new Set();
 if (typeof window !== "undefined") {
   window.addEventListener("pagehide", () => {
     pageUnloading = true;
@@ -4329,7 +4558,10 @@ async function fetchDashboardSections(options = {}) {
     }
   }
 }
-function setSubscriptionUpdating(sectionName, updating) {
+function setSubscriptionUpdating(sectionName, updating, local = false) {
+  if (local || !updating) {
+    setLocalSubscriptionAction(sectionName, updating && local);
+  }
   const sectionsWidget = store.get().sectionsWidget;
   const subscriptionUpdatingSections = {
     ...sectionsWidget.subscriptionUpdatingSections
@@ -4363,7 +4595,10 @@ function setSelectorSwitching(sectionName, tag) {
     }
   });
 }
-function setLatencyFetching(sectionName, fetching) {
+function setLatencyFetching(sectionName, fetching, local = false) {
+  if (local || !fetching) {
+    setLocalLatencyAction(sectionName, fetching && local);
+  }
   const sectionsWidget = store.get().sectionsWidget;
   const latencyFetchingSections = {
     ...sectionsWidget.latencyFetchingSections
@@ -4385,14 +4620,25 @@ async function completeSubscriptionUpdateJob(jobId, sectionName, response) {
   if (pageUnloading) {
     return;
   }
+  if (jobId && handledSubscriptionJobs.has(jobId)) {
+    return;
+  }
+  if (jobId) {
+    handledSubscriptionJobs.add(jobId);
+  }
+  const shouldNotify = jobId ? shouldNotifyOwnedUiAction("subscription", jobId) : false;
   if (jobId && response.success) {
     void PodkopShellMethods.uiActionAck("subscription", jobId);
   }
   if (!response.success || response.data.success === false) {
-    showToast(_("Failed to update subscriptions"), "error");
+    if (shouldNotify) {
+      showToast(_("Failed to update subscriptions"), "error");
+    }
     return;
   }
-  showToast(_("Subscription update completed"), "success");
+  if (shouldNotify) {
+    showToast(_("Subscription update completed"), "success");
+  }
   void fetchDashboardSections({ force: true });
   void fetchServicesInfo();
 }
@@ -4400,6 +4646,9 @@ async function followSubscriptionUpdateState(state) {
   const jobId = state.job_id;
   const sectionName = state.section || "";
   if (!jobId || !sectionName || followedSubscriptionJobs.has(jobId)) {
+    return;
+  }
+  if (!state.running && handledSubscriptionJobs.has(jobId)) {
     return;
   }
   followedSubscriptionJobs.add(jobId);
@@ -4425,6 +4674,12 @@ async function completeLatencyTestJob(jobId, sectionName) {
   if (pageUnloading) {
     return;
   }
+  if (jobId && handledLatencyJobs.has(jobId)) {
+    return;
+  }
+  if (jobId) {
+    handledLatencyJobs.add(jobId);
+  }
   if (jobId) {
     void PodkopShellMethods.uiActionAck("latency", jobId);
   }
@@ -4434,6 +4689,9 @@ async function followLatencyTestState(state) {
   const jobId = state.job_id;
   const sectionName = state.section || "";
   if (!jobId || !sectionName || followedLatencyJobs.has(jobId)) {
+    return;
+  }
+  if (!state.running && handledLatencyJobs.has(jobId)) {
     return;
   }
   followedLatencyJobs.add(jobId);
@@ -4452,22 +4710,40 @@ async function followLatencyTestState(state) {
     followedLatencyJobs.delete(jobId);
   }
 }
-async function restoreDashboardActionState() {
-  const response = await PodkopShellMethods.getUiState();
-  if (!response.success) {
+function followDashboardActionsFromUiState(uiState) {
+  for (const state of uiState.actions.subscription || []) {
+    if (state.running || state.job_id && state.section) {
+      void followSubscriptionUpdateState(state);
+    } else if (state.job_id && !handledSubscriptionJobs.has(state.job_id)) {
+      handledSubscriptionJobs.add(state.job_id);
+      void PodkopShellMethods.uiActionAck("subscription", state.job_id);
+    }
+  }
+  for (const state of uiState.actions.latency || []) {
+    if (state.running || state.job_id && state.section) {
+      void followLatencyTestState(state);
+    } else if (state.job_id && !handledLatencyJobs.has(state.job_id)) {
+      handledLatencyJobs.add(state.job_id);
+      void PodkopShellMethods.uiActionAck("latency", state.job_id);
+    }
+  }
+}
+function startActionStateWatcher() {
+  if (actionStateUnsubscribe) {
     return;
   }
-  applyUiStateToStore(response.data);
-  for (const state of response.data.actions.subscription || []) {
-    if (state.running === false || state.running) {
-      void followSubscriptionUpdateState(state);
+  actionStateUnsubscribe = subscribeRuntimeUiState((uiState) => {
+    if (dashboardMounted) {
+      followDashboardActionsFromUiState(uiState);
     }
+  });
+}
+function stopActionStateWatcher() {
+  if (!actionStateUnsubscribe) {
+    return;
   }
-  for (const state of response.data.actions.latency || []) {
-    if (state.running === false || state.running) {
-      void followLatencyTestState(state);
-    }
-  }
+  actionStateUnsubscribe();
+  actionStateUnsubscribe = null;
 }
 async function connectToClashSockets() {
   const clashApiSecret = await getClashApiSecret2();
@@ -4563,15 +4839,17 @@ async function handleChooseOutbound(sectionName, selector, tag) {
     setSelectorSwitching(sectionName);
   }
 }
-async function handleTestGroupLatency(sectionName, tag) {
+async function handleTestLatency(latencyType, sectionName, tag) {
   if (store.get().sectionsWidget.latencyFetchingSections[sectionName]) {
     return;
   }
-  setLatencyFetching(sectionName, true);
+  setLatencyFetching(sectionName, true, true);
   let jobId = "";
+  let ownsJobFollow = false;
+  let completed = false;
   try {
     const startResponse = await PodkopShellMethods.latencyTestStart(
-      "group",
+      latencyType,
       sectionName,
       tag
     );
@@ -4579,40 +4857,22 @@ async function handleTestGroupLatency(sectionName, tag) {
       throw new Error(startResponse.error);
     }
     jobId = startResponse.data.job_id;
+    if (followedLatencyJobs.has(jobId)) {
+      completed = true;
+      return;
+    }
+    followedLatencyJobs.add(jobId);
+    ownsJobFollow = true;
     await PodkopShellMethods.waitLatencyTestJob(jobId);
     await completeLatencyTestJob(jobId, sectionName);
-    jobId = "";
+    completed = true;
   } catch (error) {
-    logger.error("[DASHBOARD]", "handleTestGroupLatency: failed", error);
+    logger.error("[DASHBOARD]", "handleTestLatency: failed", error);
   } finally {
-    if (jobId) {
-      setLatencyFetching(sectionName, false);
+    if (ownsJobFollow) {
+      followedLatencyJobs.delete(jobId);
     }
-  }
-}
-async function handleTestProxyLatency(sectionName, tag) {
-  if (store.get().sectionsWidget.latencyFetchingSections[sectionName]) {
-    return;
-  }
-  setLatencyFetching(sectionName, true);
-  let jobId = "";
-  try {
-    const startResponse = await PodkopShellMethods.latencyTestStart(
-      "proxy",
-      sectionName,
-      tag
-    );
-    if (!startResponse.success) {
-      throw new Error(startResponse.error);
-    }
-    jobId = startResponse.data.job_id;
-    await PodkopShellMethods.waitLatencyTestJob(jobId);
-    await completeLatencyTestJob(jobId, sectionName);
-    jobId = "";
-  } catch (error) {
-    logger.error("[DASHBOARD]", "handleTestProxyLatency: failed", error);
-  } finally {
-    if (jobId) {
+    if (!completed) {
       setLatencyFetching(sectionName, false);
     }
   }
@@ -4637,8 +4897,9 @@ async function handleUpdateSubscription(section) {
   if (store.get().sectionsWidget.subscriptionUpdatingSections[section.sectionName]) {
     return;
   }
-  setSubscriptionUpdating(section.sectionName, true);
+  setSubscriptionUpdating(section.sectionName, true, true);
   let jobId = "";
+  let ownsJobFollow = false;
   try {
     const startResponse = await PodkopShellMethods.subscriptionUpdateStart(
       section.sectionName
@@ -4647,14 +4908,23 @@ async function handleUpdateSubscription(section) {
       throw new Error(startResponse.error);
     }
     jobId = startResponse.data.job_id;
+    markUiActionOwned("subscription", jobId);
+    if (followedSubscriptionJobs.has(jobId)) {
+      return;
+    }
+    followedSubscriptionJobs.add(jobId);
+    ownsJobFollow = true;
     const response = await PodkopShellMethods.waitSubscriptionUpdateJob(jobId);
     await completeSubscriptionUpdateJob(jobId, section.sectionName, response);
-    jobId = "";
   } catch (error) {
     logger.error("[DASHBOARD]", "handleUpdateSubscription: failed", error);
     if (!pageUnloading) {
       setSubscriptionUpdating(section.sectionName, false);
       showToast(_("Failed to update subscriptions"), "error");
+    }
+  } finally {
+    if (ownsJobFollow) {
+      followedSubscriptionJobs.delete(jobId);
     }
   }
 }
@@ -4706,9 +4976,9 @@ async function renderSectionsWidget() {
       selectorSwitchingTag: sectionsWidget.selectorSwitchingSections[section.sectionName],
       onTestLatency: (tag) => {
         if (section.withTagSelect) {
-          return handleTestGroupLatency(section.sectionName, tag);
+          return handleTestLatency("group", section.sectionName, tag);
         }
-        return handleTestProxyLatency(section.sectionName, tag);
+        return handleTestLatency("proxy", section.sectionName, tag);
       },
       onChooseOutbound: (sectionName, selector, tag) => {
         void handleChooseOutbound(sectionName, selector, tag);
@@ -4878,10 +5148,28 @@ async function onPageMount() {
   onPageUnmount();
   dashboardMounted = true;
   dashboardMountId += 1;
+  const mountId = dashboardMountId;
+  const hasRuntimeSnapshot = Boolean(getCachedRuntimeUiState());
+  if (!hasRuntimeSnapshot) {
+    const uiState = await refreshRuntimeUiState({ force: true });
+    if (!dashboardMounted || mountId !== dashboardMountId) {
+      return;
+    }
+    if (!uiState) {
+      void fetchServicesInfo();
+    }
+  }
   store.subscribe(onStoreUpdate);
+  startActionStateWatcher();
+  void renderSectionsWidget();
+  void renderBandwidthWidget();
+  void renderTrafficTotalWidget();
+  void renderSystemInfoWidget();
+  void renderServicesInfoWidget();
   void fetchDashboardSections({ force: true });
-  void fetchServicesInfo();
-  void restoreDashboardActionState();
+  if (hasRuntimeSnapshot) {
+    void refreshRuntimeUiState({ force: true });
+  }
   void connectToClashSockets();
   sectionsRefreshTimer = setInterval(() => {
     void fetchDashboardSections();
@@ -4894,14 +5182,11 @@ function onPageUnmount() {
     clearInterval(sectionsRefreshTimer);
     sectionsRefreshTimer = null;
   }
+  stopActionStateWatcher();
   sectionsRefreshQueued = false;
   sectionsRefreshPromise = null;
   store.unsubscribe(onStoreUpdate);
-  store.reset([
-    "bandwidthWidget",
-    "trafficTotalWidget",
-    "systemInfoWidget"
-  ]);
+  store.reset(["bandwidthWidget", "trafficTotalWidget", "systemInfoWidget"]);
   socket.resetAll();
 }
 var dashboardLifecycleRegistered = false;
@@ -7083,11 +7368,16 @@ function shouldDisableDiagnosticRunAction({
 function hasComponentActionLoading(actions) {
   return Object.values(actions).some((action) => action.loading);
 }
-function shouldDisableAvailableAction({
-  actionDisabled,
+function getAvailableActionsDisabledState({
+  servicesInfoLoading,
+  mutatingServiceActionLoading,
   componentActionLoading
 }) {
-  return actionDisabled || componentActionLoading;
+  return {
+    serviceControlsDisabled: servicesInfoLoading || mutatingServiceActionLoading || componentActionLoading,
+    utilityActionsDisabled: mutatingServiceActionLoading || componentActionLoading,
+    viewLogsDisabled: false
+  };
 }
 function shouldShowRestartAction({
   podkopRunning,
@@ -7112,6 +7402,93 @@ function shouldShowStopAction({
   return stopLoading || restartLoading || podkopRunning && !startLoading;
 }
 
+// src/podkop/tabs/diagnostic/diagnosticRunPersistence.ts
+var DIAGNOSTIC_RUN_STORAGE_KEY = "podkop-plus:diagnostic-run:v1";
+var DIAGNOSTIC_RUN_TTL_MS = 30 * 60 * 1e3;
+var CHECK_STATES = ["loading", "warning", "success", "error", "skipped"];
+var CHECK_ITEM_STATES = ["error", "warning", "success"];
+function getSessionStorage3() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  try {
+    return window.sessionStorage;
+  } catch {
+    return null;
+  }
+}
+function isRecord(value) {
+  return Boolean(value) && typeof value === "object";
+}
+function isOptionalBoolean(value) {
+  return value === void 0 || typeof value === "boolean";
+}
+function isDiagnosticsProviderOptions(value) {
+  if (!isRecord(value)) {
+    return false;
+  }
+  return isOptionalBoolean(value.includeZapret) && isOptionalBoolean(value.includeZapret2) && isOptionalBoolean(value.includeByedpi) && isOptionalBoolean(value.includeInbounds);
+}
+function isDiagnosticCheckItem(value) {
+  return isRecord(value) && CHECK_ITEM_STATES.includes(String(value.state)) && typeof value.key === "string" && typeof value.value === "string";
+}
+function isDiagnosticCheck(value) {
+  return isRecord(value) && Number.isFinite(value.order) && Object.values(DIAGNOSTICS_CHECKS).includes(
+    value.code
+  ) && typeof value.title === "string" && typeof value.description === "string" && CHECK_STATES.includes(String(value.state)) && Array.isArray(value.items) && value.items.every(isDiagnosticCheckItem);
+}
+function isPersistedDiagnosticRun(value) {
+  if (!isRecord(value)) {
+    return false;
+  }
+  return Number.isInteger(value.nextRunnerIndex) && value.nextRunnerIndex >= 0 && isDiagnosticsProviderOptions(value.providerOptions) && Array.isArray(value.diagnosticsChecks) && value.diagnosticsChecks.every(isDiagnosticCheck) && Number.isFinite(value.updatedAt);
+}
+function isExpired(run, now = Date.now()) {
+  return now - run.updatedAt > DIAGNOSTIC_RUN_TTL_MS;
+}
+function readPersistedDiagnosticRun(storage = getSessionStorage3()) {
+  if (!storage) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(
+      storage.getItem(DIAGNOSTIC_RUN_STORAGE_KEY) || "null"
+    );
+    if (!isPersistedDiagnosticRun(parsed) || isExpired(parsed)) {
+      storage.removeItem(DIAGNOSTIC_RUN_STORAGE_KEY);
+      return null;
+    }
+    return parsed;
+  } catch {
+    storage.removeItem(DIAGNOSTIC_RUN_STORAGE_KEY);
+    return null;
+  }
+}
+function savePersistedDiagnosticRun(run, storage = getSessionStorage3()) {
+  if (!storage) {
+    return;
+  }
+  try {
+    storage.setItem(
+      DIAGNOSTIC_RUN_STORAGE_KEY,
+      JSON.stringify({
+        ...run,
+        updatedAt: Date.now()
+      })
+    );
+  } catch {
+  }
+}
+function clearPersistedDiagnosticRun(storage = getSessionStorage3()) {
+  if (!storage) {
+    return;
+  }
+  try {
+    storage.removeItem(DIAGNOSTIC_RUN_STORAGE_KEY);
+  } catch {
+  }
+}
+
 // src/podkop/tabs/diagnostic/initController.ts
 var SERVICE_STATUS_REFRESH_INTERVAL_MS = 2e3;
 var SERVICE_ACTION_STATUS_TIMEOUT_MS = 45e3;
@@ -7121,9 +7498,10 @@ var diagnosticControllerInitialized = false;
 var diagnosticMounted = false;
 var diagnosticMountId = 0;
 var diagnosticCompletedWhileHidden = false;
-var servicesInfoRefreshTimer = null;
+var servicesInfoStateUnsubscribe = null;
 var servicesInfoRefreshPromise = null;
 var followedServiceActionJobs = /* @__PURE__ */ new Set();
+var handledServiceActionJobs = /* @__PURE__ */ new Set();
 function sleep2(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -7146,7 +7524,10 @@ function resetDiagnosticsChecks() {
     diagnosticsChecks: getNotRunningDiagnosticsChecks()
   });
 }
-function setDiagnosticActionLoading(action, loading2) {
+function setDiagnosticActionLoading(action, loading2, local = false) {
+  if (local || !loading2) {
+    setLocalServiceAction(action, loading2 && local);
+  }
   const diagnosticsActions = store.get().diagnosticsActions;
   store.set({
     diagnosticsActions: {
@@ -7233,20 +7614,22 @@ async function waitForPodkopRunningState(expectedRunning) {
   }
   return false;
 }
-function startServicesInfoRefreshTimer() {
-  if (servicesInfoRefreshTimer) {
-    clearInterval(servicesInfoRefreshTimer);
-  }
-  servicesInfoRefreshTimer = setInterval(() => {
-    void refreshDiagnosticServicesInfo();
-  }, SERVICE_STATUS_REFRESH_INTERVAL_MS);
-}
-function stopServicesInfoRefreshTimer() {
-  if (!servicesInfoRefreshTimer) {
+function startServiceActionStateWatcher() {
+  if (servicesInfoStateUnsubscribe) {
     return;
   }
-  clearInterval(servicesInfoRefreshTimer);
-  servicesInfoRefreshTimer = null;
+  servicesInfoStateUnsubscribe = subscribeRuntimeUiState((uiState) => {
+    if (diagnosticMounted) {
+      followServiceActionsFromUiState(uiState);
+    }
+  });
+}
+function stopServiceActionStateWatcher() {
+  if (!servicesInfoStateUnsubscribe) {
+    return;
+  }
+  servicesInfoStateUnsubscribe();
+  servicesInfoStateUnsubscribe = null;
 }
 function isVisibleServiceRuntimeAction(action) {
   return action === "restart" || action === "start" || action === "stop";
@@ -7262,6 +7645,9 @@ async function followServiceActionState(state) {
   if (!jobId || followedServiceActionJobs.has(jobId)) {
     return;
   }
+  if (!state.running && handledServiceActionJobs.has(jobId)) {
+    return;
+  }
   followedServiceActionJobs.add(jobId);
   if (state.running) {
     setServiceActionStateLoading(state, true);
@@ -7273,6 +7659,7 @@ async function followServiceActionState(state) {
   } catch (error) {
     logger.error("[DIAGNOSTIC]", "followServiceActionState failed", error);
   } finally {
+    handledServiceActionJobs.add(jobId);
     setServiceActionStateLoading(state, false);
     await refreshDiagnosticServicesInfo({ force: true, allowInactive: true });
     void PodkopShellMethods.uiActionAck("service", jobId);
@@ -7285,22 +7672,9 @@ function followServiceActionsFromUiState(uiState) {
     return;
   }
   for (const action of uiState.actions.service || []) {
-    if (action.running) {
+    if (action.job_id) {
       void followServiceActionState(action);
     }
-  }
-}
-async function restoreServiceActionState() {
-  const response = await PodkopShellMethods.getUiState();
-  if (!response.success) {
-    return;
-  }
-  const serviceActions = response.data.actions.service || [];
-  for (const action of serviceActions) {
-    if (action.running) {
-      setServiceActionStateLoading(action, true);
-    }
-    void followServiceActionState(action);
   }
 }
 async function fetchSystemInfo() {
@@ -7317,22 +7691,23 @@ async function fetchDiagnosticsProviderInfo({
 } = {}) {
   const requestId = ++latestProviderInfoRequestId;
   try {
-    const uiState = await PodkopShellMethods.getUiState();
+    const uiState = await refreshRuntimeUiState({ force: true });
     if (requestId !== latestProviderInfoRequestId) {
       return;
     }
-    if (uiState.success) {
+    if (uiState) {
       const currentSystemInfo2 = store.get().diagnosticsSystemInfo;
       const nextSystemInfo2 = normalizeSingBoxVariantFields({
         ...currentSystemInfo2,
         providerInfoLoaded: true,
-        sing_box_extended: uiState.data.capabilities.sing_box_extended,
-        sing_box_tiny: uiState.data.capabilities.sing_box_tiny,
-        sing_box_tailscale: uiState.data.capabilities.sing_box_tailscale,
-        zapret_installed: uiState.data.capabilities.zapret_installed,
-        zapret2_installed: uiState.data.capabilities.zapret2_installed,
-        byedpi_installed: uiState.data.capabilities.byedpi_installed,
-        server_inbounds_enabled_count: uiState.data.capabilities.server_inbounds_enabled_count
+        sing_box_extended: uiState.capabilities.sing_box_extended,
+        sing_box_tiny: uiState.capabilities.sing_box_tiny,
+        sing_box_compressed: uiState.capabilities.sing_box_compressed,
+        sing_box_tailscale: uiState.capabilities.sing_box_tailscale,
+        zapret_installed: uiState.capabilities.zapret_installed,
+        zapret2_installed: uiState.capabilities.zapret2_installed,
+        byedpi_installed: uiState.capabilities.byedpi_installed,
+        server_inbounds_enabled_count: uiState.capabilities.server_inbounds_enabled_count
       });
       if (!nextSystemInfo2.zapret_installed) {
         nextSystemInfo2.zapret_version = "not installed";
@@ -7465,8 +7840,10 @@ async function handleServiceRuntimeAction({
   expectedRunning,
   optimisticRunning
 }) {
-  setDiagnosticActionLoading(action, true);
+  setDiagnosticActionLoading(action, true, true);
   let jobId = "";
+  let ownsJobFollow = false;
+  let delegatedToWatcher = false;
   if (optimisticRunning !== void 0) {
     setDisplayedPodkopRunning(optimisticRunning);
   }
@@ -7476,6 +7853,12 @@ async function handleServiceRuntimeAction({
       throw new Error(startResponse.error);
     }
     jobId = startResponse.data.job_id;
+    if (followedServiceActionJobs.has(jobId)) {
+      delegatedToWatcher = true;
+      return;
+    }
+    followedServiceActionJobs.add(jobId);
+    ownsJobFollow = true;
     const result = await PodkopShellMethods.waitServiceActionJob(jobId);
     if (!result.success) {
       throw new Error(result.error);
@@ -7487,12 +7870,18 @@ async function handleServiceRuntimeAction({
   } catch (e) {
     logger.error("[DIAGNOSTIC]", `handleServiceRuntimeAction(${action})`, e);
   } finally {
-    setDiagnosticActionLoading(action, false);
-    await refreshDiagnosticServicesInfo({ force: true, allowInactive: true });
-    if (jobId) {
-      void PodkopShellMethods.uiActionAck("service", jobId);
+    if (!delegatedToWatcher) {
+      if (ownsJobFollow) {
+        followedServiceActionJobs.delete(jobId);
+      }
+      setDiagnosticActionLoading(action, false);
+      await refreshDiagnosticServicesInfo({ force: true, allowInactive: true });
+      if (jobId) {
+        handledServiceActionJobs.add(jobId);
+        void PodkopShellMethods.uiActionAck("service", jobId);
+      }
+      resetDiagnosticsChecks();
     }
-    resetDiagnosticsChecks();
   }
 }
 async function handleRestart() {
@@ -7648,17 +8037,10 @@ function renderDiagnosticAvailableActionsWidget() {
   const stopLoading = diagnosticsActions.stop.loading || serviceTransition.stopping;
   const atLeastOneMutatingActionLoading = restartLoading || startLoading || stopLoading || diagnosticsActions.enable.loading || diagnosticsActions.disable.loading;
   const componentActionLoading = hasComponentActionLoading(updatesActions);
-  const serviceControlsDisabled = shouldDisableAvailableAction({
-    actionDisabled: servicesInfoWidget.loading || atLeastOneMutatingActionLoading,
+  const { serviceControlsDisabled, utilityActionsDisabled, viewLogsDisabled } = getAvailableActionsDisabledState({
+    servicesInfoLoading: servicesInfoWidget.loading,
+    mutatingServiceActionLoading: atLeastOneMutatingActionLoading,
     componentActionLoading
-  });
-  const utilityActionsDisabled = shouldDisableAvailableAction({
-    actionDisabled: atLeastOneMutatingActionLoading,
-    componentActionLoading
-  });
-  const viewLogsDisabled = shouldDisableAvailableAction({
-    actionDisabled: false,
-    componentActionLoading: false
   });
   const startVisible = shouldShowStartAction({
     podkopRunning,
@@ -7802,6 +8184,34 @@ async function onStoreUpdate2(_next, _prev, diff) {
     renderDiagnosticRunActionWidget();
   }
 }
+function persistDiagnosticRunProgress({
+  providerOptions,
+  nextRunnerIndex
+}) {
+  savePersistedDiagnosticRun({
+    providerOptions,
+    nextRunnerIndex,
+    diagnosticsChecks: store.get().diagnosticsChecks
+  });
+}
+function setDiagnosticCheckLoading(code) {
+  const meta = DIAGNOSTICS_CHECKS_MAP[code];
+  const diagnosticsChecks = store.get().diagnosticsChecks;
+  const other = diagnosticsChecks.filter((item) => item.code !== code);
+  store.set({
+    diagnosticsChecks: [
+      ...other,
+      {
+        order: meta.order,
+        code: meta.code,
+        title: meta.title,
+        description: _("Checking, please wait"),
+        state: "loading",
+        items: []
+      }
+    ]
+  });
+}
 function getDiagnosticRunners(providerOptions) {
   return [
     { code: "DNS" /* DNS */, run: runDnsCheck },
@@ -7815,24 +8225,43 @@ function getDiagnosticRunners(providerOptions) {
     { code: "FAKEIP" /* FAKEIP */, run: runFakeIPCheck }
   ];
 }
-async function runChecks() {
-  if (store.get().diagnosticsRunAction.loading) {
+async function runChecks({
+  resume
+} = {}) {
+  if (store.get().diagnosticsRunAction.loading && !resume) {
     return;
   }
-  let providerOptions = getDiagnosticsProviderOptions();
+  let providerOptions = resume?.providerOptions ?? getDiagnosticsProviderOptions();
+  let nextRunnerIndex = resume?.nextRunnerIndex ?? 0;
   store.set({
     diagnosticsRunAction: { loading: true },
-    diagnosticsChecks: getLoadingDiagnosticsChecks(providerOptions).diagnosticsChecks
+    diagnosticsChecks: resume?.diagnosticsChecks ?? getLoadingDiagnosticsChecks(providerOptions).diagnosticsChecks
+  });
+  persistDiagnosticRunProgress({
+    providerOptions,
+    nextRunnerIndex
   });
   try {
-    await fetchDiagnosticsProviderInfo({ resetChecks: false });
-    providerOptions = getDiagnosticsProviderOptions();
-    store.set({
-      diagnosticsChecks: getLoadingDiagnosticsChecks(providerOptions).diagnosticsChecks
-    });
+    if (!resume) {
+      await fetchDiagnosticsProviderInfo({ resetChecks: false });
+      providerOptions = getDiagnosticsProviderOptions();
+      nextRunnerIndex = 0;
+      store.set({
+        diagnosticsChecks: getLoadingDiagnosticsChecks(providerOptions).diagnosticsChecks
+      });
+      persistDiagnosticRunProgress({
+        providerOptions,
+        nextRunnerIndex
+      });
+    }
     const runners = getDiagnosticRunners(providerOptions);
-    for (let index = 0; index < runners.length; index += 1) {
+    for (let index = nextRunnerIndex; index < runners.length; index += 1) {
       const runner = runners[index];
+      setDiagnosticCheckLoading(runner.code);
+      persistDiagnosticRunProgress({
+        providerOptions,
+        nextRunnerIndex: index
+      });
       try {
         await runner.run();
       } catch (e) {
@@ -7842,10 +8271,15 @@ async function runChecks() {
           e
         );
       }
+      persistDiagnosticRunProgress({
+        providerOptions,
+        nextRunnerIndex: index + 1
+      });
     }
   } catch (e) {
     logger.error("[DIAGNOSTIC]", "runChecks - e", e);
   } finally {
+    clearPersistedDiagnosticRun();
     store.set({ diagnosticsRunAction: { loading: false } });
     if (!diagnosticMounted) {
       diagnosticCompletedWhileHidden = true;
@@ -7862,39 +8296,71 @@ async function loadInitialDiagnosticData() {
     await fetchDiagnosticsProviderInfo();
   }
 }
-function onPageMount2() {
+function restorePersistedDiagnosticRun() {
+  const persistedRun = readPersistedDiagnosticRun();
+  if (!persistedRun) {
+    return false;
+  }
+  store.set({
+    diagnosticsRunAction: { loading: true },
+    diagnosticsChecks: persistedRun.diagnosticsChecks
+  });
+  void runChecks({ resume: persistedRun });
+  return true;
+}
+async function onPageMount2() {
   const preserveHiddenResult = diagnosticCompletedWhileHidden;
-  onPageUnmount2({ preserveCompletedResult: preserveHiddenResult });
+  onPageUnmount2({
+    preserveCompletedResult: preserveHiddenResult,
+    preservePersistedRun: true
+  });
   diagnosticMounted = true;
   diagnosticMountId += 1;
+  const mountId = diagnosticMountId;
+  const hasRuntimeSnapshot = Boolean(getCachedRuntimeUiState());
+  if (!hasRuntimeSnapshot) {
+    const uiState = await refreshRuntimeUiState({ force: true });
+    if (!diagnosticMounted || mountId !== diagnosticMountId) {
+      return;
+    }
+    if (!uiState) {
+      void refreshDiagnosticServicesInfo({ force: true });
+    }
+  }
+  const restoredPersistedRun = !preserveHiddenResult && restorePersistedDiagnosticRun();
   if (preserveHiddenResult) {
     diagnosticCompletedWhileHidden = false;
-  } else if (!store.get().diagnosticsRunAction.loading) {
+  } else if (!restoredPersistedRun && !store.get().diagnosticsRunAction.loading) {
     store.reset(["diagnosticsRunAction"]);
     resetDiagnosticsChecks();
   }
   store.subscribe(onStoreUpdate2);
+  startServiceActionStateWatcher();
   renderDiagnosticsChecks();
   renderDiagnosticRunActionWidget();
   renderDiagnosticAvailableActionsWidget();
   renderDiagnosticSystemInfoWidget();
   renderWikiDisclaimerWidget();
-  void refreshDiagnosticServicesInfo({ force: true });
-  void restoreServiceActionState();
-  startServicesInfoRefreshTimer();
-  if (!preserveHiddenResult) {
+  if (hasRuntimeSnapshot) {
+    void refreshRuntimeUiState({ force: true });
+  }
+  if (!preserveHiddenResult && !restoredPersistedRun) {
     void loadInitialDiagnosticData();
   }
 }
 function onPageUnmount2({
-  preserveCompletedResult = false
+  preserveCompletedResult = false,
+  preservePersistedRun = false
 } = {}) {
   diagnosticMounted = false;
   diagnosticMountId += 1;
-  stopServicesInfoRefreshTimer();
+  stopServiceActionStateWatcher();
   servicesInfoRefreshPromise = null;
   store.unsubscribe(onStoreUpdate2);
   if (!preserveCompletedResult && !store.get().diagnosticsRunAction.loading) {
+    if (!preservePersistedRun) {
+      clearPersistedDiagnosticRun();
+    }
     store.reset(["diagnosticsRunAction"]);
     resetDiagnosticsChecks();
     diagnosticCompletedWhileHidden = false;
@@ -9943,6 +10409,7 @@ var MonitoringTab = {
 // src/podkop/tabs/updates/render.ts
 function render4() {
   return E("div", { id: "updates-status", class: "pdk_updates-page" }, [
+    E("h3", { class: "pdk_updates-page__title" }, _("Components")),
     E("div", {
       id: "pdk_updates-components",
       class: "pdk_updates-page__components"
@@ -9950,18 +10417,21 @@ function render4() {
   ]);
 }
 
+// src/podkop/tabs/updates/componentActionCompletion.ts
+function shouldApplyCompletedComponentActionResult(result, notify) {
+  return result.action !== "check_update" || notify;
+}
+
 // src/podkop/tabs/updates/initController.ts
 var updatesLifecycleRegistered = false;
 var updatesControllerInitialized = false;
 var updatesMounted = false;
-var updatesMountGeneration = 0;
+var updatesMountId = 0;
 var pageUnloading2 = false;
-var componentActionStateRefreshTimer = null;
+var componentActionStateUnsubscribe = null;
 var componentActionStateRefreshPromise = null;
-var activeComponentActionKey = null;
 var followedComponentJobs = /* @__PURE__ */ new Set();
 var handledComponentJobs = /* @__PURE__ */ new Set();
-var COMPONENT_ACTION_STATE_REFRESH_INTERVAL_MS = 1500;
 if (typeof window !== "undefined") {
   window.addEventListener("pagehide", () => {
     pageUnloading2 = true;
@@ -9993,7 +10463,7 @@ function shouldShowInstallAfterCheck(component) {
 function getInstallActionText(component) {
   const checkResult = store.get().updatesChecks[component];
   if (shouldShowInstallAfterCheck(component) && checkResult.latest_version) {
-    return _("Install %s").replace("%s", checkResult.latest_version);
+    return _("Update to %s").replace("%s", checkResult.latest_version);
   }
   return _("Install");
 }
@@ -10005,7 +10475,9 @@ function getGitHubReleaseUrl(component) {
   return checkResult.release_url;
 }
 function isAnyActionLoading() {
-  return activeComponentActionKey !== null || Object.values(store.get().updatesActions).some((item) => item.loading);
+  return Object.values(store.get().updatesActions).some(
+    (item) => item.loading
+  );
 }
 function isServiceRuntimeActionLoading() {
   const state = store.get();
@@ -10015,7 +10487,10 @@ function isSystemInfoLoading() {
   const systemInfo = store.get().diagnosticsSystemInfo;
   return systemInfo.loading || !systemInfo.loaded;
 }
-function setActionLoading(action, loading2) {
+function setActionLoading(action, loading2, local = false) {
+  if (local || !loading2) {
+    setLocalComponentAction(action, loading2 && local);
+  }
   const updatesActions = store.get().updatesActions;
   store.set({
     updatesActions: {
@@ -10028,14 +10503,8 @@ function beginComponentAction(button) {
   if (isAnyActionLoading()) {
     return false;
   }
-  activeComponentActionKey = button.key;
-  setActionLoading(button.key, true);
+  setActionLoading(button.key, true, true);
   return true;
-}
-function endComponentAction(key) {
-  if (activeComponentActionKey === key) {
-    activeComponentActionKey = null;
-  }
 }
 function setCheckResult(component, status, latestVersion, releaseUrl = "") {
   const updatesChecks = store.get().updatesChecks;
@@ -10175,8 +10644,16 @@ function patchSystemInfoAfterMutation(result) {
     notifyActionProvidersAvailabilityChanged(normalizedSystemInfo);
   }
 }
-async function applyCompletedComponentAction(key, result) {
+async function applyCompletedComponentAction({
+  key,
+  result,
+  notify
+}) {
   if (result.action === "check_update") {
+    setActionLoading(key, false);
+    if (!shouldApplyCompletedComponentActionResult(result, notify)) {
+      return;
+    }
     const status = result.status || null;
     if (status === "latest" || status === "outdated" || status === "dev") {
       setCheckResult(
@@ -10186,8 +10663,9 @@ async function applyCompletedComponentAction(key, result) {
         result.release_url || ""
       );
     }
-    setActionLoading(key, false);
-    showToast(getCheckToastMessage(status), "success");
+    if (notify) {
+      showToast(getCheckToastMessage(status), "success");
+    }
     return;
   }
   if (result.action === "install" || result.action.startsWith("install_")) {
@@ -10198,43 +10676,48 @@ async function applyCompletedComponentAction(key, result) {
   patchSystemInfoAfterMutation(result);
   setActionLoading(key, false);
   if (result.component === "podkop" && result.action === "install") {
-    if (result.message) {
+    if (notify && result.message) {
       showToast(result.message, "success", 1200);
     }
-    reloadPageAfterPodkopUpdate();
+    if (notify) {
+      reloadPageAfterPodkopUpdate();
+    }
     return;
   }
-  if (result.message) {
+  if (notify && result.message) {
     showToast(result.message, "success");
   }
   void refreshSystemInfoAfterMutation();
 }
 async function completeComponentActionJob(key, jobId, response) {
   if (pageUnloading2) {
-    endComponentAction(key);
+    setActionLoading(key, false);
     return;
   }
   const alreadyHandled = handledComponentJobs.has(jobId);
   if (alreadyHandled) {
-    await ackComponentActionJob(jobId);
     setActionLoading(key, false);
-    endComponentAction(key);
     return;
   }
   handledComponentJobs.add(jobId);
+  const shouldNotify = shouldNotifyOwnedUiAction("component", jobId);
   if (!response.success || response.data.success === false) {
     setActionLoading(key, false);
-    endComponentAction(key);
-    showToast(
-      response.success ? response.data.message || _("Failed to execute") : response.error || _("Failed to execute"),
-      "error"
-    );
+    if (shouldNotify) {
+      showToast(
+        response.success ? response.data.message || _("Failed to execute") : response.error || _("Failed to execute"),
+        "error"
+      );
+    }
     await ackComponentActionJob(jobId);
     return;
   }
   await ackComponentActionJob(jobId);
-  await applyCompletedComponentAction(key, response.data);
-  endComponentAction(key);
+  await applyCompletedComponentAction({
+    key,
+    result: response.data,
+    notify: shouldNotify
+  });
 }
 async function followComponentActionState(state) {
   const jobId = state.job_id;
@@ -10242,8 +10725,10 @@ async function followComponentActionState(state) {
   if (!jobId || !key || followedComponentJobs.has(jobId)) {
     return;
   }
+  if (!state.running && handledComponentJobs.has(jobId)) {
+    return;
+  }
   followedComponentJobs.add(jobId);
-  activeComponentActionKey = key;
   setActionLoading(key, true);
   try {
     const response = state.running ? await PodkopShellMethods.waitComponentActionJob(
@@ -10260,7 +10745,6 @@ async function followComponentActionState(state) {
     logger.error("[UPDATES]", "followComponentActionState failed", error);
     if (!pageUnloading2) {
       setActionLoading(key, false);
-      endComponentAction(key);
       showToast(getErrorMessage(error, _("Failed to execute")), "error");
     }
   } finally {
@@ -10268,16 +10752,18 @@ async function followComponentActionState(state) {
   }
 }
 async function followAlreadyRunningComponentAction(button) {
-  const response = await PodkopShellMethods.getUiState();
-  if (!response.success) {
+  const uiState = await refreshRuntimeUiState({ force: true });
+  if (!uiState) {
     return false;
   }
-  applyUiStateToStore(response.data);
-  const state = response.data.actions.component.find(
+  const state = uiState.actions.component.find(
     (item) => item.running && item.component === button.component && item.action === button.action
   );
   if (!state) {
     return false;
+  }
+  if (state.job_id) {
+    markUiActionOwned("component", state.job_id);
   }
   await followComponentActionState(state);
   return true;
@@ -10287,6 +10773,11 @@ function isComponentActionAlreadyRunningError(message) {
     message && message.includes("Another component action is already running")
   );
 }
+function handleComponentUiState(uiState) {
+  for (const state of uiState.actions.component || []) {
+    void followComponentActionState(state);
+  }
+}
 async function refreshComponentActionState() {
   if (componentActionStateRefreshPromise) {
     return componentActionStateRefreshPromise;
@@ -10295,35 +10786,32 @@ async function refreshComponentActionState() {
     if (!updatesMounted) {
       return;
     }
-    const response = await PodkopShellMethods.getUiState();
-    if (!response.success) {
+    const state = await refreshRuntimeUiState({ force: true });
+    if (!state) {
       return;
     }
-    applyUiStateToStore(response.data);
-    for (const state of response.data.actions.component || []) {
-      if (state.running === false || state.running) {
-        void followComponentActionState(state);
-      }
-    }
+    handleComponentUiState(state);
   })().finally(() => {
     componentActionStateRefreshPromise = null;
   });
   return componentActionStateRefreshPromise;
 }
-function startComponentActionStateRefresh() {
-  if (componentActionStateRefreshTimer) {
+function startComponentActionStateWatcher() {
+  if (componentActionStateUnsubscribe) {
     return;
   }
-  componentActionStateRefreshTimer = setInterval(() => {
-    void refreshComponentActionState();
-  }, COMPONENT_ACTION_STATE_REFRESH_INTERVAL_MS);
+  componentActionStateUnsubscribe = subscribeRuntimeUiState((uiState) => {
+    if (updatesMounted) {
+      handleComponentUiState(uiState);
+    }
+  });
 }
-function stopComponentActionStateRefresh() {
-  if (!componentActionStateRefreshTimer) {
+function stopComponentActionStateWatcher() {
+  if (!componentActionStateUnsubscribe) {
     return;
   }
-  clearInterval(componentActionStateRefreshTimer);
-  componentActionStateRefreshTimer = null;
+  componentActionStateUnsubscribe();
+  componentActionStateUnsubscribe = null;
 }
 async function handleComponentAction(button) {
   if (!beginComponentAction(button)) {
@@ -10337,12 +10825,17 @@ async function handleComponentAction(button) {
       button.action
     );
     if (!startResponse.success) {
-      if (isComponentActionAlreadyRunningError(startResponse.error) && await followAlreadyRunningComponentAction(button)) {
+      if (isComponentActionAlreadyRunningError(startResponse.error)) {
+        setActionLoading(button.key, false);
+        if (!await followAlreadyRunningComponentAction(button)) {
+          await refreshComponentActionState();
+        }
         return;
       }
       throw new Error(startResponse.error);
     }
     jobId = startResponse.data.job_id;
+    markUiActionOwned("component", jobId);
     if (followedComponentJobs.has(jobId)) {
       return;
     }
@@ -10359,7 +10852,6 @@ async function handleComponentAction(button) {
     logger.error("[UPDATES]", "handleComponentAction failed", error);
     if (!pageUnloading2) {
       setActionLoading(button.key, false);
-      endComponentAction(button.key);
       showToast(getErrorMessage(error, _("Failed to execute")), "error");
       void refreshComponentActionState();
     }
@@ -10407,7 +10899,7 @@ function getComponentCards() {
     singBoxActions.push({
       key: "singBoxInstallStable",
       text: _("Install stable"),
-      icon: renderRotateCcwIcon24,
+      icon: renderDownloadIcon24,
       component: "sing_box",
       action: "install_stable"
     });
@@ -10416,7 +10908,7 @@ function getComponentCards() {
     singBoxActions.push({
       key: "singBoxInstallTiny",
       text: _("Install tiny"),
-      icon: renderRotateCcwIcon24,
+      icon: renderDownloadIcon24,
       component: "sing_box",
       action: "install_tiny"
     });
@@ -10425,7 +10917,7 @@ function getComponentCards() {
     singBoxActions.push({
       key: "singBoxInstallExtended",
       text: _("Install extended"),
-      icon: renderRotateCcwIcon24,
+      icon: renderDownloadIcon24,
       component: "sing_box",
       action: "install_extended"
     });
@@ -10434,7 +10926,7 @@ function getComponentCards() {
     singBoxActions.push({
       key: "singBoxInstallExtendedCompressed",
       text: _("Install extended compressed"),
-      icon: renderRotateCcwIcon24,
+      icon: renderDownloadIcon24,
       component: "sing_box",
       action: "install_extended_compressed"
     });
@@ -10474,7 +10966,7 @@ function getComponentCards() {
         {
           key: "zapretInstall",
           text: _("Install"),
-          icon: renderRotateCcwIcon24,
+          icon: renderDownloadIcon24,
           component: "zapret",
           action: "install"
         }
@@ -10498,7 +10990,7 @@ function getComponentCards() {
         {
           key: "zapret2Install",
           text: _("Install"),
-          icon: renderRotateCcwIcon24,
+          icon: renderDownloadIcon24,
           component: "zapret2",
           action: "install"
         }
@@ -10522,7 +11014,7 @@ function getComponentCards() {
         {
           key: "byedpiInstall",
           text: _("Install"),
-          icon: renderRotateCcwIcon24,
+          icon: renderDownloadIcon24,
           component: "byedpi",
           action: "install"
         }
@@ -10633,32 +11125,33 @@ function onStoreUpdate3(_next, _prev, diff) {
     renderUpdatesComponents();
   }
 }
-async function loadInitialActionState(mountGeneration) {
-  try {
-    await refreshComponentActionState();
-  } finally {
-    if (updatesMounted && updatesMountGeneration === mountGeneration) {
-      startComponentActionStateRefresh();
-    }
-  }
-}
-function onPageMount4() {
+async function onPageMount4() {
   onPageUnmount4();
   updatesMounted = true;
-  updatesMountGeneration += 1;
-  const mountGeneration = updatesMountGeneration;
+  updatesMountId += 1;
+  const mountId = updatesMountId;
+  const hasRuntimeSnapshot = Boolean(getCachedRuntimeUiState());
+  if (!hasRuntimeSnapshot) {
+    await refreshRuntimeUiState({ force: true });
+    if (!updatesMounted || mountId !== updatesMountId) {
+      return;
+    }
+  }
   if (!isAnyActionLoading()) {
     store.reset(["updatesChecks"]);
   }
   store.subscribe(onStoreUpdate3);
+  startComponentActionStateWatcher();
   renderUpdatesComponents();
   void ensureSystemInfo();
-  void loadInitialActionState(mountGeneration);
+  if (hasRuntimeSnapshot) {
+    void refreshRuntimeUiState({ force: true });
+  }
 }
 function onPageUnmount4() {
   updatesMounted = false;
-  updatesMountGeneration += 1;
-  stopComponentActionStateRefresh();
+  updatesMountId += 1;
+  stopComponentActionStateWatcher();
   store.unsubscribe(onStoreUpdate3);
 }
 function registerLifecycleListeners4() {
@@ -10704,6 +11197,13 @@ var styles6 = `
 
 .pdk_updates-page {
     width: 100%;
+}
+
+.pdk_updates-page__title {
+    margin: 0 0 10px;
+    color: var(--text-color-high);
+    font-size: 1.1rem;
+    line-height: 1.3;
 }
 
 .pdk_updates-page__components {
