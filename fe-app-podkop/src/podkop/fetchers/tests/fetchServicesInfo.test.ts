@@ -70,4 +70,52 @@ describe('fetchServicesInfo', () => {
     expect(state.servicesInfoWidget.data.podkopStatus).toBe('restarting');
     expect(state.diagnosticsActions.restart.loading).toBe(true);
   });
+
+  it('keeps the previous service state when the fallback status fetch fails', async () => {
+    store.set({
+      servicesInfoWidget: {
+        loading: false,
+        failed: false,
+        data: {
+          singbox: 1,
+          podkopRunning: 1,
+          podkopEnabled: 1,
+          podkopStatus: 'running & enabled',
+        },
+      },
+    });
+
+    mocks.executeShellCommand
+      .mockResolvedValueOnce({
+        stdout: '',
+        stderr: 'get_ui_state failed',
+        code: 1,
+      })
+      .mockResolvedValueOnce({
+        stdout: '',
+        stderr: 'get_status failed',
+        code: 1,
+      })
+      .mockResolvedValueOnce({
+        stdout: JSON.stringify({
+          running: 0,
+          enabled: 0,
+          status: 'stopped but disabled',
+        }),
+        stderr: '',
+        code: 0,
+      });
+
+    await fetchServicesInfo();
+
+    const state = store.get();
+
+    expect(state.servicesInfoWidget.failed).toBe(true);
+    expect(state.servicesInfoWidget.data).toEqual({
+      singbox: 0,
+      podkopRunning: 1,
+      podkopEnabled: 1,
+      podkopStatus: 'running & enabled',
+    });
+  });
 });

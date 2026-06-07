@@ -1,6 +1,7 @@
 import { getComponentActionKey } from '../helpers/getComponentActionKey';
 import { normalizeSingBoxVariantFields } from '../helpers/singBoxVariant';
 import type { Podkop } from '../types';
+import { getLocalActionOverlay } from './localActionOverlay.service';
 import { store } from './store.service';
 import type { StoreType } from './store.service';
 
@@ -76,6 +77,7 @@ function applyServiceState(uiState: Podkop.UiState) {
 
 function applyActionState(actions: UiActionMap = {}) {
   const current = store.get();
+  const localOverlay = getLocalActionOverlay();
   const subscriptionUpdatingSections: Record<string, boolean> = {};
   const latencyFetchingSections: Record<string, boolean> = {};
   const updatesActions = getEmptyUpdatesActions();
@@ -116,6 +118,22 @@ function applyActionState(actions: UiActionMap = {}) {
     } else if (state.action === 'restart' || state.action === 'reload') {
       diagnosticsActions.restart = { loading: true };
     }
+  }
+
+  for (const section of localOverlay.subscriptionSections) {
+    subscriptionUpdatingSections[section] = true;
+  }
+
+  for (const section of localOverlay.latencySections) {
+    latencyFetchingSections[section] = true;
+  }
+
+  for (const key of localOverlay.componentActions) {
+    updatesActions[key] = { loading: true };
+  }
+
+  for (const action of localOverlay.serviceActions) {
+    diagnosticsActions[action] = { loading: true };
   }
 
   store.set({

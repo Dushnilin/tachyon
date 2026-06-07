@@ -784,6 +784,24 @@ subscription_update_update_running_job_pid() {
     return "$rc"
 }
 
+subscription_update_started_at_is_within_stale_grace() {
+    local started_at="$1"
+    local now age
+
+    case "$started_at" in
+    "" | *[!0-9]*) return 1 ;;
+    esac
+    [ "$started_at" -gt 0 ] || return 1
+
+    now="$(date +%s 2>/dev/null)"
+    case "$now" in
+    "" | *[!0-9]*) return 1 ;;
+    esac
+
+    age=$((now - started_at))
+    [ "$age" -lt "${PODKOP_UI_ACTION_STALE_GRACE_SECONDS:-15}" ]
+}
+
 subscription_update_cleanup_jobs() {
     local state_file
 
@@ -860,13 +878,18 @@ subscription_update_mark_stale_job_state() {
 
 subscription_update_refresh_running_job_state() {
     local state_file="$1"
-    local pid
+    local pid started_at
 
     updates_ucode job-running-is "$state_file" true >/dev/null 2>&1 || return 0
 
     pid="$(updates_runtime_ucode job-pid "$state_file" 2>/dev/null)"
     case "$pid" in
     "" | *[!0-9]*)
+        started_at="$(updates_ucode json-file-field "$state_file" started_at 0 2>/dev/null)"
+        if subscription_update_started_at_is_within_stale_grace "$started_at"; then
+            return 0
+        fi
+        updates_ucode job-running-is "$state_file" true >/dev/null 2>&1 || return 0
         subscription_update_mark_stale_job_state "$state_file"
         return 0
         ;;

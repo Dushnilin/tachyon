@@ -4,11 +4,18 @@ import { logger } from './logger.service';
 import { PodkopLogWatcher } from './podkopLogWatcher.service';
 import { LogNotificationDeduper } from './logNotificationDeduper.service';
 import { PodkopShellMethods } from '../methods';
+import {
+  registerRuntimeStateResumeRefresh,
+  startRuntimeUiStatePolling,
+} from './runtimeUiState.service';
 
 type CoreServiceOptions = {
   waitForLogWatcherStart?: () => Promise<unknown>;
   logWatcherStartDelayMs?: number;
 };
+
+const LOG_WATCHER_INTERVAL_MS = 10000;
+const LOG_WATCHER_START_DELAY_MS = 5000;
 
 function showLogErrorNotification(line: string) {
   ui.addNotification(
@@ -44,7 +51,7 @@ export function coreService(options: CoreServiceOptions = {}) {
       return '';
     },
     {
-      intervalMs: 3000,
+      intervalMs: LOG_WATCHER_INTERVAL_MS,
       onNewLog: (line) => {
         if (logNotificationDeduper.shouldNotify(line)) {
           showLogErrorNotification(line);
@@ -54,25 +61,25 @@ export function coreService(options: CoreServiceOptions = {}) {
   );
 
   const startWatcher = () => watcher.start();
+  const scheduleStartWatcher = () =>
+    window.setTimeout(
+      startWatcher,
+      options.logWatcherStartDelayMs ?? LOG_WATCHER_START_DELAY_MS,
+    );
 
   if (typeof window !== 'undefined') {
-    window.setTimeout(() => {
-      if (options.waitForLogWatcherStart) {
-        Promise.resolve()
-          .then(() => options.waitForLogWatcherStart?.())
-          .catch(() => null)
-          .finally(() =>
-            window.setTimeout(
-              startWatcher,
-              options.logWatcherStartDelayMs ?? 0,
-            ),
-          );
-        return;
-      }
-
-      startWatcher();
-    }, 0);
+    if (options.waitForLogWatcherStart) {
+      Promise.resolve()
+        .then(() => options.waitForLogWatcherStart?.())
+        .catch(() => null)
+        .finally(scheduleStartWatcher);
+    } else {
+      scheduleStartWatcher();
+    }
   } else {
     startWatcher();
   }
+
+  registerRuntimeStateResumeRefresh();
+  startRuntimeUiStatePolling();
 }

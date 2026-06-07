@@ -29,18 +29,6 @@ describe('PodkopShellMethods.componentAction', () => {
   it('does not fail Podkop Plus self-update when status polling disappears after package replacement', async () => {
     mocks.fsRead.mockRejectedValue(new Error('Access denied'));
     mocks.executeShellCommand.mockImplementation(({ args }) => {
-      if (args[0] === 'component_action_async') {
-        return Promise.resolve({
-          stdout: JSON.stringify({
-            success: true,
-            job_id: 'job-1',
-            message: 'Component action started',
-          }),
-          stderr: '',
-          code: 0,
-        });
-      }
-
       if (args[0] === 'component_action_status') {
         return Promise.resolve({
           stdout: '',
@@ -64,7 +52,8 @@ describe('PodkopShellMethods.componentAction', () => {
       });
     });
 
-    const responsePromise = PodkopShellMethods.componentAction(
+    const responsePromise = PodkopShellMethods.waitComponentActionJob(
+      'job-1',
       'podkop',
       'install',
       '0.7.17.11',
@@ -206,6 +195,11 @@ describe('PodkopShellMethods.componentAction', () => {
         changed: true,
         status: 'latest',
       },
+    });
+    expect(mocks.executeShellCommand).toHaveBeenCalledWith({
+      command: '/usr/bin/podkop-plus',
+      args: ['get_ui_state'],
+      timeout: 3000,
     });
   });
 });

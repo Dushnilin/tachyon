@@ -839,7 +839,7 @@ reload_tracked() {
         return "$?"
     fi
 
-    job_id="$(ui_runtime_service_action_begin reload "runtime_reload" 2>/dev/null || true)"
+    job_id="$(ui_runtime_service_action_begin_if_idle reload "runtime_reload" 2>/dev/null || true)"
     if [ -n "$job_id" ]; then
         state_file="$(ui_runtime_job_state_path "$PODKOP_UI_SERVICE_ACTION_DIR" "$job_id" 2>/dev/null || true)"
         [ -n "$state_file" ] && ui_runtime_update_running_pid "$state_file" "$$" >/dev/null 2>&1 || true
@@ -1008,7 +1008,7 @@ Available commands:
     service_action_status   Get background service action status
     latency_test_async      Start a dashboard latency test in the background
     latency_test_status     Get background latency test status
-    ui_action_ack           Acknowledge and remove a finished UI action state
+    ui_action_ack           Acknowledge a finished UI action state
     generate_reality_keypair
                             Generate a sing-box Reality key pair in JSON format
     get_tls_certificate_sha256 [server]

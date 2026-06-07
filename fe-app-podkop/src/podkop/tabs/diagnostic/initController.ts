@@ -7,13 +7,21 @@ import { runFakeIPCheck } from './checks/runFakeIPCheck';
 import { runZapretCheck } from './checks/runZapretCheck';
 import { runZapret2Check } from './checks/runZapret2Check';
 import { runByedpiCheck } from './checks/runByedpiCheck';
-import { DIAGNOSTICS_CHECKS } from './checks/contstants';
+import { DIAGNOSTICS_CHECKS, DIAGNOSTICS_CHECKS_MAP } from './checks/contstants';
 import {
   DiagnosticsProviderOptions,
   getDiagnosticsChecks,
   getLoadingDiagnosticsChecks,
 } from './diagnostic.store';
-import { logger, store, StoreType } from '../../services';
+import {
+  logger,
+  getCachedRuntimeUiState,
+  refreshRuntimeUiState,
+  setLocalServiceAction,
+  store,
+  StoreType,
+  subscribeRuntimeUiState,
+} from '../../services';
 import { ensureSystemInfo } from '../../services/systemInfo.service';
 import {
   renderAvailableActions,
@@ -30,11 +38,11 @@ import { renderWikiDisclaimer } from './partials/renderWikiDisclaimer';
 import { runSectionsCheck } from './checks/runSectionsCheck';
 import { Podkop } from '../../types';
 import {
+  getAvailableActionsDisabledState,
   getServiceTransition,
   hasComponentActionLoading,
   hasLocalMutatingServiceActionLoading,
   isServiceTransitionStatus,
-  shouldDisableAvailableAction,
   shouldDisableDiagnosticRunAction,
   shouldSkipServicesInfoAutoRefresh,
   shouldShowRestartAction,
@@ -46,6 +54,12 @@ import {
   formatSingBoxVersion,
   normalizeSingBoxVariantFields,
 } from '../../helpers/singBoxVariant';
+import {
+  clearPersistedDiagnosticRun,
+  PersistedDiagnosticRun,
+  readPersistedDiagnosticRun,
+  savePersistedDiagnosticRun,
+} from './diagnosticRunPersistence';
 
 const SERVICE_STATUS_REFRESH_INTERVAL_MS = 2000;
 const SERVICE_ACTION_STATUS_TIMEOUT_MS = 45000;
@@ -56,11 +70,16 @@ let diagnosticControllerInitialized = false;
 let diagnosticMounted = false;
 let diagnosticMountId = 0;
 let diagnosticCompletedWhileHidden = false;
-let servicesInfoRefreshTimer: ReturnType<typeof setInterval> | null = null;
+let servicesInfoStateUnsubscribe: (() => void) | null = null;
 let servicesInfoRefreshPromise: Promise<void> | null = null;
 const followedServiceActionJobs = new Set<string>();
+const handledServiceActionJobs = new Set<string>();
 
 type ServiceRuntimeAction = 'restart' | 'start' | 'stop';
+type DiagnosticRunner = {
+  code: DIAGNOSTICS_CHECKS;
+  run: () => Promise<void>;
+};
 
 function sleep(ms: number) {
   return new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -99,7 +118,12 @@ function resetDiagnosticsChecks() {
 function setDiagnosticActionLoading(
   action: keyof StoreType['diagnosticsActions'],
   loading: boolean,
+  local = false,
 ) {
+  if (local || !loading) {
+    setLocalServiceAction(action, loading && local);
+  }
+
   const diagnosticsActions = store.get().diagnosticsActions;
 
   store.set({
@@ -219,23 +243,25 @@ async function waitForPodkopRunningState(expectedRunning: boolean) {
   return false;
 }
 
-function startServicesInfoRefreshTimer() {
-  if (servicesInfoRefreshTimer) {
-    clearInterval(servicesInfoRefreshTimer);
-  }
-
-  servicesInfoRefreshTimer = setInterval(() => {
-    void refreshDiagnosticServicesInfo();
-  }, SERVICE_STATUS_REFRESH_INTERVAL_MS);
-}
-
-function stopServicesInfoRefreshTimer() {
-  if (!servicesInfoRefreshTimer) {
+function startServiceActionStateWatcher() {
+  if (servicesInfoStateUnsubscribe) {
     return;
   }
 
-  clearInterval(servicesInfoRefreshTimer);
-  servicesInfoRefreshTimer = null;
+  servicesInfoStateUnsubscribe = subscribeRuntimeUiState((uiState) => {
+    if (diagnosticMounted) {
+      followServiceActionsFromUiState(uiState);
+    }
+  });
+}
+
+function stopServiceActionStateWatcher() {
+  if (!servicesInfoStateUnsubscribe) {
+    return;
+  }
+
+  servicesInfoStateUnsubscribe();
+  servicesInfoStateUnsubscribe = null;
 }
 
 function isVisibleServiceRuntimeAction(
@@ -262,6 +288,10 @@ async function followServiceActionState(state: Podkop.ServiceActionState) {
     return;
   }
 
+  if (!state.running && handledServiceActionJobs.has(jobId)) {
+    return;
+  }
+
   followedServiceActionJobs.add(jobId);
   if (state.running) {
     setServiceActionStateLoading(state, true);
@@ -274,6 +304,7 @@ async function followServiceActionState(state: Podkop.ServiceActionState) {
   } catch (error) {
     logger.error('[DIAGNOSTIC]', 'followServiceActionState failed', error);
   } finally {
+    handledServiceActionJobs.add(jobId);
     setServiceActionStateLoading(state, false);
     await refreshDiagnosticServicesInfo({ force: true, allowInactive: true });
     void PodkopShellMethods.uiActionAck('service', jobId);
@@ -288,27 +319,9 @@ function followServiceActionsFromUiState(uiState?: Podkop.UiState) {
   }
 
   for (const action of uiState.actions.service || []) {
-    if (action.running) {
+    if (action.job_id) {
       void followServiceActionState(action);
     }
-  }
-}
-
-async function restoreServiceActionState() {
-  const response = await PodkopShellMethods.getUiState();
-
-  if (!response.success) {
-    return;
-  }
-
-  const serviceActions = response.data.actions.service || [];
-
-  for (const action of serviceActions) {
-    if (action.running) {
-      setServiceActionStateLoading(action, true);
-    }
-
-    void followServiceActionState(action);
   }
 }
 
@@ -329,25 +342,26 @@ async function fetchDiagnosticsProviderInfo({
   const requestId = ++latestProviderInfoRequestId;
 
   try {
-    const uiState = await PodkopShellMethods.getUiState();
+    const uiState = await refreshRuntimeUiState({ force: true });
 
     if (requestId !== latestProviderInfoRequestId) {
       return;
     }
 
-    if (uiState.success) {
+    if (uiState) {
       const currentSystemInfo = store.get().diagnosticsSystemInfo;
       const nextSystemInfo = normalizeSingBoxVariantFields({
         ...currentSystemInfo,
         providerInfoLoaded: true,
-        sing_box_extended: uiState.data.capabilities.sing_box_extended,
-        sing_box_tiny: uiState.data.capabilities.sing_box_tiny,
-        sing_box_tailscale: uiState.data.capabilities.sing_box_tailscale,
-        zapret_installed: uiState.data.capabilities.zapret_installed,
-        zapret2_installed: uiState.data.capabilities.zapret2_installed,
-        byedpi_installed: uiState.data.capabilities.byedpi_installed,
+        sing_box_extended: uiState.capabilities.sing_box_extended,
+        sing_box_tiny: uiState.capabilities.sing_box_tiny,
+        sing_box_compressed: uiState.capabilities.sing_box_compressed,
+        sing_box_tailscale: uiState.capabilities.sing_box_tailscale,
+        zapret_installed: uiState.capabilities.zapret_installed,
+        zapret2_installed: uiState.capabilities.zapret2_installed,
+        byedpi_installed: uiState.capabilities.byedpi_installed,
         server_inbounds_enabled_count:
-          uiState.data.capabilities.server_inbounds_enabled_count,
+          uiState.capabilities.server_inbounds_enabled_count,
       });
 
       if (!nextSystemInfo.zapret_installed) {
@@ -523,8 +537,10 @@ async function handleServiceRuntimeAction({
   expectedRunning: boolean;
   optimisticRunning?: boolean;
 }) {
-  setDiagnosticActionLoading(action, true);
+  setDiagnosticActionLoading(action, true, true);
   let jobId = '';
+  let ownsJobFollow = false;
+  let delegatedToWatcher = false;
 
   if (optimisticRunning !== undefined) {
     setDisplayedPodkopRunning(optimisticRunning);
@@ -538,6 +554,13 @@ async function handleServiceRuntimeAction({
     }
 
     jobId = startResponse.data.job_id;
+    if (followedServiceActionJobs.has(jobId)) {
+      delegatedToWatcher = true;
+      return;
+    }
+
+    followedServiceActionJobs.add(jobId);
+    ownsJobFollow = true;
     const result = await PodkopShellMethods.waitServiceActionJob(jobId);
 
     if (!result.success) {
@@ -552,12 +575,19 @@ async function handleServiceRuntimeAction({
   } catch (e) {
     logger.error('[DIAGNOSTIC]', `handleServiceRuntimeAction(${action})`, e);
   } finally {
-    setDiagnosticActionLoading(action, false);
-    await refreshDiagnosticServicesInfo({ force: true, allowInactive: true });
-    if (jobId) {
-      void PodkopShellMethods.uiActionAck('service', jobId);
+    if (!delegatedToWatcher) {
+      if (ownsJobFollow) {
+        followedServiceActionJobs.delete(jobId);
+      }
+
+      setDiagnosticActionLoading(action, false);
+      await refreshDiagnosticServicesInfo({ force: true, allowInactive: true });
+      if (jobId) {
+        handledServiceActionJobs.add(jobId);
+        void PodkopShellMethods.uiActionAck('service', jobId);
+      }
+      resetDiagnosticsChecks();
     }
-    resetDiagnosticsChecks();
   }
 }
 
@@ -749,19 +779,12 @@ function renderDiagnosticAvailableActionsWidget() {
     diagnosticsActions.enable.loading ||
     diagnosticsActions.disable.loading;
   const componentActionLoading = hasComponentActionLoading(updatesActions);
-  const serviceControlsDisabled = shouldDisableAvailableAction({
-    actionDisabled:
-      servicesInfoWidget.loading || atLeastOneMutatingActionLoading,
-    componentActionLoading,
-  });
-  const utilityActionsDisabled = shouldDisableAvailableAction({
-    actionDisabled: atLeastOneMutatingActionLoading,
-    componentActionLoading,
-  });
-  const viewLogsDisabled = shouldDisableAvailableAction({
-    actionDisabled: false,
-    componentActionLoading: false,
-  });
+  const { serviceControlsDisabled, utilityActionsDisabled, viewLogsDisabled } =
+    getAvailableActionsDisabledState({
+      servicesInfoLoading: servicesInfoWidget.loading,
+      mutatingServiceActionLoading: atLeastOneMutatingActionLoading,
+      componentActionLoading,
+    });
   const startVisible = shouldShowStartAction({
     podkopRunning,
     restartLoading,
@@ -930,7 +953,43 @@ async function onStoreUpdate(
   }
 }
 
-function getDiagnosticRunners(providerOptions: DiagnosticsProviderOptions) {
+function persistDiagnosticRunProgress({
+  providerOptions,
+  nextRunnerIndex,
+}: {
+  providerOptions: DiagnosticsProviderOptions;
+  nextRunnerIndex: number;
+}) {
+  savePersistedDiagnosticRun({
+    providerOptions,
+    nextRunnerIndex,
+    diagnosticsChecks: store.get().diagnosticsChecks,
+  });
+}
+
+function setDiagnosticCheckLoading(code: DIAGNOSTICS_CHECKS) {
+  const meta = DIAGNOSTICS_CHECKS_MAP[code];
+  const diagnosticsChecks = store.get().diagnosticsChecks;
+  const other = diagnosticsChecks.filter((item) => item.code !== code);
+
+  store.set({
+    diagnosticsChecks: [
+      ...other,
+      {
+        order: meta.order,
+        code: meta.code,
+        title: meta.title,
+        description: _('Checking, please wait'),
+        state: 'loading',
+        items: [],
+      },
+    ],
+  });
+}
+
+function getDiagnosticRunners(
+  providerOptions: DiagnosticsProviderOptions,
+): DiagnosticRunner[] {
   return [
     { code: DIAGNOSTICS_CHECKS.DNS, run: runDnsCheck },
     { code: DIAGNOSTICS_CHECKS.SINGBOX, run: runSingBoxCheck },
@@ -952,33 +1011,54 @@ function getDiagnosticRunners(providerOptions: DiagnosticsProviderOptions) {
   ];
 }
 
-async function runChecks() {
-  if (store.get().diagnosticsRunAction.loading) {
+async function runChecks({
+  resume,
+}: { resume?: PersistedDiagnosticRun } = {}) {
+  if (store.get().diagnosticsRunAction.loading && !resume) {
     return;
   }
 
-  let providerOptions = getDiagnosticsProviderOptions();
+  let providerOptions = resume?.providerOptions ?? getDiagnosticsProviderOptions();
+  let nextRunnerIndex = resume?.nextRunnerIndex ?? 0;
 
   store.set({
     diagnosticsRunAction: { loading: true },
     diagnosticsChecks:
+      resume?.diagnosticsChecks ??
       getLoadingDiagnosticsChecks(providerOptions).diagnosticsChecks,
+  });
+  persistDiagnosticRunProgress({
+    providerOptions,
+    nextRunnerIndex,
   });
 
   try {
-    await fetchDiagnosticsProviderInfo({ resetChecks: false });
+    if (!resume) {
+      await fetchDiagnosticsProviderInfo({ resetChecks: false });
 
-    providerOptions = getDiagnosticsProviderOptions();
+      providerOptions = getDiagnosticsProviderOptions();
+      nextRunnerIndex = 0;
 
-    store.set({
-      diagnosticsChecks:
-        getLoadingDiagnosticsChecks(providerOptions).diagnosticsChecks,
-    });
+      store.set({
+        diagnosticsChecks:
+          getLoadingDiagnosticsChecks(providerOptions).diagnosticsChecks,
+      });
+      persistDiagnosticRunProgress({
+        providerOptions,
+        nextRunnerIndex,
+      });
+    }
 
     const runners = getDiagnosticRunners(providerOptions);
 
-    for (let index = 0; index < runners.length; index += 1) {
+    for (let index = nextRunnerIndex; index < runners.length; index += 1) {
       const runner = runners[index];
+
+      setDiagnosticCheckLoading(runner.code);
+      persistDiagnosticRunProgress({
+        providerOptions,
+        nextRunnerIndex: index,
+      });
 
       try {
         await runner.run();
@@ -989,10 +1069,16 @@ async function runChecks() {
           e,
         );
       }
+
+      persistDiagnosticRunProgress({
+        providerOptions,
+        nextRunnerIndex: index + 1,
+      });
     }
   } catch (e) {
     logger.error('[DIAGNOSTIC]', 'runChecks - e', e);
   } finally {
+    clearPersistedDiagnosticRun();
     store.set({ diagnosticsRunAction: { loading: false } });
     if (!diagnosticMounted) {
       diagnosticCompletedWhileHidden = true;
@@ -1013,24 +1099,60 @@ async function loadInitialDiagnosticData() {
   }
 }
 
-function onPageMount() {
+function restorePersistedDiagnosticRun() {
+  const persistedRun = readPersistedDiagnosticRun();
+
+  if (!persistedRun) {
+    return false;
+  }
+
+  store.set({
+    diagnosticsRunAction: { loading: true },
+    diagnosticsChecks: persistedRun.diagnosticsChecks,
+  });
+  void runChecks({ resume: persistedRun });
+  return true;
+}
+
+async function onPageMount() {
   const preserveHiddenResult = diagnosticCompletedWhileHidden;
 
   // Cleanup before mount
-  onPageUnmount({ preserveCompletedResult: preserveHiddenResult });
+  onPageUnmount({
+    preserveCompletedResult: preserveHiddenResult,
+    preservePersistedRun: true,
+  });
 
   diagnosticMounted = true;
   diagnosticMountId += 1;
+  const mountId = diagnosticMountId;
+  const hasRuntimeSnapshot = Boolean(getCachedRuntimeUiState());
+
+  if (!hasRuntimeSnapshot) {
+    const uiState = await refreshRuntimeUiState({ force: true });
+
+    if (!diagnosticMounted || mountId !== diagnosticMountId) {
+      return;
+    }
+
+    if (!uiState) {
+      void refreshDiagnosticServicesInfo({ force: true });
+    }
+  }
+
+  const restoredPersistedRun =
+    !preserveHiddenResult && restorePersistedDiagnosticRun();
 
   if (preserveHiddenResult) {
     diagnosticCompletedWhileHidden = false;
-  } else if (!store.get().diagnosticsRunAction.loading) {
+  } else if (!restoredPersistedRun && !store.get().diagnosticsRunAction.loading) {
     store.reset(['diagnosticsRunAction']);
     resetDiagnosticsChecks();
   }
 
   // Add new listener
   store.subscribe(onStoreUpdate);
+  startServiceActionStateWatcher();
 
   // Initial checks render
   renderDiagnosticsChecks();
@@ -1047,26 +1169,33 @@ function onPageMount() {
   // Initial Wiki disclaimer render
   renderWikiDisclaimerWidget();
 
-  void refreshDiagnosticServicesInfo({ force: true });
-  void restoreServiceActionState();
-  startServicesInfoRefreshTimer();
-  if (!preserveHiddenResult) {
+  if (hasRuntimeSnapshot) {
+    void refreshRuntimeUiState({ force: true });
+  }
+  if (!preserveHiddenResult && !restoredPersistedRun) {
     void loadInitialDiagnosticData();
   }
 }
 
 function onPageUnmount({
   preserveCompletedResult = false,
-}: { preserveCompletedResult?: boolean } = {}) {
+  preservePersistedRun = false,
+}: {
+  preserveCompletedResult?: boolean;
+  preservePersistedRun?: boolean;
+} = {}) {
   diagnosticMounted = false;
   diagnosticMountId += 1;
-  stopServicesInfoRefreshTimer();
+  stopServiceActionStateWatcher();
   servicesInfoRefreshPromise = null;
 
   // Remove old listener
   store.unsubscribe(onStoreUpdate);
 
   if (!preserveCompletedResult && !store.get().diagnosticsRunAction.loading) {
+    if (!preservePersistedRun) {
+      clearPersistedDiagnosticRun();
+    }
     store.reset(['diagnosticsRunAction']);
     resetDiagnosticsChecks();
     diagnosticCompletedWhileHidden = false;

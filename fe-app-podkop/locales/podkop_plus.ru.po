@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PODKOP PLUS\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-06-06 23:39+0300\n"
-"PO-Revision-Date: 2026-06-06 23:39+0300\n"
+"POT-Creation-Date: 2026-06-07 02:17+0300\n"
+"PO-Revision-Date: 2026-06-07 02:17+0300\n"
 "Last-Translator: ushan0v\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -235,6 +235,9 @@ msgstr "Закрыть подключение"
 
 msgid "Closed"
 msgstr "Закрытые"
+
+msgid "Components"
+msgstr "Компоненты"
 
 msgid "compressed"
 msgstr "compressed"
@@ -559,9 +562,6 @@ msgstr "Информация"
 
 msgid "Install"
 msgstr "Установить"
-
-msgid "Install %s"
-msgstr "Установить %s"
 
 msgid "Install extended"
 msgstr "Установить extended"
@@ -1553,14 +1553,17 @@ msgstr "Неизвестный флаг NFQWS2."
 msgid "Unsupported security mode for this protocol"
 msgstr "Этот протокол не поддерживает выбранный режим защиты"
 
+msgid "Update"
+msgstr "Обновление"
+
 msgid "Update is available"
 msgstr "Доступно обновление"
 
 msgid "Update subscriptions"
 msgstr "Обновить подписки"
 
-msgid "Updates"
-msgstr "Обновления"
+msgid "Update to %s"
+msgstr "Обновить до %s"
 
 msgid "Uplink"
 msgstr "Исходящий"

@@ -1014,6 +1014,7 @@ function job_running_is(path, expected) {
 function updates_json_response(success, component, action, message, current_version, latest_version, changed, status, release_url) {
     write_json({
         success: arg_bool(success),
+        kind: "component",
         component: as_string(component),
         action: as_string(action),
         message: as_string(message),
@@ -1038,11 +1039,13 @@ function updates_running_job_state(component, action, pid, started_at) {
     write_json({
         success: true,
         running: true,
+        kind: "component",
         component: as_string(component),
         action: as_string(action),
         message: "Component action is running",
         pid: pid != "" ? pid : null,
         started_at: arg_number(started_at),
+        updated_at: null,
         current_version: "",
         latest_version: "",
         changed: 0,
@@ -1077,6 +1080,7 @@ function updates_finish_job_state(path, exit_code, updated_at) {
         exit(1);
 
     value.running = false;
+    value.kind = "component";
     value.exit_code = arg_number(exit_code);
     value.updated_at = arg_number(updated_at);
     write_json(value);
@@ -1086,6 +1090,7 @@ function updates_fallback_job_state(component, action, message, exit_code, updat
     write_json({
         success: false,
         running: false,
+        kind: "component",
         component: as_string(component),
         action: as_string(action),
         message: as_string(message),

@@ -8,23 +8,39 @@ import { copyToClipboard } from '../../../helpers/copyToClipboard';
 import { showToast } from '../../../helpers/showToast';
 import { prettyBytes } from '../../../helpers/prettyBytes';
 import { CustomPodkopMethods, PodkopShellMethods } from '../../methods';
-import { logger, socket, store, StoreType } from '../../services';
+import {
+  logger,
+  markUiActionOwned,
+  setLocalLatencyAction,
+  setLocalSubscriptionAction,
+  shouldNotifyOwnedUiAction,
+  socket,
+  store,
+  StoreType,
+} from '../../services';
 import { renderSections, renderWidget } from './partials';
 import { fetchServicesInfo } from '../../fetchers/fetchServicesInfo';
 import { getClashApiSecret } from '../../methods/custom/getClashApiSecret';
 import { Podkop } from '../../types';
-import { applyUiStateToStore } from '../../services/uiState.service';
+import {
+  getCachedRuntimeUiState,
+  refreshRuntimeUiState,
+  subscribeRuntimeUiState,
+} from '../../services/runtimeUiState.service';
 import { isActiveLuciTab } from '../../helpers/isActiveLuciTab';
 
 const SECTIONS_REFRESH_INTERVAL_MS = 10000;
 let sectionsRefreshTimer: ReturnType<typeof setInterval> | null = null;
 let sectionsRefreshPromise: Promise<boolean> | null = null;
 let sectionsRefreshQueued = false;
+let actionStateUnsubscribe: (() => void) | null = null;
 let dashboardMounted = false;
 let dashboardMountId = 0;
 let pageUnloading = false;
 const followedSubscriptionJobs = new Set<string>();
 const followedLatencyJobs = new Set<string>();
+const handledSubscriptionJobs = new Set<string>();
+const handledLatencyJobs = new Set<string>();
 
 if (typeof window !== 'undefined') {
   window.addEventListener('pagehide', () => {
@@ -130,7 +146,15 @@ async function fetchDashboardSections(options: { force?: boolean } = {}) {
   }
 }
 
-function setSubscriptionUpdating(sectionName: string, updating: boolean) {
+function setSubscriptionUpdating(
+  sectionName: string,
+  updating: boolean,
+  local = false,
+) {
+  if (local || !updating) {
+    setLocalSubscriptionAction(sectionName, updating && local);
+  }
+
   const sectionsWidget = store.get().sectionsWidget;
   const subscriptionUpdatingSections = {
     ...sectionsWidget.subscriptionUpdatingSections,
@@ -170,7 +194,15 @@ function setSelectorSwitching(sectionName: string, tag?: string) {
   });
 }
 
-function setLatencyFetching(sectionName: string, fetching: boolean) {
+function setLatencyFetching(
+  sectionName: string,
+  fetching: boolean,
+  local = false,
+) {
+  if (local || !fetching) {
+    setLocalLatencyAction(sectionName, fetching && local);
+  }
+
   const sectionsWidget = store.get().sectionsWidget;
   const latencyFetchingSections = {
     ...sectionsWidget.latencyFetchingSections,
@@ -201,16 +233,32 @@ async function completeSubscriptionUpdateJob(
     return;
   }
 
+  if (jobId && handledSubscriptionJobs.has(jobId)) {
+    return;
+  }
+
+  if (jobId) {
+    handledSubscriptionJobs.add(jobId);
+  }
+
+  const shouldNotify = jobId
+    ? shouldNotifyOwnedUiAction('subscription', jobId)
+    : false;
+
   if (jobId && response.success) {
     void PodkopShellMethods.uiActionAck('subscription', jobId);
   }
 
   if (!response.success || response.data.success === false) {
-    showToast(_('Failed to update subscriptions'), 'error');
+    if (shouldNotify) {
+      showToast(_('Failed to update subscriptions'), 'error');
+    }
     return;
   }
 
-  showToast(_('Subscription update completed'), 'success');
+  if (shouldNotify) {
+    showToast(_('Subscription update completed'), 'success');
+  }
   void fetchDashboardSections({ force: true });
   void fetchServicesInfo();
 }
@@ -222,6 +270,10 @@ async function followSubscriptionUpdateState(
   const sectionName = state.section || '';
 
   if (!jobId || !sectionName || followedSubscriptionJobs.has(jobId)) {
+    return;
+  }
+
+  if (!state.running && handledSubscriptionJobs.has(jobId)) {
     return;
   }
 
@@ -255,6 +307,14 @@ async function completeLatencyTestJob(jobId: string, sectionName: string) {
     return;
   }
 
+  if (jobId && handledLatencyJobs.has(jobId)) {
+    return;
+  }
+
+  if (jobId) {
+    handledLatencyJobs.add(jobId);
+  }
+
   if (jobId) {
     void PodkopShellMethods.uiActionAck('latency', jobId);
   }
@@ -267,6 +327,10 @@ async function followLatencyTestState(state: Podkop.LatencyActionState) {
   const sectionName = state.section || '';
 
   if (!jobId || !sectionName || followedLatencyJobs.has(jobId)) {
+    return;
+  }
+
+  if (!state.running && handledLatencyJobs.has(jobId)) {
     return;
   }
 
@@ -289,26 +353,45 @@ async function followLatencyTestState(state: Podkop.LatencyActionState) {
   }
 }
 
-async function restoreDashboardActionState() {
-  const response = await PodkopShellMethods.getUiState();
+function followDashboardActionsFromUiState(uiState: Podkop.UiState) {
+  for (const state of uiState.actions.subscription || []) {
+    if (state.running || (state.job_id && state.section)) {
+      void followSubscriptionUpdateState(state);
+    } else if (state.job_id && !handledSubscriptionJobs.has(state.job_id)) {
+      handledSubscriptionJobs.add(state.job_id);
+      void PodkopShellMethods.uiActionAck('subscription', state.job_id);
+    }
+  }
 
-  if (!response.success) {
+  for (const state of uiState.actions.latency || []) {
+    if (state.running || (state.job_id && state.section)) {
+      void followLatencyTestState(state);
+    } else if (state.job_id && !handledLatencyJobs.has(state.job_id)) {
+      handledLatencyJobs.add(state.job_id);
+      void PodkopShellMethods.uiActionAck('latency', state.job_id);
+    }
+  }
+}
+
+function startActionStateWatcher() {
+  if (actionStateUnsubscribe) {
     return;
   }
 
-  applyUiStateToStore(response.data);
-
-  for (const state of response.data.actions.subscription || []) {
-    if (state.running === false || state.running) {
-      void followSubscriptionUpdateState(state);
+  actionStateUnsubscribe = subscribeRuntimeUiState((uiState) => {
+    if (dashboardMounted) {
+      followDashboardActionsFromUiState(uiState);
     }
+  });
+}
+
+function stopActionStateWatcher() {
+  if (!actionStateUnsubscribe) {
+    return;
   }
 
-  for (const state of response.data.actions.latency || []) {
-    if (state.running === false || state.running) {
-      void followLatencyTestState(state);
-    }
-  }
+  actionStateUnsubscribe();
+  actionStateUnsubscribe = null;
 }
 
 async function connectToClashSockets() {
@@ -424,17 +507,23 @@ async function handleChooseOutbound(
   }
 }
 
-async function handleTestGroupLatency(sectionName: string, tag: string) {
+async function handleTestLatency(
+  latencyType: Podkop.LatencyActionState['latency_type'],
+  sectionName: string,
+  tag: string,
+) {
   if (store.get().sectionsWidget.latencyFetchingSections[sectionName]) {
     return;
   }
 
-  setLatencyFetching(sectionName, true);
+  setLatencyFetching(sectionName, true, true);
   let jobId = '';
+  let ownsJobFollow = false;
+  let completed = false;
 
   try {
     const startResponse = await PodkopShellMethods.latencyTestStart(
-      'group',
+      latencyType,
       sectionName,
       tag,
     );
@@ -444,45 +533,24 @@ async function handleTestGroupLatency(sectionName: string, tag: string) {
     }
 
     jobId = startResponse.data.job_id;
-    await PodkopShellMethods.waitLatencyTestJob(jobId);
-    await completeLatencyTestJob(jobId, sectionName);
-    jobId = '';
-  } catch (error) {
-    logger.error('[DASHBOARD]', 'handleTestGroupLatency: failed', error);
-  } finally {
-    if (jobId) {
-      setLatencyFetching(sectionName, false);
-    }
-  }
-}
-
-async function handleTestProxyLatency(sectionName: string, tag: string) {
-  if (store.get().sectionsWidget.latencyFetchingSections[sectionName]) {
-    return;
-  }
-
-  setLatencyFetching(sectionName, true);
-  let jobId = '';
-
-  try {
-    const startResponse = await PodkopShellMethods.latencyTestStart(
-      'proxy',
-      sectionName,
-      tag,
-    );
-
-    if (!startResponse.success) {
-      throw new Error(startResponse.error);
+    if (followedLatencyJobs.has(jobId)) {
+      completed = true;
+      return;
     }
 
-    jobId = startResponse.data.job_id;
+    followedLatencyJobs.add(jobId);
+    ownsJobFollow = true;
     await PodkopShellMethods.waitLatencyTestJob(jobId);
     await completeLatencyTestJob(jobId, sectionName);
-    jobId = '';
+    completed = true;
   } catch (error) {
-    logger.error('[DASHBOARD]', 'handleTestProxyLatency: failed', error);
+    logger.error('[DASHBOARD]', 'handleTestLatency: failed', error);
   } finally {
-    if (jobId) {
+    if (ownsJobFollow) {
+      followedLatencyJobs.delete(jobId);
+    }
+
+    if (!completed) {
       setLatencyFetching(sectionName, false);
     }
   }
@@ -519,8 +587,9 @@ async function handleUpdateSubscription(section: Podkop.OutboundGroup) {
     return;
   }
 
-  setSubscriptionUpdating(section.sectionName, true);
+  setSubscriptionUpdating(section.sectionName, true, true);
   let jobId = '';
+  let ownsJobFollow = false;
 
   try {
     const startResponse = await PodkopShellMethods.subscriptionUpdateStart(
@@ -532,14 +601,24 @@ async function handleUpdateSubscription(section: Podkop.OutboundGroup) {
     }
 
     jobId = startResponse.data.job_id;
+    markUiActionOwned('subscription', jobId);
+    if (followedSubscriptionJobs.has(jobId)) {
+      return;
+    }
+
+    followedSubscriptionJobs.add(jobId);
+    ownsJobFollow = true;
     const response = await PodkopShellMethods.waitSubscriptionUpdateJob(jobId);
     await completeSubscriptionUpdateJob(jobId, section.sectionName, response);
-    jobId = '';
   } catch (error) {
     logger.error('[DASHBOARD]', 'handleUpdateSubscription: failed', error);
     if (!pageUnloading) {
       setSubscriptionUpdating(section.sectionName, false);
       showToast(_('Failed to update subscriptions'), 'error');
+    }
+  } finally {
+    if (ownsJobFollow) {
+      followedSubscriptionJobs.delete(jobId);
     }
   }
 }
@@ -595,10 +674,10 @@ async function renderSectionsWidget() {
         sectionsWidget.selectorSwitchingSections[section.sectionName],
       onTestLatency: (tag) => {
         if (section.withTagSelect) {
-          return handleTestGroupLatency(section.sectionName, tag);
+          return handleTestLatency('group', section.sectionName, tag);
         }
 
-        return handleTestProxyLatency(section.sectionName, tag);
+        return handleTestLatency('proxy', section.sectionName, tag);
       },
       onChooseOutbound: (sectionName, selector, tag) => {
         void handleChooseOutbound(sectionName, selector, tag);
@@ -817,13 +896,34 @@ async function onPageMount() {
 
   dashboardMounted = true;
   dashboardMountId += 1;
+  const mountId = dashboardMountId;
+  const hasRuntimeSnapshot = Boolean(getCachedRuntimeUiState());
+
+  if (!hasRuntimeSnapshot) {
+    const uiState = await refreshRuntimeUiState({ force: true });
+
+    if (!dashboardMounted || mountId !== dashboardMountId) {
+      return;
+    }
+
+    if (!uiState) {
+      void fetchServicesInfo();
+    }
+  }
 
   // Add new listener
   store.subscribe(onStoreUpdate);
+  startActionStateWatcher();
+  void renderSectionsWidget();
+  void renderBandwidthWidget();
+  void renderTrafficTotalWidget();
+  void renderSystemInfoWidget();
+  void renderServicesInfoWidget();
 
   void fetchDashboardSections({ force: true });
-  void fetchServicesInfo();
-  void restoreDashboardActionState();
+  if (hasRuntimeSnapshot) {
+    void refreshRuntimeUiState({ force: true });
+  }
   void connectToClashSockets();
 
   sectionsRefreshTimer = setInterval(() => {
@@ -839,16 +939,13 @@ function onPageUnmount() {
     clearInterval(sectionsRefreshTimer);
     sectionsRefreshTimer = null;
   }
+  stopActionStateWatcher();
   sectionsRefreshQueued = false;
   sectionsRefreshPromise = null;
   // Remove old listener
   store.unsubscribe(onStoreUpdate);
   // Clear store
-  store.reset([
-    'bandwidthWidget',
-    'trafficTotalWidget',
-    'systemInfoWidget',
-  ]);
+  store.reset(['bandwidthWidget', 'trafficTotalWidget', 'systemInfoWidget']);
   socket.resetAll();
 }
 

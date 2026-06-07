@@ -113,11 +113,13 @@ function subscription_running_job_state(section, source_index, started_at) {
     write_json({
         success: true,
         running: true,
+        kind: "subscription",
         message: "Subscription update is running",
         section: as_string(section),
         source_index: as_string(source_index),
         pid: null,
         started_at: arg_number(started_at),
+        updated_at: null,
         exit_code: null
     });
 }
@@ -126,6 +128,7 @@ function subscription_finished_job_state(success, message, exit_code, updated_at
     write_json({
         success: arg_bool(success),
         running: false,
+        kind: "subscription",
         message: as_string(message),
         section: as_string(section),
         source_index: as_string(source_index),
@@ -140,6 +143,7 @@ function subscription_stale_job_state(updated_at, section, source_index, started
     write_json({
         success: false,
         running: false,
+        kind: "subscription",
         message: "Subscription update worker exited unexpectedly",
         section: as_string(section),
         source_index: as_string(source_index),

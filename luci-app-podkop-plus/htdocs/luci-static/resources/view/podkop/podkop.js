@@ -494,7 +494,7 @@ const EntryPoint = {
     const updatesSection = podkopMap.section(
       form.TypedSection,
       "updates",
-      _("Updates"),
+      _("Update"),
     );
     updatesSection.anonymous = true;
     updatesSection.addremove = false;

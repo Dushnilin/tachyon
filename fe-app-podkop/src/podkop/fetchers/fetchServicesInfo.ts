@@ -1,7 +1,7 @@
 import { PodkopShellMethods } from '../methods';
 import { logger } from '../services/logger.service';
 import { store } from '../services/store.service';
-import { applyUiStateToStore } from '../services/uiState.service';
+import { refreshRuntimeUiState } from '../services/runtimeUiState.service';
 import { Podkop } from '../types';
 
 let latestServicesInfoRequestId = 0;
@@ -24,15 +24,14 @@ function getSettledMethodResponse<T>(
 
 export async function fetchServicesInfo() {
   const requestId = ++latestServicesInfoRequestId;
-  const uiState = await PodkopShellMethods.getUiState();
+  const uiState = await refreshRuntimeUiState({ force: true });
 
   if (requestId !== latestServicesInfoRequestId) {
     return;
   }
 
-  if (uiState.success) {
-    applyUiStateToStore(uiState.data);
-    return uiState.data;
+  if (uiState) {
+    return uiState;
   }
 
   const [podkopResult, singboxResult] = await Promise.allSettled([
@@ -46,16 +45,23 @@ export async function fetchServicesInfo() {
 
   const podkop = getSettledMethodResponse('getStatus', podkopResult);
   const singbox = getSettledMethodResponse('getSingBoxStatus', singboxResult);
+  const previousData = store.get().servicesInfoWidget.data;
 
   store.set({
     servicesInfoWidget: {
       loading: false,
       failed: !podkop.success || !singbox.success,
       data: {
-        singbox: singbox.success ? singbox.data.running : 0,
-        podkopRunning: podkop.success ? podkop.data.running : 0,
-        podkopEnabled: podkop.success ? podkop.data.enabled : 0,
-        podkopStatus: podkop.success ? podkop.data.status : '',
+        singbox: singbox.success ? singbox.data.running : previousData.singbox,
+        podkopRunning: podkop.success
+          ? podkop.data.running
+          : previousData.podkopRunning,
+        podkopEnabled: podkop.success
+          ? podkop.data.enabled
+          : previousData.podkopEnabled,
+        podkopStatus: podkop.success
+          ? podkop.data.status
+          : previousData.podkopStatus,
       },
     },
   });

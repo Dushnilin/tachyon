@@ -15,6 +15,7 @@ const COMPONENT_ACTION_RPC_TIMEOUT_MS = 15000;
 const COMPONENT_ACTION_POLL_INTERVAL_MS = 1500;
 const COMPONENT_ACTION_SELF_UPDATE_SETTLE_MS = 30000;
 const COMPONENT_ACTION_STATE_DIR = '/var/run/podkop-plus/component-actions';
+const GET_UI_STATE_RPC_TIMEOUT_MS = 3000;
 
 function sleep(ms: number) {
   return new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -141,6 +142,9 @@ async function isComponentActionStillRunning(
 ) {
   const response = await callBaseMethod<Podkop.UiState>(
     Podkop.AvailableMethods.GET_UI_STATE,
+    [],
+    '/usr/bin/podkop-plus',
+    { timeout: GET_UI_STATE_RPC_TIMEOUT_MS },
   );
 
   return (
@@ -284,24 +288,6 @@ export const PodkopShellMethods = {
     callBaseMethod<unknown>(Podkop.AvailableMethods.CLASH_API, [
       Podkop.AvailableClashAPIMethods.CLOSE_ALL_CONNECTIONS,
     ]),
-  restart: async () =>
-    callBaseMethod<unknown>(
-      Podkop.AvailableMethods.RESTART,
-      [],
-      '/etc/init.d/podkop-plus',
-    ),
-  start: async () =>
-    callBaseMethod<unknown>(
-      Podkop.AvailableMethods.START,
-      [],
-      '/etc/init.d/podkop-plus',
-    ),
-  stop: async () =>
-    callBaseMethod<unknown>(
-      Podkop.AvailableMethods.STOP,
-      [],
-      '/etc/init.d/podkop-plus',
-    ),
   enable: async () =>
     callBaseMethod<unknown>(
       Podkop.AvailableMethods.ENABLE,
@@ -335,7 +321,12 @@ export const PodkopShellMethods = {
       Podkop.AvailableMethods.GET_UI_CAPABILITIES,
     ),
   getUiState: async () =>
-    callBaseMethod<Podkop.UiState>(Podkop.AvailableMethods.GET_UI_STATE),
+    callBaseMethod<Podkop.UiState>(
+      Podkop.AvailableMethods.GET_UI_STATE,
+      [],
+      '/usr/bin/podkop-plus',
+      { timeout: GET_UI_STATE_RPC_TIMEOUT_MS },
+    ),
   serviceActionStart: async (action: Podkop.ServiceAction) => {
     const response = await executeShellCommand({
       command: '/usr/bin/podkop-plus',
@@ -403,30 +394,6 @@ export const PodkopShellMethods = {
       success: false,
       error: _('Operation timed out'),
     } as Podkop.MethodFailureResponse;
-  },
-  serviceAction: async (action: Podkop.ServiceAction) => {
-    const startResponse = await PodkopShellMethods.serviceActionStart(action);
-
-    if (!startResponse.success) {
-      return startResponse;
-    }
-
-    return PodkopShellMethods.waitServiceActionJob(
-      startResponse.data.job_id,
-    ).then((response) => {
-      if (!response.success) {
-        return response;
-      }
-
-      if (response.data.success === false) {
-        return {
-          success: false,
-          error: response.data.message || _('Service action failed'),
-        } as Podkop.MethodFailureResponse;
-      }
-
-      return response;
-    });
   },
   latencyTestStart: async (
     latencyType: Podkop.LatencyActionState['latency_type'],
@@ -504,23 +471,6 @@ export const PodkopShellMethods = {
       success: false,
       error: _('Operation timed out'),
     } as Podkop.MethodFailureResponse;
-  },
-  latencyTest: async (
-    latencyType: Podkop.LatencyActionState['latency_type'],
-    section: string,
-    tag: string,
-  ) => {
-    const startResponse = await PodkopShellMethods.latencyTestStart(
-      latencyType,
-      section,
-      tag,
-    );
-
-    if (!startResponse.success) {
-      return startResponse;
-    }
-
-    return PodkopShellMethods.waitLatencyTestJob(startResponse.data.job_id);
   },
   uiActionAck: async (
     kind: 'service' | 'latency' | 'component' | 'subscription',
@@ -674,40 +624,6 @@ export const PodkopShellMethods = {
       error: _('Operation timed out'),
     } as Podkop.MethodFailureResponse;
   },
-  componentAction: async (
-    component: Podkop.ComponentName,
-    action: Podkop.ComponentAction,
-    expectedLatestVersion?: string,
-  ) => {
-    const startResponse = await PodkopShellMethods.componentActionStart(
-      component,
-      action,
-    );
-
-    if (!startResponse.success) {
-      return startResponse;
-    }
-
-    return PodkopShellMethods.waitComponentActionJob(
-      startResponse.data.job_id,
-      component,
-      action,
-      expectedLatestVersion,
-    ).then((response) => {
-      if (!response.success) {
-        return response;
-      }
-
-      if (response.data.success === false) {
-        return {
-          success: false,
-          error: response.data.message || _('Failed to execute'),
-        } as Podkop.MethodFailureResponse;
-      }
-
-      return response;
-    });
-  },
   subscriptionUpdateStart: async (section?: string, sourceIndex?: number) => {
     const startArgs = [
       Podkop.AvailableMethods.SUBSCRIPTION_UPDATE_ASYNC,
@@ -781,38 +697,5 @@ export const PodkopShellMethods = {
       success: false,
       error: _('Operation timed out'),
     } as Podkop.MethodFailureResponse;
-  },
-  subscriptionUpdate: async (section?: string, sourceIndex?: number) => {
-    const startResponse = await PodkopShellMethods.subscriptionUpdateStart(
-      section,
-      sourceIndex,
-    );
-
-    if (!startResponse.success) {
-      return startResponse;
-    }
-
-    const response = await PodkopShellMethods.waitSubscriptionUpdateJob(
-      startResponse.data.job_id,
-    );
-
-    if (!response.success) {
-      return response;
-    }
-
-    if (response.data.success === false) {
-      return {
-        success: false,
-        error: response.data.message || _('Subscription update failed'),
-      } as Podkop.MethodFailureResponse;
-    }
-
-    return {
-      success: true,
-      data:
-        response.data.message ||
-        startResponse.data.message ||
-        _('Subscription update completed'),
-    } as Podkop.MethodSuccessResponse<string>;
   },
 };
