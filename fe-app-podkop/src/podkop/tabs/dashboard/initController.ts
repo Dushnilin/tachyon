@@ -705,10 +705,22 @@ async function renderSectionsWidget() {
         sectionsWidget.selectorSwitchingSections[section.sectionName],
       onTestLatency: (tag) => {
         if (section.withTagSelect) {
+          if (Array.isArray(tag)) {
+            return handleTestLatency(
+              'proxy_list',
+              section.sectionName,
+              JSON.stringify(tag),
+            );
+          }
+
           return handleTestLatency('group', section.sectionName, tag);
         }
 
-        return handleTestLatency('proxy', section.sectionName, tag);
+        return handleTestLatency(
+          'proxy',
+          section.sectionName,
+          Array.isArray(tag) ? JSON.stringify(tag) : tag,
+        );
       },
       onChooseOutbound: (sectionName, selector, tag) => {
         void handleChooseOutbound(sectionName, selector, tag);

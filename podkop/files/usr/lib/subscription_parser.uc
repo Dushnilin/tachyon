@@ -84,6 +84,124 @@ function is_integer_string(value) {
     return true;
 }
 
+function xhttp_value_present(value) {
+    return value != null && as_string(value) != "";
+}
+
+function xhttp_object_arg(value) {
+    if (type(value) == "object")
+        return value;
+
+    try {
+        let parsed = json(as_string(value));
+        return type(parsed) == "object" ? parsed : {};
+    }
+    catch (e) {
+        return {};
+    }
+}
+
+function xhttp_copy_known_settings(target, source) {
+    if (type(source) != "object")
+        return;
+
+    for (let key in [
+        "xPaddingBytes",
+        "x_padding_bytes",
+        "noGRPCHeader",
+        "no_grpc_header",
+        "scMaxEachPostBytes",
+        "sc_max_each_post_bytes",
+        "scMinPostsIntervalMs",
+        "sc_min_posts_interval_ms"
+    ]) {
+        if (xhttp_value_present(source[key]))
+            target[key] = source[key];
+    }
+}
+
+function xhttp_merge_extra_settings(target, value) {
+    let extra = xhttp_object_arg(value);
+    if (type(extra) != "object")
+        return;
+
+    xhttp_copy_known_settings(target, extra);
+
+    let xhttp_settings = xhttp_object_arg(extra.xhttpSettings);
+    xhttp_copy_known_settings(target, xhttp_settings);
+    xhttp_copy_known_settings(target, xhttp_object_arg(xhttp_settings.extra));
+
+    let download_settings = xhttp_object_arg(extra.downloadSettings);
+    let download_xhttp_settings = xhttp_object_arg(download_settings.xhttpSettings);
+    xhttp_copy_known_settings(target, download_xhttp_settings);
+    xhttp_copy_known_settings(target, xhttp_object_arg(download_xhttp_settings.extra));
+}
+
+function xhttp_extra_settings(query) {
+    let result = {};
+    query = type(query) == "object" ? query : {};
+    xhttp_merge_extra_settings(result, query.extra);
+    return result;
+}
+
+function xhttp_setting_value(query, extra_settings, camel_key, snake_key) {
+    query = type(query) == "object" ? query : {};
+    extra_settings = type(extra_settings) == "object" ? extra_settings : {};
+    for (let value in [query[camel_key], query[snake_key], extra_settings[camel_key], extra_settings[snake_key]]) {
+        if (xhttp_value_present(value))
+            return value;
+    }
+    return null;
+}
+
+function xhttp_non_negative_integer_value(value) {
+    if (type(value) == "int" || type(value) == "double") {
+        let number = int(value);
+        return number == value && number >= 0 ? number : null;
+    }
+
+    value = trim(as_string(value));
+    if (!is_integer_string(value))
+        return null;
+
+    return int(value, 10);
+}
+
+function xhttp_range_value(value) {
+    if (!xhttp_value_present(value))
+        return null;
+
+    if (type(value) == "object") {
+        let from = xhttp_non_negative_integer_value(value.from);
+        let to = xhttp_non_negative_integer_value(value.to);
+        return from != null && to != null && from <= to ? { from, to } : null;
+    }
+
+    let number = xhttp_non_negative_integer_value(value);
+    if (number != null)
+        return number;
+
+    value = trim(as_string(value));
+    let dash = index(value, "-");
+    if (dash < 0 || index(substr(value, dash + 1), "-") >= 0)
+        return null;
+
+    let from = xhttp_non_negative_integer_value(substr(value, 0, dash));
+    let to = xhttp_non_negative_integer_value(substr(value, dash + 1));
+    return from != null && to != null && from <= to ? from + "-" + to : null;
+}
+
+function xhttp_optional_range(object, key, value) {
+    let normalized = xhttp_range_value(value);
+    if (normalized != null)
+        object[key] = normalized;
+}
+
+function xhttp_optional_bool(object, key, value) {
+    if (xhttp_value_present(value))
+        object[key] = is_true(value);
+}
+
 function json_decode_text(text) {
     try {
         return json(as_string(text));
@@ -468,6 +586,12 @@ function add_transport(url) {
         };
         if (host != "")
             result.host = host;
+
+        let extra_settings = xhttp_extra_settings(query);
+        xhttp_optional_range(result, "x_padding_bytes", xhttp_setting_value(query, extra_settings, "xPaddingBytes", "x_padding_bytes"));
+        xhttp_optional_bool(result, "no_grpc_header", xhttp_setting_value(query, extra_settings, "noGRPCHeader", "no_grpc_header"));
+        xhttp_optional_range(result, "sc_max_each_post_bytes", xhttp_setting_value(query, extra_settings, "scMaxEachPostBytes", "sc_max_each_post_bytes"));
+        xhttp_optional_range(result, "sc_min_posts_interval_ms", xhttp_setting_value(query, extra_settings, "scMinPostsIntervalMs", "sc_min_posts_interval_ms"));
         return result;
     }
 

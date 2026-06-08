@@ -1784,7 +1784,9 @@ function renderDefaultState({
 }) {
   function testLatency() {
     if (section.withTagSelect) {
-      return onTestLatency(section.latencyTestCode || section.code);
+      return onTestLatency(
+        section.latencyTestCodes?.length ? section.latencyTestCodes : section.latencyTestCode || section.code
+      );
     }
     if (section.outbounds.length) {
       return onTestLatency(section.outbounds[0].code);
@@ -2218,6 +2220,7 @@ var Podkop;
     AvailableClashAPIMethods2["GET_PROXIES"] = "get_proxies";
     AvailableClashAPIMethods2["GET_CONNECTIONS"] = "get_connections";
     AvailableClashAPIMethods2["GET_PROXY_LATENCY"] = "get_proxy_latency";
+    AvailableClashAPIMethods2["GET_PROXY_LATENCIES"] = "get_proxy_latencies";
     AvailableClashAPIMethods2["GET_GROUP_LATENCY"] = "get_group_latency";
     AvailableClashAPIMethods2["SET_GROUP_PROXY"] = "set_group_proxy";
     AvailableClashAPIMethods2["CLOSE_CONNECTION"] = "close_connection";
@@ -2447,6 +2450,14 @@ var PodkopShellMethods = {
   getClashApiProxyLatency: async (tag) => callBaseMethod(
     Podkop.AvailableMethods.CLASH_API,
     [Podkop.AvailableClashAPIMethods.GET_PROXY_LATENCY, tag, "5000"]
+  ),
+  getClashApiProxyLatencies: async (tags) => callBaseMethod(
+    Podkop.AvailableMethods.CLASH_API,
+    [
+      Podkop.AvailableClashAPIMethods.GET_PROXY_LATENCIES,
+      JSON.stringify(tags),
+      "5000"
+    ]
   ),
   getClashApiGroupLatency: async (tag) => callBaseMethod(
     Podkop.AvailableMethods.CLASH_API,
@@ -2998,7 +3009,8 @@ function buildProxyGroupOutbounds(section, proxies, outboundMetadata, subscripti
   });
   return {
     selector,
-    latencyTestCode: hideFilteredUrlTestOutbounds ? fallbackUrltest?.code : selector?.code,
+    latencyTestCode: selector?.code,
+    latencyTestCodes: hideFilteredUrlTestOutbounds ? urltestCodes : void 0,
     outbounds: sortOutboundsForDashboard(outbounds)
   };
 }
@@ -3165,7 +3177,7 @@ async function getDashboardSections(options = {}) {
           dashboardCache
         ) : void 0;
         const subscriptionCopyableCodes = includeSubscriptionCopyState ? getSubscriptionCopyableCodes(dashboardCache) : /* @__PURE__ */ new Set();
-        const { selector, latencyTestCode, outbounds } = buildProxyGroupOutbounds(
+        const { selector, latencyTestCode, latencyTestCodes, outbounds } = buildProxyGroupOutbounds(
           section,
           proxies,
           outboundMetadata,
@@ -3177,6 +3189,7 @@ async function getDashboardSections(options = {}) {
           sectionName,
           displayName,
           latencyTestCode,
+          latencyTestCodes,
           proxyConfigType,
           subscriptionSourceCount,
           subscriptionMetadata,
@@ -3651,7 +3664,6 @@ var PodkopLogWatcher = class _PodkopLogWatcher {
     this.running = false;
     this.paused = false;
     this.checking = false;
-    this.primed = false;
     if (typeof document !== "undefined") {
       document.addEventListener("visibilitychange", () => {
         if (document.hidden) this.pause();
@@ -3671,7 +3683,6 @@ var PodkopLogWatcher = class _PodkopLogWatcher {
     this.intervalMs = options?.intervalMs ?? 5e3;
     this.maxTrackedLines = options?.maxTrackedLines ?? 500;
     this.lastLines = /* @__PURE__ */ new Set();
-    this.primed = false;
     logger.info(
       "[PodkopLogWatcher]",
       `initialized (interval: ${this.intervalMs}ms)`
@@ -3700,11 +3711,6 @@ var PodkopLogWatcher = class _PodkopLogWatcher {
     try {
       const raw = await this.fetcher();
       const lines = this.normalizeLines(raw);
-      if (!this.primed) {
-        this.lastLines = new Set(lines);
-        this.primed = true;
-        return;
-      }
       for (const line of lines) {
         if (this.lastLines.has(line)) {
           continue;
@@ -3757,7 +3763,6 @@ var PodkopLogWatcher = class _PodkopLogWatcher {
   reset() {
     this.lastLines = /* @__PURE__ */ new Set();
     this.checking = false;
-    this.primed = false;
     logger.info("[PodkopLogWatcher]", "log history reset");
   }
 };
@@ -5067,9 +5072,20 @@ async function renderSectionsWidget() {
       selectorSwitchingTag: sectionsWidget.selectorSwitchingSections[section.sectionName],
       onTestLatency: (tag) => {
         if (section.withTagSelect) {
+          if (Array.isArray(tag)) {
+            return handleTestLatency(
+              "proxy_list",
+              section.sectionName,
+              JSON.stringify(tag)
+            );
+          }
           return handleTestLatency("group", section.sectionName, tag);
         }
-        return handleTestLatency("proxy", section.sectionName, tag);
+        return handleTestLatency(
+          "proxy",
+          section.sectionName,
+          Array.isArray(tag) ? JSON.stringify(tag) : tag
+        );
       },
       onChooseOutbound: (sectionName, selector, tag) => {
         void handleChooseOutbound(sectionName, selector, tag);

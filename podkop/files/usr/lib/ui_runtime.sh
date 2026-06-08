@@ -667,7 +667,7 @@ ui_runtime_service_action_status() {
 
 ui_runtime_latency_type_valid() {
     case "$1" in
-    group | proxy)
+    group | proxy | proxy_list)
         return 0
         ;;
     esac
@@ -710,6 +710,9 @@ ui_runtime_latency_test_async() {
     if [ "$latency_type" = "group" ]; then
         clash_method="get_group_latency"
         timeout="10000"
+    elif [ "$latency_type" = "proxy_list" ]; then
+        clash_method="get_proxy_latencies"
+        timeout="5000"
     else
         clash_method="get_proxy_latency"
         timeout="5000"

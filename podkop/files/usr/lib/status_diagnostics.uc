@@ -1635,6 +1635,29 @@ function clash_set_group_proxy_payload(proxy_tag) {
     write_json({ name: as_string(proxy_tag) });
 }
 
+function clash_proxy_tags_lines(proxy_tags_json) {
+    let proxy_tags = parse_json_or_null(proxy_tags_json);
+    if (type(proxy_tags) != "array")
+        exit(1);
+
+    for (let proxy_tag in proxy_tags) {
+        if (type(proxy_tag) != "string" || proxy_tag == "")
+            exit(1);
+        print(proxy_tag, "\n");
+    }
+}
+
+function clash_proxy_latencies_result(count, failed) {
+    let has_failed = as_string(failed) != "0";
+    write_json({
+        success: !has_failed,
+        count: int(as_string(count || "0"), 10) || 0,
+        failed: has_failed
+    });
+    if (has_failed)
+        exit(1);
+}
+
 function clash_unknown_action() {
     write_json({
         error: "unknown action",
@@ -1642,6 +1665,7 @@ function clash_unknown_action() {
             "get_proxies",
             "get_connections",
             "get_proxy_latency",
+            "get_proxy_latencies",
             "get_group_latency",
             "set_group_proxy",
             "close_connection",
@@ -1780,6 +1804,10 @@ else if (mode == "clash-close-all-connections-result")
     clash_close_all_connections_result();
 else if (mode == "clash-set-group-proxy-payload")
     clash_set_group_proxy_payload(ARGV[1]);
+else if (mode == "clash-proxy-tags-lines")
+    clash_proxy_tags_lines(ARGV[1]);
+else if (mode == "clash-proxy-latencies-result")
+    clash_proxy_latencies_result(ARGV[1], ARGV[2]);
 else if (mode == "clash-unknown-action")
     clash_unknown_action();
 else {

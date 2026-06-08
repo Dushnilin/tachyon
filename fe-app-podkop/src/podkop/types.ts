@@ -96,6 +96,7 @@ export namespace Podkop {
     GET_PROXIES = 'get_proxies',
     GET_CONNECTIONS = 'get_connections',
     GET_PROXY_LATENCY = 'get_proxy_latency',
+    GET_PROXY_LATENCIES = 'get_proxy_latencies',
     GET_GROUP_LATENCY = 'get_group_latency',
     SET_GROUP_PROXY = 'set_group_proxy',
     CLOSE_CONNECTION = 'close_connection',
@@ -119,6 +120,7 @@ export namespace Podkop {
     sectionName: string;
     displayName: string;
     latencyTestCode?: string;
+    latencyTestCodes?: string[];
     proxyConfigType?: ProxyConfigType;
     subscriptionSourceCount?: number;
     subscriptionMetadata?: SubscriptionMetadata[];
@@ -389,7 +391,7 @@ export namespace Podkop {
 
   export interface LatencyActionState extends UiActionState {
     kind: 'latency';
-    latency_type: 'group' | 'proxy';
+    latency_type: 'group' | 'proxy' | 'proxy_list';
     section: string;
     tag: string;
   }
@@ -562,6 +564,12 @@ export namespace Podkop {
   export interface GetClashApiProxyLatency {
     delay: number;
     message?: string;
+  }
+
+  export interface GetClashApiProxyLatencies {
+    success: boolean;
+    count: number;
+    failed: boolean;
   }
 
   export type GetClashApiGroupLatency = Record<string, number>;
