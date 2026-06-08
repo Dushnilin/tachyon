@@ -9,6 +9,10 @@ on:
         description: Release tag to build and publish
         required: true
         type: string
+      release_notes:
+        description: Optional release notes/comment
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -82,6 +86,7 @@ jobs:
           path: ./filtered-bin/release
 
       - name: Release
+        if: ${{ inputs.release_notes == '' }}
         uses: softprops/action-gh-release@v2.4.0
         with:
           files: ./filtered-bin/release/*.*
@@ -91,3 +96,16 @@ jobs:
           name: ${{ needs.preparation.outputs.version }}
           tag_name: ${{ needs.preparation.outputs.version }}
           target_commitish: ${{ needs.preparation.outputs.commitish }}
+
+      - name: Release with notes
+        if: ${{ inputs.release_notes != '' }}
+        uses: softprops/action-gh-release@v2.4.0
+        with:
+          files: ./filtered-bin/release/*.*
+          draft: false
+          prerelease: false
+          make_latest: true
+          name: ${{ needs.preparation.outputs.version }}
+          tag_name: ${{ needs.preparation.outputs.version }}
+          target_commitish: ${{ needs.preparation.outputs.commitish }}
+          body: ${{ inputs.release_notes }}
