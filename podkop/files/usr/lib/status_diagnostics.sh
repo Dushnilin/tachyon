@@ -1355,9 +1355,9 @@ check_fakeip() {
 #######################################
 # Clash API interface for managing proxies and groups
 # Arguments:
-#   $1 - Action: get_proxies, get_connections, get_proxy_latency, get_group_latency, set_group_proxy,
-#        close_connection, close_all_connections
-#   $2 - Proxy/Group tag (required for latency and set operations) or connection id
+#   $1 - Action: get_proxies, get_connections, get_proxy_latency, get_proxy_latencies,
+#        get_group_latency, set_group_proxy, close_connection, close_all_connections
+#   $2 - Proxy/Group tag (required for latency and set operations), proxy tags JSON array, or connection id
 #   $3 - Timeout in ms (optional, defaults: 2000 for proxy, 5000 for group) or target proxy tag for set_group_proxy
 # Outputs:
 #   JSON formatted response
@@ -1365,6 +1365,7 @@ check_fakeip() {
 #   clash_api get_proxies
 #   clash_api get_connections
 #   clash_api get_proxy_latency <proxy_tag> [timeout]
+#   clash_api get_proxy_latencies <proxy_tags_json> [timeout]
 #   clash_api get_group_latency <group_tag> [timeout]
 #   clash_api set_group_proxy <group_tag> <proxy_tag>
 #   clash_api close_connection <connection_id>
@@ -1405,7 +1406,7 @@ clash_api() {
         ;;
 
     get_proxy_latency)
-        local proxy_tag="$2"
+        local proxy_tag="$2" encoded_proxy_tag
         local timeout="${3:-2000}"
 
         if [ -z "$proxy_tag" ]; then
@@ -1413,14 +1414,64 @@ clash_api() {
             return 1
         fi
 
-        curl -G -s "$CLASH_URL/proxies/$proxy_tag/delay" \
+        encoded_proxy_tag="$(clash_api_urlencode_path_segment "$proxy_tag")" || return 1
+        curl -G -s "$CLASH_URL/proxies/$encoded_proxy_tag/delay" \
             --header "$auth_header" \
             --data-urlencode "url=$TEST_URL" \
             --data-urlencode "timeout=$timeout" | status_diagnostics_ucode stdin-json
         ;;
 
+    get_proxy_latencies)
+        local proxy_tags_json="$2"
+        local timeout="${3:-5000}"
+        local tags_tmp proxy_tag encoded_proxy_tag pids pid count failed
+
+        if [ -z "$proxy_tags_json" ]; then
+            status_diagnostics_ucode json-error "proxy_tags_json required"
+            return 1
+        fi
+
+        tags_tmp="$(mktemp "${TMPDIR:-/tmp}/podkop-plus-clash-tags.XXXXXX")" || {
+            status_diagnostics_ucode json-error "failed to create temporary proxy tags file"
+            return 1
+        }
+
+        if ! status_diagnostics_ucode clash-proxy-tags-lines "$proxy_tags_json" >"$tags_tmp"; then
+            rm -f "$tags_tmp"
+            status_diagnostics_ucode json-error "proxy_tags_json must be a JSON array of non-empty strings"
+            return 1
+        fi
+
+        pids=""
+        count=0
+        failed=0
+        while IFS= read -r proxy_tag || [ -n "$proxy_tag" ]; do
+            [ -n "$proxy_tag" ] || continue
+            encoded_proxy_tag="$(clash_api_urlencode_path_segment "$proxy_tag")" || {
+                rm -f "$tags_tmp"
+                return 1
+            }
+            (
+                curl -G -s "$CLASH_URL/proxies/$encoded_proxy_tag/delay" \
+                    --header "$auth_header" \
+                    --data-urlencode "url=$TEST_URL" \
+                    --data-urlencode "timeout=$timeout" | status_diagnostics_ucode stdin-json >/dev/null
+            ) &
+            pids="$pids $!"
+            count=$((count + 1))
+        done <"$tags_tmp"
+        rm -f "$tags_tmp"
+
+        for pid in $pids; do
+            wait "$pid" || failed=1
+        done
+
+        status_diagnostics_ucode clash-proxy-latencies-result "$count" "$failed"
+        [ "$failed" -eq 0 ]
+        ;;
+
     get_group_latency)
-        local group_tag="$2"
+        local group_tag="$2" encoded_group_tag
         local timeout="${3:-5000}"
 
         if [ -z "$group_tag" ]; then
@@ -1428,14 +1479,15 @@ clash_api() {
             return 1
         fi
 
-        curl -G -s "$CLASH_URL/group/$group_tag/delay" \
+        encoded_group_tag="$(clash_api_urlencode_path_segment "$group_tag")" || return 1
+        curl -G -s "$CLASH_URL/group/$encoded_group_tag/delay" \
             --header "$auth_header" \
             --data-urlencode "url=$TEST_URL" \
             --data-urlencode "timeout=$timeout" | status_diagnostics_ucode stdin-json
         ;;
 
     set_group_proxy)
-        local group_tag="$2"
+        local group_tag="$2" encoded_group_tag
         local proxy_tag="$3"
 
         if [ -z "$group_tag" ] || [ -z "$proxy_tag" ]; then
@@ -1443,9 +1495,10 @@ clash_api() {
             return 1
         fi
 
+        encoded_group_tag="$(clash_api_urlencode_path_segment "$group_tag")" || return 1
         local response
         response=$(
-            curl -X PUT -s -w "\n%{http_code}" "$CLASH_URL/proxies/$group_tag" \
+            curl -X PUT -s -w "\n%{http_code}" "$CLASH_URL/proxies/$encoded_group_tag" \
                 --header "$auth_header" \
                 --data-raw "$(status_diagnostics_ucode clash-set-group-proxy-payload "$proxy_tag")"
         )

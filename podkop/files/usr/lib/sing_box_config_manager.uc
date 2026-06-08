@@ -133,6 +133,12 @@ function optional_number(object, key, value) {
         object[key] = parsed;
 }
 
+function optional_json_value(object, key, value) {
+    value = as_string(value);
+    if (value != "")
+        object[key] = json_arg(value);
+}
+
 function ensure_object(config, key) {
     if (type(config[key]) != "object")
         config[key] = {};
@@ -737,6 +743,11 @@ function set_xhttp_transport(config, args) {
         sc_min_posts_interval_ms: 30
     };
     optional_string(transport, "host", args[2]);
+    optional_json_value(transport, "x_padding_bytes", args[4]);
+    if (as_string(args[5]) != "")
+        transport.no_grpc_header = bool_arg(args[5]);
+    optional_json_value(transport, "sc_max_each_post_bytes", args[6]);
+    optional_json_value(transport, "sc_min_posts_interval_ms", args[7]);
     patch_outbound(config, as_string(args[0]), { transport });
 }
 

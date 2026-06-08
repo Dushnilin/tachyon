@@ -117,7 +117,7 @@ describe('getDashboardSections', () => {
     ]);
   });
 
-  it('shows and tests only the URLTest group when filtered servers are hidden', async () => {
+  it('shows only the URLTest group and tests its child proxies when filtered servers are hidden', async () => {
     mocks.getConfigSections.mockResolvedValue([
       proxySection({ urltest_hide_filtered_outbounds: '1' }),
     ]);
@@ -126,13 +126,33 @@ describe('getDashboardSections', () => {
     const [section] = result.data;
 
     expect(result.success).toBe(true);
-    expect(section.latencyTestCode).toBe('main-urltest-out');
+    expect(section.latencyTestCode).toBe('main-out');
+    expect(section.latencyTestCodes).toEqual(['main-1-out', 'main-3-out']);
     expect(section.outbounds.map((item) => item.code)).toEqual([
       'main-urltest-out',
       'main-1-out',
       'main-3-out',
     ]);
   });
+
+  it.each(['exclude', 'include', 'mixed'] as const)(
+    'uses child proxy latency targets for hidden %s URLTest filters',
+    async (urltest_filter_mode) => {
+      mocks.getConfigSections.mockResolvedValue([
+        proxySection({
+          urltest_filter_mode,
+          urltest_hide_filtered_outbounds: '1',
+        }),
+      ]);
+
+      const result = await getDashboardSections();
+      const [section] = result.data;
+
+      expect(result.success).toBe(true);
+      expect(section.latencyTestCode).toBe('main-out');
+      expect(section.latencyTestCodes).toEqual(['main-1-out', 'main-3-out']);
+    },
+  );
 
   it('does not expose flag-emoji detected countries on dashboard outbounds', async () => {
     mocks.getConfigSections.mockResolvedValue([
@@ -229,6 +249,7 @@ describe('getDashboardSections', () => {
 
     expect(result.success).toBe(true);
     expect(section.latencyTestCode).toBe('main-out');
+    expect(section.latencyTestCodes).toBeUndefined();
     expect(section.outbounds.map((item) => item.code)).toContain('main-2-out');
     expect(
       section.outbounds.find((item) => item.code === 'main-1-out')?.country,

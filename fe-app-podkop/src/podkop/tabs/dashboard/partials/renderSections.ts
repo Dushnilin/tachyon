@@ -12,7 +12,7 @@ interface IRenderSectionsProps {
   loading: boolean;
   failed: boolean;
   section: Podkop.OutboundGroup;
-  onTestLatency: (tag: string) => void;
+  onTestLatency: (tag: string | string[]) => void;
   onChooseOutbound: (
     sectionName: string,
     selector: string,
@@ -331,7 +331,11 @@ function renderDefaultState({
 }: IRenderSectionsProps) {
   function testLatency() {
     if (section.withTagSelect) {
-      return onTestLatency(section.latencyTestCode || section.code);
+      return onTestLatency(
+        section.latencyTestCodes?.length
+          ? section.latencyTestCodes
+          : section.latencyTestCode || section.code,
+      );
     }
 
     if (section.outbounds.length) {

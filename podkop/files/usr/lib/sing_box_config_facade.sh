@@ -337,7 +337,8 @@ _add_outbound_transport() {
         )
         ;;
     xhttp)
-        local xhttp_path xhttp_host xhttp_mode xhttp_sni
+        local xhttp_path xhttp_host xhttp_mode xhttp_sni xhttp_extra_args xhttp_old_ifs
+        local xhttp_x_padding_bytes xhttp_no_grpc_header xhttp_sc_max_each_post_bytes xhttp_sc_min_posts_interval_ms
         if ! is_sing_box_extended; then
             log "XHTTP transport requires sing-box-extended. Install sing-box-extended and retry." "error"
             echo "$config"
@@ -349,9 +350,28 @@ _add_outbound_transport() {
         xhttp_sni=$(url_get_query_param "$url" "sni")
         [ -n "$xhttp_host" ] || xhttp_host="$xhttp_sni"
         xhttp_mode=$(url_get_query_param "$url" "mode")
+        xhttp_extra_args="$(sing_box_cf_ucode xhttp-transport-extra "$url")"
+        xhttp_old_ifs="$IFS"
+        IFS="$(printf '\t')" read -r \
+            xhttp_x_padding_bytes \
+            xhttp_no_grpc_header \
+            xhttp_sc_max_each_post_bytes \
+            xhttp_sc_min_posts_interval_ms <<EOF
+$xhttp_extra_args
+EOF
+        IFS="$xhttp_old_ifs"
 
         config=$(
-            sing_box_cm_set_xhttp_transport_for_outbound "$config" "$outbound_tag" "$xhttp_path" "$xhttp_host" "$xhttp_mode"
+            sing_box_cm_set_xhttp_transport_for_outbound \
+                "$config" \
+                "$outbound_tag" \
+                "$xhttp_path" \
+                "$xhttp_host" \
+                "$xhttp_mode" \
+                "$xhttp_x_padding_bytes" \
+                "$xhttp_no_grpc_header" \
+                "$xhttp_sc_max_each_post_bytes" \
+                "$xhttp_sc_min_posts_interval_ms"
         )
         ;;
     *)

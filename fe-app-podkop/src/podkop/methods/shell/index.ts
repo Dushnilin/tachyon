@@ -293,6 +293,15 @@ export const PodkopShellMethods = {
       Podkop.AvailableMethods.CLASH_API,
       [Podkop.AvailableClashAPIMethods.GET_PROXY_LATENCY, tag, '5000'],
     ),
+  getClashApiProxyLatencies: async (tags: string[]) =>
+    callBaseMethod<Podkop.GetClashApiProxyLatencies>(
+      Podkop.AvailableMethods.CLASH_API,
+      [
+        Podkop.AvailableClashAPIMethods.GET_PROXY_LATENCIES,
+        JSON.stringify(tags),
+        '5000',
+      ],
+    ),
   getClashApiGroupLatency: async (tag: string) =>
     callBaseMethod<Podkop.GetClashApiGroupLatency>(
       Podkop.AvailableMethods.CLASH_API,

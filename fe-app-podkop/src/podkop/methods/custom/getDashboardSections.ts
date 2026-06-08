@@ -329,9 +329,8 @@ function buildProxyGroupOutbounds(
 
   return {
     selector,
-    latencyTestCode: hideFilteredUrlTestOutbounds
-      ? fallbackUrltest?.code
-      : selector?.code,
+    latencyTestCode: selector?.code,
+    latencyTestCodes: hideFilteredUrlTestOutbounds ? urltestCodes : undefined,
     outbounds: sortOutboundsForDashboard(outbounds),
   };
 }
@@ -565,7 +564,7 @@ export async function getDashboardSections(
           const subscriptionCopyableCodes = includeSubscriptionCopyState
             ? getSubscriptionCopyableCodes(dashboardCache)
             : new Set<string>();
-          const { selector, latencyTestCode, outbounds } =
+          const { selector, latencyTestCode, latencyTestCodes, outbounds } =
             buildProxyGroupOutbounds(
               section,
               proxies,
@@ -579,6 +578,7 @@ export async function getDashboardSections(
             sectionName,
             displayName,
             latencyTestCode,
+            latencyTestCodes,
             proxyConfigType,
             subscriptionSourceCount,
             subscriptionMetadata,
