@@ -5088,7 +5088,12 @@ async function renderSectionsWidget() {
               JSON.stringify(tag)
             );
           }
-          return handleTestLatency("group", section.sectionName, tag);
+          return handleTestLatency(
+            "proxy",
+            section.sectionName,
+            tag,
+            section.latencyTestTimeout
+          );
         }
         return handleTestLatency(
           "proxy",
@@ -7358,17 +7363,6 @@ function renderWikiDisclaimer(kind) {
 }
 
 // src/podkop/tabs/diagnostic/checks/runSectionsCheck.ts
-function getSubscriptionLatencyState(latencyValues) {
-  const hasAvailableLatency = latencyValues.some((item) => Boolean(item));
-  const hasUnavailableLatency = latencyValues.some((item) => !item);
-  if (!hasAvailableLatency) {
-    return "error";
-  }
-  if (hasUnavailableLatency) {
-    return "warning";
-  }
-  return "success";
-}
 async function runSectionsCheck() {
   const { order, title, code } = DIAGNOSTICS_CHECKS_MAP.OUTBOUNDS;
   updateCheckStore({
@@ -7397,40 +7391,43 @@ async function runSectionsCheck() {
   for (const section of sections.data) {
     async function getLatency() {
       if (section.withTagSelect) {
-        const latencyGroup = await PodkopShellMethods.getClashApiGroupLatency(
-          section.code
-        );
         const selectedOutbound2 = section.outbounds.find((item) => item.selected) ?? section.outbounds.find(
           (item) => item.type?.toLowerCase() === "urltest"
         ) ?? section.outbounds[0];
         const isUrlTest = selectedOutbound2?.type?.toLowerCase() === "urltest";
-        const isSubscription = section.proxyConfigType === "subscription";
-        const success2 = latencyGroup.success && !latencyGroup.data.message;
-        if (success2) {
-          const latencyValues = Object.values(latencyGroup.data);
-          const sectionState = isSubscription ? getSubscriptionLatencyState(latencyValues) : "success";
-          if (isUrlTest) {
-            const latency2 = latencyValues.map((item) => item ? `${item}ms` : "n/a").join(" / ");
+        const latencyProxy2 = await PodkopShellMethods.getClashApiProxyLatency(
+          selectedOutbound2?.code ?? section.latencyTestCode ?? section.code,
+          section.latencyTestTimeout
+        );
+        const success2 = latencyProxy2.success && !latencyProxy2.data.message;
+        if (isUrlTest) {
+          const childOutbounds = section.outbounds.filter(
+            (item) => item.code && item.type?.toLowerCase() !== "urltest"
+          );
+          const childLatencyValues = childOutbounds.map((item) => Number(item.latency)).filter((latency2) => Number.isFinite(latency2) && latency2 > 0);
+          const fastestDelay = childLatencyValues.length ? Math.min(...childLatencyValues) : latencyProxy2.data.delay;
+          const childLatencyText = childLatencyValues.map((latency2) => `${latency2}ms`).join(" / ");
+          if (success2 || childLatencyValues.length > 0) {
+            const fastestText = fastestDelay ? `[${_("Fastest")}] ${fastestDelay} ms` : `[${_("Fastest")}] ${_("Not responding")}`;
             return {
-              state: sectionState,
-              latency: `[${_("Fastest")}] ${latency2}`
-            };
-          }
-          const selectedProxyDelay = latencyGroup.data?.[selectedOutbound2?.code ?? ""];
-          if (selectedProxyDelay) {
-            return {
-              state: sectionState,
-              latency: `[${selectedOutbound2?.displayName ?? ""}] ${selectedProxyDelay}ms`
+              state: "success",
+              latency: childLatencyText ? `${fastestText} / ${childLatencyText}` : fastestText
             };
           }
           return {
             state: "error",
-            latency: `[${selectedOutbound2?.displayName ?? ""}] ${_("Not responding")}`
+            latency: `[${_("Fastest")}] ${_("Not responding")}`
+          };
+        }
+        if (success2) {
+          return {
+            state: "success",
+            latency: `[${selectedOutbound2?.displayName ?? ""}] ${latencyProxy2.data.delay}ms`
           };
         }
         return {
           state: "error",
-          latency: _("Not responding")
+          latency: `[${selectedOutbound2?.displayName ?? ""}] ${_("Not responding")}`
         };
       }
       const selectedOutbound = section.outbounds[0];
