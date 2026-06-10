@@ -174,8 +174,8 @@
     ]
   },
   {
-    "call": "Applicable for SOCKS and Shadowsocks links",
-    "key": "Applicable for SOCKS and Shadowsocks links",
+    "call": "Applicable only for SOCKS and Shadowsocks links",
+    "key": "Applicable only for SOCKS and Shadowsocks links",
     "places": [
       "../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/section.js:3795"
     ]
@@ -1149,12 +1149,12 @@
     "call": "Failed to execute",
     "key": "Failed to execute",
     "places": [
+      "src/podkop/methods/shell/index.ts:171",
+      "src/podkop/methods/shell/index.ts:178",
       "src/podkop/tabs/updates/initController.ts:466",
       "src/podkop/tabs/updates/initController.ts:467",
       "src/podkop/tabs/updates/initController.ts:527",
-      "src/podkop/tabs/updates/initController.ts:677",
-      "src/podkop/methods/shell/index.ts:171",
-      "src/podkop/methods/shell/index.ts:178"
+      "src/podkop/tabs/updates/initController.ts:677"
     ]
   },
   {
@@ -3143,9 +3143,9 @@
     "call": "Service action failed",
     "key": "Service action failed",
     "places": [
-      "src/podkop/tabs/diagnostic/initController.ts:571",
       "src/podkop/methods/shell/index.ts:380",
-      "src/podkop/methods/shell/index.ts:401"
+      "src/podkop/methods/shell/index.ts:401",
+      "src/podkop/tabs/diagnostic/initController.ts:571"
     ]
   },
   {
