@@ -78,4 +78,57 @@ describe('runSectionsCheck', () => {
       }),
     );
   });
+
+  it('checks only the selected outbound for selectable proxy sections', async () => {
+    mocks.getDashboardSections.mockResolvedValue({
+      success: true,
+      data: [
+        {
+          withTagSelect: true,
+          code: 'main-out',
+          sectionName: 'main',
+          displayName: 'Main',
+          outbounds: [
+            {
+              code: 'main-1-out',
+              displayName: 'Selected',
+              latency: 0,
+              type: 'VLESS',
+              selected: true,
+            },
+            {
+              code: 'main-2-out',
+              displayName: 'Other',
+              latency: 0,
+              type: 'VLESS',
+              selected: false,
+            },
+          ],
+        },
+      ],
+    });
+    mocks.getClashApiProxyLatency.mockResolvedValue({
+      success: true,
+      data: { delay: 123 },
+    });
+
+    await expect(runSectionsCheck()).resolves.toBeUndefined();
+
+    expect(mocks.getClashApiProxyLatency).toHaveBeenCalledWith(
+      'main-1-out',
+      undefined,
+    );
+    expect(mocks.updateCheckStore).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        state: 'success',
+        items: [
+          {
+            state: 'success',
+            key: 'Main',
+            value: '[Selected] 123ms',
+          },
+        ],
+      }),
+    );
+  });
 });
