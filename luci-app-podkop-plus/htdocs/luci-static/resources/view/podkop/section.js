@@ -3792,7 +3792,7 @@ function createSectionContent(section) {
     form.Flag,
     "enable_udp_over_tcp",
     _("UDP over TCP"),
-    _("Applicable for SOCKS and Shadowsocks links"),
+    _("Applicable only for SOCKS and Shadowsocks links"),
   );
   o.default = "0";
   o.rmempty = false;
