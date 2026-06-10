@@ -1319,7 +1319,7 @@ check_sing_box() {
         port_53_ok=1
     fi
 
-    if netstat -ln 2> /dev/null | status_diagnostics_ucode stdin-contains "127.0.0.1:1602"; then
+    if netstat -ln 2> /dev/null | grep -Eq "(^|[[:space:]])(127\\.0\\.0\\.1|0\\.0\\.0\\.0):$SB_TPROXY_INBOUND_PORT([[:space:]]|$)"; then
         port_1602_ok=1
     fi
 
