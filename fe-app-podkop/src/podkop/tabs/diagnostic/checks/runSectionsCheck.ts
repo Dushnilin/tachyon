@@ -7,6 +7,23 @@ import { IDiagnosticsChecksItem } from '../../../services';
 
 type SectionCheckState = IDiagnosticsChecksItem['state'];
 
+function getSubscriptionLatencyState(
+  latencyValues: unknown[],
+): SectionCheckState {
+  const hasAvailableLatency = latencyValues.some((item) => Boolean(item));
+  const hasUnavailableLatency = latencyValues.some((item) => !item);
+
+  if (!hasAvailableLatency) {
+    return 'error';
+  }
+
+  if (hasUnavailableLatency) {
+    return 'warning';
+  }
+
+  return 'success';
+}
+
 export async function runSectionsCheck() {
   const { order, title, code } = DIAGNOSTICS_CHECKS_MAP.OUTBOUNDS;
 
@@ -44,6 +61,10 @@ export async function runSectionsCheck() {
       latency: string;
     }> {
       if (section.withTagSelect) {
+        const latencyGroup = await PodkopShellMethods.getClashApiGroupLatency(
+          section.code,
+        );
+
         const selectedOutbound =
           section.outbounds.find((item) => item.selected) ??
           section.outbounds.find(
@@ -52,55 +73,46 @@ export async function runSectionsCheck() {
           section.outbounds[0];
 
         const isUrlTest = selectedOutbound?.type?.toLowerCase() === 'urltest';
-        const latencyProxy = await PodkopShellMethods.getClashApiProxyLatency(
-          selectedOutbound?.code ?? section.latencyTestCode ?? section.code,
-          section.latencyTestTimeout,
-        );
-        const success = latencyProxy.success && !latencyProxy.data.message;
+        const isSubscription = section.proxyConfigType === 'subscription';
 
-        if (isUrlTest) {
-          const childOutbounds = section.outbounds.filter(
-            (item) => item.code && item.type?.toLowerCase() !== 'urltest',
-          );
-          const childLatencyValues = childOutbounds
-            .map((item) => Number(item.latency))
-            .filter((latency) => Number.isFinite(latency) && latency > 0);
-          const fastestDelay = childLatencyValues.length
-            ? Math.min(...childLatencyValues)
-            : latencyProxy.data.delay;
-          const childLatencyText = childLatencyValues
-            .map((latency) => `${latency}ms`)
-            .join(' / ');
+        const success = latencyGroup.success && !latencyGroup.data.message;
 
-          if (success || childLatencyValues.length > 0) {
-            const fastestText = fastestDelay
-              ? `[${_('Fastest')}] ${fastestDelay} ms`
-              : `[${_('Fastest')}] ${_('Not responding')}`;
+        if (success) {
+          const latencyValues = Object.values(latencyGroup.data);
+          const sectionState = isSubscription
+            ? getSubscriptionLatencyState(latencyValues)
+            : 'success';
+
+          if (isUrlTest) {
+            const latency = latencyValues
+              .map((item) => (item ? `${item}ms` : 'n/a'))
+              .join(' / ');
 
             return {
-              state: 'success',
-              latency: childLatencyText
-                ? `${fastestText} / ${childLatencyText}`
-                : fastestText,
+              state: sectionState,
+              latency: `[${_('Fastest')}] ${latency}`,
+            };
+          }
+
+          const selectedProxyDelay =
+            latencyGroup.data?.[selectedOutbound?.code ?? ''];
+
+          if (selectedProxyDelay) {
+            return {
+              state: sectionState,
+              latency: `[${selectedOutbound?.displayName ?? ''}] ${selectedProxyDelay}ms`,
             };
           }
 
           return {
             state: 'error',
-            latency: `[${_('Fastest')}] ${_('Not responding')}`,
-          };
-        }
-
-        if (success) {
-          return {
-            state: 'success',
-            latency: `[${selectedOutbound?.displayName ?? ''}] ${latencyProxy.data.delay}ms`,
+            latency: `[${selectedOutbound?.displayName ?? ''}] ${_('Not responding')}`,
           };
         }
 
         return {
           state: 'error',
-          latency: `[${selectedOutbound?.displayName ?? ''}] ${_('Not responding')}`,
+          latency: _('Not responding'),
         };
       }
 

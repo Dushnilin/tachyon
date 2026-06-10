@@ -715,12 +715,7 @@ async function renderSectionsWidget() {
             );
           }
 
-          return handleTestLatency(
-            'proxy',
-            section.sectionName,
-            tag,
-            section.latencyTestTimeout,
-          );
+          return handleTestLatency('group', section.sectionName, tag);
         }
 
         return handleTestLatency(
