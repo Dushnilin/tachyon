@@ -117,7 +117,7 @@ describe('getDashboardSections', () => {
     ]);
   });
 
-  it('shows only the URLTest group and tests its child proxies when filtered servers are hidden', async () => {
+  it('shows only the URLTest group and tests the URLTest group when filtered servers are hidden', async () => {
     mocks.getConfigSections.mockResolvedValue([
       proxySection({ urltest_hide_filtered_outbounds: '1' }),
     ]);
@@ -126,8 +126,8 @@ describe('getDashboardSections', () => {
     const [section] = result.data;
 
     expect(result.success).toBe(true);
-    expect(section.latencyTestCode).toBe('main-out');
-    expect(section.latencyTestCodes).toEqual(['main-1-out', 'main-3-out']);
+    expect(section.latencyTestCode).toBe('main-urltest-out');
+    expect(section.latencyTestCodes).toBeUndefined();
     expect(section.outbounds.map((item) => item.code)).toEqual([
       'main-urltest-out',
       'main-1-out',
@@ -136,7 +136,7 @@ describe('getDashboardSections', () => {
   });
 
   it.each(['exclude', 'include', 'mixed'] as const)(
-    'uses child proxy latency targets for hidden %s URLTest filters',
+    'uses the URLTest group latency target for hidden %s URLTest filters',
     async (urltest_filter_mode) => {
       mocks.getConfigSections.mockResolvedValue([
         proxySection({
@@ -149,8 +149,8 @@ describe('getDashboardSections', () => {
       const [section] = result.data;
 
       expect(result.success).toBe(true);
-      expect(section.latencyTestCode).toBe('main-out');
-      expect(section.latencyTestCodes).toEqual(['main-1-out', 'main-3-out']);
+      expect(section.latencyTestCode).toBe('main-urltest-out');
+      expect(section.latencyTestCodes).toBeUndefined();
     },
   );
 
@@ -348,9 +348,7 @@ describe('getDashboardSections', () => {
     const result = await getDashboardSections();
 
     expect(result.success).toBe(true);
-    expect(result.data.map((section) => section.sectionName)).toEqual([
-      'main',
-    ]);
+    expect(result.data.map((section) => section.sectionName)).toEqual(['main']);
   });
 
   it('fetches Clash API proxies directly in the browser to avoid rpcd output limits', async () => {

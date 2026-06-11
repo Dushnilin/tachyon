@@ -329,8 +329,9 @@ function buildProxyGroupOutbounds(
 
   return {
     selector,
-    latencyTestCode: selector?.code,
-    latencyTestCodes: hideFilteredUrlTestOutbounds ? urltestCodes : undefined,
+    latencyTestCode: hideFilteredUrlTestOutbounds
+      ? fallbackUrltest?.code
+      : selector?.code,
     outbounds: sortOutboundsForDashboard(outbounds),
   };
 }
