@@ -92,9 +92,12 @@ export async function runSectionsCheck() {
           };
         }
 
-        const latencyGroup = await PodkopShellMethods.getClashApiGroupLatency(
-          section.code,
-        );
+        const latencyGroupTag =
+          isUrlTest && selectedOutbound?.code
+            ? selectedOutbound.code
+            : section.code;
+        const latencyGroup =
+          await PodkopShellMethods.getClashApiGroupLatency(latencyGroupTag);
         const success = latencyGroup.success && !latencyGroup.data.message;
 
         if (success) {

@@ -3110,8 +3110,7 @@ function buildProxyGroupOutbounds(section, proxies, outboundMetadata, subscripti
   });
   return {
     selector,
-    latencyTestCode: selector?.code,
-    latencyTestCodes: hideFilteredUrlTestOutbounds ? urltestCodes : void 0,
+    latencyTestCode: hideFilteredUrlTestOutbounds ? fallbackUrltest?.code : selector?.code,
     outbounds: sortOutboundsForDashboard(outbounds)
   };
 }
@@ -7453,9 +7452,8 @@ async function runSectionsCheck() {
             latency: `[${selectedOutbound2.displayName ?? ""}] ${_("Not responding")}`
           };
         }
-        const latencyGroup = await PodkopShellMethods.getClashApiGroupLatency(
-          section.code
-        );
+        const latencyGroupTag = isUrlTest && selectedOutbound2?.code ? selectedOutbound2.code : section.code;
+        const latencyGroup = await PodkopShellMethods.getClashApiGroupLatency(latencyGroupTag);
         const success2 = latencyGroup.success && !latencyGroup.data.message;
         if (success2) {
           const latencyValues = Object.values(latencyGroup.data);
