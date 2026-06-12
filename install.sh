@@ -1913,12 +1913,12 @@ main() {
     ensure_bootstrap_tool "ucode" "ucode"
 
     resolve_podkop_plus_release
+    download_podkop_plus_packages
     remove_conflicting_dns_proxy
     remove_old_sing_box_if_needed
     install_selected_sing_box
 
     cleanup_legacy_installation
-    download_podkop_plus_packages
     install_packages
     post_install
 
