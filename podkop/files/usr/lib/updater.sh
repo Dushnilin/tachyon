@@ -2026,9 +2026,6 @@ updates_install_sing_box_extended_package() {
         updates_check_success "sing_box" "$normalized_current" "$normalized_latest" "$UPDATES_SING_BOX_EXTENDED_RELEASE_URL"
     fi
 
-    updates_stop_podkop_before_sing_box_change
-    updates_prepare_sing_box_package_service_install
-
     package_file="$UPDATES_TMP_DIR/$UPDATES_SING_BOX_EXTENDED_ASSET_NAME"
     if ! updates_download_with_retry "$UPDATES_SING_BOX_EXTENDED_ASSET_URL" "$package_file" "$UPDATES_SING_BOX_EXTENDED_ASSET_NAME"; then
         updates_fail "sing_box" "$action" "Failed to download sing-box-extended package" "$current_version" "$latest_version"
@@ -2036,6 +2033,9 @@ updates_install_sing_box_extended_package() {
 
     updates_log_command "Updating package lists before sing-box-extended package installation" updates_pkg_list_update ||
         updates_fail "sing_box" "$action" "Failed to update package lists" "$current_version" "$latest_version"
+
+    updates_stop_podkop_before_sing_box_change
+    updates_prepare_sing_box_package_service_install
 
     backup_binary=""
     backup_cronet=""
@@ -2163,8 +2163,6 @@ updates_install_sing_box_extended() {
         updates_check_success "sing_box" "$normalized_current" "$normalized_latest" "$UPDATES_SING_BOX_EXTENDED_RELEASE_URL"
     fi
 
-    updates_stop_podkop_before_sing_box_change
-
     backup_binary=""
     backup_cronet=""
     cronet_touched=0
@@ -2228,6 +2226,8 @@ updates_install_sing_box_extended() {
         rm -f "$tmp_binary" "$tmp_cronet" "$archive_file"
         updates_fail "sing_box" "$action" "Downloaded $label failed validation" "$current_version" "$latest_version"
     }
+
+    updates_stop_podkop_before_sing_box_change
 
     if [ -e /usr/bin/sing-box ]; then
         backup_binary="/usr/bin/sing-box.podkop-backup.$$"
@@ -2336,14 +2336,14 @@ updates_install_stable_sing_box() {
         updates_check_success "sing_box" "$current_version" "$latest_version"
     fi
 
-    updates_stop_podkop_before_sing_box_change
-
     updates_log_command "Updating package lists before sing-box installation" updates_pkg_list_update ||
         updates_fail "sing_box" "$action" "Failed to update package lists" "$current_version" "$latest_version"
 
     latest_version="$(updates_get_available_package_version "sing-box")"
     [ -n "$latest_version" ] || latest_version="$(updates_get_installed_package_version "sing-box")"
     [ -n "$latest_version" ] || updates_fail "sing_box" "$action" "Failed to resolve stable sing-box package version" "$current_version"
+
+    updates_stop_podkop_before_sing_box_change
 
     if ! updates_log_command "Installing stable sing-box package" updates_replace_sing_box_package_variant "sing-box" "sing-box-tiny"; then
         updates_fail "sing_box" "$action" "Failed to install stable sing-box" "$current_version" "$latest_version"
@@ -2396,14 +2396,14 @@ updates_install_tiny_sing_box() {
         updates_check_success "sing_box" "$current_version" "$latest_version"
     fi
 
-    updates_stop_podkop_before_sing_box_change
-
     updates_log_command "Updating package lists before sing-box-tiny installation" updates_pkg_list_update ||
         updates_fail "sing_box" "$action" "Failed to update package lists" "$current_version" "$latest_version"
 
     latest_version="$(updates_get_available_package_version "sing-box-tiny")"
     [ -n "$latest_version" ] || latest_version="$(updates_get_installed_package_version "sing-box-tiny")"
     [ -n "$latest_version" ] || updates_fail "sing_box" "$action" "Failed to resolve tiny sing-box package version" "$current_version"
+
+    updates_stop_podkop_before_sing_box_change
 
     if ! updates_log_command "Installing tiny sing-box package" updates_replace_sing_box_package_variant "sing-box-tiny" "sing-box"; then
         updates_fail "sing_box" "$action" "Failed to install sing-box-tiny" "$current_version" "$latest_version"
