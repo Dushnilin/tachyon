@@ -442,6 +442,7 @@ check_sing_box_logs() {
 
 show_sing_box_config() {
     local sing_box_config_path
+    local visibility="${1:-masked}"
     config_get sing_box_config_path "settings" "config_path"
     nolog "Current sing-box configuration:"
 
@@ -450,16 +451,26 @@ show_sing_box_config() {
         return 1
     fi
 
-    status_diagnostics_ucode mask-sing-box-config "$sing_box_config_path"
+    if [ "$visibility" = "raw" ]; then
+        cat "$sing_box_config_path"
+    else
+        status_diagnostics_ucode mask-sing-box-config "$sing_box_config_path"
+    fi
 }
 
 show_config() {
+    local visibility="${1:-masked}"
+
     if [ ! -f "$PODKOP_CONFIG" ]; then
         nolog "Configuration file not found"
         return 1
     fi
 
-    status_diagnostics_ucode podkop-config-masked "$PODKOP_CONFIG"
+    if [ "$visibility" = "raw" ]; then
+        cat "$PODKOP_CONFIG"
+    else
+        status_diagnostics_ucode podkop-config-masked "$PODKOP_CONFIG"
+    fi
 }
 
 show_version() {
@@ -1550,7 +1561,12 @@ status_diagnostics_ucode() {
 
 global_check() {
     local PODKOP_LUCI_VERSION="Unknown"
-    [ -n "$1" ] && PODKOP_LUCI_VERSION="$1"
+    local visibility="${2:-masked}"
+    if [ "$1" = "raw" ] || [ "$1" = "masked" ]; then
+        visibility="$1"
+    elif [ -n "$1" ]; then
+        PODKOP_LUCI_VERSION="$1"
+    fi
 
     print_global "📡 Global check run!"
     print_global "━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -1633,12 +1649,16 @@ global_check() {
 
     print_global "━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     print_global "📄 Podkop Plus config"
-    show_config
+    show_config "$visibility"
 
     print_global "━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     print_global "📄 WAN config"
     if uci show network.wan > /dev/null 2>&1; then
-        status_diagnostics_ucode wan-config-masked /etc/config/network
+        if [ "$visibility" = "raw" ]; then
+            cat /etc/config/network
+        else
+            status_diagnostics_ucode wan-config-masked /etc/config/network
+        fi
     else
         print_global "❌ WAN configuration not found"
     fi

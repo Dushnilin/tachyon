@@ -1169,13 +1169,13 @@ clash_api)
     clash_api "$2" "$3" "$4"
     ;;
 show_config)
-    show_config
+    show_config "${2:-}"
     ;;
 show_version)
     show_version
     ;;
 show_sing_box_config)
-    show_sing_box_config
+    show_sing_box_config "${2:-}"
     ;;
 show_sing_box_version)
     show_sing_box_version
@@ -1253,7 +1253,7 @@ check_dns_available)
     check_dns_available
     ;;
 global_check)
-    global_check "${2:-}"
+    global_check "${2:-}" "${3:-}"
     ;;
 validate_nfqws_strategy_json)
     validate_nfqws_strategy_json "${2:-}"
