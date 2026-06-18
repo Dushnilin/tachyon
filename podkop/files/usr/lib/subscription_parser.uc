@@ -170,17 +170,22 @@ function xhttp_non_negative_integer_value(value) {
     return int(value, 10);
 }
 
-function xhttp_range_value(value) {
+function xhttp_positive_integer_value(value) {
+    let number = xhttp_non_negative_integer_value(value);
+    return number != null && number > 0 ? number : null;
+}
+
+function xhttp_range_value(value, positive) {
     if (!xhttp_value_present(value))
         return null;
 
     if (type(value) == "object") {
-        let from = xhttp_non_negative_integer_value(value.from);
-        let to = xhttp_non_negative_integer_value(value.to);
+        let from = positive ? xhttp_positive_integer_value(value.from) : xhttp_non_negative_integer_value(value.from);
+        let to = positive ? xhttp_positive_integer_value(value.to) : xhttp_non_negative_integer_value(value.to);
         return from != null && to != null && from <= to ? { from, to } : null;
     }
 
-    let number = xhttp_non_negative_integer_value(value);
+    let number = positive ? xhttp_positive_integer_value(value) : xhttp_non_negative_integer_value(value);
     if (number != null)
         return number;
 
@@ -189,15 +194,26 @@ function xhttp_range_value(value) {
     if (dash < 0 || index(substr(value, dash + 1), "-") >= 0)
         return null;
 
-    let from = xhttp_non_negative_integer_value(substr(value, 0, dash));
-    let to = xhttp_non_negative_integer_value(substr(value, dash + 1));
+    let from = positive ? xhttp_positive_integer_value(substr(value, 0, dash)) : xhttp_non_negative_integer_value(substr(value, 0, dash));
+    let to = positive ? xhttp_positive_integer_value(substr(value, dash + 1)) : xhttp_non_negative_integer_value(substr(value, dash + 1));
     return from != null && to != null && from <= to ? from + "-" + to : null;
 }
 
 function xhttp_optional_range(object, key, value) {
-    let normalized = xhttp_range_value(value);
+    let normalized = xhttp_range_value(value, false);
     if (normalized != null)
         object[key] = normalized;
+}
+
+function xhttp_optional_positive_range(object, key, value) {
+    let normalized = xhttp_range_value(value, true);
+    if (normalized != null)
+        object[key] = normalized;
+}
+
+function xhttp_positive_range_or_default(value, default_value) {
+    let normalized = xhttp_range_value(value, true);
+    return normalized != null ? normalized : default_value;
 }
 
 function xhttp_optional_bool(object, key, value) {
@@ -215,7 +231,7 @@ function xhttp_object_setting_value(source, camel_key, snake_key) {
 }
 
 function xhttp_optional_xmux_range(object, key, value) {
-    let normalized = xhttp_range_value(value);
+    let normalized = xhttp_range_value(value, false);
     if (normalized != null)
         object[key] = normalized;
 }
@@ -628,7 +644,7 @@ function add_transport(url) {
             result.host = host;
 
         let extra_settings = xhttp_extra_settings(query);
-        xhttp_optional_range(result, "x_padding_bytes", xhttp_setting_value(query, extra_settings, "xPaddingBytes", "x_padding_bytes"));
+        xhttp_optional_positive_range(result, "x_padding_bytes", xhttp_setting_value(query, extra_settings, "xPaddingBytes", "x_padding_bytes"));
         xhttp_optional_bool(result, "no_grpc_header", xhttp_setting_value(query, extra_settings, "noGRPCHeader", "no_grpc_header"));
         xhttp_optional_range(result, "sc_max_each_post_bytes", xhttp_setting_value(query, extra_settings, "scMaxEachPostBytes", "sc_max_each_post_bytes"));
         xhttp_optional_range(result, "sc_min_posts_interval_ms", xhttp_setting_value(query, extra_settings, "scMinPostsIntervalMs", "sc_min_posts_interval_ms"));
@@ -2128,7 +2144,7 @@ function xray_transport_from_stream(stream) {
             result.mode = "auto";
         if (as_string(settings.host || "") != "")
             result.host = as_string(settings.host);
-        xhttp_optional_range(result, "x_padding_bytes", xhttp_setting_value(settings, settings, "xPaddingBytes", "x_padding_bytes"));
+        xhttp_optional_positive_range(result, "x_padding_bytes", xhttp_setting_value(settings, settings, "xPaddingBytes", "x_padding_bytes"));
         xhttp_optional_bool(result, "no_grpc_header", xhttp_setting_value(settings, settings, "noGRPCHeader", "no_grpc_header"));
         xhttp_optional_range(result, "sc_max_each_post_bytes", xhttp_setting_value(settings, settings, "scMaxEachPostBytes", "sc_max_each_post_bytes"));
         xhttp_optional_range(result, "sc_min_posts_interval_ms", xhttp_setting_value(settings, settings, "scMinPostsIntervalMs", "sc_min_posts_interval_ms"));
@@ -2553,6 +2569,16 @@ function normalize_xray_configs(configs) {
     return outbounds;
 }
 
+function normalize_sing_box_xhttp_transport(outbound) {
+    if (type(outbound) != "object" || type(outbound.transport) != "object")
+        return outbound;
+    if (outbound.transport.type != "xhttp")
+        return outbound;
+
+    outbound.transport.x_padding_bytes = xhttp_positive_range_or_default(outbound.transport.x_padding_bytes, "100-1000");
+    return outbound;
+}
+
 function normalize_sing_box_json_value(value, output_file) {
     let candidates = [];
     let outbounds = [];
@@ -2579,7 +2605,7 @@ function normalize_sing_box_json_value(value, output_file) {
 
     for (let outbound in candidates) {
         if (type(outbound) == "object")
-            push(outbounds, outbound);
+            push(outbounds, normalize_sing_box_xhttp_transport(outbound));
     }
 
     if (length(outbounds) == 0) {
