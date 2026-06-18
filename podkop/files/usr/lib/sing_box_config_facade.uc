@@ -64,10 +64,11 @@ function hex_digit_value(value) {
 function url_decode(value) {
     value = as_string(value);
 
+    let result = "";
     for (let i = 0; i < length(value); i++) {
         let c = substr(value, i, 1);
         if (c == "+") {
-            print(" ");
+            result += " ";
             continue;
         }
 
@@ -75,17 +76,19 @@ function url_decode(value) {
             let high = i + 1 < length(value) ? hex_digit_value(substr(value, i + 1, 1)) : -1;
             let low = i + 2 < length(value) ? hex_digit_value(substr(value, i + 2, 1)) : -1;
             if (high >= 0 && low >= 0) {
-                print(chr(high * 16 + low));
+                result += chr(high * 16 + low);
                 i += 2;
             }
             else {
-                print("\\x");
+                result += "\\x";
             }
             continue;
         }
 
-        print(c);
+        result += c;
     }
+
+    return result;
 }
 
 function write_file(path, text) {
@@ -191,8 +194,8 @@ function xhttp_query_params(url) {
         if (pair == "")
             continue;
         let equals = index(pair, "=");
-        let key = equals >= 0 ? substr(pair, 0, equals) : pair;
-        let value = equals >= 0 ? substr(pair, equals + 1) : "";
+        let key = url_decode(equals >= 0 ? substr(pair, 0, equals) : pair);
+        let value = equals >= 0 ? url_decode(substr(pair, equals + 1)) : "";
         if (key != "")
             result[key] = value;
     }
@@ -230,17 +233,22 @@ function xhttp_non_negative_integer_value(value) {
     return int(value, 10);
 }
 
-function xhttp_range_value(value) {
+function xhttp_positive_integer_value(value) {
+    let number = xhttp_non_negative_integer_value(value);
+    return number != null && number > 0 ? number : null;
+}
+
+function xhttp_range_value(value, positive) {
     if (!xhttp_value_present(value))
         return null;
 
     if (type(value) == "object") {
-        let from = xhttp_non_negative_integer_value(value.from);
-        let to = xhttp_non_negative_integer_value(value.to);
+        let from = positive ? xhttp_positive_integer_value(value.from) : xhttp_non_negative_integer_value(value.from);
+        let to = positive ? xhttp_positive_integer_value(value.to) : xhttp_non_negative_integer_value(value.to);
         return from != null && to != null && from <= to ? { from, to } : null;
     }
 
-    let number = xhttp_non_negative_integer_value(value);
+    let number = positive ? xhttp_positive_integer_value(value) : xhttp_non_negative_integer_value(value);
     if (number != null)
         return number;
 
@@ -249,8 +257,8 @@ function xhttp_range_value(value) {
     if (dash < 0 || index(substr(value, dash + 1), "-") >= 0)
         return null;
 
-    let from = xhttp_non_negative_integer_value(substr(value, 0, dash));
-    let to = xhttp_non_negative_integer_value(substr(value, dash + 1));
+    let from = positive ? xhttp_positive_integer_value(substr(value, 0, dash)) : xhttp_non_negative_integer_value(substr(value, 0, dash));
+    let to = positive ? xhttp_positive_integer_value(substr(value, dash + 1)) : xhttp_non_negative_integer_value(substr(value, dash + 1));
     return from != null && to != null && from <= to ? from + "-" + to : null;
 }
 
@@ -280,7 +288,7 @@ function xhttp_object_setting_value(source, camel_key, snake_key) {
 }
 
 function xhttp_optional_xmux_range(object, key, value) {
-    let normalized = xhttp_range_value(value);
+    let normalized = xhttp_range_value(value, false);
     if (normalized != null)
         object[key] = normalized;
 }
@@ -312,11 +320,11 @@ function xhttp_transport_extra(url) {
     let extra_settings = xhttp_extra_settings(query);
     let xmux = xhttp_normalize_xmux(xhttp_setting_value(query, extra_settings, "xmux", "xmux"));
     let values = [
-        xhttp_arg_value(xhttp_range_value(xhttp_setting_value(query, extra_settings, "xPaddingBytes", "x_padding_bytes"))),
+        xhttp_arg_value(xhttp_range_value(xhttp_setting_value(query, extra_settings, "xPaddingBytes", "x_padding_bytes"), true)),
         xhttp_bool_arg(xhttp_setting_value(query, extra_settings, "noGRPCHeader", "no_grpc_header")),
-        xhttp_arg_value(xhttp_range_value(xhttp_setting_value(query, extra_settings, "scMaxEachPostBytes", "sc_max_each_post_bytes"))),
-        xhttp_arg_value(xhttp_range_value(xhttp_setting_value(query, extra_settings, "scMinPostsIntervalMs", "sc_min_posts_interval_ms"))),
-        xhttp_arg_value(xhttp_range_value(xhttp_setting_value(query, extra_settings, "scStreamUpServerSecs", "sc_stream_up_server_secs"))),
+        xhttp_arg_value(xhttp_range_value(xhttp_setting_value(query, extra_settings, "scMaxEachPostBytes", "sc_max_each_post_bytes"), false)),
+        xhttp_arg_value(xhttp_range_value(xhttp_setting_value(query, extra_settings, "scMinPostsIntervalMs", "sc_min_posts_interval_ms"), false)),
+        xhttp_arg_value(xhttp_range_value(xhttp_setting_value(query, extra_settings, "scStreamUpServerSecs", "sc_stream_up_server_secs"), false)),
         xhttp_arg_value(xmux)
     ];
 
@@ -973,7 +981,7 @@ if (mode == "candidate-outbounds")
 else if (mode == "csv-to-json-array")
     csv_to_json_array(ARGV[1]);
 else if (mode == "url-decode")
-    url_decode(ARGV[1]);
+    print(url_decode(ARGV[1]));
 else if (mode == "xhttp-transport-extra")
     xhttp_transport_extra(ARGV[1]);
 else if (mode == "shadowsocks-userinfo-format-valid")
