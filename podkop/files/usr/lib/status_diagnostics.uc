@@ -399,18 +399,31 @@ function podkop_config_masked(path) {
         exit(1);
 
     let lines = split(as_string(data), "\n");
+    let in_masked_multiline = false;
 
     for (let i = 0; i < length(lines); i++) {
         let line = as_string(lines[i]);
         if (i == length(lines) - 1 && line == "" && substr(as_string(data), length(data) - 1) == "\n")
             continue;
 
+        if (in_masked_multiline) {
+            if (index(line, "'") >= 0)
+                in_masked_multiline = false;
+            continue;
+        }
+
         if (delete_token_space(line, "option tailscale_ephemeral") ||
             delete_token_space(line, "option tailscale_exit_node") ||
             delete_token_space(line, "option tailscale_exit_node_allow_lan_access"))
             continue;
 
-        print(podkop_config_masked_line(line), "\n");
+        let masked = podkop_config_masked_line(line);
+        print(masked, "\n");
+        if (index(line, "option outbound_json") >= 0) {
+            let first_quote = index(line, "'");
+            if (first_quote >= 0 && index(substr(line, first_quote + 1), "'") < 0)
+                in_masked_multiline = true;
+        }
     }
 }
 
@@ -1322,41 +1335,13 @@ function print_lines(lines, start, end) {
         print_line(lines[i]);
 }
 
-function current_http_outbound_tags() {
-    let config = read_json_file("/etc/sing-box/config.json");
-    let result = {};
-
-    if (type(config) != "object")
-        return result;
-
-    for (let outbound in (type(config.outbounds) == "array" ? config.outbounds : [])) {
-        if (type(outbound) != "object")
-            continue;
-
-        let tag = as_string(outbound.tag || "");
-        let outbound_type = lc(as_string(outbound.type || ""));
-
-        if (tag != "" && outbound_type == "http")
-            result[tag] = true;
-    }
-
-    return result;
-}
-
-function udp_unsupported_outbound_tag(line) {
-    let marker = "UDP is not supported by outbound:";
-    let pos = index(line, marker);
-
-    if (pos < 0)
-        return "";
-
-    return trim(substr(line, pos + length(marker)));
+function is_udp_unsupported_outbound_log(line) {
+    return index(as_string(line), "UDP is not supported by outbound:") >= 0;
 }
 
 function render_matching_log_tail(needle, max_lines) {
     let lines = split(read_stdin(), "\n");
     let filtered = [];
-    let http_outbounds = needle == "sing-box" ? current_http_outbound_tags() : {};
     let udp_http_notice_emitted = false;
 
     for (let line in lines) {
@@ -1364,8 +1349,7 @@ function render_matching_log_tail(needle, max_lines) {
             continue;
         if (line_contains(line, needle))
         {
-            let udp_outbound = udp_unsupported_outbound_tag(line);
-            if (udp_outbound != "" && http_outbounds[udp_outbound]) {
+            if (needle == "sing-box" && is_udp_unsupported_outbound_log(line)) {
                 if (!udp_http_notice_emitted) {
                     push(filtered, "UDP traffic through HTTP outbounds is not supported by sing-box; repeated UDP warnings for HTTP outbounds are hidden by Podkop Plus.");
                     udp_http_notice_emitted = true;
@@ -1389,12 +1373,21 @@ function render_podkop_logs() {
     let lines = split(read_stdin(), "\n");
     let filtered = [];
     let start = -1;
+    let udp_http_notice_emitted = false;
 
     for (let line in lines) {
         if (line == "")
             continue;
         if (!line_contains(line, "podkop-plus") && !line_contains(line, "sing-box"))
             continue;
+
+        if (line_contains(line, "sing-box") && is_udp_unsupported_outbound_log(line)) {
+            if (!udp_http_notice_emitted) {
+                push(filtered, "UDP traffic through HTTP outbounds is not supported by sing-box; repeated UDP warnings for HTTP outbounds are hidden by Podkop Plus.");
+                udp_http_notice_emitted = true;
+            }
+            continue;
+        }
 
         if (line_contains(line, "podkop-plus") && line_contains(line, "Starting Podkop Plus"))
             start = length(filtered);
