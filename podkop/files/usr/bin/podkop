@@ -570,10 +570,13 @@ start() {
         return "$status"
     fi
 
-    if ! wait_for_podkop_stable_start; then
+    wait_for_podkop_stable_start
+    status="$?"
+    if [ "$status" -ne 0 ]; then
         log "Podkop Plus did not reach a stable running state after start. Restoring dnsmasq." "fatal"
+        stop_main || true
         dnsmasq_restore_fail_safe
-        return 1
+        return "$status"
     fi
 
     run_pending_reload_if_requested
