@@ -453,7 +453,7 @@ const EntryPoint = {
     settingsSection.cfgsections = function () {
       return ["settings"];
     };
-    settings.createSettingsContent(settingsSection);
+    settings.createSettingsContent(settingsSection, uiCapabilities);
 
     const diagnosticSection = podkopMap.section(
       form.TypedSection,
