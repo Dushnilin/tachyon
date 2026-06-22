@@ -2,7 +2,6 @@ import {
   renderLoaderCircleIcon24,
   renderCopyIcon24,
   renderLinkIcon24,
-  renderRotateCcwIcon24,
 } from '../../../../icons';
 import { isCopyableProxyLink, svgEl } from '../../../../helpers';
 import { prettyBytes } from '../../../../helpers/prettyBytes';
@@ -315,7 +314,9 @@ function renderSubscriptionUpdateAction(
         onUpdateSubscription(section);
       },
     },
-    subscriptionUpdating ? renderLoaderCircleIcon24() : renderRotateCcwIcon24(),
+    subscriptionUpdating
+      ? [renderLoaderCircleIcon24(), _('Update subscriptions')]
+      : _('Update subscriptions'),
   );
 }
 

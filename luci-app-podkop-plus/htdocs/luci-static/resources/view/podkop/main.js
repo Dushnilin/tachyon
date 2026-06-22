@@ -1869,7 +1869,7 @@ function renderSubscriptionUpdateAction(section, subscriptionUpdating, onUpdateS
         onUpdateSubscription(section);
       }
     },
-    subscriptionUpdating ? renderLoaderCircleIcon24() : renderRotateCcwIcon24()
+    subscriptionUpdating ? [renderLoaderCircleIcon24(), _("Update subscriptions")] : _("Update subscriptions")
   );
 }
 function renderDefaultState({
@@ -5541,17 +5541,12 @@ var styles = `
 }
 
 .pdk_dashboard-page .btn.pdk_dashboard-page__outbound-section__subscription-update {
-    width: 28px;
-    height: 28px;
-    min-width: 28px;
+    min-width: 130px;
     min-height: 28px;
-    padding: 2px;
-    box-sizing: border-box;
-    display: flex;
+    display: inline-flex;
     align-items: center;
     justify-content: center;
-    line-height: 1;
-    margin: 0;
+    gap: 6px;
 }
 
 .pdk_dashboard-page__outbound-section__subscription-update svg {
