@@ -696,6 +696,18 @@ subscription_bootstrap_download_section_is_ready() {
         [ -n "$interface_name" ] || return 1
         return 0
         ;;
+    byedpi)
+        is_byedpi_installed
+        return $?
+        ;;
+    zapret)
+        is_zapret_installed
+        return $?
+        ;;
+    zapret2)
+        is_zapret2_installed
+        return $?
+        ;;
     *)
         return 1
         ;;

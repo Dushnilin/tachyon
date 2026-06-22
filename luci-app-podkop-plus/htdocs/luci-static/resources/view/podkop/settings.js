@@ -12,7 +12,24 @@ function isSingBoxDuration(value) {
   return /^([0-9]+(?:\.[0-9]+)?(?:ns|us|ms|s|m|h|d))+$/.test(value);
 }
 
-function createSettingsContent(section) {
+function isDownloadSectionAction(action, capabilities) {
+  switch (action) {
+    case "proxy":
+    case "outbound":
+    case "vpn":
+      return true;
+    case "zapret":
+      return !capabilities?.loaded || Boolean(capabilities.zapretInstalled);
+    case "zapret2":
+      return !capabilities?.loaded || Boolean(capabilities.zapret2Installed);
+    case "byedpi":
+      return !capabilities?.loaded || Boolean(capabilities.byedpiInstalled);
+    default:
+      return false;
+  }
+}
+
+function createSettingsContent(section, capabilities) {
   let o = section.option(
     form.ListValue,
     "dns_type",
@@ -327,7 +344,7 @@ function createSettingsContent(section) {
   o = section.option(
     form.Flag,
     "download_lists_via_proxy",
-    _("Download list updates via Proxy/VPN"),
+    _("Download lists through a section"),
     _("Download remote lists and rule sets via the selected section"),
   );
   o.default = "0";
@@ -336,7 +353,7 @@ function createSettingsContent(section) {
   o = section.option(
     form.Flag,
     "download_subscriptions_via_proxy",
-    _("Download subscription updates via Proxy/VPN"),
+    _("Download subscriptions through a section"),
     _("Download subscriptions via the selected section"),
   );
   o.default = "0";
@@ -345,8 +362,8 @@ function createSettingsContent(section) {
   o = section.option(
     form.Flag,
     "download_components_via_proxy",
-    _("Download component updates via Proxy/VPN"),
-    _("Download Podkop Plus and component packages via the selected section"),
+    _("Download components through a section"),
+    _("Download component packages via the selected section"),
   );
   o.default = "0";
   o.rmempty = false;
@@ -378,9 +395,7 @@ function createSettingsContent(section) {
       if (
         sec[".type"] === "section" &&
         sec.enabled !== "0" &&
-        (sec.action === "proxy" ||
-          sec.action === "outbound" ||
-          sec.action === "vpn")
+        isDownloadSectionAction(sec.action, capabilities)
       ) {
         this.keylist.push(secName);
         this.vallist.push(sec.label || secName);

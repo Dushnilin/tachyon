@@ -4,6 +4,30 @@ config_validation_ucode() {
     ucode "${PODKOP_LIB:-/usr/lib/podkop-plus}/config_validation.uc" "$@"
 }
 
+is_download_section_action() {
+    local action="$1"
+
+    case "$action" in
+    proxy | vpn | outbound)
+        return 0
+        ;;
+    byedpi)
+        is_byedpi_installed
+        return $?
+        ;;
+    zapret)
+        is_zapret_installed
+        return $?
+        ;;
+    zapret2)
+        is_zapret2_installed
+        return $?
+        ;;
+    esac
+
+    return 1
+}
+
 _validate_download_lists_via_proxy_section_handler() {
     local section="$1"
     local action
@@ -17,7 +41,7 @@ _validate_download_lists_via_proxy_section_handler() {
 
     PODKOP_VALIDATE_DOWNLOAD_SECTION_ENABLED=1
     action="$(get_rule_action "$section")"
-    if [ "$action" = "proxy" ] || [ "$action" = "vpn" ] || [ "$action" = "outbound" ]; then
+    if is_download_section_action "$action"; then
         PODKOP_VALIDATE_DOWNLOAD_SECTION_OUTBOUND=1
     fi
 }
@@ -29,7 +53,7 @@ validate_download_lists_via_proxy_section() {
 
     config_get download_lists_via_proxy_section "settings" "download_lists_via_proxy_section"
     if [ -z "$download_lists_via_proxy_section" ]; then
-        log "Downloading external resources via Proxy/VPN is enabled, but no proxy/VPN/JSON outbound rule is selected. Aborted." "fatal"
+        log "Downloading external resources through a section is enabled, but no download section is selected. Aborted." "fatal"
         exit 1
     fi
 
@@ -40,17 +64,17 @@ validate_download_lists_via_proxy_section() {
     config_foreach _validate_download_lists_via_proxy_section_handler "section"
 
     if [ "$PODKOP_VALIDATE_DOWNLOAD_SECTION_FOUND" -eq 0 ]; then
-        log "Downloading external resources via Proxy/VPN references missing rule '$download_lists_via_proxy_section'. Select an enabled proxy/VPN/JSON outbound rule or disable the option. Aborted." "fatal"
+        log "Downloading external resources through a section references missing rule '$download_lists_via_proxy_section'. Select an enabled rule that can provide an outbound or disable the option. Aborted." "fatal"
         exit 1
     fi
 
     if [ "$PODKOP_VALIDATE_DOWNLOAD_SECTION_ENABLED" -eq 0 ]; then
-        log "Downloading external resources via Proxy/VPN references disabled rule '$download_lists_via_proxy_section'. Select an enabled proxy/VPN/JSON outbound rule or disable the option. Aborted." "fatal"
+        log "Downloading external resources through a section references disabled rule '$download_lists_via_proxy_section'. Select an enabled rule that can provide an outbound or disable the option. Aborted." "fatal"
         exit 1
     fi
 
     if [ "$PODKOP_VALIDATE_DOWNLOAD_SECTION_OUTBOUND" -eq 0 ]; then
-        log "Downloading external resources via Proxy/VPN references rule '$download_lists_via_proxy_section', but it is not a proxy/VPN/JSON outbound rule. Select an enabled proxy/VPN/JSON outbound rule or disable the option. Aborted." "fatal"
+        log "Downloading external resources through a section references rule '$download_lists_via_proxy_section', but it cannot provide an outbound. Select an enabled proxy, JSON outbound, VPN, Zapret, Zapret2, or ByeDPI rule with its provider installed, or disable the option. Aborted." "fatal"
         exit 1
     fi
 }
