@@ -1,1277 +1,230 @@
-#!/bin/ash
+#!/usr/bin/ucode
 
-PODKOP_COMMAND="${1:-}"
-PODKOP_CONFIG_NAME="${PODKOP_CONFIG_NAME:-podkop-plus}"
-SB_DNS_INBOUND_ADDRESS="${SB_DNS_INBOUND_ADDRESS:-127.0.0.42}"
+let fs = require("fs");
 
-podkop_dnsmasq_failsafe_restore_raw() {
-    local legacy_dnsmasq_section legacy_interfaces default_servers backup_servers backup_notinterfaces value
-    local default_has_podkop_dns noresolv cachesize changed
-    local legacy_instance_present dont_touch_dhcp podkop_managed_state
-
-    command -v uci >/dev/null 2>&1 || return 0
-    dont_touch_dhcp=0
-    case "$(uci -q get "$PODKOP_CONFIG_NAME.settings.dont_touch_dhcp" 2>/dev/null)" in
-    1|true|yes|on)
-        dont_touch_dhcp=1
-        ;;
-    esac
-
-    legacy_dnsmasq_section="podkop_plus"
-    changed=0
-    default_has_podkop_dns=0
-    legacy_instance_present=0
-    legacy_interfaces="$(uci -q get "dhcp.$legacy_dnsmasq_section.interface" 2>/dev/null)"
-    [ -n "$legacy_interfaces" ] ||
-        legacy_interfaces="$(uci -q get "$PODKOP_CONFIG_NAME.settings.source_network_interfaces" 2>/dev/null)"
-    [ -n "$legacy_interfaces" ] || legacy_interfaces="br-lan"
-
-    default_servers="$(uci -q get 'dhcp.@dnsmasq[0].server' 2>/dev/null)"
-    for value in $default_servers; do
-        [ "$value" = "$SB_DNS_INBOUND_ADDRESS" ] && default_has_podkop_dns=1
-    done
-
-    podkop_managed_state=0
-    [ -n "$(uci -q get 'dhcp.@dnsmasq[0].podkop_server' 2>/dev/null)" ] && podkop_managed_state=1
-    [ -n "$(uci -q get 'dhcp.@dnsmasq[0].podkop_noresolv' 2>/dev/null)" ] && podkop_managed_state=1
-    [ -n "$(uci -q get 'dhcp.@dnsmasq[0].podkop_cachesize' 2>/dev/null)" ] && podkop_managed_state=1
-    [ -n "$(uci -q get 'dhcp.@dnsmasq[0].podkop_notinterface' 2>/dev/null)" ] && podkop_managed_state=1
-
-    if uci -q show "dhcp.$legacy_dnsmasq_section" >/dev/null 2>&1; then
-        legacy_instance_present=1
-        podkop_managed_state=1
-        changed=1
-    fi
-    [ "$dont_touch_dhcp" -eq 0 ] || [ "$podkop_managed_state" -eq 1 ] || return 0
-
-    uci -q delete "dhcp.$legacy_dnsmasq_section" >/dev/null 2>&1 || true
-
-    backup_notinterfaces="$(uci -q get 'dhcp.@dnsmasq[0].podkop_notinterface' 2>/dev/null)"
-    if [ -n "$backup_notinterfaces" ]; then
-        uci -q delete 'dhcp.@dnsmasq[0].notinterface' >/dev/null 2>&1 || true
-        for value in $backup_notinterfaces; do
-            uci -q add_list "dhcp.@dnsmasq[0].notinterface=$value" >/dev/null 2>&1 || true
-        done
-        uci -q delete 'dhcp.@dnsmasq[0].podkop_notinterface' >/dev/null 2>&1 || true
-        changed=1
-    else
-        if [ "$legacy_instance_present" -eq 1 ]; then
-            for value in $legacy_interfaces; do
-                uci -q del_list "dhcp.@dnsmasq[0].notinterface=$value" >/dev/null 2>&1 && changed=1
-            done
-        fi
-        uci -q delete 'dhcp.@dnsmasq[0].podkop_notinterface' >/dev/null 2>&1 || true
-    fi
-
-    backup_servers="$(uci -q get 'dhcp.@dnsmasq[0].podkop_server' 2>/dev/null)"
-    if [ -n "$backup_servers" ]; then
-        uci -q delete 'dhcp.@dnsmasq[0].server' >/dev/null 2>&1 || true
-        for value in $backup_servers; do
-            uci -q add_list "dhcp.@dnsmasq[0].server=$value" >/dev/null 2>&1 || true
-        done
-        uci -q delete 'dhcp.@dnsmasq[0].podkop_server' >/dev/null 2>&1 || true
-        changed=1
-    else
-        uci -q del_list "dhcp.@dnsmasq[0].server=$SB_DNS_INBOUND_ADDRESS" >/dev/null 2>&1 && changed=1
-        uci -q delete 'dhcp.@dnsmasq[0].podkop_server' >/dev/null 2>&1 || true
-    fi
-
-    noresolv="$(uci -q get 'dhcp.@dnsmasq[0].podkop_noresolv' 2>/dev/null)"
-    if [ -n "$noresolv" ]; then
-        uci -q set "dhcp.@dnsmasq[0].noresolv=$noresolv" >/dev/null 2>&1 || true
-        uci -q delete 'dhcp.@dnsmasq[0].podkop_noresolv' >/dev/null 2>&1 || true
-        changed=1
-    elif [ "$default_has_podkop_dns" -eq 1 ]; then
-        uci -q set 'dhcp.@dnsmasq[0].noresolv=0' >/dev/null 2>&1 || true
-        changed=1
-    fi
-
-    cachesize="$(uci -q get 'dhcp.@dnsmasq[0].podkop_cachesize' 2>/dev/null)"
-    if [ -n "$cachesize" ]; then
-        uci -q set "dhcp.@dnsmasq[0].cachesize=$cachesize" >/dev/null 2>&1 || true
-        uci -q delete 'dhcp.@dnsmasq[0].podkop_cachesize' >/dev/null 2>&1 || true
-        changed=1
-    elif [ "$default_has_podkop_dns" -eq 1 ]; then
-        uci -q set 'dhcp.@dnsmasq[0].cachesize=150' >/dev/null 2>&1 || true
-        changed=1
-    fi
-
-    [ "$changed" -eq 1 ] || return 0
-
-    uci -q commit dhcp >/dev/null 2>&1 || true
-    [ -x /etc/init.d/dnsmasq ] && /etc/init.d/dnsmasq restart >/dev/null 2>&1 || true
+function as_string(value) {
+    return value == null ? "" : "" + value;
 }
 
-podkop_dnsmasq_failsafe_restore_on_loader_failure() {
-    case "$PODKOP_COMMAND" in
-    start | stop | restart | reload | uninstall | dnsmasq_restore | restore_dnsmasq)
-        podkop_dnsmasq_failsafe_restore_raw
-        ;;
-    esac
+const CONFIG_NAME = getenv("PODKOP_CONFIG_NAME") || "podkop-plus";
+const LIB_DIR = getenv("PODKOP_LIB") || "/usr/lib/podkop-plus";
+const BIN_PATH = getenv("PODKOP_BIN") || "/usr/bin/podkop-plus";
+const SERVICE_INIT = getenv("PODKOP_SERVICE_INIT") || "/etc/init.d/podkop-plus";
+
+function shell_quote(value) {
+    return "'" + replace(as_string(value), /'/g, "'\\''") + "'";
 }
 
-check_required_file() {
-    local file="$1"
-
-    if [ ! -r "$file" ]; then
-        echo "Error: required file '$file' is missing or not readable" >&2
-        podkop_dnsmasq_failsafe_restore_on_loader_failure
-        exit 1
-    fi
+function command_from_args(args) {
+    let parts = [];
+    for (let arg in args)
+        push(parts, shell_quote(arg));
+    return join(" ", parts);
 }
 
-PODKOP_LIB="/usr/lib/podkop-plus"
-check_required_file /lib/functions.sh
-check_required_file /lib/config/uci.sh
-check_required_file "$PODKOP_LIB/constants.sh"
-check_required_file "$PODKOP_LIB/status_diagnostics.uc"
-check_required_file "$PODKOP_LIB/ui_runtime.sh"
-check_required_file "$PODKOP_LIB/ui_runtime.uc"
-
-. /lib/functions.sh
-. /lib/config/uci.sh
-. "$PODKOP_LIB/constants.sh"
-. "$PODKOP_LIB/ui_runtime.sh"
-
-podkop_fast_status_diagnostics_ucode() {
-    ucode "$PODKOP_LIB/status_diagnostics.uc" "$@"
+function normalize_status(status) {
+    status = int(status);
+    return status > 255 ? int(status / 256) : status;
 }
 
-podkop_fast_ui_capabilities_server_handler() {
-    local section="$1" enabled
-
-    config_get enabled "$section" "enabled" "1"
-    [ "$enabled" = "0" ] && return 0
-
-    PODKOP_FAST_SERVER_INBOUNDS_ENABLED_COUNT=$((PODKOP_FAST_SERVER_INBOUNDS_ENABLED_COUNT + 1))
+function module_path(path) {
+    return LIB_DIR + "/" + as_string(path);
 }
 
-podkop_fast_collect_ui_capabilities() {
-    local sing_box_version sing_box_output sing_box_tags
-
-    PODKOP_FAST_SING_BOX_EXTENDED=0
-    PODKOP_FAST_SING_BOX_TINY=0
-    PODKOP_FAST_SING_BOX_COMPRESSED=0
-    PODKOP_FAST_SING_BOX_TAILSCALE=0
-    PODKOP_FAST_ZAPRET_INSTALLED=0
-    PODKOP_FAST_ZAPRET2_INSTALLED=0
-    PODKOP_FAST_BYEDPI_INSTALLED=0
-    PODKOP_FAST_SERVER_INBOUNDS_ENABLED_COUNT=0
-
-    if command -v sing-box >/dev/null 2>&1; then
-        if ui_runtime_sing_box_compressed_marker_set; then
-            PODKOP_FAST_SING_BOX_EXTENDED=1
-            PODKOP_FAST_SING_BOX_COMPRESSED=1
-            PODKOP_FAST_SING_BOX_TAILSCALE=1
-        elif ui_runtime_sing_box_marker_is extended; then
-            PODKOP_FAST_SING_BOX_EXTENDED=1
-            PODKOP_FAST_SING_BOX_TAILSCALE=1
-        elif ui_runtime_sing_box_tiny_package_installed || ui_runtime_sing_box_marker_is tiny; then
-            PODKOP_FAST_SING_BOX_TINY=1
-        elif ui_runtime_component_action_running_for sing_box; then
-            PODKOP_FAST_SING_BOX_TAILSCALE=1
-        else
-            sing_box_output="$(sing-box version 2>/dev/null || true)"
-            sing_box_version="$(printf '%s\n' "$sing_box_output" | sed -n '1{s/.*[[:space:]]//;p;q;}')"
-            case "$sing_box_version" in
-            *extended*)
-                PODKOP_FAST_SING_BOX_EXTENDED=1
-                PODKOP_FAST_SING_BOX_TAILSCALE=1
-                ;;
-            *)
-                sing_box_tags="$(printf '%s\n' "$sing_box_output" | sed -n 's/^Tags:[[:space:]]*//p' | head -n 1)"
-                printf '%s\n' "$sing_box_tags" | grep -Eq '(^|[,:[:space:]])with_tailscale([,[:space:]]|$)' &&
-                    PODKOP_FAST_SING_BOX_TAILSCALE=1
-                [ "$PODKOP_FAST_SING_BOX_TAILSCALE" -eq 0 ] && PODKOP_FAST_SING_BOX_TINY=1
-                ;;
-            esac
-        fi
-    fi
-
-    [ -x "$ZAPRET_PROVIDER_NFQWS_BIN" ] && PODKOP_FAST_ZAPRET_INSTALLED=1
-    [ -x "$ZAPRET2_PROVIDER_NFQWS2_BIN" ] && PODKOP_FAST_ZAPRET2_INSTALLED=1
-    [ -x "$BYEDPI_BIN" ] && PODKOP_FAST_BYEDPI_INSTALLED=1
-
-    config_load "$PODKOP_CONFIG_NAME"
-    config_foreach podkop_fast_ui_capabilities_server_handler "server"
+function file_readable(path) {
+    return fs.stat(as_string(path)) != null;
 }
 
-podkop_fast_get_ui_capabilities() {
-    podkop_fast_collect_ui_capabilities
-
-    podkop_fast_status_diagnostics_ucode ui-capabilities-json \
-        "$PODKOP_FAST_SING_BOX_EXTENDED" \
-        "$PODKOP_FAST_SING_BOX_TINY" \
-        "$PODKOP_FAST_SING_BOX_COMPRESSED" \
-        "$PODKOP_FAST_SING_BOX_TAILSCALE" \
-        "$PODKOP_FAST_ZAPRET_INSTALLED" \
-        "$PODKOP_FAST_ZAPRET2_INSTALLED" \
-        "$PODKOP_FAST_BYEDPI_INSTALLED" \
-        "${PODKOP_FAST_SERVER_INBOUNDS_ENABLED_COUNT:-0}"
+function restore_dnsmasq_failsafe() {
+    let module = module_path("dns/apply.uc");
+    if (!file_readable(module))
+        return;
+    system(command_from_args([ "ucode", "-L", LIB_DIR, module, "failsafe-restore" ]) + " >/dev/null 2>&1");
 }
 
-podkop_fast_get_ui_state() {
-    local podkop_running=0 podkop_enabled=0 podkop_status dns_configured=0
-    local sing_box_running=0 sing_box_enabled=0 sing_box_status active_action
-
-    podkop_fast_collect_ui_capabilities
-    ui_runtime_ensure_dirs
-    ui_runtime_refresh_action_dirs
-
-    ui_runtime_sing_box_running && sing_box_running=1
-    ui_runtime_sing_box_enabled && sing_box_enabled=1
-
-    ui_runtime_podkop_running && podkop_running=1
-    ui_runtime_service_enabled && podkop_enabled=1
-    ui_runtime_dns_configured && dns_configured=1
-
-    podkop_status="$(ui_runtime_status_text "$podkop_running" "$podkop_enabled")"
-    sing_box_status="$(ui_runtime_status_text "$sing_box_running" "$sing_box_enabled")"
-
-    active_action="$(ui_runtime_active_service_action 2>/dev/null || true)"
-    case "$active_action" in
-    start) podkop_status="starting" ;;
-    stop) podkop_status="stopping" ;;
-    restart) podkop_status="restarting" ;;
-    reload) podkop_status="reloading" ;;
-    esac
-
-    ui_runtime_write_ui_state \
-        "$podkop_running" \
-        "$podkop_enabled" \
-        "$podkop_status" \
-        "$dns_configured" \
-        "$sing_box_running" \
-        "$sing_box_enabled" \
-        "$sing_box_status" \
-        "$PODKOP_FAST_SING_BOX_EXTENDED" \
-        "$PODKOP_FAST_SING_BOX_TINY" \
-        "$PODKOP_FAST_SING_BOX_COMPRESSED" \
-        "$PODKOP_FAST_SING_BOX_TAILSCALE" \
-        "$PODKOP_FAST_ZAPRET_INSTALLED" \
-        "$PODKOP_FAST_ZAPRET2_INSTALLED" \
-        "$PODKOP_FAST_BYEDPI_INSTALLED" \
-        "${PODKOP_FAST_SERVER_INBOUNDS_ENABLED_COUNT:-0}"
+function restore_dnsmasq_failsafe_on_loader_failure(command) {
+    command = as_string(command);
+    if (command == "start" || command == "stop" || command == "restart" ||
+        command == "reload" || command == "uninstall" ||
+        command == "dnsmasq_restore" || command == "restore_dnsmasq")
+        restore_dnsmasq_failsafe();
 }
 
-case "$PODKOP_COMMAND" in
-get_ui_capabilities)
-    podkop_fast_get_ui_capabilities
-    exit $?
-    ;;
-get_ui_state)
-    podkop_fast_get_ui_state
-    exit $?
-    ;;
-service_action_async)
-    ui_runtime_service_action_async "$2"
-    exit $?
-    ;;
-service_action_status)
-    ui_runtime_service_action_status "$2"
-    exit $?
-    ;;
-latency_test_async)
-    ui_runtime_latency_test_async "$2" "$3" "$4" "$5"
-    exit $?
-    ;;
-latency_test_status)
-    ui_runtime_latency_test_status "$2"
-    exit $?
-    ;;
-ui_action_ack)
-    ui_runtime_action_ack "$2" "$3"
-    exit $?
-    ;;
-esac
-
-check_required_file /lib/functions/network.sh
-check_required_file "$PODKOP_LIB/nft.sh"
-check_required_file "$PODKOP_LIB/helpers.sh"
-check_required_file "$PODKOP_LIB/helpers.uc"
-check_required_file "$PODKOP_LIB/config_validation.sh"
-check_required_file "$PODKOP_LIB/config_validation.uc"
-check_required_file "$PODKOP_LIB/dnsmasq_runtime.sh"
-check_required_file "$PODKOP_LIB/provider_status.uc"
-check_required_file "$PODKOP_LIB/zapret.sh"
-check_required_file "$PODKOP_LIB/zapret2.sh"
-check_required_file "$PODKOP_LIB/byedpi.sh"
-check_required_file "$PODKOP_LIB/sing_box_config_manager.sh"
-check_required_file "$PODKOP_LIB/sing_box_config_manager.uc"
-check_required_file "$PODKOP_LIB/sing_box_config_facade.sh"
-check_required_file "$PODKOP_LIB/sing_box_config_facade.uc"
-check_required_file "$PODKOP_LIB/subscription_cache.uc"
-check_required_file "$PODKOP_LIB/subscription_parser.uc"
-check_required_file "$PODKOP_LIB/subscription_parser.sh"
-check_required_file "$PODKOP_LIB/subscription_runtime.sh"
-check_required_file "$PODKOP_LIB/logging.sh"
-check_required_file "$PODKOP_LIB/rulesets.sh"
-check_required_file "$PODKOP_LIB/rulesets.uc"
-check_required_file "$PODKOP_LIB/runtime_state.sh"
-check_required_file "$PODKOP_LIB/server_runtime.sh"
-check_required_file "$PODKOP_LIB/server_runtime.uc"
-check_required_file "$PODKOP_LIB/rules_nft_runtime.sh"
-check_required_file "$PODKOP_LIB/rules_nft_runtime.uc"
-check_required_file "$PODKOP_LIB/updates_runtime.sh"
-check_required_file "$PODKOP_LIB/updates_runtime.uc"
-check_required_file "$PODKOP_LIB/sing_box_runtime.sh"
-check_required_file "$PODKOP_LIB/sing_box_runtime.uc"
-check_required_file "$PODKOP_LIB/status_diagnostics.sh"
-check_required_file "$PODKOP_LIB/status_diagnostics.uc"
-check_required_file "$PODKOP_LIB/updater.sh"
-check_required_file "$PODKOP_LIB/updater.uc"
-. /lib/functions/network.sh
-. "$PODKOP_LIB/nft.sh"
-. "$PODKOP_LIB/helpers.sh"
-. "$PODKOP_LIB/zapret.sh"
-. "$PODKOP_LIB/zapret2.sh"
-. "$PODKOP_LIB/byedpi.sh"
-. "$PODKOP_LIB/sing_box_config_manager.sh"
-. "$PODKOP_LIB/sing_box_config_facade.sh"
-. "$PODKOP_LIB/subscription_parser.sh"
-. "$PODKOP_LIB/logging.sh"
-. "$PODKOP_LIB/rulesets.sh"
-. "$PODKOP_LIB/updater.sh"
-
-PODKOP_INTERNAL_CONFIG_TRIGGER_GUARD="/var/run/podkop-plus.internal-config-change"
-PODKOP_RUNTIME_STATE_DIR="/var/run/podkop-plus"
-PODKOP_SYSTEM_INFO_CACHE_FILE="$PODKOP_RUNTIME_STATE_DIR/system-info.json"
-PODKOP_RELOAD_STATE_FILE="$PODKOP_RUNTIME_STATE_DIR/reload-state"
-PODKOP_PENDING_RELOAD_FILE="$PODKOP_RUNTIME_STATE_DIR/reload.pending"
-PODKOP_SERVICE_TRIGGER_SYNC_FILE="$PODKOP_RUNTIME_STATE_DIR/service-triggers.sync"
-PODKOP_LIST_UPDATE_STATE_FILE="$PODKOP_RUNTIME_STATE_DIR/list-update.timestamp"
-PODKOP_SUBSCRIPTION_UPDATE_STATE_DIR="$PODKOP_RUNTIME_STATE_DIR/subscription-update"
-PODKOP_SUBSCRIPTION_UPDATE_JOB_DIR="$PODKOP_RUNTIME_STATE_DIR/subscription-update-jobs"
-PODKOP_SUBSCRIPTION_LINKS_DIR="$PODKOP_RUNTIME_STATE_DIR/subscription-links"
-PODKOP_SUBSCRIPTION_METADATA_DIR="$PODKOP_RUNTIME_STATE_DIR/subscription-metadata"
-PODKOP_OUTBOUND_METADATA_DIR="$PODKOP_RUNTIME_STATE_DIR/outbound-metadata"
-PODKOP_SECTION_CACHE_DIR="$PODKOP_RUNTIME_STATE_DIR/section-cache"
-PODKOP_RUNTIME_CACHE_FORMAT_FILE="$PODKOP_RUNTIME_STATE_DIR/cache-format"
-PODKOP_PERSISTENT_SUBSCRIPTION_CACHE_DIR="/etc/podkop-plus/subscription-cache"
-PODKOP_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE="$PODKOP_PERSISTENT_SUBSCRIPTION_CACHE_DIR/cache-format"
-PODKOP_SUBSCRIPTION_BOOTSTRAP_RETRY_PID_FILE="$PODKOP_RUNTIME_STATE_DIR/subscription-bootstrap-retry.pid"
-PODKOP_SUBSCRIPTION_UPDATE_LOCK_DIR="$PODKOP_RUNTIME_STATE_DIR/subscription-update.lock"
-PODKOP_RELOAD_LOCK_DIR="/var/run/podkop-plus.reload.lock"
-PODKOP_LIST_UPDATE_CRON_MARKER="# podkop-plus-list-update"
-PODKOP_SUBSCRIPTION_UPDATE_CRON_MARKER="# podkop-plus-subscription-update"
-# sing-box falls back to 1d when update_interval is empty, so use a large
-# duration to emulate disabled automatic refreshes for remote rule sets.
-SING_BOX_DISABLED_UPDATE_INTERVAL="876000h"
-SING_BOX_URLTEST_DEFAULT_IDLE_TIMEOUT="30m"
-SERVER_COUNTRY_METHOD_FLAG_EMOJI="flag_emoji"
-SERVER_COUNTRY_METHOD_COUNTRY_IS="country_is"
-PODKOP_RELOAD_STATE_FORMAT=1
-PODKOP_RUNTIME_CACHE_FORMAT=6
-PODKOP_RUNTIME_STABLE_MIN_AGE=2
-PODKOP_SYSTEM_INFO_CACHE_TTL=3600
-PODKOP_SUBSCRIPTION_UPDATE_JOB_FINISHED_TTL_MINUTES=60
-PODKOP_SUBSCRIPTION_UPDATE_JOB_ORPHAN_OUTPUT_TTL_MINUTES=60
-PODKOP_NFT_POPULATE_ENABLED=1
-PODKOP_ZAPRET_MISSING_WARNING_EMITTED=0
-PODKOP_ZAPRET2_MISSING_WARNING_EMITTED=0
-PODKOP_BYEDPI_MISSING_WARNING_EMITTED=0
-PODKOP_URLTEST_NEW_ENABLED_SECTIONS=""
-PODKOP_URLTEST_SELECTOR_SWITCHES=""
-SUBSCRIPTION_DEFERRED_SECTIONS=""
-SUBSCRIPTION_STARTUP_BLOCKED_SECTIONS=""
-
-config_load "$PODKOP_CONFIG_NAME"
-
-. "$PODKOP_LIB/subscription_runtime.sh"
-
-. "$PODKOP_LIB/runtime_state.sh"
-
-get_rule_action() {
-    local section="$1"
-    local action
-
-    config_get action "$section" "action"
-    echo "$action"
+function show_help() {
+    print("Usage: ", BIN_PATH, " COMMAND\n\n");
+    print("Available commands:\n");
+    print("    start                   Start Podkop Plus service\n");
+    print("    stop                    Stop Podkop Plus service\n");
+    print("    reload                  Reload Podkop Plus configuration\n");
+    print("    restart                 Restart Podkop Plus service\n");
+    print("    enable                  Enable Podkop Plus autostart\n");
+    print("    disable                 Disable Podkop Plus autostart\n");
+    print("    uninstall               Remove Podkop Plus files installed outside opkg/apk\n");
+    print("    main                    Run main Podkop Plus process\n");
+    print("    list_update             Update remote lists\n");
+    print("    list_update_if_due      Update remote lists only when the configured interval has elapsed\n");
+    print("    subscription_update [rule] [source_index]\n");
+    print("                            Update all subscription proxies, one rule, or one source in a rule\n");
+    print("    subscription_update_async [rule] [source_index]\n");
+    print("                            Start forced subscription update in the background\n");
+    print("    subscription_update_status [job_id]\n");
+    print("                            Get background subscription update status\n");
+    print("    subscription_update_if_due\n");
+    print("                            Update subscription proxies only when per-rule intervals have elapsed\n");
+    print("    check_proxy             Check proxy connectivity\n");
+    print("    check_nft               Check NFT rules\n");
+    print("    check_nft_rules         Check NFT rules status\n");
+    print("    check_sing_box          Check sing-box installation and status\n");
+    print("    check_inbounds_config   Check whether enabled server inbounds are configured\n");
+    print("    check_inbounds          Check server inbounds from the Servers tab\n");
+    print("    check_logs              Show Podkop Plus logs from system journal\n");
+    print("    check_sing_box_logs     Show sing-box logs\n");
+    print("    check_fakeip            Test sing-box FakeIP DNS\n");
+    print("    check_zapret_runtime    Check external zapret provider state\n");
+    print("    check_zapret2_runtime   Check external zapret2 provider state\n");
+    print("    check_byedpi_runtime    Check external ByeDPI provider state\n");
+    print("    neutralize_zapret_defaults\n");
+    print("                            Compatibility no-op; Podkop Plus does not manage standalone zapret\n");
+    print("    clash_api               Clash API interface for managing proxies and groups\n");
+    print("    show_config             Display current Podkop Plus configuration\n");
+    print("    show_version            Show Podkop Plus version\n");
+    print("    show_sing_box_config    Show sing-box configuration\n");
+    print("    show_sing_box_version   Show sing-box version\n");
+    print("    get_status              Get Podkop Plus service status\n");
+    print("    get_outbound_link       Get source proxy link for a generated outbound\n");
+    print("    get_outbound_metadata   Get generated outbound display names and countries\n");
+    print("    get_subscription_metadata\n");
+    print("                            Get UI-only metadata for a subscription rule\n");
+    print("    get_sing_box_status     Get sing-box service status\n");
+    print("    get_zapret_status       Get zapret provider and Podkop Plus-managed nfqws status\n");
+    print("    get_zapret2_status      Get zapret2 provider and Podkop Plus-managed nfqws2 status\n");
+    print("    get_byedpi_status       Get ByeDPI provider and Podkop Plus-managed ciadpi status\n");
+    print("    get_system_info         Get system information in JSON format\n");
+    print("    get_server_capabilities Get server UI capabilities in JSON format\n");
+    print("    get_ui_capabilities     Get lightweight UI capabilities in JSON format\n");
+    print("    get_ui_state            Get lightweight UI service/action state in JSON format\n");
+    print("    service_action_async    Start a service action in the background\n");
+    print("    service_action_status   Get background service action status\n");
+    print("    latency_test_async      Start a dashboard latency test in the background\n");
+    print("    latency_test_status     Get background latency test status\n");
+    print("    ui_action_ack           Acknowledge a finished UI action state\n");
+    print("    generate_reality_keypair\n");
+    print("                            Generate a sing-box Reality key pair in JSON format\n");
+    print("    get_tls_certificate_sha256 [server]\n");
+    print("                            Get a server TLS certificate SHA-256 fingerprint in JSON format\n");
+    print("    component_action        Manage Podkop Plus, sing-box, zapret, zapret2, and ByeDPI components\n");
+    print("    component_action_async  Start a component action in the background\n");
+    print("    component_action_status Get background component action status\n");
+    print("    check_dns_available     Check DNS server availability\n");
+    print("    global_check            Run global system check\n");
+    print("    validate_nfqws_strategy_json\n");
+    print("                            Validate an NFQWS strategy and print JSON result\n");
+    print("    validate_nfqws2_strategy_json\n");
+    print("                            Validate an NFQWS2 strategy and print JSON result\n");
+    print("    validate_byedpi_strategy_json\n");
+    print("                            Validate a ByeDPI ciadpi strategy and print JSON result\n");
 }
 
-rule_is_enabled() {
-    local section="$1"
-    local enabled
+function command_spec(command) {
+    let commands = {
+        start: [ "service/lifecycle.uc", "start", 0 ],
+        stop: [ "service/lifecycle.uc", "stop", 0 ],
+        reload: [ "service/lifecycle.uc", "reload", 1 ],
+        restart: [ "service/lifecycle.uc", "restart", 0 ],
+        enable: [ "service/lifecycle.uc", "enable", 0 ],
+        disable: [ "service/lifecycle.uc", "disable", 0 ],
+        uninstall: [ "service/lifecycle.uc", "uninstall", 0 ],
+        dnsmasq_restore: [ "service/lifecycle.uc", "dnsmasq-restore", 0 ],
+        restore_dnsmasq: [ "service/lifecycle.uc", "dnsmasq-restore", 0 ],
+        main: [ "service/lifecycle.uc", "main", 0 ],
+        list_update: [ "components/updates.uc", "list-update", 0 ],
+        list_update_if_due: [ "components/updates.uc", "list-update-if-due", 0 ],
+        subscription_update: [ "components/updates.uc", "subscription-update", 2 ],
+        subscription_update_async: [ "components/updates.uc", "subscription-update-async", 2 ],
+        subscription_update_status: [ "components/updates.uc", "subscription-update-status", 1 ],
+        subscription_update_if_due: [ "components/updates.uc", "subscription-update-if-due", 0 ],
+        check_proxy: [ "diagnostics/runtime.uc", "check-proxy", 0 ],
+        check_nft: [ "diagnostics/runtime.uc", "check-nft", 0 ],
+        check_nft_rules: [ "diagnostics/runtime.uc", "check-nft-rules", 0 ],
+        check_sing_box: [ "diagnostics/runtime.uc", "check-sing-box", 0 ],
+        check_inbounds_config: [ "diagnostics/runtime.uc", "check-inbounds-config", 0 ],
+        check_inbounds: [ "diagnostics/runtime.uc", "check-inbounds", 0 ],
+        check_logs: [ "diagnostics/runtime.uc", "check-logs", 0 ],
+        check_sing_box_logs: [ "diagnostics/runtime.uc", "check-sing-box-logs", 0 ],
+        check_fakeip: [ "diagnostics/runtime.uc", "check-fakeip", 0 ],
+        check_zapret_runtime: [ "diagnostics/runtime.uc", "check-zapret-runtime", 0 ],
+        check_zapret2_runtime: [ "diagnostics/runtime.uc", "check-zapret2-runtime", 0 ],
+        check_byedpi_runtime: [ "diagnostics/runtime.uc", "check-byedpi-runtime", 0 ],
+        neutralize_zapret_defaults: [ "diagnostics/runtime.uc", "neutralize-zapret-defaults", 0 ],
+        clash_api: [ "diagnostics/runtime.uc", "clash-api", 3 ],
+        show_config: [ "diagnostics/runtime.uc", "show-config", 1 ],
+        show_version: [ "diagnostics/runtime.uc", "show-version", 0 ],
+        show_sing_box_config: [ "diagnostics/runtime.uc", "show-sing-box-config", 1 ],
+        show_sing_box_version: [ "diagnostics/runtime.uc", "show-sing-box-version", 0 ],
+        get_status: [ "diagnostics/runtime.uc", "get-status", 0 ],
+        get_outbound_link: [ "diagnostics/runtime.uc", "get-outbound-link", 2 ],
+        get_outbound_link_states: [ "diagnostics/runtime.uc", "get-outbound-link-states", 1 ],
+        get_outbound_metadata: [ "diagnostics/runtime.uc", "get-outbound-metadata", 1 ],
+        get_subscription_metadata: [ "diagnostics/runtime.uc", "get-subscription-metadata", 1 ],
+        get_sing_box_status: [ "diagnostics/runtime.uc", "get-sing-box-status", 0 ],
+        get_zapret_status: [ "diagnostics/runtime.uc", "get-zapret-status", 0 ],
+        get_zapret2_status: [ "diagnostics/runtime.uc", "get-zapret2-status", 0 ],
+        get_byedpi_status: [ "diagnostics/runtime.uc", "get-byedpi-status", 0 ],
+        get_system_info: [ "diagnostics/runtime.uc", "get-system-info", 0 ],
+        get_server_capabilities: [ "diagnostics/runtime.uc", "get-server-capabilities", 0 ],
+        get_ui_capabilities: [ "service/ui.uc", "get-ui-capabilities", 0 ],
+        get_ui_state: [ "service/ui.uc", "get-ui-state", 0 ],
+        service_action_async: [ "service/ui.uc", "service-action-async", 1 ],
+        service_action_status: [ "service/ui.uc", "service-action-status", 1 ],
+        latency_test_async: [ "service/ui.uc", "latency-test-async", 4 ],
+        latency_test_status: [ "service/ui.uc", "latency-test-status", 1 ],
+        ui_action_ack: [ "service/ui.uc", "action-ack", 2 ],
+        generate_reality_keypair: [ "server/service.uc", "generate-reality-keypair", 0 ],
+        get_tls_certificate_sha256: [ "server/service.uc", "tls-certificate-sha256", 1 ],
+        component_action: [ "components/action.uc", "component-action", 2 ],
+        component_action_async: [ "components/updates.uc", "component-action-async", 2 ],
+        component_action_status: [ "components/updates.uc", "component-action-status", 1 ],
+        check_dns_available: [ "diagnostics/runtime.uc", "check-dns-available", 0 ],
+        global_check: [ "diagnostics/runtime.uc", "global-check", 2 ],
+        validate_nfqws_strategy_json: [ "diagnostics/runtime.uc", "validate-nfqws-strategy-json", 1 ],
+        validate_nfqws2_strategy_json: [ "diagnostics/runtime.uc", "validate-nfqws2-strategy-json", 1 ],
+        validate_byedpi_strategy_json: [ "providers/byedpi/validator.uc", "validate-json", 1 ],
+        package_prerm: [ "service/package.uc", "prerm", 0 ],
+        luci_postinst: [ "service/package.uc", "luci-postinst", 0 ]
+    };
 
-    config_get_bool enabled "$section" "enabled" 1
-    [ "$enabled" -eq 1 ]
+    return commands[as_string(command)];
 }
 
-server_is_enabled() {
-    local section="$1"
-    local enabled
+function run_spec(command, spec, user_args) {
+    let module = module_path(spec[0]);
+    if (!file_readable(module)) {
+        warn("Error: required file '", module, "' is missing or not readable\n");
+        restore_dnsmasq_failsafe_on_loader_failure(command);
+        return 1;
+    }
 
-    config_get_bool enabled "$section" "enabled" 0
-    [ "$enabled" -eq 1 ]
+    let args = [ "ucode", "-L", LIB_DIR, module, spec[1] ];
+    let count = int(spec[2] || 0);
+    for (let i = 0; i < count; i++)
+        push(args, user_args[i] || "");
+
+    return normalize_status(system(command_from_args(args)));
 }
 
-. "$PODKOP_LIB/config_validation.sh"
+function main() {
+    let command = ARGV[0] || "";
+    let spec = command_spec(command);
+    if (spec == null) {
+        show_help();
+        return 1;
+    }
 
-. "$PODKOP_LIB/server_runtime.sh"
+    let user_args = [];
+    for (let i = 1; i < length(ARGV); i++)
+        push(user_args, ARGV[i]);
 
-start_main() {
-    log "Starting Podkop Plus"
-
-    migration
-
-    check_requirements
-
-    prepare_all_server_defaults
-    config_foreach process_validate_rule "section"
-    validate_runtime_settings
-
-    br_netfilter_disable
-
-    # Sync time only when the system clock is clearly invalid.
-    sync_time_if_needed
-
-    ensure_runtime_dirs
-    acquire_start_subscription_update_lock
-    if ! prepare_subscription_caches_for_startup; then
-        log "Subscription caches are not ready. Aborted." "fatal"
-        exit 1
-    fi
-
-    # base
-    route_table_rule_mark
-    create_nft_rules
-    sing_box_configure_service
-
-    # sing-box
-    sing_box_init_config
-    refresh_list_update_cron
-    start_byedpi_runtime
-    if ! /etc/init.d/sing-box start; then
-        log "Failed to start sing-box. Aborted." "fatal"
-        exit 1
-    fi
-    apply_pending_urltest_selector_switches
-    run_deferred_subscription_bootstrap
-    release_start_subscription_update_lock
-    start_zapret_runtime
-    start_zapret2_runtime
-
-    (close_inherited_service_lock_fd; list_update) &
+    return run_spec(command, spec, user_args);
 }
 
-main() {
-    start_main
-}
-
-stop_main() {
-    local status=0
-
-    log "Stopping Podkop Plus"
-
-    stop_deferred_subscription_bootstrap_retry_worker
-
-    if [ -f /var/run/podkop_list_update.pid ]; then
-        pid=$(cat /var/run/podkop_list_update.pid)
-        if kill -0 "$pid" 2> /dev/null; then
-            kill "$pid" 2> /dev/null
-            log "Stopped list_update"
-        fi
-        rm -f /var/run/podkop_list_update.pid
-    fi
-
-    remove_cron_job
-
-    rm -f "$TMP_RULESET_FOLDER"/*
-
-    stop_zapret_runtime
-    stop_zapret2_runtime
-    stop_byedpi_runtime
-
-    log "Flush nft"
-    if nft list table inet "$NFT_TABLE_NAME" > /dev/null 2>&1; then
-        nft delete table inet "$NFT_TABLE_NAME"
-    fi
-
-    log "Flush ip rule"
-    if has_tproxy_marking_rule; then
-        ip rule del fwmark "$NFT_FAKEIP_MARK"/"$NFT_FAKEIP_MARK" table "$RT_TABLE_NAME" priority 105
-    fi
-
-    log "Flush ip route"
-    if has_tproxy_route; then
-        ip route flush table "$RT_TABLE_NAME"
-    fi
-
-    log "Stop sing-box"
-    /etc/init.d/sing-box stop || status="$?"
-
-    return "$status"
-}
-
-start_impl() {
-    start_main
-
-    config_get_bool dont_touch_dhcp "settings" "dont_touch_dhcp" 0
-    if [ "$dont_touch_dhcp" -eq 0 ]; then
-        dnsmasq_configure || return 1
-    elif dnsmasq_has_podkop_managed_state; then
-        log "dont_touch_dhcp is enabled, restoring previous Podkop Plus dnsmasq changes"
-        dnsmasq_restore force || return 1
-    fi
-
-    uci_set "$PODKOP_CONFIG_NAME" "settings" "shutdown_correctly" 0
-    commit_podkop_config || return 1
-    capture_reload_state
-    write_reload_state || return 1
-    (refresh_system_info_cache) >/dev/null 2>&1 &
-}
-
-start_failure_failsafe_dnsmasq_restore() {
-    local status="$1"
-
-    trap - EXIT INT TERM
-    [ "$status" -eq 0 ] && exit 0
-
-    dnsmasq_restore_fail_safe
-    exit "$status"
-}
-
-acquire_start_subscription_update_lock() {
-    if acquire_runtime_dir_lock_wait "$PODKOP_SUBSCRIPTION_UPDATE_LOCK_DIR" 300; then
-        PODKOP_START_SUBSCRIPTION_UPDATE_LOCK_HELD=1
-        return 0
-    fi
-
-    log "Subscription update is already running during startup. Aborted." "fatal"
-    exit 1
-}
-
-release_start_subscription_update_lock() {
-    [ "${PODKOP_START_SUBSCRIPTION_UPDATE_LOCK_HELD:-0}" = "1" ] || return 0
-
-    release_runtime_dir_lock "$PODKOP_SUBSCRIPTION_UPDATE_LOCK_DIR"
-    PODKOP_START_SUBSCRIPTION_UPDATE_LOCK_HELD=0
-}
-
-start_exit_cleanup() {
-    local status="$1"
-
-    release_start_subscription_update_lock
-    start_failure_failsafe_dnsmasq_restore "$status"
-}
-
-start() {
-    local status
-
-    trap 'start_exit_cleanup "$?"' EXIT INT TERM
-    start_impl
-    status="$?"
-    trap - EXIT INT TERM
-    release_start_subscription_update_lock
-
-    if [ "$status" -ne 0 ]; then
-        dnsmasq_restore_fail_safe
-        return "$status"
-    fi
-
-    wait_for_podkop_stable_start
-    status="$?"
-    if [ "$status" -ne 0 ]; then
-        log "Podkop Plus did not reach a stable running state after start. Restoring dnsmasq." "fatal"
-        stop_main || true
-        dnsmasq_restore_fail_safe
-        return "$status"
-    fi
-
-    run_pending_reload_if_requested
-    return 0
-}
-
-stop_impl() {
-    local dont_touch_dhcp status
-
-    status=0
-    config_get_bool dont_touch_dhcp "settings" "dont_touch_dhcp" 0
-    if [ "$dont_touch_dhcp" -eq 0 ]; then
-        dnsmasq_restore || status="$?"
-    elif dnsmasq_has_podkop_managed_state; then
-        log "dont_touch_dhcp is enabled, restoring previous Podkop Plus dnsmasq changes"
-        dnsmasq_restore force || status="$?"
-    fi
-
-    stop_main || status="$?"
-
-    uci_set "$PODKOP_CONFIG_NAME" "settings" "shutdown_correctly" 1
-    commit_podkop_config || status="$?"
-    clear_reload_state
-
-    if [ "$status" -ne 0 ]; then
-        dnsmasq_restore_fail_safe
-    fi
-
-    return "$status"
-}
-
-stop() {
-    local status
-
-    stop_impl
-    status="$?"
-
-    return "$status"
-}
-
-restart_runtime_for_reload() {
-    local dont_touch_dhcp
-
-    log "Reload fallback: restart Podkop Plus runtime in-process"
-
-    stop_main
-    start_main
-
-    config_get_bool dont_touch_dhcp "settings" "dont_touch_dhcp" 0
-    if [ "$dont_touch_dhcp" -eq 0 ]; then
-        dnsmasq_configure force
-    elif dnsmasq_has_podkop_managed_state; then
-        log "dont_touch_dhcp is enabled, restoring previous Podkop Plus dnsmasq changes"
-        dnsmasq_restore force
-    fi
-
-    uci_set "$PODKOP_CONFIG_NAME" "settings" "shutdown_correctly" 0
-    commit_podkop_config
-    capture_reload_state
-    write_reload_state
-}
-
-write_service_trigger_sync_state() {
-    local changed="$1"
-
-    mkdir -p "$PODKOP_RUNTIME_STATE_DIR"
-    printf '%s\n' "$changed" > "$PODKOP_SERVICE_TRIGGER_SYNC_FILE" 2>/dev/null || true
-}
-
-reload() {
-    local reload_reason="${1:-}"
-    local status
-    local force_runtime_reload=0
-    local previous_service_trigger_signature previous_dnsmasq_signature previous_sing_box_signature previous_nft_signature
-    local previous_zapret_queue_signature previous_zapret_runtime_signature previous_zapret2_queue_signature previous_zapret2_runtime_signature previous_byedpi_runtime_signature previous_list_signature previous_cron_signature
-    local previous_urltest_enabled_sections previous_urltest_enabled_sections_known needs_sing_box_reload needs_nft_rebuild needs_zapret_restart needs_zapret2_restart needs_byedpi_restart
-    local needs_dnsmasq_configure needs_dnsmasq_restore needs_cron_refresh needs_list_update
-    local changed_service_triggers changed_dnsmasq changed_sing_box changed_nft changed_zapret_queue changed_zapret_runtime changed_zapret2_queue changed_zapret2_runtime changed_byedpi_runtime changed_cron changed_list
-
-    log "Podkop Plus reload"
-
-    [ "$reload_reason" = "on_config_change" ] || force_runtime_reload=1
-    PODKOP_RULE_CONDITION_CACHE_ENABLED="$force_runtime_reload"
-
-    migration
-    config_load "$PODKOP_CONFIG_NAME"
-    check_requirements
-    prepare_all_server_defaults
-    config_foreach process_validate_rule "section"
-    validate_runtime_settings
-    ensure_runtime_dirs
-
-    if ! podkop_is_running; then
-        log "Podkop Plus runtime is incomplete, falling back to in-process restart"
-        restart_runtime_for_reload
-        status="$?"
-        return "$status"
-    fi
-
-    if ! load_previous_reload_state; then
-        log "Reload state is missing or incompatible, falling back to in-process restart"
-        restart_runtime_for_reload
-        status="$?"
-        return "$status"
-    fi
-
-    previous_service_trigger_signature="$PREVIOUS_RELOAD_STATE_SERVICE_TRIGGER_SIGNATURE"
-    [ -n "$previous_service_trigger_signature" ] ||
-        previous_service_trigger_signature="$PREVIOUS_RELOAD_STATE_RESTART_SIGNATURE"
-    previous_dnsmasq_signature="$PREVIOUS_RELOAD_STATE_DNSMASQ_SIGNATURE"
-    previous_sing_box_signature="$PREVIOUS_RELOAD_STATE_SING_BOX_SIGNATURE"
-    previous_nft_signature="$PREVIOUS_RELOAD_STATE_NFT_SIGNATURE"
-    previous_zapret_queue_signature="$PREVIOUS_RELOAD_STATE_ZAPRET_QUEUE_SIGNATURE"
-    previous_zapret_runtime_signature="$PREVIOUS_RELOAD_STATE_ZAPRET_RUNTIME_SIGNATURE"
-    previous_zapret2_queue_signature="$PREVIOUS_RELOAD_STATE_ZAPRET2_QUEUE_SIGNATURE"
-    previous_zapret2_runtime_signature="$PREVIOUS_RELOAD_STATE_ZAPRET2_RUNTIME_SIGNATURE"
-    previous_byedpi_runtime_signature="$PREVIOUS_RELOAD_STATE_BYEDPI_RUNTIME_SIGNATURE"
-    previous_list_signature="$PREVIOUS_RELOAD_STATE_LIST_SIGNATURE"
-    previous_cron_signature="$PREVIOUS_RELOAD_STATE_CRON_SIGNATURE"
-    previous_urltest_enabled_sections_known="$PREVIOUS_RELOAD_STATE_URLTEST_ENABLED_SECTIONS_KNOWN"
-    previous_urltest_enabled_sections="$PREVIOUS_RELOAD_STATE_URLTEST_ENABLED_SECTIONS"
-    capture_reload_state
-    if [ "$previous_urltest_enabled_sections_known" -eq 1 ]; then
-        PODKOP_URLTEST_NEW_ENABLED_SECTIONS="$(
-            build_new_urltest_enabled_sections "$previous_urltest_enabled_sections" "$RELOAD_STATE_URLTEST_ENABLED_SECTIONS"
-        )"
-    else
-        PODKOP_URLTEST_NEW_ENABLED_SECTIONS=""
-    fi
-
-    needs_sing_box_reload=0
-    needs_nft_rebuild=0
-    needs_zapret_restart=0
-    needs_zapret2_restart=0
-    needs_byedpi_restart=0
-    needs_dnsmasq_configure=0
-    needs_dnsmasq_restore=0
-    needs_cron_refresh=0
-    needs_list_update=0
-    changed_service_triggers=0
-    changed_dnsmasq=0
-    changed_sing_box=0
-    changed_nft=0
-    changed_zapret_queue=0
-    changed_zapret_runtime=0
-    changed_zapret2_queue=0
-    changed_zapret2_runtime=0
-    changed_byedpi_runtime=0
-    changed_cron=0
-    changed_list=0
-
-    [ "$RELOAD_STATE_SERVICE_TRIGGER_SIGNATURE" != "$previous_service_trigger_signature" ] && changed_service_triggers=1
-    write_service_trigger_sync_state "$changed_service_triggers"
-
-    if [ "$RELOAD_STATE_SING_BOX_SIGNATURE" != "$previous_sing_box_signature" ]; then
-        changed_sing_box=1
-        needs_sing_box_reload=1
-    fi
-
-    if [ "$RELOAD_STATE_NFT_SIGNATURE" != "$previous_nft_signature" ]; then
-        changed_nft=1
-        needs_nft_rebuild=1
-    fi
-
-    if [ "$RELOAD_STATE_ZAPRET_QUEUE_SIGNATURE" != "$previous_zapret_queue_signature" ]; then
-        changed_zapret_queue=1
-        needs_zapret_restart=1
-        needs_nft_rebuild=1
-        needs_sing_box_reload=1
-    fi
-
-    if [ "$RELOAD_STATE_ZAPRET_RUNTIME_SIGNATURE" != "$previous_zapret_runtime_signature" ]; then
-        changed_zapret_runtime=1
-        needs_zapret_restart=1
-    fi
-
-    if [ "$RELOAD_STATE_ZAPRET2_QUEUE_SIGNATURE" != "$previous_zapret2_queue_signature" ]; then
-        changed_zapret2_queue=1
-        needs_zapret2_restart=1
-        needs_nft_rebuild=1
-        needs_sing_box_reload=1
-    fi
-
-    if [ "$RELOAD_STATE_ZAPRET2_RUNTIME_SIGNATURE" != "$previous_zapret2_runtime_signature" ]; then
-        changed_zapret2_runtime=1
-        needs_zapret2_restart=1
-    fi
-
-    if [ "$RELOAD_STATE_BYEDPI_RUNTIME_SIGNATURE" != "$previous_byedpi_runtime_signature" ]; then
-        changed_byedpi_runtime=1
-        needs_byedpi_restart=1
-    fi
-
-    if [ "$RELOAD_STATE_DNSMASQ_SIGNATURE" != "$previous_dnsmasq_signature" ]; then
-        changed_dnsmasq=1
-        if [ "$RELOAD_STATE_DONT_TOUCH_DHCP" -eq 0 ]; then
-            needs_dnsmasq_configure=1
-        elif dnsmasq_has_podkop_managed_state; then
-            needs_dnsmasq_restore=1
-        fi
-    fi
-
-    if [ "$RELOAD_STATE_CRON_SIGNATURE" != "$previous_cron_signature" ]; then
-        changed_cron=1
-        needs_cron_refresh=1
-    fi
-
-    if [ "$RELOAD_STATE_LIST_SIGNATURE" != "$previous_list_signature" ]; then
-        changed_list=1
-        has_list_update_sources && needs_list_update=1
-    fi
-
-    if [ "$needs_nft_rebuild" -eq 1 ] && has_nft_list_update_sources; then
-        needs_list_update=1
-    fi
-
-    if [ "$force_runtime_reload" -eq 1 ] &&
-        [ "$needs_sing_box_reload" -eq 0 ] &&
-        [ "$needs_nft_rebuild" -eq 0 ] &&
-        [ "$needs_zapret_restart" -eq 0 ] &&
-        [ "$needs_zapret2_restart" -eq 0 ] &&
-        [ "$needs_byedpi_restart" -eq 0 ] &&
-        [ "$needs_dnsmasq_configure" -eq 0 ] &&
-        [ "$needs_dnsmasq_restore" -eq 0 ]; then
-        needs_sing_box_reload=1
-    fi
-
-    log "Reload signature changes: service_triggers=$changed_service_triggers sing-box=$changed_sing_box nft=$changed_nft zapret_queue=$changed_zapret_queue zapret_runtime=$changed_zapret_runtime zapret2_queue=$changed_zapret2_queue zapret2_runtime=$changed_zapret2_runtime byedpi_runtime=$changed_byedpi_runtime dnsmasq=$changed_dnsmasq cron=$changed_cron list=$changed_list forced=$force_runtime_reload" "debug"
-    log "Reload plan: sing-box=$needs_sing_box_reload nft=$needs_nft_rebuild zapret=$needs_zapret_restart zapret2=$needs_zapret2_restart byedpi=$needs_byedpi_restart dnsmasq_configure=$needs_dnsmasq_configure dnsmasq_restore=$needs_dnsmasq_restore cron=$needs_cron_refresh list_update=$needs_list_update" "debug"
-
-    if [ "$needs_sing_box_reload" -eq 0 ] &&
-        [ "$needs_nft_rebuild" -eq 0 ] &&
-        [ "$needs_zapret_restart" -eq 0 ] &&
-        [ "$needs_zapret2_restart" -eq 0 ] &&
-        [ "$needs_byedpi_restart" -eq 0 ] &&
-        [ "$needs_dnsmasq_configure" -eq 0 ] &&
-        [ "$needs_dnsmasq_restore" -eq 0 ] &&
-        [ "$needs_cron_refresh" -eq 0 ] &&
-        [ "$needs_list_update" -eq 0 ]; then
-        write_reload_state
-        log "Reload skipped: runtime-relevant configuration is unchanged"
-        return 0
-    fi
-
-    if [ "$needs_zapret_restart" -eq 1 ]; then
-        stop_zapret_runtime
-    fi
-
-    if [ "$needs_zapret2_restart" -eq 1 ]; then
-        stop_zapret2_runtime
-    fi
-
-    if [ "$needs_byedpi_restart" -eq 1 ]; then
-        stop_byedpi_runtime
-    fi
-
-    if [ "$needs_nft_rebuild" -eq 1 ]; then
-        rebuild_nft_runtime
-    fi
-
-    if [ "$needs_sing_box_reload" -eq 1 ]; then
-        sing_box_configure_service
-        if [ "$needs_nft_rebuild" -eq 1 ]; then
-            PODKOP_NFT_POPULATE_ENABLED=1
-        else
-            PODKOP_NFT_POPULATE_ENABLED=0
-        fi
-        sing_box_init_config
-        PODKOP_NFT_POPULATE_ENABLED=1
-        reload_sing_box_runtime
-        apply_pending_urltest_selector_switches
-    elif [ "$needs_nft_rebuild" -eq 1 ]; then
-        populate_nft_runtime_sets
-    fi
-
-    if [ "$needs_zapret_restart" -eq 1 ]; then
-        start_zapret_runtime
-    fi
-
-    if [ "$needs_zapret2_restart" -eq 1 ]; then
-        start_zapret2_runtime
-    fi
-
-    if [ "$needs_byedpi_restart" -eq 1 ]; then
-        start_byedpi_runtime
-    fi
-
-    if [ "$needs_dnsmasq_configure" -eq 1 ]; then
-        dnsmasq_configure force
-        capture_reload_state
-    elif [ "$needs_dnsmasq_restore" -eq 1 ]; then
-        log "dont_touch_dhcp is enabled, restoring previous Podkop Plus dnsmasq changes"
-        dnsmasq_restore force
-        capture_reload_state
-    fi
-
-    if [ "$needs_cron_refresh" -eq 1 ]; then
-        refresh_list_update_cron
-    fi
-
-    if [ "$needs_list_update" -eq 1 ]; then
-        (close_inherited_service_lock_fd; list_update) &
-    fi
-
-    write_reload_state
-    return 0
-}
-
-reload_tracked() {
-    local reload_reason="${1:-}"
-    local job_id="" state_file="" status job_pid
-
-    if [ "${PODKOP_UI_ACTION_TRACKED:-0}" = "1" ]; then
-        reload "$reload_reason"
-        return "$?"
-    fi
-
-    job_id="$(ui_runtime_service_action_begin_if_idle reload "runtime_reload" 2>/dev/null || true)"
-    if [ -n "$job_id" ]; then
-        state_file="$(ui_runtime_job_state_path "$PODKOP_UI_SERVICE_ACTION_DIR" "$job_id" 2>/dev/null || true)"
-        [ -n "$state_file" ] && ui_runtime_update_running_pid "$state_file" "$$" >/dev/null 2>&1 || true
-    fi
-
-    reload "$reload_reason"
-    status="$?"
-
-    if [ -z "$job_id" ] || [ -z "$state_file" ]; then
-        return "$status"
-    fi
-
-    if [ "$status" -ne 0 ]; then
-        ui_runtime_service_action_finish_job "$job_id" false "Service reload failed" "$status" >/dev/null 2>&1 || true
-        return "$status"
-    fi
-
-    if ui_runtime_service_enabled || ui_runtime_podkop_running; then
-        (
-            trap '' HUP
-            if ui_runtime_service_action_wait_for_expected_state reload; then
-                ui_runtime_service_action_finish_job "$job_id" true "Service reload completed" 0
-            else
-                ui_runtime_service_action_finish_job "$job_id" false "Service reload did not reach expected state" 1
-            fi
-        ) >/dev/null 2>&1 &
-        job_pid="$!"
-        ui_runtime_update_running_pid "$state_file" "$job_pid" >/dev/null 2>&1 || true
-    else
-        ui_runtime_service_action_finish_job "$job_id" true "Service reload completed" 0 >/dev/null 2>&1 || true
-    fi
-
-    return "$status"
-}
-
-restart() {
-    local status
-
-    log "Podkop Plus restart"
-
-    stop_impl
-    status="$?"
-    if [ "$status" -ne 0 ]; then
-        return "$status"
-    fi
-
-    start_impl
-    status="$?"
-
-    [ "$status" -eq 0 ] && podkop_is_stably_running && run_pending_reload_if_requested
-    return "$status"
-}
-
-package_manager_remove_if_installed() {
-    local package_name="$1"
-
-    if command -v apk >/dev/null 2>&1; then
-        apk info -e "$package_name" >/dev/null 2>&1 && apk del "$package_name" >/dev/null 2>&1 || true
-        return 0
-    fi
-
-    if opkg_package_is_installed "$package_name"; then
-        opkg remove --force-depends "$package_name" >/dev/null 2>&1 || true
-    fi
-}
-
-uninstall() {
-    log "Uninstalling Podkop Plus"
-
-    if [ -x "$PODKOP_SERVICE_INIT" ]; then
-        stop >/dev/null 2>&1 || true
-        "$PODKOP_SERVICE_INIT" disable >/dev/null 2>&1 || true
-    fi
-
-    dnsmasq_restore_fail_safe >/dev/null 2>&1 || true
-
-    if [ -x /etc/init.d/podkop ]; then
-        /etc/init.d/podkop stop >/dev/null 2>&1 || true
-        /etc/init.d/podkop disable >/dev/null 2>&1 || true
-    fi
-
-    package_manager_remove_if_installed "luci-i18n-podkop-plus-ru"
-    package_manager_remove_if_installed "luci-app-podkop-plus"
-
-    if command -v sing_box_managed_service_installed >/dev/null 2>&1 && sing_box_managed_service_installed; then
-        sing_box_remove_managed_service_script >/dev/null 2>&1 || true
-        rm -f /usr/bin/sing-box /usr/lib/libcronet.so
-    fi
-
-    rm -rf /usr/lib/podkop-plus
-    rm -rf "$PODKOP_LUCI_VIEW_DIR"
-    rm -f "$PODKOP_SERVICE_INIT"
-    rm -f "$PODKOP_BIN"
-    rm -f /usr/share/luci/menu.d/luci-app-podkop-plus.json
-    rm -f /usr/share/rpcd/acl.d/luci-app-podkop-plus.json
-    rm -f /etc/uci-defaults/50_luci-podkop-plus
-    rm -f "/usr/lib/lua/luci/i18n/${PODKOP_LUCI_I18N_DOMAIN}."*.lmo
-    rm -f "/usr/lib/lua/luci/i18n/${PODKOP_LUCI_I18N_DOMAIN}.ru.lua"
-    rm -f "/usr/lib/lua/luci/i18n/${PODKOP_LUCI_I18N_DOMAIN}.en.lua"
-    rm -f /var/luci-indexcache*
-    rm -f /tmp/luci-indexcache*
-    [ -x /etc/init.d/rpcd ] && /etc/init.d/rpcd reload >/dev/null 2>&1 || true
-
-    printf '%s\n' '{"removed":true}'
-}
-
-. "$PODKOP_LIB/rules_nft_runtime.sh"
-
-. "$PODKOP_LIB/updates_runtime.sh"
-
-. "$PODKOP_LIB/sing_box_runtime.sh"
-
-. "$PODKOP_LIB/status_diagnostics.sh"
-
-show_help() {
-    cat << EOF
-Usage: $0 COMMAND
-
-Available commands:
-    start                   Start Podkop Plus service
-    stop                    Stop Podkop Plus service
-    reload                  Reload Podkop Plus configuration
-    restart                 Restart Podkop Plus service
-    enable                  Enable Podkop Plus autostart
-    disable                 Disable Podkop Plus autostart
-    uninstall               Remove Podkop Plus files installed outside opkg/apk
-    main                    Run main Podkop Plus process
-    list_update             Update remote lists
-    list_update_if_due      Update remote lists only when the configured interval has elapsed
-    subscription_update [rule] [source_index]
-                            Update all subscription proxies, one rule, or one source in a rule
-    subscription_update_async [rule] [source_index]
-                            Start forced subscription update in the background
-    subscription_update_status [job_id]
-                            Get background subscription update status
-    subscription_update_if_due
-                            Update subscription proxies only when per-rule intervals have elapsed
-    check_proxy             Check proxy connectivity
-    check_nft               Check NFT rules
-    check_nft_rules         Check NFT rules status
-    check_sing_box          Check sing-box installation and status
-    check_inbounds_config   Check whether enabled server inbounds are configured
-    check_inbounds          Check server inbounds from the Servers tab
-    check_logs              Show Podkop Plus logs from system journal
-    check_sing_box_logs     Show sing-box logs
-    check_fakeip            Test sing-box FakeIP DNS
-    check_zapret_runtime    Check external zapret provider state
-    check_zapret2_runtime   Check external zapret2 provider state
-    check_byedpi_runtime    Check external ByeDPI provider state
-    neutralize_zapret_defaults
-                            Compatibility no-op; Podkop Plus does not manage standalone zapret
-    clash_api               Clash API interface for managing proxies and groups
-    show_config             Display current Podkop Plus configuration
-    show_version            Show Podkop Plus version
-    show_sing_box_config    Show sing-box configuration
-    show_sing_box_version   Show sing-box version
-    get_status              Get Podkop Plus service status
-    get_outbound_link       Get source proxy link for a generated outbound
-    get_outbound_metadata   Get generated outbound display names and countries
-    get_subscription_metadata
-                            Get UI-only metadata for a subscription rule
-    get_sing_box_status     Get sing-box service status
-    get_zapret_status       Get zapret provider and Podkop Plus-managed nfqws status
-    get_zapret2_status      Get zapret2 provider and Podkop Plus-managed nfqws2 status
-    get_byedpi_status       Get ByeDPI provider and Podkop Plus-managed ciadpi status
-    get_system_info         Get system information in JSON format
-    get_server_capabilities Get server UI capabilities in JSON format
-    get_ui_capabilities     Get lightweight UI capabilities in JSON format
-    get_ui_state            Get lightweight UI service/action state in JSON format
-    service_action_async    Start a service action in the background
-    service_action_status   Get background service action status
-    latency_test_async      Start a dashboard latency test in the background
-    latency_test_status     Get background latency test status
-    ui_action_ack           Acknowledge a finished UI action state
-    generate_reality_keypair
-                            Generate a sing-box Reality key pair in JSON format
-    get_tls_certificate_sha256 [server]
-                            Get a server TLS certificate SHA-256 fingerprint in JSON format
-    component_action        Manage Podkop Plus, sing-box, zapret, zapret2, and ByeDPI components
-    component_action_async  Start a component action in the background
-    component_action_status Get background component action status
-    check_dns_available     Check DNS server availability
-    global_check            Run global system check
-    validate_nfqws_strategy_json
-                            Validate an NFQWS strategy and print JSON result
-    validate_nfqws2_strategy_json
-                            Validate an NFQWS2 strategy and print JSON result
-    validate_byedpi_strategy_json
-                            Validate a ByeDPI ciadpi strategy and print JSON result
-EOF
-}
-
-case "$1" in
-start)
-    start
-    ;;
-stop)
-    stop
-    ;;
-reload)
-    reload_tracked "$2"
-    ;;
-restart)
-    restart
-    ;;
-enable)
-    "$PODKOP_SERVICE_INIT" enable
-    ;;
-disable)
-    "$PODKOP_SERVICE_INIT" disable
-    ;;
-uninstall)
-    uninstall
-    ;;
-dnsmasq_restore | restore_dnsmasq)
-    dnsmasq_restore_fail_safe
-    ;;
-main)
-    main
-    ;;
-list_update)
-    list_update
-    ;;
-list_update_if_due)
-    list_update_if_due
-    ;;
-subscription_update)
-    subscription_update "$2" "$3"
-    ;;
-subscription_update_async)
-    subscription_update_async "$2" "$3"
-    ;;
-subscription_update_status)
-    subscription_update_status "$2"
-    ;;
-subscription_update_if_due)
-    subscription_update_if_due
-    ;;
-check_proxy)
-    check_proxy
-    ;;
-check_nft)
-    check_nft
-    ;;
-check_nft_rules)
-    check_nft_rules
-    ;;
-check_sing_box)
-    check_sing_box
-    ;;
-check_inbounds_config)
-    check_inbounds_config
-    ;;
-check_inbounds)
-    check_inbounds
-    ;;
-check_logs)
-    check_logs
-    ;;
-check_sing_box_logs)
-    check_sing_box_logs
-    ;;
-check_fakeip)
-    check_fakeip
-    ;;
-check_zapret_runtime)
-    check_zapret_runtime
-    ;;
-check_zapret2_runtime)
-    check_zapret2_runtime
-    ;;
-check_byedpi_runtime)
-    check_byedpi_runtime
-    ;;
-neutralize_zapret_defaults)
-    neutralize_zapret_defaults
-    ;;
-clash_api)
-    clash_api "$2" "$3" "$4"
-    ;;
-show_config)
-    show_config "${2:-}"
-    ;;
-show_version)
-    show_version
-    ;;
-show_sing_box_config)
-    show_sing_box_config "${2:-}"
-    ;;
-show_sing_box_version)
-    show_sing_box_version
-    ;;
-get_status)
-    get_status
-    ;;
-get_outbound_link)
-    get_outbound_link "$2" "$3"
-    ;;
-get_outbound_link_states)
-    get_outbound_link_states "$2"
-    ;;
-get_outbound_metadata)
-    get_outbound_metadata "$2"
-    ;;
-get_subscription_metadata)
-    get_subscription_metadata "$2"
-    ;;
-get_sing_box_status)
-    get_sing_box_status
-    ;;
-get_zapret_status)
-    get_zapret_status
-    ;;
-get_zapret2_status)
-    get_zapret2_status
-    ;;
-get_byedpi_status)
-    get_byedpi_status
-    ;;
-get_system_info)
-    get_system_info
-    ;;
-get_server_capabilities)
-    get_server_capabilities
-    ;;
-get_ui_capabilities)
-    get_ui_capabilities
-    ;;
-get_ui_state)
-    podkop_fast_get_ui_state
-    ;;
-service_action_async)
-    ui_runtime_service_action_async "$2"
-    ;;
-service_action_status)
-    ui_runtime_service_action_status "$2"
-    ;;
-latency_test_async)
-    ui_runtime_latency_test_async "$2" "$3" "$4" "$5"
-    ;;
-latency_test_status)
-    ui_runtime_latency_test_status "$2"
-    ;;
-ui_action_ack)
-    ui_runtime_action_ack "$2" "$3"
-    ;;
-generate_reality_keypair)
-    generate_reality_keypair
-    ;;
-get_tls_certificate_sha256)
-    get_tls_certificate_sha256 "$2"
-    ;;
-component_action)
-    component_action "$2" "$3"
-    ;;
-component_action_async)
-    component_action_async "$2" "$3"
-    ;;
-component_action_status)
-    component_action_status "$2"
-    ;;
-check_dns_available)
-    check_dns_available
-    ;;
-global_check)
-    global_check "${2:-}" "${3:-}"
-    ;;
-validate_nfqws_strategy_json)
-    validate_nfqws_strategy_json "${2:-}"
-    ;;
-validate_nfqws2_strategy_json)
-    validate_nfqws2_strategy_json "${2:-}"
-    ;;
-validate_byedpi_strategy_json)
-    validate_byedpi_strategy_json "${2:-}"
-    ;;
-*)
-    show_help
-    exit 1
-    ;;
-esac
+exit(main());

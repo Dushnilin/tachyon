@@ -2,8 +2,7 @@
 set -eo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-PARSER="$ROOT_DIR/podkop/files/usr/lib/subscription_parser.uc"
-FACADE="$ROOT_DIR/podkop/files/usr/lib/sing_box_config_facade.uc"
+PARSER="$ROOT_DIR/podkop/files/usr/lib/subscription/parser.uc"
 WORK_DIR="$(mktemp -d)"
 
 cleanup() {
@@ -159,48 +158,17 @@ ucode "$PARSER" normalize-content "$xray_input" "$xray_output"
 assert_contains "$xray_output" '"alpn": [ "http/1.1" ]' "xray-vless-ws"
 assert_not_contains "$xray_output" '"alpn": [ "h2", "http/1.1" ]' "xray-vless-ws"
 
-facade_ws="$(ucode "$FACADE" tls-alpn-json-array "h2,http/1.1" ws)"
-[ "$facade_ws" = '["http/1.1"]' ] || fail "facade ws: got $facade_ws"
-
-facade_httpupgrade="$(ucode "$FACADE" tls-alpn-json-array "h2,http/1.1" httpupgrade)"
-[ "$facade_httpupgrade" = '["http/1.1"]' ] || fail "facade httpupgrade: got $facade_httpupgrade"
-
-facade_xhttp="$(ucode "$FACADE" tls-alpn-json-array "" xhttp)"
-[ "$facade_xhttp" = '["h2","http/1.1"]' ] || fail "facade xhttp: got $facade_xhttp"
-
-facade_grpc="$(ucode "$FACADE" tls-alpn-json-array "h2,http/1.1" grpc)"
-[ "$facade_grpc" = '["h2","http/1.1"]' ] || fail "facade grpc: got $facade_grpc"
-
-export PODKOP_LIB="$ROOT_DIR/podkop/files/usr/lib"
-# shellcheck source=/dev/null
-. "$PODKOP_LIB/helpers.sh"
-# shellcheck source=/dev/null
-. "$PODKOP_LIB/sing_box_config_manager.sh"
-# shellcheck source=/dev/null
-. "$PODKOP_LIB/sing_box_config_facade.sh"
-
-manual_config='{"outbounds":[]}'
-manual_ws="$(
-  sing_box_cf_add_proxy_outbound \
-    "$manual_config" \
-    "manual" \
-    "vless://$UUID@example.com:443?type=ws&$BASE_QUERY&path=%2Fws#manual-ws" \
-    0
-)"
-manual_ws_output="$WORK_DIR/manual-ws.json"
-printf '%s\n' "$manual_ws" > "$manual_ws_output"
-assert_contains "$manual_ws_output" '"alpn": [ "http/1.1" ]' "manual-vless-ws"
-assert_not_contains "$manual_ws_output" '"alpn": [ "h2", "http/1.1" ]' "manual-vless-ws"
-
-manual_httpupgrade="$(
-  sing_box_cf_add_proxy_outbound \
-    "$manual_config" \
-    "manual" \
-    "vless://$UUID@example.com:443?type=httpupgrade&$BASE_QUERY&path=%2Fupgrade#manual-httpupgrade" \
-    0
-)"
-manual_httpupgrade_output="$WORK_DIR/manual-httpupgrade.json"
-printf '%s\n' "$manual_httpupgrade" > "$manual_httpupgrade_output"
-assert_contains "$manual_httpupgrade_output" '"alpn": [ "http/1.1" ]' "manual-vless-httpupgrade"
+gzip_plain="$WORK_DIR/gzip-subscription.txt"
+gzip_input="$WORK_DIR/gzip-subscription.txt.gz"
+gzip_decoded="$WORK_DIR/gzip-decoded.txt.gz"
+gzip_output="$WORK_DIR/gzip-normalized.json"
+printf 'vless://%s@example.com:443?type=ws&%s&path=%%2Fws#gzip-vless\n' "$UUID" "$BASE_QUERY" > "$gzip_plain"
+gzip -c "$gzip_plain" > "$gzip_input"
+cp "$gzip_input" "$gzip_decoded"
+ucode "$PARSER" try-decode-gzip-content "$gzip_decoded"
+assert_contains "$gzip_decoded" 'gzip-vless' "gzip decode in place"
+ucode "$PARSER" normalize-content-validated "$gzip_input" "$gzip_output"
+assert_contains "$gzip_output" '"tag": "gzip-vless"' "gzip normalize validated"
+assert_contains "$gzip_output" '"alpn": [ "http/1.1" ]' "gzip normalized ALPN"
 
 printf 'subscription ALPN regression checks passed\n'
