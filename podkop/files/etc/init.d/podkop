@@ -1,5 +1,5 @@
 #!/bin/sh /etc/rc.common
-# shellcheck disable=SC2034,SC2154
+# shellcheck disable=SC2034
 
 START=99
 USE_PROCD=1
@@ -8,403 +8,80 @@ EXTRA_HELP="        retry_start_on_wan_up Retry failed cold start after WAN come
 
 script=$(readlink "$initscript")
 NAME="$(basename ${script:-$initscript})"
-CONFIG_NAME="podkop-plus"
 PODKOP_LIB="/usr/lib/podkop-plus"
-PODKOP_BIN="/usr/bin/podkop-plus"
-PODKOP_SERVICE_INIT="/etc/init.d/podkop-plus"
-PODKOP_CONFIG_FILE="/etc/config/$CONFIG_NAME"
-PODKOP_RELOAD_LOCK_DIR="/var/run/podkop-plus.reload.lock"
-PODKOP_RUNTIME_STATE_DIR="/var/run/podkop-plus"
-PODKOP_PENDING_RELOAD_FILE="$PODKOP_RUNTIME_STATE_DIR/reload.pending"
-PODKOP_SERVICE_TRIGGER_SYNC_FILE="$PODKOP_RUNTIME_STATE_DIR/service-triggers.sync"
-PODKOP_INTERNAL_CONFIG_TRIGGER_GUARD="/var/run/podkop-plus.internal-config-change"
-PODKOP_CONFIG_CHANGE_REASON="on_config_change"
-PODKOP_DNSMASQ_FAILSAFE="/usr/lib/podkop-plus/dnsmasq_failsafe_restore.sh"
-PODKOP_STATUS_DIAGNOSTICS_UC="/usr/lib/podkop-plus/status_diagnostics.uc"
-PODKOP_CONSTANTS_LIB="$PODKOP_LIB/constants.sh"
-PODKOP_UI_RUNTIME_LIB="$PODKOP_LIB/ui_runtime.sh"
-config_load "$CONFIG_NAME"
+PODKOP_INITD_UC="$PODKOP_LIB/service/initd.uc"
 
-dnsmasq_management_disabled() {
-    local dont_touch_dhcp
-
-    config_load "$CONFIG_NAME"
-    config_get_bool dont_touch_dhcp "settings" "dont_touch_dhcp" 0
-    [ "$dont_touch_dhcp" -eq 1 ]
-}
-
-restore_dnsmasq_failsafe() {
-    if [ -r "$PODKOP_DNSMASQ_FAILSAFE" ]; then
-        sh "$PODKOP_DNSMASQ_FAILSAFE" >/dev/null 2>&1 || true
-        return 0
-    fi
-
-    dnsmasq_management_disabled && return 0
-
-    podkop_backup_notinterfaces="$(uci -q get 'dhcp.@dnsmasq[0].podkop_notinterface' 2>/dev/null)"
-    uci -q delete dhcp.podkop_plus >/dev/null 2>&1 || true
-    if [ -n "$podkop_backup_notinterfaces" ]; then
-        uci -q delete 'dhcp.@dnsmasq[0].notinterface' >/dev/null 2>&1 || true
-        for podkop_value in $podkop_backup_notinterfaces; do
-            uci -q add_list "dhcp.@dnsmasq[0].notinterface=$podkop_value" >/dev/null 2>&1 || true
-        done
-    else
-        uci -q del_list 'dhcp.@dnsmasq[0].notinterface=br-lan' >/dev/null 2>&1 || true
-    fi
-    uci -q delete 'dhcp.@dnsmasq[0].podkop_notinterface' >/dev/null 2>&1 || true
-    podkop_backup_servers="$(uci -q get 'dhcp.@dnsmasq[0].podkop_server' 2>/dev/null)"
-    if [ -n "$podkop_backup_servers" ]; then
-        uci -q delete 'dhcp.@dnsmasq[0].server' >/dev/null 2>&1 || true
-        for podkop_value in $podkop_backup_servers; do
-            uci -q add_list "dhcp.@dnsmasq[0].server=$podkop_value" >/dev/null 2>&1 || true
-        done
-    else
-        uci -q del_list 'dhcp.@dnsmasq[0].server=127.0.0.42' >/dev/null 2>&1 || true
-    fi
-    uci -q delete 'dhcp.@dnsmasq[0].podkop_server' >/dev/null 2>&1 || true
-    podkop_noresolv="$(uci -q get 'dhcp.@dnsmasq[0].podkop_noresolv' 2>/dev/null)"
-    if [ -n "$podkop_noresolv" ]; then
-        uci -q set "dhcp.@dnsmasq[0].noresolv=$podkop_noresolv" >/dev/null 2>&1 || true
-    else
-        uci -q set 'dhcp.@dnsmasq[0].noresolv=0' >/dev/null 2>&1 || true
-    fi
-    uci -q delete 'dhcp.@dnsmasq[0].podkop_noresolv' >/dev/null 2>&1 || true
-    podkop_cachesize="$(uci -q get 'dhcp.@dnsmasq[0].podkop_cachesize' 2>/dev/null)"
-    if [ -n "$podkop_cachesize" ]; then
-        uci -q set "dhcp.@dnsmasq[0].cachesize=$podkop_cachesize" >/dev/null 2>&1 || true
-    else
-        uci -q set 'dhcp.@dnsmasq[0].cachesize=150' >/dev/null 2>&1 || true
-    fi
-    uci -q delete 'dhcp.@dnsmasq[0].podkop_cachesize' >/dev/null 2>&1 || true
-    uci -q commit dhcp >/dev/null 2>&1 || true
-    [ -x /etc/init.d/dnsmasq ] && /etc/init.d/dnsmasq restart >/dev/null 2>&1 || true
-}
-
-acquire_reload_lock() {
-    local owner_pid
-
-    if mkdir "$PODKOP_RELOAD_LOCK_DIR" 2> /dev/null; then
-        printf '%s\n' "$$" > "$PODKOP_RELOAD_LOCK_DIR/pid"
-        return 0
-    fi
-
-    owner_pid="$(sed -n '1p' "$PODKOP_RELOAD_LOCK_DIR/pid" 2> /dev/null)"
-    if [ -n "$owner_pid" ] && kill -0 "$owner_pid" 2> /dev/null; then
-        return 1
-    fi
-
-    rm -f "$PODKOP_RELOAD_LOCK_DIR/pid" 2> /dev/null
-    rmdir "$PODKOP_RELOAD_LOCK_DIR" 2> /dev/null || return 1
-    mkdir "$PODKOP_RELOAD_LOCK_DIR" 2> /dev/null || return 1
-    printf '%s\n' "$$" > "$PODKOP_RELOAD_LOCK_DIR/pid"
-}
-
-release_reload_lock() {
-    rm -f "$PODKOP_RELOAD_LOCK_DIR/pid" 2> /dev/null
-    rmdir "$PODKOP_RELOAD_LOCK_DIR" 2> /dev/null
-}
-
-mark_pending_reload() {
-    local reason="${1:-pending}"
-    local now
-
-    mkdir -p "$PODKOP_RUNTIME_STATE_DIR"
-    now="$(date +%s 2>/dev/null)"
-    case "$now" in
-        '' | *[!0-9]*)
-            now=0
-            ;;
-    esac
-
-    {
-        printf 'reason=%s\n' "$reason"
-        printf 'updated_at=%s\n' "$now"
-    } > "$PODKOP_PENDING_RELOAD_FILE"
-}
-
-consume_pending_reload() {
-    [ -f "$PODKOP_PENDING_RELOAD_FILE" ] || return 1
-    rm -f "$PODKOP_PENDING_RELOAD_FILE" 2>/dev/null
-}
-
-run_pending_reload_if_requested() {
-    consume_pending_reload || return 0
-    "$PODKOP_SERVICE_INIT" reload pending >/dev/null 2>&1 &
+initd_ucode() {
+    [ -r "$PODKOP_INITD_UC" ] || return 1
+    PODKOP_LIB="$PODKOP_LIB" \
+        PODKOP_SERVICE_NAME="$NAME" \
+        ucode -L "$PODKOP_LIB" "$PODKOP_INITD_UC" "$@"
 }
 
 sync_service_triggers() {
-    config_load "$CONFIG_NAME"
     _procd_call sync_service_triggers_payload
 }
 
-service_trigger_sync_requested() {
-    local value
-
-    [ -f "$PODKOP_SERVICE_TRIGGER_SYNC_FILE" ] || return 0
-    value="$(sed -n '1p' "$PODKOP_SERVICE_TRIGGER_SYNC_FILE" 2>/dev/null)"
-    rm -f "$PODKOP_SERVICE_TRIGGER_SYNC_FILE" 2>/dev/null || true
-    [ "$value" = "1" ]
-}
-
 sync_service_triggers_payload() {
-    # rc.common registers triggers when the service is started. Config reloads can
-    # change Bad WAN interface triggers, so refresh the trigger set after a
-    # successful config-change reload without restarting the runtime.
     json_init
     json_add_string name "$NAME"
     service_triggers
-    _procd_ubus_call set > /dev/null 2>&1 || true
-}
-
-is_config_change_reload() {
-    [ "$1" = "$PODKOP_CONFIG_CHANGE_REASON" ]
-}
-
-runtime_is_running() {
-    "$PODKOP_BIN" get_status 2> /dev/null |
-        ucode "$PODKOP_STATUS_DIAGNOSTICS_UC" service-status-running >/dev/null 2>&1
-}
-
-service_is_enabled() {
-    [ -x "/etc/rc.d/S99$NAME" ]
-}
-
-load_ui_runtime() {
-    [ "${PODKOP_INITD_UI_RUNTIME_LOADED:-0}" = "1" ] && return 0
-    [ -r "$PODKOP_CONSTANTS_LIB" ] || return 1
-    [ -r "$PODKOP_UI_RUNTIME_LIB" ] || return 1
-
-    . "$PODKOP_CONSTANTS_LIB" || return 1
-    . "$PODKOP_UI_RUNTIME_LIB" || return 1
-    PODKOP_INITD_UI_RUNTIME_LOADED=1
-}
-
-begin_external_service_action() {
-    local action="$1"
-    local job_id state_file
-
-    [ "${PODKOP_UI_ACTION_TRACKED:-0}" = "1" ] && return 1
-    load_ui_runtime || return 1
-
-    job_id="$(ui_runtime_service_action_begin_if_idle "$action" "initd" 2>/dev/null)" || return 1
-    state_file="$(ui_runtime_job_state_path "$PODKOP_UI_SERVICE_ACTION_DIR" "$job_id" 2>/dev/null)" || return 1
-    ui_runtime_update_running_pid "$state_file" "$$" >/dev/null 2>&1 || true
-
-    printf '%s\n' "$job_id"
-}
-
-finish_external_service_action() {
-    local action="$1"
-    local job_id="$2"
-    local status="$3"
-    local state_file job_pid
-
-    [ -n "$job_id" ] || return 0
-    load_ui_runtime || return 0
-
-    state_file="$(ui_runtime_job_state_path "$PODKOP_UI_SERVICE_ACTION_DIR" "$job_id" 2>/dev/null)" || return 0
-    [ -f "$state_file" ] || return 0
-
-    if [ "$status" -ne 0 ]; then
-        ui_runtime_service_action_finish_job "$job_id" false "Service $action failed" "$status" >/dev/null 2>&1 || true
-        return 0
-    fi
-
-    (
-        trap '' HUP
-        if ui_runtime_service_action_wait_for_expected_state "$action"; then
-            ui_runtime_service_action_finish_job "$job_id" true "Service $action completed" 0
-        else
-            ui_runtime_service_action_finish_job "$job_id" false "Service $action did not reach expected state" 1
-        fi
-    ) >/dev/null 2>&1 &
-    job_pid="$!"
-    ui_runtime_update_running_pid "$state_file" "$job_pid" >/dev/null 2>&1 || true
-}
-
-consume_internal_config_guard() {
-    rm -f "$PODKOP_INTERNAL_CONFIG_TRIGGER_GUARD" 2> /dev/null
-}
-
-current_config_hash() {
-    local hash
-
-    [ -r "$PODKOP_CONFIG_FILE" ] || return 1
-
-    hash="$(md5sum "$PODKOP_CONFIG_FILE" 2>/dev/null)"
-    hash="${hash%% *}"
-    [ -n "$hash" ] || return 1
-
-    printf "%s\n" "$hash"
-}
-
-internal_config_guard_matches_current_config() {
-    local now guard_timestamp guard_hash current_hash
-
-    guard_timestamp="$(sed -n '1p' "$PODKOP_INTERNAL_CONFIG_TRIGGER_GUARD" 2>/dev/null)"
-    case "$guard_timestamp" in
-        '' | *[!0-9]*)
-            return 1
-            ;;
-    esac
-
-    now="$(date +%s 2>/dev/null)"
-    case "$now" in
-        '' | *[!0-9]*)
-            return 0
-            ;;
-    esac
-
-    [ $((now - guard_timestamp)) -le 30 ] || return 1
-
-    guard_hash="$(sed -n '2p' "$PODKOP_INTERNAL_CONFIG_TRIGGER_GUARD" 2>/dev/null)"
-    [ -n "$guard_hash" ] || return 1
-
-    current_hash="$(current_config_hash)" || return 1
-    [ "$guard_hash" = "$current_hash" ]
-}
-
-should_skip_internal_config_reload() {
-    local reason="$1"
-
-    [ "$reason" = "on_config_change" ] || return 1
-    [ -f "$PODKOP_INTERNAL_CONFIG_TRIGGER_GUARD" ] || return 1
-
-    if internal_config_guard_matches_current_config; then
-        consume_internal_config_guard
-        return 0
-    fi
-
-    consume_internal_config_guard
-
-    return 1
-}
-
-should_restore_dnsmasq_on_start() {
-    local reason="$1"
-    local shutdown_correctly
-
-    [ "$reason" = "triggered" ] && return 1
-
-    config_get shutdown_correctly "settings" "shutdown_correctly" "1"
-    [ "$shutdown_correctly" = "0" ]
+    _procd_ubus_call set >/dev/null 2>&1 || true
 }
 
 start_service() {
-    local ui_job_id status
-
-    echo "Start Podkop Plus"
-    ui_job_id="$(begin_external_service_action start 2>/dev/null || true)"
-
-    if [ ! -x "$PODKOP_BIN" ]; then
-        restore_dnsmasq_failsafe
-        finish_external_service_action start "$ui_job_id" 1
-        return 1
-    fi
-
-    if should_restore_dnsmasq_on_start "$1"; then
-        restore_dnsmasq_failsafe
-    fi
-
-    config_get enable_badwan_interface_monitoring "settings" "enable_badwan_interface_monitoring"
-    config_get badwan_monitored_interfaces "settings" "badwan_monitored_interfaces"
-
-    procd_open_instance
-    procd_set_param command "$PODKOP_BIN" start
-    [ "$enable_badwan_interface_monitoring" = "1" ] && [ -n "$badwan_monitored_interfaces" ] &&
-        procd_set_param netdev "$badwan_monitored_interfaces"
-    procd_set_param stdout 1
-    procd_set_param stderr 1
-    procd_close_instance
-    status="$?"
-
-    finish_external_service_action start "$ui_job_id" "$status"
-    return "$status"
+    initd_ucode start-service "$1" "$$"
 }
 
 stop_service() {
-    local status ui_job_id
-
-    ui_job_id="$(begin_external_service_action stop 2>/dev/null || true)"
-
-    if [ ! -x "$PODKOP_BIN" ]; then
-        restore_dnsmasq_failsafe
-        finish_external_service_action stop "$ui_job_id" 1
-        return 1
-    fi
-
-    "$PODKOP_BIN" stop
-    status="$?"
-    [ "$status" -eq 0 ] || restore_dnsmasq_failsafe
-
-    finish_external_service_action stop "$ui_job_id" "$status"
-    return "$status"
+    initd_ucode stop-service "$$"
 }
 
 reload_service() {
     local reason="$1"
+    local result status
 
-    if should_skip_internal_config_reload "$reason"; then
-        return 0
-    fi
+    trap 'initd_ucode reload-release >/dev/null 2>&1 || true' INT TERM
+    result="$(initd_ucode reload-service "$reason" "$$")"
+    status="$?"
+    trap - INT TERM
 
-    if is_config_change_reload "$reason" && ! runtime_is_running && ! service_is_enabled; then
-        return 0
-    fi
-
-    if ! acquire_reload_lock; then
-        mark_pending_reload "${reason:-reload_busy}"
-        return 0
-    fi
-
-    rm -f "$PODKOP_SERVICE_TRIGGER_SYNC_FILE" 2>/dev/null || true
-    trap 'release_reload_lock' EXIT INT TERM
-    PODKOP_UI_ACTION_TRACKED=1 "$PODKOP_BIN" reload "$reason" > /dev/null 2>&1
-    local status="$?"
-    if [ "$status" -eq 0 ] && is_config_change_reload "$reason" && service_trigger_sync_requested; then
-        sync_service_triggers
-    fi
-    trap - EXIT INT TERM
-    release_reload_lock
-    run_pending_reload_if_requested
-
+    [ "$result" = "sync" ] && sync_service_triggers
     return "$status"
 }
 
 status_service() {
-    if runtime_is_running; then
-        echo "running"
-        return 0
-    fi
-
-    echo "not running"
-    return 1
+    initd_ucode status-service
 }
 
 retry_start_on_wan_up() {
-    if runtime_is_running; then
-        return 0
-    fi
-
-    restart triggered
+    initd_ucode retry-start-on-wan-up "$$"
 }
 
 service_triggers() {
-    config_get enable_badwan_interface_monitoring "settings" "enable_badwan_interface_monitoring"
-    config_get badwan_monitored_interfaces "settings" "badwan_monitored_interfaces"
-    config_get badwan_reload_delay "settings" "badwan_reload_delay" "2000"
+    local plan kind event target init action reason
 
-    PROCD_RELOAD_DELAY=$badwan_reload_delay
+    plan="$(initd_ucode trigger-plan)" || return 0
 
     procd_open_trigger
-    procd_add_config_trigger "config.change" "$CONFIG_NAME" "$PODKOP_SERVICE_INIT" reload "$PODKOP_CONFIG_CHANGE_REASON"
-    procd_add_interface_trigger "interface.*.up" "wan" "$PODKOP_SERVICE_INIT" retry_start_on_wan_up
-
-    if [ "$enable_badwan_interface_monitoring" = "1" ]; then
-        for iface in $badwan_monitored_interfaces; do
-            [ "$iface" = "wan" ] && continue
-            procd_add_interface_trigger "interface.*.up" "$iface" "$PODKOP_SERVICE_INIT" reload
-        done
-    fi
+    while IFS="$(printf '\t')" read -r kind event target init action reason; do
+        case "$kind" in
+        delay)
+            PROCD_RELOAD_DELAY="$event"
+            ;;
+        config)
+            procd_add_config_trigger "$event" "$target" "$init" "$action" "$reason"
+            ;;
+        interface)
+            if [ -n "$reason" ]; then
+                procd_add_interface_trigger "$event" "$target" "$init" "$action" "$reason"
+            else
+                procd_add_interface_trigger "$event" "$target" "$init" "$action"
+            fi
+            ;;
+        esac
+    done << EOF
+$plan
+EOF
     procd_close_trigger
 }

@@ -57,7 +57,7 @@ jobs:
         shell: bash
         run: |
           VERSION="${{ needs.preparation.outputs.version }}"
-          bash ./scripts/build-openwrt-packages-wsl.sh "$VERSION" "$PWD/filtered-bin/release"
+          bash ./scripts/build.sh "$VERSION" "$PWD/filtered-bin/release"
           ls -la "$PWD/filtered-bin/release"
 
       - name: Upload build artifacts

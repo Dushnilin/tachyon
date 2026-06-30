@@ -3,6 +3,13 @@ set -eo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PODKOP_LIB="$ROOT_DIR/podkop/files/usr/lib"
+VALIDATOR="$PODKOP_LIB/config/validator.uc"
+WORK_DIR="$(mktemp -d)"
+
+cleanup() {
+  rm -rf "$WORK_DIR"
+}
+trap cleanup EXIT
 
 fail() {
   printf 'FAIL: %s\n' "$1" >&2
@@ -35,23 +42,45 @@ assert_mark_range_no_overlap() {
   done
 }
 
-# shellcheck source=/dev/null
-. "$PODKOP_LIB/constants.sh"
-# shellcheck source=/dev/null
-. "$PODKOP_LIB/config_validation.sh"
-
-log() {
-  :
-}
+eval "$(ucode -L "$PODKOP_LIB" "$PODKOP_LIB/core/constants.uc" shell-env)"
 
 assert_mark_range_no_overlap "Zapret" "$((ZAPRET_ROUTE_MARK_BASE))" "$ZAPRET_QUEUE_RANGE_SIZE" "$((NFT_FAKEIP_MARK))" "FakeIP"
 assert_mark_range_no_overlap "Zapret" "$((ZAPRET_ROUTE_MARK_BASE))" "$ZAPRET_QUEUE_RANGE_SIZE" "$((NFT_OUTBOUND_MARK))" "outbound"
 assert_mark_range_no_overlap "Zapret2" "$((ZAPRET2_ROUTE_MARK_BASE))" "$ZAPRET2_QUEUE_RANGE_SIZE" "$((NFT_FAKEIP_MARK))" "FakeIP"
 assert_mark_range_no_overlap "Zapret2" "$((ZAPRET2_ROUTE_MARK_BASE))" "$ZAPRET2_QUEUE_RANGE_SIZE" "$((NFT_OUTBOUND_MARK))" "outbound"
 
-validate_runtime_mark_ranges
+cat >"$WORK_DIR/fixture.json" <<'JSON'
+{
+  "settings": { ".name": "settings", ".type": "settings" }
+}
+JSON
 
-if (ZAPRET2_ROUTE_MARK_BASE="0x01100000"; validate_runtime_mark_ranges); then
+context_json() {
+  local zapret2_base="${1:-$ZAPRET2_ROUTE_MARK_BASE}"
+
+  cat <<JSON
+{
+  "community_services": "$COMMUNITY_SERVICES",
+  "byedpi_default_cmd_opts": "",
+  "zapret_default_nfqws_opt": "",
+  "zapret_legacy_default_nfqws_opt": "",
+  "zapret2_default_nfqws2_opt": "",
+  "byedpi_installed": false,
+  "zapret_installed": false,
+  "zapret2_installed": false,
+  "zapret_route_mark_base": "$ZAPRET_ROUTE_MARK_BASE",
+  "zapret_queue_range_size": "$ZAPRET_QUEUE_RANGE_SIZE",
+  "zapret2_route_mark_base": "$zapret2_base",
+  "zapret2_queue_range_size": "$ZAPRET2_QUEUE_RANGE_SIZE",
+  "nft_fakeip_mark": "$NFT_FAKEIP_MARK",
+  "nft_outbound_mark": "$NFT_OUTBOUND_MARK"
+}
+JSON
+}
+
+PODKOP_LIB="$PODKOP_LIB" ucode -L "$PODKOP_LIB" "$VALIDATOR" validate-runtime-fixture "$WORK_DIR/fixture.json" "$(context_json)"
+
+if PODKOP_LIB="$PODKOP_LIB" ucode -L "$PODKOP_LIB" "$VALIDATOR" validate-runtime-fixture "$WORK_DIR/fixture.json" "$(context_json "0x01100000")" >/dev/null 2>&1; then
   fail "legacy Zapret2 route mark base should overlap FakeIP mark"
 fi
 

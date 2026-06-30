@@ -5,7 +5,6 @@ REPO_OWNER="ushan0v"
 REPO_NAME="podkop-plus"
 
 REQUIRED_SPACE_KB=15360
-REQUIRED_SING_BOX_VERSION="1.12.4"
 
 PKG_IS_APK=0
 FETCHER=""
@@ -30,14 +29,6 @@ PODKOP_PLUS_I18N_FILE=""
 PODKOP_PLUS_PACKAGE_VERSION=""
 SING_BOX_VARIANT_STATE_FILE="/etc/podkop-plus/sing-box-variant"
 SING_BOX_VERSION_STATE_FILE="/etc/podkop-plus/sing-box-version"
-SING_BOX_MANAGED_SERVICE_MARKER="Podkop Plus managed sing-box service for binary variants"
-SING_BOX_EXTENDED_RELEASE_JSON=""
-SING_BOX_EXTENDED_RELEASE_TAG=""
-SING_BOX_EXTENDED_ARCH_SUFFIX=""
-SING_BOX_EXTENDED_ASSET_URL=""
-SING_BOX_EXTENDED_ASSET_NAME=""
-SING_BOX_EXTENDED_ARCHIVE_FILE=""
-SING_BOX_EXTENDED_PACKAGE_FILE=""
 
 command -v apk >/dev/null 2>&1 && PKG_IS_APK=1
 
@@ -99,18 +90,6 @@ read_openwrt_release_value() {
 
 command_exists() {
     command -v "$1" >/dev/null 2>&1
-}
-
-podkop_dont_touch_dhcp_enabled() {
-    command_exists uci || return 1
-
-    case "$(uci -q get 'podkop-plus.settings.dont_touch_dhcp' 2>/dev/null)" in
-        1|true|yes|on)
-            return 0
-            ;;
-    esac
-
-    return 1
 }
 
 init_tmp_dir() {
@@ -193,8 +172,616 @@ function ends_with(value, suffix) {
     return length(value) >= length(suffix) && substr(value, length(value) - length(suffix)) == suffix;
 }
 
-function contains(value, needle) {
-    return index(as_string(value), as_string(needle)) >= 0;
+let uci_cursor_state = false;
+
+function words(value) {
+    value = trim(as_string(value));
+    return value == "" ? [] : split(value, /[ \t\r\n]+/);
+}
+
+function truthy(value) {
+    value = lc(as_string(value));
+    return value == "1" || value == "true" || value == "yes" || value == "on";
+}
+
+function path_parts(path) {
+    path = as_string(path);
+    let first = index(path, ".");
+    if (first < 0)
+        return null;
+
+    let package_name = substr(path, 0, first);
+    let rest = substr(path, first + 1);
+    let second = index(rest, ".");
+    if (second < 0)
+        return { package: package_name, section: rest, option: "" };
+
+    return {
+        package: package_name,
+        section: substr(rest, 0, second),
+        option: substr(rest, second + 1)
+    };
+}
+
+function uci_cursor() {
+    if (uci_cursor_state !== false)
+        return uci_cursor_state;
+
+    try {
+        uci_cursor_state = require("uci").cursor();
+    }
+    catch (e) {
+        uci_cursor_state = null;
+    }
+
+    return uci_cursor_state;
+}
+
+function uci_available() {
+    return uci_cursor() != null;
+}
+
+function uci_load(package_name) {
+    let c = uci_cursor();
+    if (c == null)
+        return false;
+
+    try {
+        c.load(as_string(package_name));
+        return true;
+    }
+    catch (e) {
+        return false;
+    }
+}
+
+function uci_value_to_string(value) {
+    if (value == null)
+        return "";
+    if (type(value) == "array")
+        return join(" ", value);
+    return as_string(value);
+}
+
+function uci_value_to_list(value) {
+    if (value == null)
+        return [];
+    if (type(value) == "array")
+        return value;
+    return words(value);
+}
+
+function uci_get(path) {
+    let parts = path_parts(path);
+    let c = uci_cursor();
+    if (c == null || parts == null || parts.option == "")
+        return "";
+    if (!uci_load(parts.package))
+        return "";
+
+    return uci_value_to_string(c.get(parts.package, parts.section, parts.option));
+}
+
+function uci_exists(path) {
+    let parts = path_parts(path);
+    let c = uci_cursor();
+    if (c == null || parts == null)
+        return false;
+    if (!uci_load(parts.package))
+        return false;
+
+    if (parts.option == "")
+        return c.get_all(parts.package, parts.section) != null;
+    return c.get(parts.package, parts.section, parts.option) != null;
+}
+
+function uci_delete(path) {
+    let parts = path_parts(path);
+    let c = uci_cursor();
+    if (c == null || parts == null)
+        return false;
+
+    try {
+        if (parts.option == "")
+            c.delete(parts.package, parts.section);
+        else
+            c.delete(parts.package, parts.section, parts.option);
+        return true;
+    }
+    catch (e) {
+        return false;
+    }
+}
+
+function uci_set(path, value) {
+    let parts = path_parts(path);
+    let c = uci_cursor();
+    if (c == null || parts == null || parts.option == "")
+        return false;
+
+    try {
+        c.set(parts.package, parts.section, parts.option, type(value) == "array" ? value : as_string(value));
+        return true;
+    }
+    catch (e) {
+        return false;
+    }
+}
+
+function uci_add_list(path, value) {
+    let parts = path_parts(path);
+    let c = uci_cursor();
+    if (c == null || parts == null || parts.option == "")
+        return false;
+
+    try {
+        let values = uci_value_to_list(c.get(parts.package, parts.section, parts.option));
+        push(values, as_string(value));
+        c.set(parts.package, parts.section, parts.option, values);
+        return true;
+    }
+    catch (e) {
+        return false;
+    }
+}
+
+function uci_del_list(path, value) {
+    let parts = path_parts(path);
+    let c = uci_cursor();
+    if (c == null || parts == null || parts.option == "")
+        return false;
+
+    let values = [];
+    let removed = false;
+    for (let item in uci_value_to_list(c.get(parts.package, parts.section, parts.option))) {
+        if (item == value) {
+            removed = true;
+            continue;
+        }
+        push(values, item);
+    }
+
+    if (!removed)
+        return false;
+
+    try {
+        if (length(values) == 0)
+            c.delete(parts.package, parts.section, parts.option);
+        else
+            c.set(parts.package, parts.section, parts.option, values);
+        return true;
+    }
+    catch (e) {
+        return false;
+    }
+}
+
+function uci_commit(package_name) {
+    let c = uci_cursor();
+    if (c == null)
+        return false;
+
+    try {
+        return c.commit(package_name) != false;
+    }
+    catch (e) {
+        return false;
+    }
+}
+
+function run(command) {
+    return system(command) == 0;
+}
+
+function shell_quote(value) {
+    return "'" + replace(as_string(value), /'/g, "'\\''") + "'";
+}
+
+function command_from_args(args) {
+    let parts = [];
+    for (let arg in args)
+        push(parts, shell_quote(arg));
+    return join(" ", parts);
+}
+
+function normalize_status(status) {
+    status = int(status);
+    return status > 255 ? int(status / 256) : status;
+}
+
+function run_args(args) {
+    return normalize_status(system(command_from_args(args) + " >/dev/null 2>&1")) == 0;
+}
+
+function command_output(args) {
+    let pipe = fs.popen(command_from_args(args) + " 2>/dev/null", "r");
+    if (!pipe)
+        return "";
+
+    let data = pipe.read("all");
+    pipe.close();
+    return data == null ? "" : data;
+}
+
+function env(name, fallback) {
+    let value = getenv(name);
+    if (value == null || value == "")
+        return as_string(fallback);
+    return as_string(value);
+}
+
+const INSTALLER_PODKOP_PLUS_INIT = env("PODKOP_INSTALLER_PODKOP_PLUS_INIT", "/etc/init.d/podkop-plus");
+const INSTALLER_ORIGINAL_PODKOP_INIT = env("PODKOP_INSTALLER_ORIGINAL_PODKOP_INIT", "/etc/init.d/podkop");
+const INSTALLER_PODKOP_PLUS_BIN = env("PODKOP_INSTALLER_PODKOP_PLUS_BIN", "/usr/bin/podkop-plus");
+const INSTALLER_PODKOP_PLUS_LIB = env("PODKOP_INSTALLER_PODKOP_PLUS_LIB", "/usr/lib/podkop-plus");
+const INSTALLER_PODKOP_PLUS_UCI_DEFAULTS = env("PODKOP_INSTALLER_PODKOP_PLUS_UCI_DEFAULTS", "/etc/uci-defaults/50_luci-podkop-plus");
+const INSTALLER_PODKOP_PLUS_LUCI_VIEW = env("PODKOP_INSTALLER_PODKOP_PLUS_LUCI_VIEW", "/www/luci-static/resources/view/podkop_plus");
+const INSTALLER_MENU_JSON = env("PODKOP_INSTALLER_MENU_JSON", "/usr/share/luci/menu.d/luci-app-podkop-plus.json");
+const INSTALLER_ACL_JSON = env("PODKOP_INSTALLER_ACL_JSON", "/usr/share/rpcd/acl.d/luci-app-podkop-plus.json");
+const INSTALLER_RU_LMO = env("PODKOP_INSTALLER_RU_LMO", "/usr/lib/lua/luci/i18n/podkop_plus.ru.lmo");
+const INSTALLER_EN_LMO = env("PODKOP_INSTALLER_EN_LMO", "/usr/lib/lua/luci/i18n/podkop_plus.en.lmo");
+const INSTALLER_RU_LUA = env("PODKOP_INSTALLER_RU_LUA", "/usr/lib/lua/luci/i18n/podkop_plus.ru.lua");
+const INSTALLER_EN_LUA = env("PODKOP_INSTALLER_EN_LUA", "/usr/lib/lua/luci/i18n/podkop_plus.en.lua");
+const INSTALLER_RPCD_INIT = env("PODKOP_INSTALLER_RPCD_INIT", "/etc/init.d/rpcd");
+
+function path_exists(path) {
+    return fs.stat(as_string(path)) != null;
+}
+
+function path_executable(path) {
+    return run_args([ "test", "-x", path ]);
+}
+
+function remove_path(path) {
+    if (as_string(path) == "" || !path_exists(path))
+        return true;
+    return run_args([ "rm", "-rf", path ]);
+}
+
+function remove_glob(pattern) {
+    pattern = as_string(pattern);
+    if (pattern == "")
+        return;
+    for (let path in fs.glob(pattern))
+        remove_path(path);
+}
+
+function remove_globs(patterns) {
+    for (let pattern in words(patterns))
+        remove_glob(pattern);
+}
+
+function restart_dnsmasq() {
+    return run("[ -x /etc/init.d/dnsmasq ] && /etc/init.d/dnsmasq restart");
+}
+
+function installer_package_manager() {
+    return run_args([ "apk", "--version" ]) ? "apk" : "opkg";
+}
+
+function installer_installed_package_names() {
+    let manager = installer_package_manager();
+    let output = manager == "apk" ?
+        command_output([ "apk", "info" ]) :
+        command_output([ "opkg", "list-installed" ]);
+    let names = [];
+
+    for (let line in split(output, "\n")) {
+        line = trim(as_string(line));
+        if (line == "")
+            continue;
+        if (manager == "opkg") {
+            let parts = split(line, /[ \t]+/);
+            line = parts[0] || "";
+        }
+        if (line != "")
+            push(names, line);
+    }
+
+    return names;
+}
+
+function installer_package_installed(name) {
+    name = as_string(name);
+    if (name == "")
+        return false;
+
+    if (installer_package_manager() == "apk")
+        return run_args([ "apk", "info", "-e", name ]);
+
+    for (let installed in installer_installed_package_names())
+        if (installed == name)
+            return true;
+    return false;
+}
+
+function installer_remove_package(name) {
+    name = as_string(name);
+    if (name == "" || !installer_package_installed(name))
+        return true;
+
+    if (installer_package_manager() == "apk")
+        run_args([ "apk", "del", name ]);
+    else
+        run_args([ "opkg", "remove", "--force-depends", name ]);
+    return true;
+}
+
+function installer_remove_package_prefix(prefix) {
+    prefix = as_string(prefix);
+    if (prefix == "")
+        return true;
+
+    for (let name in installer_installed_package_names())
+        if (starts_with(name, prefix))
+            installer_remove_package(name);
+    return true;
+}
+
+function installer_confirm_remove_https_dns_proxy() {
+    if (!installer_package_installed("https-dns-proxy"))
+        return true;
+
+    warn("Detected conflicting package: https-dns-proxy\n");
+
+    if (run("[ ! -t 0 ]")) {
+        warn("Remove the conflicting https-dns-proxy package and continue?: 1 (yes, non-interactive)\n");
+        return true;
+    }
+
+    while (true) {
+        warn("\nRemove the conflicting https-dns-proxy package and continue?\n");
+        warn("  1) yes\n");
+        warn("  2) no\n");
+        warn("Select [2]: ");
+
+        let input = fs.open("/dev/stdin", "r");
+        let answer = input ? trim(as_string(input.read("line"))) : "";
+        if (input)
+            input.close();
+
+        if (answer == "1")
+            return true;
+        if (answer == "" || answer == "2")
+            return false;
+        warn("Invalid choice\n");
+    }
+}
+
+function installer_service_enabled(init_script) {
+    return path_executable(init_script) && run_args([ init_script, "enabled" ]);
+}
+
+function installer_service_running(init_script) {
+    if (!path_executable(init_script))
+        return false;
+
+    if (trim(command_output([ init_script, "status" ])) == "running")
+        return true;
+    return run_args([ init_script, "running" ]);
+}
+
+function installer_podkop_plus_status_running() {
+    if (!path_executable(INSTALLER_PODKOP_PLUS_BIN))
+        return false;
+    return index(command_output([ INSTALLER_PODKOP_PLUS_BIN, "get_status" ]), "\"running\":1") >= 0;
+}
+
+function installer_restore_dnsmasq() {
+    if (path_executable(INSTALLER_PODKOP_PLUS_BIN) &&
+        run_args([ INSTALLER_PODKOP_PLUS_BIN, "restore_dnsmasq" ]))
+        return true;
+
+    return dnsmasq_failsafe_restore();
+}
+
+function installer_deactivate_original_podkop() {
+    if (!path_executable(INSTALLER_ORIGINAL_PODKOP_INIT))
+        return;
+
+    if (installer_service_running(INSTALLER_ORIGINAL_PODKOP_INIT)) {
+        warn("Detected a running original Podkop service. Stopping it before installing Podkop Plus.\n");
+        run_args([ INSTALLER_ORIGINAL_PODKOP_INIT, "stop" ]);
+    }
+
+    if (installer_service_enabled(INSTALLER_ORIGINAL_PODKOP_INIT)) {
+        warn("Detected an enabled original Podkop autostart. Disabling it before installing Podkop Plus.\n");
+        run_args([ INSTALLER_ORIGINAL_PODKOP_INIT, "disable" ]);
+    }
+}
+
+function installer_cleanup_legacy() {
+    let backend_installed = installer_package_installed("podkop-plus");
+    let was_enabled = installer_service_enabled(INSTALLER_PODKOP_PLUS_INIT);
+    let was_running = installer_service_running(INSTALLER_PODKOP_PLUS_INIT) || installer_podkop_plus_status_running();
+
+    if (!installer_confirm_remove_https_dns_proxy())
+        return false;
+
+    installer_deactivate_original_podkop();
+
+    if (path_executable(INSTALLER_PODKOP_PLUS_INIT)) {
+        run_args([ INSTALLER_PODKOP_PLUS_INIT, "stop" ]);
+        installer_restore_dnsmasq();
+        run_args([ INSTALLER_PODKOP_PLUS_INIT, "disable" ]);
+    }
+
+    installer_remove_package("luci-app-https-dns-proxy");
+    installer_remove_package("https-dns-proxy");
+    installer_remove_package_prefix("luci-i18n-https-dns-proxy");
+    installer_remove_package_prefix("luci-i18n-podkop-plus");
+    installer_remove_package("luci-app-podkop-plus");
+
+    if (!backend_installed) {
+        remove_path(INSTALLER_PODKOP_PLUS_LIB);
+        remove_path(INSTALLER_PODKOP_PLUS_INIT);
+        remove_path(INSTALLER_PODKOP_PLUS_BIN);
+    }
+
+    for (let path in [
+        INSTALLER_PODKOP_PLUS_LUCI_VIEW,
+        INSTALLER_MENU_JSON,
+        INSTALLER_ACL_JSON,
+        INSTALLER_PODKOP_PLUS_UCI_DEFAULTS,
+        INSTALLER_RU_LMO,
+        INSTALLER_EN_LMO,
+        INSTALLER_RU_LUA,
+        INSTALLER_EN_LUA
+    ])
+        remove_path(path);
+
+    print("PODKOP_WAS_ENABLED=", was_enabled ? "1" : "0", "\n");
+    print("PODKOP_WAS_RUNNING=", was_running ? "1" : "0", "\n");
+    return true;
+}
+
+function installer_post_install() {
+    remove_globs(env("PODKOP_INSTALLER_LUCI_CACHE_GLOBS", "/var/luci-indexcache* /tmp/luci-indexcache*"));
+    for (let path in [
+        env("PODKOP_INSTALLER_LATEST_VERSION_CACHE", "/tmp/podkop-plus.latest-version.cache"),
+        env("PODKOP_INSTALLER_SYSTEM_INFO_CACHE", "/var/run/podkop-plus/system-info.json"),
+        env("PODKOP_INSTALLER_SERVER_COUNTRY_CACHE", "/var/run/podkop-plus/server-country-cache.json"),
+        env("PODKOP_INSTALLER_SING_BOX_VERSION_CACHE", "/var/run/podkop-plus/ui-state/sing-box-version"),
+        env("PODKOP_INSTALLER_TMP_SYSTEM_INFO_CACHE", "/tmp/podkop-plus/system-info.json")
+    ])
+        remove_path(path);
+
+    if (path_executable(INSTALLER_RPCD_INIT))
+        run_args([ INSTALLER_RPCD_INIT, "reload" ]);
+
+    if (env("PODKOP_WAS_ENABLED", "0") == "1" && path_executable(INSTALLER_PODKOP_PLUS_INIT))
+        run_args([ INSTALLER_PODKOP_PLUS_INIT, "enable" ]);
+
+    if (env("PODKOP_WAS_RUNNING", "0") == "1" && path_executable(INSTALLER_PODKOP_PLUS_INIT)) {
+        if (!run_args([ INSTALLER_PODKOP_PLUS_INIT, "start" ]) &&
+            !run_args([ INSTALLER_PODKOP_PLUS_INIT, "restart" ]))
+            warn("Failed to start Podkop Plus after upgrade.\n");
+    }
+
+    return true;
+}
+
+function list_has(values, needle) {
+    for (let value in words(values))
+        if (value == needle)
+            return true;
+    return false;
+}
+
+function dnsmasq_legacy_instance_exists() {
+    return uci_exists("dhcp.podkop_plus");
+}
+
+function dnsmasq_default_servers() {
+    return uci_get("dhcp.@dnsmasq[0].server");
+}
+
+function dnsmasq_default_has_podkop_dns() {
+    return list_has(dnsmasq_default_servers(), "127.0.0.42");
+}
+
+function dnsmasq_has_podkop_dns() {
+    return dnsmasq_default_has_podkop_dns() || dnsmasq_legacy_instance_exists();
+}
+
+function dnsmasq_has_podkop_managed_state() {
+    return uci_get("dhcp.@dnsmasq[0].podkop_server") != "" ||
+        uci_get("dhcp.@dnsmasq[0].podkop_noresolv") != "" ||
+        uci_get("dhcp.@dnsmasq[0].podkop_cachesize") != "" ||
+        uci_get("dhcp.@dnsmasq[0].podkop_notinterface") != "" ||
+        dnsmasq_legacy_instance_exists();
+}
+
+function dnsmasq_management_disabled() {
+    return truthy(uci_get("podkop-plus.settings.dont_touch_dhcp"));
+}
+
+function dnsmasq_legacy_interfaces() {
+    let legacy_interfaces = uci_get("dhcp.podkop_plus.interface");
+    if (legacy_interfaces == "")
+        legacy_interfaces = uci_get("podkop-plus.settings.source_network_interfaces");
+    if (legacy_interfaces == "")
+        legacy_interfaces = "br-lan";
+
+    return legacy_interfaces;
+}
+
+function dnsmasq_cleanup_legacy_instance() {
+    let legacy_instance_present = dnsmasq_legacy_instance_exists();
+    let legacy_interfaces = legacy_instance_present ? dnsmasq_legacy_interfaces() : "";
+
+    uci_delete("dhcp.podkop_plus");
+
+    let backup_notinterfaces = uci_get("dhcp.@dnsmasq[0].podkop_notinterface");
+    if (backup_notinterfaces != "") {
+        uci_delete("dhcp.@dnsmasq[0].notinterface");
+        for (let value in words(backup_notinterfaces))
+            uci_add_list("dhcp.@dnsmasq[0].notinterface", value);
+        uci_delete("dhcp.@dnsmasq[0].podkop_notinterface");
+        return;
+    }
+
+    if (legacy_instance_present) {
+        for (let value in words(legacy_interfaces))
+            uci_del_list("dhcp.@dnsmasq[0].notinterface", value);
+    }
+
+    uci_delete("dhcp.@dnsmasq[0].podkop_notinterface");
+}
+
+function dnsmasq_restore_default_instance() {
+    let server_list = dnsmasq_default_servers();
+    let backup_servers = uci_get("dhcp.@dnsmasq[0].podkop_server");
+    let managed_global_dns = list_has(server_list, "127.0.0.42");
+
+    uci_delete("dhcp.@dnsmasq[0].server");
+    if (backup_servers != "") {
+        for (let value in words(backup_servers))
+            uci_add_list("dhcp.@dnsmasq[0].server", value);
+        uci_delete("dhcp.@dnsmasq[0].podkop_server");
+    }
+    else {
+        for (let value in words(server_list)) {
+            if (value != "127.0.0.42")
+                uci_add_list("dhcp.@dnsmasq[0].server", value);
+        }
+    }
+    uci_delete("dhcp.@dnsmasq[0].podkop_server");
+
+    let noresolv = uci_get("dhcp.@dnsmasq[0].podkop_noresolv");
+    if (noresolv != "") {
+        uci_set("dhcp.@dnsmasq[0].noresolv", noresolv);
+        uci_delete("dhcp.@dnsmasq[0].podkop_noresolv");
+    }
+    else if (managed_global_dns) {
+        uci_set("dhcp.@dnsmasq[0].noresolv", "0");
+    }
+
+    let cachesize = uci_get("dhcp.@dnsmasq[0].podkop_cachesize");
+    if (cachesize != "") {
+        uci_set("dhcp.@dnsmasq[0].cachesize", cachesize);
+        uci_delete("dhcp.@dnsmasq[0].podkop_cachesize");
+    }
+    else if (managed_global_dns) {
+        uci_set("dhcp.@dnsmasq[0].cachesize", "150");
+    }
+}
+
+function dnsmasq_failsafe_restore() {
+    if (!uci_available())
+        return true;
+
+    if (dnsmasq_management_disabled() && !dnsmasq_has_podkop_managed_state())
+        return true;
+
+    if (!dnsmasq_has_podkop_dns() && !dnsmasq_has_podkop_managed_state())
+        return true;
+
+    dnsmasq_cleanup_legacy_instance();
+    dnsmasq_restore_default_instance();
+    uci_commit("dhcp");
+    restart_dnsmasq();
+    return true;
 }
 
 function asset_matches(name, kind, ext) {
@@ -209,128 +796,6 @@ function asset_matches(name, kind, ext) {
     if (kind == "i18n")
         return starts_with(name, "luci-i18n-podkop-plus-ru_") || starts_with(name, "luci-i18n-podkop-plus-ru-");
     return false;
-}
-
-function release_asset_url_by_suffix_from_release(release, suffix) {
-    suffix = as_string(suffix);
-    for (let asset in (type(release.assets) == "array" ? release.assets : [])) {
-        if (type(asset) != "object")
-            continue;
-        let name = as_string(asset.name || "");
-        if (ends_with(name, suffix))
-            return as_string(asset.browser_download_url || "");
-    }
-
-    return "";
-}
-
-function release_asset_url_by_suffix(suffix) {
-    let release = read_stdin_json();
-    if (type(release) != "object")
-        return;
-
-    let url = release_asset_url_by_suffix_from_release(release, suffix);
-    if (url != "")
-        print(url, "\n");
-}
-
-function sing_box_extended_arch_suffix(host_arch, distrib_arch) {
-    host_arch = as_string(host_arch);
-    distrib_arch = as_string(distrib_arch);
-
-    if (contains(distrib_arch, "mipsel") || contains(distrib_arch, "mipsle"))
-        host_arch = "mipsel";
-    else if (contains(distrib_arch, "mips64el") || contains(distrib_arch, "mips64le"))
-        host_arch = "mips64el";
-
-    if (host_arch == "aarch64")
-        print("arm64\n");
-    else if (substr(host_arch, 0, 5) == "armv7")
-        print("armv7\n");
-    else if (substr(host_arch, 0, 5) == "armv6")
-        print("armv6\n");
-    else if (host_arch == "x86_64")
-        print("amd64\n");
-    else if (host_arch == "i386" || host_arch == "i686")
-        print("386\n");
-    else if (host_arch == "mips")
-        print("mips-softfloat\n");
-    else if (host_arch == "mipsel" || host_arch == "mipsle")
-        print("mipsle-softfloat\n");
-    else if (host_arch == "mips64")
-        print("mips64\n");
-    else if (host_arch == "mips64el" || host_arch == "mips64le")
-        print("mips64le\n");
-    else if (host_arch == "riscv64")
-        print("riscv64\n");
-    else if (host_arch == "s390x")
-        print("s390x\n");
-    else
-        exit(1);
-}
-
-function sing_box_extended_asset_url(arch_suffix, _unused, compressed) {
-    let release = read_stdin_json();
-
-    if (type(release) != "object")
-        exit(1);
-
-    if (as_string(compressed) != "1")
-        exit(1);
-
-    arch_suffix = as_string(arch_suffix);
-    if (arch_suffix == "")
-        exit(1);
-
-    let url = release_asset_url_by_suffix_from_release(release, "linux-" + arch_suffix + "-compressed.tar.gz");
-    if (url != "") {
-        print(url, "\n");
-        return;
-    }
-
-    exit(1);
-}
-
-function sing_box_extended_package_asset_url(distrib_arch, asset_ext) {
-    let release = read_stdin_json();
-    let suffix;
-
-    if (type(release) != "object")
-        exit(1);
-
-    distrib_arch = as_string(distrib_arch);
-    asset_ext = as_string(asset_ext);
-    if (distrib_arch == "" || asset_ext == "")
-        exit(1);
-
-    suffix = "_openwrt_" + distrib_arch + "." + asset_ext;
-    for (let asset in (type(release.assets) == "array" ? release.assets : [])) {
-        if (type(asset) != "object")
-            continue;
-
-        let name = as_string(asset.name || "");
-        let url = as_string(asset.browser_download_url || "");
-        if (url != "" && starts_with(name, "sing-box-extended_") && ends_with(name, suffix)) {
-            print(url, "\n");
-            return;
-        }
-    }
-
-    exit(1);
-}
-
-function archive_member_path(member_name) {
-    member_name = as_string(member_name);
-    for (let line in split(read_stdin(), "\n")) {
-        line = as_string(line);
-        if (line == "")
-            continue;
-        let parts = split(line, "/");
-        if (length(parts) > 0 && as_string(parts[length(parts) - 1]) == member_name) {
-            print(line, "\n");
-            return;
-        }
-    }
 }
 
 function github_message() {
@@ -367,14 +832,17 @@ else if (mode == "release-tag")
     release_tag();
 else if (mode == "release-asset-url")
     release_asset_url(ARGV[1], ARGV[2]);
-else if (mode == "sing-box-extended-arch-suffix")
-    sing_box_extended_arch_suffix(ARGV[1], ARGV[2]);
-else if (mode == "sing-box-extended-asset-url")
-    sing_box_extended_asset_url(ARGV[1], ARGV[2], ARGV[3]);
-else if (mode == "sing-box-extended-package-asset-url")
-    sing_box_extended_package_asset_url(ARGV[1], ARGV[2]);
-else if (mode == "archive-member-path")
-    archive_member_path(ARGV[1]);
+else if (mode == "uci-get") {
+    let value = uci_get(ARGV[1]);
+    if (value != "")
+        print(value, "\n");
+}
+else if (mode == "dnsmasq-failsafe-restore")
+    exit(dnsmasq_failsafe_restore() ? 0 : 1);
+else if (mode == "installer-cleanup-legacy")
+    exit(installer_cleanup_legacy() ? 0 : 1);
+else if (mode == "installer-post-install")
+    exit(installer_post_install() ? 0 : 1);
 else
     exit(1);
 EOF
@@ -423,14 +891,6 @@ download_with_retry() {
     return 1
 }
 
-pkg_list_installed_names() {
-    if [ "$PKG_IS_APK" -eq 1 ]; then
-        apk info 2>/dev/null
-    else
-        opkg list-installed 2>/dev/null | awk '{print $1}'
-    fi
-}
-
 pkg_is_installed() {
     pkg_name="$1"
 
@@ -459,137 +919,12 @@ pkg_install_name() {
     fi
 }
 
-pkg_install_name_downgrade() {
-    pkg_name="$1"
-
-    if [ "$PKG_IS_APK" -eq 1 ]; then
-        if pkg_is_installed "$pkg_name"; then
-            apk fix --reinstall --upgrade "$pkg_name" </dev/null
-        else
-            apk add "$pkg_name" </dev/null
-        fi
-    else
-        opkg install --force-overwrite --force-reinstall --force-downgrade "$pkg_name" </dev/null ||
-            opkg install --force-downgrade "$pkg_name" </dev/null
-    fi
-}
-
-pkg_remove_if_installed() {
-    pkg_name="$1"
-
-    if ! pkg_is_installed "$pkg_name"; then
-        return 0
-    fi
-
-    if [ "$PKG_IS_APK" -eq 1 ]; then
-        apk del "$pkg_name" >/dev/null 2>&1 </dev/null || true
-    else
-        opkg remove --force-depends "$pkg_name" >/dev/null 2>&1 </dev/null || true
-    fi
-}
-
-pkg_remove_sing_box_conflict() {
-    pkg_name="$1"
-
-    if ! pkg_is_installed "$pkg_name"; then
-        return 0
-    fi
-
-    if [ "$PKG_IS_APK" -eq 1 ]; then
-        apk del --force-broken-world "$pkg_name" </dev/null
-    else
-        opkg remove --force-depends "$pkg_name" </dev/null
-    fi
-}
-
-pkg_remove_matching_prefix() {
-    prefix="$1"
-
-    for pkg_name in $(pkg_list_installed_names | grep "^$prefix" 2>/dev/null); do
-        pkg_remove_if_installed "$pkg_name"
-    done
-}
-
 pkg_install_files() {
     if [ "$PKG_IS_APK" -eq 1 ]; then
         apk add --allow-untrusted "$@" </dev/null
     else
         opkg install --force-overwrite --force-downgrade "$@" </dev/null
     fi
-}
-
-sing_box_managed_service_installed() {
-    [ -r /etc/init.d/sing-box ] || return 1
-    grep -q "$SING_BOX_MANAGED_SERVICE_MARKER" /etc/init.d/sing-box 2>/dev/null
-}
-
-install_managed_sing_box_service_script() {
-    tmp_file="/etc/init.d/sing-box.podkop-plus.$$"
-    cat >"$tmp_file" <<'EOF'
-#!/bin/sh /etc/rc.common
-# Podkop Plus managed sing-box service for binary variants
-
-USE_PROCD=1
-START=99
-PROG="/usr/bin/sing-box"
-
-start_service() {
-    config_load "sing-box"
-    local enabled config_file working_directory
-    local log_stderr
-
-    config_get_bool enabled "main" "enabled" "0"
-    [ "$enabled" -eq "1" ] || return 0
-
-    config_get config_file "main" "conffile" "/etc/sing-box/config.json"
-    config_get working_directory "main" "workdir" "/usr/share/sing-box"
-    config_get_bool log_stderr "main" "log_stderr" "1"
-
-    procd_open_instance
-    procd_set_param command "$PROG" run -c "$config_file" -D "$working_directory"
-    procd_set_param file "$config_file"
-    procd_set_param stderr "$log_stderr"
-    procd_set_param limits core="unlimited"
-    procd_set_param limits nofile="1000000 1000000"
-    procd_set_param respawn
-    procd_close_instance
-}
-
-service_triggers() {
-    procd_add_reload_trigger "sing-box"
-}
-EOF
-
-    chmod 0755 "$tmp_file" &&
-        mv -f "$tmp_file" /etc/init.d/sing-box
-}
-
-remove_managed_sing_box_service_script() {
-    sing_box_managed_service_installed || return 0
-
-    /etc/init.d/sing-box stop >/dev/null 2>&1 || true
-    /etc/init.d/sing-box disable >/dev/null 2>&1 || true
-    rm -f /etc/init.d/sing-box
-}
-
-disable_sing_box_service_config() {
-    command_exists uci || return 0
-
-    uci -q get sing-box.main >/dev/null 2>&1 ||
-        uci -q set sing-box.main=sing-box >/dev/null 2>&1 || true
-    uci -q set sing-box.main.enabled='0' >/dev/null 2>&1 || true
-    uci -q commit sing-box >/dev/null 2>&1 || true
-}
-
-prepare_sing_box_service_disabled() {
-    disable_sing_box_service_config
-    [ -x /etc/init.d/sing-box ] && /etc/init.d/sing-box stop >/dev/null 2>&1 || true
-    [ -x /etc/init.d/sing-box ] && /etc/init.d/sing-box disable >/dev/null 2>&1 || true
-}
-
-prepare_sing_box_package_service_install() {
-    prepare_sing_box_service_disabled
-    remove_managed_sing_box_service_script
 }
 
 ensure_bootstrap_tool() {
@@ -602,6 +937,23 @@ ensure_bootstrap_tool() {
 
     msg "Installing bootstrap dependency: $package_name"
     pkg_install_name "$package_name" || fail "Failed to install $package_name"
+}
+
+ensure_bootstrap_package() {
+    package_name="$1"
+
+    if pkg_is_installed "$package_name"; then
+        return 0
+    fi
+
+    msg "Installing bootstrap dependency: $package_name"
+    pkg_install_name "$package_name" || fail "Failed to install $package_name"
+}
+
+ensure_bootstrap_ucode_runtime() {
+    ensure_bootstrap_tool "ucode" "ucode"
+    ensure_bootstrap_package "ucode-mod-fs"
+    ensure_bootstrap_package "ucode-mod-uci"
 }
 
 sync_time() {
@@ -759,55 +1111,7 @@ confirm_prompt() {
 }
 
 get_luci_main_lang() {
-    command_exists uci || return 0
-    uci -q get luci.main.lang 2>/dev/null || true
-}
-
-sanitize_semver() {
-    printf '%s\n' "$1" | sed 's/^v//;s/-.*$//;s/[^0-9.].*$//'
-}
-
-version_ge() {
-    lhs_major=0
-    lhs_minor=0
-    lhs_patch=0
-    rhs_major=0
-    rhs_minor=0
-    rhs_patch=0
-
-    lhs_version="$(sanitize_semver "$1")"
-    rhs_version="$(sanitize_semver "$2")"
-
-    old_ifs="$IFS"
-    IFS='.'
-    set -- $lhs_version
-    IFS="$old_ifs"
-    [ -n "$1" ] && lhs_major="$1"
-    [ -n "$2" ] && lhs_minor="$2"
-    [ -n "$3" ] && lhs_patch="$3"
-
-    IFS='.'
-    set -- $rhs_version
-    IFS="$old_ifs"
-    [ -n "$1" ] && rhs_major="$1"
-    [ -n "$2" ] && rhs_minor="$2"
-    [ -n "$3" ] && rhs_patch="$3"
-
-    if [ "$lhs_major" -gt "$rhs_major" ]; then
-        return 0
-    fi
-    if [ "$lhs_major" -lt "$rhs_major" ]; then
-        return 1
-    fi
-
-    if [ "$lhs_minor" -gt "$rhs_minor" ]; then
-        return 0
-    fi
-    if [ "$lhs_minor" -lt "$rhs_minor" ]; then
-        return 1
-    fi
-
-    [ "$lhs_patch" -ge "$rhs_patch" ]
+    install_json_ucode uci-get luci.main.lang 2>/dev/null || true
 }
 
 extract_package_version() {
@@ -909,39 +1213,6 @@ resolve_podkop_plus_release() {
     fi
 }
 
-remove_conflicting_dns_proxy() {
-    if ! pkg_is_installed "https-dns-proxy"; then
-        return 0
-    fi
-
-    warn "Detected conflicting package: https-dns-proxy"
-    confirm_prompt "Remove the conflicting https-dns-proxy package and continue?" || fail "Please remove https-dns-proxy manually and run the installer again"
-
-    pkg_remove_if_installed "luci-app-https-dns-proxy"
-    pkg_remove_if_installed "https-dns-proxy"
-    pkg_remove_matching_prefix "luci-i18n-https-dns-proxy"
-}
-
-remove_old_sing_box_if_needed() {
-    installed_version=""
-
-    command_exists sing-box || return 0
-
-    installed_version="$(sing_box_version_value)"
-    [ -n "$installed_version" ] || return 0
-
-    if version_ge "$installed_version" "$REQUIRED_SING_BOX_VERSION"; then
-        return 0
-    fi
-
-    warn "sing-box $installed_version is older than the required version $REQUIRED_SING_BOX_VERSION. Removing the old package first."
-    [ -x /etc/init.d/podkop-plus ] && /etc/init.d/podkop-plus stop >/dev/null 2>&1 || true
-    [ -x /etc/init.d/podkop ] && /etc/init.d/podkop stop >/dev/null 2>&1 || true
-    restore_podkop_dnsmasq_failsafe
-    pkg_remove_if_installed "sing-box-tiny"
-    pkg_remove_if_installed "sing-box"
-}
-
 sing_box_version_value() {
     command_exists sing-box || return 0
 
@@ -990,11 +1261,6 @@ sing_box_tiny_marker_set() {
 read_sing_box_version_state() {
     [ -r "$SING_BOX_VERSION_STATE_FILE" ] || return 1
     sed -n '1p' "$SING_BOX_VERSION_STATE_FILE" 2>/dev/null
-}
-
-read_sing_box_variant_marker() {
-    [ -r "$SING_BOX_VARIANT_STATE_FILE" ] || return 1
-    sed -n '1p' "$SING_BOX_VARIANT_STATE_FILE" 2>/dev/null
 }
 
 read_sing_box_binary_version() {
@@ -1119,713 +1385,48 @@ select_sing_box_installation() {
     done
 }
 
-pkg_install_sing_box_variant() {
-    target_pkg="$1"
-    conflict_pkg="$2"
-
-    prepare_sing_box_package_service_install
-
-    if { [ -z "$conflict_pkg" ] || ! pkg_is_installed "$conflict_pkg"; } &&
-        { [ "$target_pkg" = "sing-box-extended" ] || ! pkg_is_installed "sing-box-extended"; }; then
-        pkg_install_name_downgrade "$target_pkg" && return 0
-    fi
-
-    if [ "$target_pkg" != "sing-box-extended" ]; then
-        pkg_remove_sing_box_conflict "sing-box-extended" || return 1
-    fi
-    if [ -n "$conflict_pkg" ]; then
-        pkg_remove_sing_box_conflict "$conflict_pkg" || return 1
-    fi
-
-    pkg_install_name_downgrade "$target_pkg"
-}
-
-write_sing_box_variant_marker() {
-    variant="$1"
-    marker_dir="$(dirname "$SING_BOX_VARIANT_STATE_FILE")"
-
-    mkdir -p "$marker_dir" || return 1
-    printf '%s\n' "$variant" >"$SING_BOX_VARIANT_STATE_FILE"
-}
-
-write_sing_box_version_state() {
-    version="$1"
-    state_dir="$(dirname "$SING_BOX_VERSION_STATE_FILE")"
-
-    [ -n "$version" ] || return 1
-    mkdir -p "$state_dir" || return 1
-    printf '%s\n' "$version" >"$SING_BOX_VERSION_STATE_FILE"
-}
-
-restore_sing_box_variant_marker() {
-    previous_marker="$1"
-
-    if [ -n "$previous_marker" ]; then
-        write_sing_box_variant_marker "$previous_marker"
-    else
-        rm -f "$SING_BOX_VARIANT_STATE_FILE" 2>/dev/null || true
-    fi
-}
-
-restore_sing_box_version_state() {
-    previous_version="$1"
-
-    if [ -n "$previous_version" ]; then
-        write_sing_box_version_state "$previous_version"
-    else
-        rm -f "$SING_BOX_VERSION_STATE_FILE" 2>/dev/null || true
-    fi
-}
-
-resolve_sing_box_extended_release() {
-    compressed="$1"
-    host_arch="$(uname -m 2>/dev/null || true)"
-    distrib_arch="$(read_openwrt_release_value "DISTRIB_ARCH")"
-    asset_ext="ipk"
-
-    SING_BOX_EXTENDED_RELEASE_JSON="$(fetch_github_latest_release_json "shtorm-7" "sing-box-extended")"
-    SING_BOX_EXTENDED_RELEASE_TAG="$(printf '%s' "$SING_BOX_EXTENDED_RELEASE_JSON" | install_json_ucode release-tag 2>/dev/null)"
-    [ -n "$SING_BOX_EXTENDED_RELEASE_TAG" ] || fail "Failed to detect the sing-box-extended release tag"
-
-    if [ "$compressed" -eq 0 ]; then
-        [ "$PKG_IS_APK" -eq 1 ] && asset_ext="apk"
-        [ -n "$distrib_arch" ] || fail "Failed to detect OpenWrt package architecture for sing-box-extended"
-
-        SING_BOX_EXTENDED_ASSET_URL="$(printf '%s' "$SING_BOX_EXTENDED_RELEASE_JSON" | install_json_ucode sing-box-extended-package-asset-url "$distrib_arch" "$asset_ext" 2>/dev/null)"
-        [ -n "$SING_BOX_EXTENDED_ASSET_URL" ] || fail "The sing-box-extended release does not contain an OpenWrt .$asset_ext package for $distrib_arch"
-        SING_BOX_EXTENDED_ASSET_NAME="$(basename "$SING_BOX_EXTENDED_ASSET_URL")"
-        return 0
-    fi
-
-    SING_BOX_EXTENDED_ARCH_SUFFIX="$(install_json_ucode sing-box-extended-arch-suffix "$host_arch" "$distrib_arch" 2>/dev/null)" ||
-        fail "Failed to resolve sing-box-extended architecture for $host_arch/$distrib_arch"
-    [ -n "$SING_BOX_EXTENDED_ARCH_SUFFIX" ] || fail "Failed to resolve sing-box-extended architecture for $host_arch/$distrib_arch"
-
-    SING_BOX_EXTENDED_ASSET_URL="$(printf '%s' "$SING_BOX_EXTENDED_RELEASE_JSON" | install_json_ucode sing-box-extended-asset-url "$SING_BOX_EXTENDED_ARCH_SUFFIX" 0 "$compressed" 2>/dev/null)"
-    [ -n "$SING_BOX_EXTENDED_ASSET_URL" ] || fail "The sing-box-extended release does not contain a matching asset for $SING_BOX_EXTENDED_ARCH_SUFFIX"
-    SING_BOX_EXTENDED_ASSET_NAME="$(basename "$SING_BOX_EXTENDED_ASSET_URL")"
-}
-
-validate_extended_sing_box_binary() {
-    binary_path="$1"
-    library_dir="${2:-}"
-    version=""
-
-    [ -x "$binary_path" ] || return 1
-
-    version="$(read_sing_box_binary_version "$binary_path" "$library_dir")"
-
-    case "$version" in
-        *extended*) printf '%s\n' "$version"; return 0 ;;
-    esac
-
-    return 1
-}
-
-move_file_to_backup() {
-    target_path="$1"
-    backup_path="$2"
-
-    [ -e "$target_path" ] || return 0
-    rm -f "$backup_path"
-    mv -f "$target_path" "$backup_path"
-}
-
-restore_file_backup() {
-    target_path="$1"
-    backup_path="$2"
-
-    if [ -n "$backup_path" ] && [ -s "$backup_path" ]; then
-        mv -f "$backup_path" "$target_path"
-        return $?
-    fi
-
-    rm -f "$target_path"
-}
-
-restore_sing_box_service_from_marker() {
-    previous_marker="$1"
-
-    if [ "$previous_marker" = "extended-compressed" ]; then
-        install_managed_sing_box_service_script >/dev/null 2>&1 || return 1
-        return 0
-    fi
-
-    remove_managed_sing_box_service_script >/dev/null 2>&1 || true
-}
-
-restore_sing_box_extended_package_variant() {
-    package_file=""
-    new_version=""
-
-    resolve_sing_box_extended_release 0
-    package_file="$TMP_DIR/$SING_BOX_EXTENDED_ASSET_NAME"
-    download_with_retry "$SING_BOX_EXTENDED_ASSET_URL" "$package_file" "$SING_BOX_EXTENDED_ASSET_NAME" || return 1
-    prepare_sing_box_package_service_install
-    pkg_remove_sing_box_conflict "sing-box-tiny" >/dev/null 2>&1 || true
-    pkg_remove_sing_box_conflict "sing-box" >/dev/null 2>&1 || true
-    pkg_install_files "$package_file" || {
-        rm -f "$package_file"
-        return 1
-    }
-    rm -f "$package_file"
-
-    new_version="$(validate_extended_sing_box_binary /usr/bin/sing-box /usr/lib)" || return 1
-    write_sing_box_variant_marker "extended" >/dev/null 2>&1 || true
-    write_sing_box_version_state "$new_version" >/dev/null 2>&1 || true
-}
-
-restore_sing_box_package_variant() {
-    previous_variant="$1"
-
-    case "$previous_variant" in
-        tiny)
-            pkg_install_sing_box_variant "sing-box-tiny" "sing-box"
-            ;;
-        stable)
-            pkg_install_sing_box_variant "sing-box" "sing-box-tiny"
-            ;;
-        extended)
-            restore_sing_box_extended_package_variant
-            ;;
-        none)
-            pkg_remove_sing_box_conflict "sing-box-extended"
-            pkg_remove_if_installed "sing-box"
-            pkg_remove_if_installed "sing-box-tiny"
-            remove_managed_sing_box_service_script >/dev/null 2>&1 || true
-            rm -f /usr/bin/sing-box
-            ;;
-        *)
-            return 1
-            ;;
-    esac
-}
-
-sing_box_variant_is_package_managed() {
-    case "$1" in
-        stable | tiny | extended)
-            return 0
-            ;;
-    esac
-
-    return 1
-}
-
-restore_sing_box_install_backup() {
-    previous_variant="$1"
-    backup_binary="$2"
-
-    if sing_box_variant_is_package_managed "$previous_variant"; then
-        if restore_sing_box_package_variant "$previous_variant"; then
-            return 0
-        fi
-
-        [ -n "$backup_binary" ] && restore_file_backup /usr/bin/sing-box "$backup_binary" >/dev/null 2>&1 || true
-        [ -x /usr/bin/sing-box ] && chmod 0755 /usr/bin/sing-box >/dev/null 2>&1 || true
-        return 1
-    fi
-
-    if [ -n "$backup_binary" ]; then
-        restore_file_backup /usr/bin/sing-box "$backup_binary" >/dev/null 2>&1 || return 1
-        [ -x /usr/bin/sing-box ] && chmod 0755 /usr/bin/sing-box >/dev/null 2>&1 || true
-        return 0
-    fi
-
-    restore_sing_box_package_variant "$previous_variant"
-}
-
-restore_sing_box_after_failed_extended_install() {
-    previous_variant="$1"
-    backup_binary="$2"
-    backup_cronet="$3"
-    previous_marker="$4"
-    previous_version_state="$5"
-    archive_file="${6:-}"
-    cronet_touched="${7:-0}"
-    restore_status=0
-
-    [ -n "$archive_file" ] && rm -f "$archive_file"
-
-    if [ "$cronet_touched" -eq 1 ]; then
-        restore_file_backup /usr/lib/libcronet.so "$backup_cronet" >/dev/null 2>&1 || true
-    fi
-
-    restore_sing_box_install_backup "$previous_variant" "$backup_binary" >/dev/null 2>&1 || restore_status=1
-
-    restore_sing_box_variant_marker "$previous_marker" >/dev/null 2>&1 || true
-    restore_sing_box_version_state "$previous_version_state" >/dev/null 2>&1 || true
-    restore_sing_box_service_from_marker "$previous_marker" >/dev/null 2>&1 || true
-    rm -f /var/run/podkop-plus/ui-state/sing-box-version 2>/dev/null || true
-    return "$restore_status"
-}
-
-restore_sing_box_after_failed_extended_package_install() {
-    previous_variant="$1"
-    backup_binary="$2"
-    backup_cronet="$3"
-    previous_marker="$4"
-    previous_version_state="$5"
-    package_file="${6:-}"
-    cronet_touched="${7:-0}"
-    restore_status=0
-
-    [ -n "$package_file" ] && rm -f "$package_file"
-    pkg_remove_sing_box_conflict "sing-box-extended" >/dev/null 2>&1 || true
-
-    restore_sing_box_install_backup "$previous_variant" "$backup_binary" >/dev/null 2>&1 || restore_status=1
-
-    if [ "$cronet_touched" -eq 1 ]; then
-        restore_file_backup /usr/lib/libcronet.so "$backup_cronet" >/dev/null 2>&1 || true
-        [ -s /usr/lib/libcronet.so ] && chmod 0644 /usr/lib/libcronet.so >/dev/null 2>&1 || true
-    fi
-
-    restore_sing_box_variant_marker "$previous_marker" >/dev/null 2>&1 || true
-    restore_sing_box_version_state "$previous_version_state" >/dev/null 2>&1 || true
-    restore_sing_box_service_from_marker "$previous_marker" >/dev/null 2>&1 || true
-    rm -f /var/run/podkop-plus/ui-state/sing-box-version 2>/dev/null || true
-    return "$restore_status"
-}
-
-install_sing_box_extended_package() {
-    label="sing-box-extended"
-    marker_variant="extended"
-    current_variant="$(sing_box_active_variant)"
-    previous_marker="$(read_sing_box_variant_marker 2>/dev/null || true)"
-    previous_version_state="$(read_sing_box_version_state 2>/dev/null || true)"
-    backup_binary=""
-    backup_cronet=""
-    cronet_touched=0
-
-    resolve_sing_box_extended_release 0
-    SING_BOX_EXTENDED_PACKAGE_FILE="$TMP_DIR/$SING_BOX_EXTENDED_ASSET_NAME"
-    download_with_retry "$SING_BOX_EXTENDED_ASSET_URL" "$SING_BOX_EXTENDED_PACKAGE_FILE" "$SING_BOX_EXTENDED_ASSET_NAME" ||
-        fail "Failed to download $SING_BOX_EXTENDED_ASSET_NAME"
-
-    prepare_sing_box_package_service_install
-
-    case "$current_variant" in
-        extended|extended-compressed)
-            if [ -e /usr/bin/sing-box ]; then
-                backup_binary="/usr/bin/sing-box.podkop-backup.$$"
-                move_file_to_backup /usr/bin/sing-box "$backup_binary" || {
-                    rm -f "$backup_binary"
-                    fail "Failed to backup current sing-box binary"
-                }
-            fi
-            if [ -e /usr/lib/libcronet.so ]; then
-                cronet_touched=1
-                backup_cronet="/usr/lib/libcronet.so.podkop-backup.$$"
-                move_file_to_backup /usr/lib/libcronet.so "$backup_cronet" || {
-                    rm -f "$backup_cronet"
-                    backup_cronet=""
-                    cronet_touched=0
-                    restore_sing_box_after_failed_extended_package_install "$current_variant" "$backup_binary" "$backup_cronet" "$previous_marker" "$previous_version_state" "$SING_BOX_EXTENDED_PACKAGE_FILE" "$cronet_touched"
-                    fail "Failed to backup current libcronet.so"
-                }
-            fi
-            ;;
-    esac
-
-    pkg_remove_sing_box_conflict "sing-box-tiny" || {
-        restore_sing_box_after_failed_extended_package_install "$current_variant" "$backup_binary" "$backup_cronet" "$previous_marker" "$previous_version_state" "$SING_BOX_EXTENDED_PACKAGE_FILE" "$cronet_touched"
-        fail "Failed to remove sing-box-tiny before $label package installation"
-    }
-    pkg_remove_sing_box_conflict "sing-box" || {
-        restore_sing_box_after_failed_extended_package_install "$current_variant" "$backup_binary" "$backup_cronet" "$previous_marker" "$previous_version_state" "$SING_BOX_EXTENDED_PACKAGE_FILE" "$cronet_touched"
-        fail "Failed to remove sing-box before $label package installation"
-    }
-
-    if [ -z "$backup_binary" ] && [ -e /usr/bin/sing-box ]; then
-        backup_binary="/usr/bin/sing-box.podkop-backup.$$"
-        move_file_to_backup /usr/bin/sing-box "$backup_binary" || {
-            rm -f "$backup_binary"
-            backup_binary=""
-            restore_sing_box_after_failed_extended_package_install "$current_variant" "$backup_binary" "$backup_cronet" "$previous_marker" "$previous_version_state" "$SING_BOX_EXTENDED_PACKAGE_FILE" "$cronet_touched"
-            fail "Failed to backup existing sing-box binary"
-        }
-    fi
-
-    if [ "$cronet_touched" -eq 0 ] && [ -e /usr/lib/libcronet.so ]; then
-        cronet_touched=1
-        backup_cronet="/usr/lib/libcronet.so.podkop-backup.$$"
-        move_file_to_backup /usr/lib/libcronet.so "$backup_cronet" || {
-            rm -f "$backup_cronet"
-            backup_cronet=""
-            cronet_touched=0
-            restore_sing_box_after_failed_extended_package_install "$current_variant" "$backup_binary" "$backup_cronet" "$previous_marker" "$previous_version_state" "$SING_BOX_EXTENDED_PACKAGE_FILE" "$cronet_touched"
-            fail "Failed to backup current libcronet.so"
-        }
-    fi
-
-    pkg_install_files "$SING_BOX_EXTENDED_PACKAGE_FILE" || {
-        restore_sing_box_after_failed_extended_package_install "$current_variant" "$backup_binary" "$backup_cronet" "$previous_marker" "$previous_version_state" "$SING_BOX_EXTENDED_PACKAGE_FILE" "$cronet_touched"
-        fail "Failed to install $SING_BOX_EXTENDED_ASSET_NAME"
-    }
-
-    new_version="$(validate_extended_sing_box_binary /usr/bin/sing-box /usr/lib)" || {
-        restore_sing_box_after_failed_extended_package_install "$current_variant" "$backup_binary" "$backup_cronet" "$previous_marker" "$previous_version_state" "$SING_BOX_EXTENDED_PACKAGE_FILE" "$cronet_touched"
-        fail "Installed $label package failed validation"
-    }
-
-    rm -f "$SING_BOX_EXTENDED_PACKAGE_FILE" "$backup_binary" "$backup_cronet"
-    write_sing_box_variant_marker "$marker_variant" || warn "Failed to write sing-box variant marker"
-    write_sing_box_version_state "$new_version" || warn "Failed to write sing-box version state"
-    rm -f /var/run/podkop-plus/ui-state/sing-box-version 2>/dev/null || true
-    msg "Installed $label $new_version"
-}
-
-install_sing_box_extended_binary() {
-    compressed="$1"
-    if [ "$compressed" -ne 1 ]; then
-        install_sing_box_extended_package
-        return 0
-    fi
-
-    label="sing-box-extended compressed"
-    marker_variant="extended-compressed"
-    current_variant="$(sing_box_active_variant)"
-    previous_marker="$(read_sing_box_variant_marker 2>/dev/null || true)"
-    previous_version_state="$(read_sing_box_version_state 2>/dev/null || true)"
-    binary_path=""
-    cronet_path=""
-    backup_binary=""
-    backup_cronet=""
-    cronet_touched=0
-    tmp_binary="$TMP_DIR/sing-box.compressed.$$"
-    tmp_cronet=""
-    extract_error="$TMP_DIR/sing-box-extract.err"
-
-    resolve_sing_box_extended_release "$compressed"
-    SING_BOX_EXTENDED_ARCHIVE_FILE="$TMP_DIR/$SING_BOX_EXTENDED_ASSET_NAME"
-    download_with_retry "$SING_BOX_EXTENDED_ASSET_URL" "$SING_BOX_EXTENDED_ARCHIVE_FILE" "$SING_BOX_EXTENDED_ASSET_NAME" ||
-        fail "Failed to download $SING_BOX_EXTENDED_ASSET_NAME"
-
-    binary_path="$(tar -tzf "$SING_BOX_EXTENDED_ARCHIVE_FILE" 2>/dev/null | install_json_ucode archive-member-path sing-box 2>/dev/null)"
-    [ -n "$binary_path" ] || fail "sing-box binary was not found in $SING_BOX_EXTENDED_ASSET_NAME"
-    cronet_path="$(tar -tzf "$SING_BOX_EXTENDED_ARCHIVE_FILE" 2>/dev/null | install_json_ucode archive-member-path libcronet.so 2>/dev/null)"
-
-    if ! tar -xzf "$SING_BOX_EXTENDED_ARCHIVE_FILE" -O "$binary_path" >"$tmp_binary" 2>"$extract_error"; then
-        [ -s "$extract_error" ] && cat "$extract_error" >&2
-        rm -f "$tmp_binary"
-        fail "Failed to extract $label"
-    fi
-    if [ ! -s "$tmp_binary" ]; then
-        rm -f "$tmp_binary"
-        fail "Extracted $label binary is empty"
-    fi
-    if ! chmod 0755 "$tmp_binary"; then
-        rm -f "$tmp_binary"
-        fail "Failed to prepare $label binary"
-    fi
-
-    if [ -n "$cronet_path" ]; then
-        tmp_cronet="$TMP_DIR/libcronet.so"
-        if ! tar -xzf "$SING_BOX_EXTENDED_ARCHIVE_FILE" -O "$cronet_path" >"$tmp_cronet" 2>"$extract_error"; then
-            [ -s "$extract_error" ] && cat "$extract_error" >&2
-            rm -f "$tmp_binary" "$tmp_cronet"
-            fail "Failed to extract libcronet.so from $label"
-        fi
-        if [ ! -s "$tmp_cronet" ]; then
-            rm -f "$tmp_binary" "$tmp_cronet"
-            fail "Extracted libcronet.so is empty"
-        fi
-        if ! chmod 0644 "$tmp_cronet"; then
-            rm -f "$tmp_binary" "$tmp_cronet"
-            fail "Failed to prepare libcronet.so"
-        fi
-    fi
-
-    new_version="$(validate_extended_sing_box_binary "$tmp_binary" "$TMP_DIR")" || {
-        rm -f "$tmp_binary" "$tmp_cronet"
-        fail "Downloaded $label failed validation"
-    }
-
-    if [ -e /usr/bin/sing-box ]; then
-        backup_binary="/usr/bin/sing-box.podkop-backup.$$"
-        move_file_to_backup /usr/bin/sing-box "$backup_binary" || {
-            rm -f "$backup_binary" "$tmp_binary" "$tmp_cronet"
-            fail "Failed to backup current sing-box binary"
-        }
-    fi
-
-    if [ -n "$cronet_path" ]; then
-        cronet_touched=1
-        if [ -e /usr/lib/libcronet.so ]; then
-            backup_cronet="/usr/lib/libcronet.so.podkop-backup.$$"
-            move_file_to_backup /usr/lib/libcronet.so "$backup_cronet" || {
-                rm -f "$backup_cronet" "$tmp_binary" "$tmp_cronet"
-                backup_cronet=""
-                cronet_touched=0
-                restore_sing_box_after_failed_extended_install "$current_variant" "$backup_binary" "$backup_cronet" "$previous_marker" "$previous_version_state" "$SING_BOX_EXTENDED_ARCHIVE_FILE" "$cronet_touched"
-                fail "Failed to backup current libcronet.so"
-            }
-        fi
-    fi
-
-    pkg_remove_sing_box_conflict "sing-box-extended" || {
-        restore_sing_box_after_failed_extended_install "$current_variant" "$backup_binary" "$backup_cronet" "$previous_marker" "$previous_version_state" "$SING_BOX_EXTENDED_ARCHIVE_FILE" "$cronet_touched"
-        rm -f "$tmp_binary" "$tmp_cronet"
-        fail "Failed to remove sing-box-extended before $label installation"
-    }
-    pkg_remove_sing_box_conflict "sing-box-tiny" || {
-        restore_sing_box_after_failed_extended_install "$current_variant" "$backup_binary" "$backup_cronet" "$previous_marker" "$previous_version_state" "$SING_BOX_EXTENDED_ARCHIVE_FILE" "$cronet_touched"
-        rm -f "$tmp_binary" "$tmp_cronet"
-        fail "Failed to remove sing-box-tiny before $label installation"
-    }
-    pkg_remove_sing_box_conflict "sing-box" || {
-        restore_sing_box_after_failed_extended_install "$current_variant" "$backup_binary" "$backup_cronet" "$previous_marker" "$previous_version_state" "$SING_BOX_EXTENDED_ARCHIVE_FILE" "$cronet_touched"
-        rm -f "$tmp_binary" "$tmp_cronet"
-        fail "Failed to remove sing-box before $label installation"
-    }
-
-    remove_managed_sing_box_service_script >/dev/null 2>&1 || true
-    install_managed_sing_box_service_script || {
-        restore_sing_box_after_failed_extended_install "$current_variant" "$backup_binary" "$backup_cronet" "$previous_marker" "$previous_version_state" "$SING_BOX_EXTENDED_ARCHIVE_FILE" "$cronet_touched"
-        rm -f "$tmp_binary" "$tmp_cronet"
-        fail "Failed to install managed sing-box service for $label"
-    }
-
-    rm -f /usr/bin/sing-box
-    if ! mv -f "$tmp_binary" /usr/bin/sing-box || ! chmod 0755 /usr/bin/sing-box; then
-        rm -f /usr/bin/sing-box "$tmp_binary"
-        restore_sing_box_after_failed_extended_install "$current_variant" "$backup_binary" "$backup_cronet" "$previous_marker" "$previous_version_state" "$SING_BOX_EXTENDED_ARCHIVE_FILE" "$cronet_touched"
-        fail "Failed to install $label binary"
-    fi
-
-    if [ -n "$tmp_cronet" ]; then
-        rm -f /usr/lib/libcronet.so
-        if ! mv -f "$tmp_cronet" /usr/lib/libcronet.so || ! chmod 0644 /usr/lib/libcronet.so; then
-            rm -f /usr/lib/libcronet.so "$tmp_cronet"
-            restore_sing_box_after_failed_extended_install "$current_variant" "$backup_binary" "$backup_cronet" "$previous_marker" "$previous_version_state" "$SING_BOX_EXTENDED_ARCHIVE_FILE" "$cronet_touched"
-            fail "Failed to install libcronet.so for $label"
-        fi
-    fi
-
-    rm -f "$SING_BOX_EXTENDED_ARCHIVE_FILE"
-
-    new_version="$(validate_extended_sing_box_binary /usr/bin/sing-box /usr/lib)" || {
-        restore_sing_box_after_failed_extended_install "$current_variant" "$backup_binary" "$backup_cronet" "$previous_marker" "$previous_version_state" "$SING_BOX_EXTENDED_ARCHIVE_FILE" "$cronet_touched"
-        fail "Installed $label failed validation"
-    }
-
-    rm -f "$backup_binary" "$backup_cronet"
-    write_sing_box_variant_marker "$marker_variant" || warn "Failed to write sing-box variant marker"
-    write_sing_box_version_state "$new_version" || warn "Failed to write sing-box version state"
-    rm -f /var/run/podkop-plus/ui-state/sing-box-version 2>/dev/null || true
-    msg "Installed $label $new_version"
-}
-
-stop_podkop_for_sing_box_install() {
-    remember_service_state
-    [ -x /etc/init.d/podkop-plus ] && [ "$PODKOP_WAS_RUNNING" -eq 1 ] &&
-        /etc/init.d/podkop-plus stop >/dev/null 2>&1 || true
-    [ "$PODKOP_WAS_RUNNING" -eq 1 ] && restore_podkop_dnsmasq_failsafe
-    prepare_sing_box_service_disabled
-}
-
 install_selected_sing_box() {
+    action=""
+    output_file="$TMP_DIR/sing-box-component-action.json"
+
     case "$SING_BOX_INSTALL_VARIANT" in
         "")
             msg "$(installer_text sing_box_skip_msg)"
+            return 0
             ;;
         stable)
-            stop_podkop_for_sing_box_install
-            pkg_install_sing_box_variant "sing-box" "sing-box-tiny" || fail "Failed to install stable sing-box"
-            new_version="$(read_sing_box_binary_version /usr/bin/sing-box)"
-            [ -n "$new_version" ] || fail "Stable sing-box package was installed, but sing-box binary is not available"
-            sing_box_is_extended "$new_version" && fail "Stable sing-box package was installed, but the active binary is still sing-box-extended"
-            write_sing_box_variant_marker "stable" || warn "Failed to write sing-box variant marker"
-            write_sing_box_version_state "$new_version" || warn "Failed to write sing-box version state"
-            rm -f /var/run/podkop-plus/ui-state/sing-box-version 2>/dev/null || true
+            action="install_stable"
             ;;
         tiny)
-            stop_podkop_for_sing_box_install
-            pkg_install_sing_box_variant "sing-box-tiny" "sing-box" || fail "Failed to install sing-box-tiny"
-            new_version="$(read_sing_box_binary_version /usr/bin/sing-box)"
-            [ -n "$new_version" ] || fail "sing-box-tiny package was installed, but sing-box binary is not available"
-            sing_box_is_extended "$new_version" && fail "sing-box-tiny package was installed, but the active binary is still sing-box-extended"
-            write_sing_box_variant_marker "tiny" || warn "Failed to write sing-box variant marker"
-            write_sing_box_version_state "$new_version" || warn "Failed to write sing-box version state"
-            rm -f /var/run/podkop-plus/ui-state/sing-box-version 2>/dev/null || true
+            action="install_tiny"
             ;;
         extended)
-            stop_podkop_for_sing_box_install
-            install_sing_box_extended_package
+            action="install_extended"
             ;;
         extended-compressed)
-            stop_podkop_for_sing_box_install
-            install_sing_box_extended_binary 1
+            action="install_extended_compressed"
             ;;
         *)
             fail "Unknown sing-box installation variant: $SING_BOX_INSTALL_VARIANT"
             ;;
     esac
-}
 
-restore_podkop_dnsmasq_failsafe_raw() {
-    podkop_legacy_dnsmasq_section="podkop_plus"
-    podkop_dns_address="127.0.0.42"
-    podkop_config_name="podkop-plus"
-    podkop_dnsmasq_changed=0
-    podkop_default_has_dns=0
-    podkop_legacy_instance_present=0
-
-    command_exists uci || return 0
-    podkop_dont_touch_dhcp_enabled && return 0
-
-    podkop_legacy_interfaces="$(uci -q get "dhcp.$podkop_legacy_dnsmasq_section.interface" 2>/dev/null)"
-    [ -n "$podkop_legacy_interfaces" ] ||
-        podkop_legacy_interfaces="$(uci -q get "$podkop_config_name.settings.source_network_interfaces" 2>/dev/null)"
-    [ -n "$podkop_legacy_interfaces" ] || podkop_legacy_interfaces="br-lan"
-
-    podkop_default_servers="$(uci -q get 'dhcp.@dnsmasq[0].server' 2>/dev/null)"
-    for podkop_value in $podkop_default_servers; do
-        [ "$podkop_value" = "$podkop_dns_address" ] && podkop_default_has_dns=1
-    done
-
-    if uci -q show "dhcp.$podkop_legacy_dnsmasq_section" >/dev/null 2>&1; then
-        podkop_legacy_instance_present=1
-        podkop_dnsmasq_changed=1
-    fi
-    uci -q delete "dhcp.$podkop_legacy_dnsmasq_section" >/dev/null 2>&1 || true
-
-    podkop_backup_notinterfaces="$(uci -q get 'dhcp.@dnsmasq[0].podkop_notinterface' 2>/dev/null)"
-    if [ -n "$podkop_backup_notinterfaces" ]; then
-        uci -q delete 'dhcp.@dnsmasq[0].notinterface' >/dev/null 2>&1 || true
-        for podkop_value in $podkop_backup_notinterfaces; do
-            uci -q add_list "dhcp.@dnsmasq[0].notinterface=$podkop_value" >/dev/null 2>&1 || true
-        done
-        uci -q delete 'dhcp.@dnsmasq[0].podkop_notinterface' >/dev/null 2>&1 || true
-        podkop_dnsmasq_changed=1
-    else
-        if [ "$podkop_legacy_instance_present" -eq 1 ]; then
-            for podkop_value in $podkop_legacy_interfaces; do
-                uci -q del_list "dhcp.@dnsmasq[0].notinterface=$podkop_value" >/dev/null 2>&1 && podkop_dnsmasq_changed=1
-            done
-        fi
-        uci -q delete 'dhcp.@dnsmasq[0].podkop_notinterface' >/dev/null 2>&1 || true
-    fi
-
-    podkop_backup_servers="$(uci -q get 'dhcp.@dnsmasq[0].podkop_server' 2>/dev/null)"
-    if [ -n "$podkop_backup_servers" ]; then
-        uci -q delete 'dhcp.@dnsmasq[0].server' >/dev/null 2>&1 || true
-        for podkop_value in $podkop_backup_servers; do
-            uci -q add_list "dhcp.@dnsmasq[0].server=$podkop_value" >/dev/null 2>&1 || true
-        done
-        uci -q delete 'dhcp.@dnsmasq[0].podkop_server' >/dev/null 2>&1 || true
-        podkop_dnsmasq_changed=1
-    else
-        uci -q del_list "dhcp.@dnsmasq[0].server=$podkop_dns_address" >/dev/null 2>&1 && podkop_dnsmasq_changed=1
-        uci -q delete 'dhcp.@dnsmasq[0].podkop_server' >/dev/null 2>&1 || true
-    fi
-
-    podkop_noresolv="$(uci -q get 'dhcp.@dnsmasq[0].podkop_noresolv' 2>/dev/null)"
-    if [ -n "$podkop_noresolv" ]; then
-        uci -q set "dhcp.@dnsmasq[0].noresolv=$podkop_noresolv" >/dev/null 2>&1 || true
-        uci -q delete 'dhcp.@dnsmasq[0].podkop_noresolv' >/dev/null 2>&1 || true
-        podkop_dnsmasq_changed=1
-    elif [ "$podkop_default_has_dns" -eq 1 ]; then
-        uci -q set 'dhcp.@dnsmasq[0].noresolv=0' >/dev/null 2>&1 || true
-        podkop_dnsmasq_changed=1
-    fi
-
-    podkop_cachesize="$(uci -q get 'dhcp.@dnsmasq[0].podkop_cachesize' 2>/dev/null)"
-    if [ -n "$podkop_cachesize" ]; then
-        uci -q set "dhcp.@dnsmasq[0].cachesize=$podkop_cachesize" >/dev/null 2>&1 || true
-        uci -q delete 'dhcp.@dnsmasq[0].podkop_cachesize' >/dev/null 2>&1 || true
-        podkop_dnsmasq_changed=1
-    elif [ "$podkop_default_has_dns" -eq 1 ]; then
-        uci -q set 'dhcp.@dnsmasq[0].cachesize=150' >/dev/null 2>&1 || true
-        podkop_dnsmasq_changed=1
-    fi
-
-    [ "$podkop_dnsmasq_changed" -eq 1 ] || return 0
-
-    uci -q commit dhcp >/dev/null 2>&1 || true
-    [ -x /etc/init.d/dnsmasq ] && /etc/init.d/dnsmasq restart >/dev/null 2>&1 || true
-}
-
-restore_podkop_dnsmasq_failsafe() {
-    podkop_dont_touch_dhcp_enabled && return 0
-
-    [ -x /usr/bin/podkop-plus ] && /usr/bin/podkop-plus restore_dnsmasq >/dev/null 2>&1 || true
-
-    if [ -r /usr/lib/podkop-plus/dnsmasq_failsafe_restore.sh ]; then
-        sh /usr/lib/podkop-plus/dnsmasq_failsafe_restore.sh >/dev/null 2>&1 || true
-    else
-        restore_podkop_dnsmasq_failsafe_raw
-    fi
-}
-
-remember_service_state() {
-    service_status=""
-
-    if [ -x /etc/init.d/podkop-plus ] && /etc/init.d/podkop-plus enabled >/dev/null 2>&1; then
-        PODKOP_WAS_ENABLED=1
-    fi
-
-    if [ -x /etc/init.d/podkop-plus ]; then
-        service_status="$(/etc/init.d/podkop-plus status 2>/dev/null || true)"
-        if [ "$service_status" = "running" ]; then
-            PODKOP_WAS_RUNNING=1
-            return 0
-        fi
-    fi
-
-    if [ -x /etc/init.d/podkop-plus ] && /etc/init.d/podkop-plus running >/dev/null 2>&1; then
-        PODKOP_WAS_RUNNING=1
-        return 0
-    fi
-
-    if [ -x /usr/bin/podkop-plus ] && /usr/bin/podkop-plus get_status 2>/dev/null | grep -q '"running":1'; then
-        PODKOP_WAS_RUNNING=1
-    fi
-}
-
-stop_conflicting_services() {
-    [ -x /etc/init.d/podkop-plus ] && /etc/init.d/podkop-plus stop >/dev/null 2>&1 || true
-    restore_podkop_dnsmasq_failsafe
-    [ -x /etc/init.d/podkop-plus ] && /etc/init.d/podkop-plus disable >/dev/null 2>&1 || true
-}
-
-deactivate_original_podkop_if_present() {
-    [ -x /etc/init.d/podkop ] || return 0
-
-    if /etc/init.d/podkop running >/dev/null 2>&1; then
-        warn "Detected a running original Podkop service. Stopping it before installing Podkop Plus."
-        /etc/init.d/podkop stop >/dev/null 2>&1 || warn "Failed to stop the original Podkop service."
-    fi
-
-    if /etc/init.d/podkop enabled >/dev/null 2>&1; then
-        warn "Detected an enabled original Podkop autostart. Disabling it before installing Podkop Plus."
-        /etc/init.d/podkop disable >/dev/null 2>&1 || warn "Failed to disable original Podkop autostart."
+    [ -x /usr/bin/podkop-plus ] || fail "podkop-plus backend must be installed before sing-box component action"
+    msg "Installing selected sing-box variant through Podkop Plus ucode backend"
+    if ! /usr/bin/podkop-plus component_action sing_box "$action" >"$output_file" 2>&1; then
+        cat "$output_file" >&2 2>/dev/null || true
+        fail "Failed to install selected sing-box variant"
     fi
 }
 
 cleanup_legacy_installation() {
-    backend_package_installed=0
+    state_file="$TMP_DIR/install-state.env"
 
-    pkg_is_installed "podkop-plus" && backend_package_installed=1
-    remember_service_state
-    stop_conflicting_services
+    install_json_ucode installer-cleanup-legacy >"$state_file" ||
+        fail "Failed to prepare the system before Podkop Plus package installation"
 
-    pkg_remove_matching_prefix "luci-i18n-podkop-plus"
-    pkg_remove_if_installed "luci-app-podkop-plus"
-
-    if [ "$backend_package_installed" -eq 0 ]; then
-        rm -rf /usr/lib/podkop-plus
-        rm -f /etc/init.d/podkop-plus
-        rm -f /usr/bin/podkop-plus
-    fi
-
-    rm -rf /www/luci-static/resources/view/podkop_plus
-    rm -f /usr/share/luci/menu.d/luci-app-podkop-plus.json
-    rm -f /usr/share/rpcd/acl.d/luci-app-podkop-plus.json
-    rm -f /etc/uci-defaults/50_luci-podkop-plus
-    rm -f /usr/lib/lua/luci/i18n/podkop_plus.ru.lmo
-    rm -f /usr/lib/lua/luci/i18n/podkop_plus.en.lmo
-    rm -f /usr/lib/lua/luci/i18n/podkop_plus.ru.lua
-    rm -f /usr/lib/lua/luci/i18n/podkop_plus.en.lua
+    # shellcheck disable=SC1090
+    . "$state_file"
 }
 
 decide_i18n_installation() {
@@ -1878,21 +1479,9 @@ install_packages() {
 }
 
 post_install() {
-    rm -f /var/luci-indexcache* /tmp/luci-indexcache*
-    rm -f /tmp/podkop-plus.latest-version.cache
-    rm -f /var/run/podkop-plus/system-info.json
-    rm -f /var/run/podkop-plus/server-country-cache.json
-    rm -f /var/run/podkop-plus/ui-state/sing-box-version
-    rm -f /tmp/podkop-plus/system-info.json
-    [ -x /etc/init.d/rpcd ] && /etc/init.d/rpcd reload >/dev/null 2>&1 || true
-
-    if [ "$PODKOP_WAS_ENABLED" -eq 1 ] && [ -x /etc/init.d/podkop-plus ]; then
-        /etc/init.d/podkop-plus enable >/dev/null 2>&1 || true
-    fi
-
-    if [ "$PODKOP_WAS_RUNNING" -eq 1 ] && [ -x /etc/init.d/podkop-plus ]; then
-        /etc/init.d/podkop-plus start >/dev/null 2>&1 || /etc/init.d/podkop-plus restart >/dev/null 2>&1 || warn "Failed to start Podkop Plus after upgrade."
-    fi
+    PODKOP_WAS_ENABLED="$PODKOP_WAS_ENABLED" PODKOP_WAS_RUNNING="$PODKOP_WAS_RUNNING" \
+        install_json_ucode installer-post-install ||
+        fail "Failed to complete Podkop Plus post-install actions"
 }
 
 main() {
@@ -1905,21 +1494,18 @@ main() {
     sync_time
     check_system
 
+    pkg_list_update || fail "Failed to update package lists"
+    ensure_bootstrap_ucode_runtime
+
     decide_i18n_installation
     select_sing_box_installation
-    deactivate_original_podkop_if_present
-
-    pkg_list_update || fail "Failed to update package lists"
-    ensure_bootstrap_tool "ucode" "ucode"
 
     resolve_podkop_plus_release
     download_podkop_plus_packages
-    remove_conflicting_dns_proxy
-    remove_old_sing_box_if_needed
-    install_selected_sing_box
 
     cleanup_legacy_installation
     install_packages
+    install_selected_sing_box
     post_install
 
     msg "Podkop Plus $PODKOP_PLUS_PACKAGE_VERSION has been installed successfully"

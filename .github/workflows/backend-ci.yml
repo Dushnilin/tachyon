@@ -1,0 +1,63 @@
+name: Backend CI
+
+on:
+  pull_request:
+    paths:
+      - 'podkop/files/**'
+      - 'podkop/Makefile'
+      - 'scripts/build.sh'
+      - 'tests/backend/**'
+      - 'tests/differential/**'
+      - '.github/workflows/backend-ci.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'podkop/files/**'
+      - 'podkop/Makefile'
+      - 'scripts/build.sh'
+      - 'tests/backend/**'
+      - 'tests/differential/**'
+      - '.github/workflows/backend-ci.yml'
+
+jobs:
+  backend-checks:
+    name: Backend Runtime Checks
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5.0.0
+        with:
+          fetch-depth: 0
+
+      - name: Build ucode
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake git libjson-c-dev pkg-config
+          git clone --depth 1 --branch v0.0.20250529 https://github.com/jow-/ucode.git /tmp/ucode
+          cmake -S /tmp/ucode -B /tmp/ucode/build \
+            -DUBUS_SUPPORT=OFF \
+            -DUCI_SUPPORT=OFF \
+            -DULOOP_SUPPORT=OFF
+          cmake --build /tmp/ucode/build --parallel
+          sudo cmake --install /tmp/ucode/build
+          sudo ldconfig
+          command -v ucode
+          ucode -e 'print("ucode ready\n")'
+
+      - name: Check ucode syntax
+        shell: bash
+        run: |
+          find podkop/files/usr/lib -name '*.uc' -print0 | xargs -0 -n1 ucode -c -o /dev/null
+          find podkop/files/usr/lib -name '*.uc' -print0 | xargs -0 -n1 ucode -S -c -o /dev/null
+
+      - name: Run backend tests
+        shell: bash
+        run: |
+          for test_script in tests/backend/*.sh; do
+            echo "::group::$test_script"
+            bash "$test_script"
+            echo "::endgroup::"
+          done
