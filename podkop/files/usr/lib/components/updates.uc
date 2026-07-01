@@ -37,8 +37,11 @@ const SUBSCRIPTION_JOB_ORPHAN_OUTPUT_TTL_MINUTES = getenv("PODKOP_SUBSCRIPTION_U
 const SUBSCRIPTION_JOB_STALE_GRACE_SECONDS = getenv("PODKOP_UI_ACTION_STALE_GRACE_SECONDS") || "15";
 const NFT_TABLE_NAME = getenv("NFT_TABLE_NAME") || "PodkopPlusTable";
 const NFT_COMMON_SET_NAME = getenv("NFT_COMMON_SET_NAME") || "podkop_plus_subnets";
+const NFT_COMMON6_SET_NAME = getenv("NFT_COMMON6_SET_NAME") || "podkop_plus_subnets6";
 const NFT_IP_PORT_SET_NAME = getenv("NFT_IP_PORT_SET_NAME") || "podkop_plus_ip_ports";
+const NFT_IP_PORT6_SET_NAME = getenv("NFT_IP_PORT6_SET_NAME") || "podkop_plus_ip6_ports";
 const NFT_DISCORD_SET_NAME = getenv("NFT_DISCORD_SET_NAME") || "podkop_plus_discord_subnets";
+const NFT_DISCORD6_SET_NAME = getenv("NFT_DISCORD6_SET_NAME") || "podkop_plus_discord_subnets6";
 const NFT_INTERFACE_SET_NAME = getenv("NFT_INTERFACE_SET_NAME") || "podkop_plus_interfaces";
 const NFT_FAKEIP_MARK = getenv("NFT_FAKEIP_MARK") || "0x00100000";
 const SB_SERVICE_MIXED_INBOUND_ADDRESS = getenv("SB_SERVICE_MIXED_INBOUND_ADDRESS") || "127.0.0.1";
@@ -1720,7 +1723,9 @@ function add_plain_subnet_file_to_nft_for_section(section, filepath) {
         NFT_TABLE_NAME,
         NFT_COMMON_SET_NAME,
         NFT_IP_PORT_SET_NAME,
-        "5000"
+        "5000",
+        NFT_COMMON6_SET_NAME,
+        NFT_IP_PORT6_SET_NAME
     ]);
 }
 
@@ -1742,7 +1747,9 @@ function add_json_ruleset_subnets_to_nft_for_section(section, json_file, label) 
         NFT_IP_PORT_SET_NAME,
         unscoped_tmpfile,
         scoped_tmpfile,
-        "5000"
+        "5000",
+        NFT_COMMON6_SET_NAME,
+        NFT_IP_PORT6_SET_NAME
     ]);
     remove_files([ unscoped_tmpfile, scoped_tmpfile ]);
     return ok;
@@ -1850,7 +1857,10 @@ function import_builtin_subnets_from_rule(section, settings) {
             NFT_INTERFACE_SET_NAME,
             NFT_DISCORD_SET_NAME,
             NFT_FAKEIP_MARK,
-            "5000"
+            "5000",
+            NFT_COMMON6_SET_NAME,
+            NFT_IP_PORT6_SET_NAME,
+            NFT_DISCORD6_SET_NAME
         ]))
             ok = false;
 

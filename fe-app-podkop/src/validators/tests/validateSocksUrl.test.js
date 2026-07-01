@@ -10,6 +10,7 @@ const validUrls = [
   ['socks5 with domain', 'socks5://user:pass@my.proxy.com:1080'],
   ['socks5 with dash in domain', 'socks5://user:pass@fast-proxy.net:8080'],
   ['socks5 with uppercase domain', 'socks5://USER:PASSWORD@Example.COM:1080'],
+  ['socks5 with ipv6', 'socks5://user:pass@[2001:db8::1]:1080'],
 ];
 
 const invalidUrls = [
@@ -23,6 +24,7 @@ const invalidUrls = [
   ['missing username when auth provided', 'socks5://:pass@127.0.0.1:1080'],
   ['invalid domain chars', 'socks5://user:pass@exa_mple.com:1080'],
   ['extra symbol', 'socks5:///127.0.0.1:1080'],
+  ['unbracketed ipv6 with port', 'socks5://2001:db8::1:1080'],
 ];
 
 describe('validateSocksUrl', () => {

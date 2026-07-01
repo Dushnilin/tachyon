@@ -1,4 +1,5 @@
 import { ValidationResult } from './types';
+import { isValidHost } from './hostPort';
 
 export function validateUrl(
   url: string,
@@ -19,20 +20,21 @@ export function validateUrl(
         protocols.join(', '),
     };
 
-  const regex = new RegExp(
-    `^(?:${protocols.map((p) => p.replace(':', '')).join('|')})://` +
-      `(?:` +
-      `(?:[A-Za-z0-9-]+\\.)+[A-Za-z]{2,}` +
-      `|` +
-      `(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)(?:\\.(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)){3}` +
-      `|` +
-      `localhost` +
-      `)` +
-      `(?::\\d+)?(?:/[^\\s]*)?$`,
-  );
-
-  if (regex.test(url)) {
-    return { valid: true, message: _('Valid') };
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.startsWith('[')
+      ? parsed.hostname.slice(1, -1)
+      : parsed.hostname;
+    const portNum = parsed.port ? Number(parsed.port) : 0;
+    if (
+      (isValidHost(host) || host === 'localhost') &&
+      (!parsed.port ||
+        (Number.isInteger(portNum) && portNum >= 1 && portNum <= 65535))
+    ) {
+      return { valid: true, message: _('Valid') };
+    }
+  } catch (_e) {
+    return { valid: false, message: _('Invalid URL format') };
   }
 
   return { valid: false, message: _('Invalid URL format') };

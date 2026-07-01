@@ -10,6 +10,8 @@ const validUrls = [
   ['With subdomain', 'https://sub.example.com'],
   ['IPv4 host', 'http://127.0.0.1/podkop-subscription-test.json'],
   ['IPv4 host with port', 'http://192.168.1.1:8080/sub'],
+  ['IPv6 host', 'https://[2001:db8::1]/sub'],
+  ['IPv6 host with port', 'https://[2001:db8::1]:8443/sub'],
   ['localhost host', 'http://localhost/sub'],
 ];
 
@@ -21,6 +23,7 @@ const invalidUrls = [
   ['Empty string', ''],
   ['Without tld', 'https://google'],
   ['Invalid IPv4 host', 'http://999.0.0.1/sub'],
+  ['Unbracketed IPv6 host with port', 'http://2001:db8::1:8080/sub'],
 ];
 
 describe('validateUrl', () => {

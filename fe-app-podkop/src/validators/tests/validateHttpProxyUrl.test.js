@@ -6,6 +6,7 @@ const validUrls = [
   ['http domain', 'http://proxy.example.com:8080'],
   ['https auth', 'https://user:pass@example.com:443'],
   ['uppercase auth and host', 'https://USER:PASSWORD@Example.COM:8443'],
+  ['https ipv6', 'https://user:pass@[2001:db8::1]:8443'],
 ];
 
 const invalidUrls = [
@@ -17,6 +18,7 @@ const invalidUrls = [
   ['space present', 'http://exa mple.com:80'],
   ['empty username', 'http://:pass@example.com:80'],
   ['unsupported scheme', 'socks5://example.com:1080'],
+  ['unbracketed ipv6 with port', 'http://2001:db8::1:8080'],
 ];
 
 describe('validateHttpProxyUrl', () => {

@@ -1,6 +1,7 @@
 #!/usr/bin/env ucode
 
 let fs = require("fs");
+let core_ip = require("core.ip");
 
 function as_string(value) {
     return value == null ? "" : "" + value;
@@ -587,7 +588,12 @@ function server_listen_requires_firewall(listen, wan_ip, listen_is_public) {
     listen = as_string(listen);
     wan_ip = as_string(wan_ip);
 
-    return listen == "0.0.0.0" || (wan_ip != "" && listen == wan_ip) || arg_bool(listen_is_public);
+    if (listen == "0.0.0.0" || listen == "::" || arg_bool(listen_is_public))
+        return true;
+    for (let ip in whitespace_values(wan_ip))
+        if (ip == listen)
+            return true;
+    return false;
 }
 
 function object_value(object, key) {
@@ -654,6 +660,10 @@ function netstat_addr_port(addr) {
 
 function netstat_addr_host(addr) {
     addr = as_string(addr);
+    if (substr(addr, 0, 1) == "[") {
+        let end = index(addr, "]");
+        return end > 0 ? substr(addr, 1, end - 1) : addr;
+    }
     let colon = str_last_index(addr, ":");
     return colon >= 0 ? substr(addr, 0, colon) : addr;
 }
@@ -662,24 +672,8 @@ function ipv4_like(value) {
     return match(as_string(value), /^[0-9]+[.][0-9]+[.][0-9]+[.][0-9]+$/) != null;
 }
 
-function valid_ipv4_octet(value) {
-    value = as_string(value);
-    if (value == "" || match(value, /^[0-9]+$/) == null)
-        return false;
-    let number = int(value);
-    return number >= 0 && number <= 255;
-}
-
 function valid_ipv4(value) {
-    let parts = split(as_string(value), ".");
-    if (length(parts) != 4)
-        return false;
-
-    for (let part in parts)
-        if (!valid_ipv4_octet(part))
-            return false;
-
-    return true;
+    return core_ip.valid_ipv4(value, false, false);
 }
 
 function valid_public_ipv4(value) {
@@ -709,6 +703,25 @@ function valid_public_ipv4(value) {
     return true;
 }
 
+function valid_public_ipv6(value) {
+    value = lc(as_string(value));
+    if (!core_ip.valid_ipv6(value))
+        return false;
+    if (value == "::" || value == "::1")
+        return false;
+    if (substr(value, 0, 4) == "fe80" || substr(value, 0, 2) == "ff")
+        return false;
+    if (substr(value, 0, 2) == "fc" || substr(value, 0, 2) == "fd")
+        return false;
+    if (index(value, "2001:db8") == 0)
+        return false;
+    return true;
+}
+
+function valid_public_ip(value) {
+    return valid_public_ipv4(value) || valid_public_ipv6(value);
+}
+
 function netstat_addr_matches(addr, listen, port) {
     addr = as_string(addr);
     listen = as_string(listen);
@@ -722,6 +735,8 @@ function netstat_addr_matches(addr, listen, port) {
         return true;
     if (listen == "0.0.0.0")
         return ipv4_like(host);
+    if (listen == "::")
+        return index(host, ":") >= 0;
 
     return host == listen;
 }
@@ -736,14 +751,8 @@ function netstat_server_port_listening_in_data(data, listen, port, proto) {
         if (length(fields) < 4 || !str_startswith(fields[0], proto))
             continue;
 
-        let local_addr = as_string(fields[3]);
-        if (listen == "0.0.0.0") {
-            if (local_addr == "0.0.0.0:" + port || local_addr == ":::" + port)
-                return true;
-        }
-        else if (local_addr == listen + ":" + port) {
+        if (netstat_addr_matches(fields[3], listen, port))
             return true;
-        }
     }
 
     return false;
@@ -811,11 +820,18 @@ function public_host_flags(public_host, public_host_ips, wan_ip, wan_public) {
             resolved = 1;
             public_ip = 1;
             for (let ip in ips)
-                if (!valid_public_ipv4(ip))
+                if (!valid_public_ip(ip))
                     public_ip = 0;
 
-            if (as_string(wan_public) == "1")
-                matches_wan = contains(ips, wan_ip) ? 1 : 0;
+            if (as_string(wan_public) == "1") {
+                matches_wan = 0;
+                for (let wan in whitespace_values(wan_ip)) {
+                    if (contains(ips, wan)) {
+                        matches_wan = 1;
+                        break;
+                    }
+                }
+            }
         }
         else {
             resolved = 0;

@@ -53,7 +53,7 @@ function addLocalDeviceChoice(choices, ip, name) {
     return;
   }
 
-  if (!main.validateIPV4(normalizedIp).valid) {
+  if (!main.validateIP(normalizedIp).valid) {
     return;
   }
 
@@ -63,7 +63,7 @@ function addLocalDeviceChoice(choices, ip, name) {
 function addRouterIp(routerIps, ip) {
   const normalizedIp = `${ip || ""}`.trim();
 
-  if (!normalizedIp || !main.validateIPV4(normalizedIp).valid) {
+  if (!normalizedIp || !main.validateIP(normalizedIp).valid) {
     return;
   }
 
@@ -78,14 +78,22 @@ function buildRouterIpMap(networkInterfaces) {
   }
 
   networkInterfaces.forEach((networkInterface) => {
+    const ipAddresses = [];
     const ipv4Addresses =
       networkInterface &&
       typeof networkInterface === "object" &&
       Array.isArray(networkInterface["ipv4-address"])
         ? networkInterface["ipv4-address"]
         : [];
+    const ipv6Addresses =
+      networkInterface &&
+      typeof networkInterface === "object" &&
+      Array.isArray(networkInterface["ipv6-address"])
+        ? networkInterface["ipv6-address"]
+        : [];
 
-    ipv4Addresses.forEach((address) => {
+    ipAddresses.push(...ipv4Addresses, ...ipv6Addresses);
+    ipAddresses.forEach((address) => {
       addRouterIp(
         routerIps,
         address && typeof address === "object" ? address.address : address,
@@ -106,7 +114,11 @@ function buildLocalDeviceChoices(hostHints, dhcpLeases, networkInterfaces) {
         return;
       }
 
-      normalizeOptionValues(hint.ipaddrs || hint.ipv4).forEach((ip) => {
+      [
+        ...normalizeOptionValues(hint.ipaddrs),
+        ...normalizeOptionValues(hint.ipv4),
+        ...normalizeOptionValues(hint.ipv6),
+      ].forEach((ip) => {
         addLocalDeviceChoice(choices, ip, hint.name);
       });
     });
@@ -167,7 +179,7 @@ function sortLocalDeviceChoiceValues(choices) {
 
 function hasSingleIpValue(values) {
   return normalizeOptionValues(values).some(
-    (value) => main.validateIPV4(value).valid,
+    (value) => main.validateIP(value).valid,
   );
 }
 

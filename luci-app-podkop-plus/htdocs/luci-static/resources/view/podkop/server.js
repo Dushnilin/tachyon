@@ -658,6 +658,25 @@ function isIpv4(value) {
   );
 }
 
+function isIpv6(value) {
+  const normalized = normalizeHost(value);
+  if (!normalized.includes(":")) {
+    return false;
+  }
+
+  try {
+    new URL(`http://[${normalized}]/`);
+    return true;
+  } catch (_e) {
+    return false;
+  }
+}
+
+function formatHostForUri(host) {
+  const normalized = normalizeHost(host);
+  return isIpv6(normalized) ? `[${normalized}]` : normalized;
+}
+
 function isHostname(value) {
   const hostname = normalizeHost(value);
   if (hostname.length < 1 || hostname.length > 253 || hostname.endsWith(".")) {
@@ -673,7 +692,7 @@ function isHostname(value) {
 
 function isHost(value) {
   const host = normalizeHost(value);
-  return isIpv4(host) || isHostname(host);
+  return isIpv4(host) || isIpv6(host) || isHostname(host);
 }
 
 function isPrivateOrReservedIpv4(value) {
@@ -700,21 +719,47 @@ function isPrivateOrReservedIpv4(value) {
   );
 }
 
-function getInterfaceIpv4Addresses(networkInterface) {
-  const values =
+function isPrivateOrReservedIp(value) {
+  const normalized = normalizeHost(value).toLowerCase();
+  if (isIpv4(normalized)) {
+    return isPrivateOrReservedIpv4(normalized);
+  }
+  if (!isIpv6(normalized)) {
+    return true;
+  }
+
+  return (
+    normalized === "::" ||
+    normalized === "::1" ||
+    normalized.startsWith("fe80") ||
+    normalized.startsWith("fc") ||
+    normalized.startsWith("fd") ||
+    normalized.startsWith("ff") ||
+    normalized.startsWith("2001:db8")
+  );
+}
+
+function getInterfaceIpAddresses(networkInterface) {
+  const ipv4Values =
     networkInterface &&
     typeof networkInterface === "object" &&
     Array.isArray(networkInterface["ipv4-address"])
       ? networkInterface["ipv4-address"]
       : [];
+  const ipv6Values =
+    networkInterface &&
+    typeof networkInterface === "object" &&
+    Array.isArray(networkInterface["ipv6-address"])
+      ? networkInterface["ipv6-address"]
+      : [];
 
-  return values
+  return [...ipv4Values, ...ipv6Values]
     .map((address) =>
       normalizeHost(
         address && typeof address === "object" ? address.address : address,
       ),
     )
-    .filter(isIpv4);
+    .filter((address) => isIpv4(address) || isIpv6(address));
 }
 
 function chooseDefaultPublicHost(networkInterfaces) {
@@ -723,8 +768,8 @@ function chooseDefaultPublicHost(networkInterfaces) {
     (networkInterface) => networkInterface && networkInterface.up !== false,
   );
   const publicIp = upInterfaces
-    .flatMap(getInterfaceIpv4Addresses)
-    .find((ip) => !isPrivateOrReservedIpv4(ip));
+    .flatMap(getInterfaceIpAddresses)
+    .find((ip) => !isPrivateOrReservedIp(ip));
 
   if (publicIp) {
     return publicIp;
@@ -736,8 +781,8 @@ function chooseDefaultPublicHost(networkInterfaces) {
       const device = `${networkInterface.device || networkInterface.l3_device || ""}`;
       return name === "lan" || device === "br-lan";
     }) || {};
-  const lanIp = getInterfaceIpv4Addresses(lanInterface).find(
-    (ip) => !ip.startsWith("127."),
+  const lanIp = getInterfaceIpAddresses(lanInterface).find(
+    (ip) => ip !== "::1" && !ip.startsWith("127."),
   );
 
   if (lanIp) {
@@ -746,8 +791,9 @@ function chooseDefaultPublicHost(networkInterfaces) {
 
   return (
     upInterfaces
-      .flatMap(getInterfaceIpv4Addresses)
-      .find((ip) => !ip.startsWith("127.")) || getBrowserHost()
+      .flatMap(getInterfaceIpAddresses)
+      .find((ip) => ip !== "::1" && !ip.startsWith("127.")) ||
+    getBrowserHost()
   );
 }
 
@@ -1191,6 +1237,7 @@ function getTransportParams(sectionId, params) {
 function buildVlessTrojanLink(sectionId, identity) {
   const protocol = getProtocol(sectionId);
   const host = getPublicHost(sectionId);
+  const uriHost = formatHostForUri(host);
   const port = uci.get(UCI_PACKAGE, sectionId, "listen_port") || "";
   const security = getEffectiveSecurity(sectionId);
   const tlsServerName =
@@ -1223,7 +1270,7 @@ function buildVlessTrojanLink(sectionId, identity) {
   }
 
   const query = encodeQuery(params);
-  return `${protocol}://${encodeURIComponent(credential)}@${host}:${port}${query ? `?${query}` : ""}#${encodeURIComponent(identity.name || sectionId)}`;
+  return `${protocol}://${encodeURIComponent(credential)}@${uriHost}:${port}${query ? `?${query}` : ""}#${encodeURIComponent(identity.name || sectionId)}`;
 }
 
 function buildVmessLink(sectionId, identity) {
@@ -1264,18 +1311,20 @@ function buildShadowsocksLink(sectionId, identity) {
   const method =
     uci.get(UCI_PACKAGE, sectionId, "shadowsocks_method") || "aes-128-gcm";
   const host = getPublicHost(sectionId);
+  const uriHost = formatHostForUri(host);
   const port = uci.get(UCI_PACKAGE, sectionId, "listen_port") || "";
   const userInfo = base64UrlEncode(`${method}:${identity.password}`);
 
-  return `ss://${userInfo}@${host}:${port}#${encodeURIComponent(identity.name || sectionId)}`;
+  return `ss://${userInfo}@${uriHost}:${port}#${encodeURIComponent(identity.name || sectionId)}`;
 }
 
 function buildSocksLink(sectionId, identity) {
   const host = getPublicHost(sectionId);
+  const uriHost = formatHostForUri(host);
   const port = uci.get(UCI_PACKAGE, sectionId, "listen_port") || "";
   const username = identity.username || identity.name || sectionId;
 
-  return `socks5://${encodeURIComponent(username)}:${encodeURIComponent(identity.password)}@${host}:${port}#${encodeURIComponent(identity.name || sectionId)}`;
+  return `socks5://${encodeURIComponent(username)}:${encodeURIComponent(identity.password)}@${uriHost}:${port}#${encodeURIComponent(identity.name || sectionId)}`;
 }
 
 function normalizeSha256(value) {
@@ -1321,6 +1370,7 @@ function loadGeneratedTlsCertificatePin(sectionId) {
 
 function buildHysteria2Link(sectionId, identity, options = {}) {
   const host = getPublicHost(sectionId);
+  const uriHost = formatHostForUri(host);
   const port = uci.get(UCI_PACKAGE, sectionId, "listen_port") || "";
   const certificatePin = normalizeSha256(options.tlsCertificateSha256);
   const obfsType = uci.get(UCI_PACKAGE, sectionId, "hysteria2_obfs_type") || "";
@@ -1337,7 +1387,7 @@ function buildHysteria2Link(sectionId, identity, options = {}) {
 
   const query = encodeQuery(params);
 
-  return `hysteria2://${encodeURIComponent(identity.password)}@${host}:${port}${query ? `?${query}` : ""}#${encodeURIComponent(identity.name || sectionId)}`;
+  return `hysteria2://${encodeURIComponent(identity.password)}@${uriHost}:${port}${query ? `?${query}` : ""}#${encodeURIComponent(identity.name || sectionId)}`;
 }
 
 function buildMtprotoLink(sectionId, identity) {
@@ -1831,26 +1881,27 @@ function loadServerTableOptions(sectionRef) {
 }
 
 function validateHost(_sectionId, value) {
-  return isHost(value) ? true : _("Use a domain name or IPv4 address");
+  return isHost(value) ? true : _("Use a domain name or IP address");
 }
 
 function validateOptionalHost(_sectionId, value) {
   return isEmptyValue(value) || isHost(value)
     ? true
-    : _("Use a domain name or IPv4 address");
+    : _("Use a domain name or IP address");
 }
 
 function validateListenAddress(_sectionId, value) {
   const address = normalizeHost(value);
-  return address === "0.0.0.0" || isIpv4(address)
+  return address === "0.0.0.0" || address === "::" || isIpv4(address) || isIpv6(address)
     ? true
-    : _("Use an IPv4 listen address");
+    : _("Use an IP listen address");
 }
 
-function validateOptionalIpv4(_sectionId, value) {
-  return isEmptyValue(value) || isIpv4(normalizeHost(value))
+function validateOptionalIp(_sectionId, value) {
+  const address = normalizeHost(value);
+  return isEmptyValue(value) || isIpv4(address) || isIpv6(address)
     ? true
-    : _("Use an IPv4 address");
+    : _("Use an IP address");
 }
 
 function validateFilePath(_sectionId, value) {
@@ -1949,7 +2000,7 @@ function validateOptionalHostList(_sectionId, value) {
     .filter((item) => item != null && item !== "")
     .some((item) => !isHost(item));
 
-  return invalid ? _("Use a domain name or IPv4 address") : true;
+  return invalid ? _("Use a domain name or IP address") : true;
 }
 
 function validateGrpcServiceName(_sectionId, value) {
@@ -1959,8 +2010,7 @@ function validateGrpcServiceName(_sectionId, value) {
 }
 
 function isIpv6Literal(value) {
-  const normalized = `${value || ""}`.trim();
-  return /^[0-9A-Fa-f:.]+$/.test(normalized) && normalized.includes(":");
+  return isIpv6(value);
 }
 
 function normalizeCidrOrIp(value) {
@@ -1997,7 +2047,7 @@ function validateOptionalCidr(value) {
       return true;
     });
 
-  return invalid ? _("Use CIDR prefixes like 192.168.1.0/24") : true;
+  return invalid ? _("Use CIDR prefixes like 192.168.1.0/24 or 2001:db8::/32") : true;
 }
 
 function validateOptionalCidrOrIp(value) {
@@ -2010,7 +2060,7 @@ function validateOptionalCidrOrIp(value) {
     .some((item) => validateOptionalCidr(normalizeCidrOrIp(item)) !== true);
 
   return invalid
-    ? _("Use CIDR prefixes or IP addresses like 192.168.1.0/24 or 192.168.1.10")
+    ? _("Use CIDR prefixes or IP addresses like 192.168.1.0/24, 192.168.1.10, or 2001:db8::1")
     : true;
 }
 
@@ -2933,7 +2983,7 @@ function createServerContent(section, options = {}) {
   );
   o.modalonly = true;
   o.rmempty = true;
-  o.validate = validateOptionalIpv4;
+  o.validate = validateOptionalIp;
   addMtprotoDepends(o);
 
   o = section.option(

@@ -14,6 +14,10 @@ const validUrls = [
     'plain-user',
     'ss://2022-blake3-aes-256-gcm:dmCly/Zh15Ww9+s+GFXiFTIkpw7c/qCISaBrai7WhhY=@127.0.0.1:27214?type=tcp#shadowsocks-plain-user',
   ],
+  [
+    'plain-user-ipv6',
+    'ss://2022-blake3-aes-256-gcm:dmCly/Zh15Ww9+s+GFXiFTIkpw7c/qCISaBrai7WhhY=@[2001:db8::1]:27214?type=tcp#shadowsocks-ipv6',
+  ],
 ];
 
 const invalidUrls = [
@@ -23,6 +27,7 @@ const invalidUrls = [
   ['Invalid port', 'ss://password@127.0.0.1:abc?type=tcp'],
   ['Missing type', 'ss://password@127.0.0.1:443'],
   ['Contains space', 'ss://password@127.0.0.1:443?type=tcp #extra'],
+  ['Unbracketed IPv6 with port', 'ss://password@2001:db8::1:443?type=tcp'],
 ];
 
 describe('validateShadowsocksUrl', () => {

@@ -56,14 +56,19 @@ const TMP_SUBSCRIPTION_FOLDER = getenv("TMP_SUBSCRIPTION_FOLDER") || constant_va
 const RT_TABLE_NAME = constant_value("RT_TABLE_NAME", "podkop");
 const NFT_TABLE_NAME = constant_value("NFT_TABLE_NAME", "PodkopPlusTable");
 const NFT_LOCALV4_SET_NAME = constant_value("NFT_LOCALV4_SET_NAME", "localv4");
+const NFT_LOCALV6_SET_NAME = constant_value("NFT_LOCALV6_SET_NAME", "localv6");
 const NFT_COMMON_SET_NAME = constant_value("NFT_COMMON_SET_NAME", "podkop_plus_subnets");
+const NFT_COMMON6_SET_NAME = constant_value("NFT_COMMON6_SET_NAME", "podkop_plus_subnets6");
 const NFT_PORT_SET_NAME = constant_value("NFT_PORT_SET_NAME", "podkop_plus_ports");
 const NFT_IP_PORT_SET_NAME = constant_value("NFT_IP_PORT_SET_NAME", "podkop_plus_ip_ports");
+const NFT_IP_PORT6_SET_NAME = constant_value("NFT_IP_PORT6_SET_NAME", "podkop_plus_ip6_ports");
 const NFT_INTERFACE_SET_NAME = constant_value("NFT_INTERFACE_SET_NAME", "podkop_plus_interfaces");
 const NFT_FAKEIP_MARK = constant_value("NFT_FAKEIP_MARK", "0x00100000");
 const NFT_OUTBOUND_MARK = constant_value("NFT_OUTBOUND_MARK", "0x00200000");
 
 const SB_FAKEIP_INET4_RANGE = constant_value("SB_FAKEIP_INET4_RANGE", "198.18.0.0/15");
+const SB_FAKEIP_INET6_RANGE = constant_value("SB_FAKEIP_INET6_RANGE", "fc00::/18");
+const SB_TPROXY_INBOUND6_ADDRESS = constant_value("SB_TPROXY_INBOUND6_ADDRESS", "::1");
 const SB_TPROXY_INBOUND_PORT = constant_value("SB_TPROXY_INBOUND_PORT", "1602");
 const SB_SERVICE_MIXED_INBOUND_ADDRESS = constant_value("SB_SERVICE_MIXED_INBOUND_ADDRESS", "127.0.0.1");
 const SB_SERVICE_MIXED_INBOUND_PORT = constant_value("SB_SERVICE_MIXED_INBOUND_PORT", "4534");
@@ -386,7 +391,12 @@ function nft_rebuild_runtime() {
         ZAPRET2_ROUTE_MARK_BASE,
         ZAPRET2_QUEUE_BASE,
         ZAPRET2_DESYNC_MARK,
-        ZAPRET2_DESYNC_MARK_POSTNAT
+        ZAPRET2_DESYNC_MARK_POSTNAT,
+        NFT_LOCALV6_SET_NAME,
+        NFT_COMMON6_SET_NAME,
+        NFT_IP_PORT6_SET_NAME,
+        SB_FAKEIP_INET6_RANGE,
+        SB_TPROXY_INBOUND6_ADDRESS
     ]);
 }
 
@@ -401,7 +411,10 @@ function nft_populate_runtime_sets() {
         NFT_IP_PORT_SET_NAME,
         NFT_INTERFACE_SET_NAME,
         NFT_LOCALV4_SET_NAME,
-        NFT_FAKEIP_MARK
+        NFT_FAKEIP_MARK,
+        NFT_COMMON6_SET_NAME,
+        NFT_IP_PORT6_SET_NAME,
+        NFT_LOCALV6_SET_NAME
     ]);
 }
 
@@ -550,6 +563,43 @@ function start_impl() {
     return 0;
 }
 
+function stop_main() {
+    let status = 0;
+
+    log_message("Stopping Podkop Plus", "info");
+    module_success(SUBSCRIPTION_CACHE_UC, [ "stop-deferred-bootstrap-worker" ]);
+    module_success(UPDATES_UC, [ "stop-list-update" ]);
+    remove_cron_jobs();
+    command_success_from_args([ "find", TMP_RULESET_FOLDER, "-mindepth", "1", "-maxdepth", "1", "-type", "f", "-delete" ]);
+
+    module_success(ZAPRET_UC, [ "stop-runtime" ]);
+    module_success(ZAPRET2_UC, [ "stop-runtime" ]);
+    module_success(BYEDPI_UC, [ "stop-runtime" ]);
+
+    log_message("Flush nft", "info");
+    if (command_success_from_args([ "nft", "list", "table", "inet", NFT_TABLE_NAME ]))
+        command_success_from_args([ "nft", "delete", "table", "inet", NFT_TABLE_NAME ]);
+
+    log_message("Flush ip rule", "info");
+    if (module_success(NFT_UC, [ "tproxy-marking-rule4-present", RT_TABLE_NAME, NFT_FAKEIP_MARK ]))
+        command_success_from_args([ "ip", "-4", "rule", "del", "fwmark", NFT_FAKEIP_MARK + "/" + NFT_FAKEIP_MARK, "table", RT_TABLE_NAME, "priority", "105" ]);
+    if (module_success(NFT_UC, [ "tproxy-marking-rule6-present", RT_TABLE_NAME, NFT_FAKEIP_MARK ]))
+        command_success_from_args([ "ip", "-6", "rule", "del", "fwmark", NFT_FAKEIP_MARK + "/" + NFT_FAKEIP_MARK, "table", RT_TABLE_NAME, "priority", "105" ]);
+
+    log_message("Flush ip route", "info");
+    if (module_success(NFT_UC, [ "tproxy-route4-present", RT_TABLE_NAME ]))
+        command_success_from_args([ "ip", "route", "flush", "table", RT_TABLE_NAME ]);
+    if (module_success(NFT_UC, [ "tproxy-route6-present", RT_TABLE_NAME ]))
+        command_success_from_args([ "ip", "-6", "route", "flush", "table", RT_TABLE_NAME ]);
+
+    log_message("Stop sing-box", "info");
+    let sing_box_status = command_status_from_args([ "/etc/init.d/sing-box", "stop" ]);
+    if (sing_box_status != 0)
+        status = sing_box_status;
+
+    return status;
+}
+
 function start() {
     let status = start_impl();
     release_start_subscription_update_lock();
@@ -575,39 +625,6 @@ function start() {
     }
 
     return module_status(STATE_UC, [ "run-pending-reload-if-requested", PENDING_RELOAD_FILE, SERVICE_INIT ]);
-}
-
-function stop_main() {
-    let status = 0;
-
-    log_message("Stopping Podkop Plus", "info");
-    module_success(SUBSCRIPTION_CACHE_UC, [ "stop-deferred-bootstrap-worker" ]);
-    module_success(UPDATES_UC, [ "stop-list-update" ]);
-    remove_cron_jobs();
-    command_success_from_args([ "find", TMP_RULESET_FOLDER, "-mindepth", "1", "-maxdepth", "1", "-type", "f", "-delete" ]);
-
-    module_success(ZAPRET_UC, [ "stop-runtime" ]);
-    module_success(ZAPRET2_UC, [ "stop-runtime" ]);
-    module_success(BYEDPI_UC, [ "stop-runtime" ]);
-
-    log_message("Flush nft", "info");
-    if (command_success_from_args([ "nft", "list", "table", "inet", NFT_TABLE_NAME ]))
-        command_success_from_args([ "nft", "delete", "table", "inet", NFT_TABLE_NAME ]);
-
-    log_message("Flush ip rule", "info");
-    if (module_success(NFT_UC, [ "tproxy-marking-rule-present", RT_TABLE_NAME, NFT_FAKEIP_MARK ]))
-        command_success_from_args([ "ip", "rule", "del", "fwmark", NFT_FAKEIP_MARK + "/" + NFT_FAKEIP_MARK, "table", RT_TABLE_NAME, "priority", "105" ]);
-
-    log_message("Flush ip route", "info");
-    if (module_success(NFT_UC, [ "tproxy-route-present", RT_TABLE_NAME ]))
-        command_success_from_args([ "ip", "route", "flush", "table", RT_TABLE_NAME ]);
-
-    log_message("Stop sing-box", "info");
-    let sing_box_status = command_status_from_args([ "/etc/init.d/sing-box", "stop" ]);
-    if (sing_box_status != 0)
-        status = sing_box_status;
-
-    return status;
 }
 
 function stop_impl() {

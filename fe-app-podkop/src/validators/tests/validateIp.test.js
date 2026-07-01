@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { validateIPV4 } from '../validateIp';
+import { validateIP, validateIPV4, validateIPv6 } from '../validateIp';
 
 export const validIPs = [
   ['Private LAN', '192.168.1.1'],
@@ -33,6 +33,34 @@ describe('validateIPV4', () => {
     it(`returns {valid:false} for "${ip}"`, () => {
       const res = validateIPV4(ip);
       expect(res.valid).toBe(false);
+    });
+  });
+});
+
+describe('validateIPv6', () => {
+  const validIPv6Addresses = [
+    ['Loopback', '::1'],
+    ['ULA', 'fc00::1'],
+    ['Documentation prefix', '2001:db8::1'],
+    ['Full form', '2001:0db8:0000:0000:0000:ff00:0042:8329'],
+  ];
+
+  const invalidIPv6Addresses = [
+    ['Bad hex', '2001:db8::zzzz'],
+    ['Two compression markers', '2001::db8::1'],
+    ['Zone id', 'fe80::1%eth0'],
+  ];
+
+  describe.each(validIPv6Addresses)('Valid IPv6: %s', (_desc, ip) => {
+    it(`returns {valid:true} for "${ip}"`, () => {
+      expect(validateIPv6(ip).valid).toBe(true);
+      expect(validateIP(ip).valid).toBe(true);
+    });
+  });
+
+  describe.each(invalidIPv6Addresses)('Invalid IPv6: %s', (_desc, ip) => {
+    it(`returns {valid:false} for "${ip}"`, () => {
+      expect(validateIPv6(ip).valid).toBe(false);
     });
   });
 });

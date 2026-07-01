@@ -284,6 +284,10 @@ function cli_bool(value) {
     return value === true || value == "1" || value == "true" || value == "yes" || value == "on";
 }
 
+function tproxy_inbound_matcher() {
+    return [ runtime_constants.TPROXY_INBOUND_TAG, runtime_constants.TPROXY_INBOUND6_TAG ];
+}
+
 function base_config(settings, service_address, runtime_context) {
     let log_level = option(settings, "log_level", "warn");
     let bootstrap_dns_server = option(settings, "bootstrap_dns_server", "77.88.8.8");
@@ -303,7 +307,12 @@ function base_config(settings, service_address, runtime_context) {
             servers: [
                 { type: "udp", tag: runtime_constants.BOOTSTRAP_DNS_SERVER_TAG, server: bootstrap_dns_server, server_port: 53 },
                 dns_server,
-                { type: "fakeip", tag: runtime_constants.FAKEIP_DNS_SERVER_TAG, inet4_range: runtime_constants.FAKEIP_INET4_RANGE }
+                {
+                    type: "fakeip",
+                    tag: runtime_constants.FAKEIP_DNS_SERVER_TAG,
+                    inet4_range: runtime_constants.FAKEIP_INET4_RANGE,
+                    inet6_range: runtime_constants.FAKEIP_INET6_RANGE
+                }
             ],
             rules: [
                 { action: "reject", query_type: "HTTPS" },
@@ -316,7 +325,7 @@ function base_config(settings, service_address, runtime_context) {
                 }
             ],
             final: runtime_constants.DNS_SERVER_TAG,
-            strategy: "ipv4_only",
+            strategy: "prefer_ipv4",
             independent_cache: true
         },
         ntp: {},
@@ -324,6 +333,7 @@ function base_config(settings, service_address, runtime_context) {
         endpoints: [],
         inbounds: [
             { type: "tproxy", tag: runtime_constants.TPROXY_INBOUND_TAG, listen: runtime_constants.TPROXY_INBOUND_ADDRESS, listen_port: runtime_constants.TPROXY_INBOUND_PORT, tcp_fast_open: true, udp_fragment: true },
+            { type: "tproxy", tag: runtime_constants.TPROXY_INBOUND6_TAG, listen: runtime_constants.TPROXY_INBOUND6_ADDRESS, listen_port: runtime_constants.TPROXY_INBOUND_PORT, tcp_fast_open: true, udp_fragment: true },
             { type: "direct", tag: runtime_constants.DNS_INBOUND_TAG, listen: runtime_constants.DNS_INBOUND_ADDRESS, listen_port: runtime_constants.DNS_INBOUND_PORT }
         ],
         outbounds: [
@@ -1492,7 +1502,7 @@ function add_fully_routed_ips_rule(config, section) {
 
     let route_rule = {
         action: target.action,
-        inbound: runtime_constants.TPROXY_INBOUND_TAG
+        inbound: tproxy_inbound_matcher()
     };
     if (target.outbound)
         route_rule.outbound = target.outbound;
@@ -1543,7 +1553,7 @@ function add_combined_route_for_section(config, section) {
         runtime_generate_unsupported(target.unsupported);
     let route_rule = {
         action: target.action,
-        inbound: runtime_constants.TPROXY_INBOUND_TAG
+        inbound: tproxy_inbound_matcher()
     };
     if (target.outbound)
         route_rule.outbound = target.outbound;
@@ -1616,7 +1626,7 @@ function add_routing_excluded_ips(config, settings) {
 
     push(config.route.rules, {
         action: "route",
-        inbound: runtime_constants.TPROXY_INBOUND_TAG,
+        inbound: tproxy_inbound_matcher(),
         outbound: runtime_constants.DIRECT_OUTBOUND_TAG,
         source_ip_cidr: single_or_array(source_ip_cidr)
     });
@@ -1679,7 +1689,7 @@ function add_service_route_rules(config, sections) {
     if (first != null) {
         push(config.route.rules, {
             action: "route",
-            inbound: runtime_constants.TPROXY_INBOUND_TAG,
+            inbound: tproxy_inbound_matcher(),
             outbound: outbound_tag(first[".name"]),
             domain: runtime_constants.CHECK_PROXY_IP_DOMAIN
         });

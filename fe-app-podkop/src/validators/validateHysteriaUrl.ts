@@ -1,5 +1,6 @@
 import { ValidationResult } from './types';
 import { parseQueryString } from '../helpers/parseQueryString';
+import { parseHostPort } from './hostPort';
 
 export function validateHysteria2Url(url: string): ValidationResult {
   try {
@@ -43,7 +44,14 @@ export function validateHysteria2Url(url: string): ValidationResult {
         message: _('Invalid HY2 URL: missing host & port'),
       };
 
-    const [host, port] = hostPortPart.split(':');
+    const parsedHostPort = parseHostPort(hostPortPart);
+    if (!parsedHostPort) {
+      return {
+        valid: false,
+        message: _('Invalid HY2 URL: invalid host & port'),
+      };
+    }
+    const { host, port } = parsedHostPort;
 
     if (!host) {
       return { valid: false, message: _('Invalid HY2 URL: missing host') };

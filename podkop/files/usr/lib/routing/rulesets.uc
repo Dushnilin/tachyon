@@ -1,6 +1,7 @@
 #!/usr/bin/env ucode
 
 let fs = require("fs");
+let ip = require("core.ip");
 
 function as_string(value) {
     return value == null ? "" : "" + value;
@@ -143,52 +144,6 @@ function patch_source(path, key, value_text) {
     patch_source_values(path, key, json_decode_text(value_text));
 }
 
-function numeric_string(value) {
-    let text = as_string(value);
-    return text != "" && !match(text, /[^0-9]/);
-}
-
-function decimal_without_leading_zero(value) {
-    let text = as_string(value);
-    return numeric_string(text) && (length(text) == 1 || substr(text, 0, 1) != "0");
-}
-
-function is_ipv4_text(value, allow_trailing_dot) {
-    let text = as_string(value);
-
-    if (allow_trailing_dot && length(text) > 0 && substr(text, length(text) - 1, 1) == ".")
-        text = substr(text, 0, length(text) - 1);
-
-    let parts = split(text, ".");
-    if (length(parts) != 4)
-        return false;
-
-    for (let part in parts) {
-        if (!decimal_without_leading_zero(part))
-            return false;
-
-        let octet = int(part);
-        if (octet < 0 || octet > 255)
-            return false;
-    }
-
-    return true;
-}
-
-function is_ipv4_cidr_text(value) {
-    let text = as_string(value);
-    let slash = index(text, "/");
-    if (slash <= 0 || index(substr(text, slash + 1), "/") >= 0)
-        return false;
-
-    let prefix = substr(text, slash + 1);
-    if (!decimal_without_leading_zero(prefix))
-        return false;
-
-    let prefix_number = int(prefix);
-    return is_ipv4_text(substr(text, 0, slash), false) && prefix_number >= 0 && prefix_number <= 32;
-}
-
 function is_domain_suffix_text(value) {
     let text = ascii_lower(value);
     if (substr(text, 0, 1) == ".")
@@ -203,7 +158,7 @@ function normalize_plain_ruleset_value(value, kind) {
         return is_domain_suffix_text(normalized) ? normalized : null;
     }
     if (kind == "subnets")
-        return is_ipv4_text(value, true) || is_ipv4_cidr_text(value) ? value : null;
+        return ip.nft_ip_or_cidr(value) ? value : null;
 
     return null;
 }
@@ -212,7 +167,7 @@ function is_plain_ruleset_value(value, kind) {
     if (kind == "domains")
         return is_domain_suffix_text(value);
     if (kind == "subnets")
-        return is_ipv4_text(value, true) || is_ipv4_cidr_text(value);
+        return ip.nft_ip_or_cidr(value);
 
     return false;
 }

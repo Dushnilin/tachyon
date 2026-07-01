@@ -56,6 +56,10 @@ const validUrls = [
     'xhttp + none',
     'vless://c2841505-ec32-4b8d-b6dd-3e19d648c321@127.0.0.1:45507?type=xhttp&encryption=none&path=%2Fxhttppath&host=xhttp&mode=auto&security=none#vless-xhttp',
   ],
+  [
+    'tcp + ipv6',
+    'vless://94792286-7bbe-4f33-8b36-18d1bbf70723@[2001:db8::1]:34520?type=tcp&encryption=none&security=none#vless-ipv6',
+  ],
 ];
 
 const invalidUrls = [
@@ -64,6 +68,10 @@ const invalidUrls = [
   ['No host', 'vless://uuid@:443?type=tcp&security=tls'],
   ['No port', 'vless://uuid@127.0.0.1?type=tcp&security=tls'],
   ['Invalid port', 'vless://uuid@127.0.0.1:abc?type=tcp&security=tls'],
+  [
+    'Unbracketed IPv6 with port',
+    'vless://uuid@2001:db8::1:443?type=tcp&security=tls',
+  ],
   ['Unsupported type', 'vless://uuid@127.0.0.1:443?type=quic&security=tls'],
   ['Missing security', 'vless://uuid@127.0.0.1:443?type=tcp'],
   [

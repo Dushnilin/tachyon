@@ -1,6 +1,8 @@
 #!/usr/bin/env ucode
 
 let fs = require("fs");
+let core_ip = require("core.ip");
+let core_url = require("core.url");
 let uci = require("core.uci");
 
 const CONFIG_NAME = getenv("PODKOP_CONFIG_NAME") || "podkop-plus";
@@ -231,23 +233,7 @@ function str_remove_suffix(value, suffix) {
 }
 
 function valid_ipv4(value) {
-    value = as_string(value);
-    if (!regex_matches(value, "^([0-9]{1,3}\\.){3}[0-9]{1,3}$"))
-        return false;
-
-    let parts = split(value, ".");
-    if (length(parts) != 4)
-        return false;
-
-    for (let part in parts) {
-        if (part == "" || regex_matches(part, "[^0-9]"))
-            return false;
-        let octet = int(part);
-        if (octet < 0 || octet > 255)
-            return false;
-    }
-
-    return true;
+    return core_ip.valid_ipv4(value, false, false);
 }
 
 function valid_domain(value) {
@@ -256,7 +242,7 @@ function valid_domain(value) {
 
 function valid_host(value) {
     value = normalize_host(value);
-    return value != "" && (valid_ipv4(value) || valid_domain(value));
+    return value != "" && (valid_ipv4(value) || core_ip.valid_ipv6(value) || valid_domain(value));
 }
 
 function valid_absolute_path(value) {
@@ -274,12 +260,10 @@ function valid_http_url(value) {
         return false;
 
     let rest = substr(value, scheme + 3);
-    let slash = index(rest, "/");
-    let host_port = slash >= 0 ? substr(rest, 0, slash) : rest;
-    let colon = index(host_port, ":");
-    let host = colon >= 0 ? substr(host_port, 0, colon) : host_port;
+    if (rest == "")
+        return false;
 
-    return valid_host(host);
+    return valid_host(core_url.host(value));
 }
 
 function valid_uuid(value) {
@@ -409,8 +393,7 @@ function valid_public_ipv4(value) {
 }
 
 function valid_ipv6_literal(value) {
-    value = as_string(value);
-    return index(value, ":") >= 0 && regex_matches(value, "^[0-9A-Fa-f:.]+$");
+    return core_ip.valid_ipv6(value);
 }
 
 function valid_cidr(value) {
