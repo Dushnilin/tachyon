@@ -94,6 +94,83 @@ describe('PodkopShellMethods.componentAction', () => {
     });
   });
 
+  it('keeps following a component job after the former browser-side wait timeout while the backend reports it running', async () => {
+    let stateReads = 0;
+
+    mocks.fsRead.mockImplementation(() =>
+      Promise.resolve(
+        JSON.stringify(
+          stateReads++ < 401
+            ? {
+                success: true,
+                running: true,
+                component: 'sing_box',
+                action: 'check_update',
+                message: 'Component action is running',
+                job_id: 'job-1',
+              }
+            : {
+                success: true,
+                running: false,
+                component: 'sing_box',
+                action: 'check_update',
+                message: 'sing-box is up to date',
+                current_version: '1.13.12-extended-2.3.2',
+                latest_version: '1.13.12-extended-2.3.2',
+                changed: false,
+                status: 'latest',
+              },
+        ),
+      ),
+    );
+
+    mocks.executeShellCommand.mockImplementation(({ args }) => {
+      if (args[0] === 'component_action_status') {
+        return Promise.resolve({
+          stdout: JSON.stringify({
+            success: true,
+            running: true,
+            component: 'sing_box',
+            action: 'check_update',
+            message: 'Component action is running',
+            job_id: 'job-1',
+          }),
+          stderr: '',
+          code: 0,
+        });
+      }
+
+      return Promise.resolve({
+        stdout: '',
+        stderr: 'Unexpected command',
+        code: 1,
+      });
+    });
+
+    const responsePromise = PodkopShellMethods.waitComponentActionJob(
+      'job-1',
+      'sing_box',
+      'check_update',
+    );
+
+    await vi.advanceTimersByTimeAsync(10 * 60 * 1000 + 3000);
+
+    await expect(responsePromise).resolves.toEqual({
+      success: true,
+      data: {
+        success: true,
+        running: false,
+        component: 'sing_box',
+        action: 'check_update',
+        message: 'sing-box is up to date',
+        current_version: '1.13.12-extended-2.3.2',
+        latest_version: '1.13.12-extended-2.3.2',
+        changed: false,
+        status: 'latest',
+      },
+    });
+  });
+
   it('keeps waiting when status polling briefly fails but UI state still reports the job running', async () => {
     mocks.fsRead
       .mockRejectedValueOnce(new Error('State is temporarily unavailable'))

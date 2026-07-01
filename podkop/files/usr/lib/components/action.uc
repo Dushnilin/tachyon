@@ -732,8 +732,23 @@ function prepare_sing_box_package_service_install() {
     remove_managed_sing_box_service_script();
 }
 
+function podkop_status_running_with_timeout() {
+    init_tmp_dir();
+    let output_file = make_tmp_file("podkop-status");
+    if (output_file == "")
+        return false;
+
+    let command = command_from_args([ BIN_PATH, "get_status" ]) + " >" + shell_quote(output_file) + " 2>/dev/null & pid=$!; " +
+        "( sleep 6; kill $pid 2>/dev/null || true ) & watcher=$!; " +
+        "wait $pid 2>/dev/null; rc=$?; kill $watcher 2>/dev/null || true; wait $watcher 2>/dev/null || true; exit $rc";
+    let ok = command_status("sh -c " + shell_quote(command)) == 0 &&
+        match(read_file(output_file), /"running"[ \t]*:[ \t]*1/) != null;
+    remove_file(output_file);
+    return ok;
+}
+
 function capture_podkop_running_state() {
-    podkop_was_running = file_exists(SERVICE_INIT) && command_success_from_args([ SERVICE_INIT, "status" ]);
+    podkop_was_running = file_exists(BIN_PATH) && podkop_status_running_with_timeout();
 }
 
 function restart_podkop_after_successful_change() {
@@ -759,21 +774,6 @@ function stop_podkop_before_sing_box_change() {
         command_success_from_args([ BIN_PATH, "restore_dnsmasq" ]);
 
     prepare_sing_box_service_disabled();
-}
-
-function podkop_status_running_with_timeout() {
-    init_tmp_dir();
-    let output_file = make_tmp_file("podkop-status");
-    if (output_file == "")
-        return false;
-
-    let command = command_from_args([ BIN_PATH, "get_status" ]) + " >" + shell_quote(output_file) + " 2>/dev/null & pid=$!; " +
-        "( sleep 6; kill $pid 2>/dev/null || true ) & watcher=$!; " +
-        "wait $pid 2>/dev/null; rc=$?; kill $watcher 2>/dev/null || true; wait $watcher 2>/dev/null || true; exit $rc";
-    let ok = command_status("sh -c " + shell_quote(command)) == 0 &&
-        match(read_file(output_file), /"running"[ \t]*:[ \t]*1/) != null;
-    remove_file(output_file);
-    return ok;
 }
 
 function wait_podkop_running_after_sing_box_change() {

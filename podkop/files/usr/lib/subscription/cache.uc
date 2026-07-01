@@ -2612,7 +2612,7 @@ function worker_env() {
 
 function launch_self_worker(args) {
     let command_args = command_args_with([ "ucode", "-L", LIB_DIR, LIB_DIR + "/subscription/cache.uc" ], args);
-    let command = command_env(worker_env()) + " " + command_from_args(command_args) + " >/dev/null 2>&1 & echo $!";
+    let command = command_env(worker_env()) + " " + command_from_args(command_args) + " >/dev/null 2>&1 1000>&- & echo $!";
     return trim(command_output("sh -c " + shell_quote(command)));
 }
 

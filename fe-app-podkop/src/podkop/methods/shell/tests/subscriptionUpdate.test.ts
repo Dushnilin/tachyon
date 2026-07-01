@@ -151,6 +151,61 @@ describe('PodkopShellMethods.subscriptionUpdate', () => {
     });
   });
 
+  it('keeps following a subscription job after the former browser-side wait timeout while the backend reports it running', async () => {
+    let statusCalls = 0;
+
+    mocks.executeShellCommand.mockImplementation(({ args }) => {
+      if (args[0] === 'subscription_update_status') {
+        return Promise.resolve({
+          stdout: JSON.stringify(
+            statusCalls++ < 401
+              ? {
+                  success: true,
+                  running: true,
+                  message: 'Subscription update is running',
+                  section: 'main',
+                  source_index: '',
+                  exit_code: null,
+                }
+              : {
+                  success: true,
+                  running: false,
+                  message: 'Subscription update completed',
+                  section: 'main',
+                  source_index: '',
+                  exit_code: 0,
+                },
+          ),
+          stderr: '',
+          code: 0,
+        });
+      }
+
+      return Promise.resolve({
+        stdout: '',
+        stderr: 'Unexpected command',
+        code: 1,
+      });
+    });
+
+    const responsePromise =
+      PodkopShellMethods.waitSubscriptionUpdateJob('job-1');
+
+    await vi.advanceTimersByTimeAsync(10 * 60 * 1000 + 3000);
+
+    await expect(responsePromise).resolves.toEqual({
+      success: true,
+      data: {
+        success: true,
+        running: false,
+        message: 'Subscription update completed',
+        section: 'main',
+        source_index: '',
+        exit_code: 0,
+      },
+    });
+  });
+
   it('keeps waiting through a transient RPC reply loss', async () => {
     mocks.executeShellCommand.mockImplementation(({ args }) => {
       if (args[0] === 'subscription_update_status') {

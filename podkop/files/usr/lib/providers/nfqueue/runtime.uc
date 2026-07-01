@@ -464,7 +464,7 @@ function start_rule(cfg, section, index_value) {
         "" + queue,
         raw_opt,
         child_pidfile
-    ]) + " >>" + shell_quote(logfile) + " 2>&1 & echo $!";
+    ]) + " >>" + shell_quote(logfile) + " 2>&1 1000>&- & echo $!";
     let pid = trim(command_output("sh -c " + shell_quote(command)));
     if (pid == "" || fs.writefile(pidfile, pid + "\n") == null) {
         log_message(cfg.binary_name + " failed to start for rule '" + name + "'. Check " + logfile + ". Aborted.", "fatal");

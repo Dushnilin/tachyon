@@ -3,7 +3,6 @@ import { ClashAPI, Podkop } from '../../types';
 import { executeShellCommand } from '../../../helpers';
 import { isTransientRpcError } from '../../helpers/isTransientRpcError';
 
-const SUBSCRIPTION_UPDATE_TIMEOUT_MS = 10 * 60 * 1000;
 const SUBSCRIPTION_UPDATE_RPC_TIMEOUT_MS = 15000;
 const SUBSCRIPTION_UPDATE_POLL_INTERVAL_MS = 1500;
 const UI_ACTION_RPC_TIMEOUT_MS = 15000;
@@ -12,9 +11,9 @@ const SERVICE_ACTION_TIMEOUT_MS = 2 * 60 * 1000;
 const SERVICE_ACTION_POLL_INTERVAL_MS = 1000;
 const LATENCY_TEST_TIMEOUT_MS = 30 * 1000;
 const LATENCY_TEST_POLL_INTERVAL_MS = 1000;
-const COMPONENT_ACTION_TIMEOUT_MS = 10 * 60 * 1000;
 const COMPONENT_ACTION_RPC_TIMEOUT_MS = 15000;
 const COMPONENT_ACTION_POLL_INTERVAL_MS = 1500;
+const COMPONENT_ACTION_STATUS_REFRESH_INTERVAL_MS = 15000;
 const COMPONENT_ACTION_SELF_UPDATE_SETTLE_MS = 30000;
 const COMPONENT_ACTION_TRANSIENT_RPC_GRACE_MS = 30000;
 const COMPONENT_ACTION_STATE_DIR = '/var/run/podkop-plus/component-actions';
@@ -588,30 +587,36 @@ export const PodkopShellMethods = {
     component: Podkop.ComponentName,
     action: Podkop.ComponentAction,
     expectedLatestVersion?: string,
-    startedAt = Date.now(),
   ) => {
     let selfUpdateVersionMatchedAt = 0;
+    let lastStatusRefreshAt = 0;
     const transientRpc = createTransientRpcGraceTracker(
       COMPONENT_ACTION_TRANSIENT_RPC_GRACE_MS,
     );
 
-    while (Date.now() - startedAt < COMPONENT_ACTION_TIMEOUT_MS) {
+    while (true) {
       await sleep(COMPONENT_ACTION_POLL_INTERVAL_MS);
 
       const stateResponse = await readComponentActionState(jobId);
 
       if (stateResponse) {
-        transientRpc.reset();
-        if (stateResponse.running) {
-          continue;
+        if (!stateResponse.running) {
+          transientRpc.reset();
+          return {
+            success: true,
+            data: stateResponse,
+          } as Podkop.MethodSuccessResponse<Podkop.ComponentActionResult>;
         }
 
-        return {
-          success: true,
-          data: stateResponse,
-        } as Podkop.MethodSuccessResponse<Podkop.ComponentActionResult>;
+        if (
+          Date.now() - lastStatusRefreshAt <
+          COMPONENT_ACTION_STATUS_REFRESH_INTERVAL_MS
+        ) {
+          continue;
+        }
       }
 
+      lastStatusRefreshAt = Date.now();
       const statusResponse = await executeShellCommand({
         command: '/usr/bin/podkop-plus',
         args: [Podkop.AvailableMethods.COMPONENT_ACTION_STATUS, jobId],
@@ -620,6 +625,11 @@ export const PodkopShellMethods = {
       const parsedResponse = parseComponentActionResult(statusResponse);
 
       if ((statusResponse.code ?? 0) !== 0 || !parsedResponse) {
+        if (stateResponse?.running) {
+          transientRpc.reset();
+          continue;
+        }
+
         if (await isComponentActionStillRunning(jobId, component, action)) {
           transientRpc.reset();
           continue;
@@ -680,11 +690,6 @@ export const PodkopShellMethods = {
         data: parsedResponse,
       } as Podkop.MethodSuccessResponse<Podkop.ComponentActionResult>;
     }
-
-    return {
-      success: false,
-      error: _('Operation timed out'),
-    } as Podkop.MethodFailureResponse;
   },
   subscriptionUpdateStart: async (section?: string, sourceIndex?: number) => {
     const startArgs = [
@@ -738,12 +743,12 @@ export const PodkopShellMethods = {
       data: parsedResponse,
     } as Podkop.MethodSuccessResponse<Podkop.SubscriptionUpdateJobState>;
   },
-  waitSubscriptionUpdateJob: async (jobId: string, startedAt = Date.now()) => {
+  waitSubscriptionUpdateJob: async (jobId: string) => {
     const transientRpc = createTransientRpcGraceTracker(
       UI_ACTION_TRANSIENT_RPC_GRACE_MS,
     );
 
-    while (Date.now() - startedAt < SUBSCRIPTION_UPDATE_TIMEOUT_MS) {
+    while (true) {
       await sleep(SUBSCRIPTION_UPDATE_POLL_INTERVAL_MS);
 
       const response = await PodkopShellMethods.subscriptionUpdateStatus(jobId);
@@ -763,10 +768,5 @@ export const PodkopShellMethods = {
 
       return response;
     }
-
-    return {
-      success: false,
-      error: _('Operation timed out'),
-    } as Podkop.MethodFailureResponse;
   },
 };
