@@ -9,6 +9,10 @@ PODKOP_LIB="$ROOT_DIR/podkop/files/usr/lib"
 CLI_UC="$PODKOP_BIN"
 WORK_DIR="$(mktemp -d)"
 
+status_ucode() {
+  ucode -L "$PODKOP_LIB" "$DIAGNOSTICS" "$@"
+}
+
 cleanup() {
   rm -rf "$WORK_DIR"
 }
@@ -26,7 +30,7 @@ assert_status() {
   local expected="$4"
   local json
 
-  json="$(ucode "$DIAGNOSTICS" service-status-json "$running" "$enabled" "$dns")"
+  json="$(status_ucode service-status-json "$running" "$enabled" "$dns")"
   JSON_VALUE="$json" node - "$expected" "$dns" <<'NODE'
 const expected = process.argv[2];
 const expectedDns = Number(process.argv[3]);
@@ -53,7 +57,7 @@ if grep -n -E 'require\("uci"\)\.cursor|uci -q|uci", "show"|uci", "-q"' "$DIAGNO
   fail "diagnostics/runtime.uc must use core.uci instead of owning direct UCI cursor or CLI calls"
 fi
 
-legacy_json="$(ucode "$DIAGNOSTICS" service-status-json 1 0 ignored 1)"
+legacy_json="$(status_ucode service-status-json 1 0 ignored 1)"
 JSON_VALUE="$legacy_json" node - <<'NODE'
 const value = JSON.parse(process.env.JSON_VALUE);
 if (value.status !== "running but disabled" || value.dns_configured !== 1) {
@@ -87,33 +91,39 @@ EOF
 )"
 
 printf '%s\n' "$firewall_rules" |
-  ucode "$DIAGNOSTICS" firewall-required-protocols-open 443 "tcp udp" >/dev/null ||
+  status_ucode firewall-required-protocols-open 443 "tcp udp" >/dev/null ||
   fail "tcp+udp firewall rule should satisfy required protocols"
 if printf '%s\n' "$firewall_rules" |
-  ucode "$DIAGNOSTICS" firewall-required-protocols-open 8443 "tcp" >/dev/null 2>&1; then
+  status_ucode firewall-required-protocols-open 8443 "tcp" >/dev/null 2>&1; then
   fail "wrong firewall port should not satisfy required protocols"
 fi
 
-ucode "$DIAGNOSTICS" server-listen-requires-firewall 0.0.0.0 "" 0 >/dev/null ||
+status_ucode server-listen-requires-firewall 0.0.0.0 "" 0 >/dev/null ||
   fail "wildcard listen should require firewall"
-ucode "$DIAGNOSTICS" server-listen-requires-firewall 198.51.100.2 198.51.100.2 0 >/dev/null ||
+status_ucode server-listen-requires-firewall :: "" 0 >/dev/null ||
+  fail "IPv6 wildcard listen should require firewall"
+status_ucode server-listen-requires-firewall 198.51.100.2 198.51.100.2 0 >/dev/null ||
   fail "WAN listen address should require firewall"
-ucode "$DIAGNOSTICS" server-listen-requires-firewall 203.0.113.2 "" 1 >/dev/null ||
+status_ucode server-listen-requires-firewall 2001:db8::2 "198.51.100.2 2001:db8::2" 0 >/dev/null ||
+  fail "IPv6 WAN listen address should require firewall"
+status_ucode server-listen-requires-firewall 203.0.113.2 "" 1 >/dev/null ||
   fail "public listen address should require firewall"
-if ucode "$DIAGNOSTICS" server-listen-requires-firewall 192.168.1.2 198.51.100.2 0 >/dev/null 2>&1; then
+if status_ucode server-listen-requires-firewall 192.168.1.2 198.51.100.2 0 >/dev/null 2>&1; then
   fail "private non-WAN listen address should not require firewall"
 fi
 
-[ "$(ucode "$DIAGNOSTICS" public-host-flags '' '' 8.8.8.8 1)" = "-1 -1 -1" ] ||
+[ "$(status_ucode public-host-flags '' '' 8.8.8.8 1)" = "-1 -1 -1" ] ||
   fail "empty public host flags changed"
-[ "$(ucode "$DIAGNOSTICS" public-host-flags example.com '' 8.8.8.8 1)" = "0 -1 -1" ] ||
+[ "$(status_ucode public-host-flags example.com '' 8.8.8.8 1)" = "0 -1 -1" ] ||
   fail "unresolved public host flags changed"
-[ "$(ucode "$DIAGNOSTICS" public-host-flags example.com '1.1.1.1 8.8.8.8' 8.8.8.8 1)" = "1 1 1" ] ||
+[ "$(status_ucode public-host-flags example.com '1.1.1.1 8.8.8.8' 8.8.8.8 1)" = "1 1 1" ] ||
   fail "public host WAN match flags changed"
-[ "$(ucode "$DIAGNOSTICS" public-host-flags example.com '192.168.1.10' 8.8.8.8 1)" = "1 0 0" ] ||
+[ "$(status_ucode public-host-flags example.com '192.168.1.10' 8.8.8.8 1)" = "1 0 0" ] ||
   fail "private public host flags changed"
-[ "$(ucode "$DIAGNOSTICS" public-host-flags example.com '8.8.8.8' 8.8.8.8 0)" = "1 1 -1" ] ||
+[ "$(status_ucode public-host-flags example.com '8.8.8.8' 8.8.8.8 0)" = "1 1 -1" ] ||
   fail "non-public WAN host match flags changed"
+[ "$(status_ucode public-host-flags example.com '2606:4700:4700::1111' '198.51.100.2 2606:4700:4700::1111' 1)" = "1 1 1" ] ||
+  fail "IPv6 public host flags changed"
 
 netstat_listening="$(cat <<'EOF'
 Active Internet connections (only servers)
@@ -124,20 +134,33 @@ EOF
 )"
 
 printf '%s\n' "$netstat_listening" |
-  ucode "$DIAGNOSTICS" server-required-ports-listening 0.0.0.0 443 "tcp udp" >/dev/null ||
+  status_ucode server-required-ports-listening 0.0.0.0 443 "tcp udp" >/dev/null ||
   fail "tcp+udp netstat listeners should satisfy required protocols"
 if printf '%s\n' "$netstat_listening" |
-  ucode "$DIAGNOSTICS" server-required-ports-listening 0.0.0.0 8443 "tcp" >/dev/null 2>&1; then
+  status_ucode server-required-ports-listening 0.0.0.0 8443 "tcp" >/dev/null 2>&1; then
   fail "missing netstat listener should fail"
 fi
+
+netstat_listening6="$(cat <<'EOF'
+Active Internet connections (only servers)
+Proto Recv-Q Send-Q Local Address           Foreign Address         State
+tcp        0      0 ::1:8443                :::*                    LISTEN
+EOF
+)"
+
+printf '%s\n' "$netstat_listening6" |
+  status_ucode server-required-ports-listening ::1 8443 "tcp" >/dev/null ||
+  fail "IPv6 tcp netstat listener should satisfy required protocols"
 
 sing_box_netstat="$(cat <<'EOF'
 Active Internet connections (only servers)
 Proto Recv-Q Send-Q Local Address           Foreign Address         State       PID/Program name
 tcp        0      0 127.0.0.42:53           0.0.0.0:*               LISTEN      16244/sing-box
 tcp        0      0 0.0.0.0:1602            0.0.0.0:*               LISTEN      16244/sing-box
+tcp        0      0 ::1:1602                :::*                    LISTEN      16244/sing-box
 udp        0      0 127.0.0.42:53           0.0.0.0:*                           16244/sing-box
 udp        0      0 0.0.0.0:1602            0.0.0.0:*                           16244/sing-box
+udp        0      0 ::1:1602                :::*                                16244/sing-box
 EOF
 )"
 
@@ -159,7 +182,7 @@ EOF
 )"
 
 owners="$(printf '%s\n' "$netstat_owners" |
-  ucode "$DIAGNOSTICS" server-required-port-conflict-owners 0.0.0.0 443 "tcp udp")"
+  status_ucode server-required-port-conflict-owners 0.0.0.0 443 "tcp udp")"
 [ "$owners" = "111/nginx 222/dnsmasq" ] ||
   fail "unexpected conflict owners: $owners"
 

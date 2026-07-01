@@ -1,5 +1,6 @@
 import { validateDomain } from './validateDomain';
-import { validateIPV4 } from './validateIp';
+import { parseHostPort, unbracketHost } from './hostPort';
+import { validateIP } from './validateIp';
 import { ValidationResult } from './types';
 
 export function validateDNS(value: string): ValidationResult {
@@ -7,14 +8,20 @@ export function validateDNS(value: string): ValidationResult {
     return { valid: false, message: _('DNS server address cannot be empty') };
   }
 
-  const cleanedValueWithoutPort = value.replace(/:(\d+)(?=\/|$)/, '');
-  const cleanedIpWithoutPath = cleanedValueWithoutPort.split('/')[0];
+  const [addressPart, ...pathParts] = value.split('/');
+  const parsedHostPort = parseHostPort(addressPart);
+  const host = parsedHostPort
+    ? parsedHostPort.host
+    : unbracketHost(addressPart);
+  const domainValue = parsedHostPort
+    ? host + (pathParts.length > 0 ? `/${pathParts.join('/')}` : '')
+    : value.replace(/:(\d+)(?=\/|$)/, '');
 
-  if (validateIPV4(cleanedIpWithoutPath).valid) {
+  if (validateIP(host).valid) {
     return { valid: true, message: _('Valid') };
   }
 
-  if (validateDomain(cleanedValueWithoutPort).valid) {
+  if (validateDomain(domainValue).valid) {
     return { valid: true, message: _('Valid') };
   }
 

@@ -39,10 +39,14 @@ function constants_map() {
 
     c.NFT_TABLE_NAME = env("NFT_TABLE_NAME", "PodkopPlusTable");
     c.NFT_LOCALV4_SET_NAME = env("NFT_LOCALV4_SET_NAME", "localv4");
+    c.NFT_LOCALV6_SET_NAME = env("NFT_LOCALV6_SET_NAME", "localv6");
     c.NFT_COMMON_SET_NAME = env("NFT_COMMON_SET_NAME", "podkop_plus_subnets");
+    c.NFT_COMMON6_SET_NAME = env("NFT_COMMON6_SET_NAME", "podkop_plus_subnets6");
     c.NFT_PORT_SET_NAME = env("NFT_PORT_SET_NAME", "podkop_plus_ports");
     c.NFT_IP_PORT_SET_NAME = env("NFT_IP_PORT_SET_NAME", "podkop_plus_ip_ports");
+    c.NFT_IP_PORT6_SET_NAME = env("NFT_IP_PORT6_SET_NAME", "podkop_plus_ip6_ports");
     c.NFT_DISCORD_SET_NAME = env("NFT_DISCORD_SET_NAME", "podkop_plus_discord_subnets");
+    c.NFT_DISCORD6_SET_NAME = env("NFT_DISCORD6_SET_NAME", "podkop_plus_discord_subnets6");
     c.NFT_INTERFACE_SET_NAME = env("NFT_INTERFACE_SET_NAME", "podkop_plus_interfaces");
     c.NFT_FAKEIP_MARK = env("NFT_FAKEIP_MARK", "0x00100000");
     c.NFT_OUTBOUND_MARK = env("NFT_OUTBOUND_MARK", "0x00200000");
@@ -52,12 +56,15 @@ function constants_map() {
     c.SB_DNS_SERVER_TAG = env("SB_DNS_SERVER_TAG", "dns-server");
     c.SB_FAKEIP_DNS_SERVER_TAG = env("SB_FAKEIP_DNS_SERVER_TAG", "fakeip-server");
     c.SB_FAKEIP_INET4_RANGE = env("SB_FAKEIP_INET4_RANGE", "198.18.0.0/15");
+    c.SB_FAKEIP_INET6_RANGE = env("SB_FAKEIP_INET6_RANGE", "fc00::/18");
     c.SB_BOOTSTRAP_SERVER_TAG = env("SB_BOOTSTRAP_SERVER_TAG", "bootstrap-dns-server");
     c.SB_FAKEIP_DNS_RULE_TAG = env("SB_FAKEIP_DNS_RULE_TAG", "fakeip-dns-rule-tag");
     c.SB_FAKEIP_RULESET_DNS_RULE_TAG = env("SB_FAKEIP_RULESET_DNS_RULE_TAG", "fakeip-ruleset-dns-rule-tag");
     c.SB_SERVICE_FAKEIP_DNS_RULE_TAG = env("SB_SERVICE_FAKEIP_DNS_RULE_TAG", "service-fakeip-dns-rule-tag");
     c.SB_TPROXY_INBOUND_TAG = env("SB_TPROXY_INBOUND_TAG", "tproxy-in");
     c.SB_TPROXY_INBOUND_ADDRESS = env("SB_TPROXY_INBOUND_ADDRESS", "0.0.0.0");
+    c.SB_TPROXY_INBOUND6_TAG = env("SB_TPROXY_INBOUND6_TAG", "tproxy6-in");
+    c.SB_TPROXY_INBOUND6_ADDRESS = env("SB_TPROXY_INBOUND6_ADDRESS", "::1");
     c.SB_TPROXY_INBOUND_PORT = env("SB_TPROXY_INBOUND_PORT", "1602");
     c.SB_DNS_INBOUND_TAG = env("SB_DNS_INBOUND_TAG", "dns-in");
     c.SB_DNS_INBOUND_ADDRESS = env("SB_DNS_INBOUND_ADDRESS", "127.0.0.42");

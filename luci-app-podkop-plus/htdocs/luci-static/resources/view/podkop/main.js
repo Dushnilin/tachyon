@@ -6,9 +6,35 @@
 "require ui";
 
 // src/validators/validateIp.ts
-function validateIPV4(ip) {
+function isIPv4(ip) {
   const ipRegex = /^(?:(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])$/;
-  if (ipRegex.test(ip)) {
+  return ipRegex.test(ip);
+}
+function isIPv6(ip) {
+  if (!ip.includes(":") || ip.includes("%")) {
+    return false;
+  }
+  try {
+    new URL(`http://[${ip}]/`);
+    return true;
+  } catch (_e) {
+    return false;
+  }
+}
+function validateIPV4(ip) {
+  if (isIPv4(ip)) {
+    return { valid: true, message: _("Valid") };
+  }
+  return { valid: false, message: _("Invalid IP address") };
+}
+function validateIPv6(ip) {
+  if (isIPv6(ip)) {
+    return { valid: true, message: _("Valid") };
+  }
+  return { valid: false, message: _("Invalid IP address") };
+}
+function validateIP(ip) {
+  if (isIPv4(ip) || isIPv6(ip)) {
     return { valid: true, message: _("Valid") };
   }
   return { valid: false, message: _("Invalid IP address") };
@@ -35,17 +61,55 @@ function validateDomain(domain, allowDotTLD = false) {
   return { valid: true, message: _("Valid") };
 }
 
+// src/validators/hostPort.ts
+function unbracketHost(host) {
+  if (host.startsWith("[") && host.endsWith("]")) {
+    return host.slice(1, -1);
+  }
+  return host;
+}
+function isValidHost(host) {
+  const normalizedHost = unbracketHost(host);
+  return isIPv4(normalizedHost) || isIPv6(normalizedHost) || validateDomain(normalizedHost).valid;
+}
+function parseHostPort(value) {
+  if (!value) {
+    return null;
+  }
+  if (value.startsWith("[")) {
+    const end = value.indexOf("]");
+    if (end <= 1 || value.slice(end + 1, end + 2) !== ":") {
+      return null;
+    }
+    return {
+      host: value.slice(1, end),
+      port: value.slice(end + 2)
+    };
+  }
+  const firstColon = value.indexOf(":");
+  const lastColon = value.lastIndexOf(":");
+  if (firstColon < 0 || firstColon !== lastColon) {
+    return null;
+  }
+  return {
+    host: value.slice(0, firstColon),
+    port: value.slice(firstColon + 1)
+  };
+}
+
 // src/validators/validateDns.ts
 function validateDNS(value) {
   if (!value) {
     return { valid: false, message: _("DNS server address cannot be empty") };
   }
-  const cleanedValueWithoutPort = value.replace(/:(\d+)(?=\/|$)/, "");
-  const cleanedIpWithoutPath = cleanedValueWithoutPort.split("/")[0];
-  if (validateIPV4(cleanedIpWithoutPath).valid) {
+  const [addressPart, ...pathParts] = value.split("/");
+  const parsedHostPort = parseHostPort(addressPart);
+  const host = parsedHostPort ? parsedHostPort.host : unbracketHost(addressPart);
+  const domainValue = parsedHostPort ? host + (pathParts.length > 0 ? `/${pathParts.join("/")}` : "") : value.replace(/:(\d+)(?=\/|$)/, "");
+  if (validateIP(host).valid) {
     return { valid: true, message: _("Valid") };
   }
-  if (validateDomain(cleanedValueWithoutPort).valid) {
+  if (validateDomain(domainValue).valid) {
     return { valid: true, message: _("Valid") };
   }
   return {
@@ -67,11 +131,15 @@ function validateUrl(url, protocols = ["http:", "https:"]) {
       valid: false,
       message: _("URL must use one of the following protocols:") + " " + protocols.join(", ")
     };
-  const regex = new RegExp(
-    `^(?:${protocols.map((p) => p.replace(":", "")).join("|")})://(?:(?:[A-Za-z0-9-]+\\.)+[A-Za-z]{2,}|(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)(?:\\.(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)){3}|localhost)(?::\\d+)?(?:/[^\\s]*)?$`
-  );
-  if (regex.test(url)) {
-    return { valid: true, message: _("Valid") };
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.startsWith("[") ? parsed.hostname.slice(1, -1) : parsed.hostname;
+    const portNum = parsed.port ? Number(parsed.port) : 0;
+    if ((isValidHost(host) || host === "localhost") && (!parsed.port || Number.isInteger(portNum) && portNum >= 1 && portNum <= 65535)) {
+      return { valid: true, message: _("Valid") };
+    }
+  } catch (_e) {
+    return { valid: false, message: _("Invalid URL format") };
   }
   return { valid: false, message: _("Invalid URL format") };
 }
@@ -101,27 +169,34 @@ function validatePath(value) {
 
 // src/validators/validateSubnet.ts
 function validateSubnet(value) {
-  const subnetRegex = /^(\d{1,3}\.){3}\d{1,3}(?:\/\d{1,2})?$/;
-  if (!subnetRegex.test(value)) {
+  const [ip, cidr, extra] = value.split("/");
+  if (!ip || extra !== void 0 || !isIPv4(ip) && !isIPv6(ip)) {
     return {
       valid: false,
-      message: _("Invalid format. Use X.X.X.X or X.X.X.X/Y")
+      message: _("Invalid format. Use an IP address or CIDR subnet")
     };
   }
-  const [ip, cidr] = value.split("/");
-  if (ip === "0.0.0.0" && cidr == null) {
-    return { valid: false, message: _("IP address 0.0.0.0 is not allowed") };
-  }
-  const ipCheck = validateIPV4(ip);
-  if (!ipCheck.valid) {
-    return ipCheck;
+  if ((ip === "0.0.0.0" || ip === "::") && cidr == null) {
+    return {
+      valid: false,
+      message: _("Unspecified IP address is not allowed")
+    };
   }
   if (cidr) {
-    const cidrNum = parseInt(cidr, 10);
-    if (cidrNum < 0 || cidrNum > 32) {
+    if (!/^\d+$/.test(cidr)) {
       return {
         valid: false,
-        message: _("CIDR must be between 0 and 32")
+        message: _("Invalid CIDR prefix")
+      };
+    }
+    const cidrNum = parseInt(cidr, 10);
+    const maxPrefix = isIPv6(ip) ? 128 : 32;
+    if (cidrNum < 0 || cidrNum > maxPrefix) {
+      return {
+        valid: false,
+        message: _(
+          "CIDR must be between 0 and 32 for IPv4 or 0 and 128 for IPv6"
+        )
       };
     }
   }
@@ -197,7 +272,14 @@ function validateShadowsocksUrl(url) {
         message: _("Invalid Shadowsocks URL: missing server address")
       };
     }
-    const [server, portAndRest] = serverPart.split(":");
+    const parsedHostPort = parseHostPort(serverPart);
+    if (!parsedHostPort) {
+      return {
+        valid: false,
+        message: _("Invalid Shadowsocks URL: invalid server and port")
+      };
+    }
+    const { host: server, port: portAndRest } = parsedHostPort;
     if (!server) {
       return {
         valid: false,
@@ -270,7 +352,13 @@ function validateVlessUrl(url) {
       return { valid: false, message: "Invalid VLESS URL: missing UUID" };
     if (!hostPortPart)
       return { valid: false, message: "Invalid VLESS URL: missing server" };
-    const [host, port] = hostPortPart.split(":");
+    const parsedHostPort = parseHostPort(hostPortPart);
+    if (!parsedHostPort)
+      return {
+        valid: false,
+        message: "Invalid VLESS URL: invalid host and port"
+      };
+    const { host, port } = parsedHostPort;
     if (!host)
       return { valid: false, message: "Invalid VLESS URL: missing hostname" };
     if (!port)
@@ -425,7 +513,13 @@ function validateTrojanUrl(url) {
         valid: false,
         message: "Invalid Trojan URL: missing hostname and port"
       };
-    const [host, port] = hostPortPart.split(":");
+    const parsedHostPort = parseHostPort(hostPortPart);
+    if (!parsedHostPort)
+      return {
+        valid: false,
+        message: "Invalid Trojan URL: invalid host and port"
+      };
+    const { host, port } = parsedHostPort;
     if (!host)
       return { valid: false, message: "Invalid Trojan URL: missing hostname" };
     if (!port)
@@ -477,7 +571,14 @@ function validateSocksUrl(url) {
         message: _("Invalid SOCKS URL: missing host and port")
       };
     }
-    const [host, port] = hostPortPart.split(":");
+    const parsedHostPort = parseHostPort(hostPortPart);
+    if (!parsedHostPort) {
+      return {
+        valid: false,
+        message: _("Invalid SOCKS URL: invalid host and port")
+      };
+    }
+    const { host, port } = parsedHostPort;
     if (!host) {
       return {
         valid: false,
@@ -494,9 +595,7 @@ function validateSocksUrl(url) {
         message: _("Invalid SOCKS URL: invalid port number")
       };
     }
-    const ipv4Result = validateIPV4(host);
-    const domainResult = validateDomain(host);
-    if (!ipv4Result.valid && !domainResult.valid) {
+    if (!isValidHost(host)) {
       return {
         valid: false,
         message: _("Invalid SOCKS URL: invalid host format")
@@ -542,7 +641,14 @@ function validateHysteria2Url(url) {
         valid: false,
         message: _("Invalid HY2 URL: missing host & port")
       };
-    const [host, port] = hostPortPart.split(":");
+    const parsedHostPort = parseHostPort(hostPortPart);
+    if (!parsedHostPort) {
+      return {
+        valid: false,
+        message: _("Invalid HY2 URL: invalid host & port")
+      };
+    }
+    const { host, port } = parsedHostPort;
     if (!host) {
       return { valid: false, message: _("Invalid HY2 URL: missing host") };
     }
@@ -665,13 +771,14 @@ function validateHttpProxyUrl(url) {
         message: _("Invalid HTTP proxy URL: missing host and port")
       };
     }
-    const [host, port, extra] = hostPortPart.split(":");
-    if (extra !== void 0) {
+    const parsedHostPort = parseHostPort(hostPortPart);
+    if (!parsedHostPort) {
       return {
         valid: false,
         message: _("Invalid HTTP proxy URL: invalid host and port")
       };
     }
+    const { host, port } = parsedHostPort;
     if (!host) {
       return {
         valid: false,
@@ -691,9 +798,7 @@ function validateHttpProxyUrl(url) {
         message: _("Invalid HTTP proxy URL: invalid port number")
       };
     }
-    const ipv4Result = validateIPV4(host);
-    const domainResult = validateDomain(host);
-    if (!ipv4Result.valid && !domainResult.valid) {
+    if (!isValidHost(host)) {
       return {
         valid: false,
         message: _("Invalid HTTP proxy URL: invalid host format")
@@ -2210,6 +2315,7 @@ var RESERVED_RUNTIME_TAGS = /* @__PURE__ */ new Set([
   "fakeip-ruleset-dns-rule-tag",
   "service-fakeip-dns-rule-tag",
   "tproxy-in",
+  "tproxy6-in",
   "dns-in",
   "service-mixed-in",
   "direct-out"
@@ -12075,7 +12181,9 @@ return baseclass.extend({
   store,
   validateDNS,
   validateDomain,
+  validateIP,
   validateIPV4,
+  validateIPv6,
   validateOutboundJson,
   validatePath,
   validateProxyUrl,

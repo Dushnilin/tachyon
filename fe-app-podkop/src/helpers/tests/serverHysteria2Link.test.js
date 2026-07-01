@@ -14,6 +14,10 @@ function loadBuildHysteria2Link(values) {
   const source = fs.readFileSync(serverViewPath, 'utf8');
   const requiredFunctions = [
     'encodeQuery',
+    'normalizeHost',
+    'isIpv4',
+    'isIpv6',
+    'formatHostForUri',
     'getPublicHost',
     'normalizeSha256',
     'buildHysteria2Link',
@@ -96,5 +100,20 @@ describe('buildHysteria2Link', () => {
     expect(params.has('pinSHA256')).toBe(false);
     expect(params.get('obfs')).toBe('salamander');
     expect(params.get('obfs-password')).toBe('secret');
+  });
+
+  it('brackets IPv6 public host in exported URI', () => {
+    const buildHysteria2Link = loadBuildHysteria2Link({
+      'server1.public_host': '2001:db8::1',
+      'server1.listen_port': '8443',
+    });
+
+    const link = buildHysteria2Link(
+      'server1',
+      { password: 'password', name: 'Server 1' },
+      { tlsCertificateSha256: certificatePin },
+    );
+
+    expect(link).toContain('@[2001:db8::1]:8443');
   });
 });

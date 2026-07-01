@@ -104,7 +104,7 @@ function strip_first_scheme_marker(value) {
 
 function authority(value) {
     value = strip_first_scheme_marker(value);
-    let at = index(value, "@");
+    let at = str_last_index(value, "@");
     if (at >= 0)
         value = substr(value, at + 1);
 
@@ -114,14 +114,32 @@ function authority(value) {
 
 function host(value) {
     let value_authority = authority(value);
+    if (substr(value_authority, 0, 1) == "[") {
+        let end = index(value_authority, "]");
+        return end > 0 ? substr(value_authority, 1, end - 1) : value_authority;
+    }
+
     let colon = index(value_authority, ":");
-    return colon >= 0 ? substr(value_authority, 0, colon) : value_authority;
+    if (colon < 0)
+        return value_authority;
+
+    return str_last_index(value_authority, ":") == colon ? substr(value_authority, 0, colon) : value_authority;
 }
 
 function port(value) {
     let value_authority = authority(value);
+    if (substr(value_authority, 0, 1) == "[") {
+        let end = index(value_authority, "]");
+        if (end > 0 && substr(value_authority, end + 1, 1) == ":")
+            return substr(value_authority, end + 2);
+        return "";
+    }
+
     let colon = index(value_authority, ":");
-    return colon >= 0 ? substr(value_authority, colon + 1) : "";
+    if (colon < 0 || str_last_index(value_authority, ":") != colon)
+        return "";
+
+    return substr(value_authority, colon + 1);
 }
 
 function userinfo(value) {

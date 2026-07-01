@@ -22,10 +22,13 @@ const PENDING_RELOAD_FILE = getenv("PODKOP_PENDING_RELOAD_FILE") || RUNTIME_STAT
 const SERVICE_INIT = getenv("PODKOP_SERVICE_INIT") || "/etc/init.d/podkop-plus";
 const NFT_TABLE_NAME = getenv("NFT_TABLE_NAME") || "PodkopPlusTable";
 const NFT_COMMON_SET_NAME = getenv("NFT_COMMON_SET_NAME") || "podkop_plus_subnets";
+const NFT_COMMON6_SET_NAME = getenv("NFT_COMMON6_SET_NAME") || "podkop_plus_subnets6";
 const NFT_PORT_SET_NAME = getenv("NFT_PORT_SET_NAME") || "podkop_plus_ports";
 const NFT_IP_PORT_SET_NAME = getenv("NFT_IP_PORT_SET_NAME") || "podkop_plus_ip_ports";
+const NFT_IP_PORT6_SET_NAME = getenv("NFT_IP_PORT6_SET_NAME") || "podkop_plus_ip6_ports";
 const NFT_INTERFACE_SET_NAME = getenv("NFT_INTERFACE_SET_NAME") || "podkop_plus_interfaces";
 const NFT_LOCALV4_SET_NAME = getenv("NFT_LOCALV4_SET_NAME") || "localv4";
+const NFT_LOCALV6_SET_NAME = getenv("NFT_LOCALV6_SET_NAME") || "localv6";
 const NFT_FAKEIP_MARK = getenv("NFT_FAKEIP_MARK") || "0x00100000";
 const SB_SERVICE_MIXED_INBOUND_ADDRESS = getenv("SB_SERVICE_MIXED_INBOUND_ADDRESS") || "127.0.0.1";
 const SB_SERVICE_MIXED_INBOUND_PORT = getenv("SB_SERVICE_MIXED_INBOUND_PORT") || "4534";
@@ -706,7 +709,10 @@ function init_config(populate_nft, caches_prepared, no_refresh) {
         NFT_IP_PORT_SET_NAME,
         NFT_INTERFACE_SET_NAME,
         NFT_LOCALV4_SET_NAME,
-        NFT_FAKEIP_MARK
+        NFT_FAKEIP_MARK,
+        NFT_COMMON6_SET_NAME,
+        NFT_IP_PORT6_SET_NAME,
+        NFT_LOCALV6_SET_NAME
     ])) {
         log_message("ucode sing-box runtime generator failed to populate nft runtime sets. Aborted.", "fatal");
         remove_files([ temp_config, runtime_log ]);

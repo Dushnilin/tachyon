@@ -212,7 +212,7 @@ cat >"$WORK_DIR/runtime-matchers-fixture.json" <<'JSON'
     "config_path": "/tmp/sing-box/config.json",
     "dns_server": "1.1.1.1",
     "service_listen_address": "127.0.0.1",
-    "routing_excluded_ips": [ "192.168.1.5/32" ]
+    "routing_excluded_ips": [ "192.168.1.5/32", "2001:db8::5/128" ]
   },
   "section": [
     {
@@ -230,7 +230,7 @@ cat >"$WORK_DIR/runtime-matchers-fixture.json" <<'JSON'
       "action": "outbound",
       "outbound_json": "{\"type\":\"socks\",\"server\":\"127.0.0.1\",\"server_port\":1080}",
       "domain_suffix": [ "example.org" ],
-      "source_ip_cidr": [ "10.0.0.2/32" ],
+      "source_ip_cidr": [ "10.0.0.2/32", "2001:db8::2/128" ],
       "outbound_detour_enabled": "1",
       "outbound_detour_section": "detour",
       "mixed_proxy_enabled": "1",
@@ -382,7 +382,7 @@ cat >"$WORK_DIR/fully-routed-fixture.json" <<'JSON'
       "enabled": "1",
       "action": "outbound",
       "outbound_json": "{\"type\":\"direct\"}",
-      "fully_routed_ips": [ "192.168.1.20/32", "192.168.1.30/32" ],
+      "fully_routed_ips": [ "192.168.1.20/32", "192.168.1.30/32", "2001:db8::20/128" ],
       "domain_suffix": [ "example.org" ]
     }
   ]
@@ -641,12 +641,17 @@ assert(socks.users && socks.users[0].username == "tester", "server socks auth");
 assert(route_rule(server, r => r.inbound == "server-edge-in" && r.outbound == "direct-out") != null, "server direct route");
 
 let matchers = cfg("matchers");
+assert(matchers.dns.strategy == "prefer_ipv4", "DNS strategy allows IPv6 answers");
+assert(dns_server(matchers, r => r.tag == "fakeip-server" && r.inet6_range == "fc00::/18") != null, "FakeIP IPv6 range");
+assert(inbound(matchers, "tproxy6-in") != null, "IPv6 TProxy inbound");
+assert(inbound(matchers, "tproxy6-in").listen == "::1", "IPv6 TProxy listen address");
 assert(outbound(matchers, "proxy-out").detour == "detour-out", "outbound detour");
 let mixed = inbound(matchers, "proxy-mixed-in");
 assert(mixed && mixed.listen_port == 19090 && mixed.users[0].username == "user", "mixed inbound auth");
 assert(route_rule(matchers, r => r.inbound == "proxy-mixed-in" && r.outbound == "proxy-out") != null, "mixed inbound route");
-assert(route_rule(matchers, r => r.outbound == "direct-out" && contains(r.source_ip_cidr, "192.168.1.5/32")) != null, "routing excluded source");
-assert(route_rule(matchers, r => r.outbound == "proxy-out" && contains(r.source_ip_cidr, "10.0.0.2/32")) != null, "source_ip_cidr matcher");
+assert(route_rule(matchers, r => contains(r.inbound, "tproxy-in") && contains(r.inbound, "tproxy6-in") && r.outbound == "proxy-out") != null, "section route dual tproxy inbound");
+assert(route_rule(matchers, r => r.outbound == "direct-out" && contains(r.source_ip_cidr, "192.168.1.5/32") && contains(r.source_ip_cidr, "2001:db8::5/128")) != null, "routing excluded source");
+assert(route_rule(matchers, r => r.outbound == "proxy-out" && contains(r.source_ip_cidr, "10.0.0.2/32") && contains(r.source_ip_cidr, "2001:db8::2/128")) != null, "source_ip_cidr matcher");
 
 let urltest = cfg("urltest");
 let urltest_out = outbound(urltest, "proxy-urltest-out");
@@ -684,7 +689,7 @@ assert(route_rule(download, r => r.inbound == "service-mixed-in" && r.outbound =
 assert(first_remote_ruleset(download).download_detour == "proxy-out", "download_detour on remote ruleset");
 
 let fully = cfg("fully-routed");
-assert(route_rule(fully, r => contains(r.source_ip_cidr, "192.168.1.20/32") && contains(r.source_ip_cidr, "192.168.1.30/32")) != null, "fully routed IP route");
+assert(route_rule(fully, r => contains(r.inbound, "tproxy-in") && contains(r.inbound, "tproxy6-in") && contains(r.source_ip_cidr, "192.168.1.20/32") && contains(r.source_ip_cidr, "192.168.1.30/32") && contains(r.source_ip_cidr, "2001:db8::20/128")) != null, "fully routed IP route");
 
 let mwan3_auto = cfg("mwan3-auto");
 assert(mwan3_auto.route.auto_detect_interface === false, "mwan3 disables auto_detect_interface");

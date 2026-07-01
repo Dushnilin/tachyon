@@ -1,5 +1,7 @@
 #!/usr/bin/env ucode
 
+let ip = require("core.ip");
+
 function as_string(value) {
     return value == null ? "" : "" + value;
 }
@@ -43,41 +45,6 @@ function ascii_lower(value) {
     return replace(as_string(value), /[A-Z]/g, function(ch) {
         return substr(lower, index(upper, ch), 1);
     });
-}
-
-function valid_ipv4(value) {
-    value = as_string(value);
-    if (match(value, /^([0-9]{1,3}\.){3}[0-9]{1,3}$/) == null)
-        return false;
-
-    let parts = split(value, ".");
-    if (length(parts) != 4)
-        return false;
-
-    for (let part in parts) {
-        if (part == "" || match(part, /^[0-9]+$/) == null)
-            return false;
-        let octet = int(part);
-        if (octet < 0 || octet > 255)
-            return false;
-    }
-
-    return true;
-}
-
-function valid_ipv4_cidr(value) {
-    value = as_string(value);
-    let slash = index(value, "/");
-    if (slash < 0 || index(substr(value, slash + 1), "/") >= 0)
-        return false;
-
-    let address = substr(value, 0, slash);
-    let prefix = substr(value, slash + 1);
-    if (prefix == "" || match(prefix, /^[0-9]+$/) == null)
-        return false;
-
-    prefix = int(prefix);
-    return valid_ipv4(address) && prefix >= 0 && prefix <= 32;
 }
 
 function valid_domain_suffix(value) {
@@ -140,7 +107,7 @@ function normalize_domain_subnet_value(value, kind) {
         return valid_domain_suffix(normalized) ? normalized : null;
     }
     if (kind == "subnets")
-        return valid_ipv4(value) || valid_ipv4_cidr(value) ? value : null;
+        return ip.valid_ip_or_cidr(value) ? value : null;
 
     exit(1);
 }

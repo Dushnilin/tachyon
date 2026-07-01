@@ -72,10 +72,14 @@ require_file_pattern "$NFQUEUE_RUNTIME_UC" '>>" + shell_quote(logfile) + " 2>&1 
   "nfqueue provider supervisors must close inherited procd lock fd"
 require_file_pattern "$BYEDPI_RUNTIME_UC" '>>" + shell_quote(logfile) + " 2>&1 1000>&- & echo $!' \
   "byedpi supervisor must close inherited procd lock fd"
-require_pattern "tproxy-marking-rule-present" \
-  "service stop must use direct ucode tproxy marking rule check"
-require_pattern "tproxy-route-present" \
-  "service stop must use direct ucode tproxy route check"
+require_pattern "tproxy-marking-rule4-present" \
+  "service stop must use direct ucode IPv4 tproxy marking rule check"
+require_pattern "tproxy-marking-rule6-present" \
+  "service stop must use direct ucode IPv6 tproxy marking rule check"
+require_pattern "tproxy-route4-present" \
+  "service stop must use direct ucode IPv4 tproxy route check"
+require_pattern "tproxy-route6-present" \
+  "service stop must use direct ucode IPv6 tproxy route check"
 grep -Fq 'require("core.uci")' "$LIFECYCLE_UC" ||
   fail "service/lifecycle.uc must use core.uci for lifecycle UCI state"
 if grep -n -E 'uci -q|require\("uci"\)\.cursor|function uci_|uci_set\(' "$LIFECYCLE_UC" >/dev/null 2>&1; then

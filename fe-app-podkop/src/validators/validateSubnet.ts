@@ -1,36 +1,40 @@
 import { ValidationResult } from './types';
-import { validateIPV4 } from './validateIp';
+import { isIPv4, isIPv6 } from './validateIp';
 
 export function validateSubnet(value: string): ValidationResult {
-  // Must be in form X.X.X.X or X.X.X.X/Y
-  const subnetRegex = /^(\d{1,3}\.){3}\d{1,3}(?:\/\d{1,2})?$/;
+  const [ip, cidr, extra] = value.split('/');
 
-  if (!subnetRegex.test(value)) {
+  if (!ip || extra !== undefined || (!isIPv4(ip) && !isIPv6(ip))) {
     return {
       valid: false,
-      message: _('Invalid format. Use X.X.X.X or X.X.X.X/Y'),
+      message: _('Invalid format. Use an IP address or CIDR subnet'),
     };
   }
 
-  const [ip, cidr] = value.split('/');
-
-  if (ip === '0.0.0.0' && cidr == null) {
-    return { valid: false, message: _('IP address 0.0.0.0 is not allowed') };
+  if ((ip === '0.0.0.0' || ip === '::') && cidr == null) {
+    return {
+      valid: false,
+      message: _('Unspecified IP address is not allowed'),
+    };
   }
 
-  const ipCheck = validateIPV4(ip);
-  if (!ipCheck.valid) {
-    return ipCheck;
-  }
-
-  // Validate CIDR if present
   if (cidr) {
-    const cidrNum = parseInt(cidr, 10);
-
-    if (cidrNum < 0 || cidrNum > 32) {
+    if (!/^\d+$/.test(cidr)) {
       return {
         valid: false,
-        message: _('CIDR must be between 0 and 32'),
+        message: _('Invalid CIDR prefix'),
+      };
+    }
+
+    const cidrNum = parseInt(cidr, 10);
+    const maxPrefix = isIPv6(ip) ? 128 : 32;
+
+    if (cidrNum < 0 || cidrNum > maxPrefix) {
+      return {
+        valid: false,
+        message: _(
+          'CIDR must be between 0 and 32 for IPv4 or 0 and 128 for IPv6',
+        ),
       };
     }
   }

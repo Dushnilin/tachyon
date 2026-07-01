@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PODKOP PLUS\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-06-22 04:41+0300\n"
-"PO-Revision-Date: 2026-06-22 04:41+0300\n"
+"POT-Creation-Date: 2026-07-01 01:51+0300\n"
+"PO-Revision-Date: 2026-07-01 01:51+0300\n"
 "Last-Translator: ushan0v\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -215,8 +215,8 @@ msgstr "Проверки пройдены с ручным DHCP"
 msgid "ciadpi command options. Podkop Plus manages the listen address and port."
 msgstr "Параметры команды ciadpi. Адрес и порт прослушивания управляются Podkop Plus."
 
-msgid "CIDR must be between 0 and 32"
-msgstr "CIDR должен быть между 0 и 32"
+msgid "CIDR must be between 0 and 32 for IPv4 or 0 and 128 for IPv6"
+msgstr ""
 
 msgid "Client fingerprint"
 msgstr "Отпечаток клиента"
@@ -620,14 +620,17 @@ msgstr "Мониторинг интерфейса для Bad WAN"
 msgid "Invalid ByeDPI strategy"
 msgstr "Некорректная стратегия ByeDPI"
 
+msgid "Invalid CIDR prefix"
+msgstr ""
+
 msgid "Invalid DNS server format. Examples: 8.8.8.8 or dns.example.com or dns.example.com/nicedns for DoH"
 msgstr "Неверный формат DNS-сервера. Примеры: 8.8.8.8, dns.example.com или dns.example.com/nicedns для DoH"
 
 msgid "Invalid domain address"
 msgstr "Неверный домен"
 
-msgid "Invalid format. Use X.X.X.X or X.X.X.X/Y"
-msgstr "Неверный формат. Используйте X.X.X.X или X.X.X.X/Y"
+msgid "Invalid format. Use an IP address or CIDR subnet"
+msgstr ""
 
 msgid "Invalid HTTP proxy URL: invalid host and port"
 msgstr "Неверный URL HTTP proxy: неверный хост и порт"
@@ -664,6 +667,9 @@ msgstr "Неверный URL HTTP proxy: путь, query и fragment не под
 
 msgid "Invalid HY2 URL: insecure must be 0 or 1"
 msgstr "Неверный URL Hysteria2: параметр insecure должен быть 0 или 1"
+
+msgid "Invalid HY2 URL: invalid host & port"
+msgstr ""
 
 msgid "Invalid HY2 URL: invalid port number"
 msgstr "Неверный URL Hysteria2: неверный номер порта"
@@ -725,6 +731,9 @@ msgstr "Неверное регулярное выражение"
 msgid "Invalid Shadowsocks URL: decoded credentials must contain method:password"
 msgstr "Неверный URL Shadowsocks: декодированные данные должны содержать method:password"
 
+msgid "Invalid Shadowsocks URL: invalid server and port"
+msgstr ""
+
 msgid "Invalid Shadowsocks URL: missing credentials"
 msgstr "Неверный URL Shadowsocks: отсутствуют учетные данные"
 
@@ -748,6 +757,9 @@ msgstr "Неверный URL Shadowsocks: должен начинаться с s
 
 msgid "Invalid Shadowsocks URL: parsing failed"
 msgstr "Неверный URL Shadowsocks: ошибка разбора"
+
+msgid "Invalid SOCKS URL: invalid host and port"
+msgstr ""
 
 msgid "Invalid SOCKS URL: invalid host format"
 msgstr "Неверный URL SOCKS: неверный формат хоста"
@@ -793,9 +805,6 @@ msgstr "Неверный URL VLESS: ошибка разбора"
 
 msgid "Invalid VMess URL: parsing failed"
 msgstr ""
-
-msgid "IP address 0.0.0.0 is not allowed"
-msgstr "IP-адрес 0.0.0.0 не допускается"
 
 msgid "IPs"
 msgstr "IP-адреса"
@@ -1625,6 +1634,9 @@ msgstr "Неизвестный флаг NFQWS."
 msgid "Unknown NFQWS2 flag."
 msgstr "Неизвестный флаг NFQWS2."
 
+msgid "Unspecified IP address is not allowed"
+msgstr ""
+
 msgid "Unsupported security mode for this protocol"
 msgstr "Этот протокол не поддерживает выбранный режим защиты"
 
@@ -1661,8 +1673,8 @@ msgstr "URL URLTest"
 msgid "Use 32 hex characters"
 msgstr "Укажите 32 hex-символа"
 
-msgid "Use a domain name or IPv4 address"
-msgstr "Укажите доменное имя или IPv4-адрес"
+msgid "Use a domain name or IP address"
+msgstr ""
 
 msgid "Use a duration like 30s, 5m, or 1h30m"
 msgstr "Укажите длительность в формате 30s, 5m или 1h30m"
@@ -1676,20 +1688,20 @@ msgstr "Укажите ненулевой секрет"
 msgid "Use an HTTP or HTTPS URL"
 msgstr "Укажите HTTP или HTTPS URL"
 
-msgid "Use an IPv4 address"
-msgstr "Укажите IPv4-адрес"
+msgid "Use an IP address"
+msgstr ""
 
-msgid "Use an IPv4 listen address"
-msgstr "Укажите IPv4-адрес прослушивания"
+msgid "Use an IP listen address"
+msgstr ""
 
 msgid "Use another section as an intermediate hop for connecting to this one"
 msgstr "Использовать другую секцию как промежуточный узел для подключения к текущей"
 
-msgid "Use CIDR prefixes like 192.168.1.0/24"
-msgstr "Используйте CIDR-префиксы вроде 192.168.1.0/24"
+msgid "Use CIDR prefixes like 192.168.1.0/24 or 2001:db8::/32"
+msgstr ""
 
-msgid "Use CIDR prefixes or IP addresses like 192.168.1.0/24 or 192.168.1.10"
-msgstr "Используйте CIDR-префиксы или IP-адреса вроде 192.168.1.0/24 или 192.168.1.10"
+msgid "Use CIDR prefixes or IP addresses like 192.168.1.0/24, 192.168.1.10, or 2001:db8::1"
+msgstr ""
 
 msgid "Use format: URL | User-Agent"
 msgstr "Используйте формат: URL | User-Agent"

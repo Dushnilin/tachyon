@@ -38,6 +38,7 @@ const validUrls = [
     'mport range',
     'hysteria2://letmein@example.com:2053/?mport=20000-50000&insecure=1&obfs=salamander&obfs-password=gawrgura&sni=real.example.com',
   ],
+  ['IPv6 host', 'hysteria2://pass@[2001:db8::1]:443/#hy2-ipv6'],
 ];
 
 const invalidUrls = [
@@ -49,6 +50,7 @@ const invalidUrls = [
   ['Port out of range', 'hysteria2://pw@example.com:99999/'],
   ['Invalid port range order', 'hysteria2://pw@example.com:6000-5000/'],
   ['Invalid port range end', 'hysteria2://pw@example.com:5000-/'],
+  ['Unbracketed IPv6 with port', 'hysteria2://pw@2001:db8::1:443/'],
 
   // Obfuscation errors
   ['Unknown obfs type', 'hysteria2://pw@example.com:443/?obfs=weird'],

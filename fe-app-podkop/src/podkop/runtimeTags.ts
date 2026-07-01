@@ -6,6 +6,7 @@ const RESERVED_RUNTIME_TAGS = new Set([
   'fakeip-ruleset-dns-rule-tag',
   'service-fakeip-dns-rule-tag',
   'tproxy-in',
+  'tproxy6-in',
   'dns-in',
   'service-mixed-in',
   'direct-out',

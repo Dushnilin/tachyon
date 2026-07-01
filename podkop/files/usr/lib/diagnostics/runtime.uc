@@ -2,6 +2,7 @@
 
 let fs = require("fs");
 let constants = require("core.constants");
+let core_ip = require("core.ip");
 let uci_core = require("core.uci");
 
 const CONFIG_NAME = getenv("PODKOP_CONFIG_NAME") || constants.PODKOP_CONFIG_NAME || "podkop-plus";
@@ -33,6 +34,7 @@ const NFT_INTERFACE_SET_NAME = getenv("NFT_INTERFACE_SET_NAME") || constants.NFT
 const NFT_DISCORD_SET_NAME = getenv("NFT_DISCORD_SET_NAME") || constants.NFT_DISCORD_SET_NAME || "podkop_plus_discord_subnets";
 const NFT_LOCALV4_SET_NAME = getenv("NFT_LOCALV4_SET_NAME") || constants.NFT_LOCALV4_SET_NAME || "localv4";
 const SB_DNS_INBOUND_ADDRESS = getenv("SB_DNS_INBOUND_ADDRESS") || constants.SB_DNS_INBOUND_ADDRESS || "127.0.0.42";
+const SB_TPROXY_INBOUND6_ADDRESS = getenv("SB_TPROXY_INBOUND6_ADDRESS") || constants.SB_TPROXY_INBOUND6_ADDRESS || "::1";
 const SB_TPROXY_INBOUND_PORT = getenv("SB_TPROXY_INBOUND_PORT") || constants.SB_TPROXY_INBOUND_PORT || "1602";
 const SB_CLASH_API_CONTROLLER_PORT = getenv("SB_CLASH_API_CONTROLLER_PORT") || constants.SB_CLASH_API_CONTROLLER_PORT || "9090";
 const SB_VARIANT_STATE_FILE = getenv("SB_VARIANT_STATE_FILE") || constants.SB_VARIANT_STATE_FILE || "/etc/podkop-plus/sing-box-variant";
@@ -377,25 +379,8 @@ function log_message(message, level) {
     command_success_from_args([ "logger", "-t", "podkop-plus", "[" + level + "] " + as_string(message) ]);
 }
 
-function valid_ipv4_octet(value) {
-    value = as_string(value);
-    if (match(value, /^[0-9]+$/) == null)
-        return false;
-    let number = int(value, 10);
-    return number >= 0 && number <= 255;
-}
-
 function valid_ipv4(value) {
-    value = as_string(value);
-    if (length(value) > 0 && substr(value, length(value) - 1) == ".")
-        value = substr(value, 0, length(value) - 1);
-    let parts = split(value, ".");
-    if (length(parts) != 4)
-        return false;
-    for (let part in parts)
-        if (!valid_ipv4_octet(part))
-            return false;
-    return true;
+    return core_ip.valid_ipv4(value, true, false);
 }
 
 function valid_public_ipv4(value) {
@@ -425,26 +410,73 @@ function valid_public_ipv4(value) {
     return true;
 }
 
+function valid_public_ipv6(value) {
+    value = lc(as_string(value));
+    if (!core_ip.valid_ipv6(value))
+        return false;
+    if (value == "::" || value == "::1")
+        return false;
+    if (substr(value, 0, 4) == "fe80" || substr(value, 0, 2) == "ff")
+        return false;
+    if (substr(value, 0, 2) == "fc" || substr(value, 0, 2) == "fd")
+        return false;
+    if (substr(value, 0, 4) == "2001" && index(value, "2001:db8") == 0)
+        return false;
+    return true;
+}
+
+function valid_public_ip(value) {
+    return valid_public_ipv4(value) || valid_public_ipv6(value);
+}
+
 function words(value) {
     value = trim(as_string(value));
     return value == "" ? [] : split(value, /[ \t\r\n]+/);
 }
 
-function network_status_ipv4_address(data) {
-    let value = parse_json_or_null(data);
-    let addresses = type(value) == "object" ? value["ipv4-address"] : null;
-    if (type(addresses) == "array" && length(addresses) > 0 && type(addresses[0]) == "object")
-        return as_string(addresses[0].address || "");
-    return "";
+function allowed_ips_default_routes(value) {
+    let result = [];
+    for (let allowed in words(value)) {
+        if (allowed == "0.0.0.0/0" || allowed == "::/0")
+            push(result, allowed);
+    }
+    return result;
 }
 
-function get_wan_ipv4_address() {
+function push_unique(result, seen, value) {
+    value = as_string(value);
+    if (value == "" || seen[value])
+        return;
+    seen[value] = true;
+    push(result, value);
+}
+
+function network_status_ip_addresses(data, key) {
+    let value = parse_json_or_null(data);
+    let addresses = type(value) == "object" ? value[key] : null;
+    let result = [];
+    let seen = {};
+    if (type(addresses) == "array") {
+        for (let item in addresses) {
+            if (type(item) == "object")
+                push_unique(result, seen, item.address || "");
+        }
+    }
+    return result;
+}
+
+function get_wan_ip_addresses() {
+    let result = [];
+    let seen = {};
+
     for (let interface in [ "wan", "wwan" ]) {
-        let ip = network_status_ipv4_address(command_output_from_args([
+        let data = command_output_from_args([
             "ubus", "-S", "call", "network.interface." + interface, "status"
-        ]));
-        if (ip != "")
-            return ip;
+        ]);
+        for (let ip in network_status_ip_addresses(data, "ipv4-address"))
+            push_unique(result, seen, ip);
+        for (let ip in network_status_ip_addresses(data, "ipv6-address"))
+            push_unique(result, seen, ip);
     }
 
     let route = command_output_from_args([ "ip", "-4", "route", "show", "default" ]);
@@ -464,10 +496,29 @@ function get_wan_ipv4_address() {
         line = trim(as_string(line));
         let matched = match(line, /^inet[ \t]+([0-9.]+)\//);
         if (matched != null)
-            return as_string(matched[1]);
+            push_unique(result, seen, matched[1]);
     }
 
-    return "";
+    route = command_output_from_args([ "ip", "-6", "route", "show", "default" ]);
+    fields = words(route);
+    iface = "";
+    for (let i = 0; i + 1 < length(fields); i++) {
+        if (fields[i] == "dev") {
+            iface = fields[i + 1];
+            break;
+        }
+    }
+    if (iface != "") {
+        addr = command_output_from_args([ "ip", "-6", "addr", "show", "dev", iface, "scope", "global" ]);
+        for (let line in split(addr, "\n")) {
+            line = trim(as_string(line));
+            let matched = match(line, /^inet6[ \t]+([^\/ \t]+)\//);
+            if (matched != null)
+                push_unique(result, seen, matched[1]);
+        }
+    }
+
+    return join(" ", result);
 }
 
 function helper_output(mode, args) {
@@ -499,7 +550,12 @@ function server_runtime_type_for_protocol(protocol) {
 
 function server_listen_requires_firewall(listen, wan_ip) {
     listen = as_string(listen);
-    return listen == "0.0.0.0" || (as_string(wan_ip) != "" && listen == as_string(wan_ip)) || valid_public_ipv4(listen);
+    if (listen == "0.0.0.0" || listen == "::" || valid_public_ip(listen))
+        return true;
+    for (let ip in words(wan_ip))
+        if (ip == listen)
+            return true;
+    return false;
 }
 
 function firewall_required_protocols_open(port, required_proto) {
@@ -521,11 +577,15 @@ function server_required_ports_listening(listen, port, required_proto) {
     );
 }
 
-function resolve_public_host_ipv4s(host) {
+function resolve_public_host_ips(host) {
     host = as_string(host);
+    if (substr(host, 0, 1) == "[" && substr(host, length(host) - 1, 1) == "]")
+        host = substr(host, 1, length(host) - 2);
     if (host == "")
         return "";
     if (valid_ipv4(host))
+        return host;
+    if (core_ip.valid_ipv6(host))
         return host;
 
     let seen = {};
@@ -534,6 +594,13 @@ function resolve_public_host_ipv4s(host) {
     ]), "\n")) {
         line = trim(as_string(line));
         if (valid_ipv4(line))
+            seen[line] = true;
+    }
+    for (let line in split(command_output_from_args([
+        "dig", "+short", "AAAA", host, "+timeout=2", "+tries=1"
+    ]), "\n")) {
+        line = trim(as_string(line));
+        if (core_ip.valid_ipv6(line))
             seen[line] = true;
     }
 
@@ -559,8 +626,14 @@ function check_inbounds_config() {
 function check_inbounds() {
     let cfg = settings();
     let sing_box_config_path = option(cfg, "config_path", "");
-    let wan_ip = get_wan_ipv4_address();
-    let wan_public = valid_public_ipv4(wan_ip) ? 1 : 0;
+    let wan_ip = get_wan_ip_addresses();
+    let wan_public = 0;
+    for (let ip in words(wan_ip)) {
+        if (valid_public_ip(ip)) {
+            wan_public = 1;
+            break;
+        }
+    }
     let items = [];
     let enabled_count = 0;
 
@@ -603,7 +676,7 @@ function check_inbounds() {
             "has-route-rule-for-inbound", sing_box_config_path, inbound_tag
         ]) ? 1 : 0;
 
-        let public_host_ips = protocol == "json_inbound" ? "" : resolve_public_host_ipv4s(public_host);
+        let public_host_ips = protocol == "json_inbound" ? "" : resolve_public_host_ips(public_host);
         let flags = words(public_host_flags(public_host, public_host_ips, wan_ip, wan_public));
         while (length(flags) < 3)
             push(flags, "-1");
@@ -1445,7 +1518,11 @@ function sing_box_standard_ports_listening(netstat) {
     let tproxy_suffix = ":" + SB_TPROXY_INBOUND_PORT;
     let port_1602_ok = index(netstat, "0.0.0.0" + tproxy_suffix) >= 0 ||
         index(netstat, "127.0.0.1" + tproxy_suffix) >= 0;
-    return port_53_ok && port_1602_ok;
+    let port_1602_v6_ok = index(netstat, SB_TPROXY_INBOUND6_ADDRESS + tproxy_suffix) >= 0 ||
+        index(netstat, "[" + SB_TPROXY_INBOUND6_ADDRESS + "]" + tproxy_suffix) >= 0 ||
+        index(netstat, "0:0:0:0:0:0:0:1" + tproxy_suffix) >= 0 ||
+        index(netstat, ":::" + SB_TPROXY_INBOUND_PORT) >= 0;
+    return port_53_ok && port_1602_ok && port_1602_v6_ok;
 }
 
 function sing_box_standard_ports_listening_fixture() {
@@ -1500,6 +1577,7 @@ function check_sing_box() {
 
 function check_fakeip() {
     let fakeip_address = "";
+    let fakeip6_address = "";
     for (let line in split(command_output_from_args([
         "dig", "+short", "@" + SB_DNS_INBOUND_ADDRESS, FAKEIP_TEST_DOMAIN, "A", "+timeout=2", "+tries=1"
     ]), "\n")) {
@@ -1509,9 +1587,20 @@ function check_fakeip() {
             break;
         }
     }
+    for (let line in split(command_output_from_args([
+        "dig", "+short", "@" + SB_DNS_INBOUND_ADDRESS, FAKEIP_TEST_DOMAIN, "AAAA", "+timeout=2", "+tries=1"
+    ]), "\n")) {
+        line = lc(trim(as_string(line)));
+        if (core_ip.valid_ipv6(line)) {
+            fakeip6_address = line;
+            break;
+        }
+    }
     write_json({
-        fakeip: match(fakeip_address, /^198\.(18|19)\./) != null,
-        IP: fakeip_address
+        fakeip: match(fakeip_address, /^198\.(18|19)\./) != null || match(fakeip6_address, /^fc[0-3][0-9a-f]:/) != null,
+        IP: fakeip_address != "" ? fakeip_address : fakeip6_address,
+        IPv4: fakeip_address,
+        IPv6: fakeip6_address
     });
     return 0;
 }
@@ -1762,9 +1851,10 @@ function global_check(arg1, arg2) {
         peer_section = as_string(peer_section);
         if (peer_section == "")
             continue;
-        if (uci_get(peer_section + ".allowed_ips") == "0.0.0.0/0") {
+        let default_routes = allowed_ips_default_routes(uci_get(peer_section + ".allowed_ips"));
+        if (length(default_routes) > 0) {
             print_global("━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-            print_global("⚠️ WG Route allowed IP enabled with 0.0.0.0/0");
+            print_global("⚠️ WG Route allowed IP enabled with " + join(", ", default_routes));
         }
     }
 
