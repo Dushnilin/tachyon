@@ -216,7 +216,7 @@ msgid "ciadpi command options. Podkop Plus manages the listen address and port."
 msgstr "Параметры команды ciadpi. Адрес и порт прослушивания управляются Podkop Plus."
 
 msgid "CIDR must be between 0 and 32 for IPv4 or 0 and 128 for IPv6"
-msgstr ""
+msgstr "CIDR должен быть от 0 до 32 для IPv4 или от 0 до 128 для IPv6"
 
 msgid "Client fingerprint"
 msgstr "Отпечаток клиента"
@@ -621,7 +621,7 @@ msgid "Invalid ByeDPI strategy"
 msgstr "Некорректная стратегия ByeDPI"
 
 msgid "Invalid CIDR prefix"
-msgstr ""
+msgstr "Неверный префикс CIDR"
 
 msgid "Invalid DNS server format. Examples: 8.8.8.8 or dns.example.com or dns.example.com/nicedns for DoH"
 msgstr "Неверный формат DNS-сервера. Примеры: 8.8.8.8, dns.example.com или dns.example.com/nicedns для DoH"
@@ -630,7 +630,7 @@ msgid "Invalid domain address"
 msgstr "Неверный домен"
 
 msgid "Invalid format. Use an IP address or CIDR subnet"
-msgstr ""
+msgstr "Неверный формат. Используйте IP-адрес или подсеть CIDR"
 
 msgid "Invalid HTTP proxy URL: invalid host and port"
 msgstr "Неверный URL HTTP proxy: неверный хост и порт"
@@ -1635,7 +1635,7 @@ msgid "Unknown NFQWS2 flag."
 msgstr "Неизвестный флаг NFQWS2."
 
 msgid "Unspecified IP address is not allowed"
-msgstr ""
+msgstr "Неуказанный IP-адрес не разрешён"
 
 msgid "Unsupported security mode for this protocol"
 msgstr "Этот протокол не поддерживает выбранный режим защиты"
