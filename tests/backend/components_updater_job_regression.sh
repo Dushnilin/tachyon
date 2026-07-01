@@ -97,6 +97,15 @@ grep -Fq 'require("core.uci")' "$ACTION_UC" ||
 if grep -n -E 'require\("uci"\)\.cursor|uci -q|uci", "-q"|command_exists\("uci"\)' "$ACTION_UC" >/dev/null 2>&1; then
   fail "components/action.uc must not own direct UCI cursor or CLI calls"
 fi
+grep -Fq 'podkop_status_running_with_timeout()' "$ACTION_UC" ||
+  fail "components/action.uc must use bounded Podkop status checks for component actions"
+if grep -Fq 'command_success_from_args([ SERVICE_INIT, "status" ])' "$ACTION_UC"; then
+  fail "components/action.uc must not call init.d status without a timeout"
+fi
+status_timeout_line="$(grep -n '^function podkop_status_running_with_timeout()' "$ACTION_UC" | cut -d: -f1)"
+capture_state_line="$(grep -n '^function capture_podkop_running_state()' "$ACTION_UC" | cut -d: -f1)"
+[ -n "$status_timeout_line" ] && [ -n "$capture_state_line" ] && [ "$status_timeout_line" -lt "$capture_state_line" ] ||
+  fail "components/action.uc must declare bounded status helper before capture_podkop_running_state for OpenWrt ucode"
 init_line="$(grep -n '^function init_tmp_dir()' "$ACTION_UC" | cut -d: -f1)"
 tmp_file_line="$(grep -n '^function make_tmp_file' "$ACTION_UC" | cut -d: -f1)"
 [ -n "$init_line" ] && [ -n "$tmp_file_line" ] && [ "$init_line" -lt "$tmp_file_line" ] ||

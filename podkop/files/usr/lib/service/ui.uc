@@ -1051,7 +1051,7 @@ function launch_worker(args) {
         BYEDPI_BIN
     }) + " " +
         command_from_args(command_args) +
-        " >/dev/null 2>&1 & echo $!";
+        " >/dev/null 2>&1 1000>&- & echo $!";
     return trim(command_output("sh -c " + shell_quote(command)));
 }
 

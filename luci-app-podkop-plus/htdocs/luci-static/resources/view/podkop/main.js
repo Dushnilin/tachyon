@@ -2341,7 +2341,6 @@ function isTransientRpcError(message) {
 }
 
 // src/podkop/methods/shell/index.ts
-var SUBSCRIPTION_UPDATE_TIMEOUT_MS = 10 * 60 * 1e3;
 var SUBSCRIPTION_UPDATE_RPC_TIMEOUT_MS = 15e3;
 var SUBSCRIPTION_UPDATE_POLL_INTERVAL_MS = 1500;
 var UI_ACTION_RPC_TIMEOUT_MS = 15e3;
@@ -2350,9 +2349,9 @@ var SERVICE_ACTION_TIMEOUT_MS = 2 * 60 * 1e3;
 var SERVICE_ACTION_POLL_INTERVAL_MS = 1e3;
 var LATENCY_TEST_TIMEOUT_MS = 30 * 1e3;
 var LATENCY_TEST_POLL_INTERVAL_MS = 1e3;
-var COMPONENT_ACTION_TIMEOUT_MS = 10 * 60 * 1e3;
 var COMPONENT_ACTION_RPC_TIMEOUT_MS = 15e3;
 var COMPONENT_ACTION_POLL_INTERVAL_MS = 1500;
+var COMPONENT_ACTION_STATUS_REFRESH_INTERVAL_MS = 15e3;
 var COMPONENT_ACTION_SELF_UPDATE_SETTLE_MS = 3e4;
 var COMPONENT_ACTION_TRANSIENT_RPC_GRACE_MS = 3e4;
 var COMPONENT_ACTION_STATE_DIR = "/var/run/podkop-plus/component-actions";
@@ -2773,24 +2772,28 @@ var PodkopShellMethods = {
       data: parsedResponse
     };
   },
-  waitComponentActionJob: async (jobId, component, action, expectedLatestVersion, startedAt = Date.now()) => {
+  waitComponentActionJob: async (jobId, component, action, expectedLatestVersion) => {
     let selfUpdateVersionMatchedAt = 0;
+    let lastStatusRefreshAt = 0;
     const transientRpc = createTransientRpcGraceTracker(
       COMPONENT_ACTION_TRANSIENT_RPC_GRACE_MS
     );
-    while (Date.now() - startedAt < COMPONENT_ACTION_TIMEOUT_MS) {
+    while (true) {
       await sleep(COMPONENT_ACTION_POLL_INTERVAL_MS);
       const stateResponse = await readComponentActionState(jobId);
       if (stateResponse) {
-        transientRpc.reset();
-        if (stateResponse.running) {
+        if (!stateResponse.running) {
+          transientRpc.reset();
+          return {
+            success: true,
+            data: stateResponse
+          };
+        }
+        if (Date.now() - lastStatusRefreshAt < COMPONENT_ACTION_STATUS_REFRESH_INTERVAL_MS) {
           continue;
         }
-        return {
-          success: true,
-          data: stateResponse
-        };
       }
+      lastStatusRefreshAt = Date.now();
       const statusResponse = await executeShellCommand({
         command: "/usr/bin/podkop-plus",
         args: [Podkop.AvailableMethods.COMPONENT_ACTION_STATUS, jobId],
@@ -2798,6 +2801,10 @@ var PodkopShellMethods = {
       });
       const parsedResponse = parseComponentActionResult(statusResponse);
       if ((statusResponse.code ?? 0) !== 0 || !parsedResponse) {
+        if (stateResponse?.running) {
+          transientRpc.reset();
+          continue;
+        }
         if (await isComponentActionStillRunning(jobId, component, action)) {
           transientRpc.reset();
           continue;
@@ -2841,10 +2848,6 @@ var PodkopShellMethods = {
         data: parsedResponse
       };
     }
-    return {
-      success: false,
-      error: _("Operation timed out")
-    };
   },
   subscriptionUpdateStart: async (section, sourceIndex) => {
     const startArgs = [
@@ -2887,11 +2890,11 @@ var PodkopShellMethods = {
       data: parsedResponse
     };
   },
-  waitSubscriptionUpdateJob: async (jobId, startedAt = Date.now()) => {
+  waitSubscriptionUpdateJob: async (jobId) => {
     const transientRpc = createTransientRpcGraceTracker(
       UI_ACTION_TRANSIENT_RPC_GRACE_MS
     );
-    while (Date.now() - startedAt < SUBSCRIPTION_UPDATE_TIMEOUT_MS) {
+    while (true) {
       await sleep(SUBSCRIPTION_UPDATE_POLL_INTERVAL_MS);
       const response = await PodkopShellMethods.subscriptionUpdateStatus(jobId);
       if (!response.success) {
@@ -2906,10 +2909,6 @@ var PodkopShellMethods = {
       }
       return response;
     }
-    return {
-      success: false,
-      error: _("Operation timed out")
-    };
   }
 };
 

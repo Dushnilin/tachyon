@@ -357,7 +357,7 @@ function start_rule(section, index_value) {
         "" + port,
         raw_opt,
         child_pidfile
-    ]) + " >>" + shell_quote(logfile) + " 2>&1 & echo $!";
+    ]) + " >>" + shell_quote(logfile) + " 2>&1 1000>&- & echo $!";
     let pid = trim(command_output("sh -c " + shell_quote(command)));
     if (pid == "" || !fs.writefile(pidfile, pid + "\n")) {
         log_message("ciadpi failed to start for rule '" + name + "'. Check " + logfile + ". Aborted.", "fatal");
