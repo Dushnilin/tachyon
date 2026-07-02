@@ -613,7 +613,68 @@ function formatUrlTestModalValue(value: unknown) {
   }
 
   const text = `${value ?? ''}`.trim();
-  return text || _('N/A');
+  return text || _('No');
+}
+
+function getUrlTestLatencyClass(latency: number) {
+  if (!latency) {
+    return 'pdk_dashboard-page__outbound-grid__item__latency--empty';
+  }
+
+  if (latency < 800) {
+    return 'pdk_dashboard-page__outbound-grid__item__latency--green';
+  }
+
+  if (latency < 1500) {
+    return 'pdk_dashboard-page__outbound-grid__item__latency--yellow';
+  }
+
+  return 'pdk_dashboard-page__outbound-grid__item__latency--red';
+}
+
+function formatUrlTestLatency(latency: number) {
+  return latency ? `${latency}ms` : 'N/A';
+}
+
+function renderUrlTestSelectedValue(info: Podkop.UrlTestInfo) {
+  const selectedMember = info.outbounds.find((member) => member.selected);
+  const selectedName =
+    selectedMember?.displayName || info.selectedName || info.selectedCode || '';
+  const name = formatUrlTestModalValue(selectedName);
+
+  if (name === _('No')) {
+    return E('span', {}, name);
+  }
+
+  return E(
+    'span',
+    { class: 'pdk_dashboard-page__urltest-details__selected-value' },
+    [
+      E(
+        'span',
+        { class: 'pdk_dashboard-page__urltest-details__selected-name' },
+        name,
+      ),
+      ...(selectedMember?.type
+        ? [
+            E(
+              'span',
+              { class: 'pdk_dashboard-page__urltest-details__selected-type' },
+              selectedMember.type,
+            ),
+          ]
+        : []),
+      ...(selectedMember
+        ? [
+            E(
+              'span',
+              { class: getUrlTestLatencyClass(selectedMember.latency) },
+              formatUrlTestLatency(selectedMember.latency),
+            ),
+          ]
+        : []),
+    ],
+  );
 }
 
 function renderUrlTestCopyButton(
@@ -624,7 +685,7 @@ function renderUrlTestCopyButton(
     'button',
     {
       type: 'button',
-      class: 'btn pdk_dashboard-page__outbound-grid__item__copy-button',
+      class: 'btn pdk_dashboard-page__urltest-details__copy-button',
       title,
       'aria-label': title,
       click: onClick,
@@ -643,33 +704,37 @@ function renderUrlTestInfoModal(
     return E('div', {}, _('URLTest details are unavailable'));
   }
 
-  const fields: Array<[string, unknown, string?]> = [
-    [_('Selected'), info.selectedName || info.selectedCode],
-    [_('Testing URL'), info.url, info.url],
-    [_('Interval'), info.interval],
-    [_('Tolerance'), info.tolerance],
-    [_('Idle timeout'), info.idleTimeout],
-    [_('Interrupt existing connections'), info.interruptExistConnections],
+  const fields: Array<{
+    label: string;
+    value?: unknown;
+    children?: Array<HTMLElement | string>;
+  }> = [
+    {
+      label: _('Selected'),
+      children: [renderUrlTestSelectedValue(info)],
+    },
+    { label: _('Testing URL'), value: info.url },
+    { label: _('Interval'), value: info.interval },
+    { label: _('Tolerance'), value: info.tolerance },
+    { label: _('Idle timeout'), value: info.idleTimeout },
+    {
+      label: _('Interrupt connections'),
+      value: info.interruptExistConnections,
+    },
   ];
 
   return E('div', { class: 'pdk_dashboard-page__urltest-details' }, [
     E(
       'dl',
       { class: 'pdk_dashboard-page__urltest-details__params' },
-      fields.map(([label, value, copyValue]) =>
+      fields.map(({ label, value, children }) =>
         E('div', { class: 'pdk_dashboard-page__urltest-details__param' }, [
           E('dt', {}, label),
-          E('dd', {}, [
-            E('span', {}, formatUrlTestModalValue(value)),
-            ...(copyValue
-              ? [
-                  renderUrlTestCopyButton(_('Copy URL'), (event) => {
-                    event.preventDefault();
-                    copyToClipboard(copyValue);
-                  }),
-                ]
-              : []),
-          ]),
+          E(
+            'dd',
+            {},
+            children || [E('span', {}, formatUrlTestModalValue(value))],
+          ),
         ]),
       ),
     ),
@@ -704,7 +769,18 @@ function renderUrlTestInfoModal(
                     },
                     [
                       E('b', {}, member.displayName),
-                      member.selected ? E('span', {}, _('Selected')) : '',
+                      ...(member.type
+                        ? [
+                            E(
+                              'span',
+                              {
+                                class:
+                                  'pdk_dashboard-page__urltest-details__row-type',
+                              },
+                              member.type,
+                            ),
+                          ]
+                        : []),
                     ],
                   ),
                   E(
@@ -713,29 +789,45 @@ function renderUrlTestInfoModal(
                       class: 'pdk_dashboard-page__urltest-details__row-meta',
                     },
                     [
-                      E('span', {}, member.type || _('N/A')),
                       E(
                         'span',
-                        {},
-                        member.latency ? `${member.latency}ms` : 'N/A',
+                        { class: getUrlTestLatencyClass(member.latency) },
+                        formatUrlTestLatency(member.latency),
                       ),
                     ],
                   ),
-                  ...(member.canCopyLink
-                    ? [
-                        renderUrlTestCopyButton(
-                          _('Copy proxy link'),
-                          (event) => {
-                            event.preventDefault();
-                            void handleCopyOutbound(section, member);
-                          },
-                        ),
-                      ]
-                    : []),
+                  member.canCopyLink
+                    ? renderUrlTestCopyButton(_('Copy proxy link'), (event) => {
+                        event.preventDefault();
+                        void handleCopyOutbound(section, member);
+                      })
+                    : E('span', {
+                        class:
+                          'pdk_dashboard-page__urltest-details__copy-placeholder',
+                      }),
                 ],
               ),
             )
-          : [E('div', {}, _('No outbounds'))],
+          : [
+              E(
+                'div',
+                { class: 'pdk_dashboard-page__urltest-details__empty' },
+                _('No outbounds'),
+              ),
+            ],
+      ),
+    ]),
+    E('div', { class: 'pdk_dashboard-page__urltest-details__footer' }, [
+      E(
+        'button',
+        {
+          type: 'button',
+          class: 'btn cbi-button cbi-button-neutral',
+          click: () => {
+            ui.hideModal();
+          },
+        },
+        _('Close'),
       ),
     ]),
   ]);
@@ -749,7 +841,12 @@ function handleShowUrlTestInfo(
     return;
   }
 
-  ui.showModal(_('URLTest details'), renderUrlTestInfoModal(section, outbound));
+  ui.showModal(
+    `${_('URLTest details')}: ${
+      outbound.urlTestInfo.displayName || outbound.displayName
+    }`,
+    renderUrlTestInfoModal(section, outbound),
+  );
 }
 
 async function handleUpdateSubscription(section: Podkop.OutboundGroup) {

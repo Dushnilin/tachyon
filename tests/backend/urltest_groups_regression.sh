@@ -135,6 +135,9 @@ if (group.interval != "45s")
     die("xray urltest interval was not preserved\n");
 if (group.tolerance != null)
     die("xray urltest should not receive hardcoded tolerance\n");
+for (let child in group.outbounds || [])
+    if (substr(child, 0, 5) == "xray-")
+        die("xray urltest child tags should preserve source names when unique\n");
 ' "$xray_normalized" || fail "xray normalized URLTest fields"
 
 prepare_subscription_cache proxy 1 "https://xray.example/sub" "$xray_normalized"
@@ -186,6 +189,9 @@ if (!builtin || length(builtin.outbounds || []) != 2)
 for (let child in builtin.outbounds || [])
     if (child == "Latvia group")
         die("built-in URLTest must not use the xray group tag as a child\n");
+for (let child in builtin.outbounds || [])
+    if (substr(child, 0, 5) == "xray-")
+        die("built-in URLTest must not use artificial xray child tag prefixes\n");
 if (object_or_empty(cache.urltestGroups)["Latvia group"].url != "https://probe.example/204")
     die("section cache is missing imported xray URLTest params\n");
 if (length(object_or_empty(cache.urltestGroups)["proxy-urltest-out"].outbounds || []) != 2)

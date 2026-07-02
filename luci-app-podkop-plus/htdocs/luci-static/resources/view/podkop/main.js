@@ -3239,6 +3239,18 @@ function sortOutboundsForDashboard(outbounds, options = {}) {
     return left.index - right.index;
   }).map((item) => item.outbound);
 }
+function sortUrlTestMembers(outbounds) {
+  return outbounds.map((outbound, index) => ({ outbound, index })).sort((left, right) => {
+    if (left.outbound.selected !== right.outbound.selected) {
+      return left.outbound.selected ? -1 : 1;
+    }
+    const latencyDiff = getLatencySortValue(left.outbound) - getLatencySortValue(right.outbound);
+    if (latencyDiff !== 0) {
+      return latencyDiff;
+    }
+    return left.index - right.index;
+  }).map((item) => item.outbound);
+}
 function isSafeSectionName(sectionName) {
   return /^[A-Za-z0-9_-]+$/.test(sectionName);
 }
@@ -3292,28 +3304,30 @@ function buildUrlTestInfo({
     groupCache?.outbounds?.length ? groupCache.outbounds : entry.value.all || []
   );
   const selectedCode = entry.value.now || "";
-  const outbounds = childCodes.flatMap((childCode) => {
-    const childEntry = proxyByCode.get(childCode);
-    const link = manualLinkByCode.get(childCode) || "";
-    const canCopyLink = isCopyableProxyLink(link) || subscriptionCopyableCodes.has(childCode);
-    return [
-      {
-        code: childCode,
-        displayName: getOutboundDisplayName(
-          childCode,
-          childEntry,
+  const outbounds = sortUrlTestMembers(
+    childCodes.flatMap((childCode) => {
+      const childEntry = proxyByCode.get(childCode);
+      const link = manualLinkByCode.get(childCode) || "";
+      const canCopyLink = isCopyableProxyLink(link) || subscriptionCopyableCodes.has(childCode);
+      return [
+        {
+          code: childCode,
+          displayName: getOutboundDisplayName(
+            childCode,
+            childEntry,
+            link,
+            outboundMetadata
+          ),
+          latency: childEntry?.value?.history?.[0]?.delay || 0,
+          type: childEntry?.value?.type || "",
+          selected: selectedCode === childCode,
           link,
-          outboundMetadata
-        ),
-        latency: childEntry?.value?.history?.[0]?.delay || 0,
-        type: childEntry?.value?.type || "",
-        selected: selectedCode === childCode,
-        link,
-        canCopyLink,
-        country: showDetectedCountries ? outboundMetadata?.countries?.[childCode] : void 0
-      }
-    ];
-  });
+          canCopyLink,
+          country: showDetectedCountries ? outboundMetadata?.countries?.[childCode] : void 0
+        }
+      ];
+    })
+  );
   const selectedName = outbounds.find((outbound) => outbound.code === selectedCode)?.displayName || selectedCode;
   return {
     code,
@@ -5358,14 +5372,62 @@ function formatUrlTestModalValue(value) {
     return value ? _("Yes") : _("No");
   }
   const text = `${value ?? ""}`.trim();
-  return text || _("N/A");
+  return text || _("No");
+}
+function getUrlTestLatencyClass(latency) {
+  if (!latency) {
+    return "pdk_dashboard-page__outbound-grid__item__latency--empty";
+  }
+  if (latency < 800) {
+    return "pdk_dashboard-page__outbound-grid__item__latency--green";
+  }
+  if (latency < 1500) {
+    return "pdk_dashboard-page__outbound-grid__item__latency--yellow";
+  }
+  return "pdk_dashboard-page__outbound-grid__item__latency--red";
+}
+function formatUrlTestLatency(latency) {
+  return latency ? `${latency}ms` : "N/A";
+}
+function renderUrlTestSelectedValue(info) {
+  const selectedMember = info.outbounds.find((member) => member.selected);
+  const selectedName = selectedMember?.displayName || info.selectedName || info.selectedCode || "";
+  const name = formatUrlTestModalValue(selectedName);
+  if (name === _("No")) {
+    return E("span", {}, name);
+  }
+  return E(
+    "span",
+    { class: "pdk_dashboard-page__urltest-details__selected-value" },
+    [
+      E(
+        "span",
+        { class: "pdk_dashboard-page__urltest-details__selected-name" },
+        name
+      ),
+      ...selectedMember?.type ? [
+        E(
+          "span",
+          { class: "pdk_dashboard-page__urltest-details__selected-type" },
+          selectedMember.type
+        )
+      ] : [],
+      ...selectedMember ? [
+        E(
+          "span",
+          { class: getUrlTestLatencyClass(selectedMember.latency) },
+          formatUrlTestLatency(selectedMember.latency)
+        )
+      ] : []
+    ]
+  );
 }
 function renderUrlTestCopyButton(title, onClick) {
   return E(
     "button",
     {
       type: "button",
-      class: "btn pdk_dashboard-page__outbound-grid__item__copy-button",
+      class: "btn pdk_dashboard-page__urltest-details__copy-button",
       title,
       "aria-label": title,
       click: onClick
@@ -5379,29 +5441,31 @@ function renderUrlTestInfoModal(section, outbound) {
     return E("div", {}, _("URLTest details are unavailable"));
   }
   const fields = [
-    [_("Selected"), info.selectedName || info.selectedCode],
-    [_("Testing URL"), info.url, info.url],
-    [_("Interval"), info.interval],
-    [_("Tolerance"), info.tolerance],
-    [_("Idle timeout"), info.idleTimeout],
-    [_("Interrupt existing connections"), info.interruptExistConnections]
+    {
+      label: _("Selected"),
+      children: [renderUrlTestSelectedValue(info)]
+    },
+    { label: _("Testing URL"), value: info.url },
+    { label: _("Interval"), value: info.interval },
+    { label: _("Tolerance"), value: info.tolerance },
+    { label: _("Idle timeout"), value: info.idleTimeout },
+    {
+      label: _("Interrupt connections"),
+      value: info.interruptExistConnections
+    }
   ];
   return E("div", { class: "pdk_dashboard-page__urltest-details" }, [
     E(
       "dl",
       { class: "pdk_dashboard-page__urltest-details__params" },
       fields.map(
-        ([label, value, copyValue]) => E("div", { class: "pdk_dashboard-page__urltest-details__param" }, [
+        ({ label, value, children }) => E("div", { class: "pdk_dashboard-page__urltest-details__param" }, [
           E("dt", {}, label),
-          E("dd", {}, [
-            E("span", {}, formatUrlTestModalValue(value)),
-            ...copyValue ? [
-              renderUrlTestCopyButton(_("Copy URL"), (event) => {
-                event.preventDefault();
-                copyToClipboard(copyValue);
-              })
-            ] : []
-          ])
+          E(
+            "dd",
+            {},
+            children || [E("span", {}, formatUrlTestModalValue(value))]
+          )
         ])
       )
     ),
@@ -5431,7 +5495,15 @@ function renderUrlTestInfoModal(section, outbound) {
                 },
                 [
                   E("b", {}, member.displayName),
-                  member.selected ? E("span", {}, _("Selected")) : ""
+                  ...member.type ? [
+                    E(
+                      "span",
+                      {
+                        class: "pdk_dashboard-page__urltest-details__row-type"
+                      },
+                      member.type
+                    )
+                  ] : []
                 ]
               ),
               E(
@@ -5440,26 +5512,41 @@ function renderUrlTestInfoModal(section, outbound) {
                   class: "pdk_dashboard-page__urltest-details__row-meta"
                 },
                 [
-                  E("span", {}, member.type || _("N/A")),
                   E(
                     "span",
-                    {},
-                    member.latency ? `${member.latency}ms` : "N/A"
+                    { class: getUrlTestLatencyClass(member.latency) },
+                    formatUrlTestLatency(member.latency)
                   )
                 ]
               ),
-              ...member.canCopyLink ? [
-                renderUrlTestCopyButton(
-                  _("Copy proxy link"),
-                  (event) => {
-                    event.preventDefault();
-                    void handleCopyOutbound(section, member);
-                  }
-                )
-              ] : []
+              member.canCopyLink ? renderUrlTestCopyButton(_("Copy proxy link"), (event) => {
+                event.preventDefault();
+                void handleCopyOutbound(section, member);
+              }) : E("span", {
+                class: "pdk_dashboard-page__urltest-details__copy-placeholder"
+              })
             ]
           )
-        ) : [E("div", {}, _("No outbounds"))]
+        ) : [
+          E(
+            "div",
+            { class: "pdk_dashboard-page__urltest-details__empty" },
+            _("No outbounds")
+          )
+        ]
+      )
+    ]),
+    E("div", { class: "pdk_dashboard-page__urltest-details__footer" }, [
+      E(
+        "button",
+        {
+          type: "button",
+          class: "btn cbi-button cbi-button-neutral",
+          click: () => {
+            ui.hideModal();
+          }
+        },
+        _("Close")
       )
     ])
   ]);
@@ -5468,7 +5555,10 @@ function handleShowUrlTestInfo(section, outbound) {
   if (!outbound.urlTestInfo) {
     return;
   }
-  ui.showModal(_("URLTest details"), renderUrlTestInfoModal(section, outbound));
+  ui.showModal(
+    `${_("URLTest details")}: ${outbound.urlTestInfo.displayName || outbound.displayName}`,
+    renderUrlTestInfoModal(section, outbound)
+  );
 }
 async function handleUpdateSubscription(section) {
   if (store.get().sectionsWidget.subscriptionUpdatingSections[section.sectionName]) {
@@ -6226,14 +6316,17 @@ var styles = `
 }
 
 .pdk_dashboard-page__urltest-details {
-    min-width: min(720px, 86vw);
+    box-sizing: border-box;
+    width: min(760px, calc(100vw - 56px));
+    max-width: 100%;
+    padding-top: 10px;
 }
 
 .pdk_dashboard-page__urltest-details__params {
     display: grid;
     grid-template-columns: minmax(120px, max-content) minmax(0, 1fr);
     gap: 8px 16px;
-    margin: 0 0 16px;
+    margin: 0 0 18px;
 }
 
 .pdk_dashboard-page__urltest-details__param {
@@ -6242,6 +6335,7 @@ var styles = `
 
 .pdk_dashboard-page__urltest-details__param dt {
     color: var(--text-color-medium, #666);
+    line-height: 1.35;
 }
 
 .pdk_dashboard-page__urltest-details__param dd {
@@ -6257,6 +6351,30 @@ var styles = `
     overflow-wrap: anywhere;
 }
 
+.pdk_dashboard-page__urltest-details__selected-value {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    max-width: 100%;
+    padding: 1px 8px;
+    border: 1px solid var(--success-color-low, #2d7d46);
+    border-radius: 4px;
+    color: inherit;
+    background: transparent;
+    box-sizing: border-box;
+    line-height: 1.3;
+}
+
+.pdk_dashboard-page__urltest-details__selected-name {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.pdk_dashboard-page__urltest-details__selected-type {
+    color: var(--text-color-medium, #666);
+}
+
 .pdk_dashboard-page__urltest-details__outbounds-title {
     margin-bottom: 8px;
     font-weight: 600;
@@ -6265,52 +6383,115 @@ var styles = `
 .pdk_dashboard-page__urltest-details__table {
     display: grid;
     gap: 6px;
+    width: calc(100% + 14px);
+    box-sizing: border-box;
     max-height: min(46vh, 460px);
-    overflow: auto;
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding-right: 14px;
+    scrollbar-gutter: auto;
 }
 
 .pdk_dashboard-page__urltest-details__row {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-columns: minmax(0, 1fr) minmax(54px, max-content) 20px;
     align-items: center;
-    gap: 12px;
-    padding: 8px 0;
+    gap: 8px;
+    width: 100%;
+    min-width: 0;
+    padding: 7px 8px;
+    box-sizing: border-box;
+    border: 1px solid transparent;
     border-bottom: 1px solid var(--border-color-low, #eee);
+    border-radius: 4px;
 }
 
 .pdk_dashboard-page__urltest-details__row--active {
-    font-weight: 600;
+    border-color: var(--success-color-low, #2d7d46);
+    background: transparent;
 }
 
 .pdk_dashboard-page__urltest-details__row-name,
 .pdk_dashboard-page__urltest-details__row-meta {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     min-width: 0;
+    line-height: 1.3;
+}
+
+.pdk_dashboard-page__urltest-details__row-name {
+    flex-wrap: wrap;
 }
 
 .pdk_dashboard-page__urltest-details__row-name b {
     min-width: 0;
     overflow-wrap: anywhere;
+    line-height: 1.3;
 }
 
-.pdk_dashboard-page__urltest-details__row-name span,
+.pdk_dashboard-page__urltest-details__row-type,
 .pdk_dashboard-page__urltest-details__row-meta {
     color: var(--text-color-medium, #666);
 }
 
-@media (max-width: 480px) {
+.pdk_dashboard-page__urltest-details__row-type {
+    white-space: nowrap;
+    line-height: 1.3;
+}
+
+.pdk_dashboard-page__urltest-details__row-meta {
+    justify-content: flex-end;
+    white-space: nowrap;
+}
+
+.pdk_dashboard-page__urltest-details__copy-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 20px;
+    width: 20px;
+    min-width: 20px;
+    height: 20px;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+.pdk_dashboard-page__urltest-details__copy-button svg {
+    width: 12px;
+    height: 12px;
+}
+
+.pdk_dashboard-page__urltest-details__copy-placeholder {
+    display: block;
+    width: 20px;
+    min-width: 20px;
+    height: 1px;
+}
+
+.pdk_dashboard-page__urltest-details__empty {
+    padding: 8px;
+    color: var(--text-color-medium, #666);
+}
+
+.pdk_dashboard-page__urltest-details__footer {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 14px;
+}
+
+@media (max-width: 560px) {
     .pdk_dashboard-page__urltest-details__params {
         grid-template-columns: 1fr;
     }
 
     .pdk_dashboard-page__urltest-details__row {
-        grid-template-columns: minmax(0, 1fr) auto;
+        grid-template-columns: minmax(0, 1fr) 20px;
     }
 
     .pdk_dashboard-page__urltest-details__row-meta {
         grid-column: 1 / -1;
+        justify-content: flex-start;
     }
 }
 
