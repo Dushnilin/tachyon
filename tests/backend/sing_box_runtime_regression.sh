@@ -333,7 +333,7 @@ cat >"$WORK_DIR/vpn-domain-resolver-fixture.json" <<'JSON'
   },
   "section": [
     {
-      ".name": "vpn",
+      ".name": "renamed_awg",
       ".type": "section",
       "enabled": "1",
       "action": "vpn",
@@ -691,9 +691,11 @@ assert(vmess.tls.utls.fingerprint == "chrome", "manual VMess fingerprint");
 assert(outbound(manual, "proxy-3-out").type == "shadowsocks", "manual Shadowsocks link");
 
 let vpn = cfg("vpn");
-assert(outbound(vpn, "vpn-out").bind_interface == "tun0", "VPN interface outbound");
-assert(outbound(vpn, "vpn-out").domain_resolver == "vpn-domain-resolver", "VPN domain resolver tag");
-assert(dns_server(vpn, r => r.tag == "vpn-domain-resolver") != null, "VPN domain resolver DNS server");
+assert(outbound(vpn, "renamed_awg-out").bind_interface == "tun0", "renamed VPN interface outbound");
+assert(outbound(vpn, "renamed_awg-out").domain_resolver == "renamed_awg-domain-resolver", "renamed VPN domain resolver tag");
+assert(dns_server(vpn, r => r.tag == "renamed_awg-domain-resolver") != null, "renamed VPN domain resolver DNS server");
+assert(route_rule(vpn, r => r.outbound == "renamed_awg-out" && contains(r.domain_suffix, "vpn.example")) != null, "renamed VPN custom domain route");
+assert(dns_rule(vpn, r => contains(r.domain_suffix, "vpn.example")) != null, "renamed VPN custom domain DNS rule");
 
 let download = cfg("download");
 assert(inbound(download, "service-mixed-in") != null, "service mixed inbound");
