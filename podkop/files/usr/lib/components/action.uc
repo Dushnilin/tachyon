@@ -1599,10 +1599,10 @@ function install_package_sing_box(action, tiny) {
     let latest_version = available_package_version(package_name);
     if (latest_version == "")
         latest_version = installed_package_version(package_name);
-    if (latest_version == "")
-        action_fail("sing_box", action, "Failed to resolve " + (tiny ? "tiny" : "stable") + " sing-box package version", current_version);
 
     if (action == "check_update") {
+        if (latest_version == "")
+            action_fail("sing_box", action, "Failed to resolve " + (tiny ? "tiny" : "stable") + " sing-box package version", current_version);
         if (tiny && !sing_box_runtime_success("is-tiny", [ binary_version ]))
             action_fail("sing_box", action, "sing-box-tiny is not installed", current_version, latest_version);
         check_success("sing_box", current_version, latest_version, "");

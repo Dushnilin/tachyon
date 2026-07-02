@@ -20,6 +20,10 @@ export async function runFakeIPCheck() {
   const routerFakeIPResponse = await PodkopShellMethods.checkFakeIP();
   const checkFakeIPResponse = await RemoteFakeIPMethods.getFakeIpCheck();
   const checkIPResponse = await RemoteFakeIPMethods.getIpCheck();
+  const browserFakeIPCheckUnavailable = !checkFakeIPResponse.success;
+  const browserFakeIPCheckMessage = checkFakeIPResponse.success
+    ? ''
+    : checkFakeIPResponse.message;
 
   const checks = {
     singBoxFakeIP:
@@ -41,10 +45,15 @@ export async function runFakeIPCheck() {
           state: 'warning' as const,
           description: _('FakeIP works; public IP comparison is inconclusive'),
         }
-    : getMeta({
-        allGood: false,
-        atLeastOneGood: checks.singBoxFakeIP || checks.browserFakeIP,
-      });
+    : browserFakeIPCheckUnavailable && checks.singBoxFakeIP
+      ? {
+          state: 'warning' as const,
+          description: _('Browser FakeIP check could not be completed'),
+        }
+      : getMeta({
+          allGood: false,
+          atLeastOneGood: checks.singBoxFakeIP || checks.browserFakeIP,
+        });
 
   updateCheckStore({
     order,
@@ -61,11 +70,17 @@ export async function runFakeIPCheck() {
         value: routerFakeIPResponse.success ? routerFakeIPResponse.data.IP : '',
       },
       {
-        state: checks.browserFakeIP ? 'success' : 'error',
-        key: checks.browserFakeIP
-          ? _('Browser is using FakeIP correctly')
-          : _('Browser is not using FakeIP'),
-        value: '',
+        state: browserFakeIPCheckUnavailable
+          ? 'warning'
+          : checks.browserFakeIP
+            ? 'success'
+            : 'error',
+        key: browserFakeIPCheckUnavailable
+          ? _('Browser FakeIP check could not be completed')
+          : checks.browserFakeIP
+            ? _('Browser is using FakeIP correctly')
+            : _('Browser is not using FakeIP'),
+        value: browserFakeIPCheckMessage,
       },
       ...insertIf<IDiagnosticsChecksItem>(checks.browserFakeIP, [
         {

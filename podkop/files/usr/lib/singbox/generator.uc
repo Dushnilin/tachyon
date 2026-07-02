@@ -929,6 +929,9 @@ function manual_vless_outbound(link, tag_name) {
     let flow = as_string(query.flow || "");
     if (flow != "")
         outbound.flow = flow;
+    let encryption = as_string(query.encryption || "");
+    if (encryption != "" && encryption != "none")
+        outbound.encryption = encryption;
     let packet_encoding = as_string(query.packetEncoding || "");
     if (packet_encoding == "xudp" || packet_encoding == "packetaddr")
         outbound.packet_encoding = packet_encoding;

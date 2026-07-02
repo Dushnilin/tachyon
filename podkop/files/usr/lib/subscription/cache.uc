@@ -1422,6 +1422,9 @@ function serialize_vless(outbound) {
     let params = [];
     add_tls_query(params, outbound, false);
     add_transport_query(params, outbound);
+    let encryption = as_string(outbound.encryption);
+    if (encryption != "" && encryption != "none")
+        add_query(params, "encryption", encryption);
     add_query(params, "flow", outbound.flow);
     add_query(params, "packetEncoding", outbound.packet_encoding);
     return "vless://" + uri_encode(outbound.uuid) + "@" +

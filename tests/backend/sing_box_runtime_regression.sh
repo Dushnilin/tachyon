@@ -312,7 +312,7 @@ cat >"$WORK_DIR/manual-transport-fixture.json" <<'JSON'
       "enabled": "1",
       "action": "proxy",
       "selector_proxy_links": [
-        "vless://11111111-1111-4111-8111-111111111111@127.0.0.1:443?security=tls&type=ws&path=%2Fws&host=example.com&sni=example.com&alpn=h2%2Chttp%2F1.1#WS",
+        "vless://11111111-1111-4111-8111-111111111111@127.0.0.1:443?security=tls&type=ws&path=%2Fws&host=example.com&sni=example.com&alpn=h2%2Chttp%2F1.1&encryption=mlkem768x25519plus.native.test#WS",
         "vmess://eyJ2IjoiMiIsInBzIjoiVk1lc3MgV1MiLCJhZGQiOiIxMjcuMC4wLjEiLCJwb3J0IjoiNDQzIiwiaWQiOiIyMjIyMjIyMi0yMjIyLTQyMjItODIyMi0yMjIyMjIyMjIyMjIiLCJhaWQiOiI0Iiwic2N5IjoiYXV0byIsIm5ldCI6IndzIiwidHlwZSI6Im5vbmUiLCJob3N0Ijoidm1lc3MuZXhhbXBsZSIsInBhdGgiOiIvdm1lc3MiLCJ0bHMiOiJ0bHMiLCJzbmkiOiJ2bWVzcy5leGFtcGxlIiwiYWxwbiI6ImgyLGh0dHAvMS4xIiwiZnAiOiJjaHJvbWUifQ==#VMess",
         "ss://YWVzLTEyOC1nY206cGFzcw@127.0.0.1:8388#SS"
       ],
@@ -688,6 +688,7 @@ let vless = outbound(manual, "proxy-1-out");
 assert(vless.transport.type == "ws" && vless.transport.path == "/ws", "manual VLESS WS transport");
 assert(vless.tls.server_name == "example.com", "manual VLESS TLS");
 assert(length(vless.tls.alpn) == 1 && vless.tls.alpn[0] == "http/1.1", "manual VLESS WS ALPN normalized");
+assert(vless.encryption == "mlkem768x25519plus.native.test", "manual VLESS encryption preserved");
 let vmess = outbound(manual, "proxy-2-out");
 assert(vmess.type == "vmess" && vmess.uuid == "22222222-2222-4222-8222-222222222222", "manual VMess link");
 assert(vmess.alter_id == 4 && vmess.security == "auto", "manual VMess alter_id and security");

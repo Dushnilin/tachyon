@@ -253,17 +253,25 @@
     ]
   },
   {
+    "call": "Browser FakeIP check could not be completed",
+    "key": "Browser FakeIP check could not be completed",
+    "places": [
+      "src/podkop/tabs/diagnostic/checks/runFakeIPCheck.ts:51",
+      "src/podkop/tabs/diagnostic/checks/runFakeIPCheck.ts:79"
+    ]
+  },
+  {
     "call": "Browser is not using FakeIP",
     "key": "Browser is not using FakeIP",
     "places": [
-      "src/podkop/tabs/diagnostic/checks/runFakeIPCheck.ts:67"
+      "src/podkop/tabs/diagnostic/checks/runFakeIPCheck.ts:82"
     ]
   },
   {
     "call": "Browser is using FakeIP correctly",
     "key": "Browser is using FakeIP correctly",
     "places": [
-      "src/podkop/tabs/diagnostic/checks/runFakeIPCheck.ts:66"
+      "src/podkop/tabs/diagnostic/checks/runFakeIPCheck.ts:81"
     ]
   },
   {
@@ -473,7 +481,7 @@
     "key": "Checks passed",
     "places": [
       "src/podkop/tabs/diagnostic/checks/getCheckItemsMeta.ts:23",
-      "src/podkop/tabs/diagnostic/checks/runFakeIPCheck.ts:39",
+      "src/podkop/tabs/diagnostic/checks/runFakeIPCheck.ts:43",
       "src/podkop/tabs/diagnostic/helpers/getMeta.ts:13"
     ]
   },
@@ -571,7 +579,7 @@
     "call": "compressed",
     "key": "compressed",
     "places": [
-      "src/podkop/helpers/singBoxVariant.ts:52"
+      "src/podkop/helpers/singBoxVariant.ts:51"
     ]
   },
   {
@@ -627,7 +635,7 @@
     "call": "Connectivity probe failed",
     "key": "Connectivity probe failed",
     "places": [
-      "src/podkop/tabs/diagnostic/checks/runSectionsCheck.ts:144"
+      "src/podkop/tabs/diagnostic/checks/runSectionsCheck.ts:145"
     ]
   },
   {
@@ -650,7 +658,7 @@
     "call": "Could not compare FakeIP and control public IPs",
     "key": "Could not compare FakeIP and control public IPs",
     "places": [
-      "src/podkop/tabs/diagnostic/checks/runFakeIPCheck.ts:74"
+      "src/podkop/tabs/diagnostic/checks/runFakeIPCheck.ts:89"
     ]
   },
   {
@@ -1183,21 +1191,21 @@
     "call": "FakeIP and control checks use different public IPs",
     "key": "FakeIP and control checks use different public IPs",
     "places": [
-      "src/podkop/tabs/diagnostic/checks/runFakeIPCheck.ts:76"
+      "src/podkop/tabs/diagnostic/checks/runFakeIPCheck.ts:91"
     ]
   },
   {
     "call": "FakeIP and control checks use the same public IP",
     "key": "FakeIP and control checks use the same public IP",
     "places": [
-      "src/podkop/tabs/diagnostic/checks/runFakeIPCheck.ts:77"
+      "src/podkop/tabs/diagnostic/checks/runFakeIPCheck.ts:92"
     ]
   },
   {
     "call": "FakeIP works; public IP comparison is inconclusive",
     "key": "FakeIP works; public IP comparison is inconclusive",
     "places": [
-      "src/podkop/tabs/diagnostic/checks/runFakeIPCheck.ts:42"
+      "src/podkop/tabs/diagnostic/checks/runFakeIPCheck.ts:46"
     ]
   },
   {
@@ -1489,8 +1497,8 @@
     "key": "Invalid domain address",
     "places": [
       "../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/section.js:1599",
-      "src/validators/validateDomain.ts:18",
-      "src/validators/validateDomain.ts:27"
+      "src/validators/validateDomain.ts:67",
+      "src/validators/validateDomain.ts:73"
     ]
   },
   {
@@ -1953,8 +1961,8 @@
     "call": "Latency test failed",
     "key": "Latency test failed",
     "places": [
-      "src/podkop/methods/shell/index.ts:463",
-      "src/podkop/methods/shell/index.ts:484"
+      "src/podkop/methods/shell/index.ts:462",
+      "src/podkop/methods/shell/index.ts:483"
     ]
   },
   {
@@ -2283,8 +2291,8 @@
     "call": "Not installed",
     "key": "Not installed",
     "places": [
-      "src/podkop/helpers/singBoxVariant.ts:30",
-      "src/podkop/helpers/singBoxVariant.ts:38",
+      "src/podkop/helpers/singBoxVariant.ts:29",
+      "src/podkop/helpers/singBoxVariant.ts:37",
       "src/podkop/tabs/updates/initController.ts:804",
       "src/podkop/tabs/updates/initController.ts:835",
       "src/podkop/tabs/updates/initController.ts:866"
@@ -2309,9 +2317,9 @@
     "key": "Not responding",
     "places": [
       "src/podkop/tabs/diagnostic/checks/runSectionsCheck.ts:90",
-      "src/podkop/tabs/diagnostic/checks/runSectionsCheck.ts:116",
-      "src/podkop/tabs/diagnostic/checks/runSectionsCheck.ts:122",
-      "src/podkop/tabs/diagnostic/checks/runSectionsCheck.ts:150"
+      "src/podkop/tabs/diagnostic/checks/runSectionsCheck.ts:117",
+      "src/podkop/tabs/diagnostic/checks/runSectionsCheck.ts:123",
+      "src/podkop/tabs/diagnostic/checks/runSectionsCheck.ts:151"
     ]
   },
   {
@@ -2379,8 +2387,8 @@
     "key": "Operation timed out",
     "places": [
       "src/helpers/withTimeout.ts:7",
-      "src/podkop/methods/shell/index.ts:433",
-      "src/podkop/methods/shell/index.ts:521"
+      "src/podkop/methods/shell/index.ts:432",
+      "src/podkop/methods/shell/index.ts:520"
     ]
   },
   {
@@ -3190,8 +3198,8 @@
     "call": "Service action failed",
     "key": "Service action failed",
     "places": [
-      "src/podkop/methods/shell/index.ts:384",
-      "src/podkop/methods/shell/index.ts:405",
+      "src/podkop/methods/shell/index.ts:383",
+      "src/podkop/methods/shell/index.ts:404",
       "src/podkop/tabs/diagnostic/initController.ts:594"
     ]
   },
@@ -3243,14 +3251,14 @@
     "call": "Sing-box FakeIP DNS does not work",
     "key": "Sing-box FakeIP DNS does not work",
     "places": [
-      "src/podkop/tabs/diagnostic/checks/runFakeIPCheck.ts:60"
+      "src/podkop/tabs/diagnostic/checks/runFakeIPCheck.ts:69"
     ]
   },
   {
     "call": "Sing-box FakeIP DNS works",
     "key": "Sing-box FakeIP DNS works",
     "places": [
-      "src/podkop/tabs/diagnostic/checks/runFakeIPCheck.ts:59"
+      "src/podkop/tabs/diagnostic/checks/runFakeIPCheck.ts:68"
     ]
   },
   {
@@ -3462,8 +3470,8 @@
     "call": "Subscription update failed",
     "key": "Subscription update failed",
     "places": [
-      "src/podkop/methods/shell/index.ts:717",
-      "src/podkop/methods/shell/index.ts:737"
+      "src/podkop/methods/shell/index.ts:716",
+      "src/podkop/methods/shell/index.ts:736"
     ]
   },
   {
@@ -3684,7 +3692,7 @@
     "call": "tiny",
     "key": "tiny",
     "places": [
-      "src/podkop/helpers/singBoxVariant.ts:54"
+      "src/podkop/helpers/singBoxVariant.ts:53"
     ]
   },
   {
@@ -4139,8 +4147,8 @@
       "../luci-app-podkop-plus/htdocs/luci-static/resources/view/podkop/section.js:1647",
       "src/validators/validateDns.ts:21",
       "src/validators/validateDns.ts:25",
-      "src/validators/validateDomain.ts:13",
-      "src/validators/validateDomain.ts:30",
+      "src/validators/validateDomain.ts:57",
+      "src/validators/validateDomain.ts:76",
       "src/validators/validateHttpProxyUrl.ts:97",
       "src/validators/validateHysteriaUrl.ts:162",
       "src/validators/validateIp.ts:25",

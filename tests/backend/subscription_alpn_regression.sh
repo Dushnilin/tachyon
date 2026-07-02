@@ -83,6 +83,12 @@ assert_alpn \
   "vless://$UUID@example.com:443?type=xhttp&encryption=none&security=tls&fp=chrome&sni=example.com&path=%2Fxhttp#vless-xhttp-default" \
   '"alpn": [ "h2", "http/1.1" ]'
 
+vless_encrypted_output="$(normalize_link "vless-encryption" "vless://$UUID@example.com:443?type=xhttp&encryption=mlkem768x25519plus.native.test&security=tls&fp=chrome&sni=example.com&path=%2Fxhttp#vless-encryption")"
+assert_contains "$vless_encrypted_output" '"encryption": "mlkem768x25519plus.native.test"' "vless-encryption"
+
+vless_none_output="$(normalize_link "vless-encryption-none" "vless://$UUID@example.com:443?type=xhttp&encryption=none&security=tls&fp=chrome&sni=example.com&path=%2Fxhttp#vless-encryption-none")"
+assert_not_contains "$vless_none_output" '"encryption": "none"' "vless-encryption-none"
+
 assert_alpn \
   "trojan-ws" \
   "trojan://password@example.com:443?type=ws&security=tls&fp=chrome&alpn=h2%2Chttp%2F1.1&sni=example.com&path=%2Fws#trojan-ws" \
@@ -101,6 +107,7 @@ proxies:
     server: example.com
     port: 443
     uuid: 00000000-0000-4000-8000-000000000001
+    encryption: mlkem768x25519plus.native.test
     tls: true
     network: ws
     alpn: [h2, http/1.1]
@@ -109,6 +116,7 @@ proxies:
 YAML
 ucode "$PARSER" normalize-clash-yaml "$clash_input" "$clash_output"
 assert_contains "$clash_output" '"alpn": [ "http/1.1" ]' "clash-vless-ws"
+assert_contains "$clash_output" '"encryption": "mlkem768x25519plus.native.test"' "clash-vless-ws"
 
 xray_input="$WORK_DIR/xray.json"
 xray_output="$WORK_DIR/xray-normalized.json"
@@ -126,7 +134,7 @@ cat > "$xray_input" <<'JSON'
             "users": [
               {
                 "id": "00000000-0000-4000-8000-000000000001",
-                "encryption": "none"
+                "encryption": "mlkem768x25519plus.native.test"
               }
             ]
           }
@@ -157,6 +165,7 @@ JSON
 ucode "$PARSER" normalize-content "$xray_input" "$xray_output"
 assert_contains "$xray_output" '"alpn": [ "http/1.1" ]' "xray-vless-ws"
 assert_not_contains "$xray_output" '"alpn": [ "h2", "http/1.1" ]' "xray-vless-ws"
+assert_contains "$xray_output" '"encryption": "mlkem768x25519plus.native.test"' "xray-vless-ws"
 
 gzip_plain="$WORK_DIR/gzip-subscription.txt"
 gzip_input="$WORK_DIR/gzip-subscription.txt.gz"
