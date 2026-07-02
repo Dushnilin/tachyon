@@ -125,6 +125,20 @@ describe('getDashboardSections', () => {
 
   it('hydrates URLTest details from the section cache and Clash API', async () => {
     mocks.getConfigSections.mockResolvedValue([proxySection()]);
+    mocks.getClashApiProxies.mockResolvedValue({
+      success: true,
+      data: {
+        proxies: {
+          ...clashProxies,
+          'main-urltest-out': proxy('URLTest', {
+            name: 'main-urltest-out',
+            now: 'main-3-out',
+            history: [{ time: '2026-05-27T00:00:00Z', delay: 10 }],
+            all: ['main-1-out', 'main-3-out'],
+          }),
+        },
+      },
+    });
     mocks.fsRead.mockResolvedValue(
       JSON.stringify({
         outboundMetadata: {
@@ -137,7 +151,7 @@ describe('getDashboardSections', () => {
         urltestGroups: {
           'main-urltest-out': {
             displayName: 'Fastest',
-            outbounds: ['main-1-out', 'main-3-out'],
+            outbounds: ['main-1-out', 'main-3-out', 'main-2-out'],
             url: 'https://probe.example/204',
             interval: '3m',
             tolerance: 50,
@@ -161,15 +175,24 @@ describe('getDashboardSections', () => {
       interval: '3m',
       tolerance: 50,
       interruptExistConnections: true,
+      selectedCode: 'main-3-out',
+      selectedName: 'Third cached',
     });
     expect(urltest?.urlTestInfo?.outbounds.map((item) => item.code)).toEqual([
-      'main-1-out',
       'main-3-out',
+      'main-1-out',
+      'main-2-out',
     ]);
     expect(urltest?.urlTestInfo?.outbounds[0]).toMatchObject({
+      displayName: 'Third cached',
+      latency: 300,
+      type: 'VLESS',
+      selected: true,
+    });
+    expect(urltest?.urlTestInfo?.outbounds[1]).toMatchObject({
       displayName: 'one',
       latency: 100,
-      type: 'VLESS',
+      selected: false,
     });
   });
 

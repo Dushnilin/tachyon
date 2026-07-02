@@ -2219,7 +2219,7 @@ function xray_tag_base(original_tag, config_index, config_count) {
     original_tag = as_string(original_tag);
     if (original_tag == "")
         original_tag = "server";
-    return config_count > 1 ? ("xray-" + (config_index + 1) + "-" + original_tag) : original_tag;
+    return original_tag;
 }
 
 function xray_protocol_supported(protocol) {

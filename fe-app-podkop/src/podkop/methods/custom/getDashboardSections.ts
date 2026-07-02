@@ -207,7 +207,7 @@ function isUrlTestProxyEntry(entry?: ClashProxyEntry) {
   return entry?.value?.type?.toLowerCase() === 'urltest';
 }
 
-function getLatencySortValue(outbound: Podkop.Outbound) {
+function getLatencySortValue(outbound: { latency: number }) {
   const latency = Number(outbound.latency);
 
   return Number.isFinite(latency) && latency > 0
@@ -241,6 +241,27 @@ function sortOutboundsForDashboard(
         if (latencyDiff !== 0) {
           return latencyDiff;
         }
+      }
+
+      return left.index - right.index;
+    })
+    .map((item) => item.outbound);
+}
+
+function sortUrlTestMembers(outbounds: Podkop.UrlTestMember[]) {
+  return outbounds
+    .map((outbound, index) => ({ outbound, index }))
+    .sort((left, right) => {
+      if (left.outbound.selected !== right.outbound.selected) {
+        return left.outbound.selected ? -1 : 1;
+      }
+
+      const latencyDiff =
+        getLatencySortValue(left.outbound) -
+        getLatencySortValue(right.outbound);
+
+      if (latencyDiff !== 0) {
+        return latencyDiff;
       }
 
       return left.index - right.index;
@@ -338,32 +359,34 @@ function buildUrlTestInfo({
       : entry.value.all || [],
   );
   const selectedCode = entry.value.now || '';
-  const outbounds = childCodes.flatMap((childCode) => {
-    const childEntry = proxyByCode.get(childCode);
-    const link = manualLinkByCode.get(childCode) || '';
-    const canCopyLink =
-      isCopyableProxyLink(link) || subscriptionCopyableCodes.has(childCode);
+  const outbounds = sortUrlTestMembers(
+    childCodes.flatMap((childCode) => {
+      const childEntry = proxyByCode.get(childCode);
+      const link = manualLinkByCode.get(childCode) || '';
+      const canCopyLink =
+        isCopyableProxyLink(link) || subscriptionCopyableCodes.has(childCode);
 
-    return [
-      {
-        code: childCode,
-        displayName: getOutboundDisplayName(
-          childCode,
-          childEntry,
+      return [
+        {
+          code: childCode,
+          displayName: getOutboundDisplayName(
+            childCode,
+            childEntry,
+            link,
+            outboundMetadata,
+          ),
+          latency: childEntry?.value?.history?.[0]?.delay || 0,
+          type: childEntry?.value?.type || '',
+          selected: selectedCode === childCode,
           link,
-          outboundMetadata,
-        ),
-        latency: childEntry?.value?.history?.[0]?.delay || 0,
-        type: childEntry?.value?.type || '',
-        selected: selectedCode === childCode,
-        link,
-        canCopyLink,
-        country: showDetectedCountries
-          ? outboundMetadata?.countries?.[childCode]
-          : undefined,
-      },
-    ];
-  });
+          canCopyLink,
+          country: showDetectedCountries
+            ? outboundMetadata?.countries?.[childCode]
+            : undefined,
+        },
+      ];
+    }),
+  );
   const selectedName =
     outbounds.find((outbound) => outbound.code === selectedCode)?.displayName ||
     selectedCode;

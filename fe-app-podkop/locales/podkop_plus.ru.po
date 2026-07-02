@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PODKOP PLUS\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-07-02 17:43+0300\n"
-"PO-Revision-Date: 2026-07-02 17:43+0300\n"
+"POT-Creation-Date: 2026-07-02 23:54+0300\n"
+"PO-Revision-Date: 2026-07-02 23:54+0300\n"
 "Last-Translator: ushan0v\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -280,9 +280,6 @@ msgstr "Копировать"
 
 msgid "Copy proxy link"
 msgstr "Скопировать ссылку прокси"
-
-msgid "Copy URL"
-msgstr "Скопировать URL"
 
 msgid "Could not compare FakeIP and control public IPs"
 msgstr "Не удалось сравнить публичные IP FakeIP и контрольной проверки"
@@ -623,8 +620,8 @@ msgstr "Задержка при мониторинге интерфейсов"
 msgid "Interface monitoring for Bad WAN"
 msgstr "Мониторинг интерфейса для Bad WAN"
 
-msgid "Interrupt existing connections"
-msgstr "Прерывать существующие соединения"
+msgid "Interrupt connections"
+msgstr "Прерывать соединения"
 
 msgid "Interval"
 msgstr "Интервал"
@@ -910,9 +907,6 @@ msgstr "Мониторинг"
 
 msgid "Must be a number in the range of 50 - 1000"
 msgstr "Должно быть числом от 50 до 1000"
-
-msgid "N/A"
-msgstr "Н/Д"
 
 msgid "Network Interface"
 msgstr "Сетевой интерфейс"

@@ -392,14 +392,17 @@ export const styles = `
 }
 
 .pdk_dashboard-page__urltest-details {
-    min-width: min(720px, 86vw);
+    box-sizing: border-box;
+    width: min(760px, calc(100vw - 56px));
+    max-width: 100%;
+    padding-top: 10px;
 }
 
 .pdk_dashboard-page__urltest-details__params {
     display: grid;
     grid-template-columns: minmax(120px, max-content) minmax(0, 1fr);
     gap: 8px 16px;
-    margin: 0 0 16px;
+    margin: 0 0 18px;
 }
 
 .pdk_dashboard-page__urltest-details__param {
@@ -408,6 +411,7 @@ export const styles = `
 
 .pdk_dashboard-page__urltest-details__param dt {
     color: var(--text-color-medium, #666);
+    line-height: 1.35;
 }
 
 .pdk_dashboard-page__urltest-details__param dd {
@@ -423,6 +427,30 @@ export const styles = `
     overflow-wrap: anywhere;
 }
 
+.pdk_dashboard-page__urltest-details__selected-value {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    max-width: 100%;
+    padding: 1px 8px;
+    border: 1px solid var(--success-color-low, #2d7d46);
+    border-radius: 4px;
+    color: inherit;
+    background: transparent;
+    box-sizing: border-box;
+    line-height: 1.3;
+}
+
+.pdk_dashboard-page__urltest-details__selected-name {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.pdk_dashboard-page__urltest-details__selected-type {
+    color: var(--text-color-medium, #666);
+}
+
 .pdk_dashboard-page__urltest-details__outbounds-title {
     margin-bottom: 8px;
     font-weight: 600;
@@ -431,52 +459,115 @@ export const styles = `
 .pdk_dashboard-page__urltest-details__table {
     display: grid;
     gap: 6px;
+    width: calc(100% + 14px);
+    box-sizing: border-box;
     max-height: min(46vh, 460px);
-    overflow: auto;
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding-right: 14px;
+    scrollbar-gutter: auto;
 }
 
 .pdk_dashboard-page__urltest-details__row {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-columns: minmax(0, 1fr) minmax(54px, max-content) 20px;
     align-items: center;
-    gap: 12px;
-    padding: 8px 0;
+    gap: 8px;
+    width: 100%;
+    min-width: 0;
+    padding: 7px 8px;
+    box-sizing: border-box;
+    border: 1px solid transparent;
     border-bottom: 1px solid var(--border-color-low, #eee);
+    border-radius: 4px;
 }
 
 .pdk_dashboard-page__urltest-details__row--active {
-    font-weight: 600;
+    border-color: var(--success-color-low, #2d7d46);
+    background: transparent;
 }
 
 .pdk_dashboard-page__urltest-details__row-name,
 .pdk_dashboard-page__urltest-details__row-meta {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     min-width: 0;
+    line-height: 1.3;
+}
+
+.pdk_dashboard-page__urltest-details__row-name {
+    flex-wrap: wrap;
 }
 
 .pdk_dashboard-page__urltest-details__row-name b {
     min-width: 0;
     overflow-wrap: anywhere;
+    line-height: 1.3;
 }
 
-.pdk_dashboard-page__urltest-details__row-name span,
+.pdk_dashboard-page__urltest-details__row-type,
 .pdk_dashboard-page__urltest-details__row-meta {
     color: var(--text-color-medium, #666);
 }
 
-@media (max-width: 480px) {
+.pdk_dashboard-page__urltest-details__row-type {
+    white-space: nowrap;
+    line-height: 1.3;
+}
+
+.pdk_dashboard-page__urltest-details__row-meta {
+    justify-content: flex-end;
+    white-space: nowrap;
+}
+
+.pdk_dashboard-page__urltest-details__copy-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 20px;
+    width: 20px;
+    min-width: 20px;
+    height: 20px;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+.pdk_dashboard-page__urltest-details__copy-button svg {
+    width: 12px;
+    height: 12px;
+}
+
+.pdk_dashboard-page__urltest-details__copy-placeholder {
+    display: block;
+    width: 20px;
+    min-width: 20px;
+    height: 1px;
+}
+
+.pdk_dashboard-page__urltest-details__empty {
+    padding: 8px;
+    color: var(--text-color-medium, #666);
+}
+
+.pdk_dashboard-page__urltest-details__footer {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 14px;
+}
+
+@media (max-width: 560px) {
     .pdk_dashboard-page__urltest-details__params {
         grid-template-columns: 1fr;
     }
 
     .pdk_dashboard-page__urltest-details__row {
-        grid-template-columns: minmax(0, 1fr) auto;
+        grid-template-columns: minmax(0, 1fr) 20px;
     }
 
     .pdk_dashboard-page__urltest-details__row-meta {
         grid-column: 1 / -1;
+        justify-content: flex-start;
     }
 }
 
