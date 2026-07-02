@@ -518,6 +518,10 @@ function firewall_rules_allow_port_proto(rules, port, proto) {
         if (dest != "" && dest != "*")
             continue;
 
+        let src_port = as_string(rule.src_port);
+        if (src_port != "" && src_port != "*")
+            continue;
+
         if (as_string(rule.family) == "ipv6")
             continue;
 

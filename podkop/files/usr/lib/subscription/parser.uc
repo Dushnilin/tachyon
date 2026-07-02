@@ -724,6 +724,11 @@ function parse_hysteria2_server_ports(value) {
     return length(result) > 0 ? result : null;
 }
 
+function normalize_vless_encryption(value) {
+    value = as_string(value);
+    return value != "" && value != "none" ? value : "";
+}
+
 function process_vless(raw, url) {
     if (url.host == "" || !valid_port(url.port) || url.userinfo == "")
         return null;
@@ -735,6 +740,7 @@ function process_vless(raw, url) {
     let packet_encoding = url.query.packetEncoding || "";
     if (packet_encoding != "xudp" && packet_encoding != "packetaddr")
         packet_encoding = "";
+    let encryption = normalize_vless_encryption(url.query.encryption || "");
 
     let outbound = {
         type: "vless",
@@ -744,6 +750,8 @@ function process_vless(raw, url) {
         server_port: url.port,
         uuid: url.userinfo
     };
+    if (encryption != "")
+        outbound.encryption = encryption;
     if (flow != "")
         outbound.flow = flow;
     if (packet_encoding != "")
@@ -1414,9 +1422,12 @@ function parse_clash_record(record) {
         let uuid = as_string(record.uuid);
         let flow = as_string(record.flow);
         let packet_encoding = normalize_packet_encoding(record["packet-encoding"] || record.packetEncoding || "");
+        let encryption = normalize_vless_encryption(record.encryption || "");
         if (uuid == "" || !clash_vless_flow_supported(flow))
             return null;
         let outbound = { type: "vless", tag: name, server: server, server_port: port, uuid: uuid };
+        if (encryption != "")
+            outbound.encryption = encryption;
         if (flow != "")
             outbound.flow = flow;
         if (packet_encoding != "")
@@ -2236,6 +2247,9 @@ function convert_xray_vless(outbound, tag) {
     let flow = as_string(user.flow || "");
     if (flow != "")
         result.flow = flow;
+    let encryption = normalize_vless_encryption(user.encryption || "");
+    if (encryption != "")
+        result.encryption = encryption;
 
     let stream = object_or_empty(outbound.streamSettings);
     let transport = xray_transport_from_stream(stream);

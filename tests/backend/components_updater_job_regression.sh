@@ -111,6 +111,103 @@ tmp_file_line="$(grep -n '^function make_tmp_file' "$ACTION_UC" | cut -d: -f1)"
 [ -n "$init_line" ] && [ -n "$tmp_file_line" ] && [ "$init_line" -lt "$tmp_file_line" ] ||
   fail "components/action.uc must declare init_tmp_dir before make_tmp_file for OpenWrt ucode"
 
+package_runtime_lib="$WORK_DIR/package-runtime-lib"
+package_runtime_bin="$WORK_DIR/package-runtime-bin"
+mkdir -p "$package_runtime_lib/components" "$package_runtime_lib/core" "$package_runtime_lib/singbox" "$package_runtime_bin"
+cp "$UPDATER" "$package_runtime_lib/components/updater.uc"
+cat >"$package_runtime_lib/core/constants.uc" <<'UCODE'
+function module_exports() {
+  return {};
+}
+
+if (sourcepath(1) != null && sourcepath(1) != "")
+  return module_exports();
+UCODE
+cat >"$package_runtime_lib/core/uci.uc" <<'UCODE'
+function module_exports() {
+  return {
+    available: function() { return false; }
+  };
+}
+
+if (sourcepath(1) != null && sourcepath(1) != "")
+  return module_exports();
+UCODE
+cat >"$package_runtime_lib/core/packages.uc" <<'UCODE'
+let mode = ARGV[0] || "";
+if (mode == "opkg-version")
+  exit(0);
+if (mode == "opkg-installed")
+  exit(1);
+exit(1);
+UCODE
+cat >"$package_runtime_lib/singbox/runtime.uc" <<'UCODE'
+let mode = ARGV[0] || "";
+if (mode == "version")
+  exit(0);
+if (mode == "variant") {
+  print("stable\n");
+  exit(0);
+}
+if (mode == "is-extended" || mode == "is-tiny")
+  exit(1);
+if (mode == "write-variant-marker" || mode == "write-version-state")
+  exit(0);
+exit(0);
+UCODE
+cat >"$package_runtime_bin/opkg" <<'SH'
+#!/usr/bin/env sh
+set -eu
+printf 'opkg %s\n' "$*" >>"${FAKE_OPKG_LOG:?}"
+case "${1:-}" in
+  list)
+    if [ -e "${FAKE_OPKG_UPDATED:?}" ]; then
+      printf 'sing-box - 1.2.3 - fake package\n'
+    fi
+    ;;
+  update)
+    : >"${FAKE_OPKG_UPDATED:?}"
+    ;;
+  install|remove)
+    ;;
+  *)
+    exit 1
+    ;;
+esac
+SH
+cat >"$package_runtime_bin/logger" <<'SH'
+#!/usr/bin/env sh
+exit 0
+SH
+chmod +x "$package_runtime_bin/opkg" "$package_runtime_bin/logger"
+
+set +e
+PATH="$package_runtime_bin:$PATH" \
+PODKOP_LIB="$package_runtime_lib" \
+PODKOP_RUNTIME_STATE_DIR="$WORK_DIR/package-runtime" \
+PODKOP_BIN="$WORK_DIR/missing-podkop" \
+PODKOP_SERVICE_INIT="$WORK_DIR/missing-init" \
+FAKE_OPKG_LOG="$WORK_DIR/opkg.log" \
+FAKE_OPKG_UPDATED="$WORK_DIR/opkg.updated" \
+ucode -L "$package_runtime_lib" "$ACTION_UC" component-action sing_box install_stable >/dev/null
+set -e
+OPKG_LOG="$WORK_DIR/opkg.log" node - <<'NODE'
+const fs = require('fs');
+const lines = fs.readFileSync(process.env.OPKG_LOG, 'utf8').trim().split(/\n+/);
+function fail(message) {
+  console.error(`${message}: ${JSON.stringify(lines)}`);
+  process.exit(1);
+}
+const firstList = lines.indexOf('opkg list sing-box');
+const update = lines.indexOf('opkg update');
+const secondList = lines.indexOf('opkg list sing-box', firstList + 1);
+const install = lines.findIndex(line => line.startsWith('opkg install ') && line.endsWith(' sing-box'));
+if (firstList < 0) fail('initial stable sing-box package list lookup missing');
+if (update <= firstList) fail('package list update must happen after empty initial lookup');
+if (secondList <= update) fail('stable sing-box version must be resolved again after package list update');
+if (install <= secondList) fail('stable sing-box install must happen after post-update version resolve');
+NODE
+
 release_json="$(cat <<'JSON'
 {
   "tag_name": "v1.2.3",

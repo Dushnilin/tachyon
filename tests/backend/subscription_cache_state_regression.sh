@@ -339,6 +339,61 @@ if cache_ucode section-current-usable-cache-fixture \
   fail "section without subscription URLs should not have usable subscription cache"
 fi
 
+mkdir -p "$WORK_DIR/link-cache" "$WORK_DIR/link-subscriptions"
+cat >"$WORK_DIR/link-cache/proxy.json" <<'JSON'
+{
+  "links": {},
+  "linkRefs": {
+    "vless-encrypted": {
+      "sourceSection": "proxy-subscription-1",
+      "sourceIndex": 1
+    },
+    "vless-none": {
+      "sourceSection": "proxy-subscription-1",
+      "sourceIndex": 2
+    }
+  }
+}
+JSON
+cat >"$WORK_DIR/link-subscriptions/proxy-subscription-1.json" <<'JSON'
+{
+  "outbounds": [
+    {
+      "type": "vless",
+      "tag": "vless-encrypted",
+      "server": "example.com",
+      "server_port": 443,
+      "uuid": "00000000-0000-4000-8000-000000000001",
+      "encryption": "mlkem768x25519plus.native.test"
+    },
+    {
+      "type": "vless",
+      "tag": "vless-none",
+      "server": "example.com",
+      "server_port": 443,
+      "uuid": "00000000-0000-4000-8000-000000000001",
+      "encryption": "none"
+    }
+  ]
+}
+JSON
+encrypted_link="$(cache_ucode get-link "$WORK_DIR/link-cache" "$WORK_DIR/link-subscriptions" proxy vless-encrypted "")"
+JSON_VALUE="$encrypted_link" node - <<'NODE'
+const value = JSON.parse(process.env.JSON_VALUE);
+if (!value.link.includes("encryption=mlkem768x25519plus.native.test")) {
+  console.error(`expected VLESS encryption in serialized link, got ${value.link}`);
+  process.exit(1);
+}
+NODE
+none_link="$(cache_ucode get-link "$WORK_DIR/link-cache" "$WORK_DIR/link-subscriptions" proxy vless-none "")"
+JSON_VALUE="$none_link" node - <<'NODE'
+const value = JSON.parse(process.env.JSON_VALUE);
+if (value.link.includes("encryption=none")) {
+  console.error(`did not expect encryption=none in serialized link, got ${value.link}`);
+  process.exit(1);
+}
+NODE
+
 mkdir -p "$WORK_DIR/persist-runtime" "$WORK_DIR/persist-empty" "$WORK_DIR/persist-fresh"
 cat >"$WORK_DIR/persist-runtime/proxy-subscription-1.json" <<'JSON'
 {"outbounds":[{"type":"direct","tag":"one"}]}

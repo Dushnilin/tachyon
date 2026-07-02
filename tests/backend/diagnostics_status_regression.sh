@@ -98,6 +98,21 @@ if printf '%s\n' "$firewall_rules" |
   fail "wrong firewall port should not satisfy required protocols"
 fi
 
+firewall_src_port_rule="$(cat <<'EOF'
+firewall.@rule[0]=rule
+firewall.@rule[0].enabled='1'
+firewall.@rule[0].target='ACCEPT'
+firewall.@rule[0].src='wan'
+firewall.@rule[0].proto='tcp'
+firewall.@rule[0].src_port='12345'
+firewall.@rule[0].dest_port='443'
+EOF
+)"
+if printf '%s\n' "$firewall_src_port_rule" |
+  status_ucode firewall-required-protocols-open 443 "tcp" >/dev/null 2>&1; then
+  fail "firewall rule limited by source port should not satisfy public inbound diagnostic"
+fi
+
 status_ucode server-listen-requires-firewall 0.0.0.0 "" 0 >/dev/null ||
   fail "wildcard listen should require firewall"
 status_ucode server-listen-requires-firewall :: "" 0 >/dev/null ||

@@ -6460,6 +6460,8 @@ async function runFakeIPCheck() {
   const routerFakeIPResponse = await PodkopShellMethods.checkFakeIP();
   const checkFakeIPResponse = await RemoteFakeIPMethods.getFakeIpCheck();
   const checkIPResponse = await RemoteFakeIPMethods.getIpCheck();
+  const browserFakeIPCheckUnavailable = !checkFakeIPResponse.success;
+  const browserFakeIPCheckMessage = checkFakeIPResponse.success ? "" : checkFakeIPResponse.message;
   const checks = {
     singBoxFakeIP: routerFakeIPResponse.success && routerFakeIPResponse.data.fakeip,
     browserFakeIP: checkFakeIPResponse.success && checkFakeIPResponse.data.fakeip,
@@ -6470,6 +6472,9 @@ async function runFakeIPCheck() {
   const { state, description } = fakeIPWorks ? checks.differentIP ? { state: "success", description: _("Checks passed") } : {
     state: "warning",
     description: _("FakeIP works; public IP comparison is inconclusive")
+  } : browserFakeIPCheckUnavailable && checks.singBoxFakeIP ? {
+    state: "warning",
+    description: _("Browser FakeIP check could not be completed")
   } : getMeta({
     allGood: false,
     atLeastOneGood: checks.singBoxFakeIP || checks.browserFakeIP
@@ -6487,9 +6492,9 @@ async function runFakeIPCheck() {
         value: routerFakeIPResponse.success ? routerFakeIPResponse.data.IP : ""
       },
       {
-        state: checks.browserFakeIP ? "success" : "error",
-        key: checks.browserFakeIP ? _("Browser is using FakeIP correctly") : _("Browser is not using FakeIP"),
-        value: ""
+        state: browserFakeIPCheckUnavailable ? "warning" : checks.browserFakeIP ? "success" : "error",
+        key: browserFakeIPCheckUnavailable ? _("Browser FakeIP check could not be completed") : checks.browserFakeIP ? _("Browser is using FakeIP correctly") : _("Browser is not using FakeIP"),
+        value: browserFakeIPCheckMessage
       },
       ...insertIf(checks.browserFakeIP, [
         {
