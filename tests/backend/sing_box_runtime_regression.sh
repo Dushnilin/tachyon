@@ -40,6 +40,12 @@ grep -Fq 'mode == "service-listen-address"' "$SINGBOX_RUNTIME_UC" ||
   fail "singbox/runtime.uc must own service listen address detection"
 grep -Fq 'mode == "service-proxy-address"' "$SINGBOX_RUNTIME_UC" ||
   fail "singbox/runtime.uc must own service proxy address detection"
+if grep -Fq 'log_file_lines(runtime_log, "debug", "sing-box config generator: ");' "$SINGBOX_RUNTIME_UC"; then
+  fail "singbox/runtime.uc must not duplicate generator failure output as debug log"
+fi
+if grep -Fq 'warn("unsupported: "' "$SINGBOX_GENERATOR_UC"; then
+  fail "singbox/generator.uc must emit concise generator failure reasons"
+fi
 if grep -n -E 'require\("uci"\)\.cursor|uci -q|uci", "-q"' "$SINGBOX_RUNTIME_UC" >/dev/null 2>&1; then
   fail "singbox/runtime.uc must use core.uci instead of owning direct UCI cursor or CLI calls"
 fi
@@ -100,6 +106,30 @@ generate_config_with_subscription_cache() {
     ucode -L "$PODKOP_LIB" "$PODKOP_LIB/singbox/generator.uc" generate-config-fixture \
       "$fixture" "$output" "127.0.0.1" "0"
 }
+
+cat >"$WORK_DIR/no-enabled-fixture.json" <<'JSON'
+{
+  "settings": {
+    ".name": "settings",
+    ".type": "settings",
+    "config_path": "/tmp/sing-box/config.json",
+    "dns_server": "1.1.1.1",
+    "service_listen_address": "127.0.0.1"
+  },
+  "section": []
+}
+JSON
+
+if ucode -L "$PODKOP_LIB" "$SINGBOX_GENERATOR_UC" generate-config-fixture \
+  "$WORK_DIR/no-enabled-fixture.json" "$WORK_DIR/no-enabled.json" "127.0.0.1" "0" \
+  >"$WORK_DIR/no-enabled.stdout" 2>"$WORK_DIR/no-enabled.stderr"; then
+  fail "generator should reject a config without enabled sections"
+fi
+if grep -Fq 'unsupported:' "$WORK_DIR/no-enabled.stderr"; then
+  fail "generator failure reason must not include redundant unsupported prefix"
+fi
+grep -Fxq 'no enabled sections' "$WORK_DIR/no-enabled.stderr" ||
+  fail "generator failure reason should be concise"
 
 cat >"$WORK_DIR/generator-uci.state" <<'EOF_UCI'
 podkop-plus.settings=settings
@@ -515,6 +545,40 @@ cat >"$WORK_DIR/subscription-metadata-fixture.json" <<'JSON'
 }
 JSON
 
+cat >"$WORK_DIR/subscription-group-fixture.json" <<'JSON'
+{
+  "settings": {
+    ".name": "settings",
+    ".type": "settings",
+    "config_path": "/tmp/sing-box/config.json",
+    "dns_server": "1.1.1.1",
+    "service_listen_address": "127.0.0.1"
+  },
+  "section": [
+    {
+      ".name": "detour",
+      ".type": "section",
+      "enabled": "1",
+      "action": "outbound",
+      "outbound_json": "{\"type\":\"socks\",\"server\":\"127.0.0.1\",\"server_port\":1081}",
+      "domain_suffix": [ "detour.example" ]
+    },
+    {
+      ".name": "grouped",
+      ".type": "section",
+      "enabled": "1",
+      "action": "proxy",
+      "subscription_urls": [
+        "https://example.com/group.json | Happ"
+      ],
+      "outbound_detour_enabled": "1",
+      "outbound_detour_section": "detour",
+      "domain_suffix": [ "grouped.example" ]
+    }
+  ]
+}
+JSON
+
 mkdir -p "$WORK_DIR/subscriptions" "$WORK_DIR/persistent-subscription-cache"
 for source in proxy-subscription-1 proxy-subscription-2 test-subscription-1; do
   cat >"$WORK_DIR/subscriptions/$source.json" <<'JSON'
@@ -532,6 +596,46 @@ printf '%s' 'v2rayN' >"$WORK_DIR/subscriptions/test-subscription-1.user_agent"
 printf '%s' 'v2rayN' >"$WORK_DIR/persistent-subscription-cache/proxy-subscription-1.user_agent"
 printf '%s' 'sing-box/default' >"$WORK_DIR/persistent-subscription-cache/proxy-subscription-2.user_agent"
 printf '%s' 'v2rayN' >"$WORK_DIR/persistent-subscription-cache/test-subscription-1.user_agent"
+cat >"$WORK_DIR/subscriptions/grouped-subscription-1.json" <<'JSON'
+{
+  "outbounds": [
+    {
+      "type": "urltest",
+      "tag": "Provider Group",
+      "outbounds": [ "grouped-out", "leaf" ],
+      "url": "https://www.gstatic.com/generate_204",
+      "interval": "10m",
+      "tolerance": 50,
+      "remark": "Provider Group",
+      "__podkop_allow_group": true
+    },
+    {
+      "type": "vless",
+      "tag": "grouped-out",
+      "server": "127.0.0.1",
+      "server_port": 443,
+      "uuid": "00000000-0000-4000-8000-000000000001",
+      "tls": { "enabled": true, "server_name": "example.com" },
+      "__podkop_hidden": true
+    },
+    {
+      "type": "vless",
+      "tag": "leaf",
+      "server": "127.0.0.2",
+      "server_port": 443,
+      "uuid": "00000000-0000-4000-8000-000000000002",
+      "tls": { "enabled": true, "server_name": "example.org" },
+      "__podkop_hidden": true
+    },
+    {
+      "type": "direct",
+      "tag": "provider-direct"
+    }
+  ]
+}
+JSON
+printf '%s' 'https://example.com/group.json' >"$WORK_DIR/subscriptions/grouped-subscription-1.url"
+printf '%s' 'Happ' >"$WORK_DIR/subscriptions/grouped-subscription-1.user_agent"
 
 generate_config "$WORK_DIR/disabled-updates-fixture.json" "$WORK_DIR/disabled.json"
 generate_config "$WORK_DIR/default-updates-fixture.json" "$WORK_DIR/default.json"
@@ -547,6 +651,7 @@ generate_config "$WORK_DIR/mwan3-auto-fixture.json" "$WORK_DIR/mwan3-auto.json" 
 generate_config "$WORK_DIR/mwan3-pinned-fixture.json" "$WORK_DIR/mwan3-pinned.json" 1
 generate_config "$WORK_DIR/domain-ip-rulesets-fixture.json" "$WORK_DIR/domain-ip-rulesets.json"
 generate_config_with_subscription_cache "$WORK_DIR/subscription-metadata-fixture.json" "$WORK_DIR/subscription-metadata.json"
+generate_config_with_subscription_cache "$WORK_DIR/subscription-group-fixture.json" "$WORK_DIR/subscription-group.json"
 
 ucode -e '
 let fs = require("fs");
@@ -742,6 +847,25 @@ for (let rule in generated_list.rules || []) {
         has_ip = true;
 }
 assert(has_domain && has_ip, "generated domain/IP source ruleset contents");
+
+let subscription_group = cfg("subscription-group");
+let provider_group = outbound(subscription_group, "Provider Group");
+assert(provider_group && provider_group.type == "urltest", "provider URLTest group imported");
+assert(length(provider_group.outbounds) == 2, "provider URLTest group keeps leaf references");
+assert(provider_group.outbounds[0] == "grouped-out-1", "provider URLTest group leaf reference retagged");
+assert(provider_group.outbounds[1] == "leaf", "provider URLTest group second leaf reference kept");
+assert(provider_group.detour == null, "provider URLTest group does not receive outbound detour");
+let grouped_leaf = outbound(subscription_group, "grouped-out-1");
+let second_leaf = outbound(subscription_group, "leaf");
+assert(grouped_leaf && grouped_leaf.detour == "detour-out", "hidden subscription leaf receives outbound detour");
+assert(second_leaf && second_leaf.detour == "detour-out", "second hidden subscription leaf receives outbound detour");
+assert(outbound(subscription_group, "provider-direct") == null, "provider direct outbound skipped");
+let grouped_selector = outbound(subscription_group, "grouped-out");
+assert(grouped_selector && length(grouped_selector.outbounds) == 1 && grouped_selector.outbounds[0] == "Provider Group", "selector exposes provider group only");
+let grouped_state = cfg("subscription-group.json.section-cache/grouped");
+assert(grouped_state.outboundMetadata.names["Provider Group"] == "Provider Group", "provider group metadata visible");
+assert(grouped_state.outboundMetadata.names["grouped-out-1"] == null, "hidden leaf metadata not visible");
+assert(grouped_state.linkRefs["Provider Group"] == null, "provider group has no source link ref");
 
 let proxy_cache = json(fs.readfile(dir + "/subscription-metadata.json.section-cache/proxy.json"));
 let test_cache = json(fs.readfile(dir + "/subscription-metadata.json.section-cache/test.json"));

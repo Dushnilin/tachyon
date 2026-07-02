@@ -682,7 +682,6 @@ function init_config(populate_nft, caches_prepared, no_refresh) {
         if (reason == "")
             reason = "exit status " + generate_status;
         log_message("Failed to generate sing-box configuration: " + reason, "fatal");
-        log_file_lines(runtime_log, "debug", "sing-box config generator: ");
         remove_files([ temp_config, runtime_log ]);
         exit(1);
     }

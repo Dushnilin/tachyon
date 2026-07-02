@@ -198,10 +198,12 @@ function merge_source_metadata(state, section_name, source_section, source_index
 function remember_visible_outbound(state, tag_name, source_section, source_index, source_outbound_index, display_name, outbound) {
     if (type(state) != "object")
         return;
-    state.linkRefs[tag_name] = {
-        sourceSection: source_section,
-        sourceIndex: source_outbound_index
-    };
+    let outbound_type = as_string(outbound.type || "");
+    if (outbound_type != "selector" && outbound_type != "urltest")
+        state.linkRefs[tag_name] = {
+            sourceSection: source_section,
+            sourceIndex: source_outbound_index
+        };
     state.outboundMetadata.names[tag_name] = display_name;
     let server = as_string(outbound.server || "");
     if (server != "")

@@ -128,7 +128,7 @@ function uci_cursor() {
 }
 
 function runtime_generate_unsupported(reason) {
-    warn("unsupported: ", reason, "\n");
+    warn(reason, "\n");
     exit(2);
 }
 
@@ -162,6 +162,17 @@ function remote_ruleset_update_interval() {
 
 function internal_flag(value) {
     return value === true || value == 1 || value == "1" || value == "true" || value == "yes";
+}
+
+function subscription_group_outbound(outbound) {
+    if (type(outbound) != "object")
+        return false;
+    let t = as_string(outbound.type);
+    return (t == "selector" || t == "urltest") && internal_flag(outbound.__podkop_allow_group);
+}
+
+function subscription_hidden_outbound(outbound) {
+    return type(outbound) == "object" && internal_flag(outbound.__podkop_hidden);
 }
 
 function tag(base, postfix) {
@@ -365,6 +376,8 @@ function supported_subscription_outbound(outbound) {
     if (type(outbound) != "object")
         return false;
     let t = as_string(outbound.type);
+    if (subscription_group_outbound(outbound))
+        return true;
     if (t == "direct" || t == "selector" || t == "urltest" || t == "dns" || t == "block")
         return false;
     return t == "vless" || t == "vmess" || t == "trojan" || t == "shadowsocks" ||
@@ -382,6 +395,38 @@ function copy_subscription_outbound(outbound, new_tag) {
     return copy;
 }
 
+function rewrite_subscription_outbound_references(outbounds, tag_map) {
+    for (let outbound in outbounds) {
+        if (type(outbound) != "object")
+            continue;
+
+        let detour = as_string(outbound.detour || "");
+        if (detour != "" && tag_map[detour])
+            outbound.detour = tag_map[detour];
+
+        if (type(outbound.outbounds) == "array") {
+            let rewritten = [];
+            for (let tag_name in outbound.outbounds) {
+                tag_name = as_string(tag_name);
+                if (tag_map[tag_name])
+                    push(rewritten, tag_map[tag_name]);
+            }
+            outbound.outbounds = rewritten;
+        }
+    }
+}
+
+function subscription_skip_summary(skipped) {
+    let parts = [];
+    for (let t in sort(keys(skipped)))
+        push(parts, skipped[t] + "x " + t);
+    return join("; ", parts);
+}
+
+function reportable_skipped_subscription_type(t) {
+    return t != "direct" && t != "selector" && t != "urltest" && t != "dns" && t != "block";
+}
+
 function unique_tag(base, taken) {
     base = as_string(base);
     if (base == "")
@@ -396,7 +441,7 @@ function unique_tag(base, taken) {
     return base + "-overflow";
 }
 
-function add_subscription_source_with_state(config, section_name, source_index, source_entry, taken, selector_tags, state) {
+function add_subscription_source_with_state(config, section_name, source_index, source_entry, taken, selector_tags, detour_tags, state) {
     let source_section = runtime_subscription.source_id(section_name, source_index);
     if (!runtime_subscription.source_cache_is_current(source_section, source_entry))
         return 0;
@@ -406,21 +451,60 @@ function add_subscription_source_with_state(config, section_name, source_index, 
         return 0;
 
     runtime_subscription.merge_source_metadata(state, section_name, source_section, source_index, source_entry);
+    let prepared = [];
+    let source_indices = [];
+    let display_names = [];
+    let group_flags = [];
+    let hidden_flags = [];
+    let tag_map = {};
+    let skipped = {};
     for (let i = 0; i < length(outbounds); i++) {
         let outbound = outbounds[i];
-        if (!supported_subscription_outbound(outbound))
-            runtime_generate_unsupported("subscription outbound type is not supported by sing-box config generation");
+        if (!supported_subscription_outbound(outbound)) {
+            let t = type(outbound) == "object" ? as_string(outbound.type || "missing-type") : "non-object";
+            if (reportable_skipped_subscription_type(t))
+                skipped[t] = (skipped[t] || 0) + 1;
+            continue;
+        }
         let display_name = as_string(outbound.remark || outbound.tag || ("server-" + (i + 1)));
         let base = as_string(outbound.tag || outbound.remark || ("server-" + (i + 1)));
         let new_tag = unique_tag(base, taken);
         taken[new_tag] = true;
-        push(config.outbounds, copy_subscription_outbound(outbound, new_tag));
-        if (!internal_flag(outbound.__podkop_hidden)) {
-            push(selector_tags, new_tag);
-            runtime_subscription.remember_visible_outbound(state, new_tag, source_section, source_index, i + 1, display_name, outbound);
+        tag_map[base] = new_tag;
+        if (as_string(outbound.tag || "") != "")
+            tag_map[as_string(outbound.tag)] = new_tag;
+        if (as_string(outbound.remark || "") != "")
+            tag_map[as_string(outbound.remark)] = new_tag;
+        push(prepared, copy_subscription_outbound(outbound, new_tag));
+        push(source_indices, i + 1);
+        push(display_names, display_name);
+        push(group_flags, subscription_group_outbound(outbound));
+        push(hidden_flags, subscription_hidden_outbound(outbound));
+    }
+
+    if (length(keys(skipped)) > 0)
+        warn("skipped unsupported subscription outbounds for rule '", section_name, "': ", subscription_skip_summary(skipped), "\n");
+
+    rewrite_subscription_outbound_references(prepared, tag_map);
+    let added = 0;
+    for (let i = 0; i < length(prepared); i++) {
+        let outbound = prepared[i];
+        let is_group = group_flags[i] === true;
+        if (is_group && length(array_or_empty(outbound.outbounds)) == 0) {
+            warn("skipped empty subscription group for rule '", section_name, "': ", as_string(display_names[i] || outbound.tag || "unknown"), "\n");
+            continue;
+        }
+
+        push(config.outbounds, outbound);
+        added++;
+        if (!is_group)
+            push(detour_tags, outbound.tag);
+        if (hidden_flags[i] !== true) {
+            push(selector_tags, outbound.tag);
+            runtime_subscription.remember_visible_outbound(state, outbound.tag, source_section, source_index, source_indices[i], display_names[i], outbound);
         }
     }
-    return length(outbounds);
+    return added;
 }
 
 function duration_to_seconds(value) {
@@ -1114,19 +1198,22 @@ function add_proxy_outbound(config, section, taken) {
     let subscription_urls = list_option(section, "subscription_urls");
 
     let selector_tags = [];
+    let detour_tags = [];
     let state = runtime_subscription.new_section_state(section_name);
     let udp_over_tcp = bool_option(section, "enable_udp_over_tcp", false);
     let manual_links = list_option(section, "selector_proxy_links");
-    for (let i = 0; i < length(manual_links); i++)
+    for (let i = 0; i < length(manual_links); i++) {
         add_manual_proxy_link(config, state, section_name, i + 1, manual_links[i], udp_over_tcp, taken, selector_tags);
+        push(detour_tags, selector_tags[length(selector_tags) - 1]);
+    }
 
     for (let i = 0; i < length(subscription_urls); i++)
-        add_subscription_source_with_state(config, section_name, i + 1, subscription_urls[i], taken, selector_tags, state);
+        add_subscription_source_with_state(config, section_name, i + 1, subscription_urls[i], taken, selector_tags, detour_tags, state);
 
     if (length(selector_tags) == 0)
         runtime_generate_unsupported("proxy section has no usable outbounds");
 
-    apply_detour_to_outbounds(config, selector_tags, outbound_detour_tag_for_section(section));
+    apply_detour_to_outbounds(config, detour_tags, outbound_detour_tag_for_section(section));
     add_proxy_selector(config, section, selector_tags, state);
     if (!atomic_write_json_file(runtime_subscription.section_cache_path(section_name), state))
         runtime_generate_unsupported("failed to write section cache for " + section_name);
