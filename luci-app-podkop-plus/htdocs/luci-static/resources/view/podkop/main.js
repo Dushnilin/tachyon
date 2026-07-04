@@ -3150,6 +3150,17 @@ function getListValues(value) {
 function getManualProxyLinks(section) {
   return getListValues(section.selector_proxy_links);
 }
+function getConnectionInterfaces(section) {
+  const values = getListValues(section.interfaces);
+  return values.length ? values : getListValues(section.interface);
+}
+function getJsonOutbounds(section) {
+  const values = getListValues(section.outbound_jsons);
+  return values.length ? values : getListValues(section.outbound_json);
+}
+function isConnectionAction(action) {
+  return ["connection", "proxy", "outbound", "vpn"].includes(action);
+}
 function hasSubscriptionSources(section) {
   return getSubscriptionSourceCount(section) > 0;
 }
@@ -3174,7 +3185,7 @@ function shouldShowDetectedCountries(section) {
   return isUrlTestEnabled(section) && isUrlTestFilteringEnabled(section) && section.detect_server_country === "country_is";
 }
 function shouldUseProxyGroup(section) {
-  return getManualProxyLinks(section).length > 0 || hasSubscriptionSources(section);
+  return getManualProxyLinks(section).length > 0 || hasSubscriptionSources(section) || getConnectionInterfaces(section).length > 0 || getJsonOutbounds(section).length > 0;
 }
 function getSectionProxyConfigType(section) {
   if (hasSubscriptionSources(section)) {
@@ -3185,6 +3196,12 @@ function getSectionProxyConfigType(section) {
   }
   if (getManualProxyLinks(section).length > 0) {
     return "selector";
+  }
+  if (getJsonOutbounds(section).length > 0) {
+    return "outbound";
+  }
+  if (getConnectionInterfaces(section).length > 0) {
+    return "interface";
   }
   return void 0;
 }
@@ -3261,6 +3278,24 @@ function objectMap(value) {
   return Object.fromEntries(
     Object.entries(value).filter(([, item]) => typeof item === "string").map(([key, item]) => [key, item])
   );
+}
+function itemSettingsMap(value) {
+  if (!value) {
+    return {};
+  }
+  try {
+    const parsed = JSON.parse(value);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return {};
+    }
+    return Object.fromEntries(
+      Object.entries(parsed).filter(
+        ([, item]) => item && typeof item === "object" && !Array.isArray(item)
+      )
+    );
+  } catch (_error) {
+    return {};
+  }
 }
 async function readDashboardSectionCache(sectionName) {
   if (!isSafeSectionName(sectionName)) {
@@ -3440,13 +3475,40 @@ function metadataMatchesCurrentSource(sectionName, sourceCount, metadata) {
   }
   return true;
 }
-function getSubscriptionMetadata(sectionName, sourceCount, dashboardCache) {
+function getSubscriptionMetadataSourceIndex(sectionName, sourceCount, metadata) {
+  const legacyMetadata = metadata;
+  const sourceIndex = metadata.sourceIndex ?? legacyMetadata.source_index;
+  if (typeof sourceIndex === "number") {
+    return sourceIndex;
+  }
+  const sourceSection = metadata.sourceSection || legacyMetadata.source_section || "";
+  const expectedSourcePrefix = `${sectionName}-subscription-`;
+  if (sourceSection.startsWith(expectedSourcePrefix)) {
+    const parsed = Number(sourceSection.slice(expectedSourcePrefix.length));
+    return Number.isInteger(parsed) ? parsed : void 0;
+  }
+  return sourceCount <= 1 ? 1 : void 0;
+}
+function isSubscriptionMetadataVisible(section, sourceCount, metadata) {
+  const sourceIndex = getSubscriptionMetadataSourceIndex(
+    section[".name"],
+    sourceCount,
+    metadata
+  );
+  if (!sourceIndex || sourceIndex < 1 || sourceIndex > sourceCount) {
+    return true;
+  }
+  const sourceEntry = getListValues(section.subscription_urls)[sourceIndex - 1];
+  const settings = itemSettingsMap(section.subscription_url_settings)[sourceEntry];
+  return settings?.show_dashboard_metadata !== "0";
+}
+function getSubscriptionMetadata(section, sourceCount, dashboardCache) {
   if (!dashboardCache?.subscriptionMetadata) {
     return void 0;
   }
   const metadataItems = Array.isArray(dashboardCache.subscriptionMetadata) ? dashboardCache.subscriptionMetadata : [dashboardCache.subscriptionMetadata];
   const visibleMetadataItems = metadataItems.filter(
-    (metadata) => metadata && Object.keys(metadata).length > 1 && metadataMatchesCurrentSource(sectionName, sourceCount, metadata)
+    (metadata) => metadata && Object.keys(metadata).length > 1 && metadataMatchesCurrentSource(section[".name"], sourceCount, metadata) && isSubscriptionMetadataVisible(section, sourceCount, metadata)
   );
   if (visibleMetadataItems.length > 0) {
     return visibleMetadataItems;
@@ -3492,12 +3554,45 @@ async function getDashboardSections(options = {}) {
   );
   const data = await Promise.all(
     configSections.filter(
-      (section) => section.enabled !== "0" && ["proxy", "outbound", "vpn"].includes(getSectionAction(section))
+      (section) => section.enabled !== "0" && isConnectionAction(getSectionAction(section))
     ).map(async (section) => {
       const displayName = getDisplayName(section);
       const sectionName = section[".name"];
       const sectionAction = getSectionAction(section);
       const proxyConfigType = getSectionProxyConfigType(section);
+      if (isConnectionAction(sectionAction) && shouldUseProxyGroup(section)) {
+        const subscriptionSourceCount = getSubscriptionSourceCount(section);
+        const subscriptionEnabled = subscriptionSourceCount > 0;
+        const dashboardCache = await readDashboardSectionCache(sectionName);
+        const outboundMetadata = getOutboundMetadata(dashboardCache);
+        const subscriptionMetadata = subscriptionEnabled ? getSubscriptionMetadata(
+          section,
+          subscriptionSourceCount,
+          dashboardCache
+        ) : void 0;
+        const subscriptionCopyableCodes = includeSubscriptionCopyState ? getSubscriptionCopyableCodes(dashboardCache) : /* @__PURE__ */ new Set();
+        const urltestGroups = getUrlTestGroups(dashboardCache);
+        const { selector, latencyTestCode, latencyTestCodes, outbounds } = buildProxyGroupOutbounds(
+          section,
+          proxies,
+          outboundMetadata,
+          urltestGroups,
+          subscriptionCopyableCodes
+        );
+        return {
+          withTagSelect: true,
+          code: selector?.code || sectionName,
+          sectionName,
+          displayName,
+          action: sectionAction,
+          latencyTestCode,
+          latencyTestCodes,
+          proxyConfigType,
+          subscriptionSourceCount,
+          subscriptionMetadata,
+          outbounds
+        };
+      }
       if (sectionAction === "vpn") {
         const outboundTag = getOutboundTagBySection(sectionName);
         const outbound = proxies.find((proxy) => proxy.code === outboundTag);
@@ -3540,39 +3635,6 @@ async function getDashboardSections(options = {}) {
               canCopyLink: false
             }
           ]
-        };
-      }
-      if (sectionAction === "proxy" && shouldUseProxyGroup(section)) {
-        const subscriptionSourceCount = getSubscriptionSourceCount(section);
-        const subscriptionEnabled = subscriptionSourceCount > 0;
-        const dashboardCache = await readDashboardSectionCache(sectionName);
-        const outboundMetadata = getOutboundMetadata(dashboardCache);
-        const subscriptionMetadata = subscriptionEnabled ? getSubscriptionMetadata(
-          sectionName,
-          subscriptionSourceCount,
-          dashboardCache
-        ) : void 0;
-        const subscriptionCopyableCodes = includeSubscriptionCopyState ? getSubscriptionCopyableCodes(dashboardCache) : /* @__PURE__ */ new Set();
-        const urltestGroups = getUrlTestGroups(dashboardCache);
-        const { selector, latencyTestCode, latencyTestCodes, outbounds } = buildProxyGroupOutbounds(
-          section,
-          proxies,
-          outboundMetadata,
-          urltestGroups,
-          subscriptionCopyableCodes
-        );
-        return {
-          withTagSelect: true,
-          code: selector?.code || sectionName,
-          sectionName,
-          displayName,
-          action: sectionAction,
-          latencyTestCode,
-          latencyTestCodes,
-          proxyConfigType,
-          subscriptionSourceCount,
-          subscriptionMetadata,
-          outbounds
         };
       }
       return {

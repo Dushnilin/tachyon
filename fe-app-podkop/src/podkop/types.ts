@@ -180,6 +180,7 @@ export namespace Podkop {
   }
 
   type RuleAction =
+    | 'connection'
     | 'proxy'
     | 'outbound'
     | 'vpn'
@@ -218,6 +219,11 @@ export namespace Podkop {
     cmd_opts?: string;
     selector_proxy_links?: string[];
     subscription_urls?: string[];
+    interfaces?: string[];
+    outbound_jsons?: string[];
+    connection_url_settings?: string;
+    subscription_url_settings?: string;
+    interface_settings?: string;
     urltest_proxy_links?: string[];
     subscription_url?: string;
     subscription_user_agent?: string;

@@ -9,6 +9,7 @@ let zapret2_validator_module = null;
 let byedpi_validator_module = null;
 let constants_module = null;
 let rule_config = require("config.rule");
+let connections = require("config.connections");
 
 const CONFIG_NAME = getenv("PODKOP_CONFIG_NAME") || "podkop-plus";
 
@@ -441,12 +442,12 @@ function bool_flag(value) {
 
 function outbound_detour_source_action(action) {
     action = as_string(action);
-    return action == "proxy" || action == "outbound";
+    return connections.is_connections_action(action);
 }
 
 function outbound_detour_target_action(action) {
     action = as_string(action);
-    return action == "proxy" || action == "vpn" || action == "outbound";
+    return connections.is_connections_action(action);
 }
 
 function outbound_detour_supported_json(value) {
@@ -546,7 +547,7 @@ function validate_outbound_detours_rows(rows) {
             continue;
 
         if (!outbound_detour_source_action(row.action))
-            fail_outbound_detour("Outbound cascade is supported only for proxy and JSON outbound rules, but rule '" +
+            fail_outbound_detour("Outbound cascade is supported only for Connection rules, but rule '" +
                 row.section + "' uses action '" + row.action + "'. Aborted.");
 
         if (row.detour_section == "")
@@ -559,15 +560,15 @@ function validate_outbound_detours_rows(rows) {
         let target = parsed.by_section[row.detour_section];
         if (type(target) != "object")
             fail_outbound_detour("Outbound cascade for rule '" + row.section + "' references missing rule '" +
-                row.detour_section + "'. Select an enabled proxy/VPN/JSON outbound rule or disable cascade connection. Aborted.");
+                row.detour_section + "'. Select an enabled Connection rule or disable cascade connection. Aborted.");
 
         if (!target.enabled)
             fail_outbound_detour("Outbound cascade for rule '" + row.section + "' references disabled rule '" +
-                row.detour_section + "'. Select an enabled proxy/VPN/JSON outbound rule or disable cascade connection. Aborted.");
+                row.detour_section + "'. Select an enabled Connection rule or disable cascade connection. Aborted.");
 
         if (!outbound_detour_target_action(target.action))
             fail_outbound_detour("Outbound cascade for rule '" + row.section + "' references rule '" +
-                row.detour_section + "', but it is not a proxy/VPN/JSON outbound rule. Select an enabled proxy/VPN/JSON outbound rule or disable cascade connection. Aborted.");
+                row.detour_section + "', but it is not a Connection rule. Select an enabled Connection rule or disable cascade connection. Aborted.");
 
         if (outbound_detour_chain_reaches_source(parsed.by_section, row.section, row.detour_section))
             fail_outbound_detour("Outbound cascade for rule '" + row.section + "' creates a cycle through '" +
@@ -604,7 +605,7 @@ function basic_rule_rows() {
 
 function download_section_action_available(action, byedpi_installed, zapret_installed, zapret2_installed) {
     action = as_string(action);
-    if (action == "proxy" || action == "vpn" || action == "outbound")
+    if (connections.is_connections_action(action))
         return true;
     if (action == "byedpi")
         return bool_flag(byedpi_installed);
@@ -649,7 +650,7 @@ function validate_download_section_rows(target_section, byedpi_installed, zapret
 
     if (!outbound)
         fail_validation("Downloading external resources through a section references rule '" + target_section +
-            "', but it cannot provide an outbound. Select an enabled proxy, JSON outbound, VPN, Zapret, Zapret2, or ByeDPI rule with its provider installed, or disable the option. Aborted.");
+            "', but it cannot provide an outbound. Select an enabled Connection, Zapret, Zapret2, or ByeDPI rule with its provider installed, or disable the option. Aborted.");
 }
 
 function validate_download_section(target_section, byedpi_installed, zapret_installed, zapret2_installed) {
@@ -856,7 +857,11 @@ function rule_action(section) {
 }
 
 function rule_action_supported(action) {
-    return contains([ "proxy", "outbound", "vpn", "bypass", "block", "zapret", "zapret2", "byedpi" ], as_string(action));
+    return contains([ "connection", "proxy", "outbound", "vpn", "bypass", "block", "zapret", "zapret2", "byedpi" ], as_string(action));
+}
+
+function server_routing_section_action_supported(action) {
+    return contains([ "connection", "proxy", "outbound", "vpn", "zapret", "zapret2", "byedpi" ], as_string(action));
 }
 
 function duration_to_seconds_value(value) {
@@ -941,6 +946,9 @@ function validate_port_condition_value(value, section) {
 }
 
 function validate_subscription_source_entry_value(entry, section) {
+    if (index(as_string(entry), "|") >= 0)
+        fail_validation("Invalid subscription URL in rule '" + section + "': Configure User-Agent in the subscription item settings. Aborted.");
+
     let parsed = subscription_parser().parse_subscription_source_entry(entry);
     if (parsed.valid)
         return;
@@ -1044,17 +1052,27 @@ function validate_outbound_json_rule(section) {
         fail_validation("JSON outbound rule '" + name + "' must contain a valid sing-box outbound JSON object with a type field. Aborted.");
 }
 
-function rule_has_subscription_urls(section) {
-    return length(list_option(section, "subscription_urls")) > 0 || option(section, "subscription_urls", "") != "";
+function validate_outbound_json_values(section) {
+    let name = section_name(section);
+    let values = connections.outbound_jsons(section);
+
+    for (let value in values) {
+        if (as_string(value) == "")
+            fail_validation("Connection rule '" + name + "' has empty JSON outbound. Aborted.");
+
+        if (!valid_outbound_json(value))
+            fail_validation("Connection rule '" + name + "' must contain valid sing-box outbound JSON objects with a type field. Aborted.");
+    }
 }
 
-function subscription_update_interval_for_rule(section) {
-    if (!rule_has_subscription_urls(section))
-        return "";
-    if (!bool_option(section, "subscription_update_enabled", true))
-        return "";
+function rule_has_subscription_urls(section) {
+    return length(connections.subscription_urls(section)) > 0;
+}
 
-    let value = option(section, "subscription_update_interval", "");
+function subscription_update_interval_for_source(section, entry) {
+    if (!connections.subscription_update_enabled(section, entry))
+        return "";
+    let value = connections.subscription_update_interval(section, entry);
     return value != "" ? value : "1h";
 }
 
@@ -1129,7 +1147,7 @@ function validate_rule(section, context) {
         validate_provider_strategy("byedpi", section, context);
     }
 
-    if (action == "proxy") {
+    if (connections.is_connections_action(action)) {
         if (bool_option(section, "urltest_enabled", false)) {
             let urltest_filter_mode = option(section, "urltest_filter_mode", "disabled");
             validate_urltest_filter_mode_value(urltest_filter_mode, name);
@@ -1153,12 +1171,15 @@ function validate_rule(section, context) {
         }
 
         if (rule_has_subscription_urls(section)) {
-            for (let value in list_option(section, "subscription_urls"))
+            for (let value in connections.subscription_urls(section)) {
                 validate_subscription_source_entry_value(value, name);
-            let subscription_update_interval = subscription_update_interval_for_rule(section);
-            if (subscription_update_interval != "")
-                validate_required_duration_option(subscription_update_interval, "rule." + name + ".subscription_update_interval");
+                let subscription_update_interval = subscription_update_interval_for_source(section, value);
+                if (subscription_update_interval != "")
+                    validate_required_duration_option(subscription_update_interval, "rule." + name + ".subscription_update_interval");
+            }
         }
+
+        validate_outbound_json_values(section);
     }
 
     if (action == "outbound")
@@ -1172,7 +1193,6 @@ function validate_rule(section, context) {
 
 function download_via_proxy_any_enabled(settings) {
     return bool_option(settings, "download_lists_via_proxy", false) ||
-        bool_option(settings, "download_subscriptions_via_proxy", false) ||
         bool_option(settings, "download_components_via_proxy", false);
 }
 
@@ -1201,6 +1221,102 @@ function detour_rows_from_sections(sections) {
         });
     }
     return rows;
+}
+
+function validate_subscription_download_sections(sections, context) {
+    let rows = basic_rows_from_sections(sections);
+
+    for (let section in sections) {
+        section = object_or_empty(section);
+        if (!section_enabled(section))
+            continue;
+
+        let name = section_name(section);
+        for (let entry in connections.subscription_urls(section)) {
+            let target = connections.subscription_download_section(section, entry);
+            if (target == "")
+                continue;
+
+            if (target == name)
+                fail_validation("Subscription source in rule '" + name + "' cannot be downloaded through the same rule. Select another rule or disable download-through-section. Aborted.");
+
+            validate_download_section_rows(
+                target,
+                context.byedpi_installed,
+                context.zapret_installed,
+                context.zapret2_installed,
+                rows
+            );
+        }
+    }
+}
+
+function basic_rows_by_section(rows) {
+    let result = {};
+    for (let row in array_or_empty(rows))
+        if (type(row) == "object" && row.section != "")
+            result[row.section] = row;
+    return result;
+}
+
+function validate_connection_url_detours(sections) {
+    let by_section = basic_rows_by_section(basic_rows_from_sections(sections));
+
+    for (let section in sections) {
+        section = object_or_empty(section);
+        if (!section_enabled(section))
+            continue;
+
+        let name = section_name(section);
+        for (let entry in connections.connection_urls(section)) {
+            if (!connections.connection_detour_enabled(section, entry))
+                continue;
+
+            let target_name = connections.connection_detour_section(section, entry);
+            if (target_name == "")
+                fail_validation("Connection URL cascade is enabled in rule '" + name + "', but no intermediate rule is selected. Aborted.");
+            if (target_name == name)
+                fail_validation("Connection URL cascade in rule '" + name + "' cannot point to itself. Aborted.");
+
+            let target = by_section[target_name];
+            if (type(target) != "object")
+                fail_validation("Connection URL cascade in rule '" + name + "' references missing rule '" + target_name + "'. Aborted.");
+            if (!target.enabled)
+                fail_validation("Connection URL cascade in rule '" + name + "' references disabled rule '" + target_name + "'. Aborted.");
+            if (!outbound_detour_target_action(target.action))
+                fail_validation("Connection URL cascade in rule '" + name + "' references rule '" + target_name + "', but it is not a Connection rule. Aborted.");
+        }
+    }
+}
+
+function validate_server_routing_sections(sections) {
+    let by_section = basic_rows_by_section(basic_rows_from_sections(sections));
+
+    for (let server in sections_by_type("server")) {
+        server = object_or_empty(server);
+        if (!server_enabled(server))
+            continue;
+
+        let name = section_name(server);
+        let mode = option(server, "routing_mode", "rules");
+        if (!contains([ "rules", "direct", "section" ], mode))
+            fail_validation("Server '" + name + "' uses unsupported routing mode '" + mode + "'. Aborted.");
+
+        if (mode != "section")
+            continue;
+
+        let target_name = option(server, "routing_section", "");
+        if (target_name == "")
+            fail_validation("Server '" + name + "' uses selected-section routing, but no routing section is selected. Aborted.");
+
+        let target = by_section[target_name];
+        if (type(target) != "object")
+            fail_validation("Server '" + name + "' references missing routing section '" + target_name + "'. Aborted.");
+        if (!target.enabled)
+            fail_validation("Server '" + name + "' references disabled routing section '" + target_name + "'. Aborted.");
+        if (!server_routing_section_action_supported(target.action))
+            fail_validation("Server '" + name + "' references routing section '" + target_name + "' with unsupported action '" + target.action + "'. Select a Connection, proxy, JSON outbound, VPN, Zapret, Zapret2, or ByeDPI section. Aborted.");
+    }
 }
 
 function validate_list_update_settings(settings) {
@@ -1259,6 +1375,9 @@ function validate_runtime_config(context) {
     }
 
     validate_outbound_detours_rows(detour_rows_from_sections(sections));
+    validate_connection_url_detours(sections);
+    validate_subscription_download_sections(sections, context);
+    validate_server_routing_sections(sections);
 
     for (let section in sections)
         validate_rule(section, context);
@@ -1478,10 +1597,10 @@ function has_outbound_section(ctx) {
         if (action == "zapret2" && ctx.zapret2_installed)
             return true;
 
-        if (option(section, "selector_proxy_links", "") != "" ||
-            option(section, "subscription_urls", "") != "" ||
-            option(section, "outbound_json", "") != "" ||
-            option(section, "interface", "") != "")
+        if (length(connections.connection_urls(section)) > 0 ||
+            length(connections.subscription_urls(section)) > 0 ||
+            length(connections.outbound_jsons(section)) > 0 ||
+            length(connections.interfaces(section)) > 0)
             return true;
     }
 

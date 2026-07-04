@@ -140,11 +140,12 @@ podkop-plus.settings.cache_path=/tmp/sing-box/cache.db
 podkop-plus.settings.log_level=warn
 podkop-plus.uci_proxy=section
 podkop-plus.uci_proxy.enabled=1
-podkop-plus.uci_proxy.action=outbound
-podkop-plus.uci_proxy.outbound_json={"type":"direct"}
+podkop-plus.uci_proxy.action=connection
+podkop-plus.uci_proxy.outbound_jsons={"type":"direct"}
 podkop-plus.uci_proxy.domain_suffix=example.org
 EOF_UCI
 PODKOP_UCI_STATE_FILE="$WORK_DIR/generator-uci.state" \
+  PODKOP_SECTION_CACHE_DIR="$WORK_DIR/generated-from-uci.section-cache" \
   ucode -L "$PODKOP_LIB" "$SINGBOX_GENERATOR_UC" generate-config "$WORK_DIR/generated-from-uci.json" "127.0.0.1" "0"
 grep -Fq '"example.org"' "$WORK_DIR/generated-from-uci.json" ||
   fail "singbox/generator.uc must read section matchers from core.uci"
@@ -167,8 +168,8 @@ cat >"$WORK_DIR/disabled-updates-fixture.json" <<'JSON'
       ".name": "proxy",
       ".type": "section",
       "enabled": "1",
-      "action": "outbound",
-      "outbound_json": "{\"type\":\"direct\"}",
+      "action": "connection",
+      "outbound_jsons": [ "{\"type\":\"direct\"}" ],
       "domain_suffix": [ "example.org" ],
       "rule_set": [ "https://example.com/rules.srs" ],
       "resolve_real_ip_for_routing": "1"
@@ -265,12 +266,11 @@ cat >"$WORK_DIR/runtime-matchers-fixture.json" <<'JSON'
       ".name": "proxy",
       ".type": "section",
       "enabled": "1",
-      "action": "outbound",
-      "outbound_json": "{\"type\":\"socks\",\"server\":\"127.0.0.1\",\"server_port\":1080}",
+      "action": "connection",
+      "selector_proxy_links": [ "socks5://127.0.0.1:1080" ],
       "domain_suffix": [ "proxy.example.org", "сайт.рф", "full:пример.испытание", "keyword:пример", "regex:^сайт[.]рф$" ],
       "source_ip_cidr": [ "10.0.0.2/32", "2001:db8::2/128" ],
-      "outbound_detour_enabled": "1",
-      "outbound_detour_section": "detour",
+      "connection_url_settings": "{\"socks5://127.0.0.1:1080\":{\"outbound_detour_enabled\":\"1\",\"outbound_detour_section\":\"detour\"}}",
       "mixed_proxy_enabled": "1",
       "mixed_proxy_port": "19090",
       "mixed_proxy_auth_enabled": "1",
@@ -366,11 +366,9 @@ cat >"$WORK_DIR/vpn-domain-resolver-fixture.json" <<'JSON'
       ".name": "renamed_awg",
       ".type": "section",
       "enabled": "1",
-      "action": "vpn",
-      "interface": "tun0",
-      "domain_resolver_enabled": "1",
-      "domain_resolver_dns_type": "doh",
-      "domain_resolver_dns_server": "https://dns.example/dns-query",
+      "action": "connection",
+      "interfaces": [ "tun0" ],
+      "interface_settings": "{\"tun0\":{\"domain_resolver_enabled\":\"1\",\"domain_resolver_dns_type\":\"doh\",\"domain_resolver_dns_server\":\"https://dns.example/dns-query\"}}",
       "domain_suffix": [ "vpn.example" ]
     }
   ]
@@ -526,9 +524,10 @@ cat >"$WORK_DIR/subscription-metadata-fixture.json" <<'JSON'
       "enabled": "1",
       "action": "proxy",
       "subscription_urls": [
-        "https://example.com/sub.txt | v2rayN",
+        "https://example.com/sub-v2rayn.txt",
         "https://example.com/sub.txt"
       ],
+      "subscription_url_settings": "{\"https://example.com/sub-v2rayn.txt\":{\"user_agent\":\"v2rayN\"}}",
       "domain_suffix": [ "proxy.example" ]
     },
     {
@@ -537,8 +536,9 @@ cat >"$WORK_DIR/subscription-metadata-fixture.json" <<'JSON'
       "enabled": "1",
       "action": "proxy",
       "subscription_urls": [
-        "https://example.com/sub.txt | v2rayN"
+        "https://example.com/test-sub.txt"
       ],
+      "subscription_url_settings": "{\"https://example.com/test-sub.txt\":{\"user_agent\":\"v2rayN\"}}",
       "domain_suffix": [ "test.example" ]
     }
   ]
@@ -559,20 +559,19 @@ cat >"$WORK_DIR/subscription-group-fixture.json" <<'JSON'
       ".name": "detour",
       ".type": "section",
       "enabled": "1",
-      "action": "outbound",
-      "outbound_json": "{\"type\":\"socks\",\"server\":\"127.0.0.1\",\"server_port\":1081}",
+      "action": "connection",
+      "outbound_jsons": [ "{\"type\":\"socks\",\"server\":\"127.0.0.1\",\"server_port\":1081}" ],
       "domain_suffix": [ "detour.example" ]
     },
     {
       ".name": "grouped",
       ".type": "section",
       "enabled": "1",
-      "action": "proxy",
+      "action": "connection",
       "subscription_urls": [
-        "https://example.com/group.json | Happ"
+        "https://example.com/group.json"
       ],
-      "outbound_detour_enabled": "1",
-      "outbound_detour_section": "detour",
+      "subscription_url_settings": "{\"https://example.com/group.json\":{\"user_agent\":\"Happ\"}}",
       "domain_suffix": [ "grouped.example" ]
     }
   ]
@@ -590,6 +589,10 @@ JSON
 JSON
   printf '%s' 'https://example.com/sub.txt' >"$WORK_DIR/persistent-subscription-cache/$source.url"
 done
+printf '%s' 'https://example.com/sub-v2rayn.txt' >"$WORK_DIR/subscriptions/proxy-subscription-1.url"
+printf '%s' 'https://example.com/sub-v2rayn.txt' >"$WORK_DIR/persistent-subscription-cache/proxy-subscription-1.url"
+printf '%s' 'https://example.com/test-sub.txt' >"$WORK_DIR/subscriptions/test-subscription-1.url"
+printf '%s' 'https://example.com/test-sub.txt' >"$WORK_DIR/persistent-subscription-cache/test-subscription-1.url"
 printf '%s' 'v2rayN' >"$WORK_DIR/subscriptions/proxy-subscription-1.user_agent"
 printf '%s' 'sing-box/default' >"$WORK_DIR/subscriptions/proxy-subscription-2.user_agent"
 printf '%s' 'v2rayN' >"$WORK_DIR/subscriptions/test-subscription-1.user_agent"
@@ -759,7 +762,7 @@ assert(dns_server(matchers, r => r.tag == "fakeip-server" && r.inet6_range == "f
 assert(inbound(matchers, "tproxy6-in") != null, "IPv6 TProxy inbound");
 assert(inbound(matchers, "tproxy6-in").listen == "::1", "IPv6 TProxy listen address");
 assert(outbound(matchers, "bypass-out").type == "direct", "bypass fallback outbound");
-assert(outbound(matchers, "proxy-out").detour == "detour-out", "outbound detour");
+assert(outbound(matchers, "proxy-1-out").detour == "detour-out", "connection URL outbound detour");
 let mixed = inbound(matchers, "proxy-mixed-in");
 assert(mixed && mixed.listen_port == 19090 && mixed.users[0].username == "user", "mixed inbound auth");
 assert(route_rule(matchers, r => r.inbound == "proxy-mixed-in" && r.outbound == "proxy-out") != null, "mixed inbound route");
@@ -805,9 +808,9 @@ assert(vmess.tls.utls.fingerprint == "chrome", "manual VMess fingerprint");
 assert(outbound(manual, "proxy-3-out").type == "shadowsocks", "manual Shadowsocks link");
 
 let vpn = cfg("vpn");
-assert(outbound(vpn, "renamed_awg-out").bind_interface == "tun0", "renamed VPN interface outbound");
-assert(outbound(vpn, "renamed_awg-out").domain_resolver == "renamed_awg-domain-resolver", "renamed VPN domain resolver tag");
-assert(dns_server(vpn, r => r.tag == "renamed_awg-domain-resolver") != null, "renamed VPN domain resolver DNS server");
+assert(outbound(vpn, "renamed_awg-interface-1-out").bind_interface == "tun0", "renamed VPN interface outbound");
+assert(outbound(vpn, "renamed_awg-interface-1-out").domain_resolver == "renamed_awg-interface-1-domain-resolver", "renamed VPN domain resolver tag");
+assert(dns_server(vpn, r => r.tag == "renamed_awg-interface-1-domain-resolver") != null, "renamed VPN domain resolver DNS server");
 assert(route_rule(vpn, r => r.outbound == "renamed_awg-out" && contains(r.domain_suffix, "vpn.example")) != null, "renamed VPN custom domain route");
 assert(dns_rule(vpn, r => contains(r.domain_suffix, "vpn.example")) != null, "renamed VPN custom domain DNS rule");
 
@@ -857,8 +860,8 @@ assert(provider_group.outbounds[1] == "leaf", "provider URLTest group second lea
 assert(provider_group.detour == null, "provider URLTest group does not receive outbound detour");
 let grouped_leaf = outbound(subscription_group, "grouped-out-1");
 let second_leaf = outbound(subscription_group, "leaf");
-assert(grouped_leaf && grouped_leaf.detour == "detour-out", "hidden subscription leaf receives outbound detour");
-assert(second_leaf && second_leaf.detour == "detour-out", "second hidden subscription leaf receives outbound detour");
+assert(grouped_leaf && grouped_leaf.detour == null, "hidden subscription leaf does not receive connection URL detour");
+assert(second_leaf && second_leaf.detour == null, "second hidden subscription leaf does not receive connection URL detour");
 assert(outbound(subscription_group, "provider-direct") == null, "provider direct outbound skipped");
 let grouped_selector = outbound(subscription_group, "grouped-out");
 assert(grouped_selector && length(grouped_selector.outbounds) == 1 && grouped_selector.outbounds[0] == "Provider Group", "selector exposes provider group only");

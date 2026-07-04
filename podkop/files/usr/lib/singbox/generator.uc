@@ -13,6 +13,7 @@ let runtime_url = require("core.url");
 let runtime_urltest = require("singbox.urltest");
 let source_rulesets = require("routing.rulesets");
 let rule_config = require("config.rule");
+let connections = require("config.connections");
 let uci = null;
 let fixture_uci_data = null;
 let runtime_settings_cache = null;
@@ -46,10 +47,36 @@ let url_query_params = runtime_url.query_params;
 
 const CONFIG_NAME = "podkop-plus";
 
+function parent_dir(path) {
+    path = as_string(path);
+    let slash = rindex(path, "/");
+    return slash <= 0 ? "" : substr(path, 0, slash);
+}
+
+function ensure_dir(path) {
+    path = as_string(path);
+    if (path == "" || path == "/")
+        return true;
+    if (fs.stat(path) != null)
+        return true;
+
+    let parent = parent_dir(path);
+    if (parent != "" && !ensure_dir(parent))
+        return false;
+
+    return fs.mkdir(path, 0755) || fs.stat(path) != null;
+}
+
+function ensure_parent_dir(path) {
+    return ensure_dir(parent_dir(path));
+}
+
 function atomic_write_json_file(path, value) {
     let stamp = clock();
     let tmp_path = sprintf("%s.%d.%d.tmp", path, stamp[0], stamp[1]);
 
+    if (!ensure_parent_dir(path))
+        return false;
     if (!write_json_file(tmp_path, value))
         return false;
     if (!fs.rename(tmp_path, path)) {
@@ -183,14 +210,15 @@ function outbound_tag(section_name) {
     return runtime_constants.outbound_tag(section_name);
 }
 
-function download_via_proxy_any_enabled(settings) {
+function download_via_proxy_any_enabled(settings, sections) {
     return bool_option(settings, "download_lists_via_proxy", false) ||
-        bool_option(settings, "download_subscriptions_via_proxy", false) ||
-        bool_option(settings, "download_components_via_proxy", false);
+        bool_option(settings, "download_components_via_proxy", false) ||
+        length(connections.subscription_download_targets(sections || [])) > 0;
 }
 
 function download_detour_tag(settings) {
-    if (!bool_option(settings, "download_lists_via_proxy", false))
+    if (!bool_option(settings, "download_lists_via_proxy", false) &&
+        !bool_option(settings, "download_components_via_proxy", false))
         return "";
 
     let section_name = option(settings, "download_lists_via_proxy_section", "");
@@ -441,16 +469,23 @@ function unique_tag(base, taken) {
     return base + "-overflow";
 }
 
-function add_subscription_source_with_state(config, section_name, source_index, source_entry, taken, selector_tags, detour_tags, state) {
+function add_subscription_source_with_state(config, section, source_index, source_entry, taken, selector_tags, detour_tags, state, show_metadata) {
+    let section_name = section[".name"];
     let source_section = runtime_subscription.source_id(section_name, source_index);
-    if (!runtime_subscription.source_cache_is_current(source_section, source_entry))
+    if (!runtime_subscription.source_cache_is_current(
+        source_section,
+        source_entry,
+        connections.subscription_user_agent(section, source_entry),
+        connections.subscription_hwid(section, source_entry)
+    ))
         return 0;
 
     let outbounds = runtime_subscription.read_source_outbounds(source_section);
     if (length(outbounds) == 0)
         return 0;
 
-    runtime_subscription.merge_source_metadata(state, section_name, source_section, source_index, source_entry);
+    if (show_metadata !== false)
+        runtime_subscription.merge_source_metadata(state, section_name, source_section, source_index, source_entry);
     let prepared = [];
     let source_indices = [];
     let display_names = [];
@@ -763,7 +798,7 @@ function apply_detour_to_outbounds(config, tag_names, detour_tag) {
 }
 
 function mixed_proxy_enabled_action(action) {
-    return action == "proxy" || action == "outbound" || action == "vpn" ||
+    return action == "connection" || action == "proxy" || action == "outbound" || action == "vpn" ||
         action == "byedpi" || action == "zapret" || action == "zapret2";
 }
 
@@ -808,25 +843,59 @@ function add_mixed_proxy_for_section(config, section, service_address) {
     });
 }
 
-function add_service_mixed_proxy(config, settings) {
-    if (!download_via_proxy_any_enabled(settings))
-        return;
-
-    let outbound = download_detour_tag(settings);
-    if (outbound == "")
-        runtime_generate_unsupported("download via proxy section is not set");
-
+function add_service_mixed_proxy_inbound(config, tag_name, listen_port, outbound) {
     push(config.inbounds, {
         type: "mixed",
-        tag: runtime_constants.SERVICE_MIXED_INBOUND_TAG,
+        tag: tag_name,
         listen: runtime_constants.SERVICE_MIXED_INBOUND_ADDRESS,
-        listen_port: runtime_constants.SERVICE_MIXED_INBOUND_PORT
+        listen_port
     });
     push(config.route.rules, {
         action: "route",
-        inbound: runtime_constants.SERVICE_MIXED_INBOUND_TAG,
+        inbound: tag_name,
         outbound
     });
+}
+
+function add_global_download_service_mixed_proxy(config, settings) {
+    let outbound = download_detour_tag(settings);
+    if (outbound == "")
+        return;
+
+    add_service_mixed_proxy_inbound(
+        config,
+        runtime_constants.SERVICE_MIXED_INBOUND_TAG,
+        runtime_constants.SERVICE_MIXED_INBOUND_PORT,
+        outbound
+    );
+}
+
+function add_subscription_download_service_mixed_proxies(config, sections) {
+    for (let target in connections.subscription_download_targets(sections)) {
+        let port = connections.subscription_download_target_port(sections, target, runtime_constants.SERVICE_MIXED_INBOUND_PORT);
+        if (port <= 0)
+            runtime_generate_unsupported("subscription download proxy port could not be resolved");
+
+        add_service_mixed_proxy_inbound(
+            config,
+            runtime_constants.inbound_tag("service-subscription-" + target),
+            port,
+            outbound_tag(target)
+        );
+    }
+}
+
+function add_service_mixed_proxy(config, settings, sections) {
+    if (!download_via_proxy_any_enabled(settings, sections))
+        return;
+
+    add_global_download_service_mixed_proxy(config, settings);
+    add_subscription_download_service_mixed_proxies(config, sections);
+
+    let outbound = download_detour_tag(settings);
+    if ((bool_option(settings, "download_lists_via_proxy", false) ||
+        bool_option(settings, "download_components_via_proxy", false)) && outbound == "")
+        runtime_generate_unsupported("download via proxy section is not set");
 }
 
 function parse_port(value) {
@@ -1310,33 +1379,156 @@ function add_manual_proxy_link(config, state, section_name, manual_index, link, 
     state.outboundMetadata.names[tag_name] = display_name;
     if (as_string(outbound.server || "") != "")
         state.servers[tag_name] = as_string(outbound.server);
+    return tag_name;
 }
 
-function add_proxy_outbound(config, section, taken) {
+function connection_item_tag(section_name, kind, item_index) {
+    return outbound_tag(section_name + "-" + as_string(kind) + "-" + item_index);
+}
+
+function connection_detour_tag(section, link) {
+    if (!connections.connection_detour_enabled(section, link))
+        return "";
+
+    let detour_section = connections.connection_detour_section(section, link);
+    return detour_section == "" ? "" : outbound_tag(detour_section);
+}
+
+function add_connection_manual_links(config, state, section, taken, selector_tags) {
     let section_name = section[".name"];
-
-    let subscription_urls = list_option(section, "subscription_urls");
-
-    let selector_tags = [];
-    let detour_tags = [];
-    let state = runtime_subscription.new_section_state(section_name);
-    let udp_over_tcp = bool_option(section, "enable_udp_over_tcp", false);
-    let manual_links = list_option(section, "selector_proxy_links");
+    let manual_links = connections.connection_urls(section);
     for (let i = 0; i < length(manual_links); i++) {
-        add_manual_proxy_link(config, state, section_name, i + 1, manual_links[i], udp_over_tcp, taken, selector_tags);
-        push(detour_tags, selector_tags[length(selector_tags) - 1]);
+        let link = manual_links[i];
+        let tag_name = add_manual_proxy_link(
+            config,
+            state,
+            section_name,
+            i + 1,
+            link,
+            connections.connection_udp_over_tcp(section, link),
+            taken,
+            selector_tags
+        );
+        apply_detour_to_outbound(config, tag_name, connection_detour_tag(section, link));
     }
+}
+
+function add_connection_subscriptions(config, state, section, taken, selector_tags) {
+    let section_name = section[".name"];
+    let subscription_urls = connections.subscription_urls(section);
+    let detour_tags = [];
 
     for (let i = 0; i < length(subscription_urls); i++)
-        add_subscription_source_with_state(config, section_name, i + 1, subscription_urls[i], taken, selector_tags, detour_tags, state);
+        add_subscription_source_with_state(
+            config,
+            section,
+            i + 1,
+            subscription_urls[i],
+            taken,
+            selector_tags,
+            detour_tags,
+            state,
+            connections.subscription_dashboard_metadata_enabled(section, subscription_urls[i])
+        );
+}
+
+function add_interface_connection_outbound(config, state, section, interface_index, interface_name, taken, selector_tags) {
+    let section_name = section[".name"];
+    let tag_name = connection_item_tag(section_name, "interface", interface_index);
+    if (taken[tag_name])
+        tag_name = unique_tag(tag_name, taken);
+    taken[tag_name] = true;
+
+    let domain_resolver = "";
+    if (connections.interface_domain_resolver_enabled(section, interface_name)) {
+        domain_resolver = runtime_constants.domain_resolver_tag(section_name + "-interface-" + interface_index);
+        let dns_server = runtime_dns.server_from_options(
+            domain_resolver,
+            connections.interface_domain_resolver_dns_type(section, interface_name),
+            connections.interface_domain_resolver_dns_server(section, interface_name),
+            tag_name
+        );
+        if (dns_server.unsupported)
+            runtime_generate_unsupported(dns_server.unsupported);
+        push(config.dns.servers, dns_server);
+    }
+
+    let outbound = {
+        type: "direct",
+        tag: tag_name,
+        bind_interface: interface_name,
+        domain_resolver,
+        routing_mark: runtime_constants.OUTBOUND_MARK
+    };
+    if (domain_resolver == "")
+        delete outbound.domain_resolver;
+
+    push(config.outbounds, outbound);
+    push(selector_tags, tag_name);
+    runtime_subscription.remember_outbound_metadata(state, tag_name, interface_name, outbound);
+}
+
+function add_connection_interfaces(config, state, section, taken, selector_tags) {
+    let items = connections.interfaces(section);
+    for (let i = 0; i < length(items); i++)
+        add_interface_connection_outbound(config, state, section, i + 1, items[i], taken, selector_tags);
+}
+
+function parse_outbound_json(value) {
+    try {
+        value = json(as_string(value));
+    }
+    catch (e) {
+        return null;
+    }
+
+    return type(value) == "object" ? value : null;
+}
+
+function add_json_connection_outbound(config, state, section, json_index, outbound_json, taken, selector_tags) {
+    let outbound = parse_outbound_json(outbound_json);
+    if (outbound == null)
+        runtime_generate_unsupported("JSON outbound is invalid");
+
+    let display_name = as_string(outbound.remark || outbound.tag || ("JSON outbound " + json_index));
+    let tag_name = connection_item_tag(section[".name"], "json", json_index);
+    if (taken[tag_name])
+        tag_name = unique_tag(tag_name, taken);
+    taken[tag_name] = true;
+
+    outbound.tag = tag_name;
+    push(config.outbounds, outbound);
+    push(selector_tags, tag_name);
+    runtime_subscription.remember_outbound_metadata(state, tag_name, display_name, outbound);
+    runtime_subscription.remember_urltest_group(state, tag_name, display_name, outbound);
+}
+
+function add_connection_json_outbounds(config, state, section, taken, selector_tags) {
+    let items = connections.outbound_jsons(section);
+    for (let i = 0; i < length(items); i++)
+        add_json_connection_outbound(config, state, section, i + 1, items[i], taken, selector_tags);
+}
+
+function add_connections_outbound(config, section, taken) {
+    let section_name = section[".name"];
+    let selector_tags = [];
+    let state = runtime_subscription.new_section_state(section_name);
+
+    add_connection_manual_links(config, state, section, taken, selector_tags);
+    add_connection_subscriptions(config, state, section, taken, selector_tags);
+    add_connection_interfaces(config, state, section, taken, selector_tags);
+    add_connection_json_outbounds(config, state, section, taken, selector_tags);
 
     if (length(selector_tags) == 0)
-        runtime_generate_unsupported("proxy section has no usable outbounds");
+        runtime_generate_unsupported("connection section has no usable outbounds");
 
-    apply_detour_to_outbounds(config, detour_tags, outbound_detour_tag_for_section(section));
     add_proxy_selector(config, section, selector_tags, state);
     if (!atomic_write_json_file(runtime_subscription.section_cache_path(section_name), state))
         runtime_generate_unsupported("failed to write section cache for " + section_name);
+}
+
+function add_proxy_outbound(config, section, taken) {
+    add_connections_outbound(config, section, taken);
 }
 
 function add_json_outbound(config, section) {
@@ -1791,12 +1983,8 @@ function add_outbound_for_section(config, section, taken, sections) {
     if (unsupported_matcher != "")
         runtime_generate_unsupported("section has unsupported matcher " + unsupported_matcher);
 
-    if (action == "proxy")
-        add_proxy_outbound(config, section, taken);
-    else if (action == "outbound")
-        add_json_outbound(config, section);
-    else if (action == "vpn")
-        add_vpn_outbound(config, section);
+    if (connections.is_connections_action(action))
+        add_connections_outbound(config, section, taken);
     else if (action == "zapret")
         add_zapret_outbound(config, section, sections);
     else if (action == "zapret2")
@@ -1817,7 +2005,7 @@ function add_outbound_for_section(config, section, taken, sections) {
 function reserve_section_outbound_tags(sections, taken) {
     for (let section in sections) {
         let action = option(section, "action", "");
-        if (action == "proxy" || action == "outbound" || action == "vpn" ||
+        if (connections.is_connections_action(action) ||
             action == "byedpi" || action == "zapret" || action == "zapret2")
             taken[outbound_tag(section[".name"])] = true;
     }
@@ -1831,7 +2019,7 @@ function add_service_route_rules(config, sections) {
     let first = null;
     for (let section in sections) {
         let action = option(section, "action", "");
-        if (action == "proxy" || action == "outbound" || action == "vpn" ||
+        if (connections.is_connections_action(action) ||
             action == "byedpi" || action == "zapret" || action == "zapret2") {
             first = section;
             break;
@@ -1904,6 +2092,9 @@ function add_server_routes(config, servers, sections) {
             let routing_section = section_by_name(sections, routing_section_name);
             if (routing_section == null)
                 runtime_generate_unsupported("server references missing routing section " + routing_section_name);
+            let action = option(routing_section, "action", "");
+            if (action == "bypass" || action == "block")
+                runtime_generate_unsupported("server routing section " + routing_section_name + " cannot use action " + action);
             let target = runtime_route.target(routing_section, outbound_tag(routing_section[".name"]));
             if (target.unsupported)
                 runtime_generate_unsupported(target.unsupported);
@@ -1944,7 +2135,7 @@ function generate_config(output_path, service_address, mwan3_active) {
     for (let section in sections)
         add_route_for_section(config, section);
     add_server_routes(config, servers, sections);
-    add_service_mixed_proxy(config, settings);
+    add_service_mixed_proxy(config, settings, sections);
     for (let section in sections)
         add_mixed_proxy_for_section(config, section, service_address);
 

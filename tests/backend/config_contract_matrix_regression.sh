@@ -101,7 +101,7 @@ function assertCurrentKeepsStableValues(name, required = [], retired = []) {
   }
 }
 
-assertCurrentKeepsStableValues("action", ["proxy", "vpn", "bypass", "block", "zapret", "zapret2", "byedpi", "outbound"], ["direct"]);
+assertCurrentKeepsStableValues("action", ["connection", "bypass", "block", "zapret", "zapret2", "byedpi"], ["direct", "proxy", "vpn", "outbound"]);
 assertCurrentKeepsStableValues("protocol", ["tailscale", "vless", "vmess", "trojan", "shadowsocks", "hysteria2", "socks", "mtproto", "json_inbound"]);
 assertCurrentKeepsStableValues("security", ["reality", "tls", "none"]);
 assertCurrentKeepsStableValues("transport", ["tcp", "ws", "grpc", "http", "httpupgrade", "xhttp"]);

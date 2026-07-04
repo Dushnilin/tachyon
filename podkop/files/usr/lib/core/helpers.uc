@@ -463,8 +463,6 @@ function download_via_proxy_option_for_purpose(purpose) {
 
     if (purpose == "lists")
         print("download_lists_via_proxy\n");
-    else if (purpose == "subscriptions")
-        print("download_subscriptions_via_proxy\n");
     else if (purpose == "components")
         print("download_components_via_proxy\n");
     else

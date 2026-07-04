@@ -111,6 +111,20 @@ function getManualProxyLinks(section: Podkop.ConfigSection) {
   return getListValues(section.selector_proxy_links);
 }
 
+function getConnectionInterfaces(section: Podkop.ConfigSection) {
+  const values = getListValues(section.interfaces);
+  return values.length ? values : getListValues(section.interface);
+}
+
+function getJsonOutbounds(section: Podkop.ConfigSection) {
+  const values = getListValues(section.outbound_jsons);
+  return values.length ? values : getListValues(section.outbound_json);
+}
+
+function isConnectionAction(action: string) {
+  return ['connection', 'proxy', 'outbound', 'vpn'].includes(action);
+}
+
 function hasSubscriptionSources(section: Podkop.ConfigSection) {
   return getSubscriptionSourceCount(section) > 0;
 }
@@ -151,7 +165,10 @@ function shouldShowDetectedCountries(section: Podkop.ConfigSection) {
 
 function shouldUseProxyGroup(section: Podkop.ConfigSection) {
   return (
-    getManualProxyLinks(section).length > 0 || hasSubscriptionSources(section)
+    getManualProxyLinks(section).length > 0 ||
+    hasSubscriptionSources(section) ||
+    getConnectionInterfaces(section).length > 0 ||
+    getJsonOutbounds(section).length > 0
   );
 }
 
@@ -166,6 +183,14 @@ function getSectionProxyConfigType(section: Podkop.ConfigSection) {
 
   if (getManualProxyLinks(section).length > 0) {
     return 'selector' as const;
+  }
+
+  if (getJsonOutbounds(section).length > 0) {
+    return 'outbound' as const;
+  }
+
+  if (getConnectionInterfaces(section).length > 0) {
+    return 'interface' as const;
   }
 
   return undefined;
@@ -281,8 +306,30 @@ function objectMap(value: unknown): Record<string, string> {
   return Object.fromEntries(
     Object.entries(value as Record<string, unknown>)
       .filter(([, item]) => typeof item === 'string')
-      .map(([key, item]) => [key, item as string]),
+    .map(([key, item]) => [key, item as string]),
   );
+}
+
+function itemSettingsMap(value?: string) {
+  if (!value) {
+    return {};
+  }
+
+  try {
+    const parsed = JSON.parse(value) as unknown;
+
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return {};
+    }
+
+    return Object.fromEntries(
+      Object.entries(parsed as Record<string, unknown>).filter(
+        ([, item]) => item && typeof item === 'object' && !Array.isArray(item),
+      ),
+    ) as Record<string, Record<string, string>>;
+  } catch (_error) {
+    return {};
+  }
 }
 
 async function readDashboardSectionCache(
@@ -557,8 +604,58 @@ function metadataMatchesCurrentSource(
   return true;
 }
 
-function getSubscriptionMetadata(
+function getSubscriptionMetadataSourceIndex(
   sectionName: string,
+  sourceCount: number,
+  metadata: Podkop.SubscriptionMetadata,
+) {
+  const legacyMetadata = metadata as Podkop.SubscriptionMetadata & {
+    source_index?: number;
+    source_section?: string;
+  };
+  const sourceIndex = metadata.sourceIndex ?? legacyMetadata.source_index;
+
+  if (typeof sourceIndex === 'number') {
+    return sourceIndex;
+  }
+
+  const sourceSection =
+    metadata.sourceSection || legacyMetadata.source_section || '';
+  const expectedSourcePrefix = `${sectionName}-subscription-`;
+
+  if (sourceSection.startsWith(expectedSourcePrefix)) {
+    const parsed = Number(sourceSection.slice(expectedSourcePrefix.length));
+    return Number.isInteger(parsed) ? parsed : undefined;
+  }
+
+  return sourceCount <= 1 ? 1 : undefined;
+}
+
+function isSubscriptionMetadataVisible(
+  section: Podkop.ConfigSection,
+  sourceCount: number,
+  metadata: Podkop.SubscriptionMetadata,
+) {
+  const sourceIndex = getSubscriptionMetadataSourceIndex(
+    section['.name'],
+    sourceCount,
+    metadata,
+  );
+
+  if (!sourceIndex || sourceIndex < 1 || sourceIndex > sourceCount) {
+    return true;
+  }
+
+  const sourceEntry = getListValues(section.subscription_urls)[sourceIndex - 1];
+  const settings = itemSettingsMap(section.subscription_url_settings)[
+    sourceEntry
+  ];
+
+  return settings?.show_dashboard_metadata !== '0';
+}
+
+function getSubscriptionMetadata(
+  section: Podkop.ConfigSection,
   sourceCount: number,
   dashboardCache?: DashboardSectionCache,
 ) {
@@ -573,7 +670,8 @@ function getSubscriptionMetadata(
     (metadata) =>
       metadata &&
       Object.keys(metadata).length > 1 &&
-      metadataMatchesCurrentSource(sectionName, sourceCount, metadata),
+      metadataMatchesCurrentSource(section['.name'], sourceCount, metadata) &&
+      isSubscriptionMetadataVisible(section, sourceCount, metadata),
   );
 
   if (visibleMetadataItems.length > 0) {
@@ -638,13 +736,53 @@ export async function getDashboardSections(
       .filter(
         (section) =>
           section.enabled !== '0' &&
-          ['proxy', 'outbound', 'vpn'].includes(getSectionAction(section)),
+          isConnectionAction(getSectionAction(section)),
       )
       .map(async (section) => {
         const displayName = getDisplayName(section);
         const sectionName = section['.name'];
         const sectionAction = getSectionAction(section);
         const proxyConfigType = getSectionProxyConfigType(section);
+
+        if (isConnectionAction(sectionAction) && shouldUseProxyGroup(section)) {
+          const subscriptionSourceCount = getSubscriptionSourceCount(section);
+          const subscriptionEnabled = subscriptionSourceCount > 0;
+          const dashboardCache = await readDashboardSectionCache(sectionName);
+          const outboundMetadata = getOutboundMetadata(dashboardCache);
+          const subscriptionMetadata = subscriptionEnabled
+            ? getSubscriptionMetadata(
+                section,
+                subscriptionSourceCount,
+                dashboardCache,
+              )
+            : undefined;
+          const subscriptionCopyableCodes = includeSubscriptionCopyState
+            ? getSubscriptionCopyableCodes(dashboardCache)
+            : new Set<string>();
+          const urltestGroups = getUrlTestGroups(dashboardCache);
+          const { selector, latencyTestCode, latencyTestCodes, outbounds } =
+            buildProxyGroupOutbounds(
+              section,
+              proxies,
+              outboundMetadata,
+              urltestGroups,
+              subscriptionCopyableCodes,
+            );
+
+          return {
+            withTagSelect: true,
+            code: selector?.code || sectionName,
+            sectionName,
+            displayName,
+            action: sectionAction,
+            latencyTestCode,
+            latencyTestCodes,
+            proxyConfigType,
+            subscriptionSourceCount,
+            subscriptionMetadata,
+            outbounds,
+          };
+        }
 
         if (sectionAction === 'vpn') {
           const outboundTag = getOutboundTagBySection(sectionName);
@@ -694,46 +832,6 @@ export async function getDashboardSections(
                 canCopyLink: false,
               },
             ],
-          };
-        }
-
-        if (sectionAction === 'proxy' && shouldUseProxyGroup(section)) {
-          const subscriptionSourceCount = getSubscriptionSourceCount(section);
-          const subscriptionEnabled = subscriptionSourceCount > 0;
-          const dashboardCache = await readDashboardSectionCache(sectionName);
-          const outboundMetadata = getOutboundMetadata(dashboardCache);
-          const subscriptionMetadata = subscriptionEnabled
-            ? getSubscriptionMetadata(
-                sectionName,
-                subscriptionSourceCount,
-                dashboardCache,
-              )
-            : undefined;
-          const subscriptionCopyableCodes = includeSubscriptionCopyState
-            ? getSubscriptionCopyableCodes(dashboardCache)
-            : new Set<string>();
-          const urltestGroups = getUrlTestGroups(dashboardCache);
-          const { selector, latencyTestCode, latencyTestCodes, outbounds } =
-            buildProxyGroupOutbounds(
-              section,
-              proxies,
-              outboundMetadata,
-              urltestGroups,
-              subscriptionCopyableCodes,
-            );
-
-          return {
-            withTagSelect: true,
-            code: selector?.code || sectionName,
-            sectionName,
-            displayName,
-            action: sectionAction,
-            latencyTestCode,
-            latencyTestCodes,
-            proxyConfigType,
-            subscriptionSourceCount,
-            subscriptionMetadata,
-            outbounds,
           };
         }
 

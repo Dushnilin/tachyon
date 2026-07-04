@@ -290,9 +290,10 @@ cat >"$WORK_DIR/cache-current.json" <<'JSON'
     {
       ".name": "proxy",
       "subscription_urls": [
-        "https://example.com/one.txt | v2rayN",
+        "https://example.com/one.txt",
         "https://example.com/two.txt"
-      ]
+      ],
+      "subscription_url_settings": "{\"https://example.com/one.txt\":{\"user_agent\":\"v2rayN\"}}"
     },
     {
       ".name": "manual",
@@ -311,6 +312,16 @@ printf '%s' 'v2rayN' >"$WORK_DIR/runtime-cache/proxy-subscription-1.user_agent"
 cache_ucode section-current-usable-cache-fixture \
   "$WORK_DIR/cache-current.json" proxy "$WORK_DIR/runtime-cache" "$WORK_DIR/persistent-cache" "sing-box/default" >/dev/null ||
   fail "runtime cache should be current and usable"
+
+printf '%s' 'stale-hwid' >"$WORK_DIR/runtime-cache/proxy-subscription-1.hwid"
+if cache_ucode section-current-usable-cache-fixture \
+  "$WORK_DIR/cache-current.json" proxy "$WORK_DIR/runtime-cache" "$WORK_DIR/persistent-cache" "sing-box/default" >"$WORK_DIR/hwid.out" 2>"$WORK_DIR/hwid.err"; then
+  fail "mismatched generated HWID cache should not be current"
+fi
+if grep -Fq "left-hand side is not a function" "$WORK_DIR/hwid.err"; then
+  fail "mismatched generated HWID cache must not crash"
+fi
+rm -f "$WORK_DIR/runtime-cache/proxy-subscription-1.hwid"
 
 printf '%s' 'https://example.com/stale.txt' >"$WORK_DIR/runtime-cache/proxy-subscription-1.url"
 if cache_ucode section-current-usable-cache-fixture \

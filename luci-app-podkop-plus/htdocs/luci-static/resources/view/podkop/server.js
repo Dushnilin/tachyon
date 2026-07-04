@@ -10,14 +10,13 @@
 
 const UCI_PACKAGE = main.PODKOP_UCI_PACKAGE;
 const ROUTING_SECTION_ACTIONS = [
+  "connection",
   "proxy",
   "outbound",
   "vpn",
   "byedpi",
   "zapret",
   "zapret2",
-  "bypass",
-  "block",
 ];
 const callNetworkInterfaceDump = rpc.declare({
   object: "network.interface",
@@ -2543,7 +2542,7 @@ function createServerContent(section, options = {}) {
   };
 
   o = section.option(form.ListValue, "routing_mode", _("Routing mode"));
-  o.value("rules", _("Podkop Plus rules"));
+  o.value("rules", _("Rules"));
   o.value("direct", _("Direct"));
   o.value("section", _("Selected section"));
   o.default = "rules";

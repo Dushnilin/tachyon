@@ -506,8 +506,6 @@ function download_via_proxy_option_for_purpose(purpose) {
     purpose = as_string(purpose || "lists");
     if (purpose == "lists")
         return "download_lists_via_proxy";
-    if (purpose == "subscriptions")
-        return "download_subscriptions_via_proxy";
     if (purpose == "components")
         return "download_components_via_proxy";
     return "";
