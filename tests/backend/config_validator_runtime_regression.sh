@@ -65,7 +65,8 @@ cat >"$WORK_DIR/valid.json" <<'JSON'
       "enabled": "1",
       "action": "proxy",
       "ports": [ "80", "1000-2000" ],
-      "subscription_urls": [ "https://example.com/sub.txt | Agent/1.0" ],
+      "subscription_urls": [ "https://example.com/sub.txt" ],
+      "subscription_url_settings": "{\"https://example.com/sub.txt\":{\"user_agent\":\"Agent/1.0\"}}",
       "subscription_update_enabled": "1",
       "subscription_update_interval": "12h",
       "urltest_enabled": "1",
@@ -96,6 +97,15 @@ cat >"$WORK_DIR/valid.json" <<'JSON'
       "enabled": "1",
       "action": "zapret",
       "domain_ip_lists": [ "https://example.com/provider.lst" ]
+    }
+  ],
+  "server": [
+    {
+      ".name": "srv",
+      ".type": "server",
+      "enabled": "1",
+      "routing_mode": "section",
+      "routing_section": "proxy"
     }
   ]
 }
@@ -131,7 +141,33 @@ cat >"$WORK_DIR/bad-subscription.json" <<'JSON'
   ]
 }
 JSON
-assert_rejects "bad subscription" "$WORK_DIR/bad-subscription.json" "Use 'URL | User-Agent'"
+assert_rejects "bad subscription" "$WORK_DIR/bad-subscription.json" "Configure User-Agent in the subscription item settings"
+
+cat >"$WORK_DIR/bad-server-routing-bypass.json" <<'JSON'
+{
+  "settings": { ".name": "settings", ".type": "settings" },
+  "section": [
+    { ".name": "bypass", ".type": "section", "enabled": "1", "action": "bypass" }
+  ],
+  "server": [
+    { ".name": "srv", ".type": "server", "enabled": "1", "routing_mode": "section", "routing_section": "bypass" }
+  ]
+}
+JSON
+assert_rejects "bad server routing bypass" "$WORK_DIR/bad-server-routing-bypass.json" "unsupported action 'bypass'"
+
+cat >"$WORK_DIR/bad-server-routing-block.json" <<'JSON'
+{
+  "settings": { ".name": "settings", ".type": "settings" },
+  "section": [
+    { ".name": "block", ".type": "section", "enabled": "1", "action": "block" }
+  ],
+  "server": [
+    { ".name": "srv", ".type": "server", "enabled": "1", "routing_mode": "section", "routing_section": "block" }
+  ]
+}
+JSON
+assert_rejects "bad server routing block" "$WORK_DIR/bad-server-routing-block.json" "unsupported action 'block'"
 
 cat >"$WORK_DIR/bad-detour.json" <<'JSON'
 {

@@ -31,6 +31,8 @@ const fixture = {
     '.name': 'settings',
     '.type': 'settings',
     download_lists_via_proxy: '1',
+    download_subscriptions_via_proxy: '1',
+    download_lists_via_proxy_section: 'legacy-urltest',
     routing_excluded_ips: [ '192.0.2.0/24' ]
   },
   rule: [
@@ -72,6 +74,14 @@ const fixture = {
       detect_server_country: '0'
     },
     {
+      '.name': 'legacy-list-sub',
+      '.type': 'section',
+      action: 'connection',
+      subscription_urls: [ 'https://example.com/list.txt | ListAgent/2.0' ],
+      subscription_url_settings: '{"https://example.com/list.txt | ListAgent/2.0":{"show_dashboard_metadata":"0"}}',
+      subscription_update_interval: '6h'
+    },
+    {
       '.name': 'legacy-direct',
       '.type': 'section',
       action: 'direct',
@@ -94,12 +104,11 @@ const fixture = {
       '.name': 'legacy-vpn',
       '.type': 'section',
       connection_type: 'vpn',
-      proxy_config_type: 'subscription',
-      proxy_string: 'ss://drop',
-      subscription_url: 'https://drop.example/sub.txt',
-      subscription_user_agent: 'DropUA',
-      urltest_check_interval_disabled: '1',
-      subscription_update_interval_disabled: '1'
+      proxy_config_type: 'interface',
+      interface: 'awg0',
+      domain_resolver_enabled: '1',
+      domain_resolver_dns_type: 'doh',
+      domain_resolver_dns_server: 'https://dns.example/dns-query'
     }
   ]
 };
@@ -132,13 +141,14 @@ assert(!config.rule, 'legacy rule sections should be converted');
 assert(config.settings.list_update_enabled === '0', 'missing list_update_enabled should become disabled');
 assert(config.settings.update_interval === '1d', 'missing update_interval should get 1d default');
 assert(config.settings.download_lists_via_proxy === '1', 'download_lists_via_proxy should be preserved');
-assert(config.settings.download_subscriptions_via_proxy === '1', 'download_subscriptions_via_proxy should be copied');
 assert(config.settings.download_components_via_proxy === '1', 'download_components_via_proxy should be copied');
+assert(config.settings.download_lists_via_proxy_section === 'legacy-urltest', 'download section should be preserved for lists/components');
+absent(config.settings, 'download_subscriptions_via_proxy', 'settings');
 absent(config.settings, 'routing_excluded_ips', 'settings');
 
 const legacyUrl = sections['legacy-url'];
 assert(legacyUrl['.type'] === 'section', 'legacy rule should become section');
-assert(legacyUrl.action === 'proxy', 'legacy-url action');
+assert(legacyUrl.action === 'connection', 'legacy-url action');
 assert(JSON.stringify(legacyUrl.selector_proxy_links) === JSON.stringify(['vless://one', 'ss://two']), 'proxy_string links');
 assert(legacyUrl.urltest_enabled === '0', 'urltest disabled flag');
 assert(legacyUrl.domain_suffix.includes('full:Example.COM'), 'full domain list value migrated');
@@ -154,15 +164,30 @@ absent(legacyUrl, 'domain_keyword_text', 'legacy-url');
 absent(legacyUrl, 'domain_regex_text', 'legacy-url');
 
 const legacySub = sections['legacy-sub'];
-assert(JSON.stringify(legacySub.subscription_urls) === JSON.stringify(['https://example.com/sub.txt | Agent/1.0']), 'subscription entry');
-assert(legacySub.subscription_update_enabled === '0', 'subscription update disabled flag');
+assert(JSON.stringify(legacySub.subscription_urls) === JSON.stringify(['https://example.com/sub.txt']), 'subscription entry');
+assert(legacySub.action === 'connection', 'legacy-sub action');
+const legacySubSettings = JSON.parse(legacySub.subscription_url_settings);
+assert(legacySubSettings['https://example.com/sub.txt'].user_agent === 'Agent/1.0', 'subscription user-agent setting');
+assert(legacySubSettings['https://example.com/sub.txt'].subscription_update_enabled === '0', 'subscription update disabled flag');
+assert(legacySubSettings['https://example.com/sub.txt'].download_via_proxy_enabled === '1', 'subscription download through section flag');
+assert(legacySubSettings['https://example.com/sub.txt'].download_via_proxy_section === 'legacy-urltest', 'subscription download target');
 assert(legacySub.detect_server_country === 'flag_emoji', 'detect server country normalized');
+absent(legacySub, 'subscription_update_enabled', 'legacy-sub');
+absent(legacySub, 'subscription_update_interval', 'legacy-sub');
 absent(legacySub, 'subscription_url', 'legacy-sub');
 absent(legacySub, 'subscription_user_agent', 'legacy-sub');
 absent(legacySub, 'proxy_config_type', 'legacy-sub');
 
+const legacyListSub = sections['legacy-list-sub'];
+assert(JSON.stringify(legacyListSub.subscription_urls) === JSON.stringify(['https://example.com/list.txt']), 'legacy list subscription entry normalized');
+const legacyListSubSettings = JSON.parse(legacyListSub.subscription_url_settings);
+assert(legacyListSubSettings['https://example.com/list.txt'].user_agent === 'ListAgent/2.0', 'legacy list subscription user-agent migrated');
+assert(legacyListSubSettings['https://example.com/list.txt'].show_dashboard_metadata === '0', 'legacy list subscription settings moved');
+assert(legacyListSubSettings['https://example.com/list.txt'].subscription_update_interval === '6h', 'legacy list subscription interval migrated');
+assert(!legacyListSubSettings['https://example.com/list.txt | ListAgent/2.0'], 'legacy list subscription old settings key removed');
+
 const legacyUrltest = sections['legacy-urltest'];
-assert(legacyUrltest.action === 'proxy', 'legacy-urltest action');
+assert(legacyUrltest.action === 'connection', 'legacy-urltest action');
 assert(legacyUrltest.urltest_filter_mode === 'exclude', 'urltest filter mode migration');
 assert(legacyUrltest.detect_server_country === 'flag_emoji', 'detect server country kept when urltest filter enabled');
 assert(JSON.stringify(legacyUrltest.selector_proxy_links) === JSON.stringify(['vmess://a', 'trojan://b']), 'urltest links deduped');
@@ -181,11 +206,15 @@ assert(legacyZap.byedpi_cmd_opts === '--legacy-bye', 'cmd_opts copied to byedpi_
 absent(legacyZap, 'cmd_opts', 'legacy-zap');
 
 const legacyVpn = sections['legacy-vpn'];
-assert(legacyVpn.action === 'vpn', 'vpn action inferred');
+assert(legacyVpn.action === 'connection', 'vpn action inferred');
+assert(JSON.stringify(legacyVpn.interfaces) === JSON.stringify(['awg0']), 'vpn interface migrated to interfaces list');
+const legacyVpnSettings = JSON.parse(legacyVpn.interface_settings);
+assert(legacyVpnSettings.awg0.domain_resolver_enabled === '1', 'vpn domain resolver enabled migrated');
+assert(legacyVpnSettings.awg0.domain_resolver_dns_type === 'doh', 'vpn domain resolver type migrated');
+assert(legacyVpnSettings.awg0.domain_resolver_dns_server === 'https://dns.example/dns-query', 'vpn domain resolver server migrated');
 absent(legacyVpn, 'proxy_config_type', 'legacy-vpn');
-absent(legacyVpn, 'proxy_string', 'legacy-vpn');
-absent(legacyVpn, 'subscription_url', 'legacy-vpn');
-absent(legacyVpn, 'subscription_user_agent', 'legacy-vpn');
+absent(legacyVpn, 'interface', 'legacy-vpn');
+absent(legacyVpn, 'domain_resolver_enabled', 'legacy-vpn');
 
 assert(out.removed_caches.includes('/tmp/sing-box/subscriptions/legacy-sub.json'), 'subscription runtime cache removal');
 assert(out.removed_caches.includes('/var/run/podkop-plus/section-cache/legacy-sub.json'), 'section cache removal');
@@ -216,7 +245,7 @@ ucode -L "$PODKOP_LIB" "$MIGRATION" migrate
 
 grep -Fxq 'podkop-plus.legacy=section' "$WORK_DIR/runtime-migrate.state" ||
   fail "runtime migration must convert legacy rule type through core.uci"
-grep -Fxq 'podkop-plus.legacy.action=proxy' "$WORK_DIR/runtime-migrate.state" ||
+grep -Fxq 'podkop-plus.legacy.action=connection' "$WORK_DIR/runtime-migrate.state" ||
   fail "runtime migration must write migrated action through core.uci"
 grep -Fxq 'podkop-plus.old_direct.action=bypass' "$WORK_DIR/runtime-migrate.state" ||
   fail "runtime migration must convert direct action to bypass through core.uci"

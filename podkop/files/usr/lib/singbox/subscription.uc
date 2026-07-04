@@ -238,15 +238,35 @@ function remember_visible_outbound(state, tag_name, source_section, source_index
     remember_urltest_group(state, tag_name, display_name, outbound);
 }
 
-function source_cache_is_current(source_section, source_entry) {
+function source_hwid_path(source_section) {
+    return TMP_SUBSCRIPTION_FOLDER + "/" + source_section + ".hwid";
+}
+
+function hwid_matches_config(configured_hwid, cached_hwid) {
+    configured_hwid = as_string(configured_hwid);
+    cached_hwid = as_string(cached_hwid);
+
+    if (configured_hwid != "")
+        return cached_hwid == configured_hwid;
+    return true;
+}
+
+function source_cache_is_current(source_section, source_entry, expected_user_agent, expected_hwid) {
     let parsed = parse_source_entry(source_entry);
     let cached_url = file_first_line(TMP_SUBSCRIPTION_FOLDER + "/" + source_section + ".url");
     let cached_user_agent = file_first_line(TMP_SUBSCRIPTION_FOLDER + "/" + source_section + ".user_agent");
+    let cached_hwid = file_first_line(source_hwid_path(source_section));
+    let configured_user_agent = as_string(expected_user_agent || "");
+    if (configured_user_agent != "")
+        parsed.user_agent = configured_user_agent;
 
     if (cached_url != parsed.url)
         return false;
 
     if (parsed.user_agent != "" && cached_user_agent != parsed.user_agent)
+        return false;
+
+    if (!hwid_matches_config(expected_hwid, cached_hwid))
         return false;
 
     return true;

@@ -38,8 +38,8 @@ rows \
   target 1 proxy 0 '' '' |
   ucode -L "$PODKOP_LIB" "$VALIDATOR" validate-outbound-detours
 
-assert_rejects "unsupported source action" "supported only for proxy and JSON outbound rules" \
-  source 1 vpn 1 target '' \
+assert_rejects "unsupported source action" "supported only for Connection rules" \
+  source 1 zapret 1 target '' \
   target 1 proxy 0 '' ''
 
 assert_rejects "missing target" "references missing rule 'missing'" \
@@ -49,7 +49,7 @@ assert_rejects "disabled target" "references disabled rule 'target'" \
   source 1 proxy 1 target '' \
   target 0 proxy 0 '' ''
 
-assert_rejects "wrong target action" "but it is not a proxy/VPN/JSON outbound rule" \
+assert_rejects "wrong target action" "but it is not a Connection rule" \
   source 1 proxy 1 target '' \
   target 1 zapret 0 '' ''
 

@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PODKOP PLUS\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-07-02 23:54+0300\n"
-"PO-Revision-Date: 2026-07-02 23:54+0300\n"
+"POT-Creation-Date: 2026-07-04 14:01+0300\n"
+"PO-Revision-Date: 2026-07-04 14:01+0300\n"
 "Last-Translator: ushan0v\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -123,7 +123,7 @@ msgid "Bootstrap DNS server"
 msgstr "Bootstrap DNS-сервер"
 
 msgid "Browser FakeIP check could not be completed"
-msgstr ""
+msgstr "Не удалось выполнить проверку FakeIP в браузере"
 
 msgid "Browser is not using FakeIP"
 msgstr "Браузер не использует FakeIP"
@@ -187,9 +187,6 @@ msgstr "Не удалось сохранить сервер"
 
 msgid "Cascade connection"
 msgstr "Каскадное подключение"
-
-msgid "Cascade connection cannot use the current section"
-msgstr "Каскадное подключение не может использовать текущую секцию"
 
 msgid "Certificate path"
 msgstr "Путь к сертификату"
@@ -263,11 +260,17 @@ msgstr "Путь к файлу конфигурации"
 msgid "Configuration for Podkop Plus service"
 msgstr "Настройки сервиса Podkop Plus"
 
+msgid "Configure User-Agent in the item settings"
+msgstr "Настройте User-Agent в настройках элемента"
+
 msgid "Connect through"
 msgstr "Подключаться через"
 
 msgid "Connection URL"
 msgstr "URL подключения"
+
+msgid "Connection URL settings"
+msgstr "Настройки URL подключения"
 
 msgid "Connections are unavailable"
 msgstr "Подключения недоступны"
@@ -283,6 +286,9 @@ msgstr "Скопировать ссылку прокси"
 
 msgid "Could not compare FakeIP and control public IPs"
 msgstr "Не удалось сравнить публичные IP FakeIP и контрольной проверки"
+
+msgid "Current section cannot download its own subscription"
+msgstr "Текущую секцию нельзя выбрать для скачивания её же подписки"
 
 msgid "Currently unavailable"
 msgstr "Временно недоступно"
@@ -350,6 +356,9 @@ msgstr "Протокол DNS"
 msgid "DNS Protocol Type"
 msgstr "Тип протокола DNS"
 
+msgid "DNS protocol used by the resolver"
+msgstr "DNS-протокол, который будет использовать резолвер"
+
 msgid "DNS Rewrite TTL"
 msgstr "Перезапись TTL для DNS"
 
@@ -361,6 +370,9 @@ msgstr "DNS-сервер"
 
 msgid "DNS server address cannot be empty"
 msgstr "Адрес DNS-сервера не может быть пустым"
+
+msgid "DNS server used by the resolver"
+msgstr "DNS-сервер, который будет использовать резолвер"
 
 msgid "Do not panic, everything can be fixed, just..."
 msgstr "Не паникуйте, всё можно исправить, просто..."
@@ -398,11 +410,14 @@ msgstr "Скачивать списки через секцию"
 msgid "Download remote lists and rule sets via the selected section"
 msgstr "Скачивать удаленные списки и наборы правил через выбранную секцию"
 
-msgid "Download subscriptions through a section"
-msgstr "Скачивать подписки через секцию"
+msgid "Download subscription through a section"
+msgstr "Скачивать подписку через секцию"
 
 msgid "Download subscriptions via the selected section"
 msgstr "Скачивать подписки через выбранную секцию"
+
+msgid "Download through"
+msgstr "Скачивать через"
 
 msgid "Downloaded"
 msgstr "Загружено"
@@ -426,7 +441,7 @@ msgid "Enable autostart"
 msgstr "Включить автостарт"
 
 msgid "Enable built-in DNS resolver for domains handled by this section"
-msgstr "Включить встроенный DNS-резолвер для доменов, обрабатываемых в этой секции"
+msgstr "Включить встроенный DNS-резолвер для доменов, обрабатываемых этой секцией"
 
 msgid "Enable list updates"
 msgstr "Включить обновление списков"
@@ -569,6 +584,9 @@ msgstr "Ошибка HTTP"
 msgid "HTTP hosts"
 msgstr "HTTP-хосты"
 
+msgid "HWID"
+msgstr "HWID"
+
 msgid "Idle timeout"
 msgstr "Таймаут простоя"
 
@@ -678,7 +696,7 @@ msgid "Invalid HY2 URL: insecure must be 0 or 1"
 msgstr "Неверный URL Hysteria2: параметр insecure должен быть 0 или 1"
 
 msgid "Invalid HY2 URL: invalid host & port"
-msgstr ""
+msgstr "Некорректный HY2 URL: некорректные хост и порт"
 
 msgid "Invalid HY2 URL: invalid port number"
 msgstr "Неверный URL Hysteria2: неверный номер порта"
@@ -741,7 +759,7 @@ msgid "Invalid Shadowsocks URL: decoded credentials must contain method:password
 msgstr "Неверный URL Shadowsocks: декодированные данные должны содержать method:password"
 
 msgid "Invalid Shadowsocks URL: invalid server and port"
-msgstr ""
+msgstr "Некорректный Shadowsocks URL: некорректные сервер и порт"
 
 msgid "Invalid Shadowsocks URL: missing credentials"
 msgstr "Неверный URL Shadowsocks: отсутствуют учетные данные"
@@ -768,7 +786,7 @@ msgid "Invalid Shadowsocks URL: parsing failed"
 msgstr "Неверный URL Shadowsocks: ошибка разбора"
 
 msgid "Invalid SOCKS URL: invalid host and port"
-msgstr ""
+msgstr "Некорректный SOCKS URL: некорректные хост и порт"
 
 msgid "Invalid SOCKS URL: invalid host format"
 msgstr "Неверный URL SOCKS: неверный формат хоста"
@@ -813,7 +831,7 @@ msgid "Invalid VLESS URL: parsing failed"
 msgstr "Неверный URL VLESS: ошибка разбора"
 
 msgid "Invalid VMess URL: parsing failed"
-msgstr ""
+msgstr "Некорректный VMess URL: ошибка разбора"
 
 msgid "IPs"
 msgstr "IP-адреса"
@@ -831,7 +849,7 @@ msgid "Keyword must not contain spaces or commas"
 msgstr "Ключевое слово не должно содержать пробелы или запятые"
 
 msgid "Latency test failed"
-msgstr ""
+msgstr "Проверка задержки не удалась"
 
 msgid "Latest"
 msgstr "Последняя"
@@ -844,6 +862,12 @@ msgstr "Установлена последняя версия"
 
 msgid "Latest: %s"
 msgstr "Последняя: %s"
+
+msgid "Leave empty to generate HWID automatically"
+msgstr "Оставьте пустым для автоматической генерации HWID"
+
+msgid "Leave empty to use automatic User-Agent selection"
+msgstr "Оставьте пустым для автоматического выбора User-Agent"
 
 msgid "List must be an HTTP(S) URL or a local .lst path"
 msgstr "Список должен быть HTTP(S) URL или локальным путём .lst"
@@ -910,6 +934,9 @@ msgstr "Должно быть числом от 50 до 1000"
 
 msgid "Network Interface"
 msgstr "Сетевой интерфейс"
+
+msgid "Network interface settings"
+msgstr "Настройки сетевого интерфейса"
 
 msgid "NFQUEUE range is available"
 msgstr "Диапазон NFQUEUE свободен"
@@ -1022,12 +1049,6 @@ msgstr "Необязательное значение здесь нужно пе
 msgid "Optional values must be attached with '=' here; a separate token would be ignored by nfqws2."
 msgstr "Необязательные значения здесь должны задаваться через '='; отдельный токен будет проигнорирован nfqws2."
 
-msgid "Outbound JSON"
-msgstr "JSON outbound"
-
-msgid "Outbound JSON cannot be empty"
-msgstr "JSON outbound не может быть пустым"
-
 msgid "Outbounds"
 msgstr "Узлы"
 
@@ -1081,9 +1102,6 @@ msgstr "Podkop Plus сам управляет жизненным циклом nf
 
 msgid "Podkop Plus manages the nfqws2 process lifecycle itself, so daemon mode is not allowed here."
 msgstr "Podkop Plus сам управляет жизненным циклом nfqws2, поэтому режим daemon здесь запрещён."
-
-msgid "Podkop Plus rules"
-msgstr "Правила Podkop Plus"
 
 msgid "Podkop Plus Settings"
 msgstr "Настройки Podkop Plus"
@@ -1235,6 +1253,9 @@ msgstr "Наборы правил (домены и подсети)"
 msgid "Rule sets (domains)"
 msgstr "Наборы правил (домены)"
 
+msgid "Rules"
+msgstr "Правила"
+
 msgid "Rules mangle counters"
 msgstr "Счётчики правил mangle"
 
@@ -1258,6 +1279,9 @@ msgstr "Запустить диагностику"
 
 msgid "Russia inside restrictions"
 msgstr "Ограничения Russia inside"
+
+msgid "Save"
+msgstr "Сохранить"
 
 msgid "Search"
 msgstr "Поиск"
@@ -1283,17 +1307,23 @@ msgstr "Защита"
 msgid "Select a loaded server or enter an exact server name"
 msgstr "Выберите загруженный сервер или введите точное имя сервера"
 
+msgid "Select a network interface"
+msgstr "Выберите сетевой интерфейс"
+
 msgid "Select a predefined list for routing"
 msgstr "Выберите предустановленный набор правил для маршрутизации"
 
 msgid "Select a section for downloading external resources"
 msgstr "Выберите секцию для скачивания внешних ресурсов"
 
-msgid "Select a transit section"
-msgstr "Выберите секцию-транзит"
+msgid "Select a section for downloading this subscription"
+msgstr "Выберите секцию для скачивания этой подписки"
 
-msgid "Select an enabled proxy, JSON outbound, or VPN section"
-msgstr "Выберите включенную секцию proxy, JSON outbound или VPN"
+msgid "Select a transit section"
+msgstr "Выберите транзитную секцию"
+
+msgid "Select an existing network interface"
+msgstr "Выберите существующий сетевой интерфейс"
 
 msgid "Select an intermediate section"
 msgstr "Выберите промежуточную секцию"
@@ -1359,7 +1389,7 @@ msgid "Servers with names matching these regular expressions will not be tested 
 msgstr "Серверы, имена которых совпадают с этими регулярными выражениями, не будут проверяться через URLTest"
 
 msgid "Service action failed"
-msgstr ""
+msgstr "Действие сервиса не выполнено"
 
 msgid "Service list"
 msgstr "Список сервисов"
@@ -1370,11 +1400,17 @@ msgstr "Информация о сервисах"
 msgid "Settings"
 msgstr "Настройки"
 
+msgid "Show metadata on dashboard"
+msgstr "Отображать метаданные в дашборде"
+
 msgid "Show only servers participating in URLTest on the dashboard."
 msgstr "Показывать в дашборде только серверы, участвующие в URLTest."
 
 msgid "Show sing-box config"
 msgstr "Показать sing-box конфигурацию"
+
+msgid "Show subscription metadata for this source on the dashboard"
+msgstr "Отображать метаданные этой подписки в дашборде"
 
 msgid "Sing-box autostart disabled"
 msgstr "Автостарт sing-box отключен"
@@ -1484,6 +1520,9 @@ msgstr "URL подписки"
 msgid "Subscription URL cannot be empty"
 msgstr "URL подписки не может быть пустым"
 
+msgid "Subscription URL settings"
+msgstr "Настройки URL подписки"
+
 msgid "Successfully copied!"
 msgstr "Успешно скопировано!"
 
@@ -1566,7 +1605,7 @@ msgid "Time skew tolerance"
 msgstr "Допуск расхождения времени"
 
 msgid "tiny"
-msgstr ""
+msgstr "tiny"
 
 msgid "Tolerance"
 msgstr "Допуск"
@@ -1670,6 +1709,9 @@ msgstr "Доступно обновление"
 msgid "Update subscriptions"
 msgstr "Обновить подписки"
 
+msgid "Update this subscription automatically"
+msgstr "Автоматически обновлять эту подписку"
+
 msgid "Uplink"
 msgstr "Исходящий"
 
@@ -1701,7 +1743,7 @@ msgid "Use 32 hex characters"
 msgstr "Укажите 32 hex-символа"
 
 msgid "Use a domain name or IP address"
-msgstr ""
+msgstr "Используйте доменное имя или IP-адрес"
 
 msgid "Use a duration like 30s, 5m, or 1h30m"
 msgstr "Укажите длительность в формате 30s, 5m или 1h30m"
@@ -1716,34 +1758,37 @@ msgid "Use an HTTP or HTTPS URL"
 msgstr "Укажите HTTP или HTTPS URL"
 
 msgid "Use an IP address"
-msgstr ""
+msgstr "Используйте IP-адрес"
 
 msgid "Use an IP listen address"
-msgstr ""
+msgstr "Используйте IP-адрес для прослушивания"
 
 msgid "Use another section as an intermediate hop for connecting to this one"
-msgstr "Использовать другую секцию как промежуточный узел для подключения к текущей"
+msgstr "Использовать другую секцию как промежуточный узел для подключения к этой"
 
 msgid "Use CIDR prefixes like 192.168.1.0/24 or 2001:db8::/32"
-msgstr ""
+msgstr "Используйте CIDR-префиксы, например 192.168.1.0/24 или 2001:db8::/32"
 
 msgid "Use CIDR prefixes or IP addresses like 192.168.1.0/24, 192.168.1.10, or 2001:db8::1"
-msgstr ""
-
-msgid "Use format: URL | User-Agent"
-msgstr "Используйте формат: URL | User-Agent"
+msgstr "Используйте CIDR-префиксы или IP-адреса, например 192.168.1.0/24, 192.168.1.10 или 2001:db8::1"
 
 msgid "Use letters, digits, dots, underscores, or hyphens"
 msgstr "Используйте буквы, цифры, точки, подчёркивания или дефисы"
 
+msgid "Use one enabled Connection or provider section for the selected download types"
+msgstr "Использовать одну включённую секцию Connection или провайдера для выбранных типов скачивания"
+
 msgid "Use one enabled proxy, JSON outbound, or VPN section for the selected download types"
-msgstr "Использовать одну включенную секцию proxy, JSON outbound или VPN для выбранных типов скачивания"
+msgstr "Использовать одну включённую секцию proxy, JSON outbound или VPN для выбранных типов скачивания"
 
 msgid "Use sing-box duration format like 1d, 12h or 30m"
 msgstr "Используйте формат длительности sing-box, например 1d, 12h или 30m"
 
 msgid "Used by"
 msgstr "Используется"
+
+msgid "User-Agent"
+msgstr "User-Agent"
 
 msgid "Username"
 msgstr "Имя пользователя"

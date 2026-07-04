@@ -20,12 +20,13 @@ assert_eq() {
 assert_eq download_lists_via_proxy \
   "$(ucode "$HELPERS_UC" download-via-proxy-option-for-purpose lists)" \
   "lists download option"
-assert_eq download_subscriptions_via_proxy \
-  "$(ucode "$HELPERS_UC" download-via-proxy-option-for-purpose subscriptions)" \
-  "subscriptions download option"
 assert_eq download_components_via_proxy \
   "$(ucode "$HELPERS_UC" download-via-proxy-option-for-purpose components)" \
   "components download option"
+
+if ucode "$HELPERS_UC" download-via-proxy-option-for-purpose subscriptions >/dev/null 2>&1; then
+  fail "subscriptions download purpose should be per-subscription and no longer have a global option"
+fi
 
 if ucode "$HELPERS_UC" download-via-proxy-option-for-purpose unknown >/dev/null 2>&1; then
   fail "unknown download purpose should fail"

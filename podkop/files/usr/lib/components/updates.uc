@@ -2,6 +2,7 @@
 
 let fs = require("fs");
 let uci_core = require("core.uci");
+let connections = require("config.connections");
 const CONFIG_NAME = getenv("PODKOP_CONFIG_NAME") || "podkop-plus";
 const LIB_DIR = getenv("PODKOP_LIB") || "/usr/lib/podkop-plus";
 const BIN_PATH = getenv("PODKOP_BIN") || "/usr/bin/podkop-plus";
@@ -588,20 +589,30 @@ function settings_update_interval(settings) {
 }
 
 function section_subscription_update_interval(section) {
-    if (option(section, "subscription_urls", "") == "")
-        return "";
+    let result = "";
+    let result_seconds = 0;
 
-    if (!bool_option(section, "subscription_update_enabled", true))
-        return "";
+    for (let entry in connections.subscription_urls(section)) {
+        if (!connections.subscription_update_enabled(section, entry))
+            continue;
 
-    let value = option(section, "subscription_update_interval", "");
-    return value != "" ? value : "1h";
+        let value = connections.subscription_update_interval(section, entry);
+        if (value == "")
+            value = "1h";
+        let seconds = duration_to_seconds_value(value);
+        if (result == "" || (seconds != null && (result_seconds == 0 || seconds < result_seconds))) {
+            result = value;
+            result_seconds = seconds == null ? 0 : seconds;
+        }
+    }
+
+    return result;
 }
 
 function section_is_subscription_proxy(section) {
     return bool_option(section, "enabled", true) &&
-        option(section, "action", "") == "proxy" &&
-        option(section, "subscription_urls", "") != "";
+        connections.is_connections_action(option(section, "action", "")) &&
+        length(connections.subscription_urls(section)) > 0;
 }
 
 function line_contains_any_marker(line, markers) {
@@ -1635,8 +1646,6 @@ function download_via_proxy_option_for_purpose(purpose) {
     purpose = as_string(purpose || "lists");
     if (purpose == "lists")
         return "download_lists_via_proxy";
-    if (purpose == "subscriptions")
-        return "download_subscriptions_via_proxy";
     if (purpose == "components")
         return "download_components_via_proxy";
     return "";

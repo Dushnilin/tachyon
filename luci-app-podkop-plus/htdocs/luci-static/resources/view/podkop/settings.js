@@ -13,6 +13,7 @@ function isSingBoxDuration(value) {
 
 function isDownloadSectionAction(action, capabilities) {
   switch (action) {
+    case "connection":
     case "proxy":
     case "outbound":
     case "vpn":
@@ -351,15 +352,6 @@ function createSettingsContent(section, capabilities) {
 
   o = section.option(
     form.Flag,
-    "download_subscriptions_via_proxy",
-    _("Download subscriptions through a section"),
-    _("Download subscriptions via the selected section"),
-  );
-  o.default = "0";
-  o.rmempty = false;
-
-  o = section.option(
-    form.Flag,
     "download_components_via_proxy",
     _("Download components through a section"),
     _("Download component packages via the selected section"),
@@ -372,13 +364,12 @@ function createSettingsContent(section, capabilities) {
     "download_lists_via_proxy_section",
     _("Select a section for downloading external resources"),
     _(
-      "Use one enabled proxy, JSON outbound, or VPN section for the selected download types",
+      "Use one enabled Connection or provider section for the selected download types",
     ),
   );
 
   o.rmempty = false;
   o.depends("download_lists_via_proxy", "1");
-  o.depends("download_subscriptions_via_proxy", "1");
   o.depends("download_components_via_proxy", "1");
   o.cfgvalue = function (section_id) {
     return uci.get(UCI_PACKAGE, section_id, "download_lists_via_proxy_section");

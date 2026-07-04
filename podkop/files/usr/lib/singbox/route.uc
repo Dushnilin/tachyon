@@ -1,6 +1,7 @@
 #!/usr/bin/env ucode
 
 let common = require("core.common");
+let connections = require("config.connections");
 let runtime_constants = require("singbox.constants");
 
 let option = common.option;
@@ -37,7 +38,7 @@ function config(settings, runtime) {
 
 function target(section, outbound_tag_name) {
     let action = option(section, "action", "");
-    if (action == "proxy" || action == "outbound" || action == "vpn" ||
+    if (connections.is_connections_action(action) ||
         action == "byedpi" || action == "zapret" || action == "zapret2")
         return { action: "route", outbound: outbound_tag_name };
     if (action == "bypass")
@@ -55,7 +56,7 @@ function has_resolve_matchers(rule) {
 function resolve_rule_for_section(section, route_rule) {
     let action = option(section, "action", "");
     let should_resolve = action == "byedpi" ||
-        ((action == "proxy" || action == "outbound" || action == "vpn") &&
+        (connections.is_connections_action(action) &&
             bool_option(section, "resolve_real_ip_for_routing", false));
 
     if (!should_resolve)

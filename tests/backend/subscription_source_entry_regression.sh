@@ -47,17 +47,21 @@ assert_rejects() {
 }
 
 assert_tsv ' https://example.com/sub.txt ' 'https://example.com/sub.txt' ''
-assert_tsv 'https://example.com/a | Custom Agent/1.0' 'https://example.com/a' 'Custom Agent/1.0'
-assert_tsv 'https://example.com/a | Agent One | Agent Two' 'https://example.com/a | Agent One' 'Agent Two'
 
-assert_rejects 'https://example.com/a| Agent' "Use 'URL | User-Agent'"
+assert_rejects 'https://example.com/a | Custom Agent/1.0' 'Configure User-Agent in the subscription item settings'
+assert_rejects 'https://example.com/a | Agent One | Agent Two' 'Configure User-Agent in the subscription item settings'
+assert_rejects 'https://example.com/a| Agent' 'Configure User-Agent in the subscription item settings'
 assert_rejects 'file:///tmp/sub.txt' 'Subscription URL must start with http:// or https://'
 
 cat >"$WORK_DIR/require-subscription-parser.uc" <<'UCODE'
 let parser = require("subscription.parser");
 
-let parsed = parser.parse_subscription_source_entry("https://example.com/a | Agent");
-if (!parsed.valid || parsed.url != "https://example.com/a" || parsed.user_agent != "Agent")
+let parsed = parser.parse_subscription_source_entry("https://example.com/a");
+if (!parsed.valid || parsed.url != "https://example.com/a" || parsed.user_agent != "")
+    exit(1);
+
+let legacy = parser.parse_subscription_source_entry("https://example.com/a | Agent");
+if (legacy.valid || legacy.error != "Configure User-Agent in the subscription item settings")
     exit(1);
 
 let invalid = parser.parse_subscription_source_entry("file:///tmp/sub.txt");

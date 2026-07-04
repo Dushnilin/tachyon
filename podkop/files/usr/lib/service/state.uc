@@ -3,6 +3,7 @@
 let fs = require("fs");
 let uci_core = require("core.uci");
 let rule_config = require("config.rule");
+let connections = require("config.connections");
 let zapret_validator = require("providers.zapret.validator");
 let zapret2_validator = require("providers.zapret2.validator");
 let byedpi_validator = require("providers.byedpi.validator");
@@ -616,9 +617,39 @@ function rule_has_subscription_update_source(is_subscription_proxy, subscription
     return arg_bool(is_subscription_proxy) && as_string(subscription_update_interval) != "";
 }
 
+function duration_to_seconds_value(value) {
+    let rest = as_string(value);
+    if (rest == "")
+        return null;
+
+    let total = 0.0;
+    let multipliers = {
+        ns: 0.000000001,
+        us: 0.000001,
+        ms: 0.001,
+        s: 1,
+        m: 60,
+        h: 3600,
+        d: 86400
+    };
+
+    while (rest != "") {
+        let matched = match(rest, /^([0-9]+(\.[0-9]+)?)(ns|us|ms|s|m|h|d)/);
+        if (!matched)
+            return null;
+
+        let token = as_string(matched[0]);
+        let amount = matched[1] * 1;
+        let unit = matched[3];
+        total += amount * multipliers[unit];
+        rest = substr(rest, length(token));
+    }
+
+    return total <= 0 ? null : int(total + 0.5);
+}
+
 function download_via_proxy_any_enabled(settings) {
     return bool_option(settings, "download_lists_via_proxy", false) ||
-        bool_option(settings, "download_subscriptions_via_proxy", false) ||
         bool_option(settings, "download_components_via_proxy", false);
 }
 
@@ -744,20 +775,30 @@ function nft_runtime_signature_body(settings, sections) {
 }
 
 function section_subscription_update_interval(section) {
-    if (option(section, "subscription_urls", "") == "")
-        return "";
+    let result = "";
+    let result_seconds = 0;
 
-    if (!bool_option(section, "subscription_update_enabled", true))
-        return "";
+    for (let entry in connections.subscription_urls(section)) {
+        if (!connections.subscription_update_enabled(section, entry))
+            continue;
 
-    let value = option(section, "subscription_update_interval", "");
-    return value != "" ? value : "1h";
+        let value = connections.subscription_update_interval(section, entry);
+        if (value == "")
+            value = "1h";
+        let seconds = duration_to_seconds_value(value);
+        if (result == "" || (seconds != null && (result_seconds == 0 || seconds < result_seconds))) {
+            result = value;
+            result_seconds = seconds == null ? 0 : seconds;
+        }
+    }
+
+    return result;
 }
 
 function section_is_subscription_proxy(section) {
     return bool_option(section, "enabled", true) &&
-        option(section, "action", "") == "proxy" &&
-        option(section, "subscription_urls", "") != "";
+        connections.is_connections_action(option(section, "action", "")) &&
+        length(connections.subscription_urls(section)) > 0;
 }
 
 function section_urltest_check_interval(section) {
@@ -805,7 +846,7 @@ function cron_signature_body(settings, sections) {
 
         let name = section_name(section);
         body = signature_add_value(body, "subscription." + name + ".subscription_urls", option(section, "subscription_urls", ""));
-        body = signature_add_value(body, "subscription." + name + ".subscription_update_enabled", bool_option(section, "subscription_update_enabled", true) ? "1" : "0");
+        body = signature_add_value(body, "subscription." + name + ".subscription_url_settings", option(section, "subscription_url_settings", ""));
         body = signature_add_value(body, "subscription." + name + ".subscription_update_interval", section_subscription_update_interval(section));
     }
 
@@ -818,7 +859,7 @@ function urltest_enabled_sections_value(sections) {
     for (let section in sections) {
         section = object_or_empty(section);
         if (bool_option(section, "enabled", true) &&
-            option(section, "action", "") == "proxy" &&
+            connections.is_connections_action(option(section, "action", "")) &&
             bool_option(section, "urltest_enabled", false))
             push(result, section_name(section));
     }
@@ -905,10 +946,16 @@ function append_sing_box_rule_signature_body(body, section, sections) {
     let prefix = "rule." + name;
     body = signature_add_value(body, prefix + ".action", action);
 
-    if (action == "proxy") {
+    if (connections.is_connections_action(action)) {
         body = signature_add_value(body, prefix + ".selector_proxy_links", option(section, "selector_proxy_links", ""));
         body = signature_add_value(body, prefix + ".subscription_urls", option(section, "subscription_urls", ""));
-        body = signature_add_value(body, prefix + ".enable_udp_over_tcp", bool_option_value(section, "enable_udp_over_tcp", false));
+        body = signature_add_value(body, prefix + ".interfaces", option(section, "interfaces", ""));
+        body = signature_add_value(body, prefix + ".outbound_jsons", option(section, "outbound_jsons", ""));
+        body = signature_add_value(body, prefix + ".legacy_interface", option(section, "interface", ""));
+        body = signature_add_value(body, prefix + ".legacy_outbound_json", option(section, "outbound_json", ""));
+        body = signature_add_value(body, prefix + ".connection_url_settings", option(section, "connection_url_settings", ""));
+        body = signature_add_value(body, prefix + ".subscription_url_settings", option(section, "subscription_url_settings", ""));
+        body = signature_add_value(body, prefix + ".interface_settings", option(section, "interface_settings", ""));
         body = signature_add_value(body, prefix + ".urltest_enabled", bool_option_value(section, "urltest_enabled", false));
         body = signature_add_value(body, prefix + ".detect_server_country", normalize_detect_server_country_method(option(section, "detect_server_country", "flag_emoji")));
         body = signature_add_value(body, prefix + ".urltest_check_interval", section_urltest_check_interval(section));
@@ -921,15 +968,7 @@ function append_sing_box_rule_signature_body(body, section, sections) {
         body = signature_add_value(body, prefix + ".urltest_exclude_regex", option(section, "urltest_exclude_regex", ""));
         body = signature_add_value(body, prefix + ".urltest_include_outbounds", option(section, "urltest_include_outbounds", ""));
         body = signature_add_value(body, prefix + ".urltest_include_regex", option(section, "urltest_include_regex", ""));
-        body = signature_add_value(body, prefix + ".subscription_update_enabled", bool_option_value(section, "subscription_update_enabled", true));
         body = signature_add_value(body, prefix + ".subscription_update_interval", section_subscription_update_interval(section));
-        body = signature_add_outbound_detour_body(body, section, prefix);
-        body = signature_add_mixed_proxy_body(body, section, prefix);
-        body = signature_add_value(body, prefix + ".resolve_real_ip_for_routing", bool_option_value(section, "resolve_real_ip_for_routing", false));
-    }
-    else if (action == "outbound") {
-        body = signature_add_value(body, prefix + ".outbound_json", option(section, "outbound_json", ""));
-        body = signature_add_outbound_detour_body(body, section, prefix);
         body = signature_add_mixed_proxy_body(body, section, prefix);
         body = signature_add_value(body, prefix + ".resolve_real_ip_for_routing", bool_option_value(section, "resolve_real_ip_for_routing", false));
     }
@@ -940,17 +979,6 @@ function append_sing_box_rule_signature_body(body, section, sections) {
     }
     else if (action == "zapret" || action == "zapret2") {
         body = signature_add_mixed_proxy_body(body, section, prefix);
-    }
-    else if (action == "vpn") {
-        body = signature_add_value(body, prefix + ".interface", option(section, "interface", ""));
-        let resolver_enabled = bool_option_value(section, "domain_resolver_enabled", false);
-        body = signature_add_value(body, prefix + ".domain_resolver_enabled", resolver_enabled);
-        if (resolver_enabled == "1") {
-            body = signature_add_value(body, prefix + ".domain_resolver_dns_type", option(section, "domain_resolver_dns_type", ""));
-            body = signature_add_value(body, prefix + ".domain_resolver_dns_server", option(section, "domain_resolver_dns_server", ""));
-        }
-        body = signature_add_mixed_proxy_body(body, section, prefix);
-        body = signature_add_value(body, prefix + ".resolve_real_ip_for_routing", bool_option_value(section, "resolve_real_ip_for_routing", false));
     }
 
     body = signature_add_value(body, prefix + ".domain", section_rule_condition_csv(section, "domain", "domains"));
@@ -1072,7 +1100,6 @@ function sing_box_signature_body(settings, sections, servers, mwan3_active) {
     }
 
     body = signature_add_value(body, "settings.download_lists_via_proxy", bool_option_value(settings, "download_lists_via_proxy", false));
-    body = signature_add_value(body, "settings.download_subscriptions_via_proxy", bool_option_value(settings, "download_subscriptions_via_proxy", false));
     body = signature_add_value(body, "settings.download_components_via_proxy", bool_option_value(settings, "download_components_via_proxy", false));
     if (download_via_proxy_any_enabled(settings))
         body = signature_add_value(body, "settings.download_lists_via_proxy_section", option(settings, "download_lists_via_proxy_section", ""));
@@ -1516,6 +1543,10 @@ else if (mode == "sing-box-signature-fixture") {
     let data = fixture_data(ARGV[1]);
     exit(print_signature_hash(sing_box_signature_body(fixture_settings(data), fixture_section_list(data), fixture_servers(data), fixture_mwan3_active(data))) ? 0 : 1);
 }
+else if (mode == "sing-box-signature-body-fixture") {
+    let data = fixture_data(ARGV[1]);
+    print(sing_box_signature_body(fixture_settings(data), fixture_section_list(data), fixture_servers(data), fixture_mwan3_active(data)));
+}
 else if (mode == "nft-signature")
     exit(print_signature_hash(nft_runtime_signature_body(uci_settings(), uci_sections("section"))) ? 0 : 1);
 else if (mode == "nft-signature-fixture") {
@@ -1609,6 +1640,10 @@ else if (mode == "cron-signature")
 else if (mode == "cron-signature-fixture") {
     let data = fixture_data(ARGV[1]);
     exit(print_signature_hash(cron_signature_body(fixture_settings(data), fixture_section_list(data))) ? 0 : 1);
+}
+else if (mode == "cron-signature-body-fixture") {
+    let data = fixture_data(ARGV[1]);
+    print(cron_signature_body(fixture_settings(data), fixture_section_list(data)));
 }
 else if (mode == "urltest-enabled-sections")
     print_urltest_enabled_sections(uci_sections("section"));

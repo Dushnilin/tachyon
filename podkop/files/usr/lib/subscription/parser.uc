@@ -2948,32 +2948,17 @@ function write_subscription_source_entry_tsv_result(result) {
 }
 
 function parse_subscription_source_entry(entry) {
-    let delimiter = " | ";
-    let url = "";
-    let user_agent = "";
-
     entry = trim(entry);
     if (entry == "")
         return subscription_source_entry_result(false, "", "", "Subscription URL cannot be empty");
 
-    let delimiter_index = str_last_index(entry, delimiter);
-    if (delimiter_index >= 0) {
-        url = trim(substr(entry, 0, delimiter_index));
-        user_agent = trim(substr(entry, delimiter_index + length(delimiter)));
-        if (url == "" || user_agent == "")
-            return subscription_source_entry_result(false, "", "", "Subscription User-Agent separator requires non-empty URL and User-Agent");
-    }
-    else if (index(entry, " |") >= 0 || index(entry, "| ") >= 0) {
-        return subscription_source_entry_result(false, "", "", "Use 'URL | User-Agent' with spaces on both sides of the separator");
-    }
-    else {
-        url = entry;
-    }
+    if (index(entry, "|") >= 0)
+        return subscription_source_entry_result(false, "", "", "Configure User-Agent in the subscription item settings");
 
-    if (!(substr(url, 0, 7) == "http://" || substr(url, 0, 8) == "https://"))
+    if (!(substr(entry, 0, 7) == "http://" || substr(entry, 0, 8) == "https://"))
         return subscription_source_entry_result(false, "", "", "Subscription URL must start with http:// or https://");
 
-    return subscription_source_entry_result(true, url, user_agent, "");
+    return subscription_source_entry_result(true, entry, "", "");
 }
 
 function parse_subscription_source_entry_tsv(entry) {

@@ -556,7 +556,7 @@ describe('getDashboardSections', () => {
     ]);
   });
 
-  it('marks VPN interface sections for longer latency checks', async () => {
+  it('shows legacy VPN interface sections as a Connection selector group', async () => {
     mocks.getConfigSections.mockResolvedValue([
       {
         '.name': 'AWG',
@@ -570,8 +570,13 @@ describe('getDashboardSections', () => {
       success: true,
       data: {
         proxies: {
-          'AWG-out': proxy('Direct', {
+          'AWG-out': proxy('Selector', {
             name: 'AWG-out',
+            now: 'AWG-interface-1-out',
+            all: ['AWG-interface-1-out'],
+          }),
+          'AWG-interface-1-out': proxy('Direct', {
+            name: 'awg1',
             history: [{ time: '2026-06-07T00:00:00Z', delay: 445 }],
           }),
         },
@@ -583,11 +588,12 @@ describe('getDashboardSections', () => {
 
     expect(result.success).toBe(true);
     expect(section.action).toBe('vpn');
-    expect(section.latencyTestTimeout).toBe('10000');
+    expect(section.withTagSelect).toBe(true);
+    expect(section.proxyConfigType).toBe('interface');
     expect(section.outbounds[0]).toMatchObject({
-      code: 'AWG-out',
+      code: 'AWG-interface-1-out',
       displayName: 'awg1',
-      runtimeAvailable: true,
+      selected: true,
     });
   });
 
