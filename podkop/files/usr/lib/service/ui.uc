@@ -22,8 +22,10 @@ const ACTION_ACKED_TTL_SECONDS = getenv("PODKOP_UI_ACTION_ACKED_TTL_SECONDS") ||
 const ACTION_STALE_GRACE_SECONDS = getenv("PODKOP_UI_ACTION_STALE_GRACE_SECONDS") || "15";
 const SERVICE_ACTION_TIMEOUT_SECONDS = getenv("PODKOP_UI_SERVICE_ACTION_TIMEOUT_SECONDS") || "120";
 const SERVICE_ACTION_SETTLE_SECONDS = getenv("PODKOP_UI_SERVICE_ACTION_SETTLE_SECONDS") || "2";
+const RUNTIME_STABLE_MIN_AGE = getenv("PODKOP_RUNTIME_STABLE_MIN_AGE") || "2";
 const NFT_TABLE_NAME = getenv("NFT_TABLE_NAME") || "PodkopPlusTable";
 const RT_TABLE_NAME = getenv("RT_TABLE_NAME") || "podkop";
+const NFT_FAKEIP_MARK = getenv("NFT_FAKEIP_MARK") || "0x00100000";
 const SB_DNS_INBOUND_ADDRESS = getenv("SB_DNS_INBOUND_ADDRESS") || "127.0.0.42";
 const ZAPRET_PROVIDER_NFQWS_BIN = getenv("ZAPRET_PROVIDER_NFQWS_BIN") || "/opt/zapret/nfq/nfqws";
 const ZAPRET2_PROVIDER_NFQWS2_BIN = getenv("ZAPRET2_PROVIDER_NFQWS2_BIN") || "/opt/zapret2/nfq2/nfqws2";
@@ -122,6 +124,13 @@ function command_success(command) {
 
 function command_success_from_args(args) {
     return command_success(command_from_args(args));
+}
+
+function module_success(module_path, args) {
+    let command_args = [ "ucode", "-L", LIB_DIR, module_path ];
+    for (let arg in args)
+        push(command_args, arg);
+    return command_success_from_args(command_args);
 }
 
 function now_seconds() {
@@ -811,25 +820,20 @@ function sing_box_enabled() {
 }
 
 function sing_box_running() {
-    let service_json = "{\"name\":\"sing-box\"}";
-    if (command_success("ubus call service list " + shell_quote(service_json) + " 2>/dev/null | " +
-        command_from_args([ "ucode", LIB_DIR + "/diagnostics/status.uc", "service-list-instance-running", "sing-box" ])))
-        return true;
-
-    return command_success_from_args([ "pgrep", "-x", "sing-box" ]) ||
-        command_success_from_args([ "pgrep", "-f", "^/usr/bin/sing-box[[:space:]]" ]);
-}
-
-function network_configured() {
-    if (!command_success_from_args([ "nft", "list", "table", "inet", NFT_TABLE_NAME ]))
-        return false;
-    if (index(command_output_from_args([ "ip", "rule", "show" ]), "lookup " + RT_TABLE_NAME) < 0)
-        return false;
-    return trim(command_output_from_args([ "ip", "route", "show", "table", RT_TABLE_NAME ])) != "";
+    return module_success(LIB_DIR + "/service/state.uc", [
+        "sing-box-service-stable",
+        RUNTIME_STABLE_MIN_AGE
+    ]);
 }
 
 function podkop_running() {
-    return sing_box_running() && network_configured();
+    return module_success(LIB_DIR + "/service/state.uc", [
+        "podkop-stably-running",
+        RT_TABLE_NAME,
+        NFT_TABLE_NAME,
+        NFT_FAKEIP_MARK,
+        RUNTIME_STABLE_MIN_AGE
+    ]);
 }
 
 function dns_configured() {
@@ -1126,6 +1130,7 @@ function launch_worker(args) {
         PODKOP_UI_SERVICE_ACTION_SETTLE_SECONDS: SERVICE_ACTION_SETTLE_SECONDS,
         NFT_TABLE_NAME,
         RT_TABLE_NAME,
+        NFT_FAKEIP_MARK,
         SB_DNS_INBOUND_ADDRESS,
         ZAPRET_PROVIDER_NFQWS_BIN,
         ZAPRET2_PROVIDER_NFQWS2_BIN,

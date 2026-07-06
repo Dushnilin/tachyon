@@ -59,6 +59,13 @@ grep -Fq 'require("core.uci")' "$UI_UC" ||
 if grep -n -E 'require\("uci"\)\.cursor|uci -q|uci", "-q"' "$UI_UC" >/dev/null 2>&1; then
   fail "service/ui.uc must not own direct UCI cursor or CLI reads"
 fi
+grep -Fq '"podkop-stably-running"' "$UI_UC" ||
+  fail "UI Podkop status must use stable runtime state to avoid crash-loop flicker"
+grep -Fq '"sing-box-service-stable"' "$UI_UC" ||
+  fail "UI sing-box status must use stable runtime state to avoid crash-loop flicker"
+if grep -n -E 'pgrep.*sing-box|service-list-instance-running' "$UI_UC" >/dev/null 2>&1; then
+  fail "service/ui.uc must not use transient sing-box process probes for visible status"
+fi
 
 for mode in \
   get-ui-capabilities \

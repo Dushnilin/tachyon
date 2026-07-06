@@ -674,6 +674,21 @@ function restart_runtime_for_reload() {
     if (status != 0)
         return status;
 
+    status = module_status(STATE_UC, [
+        "wait-podkop-stable-start",
+        RT_TABLE_NAME,
+        NFT_TABLE_NAME,
+        NFT_FAKEIP_MARK,
+        as_string(RUNTIME_STABLE_MIN_AGE),
+        "8"
+    ]);
+    if (status != 0) {
+        log_message("Reload runtime restart verification failed after Podkop Plus was started; rolling back DNS changes", "fatal");
+        stop_main();
+        dnsmasq_restore_fail_safe();
+        return status;
+    }
+
     if (!setting_bool("dont_touch_dhcp", false))
         dnsmasq_configure(true);
     else if (dnsmasq_has_podkop_managed_state()) {
@@ -879,6 +894,20 @@ function reload(reason) {
         status = module_status(STATE_UC, [ "reload-sing-box-runtime" ]);
         if (status != 0)
             return status;
+        status = module_status(STATE_UC, [
+            "wait-podkop-stable-start",
+            RT_TABLE_NAME,
+            NFT_TABLE_NAME,
+            NFT_FAKEIP_MARK,
+            as_string(RUNTIME_STABLE_MIN_AGE),
+            "8"
+        ]);
+        if (status != 0) {
+            log_message("Reload verification failed after sing-box was reloaded; stopping Podkop Plus runtime", "fatal");
+            stop_main();
+            dnsmasq_restore_fail_safe();
+            return status;
+        }
     }
     else if (plan.needs_nft_rebuild == 1 && nft_populate_enabled == 1) {
         status = nft_populate_runtime_sets();

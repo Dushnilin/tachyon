@@ -69,6 +69,8 @@ grep -Fq 'mode == "subscription-update"' "$UPDATES_UC" ||
   fail "components/updates.uc must own subscription update"
 grep -Fq 'mode == "podkop-running"' "$STATE_UC" ||
   fail "service/state.uc must own Podkop running predicate"
+grep -Fq 'mode == "sing-box-service-stable"' "$STATE_UC" ||
+  fail "service/state.uc must expose stable sing-box predicate"
 grep -Fq 'mode == "wait-podkop-stable-start"' "$STATE_UC" ||
   fail "service/state.uc must own stable-start waiting"
 grep -Fq 'mode == "mark-pending-reload"' "$STATE_UC" ||
@@ -81,6 +83,12 @@ grep -Fq 'mode == "write-captured-reload-state"' "$STATE_UC" ||
   fail "service/state.uc must own captured reload state writes"
 grep -Fq 'mode == "reload-sing-box-runtime"' "$STATE_UC" ||
   fail "service/state.uc must own sing-box runtime reload"
+grep -Fq '"wait-podkop-stable-start"' "$LIFECYCLE_UC" ||
+  fail "service/lifecycle.uc must verify stable runtime after sing-box start/reload"
+grep -Fq 'Reload verification failed after sing-box was reloaded; stopping Podkop Plus runtime' "$LIFECYCLE_UC" ||
+  fail "service/lifecycle.uc must fail reload when sing-box does not stay stable"
+grep -Fq 'Reload runtime restart verification failed after Podkop Plus was started; rolling back DNS changes' "$LIFECYCLE_UC" ||
+  fail "service/lifecycle.uc must fail full runtime restart when sing-box does not stay stable"
 if grep -n -E 'require\("uci"\)\.cursor|uci -q|uci", "-q"|uci_get_cli|uci_exists_cli|mwan3_has_enabled_interface_from_uci_show' "$STATE_UC" >/dev/null 2>&1; then
   fail "service/state.uc must not own direct UCI CLI/cursor access"
 fi

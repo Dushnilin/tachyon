@@ -41,6 +41,7 @@ const SB_VARIANT_STATE_FILE = getenv("SB_VARIANT_STATE_FILE") || constants.SB_VA
 const CLOUDFLARE_OCTETS = getenv("CLOUDFLARE_OCTETS") || constants.CLOUDFLARE_OCTETS || "8.47 162.159 188.114";
 const ZAPRET_LEGACY_DEFAULT_NFQWS_OPT = getenv("ZAPRET_LEGACY_DEFAULT_NFQWS_OPT") || constants.ZAPRET_LEGACY_DEFAULT_NFQWS_OPT || "";
 const DEFAULT_LATENCY_TEST_URL = getenv("DEFAULT_LATENCY_TEST_URL") || "https://www.gstatic.com/generate_204";
+const RUNTIME_STABLE_MIN_AGE = getenv("PODKOP_RUNTIME_STABLE_MIN_AGE") || "2";
 
 const STATUS_UC = LIB_DIR + "/diagnostics/status.uc";
 const HELPERS_UC = LIB_DIR + "/core/helpers.uc";
@@ -1154,7 +1155,10 @@ function dnsmasq_has_podkop_dns() {
 }
 
 function get_sing_box_status() {
-    let running = sing_box_process_is_running() ? 1 : 0;
+    let running = module_success(SERVICE_STATE_UC, [
+        "sing-box-service-stable",
+        RUNTIME_STABLE_MIN_AGE
+    ]) ? 1 : 0;
     let enabled = file_executable("/etc/rc.d/S99sing-box") ? 1 : 0;
     let dns_configured = dnsmasq_has_podkop_dns() ? 1 : 0;
     write_service_status(running, enabled, dns_configured);
@@ -1163,7 +1167,7 @@ function get_sing_box_status() {
 
 function get_status() {
     let running = module_success(SERVICE_STATE_UC, [
-        "podkop-running", RT_TABLE_NAME, NFT_TABLE_NAME, NFT_FAKEIP_MARK
+        "podkop-stably-running", RT_TABLE_NAME, NFT_TABLE_NAME, NFT_FAKEIP_MARK, RUNTIME_STABLE_MIN_AGE
     ]) ? 1 : 0;
     let enabled = file_executable("/etc/rc.d/S99" + PODKOP_SERVICE_NAME) ? 1 : 0;
     let dns_configured = dnsmasq_has_podkop_dns() ? 1 : 0;

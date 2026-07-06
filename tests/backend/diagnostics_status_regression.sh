@@ -56,6 +56,10 @@ grep -Fq 'get_system_info: [ "diagnostics/runtime.uc", "get-system-info", 0 ]' "
 if grep -n -E 'require\("uci"\)\.cursor|uci -q|uci", "show"|uci", "-q"' "$DIAGNOSTICS_RUNTIME" >/dev/null 2>&1; then
   fail "diagnostics/runtime.uc must use core.uci instead of owning direct UCI cursor or CLI calls"
 fi
+grep -Fq '"podkop-stably-running", RT_TABLE_NAME, NFT_TABLE_NAME, NFT_FAKEIP_MARK, RUNTIME_STABLE_MIN_AGE' "$DIAGNOSTICS_RUNTIME" ||
+  fail "diagnostics Podkop status must use stable runtime state to avoid crash-loop flicker"
+grep -Fq '"sing-box-service-stable",' "$DIAGNOSTICS_RUNTIME" ||
+  fail "diagnostics sing-box status must use stable runtime state to avoid crash-loop flicker"
 
 legacy_json="$(status_ucode service-status-json 1 0 ignored 1)"
 JSON_VALUE="$legacy_json" node - <<'NODE'
