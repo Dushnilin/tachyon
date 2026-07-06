@@ -1629,6 +1629,8 @@ else if (mode == "sing-box-service-pid")
     sing_box_service_pid();
 else if (mode == "sing-box-service-running")
     exit(sing_box_service_running() ? 0 : 1);
+else if (mode == "sing-box-service-stable")
+    exit(sing_box_service_stable(ARGV[1]) ? 0 : 1);
 else if (mode == "podkop-running")
     exit(podkop_running(ARGV[1], ARGV[2], ARGV[3]) ? 0 : 1);
 else if (mode == "podkop-stably-running")
