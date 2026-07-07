@@ -285,7 +285,7 @@ msgid "Connectivity probe failed"
 msgstr "Проверка соединения не прошла"
 
 msgid "Copied"
-msgstr ""
+msgstr "Скопировано"
 
 msgid "Copy"
 msgstr "Копировать"
@@ -1587,7 +1587,7 @@ msgid "Subscription URL settings"
 msgstr "Настройки URL подписки"
 
 msgid "Subscriptions updated"
-msgstr ""
+msgstr "Подписки обновлены"
 
 msgid "System info"
 msgstr "Системная информация"
