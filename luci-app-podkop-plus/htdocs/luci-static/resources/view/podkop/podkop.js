@@ -340,27 +340,6 @@ const EntryPoint = {
 
       return uiCapabilitiesPromise;
     };
-    let initialUiDataPromise = null;
-    const loadInitialUiData = function () {
-      if (initialUiDataPromise) {
-        return initialUiDataPromise;
-      }
-
-      initialUiDataPromise = loadUiCapabilities()
-        .then(() => {
-          if (typeof server.preloadServerModalData === "function") {
-            return server.preloadServerModalData();
-          }
-          return null;
-        })
-        .catch(() => null)
-        .finally(() => {
-          initialUiDataPromise = null;
-        });
-
-      return initialUiDataPromise;
-    };
-
     const podkopMap = new form.Map(
       UCI_PACKAGE,
       _("Podkop Plus Settings"),
@@ -507,12 +486,9 @@ const EntryPoint = {
 
     const rendered = await podkopMap.render();
     main.coreService({
-      waitForLogWatcherStart: loadInitialUiData,
+      waitForLogWatcherStart: loadUiCapabilities,
       logWatcherStartDelayMs: 5000,
     });
-    window.setTimeout(() => {
-      loadInitialUiData().catch(() => null);
-    }, 0);
 
     return rendered;
   },
