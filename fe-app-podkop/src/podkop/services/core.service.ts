@@ -60,24 +60,27 @@ export function coreService(options: CoreServiceOptions = {}) {
     },
   );
 
-  const startWatcher = () => watcher.start();
+  const startWatcher = async () => {
+    if (options.waitForLogWatcherStart) {
+      await Promise.resolve()
+        .then(() => options.waitForLogWatcherStart?.())
+        .catch(() => null);
+    }
+
+    watcher.start();
+  };
   const scheduleStartWatcher = () =>
     window.setTimeout(
-      startWatcher,
+      () => {
+        void startWatcher();
+      },
       options.logWatcherStartDelayMs ?? LOG_WATCHER_START_DELAY_MS,
     );
 
   if (typeof window !== 'undefined') {
-    if (options.waitForLogWatcherStart) {
-      Promise.resolve()
-        .then(() => options.waitForLogWatcherStart?.())
-        .catch(() => null)
-        .finally(scheduleStartWatcher);
-    } else {
-      scheduleStartWatcher();
-    }
+    scheduleStartWatcher();
   } else {
-    startWatcher();
+    void startWatcher();
   }
 
   registerRuntimeStateResumeRefresh();
