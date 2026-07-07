@@ -108,6 +108,30 @@ fi
 grep -Fq 'reason=pending' "$pending_file" ||
   fail "pending reload should preserve pending reason while delayed by active action"
 
+start_retry_file="$WORK_DIR/start.retry"
+if initd_ucode start-retry-pending "$start_retry_file" >/dev/null 2>&1; then
+  fail "missing start retry marker should not be pending"
+fi
+initd_ucode mark-start-retry "$start_retry_file" start_failed >/dev/null ||
+  fail "failed start should create WAN retry marker"
+initd_ucode start-retry-pending "$start_retry_file" >/dev/null ||
+  fail "created start retry marker should be pending"
+grep -Fq 'reason=start_failed' "$start_retry_file" ||
+  fail "start retry marker should preserve failure reason"
+initd_ucode clear-start-retry "$start_retry_file"
+if initd_ucode start-retry-pending "$start_retry_file" >/dev/null 2>&1; then
+  fail "cleared start retry marker should not be pending"
+fi
+
+[ "$(initd_ucode retry-start-on-wan-up-action 1 1 1)" = "skip_running" ] ||
+  fail "WAN retry should skip when runtime is already running"
+[ "$(initd_ucode retry-start-on-wan-up-action 0 0 1)" = "skip_disabled" ] ||
+  fail "WAN retry should skip when autostart is disabled"
+[ "$(initd_ucode retry-start-on-wan-up-action 0 1 0)" = "skip_no_retry" ] ||
+  fail "WAN retry should skip stopped service without failed-start marker"
+[ "$(initd_ucode retry-start-on-wan-up-action 0 1 1)" = "restart" ] ||
+  fail "WAN retry should restart only after a recorded failed start"
+
 initd_ucode initd-should-restore-dnsmasq-on-start-fixture "" 0 >/dev/null ||
   fail "unclean shutdown should request dnsmasq restore on start"
 if initd_ucode initd-should-restore-dnsmasq-on-start-fixture triggered 0 >/dev/null 2>&1; then
@@ -189,6 +213,14 @@ grep -Fq 'retry-start-on-wan-up' "$INITD" ||
   fail "init.d WAN retry must delegate to service/initd.uc"
 grep -Fq 'mode == "retry-start-on-wan-up"' "$INITD_UC" ||
   fail "service/initd.uc must expose the complete WAN retry entrypoint"
+grep -Fq 'mode == "retry-start-on-wan-up-action"' "$INITD_UC" ||
+  fail "service/initd.uc must expose the WAN retry decision fixture"
+grep -Fq 'start_retry_pending(START_RETRY_FILE)' "$INITD_UC" ||
+  fail "WAN retry must be gated by a failed-start marker"
+service_enabled_line="$(grep -nF 'function service_is_enabled()' "$INITD_UC" | head -n1 | cut -d: -f1)"
+retry_start_line="$(grep -nF 'function retry_start_on_wan_up(' "$INITD_UC" | head -n1 | cut -d: -f1)"
+[ -n "$service_enabled_line" ] && [ -n "$retry_start_line" ] && [ "$service_enabled_line" -lt "$retry_start_line" ] ||
+  fail "service_is_enabled must be declared before retry_start_on_wan_up for ucode runtime calls"
 grep -Fq 'trigger-plan' "$INITD" ||
   fail "init.d must get procd trigger plan from service/initd.uc"
 if grep -Fq 'eval ' "$INITD"; then

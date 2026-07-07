@@ -22,6 +22,7 @@ const CONFIG_FILE = getenv("PODKOP_CONFIG_FILE") || "/etc/config/" + CONFIG_NAME
 const RELOAD_LOCK_DIR = getenv("PODKOP_RELOAD_LOCK_DIR") || "/var/run/podkop-plus.reload.lock";
 const RUNTIME_STATE_DIR = getenv("PODKOP_RUNTIME_STATE_DIR") || "/var/run/podkop-plus";
 const PENDING_RELOAD_FILE = getenv("PODKOP_PENDING_RELOAD_FILE") || RUNTIME_STATE_DIR + "/reload.pending";
+const START_RETRY_FILE = getenv("PODKOP_START_RETRY_FILE") || RUNTIME_STATE_DIR + "/start.retry";
 const SERVICE_TRIGGER_SYNC_FILE = getenv("PODKOP_SERVICE_TRIGGER_SYNC_FILE") || RUNTIME_STATE_DIR + "/service-triggers.sync";
 const INTERNAL_CONFIG_TRIGGER_GUARD = getenv("PODKOP_INTERNAL_CONFIG_TRIGGER_GUARD") || "/var/run/podkop-plus.internal-config-change";
 const CONFIG_CHANGE_REASON = getenv("PODKOP_CONFIG_CHANGE_REASON") || "on_config_change";
@@ -226,6 +227,26 @@ function mark_pending_reload(path, reason) {
     return write_text_file(path, "reason=" + reason + "\nupdated_at=" + current_epoch() + "\n");
 }
 
+function mark_start_retry(path, reason) {
+    path = as_string(path || START_RETRY_FILE);
+    reason = as_string(reason || "start_failed");
+
+    if (!ensure_parent_dir(path))
+        return false;
+
+    return write_text_file(path, "reason=" + reason + "\nupdated_at=" + current_epoch() + "\n");
+}
+
+function clear_start_retry(path) {
+    path = as_string(path || START_RETRY_FILE);
+    if (file_exists(path))
+        unlink_file(path);
+}
+
+function start_retry_pending(path) {
+    return file_exists(as_string(path || START_RETRY_FILE));
+}
+
 function consume_pending_reload(path) {
     path = as_string(path || PENDING_RELOAD_FILE);
     if (!file_exists(path))
@@ -390,15 +411,37 @@ function status_service() {
     return 1;
 }
 
-function retry_start_on_wan_up(owner_pid) {
-    if (runtime_is_running())
-        return 0;
-
-    return command_status_from_args([ SERVICE_INIT, "restart", "triggered" ]);
-}
-
 function service_is_enabled() {
     return file_exists("/etc/rc.d/S99" + SERVICE_NAME);
+}
+
+function retry_start_on_wan_up_action(runtime_running_value, service_enabled_value, retry_pending_value) {
+    if (bool_text(runtime_running_value))
+        return "skip_running";
+    if (!bool_text(service_enabled_value))
+        return "skip_disabled";
+    if (!bool_text(retry_pending_value))
+        return "skip_no_retry";
+    return "restart";
+}
+
+function retry_start_on_wan_up(owner_pid) {
+    let action = retry_start_on_wan_up_action(
+        runtime_is_running() ? "1" : "0",
+        service_is_enabled() ? "1" : "0",
+        start_retry_pending(START_RETRY_FILE) ? "1" : "0"
+    );
+
+    if (action == "skip_running" || action == "skip_disabled") {
+        clear_start_retry(START_RETRY_FILE);
+        return 0;
+    }
+
+    if (action != "restart")
+        return 0;
+
+    command_success_from_args([ "logger", "-t", SERVICE_NAME, "[info] Retrying failed Podkop Plus start after WAN came up" ]);
+    return command_status_from_args([ SERVICE_INIT, "restart", "triggered" ]);
 }
 
 function active_service_action_value() {
@@ -449,6 +492,12 @@ function start_service(reason, owner_pid) {
         return 1;
 
     let status = command_status_from_args([ BIN_PATH, "start" ]);
+    if (status == 0)
+        clear_start_retry(START_RETRY_FILE);
+    else {
+        mark_start_retry(START_RETRY_FILE, as_string(reason) == "triggered" ? "wan_retry_failed" : "start_failed");
+        command_success_from_args([ "logger", "-t", SERVICE_NAME, "[warn] Podkop Plus start failed; will retry after WAN comes up" ]);
+    }
     finish_external_service_action("start", plan.job_id, status);
     return status;
 }
@@ -475,6 +524,7 @@ function stop_finish(job_id, status) {
 }
 
 function stop_service(owner_pid) {
+    clear_start_retry(START_RETRY_FILE);
     let job_id = begin_external_service_action("stop", "initd", owner_pid);
     if (!file_executable(BIN_PATH)) {
         restore_dnsmasq_failsafe();
@@ -611,8 +661,16 @@ else if (mode == "status-service")
     exit(status_service());
 else if (mode == "retry-start-on-wan-up")
     exit(retry_start_on_wan_up(ARGV[1]));
+else if (mode == "retry-start-on-wan-up-action")
+    print(retry_start_on_wan_up_action(ARGV[1], ARGV[2], ARGV[3]), "\n");
 else if (mode == "service-enabled")
     exit(service_is_enabled() ? 0 : 1);
+else if (mode == "mark-start-retry")
+    exit(mark_start_retry(ARGV[1], ARGV[2]) ? 0 : 1);
+else if (mode == "clear-start-retry")
+    clear_start_retry(ARGV[1]);
+else if (mode == "start-retry-pending")
+    exit(start_retry_pending(ARGV[1]) ? 0 : 1);
 else if (mode == "begin-action") {
     let job_id = begin_external_service_action(ARGV[1], ARGV[2] || "initd", ARGV[3]);
     if (job_id != "")
