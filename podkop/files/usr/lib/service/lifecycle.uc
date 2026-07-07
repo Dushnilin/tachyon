@@ -150,6 +150,23 @@ function command_output(command) {
     return result.status == 0 ? result.output : "";
 }
 
+function read_json_file(path) {
+    let data = fs.readfile(as_string(path));
+    if (data == null)
+        return null;
+
+    try {
+        return json(data);
+    }
+    catch (e) {
+        return null;
+    }
+}
+
+function write_json(value) {
+    print(sprintf("%J", value), "\n");
+}
+
 function command_success(command) {
     return command_status(command + " >/dev/null 2>&1") == 0;
 }
@@ -195,6 +212,26 @@ function now_seconds() {
 function bool_text(value) {
     value = lc(as_string(value));
     return value == "1" || value == "true" || value == "yes" || value == "on";
+}
+
+function object_or_empty(value) {
+    return type(value) == "object" ? value : {};
+}
+
+function array_or_empty(value) {
+    return type(value) == "array" ? value : [];
+}
+
+function string_array_contains(values, needle) {
+    needle = as_string(needle);
+    if (needle == "")
+        return false;
+
+    for (let item in array_or_empty(values))
+        if (as_string(item) == needle)
+            return true;
+
+    return false;
 }
 
 function write_file(path, value) {
@@ -321,6 +358,78 @@ function finish_reload_status(status, initial_fingerprint) {
 function module_output(module_path, args) {
     let result = module_capture(module_path, args);
     return result.status == 0 ? result.output : "";
+}
+
+function selector_state_from_proxies_payload(payload) {
+    let result = {};
+    let proxies = object_or_empty(object_or_empty(payload).proxies);
+
+    for (let tag, proxy in proxies) {
+        proxy = object_or_empty(proxy);
+        let proxy_type = lc(as_string(proxy.type || ""));
+        let selected = as_string(proxy.now || "");
+
+        if (proxy_type == "selector" && string_array_contains(proxy.all, selected))
+            result[as_string(tag)] = selected;
+    }
+
+    return result;
+}
+
+function selector_restore_pairs(snapshot, payload) {
+    let result = [];
+    snapshot = object_or_empty(snapshot);
+    let proxies = object_or_empty(object_or_empty(payload).proxies);
+
+    for (let group, selected in snapshot) {
+        group = as_string(group);
+        selected = as_string(selected);
+
+        if (group == "" || selected == "")
+            continue;
+
+        let proxy = object_or_empty(proxies[group]);
+        if (lc(as_string(proxy.type || "")) != "selector")
+            continue;
+        if (!string_array_contains(proxy.all, selected))
+            continue;
+        if (as_string(proxy.now || "") == selected)
+            continue;
+
+        push(result, { group, proxy: selected });
+    }
+
+    return result;
+}
+
+function clash_api_json(action, arg1, arg2, arg3) {
+    let result = module_capture(DIAGNOSTICS_UC, [
+        "clash-api",
+        action,
+        as_string(arg1 || ""),
+        as_string(arg2 || ""),
+        as_string(arg3 || "")
+    ]);
+    if (result.status != 0)
+        return null;
+
+    try {
+        return json(result.output);
+    }
+    catch (e) {
+        return null;
+    }
+}
+
+function capture_selector_state() {
+    return selector_state_from_proxies_payload(clash_api_json("get_proxies"));
+}
+
+function restore_selector_state(snapshot) {
+    let pairs = selector_restore_pairs(snapshot, clash_api_json("get_proxies"));
+
+    for (let pair in pairs)
+        module_success(DIAGNOSTICS_UC, [ "clash-api", "set_group_proxy", pair.group, pair.proxy, "" ]);
 }
 
 function module_background(module_path, args) {
@@ -769,6 +878,7 @@ function stop() {
 
 function restart_runtime_for_reload() {
     let status;
+    let selector_state = capture_selector_state();
 
     log_message("Reload requires a full Podkop Plus runtime restart", "info");
 
@@ -795,6 +905,8 @@ function restart_runtime_for_reload() {
         cleanup_failed_runtime();
         return status;
     }
+
+    restore_selector_state(selector_state);
 
     if (!setting_bool("dont_touch_dhcp", false))
         dnsmasq_configure(true);
@@ -1080,6 +1192,7 @@ function reload_tracked(reason) {
 function restart() {
     log_message("Restarting Podkop Plus", "info");
 
+    let selector_state = capture_selector_state();
     let status = stop_impl();
     if (status != 0)
         return status;
@@ -1096,8 +1209,10 @@ function restart() {
         NFT_TABLE_NAME,
         NFT_FAKEIP_MARK,
         as_string(RUNTIME_STABLE_MIN_AGE)
-    ]))
+    ])) {
+        restore_selector_state(selector_state);
         return 0;
+    }
 
     log_message("Restart verification failed after Podkop Plus was started; stopping Podkop Plus runtime", "fatal");
     cleanup_failed_runtime();
@@ -1183,6 +1298,14 @@ else if (mode == "enable")
     status = enable_service();
 else if (mode == "disable")
     status = disable_service();
+else if (mode == "selector-state-from-proxies-fixture") {
+    write_json(selector_state_from_proxies_payload(read_json_file(ARGV[1])));
+    status = 0;
+}
+else if (mode == "selector-restore-pairs-fixture") {
+    write_json(selector_restore_pairs(read_json_file(ARGV[1]), read_json_file(ARGV[2])));
+    status = 0;
+}
 else if (mode == "dnsmasq-restore" || mode == "restore-dnsmasq")
     status = dnsmasq_restore_fail_safe();
 else if (mode == "uninstall")
