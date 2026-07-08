@@ -790,6 +790,43 @@ function ensureConnectionsDynamicListStyles() {
   width: 100%;
 }
 
+.pdk-button-add-dynlist > .add-item {
+  display: block;
+  margin-top: 4px;
+}
+
+.pdk-button-add-dynlist > .add-item > input[type="text"] {
+  display: none !important;
+}
+
+.pdk-button-add-dynlist > .add-item > .cbi-button-add {
+  align-items: center !important;
+  background: linear-gradient(var(--background-color-high) 0%, var(--border-color-low) 100%) !important;
+  border: 1px solid var(--border-color-high) !important;
+  border-radius: 3px !important;
+  box-shadow: inset 0 1px 3px hsla(var(--border-color-low-hsl), .01) !important;
+  box-sizing: border-box !important;
+  color: var(--text-color-medium) !important;
+  cursor: pointer !important;
+  display: flex !important;
+  font-size: 13px !important;
+  height: 30px !important;
+  justify-content: flex-start !important;
+  margin-left: 0 !important;
+  max-height: 30px !important;
+  min-height: 30px !important;
+  padding: 0 4px !important;
+  transition: border linear .2s, box-shadow linear .2s !important;
+  width: var(--pdk-button-add-width, 210px) !important;
+}
+
+.pdk-button-add-dynlist > .add-item > .cbi-button-add:hover,
+.pdk-button-add-dynlist > .add-item > .cbi-button-add:focus {
+  border-color: rgba(82, 168, 236, .8) !important;
+  box-shadow: inset 0 1px 3px hsla(var(--border-color-low-hsl), .01), 0 0 8px rgba(82, 168, 236, .6) !important;
+  outline: 0;
+}
+
 .pdk-interface-dynlist-label {
   align-items: center;
   display: inline-flex;
@@ -856,6 +893,78 @@ function updateDynamicListItemLabel(item, label) {
   if (labelNode) {
     labelNode.textContent = `${label || ""}`;
   }
+}
+
+function addDynamicListItem(widget, value, text) {
+  if (!widget || !widget.node) {
+    return null;
+  }
+
+  const normalized = `${value || ""}`.trim();
+  if (!normalized) {
+    return null;
+  }
+
+  if (
+    typeof widget.options.hasEquivalentValue === "function" &&
+    widget.options.hasEquivalentValue(normalized, widget.node)
+  ) {
+    widget.dispatchCbiDynlistChange(widget.node, normalized);
+    return null;
+  }
+
+  widget.addItem(widget.node, normalized, text || null, false);
+  widget.dispatchCbiDynlistChange(widget.node, normalized);
+  updateButtonAddDynamicListLayout(widget.node, widget.options.addButtonLabel);
+
+  return findDynamicListItemByValue(widget.node, normalized);
+}
+
+function updateButtonAddDynamicListLayout(dl, label) {
+  const addButton = dl ? dl.querySelector(".add-item > .cbi-button-add") : null;
+  if (!addButton) {
+    return;
+  }
+
+  addButton.textContent = label || "+";
+  addButton.setAttribute("role", "button");
+  addButton.setAttribute("tabindex", "0");
+  dl.style.setProperty(
+    "--pdk-button-add-width",
+    dl.querySelector(".item") ? "100%" : "210px",
+  );
+}
+
+function setDynamicListItemValue(item, value) {
+  const hidden = item ? item.querySelector('input[type="hidden"]') : null;
+  if (hidden && hidden.parentNode === item) {
+    hidden.value = `${value || ""}`;
+  }
+}
+
+function parseOutboundJsonObject(value) {
+  try {
+    const parsed = JSON.parse(`${value || ""}`);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed
+      : null;
+  } catch (_error) {
+    return null;
+  }
+}
+
+function outboundJsonDisplayTag(value) {
+  const parsed = parseOutboundJsonObject(value);
+  const tag = parsed && typeof parsed.tag === "string" ? parsed.tag.trim() : "";
+  return tag || "";
+}
+
+function outboundJsonListItemLabel(value) {
+  return E(
+    "span",
+    { class: "pdk-dynlist-label" },
+    outboundJsonDisplayTag(value) || _("JSON outbound"),
+  );
 }
 
 function cleanFormSectionData(sectionData) {
@@ -930,6 +1039,7 @@ const SettingsUIDynamicList = ui.DynamicList.extend({
                 dynamicListItemCurrentValue(item, value),
                 item,
                 this,
+                {},
               );
             }
           },
@@ -949,6 +1059,7 @@ const SettingsUIDynamicList = ui.DynamicList.extend({
                 dynamicListItemCurrentValue(item, value),
                 item,
                 this,
+                {},
               );
             }
           },
@@ -956,21 +1067,6 @@ const SettingsUIDynamicList = ui.DynamicList.extend({
         "\u2699",
       ),
     );
-
-    if (
-      flash &&
-      this.options.openSettingsOnAdd &&
-      !this.options.disabled &&
-      typeof this.options.settingsHandler === "function"
-    ) {
-      window.setTimeout(() => {
-        this.options.settingsHandler(
-          dynamicListItemCurrentValue(item, value),
-          item,
-          this,
-        );
-      }, 0);
-    }
   },
   handleClick(event) {
     if (event.target.closest(".pdk-dynlist-settings")) {
@@ -978,6 +1074,62 @@ const SettingsUIDynamicList = ui.DynamicList.extend({
     }
 
     return ui.DynamicList.prototype.handleClick.apply(this, arguments);
+  },
+});
+
+const ButtonAddSettingsUIDynamicList = SettingsUIDynamicList.extend({
+  render() {
+    const node = SettingsUIDynamicList.prototype.render.apply(this, arguments);
+    node.classList.add("pdk-button-add-dynlist");
+
+    const input = node.querySelector('.add-item > input[type="text"]');
+    if (input) {
+      input.setAttribute("aria-hidden", "true");
+      input.setAttribute("tabindex", "-1");
+    }
+
+    updateButtonAddDynamicListLayout(node, this.options.addButtonLabel);
+
+    node.addEventListener("cbi-dynlist-change", () => {
+      updateButtonAddDynamicListLayout(node, this.options.addButtonLabel);
+    });
+
+    return node;
+  },
+
+  addButtonItem() {
+    if (typeof this.options.settingsHandler === "function") {
+      this.options.settingsHandler("", null, this, { adding: true });
+    }
+  },
+
+  handleClick(event) {
+    if (
+      !this.options.disabled &&
+      event.target.closest(".add-item > .cbi-button-add")
+    ) {
+      event.preventDefault();
+      event.stopPropagation();
+      this.addButtonItem(event.currentTarget);
+      return;
+    }
+
+    return SettingsUIDynamicList.prototype.handleClick.apply(this, arguments);
+  },
+
+  handleKeydown(event) {
+    if (
+      !this.options.disabled &&
+      event.target.closest(".add-item > .cbi-button-add") &&
+      (event.key === "Enter" || event.key === " ")
+    ) {
+      event.preventDefault();
+      event.stopPropagation();
+      this.addButtonItem(event.currentTarget);
+      return;
+    }
+
+    return ui.DynamicList.prototype.handleKeydown.apply(this, arguments);
   },
 });
 
@@ -993,7 +1145,10 @@ const SettingsDynamicList = form.DynamicList.extend({
   renderWidget(section_id, _option_index, cfgvalue) {
     const value = cfgvalue != null ? cfgvalue : this.default;
     const choices = this.transformChoices();
-    const widget = new SettingsUIDynamicList(L.toArray(value), choices, {
+    const WidgetClass = this.buttonAdd
+      ? ButtonAddSettingsUIDynamicList
+      : SettingsUIDynamicList;
+    const widget = new WidgetClass(L.toArray(value), choices, {
       id: this.cbid(section_id),
       sort: this.keylist,
       allowduplicates: this.allowduplicates,
@@ -1002,7 +1157,11 @@ const SettingsDynamicList = form.DynamicList.extend({
       placeholder: this.placeholder,
       validate: L.bind(this.validate, this, section_id),
       disabled: this.readonly != null ? this.readonly : this.map.readonly,
-      settingsHandler: (itemValue, _item, widget) => {
+      addButtonLabel:
+        typeof this.addButtonLabel === "function"
+          ? this.addButtonLabel(section_id)
+          : this.addButtonLabel,
+      settingsHandler: (itemValue, _item, widget, context) => {
         if (typeof this.renderItemSettingsModal === "function") {
           this.renderItemSettingsModal(
             section_id,
@@ -1010,6 +1169,7 @@ const SettingsDynamicList = form.DynamicList.extend({
             this,
             widget,
             _item,
+            context || {},
           );
         }
       },
@@ -1026,7 +1186,11 @@ const SettingsDynamicList = form.DynamicList.extend({
         }
 
         if (this.childType) {
-          return isExistingChildItem(section_id, `${itemValue}`, this.childType);
+          return isExistingChildItem(
+            section_id,
+            `${itemValue}`,
+            this.childType,
+          );
         }
 
         return true;
@@ -1053,28 +1217,59 @@ const SettingsDynamicList = form.DynamicList.extend({
         return Boolean(
           normalized &&
             dynamicListItemValues(dl).some(
-              (existingValue) => inputValueForItem(existingValue) === normalized,
+              (existingValue) =>
+                inputValueForItem(existingValue) === normalized,
             ),
         );
       },
-      openSettingsOnAdd: this.openSettingsOnAdd === true,
     });
 
     return widget.render();
   },
 
+  parse(section_id) {
+    if (
+      this.isActive(section_id) &&
+      typeof this.validateItemsOnSave === "function"
+    ) {
+      const result = this.validateItemsOnSave(
+        section_id,
+        this.formvalue(section_id),
+      );
+      if (result !== true) {
+        const title = this.stripTags(this.title).trim();
+        return Promise.reject(
+          new TypeError(
+            `${_('Option "%s" contains an invalid input value.').format(title || this.option)} ${result}`,
+          ),
+        );
+      }
+    }
+
+    return form.DynamicList.prototype.parse.apply(this, arguments);
+  },
+
   write(section_id, value) {
     if (this.childType) {
-      const itemIds = materializeChildItems(section_id, {
-        typeName: this.childType,
-        valueOption: this.childValueOption,
-        defaults: this.childDefaults,
-        stagedSettings:
-          typeof this.stagedChildSettings === "function"
-            ? (itemValue, itemId, created) =>
-                this.stagedChildSettings(section_id, itemValue, itemId, created)
-            : null,
-      }, value);
+      const itemIds = materializeChildItems(
+        section_id,
+        {
+          typeName: this.childType,
+          valueOption: this.childValueOption,
+          defaults: this.childDefaults,
+          stagedSettings:
+            typeof this.stagedChildSettings === "function"
+              ? (itemValue, itemId, created) =>
+                  this.stagedChildSettings(
+                    section_id,
+                    itemValue,
+                    itemId,
+                    created,
+                  )
+              : null,
+        },
+        value,
+      );
       cleanupRemovedChildItems(section_id, this.childType, itemIds);
       uci.unset(UCI_PACKAGE, section_id, this.option);
       cleanupListItemSettings(section_id, this.settingsKey, itemIds);
@@ -1102,6 +1297,10 @@ const SettingsDynamicList = form.DynamicList.extend({
 
     return form.DynamicList.prototype.remove.apply(this, arguments);
   },
+});
+
+const ButtonAddSettingsDynamicList = SettingsDynamicList.extend({
+  buttonAdd: true,
 });
 
 function countryChoices() {
@@ -1293,12 +1492,7 @@ const InterfaceSettingsDynamicList = SettingsDynamicList.extend({
   },
 
   validate(section_id, value) {
-    value = childItemInputValue(
-      section_id,
-      value,
-      "section_interface",
-      "name",
-    );
+    value = childItemInputValue(section_id, value, "section_interface", "name");
 
     if (!value || value.length === 0) {
       return true;
@@ -1312,12 +1506,7 @@ const InterfaceSettingsDynamicList = SettingsDynamicList.extend({
   },
 
   renderListItemLabel(section_id, value, text) {
-    value = childItemInputValue(
-      section_id,
-      value,
-      "section_interface",
-      "name",
-    );
+    value = childItemInputValue(section_id, value, "section_interface", "name");
 
     return renderNetworkInterfaceListItem(
       this.interfaceDeviceMap ? this.interfaceDeviceMap[value] : null,
@@ -1374,9 +1563,10 @@ function validateUrlTestUrl(value) {
 }
 
 function optionMapValue(option, section_id, key) {
-  const value = option && option.map && option.map.data
-    ? option.map.data.get(option.map.config, section_id, key)
-    : uci.get(UCI_PACKAGE, section_id, key);
+  const value =
+    option && option.map && option.map.data
+      ? option.map.data.get(option.map.config, section_id, key)
+      : uci.get(UCI_PACKAGE, section_id, key);
 
   return value == null ? "" : value;
 }
@@ -1490,7 +1680,7 @@ function urlTestSettingsKeys() {
 
 function defaultUrlTestSettings(name) {
   return {
-    name,
+    name: "",
     check_interval: "3m",
     tolerance: "50",
     testing_url: "https://www.gstatic.com/generate_204",
@@ -1505,7 +1695,6 @@ function defaultUrlTestSettings(name) {
 
 function urlTestChildDefaults() {
   return {
-    name: (name) => name,
     check_interval: "3m",
     tolerance: "50",
     testing_url: "https://www.gstatic.com/generate_204",
@@ -1542,15 +1731,15 @@ function addConnectionUrlItemOptions(itemSection, options = {}) {
   o.depends("outbound_detour_enabled", "1");
   o.load = function (itemId) {
     const sectionId = parentSectionForItem(itemId);
-    refreshOptionChoices(
-      this,
-      connectionTargetChoices(sectionId),
-    );
+    refreshOptionChoices(this, connectionTargetChoices(sectionId));
     return optionMapValue(this, itemId, "outbound_detour_section") || "";
   };
   o.validate = function (itemId, value) {
     const sectionId = parentSectionForItem(itemId);
-    if (optionMapValue(this, itemId, "outbound_detour_enabled") === "1" && !value) {
+    if (
+      optionMapValue(this, itemId, "outbound_detour_enabled") === "1" &&
+      !value
+    ) {
       return _("Select an intermediate section");
     }
     if (value === sectionId) {
@@ -1607,14 +1796,15 @@ function addSubscriptionUrlItemOptions(itemSection, options = {}) {
   o.default = "0";
   o.rmempty = false;
 
-  o = itemSection.option(form.ListValue, "download_via_proxy_section", _("Download through"));
+  o = itemSection.option(
+    form.ListValue,
+    "download_via_proxy_section",
+    _("Download through"),
+  );
   o.depends("download_via_proxy_enabled", "1");
   o.load = function (itemId) {
     const sectionId = parentSectionForItem(itemId);
-    refreshOptionChoices(
-      this,
-      subscriptionDownloadTargetChoices(sectionId),
-    );
+    refreshOptionChoices(this, subscriptionDownloadTargetChoices(sectionId));
     return optionMapValue(this, itemId, "download_via_proxy_section") || "";
   };
   o.validate = function (itemId, value) {
@@ -1635,7 +1825,9 @@ function addSubscriptionUrlItemOptions(itemSection, options = {}) {
     form.Flag,
     "auto_user_agent",
     _("Automatic User-Agent selection"),
-    _("Try compatible User-Agent profiles automatically when downloading this subscription"),
+    _(
+      "Try compatible User-Agent profiles automatically when downloading this subscription",
+    ),
   );
   o.default = "1";
   o.rmempty = false;
@@ -1778,14 +1970,17 @@ function addUrlTestItemOptions(itemSection, options = {}) {
     return (
       optionMapValue(this, itemId, "name") ||
       optionMapValue(this, itemId, "display_name") ||
-      itemId
+      ""
     );
+  };
+  o.validate = function (_itemId, value) {
+    return `${value || ""}`.trim() ? true : _("Enter a display name");
   };
 
   o = itemSection.option(
     form.Value,
     "check_interval",
-    _("Interval"),
+    _("Check interval"),
     _("Use sing-box duration format like 1d, 12h or 30m"),
   );
   o.default = "3m";
@@ -1798,7 +1993,9 @@ function addUrlTestItemOptions(itemSection, options = {}) {
     form.Value,
     "tolerance",
     _("Tolerance"),
-    _("Maximum response time delta in milliseconds"),
+    _(
+      "Minimum latency difference in milliseconds that triggers switching to a faster server.",
+    ),
   );
   o.default = "50";
   o.rmempty = false;
@@ -1806,7 +2003,12 @@ function addUrlTestItemOptions(itemSection, options = {}) {
     return validateUrlTestTolerance(value);
   };
 
-  o = itemSection.option(form.Value, "testing_url", _("URL"));
+  o = itemSection.option(
+    form.Value,
+    "testing_url",
+    _("Check URL"),
+    _("URL used to test server latency"),
+  );
   o.default = "https://www.gstatic.com/generate_204";
   o.rmempty = false;
   urlTestUrlChoices().forEach((value) => o.value(value));
@@ -1832,7 +2034,9 @@ function addUrlTestItemOptions(itemSection, options = {}) {
     form.Flag,
     "interrupt_exist_connections",
     _("Interrupt existing connections"),
-    _("Interrupt existing connections when URLTest switches the selected server"),
+    _(
+      "Interrupt existing connections when URLTest switches the selected server",
+    ),
   );
   o.default = "1";
   o.rmempty = false;
@@ -1861,14 +2065,22 @@ function addUrlTestItemOptions(itemSection, options = {}) {
     _("Server filtering"),
     _("Allows limiting the list of servers for URLTest"),
   );
-  urlTestFilterModeChoices().forEach((choice) => o.value(choice.value, choice.label));
+  urlTestFilterModeChoices().forEach((choice) =>
+    o.value(choice.value, choice.label),
+  );
   o.default = "disabled";
 
-  o = itemSection.option(form.ListValue, "detect_server_country", _("Detect server country"));
+  o = itemSection.option(
+    form.ListValue,
+    "detect_server_country",
+    _("Detect server country"),
+  );
   o.depends("filter_mode", "exclude");
   o.depends("filter_mode", "include");
   o.depends("filter_mode", "mixed");
-  serverCountryDetectionChoices().forEach((choice) => o.value(choice.value, choice.label));
+  serverCountryDetectionChoices().forEach((choice) =>
+    o.value(choice.value, choice.label),
+  );
   o.default = "flag_emoji";
 
   [
@@ -2017,9 +2229,7 @@ function pendingChildSettings(option, section_id, value, defaults) {
 
 function renderStackedJsonSettingsModal(title, map, onSave) {
   const modal = document.querySelector("#modal_overlay > .modal.cbi-modal");
-  const activeMap = modal
-    ? modal.querySelector(".cbi-map:not(.hidden)")
-    : null;
+  const activeMap = modal ? modal.querySelector(".cbi-map:not(.hidden)") : null;
   const buttonRow = modal ? modal.querySelector("div.button-row") : null;
   const heading = modal ? modal.querySelector("h4") : null;
 
@@ -2063,7 +2273,8 @@ function renderStackedJsonSettingsModal(title, map, onSave) {
         saveButton.disabled = true;
       }
 
-      return map.parse()
+      return map
+        .parse()
         .then(() => {
           onSave(cleanFormSectionData(map.data.get(map.config, "settings")));
           close();
@@ -2137,7 +2348,11 @@ function showChildItemSettingsModal(section_id, itemValue, option, settings) {
     map,
     (nextSettings) => {
       if (existing) {
-        const diff = changedSettings(initialSettings, nextSettings, settings.keys);
+        const diff = changedSettings(
+          initialSettings,
+          nextSettings,
+          settings.keys,
+        );
         if (hasChangedSettings(diff)) {
           applyChildItemSettings(value, diff);
         }
@@ -2147,9 +2362,15 @@ function showChildItemSettingsModal(section_id, itemValue, option, settings) {
         return;
       }
 
-      childPendingSettingsStore(option, section_id)[inputValue] = nextSettings;
+      const nextInputValue =
+        `${nextSettings[settings.valueOption] || inputValue || ""}`.trim();
+      const store = childPendingSettingsStore(option, section_id);
+      if (nextInputValue !== inputValue) {
+        delete store[inputValue];
+      }
+      store[nextInputValue] = nextSettings;
       if (typeof settings.afterSave === "function") {
-        settings.afterSave(value, inputValue, nextSettings, existing);
+        settings.afterSave(value, nextInputValue, nextSettings, existing);
       }
     },
   );
@@ -2194,22 +2415,135 @@ function showSubscriptionUrlSettingsModal(_section_id, itemValue, option) {
   });
 }
 
-function showUrlTestSettingsModal(_section_id, itemValue, option, _widget, itemNode) {
+function showUrlTestSettingsModal(
+  _section_id,
+  itemValue,
+  option,
+  widget,
+  itemNode,
+  context = {},
+) {
   return showChildItemSettingsModal(_section_id, itemValue, option, {
     typeName: "urltest",
     valueOption: "name",
     keys: urlTestSettingsKeys(),
     defaults: defaultUrlTestSettings,
     addOptions: addUrlTestItemOptions,
-    title: (name) => `${_("URLTest settings")}: ${name}`,
+    title: (name) => {
+      const normalized = `${name || ""}`.trim();
+      return !normalized || /^urltest-[a-z0-9]+-\d+$/.test(normalized)
+        ? _("URLTest settings")
+        : `${_("URLTest settings")}: ${normalized}`;
+    },
     afterSave: (itemId, inputValue, settings, existing) => {
+      const displayName = `${settings.name || inputValue || ""}`.trim();
+
       if (existing) {
         uci.unset(UCI_PACKAGE, itemId, "id");
         uci.unset(UCI_PACKAGE, itemId, "display_name");
+        updateDynamicListItemLabel(itemNode, displayName);
+        return;
       }
-      updateDynamicListItemLabel(itemNode, settings.name || inputValue);
+
+      if (context.adding) {
+        addDynamicListItem(widget, displayName, displayName);
+      } else {
+        updateDynamicListItemLabel(itemNode, displayName);
+      }
     },
   });
+}
+
+function validateUrlTestItemsBeforeSave(section_id, values, option) {
+  const store = childPendingSettingsStore(option, section_id);
+
+  for (const value of normalizeDynamicListItems(values)) {
+    const itemId = `${value || ""}`;
+    let name = "";
+
+    if (isExistingChildItem(section_id, itemId, "urltest")) {
+      name =
+        uci.get(UCI_PACKAGE, itemId, "name") ||
+        uci.get(UCI_PACKAGE, itemId, "display_name") ||
+        "";
+    } else if (store[itemId]) {
+      name = store[itemId].name || "";
+    }
+
+    if (!`${name || ""}`.trim()) {
+      return _("Enter a display name");
+    }
+  }
+
+  return true;
+}
+
+function showOutboundJsonSettingsModal(
+  _section_id,
+  itemValue,
+  _option,
+  widget,
+  itemNode,
+  context = {},
+) {
+  const data = {
+    settings: {
+      outbound_json: `${itemValue || ""}`,
+    },
+  };
+  const map = new form.JSONMap(data);
+  const itemSection = map.section(form.NamedSection, "settings");
+  itemSection.anonymous = true;
+  itemSection.addremove = false;
+
+  const jsonOption = itemSection.option(
+    form.TextValue,
+    "outbound_json",
+    _("JSON outbound"),
+    _("Enter a complete sing-box outbound object"),
+  );
+  jsonOption.rows = 12;
+  jsonOption.wrap = "soft";
+  jsonOption.textarea = true;
+  jsonOption.modalonly = true;
+  jsonOption.rmempty = false;
+  jsonOption.validate = function (_itemId, value) {
+    const validation = main.validateOutboundJson(`${value || ""}`);
+    return validation.valid ? true : validation.message;
+  };
+  configureTextareaOption(jsonOption);
+
+  return renderStackedJsonSettingsModal(
+    _("JSON outbound settings"),
+    map,
+    (settings) => {
+      const value = `${settings.outbound_json || ""}`.trim();
+      if (context.adding) {
+        addDynamicListItem(widget, value);
+        return;
+      }
+
+      setDynamicListItemValue(itemNode, value);
+      updateDynamicListItemLabel(itemNode, outboundJsonDisplayTag(value));
+      if (widget && widget.node) {
+        widget.dispatchCbiDynlistChange(widget.node, value);
+      }
+    },
+  );
+}
+
+function validateOutboundJsonItemsBeforeSave(_section_id, values) {
+  const items = Array.isArray(values) ? values : values ? [values] : [];
+
+  for (const value of items) {
+    const validation = main.validateOutboundJson(`${value || ""}`);
+    if (!validation.valid) {
+      const tag = outboundJsonDisplayTag(value);
+      return tag ? `${tag}: ${validation.message}` : validation.message;
+    }
+  }
+
+  return true;
 }
 
 function showInterfaceSettingsModal(_section_id, itemValue, option) {
@@ -2226,7 +2560,9 @@ function showInterfaceSettingsModal(_section_id, itemValue, option) {
 function showRuleSetSettingsModal(section_id, itemValue, option, widget) {
   const data = {
     settings: {
-      include_subnets: ruleSetIncludesSubnets(section_id, itemValue) ? "1" : "0",
+      include_subnets: ruleSetIncludesSubnets(section_id, itemValue)
+        ? "1"
+        : "0",
     },
   };
   const map = new form.JSONMap(data);
@@ -2504,9 +2840,7 @@ function childItemValue(itemId, valueOption, fallback) {
 function childItemInputValue(section_id, value, typeName, valueOption) {
   const itemId = `${value || ""}`;
 
-  if (
-    isExistingChildItem(section_id, itemId, typeName)
-  ) {
+  if (isExistingChildItem(section_id, itemId, typeName)) {
     return childItemValue(itemId, valueOption, itemId);
   }
 
@@ -2530,7 +2864,8 @@ function findChildItemForInput(section_id, options, inputValue) {
 
   if (options.valueOption) {
     return getChildItemIds(section_id, options.typeName).find(
-      (itemId) => childItemValue(itemId, options.valueOption, itemId) === rawValue,
+      (itemId) =>
+        childItemValue(itemId, options.valueOption, itemId) === rawValue,
     );
   }
 
@@ -2561,7 +2896,10 @@ function createChildItem(section_id, options, inputValue) {
 
   if (options.defaults && typeof options.defaults === "object") {
     Object.entries(options.defaults).forEach(([key, value]) => {
-      value = typeof value === "function" ? value(rawValue, section_id, itemId) : value;
+      value =
+        typeof value === "function"
+          ? value(rawValue, section_id, itemId)
+          : value;
       if (value !== undefined && value !== null && value !== "") {
         uci.set(UCI_PACKAGE, itemId, key, `${value}`);
       }
@@ -2588,7 +2926,9 @@ function applyChildItemSettings(itemId, settings) {
         UCI_PACKAGE,
         itemId,
         key,
-        value.map((item) => `${item || ""}`.trim()).filter((item) => item.length),
+        value
+          .map((item) => `${item || ""}`.trim())
+          .filter((item) => item.length),
       );
     } else {
       uci.set(UCI_PACKAGE, itemId, key, `${value}`);
@@ -5219,9 +5559,10 @@ function writeBuiltInRulesetReferences(section_id, values) {
 
 function writeCustomRulesetReferences(section_id, values) {
   const refs = uniqueDynamicListItems(values);
-  const subnetRefs = getConfigListValues(section_id, "rule_set_with_subnets").filter(
-    (value) => refs.includes(value),
-  );
+  const subnetRefs = getConfigListValues(
+    section_id,
+    "rule_set_with_subnets",
+  ).filter((value) => refs.includes(value));
   const subnetRefSet = new Set(subnetRefs);
 
   writeListOption(
@@ -5229,11 +5570,7 @@ function writeCustomRulesetReferences(section_id, values) {
     "rule_set",
     refs.filter((value) => !subnetRefSet.has(value)),
   );
-  writeListOption(
-    section_id,
-    "rule_set_with_subnets",
-    subnetRefs,
-  );
+  writeListOption(section_id, "rule_set_with_subnets", subnetRefs);
   uci.unset(UCI_PACKAGE, section_id, RULE_SET_ITEM_SETTINGS_KEY);
 }
 
@@ -5393,9 +5730,6 @@ function createSectionContent(section) {
     form.TextValue,
     "byedpi_cmd_opts",
     _("ByeDPI Strategy"),
-    _(
-      "ciadpi command options. Podkop Plus manages the listen address and port.",
-    ),
   );
   o.depends("action", "byedpi");
   o.rows = 6;
@@ -5453,7 +5787,12 @@ function createSectionContent(section) {
     return this.validate(section_id, normalized) === true;
   };
   o.stagedChildSettings = function (section_id, value) {
-    const inputValue = childItemInputValue(section_id, value, "connection_url", "url");
+    const inputValue = childItemInputValue(
+      section_id,
+      value,
+      "connection_url",
+      "url",
+    );
     const store = childPendingSettingsStore(this, section_id);
     return store[inputValue] ? Object.assign({}, store[inputValue]) : null;
   };
@@ -5498,7 +5837,12 @@ function createSectionContent(section) {
     return this.validate(section_id, normalized) === true;
   };
   o.stagedChildSettings = function (section_id, value) {
-    const inputValue = childItemInputValue(section_id, value, "subscription_url", "url");
+    const inputValue = childItemInputValue(
+      section_id,
+      value,
+      "subscription_url",
+      "url",
+    );
     const store = childPendingSettingsStore(this, section_id);
     return store[inputValue] ? Object.assign({}, store[inputValue]) : null;
   };
@@ -5542,7 +5886,12 @@ function createSectionContent(section) {
     return this.validate(section_id, normalized) === true;
   };
   o.stagedChildSettings = function (section_id, value) {
-    const inputValue = childItemInputValue(section_id, value, "section_interface", "name");
+    const inputValue = childItemInputValue(
+      section_id,
+      value,
+      "section_interface",
+      "name",
+    );
     const store = childPendingSettingsStore(this, section_id);
     return store[inputValue] ? Object.assign({}, store[inputValue]) : null;
   };
@@ -5554,14 +5903,20 @@ function createSectionContent(section) {
 
   o = section.taboption(
     "settings",
-    form.DynamicList,
+    ButtonAddSettingsDynamicList,
     "outbound_jsons",
     _("JSON outbound"),
-    _("Enter a complete sing-box outbound object"),
+    _("Custom outbound configurations in JSON format"),
   );
   o.depends("action", "connection");
   o.rmempty = true;
   o.modalonly = true;
+  o.addButtonLabel = _("+ Add JSON outbound");
+  o.renderItemSettingsModal = showOutboundJsonSettingsModal;
+  o.renderListItemLabel = function (_section_id, value) {
+    return outboundJsonListItemLabel(value);
+  };
+  o.validateItemsOnSave = validateOutboundJsonItemsBeforeSave;
   o.validate = function (_section_id, value) {
     if (!value || value.length === 0) {
       return true;
@@ -5573,19 +5928,22 @@ function createSectionContent(section) {
 
   o = section.taboption(
     "settings",
-    SettingsDynamicList,
+    ButtonAddSettingsDynamicList,
     "urltest",
     _("URLTest"),
-    _("Enter a name to create URLTest"),
+    _("Server group for automatic lowest-latency selection"),
   );
   o.depends("action", "connection");
   o.rmempty = true;
   o.modalonly = true;
+  o.addButtonLabel = _("+ Add URLTest");
   o.childType = "urltest";
   o.childValueOption = "name";
   o.childDefaults = urlTestChildDefaults();
   o.renderItemSettingsModal = showUrlTestSettingsModal;
-  o.openSettingsOnAdd = true;
+  o.validateItemsOnSave = function (section_id, values) {
+    return validateUrlTestItemsBeforeSave(section_id, values, this);
+  };
   o.hasItemSettings = function (section_id, value) {
     const normalized = `${value || ""}`.trim();
 
@@ -5596,7 +5954,12 @@ function createSectionContent(section) {
     return normalized.length > 0;
   };
   o.inputValueForItem = function (section_id, value) {
-    const inputValue = childItemInputValue(section_id, value, "urltest", "name");
+    const inputValue = childItemInputValue(
+      section_id,
+      value,
+      "urltest",
+      "name",
+    );
     const store = childPendingSettingsStore(this, section_id);
     return store[inputValue] && store[inputValue].name
       ? store[inputValue].name

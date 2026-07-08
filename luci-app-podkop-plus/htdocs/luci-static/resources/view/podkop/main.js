@@ -247,13 +247,80 @@ function bulkValidate(values, validate) {
 }
 
 // src/validators/validateOutboundJson.ts
+var SERVER_OUTBOUND_TYPES = /* @__PURE__ */ new Set([
+  "vless",
+  "vmess",
+  "trojan",
+  "shadowsocks",
+  "socks",
+  "http",
+  "hysteria2",
+  "hysteria"
+]);
+function invalid(message) {
+  return { valid: false, message };
+}
+function isPlainObject(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+function nonEmptyString(value) {
+  return typeof value === "string" && value.trim().length > 0;
+}
+function validateServerPort(value) {
+  return typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= 65535;
+}
+function validateOutbounds(value) {
+  return Array.isArray(value) && value.length > 0 && value.every((item) => nonEmptyString(item));
+}
 function validateOutboundJson(value) {
+  const normalized = `${value || ""}`.trim();
+  if (!normalized.length) {
+    return invalid(_("JSON outbound cannot be empty"));
+  }
+  let parsed;
   try {
-    JSON.parse(value);
-    return { valid: true, message: _("Valid") };
+    parsed = JSON.parse(normalized);
   } catch {
     return { valid: false, message: _("Invalid JSON format") };
   }
+  if (!isPlainObject(parsed)) {
+    return invalid(_("JSON outbound must be a JSON object"));
+  }
+  if (!nonEmptyString(parsed.type)) {
+    return invalid(_("JSON outbound must contain a non-empty type field"));
+  }
+  if (!nonEmptyString(parsed.tag)) {
+    return invalid(_("JSON outbound must contain a non-empty tag field"));
+  }
+  const type = parsed.type.trim().toLowerCase();
+  if ((type === "selector" || type === "urltest") && !validateOutbounds(parsed.outbounds)) {
+    return invalid(
+      _(
+        "Selector and URLTest outbounds must contain a non-empty outbounds array"
+      )
+    );
+  }
+  if (SERVER_OUTBOUND_TYPES.has(type)) {
+    if (!nonEmptyString(parsed.server)) {
+      return invalid(
+        _("Server outbound must contain a non-empty server field")
+      );
+    }
+    if (!validateServerPort(parsed.server_port)) {
+      return invalid(
+        _("Server outbound must contain a numeric server_port from 1 to 65535")
+      );
+    }
+  } else if (parsed.server_port !== void 0 && !validateServerPort(parsed.server_port)) {
+    return invalid(_("server_port must be a number from 1 to 65535"));
+  }
+  if (parsed.outbounds !== void 0 && !validateOutbounds(parsed.outbounds)) {
+    return invalid(_("outbounds must be a non-empty array of strings"));
+  }
+  if (parsed.detour !== void 0 && !nonEmptyString(parsed.detour)) {
+    return invalid(_("detour must be a non-empty string"));
+  }
+  return { valid: true, message: _("Valid") };
 }
 
 // src/validators/validateShadowsocksUrl.ts
