@@ -677,6 +677,25 @@ function formatUrlTestLatency(latency: number) {
   return latency ? `${latency}ms` : 'N/A';
 }
 
+function renderDetailsUrl(value: unknown) {
+  const url = `${value ?? ''}`.trim();
+
+  if (!/^https?:\/\//i.test(url)) {
+    return E('span', {}, formatUrlTestModalValue(value));
+  }
+
+  return E(
+    'a',
+    {
+      class: 'pdk_dashboard-page__urltest-details__url',
+      href: url,
+      target: '_blank',
+      rel: 'noopener noreferrer',
+    },
+    url,
+  );
+}
+
 function renderUrlTestSelectedValue(info: Podkop.UrlTestInfo) {
   const selectedMember = info.outbounds.find((member) => member.selected);
   const selectedName =
@@ -754,12 +773,12 @@ function renderUrlTestInfoModal(
       label: _('Selected'),
       children: [renderUrlTestSelectedValue(info)],
     },
-    { label: _('Testing URL'), value: info.url },
+    { label: _('Testing URL'), children: [renderDetailsUrl(info.url)] },
     { label: _('Interval'), value: info.interval },
     { label: _('Tolerance'), value: info.tolerance },
     { label: _('Idle timeout'), value: info.idleTimeout },
     {
-      label: _('Interrupt connections'),
+      label: _('Interrupt existing connections'),
       value: info.interruptExistConnections,
     },
   ];
@@ -783,7 +802,7 @@ function renderUrlTestInfoModal(
       E(
         'div',
         { class: 'pdk_dashboard-page__urltest-details__outbounds-title' },
-        _('Outbounds'),
+        _('Nodes'),
       ),
       E(
         'div',
@@ -853,7 +872,7 @@ function renderUrlTestInfoModal(
               E(
                 'div',
                 { class: 'pdk_dashboard-page__urltest-details__empty' },
-                _('No outbounds'),
+                _('Node list is empty'),
               ),
             ],
       ),
@@ -887,6 +906,262 @@ function handleShowUrlTestInfo(
       outbound.urlTestInfo.displayName || outbound.displayName
     }`,
     renderUrlTestInfoModal(section, outbound),
+  );
+}
+
+function renderPrioritySelectedValue(info: Podkop.PriorityInfo) {
+  const selectedMember = info.outbounds.find((member) => member.selected);
+  const selectedName =
+    selectedMember?.displayName || info.selectedName || info.selectedCode || '';
+  const name = formatUrlTestModalValue(selectedName);
+
+  if (name === _('No')) {
+    return E('span', {}, name);
+  }
+
+  return E(
+    'span',
+    { class: 'pdk_dashboard-page__urltest-details__selected-value' },
+    [
+      E(
+        'span',
+        {
+          class: [
+            'pdk_dashboard-page__urltest-details__selected-name',
+            selectedMember
+              ? 'pdk_dashboard-page__urltest-details__priority-name'
+              : '',
+          ]
+            .filter(Boolean)
+            .join(' '),
+        },
+        selectedMember ? renderPriorityMemberName(selectedMember) : name,
+      ),
+      ...(selectedMember?.type
+        ? [
+            E(
+              'span',
+              { class: 'pdk_dashboard-page__urltest-details__selected-type' },
+              selectedMember.type,
+            ),
+          ]
+        : []),
+      ...(selectedMember
+        ? [
+            E(
+              'span',
+              { class: getUrlTestLatencyClass(selectedMember.latency) },
+              formatUrlTestLatency(selectedMember.latency),
+            ),
+          ]
+        : []),
+    ],
+  );
+}
+
+function renderPriorityMemberName(member: Podkop.PriorityMember) {
+  const levelName = member.levelName || _('Level');
+
+  return [
+    E(
+      'span',
+      { class: 'pdk_dashboard-page__urltest-details__priority-number' },
+      `#${member.levelIndex + 1}`,
+    ),
+    E(
+      'span',
+      { class: 'pdk_dashboard-page__urltest-details__priority-level' },
+      levelName,
+    ),
+    E(
+      'span',
+      { class: 'pdk_dashboard-page__urltest-details__priority-node' },
+      member.displayName,
+    ),
+  ];
+}
+
+function renderPriorityInfoModal(
+  section: Podkop.OutboundGroup,
+  outbound: Podkop.Outbound,
+) {
+  const info = outbound.priorityInfo;
+
+  if (!info) {
+    return E('div', {}, _('Priority details are unavailable'));
+  }
+
+  const fields: Array<{
+    label: string;
+    value?: unknown;
+    children?: Array<HTMLElement | string>;
+  }> = [
+    {
+      label: _('Selected'),
+      children: [renderPrioritySelectedValue(info)],
+    },
+    { label: _('Check URL'), children: [renderDetailsUrl(info.healthUrl)] },
+    {
+      label: _('Check interval'),
+      value: info.activeCheckInterval,
+    },
+    { label: _('Unavailability timeout'), value: info.checkTimeout },
+    {
+      label: _('Higher-level check interval'),
+      value: info.recoveryCheckInterval,
+    },
+    {
+      label: _('Fastest node selection'),
+      value: info.pickFastest,
+    },
+    {
+      label: _('Current-level fastest node selection'),
+      value: info.switchToFasterSamePriority,
+    },
+    ...(info.switchToFasterSamePriority
+      ? [
+          {
+            label: _('Faster server search interval'),
+            value: info.fastestCheckInterval,
+          },
+        ]
+      : []),
+    {
+      label: _('Interrupt existing connections'),
+      value: info.interruptExistConnections,
+    },
+  ];
+
+  return E('div', { class: 'pdk_dashboard-page__urltest-details' }, [
+    E(
+      'dl',
+      { class: 'pdk_dashboard-page__urltest-details__params' },
+      fields.map(({ label, value, children }) =>
+        E('div', { class: 'pdk_dashboard-page__urltest-details__param' }, [
+          E('dt', {}, label),
+          E(
+            'dd',
+            {},
+            children || [E('span', {}, formatUrlTestModalValue(value))],
+          ),
+        ]),
+      ),
+    ),
+    E('div', { class: 'pdk_dashboard-page__urltest-details__outbounds' }, [
+      E(
+        'div',
+        { class: 'pdk_dashboard-page__urltest-details__outbounds-title' },
+        _('Nodes'),
+      ),
+      E(
+        'div',
+        { class: 'pdk_dashboard-page__urltest-details__table' },
+        info.outbounds.length
+          ? info.outbounds.map((member) =>
+              E(
+                'div',
+                {
+                  class: [
+                    'pdk_dashboard-page__urltest-details__row',
+                    member.selected
+                      ? 'pdk_dashboard-page__urltest-details__row--active'
+                      : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' '),
+                },
+                [
+                  E(
+                    'div',
+                    {
+                      class: 'pdk_dashboard-page__urltest-details__row-name',
+                    },
+                    [
+                      E(
+                        'b',
+                        {
+                          class:
+                            'pdk_dashboard-page__urltest-details__priority-name',
+                        },
+                        renderPriorityMemberName(member),
+                      ),
+                      ...(member.type
+                        ? [
+                            E(
+                              'span',
+                              {
+                                class:
+                                  'pdk_dashboard-page__urltest-details__row-type',
+                              },
+                              member.type,
+                            ),
+                          ]
+                        : []),
+                    ],
+                  ),
+                  E(
+                    'div',
+                    {
+                      class: 'pdk_dashboard-page__urltest-details__row-meta',
+                    },
+                    [
+                      E(
+                        'span',
+                        { class: getUrlTestLatencyClass(member.latency) },
+                        formatUrlTestLatency(member.latency),
+                      ),
+                    ],
+                  ),
+                  member.canCopyLink
+                    ? renderUrlTestCopyButton(_('Copy proxy link'), (event) => {
+                        event.preventDefault();
+                        void handleCopyOutbound(section, member);
+                      })
+                    : E('span', {
+                        class:
+                          'pdk_dashboard-page__urltest-details__copy-placeholder',
+                      }),
+                ],
+              ),
+            )
+          : [
+              E(
+                'div',
+                { class: 'pdk_dashboard-page__urltest-details__empty' },
+                _('Node list is empty'),
+              ),
+            ],
+      ),
+    ]),
+    E('div', { class: 'pdk_dashboard-page__urltest-details__footer' }, [
+      E(
+        'button',
+        {
+          type: 'button',
+          class: 'btn cbi-button cbi-button-neutral',
+          click: () => {
+            ui.hideModal();
+          },
+        },
+        _('Close'),
+      ),
+    ]),
+  ]);
+}
+
+function handleShowPriorityInfo(
+  section: Podkop.OutboundGroup,
+  outbound: Podkop.Outbound,
+) {
+  if (!outbound.priorityInfo) {
+    return;
+  }
+
+  ui.showModal(
+    `${_('Priority details')}: ${
+      outbound.priorityInfo.displayName || outbound.displayName
+    }`,
+    renderPriorityInfoModal(section, outbound),
   );
 }
 
@@ -1046,6 +1321,7 @@ async function renderSectionsWidget() {
       onChooseOutbound: () => {},
       onCopyOutbound: () => {},
       onShowUrlTestInfo: () => {},
+      onShowPriorityInfo: () => {},
       onUpdateSubscription: () => {},
       latencyFetching: false,
       latencyProgress: undefined,
@@ -1101,6 +1377,9 @@ async function renderSectionsWidget() {
       },
       onShowUrlTestInfo: (section, outbound) => {
         handleShowUrlTestInfo(section, outbound);
+      },
+      onShowPriorityInfo: (section, outbound) => {
+        handleShowPriorityInfo(section, outbound);
       },
       onUpdateSubscription: (section) => {
         void handleUpdateSubscription(section);

@@ -95,6 +95,14 @@ if (mode == "configure-service" || mode == "init-config")
 exit(64);
 '
 
+write_stub "$FAKE_LIB/singbox/priority.uc" "$stub_header"'
+let mode = as_string(ARGV[0]);
+record("singbox/priority:" + mode);
+if (mode == "stop-runtime" || mode == "start-runtime")
+    exit(0);
+exit(64);
+'
+
 run_update() {
   local summary="$1"
   local log="$2"
@@ -134,7 +142,9 @@ const expected = [
   "config/validator:validate-runtime",
   "singbox/runtime:configure-service",
   "singbox/runtime:init-config:0:1:1",
+  "singbox/priority:stop-runtime",
   "service/state:reload-sing-box-runtime",
+  "singbox/priority:start-runtime",
   "service/state:write-current-reload-state-clean",
   "service/state:run-pending-reload-if-requested"
 ];
@@ -154,7 +164,7 @@ JS
 unchanged_log="$WORK_DIR/unchanged.log"
 run_update "0 0 1 0" "$unchanged_log"
 
-if grep -Eq 'server/service|config/validator|singbox/runtime|reload-sing-box-runtime|write-current-reload-state-clean' "$unchanged_log"; then
+if grep -Eq 'server/service|config/validator|singbox/runtime|singbox/priority|reload-sing-box-runtime|write-current-reload-state-clean' "$unchanged_log"; then
   fail "unchanged subscription update must not rebuild or reload sing-box"
 fi
 

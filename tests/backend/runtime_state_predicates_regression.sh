@@ -447,6 +447,8 @@ proxy
 
 [rule.proxy1.urltests]
 [ { "id": "urltest", "display_name": "Fastest", "check_interval": "3m", "tolerance": "75", "testing_url": "https://www.gstatic.com/generate_204", "idle_timeout": "", "interrupt_exist_connections": "1", "pin_dashboard": "1", "hide_added_outbounds": "0", "filter_mode": "exclude", "detect_server_country": "1", "include_countries": [ ], "include_outbounds": [ "node-a" ], "include_regex": [ ], "exclude_countries": [ "RU" ], "exclude_outbounds": [ ], "exclude_regex": [ ] } ]
+[rule.proxy1.priority_groups]
+[ ]
 [rule.proxy1.urltest_enabled]
 1
 [rule.proxy1.detect_server_country]
@@ -524,6 +526,8 @@ outbound
 [rule.out1.legacy_outbound_json]
 {"type":"direct"}
 [rule.out1.urltests]
+[ ]
+[rule.out1.priority_groups]
 [ ]
 [rule.out1.urltest_enabled]
 0
@@ -626,6 +630,8 @@ wg0
 [rule.vpn1.legacy_outbound_json]
 
 [rule.vpn1.urltests]
+[ ]
+[rule.vpn1.priority_groups]
 [ ]
 [rule.vpn1.urltest_enabled]
 0

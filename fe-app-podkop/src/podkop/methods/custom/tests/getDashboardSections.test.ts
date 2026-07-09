@@ -69,6 +69,45 @@ function urlTestSettings(
   });
 }
 
+function priorityGroup(
+  id: string,
+  options: Partial<Podkop.ConfigSection> = {},
+): Podkop.ConfigSection {
+  return {
+    '.name': id,
+    '.type': 'priority_group',
+    section: 'main',
+    name: 'Codex Priority',
+    health_url: 'https://priority.example/204',
+    active_check_interval: '5s',
+    check_timeout: '2s',
+    recovery_check_interval: '15s',
+    pick_fastest: '0',
+    switch_to_faster_same_priority: '0',
+    fastest_check_interval: '3m',
+    interrupt_exist_connections: '1',
+    pin_dashboard: '1',
+    hide_added_outbounds: '0',
+    ...options,
+  };
+}
+
+function priorityLevel(
+  id: string,
+  options: Partial<Podkop.ConfigSection> = {},
+): Podkop.ConfigSection {
+  return {
+    '.name': id,
+    '.type': 'priority_level',
+    group: 'pg_main',
+    name: 'Germany',
+    order: '0',
+    detect_server_country: 'flag_emoji',
+    regex: ['Included'],
+    ...options,
+  };
+}
+
 const clashProxies: Record<string, ClashAPI.ProxyBase> = {
   'main-out': proxy('Selector', {
     name: 'main-out',
@@ -206,6 +245,282 @@ describe('getDashboardSections', () => {
       latency: 100,
       selected: false,
     });
+  });
+
+  it('keeps an empty configured URLTest visible when sing-box skipped the group', async () => {
+    mocks.getConfigSections.mockResolvedValue([
+      proxySection({
+        urltest_settings: urlTestSettings('urltest', {
+          display_name: 'Empty URLTest',
+          urltest_filter_mode: 'include',
+        }),
+      }),
+    ]);
+    mocks.getClashApiProxies.mockResolvedValue({
+      success: true,
+      data: {
+        proxies: {
+          'main-out': proxy('Selector', {
+            name: 'main-out',
+            now: 'main-1-out',
+            all: ['main-1-out'],
+          }),
+          'main-1-out': clashProxies['main-1-out'],
+        },
+      },
+    });
+    mocks.fsRead.mockResolvedValue(
+      JSON.stringify({
+        urltestGroups: {
+          'main-urltest-out': {
+            displayName: 'Empty URLTest',
+            outbounds: [],
+            url: 'https://probe.example/204',
+            interval: '3m',
+            tolerance: 50,
+          },
+        },
+      }),
+    );
+
+    const result = await getDashboardSections();
+    const [section] = result.data;
+    const urltest = section.outbounds.find(
+      (item) => item.code === 'main-urltest-out',
+    );
+
+    expect(result.success).toBe(true);
+    expect(section.outbounds.map((item) => item.code)).toEqual([
+      'main-urltest-out',
+      'main-1-out',
+    ]);
+    expect(urltest).toMatchObject({
+      displayName: 'Empty URLTest',
+      type: 'URLTest',
+      runtimeAvailable: false,
+    });
+    expect(urltest?.urlTestInfo?.selectedName).toBeUndefined();
+    expect(urltest?.urlTestInfo?.outbounds).toEqual([]);
+  });
+
+  it('hydrates Priority dashboard details from config, cache and Clash API', async () => {
+    mocks.getConfigSections.mockResolvedValue([
+      proxySection({ urltests: [], urltest_settings: undefined }),
+      priorityGroup('pg_main'),
+      priorityLevel('pl_de', { name: 'Germany', order: '0' }),
+      priorityLevel('pl_nl', {
+        name: 'Netherlands',
+        order: '1',
+        regex: ['Filtered'],
+      }),
+    ]);
+    mocks.getClashApiProxies.mockResolvedValue({
+      success: true,
+      data: {
+        proxies: {
+          ...clashProxies,
+          'main-out': proxy('Selector', {
+            name: 'main-out',
+            now: 'main-priority-pg_main-out',
+            all: [
+              'main-1-out',
+              'main-2-out',
+              'main-priority-pg_main-out',
+            ],
+          }),
+          'main-priority-pg_main-out': proxy('Selector', {
+            name: 'main-priority-pg_main-out',
+            now: 'main-2-out',
+            all: ['main-2-out', 'main-1-out'],
+          }),
+        },
+      },
+    });
+    mocks.fsRead.mockResolvedValue(
+      JSON.stringify({
+        outboundMetadata: {
+          names: {
+            'main-1-out': 'First cached',
+            'main-2-out': 'Second cached',
+          },
+          countries: {},
+        },
+        priorityGroups: {
+          'main-priority-pg_main-out': {
+            displayName: 'Codex Priority',
+            health_url: 'https://priority.example/204',
+            active_check_interval: '5s',
+            check_timeout: '2s',
+            recovery_check_interval: '15s',
+            pick_fastest: false,
+            switch_to_faster_same_priority: false,
+            interrupt_exist_connections: true,
+            outbounds: ['main-2-out', 'main-1-out'],
+            levels: [
+              {
+                id: 'pl_de',
+                displayName: 'Germany',
+                order: 0,
+                outbounds: ['main-2-out'],
+              },
+              {
+                id: 'pl_nl',
+                displayName: 'Netherlands',
+                order: 1,
+                outbounds: ['main-1-out'],
+              },
+            ],
+          },
+        },
+      }),
+    );
+
+    const result = await getDashboardSections();
+    const [section] = result.data;
+    const priority = section.outbounds.find(
+      (item) => item.code === 'main-priority-pg_main-out',
+    );
+
+    expect(result.success).toBe(true);
+    expect(priority).toMatchObject({
+      displayName: 'Codex Priority',
+      type: 'Priority',
+      selected: true,
+    });
+    expect(priority?.priorityInfo).toMatchObject({
+      selectedCode: 'main-2-out',
+      selectedName: 'Second cached',
+      healthUrl: 'https://priority.example/204',
+      activeCheckInterval: '5s',
+      checkTimeout: '2s',
+      recoveryCheckInterval: '15s',
+      pickFastest: false,
+      interruptExistConnections: true,
+    });
+    expect(
+      priority?.priorityInfo?.outbounds.map((item) => ({
+        code: item.code,
+        levelIndex: item.levelIndex,
+        levelName: item.levelName,
+        selected: item.selected,
+      })),
+    ).toEqual([
+      {
+        code: 'main-2-out',
+        levelIndex: 0,
+        levelName: 'Germany',
+        selected: true,
+      },
+      {
+        code: 'main-1-out',
+        levelIndex: 1,
+        levelName: 'Netherlands',
+        selected: false,
+      },
+    ]);
+  });
+
+  it('hides servers already added to the Priority group when enabled', async () => {
+    mocks.getConfigSections.mockResolvedValue([
+      proxySection({ urltests: [], urltest_settings: undefined }),
+      priorityGroup('pg_main', { hide_added_outbounds: '1' }),
+      priorityLevel('pl_de'),
+    ]);
+    mocks.getClashApiProxies.mockResolvedValue({
+      success: true,
+      data: {
+        proxies: {
+          ...clashProxies,
+          'main-out': proxy('Selector', {
+            name: 'main-out',
+            now: 'main-priority-pg_main-out',
+            all: [
+              'main-1-out',
+              'main-2-out',
+              'main-priority-pg_main-out',
+            ],
+          }),
+          'main-priority-pg_main-out': proxy('Selector', {
+            name: 'main-priority-pg_main-out',
+            now: 'main-1-out',
+            all: ['main-1-out', 'main-2-out'],
+          }),
+        },
+      },
+    });
+    mocks.fsRead.mockResolvedValue(
+      JSON.stringify({
+        priorityGroups: {
+          'main-priority-pg_main-out': {
+            displayName: 'Codex Priority',
+            outbounds: ['main-1-out', 'main-2-out'],
+            levels: [
+              {
+                id: 'pl_de',
+                displayName: 'Germany',
+                order: 0,
+                outbounds: ['main-1-out', 'main-2-out'],
+              },
+            ],
+          },
+        },
+      }),
+    );
+
+    const result = await getDashboardSections();
+    const [section] = result.data;
+
+    expect(result.success).toBe(true);
+    expect(section.outbounds.map((item) => item.code)).toEqual([
+      'main-priority-pg_main-out',
+    ]);
+    expect(section.latencyTestCodes).toBeUndefined();
+  });
+
+  it('keeps an empty Priority group visible when sing-box skipped the selector', async () => {
+    mocks.getConfigSections.mockResolvedValue([
+      proxySection({
+        selector_proxy_links: [],
+        urltests: [],
+        urltest_settings: undefined,
+      }),
+      priorityGroup('pg_empty', { name: 'Empty Priority' }),
+    ]);
+    mocks.getClashApiProxies.mockResolvedValue({
+      success: true,
+      data: { proxies: {} },
+    });
+    mocks.fsRead.mockResolvedValue(
+      JSON.stringify({
+        priorityGroups: {
+          'main-priority-pg_empty-out': {
+            displayName: 'Empty Priority',
+            outbounds: [],
+            levels: [],
+            interrupt_exist_connections: true,
+          },
+        },
+      }),
+    );
+
+    const result = await getDashboardSections();
+    const [section] = result.data;
+    const priority = section.outbounds.find(
+      (item) => item.code === 'main-priority-pg_empty-out',
+    );
+
+    expect(result.success).toBe(true);
+    expect(section.outbounds.map((item) => item.code)).toEqual([
+      'main-priority-pg_empty-out',
+    ]);
+    expect(priority).toMatchObject({
+      displayName: 'Empty Priority',
+      type: 'Priority',
+      runtimeAvailable: false,
+      latency: 0,
+    });
+    expect(priority?.priorityInfo?.selectedName).toBeUndefined();
+    expect(priority?.priorityInfo?.outbounds).toEqual([]);
   });
 
   it('hides servers already added to the URLTest group when enabled', async () => {

@@ -2133,6 +2133,7 @@ function renderDefaultState({
   onChooseOutbound,
   onCopyOutbound,
   onShowUrlTestInfo,
+  onShowPriorityInfo,
   onTestLatency,
   onUpdateSubscription,
   latencyFetching,
@@ -2167,7 +2168,7 @@ function renderDefaultState({
     const countryFlag = renderCountryFlag(outbound.country);
     const selectorSwitching = Boolean(selectorSwitchingTag);
     const outboundSwitching = selectorSwitchingTag === outbound.code;
-    const canChooseOutbound = section.withTagSelect && !selectorSwitching && !outbound.selected;
+    const canChooseOutbound = section.withTagSelect && outbound.runtimeAvailable !== false && !selectorSwitching && !outbound.selected;
     const className = [
       "pdk_dashboard-page__outbound-grid__item",
       outbound.selected ? "pdk_dashboard-page__outbound-grid__item--active" : "",
@@ -2230,6 +2231,22 @@ function renderDefaultState({
                 click: (event) => {
                   event.stopPropagation();
                   onShowUrlTestInfo(section, outbound);
+                }
+              },
+              renderInfoIcon24()
+            )
+          ] : [],
+          ...outbound.priorityInfo ? [
+            E(
+              "button",
+              {
+                type: "button",
+                class: "btn pdk_dashboard-page__outbound-grid__item__copy-button",
+                title: _("Priority details"),
+                "aria-label": _("Priority details"),
+                click: (event) => {
+                  event.stopPropagation();
+                  onShowPriorityInfo(section, outbound);
                 }
               },
               renderInfoIcon24()
@@ -2441,6 +2458,8 @@ function render() {
           onCopyOutbound: () => {
           },
           onShowUrlTestInfo: () => {
+          },
+          onShowPriorityInfo: () => {
           },
           onUpdateSubscription: () => {
           },
@@ -3258,17 +3277,19 @@ function ownedChildSections(parent, children) {
     (section) => section.section === parent[".name"]
   );
 }
+function childSectionsByOwner(children, ownerKey, ownerValue) {
+  return children.filter((section) => section[ownerKey] === ownerValue);
+}
 function compactSettingsMap(settings) {
   return Object.keys(settings).length ? JSON.stringify(settings) : void 0;
 }
 function hydrateConfigSections(configSections) {
   const connectionUrls = childSections(configSections, "connection_url");
-  const subscriptionUrls = childSections(
-    configSections,
-    "subscription_url"
-  );
+  const subscriptionUrls = childSections(configSections, "subscription_url");
   const interfaces = childSections(configSections, "section_interface");
   const urltests = childSections(configSections, "urltest");
+  const priorityGroups = childSections(configSections, "priority_group");
+  const priorityLevels = childSections(configSections, "priority_level");
   return configSections.map((section) => {
     if (section[".type"] !== "section") {
       return section;
@@ -3278,6 +3299,7 @@ function hydrateConfigSections(configSections) {
     const subscriptionUrlItems = ownedChildSections(next, subscriptionUrls);
     const interfaceItems = ownedChildSections(next, interfaces);
     const urltestItems = ownedChildSections(next, urltests);
+    const priorityGroupItems = ownedChildSections(next, priorityGroups);
     if (connectionUrlItems.length) {
       const settings = {};
       next.selector_proxy_links = connectionUrlItems.map((item) => item.url || "").filter(Boolean);
@@ -3357,6 +3379,46 @@ function hydrateConfigSections(configSections) {
       });
       next.urltest_settings = compactSettingsMap(settings);
     }
+    if (priorityGroupItems.length) {
+      const settings = {};
+      next.priority_groups = priorityGroupItems.map((item) => item[".name"]);
+      priorityGroupItems.forEach((item) => {
+        const groupId = item[".name"];
+        const levels = childSectionsByOwner(priorityLevels, "group", groupId).map(
+          (level, index) => ({
+            id: level[".name"],
+            displayName: level.name || level[".name"],
+            order: Number.parseInt(level.order || `${index}`, 10) || 0,
+            direct: level.direct === "1",
+            filterMode: level.filter_mode || "include",
+            detectServerCountry: level.detect_server_country || "flag_emoji",
+            country: getListValues(level.country),
+            serverName: getListValues(level.server_name),
+            regex: getListValues(level.regex),
+            excludeCountries: getListValues(level.exclude_countries),
+            excludeOutbounds: getListValues(level.exclude_outbounds),
+            excludeRegex: getListValues(level.exclude_regex)
+          })
+        ).sort(
+          (left, right) => left.order === right.order ? left.id.localeCompare(right.id) : left.order - right.order
+        );
+        settings[groupId] = {
+          name: item.name,
+          health_url: item.health_url,
+          active_check_interval: item.active_check_interval,
+          check_timeout: item.check_timeout,
+          recovery_check_interval: item.recovery_check_interval,
+          pick_fastest: item.pick_fastest,
+          switch_to_faster_same_priority: item.switch_to_faster_same_priority,
+          fastest_check_interval: item.fastest_check_interval,
+          interrupt_exist_connections: item.interrupt_exist_connections,
+          pin_dashboard: item.pin_dashboard,
+          hide_added_outbounds: item.hide_added_outbounds,
+          levels
+        };
+      });
+      next.priority_group_settings = compactSettingsMap(settings);
+    }
     return next;
   });
 }
@@ -3386,6 +3448,9 @@ function shouldSortByLatency(section) {
 function hasConfiguredUrlTestList(section) {
   return getListValues(section.urltests).length > 0;
 }
+function hasConfiguredPriorityList(section) {
+  return getListValues(section.priority_groups).length > 0;
+}
 function getUrlTestIds(section) {
   const values = getListValues(section.urltests);
   return values.length ? values : section.urltest_enabled === "1" ? ["urltest"] : [];
@@ -3394,7 +3459,7 @@ function isUrlTestEnabled(section) {
   return getUrlTestIds(section).length > 0;
 }
 function shouldUseProxyGroup(section) {
-  return getManualProxyLinks(section).length > 0 || hasSubscriptionSources(section) || getConnectionInterfaces(section).length > 0 || getJsonOutbounds(section).length > 0;
+  return getManualProxyLinks(section).length > 0 || hasSubscriptionSources(section) || getConnectionInterfaces(section).length > 0 || getJsonOutbounds(section).length > 0 || isUrlTestEnabled(section) || hasConfiguredPriorityList(section);
 }
 function getSectionProxyConfigType(section) {
   if (hasSubscriptionSources(section)) {
@@ -3411,6 +3476,9 @@ function getSectionProxyConfigType(section) {
   }
   if (getConnectionInterfaces(section).length > 0) {
     return "interface";
+  }
+  if (hasConfiguredPriorityList(section)) {
+    return "selector";
   }
   return void 0;
 }
@@ -3539,6 +3607,9 @@ function getUrlTestTag(sectionName, id) {
     id === "urltest" ? `${sectionName}-urltest` : `${sectionName}-urltest-${id}`
   );
 }
+function getPriorityTag(sectionName, id) {
+  return getOutboundTagBySection(`${sectionName}-priority-${id}`);
+}
 function getUrlTestDisplayName(section, id, settings) {
   return itemSettingString(
     settings,
@@ -3567,6 +3638,104 @@ function getUrlTestConfigs(section) {
     };
   });
 }
+function priorityLevelConfigsFromSettings(settings) {
+  const value = settings?.levels;
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.flatMap((item, index) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      return [];
+    }
+    const level = item;
+    const id = `${level.id || ""}`.trim();
+    if (!id) {
+      return [];
+    }
+    return [
+      {
+        id,
+        displayName: `${level.displayName || id}`,
+        order: typeof level.order === "number" && Number.isFinite(level.order) ? level.order : index,
+        direct: Boolean(level.direct),
+        filterMode: `${level.filterMode || "include"}` || "include",
+        detectServerCountry: `${level.detectServerCountry || "flag_emoji"}` || "flag_emoji",
+        country: getListValues(level.country),
+        serverName: getListValues(level.serverName),
+        regex: getListValues(level.regex),
+        excludeCountries: getListValues(
+          level.excludeCountries
+        ),
+        excludeOutbounds: getListValues(
+          level.excludeOutbounds
+        ),
+        excludeRegex: getListValues(level.excludeRegex),
+        outbounds: getListValues(level.outbounds)
+      }
+    ];
+  }).sort(
+    (left, right) => left.order === right.order ? left.id.localeCompare(right.id) : left.order - right.order
+  );
+}
+function getPriorityGroupIds(section) {
+  return getListValues(section.priority_groups);
+}
+function getPriorityConfigs(section) {
+  const settingsMap = itemSettingsMap(section.priority_group_settings);
+  const sectionName = section[".name"];
+  return getPriorityGroupIds(section).map((id) => {
+    const settings = settingsMap[id] || {};
+    const levels = priorityLevelConfigsFromSettings(settings);
+    return {
+      id,
+      code: getPriorityTag(sectionName, id),
+      displayName: itemSettingString(settings, "name", id),
+      settings,
+      pinDashboard: itemSettingBoolean(settings, "pin_dashboard", true),
+      hideAddedOutbounds: itemSettingBoolean(
+        settings,
+        "hide_added_outbounds",
+        false
+      ),
+      healthUrl: itemSettingString(
+        settings,
+        "health_url",
+        "https://www.gstatic.com/generate_204"
+      ),
+      activeCheckInterval: itemSettingString(
+        settings,
+        "active_check_interval",
+        "5s"
+      ),
+      checkTimeout: itemSettingString(settings, "check_timeout", "2s"),
+      recoveryCheckInterval: itemSettingString(
+        settings,
+        "recovery_check_interval",
+        "15s"
+      ),
+      pickFastest: itemSettingBoolean(settings, "pick_fastest", false),
+      switchToFasterSamePriority: itemSettingBoolean(
+        settings,
+        "switch_to_faster_same_priority",
+        false
+      ),
+      fastestCheckInterval: itemSettingString(
+        settings,
+        "fastest_check_interval",
+        "3m"
+      ),
+      interruptExistConnections: itemSettingBoolean(
+        settings,
+        "interrupt_exist_connections",
+        true
+      ),
+      showDetectedCountries: levels.some(
+        (level) => level.detectServerCountry === "country_is"
+      ),
+      levels
+    };
+  });
+}
 async function readDashboardSectionCache(sectionName) {
   if (!isSafeSectionName(sectionName)) {
     return void 0;
@@ -3591,6 +3760,13 @@ function getUrlTestGroups(dashboardCache) {
   }
   return groups;
 }
+function getPriorityGroups(dashboardCache) {
+  const groups = dashboardCache?.priorityGroups;
+  if (!groups || typeof groups !== "object" || Array.isArray(groups)) {
+    return {};
+  }
+  return groups;
+}
 function getOutboundDisplayName(code, entry, link, outboundMetadata) {
   return getProxyUrlName(link) || outboundMetadata?.names?.[code] || entry?.value?.name || code;
 }
@@ -3607,9 +3783,9 @@ function buildUrlTestInfo({
   showDetectedCountries
 }) {
   const childCodes = uniqueCodes(
-    groupCache?.outbounds?.length ? groupCache.outbounds : entry.value.all || []
+    groupCache?.outbounds?.length ? groupCache.outbounds : entry?.value.all || []
   );
-  const selectedCode = entry.value.now || "";
+  const selectedCode = entry?.value.now || "";
   const outbounds = sortUrlTestMembers(
     childCodes.flatMap((childCode) => {
       const childEntry = proxyByCode.get(childCode);
@@ -3648,7 +3824,94 @@ function buildUrlTestInfo({
     outbounds
   };
 }
-function buildProxyGroupOutbounds(section, proxies, outboundMetadata, urltestGroups = {}, subscriptionCopyableCodes = /* @__PURE__ */ new Set(), cachedProxyLinks = /* @__PURE__ */ new Map()) {
+function buildPriorityInfo({
+  config,
+  entry,
+  groupCache,
+  proxyByCode,
+  manualLinkByCode,
+  cachedProxyLinks,
+  outboundMetadata,
+  subscriptionCopyableCodes
+}) {
+  const selectedCode = entry?.value.now || "";
+  const cacheLevels = Array.isArray(groupCache?.levels) ? groupCache.levels : [];
+  const configLevelById = new Map(
+    config.levels.map((level) => [level.id, level])
+  );
+  const levels = (cacheLevels.length ? cacheLevels.map((level, index) => {
+    const id = `${level.id || ""}`;
+    const configLevel = id ? configLevelById.get(id) : void 0;
+    return {
+      id: id || configLevel?.id || `level-${index + 1}`,
+      displayName: level.displayName || configLevel?.displayName || `${index + 1}`,
+      order: typeof level.order === "number" && Number.isFinite(level.order) ? level.order : configLevel?.order ?? index,
+      direct: level.direct ?? configLevel?.direct ?? false,
+      filterMode: level.filter_mode || configLevel?.filterMode || "include",
+      detectServerCountry: level.detect_server_country || configLevel?.detectServerCountry || "flag_emoji",
+      country: configLevel?.country || [],
+      serverName: configLevel?.serverName || [],
+      regex: configLevel?.regex || [],
+      excludeCountries: configLevel?.excludeCountries || [],
+      excludeOutbounds: configLevel?.excludeOutbounds || [],
+      excludeRegex: configLevel?.excludeRegex || [],
+      outbounds: uniqueCodes(level.outbounds || [])
+    };
+  }) : config.levels.map((level) => ({
+    ...level,
+    outbounds: uniqueCodes(level.outbounds || [])
+  }))).sort(
+    (left, right) => left.order === right.order ? left.id.localeCompare(right.id) : left.order - right.order
+  );
+  const outbounds = levels.flatMap((level, levelIndex) => {
+    const members = uniqueCodes(level.outbounds || []).map((childCode) => {
+      const childEntry = proxyByCode.get(childCode);
+      const link = manualLinkByCode.get(childCode) || cachedProxyLinks.get(childCode) || "";
+      const canCopyLink = isCopyableProxyLink(link) || subscriptionCopyableCodes.has(childCode);
+      return {
+        code: childCode,
+        displayName: getOutboundDisplayName(
+          childCode,
+          childEntry,
+          link,
+          outboundMetadata
+        ),
+        latency: childEntry?.value?.history?.[0]?.delay || 0,
+        type: childEntry?.value?.type || "",
+        selected: selectedCode === childCode,
+        link,
+        canCopyLink,
+        levelIndex,
+        levelName: level.displayName,
+        levelId: level.id
+      };
+    });
+    if (!config.pickFastest) {
+      return members;
+    }
+    return members.map((outbound, index) => ({ outbound, index })).sort((left, right) => {
+      const latencyDiff = getLatencySortValue(left.outbound) - getLatencySortValue(right.outbound);
+      return latencyDiff !== 0 ? latencyDiff : left.index - right.index;
+    }).map((item) => item.outbound);
+  });
+  const selectedName = outbounds.find((outbound) => outbound.code === selectedCode)?.displayName || selectedCode;
+  return {
+    code: config.code,
+    displayName: groupCache?.displayName || config.displayName,
+    selectedCode: selectedCode || void 0,
+    selectedName: selectedName || void 0,
+    healthUrl: groupCache?.health_url || config.healthUrl,
+    activeCheckInterval: groupCache?.active_check_interval || config.activeCheckInterval,
+    checkTimeout: groupCache?.check_timeout || config.checkTimeout,
+    recoveryCheckInterval: groupCache?.recovery_check_interval || config.recoveryCheckInterval,
+    pickFastest: groupCache?.pick_fastest ?? config.pickFastest,
+    switchToFasterSamePriority: groupCache?.switch_to_faster_same_priority ?? config.switchToFasterSamePriority,
+    fastestCheckInterval: groupCache?.fastest_check_interval || config.fastestCheckInterval,
+    interruptExistConnections: groupCache?.interrupt_exist_connections ?? config.interruptExistConnections,
+    outbounds
+  };
+}
+function buildProxyGroupOutbounds(section, proxies, outboundMetadata, urltestGroups = {}, priorityGroups = {}, subscriptionCopyableCodes = /* @__PURE__ */ new Set(), cachedProxyLinks = /* @__PURE__ */ new Map()) {
   const sectionName = section[".name"];
   const proxyByCode = getProxyEntryByCode(proxies);
   const selectorTag = getOutboundTagBySection(sectionName);
@@ -3657,76 +3920,114 @@ function buildProxyGroupOutbounds(section, proxies, outboundMetadata, urltestGro
   const urlTestConfigByCode = new Map(
     urlTestConfigs.map((config) => [config.code, config])
   );
+  const priorityConfigs = getPriorityConfigs(section);
+  const priorityConfigByCode = new Map(
+    priorityConfigs.map((config) => [config.code, config])
+  );
   const urlTestEntries = urlTestConfigs.map((config) => ({
     config,
     entry: proxyByCode.get(config.code)
-  })).filter(
-    (item) => Boolean(item.entry)
-  );
+  }));
+  const priorityEntries = priorityConfigs.map((config) => ({
+    config,
+    entry: proxyByCode.get(config.code)
+  }));
   const manualLinkByCode = buildManualLinkByCode(section);
   const selectorCodes = selector?.value?.all ?? [];
-  const urlTestCodes = urlTestEntries.map(({ config }) => config.code);
+  const urlTestCodes = urlTestConfigs.map((config) => config.code);
+  const priorityCodes = priorityConfigs.map((config) => config.code);
   const urlTestCodeSet = new Set(urlTestCodes);
+  const priorityCodeSet = new Set(priorityCodes);
   const hideAddedCodeSet = /* @__PURE__ */ new Set();
   urlTestEntries.forEach(({ config, entry }) => {
     if (!config.hideAddedOutbounds) {
       return;
     }
-    (entry.value.all || []).forEach((code) => hideAddedCodeSet.add(code));
+    const childCodes = urltestGroups[config.code]?.outbounds?.length ? urltestGroups[config.code].outbounds || [] : entry?.value.all || [];
+    childCodes.forEach((code) => hideAddedCodeSet.add(code));
   });
-  const showDetectedCountries = urlTestConfigs.some(
-    (config) => config.showDetectedCountries
-  );
+  priorityEntries.forEach(({ config, entry }) => {
+    if (!config.hideAddedOutbounds) {
+      return;
+    }
+    const childCodes = priorityGroups[config.code]?.outbounds?.length ? priorityGroups[config.code].outbounds || [] : entry?.value.all || [];
+    childCodes.forEach((code) => hideAddedCodeSet.add(code));
+  });
+  const showDetectedCountries = urlTestConfigs.some((config) => config.showDetectedCountries) || priorityConfigs.some((config) => config.showDetectedCountries);
   const builtInUrltestCode = urlTestCodes[0] || "";
   const fallbackCodes = uniqueCodes([
     ...urlTestCodes,
-    ...urlTestEntries.flatMap(({ entry }) => entry.value.all || [])
+    ...priorityCodes,
+    ...urlTestEntries.flatMap(({ entry }) => entry?.value.all || []),
+    ...priorityEntries.flatMap(({ entry }) => entry?.value.all || [])
   ]);
-  const groupCodes = (selectorCodes.length ? selectorCodes : fallbackCodes).filter((code) => {
+  const groupCodes = uniqueCodes([
+    ...selectorCodes.length ? selectorCodes : fallbackCodes,
+    ...urlTestCodes,
+    ...priorityCodes
+  ]).filter((code) => {
     if (!hideAddedCodeSet.has(code)) {
       return true;
     }
-    return urlTestCodeSet.has(code) || isUrlTestProxyEntry(proxyByCode.get(code));
+    return urlTestCodeSet.has(code) || priorityCodeSet.has(code) || isUrlTestProxyEntry(proxyByCode.get(code));
   });
   const outbounds = uniqueCodes(groupCodes).flatMap((code) => {
     const item = proxyByCode.get(code);
-    if (!item) {
+    const urlTestConfig = urlTestConfigByCode.get(code);
+    const priorityConfig = priorityConfigByCode.get(code);
+    if (!item && !urlTestConfig && !priorityConfig) {
       return [];
     }
-    const urlTestConfig = urlTestConfigByCode.get(item.code);
-    const link = manualLinkByCode.get(item.code) || cachedProxyLinks.get(item.code) || "";
-    const canCopyLink = isCopyableProxyLink(link) || subscriptionCopyableCodes.has(item.code);
-    const displayName = urlTestConfig?.displayName || getOutboundDisplayName(item.code, item, link, outboundMetadata);
+    const link = manualLinkByCode.get(code) || cachedProxyLinks.get(code) || "";
+    const canCopyLink = isCopyableProxyLink(link) || subscriptionCopyableCodes.has(code);
+    const displayName = priorityConfig?.displayName || urlTestConfig?.displayName || getOutboundDisplayName(code, item, link, outboundMetadata);
+    const isRuntimeUrlTest = isUrlTestProxyEntry(item);
     return [
       {
-        code: item.code,
+        code,
         displayName,
-        latency: item.value.history?.[0]?.delay || 0,
-        type: item.value.type || "",
-        selected: selector?.value?.now === item.code,
+        latency: item?.value.history?.[0]?.delay || 0,
+        type: priorityConfig ? "Priority" : item?.value.type || "URLTest",
+        selected: selector?.value?.now === code,
         link,
         canCopyLink,
-        country: showDetectedCountries ? outboundMetadata?.countries?.[item.code] : void 0,
-        urlTestInfo: isUrlTestProxyEntry(item) ? buildUrlTestInfo({
-          code: item.code,
+        country: showDetectedCountries ? outboundMetadata?.countries?.[code] : void 0,
+        runtimeAvailable: item ? void 0 : false,
+        urlTestInfo: urlTestConfig || isRuntimeUrlTest ? buildUrlTestInfo({
+          code,
           displayName,
           entry: item,
-          groupCache: urltestGroups[item.code],
+          groupCache: urltestGroups[code],
           proxyByCode,
           manualLinkByCode,
           cachedProxyLinks,
           outboundMetadata,
           subscriptionCopyableCodes,
           showDetectedCountries: urlTestConfig?.showDetectedCountries || showDetectedCountries
+        }) : void 0,
+        priorityInfo: priorityConfig ? buildPriorityInfo({
+          config: priorityConfig,
+          entry: item,
+          groupCache: priorityGroups[code],
+          proxyByCode,
+          manualLinkByCode,
+          cachedProxyLinks,
+          outboundMetadata,
+          subscriptionCopyableCodes
         }) : void 0
       }
     ];
   });
   const sortedOutbounds = sortOutboundsForDashboard(outbounds, {
-    pinnedCodes: urlTestEntries.filter(({ config }) => config.pinDashboard).map(({ config }) => config.code),
+    pinnedCodes: [
+      ...urlTestEntries.filter(({ config }) => config.pinDashboard).map(({ config }) => config.code),
+      ...priorityEntries.filter(({ config }) => config.pinDashboard).map(({ config }) => config.code)
+    ],
     sortByLatency: shouldSortByLatency(section)
   });
-  const latencyTestCodes = sortedOutbounds.filter((outbound) => !isSelectorOutbound(outbound)).map((outbound) => outbound.code);
+  const latencyTestCodes = sortedOutbounds.filter(
+    (outbound) => outbound.runtimeAvailable !== false && !isSelectorOutbound(outbound) && !outbound.priorityInfo
+  ).map((outbound) => outbound.code);
   return {
     selector,
     latencyTestCode: selector?.code || builtInUrltestCode,
@@ -3871,11 +4172,13 @@ async function getDashboardSections(options = {}) {
         const subscriptionCopyableCodes = includeSubscriptionCopyState ? getSubscriptionCopyableCodes(dashboardCache) : /* @__PURE__ */ new Set();
         const cachedProxyLinks = includeSubscriptionCopyState ? getCachedProxyLinks(dashboardCache) : /* @__PURE__ */ new Map();
         const urltestGroups = getUrlTestGroups(dashboardCache);
+        const priorityGroups = getPriorityGroups(dashboardCache);
         const { selector, latencyTestCode, latencyTestCodes, outbounds } = buildProxyGroupOutbounds(
           section,
           proxies,
           outboundMetadata,
           urltestGroups,
+          priorityGroups,
           subscriptionCopyableCodes,
           cachedProxyLinks
         );
@@ -5814,6 +6117,22 @@ function getUrlTestLatencyClass(latency) {
 function formatUrlTestLatency(latency) {
   return latency ? `${latency}ms` : "N/A";
 }
+function renderDetailsUrl(value) {
+  const url = `${value ?? ""}`.trim();
+  if (!/^https?:\/\//i.test(url)) {
+    return E("span", {}, formatUrlTestModalValue(value));
+  }
+  return E(
+    "a",
+    {
+      class: "pdk_dashboard-page__urltest-details__url",
+      href: url,
+      target: "_blank",
+      rel: "noopener noreferrer"
+    },
+    url
+  );
+}
 function renderUrlTestSelectedValue(info) {
   const selectedMember = info.outbounds.find((member) => member.selected);
   const selectedName = selectedMember?.displayName || info.selectedName || info.selectedCode || "";
@@ -5870,12 +6189,12 @@ function renderUrlTestInfoModal(section, outbound) {
       label: _("Selected"),
       children: [renderUrlTestSelectedValue(info)]
     },
-    { label: _("Testing URL"), value: info.url },
+    { label: _("Testing URL"), children: [renderDetailsUrl(info.url)] },
     { label: _("Interval"), value: info.interval },
     { label: _("Tolerance"), value: info.tolerance },
     { label: _("Idle timeout"), value: info.idleTimeout },
     {
-      label: _("Interrupt connections"),
+      label: _("Interrupt existing connections"),
       value: info.interruptExistConnections
     }
   ];
@@ -5898,7 +6217,7 @@ function renderUrlTestInfoModal(section, outbound) {
       E(
         "div",
         { class: "pdk_dashboard-page__urltest-details__outbounds-title" },
-        _("Outbounds")
+        _("Nodes")
       ),
       E(
         "div",
@@ -5956,7 +6275,7 @@ function renderUrlTestInfoModal(section, outbound) {
           E(
             "div",
             { class: "pdk_dashboard-page__urltest-details__empty" },
-            _("No outbounds")
+            _("Node list is empty")
           )
         ]
       )
@@ -5983,6 +6302,215 @@ function handleShowUrlTestInfo(section, outbound) {
   ui.showModal(
     `${_("URLTest details")}: ${outbound.urlTestInfo.displayName || outbound.displayName}`,
     renderUrlTestInfoModal(section, outbound)
+  );
+}
+function renderPrioritySelectedValue(info) {
+  const selectedMember = info.outbounds.find((member) => member.selected);
+  const selectedName = selectedMember?.displayName || info.selectedName || info.selectedCode || "";
+  const name = formatUrlTestModalValue(selectedName);
+  if (name === _("No")) {
+    return E("span", {}, name);
+  }
+  return E(
+    "span",
+    { class: "pdk_dashboard-page__urltest-details__selected-value" },
+    [
+      E(
+        "span",
+        {
+          class: [
+            "pdk_dashboard-page__urltest-details__selected-name",
+            selectedMember ? "pdk_dashboard-page__urltest-details__priority-name" : ""
+          ].filter(Boolean).join(" ")
+        },
+        selectedMember ? renderPriorityMemberName(selectedMember) : name
+      ),
+      ...selectedMember?.type ? [
+        E(
+          "span",
+          { class: "pdk_dashboard-page__urltest-details__selected-type" },
+          selectedMember.type
+        )
+      ] : [],
+      ...selectedMember ? [
+        E(
+          "span",
+          { class: getUrlTestLatencyClass(selectedMember.latency) },
+          formatUrlTestLatency(selectedMember.latency)
+        )
+      ] : []
+    ]
+  );
+}
+function renderPriorityMemberName(member) {
+  const levelName = member.levelName || _("Level");
+  return [
+    E(
+      "span",
+      { class: "pdk_dashboard-page__urltest-details__priority-number" },
+      `#${member.levelIndex + 1}`
+    ),
+    E(
+      "span",
+      { class: "pdk_dashboard-page__urltest-details__priority-level" },
+      levelName
+    ),
+    E(
+      "span",
+      { class: "pdk_dashboard-page__urltest-details__priority-node" },
+      member.displayName
+    )
+  ];
+}
+function renderPriorityInfoModal(section, outbound) {
+  const info = outbound.priorityInfo;
+  if (!info) {
+    return E("div", {}, _("Priority details are unavailable"));
+  }
+  const fields = [
+    {
+      label: _("Selected"),
+      children: [renderPrioritySelectedValue(info)]
+    },
+    { label: _("Check URL"), children: [renderDetailsUrl(info.healthUrl)] },
+    {
+      label: _("Check interval"),
+      value: info.activeCheckInterval
+    },
+    { label: _("Unavailability timeout"), value: info.checkTimeout },
+    {
+      label: _("Higher-level check interval"),
+      value: info.recoveryCheckInterval
+    },
+    {
+      label: _("Fastest node selection"),
+      value: info.pickFastest
+    },
+    {
+      label: _("Current-level fastest node selection"),
+      value: info.switchToFasterSamePriority
+    },
+    ...info.switchToFasterSamePriority ? [
+      {
+        label: _("Faster server search interval"),
+        value: info.fastestCheckInterval
+      }
+    ] : [],
+    {
+      label: _("Interrupt existing connections"),
+      value: info.interruptExistConnections
+    }
+  ];
+  return E("div", { class: "pdk_dashboard-page__urltest-details" }, [
+    E(
+      "dl",
+      { class: "pdk_dashboard-page__urltest-details__params" },
+      fields.map(
+        ({ label, value, children }) => E("div", { class: "pdk_dashboard-page__urltest-details__param" }, [
+          E("dt", {}, label),
+          E(
+            "dd",
+            {},
+            children || [E("span", {}, formatUrlTestModalValue(value))]
+          )
+        ])
+      )
+    ),
+    E("div", { class: "pdk_dashboard-page__urltest-details__outbounds" }, [
+      E(
+        "div",
+        { class: "pdk_dashboard-page__urltest-details__outbounds-title" },
+        _("Nodes")
+      ),
+      E(
+        "div",
+        { class: "pdk_dashboard-page__urltest-details__table" },
+        info.outbounds.length ? info.outbounds.map(
+          (member) => E(
+            "div",
+            {
+              class: [
+                "pdk_dashboard-page__urltest-details__row",
+                member.selected ? "pdk_dashboard-page__urltest-details__row--active" : ""
+              ].filter(Boolean).join(" ")
+            },
+            [
+              E(
+                "div",
+                {
+                  class: "pdk_dashboard-page__urltest-details__row-name"
+                },
+                [
+                  E(
+                    "b",
+                    {
+                      class: "pdk_dashboard-page__urltest-details__priority-name"
+                    },
+                    renderPriorityMemberName(member)
+                  ),
+                  ...member.type ? [
+                    E(
+                      "span",
+                      {
+                        class: "pdk_dashboard-page__urltest-details__row-type"
+                      },
+                      member.type
+                    )
+                  ] : []
+                ]
+              ),
+              E(
+                "div",
+                {
+                  class: "pdk_dashboard-page__urltest-details__row-meta"
+                },
+                [
+                  E(
+                    "span",
+                    { class: getUrlTestLatencyClass(member.latency) },
+                    formatUrlTestLatency(member.latency)
+                  )
+                ]
+              ),
+              member.canCopyLink ? renderUrlTestCopyButton(_("Copy proxy link"), (event) => {
+                event.preventDefault();
+                void handleCopyOutbound(section, member);
+              }) : E("span", {
+                class: "pdk_dashboard-page__urltest-details__copy-placeholder"
+              })
+            ]
+          )
+        ) : [
+          E(
+            "div",
+            { class: "pdk_dashboard-page__urltest-details__empty" },
+            _("Node list is empty")
+          )
+        ]
+      )
+    ]),
+    E("div", { class: "pdk_dashboard-page__urltest-details__footer" }, [
+      E(
+        "button",
+        {
+          type: "button",
+          class: "btn cbi-button cbi-button-neutral",
+          click: () => {
+            ui.hideModal();
+          }
+        },
+        _("Close")
+      )
+    ])
+  ]);
+}
+function handleShowPriorityInfo(section, outbound) {
+  if (!outbound.priorityInfo) {
+    return;
+  }
+  ui.showModal(
+    `${_("Priority details")}: ${outbound.priorityInfo.displayName || outbound.displayName}`,
+    renderPriorityInfoModal(section, outbound)
   );
 }
 async function handleUpdateSubscription(section) {
@@ -6101,6 +6629,8 @@ async function renderSectionsWidget() {
       },
       onShowUrlTestInfo: () => {
       },
+      onShowPriorityInfo: () => {
+      },
       onUpdateSubscription: () => {
       },
       latencyFetching: false,
@@ -6151,6 +6681,9 @@ async function renderSectionsWidget() {
       },
       onShowUrlTestInfo: (section2, outbound) => {
         handleShowUrlTestInfo(section2, outbound);
+      },
+      onShowPriorityInfo: (section2, outbound) => {
+        handleShowPriorityInfo(section2, outbound);
       },
       onUpdateSubscription: (section2) => {
         void handleUpdateSubscription(section2);
@@ -6836,15 +7369,25 @@ var styles = `
     overflow-wrap: anywhere;
 }
 
+.pdk_dashboard-page__urltest-details__url {
+    min-width: 0;
+    color: var(--primary-color-high, #337ab7);
+    text-decoration: none;
+    overflow-wrap: anywhere;
+}
+
+.pdk_dashboard-page__urltest-details__url:hover {
+    text-decoration: underline;
+}
+
 .pdk_dashboard-page__urltest-details__selected-value {
     display: inline-flex;
     align-items: center;
     gap: 6px;
     flex-wrap: wrap;
     max-width: 100%;
-    padding: 1px 8px;
-    border: 1px solid var(--success-color-low, #2d7d46);
-    border-radius: 4px;
+    padding: 0;
+    border: 0;
     color: inherit;
     background: transparent;
     box-sizing: border-box;
@@ -6853,6 +7396,7 @@ var styles = `
 
 .pdk_dashboard-page__urltest-details__selected-name {
     min-width: 0;
+    font-weight: 600;
     overflow-wrap: anywhere;
 }
 
@@ -6915,6 +7459,36 @@ var styles = `
     line-height: 1.3;
 }
 
+.pdk_dashboard-page__urltest-details__priority-name {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 2px 0;
+}
+
+.pdk_dashboard-page__urltest-details__priority-number {
+    margin-right: 6px;
+    color: var(--text-color-medium, #aaa);
+    font-family: monospace;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.pdk_dashboard-page__urltest-details__priority-level {
+    margin-right: 8px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    color: var(--text-color-medium, #aaa);
+    background: rgba(128, 128, 128, 0.15);
+    font-size: 11px;
+    font-weight: 400;
+}
+
+.pdk_dashboard-page__urltest-details__priority-node {
+    color: var(--text-color-high, #fff);
+    font-weight: 600;
+}
+
 .pdk_dashboard-page__urltest-details__row-type,
 .pdk_dashboard-page__urltest-details__row-meta {
     color: var(--text-color-medium, #666);
@@ -6955,8 +7529,14 @@ var styles = `
 }
 
 .pdk_dashboard-page__urltest-details__empty {
-    padding: 8px;
-    color: var(--text-color-medium, #666);
+    margin-top: 4px;
+    padding: 24px 0;
+    border: 1px dashed var(--border-color-high, #555);
+    border-radius: 4px;
+    color: var(--text-color-medium, #888);
+    background: rgba(128, 128, 128, 0.02);
+    font-style: italic;
+    text-align: center;
 }
 
 .pdk_dashboard-page__urltest-details__footer {

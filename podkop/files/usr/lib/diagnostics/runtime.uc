@@ -1693,10 +1693,13 @@ function clash_api(action, arg1, arg2, arg3) {
     if (action == "get_proxy_latency") {
         if (as_string(arg1) == "")
             return clash_json_error("proxy_tag required");
+        let url = as_string(arg3 || "");
+        if (url == "")
+            url = test_url;
         let args = [ "curl", "-G", "-s", base_url + "/proxies/" + clash_urlencode(arg1) + "/delay" ];
         for (let item in auth) push(args, item);
         push(args, "--data-urlencode");
-        push(args, "url=" + test_url);
+        push(args, "url=" + url);
         push(args, "--data-urlencode");
         push(args, "timeout=" + as_string(arg2 || "2000"));
         return clash_json_output(args);

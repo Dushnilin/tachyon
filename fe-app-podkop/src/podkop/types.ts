@@ -114,6 +114,7 @@ export namespace Podkop {
     country?: string;
     runtimeAvailable?: boolean;
     urlTestInfo?: UrlTestInfo;
+    priorityInfo?: PriorityInfo;
   }
 
   export interface UrlTestMember {
@@ -138,6 +139,28 @@ export namespace Podkop {
     idleTimeout?: string;
     interruptExistConnections?: boolean;
     outbounds: UrlTestMember[];
+  }
+
+  export interface PriorityMember extends UrlTestMember {
+    levelIndex: number;
+    levelName: string;
+    levelId?: string;
+  }
+
+  export interface PriorityInfo {
+    code: string;
+    displayName: string;
+    selectedCode?: string;
+    selectedName?: string;
+    healthUrl?: string;
+    activeCheckInterval?: string;
+    checkTimeout?: string;
+    recoveryCheckInterval?: string;
+    pickFastest?: boolean;
+    switchToFasterSamePriority?: boolean;
+    fastestCheckInterval?: string;
+    interruptExistConnections?: boolean;
+    outbounds: PriorityMember[];
   }
 
   export interface OutboundGroup {
@@ -216,7 +239,9 @@ export namespace Podkop {
       | 'connection_url'
       | 'subscription_url'
       | 'section_interface'
-      | 'urltest';
+      | 'urltest'
+      | 'priority_group'
+      | 'priority_level';
     label?: string;
     enabled?: string;
     action?: RuleAction;
@@ -242,6 +267,8 @@ export namespace Podkop {
     interface_settings?: string;
     urltests?: string[];
     urltest_settings?: string;
+    priority_groups?: string[];
+    priority_group_settings?: string;
     urltest_proxy_links?: string[];
     subscription_url?: string;
     subscription_user_agent?: string;
@@ -281,6 +308,19 @@ export namespace Podkop {
     exclude_countries?: string[];
     exclude_outbounds?: string[];
     exclude_regex?: string[];
+    group?: string;
+    order?: string;
+    direct?: '0' | '1';
+    health_url?: string;
+    active_check_interval?: string;
+    check_timeout?: string;
+    recovery_check_interval?: string;
+    pick_fastest?: '0' | '1';
+    switch_to_faster_same_priority?: '0' | '1';
+    fastest_check_interval?: string;
+    country?: string[];
+    server_name?: string[];
+    regex?: string[];
     outbound_detour_enabled?: '0' | '1';
     outbound_detour_section?: string;
     enable_udp_over_tcp?: '0' | '1';

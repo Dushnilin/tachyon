@@ -29,6 +29,7 @@ const RELOAD_STATE_FORMAT = getenv("PODKOP_RELOAD_STATE_FORMAT") || "1";
 const RULE_CONDITION_CACHE_DIR = getenv("PODKOP_RULE_CONDITION_CACHE_DIR") || RUNTIME_STATE_DIR + "/rule-condition-cache";
 const RELOAD_LOCK_DIR = getenv("PODKOP_RELOAD_LOCK_DIR") || "/var/run/podkop-plus.reload.lock";
 const SERVICE_INIT = getenv("PODKOP_SERVICE_INIT") || "/etc/init.d/podkop-plus";
+const PRIORITY_UC = getenv("PODKOP_PRIORITY_UC") || LIB_DIR + "/singbox/priority.uc";
 const COMPONENT_JOB_DIR = getenv("UPDATES_JOB_DIR") || getenv("PODKOP_UI_COMPONENT_ACTION_DIR") || "/var/run/podkop-plus/component-actions";
 const COMPONENT_JOB_FINISHED_TTL_MINUTES = getenv("UPDATES_JOB_FINISHED_TTL_MINUTES") || "60";
 const COMPONENT_JOB_ORPHAN_OUTPUT_TTL_MINUTES = getenv("UPDATES_JOB_ORPHAN_OUTPUT_TTL_MINUTES") || "60";
@@ -2428,8 +2429,15 @@ function subscription_update_common_locked(force, target_section, target_source_
         log_message("Failed to rebuild sing-box after subscription update", "error");
         return false;
     }
-    if (!service_state_success([ "reload-sing-box-runtime" ]))
+    module_success([ PRIORITY_UC, "stop-runtime" ]);
+    if (!service_state_success([ "reload-sing-box-runtime" ])) {
+        module_success([ PRIORITY_UC, "start-runtime" ]);
         return false;
+    }
+    if (!module_success([ PRIORITY_UC, "start-runtime" ])) {
+        log_message("Failed to restart Priority runtime after subscription update", "error");
+        return false;
+    }
     if (!write_current_reload_state_clean())
         return false;
 

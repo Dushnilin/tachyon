@@ -528,4 +528,60 @@ if (names["Native A"] == null || names["Detour Only"] == null)
     die("UI outbound metadata should include all native leaf outbound names\n");
 ' "$singbox_metadata" || fail "native UI outbound metadata filtering"
 
+cat >"$WORK_DIR/country-is-fixture.json" <<'JSON'
+{
+  "settings": { ".name": "settings", ".type": "settings" },
+  "section": [
+    {
+      ".name": "proxy",
+      ".type": "section",
+      "enabled": "1",
+      "action": "proxy",
+      "selector_proxy_links": [
+        "vless://00000000-0000-4000-8000-000000000001@alpha.example:443?encryption=none&security=tls&sni=alpha.example#Alpha",
+        "vless://00000000-0000-4000-8000-000000000002@beta.example:443?encryption=none&security=tls&sni=beta.example#Beta"
+      ]
+    }
+  ],
+  "urltest": [
+    {
+      ".name": "ut_country",
+      ".type": "urltest",
+      "section": "proxy",
+      "name": "Germany",
+      "filter_mode": "include",
+      "detect_server_country": "country_is",
+      "include_countries": [ "DE" ]
+    }
+  ]
+}
+JSON
+country_is_config="$WORK_DIR/country-is-config.json"
+mkdir -p "$country_is_config.section-cache"
+cat >"$country_is_config.section-cache/proxy.json" <<'JSON'
+{
+  "servers": {
+    "proxy-1-out": "alpha.example",
+    "proxy-2-out": "beta.example"
+  },
+  "outboundMetadata": {
+    "countries": {
+      "proxy-1-out": "DE",
+      "proxy-2-out": "NL"
+    }
+  }
+}
+JSON
+generate_config "$WORK_DIR/country-is-fixture.json" "$country_is_config"
+ucode -e '
+let fs = require("fs");
+let config = json(fs.readfile(ARGV[0]));
+let urltest = null;
+for (let outbound in config.outbounds || [])
+    if (outbound && outbound.tag == "proxy-urltest-ut_country-out")
+        urltest = outbound;
+if (!urltest || length(urltest.outbounds || []) != 1 || urltest.outbounds[0] != "proxy-1-out")
+    die("cached country.is metadata was not applied to URLTest filtering\n");
+' "$country_is_config" || fail "URLTest country.is cached filtering"
+
 printf 'URLTest group regression checks passed\n'

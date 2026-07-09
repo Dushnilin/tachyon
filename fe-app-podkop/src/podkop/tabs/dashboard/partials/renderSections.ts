@@ -26,6 +26,10 @@ interface IRenderSectionsProps {
     section: Podkop.OutboundGroup,
     outbound: Podkop.Outbound,
   ) => void;
+  onShowPriorityInfo: (
+    section: Podkop.OutboundGroup,
+    outbound: Podkop.Outbound,
+  ) => void;
   onUpdateSubscription: (section: Podkop.OutboundGroup) => void;
   latencyFetching: boolean;
   latencyProgress?: Podkop.LatencyActionProgress;
@@ -349,6 +353,7 @@ function renderDefaultState({
   onChooseOutbound,
   onCopyOutbound,
   onShowUrlTestInfo,
+  onShowPriorityInfo,
   onTestLatency,
   onUpdateSubscription,
   latencyFetching,
@@ -393,7 +398,10 @@ function renderDefaultState({
     const selectorSwitching = Boolean(selectorSwitchingTag);
     const outboundSwitching = selectorSwitchingTag === outbound.code;
     const canChooseOutbound =
-      section.withTagSelect && !selectorSwitching && !outbound.selected;
+      section.withTagSelect &&
+      outbound.runtimeAvailable !== false &&
+      !selectorSwitching &&
+      !outbound.selected;
     const className = [
       'pdk_dashboard-page__outbound-grid__item',
       outbound.selected
@@ -482,6 +490,25 @@ function renderDefaultState({
                     click: (event: MouseEvent) => {
                       event.stopPropagation();
                       onShowUrlTestInfo(section, outbound);
+                    },
+                  },
+                  renderInfoIcon24(),
+                ),
+              ]
+            : []),
+          ...(outbound.priorityInfo
+            ? [
+                E(
+                  'button',
+                  {
+                    type: 'button',
+                    class:
+                      'btn pdk_dashboard-page__outbound-grid__item__copy-button',
+                    title: _('Priority details'),
+                    'aria-label': _('Priority details'),
+                    click: (event: MouseEvent) => {
+                      event.stopPropagation();
+                      onShowPriorityInfo(section, outbound);
                     },
                   },
                   renderInfoIcon24(),
