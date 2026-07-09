@@ -427,15 +427,25 @@ export const styles = `
     overflow-wrap: anywhere;
 }
 
+.pdk_dashboard-page__urltest-details__url {
+    min-width: 0;
+    color: var(--primary-color-high, #337ab7);
+    text-decoration: none;
+    overflow-wrap: anywhere;
+}
+
+.pdk_dashboard-page__urltest-details__url:hover {
+    text-decoration: underline;
+}
+
 .pdk_dashboard-page__urltest-details__selected-value {
     display: inline-flex;
     align-items: center;
     gap: 6px;
     flex-wrap: wrap;
     max-width: 100%;
-    padding: 1px 8px;
-    border: 1px solid var(--success-color-low, #2d7d46);
-    border-radius: 4px;
+    padding: 0;
+    border: 0;
     color: inherit;
     background: transparent;
     box-sizing: border-box;
@@ -444,6 +454,7 @@ export const styles = `
 
 .pdk_dashboard-page__urltest-details__selected-name {
     min-width: 0;
+    font-weight: 600;
     overflow-wrap: anywhere;
 }
 
@@ -506,6 +517,36 @@ export const styles = `
     line-height: 1.3;
 }
 
+.pdk_dashboard-page__urltest-details__priority-name {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 2px 0;
+}
+
+.pdk_dashboard-page__urltest-details__priority-number {
+    margin-right: 6px;
+    color: var(--text-color-medium, #aaa);
+    font-family: monospace;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.pdk_dashboard-page__urltest-details__priority-level {
+    margin-right: 8px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    color: var(--text-color-medium, #aaa);
+    background: rgba(128, 128, 128, 0.15);
+    font-size: 11px;
+    font-weight: 400;
+}
+
+.pdk_dashboard-page__urltest-details__priority-node {
+    color: var(--text-color-high, #fff);
+    font-weight: 600;
+}
+
 .pdk_dashboard-page__urltest-details__row-type,
 .pdk_dashboard-page__urltest-details__row-meta {
     color: var(--text-color-medium, #666);
@@ -546,8 +587,14 @@ export const styles = `
 }
 
 .pdk_dashboard-page__urltest-details__empty {
-    padding: 8px;
-    color: var(--text-color-medium, #666);
+    margin-top: 4px;
+    padding: 24px 0;
+    border: 1px dashed var(--border-color-high, #555);
+    border-radius: 4px;
+    color: var(--text-color-medium, #888);
+    background: rgba(128, 128, 128, 0.02);
+    font-style: italic;
+    text-align: center;
 }
 
 .pdk_dashboard-page__urltest-details__footer {

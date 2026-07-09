@@ -901,6 +901,46 @@ function urltests_signature(section) {
     return sprintf("%J", result);
 }
 
+function priority_groups_signature(section) {
+    let result = [];
+    for (let group_id in connections.priority_groups(section)) {
+        let levels = [];
+        for (let level_id in connections.priority_levels(group_id)) {
+            push(levels, {
+                id: level_id,
+                display_name: connections.priority_level_display_name(group_id, level_id),
+                order: connections.priority_level_order(group_id, level_id),
+                direct: connections.priority_level_direct(group_id, level_id) ? "1" : "0",
+                filter_mode: connections.priority_level_filter_mode(group_id, level_id),
+                detect_server_country: connections.priority_level_detect_server_country(group_id, level_id),
+                include_countries: connections.priority_level_include_countries(group_id, level_id),
+                include_outbounds: connections.priority_level_include_outbounds(group_id, level_id),
+                include_regex: connections.priority_level_include_regex(group_id, level_id),
+                exclude_countries: connections.priority_level_exclude_countries(group_id, level_id),
+                exclude_outbounds: connections.priority_level_exclude_outbounds(group_id, level_id),
+                exclude_regex: connections.priority_level_exclude_regex(group_id, level_id)
+            });
+        }
+
+        push(result, {
+            id: group_id,
+            display_name: connections.priority_group_display_name(section, group_id),
+            health_url: connections.priority_group_health_url(section, group_id),
+            active_check_interval: connections.priority_group_active_check_interval(section, group_id),
+            check_timeout: connections.priority_group_check_timeout(section, group_id),
+            recovery_check_interval: connections.priority_group_recovery_check_interval(section, group_id),
+            pick_fastest: connections.priority_group_pick_fastest(section, group_id) ? "1" : "0",
+            switch_to_faster_same_priority: connections.priority_group_switch_to_faster_same_priority(section, group_id) ? "1" : "0",
+            fastest_check_interval: connections.priority_group_fastest_check_interval(section, group_id),
+            interrupt_exist_connections: connections.priority_group_interrupt_exist_connections(section, group_id) ? "1" : "0",
+            pin_dashboard: connections.priority_group_pin_dashboard(section, group_id) ? "1" : "0",
+            hide_added_outbounds: connections.priority_group_hide_added_outbounds(section, group_id) ? "1" : "0",
+            levels
+        });
+    }
+    return sprintf("%J", result);
+}
+
 function section_is_subscription_proxy(section) {
     return bool_option(section, "enabled", true) &&
         connections.is_connections_action(option(section, "action", "")) &&
@@ -1072,6 +1112,7 @@ function append_sing_box_rule_signature_body(body, section, sections) {
         body = signature_add_value(body, prefix + ".legacy_interface", option(section, "interface", ""));
         body = signature_add_value(body, prefix + ".legacy_outbound_json", option(section, "outbound_json", ""));
         body = signature_add_value(body, prefix + ".urltests", urltests_signature(section));
+        body = signature_add_value(body, prefix + ".priority_groups", priority_groups_signature(section));
         body = signature_add_value(body, prefix + ".urltest_enabled", bool_option_value(section, "urltest_enabled", false));
         body = signature_add_value(body, prefix + ".detect_server_country", normalize_detect_server_country_method(option(section, "detect_server_country", "flag_emoji")));
         body = signature_add_value(body, prefix + ".urltest_check_interval", section_urltest_check_interval(section));

@@ -4,6 +4,7 @@ let fs = require("fs");
 let common = require("core.common");
 let uci_core = require("core.uci");
 let runtime_constants = require("singbox.constants");
+let runtime_country = require("singbox.country");
 let runtime_dns = require("singbox.dns");
 let runtime_route = require("singbox.route");
 let runtime_rulesets = require("singbox.rulesets");
@@ -102,7 +103,7 @@ function fixture_get_section(section_name) {
     if (section_name == "settings" && type(fixture.settings) == "object")
         return fixture.settings;
 
-    for (let type_name in [ "settings", "server", "section", "connection_url", "subscription_url", "section_interface", "urltest" ]) {
+    for (let type_name in [ "settings", "server", "section", "connection_url", "subscription_url", "section_interface", "urltest", "priority_group", "priority_level" ]) {
         for (let section in fixture_section_list(type_name)) {
             if (as_string(section[".name"]) == section_name)
                 return section;
@@ -706,6 +707,56 @@ function supported_urltest_filter_mode(mode) {
     return mode == "include" || mode == "exclude" || mode == "mixed";
 }
 
+function filter_mode_uses_include(mode) {
+    return mode == "include" || mode == "mixed";
+}
+
+function filter_mode_uses_exclude(mode) {
+    return mode == "exclude" || mode == "mixed";
+}
+
+function configured_country_filter(mode, include_countries, exclude_countries) {
+    return (filter_mode_uses_include(mode) && length(array_or_empty(include_countries)) > 0) ||
+        (filter_mode_uses_exclude(mode) && length(array_or_empty(exclude_countries)) > 0);
+}
+
+function section_needs_country_is(section) {
+    for (let urltest_id in connections.urltests(section)) {
+        let mode = connections.urltest_filter_mode(section, urltest_id);
+        if (connections.urltest_detect_server_country(section, urltest_id) == "country_is" &&
+            configured_country_filter(
+                mode,
+                connections.urltest_include_countries(section, urltest_id),
+                connections.urltest_exclude_countries(section, urltest_id)
+            ))
+            return true;
+    }
+
+    for (let group_id in connections.priority_groups(section)) {
+        for (let level_id in connections.priority_levels(group_id)) {
+            if (connections.priority_level_direct(group_id, level_id))
+                continue;
+            let mode = connections.priority_level_filter_mode(group_id, level_id);
+            if (connections.priority_level_detect_server_country(group_id, level_id) == "country_is" &&
+                configured_country_filter(
+                    mode,
+                    connections.priority_level_include_countries(group_id, level_id),
+                    connections.priority_level_exclude_countries(group_id, level_id)
+                ))
+                return true;
+        }
+    }
+    return false;
+}
+
+function section_has_direct_priority_level(section) {
+    for (let group_id in connections.priority_groups(section))
+        for (let level_id in connections.priority_levels(group_id))
+            if (connections.priority_level_direct(group_id, level_id))
+                return true;
+    return false;
+}
+
 function urltest_country_metadata(section, urltest_id, state) {
     let metadata = object_or_empty(object_or_empty(state.outboundMetadata).countries);
     let detect_method = connections.urltest_detect_server_country(section, urltest_id);
@@ -792,31 +843,29 @@ function urltest_exclude_outbounds(all_outbounds, excluded_outbounds) {
     return result;
 }
 
-function urltest_filtered_outbounds(section, urltest_id, urltest_candidate_tags, state) {
-    let filter_mode = connections.urltest_filter_mode(section, urltest_id);
+function filter_candidate_outbounds(filter_mode, urltest_candidate_tags, names, countries,
+    include_names, include_regex, include_countries, exclude_names, exclude_regex, exclude_countries) {
     let all_outbounds = urltest_all_candidate_outbounds(urltest_candidate_tags);
     if (filter_mode == "" || filter_mode == "disabled")
         return all_outbounds;
     if (!supported_urltest_filter_mode(filter_mode))
         return all_outbounds;
 
-    let names = object_or_empty(object_or_empty(state.outboundMetadata).names);
-    let countries = urltest_country_metadata(section, urltest_id, state);
     let include_outbounds = urltest_matching_candidate_outbounds(
         urltest_candidate_tags,
         names,
         countries,
-        connections.urltest_include_outbounds(section, urltest_id),
-        connections.urltest_include_regex(section, urltest_id),
-        connections.urltest_include_countries(section, urltest_id)
+        include_names,
+        include_regex,
+        include_countries
     );
     let exclude_outbounds = urltest_matching_candidate_outbounds(
         urltest_candidate_tags,
         names,
         countries,
-        connections.urltest_exclude_outbounds(section, urltest_id),
-        connections.urltest_exclude_regex(section, urltest_id),
-        connections.urltest_exclude_countries(section, urltest_id)
+        exclude_names,
+        exclude_regex,
+        exclude_countries
     );
 
     if (filter_mode == "include")
@@ -828,6 +877,89 @@ function urltest_filtered_outbounds(section, urltest_id, urltest_candidate_tags,
     return all_outbounds;
 }
 
+function urltest_filtered_outbounds(section, urltest_id, urltest_candidate_tags, state) {
+    return filter_candidate_outbounds(
+        connections.urltest_filter_mode(section, urltest_id),
+        urltest_candidate_tags,
+        object_or_empty(object_or_empty(state.outboundMetadata).names),
+        urltest_country_metadata(section, urltest_id, state),
+        connections.urltest_include_outbounds(section, urltest_id),
+        connections.urltest_include_regex(section, urltest_id),
+        connections.urltest_include_countries(section, urltest_id),
+        connections.urltest_exclude_outbounds(section, urltest_id),
+        connections.urltest_exclude_regex(section, urltest_id),
+        connections.urltest_exclude_countries(section, urltest_id)
+    );
+}
+
+function priority_level_country_metadata(group_id, level_id, state) {
+    let metadata = object_or_empty(object_or_empty(state.outboundMetadata).countries);
+    let detect_method = connections.priority_level_detect_server_country(group_id, level_id);
+    if (detect_method == "flag_emoji")
+        return runtime_urltest.countries_from_flag_names(object_or_empty(object_or_empty(state.outboundMetadata).names));
+    return metadata;
+}
+
+function priority_level_filtered_outbounds(group_id, level_id, urltest_candidate_tags, state) {
+    if (connections.priority_level_direct(group_id, level_id))
+        return [ runtime_constants.DIRECT_OUTBOUND_TAG ];
+
+    return filter_candidate_outbounds(
+        connections.priority_level_filter_mode(group_id, level_id),
+        urltest_candidate_tags,
+        object_or_empty(object_or_empty(state.outboundMetadata).names),
+        priority_level_country_metadata(group_id, level_id, state),
+        connections.priority_level_include_outbounds(group_id, level_id),
+        connections.priority_level_include_regex(group_id, level_id),
+        connections.priority_level_include_countries(group_id, level_id),
+        connections.priority_level_exclude_outbounds(group_id, level_id),
+        connections.priority_level_exclude_regex(group_id, level_id),
+        connections.priority_level_exclude_countries(group_id, level_id)
+    );
+}
+
+function priority_levels_with_outbounds(group_id, urltest_candidate_tags, state) {
+    let result = [];
+    let assigned = {};
+
+    for (let level_id in connections.priority_levels(group_id)) {
+        let outbounds = [];
+        for (let tag_name in priority_level_filtered_outbounds(group_id, level_id, urltest_candidate_tags, state)) {
+            if (!assigned[tag_name]) {
+                assigned[tag_name] = true;
+                push(outbounds, tag_name);
+            }
+        }
+
+        push(result, {
+            id: level_id,
+            displayName: connections.priority_level_display_name(group_id, level_id),
+            order: int(connections.priority_level_order(group_id, level_id), 10),
+            direct: connections.priority_level_direct(group_id, level_id),
+            filter_mode: connections.priority_level_filter_mode(group_id, level_id),
+            detect_server_country: connections.priority_level_detect_server_country(group_id, level_id),
+            outbounds
+        });
+    }
+
+    return result;
+}
+
+function priority_group_outbounds(levels) {
+    let result = [];
+    let seen = {};
+    for (let level in array_or_empty(levels)) {
+        for (let tag_name in array_or_empty(level.outbounds)) {
+            tag_name = as_string(tag_name);
+            if (tag_name != "" && !seen[tag_name]) {
+                seen[tag_name] = true;
+                push(result, tag_name);
+            }
+        }
+    }
+    return result;
+}
+
 function urltest_outbound_tag(section_name, urltest_id) {
     urltest_id = as_string(urltest_id);
     return urltest_id == "urltest"
@@ -835,17 +967,15 @@ function urltest_outbound_tag(section_name, urltest_id) {
         : outbound_tag(section_name + "-urltest-" + urltest_id);
 }
 
+function priority_outbound_tag(section_name, group_id) {
+    return outbound_tag(section_name + "-priority-" + as_string(group_id));
+}
+
 function add_urltest_outbound(config, section, urltest_id, urltest_candidate_tags, state) {
     let section_name = section[".name"];
     let urltest_outbounds = urltest_filtered_outbounds(section, urltest_id, urltest_candidate_tags, state);
-
-    if (length(urltest_outbounds) == 0)
-        return {
-            tag: "",
-            outbounds: []
-        };
-
     let urltest_tag = urltest_outbound_tag(section_name, urltest_id);
+    let display_name = connections.urltest_display_name(section, urltest_id);
     let urltest_outbound = {
         type: "urltest",
         tag: urltest_tag,
@@ -859,13 +989,74 @@ function add_urltest_outbound(config, section, urltest_id, urltest_candidate_tag
     if (idle_timeout != "")
         urltest_outbound.idle_timeout = idle_timeout;
 
-    push(config.outbounds, urltest_outbound);
-    let display_name = connections.urltest_display_name(section, urltest_id);
     runtime_subscription.remember_outbound_metadata(state, urltest_tag, display_name, urltest_outbound);
-    runtime_subscription.remember_urltest_group(state, urltest_tag, display_name, urltest_outbound);
+    runtime_subscription.remember_urltest_group_config(state, urltest_tag, {
+        displayName: display_name,
+        outbounds: urltest_outbounds,
+        url: urltest_outbound.url,
+        interval: urltest_outbound.interval,
+        tolerance: urltest_outbound.tolerance,
+        idle_timeout: urltest_outbound.idle_timeout,
+        interrupt_exist_connections: urltest_outbound.interrupt_exist_connections
+    });
+
+    if (length(urltest_outbounds) == 0)
+        return {
+            tag: "",
+            outbounds: []
+        };
+
+    push(config.outbounds, urltest_outbound);
     return {
         tag: urltest_tag,
         outbounds: urltest_outbounds
+    };
+}
+
+function add_priority_group_outbound(config, section, group_id, urltest_candidate_tags, state) {
+    let section_name = section[".name"];
+    let levels = priority_levels_with_outbounds(group_id, urltest_candidate_tags, state);
+    let outbounds = priority_group_outbounds(levels);
+    let priority_tag = priority_outbound_tag(section_name, group_id);
+    let display_name = connections.priority_group_display_name(section, group_id);
+    let outbound = {
+        type: "selector",
+        tag: priority_tag,
+        outbounds,
+        default: outbounds[0],
+        interrupt_exist_connections: connections.priority_group_interrupt_exist_connections(section, group_id)
+    };
+
+    runtime_subscription.remember_outbound_metadata(state, priority_tag, display_name, outbound);
+    runtime_subscription.remember_priority_group(state, priority_tag, {
+        id: group_id,
+        tag: priority_tag,
+        section: section_name,
+        displayName: display_name,
+        health_url: connections.priority_group_health_url(section, group_id),
+        active_check_interval: connections.priority_group_active_check_interval(section, group_id),
+        check_timeout: connections.priority_group_check_timeout(section, group_id),
+        recovery_check_interval: connections.priority_group_recovery_check_interval(section, group_id),
+        pick_fastest: connections.priority_group_pick_fastest(section, group_id),
+        switch_to_faster_same_priority: connections.priority_group_switch_to_faster_same_priority(section, group_id),
+        fastest_check_interval: connections.priority_group_fastest_check_interval(section, group_id),
+        interrupt_exist_connections: connections.priority_group_interrupt_exist_connections(section, group_id),
+        pin_dashboard: connections.priority_group_pin_dashboard(section, group_id),
+        hide_added_outbounds: connections.priority_group_hide_added_outbounds(section, group_id),
+        outbounds,
+        levels
+    });
+
+    if (length(outbounds) == 0)
+        return {
+            tag: "",
+            outbounds: []
+        };
+
+    push(config.outbounds, outbound);
+    return {
+        tag: priority_tag,
+        outbounds
     };
 }
 
@@ -875,6 +1066,7 @@ function add_proxy_selector(config, section, selector_tags, urltest_candidate_ta
     let selector_outbounds = selector_tags;
     let selector_default = selector_tags[0];
     let urltest_tags = [];
+    let priority_tags = [];
     let hidden_selector_tags = {};
 
     for (let urltest_id in connections.urltests(section)) {
@@ -890,7 +1082,20 @@ function add_proxy_selector(config, section, selector_tags, urltest_candidate_ta
         }
     }
 
-    if (length(urltest_tags) > 0) {
+    for (let group_id in connections.priority_groups(section)) {
+        let priority = add_priority_group_outbound(config, section, group_id, urltest_candidate_tags, state);
+        if (priority.tag == "")
+            continue;
+
+        push(priority_tags, priority.tag);
+
+        if (connections.priority_group_hide_added_outbounds(section, group_id)) {
+            for (let tag in array_or_empty(priority.outbounds))
+                hidden_selector_tags[tag] = true;
+        }
+    }
+
+    if (length(urltest_tags) > 0 || length(priority_tags) > 0) {
         selector_outbounds = [];
         for (let tag in selector_tags) {
             if (!hidden_selector_tags[tag])
@@ -898,7 +1103,9 @@ function add_proxy_selector(config, section, selector_tags, urltest_candidate_ta
         }
         for (let tag in urltest_tags)
             push(selector_outbounds, tag);
-        selector_default = urltest_tags[0];
+        for (let tag in priority_tags)
+            push(selector_outbounds, tag);
+        selector_default = length(urltest_tags) > 0 ? urltest_tags[0] : priority_tags[0];
     }
 
     push(config.outbounds, {
@@ -1677,6 +1884,13 @@ function add_connections_outbound(config, section, taken) {
 
     if (length(selector_tags) == 0)
         runtime_generate_unsupported("connection section has no usable outbounds");
+
+    if (section_needs_country_is(section)) {
+        let previous_state = read_json_file(runtime_subscription.section_cache_path(section_name));
+        state.outboundMetadata.countries = runtime_country.detect(state.servers, previous_state);
+    }
+    if (section_has_direct_priority_level(section))
+        state.outboundMetadata.names[runtime_constants.DIRECT_OUTBOUND_TAG] = "Direct";
 
     state.urltestCandidateTags = unique_string_array(urltest_candidate_tags);
     add_proxy_selector(config, section, selector_tags, urltest_candidate_tags, state);

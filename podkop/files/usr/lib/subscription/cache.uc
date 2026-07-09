@@ -1112,6 +1112,7 @@ function normalize_cache(cache, section, format_version) {
     cache.servers = object_or_empty(cache.servers);
     cache.urltestCandidateTags = array_or_empty(cache.urltestCandidateTags);
     cache.urltestGroups = object_or_empty(cache.urltestGroups);
+    cache.priorityGroups = object_or_empty(cache.priorityGroups);
     cache.subscriptionMetadata = array_or_empty(cache.subscriptionMetadata);
     return cache;
 }
@@ -1712,6 +1713,7 @@ function get_outbound_metadata(cache_dir, section, legacy_path) {
     let countries = object_or_empty(metadata.countries);
     let candidate_tags = array_or_empty(cache.urltestCandidateTags);
     let groups = object_or_empty(cache.urltestGroups);
+    let priority_groups = object_or_empty(cache.priorityGroups);
     let result = {
         names: {},
         countries: {}
@@ -1730,11 +1732,11 @@ function get_outbound_metadata(cache_dir, section, legacy_path) {
     }
     else {
         for (let tag, name in names) {
-            if (!groups[tag])
+            if (!groups[tag] && !priority_groups[tag])
                 result.names[tag] = name;
         }
         for (let tag, country in countries) {
-            if (!groups[tag])
+            if (!groups[tag] && !priority_groups[tag])
                 result.countries[tag] = country;
         }
     }

@@ -1134,9 +1134,25 @@ const ButtonAddSettingsUIDynamicList = SettingsUIDynamicList.extend({
 });
 
 const SettingsDynamicList = form.DynamicList.extend({
+  childOwner(section_id) {
+    return typeof this.childOwnerId === "function"
+      ? `${this.childOwnerId(section_id) || ""}`.trim()
+      : section_id;
+  },
+
+  parentSection(section_id) {
+    return typeof this.parentSectionId === "function"
+      ? `${this.parentSectionId(section_id) || ""}`.trim()
+      : section_id;
+  },
+
   load(section_id) {
     if (this.childType) {
-      return getChildItemIds(section_id, this.childType);
+      return getChildItemIds(
+        this.childOwner(section_id),
+        this.childType,
+        this.ownerOption,
+      );
     }
 
     return form.DynamicList.prototype.load.apply(this, arguments);
@@ -1163,33 +1179,45 @@ const SettingsDynamicList = form.DynamicList.extend({
           : this.addButtonLabel,
       settingsHandler: (itemValue, _item, widget, context) => {
         if (typeof this.renderItemSettingsModal === "function") {
+          const ownerId = this.childOwner(section_id);
           this.renderItemSettingsModal(
-            section_id,
+            ownerId,
             `${itemValue}`,
             this,
             widget,
             _item,
-            context || {},
+            Object.assign({}, context || {}, {
+              parentSectionId: this.parentSection(section_id),
+              ownerId,
+            }),
           );
         }
       },
       itemLabel: (itemValue, text) => {
         if (typeof this.renderListItemLabel === "function") {
-          return this.renderListItemLabel(section_id, `${itemValue}`, text);
+          return this.renderListItemLabel(
+            this.childOwner(section_id),
+            `${itemValue}`,
+            text,
+          );
         }
 
         return text;
       },
       hasSettings: (itemValue) => {
         if (typeof this.hasItemSettings === "function") {
-          return this.hasItemSettings(section_id, `${itemValue}`);
+          return this.hasItemSettings(
+            this.childOwner(section_id),
+            `${itemValue}`,
+          );
         }
 
         if (this.childType) {
           return isExistingChildItem(
-            section_id,
+            this.childOwner(section_id),
             `${itemValue}`,
             this.childType,
+            this.ownerOption,
           );
         }
 
@@ -1197,16 +1225,19 @@ const SettingsDynamicList = form.DynamicList.extend({
       },
       hasEquivalentValue: (itemValue, dl) => {
         const inputValueForItem = (value) => {
+          const ownerId = this.childOwner(section_id);
+
           if (typeof this.inputValueForItem === "function") {
-            return `${this.inputValueForItem(section_id, `${value || ""}`) || ""}`.trim();
+            return `${this.inputValueForItem(ownerId, `${value || ""}`) || ""}`.trim();
           }
 
           if (this.childType && this.childValueOption) {
             return childItemInputValue(
-              section_id,
+              ownerId,
               `${value || ""}`,
               this.childType,
               this.childValueOption,
+              this.ownerOption,
             );
           }
 
@@ -1233,8 +1264,10 @@ const SettingsDynamicList = form.DynamicList.extend({
       typeof this.validateItemsOnSave === "function"
     ) {
       const result = this.validateItemsOnSave(
-        section_id,
+        this.childType ? this.childOwner(section_id) : section_id,
         this.formvalue(section_id),
+        this,
+        section_id,
       );
       if (result !== true) {
         const title = this.stripTags(this.title).trim();
@@ -1251,30 +1284,36 @@ const SettingsDynamicList = form.DynamicList.extend({
 
   write(section_id, value) {
     if (this.childType) {
+      const ownerId = this.childOwner(section_id);
       const itemIds = materializeChildItems(
-        section_id,
+        ownerId,
         {
           typeName: this.childType,
           valueOption: this.childValueOption,
+          ownerOption: this.ownerOption,
+          createId: this.createId,
           defaults: this.childDefaults,
           stagedSettings:
             typeof this.stagedChildSettings === "function"
               ? (itemValue, itemId, created) =>
-                  this.stagedChildSettings(
-                    section_id,
-                    itemValue,
-                    itemId,
-                    created,
-                  )
+                  this.stagedChildSettings(ownerId, itemValue, itemId, created)
               : null,
         },
         value,
       );
-      cleanupRemovedChildItems(section_id, this.childType, itemIds);
+      cleanupRemovedChildItems(
+        ownerId,
+        this.childType,
+        itemIds,
+        this.ownerOption,
+      );
+      if (typeof this.afterMaterializeChildItems === "function") {
+        this.afterMaterializeChildItems(ownerId, itemIds);
+      }
       uci.unset(UCI_PACKAGE, section_id, this.option);
-      cleanupListItemSettings(section_id, this.settingsKey, itemIds);
+      cleanupListItemSettings(ownerId, this.settingsKey, itemIds);
       if (typeof this.clearStagedChildSettings === "function") {
-        this.clearStagedChildSettings(section_id);
+        this.clearStagedChildSettings(ownerId);
       }
       return;
     }
@@ -1286,7 +1325,12 @@ const SettingsDynamicList = form.DynamicList.extend({
 
   remove(section_id) {
     if (this.childType) {
-      cleanupRemovedChildItems(section_id, this.childType, []);
+      cleanupRemovedChildItems(
+        this.childOwner(section_id),
+        this.childType,
+        [],
+        this.ownerOption,
+      );
       uci.unset(UCI_PACKAGE, section_id, this.option);
       return;
     }
@@ -1524,6 +1568,15 @@ function urlTestFilterModeChoices() {
   ];
 }
 
+function priorityLevelFilterModeChoices() {
+  return [
+    { value: "disabled", label: _("All remaining servers") },
+    { value: "include", label: _("Only selected") },
+    { value: "exclude", label: _("All remaining except selected") },
+    { value: "mixed", label: _("Only selected except exclusions") },
+  ];
+}
+
 function serverCountryDetectionChoices() {
   return [
     { value: "flag_emoji", label: _("By flag emoji from name") },
@@ -1705,6 +1758,94 @@ function urlTestChildDefaults() {
     filter_mode: "disabled",
     detect_server_country: "flag_emoji",
   };
+}
+
+function priorityGroupSettingsKeys() {
+  return [
+    "name",
+    "health_url",
+    "active_check_interval",
+    "check_timeout",
+    "recovery_check_interval",
+    "pick_fastest",
+    "switch_to_faster_same_priority",
+    "fastest_check_interval",
+    "interrupt_exist_connections",
+    "pin_dashboard",
+    "hide_added_outbounds",
+  ];
+}
+
+function defaultPriorityGroupSettings() {
+  return {
+    name: "",
+    health_url: "https://www.gstatic.com/generate_204",
+    active_check_interval: "5s",
+    check_timeout: "2s",
+    recovery_check_interval: "15s",
+    pick_fastest: "0",
+    switch_to_faster_same_priority: "0",
+    fastest_check_interval: "3m",
+    interrupt_exist_connections: "1",
+    pin_dashboard: "1",
+    hide_added_outbounds: "0",
+  };
+}
+
+function priorityGroupChildDefaults() {
+  return {
+    health_url: "https://www.gstatic.com/generate_204",
+    active_check_interval: "5s",
+    check_timeout: "2s",
+    recovery_check_interval: "15s",
+    pick_fastest: "0",
+    switch_to_faster_same_priority: "0",
+    fastest_check_interval: "3m",
+    interrupt_exist_connections: "1",
+    pin_dashboard: "1",
+    hide_added_outbounds: "0",
+  };
+}
+
+function priorityLevelSettingsKeys() {
+  return [
+    "name",
+    "order",
+    "direct",
+    "filter_mode",
+    "detect_server_country",
+    "country",
+    "server_name",
+    "regex",
+    "exclude_countries",
+    "exclude_outbounds",
+    "exclude_regex",
+  ];
+}
+
+function defaultPriorityLevelSettings() {
+  return {
+    name: "",
+    order: "0",
+    direct: "0",
+    filter_mode: "include",
+    detect_server_country: "flag_emoji",
+  };
+}
+
+function randomPriorityGroupId() {
+  for (let i = 0; i < 100; i += 1) {
+    const value = Math.floor(Math.random() * 0xffffffff)
+      .toString(16)
+      .padStart(8, "0");
+    const id = `pg_${value}`;
+
+    if (!uci.get(UCI_PACKAGE, id)) {
+      return id;
+    }
+  }
+
+  return `pg_${Date.now().toString(16)}`;
 }
 
 function addConnectionUrlItemOptions(itemSection, options = {}) {
@@ -2163,6 +2304,378 @@ function addUrlTestItemOptions(itemSection, options = {}) {
   });
 }
 
+function priorityLevelSettingsForValidation(groupId, levelId, option) {
+  const store = childPendingSettingsStore(option, groupId);
+
+  if (isExistingChildItem(groupId, levelId, "priority_level", "group")) {
+    return readChildSettings(
+      levelId,
+      priorityLevelSettingsKeys(),
+      defaultPriorityLevelSettings(),
+    );
+  }
+
+  return Object.assign({}, store[levelId] || {});
+}
+
+function validatePriorityLevelItemsBeforeSave(groupId, values, option) {
+  const normalizedValues = normalizeDynamicListItems(values);
+
+  for (const value of normalizedValues) {
+    const levelId = `${value || ""}`;
+    const settings = priorityLevelSettingsForValidation(
+      groupId,
+      levelId,
+      option,
+    );
+
+    if (!`${settings.name || ""}`.trim()) {
+      return _("Enter a level name");
+    }
+  }
+
+  return true;
+}
+
+function addPriorityLevelItemOptions(itemSection, options = {}) {
+  const parentSectionForItem =
+    typeof options.parentSectionId === "function"
+      ? options.parentSectionId
+      : parentSectionIdForItem;
+
+  let o = itemSection.option(
+    form.Value,
+    "name",
+    _("Level name"),
+    _("Name shown in the priority level list"),
+  );
+  o.rmempty = false;
+  o.validate = function (_itemId, value) {
+    return `${value || ""}`.trim() ? true : _("Enter a level name");
+  };
+
+  o = itemSection.option(
+    form.Flag,
+    "direct",
+    _("Direct connection"),
+    _("Traffic for this level goes directly."),
+  );
+  o.default = "0";
+  o.rmempty = false;
+
+  o = itemSection.option(
+    form.ListValue,
+    "filter_mode",
+    _("Server filtering"),
+    _(
+      "All remaining servers means every server not already assigned to a higher-priority level.",
+    ),
+  );
+  priorityLevelFilterModeChoices().forEach((choice) =>
+    o.value(choice.value, choice.label),
+  );
+  o.default = "include";
+  o.depends("direct", "0");
+
+  o = itemSection.option(
+    form.ListValue,
+    "detect_server_country",
+    _("Detect server country"),
+  );
+  ["exclude", "include", "mixed"].forEach((mode) =>
+    o.depends({ direct: "0", filter_mode: mode }),
+  );
+  serverCountryDetectionChoices().forEach((choice) =>
+    o.value(choice.value, choice.label),
+  );
+  o.default = "flag_emoji";
+
+  [
+    [
+      "country",
+      _("Include countries"),
+      _("Only from the specified countries."),
+      countryChoices(),
+      validateCountryCode,
+      ["include", "mixed"],
+    ],
+    [
+      "server_name",
+      _("Include servers"),
+      _("Only the specified servers."),
+      null,
+      null,
+      ["include", "mixed"],
+    ],
+    [
+      "regex",
+      _("Include by regular expression"),
+      _("Only servers whose names match the expression."),
+      null,
+      validateRegex,
+      ["include", "mixed"],
+    ],
+    [
+      "exclude_countries",
+      _("Exclude countries"),
+      _("Remove servers from the specified countries from this level."),
+      countryChoices(),
+      validateCountryCode,
+      ["exclude", "mixed"],
+    ],
+    [
+      "exclude_outbounds",
+      _("Exclude servers"),
+      _("Remove the specified servers from this level."),
+      null,
+      null,
+      ["exclude", "mixed"],
+    ],
+    [
+      "exclude_regex",
+      _("Exclude by regular expression"),
+      _("Remove servers whose names match the expression from this level."),
+      null,
+      validateRegex,
+      ["exclude", "mixed"],
+    ],
+  ].forEach(([key, label, description, choices, validator, modes]) => {
+    const list = itemSection.option(form.DynamicList, key, label, description);
+    modes.forEach((mode) => list.depends({ direct: "0", filter_mode: mode }));
+    list.rmempty = true;
+    if (choices) {
+      choices.forEach((choice) => list.value(choice.value, choice.label));
+      list.placeholder = _("-- Select --");
+    }
+    if (key === "server_name" || key === "exclude_outbounds") {
+      list.load = function (itemId) {
+        const sectionId = parentSectionForItem(itemId);
+        const values = normalizeOptionValues(optionMapValue(this, itemId, key));
+
+        return loadOutboundNameChoices(sectionId).then(() => {
+          refreshOptionChoices(
+            this,
+            currentOutboundNameChoices(sectionId, values),
+          );
+          return values;
+        });
+      };
+      list.placeholder = _("-- Select --");
+    }
+    if (validator) {
+      list.validate = function (_itemId, value) {
+        return validator(null, value);
+      };
+    }
+  });
+}
+
+function addPriorityGroupItemOptions(itemSection, options = {}) {
+  const parentSectionForGroup =
+    typeof options.parentSectionId === "function"
+      ? options.parentSectionId
+      : parentSectionIdForItem;
+  const ownerId =
+    typeof options.ownerId === "function" ? options.ownerId : () => "";
+
+  let o = itemSection.option(
+    form.Value,
+    "name",
+    _("Display name"),
+    _("Name displayed on the dashboard"),
+  );
+  o.rmempty = false;
+  o.validate = function (_itemId, value) {
+    return `${value || ""}`.trim() ? true : _("Enter a display name");
+  };
+
+  o = itemSection.option(
+    form.Value,
+    "health_url",
+    _("Check URL"),
+    _("URL used to check whether a server is alive"),
+  );
+  o.default = "https://www.gstatic.com/generate_204";
+  o.rmempty = false;
+  urlTestUrlChoices().forEach((value) => o.value(value));
+  o.validate = function (_itemId, value) {
+    return validateUrlTestUrl(value);
+  };
+
+  o = itemSection.option(
+    form.Value,
+    "active_check_interval",
+    _("Check interval"),
+    _("How often the currently selected server is checked"),
+  );
+  o.default = "5s";
+  o.rmempty = false;
+  o.validate = function (_itemId, value) {
+    return validateRequiredSingBoxDuration(value);
+  };
+
+  o = itemSection.option(
+    form.Value,
+    "check_timeout",
+    _("Unavailability timeout"),
+    _("Check timeout after which the server is considered dead"),
+  );
+  o.default = "2s";
+  o.rmempty = false;
+  o.validate = function (_itemId, value) {
+    return validateRequiredSingBoxDuration(value);
+  };
+
+  o = itemSection.option(
+    form.Value,
+    "recovery_check_interval",
+    _("Higher-level check interval"),
+    _(
+      "How often higher priority levels are checked while a lower level is active",
+    ),
+  );
+  o.default = "15s";
+  o.rmempty = false;
+  o.validate = function (_itemId, value) {
+    return validateRequiredSingBoxDuration(value);
+  };
+
+  o = itemSection.option(
+    form.Flag,
+    "pick_fastest",
+    _("Fastest node selection"),
+    _(
+      "Check the whole level and select the alive server with the lowest delay",
+    ),
+  );
+  o.default = "0";
+  o.rmempty = false;
+
+  o = itemSection.option(
+    form.Flag,
+    "switch_to_faster_same_priority",
+    _("Current-level fastest node selection"),
+    _(
+      "Periodically check the current level and switch to a faster alive server",
+    ),
+  );
+  o.default = "0";
+  o.rmempty = false;
+
+  o = itemSection.option(
+    form.Value,
+    "fastest_check_interval",
+    _("Faster server search interval"),
+    _("Use sing-box duration format like 1d, 12h or 30m"),
+  );
+  o.depends("switch_to_faster_same_priority", "1");
+  o.default = "3m";
+  o.rmempty = false;
+  o.validate = function (itemId, value) {
+    return optionMapValue(this, itemId, "switch_to_faster_same_priority") ===
+      "1"
+      ? validateRequiredSingBoxDuration(value)
+      : true;
+  };
+
+  o = itemSection.option(
+    form.Flag,
+    "interrupt_exist_connections",
+    _("Interrupt existing connections"),
+    _("Interrupt existing connections when priority failover switches server"),
+  );
+  o.default = "1";
+  o.rmempty = false;
+
+  o = itemSection.option(
+    form.Flag,
+    "pin_dashboard",
+    _("Pin on dashboard"),
+    _("Keep Priority before latency-sorted servers"),
+  );
+  o.default = "1";
+  o.rmempty = false;
+
+  o = itemSection.option(
+    form.Flag,
+    "hide_added_outbounds",
+    _("Hide added servers"),
+    _("Hide dashboard servers added to Priority"),
+  );
+  o.default = "0";
+  o.rmempty = false;
+
+  o = itemSection.option(
+    ButtonAddSettingsDynamicList,
+    "priority_level",
+    _("Priority levels"),
+    _("Top level has the highest priority; lower levels are used as fallback"),
+  );
+  o.rmempty = true;
+  o.modalonly = true;
+  o.addButtonLabel = _("+ Add level");
+  o.childType = "priority_level";
+  o.ownerOption = "group";
+  o.childOwnerId = ownerId;
+  o.parentSectionId = parentSectionForGroup;
+  o.childValueOption = "name";
+  o.childDefaults = defaultPriorityLevelSettings();
+  o.renderItemSettingsModal = showPriorityLevelSettingsModal;
+  o.validateItemsOnSave = function (groupId, values) {
+    return validatePriorityLevelItemsBeforeSave(groupId, values, this);
+  };
+  o.hasItemSettings = function (groupId, value) {
+    const normalized = `${value || ""}`.trim();
+
+    if (isExistingChildItem(groupId, normalized, "priority_level", "group")) {
+      return true;
+    }
+
+    return normalized.length > 0;
+  };
+  o.inputValueForItem = function (groupId, value) {
+    const inputValue = childItemInputValue(
+      groupId,
+      value,
+      "priority_level",
+      "name",
+      "group",
+    );
+    const store = childPendingSettingsStore(this, groupId);
+    return store[inputValue] && store[inputValue].name
+      ? store[inputValue].name
+      : inputValue;
+  };
+  o.stagedChildSettings = function (groupId, value) {
+    const id = childItemInputValue(
+      groupId,
+      value,
+      "priority_level",
+      "name",
+      "group",
+    );
+    const store = childPendingSettingsStore(this, groupId);
+    return store[id] ? Object.assign({}, store[id]) : null;
+  };
+  o.clearStagedChildSettings = function (groupId) {
+    if (this.pendingChildSettings) {
+      delete this.pendingChildSettings[groupId];
+    }
+  };
+  o.afterMaterializeChildItems = function (_groupId, itemIds) {
+    itemIds.forEach((itemId, index) => {
+      uci.set(UCI_PACKAGE, itemId, "order", `${index}`);
+    });
+  };
+  o.renderListItemLabel = function (groupId, itemId) {
+    return E(
+      "span",
+      { class: "pdk-dynlist-label" },
+      this.inputValueForItem(groupId, itemId),
+    );
+  };
+}
+
 function settingValueEquals(left, right) {
   const normalize = (value) => {
     if (Array.isArray(value)) {
@@ -2315,12 +2828,18 @@ function renderStackedJsonSettingsModal(title, map, onSave) {
 
 function showChildItemSettingsModal(section_id, itemValue, option, settings) {
   const value = `${itemValue || ""}`.trim();
-  const existing = isExistingChildItem(section_id, value, settings.typeName);
+  const existing = isExistingChildItem(
+    section_id,
+    value,
+    settings.typeName,
+    settings.ownerOption,
+  );
   const inputValue = childItemInputValue(
     section_id,
     value,
     settings.typeName,
     settings.valueOption,
+    settings.ownerOption,
   );
   const defaults =
     typeof settings.defaults === "function"
@@ -2341,6 +2860,7 @@ function showChildItemSettingsModal(section_id, itemValue, option, settings) {
   itemSection.addremove = false;
   settings.addOptions(itemSection, {
     parentSectionId: () => section_id,
+    ownerId: () => value || section_id,
   });
 
   return renderStackedJsonSettingsModal(
@@ -2454,6 +2974,111 @@ function showUrlTestSettingsModal(
   });
 }
 
+function showPriorityLevelSettingsModal(
+  groupId,
+  itemValue,
+  option,
+  widget,
+  itemNode,
+  context = {},
+) {
+  return showChildItemSettingsModal(groupId, itemValue, option, {
+    typeName: "priority_level",
+    ownerOption: "group",
+    valueOption: "name",
+    keys: priorityLevelSettingsKeys(),
+    defaults: defaultPriorityLevelSettings(),
+    addOptions: (itemSection) =>
+      addPriorityLevelItemOptions(itemSection, {
+        parentSectionId: () => context.parentSectionId || "",
+      }),
+    title: (name) => {
+      const normalized = `${name || ""}`.trim();
+      return normalized
+        ? `${_("Priority level settings")}: ${normalized}`
+        : _("Priority level settings");
+    },
+    afterSave: (itemId, inputValue, settings, existing) => {
+      const displayName = `${settings.name || inputValue || ""}`.trim();
+
+      if (existing) {
+        updateDynamicListItemLabel(itemNode, displayName);
+        return;
+      }
+
+      if (context.adding) {
+        addDynamicListItem(widget, displayName, displayName);
+      } else {
+        updateDynamicListItemLabel(itemNode, displayName);
+      }
+    },
+  });
+}
+
+function createPriorityGroupItem(section_id, groupId, settings) {
+  const created = uci.add(UCI_PACKAGE, "priority_group", groupId) || groupId;
+
+  uci.set(UCI_PACKAGE, created, "section", section_id);
+  Object.entries(priorityGroupChildDefaults()).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== "") {
+      uci.set(UCI_PACKAGE, created, key, `${value}`);
+    }
+  });
+  applyChildItemSettings(created, settings);
+
+  return created;
+}
+
+function showPriorityGroupSettingsModal(
+  section_id,
+  itemValue,
+  option,
+  widget,
+  itemNode,
+  context = {},
+) {
+  const groupId = context.adding
+    ? randomPriorityGroupId()
+    : `${itemValue || ""}`.trim();
+
+  if (!groupId) {
+    return null;
+  }
+
+  return showChildItemSettingsModal(section_id, groupId, option, {
+    typeName: "priority_group",
+    valueOption: "name",
+    keys: priorityGroupSettingsKeys(),
+    defaults: defaultPriorityGroupSettings(),
+    addOptions: addPriorityGroupItemOptions,
+    title: (name) => {
+      if (context.adding) {
+        return _("Priority settings");
+      }
+
+      const normalized = `${name || ""}`.trim();
+      return normalized
+        ? `${_("Priority settings")}: ${normalized}`
+        : _("Priority settings");
+    },
+    afterSave: (itemId, inputValue, settings, existing) => {
+      const displayName = `${settings.name || inputValue || ""}`.trim();
+
+      if (!existing) {
+        const created = createPriorityGroupItem(section_id, groupId, settings);
+        const store = childPendingSettingsStore(option, section_id);
+        delete store[groupId];
+        delete store[inputValue];
+        delete store[displayName];
+        addDynamicListItem(widget, created, displayName);
+        return;
+      }
+
+      updateDynamicListItemLabel(itemNode, displayName);
+    },
+  });
+}
+
 function validateUrlTestItemsBeforeSave(section_id, values, option) {
   const store = childPendingSettingsStore(option, section_id);
 
@@ -2471,6 +3096,22 @@ function validateUrlTestItemsBeforeSave(section_id, values, option) {
     }
 
     if (!`${name || ""}`.trim()) {
+      return _("Enter a display name");
+    }
+  }
+
+  return true;
+}
+
+function validatePriorityGroupItemsBeforeSave(section_id, values) {
+  for (const value of normalizeDynamicListItems(values)) {
+    const groupId = `${value || ""}`.trim();
+
+    if (!isExistingChildItem(section_id, groupId, "priority_group")) {
+      return _("Open priority settings and enter a display name");
+    }
+
+    if (!`${uci.get(UCI_PACKAGE, groupId, "name") || ""}`.trim()) {
       return _("Enter a display name");
     }
   }
@@ -2820,12 +3461,34 @@ function writeListOption(section_id, key, values) {
   }
 }
 
-function getChildItemIds(section_id, typeName) {
-  return uci
+function childOwnerOption(ownerOption) {
+  return ownerOption || "section";
+}
+
+function childItemOrder(item) {
+  const value = item ? item.order : null;
+  const parsed = Number.parseInt(value == null ? "0" : `${value}`, 10);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function getChildItemIds(section_id, typeName, ownerOption) {
+  const ownerKey = childOwnerOption(ownerOption);
+  const items = uci
     .sections(UCI_PACKAGE, typeName)
-    .filter((item) => item.section === section_id)
-    .map((item) => item[".name"])
-    .filter(Boolean);
+    .filter((item) => item[ownerKey] === section_id);
+
+  if (typeName === "priority_level") {
+    items.sort((a, b) => {
+      const orderDiff = childItemOrder(a) - childItemOrder(b);
+      if (orderDiff !== 0) {
+        return orderDiff;
+      }
+
+      return `${a[".name"] || ""}`.localeCompare(`${b[".name"] || ""}`);
+    });
+  }
+
+  return items.map((item) => item[".name"]).filter(Boolean);
 }
 
 function childItemValue(itemId, valueOption, fallback) {
@@ -2837,33 +3500,52 @@ function childItemValue(itemId, valueOption, fallback) {
   return value == null || value === "" ? fallback || itemId : `${value}`;
 }
 
-function childItemInputValue(section_id, value, typeName, valueOption) {
+function childItemInputValue(
+  section_id,
+  value,
+  typeName,
+  valueOption,
+  ownerOption,
+) {
   const itemId = `${value || ""}`;
 
-  if (isExistingChildItem(section_id, itemId, typeName)) {
+  if (isExistingChildItem(section_id, itemId, typeName, ownerOption)) {
     return childItemValue(itemId, valueOption, itemId);
   }
 
   return itemId;
 }
 
-function isExistingChildItem(section_id, itemId, typeName) {
+function isExistingChildItem(section_id, itemId, typeName, ownerOption) {
+  const ownerKey = childOwnerOption(ownerOption);
+
   return Boolean(
     itemId &&
       uci.get(UCI_PACKAGE, itemId, ".type") === typeName &&
-      uci.get(UCI_PACKAGE, itemId, "section") === section_id,
+      uci.get(UCI_PACKAGE, itemId, ownerKey) === section_id,
   );
 }
 
 function findChildItemForInput(section_id, options, inputValue) {
   const rawValue = `${inputValue || ""}`.trim();
 
-  if (isExistingChildItem(section_id, rawValue, options.typeName)) {
+  if (
+    isExistingChildItem(
+      section_id,
+      rawValue,
+      options.typeName,
+      options.ownerOption,
+    )
+  ) {
     return rawValue;
   }
 
   if (options.valueOption) {
-    return getChildItemIds(section_id, options.typeName).find(
+    return getChildItemIds(
+      section_id,
+      options.typeName,
+      options.ownerOption,
+    ).find(
       (itemId) =>
         childItemValue(itemId, options.valueOption, itemId) === rawValue,
     );
@@ -2886,9 +3568,21 @@ function createChildItem(section_id, options, inputValue) {
     };
   }
 
-  const itemId = uci.add(UCI_PACKAGE, options.typeName);
+  const requestedId =
+    typeof options.createId === "function"
+      ? `${options.createId(rawValue, section_id) || ""}`.trim()
+      : "";
+  const itemId =
+    (requestedId && uci.add(UCI_PACKAGE, options.typeName, requestedId)) ||
+    requestedId ||
+    uci.add(UCI_PACKAGE, options.typeName);
 
-  uci.set(UCI_PACKAGE, itemId, "section", section_id);
+  uci.set(
+    UCI_PACKAGE,
+    itemId,
+    childOwnerOption(options.ownerOption),
+    section_id,
+  );
 
   if (options.valueOption) {
     uci.set(UCI_PACKAGE, itemId, options.valueOption, rawValue);
@@ -2961,11 +3655,25 @@ function materializeChildItems(section_id, options, inputValue) {
   return result;
 }
 
-function cleanupRemovedChildItems(section_id, typeName, keepValues) {
+function cleanupPriorityLevelsForGroup(groupId) {
+  getChildItemIds(groupId, "priority_level", "group").forEach((levelId) => {
+    uci.remove(UCI_PACKAGE, levelId);
+  });
+}
+
+function cleanupRemovedChildItems(
+  section_id,
+  typeName,
+  keepValues,
+  ownerOption,
+) {
   const keep = new Set(normalizeDynamicListItems(keepValues));
 
-  getChildItemIds(section_id, typeName).forEach((itemId) => {
+  getChildItemIds(section_id, typeName, ownerOption).forEach((itemId) => {
     if (!keep.has(itemId)) {
+      if (typeName === "priority_group") {
+        cleanupPriorityLevelsForGroup(itemId);
+      }
       uci.remove(UCI_PACKAGE, itemId);
     }
   });
@@ -5974,6 +6682,43 @@ function createSectionContent(section) {
     if (this.pendingChildSettings) {
       delete this.pendingChildSettings[section_id];
     }
+  };
+  o.renderListItemLabel = function (section_id, itemId) {
+    return E(
+      "span",
+      { class: "pdk-dynlist-label" },
+      this.inputValueForItem(section_id, itemId),
+    );
+  };
+
+  o = section.taboption(
+    "settings",
+    ButtonAddSettingsDynamicList,
+    "priority_group",
+    "Priority",
+    _("Server group for priority failover"),
+  );
+  o.depends("action", "connection");
+  o.rmempty = true;
+  o.modalonly = true;
+  o.addButtonLabel = _("+ Add priority");
+  o.childType = "priority_group";
+  o.childValueOption = "name";
+  o.childDefaults = priorityGroupChildDefaults();
+  o.createId = () => randomPriorityGroupId();
+  o.renderItemSettingsModal = showPriorityGroupSettingsModal;
+  o.validateItemsOnSave = validatePriorityGroupItemsBeforeSave;
+  o.hasItemSettings = function (section_id, value) {
+    const normalized = `${value || ""}`.trim();
+
+    if (isExistingChildItem(section_id, normalized, "priority_group")) {
+      return true;
+    }
+
+    return normalized.length > 0;
+  };
+  o.inputValueForItem = function (section_id, value) {
+    return childItemInputValue(section_id, value, "priority_group", "name");
   };
   o.renderListItemLabel = function (section_id, itemId) {
     return E(

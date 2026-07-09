@@ -11,7 +11,9 @@ const ITEM_TYPES = [
     "connection_url",
     "subscription_url",
     "section_interface",
-    "urltest"
+    "urltest",
+    "priority_group",
+    "priority_level"
 ];
 
 let item_sections = null;
@@ -161,6 +163,15 @@ function child_items(parent, type_name) {
     let result = [];
     for (let child in object_or_empty(object_or_empty(get_item_sections())[type_name]).list || [])
         if (option(child, "section", "") == section_name(parent))
+            push(result, child);
+    return result;
+}
+
+function child_items_by_owner(type_name, owner_key, owner_value) {
+    owner_value = as_string(owner_value);
+    let result = [];
+    for (let child in object_or_empty(object_or_empty(get_item_sections())[type_name]).list || [])
+        if (option(child, owner_key, "") == owner_value)
             push(result, child);
     return result;
 }
@@ -341,6 +352,59 @@ function urltests(section) {
         return result;
 
     return bool_option(section, "urltest_enabled", false) ? [ "urltest" ] : [];
+}
+
+function priority_groups(section) {
+    let result = [];
+    for (let child in child_items(section, "priority_group")) {
+        let id = section_name(child);
+        if (id != "")
+            push(result, id);
+    }
+    return result;
+}
+
+function priority_group_child(section, value) {
+    return owned_child_section(section, "priority_group", value);
+}
+
+function priority_group_settings(section, value) {
+    let child = priority_group_child(section, value);
+    return child != null ? child : {};
+}
+
+function priority_level_child(group_id, value) {
+    let child = child_section("priority_level", value);
+    if (type(child) != "object")
+        return null;
+    return option(child, "group", "") == as_string(group_id) ? child : null;
+}
+
+function priority_level_sort(left, right) {
+    let left_order = int(option(left, "order", "0"), 10);
+    let right_order = int(option(right, "order", "0"), 10);
+    if (left_order != right_order)
+        return left_order < right_order ? -1 : 1;
+
+    let left_name = section_name(left);
+    let right_name = section_name(right);
+    return left_name == right_name ? 0 : (left_name < right_name ? -1 : 1);
+}
+
+function priority_level_items(group_id) {
+    let result = child_items_by_owner("priority_level", "group", group_id);
+    sort(result, priority_level_sort);
+    return result;
+}
+
+function priority_levels(group_id) {
+    let result = [];
+    for (let child in priority_level_items(group_id)) {
+        let id = section_name(child);
+        if (id != "")
+            push(result, id);
+    }
+    return result;
 }
 
 function community_lists(section) {
@@ -687,6 +751,128 @@ function urltest_exclude_regex(section, value) {
         list_value(section, "urltest_exclude_regex"));
 }
 
+function priority_group_display_name(section, value) {
+    let child = priority_group_child(section, value);
+    return child != null ? child_option(child, "name", as_string(value)) : as_string(value);
+}
+
+function priority_group_health_url(section, value) {
+    let child = priority_group_child(section, value);
+    return child != null ? child_option(child, "health_url", "https://www.gstatic.com/generate_204") : "https://www.gstatic.com/generate_204";
+}
+
+function priority_group_active_check_interval(section, value) {
+    let child = priority_group_child(section, value);
+    return child != null ? child_option(child, "active_check_interval", "5s") : "5s";
+}
+
+function priority_group_check_timeout(section, value) {
+    let child = priority_group_child(section, value);
+    return child != null ? child_option(child, "check_timeout", "2s") : "2s";
+}
+
+function priority_group_recovery_check_interval(section, value) {
+    let child = priority_group_child(section, value);
+    return child != null ? child_option(child, "recovery_check_interval", "15s") : "15s";
+}
+
+function priority_group_pick_fastest(section, value) {
+    let child = priority_group_child(section, value);
+    return child != null ? child_bool(child, "pick_fastest", false) : false;
+}
+
+function priority_group_switch_to_faster_same_priority(section, value) {
+    let child = priority_group_child(section, value);
+    return child != null ? child_bool(child, "switch_to_faster_same_priority", false) : false;
+}
+
+function priority_group_fastest_check_interval(section, value) {
+    let child = priority_group_child(section, value);
+    return child != null ? child_option(child, "fastest_check_interval", "3m") : "3m";
+}
+
+function priority_group_interrupt_exist_connections(section, value) {
+    let child = priority_group_child(section, value);
+    return child != null ? child_bool(child, "interrupt_exist_connections", true) : true;
+}
+
+function priority_group_hide_added_outbounds(section, value) {
+    let child = priority_group_child(section, value);
+    return child != null ? child_bool(child, "hide_added_outbounds", false) : false;
+}
+
+function priority_group_pin_dashboard(section, value) {
+    let child = priority_group_child(section, value);
+    return child != null ? child_bool(child, "pin_dashboard", true) : true;
+}
+
+function priority_level_display_name(group_id, value) {
+    let child = priority_level_child(group_id, value);
+    return child != null ? child_option(child, "name", as_string(value)) : as_string(value);
+}
+
+function priority_level_order(group_id, value) {
+    let child = priority_level_child(group_id, value);
+    return child != null ? child_option(child, "order", "0") : "0";
+}
+
+function priority_level_direct(group_id, value) {
+    let child = priority_level_child(group_id, value);
+    return child != null ? child_bool(child, "direct", false) : false;
+}
+
+function priority_level_filter_mode(group_id, value) {
+    let child = priority_level_child(group_id, value);
+    return child != null ? child_option(child, "filter_mode", "include") : "include";
+}
+
+function priority_level_include_countries(group_id, value) {
+    let child = priority_level_child(group_id, value);
+    return child != null ? child_list_alias(child, [ "include_countries", "country" ], []) : [];
+}
+
+function priority_level_include_outbounds(group_id, value) {
+    let child = priority_level_child(group_id, value);
+    return child != null ? child_list_alias(child, [ "include_outbounds", "server_name" ], []) : [];
+}
+
+function priority_level_include_regex(group_id, value) {
+    let child = priority_level_child(group_id, value);
+    return child != null ? child_list_alias(child, [ "include_regex", "regex" ], []) : [];
+}
+
+function priority_level_exclude_countries(group_id, value) {
+    let child = priority_level_child(group_id, value);
+    return child != null ? child_list(child, "exclude_countries", []) : [];
+}
+
+function priority_level_exclude_outbounds(group_id, value) {
+    let child = priority_level_child(group_id, value);
+    return child != null ? child_list(child, "exclude_outbounds", []) : [];
+}
+
+function priority_level_exclude_regex(group_id, value) {
+    let child = priority_level_child(group_id, value);
+    return child != null ? child_list(child, "exclude_regex", []) : [];
+}
+
+function priority_level_countries(group_id, value) {
+    return priority_level_include_countries(group_id, value);
+}
+
+function priority_level_outbounds(group_id, value) {
+    return priority_level_include_outbounds(group_id, value);
+}
+
+function priority_level_regex(group_id, value) {
+    return priority_level_include_regex(group_id, value);
+}
+
+function priority_level_detect_server_country(group_id, value) {
+    let child = priority_level_child(group_id, value);
+    return child != null ? child_option(child, "detect_server_country", "flag_emoji") : "flag_emoji";
+}
+
 function append_unique(result, seen, value) {
     value = as_string(value);
     if (value == "" || seen[value])
@@ -789,6 +975,34 @@ return {
     urltest_exclude_countries,
     urltest_exclude_outbounds,
     urltest_exclude_regex,
+    priority_groups,
+    priority_group_settings,
+    priority_levels,
+    priority_group_display_name,
+    priority_group_health_url,
+    priority_group_active_check_interval,
+    priority_group_check_timeout,
+    priority_group_recovery_check_interval,
+    priority_group_pick_fastest,
+    priority_group_switch_to_faster_same_priority,
+    priority_group_fastest_check_interval,
+    priority_group_interrupt_exist_connections,
+    priority_group_hide_added_outbounds,
+    priority_group_pin_dashboard,
+    priority_level_display_name,
+    priority_level_order,
+    priority_level_direct,
+    priority_level_filter_mode,
+    priority_level_include_countries,
+    priority_level_include_outbounds,
+    priority_level_include_regex,
+    priority_level_exclude_countries,
+    priority_level_exclude_outbounds,
+    priority_level_exclude_regex,
+    priority_level_countries,
+    priority_level_outbounds,
+    priority_level_regex,
+    priority_level_detect_server_country,
     subscription_download_targets,
     subscription_download_target_port
 };

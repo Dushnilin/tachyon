@@ -30,6 +30,7 @@ type DashboardSectionCache = {
   linkRefs?: Record<string, unknown>;
   outboundMetadata?: Podkop.GetOutboundMetadata;
   urltestGroups?: Record<string, UrlTestCacheGroup>;
+  priorityGroups?: Record<string, PriorityCacheGroup>;
   subscriptionMetadata?:
     | Podkop.SubscriptionMetadata
     | Podkop.SubscriptionMetadata[];
@@ -45,7 +46,52 @@ type UrlTestCacheGroup = {
   interrupt_exist_connections?: boolean;
 };
 
-type ItemSettingsValue = string | string[] | undefined;
+type PriorityCacheLevel = {
+  id?: string;
+  displayName?: string;
+  order?: number;
+  direct?: boolean;
+  filter_mode?: string;
+  detect_server_country?: string;
+  outbounds?: string[];
+};
+
+type PriorityCacheGroup = {
+  id?: string;
+  tag?: string;
+  section?: string;
+  displayName?: string;
+  health_url?: string;
+  active_check_interval?: string;
+  check_timeout?: string;
+  recovery_check_interval?: string;
+  pick_fastest?: boolean;
+  switch_to_faster_same_priority?: boolean;
+  fastest_check_interval?: string;
+  interrupt_exist_connections?: boolean;
+  pin_dashboard?: boolean;
+  hide_added_outbounds?: boolean;
+  outbounds?: string[];
+  levels?: PriorityCacheLevel[];
+};
+
+type PriorityLevelConfig = {
+  id: string;
+  displayName: string;
+  order: number;
+  direct: boolean;
+  filterMode: string;
+  detectServerCountry: string;
+  country: string[];
+  serverName: string[];
+  regex: string[];
+  excludeCountries: string[];
+  excludeOutbounds: string[];
+  excludeRegex: string[];
+  outbounds?: string[];
+};
+
+type ItemSettingsValue = string | string[] | PriorityLevelConfig[] | undefined;
 type ItemSettings = Record<string, ItemSettingsValue>;
 
 type UrlTestConfig = {
@@ -58,11 +104,32 @@ type UrlTestConfig = {
   showDetectedCountries: boolean;
 };
 
+type PriorityConfig = {
+  id: string;
+  code: string;
+  displayName: string;
+  settings: ItemSettings;
+  pinDashboard: boolean;
+  hideAddedOutbounds: boolean;
+  healthUrl: string;
+  activeCheckInterval: string;
+  checkTimeout: string;
+  recoveryCheckInterval: string;
+  pickFastest: boolean;
+  switchToFasterSamePriority: boolean;
+  fastestCheckInterval: string;
+  interruptExistConnections: boolean;
+  showDetectedCountries: boolean;
+  levels: PriorityLevelConfig[];
+};
+
 type ChildType =
   | 'connection_url'
   | 'subscription_url'
   | 'section_interface'
-  | 'urltest';
+  | 'urltest'
+  | 'priority_group'
+  | 'priority_level';
 
 const DASHBOARD_SECTION_CACHE_DIR = '/var/run/podkop-plus/section-cache';
 
@@ -143,18 +210,25 @@ function ownedChildSections(
   );
 }
 
+function childSectionsByOwner(
+  children: Podkop.ConfigSection[],
+  ownerKey: keyof Podkop.ConfigSection,
+  ownerValue: string,
+) {
+  return children.filter((section) => section[ownerKey] === ownerValue);
+}
+
 function compactSettingsMap(settings: Record<string, ItemSettings>) {
   return Object.keys(settings).length ? JSON.stringify(settings) : undefined;
 }
 
 function hydrateConfigSections(configSections: Podkop.ConfigSection[]) {
   const connectionUrls = childSections(configSections, 'connection_url');
-  const subscriptionUrls = childSections(
-    configSections,
-    'subscription_url',
-  );
+  const subscriptionUrls = childSections(configSections, 'subscription_url');
   const interfaces = childSections(configSections, 'section_interface');
   const urltests = childSections(configSections, 'urltest');
+  const priorityGroups = childSections(configSections, 'priority_group');
+  const priorityLevels = childSections(configSections, 'priority_level');
 
   return configSections.map((section) => {
     if (section['.type'] !== 'section') {
@@ -166,6 +240,7 @@ function hydrateConfigSections(configSections: Podkop.ConfigSection[]) {
     const subscriptionUrlItems = ownedChildSections(next, subscriptionUrls);
     const interfaceItems = ownedChildSections(next, interfaces);
     const urltestItems = ownedChildSections(next, urltests);
+    const priorityGroupItems = ownedChildSections(next, priorityGroups);
 
     if (connectionUrlItems.length) {
       const settings: Record<string, ItemSettings> = {};
@@ -256,6 +331,52 @@ function hydrateConfigSections(configSections: Podkop.ConfigSection[]) {
       next.urltest_settings = compactSettingsMap(settings);
     }
 
+    if (priorityGroupItems.length) {
+      const settings: Record<string, ItemSettings> = {};
+      next.priority_groups = priorityGroupItems.map((item) => item['.name']);
+      priorityGroupItems.forEach((item) => {
+        const groupId = item['.name'];
+        const levels = childSectionsByOwner(priorityLevels, 'group', groupId)
+          .map(
+            (level, index): PriorityLevelConfig => ({
+              id: level['.name'],
+              displayName: level.name || level['.name'],
+              order: Number.parseInt(level.order || `${index}`, 10) || 0,
+              direct: level.direct === '1',
+              filterMode: level.filter_mode || 'include',
+              detectServerCountry: level.detect_server_country || 'flag_emoji',
+              country: getListValues(level.country),
+              serverName: getListValues(level.server_name),
+              regex: getListValues(level.regex),
+              excludeCountries: getListValues(level.exclude_countries),
+              excludeOutbounds: getListValues(level.exclude_outbounds),
+              excludeRegex: getListValues(level.exclude_regex),
+            }),
+          )
+          .sort((left, right) =>
+            left.order === right.order
+              ? left.id.localeCompare(right.id)
+              : left.order - right.order,
+          );
+
+        settings[groupId] = {
+          name: item.name,
+          health_url: item.health_url,
+          active_check_interval: item.active_check_interval,
+          check_timeout: item.check_timeout,
+          recovery_check_interval: item.recovery_check_interval,
+          pick_fastest: item.pick_fastest,
+          switch_to_faster_same_priority: item.switch_to_faster_same_priority,
+          fastest_check_interval: item.fastest_check_interval,
+          interrupt_exist_connections: item.interrupt_exist_connections,
+          pin_dashboard: item.pin_dashboard,
+          hide_added_outbounds: item.hide_added_outbounds,
+          levels,
+        };
+      });
+      next.priority_group_settings = compactSettingsMap(settings);
+    }
+
     return next;
   });
 }
@@ -294,6 +415,10 @@ function hasConfiguredUrlTestList(section: Podkop.ConfigSection) {
   return getListValues(section.urltests).length > 0;
 }
 
+function hasConfiguredPriorityList(section: Podkop.ConfigSection) {
+  return getListValues(section.priority_groups).length > 0;
+}
+
 function getUrlTestIds(section: Podkop.ConfigSection) {
   const values = getListValues(section.urltests);
   return values.length
@@ -312,7 +437,9 @@ function shouldUseProxyGroup(section: Podkop.ConfigSection) {
     getManualProxyLinks(section).length > 0 ||
     hasSubscriptionSources(section) ||
     getConnectionInterfaces(section).length > 0 ||
-    getJsonOutbounds(section).length > 0
+    getJsonOutbounds(section).length > 0 ||
+    isUrlTestEnabled(section) ||
+    hasConfiguredPriorityList(section)
   );
 }
 
@@ -335,6 +462,10 @@ function getSectionProxyConfigType(section: Podkop.ConfigSection) {
 
   if (getConnectionInterfaces(section).length > 0) {
     return 'interface' as const;
+  }
+
+  if (hasConfiguredPriorityList(section)) {
+    return 'selector' as const;
   }
 
   return undefined;
@@ -531,6 +662,10 @@ function getUrlTestTag(sectionName: string, id: string) {
   );
 }
 
+function getPriorityTag(sectionName: string, id: string) {
+  return getOutboundTagBySection(`${sectionName}-priority-${id}`);
+}
+
 function getUrlTestDisplayName(
   section: Podkop.ConfigSection,
   id: string,
@@ -570,6 +705,125 @@ function getUrlTestConfigs(section: Podkop.ConfigSection): UrlTestConfig[] {
   });
 }
 
+function priorityLevelConfigsFromSettings(
+  settings: ItemSettings | undefined,
+): PriorityLevelConfig[] {
+  const value = settings?.levels;
+
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .flatMap((item, index) => {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) {
+        return [];
+      }
+
+      const level = item as Partial<PriorityLevelConfig> &
+        Record<string, unknown>;
+      const id = `${level.id || ''}`.trim();
+
+      if (!id) {
+        return [];
+      }
+
+      return [
+        {
+          id,
+          displayName: `${level.displayName || id}`,
+          order:
+            typeof level.order === 'number' && Number.isFinite(level.order)
+              ? level.order
+              : index,
+          direct: Boolean(level.direct),
+          filterMode: `${level.filterMode || 'include'}` || 'include',
+          detectServerCountry:
+            `${level.detectServerCountry || 'flag_emoji'}` || 'flag_emoji',
+          country: getListValues(level.country as string[] | string),
+          serverName: getListValues(level.serverName as string[] | string),
+          regex: getListValues(level.regex as string[] | string),
+          excludeCountries: getListValues(
+            level.excludeCountries as string[] | string,
+          ),
+          excludeOutbounds: getListValues(
+            level.excludeOutbounds as string[] | string,
+          ),
+          excludeRegex: getListValues(level.excludeRegex as string[] | string),
+          outbounds: getListValues(level.outbounds as string[] | string),
+        },
+      ];
+    })
+    .sort((left, right) =>
+      left.order === right.order
+        ? left.id.localeCompare(right.id)
+        : left.order - right.order,
+    );
+}
+
+function getPriorityGroupIds(section: Podkop.ConfigSection) {
+  return getListValues(section.priority_groups);
+}
+
+function getPriorityConfigs(section: Podkop.ConfigSection): PriorityConfig[] {
+  const settingsMap = itemSettingsMap(section.priority_group_settings);
+  const sectionName = section['.name'];
+
+  return getPriorityGroupIds(section).map((id) => {
+    const settings = settingsMap[id] || {};
+    const levels = priorityLevelConfigsFromSettings(settings);
+
+    return {
+      id,
+      code: getPriorityTag(sectionName, id),
+      displayName: itemSettingString(settings, 'name', id),
+      settings,
+      pinDashboard: itemSettingBoolean(settings, 'pin_dashboard', true),
+      hideAddedOutbounds: itemSettingBoolean(
+        settings,
+        'hide_added_outbounds',
+        false,
+      ),
+      healthUrl: itemSettingString(
+        settings,
+        'health_url',
+        'https://www.gstatic.com/generate_204',
+      ),
+      activeCheckInterval: itemSettingString(
+        settings,
+        'active_check_interval',
+        '5s',
+      ),
+      checkTimeout: itemSettingString(settings, 'check_timeout', '2s'),
+      recoveryCheckInterval: itemSettingString(
+        settings,
+        'recovery_check_interval',
+        '15s',
+      ),
+      pickFastest: itemSettingBoolean(settings, 'pick_fastest', false),
+      switchToFasterSamePriority: itemSettingBoolean(
+        settings,
+        'switch_to_faster_same_priority',
+        false,
+      ),
+      fastestCheckInterval: itemSettingString(
+        settings,
+        'fastest_check_interval',
+        '3m',
+      ),
+      interruptExistConnections: itemSettingBoolean(
+        settings,
+        'interrupt_exist_connections',
+        true,
+      ),
+      showDetectedCountries: levels.some(
+        (level) => level.detectServerCountry === 'country_is',
+      ),
+      levels,
+    };
+  });
+}
+
 async function readDashboardSectionCache(
   sectionName: string,
 ): Promise<DashboardSectionCache | undefined> {
@@ -595,6 +849,16 @@ async function readDashboardSectionCache(
 
 function getUrlTestGroups(dashboardCache?: DashboardSectionCache) {
   const groups = dashboardCache?.urltestGroups;
+
+  if (!groups || typeof groups !== 'object' || Array.isArray(groups)) {
+    return {};
+  }
+
+  return groups;
+}
+
+function getPriorityGroups(dashboardCache?: DashboardSectionCache) {
+  const groups = dashboardCache?.priorityGroups;
 
   if (!groups || typeof groups !== 'object' || Array.isArray(groups)) {
     return {};
@@ -631,7 +895,7 @@ function buildUrlTestInfo({
 }: {
   code: string;
   displayName: string;
-  entry: ClashProxyEntry;
+  entry?: ClashProxyEntry;
   groupCache?: UrlTestCacheGroup;
   proxyByCode: Map<string, ClashProxyEntry>;
   manualLinkByCode: Map<string, string>;
@@ -643,9 +907,9 @@ function buildUrlTestInfo({
   const childCodes = uniqueCodes(
     groupCache?.outbounds?.length
       ? groupCache.outbounds
-      : entry.value.all || [],
+      : entry?.value.all || [],
   );
-  const selectedCode = entry.value.now || '';
+  const selectedCode = entry?.value.now || '';
   const outbounds = sortUrlTestMembers(
     childCodes.flatMap((childCode) => {
       const childEntry = proxyByCode.get(childCode);
@@ -695,11 +959,149 @@ function buildUrlTestInfo({
   };
 }
 
+function buildPriorityInfo({
+  config,
+  entry,
+  groupCache,
+  proxyByCode,
+  manualLinkByCode,
+  cachedProxyLinks,
+  outboundMetadata,
+  subscriptionCopyableCodes,
+}: {
+  config: PriorityConfig;
+  entry?: ClashProxyEntry;
+  groupCache?: PriorityCacheGroup;
+  proxyByCode: Map<string, ClashProxyEntry>;
+  manualLinkByCode: Map<string, string>;
+  cachedProxyLinks: Map<string, string>;
+  outboundMetadata?: Podkop.GetOutboundMetadata;
+  subscriptionCopyableCodes: Set<string>;
+}): Podkop.PriorityInfo {
+  const selectedCode = entry?.value.now || '';
+  const cacheLevels = Array.isArray(groupCache?.levels)
+    ? groupCache.levels
+    : [];
+  const configLevelById = new Map(
+    config.levels.map((level) => [level.id, level]),
+  );
+  const levels = (
+    cacheLevels.length
+      ? cacheLevels.map((level, index): PriorityLevelConfig => {
+          const id = `${level.id || ''}`;
+          const configLevel = id ? configLevelById.get(id) : undefined;
+
+          return {
+            id: id || configLevel?.id || `level-${index + 1}`,
+            displayName:
+              level.displayName || configLevel?.displayName || `${index + 1}`,
+            order:
+              typeof level.order === 'number' && Number.isFinite(level.order)
+                ? level.order
+                : (configLevel?.order ?? index),
+            direct: level.direct ?? configLevel?.direct ?? false,
+            filterMode:
+              level.filter_mode || configLevel?.filterMode || 'include',
+            detectServerCountry:
+              level.detect_server_country ||
+              configLevel?.detectServerCountry ||
+              'flag_emoji',
+            country: configLevel?.country || [],
+            serverName: configLevel?.serverName || [],
+            regex: configLevel?.regex || [],
+            excludeCountries: configLevel?.excludeCountries || [],
+            excludeOutbounds: configLevel?.excludeOutbounds || [],
+            excludeRegex: configLevel?.excludeRegex || [],
+            outbounds: uniqueCodes(level.outbounds || []),
+          };
+        })
+      : config.levels.map((level) => ({
+          ...level,
+          outbounds: uniqueCodes(level.outbounds || []),
+        }))
+  ).sort((left, right) =>
+    left.order === right.order
+      ? left.id.localeCompare(right.id)
+      : left.order - right.order,
+  );
+  const outbounds = levels.flatMap((level, levelIndex) => {
+    const members = uniqueCodes(level.outbounds || []).map((childCode) => {
+      const childEntry = proxyByCode.get(childCode);
+      const link =
+        manualLinkByCode.get(childCode) ||
+        cachedProxyLinks.get(childCode) ||
+        '';
+      const canCopyLink =
+        isCopyableProxyLink(link) || subscriptionCopyableCodes.has(childCode);
+
+      return {
+        code: childCode,
+        displayName: getOutboundDisplayName(
+          childCode,
+          childEntry,
+          link,
+          outboundMetadata,
+        ),
+        latency: childEntry?.value?.history?.[0]?.delay || 0,
+        type: childEntry?.value?.type || '',
+        selected: selectedCode === childCode,
+        link,
+        canCopyLink,
+        levelIndex,
+        levelName: level.displayName,
+        levelId: level.id,
+      };
+    });
+
+    if (!config.pickFastest) {
+      return members;
+    }
+
+    return members
+      .map((outbound, index) => ({ outbound, index }))
+      .sort((left, right) => {
+        const latencyDiff =
+          getLatencySortValue(left.outbound) -
+          getLatencySortValue(right.outbound);
+
+        return latencyDiff !== 0 ? latencyDiff : left.index - right.index;
+      })
+      .map((item) => item.outbound);
+  });
+  const selectedName =
+    outbounds.find((outbound) => outbound.code === selectedCode)?.displayName ||
+    selectedCode;
+
+  return {
+    code: config.code,
+    displayName: groupCache?.displayName || config.displayName,
+    selectedCode: selectedCode || undefined,
+    selectedName: selectedName || undefined,
+    healthUrl: groupCache?.health_url || config.healthUrl,
+    activeCheckInterval:
+      groupCache?.active_check_interval || config.activeCheckInterval,
+    checkTimeout: groupCache?.check_timeout || config.checkTimeout,
+    recoveryCheckInterval:
+      groupCache?.recovery_check_interval || config.recoveryCheckInterval,
+    pickFastest: groupCache?.pick_fastest ?? config.pickFastest,
+    switchToFasterSamePriority:
+      groupCache?.switch_to_faster_same_priority ??
+      config.switchToFasterSamePriority,
+    fastestCheckInterval:
+      groupCache?.fastest_check_interval || config.fastestCheckInterval,
+    interruptExistConnections:
+      groupCache?.interrupt_exist_connections ??
+      config.interruptExistConnections,
+    outbounds,
+  };
+}
+
 function buildProxyGroupOutbounds(
   section: Podkop.ConfigSection,
   proxies: ClashProxyEntry[],
   outboundMetadata?: Podkop.GetOutboundMetadata,
   urltestGroups: Record<string, UrlTestCacheGroup> = {},
+  priorityGroups: Record<string, PriorityCacheGroup> = {},
   subscriptionCopyableCodes: Set<string> = new Set(),
   cachedProxyLinks: Map<string, string> = new Map(),
 ) {
@@ -711,86 +1113,130 @@ function buildProxyGroupOutbounds(
   const urlTestConfigByCode = new Map(
     urlTestConfigs.map((config) => [config.code, config]),
   );
-  const urlTestEntries = urlTestConfigs
-    .map((config) => ({
-      config,
-      entry: proxyByCode.get(config.code),
-    }))
-    .filter((item): item is { config: UrlTestConfig; entry: ClashProxyEntry } =>
-      Boolean(item.entry),
-    );
+  const priorityConfigs = getPriorityConfigs(section);
+  const priorityConfigByCode = new Map(
+    priorityConfigs.map((config) => [config.code, config]),
+  );
+  const urlTestEntries = urlTestConfigs.map((config) => ({
+    config,
+    entry: proxyByCode.get(config.code),
+  }));
+  const priorityEntries = priorityConfigs.map((config) => ({
+    config,
+    entry: proxyByCode.get(config.code),
+  }));
   const manualLinkByCode = buildManualLinkByCode(section);
   const selectorCodes = selector?.value?.all ?? [];
-  const urlTestCodes = urlTestEntries.map(({ config }) => config.code);
+  const urlTestCodes = urlTestConfigs.map((config) => config.code);
+  const priorityCodes = priorityConfigs.map((config) => config.code);
   const urlTestCodeSet = new Set(urlTestCodes);
+  const priorityCodeSet = new Set(priorityCodes);
   const hideAddedCodeSet = new Set<string>();
   urlTestEntries.forEach(({ config, entry }) => {
     if (!config.hideAddedOutbounds) {
       return;
     }
 
-    (entry.value.all || []).forEach((code) => hideAddedCodeSet.add(code));
+    const childCodes = urltestGroups[config.code]?.outbounds?.length
+      ? urltestGroups[config.code].outbounds || []
+      : entry?.value.all || [];
+
+    childCodes.forEach((code) => hideAddedCodeSet.add(code));
   });
-  const showDetectedCountries = urlTestConfigs.some(
-    (config) => config.showDetectedCountries,
-  );
+  priorityEntries.forEach(({ config, entry }) => {
+    if (!config.hideAddedOutbounds) {
+      return;
+    }
+
+    const childCodes = priorityGroups[config.code]?.outbounds?.length
+      ? priorityGroups[config.code].outbounds || []
+      : entry?.value.all || [];
+
+    childCodes.forEach((code) => hideAddedCodeSet.add(code));
+  });
+  const showDetectedCountries =
+    urlTestConfigs.some((config) => config.showDetectedCountries) ||
+    priorityConfigs.some((config) => config.showDetectedCountries);
   const builtInUrltestCode = urlTestCodes[0] || '';
   const fallbackCodes = uniqueCodes([
     ...urlTestCodes,
-    ...urlTestEntries.flatMap(({ entry }) => entry.value.all || []),
+    ...priorityCodes,
+    ...urlTestEntries.flatMap(({ entry }) => entry?.value.all || []),
+    ...priorityEntries.flatMap(({ entry }) => entry?.value.all || []),
   ]);
-  const groupCodes = (
-    selectorCodes.length ? selectorCodes : fallbackCodes
-  ).filter((code) => {
+  const groupCodes = uniqueCodes([
+    ...(selectorCodes.length ? selectorCodes : fallbackCodes),
+    ...urlTestCodes,
+    ...priorityCodes,
+  ]).filter((code) => {
     if (!hideAddedCodeSet.has(code)) {
       return true;
     }
 
     return (
-      urlTestCodeSet.has(code) || isUrlTestProxyEntry(proxyByCode.get(code))
+      urlTestCodeSet.has(code) ||
+      priorityCodeSet.has(code) ||
+      isUrlTestProxyEntry(proxyByCode.get(code))
     );
   });
 
   const outbounds = uniqueCodes(groupCodes).flatMap((code) => {
     const item = proxyByCode.get(code);
-    if (!item) {
+    const urlTestConfig = urlTestConfigByCode.get(code);
+    const priorityConfig = priorityConfigByCode.get(code);
+
+    if (!item && !urlTestConfig && !priorityConfig) {
       return [];
     }
 
-    const urlTestConfig = urlTestConfigByCode.get(item.code);
-    const link =
-      manualLinkByCode.get(item.code) || cachedProxyLinks.get(item.code) || '';
+    const link = manualLinkByCode.get(code) || cachedProxyLinks.get(code) || '';
     const canCopyLink =
-      isCopyableProxyLink(link) || subscriptionCopyableCodes.has(item.code);
+      isCopyableProxyLink(link) || subscriptionCopyableCodes.has(code);
     const displayName =
+      priorityConfig?.displayName ||
       urlTestConfig?.displayName ||
-      getOutboundDisplayName(item.code, item, link, outboundMetadata);
+      getOutboundDisplayName(code, item, link, outboundMetadata);
+    const isRuntimeUrlTest = isUrlTestProxyEntry(item);
 
     return [
       {
-        code: item.code,
+        code,
         displayName,
-        latency: item.value.history?.[0]?.delay || 0,
-        type: item.value.type || '',
-        selected: selector?.value?.now === item.code,
+        latency: item?.value.history?.[0]?.delay || 0,
+        type: priorityConfig ? 'Priority' : item?.value.type || 'URLTest',
+        selected: selector?.value?.now === code,
         link,
         canCopyLink,
         country: showDetectedCountries
-          ? outboundMetadata?.countries?.[item.code]
+          ? outboundMetadata?.countries?.[code]
           : undefined,
-        urlTestInfo: isUrlTestProxyEntry(item)
-          ? buildUrlTestInfo({
-              code: item.code,
-              displayName,
+        runtimeAvailable: item ? undefined : false,
+        urlTestInfo:
+          urlTestConfig || isRuntimeUrlTest
+            ? buildUrlTestInfo({
+                code,
+                displayName,
+                entry: item,
+                groupCache: urltestGroups[code],
+                proxyByCode,
+                manualLinkByCode,
+                cachedProxyLinks,
+                outboundMetadata,
+                subscriptionCopyableCodes,
+                showDetectedCountries:
+                  urlTestConfig?.showDetectedCountries || showDetectedCountries,
+              })
+            : undefined,
+        priorityInfo: priorityConfig
+          ? buildPriorityInfo({
+              config: priorityConfig,
               entry: item,
-              groupCache: urltestGroups[item.code],
+              groupCache: priorityGroups[code],
               proxyByCode,
               manualLinkByCode,
               cachedProxyLinks,
               outboundMetadata,
               subscriptionCopyableCodes,
-              showDetectedCountries:
-                urlTestConfig?.showDetectedCountries || showDetectedCountries,
             })
           : undefined,
       },
@@ -798,13 +1244,23 @@ function buildProxyGroupOutbounds(
   });
 
   const sortedOutbounds = sortOutboundsForDashboard(outbounds, {
-    pinnedCodes: urlTestEntries
-      .filter(({ config }) => config.pinDashboard)
-      .map(({ config }) => config.code),
+    pinnedCodes: [
+      ...urlTestEntries
+        .filter(({ config }) => config.pinDashboard)
+        .map(({ config }) => config.code),
+      ...priorityEntries
+        .filter(({ config }) => config.pinDashboard)
+        .map(({ config }) => config.code),
+    ],
     sortByLatency: shouldSortByLatency(section),
   });
   const latencyTestCodes = sortedOutbounds
-    .filter((outbound) => !isSelectorOutbound(outbound))
+    .filter(
+      (outbound) =>
+        outbound.runtimeAvailable !== false &&
+        !isSelectorOutbound(outbound) &&
+        !outbound.priorityInfo,
+    )
     .map((outbound) => outbound.code);
 
   return {
@@ -1037,12 +1493,14 @@ export async function getDashboardSections(
             ? getCachedProxyLinks(dashboardCache)
             : new Map<string, string>();
           const urltestGroups = getUrlTestGroups(dashboardCache);
+          const priorityGroups = getPriorityGroups(dashboardCache);
           const { selector, latencyTestCode, latencyTestCodes, outbounds } =
             buildProxyGroupOutbounds(
               section,
               proxies,
               outboundMetadata,
               urltestGroups,
+              priorityGroups,
               subscriptionCopyableCodes,
               cachedProxyLinks,
             );

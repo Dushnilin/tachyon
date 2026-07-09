@@ -812,7 +812,7 @@ function fixture_get_section(section_name) {
     if (section_name == "settings" && type(fixture.settings) == "object")
         return fixture.settings;
 
-    for (let type_name in [ "settings", "server", "section", "connection_url", "subscription_url", "section_interface", "urltest" ]) {
+    for (let type_name in [ "settings", "server", "section", "connection_url", "subscription_url", "section_interface", "urltest", "priority_group", "priority_level" ]) {
         for (let section in fixture_section_list(type_name)) {
             if (as_string(section[".name"]) == section_name)
                 return section;
@@ -992,6 +992,13 @@ function validate_urltest_filter_mode_value(value, section) {
     fail_validation("Invalid URLTest filter mode '" + value + "' in rule '" + section + "'. Aborted.");
 }
 
+function validate_priority_filter_mode_value(value, section, group_id, level_id) {
+    if (contains([ "disabled", "exclude", "include", "mixed" ], value))
+        return;
+
+    fail_validation("Invalid Priority filter mode '" + value + "' in rule '" + section + "', priority '" + group_id + "', level '" + level_id + "'. Aborted.");
+}
+
 function validate_detect_server_country_value(value, section) {
     if (as_string(value) == "" || contains([ "flag_emoji", "country_is" ], value))
         return;
@@ -1014,6 +1021,14 @@ function validate_urltest_identifier_value(value, section) {
     fail_validation("Invalid URLTest identifier '" + value + "' in rule '" + section + "'. Use latin letters, digits and underscores. Aborted.");
 }
 
+function validate_priority_identifier_value(value, section) {
+    value = as_string(value);
+    if (value != "" && match(value, /^[A-Za-z0-9_]+$/) != null)
+        return;
+
+    fail_validation("Invalid priority identifier '" + value + "' in rule '" + section + "'. Use latin letters, digits and underscores. Aborted.");
+}
+
 function validate_urltest_tolerance_value(value, section, urltest_id) {
     value = trim(as_string(value));
     if (match(value, /^[0-9]+$/) != null) {
@@ -1023,6 +1038,56 @@ function validate_urltest_tolerance_value(value, section, urltest_id) {
     }
 
     fail_validation("Invalid URLTest tolerance '" + value + "' in rule '" + section + "', URLTest '" + urltest_id + "'. Use a number from 0 to 10000. Aborted.");
+}
+
+function validate_priority_level_order(value, section, group_id, level_id) {
+    value = trim(as_string(value));
+    if (match(value, /^[0-9]+$/) != null)
+        return;
+
+    fail_validation("Invalid priority level order '" + value + "' in rule '" + section + "', priority '" + group_id + "', level '" + level_id + "'. Use a non-negative integer. Aborted.");
+}
+
+function validate_priority_group(section, group_id) {
+    let name = section_name(section);
+    validate_priority_identifier_value(group_id, name);
+
+    if (trim(connections.priority_group_display_name(section, group_id)) == "")
+        fail_validation("Priority group '" + group_id + "' in rule '" + name + "' has no display name. Aborted.");
+
+    validate_http_url_option(connections.priority_group_health_url(section, group_id), "rule." + name + ".priority." + group_id + ".health_url");
+    validate_required_duration_option(connections.priority_group_active_check_interval(section, group_id), "rule." + name + ".priority." + group_id + ".active_check_interval");
+    validate_required_duration_option(connections.priority_group_check_timeout(section, group_id), "rule." + name + ".priority." + group_id + ".check_timeout");
+    validate_required_duration_option(connections.priority_group_recovery_check_interval(section, group_id), "rule." + name + ".priority." + group_id + ".recovery_check_interval");
+    if (connections.priority_group_switch_to_faster_same_priority(section, group_id))
+        validate_required_duration_option(connections.priority_group_fastest_check_interval(section, group_id), "rule." + name + ".priority." + group_id + ".fastest_check_interval");
+
+    for (let level_id in connections.priority_levels(group_id)) {
+        validate_priority_identifier_value(level_id, name);
+        if (trim(connections.priority_level_display_name(group_id, level_id)) == "")
+            fail_validation("Priority level '" + level_id + "' in rule '" + name + "', priority '" + group_id + "' has no display name. Aborted.");
+
+        validate_priority_level_order(connections.priority_level_order(group_id, level_id), name, group_id, level_id);
+        if (connections.priority_level_direct(group_id, level_id))
+            continue;
+
+        let filter_mode = connections.priority_level_filter_mode(group_id, level_id);
+        validate_priority_filter_mode_value(filter_mode, name, group_id, level_id);
+        if (filter_mode != "disabled")
+            validate_detect_server_country_value(connections.priority_level_detect_server_country(group_id, level_id), name);
+        if (filter_mode == "include" || filter_mode == "mixed") {
+            for (let value in connections.priority_level_include_countries(group_id, level_id))
+                validate_country_code_value(value, name);
+            for (let value in connections.priority_level_include_regex(group_id, level_id))
+                validate_urltest_regex_value(value, name);
+        }
+        if (filter_mode == "exclude" || filter_mode == "mixed") {
+            for (let value in connections.priority_level_exclude_countries(group_id, level_id))
+                validate_country_code_value(value, name);
+            for (let value in connections.priority_level_exclude_regex(group_id, level_id))
+                validate_urltest_regex_value(value, name);
+        }
+    }
 }
 
 function validate_combined_domain_value(value, section) {
@@ -1219,6 +1284,9 @@ function validate_rule(section, context) {
                     validate_urltest_regex_value(value, name);
             }
         }
+
+        for (let group_id in connections.priority_groups(section))
+            validate_priority_group(section, group_id);
 
         if (rule_has_subscription_urls(section)) {
             for (let value in connections.subscription_urls(section)) {

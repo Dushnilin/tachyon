@@ -96,6 +96,7 @@ const VALIDATOR_UC = LIB_DIR + "/config/validator.uc";
 const SERVER_UC = LIB_DIR + "/server/service.uc";
 const NFT_UC = LIB_DIR + "/nft/apply.uc";
 const SINGBOX_UC = LIB_DIR + "/singbox/runtime.uc";
+const PRIORITY_UC = LIB_DIR + "/singbox/priority.uc";
 const SUBSCRIPTION_CACHE_UC = LIB_DIR + "/subscription/cache.uc";
 const UPDATES_UC = LIB_DIR + "/components/updates.uc";
 const STATE_UC = LIB_DIR + "/service/state.uc";
@@ -706,6 +707,12 @@ function start_main() {
         return status;
     }
 
+    status = module_status(PRIORITY_UC, [ "start-runtime" ]);
+    if (status != 0) {
+        log_message("Failed to start Priority runtime. Aborted.", "fatal");
+        return status;
+    }
+
     status = module_status(SUBSCRIPTION_CACHE_UC, [ "run-deferred-bootstrap", subscription_deferred_sections ]);
     if (status != 0)
         return status;
@@ -758,6 +765,7 @@ function stop_main() {
     let status = 0;
 
     log_message("Stopping Podkop Plus", "info");
+    module_success(PRIORITY_UC, [ "stop-runtime" ]);
     module_success(SUBSCRIPTION_CACHE_UC, [ "stop-deferred-bootstrap-worker" ]);
     module_success(UPDATES_UC, [ "stop-list-update" ]);
     remove_cron_jobs();
@@ -1103,6 +1111,7 @@ function reload(reason) {
     }
 
     if (plan.needs_sing_box_reload == 1) {
+        module_success(PRIORITY_UC, [ "stop-runtime" ]);
         status = module_status(SINGBOX_UC, [ "configure-service" ]);
         if (status != 0)
             return status;
@@ -1124,6 +1133,12 @@ function reload(reason) {
         ]);
         if (status != 0) {
             log_message("Reload verification failed after sing-box was reloaded; stopping Podkop Plus runtime", "fatal");
+            cleanup_failed_runtime();
+            return status;
+        }
+        status = module_status(PRIORITY_UC, [ "start-runtime" ]);
+        if (status != 0) {
+            log_message("Failed to start Priority runtime after sing-box reload", "fatal");
             cleanup_failed_runtime();
             return status;
         }

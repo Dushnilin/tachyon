@@ -49,6 +49,7 @@ export function render() {
           onChooseOutbound: () => {},
           onCopyOutbound: () => {},
           onShowUrlTestInfo: () => {},
+          onShowPriorityInfo: () => {},
           onUpdateSubscription: () => {},
           latencyFetching: false,
           latencyProgress: undefined,

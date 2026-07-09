@@ -256,6 +256,31 @@ function remember_urltest_group(state, tag_name, display_name, outbound) {
     state.urltestGroups[tag_name] = group;
 }
 
+function remember_urltest_group_config(state, tag_name, input_group) {
+    if (type(state) != "object")
+        return;
+
+    input_group = object_or_empty(input_group);
+    let output_group = {
+        displayName: as_string(input_group.displayName || "") != "" ? as_string(input_group.displayName) : tag_name,
+        outbounds: array_or_empty(input_group.outbounds)
+    };
+
+    for (let key in [ "url", "interval", "tolerance", "idle_timeout", "interrupt_exist_connections" ]) {
+        if (input_group[key] != null)
+            output_group[key] = input_group[key];
+    }
+
+    state.urltestGroups[tag_name] = output_group;
+}
+
+function remember_priority_group(state, tag_name, group) {
+    if (type(state) != "object")
+        return;
+
+    state.priorityGroups[tag_name] = object_or_empty(group);
+}
+
 function remember_visible_outbound(state, tag_name, source_section, source_index, source_outbound_index, display_name, outbound) {
     remember_source_outbound(state, tag_name, source_section, source_index, source_outbound_index, display_name, outbound);
     remember_urltest_group(state, tag_name, display_name, outbound);
@@ -317,6 +342,7 @@ function new_section_state(section_name) {
         servers: {},
         urltestCandidateTags: [],
         urltestGroups: {},
+        priorityGroups: {},
         subscriptionMetadata: []
     };
 }
@@ -329,6 +355,8 @@ return {
     remember_outbound_metadata,
     remember_source_outbound,
     remember_urltest_group,
+    remember_urltest_group_config,
+    remember_priority_group,
     remember_visible_outbound,
     source_cache_is_current,
     read_source_outbounds,
