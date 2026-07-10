@@ -62,6 +62,25 @@ require_pattern 'startup_config_fingerprint = external_config_fingerprint();' \
   "startup must snapshot runtime-relevant config after validation"
 require_pattern 'mark_pending_reload_if_config_changed(startup_config_fingerprint, "config_changed_during_start")' \
   "startup must queue reload when config changes while service is starting"
+awk '
+  /function restart_runtime_for_reload\(\)/ { in_restart = 1 }
+  in_restart && /status = start_impl\(\);/ { saw_start_impl = 1 }
+  in_restart && /dnsmasq_configure\(true\)/ { duplicated_dns = 1 }
+  in_restart && /write-current-reload-state-clean/ { duplicated_state = 1 }
+  in_restart && /DNS_FAILOVER_UC.*start-runtime/ { duplicated_failover = 1 }
+  in_restart && /^}/ { done = 1; exit }
+  END { exit done && saw_start_impl && !duplicated_dns && !duplicated_state && !duplicated_failover ? 0 : 1 }
+' "$LIFECYCLE_UC" ||
+  fail "reload fallback restart must reuse the complete start_impl path without duplicating finalization"
+require_pattern 'function abort_reload(status, runtime_changed)' \
+  "reload failures must share one cleanup decision owner"
+require_pattern 'return abort_reload(status, true);' \
+  "reload failures after runtime mutation must clean the partial runtime"
+cleanup_function_line="$(grep -nF 'function cleanup_failed_runtime()' "$LIFECYCLE_UC" | head -n1 | cut -d: -f1)"
+abort_function_line="$(grep -nF 'function abort_reload(status, runtime_changed)' "$LIFECYCLE_UC" | head -n1 | cut -d: -f1)"
+[ -n "$cleanup_function_line" ] && [ -n "$abort_function_line" ] &&
+  [ "$cleanup_function_line" -lt "$abort_function_line" ] ||
+  fail "cleanup_failed_runtime must be declared before abort_reload for ucode runtime calls"
 require_pattern 'pending_reload_log_context(reason)' \
   "startup queued reload must be visible in logs"
 require_pattern 'return "current reload";' \

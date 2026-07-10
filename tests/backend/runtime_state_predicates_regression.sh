@@ -165,11 +165,19 @@ service_trigger_signature=abc" "$(cat "$TARGET_RELOAD_STATE")" "captured reload 
 
 printf 'format=1\n' >"$SNAPSHOT_FILE"
 printf 'old=1\n' >"$TARGET_RELOAD_STATE"
+printf 'stale=1\n' >"$TARGET_RELOAD_STATE.snapshot.100.200"
+printf 'stale=1\n' >"$TARGET_RELOAD_STATE.snapshot.interrupted"
+printf 'keep=1\n' >"$WORK_DIR/unrelated.snapshot.100.200"
 state_ucode clear-reload-state "$TARGET_RELOAD_STATE" "$SNAPSHOT_FILE"
 [ ! -e "$TARGET_RELOAD_STATE" ] ||
   fail "ucode should clear reload state file"
 [ ! -e "$SNAPSHOT_FILE" ] ||
   fail "ucode should clear reload state snapshot file"
+[ ! -e "$TARGET_RELOAD_STATE.snapshot.100.200" ] &&
+  [ ! -e "$TARGET_RELOAD_STATE.snapshot.interrupted" ] ||
+  fail "ucode should clear stale snapshots owned by the reload state file"
+[ -e "$WORK_DIR/unrelated.snapshot.100.200" ] ||
+  fail "ucode should preserve unrelated snapshot files"
 
 cat >"$WORK_DIR/service-dns-state.json" <<'JSON'
 {
