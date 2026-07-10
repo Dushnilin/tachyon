@@ -3,6 +3,7 @@
 const SRS_MAIN_URL = "https://github.com/itdoginfo/allow-domains/releases/latest/download";
 const SRS_ADS_HAGEZI_PRO_URL = "https://github.com/zxc-rv/ad-filter/releases/latest/download/adlist.srs";
 const SRS_SUPERCELL_URL = "https://raw.githubusercontent.com/ushan0v/sing-box-supercell-ruleset/main/supercell.srs";
+const SRS_GITHUB_URL = "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/github.srs";
 
 const COMMUNITY_SERVICES = {
     russia_inside: true,
@@ -30,7 +31,8 @@ const COMMUNITY_SERVICES = {
     telegram: true,
     roblox: true,
     ads_hagezi_pro: true,
-    supercell: true
+    supercell: true,
+    github: true
 };
 
 function as_string(value) {
@@ -47,6 +49,8 @@ function community_url(name) {
         return SRS_ADS_HAGEZI_PRO_URL;
     if (name == "supercell")
         return SRS_SUPERCELL_URL;
+    if (name == "github")
+        return SRS_GITHUB_URL;
     return SRS_MAIN_URL + "/" + name + ".srs";
 }
 

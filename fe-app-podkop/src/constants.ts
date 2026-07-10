@@ -59,6 +59,7 @@ export const DOMAIN_LIST_OPTIONS = {
   roblox: 'Roblox',
   ads_hagezi_pro: 'Ads (Hagezi Pro)',
   supercell: 'Supercell',
+  github: 'GitHub',
   hetzner: 'Hetzner ASN',
   ovh: 'OVH ASN',
   digitalocean: 'Digital Ocean ASN',
