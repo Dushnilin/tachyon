@@ -29,17 +29,15 @@ config settings 'settings'
 #        option label 'Subscription'
 #        option enabled '1'
 #        option action 'connection'
+#        list selector_proxy_links 'vless://example'
+#        list interfaces 'awg0'
 #        list community_lists 'russia_inside'
 #        list rule_set 'https://example.com/rules.srs'
 #        list rule_set_with_subnets 'https://example.com/rules-with-subnets.json'
+#        option outbound_detour_enabled '0'
+#        #option outbound_detour_section 'main'
 #        option sort_by_latency '0'
 #        #list fully_routed_ips '192.168.1.2'
-
-#config connection_url
-#        option section 'subscription_example'
-#        option url 'vless://example'
-#        option outbound_detour_enabled '0'
-#        option enable_udp_over_tcp '0'
 
 #config subscription_url
 #        option section 'subscription_example'

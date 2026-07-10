@@ -58,7 +58,6 @@ const PODKOP_MASK_AFTER_TOKEN_SPACE = [
   'list fully_routed_ips',
   'option dns_server',
   'option bootstrap_dns_server',
-  'option domain_resolver_dns_server',
   'option listen',
   'option listen_port',
   'option public_host',
@@ -157,11 +156,6 @@ function maskGlobalCheckLine(line: string) {
   }
 
   maskedLine = maskOptionPath(maskedLine, "option dns_server '");
-  maskedLine = maskOptionPath(
-    maskedLine,
-    "option domain_resolver_dns_server '",
-  );
-
   return maskedLine;
 }
 

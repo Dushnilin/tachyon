@@ -103,7 +103,7 @@ function fixture_get_section(section_name) {
     if (section_name == "settings" && type(fixture.settings) == "object")
         return fixture.settings;
 
-    for (let type_name in [ "settings", "server", "section", "connection_url", "subscription_url", "section_interface", "urltest", "priority_group", "priority_level" ]) {
+    for (let type_name in [ "settings", "server", "section", "subscription_url", "urltest", "priority_group", "priority_level" ]) {
         for (let section in fixture_section_list(type_name)) {
             if (as_string(section[".name"]) == section_name)
                 return section;
@@ -1125,20 +1125,27 @@ function outbound_detour_tag_for_section(section) {
     return detour_section == "" ? "" : outbound_tag(detour_section);
 }
 
-function apply_detour_to_outbound(config, tag_name, detour_tag) {
+function apply_section_detour_to_connection_outbounds(config, start_index, detour_tag) {
     if (detour_tag == "")
         return;
-    for (let outbound in array_or_empty(config.outbounds)) {
-        if (type(outbound) == "object" && outbound.tag == tag_name)
+
+    let outbounds = array_or_empty(config.outbounds);
+    for (let i = int(start_index || 0); i < length(outbounds); i++) {
+        let outbound = outbounds[i];
+        if (type(outbound) != "object")
+            continue;
+
+        let outbound_type = lc(as_string(outbound.type || ""));
+        if (outbound_type == "" ||
+            outbound_type == "selector" ||
+            outbound_type == "urltest" || outbound_type == "dns" ||
+            outbound_type == "block")
+            continue;
+
+        // Preserve subscription chains: only their terminal dial outbound receives the section detour.
+        if (as_string(outbound.detour || "") == "")
             outbound.detour = detour_tag;
     }
-}
-
-function apply_detour_to_outbounds(config, tag_names, detour_tag) {
-    if (detour_tag == "")
-        return;
-    for (let tag_name in tag_names)
-        apply_detour_to_outbound(config, tag_name, detour_tag);
 }
 
 function mixed_proxy_enabled_action(action) {
@@ -1451,7 +1458,7 @@ function manual_http_outbound(link, tag_name) {
     return outbound;
 }
 
-function manual_socks_outbound(link, tag_name, udp_over_tcp) {
+function manual_socks_outbound(link, tag_name) {
     let scheme = url_scheme(link);
     let host = url_host(link);
     let port = parse_port(url_port(link));
@@ -1474,12 +1481,10 @@ function manual_socks_outbound(link, tag_name, udp_over_tcp) {
                 outbound.password = substr(userinfo, colon + 1);
         }
     }
-    if (udp_over_tcp)
-        outbound.udp_over_tcp = { enabled: true, version: 2 };
     return outbound;
 }
 
-function manual_shadowsocks_outbound(link, tag_name, udp_over_tcp) {
+function manual_shadowsocks_outbound(link, tag_name) {
     let raw = url_strip_fragment_value(url_decode(link));
     let body = substr(raw, 5);
     let question = index(body, "?");
@@ -1534,8 +1539,6 @@ function manual_shadowsocks_outbound(link, tag_name, udp_over_tcp) {
         outbound.plugin = as_string(query.plugin);
     if (as_string(query["plugin-opts"] || "") != "")
         outbound.plugin_opts = as_string(query["plugin-opts"]);
-    if (udp_over_tcp)
-        outbound.udp_over_tcp = { enabled: true, version: 2 };
     return outbound;
 }
 
@@ -1696,7 +1699,7 @@ function manual_hysteria2_outbound(link, tag_name) {
     return outbound;
 }
 
-function manual_link_outbound(link, tag_name, udp_over_tcp) {
+function manual_link_outbound(link, tag_name) {
     let scheme = url_scheme(link);
     if (scheme == "vmess")
         return manual_vmess_outbound(link, tag_name);
@@ -1706,9 +1709,9 @@ function manual_link_outbound(link, tag_name, udp_over_tcp) {
     if (scheme == "http" || scheme == "https")
         return manual_http_outbound(link, tag_name);
     if (scheme == "socks4" || scheme == "socks4a" || scheme == "socks5")
-        return manual_socks_outbound(link, tag_name, udp_over_tcp);
+        return manual_socks_outbound(link, tag_name);
     if (scheme == "ss")
-        return manual_shadowsocks_outbound(link, tag_name, udp_over_tcp);
+        return manual_shadowsocks_outbound(link, tag_name);
     if (scheme == "vless")
         return manual_vless_outbound(link, tag_name);
     if (scheme == "trojan")
@@ -1718,13 +1721,13 @@ function manual_link_outbound(link, tag_name, udp_over_tcp) {
     runtime_generate_unsupported("manual proxy link scheme is not supported by sing-box config generation yet");
 }
 
-function add_manual_proxy_link(config, state, section_name, manual_index, link, udp_over_tcp, taken, selector_tags, urltest_candidate_tags) {
+function add_manual_proxy_link(config, state, section_name, manual_index, link, taken, selector_tags, urltest_candidate_tags) {
     let tag_name = outbound_tag(section_name + "-" + manual_index);
     if (taken[tag_name])
         tag_name = unique_tag(tag_name, taken);
     taken[tag_name] = true;
 
-    let outbound = manual_link_outbound(link, tag_name, udp_over_tcp);
+    let outbound = manual_link_outbound(link, tag_name);
     push(config.outbounds, outbound);
     push(selector_tags, tag_name);
     push(urltest_candidate_tags, tag_name);
@@ -1743,31 +1746,21 @@ function connection_item_tag(section_name, kind, item_index) {
     return outbound_tag(section_name + "-" + as_string(kind) + "-" + item_index);
 }
 
-function connection_detour_tag(section, link) {
-    if (!connections.connection_detour_enabled(section, link))
-        return "";
-
-    let detour_section = connections.connection_detour_section(section, link);
-    return detour_section == "" ? "" : outbound_tag(detour_section);
-}
-
 function add_connection_manual_links(config, state, section, taken, selector_tags, urltest_candidate_tags) {
     let section_name = section[".name"];
     let manual_links = connections.connection_urls(section);
     for (let i = 0; i < length(manual_links); i++) {
         let link = manual_links[i];
-        let tag_name = add_manual_proxy_link(
+        add_manual_proxy_link(
             config,
             state,
             section_name,
             i + 1,
             link,
-            connections.connection_udp_over_tcp(section, link),
             taken,
             selector_tags,
             urltest_candidate_tags
         );
-        apply_detour_to_outbound(config, tag_name, connection_detour_tag(section, link));
     }
 }
 
@@ -1798,29 +1791,12 @@ function add_interface_connection_outbound(config, state, section, interface_ind
         tag_name = unique_tag(tag_name, taken);
     taken[tag_name] = true;
 
-    let domain_resolver = "";
-    if (connections.interface_domain_resolver_enabled(section, interface_name)) {
-        domain_resolver = runtime_constants.domain_resolver_tag(section_name + "-interface-" + interface_index);
-        let dns_server = runtime_dns.server_from_options(
-            domain_resolver,
-            connections.interface_domain_resolver_dns_type(section, interface_name),
-            connections.interface_domain_resolver_dns_server(section, interface_name),
-            tag_name
-        );
-        if (dns_server.unsupported)
-            runtime_generate_unsupported(dns_server.unsupported);
-        push(config.dns.servers, dns_server);
-    }
-
     let outbound = {
         type: "direct",
         tag: tag_name,
         bind_interface: interface_name,
-        domain_resolver,
         routing_mark: runtime_constants.OUTBOUND_MARK
     };
-    if (domain_resolver == "")
-        delete outbound.domain_resolver;
 
     push(config.outbounds, outbound);
     push(selector_tags, tag_name);
@@ -1876,9 +1852,16 @@ function add_connections_outbound(config, section, taken) {
     let selector_tags = [];
     let urltest_candidate_tags = [];
     let state = runtime_subscription.new_section_state(section_name);
+    let cascade_start = length(array_or_empty(config.outbounds));
 
     add_connection_manual_links(config, state, section, taken, selector_tags, urltest_candidate_tags);
     add_connection_subscriptions(config, state, section, taken, selector_tags, urltest_candidate_tags);
+    // Apply before interface and JSON items are added: those source kinds are intentionally excluded.
+    apply_section_detour_to_connection_outbounds(
+        config,
+        cascade_start,
+        outbound_detour_tag_for_section(section)
+    );
     add_connection_interfaces(config, state, section, taken, selector_tags, urltest_candidate_tags);
     add_connection_json_outbounds(config, state, section, taken, selector_tags, urltest_candidate_tags);
 
@@ -1923,9 +1906,6 @@ function add_json_outbound(config, section) {
         runtime_generate_unsupported("JSON outbound is not an object");
 
     outbound.tag = outbound_tag(section[".name"]);
-    let detour_tag = outbound_detour_tag_for_section(section);
-    if (detour_tag != "")
-        outbound.detour = detour_tag;
     push(config.outbounds, outbound);
 }
 
@@ -1934,29 +1914,12 @@ function add_vpn_outbound(config, section) {
     if (interface_name == "")
         runtime_generate_unsupported("VPN interface is not set");
 
-    let domain_resolver = "";
-    if (bool_option(section, "domain_resolver_enabled", false)) {
-        domain_resolver = runtime_constants.domain_resolver_tag(section[".name"]);
-        let dns_server = runtime_dns.server_from_options(
-            domain_resolver,
-            option(section, "domain_resolver_dns_type", ""),
-            option(section, "domain_resolver_dns_server", ""),
-            outbound_tag(section[".name"])
-        );
-        if (dns_server.unsupported)
-            runtime_generate_unsupported(dns_server.unsupported);
-        push(config.dns.servers, dns_server);
-    }
-
     push(config.outbounds, {
         type: "direct",
         tag: outbound_tag(section[".name"]),
         bind_interface: interface_name,
-        domain_resolver,
         routing_mark: runtime_constants.OUTBOUND_MARK
     });
-    if (domain_resolver == "")
-        delete config.outbounds[length(config.outbounds) - 1].domain_resolver;
 }
 
 function enabled_action_index(sections, target_section, action_name) {

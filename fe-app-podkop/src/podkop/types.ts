@@ -236,9 +236,7 @@ export namespace Podkop {
       | 'ruleset'
       | 'section'
       | 'server'
-      | 'connection_url'
       | 'subscription_url'
-      | 'section_interface'
       | 'urltest'
       | 'priority_group'
       | 'priority_level';
@@ -262,9 +260,7 @@ export namespace Podkop {
     subscription_urls?: string[];
     interfaces?: string[];
     outbound_jsons?: string[];
-    connection_url_settings?: string;
     subscription_url_settings?: string;
-    interface_settings?: string;
     urltests?: string[];
     urltest_settings?: string;
     priority_groups?: string[];
@@ -323,7 +319,6 @@ export namespace Podkop {
     regex?: string[];
     outbound_detour_enabled?: '0' | '1';
     outbound_detour_section?: string;
-    enable_udp_over_tcp?: '0' | '1';
     download_via_proxy_enabled?: '0' | '1';
     download_via_proxy_section?: string;
     auto_user_agent?: '0' | '1';
@@ -334,9 +329,6 @@ export namespace Podkop {
     include_urltest_groups?: '0' | '1';
     hide_urltest_group_outbounds?: '0' | '1';
     hide_detour_outbounds?: '0' | '1';
-    domain_resolver_enabled?: '0' | '1';
-    domain_resolver_dns_type?: string;
-    domain_resolver_dns_server?: string;
     yacd_secret_key?: string;
   }
 

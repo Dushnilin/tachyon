@@ -829,16 +829,7 @@ function section_subscription_update_interval(section) {
 }
 
 function connection_urls_signature(section) {
-    let result = [];
-    for (let entry in connections.connection_urls(section)) {
-        push(result, {
-            url: entry,
-            outbound_detour_enabled: connections.connection_detour_enabled(section, entry) ? "1" : "0",
-            outbound_detour_section: connections.connection_detour_section(section, entry),
-            enable_udp_over_tcp: connections.connection_udp_over_tcp(section, entry) ? "1" : "0"
-        });
-    }
-    return sprintf("%J", result);
+    return sprintf("%J", connections.connection_urls(section));
 }
 
 function subscription_urls_signature(section) {
@@ -863,16 +854,7 @@ function subscription_urls_signature(section) {
 }
 
 function interfaces_signature(section) {
-    let result = [];
-    for (let entry in connections.interfaces(section)) {
-        push(result, {
-            name: entry,
-            domain_resolver_enabled: connections.interface_domain_resolver_enabled(section, entry) ? "1" : "0",
-            domain_resolver_dns_type: connections.interface_domain_resolver_dns_type(section, entry),
-            domain_resolver_dns_server: connections.interface_domain_resolver_dns_server(section, entry)
-        });
-    }
-    return sprintf("%J", result);
+    return sprintf("%J", connections.interfaces(section));
 }
 
 function urltests_signature(section) {
@@ -1126,6 +1108,7 @@ function append_sing_box_rule_signature_body(body, section, sections) {
         body = signature_add_value(body, prefix + ".urltest_include_outbounds", option(section, "urltest_include_outbounds", ""));
         body = signature_add_value(body, prefix + ".urltest_include_regex", option(section, "urltest_include_regex", ""));
         body = signature_add_value(body, prefix + ".subscription_update_interval", section_subscription_update_interval(section));
+        body = signature_add_outbound_detour_body(body, section, prefix);
         body = signature_add_mixed_proxy_body(body, section, prefix);
         body = signature_add_value(body, prefix + ".resolve_real_ip_for_routing", bool_option_value(section, "resolve_real_ip_for_routing", false));
     }

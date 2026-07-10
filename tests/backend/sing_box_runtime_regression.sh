@@ -270,7 +270,8 @@ cat >"$WORK_DIR/runtime-matchers-fixture.json" <<'JSON'
       "selector_proxy_links": [ "socks5://127.0.0.1:1080" ],
       "domain_suffix": [ "proxy.example.org", "сайт.рф", "full:пример.испытание", "keyword:пример", "regex:^сайт[.]рф$" ],
       "source_ip_cidr": [ "10.0.0.2/32", "2001:db8::2/128" ],
-      "connection_url_settings": "{\"socks5://127.0.0.1:1080\":{\"outbound_detour_enabled\":\"1\",\"outbound_detour_section\":\"detour\"}}",
+      "outbound_detour_enabled": "1",
+      "outbound_detour_section": "detour",
       "mixed_proxy_enabled": "1",
       "mixed_proxy_port": "19090",
       "mixed_proxy_auth_enabled": "1",
@@ -352,7 +353,7 @@ cat >"$WORK_DIR/manual-transport-fixture.json" <<'JSON'
 }
 JSON
 
-cat >"$WORK_DIR/vpn-domain-resolver-fixture.json" <<'JSON'
+cat >"$WORK_DIR/vpn-interface-fixture.json" <<'JSON'
 {
   "settings": {
     ".name": "settings",
@@ -368,7 +369,6 @@ cat >"$WORK_DIR/vpn-domain-resolver-fixture.json" <<'JSON'
       "enabled": "1",
       "action": "connection",
       "interfaces": [ "tun0" ],
-      "interface_settings": "{\"tun0\":{\"domain_resolver_enabled\":\"1\",\"domain_resolver_dns_type\":\"doh\",\"domain_resolver_dns_server\":\"https://dns.example/dns-query\"}}",
       "domain_suffix": [ "vpn.example" ]
     }
   ]
@@ -681,7 +681,7 @@ generate_config "$WORK_DIR/runtime-matchers-fixture.json" "$WORK_DIR/matchers.js
 generate_config "$WORK_DIR/urltest-filter-fixture.json" "$WORK_DIR/urltest.json"
 generate_config "$WORK_DIR/provider-actions-fixture.json" "$WORK_DIR/providers.json"
 generate_config "$WORK_DIR/manual-transport-fixture.json" "$WORK_DIR/manual.json"
-generate_config "$WORK_DIR/vpn-domain-resolver-fixture.json" "$WORK_DIR/vpn.json"
+generate_config "$WORK_DIR/vpn-interface-fixture.json" "$WORK_DIR/vpn.json"
 generate_config "$WORK_DIR/download-via-proxy-fixture.json" "$WORK_DIR/download.json"
 generate_config "$WORK_DIR/fully-routed-fixture.json" "$WORK_DIR/fully-routed.json"
 generate_config "$WORK_DIR/mwan3-auto-fixture.json" "$WORK_DIR/mwan3-auto.json" 1
@@ -844,8 +844,7 @@ assert(outbound(manual, "proxy-3-out").type == "shadowsocks", "manual Shadowsock
 
 let vpn = cfg("vpn");
 assert(outbound(vpn, "renamed_awg-interface-1-out").bind_interface == "tun0", "renamed VPN interface outbound");
-assert(outbound(vpn, "renamed_awg-interface-1-out").domain_resolver == "renamed_awg-interface-1-domain-resolver", "renamed VPN domain resolver tag");
-assert(dns_server(vpn, r => r.tag == "renamed_awg-interface-1-domain-resolver") != null, "renamed VPN domain resolver DNS server");
+assert(outbound(vpn, "renamed_awg-interface-1-out").detour == null, "interface outbound must not receive a detour");
 assert(route_rule(vpn, r => r.outbound == "renamed_awg-out" && contains(r.domain_suffix, "vpn.example")) != null, "renamed VPN custom domain route");
 assert(dns_rule(vpn, r => contains(r.domain_suffix, "vpn.example")) != null, "renamed VPN custom domain DNS rule");
 

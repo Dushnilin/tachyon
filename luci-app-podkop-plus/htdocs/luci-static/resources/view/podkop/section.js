@@ -790,6 +790,26 @@ function ensureConnectionsDynamicListStyles() {
   width: 100%;
 }
 
+.pdk-interface-dynlist-label {
+  align-items: center;
+  display: inline-flex;
+  gap: 0.25em;
+  max-width: 100%;
+  vertical-align: middle;
+}
+
+.pdk-interface-dynlist-label > img {
+  flex: 0 0 auto;
+  height: 1.35em;
+  width: auto;
+}
+
+.pdk-interface-dynlist-label > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .pdk-button-add-dynlist > .add-item {
   display: block;
   margin-top: 4px;
@@ -825,26 +845,6 @@ function ensureConnectionsDynamicListStyles() {
   border-color: rgba(82, 168, 236, .8) !important;
   box-shadow: inset 0 1px 3px hsla(var(--border-color-low-hsl), .01), 0 0 8px rgba(82, 168, 236, .6) !important;
   outline: 0;
-}
-
-.pdk-interface-dynlist-label {
-  align-items: center;
-  display: inline-flex;
-  gap: 0.25em;
-  max-width: 100%;
-  vertical-align: middle;
-}
-
-.pdk-interface-dynlist-label > img {
-  flex: 0 0 auto;
-  height: 1.35em;
-  width: auto;
-}
-
-.pdk-interface-dynlist-label > span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 body.modal-overlay-active > #modal_overlay > .modal.cbi-modal > .cbi-map.flash {
@@ -1377,24 +1377,6 @@ function currentOutboundNameChoices(section_id, values) {
   return result.sort((a, b) => a.label.localeCompare(b.label));
 }
 
-function connectionUrlSupportsUdpOverTcp(value) {
-  const normalized = `${value || ""}`.trim().toLowerCase();
-  return (
-    normalized.startsWith("socks4://") ||
-    normalized.startsWith("socks4a://") ||
-    normalized.startsWith("socks5://") ||
-    normalized.startsWith("ss://") ||
-    normalized.startsWith("shadowsocks://")
-  );
-}
-
-function connectionTargetChoices(section_id) {
-  return getOutboundDetourTargetSections(section_id).map((section) => ({
-    value: getUciSectionName(section),
-    label: getUciSectionLabel(section),
-  }));
-}
-
 function isDownloadThroughTargetSection(section, currentSectionId) {
   const sectionName = getUciSectionName(section);
   const action = (section && section.action) || "";
@@ -1433,24 +1415,6 @@ function subscriptionDownloadTargetChoices(section_id) {
       value: getUciSectionName(section),
       label: getUciSectionLabel(section),
     }));
-}
-
-function dnsTypeChoices() {
-  return [
-    { value: "doh", label: _("DNS over HTTPS (DoH)") },
-    { value: "dot", label: _("DNS over TLS (DoT)") },
-    { value: "udp", label: "UDP" },
-  ];
-}
-
-function dnsServerDatalist(inputId) {
-  return E(
-    "datalist",
-    { id: inputId },
-    Object.entries(main.DNS_SERVER_OPTIONS).map(([key, label]) =>
-      E("option", { value: key }, _(label)),
-    ),
-  );
 }
 
 function isConnectionNetworkInterfaceAllowed(deviceName, device) {
@@ -1523,7 +1487,29 @@ function refreshNetworkInterfaceOptionValues(option) {
   });
 }
 
-const InterfaceSettingsDynamicList = SettingsDynamicList.extend({
+const InterfaceUIDynamicList = ui.DynamicList.extend({
+  render() {
+    ensureConnectionsDynamicListStyles();
+    return ui.DynamicList.prototype.render.apply(this, arguments);
+  },
+
+  addItem(dl, value, text, flash) {
+    const itemText =
+      typeof this.options.itemLabel === "function"
+        ? this.options.itemLabel(value, text)
+        : text;
+
+    return ui.DynamicList.prototype.addItem.call(
+      this,
+      dl,
+      value,
+      itemText,
+      flash,
+    );
+  },
+});
+
+const InterfaceDynamicList = form.DynamicList.extend({
   load(section_id) {
     return network.getDevices().then(
       L.bind(function (devices) {
@@ -1535,9 +1521,32 @@ const InterfaceSettingsDynamicList = SettingsDynamicList.extend({
     );
   },
 
-  validate(section_id, value) {
-    value = childItemInputValue(section_id, value, "section_interface", "name");
+  renderWidget(section_id, _option_index, cfgvalue) {
+    const value = cfgvalue != null ? cfgvalue : this.default;
+    const choices = this.transformChoices();
+    const items = L.toArray(value);
+    const widget = new InterfaceUIDynamicList(items, choices, {
+      id: this.cbid(section_id),
+      sort: this.keylist,
+      allowduplicates: this.allowduplicates,
+      optional: this.optional || this.rmempty,
+      datatype: this.datatype,
+      placeholder: this.placeholder,
+      validate: L.bind(this.validate, this, section_id),
+      disabled: this.readonly != null ? this.readonly : this.map.readonly,
+      itemLabel: (itemValue, itemText) =>
+        renderNetworkInterfaceListItem(
+          this.interfaceDeviceMap
+            ? this.interfaceDeviceMap[itemValue]
+            : null,
+          itemValue || itemText,
+        ),
+    });
 
+    return widget.render();
+  },
+
+  validate(_section_id, value) {
     if (!value || value.length === 0) {
       return true;
     }
@@ -1547,15 +1556,6 @@ const InterfaceSettingsDynamicList = SettingsDynamicList.extend({
     }
 
     return true;
-  },
-
-  renderListItemLabel(section_id, value, text) {
-    value = childItemInputValue(section_id, value, "section_interface", "name");
-
-    return renderNetworkInterfaceListItem(
-      this.interfaceDeviceMap ? this.interfaceDeviceMap[value] : null,
-      value || text,
-    );
   },
 });
 
@@ -1624,22 +1624,6 @@ function optionMapValue(option, section_id, key) {
   return value == null ? "" : value;
 }
 
-function connectionUrlSettingsKeys() {
-  return [
-    "outbound_detour_enabled",
-    "outbound_detour_section",
-    "enable_udp_over_tcp",
-  ];
-}
-
-function defaultConnectionUrlSettings() {
-  return {
-    outbound_detour_enabled: "0",
-    outbound_detour_section: "",
-    enable_udp_over_tcp: "0",
-  };
-}
-
 function subscriptionUrlSettingsKeys() {
   return [
     "subscription_update_enabled",
@@ -1692,22 +1676,6 @@ function subscriptionUserAgentChoices() {
     "Karing",
     "Husi",
   ];
-}
-
-function interfaceSettingsKeys() {
-  return [
-    "domain_resolver_enabled",
-    "domain_resolver_dns_type",
-    "domain_resolver_dns_server",
-  ];
-}
-
-function defaultInterfaceSettings() {
-  return {
-    domain_resolver_enabled: "0",
-    domain_resolver_dns_type: "udp",
-    domain_resolver_dns_server: "8.8.8.8",
-  };
 }
 
 function urlTestSettingsKeys() {
@@ -1846,57 +1814,6 @@ function randomPriorityGroupId() {
   }
 
   return `pg_${Date.now().toString(16)}`;
-}
-
-function addConnectionUrlItemOptions(itemSection, options = {}) {
-  const parentSectionForItem =
-    typeof options.parentSectionId === "function"
-      ? options.parentSectionId
-      : parentSectionIdForItem;
-
-  let o = itemSection.option(
-    form.Flag,
-    "outbound_detour_enabled",
-    _("Cascade connection"),
-    _("Use another section as an intermediate hop for connecting to this one"),
-  );
-  o.default = "0";
-  o.rmempty = false;
-
-  o = itemSection.option(
-    form.ListValue,
-    "outbound_detour_section",
-    _("Connect through"),
-    _("Select a transit section"),
-  );
-  o.depends("outbound_detour_enabled", "1");
-  o.load = function (itemId) {
-    const sectionId = parentSectionForItem(itemId);
-    refreshOptionChoices(this, connectionTargetChoices(sectionId));
-    return optionMapValue(this, itemId, "outbound_detour_section") || "";
-  };
-  o.validate = function (itemId, value) {
-    const sectionId = parentSectionForItem(itemId);
-    if (
-      optionMapValue(this, itemId, "outbound_detour_enabled") === "1" &&
-      !value
-    ) {
-      return _("Select an intermediate section");
-    }
-    if (value === sectionId) {
-      return _("Current section cannot be used as its own transit section");
-    }
-    return true;
-  };
-
-  o = itemSection.option(
-    form.Flag,
-    "enable_udp_over_tcp",
-    _("UDP over TCP"),
-    _("Applicable only for SOCKS and Shadowsocks links"),
-  );
-  o.default = "0";
-  o.rmempty = false;
 }
 
 function addSubscriptionUrlItemOptions(itemSection, options = {}) {
@@ -2055,43 +1972,6 @@ function addSubscriptionUrlItemOptions(itemSection, options = {}) {
   );
   o.default = "1";
   o.rmempty = false;
-}
-
-function addInterfaceItemOptions(itemSection) {
-  let o = itemSection.option(
-    form.Flag,
-    "domain_resolver_enabled",
-    _("Domain Resolver"),
-    _("Enable built-in DNS resolver for domains handled by this section"),
-  );
-  o.default = "0";
-  o.rmempty = false;
-
-  o = itemSection.option(
-    form.ListValue,
-    "domain_resolver_dns_type",
-    _("DNS protocol"),
-    _("DNS protocol used by the resolver"),
-  );
-  o.depends("domain_resolver_enabled", "1");
-  dnsTypeChoices().forEach((choice) => o.value(choice.value, choice.label));
-  o.default = "udp";
-
-  o = itemSection.option(
-    form.Value,
-    "domain_resolver_dns_server",
-    _("DNS server"),
-    _("DNS server used by the resolver"),
-  );
-  o.depends("domain_resolver_enabled", "1");
-  o.default = "8.8.8.8";
-  o.validate = function (itemId, value) {
-    if (optionMapValue(this, itemId, "domain_resolver_enabled") !== "1") {
-      return true;
-    }
-    const validation = main.validateDNS(value);
-    return validation.valid ? true : validation.message;
-  };
 }
 
 function addUrlTestItemOptions(itemSection, options = {}) {
@@ -2913,17 +2793,6 @@ function ruleSetIncludesSubnets(section_id, value) {
   );
 }
 
-function showConnectionUrlSettingsModal(_section_id, itemValue, option) {
-  return showChildItemSettingsModal(_section_id, itemValue, option, {
-    typeName: "connection_url",
-    valueOption: "url",
-    keys: connectionUrlSettingsKeys(),
-    defaults: defaultConnectionUrlSettings(),
-    addOptions: addConnectionUrlItemOptions,
-    title: () => _("Connection URL settings"),
-  });
-}
-
 function showSubscriptionUrlSettingsModal(_section_id, itemValue, option) {
   return showChildItemSettingsModal(_section_id, itemValue, option, {
     typeName: "subscription_url",
@@ -3185,17 +3054,6 @@ function validateOutboundJsonItemsBeforeSave(_section_id, values) {
   }
 
   return true;
-}
-
-function showInterfaceSettingsModal(_section_id, itemValue, option) {
-  return showChildItemSettingsModal(_section_id, itemValue, option, {
-    typeName: "section_interface",
-    valueOption: "name",
-    keys: interfaceSettingsKeys(),
-    defaults: defaultInterfaceSettings(),
-    addOptions: addInterfaceItemOptions,
-    title: () => _("Network interface settings"),
-  });
 }
 
 function showRuleSetSettingsModal(section_id, itemValue, option, widget) {
@@ -6473,47 +6331,17 @@ function createSectionContent(section) {
 
   o = section.taboption(
     "settings",
-    SettingsDynamicList,
-    "connection_url",
+    form.DynamicList,
+    "selector_proxy_links",
     _("Connection URL"),
     _(
       "vless://, vmess://, ss://, trojan://, socks4/5://, http(s)://, hy2/hysteria2:// links",
     ),
   );
   o.depends("action", "connection");
+  o.rmempty = true;
   o.modalonly = true;
-  o.childType = "connection_url";
-  o.childValueOption = "url";
-  o.childDefaults = defaultConnectionUrlSettings();
-  o.renderItemSettingsModal = showConnectionUrlSettingsModal;
-  o.hasItemSettings = function (section_id, value) {
-    const normalized = `${value || ""}`.trim();
-    if (isExistingChildItem(section_id, normalized, "connection_url")) {
-      return true;
-    }
-
-    return this.validate(section_id, normalized) === true;
-  };
-  o.stagedChildSettings = function (section_id, value) {
-    const inputValue = childItemInputValue(
-      section_id,
-      value,
-      "connection_url",
-      "url",
-    );
-    const store = childPendingSettingsStore(this, section_id);
-    return store[inputValue] ? Object.assign({}, store[inputValue]) : null;
-  };
-  o.clearStagedChildSettings = function (section_id) {
-    if (this.pendingChildSettings) {
-      delete this.pendingChildSettings[section_id];
-    }
-  };
-  o.renderListItemLabel = function (section_id, itemId) {
-    return childItemInputValue(section_id, itemId, "connection_url", "url");
-  };
   o.validate = function (_section_id, value) {
-    value = childItemInputValue(_section_id, value, "connection_url", "url");
     if (!value || value.length === 0) {
       return true;
     }
@@ -6572,8 +6400,8 @@ function createSectionContent(section) {
 
   o = section.taboption(
     "settings",
-    InterfaceSettingsDynamicList,
-    "interface",
+    InterfaceDynamicList,
+    "interfaces",
     _("Network Interface"),
     _("Select network interface for VPN connection"),
   );
@@ -6581,33 +6409,6 @@ function createSectionContent(section) {
   o.rmempty = true;
   o.modalonly = true;
   o.placeholder = _("Select a network interface");
-  o.childType = "section_interface";
-  o.childValueOption = "name";
-  o.childDefaults = defaultInterfaceSettings();
-  o.renderItemSettingsModal = showInterfaceSettingsModal;
-  o.hasItemSettings = function (section_id, value) {
-    const normalized = `${value || ""}`.trim();
-    if (isExistingChildItem(section_id, normalized, "section_interface")) {
-      return true;
-    }
-
-    return this.validate(section_id, normalized) === true;
-  };
-  o.stagedChildSettings = function (section_id, value) {
-    const inputValue = childItemInputValue(
-      section_id,
-      value,
-      "section_interface",
-      "name",
-    );
-    const store = childPendingSettingsStore(this, section_id);
-    return store[inputValue] ? Object.assign({}, store[inputValue]) : null;
-  };
-  o.clearStagedChildSettings = function (section_id) {
-    if (this.pendingChildSettings) {
-      delete this.pendingChildSettings[section_id];
-    }
-  };
 
   o = section.taboption(
     "settings",
@@ -6695,7 +6496,7 @@ function createSectionContent(section) {
     "settings",
     ButtonAddSettingsDynamicList,
     "priority_group",
-    "Priority",
+    _("Priority"),
     _("Server group for priority failover"),
   );
   o.depends("action", "connection");
@@ -6726,6 +6527,70 @@ function createSectionContent(section) {
       { class: "pdk-dynlist-label" },
       this.inputValueForItem(section_id, itemId),
     );
+  };
+
+  o = section.taboption(
+    "settings",
+    form.Flag,
+    "outbound_detour_enabled",
+    _("Cascade connection"),
+    _(
+      "Use another section as an intermediate hop to connect to servers in this section. Does not apply to network interfaces or JSON outbounds.",
+    ),
+  );
+  o.default = "0";
+  o.rmempty = false;
+  o.depends("action", "connection");
+  o.modalonly = true;
+  o.write = function (section_id, value) {
+    if (value === "1") {
+      const currentValue =
+        uci.get(UCI_PACKAGE, section_id, "outbound_detour_section") || "";
+      const targetSections = getOutboundDetourTargetSections(section_id);
+      const currentIsValid = targetSections.some(
+        (targetSection) => getUciSectionName(targetSection) === currentValue,
+      );
+      const selectedValue = currentIsValid
+        ? currentValue
+        : getDefaultOutboundDetourSection(section_id);
+
+      if (selectedValue) {
+        uci.set(
+          UCI_PACKAGE,
+          section_id,
+          "outbound_detour_section",
+          selectedValue,
+        );
+      }
+    }
+
+    return form.Flag.prototype.write.apply(this, arguments);
+  };
+
+  o = section.taboption(
+    "settings",
+    form.ListValue,
+    "outbound_detour_section",
+    _("Connect through"),
+    _("Select a transit section"),
+  );
+  o.rmempty = false;
+  o.depends({ action: "connection", outbound_detour_enabled: "1" });
+  o.modalonly = true;
+  o.load = function (section_id) {
+    refreshOutboundDetourSectionOptionValues(this, section_id);
+    return Promise.resolve(
+      uci.get(UCI_PACKAGE, section_id, "outbound_detour_section") || "",
+    );
+  };
+  o.validate = function (section_id, value) {
+    if (!value) {
+      return _("Select an intermediate section");
+    }
+    if (value === section_id) {
+      return _("Current section cannot be used as its own transit section");
+    }
+    return true;
   };
 
   o = section.taboption(

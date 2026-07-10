@@ -11,7 +11,7 @@ fail() {
 }
 
 rows() {
-  printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$@"
+  printf '%s\t%s\t%s\t%s\t%s\n' "$@"
 }
 
 assert_rejects() {
@@ -29,39 +29,30 @@ assert_rejects() {
 }
 
 rows \
-  source 1 proxy 1 target '' \
-  target 1 vpn 0 '' '' |
-  ucode -L "$PODKOP_LIB" "$VALIDATOR" validate-outbound-detours
-
-rows \
-  source 1 outbound 1 target '{"type":"direct"}' \
-  target 1 proxy 0 '' '' |
+  source 1 connection 1 target \
+  target 1 connection 0 '' |
   ucode -L "$PODKOP_LIB" "$VALIDATOR" validate-outbound-detours
 
 assert_rejects "unsupported source action" "supported only for Connection rules" \
-  source 1 zapret 1 target '' \
-  target 1 proxy 0 '' ''
+  source 1 zapret 1 target \
+  target 1 connection 0 ''
 
 assert_rejects "missing target" "references missing rule 'missing'" \
-  source 1 proxy 1 missing ''
+  source 1 connection 1 missing
 
 assert_rejects "disabled target" "references disabled rule 'target'" \
-  source 1 proxy 1 target '' \
-  target 0 proxy 0 '' ''
+  source 1 connection 1 target \
+  target 0 connection 0 ''
 
 assert_rejects "wrong target action" "but it is not a Connection rule" \
-  source 1 proxy 1 target '' \
-  target 1 zapret 0 '' ''
+  source 1 connection 1 target \
+  target 1 zapret 0 ''
 
 assert_rejects "self target" "cannot point to itself" \
-  source 1 proxy 1 source ''
+  source 1 connection 1 source
 
 assert_rejects "cycle" "creates a cycle through 'second'" \
-  first 1 proxy 1 second '' \
-  second 1 proxy 1 first ''
-
-assert_rejects "unsupported json outbound" "does not support Dial Fields" \
-  source 1 outbound 1 target '{"type":"selector"}' \
-  target 1 proxy 0 '' ''
+  first 1 connection 1 second \
+  second 1 connection 1 first
 
 printf 'config validator detour regression checks passed\n'
