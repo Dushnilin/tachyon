@@ -8,9 +8,7 @@ let object_or_empty = common.object_or_empty;
 
 const CONFIG_NAME = getenv("PODKOP_CONFIG_NAME") || "podkop-plus";
 const ITEM_TYPES = [
-    "connection_url",
     "subscription_url",
-    "section_interface",
     "urltest",
     "priority_group",
     "priority_level"
@@ -310,7 +308,7 @@ function action(section) {
 }
 
 function connection_urls(section) {
-    return child_values(section, "connection_url", "url", "selector_proxy_links");
+    return whitespace_list_value(section, "selector_proxy_links");
 }
 
 function subscription_urls(section) {
@@ -318,10 +316,6 @@ function subscription_urls(section) {
 }
 
 function interfaces(section) {
-    let items = child_values(section, "section_interface", "name", "");
-    if (length(items) > 0)
-        return items;
-
     let result = list_value(section, "interfaces");
     if (length(result) == 0) {
         let value = option(section, "interface", "");
@@ -442,19 +436,9 @@ function has_connection_sources(section) {
         length(outbound_jsons(section)) > 0;
 }
 
-function connection_url_settings(section, value) {
-    let child = child_item_by_value(section, "connection_url", "url", value);
-    return child != null ? child : item_settings(section, "connection_url_settings", value);
-}
-
 function subscription_url_settings(section, value) {
     let child = child_item_by_value(section, "subscription_url", "url", value);
     return child != null ? child : item_settings(section, "subscription_url_settings", value);
-}
-
-function interface_settings(section, value) {
-    let child = child_item_by_value(section, "section_interface", "name", value);
-    return child != null ? child : item_settings(section, "interface_settings", value);
 }
 
 function urltest_child(section, value) {
@@ -575,54 +559,6 @@ function subscription_download_section(section, value) {
         return "";
 
     return item_option(section, "subscription_url_settings", value, "download_via_proxy_section", "");
-}
-
-function connection_detour_enabled(section, value) {
-    let child = child_item_by_value(section, "connection_url", "url", value);
-    if (child != null)
-        return child_bool(child, "outbound_detour_enabled", false);
-    return item_bool(section, "connection_url_settings", value, "outbound_detour_enabled",
-        bool_option(section, "outbound_detour_enabled", false));
-}
-
-function connection_detour_section(section, value) {
-    let child = child_item_by_value(section, "connection_url", "url", value);
-    if (child != null)
-        return child_option(child, "outbound_detour_section", "");
-    return item_option(section, "connection_url_settings", value, "outbound_detour_section",
-        option(section, "outbound_detour_section", ""));
-}
-
-function connection_udp_over_tcp(section, value) {
-    let child = child_item_by_value(section, "connection_url", "url", value);
-    if (child != null)
-        return child_bool(child, "enable_udp_over_tcp", false);
-    return item_bool(section, "connection_url_settings", value, "enable_udp_over_tcp",
-        bool_option(section, "enable_udp_over_tcp", false));
-}
-
-function interface_domain_resolver_enabled(section, value) {
-    let child = child_item_by_value(section, "section_interface", "name", value);
-    if (child != null)
-        return child_bool(child, "domain_resolver_enabled", false);
-    return item_bool(section, "interface_settings", value, "domain_resolver_enabled",
-        bool_option(section, "domain_resolver_enabled", false));
-}
-
-function interface_domain_resolver_dns_type(section, value) {
-    let child = child_item_by_value(section, "section_interface", "name", value);
-    if (child != null)
-        return child_option(child, "domain_resolver_dns_type", "udp");
-    return item_option(section, "interface_settings", value, "domain_resolver_dns_type",
-        option(section, "domain_resolver_dns_type", "udp") || "udp");
-}
-
-function interface_domain_resolver_dns_server(section, value) {
-    let child = child_item_by_value(section, "section_interface", "name", value);
-    if (child != null)
-        return child_option(child, "domain_resolver_dns_server", "8.8.8.8");
-    return item_option(section, "interface_settings", value, "domain_resolver_dns_server",
-        option(section, "domain_resolver_dns_server", "8.8.8.8") || "8.8.8.8");
 }
 
 function urltest_check_interval(section, value) {
@@ -938,9 +874,7 @@ return {
     rule_sets_value,
     rule_sets_with_subnets_value,
     has_connection_sources,
-    connection_url_settings,
     subscription_url_settings,
-    interface_settings,
     urltest_settings,
     subscription_update_enabled,
     subscription_update_interval,
@@ -953,12 +887,6 @@ return {
     subscription_user_agent,
     subscription_hwid,
     subscription_download_section,
-    connection_detour_enabled,
-    connection_detour_section,
-    connection_udp_over_tcp,
-    interface_domain_resolver_enabled,
-    interface_domain_resolver_dns_type,
-    interface_domain_resolver_dns_server,
     urltest_check_interval,
     urltest_tolerance,
     urltest_testing_url,

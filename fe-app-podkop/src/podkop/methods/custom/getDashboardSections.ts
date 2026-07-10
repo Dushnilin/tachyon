@@ -124,9 +124,7 @@ type PriorityConfig = {
 };
 
 type ChildType =
-  | 'connection_url'
   | 'subscription_url'
-  | 'section_interface'
   | 'urltest'
   | 'priority_group'
   | 'priority_level';
@@ -223,9 +221,7 @@ function compactSettingsMap(settings: Record<string, ItemSettings>) {
 }
 
 function hydrateConfigSections(configSections: Podkop.ConfigSection[]) {
-  const connectionUrls = childSections(configSections, 'connection_url');
   const subscriptionUrls = childSections(configSections, 'subscription_url');
-  const interfaces = childSections(configSections, 'section_interface');
   const urltests = childSections(configSections, 'urltest');
   const priorityGroups = childSections(configSections, 'priority_group');
   const priorityLevels = childSections(configSections, 'priority_level');
@@ -236,29 +232,9 @@ function hydrateConfigSections(configSections: Podkop.ConfigSection[]) {
     }
 
     const next: Podkop.ConfigSection = { ...section };
-    const connectionUrlItems = ownedChildSections(next, connectionUrls);
     const subscriptionUrlItems = ownedChildSections(next, subscriptionUrls);
-    const interfaceItems = ownedChildSections(next, interfaces);
     const urltestItems = ownedChildSections(next, urltests);
     const priorityGroupItems = ownedChildSections(next, priorityGroups);
-
-    if (connectionUrlItems.length) {
-      const settings: Record<string, ItemSettings> = {};
-      next.selector_proxy_links = connectionUrlItems
-        .map((item) => item.url || '')
-        .filter(Boolean);
-      connectionUrlItems.forEach((item) => {
-        if (!item.url) {
-          return;
-        }
-        settings[item.url] = {
-          outbound_detour_enabled: item.outbound_detour_enabled,
-          outbound_detour_section: item.outbound_detour_section,
-          enable_udp_over_tcp: item.enable_udp_over_tcp,
-        };
-      });
-      next.connection_url_settings = compactSettingsMap(settings);
-    }
 
     if (subscriptionUrlItems.length) {
       const settings: Record<string, ItemSettings> = {};
@@ -285,24 +261,6 @@ function hydrateConfigSections(configSections: Podkop.ConfigSection[]) {
         };
       });
       next.subscription_url_settings = compactSettingsMap(settings);
-    }
-
-    if (interfaceItems.length) {
-      const settings: Record<string, ItemSettings> = {};
-      next.interfaces = interfaceItems
-        .map((item) => item.name || '')
-        .filter(Boolean);
-      interfaceItems.forEach((item) => {
-        if (!item.name) {
-          return;
-        }
-        settings[item.name] = {
-          domain_resolver_enabled: item.domain_resolver_enabled,
-          domain_resolver_dns_type: item.domain_resolver_dns_type,
-          domain_resolver_dns_server: item.domain_resolver_dns_server,
-        };
-      });
-      next.interface_settings = compactSettingsMap(settings);
     }
 
     if (urltestItems.length) {

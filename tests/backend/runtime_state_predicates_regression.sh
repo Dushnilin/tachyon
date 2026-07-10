@@ -314,7 +314,6 @@ cat >"$WORK_DIR/sing-box-signature.json" <<'JSON'
       "action": "proxy",
       "selector_proxy_links": [ "vless://one", "vless://two" ],
       "subscription_urls": [ "https://example.com/sub.txt" ],
-      "enable_udp_over_tcp": "yes",
       "urltest_enabled": "1",
       "detect_server_country": "1",
       "urltest_tolerance": "75",
@@ -367,9 +366,6 @@ cat >"$WORK_DIR/sing-box-signature.json" <<'JSON'
       "enabled": "1",
       "action": "vpn",
       "interface": "wg0",
-      "domain_resolver_enabled": "1",
-      "domain_resolver_dns_type": "udp",
-      "domain_resolver_dns_server": "8.8.8.8",
       "mixed_proxy_enabled": "0",
       "resolve_real_ip_for_routing": "yes"
     }
@@ -434,7 +430,7 @@ secret
 [rule.proxy1.action]
 proxy
 [rule.proxy1.connection_urls]
-[ { "url": "vless://one", "outbound_detour_enabled": "1", "outbound_detour_section": "out1", "enable_udp_over_tcp": "1" }, { "url": "vless://two", "outbound_detour_enabled": "1", "outbound_detour_section": "out1", "enable_udp_over_tcp": "1" } ]
+[ "vless://one", "vless://two" ]
 [rule.proxy1.subscription_urls]
 [ { "url": "https://example.com/sub.txt", "subscription_update_enabled": "1", "subscription_update_interval": "1h", "download_via_proxy_section": "", "auto_user_agent": "1", "user_agent": "", "auto_hwid": "1", "hwid": "", "show_dashboard_metadata": "1", "include_urltest_groups": "1", "hide_urltest_group_outbounds": "1", "hide_detour_outbounds": "1" } ]
 [rule.proxy1.interfaces]
@@ -475,6 +471,10 @@ node-a
 
 [rule.proxy1.subscription_update_interval]
 1h
+[rule.proxy1.outbound_detour_enabled]
+1
+[rule.proxy1.outbound_detour_section]
+out1
 [rule.proxy1.mixed_proxy_enabled]
 1
 [rule.proxy1.mixed_proxy_port]
@@ -555,6 +555,8 @@ disabled
 
 [rule.out1.subscription_update_interval]
 
+[rule.out1.outbound_detour_enabled]
+0
 [rule.out1.mixed_proxy_enabled]
 0
 [rule.out1.resolve_real_ip_for_routing]
@@ -622,7 +624,7 @@ vpn
 [rule.vpn1.subscription_urls]
 [ ]
 [rule.vpn1.interfaces]
-[ { "name": "wg0", "domain_resolver_enabled": "1", "domain_resolver_dns_type": "udp", "domain_resolver_dns_server": "8.8.8.8" } ]
+[ "wg0" ]
 [rule.vpn1.outbound_jsons]
 
 [rule.vpn1.legacy_interface]
@@ -659,6 +661,8 @@ disabled
 
 [rule.vpn1.subscription_update_interval]
 
+[rule.vpn1.outbound_detour_enabled]
+0
 [rule.vpn1.mixed_proxy_enabled]
 0
 [rule.vpn1.resolve_real_ip_for_routing]

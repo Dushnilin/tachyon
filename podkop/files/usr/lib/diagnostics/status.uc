@@ -361,7 +361,6 @@ function podkop_config_masked_line(line) {
     line = mask_after_token(line, "list server_users");
     line = mask_after_token_space(line, "option dns_server");
     line = mask_after_token_space(line, "option bootstrap_dns_server");
-    line = mask_after_token_space(line, "option domain_resolver_dns_server");
     line = mask_after_token_space(line, "option listen");
     line = mask_after_token_space(line, "option listen_port");
     line = mask_after_token_space(line, "option public_host");
@@ -388,7 +387,6 @@ function podkop_config_masked_line(line) {
     line = mask_after_token_space(line, "option mixed_proxy_username");
     line = mask_after_token_space(line, "option mixed_proxy_password");
     line = mask_option_path(line, "option dns_server '");
-    line = mask_option_path(line, "option domain_resolver_dns_server '");
     line = mask_after_token(line, "option yacd_secret_key");
 
     return line;

@@ -43,6 +43,9 @@ const fixture = {
       connection_type: 'proxy',
       proxy_config_type: 'url',
       proxy_string: 'vless://one\n//commented\n ss://two ',
+      enable_udp_over_tcp: '1',
+      outbound_detour_enabled: '1',
+      outbound_detour_section: 'legacy-sub',
       urltest_check_interval_disabled: '1',
       domain: [ 'Example.COM', 'full:Already.EXAMPLE' ],
       domain_keyword_text_mode: '1',
@@ -78,7 +81,7 @@ const fixture = {
     {
       '.name': 'legacy-list-sub',
       '.type': 'section',
-      action: 'connection',
+      action: 'proxy',
       subscription_urls: [
         'https://example.com/list.txt | ListAgent/2.0',
         'https://example.com/auto.txt'
@@ -113,6 +116,14 @@ const fixture = {
       domain_resolver_enabled: '1',
       domain_resolver_dns_type: 'doh',
       domain_resolver_dns_server: 'https://dns.example/dns-query'
+    },
+    {
+      '.name': 'legacy-outbound',
+      '.type': 'section',
+      action: 'outbound',
+      outbound_json: '{"type":"socks","server":"127.0.0.1","server_port":1080,"version":"5"}',
+      outbound_detour_enabled: '1',
+      outbound_detour_section: 'legacy-url'
     }
   ]
 };
@@ -128,9 +139,7 @@ const out = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
 const config = out.config;
 const sections = Object.fromEntries(config.section.map(section => [section['.name'], section]));
 const childByType = type => config[type] || [];
-const connectionUrls = childByType('connection_url');
 const subscriptionUrls = childByType('subscription_url');
-const interfaces = childByType('section_interface');
 const urltests = childByType('urltest');
 
 function assert(condition, message) {
@@ -175,7 +184,10 @@ absent(config.settings, 'routing_excluded_ips', 'settings');
 const legacyUrl = sections['legacy-url'];
 assert(legacyUrl['.type'] === 'section', 'legacy rule should become section');
 assert(legacyUrl.action === 'connection', 'legacy-url action');
-assert(JSON.stringify(childValues(legacyUrl, connectionUrls, 'url')) === JSON.stringify(['vless://one', 'ss://two']), 'proxy_string links');
+assert(JSON.stringify(legacyUrl.selector_proxy_links) === JSON.stringify(['vless://one', 'ss://two']), 'proxy_string links');
+assert(legacyUrl.outbound_detour_enabled === '1', 'section cascade enabled preserved');
+assert(legacyUrl.outbound_detour_section === 'legacy-sub', 'section cascade target preserved');
+absent(legacyUrl, 'enable_udp_over_tcp', 'legacy-url');
 const legacyUrlDomains = (legacyUrl.domain || '').split(/\s+/).filter(Boolean);
 assert(legacyUrlDomains.includes('full:Example.COM'), 'full domain list value migrated');
 assert(legacyUrlDomains.includes('full:Already.EXAMPLE'), 'prefixed full domain list value migrated without duplicate prefix');
@@ -187,13 +199,11 @@ assert(legacyUrlDomains.includes('regex:^cdn[.]example$'), 'second regex migrate
 assert(JSON.stringify(legacyUrl.rule_set) === JSON.stringify(['https://example.com/domains.srs']), 'domain rule set preserved');
 assert(JSON.stringify(legacyUrl.rule_set_with_subnets) === JSON.stringify(['https://example.com/mixed.srs']), 'rule set subnet list preserved');
 absent(legacyUrl, 'proxy_string', 'legacy-url');
-absent(legacyUrl, 'selector_proxy_links', 'legacy-url');
 absent(legacyUrl, 'proxy_config_type', 'legacy-url');
 absent(legacyUrl, 'connection_type', 'legacy-url');
 absent(legacyUrl, 'urltest_enabled', 'legacy-url');
 absent(legacyUrl, 'rule_set_settings', 'legacy-url');
 absent(legacyUrl, 'domain_suffix', 'legacy-url');
-absent(legacyUrl, 'connection_url_items', 'legacy-url');
 absent(legacyUrl, 'rule_set_items', 'legacy-url');
 absent(legacyUrl, 'domain_keyword_text', 'legacy-url');
 absent(legacyUrl, 'domain_regex_text', 'legacy-url');
@@ -251,7 +261,7 @@ absent(legacyListSub, 'subscription_url_items', 'legacy-list-sub');
 
 const legacyUrltest = sections['legacy-urltest'];
 assert(legacyUrltest.action === 'connection', 'legacy-urltest action');
-assert(JSON.stringify(childValues(legacyUrltest, connectionUrls, 'url')) === JSON.stringify(['vmess://a', 'trojan://b']), 'urltest links deduped');
+assert(JSON.stringify(legacyUrltest.selector_proxy_links) === JSON.stringify(['vmess://a', 'trojan://b']), 'urltest links deduped');
 absent(legacyUrltest, 'urltests', 'legacy-urltest');
 const legacyUrltestConfig = urltestByOwner(legacyUrltest);
 assert(Boolean(legacyUrltestConfig), 'legacy-urltest URLTest child migrated');
@@ -262,8 +272,6 @@ assert(legacyUrltestConfig.filter_mode === 'exclude', 'legacy-urltest URLTest fi
 assert(legacyUrltestConfig.detect_server_country === 'flag_emoji', 'legacy-urltest detect server country normalized');
 assert(JSON.stringify(legacyUrltestConfig.exclude_regex) === JSON.stringify(['bad.*']), 'legacy-urltest exclude regex migrated');
 absent(legacyUrltest, 'urltest_proxy_links', 'legacy-urltest');
-absent(legacyUrltest, 'selector_proxy_links', 'legacy-urltest');
-absent(legacyUrltest, 'connection_url_items', 'legacy-urltest');
 absent(legacyUrltest, 'urltest_enabled', 'legacy-urltest');
 absent(legacyUrltest, 'urltest_filter_mode', 'legacy-urltest');
 absent(legacyUrltest, 'detect_server_country', 'legacy-urltest');
@@ -283,17 +291,20 @@ absent(legacyZap, 'cmd_opts', 'legacy-zap');
 
 const legacyVpn = sections['legacy-vpn'];
 assert(legacyVpn.action === 'connection', 'vpn action inferred');
-assert(JSON.stringify(childValues(legacyVpn, interfaces, 'name')) === JSON.stringify(['awg0']), 'vpn interface migrated to interface item');
-const legacyVpnInterface = childObjects(legacyVpn, interfaces)[0];
-assert(legacyVpnInterface.domain_resolver_enabled === '1', 'vpn domain resolver enabled migrated');
-assert(legacyVpnInterface.domain_resolver_dns_type === 'doh', 'vpn domain resolver type migrated');
-assert(legacyVpnInterface.domain_resolver_dns_server === 'https://dns.example/dns-query', 'vpn domain resolver server migrated');
+assert(JSON.stringify(legacyVpn.interfaces) === JSON.stringify(['awg0']), 'vpn interface migrated to section list');
 absent(legacyVpn, 'proxy_config_type', 'legacy-vpn');
 absent(legacyVpn, 'interface', 'legacy-vpn');
-absent(legacyVpn, 'interfaces', 'legacy-vpn');
 absent(legacyVpn, 'interface_items', 'legacy-vpn');
-absent(legacyVpn, 'interface_settings', 'legacy-vpn');
 absent(legacyVpn, 'domain_resolver_enabled', 'legacy-vpn');
+absent(legacyVpn, 'domain_resolver_dns_type', 'legacy-vpn');
+absent(legacyVpn, 'domain_resolver_dns_server', 'legacy-vpn');
+
+const legacyOutbound = sections['legacy-outbound'];
+assert(legacyOutbound.action === 'connection', 'outbound action inferred');
+assert(Array.isArray(legacyOutbound.outbound_jsons) && legacyOutbound.outbound_jsons.length === 1, 'legacy JSON outbound migrated to list');
+assert(JSON.parse(legacyOutbound.outbound_jsons[0]).detour === 'legacy-url-out', 'legacy JSON cascade embedded in outbound');
+absent(legacyOutbound, 'outbound_detour_enabled', 'legacy-outbound');
+absent(legacyOutbound, 'outbound_detour_section', 'legacy-outbound');
 
 assert(out.removed_caches.includes('/tmp/sing-box/subscriptions/legacy-sub.json'), 'subscription runtime cache removal');
 assert(out.removed_caches.includes('/var/run/podkop-plus/section-cache/legacy-sub.json'), 'section cache removal');
@@ -329,16 +340,10 @@ grep -Fxq 'podkop-plus.legacy.action=connection' "$WORK_DIR/runtime-migrate.stat
 grep -Fxq 'podkop-plus.old_direct.action=bypass' "$WORK_DIR/runtime-migrate.state" ||
   fail "runtime migration must convert direct action to bypass through core.uci"
 grep -Eq '^podkop-plus\\.cfg[0-9a-f]+=$' "$WORK_DIR/runtime-migrate.state" && fail "anonymous fixture section should include a type"
-child_section="$(awk -F= '$2 == "connection_url" { sub(/^podkop-plus[.]/, "", $1); print $1; exit }' "$WORK_DIR/runtime-migrate.state")"
-if [ -z "$child_section" ]; then
-  fail "runtime migration must create connection_url child section through core.uci"
-fi
-grep -Fxq "podkop-plus.${child_section}.section=legacy" "$WORK_DIR/runtime-migrate.state" ||
-  fail "runtime migration must link anonymous connection_url child through section option"
-grep -Fxq "podkop-plus.${child_section}.url=vless://one" "$WORK_DIR/runtime-migrate.state" ||
-  fail "runtime migration must write connection_url child value through core.uci"
-if grep -Fq 'podkop-plus.legacy.connection_url_items=' "$WORK_DIR/runtime-migrate.state"; then
-  fail "runtime migration must not write parent child-reference lists"
+grep -Fxq 'podkop-plus.legacy.selector_proxy_links=vless://one' "$WORK_DIR/runtime-migrate.state" ||
+  fail "runtime migration must keep connection URLs in the parent section"
+if grep -Fq '=connection_url' "$WORK_DIR/runtime-migrate.state"; then
+  fail "runtime migration must not create connection_url child sections"
 fi
 if grep -Fq 'podkop-plus.legacy.urltest_enabled=' "$WORK_DIR/runtime-migrate.state"; then
   fail "runtime migration must delete migrated urltest_enabled through core.uci"

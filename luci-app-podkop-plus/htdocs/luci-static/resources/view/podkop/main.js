@@ -3215,9 +3215,7 @@ function compactSettingsMap(settings) {
   return Object.keys(settings).length ? JSON.stringify(settings) : void 0;
 }
 function hydrateConfigSections(configSections) {
-  const connectionUrls = childSections(configSections, "connection_url");
   const subscriptionUrls = childSections(configSections, "subscription_url");
-  const interfaces = childSections(configSections, "section_interface");
   const urltests = childSections(configSections, "urltest");
   const priorityGroups = childSections(configSections, "priority_group");
   const priorityLevels = childSections(configSections, "priority_level");
@@ -3226,26 +3224,9 @@ function hydrateConfigSections(configSections) {
       return section;
     }
     const next = { ...section };
-    const connectionUrlItems = ownedChildSections(next, connectionUrls);
     const subscriptionUrlItems = ownedChildSections(next, subscriptionUrls);
-    const interfaceItems = ownedChildSections(next, interfaces);
     const urltestItems = ownedChildSections(next, urltests);
     const priorityGroupItems = ownedChildSections(next, priorityGroups);
-    if (connectionUrlItems.length) {
-      const settings = {};
-      next.selector_proxy_links = connectionUrlItems.map((item) => item.url || "").filter(Boolean);
-      connectionUrlItems.forEach((item) => {
-        if (!item.url) {
-          return;
-        }
-        settings[item.url] = {
-          outbound_detour_enabled: item.outbound_detour_enabled,
-          outbound_detour_section: item.outbound_detour_section,
-          enable_udp_over_tcp: item.enable_udp_over_tcp
-        };
-      });
-      next.connection_url_settings = compactSettingsMap(settings);
-    }
     if (subscriptionUrlItems.length) {
       const settings = {};
       next.subscription_urls = subscriptionUrlItems.map((item) => item.url || "").filter(Boolean);
@@ -3269,21 +3250,6 @@ function hydrateConfigSections(configSections) {
         };
       });
       next.subscription_url_settings = compactSettingsMap(settings);
-    }
-    if (interfaceItems.length) {
-      const settings = {};
-      next.interfaces = interfaceItems.map((item) => item.name || "").filter(Boolean);
-      interfaceItems.forEach((item) => {
-        if (!item.name) {
-          return;
-        }
-        settings[item.name] = {
-          domain_resolver_enabled: item.domain_resolver_enabled,
-          domain_resolver_dns_type: item.domain_resolver_dns_type,
-          domain_resolver_dns_server: item.domain_resolver_dns_server
-        };
-      });
-      next.interface_settings = compactSettingsMap(settings);
     }
     if (urltestItems.length) {
       const settings = {};
@@ -9494,7 +9460,6 @@ var PODKOP_MASK_AFTER_TOKEN_SPACE = [
   "list fully_routed_ips",
   "option dns_server",
   "option bootstrap_dns_server",
-  "option domain_resolver_dns_server",
   "option listen",
   "option listen_port",
   "option public_host",
@@ -9567,10 +9532,6 @@ function maskGlobalCheckLine(line) {
     maskedLine = maskAfterTokenSpace(maskedLine, token);
   }
   maskedLine = maskOptionPath(maskedLine, "option dns_server '");
-  maskedLine = maskOptionPath(
-    maskedLine,
-    "option domain_resolver_dns_server '"
-  );
   return maskedLine;
 }
 function maskMultilineContinuation(line) {

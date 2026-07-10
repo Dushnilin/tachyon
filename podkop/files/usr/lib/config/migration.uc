@@ -30,9 +30,7 @@ const PODKOP_RUNTIME_CACHE_FORMAT = getenv("PODKOP_RUNTIME_CACHE_FORMAT") || "7"
 const SERVER_COUNTRY_METHOD_FLAG_EMOJI = "flag_emoji";
 const SERVER_COUNTRY_METHOD_COUNTRY_IS = "country_is";
 const CHILD_ITEM_TYPES = [
-    "connection_url",
     "subscription_url",
-    "section_interface",
     "urltest"
 ];
 
@@ -714,34 +712,6 @@ function migrate_zapret_nfqws_default(ctx, section, constants) {
     set_option(ctx, section, "nfqws_opt", constants.zapret_default_nfqws_opt);
 }
 
-function migrate_connection_url_item_settings(ctx, section) {
-    let values = whitespace_list_values(section, "selector_proxy_links");
-    let udp_over_tcp_enabled = bool_option(section, "enable_udp_over_tcp", false);
-    let detour_enabled = bool_option(section, "outbound_detour_enabled", false);
-    let detour_section = option(section, "outbound_detour_section", "");
-    let index = 1;
-
-    for (let value in values) {
-        value = as_string(value);
-        if (value == "")
-            continue;
-
-        let child = create_child_for_section(ctx, section, "connection_url");
-        set_option(ctx, child, "url", value);
-        if (detour_enabled) {
-            set_option(ctx, child, "outbound_detour_enabled", "1");
-            if (detour_section != "")
-                set_option(ctx, child, "outbound_detour_section", detour_section);
-        }
-        if (udp_over_tcp_enabled)
-            set_option(ctx, child, "enable_udp_over_tcp", "1");
-        index++;
-    }
-
-    delete_option(ctx, section, "selector_proxy_links");
-    delete_option(ctx, section, "connection_url_settings");
-}
-
 function migrate_subscription_url_item_settings(ctx, section) {
     let values = whitespace_list_values(section, "subscription_urls");
     let seen_values = {};
@@ -808,55 +778,51 @@ function migrate_urltest_item_settings(ctx, section, constants) {
     delete_option(ctx, section, "urltest_settings");
 }
 
-function migrate_interface_item_settings(ctx, section) {
-    let values = option_list_values(section, "interfaces");
-    let legacy_interface = option(section, "interface", "");
-    if (legacy_interface != "")
-        push(values, legacy_interface);
-
-    let seen_values = {};
-    let resolver_enabled = bool_option(section, "domain_resolver_enabled", false);
-    let dns_type = option(section, "domain_resolver_dns_type", "");
-    let dns_server = option(section, "domain_resolver_dns_server", "");
-    let index = 1;
-
-    for (let value in values) {
-        value = as_string(value);
-        if (value == "" || seen_values[value])
-            continue;
-        seen_values[value] = true;
-
-        let child = create_child_for_section(ctx, section, "section_interface");
-        set_option(ctx, child, "name", value);
-        if (resolver_enabled) {
-            set_option(ctx, child, "domain_resolver_enabled", "1");
-            set_option(ctx, child, "domain_resolver_dns_type", dns_type != "" ? dns_type : "udp");
-            set_option(ctx, child, "domain_resolver_dns_server", dns_server != "" ? dns_server : "8.8.8.8");
-        }
-        index++;
-    }
-
-    delete_option(ctx, section, "interface");
-    delete_option(ctx, section, "interfaces");
-    delete_option(ctx, section, "interface_settings");
+function migrate_interface_list(ctx, section) {
+    normalize_connections_list(ctx, section, "interface", "interfaces");
 }
 
-function migrate_outbound_json_list(ctx, section) {
+function migrate_legacy_outbound_json_detour(ctx, section, legacy_connection_kind) {
+    if (legacy_connection_kind != "outbound" ||
+        !bool_option(section, "outbound_detour_enabled", false))
+        return;
+
+    let detour_section = option(section, "outbound_detour_section", "");
+    let outbound_json = option(section, "outbound_json", "");
+    if (detour_section == "" || outbound_json == "")
+        return;
+
+    let outbound;
+    try {
+        outbound = json(outbound_json);
+    }
+    catch (e) {
+        return;
+    }
+    if (type(outbound) != "object")
+        return;
+
+    if (as_string(outbound.detour || "") == "")
+        outbound.detour = singbox_constants_module.outbound_tag(detour_section);
+    set_option(ctx, section, "outbound_json", sprintf("%J", outbound));
+    delete_option(ctx, section, "outbound_detour_enabled");
+    delete_option(ctx, section, "outbound_detour_section");
+}
+
+function migrate_outbound_json_list(ctx, section, legacy_connection_kind) {
+    migrate_legacy_outbound_json_detour(ctx, section, legacy_connection_kind);
     normalize_connections_list(ctx, section, "outbound_json", "outbound_jsons");
 }
 
-function migrate_connection_section(ctx, section, constants) {
-    migrate_connection_url_item_settings(ctx, section);
+function migrate_connection_section(ctx, section, constants, legacy_connection_kind) {
     migrate_subscription_url_item_settings(ctx, section);
     migrate_urltest_item_settings(ctx, section, constants);
-    migrate_interface_item_settings(ctx, section);
-    migrate_outbound_json_list(ctx, section);
+    migrate_interface_list(ctx, section);
+    migrate_outbound_json_list(ctx, section, legacy_connection_kind);
 
     delete_option(ctx, section, "subscription_update_enabled");
     delete_option(ctx, section, "subscription_update_interval");
     delete_option(ctx, section, "enable_udp_over_tcp");
-    delete_option(ctx, section, "outbound_detour_enabled");
-    delete_option(ctx, section, "outbound_detour_section");
     delete_option(ctx, section, "domain_resolver_enabled");
     delete_option(ctx, section, "domain_resolver_dns_type");
     delete_option(ctx, section, "domain_resolver_dns_server");
@@ -1042,7 +1008,7 @@ function migrate_rule(ctx, section, converted_from_rule, constants) {
             delete_option(ctx, section, "urltest_check_interval_disabled");
             delete_option(ctx, section, "subscription_update_interval_disabled");
         }
-        migrate_connection_section(ctx, section, constants);
+        migrate_connection_section(ctx, section, constants, legacy_connection_kind);
         if (converted_from_rule && subscription_urls != "")
             delete_subscription_cache(ctx, section_name(section));
     }

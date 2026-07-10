@@ -425,18 +425,6 @@ function valid_inbound() {
     return type(value) == "object" && type(value.type) == "string";
 }
 
-function outbound_detour_supported() {
-    let value = read_stdin_json();
-    if (type(value) != "object" || type(value.type) != "string")
-        return false;
-
-    let outbound_type = lc(as_string(value.type));
-    return outbound_type != "selector" &&
-        outbound_type != "urltest" &&
-        outbound_type != "block" &&
-        outbound_type != "dns";
-}
-
 function bool_flag(value) {
     value = as_string(value);
     return value == "1" || value == "true";
@@ -450,24 +438,6 @@ function outbound_detour_source_action(action) {
 function outbound_detour_target_action(action) {
     action = as_string(action);
     return connections.is_connections_action(action);
-}
-
-function outbound_detour_supported_json(value) {
-    try {
-        value = json(as_string(value));
-    }
-    catch (e) {
-        return false;
-    }
-
-    if (type(value) != "object" || type(value.type) != "string")
-        return false;
-
-    let outbound_type = lc(as_string(value.type));
-    return outbound_type != "selector" &&
-        outbound_type != "urltest" &&
-        outbound_type != "block" &&
-        outbound_type != "dns";
 }
 
 function outbound_detour_rows() {
@@ -484,8 +454,7 @@ function outbound_detour_rows() {
             enabled: bool_flag(fields[1]),
             action: as_string(fields[2]),
             detour_enabled: bool_flag(fields[3]),
-            detour_section: as_string(fields[4]),
-            outbound_json: as_string(fields[5])
+            detour_section: as_string(fields[4])
         };
 
         push(rows, row);
@@ -576,9 +545,6 @@ function validate_outbound_detours_rows(rows) {
             fail_outbound_detour("Outbound cascade for rule '" + row.section + "' creates a cycle through '" +
                 row.detour_section + "'. Aborted.");
 
-        if (row.action == "outbound" && !outbound_detour_supported_json(row.outbound_json))
-            fail_outbound_detour("JSON outbound rule '" + row.section +
-                "' cannot use outbound cascade because its sing-box outbound type does not support Dial Fields. Aborted.");
     }
 }
 
@@ -812,7 +778,7 @@ function fixture_get_section(section_name) {
     if (section_name == "settings" && type(fixture.settings) == "object")
         return fixture.settings;
 
-    for (let type_name in [ "settings", "server", "section", "connection_url", "subscription_url", "section_interface", "urltest", "priority_group", "priority_level" ]) {
+    for (let type_name in [ "settings", "server", "section", "subscription_url", "urltest", "priority_group", "priority_level" ]) {
         for (let section in fixture_section_list(type_name)) {
             if (as_string(section[".name"]) == section_name)
                 return section;
@@ -1372,8 +1338,7 @@ function detour_rows_from_sections(sections) {
             enabled: section_enabled(section),
             action: rule_action(section),
             detour_enabled: bool_option(section, "outbound_detour_enabled", false),
-            detour_section: option(section, "outbound_detour_section", ""),
-            outbound_json: option(section, "outbound_json", "")
+            detour_section: option(section, "outbound_detour_section", "")
         });
     }
     return rows;
@@ -1413,36 +1378,6 @@ function basic_rows_by_section(rows) {
         if (type(row) == "object" && row.section != "")
             result[row.section] = row;
     return result;
-}
-
-function validate_connection_url_detours(sections) {
-    let by_section = basic_rows_by_section(basic_rows_from_sections(sections));
-
-    for (let section in sections) {
-        section = object_or_empty(section);
-        if (!section_enabled(section))
-            continue;
-
-        let name = section_name(section);
-        for (let entry in connections.connection_urls(section)) {
-            if (!connections.connection_detour_enabled(section, entry))
-                continue;
-
-            let target_name = connections.connection_detour_section(section, entry);
-            if (target_name == "")
-                fail_validation("Connection URL cascade is enabled in rule '" + name + "', but no intermediate rule is selected. Aborted.");
-            if (target_name == name)
-                fail_validation("Connection URL cascade in rule '" + name + "' cannot point to itself. Aborted.");
-
-            let target = by_section[target_name];
-            if (type(target) != "object")
-                fail_validation("Connection URL cascade in rule '" + name + "' references missing rule '" + target_name + "'. Aborted.");
-            if (!target.enabled)
-                fail_validation("Connection URL cascade in rule '" + name + "' references disabled rule '" + target_name + "'. Aborted.");
-            if (!outbound_detour_target_action(target.action))
-                fail_validation("Connection URL cascade in rule '" + name + "' references rule '" + target_name + "', but it is not a Connection rule. Aborted.");
-        }
-    }
 }
 
 function validate_server_routing_sections(sections) {
@@ -1541,7 +1476,6 @@ function validate_runtime_config(context) {
     }
 
     validate_outbound_detours_rows(detour_rows_from_sections(sections));
-    validate_connection_url_detours(sections);
     validate_subscription_download_sections(sections, context);
     validate_server_routing_sections(sections);
 
@@ -1953,8 +1887,6 @@ else if (mode == "valid-outbound")
     exit(valid_outbound() ? 0 : 1);
 else if (mode == "valid-inbound")
     exit(valid_inbound() ? 0 : 1);
-else if (mode == "outbound-detour-supported")
-    exit(outbound_detour_supported() ? 0 : 1);
 else if (mode == "validate-outbound-detours")
     validate_outbound_detours();
 else if (mode == "validate-download-section")

@@ -189,8 +189,7 @@ cat >"$WORK_DIR/hide-added-fixture.json" <<'JSON'
 {
   "settings": {
     "interface": "lan",
-    "routing_mode": "proxy",
-    "domain_resolver_enabled": "0"
+    "routing_mode": "proxy"
   },
   "section": [
     {
