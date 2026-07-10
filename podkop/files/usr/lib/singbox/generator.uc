@@ -1887,7 +1887,11 @@ function add_connections_outbound(config, section, taken) {
 
     if (section_needs_country_is(section)) {
         let previous_state = read_json_file(runtime_subscription.section_cache_path(section_name));
-        state.outboundMetadata.countries = runtime_country.detect(state.servers, previous_state);
+        state.outboundMetadata.countries = runtime_country.detect(
+            state.servers,
+            previous_state,
+            option(runtime_settings(), "bootstrap_dns_server", "77.88.8.8")
+        );
     }
     if (section_has_direct_priority_level(section))
         state.outboundMetadata.names[runtime_constants.DIRECT_OUTBOUND_TAG] = "Direct";
