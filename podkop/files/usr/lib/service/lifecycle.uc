@@ -833,6 +833,19 @@ function cleanup_failed_runtime() {
     return status;
 }
 
+function abort_reload(status, runtime_changed) {
+    status = int(status || 0);
+    if (status == 0)
+        status = 1;
+
+    if (runtime_changed)
+        cleanup_failed_runtime();
+    else
+        remove_file(RELOAD_STATE_SNAPSHOT_FILE);
+
+    return status;
+}
+
 function start() {
     let status = start_impl();
     release_start_subscription_update_lock();
@@ -909,7 +922,7 @@ function restart_runtime_for_reload() {
     if (status != 0)
         return status;
 
-    status = start_main();
+    status = start_impl();
     if (status != 0) {
         cleanup_failed_runtime();
         return status;
@@ -930,30 +943,8 @@ function restart_runtime_for_reload() {
     }
 
     restore_selector_state(selector_state);
-
-    if (!setting_bool("dont_touch_dhcp", false))
-        dnsmasq_configure(true);
-    else if (dnsmasq_has_podkop_managed_state()) {
-        dnsmasq_restore(true);
-    }
-
-    config_set(CONFIG_NAME + ".settings.shutdown_correctly", "0");
-    if (config_commit() != 0)
-        return 1;
-
-    status = module_status(STATE_UC, [
-        "write-current-reload-state-clean",
-        RELOAD_STATE_FILE,
-        as_string(RELOAD_STATE_FORMAT),
-        RULE_CONDITION_CACHE_DIR
-    ]);
-    if (status != 0)
-        return status;
-
-    status = module_status(DNS_FAILOVER_UC, [ "start-runtime" ]);
-    if (status != 0)
-        log_message("Failed to start DNS failover runtime after runtime restart", "error");
-    return status;
+    remove_file(RELOAD_STATE_SNAPSHOT_FILE);
+    return 0;
 }
 
 function write_service_trigger_sync_state(changed) {
@@ -1115,7 +1106,7 @@ function reload(reason) {
 
     let current_reload_state_file = trim(command_output_from_args([ "mktemp" ]));
     if (current_reload_state_file == "")
-        return 1;
+        return abort_reload(1, false);
 
     status = module_status(STATE_UC, [
         "write-captured-reload-state",
@@ -1128,7 +1119,7 @@ function reload(reason) {
     ]);
     if (status != 0) {
         remove_file(current_reload_state_file);
-        return status;
+        return abort_reload(status, false);
     }
 
     let dnsmasq_managed_state = dnsmasq_has_podkop_managed_state() ? 1 : 0;
@@ -1156,7 +1147,7 @@ function reload(reason) {
             log_message("Reload state is unavailable; restarting Podkop Plus runtime", "info");
             return finish_reload_status(restart_runtime_for_reload(), reload_config_fingerprint);
         }
-        return plan_result.status;
+        return abort_reload(plan_result.status, false);
     }
 
     let plan = parse_reload_plan(plan_result.output);
@@ -1192,7 +1183,7 @@ function reload(reason) {
         log_message("Rebuilding nftables rules", "info");
         status = nft_rebuild_runtime();
         if (status != 0)
-            return status;
+            return abort_reload(status, true);
     }
 
     if (plan.needs_sing_box_reload == 1) {
@@ -1200,15 +1191,15 @@ function reload(reason) {
         module_success(PRIORITY_UC, [ "stop-runtime" ]);
         status = module_status(SINGBOX_UC, [ "configure-service" ]);
         if (status != 0)
-            return status;
+            return abort_reload(status, true);
         nft_populate_enabled = plan.needs_nft_rebuild == 1 ? 1 : 0;
         status = singbox_init_config();
         if (status != 0)
-            return status;
+            return abort_reload(status, true);
         nft_populate_enabled = NFT_POPULATE_ENABLED_DEFAULT;
         status = module_status(STATE_UC, [ "reload-sing-box-runtime" ]);
         if (status != 0)
-            return status;
+            return abort_reload(status, true);
         status = module_status(STATE_UC, [
             "wait-podkop-stable-start",
             RT_TABLE_NAME,
@@ -1238,7 +1229,7 @@ function reload(reason) {
     else if (plan.needs_nft_rebuild == 1 && nft_populate_enabled == 1) {
         status = nft_populate_runtime_sets();
         if (status != 0)
-            return status;
+            return abort_reload(status, true);
     }
 
     if (plan.needs_zapret_restart == 1)
@@ -1251,20 +1242,20 @@ function reload(reason) {
     if (plan.needs_dnsmasq_configure == 1) {
         status = dnsmasq_configure(true);
         if (status != 0)
-            return status;
+            return abort_reload(status, true);
         module_success(STATE_UC, [ "capture-reload-state", RELOAD_STATE_SNAPSHOT_FILE, as_string(RELOAD_STATE_FORMAT) ]);
     }
     else if (plan.needs_dnsmasq_restore == 1) {
         status = dnsmasq_restore(true);
         if (status != 0)
-            return status;
+            return abort_reload(status, true);
         module_success(STATE_UC, [ "capture-reload-state", RELOAD_STATE_SNAPSHOT_FILE, as_string(RELOAD_STATE_FORMAT) ]);
     }
 
     if (plan.needs_cron_refresh == 1) {
         status = refresh_cron();
         if (status != 0)
-            return status;
+            return abort_reload(status, false);
     }
 
     if (plan.needs_list_update == 1)

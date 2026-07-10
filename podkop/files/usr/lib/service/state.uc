@@ -372,10 +372,20 @@ function cleanup_rule_condition_cache(path) {
     system("rm -rf /tmp/podkop-plus-rule-cache.* >/dev/null 2>&1");
 }
 
+function cleanup_reload_state_snapshots(path) {
+    path = as_string(path);
+    if (path == "")
+        return;
+
+    for (let snapshot_path in fs.glob(path + ".snapshot.*"))
+        unlink_file(snapshot_path);
+}
+
 function clear_reload_state(path, snapshot_path) {
     unlink_file(path);
     if (as_string(snapshot_path) != "")
         unlink_file(snapshot_path);
+    cleanup_reload_state_snapshots(path);
 }
 
 function remove_file(path) {
@@ -1606,6 +1616,7 @@ function capture_reload_state(path, format) {
 function write_current_reload_state_clean(path, format, cache_dir) {
     write_reload_state(path, current_reload_state_values(format || "1"));
     cleanup_rule_condition_cache(cache_dir);
+    cleanup_reload_state_snapshots(path);
 }
 
 function write_captured_reload_state(path, snapshot_path, format, cache_dir, cleanup_cache, clear_snapshot) {
