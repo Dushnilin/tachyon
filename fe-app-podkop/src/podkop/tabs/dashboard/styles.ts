@@ -590,6 +590,7 @@ export const styles = `
 .pdk_dashboard-page__urltest-details__country-badge {
     display: inline-flex;
     align-items: center;
+    user-select: none;
     margin-right: 6px;
     padding: 2px 4px;
     border: 1px solid rgba(128, 128, 128, 0.25);

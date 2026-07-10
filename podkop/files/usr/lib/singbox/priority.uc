@@ -331,7 +331,7 @@ function set_group_proxy(group, tag_name) {
     return result.status == 0;
 }
 
-function switch_group(state, group, selected, reason) {
+function switch_group(state, group, selected) {
     if (selected == null || selected.tag == "")
         return false;
 
@@ -349,7 +349,6 @@ function switch_group(state, group, selected, reason) {
     state.active = selected.tag;
     state.levelIndex = selected.levelIndex;
     state.activeDelay = selected.delay;
-    log_message("switched " + group.tag + " to " + selected.tag + " (" + as_string(reason) + ")", "info");
     return true;
 }
 
@@ -369,7 +368,7 @@ function tick_group(state, group) {
 
     if (state.active == "" && now >= state.nextActiveCheck) {
         let selected = choose_from_level_range(group, 0, length(group.levels) - 1, clash_probe);
-        switch_group(state, group, selected, "initial");
+        switch_group(state, group, selected);
         state.nextActiveCheck = now + duration_to_seconds(group.active_check_interval, 5);
         return;
     }
@@ -387,7 +386,7 @@ function tick_group(state, group) {
                 clash_probe,
                 state.active
             );
-            if (switch_group(state, group, selected, "active_dead")) {
+            if (switch_group(state, group, selected)) {
                 state.nextRecoveryCheck = now + duration_to_seconds(group.recovery_check_interval, 15);
                 state.nextFastestCheck = now + duration_to_seconds(group.fastest_check_interval, 180);
             }
@@ -401,7 +400,7 @@ function tick_group(state, group) {
 
     if (state.active != "" && state.levelIndex > 0 && now >= state.nextRecoveryCheck) {
         let selected = choose_from_level_range(group, 0, state.levelIndex - 1, clash_probe);
-        if (switch_group(state, group, selected, "recovery"))
+        if (switch_group(state, group, selected))
             state.nextFastestCheck = now + duration_to_seconds(group.fastest_check_interval, 180);
         state.nextRecoveryCheck = now + duration_to_seconds(group.recovery_check_interval, 15);
     }
@@ -409,7 +408,7 @@ function tick_group(state, group) {
     if (state.active != "" && group.switch_to_faster_same_priority && now >= state.nextFastestCheck) {
         let selected = choose_fastest_same_level(group, state.levelIndex, state.active, clash_probe);
         if (selected != null)
-            switch_group(state, group, selected, "faster_same_level");
+            switch_group(state, group, selected);
         state.nextFastestCheck = now + duration_to_seconds(group.fastest_check_interval, 180);
     }
 }
