@@ -255,6 +255,10 @@ done
 assert_eq "-1" "$(ucode "$UPDATER" forkop-release-version-compare 1.2.3 1.2.4)" \
   "three-part Forkop release version comparison"
 
+assert_eq "1.13.14-extended-2.5.0" \
+  "$(printf 'sing-box version 1.13.14-extended-2.5.0\n\nEnvironment: go1.26.4 linux/amd64\n' | ucode "$UPDATER" stdin-first-line-last-field)" \
+  "sing-box extended binary version parsing"
+
 component_actions_dir="$WORK_DIR/component-actions"
 fake_lib="$WORK_DIR/lib"
 mkdir -p "$fake_lib/components" "$fake_lib/config" "$fake_lib/core"
