@@ -26,8 +26,7 @@ function config(settings, runtime) {
         rules: [
             { action: "sniff", inbound: sniff_inbounds },
             { action: "hijack-dns", port: 53 },
-            { action: "hijack-dns", protocol: "dns" },
-            { action: "reject", ip_version: 6 }
+            { action: "hijack-dns", protocol: "dns" }
         ],
         rule_set: [],
         final: runtime_constants.DIRECT_OUTBOUND_TAG,

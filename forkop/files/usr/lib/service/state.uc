@@ -1265,6 +1265,7 @@ function sing_box_signature_body(settings, sections, servers, mwan3_active) {
     let body = "";
 
     body = signature_add_value(body, "settings.dns_type", option(settings, "dns_type", "doh"));
+    body = signature_add_value(body, "settings.dns_strategy", option(settings, "dns_strategy", "prefer_ipv4"));
     for (let value in list_option(settings, "dns_server", "77.88.8.8"))
         body = signature_add_value(body, "settings.dns_server", value);
     for (let value in list_option(settings, "bootstrap_dns_server", "77.88.8.8"))
