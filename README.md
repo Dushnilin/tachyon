@@ -1,160 +1,48 @@
-# Podkop Plus
+# Forkop (Podkop Plus)
 
-[![Star](https://img.shields.io/github/stars/ushan0v/podkop-plus?style=social)](https://github.com/ushan0v/podkop-plus/stargazers)
-[![Releases](https://img.shields.io/github/v/release/ushan0v/podkop-plus?label=releases)](https://github.com/ushan0v/podkop-plus/releases)
-[![Telegram](https://img.shields.io/badge/Telegram-Podkop%20Plus%20%7C%20Chat-2CA5E0?logo=telegram&logoColor=white)](https://t.me/podkop_plus_chat)
-[![podkop](https://img.shields.io/badge/podkop-itdoginfo-blue)](https://github.com/itdoginfo/podkop)
-[![zapret-openwrt](https://img.shields.io/badge/zapret--openwrt-remittor-blue)](https://github.com/remittor/zapret-openwrt/releases)
-[![ByeDPI-OpenWrt](https://img.shields.io/badge/ByeDPI--OpenWrt-DPITrickster-blue)](https://github.com/DPITrickster/ByeDPI-OpenWrt/releases)
-[![sing-box-extended](https://img.shields.io/badge/sing--box--extended-shtorm--7-blue)](https://github.com/shtorm-7/sing-box-extended/releases)
+[![Star](https://img.shields.io/github/stars/ushan0v/forkop?style=social)](https://github.com/ushan0v/forkop/stargazers)
+[![Releases](https://img.shields.io/github/v/release/ushan0v/forkop?label=releases)](https://github.com/ushan0v/forkop/releases)
+[![Telegram](https://img.shields.io/badge/Telegram-Forkop%20%7C%20Chat-2CA5E0?logo=telegram\&logoColor=white)](https://t.me/forkop_chat)
+[![AI Assistant](https://img.shields.io/badge/Telegram-Forkop%20%7C%20AI%20Assistant-2CA5E0?logo=telegram\&logoColor=white)](https://t.me/forkop_aibot)
 
-<table>
-  <tr>
-    <td>
-      <img height="320" alt="preview_sections" src="https://github.com/user-attachments/assets/006e737b-e755-4c3c-939d-ca1a828cf11a" />
-    </td>
-    <td>
-      <img height="320" alt="preview_dashboard" src="https://github.com/user-attachments/assets/0bbab5b0-cc7f-4841-b459-9d6e0e263e18" />
-    </td>
-  </tr>
-</table>
-
-> **НЕ ПИШИТЕ** с проблемами Podkop Plus в официальный [Telegram-чат](https://t.me/itdogchat). Это независимый форк. Разработчики и участники оригинального чата не имеют отношения к этому проекту.
-> * Нашли баг или есть проблема? Создайте [Issue](https://github.com/ushan0v/podkop-plus/issues) в этом репозитории.
-> * Не хотите или не умеете создавать Issue? Напишите в специальный топик чата [Podkop Plus](https://t.me/podkop_plus_chat).
+> **Forkop — это бывший Podkop Plus.** Проект переименован и продолжает развиваться как независимый форк [Podkop](https://github.com/itdoginfo/podkop).
 
 ### Установка
 
 ```sh
-sh <(wget -O - https://raw.githubusercontent.com/ushan0v/podkop-plus/main/install.sh)
+sh <(wget -O - https://raw.githubusercontent.com/ushan0v/forkop/main/install.sh)
 ```
 
 ### Что нового в этом форке
 
-- Добавлена поддержка подписок.
-- Интеграция Zapret, Zapret2 и ByeDPI как отдельных действий секции.
-- Поддержка sing-box extended и транспорта XHTTP.
-- Обновленный LuCI-интерфейс и расширенное управление секциями.
-- Новые условия маршрутизации.
-- Поддержка каскадных подключений (подключение к outbound секции через другой).
-- Режим сервера с возможностю поднять собственный VPN/Proxy для подключения внешних устройств.
-- Менеджер обновлений и установки компонентов.
-- Встроенный мониторинг соединений.
-### Варианты sing-box
+* Поддержка подписок.
+* Поддержка sing-box extended и транспорта XHTTP.
+* Обновлённый LuCI-интерфейс.
+* Расширенное управление секциями.
+* Новые условия маршрутизации.
+* Возможность поднять собственный VPN/proxy-сервер.
+* Менеджер обновлений и установки компонентов.
+* Встроенный мониторинг соединений.
+* Расширенные настройки URLTest-групп.
+* Автоматический выбор узла по приоритету.
+* Каскадные подключения.
+* Маршрутизация DNS-запросов через прокси.
+* Резервные DNS-серверы.
+* Поддержка IPv6.
+* Интеграция Zapret, Zapret2 и ByeDPI как отдельных действий секции.
+* Служба полностью переписана на ucode.
+* Другие исправления и улучшения.
 
-- **stable** — оригинальная полная версия `sing-box`.
-- **tiny** — официальная облегченная версия `sing-box`. Занимает меньше места. По функционалу идентична `stable`, за исключением отсутствия поддержки Tailscale для режима сервера.
-- **extended** — модифицированная сборка с расширенным функционалом. Необходима для транспорта XHTTP и протокола MTProto в режиме сервера. Полный списк нововведений: [shtorm-7/sing-box-extended](https://github.com/shtorm-7/sing-box-extended/).
-- **extended compressed** — версия, полностью аналогичная `extended`, но бинарный файл сжат упаковщиком UPX. Значительно экономит место при сохранении всего функционала. Сжатая версия может работать нестабильно на некоторых устройствах.
+### Документация
 
-### Подписки
+Отдельной документации со всеми изменениями, нововведениями и инструкцией по настройке пока что не существует. Задать вопрос, сообщить о проблеме или обсудить проект можно в [Telegram-чате](https://t.me/forkop_chat) проекта.
 
-- Реализована поддержка основных форматов: sing-box json, uri/base64 списки, clash/mihomo
-- Добавлено чтение метаданных подписки.
-- Подписки поддерживают HWID авторизацию.
-- Возможность исключать серверы из URLTest по стране, названию и регулярному выражению.
-- Для указания кастомного заголовка `User-Agent` при скачивании подписки добавьте его в формате `URL | User-Agent`).
-- Для расшифровки подписок в формате `happ://crypt` используйте сервис [leeeet.dev/happ-decryptor](https://leeeet.dev/happ-decryptor).
-
-### Секции
-
-Podkop Plus расширяет набор условий, которые можно использовать в правилах:
-
-- Домены (`domain_suffix`): обычные значения работают как суффиксы доменов. Для других типов используйте теги `full:example.com`, `keyword:example` и `regex:^example\.`.
-- IP-адреса (`ip_cidr`)
-- Исходные IP-адреса (`source_ip_cidr`)
-- Порт (`port` / `port_range`)
-- Полностью маршрутизированные IP-адреса
-- Встроенные наборы правил
-- Наборы правил (домены)
-- Наборы правил (домены и подсети)
-- Списки доменов и IPs
-
-Для `Исходные IP-адреса` и `Полностью маршрутизированные IP-адреса` можно не только вручную вводить IP-адреса, но и выбирать устройство в локальной сети из удобного списка с именами.
-
-**Особенности работы некоторых условий:**
-
-- **Исходные IP-адреса:** работает как логическое **И** с остальными правилами. В секцию уйдет только тот трафик устройства, который совпал с другими заданными условиями (например, с указанными доменами или подсетями). Остальной трафик пойдет напрямую.
-- **Полностью маршрутизированные IP-адреса:** работает независимо от других условий. Абсолютно весь трафик указанного устройства будет принудительно направлен через действие этой секции.
-- **Порт:** работает как логическое **И** с остальными правилами. Если заданы другие условия (например, домены или IP-адреса), через секцию пойдет только их трафик, обращающийся к этому порту. Если указан *только* порт (без других условий), абсолютно весь трафик на этот порт будет направлен через секцию, независимо от адреса назначения.
-
-### Наборы правил
-
-`Наборы правил (домены)` принимают sing-box списки в форматах `.srs` и `.json`. Можно указывать как локальные пути, так и удаленные ссылки. Такие списки добавляются только в конфигурацию sing-box.
-
-`Наборы правил (домены и подсети)` принимают те же форматы, но дополнительно извлекают подсети и добавляют их в nftables. Это полезно для списков, где важны не только домены, но и IP-диапазоны. Извлечение подсетей требует дополнительной нагрузки на роутер, поэтому секции разделены.
-
-### Списки доменов и IPs
-
-Секция `Списки доменов и IPs` объединяет списки доменов и подсетей. Принимает локальные и удаленные `.lst` списки. Добавлена поддержка смешанных списков.
-
-### Серверы
-
-Podkop Plus позволяет поднять собственный VPN/Proxy сервер прямо на роутере для подключения внешних устройств.
-
-**Поддерживаемые протоколы:** VLESS, VMess, Trojan, Shadowsocks, SOCKS, Hysteria2 и Tailscale.
-
-Вы можете выбрать, как роутер будет обрабатывать трафик подключенного к нему клиента:
-- `Правила Podkop Plus` — трафик подчиняется правилам маршрутизации, то есть обрабатывается так же, как трафик устройств в локальной сети.
-- `Напрямую` — весь трафик клиента идет напрямую в интернет, минуя обходы.
-- `Выбранная секция` — весь трафик клиента принудительно заворачивается в выбранную секцию.
-
-> Для подключения к серверу из внешней сети необходим выделенный (белый) IP-адрес от провайдера и открытый порт в Firewall роутера. Если у вас нет выделенного IP-адреса, используйте протокол **Tailscale** - он позволяет подключаться к вашему серверу из любой точки мира даже за NAT.
-
-### Интеграция Zapret
-
-Zapret доступен как действие отдельной секции. Используется [bol-van/zapret](https://github.com/bol-van/zapret) в OpenWrt-пакете `zapret` из релизов [remittor/zapret-openwrt](https://github.com/remittor/zapret-openwrt/releases).
-
-> Вы можете найти адаптированные и проверенные стратегии zapret для Podkop Plus в специальном репозитории: [ushan0v/podkop-plus-zapret-strategies](https://github.com/ushan0v/podkop-plus-zapret-strategies).
-
-Реализация: `sing-box` отбирает трафик секции и отправляет его в `direct` outbound с отдельным `routing_mark` -> `zapret` принимает помеченные пакеты из очереди (`4000-4255`) и применяет выбранную стратегию DPI-обхода.
-
-Для стратегии `zapret` намеренно запрещены:
-
-- шаблоны и hostlist placeholders: **`<HOSTLIST>`**, **`<HOSTLIST_NOAUTO>`**;
-- hostname/IP selectors внутри самой стратегии: **`--hostlist*`**, **`--hostlist-auto*`**, **`--ipset*`**;
-- ручное управление очередью и fwmark: **`--qnum`**, **`--dpi-desync-fwmark`**;
-- режимы, которые ломают lifecycle процесса: **`--daemon`**;
-- режимы, которые не должны быть итоговой стратегией запуска: **`--dry-run`**, **`--version`**;
-- внешние файлы аргументов вида **`@file`** или **`$file`**, которые обходят встроенную валидацию и управление очередями.
-
-### Интеграция Zapret2
-
-Zapret2 доступен как отдельное действие секции `zapret2`. Используется [bol-van/zapret2](https://github.com/bol-van/zapret2) в OpenWrt-пакете `zapret2` из релизов [remittor/zapret-openwrt](https://github.com/remittor/zapret-openwrt/releases).
-
-Реализация: `sing-box` отбирает трафик секции и отправляет его в `direct` outbound с отдельным `routing_mark` -> `zapret2` принимает помеченные пакеты из очереди (`4300-4555`) и применяет выбранную стратегию DPI-обхода.
-
-`NFQWS2 Strategy` принимает параметры `nfqws2` без `--qnum` и без базовых Lua-инициализаций: Podkop Plus добавляет очередь, `--fwmark` и стандартные `zapret2` Lua-модули самостоятельно. Свои `--blob` и `--lua-init` допустимы для расширенных стратегий.
-
-Для стратегии `zapret2` намеренно запрещены:
-
-- шаблоны и hostlist placeholders: **`<HOSTLIST>`**, **`<HOSTLIST_NOAUTO>`**;
-- hostname/IP selectors внутри самой стратегии: **`--hostlist*`**, **`--hostlist-auto*`**, **`--ipset*`**;
-- ручное управление очередью и fwmark: **`--qnum`**, **`--fwmark`**, **`--dpi-desync-fwmark`**;
-- режимы, несовместимые с управляемой NFQUEUE-архитектурой: **`--fuzz`**, **`--intercept=0`**;
-- режимы, которые ломают lifecycle процесса: **`--daemon`**;
-- режимы, которые не должны быть итоговой стратегией запуска: **`--dry-run`**, **`--version`**;
-- внешние файлы аргументов вида **`@file`** или **`$file`**, которые обходят встроенную валидацию и управление очередями.
-
-### Интеграция ByeDPI
-
-ByeDPI доступен как действие отдельной секции. Используется [DPITrickster/ByeDPI-OpenWrt](https://github.com/DPITrickster/ByeDPI-OpenWrt/releases).
-
-Реализация: `sing-box` отбирает трафик секции и отправляет его в локальный SOCKS5 outbound -> `ciadpi` принимает соединение на `127.0.0.1:1080+` и применяет выбранную стратегию DPI-обхода.
-
-Для стратегии `ByeDPI` намеренно запрещены:
-
-- ручное назначение listen-адреса и порта: **`--ip`**, **`-i`**, **`--port`**, **`-p`**;
-- прозрачный режим, несовместимый с SOCKS5-подключением: **`--transparent`**, **`-E`**;
-- режимы, которые ломают lifecycle процесса: **`--daemon`**, **`-D`**;
-- ручное управление pid-файлами: **`--pidfile`**, **`-w`**;
-- режимы, которые выводят справку или версию и сразу завершают работу: **`--help`**, **`-h`**, **`--version`**, **`-v`**;
+Как альтернативу документации для быстрых персонализированных ответов используйте бесплатного, специально для этого созданного, AI-ассистента [@forkop_aibot](https://t.me/forkop_aibot).
 
 ### Поддержать проект
 
-Если хотите поддержать проект и его развитие, это можно сделать здесь:
-
-- 💳 **Карты РФ / СБП / Tinkoff Pay:** [Донат на CloudTips](https://pay.cloudtips.ru/p/385e5af2)
-- 💎 **TON / USDT (сеть TON):** `UQBuYHpmHorHquBItuuUsNJJs5lWoP6Bi0cgY-gM5RCQvYgC`
-- 🟢 **USDT (сеть TRC-20):** `TR4SXiL9sV2GwNz8mDbJkN8SmK9jQ3GuZF`
-- 🪙 **USDT (сеть ERC-20 / BEP-20):** `0x21F86eF81d33A449037d6E750D2504BF225EAA9d`
+* 💳 **Карты РФ / СБП / Tinkoff Pay:** [Донат на CloudTips](https://pay.cloudtips.ru/p/385e5af2)
+* 💎 **USDT (сеть TON):** `UQAOCDav39WJ2gvnzs9RQ_IsF2dcGrcpw4U0j6XGO7je7uwm`
+* 🟢 **USDT (сеть TRC-20):** `TEMaZFyM8RQpkbd5LvB8CFJwxCyhHauKAe`
+* 🪙 **USDT (сети ERC-20 / BEP-20 / Polygon / Monad):** `0xe8aabb21c320240fe45b6087e68c6fe40a92d8bf`
+* 🟠 **USDT (сеть Solana):** `AhhUjTci9zDKQjUfgLacFR4LiHX9nmZud6DZ8YdbpjEB`
