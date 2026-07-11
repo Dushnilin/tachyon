@@ -99,12 +99,13 @@ generate_config() {
 generate_config_with_subscription_cache() {
   local fixture="$1"
   local output="$2"
+  local supports_xhttp="${3:-1}"
 
   mkdir -p "$output.section-cache" "$output.rulesets"
   TMP_SUBSCRIPTION_FOLDER="$WORK_DIR/subscriptions" \
     FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_DIR="$WORK_DIR/persistent-subscription-cache" \
     ucode -L "$FORKOP_LIB" "$FORKOP_LIB/singbox/generator.uc" generate-config-fixture \
-      "$fixture" "$output" "127.0.0.1" "0"
+      "$fixture" "$output" "127.0.0.1" "0" "$supports_xhttp"
 }
 
 cat >"$WORK_DIR/no-enabled-fixture.json" <<'JSON'
@@ -614,6 +615,112 @@ cat >"$WORK_DIR/subscription-group-disabled-fixture.json" <<'JSON'
 }
 JSON
 
+cat >"$WORK_DIR/subscription-xhttp-fixture.json" <<'JSON'
+{
+  "settings": {
+    ".name": "settings",
+    ".type": "settings",
+    "config_path": "/tmp/sing-box/config.json",
+    "dns_server": "1.1.1.1",
+    "service_listen_address": "127.0.0.1"
+  },
+  "section": [
+    {
+      ".name": "xhttp",
+      ".type": "section",
+      "enabled": "1",
+      "action": "connection",
+      "subscription_urls": [ "https://example.com/xhttp.json" ],
+      "subscription_url_settings": "{\"https://example.com/xhttp.json\":{\"user_agent\":\"Happ\"}}",
+      "domain_suffix": [ "xhttp.example" ]
+    }
+  ],
+  "urltest": [
+    {
+      ".name": "ut_xhttp",
+      ".type": "urltest",
+      "section": "xhttp",
+      "name": "Compatible URLTest"
+    }
+  ],
+  "priority_group": [
+    {
+      ".name": "pg_xhttp",
+      ".type": "priority_group",
+      "section": "xhttp",
+      "name": "Compatible Priority"
+    }
+  ],
+  "priority_level": [
+    {
+      ".name": "pl_xhttp",
+      ".type": "priority_level",
+      "group": "pg_xhttp",
+      "name": "All compatible",
+      "order": "0",
+      "filter_mode": "disabled"
+    }
+  ]
+}
+JSON
+
+cat >"$WORK_DIR/subscription-only-xhttp-fixture.json" <<'JSON'
+{
+  "settings": {
+    ".name": "settings",
+    ".type": "settings",
+    "config_path": "/tmp/sing-box/config.json",
+    "dns_server": "1.1.1.1",
+    "service_listen_address": "127.0.0.1"
+  },
+  "section": [
+    {
+      ".name": "only_xhttp",
+      ".type": "section",
+      "enabled": "1",
+      "action": "connection",
+      "subscription_urls": [ "https://example.com/only-xhttp.json" ],
+      "subscription_url_settings": "{\"https://example.com/only-xhttp.json\":{\"user_agent\":\"Happ\"}}",
+      "domain_suffix": [ "only-xhttp.example" ]
+    }
+  ]
+}
+JSON
+
+cat >"$WORK_DIR/manual-xhttp-fixture.json" <<'JSON'
+{
+  "settings": { ".name": "settings", ".type": "settings", "dns_server": "1.1.1.1" },
+  "section": [
+    {
+      ".name": "manual_xhttp",
+      ".type": "section",
+      "enabled": "1",
+      "action": "connection",
+      "selector_proxy_links": [
+        "vless://00000000-0000-4000-8000-000000000001@xhttp.example:443?encryption=none&security=tls&sni=xhttp.example&type=xhttp#Manual XHTTP"
+      ]
+    }
+  ]
+}
+JSON
+
+cat >"$WORK_DIR/json-xhttp-fixture.json" <<'JSON'
+{
+  "settings": { ".name": "settings", ".type": "settings", "dns_server": "1.1.1.1" },
+  "section": [
+    {
+      ".name": "json_xhttp",
+      ".type": "section",
+      "enabled": "1",
+      "action": "connection",
+      "outbound_jsons": [
+        "{\"type\":\"vless\",\"tag\":\"JSON XHTTP\",\"server\":\"xhttp.example\",\"server_port\":443,\"uuid\":\"00000000-0000-4000-8000-000000000002\",\"transport\":{\"type\":\"xhttp\"}}"
+      ]
+    }
+  ]
+}
+JSON
+
 mkdir -p "$WORK_DIR/subscriptions" "$WORK_DIR/persistent-subscription-cache"
 for source in proxy-subscription-1 proxy-subscription-2 test-subscription-1; do
   cat >"$WORK_DIR/subscriptions/$source.json" <<'JSON'
@@ -675,6 +782,74 @@ cat >"$WORK_DIR/subscriptions/grouped-subscription-1.json" <<'JSON'
 JSON
 printf '%s' 'https://example.com/group.json' >"$WORK_DIR/subscriptions/grouped-subscription-1.url"
 printf '%s' 'Happ' >"$WORK_DIR/subscriptions/grouped-subscription-1.user_agent"
+cat >"$WORK_DIR/subscriptions/xhttp-subscription-1.json" <<'JSON'
+{
+  "outbounds": [
+    {
+      "type": "urltest",
+      "tag": "Provider XHTTP Group",
+      "outbounds": [ "xhttp-node", "plain-node" ],
+      "default": "xhttp-node",
+      "url": "https://www.gstatic.com/generate_204",
+      "remark": "Provider XHTTP Group",
+      "__forkop_allow_group": true
+    },
+    {
+      "type": "vless",
+      "tag": "xhttp-node",
+      "remark": "Moscow XHTTP",
+      "server": "127.0.0.10",
+      "server_port": 443,
+      "uuid": "00000000-0000-4000-8000-000000000010",
+      "transport": { "type": "xhttp" },
+      "__forkop_hidden": true
+    },
+    {
+      "type": "socks",
+      "tag": "plain-node",
+      "remark": "Plain node",
+      "server": "127.0.0.11",
+      "server_port": 1080,
+      "__forkop_hidden": true
+    },
+    {
+      "type": "socks",
+      "tag": "depends-on-xhttp",
+      "remark": "Depends on XHTTP",
+      "server": "127.0.0.12",
+      "server_port": 1080,
+      "detour": "xhttp-node"
+    },
+    {
+      "type": "socks",
+      "tag": "recursive-dependent",
+      "remark": "Recursive dependent",
+      "server": "127.0.0.13",
+      "server_port": 1080,
+      "detour": "depends-on-xhttp"
+    }
+  ]
+}
+JSON
+printf '%s' 'https://example.com/xhttp.json' >"$WORK_DIR/subscriptions/xhttp-subscription-1.url"
+printf '%s' 'Happ' >"$WORK_DIR/subscriptions/xhttp-subscription-1.user_agent"
+cat >"$WORK_DIR/subscriptions/only_xhttp-subscription-1.json" <<'JSON'
+{
+  "outbounds": [
+    {
+      "type": "vless",
+      "tag": "only-xhttp-node",
+      "remark": "Only XHTTP node",
+      "server": "127.0.0.20",
+      "server_port": 443,
+      "uuid": "00000000-0000-4000-8000-000000000020",
+      "transport": { "type": "xhttp" }
+    }
+  ]
+}
+JSON
+printf '%s' 'https://example.com/only-xhttp.json' >"$WORK_DIR/subscriptions/only_xhttp-subscription-1.url"
+printf '%s' 'Happ' >"$WORK_DIR/subscriptions/only_xhttp-subscription-1.user_agent"
 
 generate_config "$WORK_DIR/disabled-updates-fixture.json" "$WORK_DIR/disabled.json"
 generate_config "$WORK_DIR/default-updates-fixture.json" "$WORK_DIR/default.json"
@@ -692,6 +867,31 @@ generate_config "$WORK_DIR/domain-ip-rulesets-fixture.json" "$WORK_DIR/domain-ip
 generate_config_with_subscription_cache "$WORK_DIR/subscription-metadata-fixture.json" "$WORK_DIR/subscription-metadata.json"
 generate_config_with_subscription_cache "$WORK_DIR/subscription-group-fixture.json" "$WORK_DIR/subscription-group.json"
 generate_config_with_subscription_cache "$WORK_DIR/subscription-group-disabled-fixture.json" "$WORK_DIR/subscription-group-disabled.json"
+generate_config_with_subscription_cache "$WORK_DIR/subscription-xhttp-fixture.json" "$WORK_DIR/subscription-xhttp-extended.json" 1
+generate_config_with_subscription_cache "$WORK_DIR/subscription-xhttp-fixture.json" "$WORK_DIR/subscription-xhttp-stable.json" 0 \
+  2>"$WORK_DIR/subscription-xhttp-stable.stderr"
+grep -Fq "Moscow XHTTP (XHTTP requires sing-box-extended)" "$WORK_DIR/subscription-xhttp-stable.stderr" ||
+  fail "stable sing-box XHTTP warning should identify the incompatible subscription outbound"
+grep -Fq "Recursive dependent (detour depends on unavailable outbound 'depends-on-xhttp')" "$WORK_DIR/subscription-xhttp-stable.stderr" ||
+  fail "stable sing-box XHTTP filtering should report recursively pruned detours"
+
+if generate_config_with_subscription_cache "$WORK_DIR/subscription-only-xhttp-fixture.json" "$WORK_DIR/subscription-only-xhttp.json" 0 \
+  >"$WORK_DIR/subscription-only-xhttp.stdout" 2>"$WORK_DIR/subscription-only-xhttp.stderr"; then
+  fail "stable sing-box should reject a subscription section with only XHTTP outbounds"
+fi
+grep -Fq "Only XHTTP node (XHTTP requires sing-box-extended)" "$WORK_DIR/subscription-only-xhttp.stderr" ||
+  fail "all-XHTTP subscription failure should identify the incompatible outbound"
+
+for fixture in manual-xhttp json-xhttp; do
+  if ucode -L "$FORKOP_LIB" "$SINGBOX_GENERATOR_UC" generate-config-fixture \
+    "$WORK_DIR/$fixture-fixture.json" "$WORK_DIR/$fixture-stable.json" "127.0.0.1" "0" "0" \
+    >"$WORK_DIR/$fixture-stable.stdout" 2>"$WORK_DIR/$fixture-stable.stderr"; then
+    fail "stable sing-box should reject explicit $fixture configuration"
+  fi
+  grep -Fq "uses XHTTP transport, but sing-box-extended is not installed" "$WORK_DIR/$fixture-stable.stderr" ||
+    fail "explicit $fixture XHTTP failure should explain the extended requirement"
+  generate_config "$WORK_DIR/$fixture-fixture.json" "$WORK_DIR/$fixture-extended.json"
+done
 
 ucode -e '
 let fs = require("fs");
@@ -937,6 +1137,23 @@ assert(disabled_grouped_selector && contains(disabled_grouped_selector.outbounds
 let disabled_grouped_state = cfg("subscription-group-disabled.json.section-cache/grouped");
 assert(disabled_grouped_state.urltestGroups["Provider Group"] == null, "skipped provider group is not cached as URLTest");
 assert(disabled_grouped_state.linkRefs["grouped-out-1"].sourceIndex == 2, "visible leaf keeps source link ref when group import is disabled");
+
+let xhttp_stable = cfg("subscription-xhttp-stable");
+assert(outbound(xhttp_stable, "xhttp-node") == null, "stable sing-box excludes XHTTP subscription leaf");
+assert(outbound(xhttp_stable, "depends-on-xhttp") == null, "stable sing-box excludes outbound detouring through XHTTP");
+assert(outbound(xhttp_stable, "recursive-dependent") == null, "stable sing-box recursively excludes XHTTP-dependent detours");
+let stable_provider_group = outbound(xhttp_stable, "Provider XHTTP Group");
+assert(stable_provider_group && length(stable_provider_group.outbounds) == 1 && stable_provider_group.outbounds[0] == "plain-node", "provider group removes XHTTP member");
+assert(stable_provider_group.default == "plain-node", "provider group default falls back to a compatible member");
+let stable_urltest = outbound(xhttp_stable, "xhttp-urltest-ut_xhttp-out");
+assert(stable_urltest && length(stable_urltest.outbounds) == 1 && stable_urltest.outbounds[0] == "plain-node", "URLTest receives only compatible subscription leaves");
+let stable_priority = outbound(xhttp_stable, "xhttp-priority-pg_xhttp-out");
+assert(stable_priority && length(stable_priority.outbounds) == 1 && stable_priority.outbounds[0] == "plain-node", "Priority receives only compatible subscription leaves");
+
+let xhttp_extended = cfg("subscription-xhttp-extended");
+assert(outbound(xhttp_extended, "xhttp-node") != null, "extended sing-box keeps XHTTP subscription leaf");
+assert(outbound(xhttp_extended, "depends-on-xhttp").detour == "xhttp-node", "extended sing-box keeps XHTTP detour chain");
+assert(outbound(xhttp_extended, "recursive-dependent").detour == "depends-on-xhttp", "extended sing-box keeps recursive detour chain");
 
 let proxy_cache = json(fs.readfile(dir + "/subscription-metadata.json.section-cache/proxy.json"));
 let test_cache = json(fs.readfile(dir + "/subscription-metadata.json.section-cache/test.json"));
