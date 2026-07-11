@@ -19,6 +19,7 @@ let uci = null;
 let fixture_uci_data = null;
 let runtime_settings_cache = null;
 let runtime_ruleset_folder = runtime_constants.TMP_RULESET_FOLDER;
+let runtime_supports_xhttp = true;
 
 let as_string = common.as_string;
 let read_json_file = common.read_json_file;
@@ -509,6 +510,102 @@ function supported_subscription_outbound(outbound) {
         t == "socks" || t == "http" || t == "hysteria2";
 }
 
+function outbound_uses_xhttp(outbound) {
+    return type(outbound) == "object" && type(outbound.transport) == "object" &&
+        lc(as_string(outbound.transport.type || "")) == "xhttp";
+}
+
+function ensure_explicit_outbound_supported(outbound, source, name) {
+    if (!runtime_supports_xhttp && outbound_uses_xhttp(outbound))
+        runtime_generate_unsupported(as_string(source) + " '" + as_string(name) + "' uses XHTTP transport, but sing-box-extended is not installed");
+}
+
+function subscription_outbound_display_name(outbound) {
+    return type(outbound) == "object"
+        ? as_string(outbound.remark || outbound.tag || "unknown")
+        : "unknown";
+}
+
+function add_subscription_reference(refs, value) {
+    value = as_string(value);
+    if (value != "")
+        refs[value] = true;
+}
+
+function subscription_reference_set(outbounds) {
+    let refs = {};
+    for (let outbound in array_or_empty(outbounds)) {
+        if (type(outbound) != "object")
+            continue;
+        add_subscription_reference(refs, outbound.tag);
+        add_subscription_reference(refs, outbound.remark);
+    }
+    return refs;
+}
+
+function subscription_reference_available(reference, source_refs, retained_refs) {
+    reference = as_string(reference);
+    return reference == "" || !source_refs[reference] || retained_refs[reference];
+}
+
+function subscription_group_has_retained_member(outbound, retained_refs) {
+    for (let reference in array_or_empty(outbound.outbounds))
+        if (retained_refs[as_string(reference)])
+            return true;
+    return false;
+}
+
+function warn_skipped_subscription_outbound(section_name, outbound, reason) {
+    warn("skipped incompatible subscription outbound for rule '", section_name, "': ",
+        subscription_outbound_display_name(outbound), " (", reason, ")\n");
+}
+
+function compatible_subscription_outbounds(outbounds, section_name) {
+    let source_refs = subscription_reference_set(outbounds);
+    let retained = [];
+    for (let outbound in array_or_empty(outbounds)) {
+        if (!supported_subscription_outbound(outbound))
+            continue;
+        if (!runtime_supports_xhttp && outbound_uses_xhttp(outbound)) {
+            warn_skipped_subscription_outbound(section_name, outbound, "XHTTP requires sing-box-extended");
+            continue;
+        }
+        push(retained, outbound);
+    }
+
+    while (true) {
+        let retained_refs = subscription_reference_set(retained);
+        let next = [];
+        let changed = false;
+        for (let outbound in retained) {
+            let detour = as_string(outbound.detour || "");
+            if (!subscription_reference_available(detour, source_refs, retained_refs)) {
+                warn_skipped_subscription_outbound(section_name, outbound,
+                    "detour depends on unavailable outbound '" + detour + "'");
+                changed = true;
+                continue;
+            }
+            if (subscription_group_outbound(outbound) &&
+                !subscription_group_has_retained_member(outbound, retained_refs)) {
+                warn_skipped_subscription_outbound(section_name, outbound, "group has no compatible outbounds");
+                changed = true;
+                continue;
+            }
+            push(next, outbound);
+        }
+        retained = next;
+        if (!changed)
+            return retained;
+    }
+}
+
+function subscription_source_outbound_index(source_outbounds, outbound) {
+    for (let i = 0; i < length(source_outbounds); i++)
+        if (source_outbounds[i] === outbound)
+            return i + 1;
+    return 0;
+}
+
 function copy_subscription_outbound(outbound, new_tag) {
     let copy = {};
     for (let key, value in outbound) {
@@ -530,16 +627,23 @@ function copy_subscription_outbound(outbound, new_tag) {
     return copy;
 }
 
-function rewrite_subscription_outbound_references(outbounds, tag_map) {
+function string_array_contains(values, needle) {
+    for (let value in array_or_empty(values))
+        if (as_string(value) == as_string(needle))
+            return true;
+    return false;
+}
+
+function rewrite_subscription_outbound_references(outbounds, tag_map, source_refs) {
     for (let outbound in outbounds) {
         if (type(outbound) != "object")
             continue;
 
-        for (let key in [ "detour", "default" ]) {
-            let reference = as_string(outbound[key] || "");
-            if (reference != "" && tag_map[reference])
-                outbound[key] = tag_map[reference];
-        }
+        let detour = as_string(outbound.detour || "");
+        if (detour != "" && tag_map[detour])
+            outbound.detour = tag_map[detour];
+        else if (detour != "" && source_refs[detour])
+            delete outbound.detour;
 
         if (type(outbound.outbounds) == "array") {
             let rewritten = [];
@@ -549,6 +653,16 @@ function rewrite_subscription_outbound_references(outbounds, tag_map) {
                     push(rewritten, tag_map[tag_name]);
             }
             outbound.outbounds = rewritten;
+
+            let default_tag = as_string(outbound.default || "");
+            if (default_tag != "" && tag_map[default_tag])
+                default_tag = tag_map[default_tag];
+            if (default_tag == "" || !string_array_contains(rewritten, default_tag))
+                default_tag = length(rewritten) > 0 ? rewritten[0] : "";
+            if (default_tag != "")
+                outbound.default = default_tag;
+            else
+                delete outbound.default;
         }
     }
 }
@@ -628,9 +742,19 @@ function add_subscription_source_with_state(config, section, source_index, sourc
     ))
         return 0;
 
-    let outbounds = runtime_subscription.read_source_outbounds(source_section);
-    if (length(outbounds) == 0)
+    let source_outbounds = runtime_subscription.read_source_outbounds(source_section);
+    if (length(source_outbounds) == 0)
         return 0;
+
+    let skipped = {};
+    for (let outbound in source_outbounds) {
+        if (supported_subscription_outbound(outbound))
+            continue;
+        let t = type(outbound) == "object" ? as_string(outbound.type || "missing-type") : "non-object";
+        if (reportable_skipped_subscription_type(t))
+            skipped[t] = (skipped[t] || 0) + 1;
+    }
+    let outbounds = compatible_subscription_outbounds(source_outbounds, section_name);
 
     if (show_metadata !== false)
         runtime_subscription.merge_source_metadata(state, section_name, source_section, source_index, source_entry);
@@ -645,15 +769,8 @@ function add_subscription_source_with_state(config, section, source_index, sourc
     let group_flags = [];
     let hidden_flags = [];
     let tag_map = {};
-    let skipped = {};
     for (let i = 0; i < length(outbounds); i++) {
         let outbound = outbounds[i];
-        if (!supported_subscription_outbound(outbound)) {
-            let t = type(outbound) == "object" ? as_string(outbound.type || "missing-type") : "non-object";
-            if (reportable_skipped_subscription_type(t))
-                skipped[t] = (skipped[t] || 0) + 1;
-            continue;
-        }
         if (include_urltest_groups === false && subscription_urltest_group_outbound(outbound))
             continue;
         let display_name = as_string(outbound.remark || outbound.tag || ("server-" + (i + 1)));
@@ -670,7 +787,7 @@ function add_subscription_source_with_state(config, section, source_index, sourc
         if (as_string(outbound.remark || "") != "")
             tag_map[as_string(outbound.remark)] = new_tag;
         push(prepared, copy_subscription_outbound(outbound, new_tag));
-        push(source_indices, i + 1);
+        push(source_indices, subscription_source_outbound_index(source_outbounds, outbound));
         push(display_names, display_name);
         push(source_links, as_string(outbound.share_link || ""));
         push(group_flags, subscription_group_outbound(outbound));
@@ -680,7 +797,7 @@ function add_subscription_source_with_state(config, section, source_index, sourc
     if (length(keys(skipped)) > 0)
         warn("skipped unsupported subscription outbounds for rule '", section_name, "': ", subscription_skip_summary(skipped), "\n");
 
-    rewrite_subscription_outbound_references(prepared, tag_map);
+    rewrite_subscription_outbound_references(prepared, tag_map, subscription_reference_set(source_outbounds));
     let added = 0;
     for (let i = 0; i < length(prepared); i++) {
         let outbound = prepared[i];
@@ -1780,13 +1897,14 @@ function add_manual_proxy_link(config, state, section_name, manual_index, link, 
     taken[tag_name] = true;
 
     let outbound = manual_link_outbound(link, tag_name);
+    let display_name = url_fragment(link);
+    if (display_name == "")
+        display_name = tag_name;
+    ensure_explicit_outbound_supported(outbound, "manual outbound", display_name);
     push(config.outbounds, outbound);
     push(selector_tags, tag_name);
     push(urltest_candidate_tags, tag_name);
 
-    let display_name = url_fragment(link);
-    if (display_name == "")
-        display_name = tag_name;
     state.links[tag_name] = as_string(link);
     state.outboundMetadata.names[tag_name] = display_name;
     if (as_string(outbound.server || "") != "")
@@ -1913,6 +2031,7 @@ function prepare_json_connection_outbounds(section, taken) {
         let legacy_tag = connection_item_tag(section[".name"], "json", i + 1);
         let base = display_name != "" ? display_name : legacy_tag;
         let tag_name = unique_tag(base, taken);
+        ensure_explicit_outbound_supported(outbound, "JSON outbound", display_name != "" ? display_name : legacy_tag);
         taken[tag_name] = true;
         if (display_name != "" && !tag_map[display_name])
             tag_map[display_name] = tag_name;
@@ -2575,7 +2694,10 @@ function add_server_routes(config, servers, sections) {
     }
 }
 
-function generate_config(output_path, service_address, mwan3_active) {
+function generate_config(output_path, service_address, mwan3_active, supports_xhttp) {
+    runtime_supports_xhttp = supports_xhttp == null || as_string(supports_xhttp) == ""
+        ? true
+        : cli_bool(supports_xhttp);
     let cursor = uci_cursor();
     cursor.load(CONFIG_NAME);
     runtime_settings_cache = object_or_empty(cursor.get_all(CONFIG_NAME, "settings"));
@@ -2610,11 +2732,11 @@ function generate_config(output_path, service_address, mwan3_active) {
     }
 }
 
-function generate_config_fixture(fixture_path, output_path, service_address, mwan3_active) {
+function generate_config_fixture(fixture_path, output_path, service_address, mwan3_active, supports_xhttp) {
     use_fixture_cursor(fixture_path);
     runtime_subscription.set_section_cache_dir(output_path + ".section-cache");
     runtime_ruleset_folder = output_path + ".rulesets";
-    generate_config(output_path, service_address, mwan3_active);
+    generate_config(output_path, service_address, mwan3_active, supports_xhttp);
 }
 
 function merge_object_values(target, source) {
@@ -3028,9 +3150,9 @@ function route_rule_has_resolve_matchers(service_tag, tag) {
 let mode = ARGV[0] || "";
 
 if (mode == "generate-config")
-    generate_config(ARGV[1], ARGV[2], ARGV[3]);
+    generate_config(ARGV[1], ARGV[2], ARGV[3], ARGV[4]);
 else if (mode == "generate-config-fixture")
-    generate_config_fixture(ARGV[1], ARGV[2], ARGV[3], ARGV[4]);
+    generate_config_fixture(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5]);
 else if (mode == "stdin-length")
     stdin_length();
 else if (mode == "stdin-contains")
