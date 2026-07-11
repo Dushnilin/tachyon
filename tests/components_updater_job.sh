@@ -140,6 +140,13 @@ $0 == "    let new_version = validate_sing_box_extended_binary(tmp_binary, tmp_d
 END { exit safe_validation ? 0 : 1 }
 ' "$ACTION_UC" ||
   fail "compressed sing-box validation must release the archive and stop the running service to avoid OpenWrt OOM"
+grep -Fq 'install_staged_file(tmp_binary, "/usr/bin/sing-box", "0755")' "$ACTION_UC" ||
+  fail "compressed sing-box binary installation must support moving from tmpfs to overlay"
+grep -Fq 'install_staged_file(tmp_cronet, "/usr/lib/libcronet.so", "0644")' "$ACTION_UC" ||
+  fail "compressed libcronet installation must support moving from tmpfs to overlay"
+if grep -Fq 'fs.rename(tmp_binary, "/usr/bin/sing-box")' "$ACTION_UC"; then
+  fail "compressed sing-box installation must not rename directly across OpenWrt filesystems"
+fi
 
 package_runtime_lib="$WORK_DIR/package-runtime-lib"
 package_runtime_bin="$WORK_DIR/package-runtime-bin"

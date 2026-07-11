@@ -1121,6 +1121,19 @@ function restore_file_backup(target_path, backup_path) {
     return true;
 }
 
+function install_staged_file(source_path, target_path, mode) {
+    let staged_path = as_string(target_path) + ".forkop-new." + owner_pid();
+    remove_file(staged_path);
+    if (!command_success_from_args([ "cp", "-f", source_path, staged_path ]) ||
+        !command_success_from_args([ "chmod", mode, staged_path ]) ||
+        !fs.rename(staged_path, target_path)) {
+        remove_file(staged_path);
+        return false;
+    }
+    remove_file(source_path);
+    return true;
+}
+
 function restore_sing_box_service_from_marker(marker) {
     if (as_string(marker) == "extended-compressed")
         return install_managed_sing_box_service_script();
@@ -1580,14 +1593,14 @@ function install_sing_box_extended(action, compressed) {
     }
 
     remove_file("/usr/bin/sing-box");
-    if (!fs.rename(tmp_binary, "/usr/bin/sing-box") || !command_success_from_args([ "chmod", "0755", "/usr/bin/sing-box" ])) {
+    if (!install_staged_file(tmp_binary, "/usr/bin/sing-box", "0755")) {
         remove_file("/usr/bin/sing-box");
         restore_sing_box_after_failed_extended_install(current_variant, backup_binary, backup_cronet, previous_marker, previous_version_state, archive_file, cronet_touched);
         action_fail("sing_box", action, "Failed to install " + label + " binary", current_version, latest_version);
     }
     if (tmp_cronet != "") {
         remove_file("/usr/lib/libcronet.so");
-        if (!fs.rename(tmp_cronet, "/usr/lib/libcronet.so") || !command_success_from_args([ "chmod", "0644", "/usr/lib/libcronet.so" ])) {
+        if (!install_staged_file(tmp_cronet, "/usr/lib/libcronet.so", "0644")) {
             remove_file("/usr/lib/libcronet.so");
             restore_sing_box_after_failed_extended_install(current_variant, backup_binary, backup_cronet, previous_marker, previous_version_state, archive_file, cronet_touched);
             action_fail("sing_box", action, "Failed to install libcronet.so for " + label, current_version, latest_version);
