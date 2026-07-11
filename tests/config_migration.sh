@@ -2,9 +2,11 @@
 set -eo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PODKOP_LIB="$ROOT_DIR/podkop/files/usr/lib"
-MIGRATION="$PODKOP_LIB/config/migration.uc"
+FORKOP_LIB="$ROOT_DIR/forkop/files/usr/lib"
+RUNTIME_MIGRATION="$FORKOP_LIB/config/migration.uc"
+INSTALLER="$ROOT_DIR/install.sh"
 WORK_DIR="$(mktemp -d)"
+MIGRATION="$WORK_DIR/config-migration.uc"
 
 cleanup() {
   rm -rf "$WORK_DIR"
@@ -16,13 +18,26 @@ fail() {
   exit 1
 }
 
+awk '
+  /cat > "\$helper_path" <<'\''FORKOP_CONFIG_MIGRATION_EOF'\''/ { capture = 1; next }
+  capture && /^FORKOP_CONFIG_MIGRATION_EOF$/ { exit }
+  capture { print }
+' "$INSTALLER" > "$MIGRATION"
+[ -s "$MIGRATION" ] || fail "failed to extract config migration from install.sh"
+
+grep -Fq 'Reserved for future Forkop configuration migrations.' "$RUNTIME_MIGRATION" ||
+  fail "runtime config/migration.uc must remain a placeholder"
+if grep -n -E 'require\("core\.uci"\)|function migrate_|migrate_runtime|migrate-fixture' "$RUNTIME_MIGRATION" >/dev/null 2>&1; then
+  fail "runtime config/migration.uc must not contain migration logic"
+fi
+
 if grep -n -E 'require\("uci"\)\.cursor|uci -q|uci", "-q"' "$MIGRATION" >/dev/null 2>&1; then
-  fail "config/migration.uc must use core.uci instead of direct UCI cursor or CLI access"
+  fail "installer config migration must use core.uci instead of direct UCI cursor or CLI access"
 fi
 grep -Fq 'require("core.uci")' "$MIGRATION" ||
-  fail "config/migration.uc must import core.uci"
+  fail "installer config migration must import core.uci"
 
-eval "$(ucode -L "$PODKOP_LIB" "$PODKOP_LIB/core/constants.uc" shell-env)"
+eval "$(ucode -L "$FORKOP_LIB" "$FORKOP_LIB/core/constants.uc" shell-env)"
 export ZAPRET_LEGACY_DEFAULT_NFQWS_OPT ZAPRET_DEFAULT_NFQWS_OPT
 
 node >"$WORK_DIR/fixture.json" <<'NODE'
@@ -133,7 +148,7 @@ const fixture = {
 process.stdout.write(`${JSON.stringify(fixture, null, 2)}\n`);
 NODE
 
-PODKOP_LIB="$PODKOP_LIB" ucode -L "$PODKOP_LIB" "$MIGRATION" migrate-fixture "$WORK_DIR/fixture.json" >"$WORK_DIR/output.json"
+FORKOP_LIB="$FORKOP_LIB" ucode -L "$FORKOP_LIB" "$MIGRATION" migrate-fixture "$WORK_DIR/fixture.json" >"$WORK_DIR/output.json"
 
 node - "$WORK_DIR/output.json" <<'NODE'
 const fs = require('fs');
@@ -313,65 +328,65 @@ absent(legacyOutbound, 'outbound_detour_enabled', 'legacy-outbound');
 absent(legacyOutbound, 'outbound_detour_section', 'legacy-outbound');
 
 assert(out.removed_caches.includes('/tmp/sing-box/subscriptions/legacy-sub.json'), 'subscription runtime cache removal');
-assert(out.removed_caches.includes('/var/run/podkop-plus/section-cache/legacy-sub.json'), 'section cache removal');
+assert(out.removed_caches.includes('/var/run/forkop/section-cache/legacy-sub.json'), 'section cache removal');
 NODE
 
 cat >"$WORK_DIR/runtime-migrate.state" <<'EOF_UCI'
-podkop-plus.settings=settings
-podkop-plus.settings.routing_excluded_ips=192.0.2.0/24
-podkop-plus.legacy=rule
-podkop-plus.legacy.enabled=1
-podkop-plus.legacy.connection_type=proxy
-podkop-plus.legacy.proxy_config_type=url
-podkop-plus.legacy.proxy_string=vless://one
-podkop-plus.old_direct=section
-podkop-plus.old_direct.enabled=1
-podkop-plus.old_direct.action=direct
+forkop.settings=settings
+forkop.settings.routing_excluded_ips=192.0.2.0/24
+forkop.legacy=rule
+forkop.legacy.enabled=1
+forkop.legacy.connection_type=proxy
+forkop.legacy.proxy_config_type=url
+forkop.legacy.proxy_string=vless://one
+forkop.old_direct=section
+forkop.old_direct.enabled=1
+forkop.old_direct.action=direct
 EOF_UCI
 mkdir -p "$WORK_DIR/runtime" "$WORK_DIR/persistent-cache"
 : >"$WORK_DIR/runtime-migrate.log"
-PODKOP_UCI_STATE_FILE="$WORK_DIR/runtime-migrate.state" \
-PODKOP_UCI_LOG_FILE="$WORK_DIR/runtime-migrate.log" \
-PODKOP_CONFIG_NAME="podkop-plus" \
+FORKOP_UCI_STATE_FILE="$WORK_DIR/runtime-migrate.state" \
+FORKOP_UCI_LOG_FILE="$WORK_DIR/runtime-migrate.log" \
+FORKOP_CONFIG_NAME="forkop" \
 TMP_SUBSCRIPTION_FOLDER="$WORK_DIR/tmp-subscriptions" \
-PODKOP_RUNTIME_STATE_DIR="$WORK_DIR/runtime" \
-PODKOP_PERSISTENT_SUBSCRIPTION_CACHE_DIR="$WORK_DIR/persistent-cache" \
-PODKOP_INTERNAL_CONFIG_TRIGGER_GUARD="$WORK_DIR/internal-config-change" \
-ucode -L "$PODKOP_LIB" "$MIGRATION" migrate
+FORKOP_RUNTIME_STATE_DIR="$WORK_DIR/runtime" \
+FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_DIR="$WORK_DIR/persistent-cache" \
+FORKOP_INTERNAL_CONFIG_TRIGGER_GUARD="$WORK_DIR/internal-config-change" \
+ucode -L "$FORKOP_LIB" "$MIGRATION" migrate
 
-grep -Fxq 'podkop-plus.legacy=section' "$WORK_DIR/runtime-migrate.state" ||
+grep -Fxq 'forkop.legacy=section' "$WORK_DIR/runtime-migrate.state" ||
   fail "runtime migration must convert legacy rule type through core.uci"
-grep -Fxq 'podkop-plus.legacy.action=connection' "$WORK_DIR/runtime-migrate.state" ||
+grep -Fxq 'forkop.legacy.action=connection' "$WORK_DIR/runtime-migrate.state" ||
   fail "runtime migration must write migrated action through core.uci"
-grep -Fxq 'podkop-plus.old_direct.action=bypass' "$WORK_DIR/runtime-migrate.state" ||
+grep -Fxq 'forkop.old_direct.action=bypass' "$WORK_DIR/runtime-migrate.state" ||
   fail "runtime migration must convert direct action to bypass through core.uci"
-grep -Eq '^podkop-plus\\.cfg[0-9a-f]+=$' "$WORK_DIR/runtime-migrate.state" && fail "anonymous fixture section should include a type"
-grep -Fxq 'podkop-plus.legacy.selector_proxy_links=vless://one' "$WORK_DIR/runtime-migrate.state" ||
+grep -Eq '^forkop\\.cfg[0-9a-f]+=$' "$WORK_DIR/runtime-migrate.state" && fail "anonymous fixture section should include a type"
+grep -Fxq 'forkop.legacy.selector_proxy_links=vless://one' "$WORK_DIR/runtime-migrate.state" ||
   fail "runtime migration must keep connection URLs in the parent section"
 if grep -Fq '=connection_url' "$WORK_DIR/runtime-migrate.state"; then
   fail "runtime migration must not create connection_url child sections"
 fi
-if grep -Fq 'podkop-plus.legacy.urltest_enabled=' "$WORK_DIR/runtime-migrate.state"; then
+if grep -Fq 'forkop.legacy.urltest_enabled=' "$WORK_DIR/runtime-migrate.state"; then
   fail "runtime migration must delete migrated urltest_enabled through core.uci"
 fi
-if grep -Fq 'podkop-plus.settings.routing_excluded_ips=' "$WORK_DIR/runtime-migrate.state"; then
+if grep -Fq 'forkop.settings.routing_excluded_ips=' "$WORK_DIR/runtime-migrate.state"; then
   fail "runtime migration must delete removed routing_excluded_ips through core.uci"
 fi
-if grep -Fq 'podkop-plus.legacy.proxy_string=' "$WORK_DIR/runtime-migrate.state"; then
+if grep -Fq 'forkop.legacy.proxy_string=' "$WORK_DIR/runtime-migrate.state"; then
   fail "runtime migration must delete legacy proxy_string through core.uci"
 fi
-grep -Fxq 'commit podkop-plus' "$WORK_DIR/runtime-migrate.log" ||
+grep -Fxq 'commit forkop' "$WORK_DIR/runtime-migrate.log" ||
   fail "runtime migration must commit through core.uci"
 
 : >"$WORK_DIR/uci-commit.log"
 : >"$WORK_DIR/uci-commit.state"
-PODKOP_UCI_STATE_FILE="$WORK_DIR/uci-commit.state" \
-PODKOP_UCI_LOG_FILE="$WORK_DIR/uci-commit.log" \
-PODKOP_CONFIG_NAME="podkop-plus" \
-PODKOP_INTERNAL_CONFIG_TRIGGER_GUARD="$WORK_DIR/internal-config-change" \
-ucode -L "$PODKOP_LIB" "$MIGRATION" commit
+FORKOP_UCI_STATE_FILE="$WORK_DIR/uci-commit.state" \
+FORKOP_UCI_LOG_FILE="$WORK_DIR/uci-commit.log" \
+FORKOP_CONFIG_NAME="forkop" \
+FORKOP_INTERNAL_CONFIG_TRIGGER_GUARD="$WORK_DIR/internal-config-change" \
+ucode -L "$FORKOP_LIB" "$MIGRATION" commit
 
-grep -Fxq 'commit podkop-plus' "$WORK_DIR/uci-commit.log" ||
-  fail "commit mode must commit podkop-plus through core.uci"
+grep -Fxq 'commit forkop' "$WORK_DIR/uci-commit.log" ||
+  fail "commit mode must commit forkop through core.uci"
 
-printf 'config migration checks passed\n'
+printf 'installer config migration checks passed\n'

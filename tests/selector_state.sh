@@ -2,8 +2,8 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PODKOP_LIB="$ROOT_DIR/podkop/files/usr/lib"
-LIFECYCLE_UC="$PODKOP_LIB/service/lifecycle.uc"
+FORKOP_LIB="$ROOT_DIR/forkop/files/usr/lib"
+LIFECYCLE_UC="$FORKOP_LIB/service/lifecycle.uc"
 WORK_DIR="$(mktemp -d)"
 
 cleanup() {
@@ -17,8 +17,8 @@ fail() {
 }
 
 lifecycle_ucode() {
-  PODKOP_RUNTIME_STATE_DIR="$WORK_DIR/run" \
-    ucode -L "$PODKOP_LIB" "$LIFECYCLE_UC" "$@"
+  FORKOP_RUNTIME_STATE_DIR="$WORK_DIR/run" \
+    ucode -L "$FORKOP_LIB" "$LIFECYCLE_UC" "$@"
 }
 
 json_flatten() {

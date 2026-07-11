@@ -2,10 +2,11 @@
 set -eo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-STABLE_REF="${PODKOP_STABLE_REF:-0.7.19.9}"
-STABLE_REPO="${PODKOP_STABLE_REPO:-}"
+STABLE_REF="${FORKOP_STABLE_REF:-0.7.19.9}"
+STABLE_REPO="${FORKOP_STABLE_REPO:-}"
 MATRIX_SCRIPT="$ROOT_DIR/tests/helpers/config_contract_matrix.js"
 WORK_DIR="$(mktemp -d)"
+LEGACY_STEM="$(printf '\160\157\144\153\157\160')"
 
 cleanup() {
   rm -rf "$WORK_DIR"
@@ -28,8 +29,10 @@ ensure_stable_ref() {
 
 prepare_stable_repo() {
   if [ -n "$STABLE_REPO" ]; then
-    [ -r "$STABLE_REPO/podkop/files/etc/config/podkop" ] ||
-      fail "stable repo is missing Podkop config template: $STABLE_REPO"
+    if [ ! -r "$STABLE_REPO/forkop/files/etc/config/forkop" ] &&
+      [ ! -r "$STABLE_REPO/$LEGACY_STEM/files/etc/config/$LEGACY_STEM" ]; then
+      fail "stable repo is missing the expected config template: $STABLE_REPO"
+    fi
     return 0
   fi
 

@@ -2,9 +2,9 @@
 set -eo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PODKOP_MAKEFILE="$ROOT_DIR/podkop/Makefile"
+FORKOP_MAKEFILE="$ROOT_DIR/forkop/Makefile"
 BUILD_SCRIPT="$ROOT_DIR/build.sh"
-PODKOP_LIB="$ROOT_DIR/podkop/files/usr/lib"
+FORKOP_LIB="$ROOT_DIR/forkop/files/usr/lib"
 
 fail() {
   printf 'FAIL: %s\n' "$1" >&2
@@ -20,8 +20,8 @@ require_file() {
 require_make_dep() {
   local package="$1"
 
-  grep -Eq "DEPENDS:=.*(^|[[:space:]])\\+$package([[:space:]]|$)" "$PODKOP_MAKEFILE" ||
-    fail "podkop/Makefile DEPENDS is missing +$package"
+  grep -Eq "DEPENDS:=.*(^|[[:space:]])\\+$package([[:space:]]|$)" "$FORKOP_MAKEFILE" ||
+    fail "forkop/Makefile DEPENDS is missing +$package"
 }
 
 require_build_dep() {
@@ -40,22 +40,27 @@ require_package_dependency() {
   require_build_dep "BACKEND_DEPENDS_APK" "$package"
 }
 
-require_file "$PODKOP_MAKEFILE"
+require_file "$FORKOP_MAKEFILE"
 require_file "$BUILD_SCRIPT"
-require_file "$PODKOP_LIB"
+require_file "$FORKOP_LIB"
 
-if grep -Rqs 'require("uci")' "$PODKOP_LIB"; then
+grep -Fq "must use x.y.z format" "$FORKOP_MAKEFILE" ||
+  fail "forkop/Makefile must enforce the three-part release version contract"
+grep -Fq 'APK_INTERNAL_VERSION="$RELEASE_VERSION"' "$BUILD_SCRIPT" ||
+  fail "build.sh must use the exact three-part release version for APK metadata"
+
+if grep -Rqs 'require("uci")' "$FORKOP_LIB"; then
   require_package_dependency "ucode-mod-uci"
 fi
 
-if grep -Rqs 'require("fs")' "$PODKOP_LIB"; then
+if grep -Rqs 'require("fs")' "$FORKOP_LIB"; then
   require_package_dependency "ucode-mod-fs"
 fi
 
-if grep -Rqs 'podkop_dnsmasq_failsafe_restore_raw' \
-  "$ROOT_DIR/podkop/files/usr/bin" \
-  "$ROOT_DIR/podkop/files/usr/lib" \
-  "$ROOT_DIR/podkop/files/etc/init.d"; then
+if grep -Rqs 'forkop_dnsmasq_failsafe_restore_raw' \
+  "$ROOT_DIR/forkop/files/usr/bin" \
+  "$ROOT_DIR/forkop/files/usr/lib" \
+  "$ROOT_DIR/forkop/files/etc/init.d"; then
   fail "duplicated raw dnsmasq failsafe restore shell owner is present"
 fi
 

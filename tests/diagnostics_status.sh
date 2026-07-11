@@ -2,15 +2,15 @@
 set -eo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DIAGNOSTICS="$ROOT_DIR/podkop/files/usr/lib/diagnostics/status.uc"
-DIAGNOSTICS_RUNTIME="$ROOT_DIR/podkop/files/usr/lib/diagnostics/runtime.uc"
-PODKOP_BIN="$ROOT_DIR/podkop/files/usr/bin/podkop"
-PODKOP_LIB="$ROOT_DIR/podkop/files/usr/lib"
-CLI_UC="$PODKOP_BIN"
+DIAGNOSTICS="$ROOT_DIR/forkop/files/usr/lib/diagnostics/status.uc"
+DIAGNOSTICS_RUNTIME="$ROOT_DIR/forkop/files/usr/lib/diagnostics/runtime.uc"
+FORKOP_BIN="$ROOT_DIR/forkop/files/usr/bin/forkop"
+FORKOP_LIB="$ROOT_DIR/forkop/files/usr/lib"
+CLI_UC="$FORKOP_BIN"
 WORK_DIR="$(mktemp -d)"
 
 status_ucode() {
-  ucode -L "$PODKOP_LIB" "$DIAGNOSTICS" "$@"
+  ucode -L "$FORKOP_LIB" "$DIAGNOSTICS" "$@"
 }
 
 cleanup() {
@@ -47,17 +47,17 @@ assert_status 1 0 0 "running but disabled"
 assert_status 0 1 1 "stopped but enabled"
 assert_status 0 0 0 "stopped & disabled"
 
-[ ! -e "$PODKOP_LIB/status_diagnostics.sh" ] ||
+[ ! -e "$FORKOP_LIB/status_diagnostics.sh" ] ||
   fail "status_diagnostics.sh shell owner must be removed"
 grep -Fq 'get_system_info: [ "diagnostics/runtime.uc", "get-system-info", 0 ]' "$CLI_UC" ||
   fail "service/cli.uc must dispatch get_system_info through diagnostics/runtime.uc"
-[ "$(PODKOP_VERSION=runtime-test ucode -L "$PODKOP_LIB" "$DIAGNOSTICS_RUNTIME" show-version)" = "runtime-test" ] ||
+[ "$(FORKOP_VERSION=runtime-test ucode -L "$FORKOP_LIB" "$DIAGNOSTICS_RUNTIME" show-version)" = "runtime-test" ] ||
   fail "diagnostics/runtime.uc show-version mode failed"
 if grep -n -E 'require\("uci"\)\.cursor|uci -q|uci", "show"|uci", "-q"' "$DIAGNOSTICS_RUNTIME" >/dev/null 2>&1; then
   fail "diagnostics/runtime.uc must use core.uci instead of owning direct UCI cursor or CLI calls"
 fi
-grep -Fq '"podkop-stably-running", RT_TABLE_NAME, NFT_TABLE_NAME, NFT_FAKEIP_MARK, RUNTIME_STABLE_MIN_AGE' "$DIAGNOSTICS_RUNTIME" ||
-  fail "diagnostics Podkop status must use stable runtime state to avoid crash-loop flicker"
+grep -Fq '"forkop-stably-running", RT_TABLE_NAME, NFT_TABLE_NAME, NFT_FAKEIP_MARK, RUNTIME_STABLE_MIN_AGE' "$DIAGNOSTICS_RUNTIME" ||
+  fail "diagnostics Forkop status must use stable runtime state to avoid crash-loop flicker"
 grep -Fq '"sing-box-service-stable",' "$DIAGNOSTICS_RUNTIME" ||
   fail "diagnostics sing-box status must use stable runtime state to avoid crash-loop flicker"
 
@@ -71,13 +71,13 @@ if (value.status !== "running but disabled" || value.dns_configured !== 1) {
 NODE
 
 {
-  printf 'Tue Jun 30 11:00:00 2026 user.notice podkop-plus: [info] Starting Podkop Plus\n'
+  printf 'Tue Jun 30 11:00:00 2026 user.notice forkop: [info] Starting Forkop\n'
   for i in $(seq 1 4500); do
     printf 'Tue Jun 30 11:00:%02d 2026 daemon.info unrelated[%04d]: filler filler filler filler filler filler filler filler filler filler\n' "$((i % 60))" "$i"
   done
-  printf 'Tue Jun 30 11:01:00 2026 user.notice podkop-plus: [info] large logread marker survived stdin transport\n'
+  printf 'Tue Jun 30 11:01:00 2026 user.notice forkop: [info] large logread marker survived stdin transport\n'
 } >"$WORK_DIR/large-logread.txt"
-large_logs="$(PODKOP_LIB="$PODKOP_LIB" ucode -L "$PODKOP_LIB" "$DIAGNOSTICS_RUNTIME" podkop-logs-fixture <"$WORK_DIR/large-logread.txt")" ||
+large_logs="$(FORKOP_LIB="$FORKOP_LIB" ucode -L "$FORKOP_LIB" "$DIAGNOSTICS_RUNTIME" forkop-logs-fixture <"$WORK_DIR/large-logread.txt")" ||
   fail "diagnostics/runtime.uc must process large logread payloads through stdin without shell argument limits"
 case "$large_logs" in
   *"large logread marker survived stdin transport"*) ;;
@@ -94,14 +94,14 @@ SH
 chmod +x "$fake_bin/curl"
 uci_state="$WORK_DIR/uci-state.txt"
 cat >"$uci_state" <<'EOF'
-podkop-plus.settings=settings
-podkop-plus.settings.latency_test_url=https://latency.example/generate_204
+forkop.settings=settings
+forkop.settings.latency_test_url=https://latency.example/generate_204
 EOF
 FAKE_CURL_LOG="$WORK_DIR/fake-curl.log" \
-PODKOP_UCI_STATE_FILE="$uci_state" \
-PODKOP_LIB="$PODKOP_LIB" \
+FORKOP_UCI_STATE_FILE="$uci_state" \
+FORKOP_LIB="$FORKOP_LIB" \
 PATH="$fake_bin:$PATH" \
-  ucode -L "$PODKOP_LIB" "$DIAGNOSTICS_RUNTIME" clash-api get_proxy_latency proxy-out 5000 >/dev/null ||
+  ucode -L "$FORKOP_LIB" "$DIAGNOSTICS_RUNTIME" clash-api get_proxy_latency proxy-out 5000 >/dev/null ||
   fail "clash-api get_proxy_latency should use fake curl successfully"
 grep -Fq "url=https://latency.example/generate_204" "$WORK_DIR/fake-curl.log" ||
   fail "clash-api latency check must use settings.latency_test_url"
@@ -111,11 +111,11 @@ mkdir -p "$latency_action_dir"
 latency_state="$latency_action_dir/latency-1.json"
 printf '%s\n' '{"success":true,"running":true,"kind":"latency","latency_type":"proxy_list","section":"main","tag":"[]","started_at":100}' >"$latency_state"
 FAKE_CURL_LOG="$WORK_DIR/fake-curl-latencies.log" \
-PODKOP_UCI_STATE_FILE="$uci_state" \
-PODKOP_LIB="$PODKOP_LIB" \
-PODKOP_UI_LATENCY_ACTION_DIR="$latency_action_dir" \
+FORKOP_UCI_STATE_FILE="$uci_state" \
+FORKOP_LIB="$FORKOP_LIB" \
+FORKOP_UI_LATENCY_ACTION_DIR="$latency_action_dir" \
 PATH="$fake_bin:$PATH" \
-  ucode -L "$PODKOP_LIB" "$DIAGNOSTICS_RUNTIME" clash-api get_proxy_latencies '["proxy-a","proxy-b"]' 5000 "$latency_state" >/dev/null ||
+  ucode -L "$FORKOP_LIB" "$DIAGNOSTICS_RUNTIME" clash-api get_proxy_latencies '["proxy-a","proxy-b"]' 5000 "$latency_state" >/dev/null ||
   fail "clash-api get_proxy_latencies should update latency progress"
 JOB_STATE="$latency_state" node - <<'NODE'
 const fs = require("fs");
@@ -226,10 +226,10 @@ EOF
 )"
 
 printf '%s\n' "$sing_box_netstat" |
-  PODKOP_LIB="$PODKOP_LIB" ucode -L "$PODKOP_LIB" "$DIAGNOSTICS_RUNTIME" sing-box-standard-ports-listening-fixture >/dev/null ||
+  FORKOP_LIB="$FORKOP_LIB" ucode -L "$FORKOP_LIB" "$DIAGNOSTICS_RUNTIME" sing-box-standard-ports-listening-fixture >/dev/null ||
   fail "sing-box standard listeners should satisfy diagnostics"
 if printf '%s\n' "$sing_box_netstat" | sed '/0.0.0.0:1602/d' |
-  PODKOP_LIB="$PODKOP_LIB" ucode -L "$PODKOP_LIB" "$DIAGNOSTICS_RUNTIME" sing-box-standard-ports-listening-fixture >/dev/null 2>&1; then
+  FORKOP_LIB="$FORKOP_LIB" ucode -L "$FORKOP_LIB" "$DIAGNOSTICS_RUNTIME" sing-box-standard-ports-listening-fixture >/dev/null 2>&1; then
   fail "missing sing-box tproxy listener should fail diagnostics"
 fi
 

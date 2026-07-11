@@ -15,8 +15,8 @@ on:
       - 'rc/**'
     paths:
       - 'install.sh'
-      - 'podkop/files/usr/bin/**'
-      - 'podkop/files/usr/lib/**'
+      - 'forkop/files/usr/bin/**'
+      - 'forkop/files/usr/lib/**'
       - '.github/workflows/shellcheck.yml'
   pull_request:
     branches:
@@ -24,8 +24,8 @@ on:
       - 'rc/**'
     paths:
       - 'install.sh'
-      - 'podkop/files/usr/bin/**'
-      - 'podkop/files/usr/lib/**'
+      - 'forkop/files/usr/bin/**'
+      - 'forkop/files/usr/lib/**'
       - '.github/workflows/shellcheck.yml'
 
 permissions:
@@ -55,7 +55,7 @@ jobs:
           head: ${{ github.event.inputs.head }}
           severity: error
           include-path: |
-            podkop/files/usr/bin/podkop
-            podkop/files/usr/lib/**.sh
+            forkop/files/usr/bin/forkop
+            forkop/files/usr/lib/**.sh
             install.sh
           token: ${{ secrets.GITHUB_TOKEN }}
