@@ -2,8 +2,8 @@
 set -eo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-UPDATES_UC="$ROOT_DIR/podkop/files/usr/lib/components/updates.uc"
-REAL_LIB="$ROOT_DIR/podkop/files/usr/lib"
+UPDATES_UC="$ROOT_DIR/forkop/files/usr/lib/components/updates.uc"
+REAL_LIB="$ROOT_DIR/forkop/files/usr/lib"
 WORK_DIR="$(mktemp -d)"
 
 cleanup() {
@@ -43,11 +43,6 @@ function record(line) {
 '
 
 FAKE_LIB="$WORK_DIR/lib"
-
-write_stub "$FAKE_LIB/config/migration.uc" "$stub_header"'
-record("config/migration:" + as_string(ARGV[0]));
-exit(ARGV[0] == "migrate" ? 0 : 64);
-'
 
 write_stub "$FAKE_LIB/subscription/cache.uc" "$stub_header"'
 let mode = as_string(ARGV[0]);
@@ -117,22 +112,22 @@ run_update() {
 
   : >"$log"
   env \
-    PODKOP_LIB="$FAKE_LIB" \
-    PODKOP_RUNTIME_STATE_DIR="$WORK_DIR/run" \
-    PODKOP_SUBSCRIPTION_UPDATE_LOCK_DIR="$WORK_DIR/run/subscription-update.lock" \
-    PODKOP_RELOAD_LOCK_DIR="$WORK_DIR/run/reload.lock" \
-    PODKOP_SUBSCRIPTION_UPDATE_STATE_DIR="$WORK_DIR/run/subscription-update" \
-    PODKOP_SUBSCRIPTION_UPDATE_JOB_DIR="$WORK_DIR/run/subscription-update-jobs" \
-    PODKOP_SUBSCRIPTION_LINKS_DIR="$WORK_DIR/run/subscription-links" \
-    PODKOP_SUBSCRIPTION_METADATA_DIR="$WORK_DIR/run/subscription-metadata" \
-    PODKOP_OUTBOUND_METADATA_DIR="$WORK_DIR/run/outbound-metadata" \
-    PODKOP_SECTION_CACHE_DIR="$WORK_DIR/run/section-cache" \
-    PODKOP_RUNTIME_CACHE_FORMAT_FILE="$WORK_DIR/run/cache-format" \
-    PODKOP_PERSISTENT_SUBSCRIPTION_CACHE_DIR="$WORK_DIR/persistent/subscription-cache" \
-    PODKOP_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE="$WORK_DIR/persistent/subscription-cache/cache-format" \
-    PODKOP_PENDING_RELOAD_FILE="$WORK_DIR/run/reload.pending" \
-    PODKOP_RELOAD_STATE_FILE="$WORK_DIR/run/reload-state" \
-    PODKOP_RULE_CONDITION_CACHE_DIR="$WORK_DIR/run/rule-condition-cache" \
+    FORKOP_LIB="$FAKE_LIB" \
+    FORKOP_RUNTIME_STATE_DIR="$WORK_DIR/run" \
+    FORKOP_SUBSCRIPTION_UPDATE_LOCK_DIR="$WORK_DIR/run/subscription-update.lock" \
+    FORKOP_RELOAD_LOCK_DIR="$WORK_DIR/run/reload.lock" \
+    FORKOP_SUBSCRIPTION_UPDATE_STATE_DIR="$WORK_DIR/run/subscription-update" \
+    FORKOP_SUBSCRIPTION_UPDATE_JOB_DIR="$WORK_DIR/run/subscription-update-jobs" \
+    FORKOP_SUBSCRIPTION_LINKS_DIR="$WORK_DIR/run/subscription-links" \
+    FORKOP_SUBSCRIPTION_METADATA_DIR="$WORK_DIR/run/subscription-metadata" \
+    FORKOP_OUTBOUND_METADATA_DIR="$WORK_DIR/run/outbound-metadata" \
+    FORKOP_SECTION_CACHE_DIR="$WORK_DIR/run/section-cache" \
+    FORKOP_RUNTIME_CACHE_FORMAT_FILE="$WORK_DIR/run/cache-format" \
+    FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_DIR="$WORK_DIR/persistent/subscription-cache" \
+    FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE="$WORK_DIR/persistent/subscription-cache/cache-format" \
+    FORKOP_PENDING_RELOAD_FILE="$WORK_DIR/run/reload.pending" \
+    FORKOP_RELOAD_STATE_FILE="$WORK_DIR/run/reload-state" \
+    FORKOP_RULE_CONDITION_CACHE_DIR="$WORK_DIR/run/rule-condition-cache" \
     FAKE_CALL_LOG="$log" \
     FAKE_SUBSCRIPTION_UPDATE_SUMMARY="$summary" \
     ucode -L "$REAL_LIB" "$UPDATES_UC" subscription-update-if-due

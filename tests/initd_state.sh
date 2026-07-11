@@ -2,10 +2,10 @@
 set -eo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PODKOP_LIB="$ROOT_DIR/podkop/files/usr/lib"
-INITD_UC="$PODKOP_LIB/service/initd.uc"
-STATE_UC="$PODKOP_LIB/service/state.uc"
-INITD="$ROOT_DIR/podkop/files/etc/init.d/podkop"
+FORKOP_LIB="$ROOT_DIR/forkop/files/usr/lib"
+INITD_UC="$FORKOP_LIB/service/initd.uc"
+STATE_UC="$FORKOP_LIB/service/state.uc"
+INITD="$ROOT_DIR/forkop/files/etc/init.d/forkop"
 WORK_DIR="$(mktemp -d)"
 
 cleanup() {
@@ -19,10 +19,10 @@ fail() {
 }
 
 initd_ucode() {
-  ucode -L "$PODKOP_LIB" "$INITD_UC" "$@"
+  ucode -L "$FORKOP_LIB" "$INITD_UC" "$@"
 }
 
-config_file="$WORK_DIR/podkop-plus"
+config_file="$WORK_DIR/forkop"
 guard_file="$WORK_DIR/internal-config-change"
 sync_file="$WORK_DIR/service-triggers.sync"
 
@@ -89,7 +89,7 @@ if initd_ucode initd-should-queue-config-change-reload on_config_change on_confi
 fi
 
 pending_file="$WORK_DIR/reload.pending"
-if PODKOP_PENDING_RELOAD_FILE="$pending_file" \
+if FORKOP_PENDING_RELOAD_FILE="$pending_file" \
   initd_ucode reload-begin-fixture on_config_change 123 0 1 start >/dev/null 2>&1; then
   fail "queued config-change reload should not run immediately while service is starting"
 fi
@@ -99,7 +99,7 @@ grep -Fq 'reason=on_config_change' "$pending_file" ||
   fail "pending reload should preserve config-change reason"
 
 rm -f "$pending_file"
-if PODKOP_PENDING_RELOAD_FILE="$pending_file" \
+if FORKOP_PENDING_RELOAD_FILE="$pending_file" \
   initd_ucode reload-begin-fixture pending 123 1 1 start >/dev/null 2>&1; then
   fail "pending reload should not run while another service action is active"
 fi
@@ -229,7 +229,7 @@ fi
 if grep -Fq 'runtime_is_running' "$INITD"; then
   fail "init.d must not keep shell runtime status decisions"
 fi
-if grep -E -n 'PODKOP_(CONFIG_FILE|RELOAD_LOCK_DIR|RUNTIME_STATE_DIR|PENDING_RELOAD_FILE|SERVICE_TRIGGER_SYNC_FILE|INTERNAL_CONFIG_TRIGGER_GUARD|CONFIG_CHANGE_REASON|BIN|SERVICE_INIT)=' "$INITD" >/dev/null 2>&1; then
+if grep -E -n 'FORKOP_(CONFIG_FILE|RELOAD_LOCK_DIR|RUNTIME_STATE_DIR|PENDING_RELOAD_FILE|SERVICE_TRIGGER_SYNC_FILE|INTERNAL_CONFIG_TRIGGER_GUARD|CONFIG_CHANGE_REASON|BIN|SERVICE_INIT)=' "$INITD" >/dev/null 2>&1; then
   fail "init.d must not pass internal orchestration paths through shell env"
 fi
 if grep -n -E 'require\("uci"\)\.cursor|uci -q|uci", "-q"' "$INITD_UC" >/dev/null 2>&1; then
@@ -238,10 +238,10 @@ fi
 if grep -E -n '(^|[[:space:]])config_(load|get|get_bool|set)[[:space:]]' "$INITD" >/dev/null 2>&1; then
   fail "init.d must not read UCI directly"
 fi
-if grep -Fq 'PODKOP_STATE_UC' "$INITD" || grep -Fq 'PODKOP_UI_UC' "$INITD" || grep -Fq 'PODKOP_STATUS_UC' "$INITD"; then
+if grep -Fq 'FORKOP_STATE_UC' "$INITD" || grep -Fq 'FORKOP_UI_UC' "$INITD" || grep -Fq 'FORKOP_STATUS_UC' "$INITD"; then
   fail "init.d must not orchestrate state/UI/status modules directly"
 fi
-if grep -Fq 'procd_set_param command "$PODKOP_BIN" start' "$INITD"; then
+if grep -Fq 'procd_set_param command "$FORKOP_BIN" start' "$INITD"; then
   fail "init.d must not hand the one-shot start operation to procd as a daemon"
 fi
 if grep -Fq 'initd-should-' "$STATE_UC"; then

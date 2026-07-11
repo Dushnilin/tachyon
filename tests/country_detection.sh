@@ -2,7 +2,7 @@
 set -eo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PODKOP_LIB="$ROOT_DIR/podkop/files/usr/lib"
+FORKOP_LIB="$ROOT_DIR/forkop/files/usr/lib"
 WORK_DIR="$(mktemp -d)"
 
 cleanup() {
@@ -95,9 +95,9 @@ UCODE
 
 FAKE_COUNTRY_PAYLOAD="$WORK_DIR/payload.json" \
 FAKE_COUNTRY_RESOLVE="$WORK_DIR/resolve.txt" \
-PODKOP_COUNTRY_IS_URL="https://country.invalid/" \
+FORKOP_COUNTRY_IS_URL="https://country.invalid/" \
 PATH="$WORK_DIR/bin:$PATH" \
-  ucode -L "$PODKOP_LIB" "$WORK_DIR/runner.uc"
+  ucode -L "$FORKOP_LIB" "$WORK_DIR/runner.uc"
 
 grep -Fq '8.8.8.8' "$WORK_DIR/payload.json" ||
   fail "country.is request did not contain the first resolved IP"

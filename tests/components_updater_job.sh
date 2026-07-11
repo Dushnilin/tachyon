@@ -2,12 +2,12 @@
 set -eo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PODKOP_LIB="$ROOT_DIR/podkop/files/usr/lib"
-PODKOP_BIN="$ROOT_DIR/podkop/files/usr/bin/podkop"
-CLI_UC="$PODKOP_BIN"
-UPDATER="$ROOT_DIR/podkop/files/usr/lib/components/updater.uc"
-UPDATES_UC="$ROOT_DIR/podkop/files/usr/lib/components/updates.uc"
-ACTION_UC="$ROOT_DIR/podkop/files/usr/lib/components/action.uc"
+FORKOP_LIB="$ROOT_DIR/forkop/files/usr/lib"
+FORKOP_BIN="$ROOT_DIR/forkop/files/usr/bin/forkop"
+CLI_UC="$FORKOP_BIN"
+UPDATER="$ROOT_DIR/forkop/files/usr/lib/components/updater.uc"
+UPDATES_UC="$ROOT_DIR/forkop/files/usr/lib/components/updates.uc"
+ACTION_UC="$ROOT_DIR/forkop/files/usr/lib/components/action.uc"
 WORK_DIR="$(mktemp -d)"
 
 cleanup() {
@@ -70,7 +70,7 @@ if ucode "$UPDATER" updates-check-result-row component 1.0 2.0 invalid >/dev/nul
   fail "invalid check result status should be rejected"
 fi
 
-[ ! -e "$ROOT_DIR/podkop/files/usr/lib/updater.sh" ] ||
+[ ! -e "$ROOT_DIR/forkop/files/usr/lib/updater.sh" ] ||
   fail "updater.sh shell owner must be removed"
 grep -Fq 'component_action: [ "components/action.uc", "component-action", 2 ]' "$CLI_UC" ||
   fail "service/cli.uc must dispatch direct component_action through components/action.uc"
@@ -97,15 +97,15 @@ grep -Fq 'require("core.uci")' "$ACTION_UC" ||
 if grep -n -E 'require\("uci"\)\.cursor|uci -q|uci", "-q"|command_exists\("uci"\)' "$ACTION_UC" >/dev/null 2>&1; then
   fail "components/action.uc must not own direct UCI cursor or CLI calls"
 fi
-grep -Fq 'podkop_status_running_with_timeout()' "$ACTION_UC" ||
-  fail "components/action.uc must use bounded Podkop status checks for component actions"
+grep -Fq 'forkop_status_running_with_timeout()' "$ACTION_UC" ||
+  fail "components/action.uc must use bounded Forkop status checks for component actions"
 if grep -Fq 'command_success_from_args([ SERVICE_INIT, "status" ])' "$ACTION_UC"; then
   fail "components/action.uc must not call init.d status without a timeout"
 fi
-status_timeout_line="$(grep -n '^function podkop_status_running_with_timeout()' "$ACTION_UC" | cut -d: -f1)"
-capture_state_line="$(grep -n '^function capture_podkop_running_state()' "$ACTION_UC" | cut -d: -f1)"
+status_timeout_line="$(grep -n '^function forkop_status_running_with_timeout()' "$ACTION_UC" | cut -d: -f1)"
+capture_state_line="$(grep -n '^function capture_forkop_running_state()' "$ACTION_UC" | cut -d: -f1)"
 [ -n "$status_timeout_line" ] && [ -n "$capture_state_line" ] && [ "$status_timeout_line" -lt "$capture_state_line" ] ||
-  fail "components/action.uc must declare bounded status helper before capture_podkop_running_state for OpenWrt ucode"
+  fail "components/action.uc must declare bounded status helper before capture_forkop_running_state for OpenWrt ucode"
 init_line="$(grep -n '^function init_tmp_dir()' "$ACTION_UC" | cut -d: -f1)"
 tmp_file_line="$(grep -n '^function make_tmp_file' "$ACTION_UC" | cut -d: -f1)"
 [ -n "$init_line" ] && [ -n "$tmp_file_line" ] && [ "$init_line" -lt "$tmp_file_line" ] ||
@@ -183,10 +183,10 @@ chmod +x "$package_runtime_bin/opkg" "$package_runtime_bin/logger"
 
 set +e
 PATH="$package_runtime_bin:$PATH" \
-PODKOP_LIB="$package_runtime_lib" \
-PODKOP_RUNTIME_STATE_DIR="$WORK_DIR/package-runtime" \
-PODKOP_BIN="$WORK_DIR/missing-podkop" \
-PODKOP_SERVICE_INIT="$WORK_DIR/missing-init" \
+FORKOP_LIB="$package_runtime_lib" \
+FORKOP_RUNTIME_STATE_DIR="$WORK_DIR/package-runtime" \
+FORKOP_BIN="$WORK_DIR/missing-forkop" \
+FORKOP_SERVICE_INIT="$WORK_DIR/missing-init" \
 FAKE_OPKG_LOG="$WORK_DIR/opkg.log" \
 FAKE_OPKG_UPDATED="$WORK_DIR/opkg.updated" \
 ucode -L "$package_runtime_lib" "$ACTION_UC" component-action sing_box install_stable >/dev/null
@@ -210,48 +210,58 @@ NODE
 
 release_json="$(cat <<'JSON'
 {
-  "tag_name": "v1.2.3",
+  "tag_name": "1.2.3",
   "html_url": "https://example.com/release",
   "assets": [
-    {"name": "podkop-plus_1.2.3_all.ipk", "browser_download_url": "https://example.com/backend.ipk"},
-    {"name": "luci-app-podkop-plus_1.2.3_all.ipk", "browser_download_url": "https://example.com/app.ipk"},
-    {"name": "luci-i18n-podkop-plus-ru_1.2.3_all.ipk", "browser_download_url": "https://example.com/i18n.ipk"}
+    {"name": "forkop_1.2.3.ipk", "browser_download_url": "https://example.com/backend.ipk"},
+    {"name": "luci-app-forkop_1.2.3.ipk", "browser_download_url": "https://example.com/app.ipk"},
+    {"name": "luci-i18n-forkop-ru_1.2.3.ipk", "browser_download_url": "https://example.com/i18n.ipk"}
   ]
 }
 JSON
 )"
 
-assert_eq "$(printf 'https://example.com/release\tpodkop-plus_1.2.3_all.ipk\thttps://example.com/backend.ipk\tluci-app-podkop-plus_1.2.3_all.ipk\thttps://example.com/app.ipk\tluci-i18n-podkop-plus-ru_1.2.3_all.ipk\thttps://example.com/i18n.ipk')" \
-  "$(printf '%s' "$release_json" | ucode "$UPDATER" podkop-plus-release-plan v1.2.3 ipk 1)" \
-  "podkop release plan with i18n"
-assert_eq "$(printf 'https://example.com/release\tpodkop-plus_1.2.3_all.ipk\thttps://example.com/backend.ipk\tluci-app-podkop-plus_1.2.3_all.ipk\thttps://example.com/app.ipk\t\t')" \
-  "$(printf '%s' "$release_json" | ucode "$UPDATER" podkop-plus-release-plan v1.2.3 ipk 0)" \
-  "podkop release plan without i18n"
-if printf '%s' "$release_json" | ucode "$UPDATER" podkop-plus-release-plan v9.9.9 ipk 0 >/dev/null 2>&1; then
-  fail "podkop release plan should reject tag mismatch"
+assert_eq "$(printf 'https://example.com/release\tforkop_1.2.3.ipk\thttps://example.com/backend.ipk\tluci-app-forkop_1.2.3.ipk\thttps://example.com/app.ipk\tluci-i18n-forkop-ru_1.2.3.ipk\thttps://example.com/i18n.ipk')" \
+  "$(printf '%s' "$release_json" | ucode "$UPDATER" forkop-release-plan 1.2.3 ipk 1)" \
+  "forkop release plan with i18n"
+assert_eq "$(printf 'https://example.com/release\tforkop_1.2.3.ipk\thttps://example.com/backend.ipk\tluci-app-forkop_1.2.3.ipk\thttps://example.com/app.ipk\t\t')" \
+  "$(printf '%s' "$release_json" | ucode "$UPDATER" forkop-release-plan 1.2.3 ipk 0)" \
+  "forkop release plan without i18n"
+if printf '%s' "$release_json" | ucode "$UPDATER" forkop-release-plan 9.9.9 ipk 0 >/dev/null 2>&1; then
+  fail "forkop release plan should reject tag mismatch"
 fi
 missing_i18n_json="$(cat <<'JSON'
 {
-  "tag_name": "v1.2.3",
+  "tag_name": "1.2.3",
   "html_url": "https://example.com/release",
   "assets": [
-    {"name": "podkop-plus_1.2.3_all.ipk", "browser_download_url": "https://example.com/backend.ipk"},
-    {"name": "luci-app-podkop-plus_1.2.3_all.ipk", "browser_download_url": "https://example.com/app.ipk"}
+    {"name": "forkop_1.2.3.ipk", "browser_download_url": "https://example.com/backend.ipk"},
+    {"name": "luci-app-forkop_1.2.3.ipk", "browser_download_url": "https://example.com/app.ipk"}
   ]
 }
 JSON
 )"
-if printf '%s' "$missing_i18n_json" | ucode "$UPDATER" podkop-plus-release-plan v1.2.3 ipk 1 >/dev/null 2>&1; then
-  fail "podkop release plan should require i18n asset when requested"
+if printf '%s' "$missing_i18n_json" | ucode "$UPDATER" forkop-release-plan 1.2.3 ipk 1 >/dev/null 2>&1; then
+  fail "forkop release plan should require i18n asset when requested"
 fi
+
+ucode "$UPDATER" forkop-release-version-valid 1.2.3 ||
+  fail "three-part Forkop release version should be valid"
+for invalid_version in v1.2.3 1.2 1.2.3.4 1.2.3-1 1.2.3-r1; do
+  if ucode "$UPDATER" forkop-release-version-valid "$invalid_version" >/dev/null 2>&1; then
+    fail "invalid Forkop release version was accepted: $invalid_version"
+  fi
+done
+assert_eq "-1" "$(ucode "$UPDATER" forkop-release-version-compare 1.2.3 1.2.4)" \
+  "three-part Forkop release version comparison"
 
 component_actions_dir="$WORK_DIR/component-actions"
 fake_lib="$WORK_DIR/lib"
 mkdir -p "$fake_lib/components" "$fake_lib/config" "$fake_lib/core"
 cp "$UPDATES_UC" "$fake_lib/components/updates.uc"
-cp "$PODKOP_LIB/config/connections.uc" "$fake_lib/config/connections.uc"
-cp "$PODKOP_LIB/core/uci.uc" "$fake_lib/core/uci.uc"
-cp "$PODKOP_LIB/core/common.uc" "$fake_lib/core/common.uc"
+cp "$FORKOP_LIB/config/connections.uc" "$fake_lib/config/connections.uc"
+cp "$FORKOP_LIB/core/uci.uc" "$fake_lib/core/uci.uc"
+cp "$FORKOP_LIB/core/common.uc" "$fake_lib/core/common.uc"
 cat >"$fake_lib/components/action.uc" <<'UCODE'
 #!/usr/bin/env ucode
 if ((ARGV[0] || "") == "component-action") {
@@ -261,8 +271,8 @@ if ((ARGV[0] || "") == "component-action") {
 exit(1);
 UCODE
 
-start_json="$(PODKOP_LIB="$fake_lib" UPDATES_JOB_DIR="$component_actions_dir" \
-  ucode -L "$PODKOP_LIB" "$UPDATES_UC" component-action-async sing_box check_update)"
+start_json="$(FORKOP_LIB="$fake_lib" UPDATES_JOB_DIR="$component_actions_dir" \
+  ucode -L "$FORKOP_LIB" "$UPDATES_UC" component-action-async sing_box check_update)"
 job_id="$(JSON_VALUE="$start_json" node - <<'NODE'
 const value = JSON.parse(process.env.JSON_VALUE);
 if (!value.success || !value.job_id) {
@@ -275,8 +285,8 @@ NODE
 
 status_json=""
 for _ in 1 2 3 4 5; do
-  status_json="$(PODKOP_LIB="$fake_lib" UPDATES_JOB_DIR="$component_actions_dir" \
-    ucode -L "$PODKOP_LIB" "$UPDATES_UC" component-action-status "$job_id")"
+  status_json="$(FORKOP_LIB="$fake_lib" UPDATES_JOB_DIR="$component_actions_dir" \
+    ucode -L "$FORKOP_LIB" "$UPDATES_UC" component-action-status "$job_id")"
   JSON_VALUE="$status_json" node - <<'NODE' && break || true
 const value = JSON.parse(process.env.JSON_VALUE);
 process.exit(value.running === false ? 0 : 1);
@@ -293,8 +303,8 @@ if (value.running !== false || value.success !== true || value.component !== "si
 }
 NODE
 
-start_json="$(PODKOP_LIB="$fake_lib" UPDATES_JOB_DIR="$component_actions_dir" \
-  ucode -L "$PODKOP_LIB" "$UPDATES_UC" component-action-async sing-box check_update)"
+start_json="$(FORKOP_LIB="$fake_lib" UPDATES_JOB_DIR="$component_actions_dir" \
+  ucode -L "$FORKOP_LIB" "$UPDATES_UC" component-action-async sing-box check_update)"
 job_id="$(JSON_VALUE="$start_json" node - <<'NODE'
 const value = JSON.parse(process.env.JSON_VALUE);
 if (!value.success || !value.job_id) {
@@ -307,8 +317,8 @@ NODE
 
 status_json=""
 for _ in 1 2 3 4 5; do
-  status_json="$(PODKOP_LIB="$fake_lib" UPDATES_JOB_DIR="$component_actions_dir" \
-    ucode -L "$PODKOP_LIB" "$UPDATES_UC" component-action-status "$job_id")"
+  status_json="$(FORKOP_LIB="$fake_lib" UPDATES_JOB_DIR="$component_actions_dir" \
+    ucode -L "$FORKOP_LIB" "$UPDATES_UC" component-action-status "$job_id")"
   JSON_VALUE="$status_json" node - <<'NODE' && break || true
 const value = JSON.parse(process.env.JSON_VALUE);
 process.exit(value.running === false ? 0 : 1);

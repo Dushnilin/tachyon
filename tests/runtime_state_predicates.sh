@@ -2,14 +2,14 @@
 set -eo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PODKOP_LIB="$ROOT_DIR/podkop/files/usr/lib"
-STATE_UC="$ROOT_DIR/podkop/files/usr/lib/service/state.uc"
-NFT_UC="$ROOT_DIR/podkop/files/usr/lib/nft/apply.uc"
+FORKOP_LIB="$ROOT_DIR/forkop/files/usr/lib"
+STATE_UC="$ROOT_DIR/forkop/files/usr/lib/service/state.uc"
+NFT_UC="$ROOT_DIR/forkop/files/usr/lib/nft/apply.uc"
 WORK_DIR="$(mktemp -d)"
 export ZAPRET_DEFAULT_NFQWS_OPT="--default-zapret"
 export ZAPRET2_DEFAULT_NFQWS2_OPT="--default-zapret2"
 export BYEDPI_DEFAULT_CMD_OPTS="--default-bye"
-export PODKOP_FAKE_INIT_CAPTURE="$WORK_DIR/pending-reload-init.args"
+export FORKOP_FAKE_INIT_CAPTURE="$WORK_DIR/pending-reload-init.args"
 
 cleanup() {
   rm -rf "$WORK_DIR"
@@ -34,11 +34,11 @@ md5_file() {
 }
 
 state_ucode() {
-  ucode -L "$PODKOP_LIB" "$STATE_UC" "$@"
+  ucode -L "$FORKOP_LIB" "$STATE_UC" "$@"
 }
 
 nft_ucode() {
-  ucode -L "$PODKOP_LIB" "$NFT_UC" "$@"
+  ucode -L "$FORKOP_LIB" "$NFT_UC" "$@"
 }
 
 state_ucode list-has-remote-references "local.lst https://example.com/list.txt" >/dev/null ||
@@ -114,17 +114,17 @@ fi
 
 cat >"$WORK_DIR/fake-init" <<'SH'
 #!/bin/sh
-printf '%s\n' "$1" >"$PODKOP_FAKE_INIT_CAPTURE"
+printf '%s\n' "$1" >"$FORKOP_FAKE_INIT_CAPTURE"
 SH
 chmod +x "$WORK_DIR/fake-init"
 state_ucode mark-pending-reload "$PENDING_RELOAD_FILE" "reload_busy"
 state_ucode run-pending-reload-if-requested "$PENDING_RELOAD_FILE" "$WORK_DIR/fake-init"
 for _ in $(seq 1 20); do
-  [ -s "$PODKOP_FAKE_INIT_CAPTURE" ] && break
+  [ -s "$FORKOP_FAKE_INIT_CAPTURE" ] && break
   sleep 0.1
 done
 assert_eq "reload" \
-  "$(cat "$PODKOP_FAKE_INIT_CAPTURE")" \
+  "$(cat "$FORKOP_FAKE_INIT_CAPTURE")" \
   "pending reload should invoke init.d reload"
 [ ! -e "$PENDING_RELOAD_FILE" ] ||
   fail "pending reload should be consumed when worker is started"
@@ -191,9 +191,9 @@ cat >"$WORK_DIR/service-dns-state.json" <<'JSON'
     "server": [ "1.1.1.1#53", "8.8.8.8" ],
     "noresolv": "1",
     "cachesize": "0",
-    "podkop_server": [ "127.0.0.42#53" ],
-    "podkop_noresolv": "0",
-    "podkop_cachesize": "1500"
+    "forkop_server": [ "127.0.0.42#53" ],
+    "forkop_noresolv": "0",
+    "forkop_cachesize": "1500"
   },
   "legacy_dnsmasq_present": true
 }
@@ -217,13 +217,13 @@ cat >"$WORK_DIR/dnsmasq-signature.expected" <<'EOF_DNSMASQ_SIG'
 1
 [dhcp.@dnsmasq[0].cachesize]
 0
-[dhcp.@dnsmasq[0].podkop_server]
+[dhcp.@dnsmasq[0].forkop_server]
 127.0.0.42#53
-[dhcp.@dnsmasq[0].podkop_noresolv]
+[dhcp.@dnsmasq[0].forkop_noresolv]
 0
-[dhcp.@dnsmasq[0].podkop_cachesize]
+[dhcp.@dnsmasq[0].forkop_cachesize]
 1500
-[dhcp.podkop_plus.present]
+[dhcp.forkop.present]
 1
 EOF_DNSMASQ_SIG
 

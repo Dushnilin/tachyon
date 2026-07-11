@@ -2,10 +2,10 @@
 set -eo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PODKOP_LIB="$ROOT_DIR/podkop/files/usr/lib"
-GENERATOR_UC="$PODKOP_LIB/singbox/generator.uc"
-PARSER_UC="$PODKOP_LIB/subscription/parser.uc"
-VALIDATOR_UC="$PODKOP_LIB/config/validator.uc"
+FORKOP_LIB="$ROOT_DIR/forkop/files/usr/lib"
+GENERATOR_UC="$FORKOP_LIB/singbox/generator.uc"
+PARSER_UC="$FORKOP_LIB/subscription/parser.uc"
+VALIDATOR_UC="$FORKOP_LIB/config/validator.uc"
 WORK_DIR="$(mktemp -d)"
 
 cleanup() {
@@ -109,7 +109,7 @@ JSON
 runtime_config="$WORK_DIR/runtime-config.json"
 mkdir -p "$runtime_config.section-cache"
 TMP_SUBSCRIPTION_FOLDER="$WORK_DIR/subscriptions" \
-  ucode -L "$PODKOP_LIB" "$GENERATOR_UC" generate-config-fixture \
+  ucode -L "$FORKOP_LIB" "$GENERATOR_UC" generate-config-fixture \
     "$WORK_DIR/runtime-tags.json" "$runtime_config" "127.0.0.1" "0"
 
 ucode -e '
@@ -225,7 +225,7 @@ input.settings.dns_server = ['77.88.8.8'];
 input.settings.bootstrap_dns_server = ['77.88.8.8'];
 fs.writeFileSync(process.argv[3], JSON.stringify(input));
 JS
-  if output="$(PODKOP_LIB="$PODKOP_LIB" ucode -L "$PODKOP_LIB" "$VALIDATOR_UC" \
+  if output="$(FORKOP_LIB="$FORKOP_LIB" ucode -L "$FORKOP_LIB" "$VALIDATOR_UC" \
       validate-runtime-fixture "$normalized" '{}' 2>/dev/null)"; then
     fail "validator accepted $fixture"
   fi
@@ -259,7 +259,7 @@ cat >"$WORK_DIR/xray-duplicates.json" <<'JSON'
 ]
 JSON
 
-ucode -L "$PODKOP_LIB" "$PARSER_UC" normalize-content \
+ucode -L "$FORKOP_LIB" "$PARSER_UC" normalize-content \
   "$WORK_DIR/xray-duplicates.json" "$WORK_DIR/xray-normalized.json"
 ucode -e '
 let fs = require("fs");

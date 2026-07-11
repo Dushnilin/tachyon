@@ -2,8 +2,8 @@
 set -eo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-RULES_UC="$ROOT_DIR/podkop/files/usr/lib/providers/rules.uc"
-PODKOP_LIB="$ROOT_DIR/podkop/files/usr/lib"
+RULES_UC="$ROOT_DIR/forkop/files/usr/lib/providers/rules.uc"
+FORKOP_LIB="$ROOT_DIR/forkop/files/usr/lib"
 
 fail() {
   printf 'FAIL: %s\n' "$1" >&2
@@ -28,7 +28,7 @@ rows() {
 }
 
 rules_ucode() {
-  ucode -L "$PODKOP_LIB" "$RULES_UC" "$@"
+  ucode -L "$FORKOP_LIB" "$RULES_UC" "$@"
 }
 
 if grep -n -E 'require\("uci"\)\.cursor|cursor\.foreach' "$RULES_UC" >/dev/null 2>&1; then

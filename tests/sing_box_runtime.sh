@@ -2,13 +2,13 @@
 set -eo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PODKOP_LIB="$ROOT_DIR/podkop/files/usr/lib"
-PODKOP_BIN="$ROOT_DIR/podkop/files/usr/bin/podkop"
-CLI_UC="$PODKOP_BIN"
-SING_BOX_RUNTIME_SH="$PODKOP_LIB/sing_box_runtime.sh"
-LIFECYCLE_UC="$PODKOP_LIB/service/lifecycle.uc"
-SINGBOX_RUNTIME_UC="$PODKOP_LIB/singbox/runtime.uc"
-SINGBOX_GENERATOR_UC="$PODKOP_LIB/singbox/generator.uc"
+FORKOP_LIB="$ROOT_DIR/forkop/files/usr/lib"
+FORKOP_BIN="$ROOT_DIR/forkop/files/usr/bin/forkop"
+CLI_UC="$FORKOP_BIN"
+SING_BOX_RUNTIME_SH="$FORKOP_LIB/sing_box_runtime.sh"
+LIFECYCLE_UC="$FORKOP_LIB/service/lifecycle.uc"
+SINGBOX_RUNTIME_UC="$FORKOP_LIB/singbox/runtime.uc"
+SINGBOX_GENERATOR_UC="$FORKOP_LIB/singbox/generator.uc"
 WORK_DIR="$(mktemp -d)"
 
 cleanup() {
@@ -23,13 +23,13 @@ fail() {
 
 [ ! -e "$SING_BOX_RUNTIME_SH" ] ||
   fail "sing_box_runtime.sh shell owner must be removed"
-grep -Fq '#!/usr/bin/ucode' "$PODKOP_BIN" ||
-  fail "podkop entrypoint must be a direct ucode executable"
+grep -Fq '#!/usr/bin/ucode' "$FORKOP_BIN" ||
+  fail "forkop entrypoint must be a direct ucode executable"
 grep -Fq 'service/lifecycle.uc' "$CLI_UC" ||
   fail "service/cli.uc must dispatch lifecycle orchestration through service/lifecycle.uc"
 grep -Fq 'singbox/runtime.uc' "$LIFECYCLE_UC" ||
   fail "service/lifecycle.uc must call singbox/runtime.uc for sing-box runtime operations"
-if grep -R -n -E 'sing_box_runtime_ucode|rulesets_ucode|sing_box_configure_service|sing_box_init_config|get_service_listen_address|get_device_ipv4_address|get_download_detour_tag' "$PODKOP_BIN" "$PODKOP_LIB" --include='*.sh' >/dev/null 2>&1; then
+if grep -R -n -E 'sing_box_runtime_ucode|rulesets_ucode|sing_box_configure_service|sing_box_init_config|get_service_listen_address|get_device_ipv4_address|get_download_detour_tag' "$FORKOP_BIN" "$FORKOP_LIB" --include='*.sh' >/dev/null 2>&1; then
   fail "sing-box runtime shell symbols must not remain"
 fi
 grep -Fq 'mode == "configure-service"' "$SINGBOX_RUNTIME_UC" ||
@@ -54,7 +54,7 @@ if grep -n -E 'require\("uci"\)\.cursor|uci -q|uci", "-q"' "$SINGBOX_GENERATOR_U
 fi
 grep -Fq 'require("core.uci")' "$SINGBOX_GENERATOR_UC" ||
   fail "singbox/generator.uc must import core.uci"
-grep -Fq 'PODKOP_RULE_CONDITION_CACHE_DIR' "$LIFECYCLE_UC" ||
+grep -Fq 'FORKOP_RULE_CONDITION_CACHE_DIR' "$LIFECYCLE_UC" ||
   fail "service/lifecycle.uc must pass rule-condition cache dir through module environment"
 if awk '
 /"write-current-reload-state-clean"|"write-captured-reload-state"/ {
@@ -79,7 +79,7 @@ fi
 mkdir -p "$WORK_DIR/etc" "$WORK_DIR/tmp"
 printf 'old config\n' >"$WORK_DIR/etc/config.json"
 printf 'new config\n' >"$WORK_DIR/tmp/config.json"
-ucode -L "$PODKOP_LIB" "$SINGBOX_RUNTIME_UC" save-config-file-fixture \
+ucode -L "$FORKOP_LIB" "$SINGBOX_RUNTIME_UC" save-config-file-fixture \
   "$WORK_DIR/tmp/config.json" "$WORK_DIR/etc/config.json"
 [ "$(cat "$WORK_DIR/etc/config.json")" = "new config" ] ||
   fail "singbox/runtime.uc must replace an existing config from a temp file"
@@ -92,7 +92,7 @@ generate_config() {
   local mwan3_active="${3:-0}"
 
   mkdir -p "$output.section-cache" "$output.rulesets"
-  ucode -L "$PODKOP_LIB" "$PODKOP_LIB/singbox/generator.uc" generate-config-fixture \
+  ucode -L "$FORKOP_LIB" "$FORKOP_LIB/singbox/generator.uc" generate-config-fixture \
     "$fixture" "$output" "127.0.0.1" "$mwan3_active"
 }
 
@@ -102,8 +102,8 @@ generate_config_with_subscription_cache() {
 
   mkdir -p "$output.section-cache" "$output.rulesets"
   TMP_SUBSCRIPTION_FOLDER="$WORK_DIR/subscriptions" \
-    PODKOP_PERSISTENT_SUBSCRIPTION_CACHE_DIR="$WORK_DIR/persistent-subscription-cache" \
-    ucode -L "$PODKOP_LIB" "$PODKOP_LIB/singbox/generator.uc" generate-config-fixture \
+    FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_DIR="$WORK_DIR/persistent-subscription-cache" \
+    ucode -L "$FORKOP_LIB" "$FORKOP_LIB/singbox/generator.uc" generate-config-fixture \
       "$fixture" "$output" "127.0.0.1" "0"
 }
 
@@ -120,7 +120,7 @@ cat >"$WORK_DIR/no-enabled-fixture.json" <<'JSON'
 }
 JSON
 
-if ucode -L "$PODKOP_LIB" "$SINGBOX_GENERATOR_UC" generate-config-fixture \
+if ucode -L "$FORKOP_LIB" "$SINGBOX_GENERATOR_UC" generate-config-fixture \
   "$WORK_DIR/no-enabled-fixture.json" "$WORK_DIR/no-enabled.json" "127.0.0.1" "0" \
   >"$WORK_DIR/no-enabled.stdout" 2>"$WORK_DIR/no-enabled.stderr"; then
   fail "generator should reject a config without enabled sections"
@@ -132,21 +132,21 @@ grep -Fxq 'no enabled sections' "$WORK_DIR/no-enabled.stderr" ||
   fail "generator failure reason should be concise"
 
 cat >"$WORK_DIR/generator-uci.state" <<'EOF_UCI'
-podkop-plus.settings=settings
-podkop-plus.settings.dns_server=1.1.1.1
-podkop-plus.settings.bootstrap_dns_server=1.1.1.1
-podkop-plus.settings.config_path=/tmp/sing-box/config.json
-podkop-plus.settings.cache_path=/tmp/sing-box/cache.db
-podkop-plus.settings.log_level=warn
-podkop-plus.uci_proxy=section
-podkop-plus.uci_proxy.enabled=1
-podkop-plus.uci_proxy.action=connection
-podkop-plus.uci_proxy.outbound_jsons={"type":"direct"}
-podkop-plus.uci_proxy.domain_suffix=example.org
+forkop.settings=settings
+forkop.settings.dns_server=1.1.1.1
+forkop.settings.bootstrap_dns_server=1.1.1.1
+forkop.settings.config_path=/tmp/sing-box/config.json
+forkop.settings.cache_path=/tmp/sing-box/cache.db
+forkop.settings.log_level=warn
+forkop.uci_proxy=section
+forkop.uci_proxy.enabled=1
+forkop.uci_proxy.action=connection
+forkop.uci_proxy.outbound_jsons={"type":"direct"}
+forkop.uci_proxy.domain_suffix=example.org
 EOF_UCI
-PODKOP_UCI_STATE_FILE="$WORK_DIR/generator-uci.state" \
-  PODKOP_SECTION_CACHE_DIR="$WORK_DIR/generated-from-uci.section-cache" \
-  ucode -L "$PODKOP_LIB" "$SINGBOX_GENERATOR_UC" generate-config "$WORK_DIR/generated-from-uci.json" "127.0.0.1" "0"
+FORKOP_UCI_STATE_FILE="$WORK_DIR/generator-uci.state" \
+  FORKOP_SECTION_CACHE_DIR="$WORK_DIR/generated-from-uci.section-cache" \
+  ucode -L "$FORKOP_LIB" "$SINGBOX_GENERATOR_UC" generate-config "$WORK_DIR/generated-from-uci.json" "127.0.0.1" "0"
 grep -Fq '"example.org"' "$WORK_DIR/generated-from-uci.json" ||
   fail "singbox/generator.uc must read section matchers from core.uci"
 grep -Fq '"uci_proxy-out"' "$WORK_DIR/generated-from-uci.json" ||
@@ -644,7 +644,7 @@ cat >"$WORK_DIR/subscriptions/grouped-subscription-1.json" <<'JSON'
       "interval": "10m",
       "tolerance": 50,
       "remark": "Provider Group",
-      "__podkop_allow_group": true
+      "__forkop_allow_group": true
     },
     {
       "type": "vless",
@@ -653,7 +653,7 @@ cat >"$WORK_DIR/subscriptions/grouped-subscription-1.json" <<'JSON'
       "server_port": 443,
       "uuid": "00000000-0000-4000-8000-000000000001",
       "tls": { "enabled": true, "server_name": "example.com" },
-      "__podkop_hidden": true
+      "__forkop_hidden": true
     },
     {
       "type": "vless",
@@ -662,7 +662,7 @@ cat >"$WORK_DIR/subscriptions/grouped-subscription-1.json" <<'JSON'
       "server_port": 443,
       "uuid": "00000000-0000-4000-8000-000000000002",
       "tls": { "enabled": true, "server_name": "example.org" },
-      "__podkop_hidden": true
+      "__forkop_hidden": true
     },
     {
       "type": "direct",

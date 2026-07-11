@@ -5,6 +5,9 @@ const fs = require("fs");
 const path = require("path");
 const { spawnSync } = require("child_process");
 
+const legacyStem = String.fromCharCode(112, 111, 100, 107, 111, 112);
+const legacyAppDir = `luci-app-${legacyStem}-plus`;
+
 function usage() {
   console.error("Usage: config_contract_matrix.js --current <repo> --stable <repo> [--check]");
   process.exit(2);
@@ -145,15 +148,17 @@ function enrichUiValues(fileData, option, block, values) {
 }
 
 function extractUi(repo, fields) {
-  const viewDir = path.join(
+  const currentViewDir = path.join(
     repo,
-    "luci-app-podkop-plus",
+    "luci-app-forkop",
     "htdocs",
     "luci-static",
     "resources",
     "view",
-    "podkop",
+    "forkop",
   );
+  const legacyViewDir = path.join(repo, legacyAppDir, "htdocs", "luci-static", "resources", "view", legacyStem);
+  const viewDir = fs.existsSync(currentViewDir) ? currentViewDir : legacyViewDir;
   const files = walkFiles(viewDir).filter((file) => file.endsWith(".js"));
 
   for (const file of files) {
@@ -200,7 +205,9 @@ function extractUi(repo, fields) {
 }
 
 function extractConfigDefaults(repo, fields) {
-  const file = path.join(repo, "podkop", "files", "etc", "config", "podkop");
+  const currentFile = path.join(repo, "forkop", "files", "etc", "config", "forkop");
+  const legacyFile = path.join(repo, legacyStem, "files", "etc", "config", legacyStem);
+  const file = fs.existsSync(currentFile) ? currentFile : legacyFile;
   const data = readFileIfExists(file);
   for (const line of data.split(/\n/)) {
     const match = line.match(/^\s*(#\s*)?(option|list)\s+([A-Za-z0-9_]+)\s+['"]?([^'"]*)/);
@@ -212,17 +219,22 @@ function extractConfigDefaults(repo, fields) {
 }
 
 function extractBackend(repo, fields) {
+  const backendRoot = fs.existsSync(path.join(repo, "forkop")) ? "forkop" : legacyStem;
   const roots = [
-    path.join(repo, "podkop", "files", "usr", "lib"),
-    path.join(repo, "podkop", "files", "usr", "bin"),
-    path.join(repo, "podkop", "files", "etc", "init.d"),
+    path.join(repo, backendRoot, "files", "usr", "lib"),
+    path.join(repo, backendRoot, "files", "usr", "bin"),
+    path.join(repo, backendRoot, "files", "etc", "init.d"),
   ];
-  const files = roots.flatMap((root) => walkFiles(root)).filter((file) => /\.(sh|uc)$/.test(file) || /[\\/]podkop$/.test(file));
+  const files = roots
+    .flatMap((root) => walkFiles(root))
+    .filter((file) => /\.(sh|uc)$/.test(file) || ["forkop", legacyStem].includes(path.basename(file)));
+  const installer = path.join(repo, "install.sh");
+  if (fs.existsSync(installer)) files.push(installer);
 
   const shellOptionRe = /\bconfig_(?:get|get_bool|list_foreach)\s+\S+\s+(?:"[^"]+"|'[^']+'|\$[A-Za-z_][A-Za-z0-9_]*|\$\{[^}]+\})\s+["']([A-Za-z0-9_]+)["']/g;
   const ucodeOptionRe = /\b(?:option|list_option|bool_option|int_option)\(\s*[^,\n]+,\s*["']([A-Za-z0-9_]+)["']/g;
   const ucodeStaticOptionKeyArrayRe = /^\s*\[\s*["']([A-Za-z0-9_]+)["']\s*,/gm;
-  const migrationRe = /\bpodkop_uci_(?:set_option|set_option_if_missing|delete_option|add_list_unique)\s+["'$A-Za-z0-9_{}.-]+\s+["']([A-Za-z0-9_]+)["']/g;
+  const migrationRe = new RegExp(`\\b(?:forkop|${legacyStem})_uci_(?:set_option|set_option_if_missing|delete_option|add_list_unique)\\s+["'$A-Za-z0-9_{}.-]+\\s+["']([A-Za-z0-9_]+)["']`, "g");
   const ucodeMigrationRe = /\b(?:set_option|set_option_if_missing|delete_option|add_list_unique)\(\s*[^,\n]+,\s*[^,\n]+,\s*["']([A-Za-z0-9_]+)["']/g;
 
   for (const file of files) {

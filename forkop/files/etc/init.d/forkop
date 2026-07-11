@@ -1,0 +1,93 @@
+#!/bin/sh /etc/rc.common
+# shellcheck disable=SC2034
+
+START=99
+USE_PROCD=1
+EXTRA_COMMANDS="retry_start_on_wan_up"
+EXTRA_HELP="        retry_start_on_wan_up Retry failed cold start after WAN comes up\n"
+
+script=$(readlink "$initscript")
+NAME="$(basename ${script:-$initscript})"
+FORKOP_LIB="/usr/lib/forkop"
+FORKOP_INITD_UC="$FORKOP_LIB/service/initd.uc"
+
+initd_ucode() {
+    [ -r "$FORKOP_INITD_UC" ] || return 1
+    FORKOP_LIB="$FORKOP_LIB" \
+        FORKOP_SERVICE_NAME="$NAME" \
+        ucode -L "$FORKOP_LIB" "$FORKOP_INITD_UC" "$@"
+}
+
+sync_service_triggers() {
+    _procd_call sync_service_triggers_payload
+}
+
+sync_service_triggers_payload() {
+    json_init
+    json_add_string name "$NAME"
+    service_triggers
+    _procd_ubus_call set >/dev/null 2>&1 || true
+}
+
+start_service() {
+    initd_ucode start-service "$1" "$$"
+    FORKOP_LAST_START_STATUS="$?"
+    return "$FORKOP_LAST_START_STATUS"
+}
+
+service_started() {
+    return "${FORKOP_LAST_START_STATUS:-0}"
+}
+
+stop_service() {
+    initd_ucode stop-service "$$"
+}
+
+reload_service() {
+    local reason="$1"
+    local result status
+
+    trap 'initd_ucode reload-release >/dev/null 2>&1 || true' INT TERM
+    result="$(initd_ucode reload-service "$reason" "$$")"
+    status="$?"
+    trap - INT TERM
+
+    [ "$result" = "sync" ] && sync_service_triggers
+    return "$status"
+}
+
+status_service() {
+    initd_ucode status-service
+}
+
+retry_start_on_wan_up() {
+    initd_ucode retry-start-on-wan-up "$$"
+}
+
+service_triggers() {
+    local plan kind event target init action reason
+
+    plan="$(initd_ucode trigger-plan)" || return 0
+
+    procd_open_trigger
+    while IFS="$(printf '\t')" read -r kind event target init action reason; do
+        case "$kind" in
+        delay)
+            PROCD_RELOAD_DELAY="$event"
+            ;;
+        config)
+            procd_add_config_trigger "$event" "$target" "$init" "$action" "$reason"
+            ;;
+        interface)
+            if [ -n "$reason" ]; then
+                procd_add_interface_trigger "$event" "$target" "$init" "$action" "$reason"
+            else
+                procd_add_interface_trigger "$event" "$target" "$init" "$action"
+            fi
+            ;;
+        esac
+    done << EOF
+$plan
+EOF
+    procd_close_trigger
+}

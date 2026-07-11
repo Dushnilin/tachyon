@@ -2,8 +2,8 @@
 set -eo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SERVER_RUNTIME="$ROOT_DIR/podkop/files/usr/lib/server/service.uc"
-UCODE_LIB="$ROOT_DIR/podkop/files/usr/lib"
+SERVER_RUNTIME="$ROOT_DIR/forkop/files/usr/lib/server/service.uc"
+UCODE_LIB="$ROOT_DIR/forkop/files/usr/lib"
 WORK_DIR="$(mktemp -d)"
 STATE="$WORK_DIR/uci.state"
 LOG="$WORK_DIR/uci.log"
@@ -59,26 +59,26 @@ LOGGER
 chmod 0755 "$WORK_DIR/bin/logger"
 
 export PATH="$WORK_DIR/bin:$PATH"
-export PODKOP_UCI_STATE_FILE="$STATE"
-export PODKOP_UCI_LOG_FILE="$LOG"
-export PODKOP_CONFIG_NAME="podkop-plus"
-export PODKOP_SERVER_RUNTIME_UC="$SERVER_RUNTIME"
+export FORKOP_UCI_STATE_FILE="$STATE"
+export FORKOP_UCI_LOG_FILE="$LOG"
+export FORKOP_CONFIG_NAME="forkop"
+export FORKOP_SERVER_RUNTIME_UC="$SERVER_RUNTIME"
 
 if grep -E 'uci -q|command -v uci' "$SERVER_RUNTIME" >/dev/null; then
   fail "server/service.uc must use ucode UCI access instead of shelling out to uci"
 fi
 
 cat >"$STATE" <<'EOF_STATE'
-podkop-plus.vless=server
-podkop-plus.vless.protocol=vless
-podkop-plus.vless.server_users=client|22222222-2222-4222-8222-222222222222|xtls-rprx-vision
-podkop-plus.socks=server
-podkop-plus.socks.protocol=socks
-podkop-plus.socks.label=desk
-podkop-plus.tailscale=server
-podkop-plus.tailscale.protocol=tailscale
-podkop-plus.json=server
-podkop-plus.json.protocol=json_inbound
+forkop.vless=server
+forkop.vless.protocol=vless
+forkop.vless.server_users=client|22222222-2222-4222-8222-222222222222|xtls-rprx-vision
+forkop.socks=server
+forkop.socks.protocol=socks
+forkop.socks.label=desk
+forkop.tailscale=server
+forkop.tailscale.protocol=tailscale
+forkop.json=server
+forkop.json.protocol=json_inbound
 EOF_STATE
 
 ucode -L "$UCODE_LIB" "$SERVER_RUNTIME" prepare-all-defaults
@@ -93,22 +93,22 @@ assert_value() {
   [ "$actual" = "$expected" ] || fail "$path: expected '$expected', got '$actual'"
 }
 
-assert_value podkop-plus.vless.security reality
-assert_value podkop-plus.vless.listen 0.0.0.0
-assert_value podkop-plus.vless.listen_port 443
-assert_value podkop-plus.vless.server_uuid 22222222-2222-4222-8222-222222222222
-assert_value podkop-plus.vless.vless_flow xtls-rprx-vision
-assert_value podkop-plus.vless.reality_short_id abcd1234
-assert_value podkop-plus.vless.reality_private_key private-key
-assert_value podkop-plus.vless.reality_public_key public-key
-assert_value podkop-plus.socks.security none
-assert_value podkop-plus.socks.server_username desk
-assert_value podkop-plus.socks.server_password generated-password
-assert_value podkop-plus.tailscale.security none
-assert_value podkop-plus.tailscale.tailscale_control_url https://controlplane.tailscale.com
-assert_value podkop-plus.tailscale.tailscale_hostname podkop-tailscale
-assert_value podkop-plus.tailscale.tailscale_advertise_exit_node 1
-assert_value podkop-plus.json.security none
-grep -Fxq 'commit podkop-plus' "$LOG" || fail 'expected config commit'
+assert_value forkop.vless.security reality
+assert_value forkop.vless.listen 0.0.0.0
+assert_value forkop.vless.listen_port 443
+assert_value forkop.vless.server_uuid 22222222-2222-4222-8222-222222222222
+assert_value forkop.vless.vless_flow xtls-rprx-vision
+assert_value forkop.vless.reality_short_id abcd1234
+assert_value forkop.vless.reality_private_key private-key
+assert_value forkop.vless.reality_public_key public-key
+assert_value forkop.socks.security none
+assert_value forkop.socks.server_username desk
+assert_value forkop.socks.server_password generated-password
+assert_value forkop.tailscale.security none
+assert_value forkop.tailscale.tailscale_control_url https://controlplane.tailscale.com
+assert_value forkop.tailscale.tailscale_hostname forkop-tailscale
+assert_value forkop.tailscale.tailscale_advertise_exit_node 1
+assert_value forkop.json.security none
+grep -Fxq 'commit forkop' "$LOG" || fail 'expected config commit'
 
 printf 'server runtime checks passed\n'

@@ -2,27 +2,27 @@
 set -eo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PODKOP_FILES="$ROOT_DIR/podkop/files"
-PODKOP_BIN="$PODKOP_FILES/usr/bin/podkop"
-PODKOP_LIB="$PODKOP_FILES/usr/lib"
-CLI_UC="$PODKOP_BIN"
-VALIDATOR="$PODKOP_LIB/config/validator.uc"
-LIFECYCLE="$PODKOP_LIB/service/lifecycle.uc"
+FORKOP_FILES="$ROOT_DIR/forkop/files"
+FORKOP_BIN="$FORKOP_FILES/usr/bin/forkop"
+FORKOP_LIB="$FORKOP_FILES/usr/lib"
+CLI_UC="$FORKOP_BIN"
+VALIDATOR="$FORKOP_LIB/config/validator.uc"
+LIFECYCLE="$FORKOP_LIB/service/lifecycle.uc"
 
 fail() {
   printf 'FAIL: %s\n' "$1" >&2
   exit 1
 }
 
-[ ! -e "$PODKOP_LIB/config_validation.sh" ] ||
+[ ! -e "$FORKOP_LIB/config_validation.sh" ] ||
   fail "config_validation.sh shell owner must be removed"
 
-if grep -R -n "config_validation.sh" "$PODKOP_FILES" >/dev/null 2>&1; then
+if grep -R -n "config_validation.sh" "$FORKOP_FILES" >/dev/null 2>&1; then
   fail "runtime files must not reference config_validation.sh"
 fi
 
-legacy_symbols='(^|[^A-Za-z0-9_])(config_validate_runtime|check_requirements|commit_podkop_config|mwan3_is_active|get_inline_remote_ruleset_format|detect_inline_ruleset_reference_kind)([^A-Za-z0-9_]|$)'
-if grep -R -n -E "$legacy_symbols" "$PODKOP_BIN" "$PODKOP_LIB" --include='*.sh' >/dev/null 2>&1; then
+legacy_symbols='(^|[^A-Za-z0-9_])(config_validate_runtime|check_requirements|commit_forkop_config|mwan3_is_active|get_inline_remote_ruleset_format|detect_inline_ruleset_reference_kind)([^A-Za-z0-9_]|$)'
+if grep -R -n -E "$legacy_symbols" "$FORKOP_BIN" "$FORKOP_LIB" --include='*.sh' >/dev/null 2>&1; then
   fail "runtime shell must not keep config_validation.sh symbols"
 fi
 
@@ -35,13 +35,15 @@ grep -Fq 'require("core.uci")' "$VALIDATOR" ||
 if grep -n -E 'require\("uci"\)\.cursor|uci -q|uci", "-q"|command_output\("uci' "$VALIDATOR" >/dev/null 2>&1; then
   fail "config validator must not own direct UCI cursor or CLI access"
 fi
-grep -Fq '#!/usr/bin/ucode' "$PODKOP_BIN" ||
-  fail "podkop entrypoint must be a direct ucode executable"
+grep -Fq '#!/usr/bin/ucode' "$FORKOP_BIN" ||
+  fail "forkop entrypoint must be a direct ucode executable"
 grep -Fq 'service/lifecycle.uc' "$CLI_UC" ||
   fail "service/cli.uc must dispatch service lifecycle through service/lifecycle.uc"
-grep -Fq 'MIGRATION_UC' "$LIFECYCLE" &&
-grep -Fq '"migrate"' "$LIFECYCLE" ||
-  fail "service/lifecycle.uc must run config migration directly through ucode"
+if grep -n -E 'MIGRATION_UC|config[./]migration|"migrate"' "$LIFECYCLE" >/dev/null 2>&1; then
+  fail "service/lifecycle.uc must not run configuration migration"
+fi
+grep -Fq 'mark_internal_config_guard();' "$LIFECYCLE" ||
+  fail "service/lifecycle.uc must preserve the internal config trigger guard"
 grep -Fq 'VALIDATOR_UC' "$LIFECYCLE" &&
 grep -Fq '"validate-runtime"' "$LIFECYCLE" ||
   fail "service/lifecycle.uc must run runtime validation directly through ucode"
