@@ -13574,7 +13574,7 @@ function getComponentCards() {
       component: "podkop",
       column: 0,
       title: "Podkop Plus",
-      version: normalizeCompiledVersion(systemInfo.podkop_version),
+      version: systemInfoLoading ? _("Loading...") : normalizeCompiledVersion(systemInfo.podkop_version),
       latestVersion: getLatestVersion("podkop"),
       releaseUrl: getGitHubReleaseUrl("podkop"),
       actions: podkopActions
@@ -13583,7 +13583,7 @@ function getComponentCards() {
       component: "sing_box",
       column: 0,
       title: "Sing-box",
-      version: formatSingBoxVersion(systemInfo),
+      version: systemInfoLoading ? _("Loading...") : formatSingBoxVersion(systemInfo),
       latestVersion: getLatestVersion("sing_box"),
       releaseUrl: getGitHubReleaseUrl("sing_box"),
       actions: singBoxActions
