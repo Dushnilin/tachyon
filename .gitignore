@@ -4,7 +4,6 @@ fe-app-podkop/.yarn/
 fe-app-podkop/.env
 .DS_Store
 
-AGENTS.md
 sandbox/
 .wsl-build/
 dist/

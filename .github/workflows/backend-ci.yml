@@ -5,9 +5,8 @@ on:
     paths:
       - 'podkop/files/**'
       - 'podkop/Makefile'
-      - 'scripts/build.sh'
-      - 'tests/backend/**'
-      - 'tests/differential/**'
+      - 'build.sh'
+      - 'tests/**'
       - '.github/workflows/backend-ci.yml'
   push:
     branches:
@@ -15,9 +14,8 @@ on:
     paths:
       - 'podkop/files/**'
       - 'podkop/Makefile'
-      - 'scripts/build.sh'
-      - 'tests/backend/**'
-      - 'tests/differential/**'
+      - 'build.sh'
+      - 'tests/**'
       - '.github/workflows/backend-ci.yml'
 
 jobs:
@@ -56,7 +54,7 @@ jobs:
       - name: Run backend tests
         shell: bash
         run: |
-          for test_script in tests/backend/*.sh; do
+          for test_script in tests/*.sh; do
             echo "::group::$test_script"
             bash "$test_script"
             echo "::endgroup::"
