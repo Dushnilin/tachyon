@@ -242,6 +242,7 @@ cat >"$WORK_DIR/runtime-matchers-fixture.json" <<'JSON'
     ".type": "settings",
     "config_path": "/tmp/sing-box/config.json",
     "dns_server": "1.1.1.1",
+    "dns_strategy": "prefer_ipv6",
     "service_listen_address": "127.0.0.1"
   },
   "section": [
@@ -784,6 +785,7 @@ assert(route_rule(disabled, r => r.action == "resolve" && r.server == "dns-serve
 
 let defaults = cfg("default");
 assert(first_remote_ruleset(defaults).update_interval == "1d", "default list update interval");
+assert(defaults.dns.strategy == "prefer_ipv4", "missing DNS strategy keeps the prefer_ipv4 default");
 
 let server = cfg("server");
 let socks = inbound(server, "server-edge-in");
@@ -792,10 +794,11 @@ assert(socks.users && socks.users[0].username == "tester", "server socks auth");
 assert(route_rule(server, r => r.inbound == "server-edge-in" && r.outbound == "direct-out") != null, "server direct route");
 
 let matchers = cfg("matchers");
-assert(matchers.dns.strategy == "prefer_ipv4", "DNS strategy allows IPv6 answers");
+assert(matchers.dns.strategy == "prefer_ipv6", "configured DNS strategy is generated");
 assert(dns_server(matchers, r => r.tag == "fakeip-server" && r.inet6_range == "fc00::/18") != null, "FakeIP IPv6 range");
 assert(inbound(matchers, "tproxy6-in") != null, "IPv6 TProxy inbound");
 assert(inbound(matchers, "tproxy6-in").listen == "::1", "IPv6 TProxy listen address");
+assert(route_rule(matchers, r => r.action == "reject" && r.ip_version == 6) == null, "IPv6 traffic is not rejected globally");
 assert(outbound(matchers, "bypass-out").type == "direct", "bypass fallback outbound");
 assert(outbound(matchers, "proxy-1-out").detour == "detour-out", "connection URL outbound detour");
 let mixed = inbound(matchers, "proxy-mixed-in");

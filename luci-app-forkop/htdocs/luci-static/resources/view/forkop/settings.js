@@ -171,7 +171,7 @@ function createSettingsContent(section, capabilities) {
     "dns_server",
     _("DNS Servers"),
     _(
-      "Select or enter DNS server addresses. The first available server has priority.",
+      "Main DNS server. If multiple servers are selected, a timeout switches to a backup.",
     ),
   );
   configureDnsList(dnsOption, main.DNS_SERVER_OPTIONS, "77.88.8.8");
@@ -181,7 +181,7 @@ function createSettingsContent(section, capabilities) {
     "bootstrap_dns_server",
     _("Bootstrap DNS Servers"),
     _(
-      "Direct DNS servers used to resolve upstream DNS and proxy addresses. The first available server has priority.",
+      "DNS server used to obtain IP addresses for upstream DNS and proxies. If multiple servers are selected, a timeout switches to a backup.",
     ),
   );
   configureDnsList(
@@ -237,20 +237,26 @@ function createSettingsContent(section, capabilities) {
     return true;
   };
 
+  o = section.option(form.ListValue, "dns_strategy", _("DNS Strategy"));
+  o.value("prefer_ipv4", _("Prefer IPv4"));
+  o.value("ipv4_only", _("IPv4 only"));
+  o.value("prefer_ipv6", _("Prefer IPv6"));
+  o.value("ipv6_only", _("IPv6 only"));
+  o.default = "prefer_ipv4";
+  o.rmempty = false;
+
   o = section.option(
     form.Flag,
     "dns_detour_enabled",
-    _("DNS through a section"),
-    _(
-      "Send main DNS requests through the selected section. Bootstrap DNS remains direct.",
-    ),
+    _("DNS through proxy"),
+    _("Route main DNS requests through the selected section."),
   );
   configureDownloadViaProxyFlag(o, "dns_detour_section");
 
   o = section.option(
     form.ListValue,
     "dns_detour_section",
-    _("DNS requests through"),
+    _("DNS requests through section"),
   );
   o.depends("dns_detour_enabled", "1");
   configureDownloadSectionOption(o, "dns_detour_section", capabilities);

@@ -64,6 +64,7 @@ cat >"$WORK_DIR/valid.json" <<'JSON'
     "dns_check_interval": "10s",
     "dns_recovery_check_interval": "60s",
     "dns_check_timeout": "2s",
+    "dns_strategy": "prefer_ipv6",
     "dns_detour_enabled": "1",
     "dns_detour_section": "proxy",
     "download_lists_via_proxy": "1",
@@ -160,6 +161,18 @@ cat >"$WORK_DIR/bad-dns-server.json" <<'JSON'
 }
 JSON
 assert_rejects "bad DNS server" "$WORK_DIR/bad-dns-server.json" "Invalid main DNS server"
+
+cat >"$WORK_DIR/bad-dns-strategy.json" <<'JSON'
+{
+  "settings": {
+    ".name": "settings",
+    ".type": "settings",
+    "dns_strategy": "auto"
+  },
+  "section": []
+}
+JSON
+assert_rejects "bad DNS strategy" "$WORK_DIR/bad-dns-strategy.json" "Unsupported DNS strategy 'auto'"
 
 cat >"$WORK_DIR/empty-main-dns.json" <<'JSON'
 {

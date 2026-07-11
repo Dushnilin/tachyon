@@ -285,6 +285,7 @@ cat >"$WORK_DIR/sing-box-signature.json" <<'JSON'
 {
   "settings": {
     "dns_type": "tcp",
+    "dns_strategy": "prefer_ipv6",
     "dns_server": "9.9.9.9",
     "bootstrap_dns_server": "1.0.0.1",
     "dns_rewrite_ttl": "120",
@@ -404,6 +405,8 @@ JSON
 cat >"$WORK_DIR/sing-box-signature.expected" <<'EOF_SING_BOX_SIG'
 [settings.dns_type]
 tcp
+[settings.dns_strategy]
+prefer_ipv6
 [settings.dns_server]
 9.9.9.9
 [settings.bootstrap_dns_server]
