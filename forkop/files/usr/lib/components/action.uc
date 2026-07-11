@@ -1097,27 +1097,18 @@ function validate_sing_box_extended_binary(binary, library_dir) {
     return index(version, "extended") >= 0 ? version : "";
 }
 
-function move_file_to_backup(target_path, backup_path) {
-    if (!file_exists(target_path))
+function move_file_portable(source_path, target_path) {
+    if (fs.rename(source_path, target_path))
         return true;
-    remove_file(backup_path);
-    return fs.rename(target_path, backup_path);
-}
 
-function restore_sing_box_backup(backup_binary) {
-    if (as_string(backup_binary) != "" && file_nonempty(backup_binary)) {
-        if (!fs.rename(backup_binary, "/usr/bin/sing-box"))
-            return false;
-        return command_success_from_args([ "chmod", "0755", "/usr/bin/sing-box" ]);
+    let staged_path = as_string(target_path) + ".forkop-move." + owner_pid();
+    remove_file(staged_path);
+    if (!command_success_from_args([ "cp", "-p", source_path, staged_path ]) ||
+        !fs.rename(staged_path, target_path)) {
+        remove_file(staged_path);
+        return false;
     }
-    remove_file("/usr/bin/sing-box");
-    return true;
-}
-
-function restore_file_backup(target_path, backup_path) {
-    if (as_string(backup_path) != "" && file_nonempty(backup_path))
-        return fs.rename(backup_path, target_path);
-    remove_file(target_path);
+    remove_file(source_path);
     return true;
 }
 
@@ -1131,6 +1122,30 @@ function install_staged_file(source_path, target_path, mode) {
         return false;
     }
     remove_file(source_path);
+    return true;
+}
+
+function move_file_to_backup(target_path, backup_path) {
+    if (!file_exists(target_path))
+        return true;
+    remove_file(backup_path);
+    return move_file_portable(target_path, backup_path);
+}
+
+function restore_sing_box_backup(backup_binary) {
+    if (as_string(backup_binary) != "" && file_nonempty(backup_binary)) {
+        if (!move_file_portable(backup_binary, "/usr/bin/sing-box"))
+            return false;
+        return command_success_from_args([ "chmod", "0755", "/usr/bin/sing-box" ]);
+    }
+    remove_file("/usr/bin/sing-box");
+    return true;
+}
+
+function restore_file_backup(target_path, backup_path) {
+    if (as_string(backup_path) != "" && file_nonempty(backup_path))
+        return move_file_portable(backup_path, target_path);
+    remove_file(target_path);
     return true;
 }
 
@@ -1675,14 +1690,17 @@ function install_package_sing_box(action, tiny) {
     let backup_binary = "";
     let backup_cronet = "";
     let cronet_touched = false;
+    let backup_on_tmpfs = previous_variant == "extended-compressed";
     if (file_exists("/usr/bin/sing-box")) {
-        backup_binary = "/usr/bin/sing-box.forkop-backup." + owner_pid();
+        backup_binary = backup_on_tmpfs ? tmp_dir + "/sing-box.forkop-backup" :
+            "/usr/bin/sing-box.forkop-backup." + owner_pid();
         if (!move_file_to_backup("/usr/bin/sing-box", backup_binary))
             action_fail("sing_box", action, "Failed to backup current sing-box binary", current_version, latest_version);
     }
     if (file_exists("/usr/lib/libcronet.so")) {
         cronet_touched = true;
-        backup_cronet = "/usr/lib/libcronet.so.forkop-backup." + owner_pid();
+        backup_cronet = backup_on_tmpfs ? tmp_dir + "/libcronet.so.forkop-backup" :
+            "/usr/lib/libcronet.so.forkop-backup." + owner_pid();
         if (!move_file_to_backup("/usr/lib/libcronet.so", backup_cronet)) {
             restore_sing_box_backup(backup_binary);
             action_fail("sing_box", action, "Failed to backup current libcronet.so", current_version, latest_version);

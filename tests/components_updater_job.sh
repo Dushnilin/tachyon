@@ -147,6 +147,14 @@ grep -Fq 'install_staged_file(tmp_cronet, "/usr/lib/libcronet.so", "0644")' "$AC
 if grep -Fq 'fs.rename(tmp_binary, "/usr/bin/sing-box")' "$ACTION_UC"; then
   fail "compressed sing-box installation must not rename directly across OpenWrt filesystems"
 fi
+grep -Fq 'let backup_on_tmpfs = previous_variant == "extended-compressed";' "$ACTION_UC" ||
+  fail "package sing-box installs must move compressed backups off overlay before opkg space checks"
+grep -Fq 'backup_binary = backup_on_tmpfs ? tmp_dir + "/sing-box.forkop-backup"' "$ACTION_UC" ||
+  fail "compressed sing-box backup must use tmpfs while installing a package variant"
+grep -Fq 'return move_file_portable(backup_binary, "/usr/bin/sing-box");' "$ACTION_UC" &&
+  fail "portable sing-box restore must preserve executable permissions explicitly"
+grep -Fq 'if (!move_file_portable(backup_binary, "/usr/bin/sing-box"))' "$ACTION_UC" ||
+  fail "compressed sing-box rollback must restore backups across filesystems"
 
 package_runtime_lib="$WORK_DIR/package-runtime-lib"
 package_runtime_bin="$WORK_DIR/package-runtime-bin"
