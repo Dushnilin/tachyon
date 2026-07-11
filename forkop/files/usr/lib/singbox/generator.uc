@@ -654,15 +654,20 @@ function rewrite_subscription_outbound_references(outbounds, tag_map, source_ref
             }
             outbound.outbounds = rewritten;
 
-            let default_tag = as_string(outbound.default || "");
-            if (default_tag != "" && tag_map[default_tag])
-                default_tag = tag_map[default_tag];
-            if (default_tag == "" || !string_array_contains(rewritten, default_tag))
-                default_tag = length(rewritten) > 0 ? rewritten[0] : "";
-            if (default_tag != "")
-                outbound.default = default_tag;
-            else
+            if (!runtime_supports_xhttp && as_string(outbound.type || "") == "urltest") {
                 delete outbound.default;
+            }
+            else {
+                let default_tag = as_string(outbound.default || "");
+                if (default_tag != "" && tag_map[default_tag])
+                    default_tag = tag_map[default_tag];
+                if (default_tag == "" || !string_array_contains(rewritten, default_tag))
+                    default_tag = length(rewritten) > 0 ? rewritten[0] : "";
+                if (default_tag != "")
+                    outbound.default = default_tag;
+                else
+                    delete outbound.default;
+            }
         }
     }
 }
