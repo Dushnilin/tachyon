@@ -49,6 +49,16 @@ function stdin_contains_ci(needle) {
     return index(lc(read_stdin()), needle) >= 0;
 }
 
+function stdin_first_line_last_field() {
+    let data = read_stdin();
+    let newline = index(data, "\n");
+    let line = trim(newline >= 0 ? substr(data, 0, newline) : data);
+    let fields = split(line, /[ \t\r\n]+/);
+
+    if (length(fields) > 0)
+        print(as_string(fields[length(fields) - 1]), "\n");
+}
+
 function file_first_line(path) {
     let data = fs.readfile(path);
     if (data == null)
@@ -1176,6 +1186,8 @@ else if (mode == "openwrt-release-series")
     openwrt_release_series(ARGV[1]);
 else if (mode == "stdin-contains-ci")
     exit(stdin_contains_ci(ARGV[1]) ? 0 : 1);
+else if (mode == "stdin-first-line-last-field")
+    stdin_first_line_last_field();
 else if (mode == "updates-arch-package-version")
     updates_arch_package_version(ARGV[1], ARGV[2]);
 else if (mode == "updates-zapret-bundle-version")
