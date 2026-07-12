@@ -814,7 +814,7 @@ function rule_action(section) {
 }
 
 function rule_action_supported(action) {
-    return contains([ "connection", "proxy", "outbound", "vpn", "bypass", "block", "zapret", "zapret2", "byedpi" ], as_string(action));
+    return contains([ "connection", "proxy", "outbound", "vpn", "bypass", "block", "dns", "zapret", "zapret2", "byedpi" ], as_string(action));
 }
 
 function server_routing_section_action_supported(action) {
@@ -1274,7 +1274,52 @@ function validate_provider_strategy(kind, section, context) {
         fail_validation("Invalid ByeDPI strategy for rule '" + name + "': " + result.message);
 }
 
-function validate_rule(section, context) {
+function dns_action_has_domain_matchers(section) {
+    for (let key in [ "domain", "domain_suffix", "domain_keyword", "domain_regex" ])
+        if (option(section, key, "") != "" || option(section, key + "_text", "") != "" || length(list_option(section, key)) > 0)
+            return true;
+
+    return length(connections.community_lists(section)) > 0 ||
+        length(connections.rule_sets(section)) > 0 ||
+        length(list_option(section, "domain_ip_lists")) > 0;
+}
+
+function validate_dns_action(section, sections, context) {
+    let name = section_name(section);
+    let dns_type = option(section, "dns_type", "udp");
+    if (!contains([ "udp", "dot", "doh" ], dns_type))
+        fail_validation("DNS rule '" + name + "' uses unsupported protocol '" + dns_type + "'. Use udp, dot, or doh. Aborted.");
+    let dns_server = option(section, "dns_server", "");
+    if (!dns_server_value_valid(dns_server))
+        fail_validation("DNS rule '" + name + "' has an invalid DNS server '" + dns_server + "'. Aborted.");
+    if (length(connections.rule_sets_with_subnets(section)) > 0)
+        fail_validation("DNS rule '" + name + "' can use domain-only rule sets, but subnet extraction is enabled. Disable 'Include IP addresses and subnets'. Aborted.");
+    if (!dns_action_has_domain_matchers(section))
+        fail_validation("DNS rule '" + name + "' must contain at least one domain condition or domain rule set. Aborted.");
+    if (!bool_option(section, "dns_detour_enabled", false))
+        return;
+
+    let target_name = option(section, "dns_detour_section", "");
+    if (target_name == "")
+        fail_validation("DNS rule '" + name + "' routes DNS through a section, but no section is selected. Aborted.");
+    if (target_name == name)
+        fail_validation("DNS rule '" + name + "' cannot use itself as a DNS detour. Aborted.");
+
+    let target = null;
+    for (let candidate in sections)
+        if (section_name(candidate) == target_name) {
+            target = candidate;
+            break;
+        }
+    if (target == null)
+        fail_validation("DNS rule '" + name + "' references missing detour section '" + target_name + "'. Aborted.");
+    if (!section_enabled(target))
+        fail_validation("DNS rule '" + name + "' references disabled detour section '" + target_name + "'. Aborted.");
+    if (!download_section_action_available(rule_action(target), context.byedpi_installed, context.zapret_installed, context.zapret2_installed))
+        fail_validation("DNS rule '" + name + "' references detour section '" + target_name + "' with unsupported action '" + rule_action(target) + "'. Select an enabled Connection, VPN, Zapret, Zapret2, or ByeDPI section. Aborted.");
+}
+
+function validate_rule(section, sections, context) {
     if (!section_enabled(section))
         return;
 
@@ -1285,8 +1330,12 @@ function validate_rule(section, context) {
     if (!rule_action_supported(action))
         fail_validation("Enabled rule '" + name + "' uses unsupported action '" + action + "'. Aborted.");
 
-    for (let value in list_option(section, "ports"))
-        validate_port_condition_value(value, name);
+    if (action != "dns")
+        for (let value in list_option(section, "ports"))
+            validate_port_condition_value(value, name);
+
+    if (action == "dns")
+        validate_dns_action(section, sections, context);
 
     if (action == "zapret") {
         if (!context.zapret_installed) {
@@ -1572,7 +1621,7 @@ function validate_runtime_config(context) {
     validate_server_routing_sections(sections);
 
     for (let section in sections)
-        validate_rule(section, context);
+        validate_rule(section, sections, context);
 }
 
 function context_from_runtime() {

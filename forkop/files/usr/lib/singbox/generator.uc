@@ -2255,7 +2255,7 @@ function source_file_exists(path) {
     return fs.readfile(path) != null;
 }
 
-function rebuild_local_domain_ip_list_ruleset(section_name, references) {
+function rebuild_local_domain_ip_list_ruleset(section_name, references, domains_only) {
     let ruleset_path = domain_ip_list_ruleset_path(section_name);
     let has_local = false;
 
@@ -2282,15 +2282,16 @@ function rebuild_local_domain_ip_list_ruleset(section_name, references) {
         }
 
         source_rulesets.import_plain_list(reference, ruleset_path, "domain_suffix", "domains", "5000");
-        source_rulesets.import_plain_list(reference, ruleset_path, "ip_cidr", "subnets", "5000");
+        if (!domains_only)
+            source_rulesets.import_plain_list(reference, ruleset_path, "ip_cidr", "subnets", "5000");
     }
 }
 
-function add_domain_ip_list_ruleset(config, section_name, rule_set_tags, dns_rule_set_tags, references) {
+function add_domain_ip_list_ruleset(config, section_name, rule_set_tags, dns_rule_set_tags, references, domains_only) {
     if (length(references) == 0)
         return;
 
-    rebuild_local_domain_ip_list_ruleset(section_name, references);
+    rebuild_local_domain_ip_list_ruleset(section_name, references, domains_only);
 
     let ruleset_path = domain_ip_list_ruleset_path(section_name);
     if (!source_rulesets.has_rules(ruleset_path))
@@ -2306,7 +2307,8 @@ function add_domain_ip_list_ruleset(config, section_name, rule_set_tags, dns_rul
         });
     }
 
-    push(rule_set_tags, tag_name);
+    if (!domains_only)
+        push(rule_set_tags, tag_name);
     if (source_rulesets.has_domain_matchers(ruleset_path))
         push(dns_rule_set_tags, tag_name);
 }
@@ -2410,6 +2412,84 @@ function single_or_array(values) {
     return length(values) == 1 ? values[0] : values;
 }
 
+function dns_action_server_tag(section_name) {
+    return runtime_constants.tag(section_name, "dns-server");
+}
+
+function dns_action_detour_tag(section) {
+    if (!bool_option(section, "dns_detour_enabled", false))
+        return "";
+    let target_section = option(section, "dns_detour_section", "");
+    return target_section == "" ? "" : outbound_tag(target_section);
+}
+
+function add_dns_server_for_section(config, section) {
+    let server = runtime_dns.server_from_options(
+        dns_action_server_tag(section[".name"]),
+        option(section, "dns_type", "udp"),
+        option(section, "dns_server", ""),
+        dns_action_detour_tag(section)
+    );
+    if (server.unsupported)
+        runtime_generate_unsupported(server.unsupported);
+    push(config.dns.servers, server);
+}
+
+function add_dns_action_rules_for_section(config, section) {
+    let domain = domain_condition_values(section, "domain");
+    let domain_suffix = domain_condition_values(section, "domain_suffix");
+    let domain_keyword = domain_condition_values(section, "domain_keyword");
+    let domain_regex = domain_condition_values(section, "domain_regex");
+    let rule_set_tags = [];
+    let section_name = section[".name"];
+
+    for (let community in connections.community_lists(section)) {
+        let ensured = ensure_community_ruleset(config, section_name, as_string(community));
+        push(rule_set_tags, ensured.tag);
+    }
+    for (let reference in connections.rule_sets(section)) {
+        let ensured = ensure_custom_ruleset(config, as_string(reference));
+        if (ensured.kind == "domains")
+            push(rule_set_tags, ensured.tag);
+    }
+    add_domain_ip_list_ruleset(
+        config,
+        section_name,
+        [],
+        rule_set_tags,
+        list_option(section, "domain_ip_lists"),
+        true
+    );
+
+    let rewrite_ttl = int_option(runtime_settings(), "dns_rewrite_ttl", "60");
+    let server_tag = dns_action_server_tag(section_name);
+    let has_inline_domains = length(domain) > 0 || length(domain_suffix) > 0 ||
+        length(domain_keyword) > 0 || length(domain_regex) > 0;
+
+    if (has_inline_domains) {
+        let dns_rule = {
+            action: "route",
+            server: server_tag,
+            rewrite_ttl
+        };
+        add_domain_array(dns_rule, "domain", domain);
+        add_domain_array(dns_rule, "domain_suffix", domain_suffix);
+        add_domain_array(dns_rule, "domain_keyword", domain_keyword);
+        add_domain_array(dns_rule, "domain_regex", domain_regex);
+        push_dns_matcher_rule(config, dns_rule);
+    }
+    if (length(rule_set_tags) > 0) {
+        push_dns_matcher_rule(config, {
+            action: "route",
+            server: server_tag,
+            rewrite_ttl,
+            rule_set: single_or_array(rule_set_tags)
+        });
+    }
+    if (!has_inline_domains && length(rule_set_tags) == 0)
+        runtime_generate_unsupported("DNS action '" + section_name + "' has no domain matchers");
+}
+
 function normalize_port_number_value(value) {
     return rule_config.normalize_port_number_value(value);
 }
@@ -2504,7 +2584,8 @@ function add_combined_route_for_section(config, section) {
         section_name,
         rule_set_tags,
         dns_rule_set_tags,
-        list_option(section, "domain_ip_lists")
+        list_option(section, "domain_ip_lists"),
+        false
     );
 
     let target = runtime_route.target(section, outbound_tag(section_name));
@@ -2600,6 +2681,9 @@ function add_outbound_for_section(config, section, taken, sections) {
     else if (action == "block") {
         /* route-only action */
     }
+    else if (action == "dns") {
+        add_dns_server_for_section(config, section);
+    }
     else {
         runtime_generate_unsupported("unsupported action " + action);
     }
@@ -2623,7 +2707,10 @@ function reserve_section_outbound_tags(sections, taken) {
 }
 
 function add_route_for_section(config, section) {
-    add_combined_route_for_section(config, section);
+    if (option(section, "action", "") == "dns")
+        add_dns_action_rules_for_section(config, section);
+    else
+        add_combined_route_for_section(config, section);
 }
 
 function add_service_route_rules(config, sections) {

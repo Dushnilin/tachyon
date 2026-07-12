@@ -120,6 +120,19 @@ cat >"$WORK_DIR/valid.json" <<'JSON'
       "enabled": "1",
       "action": "zapret",
       "domain_ip_lists": [ "https://example.com/provider.lst" ]
+    },
+    {
+      ".name": "custom_dns",
+      ".type": "section",
+      "enabled": "1",
+      "action": "dns",
+      "dns_type": "dot",
+      "dns_server": "9.9.9.9:5353",
+      "dns_detour_enabled": "1",
+      "dns_detour_section": "proxy",
+      "domain_suffix": [ "dns.example" ],
+      "rule_set": [ "https://example.com/domain-only.srs" ],
+      "domain_ip_lists": [ "https://example.com/domains.lst" ]
     }
   ],
   "server": [
@@ -225,6 +238,57 @@ cat >"$WORK_DIR/bad-direct-action.json" <<'JSON'
 }
 JSON
 assert_rejects "bad direct action" "$WORK_DIR/bad-direct-action.json" "unsupported action 'direct'"
+
+cat >"$WORK_DIR/bad-dns-rule-server.json" <<'JSON'
+{
+  "settings": { ".name": "settings", ".type": "settings" },
+  "section": [
+    { ".name": "dns", ".type": "section", "enabled": "1", "action": "dns", "dns_server": "bad value", "domain_suffix": [ "example.org" ] }
+  ]
+}
+JSON
+assert_rejects "bad DNS rule server" "$WORK_DIR/bad-dns-rule-server.json" "invalid DNS server"
+
+cat >"$WORK_DIR/bad-dns-rule-protocol.json" <<'JSON'
+{
+  "settings": { ".name": "settings", ".type": "settings" },
+  "section": [
+    { ".name": "dns", ".type": "section", "enabled": "1", "action": "dns", "dns_type": "tcp", "dns_server": "9.9.9.9", "domain_suffix": [ "example.org" ] }
+  ]
+}
+JSON
+assert_rejects "bad DNS rule protocol" "$WORK_DIR/bad-dns-rule-protocol.json" "unsupported protocol 'tcp'"
+
+cat >"$WORK_DIR/bad-dns-rule-matchers.json" <<'JSON'
+{
+  "settings": { ".name": "settings", ".type": "settings" },
+  "section": [
+    { ".name": "dns", ".type": "section", "enabled": "1", "action": "dns", "dns_server": "9.9.9.9" }
+  ]
+}
+JSON
+assert_rejects "DNS rule without domain matchers" "$WORK_DIR/bad-dns-rule-matchers.json" "must contain at least one domain condition"
+
+cat >"$WORK_DIR/bad-dns-rule-subnets.json" <<'JSON'
+{
+  "settings": { ".name": "settings", ".type": "settings" },
+  "section": [
+    { ".name": "dns", ".type": "section", "enabled": "1", "action": "dns", "dns_server": "9.9.9.9", "rule_set_with_subnets": [ "https://example.com/mixed.srs" ] }
+  ]
+}
+JSON
+assert_rejects "DNS rule subnet extraction" "$WORK_DIR/bad-dns-rule-subnets.json" "domain-only rule sets"
+
+cat >"$WORK_DIR/bad-dns-rule-detour.json" <<'JSON'
+{
+  "settings": { ".name": "settings", ".type": "settings" },
+  "section": [
+    { ".name": "dns", ".type": "section", "enabled": "1", "action": "dns", "dns_server": "9.9.9.9", "dns_detour_enabled": "1", "dns_detour_section": "bypass", "domain_suffix": [ "example.org" ] },
+    { ".name": "bypass", ".type": "section", "enabled": "1", "action": "bypass", "domain_suffix": [ "bypass.example" ] }
+  ]
+}
+JSON
+assert_rejects "DNS rule unsupported detour" "$WORK_DIR/bad-dns-rule-detour.json" "unsupported action 'bypass'"
 
 cat >"$WORK_DIR/bad-port.json" <<'JSON'
 {
