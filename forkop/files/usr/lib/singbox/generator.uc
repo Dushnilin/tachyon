@@ -654,7 +654,7 @@ function rewrite_subscription_outbound_references(outbounds, tag_map, source_ref
             }
             outbound.outbounds = rewritten;
 
-            if (!runtime_supports_xhttp && as_string(outbound.type || "") == "urltest") {
+            if (as_string(outbound.type || "") == "urltest") {
                 delete outbound.default;
             }
             else {
