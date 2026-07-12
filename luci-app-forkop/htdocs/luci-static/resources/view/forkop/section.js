@@ -866,8 +866,17 @@ function ensureConnectionsDynamicListStyles() {
 }
 
 .fkp-button-add-dynlist > .add-item {
-  display: block;
+  align-items: stretch;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  display: flex;
   margin-top: 4px;
+  max-width: 100%;
+  overflow: visible;
+  padding: 0;
+  width: var(--fkp-button-add-width, 210px);
 }
 
 .fkp-button-add-dynlist > .add-item > input[type="text"] {
@@ -890,9 +899,13 @@ function ensureConnectionsDynamicListStyles() {
   margin-left: 0 !important;
   max-height: 30px !important;
   min-height: 30px !important;
+  max-width: 100% !important;
+  overflow: hidden !important;
   padding: 0 4px !important;
+  text-overflow: ellipsis !important;
   transition: border linear .2s, box-shadow linear .2s !important;
-  width: var(--fkp-button-add-width, 210px) !important;
+  white-space: nowrap !important;
+  width: 100% !important;
 }
 
 .fkp-button-add-dynlist > .add-item > .cbi-button-add:hover,
