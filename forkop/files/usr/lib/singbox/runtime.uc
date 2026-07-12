@@ -641,6 +641,17 @@ function log_file_lines(path, level, prefix) {
     log_lines(fs.readfile(path), level, prefix);
 }
 
+function sing_box_check(config_path, output_path) {
+    let status = command_status(
+        command_from_args([ "sing-box", "-c", config_path, "check" ]) +
+        " >" + shell_quote(output_path) + " 2>&1"
+    );
+    let reason = status == 0 ? "" : first_nonblank_line(output_path);
+    if (status != 0 && reason == "")
+        reason = "exit status " + status;
+    return { status, reason };
+}
+
 function prepare_subscription_caches(prepared, no_refresh) {
     let result = subscription_cache_capture([ "prepare-caches", "runtime", prepared ? "1" : "0", no_refresh ? "1" : "0" ]);
     if (result.status != 0) {
@@ -710,11 +721,16 @@ function patch_dns_config(state_path) {
         exit(1);
     }
 
-    if (!command_success_from_args([ "sing-box", "-c", temp_config, "check" ])) {
-        log_message("DNS failover produced an invalid sing-box configuration", "error");
-        remove_files([ backup_path, temp_config ]);
+    let check_log = temp_path();
+    let check_result = check_log == ""
+        ? { status: 1, reason: "unable to create check output file" }
+        : sing_box_check(temp_config, check_log);
+    if (check_result.status != 0) {
+        log_message("DNS failover produced an invalid sing-box configuration: " + check_result.reason, "error");
+        remove_files([ backup_path, temp_config, check_log ]);
         exit(1);
     }
+    remove_file(check_log);
 
     let changed = md5_file(config_path) != md5_file(temp_config);
     if (!save_config_file(temp_config, config_path)) {
@@ -784,8 +800,9 @@ function init_config(populate_nft, caches_prepared, no_refresh) {
     }
     log_file_lines(runtime_log, "warn", "sing-box config generator: ");
 
-    if (!command_success_from_args([ "sing-box", "-c", temp_config, "check" ])) {
-        log_message("Generated sing-box configuration is invalid. Aborted.", "fatal");
+    let check_result = sing_box_check(temp_config, runtime_log);
+    if (check_result.status != 0) {
+        log_message("Generated sing-box configuration is invalid: " + check_result.reason + ". Aborted.", "fatal");
         remove_files([ temp_config, runtime_log ]);
         exit(1);
     }
@@ -827,6 +844,12 @@ else if (mode == "init-config")
     init_config(arg_bool(ARGV[1] || "1"), arg_bool(ARGV[2] || "0"), arg_bool(ARGV[3] || "0"));
 else if (mode == "save-config-file-fixture")
     exit(save_config_file(ARGV[1] || "", ARGV[2] || "") ? 0 : 1);
+else if (mode == "check-config-fixture") {
+    let result = sing_box_check(ARGV[1] || "", ARGV[2] || "");
+    if (result.reason != "")
+        print(result.reason, "\n");
+    exit(result.status);
+}
 else if (mode == "patch-dns-config")
     patch_dns_config(ARGV[1] || "");
 else if (mode == "restore-dns-config")
