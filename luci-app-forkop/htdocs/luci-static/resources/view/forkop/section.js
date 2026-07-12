@@ -13,6 +13,17 @@ const ACTION_PROVIDERS_AVAILABILITY_EVENT =
   main.FORKOP_ACTION_PROVIDERS_AVAILABILITY_EVENT ||
   "forkop:action-providers-availability";
 const RULE_SET_ITEM_SETTINGS_KEY = "rule_set_settings";
+const ROUTING_ACTIONS = [
+  "connection",
+  "proxy",
+  "outbound",
+  "vpn",
+  "bypass",
+  "block",
+  "zapret",
+  "zapret2",
+  "byedpi",
+];
 const CONNECTIONS_BLOCKED_INTERFACES = [
   "br-lan",
   "eth0",
@@ -96,6 +107,49 @@ function refreshOutboundDetourSectionOptionValues(option, sectionId) {
       getUciSectionLabel(targetSection),
     );
   });
+}
+
+function isDnsDetourTargetSection(section, currentSectionId) {
+  const sectionName = getUciSectionName(section);
+  const action = (section && section.action) || "";
+
+  if (
+    !sectionName ||
+    sectionName === currentSectionId ||
+    section.enabled === "0"
+  ) {
+    return false;
+  }
+
+  if (["connection", "proxy", "outbound", "vpn"].includes(action)) {
+    return true;
+  }
+  if (action === "zapret") {
+    return isZapretInstalledForUi();
+  }
+  if (action === "zapret2") {
+    return isZapret2InstalledForUi();
+  }
+  return action === "byedpi" && isByedpiInstalledForUi();
+}
+
+function refreshDnsDetourSectionOptionValues(option, sectionId) {
+  option.keylist = [];
+  option.vallist = [];
+
+  (uci.sections(UCI_PACKAGE, "section") || [])
+    .filter((section) => isDnsDetourTargetSection(section, sectionId))
+    .forEach((targetSection) => {
+      option.value(
+        getUciSectionName(targetSection),
+        getUciSectionLabel(targetSection),
+      );
+    });
+}
+
+function dependsOnRoutingAction(option) {
+  ROUTING_ACTIONS.forEach((action) => option.depends("action", action));
+  return option;
 }
 
 const ZAPRET_LEGACY_DEFAULT_NFQWS_OPT =
@@ -3374,6 +3428,8 @@ function getActionOptionLabel(action) {
       return "Bypass";
     case "connection":
       return "Connection";
+    case "dns":
+      return "DNS";
     case "vpn":
       return "VPN";
     case "zapret":
@@ -3419,6 +3475,7 @@ function populateActionOptionValues(option) {
   option.value("connection", getActionOptionLabel("connection"));
   option.value("bypass", "Bypass");
   option.value("block", "Block");
+  option.value("dns", "DNS");
   if (isZapretInstalledForUi()) {
     option.value("zapret", getActionOptionLabel("zapret"));
   }
@@ -6087,6 +6144,8 @@ function addDynamicConditionField(section, config) {
     uci.unset(UCI_PACKAGE, section_id, `${config.key}_text`);
     uci.unset(UCI_PACKAGE, section_id, `${config.key}_text_mode`);
   };
+
+  return o;
 }
 
 function addLocalDeviceSubnetDynamicField(section, config) {
@@ -6195,6 +6254,8 @@ function addTextConditionField(section, config) {
       config.afterWrite(section_id);
     }
   };
+
+  return o;
 }
 
 function loadRulesetValues(option) {
@@ -6300,6 +6361,10 @@ function writeBuiltInRulesetReferences(section_id, values) {
 
 function writeCustomRulesetReferences(section_id, values) {
   const refs = uniqueDynamicListItems(values);
+  if (getRuleResolvedAction(section_id) === "dns") {
+    writeDnsRulesetReferences(section_id, refs);
+    return;
+  }
   const subnetRefs = getConfigListValues(
     section_id,
     "rule_set_with_subnets",
@@ -6312,6 +6377,12 @@ function writeCustomRulesetReferences(section_id, values) {
     refs.filter((value) => !subnetRefSet.has(value)),
   );
   writeListOption(section_id, "rule_set_with_subnets", subnetRefs);
+  uci.unset(UCI_PACKAGE, section_id, RULE_SET_ITEM_SETTINGS_KEY);
+}
+
+function writeDnsRulesetReferences(section_id, values) {
+  writeListOption(section_id, "rule_set", uniqueDynamicListItems(values));
+  uci.unset(UCI_PACKAGE, section_id, "rule_set_with_subnets");
   uci.unset(UCI_PACKAGE, section_id, RULE_SET_ITEM_SETTINGS_KEY);
 }
 
@@ -6376,6 +6447,68 @@ function createSectionContent(section) {
       return this.cfgvalue(section_id);
     });
   };
+
+  o = section.taboption(
+    "settings",
+    form.ListValue,
+    "dns_type",
+    _("DNS protocol"),
+    _("DNS protocol used by the resolver"),
+  );
+  o.depends("action", "dns");
+  dnsTypeChoices().forEach((choice) => o.value(choice.value, choice.label));
+  o.default = "udp";
+  o.rmempty = false;
+  o.modalonly = true;
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "dns_server",
+    _("DNS server"),
+    _("DNS server used by the resolver"),
+  );
+  o.depends("action", "dns");
+  o.rmempty = false;
+  o.modalonly = true;
+  o.validate = function (_section_id, value) {
+    const normalized = `${value || ""}`.trim();
+    if (!normalized) {
+      return _("DNS server address cannot be empty");
+    }
+    const validation = main.validateDNS(normalized);
+    return validation.valid ? true : _("Enter a valid DNS server address");
+  };
+
+  o = section.taboption(
+    "settings",
+    form.Flag,
+    "dns_detour_enabled",
+    _("DNS through section"),
+    _("Route requests to this DNS server through another section."),
+  );
+  o.depends("action", "dns");
+  o.default = "0";
+  o.rmempty = false;
+  o.modalonly = true;
+
+  o = section.taboption(
+    "settings",
+    form.ListValue,
+    "dns_detour_section",
+    _("DNS requests through section"),
+  );
+  o.depends({ action: "dns", dns_detour_enabled: "1" });
+  o.rmempty = false;
+  o.modalonly = true;
+  o.load = function (section_id) {
+    refreshDnsDetourSectionOptionValues(this, section_id);
+    return uci.get(UCI_PACKAGE, section_id, "dns_detour_section") || "";
+  };
+  o.validate = function (_section_id, value) {
+    return value ? true : _("Select a section");
+  };
+
   o = section.taboption(
     "settings",
     form.TextValue,
@@ -6993,7 +7126,7 @@ function createSectionContent(section) {
     },
   });
 
-  addTextConditionField(section, {
+  const ipConditionOption = addTextConditionField(section, {
     key: "ip_cidr",
     optionName: "ip_cidr",
     legacyTextOptionName: "ip_cidr_text",
@@ -7001,13 +7134,14 @@ function createSectionContent(section) {
     description: _("Match destination IPs or subnets"),
     textAnalyze: analyzeIpCidrText,
   });
+  dependsOnRoutingAction(ipConditionOption);
 
   const builtInRulesetOption = section.taboption(
     "conditions",
     form.DynamicList,
     "community_lists",
     _("Built-in rule sets"),
-    _("Select a predefined list for routing"),
+    _("Select a predefined domain list"),
   );
   builtInRulesetOption.modalonly = true;
   builtInRulesetOption.placeholder = _("Service list");
@@ -7107,9 +7241,12 @@ function createSectionContent(section) {
     SettingsDynamicList,
     "rule_set",
     _("Rule sets"),
-    _("Add URLs or local paths to .srs / .json lists"),
+    _(
+      "Add URLs or local paths to .srs / .json lists. Only domain rules are supported.",
+    ),
   );
   ruleSetOption.modalonly = true;
+  dependsOnRoutingAction(ruleSetOption);
   ruleSetOption.renderItemSettingsModal = showRuleSetSettingsModal;
   ruleSetOption.load = function (section_id) {
     return getCustomRulesetReferences(section_id);
@@ -7126,12 +7263,38 @@ function createSectionContent(section) {
     return validateCustomRulesetReference(value);
   };
 
+  const dnsRuleSetOption = section.taboption(
+    "conditions",
+    form.DynamicList,
+    "_dns_rule_set",
+    _("Rule sets"),
+    _(
+      "Add URLs or local paths to .srs / .json lists. Only domain rules are supported.",
+    ),
+  );
+  dnsRuleSetOption.depends("action", "dns");
+  dnsRuleSetOption.modalonly = true;
+  dnsRuleSetOption.load = function (section_id) {
+    return getCustomRulesetReferences(section_id);
+  };
+  dnsRuleSetOption.write = function (section_id, value) {
+    writeDnsRulesetReferences(section_id, value);
+  };
+  dnsRuleSetOption.remove = function (section_id) {
+    writeDnsRulesetReferences(section_id, []);
+  };
+  dnsRuleSetOption.validate = function (_section_id, value) {
+    return validateCustomRulesetReference(value);
+  };
+
   const domainIpListsOption = section.taboption(
     "conditions",
     form.DynamicList,
     "domain_ip_lists",
-    _("Domain and IP Lists"),
-    _("Add URLs or local paths to .lst lists"),
+    _("Domain lists"),
+    _(
+      "Add URLs or local paths to .lst lists. Only domain rules are supported.",
+    ),
   );
   domainIpListsOption.modalonly = true;
   domainIpListsOption.load = function (section_id) {
@@ -7141,28 +7304,31 @@ function createSectionContent(section) {
     return validatePlainListReference(value);
   };
 
-  addLocalDeviceSubnetDynamicField(section, {
+  const sourceIpOption = addLocalDeviceSubnetDynamicField(section, {
     key: "source_ip_cidr",
     label: _("Device filter"),
     description: _(
       "Apply section rules only to the specified local IP addresses",
     ),
   });
+  dependsOnRoutingAction(sourceIpOption);
 
-  addLocalDeviceSubnetDynamicField(section, {
+  const fullyRoutedOption = addLocalDeviceSubnetDynamicField(section, {
     key: "fully_routed_ips",
     label: _("Forced device routing"),
     description: _(
       "All traffic from these IP addresses will be routed through the section unconditionally, ignoring all other conditions.",
     ),
   });
+  dependsOnRoutingAction(fullyRoutedOption);
 
-  addDynamicConditionField(section, {
+  const portsOption = addDynamicConditionField(section, {
     key: "ports",
     label: _("Ports"),
     description: _("Match destination ports. Use a single port or a range"),
     dynamicValidate: validatePortCondition,
   });
+  dependsOnRoutingAction(portsOption);
 }
 
 function loadSectionTableOptions(sectionRef) {

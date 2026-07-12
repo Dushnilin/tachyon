@@ -664,8 +664,13 @@ function has_community_subnet_list(value) {
     return rule_config.has_community_subnet_list(value);
 }
 
-function rule_has_list_update_source(enabled, community_lists, remote_domain_lists, remote_subnet_lists, rule_set_with_subnets, domain_ip_lists) {
-    return arg_bool(enabled) && (
+function rule_has_list_update_source(enabled, action, community_lists, remote_domain_lists, remote_subnet_lists, rule_set_with_subnets, domain_ip_lists) {
+    if (!arg_bool(enabled))
+        return false;
+    if (as_string(action) == "dns")
+        return list_has_remote_references(domain_ip_lists);
+
+    return (
         has_community_subnet_list(community_lists) ||
         as_string(remote_domain_lists) != "" ||
         as_string(remote_subnet_lists) != "" ||
@@ -674,8 +679,11 @@ function rule_has_list_update_source(enabled, community_lists, remote_domain_lis
     );
 }
 
-function rule_has_nft_list_update_source(enabled, community_lists, remote_subnet_lists, rule_set_with_subnets, domain_ip_lists) {
-    return arg_bool(enabled) && (
+function rule_has_nft_list_update_source(enabled, action, community_lists, remote_subnet_lists, rule_set_with_subnets, domain_ip_lists) {
+    if (!arg_bool(enabled) || as_string(action) == "dns")
+        return false;
+
+    return (
         has_community_subnet_list(community_lists) ||
         as_string(remote_subnet_lists) != "" ||
         as_string(rule_set_with_subnets) != "" ||
@@ -873,7 +881,10 @@ function nft_runtime_signature_body(settings, sections) {
         if (name == "" || !bool_option(section, "enabled", true))
             continue;
 
-        body = signature_add_value(body, "rule." + name + ".action", option(section, "action", ""));
+        let action = option(section, "action", "");
+        body = signature_add_value(body, "rule." + name + ".action", action);
+        if (action == "dns")
+            continue;
         body = signature_add_value(body, "rule." + name + ".ip_cidr", section_rule_condition_csv(section, "ip_cidr", "subnets"));
         body = signature_add_value(body, "rule." + name + ".source_ip_cidr", section_rule_condition_csv(section, "source_ip_cidr", "subnets"));
         body = signature_add_value(body, "rule." + name + ".ports", section_rule_ports_csv(section));
@@ -1046,6 +1057,13 @@ function append_list_update_signature_body(body, section) {
     if (name == "" || !bool_option(section, "enabled", true))
         return body;
 
+    let action = option(section, "action", "");
+    body = signature_add_value(body, "lists." + name + ".action", action);
+    if (action == "dns") {
+        body = signature_add_value(body, "lists." + name + ".domain_ip_lists", option(section, "domain_ip_lists", ""));
+        return body;
+    }
+
     body = signature_add_value(body, "lists." + name + ".ports", section_rule_ports_csv(section));
     body = signature_add_value(body, "lists." + name + ".community_subnet_lists", rule_config.filter_community_subnet_lists_value(connections.community_lists_value(section)));
     body = signature_add_value(body, "lists." + name + ".remote_domain_lists", option(section, "remote_domain_lists", ""));
@@ -1212,18 +1230,28 @@ function append_sing_box_rule_signature_body(body, section, sections) {
     else if (action == "zapret" || action == "zapret2") {
         body = signature_add_mixed_proxy_body(body, section, prefix);
     }
+    else if (action == "dns") {
+        body = signature_add_value(body, prefix + ".dns_type", option(section, "dns_type", "udp"));
+        body = signature_add_value(body, prefix + ".dns_server", option(section, "dns_server", ""));
+        body = signature_add_value(body, prefix + ".dns_detour_enabled", bool_option_value(section, "dns_detour_enabled", false));
+        if (bool_option(section, "dns_detour_enabled", false))
+            body = signature_add_value(body, prefix + ".dns_detour_section", option(section, "dns_detour_section", ""));
+    }
 
     body = signature_add_value(body, prefix + ".domain", section_rule_condition_csv(section, "domain", "domains"));
     body = signature_add_value(body, prefix + ".domain_suffix", section_rule_condition_csv(section, "domain_suffix", "domains"));
     body = signature_add_value(body, prefix + ".domain_keyword", section_rule_condition_csv(section, "domain_keyword", "generic"));
     body = signature_add_value(body, prefix + ".domain_regex", section_rule_condition_csv(section, "domain_regex", "generic"));
-    body = signature_add_value(body, prefix + ".ip_cidr", section_rule_condition_csv(section, "ip_cidr", "subnets"));
-    body = signature_add_value(body, prefix + ".source_ip_cidr", section_rule_condition_csv(section, "source_ip_cidr", "subnets"));
-    body = signature_add_value(body, prefix + ".ports", section_rule_ports_csv(section));
-    body = signature_add_value(body, prefix + ".fully_routed_ips", option(section, "fully_routed_ips", ""));
+    if (action != "dns") {
+        body = signature_add_value(body, prefix + ".ip_cidr", section_rule_condition_csv(section, "ip_cidr", "subnets"));
+        body = signature_add_value(body, prefix + ".source_ip_cidr", section_rule_condition_csv(section, "source_ip_cidr", "subnets"));
+        body = signature_add_value(body, prefix + ".ports", section_rule_ports_csv(section));
+        body = signature_add_value(body, prefix + ".fully_routed_ips", option(section, "fully_routed_ips", ""));
+    }
     body = signature_add_value(body, prefix + ".community_lists", connections.community_lists_value(section));
     body = signature_add_value(body, prefix + ".rule_set", connections.rule_sets_value(section));
-    body = signature_add_value(body, prefix + ".rule_set_with_subnets", connections.rule_sets_with_subnets_value(section));
+    if (action != "dns")
+        body = signature_add_value(body, prefix + ".rule_set_with_subnets", connections.rule_sets_with_subnets_value(section));
     body = signature_add_value(body, prefix + ".domain_ip_lists", option(section, "domain_ip_lists", ""));
 
     return body;
@@ -1555,6 +1583,7 @@ function has_list_update_sources_from_sections(sections) {
     for (let section in sections)
         if (rule_has_list_update_source(
             bool_option(section, "enabled", true),
+            option(section, "action", ""),
             connections.community_lists_value(section),
             option(section, "remote_domain_lists", ""),
             option(section, "remote_subnet_lists", ""),
@@ -1570,6 +1599,7 @@ function has_nft_list_update_sources_from_sections(sections) {
     for (let section in sections)
         if (rule_has_nft_list_update_source(
             bool_option(section, "enabled", true),
+            option(section, "action", ""),
             connections.community_lists_value(section),
             option(section, "remote_subnet_lists", ""),
             connections.rule_sets_with_subnets_value(section),
@@ -1783,9 +1813,9 @@ else if (mode == "community-service-has-subnet-list")
 else if (mode == "filter-community-subnet-lists")
     filter_community_subnet_lists(ARGV[1]);
 else if (mode == "rule-has-list-update-source")
-    exit(rule_has_list_update_source(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5], ARGV[6]) ? 0 : 1);
+    exit(rule_has_list_update_source(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5], ARGV[6], ARGV[7]) ? 0 : 1);
 else if (mode == "rule-has-nft-list-update-source")
-    exit(rule_has_nft_list_update_source(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5]) ? 0 : 1);
+    exit(rule_has_nft_list_update_source(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5], ARGV[6]) ? 0 : 1);
 else if (mode == "rule-has-subscription-update-source")
     exit(rule_has_subscription_update_source(ARGV[1], ARGV[2]) ? 0 : 1);
 else if (mode == "service-trigger-signature")

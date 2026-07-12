@@ -457,6 +457,16 @@ cat >"$WORK_DIR/populate-fixture.json" <<'JSON'
       "action": "proxy",
       "domain_suffix": [ "example.org" ],
       "ports": [ "8443" ]
+    },
+    {
+      ".name": "dns_only",
+      ".type": "section",
+      "enabled": "1",
+      "action": "dns",
+      "domain_suffix": [ "dns-only.example" ],
+      "ip_cidr": [ "192.0.2.53" ],
+      "ports": [ "5353" ],
+      "fully_routed_ips": [ "192.168.1.53/32" ]
     }
   ]
 }
@@ -553,6 +563,9 @@ if grep -Fq '192.0.2.2' "$NFT_LOG"; then
 fi
 if grep -Fq $'nft\tadd\telement\tinet\tForkopTable\tforkop_rule_ports_with_domain_ports\t{ 8443 }' "$NFT_LOG"; then
   fail "ports with destination matchers should not populate global port set"
+fi
+if grep -Fq '192.0.2.53' "$NFT_LOG" || grep -Fq '192.168.1.53' "$NFT_LOG" || grep -Fq 'forkop_rule_dns_only' "$NFT_LOG"; then
+  fail "DNS action should not populate nft sets or fully routed rules"
 fi
 if [ "$(grep -F $'ip\tsaddr\t192.168.1.20/32' "$NFT_LOG" | wc -l | tr -d ' ')" != "3" ]; then
   fail "duplicate fully routed source should insert exactly one tcp/udp/local rule set"
@@ -717,7 +730,7 @@ nft_ucode nft-populate-runtime-sets-fixture "$WORK_DIR/populate-fixture.json" 0 
 
 : > "$NFT_LOG"
 NFT_MANGLE_CHAIN_OUTPUT='ip saddr 192.168.1.20 meta l4proto tcp meta mark set 0x00100000 counter' \
-  nft_ucode nft-populate-runtime-sets-fixture "$WORK_DIR/populate-fixture.json" 1 "disabled deferred inline inline_no_ports ports_only ports_with_domain" ForkopTable forkop_subnets forkop_ports forkop_ip_ports forkop_interfaces localv4 0x00100000
+  nft_ucode nft-populate-runtime-sets-fixture "$WORK_DIR/populate-fixture.json" 1 "disabled deferred inline inline_no_ports ports_only ports_with_domain dns_only" ForkopTable forkop_subnets forkop_ports forkop_ip_ports forkop_interfaces localv4 0x00100000
 if grep -Fq $'nft\tinsert\trule' "$NFT_LOG"; then
   fail "existing nft-normalized /32 fully routed source should not insert"
 fi

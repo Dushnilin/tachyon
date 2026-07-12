@@ -323,6 +323,66 @@ cat >"$WORK_DIR/runtime-matchers-fixture.json" <<'JSON'
 }
 JSON
 
+cat >"$WORK_DIR/dns-action.lst" <<'EOF_DNS_ACTION_LIST'
+list-dns.example
+198.51.100.0/24
+EOF_DNS_ACTION_LIST
+cat >"$WORK_DIR/dns-action-fixture.json" <<JSON
+{
+  "settings": {
+    ".name": "settings",
+    ".type": "settings",
+    "config_path": "/tmp/sing-box/config.json",
+    "dns_server": "1.1.1.1",
+    "service_listen_address": "127.0.0.1"
+  },
+  "section": [
+    {
+      ".name": "dns_first",
+      ".type": "section",
+      "enabled": "1",
+      "action": "dns",
+      "dns_type": "dot",
+      "dns_server": "9.9.9.9:5353",
+      "dns_detour_enabled": "1",
+      "dns_detour_section": "detour",
+      "domain_suffix": [ "dns-first.example" ],
+      "community_lists": [ "youtube" ],
+      "rule_set": [ "https://example.com/domain-only.srs" ],
+      "domain_ip_lists": [ "$WORK_DIR/dns-action.lst" ],
+      "ip_cidr": [ "203.0.113.0/24" ],
+      "source_ip_cidr": [ "192.0.2.1/32" ],
+      "fully_routed_ips": [ "192.0.2.2/32" ],
+      "ports": [ "443" ]
+    },
+    {
+      ".name": "proxy",
+      ".type": "section",
+      "enabled": "1",
+      "action": "connection",
+      "outbound_jsons": [ "{\"type\":\"direct\"}" ],
+      "domain_suffix": [ "dns-first.example", "proxy-first.example" ]
+    },
+    {
+      ".name": "dns_second",
+      ".type": "section",
+      "enabled": "1",
+      "action": "dns",
+      "dns_server": "8.8.8.8",
+      "domain_suffix": [ "proxy-first.example" ]
+    },
+    {
+      ".name": "detour",
+      ".type": "section",
+      "enabled": "1",
+      "action": "connection",
+      "outbound_jsons": [ "{\"type\":\"direct\"}" ],
+      "domain_suffix": [ "detour.example" ]
+    }
+  ]
+}
+JSON
+
 cat >"$WORK_DIR/urltest-filter-fixture.json" <<'JSON'
 {
   "settings": {
@@ -904,6 +964,7 @@ generate_config "$WORK_DIR/disabled-updates-fixture.json" "$WORK_DIR/disabled.js
 generate_config "$WORK_DIR/default-updates-fixture.json" "$WORK_DIR/default.json"
 generate_config "$WORK_DIR/server-inbound-fixture.json" "$WORK_DIR/server.json"
 generate_config "$WORK_DIR/runtime-matchers-fixture.json" "$WORK_DIR/matchers.json"
+generate_config "$WORK_DIR/dns-action-fixture.json" "$WORK_DIR/dns-action.json"
 generate_config "$WORK_DIR/urltest-filter-fixture.json" "$WORK_DIR/urltest.json"
 generate_config "$WORK_DIR/provider-actions-fixture.json" "$WORK_DIR/providers.json"
 generate_config "$WORK_DIR/manual-transport-fixture.json" "$WORK_DIR/manual.json"
@@ -1036,6 +1097,14 @@ function dns_rule(config, predicate) {
     return null;
 }
 
+function dns_rule_index(config, predicate) {
+    let rules = config.dns.rules || [];
+    for (let i = 0; i < length(rules); i++)
+        if (rules[i] && predicate(rules[i]))
+            return i;
+    return -1;
+}
+
 function dns_server(config, predicate) {
     for (let server in config.dns.servers || [])
         if (server && predicate(server))
@@ -1086,6 +1155,27 @@ assert(route_rule(matchers, r => r.outbound == "proxy-out" && contains(r.domain_
 assert(route_rule(matchers, r => contains(r.inbound, "tproxy-in") && contains(r.inbound, "tproxy6-in") && r.outbound == "proxy-out") != null, "section route dual tproxy inbound");
 assert(route_rule(matchers, r => r.outbound == "direct-out" && contains(r.source_ip_cidr, "192.168.1.5/32")) == null, "routing excluded source removed");
 assert(route_rule(matchers, r => r.outbound == "proxy-out" && contains(r.source_ip_cidr, "10.0.0.2/32") && contains(r.source_ip_cidr, "2001:db8::2/128")) != null, "source_ip_cidr matcher");
+
+let dns_action = cfg("dns-action");
+let dns_first_server = dns_server(dns_action, r => r.tag == "dns_first-dns-server");
+assert(dns_first_server && dns_first_server.type == "tls" && dns_first_server.server == "9.9.9.9" && dns_first_server.server_port == 5353, "DNS action protocol and server");
+assert(dns_first_server.detour == "detour-out", "DNS action detour");
+assert(dns_server(dns_action, r => r.tag == "dns_second-dns-server" && r.server == "8.8.8.8") != null, "second DNS action server");
+assert(outbound(dns_action, "dns_first-out") == null && outbound(dns_action, "dns_second-out") == null, "DNS actions do not create outbounds");
+assert(route_rule(dns_action, r => contains(r.domain_suffix, "dns-first.example") && r.outbound != null) != null, "proxy still owns its route rule");
+assert(route_rule(dns_action, r => contains(r.domain_suffix, "list-dns.example")) == null, "DNS action does not create route rules");
+let dns_first_index = dns_rule_index(dns_action, r => contains(r.domain_suffix, "dns-first.example") && r.server == "dns_first-dns-server");
+let proxy_after_dns_index = dns_rule_index(dns_action, r => contains(r.domain_suffix, "dns-first.example") && r.server == "fakeip-server");
+assert(dns_first_index >= 0 && proxy_after_dns_index > dns_first_index, "higher DNS action wins over lower proxy DNS rule");
+let proxy_first_index = dns_rule_index(dns_action, r => contains(r.domain_suffix, "proxy-first.example") && r.server == "fakeip-server");
+let dns_after_proxy_index = dns_rule_index(dns_action, r => contains(r.domain_suffix, "proxy-first.example") && r.server == "dns_second-dns-server");
+assert(proxy_first_index >= 0 && dns_after_proxy_index > proxy_first_index, "higher proxy DNS rule wins over lower DNS action");
+assert(dns_rule(dns_action, r => contains(r.rule_set, "dns_first-youtube-community-ruleset") && r.server == "dns_first-dns-server") != null, "DNS action built-in domain rule set");
+let dns_custom_ruleset = ruleset_url(dns_action, "https://example.com/domain-only.srs");
+assert(dns_custom_ruleset && dns_rule(dns_action, r => contains(r.rule_set, dns_custom_ruleset.tag) && r.server == "dns_first-dns-server") != null, "DNS action custom domain rule set");
+let dns_list = json(fs.readfile(dir + "/dns-action.json.rulesets/dns_first-lists-ruleset.json"));
+assert(index(sprintf("%J", dns_list), "list-dns.example") >= 0, "DNS action imports domains from plain lists");
+assert(index(sprintf("%J", dns_list), "198.51.100.0/24") < 0, "DNS action drops subnets from plain lists");
 
 let urltest = cfg("urltest");
 let urltest_out = outbound(urltest, "proxy-urltest-out");

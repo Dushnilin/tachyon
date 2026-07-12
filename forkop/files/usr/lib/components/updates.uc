@@ -576,7 +576,12 @@ function rule_has_list_update_source(section) {
     if (rule_config == null)
         rule_config = require("config.rule");
 
-    return bool_option(section, "enabled", true) && (
+    if (!bool_option(section, "enabled", true))
+        return false;
+    if (option(section, "action", "") == "dns")
+        return list_has_remote_references(option(section, "domain_ip_lists", ""));
+
+    return (
         rule_config.has_community_subnet_list(connections.community_lists_value(section)) ||
         option(section, "remote_domain_lists", "") != "" ||
         option(section, "remote_subnet_lists", "") != "" ||
@@ -2051,11 +2056,12 @@ function import_domain_ip_list_file_into_rulesets(filepath, section) {
 
     let ruleset_filepath = domain_ip_list_ruleset_path(section);
     let ok = nft_module_success([ "split-domain-subnet-file", filepath, domains_tmpfile, subnets_tmpfile ]);
+    let domains_only = option(section, "action", "") == "dns";
     if (ok)
         ok = ruleset_module_success([ "import-plain-list", domains_tmpfile, ruleset_filepath, "domain_suffix", "domains", "5000" ]);
-    if (ok)
+    if (ok && !domains_only)
         ok = ruleset_module_success([ "import-plain-list", subnets_tmpfile, ruleset_filepath, "ip_cidr", "subnets", "5000" ]);
-    if (ok)
+    if (ok && !domains_only)
         ok = add_plain_subnet_file_to_nft_for_section(section, subnets_tmpfile);
 
     remove_files([ domains_tmpfile, subnets_tmpfile ]);
@@ -2106,6 +2112,8 @@ function rebuild_domain_ip_lists_from_rule(section, settings) {
 
 function import_builtin_subnets_from_rule(section, settings) {
     if (!bool_option(section, "enabled", true))
+        return true;
+    if (option(section, "action", "") == "dns")
         return true;
 
     let ok = true;
@@ -2217,6 +2225,8 @@ function import_custom_ruleset_subnets_from_remote(url, format, section, label, 
 
 function import_rule_sets_with_subnets_from_rule(section, settings) {
     if (!bool_option(section, "enabled", true))
+        return true;
+    if (option(section, "action", "") == "dns")
         return true;
 
     let references = connections.rule_sets_with_subnets(section);
