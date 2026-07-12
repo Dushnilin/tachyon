@@ -5,6 +5,9 @@ REPO_OWNER="ushan0v"
 REPO_NAME="forkop"
 
 REQUIRED_SPACE_KB=15360
+CONNECT_TIMEOUT_SECONDS=15
+METADATA_TIMEOUT_SECONDS=60
+DOWNLOAD_TIMEOUT_SECONDS=600
 
 PKG_IS_APK=0
 FETCHER=""
@@ -119,10 +122,10 @@ detect_fetcher() {
 http_get() {
     case "$FETCHER" in
         wget)
-            wget -qO- "$1"
+            wget -T "$METADATA_TIMEOUT_SECONDS" -t 1 -qO- "$1"
             ;;
         curl)
-            curl -fsSL "$1"
+            curl --connect-timeout "$CONNECT_TIMEOUT_SECONDS" --max-time "$METADATA_TIMEOUT_SECONDS" -fsSL "$1"
             ;;
         *)
             return 1
@@ -2466,10 +2469,10 @@ install_json_ucode() {
 download_file_once() {
     case "$FETCHER" in
         wget)
-            wget -q -O "$2" "$1"
+            wget -T "$DOWNLOAD_TIMEOUT_SECONDS" -t 1 -q -O "$2" "$1"
             ;;
         curl)
-            curl -fsSL "$1" -o "$2"
+            curl --connect-timeout "$CONNECT_TIMEOUT_SECONDS" --max-time "$DOWNLOAD_TIMEOUT_SECONDS" -fsSL "$1" -o "$2"
             ;;
         *)
             return 1

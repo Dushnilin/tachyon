@@ -20,6 +20,15 @@ fail() {
 
 [ -r "$INSTALLER" ] || fail "install.sh is missing"
 
+grep -Fq 'wget -T "$METADATA_TIMEOUT_SECONDS" -t 1 -qO-' "$INSTALLER" ||
+  fail "installer wget metadata requests must have a timeout and no hidden retries"
+grep -Fq 'wget -T "$DOWNLOAD_TIMEOUT_SECONDS" -t 1 -q -O' "$INSTALLER" ||
+  fail "installer wget downloads must have a timeout and no hidden retries"
+grep -Fq 'curl --connect-timeout "$CONNECT_TIMEOUT_SECONDS" --max-time "$METADATA_TIMEOUT_SECONDS"' "$INSTALLER" ||
+  fail "installer curl metadata requests must have connect and total timeouts"
+grep -Fq 'curl --connect-timeout "$CONNECT_TIMEOUT_SECONDS" --max-time "$DOWNLOAD_TIMEOUT_SECONDS"' "$INSTALLER" ||
+  fail "installer curl downloads must have connect and total timeouts"
+
 if grep -n -E '(^|[;&|[:space:]])uci[[:space:]]+-q|command_exists[[:space:]]+uci|/usr/bin/uci' "$INSTALLER" >/dev/null; then
   fail "install.sh must not own UCI reads/writes through shell"
 fi
