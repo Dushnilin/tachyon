@@ -266,6 +266,7 @@ fi
 legacy_config="$WORK_DIR/legacy-config"
 legacy_config_alt="$WORK_DIR/legacy-config-alt"
 legacy_persistent="$WORK_DIR/legacy-persistent"
+forkop_persistent="$WORK_DIR/forkop-persistent"
 legacy_runtime="$WORK_DIR/legacy-runtime"
 legacy_tmp="$WORK_DIR/legacy-tmp"
 legacy_tmp_alt="$WORK_DIR/legacy-tmp-alt"
@@ -286,7 +287,14 @@ legacy_scan_root="$WORK_DIR/legacy-scan-root"
 legacy_nested_uci="$legacy_scan_root/.uci/${LEGACY_BACKEND}"
 legacy_nested_lock="$legacy_scan_root/lock/procd_${LEGACY_BACKEND}.lock"
 legacy_nested_backup="$legacy_scan_root/audit/${LEGACY_BACKEND}.config"
-mkdir -p "$legacy_persistent" "$legacy_runtime" "$legacy_tmp" "$legacy_tmp_alt"
+mkdir -p \
+  "$legacy_persistent/tailscale/server-new" \
+  "$legacy_persistent/tailscale/server-existing" \
+  "$forkop_persistent/tailscale/server-existing" \
+  "$legacy_runtime" "$legacy_tmp" "$legacy_tmp_alt"
+printf '%s\n' 'legacy-node-identity' >"$legacy_persistent/tailscale/server-new/node.key"
+printf '%s\n' 'stale-legacy-identity' >"$legacy_persistent/tailscale/server-existing/node.key"
+printf '%s\n' 'current-forkop-identity' >"$forkop_persistent/tailscale/server-existing/node.key"
 mkdir -p "$(dirname "$legacy_nested_uci")" "$(dirname "$legacy_nested_lock")" "$(dirname "$legacy_nested_backup")"
 touch "$legacy_config" "$legacy_config_alt" "$legacy_config-opkg"
 touch \
@@ -312,6 +320,7 @@ FORKOP_INSTALLER_LEGACY_CONFIG_ALT="$LEGACY_CONFIG_ALT" \
 FORKOP_INSTALLER_LEGACY_CONFIG="$legacy_config" \
 FORKOP_INSTALLER_LEGACY_CONFIG_FILE_ALT="$legacy_config_alt" \
 FORKOP_INSTALLER_LEGACY_PERSISTENT_DIR="$legacy_persistent" \
+FORKOP_INSTALLER_PERSISTENT_DIR="$forkop_persistent" \
 FORKOP_INSTALLER_LEGACY_RUNTIME_DIR="$legacy_runtime" \
 FORKOP_INSTALLER_LEGACY_TMP_DIR="$legacy_tmp" \
 FORKOP_INSTALLER_LEGACY_TMP_ALT_DIR="$legacy_tmp_alt" \
@@ -330,6 +339,10 @@ FORKOP_INSTALLER_LEGACY_BASE_I18N="$legacy_base_i18n" \
 FORKOP_INSTALLER_LEGACY_TMP_PACKAGE_GLOB="$WORK_DIR/*${LEGACY_BRAND}*" \
 FORKOP_INSTALLER_LEGACY_SCAN_ROOTS="$legacy_scan_root" \
   ucode "$helper" installer-finalize-legacy
+[ "$(cat "$forkop_persistent/tailscale/server-new/node.key")" = 'legacy-node-identity' ] ||
+  fail "installer finalization must migrate legacy Tailscale node identity"
+[ "$(cat "$forkop_persistent/tailscale/server-existing/node.key")" = 'current-forkop-identity' ] ||
+  fail "installer finalization must not overwrite existing Forkop Tailscale state"
 for path in "$legacy_config" "$legacy_config_alt" "$legacy_config-opkg" \
   "$legacy_persistent" "$legacy_runtime" "$legacy_tmp" "$legacy_tmp_alt" \
   "$legacy_base_config.backup" "$legacy_base_persistent.cache" \
@@ -341,6 +354,40 @@ for path in "$legacy_config" "$legacy_config_alt" "$legacy_config-opkg" \
   "$legacy_nested_backup"; do
   [ ! -e "$path" ] || fail "installer finalization left a legacy path behind: $path"
 done
+
+mkdir -p "$legacy_persistent/tailscale/server-failed"
+printf '%s\n' 'preserve-on-failure' >"$legacy_persistent/tailscale/server-failed/node.key"
+forkop_persistent_file="$WORK_DIR/forkop-persistent-file"
+touch "$forkop_persistent_file"
+if FORKOP_INSTALLER_LEGACY_BRAND="$LEGACY_BRAND" \
+  FORKOP_INSTALLER_LEGACY_BACKEND="$LEGACY_BACKEND" \
+  FORKOP_INSTALLER_LEGACY_CONFIG_ALT="$LEGACY_CONFIG_ALT" \
+  FORKOP_INSTALLER_LEGACY_CONFIG="$legacy_config" \
+  FORKOP_INSTALLER_LEGACY_CONFIG_FILE_ALT="$legacy_config_alt" \
+  FORKOP_INSTALLER_LEGACY_PERSISTENT_DIR="$legacy_persistent" \
+  FORKOP_INSTALLER_PERSISTENT_DIR="$forkop_persistent_file" \
+  FORKOP_INSTALLER_LEGACY_RUNTIME_DIR="$legacy_runtime" \
+  FORKOP_INSTALLER_LEGACY_TMP_DIR="$legacy_tmp" \
+  FORKOP_INSTALLER_LEGACY_TMP_ALT_DIR="$legacy_tmp_alt" \
+  FORKOP_INSTALLER_LEGACY_BASE_CONFIG="$legacy_base_config" \
+  FORKOP_INSTALLER_LEGACY_BASE_PERSISTENT_DIR="$legacy_base_persistent" \
+  FORKOP_INSTALLER_LEGACY_BASE_RUNTIME_DIR="$legacy_base_runtime" \
+  FORKOP_INSTALLER_LEGACY_BASE_TMP_DIR="$legacy_base_tmp" \
+  FORKOP_INSTALLER_LEGACY_BASE_INIT="$legacy_base_init" \
+  FORKOP_INSTALLER_LEGACY_BASE_BIN="$legacy_base_bin" \
+  FORKOP_INSTALLER_LEGACY_BASE_LIB="$legacy_base_lib" \
+  FORKOP_INSTALLER_LEGACY_BASE_UCI_DEFAULTS="$legacy_base_uci_defaults" \
+  FORKOP_INSTALLER_LEGACY_BASE_LUCI_VIEW="$legacy_base_luci_view" \
+  FORKOP_INSTALLER_LEGACY_BASE_MENU_JSON="$legacy_base_menu" \
+  FORKOP_INSTALLER_LEGACY_BASE_ACL_JSON="$legacy_base_acl" \
+  FORKOP_INSTALLER_LEGACY_BASE_I18N="$legacy_base_i18n" \
+  FORKOP_INSTALLER_LEGACY_TMP_PACKAGE_GLOB="$WORK_DIR/missing-${LEGACY_BRAND}*" \
+  FORKOP_INSTALLER_LEGACY_SCAN_ROOTS="$legacy_scan_root" \
+    ucode "$helper" installer-finalize-legacy >/dev/null 2>&1; then
+  fail "installer finalization must fail when legacy Tailscale state cannot be migrated"
+fi
+[ "$(cat "$legacy_persistent/tailscale/server-failed/node.key")" = 'preserve-on-failure' ] ||
+  fail "failed Tailscale migration must preserve the legacy identity"
 
 write_fake_service_init "$WORK_DIR/forkop-init"
 touch "$WORK_DIR/luci-indexcache.one" "$WORK_DIR/luci-indexcache.two"

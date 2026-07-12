@@ -417,6 +417,7 @@ function env(name, fallback) {
 const INSTALLER_FORKOP_INIT = env("FORKOP_INSTALLER_INIT", "/etc/init.d/forkop");
 const INSTALLER_FORKOP_BIN = env("FORKOP_INSTALLER_BIN", "/usr/bin/forkop");
 const INSTALLER_FORKOP_LIB = env("FORKOP_INSTALLER_LIB", "/usr/lib/forkop");
+const INSTALLER_FORKOP_PERSISTENT_DIR = env("FORKOP_INSTALLER_PERSISTENT_DIR", "/etc/forkop");
 const INSTALLER_FORKOP_UCI_DEFAULTS = env("FORKOP_INSTALLER_UCI_DEFAULTS", "/etc/uci-defaults/50_luci-forkop");
 const INSTALLER_FORKOP_LUCI_VIEW = env("FORKOP_INSTALLER_LUCI_VIEW", "/www/luci-static/resources/view/forkop");
 const INSTALLER_MENU_JSON = env("FORKOP_INSTALLER_MENU_JSON", "/usr/share/luci/menu.d/luci-app-forkop.json");
@@ -758,6 +759,33 @@ function installer_cleanup_legacy() {
 function installer_finalize_legacy() {
     if (LEGACY_BRAND == "")
         return false;
+
+    let legacy_tailscale_dir = INSTALLER_LEGACY_PERSISTENT_DIR + "/tailscale";
+    if (path_exists(legacy_tailscale_dir)) {
+        let entries = fs.lsdir(legacy_tailscale_dir);
+        let forkop_tailscale_dir = INSTALLER_FORKOP_PERSISTENT_DIR + "/tailscale";
+        if (type(entries) != "array" || !run_args([ "mkdir", "-p", forkop_tailscale_dir ])) {
+            warn("Failed to prepare legacy Tailscale state migration; the legacy directory was preserved.\n");
+            return false;
+        }
+
+        for (let entry in entries) {
+            entry = as_string(entry);
+            let source = legacy_tailscale_dir + "/" + entry;
+            let target = forkop_tailscale_dir + "/" + entry;
+            if (path_exists(target))
+                continue;
+
+            let temporary = forkop_tailscale_dir + "/." + entry + ".forkop-migrate";
+            if (!remove_path(temporary) ||
+                !run_args([ "cp", "-a", source, temporary ]) ||
+                !run_args([ "mv", temporary, target ])) {
+                remove_path(temporary);
+                warn("Failed to migrate legacy Tailscale state; the legacy directory was preserved.\n");
+                return false;
+            }
+        }
+    }
 
     let cleaned = true;
     for (let path in [
