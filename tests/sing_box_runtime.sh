@@ -94,6 +94,26 @@ stable_variant="$({
 [ ! -s "$WORK_DIR/stable-variant.stderr" ] ||
   fail "stable sing-box variant detection must not emit ucode runtime errors"
 
+mkdir -p "$WORK_DIR/check-bin"
+cat >"$WORK_DIR/check-bin/sing-box" <<'EOF_SING_BOX_CHECK'
+#!/bin/sh
+printf '\n' >&2
+printf '%s\n' 'FATAL[0000] route: missing outbound tag' >&2
+exit 42
+EOF_SING_BOX_CHECK
+chmod +x "$WORK_DIR/check-bin/sing-box"
+: >"$WORK_DIR/invalid-config.json"
+if PATH="$WORK_DIR/check-bin:$PATH" \
+  ucode -L "$FORKOP_LIB" "$SINGBOX_RUNTIME_UC" check-config-fixture \
+  "$WORK_DIR/invalid-config.json" "$WORK_DIR/sing-box-check.log" \
+  >"$WORK_DIR/sing-box-check.reason"; then
+  fail "singbox/runtime.uc check fixture should preserve a failed sing-box status"
+fi
+[ "$(cat "$WORK_DIR/sing-box-check.reason")" = 'FATAL[0000] route: missing outbound tag' ] ||
+  fail "singbox/runtime.uc must return the first non-empty sing-box check diagnostic"
+grep -Fq 'Generated sing-box configuration is invalid: " + check_result.reason' "$SINGBOX_RUNTIME_UC" ||
+  fail "generated config failure must include the captured sing-box check diagnostic"
+
 mkdir -p "$WORK_DIR/etc" "$WORK_DIR/tmp"
 printf 'old config\n' >"$WORK_DIR/etc/config.json"
 printf 'new config\n' >"$WORK_DIR/tmp/config.json"
