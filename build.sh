@@ -34,8 +34,8 @@ APP_DESCRIPTION="Rule-based Tachyon LuCI app with hybrid sing-box + zapret orche
 I18N_DESCRIPTION="Translation for luci-app-tachyon - Русский (Russian)"
 MAINTAINER="Dushnilin <dushnilin@gmail.com>"
 PROJECT_URL="https://github.com/Dushnilin/tachyon"
-BACKEND_DEPENDS_IPK="libc, ca-bundle, kmod-inet-diag, kmod-netlink-diag, kmod-tun, curl, ucode, ucode-mod-fs, ucode-mod-uci, kmod-nft-tproxy, coreutils-base64, coreutils-sort, bind-dig, nftables, kmod-nft-nat, ip-full"
-BACKEND_DEPENDS_APK="bind-dig ca-bundle coreutils-base64 coreutils-sort curl ip-full kmod-inet-diag kmod-netlink-diag kmod-nft-nat kmod-nft-tproxy kmod-tun libc nftables ucode ucode-mod-fs ucode-mod-uci"
+BACKEND_DEPENDS_IPK="libc, ca-bundle, curl, ucode, ucode-mod-fs, ucode-mod-uci, coreutils-base64, coreutils-sort, bind-dig, nftables, ip-full"
+BACKEND_DEPENDS_APK="bind-dig ca-bundle coreutils-base64 coreutils-sort curl ip-full libc nftables ucode ucode-mod-fs ucode-mod-uci"
 APP_DEPENDS_IPK="libc, luci-base, tachyon"
 APP_DEPENDS_APK="libc luci-base tachyon"
 

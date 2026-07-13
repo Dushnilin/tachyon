@@ -1634,6 +1634,13 @@ download_tachyon_packages() {
 }
 
 install_backend_package() {
+    msg "Ensuring optional kernel module dependencies (best effort)..."
+    for kmod in kmod-inet-diag kmod-netlink-diag kmod-tun kmod-nft-tproxy kmod-nft-nat; do
+        if ! pkg_is_installed "$kmod"; then
+            pkg_install_name "$kmod" || warn "Could not install $kmod (this is normal if built-in or using custom firmware)"
+        fi
+    done
+
     pkg_install_files "$TACHYON_BACKEND_FILE" || fail "tachyon installation failed"
 }
 
