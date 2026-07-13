@@ -22,7 +22,7 @@ export function renderButton({
 
   function getWrappedIcon() {
     const iconWrap = E('span', {
-      class: 'fkp-partial-button__icon',
+      class: 'tachyon-partial-button__icon',
     });
 
     if (loading) {
@@ -43,10 +43,10 @@ export function renderButton({
   function getClass() {
     return [
       'btn',
-      'fkp-partial-button',
-      ...insertIf(Boolean(disabled), ['fkp-partial-button--disabled']),
-      ...insertIf(Boolean(loading), ['fkp-partial-button--loading']),
-      ...insertIf(Boolean(hasIcon), ['fkp-partial-button--with-icon']),
+      'tachyon-partial-button',
+      ...insertIf(Boolean(disabled), ['tachyon-partial-button--disabled']),
+      ...insertIf(Boolean(loading), ['tachyon-partial-button--loading']),
+      ...insertIf(Boolean(hasIcon), ['tachyon-partial-button--with-icon']),
       ...classNames,
     ]
       .filter(Boolean)

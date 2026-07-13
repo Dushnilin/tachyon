@@ -14,39 +14,43 @@ interface IRenderSystemInfoProps {
 }
 
 export function renderSystemInfo({ items }: IRenderSystemInfoProps) {
-  return E('div', { class: 'fkp_diagnostic-page__right-bar__system-info' }, [
-    E(
-      'b',
-      { class: 'fkp_diagnostic-page__right-bar__system-info__title' },
-      _('System information'),
-    ),
-    ...items.map((item) => {
-      const tagClass = [
-        'fkp_diagnostic-page__right-bar__system-info__row__tag',
-        ...insertIf(item.tag?.kind === 'neutral', [
-          'fkp_diagnostic-page__right-bar__system-info__row__tag--neutral',
-        ]),
-        ...insertIf(item.tag?.kind === 'warning', [
-          'fkp_diagnostic-page__right-bar__system-info__row__tag--warning',
-        ]),
-        ...insertIf(item.tag?.kind === 'success', [
-          'fkp_diagnostic-page__right-bar__system-info__row__tag--success',
-        ]),
-      ]
-        .filter(Boolean)
-        .join(' ');
-
-      return E(
-        'div',
-        { class: 'fkp_diagnostic-page__right-bar__system-info__row' },
-        [
-          E('b', {}, item.key),
-          E('div', {}, [
-            E('span', {}, item.value),
-            E('span', { class: tagClass }, item?.tag?.label),
+  return E(
+    'div',
+    { class: 'tachyon_diagnostic-page__right-bar__system-info' },
+    [
+      E(
+        'b',
+        { class: 'tachyon_diagnostic-page__right-bar__system-info__title' },
+        _('System information'),
+      ),
+      ...items.map((item) => {
+        const tagClass = [
+          'tachyon_diagnostic-page__right-bar__system-info__row__tag',
+          ...insertIf(item.tag?.kind === 'neutral', [
+            'tachyon_diagnostic-page__right-bar__system-info__row__tag--neutral',
           ]),
-        ],
-      );
-    }),
-  ]);
+          ...insertIf(item.tag?.kind === 'warning', [
+            'tachyon_diagnostic-page__right-bar__system-info__row__tag--warning',
+          ]),
+          ...insertIf(item.tag?.kind === 'success', [
+            'tachyon_diagnostic-page__right-bar__system-info__row__tag--success',
+          ]),
+        ]
+          .filter(Boolean)
+          .join(' ');
+
+        return E(
+          'div',
+          { class: 'tachyon_diagnostic-page__right-bar__system-info__row' },
+          [
+            E('b', {}, item.key),
+            E('div', {}, [
+              E('span', {}, item.value),
+              E('span', { class: tagClass }, item?.tag?.label),
+            ]),
+          ],
+        );
+      }),
+    ],
+  );
 }

@@ -383,7 +383,7 @@ function stdin_first_line_last_field() {
 }
 
 function stdin_trim_string() {
-    print(trim(read_stdin()), "\n");
+    print(trim(common.read_stdin()), "\n");
 }
 
 function whitespace_list_contains(list, needle) {
@@ -406,7 +406,7 @@ function download_via_proxy_option_for_purpose(purpose) {
 }
 
 function md5sum_hex_prefix(prefix_length) {
-    let input = read_stdin();
+    let input = common.read_stdin();
     let newline = index(input, "\n");
     let line = newline >= 0 ? substr(input, 0, newline) : input;
     let fields = split(trim(as_string(line)), /[ \t\r\n]+/);
@@ -418,7 +418,7 @@ function md5sum_hex_prefix(prefix_length) {
 }
 
 function md5sum_hwid() {
-    let input = read_stdin();
+    let input = common.read_stdin();
     let newline = index(input, "\n");
     let line = newline >= 0 ? substr(input, 0, newline) : input;
     let fields = split(trim(as_string(line)), /[ \t\r\n]+/);

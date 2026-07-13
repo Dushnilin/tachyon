@@ -43,7 +43,7 @@ function showLogNotification(notification: TachyonLogNotification) {
       _('Component update available'),
       E('div', {}, message),
       'warning',
-      'fkp-component-update-notification',
+      'tachyon-component-update-notification',
     );
     return;
   }
@@ -52,7 +52,7 @@ function showLogNotification(notification: TachyonLogNotification) {
     _('Tachyon Error'),
     E('div', {}, notification.line),
     'error',
-    'fkp-log-error-notification',
+    'tachyon-log-error-notification',
   );
 }
 

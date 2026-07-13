@@ -1902,7 +1902,7 @@ function renderFailedState() {
   return E(
     "div",
     {
-      class: "fkp_dashboard-page__outbound-section centered",
+      class: "tachyon_dashboard-page__outbound-section centered",
       style: "height: 127px"
     },
     E("span", {}, [E("span", {}, _("Dashboard currently unavailable"))])
@@ -1911,7 +1911,7 @@ function renderFailedState() {
 function renderLoadingState() {
   return E("div", {
     id: "dashboard-sections-grid-skeleton",
-    class: "fkp_dashboard-page__outbound-section skeleton",
+    class: "tachyon_dashboard-page__outbound-section skeleton",
     style: "height: 127px"
   });
 }
@@ -1945,7 +1945,7 @@ function renderMetadataAction(label, url) {
   return E(
     "a",
     {
-      class: "btn fkp_dashboard-page__subscription-meta__action",
+      class: "btn tachyon_dashboard-page__subscription-meta__action",
       href: url,
       target: "_blank",
       rel: "noopener noreferrer",
@@ -1978,37 +1978,37 @@ function renderSubscriptionMetadata(metadata) {
     renderMetadataAction("Support", metadata.supportUrl),
     renderMetadataAction("More details", metadata.announceUrl)
   ].filter(Boolean);
-  return E("div", { class: "fkp_dashboard-page__subscription-meta" }, [
-    E("div", { class: "fkp_dashboard-page__subscription-meta__main" }, [
+  return E("div", { class: "tachyon_dashboard-page__subscription-meta" }, [
+    E("div", { class: "tachyon_dashboard-page__subscription-meta__main" }, [
       E(
         "div",
-        { class: "fkp_dashboard-page__subscription-meta__heading" },
+        { class: "tachyon_dashboard-page__subscription-meta__heading" },
         _("Subscription info:")
       ),
       title ? E(
         "div",
-        { class: "fkp_dashboard-page__subscription-meta__title" },
+        { class: "tachyon_dashboard-page__subscription-meta__title" },
         title
       ) : "",
       rows.length ? E(
         "div",
-        { class: "fkp_dashboard-page__subscription-meta__facts" },
+        { class: "tachyon_dashboard-page__subscription-meta__facts" },
         rows.map(
           (row) => E(
             "div",
-            { class: "fkp_dashboard-page__subscription-meta__fact" },
+            { class: "tachyon_dashboard-page__subscription-meta__fact" },
             [
               E(
                 "span",
                 {
-                  class: "fkp_dashboard-page__subscription-meta__fact-key"
+                  class: "tachyon_dashboard-page__subscription-meta__fact-key"
                 },
                 row.label
               ),
               E(
                 "span",
                 {
-                  class: "fkp_dashboard-page__subscription-meta__fact-value"
+                  class: "tachyon_dashboard-page__subscription-meta__fact-value"
                 },
                 row.value
               )
@@ -2018,13 +2018,13 @@ function renderSubscriptionMetadata(metadata) {
       ) : "",
       actions.length ? E(
         "div",
-        { class: "fkp_dashboard-page__subscription-meta__actions" },
+        { class: "tachyon_dashboard-page__subscription-meta__actions" },
         actions
       ) : ""
     ]),
     metadata.announce ? E(
       "blockquote",
-      { class: "fkp_dashboard-page__subscription-meta__announce" },
+      { class: "tachyon_dashboard-page__subscription-meta__announce" },
       metadata.announce
     ) : ""
   ]);
@@ -2037,7 +2037,7 @@ function renderSubscriptionUpdateAction(section, subscriptionUpdating, onUpdateS
     "button",
     {
       type: "button",
-      class: "btn fkp_dashboard-page__outbound-section__subscription-update",
+      class: "btn tachyon_dashboard-page__outbound-section__subscription-update",
       "aria-label": _("Update subscriptions"),
       disabled: subscriptionUpdating ? true : void 0,
       click: (event) => {
@@ -2090,26 +2090,26 @@ function renderDefaultState({
   function renderOutbound(outbound) {
     function getLatencyClass() {
       if (!outbound.latency) {
-        return "fkp_dashboard-page__outbound-grid__item__latency--empty";
+        return "tachyon_dashboard-page__outbound-grid__item__latency--empty";
       }
       if (outbound.latency < 800) {
-        return "fkp_dashboard-page__outbound-grid__item__latency--green";
+        return "tachyon_dashboard-page__outbound-grid__item__latency--green";
       }
       if (outbound.latency < 1500) {
-        return "fkp_dashboard-page__outbound-grid__item__latency--yellow";
+        return "tachyon_dashboard-page__outbound-grid__item__latency--yellow";
       }
-      return "fkp_dashboard-page__outbound-grid__item__latency--red";
+      return "tachyon_dashboard-page__outbound-grid__item__latency--red";
     }
     const canCopyLink = Boolean(outbound.canCopyLink) || isCopyableProxyLink(outbound.link);
     const selectorSwitching = Boolean(selectorSwitchingTag);
     const outboundSwitching = selectorSwitchingTag === outbound.code;
     const canChooseOutbound = section.withTagSelect && outbound.runtimeAvailable !== false && !selectorSwitching && !outbound.selected;
     const className = [
-      "fkp_dashboard-page__outbound-grid__item",
-      outbound.selected ? "fkp_dashboard-page__outbound-grid__item--active" : "",
-      canChooseOutbound ? "fkp_dashboard-page__outbound-grid__item--selectable" : "",
-      section.withTagSelect && !canChooseOutbound ? "fkp_dashboard-page__outbound-grid__item--disabled" : "",
-      outboundSwitching ? "fkp_dashboard-page__outbound-grid__item--switching" : ""
+      "tachyon_dashboard-page__outbound-grid__item",
+      outbound.selected ? "tachyon_dashboard-page__outbound-grid__item--active" : "",
+      canChooseOutbound ? "tachyon_dashboard-page__outbound-grid__item--selectable" : "",
+      section.withTagSelect && !canChooseOutbound ? "tachyon_dashboard-page__outbound-grid__item--disabled" : "",
+      outboundSwitching ? "tachyon_dashboard-page__outbound-grid__item--switching" : ""
     ].filter(Boolean).join(" ");
     return E(
       "div",
@@ -2123,7 +2123,7 @@ function renderDefaultState({
         ...outboundSwitching ? [
           svgEl(
             "svg",
-            { class: "fkp_dashboard-page__outbound-grid__item__snake" },
+            { class: "tachyon_dashboard-page__outbound-grid__item__snake" },
             [
               svgEl("rect", {
                 width: "100%",
@@ -2136,69 +2136,77 @@ function renderDefaultState({
             ]
           )
         ] : [],
-        E("div", { class: "fkp_dashboard-page__outbound-grid__item__header" }, [
-          E("b", {}, outbound.displayName),
-          ...canCopyLink ? [
+        E(
+          "div",
+          { class: "tachyon_dashboard-page__outbound-grid__item__header" },
+          [
+            E("b", {}, outbound.displayName),
+            ...canCopyLink ? [
+              E(
+                "button",
+                {
+                  type: "button",
+                  class: "btn tachyon_dashboard-page__outbound-grid__item__copy-button",
+                  title: _("Copy proxy link"),
+                  "aria-label": _("Copy proxy link"),
+                  click: (event) => {
+                    event.stopPropagation();
+                    onCopyOutbound(section, outbound);
+                  }
+                },
+                renderCopyIcon24()
+              )
+            ] : [],
+            ...outbound.urlTestInfo ? [
+              E(
+                "button",
+                {
+                  type: "button",
+                  class: "btn tachyon_dashboard-page__outbound-grid__item__copy-button",
+                  title: _("URLTest details"),
+                  "aria-label": _("URLTest details"),
+                  click: (event) => {
+                    event.stopPropagation();
+                    onShowUrlTestInfo(section, outbound);
+                  }
+                },
+                renderInfoIcon24()
+              )
+            ] : [],
+            ...outbound.priorityInfo ? [
+              E(
+                "button",
+                {
+                  type: "button",
+                  class: "btn tachyon_dashboard-page__outbound-grid__item__copy-button",
+                  title: _("Priority details"),
+                  "aria-label": _("Priority details"),
+                  click: (event) => {
+                    event.stopPropagation();
+                    onShowPriorityInfo(section, outbound);
+                  }
+                },
+                renderInfoIcon24()
+              )
+            ] : []
+          ]
+        ),
+        E(
+          "div",
+          { class: "tachyon_dashboard-page__outbound-grid__item__footer" },
+          [
             E(
-              "button",
-              {
-                type: "button",
-                class: "btn fkp_dashboard-page__outbound-grid__item__copy-button",
-                title: _("Copy proxy link"),
-                "aria-label": _("Copy proxy link"),
-                click: (event) => {
-                  event.stopPropagation();
-                  onCopyOutbound(section, outbound);
-                }
-              },
-              renderCopyIcon24()
-            )
-          ] : [],
-          ...outbound.urlTestInfo ? [
+              "div",
+              { class: "tachyon_dashboard-page__outbound-grid__item__type" },
+              [outbound.type].filter(Boolean)
+            ),
             E(
-              "button",
-              {
-                type: "button",
-                class: "btn fkp_dashboard-page__outbound-grid__item__copy-button",
-                title: _("URLTest details"),
-                "aria-label": _("URLTest details"),
-                click: (event) => {
-                  event.stopPropagation();
-                  onShowUrlTestInfo(section, outbound);
-                }
-              },
-              renderInfoIcon24()
+              "div",
+              { class: getLatencyClass() },
+              outbound.latency ? `${outbound.latency}ms` : "N/A"
             )
-          ] : [],
-          ...outbound.priorityInfo ? [
-            E(
-              "button",
-              {
-                type: "button",
-                class: "btn fkp_dashboard-page__outbound-grid__item__copy-button",
-                title: _("Priority details"),
-                "aria-label": _("Priority details"),
-                click: (event) => {
-                  event.stopPropagation();
-                  onShowPriorityInfo(section, outbound);
-                }
-              },
-              renderInfoIcon24()
-            )
-          ] : []
-        ]),
-        E("div", { class: "fkp_dashboard-page__outbound-grid__item__footer" }, [
-          E(
-            "div",
-            { class: "fkp_dashboard-page__outbound-grid__item__type" },
-            [outbound.type].filter(Boolean)
-          ),
-          E(
-            "div",
-            { class: getLatencyClass() },
-            outbound.latency ? `${outbound.latency}ms` : "N/A"
-          )
-        ])
+          ]
+        )
       ]
     );
   }
@@ -2208,60 +2216,64 @@ function renderDefaultState({
     subscriptionUpdating,
     onUpdateSubscription
   );
-  return E("div", { class: "fkp_dashboard-page__outbound-section" }, [
+  return E("div", { class: "tachyon_dashboard-page__outbound-section" }, [
     // Title with test latency
-    E("div", { class: "fkp_dashboard-page__outbound-section__title-section" }, [
-      E(
-        "div",
-        {
-          class: "fkp_dashboard-page__outbound-section__title-section__title"
-        },
-        section.displayName
-      ),
-      E(
-        "div",
-        {
-          class: "fkp_dashboard-page__outbound-section__title-section__actions"
-        },
-        [
-          ...subscriptionUpdateAction ? [subscriptionUpdateAction] : [],
-          E(
-            "button",
-            {
-              type: "button",
-              class: "btn dashboard-sections-grid-item-test-latency",
-              "data-latency-section": section.sectionName,
-              disabled: latencyFetching ? true : void 0,
-              click: (event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                if (latencyFetching) {
-                  return;
+    E(
+      "div",
+      { class: "tachyon_dashboard-page__outbound-section__title-section" },
+      [
+        E(
+          "div",
+          {
+            class: "tachyon_dashboard-page__outbound-section__title-section__title"
+          },
+          section.displayName
+        ),
+        E(
+          "div",
+          {
+            class: "tachyon_dashboard-page__outbound-section__title-section__actions"
+          },
+          [
+            ...subscriptionUpdateAction ? [subscriptionUpdateAction] : [],
+            E(
+              "button",
+              {
+                type: "button",
+                class: "btn dashboard-sections-grid-item-test-latency",
+                "data-latency-section": section.sectionName,
+                disabled: latencyFetching ? true : void 0,
+                click: (event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  if (latencyFetching) {
+                    return;
+                  }
+                  testLatency();
                 }
-                testLatency();
-              }
-            },
-            latencyFetching ? [
-              renderLoaderCircleIcon24(),
-              E(
+              },
+              latencyFetching ? [
+                renderLoaderCircleIcon24(),
+                E(
+                  "span",
+                  {
+                    class: "dashboard-sections-grid-item-test-latency__label"
+                  },
+                  getLatencyTestLabel(latencyProgress)
+                )
+              ] : E(
                 "span",
                 {
                   class: "dashboard-sections-grid-item-test-latency__label"
                 },
-                getLatencyTestLabel(latencyProgress)
+                _("Test latency")
               )
-            ] : E(
-              "span",
-              {
-                class: "dashboard-sections-grid-item-test-latency__label"
-              },
-              _("Test latency")
             )
-          )
-        ]
-      )
-    ]),
-    E("div", { class: "fkp_dashboard-page__outbound-grid" }, [
+          ]
+        )
+      ]
+    ),
+    E("div", { class: "tachyon_dashboard-page__outbound-grid" }, [
       ...metadataNodes,
       ...section.outbounds.map((outbound) => renderOutbound(outbound))
     ])
@@ -2284,7 +2296,7 @@ function renderFailedState2() {
     {
       id: "",
       style: "height: 78px",
-      class: "fkp_dashboard-page__widgets-section__item centered"
+      class: "tachyon_dashboard-page__widgets-section__item centered"
     },
     _("Currently unavailable")
   );
@@ -2295,33 +2307,37 @@ function renderLoadingState2() {
     {
       id: "",
       style: "height: 78px",
-      class: "fkp_dashboard-page__widgets-section__item skeleton"
+      class: "tachyon_dashboard-page__widgets-section__item skeleton"
     },
     ""
   );
 }
 function renderDefaultState2({ title, items }) {
-  return E("div", { class: "fkp_dashboard-page__widgets-section__item" }, [
+  return E("div", { class: "tachyon_dashboard-page__widgets-section__item" }, [
     E(
       "b",
-      { class: "fkp_dashboard-page__widgets-section__item__title" },
+      { class: "tachyon_dashboard-page__widgets-section__item__title" },
       title
     ),
     ...items.map(
       (item) => E(
         "div",
         {
-          class: `fkp_dashboard-page__widgets-section__item__row ${item?.attributes?.class || ""}`
+          class: `tachyon_dashboard-page__widgets-section__item__row ${item?.attributes?.class || ""}`
         },
         [
           E(
             "span",
-            { class: "fkp_dashboard-page__widgets-section__item__row__key" },
+            {
+              class: "tachyon_dashboard-page__widgets-section__item__row__key"
+            },
             `${item.key}: `
           ),
           E(
             "span",
-            { class: "fkp_dashboard-page__widgets-section__item__row__value" },
+            {
+              class: "tachyon_dashboard-page__widgets-section__item__row__value"
+            },
             item.value
           )
         ]
@@ -2345,22 +2361,22 @@ function render() {
     "div",
     {
       id: "dashboard-status",
-      class: "fkp_dashboard-page"
+      class: "tachyon_dashboard-page"
     },
     [
       E(
         "div",
         {
-          class: "fkp_dashboard-page__service-stopped",
+          class: "tachyon_dashboard-page__service-stopped",
           role: "status"
         },
         _(
           "Tachyon service is stopped. Start the service to display the dashboard."
         )
       ),
-      E("div", { class: "fkp_dashboard-page__content" }, [
+      E("div", { class: "tachyon_dashboard-page__content" }, [
         // Widgets section
-        E("div", { class: "fkp_dashboard-page__widgets-section" }, [
+        E("div", { class: "tachyon_dashboard-page__widgets-section" }, [
           E(
             "div",
             { id: "dashboard-widget-traffic" },
@@ -2574,7 +2590,6 @@ var Tachyon;
     AvailableMethods2["ENABLE"] = "enable";
     AvailableMethods2["DISABLE"] = "disable";
     AvailableMethods2["GLOBAL_CHECK"] = "global_check";
-    AvailableMethods2["DOCTOR"] = "doctor";
     AvailableMethods2["SHOW_SING_BOX_CONFIG"] = "show_sing_box_config";
     AvailableMethods2["CHECK_LOGS"] = "check_logs";
     AvailableMethods2["CHECK_SING_BOX_LOGS"] = "check_sing_box_logs";
@@ -2796,10 +2811,7 @@ var TachyonShellMethods = {
     Tachyon.AvailableMethods.GET_OUTBOUND_METADATA,
     [section]
   ),
-  getSubscriptionMetadata: async (section) => callBaseMethod(
-    Tachyon.AvailableMethods.GET_SUBSCRIPTION_METADATA,
-    [section]
-  ),
+  getSubscriptionMetadata: async (section) => callBaseMethod(Tachyon.AvailableMethods.GET_SUBSCRIPTION_METADATA, [section]),
   checkSingBox: async () => callBaseMethod(
     Tachyon.AvailableMethods.CHECK_SING_BOX
   ),
@@ -2865,7 +2877,6 @@ var TachyonShellMethods = {
   globalCheck: async (masked = true) => callBaseMethod(Tachyon.AvailableMethods.GLOBAL_CHECK, [
     masked ? "masked" : "raw"
   ]),
-  doctor: async () => callBaseMethod(Tachyon.AvailableMethods.DOCTOR),
   showSingBoxConfig: async (masked = true) => callBaseMethod(Tachyon.AvailableMethods.SHOW_SING_BOX_CONFIG, [
     masked ? "masked" : "raw"
   ]),
@@ -3027,7 +3038,11 @@ var TachyonShellMethods = {
   componentActionStart: async (component, action) => {
     const response = await executeShellCommand({
       command: "/usr/bin/tachyon",
-      args: [Tachyon.AvailableMethods.COMPONENT_ACTION_ASYNC, component, action],
+      args: [
+        Tachyon.AvailableMethods.COMPONENT_ACTION_ASYNC,
+        component,
+        action
+      ],
       timeout: COMPONENT_ACTION_RPC_TIMEOUT_MS
     });
     const parsedResponse = parseComponentActionStartResult(response);
@@ -4490,9 +4505,6 @@ var initialDiagnosticStore = {
     globalCheck: {
       loading: false
     },
-    doctor: {
-      loading: false
-    },
     viewLogs: {
       loading: false
     },
@@ -5248,7 +5260,7 @@ function showLogNotification(notification) {
       _("Component update available"),
       E("div", {}, message),
       "warning",
-      "fkp-component-update-notification"
+      "tachyon-component-update-notification"
     );
     return;
   }
@@ -5256,7 +5268,7 @@ function showLogNotification(notification) {
     _("Tachyon Error"),
     E("div", {}, notification.line),
     "error",
-    "fkp-log-error-notification"
+    "tachyon-log-error-notification"
   );
 }
 function coreService(options = {}) {
@@ -5316,6 +5328,8 @@ var SocketManager = class _SocketManager {
     this.listeners = /* @__PURE__ */ new Map();
     this.connected = /* @__PURE__ */ new Map();
     this.errorListeners = /* @__PURE__ */ new Map();
+    this.reconnectTimers = /* @__PURE__ */ new Map();
+    this.reconnectAttempts = /* @__PURE__ */ new Map();
   }
   static getInstance() {
     if (!_SocketManager.instance) {
@@ -5337,11 +5351,42 @@ var SocketManager = class _SocketManager {
         );
       }
     }
+    for (const timer of this.reconnectTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.reconnectTimers.clear();
+    this.reconnectAttempts.clear();
     this.sockets.clear();
     this.listeners.clear();
     this.errorListeners.clear();
     this.connected.clear();
     logger.info("[SOCKET]", "All connections and state have been reset.");
+  }
+  scheduleReconnect(url) {
+    if (this.reconnectTimers.has(url)) return;
+    const attempts = this.reconnectAttempts.get(url) || 0;
+    if (attempts >= 10) {
+      logger.error(
+        "[SOCKET]",
+        `Max reconnect attempts (10) reached for ${url}`
+      );
+      return;
+    }
+    const delay = Math.min(1e3 * Math.pow(2, attempts), 3e4);
+    this.reconnectAttempts.set(url, attempts + 1);
+    logger.info(
+      "[SOCKET]",
+      `Scheduling reconnect to ${url} in ${delay}ms (attempt ${attempts + 1})`
+    );
+    const timer = setTimeout(() => {
+      this.reconnectTimers.delete(url);
+      if (this.sockets.has(url)) {
+        logger.info("[SOCKET]", `Attempting reconnect to ${url}`);
+        this.sockets.delete(url);
+        this.connect(url);
+      }
+    }, delay);
+    this.reconnectTimers.set(url, timer);
   }
   connect(url) {
     if (this.sockets.has(url)) return;
@@ -5355,6 +5400,7 @@ var SocketManager = class _SocketManager {
         err
       );
       this.triggerError(url, err instanceof Event ? err : String(err));
+      this.scheduleReconnect(url);
       return;
     }
     this.sockets.set(url, ws);
@@ -5363,6 +5409,7 @@ var SocketManager = class _SocketManager {
     this.errorListeners.set(url, /* @__PURE__ */ new Set());
     ws.addEventListener("open", () => {
       this.connected.set(url, true);
+      this.reconnectAttempts.set(url, 0);
       logger.info("[SOCKET]", "Connected to", url);
     });
     ws.addEventListener("message", (event) => {
@@ -5381,6 +5428,9 @@ var SocketManager = class _SocketManager {
       this.connected.set(url, false);
       logger.warn("[SOCKET]", `Disconnected: ${url}`);
       this.triggerError(url, "Connection closed");
+      if (this.sockets.get(url) === ws) {
+        this.scheduleReconnect(url);
+      }
     });
     ws.addEventListener("error", (err) => {
       logger.error("[SOCKET]", `Socket error for ${url}:`, err);
@@ -5419,6 +5469,12 @@ var SocketManager = class _SocketManager {
     }
   }
   disconnect(url) {
+    const timer = this.reconnectTimers.get(url);
+    if (timer) {
+      clearTimeout(timer);
+      this.reconnectTimers.delete(url);
+    }
+    this.reconnectAttempts.delete(url);
     const ws = this.sockets.get(url);
     if (ws) {
       ws.close();
@@ -6067,7 +6123,10 @@ function syncDashboardServiceAvailability() {
   const availability = getDashboardServiceAvailability();
   const stopped = availability === "stopped";
   const container = document.getElementById("dashboard-status");
-  container?.classList.toggle("fkp_dashboard-page--service-stopped", stopped);
+  container?.classList.toggle(
+    "tachyon_dashboard-page--service-stopped",
+    stopped
+  );
   if (stopped || availability === "loading") {
     stopDashboardDataUpdates();
     return;
@@ -6178,15 +6237,15 @@ function formatUrlTestModalValue(value) {
 }
 function getUrlTestLatencyClass(latency) {
   if (!latency) {
-    return "fkp_dashboard-page__outbound-grid__item__latency--empty";
+    return "tachyon_dashboard-page__outbound-grid__item__latency--empty";
   }
   if (latency < 800) {
-    return "fkp_dashboard-page__outbound-grid__item__latency--green";
+    return "tachyon_dashboard-page__outbound-grid__item__latency--green";
   }
   if (latency < 1500) {
-    return "fkp_dashboard-page__outbound-grid__item__latency--yellow";
+    return "tachyon_dashboard-page__outbound-grid__item__latency--yellow";
   }
-  return "fkp_dashboard-page__outbound-grid__item__latency--red";
+  return "tachyon_dashboard-page__outbound-grid__item__latency--red";
 }
 function formatUrlTestLatency(latency) {
   return latency ? `${latency}ms` : "N/A";
@@ -6199,7 +6258,7 @@ function renderDetailsUrl(value) {
   return E(
     "a",
     {
-      class: "fkp_dashboard-page__urltest-details__url",
+      class: "tachyon_dashboard-page__urltest-details__url",
       href: url,
       target: "_blank",
       rel: "noopener noreferrer"
@@ -6224,7 +6283,7 @@ function renderDetailsMemberName(member) {
   return [
     E(
       "span",
-      { class: "fkp_dashboard-page__urltest-details__country-badge" },
+      { class: "tachyon_dashboard-page__urltest-details__country-badge" },
       countryFlag
     ),
     member.displayName
@@ -6239,17 +6298,19 @@ function renderUrlTestSelectedValue(info) {
   }
   return E(
     "span",
-    { class: "fkp_dashboard-page__urltest-details__selected-value" },
+    { class: "tachyon_dashboard-page__urltest-details__selected-value" },
     [
       E(
         "span",
-        { class: "fkp_dashboard-page__urltest-details__selected-name" },
+        { class: "tachyon_dashboard-page__urltest-details__selected-name" },
         selectedMember ? renderDetailsMemberName(selectedMember) : name
       ),
       ...selectedMember?.type ? [
         E(
           "span",
-          { class: "fkp_dashboard-page__urltest-details__selected-type" },
+          {
+            class: "tachyon_dashboard-page__urltest-details__selected-type"
+          },
           selectedMember.type
         )
       ] : [],
@@ -6268,13 +6329,128 @@ function renderUrlTestCopyButton(title, onClick) {
     "button",
     {
       type: "button",
-      class: "btn fkp_dashboard-page__urltest-details__copy-button",
+      class: "btn tachyon_dashboard-page__urltest-details__copy-button",
       title,
       "aria-label": title,
       click: onClick
     },
     renderCopyIcon24()
   );
+}
+function renderCommonDetailsModal(info, section, fields, renderMemberName, isPriority) {
+  return E("div", { class: "tachyon_dashboard-page__urltest-details" }, [
+    E(
+      "dl",
+      { class: "tachyon_dashboard-page__urltest-details__params" },
+      fields.map(
+        ({ label, value, children }) => E("div", { class: "tachyon_dashboard-page__urltest-details__param" }, [
+          E("dt", {}, label),
+          E(
+            "dd",
+            {},
+            children || [E("span", {}, formatUrlTestModalValue(value))]
+          )
+        ])
+      )
+    ),
+    E("div", { class: "tachyon_dashboard-page__urltest-details__outbounds" }, [
+      E(
+        "div",
+        { class: "tachyon_dashboard-page__urltest-details__outbounds-title" },
+        _("Nodes")
+      ),
+      E(
+        "div",
+        { class: "tachyon_dashboard-page__urltest-details__table" },
+        info.outbounds.length ? info.outbounds.map(
+          (member) => E(
+            "div",
+            {
+              class: [
+                "tachyon_dashboard-page__urltest-details__row",
+                member.selected ? "tachyon_dashboard-page__urltest-details__row--active" : ""
+              ].filter(Boolean).join(" ")
+            },
+            [
+              E(
+                "div",
+                {
+                  class: "tachyon_dashboard-page__urltest-details__row-name"
+                },
+                isPriority ? [
+                  E(
+                    "b",
+                    {
+                      class: "tachyon_dashboard-page__urltest-details__priority-name"
+                    },
+                    renderMemberName(member)
+                  ),
+                  ...member.type ? [
+                    E(
+                      "span",
+                      {
+                        class: "tachyon_dashboard-page__urltest-details__row-type"
+                      },
+                      member.type
+                    )
+                  ] : []
+                ] : [
+                  E("b", {}, renderMemberName(member)),
+                  ...member.type ? [
+                    E(
+                      "span",
+                      {
+                        class: "tachyon_dashboard-page__urltest-details__row-type"
+                      },
+                      member.type
+                    )
+                  ] : []
+                ]
+              ),
+              E(
+                "div",
+                {
+                  class: "tachyon_dashboard-page__urltest-details__row-meta"
+                },
+                [
+                  E(
+                    "span",
+                    { class: getUrlTestLatencyClass(member.latency) },
+                    formatUrlTestLatency(member.latency)
+                  )
+                ]
+              ),
+              member.canCopyLink ? renderUrlTestCopyButton(_("Copy proxy link"), (event) => {
+                event.preventDefault();
+                void handleCopyOutbound(section, member);
+              }) : E("span", {
+                class: "tachyon_dashboard-page__urltest-details__copy-placeholder"
+              })
+            ]
+          )
+        ) : [
+          E(
+            "div",
+            { class: "tachyon_dashboard-page__urltest-details__empty" },
+            _("Node list is empty")
+          )
+        ]
+      )
+    ]),
+    E("div", { class: "tachyon_dashboard-page__urltest-details__footer" }, [
+      E(
+        "button",
+        {
+          type: "button",
+          class: "btn cbi-button cbi-button-neutral",
+          click: () => {
+            ui.hideModal();
+          }
+        },
+        _("Close")
+      )
+    ])
+  ]);
 }
 function renderUrlTestInfoModal(section, outbound) {
   const info = outbound.urlTestInfo;
@@ -6295,102 +6471,13 @@ function renderUrlTestInfoModal(section, outbound) {
       value: info.interruptExistConnections
     }
   ];
-  return E("div", { class: "fkp_dashboard-page__urltest-details" }, [
-    E(
-      "dl",
-      { class: "fkp_dashboard-page__urltest-details__params" },
-      fields.map(
-        ({ label, value, children }) => E("div", { class: "fkp_dashboard-page__urltest-details__param" }, [
-          E("dt", {}, label),
-          E(
-            "dd",
-            {},
-            children || [E("span", {}, formatUrlTestModalValue(value))]
-          )
-        ])
-      )
-    ),
-    E("div", { class: "fkp_dashboard-page__urltest-details__outbounds" }, [
-      E(
-        "div",
-        { class: "fkp_dashboard-page__urltest-details__outbounds-title" },
-        _("Nodes")
-      ),
-      E(
-        "div",
-        { class: "fkp_dashboard-page__urltest-details__table" },
-        info.outbounds.length ? info.outbounds.map(
-          (member) => E(
-            "div",
-            {
-              class: [
-                "fkp_dashboard-page__urltest-details__row",
-                member.selected ? "fkp_dashboard-page__urltest-details__row--active" : ""
-              ].filter(Boolean).join(" ")
-            },
-            [
-              E(
-                "div",
-                {
-                  class: "fkp_dashboard-page__urltest-details__row-name"
-                },
-                [
-                  E("b", {}, renderDetailsMemberName(member)),
-                  ...member.type ? [
-                    E(
-                      "span",
-                      {
-                        class: "fkp_dashboard-page__urltest-details__row-type"
-                      },
-                      member.type
-                    )
-                  ] : []
-                ]
-              ),
-              E(
-                "div",
-                {
-                  class: "fkp_dashboard-page__urltest-details__row-meta"
-                },
-                [
-                  E(
-                    "span",
-                    { class: getUrlTestLatencyClass(member.latency) },
-                    formatUrlTestLatency(member.latency)
-                  )
-                ]
-              ),
-              member.canCopyLink ? renderUrlTestCopyButton(_("Copy proxy link"), (event) => {
-                event.preventDefault();
-                void handleCopyOutbound(section, member);
-              }) : E("span", {
-                class: "fkp_dashboard-page__urltest-details__copy-placeholder"
-              })
-            ]
-          )
-        ) : [
-          E(
-            "div",
-            { class: "fkp_dashboard-page__urltest-details__empty" },
-            _("Node list is empty")
-          )
-        ]
-      )
-    ]),
-    E("div", { class: "fkp_dashboard-page__urltest-details__footer" }, [
-      E(
-        "button",
-        {
-          type: "button",
-          class: "btn cbi-button cbi-button-neutral",
-          click: () => {
-            ui.hideModal();
-          }
-        },
-        _("Close")
-      )
-    ])
-  ]);
+  return renderCommonDetailsModal(
+    info,
+    section,
+    fields,
+    (member) => renderDetailsMemberName(member),
+    false
+  );
 }
 function handleShowUrlTestInfo(section, outbound) {
   if (!outbound.urlTestInfo) {
@@ -6410,14 +6497,14 @@ function renderPrioritySelectedValue(info) {
   }
   return E(
     "span",
-    { class: "fkp_dashboard-page__urltest-details__selected-value" },
+    { class: "tachyon_dashboard-page__urltest-details__selected-value" },
     [
       E(
         "span",
         {
           class: [
-            "fkp_dashboard-page__urltest-details__selected-name",
-            selectedMember ? "fkp_dashboard-page__urltest-details__priority-name" : ""
+            "tachyon_dashboard-page__urltest-details__selected-name",
+            selectedMember ? "tachyon_dashboard-page__urltest-details__priority-name" : ""
           ].filter(Boolean).join(" ")
         },
         selectedMember ? renderPriorityMemberName(selectedMember) : name
@@ -6425,7 +6512,9 @@ function renderPrioritySelectedValue(info) {
       ...selectedMember?.type ? [
         E(
           "span",
-          { class: "fkp_dashboard-page__urltest-details__selected-type" },
+          {
+            class: "tachyon_dashboard-page__urltest-details__selected-type"
+          },
           selectedMember.type
         )
       ] : [],
@@ -6444,17 +6533,17 @@ function renderPriorityMemberName(member) {
   return [
     E(
       "span",
-      { class: "fkp_dashboard-page__urltest-details__priority-number" },
+      { class: "tachyon_dashboard-page__urltest-details__priority-number" },
       `#${member.levelIndex + 1}`
     ),
     E(
       "span",
-      { class: "fkp_dashboard-page__urltest-details__priority-level" },
+      { class: "tachyon_dashboard-page__urltest-details__priority-level" },
       levelName
     ),
     E(
       "span",
-      { class: "fkp_dashboard-page__urltest-details__priority-node" },
+      { class: "tachyon_dashboard-page__urltest-details__priority-node" },
       renderDetailsMemberName(member)
     )
   ];
@@ -6498,108 +6587,13 @@ function renderPriorityInfoModal(section, outbound) {
       value: info.interruptExistConnections
     }
   ];
-  return E("div", { class: "fkp_dashboard-page__urltest-details" }, [
-    E(
-      "dl",
-      { class: "fkp_dashboard-page__urltest-details__params" },
-      fields.map(
-        ({ label, value, children }) => E("div", { class: "fkp_dashboard-page__urltest-details__param" }, [
-          E("dt", {}, label),
-          E(
-            "dd",
-            {},
-            children || [E("span", {}, formatUrlTestModalValue(value))]
-          )
-        ])
-      )
-    ),
-    E("div", { class: "fkp_dashboard-page__urltest-details__outbounds" }, [
-      E(
-        "div",
-        { class: "fkp_dashboard-page__urltest-details__outbounds-title" },
-        _("Nodes")
-      ),
-      E(
-        "div",
-        { class: "fkp_dashboard-page__urltest-details__table" },
-        info.outbounds.length ? info.outbounds.map(
-          (member) => E(
-            "div",
-            {
-              class: [
-                "fkp_dashboard-page__urltest-details__row",
-                member.selected ? "fkp_dashboard-page__urltest-details__row--active" : ""
-              ].filter(Boolean).join(" ")
-            },
-            [
-              E(
-                "div",
-                {
-                  class: "fkp_dashboard-page__urltest-details__row-name"
-                },
-                [
-                  E(
-                    "b",
-                    {
-                      class: "fkp_dashboard-page__urltest-details__priority-name"
-                    },
-                    renderPriorityMemberName(member)
-                  ),
-                  ...member.type ? [
-                    E(
-                      "span",
-                      {
-                        class: "fkp_dashboard-page__urltest-details__row-type"
-                      },
-                      member.type
-                    )
-                  ] : []
-                ]
-              ),
-              E(
-                "div",
-                {
-                  class: "fkp_dashboard-page__urltest-details__row-meta"
-                },
-                [
-                  E(
-                    "span",
-                    { class: getUrlTestLatencyClass(member.latency) },
-                    formatUrlTestLatency(member.latency)
-                  )
-                ]
-              ),
-              member.canCopyLink ? renderUrlTestCopyButton(_("Copy proxy link"), (event) => {
-                event.preventDefault();
-                void handleCopyOutbound(section, member);
-              }) : E("span", {
-                class: "fkp_dashboard-page__urltest-details__copy-placeholder"
-              })
-            ]
-          )
-        ) : [
-          E(
-            "div",
-            { class: "fkp_dashboard-page__urltest-details__empty" },
-            _("Node list is empty")
-          )
-        ]
-      )
-    ]),
-    E("div", { class: "fkp_dashboard-page__urltest-details__footer" }, [
-      E(
-        "button",
-        {
-          type: "button",
-          class: "btn cbi-button cbi-button-neutral",
-          click: () => {
-            ui.hideModal();
-          }
-        },
-        _("Close")
-      )
-    ])
-  ]);
+  return renderCommonDetailsModal(
+    info,
+    section,
+    fields,
+    (member) => renderPriorityMemberName(member),
+    true
+  );
 }
 function handleShowPriorityInfo(section, outbound) {
   if (!outbound.priorityInfo) {
@@ -6791,137 +6785,87 @@ async function renderSectionsWidget() {
     container.replaceChildren(...renderedWidgets);
   });
 }
-async function renderBandwidthWidget() {
-  logger.debug("[DASHBOARD]", "renderBandwidthWidget");
-  const traffic = store.get().bandwidthWidget;
-  const container = document.getElementById("dashboard-widget-traffic");
-  if (!container) {
-    return;
-  }
-  if (traffic.loading || traffic.failed) {
+function renderStoreWidget(containerId, storeKey, title, getItems, debugName) {
+  logger.debug("[DASHBOARD]", debugName);
+  const widgetState = store.get()[storeKey];
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  if (widgetState.loading || widgetState.failed) {
     const renderedWidget2 = renderWidget({
-      loading: traffic.loading,
-      failed: traffic.failed,
+      loading: widgetState.loading,
+      failed: widgetState.failed,
       title: "",
       items: []
     });
     return container.replaceChildren(renderedWidget2);
   }
   const renderedWidget = renderWidget({
-    loading: traffic.loading,
-    failed: traffic.failed,
-    title: _("Traffic"),
-    items: [
-      { key: _("Uplink"), value: `${prettyBytes(traffic.data.up)}/s` },
-      { key: _("Downlink"), value: `${prettyBytes(traffic.data.down)}/s` }
-    ]
+    loading: widgetState.loading,
+    failed: widgetState.failed,
+    title,
+    items: getItems(widgetState.data)
   });
   container.replaceChildren(renderedWidget);
+}
+async function renderBandwidthWidget() {
+  renderStoreWidget(
+    "dashboard-widget-traffic",
+    "bandwidthWidget",
+    _("Traffic"),
+    (data) => [
+      { key: _("Uplink"), value: `${prettyBytes(data.up)}/s` },
+      { key: _("Downlink"), value: `${prettyBytes(data.down)}/s` }
+    ],
+    "renderBandwidthWidget"
+  );
 }
 async function renderTrafficTotalWidget() {
-  logger.debug("[DASHBOARD]", "renderTrafficTotalWidget");
-  const trafficTotalWidget = store.get().trafficTotalWidget;
-  const container = document.getElementById("dashboard-widget-traffic-total");
-  if (!container) {
-    return;
-  }
-  if (trafficTotalWidget.loading || trafficTotalWidget.failed) {
-    const renderedWidget2 = renderWidget({
-      loading: trafficTotalWidget.loading,
-      failed: trafficTotalWidget.failed,
-      title: "",
-      items: []
-    });
-    return container.replaceChildren(renderedWidget2);
-  }
-  const renderedWidget = renderWidget({
-    loading: trafficTotalWidget.loading,
-    failed: trafficTotalWidget.failed,
-    title: _("Traffic Total"),
-    items: [
-      {
-        key: _("Uplink"),
-        value: String(prettyBytes(trafficTotalWidget.data.uploadTotal))
-      },
-      {
-        key: _("Downlink"),
-        value: String(prettyBytes(trafficTotalWidget.data.downloadTotal))
-      }
-    ]
-  });
-  container.replaceChildren(renderedWidget);
+  renderStoreWidget(
+    "dashboard-widget-traffic-total",
+    "trafficTotalWidget",
+    _("Traffic Total"),
+    (data) => [
+      { key: _("Uplink"), value: String(prettyBytes(data.uploadTotal)) },
+      { key: _("Downlink"), value: String(prettyBytes(data.downloadTotal)) }
+    ],
+    "renderTrafficTotalWidget"
+  );
 }
 async function renderSystemInfoWidget() {
-  logger.debug("[DASHBOARD]", "renderSystemInfoWidget");
-  const systemInfoWidget = store.get().systemInfoWidget;
-  const container = document.getElementById("dashboard-widget-system-info");
-  if (!container) {
-    return;
-  }
-  if (systemInfoWidget.loading || systemInfoWidget.failed) {
-    const renderedWidget2 = renderWidget({
-      loading: systemInfoWidget.loading,
-      failed: systemInfoWidget.failed,
-      title: "",
-      items: []
-    });
-    return container.replaceChildren(renderedWidget2);
-  }
-  const renderedWidget = renderWidget({
-    loading: systemInfoWidget.loading,
-    failed: systemInfoWidget.failed,
-    title: _("System info"),
-    items: [
-      {
-        key: _("Active Connections"),
-        value: String(systemInfoWidget.data.connections)
-      },
-      {
-        key: _("Memory Usage"),
-        value: String(prettyBytes(systemInfoWidget.data.memory))
-      }
-    ]
-  });
-  container.replaceChildren(renderedWidget);
+  renderStoreWidget(
+    "dashboard-widget-system-info",
+    "systemInfoWidget",
+    _("System info"),
+    (data) => [
+      { key: _("Active Connections"), value: String(data.connections) },
+      { key: _("Memory Usage"), value: String(prettyBytes(data.memory)) }
+    ],
+    "renderSystemInfoWidget"
+  );
 }
 async function renderServicesInfoWidget() {
-  logger.debug("[DASHBOARD]", "renderServicesInfoWidget");
-  const servicesInfoWidget = store.get().servicesInfoWidget;
-  const container = document.getElementById("dashboard-widget-service-info");
-  if (!container) {
-    return;
-  }
-  if (servicesInfoWidget.loading || servicesInfoWidget.failed) {
-    const renderedWidget2 = renderWidget({
-      loading: servicesInfoWidget.loading,
-      failed: servicesInfoWidget.failed,
-      title: "",
-      items: []
-    });
-    return container.replaceChildren(renderedWidget2);
-  }
-  const renderedWidget = renderWidget({
-    loading: servicesInfoWidget.loading,
-    failed: servicesInfoWidget.failed,
-    title: _("Services info"),
-    items: [
+  renderStoreWidget(
+    "dashboard-widget-service-info",
+    "servicesInfoWidget",
+    _("Services info"),
+    (data) => [
       {
         key: "Tachyon",
-        value: servicesInfoWidget.data.tachyonRunning ? _("\u2714 Running") : _("\u2718 Stopped"),
+        value: data.tachyonRunning ? _("\u2714 Running") : _("\u2718 Stopped"),
         attributes: {
-          class: servicesInfoWidget.data.tachyonRunning ? "fkp_dashboard-page__widgets-section__item__row--success" : "fkp_dashboard-page__widgets-section__item__row--error"
+          class: data.tachyonRunning ? "tachyon_dashboard-page__widgets-section__item__row--success" : "tachyon_dashboard-page__widgets-section__item__row--error"
         }
       },
       {
         key: "Sing-box",
-        value: servicesInfoWidget.data.singbox ? _("\u2714 Running") : _("\u2718 Stopped"),
+        value: data.singbox ? _("\u2714 Running") : _("\u2718 Stopped"),
         attributes: {
-          class: servicesInfoWidget.data.singbox ? "fkp_dashboard-page__widgets-section__item__row--success" : "fkp_dashboard-page__widgets-section__item__row--error"
+          class: data.singbox ? "tachyon_dashboard-page__widgets-section__item__row--success" : "tachyon_dashboard-page__widgets-section__item__row--error"
         }
       }
-    ]
-  });
-  container.replaceChildren(renderedWidget);
+    ],
+    "renderServicesInfoWidget"
+  );
 }
 async function onStoreUpdate(next, prev, diff) {
   if (diff.sectionsWidget) {
@@ -7051,13 +6995,13 @@ var styles = `
     display: none;
 }
 
-.fkp_dashboard-page {
+.tachyon_dashboard-page {
     width: 100%;
     --dashboard-grid-columns: 4;
     --dashboard-grid-min-width: 180px;
 }
 
-.fkp_dashboard-page__service-stopped {
+.tachyon_dashboard-page__service-stopped {
     display: none;
     width: 100%;
     min-height: 180px;
@@ -7078,72 +7022,72 @@ var styles = `
     text-align: center;
 }
 
-.fkp_dashboard-page--service-stopped {
+.tachyon_dashboard-page--service-stopped {
     display: grid;
     grid-template-columns: repeat(var(--dashboard-grid-columns), minmax(var(--dashboard-grid-min-width), 1fr));
     gap: 10px;
 }
 
-.fkp_dashboard-page--service-stopped .fkp_dashboard-page__service-stopped {
+.tachyon_dashboard-page--service-stopped .tachyon_dashboard-page__service-stopped {
     display: flex;
     grid-column: 1 / -1;
 }
 
-.fkp_dashboard-page--service-stopped .fkp_dashboard-page__content {
+.tachyon_dashboard-page--service-stopped .tachyon_dashboard-page__content {
     display: none;
 }
 
 @media (max-width: 900px) {
-    .fkp_dashboard-page {
+    .tachyon_dashboard-page {
         --dashboard-grid-columns: 2;
     }
 }
 
 @media (max-width: 560px) {
-    .fkp_dashboard-page {
+    .tachyon_dashboard-page {
         --dashboard-grid-columns: 1;
         --dashboard-grid-min-width: 0;
     }
 }
 
-.fkp_dashboard-page__widgets-section {
+.tachyon_dashboard-page__widgets-section {
     margin-top: 10px;
     display: grid;
     grid-template-columns: repeat(var(--dashboard-grid-columns), minmax(var(--dashboard-grid-min-width), 1fr));
     grid-gap: 10px;
 }
 
-.fkp_dashboard-page__widgets-section__item {
+.tachyon_dashboard-page__widgets-section__item {
     border: 2px var(--background-color-low, lightgray) solid;
     border-radius: 4px;
     padding: 10px;
     min-width: 0;
 }
 
-.fkp_dashboard-page__widgets-section__item__title {}
+.tachyon_dashboard-page__widgets-section__item__title {}
 
-.fkp_dashboard-page__widgets-section__item__row {}
+.tachyon_dashboard-page__widgets-section__item__row {}
 
-.fkp_dashboard-page__widgets-section__item__row--success .fkp_dashboard-page__widgets-section__item__row__value {
+.tachyon_dashboard-page__widgets-section__item__row--success .tachyon_dashboard-page__widgets-section__item__row__value {
     color: var(--success-color-medium, green);
 }
 
-.fkp_dashboard-page__widgets-section__item__row--error .fkp_dashboard-page__widgets-section__item__row__value {
+.tachyon_dashboard-page__widgets-section__item__row--error .tachyon_dashboard-page__widgets-section__item__row__value {
     color: var(--error-color-medium, red);
 }
 
-.fkp_dashboard-page__widgets-section__item__row__key {}
+.tachyon_dashboard-page__widgets-section__item__row__key {}
 
-.fkp_dashboard-page__widgets-section__item__row__value {}
+.tachyon_dashboard-page__widgets-section__item__row__value {}
 
-.fkp_dashboard-page__outbound-section {
+.tachyon_dashboard-page__outbound-section {
     margin-top: 10px;
     border: 2px var(--background-color-low, lightgray) solid;
     border-radius: 4px;
     padding: 10px;
 }
 
-.fkp_dashboard-page__outbound-section__title-section {
+.tachyon_dashboard-page__outbound-section__title-section {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -7151,14 +7095,14 @@ var styles = `
     min-width: 0;
 }
 
-.fkp_dashboard-page__outbound-section__title-section__title {
+.tachyon_dashboard-page__outbound-section__title-section__title {
     color: var(--text-color-high);
     font-weight: 700;
     min-width: 0;
     overflow-wrap: anywhere;
 }
 
-.fkp_dashboard-page__outbound-section__title-section__actions {
+.tachyon_dashboard-page__outbound-section__title-section__actions {
     display: flex;
     align-items: center;
     justify-content: flex-end;
@@ -7166,7 +7110,7 @@ var styles = `
     flex: 0 0 auto;
 }
 
-.fkp_dashboard-page .btn.fkp_dashboard-page__outbound-section__subscription-update {
+.tachyon_dashboard-page .btn.tachyon_dashboard-page__outbound-section__subscription-update {
     min-width: 130px;
     min-height: 28px;
     display: inline-flex;
@@ -7175,19 +7119,19 @@ var styles = `
     gap: 6px;
 }
 
-.fkp_dashboard-page__outbound-section__subscription-update svg {
+.tachyon_dashboard-page__outbound-section__subscription-update svg {
     width: 15px;
     height: 15px;
     display: block;
     flex: 0 0 auto;
 }
 
-.fkp_dashboard-page__outbound-section__subscription-update[disabled] {
+.tachyon_dashboard-page__outbound-section__subscription-update[disabled] {
     cursor: not-allowed;
     opacity: 0.65;
 }
 
-.fkp_dashboard-page .btn.dashboard-sections-grid-item-test-latency {
+.tachyon_dashboard-page .btn.dashboard-sections-grid-item-test-latency {
     min-width: 99px;
     min-height: 28px;
     display: inline-flex;
@@ -7196,26 +7140,26 @@ var styles = `
     gap: 6px;
 }
 
-.fkp_dashboard-page .btn.dashboard-sections-grid-item-test-latency svg {
+.tachyon_dashboard-page .btn.dashboard-sections-grid-item-test-latency svg {
     width: 15px;
     height: 15px;
     display: block;
     flex: 0 0 auto;
 }
 
-.fkp_dashboard-page .btn.dashboard-sections-grid-item-test-latency[disabled] {
+.tachyon_dashboard-page .btn.dashboard-sections-grid-item-test-latency[disabled] {
     cursor: not-allowed;
     opacity: 0.65;
 }
 
-.fkp_dashboard-page__outbound-grid {
+.tachyon_dashboard-page__outbound-grid {
     margin-top: 5px;
     display: grid;
     grid-template-columns: repeat(var(--dashboard-grid-columns), minmax(var(--dashboard-grid-min-width), 1fr));
     grid-gap: 10px;
 }
 
-.fkp_dashboard-page__subscription-meta {
+.tachyon_dashboard-page__subscription-meta {
     --subscription-meta-action-size: 28px;
     --subscription-meta-action-gap: 6px;
     grid-column: 1 / -1;
@@ -7225,14 +7169,14 @@ var styles = `
     background: var(--background-color-high, transparent);
 }
 
-.fkp_dashboard-page__subscription-meta__main {
+.tachyon_dashboard-page__subscription-meta__main {
     display: flex;
     align-items: center;
     gap: 6px 10px;
     min-width: 0;
 }
 
-.fkp_dashboard-page__subscription-meta__heading {
+.tachyon_dashboard-page__subscription-meta__heading {
     flex: 0 0 auto;
     color: var(--text-color-high);
     font-weight: 700;
@@ -7240,7 +7184,7 @@ var styles = `
     white-space: nowrap;
 }
 
-.fkp_dashboard-page__subscription-meta__title {
+.tachyon_dashboard-page__subscription-meta__title {
     flex: 0 1 auto;
     width: max-content;
     max-width: min(28ch, 30%);
@@ -7251,7 +7195,7 @@ var styles = `
     overflow-wrap: anywhere;
 }
 
-.fkp_dashboard-page__subscription-meta__facts {
+.tachyon_dashboard-page__subscription-meta__facts {
     flex: 1 1 auto;
     min-width: 0;
     display: flex;
@@ -7260,7 +7204,7 @@ var styles = `
     gap: 5px 12px;
 }
 
-.fkp_dashboard-page__subscription-meta__fact {
+.tachyon_dashboard-page__subscription-meta__fact {
     display: flex;
     align-items: baseline;
     gap: 4px;
@@ -7268,19 +7212,19 @@ var styles = `
     line-height: 1.25;
 }
 
-.fkp_dashboard-page__subscription-meta__fact-key {
+.tachyon_dashboard-page__subscription-meta__fact-key {
     color: var(--text-color-medium);
     font-size: 12px;
     white-space: nowrap;
 }
 
-.fkp_dashboard-page__subscription-meta__fact-value {
+.tachyon_dashboard-page__subscription-meta__fact-value {
     color: var(--text-color-high);
     font-weight: 600;
     overflow-wrap: anywhere;
 }
 
-.fkp_dashboard-page__subscription-meta__actions {
+.tachyon_dashboard-page__subscription-meta__actions {
     flex: 0 0 auto;
     margin-left: auto;
     display: flex;
@@ -7288,7 +7232,7 @@ var styles = `
     gap: var(--subscription-meta-action-gap);
 }
 
-.fkp_dashboard-page .btn.fkp_dashboard-page__subscription-meta__action {
+.tachyon_dashboard-page .btn.tachyon_dashboard-page__subscription-meta__action {
     width: var(--subscription-meta-action-size);
     height: var(--subscription-meta-action-size);
     min-width: var(--subscription-meta-action-size);
@@ -7303,14 +7247,14 @@ var styles = `
     margin: 0;
 }
 
-.fkp_dashboard-page__subscription-meta__action svg {
+.tachyon_dashboard-page__subscription-meta__action svg {
     width: 15px;
     height: 15px;
     display: block;
     flex: 0 0 auto;
 }
 
-.fkp_dashboard-page__subscription-meta__announce {
+.tachyon_dashboard-page__subscription-meta__announce {
     margin: 6px 0 0;
     border-left: 3px solid var(--primary-color-medium, dodgerblue);
     padding: 4px 8px;
@@ -7322,31 +7266,31 @@ var styles = `
 }
 
 @media (max-width: 700px) {
-    .fkp_dashboard-page__subscription-meta__main {
+    .tachyon_dashboard-page__subscription-meta__main {
         align-items: flex-start;
         flex-wrap: wrap;
     }
 
-    .fkp_dashboard-page__subscription-meta__heading,
-    .fkp_dashboard-page__subscription-meta__title {
+    .tachyon_dashboard-page__subscription-meta__heading,
+    .tachyon_dashboard-page__subscription-meta__title {
         order: 1;
     }
 
-    .fkp_dashboard-page__subscription-meta__actions {
+    .tachyon_dashboard-page__subscription-meta__actions {
         order: 2;
     }
 
-    .fkp_dashboard-page__subscription-meta__facts {
+    .tachyon_dashboard-page__subscription-meta__facts {
         order: 3;
         flex-basis: 100%;
     }
 
-    .fkp_dashboard-page__subscription-meta__title {
+    .tachyon_dashboard-page__subscription-meta__title {
         max-width: calc(100% - 42px);
     }
 }
 
-.fkp_dashboard-page__outbound-grid__item {
+.tachyon_dashboard-page__outbound-grid__item {
     border: 2px var(--background-color-low, lightgray) solid;
     border-radius: 4px;
     padding: 10px;
@@ -7355,29 +7299,29 @@ var styles = `
     position: relative;
 }
 
-.fkp_dashboard-page__outbound-grid__item--selectable {
+.tachyon_dashboard-page__outbound-grid__item--selectable {
     cursor: pointer;
 }
 
-.fkp_dashboard-page__outbound-grid__item--selectable:hover {
+.tachyon_dashboard-page__outbound-grid__item--selectable:hover {
     border-color: var(--primary-color-high, dodgerblue);
 }
 
-.fkp_dashboard-page__outbound-grid__item--active {
+.tachyon_dashboard-page__outbound-grid__item--active {
     border-color: var(--success-color-medium, green);
 }
 
-.fkp_dashboard-page__outbound-grid__item--disabled {
+.tachyon_dashboard-page__outbound-grid__item--disabled {
     cursor: default;
 }
 
-.fkp_dashboard-page__outbound-grid__item--switching {
+.tachyon_dashboard-page__outbound-grid__item--switching {
     border-color: transparent !important;
     overflow: hidden;
     cursor: wait;
 }
 
-.fkp_dashboard-page__outbound-grid__item__snake {
+.tachyon_dashboard-page__outbound-grid__item__snake {
     position: absolute;
     top: 0;
     left: 0;
@@ -7388,13 +7332,13 @@ var styles = `
     box-sizing: border-box;
 }
 
-.fkp_dashboard-page__outbound-grid__item__snake rect {
+.tachyon_dashboard-page__outbound-grid__item__snake rect {
     stroke: var(--primary-color-high, dodgerblue);
     stroke-width: 4;
-    animation: fkp-dashboard-selector-snake-svg 1.2s linear infinite;
+    animation: tachyon-dashboard-selector-snake-svg 1.2s linear infinite;
 }
 
-@keyframes fkp-dashboard-selector-snake-svg {
+@keyframes tachyon-dashboard-selector-snake-svg {
     0% {
         stroke-dasharray: 30 70;
         stroke-dashoffset: 100;
@@ -7405,20 +7349,20 @@ var styles = `
     }
 }
 
-.fkp_dashboard-page__outbound-grid__item__header {
+.tachyon_dashboard-page__outbound-grid__item__header {
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
     gap: 8px;
 }
 
-.fkp_dashboard-page__outbound-grid__item__header b {
+.tachyon_dashboard-page__outbound-grid__item__header b {
     min-width: 0;
     line-height: 1.25;
     overflow-wrap: anywhere;
 }
 
-.fkp_dashboard-page .btn.fkp_dashboard-page__outbound-grid__item__copy-button {
+.tachyon_dashboard-page .btn.tachyon_dashboard-page__outbound-grid__item__copy-button {
     width: 22px;
     height: 22px;
     min-width: 22px;
@@ -7432,14 +7376,14 @@ var styles = `
     line-height: 1;
 }
 
-.fkp_dashboard-page__outbound-grid__item__copy-button svg {
+.tachyon_dashboard-page__outbound-grid__item__copy-button svg {
     width: 13px;
     height: 13px;
     display: block;
     flex: 0 0 auto;
 }
 
-.fkp_dashboard-page__outbound-grid__item__footer {
+.tachyon_dashboard-page__outbound-grid__item__footer {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -7447,51 +7391,51 @@ var styles = `
     margin-top: 10px;
 }
 
-.fkp_dashboard-page__outbound-grid__item__type {
+.tachyon_dashboard-page__outbound-grid__item__type {
     min-width: 0;
     overflow-wrap: anywhere;
 }
 
-.fkp_dashboard-page__outbound-grid__item__latency--empty {
+.tachyon_dashboard-page__outbound-grid__item__latency--empty {
     color: var(--primary-color-low, lightgray);
 }
 
-.fkp_dashboard-page__outbound-grid__item__latency--green {
+.tachyon_dashboard-page__outbound-grid__item__latency--green {
     color: var(--success-color-medium, green);
 }
 
-.fkp_dashboard-page__outbound-grid__item__latency--yellow {
+.tachyon_dashboard-page__outbound-grid__item__latency--yellow {
     color: var(--warn-color-medium, orange);
 }
 
-.fkp_dashboard-page__outbound-grid__item__latency--red {
+.tachyon_dashboard-page__outbound-grid__item__latency--red {
     color: var(--error-color-medium, red);
 }
 
-.fkp_dashboard-page__urltest-details {
+.tachyon_dashboard-page__urltest-details {
     box-sizing: border-box;
     width: min(760px, calc(100vw - 56px));
     max-width: 100%;
     padding-top: 10px;
 }
 
-.fkp_dashboard-page__urltest-details__params {
+.tachyon_dashboard-page__urltest-details__params {
     display: grid;
     grid-template-columns: minmax(120px, max-content) minmax(0, 1fr);
     gap: 8px 16px;
     margin: 0 0 18px;
 }
 
-.fkp_dashboard-page__urltest-details__param {
+.tachyon_dashboard-page__urltest-details__param {
     display: contents;
 }
 
-.fkp_dashboard-page__urltest-details__param dt {
+.tachyon_dashboard-page__urltest-details__param dt {
     color: var(--text-color-medium, #666);
     line-height: 1.35;
 }
 
-.fkp_dashboard-page__urltest-details__param dd {
+.tachyon_dashboard-page__urltest-details__param dd {
     display: flex;
     align-items: center;
     gap: 8px;
@@ -7499,23 +7443,23 @@ var styles = `
     margin: 0;
 }
 
-.fkp_dashboard-page__urltest-details__param dd span {
+.tachyon_dashboard-page__urltest-details__param dd span {
     min-width: 0;
     overflow-wrap: anywhere;
 }
 
-.fkp_dashboard-page__urltest-details__url {
+.tachyon_dashboard-page__urltest-details__url {
     min-width: 0;
     color: var(--primary-color-high, #337ab7);
     text-decoration: none;
     overflow-wrap: anywhere;
 }
 
-.fkp_dashboard-page__urltest-details__url:hover {
+.tachyon_dashboard-page__urltest-details__url:hover {
     text-decoration: underline;
 }
 
-.fkp_dashboard-page__urltest-details__selected-value {
+.tachyon_dashboard-page__urltest-details__selected-value {
     display: inline-flex;
     align-items: center;
     gap: 6px;
@@ -7529,22 +7473,22 @@ var styles = `
     line-height: 1.3;
 }
 
-.fkp_dashboard-page__urltest-details__selected-name {
+.tachyon_dashboard-page__urltest-details__selected-name {
     min-width: 0;
     font-weight: 600;
     overflow-wrap: anywhere;
 }
 
-.fkp_dashboard-page__urltest-details__selected-type {
+.tachyon_dashboard-page__urltest-details__selected-type {
     color: var(--text-color-medium, #666);
 }
 
-.fkp_dashboard-page__urltest-details__outbounds-title {
+.tachyon_dashboard-page__urltest-details__outbounds-title {
     margin-bottom: 8px;
     font-weight: 600;
 }
 
-.fkp_dashboard-page__urltest-details__table {
+.tachyon_dashboard-page__urltest-details__table {
     display: grid;
     gap: 6px;
     width: calc(100% + 14px);
@@ -7556,7 +7500,7 @@ var styles = `
     scrollbar-gutter: auto;
 }
 
-.fkp_dashboard-page__urltest-details__row {
+.tachyon_dashboard-page__urltest-details__row {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(54px, max-content) 20px;
     align-items: center;
@@ -7570,13 +7514,13 @@ var styles = `
     border-radius: 4px;
 }
 
-.fkp_dashboard-page__urltest-details__row--active {
+.tachyon_dashboard-page__urltest-details__row--active {
     border-color: var(--success-color-low, #2d7d46);
     background: transparent;
 }
 
-.fkp_dashboard-page__urltest-details__row-name,
-.fkp_dashboard-page__urltest-details__row-meta {
+.tachyon_dashboard-page__urltest-details__row-name,
+.tachyon_dashboard-page__urltest-details__row-meta {
     display: flex;
     align-items: center;
     gap: 6px;
@@ -7584,24 +7528,24 @@ var styles = `
     line-height: 1.3;
 }
 
-.fkp_dashboard-page__urltest-details__row-name {
+.tachyon_dashboard-page__urltest-details__row-name {
     flex-wrap: wrap;
 }
 
-.fkp_dashboard-page__urltest-details__row-name b {
+.tachyon_dashboard-page__urltest-details__row-name b {
     min-width: 0;
     overflow-wrap: anywhere;
     line-height: 1.3;
 }
 
-.fkp_dashboard-page__urltest-details__priority-name {
+.tachyon_dashboard-page__urltest-details__priority-name {
     display: inline-flex;
     align-items: center;
     flex-wrap: wrap;
     gap: 2px 0;
 }
 
-.fkp_dashboard-page__urltest-details__priority-number {
+.tachyon_dashboard-page__urltest-details__priority-number {
     margin-right: 6px;
     color: var(--text-color-medium, #aaa);
     font-family: monospace;
@@ -7609,7 +7553,7 @@ var styles = `
     font-weight: 600;
 }
 
-.fkp_dashboard-page__urltest-details__priority-level {
+.tachyon_dashboard-page__urltest-details__priority-level {
     margin-right: 8px;
     padding: 2px 6px;
     border-radius: 4px;
@@ -7619,7 +7563,7 @@ var styles = `
     font-weight: 400;
 }
 
-.fkp_dashboard-page__urltest-details__country-badge {
+.tachyon_dashboard-page__urltest-details__country-badge {
     display: inline-flex;
     align-items: center;
     user-select: none;
@@ -7631,27 +7575,27 @@ var styles = `
     line-height: 1;
 }
 
-.fkp_dashboard-page__urltest-details__priority-node {
+.tachyon_dashboard-page__urltest-details__priority-node {
     color: var(--text-color-high, #fff);
     font-weight: 600;
 }
 
-.fkp_dashboard-page__urltest-details__row-type,
-.fkp_dashboard-page__urltest-details__row-meta {
+.tachyon_dashboard-page__urltest-details__row-type,
+.tachyon_dashboard-page__urltest-details__row-meta {
     color: var(--text-color-medium, #666);
 }
 
-.fkp_dashboard-page__urltest-details__row-type {
+.tachyon_dashboard-page__urltest-details__row-type {
     white-space: nowrap;
     line-height: 1.3;
 }
 
-.fkp_dashboard-page__urltest-details__row-meta {
+.tachyon_dashboard-page__urltest-details__row-meta {
     justify-content: flex-end;
     white-space: nowrap;
 }
 
-.fkp_dashboard-page__urltest-details__copy-button {
+.tachyon_dashboard-page__urltest-details__copy-button {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -7663,19 +7607,19 @@ var styles = `
     box-sizing: border-box;
 }
 
-.fkp_dashboard-page__urltest-details__copy-button svg {
+.tachyon_dashboard-page__urltest-details__copy-button svg {
     width: 12px;
     height: 12px;
 }
 
-.fkp_dashboard-page__urltest-details__copy-placeholder {
+.tachyon_dashboard-page__urltest-details__copy-placeholder {
     display: block;
     width: 20px;
     min-width: 20px;
     height: 1px;
 }
 
-.fkp_dashboard-page__urltest-details__empty {
+.tachyon_dashboard-page__urltest-details__empty {
     margin-top: 4px;
     padding: 24px 0;
     border: 1px dashed var(--border-color-high, #555);
@@ -7686,22 +7630,22 @@ var styles = `
     text-align: center;
 }
 
-.fkp_dashboard-page__urltest-details__footer {
+.tachyon_dashboard-page__urltest-details__footer {
     display: flex;
     justify-content: flex-end;
     margin-top: 14px;
 }
 
 @media (max-width: 560px) {
-    .fkp_dashboard-page__urltest-details__params {
+    .tachyon_dashboard-page__urltest-details__params {
         grid-template-columns: 1fr;
     }
 
-    .fkp_dashboard-page__urltest-details__row {
+    .tachyon_dashboard-page__urltest-details__row {
         grid-template-columns: minmax(0, 1fr) 20px;
     }
 
-    .fkp_dashboard-page__urltest-details__row-meta {
+    .tachyon_dashboard-page__urltest-details__row-meta {
         grid-column: 1 / -1;
         justify-content: flex-start;
     }
@@ -7718,20 +7662,24 @@ var DashboardTab = {
 
 // src/tachyon/tabs/diagnostic/renderDiagnostic.ts
 function render2() {
-  return E("div", { id: "diagnostic-status", class: "fkp_diagnostic-page" }, [
-    E("div", { class: "fkp_diagnostic-page__left-bar" }, [
-      E("div", { id: "fkp_diagnostic-page-run-check" }),
-      E("div", {
-        class: "fkp_diagnostic-page__checks",
-        id: "fkp_diagnostic-page-checks"
-      })
-    ]),
-    E("div", { class: "fkp_diagnostic-page__right-bar" }, [
-      E("div", { id: "fkp_diagnostic-page-wiki" }),
-      E("div", { id: "fkp_diagnostic-page-actions" }),
-      E("div", { id: "fkp_diagnostic-page-system-info" })
-    ])
-  ]);
+  return E(
+    "div",
+    { id: "diagnostic-status", class: "tachyon_diagnostic-page" },
+    [
+      E("div", { class: "tachyon_diagnostic-page__left-bar" }, [
+        E("div", { id: "tachyon_diagnostic-page-run-check" }),
+        E("div", {
+          class: "tachyon_diagnostic-page__checks",
+          id: "tachyon_diagnostic-page-checks"
+        })
+      ]),
+      E("div", { class: "tachyon_diagnostic-page__right-bar" }, [
+        E("div", { id: "tachyon_diagnostic-page-wiki" }),
+        E("div", { id: "tachyon_diagnostic-page-actions" }),
+        E("div", { id: "tachyon_diagnostic-page-system-info" })
+      ])
+    ]
+  );
 }
 
 // src/tachyon/tabs/diagnostic/checks/updateCheckStore.ts
@@ -8412,7 +8360,9 @@ async function runZapret2Check() {
     },
     {
       state: standaloneConflict ? "error" : standaloneAutostartRisk ? "warning" : "success",
-      key: standaloneServiceRunning ? hasZapret2Rules ? _("Standalone Zapret2 is active together with Tachyon Zapret2 rules") : _("Standalone Zapret2 service is active") : standaloneAutostartRisk ? _("Standalone Zapret2 autostart is enabled") : _("Standalone Zapret2 service is inactive"),
+      key: standaloneServiceRunning ? hasZapret2Rules ? _(
+        "Standalone Zapret2 is active together with Tachyon Zapret2 rules"
+      ) : _("Standalone Zapret2 service is active") : standaloneAutostartRisk ? _("Standalone Zapret2 autostart is enabled") : _("Standalone Zapret2 service is inactive"),
       value: ""
     }
   ];
@@ -8612,34 +8562,34 @@ async function ensureSystemInfo({
 
 // src/partials/button/styles.ts
 var styles2 = `
-.fkp-partial-button {
+.tachyon-partial-button {
     text-align: center;
 }
 
-.fkp-partial-button--with-icon {
+.tachyon-partial-button--with-icon {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: 5px;
 }
 
-.fkp-partial-button--loading {
+.tachyon-partial-button--loading {
 }
 
-.fkp-partial-button--disabled {
+.tachyon-partial-button--disabled {
 }
 
-.fkp-partial-button__icon {
+.tachyon-partial-button__icon {
     flex: 0 0 auto;
 }
 
-.fkp-partial-button__icon {
+.tachyon-partial-button__icon {
     display: inline-flex;
     align-items: center;
     justify-content: center;
 }
 
-.fkp-partial-button__icon svg {
+.tachyon-partial-button__icon svg {
     width: 16px;
     height: 16px;
     display: block;
@@ -8650,15 +8600,15 @@ var styles2 = `
 // src/partials/modal/styles.ts
 var styles3 = `
 
-.fkp-partial-modal__body {}
+.tachyon-partial-modal__body {}
 
-.fkp-partial-modal__content {
+.tachyon-partial-modal__content {
     max-height: 70vh;
     overflow: scroll;
     border-radius: 4px;
 }
 
-.fkp-partial-modal__footer {
+.tachyon-partial-modal__footer {
     display: flex;
     justify-content: flex-end;
     align-items: center;
@@ -8666,11 +8616,11 @@ var styles3 = `
     gap: 10px;
 }
 
-.fkp-partial-modal__footer button {
+.tachyon-partial-modal__footer button {
     margin-left: 0;
 }
 
-.fkp-partial-modal__checkbox {
+.tachyon-partial-modal__checkbox {
     display: inline-flex;
     align-items: center;
     gap: 8px;
@@ -8679,7 +8629,7 @@ var styles3 = `
     user-select: none;
 }
 
-.fkp-partial-modal__checkbox-text {
+.tachyon-partial-modal__checkbox-text {
     line-height: 1.2;
 }
 `;
@@ -8696,7 +8646,7 @@ function renderButton({
   const hasIcon = !!loading2 || !!icon;
   function getWrappedIcon() {
     const iconWrap = E("span", {
-      class: "fkp-partial-button__icon"
+      class: "tachyon-partial-button__icon"
     });
     if (loading2) {
       iconWrap.appendChild(renderLoaderCircleIcon24());
@@ -8711,10 +8661,10 @@ function renderButton({
   function getClass() {
     return [
       "btn",
-      "fkp-partial-button",
-      ...insertIf(Boolean(disabled), ["fkp-partial-button--disabled"]),
-      ...insertIf(Boolean(loading2), ["fkp-partial-button--loading"]),
-      ...insertIf(Boolean(hasIcon), ["fkp-partial-button--with-icon"]),
+      "tachyon-partial-button",
+      ...insertIf(Boolean(disabled), ["tachyon-partial-button--disabled"]),
+      ...insertIf(Boolean(loading2), ["tachyon-partial-button--loading"]),
+      ...insertIf(Boolean(hasIcon), ["tachyon-partial-button--with-icon"]),
       ...classNames
     ].filter(Boolean).join(" ");
   }
@@ -8760,7 +8710,7 @@ function renderModal(text, name, options) {
   const codeEl = E("code", {}, "");
   const contentEl = E(
     "pre",
-    { class: "fkp-partial-modal__content" },
+    { class: "tachyon-partial-modal__content" },
     codeEl
   );
   const stopRefreshTimer = () => {
@@ -8936,11 +8886,11 @@ ${currentText}
       setAutoRefreshEnabled(autoRefreshInput.checked);
     });
     footerChildren.unshift(
-      E("label", { class: "fkp-partial-modal__checkbox" }, [
+      E("label", { class: "tachyon-partial-modal__checkbox" }, [
         autoRefreshInput,
         E(
           "span",
-          { class: "fkp-partial-modal__checkbox-text" },
+          { class: "tachyon-partial-modal__checkbox-text" },
           options.autoRefreshLabel ?? _("Auto refresh")
         )
       ])
@@ -8955,20 +8905,20 @@ ${currentText}
       setMaskValuesEnabled(maskValuesInput.checked);
     });
     footerChildren.unshift(
-      E("label", { class: "fkp-partial-modal__checkbox" }, [
+      E("label", { class: "tachyon-partial-modal__checkbox" }, [
         maskValuesInput,
         E(
           "span",
-          { class: "fkp-partial-modal__checkbox-text" },
+          { class: "tachyon-partial-modal__checkbox-text" },
           options.maskValuesLabel ?? _("Hide values")
         )
       ])
     );
   }
-  const body = E("div", { class: "fkp-partial-modal__body" }, [
+  const body = E("div", { class: "tachyon-partial-modal__body" }, [
     E("div", {}, [
       contentEl,
-      E("div", { class: "fkp-partial-modal__footer" }, footerChildren)
+      E("div", { class: "tachyon-partial-modal__footer" }, footerChildren)
     ])
   ]);
   if ((options?.getText || options?.startAtEnd) && typeof document !== "undefined") {
@@ -9007,11 +8957,10 @@ function renderAvailableActions({
   enable,
   disable,
   globalCheck,
-  doctor,
   viewLogs,
   showSingBoxConfig
 }) {
-  return E("div", { class: "fkp_diagnostic-page__right-bar__actions" }, [
+  return E("div", { class: "tachyon_diagnostic-page__right-bar__actions" }, [
     E("b", {}, _("Available actions")),
     ...insertIf(restart.visible, [
       renderButton({
@@ -9072,15 +9021,6 @@ function renderAvailableActions({
         disabled: globalCheck.disabled
       })
     ]),
-    ...insertIf(doctor.visible, [
-      renderButton({
-        onClick: doctor.onClick,
-        icon: renderRotateCcwIcon24,
-        text: _("Run doctor repair"),
-        loading: doctor.loading,
-        disabled: doctor.disabled
-      })
-    ]),
     ...insertIf(viewLogs.visible, [
       renderButton({
         onClick: viewLogs.onClick,
@@ -9110,7 +9050,7 @@ function renderCheckSummary(items) {
   const renderedItems = items.map((item) => {
     function getIcon() {
       const iconWrap = E("span", {
-        class: "fkp_diagnostic_alert__summary__item__icon"
+        class: "tachyon_diagnostic_alert__summary__item__icon"
       });
       if (item.state === "success") {
         iconWrap.appendChild(renderCheckIcon24());
@@ -9126,26 +9066,30 @@ function renderCheckSummary(items) {
     return E(
       "div",
       {
-        class: `fkp_diagnostic_alert__summary__item fkp_diagnostic_alert__summary__item--${item.state}`
+        class: `tachyon_diagnostic_alert__summary__item tachyon_diagnostic_alert__summary__item--${item.state}`
       },
       [getIcon(), E("b", {}, item.key), E("div", {}, item.value)]
     );
   });
-  return E("div", { class: "fkp_diagnostic_alert__summary" }, renderedItems);
+  return E(
+    "div",
+    { class: "tachyon_diagnostic_alert__summary" },
+    renderedItems
+  );
 }
 function renderLoadingState3(props) {
-  const iconWrap = E("span", { class: "fkp_diagnostic_alert__icon" });
+  const iconWrap = E("span", { class: "tachyon_diagnostic_alert__icon" });
   iconWrap.appendChild(renderLoaderCircleIcon24());
   return E(
     "div",
-    { class: "fkp_diagnostic_alert fkp_diagnostic_alert--loading" },
+    { class: "tachyon_diagnostic_alert tachyon_diagnostic_alert--loading" },
     [
       iconWrap,
-      E("div", { class: "fkp_diagnostic_alert__content" }, [
-        E("b", { class: "fkp_diagnostic_alert__title" }, props.title),
+      E("div", { class: "tachyon_diagnostic_alert__content" }, [
+        E("b", { class: "tachyon_diagnostic_alert__title" }, props.title),
         E(
           "div",
-          { class: "fkp_diagnostic_alert__description" },
+          { class: "tachyon_diagnostic_alert__description" },
           props.description
         )
       ]),
@@ -9155,18 +9099,18 @@ function renderLoadingState3(props) {
   );
 }
 function renderWarningState(props) {
-  const iconWrap = E("span", { class: "fkp_diagnostic_alert__icon" });
+  const iconWrap = E("span", { class: "tachyon_diagnostic_alert__icon" });
   iconWrap.appendChild(renderCircleAlertIcon24());
   return E(
     "div",
-    { class: "fkp_diagnostic_alert fkp_diagnostic_alert--warning" },
+    { class: "tachyon_diagnostic_alert tachyon_diagnostic_alert--warning" },
     [
       iconWrap,
-      E("div", { class: "fkp_diagnostic_alert__content" }, [
-        E("b", { class: "fkp_diagnostic_alert__title" }, props.title),
+      E("div", { class: "tachyon_diagnostic_alert__content" }, [
+        E("b", { class: "tachyon_diagnostic_alert__title" }, props.title),
         E(
           "div",
-          { class: "fkp_diagnostic_alert__description" },
+          { class: "tachyon_diagnostic_alert__description" },
           props.description
         )
       ]),
@@ -9176,18 +9120,18 @@ function renderWarningState(props) {
   );
 }
 function renderErrorState(props) {
-  const iconWrap = E("span", { class: "fkp_diagnostic_alert__icon" });
+  const iconWrap = E("span", { class: "tachyon_diagnostic_alert__icon" });
   iconWrap.appendChild(renderCircleXIcon24());
   return E(
     "div",
-    { class: "fkp_diagnostic_alert fkp_diagnostic_alert--error" },
+    { class: "tachyon_diagnostic_alert tachyon_diagnostic_alert--error" },
     [
       iconWrap,
-      E("div", { class: "fkp_diagnostic_alert__content" }, [
-        E("b", { class: "fkp_diagnostic_alert__title" }, props.title),
+      E("div", { class: "tachyon_diagnostic_alert__content" }, [
+        E("b", { class: "tachyon_diagnostic_alert__title" }, props.title),
         E(
           "div",
-          { class: "fkp_diagnostic_alert__description" },
+          { class: "tachyon_diagnostic_alert__description" },
           props.description
         )
       ]),
@@ -9197,18 +9141,18 @@ function renderErrorState(props) {
   );
 }
 function renderSuccessState(props) {
-  const iconWrap = E("span", { class: "fkp_diagnostic_alert__icon" });
+  const iconWrap = E("span", { class: "tachyon_diagnostic_alert__icon" });
   iconWrap.appendChild(renderCircleCheckIcon24());
   return E(
     "div",
-    { class: "fkp_diagnostic_alert fkp_diagnostic_alert--success" },
+    { class: "tachyon_diagnostic_alert tachyon_diagnostic_alert--success" },
     [
       iconWrap,
-      E("div", { class: "fkp_diagnostic_alert__content" }, [
-        E("b", { class: "fkp_diagnostic_alert__title" }, props.title),
+      E("div", { class: "tachyon_diagnostic_alert__content" }, [
+        E("b", { class: "tachyon_diagnostic_alert__title" }, props.title),
         E(
           "div",
-          { class: "fkp_diagnostic_alert__description" },
+          { class: "tachyon_diagnostic_alert__description" },
           props.description
         )
       ]),
@@ -9218,18 +9162,18 @@ function renderSuccessState(props) {
   );
 }
 function renderSkippedState(props) {
-  const iconWrap = E("span", { class: "fkp_diagnostic_alert__icon" });
+  const iconWrap = E("span", { class: "tachyon_diagnostic_alert__icon" });
   iconWrap.appendChild(renderCircleSlashIcon24());
   return E(
     "div",
-    { class: "fkp_diagnostic_alert fkp_diagnostic_alert--skipped" },
+    { class: "tachyon_diagnostic_alert tachyon_diagnostic_alert--skipped" },
     [
       iconWrap,
-      E("div", { class: "fkp_diagnostic_alert__content" }, [
-        E("b", { class: "fkp_diagnostic_alert__title" }, props.title),
+      E("div", { class: "tachyon_diagnostic_alert__content" }, [
+        E("b", { class: "tachyon_diagnostic_alert__title" }, props.title),
         E(
           "div",
-          { class: "fkp_diagnostic_alert__description" },
+          { class: "tachyon_diagnostic_alert__description" },
           props.description
         )
       ]),
@@ -9263,7 +9207,7 @@ function renderRunAction({
   disabled,
   click
 }) {
-  return E("div", { class: "fkp_diagnostic-page__run_check_wrapper" }, [
+  return E("div", { class: "tachyon_diagnostic-page__run_check_wrapper" }, [
     renderButton({
       text: _("Run Diagnostic"),
       onClick: click,
@@ -9277,38 +9221,42 @@ function renderRunAction({
 
 // src/tachyon/tabs/diagnostic/partials/renderSystemInfo.ts
 function renderSystemInfo({ items }) {
-  return E("div", { class: "fkp_diagnostic-page__right-bar__system-info" }, [
-    E(
-      "b",
-      { class: "fkp_diagnostic-page__right-bar__system-info__title" },
-      _("System information")
-    ),
-    ...items.map((item) => {
-      const tagClass = [
-        "fkp_diagnostic-page__right-bar__system-info__row__tag",
-        ...insertIf(item.tag?.kind === "neutral", [
-          "fkp_diagnostic-page__right-bar__system-info__row__tag--neutral"
-        ]),
-        ...insertIf(item.tag?.kind === "warning", [
-          "fkp_diagnostic-page__right-bar__system-info__row__tag--warning"
-        ]),
-        ...insertIf(item.tag?.kind === "success", [
-          "fkp_diagnostic-page__right-bar__system-info__row__tag--success"
-        ])
-      ].filter(Boolean).join(" ");
-      return E(
-        "div",
-        { class: "fkp_diagnostic-page__right-bar__system-info__row" },
-        [
-          E("b", {}, item.key),
-          E("div", {}, [
-            E("span", {}, item.value),
-            E("span", { class: tagClass }, item?.tag?.label)
+  return E(
+    "div",
+    { class: "tachyon_diagnostic-page__right-bar__system-info" },
+    [
+      E(
+        "b",
+        { class: "tachyon_diagnostic-page__right-bar__system-info__title" },
+        _("System information")
+      ),
+      ...items.map((item) => {
+        const tagClass = [
+          "tachyon_diagnostic-page__right-bar__system-info__row__tag",
+          ...insertIf(item.tag?.kind === "neutral", [
+            "tachyon_diagnostic-page__right-bar__system-info__row__tag--neutral"
+          ]),
+          ...insertIf(item.tag?.kind === "warning", [
+            "tachyon_diagnostic-page__right-bar__system-info__row__tag--warning"
+          ]),
+          ...insertIf(item.tag?.kind === "success", [
+            "tachyon_diagnostic-page__right-bar__system-info__row__tag--success"
           ])
-        ]
-      );
-    })
-  ]);
+        ].filter(Boolean).join(" ");
+        return E(
+          "div",
+          { class: "tachyon_diagnostic-page__right-bar__system-info__row" },
+          [
+            E("b", {}, item.key),
+            E("div", {}, [
+              E("span", {}, item.value),
+              E("span", { class: tagClass }, item?.tag?.label)
+            ])
+          ]
+        );
+      })
+    ]
+  );
 }
 
 // src/helpers/normalizeCompiledVersion.ts
@@ -9322,22 +9270,22 @@ function normalizeCompiledVersion(version) {
 // src/tachyon/tabs/diagnostic/partials/renderWikiDisclaimer.ts
 function renderWikiDisclaimer(kind) {
   const iconWrap = E("span", {
-    class: "fkp_diagnostic-page__right-bar__wiki__icon"
+    class: "tachyon_diagnostic-page__right-bar__wiki__icon"
   });
   iconWrap.appendChild(renderBookOpenTextIcon24());
   const className = [
-    "fkp_diagnostic-page__right-bar__wiki",
+    "tachyon_diagnostic-page__right-bar__wiki",
     ...insertIf(kind === "error", [
-      "fkp_diagnostic-page__right-bar__wiki--error"
+      "tachyon_diagnostic-page__right-bar__wiki--error"
     ]),
     ...insertIf(kind === "warning", [
-      "fkp_diagnostic-page__right-bar__wiki--warning"
+      "tachyon_diagnostic-page__right-bar__wiki--warning"
     ])
   ].join(" ");
   return E("div", { class: className }, [
-    E("div", { class: "fkp_diagnostic-page__right-bar__wiki__content" }, [
+    E("div", { class: "tachyon_diagnostic-page__right-bar__wiki__content" }, [
       iconWrap,
-      E("div", { class: "fkp_diagnostic-page__right-bar__wiki__texts" }, [
+      E("div", { class: "tachyon_diagnostic-page__right-bar__wiki__texts" }, [
         E("b", {}, _("Troubleshooting")),
         E("div", {}, _("Do not panic, everything can be fixed, just..."))
       ])
@@ -10158,7 +10106,7 @@ function renderDiagnosticsChecks() {
   const diagnosticsChecks = [...store.get().diagnosticsChecks].sort(
     (a, b) => a.order - b.order
   );
-  const container = document.getElementById("fkp_diagnostic-page-checks");
+  const container = document.getElementById("tachyon_diagnostic-page-checks");
   const renderedDiagnosticsChecks = diagnosticsChecks.map(
     (check) => renderCheckSection(check)
   );
@@ -10172,7 +10120,9 @@ function renderDiagnosticRunActionWidget() {
   const providerInfoLoaded = store.get().diagnosticsSystemInfo.providerInfoLoaded;
   const servicesInfoWidget = store.get().servicesInfoWidget;
   const tachyonRunning = Boolean(servicesInfoWidget.data.tachyonRunning);
-  const container = document.getElementById("fkp_diagnostic-page-run-check");
+  const container = document.getElementById(
+    "tachyon_diagnostic-page-run-check"
+  );
   const renderedAction = renderRunAction({
     loading: loading2,
     disabled: shouldDisableDiagnosticRunAction({
@@ -10307,28 +10257,6 @@ async function handleShowGlobalCheck() {
     setDiagnosticActionLoading("globalCheck", false);
   }
 }
-async function handleRunDoctor() {
-  setDiagnosticActionLoading("doctor", true);
-  try {
-    const doctorRes = await TachyonShellMethods.doctor();
-    if (doctorRes.success) {
-      ui.showModal(
-        _("Run doctor repair"),
-        renderModal(doctorRes.data ?? "", "doctor_repair", {
-          initialAutoRefresh: false
-        })
-      );
-    } else {
-      logger.error("[DIAGNOSTIC]", "handleRunDoctor - e", doctorRes);
-    }
-  } catch (e) {
-    logger.error("[DIAGNOSTIC]", "handleRunDoctor - e", e);
-  } finally {
-    setDiagnosticActionLoading("doctor", false);
-    // Reload state so the diagnostics dashboard indicators reflect the newly fixed parameters!
-    runDiagnosticsPageInitialChecks();
-  }
-}
 async function handleViewLogs() {
   setDiagnosticActionLoading("viewLogs", true);
   try {
@@ -10404,7 +10332,7 @@ function renderWikiDisclaimerWidget() {
     }
     return "default";
   }
-  const container = document.getElementById("fkp_diagnostic-page-wiki");
+  const container = document.getElementById("tachyon_diagnostic-page-wiki");
   return preserveScrollForPage(() => {
     container.replaceChildren(renderWikiDisclaimer(getWikiKind()));
   });
@@ -10441,7 +10369,7 @@ function renderDiagnosticAvailableActionsWidget() {
     startLoading,
     stopLoading
   });
-  const container = document.getElementById("fkp_diagnostic-page-actions");
+  const container = document.getElementById("tachyon_diagnostic-page-actions");
   const renderedActions = renderAvailableActions({
     restart: {
       loading: restartLoading,
@@ -10484,12 +10412,6 @@ function renderDiagnosticAvailableActionsWidget() {
       onClick: handleShowGlobalCheck,
       disabled: utilityActionsDisabled
     },
-    doctor: {
-      loading: diagnosticsActions.doctor.loading,
-      visible: true,
-      onClick: handleRunDoctor,
-      disabled: utilityActionsDisabled
-    },
     viewLogs: {
       loading: diagnosticsActions.viewLogs.loading,
       visible: true,
@@ -10510,7 +10432,9 @@ function renderDiagnosticAvailableActionsWidget() {
 function renderDiagnosticSystemInfoWidget() {
   logger.debug("[DIAGNOSTIC]", "renderDiagnosticSystemInfoWidget");
   const diagnosticsSystemInfo = store.get().diagnosticsSystemInfo;
-  const container = document.getElementById("fkp_diagnostic-page-system-info");
+  const container = document.getElementById(
+    "tachyon_diagnostic-page-system-info"
+  );
   const items = [
     {
       key: "Tachyon",
@@ -10816,7 +10740,7 @@ var styles4 = `
     display: none;
 }
 
-.fkp_diagnostic-page {
+.tachyon_diagnostic-page {
     display: grid;
     grid-template-columns: 2fr 1fr;
     grid-column-gap: 10px;
@@ -10824,18 +10748,18 @@ var styles4 = `
 }
 
 @media (max-width: 800px) {
-    .fkp_diagnostic-page {
+    .tachyon_diagnostic-page {
         grid-template-columns: 1fr;
     }
 }
 
-.fkp_diagnostic-page__right-bar {
+.tachyon_diagnostic-page__right-bar {
     display: grid;
     grid-template-columns: 1fr;
     grid-row-gap: 10px;
 }
 
-.fkp_diagnostic-page__right-bar__wiki {
+.tachyon_diagnostic-page__right-bar__wiki {
     border: 2px var(--background-color-low, lightgray) solid;
     border-radius: 4px;
     padding: 10px;
@@ -10845,22 +10769,22 @@ var styles4 = `
     grid-row-gap: 10px;
 }
 
-.fkp_diagnostic-page__right-bar__wiki--warning {
+.tachyon_diagnostic-page__right-bar__wiki--warning {
     border: 2px var(--warn-color-medium, orange) solid;
 }
-.fkp_diagnostic-page__right-bar__wiki--error {
+.tachyon_diagnostic-page__right-bar__wiki--error {
     border: 2px var(--error-color-medium, red) solid;
 }
 
-.fkp_diagnostic-page__right-bar__wiki__content {
+.tachyon_diagnostic-page__right-bar__wiki__content {
     display: grid;
     grid-template-columns: 1fr 5fr;
     grid-column-gap: 10px;
 }
 
-.fkp_diagnostic-page__right-bar__wiki__texts {}
+.tachyon_diagnostic-page__right-bar__wiki__texts {}
 
-.fkp_diagnostic-page__right-bar__actions {
+.tachyon_diagnostic-page__right-bar__actions {
     border: 2px var(--background-color-low, lightgray) solid;
     border-radius: 4px;
     padding: 10px;
@@ -10871,13 +10795,13 @@ var styles4 = `
 
 }
 
-.fkp_diagnostic-page__right-bar__actions > .fkp-partial-button {
+.tachyon_diagnostic-page__right-bar__actions > .tachyon-partial-button {
     width: 100%;
     min-width: 0;
     margin-left: 0;
 }
 
-.fkp_diagnostic-page__right-bar__system-info {
+.tachyon_diagnostic-page__right-bar__system-info {
     border: 2px var(--background-color-low, lightgray) solid;
     border-radius: 4px;
     padding: 10px;
@@ -10887,57 +10811,57 @@ var styles4 = `
     grid-row-gap: 10px;
 }
 
-.fkp_diagnostic-page__right-bar__system-info__title {
+.tachyon_diagnostic-page__right-bar__system-info__title {
 
 }
 
-.fkp_diagnostic-page__right-bar__system-info__row {
+.tachyon_diagnostic-page__right-bar__system-info__row {
     display: grid;
     grid-template-columns: auto 1fr;
     grid-column-gap: 5px;
 }
 
-.fkp_diagnostic-page__right-bar__system-info__row__tag {
+.tachyon_diagnostic-page__right-bar__system-info__row__tag {
     padding: 2px 4px;
     border: 1px transparent solid;
     border-radius: 4px;
     margin-left: 5px;
 }
 
-.fkp_diagnostic-page__right-bar__system-info__row__tag--neutral {
+.tachyon_diagnostic-page__right-bar__system-info__row__tag--neutral {
     border: 1px var(--background-color-high, gray) solid;
     color: var(--text-color-medium, gray);
 }
 
-.fkp_diagnostic-page__right-bar__system-info__row__tag--warning {
+.tachyon_diagnostic-page__right-bar__system-info__row__tag--warning {
     border: 1px var(--warn-color-medium, orange) solid;
     color: var(--warn-color-medium, orange);
 }
 
-.fkp_diagnostic-page__right-bar__system-info__row__tag--success {
+.tachyon_diagnostic-page__right-bar__system-info__row__tag--success {
     border: 1px var(--success-color-medium, green) solid;
     color: var(--success-color-medium, green);
 }
 
-.fkp_diagnostic-page__left-bar {
+.tachyon_diagnostic-page__left-bar {
     display: grid;
     grid-template-columns: 1fr;
     grid-row-gap: 10px;
 }
 
-.fkp_diagnostic-page__run_check_wrapper {}
+.tachyon_diagnostic-page__run_check_wrapper {}
 
-.fkp_diagnostic-page__run_check_wrapper button {
+.tachyon_diagnostic-page__run_check_wrapper button {
     width: 100%;
 }
 
-.fkp_diagnostic-page__checks {
+.tachyon_diagnostic-page__checks {
     display: grid;
     grid-template-columns: 1fr;
     grid-row-gap: 10px;
 }
 
-.fkp_diagnostic_alert {
+.tachyon_diagnostic_alert {
     border: 2px var(--background-color-low, lightgray) solid;
     border-radius: 4px;
 
@@ -10948,60 +10872,60 @@ var styles4 = `
     padding: 10px;
 }
 
-.fkp_diagnostic_alert--loading {
+.tachyon_diagnostic_alert--loading {
     border: 2px var(--primary-color-high, dodgerblue) solid;
 }
 
-.fkp_diagnostic_alert--warning {
+.tachyon_diagnostic_alert--warning {
     border: 2px var(--warn-color-medium, orange) solid;
     color: var(--warn-color-medium, orange);
 }
 
-.fkp_diagnostic_alert--error {
+.tachyon_diagnostic_alert--error {
     border: 2px var(--error-color-medium, red) solid;
     color: var(--error-color-medium, red);
 }
 
-.fkp_diagnostic_alert--success {
+.tachyon_diagnostic_alert--success {
     border: 2px var(--success-color-medium, green) solid;
     color: var(--success-color-medium, green);
 }
 
-.fkp_diagnostic_alert--skipped {}
+.tachyon_diagnostic_alert--skipped {}
 
-.fkp_diagnostic_alert__icon {}
+.tachyon_diagnostic_alert__icon {}
 
-.fkp_diagnostic_alert__content {}
+.tachyon_diagnostic_alert__content {}
 
-.fkp_diagnostic_alert__title {
+.tachyon_diagnostic_alert__title {
     display: block;
 }
 
-.fkp_diagnostic_alert__description {}
+.tachyon_diagnostic_alert__description {}
 
-.fkp_diagnostic_alert__summary {
+.tachyon_diagnostic_alert__summary {
     margin-top: 10px;
 }
 
-.fkp_diagnostic_alert__summary__item {
+.tachyon_diagnostic_alert__summary__item {
     display: grid;
     grid-template-columns: 16px auto 1fr;
     grid-column-gap: 10px;
 }
 
-.fkp_diagnostic_alert__summary__item--error {
+.tachyon_diagnostic_alert__summary__item--error {
     color: var(--error-color-medium, red);
 }
 
-.fkp_diagnostic_alert__summary__item--warning {
+.tachyon_diagnostic_alert__summary__item--warning {
     color: var(--warn-color-medium, orange);
 }
 
-.fkp_diagnostic_alert__summary__item--success {
+.tachyon_diagnostic_alert__summary__item--success {
     color: var(--success-color-medium, green);
 }
 
-.fkp_diagnostic_alert__summary__item__icon {
+.tachyon_diagnostic_alert__summary__item__icon {
     width: 16px;
     height: 16px;
 }
@@ -11020,17 +10944,17 @@ function render3() {
     "div",
     {
       id: "monitoring-status",
-      class: "fkp_monitoring-page"
+      class: "tachyon_monitoring-page"
     },
     [
-      E("div", { class: "fkp_monitoring-page__panel" }, [
-        E("div", { class: "fkp_monitoring-page__controls" }, [
-          E("div", { class: "fkp_monitoring-page__tabs" }, [
+      E("div", { class: "tachyon_monitoring-page__panel" }, [
+        E("div", { class: "tachyon_monitoring-page__controls" }, [
+          E("div", { class: "tachyon_monitoring-page__tabs" }, [
             E(
               "button",
               {
                 id: "monitoring-tab-active",
-                class: "btn cbi-button fkp_monitoring-page__tab fkp_monitoring-page__tab--active",
+                class: "btn cbi-button tachyon_monitoring-page__tab tachyon_monitoring-page__tab--active",
                 type: "button"
               },
               `${_("Active")} 0`
@@ -11039,38 +10963,38 @@ function render3() {
               "button",
               {
                 id: "monitoring-tab-closed",
-                class: "btn cbi-button fkp_monitoring-page__tab",
+                class: "btn cbi-button tachyon_monitoring-page__tab",
                 type: "button"
               },
               `${_("Closed")} 0`
             )
           ]),
-          E("div", { class: "fkp_monitoring-page__filters" }, [
+          E("div", { class: "tachyon_monitoring-page__filters" }, [
             E(
               "select",
               {
                 id: "monitoring-device-filter",
-                class: "cbi-input-select fkp_monitoring-page__device-filter"
+                class: "cbi-input-select tachyon_monitoring-page__device-filter"
               },
               [E("option", { value: "all" }, _("All"))]
             ),
-            E("label", { class: "fkp_monitoring-page__search" }, [
-              E("span", { class: "fkp_monitoring-page__search-icon" }, []),
+            E("label", { class: "tachyon_monitoring-page__search" }, [
+              E("span", { class: "tachyon_monitoring-page__search-icon" }, []),
               E("input", {
                 id: "monitoring-search",
-                class: "cbi-input-text fkp_monitoring-page__search-input",
+                class: "cbi-input-text tachyon_monitoring-page__search-input",
                 type: "search",
                 placeholder: _("Search"),
                 autocomplete: "off"
               })
             ])
           ]),
-          E("div", { class: "fkp_monitoring-page__actions" }, [
+          E("div", { class: "tachyon_monitoring-page__actions" }, [
             E(
               "button",
               {
                 id: "monitoring-close-all",
-                class: "btn cbi-button fkp_monitoring-page__icon-button",
+                class: "btn cbi-button tachyon_monitoring-page__icon-button",
                 title: _("Close all connections"),
                 "aria-label": _("Close all connections"),
                 type: "button",
@@ -11082,7 +11006,7 @@ function render3() {
               "button",
               {
                 id: "monitoring-pause-toggle",
-                class: "btn cbi-button fkp_monitoring-page__icon-button",
+                class: "btn cbi-button tachyon_monitoring-page__icon-button",
                 title: _("Pause updates"),
                 "aria-label": _("Pause updates"),
                 type: "button"
@@ -11093,12 +11017,15 @@ function render3() {
         ]),
         E(
           "div",
-          { id: "monitoring-connections", class: "fkp_monitoring-page__body" },
+          {
+            id: "monitoring-connections",
+            class: "tachyon_monitoring-page__body"
+          },
           [
             E(
               "div",
               {
-                class: "fkp_monitoring-page__state fkp_monitoring-page__state--loading"
+                class: "tachyon_monitoring-page__state tachyon_monitoring-page__state--loading"
               },
               _("Loading connections")
             )
@@ -11542,12 +11469,12 @@ function setButtonActive(button, active) {
   if (!button) {
     return;
   }
-  button.classList.toggle("fkp_monitoring-page__tab--active", active);
+  button.classList.toggle("tachyon_monitoring-page__tab--active", active);
 }
 function renderTabButtonContent(label, count) {
   return [
-    E("span", { class: "fkp_monitoring-page__tab-label" }, label),
-    E("span", { class: "fkp_monitoring-page__tab-badge" }, String(count))
+    E("span", { class: "tachyon_monitoring-page__tab-label" }, label),
+    E("span", { class: "tachyon_monitoring-page__tab-badge" }, String(count))
   ];
 }
 function renderControls() {
@@ -11590,12 +11517,12 @@ function renderControls() {
     pauseToggleButton.setAttribute("aria-label", title);
     pauseToggleButton.disabled = serviceAvailability === "stopped";
     pauseToggleButton.classList.toggle(
-      "fkp_monitoring-page__icon-button--active",
+      "tachyon_monitoring-page__icon-button--active",
       monitoringPaused
     );
   }
   const searchIcon = document.querySelector(
-    ".fkp_monitoring-page__search-icon"
+    ".tachyon_monitoring-page__search-icon"
   );
   if (searchIcon && searchIcon.childNodes.length === 0) {
     searchIcon.replaceChildren(renderSearchIcon24());
@@ -11619,7 +11546,7 @@ function renderValue(value, className = "") {
   const element = E(
     "span",
     {
-      class: ["fkp_monitoring-page__value", className].filter(Boolean).join(" "),
+      class: ["tachyon_monitoring-page__value", className].filter(Boolean).join(" "),
       title: text
     },
     text
@@ -11633,7 +11560,7 @@ function renderSourceValue(source) {
     const element2 = E(
       "span",
       {
-        class: "fkp_monitoring-page__value fkp_monitoring-page__source-value fkp_monitoring-page__source-value--ip-only",
+        class: "tachyon_monitoring-page__value tachyon_monitoring-page__source-value tachyon_monitoring-page__source-value--ip-only",
         title: fullText
       },
       source.primary || "-"
@@ -11644,12 +11571,16 @@ function renderSourceValue(source) {
   const element = E(
     "span",
     {
-      class: "fkp_monitoring-page__value fkp_monitoring-page__source-value",
+      class: "tachyon_monitoring-page__value tachyon_monitoring-page__source-value",
       title: fullText
     },
     [
-      E("span", { class: "fkp_monitoring-page__source-name" }, source.primary),
-      E("span", { class: "fkp_monitoring-page__source-ip" }, source.ip)
+      E(
+        "span",
+        { class: "tachyon_monitoring-page__source-name" },
+        source.primary
+      ),
+      E("span", { class: "tachyon_monitoring-page__source-ip" }, source.ip)
     ]
   );
   element.setAttribute("data-copy-value", fullText);
@@ -11667,7 +11598,7 @@ function renderConnectionRow(connection) {
   const closeButton = activeTab === "active" ? E(
     "button",
     {
-      class: "btn cbi-button fkp_monitoring-page__row-action",
+      class: "btn cbi-button tachyon_monitoring-page__row-action",
       title: _("Close connection"),
       "aria-label": _("Close connection"),
       type: "button",
@@ -11679,15 +11610,15 @@ function renderConnectionRow(connection) {
   return E(
     "tr",
     {
-      class: isClosing ? "fkp_monitoring-page__row--closing" : ""
+      class: isClosing ? "tachyon_monitoring-page__row--closing" : ""
     },
     [
       renderTableCell(_("Host"), [renderValue(target.primary)]),
       renderTableCell(_("Type"), [
-        renderValue(getNetwork(connection), "fkp_monitoring-page__network")
+        renderValue(getNetwork(connection), "tachyon_monitoring-page__network")
       ]),
       renderTableCell(_("Route"), [
-        renderValue(getRoute(connection), "fkp_monitoring-page__route")
+        renderValue(getRoute(connection), "tachyon_monitoring-page__route")
       ]),
       renderTableCell(_("Time"), [
         renderValue(formatConnectionDuration(connection))
@@ -11704,18 +11635,18 @@ function renderConnectionRow(connection) {
   );
 }
 function renderStateRow(text, className = "") {
-  return E("tr", { class: "fkp_monitoring-page__state-row" }, [
+  return E("tr", { class: "tachyon_monitoring-page__state-row" }, [
     E(
       "td",
       {
-        class: "fkp_monitoring-page__state-cell",
-        colSpan: 9
+        class: "tachyon_monitoring-page__state-cell",
+        colSpan: 8
       },
       [
         E(
           "div",
           {
-            class: ["fkp_monitoring-page__state", className].filter(Boolean).join(" ")
+            class: ["tachyon_monitoring-page__state", className].filter(Boolean).join(" ")
           },
           text
         )
@@ -11725,10 +11656,10 @@ function renderStateRow(text, className = "") {
 }
 function renderConnectionsTable(connections, state) {
   const rows = state ? [renderStateRow(state.text, state.className)] : connections.map(renderConnectionRow);
-  return E("div", { class: "fkp_monitoring-page__table-wrap" }, [
+  return E("div", { class: "tachyon_monitoring-page__table-wrap" }, [
     E(
       "table",
-      { class: "table cbi-section-table fkp_monitoring-page__table" },
+      { class: "table cbi-section-table tachyon_monitoring-page__table" },
       [
         E("thead", {}, [
           E("tr", {}, [
@@ -11783,7 +11714,7 @@ function renderConnections(options = {}) {
     container.replaceChildren(
       renderConnectionsTable([], {
         text: _("Loading connections"),
-        className: "fkp_monitoring-page__state--loading"
+        className: "tachyon_monitoring-page__state--loading"
       })
     );
     return;
@@ -11792,7 +11723,7 @@ function renderConnections(options = {}) {
     container.replaceChildren(
       renderConnectionsTable([], {
         text: _("Connections are unavailable"),
-        className: "fkp_monitoring-page__state--error"
+        className: "tachyon_monitoring-page__state--error"
       })
     );
     return;
@@ -11902,7 +11833,7 @@ function getSelectionValueElements(selection) {
   }
   return Array.from(
     root.querySelectorAll(
-      ".fkp_monitoring-page__value[data-copy-value]"
+      ".tachyon_monitoring-page__value[data-copy-value]"
     )
   ).filter((element) => {
     for (let index = 0; index < selection.rangeCount; index += 1) {
@@ -11968,7 +11899,6 @@ function handleMonitoringValueCopy(event) {
   event.clipboardData?.setData("text/plain", fullText);
   event.preventDefault();
 }
-
 async function closeConnection(connectionId) {
   if (!connectionId || closingConnectionIds.has(connectionId)) {
     return;
@@ -12072,9 +12002,11 @@ function bindControls() {
   if (connectionsContainer) {
     connectionsContainer.onclick = (event) => {
       const target = event.target;
-      const closeBtn = target?.closest(".fkp_monitoring-page__row-action");
-      if (closeBtn && closeBtn.value) {
-        void closeConnection(closeBtn.value);
+      const button = target?.closest(
+        ".tachyon_monitoring-page__row-action"
+      );
+      if (button?.value) {
+        void closeConnection(button.value);
       }
     };
   }
@@ -12359,21 +12291,21 @@ var styles5 = `
     display: none;
 }
 
-.fkp_monitoring-page {
-    --fkp-monitoring-control-height: 34px;
-    --fkp-monitoring-row-action-size: 24px;
-    --fkp-monitoring-divider-color: rgba(127, 127, 127, 0.22);
-    --fkp-monitoring-soft-bg: rgba(127, 127, 127, 0.08);
-    --fkp-monitoring-soft-bg-hover: rgba(127, 127, 127, 0.14);
-    --fkp-monitoring-danger-color: var(--error-color-medium, #d32f2f);
-    --fkp-monitoring-success-color: var(--success-color-medium, #2e7d32);
-    --fkp-monitoring-paused-color: var(--primary-color-high, #1976d2);
+.tachyon_monitoring-page {
+    --tachyon-monitoring-control-height: 34px;
+    --tachyon-monitoring-row-action-size: 24px;
+    --tachyon-monitoring-divider-color: rgba(127, 127, 127, 0.22);
+    --tachyon-monitoring-soft-bg: rgba(127, 127, 127, 0.08);
+    --tachyon-monitoring-soft-bg-hover: rgba(127, 127, 127, 0.14);
+    --tachyon-monitoring-danger-color: var(--error-color-medium, #d32f2f);
+    --tachyon-monitoring-success-color: var(--success-color-medium, #2e7d32);
+    --tachyon-monitoring-paused-color: var(--primary-color-high, #1976d2);
 
     width: 100%;
     min-width: 0;
 }
 
-.fkp_monitoring-page__panel {
+.tachyon_monitoring-page__panel {
     margin-top: 0;
     border: 0;
     border-radius: 0;
@@ -12384,7 +12316,7 @@ var styles5 = `
     min-width: 0;
 }
 
-.fkp_monitoring-page .btn.fkp_monitoring-page__icon-button {
+.tachyon_monitoring-page .btn.tachyon_monitoring-page__icon-button {
     width: 32px;
     height: 32px;
     min-width: 32px;
@@ -12397,65 +12329,65 @@ var styles5 = `
     flex: 0 0 auto;
     line-height: 1;
     margin: 0;
-    border: 1px solid var(--fkp-monitoring-divider-color) !important;
+    border: 1px solid var(--tachyon-monitoring-divider-color) !important;
     border-radius: 6px;
-    background: var(--fkp-monitoring-soft-bg) !important;
+    background: var(--tachyon-monitoring-soft-bg) !important;
     color: var(--text-color-medium) !important;
     box-shadow: none;
 }
 
-.fkp_monitoring-page .btn.fkp_monitoring-page__icon-button:hover:not(:disabled) {
-    background: var(--fkp-monitoring-soft-bg-hover) !important;
+.tachyon_monitoring-page .btn.tachyon_monitoring-page__icon-button:hover:not(:disabled) {
+    background: var(--tachyon-monitoring-soft-bg-hover) !important;
     color: var(--text-color-high) !important;
 }
 
-.fkp_monitoring-page .btn.fkp_monitoring-page__icon-button--active {
+.tachyon_monitoring-page .btn.tachyon_monitoring-page__icon-button--active {
     background: rgba(25, 118, 210, 0.16) !important;
     color: var(--primary-color-high, #1976d2) !important;
 }
 
-.fkp_monitoring-page .btn.fkp_monitoring-page__icon-button:disabled {
+.tachyon_monitoring-page .btn.tachyon_monitoring-page__icon-button:disabled {
     opacity: 0.45;
     cursor: not-allowed;
 }
 
-.fkp_monitoring-page #monitoring-close-all.btn.fkp_monitoring-page__icon-button {
+.tachyon_monitoring-page #monitoring-close-all.btn.tachyon_monitoring-page__icon-button {
     order: 2;
     border-color: rgba(217, 83, 79, 0.4) !important;
     background: transparent !important;
     color: #d9534f !important;
 }
 
-.fkp_monitoring-page #monitoring-close-all.btn.fkp_monitoring-page__icon-button:hover:not(:disabled) {
+.tachyon_monitoring-page #monitoring-close-all.btn.tachyon_monitoring-page__icon-button:hover:not(:disabled) {
     border-color: rgba(217, 83, 79, 0.6) !important;
     background: transparent !important;
     color: #d9534f !important;
 }
 
-.fkp_monitoring-page #monitoring-pause-toggle.btn.fkp_monitoring-page__icon-button,
-.fkp_monitoring-page #monitoring-pause-toggle.btn.fkp_monitoring-page__icon-button--active {
+.tachyon_monitoring-page #monitoring-pause-toggle.btn.tachyon_monitoring-page__icon-button,
+.tachyon_monitoring-page #monitoring-pause-toggle.btn.tachyon_monitoring-page__icon-button--active {
     order: 1;
     border-color: rgba(128, 128, 128, 0.3) !important;
     background: transparent !important;
     color: var(--text-color-medium, #888) !important;
 }
 
-.fkp_monitoring-page #monitoring-pause-toggle.btn.fkp_monitoring-page__icon-button:hover:not(:disabled),
-.fkp_monitoring-page #monitoring-pause-toggle.btn.fkp_monitoring-page__icon-button--active:hover:not(:disabled) {
+.tachyon_monitoring-page #monitoring-pause-toggle.btn.tachyon_monitoring-page__icon-button:hover:not(:disabled),
+.tachyon_monitoring-page #monitoring-pause-toggle.btn.tachyon_monitoring-page__icon-button--active:hover:not(:disabled) {
     border-color: rgba(128, 128, 128, 0.6) !important;
     background: transparent !important;
     color: var(--text-color-high, #eee) !important;
 }
 
-.fkp_monitoring-page__icon-button svg,
-.fkp_monitoring-page__row-action svg {
+.tachyon_monitoring-page__icon-button svg,
+.tachyon_monitoring-page__row-action svg {
     width: 16px;
     height: 16px;
     display: block;
     flex: 0 0 auto;
 }
 
-.fkp_monitoring-page__controls {
+.tachyon_monitoring-page__controls {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -12466,7 +12398,7 @@ var styles5 = `
     min-width: 0;
 }
 
-.fkp_monitoring-page__actions {
+.tachyon_monitoring-page__actions {
     display: flex;
     align-items: center;
     justify-content: flex-end;
@@ -12474,21 +12406,21 @@ var styles5 = `
     min-width: 0;
 }
 
-.fkp_monitoring-page__tabs {
+.tachyon_monitoring-page__tabs {
     display: inline-flex;
     align-items: center;
     gap: 2px;
     width: max-content;
     padding: 2px;
-    border: 1px solid var(--fkp-monitoring-divider-color);
+    border: 1px solid var(--tachyon-monitoring-divider-color);
     border-radius: 6px;
-    background: var(--fkp-monitoring-soft-bg);
+    background: var(--tachyon-monitoring-soft-bg);
     box-sizing: border-box;
 }
 
-.fkp_monitoring-page .btn.fkp_monitoring-page__tab {
-    height: calc(var(--fkp-monitoring-control-height) - 6px);
-    min-height: calc(var(--fkp-monitoring-control-height) - 6px);
+.tachyon_monitoring-page .btn.tachyon_monitoring-page__tab {
+    height: calc(var(--tachyon-monitoring-control-height) - 6px);
+    min-height: calc(var(--tachyon-monitoring-control-height) - 6px);
     margin: 0;
     padding: 0 12px;
     border: 0 !important;
@@ -12504,22 +12436,22 @@ var styles5 = `
     line-height: 1;
 }
 
-.fkp_monitoring-page .btn.fkp_monitoring-page__tab:hover {
-    background: var(--fkp-monitoring-soft-bg-hover) !important;
+.tachyon_monitoring-page .btn.tachyon_monitoring-page__tab:hover {
+    background: var(--tachyon-monitoring-soft-bg-hover) !important;
     color: var(--text-color-high) !important;
 }
 
-.fkp_monitoring-page .btn.fkp_monitoring-page__tab--active {
+.tachyon_monitoring-page .btn.tachyon_monitoring-page__tab--active {
     background: rgba(25, 118, 210, 0.16) !important;
     color: var(--primary-color-high, #1976d2) !important;
     font-weight: 700;
 }
 
-.fkp_monitoring-page__tab-label {
+.tachyon_monitoring-page__tab-label {
     display: inline-block;
 }
 
-.fkp_monitoring-page__tab-badge {
+.tachyon_monitoring-page__tab-badge {
     min-width: 18px;
     height: 18px;
     padding: 0 6px;
@@ -12535,12 +12467,12 @@ var styles5 = `
     line-height: 1;
 }
 
-.fkp_monitoring-page__tab--active .fkp_monitoring-page__tab-badge {
+.tachyon_monitoring-page__tab--active .tachyon_monitoring-page__tab-badge {
     background: rgba(25, 118, 210, 0.22);
     color: var(--primary-color-high, #1976d2);
 }
 
-.fkp_monitoring-page__filters {
+.tachyon_monitoring-page__filters {
     display: flex;
     flex: 1 1 auto;
     flex-wrap: wrap;
@@ -12550,29 +12482,29 @@ var styles5 = `
     min-width: 0;
 }
 
-.fkp_monitoring-page__device-filter {
+.tachyon_monitoring-page__device-filter {
     width: min(220px, 100%);
     min-width: 0;
-    height: var(--fkp-monitoring-control-height) !important;
-    min-height: var(--fkp-monitoring-control-height) !important;
+    height: var(--tachyon-monitoring-control-height) !important;
+    min-height: var(--tachyon-monitoring-control-height) !important;
     padding-top: 0 !important;
     padding-bottom: 0 !important;
     margin: 0 !important;
     box-sizing: border-box;
-    line-height: calc(var(--fkp-monitoring-control-height) - 2px) !important;
+    line-height: calc(var(--tachyon-monitoring-control-height) - 2px) !important;
 }
 
-.fkp_monitoring-page__search {
+.tachyon_monitoring-page__search {
     position: relative;
     display: flex;
     align-items: center;
     width: min(320px, 100%);
     min-width: 0;
-    height: var(--fkp-monitoring-control-height);
+    height: var(--tachyon-monitoring-control-height);
     margin: 0;
 }
 
-.fkp_monitoring-page__search-icon {
+.tachyon_monitoring-page__search-icon {
     position: absolute;
     left: 8px;
     width: 16px;
@@ -12581,37 +12513,37 @@ var styles5 = `
     pointer-events: none;
 }
 
-.fkp_monitoring-page__search-icon svg {
+.tachyon_monitoring-page__search-icon svg {
     width: 16px;
     height: 16px;
     display: block;
 }
 
-.fkp_monitoring-page__search-input {
+.tachyon_monitoring-page__search-input {
     width: 100%;
-    height: var(--fkp-monitoring-control-height) !important;
-    min-height: var(--fkp-monitoring-control-height) !important;
+    height: var(--tachyon-monitoring-control-height) !important;
+    min-height: var(--tachyon-monitoring-control-height) !important;
     padding-left: 30px !important;
     padding-top: 0 !important;
     padding-bottom: 0 !important;
     margin: 0 !important;
     box-sizing: border-box;
-    line-height: calc(var(--fkp-monitoring-control-height) - 2px) !important;
+    line-height: calc(var(--tachyon-monitoring-control-height) - 2px) !important;
 }
 
-.fkp_monitoring-page__body {
+.tachyon_monitoring-page__body {
     margin-top: 0;
     width: 100%;
     min-width: 0;
 }
 
-.fkp_monitoring-page__table-wrap {
+.tachyon_monitoring-page__table-wrap {
     width: 100%;
     overflow-x: auto;
     margin-bottom: 0;
 }
 
-.fkp_monitoring-page__table {
+.tachyon_monitoring-page__table {
     width: 100%;
     min-width: 840px;
     table-layout: fixed;
@@ -12620,10 +12552,10 @@ var styles5 = `
     margin-bottom: 0;
 }
 
-.fkp_monitoring-page__table th,
-.fkp_monitoring-page__table td {
+.tachyon_monitoring-page__table th,
+.tachyon_monitoring-page__table td {
     padding: 8px 6px;
-    border-bottom: 1px solid var(--fkp-monitoring-divider-color);
+    border-bottom: 1px solid var(--tachyon-monitoring-divider-color);
     box-sizing: border-box;
     text-align: left;
     vertical-align: middle;
@@ -12631,7 +12563,7 @@ var styles5 = `
     white-space: nowrap;
 }
 
-.fkp_monitoring-page__table th {
+.tachyon_monitoring-page__table th {
     color: var(--text-color-medium);
     font-size: 11px;
     font-weight: 600;
@@ -12640,67 +12572,67 @@ var styles5 = `
     border-bottom-color: rgba(127, 127, 127, 0.32);
 }
 
-.fkp_monitoring-page__table th:nth-child(1) {
+.tachyon_monitoring-page__table th:nth-child(1) {
     width: 28%;
 }
 
-.fkp_monitoring-page__table th:nth-child(2) {
+.tachyon_monitoring-page__table th:nth-child(2) {
     width: 6%;
 }
 
-.fkp_monitoring-page__table th:nth-child(3) {
+.tachyon_monitoring-page__table th:nth-child(3) {
     width: 16%;
 }
 
-.fkp_monitoring-page__table th:nth-child(4) {
+.tachyon_monitoring-page__table th:nth-child(4) {
     width: 8%;
 }
 
-.fkp_monitoring-page__table th:nth-child(5) {
+.tachyon_monitoring-page__table th:nth-child(5) {
     width: 9.5%;
 }
 
-.fkp_monitoring-page__table th:nth-child(6) {
+.tachyon_monitoring-page__table th:nth-child(6) {
     width: 8.5%;
 }
 
-.fkp_monitoring-page__table th:nth-child(7) {
+.tachyon_monitoring-page__table th:nth-child(7) {
     width: 16%;
 }
 
-.fkp_monitoring-page__table th:nth-child(8) {
+.tachyon_monitoring-page__table th:nth-child(8) {
     width: 8%;
 }
 
-.fkp_monitoring-page__table tbody tr:last-child td {
+.tachyon_monitoring-page__table tbody tr:last-child td {
     border-bottom: 0;
 }
 
-.fkp_monitoring-page__table td:last-child {
+.tachyon_monitoring-page__table td:last-child {
     padding-top: 0;
     padding-bottom: 0;
 }
 
-.fkp_monitoring-page__table th:nth-child(4),
-.fkp_monitoring-page__table td:nth-child(4),
-.fkp_monitoring-page__table th:nth-child(5),
-.fkp_monitoring-page__table td:nth-child(5),
-.fkp_monitoring-page__table th:nth-child(6),
-.fkp_monitoring-page__table td:nth-child(6) {
+.tachyon_monitoring-page__table th:nth-child(4),
+.tachyon_monitoring-page__table td:nth-child(4),
+.tachyon_monitoring-page__table th:nth-child(5),
+.tachyon_monitoring-page__table td:nth-child(5),
+.tachyon_monitoring-page__table th:nth-child(6),
+.tachyon_monitoring-page__table td:nth-child(6) {
     text-align: right;
 }
 
-.fkp_monitoring-page__table th:nth-child(7),
-.fkp_monitoring-page__table td:nth-child(7) {
+.tachyon_monitoring-page__table th:nth-child(7),
+.tachyon_monitoring-page__table td:nth-child(7) {
     text-align: left;
 }
 
-.fkp_monitoring-page__table th:last-child,
-.fkp_monitoring-page__table td:last-child {
+.tachyon_monitoring-page__table th:last-child,
+.tachyon_monitoring-page__table td:last-child {
     text-align: center;
 }
 
-.fkp_monitoring-page__value {
+.tachyon_monitoring-page__value {
     display: block;
     max-width: 100%;
     min-width: 0;
@@ -12714,21 +12646,21 @@ var styles5 = `
     user-select: text;
 }
 
-.fkp_monitoring-page__source-value {
+.tachyon_monitoring-page__source-value {
     display: flex;
     align-items: baseline;
     justify-content: flex-start;
     gap: 5px;
 }
 
-.fkp_monitoring-page__source-name {
+.tachyon_monitoring-page__source-name {
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
-.fkp_monitoring-page__source-ip {
+.tachyon_monitoring-page__source-ip {
     flex: 0 1 auto;
     min-width: 0;
     overflow: hidden;
@@ -12738,24 +12670,24 @@ var styles5 = `
     font-size: 12px;
 }
 
-.fkp_monitoring-page__source-value--ip-only {
+.tachyon_monitoring-page__source-value--ip-only {
     color: var(--text-color-high);
 }
 
-.fkp_monitoring-page__cell-main {
+.tachyon_monitoring-page__cell-main {
     color: var(--text-color-high);
     font-weight: 600;
     line-height: 1.25;
 }
 
-.fkp_monitoring-page__cell-secondary {
+.tachyon_monitoring-page__cell-secondary {
     margin-top: 2px;
     color: var(--text-color-medium);
     font-size: 12px;
     line-height: 1.25;
 }
 
-.fkp_monitoring-page__route {
+.tachyon_monitoring-page__route {
     display: inline-block;
     width: auto;
     padding: 2px 6px;
@@ -12766,7 +12698,7 @@ var styles5 = `
     font-weight: 500;
 }
 
-.fkp_monitoring-page__network {
+.tachyon_monitoring-page__network {
     background: transparent;
     border: 0;
     padding: 0;
@@ -12776,19 +12708,19 @@ var styles5 = `
     text-transform: lowercase;
 }
 
-.fkp_monitoring-page__table td:nth-child(4) .fkp_monitoring-page__value,
-.fkp_monitoring-page__table td:nth-child(5) .fkp_monitoring-page__value,
-.fkp_monitoring-page__table td:nth-child(6) .fkp_monitoring-page__value {
+.tachyon_monitoring-page__table td:nth-child(4) .tachyon_monitoring-page__value,
+.tachyon_monitoring-page__table td:nth-child(5) .tachyon_monitoring-page__value,
+.tachyon_monitoring-page__table td:nth-child(6) .tachyon_monitoring-page__value {
     color: var(--text-color-medium, #bbb);
     font-family: inherit;
     text-align: right;
 }
 
-.fkp_monitoring-page .btn.fkp_monitoring-page__row-action {
-    width: var(--fkp-monitoring-row-action-size);
-    height: var(--fkp-monitoring-row-action-size);
-    min-width: var(--fkp-monitoring-row-action-size);
-    min-height: var(--fkp-monitoring-row-action-size);
+.tachyon_monitoring-page .btn.tachyon_monitoring-page__row-action {
+    width: var(--tachyon-monitoring-row-action-size);
+    height: var(--tachyon-monitoring-row-action-size);
+    min-width: var(--tachyon-monitoring-row-action-size);
+    min-height: var(--tachyon-monitoring-row-action-size);
     padding: 0;
     box-sizing: border-box;
     display: inline-flex;
@@ -12799,31 +12731,31 @@ var styles5 = `
     border: 0 !important;
     border-radius: 999px;
     background: transparent !important;
-    color: var(--fkp-monitoring-danger-color) !important;
+    color: var(--tachyon-monitoring-danger-color) !important;
     box-shadow: none;
     cursor: pointer;
 }
 
-.fkp_monitoring-page__row-action svg {
+.tachyon_monitoring-page__row-action svg {
     width: 14px;
     height: 14px;
 }
 
-.fkp_monitoring-page .btn.fkp_monitoring-page__row-action:hover:not(:disabled) {
-    background: var(--fkp-monitoring-soft-bg-hover) !important;
-    color: var(--fkp-monitoring-danger-color) !important;
+.tachyon_monitoring-page .btn.tachyon_monitoring-page__row-action:hover:not(:disabled) {
+    background: var(--tachyon-monitoring-soft-bg-hover) !important;
+    color: var(--tachyon-monitoring-danger-color) !important;
 }
 
-.fkp_monitoring-page .btn.fkp_monitoring-page__row-action:disabled {
+.tachyon_monitoring-page .btn.tachyon_monitoring-page__row-action:disabled {
     opacity: 0.45;
     cursor: wait;
 }
 
-.fkp_monitoring-page__row--closing {
+.tachyon_monitoring-page__row--closing {
     opacity: 0.55;
 }
 
-.fkp_monitoring-page__state {
+.tachyon_monitoring-page__state {
     min-height: 90px;
     width: 100%;
     display: flex;
@@ -12834,49 +12766,49 @@ var styles5 = `
     box-sizing: border-box;
 }
 
-.fkp_monitoring-page__state-cell {
+.tachyon_monitoring-page__state-cell {
     padding: 0 !important;
 }
 
-.fkp_monitoring-page__state--error {
+.tachyon_monitoring-page__state--error {
     color: var(--error-color-medium, #d32f2f);
 }
 
 @media (max-width: 900px) {
-    .fkp_monitoring-page__controls {
+    .tachyon_monitoring-page__controls {
         align-items: center;
     }
 
-    .fkp_monitoring-page__tabs {
+    .tachyon_monitoring-page__tabs {
         flex: 1 0 100%;
     }
 
-    .fkp_monitoring-page__filters {
+    .tachyon_monitoring-page__filters {
         flex: 1 1 0;
     }
 
-    .fkp_monitoring-page__device-filter,
-    .fkp_monitoring-page__search {
+    .tachyon_monitoring-page__device-filter,
+    .tachyon_monitoring-page__search {
         max-width: none;
     }
 
-    .fkp_monitoring-page__table {
+    .tachyon_monitoring-page__table {
         min-width: 0;
     }
 
-    .fkp_monitoring-page__table thead {
+    .tachyon_monitoring-page__table thead {
         display: none;
     }
 
-    .fkp_monitoring-page__table,
-    .fkp_monitoring-page__table tbody,
-    .fkp_monitoring-page__table tr,
-    .fkp_monitoring-page__table td {
+    .tachyon_monitoring-page__table,
+    .tachyon_monitoring-page__table tbody,
+    .tachyon_monitoring-page__table tr,
+    .tachyon_monitoring-page__table td {
         display: block;
         width: 100%;
     }
 
-    .fkp_monitoring-page__table tr {
+    .tachyon_monitoring-page__table tr {
         border: 1px var(--background-color-low, lightgray) solid;
         border-radius: 4px;
         padding: 8px;
@@ -12884,18 +12816,18 @@ var styles5 = `
         margin-bottom: 8px;
     }
 
-    .fkp_monitoring-page__table td {
+    .tachyon_monitoring-page__table td {
         display: grid;
         grid-template-columns: minmax(92px, 34%) minmax(0, 1fr);
         gap: 8px;
         border: 0;
-        border-bottom: 1px solid var(--fkp-monitoring-divider-color);
+        border-bottom: 1px solid var(--tachyon-monitoring-divider-color);
         padding: 4px 0;
         box-sizing: border-box;
         text-align: left;
     }
 
-    .fkp_monitoring-page__table td::before {
+    .tachyon_monitoring-page__table td::before {
         content: attr(data-label);
         color: var(--text-color-medium);
         font-weight: 700;
@@ -12904,65 +12836,65 @@ var styles5 = `
         white-space: nowrap;
     }
 
-    .fkp_monitoring-page__table td:last-child {
+    .tachyon_monitoring-page__table td:last-child {
         grid-template-columns: minmax(92px, 34%) minmax(0, 1fr);
         align-items: center;
         border-bottom: 0;
-        min-height: var(--fkp-monitoring-row-action-size);
+        min-height: var(--tachyon-monitoring-row-action-size);
         padding: 0;
     }
 
-    .fkp_monitoring-page__value {
+    .tachyon_monitoring-page__value {
         text-align: right;
     }
 
-    .fkp_monitoring-page__source-value {
+    .tachyon_monitoring-page__source-value {
         justify-content: flex-end;
     }
 
-    .fkp_monitoring-page__state-row td::before {
+    .tachyon_monitoring-page__state-row td::before {
         display: none;
     }
 }
 
 @media (max-width: 520px) {
-    .fkp_monitoring-page__controls,
-    .fkp_monitoring-page__filters {
+    .tachyon_monitoring-page__controls,
+    .tachyon_monitoring-page__filters {
         align-items: stretch;
     }
 
-    .fkp_monitoring-page__tabs,
-    .fkp_monitoring-page__filters,
-    .fkp_monitoring-page__device-filter,
-    .fkp_monitoring-page__search {
+    .tachyon_monitoring-page__tabs,
+    .tachyon_monitoring-page__filters,
+    .tachyon_monitoring-page__device-filter,
+    .tachyon_monitoring-page__search {
         width: 100%;
     }
 
-    .fkp_monitoring-page__controls,
-    .fkp_monitoring-page__filters {
+    .tachyon_monitoring-page__controls,
+    .tachyon_monitoring-page__filters {
         flex-direction: column;
     }
 
-    .fkp_monitoring-page__actions {
+    .tachyon_monitoring-page__actions {
         align-self: flex-end;
     }
 
-    .fkp_monitoring-page__tabs {
+    .tachyon_monitoring-page__tabs {
         display: grid;
         grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
         width: 100%;
     }
 
-    .fkp_monitoring-page__table td {
+    .tachyon_monitoring-page__table td {
         grid-template-columns: 1fr;
         gap: 2px;
     }
 
-    .fkp_monitoring-page__value {
+    .tachyon_monitoring-page__value {
         text-align: left;
     }
 
-    .fkp_monitoring-page__source-value {
+    .tachyon_monitoring-page__source-value {
         justify-content: flex-start;
     }
 }
@@ -12977,10 +12909,10 @@ var MonitoringTab = {
 
 // src/tachyon/tabs/updates/render.ts
 function render4() {
-  return E("div", { id: "updates-status", class: "fkp_updates-page" }, [
+  return E("div", { id: "updates-status", class: "tachyon_updates-page" }, [
     E("div", {
-      id: "fkp_updates-components",
-      class: "fkp_updates-page__components"
+      id: "tachyon_updates-components",
+      class: "tachyon_updates-page__components"
     })
   ]);
 }
@@ -13698,16 +13630,16 @@ function renderComponentCard(card) {
   const serviceRuntimeActionLoading = isServiceRuntimeActionLoading();
   const systemInfoLoading = isSystemInfoLoading();
   const headerChildren = [
-    E("b", { class: "fkp_updates-page__component__title" }, card.title),
+    E("b", { class: "tachyon_updates-page__component__title" }, card.title),
     E(
       "span",
-      { class: "fkp_updates-page__component__header-version" },
+      { class: "tachyon_updates-page__component__header-version" },
       card.version
     )
   ];
   const header = E(
     "div",
-    { class: "fkp_updates-page__component__header" },
+    { class: "tachyon_updates-page__component__header" },
     headerChildren
   );
   const detailsChildren = [];
@@ -13723,7 +13655,7 @@ function renderComponentCard(card) {
           E(
             "a",
             {
-              class: "fkp_updates-page__component__release-version-link",
+              class: "tachyon_updates-page__component__release-version-link",
               href: checkResult.release_url,
               target: "_blank",
               rel: "noopener noreferrer"
@@ -13744,7 +13676,7 @@ function renderComponentCard(card) {
           E(
             "a",
             {
-              class: "fkp_updates-page__component__release-version-link",
+              class: "tachyon_updates-page__component__release-version-link",
               href: checkResult.release_url,
               target: "_blank",
               rel: "noopener noreferrer"
@@ -13760,7 +13692,7 @@ function renderComponentCard(card) {
       const rowChildren = [
         E(
           "span",
-          { class: "fkp_updates-page__component__info-label" },
+          { class: "tachyon_updates-page__component__info-label" },
           labelText
         )
       ];
@@ -13769,7 +13701,7 @@ function renderComponentCard(card) {
           E(
             "span",
             {
-              class: "fkp_updates-page__component__info-value fkp_updates-page__component__info-value--latest"
+              class: "tachyon_updates-page__component__info-value tachyon_updates-page__component__info-value--latest"
             },
             latestValueNodes
           )
@@ -13778,7 +13710,7 @@ function renderComponentCard(card) {
       detailsChildren.push(
         E(
           "div",
-          { class: "fkp_updates-page__component__info-row" },
+          { class: "tachyon_updates-page__component__info-row" },
           rowChildren
         )
       );
@@ -13786,7 +13718,7 @@ function renderComponentCard(card) {
   }
   const detailsContainer = detailsChildren.length > 0 ? E(
     "div",
-    { class: "fkp_updates-page__component__details" },
+    { class: "tachyon_updates-page__component__details" },
     detailsChildren
   ) : null;
   const primaryActions = [];
@@ -13827,7 +13759,7 @@ function renderComponentCard(card) {
   });
   if (primaryButtons.length > 0 || dangerButtons.length > 0) {
     actionElements.push(
-      E("div", { class: "fkp_updates-page__component__actions-main" }, [
+      E("div", { class: "tachyon_updates-page__component__actions-main" }, [
         ...primaryButtons,
         ...dangerButtons
       ])
@@ -13845,15 +13777,15 @@ function renderComponentCard(card) {
       });
     });
     actionElements.push(
-      E("div", { class: "fkp_updates-page__component__variants" }, [
+      E("div", { class: "tachyon_updates-page__component__variants" }, [
         E(
           "div",
-          { class: "fkp_updates-page__component__variants-title" },
+          { class: "tachyon_updates-page__component__variants-title" },
           _("Install another build:")
         ),
         E(
           "div",
-          { class: "fkp_updates-page__component__variants-buttons" },
+          { class: "tachyon_updates-page__component__variants-buttons" },
           variantButtons
         )
       ])
@@ -13863,8 +13795,8 @@ function renderComponentCard(card) {
     "div",
     {
       class: [
-        "fkp_updates-page__component__actions",
-        detailsContainer ? "fkp_updates-page__component__actions--with-details" : ""
+        "tachyon_updates-page__component__actions",
+        detailsContainer ? "tachyon_updates-page__component__actions--with-details" : ""
       ].filter(Boolean).join(" ")
     },
     actionElements
@@ -13874,10 +13806,10 @@ function renderComponentCard(card) {
     cardChildren.push(detailsContainer);
   }
   cardChildren.push(actionsContainer);
-  return E("div", { class: "fkp_updates-page__component" }, cardChildren);
+  return E("div", { class: "tachyon_updates-page__component" }, cardChildren);
 }
 function renderUpdatesComponents() {
-  const container = document.getElementById("fkp_updates-components");
+  const container = document.getElementById("tachyon_updates-components");
   if (!container) {
     return;
   }
@@ -13887,8 +13819,16 @@ function renderUpdatesComponents() {
   });
   return preserveScrollForPage(() => {
     container.replaceChildren(
-      E("div", { class: "fkp_updates-page__components-column" }, columns[0]),
-      E("div", { class: "fkp_updates-page__components-column" }, columns[1])
+      E(
+        "div",
+        { class: "tachyon_updates-page__components-column" },
+        columns[0]
+      ),
+      E(
+        "div",
+        { class: "tachyon_updates-page__components-column" },
+        columns[1]
+      )
     );
   });
 }
@@ -13996,11 +13936,11 @@ var styles6 = `
     display: none;
 }
 
-.fkp_updates-page {
+.tachyon_updates-page {
     width: 100%;
 }
 
-.fkp_updates-page__components {
+.tachyon_updates-page__components {
     display: flex;
     align-items: flex-start;
     gap: 10px;
@@ -14008,7 +13948,7 @@ var styles6 = `
     flex-wrap: wrap;
 }
 
-.fkp_updates-page__components-column {
+.tachyon_updates-page__components-column {
     display: flex;
     flex: 1 1 auto;
     flex-direction: column;
@@ -14017,17 +13957,17 @@ var styles6 = `
 }
 
 @media (max-width: 760px) {
-    .fkp_updates-page__components {
+    .tachyon_updates-page__components {
         flex-direction: column;
     }
 
-    .fkp_updates-page__components-column {
+    .tachyon_updates-page__components-column {
         width: 100%;
         min-width: 0;
     }
 }
 
-.fkp_updates-page__component {
+.tachyon_updates-page__component {
     border: 2px var(--background-color-low, lightgray) solid;
     border-radius: 4px;
     padding: 10px;
@@ -14038,7 +13978,7 @@ var styles6 = `
     min-width: max-content;
 }
 
-.fkp_updates-page__component__header {
+.tachyon_updates-page__component__header {
     display: flex;
     align-items: center;
     flex-wrap: wrap;
@@ -14048,26 +13988,26 @@ var styles6 = `
     margin-bottom: 2px;
 }
 
-.fkp_updates-page__component__title {
+.tachyon_updates-page__component__title {
     color: var(--text-color-high);
     font-size: 16px;
     font-weight: bold;
     line-height: 1.2;
 }
 
-.fkp_updates-page__component__header-version {
+.tachyon_updates-page__component__header-version {
     color: var(--text-color-medium, #888);
     font-size: 13px;
     font-weight: normal;
 }
 
-.fkp_updates-page__component__details {
+.tachyon_updates-page__component__details {
     display: flex;
     flex-direction: column;
     gap: 6px;
 }
 
-.fkp_updates-page__component__info-row {
+.tachyon_updates-page__component__info-row {
     display: flex;
     justify-content: flex-start;
     align-items: center;
@@ -14076,12 +14016,12 @@ var styles6 = `
     white-space: nowrap;
 }
 
-.fkp_updates-page__component__info-label {
+.tachyon_updates-page__component__info-label {
     color: var(--text-color-medium, #888);
     font-size: 12px;
 }
 
-.fkp_updates-page__component__info-value {
+.tachyon_updates-page__component__info-value {
     color: var(--text-color-high, #000);
     font-weight: 500;
     font-size: 13px;
@@ -14093,34 +14033,34 @@ var styles6 = `
     overflow-wrap: anywhere;
 }
 
-.fkp_updates-page__component__info-value--latest {
+.tachyon_updates-page__component__info-value--latest {
     flex-wrap: wrap;
     justify-content: flex-start;
 }
 
-.fkp_updates-page__component__release-version-link {
+.tachyon_updates-page__component__release-version-link {
     color: var(--link-color, #3498db) !important;
     text-decoration: underline;
     font-weight: bold;
 }
 
-.fkp_updates-page__component__release-version-link:hover {
+.tachyon_updates-page__component__release-version-link:hover {
     color: var(--link-color-dark, #2980b9) !important;
 }
 
-.fkp_updates-page__component__actions {
+.tachyon_updates-page__component__actions {
     display: flex;
     flex-direction: column;
     gap: 10px;
     margin-top: auto;
 }
 
-.fkp_updates-page__component__actions--with-details {
+.tachyon_updates-page__component__actions--with-details {
     border-top: 1px var(--background-color-low, lightgray) solid;
     padding-top: 10px;
 }
 
-.fkp_updates-page__component__actions-main {
+.tachyon_updates-page__component__actions-main {
     display: flex;
     justify-content: flex-start;
     align-items: center;
@@ -14128,20 +14068,20 @@ var styles6 = `
     gap: 6px;
 }
 
-.fkp_updates-page__component__variants {
+.tachyon_updates-page__component__variants {
     display: flex;
     flex-direction: column;
     gap: 6px;
     margin-top: 4px;
 }
 
-.fkp_updates-page__component__variants-title {
+.tachyon_updates-page__component__variants-title {
     font-size: 11px;
     font-weight: bold;
     color: var(--text-color-medium, gray);
 }
 
-.fkp_updates-page__component__variants-buttons {
+.tachyon_updates-page__component__variants-buttons {
     display: flex;
     flex-wrap: nowrap;
     gap: 6px;

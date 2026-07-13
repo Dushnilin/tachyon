@@ -12,7 +12,7 @@ export function renderRunAction({
   disabled,
   click,
 }: IRenderDiagnosticRunActionProps) {
-  return E('div', { class: 'fkp_diagnostic-page__run_check_wrapper' }, [
+  return E('div', { class: 'tachyon_diagnostic-page__run_check_wrapper' }, [
     renderButton({
       text: _('Run Diagnostic'),
       onClick: click,

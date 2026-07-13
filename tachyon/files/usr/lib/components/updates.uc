@@ -59,7 +59,7 @@ const BUILTIN_SUBNET_URLS = {
     meta: getenv("SUBNETS_META") || GITHUB_RAW_URL + "/Subnets/IPv4/meta.lst",
     discord: getenv("SUBNETS_DISCORD") || GITHUB_RAW_URL + "/Subnets/IPv4/discord.lst",
     roblox: getenv("SUBNETS_ROBLOX") || GITHUB_RAW_URL + "/Subnets/IPv4/roblox.lst",
-    telegram: getenv("SUBNETS_TELERAM") || GITHUB_RAW_URL + "/Subnets/IPv4/telegram.lst",
+    telegram: getenv("SUBNETS_TELEGRAM") || getenv("SUBNETS_TELERAM") || GITHUB_RAW_URL + "/Subnets/IPv4/telegram.lst",
     cloudflare: getenv("SUBNETS_CLOUDFLARE") || GITHUB_RAW_URL + "/Subnets/IPv4/cloudflare.lst",
     hetzner: getenv("SUBNETS_HETZNER") || GITHUB_RAW_URL + "/Subnets/IPv4/hetzner.lst",
     ovh: getenv("SUBNETS_OVH") || GITHUB_RAW_URL + "/Subnets/IPv4/ovh.lst",

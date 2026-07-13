@@ -50,7 +50,7 @@ export function renderModal(
   const codeEl = E('code', {}, '') as HTMLElement;
   const contentEl = E(
     'pre',
-    { class: 'fkp-partial-modal__content' },
+    { class: 'tachyon-partial-modal__content' },
     codeEl,
   ) as HTMLElement;
 
@@ -278,11 +278,11 @@ export function renderModal(
     });
 
     footerChildren.unshift(
-      E('label', { class: 'fkp-partial-modal__checkbox' }, [
+      E('label', { class: 'tachyon-partial-modal__checkbox' }, [
         autoRefreshInput,
         E(
           'span',
-          { class: 'fkp-partial-modal__checkbox-text' },
+          { class: 'tachyon-partial-modal__checkbox-text' },
           options.autoRefreshLabel ?? _('Auto refresh'),
         ),
       ]) as HTMLElement,
@@ -302,22 +302,22 @@ export function renderModal(
     });
 
     footerChildren.unshift(
-      E('label', { class: 'fkp-partial-modal__checkbox' }, [
+      E('label', { class: 'tachyon-partial-modal__checkbox' }, [
         maskValuesInput,
         E(
           'span',
-          { class: 'fkp-partial-modal__checkbox-text' },
+          { class: 'tachyon-partial-modal__checkbox-text' },
           options.maskValuesLabel ?? _('Hide values'),
         ),
       ]) as HTMLElement,
     );
   }
 
-  const body = E('div', { class: 'fkp-partial-modal__body' }, [
+  const body = E('div', { class: 'tachyon-partial-modal__body' }, [
     E('div', {}, [
       contentEl,
 
-      E('div', { class: 'fkp-partial-modal__footer' }, footerChildren),
+      E('div', { class: 'tachyon-partial-modal__footer' }, footerChildren),
     ]),
   ]) as HTMLElement;
 

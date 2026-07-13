@@ -20,7 +20,7 @@ function renderCheckSummary(items: IRenderCheckSectionProps['items']) {
   const renderedItems = items.map((item) => {
     function getIcon() {
       const iconWrap = E('span', {
-        class: 'fkp_diagnostic_alert__summary__item__icon',
+        class: 'tachyon_diagnostic_alert__summary__item__icon',
       });
 
       if (item.state === 'success') {
@@ -41,29 +41,33 @@ function renderCheckSummary(items: IRenderCheckSectionProps['items']) {
     return E(
       'div',
       {
-        class: `fkp_diagnostic_alert__summary__item fkp_diagnostic_alert__summary__item--${item.state}`,
+        class: `tachyon_diagnostic_alert__summary__item tachyon_diagnostic_alert__summary__item--${item.state}`,
       },
       [getIcon(), E('b', {}, item.key), E('div', {}, item.value)],
     );
   });
 
-  return E('div', { class: 'fkp_diagnostic_alert__summary' }, renderedItems);
+  return E(
+    'div',
+    { class: 'tachyon_diagnostic_alert__summary' },
+    renderedItems,
+  );
 }
 
 function renderLoadingState(props: IRenderCheckSectionProps) {
-  const iconWrap = E('span', { class: 'fkp_diagnostic_alert__icon' });
+  const iconWrap = E('span', { class: 'tachyon_diagnostic_alert__icon' });
   iconWrap.appendChild(renderLoaderCircleIcon24());
 
   return E(
     'div',
-    { class: 'fkp_diagnostic_alert fkp_diagnostic_alert--loading' },
+    { class: 'tachyon_diagnostic_alert tachyon_diagnostic_alert--loading' },
     [
       iconWrap,
-      E('div', { class: 'fkp_diagnostic_alert__content' }, [
-        E('b', { class: 'fkp_diagnostic_alert__title' }, props.title),
+      E('div', { class: 'tachyon_diagnostic_alert__content' }, [
+        E('b', { class: 'tachyon_diagnostic_alert__title' }, props.title),
         E(
           'div',
-          { class: 'fkp_diagnostic_alert__description' },
+          { class: 'tachyon_diagnostic_alert__description' },
           props.description,
         ),
       ]),
@@ -74,19 +78,19 @@ function renderLoadingState(props: IRenderCheckSectionProps) {
 }
 
 function renderWarningState(props: IRenderCheckSectionProps) {
-  const iconWrap = E('span', { class: 'fkp_diagnostic_alert__icon' });
+  const iconWrap = E('span', { class: 'tachyon_diagnostic_alert__icon' });
   iconWrap.appendChild(renderCircleAlertIcon24());
 
   return E(
     'div',
-    { class: 'fkp_diagnostic_alert fkp_diagnostic_alert--warning' },
+    { class: 'tachyon_diagnostic_alert tachyon_diagnostic_alert--warning' },
     [
       iconWrap,
-      E('div', { class: 'fkp_diagnostic_alert__content' }, [
-        E('b', { class: 'fkp_diagnostic_alert__title' }, props.title),
+      E('div', { class: 'tachyon_diagnostic_alert__content' }, [
+        E('b', { class: 'tachyon_diagnostic_alert__title' }, props.title),
         E(
           'div',
-          { class: 'fkp_diagnostic_alert__description' },
+          { class: 'tachyon_diagnostic_alert__description' },
           props.description,
         ),
       ]),
@@ -97,19 +101,19 @@ function renderWarningState(props: IRenderCheckSectionProps) {
 }
 
 function renderErrorState(props: IRenderCheckSectionProps) {
-  const iconWrap = E('span', { class: 'fkp_diagnostic_alert__icon' });
+  const iconWrap = E('span', { class: 'tachyon_diagnostic_alert__icon' });
   iconWrap.appendChild(renderCircleXIcon24());
 
   return E(
     'div',
-    { class: 'fkp_diagnostic_alert fkp_diagnostic_alert--error' },
+    { class: 'tachyon_diagnostic_alert tachyon_diagnostic_alert--error' },
     [
       iconWrap,
-      E('div', { class: 'fkp_diagnostic_alert__content' }, [
-        E('b', { class: 'fkp_diagnostic_alert__title' }, props.title),
+      E('div', { class: 'tachyon_diagnostic_alert__content' }, [
+        E('b', { class: 'tachyon_diagnostic_alert__title' }, props.title),
         E(
           'div',
-          { class: 'fkp_diagnostic_alert__description' },
+          { class: 'tachyon_diagnostic_alert__description' },
           props.description,
         ),
       ]),
@@ -120,19 +124,19 @@ function renderErrorState(props: IRenderCheckSectionProps) {
 }
 
 function renderSuccessState(props: IRenderCheckSectionProps) {
-  const iconWrap = E('span', { class: 'fkp_diagnostic_alert__icon' });
+  const iconWrap = E('span', { class: 'tachyon_diagnostic_alert__icon' });
   iconWrap.appendChild(renderCircleCheckIcon24());
 
   return E(
     'div',
-    { class: 'fkp_diagnostic_alert fkp_diagnostic_alert--success' },
+    { class: 'tachyon_diagnostic_alert tachyon_diagnostic_alert--success' },
     [
       iconWrap,
-      E('div', { class: 'fkp_diagnostic_alert__content' }, [
-        E('b', { class: 'fkp_diagnostic_alert__title' }, props.title),
+      E('div', { class: 'tachyon_diagnostic_alert__content' }, [
+        E('b', { class: 'tachyon_diagnostic_alert__title' }, props.title),
         E(
           'div',
-          { class: 'fkp_diagnostic_alert__description' },
+          { class: 'tachyon_diagnostic_alert__description' },
           props.description,
         ),
       ]),
@@ -143,19 +147,19 @@ function renderSuccessState(props: IRenderCheckSectionProps) {
 }
 
 function renderSkippedState(props: IRenderCheckSectionProps) {
-  const iconWrap = E('span', { class: 'fkp_diagnostic_alert__icon' });
+  const iconWrap = E('span', { class: 'tachyon_diagnostic_alert__icon' });
   iconWrap.appendChild(renderCircleSlashIcon24());
 
   return E(
     'div',
-    { class: 'fkp_diagnostic_alert fkp_diagnostic_alert--skipped' },
+    { class: 'tachyon_diagnostic_alert tachyon_diagnostic_alert--skipped' },
     [
       iconWrap,
-      E('div', { class: 'fkp_diagnostic_alert__content' }, [
-        E('b', { class: 'fkp_diagnostic_alert__title' }, props.title),
+      E('div', { class: 'tachyon_diagnostic_alert__content' }, [
+        E('b', { class: 'tachyon_diagnostic_alert__title' }, props.title),
         E(
           'div',
-          { class: 'fkp_diagnostic_alert__description' },
+          { class: 'tachyon_diagnostic_alert__description' },
           props.description,
         ),
       ]),

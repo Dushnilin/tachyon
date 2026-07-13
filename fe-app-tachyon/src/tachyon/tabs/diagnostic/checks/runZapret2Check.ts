@@ -115,7 +115,9 @@ export async function runZapret2Check() {
           : 'success',
       key: standaloneServiceRunning
         ? hasZapret2Rules
-          ? _('Standalone Zapret2 is active together with Tachyon Zapret2 rules')
+          ? _(
+              'Standalone Zapret2 is active together with Tachyon Zapret2 rules',
+            )
           : _('Standalone Zapret2 service is active')
         : standaloneAutostartRisk
           ? _('Standalone Zapret2 autostart is enabled')

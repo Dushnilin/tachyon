@@ -41,7 +41,7 @@ function renderFailedState() {
   return E(
     'div',
     {
-      class: 'fkp_dashboard-page__outbound-section centered',
+      class: 'tachyon_dashboard-page__outbound-section centered',
       style: 'height: 127px',
     },
     E('span', {}, [E('span', {}, _('Dashboard currently unavailable'))]),
@@ -51,7 +51,7 @@ function renderFailedState() {
 function renderLoadingState() {
   return E('div', {
     id: 'dashboard-sections-grid-skeleton',
-    class: 'fkp_dashboard-page__outbound-section skeleton',
+    class: 'tachyon_dashboard-page__outbound-section skeleton',
     style: 'height: 127px',
   });
 }
@@ -97,7 +97,7 @@ function renderMetadataAction(label: string, url?: string) {
   return E(
     'a',
     {
-      class: 'btn fkp_dashboard-page__subscription-meta__action',
+      class: 'btn tachyon_dashboard-page__subscription-meta__action',
       href: url,
       target: '_blank',
       rel: 'noopener noreferrer',
@@ -141,33 +141,34 @@ function renderSubscriptionMetadata(
     renderMetadataAction('More details', metadata.announceUrl),
   ].filter(Boolean) as HTMLElement[];
 
-  return E('div', { class: 'fkp_dashboard-page__subscription-meta' }, [
-    E('div', { class: 'fkp_dashboard-page__subscription-meta__main' }, [
+  return E('div', { class: 'tachyon_dashboard-page__subscription-meta' }, [
+    E('div', { class: 'tachyon_dashboard-page__subscription-meta__main' }, [
       E(
         'div',
-        { class: 'fkp_dashboard-page__subscription-meta__heading' },
+        { class: 'tachyon_dashboard-page__subscription-meta__heading' },
         _('Subscription info:'),
       ),
       title
         ? E(
             'div',
-            { class: 'fkp_dashboard-page__subscription-meta__title' },
+            { class: 'tachyon_dashboard-page__subscription-meta__title' },
             title,
           )
         : '',
       rows.length
         ? E(
             'div',
-            { class: 'fkp_dashboard-page__subscription-meta__facts' },
+            { class: 'tachyon_dashboard-page__subscription-meta__facts' },
             rows.map((row) =>
               E(
                 'div',
-                { class: 'fkp_dashboard-page__subscription-meta__fact' },
+                { class: 'tachyon_dashboard-page__subscription-meta__fact' },
                 [
                   E(
                     'span',
                     {
-                      class: 'fkp_dashboard-page__subscription-meta__fact-key',
+                      class:
+                        'tachyon_dashboard-page__subscription-meta__fact-key',
                     },
                     row.label,
                   ),
@@ -175,7 +176,7 @@ function renderSubscriptionMetadata(
                     'span',
                     {
                       class:
-                        'fkp_dashboard-page__subscription-meta__fact-value',
+                        'tachyon_dashboard-page__subscription-meta__fact-value',
                     },
                     row.value,
                   ),
@@ -187,7 +188,7 @@ function renderSubscriptionMetadata(
       actions.length
         ? E(
             'div',
-            { class: 'fkp_dashboard-page__subscription-meta__actions' },
+            { class: 'tachyon_dashboard-page__subscription-meta__actions' },
             actions,
           )
         : '',
@@ -195,7 +196,7 @@ function renderSubscriptionMetadata(
     metadata.announce
       ? E(
           'blockquote',
-          { class: 'fkp_dashboard-page__subscription-meta__announce' },
+          { class: 'tachyon_dashboard-page__subscription-meta__announce' },
           metadata.announce,
         )
       : '',
@@ -215,7 +216,8 @@ function renderSubscriptionUpdateAction(
     'button',
     {
       type: 'button',
-      class: 'btn fkp_dashboard-page__outbound-section__subscription-update',
+      class:
+        'btn tachyon_dashboard-page__outbound-section__subscription-update',
       'aria-label': _('Update subscriptions'),
       disabled: subscriptionUpdating ? true : undefined,
       click: (event: MouseEvent) => {
@@ -283,18 +285,18 @@ function renderDefaultState({
   function renderOutbound(outbound: Tachyon.Outbound) {
     function getLatencyClass() {
       if (!outbound.latency) {
-        return 'fkp_dashboard-page__outbound-grid__item__latency--empty';
+        return 'tachyon_dashboard-page__outbound-grid__item__latency--empty';
       }
 
       if (outbound.latency < 800) {
-        return 'fkp_dashboard-page__outbound-grid__item__latency--green';
+        return 'tachyon_dashboard-page__outbound-grid__item__latency--green';
       }
 
       if (outbound.latency < 1500) {
-        return 'fkp_dashboard-page__outbound-grid__item__latency--yellow';
+        return 'tachyon_dashboard-page__outbound-grid__item__latency--yellow';
       }
 
-      return 'fkp_dashboard-page__outbound-grid__item__latency--red';
+      return 'tachyon_dashboard-page__outbound-grid__item__latency--red';
     }
 
     const canCopyLink =
@@ -307,18 +309,18 @@ function renderDefaultState({
       !selectorSwitching &&
       !outbound.selected;
     const className = [
-      'fkp_dashboard-page__outbound-grid__item',
+      'tachyon_dashboard-page__outbound-grid__item',
       outbound.selected
-        ? 'fkp_dashboard-page__outbound-grid__item--active'
+        ? 'tachyon_dashboard-page__outbound-grid__item--active'
         : '',
       canChooseOutbound
-        ? 'fkp_dashboard-page__outbound-grid__item--selectable'
+        ? 'tachyon_dashboard-page__outbound-grid__item--selectable'
         : '',
       section.withTagSelect && !canChooseOutbound
-        ? 'fkp_dashboard-page__outbound-grid__item--disabled'
+        ? 'tachyon_dashboard-page__outbound-grid__item--disabled'
         : '',
       outboundSwitching
-        ? 'fkp_dashboard-page__outbound-grid__item--switching'
+        ? 'tachyon_dashboard-page__outbound-grid__item--switching'
         : '',
     ]
       .filter(Boolean)
@@ -339,7 +341,7 @@ function renderDefaultState({
           ? [
               svgEl(
                 'svg',
-                { class: 'fkp_dashboard-page__outbound-grid__item__snake' },
+                { class: 'tachyon_dashboard-page__outbound-grid__item__snake' },
                 [
                   svgEl('rect', {
                     width: '100%',
@@ -353,78 +355,86 @@ function renderDefaultState({
               ),
             ]
           : []),
-        E('div', { class: 'fkp_dashboard-page__outbound-grid__item__header' }, [
-          E('b', {}, outbound.displayName),
-          ...(canCopyLink
-            ? [
-                E(
-                  'button',
-                  {
-                    type: 'button',
-                    class:
-                      'btn fkp_dashboard-page__outbound-grid__item__copy-button',
-                    title: _('Copy proxy link'),
-                    'aria-label': _('Copy proxy link'),
-                    click: (event: MouseEvent) => {
-                      event.stopPropagation();
-                      onCopyOutbound(section, outbound);
+        E(
+          'div',
+          { class: 'tachyon_dashboard-page__outbound-grid__item__header' },
+          [
+            E('b', {}, outbound.displayName),
+            ...(canCopyLink
+              ? [
+                  E(
+                    'button',
+                    {
+                      type: 'button',
+                      class:
+                        'btn tachyon_dashboard-page__outbound-grid__item__copy-button',
+                      title: _('Copy proxy link'),
+                      'aria-label': _('Copy proxy link'),
+                      click: (event: MouseEvent) => {
+                        event.stopPropagation();
+                        onCopyOutbound(section, outbound);
+                      },
                     },
-                  },
-                  renderCopyIcon24(),
-                ),
-              ]
-            : []),
-          ...(outbound.urlTestInfo
-            ? [
-                E(
-                  'button',
-                  {
-                    type: 'button',
-                    class:
-                      'btn fkp_dashboard-page__outbound-grid__item__copy-button',
-                    title: _('URLTest details'),
-                    'aria-label': _('URLTest details'),
-                    click: (event: MouseEvent) => {
-                      event.stopPropagation();
-                      onShowUrlTestInfo(section, outbound);
+                    renderCopyIcon24(),
+                  ),
+                ]
+              : []),
+            ...(outbound.urlTestInfo
+              ? [
+                  E(
+                    'button',
+                    {
+                      type: 'button',
+                      class:
+                        'btn tachyon_dashboard-page__outbound-grid__item__copy-button',
+                      title: _('URLTest details'),
+                      'aria-label': _('URLTest details'),
+                      click: (event: MouseEvent) => {
+                        event.stopPropagation();
+                        onShowUrlTestInfo(section, outbound);
+                      },
                     },
-                  },
-                  renderInfoIcon24(),
-                ),
-              ]
-            : []),
-          ...(outbound.priorityInfo
-            ? [
-                E(
-                  'button',
-                  {
-                    type: 'button',
-                    class:
-                      'btn fkp_dashboard-page__outbound-grid__item__copy-button',
-                    title: _('Priority details'),
-                    'aria-label': _('Priority details'),
-                    click: (event: MouseEvent) => {
-                      event.stopPropagation();
-                      onShowPriorityInfo(section, outbound);
+                    renderInfoIcon24(),
+                  ),
+                ]
+              : []),
+            ...(outbound.priorityInfo
+              ? [
+                  E(
+                    'button',
+                    {
+                      type: 'button',
+                      class:
+                        'btn tachyon_dashboard-page__outbound-grid__item__copy-button',
+                      title: _('Priority details'),
+                      'aria-label': _('Priority details'),
+                      click: (event: MouseEvent) => {
+                        event.stopPropagation();
+                        onShowPriorityInfo(section, outbound);
+                      },
                     },
-                  },
-                  renderInfoIcon24(),
-                ),
-              ]
-            : []),
-        ]),
-        E('div', { class: 'fkp_dashboard-page__outbound-grid__item__footer' }, [
-          E(
-            'div',
-            { class: 'fkp_dashboard-page__outbound-grid__item__type' },
-            [outbound.type].filter(Boolean),
-          ),
-          E(
-            'div',
-            { class: getLatencyClass() },
-            outbound.latency ? `${outbound.latency}ms` : 'N/A',
-          ),
-        ]),
+                    renderInfoIcon24(),
+                  ),
+                ]
+              : []),
+          ],
+        ),
+        E(
+          'div',
+          { class: 'tachyon_dashboard-page__outbound-grid__item__footer' },
+          [
+            E(
+              'div',
+              { class: 'tachyon_dashboard-page__outbound-grid__item__type' },
+              [outbound.type].filter(Boolean),
+            ),
+            E(
+              'div',
+              { class: getLatencyClass() },
+              outbound.latency ? `${outbound.latency}ms` : 'N/A',
+            ),
+          ],
+        ),
       ],
     );
   }
@@ -438,63 +448,70 @@ function renderDefaultState({
     onUpdateSubscription,
   );
 
-  return E('div', { class: 'fkp_dashboard-page__outbound-section' }, [
+  return E('div', { class: 'tachyon_dashboard-page__outbound-section' }, [
     // Title with test latency
-    E('div', { class: 'fkp_dashboard-page__outbound-section__title-section' }, [
-      E(
-        'div',
-        {
-          class: 'fkp_dashboard-page__outbound-section__title-section__title',
-        },
-        section.displayName,
-      ),
-      E(
-        'div',
-        {
-          class: 'fkp_dashboard-page__outbound-section__title-section__actions',
-        },
-        [
-          ...(subscriptionUpdateAction ? [subscriptionUpdateAction] : []),
-          E(
-            'button',
-            {
-              type: 'button',
-              class: 'btn dashboard-sections-grid-item-test-latency',
-              'data-latency-section': section.sectionName,
-              disabled: latencyFetching ? true : undefined,
-              click: (event: MouseEvent) => {
-                event.preventDefault();
-                event.stopPropagation();
-                if (latencyFetching) {
-                  return;
-                }
+    E(
+      'div',
+      { class: 'tachyon_dashboard-page__outbound-section__title-section' },
+      [
+        E(
+          'div',
+          {
+            class:
+              'tachyon_dashboard-page__outbound-section__title-section__title',
+          },
+          section.displayName,
+        ),
+        E(
+          'div',
+          {
+            class:
+              'tachyon_dashboard-page__outbound-section__title-section__actions',
+          },
+          [
+            ...(subscriptionUpdateAction ? [subscriptionUpdateAction] : []),
+            E(
+              'button',
+              {
+                type: 'button',
+                class: 'btn dashboard-sections-grid-item-test-latency',
+                'data-latency-section': section.sectionName,
+                disabled: latencyFetching ? true : undefined,
+                click: (event: MouseEvent) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  if (latencyFetching) {
+                    return;
+                  }
 
-                testLatency();
+                  testLatency();
+                },
               },
-            },
-            latencyFetching
-              ? [
-                  renderLoaderCircleIcon24(),
-                  E(
+              latencyFetching
+                ? [
+                    renderLoaderCircleIcon24(),
+                    E(
+                      'span',
+                      {
+                        class:
+                          'dashboard-sections-grid-item-test-latency__label',
+                      },
+                      getLatencyTestLabel(latencyProgress),
+                    ),
+                  ]
+                : E(
                     'span',
                     {
                       class: 'dashboard-sections-grid-item-test-latency__label',
                     },
-                    getLatencyTestLabel(latencyProgress),
+                    _('Test latency'),
                   ),
-                ]
-              : E(
-                  'span',
-                  {
-                    class: 'dashboard-sections-grid-item-test-latency__label',
-                  },
-                  _('Test latency'),
-                ),
-          ),
-        ],
-      ),
-    ]),
-    E('div', { class: 'fkp_dashboard-page__outbound-grid' }, [
+            ),
+          ],
+        ),
+      ],
+    ),
+    E('div', { class: 'tachyon_dashboard-page__outbound-grid' }, [
       ...metadataNodes,
       ...section.outbounds.map((outbound) => renderOutbound(outbound)),
     ]),

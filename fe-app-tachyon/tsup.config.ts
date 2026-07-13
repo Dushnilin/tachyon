@@ -22,12 +22,17 @@ export default defineConfig({
         const file = path.join(outDir, 'main.js');
         let code = fs.readFileSync(file, 'utf8');
 
+        const originalCode = code;
         code = code.replace(
             /export\s*{([\s\S]*?)}/,
             (match, group) => {
                 return `return baseclass.extend({${group}})`;
             }
         );
+
+        if (code === originalCode) {
+            throw new Error("Failed to patch LuCI build: 'export { ... }' block not found in main.js!");
+        }
 
         fs.writeFileSync(file, code, 'utf8');
         console.log(`✅ Patched LuCI build: ${file}`);

@@ -514,7 +514,7 @@ function renderDiagnosticsChecks() {
   const diagnosticsChecks = [...store.get().diagnosticsChecks].sort(
     (a, b) => a.order - b.order,
   );
-  const container = document.getElementById('fkp_diagnostic-page-checks');
+  const container = document.getElementById('tachyon_diagnostic-page-checks');
 
   const renderedDiagnosticsChecks = diagnosticsChecks.map((check) =>
     renderCheckSection(check),
@@ -533,7 +533,9 @@ function renderDiagnosticRunActionWidget() {
     store.get().diagnosticsSystemInfo.providerInfoLoaded;
   const servicesInfoWidget = store.get().servicesInfoWidget;
   const tachyonRunning = Boolean(servicesInfoWidget.data.tachyonRunning);
-  const container = document.getElementById('fkp_diagnostic-page-run-check');
+  const container = document.getElementById(
+    'tachyon_diagnostic-page-run-check',
+  );
 
   const renderedAction = renderRunAction({
     loading,
@@ -737,7 +739,8 @@ async function handleShowSingBoxConfig() {
   setDiagnosticActionLoading('showSingBoxConfig', true);
 
   try {
-    const showSingBoxConfig = await TachyonShellMethods.showSingBoxConfig(false);
+    const showSingBoxConfig =
+      await TachyonShellMethods.showSingBoxConfig(false);
 
     if (showSingBoxConfig.success) {
       const rawSingBoxConfigText = stringifySingBoxConfig(
@@ -786,7 +789,7 @@ function renderWikiDisclaimerWidget() {
     return 'default';
   }
 
-  const container = document.getElementById('fkp_diagnostic-page-wiki');
+  const container = document.getElementById('tachyon_diagnostic-page-wiki');
 
   return preserveScrollForPage(() => {
     container!.replaceChildren(renderWikiDisclaimer(getWikiKind()));
@@ -836,7 +839,7 @@ function renderDiagnosticAvailableActionsWidget() {
     stopLoading,
   });
 
-  const container = document.getElementById('fkp_diagnostic-page-actions');
+  const container = document.getElementById('tachyon_diagnostic-page-actions');
 
   const renderedActions = renderAvailableActions({
     restart: {
@@ -903,7 +906,9 @@ function renderDiagnosticSystemInfoWidget() {
   logger.debug('[DIAGNOSTIC]', 'renderDiagnosticSystemInfoWidget');
   const diagnosticsSystemInfo = store.get().diagnosticsSystemInfo;
 
-  const container = document.getElementById('fkp_diagnostic-page-system-info');
+  const container = document.getElementById(
+    'tachyon_diagnostic-page-system-info',
+  );
 
   const items = [
     {

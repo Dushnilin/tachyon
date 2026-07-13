@@ -82,7 +82,7 @@ function constants_map() {
     c.SUBNETS_META = env("SUBNETS_META", c.GITHUB_RAW_URL + "/Subnets/IPv4/meta.lst");
     c.SUBNETS_DISCORD = env("SUBNETS_DISCORD", c.GITHUB_RAW_URL + "/Subnets/IPv4/discord.lst");
     c.SUBNETS_ROBLOX = env("SUBNETS_ROBLOX", c.GITHUB_RAW_URL + "/Subnets/IPv4/roblox.lst");
-    c.SUBNETS_TELERAM = env("SUBNETS_TELERAM", c.GITHUB_RAW_URL + "/Subnets/IPv4/telegram.lst");
+    c.SUBNETS_TELEGRAM = env("SUBNETS_TELEGRAM", env("SUBNETS_TELERAM", c.GITHUB_RAW_URL + "/Subnets/IPv4/telegram.lst"));
     c.SUBNETS_CLOUDFLARE = env("SUBNETS_CLOUDFLARE", c.GITHUB_RAW_URL + "/Subnets/IPv4/cloudflare.lst");
     c.SUBNETS_HETZNER = env("SUBNETS_HETZNER", c.GITHUB_RAW_URL + "/Subnets/IPv4/hetzner.lst");
     c.SUBNETS_OVH = env("SUBNETS_OVH", c.GITHUB_RAW_URL + "/Subnets/IPv4/ovh.lst");
