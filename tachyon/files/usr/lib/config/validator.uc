@@ -21,26 +21,18 @@ let as_string = common.as_string;
 let shell_quote = common.shell_quote;
 let read_json_file = common.read_json_file;
 
-function read_stdin() {
-    let input = fs.open("/dev/stdin", "r");
-    if (!input)
-        return "";
-    let data = input.read("all");
-    input.close();
-    return data == null ? "" : data;
-}
-
-function read_stdin_json() {
-    let data = read_stdin();
-    try {
-        return json(data);
-    }
-    catch (e) {
-        return null;
-    }
-}
-
-
+let read_stdin = common.read_stdin;
+let read_stdin_json = common.read_stdin_json;
+let option = common.option;
+let list_option = common.list_option;
+let bool_option = common.bool_option;
+let command_from_args = common.command_from_args;
+let run_args = common.run_args;
+let command_success_from_args = common.command_success_from_args;
+let command_output = common.command_output;
+let command_output_from_args = common.command_output_from_args;
+let command_trimmed_output_from_args = common.command_trimmed_output_from_args;
+let command_exists = common.command_exists;
 
 function string_starts_with(value, prefix) {
     value = as_string(value);
@@ -96,36 +88,7 @@ function contains(values, needle) {
     return false;
 }
 
-function option(section, key, fallback) {
-    if (fallback == null)
-        fallback = "";
 
-    let value = object_or_empty(section)[key];
-    if (value == null)
-        return fallback;
-    if (type(value) == "array")
-        return join(" ", value);
-    return as_string(value);
-}
-
-function list_option(section, key) {
-    let value = object_or_empty(section)[key];
-    if (value == null)
-        return [];
-    if (type(value) == "array")
-        return value;
-
-    value = trim(as_string(value));
-    return value == "" ? [] : split(value, " ");
-}
-
-function bool_option(section, key, fallback) {
-    if (fallback == null)
-        fallback = false;
-
-    let value = option(section, key, fallback ? "1" : "0");
-    return value == "1" || value == "true" || value == "yes" || value == "on";
-}
 
 function file_exists(path) {
     return fs.stat(as_string(path)) != null;
@@ -146,47 +109,7 @@ function file_nonempty(path) {
 
 
 
-function command_from_args(args) {
-    let parts = [];
 
-    for (let arg in args)
-        push(parts, shell_quote(arg));
-
-    return join(" ", parts);
-}
-
-function run_args(args) {
-    return system(command_from_args(args)) == 0;
-}
-
-function command_success_from_args(args) {
-    return system(command_from_args(args) + " >/dev/null 2>&1") == 0;
-}
-
-function command_output(command) {
-    let pipe = fs.popen(command, "r");
-    if (!pipe)
-        return "";
-
-    let data = pipe.read("all");
-    let status = pipe.close();
-    if (status != 0 || data == null)
-        return "";
-
-    return as_string(data);
-}
-
-function command_output_from_args(args) {
-    return command_output(command_from_args(args));
-}
-
-function command_trimmed_output_from_args(args) {
-    return replace(command_output_from_args(args), /[\r\n]+$/g, "");
-}
-
-function command_exists(name) {
-    return system("command -v " + shell_quote(name) + " >/dev/null 2>&1") == 0;
-}
 
 function log_message(message, level) {
     level = as_string(level || "info");

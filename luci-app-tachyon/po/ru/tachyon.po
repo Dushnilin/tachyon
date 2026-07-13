@@ -2329,3 +2329,21 @@ msgstr "Оповещать об утечках DNS"
 
 msgid "Send a Telegram notification if a potential DNS leak is detected."
 msgstr "Отправлять уведомление в Telegram при обнаружении потенциальной утечки DNS."
+
+msgid "Through sections"
+msgstr "Через секции"
+
+msgid "Add to..."
+msgstr "Добавить в..."
+
+msgid "Domain added to %s"
+msgstr "Домен добавлен в %s"
+
+msgid "Domain already exists in this section"
+msgstr "Домен уже добавлен в эту секцию"
+
+msgid "Failed to add domain"
+msgstr "Не удалось добавить домен"
+
+msgid "Add to"
+msgstr "Добавить в"

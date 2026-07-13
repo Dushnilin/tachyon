@@ -679,6 +679,8 @@ function createSettingsContent(section, capabilities) {
   );
   o.default = "0";
   o.rmempty = false;
+
+
 }
 
 function createTelegramContent(section) {
