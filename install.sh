@@ -159,8 +159,7 @@ http_get() {
 install_json_helper_path() {
     helper_path="$TMP_DIR/install-json.uc"
 
-    if [ ! -s "$helper_path" ]; then
-        cat > "$helper_path" <<'EOF'
+    cat > "$helper_path" <<'EOF'
 #!/usr/bin/env ucode
 
 let fs = require("fs");
@@ -1100,7 +1099,6 @@ else if (mode == "installer-post-install")
 else
     exit(1);
 EOF
-    fi
 
     printf '%s\n' "$helper_path"
 }
