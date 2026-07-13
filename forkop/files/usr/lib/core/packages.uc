@@ -2,13 +2,9 @@
 
 let fs = require("fs");
 
-function as_string(value) {
-    return value == null ? "" : "" + value;
-}
-
-function shell_quote(value) {
-    return "'" + replace(as_string(value), /'/g, "'\\''") + "'";
-}
+let common = require("core.common");
+let as_string = common.as_string;
+let shell_quote = common.shell_quote;
 
 function command_from_args(args) {
     let parts = [];

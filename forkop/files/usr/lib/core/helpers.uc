@@ -15,9 +15,9 @@ const SB_SERVICE_MIXED_INBOUND_TAG = getenv("SB_SERVICE_MIXED_INBOUND_TAG") || "
 const SB_DIRECT_OUTBOUND_TAG = getenv("SB_DIRECT_OUTBOUND_TAG") || "direct-out";
 const SB_BYPASS_OUTBOUND_TAG = getenv("SB_BYPASS_OUTBOUND_TAG") || "bypass-out";
 
-function as_string(value) {
-    return value == null ? "" : "" + value;
-}
+let common = require("core.common");
+let core_ip = require("core.ip");
+let as_string = common.as_string;
 
 function ascii_lower(value) {
     let upper = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -100,48 +100,12 @@ function write_compact_string_array(values) {
     print("]\n");
 }
 
-function valid_ipv4_octet(value) {
-    value = as_string(value);
-    return match(value, /^(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]?|0)$/) != null;
-}
-
 function valid_ipv4(value) {
-    value = as_string(value);
-
-    let trailing_dot = length(value) > 0 && substr(value, length(value) - 1) == ".";
-    if (trailing_dot)
-        value = substr(value, 0, length(value) - 1);
-
-    let parts = split(value, ".");
-    if (length(parts) != 4)
-        return false;
-
-    for (let part in parts)
-        if (!valid_ipv4_octet(part))
-            return false;
-
-    return true;
+    return core_ip.valid_ipv4(value, true, true);
 }
 
 function valid_ipv4_cidr(value) {
-    value = as_string(value);
-    let slash = index(value, "/");
-    if (slash < 0)
-        return false;
-
-    let ip = substr(value, 0, slash);
-    let mask = substr(value, slash + 1);
-    if (length(ip) > 0 && substr(ip, length(ip) - 1) == ".")
-        return false;
-
-    if (index(mask, "/") >= 0 || !valid_ipv4(ip))
-        return false;
-
-    if (mask == "" || match(mask, /[^0-9]/) != null)
-        return false;
-
-    let bits = int(mask);
-    return bits >= 0 && bits <= 32;
+    return core_ip.valid_ipv4_cidr(value, true);
 }
 
 function valid_domain(value) {

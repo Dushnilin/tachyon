@@ -3,7 +3,7 @@ import chokidar from 'chokidar';
 import SFTPClient from 'ssh2-sftp-client';
 import path from 'path';
 import fs from 'fs';
-import { glob } from 'glob';
+import glob from 'fast-glob';
 
 const sftp = new SFTPClient();
 
@@ -64,7 +64,7 @@ async function deleteFile(filePath, baseDir, remoteBase) {
 async function uploadAllFiles() {
   for (const { local, remote } of syncDirs) {
     console.log(`📂 Uploading all from ${local}`);
-    const files = await glob(`${local}/**/*`, { nodir: true });
+    const files = await glob(`${local}/**/*`, { onlyFiles: true });
     for (const file of files) {
       await uploadFile(file, local, remote);
     }

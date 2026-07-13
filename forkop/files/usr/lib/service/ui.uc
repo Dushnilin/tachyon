@@ -34,9 +34,10 @@ const ZAPRET_PROVIDER_NFQWS_BIN = getenv("ZAPRET_PROVIDER_NFQWS_BIN") || "/opt/z
 const ZAPRET2_PROVIDER_NFQWS2_BIN = getenv("ZAPRET2_PROVIDER_NFQWS2_BIN") || "/opt/zapret2/nfq2/nfqws2";
 const BYEDPI_BIN = getenv("BYEDPI_BIN") || "/usr/bin/ciadpi";
 
-function as_string(value) {
-    return value == null ? "" : "" + value;
-}
+let common = require("core.common");
+let as_string = common.as_string;
+let shell_quote = common.shell_quote;
+let read_json_file = common.read_json_file;
 
 function read_stdin() {
     let input = fs.open("/dev/stdin", "r");
@@ -45,19 +46,6 @@ function read_stdin() {
     let data = input.read("all");
     input.close();
     return data == null ? "" : data;
-}
-
-function read_json_file(path) {
-    let data = fs.readfile(path);
-    if (data == null)
-        return null;
-
-    try {
-        return json(data);
-    }
-    catch (e) {
-        return null;
-    }
 }
 
 function parse_json_or_null(value) {
@@ -75,10 +63,6 @@ function write_json(value) {
 
 function json_text(value) {
     return sprintf("%J", value) + "\n";
-}
-
-function shell_quote(value) {
-    return "'" + replace(as_string(value), /'/g, "'\\''") + "'";
 }
 
 function command_from_args(args) {

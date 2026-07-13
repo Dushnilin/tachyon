@@ -489,7 +489,8 @@ function path_exists(path) {
 }
 
 function path_executable(path) {
-    return run_args([ "test", "-x", path ]);
+    let stat = fs.stat(as_string(path));
+    return stat != null && stat.mode != null && (int(stat.mode) & 73) != 0;
 }
 
 function remove_path(path) {
