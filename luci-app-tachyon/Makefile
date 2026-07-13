@@ -17,6 +17,8 @@ PKG_PO_VERSION:=$(PKG_VERSION)
 
 LUCI_TITLE:=LuCI Tachyon app
 LUCI_DEPENDS:=+luci-base +tachyon
+LUCI_PROVIDES:=luci-app-forkop
+LUCI_REPLACES:=luci-app-forkop
 LUCI_PKGARCH:=all
 LUCI_LANG.ru:=Русский (Russian)
 LUCI_LANG.en:=English
