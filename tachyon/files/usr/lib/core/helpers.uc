@@ -166,13 +166,22 @@ function first_index_any(value, needles, start) {
 }
 
 function strip_anchored_scheme(value) {
-    let m = match(as_string(value), /^[^:\/?#]+:\/\/(.*)$/);
-    return m ? m[1] : as_string(value);
+    value = as_string(value);
+    let marker = index(value, "://");
+    if (marker < 0)
+        return value;
+
+    let prefix = substr(value, 0, marker);
+    if (index(prefix, "/") >= 0 || index(prefix, "?") >= 0)
+        return value;
+
+    return substr(value, marker + 3);
 }
 
 function strip_first_scheme_marker(value) {
-    let m = match(as_string(value), /^(?:.*?:\/\/)?(.*)$/);
-    return m ? m[1] : as_string(value);
+    value = as_string(value);
+    let marker = index(value, "://");
+    return marker >= 0 ? substr(value, marker + 3) : value;
 }
 
 function str_last_index(value, needle) {
@@ -189,72 +198,99 @@ function str_last_index(value, needle) {
 }
 
 function url_get_scheme(value) {
-    let m = match(as_string(value), /^([^:\/?#]+):\/\//);
-    print(m ? m[1] : as_string(value), "\n");
+    value = as_string(value);
+    let marker = index(value, "://");
+    print(marker >= 0 ? substr(value, 0, marker) : value, "\n");
 }
 
 function url_get_userinfo(value) {
-    let m = match(strip_anchored_scheme(value), /^([^@\/?#]+)@/);
-    if (m) print(m[1], "\n");
+    value = strip_anchored_scheme(value);
+    let at = index(value, "@");
+    if (at >= 0)
+        print(substr(value, 0, at), "\n");
 }
 
 function url_authority(value) {
-    let stripped = strip_first_scheme_marker(value);
-    let m = match(stripped, /^(?:[^@\/?#]+@)?([^/?#]+)/);
-    return m ? m[1] : stripped;
+    value = strip_first_scheme_marker(value);
+    let at = index(value, "@");
+    if (at >= 0)
+        value = substr(value, at + 1);
+
+    let end = first_index_any(value, ["/", "?", "#"], 0);
+    return end >= 0 ? substr(value, 0, end) : value;
 }
 
 function url_get_host(value) {
-    let auth = url_authority(value);
-    let m = match(auth, /^([^:]+)/);
-    print(m ? m[1] : auth, "\n");
+    let authority = url_authority(value);
+    let colon = index(authority, ":");
+    print(colon >= 0 ? substr(authority, 0, colon) : authority, "\n");
 }
 
 function url_get_port(value) {
-    let auth = url_authority(value);
-    let m = match(auth, /:([0-9]+)$/);
-    print(m ? m[1] : "", "\n");
+    let authority = url_authority(value);
+    let colon = index(authority, ":");
+    print(colon >= 0 ? substr(authority, colon + 1) : "", "\n");
 }
 
 function url_get_path(value) {
-    let m = match(strip_anchored_scheme(value), /^[^/?#]*(\/[^?#]*)/);
-    print(m ? m[1] : "", "\n");
+    value = strip_anchored_scheme(value);
+    let slash = index(value, "/");
+    value = slash >= 0 ? substr(value, slash) : "";
+
+    let query = index(value, "?");
+    if (query >= 0)
+        value = substr(value, 0, query);
+
+    print(value, "\n");
 }
 
 function url_get_query_param(value, param) {
     value = as_string(value);
     param = as_string(param);
-    let search = param + "=";
-    let parts = split(value, search);
-    let current_index = 0;
-    
-    for (let i = 1; i < length(parts); i++) {
-        current_index += length(parts[i-1]);
-        let prev = substr(value, current_index - 1, 1);
-        current_index += length(search);
-        
-        if (prev == "?" || prev == "&") {
-            let val = parts[i];
-            let end_amp = index(val, "&");
-            let end_hash = index(val, "#");
-            let end = length(val);
-            if (end_amp >= 0) end = end_amp;
-            if (end_hash >= 0 && end_hash < end) end = end_hash;
-            print(substr(val, 0, end), "\n");
-            return;
-        }
+    let result = null;
+
+    for (let i = 0; i < length(value); i++) {
+        let separator = substr(value, i, 1);
+        if (separator != "?" && separator != "&")
+            continue;
+
+        let prefix_start = i + 1;
+        if (substr(value, prefix_start, length(param) + 1) != param + "=")
+            continue;
+
+        let value_start = prefix_start + length(param) + 1;
+        let value_end = first_index_any(value, ["&", "?", "#"], value_start);
+        result = value_end >= 0 ? substr(value, value_start, value_end - value_start) : substr(value, value_start);
     }
-    print("\n");
+
+    print(result != null ? result : "", "\n");
 }
 
 function url_file_extension(value) {
-    let m = match(as_string(value), /\/?[^\/?#]*\.([^.\/?#]+)(?:[?#]|$)/);
-    print(m ? m[1] : "", "\n");
+    let basename = as_string(value);
+    let slash = str_last_index(basename, "/");
+    if (slash >= 0)
+        basename = substr(basename, slash + 1);
+
+    let query = index(basename, "?");
+    if (query >= 0)
+        basename = substr(basename, 0, query);
+
+    let fragment = index(basename, "#");
+    if (fragment >= 0)
+        basename = substr(basename, 0, fragment);
+
+    let dot = str_last_index(basename, ".");
+    if (dot >= 0)
+        print(substr(basename, dot + 1), "\n");
+    else
+        print("\n");
 }
 
 function url_strip_fragment(value) {
-    let m = match(as_string(value), /^([^#]*)/);
-    print(m ? m[1] : as_string(value), "\n");
+    value = as_string(value);
+    let fragment = index(value, "#");
+    print(fragment >= 0 ? substr(value, 0, fragment) : value, "\n");
 }
 
 function normalize_strategy_whitespace(value) {
