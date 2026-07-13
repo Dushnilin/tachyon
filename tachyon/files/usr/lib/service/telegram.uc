@@ -401,6 +401,20 @@ function worker() {
         return 0;
     }
     
+    // Register commands on Telegram servers
+    let commands = [
+        { command: "status", description: "Статус системы и RAM/CPU" },
+        { command: "servers", description: "Список серверов и задержка" },
+        { command: "test", description: "Проверка интернет-соединения" },
+        { command: "speed", description: "Замер скорости интернета" },
+        { command: "traffic", description: "Статистика трафика sing-box" },
+        { command: "doctor", description: "Диагностика и ремонт ошибок" },
+        { command: "restart", description: "Перезапустить службы Tachyon" },
+        { command: "logs", description: "Посмотреть последние логи" },
+        { command: "help", description: "Справка по командам" }
+    ];
+    tg_request(cfg.bot_token, "setMyCommands", { commands: commands });
+    
     let poll_interval = int(cfg.poll_interval || "5");
     if (poll_interval < 1) poll_interval = 1;
     
