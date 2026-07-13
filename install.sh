@@ -148,7 +148,7 @@ http_get() {
             run_with_deadline "$METADATA_TIMEOUT_SECONDS" wget -T "$CONNECT_TIMEOUT_SECONDS" -qO- "$1"
             ;;
         curl)
-            curl --connect-timeout "$CONNECT_TIMEOUT_SECONDS" --max-time "$METADATA_TIMEOUT_SECONDS" -fsSL "$1"
+            curl --connect-timeout "$CONNECT_TIMEOUT_SECONDS" --speed-limit 1024 --speed-time 15 --max-time "$METADATA_TIMEOUT_SECONDS" -fsSL "$1"
             ;;
         *)
             return 1
@@ -1120,7 +1120,7 @@ download_file_once() {
             run_with_deadline "$DOWNLOAD_TIMEOUT_SECONDS" wget -T "$CONNECT_TIMEOUT_SECONDS" -q -O "$2" "$1"
             ;;
         curl)
-            curl --connect-timeout "$CONNECT_TIMEOUT_SECONDS" --max-time "$DOWNLOAD_TIMEOUT_SECONDS" -fsSL "$1" -o "$2"
+            curl --connect-timeout "$CONNECT_TIMEOUT_SECONDS" --speed-limit 1024 --speed-time 15 --max-time "$DOWNLOAD_TIMEOUT_SECONDS" -fsSL "$1" -o "$2"
             ;;
         *)
             return 1
