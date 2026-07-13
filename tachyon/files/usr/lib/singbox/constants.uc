@@ -1,5 +1,8 @@
 #!/usr/bin/env ucode
 
+let common = require("core.common");
+let as_string = common.as_string;
+
 const DNS_SERVER_TAG = "dns-server";
 const FAKEIP_DNS_SERVER_TAG = "fakeip-server";
 const BOOTSTRAP_DNS_SERVER_TAG = "bootstrap-dns-server";
@@ -37,10 +40,6 @@ const BYEDPI_LISTEN_ADDRESS = "127.0.0.1";
 const BYEDPI_PORT_BASE = 1080;
 
 const RESERVED_TAGS = {
-
-let common = require("core.common");
-let as_string = common.as_string;
-
     [DNS_SERVER_TAG]: true,
     [FAKEIP_DNS_SERVER_TAG]: true,
     [BOOTSTRAP_DNS_SERVER_TAG]: true,

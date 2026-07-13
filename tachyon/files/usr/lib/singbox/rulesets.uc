@@ -5,11 +5,10 @@ const SRS_ADS_HAGEZI_PRO_URL = "https://github.com/zxc-rv/ad-filter/releases/lat
 const SRS_SUPERCELL_URL = "https://raw.githubusercontent.com/ushan0v/sing-box-supercell-ruleset/main/supercell.srs";
 const SRS_GITHUB_URL = "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/github.srs";
 
-const COMMUNITY_SERVICES = {
-
 let common = require("core.common");
 let as_string = common.as_string;
 
+const COMMUNITY_SERVICES = {
     russia_inside: true,
     russia_outside: true,
     ukraine_inside: true,
