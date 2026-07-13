@@ -1964,6 +1964,8 @@ function global_check(arg1, arg2) {
     print_global("━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     print_global("🥸 FakeIP status");
     let fakeip_check_json = command_capture(command_from_args(module_args(LIB_DIR + "/diagnostics/runtime.uc", [ "check-fakeip" ]))).output;
+    if (fakeip_check_json != "")
+        render_or_fail([ "global-fakeip-check" ], fakeip_check_json, "❌ Failed to parse FakeIP info", [ 0 ]);
     else
         print_global("❌ Failed to get FakeIP info");
 
