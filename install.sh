@@ -1043,6 +1043,8 @@ function asset_matches(name, kind, ext, version) {
 
 function github_message() {
     let value = read_stdin_json();
+    if (type(value) == "array")
+        value = value[0];
     if (value == null)
         exit(2);
     if (type(value) == "object" && value.message != null)
@@ -1051,12 +1053,16 @@ function github_message() {
 
 function release_tag() {
     let release = read_stdin_json();
+    if (type(release) == "array")
+        release = release[0];
     if (type(release) == "object" && release.tag_name != null)
         print(as_string(release.tag_name), "\n");
 }
 
 function release_asset_url(kind, ext) {
     let release = read_stdin_json();
+    if (type(release) == "array")
+        release = release[0];
     if (type(release) != "object" || type(release.assets) != "array")
         return;
     let version = as_string(release.tag_name || "");
@@ -1398,9 +1404,9 @@ fetch_github_latest_release_json() {
     url="https://api.github.com/repos/${owner}/${repo}/releases/latest"
 
     response="$(http_get "$url" 2>/dev/null || true)"
-    if [ -z "$response" ]; then
-        warn "Direct GitHub connection failed; trying via mirror..."
-        url="https://gh-proxy.com/https://api.github.com/repos/${owner}/${repo}/releases/latest"
+    if [ -z "$response" ] || printf '%s' "$response" | grep -q '"message": "Not Found"'; then
+        warn "Latest release query failed; trying release list..."
+        url="https://api.github.com/repos/${owner}/${repo}/releases"
         response="$(http_get "$url" 2>/dev/null || true)"
     fi
     [ -n "$response" ] || fail "Failed to query GitHub latest release metadata for ${owner}/${repo}"
