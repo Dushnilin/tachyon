@@ -708,6 +708,11 @@ function start_main() {
 
     module_success(BYEDPI_UC, [ "start-runtime" ]);
 
+    if (command_success_from_args([ "test", "-f", "/etc/tachyon/cache.db.backup" ])) {
+        command_success_from_args([ "mkdir", "-p", TMP_SING_BOX_FOLDER ]);
+        command_success_from_args([ "cp", "/etc/tachyon/cache.db.backup", TMP_SING_BOX_FOLDER + "/cache.db" ]);
+    }
+
     if (!command_success_from_args([ "/etc/init.d/sing-box", "start" ])) {
         log_message("Failed to start sing-box. Aborted.", "fatal");
         return 1;
@@ -722,8 +727,7 @@ function start_main() {
         as_string(SING_BOX_START_VERIFY_TIMEOUT)
     ]);
     if (status != 0) {
-        log_message("sing-box did not reach a stable running state after start. Aborted.", "fatal");
-        return status;
+        log_message("sing-box did not reach a stable running state after start (WAN might be down). Will retry automatically.", "warn");
     }
 
     status = module_status(PRIORITY_UC, [ "start-runtime" ]);
@@ -830,6 +834,11 @@ function stop_main() {
     let sing_box_status = command_status_from_args([ "/etc/init.d/sing-box", "stop" ]);
     if (sing_box_status != 0)
         status = sing_box_status;
+
+    if (command_success_from_args([ "test", "-f", TMP_SING_BOX_FOLDER + "/cache.db" ])) {
+        command_success_from_args([ "mkdir", "-p", "/etc/tachyon" ]);
+        command_success_from_args([ "cp", TMP_SING_BOX_FOLDER + "/cache.db", "/etc/tachyon/cache.db.backup" ]);
+    }
 
     return status;
 }
