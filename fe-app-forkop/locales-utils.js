@@ -1,6 +1,6 @@
 import { execSync } from 'child_process';
 
-export function getGitUser(defaultName = 'Forkop', defaultEmail = 'ushan0v@users.noreply.github.com') {
+export function getGitUser(defaultName = 'Tachyon', defaultEmail = 'dushnilin@gmail.com') {
     try {
         const name = execSync('git config user.name', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
         const email = execSync('git config user.email', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();

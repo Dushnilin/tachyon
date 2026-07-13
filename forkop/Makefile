@@ -14,7 +14,7 @@ endif
 PKG_VERSION:=$(or $(FORKOP_HAS_RELEASE_VERSION),0.0.0)
 PKG_RELEASE:=
 
-PKG_MAINTAINER:=ushan0v <ushan0v@users.noreply.github.com>
+PKG_MAINTAINER:=Dushnilin <dushnilin@gmail.com>
 PKG_LICENSE:=GPL-2.0-or-later
 
 include $(INCLUDE_DIR)/package.mk
@@ -25,7 +25,7 @@ define Package/forkop
 	DEPENDS:=+ca-bundle +kmod-inet-diag +kmod-netlink-diag +kmod-tun +curl +ucode +ucode-mod-fs +ucode-mod-uci +kmod-nft-tproxy +coreutils-base64 +coreutils-sort +bind-dig +nftables +kmod-nft-nat +ip-full
 	CONFLICTS:=https-dns-proxy nextdns luci-app-passwall luci-app-passwall2
 	TITLE:=Forkop backend service
-	URL:=https://github.com/ushan0v/forkop
+	URL:=https://github.com/Dushnilin/tachyon
 	PKGARCH:=all
 endef
 
