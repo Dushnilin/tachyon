@@ -9,6 +9,18 @@ LEGACY_BACKEND="${LEGACY_BRAND}-plus"
 LEGACY_CONFIG_ALT="${LEGACY_BRAND}_plus"
 
 cleanup() {
+  if [ -n "${RETRY_PID:-}" ]; then
+    kill -KILL "$RETRY_PID" 2>/dev/null || true
+    wait "$RETRY_PID" 2>/dev/null || true
+  fi
+  if [ -n "${ORPHAN_PROBE_PID:-}" ]; then
+    kill -KILL "$ORPHAN_PROBE_PID" 2>/dev/null || true
+  fi
+  if [ -n "${HANG_PID_LOG:-}" ] && [ -r "$HANG_PID_LOG" ]; then
+    while IFS= read -r pid; do
+      kill -KILL "$pid" 2>/dev/null || true
+    done < "$HANG_PID_LOG"
+  fi
   rm -rf "$WORK_DIR"
 }
 trap cleanup EXIT
@@ -19,6 +31,19 @@ fail() {
 }
 
 [ -r "$INSTALLER" ] || fail "install.sh is missing"
+
+deadline_helper="$WORK_DIR/install-deadline.sh"
+awk '
+  /cat > "\$deadline_helper_path" <<'\''EOF'\''/ { capture = 1; next }
+  capture && /^EOF$/ { exit }
+  capture { print }
+' "$INSTALLER" > "$deadline_helper"
+[ -s "$deadline_helper" ] || fail "failed to extract installer deadline helper"
+chmod 0700 "$deadline_helper"
+export FORKOP_DEADLINE_HELPER_PATH="$deadline_helper"
+export FORKOP_INSTALLER_DEADLINE_HELPER="$deadline_helper"
+export FORKOP_INSTALLER_COMMAND_RESULT="$WORK_DIR/installer-command"
+export TMP_DIR="$WORK_DIR"
 
 grep -Fq 'run_with_deadline "$METADATA_TIMEOUT_SECONDS" wget -T "$CONNECT_TIMEOUT_SECONDS" -qO-' "$INSTALLER" ||
   fail "installer wget metadata requests must have portable connect and total timeouts"
@@ -37,6 +62,20 @@ deadline_elapsed="$(($(date +%s) - deadline_started))"
   fail "installer deadline watchdog did not stop the command promptly"
 run_with_deadline 3 sh -c 'exit 0' ||
   fail "installer deadline watchdog must preserve successful command status"
+deadline_child_pid="$WORK_DIR/deadline-child.pid"
+if run_with_deadline 1 sh -c '
+  trap "" TERM
+  sh -c '\''trap "" TERM; while :; do sleep 30; done'\'' &
+  child=$!
+  printf "%s\n" "$child" > "$1"
+  wait "$child"
+' sh "$deadline_child_pid"; then
+  fail "installer deadline watchdog must fail a stubborn process tree"
+fi
+[ -s "$deadline_child_pid" ] || fail "deadline process-tree fixture did not record its child"
+if kill -0 "$(cat "$deadline_child_pid")" 2>/dev/null; then
+  fail "installer deadline watchdog left a descendant running"
+fi
 grep -Fq 'curl --connect-timeout "$CONNECT_TIMEOUT_SECONDS" --max-time "$METADATA_TIMEOUT_SECONDS"' "$INSTALLER" ||
   fail "installer curl metadata requests must have connect and total timeouts"
 grep -Fq 'curl --connect-timeout "$CONNECT_TIMEOUT_SECONDS" --max-time "$DOWNLOAD_TIMEOUT_SECONDS"' "$INSTALLER" ||
@@ -164,6 +203,113 @@ esac
 exit 0
 SH
 chmod 0755 "$WORK_DIR/opkg"
+
+cat >"$WORK_DIR/hanging-init" <<'SH'
+#!/usr/bin/env sh
+printf '%s\n' "$1" >> "$FORKOP_INSTALLER_INIT_LOG"
+case "$1" in
+  enabled|status|running)
+    printf '%s\n' "$$" >> "$FORKOP_INSTALLER_HANG_PID_LOG"
+    trap '' TERM
+    sh -c '
+      trap "" TERM
+      printf "%s\n" "$$" >> "$FORKOP_INSTALLER_HANG_PID_LOG"
+      while :; do sleep 30; done
+    ' &
+    wait "$!"
+    ;;
+  stop|disable)
+    exit 0
+    ;;
+esac
+exit 0
+SH
+chmod 0755 "$WORK_DIR/hanging-init"
+cat >"$WORK_DIR/hanging-bin" <<'SH'
+#!/usr/bin/env sh
+case "$1" in
+  get_status) printf '%s\n' '{"running":0}' ;;
+  restore_dnsmasq) exit 0 ;;
+esac
+exit 0
+SH
+chmod 0755 "$WORK_DIR/hanging-bin"
+mkdir -p "$WORK_DIR/rc.d"
+ln -s "$WORK_DIR/hanging-init" "$WORK_DIR/rc.d/S99hanging-init"
+HANG_PID_LOG="$WORK_DIR/hanging-pids.log"
+: > "$HANG_PID_LOG"
+: > "$WORK_DIR/hanging-init.log"
+
+ORPHAN_PROBE_PID="$(
+  FORKOP_INSTALLER_INIT_LOG="$WORK_DIR/hanging-init.log" \
+  FORKOP_INSTALLER_HANG_PID_LOG="$HANG_PID_LOG" \
+    sh -c '"$1" running >/dev/null 2>&1 & printf "%s\n" "$!"' sh "$WORK_DIR/hanging-init"
+)"
+ORPHAN_PROBE_PPID=""
+for _ in $(seq 1 20); do
+  ORPHAN_PROBE_PPID="$(awk '/^PPid:/ { print $2 }' "/proc/$ORPHAN_PROBE_PID/status" 2>/dev/null || true)"
+  [ -n "$ORPHAN_PROBE_PPID" ] && break
+  sleep 0.05
+done
+[ -n "$ORPHAN_PROBE_PPID" ] ||
+  fail "failed to create an orphaned init.d probe fixture"
+
+sh -c 'trap "" TERM; while :; do sleep 30; done' \
+  "$WORK_DIR/hanging-init" retry_start_on_wan_up &
+RETRY_PID=$!
+printf '%s\n' "$RETRY_PID" > "$WORK_DIR/start-retry.pid"
+printf '%s\n' pending > "$WORK_DIR/start.retry"
+
+hanging_started="$(date +%s)"
+PATH="$WORK_DIR:$PATH" \
+FORKOP_INSTALLER_OPKG_LOG="$WORK_DIR/opkg.log" \
+FORKOP_INSTALLER_INIT="$WORK_DIR/hanging-init" \
+FORKOP_INSTALLER_BIN="$WORK_DIR/hanging-bin" \
+FORKOP_INSTALLER_LIB="$WORK_DIR/missing-forkop-lib" \
+FORKOP_INSTALLER_UCI_DEFAULTS="$WORK_DIR/missing-uci-defaults" \
+FORKOP_INSTALLER_LUCI_VIEW="$WORK_DIR/missing-luci-view" \
+FORKOP_INSTALLER_MENU_JSON="$WORK_DIR/missing-menu.json" \
+FORKOP_INSTALLER_ACL_JSON="$WORK_DIR/missing-acl.json" \
+FORKOP_INSTALLER_RU_LMO="$WORK_DIR/missing-ru.lmo" \
+FORKOP_INSTALLER_EN_LMO="$WORK_DIR/missing-en.lmo" \
+FORKOP_INSTALLER_RU_LUA="$WORK_DIR/missing-ru.lua" \
+FORKOP_INSTALLER_EN_LUA="$WORK_DIR/missing-en.lua" \
+FORKOP_INSTALLER_LEGACY_BASE_INIT="$WORK_DIR/missing-original-init" \
+FORKOP_INSTALLER_LEGACY_BRAND="$LEGACY_BRAND" \
+FORKOP_INSTALLER_LEGACY_BACKEND="$LEGACY_BACKEND" \
+FORKOP_INSTALLER_RC_DIR="$WORK_DIR/rc.d" \
+FORKOP_INSTALLER_START_RETRY_FILE="$WORK_DIR/start.retry" \
+FORKOP_INSTALLER_START_RETRY_PID_FILE="$WORK_DIR/start-retry.pid" \
+FORKOP_INSTALLER_ORPHAN_PPID="$ORPHAN_PROBE_PPID" \
+FORKOP_INSTALLER_SERVICE_PROBE_TIMEOUT=1 \
+FORKOP_INSTALLER_SERVICE_ACTION_TIMEOUT=3 \
+FORKOP_INSTALLER_INIT_LOG="$WORK_DIR/hanging-init.log" \
+FORKOP_INSTALLER_HANG_PID_LOG="$HANG_PID_LOG" \
+FORKOP_UCI_STATE_FILE="$WORK_DIR/empty-uci.state" \
+  ucode "$helper" installer-cleanup-legacy > "$WORK_DIR/hanging-state.env"
+hanging_elapsed="$(($(date +%s) - hanging_started))"
+[ "$hanging_elapsed" -lt 15 ] ||
+  fail "installer cleanup did not bound hanging init.d probes (${hanging_elapsed}s)"
+grep -Fxq 'FORKOP_WAS_ENABLED=1' "$WORK_DIR/hanging-state.env" ||
+  fail "installer cleanup must recover enabled state from rc.d after a probe timeout"
+for action in enabled status running stop disable; do
+  grep -Fxq "$action" "$WORK_DIR/hanging-init.log" ||
+    fail "installer cleanup did not run the expected bounded service action: $action"
+done
+if [ -e "$WORK_DIR/start.retry" ] || [ -e "$WORK_DIR/start-retry.pid" ]; then
+  fail "installer cleanup left scheduled retry state behind"
+fi
+wait "$RETRY_PID" 2>/dev/null || true
+RETRY_PID=""
+if kill -0 "$ORPHAN_PROBE_PID" 2>/dev/null; then
+  fail "installer cleanup left an orphaned init.d probe running"
+fi
+ORPHAN_PROBE_PID=""
+while IFS= read -r pid; do
+  if kill -0 "$pid" 2>/dev/null; then
+    fail "installer cleanup left a timed-out service process running: $pid"
+  fi
+done < "$HANG_PID_LOG"
 
 : >"$WORK_DIR/opkg.log"
 printf '%s\n' '1' |
