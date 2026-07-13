@@ -1130,9 +1130,18 @@ download_with_retry() {
     max_attempts=3
 
     while [ "$attempt" -le "$max_attempts" ]; do
+        current_url="$url"
+        if [ "$attempt" -eq 2 ]; then
+            warn "Retrying $label via gh-proxy.com mirror..."
+            current_url="https://gh-proxy.com/$url"
+        elif [ "$attempt" -eq 3 ]; then
+            warn "Retrying $label via ghproxy.net mirror..."
+            current_url="https://ghproxy.net/$url"
+        fi
+
         msg "Downloading $label ($attempt/$max_attempts)"
 
-        if download_file_once "$url" "$output_path" && [ -s "$output_path" ]; then
+        if download_file_once "$current_url" "$output_path" && [ -s "$output_path" ]; then
             return 0
         fi
 
@@ -1390,6 +1399,11 @@ fetch_github_latest_release_json() {
     url="https://api.github.com/repos/${owner}/${repo}/releases/latest"
 
     response="$(http_get "$url" 2>/dev/null || true)"
+    if [ -z "$response" ]; then
+        warn "Direct GitHub connection failed; trying via mirror..."
+        url="https://gh-proxy.com/https://api.github.com/repos/${owner}/${repo}/releases/latest"
+        response="$(http_get "$url" 2>/dev/null || true)"
+    fi
     [ -n "$response" ] || fail "Failed to query GitHub latest release metadata for ${owner}/${repo}"
 
     message="$(printf '%s' "$response" | install_json_ucode github-message 2>/dev/null)" ||
