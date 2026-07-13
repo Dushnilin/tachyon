@@ -52,7 +52,7 @@ function cursor() {
 return { cursor };
 UCODE
 
-ucode -I "$WORK_DIR" -L "$TACHYON_LIB" -e '
+ucode -L "$WORK_DIR" -L "$TACHYON_LIB" -e '
 let connections = require("config.connections");
 let cursor = require("uci").cursor();
 

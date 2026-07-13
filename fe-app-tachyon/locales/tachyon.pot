@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-07-13 10:18+0300\n"
-"PO-Revision-Date: 2026-07-13 10:18+0300\n"
+"POT-Creation-Date: 2026-07-13 20:43+0300\n"
+"PO-Revision-Date: 2026-07-13 20:43+0300\n"
 "Last-Translator: Dushnilin <dushnilin@gmail.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -41,13 +41,13 @@ msgstr ""
 msgid "+ Add URLTest"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:1675
-#: src/tachyon/tabs/dashboard/initController.ts:1686
+#: src/tachyon/tabs/dashboard/initController.ts:1563
+#: src/tachyon/tabs/dashboard/initController.ts:1572
 msgid "✔ Running"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:1676
-#: src/tachyon/tabs/dashboard/initController.ts:1687
+#: src/tachyon/tabs/dashboard/initController.ts:1563
+#: src/tachyon/tabs/dashboard/initController.ts:1572
 msgid "✘ Stopped"
 msgstr ""
 
@@ -73,7 +73,7 @@ msgstr ""
 msgid "Active Bootstrap DNS"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:1633
+#: src/tachyon/tabs/dashboard/initController.ts:1548
 msgid "Active Connections"
 msgstr ""
 
@@ -124,6 +124,10 @@ msgstr ""
 msgid "Address"
 msgstr ""
 
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:715
+msgid "Administrator Chat IDs"
+msgstr ""
+
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/server.js:3116
 msgid "Advertise exit node"
 msgstr ""
@@ -133,7 +137,7 @@ msgid "Advertise routes"
 msgstr ""
 
 #: src/tachyon/tabs/monitoring/initController.ts:626
-#: src/tachyon/tabs/monitoring/render.ts:39
+#: src/tachyon/tabs/monitoring/render.ts:40
 msgid "All"
 msgstr ""
 
@@ -185,6 +189,10 @@ msgstr ""
 msgid "Apply section rules only to the specified local IP addresses"
 msgstr ""
 
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:723
+msgid "At least one Admin Chat ID is required"
+msgstr ""
+
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:4752
 msgid "At least one valid domain must be specified."
 msgstr ""
@@ -222,11 +230,11 @@ msgid "Automatically check installed components for new versions"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:2818
-#: src/tachyon/tabs/dashboard/initController.ts:1155
+#: src/tachyon/tabs/dashboard/initController.ts:1208
 msgid "Automatically select the fastest node in the current level"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderAvailableActions.ts:43
+#: src/tachyon/tabs/diagnostic/partials/renderAvailableActions.ts:45
 msgid "Available actions"
 msgstr ""
 
@@ -353,7 +361,7 @@ msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:2301
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:2769
-#: src/tachyon/tabs/dashboard/initController.ts:1142
+#: src/tachyon/tabs/dashboard/initController.ts:1195
 msgid "Check interval"
 msgstr ""
 
@@ -361,17 +369,17 @@ msgstr ""
 msgid "Check timeout after which the server is considered dead"
 msgstr ""
 
-#: src/tachyon/tabs/updates/initController.ts:740
+#: src/tachyon/tabs/updates/initController.ts:742
 msgid "Check update"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:2327
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:2756
-#: src/tachyon/tabs/dashboard/initController.ts:1140
+#: src/tachyon/tabs/dashboard/initController.ts:1193
 msgid "Check URL"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1022
+#: src/tachyon/tabs/diagnostic/initController.ts:1058
 #: src/tachyon/tabs/diagnostic/checks/runByedpiCheck.ts:14
 #: src/tachyon/tabs/diagnostic/checks/runDnsCheck.ts:15
 #: src/tachyon/tabs/diagnostic/checks/runFakeIPCheck.ts:15
@@ -426,26 +434,29 @@ msgstr ""
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:3071
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/server.js:1718
 #: src/partials/modal/renderModal.ts:263
-#: src/tachyon/tabs/dashboard/initController.ts:1027
-#: src/tachyon/tabs/dashboard/initController.ts:1283
-#: src/tachyon/tabs/monitoring/initController.ts:832
-#: src/tachyon/tabs/monitoring/initController.ts:882
+#: src/tachyon/tabs/dashboard/initController.ts:1040
+#: src/tachyon/tabs/monitoring/initController.ts:837
+#: src/tachyon/tabs/monitoring/initController.ts:887
 msgid "Close"
 msgstr ""
 
-#: src/tachyon/tabs/monitoring/render.ts:58
 #: src/tachyon/tabs/monitoring/render.ts:59
+#: src/tachyon/tabs/monitoring/render.ts:60
 msgid "Close all connections"
 msgstr ""
 
-#: src/tachyon/tabs/monitoring/initController.ts:799
-#: src/tachyon/tabs/monitoring/initController.ts:800
+#: src/tachyon/tabs/monitoring/initController.ts:804
+#: src/tachyon/tabs/monitoring/initController.ts:805
 msgid "Close connection"
 msgstr ""
 
 #: src/tachyon/tabs/monitoring/initController.ts:674
 #: src/tachyon/tabs/monitoring/render.ts:29
 msgid "Closed"
+msgstr ""
+
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:716
+msgid "Comma-separated list of Telegram user IDs authorized to control the bot."
 msgstr ""
 
 #: src/tachyon/services/core.service.ts:43
@@ -456,7 +467,7 @@ msgstr ""
 msgid "Component update check interval"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/tachyon.js:473
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/tachyon.js:485
 msgid "Components"
 msgstr ""
 
@@ -492,11 +503,11 @@ msgstr ""
 msgid "Connection URL"
 msgstr ""
 
-#: src/tachyon/tabs/monitoring/initController.ts:946
+#: src/tachyon/tabs/monitoring/initController.ts:951
 msgid "Connections are unavailable"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:145
+#: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:146
 msgid "Connectivity probe failed"
 msgstr ""
 
@@ -510,10 +521,9 @@ msgstr ""
 msgid "Copy"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:997
-#: src/tachyon/tabs/dashboard/initController.ts:1253
-#: src/tachyon/tabs/dashboard/partials/renderSections.ts:366
-#: src/tachyon/tabs/dashboard/partials/renderSections.ts:367
+#: src/tachyon/tabs/dashboard/initController.ts:1010
+#: src/tachyon/tabs/dashboard/partials/renderSections.ts:371
+#: src/tachyon/tabs/dashboard/partials/renderSections.ts:372
 msgid "Copy proxy link"
 msgstr ""
 
@@ -537,7 +547,7 @@ msgstr ""
 msgid "Custom outbound configurations in JSON format"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/tachyon.js:449
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/tachyon.js:461
 msgid "Dashboard"
 msgstr ""
 
@@ -586,7 +596,7 @@ msgstr ""
 msgid "DHCP is managed manually"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/tachyon.js:437
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/tachyon.js:449
 msgid "Diagnostics"
 msgstr ""
 
@@ -598,7 +608,7 @@ msgstr ""
 msgid "Direct connection"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderAvailableActions.ts:79
+#: src/tachyon/tabs/diagnostic/partials/renderAvailableActions.ts:81
 msgid "Disable autostart"
 msgstr ""
 
@@ -747,8 +757,8 @@ msgstr ""
 msgid "Dont Touch My DHCP!"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:1559
-#: src/tachyon/tabs/dashboard/initController.ts:1597
+#: src/tachyon/tabs/dashboard/initController.ts:1523
+#: src/tachyon/tabs/dashboard/initController.ts:1536
 msgid "Downlink"
 msgstr ""
 
@@ -792,8 +802,8 @@ msgstr ""
 msgid "Download through"
 msgstr ""
 
-#: src/tachyon/tabs/monitoring/initController.ts:825
-#: src/tachyon/tabs/monitoring/initController.ts:879
+#: src/tachyon/tabs/monitoring/initController.ts:830
+#: src/tachyon/tabs/monitoring/initController.ts:884
 msgid "Downloaded"
 msgstr ""
 
@@ -829,7 +839,7 @@ msgstr ""
 msgid "Enable automatic updates for remote lists and rule sets"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderAvailableActions.ts:89
+#: src/tachyon/tabs/diagnostic/partials/renderAvailableActions.ts:91
 msgid "Enable autostart"
 msgstr ""
 
@@ -853,12 +863,20 @@ msgstr ""
 msgid "Enable Output Network Interface"
 msgstr ""
 
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:690
+msgid "Enable Telegram Bot"
+msgstr ""
+
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:413
 msgid "Enable YACD"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:422
 msgid "Enable YACD WAN Access"
+msgstr ""
+
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:691
+msgid "Enables the background daemon that polls Telegram for commands and sends notifications."
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/server.js:2586
@@ -887,6 +905,10 @@ msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:2179
 msgid "Enter HWID"
+msgstr ""
+
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:700
+msgid "Enter the API token obtained from @BotFather."
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:2171
@@ -957,13 +979,13 @@ msgstr ""
 msgid "External nfqws2 config files bypass Tachyon queue management and explicit validation."
 msgstr ""
 
-#: src/tachyon/tabs/monitoring/initController.ts:1213
-#: src/tachyon/tabs/monitoring/initController.ts:1228
+#: src/tachyon/tabs/monitoring/initController.ts:1218
+#: src/tachyon/tabs/monitoring/initController.ts:1233
 msgid "Failed to close connection"
 msgstr ""
 
-#: src/tachyon/tabs/monitoring/initController.ts:1247
-#: src/tachyon/tabs/monitoring/initController.ts:1260
+#: src/tachyon/tabs/monitoring/initController.ts:1252
+#: src/tachyon/tabs/monitoring/initController.ts:1265
 msgid "Failed to close connections"
 msgstr ""
 
@@ -976,18 +998,18 @@ msgstr ""
 #: src/tachyon/methods/shell/index.ts:177
 #: src/tachyon/tabs/updates/initController.ts:508
 #: src/tachyon/tabs/updates/initController.ts:509
-#: src/tachyon/tabs/updates/initController.ts:569
-#: src/tachyon/tabs/updates/initController.ts:719
+#: src/tachyon/tabs/updates/initController.ts:571
+#: src/tachyon/tabs/updates/initController.ts:721
 msgid "Failed to execute"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:275
 #: src/tachyon/tabs/dashboard/initController.ts:276
-#: src/tachyon/tabs/dashboard/initController.ts:295
-#: src/tachyon/tabs/dashboard/initController.ts:341
-#: src/tachyon/tabs/dashboard/initController.ts:345
-#: src/tachyon/tabs/dashboard/initController.ts:1341
-#: src/tachyon/tabs/dashboard/initController.ts:1345
+#: src/tachyon/tabs/dashboard/initController.ts:277
+#: src/tachyon/tabs/dashboard/initController.ts:296
+#: src/tachyon/tabs/dashboard/initController.ts:342
+#: src/tachyon/tabs/dashboard/initController.ts:346
+#: src/tachyon/tabs/dashboard/initController.ts:1286
+#: src/tachyon/tabs/dashboard/initController.ts:1290
 msgid "Failed to update subscriptions"
 msgstr ""
 
@@ -1012,7 +1034,7 @@ msgid "Fallback on unknown DC"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:2829
-#: src/tachyon/tabs/dashboard/initController.ts:1161
+#: src/tachyon/tabs/dashboard/initController.ts:1214
 msgid "Faster server search interval"
 msgstr ""
 
@@ -1056,11 +1078,11 @@ msgstr ""
 msgid "Generated inbound"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderAvailableActions.ts:98
+#: src/tachyon/tabs/diagnostic/partials/renderAvailableActions.ts:100
 msgid "Get global check"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:682
+#: src/tachyon/tabs/diagnostic/initController.ts:684
 msgid "Global check"
 msgstr ""
 
@@ -1106,7 +1128,7 @@ msgid "Hide values"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:2793
-#: src/tachyon/tabs/dashboard/initController.ts:1147
+#: src/tachyon/tabs/dashboard/initController.ts:1200
 msgid "Higher-level check interval"
 msgstr ""
 
@@ -1114,8 +1136,8 @@ msgstr ""
 msgid "Higher-priority DNS Check"
 msgstr ""
 
-#: src/tachyon/tabs/monitoring/initController.ts:815
-#: src/tachyon/tabs/monitoring/initController.ts:875
+#: src/tachyon/tabs/monitoring/initController.ts:820
+#: src/tachyon/tabs/monitoring/initController.ts:880
 msgid "Host"
 msgstr ""
 
@@ -1125,6 +1147,10 @@ msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:2770
 msgid "How often the currently selected server is checked"
+msgstr ""
+
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:736
+msgid "How often to check Telegram for new messages (default: 5)."
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:197
@@ -1149,7 +1175,7 @@ msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:2340
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/server.js:3063
-#: src/tachyon/tabs/dashboard/initController.ts:916
+#: src/tachyon/tabs/dashboard/initController.ts:1068
 msgid "Idle timeout"
 msgstr ""
 
@@ -1201,16 +1227,16 @@ msgstr ""
 msgid "Information"
 msgstr ""
 
-#: src/tachyon/tabs/updates/initController.ts:754
+#: src/tachyon/tabs/updates/initController.ts:756
 msgid "Install"
 msgstr ""
 
-#: src/tachyon/tabs/updates/initController.ts:1159
+#: src/tachyon/tabs/updates/initController.ts:1161
 msgid "Install another build:"
 msgstr ""
 
 #: src/tachyon/tabs/updates/initController.ts:291
-#: src/tachyon/tabs/updates/initController.ts:1017
+#: src/tachyon/tabs/updates/initController.ts:1019
 msgid "Installed version is newer than release"
 msgstr ""
 
@@ -1228,8 +1254,8 @@ msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:2354
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:2845
-#: src/tachyon/tabs/dashboard/initController.ts:918
-#: src/tachyon/tabs/dashboard/initController.ts:1167
+#: src/tachyon/tabs/dashboard/initController.ts:1070
+#: src/tachyon/tabs/dashboard/initController.ts:1220
 msgid "Interrupt existing connections"
 msgstr ""
 
@@ -1241,7 +1267,7 @@ msgstr ""
 msgid "Interrupt existing connections when URLTest switches the selected server"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:914
+#: src/tachyon/tabs/dashboard/initController.ts:1066
 msgid "Interval"
 msgstr ""
 
@@ -1576,15 +1602,15 @@ msgid "Latency test URL"
 msgstr ""
 
 #: src/tachyon/tabs/updates/initController.ts:294
-#: src/tachyon/tabs/updates/initController.ts:1015
+#: src/tachyon/tabs/updates/initController.ts:1017
 msgid "Latest version is installed"
 msgstr ""
 
-#: src/tachyon/tabs/updates/initController.ts:1017
+#: src/tachyon/tabs/updates/initController.ts:1019
 msgid "Latest version:"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:1100
+#: src/tachyon/tabs/dashboard/initController.ts:1153
 msgid "Level"
 msgstr ""
 
@@ -1616,16 +1642,16 @@ msgstr ""
 msgid "Loading client link..."
 msgstr ""
 
-#: src/tachyon/tabs/monitoring/initController.ts:936
-#: src/tachyon/tabs/monitoring/render.ts:88
+#: src/tachyon/tabs/monitoring/initController.ts:941
+#: src/tachyon/tabs/monitoring/render.ts:92
 msgid "Loading connections"
 msgstr ""
 
-#: src/tachyon/tabs/updates/initController.ts:905
-#: src/tachyon/tabs/updates/initController.ts:916
-#: src/tachyon/tabs/updates/initController.ts:927
-#: src/tachyon/tabs/updates/initController.ts:940
-#: src/tachyon/tabs/updates/initController.ts:953
+#: src/tachyon/tabs/updates/initController.ts:907
+#: src/tachyon/tabs/updates/initController.ts:918
+#: src/tachyon/tabs/updates/initController.ts:929
+#: src/tachyon/tabs/updates/initController.ts:942
+#: src/tachyon/tabs/updates/initController.ts:955
 msgid "Loading..."
 msgstr ""
 
@@ -1653,7 +1679,7 @@ msgstr ""
 msgid "Maximum time to wait for example.com to resolve during a DNS health check."
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:1637
+#: src/tachyon/tabs/dashboard/initController.ts:1549
 msgid "Memory Usage"
 msgstr ""
 
@@ -1681,8 +1707,12 @@ msgstr ""
 msgid "Monitored Interfaces"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/tachyon.js:461
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/tachyon.js:473
 msgid "Monitoring"
+msgstr ""
+
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:726
+msgid "Must be a comma-separated list of numeric IDs"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:1804
@@ -1738,18 +1768,18 @@ msgstr ""
 msgid "NFQWS2 strategy cannot be empty"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:762
 #: src/tachyon/tabs/dashboard/initController.ts:766
-#: src/tachyon/tabs/dashboard/initController.ts:842
-#: src/tachyon/tabs/dashboard/initController.ts:1055
+#: src/tachyon/tabs/dashboard/initController.ts:770
+#: src/tachyon/tabs/dashboard/initController.ts:846
+#: src/tachyon/tabs/dashboard/initController.ts:1106
 msgid "No"
 msgstr ""
 
-#: src/tachyon/tabs/monitoring/initController.ts:960
+#: src/tachyon/tabs/monitoring/initController.ts:965
 msgid "No active connections"
 msgstr ""
 
-#: src/tachyon/tabs/monitoring/initController.ts:961
+#: src/tachyon/tabs/monitoring/initController.ts:966
 msgid "No closed connections"
 msgstr ""
 
@@ -1781,13 +1811,11 @@ msgstr ""
 msgid "No rules use Zapret2"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:1012
-#: src/tachyon/tabs/dashboard/initController.ts:1268
+#: src/tachyon/tabs/dashboard/initController.ts:1025
 msgid "Node list is empty"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:942
-#: src/tachyon/tabs/dashboard/initController.ts:1191
+#: src/tachyon/tabs/dashboard/initController.ts:930
 msgid "Nodes"
 msgstr ""
 
@@ -1807,15 +1835,15 @@ msgstr ""
 msgid "Not detected"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderCheckSection.ts:189
+#: src/tachyon/tabs/diagnostic/partials/renderCheckSection.ts:193
 msgid "Not implement yet"
 msgstr ""
 
 #: src/tachyon/helpers/singBoxVariant.ts:29
 #: src/tachyon/helpers/singBoxVariant.ts:37
-#: src/tachyon/tabs/updates/initController.ts:930
-#: src/tachyon/tabs/updates/initController.ts:943
-#: src/tachyon/tabs/updates/initController.ts:956
+#: src/tachyon/tabs/updates/initController.ts:932
+#: src/tachyon/tabs/updates/initController.ts:945
+#: src/tachyon/tabs/updates/initController.ts:958
 msgid "Not installed"
 msgstr ""
 
@@ -1827,19 +1855,43 @@ msgstr ""
 msgid "Not required for this listen address"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:90
-#: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:117
-#: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:123
-#: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:151
+#: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:91
+#: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:118
+#: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:124
+#: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:152
 msgid "Not responding"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/diagnostic.store.ts:125
+#: src/tachyon/tabs/diagnostic/diagnostic.store.ts:128
 #: src/tachyon/tabs/diagnostic/initController.ts:116
 #: src/tachyon/tabs/diagnostic/initController.ts:346
 #: src/tachyon/tabs/diagnostic/initController.ts:403
 #: src/tachyon/tabs/diagnostic/initController.ts:489
 msgid "Not running"
+msgstr ""
+
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:792
+msgid "Notify on Certificate Warnings"
+msgstr ""
+
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:752
+msgid "Notify on Core Crashes"
+msgstr ""
+
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:802
+msgid "Notify on DNS Leaks"
+msgstr ""
+
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:772
+msgid "Notify on Server Switches"
+msgstr ""
+
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:762
+msgid "Notify on Service Restarts"
+msgstr ""
+
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:782
+msgid "Notify on Subscription Updates"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/server.js:2900
@@ -1884,8 +1936,8 @@ msgstr ""
 msgid "Only the specified servers."
 msgstr ""
 
-#: src/tachyon/tabs/updates/initController.ts:1008
-#: src/tachyon/tabs/updates/initController.ts:1030
+#: src/tachyon/tabs/updates/initController.ts:1010
+#: src/tachyon/tabs/updates/initController.ts:1032
 msgid "Open"
 msgstr ""
 
@@ -1954,8 +2006,8 @@ msgid "Path must end with cache.db"
 msgstr ""
 
 #: src/tachyon/tabs/monitoring/initController.ts:691
-#: src/tachyon/tabs/monitoring/render.ts:70
 #: src/tachyon/tabs/monitoring/render.ts:71
+#: src/tachyon/tabs/monitoring/render.ts:72
 msgid "Pause updates"
 msgstr ""
 
@@ -1970,6 +2022,14 @@ msgstr ""
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:2365
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:2854
 msgid "Pin on dashboard"
+msgstr ""
+
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:735
+msgid "Polling Interval (seconds)"
+msgstr ""
+
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:744
+msgid "Polling interval must be at least 1 second"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:7174
@@ -2017,13 +2077,13 @@ msgstr ""
 msgid "Priority"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:1298
-#: src/tachyon/tabs/dashboard/partials/renderSections.ts:404
-#: src/tachyon/tabs/dashboard/partials/renderSections.ts:405
+#: src/tachyon/tabs/dashboard/initController.ts:1243
+#: src/tachyon/tabs/dashboard/partials/renderSections.ts:409
+#: src/tachyon/tabs/dashboard/partials/renderSections.ts:410
 msgid "Priority details"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:1128
+#: src/tachyon/tabs/dashboard/initController.ts:1181
 msgid "Priority details are unavailable"
 msgstr ""
 
@@ -2048,7 +2108,7 @@ msgstr ""
 msgid "Protocol"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:757
+#: src/tachyon/tabs/dashboard/initController.ts:761
 msgid "Proxy link is unavailable"
 msgstr ""
 
@@ -2101,7 +2161,7 @@ msgstr ""
 msgid "Regular expression must not contain spaces or commas"
 msgstr ""
 
-#: src/tachyon/tabs/updates/initController.ts:799
+#: src/tachyon/tabs/updates/initController.ts:801
 msgid "Remove"
 msgstr ""
 
@@ -2145,7 +2205,7 @@ msgstr ""
 msgid "Resource selection by IP or CIDR inside nfqws2 is not supported here; sing-box selects resources before NFQUEUE."
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderAvailableActions.ts:49
+#: src/tachyon/tabs/diagnostic/partials/renderAvailableActions.ts:51
 msgid "Restart Tachyon"
 msgstr ""
 
@@ -2153,8 +2213,8 @@ msgstr ""
 msgid "Resume updates"
 msgstr ""
 
-#: src/tachyon/tabs/monitoring/initController.ts:819
-#: src/tachyon/tabs/monitoring/initController.ts:877
+#: src/tachyon/tabs/monitoring/initController.ts:824
+#: src/tachyon/tabs/monitoring/initController.ts:882
 msgid "Route"
 msgstr ""
 
@@ -2225,6 +2285,11 @@ msgstr ""
 msgid "Run Diagnostic"
 msgstr ""
 
+#: src/tachyon/tabs/diagnostic/initController.ts:709
+#: src/tachyon/tabs/diagnostic/partials/renderAvailableActions.ts:109
+msgid "Run doctor repair"
+msgstr ""
+
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:7405
 msgid "Russia inside restrictions"
 msgstr ""
@@ -2233,7 +2298,7 @@ msgstr ""
 msgid "Save"
 msgstr ""
 
-#: src/tachyon/tabs/monitoring/render.ts:47
+#: src/tachyon/tabs/monitoring/render.ts:48
 msgid "Search"
 msgstr ""
 
@@ -2316,7 +2381,7 @@ msgid "Select path for sing-box config file. Change this ONLY if you know what y
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:2807
-#: src/tachyon/tabs/dashboard/initController.ts:1151
+#: src/tachyon/tabs/dashboard/initController.ts:1204
 msgid "Select the fastest node"
 msgstr ""
 
@@ -2336,8 +2401,8 @@ msgstr ""
 msgid "Select the WAN interfaces to be monitored"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:910
-#: src/tachyon/tabs/dashboard/initController.ts:1137
+#: src/tachyon/tabs/dashboard/initController.ts:1062
+#: src/tachyon/tabs/dashboard/initController.ts:1190
 msgid "Selected"
 msgstr ""
 
@@ -2347,6 +2412,30 @@ msgstr ""
 
 #: src/validators/validateOutboundJson.ts:85
 msgid "Selector and URLTest outbounds must contain a non-empty outbounds array"
+msgstr ""
+
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:803
+msgid "Send a Telegram notification if a potential DNS leak is detected."
+msgstr ""
+
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:753
+msgid "Send a Telegram notification if sing-box or nftables rules crash and get auto-restored."
+msgstr ""
+
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:793
+msgid "Send a Telegram notification if SSL/TLS certificates are close to expiration."
+msgstr ""
+
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:763
+msgid "Send a Telegram notification if the Tachyon service is restarted by the watchdog."
+msgstr ""
+
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:773
+msgid "Send a Telegram notification when a URLTest group switches to a new server."
+msgstr ""
+
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:783
+msgid "Send a Telegram notification when proxy subscriptions are successfully updated."
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/tachyon.js:413
@@ -2397,7 +2486,7 @@ msgstr ""
 
 #: src/tachyon/methods/shell/index.ts:383
 #: src/tachyon/methods/shell/index.ts:404
-#: src/tachyon/tabs/diagnostic/initController.ts:594
+#: src/tachyon/tabs/diagnostic/initController.ts:596
 msgid "Service action failed"
 msgstr ""
 
@@ -2405,7 +2494,7 @@ msgstr ""
 msgid "Service list"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:1670
+#: src/tachyon/tabs/dashboard/initController.ts:1559
 msgid "Services info"
 msgstr ""
 
@@ -2419,8 +2508,8 @@ msgstr ""
 msgid "Show metadata on dashboard"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:751
-#: src/tachyon/tabs/diagnostic/partials/renderAvailableActions.ts:116
+#: src/tachyon/tabs/diagnostic/initController.ts:779
+#: src/tachyon/tabs/diagnostic/partials/renderAvailableActions.ts:127
 msgid "Show sing-box config"
 msgstr ""
 
@@ -2468,8 +2557,8 @@ msgstr ""
 msgid "Sorts servers in this section by lowest latency in the dashboard."
 msgstr ""
 
-#: src/tachyon/tabs/monitoring/initController.ts:831
-#: src/tachyon/tabs/monitoring/initController.ts:881
+#: src/tachyon/tabs/monitoring/initController.ts:836
+#: src/tachyon/tabs/monitoring/initController.ts:886
 msgid "Source"
 msgstr ""
 
@@ -2514,7 +2603,7 @@ msgstr ""
 msgid "Standalone Zapret service is inactive"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/checks/runZapret2Check.ts:121
+#: src/tachyon/tabs/diagnostic/checks/runZapret2Check.ts:123
 msgid "Standalone Zapret2 autostart is enabled"
 msgstr ""
 
@@ -2522,15 +2611,15 @@ msgstr ""
 msgid "Standalone Zapret2 is active together with Tachyon Zapret2 rules"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/checks/runZapret2Check.ts:119
+#: src/tachyon/tabs/diagnostic/checks/runZapret2Check.ts:121
 msgid "Standalone Zapret2 service is active"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/checks/runZapret2Check.ts:122
+#: src/tachyon/tabs/diagnostic/checks/runZapret2Check.ts:124
 msgid "Standalone Zapret2 service is inactive"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderAvailableActions.ts:69
+#: src/tachyon/tabs/diagnostic/partials/renderAvailableActions.ts:71
 msgid "Start Tachyon"
 msgstr ""
 
@@ -2538,7 +2627,7 @@ msgstr ""
 msgid "Stop checking when URLTest group is not used. Use sing-box duration format like 1d, 12h or 30m."
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderAvailableActions.ts:59
+#: src/tachyon/tabs/diagnostic/partials/renderAvailableActions.ts:61
 msgid "Stop Tachyon"
 msgstr ""
 
@@ -2554,8 +2643,8 @@ msgstr ""
 msgid "Subscription info:"
 msgstr ""
 
-#: src/tachyon/methods/shell/index.ts:720
-#: src/tachyon/methods/shell/index.ts:740
+#: src/tachyon/methods/shell/index.ts:724
+#: src/tachyon/methods/shell/index.ts:744
 msgid "Subscription update failed"
 msgstr ""
 
@@ -2575,15 +2664,15 @@ msgstr ""
 msgid "Subscription URL settings"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:301
+#: src/tachyon/tabs/dashboard/initController.ts:302
 msgid "Subscriptions updated"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:1630
+#: src/tachyon/tabs/dashboard/initController.ts:1546
 msgid "System info"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderSystemInfo.ts:21
+#: src/tachyon/tabs/diagnostic/partials/renderSystemInfo.ts:24
 msgid "System information"
 msgstr ""
 
@@ -2611,7 +2700,7 @@ msgstr ""
 msgid "Tachyon manages the nfqws2 process lifecycle itself, so daemon mode is not allowed here."
 msgstr ""
 
-#: src/tachyon/tabs/monitoring/initController.ts:925
+#: src/tachyon/tabs/monitoring/initController.ts:930
 msgid "Tachyon service is stopped. Start the service to display connections."
 msgstr ""
 
@@ -2683,9 +2772,17 @@ msgstr ""
 msgid "Tailscale hostname"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/partials/renderSections.ts:242
-#: src/tachyon/tabs/dashboard/partials/renderSections.ts:250
-#: src/tachyon/tabs/dashboard/partials/renderSections.ts:491
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/tachyon.js:437
+msgid "Telegram Bot"
+msgstr ""
+
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:699
+msgid "Telegram Bot Token"
+msgstr ""
+
+#: src/tachyon/tabs/dashboard/partials/renderSections.ts:244
+#: src/tachyon/tabs/dashboard/partials/renderSections.ts:252
+#: src/tachyon/tabs/dashboard/partials/renderSections.ts:507
 msgid "Test latency"
 msgstr ""
 
@@ -2713,7 +2810,7 @@ msgstr ""
 msgid "Test servers whose names match the expression."
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:913
+#: src/tachyon/tabs/dashboard/initController.ts:1065
 msgid "Testing URL"
 msgstr ""
 
@@ -2781,8 +2878,8 @@ msgstr ""
 msgid "This option requires a value."
 msgstr ""
 
-#: src/tachyon/tabs/monitoring/initController.ts:822
-#: src/tachyon/tabs/monitoring/initController.ts:878
+#: src/tachyon/tabs/monitoring/initController.ts:827
+#: src/tachyon/tabs/monitoring/initController.ts:883
 msgid "Time"
 msgstr ""
 
@@ -2798,8 +2895,12 @@ msgstr ""
 msgid "tiny"
 msgstr ""
 
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:707
+msgid "Token is required when the bot is enabled"
+msgstr ""
+
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:2313
-#: src/tachyon/tabs/dashboard/initController.ts:915
+#: src/tachyon/tabs/dashboard/initController.ts:1067
 msgid "Tolerance"
 msgstr ""
 
@@ -2807,7 +2908,7 @@ msgstr ""
 msgid "Top level has the highest priority; lower levels are used as fallback"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:1556
+#: src/tachyon/tabs/dashboard/initController.ts:1520
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:130
 msgid "Traffic"
 msgstr ""
@@ -2816,7 +2917,7 @@ msgstr ""
 msgid "Traffic for this level goes directly."
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:1590
+#: src/tachyon/tabs/dashboard/initController.ts:1533
 msgid "Traffic Total"
 msgstr ""
 
@@ -2858,8 +2959,8 @@ msgid "TTL value cannot be empty"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/server.js:1638
-#: src/tachyon/tabs/monitoring/initController.ts:816
-#: src/tachyon/tabs/monitoring/initController.ts:876
+#: src/tachyon/tabs/monitoring/initController.ts:821
+#: src/tachyon/tabs/monitoring/initController.ts:881
 msgid "Type"
 msgstr ""
 
@@ -2883,7 +2984,7 @@ msgid "Unable to validate the NFQWS2 strategy through the backend parser."
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:2781
-#: src/tachyon/tabs/dashboard/initController.ts:1145
+#: src/tachyon/tabs/dashboard/initController.ts:1198
 msgid "Unavailability timeout"
 msgstr ""
 
@@ -2958,7 +3059,7 @@ msgstr ""
 msgid "Unsupported security mode for this protocol"
 msgstr ""
 
-#: src/tachyon/tabs/updates/initController.ts:754
+#: src/tachyon/tabs/updates/initController.ts:756
 msgid "Update"
 msgstr ""
 
@@ -2966,13 +3067,13 @@ msgstr ""
 msgid "Update is available"
 msgstr ""
 
-#: src/tachyon/tabs/updates/initController.ts:994
+#: src/tachyon/tabs/updates/initController.ts:996
 msgid "Update is available:"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/partials/renderSections.ts:219
-#: src/tachyon/tabs/dashboard/partials/renderSections.ts:232
-#: src/tachyon/tabs/dashboard/partials/renderSections.ts:233
+#: src/tachyon/tabs/dashboard/partials/renderSections.ts:221
+#: src/tachyon/tabs/dashboard/partials/renderSections.ts:234
+#: src/tachyon/tabs/dashboard/partials/renderSections.ts:235
 msgid "Update subscriptions"
 msgstr ""
 
@@ -2980,13 +3081,13 @@ msgstr ""
 msgid "Update this subscription automatically"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:1558
-#: src/tachyon/tabs/dashboard/initController.ts:1593
+#: src/tachyon/tabs/dashboard/initController.ts:1522
+#: src/tachyon/tabs/dashboard/initController.ts:1535
 msgid "Uplink"
 msgstr ""
 
-#: src/tachyon/tabs/monitoring/initController.ts:828
-#: src/tachyon/tabs/monitoring/initController.ts:880
+#: src/tachyon/tabs/monitoring/initController.ts:833
+#: src/tachyon/tabs/monitoring/initController.ts:885
 msgid "Uploaded"
 msgstr ""
 
@@ -3010,13 +3111,13 @@ msgstr ""
 msgid "URLTest"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:1042
-#: src/tachyon/tabs/dashboard/partials/renderSections.ts:385
-#: src/tachyon/tabs/dashboard/partials/renderSections.ts:386
+#: src/tachyon/tabs/dashboard/initController.ts:1093
+#: src/tachyon/tabs/dashboard/partials/renderSections.ts:390
+#: src/tachyon/tabs/dashboard/partials/renderSections.ts:391
 msgid "URLTest details"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:901
+#: src/tachyon/tabs/dashboard/initController.ts:1053
 msgid "URLTest details are unavailable"
 msgstr ""
 
@@ -3152,8 +3253,8 @@ msgstr ""
 msgid "Via country.is"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:717
-#: src/tachyon/tabs/diagnostic/partials/renderAvailableActions.ts:107
+#: src/tachyon/tabs/diagnostic/initController.ts:744
+#: src/tachyon/tabs/diagnostic/partials/renderAvailableActions.ts:118
 msgid "View logs"
 msgstr ""
 
@@ -3201,7 +3302,7 @@ msgstr ""
 msgid "YACD Secret Key"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:762
+#: src/tachyon/tabs/dashboard/initController.ts:766
 msgid "Yes"
 msgstr ""
 

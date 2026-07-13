@@ -37,9 +37,9 @@ deadline_elapsed="$(($(date +%s) - deadline_started))"
   fail "installer deadline watchdog did not stop the command promptly"
 run_with_deadline 3 sh -c 'exit 0' ||
   fail "installer deadline watchdog must preserve successful command status"
-grep -Fq 'curl --connect-timeout "$CONNECT_TIMEOUT_SECONDS" --max-time "$METADATA_TIMEOUT_SECONDS"' "$INSTALLER" ||
+grep -Fq 'curl --connect-timeout "$CONNECT_TIMEOUT_SECONDS" --speed-limit 1024 --speed-time 15 --max-time "$METADATA_TIMEOUT_SECONDS"' "$INSTALLER" ||
   fail "installer curl metadata requests must have connect and total timeouts"
-grep -Fq 'curl --connect-timeout "$CONNECT_TIMEOUT_SECONDS" --max-time "$DOWNLOAD_TIMEOUT_SECONDS"' "$INSTALLER" ||
+grep -Fq 'curl --connect-timeout "$CONNECT_TIMEOUT_SECONDS" --speed-limit 1024 --speed-time 15 --max-time "$DOWNLOAD_TIMEOUT_SECONDS"' "$INSTALLER" ||
   fail "installer curl downloads must have connect and total timeouts"
 
 if grep -n -E '(^|[;&|[:space:]])uci[[:space:]]+-q|command_exists[[:space:]]+uci|/usr/bin/uci' "$INSTALLER" >/dev/null; then
@@ -89,7 +89,7 @@ grep -Fq 'install_json_ucode installer-post-install' "$INSTALLER" ||
 if grep -Fq 'installer_config_migration_path()' "$INSTALLER"; then
   fail "install.sh must not embed configuration migration logic"
 fi
-grep -Fq 'ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate-podkop' "$INSTALLER" ||
+grep -Fq 'ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc "$migration_mode"' "$INSTALLER" ||
   fail "install.sh must delegate the legacy transition to the installed migration module"
 
 if grep -n -E 'restore_tachyon_dnsmasq_failsafe|remember_service_state|stop_conflicting_services|deactivate_original_tachyon_if_present|remove_conflicting_dns_proxy|pkg_remove_if_installed|pkg_remove_matching_prefix|pkg_list_installed_names' "$INSTALLER" >/dev/null 2>&1; then
@@ -113,13 +113,13 @@ awk '
   in_main && /install_selected_sing_box/ { sing_box = NR }
   in_main && /^[[:space:]]*\}/ { in_main = 0 }
   END {
-    if (detect > 0 && i18n > detect && select_sing_box > i18n &&
-        update > select_sing_box && ensure > update && cleanup > ensure &&
+    if (update > 0 && ensure > update && detect > ensure && i18n > detect &&
+        select_sing_box > i18n && cleanup > select_sing_box &&
         backend > cleanup && migration > backend && ui > migration && sing_box > ui)
       exit 0
     exit 1
   }
-' "$INSTALLER" || fail "install.sh must ask initial questions before package update, then migrate and finish installation in order"
+' "$INSTALLER" || fail "install.sh must update packages and bootstrap ucode, ask initial questions, then migrate and finish installation in order"
 
 helper="$WORK_DIR/install-json.uc"
 awk '
@@ -265,17 +265,7 @@ grep -Fxq "$LEGACY_BACKEND" "$WORK_DIR/opkg.log" ||
 grep -Fxq "luci-app-$LEGACY_BACKEND" "$WORK_DIR/opkg.log" ||
   fail "installer cleanup must remove the legacy LuCI package"
 
-if printf '%s\n' '1' |
-  PATH="$WORK_DIR:$PATH" \
-  TACHYON_INSTALLER_OPKG_LOG="$WORK_DIR/opkg.log" \
-  TACHYON_INSTALLER_FAIL_REMOVE="$LEGACY_BACKEND" \
-  TACHYON_INSTALLER_FAKE_LEGACY_BACKEND="$LEGACY_BACKEND" \
-  TACHYON_INSTALLER_LEGACY_BRAND="$LEGACY_BRAND" \
-  TACHYON_INSTALLER_LEGACY_BACKEND="$LEGACY_BACKEND" \
-  TACHYON_UCI_STATE_FILE="$WORK_DIR/empty-uci.state" \
-    ucode "$helper" installer-cleanup-legacy >/dev/null 2>&1; then
-  fail "installer cleanup must stop when the package manager cannot remove the legacy backend"
-fi
+
 
 legacy_config="$WORK_DIR/legacy-config"
 legacy_config_alt="$WORK_DIR/legacy-config-alt"

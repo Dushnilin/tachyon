@@ -191,6 +191,7 @@ return {
     scheme,
     fragment,
     strip_fragment,
+    strip_anchored_scheme,
     host,
     port,
     userinfo,

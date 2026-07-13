@@ -36,7 +36,7 @@ let as_string = common.as_string;
 let shell_quote = common.shell_quote;
 
 let command_output = common.command_output;
-let write_json = common.write_json;
+let write_json = common.write_json_file;
 let list_option = common.list_option;
 let command_success_from_args = common.command_success_from_args;
 let bool_option = common.bool_option;

@@ -11,6 +11,7 @@ const OFFSET_FILE = "/var/run/tachyon_telegram_offset";
  
 let as_string = common.as_string;
 let shell_quote = common.shell_quote;
+let object_or_empty = common.object_or_empty;
 
 let command_status = common.command_status;
 let command_success_from_args = common.command_success_from_args;

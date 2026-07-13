@@ -8,7 +8,7 @@ let shell_quote = common.shell_quote;
 
 let command_exists = common.command_exists;
 let command_from_args = common.command_from_args;
-let command_output = common.command_output;
+let command_output = common.command_output_from_args;
 
 
 

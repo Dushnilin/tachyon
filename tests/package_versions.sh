@@ -3,6 +3,10 @@ set -eo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 PACKAGES_UC="${PACKAGES_UC:-$ROOT_DIR/tachyon/files/usr/lib/core/packages.uc}"
+TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
+ucode() {
+  command ucode -L "$TACHYON_LIB" "$@"
+}
 WORK_DIR="$(mktemp -d)"
 
 cleanup() {

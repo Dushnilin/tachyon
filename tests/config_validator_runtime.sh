@@ -28,7 +28,7 @@ validate_fixture() {
   node - "$source" "$normalized" <<'JS'
 const fs = require('fs');
 const input = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
-input.settings ??= { '.name': 'settings', '.type': 'settings' };
+if (input.settings === undefined || input.settings === null) input.settings = { '.name': 'settings', '.type': 'settings' };
 if (input.settings.dns_server === undefined) input.settings.dns_server = ['77.88.8.8'];
 if (input.settings.bootstrap_dns_server === undefined) input.settings.bootstrap_dns_server = ['77.88.8.8'];
 fs.writeFileSync(process.argv[3], JSON.stringify(input));

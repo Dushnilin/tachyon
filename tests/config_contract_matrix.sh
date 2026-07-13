@@ -82,7 +82,8 @@ if (matrix.stable.version !== "0.7.19.9") {
 
 function uiValues(field) {
   const result = new Set();
-  for (const entry of field?.ui || []) {
+  const entries = (field && field.ui) || [];
+  for (const entry of entries) {
     for (const value of entry.values || []) {
       result.add(value);
     }
