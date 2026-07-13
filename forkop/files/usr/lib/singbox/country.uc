@@ -10,9 +10,7 @@ let object_or_empty = common.object_or_empty;
 const COUNTRY_IS_URL = getenv("FORKOP_COUNTRY_IS_URL") || "https://api.country.is/";
 const COUNTRY_IS_BATCH_SIZE = 100;
 
-function shell_quote(value) {
-    return "'" + replace(as_string(value), /'/g, "'\\''") + "'";
-}
+let shell_quote = common.shell_quote;
 
 function command_from_args(args) {
     let parts = [];

@@ -6,6 +6,10 @@ function as_string(value) {
     return value == null ? "" : "" + value;
 }
 
+function shell_quote(value) {
+    return "'" + replace(as_string(value), /'/g, "'\\''") + "'";
+}
+
 function read_json_file(path) {
     let data = fs.readfile(path);
     if (data == null)
@@ -130,6 +134,7 @@ function int_option(section, key, fallback) {
 
 return {
     as_string,
+    shell_quote,
     read_json_file,
     read_stdin,
     read_stdin_json,

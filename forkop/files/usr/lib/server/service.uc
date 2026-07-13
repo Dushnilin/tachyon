@@ -7,9 +7,10 @@ let uci = require("core.uci");
 
 const CONFIG_NAME = getenv("FORKOP_CONFIG_NAME") || "forkop";
 
-function as_string(value) {
-    return value == null ? "" : "" + value;
-}
+let common = require("core.common");
+let as_string = common.as_string;
+let shell_quote = common.shell_quote;
+let read_json_file = common.read_json_file;
 
 function ascii_lower(value) {
     let upper = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -21,10 +22,6 @@ function ascii_lower(value) {
 
 function write_json(value) {
     print(sprintf("%J", value), "\n");
-}
-
-function shell_quote(value) {
-    return "'" + replace(as_string(value), /'/g, "'\\''") + "'";
 }
 
 function run(command) {
@@ -106,18 +103,7 @@ function server_set_option(section, option, value) {
         SERVER_DEFAULTS_CHANGED = true;
 }
 
-function read_json_file(path) {
-    let data = fs.readfile(path);
-    if (data == null)
-        return null;
 
-    try {
-        return json(data);
-    }
-    catch (e) {
-        return null;
-    }
-}
 
 function read_stdin() {
     let input = fs.open("/dev/stdin", "r");

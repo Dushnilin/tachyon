@@ -1,16 +1,12 @@
 #!/usr/bin/env ucode
 
-function as_string(value) {
-    return value == null ? "" : "" + value;
-}
+let common = require("core.common");
+let as_string = common.as_string;
+let shell_quote = common.shell_quote;
 
 function env(name, fallback) {
     let value = getenv(name);
     return value == null ? as_string(fallback) : as_string(value);
-}
-
-function shell_quote(value) {
-    return "'" + replace(as_string(value), /'/g, "'\\''") + "'";
 }
 
 function constants_map() {

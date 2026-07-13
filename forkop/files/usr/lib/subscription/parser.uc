@@ -2,9 +2,9 @@
 
 let fs = require("fs");
 
-function as_string(value) {
-    return value == null ? "" : "" + value;
-}
+let common = require("core.common");
+let as_string = common.as_string;
+let shell_quote = common.shell_quote;
 
 function trim(value) {
     value = as_string(value);
@@ -2750,10 +2750,6 @@ function normalize_sing_box_json_value(value, output_file) {
 function temp_path(prefix) {
     let stamp = clock();
     return sprintf("/tmp/%s.%d.%d", prefix, stamp[0], stamp[1]);
-}
-
-function shell_quote(value) {
-    return "'" + replace(as_string(value), /'/g, "'\\''") + "'";
 }
 
 function gzip_decode_file(input_file, output_file) {

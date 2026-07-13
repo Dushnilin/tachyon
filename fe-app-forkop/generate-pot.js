@@ -1,27 +1,9 @@
 import fs from 'fs/promises';
-import { execSync } from 'child_process';
+import { getGitUser } from './locales-utils.js';
 
 const inputFile = 'locales/calls.json';
 const outputFile = 'locales/forkop.pot';
 const projectId = 'FORKOP';
-
-function getGitUser() {
-    try {
-        const name = execSync('git config user.name', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
-        const email = execSync('git config user.email', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
-
-        if (name && email) {
-            return { name, email };
-        }
-    } catch (error) {
-        // Fall through to deterministic defaults when git identity is not configured.
-    }
-
-    return {
-        name: 'Forkop',
-        email: 'ushan0v@users.noreply.github.com',
-    };
-}
 
 function getPotHeader({ name, email }) {
     const now = new Date();
