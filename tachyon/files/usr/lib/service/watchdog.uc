@@ -53,6 +53,13 @@ function log_message(message, level) {
     command_success_from_args([ "logger", "-t", "tachyon", "[" + as_string(level || "info") + "] Watchdog: " + as_string(message) ]);
 }
 
+function send_telegram_notification(message) {
+    let tcfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
+    if (tcfg.enabled == "1" && tcfg.bot_token && tcfg.admin_ids) {
+        system("/usr/bin/tachyon telegram send " + shell_quote(message) + " >/dev/null 2>&1 &");
+    }
+}
+
 function parse_json_or_null(str) {
     try {
         return json(str);
@@ -293,6 +300,10 @@ function worker() {
         let pid = (length(pids) > 0 && pids[0] != "") ? pids[0] : "";
         if (pid == "" && has_sections) {
             log_message("sing-box is stopped. Restarting Tachyon...", "warn");
+            let tcfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
+            if (tcfg.notify_crash != "0") {
+                send_telegram_notification("⚠️ *Watchdog:* sing-box остановлен. Перезапускаю службы Tachyon...");
+            }
             command_status("/usr/bin/tachyon restart >/dev/null 2>&1");
         }
 
@@ -302,6 +313,10 @@ function worker() {
             let out_nft = command_output_from_args(["nft", "list", "table", "inet", nft_table]);
             if (index(out_nft, "tproxy") < 0) {
                 log_message("nftables rules are missing or corrupted. Rebuilding...", "warn");
+                let tcfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
+                if (tcfg.notify_crash != "0") {
+                    send_telegram_notification("⚠️ *Watchdog:* правила nftables повреждены или отсутствуют. Выполняю пересборку...");
+                }
                 command_status("/usr/bin/tachyon restart >/dev/null 2>&1");
             }
         }
@@ -327,6 +342,7 @@ function worker() {
         let logread_lower = lc(logread_out);
         if (index(logread_lower, "out of memory") >= 0 || index(logread_lower, "oom-killer") >= 0) {
             log_message("OOM event detected! Reducing GOMEMLIMIT scaling...", "err");
+            send_telegram_notification("🚨 *Watchdog:* Обнаружено событие OOM (Out Of Memory)! Уменьшаю GOMEMLIMIT и перезапускаю службы...");
             let scale = 1.0;
             let scale_path = "/etc/tachyon/mem_scale";
             let scale_data = fs.readfile(scale_path);

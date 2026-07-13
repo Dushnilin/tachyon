@@ -1877,6 +1877,57 @@ msgstr "Tailscale endpoint"
 msgid "Tailscale hostname"
 msgstr "Hostname Tailscale"
 
+msgid "Telegram Bot"
+msgstr "Telegram бот"
+
+msgid "Enable Telegram Bot"
+msgstr "Включить Telegram бот"
+
+msgid "Enables the background daemon that polls Telegram for commands and sends notifications."
+msgstr "Включает фоновую службу, которая опрашивает Telegram на предмет команд и отправляет уведомления."
+
+msgid "Telegram Bot Token"
+msgstr "Токен Telegram-бота"
+
+msgid "Enter the API token obtained from @BotFather."
+msgstr "Введите API токен, полученный от @BotFather."
+
+msgid "Token is required when the bot is enabled"
+msgstr "Токен обязателен при включенном боте"
+
+msgid "Administrator Chat IDs"
+msgstr "Chat ID администраторов"
+
+msgid "Comma-separated list of Telegram user IDs authorized to control the bot."
+msgstr "Список ID пользователей Telegram (через запятую), которым разрешено управлять ботом."
+
+msgid "At least one Admin Chat ID is required"
+msgstr "Требуется указать как минимум один Chat ID администратора"
+
+msgid "Must be a comma-separated list of numeric IDs"
+msgstr "Должен быть списком числовых ID через запятую"
+
+msgid "Polling Interval (seconds)"
+msgstr "Интервал опроса (секунды)"
+
+msgid "How often to check Telegram for new messages (default: 5)."
+msgstr "Как часто опрашивать Telegram о наличии новых сообщений (по умолчанию: 5)."
+
+msgid "Polling interval must be at least 1 second"
+msgstr "Интервал опроса должен быть не менее 1 секунды"
+
+msgid "Notify on Core Crashes"
+msgstr "Уведомлять о падениях ядра"
+
+msgid "Send a Telegram notification if sing-box or nftables rules crash and get auto-restored."
+msgstr "Отправлять уведомление в Telegram, если sing-box или правила nftables падают и восстанавливаются."
+
+msgid "Notify on Service Restarts"
+msgstr "Уведомлять о перезапуске служб"
+
+msgid "Send a Telegram notification if the Tachyon service is restarted by the watchdog."
+msgstr "Отправлять уведомление в Telegram, если служба Tachyon перезапускается сторожевым таймером."
+
 msgid "Test latency"
 msgstr "Тестирование задержки"
 

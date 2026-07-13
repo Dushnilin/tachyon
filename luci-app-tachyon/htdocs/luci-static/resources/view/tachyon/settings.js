@@ -681,8 +681,93 @@ function createSettingsContent(section, capabilities) {
   o.rmempty = false;
 }
 
+function createTelegramContent(section) {
+  let o = section.option(
+    form.Flag,
+    "enabled",
+    _("Enable Telegram Bot"),
+    _("Enables the background daemon that polls Telegram for commands and sends notifications."),
+  );
+  o.default = "0";
+  o.rmempty = false;
+
+  o = section.option(
+    form.Value,
+    "bot_token",
+    _("Telegram Bot Token"),
+    _("Enter the API token obtained from @BotFather."),
+  );
+  o.depends("enabled", "1");
+  o.password = true;
+  o.rmempty = false;
+  o.validate = function (section_id, value) {
+    if (this.section.formvalue(section_id, "enabled") === "1" && !value) {
+      return _("Token is required when the bot is enabled");
+    }
+    return true;
+  };
+
+  o = section.option(
+    form.Value,
+    "admin_ids",
+    _("Administrator Chat IDs"),
+    _("Comma-separated list of Telegram user IDs authorized to control the bot."),
+  );
+  o.depends("enabled", "1");
+  o.rmempty = false;
+  o.validate = function (section_id, value) {
+    if (this.section.formvalue(section_id, "enabled") === "1") {
+      if (!value) {
+        return _("At least one Admin Chat ID is required");
+      }
+      if (!/^[0-9]+(,[0-9]+)*$/.test(value)) {
+        return _("Must be a comma-separated list of numeric IDs");
+      }
+    }
+    return true;
+  };
+
+  o = section.option(
+    form.Value,
+    "poll_interval",
+    _("Polling Interval (seconds)"),
+    _("How often to check Telegram for new messages (default: 5)."),
+  );
+  o.depends("enabled", "1");
+  o.default = "5";
+  o.rmempty = false;
+  o.validate = function (section_id, value) {
+    const val = parseInt(value);
+    if (isNaN(val) || val < 1) {
+      return _("Polling interval must be at least 1 second");
+    }
+    return true;
+  };
+
+  o = section.option(
+    form.Flag,
+    "notify_crash",
+    _("Notify on Core Crashes"),
+    _("Send a Telegram notification if sing-box or nftables rules crash and get auto-restored."),
+  );
+  o.depends("enabled", "1");
+  o.default = "1";
+  o.rmempty = false;
+
+  o = section.option(
+    form.Flag,
+    "notify_restart",
+    _("Notify on Service Restarts"),
+    _("Send a Telegram notification if the Tachyon service is restarted by the watchdog."),
+  );
+  o.depends("enabled", "1");
+  o.default = "1";
+  o.rmempty = false;
+}
+
 const EntryPoint = {
   createSettingsContent,
+  createTelegramContent,
 };
 
 return baseclass.extend(EntryPoint);
