@@ -448,7 +448,7 @@ function start_runtime() {
     }
     
     let command = command_from_args([ "ucode", "-L", LIB_DIR, LIB_DIR + "/service/telegram.uc", "worker" ]) +
-        " >/dev/null 2>&1 & echo $! >" + shell_quote(PID_FILE);
+        " </dev/null >/dev/null 2>&1 1000<&- & echo $! >" + shell_quote(PID_FILE);
     return command_status(command);
 }
  
