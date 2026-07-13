@@ -24,6 +24,8 @@ define Package/tachyon
 	CATEGORY:=Network
 	DEPENDS:=+ca-bundle +kmod-inet-diag +kmod-netlink-diag +kmod-tun +curl +ucode +ucode-mod-fs +ucode-mod-uci +kmod-nft-tproxy +coreutils-base64 +coreutils-sort +bind-dig +nftables +kmod-nft-nat +ip-full
 	CONFLICTS:=https-dns-proxy nextdns luci-app-passwall luci-app-passwall2
+	PROVIDES:=forkop
+	REPLACES:=forkop
 	TITLE:=Tachyon backend service
 	URL:=https://github.com/Dushnilin/tachyon
 	PKGARCH:=all
@@ -52,6 +54,28 @@ define Package/tachyon/postinst
 #!/bin/sh
 
 [ -n "$${IPKG_INSTROOT}" ] && exit 0
+
+# Clean up legacy forkop package files
+rm -rf /usr/lib/lua/luci/i18n/forkop.* /www/luci-static/resources/i18n/forkop.* \
+       /usr/share/luci/menu.d/luci-app-forkop.json /usr/share/rpcd/acl.d/luci-app-forkop.json \
+       /etc/uci-defaults/50_luci-forkop 2>/dev/null || true
+
+# Migration from Forkop
+if [ -f /etc/config/forkop ]; then
+	mv /etc/config/forkop /etc/config/tachyon
+elif [ -f /etc/config/forkop_plus ]; then
+	mv /etc/config/forkop_plus /etc/config/tachyon
+# Migration from Podkop
+elif [ -f /etc/config/podkop ]; then
+	mv /etc/config/podkop /etc/config/tachyon
+	TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate-podkop
+	exit 0
+elif [ -f /etc/config/podkop_plus ]; then
+	mv /etc/config/podkop_plus /etc/config/tachyon
+	TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate-podkop
+	exit 0
+fi
+
 TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate
 endef
 
