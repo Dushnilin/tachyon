@@ -32,20 +32,11 @@ function valid_ipv4(value, allow_trailing_dot, strict_decimal) {
     if (allow_trailing_dot && length(value) > 0 && substr(value, length(value) - 1, 1) == ".")
         value = substr(value, 0, length(value) - 1);
 
-    let parts = split(value, ".");
-    if (length(parts) != 4)
-        return false;
-
-    for (let part in parts) {
-        if (!decimal_text(part, strict_decimal))
-            return false;
-
-        let octet = int(part);
-        if (octet < 0 || octet > 255)
-            return false;
-    }
-
-    return true;
+    let regex = strict_decimal
+        ? /^(?:(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])$/
+        : /^(?:(?:25[0-5]|2[0-4][0-9]|0*[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|0*[01]?[0-9][0-9]?)$/;
+    
+    return match(value, regex) != null;
 }
 
 function valid_ipv4_cidr(value, strict_decimal) {

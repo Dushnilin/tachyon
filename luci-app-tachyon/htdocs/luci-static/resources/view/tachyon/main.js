@@ -11709,7 +11709,7 @@ function renderStateRow(text, className = "") {
       "td",
       {
         class: "fkp_monitoring-page__state-cell",
-        colSpan: 8
+        colSpan: 9
       },
       [
         E(
@@ -11968,6 +11968,7 @@ function handleMonitoringValueCopy(event) {
   event.clipboardData?.setData("text/plain", fullText);
   event.preventDefault();
 }
+
 async function closeConnection(connectionId) {
   if (!connectionId || closingConnectionIds.has(connectionId)) {
     return;
@@ -12071,11 +12072,9 @@ function bindControls() {
   if (connectionsContainer) {
     connectionsContainer.onclick = (event) => {
       const target = event.target;
-      const button = target?.closest(
-        ".fkp_monitoring-page__row-action"
-      );
-      if (button?.value) {
-        void closeConnection(button.value);
+      const closeBtn = target?.closest(".fkp_monitoring-page__row-action");
+      if (closeBtn && closeBtn.value) {
+        void closeConnection(closeBtn.value);
       }
     };
   }

@@ -206,7 +206,7 @@ assert_eq "^xn--80aswg[.]xn--p1ai$" \
   "$(nft_ucode rule-condition-csv domain_regex generic 0 0 '' '' 'сайт.рф full:пример.испытание keyword:пример regex:^сайт[.]рф$' '')" \
   "combined IDN regex is punycoded"
 
-nft_ucode nft-create-runtime-base TachyonTable localv4 tachyon_subnets tachyon_ports tachyon_ip_ports tachyon_interfaces "br-lan tun0" 0x00100000 0x00200000 198.18.0.0/15 1602 1
+nft_ucode nft-create-runtime-base TachyonTable localv4 tachyon_subnets tachyon_ports tachyon_ip_ports tachyon_interfaces "br-lan tun0" 0x00100000 0x00200000 198.18.0.0/15 1602 1 "" "" "" "" "" 0
 assert_contains "$NFT_LOG" $'nft\tadd\ttable\tinet\tTachyonTable' "runtime table"
 assert_contains "$NFT_LOG" $'nft\tadd\tset\tinet\tTachyonTable\tlocalv4\t{ type ipv4_addr; flags interval; auto-merge; }' "runtime localv4 set"
 assert_contains "$NFT_LOG" $'nft\tadd\tset\tinet\tTachyonTable\tlocalv6\t{ type ipv6_addr; flags interval; auto-merge; }' "runtime localv6 set"

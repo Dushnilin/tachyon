@@ -94,7 +94,50 @@ function object_or_empty(value) {
 }
 
 function object_key_count(value) {
-    return type(value) == "object" ? length(keys(value)) : 0;
+    return type(value) == "object" ? length(value) : 0;
+}
+
+function command_from_args(args) {
+    let parts = [];
+    for (let arg in args)
+        push(parts, shell_quote(arg));
+    return join(" ", parts);
+}
+
+function run_args(args) {
+    return system(command_from_args(args)) == 0;
+}
+
+function command_status(command) {
+    let status = int(system(command));
+    return status > 255 ? int(status / 256) : status;
+}
+
+function command_success_from_args(args) {
+    return system(command_from_args(args) + " >/dev/null 2>&1") == 0;
+}
+
+function command_output(command) {
+    let pipe = fs.popen(command, "r");
+    if (!pipe)
+        return "";
+    let data = pipe.read("all");
+    let status = pipe.close();
+    if (status != 0 || data == null)
+        return "";
+    return as_string(data);
+}
+
+function command_output_from_args(args) {
+    return command_output(command_from_args(args));
+}
+
+function command_trimmed_output_from_args(args) {
+    return replace(command_output_from_args(args), /[\r\n]+$/g, "");
+}
+
+function command_exists(name) {
+    return system("command -v " + shell_quote(name) + " >/dev/null 2>&1") == 0;
 }
 
 function option(section, key, fallback) {
@@ -149,5 +192,13 @@ return {
     option,
     list_option,
     bool_option,
-    int_option
+    int_option,
+    command_from_args,
+    run_args,
+    command_status,
+    command_success_from_args,
+    command_output,
+    command_output_from_args,
+    command_trimmed_output_from_args,
+    command_exists
 };

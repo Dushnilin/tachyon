@@ -20,31 +20,10 @@ let core_ip = require("core.ip");
 let as_string = common.as_string;
 
 function ascii_lower(value) {
-    let upper = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-    let lower = "abcdefghijklmnopqrstuvwxyz";
-    return replace(as_string(value), /[A-Z]/g, function(ch) {
-        return substr(lower, index(upper, ch), 1);
-    });
+    return lc(as_string(value));
 }
 
-function read_stdin() {
-    let input = fs.open("/dev/stdin", "r");
-    if (!input)
-        return "";
-    let data = input.read("all");
-    input.close();
-    return data == null ? "" : data;
-}
 
-function read_stdin_json() {
-    let data = read_stdin();
-    try {
-        return json(data);
-    }
-    catch (e) {
-        return null;
-    }
-}
 
 function file_has_cr(path) {
     let data = fs.readfile(as_string(path));
@@ -90,15 +69,7 @@ function file_remove_cr(path) {
     return true;
 }
 
-function write_compact_string_array(values) {
-    print("[");
-    for (let i = 0; i < length(values); i++) {
-        if (i > 0)
-            print(",");
-        print(sprintf("%J", as_string(values[i])));
-    }
-    print("]\n");
-}
+
 
 function valid_ipv4(value) {
     return core_ip.valid_ipv4(value, true, true);
@@ -195,22 +166,13 @@ function first_index_any(value, needles, start) {
 }
 
 function strip_anchored_scheme(value) {
-    value = as_string(value);
-    let marker = index(value, "://");
-    if (marker < 0)
-        return value;
-
-    let prefix = substr(value, 0, marker);
-    if (index(prefix, "/") >= 0 || index(prefix, "?") >= 0)
-        return value;
-
-    return substr(value, marker + 3);
+    let m = match(as_string(value), /^[^:\/?#]+:\/\/(.*)$/);
+    return m ? m[1] : as_string(value);
 }
 
 function strip_first_scheme_marker(value) {
-    value = as_string(value);
-    let marker = index(value, "://");
-    return marker >= 0 ? substr(value, marker + 3) : value;
+    let m = match(as_string(value), /^(?:.*?:\/\/)?(.*)$/);
+    return m ? m[1] : as_string(value);
 }
 
 function str_last_index(value, needle) {
@@ -227,99 +189,72 @@ function str_last_index(value, needle) {
 }
 
 function url_get_scheme(value) {
-    value = as_string(value);
-    let marker = index(value, "://");
-    print(marker >= 0 ? substr(value, 0, marker) : value, "\n");
+    let m = match(as_string(value), /^([^:\/?#]+):\/\//);
+    print(m ? m[1] : as_string(value), "\n");
 }
 
 function url_get_userinfo(value) {
-    value = strip_anchored_scheme(value);
-    let at = index(value, "@");
-    if (at >= 0)
-        print(substr(value, 0, at), "\n");
+    let m = match(strip_anchored_scheme(value), /^([^@\/?#]+)@/);
+    if (m) print(m[1], "\n");
 }
 
 function url_authority(value) {
-    value = strip_first_scheme_marker(value);
-    let at = index(value, "@");
-    if (at >= 0)
-        value = substr(value, at + 1);
-
-    let end = first_index_any(value, ["/", "?", "#"], 0);
-    return end >= 0 ? substr(value, 0, end) : value;
+    let stripped = strip_first_scheme_marker(value);
+    let m = match(stripped, /^(?:[^@\/?#]+@)?([^/?#]+)/);
+    return m ? m[1] : stripped;
 }
 
 function url_get_host(value) {
-    let authority = url_authority(value);
-    let colon = index(authority, ":");
-    print(colon >= 0 ? substr(authority, 0, colon) : authority, "\n");
+    let auth = url_authority(value);
+    let m = match(auth, /^([^:]+)/);
+    print(m ? m[1] : auth, "\n");
 }
 
 function url_get_port(value) {
-    let authority = url_authority(value);
-    let colon = index(authority, ":");
-    print(colon >= 0 ? substr(authority, colon + 1) : "", "\n");
+    let auth = url_authority(value);
+    let m = match(auth, /:([0-9]+)$/);
+    print(m ? m[1] : "", "\n");
 }
 
 function url_get_path(value) {
-    value = strip_anchored_scheme(value);
-    let slash = index(value, "/");
-    value = slash >= 0 ? substr(value, slash) : "";
-
-    let query = index(value, "?");
-    if (query >= 0)
-        value = substr(value, 0, query);
-
-    print(value, "\n");
+    let m = match(strip_anchored_scheme(value), /^[^/?#]*(\/[^?#]*)/);
+    print(m ? m[1] : "", "\n");
 }
 
 function url_get_query_param(value, param) {
     value = as_string(value);
     param = as_string(param);
-    let result = null;
-
-    for (let i = 0; i < length(value); i++) {
-        let separator = substr(value, i, 1);
-        if (separator != "?" && separator != "&")
-            continue;
-
-        let prefix_start = i + 1;
-        if (substr(value, prefix_start, length(param) + 1) != param + "=")
-            continue;
-
-        let value_start = prefix_start + length(param) + 1;
-        let value_end = first_index_any(value, ["&", "?", "#"], value_start);
-        result = value_end >= 0 ? substr(value, value_start, value_end - value_start) : substr(value, value_start);
+    let search = param + "=";
+    let parts = split(value, search);
+    let current_index = 0;
+    
+    for (let i = 1; i < length(parts); i++) {
+        current_index += length(parts[i-1]);
+        let prev = substr(value, current_index - 1, 1);
+        current_index += length(search);
+        
+        if (prev == "?" || prev == "&") {
+            let val = parts[i];
+            let end_amp = index(val, "&");
+            let end_hash = index(val, "#");
+            let end = length(val);
+            if (end_amp >= 0) end = end_amp;
+            if (end_hash >= 0 && end_hash < end) end = end_hash;
+            print(substr(val, 0, end), "\n");
+            return;
+        }
     }
-
-    print(result != null ? result : "", "\n");
+    print("\n");
 }
 
 function url_file_extension(value) {
-    let basename = as_string(value);
-    let slash = str_last_index(basename, "/");
-    if (slash >= 0)
-        basename = substr(basename, slash + 1);
-
-    let query = index(basename, "?");
-    if (query >= 0)
-        basename = substr(basename, 0, query);
-
-    let fragment = index(basename, "#");
-    if (fragment >= 0)
-        basename = substr(basename, 0, fragment);
-
-    let dot = str_last_index(basename, ".");
-    if (dot >= 0)
-        print(substr(basename, dot + 1), "\n");
-    else
-        print("\n");
+    let m = match(as_string(value), /\/?[^\/?#]*\.([^.\/?#]+)(?:[?#]|$)/);
+    print(m ? m[1] : "", "\n");
 }
 
 function url_strip_fragment(value) {
-    value = as_string(value);
-    let fragment = index(value, "#");
-    print(fragment >= 0 ? substr(value, 0, fragment) : value, "\n");
+    let m = match(as_string(value), /^([^#]*)/);
+    print(m ? m[1] : as_string(value), "\n");
 }
 
 function normalize_strategy_whitespace(value) {
@@ -365,7 +300,7 @@ function text_list_to_lines(value, separator_mode) {
 }
 
 function stdin_lines_to_json_array() {
-    let input = read_stdin();
+    let input = common.read_stdin();
     if (input == "") {
         print("[]\n");
         return;
@@ -374,11 +309,11 @@ function stdin_lines_to_json_array() {
     if (substr(input, length(input) - 1) == "\n")
         input = substr(input, 0, length(input) - 1);
 
-    write_compact_string_array(split(input, "\n"));
+    common.write_compact_string_array(split(input, "\n"));
 }
 
 function network_status_ipv4_address() {
-    let value = read_stdin_json();
+    let value = common.read_stdin_json();
     if (type(value) != "object")
         return;
 
@@ -392,7 +327,7 @@ function network_status_ipv4_address() {
 }
 
 function stdin_first_line_last_field() {
-    let input = read_stdin();
+    let input = common.read_stdin();
     if (input == "")
         return;
 

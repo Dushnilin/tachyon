@@ -17,24 +17,10 @@ const ITEM_TYPES = [
 
 let item_sections = null;
 
+let option = common.option;
+let bool_option = common.bool_option;
 function raw_option(section, key) {
-    return object_or_empty(section)[key];
-}
-
-function option(section, key, fallback) {
-    return common.option(section, key, fallback);
-}
-
-function bool_value(value, fallback) {
-    if (value == null || value == "")
-        return !!fallback;
-
-    value = as_string(value);
-    return value == "1" || value == "true" || value == "yes" || value == "on";
-}
-
-function bool_option(section, key, fallback) {
-    return bool_value(raw_option(section, key), fallback);
+    return common.object_or_empty(section)[key];
 }
 
 function list_value(section, key) {
