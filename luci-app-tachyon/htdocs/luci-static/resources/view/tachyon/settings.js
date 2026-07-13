@@ -763,6 +763,46 @@ function createTelegramContent(section) {
   o.depends("enabled", "1");
   o.default = "1";
   o.rmempty = false;
+
+  o = section.option(
+    form.Flag,
+    "notify_server_switch",
+    _("Notify on Server Switches"),
+    _("Send a Telegram notification when a URLTest group switches to a new server."),
+  );
+  o.depends("enabled", "1");
+  o.default = "1";
+  o.rmempty = false;
+
+  o = section.option(
+    form.Flag,
+    "notify_subscription",
+    _("Notify on Subscription Updates"),
+    _("Send a Telegram notification when proxy subscriptions are successfully updated."),
+  );
+  o.depends("enabled", "1");
+  o.default = "1";
+  o.rmempty = false;
+
+  o = section.option(
+    form.Flag,
+    "notify_cert",
+    _("Notify on Certificate Warnings"),
+    _("Send a Telegram notification if SSL/TLS certificates are close to expiration."),
+  );
+  o.depends("enabled", "1");
+  o.default = "1";
+  o.rmempty = false;
+
+  o = section.option(
+    form.Flag,
+    "notify_dns_leak",
+    _("Notify on DNS Leaks"),
+    _("Send a Telegram notification if a potential DNS leak is detected."),
+  );
+  o.depends("enabled", "1");
+  o.default = "1";
+  o.rmempty = false;
 }
 
 const EntryPoint = {

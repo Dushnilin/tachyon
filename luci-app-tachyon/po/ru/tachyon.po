@@ -2305,3 +2305,27 @@ msgstr "sing-box outbound для Zapret2 настроен"
 
 msgid "Zapret2 sing-box outbound is not configured"
 msgstr "sing-box outbound для Zapret2 не настроен"
+
+msgid "Notify on Server Switches"
+msgstr "Оповещать при переключении серверов"
+
+msgid "Send a Telegram notification when a URLTest group switches to a new server."
+msgstr "Отправлять уведомление в Telegram при переключении группы URLTest на другой сервер."
+
+msgid "Notify on Subscription Updates"
+msgstr "Оповещать об обновлении подписок"
+
+msgid "Send a Telegram notification when proxy subscriptions are successfully updated."
+msgstr "Отправлять уведомление в Telegram при успешном обновлении подписок прокси."
+
+msgid "Notify on Certificate Warnings"
+msgstr "Оповещать о предупреждениях сертификатов"
+
+msgid "Send a Telegram notification if SSL/TLS certificates are close to expiration."
+msgstr "Отправлять уведомление в Telegram при скором истечении срока действия SSL/TLS-сертификатов."
+
+msgid "Notify on DNS Leaks"
+msgstr "Оповещать об утечках DNS"
+
+msgid "Send a Telegram notification if a potential DNS leak is detected."
+msgstr "Отправлять уведомление в Telegram при обнаружении потенциальной утечки DNS."
