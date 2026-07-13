@@ -2574,6 +2574,7 @@ var Tachyon;
     AvailableMethods2["ENABLE"] = "enable";
     AvailableMethods2["DISABLE"] = "disable";
     AvailableMethods2["GLOBAL_CHECK"] = "global_check";
+    AvailableMethods2["DOCTOR"] = "doctor";
     AvailableMethods2["SHOW_SING_BOX_CONFIG"] = "show_sing_box_config";
     AvailableMethods2["CHECK_LOGS"] = "check_logs";
     AvailableMethods2["CHECK_SING_BOX_LOGS"] = "check_sing_box_logs";
@@ -2864,6 +2865,7 @@ var TachyonShellMethods = {
   globalCheck: async (masked = true) => callBaseMethod(Tachyon.AvailableMethods.GLOBAL_CHECK, [
     masked ? "masked" : "raw"
   ]),
+  doctor: async () => callBaseMethod(Tachyon.AvailableMethods.DOCTOR),
   showSingBoxConfig: async (masked = true) => callBaseMethod(Tachyon.AvailableMethods.SHOW_SING_BOX_CONFIG, [
     masked ? "masked" : "raw"
   ]),
@@ -4486,6 +4488,9 @@ var initialDiagnosticStore = {
       loading: false
     },
     globalCheck: {
+      loading: false
+    },
+    doctor: {
       loading: false
     },
     viewLogs: {
@@ -9002,6 +9007,7 @@ function renderAvailableActions({
   enable,
   disable,
   globalCheck,
+  doctor,
   viewLogs,
   showSingBoxConfig
 }) {
@@ -9064,6 +9070,15 @@ function renderAvailableActions({
         text: _("Get global check"),
         loading: globalCheck.loading,
         disabled: globalCheck.disabled
+      })
+    ]),
+    ...insertIf(doctor.visible, [
+      renderButton({
+        onClick: doctor.onClick,
+        icon: renderRotateCcwIcon24,
+        text: _("Run doctor repair"),
+        loading: doctor.loading,
+        disabled: doctor.disabled
       })
     ]),
     ...insertIf(viewLogs.visible, [
@@ -10292,6 +10307,28 @@ async function handleShowGlobalCheck() {
     setDiagnosticActionLoading("globalCheck", false);
   }
 }
+async function handleRunDoctor() {
+  setDiagnosticActionLoading("doctor", true);
+  try {
+    const doctorRes = await TachyonShellMethods.doctor();
+    if (doctorRes.success) {
+      ui.showModal(
+        _("Run doctor repair"),
+        renderModal(doctorRes.data ?? "", "doctor_repair", {
+          initialAutoRefresh: false
+        })
+      );
+    } else {
+      logger.error("[DIAGNOSTIC]", "handleRunDoctor - e", doctorRes);
+    }
+  } catch (e) {
+    logger.error("[DIAGNOSTIC]", "handleRunDoctor - e", e);
+  } finally {
+    setDiagnosticActionLoading("doctor", false);
+    // Reload state so the diagnostics dashboard indicators reflect the newly fixed parameters!
+    runDiagnosticsPageInitialChecks();
+  }
+}
 async function handleViewLogs() {
   setDiagnosticActionLoading("viewLogs", true);
   try {
@@ -10445,6 +10482,12 @@ function renderDiagnosticAvailableActionsWidget() {
       loading: diagnosticsActions.globalCheck.loading,
       visible: true,
       onClick: handleShowGlobalCheck,
+      disabled: utilityActionsDisabled
+    },
+    doctor: {
+      loading: diagnosticsActions.doctor.loading,
+      visible: true,
+      onClick: handleRunDoctor,
       disabled: utilityActionsDisabled
     },
     viewLogs: {
