@@ -35,10 +35,20 @@ let common = require("core.common");
 let as_string = common.as_string;
 let shell_quote = common.shell_quote;
 
-function read_stdin() {
-    let data = fs.readfile("/dev/stdin");
-    return data == null ? "" : data;
-}
+let command_output = common.command_output;
+let write_json = common.write_json;
+let list_option = common.list_option;
+let command_success_from_args = common.command_success_from_args;
+let bool_option = common.bool_option;
+let command_output_from_args = common.command_output_from_args;
+let command_from_args = common.command_from_args;
+let object_key_count = common.object_key_count;
+let object_or_empty = common.object_or_empty;
+let read_stdin = common.read_stdin;
+let array_or_empty = common.array_or_empty;
+let option = common.option;
+
+
 
 function read_json(path) {
     if (path == null || path == "" || path == "-")
@@ -60,9 +70,6 @@ function write_file(path, value) {
     return fs.writefile(path, value) != null;
 }
 
-function write_json(path, value) {
-    return write_file(path, sprintf("%J", value) + "\n");
-}
 
 function write_stdout_json(value) {
     print(sprintf("%J", value), "\n");
@@ -131,21 +138,7 @@ function append_state_list_once(list, value) {
     print(list, list != "" ? " " : "", value, "\n");
 }
 
-function object_or_empty(value) {
-    return type(value) == "object" ? value : {};
-}
 
-function option(section, key, fallback) {
-    if (fallback == null)
-        fallback = "";
-
-    let value = object_or_empty(section)[key];
-    if (value == null)
-        return fallback;
-    if (type(value) == "array")
-        return join(" ", value);
-    return as_string(value);
-}
 
 function bool_value(value, fallback) {
     if (value == null)
@@ -155,9 +148,6 @@ function bool_value(value, fallback) {
     return value == "1" || value == "true" || value == "yes" || value == "on";
 }
 
-function bool_option(section, key, fallback) {
-    return bool_value(object_or_empty(section)[key], fallback);
-}
 
 function unsigned_number(value) {
     value = as_string(value);
@@ -533,14 +523,6 @@ function files_equal(left, right) {
 
 
 
-function command_from_args(args) {
-    let parts = [];
-
-    for (let arg in args)
-        push(parts, shell_quote(arg));
-
-    return join(" ", parts);
-}
 
 function command_env(assignments) {
     let parts = [];
@@ -562,26 +544,8 @@ function command_args_with(base, extra) {
     return result;
 }
 
-function command_output(command) {
-    let pipe = fs.popen(command, "r");
-    if (!pipe)
-        return "";
 
-    let data = pipe.read("all");
-    let status = pipe.close();
-    if (status != 0 || data == null)
-        return "";
 
-    return as_string(data);
-}
-
-function command_output_from_args(args) {
-    return command_output(command_from_args(args));
-}
-
-function command_success_from_args(args) {
-    return system(command_from_args(args) + " >/dev/null 2>&1") == 0;
-}
 
 function command_status_from_args(args) {
     let status = int(system(command_from_args(args)));
@@ -821,14 +785,6 @@ function uci_named_section(section_name_value) {
     return object_or_empty(uci_core.get_all(CONFIG_NAME, section_name_value));
 }
 
-function list_option(section, key) {
-    let value = object_or_empty(section)[key];
-    if (type(value) == "array")
-        return value;
-    if (as_string(value) != "")
-        return [ as_string(value) ];
-    return [];
-}
 
 function find_section(sections, name) {
     name = as_string(name);
@@ -1020,9 +976,6 @@ function is_array(value) {
     return type(value) == "array";
 }
 
-function array_or_empty(value) {
-    return type(value) == "array" ? value : [];
-}
 
 function int_or_zero(value) {
     value = as_string(value);
@@ -1067,9 +1020,6 @@ function log_subscription_source_summary(section_name_value, source_index, norma
     log_message(subscription_source_summary(section_name_value, source_index, normalized_path, result), "info");
 }
 
-function object_key_count(value) {
-    return type(value) == "object" ? length(keys(value)) : 0;
-}
 
 function valid_metadata_object(value) {
     return type(value) == "object" && object_key_count(value) > 1;

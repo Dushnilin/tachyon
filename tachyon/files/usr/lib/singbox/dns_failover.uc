@@ -18,30 +18,15 @@ const CHECK_DOMAIN = "example.com";
 let as_string = common.as_string;
 let shell_quote = common.shell_quote;
 
-function command_from_args(args) {
-    let result = [];
-    for (let arg in args)
-        push(result, shell_quote(arg));
-    return join(" ", result);
-}
+let command_status = common.command_status;
+let command_success_from_args = common.command_success_from_args;
+let command_output_from_args = common.command_output_from_args;
+let command_from_args = common.command_from_args;
 
-function command_status(command) {
-    let status = int(system(command));
-    return status > 255 ? int(status / 256) : status;
-}
 
-function command_success_from_args(args) {
-    return command_status(command_from_args(args) + " >/dev/null 2>&1") == 0;
-}
 
-function command_output_from_args(args) {
-    let pipe = fs.popen(command_from_args(args), "r");
-    if (!pipe)
-        return "";
-    let data = pipe.read("all");
-    let status = pipe.close();
-    return status == 0 && data != null ? as_string(data) : "";
-}
+
+
 
 function settings() {
     return common.object_or_empty(uci_core.get_all(CONFIG_NAME, "settings"));

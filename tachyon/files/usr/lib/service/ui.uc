@@ -39,14 +39,16 @@ let as_string = common.as_string;
 let shell_quote = common.shell_quote;
 let read_json_file = common.read_json_file;
 
-function read_stdin() {
-    let input = fs.open("/dev/stdin", "r");
-    if (!input)
-        return "";
-    let data = input.read("all");
-    input.close();
-    return data == null ? "" : data;
-}
+let write_json = common.write_json;
+let command_status = common.command_status;
+let command_success_from_args = common.command_success_from_args;
+let command_output_from_args = common.command_output_from_args;
+let command_from_args = common.command_from_args;
+let object_or_empty = common.object_or_empty;
+let read_stdin = common.read_stdin;
+let command_output = common.command_output;
+
+
 
 function parse_json_or_null(value) {
     try {
@@ -57,22 +59,11 @@ function parse_json_or_null(value) {
     }
 }
 
-function write_json(value) {
-    print(sprintf("%J", value), "\n");
-}
 
 function json_text(value) {
     return sprintf("%J", value) + "\n";
 }
 
-function command_from_args(args) {
-    let parts = [];
-
-    for (let arg in args)
-        push(parts, shell_quote(arg));
-
-    return join(" ", parts);
-}
 
 function command_env(assignments) {
     let parts = [];
@@ -83,35 +74,13 @@ function command_env(assignments) {
     return join(" ", parts);
 }
 
-function command_output(command) {
-    let pipe = fs.popen(command, "r");
-    if (!pipe)
-        return "";
 
-    let data = pipe.read("all");
-    let status = pipe.close();
-    if (status != 0 || data == null)
-        return "";
 
-    return as_string(data);
-}
-
-function command_output_from_args(args) {
-    return command_output(command_from_args(args));
-}
-
-function command_status(command) {
-    let status = int(system(command));
-    return status > 255 ? int(status / 256) : status;
-}
 
 function command_success(command) {
     return command_status(command + " >/dev/null 2>&1") == 0;
 }
 
-function command_success_from_args(args) {
-    return command_success(command_from_args(args));
-}
 
 function module_success(module_path, args) {
     let command_args = [ "ucode", "-L", LIB_DIR, module_path ];
@@ -201,9 +170,6 @@ function unsigned_number(value) {
     return int(value);
 }
 
-function object_or_empty(value) {
-    return type(value) == "object" ? value : {};
-}
 
 function path_basename(path) {
     let parts = split(as_string(path), "/");

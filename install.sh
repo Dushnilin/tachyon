@@ -1,6 +1,8 @@
 #!/bin/sh
 # shellcheck shell=dash
 
+INSTALLER_VERSION="2.0.0"
+
 REPO_OWNER="Dushnilin"
 REPO_NAME="tachyon"
 
@@ -12,6 +14,9 @@ DOWNLOAD_TIMEOUT_SECONDS=600
 PKG_IS_APK=0
 FETCHER=""
 TMP_DIR=""
+LOCK_FILE="/tmp/tachyon.install.lock"
+LOG_FILE="/tmp/tachyon-install.log"
+START_TIME=""
 TACHYON_WAS_ENABLED=0
 TACHYON_WAS_RUNNING=0
 TACHYON_LEGACY_DETECTED=0
@@ -19,6 +24,12 @@ TACHYON_FORKOP_MIGRATION=0
 TACHYON_I18N_REQUESTED=0
 INSTALLER_LANG="en"
 SING_BOX_INSTALL_VARIANT=""
+
+# Runtime flags (see parse_args)
+ASSUME_YES=0
+DRY_RUN=0
+VERBOSE=0
+QUIET=0
 
 TACHYON_RELEASE_JSON=""
 TACHYON_RELEASE_TAG=""
@@ -39,22 +50,51 @@ LEGACY_CONFIG_BACKUP=""
 
 command -v apk >/dev/null 2>&1 && PKG_IS_APK=1
 
+log_line() {
+    # Append a timestamped line to the log file, best-effort (never fatal).
+    [ -n "$LOG_FILE" ] || return 0
+    printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S' 2>/dev/null || echo '----------------')" "$1" >>"$LOG_FILE" 2>/dev/null || true
+}
+
 msg() {
+    log_line "INFO  $1"
+    [ "$QUIET" -eq 1 ] && return 0
     printf '\033[32;1m%s\033[0m\n' "$1"
 }
 
 warn() {
-    printf '\033[33;1m%s\033[0m\n' "$1"
+    log_line "WARN  $1"
+    printf '\033[33;1m%s\033[0m\n' "$1" >&2
 }
 
 fail() {
+    log_line "FAIL  $1"
     printf '\033[31;1m%s\033[0m\n' "$1" >&2
+    printf '\033[31;1m%s\033[0m\n' "See $LOG_FILE for details." >&2
     exit 1
+}
+
+debug() {
+    log_line "DEBUG $1"
+    [ "$VERBOSE" -eq 1 ] || return 0
+    printf '\033[36m[debug] %s\033[0m\n' "$1"
+}
+
+step() {
+    # Announce a top-level installation stage, numbered for clarity.
+    step_no="$1"
+    step_total="$2"
+    step_text="$3"
+    log_line "STEP  [$step_no/$step_total] $step_text"
+    [ "$QUIET" -eq 1 ] && return 0
+    printf '\033[34;1m[%s/%s]\033[0m \033[1m%s\033[0m\n' "$step_no" "$step_total" "$step_text"
 }
 
 usage() {
     cat <<EOF
-Usage: $0
+Tachyon installer v${INSTALLER_VERSION}
+
+Usage: $0 [options]
 
 Installs or updates Tachyon packages:
   - tachyon
@@ -64,6 +104,17 @@ Installs or updates Tachyon packages:
 Can also install or switch sing-box variant:
   - stable sing-box from OpenWrt feeds
   - sing-box-extended from GitHub OpenWrt packages (for xHTTP support)
+
+Options:
+  -y, --yes          Assume "yes"/default answer for every interactive prompt
+  -n, --dry-run       Resolve versions and show planned actions, but don't
+                      download, install, remove, or modify anything on disk
+  -v, --verbose       Print extra diagnostic detail while installing
+  -q, --quiet         Suppress informational output (errors/warnings still show)
+      --version       Print the installer version and exit
+  -h, --help          Show this help text and exit
+
+Log file: $LOG_FILE
 EOF
 }
 
@@ -74,16 +125,57 @@ parse_args() {
                 usage
                 exit 0
                 ;;
+            --version)
+                printf 'tachyon-installer %s\n' "$INSTALLER_VERSION"
+                exit 0
+                ;;
+            -y|--yes)
+                ASSUME_YES=1
+                ;;
+            -n|--dry-run)
+                DRY_RUN=1
+                ;;
+            -v|--verbose)
+                VERBOSE=1
+                ;;
+            -q|--quiet)
+                QUIET=1
+                ;;
             *)
-                fail "Unknown installer option: $1"
+                fail "Unknown installer option: $1 (see --help)"
                 ;;
         esac
         shift
     done
+
+    if [ "$VERBOSE" -eq 1 ] && [ "$QUIET" -eq 1 ]; then
+        fail "--verbose and --quiet cannot be used together"
+    fi
+}
+
+acquire_lock() {
+    # Guard against two copies of the installer running at once, which could
+    # corrupt package state or UCI config. Stale locks (dead PID) are reclaimed.
+    if [ -f "$LOCK_FILE" ]; then
+        existing_pid="$(cat "$LOCK_FILE" 2>/dev/null || true)"
+        if [ -n "$existing_pid" ] && kill -0 "$existing_pid" 2>/dev/null; then
+            fail "Another instance of the installer appears to be running (pid $existing_pid). Remove $LOCK_FILE if this is incorrect."
+        fi
+        debug "Removing stale lock file from pid $existing_pid"
+        rm -f "$LOCK_FILE"
+    fi
+    printf '%s' "$$" >"$LOCK_FILE" 2>/dev/null || true
+}
+
+release_lock() {
+    [ -f "$LOCK_FILE" ] || return 0
+    lock_pid="$(cat "$LOCK_FILE" 2>/dev/null || true)"
+    [ "$lock_pid" = "$$" ] && rm -f "$LOCK_FILE"
 }
 
 cleanup() {
     [ -n "$TMP_DIR" ] && rm -rf "$TMP_DIR"
+    release_lock
 }
 
 read_openwrt_release_value() {
@@ -617,7 +709,7 @@ function installer_confirm_remove_https_dns_proxy() {
 
     warn("Detected conflicting package: https-dns-proxy\n");
 
-    if (run("[ ! -t 0 ]")) {
+    if (truthy(env("TACHYON_INSTALLER_ASSUME_YES", "0")) || run("[ ! -t 0 ]")) {
         warn("Remove the conflicting https-dns-proxy package and continue?: 1 (yes, non-interactive)\n");
         return true;
     }
@@ -1111,6 +1203,7 @@ install_json_ucode() {
     TACHYON_INSTALLER_LEGACY_BRAND="$LEGACY_BRAND" \
     TACHYON_INSTALLER_LEGACY_BACKEND="$LEGACY_BACKEND_PACKAGE" \
     TACHYON_INSTALLER_LEGACY_CONFIG_ALT="$LEGACY_CONFIG_PACKAGE_ALT" \
+    TACHYON_INSTALLER_ASSUME_YES="$ASSUME_YES" \
         ucode "$(install_json_helper_path)" "$@"
 }
 
@@ -1170,6 +1263,11 @@ pkg_is_installed() {
 }
 
 pkg_list_update() {
+    if [ "$DRY_RUN" -eq 1 ]; then
+        msg "[dry-run] would update package lists ($([ "$PKG_IS_APK" -eq 1 ] && echo apk || echo opkg))"
+        return 0
+    fi
+
     if [ "$PKG_IS_APK" -eq 1 ]; then
         apk update </dev/null
     else
@@ -1180,6 +1278,11 @@ pkg_list_update() {
 pkg_install_name() {
     pkg_name="$1"
 
+    if [ "$DRY_RUN" -eq 1 ]; then
+        msg "[dry-run] would install package: $pkg_name"
+        return 0
+    fi
+
     if [ "$PKG_IS_APK" -eq 1 ]; then
         apk add "$pkg_name" </dev/null
     else
@@ -1188,6 +1291,11 @@ pkg_install_name() {
 }
 
 pkg_install_files() {
+    if [ "$DRY_RUN" -eq 1 ]; then
+        msg "[dry-run] would install downloaded package file(s): $*"
+        return 0
+    fi
+
     if [ "$PKG_IS_APK" -eq 1 ]; then
         apk add --allow-untrusted "$@" </dev/null
     else
@@ -1361,7 +1469,7 @@ numbered_yes_no_prompt() {
     prompt_text="$1"
     answer=""
 
-    if [ ! -t 0 ]; then
+    if [ "$ASSUME_YES" -eq 1 ] || [ ! -t 0 ]; then
         msg "$prompt_text: 1 ($(installer_text yes), non-interactive)"
         return 0
     fi
@@ -1502,7 +1610,7 @@ select_sing_box_installation() {
         return 0
     fi
 
-    if [ ! -t 0 ]; then
+    if [ "$ASSUME_YES" -eq 1 ] || [ ! -t 0 ]; then
         SING_BOX_INSTALL_VARIANT="stable"
         msg "$(installer_text sing_box_prompt): $default_choice ($(installer_text sing_box_stable), non-interactive)"
         return 0
@@ -1552,6 +1660,11 @@ install_selected_sing_box() {
             ;;
     esac
 
+    if [ "$DRY_RUN" -eq 1 ]; then
+        msg "[dry-run] would install sing-box variant: $SING_BOX_INSTALL_VARIANT"
+        return 0
+    fi
+
     [ -x /usr/bin/tachyon ] || fail "tachyon backend must be installed before sing-box component action"
     msg "Installing selected sing-box variant through Tachyon ucode backend"
     if ! /usr/bin/tachyon component_action sing_box "$action" >"$output_file" 2>&1; then
@@ -1561,6 +1674,11 @@ install_selected_sing_box() {
 }
 
 cleanup_legacy_installation() {
+    if [ "$DRY_RUN" -eq 1 ]; then
+        msg "[dry-run] would stop/disable and remove legacy or conflicting packages"
+        return 0
+    fi
+
     state_file="$TMP_DIR/install-state.env"
 
     install_json_ucode installer-cleanup-legacy >"$state_file" ||
@@ -1655,6 +1773,11 @@ download_tachyon_packages() {
     TACHYON_I18N_FILE=""
     TACHYON_SHA256_FILE="$TMP_DIR/sha256sums.txt"
 
+    if [ "$DRY_RUN" -eq 1 ]; then
+        msg "[dry-run] would download and verify: $TACHYON_BACKEND_NAME, $TACHYON_APP_NAME${TACHYON_I18N_REQUESTED:+$([ "$TACHYON_I18N_REQUESTED" -eq 1 ] && printf ', luci-i18n-tachyon-ru package')}"
+        return 0
+    fi
+
     download_with_retry "$TACHYON_SHA256_URL" "$TACHYON_SHA256_FILE" "sha256sums.txt" || fail "Failed to download sha256sums.txt"
 
     download_with_retry "$TACHYON_BACKEND_URL" "$TACHYON_BACKEND_FILE" "$TACHYON_BACKEND_NAME" || fail "Failed to download $TACHYON_BACKEND_NAME"
@@ -1692,6 +1815,11 @@ install_backend_package() {
 migrate_legacy_configuration() {
     [ "$TACHYON_LEGACY_DETECTED" -eq 1 ] || return 0
 
+    if [ "$DRY_RUN" -eq 1 ]; then
+        msg "[dry-run] would migrate the legacy configuration to Tachyon"
+        return 0
+    fi
+
     if [ -n "$LEGACY_CONFIG_BACKUP" ]; then
         cp "$LEGACY_CONFIG_BACKUP" /etc/config/tachyon ||
             fail "Failed to restore the legacy configuration for migration"
@@ -1727,21 +1855,37 @@ install_ui_packages() {
 }
 
 post_install() {
+    if [ "$DRY_RUN" -eq 1 ]; then
+        msg "[dry-run] would run post-install cleanup and (re)start the Tachyon service"
+        return 0
+    fi
+
     TACHYON_WAS_ENABLED="$TACHYON_WAS_ENABLED" TACHYON_WAS_RUNNING="$TACHYON_WAS_RUNNING" \
         install_json_ucode installer-post-install ||
         fail "Failed to complete Tachyon post-install actions"
 }
 
+TOTAL_STEPS=10
+
 main() {
     trap cleanup EXIT HUP INT TERM
 
     parse_args "$@"
+    START_TIME="$(date +%s 2>/dev/null || echo 0)"
+    : >"$LOG_FILE" 2>/dev/null || true
+    log_line "Tachyon installer v${INSTALLER_VERSION} starting (args: $*)"
+
+    acquire_lock
     check_root
     init_tmp_dir
     detect_fetcher
     check_system
 
-    msg "Updating package lists..."
+    if [ "$DRY_RUN" -eq 1 ]; then
+        warn "Dry-run mode: no packages, files, or configuration will be changed."
+    fi
+
+    step 1 "$TOTAL_STEPS" "Updating package lists"
     pkg_list_update || fail "Failed to update package lists"
     ensure_bootstrap_ucode_runtime
 
@@ -1753,32 +1897,49 @@ main() {
 
     msg "$(installer_text install_start)"
 
-    msg "$(installer_text resolving_release)"
+    step 2 "$TOTAL_STEPS" "$(installer_text resolving_release)"
     resolve_tachyon_release
+    debug "Resolved release tag: $TACHYON_RELEASE_TAG"
 
-    msg "$(installer_text downloading_packages)"
+    step 3 "$TOTAL_STEPS" "$(installer_text downloading_packages)"
     download_tachyon_packages
 
-    msg "$(installer_text cleaning_legacy)"
+    step 4 "$TOTAL_STEPS" "$(installer_text cleaning_legacy)"
     cleanup_legacy_installation
 
-    msg "$(installer_text installing_backend)"
+    step 5 "$TOTAL_STEPS" "$(installer_text installing_backend)"
     install_backend_package
 
-    msg "$(installer_text migrating_config)"
+    step 6 "$TOTAL_STEPS" "$(installer_text migrating_config)"
     migrate_legacy_configuration
 
-    msg "$(installer_text installing_ui)"
+    step 7 "$TOTAL_STEPS" "$(installer_text installing_ui)"
     install_ui_packages
 
-    msg "$(installer_text installing_singbox)"
+    step 8 "$TOTAL_STEPS" "$(installer_text installing_singbox)"
     install_selected_sing_box
 
-    msg "$(installer_text running_postinstall)"
+    step 9 "$TOTAL_STEPS" "$(installer_text running_postinstall)"
     post_install
 
-    msg "Tachyon $TACHYON_PACKAGE_VERSION has been installed successfully"
+    step 10 "$TOTAL_STEPS" "Done"
+    print_summary
+}
+
+print_summary() {
+    end_time="$(date +%s 2>/dev/null || echo 0)"
+    elapsed=$((end_time - START_TIME))
+    [ "$elapsed" -ge 0 ] 2>/dev/null || elapsed=0
+
+    printf '\n'
+    if [ "$DRY_RUN" -eq 1 ]; then
+        msg "Dry run complete in ${elapsed}s — no changes were made."
+    else
+        msg "Tachyon $TACHYON_PACKAGE_VERSION has been installed successfully (${elapsed}s)"
+    fi
     msg "Source release: ${REPO_OWNER}/${REPO_NAME}@${TACHYON_RELEASE_TAG}"
+    [ "$TACHYON_LEGACY_DETECTED" -eq 1 ] && msg "Legacy installation migrated and removed."
+    msg "Full log: $LOG_FILE"
     warn "Open LuCI and review your rules before enabling Tachyon"
 }
 

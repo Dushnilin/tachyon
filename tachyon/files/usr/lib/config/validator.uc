@@ -34,6 +34,10 @@ let command_output_from_args = common.command_output_from_args;
 let command_trimmed_output_from_args = common.command_trimmed_output_from_args;
 let command_exists = common.command_exists;
 
+let object_or_empty = common.object_or_empty;
+let array_or_empty = common.array_or_empty;
+
+
 function string_starts_with(value, prefix) {
     value = as_string(value);
     prefix = as_string(prefix);
@@ -73,13 +77,7 @@ function list_has_value(values, needle) {
     return false;
 }
 
-function object_or_empty(value) {
-    return type(value) == "object" ? value : {};
-}
 
-function array_or_empty(value) {
-    return type(value) == "array" ? value : [];
-}
 
 function contains(values, needle) {
     for (let value in array_or_empty(values))

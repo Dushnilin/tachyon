@@ -6,6 +6,10 @@ const SRS_SUPERCELL_URL = "https://raw.githubusercontent.com/ushan0v/sing-box-su
 const SRS_GITHUB_URL = "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/github.srs";
 
 const COMMUNITY_SERVICES = {
+
+let common = require("core.common");
+let as_string = common.as_string;
+
     russia_inside: true,
     russia_outside: true,
     ukraine_inside: true,
@@ -35,9 +39,6 @@ const COMMUNITY_SERVICES = {
     github: true
 };
 
-function as_string(value) {
-    return value == null ? "" : "" + value;
-}
 
 function is_community(name) {
     return COMMUNITY_SERVICES[as_string(name)] === true;

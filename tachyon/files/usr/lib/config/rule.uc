@@ -3,9 +3,10 @@
 let ip = require("core.ip");
 let domain_config = require("config.domain");
 
-function as_string(value) {
-    return value == null ? "" : "" + value;
-}
+let common = require("core.common");
+let as_string = common.as_string;
+
+
 
 function strip_list_comment(line) {
     line = replace(as_string(line), /[[:space:]]*\/\/.*$/, "");

@@ -36,6 +36,9 @@ const APPLIED_MIGRATIONS_OPTION = "applied_migrations";
 const SERVER_COUNTRY_METHOD_FLAG_EMOJI = "flag_emoji";
 const SERVER_COUNTRY_METHOD_COUNTRY_IS = "country_is";
 const CHILD_ITEM_TYPES = [
+
+let command_output = common.command_output;
+
     "subscription_url",
     "section_interface",
     "urltest"
@@ -43,18 +46,6 @@ const CHILD_ITEM_TYPES = [
 
 
 
-function command_output(command) {
-    let pipe = fs.popen(command, "r");
-    if (!pipe)
-        return "";
-
-    let data = pipe.read("all");
-    let status = pipe.close();
-    if (status != 0 || data == null)
-        return "";
-
-    return replace(as_string(data), /[\r\n]+$/g, "");
-}
 
 function run(command) {
     return system(command) == 0;

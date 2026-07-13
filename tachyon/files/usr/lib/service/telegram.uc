@@ -11,22 +11,14 @@ const OFFSET_FILE = "/var/run/tachyon_telegram_offset";
  
 let as_string = common.as_string;
 let shell_quote = common.shell_quote;
+
+let command_status = common.command_status;
+let command_success_from_args = common.command_success_from_args;
+let command_from_args = common.command_from_args;
+
  
-function command_from_args(args) {
-    let result = [];
-    for (let arg in args)
-        push(result, shell_quote(arg));
-    return join(" ", result);
-}
  
-function command_status(command) {
-    let status = int(system(command));
-    return status > 255 ? int(status / 256) : status;
-}
  
-function command_success_from_args(args) {
-    return command_status(command_from_args(args) + " >/dev/null 2>&1") == 0;
-}
  
 function command_capture(command) {
     let pipe = fs.popen(command, "r");
