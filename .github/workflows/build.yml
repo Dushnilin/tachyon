@@ -58,15 +58,6 @@ jobs:
         run: |
           VERSION="${{ needs.preparation.outputs.version }}"
           bash ./build.sh "$VERSION" "$PWD/filtered-bin/release"
-          
-          # Create duplicate files with "forkop" name for seamless upgrade compatibility from older versions
-          cd "$PWD/filtered-bin/release"
-          for file in *; do
-            if [[ $file == *tachyon* ]]; then
-              cp "$file" "${file/tachyon/forkop}"
-            fi
-          done
-          cd -
 
           ls -la "$PWD/filtered-bin/release"
 
