@@ -36,7 +36,7 @@ function log_message(message, level) {
 function send_telegram_notification(message) {
     let tcfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
     if (tcfg.enabled == "1" && tcfg.bot_token && tcfg.admin_ids) {
-        system("/usr/bin/tachyon telegram send " + shell_quote(message) + " >/dev/null 2>&1 &");
+        system("/usr/bin/tachyon telegram send " + shell_quote(message) + " </dev/null >/dev/null 2>&1 1000<&- &");
     }
 }
 
@@ -92,7 +92,7 @@ function start_runtime() {
     }
 
     let command = command_from_args([ "ucode", "-L", LIB_DIR, WATCHDOG_UC, "worker" ]) +
-        " >/dev/null 2>&1 & echo $! >" + shell_quote(PID_FILE);
+        " </dev/null >/dev/null 2>&1 1000<&- & echo $! >" + shell_quote(PID_FILE);
     return command_status(command);
 }
 
@@ -163,7 +163,7 @@ function run_zero_rtt_prefetching() {
 
     log_message("Zero-RTT Prefetcher: pre-resolving " + length(domain_list) + " domains...", "info");
     for (let dom in domain_list) {
-        system("dig @127.0.0.1 " + shell_quote(dom) + " A >/dev/null 2>&1 &");
+        system("dig @127.0.0.1 " + shell_quote(dom) + " A </dev/null >/dev/null 2>&1 1000<&- &");
     }
 }
 
@@ -196,7 +196,7 @@ function push_config_to_peers() {
             peer = peer + ":4536";
         }
         let url = "http://" + peer + "/sync";
-        system("curl -s -X POST -H 'Content-Type: text/plain' --data-binary " + shell_quote(enc_payload) + " --max-time 5 " + url + " >/dev/null 2>&1 &");
+        system("curl -s -X POST -H 'Content-Type: text/plain' --data-binary " + shell_quote(enc_payload) + " --max-time 5 " + url + " </dev/null >/dev/null 2>&1 1000<&- &");
     }
 }
 
@@ -247,11 +247,11 @@ function worker() {
     system("tail -f /tmp/tachyon_honeypot.fifo | while read ip; do " +
            "if [ -n \"$ip\" ]; then " +
            "nft add element inet " + nft_table + " tachyon_honeypot { \"$ip\" timeout " + ttl + "s } >/dev/null 2>&1; " +
-           "fi; done & echo $! > /var/run/tachyon_honeypot_listener.pid");
+           "fi; done </dev/null >/dev/null 2>&1 1000<&- & echo $! > /var/run/tachyon_honeypot_listener.pid");
 
     let enable_p2p = cfg.enable_p2p_sync == "1";
     if (enable_p2p) {
-        system("while true; do nc -l -p 4536 | ucode -L " + LIB_DIR + " " + WATCHDOG_UC + " p2p-receive; done & echo $! > /var/run/tachyon_p2p_server.pid");
+        system("while true; do nc -l -p 4536 | ucode -L " + LIB_DIR + " " + WATCHDOG_UC + " p2p-receive; done </dev/null >/dev/null 2>&1 1000<&- & echo $! > /var/run/tachyon_p2p_server.pid");
     }
 
     let zero_rtt_done = false;
