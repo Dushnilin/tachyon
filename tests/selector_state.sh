@@ -2,8 +2,8 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-FORKOP_LIB="$ROOT_DIR/forkop/files/usr/lib"
-LIFECYCLE_UC="$FORKOP_LIB/service/lifecycle.uc"
+TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
+LIFECYCLE_UC="$TACHYON_LIB/service/lifecycle.uc"
 WORK_DIR="$(mktemp -d)"
 
 cleanup() {
@@ -17,8 +17,8 @@ fail() {
 }
 
 lifecycle_ucode() {
-  FORKOP_RUNTIME_STATE_DIR="$WORK_DIR/run" \
-    ucode -L "$FORKOP_LIB" "$LIFECYCLE_UC" "$@"
+  TACHYON_RUNTIME_STATE_DIR="$WORK_DIR/run" \
+    ucode -L "$TACHYON_LIB" "$LIFECYCLE_UC" "$@"
 }
 
 json_flatten() {

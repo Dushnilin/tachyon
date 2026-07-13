@@ -1,4 +1,4 @@
-import { ForkopShellMethods } from '../methods';
+import { TachyonShellMethods } from '../methods';
 import { normalizeSingBoxVariantFields } from '../helpers/singBoxVariant';
 import { logger } from './logger.service';
 import { store, StoreType } from './store.service';
@@ -7,8 +7,8 @@ const UNKNOWN_SYSTEM_INFO: StoreType['diagnosticsSystemInfo'] = {
   loading: false,
   loaded: false,
   providerInfoLoaded: false,
-  forkop_version: _('unknown'),
-  forkop_latest_version: _('unknown'),
+  tachyon_version: _('unknown'),
+  tachyon_latest_version: _('unknown'),
   luci_app_version: _('unknown'),
   sing_box_version: _('unknown'),
   sing_box_extended: 0,
@@ -65,7 +65,7 @@ export async function ensureSystemInfo({
 
   const promise = (async () => {
     try {
-      const systemInfo = await ForkopShellMethods.getSystemInfo();
+      const systemInfo = await TachyonShellMethods.getSystemInfo();
 
       if (requestId !== latestSystemInfoRequestId) {
         return store.get().diagnosticsSystemInfo;

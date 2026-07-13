@@ -1,14 +1,14 @@
 {
-  "admin/services/forkop": {
-    "title": "Forkop",
+  "admin/services/tachyon": {
+    "title": "Tachyon",
     "order": 42,
     "action": {
       "type": "view",
-      "path": "forkop/forkop"
+      "path": "tachyon/tachyon"
     },
     "depends": {
-			"acl": [ "luci-app-forkop" ],
-			"uci": { "forkop": true }
+			"acl": [ "luci-app-tachyon" ],
+			"uci": { "tachyon": true }
 		}
   }
 }

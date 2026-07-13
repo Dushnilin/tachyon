@@ -4,29 +4,29 @@ let fs = require("fs");
 let uci_core = require("core.uci");
 let connections = require("config.connections");
 
-const CONFIG_NAME = getenv("FORKOP_CONFIG_NAME") || "forkop";
-const LIB_DIR = getenv("FORKOP_LIB") || "/usr/lib/forkop";
+const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
+const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
 const TMP_SING_BOX_FOLDER = getenv("TMP_SING_BOX_FOLDER") || "/tmp/sing-box";
 const TMP_RULESET_FOLDER = getenv("TMP_RULESET_FOLDER") || TMP_SING_BOX_FOLDER + "/rulesets";
 const TMP_SUBSCRIPTION_FOLDER = getenv("TMP_SUBSCRIPTION_FOLDER") || TMP_SING_BOX_FOLDER + "/subscriptions";
-const FORKOP_RUNTIME_STATE_DIR = getenv("FORKOP_RUNTIME_STATE_DIR") || "/var/run/forkop";
-const FORKOP_SUBSCRIPTION_UPDATE_STATE_DIR = getenv("FORKOP_SUBSCRIPTION_UPDATE_STATE_DIR") || FORKOP_RUNTIME_STATE_DIR + "/subscription-update";
-const FORKOP_SUBSCRIPTION_LINKS_DIR = getenv("FORKOP_SUBSCRIPTION_LINKS_DIR") || FORKOP_RUNTIME_STATE_DIR + "/subscription-links";
-const FORKOP_SUBSCRIPTION_METADATA_DIR = getenv("FORKOP_SUBSCRIPTION_METADATA_DIR") || FORKOP_RUNTIME_STATE_DIR + "/subscription-metadata";
-const FORKOP_OUTBOUND_METADATA_DIR = getenv("FORKOP_OUTBOUND_METADATA_DIR") || FORKOP_RUNTIME_STATE_DIR + "/outbound-metadata";
-const FORKOP_SECTION_CACHE_DIR = getenv("FORKOP_SECTION_CACHE_DIR") || FORKOP_RUNTIME_STATE_DIR + "/section-cache";
-const FORKOP_RUNTIME_CACHE_FORMAT_FILE = getenv("FORKOP_RUNTIME_CACHE_FORMAT_FILE") || FORKOP_RUNTIME_STATE_DIR + "/cache-format";
-const FORKOP_RUNTIME_CACHE_FORMAT = getenv("FORKOP_RUNTIME_CACHE_FORMAT") || "7";
-const FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_DIR = getenv("FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_DIR") || "/etc/forkop/subscription-cache";
-const FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE = getenv("FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE") || FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_DIR + "/cache-format";
-const FORKOP_SUBSCRIPTION_BOOTSTRAP_RETRY_PID_FILE = getenv("FORKOP_SUBSCRIPTION_BOOTSTRAP_RETRY_PID_FILE") || FORKOP_RUNTIME_STATE_DIR + "/subscription-bootstrap-retry.pid";
-const FORKOP_SUBSCRIPTION_UPDATE_LOCK_DIR = getenv("FORKOP_SUBSCRIPTION_UPDATE_LOCK_DIR") || FORKOP_RUNTIME_STATE_DIR + "/subscription-update.lock";
-const FORKOP_PENDING_RELOAD_FILE = getenv("FORKOP_PENDING_RELOAD_FILE") || FORKOP_RUNTIME_STATE_DIR + "/reload.pending";
-const FORKOP_SERVICE_INIT = getenv("FORKOP_SERVICE_INIT") || "/etc/init.d/forkop";
+const TACHYON_RUNTIME_STATE_DIR = getenv("TACHYON_RUNTIME_STATE_DIR") || "/var/run/tachyon";
+const TACHYON_SUBSCRIPTION_UPDATE_STATE_DIR = getenv("TACHYON_SUBSCRIPTION_UPDATE_STATE_DIR") || TACHYON_RUNTIME_STATE_DIR + "/subscription-update";
+const TACHYON_SUBSCRIPTION_LINKS_DIR = getenv("TACHYON_SUBSCRIPTION_LINKS_DIR") || TACHYON_RUNTIME_STATE_DIR + "/subscription-links";
+const TACHYON_SUBSCRIPTION_METADATA_DIR = getenv("TACHYON_SUBSCRIPTION_METADATA_DIR") || TACHYON_RUNTIME_STATE_DIR + "/subscription-metadata";
+const TACHYON_OUTBOUND_METADATA_DIR = getenv("TACHYON_OUTBOUND_METADATA_DIR") || TACHYON_RUNTIME_STATE_DIR + "/outbound-metadata";
+const TACHYON_SECTION_CACHE_DIR = getenv("TACHYON_SECTION_CACHE_DIR") || TACHYON_RUNTIME_STATE_DIR + "/section-cache";
+const TACHYON_RUNTIME_CACHE_FORMAT_FILE = getenv("TACHYON_RUNTIME_CACHE_FORMAT_FILE") || TACHYON_RUNTIME_STATE_DIR + "/cache-format";
+const TACHYON_RUNTIME_CACHE_FORMAT = getenv("TACHYON_RUNTIME_CACHE_FORMAT") || "7";
+const TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR = getenv("TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR") || "/etc/tachyon/subscription-cache";
+const TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE = getenv("TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE") || TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR + "/cache-format";
+const TACHYON_SUBSCRIPTION_BOOTSTRAP_RETRY_PID_FILE = getenv("TACHYON_SUBSCRIPTION_BOOTSTRAP_RETRY_PID_FILE") || TACHYON_RUNTIME_STATE_DIR + "/subscription-bootstrap-retry.pid";
+const TACHYON_SUBSCRIPTION_UPDATE_LOCK_DIR = getenv("TACHYON_SUBSCRIPTION_UPDATE_LOCK_DIR") || TACHYON_RUNTIME_STATE_DIR + "/subscription-update.lock";
+const TACHYON_PENDING_RELOAD_FILE = getenv("TACHYON_PENDING_RELOAD_FILE") || TACHYON_RUNTIME_STATE_DIR + "/reload.pending";
+const TACHYON_SERVICE_INIT = getenv("TACHYON_SERVICE_INIT") || "/etc/init.d/tachyon";
 const SB_SERVICE_MIXED_INBOUND_ADDRESS = getenv("SB_SERVICE_MIXED_INBOUND_ADDRESS") || "127.0.0.1";
 const SB_SERVICE_MIXED_INBOUND_PORT = getenv("SB_SERVICE_MIXED_INBOUND_PORT") || "4534";
-const SB_VARIANT_STATE_FILE = getenv("SB_VARIANT_STATE_FILE") || "/etc/forkop/sing-box-variant";
-const SB_VERSION_STATE_FILE = getenv("SB_VERSION_STATE_FILE") || "/etc/forkop/sing-box-version";
+const SB_VARIANT_STATE_FILE = getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/sing-box-variant";
+const SB_VERSION_STATE_FILE = getenv("SB_VERSION_STATE_FILE") || "/etc/tachyon/sing-box-version";
 const ZAPRET_PROVIDER_NFQWS_BIN = getenv("ZAPRET_PROVIDER_NFQWS_BIN") || "/opt/zapret/nfq/nfqws";
 const ZAPRET2_PROVIDER_NFQWS2_BIN = getenv("ZAPRET2_PROVIDER_NFQWS2_BIN") || "/opt/zapret2/nfq2/nfqws2";
 const BYEDPI_BIN = getenv("BYEDPI_BIN") || "/usr/bin/ciadpi";
@@ -244,14 +244,14 @@ function subscription_metadata_path(section) {
     section = as_string(section);
     if (!cache_section_is_safe(section))
         return "";
-    return FORKOP_SUBSCRIPTION_METADATA_DIR + "/" + section + ".json";
+    return TACHYON_SUBSCRIPTION_METADATA_DIR + "/" + section + ".json";
 }
 
 function outbound_metadata_path(section) {
     section = as_string(section);
     if (!cache_section_is_safe(section))
         return "";
-    return FORKOP_OUTBOUND_METADATA_DIR + "/" + section + ".json";
+    return TACHYON_OUTBOUND_METADATA_DIR + "/" + section + ".json";
 }
 
 function section_has_subscription_urls(section) {
@@ -594,7 +594,7 @@ function run_silent(command) {
 
 function log_message(message, level) {
     level = as_string(level || "info");
-    command_success_from_args([ "logger", "-t", "forkop", "[" + level + "] " + as_string(message) ]);
+    command_success_from_args([ "logger", "-t", "tachyon", "[" + level + "] " + as_string(message) ]);
 }
 
 function ensure_dir(path) {
@@ -609,44 +609,44 @@ function ensure_runtime_dirs() {
     ensure_dir(TMP_SING_BOX_FOLDER);
     ensure_dir(TMP_RULESET_FOLDER);
     ensure_dir(TMP_SUBSCRIPTION_FOLDER);
-    ensure_dir(FORKOP_RUNTIME_STATE_DIR);
-    ensure_dir(FORKOP_SUBSCRIPTION_UPDATE_STATE_DIR);
-    ensure_dir(FORKOP_SUBSCRIPTION_LINKS_DIR);
-    ensure_dir(FORKOP_SUBSCRIPTION_METADATA_DIR);
-    ensure_dir(FORKOP_OUTBOUND_METADATA_DIR);
-    ensure_dir(FORKOP_SECTION_CACHE_DIR);
+    ensure_dir(TACHYON_RUNTIME_STATE_DIR);
+    ensure_dir(TACHYON_SUBSCRIPTION_UPDATE_STATE_DIR);
+    ensure_dir(TACHYON_SUBSCRIPTION_LINKS_DIR);
+    ensure_dir(TACHYON_SUBSCRIPTION_METADATA_DIR);
+    ensure_dir(TACHYON_OUTBOUND_METADATA_DIR);
+    ensure_dir(TACHYON_SECTION_CACHE_DIR);
 }
 
 function clear_subscription_runtime_cache() {
     run_silent("rm -rf " +
         shell_quote(TMP_SUBSCRIPTION_FOLDER) + " " +
-        shell_quote(FORKOP_SUBSCRIPTION_LINKS_DIR) + " " +
-        shell_quote(FORKOP_SUBSCRIPTION_METADATA_DIR) + " " +
-        shell_quote(FORKOP_OUTBOUND_METADATA_DIR) + " " +
-        shell_quote(FORKOP_SECTION_CACHE_DIR));
+        shell_quote(TACHYON_SUBSCRIPTION_LINKS_DIR) + " " +
+        shell_quote(TACHYON_SUBSCRIPTION_METADATA_DIR) + " " +
+        shell_quote(TACHYON_OUTBOUND_METADATA_DIR) + " " +
+        shell_quote(TACHYON_SECTION_CACHE_DIR));
 }
 
 function ensure_runtime_cache_format() {
-    ensure_dir(FORKOP_RUNTIME_STATE_DIR);
+    ensure_dir(TACHYON_RUNTIME_STATE_DIR);
 
-    if (file_first_line_value(FORKOP_RUNTIME_CACHE_FORMAT_FILE) != FORKOP_RUNTIME_CACHE_FORMAT) {
+    if (file_first_line_value(TACHYON_RUNTIME_CACHE_FORMAT_FILE) != TACHYON_RUNTIME_CACHE_FORMAT) {
         log_message("Runtime subscription cache format changed; clearing old subscription cache", "info");
         clear_subscription_runtime_cache();
         ensure_runtime_dirs();
-        write_file(FORKOP_RUNTIME_CACHE_FORMAT_FILE, FORKOP_RUNTIME_CACHE_FORMAT + "\n");
+        write_file(TACHYON_RUNTIME_CACHE_FORMAT_FILE, TACHYON_RUNTIME_CACHE_FORMAT + "\n");
     }
 
-    if (file_first_line_value(FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE) != FORKOP_RUNTIME_CACHE_FORMAT) {
-        run_silent("rm -rf " + shell_quote(FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_DIR));
-        ensure_dir(FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_DIR);
-        chmod_path(FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_DIR, "700");
-        write_file(FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE, FORKOP_RUNTIME_CACHE_FORMAT + "\n");
-        chmod_path(FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE, "600");
+    if (file_first_line_value(TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE) != TACHYON_RUNTIME_CACHE_FORMAT) {
+        run_silent("rm -rf " + shell_quote(TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR));
+        ensure_dir(TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR);
+        chmod_path(TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR, "700");
+        write_file(TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE, TACHYON_RUNTIME_CACHE_FORMAT + "\n");
+        chmod_path(TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE, "600");
     }
 }
 
 function remove_legacy_server_country_cache() {
-    unlink_path(FORKOP_RUNTIME_STATE_DIR + "/server-country-cache.json");
+    unlink_path(TACHYON_RUNTIME_STATE_DIR + "/server-country-cache.json");
 }
 
 function temp_path(dir, section, kind) {
@@ -863,7 +863,7 @@ function provider_action_is_available(action) {
 }
 
 function section_current_usable_cache_by_name(sections, section, default_user_agent) {
-    return section_current_usable_cache(find_section(sections, section), TMP_SUBSCRIPTION_FOLDER, FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_DIR, default_user_agent);
+    return section_current_usable_cache(find_section(sections, section), TMP_SUBSCRIPTION_FOLDER, TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR, default_user_agent);
 }
 
 function section_has_non_subscription_connection_sources(section) {
@@ -928,11 +928,11 @@ function cache_candidate_paths() {
     let result = [];
     for (let dir in [
         TMP_SUBSCRIPTION_FOLDER,
-        FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_DIR,
-        FORKOP_SECTION_CACHE_DIR,
-        FORKOP_SUBSCRIPTION_LINKS_DIR,
-        FORKOP_SUBSCRIPTION_METADATA_DIR,
-        FORKOP_OUTBOUND_METADATA_DIR
+        TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR,
+        TACHYON_SECTION_CACHE_DIR,
+        TACHYON_SUBSCRIPTION_LINKS_DIR,
+        TACHYON_SUBSCRIPTION_METADATA_DIR,
+        TACHYON_OUTBOUND_METADATA_DIR
     ]) {
         let entries = fs.lsdir(dir);
         if (type(entries) != "array")
@@ -960,11 +960,11 @@ function prune_stale_subscription_caches_for_sections(sections) {
             path,
             keep,
             TMP_SUBSCRIPTION_FOLDER,
-            FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_DIR,
-            FORKOP_SECTION_CACHE_DIR,
-            FORKOP_SUBSCRIPTION_LINKS_DIR,
-            FORKOP_SUBSCRIPTION_METADATA_DIR,
-            FORKOP_OUTBOUND_METADATA_DIR
+            TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR,
+            TACHYON_SECTION_CACHE_DIR,
+            TACHYON_SUBSCRIPTION_LINKS_DIR,
+            TACHYON_SUBSCRIPTION_METADATA_DIR,
+            TACHYON_OUTBOUND_METADATA_DIR
         );
         if (!state_list_contains(keep_names, cache_name))
             unlink_path(path);
@@ -1751,7 +1751,7 @@ function get_subscription_metadata(cache_dir, section, legacy_path) {
 }
 
 function persistent_metadata_path(source_section) {
-    return FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_DIR + "/" + as_string(source_section) + ".metadata.json";
+    return TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR + "/" + as_string(source_section) + ".metadata.json";
 }
 
 function remove_subscription_source_runtime_cache(source_section) {
@@ -1768,13 +1768,13 @@ function persist_subscription_cache(source_section, subscription_json_path, subs
     if (!cache_section_is_safe(source_section) || !subscription_cache_is_usable(subscription_json_path))
         return false;
 
-    ensure_dir(FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_DIR);
-    chmod_path(FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_DIR, "700");
+    ensure_dir(TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR);
+    chmod_path(TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR, "700");
 
-    let persistent_json = source_json_path(FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_DIR, source_section);
-    let persistent_url = source_url_path(FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_DIR, source_section);
-    let persistent_user_agent = source_user_agent_path(FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_DIR, source_section);
-    let persistent_hwid = source_hwid_path(FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_DIR, source_section);
+    let persistent_json = source_json_path(TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR, source_section);
+    let persistent_url = source_url_path(TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR, source_section);
+    let persistent_user_agent = source_user_agent_path(TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR, source_section);
+    let persistent_hwid = source_hwid_path(TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR, source_section);
     let persistent_metadata = persistent_metadata_path(source_section);
     let previous_url = read_text(persistent_url);
     let previous_user_agent = read_text(persistent_user_agent);
@@ -1817,7 +1817,7 @@ function append_available_cached_metadata(array_path, section, source_index, sou
 
     let before = length(array_or_empty(read_json(array_path)));
     append_persistent_source_metadata(array_path, source_index, source_section) ||
-        append_cached_metadata(array_path, FORKOP_SECTION_CACHE_DIR, section, FORKOP_SUBSCRIPTION_METADATA_DIR + "/" + section + ".json", source_index, source_section);
+        append_cached_metadata(array_path, TACHYON_SECTION_CACHE_DIR, section, TACHYON_SUBSCRIPTION_METADATA_DIR + "/" + section + ".json", source_index, source_section);
     return length(array_or_empty(read_json(array_path))) > before;
 }
 
@@ -2156,7 +2156,7 @@ function cached_source_status(source_section, parsed) {
     restore_persistent_subscription_cache(
         source_section,
         TMP_SUBSCRIPTION_FOLDER,
-        FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_DIR,
+        TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR,
         parsed.url,
         parsed.user_agent,
         parsed.hwid,
@@ -2231,7 +2231,7 @@ function update_subscription_source(section_name_value, index_value, entry, phas
 }
 
 function subscription_update_timestamp_path(section_name_value) {
-    return FORKOP_SUBSCRIPTION_UPDATE_STATE_DIR + "/" + as_string(section_name_value) + ".timestamp";
+    return TACHYON_SUBSCRIPTION_UPDATE_STATE_DIR + "/" + as_string(section_name_value) + ".timestamp";
 }
 
 function current_timestamp_value() {
@@ -2244,7 +2244,7 @@ function write_subscription_update_timestamp(section_name_value) {
     if (timestamp == "")
         return;
 
-    ensure_dir(FORKOP_SUBSCRIPTION_UPDATE_STATE_DIR);
+    ensure_dir(TACHYON_SUBSCRIPTION_UPDATE_STATE_DIR);
     write_file(subscription_update_timestamp_path(section_name_value), timestamp + "\n");
 }
 
@@ -2269,9 +2269,9 @@ function finalize_subscription_section_metadata(section_name_value, metadata_tmp
 
     if (!superseded) {
         if (length(array_or_empty(read_json(metadata_tmpfile))) > 0)
-            write_subscription_metadata(FORKOP_SECTION_CACHE_DIR, FORKOP_RUNTIME_CACHE_FORMAT, section_name_value, metadata_tmpfile);
+            write_subscription_metadata(TACHYON_SECTION_CACHE_DIR, TACHYON_RUNTIME_CACHE_FORMAT, section_name_value, metadata_tmpfile);
         else
-            write_subscription_metadata(FORKOP_SECTION_CACHE_DIR, FORKOP_RUNTIME_CACHE_FORMAT, section_name_value, "");
+            write_subscription_metadata(TACHYON_SECTION_CACHE_DIR, TACHYON_RUNTIME_CACHE_FORMAT, section_name_value, "");
     }
 
     unlink_path(metadata_tmpfile);
@@ -2434,13 +2434,13 @@ function subscription_update_selected_source(sections, section_name_value, sourc
 
     if (update_result == 0 || update_result == 2)
         write_source_metadata(
-            FORKOP_SECTION_CACHE_DIR,
-            FORKOP_RUNTIME_CACHE_FORMAT,
+            TACHYON_SECTION_CACHE_DIR,
+            TACHYON_RUNTIME_CACHE_FORMAT,
             section_name_value,
             source_index,
             source_section,
             metadata_output_path,
-            FORKOP_SUBSCRIPTION_METADATA_DIR + "/" + section_name_value + ".json"
+            TACHYON_SUBSCRIPTION_METADATA_DIR + "/" + section_name_value + ".json"
         );
 
     unlink_path(metadata_output_path);
@@ -2603,9 +2603,9 @@ function prepare_subscription_cache_section(state, section) {
 
     let metadata_count = length(array_or_empty(read_json(metadata_tmpfile)));
     if (metadata_count > 0)
-        write_subscription_metadata(FORKOP_SECTION_CACHE_DIR, FORKOP_RUNTIME_CACHE_FORMAT, section_name_value, metadata_tmpfile);
+        write_subscription_metadata(TACHYON_SECTION_CACHE_DIR, TACHYON_RUNTIME_CACHE_FORMAT, section_name_value, metadata_tmpfile);
     else
-        write_subscription_metadata(FORKOP_SECTION_CACHE_DIR, FORKOP_RUNTIME_CACHE_FORMAT, section_name_value, "");
+        write_subscription_metadata(TACHYON_SECTION_CACHE_DIR, TACHYON_RUNTIME_CACHE_FORMAT, section_name_value, "");
     unlink_path(metadata_tmpfile);
 }
 
@@ -2619,7 +2619,7 @@ function prepare_subscription_caches(phase, already_prepared, no_refresh) {
     phase = as_string(phase || "startup");
     let sections = uci_sections();
 
-    if (prepared_runtime_cache_should_skip(sections, FORKOP_SECTION_CACHE_DIR, phase, already_prepared)) {
+    if (prepared_runtime_cache_should_skip(sections, TACHYON_SECTION_CACHE_DIR, phase, already_prepared)) {
         print("\n");
         return 0;
     }
@@ -2673,12 +2673,12 @@ function state_ucode_status(args) {
 }
 
 function mark_pending_subscription_recovery_reload() {
-    state_ucode_status([ "mark-pending-reload", FORKOP_PENDING_RELOAD_FILE, "subscription_deferred_recovery" ]);
+    state_ucode_status([ "mark-pending-reload", TACHYON_PENDING_RELOAD_FILE, "subscription_deferred_recovery" ]);
 }
 
 function trigger_subscription_recovery_reload(worker) {
     if (worker)
-        command_status_from_args([ FORKOP_SERVICE_INIT, "reload", "subscription_deferred_recovery" ]);
+        command_status_from_args([ TACHYON_SERVICE_INIT, "reload", "subscription_deferred_recovery" ]);
     else
         mark_pending_subscription_recovery_reload();
 }
@@ -2721,25 +2721,25 @@ function subscription_bootstrap_retry_result(deferred_sections) {
 
 function worker_env() {
     return {
-        FORKOP_CONFIG_NAME: CONFIG_NAME,
-        FORKOP_LIB: LIB_DIR,
+        TACHYON_CONFIG_NAME: CONFIG_NAME,
+        TACHYON_LIB: LIB_DIR,
         TMP_SING_BOX_FOLDER,
         TMP_RULESET_FOLDER,
         TMP_SUBSCRIPTION_FOLDER,
-        FORKOP_RUNTIME_STATE_DIR,
-        FORKOP_SUBSCRIPTION_UPDATE_STATE_DIR,
-        FORKOP_SUBSCRIPTION_LINKS_DIR,
-        FORKOP_SUBSCRIPTION_METADATA_DIR,
-        FORKOP_OUTBOUND_METADATA_DIR,
-        FORKOP_SECTION_CACHE_DIR,
-        FORKOP_RUNTIME_CACHE_FORMAT_FILE,
-        FORKOP_RUNTIME_CACHE_FORMAT,
-        FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_DIR,
-        FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE,
-        FORKOP_SUBSCRIPTION_BOOTSTRAP_RETRY_PID_FILE,
-        FORKOP_SUBSCRIPTION_UPDATE_LOCK_DIR,
-        FORKOP_PENDING_RELOAD_FILE,
-        FORKOP_SERVICE_INIT,
+        TACHYON_RUNTIME_STATE_DIR,
+        TACHYON_SUBSCRIPTION_UPDATE_STATE_DIR,
+        TACHYON_SUBSCRIPTION_LINKS_DIR,
+        TACHYON_SUBSCRIPTION_METADATA_DIR,
+        TACHYON_OUTBOUND_METADATA_DIR,
+        TACHYON_SECTION_CACHE_DIR,
+        TACHYON_RUNTIME_CACHE_FORMAT_FILE,
+        TACHYON_RUNTIME_CACHE_FORMAT,
+        TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR,
+        TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE,
+        TACHYON_SUBSCRIPTION_BOOTSTRAP_RETRY_PID_FILE,
+        TACHYON_SUBSCRIPTION_UPDATE_LOCK_DIR,
+        TACHYON_PENDING_RELOAD_FILE,
+        TACHYON_SERVICE_INIT,
         SB_SERVICE_MIXED_INBOUND_ADDRESS,
         SB_SERVICE_MIXED_INBOUND_PORT,
         SB_VARIANT_STATE_FILE,
@@ -2762,7 +2762,7 @@ function start_deferred_subscription_bootstrap_retry_worker(deferred_sections) {
         return;
 
     ensure_runtime_dirs();
-    let existing_pid = trim(file_first_line_value(FORKOP_SUBSCRIPTION_BOOTSTRAP_RETRY_PID_FILE));
+    let existing_pid = trim(file_first_line_value(TACHYON_SUBSCRIPTION_BOOTSTRAP_RETRY_PID_FILE));
     if (pid_running(existing_pid)) {
         log_message("Subscription bootstrap retry worker is already running with PID " + existing_pid, "debug");
         return;
@@ -2770,17 +2770,17 @@ function start_deferred_subscription_bootstrap_retry_worker(deferred_sections) {
 
     let pid = launch_self_worker([ "deferred-bootstrap-worker", deferred_sections ]);
     if (pid != "")
-        write_file(FORKOP_SUBSCRIPTION_BOOTSTRAP_RETRY_PID_FILE, pid + "\n");
+        write_file(TACHYON_SUBSCRIPTION_BOOTSTRAP_RETRY_PID_FILE, pid + "\n");
     log_message("Started subscription bootstrap retry worker for rule(s): " + deferred_sections, "info");
 }
 
 function stop_deferred_subscription_bootstrap_retry_worker() {
-    let pid = trim(file_first_line_value(FORKOP_SUBSCRIPTION_BOOTSTRAP_RETRY_PID_FILE));
+    let pid = trim(file_first_line_value(TACHYON_SUBSCRIPTION_BOOTSTRAP_RETRY_PID_FILE));
     if (pid_running(pid)) {
         command_success_from_args([ "kill", pid ]);
         log_message("Stopped subscription bootstrap retry worker", "info");
     }
-    unlink_path(FORKOP_SUBSCRIPTION_BOOTSTRAP_RETRY_PID_FILE);
+    unlink_path(TACHYON_SUBSCRIPTION_BOOTSTRAP_RETRY_PID_FILE);
 }
 
 function run_deferred_subscription_bootstrap(deferred_sections) {
@@ -2806,7 +2806,7 @@ function run_deferred_subscription_bootstrap(deferred_sections) {
 
     let result = subscription_bootstrap_retry_result(deferred_sections);
     if (result.recovered != "") {
-        log_message("Recovered deferred subscription rule(s): " + result.recovered + "; scheduling Forkop reload", "info");
+        log_message("Recovered deferred subscription rule(s): " + result.recovered + "; scheduling Tachyon reload", "info");
         trigger_subscription_recovery_reload(false);
     }
 
@@ -2827,23 +2827,23 @@ function deferred_subscription_bootstrap_retry_worker(remaining_sections) {
         }
 
         ensure_runtime_dirs();
-        if (!state_ucode_status([ "acquire-runtime-dir-lock", FORKOP_SUBSCRIPTION_UPDATE_LOCK_DIR, current_pid() ])) {
+        if (!state_ucode_status([ "acquire-runtime-dir-lock", TACHYON_SUBSCRIPTION_UPDATE_LOCK_DIR, current_pid() ])) {
             log_message("Subscription bootstrap retry skipped because another subscription update is running", "debug");
             continue;
         }
 
         let result = subscription_bootstrap_retry_result(remaining_sections);
-        state_ucode_status([ "release-runtime-dir-lock", FORKOP_SUBSCRIPTION_UPDATE_LOCK_DIR ]);
+        state_ucode_status([ "release-runtime-dir-lock", TACHYON_SUBSCRIPTION_UPDATE_LOCK_DIR ]);
 
         if (result.recovered != "") {
-            log_message("Recovered deferred subscription rule(s): " + result.recovered + "; reloading Forkop", "info");
+            log_message("Recovered deferred subscription rule(s): " + result.recovered + "; reloading Tachyon", "info");
             trigger_subscription_recovery_reload(true);
         }
 
         remaining_sections = result.remaining;
     }
 
-    unlink_path(FORKOP_SUBSCRIPTION_BOOTSTRAP_RETRY_PID_FILE);
+    unlink_path(TACHYON_SUBSCRIPTION_BOOTSTRAP_RETRY_PID_FILE);
 }
 
 let mode = ARGV[0] || "";

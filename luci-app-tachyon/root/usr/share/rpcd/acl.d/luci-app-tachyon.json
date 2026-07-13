@@ -1,27 +1,27 @@
 {
-  "luci-app-forkop": {
-    "description": "Grant UCI and RPC access to LuCI app Forkop",
+  "luci-app-tachyon": {
+    "description": "Grant UCI and RPC access to LuCI app Tachyon",
     "read": {
       "file": {
-        "/etc/init.d/forkop": [
+        "/etc/init.d/tachyon": [
           "exec"
         ],
-        "/var/run/forkop/section-cache/*": [
+        "/var/run/tachyon/section-cache/*": [
           "read"
         ],
-        "/var/run/forkop/component-actions/*": [
+        "/var/run/tachyon/component-actions/*": [
           "read"
         ],
-        "/var/run/forkop/ui-state/*": [
+        "/var/run/tachyon/ui-state/*": [
           "read"
         ],
-        "/var/run/forkop/ui-state/service-actions/*": [
+        "/var/run/tachyon/ui-state/service-actions/*": [
           "read"
         ],
-        "/var/run/forkop/ui-state/latency-actions/*": [
+        "/var/run/tachyon/ui-state/latency-actions/*": [
           "read"
         ],
-        "/usr/bin/forkop": [
+        "/usr/bin/tachyon": [
           "exec"
         ]
       },
@@ -38,23 +38,23 @@
         ]
       },
       "uci": [
-        "forkop"
+        "tachyon"
       ]
     },
     "write": {
       "file": {
-        "/var/run/forkop/ui-state/*": [
+        "/var/run/tachyon/ui-state/*": [
           "write"
         ],
-        "/var/run/forkop/ui-state/service-actions/*": [
+        "/var/run/tachyon/ui-state/service-actions/*": [
           "write"
         ],
-        "/var/run/forkop/ui-state/latency-actions/*": [
+        "/var/run/tachyon/ui-state/latency-actions/*": [
           "write"
         ]
       },
       "uci": [
-        "forkop"
+        "tachyon"
       ]
     }
   }

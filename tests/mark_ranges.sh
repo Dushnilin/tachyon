@@ -2,8 +2,8 @@
 set -eo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-FORKOP_LIB="$ROOT_DIR/forkop/files/usr/lib"
-VALIDATOR="$FORKOP_LIB/config/validator.uc"
+TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
+VALIDATOR="$TACHYON_LIB/config/validator.uc"
 WORK_DIR="$(mktemp -d)"
 
 cleanup() {
@@ -42,7 +42,7 @@ assert_mark_range_no_overlap() {
   done
 }
 
-eval "$(ucode -L "$FORKOP_LIB" "$FORKOP_LIB/core/constants.uc" shell-env)"
+eval "$(ucode -L "$TACHYON_LIB" "$TACHYON_LIB/core/constants.uc" shell-env)"
 
 assert_mark_range_no_overlap "Zapret" "$((ZAPRET_ROUTE_MARK_BASE))" "$ZAPRET_QUEUE_RANGE_SIZE" "$((NFT_FAKEIP_MARK))" "FakeIP"
 assert_mark_range_no_overlap "Zapret" "$((ZAPRET_ROUTE_MARK_BASE))" "$ZAPRET_QUEUE_RANGE_SIZE" "$((NFT_OUTBOUND_MARK))" "outbound"
@@ -78,9 +78,9 @@ context_json() {
 JSON
 }
 
-FORKOP_LIB="$FORKOP_LIB" ucode -L "$FORKOP_LIB" "$VALIDATOR" validate-runtime-fixture "$WORK_DIR/fixture.json" "$(context_json)"
+TACHYON_LIB="$TACHYON_LIB" ucode -L "$TACHYON_LIB" "$VALIDATOR" validate-runtime-fixture "$WORK_DIR/fixture.json" "$(context_json)"
 
-if FORKOP_LIB="$FORKOP_LIB" ucode -L "$FORKOP_LIB" "$VALIDATOR" validate-runtime-fixture "$WORK_DIR/fixture.json" "$(context_json "0x01100000")" >/dev/null 2>&1; then
+if TACHYON_LIB="$TACHYON_LIB" ucode -L "$TACHYON_LIB" "$VALIDATOR" validate-runtime-fixture "$WORK_DIR/fixture.json" "$(context_json "0x01100000")" >/dev/null 2>&1; then
   fail "legacy Zapret2 route mark base should overlap FakeIP mark"
 fi
 

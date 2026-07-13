@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { ForkopLogWatcher } from '../forkopLogWatcher.service';
+import { TachyonLogWatcher } from '../tachyonLogWatcher.service';
 
-describe('ForkopLogWatcher', () => {
-  const watcher = ForkopLogWatcher.getInstance();
+describe('TachyonLogWatcher', () => {
+  const watcher = TachyonLogWatcher.getInstance();
   let rawLogs = '';
   let seenLines: string[] = [];
 

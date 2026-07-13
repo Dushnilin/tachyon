@@ -1,7 +1,7 @@
-import type { Forkop } from '../../types';
+import type { Tachyon } from '../../types';
 
 export function shouldApplyCompletedComponentActionResult(
-  result: Pick<Forkop.ComponentActionResult, 'action'>,
+  result: Pick<Tachyon.ComponentActionResult, 'action'>,
   notify: boolean,
 ) {
   return result.action !== 'check_update' || notify;

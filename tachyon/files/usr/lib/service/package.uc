@@ -12,16 +12,16 @@ function env(name, fallback) {
     return value == null ? as_string(fallback) : as_string(value);
 }
 
-const CONFIG_NAME = env("FORKOP_CONFIG_NAME", "forkop");
-const RT_TABLES_PATH = env("FORKOP_RT_TABLES", "/etc/iproute2/rt_tables");
-const BIN_PATH = env("FORKOP_BIN", "/usr/bin/forkop");
-const INIT_PATH = env("FORKOP_INIT", "/etc/init.d/forkop");
-const DNS_APPLY_UC = env("FORKOP_DNS_APPLY_UC", "/usr/lib/forkop/dns/apply.uc");
-const SING_BOX_INIT = env("FORKOP_SING_BOX_INIT", "/etc/init.d/sing-box");
-const SING_BOX_BIN = env("FORKOP_SING_BOX_BIN", "/usr/bin/sing-box");
-const SING_BOX_CRONET = env("FORKOP_SING_BOX_CRONET", "/usr/lib/libcronet.so");
-const SING_BOX_MANAGED_MARKER = env("SB_MANAGED_SERVICE_MARKER", "Forkop managed sing-box service for binary variants");
-const PACKAGE_TEST_MODE = env("FORKOP_PACKAGE_TEST_MODE", "") != "";
+const CONFIG_NAME = env("TACHYON_CONFIG_NAME", "tachyon");
+const RT_TABLES_PATH = env("TACHYON_RT_TABLES", "/etc/iproute2/rt_tables");
+const BIN_PATH = env("TACHYON_BIN", "/usr/bin/tachyon");
+const INIT_PATH = env("TACHYON_INIT", "/etc/init.d/tachyon");
+const DNS_APPLY_UC = env("TACHYON_DNS_APPLY_UC", "/usr/lib/tachyon/dns/apply.uc");
+const SING_BOX_INIT = env("TACHYON_SING_BOX_INIT", "/etc/init.d/sing-box");
+const SING_BOX_BIN = env("TACHYON_SING_BOX_BIN", "/usr/bin/sing-box");
+const SING_BOX_CRONET = env("TACHYON_SING_BOX_CRONET", "/usr/lib/libcronet.so");
+const SING_BOX_MANAGED_MARKER = env("SB_MANAGED_SERVICE_MARKER", "Tachyon managed sing-box service for binary variants");
+const PACKAGE_TEST_MODE = env("TACHYON_PACKAGE_TEST_MODE", "") != "";
 
 function command_from_args(args) {
     let parts = [];
@@ -56,7 +56,7 @@ function remove_rt_tables_entry() {
     let changed = false;
     let lines = [];
     for (let line in split(data, "\n")) {
-        if (index(line, "105 forkop") >= 0) {
+        if (index(line, "105 tachyon") >= 0) {
             changed = true;
             continue;
         }
@@ -117,7 +117,7 @@ function prerm_cleanup() {
 }
 
 function luci_cache_globs() {
-    let configured = env("FORKOP_LUCI_CACHE_GLOBS", "");
+    let configured = env("TACHYON_LUCI_CACHE_GLOBS", "");
     if (configured != "")
         return split(configured, /[ \t\r\n]+/);
 
@@ -140,7 +140,7 @@ function luci_postinst() {
     if (!PACKAGE_TEST_MODE) {
         if (path_exists("/etc/init.d/rpcd"))
             command_success_from_args([ "/etc/init.d/rpcd", "reload" ]);
-        command_success_from_args([ "logger", "-t", "forkop", "[info] Package defaults applied" ]);
+        command_success_from_args([ "logger", "-t", "tachyon", "[info] Package defaults applied" ]);
     }
     return true;
 }

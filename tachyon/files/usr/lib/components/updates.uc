@@ -3,56 +3,56 @@
 let fs = require("fs");
 let uci_core = require("core.uci");
 let connections = require("config.connections");
-const CONFIG_NAME = getenv("FORKOP_CONFIG_NAME") || "forkop";
-const LIB_DIR = getenv("FORKOP_LIB") || "/usr/lib/forkop";
-const BIN_PATH = getenv("FORKOP_BIN") || "/usr/bin/forkop";
+const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
+const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
+const BIN_PATH = getenv("TACHYON_BIN") || "/usr/bin/tachyon";
 const TMP_SING_BOX_FOLDER = getenv("TMP_SING_BOX_FOLDER") || "/tmp/sing-box";
 const TMP_RULESET_FOLDER = getenv("TMP_RULESET_FOLDER") || TMP_SING_BOX_FOLDER + "/rulesets";
 const TMP_SUBSCRIPTION_FOLDER = getenv("TMP_SUBSCRIPTION_FOLDER") || TMP_SING_BOX_FOLDER + "/subscriptions";
-const RUNTIME_STATE_DIR = getenv("FORKOP_RUNTIME_STATE_DIR") || "/var/run/forkop";
-const LIST_UPDATE_STATE_FILE = getenv("FORKOP_LIST_UPDATE_STATE_FILE") || RUNTIME_STATE_DIR + "/list-update.timestamp";
-const LIST_UPDATE_PID_FILE = getenv("FORKOP_LIST_UPDATE_PID_FILE") || "/var/run/forkop_list_update.pid";
-const SUBSCRIPTION_UPDATE_STATE_DIR = getenv("FORKOP_SUBSCRIPTION_UPDATE_STATE_DIR") || RUNTIME_STATE_DIR + "/subscription-update";
-const SUBSCRIPTION_JOB_DIR = getenv("FORKOP_SUBSCRIPTION_UPDATE_JOB_DIR") || "/var/run/forkop/subscription-update-jobs";
-const SUBSCRIPTION_UPDATE_LOCK_DIR = getenv("FORKOP_SUBSCRIPTION_UPDATE_LOCK_DIR") || RUNTIME_STATE_DIR + "/subscription-update.lock";
-const SUBSCRIPTION_LINKS_DIR = getenv("FORKOP_SUBSCRIPTION_LINKS_DIR") || RUNTIME_STATE_DIR + "/subscription-links";
-const SUBSCRIPTION_METADATA_DIR = getenv("FORKOP_SUBSCRIPTION_METADATA_DIR") || RUNTIME_STATE_DIR + "/subscription-metadata";
-const OUTBOUND_METADATA_DIR = getenv("FORKOP_OUTBOUND_METADATA_DIR") || RUNTIME_STATE_DIR + "/outbound-metadata";
-const SECTION_CACHE_DIR = getenv("FORKOP_SECTION_CACHE_DIR") || RUNTIME_STATE_DIR + "/section-cache";
-const RUNTIME_CACHE_FORMAT_FILE = getenv("FORKOP_RUNTIME_CACHE_FORMAT_FILE") || RUNTIME_STATE_DIR + "/cache-format";
-const RUNTIME_CACHE_FORMAT = getenv("FORKOP_RUNTIME_CACHE_FORMAT") || "7";
-const PERSISTENT_SUBSCRIPTION_CACHE_DIR = getenv("FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_DIR") || "/etc/forkop/subscription-cache";
-const PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE = getenv("FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE") || PERSISTENT_SUBSCRIPTION_CACHE_DIR + "/cache-format";
-const PENDING_RELOAD_FILE = getenv("FORKOP_PENDING_RELOAD_FILE") || RUNTIME_STATE_DIR + "/reload.pending";
-const RELOAD_STATE_FILE = getenv("FORKOP_RELOAD_STATE_FILE") || RUNTIME_STATE_DIR + "/reload-state";
-const RELOAD_STATE_FORMAT = getenv("FORKOP_RELOAD_STATE_FORMAT") || "1";
-const RULE_CONDITION_CACHE_DIR = getenv("FORKOP_RULE_CONDITION_CACHE_DIR") || RUNTIME_STATE_DIR + "/rule-condition-cache";
-const RELOAD_LOCK_DIR = getenv("FORKOP_RELOAD_LOCK_DIR") || "/var/run/forkop.reload.lock";
-const SERVICE_INIT = getenv("FORKOP_SERVICE_INIT") || "/etc/init.d/forkop";
-const PRIORITY_UC = getenv("FORKOP_PRIORITY_UC") || LIB_DIR + "/singbox/priority.uc";
-const DNS_FAILOVER_UC = getenv("FORKOP_DNS_FAILOVER_UC") || LIB_DIR + "/singbox/dns_failover.uc";
-const COMPONENT_JOB_DIR = getenv("UPDATES_JOB_DIR") || getenv("FORKOP_UI_COMPONENT_ACTION_DIR") || "/var/run/forkop/component-actions";
-const COMPONENT_UPDATE_CHECK_CACHE_DIR = getenv("FORKOP_COMPONENT_UPDATE_CHECK_CACHE_DIR") || RUNTIME_STATE_DIR + "/component-update-checks";
-const COMPONENT_UPDATE_CHECK_STATE_FILE = getenv("FORKOP_COMPONENT_UPDATE_CHECK_STATE_FILE") || RUNTIME_STATE_DIR + "/component-update-check.timestamp";
-const COMPONENT_UPDATE_CHECK_LOCK_DIR = getenv("FORKOP_COMPONENT_UPDATE_CHECK_LOCK_DIR") || RUNTIME_STATE_DIR + "/component-update-check.lock";
+const RUNTIME_STATE_DIR = getenv("TACHYON_RUNTIME_STATE_DIR") || "/var/run/tachyon";
+const LIST_UPDATE_STATE_FILE = getenv("TACHYON_LIST_UPDATE_STATE_FILE") || RUNTIME_STATE_DIR + "/list-update.timestamp";
+const LIST_UPDATE_PID_FILE = getenv("TACHYON_LIST_UPDATE_PID_FILE") || "/var/run/tachyon_list_update.pid";
+const SUBSCRIPTION_UPDATE_STATE_DIR = getenv("TACHYON_SUBSCRIPTION_UPDATE_STATE_DIR") || RUNTIME_STATE_DIR + "/subscription-update";
+const SUBSCRIPTION_JOB_DIR = getenv("TACHYON_SUBSCRIPTION_UPDATE_JOB_DIR") || "/var/run/tachyon/subscription-update-jobs";
+const SUBSCRIPTION_UPDATE_LOCK_DIR = getenv("TACHYON_SUBSCRIPTION_UPDATE_LOCK_DIR") || RUNTIME_STATE_DIR + "/subscription-update.lock";
+const SUBSCRIPTION_LINKS_DIR = getenv("TACHYON_SUBSCRIPTION_LINKS_DIR") || RUNTIME_STATE_DIR + "/subscription-links";
+const SUBSCRIPTION_METADATA_DIR = getenv("TACHYON_SUBSCRIPTION_METADATA_DIR") || RUNTIME_STATE_DIR + "/subscription-metadata";
+const OUTBOUND_METADATA_DIR = getenv("TACHYON_OUTBOUND_METADATA_DIR") || RUNTIME_STATE_DIR + "/outbound-metadata";
+const SECTION_CACHE_DIR = getenv("TACHYON_SECTION_CACHE_DIR") || RUNTIME_STATE_DIR + "/section-cache";
+const RUNTIME_CACHE_FORMAT_FILE = getenv("TACHYON_RUNTIME_CACHE_FORMAT_FILE") || RUNTIME_STATE_DIR + "/cache-format";
+const RUNTIME_CACHE_FORMAT = getenv("TACHYON_RUNTIME_CACHE_FORMAT") || "7";
+const PERSISTENT_SUBSCRIPTION_CACHE_DIR = getenv("TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR") || "/etc/tachyon/subscription-cache";
+const PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE = getenv("TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE") || PERSISTENT_SUBSCRIPTION_CACHE_DIR + "/cache-format";
+const PENDING_RELOAD_FILE = getenv("TACHYON_PENDING_RELOAD_FILE") || RUNTIME_STATE_DIR + "/reload.pending";
+const RELOAD_STATE_FILE = getenv("TACHYON_RELOAD_STATE_FILE") || RUNTIME_STATE_DIR + "/reload-state";
+const RELOAD_STATE_FORMAT = getenv("TACHYON_RELOAD_STATE_FORMAT") || "1";
+const RULE_CONDITION_CACHE_DIR = getenv("TACHYON_RULE_CONDITION_CACHE_DIR") || RUNTIME_STATE_DIR + "/rule-condition-cache";
+const RELOAD_LOCK_DIR = getenv("TACHYON_RELOAD_LOCK_DIR") || "/var/run/tachyon.reload.lock";
+const SERVICE_INIT = getenv("TACHYON_SERVICE_INIT") || "/etc/init.d/tachyon";
+const PRIORITY_UC = getenv("TACHYON_PRIORITY_UC") || LIB_DIR + "/singbox/priority.uc";
+const DNS_FAILOVER_UC = getenv("TACHYON_DNS_FAILOVER_UC") || LIB_DIR + "/singbox/dns_failover.uc";
+const COMPONENT_JOB_DIR = getenv("UPDATES_JOB_DIR") || getenv("TACHYON_UI_COMPONENT_ACTION_DIR") || "/var/run/tachyon/component-actions";
+const COMPONENT_UPDATE_CHECK_CACHE_DIR = getenv("TACHYON_COMPONENT_UPDATE_CHECK_CACHE_DIR") || RUNTIME_STATE_DIR + "/component-update-checks";
+const COMPONENT_UPDATE_CHECK_STATE_FILE = getenv("TACHYON_COMPONENT_UPDATE_CHECK_STATE_FILE") || RUNTIME_STATE_DIR + "/component-update-check.timestamp";
+const COMPONENT_UPDATE_CHECK_LOCK_DIR = getenv("TACHYON_COMPONENT_UPDATE_CHECK_LOCK_DIR") || RUNTIME_STATE_DIR + "/component-update-check.lock";
 const COMPONENT_JOB_FINISHED_TTL_MINUTES = getenv("UPDATES_JOB_FINISHED_TTL_MINUTES") || "60";
 const COMPONENT_JOB_ORPHAN_OUTPUT_TTL_MINUTES = getenv("UPDATES_JOB_ORPHAN_OUTPUT_TTL_MINUTES") || "60";
-const COMPONENT_JOB_STALE_GRACE_SECONDS = getenv("UPDATES_JOB_STALE_GRACE_SECONDS") || getenv("FORKOP_UI_ACTION_STALE_GRACE_SECONDS") || "15";
-const SUBSCRIPTION_JOB_FINISHED_TTL_MINUTES = getenv("FORKOP_SUBSCRIPTION_UPDATE_JOB_FINISHED_TTL_MINUTES") || "60";
-const SUBSCRIPTION_JOB_ORPHAN_OUTPUT_TTL_MINUTES = getenv("FORKOP_SUBSCRIPTION_UPDATE_JOB_ORPHAN_OUTPUT_TTL_MINUTES") || "60";
-const SUBSCRIPTION_JOB_STALE_GRACE_SECONDS = getenv("FORKOP_UI_ACTION_STALE_GRACE_SECONDS") || "15";
-const NFT_TABLE_NAME = getenv("NFT_TABLE_NAME") || "ForkopTable";
-const NFT_COMMON_SET_NAME = getenv("NFT_COMMON_SET_NAME") || "forkop_subnets";
-const NFT_COMMON6_SET_NAME = getenv("NFT_COMMON6_SET_NAME") || "forkop_subnets6";
-const NFT_IP_PORT_SET_NAME = getenv("NFT_IP_PORT_SET_NAME") || "forkop_ip_ports";
-const NFT_IP_PORT6_SET_NAME = getenv("NFT_IP_PORT6_SET_NAME") || "forkop_ip6_ports";
-const NFT_DISCORD_SET_NAME = getenv("NFT_DISCORD_SET_NAME") || "forkop_discord_subnets";
-const NFT_DISCORD6_SET_NAME = getenv("NFT_DISCORD6_SET_NAME") || "forkop_discord_subnets6";
-const NFT_INTERFACE_SET_NAME = getenv("NFT_INTERFACE_SET_NAME") || "forkop_interfaces";
+const COMPONENT_JOB_STALE_GRACE_SECONDS = getenv("UPDATES_JOB_STALE_GRACE_SECONDS") || getenv("TACHYON_UI_ACTION_STALE_GRACE_SECONDS") || "15";
+const SUBSCRIPTION_JOB_FINISHED_TTL_MINUTES = getenv("TACHYON_SUBSCRIPTION_UPDATE_JOB_FINISHED_TTL_MINUTES") || "60";
+const SUBSCRIPTION_JOB_ORPHAN_OUTPUT_TTL_MINUTES = getenv("TACHYON_SUBSCRIPTION_UPDATE_JOB_ORPHAN_OUTPUT_TTL_MINUTES") || "60";
+const SUBSCRIPTION_JOB_STALE_GRACE_SECONDS = getenv("TACHYON_UI_ACTION_STALE_GRACE_SECONDS") || "15";
+const NFT_TABLE_NAME = getenv("NFT_TABLE_NAME") || "TachyonTable";
+const NFT_COMMON_SET_NAME = getenv("NFT_COMMON_SET_NAME") || "tachyon_subnets";
+const NFT_COMMON6_SET_NAME = getenv("NFT_COMMON6_SET_NAME") || "tachyon_subnets6";
+const NFT_IP_PORT_SET_NAME = getenv("NFT_IP_PORT_SET_NAME") || "tachyon_ip_ports";
+const NFT_IP_PORT6_SET_NAME = getenv("NFT_IP_PORT6_SET_NAME") || "tachyon_ip6_ports";
+const NFT_DISCORD_SET_NAME = getenv("NFT_DISCORD_SET_NAME") || "tachyon_discord_subnets";
+const NFT_DISCORD6_SET_NAME = getenv("NFT_DISCORD6_SET_NAME") || "tachyon_discord_subnets6";
+const NFT_INTERFACE_SET_NAME = getenv("NFT_INTERFACE_SET_NAME") || "tachyon_interfaces";
 const NFT_FAKEIP_MARK = getenv("NFT_FAKEIP_MARK") || "0x00100000";
 const SB_SERVICE_MIXED_INBOUND_ADDRESS = getenv("SB_SERVICE_MIXED_INBOUND_ADDRESS") || "127.0.0.1";
 const SB_SERVICE_MIXED_INBOUND_PORT = getenv("SB_SERVICE_MIXED_INBOUND_PORT") || "4534";
-const SB_VARIANT_STATE_FILE = getenv("SB_VARIANT_STATE_FILE") || "/etc/forkop/sing-box-variant";
+const SB_VARIANT_STATE_FILE = getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/sing-box-variant";
 const GITHUB_RAW_URL = getenv("GITHUB_RAW_URL") || "https://raw.githubusercontent.com/itdoginfo/allow-domains/main";
 const BUILTIN_SUBNET_URLS = {
     twitter: getenv("SUBNETS_TWITTER") || GITHUB_RAW_URL + "/Subnets/IPv4/twitter.lst",
@@ -155,7 +155,7 @@ function ensure_dir(path) {
 
 function log_message(message, level) {
     level = as_string(level || "info");
-    command_success_from_args([ "logger", "-t", "forkop", "[" + level + "] " + as_string(message) ]);
+    command_success_from_args([ "logger", "-t", "tachyon", "[" + level + "] " + as_string(message) ]);
 }
 
 
@@ -1048,21 +1048,21 @@ function subscription_job_id() {
 
 function ensure_subscription_runtime_dirs() {
     let command = command_env({
-        FORKOP_CONFIG_NAME: CONFIG_NAME,
-        FORKOP_LIB: LIB_DIR,
+        TACHYON_CONFIG_NAME: CONFIG_NAME,
+        TACHYON_LIB: LIB_DIR,
         TMP_SING_BOX_FOLDER,
         TMP_RULESET_FOLDER,
         TMP_SUBSCRIPTION_FOLDER,
-        FORKOP_RUNTIME_STATE_DIR: RUNTIME_STATE_DIR,
-        FORKOP_SUBSCRIPTION_UPDATE_STATE_DIR: SUBSCRIPTION_UPDATE_STATE_DIR,
-        FORKOP_SUBSCRIPTION_LINKS_DIR: SUBSCRIPTION_LINKS_DIR,
-        FORKOP_SUBSCRIPTION_METADATA_DIR: SUBSCRIPTION_METADATA_DIR,
-        FORKOP_OUTBOUND_METADATA_DIR: OUTBOUND_METADATA_DIR,
-        FORKOP_SECTION_CACHE_DIR: SECTION_CACHE_DIR,
-        FORKOP_RUNTIME_CACHE_FORMAT_FILE: RUNTIME_CACHE_FORMAT_FILE,
-        FORKOP_RUNTIME_CACHE_FORMAT: RUNTIME_CACHE_FORMAT,
-        FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_DIR: PERSISTENT_SUBSCRIPTION_CACHE_DIR,
-        FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE: PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE
+        TACHYON_RUNTIME_STATE_DIR: RUNTIME_STATE_DIR,
+        TACHYON_SUBSCRIPTION_UPDATE_STATE_DIR: SUBSCRIPTION_UPDATE_STATE_DIR,
+        TACHYON_SUBSCRIPTION_LINKS_DIR: SUBSCRIPTION_LINKS_DIR,
+        TACHYON_SUBSCRIPTION_METADATA_DIR: SUBSCRIPTION_METADATA_DIR,
+        TACHYON_OUTBOUND_METADATA_DIR: OUTBOUND_METADATA_DIR,
+        TACHYON_SECTION_CACHE_DIR: SECTION_CACHE_DIR,
+        TACHYON_RUNTIME_CACHE_FORMAT_FILE: RUNTIME_CACHE_FORMAT_FILE,
+        TACHYON_RUNTIME_CACHE_FORMAT: RUNTIME_CACHE_FORMAT,
+        TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR: PERSISTENT_SUBSCRIPTION_CACHE_DIR,
+        TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE: PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE
     }) + " " + command_from_args([
         "ucode",
         "-L", LIB_DIR,
@@ -1191,26 +1191,26 @@ function finish_subscription_job(path, exit_code, output_file) {
 
 function subscription_worker_env() {
     return {
-        FORKOP_CONFIG_NAME: CONFIG_NAME,
-        FORKOP_LIB: LIB_DIR,
-        FORKOP_BIN: BIN_PATH,
+        TACHYON_CONFIG_NAME: CONFIG_NAME,
+        TACHYON_LIB: LIB_DIR,
+        TACHYON_BIN: BIN_PATH,
         TMP_SING_BOX_FOLDER,
         TMP_RULESET_FOLDER,
         TMP_SUBSCRIPTION_FOLDER,
-        FORKOP_RUNTIME_STATE_DIR: RUNTIME_STATE_DIR,
-        FORKOP_SUBSCRIPTION_UPDATE_STATE_DIR: SUBSCRIPTION_UPDATE_STATE_DIR,
-        FORKOP_SUBSCRIPTION_UPDATE_JOB_DIR: SUBSCRIPTION_JOB_DIR,
-        FORKOP_SUBSCRIPTION_LINKS_DIR: SUBSCRIPTION_LINKS_DIR,
-        FORKOP_SUBSCRIPTION_METADATA_DIR: SUBSCRIPTION_METADATA_DIR,
-        FORKOP_OUTBOUND_METADATA_DIR: OUTBOUND_METADATA_DIR,
-        FORKOP_SECTION_CACHE_DIR: SECTION_CACHE_DIR,
-        FORKOP_RUNTIME_CACHE_FORMAT_FILE: RUNTIME_CACHE_FORMAT_FILE,
-        FORKOP_RUNTIME_CACHE_FORMAT: RUNTIME_CACHE_FORMAT,
-        FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_DIR: PERSISTENT_SUBSCRIPTION_CACHE_DIR,
-        FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE: PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE,
-        FORKOP_SUBSCRIPTION_UPDATE_JOB_FINISHED_TTL_MINUTES: SUBSCRIPTION_JOB_FINISHED_TTL_MINUTES,
-        FORKOP_SUBSCRIPTION_UPDATE_JOB_ORPHAN_OUTPUT_TTL_MINUTES: SUBSCRIPTION_JOB_ORPHAN_OUTPUT_TTL_MINUTES,
-        FORKOP_UI_ACTION_STALE_GRACE_SECONDS: SUBSCRIPTION_JOB_STALE_GRACE_SECONDS
+        TACHYON_RUNTIME_STATE_DIR: RUNTIME_STATE_DIR,
+        TACHYON_SUBSCRIPTION_UPDATE_STATE_DIR: SUBSCRIPTION_UPDATE_STATE_DIR,
+        TACHYON_SUBSCRIPTION_UPDATE_JOB_DIR: SUBSCRIPTION_JOB_DIR,
+        TACHYON_SUBSCRIPTION_LINKS_DIR: SUBSCRIPTION_LINKS_DIR,
+        TACHYON_SUBSCRIPTION_METADATA_DIR: SUBSCRIPTION_METADATA_DIR,
+        TACHYON_OUTBOUND_METADATA_DIR: OUTBOUND_METADATA_DIR,
+        TACHYON_SECTION_CACHE_DIR: SECTION_CACHE_DIR,
+        TACHYON_RUNTIME_CACHE_FORMAT_FILE: RUNTIME_CACHE_FORMAT_FILE,
+        TACHYON_RUNTIME_CACHE_FORMAT: RUNTIME_CACHE_FORMAT,
+        TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR: PERSISTENT_SUBSCRIPTION_CACHE_DIR,
+        TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE: PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE,
+        TACHYON_SUBSCRIPTION_UPDATE_JOB_FINISHED_TTL_MINUTES: SUBSCRIPTION_JOB_FINISHED_TTL_MINUTES,
+        TACHYON_SUBSCRIPTION_UPDATE_JOB_ORPHAN_OUTPUT_TTL_MINUTES: SUBSCRIPTION_JOB_ORPHAN_OUTPUT_TTL_MINUTES,
+        TACHYON_UI_ACTION_STALE_GRACE_SECONDS: SUBSCRIPTION_JOB_STALE_GRACE_SECONDS
     };
 }
 
@@ -1342,14 +1342,14 @@ function normalize_component_name(component) {
     component = as_string(component);
     if (component == "sing-box" || component == "singbox")
         return "sing_box";
-    if (component == "forkop")
-        return "forkop";
+    if (component == "tachyon")
+        return "tachyon";
     return component;
 }
 
 function valid_component_name(component) {
     component = normalize_component_name(component);
-    return component == "forkop" || component == "sing_box" || component == "zapret" ||
+    return component == "tachyon" || component == "sing_box" || component == "zapret" ||
         component == "zapret2" || component == "byedpi";
 }
 
@@ -1456,7 +1456,7 @@ function component_update_check_cache() {
     let results = [];
 
     if (enabled) {
-        for (let component in [ "forkop", "sing_box", "zapret", "zapret2", "byedpi" ]) {
+        for (let component in [ "tachyon", "sing_box", "zapret", "zapret2", "byedpi" ]) {
             let value = read_json_file(component_update_check_cache_path(component));
             if (component_update_check_result_cacheable(value))
                 push(results, value);
@@ -1699,15 +1699,15 @@ function finish_component_job(path, component, action, exit_code, output_file) {
 
 function component_worker_env() {
     return {
-        FORKOP_CONFIG_NAME: CONFIG_NAME,
-        FORKOP_LIB: LIB_DIR,
-        FORKOP_BIN: BIN_PATH,
-        FORKOP_SERVICE_INIT: SERVICE_INIT,
+        TACHYON_CONFIG_NAME: CONFIG_NAME,
+        TACHYON_LIB: LIB_DIR,
+        TACHYON_BIN: BIN_PATH,
+        TACHYON_SERVICE_INIT: SERVICE_INIT,
         UPDATES_JOB_DIR: COMPONENT_JOB_DIR,
         UPDATES_JOB_FINISHED_TTL_MINUTES: COMPONENT_JOB_FINISHED_TTL_MINUTES,
         UPDATES_JOB_ORPHAN_OUTPUT_TTL_MINUTES: COMPONENT_JOB_ORPHAN_OUTPUT_TTL_MINUTES,
         UPDATES_JOB_STALE_GRACE_SECONDS: COMPONENT_JOB_STALE_GRACE_SECONDS,
-        FORKOP_UI_COMPONENT_ACTION_TRACKED: "1"
+        TACHYON_UI_COMPONENT_ACTION_TRACKED: "1"
     };
 }
 
@@ -1794,7 +1794,7 @@ function component_action_status(job_id) {
 }
 
 function automatic_component_check_names() {
-    let result = [ "forkop" ];
+    let result = [ "tachyon" ];
 
     if (fs.stat("/usr/bin/sing-box") != null)
         push(result, "sing_box");
@@ -2537,23 +2537,23 @@ function stop_list_update() {
 
 function subscription_cache_env() {
     return {
-        FORKOP_CONFIG_NAME: CONFIG_NAME,
-        FORKOP_LIB: LIB_DIR,
+        TACHYON_CONFIG_NAME: CONFIG_NAME,
+        TACHYON_LIB: LIB_DIR,
         TMP_SING_BOX_FOLDER,
         TMP_RULESET_FOLDER,
         TMP_SUBSCRIPTION_FOLDER,
-        FORKOP_RUNTIME_STATE_DIR: RUNTIME_STATE_DIR,
-        FORKOP_SUBSCRIPTION_UPDATE_STATE_DIR: SUBSCRIPTION_UPDATE_STATE_DIR,
-        FORKOP_SUBSCRIPTION_LINKS_DIR: SUBSCRIPTION_LINKS_DIR,
-        FORKOP_SUBSCRIPTION_METADATA_DIR: SUBSCRIPTION_METADATA_DIR,
-        FORKOP_OUTBOUND_METADATA_DIR: OUTBOUND_METADATA_DIR,
-        FORKOP_SECTION_CACHE_DIR: SECTION_CACHE_DIR,
-        FORKOP_RUNTIME_CACHE_FORMAT_FILE: RUNTIME_CACHE_FORMAT_FILE,
-        FORKOP_RUNTIME_CACHE_FORMAT: RUNTIME_CACHE_FORMAT,
-        FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_DIR: PERSISTENT_SUBSCRIPTION_CACHE_DIR,
-        FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE: PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE,
-        FORKOP_PENDING_RELOAD_FILE: PENDING_RELOAD_FILE,
-        FORKOP_SERVICE_INIT: SERVICE_INIT,
+        TACHYON_RUNTIME_STATE_DIR: RUNTIME_STATE_DIR,
+        TACHYON_SUBSCRIPTION_UPDATE_STATE_DIR: SUBSCRIPTION_UPDATE_STATE_DIR,
+        TACHYON_SUBSCRIPTION_LINKS_DIR: SUBSCRIPTION_LINKS_DIR,
+        TACHYON_SUBSCRIPTION_METADATA_DIR: SUBSCRIPTION_METADATA_DIR,
+        TACHYON_OUTBOUND_METADATA_DIR: OUTBOUND_METADATA_DIR,
+        TACHYON_SECTION_CACHE_DIR: SECTION_CACHE_DIR,
+        TACHYON_RUNTIME_CACHE_FORMAT_FILE: RUNTIME_CACHE_FORMAT_FILE,
+        TACHYON_RUNTIME_CACHE_FORMAT: RUNTIME_CACHE_FORMAT,
+        TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR: PERSISTENT_SUBSCRIPTION_CACHE_DIR,
+        TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE: PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE,
+        TACHYON_PENDING_RELOAD_FILE: PENDING_RELOAD_FILE,
+        TACHYON_SERVICE_INIT: SERVICE_INIT,
         SB_SERVICE_MIXED_INBOUND_ADDRESS,
         SB_SERVICE_MIXED_INBOUND_PORT,
         SB_VARIANT_STATE_FILE
@@ -2717,7 +2717,7 @@ function subscription_update_common(force, target_section, target_source_index) 
 
     if (!acquire_runtime_lock(RELOAD_LOCK_DIR, force)) {
         release_runtime_lock(SUBSCRIPTION_UPDATE_LOCK_DIR);
-        log_message("Forkop reload is already running; skipping subscription update", "info");
+        log_message("Tachyon reload is already running; skipping subscription update", "info");
         if (force)
             mark_pending_reload("reload_busy");
         return force ? 1 : 0;

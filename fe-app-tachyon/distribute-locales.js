@@ -6,7 +6,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const sourceDir = path.resolve(__dirname, 'locales');
-const targetRoot = path.resolve(__dirname, '../luci-app-forkop/po');
+const targetRoot = path.resolve(__dirname, '../luci-app-tachyon/po');
 
 async function main() {
     const files = await fs.readdir(sourceDir);
@@ -14,17 +14,17 @@ async function main() {
     for (const file of files) {
         const filePath = path.join(sourceDir, file);
 
-        if (file === 'forkop.pot') {
-            const potTarget = path.join(targetRoot, 'templates', 'forkop.pot');
+        if (file === 'tachyon.pot') {
+            const potTarget = path.join(targetRoot, 'templates', 'tachyon.pot');
             await fs.mkdir(path.dirname(potTarget), { recursive: true });
             await fs.copyFile(filePath, potTarget);
             console.log(`✅ Copied POT: ${filePath} → ${potTarget}`);
         }
 
-        const match = file.match(/^forkop\.([a-zA-Z_]+)\.po$/);
+        const match = file.match(/^tachyon\.([a-zA-Z_]+)\.po$/);
         if (match) {
             const lang = match[1];
-            const poTarget = path.join(targetRoot, lang, 'forkop.po');
+            const poTarget = path.join(targetRoot, lang, 'tachyon.po');
             await fs.mkdir(path.dirname(poTarget), { recursive: true });
             await fs.copyFile(filePath, poTarget);
             console.log(`✅ Copied ${lang.toUpperCase()}: ${filePath} → ${poTarget}`);

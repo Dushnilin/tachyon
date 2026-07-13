@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { applyUiStateToStore } from '../uiState.service';
 import { store } from '../store.service';
-import { Forkop } from '../../types';
+import { Tachyon } from '../../types';
 import {
   clearLocalActionOverlay,
   setLocalComponentAction,
@@ -11,12 +11,12 @@ import {
 } from '../localActionOverlay.service';
 
 function createUiState(
-  actions: Partial<Forkop.UiState['actions']> = {},
-  capabilities: Partial<Forkop.UiState['capabilities']> = {},
-): Forkop.UiState {
+  actions: Partial<Tachyon.UiState['actions']> = {},
+  capabilities: Partial<Tachyon.UiState['capabilities']> = {},
+): Tachyon.UiState {
   return {
     service: {
-      forkop: {
+      tachyon: {
         running: 0,
         enabled: 1,
         status: 'starting',
@@ -114,9 +114,9 @@ describe('applyUiStateToStore', () => {
       loading: false,
       failed: false,
       data: {
-        forkopEnabled: 1,
-        forkopRunning: 0,
-        forkopStatus: 'starting',
+        tachyonEnabled: 1,
+        tachyonRunning: 0,
+        tachyonStatus: 'starting',
       },
     });
     expect(state.diagnosticsSystemInfo).toMatchObject({

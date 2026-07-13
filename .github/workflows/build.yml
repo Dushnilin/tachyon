@@ -45,7 +45,7 @@ jobs:
           echo "commitish=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
   build:
-    name: Build Forkop release packages
+    name: Build Tachyon release packages
     runs-on: ubuntu-latest
     needs: preparation
     steps:
@@ -122,12 +122,12 @@ jobs:
           mkdir -p "$web_dir/releases"
 
           expected_files=(
-            "forkop_${VERSION}.ipk"
-            "forkop_${VERSION}.apk"
-            "luci-app-forkop_${VERSION}.ipk"
-            "luci-app-forkop_${VERSION}.apk"
-            "luci-i18n-forkop-ru_${VERSION}.ipk"
-            "luci-i18n-forkop-ru_${VERSION}.apk"
+            "tachyon_${VERSION}.ipk"
+            "tachyon_${VERSION}.apk"
+            "luci-app-tachyon_${VERSION}.ipk"
+            "luci-app-tachyon_${VERSION}.apk"
+            "luci-i18n-tachyon-ru_${VERSION}.ipk"
+            "luci-i18n-tachyon-ru_${VERSION}.apk"
           )
           for file_name in "${expected_files[@]}"; do
             test -s "$release_dir/$file_name"
@@ -150,7 +150,7 @@ jobs:
 
           replace_once(
               b'https://api.github.com/repos/${owner}/${repo}/releases/latest',
-              b'https://forkop.sourceforge.io/releases/latest.json',
+              b'https://tachyon.sourceforge.io/releases/latest.json',
           )
           replace_once(b'\nSING_BOX_INSTALL_VARIANT=""\n', b'\n')
           replace_once(
@@ -211,7 +211,7 @@ jobs:
           version = sys.argv[1]
           release_dir = pathlib.Path(sys.argv[2])
           output_path = pathlib.Path(sys.argv[3])
-          base_url = f"https://downloads.sourceforge.net/project/forkop/releases/{version}"
+          base_url = f"https://downloads.sourceforge.net/project/tachyon/releases/{version}"
           assets = []
           for path in sorted(release_dir.iterdir(), key=lambda item: item.name):
               assets.append({
@@ -253,9 +253,9 @@ jobs:
           set -euo pipefail
 
           sftp -i "$HOME/.ssh/sourceforge" -b - ushan0v@frs.sourceforge.net <<EOF
-          -mkdir /home/frs/project/forkop/releases
-          -mkdir /home/frs/project/forkop/releases/${VERSION}
-          put $PWD/filtered-bin/release/* /home/frs/project/forkop/releases/${VERSION}/
+          -mkdir /home/frs/project/tachyon/releases
+          -mkdir /home/frs/project/tachyon/releases/${VERSION}
+          put $PWD/filtered-bin/release/* /home/frs/project/tachyon/releases/${VERSION}/
           EOF
 
       - name: Verify SourceForge package downloads
@@ -267,7 +267,7 @@ jobs:
 
           for package_path in "$PWD"/filtered-bin/release/*; do
             package_name="$(basename "$package_path")"
-            package_url="https://downloads.sourceforge.net/project/forkop/releases/${VERSION}/${package_name}"
+            package_url="https://downloads.sourceforge.net/project/tachyon/releases/${VERSION}/${package_name}"
             download_path="$(mktemp)"
             verified=0
             for attempt in $(seq 1 12); do
@@ -293,11 +293,11 @@ jobs:
 
           web_dir="$PWD/filtered-bin/sourceforge-web"
           sftp -i "$HOME/.ssh/sourceforge" -b - ushan0v@web.sourceforge.net <<EOF
-          -mkdir /home/project-web/forkop/htdocs/releases
-          put ${web_dir}/install.sh /home/project-web/forkop/htdocs/install.sh.new
-          rename /home/project-web/forkop/htdocs/install.sh.new /home/project-web/forkop/htdocs/install.sh
-          put ${web_dir}/releases/latest.json /home/project-web/forkop/htdocs/releases/latest.json.new
-          rename /home/project-web/forkop/htdocs/releases/latest.json.new /home/project-web/forkop/htdocs/releases/latest.json
+          -mkdir /home/project-web/tachyon/htdocs/releases
+          put ${web_dir}/install.sh /home/project-web/tachyon/htdocs/install.sh.new
+          rename /home/project-web/tachyon/htdocs/install.sh.new /home/project-web/tachyon/htdocs/install.sh
+          put ${web_dir}/releases/latest.json /home/project-web/tachyon/htdocs/releases/latest.json.new
+          rename /home/project-web/tachyon/htdocs/releases/latest.json.new /home/project-web/tachyon/htdocs/releases/latest.json
           EOF
 
       - name: Verify SourceForge installer metadata
@@ -327,11 +327,11 @@ jobs:
           }
 
           verify_public_file \
-            "https://forkop.sourceforge.io/install.sh" \
+            "https://tachyon.sourceforge.io/install.sh" \
             "$web_dir/install.sh" \
             "$web_dir/published-install.sh"
           verify_public_file \
-            "https://forkop.sourceforge.io/releases/latest.json" \
+            "https://tachyon.sourceforge.io/releases/latest.json" \
             "$web_dir/releases/latest.json" \
             "$web_dir/releases/published-latest.json"
 

@@ -25,14 +25,14 @@ export { getProxyUrlName } from './helpers/getProxyUrlName';
 export { injectGlobalStyles } from './helpers/injectGlobalStyles';
 export { showToast } from './helpers/showToast';
 export { getClashUIUrl } from './helpers/getClashApiUrl';
-export { ForkopShellMethods } from './forkop/methods/shell';
-export { coreService } from './forkop/services/core.service';
-export { store } from './forkop/services/store.service';
-export { applyUiStateToStore } from './forkop/services/uiState.service';
-export { DashboardTab } from './forkop/tabs/dashboard';
-export { DiagnosticTab } from './forkop/tabs/diagnostic';
-export { MonitoringTab } from './forkop/tabs/monitoring';
-export { UpdatesTab } from './forkop/tabs/updates';
+export { TachyonShellMethods } from './tachyon/methods/shell';
+export { coreService } from './tachyon/services/core.service';
+export { store } from './tachyon/services/store.service';
+export { applyUiStateToStore } from './tachyon/services/uiState.service';
+export { DashboardTab } from './tachyon/tabs/dashboard';
+export { DiagnosticTab } from './tachyon/tabs/diagnostic';
+export { MonitoringTab } from './tachyon/tabs/monitoring';
+export { UpdatesTab } from './tachyon/tabs/updates';
 export {
   ALLOWED_WITH_RUSSIA_INSIDE,
   BOOTSTRAP_DNS_SERVER_OPTIONS,
@@ -40,7 +40,7 @@ export {
   DNS_SERVER_OPTIONS,
   DOMAIN_LIST_OPTIONS,
   LATENCY_TEST_URL_OPTIONS,
-  FORKOP_ACTION_PROVIDERS_AVAILABILITY_EVENT,
-  FORKOP_UCI_PACKAGE,
+  TACHYON_ACTION_PROVIDERS_AVAILABILITY_EVENT,
+  TACHYON_UCI_PACKAGE,
   REGIONAL_OPTIONS,
 } from './constants';

@@ -22,22 +22,22 @@ if [[ ! "$RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
 fi
 APK_INTERNAL_VERSION="$RELEASE_VERSION"
 
-WSL_NATIVE_ROOT="${WSL_NATIVE_ROOT:-$DEFAULT_BUILD_HOME/build/forkop}"
+WSL_NATIVE_ROOT="${WSL_NATIVE_ROOT:-$DEFAULT_BUILD_HOME/build/tachyon}"
 WORK_DIR="${WORK_DIR:-$ROOT_DIR/.wsl-build}"
 SDK_WORK_DIR="${SDK_WORK_DIR:-$WORK_DIR/sdk}"
-SDK_CACHE_DIR="${SDK_CACHE_DIR:-$DEFAULT_BUILD_HOME/.cache/forkop/openwrt-sdk}"
+SDK_CACHE_DIR="${SDK_CACHE_DIR:-$DEFAULT_BUILD_HOME/.cache/tachyon/openwrt-sdk}"
 IPK_SDK_URL="${IPK_SDK_URL:-https://downloads.openwrt.org/releases/24.10.6/targets/x86/64/openwrt-sdk-24.10.6-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst}"
 APK_SDK_URL="${APK_SDK_URL:-https://downloads.openwrt.org/releases/25.12.3/targets/x86/64/openwrt-sdk-25.12.3-x86-64_gcc-14.3.0_musl.Linux-x86_64.tar.zst}"
 
-BACKEND_DESCRIPTION="Rule-based Forkop backend with hybrid sing-box + zapret orchestration"
-APP_DESCRIPTION="Rule-based Forkop LuCI app with hybrid sing-box + zapret orchestration"
-I18N_DESCRIPTION="Translation for luci-app-forkop - Русский (Russian)"
+BACKEND_DESCRIPTION="Rule-based Tachyon backend with hybrid sing-box + zapret orchestration"
+APP_DESCRIPTION="Rule-based Tachyon LuCI app with hybrid sing-box + zapret orchestration"
+I18N_DESCRIPTION="Translation for luci-app-tachyon - Русский (Russian)"
 MAINTAINER="Dushnilin <dushnilin@gmail.com>"
 PROJECT_URL="https://github.com/Dushnilin/tachyon"
 BACKEND_DEPENDS_IPK="libc, ca-bundle, kmod-inet-diag, kmod-netlink-diag, kmod-tun, curl, ucode, ucode-mod-fs, ucode-mod-uci, kmod-nft-tproxy, coreutils-base64, coreutils-sort, bind-dig, nftables, kmod-nft-nat, ip-full"
 BACKEND_DEPENDS_APK="bind-dig ca-bundle coreutils-base64 coreutils-sort curl ip-full kmod-inet-diag kmod-netlink-diag kmod-nft-nat kmod-nft-tproxy kmod-tun libc nftables ucode ucode-mod-fs ucode-mod-uci"
-APP_DEPENDS_IPK="libc, luci-base, forkop"
-APP_DEPENDS_APK="libc luci-base forkop"
+APP_DEPENDS_IPK="libc, luci-base, tachyon"
+APP_DEPENDS_APK="libc luci-base tachyon"
 
 APT_PACKAGES=(
   build-essential
@@ -70,14 +70,14 @@ copy_to_native_root() {
     --exclude "dist" \
     --exclude ".idea" \
     --exclude "sandbox" \
-    --exclude "fe-app-forkop/node_modules" \
-    --exclude "fe-app-forkop/tests" \
+    --exclude "fe-app-tachyon/node_modules" \
+    --exclude "fe-app-tachyon/tests" \
     "$ROOT_DIR/" "$target_root/"
   rm -rf \
     "$target_root/.idea" \
     "$target_root/sandbox" \
-    "$target_root/fe-app-forkop/node_modules" \
-    "$target_root/fe-app-forkop/tests"
+    "$target_root/fe-app-tachyon/node_modules" \
+    "$target_root/fe-app-tachyon/tests"
 
   if [[ -n "$OUTPUT_DIR_INPUT" ]]; then
     target_output="$OUTPUT_DIR_INPUT"
@@ -172,7 +172,7 @@ extract_sdk() {
   local archive_path="$2"
   local sdk_url="$3"
   local destination="$SDK_WORK_DIR/$kind"
-  local marker_file="$destination/.forkop-sdk-url"
+  local marker_file="$destination/.tachyon-sdk-url"
   local temp_dir
   local extracted_root
 
@@ -235,18 +235,18 @@ build_backend_root() {
   make_dir "$output_root/etc/init.d"
   make_dir "$output_root/etc/config"
   make_dir "$output_root/usr/bin"
-  make_dir "$output_root/usr/lib/forkop"
+  make_dir "$output_root/usr/lib/tachyon"
 
-  install -m 0755 "$ROOT_DIR/forkop/files/etc/init.d/forkop" "$output_root/etc/init.d/forkop"
-  install -m 0644 "$ROOT_DIR/forkop/files/etc/config/forkop" "$output_root/etc/config/forkop"
-  install -m 0755 "$ROOT_DIR/forkop/files/usr/bin/forkop" "$output_root/usr/bin/forkop"
-  cp -a "$ROOT_DIR/forkop/files/usr/lib/." "$output_root/usr/lib/forkop/"
+  install -m 0755 "$ROOT_DIR/tachyon/files/etc/init.d/tachyon" "$output_root/etc/init.d/tachyon"
+  install -m 0644 "$ROOT_DIR/tachyon/files/etc/config/tachyon" "$output_root/etc/config/tachyon"
+  install -m 0755 "$ROOT_DIR/tachyon/files/usr/bin/tachyon" "$output_root/usr/bin/tachyon"
+  cp -a "$ROOT_DIR/tachyon/files/usr/lib/." "$output_root/usr/lib/tachyon/"
 
   sed -i -e "s/__COMPILED_VERSION_VARIABLE__/${RELEASE_VERSION}/g" \
-    "$output_root/usr/lib/forkop/core/constants.uc"
+    "$output_root/usr/lib/tachyon/core/constants.uc"
 
   normalize_package_root_modes "$output_root"
-  chmod 0755 "$output_root/etc/init.d/forkop" "$output_root/usr/bin/forkop"
+  chmod 0755 "$output_root/etc/init.d/tachyon" "$output_root/usr/bin/tachyon"
 }
 
 build_app_root() {
@@ -255,17 +255,17 @@ build_app_root() {
   rm -rf "$output_root"
   make_dir "$output_root/www"
 
-  if [[ -d "$ROOT_DIR/luci-app-forkop/htdocs" ]]; then
-    cp -a "$ROOT_DIR/luci-app-forkop/htdocs/." "$output_root/www/"
+  if [[ -d "$ROOT_DIR/luci-app-tachyon/htdocs" ]]; then
+    cp -a "$ROOT_DIR/luci-app-tachyon/htdocs/." "$output_root/www/"
   fi
 
-  if [[ -d "$ROOT_DIR/luci-app-forkop/root" ]]; then
-    cp -a "$ROOT_DIR/luci-app-forkop/root/." "$output_root/"
+  if [[ -d "$ROOT_DIR/luci-app-tachyon/root" ]]; then
+    cp -a "$ROOT_DIR/luci-app-tachyon/root/." "$output_root/"
   fi
 
-  if [[ -f "$output_root/www/luci-static/resources/view/forkop/main.js" ]]; then
+  if [[ -f "$output_root/www/luci-static/resources/view/tachyon/main.js" ]]; then
     sed -i -e "s/__COMPILED_VERSION_VARIABLE__/${RELEASE_VERSION}/g" \
-      "$output_root/www/luci-static/resources/view/forkop/main.js"
+      "$output_root/www/luci-static/resources/view/tachyon/main.js"
   fi
 
   normalize_package_root_modes "$output_root"
@@ -275,17 +275,17 @@ build_app_root() {
 build_i18n_root() {
   local output_root="$1"
   local po2lmo_bin="$2"
-  local lmo_path="$output_root/usr/lib/lua/luci/i18n/forkop.ru.lmo"
+  local lmo_path="$output_root/usr/lib/lua/luci/i18n/tachyon.ru.lmo"
 
   rm -rf "$output_root"
   make_dir "$output_root/etc/uci-defaults"
   make_dir "$(dirname "$lmo_path")"
 
-  cat > "$output_root/etc/uci-defaults/luci-i18n-forkop-ru" <<'EOF'
+  cat > "$output_root/etc/uci-defaults/luci-i18n-tachyon-ru" <<'EOF'
 uci set luci.languages.ru='Русский (Russian)'; uci commit luci
 EOF
 
-  "$po2lmo_bin" "$ROOT_DIR/luci-app-forkop/po/ru/forkop.po" "$lmo_path"
+  "$po2lmo_bin" "$ROOT_DIR/luci-app-tachyon/po/ru/tachyon.po" "$lmo_path"
 
   normalize_package_root_modes "$output_root"
   find "$output_root/etc/uci-defaults" -type f -exec chmod 0755 {} + 2>/dev/null || true
@@ -326,7 +326,7 @@ write_backend_ipk_control() {
   make_dir "$control_dir"
 
   cat > "$control_dir/control" <<EOF
-Package: forkop
+Package: tachyon
 Version: ${RELEASE_VERSION}
 Depends: ${BACKEND_DEPENDS_IPK}
 License: GPL-2.0-or-later
@@ -339,20 +339,20 @@ Description: ${BACKEND_DESCRIPTION}
 EOF
 
   cat > "$control_dir/conffiles" <<'EOF'
-/etc/config/forkop
+/etc/config/tachyon
 EOF
 
   cat > "$control_dir/postinst" <<'EOF'
 #!/bin/sh
 [ -n "${IPKG_INSTROOT}" ] && exit 0
-FORKOP_LIB=/usr/lib/forkop ucode -L /usr/lib/forkop /usr/lib/forkop/config/migration.uc migrate
+TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate
 EOF
 
   cat > "$control_dir/prerm" <<'EOF'
 #!/usr/bin/ucode
 
 if (getenv("IPKG_INSTROOT") == null || getenv("IPKG_INSTROOT") == "")
-	system("/usr/bin/forkop package_prerm >/dev/null 2>&1");
+	system("/usr/bin/tachyon package_prerm >/dev/null 2>&1");
 
 exit(0);
 EOF
@@ -368,7 +368,7 @@ write_app_ipk_control() {
   make_dir "$control_dir"
 
   cat > "$control_dir/control" <<EOF
-Package: luci-app-forkop
+Package: luci-app-tachyon
 Version: ${RELEASE_VERSION}
 Depends: ${APP_DEPENDS_IPK}
 License: GPL-2.0-or-later
@@ -389,7 +389,7 @@ default_postinst $0 $@
 EOF
 
   cat > "$control_dir/postinst-pkg" <<'EOF'
-[ -n "${IPKG_INSTROOT}" ] || /usr/bin/forkop luci_postinst >/dev/null 2>&1 || true
+[ -n "${IPKG_INSTROOT}" ] || /usr/bin/tachyon luci_postinst >/dev/null 2>&1 || true
 EOF
 
   cat > "$control_dir/prerm" <<'EOF'
@@ -410,9 +410,9 @@ write_i18n_ipk_control() {
   make_dir "$control_dir"
 
   cat > "$control_dir/control" <<EOF
-Package: luci-i18n-forkop-ru
+Package: luci-i18n-tachyon-ru
 Version: ${RELEASE_VERSION}
-Depends: libc, luci-app-forkop
+Depends: libc, luci-app-tachyon
 License: GPL-2.0-or-later
 Section: luci
 URL: ${PROJECT_URL}
@@ -494,7 +494,7 @@ EOF
   cat > "$scripts_dir/backend-post-install.sh" <<'EOF'
 #!/usr/bin/ucode
 if (getenv("IPKG_INSTROOT") == null || getenv("IPKG_INSTROOT") == "")
-    exit(system("FORKOP_LIB=/usr/lib/forkop ucode -L /usr/lib/forkop /usr/lib/forkop/config/migration.uc migrate"));
+    exit(system("TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate"));
 exit(0);
 EOF
 
@@ -502,7 +502,7 @@ EOF
 #!/usr/bin/ucode
 
 if (getenv("IPKG_INSTROOT") == null || getenv("IPKG_INSTROOT") == "")
-	system("/usr/bin/forkop package_prerm >/dev/null 2>&1");
+	system("/usr/bin/tachyon package_prerm >/dev/null 2>&1");
 
 exit(0);
 EOF
@@ -515,7 +515,7 @@ EOF
   cat > "$scripts_dir/backend-post-upgrade.sh" <<'EOF'
 #!/usr/bin/ucode
 if (getenv("IPKG_INSTROOT") == null || getenv("IPKG_INSTROOT") == "")
-    exit(system("FORKOP_LIB=/usr/lib/forkop ucode -L /usr/lib/forkop /usr/lib/forkop/config/migration.uc migrate"));
+    exit(system("TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate"));
 exit(0);
 EOF
 
@@ -538,10 +538,10 @@ EOF
 [ -s ${IPKG_INSTROOT}/lib/functions.sh ] || exit 0
 . ${IPKG_INSTROOT}/lib/functions.sh
 export root="${IPKG_INSTROOT}"
-export pkgname="luci-app-forkop"
+export pkgname="luci-app-tachyon"
 add_group_and_user
 default_postinst
-[ -n "${IPKG_INSTROOT}" ] || /usr/bin/forkop luci_postinst >/dev/null 2>&1 || true
+[ -n "${IPKG_INSTROOT}" ] || /usr/bin/tachyon luci_postinst >/dev/null 2>&1 || true
 EOF
 
   cat > "$scripts_dir/app-pre-deinstall.sh" <<'EOF'
@@ -549,7 +549,7 @@ EOF
 [ -s ${IPKG_INSTROOT}/lib/functions.sh ] || exit 0
 . ${IPKG_INSTROOT}/lib/functions.sh
 export root="${IPKG_INSTROOT}"
-export pkgname="luci-app-forkop"
+export pkgname="luci-app-tachyon"
 default_prerm
 exit 0
 EOF
@@ -566,10 +566,10 @@ export PKG_UPGRADE=1
 [ -s ${IPKG_INSTROOT}/lib/functions.sh ] || exit 0
 . ${IPKG_INSTROOT}/lib/functions.sh
 export root="${IPKG_INSTROOT}"
-export pkgname="luci-app-forkop"
+export pkgname="luci-app-tachyon"
 add_group_and_user
 default_postinst
-[ -n "${IPKG_INSTROOT}" ] || /usr/bin/forkop luci_postinst >/dev/null 2>&1 || true
+[ -n "${IPKG_INSTROOT}" ] || /usr/bin/tachyon luci_postinst >/dev/null 2>&1 || true
 EOF
 
   chmod 0755 "$scripts_dir"/app-*.sh
@@ -591,7 +591,7 @@ EOF
 [ -s ${IPKG_INSTROOT}/lib/functions.sh ] || exit 0
 . ${IPKG_INSTROOT}/lib/functions.sh
 export root="${IPKG_INSTROOT}"
-export pkgname="luci-i18n-forkop-ru"
+export pkgname="luci-i18n-tachyon-ru"
 add_group_and_user
 default_postinst
 EOF
@@ -601,7 +601,7 @@ EOF
 [ -s ${IPKG_INSTROOT}/lib/functions.sh ] || exit 0
 . ${IPKG_INSTROOT}/lib/functions.sh
 export root="${IPKG_INSTROOT}"
-export pkgname="luci-i18n-forkop-ru"
+export pkgname="luci-i18n-tachyon-ru"
 default_prerm
 EOF
 
@@ -617,7 +617,7 @@ export PKG_UPGRADE=1
 [ -s ${IPKG_INSTROOT}/lib/functions.sh ] || exit 0
 . ${IPKG_INSTROOT}/lib/functions.sh
 export root="${IPKG_INSTROOT}"
-export pkgname="luci-i18n-forkop-ru"
+export pkgname="luci-i18n-tachyon-ru"
 add_group_and_user
 default_postinst
 EOF
@@ -654,7 +654,7 @@ build_apk_package() {
       -I "description:${description}" \
       -I "arch:noarch" \
       -I "license:GPL-2.0-or-later" \
-      -I "origin:forkop" \
+      -I "origin:tachyon" \
       -I "maintainer:${maintainer}" \
       -I "url:${PROJECT_URL}" \
       -I "depends:${depends}" \
@@ -673,7 +673,7 @@ build_apk_package() {
       -I "description:${description}" \
       -I "arch:noarch" \
       -I "license:GPL-2.0-or-later" \
-      -I "origin:forkop" \
+      -I "origin:tachyon" \
       -I "maintainer:${maintainer}" \
       -I "url:${PROJECT_URL}" \
       -I "depends:${depends}" \
@@ -695,7 +695,7 @@ build_apk_package() {
         -I 'description:${description}' \
         -I 'arch:noarch' \
         -I 'license:GPL-2.0-or-later' \
-        -I 'origin:forkop' \
+        -I 'origin:tachyon' \
         -I 'maintainer:${maintainer}' \
         -I 'url:${PROJECT_URL}' \
         -I 'depends:${depends}' \
@@ -717,7 +717,7 @@ build_apk_package() {
         -I 'description:${description}' \
         -I 'arch:noarch' \
         -I 'license:GPL-2.0-or-later' \
-        -I 'origin:forkop' \
+        -I 'origin:tachyon' \
         -I 'maintainer:${maintainer}' \
         -I 'url:${PROJECT_URL}' \
         -I 'depends:${depends}' \
@@ -798,17 +798,17 @@ sync_artifacts_to_windows() {
   fi
 
   rm -f \
-    "$WINDOWS_ARTIFACTS_DIR"/forkop_* \
-    "$WINDOWS_ARTIFACTS_DIR"/luci-app-forkop_* \
-    "$WINDOWS_ARTIFACTS_DIR"/luci-i18n-forkop-ru_*
+    "$WINDOWS_ARTIFACTS_DIR"/tachyon_* \
+    "$WINDOWS_ARTIFACTS_DIR"/luci-app-tachyon_* \
+    "$WINDOWS_ARTIFACTS_DIR"/luci-i18n-tachyon-ru_*
 
   cp -f \
-    "$output_dir"/forkop_"${RELEASE_VERSION}".ipk \
-    "$output_dir"/luci-app-forkop_"${RELEASE_VERSION}".ipk \
-    "$output_dir"/luci-i18n-forkop-ru_"${RELEASE_VERSION}".ipk \
-    "$output_dir"/forkop_"${RELEASE_VERSION}".apk \
-    "$output_dir"/luci-app-forkop_"${RELEASE_VERSION}".apk \
-    "$output_dir"/luci-i18n-forkop-ru_"${RELEASE_VERSION}".apk \
+    "$output_dir"/tachyon_"${RELEASE_VERSION}".ipk \
+    "$output_dir"/luci-app-tachyon_"${RELEASE_VERSION}".ipk \
+    "$output_dir"/luci-i18n-tachyon-ru_"${RELEASE_VERSION}".ipk \
+    "$output_dir"/tachyon_"${RELEASE_VERSION}".apk \
+    "$output_dir"/luci-app-tachyon_"${RELEASE_VERSION}".apk \
+    "$output_dir"/luci-i18n-tachyon-ru_"${RELEASE_VERSION}".apk \
     "$WINDOWS_ARTIFACTS_DIR"/
 
   echo "Synced artifacts to Windows path: $WINDOWS_ARTIFACTS_DIR" >&2
@@ -853,7 +853,7 @@ main() {
   mkdir -p "$WORK_DIR"
   output_dir="${OUTPUT_DIR_INPUT:-$ROOT_DIR/dist/release-final}"
   mkdir -p "$output_dir"
-  rm -f "$output_dir"/forkop_* "$output_dir"/luci-app-forkop_* "$output_dir"/luci-i18n-forkop-ru_*
+  rm -f "$output_dir"/tachyon_* "$output_dir"/luci-app-tachyon_* "$output_dir"/luci-i18n-tachyon-ru_*
 
   ipk_archive="$(download_sdk_archive "$IPK_SDK_URL")"
   apk_archive="$(download_sdk_archive "$APK_SDK_URL")"
@@ -880,74 +880,74 @@ main() {
 
   build_ipk_package \
     "$ipkg_build_bin" \
-    "forkop" \
+    "tachyon" \
     "$backend_root" \
     "$backend_control" \
-    "$output_dir/forkop_${RELEASE_VERSION}.ipk"
+    "$output_dir/tachyon_${RELEASE_VERSION}.ipk"
 
   build_ipk_package \
     "$ipkg_build_bin" \
-    "luci-app-forkop" \
+    "luci-app-tachyon" \
     "$app_root" \
     "$app_control" \
-    "$output_dir/luci-app-forkop_${RELEASE_VERSION}.ipk"
+    "$output_dir/luci-app-tachyon_${RELEASE_VERSION}.ipk"
 
   build_ipk_package \
     "$ipkg_build_bin" \
-    "luci-i18n-forkop-ru" \
+    "luci-i18n-tachyon-ru" \
     "$i18n_root" \
     "$i18n_control" \
-    "$output_dir/luci-i18n-forkop-ru_${RELEASE_VERSION}.ipk"
+    "$output_dir/luci-i18n-tachyon-ru_${RELEASE_VERSION}.ipk"
 
-  generate_apk_metadata_files "forkop" "$backend_root" "/etc/config/forkop"
-  generate_apk_metadata_files "luci-app-forkop" "$app_root"
-  generate_apk_metadata_files "luci-i18n-forkop-ru" "$i18n_root"
+  generate_apk_metadata_files "tachyon" "$backend_root" "/etc/config/tachyon"
+  generate_apk_metadata_files "luci-app-tachyon" "$app_root"
+  generate_apk_metadata_files "luci-i18n-tachyon-ru" "$i18n_root"
   write_backend_apk_scripts "$apk_scripts"
   write_app_apk_scripts "$apk_scripts"
   write_i18n_apk_scripts "$apk_scripts"
 
   build_apk_package \
     "$apk_bin" \
-    "forkop" \
+    "tachyon" \
     "$APK_INTERNAL_VERSION" \
     "$BACKEND_DESCRIPTION" \
     "$BACKEND_DEPENDS_APK" \
     "$backend_root" \
     "$apk_scripts" \
     "backend" \
-    "$output_dir/forkop_${RELEASE_VERSION}.apk" \
+    "$output_dir/tachyon_${RELEASE_VERSION}.apk" \
     "$MAINTAINER"
 
   build_apk_package \
     "$apk_bin" \
-    "luci-app-forkop" \
+    "luci-app-tachyon" \
     "$APK_INTERNAL_VERSION" \
     "$APP_DESCRIPTION" \
     "$APP_DEPENDS_APK" \
     "$app_root" \
     "$apk_scripts" \
     "app" \
-    "$output_dir/luci-app-forkop_${RELEASE_VERSION}.apk" \
+    "$output_dir/luci-app-tachyon_${RELEASE_VERSION}.apk" \
     "$MAINTAINER"
 
   build_apk_package \
     "$apk_bin" \
-    "luci-i18n-forkop-ru" \
+    "luci-i18n-tachyon-ru" \
     "$APK_INTERNAL_VERSION" \
     "$I18N_DESCRIPTION" \
-    "libc luci-app-forkop" \
+    "libc luci-app-tachyon" \
     "$i18n_root" \
     "$apk_scripts" \
     "i18n" \
-    "$output_dir/luci-i18n-forkop-ru_${RELEASE_VERSION}.apk" \
+    "$output_dir/luci-i18n-tachyon-ru_${RELEASE_VERSION}.apk" \
     "$MAINTAINER"
 
-  verify_ipk_metadata "$output_dir/forkop_${RELEASE_VERSION}.ipk" "forkop" "$RELEASE_VERSION"
-  verify_ipk_metadata "$output_dir/luci-app-forkop_${RELEASE_VERSION}.ipk" "luci-app-forkop" "$RELEASE_VERSION"
-  verify_ipk_metadata "$output_dir/luci-i18n-forkop-ru_${RELEASE_VERSION}.ipk" "luci-i18n-forkop-ru" "$RELEASE_VERSION"
-  verify_apk_metadata "$apk_bin" "$output_dir/forkop_${RELEASE_VERSION}.apk" "forkop" "$APK_INTERNAL_VERSION"
-  verify_apk_metadata "$apk_bin" "$output_dir/luci-app-forkop_${RELEASE_VERSION}.apk" "luci-app-forkop" "$APK_INTERNAL_VERSION"
-  verify_apk_metadata "$apk_bin" "$output_dir/luci-i18n-forkop-ru_${RELEASE_VERSION}.apk" "luci-i18n-forkop-ru" "$APK_INTERNAL_VERSION"
+  verify_ipk_metadata "$output_dir/tachyon_${RELEASE_VERSION}.ipk" "tachyon" "$RELEASE_VERSION"
+  verify_ipk_metadata "$output_dir/luci-app-tachyon_${RELEASE_VERSION}.ipk" "luci-app-tachyon" "$RELEASE_VERSION"
+  verify_ipk_metadata "$output_dir/luci-i18n-tachyon-ru_${RELEASE_VERSION}.ipk" "luci-i18n-tachyon-ru" "$RELEASE_VERSION"
+  verify_apk_metadata "$apk_bin" "$output_dir/tachyon_${RELEASE_VERSION}.apk" "tachyon" "$APK_INTERNAL_VERSION"
+  verify_apk_metadata "$apk_bin" "$output_dir/luci-app-tachyon_${RELEASE_VERSION}.apk" "luci-app-tachyon" "$APK_INTERNAL_VERSION"
+  verify_apk_metadata "$apk_bin" "$output_dir/luci-i18n-tachyon-ru_${RELEASE_VERSION}.apk" "luci-i18n-tachyon-ru" "$APK_INTERNAL_VERSION"
 
   cleanup_work_dir
   sync_artifacts_to_windows "$output_dir"

@@ -8,7 +8,7 @@ import { copyToClipboard } from '../../../helpers/copyToClipboard';
 import { showToast } from '../../../helpers/showToast';
 import { prettyBytes } from '../../../helpers/prettyBytes';
 import { renderCopyIcon24 } from '../../../icons';
-import { CustomForkopMethods, ForkopShellMethods } from '../../methods';
+import { CustomTachyonMethods, TachyonShellMethods } from '../../methods';
 import {
   logger,
   markUiActionOwned,
@@ -22,7 +22,7 @@ import {
 import { getLatencyTestLabel, renderSections, renderWidget } from './partials';
 import { fetchServicesInfo } from '../../fetchers/fetchServicesInfo';
 import { getClashApiSecret } from '../../methods/custom/getClashApiSecret';
-import { Forkop } from '../../types';
+import { Tachyon } from '../../types';
 import {
   getCachedRuntimeUiState,
   refreshRuntimeUiState,
@@ -79,7 +79,7 @@ async function fetchDashboardSectionsOnce(mountId: number) {
   });
 
   try {
-    const { data, success } = await CustomForkopMethods.getDashboardSections();
+    const { data, success } = await CustomTachyonMethods.getDashboardSections();
 
     if (
       !dashboardMounted ||
@@ -219,7 +219,7 @@ function setLatencyFetching(
   sectionName: string,
   fetching: boolean,
   local = false,
-  progress?: Forkop.LatencyActionProgress,
+  progress?: Tachyon.LatencyActionProgress,
 ) {
   if (local || !fetching) {
     setLocalLatencyAction(sectionName, fetching && local);
@@ -255,7 +255,7 @@ function setLatencyFetching(
 async function completeSubscriptionUpdateJob(
   jobId: string,
   sectionName: string,
-  response: Forkop.MethodResponse<Forkop.SubscriptionUpdateJobState>,
+  response: Tachyon.MethodResponse<Tachyon.SubscriptionUpdateJobState>,
 ) {
   if (pageUnloading) {
     setSubscriptionUpdating(sectionName, false);
@@ -287,7 +287,7 @@ async function completeSubscriptionUpdateJob(
   setSubscriptionUpdating(sectionName, false);
 
   if (jobId && response.success) {
-    void ForkopShellMethods.uiActionAck('subscription', jobId);
+    void TachyonShellMethods.uiActionAck('subscription', jobId);
   }
 
   if (failed) {
@@ -305,7 +305,7 @@ async function completeSubscriptionUpdateJob(
 }
 
 async function followSubscriptionUpdateState(
-  state: Forkop.SubscriptionUpdateJobState,
+  state: Tachyon.SubscriptionUpdateJobState,
 ) {
   const jobId = state.job_id;
   const sectionName = state.section || '';
@@ -325,11 +325,11 @@ async function followSubscriptionUpdateState(
 
   try {
     const response = state.running
-      ? await ForkopShellMethods.waitSubscriptionUpdateJob(jobId)
+      ? await TachyonShellMethods.waitSubscriptionUpdateJob(jobId)
       : ({
           success: true,
           data: state,
-        } as Forkop.MethodSuccessResponse<Forkop.SubscriptionUpdateJobState>);
+        } as Tachyon.MethodSuccessResponse<Tachyon.SubscriptionUpdateJobState>);
 
     await completeSubscriptionUpdateJob(jobId, sectionName, response);
   } catch (error) {
@@ -366,13 +366,13 @@ async function completeLatencyTestJob(jobId: string, sectionName: string) {
   }
 
   if (jobId) {
-    void ForkopShellMethods.uiActionAck('latency', jobId);
+    void TachyonShellMethods.uiActionAck('latency', jobId);
   }
 
   void fetchDashboardSections({ force: true });
 }
 
-async function followLatencyTestState(state: Forkop.LatencyActionState) {
+async function followLatencyTestState(state: Tachyon.LatencyActionState) {
   const jobId = state.job_id;
   const sectionName = state.section || '';
 
@@ -391,7 +391,7 @@ async function followLatencyTestState(state: Forkop.LatencyActionState) {
 
   try {
     if (state.running) {
-      await ForkopShellMethods.waitLatencyTestJob(jobId);
+      await TachyonShellMethods.waitLatencyTestJob(jobId);
     }
 
     await completeLatencyTestJob(jobId, sectionName);
@@ -405,13 +405,13 @@ async function followLatencyTestState(state: Forkop.LatencyActionState) {
   }
 }
 
-function followDashboardActionsFromUiState(uiState: Forkop.UiState) {
+function followDashboardActionsFromUiState(uiState: Tachyon.UiState) {
   for (const state of uiState.actions.subscription || []) {
     if (state.running || (state.job_id && state.section)) {
       void followSubscriptionUpdateState(state);
     } else if (state.job_id && !handledSubscriptionJobs.has(state.job_id)) {
       handledSubscriptionJobs.add(state.job_id);
-      void ForkopShellMethods.uiActionAck('subscription', state.job_id);
+      void TachyonShellMethods.uiActionAck('subscription', state.job_id);
     }
   }
 
@@ -420,7 +420,7 @@ function followDashboardActionsFromUiState(uiState: Forkop.UiState) {
       void followLatencyTestState(state);
     } else if (state.job_id && !handledLatencyJobs.has(state.job_id)) {
       handledLatencyJobs.add(state.job_id);
-      void ForkopShellMethods.uiActionAck('latency', state.job_id);
+      void TachyonShellMethods.uiActionAck('latency', state.job_id);
     }
   }
 }
@@ -571,7 +571,7 @@ function getDashboardServiceAvailability() {
   return getServiceAvailability({
     loading: service.loading,
     failed: service.failed,
-    running: service.data.forkopRunning,
+    running: service.data.tachyonRunning,
   });
 }
 
@@ -646,7 +646,7 @@ async function handleChooseOutbound(
   setSelectorSwitching(sectionName, tag);
 
   try {
-    await ForkopShellMethods.setClashApiGroupProxy(selector, tag);
+    await TachyonShellMethods.setClashApiGroupProxy(selector, tag);
     await fetchDashboardSections({ force: true });
   } finally {
     setSelectorSwitching(sectionName);
@@ -654,9 +654,9 @@ async function handleChooseOutbound(
 }
 
 function getInitialLatencyProgress(
-  latencyType: Forkop.LatencyActionState['latency_type'],
+  latencyType: Tachyon.LatencyActionState['latency_type'],
   tag: string,
-): Forkop.LatencyActionProgress | undefined {
+): Tachyon.LatencyActionProgress | undefined {
   if (latencyType !== 'proxy_list') {
     return undefined;
   }
@@ -678,7 +678,7 @@ function getInitialLatencyProgress(
 }
 
 async function handleTestLatency(
-  latencyType: Forkop.LatencyActionState['latency_type'],
+  latencyType: Tachyon.LatencyActionState['latency_type'],
   sectionName: string,
   tag: string,
   timeout?: string,
@@ -698,7 +698,7 @@ async function handleTestLatency(
   let completed = false;
 
   try {
-    const startResponse = await ForkopShellMethods.latencyTestStart(
+    const startResponse = await TachyonShellMethods.latencyTestStart(
       latencyType,
       sectionName,
       tag,
@@ -717,7 +717,7 @@ async function handleTestLatency(
 
     followedLatencyJobs.add(jobId);
     ownsJobFollow = true;
-    await ForkopShellMethods.waitLatencyTestJob(jobId);
+    await TachyonShellMethods.waitLatencyTestJob(jobId);
     await completeLatencyTestJob(jobId, sectionName);
     completed = true;
   } catch (error) {
@@ -734,8 +734,8 @@ async function handleTestLatency(
 }
 
 async function handleCopyOutbound(
-  section: Forkop.OutboundGroup,
-  outbound: Forkop.Outbound,
+  section: Tachyon.OutboundGroup,
+  outbound: Tachyon.Outbound,
 ) {
   const link = outbound.link;
 
@@ -744,7 +744,7 @@ async function handleCopyOutbound(
     return;
   }
 
-  const response = await ForkopShellMethods.getOutboundLink(
+  const response = await TachyonShellMethods.getOutboundLink(
     section.sectionName,
     outbound.code,
   );
@@ -817,7 +817,7 @@ function getDetectedCountryFlag(country?: string) {
   );
 }
 
-function renderDetailsMemberName(member: Forkop.UrlTestMember) {
+function renderDetailsMemberName(member: Tachyon.UrlTestMember) {
   const countryFlag = getDetectedCountryFlag(member.country);
   if (!countryFlag) {
     return member.displayName;
@@ -833,7 +833,7 @@ function renderDetailsMemberName(member: Forkop.UrlTestMember) {
   ];
 }
 
-function renderUrlTestSelectedValue(info: Forkop.UrlTestInfo) {
+function renderUrlTestSelectedValue(info: Tachyon.UrlTestInfo) {
   const selectedMember = info.outbounds.find((member) => member.selected);
   const selectedName =
     selectedMember?.displayName || info.selectedName || info.selectedCode || '';
@@ -892,8 +892,8 @@ function renderUrlTestCopyButton(
 }
 
 function renderUrlTestInfoModal(
-  section: Forkop.OutboundGroup,
-  outbound: Forkop.Outbound,
+  section: Tachyon.OutboundGroup,
+  outbound: Tachyon.Outbound,
 ) {
   const info = outbound.urlTestInfo;
 
@@ -1031,8 +1031,8 @@ function renderUrlTestInfoModal(
 }
 
 function handleShowUrlTestInfo(
-  section: Forkop.OutboundGroup,
-  outbound: Forkop.Outbound,
+  section: Tachyon.OutboundGroup,
+  outbound: Tachyon.Outbound,
 ) {
   if (!outbound.urlTestInfo) {
     return;
@@ -1046,7 +1046,7 @@ function handleShowUrlTestInfo(
   );
 }
 
-function renderPrioritySelectedValue(info: Forkop.PriorityInfo) {
+function renderPrioritySelectedValue(info: Tachyon.PriorityInfo) {
   const selectedMember = info.outbounds.find((member) => member.selected);
   const selectedName =
     selectedMember?.displayName || info.selectedName || info.selectedCode || '';
@@ -1096,7 +1096,7 @@ function renderPrioritySelectedValue(info: Forkop.PriorityInfo) {
   );
 }
 
-function renderPriorityMemberName(member: Forkop.PriorityMember) {
+function renderPriorityMemberName(member: Tachyon.PriorityMember) {
   const levelName = member.levelName || _('Level');
 
   return [
@@ -1119,8 +1119,8 @@ function renderPriorityMemberName(member: Forkop.PriorityMember) {
 }
 
 function renderPriorityInfoModal(
-  section: Forkop.OutboundGroup,
-  outbound: Forkop.Outbound,
+  section: Tachyon.OutboundGroup,
+  outbound: Tachyon.Outbound,
 ) {
   const info = outbound.priorityInfo;
 
@@ -1287,8 +1287,8 @@ function renderPriorityInfoModal(
 }
 
 function handleShowPriorityInfo(
-  section: Forkop.OutboundGroup,
-  outbound: Forkop.Outbound,
+  section: Tachyon.OutboundGroup,
+  outbound: Tachyon.Outbound,
 ) {
   if (!outbound.priorityInfo) {
     return;
@@ -1302,7 +1302,7 @@ function handleShowPriorityInfo(
   );
 }
 
-async function handleUpdateSubscription(section: Forkop.OutboundGroup) {
+async function handleUpdateSubscription(section: Tachyon.OutboundGroup) {
   if (
     store.get().sectionsWidget.subscriptionUpdatingSections[section.sectionName]
   ) {
@@ -1314,7 +1314,7 @@ async function handleUpdateSubscription(section: Forkop.OutboundGroup) {
   let ownsJobFollow = false;
 
   try {
-    const startResponse = await ForkopShellMethods.subscriptionUpdateStart(
+    const startResponse = await TachyonShellMethods.subscriptionUpdateStart(
       section.sectionName,
     );
 
@@ -1330,7 +1330,7 @@ async function handleUpdateSubscription(section: Forkop.OutboundGroup) {
 
     followedSubscriptionJobs.add(jobId);
     ownsJobFollow = true;
-    const response = await ForkopShellMethods.waitSubscriptionUpdateJob(jobId);
+    const response = await TachyonShellMethods.waitSubscriptionUpdateJob(jobId);
     await completeSubscriptionUpdateJob(jobId, section.sectionName, response);
   } catch (error) {
     logger.error('[DASHBOARD]', 'handleUpdateSubscription: failed', error);
@@ -1670,12 +1670,12 @@ async function renderServicesInfoWidget() {
     title: _('Services info'),
     items: [
       {
-        key: 'Forkop',
-        value: servicesInfoWidget.data.forkopRunning
+        key: 'Tachyon',
+        value: servicesInfoWidget.data.tachyonRunning
           ? _('✔ Running')
           : _('✘ Stopped'),
         attributes: {
-          class: servicesInfoWidget.data.forkopRunning
+          class: servicesInfoWidget.data.tachyonRunning
             ? 'fkp_dashboard-page__widgets-section__item__row--success'
             : 'fkp_dashboard-page__widgets-section__item__row--error',
         },

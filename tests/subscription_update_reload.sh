@@ -2,8 +2,8 @@
 set -eo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-UPDATES_UC="$ROOT_DIR/forkop/files/usr/lib/components/updates.uc"
-REAL_LIB="$ROOT_DIR/forkop/files/usr/lib"
+UPDATES_UC="$ROOT_DIR/tachyon/files/usr/lib/components/updates.uc"
+REAL_LIB="$ROOT_DIR/tachyon/files/usr/lib"
 WORK_DIR="$(mktemp -d)"
 
 cleanup() {
@@ -116,22 +116,22 @@ run_update() {
 
   : >"$log"
   env \
-    FORKOP_LIB="$FAKE_LIB" \
-    FORKOP_RUNTIME_STATE_DIR="$WORK_DIR/run" \
-    FORKOP_SUBSCRIPTION_UPDATE_LOCK_DIR="$WORK_DIR/run/subscription-update.lock" \
-    FORKOP_RELOAD_LOCK_DIR="$WORK_DIR/run/reload.lock" \
-    FORKOP_SUBSCRIPTION_UPDATE_STATE_DIR="$WORK_DIR/run/subscription-update" \
-    FORKOP_SUBSCRIPTION_UPDATE_JOB_DIR="$WORK_DIR/run/subscription-update-jobs" \
-    FORKOP_SUBSCRIPTION_LINKS_DIR="$WORK_DIR/run/subscription-links" \
-    FORKOP_SUBSCRIPTION_METADATA_DIR="$WORK_DIR/run/subscription-metadata" \
-    FORKOP_OUTBOUND_METADATA_DIR="$WORK_DIR/run/outbound-metadata" \
-    FORKOP_SECTION_CACHE_DIR="$WORK_DIR/run/section-cache" \
-    FORKOP_RUNTIME_CACHE_FORMAT_FILE="$WORK_DIR/run/cache-format" \
-    FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_DIR="$WORK_DIR/persistent/subscription-cache" \
-    FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE="$WORK_DIR/persistent/subscription-cache/cache-format" \
-    FORKOP_PENDING_RELOAD_FILE="$WORK_DIR/run/reload.pending" \
-    FORKOP_RELOAD_STATE_FILE="$WORK_DIR/run/reload-state" \
-    FORKOP_RULE_CONDITION_CACHE_DIR="$WORK_DIR/run/rule-condition-cache" \
+    TACHYON_LIB="$FAKE_LIB" \
+    TACHYON_RUNTIME_STATE_DIR="$WORK_DIR/run" \
+    TACHYON_SUBSCRIPTION_UPDATE_LOCK_DIR="$WORK_DIR/run/subscription-update.lock" \
+    TACHYON_RELOAD_LOCK_DIR="$WORK_DIR/run/reload.lock" \
+    TACHYON_SUBSCRIPTION_UPDATE_STATE_DIR="$WORK_DIR/run/subscription-update" \
+    TACHYON_SUBSCRIPTION_UPDATE_JOB_DIR="$WORK_DIR/run/subscription-update-jobs" \
+    TACHYON_SUBSCRIPTION_LINKS_DIR="$WORK_DIR/run/subscription-links" \
+    TACHYON_SUBSCRIPTION_METADATA_DIR="$WORK_DIR/run/subscription-metadata" \
+    TACHYON_OUTBOUND_METADATA_DIR="$WORK_DIR/run/outbound-metadata" \
+    TACHYON_SECTION_CACHE_DIR="$WORK_DIR/run/section-cache" \
+    TACHYON_RUNTIME_CACHE_FORMAT_FILE="$WORK_DIR/run/cache-format" \
+    TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR="$WORK_DIR/persistent/subscription-cache" \
+    TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE="$WORK_DIR/persistent/subscription-cache/cache-format" \
+    TACHYON_PENDING_RELOAD_FILE="$WORK_DIR/run/reload.pending" \
+    TACHYON_RELOAD_STATE_FILE="$WORK_DIR/run/reload-state" \
+    TACHYON_RULE_CONDITION_CACHE_DIR="$WORK_DIR/run/rule-condition-cache" \
     FAKE_CALL_LOG="$log" \
     FAKE_SUBSCRIPTION_UPDATE_SUMMARY="$summary" \
     ucode -L "$REAL_LIB" "$UPDATES_UC" subscription-update-if-due

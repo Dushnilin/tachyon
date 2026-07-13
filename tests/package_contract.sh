@@ -2,10 +2,10 @@
 set -eo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-FORKOP_MAKEFILE="$ROOT_DIR/forkop/Makefile"
-FORKOP_CONFIG="$ROOT_DIR/forkop/files/etc/config/forkop"
+TACHYON_MAKEFILE="$ROOT_DIR/tachyon/Makefile"
+TACHYON_CONFIG="$ROOT_DIR/tachyon/files/etc/config/tachyon"
 BUILD_SCRIPT="$ROOT_DIR/build.sh"
-FORKOP_LIB="$ROOT_DIR/forkop/files/usr/lib"
+TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
 
 fail() {
   printf 'FAIL: %s\n' "$1" >&2
@@ -21,8 +21,8 @@ require_file() {
 require_make_dep() {
   local package="$1"
 
-  grep -Eq "DEPENDS:=.*(^|[[:space:]])\\+$package([[:space:]]|$)" "$FORKOP_MAKEFILE" ||
-    fail "forkop/Makefile DEPENDS is missing +$package"
+  grep -Eq "DEPENDS:=.*(^|[[:space:]])\\+$package([[:space:]]|$)" "$TACHYON_MAKEFILE" ||
+    fail "tachyon/Makefile DEPENDS is missing +$package"
 }
 
 require_build_dep() {
@@ -41,40 +41,40 @@ require_package_dependency() {
   require_build_dep "BACKEND_DEPENDS_APK" "$package"
 }
 
-require_file "$FORKOP_MAKEFILE"
-require_file "$FORKOP_CONFIG"
+require_file "$TACHYON_MAKEFILE"
+require_file "$TACHYON_CONFIG"
 require_file "$BUILD_SCRIPT"
-require_file "$FORKOP_LIB"
+require_file "$TACHYON_LIB"
 
-grep -Fq "must use x.y.z format" "$FORKOP_MAKEFILE" ||
-  fail "forkop/Makefile must enforce the three-part release version contract"
+grep -Fq "must use x.y.z format" "$TACHYON_MAKEFILE" ||
+  fail "tachyon/Makefile must enforce the three-part release version contract"
 grep -Fq 'APK_INTERNAL_VERSION="$RELEASE_VERSION"' "$BUILD_SCRIPT" ||
   fail "build.sh must use the exact three-part release version for APK metadata"
-grep -Fq "option component_update_check_enabled '1'" "$FORKOP_CONFIG" ||
+grep -Fq "option component_update_check_enabled '1'" "$TACHYON_CONFIG" ||
   fail "new installations must enable component update checks by default"
-grep -Fq "option config_version '1.0.2'" "$FORKOP_CONFIG" ||
+grep -Fq "option config_version '1.0.2'" "$TACHYON_CONFIG" ||
   fail "new installations must start at the current configuration schema version"
-grep -Fq "list applied_migrations 'interface_sections'" "$FORKOP_CONFIG" ||
+grep -Fq "list applied_migrations 'interface_sections'" "$TACHYON_CONFIG" ||
   fail "new installations must mark the interface section migration as applied"
-grep -Fq "list applied_migrations 'enable_component_checks'" "$FORKOP_CONFIG" ||
+grep -Fq "list applied_migrations 'enable_component_checks'" "$TACHYON_CONFIG" ||
   fail "new installations must mark the component check migration as applied"
-grep -Fq '/usr/lib/forkop/config/migration.uc migrate' "$FORKOP_MAKEFILE" ||
+grep -Fq '/usr/lib/tachyon/config/migration.uc migrate' "$TACHYON_MAKEFILE" ||
   fail "OpenWrt package postinst must run configuration migrations"
-[ "$(grep -Fc '/usr/lib/forkop/config/migration.uc migrate' "$BUILD_SCRIPT")" -ge 3 ] ||
+[ "$(grep -Fc '/usr/lib/tachyon/config/migration.uc migrate' "$BUILD_SCRIPT")" -ge 3 ] ||
   fail "manual IPK/APK package scripts must run configuration migrations after install and upgrade"
 
-if grep -Rqs 'require("uci")' "$FORKOP_LIB"; then
+if grep -Rqs 'require("uci")' "$TACHYON_LIB"; then
   require_package_dependency "ucode-mod-uci"
 fi
 
-if grep -Rqs 'require("fs")' "$FORKOP_LIB"; then
+if grep -Rqs 'require("fs")' "$TACHYON_LIB"; then
   require_package_dependency "ucode-mod-fs"
 fi
 
-if grep -Rqs 'forkop_dnsmasq_failsafe_restore_raw' \
-  "$ROOT_DIR/forkop/files/usr/bin" \
-  "$ROOT_DIR/forkop/files/usr/lib" \
-  "$ROOT_DIR/forkop/files/etc/init.d"; then
+if grep -Rqs 'tachyon_dnsmasq_failsafe_restore_raw' \
+  "$ROOT_DIR/tachyon/files/usr/bin" \
+  "$ROOT_DIR/tachyon/files/usr/lib" \
+  "$ROOT_DIR/tachyon/files/etc/init.d"; then
   fail "duplicated raw dnsmasq failsafe restore shell owner is present"
 fi
 

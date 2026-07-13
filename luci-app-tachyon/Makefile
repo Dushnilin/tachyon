@@ -1,34 +1,34 @@
 include $(TOPDIR)/rules.mk
 
-PKG_NAME:=luci-app-forkop
+PKG_NAME:=luci-app-tachyon
 
-FORKOP_SOURCE_VERSION:=$(or $(FORKOP_PACKAGE_VERSION),$(FORKOP_VERSION))
-FORKOP_HAS_RELEASE_VERSION:=$(if $(filter dev,$(FORKOP_SOURCE_VERSION)),,$(FORKOP_SOURCE_VERSION))
-FORKOP_COMPILED_VERSION:=$(if $(FORKOP_HAS_RELEASE_VERSION),$(FORKOP_SOURCE_VERSION),$(or $(FORKOP_SOURCE_VERSION),dev))
-FORKOP_RELEASE_VERSION_VALID:=$(if $(FORKOP_HAS_RELEASE_VERSION),$(shell printf '%s\n' '$(FORKOP_SOURCE_VERSION)' | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$$' && printf '1'),1)
+TACHYON_SOURCE_VERSION:=$(or $(TACHYON_PACKAGE_VERSION),$(TACHYON_VERSION))
+TACHYON_HAS_RELEASE_VERSION:=$(if $(filter dev,$(TACHYON_SOURCE_VERSION)),,$(TACHYON_SOURCE_VERSION))
+TACHYON_COMPILED_VERSION:=$(if $(TACHYON_HAS_RELEASE_VERSION),$(TACHYON_SOURCE_VERSION),$(or $(TACHYON_SOURCE_VERSION),dev))
+TACHYON_RELEASE_VERSION_VALID:=$(if $(TACHYON_HAS_RELEASE_VERSION),$(shell printf '%s\n' '$(TACHYON_SOURCE_VERSION)' | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$$' && printf '1'),1)
 
-ifeq ($(FORKOP_RELEASE_VERSION_VALID),)
-$(error FORKOP_PACKAGE_VERSION and FORKOP_VERSION must use x.y.z format)
+ifeq ($(TACHYON_RELEASE_VERSION_VALID),)
+$(error TACHYON_PACKAGE_VERSION and TACHYON_VERSION must use x.y.z format)
 endif
 
-PKG_VERSION:=$(or $(FORKOP_HAS_RELEASE_VERSION),0.0.0)
+PKG_VERSION:=$(or $(TACHYON_HAS_RELEASE_VERSION),0.0.0)
 PKG_RELEASE:=
 PKG_PO_VERSION:=$(PKG_VERSION)
 
-LUCI_TITLE:=LuCI Forkop app
-LUCI_DEPENDS:=+luci-base +forkop
+LUCI_TITLE:=LuCI Tachyon app
+LUCI_DEPENDS:=+luci-base +tachyon
 LUCI_PKGARCH:=all
 LUCI_LANG.ru:=Русский (Russian)
 LUCI_LANG.en:=English
 LUCI_MAINTAINER:=Dushnilin <dushnilin@gmail.com>
-LUCI_DESCRIPTION:=Rule-based Forkop LuCI app with hybrid sing-box + zapret orchestration
+LUCI_DESCRIPTION:=Rule-based Tachyon LuCI app with hybrid sing-box + zapret orchestration
 LUCI_MINIFY_JS:=0
 
 PKG_LICENSE:=GPL-2.0-or-later
 LUCI_LANGUAGES:=en ru
 
 define Build/Prepare/$(PKG_NAME)
-	sed -i -e 's/__COMPILED_VERSION_VARIABLE__/$(FORKOP_COMPILED_VERSION)/g' $(PKG_BUILD_DIR)/htdocs/luci-static/resources/view/forkop/main.js || true
+	sed -i -e 's/__COMPILED_VERSION_VARIABLE__/$(TACHYON_COMPILED_VERSION)/g' $(PKG_BUILD_DIR)/htdocs/luci-static/resources/view/tachyon/main.js || true
 endef
 
 include $(TOPDIR)/feeds/luci/luci.mk

@@ -1,5 +1,5 @@
 import { getConfigSections } from './getConfigSections';
-import { ClashAPI, Forkop } from '../../types';
+import { ClashAPI, Tachyon } from '../../types';
 import {
   canUseDirectClashApi,
   getClashHttpUrl,
@@ -7,11 +7,11 @@ import {
   isCopyableProxyLink,
 } from '../../../helpers';
 import { getOutboundTagBySection } from '../../runtimeTags';
-import { ForkopShellMethods } from '../shell';
+import { TachyonShellMethods } from '../shell';
 
 interface IGetDashboardSectionsResponse {
   success: boolean;
-  data: Forkop.OutboundGroup[];
+  data: Tachyon.OutboundGroup[];
 }
 
 interface IGetDashboardSectionsOptions {
@@ -28,12 +28,12 @@ type DashboardSectionCache = {
   section?: string;
   links?: Record<string, string>;
   linkRefs?: Record<string, unknown>;
-  outboundMetadata?: Forkop.GetOutboundMetadata;
+  outboundMetadata?: Tachyon.GetOutboundMetadata;
   urltestGroups?: Record<string, UrlTestCacheGroup>;
   priorityGroups?: Record<string, PriorityCacheGroup>;
   subscriptionMetadata?:
-    | Forkop.SubscriptionMetadata
-    | Forkop.SubscriptionMetadata[];
+    | Tachyon.SubscriptionMetadata
+    | Tachyon.SubscriptionMetadata[];
 };
 
 type UrlTestCacheGroup = {
@@ -130,21 +130,21 @@ type ChildType =
   | 'priority_group'
   | 'priority_level';
 
-const DASHBOARD_SECTION_CACHE_DIR = '/var/run/forkop/section-cache';
+const DASHBOARD_SECTION_CACHE_DIR = '/var/run/tachyon/section-cache';
 
-function getDisplayName(section: Forkop.ConfigSection) {
+function getDisplayName(section: Tachyon.ConfigSection) {
   return section.label || section['.name'];
 }
 
-function getSectionAction(section: Forkop.ConfigSection) {
+function getSectionAction(section: Tachyon.ConfigSection) {
   return section.action || '';
 }
 
-function getSettingsSection(configSections: Forkop.ConfigSection[]) {
+function getSettingsSection(configSections: Tachyon.ConfigSection[]) {
   return configSections.find((section) => section['.type'] === 'settings');
 }
 
-function getClashApiSecret(configSections: Forkop.ConfigSection[]) {
+function getClashApiSecret(configSections: Tachyon.ConfigSection[]) {
   return getSettingsSection(configSections)?.yacd_secret_key || '';
 }
 
@@ -153,8 +153,8 @@ function canFetchClashApiDirectly() {
 }
 
 async function getClashApiProxies(
-  configSections: Forkop.ConfigSection[],
-): Promise<Forkop.MethodResponse<ClashAPI.Proxies>> {
+  configSections: Tachyon.ConfigSection[],
+): Promise<Tachyon.MethodResponse<ClashAPI.Proxies>> {
   if (canFetchClashApiDirectly()) {
     const secret = getClashApiSecret(configSections);
 
@@ -174,7 +174,7 @@ async function getClashApiProxies(
     }
   }
 
-  return ForkopShellMethods.getClashApiProxies();
+  return TachyonShellMethods.getClashApiProxies();
 }
 
 function getListValues(value?: string[] | string) {
@@ -193,25 +193,25 @@ function getListValues(value?: string[] | string) {
 }
 
 function childSections(
-  configSections: Forkop.ConfigSection[],
+  configSections: Tachyon.ConfigSection[],
   type: ChildType,
 ) {
   return configSections.filter((section) => section['.type'] === type);
 }
 
 function ownedChildSections(
-  parent: Forkop.ConfigSection,
-  children: Forkop.ConfigSection[],
+  parent: Tachyon.ConfigSection,
+  children: Tachyon.ConfigSection[],
 ) {
   return children.filter(
-    (section): section is Forkop.ConfigSection =>
+    (section): section is Tachyon.ConfigSection =>
       section.section === parent['.name'],
   );
 }
 
 function childSectionsByOwner(
-  children: Forkop.ConfigSection[],
-  ownerKey: keyof Forkop.ConfigSection,
+  children: Tachyon.ConfigSection[],
+  ownerKey: keyof Tachyon.ConfigSection,
   ownerValue: string,
 ) {
   return children.filter((section) => section[ownerKey] === ownerValue);
@@ -221,7 +221,7 @@ function compactSettingsMap(settings: Record<string, ItemSettings>) {
   return Object.keys(settings).length ? JSON.stringify(settings) : undefined;
 }
 
-function hydrateConfigSections(configSections: Forkop.ConfigSection[]) {
+function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
   const subscriptionUrls = childSections(configSections, 'subscription_url');
   const interfaces = childSections(configSections, 'section_interface');
   const urltests = childSections(configSections, 'urltest');
@@ -233,7 +233,7 @@ function hydrateConfigSections(configSections: Forkop.ConfigSection[]) {
       return section;
     }
 
-    const next: Forkop.ConfigSection = { ...section };
+    const next: Tachyon.ConfigSection = { ...section };
     const subscriptionUrlItems = ownedChildSections(next, subscriptionUrls);
     const interfaceItems = ownedChildSections(next, interfaces);
     const urltestItems = ownedChildSections(next, urltests);
@@ -350,16 +350,16 @@ function hydrateConfigSections(configSections: Forkop.ConfigSection[]) {
   });
 }
 
-function getManualProxyLinks(section: Forkop.ConfigSection) {
+function getManualProxyLinks(section: Tachyon.ConfigSection) {
   return getListValues(section.selector_proxy_links);
 }
 
-function getConnectionInterfaces(section: Forkop.ConfigSection) {
+function getConnectionInterfaces(section: Tachyon.ConfigSection) {
   const values = getListValues(section.interfaces);
   return values.length ? values : getListValues(section.interface);
 }
 
-function getJsonOutbounds(section: Forkop.ConfigSection) {
+function getJsonOutbounds(section: Tachyon.ConfigSection) {
   const values = getListValues(section.outbound_jsons);
   return values.length ? values : getListValues(section.outbound_json);
 }
@@ -368,27 +368,27 @@ function isConnectionAction(action: string) {
   return ['connection', 'proxy', 'outbound', 'vpn'].includes(action);
 }
 
-function hasSubscriptionSources(section: Forkop.ConfigSection) {
+function hasSubscriptionSources(section: Tachyon.ConfigSection) {
   return getSubscriptionSourceCount(section) > 0;
 }
 
-function getSubscriptionSourceCount(section: Forkop.ConfigSection) {
+function getSubscriptionSourceCount(section: Tachyon.ConfigSection) {
   return getListValues(section.subscription_urls).length;
 }
 
-function shouldSortByLatency(section: Forkop.ConfigSection) {
+function shouldSortByLatency(section: Tachyon.ConfigSection) {
   return section.sort_by_latency === '1';
 }
 
-function hasConfiguredUrlTestList(section: Forkop.ConfigSection) {
+function hasConfiguredUrlTestList(section: Tachyon.ConfigSection) {
   return getListValues(section.urltests).length > 0;
 }
 
-function hasConfiguredPriorityList(section: Forkop.ConfigSection) {
+function hasConfiguredPriorityList(section: Tachyon.ConfigSection) {
   return getListValues(section.priority_groups).length > 0;
 }
 
-function getUrlTestIds(section: Forkop.ConfigSection) {
+function getUrlTestIds(section: Tachyon.ConfigSection) {
   const values = getListValues(section.urltests);
   return values.length
     ? values
@@ -397,11 +397,11 @@ function getUrlTestIds(section: Forkop.ConfigSection) {
       : [];
 }
 
-function isUrlTestEnabled(section: Forkop.ConfigSection) {
+function isUrlTestEnabled(section: Tachyon.ConfigSection) {
   return getUrlTestIds(section).length > 0;
 }
 
-function shouldUseProxyGroup(section: Forkop.ConfigSection) {
+function shouldUseProxyGroup(section: Tachyon.ConfigSection) {
   return (
     getManualProxyLinks(section).length > 0 ||
     hasSubscriptionSources(section) ||
@@ -412,7 +412,7 @@ function shouldUseProxyGroup(section: Forkop.ConfigSection) {
   );
 }
 
-function getSectionProxyConfigType(section: Forkop.ConfigSection) {
+function getSectionProxyConfigType(section: Tachyon.ConfigSection) {
   if (hasSubscriptionSources(section)) {
     return 'subscription' as const;
   }
@@ -440,7 +440,7 @@ function getSectionProxyConfigType(section: Forkop.ConfigSection) {
   return undefined;
 }
 
-function getJsonOutboundDisplayName(section: Forkop.ConfigSection) {
+function getJsonOutboundDisplayName(section: Tachyon.ConfigSection) {
   try {
     const parsedOutbound = JSON.parse(section.outbound_json || '{}');
     return parsedOutbound?.tag ? decodeURIComponent(parsedOutbound.tag) : '';
@@ -449,7 +449,7 @@ function getJsonOutboundDisplayName(section: Forkop.ConfigSection) {
   }
 }
 
-function buildManualLinkByCode(section: Forkop.ConfigSection) {
+function buildManualLinkByCode(section: Tachyon.ConfigSection) {
   const sectionName = section['.name'];
 
   return new Map(
@@ -468,7 +468,7 @@ function uniqueCodes(codes: string[]) {
   return Array.from(new Set(codes.filter(Boolean)));
 }
 
-function isSelectorOutbound(outbound: Forkop.Outbound) {
+function isSelectorOutbound(outbound: Tachyon.Outbound) {
   return outbound.type?.toLowerCase() === 'selector';
 }
 
@@ -485,7 +485,7 @@ function getLatencySortValue(outbound: { latency: number }) {
 }
 
 function sortOutboundsForDashboard(
-  outbounds: Forkop.Outbound[],
+  outbounds: Tachyon.Outbound[],
   options: {
     pinnedCode?: string;
     pinnedCodes?: string[];
@@ -536,7 +536,7 @@ function sortOutboundsForDashboard(
     .map((item) => item.outbound);
 }
 
-function sortUrlTestMembers(outbounds: Forkop.UrlTestMember[]) {
+function sortUrlTestMembers(outbounds: Tachyon.UrlTestMember[]) {
   return outbounds
     .map((outbound, index) => ({ outbound, index }))
     .sort((left, right) => {
@@ -636,7 +636,7 @@ function getPriorityTag(sectionName: string, id: string) {
 }
 
 function getUrlTestDisplayName(
-  section: Forkop.ConfigSection,
+  section: Tachyon.ConfigSection,
   id: string,
   settings: ItemSettings | undefined,
 ) {
@@ -647,7 +647,7 @@ function getUrlTestDisplayName(
   );
 }
 
-function getUrlTestConfigs(section: Forkop.ConfigSection): UrlTestConfig[] {
+function getUrlTestConfigs(section: Tachyon.ConfigSection): UrlTestConfig[] {
   const settingsMap = itemSettingsMap(section.urltest_settings);
   const sectionName = section['.name'];
 
@@ -730,11 +730,11 @@ function priorityLevelConfigsFromSettings(
     );
 }
 
-function getPriorityGroupIds(section: Forkop.ConfigSection) {
+function getPriorityGroupIds(section: Tachyon.ConfigSection) {
   return getListValues(section.priority_groups);
 }
 
-function getPriorityConfigs(section: Forkop.ConfigSection): PriorityConfig[] {
+function getPriorityConfigs(section: Tachyon.ConfigSection): PriorityConfig[] {
   const settingsMap = itemSettingsMap(section.priority_group_settings);
   const sectionName = section['.name'];
 
@@ -840,7 +840,7 @@ function getOutboundDisplayName(
   code: string,
   entry: ClashProxyEntry | undefined,
   link: string,
-  outboundMetadata?: Forkop.GetOutboundMetadata,
+  outboundMetadata?: Tachyon.GetOutboundMetadata,
   preferMetadata = false,
 ) {
   const metadataName = outboundMetadata?.names?.[code];
@@ -872,10 +872,10 @@ function buildUrlTestInfo({
   proxyByCode: Map<string, ClashProxyEntry>;
   manualLinkByCode: Map<string, string>;
   cachedProxyLinks: Map<string, string>;
-  outboundMetadata?: Forkop.GetOutboundMetadata;
+  outboundMetadata?: Tachyon.GetOutboundMetadata;
   subscriptionCopyableCodes: Set<string>;
   showDetectedCountries: boolean;
-}): Forkop.UrlTestInfo {
+}): Tachyon.UrlTestInfo {
   const childCodes = uniqueCodes(
     groupCache?.outbounds?.length
       ? groupCache.outbounds
@@ -949,10 +949,10 @@ function buildPriorityInfo({
   proxyByCode: Map<string, ClashProxyEntry>;
   manualLinkByCode: Map<string, string>;
   cachedProxyLinks: Map<string, string>;
-  outboundMetadata?: Forkop.GetOutboundMetadata;
+  outboundMetadata?: Tachyon.GetOutboundMetadata;
   subscriptionCopyableCodes: Set<string>;
   showDetectedCountries: boolean;
-}): Forkop.PriorityInfo {
+}): Tachyon.PriorityInfo {
   const selectedCode = entry?.value.now || '';
   const cacheLevels = Array.isArray(groupCache?.levels)
     ? groupCache.levels
@@ -1076,9 +1076,9 @@ function buildPriorityInfo({
 }
 
 function buildProxyGroupOutbounds(
-  section: Forkop.ConfigSection,
+  section: Tachyon.ConfigSection,
   proxies: ClashProxyEntry[],
-  outboundMetadata?: Forkop.GetOutboundMetadata,
+  outboundMetadata?: Tachyon.GetOutboundMetadata,
   urltestGroups: Record<string, UrlTestCacheGroup> = {},
   priorityGroups: Record<string, PriorityCacheGroup> = {},
   subscriptionCopyableCodes: Set<string> = new Set(),
@@ -1261,9 +1261,9 @@ function buildProxyGroupOutbounds(
 function metadataMatchesCurrentSource(
   sectionName: string,
   sourceCount: number,
-  metadata: Forkop.SubscriptionMetadata,
+  metadata: Tachyon.SubscriptionMetadata,
 ) {
-  const legacyMetadata = metadata as Forkop.SubscriptionMetadata & {
+  const legacyMetadata = metadata as Tachyon.SubscriptionMetadata & {
     source_index?: number;
     source_section?: string;
   };
@@ -1315,9 +1315,9 @@ function metadataMatchesCurrentSource(
 function getSubscriptionMetadataSourceIndex(
   sectionName: string,
   sourceCount: number,
-  metadata: Forkop.SubscriptionMetadata,
+  metadata: Tachyon.SubscriptionMetadata,
 ) {
-  const legacyMetadata = metadata as Forkop.SubscriptionMetadata & {
+  const legacyMetadata = metadata as Tachyon.SubscriptionMetadata & {
     source_index?: number;
     source_section?: string;
   };
@@ -1340,9 +1340,9 @@ function getSubscriptionMetadataSourceIndex(
 }
 
 function isSubscriptionMetadataVisible(
-  section: Forkop.ConfigSection,
+  section: Tachyon.ConfigSection,
   sourceCount: number,
-  metadata: Forkop.SubscriptionMetadata,
+  metadata: Tachyon.SubscriptionMetadata,
 ) {
   const sourceIndex = getSubscriptionMetadataSourceIndex(
     section['.name'],
@@ -1363,7 +1363,7 @@ function isSubscriptionMetadataVisible(
 }
 
 function getSubscriptionMetadata(
-  section: Forkop.ConfigSection,
+  section: Tachyon.ConfigSection,
   sourceCount: number,
   dashboardCache?: DashboardSectionCache,
 ) {

@@ -18,19 +18,19 @@ const config = {
 
 const syncDirs = [
   {
-    local: path.resolve(process.env.LOCAL_DIR_FE ?? '../luci-app-forkop/htdocs/luci-static/resources/view/forkop'),
-    remote: process.env.REMOTE_DIR_FE ?? '/www/luci-static/resources/view/forkop',
+    local: path.resolve(process.env.LOCAL_DIR_FE ?? '../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon'),
+    remote: process.env.REMOTE_DIR_FE ?? '/www/luci-static/resources/view/tachyon',
   },
   {
-    local: path.resolve(process.env.LOCAL_DIR_BIN ?? '../forkop/files/usr/bin/'),
+    local: path.resolve(process.env.LOCAL_DIR_BIN ?? '../tachyon/files/usr/bin/'),
     remote: process.env.REMOTE_DIR_BIN ?? '/usr/bin/',
   },
   {
-    local: path.resolve(process.env.LOCAL_DIR_LIB ?? '../forkop/files/usr/lib/'),
-    remote: process.env.REMOTE_DIR_LIB ?? '/usr/lib/forkop/',
+    local: path.resolve(process.env.LOCAL_DIR_LIB ?? '../tachyon/files/usr/lib/'),
+    remote: process.env.REMOTE_DIR_LIB ?? '/usr/lib/tachyon/',
   },
   {
-    local: path.resolve(process.env.LOCAL_DIR_INIT ?? '../forkop/files/etc/init.d/'),
+    local: path.resolve(process.env.LOCAL_DIR_INIT ?? '../tachyon/files/etc/init.d/'),
     remote: process.env.REMOTE_DIR_INIT ?? '/etc/init.d/',
   }
 ];

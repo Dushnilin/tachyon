@@ -7,10 +7,10 @@ let connections = require("config.connections");
 let zapret_validator = require("providers.zapret.validator");
 let zapret2_validator = require("providers.zapret2.validator");
 let byedpi_validator = require("providers.byedpi.validator");
-const CONFIG_NAME = getenv("FORKOP_CONFIG_NAME") || "forkop";
-const LIB_DIR = getenv("FORKOP_LIB") || "/usr/lib/forkop";
-const DEFAULT_PENDING_RELOAD_FILE = getenv("FORKOP_PENDING_RELOAD_FILE") || "/var/run/forkop/reload.pending";
-const DEFAULT_SERVICE_INIT = getenv("FORKOP_SERVICE_INIT") || "/etc/init.d/forkop";
+const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
+const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
+const DEFAULT_PENDING_RELOAD_FILE = getenv("TACHYON_PENDING_RELOAD_FILE") || "/var/run/tachyon/reload.pending";
+const DEFAULT_SERVICE_INIT = getenv("TACHYON_SERVICE_INIT") || "/etc/init.d/tachyon";
 const ZAPRET_DEFAULT_NFQWS_OPT = getenv("ZAPRET_DEFAULT_NFQWS_OPT") || "";
 const ZAPRET2_DEFAULT_NFQWS2_OPT = getenv("ZAPRET2_DEFAULT_NFQWS2_OPT") || "";
 const BYEDPI_DEFAULT_CMD_OPTS = getenv("BYEDPI_DEFAULT_CMD_OPTS") || "";
@@ -248,7 +248,7 @@ function run_pending_reload_if_requested(path, init_script) {
     if (!consume_pending_reload(path))
         return;
 
-    command_success_from_args([ "logger", "-t", "forkop", "[info] Applying pending Forkop reload" ]);
+    command_success_from_args([ "logger", "-t", "tachyon", "[info] Applying pending Tachyon reload" ]);
     system(shell_quote(init_script) + " reload pending >/dev/null 2>&1 1000>&- &");
 }
 
@@ -344,7 +344,7 @@ function cleanup_rule_condition_cache(path) {
     path = as_string(path);
     if (path != "")
         command_success_from_args([ "rm", "-rf", path ]);
-    system("rm -rf /tmp/forkop-rule-cache.* >/dev/null 2>&1");
+    system("rm -rf /tmp/tachyon-rule-cache.* >/dev/null 2>&1");
 }
 
 function cleanup_reload_state_snapshots(path) {
@@ -439,7 +439,7 @@ function hup_sing_box_runtime() {
     if (pid <= 0 || !pid_is_sing_box(pid))
         exit(1);
 
-    command_success_from_args([ "logger", "-t", "forkop", "[info] Applying DNS failover with sing-box SIGHUP reload" ]);
+    command_success_from_args([ "logger", "-t", "tachyon", "[info] Applying DNS failover with sing-box SIGHUP reload" ]);
     if (!command_success_from_args([ "kill", "-HUP", as_string(pid) ]))
         exit(1);
 }
@@ -509,15 +509,15 @@ function sing_box_reload_previous_pid(previous_pid, config_hash_before, config_h
 
 function reload_sing_box_runtime(previous_pid, config_hash_before, config_hash_after) {
     previous_pid = sing_box_reload_previous_pid(previous_pid, config_hash_before, config_hash_after);
-    command_success_from_args([ "logger", "-t", "forkop", "[info] Reloading sing-box runtime" ]);
+    command_success_from_args([ "logger", "-t", "tachyon", "[info] Reloading sing-box runtime" ]);
     if (!command_success_from_args([ "/etc/init.d/sing-box", "reload" ])) {
-        command_success_from_args([ "logger", "-t", "forkop", "[fatal] Failed to reload sing-box. Aborted." ]);
+        command_success_from_args([ "logger", "-t", "tachyon", "[fatal] Failed to reload sing-box. Aborted." ]);
         exit(1);
     }
 
-    let timeout = getenv("FORKOP_SING_BOX_RELOAD_PID_TIMEOUT") || "15";
+    let timeout = getenv("TACHYON_SING_BOX_RELOAD_PID_TIMEOUT") || "15";
     if (previous_pid > 0 && !wait_sing_box_pid_replacement(previous_pid, timeout)) {
-        command_success_from_args([ "logger", "-t", "forkop", "[fatal] sing-box reload did not replace the running process. Aborted." ]);
+        command_success_from_args([ "logger", "-t", "tachyon", "[fatal] sing-box reload did not replace the running process. Aborted." ]);
         exit(1);
     }
 }
@@ -538,23 +538,23 @@ function sing_box_service_stable(min_age) {
     return age != null && age >= min_age;
 }
 
-function forkop_runtime_network_configured(rt_table, nft_table, mark) {
+function tachyon_runtime_network_configured(rt_table, nft_table, mark) {
     return command_success_from_args([ "nft", "list", "table", "inet", nft_table ]) &&
         command_success_from_args([ "ucode", "-L", LIB_DIR, LIB_DIR + "/nft/apply.uc", "tproxy-route-rule-present", rt_table, mark ]);
 }
 
-function forkop_running(rt_table, nft_table, mark) {
-    return sing_box_service_running() && forkop_runtime_network_configured(rt_table, nft_table, mark);
+function tachyon_running(rt_table, nft_table, mark) {
+    return sing_box_service_running() && tachyon_runtime_network_configured(rt_table, nft_table, mark);
 }
 
-function forkop_stably_running(rt_table, nft_table, mark, min_age) {
-    return sing_box_service_stable(min_age) && forkop_runtime_network_configured(rt_table, nft_table, mark);
+function tachyon_stably_running(rt_table, nft_table, mark, min_age) {
+    return sing_box_service_stable(min_age) && tachyon_runtime_network_configured(rt_table, nft_table, mark);
 }
 
-function wait_forkop_stable_start(rt_table, nft_table, mark, min_age, timeout) {
+function wait_tachyon_stable_start(rt_table, nft_table, mark, min_age, timeout) {
     timeout = int(timeout || 8);
     while (timeout > 0) {
-        if (forkop_stably_running(rt_table, nft_table, mark, min_age))
+        if (tachyon_stably_running(rt_table, nft_table, mark, min_age))
             return true;
 
         command_success_from_args([ "sleep", "1" ]);
@@ -798,10 +798,10 @@ function dnsmasq_signature_body(settings, dnsmasq, legacy_dnsmasq_present) {
     body = signature_add_value(body, "dhcp.@dnsmasq[0].server", option(dnsmasq, "server", ""));
     body = signature_add_value(body, "dhcp.@dnsmasq[0].noresolv", option(dnsmasq, "noresolv", ""));
     body = signature_add_value(body, "dhcp.@dnsmasq[0].cachesize", option(dnsmasq, "cachesize", ""));
-    body = signature_add_value(body, "dhcp.@dnsmasq[0].forkop_server", option(dnsmasq, "forkop_server", ""));
-    body = signature_add_value(body, "dhcp.@dnsmasq[0].forkop_noresolv", option(dnsmasq, "forkop_noresolv", ""));
-    body = signature_add_value(body, "dhcp.@dnsmasq[0].forkop_cachesize", option(dnsmasq, "forkop_cachesize", ""));
-    body = signature_add_value(body, "dhcp.forkop.present", arg_bool(legacy_dnsmasq_present) ? "1" : "0");
+    body = signature_add_value(body, "dhcp.@dnsmasq[0].tachyon_server", option(dnsmasq, "tachyon_server", ""));
+    body = signature_add_value(body, "dhcp.@dnsmasq[0].tachyon_noresolv", option(dnsmasq, "tachyon_noresolv", ""));
+    body = signature_add_value(body, "dhcp.@dnsmasq[0].tachyon_cachesize", option(dnsmasq, "tachyon_cachesize", ""));
+    body = signature_add_value(body, "dhcp.tachyon.present", arg_bool(legacy_dnsmasq_present) ? "1" : "0");
 
     return body;
 }
@@ -1652,9 +1652,9 @@ function uci_dnsmasq() {
         server: uci_get("dhcp.@dnsmasq[0].server"),
         noresolv: uci_get("dhcp.@dnsmasq[0].noresolv"),
         cachesize: uci_get("dhcp.@dnsmasq[0].cachesize"),
-        forkop_server: uci_get("dhcp.@dnsmasq[0].forkop_server"),
-        forkop_noresolv: uci_get("dhcp.@dnsmasq[0].forkop_noresolv"),
-        forkop_cachesize: uci_get("dhcp.@dnsmasq[0].forkop_cachesize")
+        tachyon_server: uci_get("dhcp.@dnsmasq[0].tachyon_server"),
+        tachyon_noresolv: uci_get("dhcp.@dnsmasq[0].tachyon_noresolv"),
+        tachyon_cachesize: uci_get("dhcp.@dnsmasq[0].tachyon_cachesize")
     };
 }
 
@@ -1668,7 +1668,7 @@ function current_reload_state_values(format) {
         sections,
         uci_servers(),
         uci_dnsmasq(),
-        uci_exists("dhcp.forkop"),
+        uci_exists("dhcp.tachyon"),
         mwan3_active()
     );
 }
@@ -1787,12 +1787,12 @@ else if (mode == "sing-box-pid-replaced-fixture")
     exit(sing_box_pid_replaced(ARGV[1], ARGV[2], ARGV[3]) ? 0 : 1);
 else if (mode == "sing-box-reload-previous-pid-fixture")
     print(sing_box_reload_previous_pid(ARGV[1], ARGV[2], ARGV[3]), "\n");
-else if (mode == "forkop-running")
-    exit(forkop_running(ARGV[1], ARGV[2], ARGV[3]) ? 0 : 1);
-else if (mode == "forkop-stably-running")
-    exit(forkop_stably_running(ARGV[1], ARGV[2], ARGV[3], ARGV[4]) ? 0 : 1);
-else if (mode == "wait-forkop-stable-start")
-    exit(wait_forkop_stable_start(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5]) ? 0 : 1);
+else if (mode == "tachyon-running")
+    exit(tachyon_running(ARGV[1], ARGV[2], ARGV[3]) ? 0 : 1);
+else if (mode == "tachyon-stably-running")
+    exit(tachyon_stably_running(ARGV[1], ARGV[2], ARGV[3], ARGV[4]) ? 0 : 1);
+else if (mode == "wait-tachyon-stable-start")
+    exit(wait_tachyon_stable_start(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5]) ? 0 : 1);
 else if (mode == "list-has-remote-references" || mode == "list-has-remote-sing-box-rulesets")
     exit(list_has_remote_references(ARGV[1]) ? 0 : 1);
 else if (mode == "community-service-has-subnet-list")
@@ -1812,7 +1812,7 @@ else if (mode == "service-trigger-signature-fixture") {
     exit(print_signature_hash(service_trigger_signature_body(fixture_settings(data))) ? 0 : 1);
 }
 else if (mode == "dnsmasq-signature")
-    exit(print_signature_hash(dnsmasq_signature_body(uci_settings(), uci_dnsmasq(), uci_exists("dhcp.forkop"))) ? 0 : 1);
+    exit(print_signature_hash(dnsmasq_signature_body(uci_settings(), uci_dnsmasq(), uci_exists("dhcp.tachyon"))) ? 0 : 1);
 else if (mode == "dnsmasq-signature-fixture") {
     let data = fixture_data(ARGV[1]);
     exit(print_signature_hash(dnsmasq_signature_body(fixture_settings(data), fixture_dnsmasq(data), fixture_legacy_dnsmasq_present(data))) ? 0 : 1);
