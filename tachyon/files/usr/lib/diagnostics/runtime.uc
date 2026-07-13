@@ -161,6 +161,10 @@ function module_success(module_path, args) {
     return command_success(command_from_args(module_args(module_path, args)));
 }
 
+function module_status(module_path, args) {
+    return module_capture(module_path, args).status;
+}
+
 function module_passthrough(module_path, args) {
     let result = module_capture(module_path, args);
     if (result.output != "")
@@ -2194,24 +2198,17 @@ function run_doctor_checks() {
     }
 
     // 4b. Dnsmasq Params Check
-    let noresolv = uci_core.get("dhcp", "@dnsmasq[0]", "noresolv");
-    let localuse = uci_core.get("dhcp", "@dnsmasq[0]", "localuse");
-    let rebind_protection = uci_core.get("dhcp", "@dnsmasq[0]", "rebind_protection");
-    if (noresolv == "1" && localuse == "1" && rebind_protection == "0") {
-        doc_check("✅", "dnsmasq params", "OK (noresolv=1, localuse=1, rebind_protection=0)", "");
+    let noresolv = uci_core.get("dhcp.@dnsmasq[0].noresolv");
+    let rebind_protection = uci_core.get("dhcp.@dnsmasq[0].rebind_protection");
+    if (noresolv == "1" && rebind_protection == "0") {
+        doc_check("✅", "dnsmasq params", "OK (noresolv=1, rebind_protection=0)", "");
     } else {
         issues++;
-        uci_core.set("dhcp", "@dnsmasq[0]", "noresolv", "1");
-        uci_core.set("dhcp", "@dnsmasq[0]", "localuse", "1");
-        uci_core.set("dhcp", "@dnsmasq[0]", "rebind_protection", "0");
-        uci_core.commit("dhcp");
-        command_status("/etc/init.d/dnsmasq restart >/dev/null 2>&1");
-        command_status("sleep 1");
-        let noresolv2 = uci_core.get("dhcp", "@dnsmasq[0]", "noresolv");
-        let localuse2 = uci_core.get("dhcp", "@dnsmasq[0]", "localuse");
-        let rebind_protection2 = uci_core.get("dhcp", "@dnsmasq[0]", "rebind_protection");
-        if (noresolv2 == "1" && localuse2 == "1" && rebind_protection2 == "0") {
-            doc_check("❌", "dnsmasq params", "incorrect", "→ FIXED: noresolv=1, localuse=1, rebind_protection=0");
+        uci_core.set("dhcp.@dnsmasq[0].noresolv", "1");
+        uci_core.set("dhcp.@dnsmasq[0].rebind_protection", "0");
+        if (uci_core.commit("dhcp")) {
+            command_status("/etc/init.d/dnsmasq restart >/dev/null 2>&1");
+            doc_check("❌", "dnsmasq params", "incorrect", "→ FIXED: noresolv=1, rebind_protection=0");
             fixed++;
         } else {
             doc_check("❌", "dnsmasq params", "incorrect", "→ не удалось исправить параметры");
@@ -2327,12 +2324,25 @@ function run_doctor_checks() {
 
     // 6. Clash API Check
     let clash_addr = "127.0.0.1:9090";
+    try {
+        let config_path = uci_core.get(CONFIG_NAME, "settings", "config_path") || "/etc/sing-box/config.json";
+        let sb_config = json(fs.readfile(config_path));
+        if (sb_config && sb_config.experimental && sb_config.experimental.clash_api && sb_config.experimental.clash_api.external_controller) {
+            clash_addr = sb_config.experimental.clash_api.external_controller;
+            if (clash_addr[0] == ':') {
+                clash_addr = "127.0.0.1" + clash_addr;
+            } else if (index(clash_addr, "0.0.0.0") == 0) {
+                clash_addr = "127.0.0.1:" + split(clash_addr, ":")[1];
+            }
+        }
+    } catch(e) {}
+
     let curl_clash = command_capture("curl -s -o /dev/null -w %{http_code} http://" + clash_addr + "/version");
     if (curl_clash.status == 0 && int(curl_clash.output) == 200) {
         doc_check("✅", "Clash API", "reachable (" + clash_addr + ")", "");
     } else {
         issues++;
-        doc_check("⚠️", "Clash API", "unreachable", "→ sing-box запущен?");
+        doc_check("⚠️", "Clash API", "unreachable (" + clash_addr + ")", "→ sing-box запущен?");
     }
 
     // 7. Free RAM Check
@@ -2402,7 +2412,7 @@ function run_doctor_checks() {
     // 11. MSS Clamping Check
     if (routing_mode == "nftables") {
         let out_clamping = command_capture("nft list table inet " + NFT_TABLE_NAME).output;
-        if (index(out_clamping, "tcp flags syn tcp option maxseg size set rtmtu") >= 0) {
+        if (index(out_clamping, "tcp flags syn tcp option maxseg size set rt mtu") >= 0) {
             doc_check("✅", "MSS Clamping rule", "active", "");
         } else {
             if (is_degraded_flag) {
@@ -2410,11 +2420,11 @@ function run_doctor_checks() {
             } else {
                 issues++;
                 command_status("nft add chain inet " + NFT_TABLE_NAME + " mangle_forward '{ type filter hook forward priority -150; }' >/dev/null 2>&1");
-                command_status("nft add rule inet " + NFT_TABLE_NAME + " mangle_forward tcp flags syn tcp option maxseg size set rtmtu >/dev/null 2>&1");
-                command_status("nft add rule inet " + NFT_TABLE_NAME + " mangle_output tcp flags syn tcp option maxseg size set rtmtu >/dev/null 2>&1");
+                command_status("nft add rule inet " + NFT_TABLE_NAME + " mangle_forward tcp flags syn tcp option maxseg size set rt mtu >/dev/null 2>&1");
+                command_status("nft add rule inet " + NFT_TABLE_NAME + " mangle_output tcp flags syn tcp option maxseg size set rt mtu >/dev/null 2>&1");
 
                 let out_clamping_check = command_capture("nft list table inet " + NFT_TABLE_NAME).output;
-                if (index(out_clamping_check, "tcp flags syn tcp option maxseg size set rtmtu") >= 0) {
+                if (index(out_clamping_check, "tcp flags syn tcp option maxseg size set rt mtu") >= 0) {
                     doc_check("❌", "MSS Clamping rule", "missing", "→ FIXED: MSS Clamping rules applied");
                     fixed++;
                 } else {
