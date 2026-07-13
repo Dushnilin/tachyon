@@ -17,7 +17,7 @@ function renderFailedState() {
     {
       id: '',
       style: 'height: 78px',
-      class: 'fkp_dashboard-page__widgets-section__item centered',
+      class: 'tachyon_dashboard-page__widgets-section__item centered',
     },
     _('Currently unavailable'),
   );
@@ -29,34 +29,39 @@ function renderLoadingState() {
     {
       id: '',
       style: 'height: 78px',
-      class: 'fkp_dashboard-page__widgets-section__item skeleton',
+      class: 'tachyon_dashboard-page__widgets-section__item skeleton',
     },
     '',
   );
 }
 
 function renderDefaultState({ title, items }: IRenderWidgetProps) {
-  return E('div', { class: 'fkp_dashboard-page__widgets-section__item' }, [
+  return E('div', { class: 'tachyon_dashboard-page__widgets-section__item' }, [
     E(
       'b',
-      { class: 'fkp_dashboard-page__widgets-section__item__title' },
+      { class: 'tachyon_dashboard-page__widgets-section__item__title' },
       title,
     ),
     ...items.map((item) =>
       E(
         'div',
         {
-          class: `fkp_dashboard-page__widgets-section__item__row ${item?.attributes?.class || ''}`,
+          class: `tachyon_dashboard-page__widgets-section__item__row ${item?.attributes?.class || ''}`,
         },
         [
           E(
             'span',
-            { class: 'fkp_dashboard-page__widgets-section__item__row__key' },
+            {
+              class: 'tachyon_dashboard-page__widgets-section__item__row__key',
+            },
             `${item.key}: `,
           ),
           E(
             'span',
-            { class: 'fkp_dashboard-page__widgets-section__item__row__value' },
+            {
+              class:
+                'tachyon_dashboard-page__widgets-section__item__row__value',
+            },
             item.value,
           ),
         ],

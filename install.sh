@@ -1028,6 +1028,9 @@ function release_version_valid(value) {
 }
 
 function asset_matches(name, kind, ext, version) {
+    if (kind == "sha256sums")
+        return name == "sha256sums.txt";
+
     if (!release_version_valid(version))
         return false;
 
@@ -1452,6 +1455,9 @@ resolve_tachyon_release() {
     TACHYON_RELEASE_TAG="$(printf '%s' "$TACHYON_RELEASE_JSON" | install_json_ucode release-tag 2>/dev/null)"
     [ -n "$TACHYON_RELEASE_TAG" ] || fail "Failed to detect the Tachyon release tag"
 
+    TACHYON_SHA256_URL="$(printf '%s' "$TACHYON_RELEASE_JSON" | install_json_ucode release-asset-url sha256sums txt 2>/dev/null)"
+    [ -n "$TACHYON_SHA256_URL" ] || fail "The Tachyon release does not contain a sha256sums.txt file"
+
     TACHYON_BACKEND_URL="$(printf '%s' "$TACHYON_RELEASE_JSON" | install_json_ucode release-asset-url backend "$asset_ext" 2>/dev/null)"
     [ -n "$TACHYON_BACKEND_URL" ] || fail "The Tachyon release does not contain a tachyon .$asset_ext package"
 
@@ -1647,6 +1653,9 @@ download_tachyon_packages() {
     TACHYON_BACKEND_FILE="$TMP_DIR/$TACHYON_BACKEND_NAME"
     TACHYON_APP_FILE="$TMP_DIR/$TACHYON_APP_NAME"
     TACHYON_I18N_FILE=""
+    TACHYON_SHA256_FILE="$TMP_DIR/sha256sums.txt"
+
+    download_with_retry "$TACHYON_SHA256_URL" "$TACHYON_SHA256_FILE" "sha256sums.txt" || fail "Failed to download sha256sums.txt"
 
     download_with_retry "$TACHYON_BACKEND_URL" "$TACHYON_BACKEND_FILE" "$TACHYON_BACKEND_NAME" || fail "Failed to download $TACHYON_BACKEND_NAME"
     download_with_retry "$TACHYON_APP_URL" "$TACHYON_APP_FILE" "$TACHYON_APP_NAME" || fail "Failed to download $TACHYON_APP_NAME"
@@ -1655,6 +1664,18 @@ download_tachyon_packages() {
         TACHYON_I18N_FILE="$TMP_DIR/$TACHYON_I18N_NAME"
         download_with_retry "$TACHYON_I18N_URL" "$TACHYON_I18N_FILE" "$TACHYON_I18N_NAME" || fail "Failed to download $TACHYON_I18N_NAME"
     fi
+
+    msg "Verifying package checksums..."
+    (
+        cd "$TMP_DIR" || fail "Failed to change directory to temporary path"
+        local pattern
+        pattern="$(basename "$TACHYON_BACKEND_FILE")|$(basename "$TACHYON_APP_FILE")"
+        if [ -n "$TACHYON_I18N_FILE" ]; then
+            pattern="$pattern|$(basename "$TACHYON_I18N_FILE")"
+        fi
+        grep -E "$pattern" sha256sums.txt | sha256sum -c - || fail "Checksum verification failed! The downloaded packages may be corrupted."
+    )
+    msg "Checksums verified successfully."
 }
 
 install_backend_package() {
@@ -1718,18 +1739,19 @@ main() {
     check_root
     init_tmp_dir
     detect_fetcher
-    sync_time
     check_system
 
+    msg "Updating package lists..."
+    pkg_list_update || fail "Failed to update package lists"
+    ensure_bootstrap_ucode_runtime
+
+    sync_time
+    detect_installer_language
     detect_legacy_installation
     decide_i18n_installation
     select_sing_box_installation
 
     msg "$(installer_text install_start)"
-
-    msg "$(installer_text pkg_list_update)"
-    pkg_list_update || fail "Failed to update package lists"
-    ensure_bootstrap_ucode_runtime
 
     msg "$(installer_text resolving_release)"
     resolve_tachyon_release

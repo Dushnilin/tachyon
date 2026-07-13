@@ -5,22 +5,22 @@ export function render() {
     'div',
     {
       id: 'dashboard-status',
-      class: 'fkp_dashboard-page',
+      class: 'tachyon_dashboard-page',
     },
     [
       E(
         'div',
         {
-          class: 'fkp_dashboard-page__service-stopped',
+          class: 'tachyon_dashboard-page__service-stopped',
           role: 'status',
         },
         _(
           'Tachyon service is stopped. Start the service to display the dashboard.',
         ),
       ),
-      E('div', { class: 'fkp_dashboard-page__content' }, [
+      E('div', { class: 'tachyon_dashboard-page__content' }, [
         // Widgets section
-        E('div', { class: 'fkp_dashboard-page__widgets-section' }, [
+        E('div', { class: 'tachyon_dashboard-page__widgets-section' }, [
           E(
             'div',
             { id: 'dashboard-widget-traffic' },

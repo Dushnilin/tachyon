@@ -532,7 +532,9 @@ async function completeComponentActionJob(
   });
 }
 
-async function followComponentActionState(state: Tachyon.ComponentActionResult) {
+async function followComponentActionState(
+  state: Tachyon.ComponentActionResult,
+) {
   const jobId = state.job_id;
   const key = getComponentActionKey(state.component, state.action);
 
@@ -969,16 +971,16 @@ function renderComponentCard(card: ComponentCard) {
 
   // 1. Header (displays Title, Current Version, no badges)
   const headerChildren: Node[] = [
-    E('b', { class: 'fkp_updates-page__component__title' }, card.title),
+    E('b', { class: 'tachyon_updates-page__component__title' }, card.title),
     E(
       'span',
-      { class: 'fkp_updates-page__component__header-version' },
+      { class: 'tachyon_updates-page__component__header-version' },
       card.version,
     ),
   ];
   const header = E(
     'div',
-    { class: 'fkp_updates-page__component__header' },
+    { class: 'tachyon_updates-page__component__header' },
     headerChildren,
   );
 
@@ -1000,7 +1002,7 @@ function renderComponentCard(card: ComponentCard) {
           E(
             'a',
             {
-              class: 'fkp_updates-page__component__release-version-link',
+              class: 'tachyon_updates-page__component__release-version-link',
               href: checkResult.release_url,
               target: '_blank',
               rel: 'noopener noreferrer',
@@ -1022,7 +1024,7 @@ function renderComponentCard(card: ComponentCard) {
           E(
             'a',
             {
-              class: 'fkp_updates-page__component__release-version-link',
+              class: 'tachyon_updates-page__component__release-version-link',
               href: checkResult.release_url,
               target: '_blank',
               rel: 'noopener noreferrer',
@@ -1039,7 +1041,7 @@ function renderComponentCard(card: ComponentCard) {
       const rowChildren: Node[] = [
         E(
           'span',
-          { class: 'fkp_updates-page__component__info-label' },
+          { class: 'tachyon_updates-page__component__info-label' },
           labelText,
         ),
       ];
@@ -1049,7 +1051,7 @@ function renderComponentCard(card: ComponentCard) {
             'span',
             {
               class:
-                'fkp_updates-page__component__info-value fkp_updates-page__component__info-value--latest',
+                'tachyon_updates-page__component__info-value tachyon_updates-page__component__info-value--latest',
             },
             latestValueNodes,
           ),
@@ -1059,7 +1061,7 @@ function renderComponentCard(card: ComponentCard) {
       detailsChildren.push(
         E(
           'div',
-          { class: 'fkp_updates-page__component__info-row' },
+          { class: 'tachyon_updates-page__component__info-row' },
           rowChildren,
         ),
       );
@@ -1070,7 +1072,7 @@ function renderComponentCard(card: ComponentCard) {
     detailsChildren.length > 0
       ? E(
           'div',
-          { class: 'fkp_updates-page__component__details' },
+          { class: 'tachyon_updates-page__component__details' },
           detailsChildren,
         )
       : null;
@@ -1128,7 +1130,7 @@ function renderComponentCard(card: ComponentCard) {
 
   if (primaryButtons.length > 0 || dangerButtons.length > 0) {
     actionElements.push(
-      E('div', { class: 'fkp_updates-page__component__actions-main' }, [
+      E('div', { class: 'tachyon_updates-page__component__actions-main' }, [
         ...primaryButtons,
         ...dangerButtons,
       ]),
@@ -1152,15 +1154,15 @@ function renderComponentCard(card: ComponentCard) {
     });
 
     actionElements.push(
-      E('div', { class: 'fkp_updates-page__component__variants' }, [
+      E('div', { class: 'tachyon_updates-page__component__variants' }, [
         E(
           'div',
-          { class: 'fkp_updates-page__component__variants-title' },
+          { class: 'tachyon_updates-page__component__variants-title' },
           _('Install another build:'),
         ),
         E(
           'div',
-          { class: 'fkp_updates-page__component__variants-buttons' },
+          { class: 'tachyon_updates-page__component__variants-buttons' },
           variantButtons,
         ),
       ]),
@@ -1171,9 +1173,9 @@ function renderComponentCard(card: ComponentCard) {
     'div',
     {
       class: [
-        'fkp_updates-page__component__actions',
+        'tachyon_updates-page__component__actions',
         detailsContainer
-          ? 'fkp_updates-page__component__actions--with-details'
+          ? 'tachyon_updates-page__component__actions--with-details'
           : '',
       ]
         .filter(Boolean)
@@ -1188,11 +1190,11 @@ function renderComponentCard(card: ComponentCard) {
   }
   cardChildren.push(actionsContainer);
 
-  return E('div', { class: 'fkp_updates-page__component' }, cardChildren);
+  return E('div', { class: 'tachyon_updates-page__component' }, cardChildren);
 }
 
 function renderUpdatesComponents() {
-  const container = document.getElementById('fkp_updates-components');
+  const container = document.getElementById('tachyon_updates-components');
 
   if (!container) {
     return;
@@ -1205,8 +1207,16 @@ function renderUpdatesComponents() {
 
   return preserveScrollForPage(() => {
     container.replaceChildren(
-      E('div', { class: 'fkp_updates-page__components-column' }, columns[0]),
-      E('div', { class: 'fkp_updates-page__components-column' }, columns[1]),
+      E(
+        'div',
+        { class: 'tachyon_updates-page__components-column' },
+        columns[0],
+      ),
+      E(
+        'div',
+        { class: 'tachyon_updates-page__components-column' },
+        columns[1],
+      ),
     );
   });
 }

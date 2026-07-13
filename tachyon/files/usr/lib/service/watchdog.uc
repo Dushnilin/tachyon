@@ -40,19 +40,6 @@ function send_telegram_notification(message) {
     }
 }
 
-function parse_json_or_null(str) {
-    try {
-        return json(str);
-    }
-    catch (e) {
-        return null;
-    }
-}
-
-function now_seconds() {
-    return int(clock()[0]);
-}
-
 function process_running(pid) {
     return match(as_string(pid), /^[0-9]+$/) != null && command_success_from_args([ "kill", "-0", pid ]);
 }
@@ -72,13 +59,6 @@ function stop_runtime() {
     remove_file("/var/run/tachyon_honeypot_listener.pid");
     remove_file("/tmp/tachyon_honeypot.fifo");
 
-    // Stop P2P Server
-    let p2p_pid = trim(fs.readfile("/var/run/tachyon_p2p_server.pid") || "");
-    if (process_running(p2p_pid)) {
-        command_success_from_args([ "kill", p2p_pid ]);
-    }
-    remove_file("/var/run/tachyon_p2p_server.pid");
-
     return 0;
 }
 
@@ -87,38 +67,13 @@ function start_runtime() {
     stop_runtime();
 
     let enable_watchdog = cfg.enable_watchdog != "0";
-    if (!enable_watchdog && cfg.enable_p2p_sync != "1") {
+    if (!enable_watchdog) {
         return 0;
     }
 
     let command = command_from_args([ "ucode", "-L", LIB_DIR, WATCHDOG_UC, "worker" ]) +
         " </dev/null >/dev/null 2>&1 1000<&- & echo $! >" + shell_quote(PID_FILE);
     return command_status(command);
-}
-
-function encrypt_p2p(data, token) {
-    let payload_path = "/tmp/p2p_plain.json";
-    let enc_path = "/tmp/p2p_enc.txt";
-    fs.writefile(payload_path, data);
-    system("openssl enc -aes-256-cbc -salt -pbkdf2 -pass pass:" + shell_quote(token) + " -in " + payload_path + " -out " + enc_path + " -base64 >/dev/null 2>&1");
-    let result = trim(fs.readfile(enc_path) || "");
-    remove_file(payload_path);
-    remove_file(enc_path);
-    return result;
-}
-
-function decrypt_p2p(enc_str, token) {
-    let enc_path = "/tmp/p2p_enc.txt";
-    let plain_path = "/tmp/p2p_plain.json";
-    fs.writefile(enc_path, enc_str);
-    let status = system("openssl enc -d -aes-256-cbc -pbkdf2 -pass pass:" + shell_quote(token) + " -in " + enc_path + " -out " + plain_path + " -base64 >/dev/null 2>&1");
-    let result = null;
-    if (status == 0) {
-        result = fs.readfile(plain_path);
-    }
-    remove_file(enc_path);
-    remove_file(plain_path);
-    return result;
 }
 
 function run_zero_rtt_prefetching() {
@@ -167,78 +122,11 @@ function run_zero_rtt_prefetching() {
     }
 }
 
-function push_config_to_peers() {
-    let cfg = settings();
-    if (cfg.enable_p2p_sync != "1" || !cfg.p2p_sync_token) return;
-
-    let peers_str = cfg.p2p_peers || "";
-    let peers = split(trim(peers_str), /[ \t\r\n]+/);
-    if (length(peers) == 0 || peers[0] == "") return;
-
-    let config_data = fs.readfile("/etc/config/tachyon") || "";
-    let hostname = trim(command_output_from_args(["hostname"]) || "router");
-
-    let payload = {
-        timestamp: now_seconds(),
-        config: config_data,
-        sender: hostname
-    };
-
-    let json_bytes = sprintf("%J", payload);
-    let enc_payload = encrypt_p2p(json_bytes, cfg.p2p_sync_token);
-    if (!enc_payload || enc_payload == "") return;
-
-    log_message("P2P Sync: sending config to " + length(peers) + " peers...", "info");
-    for (let peer in peers) {
-        peer = trim(peer);
-        if (peer == "") continue;
-        if (index(peer, ":") < 0) {
-            peer = peer + ":4536";
-        }
-        let url = "http://" + peer + "/sync";
-        system("curl -s -X POST -H 'Content-Type: text/plain' --data-binary " + shell_quote(enc_payload) + " --max-time 5 " + url + " </dev/null >/dev/null 2>&1 1000<&- &");
-    }
-}
-
-function p2p_receive() {
-    let input = fs.open("/dev/stdin", "r");
-    if (!input) return 0;
-    let enc_payload = trim(input.read("all") || "");
-    input.close();
-
-    if (enc_payload == "") return 0;
-
-    let cfg = settings();
-    if (cfg.enable_p2p_sync != "1" || !cfg.p2p_sync_token) return 0;
-
-    let decrypted = decrypt_p2p(enc_payload, cfg.p2p_sync_token);
-    if (!decrypted) return 0;
-
-    let payload = parse_json_or_null(decrypted);
-    if (!payload || !payload.config || !payload.timestamp) return 0;
-
-    let local_stat = fs.stat("/etc/config/tachyon");
-    if (local_stat) {
-        if (payload.timestamp <= local_stat.mtime) {
-            return 0;
-        }
-        let local_content = fs.readfile("/etc/config/tachyon") || "";
-        if (local_content == payload.config) {
-            return 0;
-        }
-    }
-
-    log_message("P2P Sync: received newer configuration from peer '" + (payload.sender || "unknown") + "'. Applying...", "info");
-    fs.writefile("/etc/config/tachyon", payload.config);
-    system("/usr/bin/tachyon restart >/dev/null 2>&1");
-    return 0;
-}
-
 function worker() {
     log_message("Watchdog daemon started.", "info");
 
     system("mkfifo /tmp/tachyon_honeypot.fifo >/dev/null 2>&1");
-    system("chmod 0666 /tmp/tachyon_honeypot.fifo >/dev/null 2>&1");
+    system("chmod 0660 /tmp/tachyon_honeypot.fifo >/dev/null 2>&1");
 
     let cfg = settings();
     let ttl = cfg.honeypot_ttl || "86400";
@@ -248,11 +136,6 @@ function worker() {
            "if [ -n \"$ip\" ]; then " +
            "nft add element inet " + nft_table + " tachyon_honeypot { \"$ip\" timeout " + ttl + "s } >/dev/null 2>&1; " +
            "fi; done </dev/null >/dev/null 2>&1 1000<&- & echo $! > /var/run/tachyon_honeypot_listener.pid");
-
-    let enable_p2p = cfg.enable_p2p_sync == "1";
-    if (enable_p2p) {
-        system("while true; do nc -l -p 4536 | ucode -L " + LIB_DIR + " " + WATCHDOG_UC + " p2p-receive; done </dev/null >/dev/null 2>&1 1000<&- & echo $! > /var/run/tachyon_p2p_server.pid");
-    }
 
     let zero_rtt_done = false;
 
@@ -369,11 +252,7 @@ else if (mode == "worker")
     exit(worker());
 else if (mode == "status")
     exit(get_status());
-else if (mode == "p2p-receive")
-    exit(p2p_receive());
-else if (mode == "push-config")
-    exit(push_config_to_peers());
 else {
-    warn("Usage: service/watchdog.uc <start-runtime|stop-runtime|worker|status|p2p-receive|push-config> ...\n");
+    warn("Usage: service/watchdog.uc <start-runtime|stop-runtime|worker|status> ...\n");
     exit(1);
 }

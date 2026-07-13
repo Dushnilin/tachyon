@@ -1013,6 +1013,16 @@ main() {
   verify_apk_metadata "$apk_bin" "$output_dir/luci-app-tachyon_${RELEASE_VERSION}.apk" "luci-app-tachyon" "$APK_INTERNAL_VERSION"
   verify_apk_metadata "$apk_bin" "$output_dir/luci-i18n-tachyon-ru_${RELEASE_VERSION}.apk" "luci-i18n-tachyon-ru" "$APK_INTERNAL_VERSION"
 
+  (
+    cd "$output_dir" || exit 1
+    rm -f sha256sums.txt
+    for f in *; do
+      if [ -f "$f" ]; then
+        sha256sum "$f" >> sha256sums.txt
+      fi
+    done
+  )
+
   cleanup_work_dir
   sync_artifacts_to_windows "$output_dir"
   print_summary "$output_dir"

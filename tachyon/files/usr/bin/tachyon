@@ -121,7 +121,7 @@ function show_help() {
     print("    global_check            Run global system check\n");
     print("    doctor                  Run doctor diagnostics checks\n");
     print("    ai_doctor               Run AI doctor diagnostics completions\n");
-    print("    watchdog                Manage watchdog daemon (start-runtime|stop-runtime|status|push-config)\n");
+    print("    watchdog                Manage watchdog daemon (start-runtime|stop-runtime|status)\n");
     print("    validate_nfqws_strategy_json\n");
     print("                            Validate an NFQWS strategy and print JSON result\n");
     print("    validate_nfqws2_strategy_json\n");

@@ -1,33 +1,33 @@
 // language=CSS
 export const styles = `
-.fkp-partial-button {
+.tachyon-partial-button {
     text-align: center;
 }
 
-.fkp-partial-button--with-icon {
+.tachyon-partial-button--with-icon {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: 5px;
 }
 
-.fkp-partial-button--loading {
+.tachyon-partial-button--loading {
 }
 
-.fkp-partial-button--disabled {
+.tachyon-partial-button--disabled {
 }
 
-.fkp-partial-button__icon {
+.tachyon-partial-button__icon {
     flex: 0 0 auto;
 }
 
-.fkp-partial-button__icon {
+.tachyon-partial-button__icon {
     display: inline-flex;
     align-items: center;
     justify-content: center;
 }
 
-.fkp-partial-button__icon svg {
+.tachyon-partial-button__icon svg {
     width: 16px;
     height: 16px;
     display: block;

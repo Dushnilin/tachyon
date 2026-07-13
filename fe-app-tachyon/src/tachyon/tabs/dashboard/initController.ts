@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import {
   getClashWsUrl,
   isCopyableProxyLink,
@@ -611,7 +612,10 @@ function syncDashboardServiceAvailability() {
   const stopped = availability === 'stopped';
   const container = document.getElementById('dashboard-status');
 
-  container?.classList.toggle('fkp_dashboard-page--service-stopped', stopped);
+  container?.classList.toggle(
+    'tachyon_dashboard-page--service-stopped',
+    stopped,
+  );
 
   if (stopped || availability === 'loading') {
     stopDashboardDataUpdates();
@@ -768,18 +772,18 @@ function formatUrlTestModalValue(value: unknown) {
 
 function getUrlTestLatencyClass(latency: number) {
   if (!latency) {
-    return 'fkp_dashboard-page__outbound-grid__item__latency--empty';
+    return 'tachyon_dashboard-page__outbound-grid__item__latency--empty';
   }
 
   if (latency < 800) {
-    return 'fkp_dashboard-page__outbound-grid__item__latency--green';
+    return 'tachyon_dashboard-page__outbound-grid__item__latency--green';
   }
 
   if (latency < 1500) {
-    return 'fkp_dashboard-page__outbound-grid__item__latency--yellow';
+    return 'tachyon_dashboard-page__outbound-grid__item__latency--yellow';
   }
 
-  return 'fkp_dashboard-page__outbound-grid__item__latency--red';
+  return 'tachyon_dashboard-page__outbound-grid__item__latency--red';
 }
 
 function formatUrlTestLatency(latency: number) {
@@ -796,7 +800,7 @@ function renderDetailsUrl(value: unknown) {
   return E(
     'a',
     {
-      class: 'fkp_dashboard-page__urltest-details__url',
+      class: 'tachyon_dashboard-page__urltest-details__url',
       href: url,
       target: '_blank',
       rel: 'noopener noreferrer',
@@ -826,7 +830,7 @@ function renderDetailsMemberName(member: Tachyon.UrlTestMember) {
   return [
     E(
       'span',
-      { class: 'fkp_dashboard-page__urltest-details__country-badge' },
+      { class: 'tachyon_dashboard-page__urltest-details__country-badge' },
       countryFlag,
     ),
     member.displayName,
@@ -845,18 +849,20 @@ function renderUrlTestSelectedValue(info: Tachyon.UrlTestInfo) {
 
   return E(
     'span',
-    { class: 'fkp_dashboard-page__urltest-details__selected-value' },
+    { class: 'tachyon_dashboard-page__urltest-details__selected-value' },
     [
       E(
         'span',
-        { class: 'fkp_dashboard-page__urltest-details__selected-name' },
+        { class: 'tachyon_dashboard-page__urltest-details__selected-name' },
         selectedMember ? renderDetailsMemberName(selectedMember) : name,
       ),
       ...(selectedMember?.type
         ? [
             E(
               'span',
-              { class: 'fkp_dashboard-page__urltest-details__selected-type' },
+              {
+                class: 'tachyon_dashboard-page__urltest-details__selected-type',
+              },
               selectedMember.type,
             ),
           ]
@@ -882,13 +888,159 @@ function renderUrlTestCopyButton(
     'button',
     {
       type: 'button',
-      class: 'btn fkp_dashboard-page__urltest-details__copy-button',
+      class: 'btn tachyon_dashboard-page__urltest-details__copy-button',
       title,
       'aria-label': title,
       click: onClick,
     },
     renderCopyIcon24(),
   );
+}
+
+function renderCommonDetailsModal(
+  info: any,
+  section: Tachyon.OutboundGroup,
+  fields: Array<{
+    label: string;
+    value?: unknown;
+    children?: Array<HTMLElement | string>;
+  }>,
+  renderMemberName: (member: any) => any,
+  isPriority: boolean,
+) {
+  return E('div', { class: 'tachyon_dashboard-page__urltest-details' }, [
+    E(
+      'dl',
+      { class: 'tachyon_dashboard-page__urltest-details__params' },
+      fields.map(({ label, value, children }) =>
+        E('div', { class: 'tachyon_dashboard-page__urltest-details__param' }, [
+          E('dt', {}, label),
+          E(
+            'dd',
+            {},
+            children || [E('span', {}, formatUrlTestModalValue(value))],
+          ),
+        ]),
+      ),
+    ),
+    E('div', { class: 'tachyon_dashboard-page__urltest-details__outbounds' }, [
+      E(
+        'div',
+        { class: 'tachyon_dashboard-page__urltest-details__outbounds-title' },
+        _('Nodes'),
+      ),
+      E(
+        'div',
+        { class: 'tachyon_dashboard-page__urltest-details__table' },
+        info.outbounds.length
+          ? info.outbounds.map((member: any) =>
+              E(
+                'div',
+                {
+                  class: [
+                    'tachyon_dashboard-page__urltest-details__row',
+                    member.selected
+                      ? 'tachyon_dashboard-page__urltest-details__row--active'
+                      : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' '),
+                },
+                [
+                  E(
+                    'div',
+                    {
+                      class:
+                        'tachyon_dashboard-page__urltest-details__row-name',
+                    },
+                    isPriority
+                      ? [
+                          E(
+                            'b',
+                            {
+                              class:
+                                'tachyon_dashboard-page__urltest-details__priority-name',
+                            },
+                            renderMemberName(member),
+                          ),
+                          ...(member.type
+                            ? [
+                                E(
+                                  'span',
+                                  {
+                                    class:
+                                      'tachyon_dashboard-page__urltest-details__row-type',
+                                  },
+                                  member.type,
+                                ),
+                              ]
+                            : []),
+                        ]
+                      : [
+                          E('b', {}, renderMemberName(member)),
+                          ...(member.type
+                            ? [
+                                E(
+                                  'span',
+                                  {
+                                    class:
+                                      'tachyon_dashboard-page__urltest-details__row-type',
+                                  },
+                                  member.type,
+                                ),
+                              ]
+                            : []),
+                        ],
+                  ),
+                  E(
+                    'div',
+                    {
+                      class:
+                        'tachyon_dashboard-page__urltest-details__row-meta',
+                    },
+                    [
+                      E(
+                        'span',
+                        { class: getUrlTestLatencyClass(member.latency) },
+                        formatUrlTestLatency(member.latency),
+                      ),
+                    ],
+                  ),
+                  member.canCopyLink
+                    ? renderUrlTestCopyButton(_('Copy proxy link'), (event) => {
+                        event.preventDefault();
+                        void handleCopyOutbound(section, member);
+                      })
+                    : E('span', {
+                        class:
+                          'tachyon_dashboard-page__urltest-details__copy-placeholder',
+                      }),
+                ],
+              ),
+            )
+          : [
+              E(
+                'div',
+                { class: 'tachyon_dashboard-page__urltest-details__empty' },
+                _('Node list is empty'),
+              ),
+            ],
+      ),
+    ]),
+    E('div', { class: 'tachyon_dashboard-page__urltest-details__footer' }, [
+      E(
+        'button',
+        {
+          type: 'button',
+          class: 'btn cbi-button cbi-button-neutral',
+          click: () => {
+            ui.hideModal();
+          },
+        },
+        _('Close'),
+      ),
+    ]),
+  ]);
 }
 
 function renderUrlTestInfoModal(
@@ -920,114 +1072,13 @@ function renderUrlTestInfoModal(
     },
   ];
 
-  return E('div', { class: 'fkp_dashboard-page__urltest-details' }, [
-    E(
-      'dl',
-      { class: 'fkp_dashboard-page__urltest-details__params' },
-      fields.map(({ label, value, children }) =>
-        E('div', { class: 'fkp_dashboard-page__urltest-details__param' }, [
-          E('dt', {}, label),
-          E(
-            'dd',
-            {},
-            children || [E('span', {}, formatUrlTestModalValue(value))],
-          ),
-        ]),
-      ),
-    ),
-    E('div', { class: 'fkp_dashboard-page__urltest-details__outbounds' }, [
-      E(
-        'div',
-        { class: 'fkp_dashboard-page__urltest-details__outbounds-title' },
-        _('Nodes'),
-      ),
-      E(
-        'div',
-        { class: 'fkp_dashboard-page__urltest-details__table' },
-        info.outbounds.length
-          ? info.outbounds.map((member) =>
-              E(
-                'div',
-                {
-                  class: [
-                    'fkp_dashboard-page__urltest-details__row',
-                    member.selected
-                      ? 'fkp_dashboard-page__urltest-details__row--active'
-                      : '',
-                  ]
-                    .filter(Boolean)
-                    .join(' '),
-                },
-                [
-                  E(
-                    'div',
-                    {
-                      class: 'fkp_dashboard-page__urltest-details__row-name',
-                    },
-                    [
-                      E('b', {}, renderDetailsMemberName(member)),
-                      ...(member.type
-                        ? [
-                            E(
-                              'span',
-                              {
-                                class:
-                                  'fkp_dashboard-page__urltest-details__row-type',
-                              },
-                              member.type,
-                            ),
-                          ]
-                        : []),
-                    ],
-                  ),
-                  E(
-                    'div',
-                    {
-                      class: 'fkp_dashboard-page__urltest-details__row-meta',
-                    },
-                    [
-                      E(
-                        'span',
-                        { class: getUrlTestLatencyClass(member.latency) },
-                        formatUrlTestLatency(member.latency),
-                      ),
-                    ],
-                  ),
-                  member.canCopyLink
-                    ? renderUrlTestCopyButton(_('Copy proxy link'), (event) => {
-                        event.preventDefault();
-                        void handleCopyOutbound(section, member);
-                      })
-                    : E('span', {
-                        class:
-                          'fkp_dashboard-page__urltest-details__copy-placeholder',
-                      }),
-                ],
-              ),
-            )
-          : [
-              E(
-                'div',
-                { class: 'fkp_dashboard-page__urltest-details__empty' },
-                _('Node list is empty'),
-              ),
-            ],
-      ),
-    ]),
-    E('div', { class: 'fkp_dashboard-page__urltest-details__footer' }, [
-      E(
-        'button',
-        {
-          type: 'button',
-          class: 'btn cbi-button cbi-button-neutral',
-          click: () => {
-            ui.hideModal();
-          },
-        },
-        _('Close'),
-      ),
-    ]),
-  ]);
+  return renderCommonDetailsModal(
+    info,
+    section,
+    fields,
+    (member) => renderDetailsMemberName(member),
+    false,
+  );
 }
 
 function handleShowUrlTestInfo(
@@ -1058,15 +1109,15 @@ function renderPrioritySelectedValue(info: Tachyon.PriorityInfo) {
 
   return E(
     'span',
-    { class: 'fkp_dashboard-page__urltest-details__selected-value' },
+    { class: 'tachyon_dashboard-page__urltest-details__selected-value' },
     [
       E(
         'span',
         {
           class: [
-            'fkp_dashboard-page__urltest-details__selected-name',
+            'tachyon_dashboard-page__urltest-details__selected-name',
             selectedMember
-              ? 'fkp_dashboard-page__urltest-details__priority-name'
+              ? 'tachyon_dashboard-page__urltest-details__priority-name'
               : '',
           ]
             .filter(Boolean)
@@ -1078,7 +1129,9 @@ function renderPrioritySelectedValue(info: Tachyon.PriorityInfo) {
         ? [
             E(
               'span',
-              { class: 'fkp_dashboard-page__urltest-details__selected-type' },
+              {
+                class: 'tachyon_dashboard-page__urltest-details__selected-type',
+              },
               selectedMember.type,
             ),
           ]
@@ -1102,17 +1155,17 @@ function renderPriorityMemberName(member: Tachyon.PriorityMember) {
   return [
     E(
       'span',
-      { class: 'fkp_dashboard-page__urltest-details__priority-number' },
+      { class: 'tachyon_dashboard-page__urltest-details__priority-number' },
       `#${member.levelIndex + 1}`,
     ),
     E(
       'span',
-      { class: 'fkp_dashboard-page__urltest-details__priority-level' },
+      { class: 'tachyon_dashboard-page__urltest-details__priority-level' },
       levelName,
     ),
     E(
       'span',
-      { class: 'fkp_dashboard-page__urltest-details__priority-node' },
+      { class: 'tachyon_dashboard-page__urltest-details__priority-node' },
       renderDetailsMemberName(member),
     ),
   ];
@@ -1169,121 +1222,13 @@ function renderPriorityInfoModal(
     },
   ];
 
-  return E('div', { class: 'fkp_dashboard-page__urltest-details' }, [
-    E(
-      'dl',
-      { class: 'fkp_dashboard-page__urltest-details__params' },
-      fields.map(({ label, value, children }) =>
-        E('div', { class: 'fkp_dashboard-page__urltest-details__param' }, [
-          E('dt', {}, label),
-          E(
-            'dd',
-            {},
-            children || [E('span', {}, formatUrlTestModalValue(value))],
-          ),
-        ]),
-      ),
-    ),
-    E('div', { class: 'fkp_dashboard-page__urltest-details__outbounds' }, [
-      E(
-        'div',
-        { class: 'fkp_dashboard-page__urltest-details__outbounds-title' },
-        _('Nodes'),
-      ),
-      E(
-        'div',
-        { class: 'fkp_dashboard-page__urltest-details__table' },
-        info.outbounds.length
-          ? info.outbounds.map((member) =>
-              E(
-                'div',
-                {
-                  class: [
-                    'fkp_dashboard-page__urltest-details__row',
-                    member.selected
-                      ? 'fkp_dashboard-page__urltest-details__row--active'
-                      : '',
-                  ]
-                    .filter(Boolean)
-                    .join(' '),
-                },
-                [
-                  E(
-                    'div',
-                    {
-                      class: 'fkp_dashboard-page__urltest-details__row-name',
-                    },
-                    [
-                      E(
-                        'b',
-                        {
-                          class:
-                            'fkp_dashboard-page__urltest-details__priority-name',
-                        },
-                        renderPriorityMemberName(member),
-                      ),
-                      ...(member.type
-                        ? [
-                            E(
-                              'span',
-                              {
-                                class:
-                                  'fkp_dashboard-page__urltest-details__row-type',
-                              },
-                              member.type,
-                            ),
-                          ]
-                        : []),
-                    ],
-                  ),
-                  E(
-                    'div',
-                    {
-                      class: 'fkp_dashboard-page__urltest-details__row-meta',
-                    },
-                    [
-                      E(
-                        'span',
-                        { class: getUrlTestLatencyClass(member.latency) },
-                        formatUrlTestLatency(member.latency),
-                      ),
-                    ],
-                  ),
-                  member.canCopyLink
-                    ? renderUrlTestCopyButton(_('Copy proxy link'), (event) => {
-                        event.preventDefault();
-                        void handleCopyOutbound(section, member);
-                      })
-                    : E('span', {
-                        class:
-                          'fkp_dashboard-page__urltest-details__copy-placeholder',
-                      }),
-                ],
-              ),
-            )
-          : [
-              E(
-                'div',
-                { class: 'fkp_dashboard-page__urltest-details__empty' },
-                _('Node list is empty'),
-              ),
-            ],
-      ),
-    ]),
-    E('div', { class: 'fkp_dashboard-page__urltest-details__footer' }, [
-      E(
-        'button',
-        {
-          type: 'button',
-          class: 'btn cbi-button cbi-button-neutral',
-          click: () => {
-            ui.hideModal();
-          },
-        },
-        _('Close'),
-      ),
-    ]),
-  ]);
+  return renderCommonDetailsModal(
+    info,
+    section,
+    fields,
+    (member) => renderPriorityMemberName(member),
+    true,
+  );
 }
 
 function handleShowPriorityInfo(
@@ -1529,172 +1474,111 @@ async function renderSectionsWidget() {
   });
 }
 
-async function renderBandwidthWidget() {
-  logger.debug('[DASHBOARD]', 'renderBandwidthWidget');
-  const traffic = store.get().bandwidthWidget;
+function renderStoreWidget(
+  containerId: string,
+  storeKey:
+    | 'bandwidthWidget'
+    | 'trafficTotalWidget'
+    | 'systemInfoWidget'
+    | 'servicesInfoWidget',
+  title: string,
+  getItems: (data: any) => Array<{
+    key: string;
+    value: string;
+    attributes?: Record<string, string>;
+  }>,
+  debugName: string,
+) {
+  logger.debug('[DASHBOARD]', debugName);
+  const widgetState = store.get()[storeKey];
+  const container = document.getElementById(containerId);
+  if (!container) return;
 
-  const container = document.getElementById('dashboard-widget-traffic');
-
-  if (!container) {
-    return;
-  }
-
-  if (traffic.loading || traffic.failed) {
+  if (widgetState.loading || widgetState.failed) {
     const renderedWidget = renderWidget({
-      loading: traffic.loading,
-      failed: traffic.failed,
+      loading: widgetState.loading,
+      failed: widgetState.failed,
       title: '',
       items: [],
     });
-
     return container.replaceChildren(renderedWidget);
   }
 
   const renderedWidget = renderWidget({
-    loading: traffic.loading,
-    failed: traffic.failed,
-    title: _('Traffic'),
-    items: [
-      { key: _('Uplink'), value: `${prettyBytes(traffic.data.up)}/s` },
-      { key: _('Downlink'), value: `${prettyBytes(traffic.data.down)}/s` },
-    ],
+    loading: widgetState.loading,
+    failed: widgetState.failed,
+    title: title,
+    items: getItems(widgetState.data),
   });
-
   container.replaceChildren(renderedWidget);
+}
+
+async function renderBandwidthWidget() {
+  renderStoreWidget(
+    'dashboard-widget-traffic',
+    'bandwidthWidget',
+    _('Traffic'),
+    (data) => [
+      { key: _('Uplink'), value: `${prettyBytes(data.up)}/s` },
+      { key: _('Downlink'), value: `${prettyBytes(data.down)}/s` },
+    ],
+    'renderBandwidthWidget',
+  );
 }
 
 async function renderTrafficTotalWidget() {
-  logger.debug('[DASHBOARD]', 'renderTrafficTotalWidget');
-  const trafficTotalWidget = store.get().trafficTotalWidget;
-
-  const container = document.getElementById('dashboard-widget-traffic-total');
-
-  if (!container) {
-    return;
-  }
-
-  if (trafficTotalWidget.loading || trafficTotalWidget.failed) {
-    const renderedWidget = renderWidget({
-      loading: trafficTotalWidget.loading,
-      failed: trafficTotalWidget.failed,
-      title: '',
-      items: [],
-    });
-
-    return container.replaceChildren(renderedWidget);
-  }
-
-  const renderedWidget = renderWidget({
-    loading: trafficTotalWidget.loading,
-    failed: trafficTotalWidget.failed,
-    title: _('Traffic Total'),
-    items: [
-      {
-        key: _('Uplink'),
-        value: String(prettyBytes(trafficTotalWidget.data.uploadTotal)),
-      },
-      {
-        key: _('Downlink'),
-        value: String(prettyBytes(trafficTotalWidget.data.downloadTotal)),
-      },
+  renderStoreWidget(
+    'dashboard-widget-traffic-total',
+    'trafficTotalWidget',
+    _('Traffic Total'),
+    (data) => [
+      { key: _('Uplink'), value: String(prettyBytes(data.uploadTotal)) },
+      { key: _('Downlink'), value: String(prettyBytes(data.downloadTotal)) },
     ],
-  });
-
-  container.replaceChildren(renderedWidget);
+    'renderTrafficTotalWidget',
+  );
 }
 
 async function renderSystemInfoWidget() {
-  logger.debug('[DASHBOARD]', 'renderSystemInfoWidget');
-  const systemInfoWidget = store.get().systemInfoWidget;
-
-  const container = document.getElementById('dashboard-widget-system-info');
-
-  if (!container) {
-    return;
-  }
-
-  if (systemInfoWidget.loading || systemInfoWidget.failed) {
-    const renderedWidget = renderWidget({
-      loading: systemInfoWidget.loading,
-      failed: systemInfoWidget.failed,
-      title: '',
-      items: [],
-    });
-
-    return container.replaceChildren(renderedWidget);
-  }
-
-  const renderedWidget = renderWidget({
-    loading: systemInfoWidget.loading,
-    failed: systemInfoWidget.failed,
-    title: _('System info'),
-    items: [
-      {
-        key: _('Active Connections'),
-        value: String(systemInfoWidget.data.connections),
-      },
-      {
-        key: _('Memory Usage'),
-        value: String(prettyBytes(systemInfoWidget.data.memory)),
-      },
+  renderStoreWidget(
+    'dashboard-widget-system-info',
+    'systemInfoWidget',
+    _('System info'),
+    (data) => [
+      { key: _('Active Connections'), value: String(data.connections) },
+      { key: _('Memory Usage'), value: String(prettyBytes(data.memory)) },
     ],
-  });
-
-  container.replaceChildren(renderedWidget);
+    'renderSystemInfoWidget',
+  );
 }
 
 async function renderServicesInfoWidget() {
-  logger.debug('[DASHBOARD]', 'renderServicesInfoWidget');
-  const servicesInfoWidget = store.get().servicesInfoWidget;
-
-  const container = document.getElementById('dashboard-widget-service-info');
-
-  if (!container) {
-    return;
-  }
-
-  if (servicesInfoWidget.loading || servicesInfoWidget.failed) {
-    const renderedWidget = renderWidget({
-      loading: servicesInfoWidget.loading,
-      failed: servicesInfoWidget.failed,
-      title: '',
-      items: [],
-    });
-
-    return container.replaceChildren(renderedWidget);
-  }
-
-  const renderedWidget = renderWidget({
-    loading: servicesInfoWidget.loading,
-    failed: servicesInfoWidget.failed,
-    title: _('Services info'),
-    items: [
+  renderStoreWidget(
+    'dashboard-widget-service-info',
+    'servicesInfoWidget',
+    _('Services info'),
+    (data) => [
       {
         key: 'Tachyon',
-        value: servicesInfoWidget.data.tachyonRunning
-          ? _('✔ Running')
-          : _('✘ Stopped'),
+        value: data.tachyonRunning ? _('✔ Running') : _('✘ Stopped'),
         attributes: {
-          class: servicesInfoWidget.data.tachyonRunning
-            ? 'fkp_dashboard-page__widgets-section__item__row--success'
-            : 'fkp_dashboard-page__widgets-section__item__row--error',
+          class: data.tachyonRunning
+            ? 'tachyon_dashboard-page__widgets-section__item__row--success'
+            : 'tachyon_dashboard-page__widgets-section__item__row--error',
         },
       },
       {
         key: 'Sing-box',
-        value: servicesInfoWidget.data.singbox
-          ? _('✔ Running')
-          : _('✘ Stopped'),
+        value: data.singbox ? _('✔ Running') : _('✘ Stopped'),
         attributes: {
-          class: servicesInfoWidget.data.singbox
-            ? 'fkp_dashboard-page__widgets-section__item__row--success'
-            : 'fkp_dashboard-page__widgets-section__item__row--error',
+          class: data.singbox
+            ? 'tachyon_dashboard-page__widgets-section__item__row--success'
+            : 'tachyon_dashboard-page__widgets-section__item__row--error',
         },
       },
     ],
-  });
-
-  container.replaceChildren(renderedWidget);
+    'renderServicesInfoWidget',
+  );
 }
 
 async function onStoreUpdate(

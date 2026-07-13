@@ -39,13 +39,17 @@ declare global {
   const uci: {
     load: (packages: string | string[]) => Promise<string>;
     unload?: (packages: string | string[]) => void;
-    sections: (conf: string, type?: string, cb?: () => void) => Promise<T>;
+    sections: <T = unknown>(
+      conf: string,
+      type?: string,
+      cb?: () => void,
+    ) => Promise<T>;
   };
 
   const _ = (_key: string) => string;
 
   const ui = {
-    showModal: (_title: stirng, _content: HtmlElement) => undefined,
+    showModal: (_title: string, _content: HtmlElement) => undefined,
     hideModal: () => undefined,
     addNotification: (
       _title: string,

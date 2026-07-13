@@ -638,13 +638,13 @@ function setButtonActive(button: HTMLElement | null, active: boolean) {
     return;
   }
 
-  button.classList.toggle('fkp_monitoring-page__tab--active', active);
+  button.classList.toggle('tachyon_monitoring-page__tab--active', active);
 }
 
 function renderTabButtonContent(label: string, count: number) {
   return [
-    E('span', { class: 'fkp_monitoring-page__tab-label' }, label),
-    E('span', { class: 'fkp_monitoring-page__tab-badge' }, String(count)),
+    E('span', { class: 'tachyon_monitoring-page__tab-label' }, label),
+    E('span', { class: 'tachyon_monitoring-page__tab-badge' }, String(count)),
   ];
 }
 
@@ -696,13 +696,13 @@ function renderControls() {
     pauseToggleButton.setAttribute('aria-label', title);
     pauseToggleButton.disabled = serviceAvailability === 'stopped';
     pauseToggleButton.classList.toggle(
-      'fkp_monitoring-page__icon-button--active',
+      'tachyon_monitoring-page__icon-button--active',
       monitoringPaused,
     );
   }
 
   const searchIcon = document.querySelector(
-    '.fkp_monitoring-page__search-icon',
+    '.tachyon_monitoring-page__search-icon',
   );
   if (searchIcon && searchIcon.childNodes.length === 0) {
     searchIcon.replaceChildren(renderSearchIcon24());
@@ -731,7 +731,7 @@ function renderValue(value: string, className = '') {
   const element = E(
     'span',
     {
-      class: ['fkp_monitoring-page__value', className]
+      class: ['tachyon_monitoring-page__value', className]
         .filter(Boolean)
         .join(' '),
       title: text,
@@ -752,7 +752,7 @@ function renderSourceValue(source: ReturnType<typeof getSourceCellParts>) {
       'span',
       {
         class:
-          'fkp_monitoring-page__value fkp_monitoring-page__source-value fkp_monitoring-page__source-value--ip-only',
+          'tachyon_monitoring-page__value tachyon_monitoring-page__source-value tachyon_monitoring-page__source-value--ip-only',
         title: fullText,
       },
       source.primary || '-',
@@ -766,12 +766,17 @@ function renderSourceValue(source: ReturnType<typeof getSourceCellParts>) {
   const element = E(
     'span',
     {
-      class: 'fkp_monitoring-page__value fkp_monitoring-page__source-value',
+      class:
+        'tachyon_monitoring-page__value tachyon_monitoring-page__source-value',
       title: fullText,
     },
     [
-      E('span', { class: 'fkp_monitoring-page__source-name' }, source.primary),
-      E('span', { class: 'fkp_monitoring-page__source-ip' }, source.ip),
+      E(
+        'span',
+        { class: 'tachyon_monitoring-page__source-name' },
+        source.primary,
+      ),
+      E('span', { class: 'tachyon_monitoring-page__source-ip' }, source.ip),
     ],
   );
 
@@ -795,7 +800,7 @@ function renderConnectionRow(connection: MonitoredConnection) {
       ? E(
           'button',
           {
-            class: 'btn cbi-button fkp_monitoring-page__row-action',
+            class: 'btn cbi-button tachyon_monitoring-page__row-action',
             title: _('Close connection'),
             'aria-label': _('Close connection'),
             type: 'button',
@@ -809,15 +814,15 @@ function renderConnectionRow(connection: MonitoredConnection) {
   return E(
     'tr',
     {
-      class: isClosing ? 'fkp_monitoring-page__row--closing' : '',
+      class: isClosing ? 'tachyon_monitoring-page__row--closing' : '',
     },
     [
       renderTableCell(_('Host'), [renderValue(target.primary)]),
       renderTableCell(_('Type'), [
-        renderValue(getNetwork(connection), 'fkp_monitoring-page__network'),
+        renderValue(getNetwork(connection), 'tachyon_monitoring-page__network'),
       ]),
       renderTableCell(_('Route'), [
-        renderValue(getRoute(connection), 'fkp_monitoring-page__route'),
+        renderValue(getRoute(connection), 'tachyon_monitoring-page__route'),
       ]),
       renderTableCell(_('Time'), [
         renderValue(formatConnectionDuration(connection)),
@@ -835,18 +840,18 @@ function renderConnectionRow(connection: MonitoredConnection) {
 }
 
 function renderStateRow(text: string, className = '') {
-  return E('tr', { class: 'fkp_monitoring-page__state-row' }, [
+  return E('tr', { class: 'tachyon_monitoring-page__state-row' }, [
     E(
       'td',
       {
-        class: 'fkp_monitoring-page__state-cell',
+        class: 'tachyon_monitoring-page__state-cell',
         colSpan: 8,
       },
       [
         E(
           'div',
           {
-            class: ['fkp_monitoring-page__state', className]
+            class: ['tachyon_monitoring-page__state', className]
               .filter(Boolean)
               .join(' '),
           },
@@ -865,10 +870,10 @@ function renderConnectionsTable(
     ? [renderStateRow(state.text, state.className)]
     : connections.map(renderConnectionRow);
 
-  return E('div', { class: 'fkp_monitoring-page__table-wrap' }, [
+  return E('div', { class: 'tachyon_monitoring-page__table-wrap' }, [
     E(
       'table',
-      { class: 'table cbi-section-table fkp_monitoring-page__table' },
+      { class: 'table cbi-section-table tachyon_monitoring-page__table' },
       [
         E('thead', {}, [
           E('tr', {}, [
@@ -934,7 +939,7 @@ function renderConnections(options: { force?: boolean } = {}) {
     container.replaceChildren(
       renderConnectionsTable([], {
         text: _('Loading connections'),
-        className: 'fkp_monitoring-page__state--loading',
+        className: 'tachyon_monitoring-page__state--loading',
       }),
     );
     return;
@@ -944,7 +949,7 @@ function renderConnections(options: { force?: boolean } = {}) {
     container.replaceChildren(
       renderConnectionsTable([], {
         text: _('Connections are unavailable'),
-        className: 'fkp_monitoring-page__state--error',
+        className: 'tachyon_monitoring-page__state--error',
       }),
     );
     return;
@@ -1106,7 +1111,7 @@ function getSelectionValueElements(selection: Selection): HTMLElement[] {
 
   return Array.from(
     root.querySelectorAll<HTMLElement>(
-      '.fkp_monitoring-page__value[data-copy-value]',
+      '.tachyon_monitoring-page__value[data-copy-value]',
     ),
   ).filter((element) => {
     for (let index = 0; index < selection.rangeCount; index += 1) {
@@ -1319,7 +1324,7 @@ function bindControls() {
     connectionsContainer.onclick = (event) => {
       const target = event.target as HTMLElement | null;
       const button = target?.closest(
-        '.fkp_monitoring-page__row-action',
+        '.tachyon_monitoring-page__row-action',
       ) as HTMLButtonElement | null;
 
       if (button?.value) {

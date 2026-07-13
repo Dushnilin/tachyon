@@ -1,15 +1,15 @@
 // language=CSS
 export const styles = `
 
-.fkp-partial-modal__body {}
+.tachyon-partial-modal__body {}
 
-.fkp-partial-modal__content {
+.tachyon-partial-modal__content {
     max-height: 70vh;
     overflow: scroll;
     border-radius: 4px;
 }
 
-.fkp-partial-modal__footer {
+.tachyon-partial-modal__footer {
     display: flex;
     justify-content: flex-end;
     align-items: center;
@@ -17,11 +17,11 @@ export const styles = `
     gap: 10px;
 }
 
-.fkp-partial-modal__footer button {
+.tachyon-partial-modal__footer button {
     margin-left: 0;
 }
 
-.fkp-partial-modal__checkbox {
+.tachyon-partial-modal__checkbox {
     display: inline-flex;
     align-items: center;
     gap: 8px;
@@ -30,7 +30,7 @@ export const styles = `
     user-select: none;
 }
 
-.fkp-partial-modal__checkbox-text {
+.tachyon-partial-modal__checkbox-text {
     line-height: 1.2;
 }
 `;

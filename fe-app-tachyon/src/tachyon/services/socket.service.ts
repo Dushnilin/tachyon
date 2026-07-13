@@ -10,6 +10,8 @@ class SocketManager {
   private listeners = new Map<string, Set<Listener>>();
   private connected = new Map<string, boolean>();
   private errorListeners = new Map<string, Set<ErrorListener>>();
+  private reconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private reconnectAttempts = new Map<string, number>();
 
   private constructor() {}
 
@@ -38,11 +40,49 @@ class SocketManager {
       }
     }
 
+    for (const timer of this.reconnectTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.reconnectTimers.clear();
+    this.reconnectAttempts.clear();
+
     this.sockets.clear();
     this.listeners.clear();
     this.errorListeners.clear();
     this.connected.clear();
     logger.info('[SOCKET]', 'All connections and state have been reset.');
+  }
+
+  private scheduleReconnect(url: string): void {
+    if (this.reconnectTimers.has(url)) return;
+
+    const attempts = this.reconnectAttempts.get(url) || 0;
+    if (attempts >= 10) {
+      logger.error(
+        '[SOCKET]',
+        `Max reconnect attempts (10) reached for ${url}`,
+      );
+      return;
+    }
+
+    const delay = Math.min(1000 * Math.pow(2, attempts), 30000);
+    this.reconnectAttempts.set(url, attempts + 1);
+
+    logger.info(
+      '[SOCKET]',
+      `Scheduling reconnect to ${url} in ${delay}ms (attempt ${attempts + 1})`,
+    );
+
+    const timer = setTimeout(() => {
+      this.reconnectTimers.delete(url);
+      if (this.sockets.has(url)) {
+        logger.info('[SOCKET]', `Attempting reconnect to ${url}`);
+        this.sockets.delete(url);
+        this.connect(url);
+      }
+    }, delay);
+
+    this.reconnectTimers.set(url, timer);
   }
 
   connect(url: string): void {
@@ -59,6 +99,7 @@ class SocketManager {
         err,
       );
       this.triggerError(url, err instanceof Event ? err : String(err));
+      this.scheduleReconnect(url);
       return;
     }
 
@@ -69,6 +110,7 @@ class SocketManager {
 
     ws.addEventListener('open', () => {
       this.connected.set(url, true);
+      this.reconnectAttempts.set(url, 0);
       logger.info('[SOCKET]', 'Connected to', url);
     });
 
@@ -89,6 +131,9 @@ class SocketManager {
       this.connected.set(url, false);
       logger.warn('[SOCKET]', `Disconnected: ${url}`);
       this.triggerError(url, 'Connection closed');
+      if (this.sockets.get(url) === ws) {
+        this.scheduleReconnect(url);
+      }
     });
 
     ws.addEventListener('error', (err) => {
@@ -134,6 +179,13 @@ class SocketManager {
   }
 
   disconnect(url: string): void {
+    const timer = this.reconnectTimers.get(url);
+    if (timer) {
+      clearTimeout(timer);
+      this.reconnectTimers.delete(url);
+    }
+    this.reconnectAttempts.delete(url);
+
     const ws = this.sockets.get(url);
     if (ws) {
       ws.close();
