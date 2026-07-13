@@ -112,6 +112,7 @@ const ZAPRET2_UC = LIB_DIR + "/providers/zapret2/runtime.uc";
 const BYEDPI_UC = LIB_DIR + "/providers/byedpi/runtime.uc";
 const PACKAGES_UC = LIB_DIR + "/core/packages.uc";
 const WATCHDOG_UC = LIB_DIR + "/service/watchdog.uc";
+const TELEGRAM_UC = LIB_DIR + "/service/telegram.uc";
 
 let start_subscription_update_lock_held = false;
 let subscription_caches_prepared = getenv("TACHYON_SUBSCRIPTION_CACHES_PREPARED") || "0";
@@ -787,6 +788,11 @@ function start_impl() {
         return status;
     }
 
+    status = module_status(TELEGRAM_UC, [ "start-runtime" ]);
+    if (status != 0) {
+        log_message("Failed to start Telegram Bot runtime", "warn");
+    }
+
     module_background(DIAGNOSTICS_UC, [ "get-system-info" ]);
     return 0;
 }
@@ -797,6 +803,7 @@ function stop_main() {
     log_message("Stopping Tachyon", "info");
     module_success(DNS_FAILOVER_UC, [ "stop-runtime" ]);
     module_success(WATCHDOG_UC, [ "stop-runtime" ]);
+    module_success(TELEGRAM_UC, [ "stop-runtime" ]);
     module_success(PRIORITY_UC, [ "stop-runtime" ]);
     module_success(SUBSCRIPTION_CACHE_UC, [ "stop-deferred-bootstrap-worker" ]);
     module_success(UPDATES_UC, [ "stop-list-update" ]);

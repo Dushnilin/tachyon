@@ -431,6 +431,18 @@ const EntryPoint = {
     };
     settings.createSettingsContent(settingsSection, uiCapabilities);
 
+    const telegramSection = tachyonMap.section(
+      form.TypedSection,
+      "telegram",
+      _("Telegram Bot"),
+    );
+    telegramSection.anonymous = true;
+    telegramSection.addremove = false;
+    telegramSection.cfgsections = function () {
+      return ["telegram"];
+    };
+    settings.createTelegramContent(telegramSection);
+
     const diagnosticSection = tachyonMap.section(
       form.TypedSection,
       "diagnostic",
