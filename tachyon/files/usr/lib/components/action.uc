@@ -1002,8 +1002,11 @@ function install_zapret_like(component, action, runtime_module, resolve_fn, labe
     if (pkg == null)
         action_fail(component, action, "Failed to download " + label + " package", current_version, release.version, "", release.release_url || "");
 
-    if (!run_logged("Installing " + label + " package " + pkg.name, pkg_install_files_command([ pkg.file ])))
-        action_fail(component, action, "Failed to install " + label + " package", current_version, pkg.version, "", release.release_url || "");
+    if (!run_logged("Installing " + label + " package " + pkg.name, pkg_install_files_command([ pkg.file ]))) {
+        if (!pkg_is_installed(pkg.name)) {
+            action_fail(component, action, "Failed to install " + label + " package", current_version, pkg.version, "", release.release_url || "");
+        }
+    }
 
     disable_standalone_service(component);
     restart_tachyon_after_successful_change();
@@ -1047,8 +1050,11 @@ function install_byedpi(action) {
     let pkg = download_byedpi_package(release);
     if (pkg == null)
         action_fail("byedpi", action, "Failed to download ByeDPI package");
-    if (!run_logged("Installing ByeDPI package " + pkg.name, pkg_install_files_command([ pkg.file ])))
-        action_fail("byedpi", action, "Failed to install ByeDPI package", current_version, pkg.version);
+    if (!run_logged("Installing ByeDPI package " + pkg.name, pkg_install_files_command([ pkg.file ]))) {
+        if (!pkg_is_installed("byedpi")) {
+            action_fail("byedpi", action, "Failed to install ByeDPI package", current_version, pkg.version);
+        }
+    }
 
     disable_standalone_service("byedpi");
     restart_tachyon_after_successful_change();
@@ -1457,8 +1463,10 @@ function install_sing_box_extended_package(action) {
     }
 
     if (!run_logged("Installing sing-box-extended package " + release.asset_name, pkg_install_files_command([ package_file ]))) {
-        restore_sing_box_after_failed_extended_package_install(current_variant, backup_binary, backup_cronet, previous_marker, previous_version_state, package_file, cronet_touched);
-        action_fail("sing_box", action, "Failed to install sing-box-extended package", current_version, latest_version);
+        if (!pkg_is_installed("sing-box-extended")) {
+            restore_sing_box_after_failed_extended_package_install(current_variant, backup_binary, backup_cronet, previous_marker, previous_version_state, package_file, cronet_touched);
+            action_fail("sing_box", action, "Failed to install sing-box-extended package", current_version, latest_version);
+        }
     }
     remove_file(package_file);
 
@@ -1808,12 +1816,21 @@ function install_tachyon() {
         (release.i18n_url != "" && !download_with_retry(release.i18n_url, i18n_file, release.i18n_name)))
         action_fail("tachyon", "install", "Failed to download Tachyon release packages", TACHYON_VERSION, latest_version);
 
-    if (!run_logged("Installing LuCI app package " + release.app_name, pkg_install_files_command([ app_file ])))
-        action_fail("tachyon", "install", "Failed to install LuCI app package", TACHYON_VERSION, latest_version);
-    if (i18n_file != "" && !run_logged("Installing LuCI Russian i18n package " + release.i18n_name, pkg_install_files_command([ i18n_file ])))
-        action_fail("tachyon", "install", "Failed to install LuCI Russian i18n package", TACHYON_VERSION, latest_version);
-    if (!run_logged("Installing Tachyon package " + release.backend_name, pkg_install_files_command([ backend_file ])))
-        action_fail("tachyon", "install", "Failed to install Tachyon package", TACHYON_VERSION, latest_version);
+    if (!run_logged("Installing LuCI app package " + release.app_name, pkg_install_files_command([ app_file ]))) {
+        if (installed_package_version("luci-app-tachyon") != latest_version) {
+            action_fail("tachyon", "install", "Failed to install LuCI app package", TACHYON_VERSION, latest_version);
+        }
+    }
+    if (i18n_file != "" && !run_logged("Installing LuCI Russian i18n package " + release.i18n_name, pkg_install_files_command([ i18n_file ]))) {
+        if (installed_package_version("luci-i18n-tachyon-ru") != latest_version) {
+            action_fail("tachyon", "install", "Failed to install LuCI Russian i18n package", TACHYON_VERSION, latest_version);
+        }
+    }
+    if (!run_logged("Installing Tachyon package " + release.backend_name, pkg_install_files_command([ backend_file ]))) {
+        if (installed_package_version("tachyon") != latest_version) {
+            action_fail("tachyon", "install", "Failed to install Tachyon package", TACHYON_VERSION, latest_version);
+        }
+    }
 
     remove_file("/var/luci-indexcache");
     command_success("rm -f /var/luci-indexcache* /tmp/luci-indexcache* 2>/dev/null");
