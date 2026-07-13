@@ -748,8 +748,7 @@ function installer_cleanup_legacy() {
         packages_removed = false;
 
     if (!packages_removed) {
-        warn("Failed to remove one or more conflicting or legacy packages.\n");
-        return false;
+        warn("Warning: Failed to remove one or more conflicting or legacy packages. Continuing installation anyway...\n");
     }
 
     if (legacy_installed) {
