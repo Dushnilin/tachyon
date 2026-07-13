@@ -18,6 +18,7 @@ let option = common.option;
 let list_option = common.list_option;
 let bool_option = common.bool_option;
 let object_or_empty = common.object_or_empty;
+let command_output = common.command_output;
 
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
 const TMP_SUBSCRIPTION_FOLDER = getenv("TMP_SUBSCRIPTION_FOLDER") || "/tmp/sing-box/subscriptions";
@@ -36,9 +37,6 @@ const APPLIED_MIGRATIONS_OPTION = "applied_migrations";
 const SERVER_COUNTRY_METHOD_FLAG_EMOJI = "flag_emoji";
 const SERVER_COUNTRY_METHOD_COUNTRY_IS = "country_is";
 const CHILD_ITEM_TYPES = [
-
-let command_output = common.command_output;
-
     "subscription_url",
     "section_interface",
     "urltest"
