@@ -123,22 +123,143 @@ run_with_deadline() {
     forkop_deadline_seconds="$1"
     shift
 
-    "$@" &
-    forkop_deadline_command_pid=$!
-    (
-        trap 'kill "$forkop_deadline_sleep_pid" 2>/dev/null || true; exit 0' TERM INT
-        sleep "$forkop_deadline_seconds" &
-        forkop_deadline_sleep_pid=$!
-        wait "$forkop_deadline_sleep_pid"
-        kill "$forkop_deadline_command_pid" 2>/dev/null || true
-    ) &
-    forkop_deadline_watchdog_pid=$!
+    forkop_deadline_helper="${FORKOP_DEADLINE_HELPER_PATH:-}"
+    if [ -z "$forkop_deadline_helper" ]; then
+        forkop_deadline_helper="$(install_deadline_helper_path)" || return 1
+    fi
 
-    wait "$forkop_deadline_command_pid"
+    forkop_deadline_result="$TMP_DIR/deadline-result.$$"
+    "$forkop_deadline_helper" run "$forkop_deadline_seconds" "$forkop_deadline_result" "$@"
     forkop_deadline_status=$?
-    kill "$forkop_deadline_watchdog_pid" 2>/dev/null || true
-    wait "$forkop_deadline_watchdog_pid" 2>/dev/null || true
+    rm -f "$forkop_deadline_result.output" "$forkop_deadline_result.error" \
+        "$forkop_deadline_result.status" "$forkop_deadline_result.timeout"
     return "$forkop_deadline_status"
+}
+
+install_deadline_helper_path() {
+    deadline_helper_path="$TMP_DIR/install-deadline.sh"
+
+    if [ ! -s "$deadline_helper_path" ]; then
+        cat > "$deadline_helper_path" <<'EOF'
+#!/bin/sh
+
+process_starttime() {
+    local pid="$1"
+    local stat rest
+
+    [ -r "/proc/$pid/stat" ] || return 1
+    IFS= read -r stat < "/proc/$pid/stat" || return 1
+    rest="${stat##*) }"
+    set -- $rest
+    [ "$#" -ge 20 ] || return 1
+    shift 19
+    printf '%s\n' "$1"
+}
+
+child_pids() {
+    local parent="$1"
+    local status key value pid ppid
+
+    for status in /proc/[0-9]*/status; do
+        [ -r "$status" ] || continue
+        pid=""
+        ppid=""
+        while IFS=: read -r key value; do
+            case "$key" in
+                Pid)
+                    set -- $value
+                    pid="${1:-}"
+                    ;;
+                PPid)
+                    set -- $value
+                    ppid="${1:-}"
+                    ;;
+            esac
+        done < "$status"
+        [ "$ppid" = "$parent" ] && [ -n "$pid" ] && printf '%s\n' "$pid"
+    done
+}
+
+kill_descendants() {
+    local parent="$1"
+    local signal="$2"
+    local child
+
+    for child in $(child_pids "$parent"); do
+        kill_descendants "$child" "$signal"
+        kill "-$signal" "$child" 2>/dev/null || true
+    done
+}
+
+kill_process_tree() {
+    local root="$1"
+    local expected_starttime="$2"
+    local current_starttime
+
+    current_starttime="$(process_starttime "$root" 2>/dev/null || true)"
+    [ -n "$current_starttime" ] && [ "$current_starttime" = "$expected_starttime" ] || return 0
+
+    kill -STOP "$root" 2>/dev/null || return 0
+    kill_descendants "$root" TERM
+    sleep 1
+    kill_descendants "$root" KILL
+    kill -KILL "$root" 2>/dev/null || true
+}
+
+run_command() {
+    local seconds="$1"
+    local result="$2"
+    local command_pid command_starttime watchdog_pid status
+    shift 2
+
+    rm -f "$result.output" "$result.error" "$result.status" "$result.timeout"
+    umask 077
+    "$@" >"$result.output" 2>"$result.error" &
+    command_pid=$!
+    command_starttime="$(process_starttime "$command_pid" 2>/dev/null || true)"
+
+    (
+        local sleep_pid current_starttime
+        trap 'kill "$sleep_pid" 2>/dev/null || true; wait "$sleep_pid" 2>/dev/null || true; exit 0' TERM INT
+        sleep "$seconds" &
+        sleep_pid=$!
+        wait "$sleep_pid" || exit 0
+        current_starttime="$(process_starttime "$command_pid" 2>/dev/null || true)"
+        [ -n "$command_starttime" ] && [ "$current_starttime" = "$command_starttime" ] || exit 0
+        : > "$result.timeout"
+        kill_process_tree "$command_pid" "$command_starttime"
+    ) >/dev/null 2>&1 &
+    watchdog_pid=$!
+
+    wait "$command_pid"
+    status=$?
+    kill "$watchdog_pid" 2>/dev/null || true
+    wait "$watchdog_pid" 2>/dev/null || true
+    [ ! -e "$result.timeout" ] || status=124
+    printf '%s\n' "$status" > "$result.status"
+    cat "$result.output"
+    cat "$result.error" >&2
+    return "$status"
+}
+
+case "${1:-}" in
+    run)
+        shift
+        run_command "$@"
+        ;;
+    kill-tree)
+        shift
+        kill_process_tree "$1" "$2"
+        ;;
+    *)
+        exit 2
+        ;;
+esac
+EOF
+        chmod 0700 "$deadline_helper_path" || return 1
+    fi
+
+    printf '%s\n' "$deadline_helper_path"
 }
 
 http_get() {
@@ -429,6 +550,24 @@ function command_output(args) {
     return data == null ? "" : data;
 }
 
+function read_text_file(path) {
+    let handle = fs.open(as_string(path), "r");
+    if (!handle)
+        return "";
+
+    let data = handle.read("all");
+    handle.close();
+    return data == null ? "" : data;
+}
+
+function unlink_file(path) {
+    try {
+        fs.unlink(as_string(path));
+    }
+    catch (e) {
+    }
+}
+
 function env(name, fallback) {
     let value = getenv(name);
     if (value == null || value == "")
@@ -479,6 +618,44 @@ const INSTALLER_LEGACY_PERSISTENT_DIR = env("FORKOP_INSTALLER_LEGACY_PERSISTENT_
 const INSTALLER_LEGACY_RUNTIME_DIR = env("FORKOP_INSTALLER_LEGACY_RUNTIME_DIR", "/var/run/" + LEGACY_BACKEND_PACKAGE);
 const INSTALLER_LEGACY_TMP_DIR = env("FORKOP_INSTALLER_LEGACY_TMP_DIR", "/tmp/" + LEGACY_BACKEND_PACKAGE);
 const INSTALLER_LEGACY_TMP_ALT_DIR = env("FORKOP_INSTALLER_LEGACY_TMP_ALT_DIR", "/tmp/" + LEGACY_CONFIG_PACKAGE_ALT);
+const INSTALLER_DEADLINE_HELPER = env("FORKOP_INSTALLER_DEADLINE_HELPER", "");
+const INSTALLER_COMMAND_RESULT = env("FORKOP_INSTALLER_COMMAND_RESULT", "/tmp/forkop-installer-command");
+const INSTALLER_RC_DIR = env("FORKOP_INSTALLER_RC_DIR", "/etc/rc.d");
+const INSTALLER_START_RETRY_FILE = env("FORKOP_INSTALLER_START_RETRY_FILE", "/var/run/forkop/start.retry");
+const INSTALLER_START_RETRY_PID_FILE = env("FORKOP_INSTALLER_START_RETRY_PID_FILE", "/var/run/forkop/start-retry.pid");
+const INSTALLER_ORPHAN_PPID = env("FORKOP_INSTALLER_ORPHAN_PPID", "1");
+const INSTALLER_SERVICE_PROBE_TIMEOUT = int(env("FORKOP_INSTALLER_SERVICE_PROBE_TIMEOUT", "6")) || 6;
+const INSTALLER_SERVICE_ACTION_TIMEOUT = int(env("FORKOP_INSTALLER_SERVICE_ACTION_TIMEOUT", "60")) || 60;
+
+let installer_command_sequence = 0;
+
+function installer_command_result(args, timeout_seconds) {
+    installer_command_sequence++;
+    let result = INSTALLER_COMMAND_RESULT + "." + installer_command_sequence;
+    let helper_args = [
+        INSTALLER_DEADLINE_HELPER,
+        "run",
+        as_string(timeout_seconds),
+        result
+    ];
+    for (let arg in args)
+        push(helper_args, arg);
+
+    let shell_status = normalize_status(system(command_from_args(helper_args) + " >/dev/null 2>&1"));
+    let status_text = trim(read_text_file(result + ".status"));
+    let complete = match(status_text, /^[0-9]+$/) != null;
+    let status = complete ? int(status_text) : shell_status;
+    let output = read_text_file(result + ".output");
+    for (let suffix in [ ".output", ".error", ".status", ".timeout" ])
+        unlink_file(result + suffix);
+
+    return {
+        status,
+        output,
+        complete,
+        timed_out: status == 124
+    };
+}
 
 let dns_owner_config = "forkop";
 let dns_owner_section = "forkop";
@@ -640,23 +817,150 @@ function installer_confirm_remove_https_dns_proxy() {
     }
 }
 
-function installer_service_enabled(init_script) {
-    return path_executable(init_script) && run_args([ init_script, "enabled" ]);
+function path_basename(path) {
+    let parts = split(as_string(path), "/");
+    return length(parts) > 0 ? parts[length(parts) - 1] : "";
 }
 
-function installer_service_running(init_script) {
+function installer_process_starttime(pid) {
+    let stat = read_text_file("/proc/" + as_string(pid) + "/stat");
+    let matched = match(stat, /^[0-9]+ \(.*\) [^ ]+ (.*)$/);
+    if (!matched)
+        return "";
+
+    let fields = words(matched[1]);
+    return length(fields) > 18 ? as_string(fields[18]) : "";
+}
+
+function installer_process_ppid(pid) {
+    let matched = match(read_text_file("/proc/" + as_string(pid) + "/status"), /(^|\n)PPid:[ \t]*([0-9]+)/);
+    return matched ? as_string(matched[2]) : "";
+}
+
+function installer_process_args(pid) {
+    let args = [];
+    for (let arg in split(read_text_file("/proc/" + as_string(pid) + "/cmdline"), "\0"))
+        if (arg != "")
+            push(args, arg);
+    return args;
+}
+
+function installer_args_have_exact(args, value) {
+    for (let arg in args)
+        if (arg == value)
+            return true;
+    return false;
+}
+
+function installer_args_contain(args, value) {
+    for (let arg in args)
+        if (index(arg, value) >= 0)
+            return true;
+    return false;
+}
+
+function installer_kill_process_tree(pid) {
+    let starttime = installer_process_starttime(pid);
+    if (starttime == "" || INSTALLER_DEADLINE_HELPER == "")
+        return false;
+    return normalize_status(system(command_from_args([
+        INSTALLER_DEADLINE_HELPER,
+        "kill-tree",
+        as_string(pid),
+        starttime
+    ]) + " >/dev/null 2>&1")) == 0;
+}
+
+function installer_cancel_stale_start_retry() {
+    let pid = trim(read_text_file(INSTALLER_START_RETRY_PID_FILE));
+    if (match(pid, /^[0-9]+$/)) {
+        let args = installer_process_args(pid);
+        if (installer_args_contain(args, INSTALLER_FORKOP_INIT) &&
+            installer_args_contain(args, "retry_start_on_wan_up"))
+            installer_kill_process_tree(pid);
+    }
+    unlink_file(INSTALLER_START_RETRY_PID_FILE);
+    unlink_file(INSTALLER_START_RETRY_FILE);
+}
+
+function installer_recover_interrupted_cleanup(init_scripts) {
+    installer_cancel_stale_start_retry();
+
+    for (let status_path in fs.glob("/proc/[0-9]*/status")) {
+        let parts = split(status_path, "/");
+        let pid = length(parts) > 2 ? parts[2] : "";
+        if (pid == "" || installer_process_ppid(pid) != INSTALLER_ORPHAN_PPID)
+            continue;
+
+        let args = installer_process_args(pid);
+        if (length(args) == 0)
+            continue;
+        let action = args[length(args) - 1];
+        let stale = false;
+
+        if (action == "installer-cleanup-legacy") {
+            for (let arg in args)
+                if (ends_with(arg, "/install-json.uc") || arg == "install-json.uc")
+                    stale = true;
+        }
+        else if (action == "enabled" || action == "status" || action == "running") {
+            for (let init_script in init_scripts)
+                if (init_script != "" && installer_args_have_exact(args, init_script))
+                    stale = true;
+        }
+
+        if (stale)
+            installer_kill_process_tree(pid);
+    }
+}
+
+function installer_service_enabled_state(init_script) {
     if (!path_executable(init_script))
-        return false;
+        return { known: true, value: false };
 
-    if (trim(command_output([ init_script, "status" ])) == "running")
-        return true;
-    return run_args([ init_script, "running" ]);
+    let result = installer_command_result([ init_script, "enabled" ], INSTALLER_SERVICE_PROBE_TIMEOUT);
+    if (result.complete && !result.timed_out)
+        return { known: true, value: result.status == 0 };
+
+    let service_name = path_basename(init_script);
+    if (service_name != "" && length(fs.glob(INSTALLER_RC_DIR + "/S??" + service_name)) > 0)
+        return { known: true, value: true };
+
+    return { known: false, value: false };
 }
 
-function installer_backend_status_running(bin_path) {
+function installer_service_running_state(init_script) {
+    if (!path_executable(init_script))
+        return { known: true, value: false };
+
+    let status = installer_command_result([ init_script, "status" ], INSTALLER_SERVICE_PROBE_TIMEOUT);
+    if (status.complete && !status.timed_out && trim(status.output) == "running")
+        return { known: true, value: true };
+
+    let running = installer_command_result([ init_script, "running" ], INSTALLER_SERVICE_PROBE_TIMEOUT);
+    if (running.complete && !running.timed_out)
+        return { known: true, value: running.status == 0 };
+
+    return { known: false, value: false };
+}
+
+function installer_backend_status_running_state(bin_path) {
     if (!path_executable(bin_path))
+        return { known: true, value: false };
+
+    let result = installer_command_result([ bin_path, "get_status" ], INSTALLER_SERVICE_PROBE_TIMEOUT);
+    if (!result.complete || result.timed_out)
+        return { known: false, value: false };
+    return { known: true, value: index(result.output, "\"running\":1") >= 0 };
+}
+
+function installer_service_action(init_script, action) {
+    let result = installer_command_result([ init_script, action ], INSTALLER_SERVICE_ACTION_TIMEOUT);
+    if (!result.complete || result.timed_out) {
+        warn("Timed out while running " + init_script + " " + action + ".\n");
         return false;
-    return index(command_output([ bin_path, "get_status" ]), "\"running\":1") >= 0;
+    }
+    return true;
 }
 
 function select_dns_owner(legacy) {
@@ -682,17 +986,27 @@ function installer_restore_dnsmasq(bin_path, legacy) {
 
 function installer_deactivate_legacy_base() {
     if (!path_executable(INSTALLER_LEGACY_BASE_INIT))
-        return;
+        return true;
 
-    if (installer_service_running(INSTALLER_LEGACY_BASE_INIT)) {
+    let running = installer_service_running_state(INSTALLER_LEGACY_BASE_INIT);
+    let enabled = installer_service_enabled_state(INSTALLER_LEGACY_BASE_INIT);
+    if (!running.known || !enabled.known) {
+        warn("Unable to determine the legacy service state before installation.\n");
+        return false;
+    }
+
+    if (running.value) {
         warn("Detected a running legacy service. Stopping it before installing Forkop.\n");
-        run_args([ INSTALLER_LEGACY_BASE_INIT, "stop" ]);
+        if (!installer_service_action(INSTALLER_LEGACY_BASE_INIT, "stop"))
+            return false;
     }
 
-    if (installer_service_enabled(INSTALLER_LEGACY_BASE_INIT)) {
+    if (enabled.value) {
         warn("Detected an enabled legacy autostart. Disabling it before installing Forkop.\n");
-        run_args([ INSTALLER_LEGACY_BASE_INIT, "disable" ]);
+        if (!installer_service_action(INSTALLER_LEGACY_BASE_INIT, "disable"))
+            return false;
     }
+    return true;
 }
 
 function installer_cleanup_legacy() {
@@ -700,19 +1014,38 @@ function installer_cleanup_legacy() {
     let legacy_installed = LEGACY_BRAND != "" && installer_package_installed(LEGACY_BACKEND_PACKAGE);
     let active_init = legacy_installed ? INSTALLER_LEGACY_INIT : INSTALLER_FORKOP_INIT;
     let active_bin = legacy_installed ? INSTALLER_LEGACY_BIN : INSTALLER_FORKOP_BIN;
-    let was_enabled = installer_service_enabled(active_init);
-    let was_running = installer_service_running(active_init) || installer_backend_status_running(active_bin);
+
+    installer_recover_interrupted_cleanup([
+        active_init,
+        INSTALLER_FORKOP_INIT,
+        INSTALLER_LEGACY_INIT,
+        INSTALLER_LEGACY_BASE_INIT
+    ]);
+
+    let enabled = installer_service_enabled_state(active_init);
+    let running = installer_service_running_state(active_init);
+    let backend_running = running.known && running.value ?
+        { known: true, value: false } :
+        installer_backend_status_running_state(active_bin);
+    if (!enabled.known || (!running.known && !backend_running.known)) {
+        warn("Unable to determine the Forkop service state before installation.\n");
+        return false;
+    }
+    let was_enabled = enabled.value;
+    let was_running = running.value || backend_running.value;
 
     if (!installer_confirm_remove_https_dns_proxy())
         return false;
 
-    if (legacy_installed)
-        installer_deactivate_legacy_base();
+    if (legacy_installed && !installer_deactivate_legacy_base())
+        return false;
 
     if (path_executable(active_init)) {
-        run_args([ active_init, "stop" ]);
+        if (!installer_service_action(active_init, "stop"))
+            return false;
         installer_restore_dnsmasq(active_bin, legacy_installed);
-        run_args([ active_init, "disable" ]);
+        if (!installer_service_action(active_init, "disable"))
+            return false;
     }
 
     let packages_removed = true;
@@ -1094,6 +1427,8 @@ install_json_ucode() {
     FORKOP_INSTALLER_LEGACY_BRAND="$LEGACY_BRAND" \
     FORKOP_INSTALLER_LEGACY_BACKEND="$LEGACY_BACKEND_PACKAGE" \
     FORKOP_INSTALLER_LEGACY_CONFIG_ALT="$LEGACY_CONFIG_PACKAGE_ALT" \
+    FORKOP_INSTALLER_DEADLINE_HELPER="$(install_deadline_helper_path)" \
+    FORKOP_INSTALLER_COMMAND_RESULT="$TMP_DIR/installer-command" \
         ucode "$(install_json_helper_path)" "$@"
 }
 
