@@ -1,7 +1,7 @@
 # Forkop (Podkop Plus)
 
-[![Star](https://img.shields.io/github/stars/ushan0v/forkop?style=social)](https://github.com/ushan0v/forkop/stargazers)
-[![Releases](https://img.shields.io/github/v/release/ushan0v/forkop?label=releases)](https://github.com/ushan0v/forkop/releases)
+[![Star](https://img.shields.io/github/stars/Dushnilin/tachyon?style=social)](https://github.com/Dushnilin/tachyon/stargazers)
+[![Releases](https://img.shields.io/github/v/release/Dushnilin/tachyon?label=releases)](https://github.com/Dushnilin/tachyon/releases)
 [![Telegram](https://img.shields.io/badge/Telegram-Forkop%20%7C%20Chat-2CA5E0?logo=telegram\&logoColor=white)](https://t.me/forkop_chat)
 [![AI Assistant](https://img.shields.io/badge/Telegram-Forkop%20%7C%20AI%20Assistant-2CA5E0?logo=telegram\&logoColor=white)](https://t.me/forkop_aibot)
 
@@ -10,7 +10,7 @@
 ### Установка
 
 ```sh
-sh <(wget -O - https://raw.githubusercontent.com/ushan0v/forkop/main/install.sh)
+sh <(wget -O - https://raw.githubusercontent.com/Dushnilin/tachyon/main/install.sh)
 ```
 
 <details>

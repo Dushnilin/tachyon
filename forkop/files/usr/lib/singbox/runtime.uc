@@ -585,7 +585,7 @@ function service_listen_address_value(settings) {
             return address;
     }
 
-    log_message("Failed to determine the listening IP address. Please open an issue to report this problem: https://github.com/ushan0v/forkop/issues", "error");
+    log_message("Failed to determine the listening IP address. Please open an issue to report this problem: https://github.com/Dushnilin/tachyon/issues", "error");
     return "";
 }
 
