@@ -518,17 +518,16 @@ EOF
 #!/usr/bin/ucode
 if (getenv("IPKG_INSTROOT") == null || getenv("IPKG_INSTROOT") == "") {
     system("rm -rf /usr/lib/lua/luci/i18n/forkop.* /www/luci-static/resources/i18n/forkop.* /usr/share/luci/menu.d/luci-app-forkop.json /usr/share/rpcd/acl.d/luci-app-forkop.json /etc/uci-defaults/50_luci-forkop 2>/dev/null || true");
-    let fs = require("fs");
-    if (fs.stat("/etc/config/forkop")) {
-        fs.rename("/etc/config/forkop", "/etc/config/tachyon");
-    } else if (fs.stat("/etc/config/forkop_plus")) {
-        fs.rename("/etc/config/forkop_plus", "/etc/config/tachyon");
-    } else if (fs.stat("/etc/config/podkop")) {
-        fs.rename("/etc/config/podkop", "/etc/config/tachyon");
+    if (system("test -f /etc/config/forkop") == 0) {
+        system("mv /etc/config/forkop /etc/config/tachyon");
+    } else if (system("test -f /etc/config/forkop_plus") == 0) {
+        system("mv /etc/config/forkop_plus /etc/config/tachyon");
+    } else if (system("test -f /etc/config/podkop") == 0) {
+        system("mv /etc/config/podkop /etc/config/tachyon");
         system("TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate-podkop");
         exit(0);
-    } else if (fs.stat("/etc/config/podkop_plus")) {
-        fs.rename("/etc/config/podkop_plus", "/etc/config/tachyon");
+    } else if (system("test -f /etc/config/podkop_plus") == 0) {
+        system("mv /etc/config/podkop_plus /etc/config/tachyon");
         system("TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate-podkop");
         exit(0);
     }
@@ -555,17 +554,16 @@ EOF
 #!/usr/bin/ucode
 if (getenv("IPKG_INSTROOT") == null || getenv("IPKG_INSTROOT") == "") {
     system("rm -rf /usr/lib/lua/luci/i18n/forkop.* /www/luci-static/resources/i18n/forkop.* /usr/share/luci/menu.d/luci-app-forkop.json /usr/share/rpcd/acl.d/luci-app-forkop.json /etc/uci-defaults/50_luci-forkop 2>/dev/null || true");
-    let fs = require("fs");
-    if (fs.stat("/etc/config/forkop")) {
-        fs.rename("/etc/config/forkop", "/etc/config/tachyon");
-    } else if (fs.stat("/etc/config/forkop_plus")) {
-        fs.rename("/etc/config/forkop_plus", "/etc/config/tachyon");
-    } else if (fs.stat("/etc/config/podkop")) {
-        fs.rename("/etc/config/podkop", "/etc/config/tachyon");
+    if (system("test -f /etc/config/forkop") == 0) {
+        system("mv /etc/config/forkop /etc/config/tachyon");
+    } else if (system("test -f /etc/config/forkop_plus") == 0) {
+        system("mv /etc/config/forkop_plus /etc/config/tachyon");
+    } else if (system("test -f /etc/config/podkop") == 0) {
+        system("mv /etc/config/podkop /etc/config/tachyon");
         system("TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate-podkop");
         exit(0);
-    } else if (fs.stat("/etc/config/podkop_plus")) {
-        fs.rename("/etc/config/podkop_plus", "/etc/config/tachyon");
+    } else if (system("test -f /etc/config/podkop_plus") == 0) {
+        system("mv /etc/config/podkop_plus /etc/config/tachyon");
         system("TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate-podkop");
         exit(0);
     }
