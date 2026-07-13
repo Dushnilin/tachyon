@@ -55,7 +55,7 @@ function tg_request(token, method, payload) {
     let url = "https://api.telegram.org/bot" + token + "/" + method;
     let payload_path = "/tmp/tg_payload_" + method + ".json";
     
-    fs.writefile(payload_path, json(payload));
+    fs.writefile(payload_path, sprintf("%J", payload));
     
     let args = [ "curl", "-s", "-X", "POST", "-H", "Content-Type: application/json", "-d", "@" + payload_path ];
     let proxy = get_proxy_args();
@@ -416,6 +416,15 @@ function worker() {
     return 0;
 }
  
+function stop_runtime() {
+    let pid = trim(fs.readfile(PID_FILE) || "");
+    if (pid != "" && match(pid, /^[0-9]+$/) != null && command_success_from_args([ "kill", "-0", pid ])) {
+        command_success_from_args([ "kill", pid ]);
+    }
+    fs.unlink(PID_FILE);
+    return 0;
+}
+ 
 function start_runtime() {
     let cfg = settings();
     stop_runtime();
@@ -427,15 +436,6 @@ function start_runtime() {
     let command = command_from_args([ "ucode", "-L", LIB_DIR, LIB_DIR + "/service/telegram.uc", "worker" ]) +
         " >/dev/null 2>&1 & echo $! >" + shell_quote(PID_FILE);
     return command_status(command);
-}
- 
-function stop_runtime() {
-    let pid = trim(fs.readfile(PID_FILE) || "");
-    if (pid != "" && match(pid, /^[0-9]+$/) != null && command_success_from_args([ "kill", "-0", pid ])) {
-        command_success_from_args([ "kill", pid ]);
-    }
-    fs.unlink(PID_FILE);
-    return 0;
 }
  
 function get_status() {
