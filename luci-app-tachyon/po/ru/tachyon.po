@@ -1541,6 +1541,9 @@ msgstr "Правила прокси существуют"
 msgid "Run Diagnostic"
 msgstr "Запустить диагностику"
 
+msgid "Run doctor repair"
+msgstr "Запустить исправление (Doctor)"
+
 msgid "Russia inside restrictions"
 msgstr "Ограничения Russia inside"
 
