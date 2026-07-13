@@ -4,6 +4,19 @@ let fs = require("fs");
 let uci_core = require("core.uci");
 let connections = require("config.connections");
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
+
+let common = require("core.common");
+let option = common.option;
+let command_status = common.command_status;
+let command_success_from_args = common.command_success_from_args;
+let bool_option = common.bool_option;
+let command_output_from_args = common.command_output_from_args;
+let command_from_args = common.command_from_args;
+let object_or_empty = common.object_or_empty;
+let write_json = common.write_json;
+let array_or_empty = common.array_or_empty;
+let command_output = common.command_output;
+
 const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
 const BIN_PATH = getenv("TACHYON_BIN") || "/usr/bin/tachyon";
 const TMP_SING_BOX_FOLDER = getenv("TMP_SING_BOX_FOLDER") || "/tmp/sing-box";
@@ -55,18 +68,6 @@ const SB_SERVICE_MIXED_INBOUND_PORT = getenv("SB_SERVICE_MIXED_INBOUND_PORT") ||
 const SB_VARIANT_STATE_FILE = getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/sing-box-variant";
 const GITHUB_RAW_URL = getenv("GITHUB_RAW_URL") || "https://raw.githubusercontent.com/itdoginfo/allow-domains/main";
 const BUILTIN_SUBNET_URLS = {
-
-let option = common.option;
-let command_status = common.command_status;
-let command_success_from_args = common.command_success_from_args;
-let bool_option = common.bool_option;
-let command_output_from_args = common.command_output_from_args;
-let command_from_args = common.command_from_args;
-let object_or_empty = common.object_or_empty;
-let write_json = common.write_json;
-let array_or_empty = common.array_or_empty;
-let command_output = common.command_output;
-
     twitter: getenv("SUBNETS_TWITTER") || GITHUB_RAW_URL + "/Subnets/IPv4/twitter.lst",
     meta: getenv("SUBNETS_META") || GITHUB_RAW_URL + "/Subnets/IPv4/meta.lst",
     discord: getenv("SUBNETS_DISCORD") || GITHUB_RAW_URL + "/Subnets/IPv4/discord.lst",
@@ -94,7 +95,6 @@ function singbox_rulesets_module() {
     return singbox_rulesets_module_value;
 }
 
-let common = require("core.common");
 let as_string = common.as_string;
 let shell_quote = common.shell_quote;
 let read_json_file = common.read_json_file;
