@@ -249,7 +249,7 @@ function run_pending_reload_if_requested(path, init_script) {
         return;
 
     command_success_from_args([ "logger", "-t", "tachyon", "[info] Applying pending Tachyon reload" ]);
-    system(shell_quote(init_script) + " reload pending >/dev/null 2>&1 1000>&- &");
+    system(shell_quote(init_script) + " reload pending </dev/null >/dev/null 2>&1 1000<&- &");
 }
 
 function first_line_value(path) {
