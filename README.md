@@ -1,11 +1,11 @@
-# Forkop (Podkop Plus)
+# Tachyon
 
 [![Star](https://img.shields.io/github/stars/Dushnilin/tachyon?style=social)](https://github.com/Dushnilin/tachyon/stargazers)
 [![Releases](https://img.shields.io/github/v/release/Dushnilin/tachyon?label=releases)](https://github.com/Dushnilin/tachyon/releases)
-[![Telegram](https://img.shields.io/badge/Telegram-Forkop%20%7C%20Chat-2CA5E0?logo=telegram\&logoColor=white)](https://t.me/forkop_chat)
-[![AI Assistant](https://img.shields.io/badge/Telegram-Forkop%20%7C%20AI%20Assistant-2CA5E0?logo=telegram\&logoColor=white)](https://t.me/forkop_aibot)
+[![Telegram Chat](https://img.shields.io/badge/Telegram-Tachyon%20%7C%20Chat-2CA5E0?logo=telegram&logoColor=white)](https://t.me/tachyon_chat)
+[![AI Assistant](https://img.shields.io/badge/Telegram-Tachyon%20%7C%20AI%20Assistant-2CA5E0?logo=telegram&logoColor=white)](https://t.me/tachyon_aibot)
 
-> **Forkop — это бывший Podkop Plus.** Проект переименован и продолжает развиваться как независимый форк [Podkop](https://github.com/itdoginfo/podkop).
+> **Tachyon** — это форк проекта **Forkop** (ранее известного как **Podkop Plus**). Проект переименован и развивается как независимое решение для OpenWrt на базе оригинального [Podkop](https://github.com/itdoginfo/podkop).
 
 ### Установка
 
@@ -13,46 +13,28 @@
 sh <(wget -O - https://raw.githubusercontent.com/Dushnilin/tachyon/main/install.sh)
 ```
 
-<details>
-<summary><sub>Альтернативный способ установки</sub></summary>
-
-```sh
-sh <(wget -O - https://forkop.sourceforge.io/install.sh)
-```
-
-</details>
-
 ### Что нового в этом форке
 
-* Поддержка подписок.
-* Поддержка sing-box extended и транспорта XHTTP.
-* Обновлённый LuCI-интерфейс.
-* Расширенное управление секциями.
-* Новые условия маршрутизации.
-* Возможность поднять собственный VPN/proxy-сервер.
-* Менеджер обновлений и установки компонентов.
-* Встроенный мониторинг соединений.
-* Расширенные настройки URLTest-групп.
-* Автоматический выбор узла по приоритету.
-* Каскадные подключения.
-* Маршрутизация DNS-запросов через прокси.
-* Резервные DNS-серверы.
-* Отдельные DNS-серверы для выбранных доменов.
-* Поддержка IPv6.
-* Интеграция Zapret, Zapret2 и ByeDPI как отдельных действий секции.
-* Служба полностью переписана на ucode.
-* Другие исправления и улучшения.
+* **Поддержка подписок**: автоматическое управление узлами и их регулярное обновление.
+* **Расширенная совместимость**: поддержка `sing-box extended` и транспорта `XHTTP`.
+* **Обновлённый интерфейс**: современный и удобный LuCI-интерфейс с гибким управлением.
+* **Тонкая маршрутизация**: расширенное управление секциями и новые условия для гибкого распределения трафика.
+* **Собственный VPN/Proxy**: возможность поднять личный прокси-сервер прямо на роутере.
+* **Управление компонентами**: встроенный менеджер для установки, проверки и обновления необходимых утилит.
+* **Мониторинг соединений**: визуальное отслеживание активного трафика и подключений.
+* **Группы тестирования (URLTest)**: автоматический выбор самого быстрого узла по минимальной задержке.
+* **Каскадные подключения**: возможность построения сложных цепочек проксирования.
+* **DNS-маршрутизация**: перенаправление DNS-запросов через прокси-серверы и настройка резервных серверов.
+* **Поддержка IPv6**: полноценная работа в сетях нового поколения.
+* **Интеграция средств обхода**: встроенная поддержка `Zapret`, `Zapret2` и `ByeDPI` как индивидуальных действий для каждого правила.
+* **Современный бэкенд**: вся логика службы полностью переписана на `ucode`.
 
-### Документация
+### Документация и поддержка
 
-Отдельной документации со всеми изменениями, нововведениями и инструкцией по настройке пока что не существует. Задать вопрос, сообщить о проблеме или обсудить проект можно в [Telegram-чате](https://t.me/forkop_chat) проекта.
+Отдельной документации со всеми деталями пока нет. Задать вопрос, сообщить об ошибке или обсудить проект можно в [Telegram-чате](https://t.me/tachyon_chat).
 
-Как альтернативу документации для быстрых персонализированных ответов используйте бесплатного, специально для этого созданного, AI-ассистента [@forkop_aibot](https://t.me/forkop_aibot).
+Для быстрых ответов на вопросы о настройке и работе проекта вы можете использовать бесплатного AI-ассистента [@tachyon_aibot](https://t.me/tachyon_aibot) в Telegram.
 
 ### Поддержать проект
 
-* 💳 **Карты РФ / СБП / Tinkoff Pay:** [Донат на CloudTips](https://pay.cloudtips.ru/p/385e5af2)
-* 💎 **USDT (сеть TON):** `UQAOCDav39WJ2gvnzs9RQ_IsF2dcGrcpw4U0j6XGO7je7uwm`
-* 🟢 **USDT (сеть TRC-20):** `TEMaZFyM8RQpkbd5LvB8CFJwxCyhHauKAe`
-* 🪙 **USDT (сети ERC-20 / BEP-20 / Polygon / Monad):** `0xe8aabb21c320240fe45b6087e68c6fe40a92d8bf`
-* 🟠 **USDT (сеть Solana):** `AhhUjTci9zDKQjUfgLacFR4LiHX9nmZud6DZ8YdbpjEB`
+* 💳 **Карты РФ / СБП / Tinkoff Pay:** [Донат на Dalink](https://dalink.to/dushnilin)
