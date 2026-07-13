@@ -336,6 +336,7 @@ export const TachyonShellMethods = {
     callBaseMethod<unknown>(Tachyon.AvailableMethods.GLOBAL_CHECK, [
       masked ? 'masked' : 'raw',
     ]),
+  doctor: async () => callBaseMethod<string>(Tachyon.AvailableMethods.DOCTOR),
   showSingBoxConfig: async (masked = true) =>
     callBaseMethod<unknown>(Tachyon.AvailableMethods.SHOW_SING_BOX_CONFIG, [
       masked ? 'masked' : 'raw',

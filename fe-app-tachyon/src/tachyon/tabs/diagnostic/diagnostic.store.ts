@@ -114,6 +114,9 @@ export const initialDiagnosticStore: Pick<
     globalCheck: {
       loading: false,
     },
+    doctor: {
+      loading: false,
+    },
     viewLogs: {
       loading: false,
     },
