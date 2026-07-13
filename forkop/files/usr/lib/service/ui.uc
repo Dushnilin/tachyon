@@ -18,8 +18,11 @@ const LATENCY_ACTION_DIR = getenv("FORKOP_UI_LATENCY_ACTION_DIR") || STATE_DIR +
 const COMPONENT_ACTION_DIR = getenv("FORKOP_UI_COMPONENT_ACTION_DIR") || getenv("UPDATES_JOB_DIR") || "/var/run/forkop/component-actions";
 const SUBSCRIPTION_ACTION_DIR = getenv("FORKOP_UI_SUBSCRIPTION_ACTION_DIR") || getenv("FORKOP_SUBSCRIPTION_UPDATE_JOB_DIR") || "/var/run/forkop/subscription-update-jobs";
 const SING_BOX_VERSION_CACHE_FILE = getenv("FORKOP_UI_SING_BOX_VERSION_CACHE_FILE") || STATE_DIR + "/sing-box-version";
-const SING_BOX_VERSION_STATE_FILE = getenv("FORKOP_UI_SING_BOX_VERSION_STATE_FILE") || "/etc/forkop/sing-box-version";
+const SING_BOX_VERSION_CACHE_LOCK_DIR = getenv("FORKOP_UI_SING_BOX_VERSION_CACHE_LOCK_DIR") || SING_BOX_VERSION_CACHE_FILE + ".lock";
 const SING_BOX_VARIANT_STATE_FILE = getenv("FORKOP_UI_SING_BOX_VARIANT_STATE_FILE") || "/etc/forkop/sing-box-variant";
+const SING_BOX_BIN_PATH = getenv("FORKOP_UI_SING_BOX_BIN_PATH") || "/usr/bin/sing-box";
+const SING_BOX_VERSION_PROBE_TIMEOUT_SECONDS = getenv("FORKOP_UI_SING_BOX_VERSION_PROBE_TIMEOUT_SECONDS") || "1";
+const SING_BOX_VERSION_PROBE_FAILURE_TTL_SECONDS = getenv("FORKOP_UI_SING_BOX_VERSION_PROBE_FAILURE_TTL_SECONDS") || "30";
 const ACTION_FINISHED_TTL_MINUTES = getenv("FORKOP_UI_ACTION_FINISHED_TTL_MINUTES") || "60";
 const ACTION_ACKED_TTL_SECONDS = getenv("FORKOP_UI_ACTION_ACKED_TTL_SECONDS") || "15";
 const ACTION_STALE_GRACE_SECONDS = getenv("FORKOP_UI_ACTION_STALE_GRACE_SECONDS") || "15";
@@ -699,6 +702,12 @@ function pid_running(pid) {
     return job_pid_valid(pid) && command_success_from_args([ "kill", "-0", pid ]);
 }
 
+function current_pid() {
+    let stat = as_string(fs.readfile("/proc/self/stat"));
+    let separator = index(stat, " ");
+    return separator > 0 ? substr(stat, 0, separator) : "";
+}
+
 function refresh_pid_job_state(path, stale_message) {
     let value = read_json_file(path);
     if (type(value) != "object" || value.running !== true)
@@ -797,23 +806,37 @@ function action_state_from_dirs() {
 
 function acquire_dir_lock(lock_dir) {
     lock_dir = as_string(lock_dir);
-    let owner_pid = trim(command_output("sh -c 'echo $$'"));
+    let owner_pid = current_pid();
+    if (!job_pid_valid(owner_pid))
+        return false;
+
     if (command_success_from_args([ "mkdir", lock_dir ])) {
-        write_file(lock_dir + "/pid", owner_pid + "\n");
-        return true;
+        if (write_file(lock_dir + "/pid", owner_pid + "\n"))
+            return true;
+        release_dir_lock(lock_dir);
+        return false;
     }
 
     let current_owner_pid = first_line(lock_dir + "/pid");
     if (pid_running(current_owner_pid))
         return false;
 
+    let lock_stat = fs.stat(lock_dir);
+    if (current_owner_pid == "" && lock_stat != null) {
+        let lock_age = now_seconds() - int(lock_stat.mtime || 0);
+        if (lock_age >= 0 && lock_age < 5)
+            return false;
+    }
+
     remove_file(lock_dir + "/pid");
     command_success_from_args([ "rmdir", lock_dir ]);
     if (!command_success_from_args([ "mkdir", lock_dir ]))
         return false;
 
-    write_file(lock_dir + "/pid", owner_pid + "\n");
-    return true;
+    if (write_file(lock_dir + "/pid", owner_pid + "\n"))
+        return true;
+    release_dir_lock(lock_dir);
+    return false;
 }
 
 function release_dir_lock(lock_dir) {
@@ -878,43 +901,111 @@ function component_action_running_for(component) {
 }
 
 function sing_box_signature() {
-    let fields = split(trim(command_output_from_args([ "ls", "-ln", "/usr/bin/sing-box" ])), /[ \t]+/);
-    if (length(fields) < 8)
+    let stat = fs.stat(SING_BOX_BIN_PATH);
+    if (stat == null)
         return "";
 
-    return join(":", [ fields[4], fields[5], fields[6], fields[7] ]);
+    return join(":", [ stat.inode, stat.size, stat.mtime, stat.ctime ]);
 }
 
-function sing_box_version_state() {
-    return first_line(SING_BOX_VERSION_STATE_FILE);
-}
-
-function sing_box_version() {
-    if (!command_success_from_args([ "sh", "-c", "command -v sing-box" ]))
-        return "";
-
-    if (marker_is("extended-compressed"))
-        return sing_box_version_state();
-
-    let signature = sing_box_signature();
-    if (signature != "" && fs.stat(SING_BOX_VERSION_CACHE_FILE) != null) {
-        let data = split(as_string(fs.readfile(SING_BOX_VERSION_CACHE_FILE)), "\n");
-        if ((data[0] || "") == signature && as_string(data[1] || "") != "")
-            return as_string(data[1]);
-    }
-
-    let first = split(command_output_from_args([ "sing-box", "version" ]), "\n")[0] || "";
+function sing_box_version_info_from_output(output) {
+    let first = split(as_string(output), "\n")[0] || "";
     let fields = split(trim(as_string(first)), /[ \t]+/);
     let version = length(fields) > 0 ? fields[length(fields) - 1] : "";
     if (version == "")
-        return "";
+        return null;
 
-    if (signature != "") {
-        ensure_dir(STATE_DIR);
-        write_file(SING_BOX_VERSION_CACHE_FILE, signature + "\n" + version + "\n");
+    let tags = "";
+    for (let line in split(as_string(output), "\n")) {
+        line = as_string(line);
+        if (substr(line, 0, 5) == "Tags:") {
+            tags = trim(substr(line, 5));
+            break;
+        }
     }
 
-    return version;
+    return { version, tags };
+}
+
+function sing_box_cached_version_info(signature) {
+    let cache = read_json_file(SING_BOX_VERSION_CACHE_FILE);
+    if (type(cache) == "object" && as_string(cache.signature) == signature) {
+        if (cache.success === true && as_string(cache.version) != "")
+            return { hit: true, info: { version: as_string(cache.version), tags: as_string(cache.tags) } };
+
+        let checked_at = arg_number(cache.checked_at);
+        let failure_ttl = arg_number(SING_BOX_VERSION_PROBE_FAILURE_TTL_SECONDS);
+        if (cache.success === false && checked_at > 0) {
+            let failure_age = now_seconds() - checked_at;
+            if (failure_age >= 0 && failure_age < failure_ttl)
+                return { hit: true, info: null };
+        }
+    }
+
+    let legacy = split(as_string(fs.readfile(SING_BOX_VERSION_CACHE_FILE)), "\n");
+    let legacy_version = as_string(legacy[1] || "");
+    if (as_string(legacy[0] || "") == signature && index(legacy_version, "extended") >= 0)
+        return { hit: true, info: { version: legacy_version, tags: "" } };
+
+    return null;
+}
+
+function bounded_command_output_from_args(args, timeout_seconds) {
+    timeout_seconds = arg_number(timeout_seconds);
+    if (timeout_seconds <= 0)
+        timeout_seconds = 1;
+
+    let pid = current_pid();
+    if (!job_pid_valid(pid))
+        return "";
+
+    let output_path = SING_BOX_VERSION_CACHE_FILE + "." + pid + ".out";
+    remove_file(output_path);
+
+    let script = command_from_args(args) + " >" + shell_quote(output_path) + " 2>/dev/null & child=$!; " +
+        "(sleep " + as_string(timeout_seconds) + "; kill -KILL \"$child\" 2>/dev/null) & watchdog=$!; " +
+        "wait \"$child\"; rc=$?; kill \"$watchdog\" 2>/dev/null; wait \"$watchdog\" 2>/dev/null; exit \"$rc\"";
+    let status = command_status(command_from_args([ "sh", "-c", script ]) + " 2>/dev/null");
+    let output = as_string(fs.readfile(output_path));
+    remove_file(output_path);
+    return status == 0 ? output : "";
+}
+
+function sing_box_version_info() {
+    if (!file_executable(SING_BOX_BIN_PATH))
+        return null;
+
+    let signature = sing_box_signature();
+    if (signature == "")
+        return null;
+
+    let cached = sing_box_cached_version_info(signature);
+    if (cached != null)
+        return cached.info;
+
+    ensure_dir(STATE_DIR);
+    if (!acquire_dir_lock(SING_BOX_VERSION_CACHE_LOCK_DIR)) {
+        cached = sing_box_cached_version_info(signature);
+        return cached != null ? cached.info : null;
+    }
+
+    cached = sing_box_cached_version_info(signature);
+    if (cached != null) {
+        release_dir_lock(SING_BOX_VERSION_CACHE_LOCK_DIR);
+        return cached.info;
+    }
+
+    let output = bounded_command_output_from_args([ SING_BOX_BIN_PATH, "version" ], SING_BOX_VERSION_PROBE_TIMEOUT_SECONDS);
+    let info = sing_box_version_info_from_output(output);
+    write_state_file(SING_BOX_VERSION_CACHE_FILE, {
+        signature,
+        success: info != null,
+        version: info != null ? info.version : "",
+        tags: info != null ? info.tags : "",
+        checked_at: now_seconds()
+    });
+    release_dir_lock(SING_BOX_VERSION_CACHE_LOCK_DIR);
+    return info;
 }
 
 function server_inbounds_enabled_count() {
@@ -940,7 +1031,7 @@ function capability_flags() {
         server_inbounds_enabled_count: 0
     };
 
-    if (command_success_from_args([ "sh", "-c", "command -v sing-box" ])) {
+    if (file_executable(SING_BOX_BIN_PATH)) {
         if (marker_is("extended-compressed")) {
             result.sing_box_extended = 1;
             result.sing_box_compressed = 1;
@@ -957,24 +1048,13 @@ function capability_flags() {
             result.sing_box_tailscale = 1;
         }
         else {
-            let output = command_output_from_args([ "sing-box", "version" ]);
-            let first = split(output, "\n")[0] || "";
-            let fields = split(trim(as_string(first)), /[ \t]+/);
-            let version = length(fields) > 0 ? fields[length(fields) - 1] : "";
-            if (index(version, "extended") >= 0) {
+            let info = sing_box_version_info();
+            if (info != null && index(info.version, "extended") >= 0) {
                 result.sing_box_extended = 1;
                 result.sing_box_tailscale = 1;
             }
-            else {
-                let tags = "";
-                for (let line in split(output, "\n")) {
-                    line = as_string(line);
-                    if (substr(line, 0, 5) == "Tags:") {
-                        tags = trim(substr(line, 5));
-                        break;
-                    }
-                }
-                if (match(tags, /(^|[,: \t])with_tailscale([, \t]|$)/) != null)
+            else if (info != null) {
+                if (match(info.tags, /(^|[,: \t])with_tailscale([, \t]|$)/) != null)
                     result.sing_box_tailscale = 1;
                 if (result.sing_box_tailscale == 0)
                     result.sing_box_tiny = 1;
@@ -1131,8 +1211,11 @@ function launch_worker(args) {
         FORKOP_UI_COMPONENT_ACTION_DIR: COMPONENT_ACTION_DIR,
         FORKOP_UI_SUBSCRIPTION_ACTION_DIR: SUBSCRIPTION_ACTION_DIR,
         FORKOP_UI_SING_BOX_VERSION_CACHE_FILE: SING_BOX_VERSION_CACHE_FILE,
-        FORKOP_UI_SING_BOX_VERSION_STATE_FILE: SING_BOX_VERSION_STATE_FILE,
+        FORKOP_UI_SING_BOX_VERSION_CACHE_LOCK_DIR: SING_BOX_VERSION_CACHE_LOCK_DIR,
         FORKOP_UI_SING_BOX_VARIANT_STATE_FILE: SING_BOX_VARIANT_STATE_FILE,
+        FORKOP_UI_SING_BOX_BIN_PATH: SING_BOX_BIN_PATH,
+        FORKOP_UI_SING_BOX_VERSION_PROBE_TIMEOUT_SECONDS: SING_BOX_VERSION_PROBE_TIMEOUT_SECONDS,
+        FORKOP_UI_SING_BOX_VERSION_PROBE_FAILURE_TTL_SECONDS: SING_BOX_VERSION_PROBE_FAILURE_TTL_SECONDS,
         FORKOP_UI_ACTION_FINISHED_TTL_MINUTES: ACTION_FINISHED_TTL_MINUTES,
         FORKOP_UI_ACTION_ACKED_TTL_SECONDS: ACTION_ACKED_TTL_SECONDS,
         FORKOP_UI_ACTION_STALE_GRACE_SECONDS: ACTION_STALE_GRACE_SECONDS,
