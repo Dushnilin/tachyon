@@ -18,37 +18,17 @@ const DIAGNOSTICS_UC = getenv("TACHYON_DIAGNOSTICS_UC") || LIB_DIR + "/diagnosti
 
 let shell_quote = common.shell_quote;
 
-function command_from_args(args) {
-    let parts = [];
-    for (let arg in args)
-        push(parts, shell_quote(arg));
-    return join(" ", parts);
-}
+let command_status = common.command_status;
+let command_success_from_args = common.command_success_from_args;
+let command_output_from_args = common.command_output_from_args;
+let command_from_args = common.command_from_args;
+let command_output = common.command_output;
 
-function command_output(command) {
-    let pipe = fs.popen(command, "r");
-    if (!pipe)
-        return "";
 
-    let data = pipe.read("all");
-    let status = pipe.close();
-    if (status != 0 || data == null)
-        return "";
-    return as_string(data);
-}
 
-function command_output_from_args(args) {
-    return command_output(command_from_args(args));
-}
 
-function command_status(command) {
-    let status = int(system(command));
-    return status > 255 ? int(status / 256) : status;
-}
 
-function command_success_from_args(args) {
-    return command_status(command_from_args(args) + " >/dev/null 2>&1") == 0;
-}
+
 
 function ensure_dir(path) {
     return command_success_from_args([ "mkdir", "-p", path ]);

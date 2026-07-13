@@ -4,9 +4,14 @@ let fs = require("fs");
 let ip = require("core.ip");
 let domain_config = require("config.domain");
 
-function as_string(value) {
-    return value == null ? "" : "" + value;
-}
+let common = require("core.common");
+let as_string = common.as_string;
+let read_json_file = common.read_json_file;
+let write_json_file = common.write_json_file;
+let object_or_empty = common.object_or_empty;
+let array_or_empty = common.array_or_empty;
+
+
 
 function json_decode_text(text) {
     try {
@@ -17,10 +22,6 @@ function json_decode_text(text) {
     }
 }
 
-function read_json_file(path) {
-    let data = fs.readfile(path);
-    return data == null ? null : json_decode_text(data);
-}
 
 function write_text_file(path, text) {
     let result = fs.writefile(path, text);
@@ -31,13 +32,7 @@ function write_text_file(path, text) {
     return true;
 }
 
-function write_json_file(path, value) {
-    return write_text_file(path, sprintf("%J", value) + "\n");
-}
 
-function array_or_empty(value) {
-    return type(value) == "array" ? value : [];
-}
 
 function array_from_value(value) {
     if (value == null)
@@ -47,9 +42,6 @@ function array_from_value(value) {
     return [ value ];
 }
 
-function object_or_empty(value) {
-    return type(value) == "object" ? value : {};
-}
 
 function trim_string(value) {
     let text = as_string(value);

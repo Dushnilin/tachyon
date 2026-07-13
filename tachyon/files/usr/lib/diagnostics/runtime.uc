@@ -64,6 +64,21 @@ let as_string = common.as_string;
 let shell_quote = common.shell_quote;
 let read_json_file = common.read_json_file;
 
+let option = common.option;
+let list_option = common.list_option;
+let command_status = common.command_status;
+let command_success_from_args = common.command_success_from_args;
+let bool_option = common.bool_option;
+let read_stdin = common.read_stdin;
+let command_output_from_args = common.command_output_from_args;
+let command_exists = common.command_exists;
+let command_from_args = common.command_from_args;
+let object_or_empty = common.object_or_empty;
+let write_json = common.write_json;
+let array_or_empty = common.array_or_empty;
+let command_output = common.command_output;
+
+
 function arg_number(value) {
     value = as_string(value);
     return value == "" || match(value, /[^0-9-]/) != null ? 0 : int(value, 10);
@@ -74,21 +89,12 @@ function arg_bool(value) {
     return value == "1" || value == "true" || value == "yes" || value == "on";
 }
 
-function command_from_args(args) {
-    let parts = [];
-    for (let arg in args)
-        push(parts, shell_quote(arg));
-    return join(" ", parts);
-}
 
 function normalize_status(status) {
     status = int(status);
     return status > 255 ? int(status / 256) : status;
 }
 
-function command_status(command) {
-    return normalize_status(system(command));
-}
 
 function command_capture(command) {
     let pipe = fs.popen(command, "r");
@@ -100,26 +106,13 @@ function command_capture(command) {
     return { status, output: data == null ? "" : as_string(data) };
 }
 
-function command_output(command) {
-    let result = command_capture(command);
-    return result.status == 0 ? result.output : "";
-}
 
 function command_success(command) {
     return command_status(command + " >/dev/null 2>&1") == 0;
 }
 
-function command_output_from_args(args) {
-    return command_output(command_from_args(args) + " 2>/dev/null");
-}
 
-function command_success_from_args(args) {
-    return command_success(command_from_args(args));
-}
 
-function command_exists(name) {
-    return command_success_from_args([ "command", "-v", as_string(name) ]);
-}
 
 function module_args(module_path, args) {
     let result = [ "ucode", "-L", LIB_DIR, module_path ];
@@ -187,18 +180,7 @@ function status_success(args, input) {
     return status_capture(args, input).status == 0;
 }
 
-function write_json(value) {
-    print(sprintf("%J", value), "\n");
-}
 
-function read_stdin() {
-    let input = fs.open("/dev/stdin", "r");
-    if (!input)
-        return "";
-    let data = input.read("all");
-    input.close();
-    return data == null ? "" : as_string(data);
-}
 
 
 
@@ -211,37 +193,10 @@ function parse_json_or_null(value) {
     }
 }
 
-function object_or_empty(value) {
-    return type(value) == "object" ? value : {};
-}
 
-function array_or_empty(value) {
-    return type(value) == "array" ? value : [];
-}
 
-function option(section, key, fallback) {
-    if (fallback == null)
-        fallback = "";
-    let value = object_or_empty(section)[key];
-    if (value == null)
-        return as_string(fallback);
-    if (type(value) == "array")
-        return join(" ", value);
-    return as_string(value);
-}
 
-function list_option(section, key) {
-    let value = object_or_empty(section)[key];
-    if (type(value) == "array")
-        return value;
-    if (as_string(value) != "")
-        return [ as_string(value) ];
-    return [];
-}
 
-function bool_option(section, key, fallback) {
-    return arg_bool(option(section, key, fallback ? "1" : "0"));
-}
 
 function settings() {
     return object_or_empty(uci_core.get_all(CONFIG_NAME, "settings"));

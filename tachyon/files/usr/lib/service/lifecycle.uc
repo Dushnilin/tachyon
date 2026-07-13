@@ -9,6 +9,16 @@ let as_string = common.as_string;
 let shell_quote = common.shell_quote;
 let read_json_file = common.read_json_file;
 
+let command_status = common.command_status;
+let command_success_from_args = common.command_success_from_args;
+let command_output_from_args = common.command_output_from_args;
+let command_from_args = common.command_from_args;
+let object_or_empty = common.object_or_empty;
+let write_json = common.write_json;
+let array_or_empty = common.array_or_empty;
+let command_output = common.command_output;
+
+
 function constant_value(name, fallback) {
     let value = constants[name];
     return value == null ? as_string(fallback) : as_string(value);
@@ -124,21 +134,12 @@ let startup_config_fingerprint = "";
 
 
 
-function command_from_args(args) {
-    let parts = [];
-    for (let arg in args)
-        push(parts, shell_quote(arg));
-    return join(" ", parts);
-}
 
 function normalize_status(status) {
     status = int(status);
     return status > 255 ? int(status / 256) : status;
 }
 
-function command_status(command) {
-    return normalize_status(system(command));
-}
 
 function command_capture(command) {
     let pipe = fs.popen(command, "r");
@@ -150,16 +151,9 @@ function command_capture(command) {
     return { status, output: data == null ? "" : as_string(data) };
 }
 
-function command_output(command) {
-    let result = command_capture(command);
-    return result.status == 0 ? result.output : "";
-}
 
 
 
-function write_json(value) {
-    print(sprintf("%J", value), "\n");
-}
 
 function command_success(command) {
     return command_status(command + " >/dev/null 2>&1") == 0;
@@ -169,13 +163,7 @@ function command_status_from_args(args) {
     return command_status(command_from_args(args));
 }
 
-function command_output_from_args(args) {
-    return command_output(command_from_args(args) + " 2>/dev/null");
-}
 
-function command_success_from_args(args) {
-    return command_status(command_from_args(args) + " >/dev/null 2>&1") == 0;
-}
 
 function external_config_fingerprint() {
     let data = fs.readfile(CONFIG_FILE);
@@ -208,13 +196,7 @@ function bool_text(value) {
     return value == "1" || value == "true" || value == "yes" || value == "on";
 }
 
-function object_or_empty(value) {
-    return type(value) == "object" ? value : {};
-}
 
-function array_or_empty(value) {
-    return type(value) == "array" ? value : [];
-}
 
 function string_array_contains(values, needle) {
     needle = as_string(needle);

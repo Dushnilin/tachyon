@@ -6,6 +6,13 @@ let common = require("core.common");
 let as_string = common.as_string;
 let shell_quote = common.shell_quote;
 
+let read_json_file = common.read_json_file;
+let write_json_file = common.write_json_file;
+let object_or_empty = common.object_or_empty;
+let write_json = common.write_json;
+let array_or_empty = common.array_or_empty;
+
+
 function trim(value) {
     value = as_string(value);
     let start = 0;
@@ -287,23 +294,13 @@ function read_file(path) {
     return fs.readfile(path);
 }
 
-function read_json_file(path) {
-    let data = read_file(path);
-    return data == null ? null : json_decode_text(data);
-}
 
 function validate_subscription(path) {
     let value = read_json_file(path);
     return type(value) == "object" && type(value.outbounds) == "array" && length(value.outbounds) > 0;
 }
 
-function write_json_file(path, value) {
-    return fs.writefile(path, sprintf("%J", value) + "\n");
-}
 
-function write_json(value) {
-    print(sprintf("%J", value), "\n");
-}
 
 function canonical_runtime_value(value) {
     if (type(value) == "array") {
@@ -350,13 +347,7 @@ function runtime_outbounds_equal(left_path, right_path) {
     return sprintf("%J", left) == sprintf("%J", right);
 }
 
-function array_or_empty(value) {
-    return type(value) == "array" ? value : [];
-}
 
-function object_or_empty(value) {
-    return type(value) == "object" ? value : {};
-}
 
 function base64_decode(value) {
     value = as_string(value);

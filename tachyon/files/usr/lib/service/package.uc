@@ -7,6 +7,10 @@ let common = require("core.common");
 let as_string = common.as_string;
 let shell_quote = common.shell_quote;
 
+let command_success_from_args = common.command_success_from_args;
+let command_from_args = common.command_from_args;
+
+
 function env(name, fallback) {
     let value = getenv(name);
     return value == null ? as_string(fallback) : as_string(value);
@@ -23,21 +27,12 @@ const SING_BOX_CRONET = env("TACHYON_SING_BOX_CRONET", "/usr/lib/libcronet.so");
 const SING_BOX_MANAGED_MARKER = env("SB_MANAGED_SERVICE_MARKER", "Tachyon managed sing-box service for binary variants");
 const PACKAGE_TEST_MODE = env("TACHYON_PACKAGE_TEST_MODE", "") != "";
 
-function command_from_args(args) {
-    let parts = [];
-    for (let arg in args)
-        push(parts, shell_quote(arg));
-    return join(" ", parts);
-}
 
 function normalize_status(status) {
     status = int(status);
     return status > 255 ? int(status / 256) : status;
 }
 
-function command_success_from_args(args) {
-    return normalize_status(system(command_from_args(args) + " >/dev/null 2>&1")) == 0;
-}
 
 function path_exists(path) {
     return fs.stat(as_string(path)) != null;

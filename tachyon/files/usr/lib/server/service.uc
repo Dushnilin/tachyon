@@ -12,6 +12,12 @@ let as_string = common.as_string;
 let shell_quote = common.shell_quote;
 let read_json_file = common.read_json_file;
 
+let read_stdin = common.read_stdin;
+let write_json = common.write_json;
+let array_or_empty = common.array_or_empty;
+let read_stdin_json = common.read_stdin_json;
+
+
 function ascii_lower(value) {
     let upper = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
     let lower = "abcdefghijklmnopqrstuvwxyz";
@@ -20,9 +26,6 @@ function ascii_lower(value) {
     });
 }
 
-function write_json(value) {
-    print(sprintf("%J", value), "\n");
-}
 
 function run(command) {
     return system(command) == 0;
@@ -105,23 +108,7 @@ function server_set_option(section, option, value) {
 
 
 
-function read_stdin() {
-    let input = fs.open("/dev/stdin", "r");
-    if (!input)
-        return "";
-    let data = input.read("all");
-    input.close();
-    return data == null ? "" : data;
-}
 
-function read_stdin_json() {
-    try {
-        return json(read_stdin());
-    }
-    catch (e) {
-        return null;
-    }
-}
 
 function stdin_first_nonempty_line() {
     for (let line in split(read_stdin(), "\n")) {
@@ -143,9 +130,6 @@ function shell_single_quote(value) {
     print("'", replace(value, /'/g, "'\\''"), "'\n");
 }
 
-function array_or_empty(value) {
-    return type(value) == "array" ? value : [];
-}
 
 function array_append_string(value) {
     let result = array_or_empty(read_stdin_json());

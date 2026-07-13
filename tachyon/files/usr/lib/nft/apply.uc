@@ -15,26 +15,23 @@ let list_option = common.list_option;
 let bool_option = common.bool_option;
 let as_string = common.as_string;
 
+let write_compact_string_array = common.write_compact_string_array;
+let run_args = common.run_args;
+let read_stdin = common.read_stdin;
+let command_output_from_args = common.command_output_from_args;
+let csv_to_json_array = common.csv_to_json_array;
+let command_from_args = common.command_from_args;
+let object_or_empty = common.object_or_empty;
+let write_json = common.write_json;
+let option = common.option;
+
+
 function arg_bool(value) {
     value = lc(as_string(value));
     return value == "1" || value == "true" || value == "yes";
 }
 
-function object_or_empty(value) {
-    return type(value) == "object" ? value : {};
-}
 
-function option(section, key, fallback) {
-    if (fallback == null)
-        fallback = "";
-
-    let value = object_or_empty(section)[key];
-    if (value == null)
-        return fallback;
-    if (type(value) == "array")
-        return join(" ", value);
-    return as_string(value);
-}
 
 function uci_section(section_name) {
     return object_or_empty(uci_core.get_all(CONFIG_NAME, section_name));
@@ -48,28 +45,8 @@ function uci_settings() {
     return uci_section("settings");
 }
 
-function write_json(value) {
-    print(sprintf("%J", value), "\n");
-}
 
-function write_compact_string_array(values) {
-    print("[");
-    for (let i = 0; i < length(values); i++) {
-        if (i > 0)
-            print(",");
-        print(sprintf("%J", as_string(values[i])));
-    }
-    print("]\n");
-}
 
-function read_stdin() {
-    let input = fs.open("/dev/stdin", "r");
-    if (!input)
-        return "";
-    let data = input.read("all");
-    input.close();
-    return data == null ? "" : data;
-}
 
 function write_text_file(path, text) {
     let result = fs.writefile(path, as_string(text));
@@ -98,35 +75,12 @@ function unlink_file(path) {
 
 let shell_quote = common.shell_quote;
 
-function command_from_args(args) {
-    let parts = [];
 
-    for (let arg in args)
-        push(parts, shell_quote(arg));
-
-    return join(" ", parts);
-}
-
-function run_args(args) {
-    return system(command_from_args(args)) == 0;
-}
 
 function run_args_quiet(args) {
     return system(command_from_args(args) + " >/dev/null 2>&1") == 0;
 }
 
-function command_output_from_args(args) {
-    let pipe = fs.popen(command_from_args(args), "r");
-    if (!pipe)
-        return "";
-
-    let data = pipe.read("all");
-    let status = pipe.close();
-    if (status != 0 || data == null)
-        return "";
-
-    return as_string(data);
-}
 
 function log_debug(message) {
     run_args([ "logger", "-t", "tachyon", "[debug] " + as_string(message) ]);
@@ -175,15 +129,6 @@ function text_list_to_csv(value, separator_mode) {
     print_csv(text_list_values(value, separator_mode));
 }
 
-function csv_to_json_array(value) {
-    value = as_string(value);
-    if (value == "") {
-        print("[]\n");
-        return;
-    }
-
-    write_compact_string_array(split(value, ","));
-}
 
 function csv_list_contains(value, needle) {
     needle = as_string(needle);

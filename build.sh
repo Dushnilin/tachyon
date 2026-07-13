@@ -747,6 +747,7 @@ build_apk_package() {
     sudo chown "$(id -u):$(id -g)" "$output_file"
     sudo rm -rf "$temp_root" "$temp_scripts"
   elif have_unshare_root; then
+    # shellcheck disable=SC2048,SC2086
     unshare -r sh -c "
       chown -R 0:0 '$temp_root' '$temp_scripts'
       '$apk_bin' mkpkg \
@@ -761,7 +762,7 @@ build_apk_package() {
         -I 'maintainer:${maintainer}' \
         -I 'url:${PROJECT_URL}' \
         -I 'depends:${depends}' \
-        '${extra_args[@]}' \
+        ${extra_args[*]} \
         -s pre-install:'$temp_scripts/${script_prefix}-pre-install.sh' \
         -s post-install:'$temp_scripts/${script_prefix}-post-install.sh' \
         -s pre-deinstall:'$temp_scripts/${script_prefix}-pre-deinstall.sh' \
@@ -770,6 +771,7 @@ build_apk_package() {
     "
   else
     stderr_file="$(mktemp)"
+    # shellcheck disable=SC2048,SC2086
     if ! fakeroot sh -c "
       chown -R 0:0 '$temp_root' '$temp_scripts'
       '$apk_bin' mkpkg \
@@ -784,7 +786,7 @@ build_apk_package() {
         -I 'maintainer:${maintainer}' \
         -I 'url:${PROJECT_URL}' \
         -I 'depends:${depends}' \
-        '${extra_args[@]}' \
+        ${extra_args[*]} \
         -s pre-install:'$temp_scripts/${script_prefix}-pre-install.sh' \
         -s post-install:'$temp_scripts/${script_prefix}-post-install.sh' \
         -s pre-deinstall:'$temp_scripts/${script_prefix}-pre-deinstall.sh' \

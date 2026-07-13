@@ -27,17 +27,20 @@ let common = require("core.common");
 let as_string = common.as_string;
 let shell_quote = common.shell_quote;
 
+let command_status = common.command_status;
+let command_success_from_args = common.command_success_from_args;
+let command_output_from_args = common.command_output_from_args;
+let command_exists = common.command_exists;
+let command_from_args = common.command_from_args;
+let write_json = common.write_json;
+let command_output = common.command_output;
+
+
 function arg_bool(value) {
     value = lc(as_string(value));
     return value == "1" || value == "true" || value == "yes" || value == "on";
 }
 
-function command_from_args(args) {
-    let parts = [];
-    for (let arg in args)
-        push(parts, shell_quote(arg));
-    return join(" ", parts);
-}
 
 function command_env(assignments) {
     let parts = [];
@@ -46,42 +49,15 @@ function command_env(assignments) {
     return join(" ", parts);
 }
 
-function command_status(command) {
-    let status = int(system(command));
-    return status > 255 ? int(status / 256) : status;
-}
 
 function command_success(command) {
     return command_status("(" + command + ") >/dev/null 2>&1") == 0;
 }
 
-function command_success_from_args(args) {
-    return command_success(command_from_args(args));
-}
 
-function command_output(command) {
-    let pipe = fs.popen(command, "r");
-    if (!pipe)
-        return "";
 
-    let data = pipe.read("all");
-    let status = pipe.close();
-    if (status != 0 || data == null)
-        return "";
-    return as_string(data);
-}
 
-function command_output_from_args(args) {
-    return command_output(command_from_args(args));
-}
 
-function command_exists(name) {
-    return command_success_from_args([ "command", "-v", name ]);
-}
-
-function write_json(value) {
-    print(sprintf("%J", value), "\n");
-}
 
 function write_file(path, value) {
     return fs.writefile(as_string(path), as_string(value)) != null;
