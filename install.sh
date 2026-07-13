@@ -1,8 +1,8 @@
 #!/bin/sh
 # shellcheck shell=dash
 
-REPO_OWNER="ushan0v"
-REPO_NAME="forkop"
+REPO_OWNER="Dushnilin"
+REPO_NAME="tachyon"
 
 REQUIRED_SPACE_KB=15360
 CONNECT_TIMEOUT_SECONDS=15
