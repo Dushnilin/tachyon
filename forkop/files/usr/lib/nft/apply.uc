@@ -13,10 +13,7 @@ const CONFIG_NAME = getenv("FORKOP_CONFIG_NAME") || "forkop";
 let common_read_json_file = common.read_json_file;
 let list_option = common.list_option;
 let bool_option = common.bool_option;
-
-function as_string(value) {
-    return value == null ? "" : "" + value;
-}
+let as_string = common.as_string;
 
 function arg_bool(value) {
     value = lc(as_string(value));
@@ -99,9 +96,7 @@ function unlink_file(path) {
     }
 }
 
-function shell_quote(value) {
-    return "'" + replace(as_string(value), /'/g, "'\\''") + "'";
-}
+let shell_quote = common.shell_quote;
 
 function command_from_args(args) {
     let parts = [];

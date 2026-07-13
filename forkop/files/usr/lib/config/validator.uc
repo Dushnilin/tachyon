@@ -16,9 +16,10 @@ let connections = require("config.connections");
 const CONFIG_NAME = getenv("FORKOP_CONFIG_NAME") || "forkop";
 const DEFAULT_LATENCY_TEST_URL = "https://www.gstatic.com/generate_204";
 
-function as_string(value) {
-    return value == null ? "" : "" + value;
-}
+let common = require("core.common");
+let as_string = common.as_string;
+let shell_quote = common.shell_quote;
+let read_json_file = common.read_json_file;
 
 function read_stdin() {
     let input = fs.open("/dev/stdin", "r");
@@ -39,18 +40,7 @@ function read_stdin_json() {
     }
 }
 
-function read_json_file(path) {
-    let data = fs.readfile(as_string(path));
-    if (data == null)
-        return null;
 
-    try {
-        return json(data);
-    }
-    catch (e) {
-        return null;
-    }
-}
 
 function string_starts_with(value, prefix) {
     value = as_string(value);
@@ -154,9 +144,7 @@ function file_nonempty(path) {
     return stat != null && stat.size != null && stat.size > 0;
 }
 
-function shell_quote(value) {
-    return "'" + replace(as_string(value), /'/g, "'\\''") + "'";
-}
+
 
 function command_from_args(args) {
     let parts = [];

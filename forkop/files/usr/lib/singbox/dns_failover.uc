@@ -15,13 +15,8 @@ const DNS_FAILOVER_UC = getenv("FORKOP_DNS_FAILOVER_UC") || LIB_DIR + "/singbox/
 const SERVICE_BIN = getenv("FORKOP_BIN") || "/usr/bin/forkop";
 const CHECK_DOMAIN = "example.com";
 
-function as_string(value) {
-    return value == null ? "" : "" + value;
-}
-
-function shell_quote(value) {
-    return "'" + replace(as_string(value), /'/g, "'\\''") + "'";
-}
+let as_string = common.as_string;
+let shell_quote = common.shell_quote;
 
 function command_from_args(args) {
     let result = [];

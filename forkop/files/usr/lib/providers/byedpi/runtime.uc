@@ -20,9 +20,10 @@ const BYEDPI_OPEN_FILES_LIMIT = getenv("BYEDPI_OPEN_FILES_LIMIT") || "4096";
 const BYEDPI_DEFAULT_CMD_OPTS = getenv("BYEDPI_DEFAULT_CMD_OPTS") || "-o 2 --auto=t,r,a,s -d 2";
 const SB_TPROXY_INBOUND_TAG = getenv("SB_TPROXY_INBOUND_TAG") || "tproxy-in";
 
-function as_string(value) {
-    return value == null ? "" : "" + value;
-}
+let common = require("core.common");
+let as_string = common.as_string;
+let shell_quote = common.shell_quote;
+let read_json_file = common.read_json_file;
 
 function bool_value(value) {
     value = lc(as_string(value));
@@ -31,10 +32,6 @@ function bool_value(value) {
 
 function write_json(value) {
     print(sprintf("%J", value), "\n");
-}
-
-function shell_quote(value) {
-    return "'" + replace(as_string(value), /'/g, "'\\''") + "'";
 }
 
 function command_from_args(args) {
@@ -432,17 +429,7 @@ function runtime_tag(base, postfix) {
     return runtime_constants.tag(base, postfix);
 }
 
-function read_json_file(path) {
-    let data = fs.readfile(path);
-    if (data == null)
-        return null;
-    try {
-        return json(data);
-    }
-    catch (e) {
-        return null;
-    }
-}
+
 
 function value_contains(value, needle) {
     if (type(value) == "array") {

@@ -4,9 +4,9 @@ let fs = require("fs");
 let constants = require("core.constants");
 let uci_core = require("core.uci");
 
-function as_string(value) {
-    return value == null ? "" : "" + value;
-}
+let common = require("core.common");
+let as_string = common.as_string;
+let shell_quote = common.shell_quote;
 
 function constant_value(name, fallback) {
     let value = constants[name];
@@ -32,9 +32,7 @@ const CONFIG_CHANGE_REASON = getenv("FORKOP_CONFIG_CHANGE_REASON") || "on_config
 const DNS_APPLY_UC = LIB_DIR + "/dns/apply.uc";
 const UI_UC = LIB_DIR + "/service/ui.uc";
 
-function shell_quote(value) {
-    return "'" + replace(as_string(value), /'/g, "'\\''") + "'";
-}
+
 
 function shell_assignment(name, value) {
     print(as_string(name), "=", shell_quote(value), "\n");

@@ -11,6 +11,7 @@ let singbox_constants_module = require("singbox.constants");
 let domain_config = require("config.domain");
 
 let as_string = common.as_string;
+let shell_quote = common.shell_quote;
 let read_json_file = common.read_json_file;
 let write_json = common.write_json;
 let option = common.option;
@@ -40,9 +41,7 @@ const CHILD_ITEM_TYPES = [
     "urltest"
 ];
 
-function shell_quote(value) {
-    return "'" + replace(as_string(value), /'/g, "'\\''") + "'";
-}
+
 
 function command_output(command) {
     let pipe = fs.popen(command, "r");

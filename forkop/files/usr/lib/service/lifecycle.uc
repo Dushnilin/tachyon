@@ -4,9 +4,10 @@ let fs = require("fs");
 let constants = require("core.constants");
 let uci_core = require("core.uci");
 
-function as_string(value) {
-    return value == null ? "" : "" + value;
-}
+let common = require("core.common");
+let as_string = common.as_string;
+let shell_quote = common.shell_quote;
+let read_json_file = common.read_json_file;
 
 function constant_value(name, fallback) {
     let value = constants[name];
@@ -119,9 +120,7 @@ let nft_populate_enabled = NFT_POPULATE_ENABLED_DEFAULT;
 let rule_condition_cache_enabled = 0;
 let startup_config_fingerprint = "";
 
-function shell_quote(value) {
-    return "'" + replace(as_string(value), /'/g, "'\\''") + "'";
-}
+
 
 function command_from_args(args) {
     let parts = [];
@@ -154,18 +153,7 @@ function command_output(command) {
     return result.status == 0 ? result.output : "";
 }
 
-function read_json_file(path) {
-    let data = fs.readfile(as_string(path));
-    if (data == null)
-        return null;
 
-    try {
-        return json(data);
-    }
-    catch (e) {
-        return null;
-    }
-}
 
 function write_json(value) {
     print(sprintf("%J", value), "\n");

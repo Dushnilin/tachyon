@@ -82,18 +82,11 @@ function singbox_rulesets_module() {
     return singbox_rulesets_module_value;
 }
 
-function as_string(value) {
-    return value == null ? "" : "" + value;
-}
-
-function read_stdin() {
-    let data = fs.readfile("/dev/stdin");
-    return data == null ? "" : data;
-}
-
-function shell_quote(value) {
-    return "'" + replace(as_string(value), /'/g, "'\\''") + "'";
-}
+let common = require("core.common");
+let as_string = common.as_string;
+let shell_quote = common.shell_quote;
+let read_json_file = common.read_json_file;
+let read_stdin = common.read_stdin;
 
 function command_from_args(args) {
     let parts = [];
@@ -165,18 +158,7 @@ function log_message(message, level) {
     command_success_from_args([ "logger", "-t", "forkop", "[" + level + "] " + as_string(message) ]);
 }
 
-function read_json_file(path) {
-    let data = fs.readfile(path);
-    if (data == null)
-        return null;
 
-    try {
-        return json(data);
-    }
-    catch (e) {
-        return null;
-    }
-}
 
 function write_json(value) {
     print(sprintf("%J", value), "\n");

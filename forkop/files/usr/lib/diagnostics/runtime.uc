@@ -59,9 +59,10 @@ const BYEDPI_RUNTIME_UC = LIB_DIR + "/providers/byedpi/runtime.uc";
 const ZAPRET_VALIDATOR_UC = LIB_DIR + "/providers/zapret/validator.uc";
 const ZAPRET2_VALIDATOR_UC = LIB_DIR + "/providers/zapret2/validator.uc";
 
-function as_string(value) {
-    return value == null ? "" : "" + value;
-}
+let common = require("core.common");
+let as_string = common.as_string;
+let shell_quote = common.shell_quote;
+let read_json_file = common.read_json_file;
 
 function arg_number(value) {
     value = as_string(value);
@@ -71,10 +72,6 @@ function arg_number(value) {
 function arg_bool(value) {
     value = lc(as_string(value));
     return value == "1" || value == "true" || value == "yes" || value == "on";
-}
-
-function shell_quote(value) {
-    return "'" + replace(as_string(value), /'/g, "'\\''") + "'";
 }
 
 function command_from_args(args) {
@@ -199,17 +196,7 @@ function read_stdin() {
     return data == null ? "" : as_string(data);
 }
 
-function read_json_file(path) {
-    let data = fs.readfile(as_string(path));
-    if (data == null)
-        return null;
-    try {
-        return json(data);
-    }
-    catch (e) {
-        return null;
-    }
-}
+
 
 function parse_json_or_null(value) {
     try {
