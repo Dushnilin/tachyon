@@ -1,4 +1,4 @@
-import { Forkop } from '../types';
+import { Tachyon } from '../types';
 import { initialDiagnosticStore } from '../tabs/diagnostic/diagnostic.store';
 
 function jsonStableStringify<T, V>(obj: T): string {
@@ -158,17 +158,17 @@ export interface StoreType {
     failed: boolean;
     data: {
       singbox: number;
-      forkopRunning: number;
-      forkopEnabled: number;
-      forkopStatus: string;
+      tachyonRunning: number;
+      tachyonEnabled: number;
+      tachyonStatus: string;
     };
   };
   sectionsWidget: {
     loading: boolean;
     failed: boolean;
-    data: Forkop.OutboundGroup[];
+    data: Tachyon.OutboundGroup[];
     latencyFetchingSections: Record<string, boolean>;
-    latencyProgressSections: Record<string, Forkop.LatencyActionProgress>;
+    latencyProgressSections: Record<string, Tachyon.LatencyActionProgress>;
     selectorSwitchingSections: Record<string, string>;
     subscriptionUpdatingSections: Record<string, boolean>;
   };
@@ -190,8 +190,8 @@ export interface StoreType {
     loading: boolean;
     loaded: boolean;
     providerInfoLoaded: boolean;
-    forkop_version: string;
-    forkop_latest_version: string;
+    tachyon_version: string;
+    tachyon_latest_version: string;
     luci_app_version: string;
     sing_box_version: string;
     sing_box_extended: number;
@@ -209,8 +209,8 @@ export interface StoreType {
     device_model: string;
   };
   updatesActions: {
-    forkopCheck: { loading: boolean };
-    forkopInstall: { loading: boolean };
+    tachyonCheck: { loading: boolean };
+    tachyonInstall: { loading: boolean };
     singBoxCheck: { loading: boolean };
     singBoxInstall: { loading: boolean };
     singBoxInstallExtended: { loading: boolean };
@@ -228,7 +228,7 @@ export interface StoreType {
     byedpiRemove: { loading: boolean };
   };
   updatesChecks: Record<
-    Forkop.ComponentName,
+    Tachyon.ComponentName,
     {
       status: 'latest' | 'outdated' | 'dev' | null;
       latest_version: string;
@@ -262,9 +262,9 @@ const initialStore: StoreType = {
     failed: false,
     data: {
       singbox: 0,
-      forkopRunning: 0,
-      forkopEnabled: 0,
-      forkopStatus: '',
+      tachyonRunning: 0,
+      tachyonEnabled: 0,
+      tachyonStatus: '',
     },
   },
   sectionsWidget: {

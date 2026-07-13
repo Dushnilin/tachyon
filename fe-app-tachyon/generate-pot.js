@@ -2,8 +2,8 @@ import fs from 'fs/promises';
 import { getGitUser } from './locales-utils.js';
 
 const inputFile = 'locales/calls.json';
-const outputFile = 'locales/forkop.pot';
-const projectId = 'FORKOP';
+const outputFile = 'locales/tachyon.pot';
+const projectId = 'TACHYON';
 
 function getPotHeader({ name, email }) {
     const now = new Date();

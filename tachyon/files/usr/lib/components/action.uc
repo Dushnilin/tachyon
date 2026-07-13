@@ -4,24 +4,24 @@ let fs = require("fs");
 let constants = require("core.constants");
 let uci_core = require("core.uci");
 
-const CONFIG_NAME = getenv("FORKOP_CONFIG_NAME") || constants.FORKOP_CONFIG_NAME || "forkop";
-const LIB_DIR = getenv("FORKOP_LIB") || "/usr/lib/forkop";
-const BIN_PATH = getenv("FORKOP_BIN") || constants.FORKOP_BIN || "/usr/bin/forkop";
-const SERVICE_INIT = getenv("FORKOP_SERVICE_INIT") || constants.FORKOP_SERVICE_INIT || "/etc/init.d/forkop";
-const FORKOP_VERSION = getenv("FORKOP_VERSION") || constants.FORKOP_VERSION || "";
-const FORKOP_RELEASE_REPO = getenv("FORKOP_RELEASE_REPO") || constants.FORKOP_RELEASE_REPO || "Dushnilin/tachyon";
-const RUNTIME_STATE_DIR = getenv("FORKOP_RUNTIME_STATE_DIR") || "/var/run/forkop";
-const SYSTEM_INFO_CACHE_FILE = getenv("FORKOP_SYSTEM_INFO_CACHE_FILE") || RUNTIME_STATE_DIR + "/system-info.json";
-const COMPONENT_JOB_DIR = getenv("UPDATES_JOB_DIR") || getenv("FORKOP_UI_COMPONENT_ACTION_DIR") || RUNTIME_STATE_DIR + "/component-actions";
+const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || constants.TACHYON_CONFIG_NAME || "tachyon";
+const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
+const BIN_PATH = getenv("TACHYON_BIN") || constants.TACHYON_BIN || "/usr/bin/tachyon";
+const SERVICE_INIT = getenv("TACHYON_SERVICE_INIT") || constants.TACHYON_SERVICE_INIT || "/etc/init.d/tachyon";
+const TACHYON_VERSION = getenv("TACHYON_VERSION") || constants.TACHYON_VERSION || "";
+const TACHYON_RELEASE_REPO = getenv("TACHYON_RELEASE_REPO") || constants.TACHYON_RELEASE_REPO || "Dushnilin/tachyon";
+const RUNTIME_STATE_DIR = getenv("TACHYON_RUNTIME_STATE_DIR") || "/var/run/tachyon";
+const SYSTEM_INFO_CACHE_FILE = getenv("TACHYON_SYSTEM_INFO_CACHE_FILE") || RUNTIME_STATE_DIR + "/system-info.json";
+const COMPONENT_JOB_DIR = getenv("UPDATES_JOB_DIR") || getenv("TACHYON_UI_COMPONENT_ACTION_DIR") || RUNTIME_STATE_DIR + "/component-actions";
 const COMPONENT_LOCK_DIR = getenv("UPDATES_LOCK_DIR") || RUNTIME_STATE_DIR + "/component-action.lock";
 const TMP_STALE_TTL_MINUTES = getenv("UPDATES_TMP_STALE_TTL_MINUTES") || "30";
 const TMP_FILE_STALE_TTL_MINUTES = getenv("UPDATES_TMP_FILE_STALE_TTL_MINUTES") || "10";
-const SB_MANAGED_SERVICE_MARKER = getenv("SB_MANAGED_SERVICE_MARKER") || constants.SB_MANAGED_SERVICE_MARKER || "Forkop managed sing-box service for binary variants";
+const SB_MANAGED_SERVICE_MARKER = getenv("SB_MANAGED_SERVICE_MARKER") || constants.SB_MANAGED_SERVICE_MARKER || "Tachyon managed sing-box service for binary variants";
 
 let tmp_dir = "";
 let lock_held = false;
-let forkop_was_running = false;
-let forkop_stopped_for_sing_box_change = false;
+let tachyon_was_running = false;
+let tachyon_stopped_for_sing_box_change = false;
 
 let common = require("core.common");
 let as_string = common.as_string;
@@ -145,7 +145,7 @@ function pid_running(pid) {
 
 function log_message(message, level) {
     level = as_string(level || "info");
-    command_success_from_args([ "logger", "-t", "forkop", "[" + level + "] " + as_string(message) ]);
+    command_success_from_args([ "logger", "-t", "tachyon", "[" + level + "] " + as_string(message) ]);
 }
 
 function updates_log(message, level) {
@@ -182,8 +182,8 @@ function helper_success(mode, args) {
 }
 
 function cleanup_stale_tmp_files() {
-    command_success_from_args([ "find", "/tmp", "-maxdepth", "1", "-type", "d", "-name", "forkop-updates.*", "-mmin", "+" + as_string(TMP_STALE_TTL_MINUTES), "-exec", "rm", "-rf", "{}", "+" ]);
-    command_success_from_args([ "find", "/tmp", "-maxdepth", "1", "-type", "f", "(", "-name", "forkop-updates-command.*", "-o", "-name", "forkop-updates-http.*", ")", "-mmin", "+" + as_string(TMP_FILE_STALE_TTL_MINUTES), "-delete" ]);
+    command_success_from_args([ "find", "/tmp", "-maxdepth", "1", "-type", "d", "-name", "tachyon-updates.*", "-mmin", "+" + as_string(TMP_STALE_TTL_MINUTES), "-exec", "rm", "-rf", "{}", "+" ]);
+    command_success_from_args([ "find", "/tmp", "-maxdepth", "1", "-type", "f", "(", "-name", "tachyon-updates-command.*", "-o", "-name", "tachyon-updates-http.*", ")", "-mmin", "+" + as_string(TMP_FILE_STALE_TTL_MINUTES), "-delete" ]);
 }
 
 function init_tmp_dir() {
@@ -191,9 +191,9 @@ function init_tmp_dir() {
         return true;
 
     cleanup_stale_tmp_files();
-    tmp_dir = trim(command_output_from_args([ "mktemp", "-d", "/tmp/forkop-updates.XXXXXX" ]));
+    tmp_dir = trim(command_output_from_args([ "mktemp", "-d", "/tmp/tachyon-updates.XXXXXX" ]));
     if (tmp_dir == "") {
-        tmp_dir = "/tmp/forkop-updates." + owner_pid();
+        tmp_dir = "/tmp/tachyon-updates." + owner_pid();
         if (!ensure_dir(tmp_dir)) {
             tmp_dir = "";
             return false;
@@ -204,7 +204,7 @@ function init_tmp_dir() {
 
 function make_tmp_file(prefix) {
     init_tmp_dir();
-    let base = tmp_dir != "" ? tmp_dir + "/" + as_string(prefix) + ".XXXXXX" : "/tmp/forkop-updates-" + as_string(prefix) + ".XXXXXX";
+    let base = tmp_dir != "" ? tmp_dir + "/" + as_string(prefix) + ".XXXXXX" : "/tmp/tachyon-updates-" + as_string(prefix) + ".XXXXXX";
     let path = trim(command_output_from_args([ "mktemp", base ]));
     if (path == "") {
         path = (tmp_dir != "" ? tmp_dir : "/tmp") + "/" + as_string(prefix) + "." + owner_pid() + "." + now_seconds();
@@ -300,10 +300,10 @@ function updates_response(success, component, action, message, current_version, 
     });
 }
 
-function restart_forkop_after_failed_sing_box_change() {
-    if (!forkop_stopped_for_sing_box_change || !forkop_was_running || !file_exists(SERVICE_INIT))
+function restart_tachyon_after_failed_sing_box_change() {
+    if (!tachyon_stopped_for_sing_box_change || !tachyon_was_running || !file_exists(SERVICE_INIT))
         return;
-    updates_log("Restarting Forkop after failed sing-box component change");
+    updates_log("Restarting Tachyon after failed sing-box component change");
     if (!command_success_from_args([ SERVICE_INIT, "start" ]))
         command_success_from_args([ SERVICE_INIT, "restart" ]);
 }
@@ -316,7 +316,7 @@ function action_success(component, action, message, current_version, latest_vers
 
 function action_fail(component, action, message, current_version, latest_version, status, release_url) {
     updates_log(message, "error");
-    restart_forkop_after_failed_sing_box_change();
+    restart_tachyon_after_failed_sing_box_change();
     updates_response(false, component, action, message, current_version || "", latest_version || "", 0, status || "", release_url || "");
     cleanup_action();
     exit(1);
@@ -326,7 +326,7 @@ function run_logged(description, command) {
     init_tmp_dir();
     let output_file = make_tmp_file("command");
     if (output_file == "")
-        output_file = "/tmp/forkop-updates-command." + owner_pid();
+        output_file = "/tmp/tachyon-updates-command." + owner_pid();
 
     updates_log(description);
     let status = command_status(as_string(command) + " >" + shell_quote(output_file) + " 2>&1");
@@ -605,31 +605,31 @@ function fetch_github_releases_json(owner, repo, per_page) {
     return response;
 }
 
-function latest_forkop_release_json() {
-    let parts = split(FORKOP_RELEASE_REPO, "/");
+function latest_tachyon_release_json() {
+    let parts = split(TACHYON_RELEASE_REPO, "/");
     if (length(parts) != 2 || as_string(parts[0]) == "" || as_string(parts[1]) == "")
         return "";
     return fetch_github_release_json(parts[0], parts[1]);
 }
 
-function latest_forkop_version() {
-    let response = latest_forkop_release_json();
+function latest_tachyon_version() {
+    let response = latest_tachyon_release_json();
     if (response == "")
         return "";
     return trim(helper_output_input(response, "object-get-default", [ "tag_name", "" ]));
 }
 
-function fetch_forkop_latest_release_metadata() {
-    let response = latest_forkop_release_json();
+function fetch_tachyon_latest_release_metadata() {
+    let response = latest_tachyon_release_json();
     if (response == "")
         return "";
     return trim(helper_output_input(response, "release-metadata-tsv", []));
 }
 
-function write_forkop_latest_version_cache(value, timestamp) {
+function write_tachyon_latest_version_cache(value, timestamp) {
     if (as_string(value) == "")
         return;
-    write_file("/tmp/forkop.latest-version.cache", as_string(value) + "\n" + as_string(timestamp) + "\n");
+    write_file("/tmp/tachyon.latest-version.cache", as_string(value) + "\n" + as_string(timestamp) + "\n");
 }
 
 function retry_resolve(description, fn) {
@@ -651,9 +651,9 @@ function ensure_package_tool(tool_name, package_name, component, action) {
 }
 
 function clear_version_caches() {
-    remove_file("/tmp/forkop.latest-version.cache");
+    remove_file("/tmp/tachyon.latest-version.cache");
     remove_file(SYSTEM_INFO_CACHE_FILE);
-    remove_file("/tmp/forkop/system-info.json");
+    remove_file("/tmp/tachyon/system-info.json");
 }
 
 function managed_sing_box_service_installed() {
@@ -690,7 +690,7 @@ function managed_sing_box_service_text() {
 }
 
 function install_managed_sing_box_service_script() {
-    let tmp = "/etc/init.d/sing-box.forkop." + owner_pid();
+    let tmp = "/etc/init.d/sing-box.tachyon." + owner_pid();
     if (!write_file(tmp, managed_sing_box_service_text()))
         return false;
     if (!command_success_from_args([ "chmod", "0755", tmp ])) {
@@ -732,9 +732,9 @@ function prepare_sing_box_package_service_install() {
     remove_managed_sing_box_service_script();
 }
 
-function forkop_status_running_with_timeout() {
+function tachyon_status_running_with_timeout() {
     init_tmp_dir();
-    let output_file = make_tmp_file("forkop-status");
+    let output_file = make_tmp_file("tachyon-status");
     if (output_file == "")
         return false;
 
@@ -747,46 +747,46 @@ function forkop_status_running_with_timeout() {
     return ok;
 }
 
-function capture_forkop_running_state() {
-    forkop_was_running = file_exists(BIN_PATH) && forkop_status_running_with_timeout();
+function capture_tachyon_running_state() {
+    tachyon_was_running = file_exists(BIN_PATH) && tachyon_status_running_with_timeout();
 }
 
-function restart_forkop_after_successful_change() {
+function restart_tachyon_after_successful_change() {
     if (!file_exists(SERVICE_INIT))
         return;
-    if (!forkop_was_running) {
-        updates_log("Forkop was not running before component change; restart skipped");
+    if (!tachyon_was_running) {
+        updates_log("Tachyon was not running before component change; restart skipped");
         prepare_sing_box_service_disabled();
         return;
     }
-    run_logged("Restarting Forkop after successful component change", command_from_args([ SERVICE_INIT, "restart" ]));
+    run_logged("Restarting Tachyon after successful component change", command_from_args([ SERVICE_INIT, "restart" ]));
 }
 
-function stop_forkop_before_sing_box_change() {
-    if (forkop_stopped_for_sing_box_change)
+function stop_tachyon_before_sing_box_change() {
+    if (tachyon_stopped_for_sing_box_change)
         return;
-    forkop_stopped_for_sing_box_change = true;
+    tachyon_stopped_for_sing_box_change = true;
 
-    if (forkop_was_running && file_exists(SERVICE_INIT))
-        run_logged("Stopping Forkop before sing-box package change", command_from_args([ SERVICE_INIT, "stop" ]));
+    if (tachyon_was_running && file_exists(SERVICE_INIT))
+        run_logged("Stopping Tachyon before sing-box package change", command_from_args([ SERVICE_INIT, "stop" ]));
 
-    if (forkop_was_running && file_exists(BIN_PATH))
+    if (tachyon_was_running && file_exists(BIN_PATH))
         command_success_from_args([ BIN_PATH, "restore_dnsmasq" ]);
 
     prepare_sing_box_service_disabled();
 }
 
-function wait_forkop_running_after_sing_box_change() {
-    if (!forkop_was_running)
+function wait_tachyon_running_after_sing_box_change() {
+    if (!tachyon_was_running)
         return true;
     if (!file_exists(BIN_PATH))
         return false;
 
     let waited = 0;
     while (waited < 60) {
-        if (forkop_status_running_with_timeout()) {
+        if (tachyon_status_running_with_timeout()) {
             command_success_from_args([ "sleep", "8" ]);
-            if (forkop_status_running_with_timeout())
+            if (tachyon_status_running_with_timeout())
                 return true;
         }
         command_success_from_args([ "sleep", "4" ]);
@@ -1006,7 +1006,7 @@ function install_zapret_like(component, action, runtime_module, resolve_fn, labe
         action_fail(component, action, "Failed to install " + label + " package", current_version, pkg.version, "", release.release_url || "");
 
     disable_standalone_service(component);
-    restart_forkop_after_successful_change();
+    restart_tachyon_after_successful_change();
     clear_version_caches();
     current_version = provider_package_version(runtime_module);
     if (current_version == "")
@@ -1051,7 +1051,7 @@ function install_byedpi(action) {
         action_fail("byedpi", action, "Failed to install ByeDPI package", current_version, pkg.version);
 
     disable_standalone_service("byedpi");
-    restart_forkop_after_successful_change();
+    restart_tachyon_after_successful_change();
     clear_version_caches();
     current_version = provider_package_version(runtime_module);
     if (current_version == "")
@@ -1076,7 +1076,7 @@ function remove_optional_component(component, package_name, label, runtime_modul
     clear_version_caches();
     if (provider_installed(runtime_module))
         action_fail(component, "remove", label + " package was removed, but provider files are still present", current_version);
-    restart_forkop_after_successful_change();
+    restart_tachyon_after_successful_change();
     action_success(component, "remove", label + " package has been removed", current_version, "", 1);
 }
 
@@ -1101,7 +1101,7 @@ function move_file_portable(source_path, target_path) {
     if (fs.rename(source_path, target_path))
         return true;
 
-    let staged_path = as_string(target_path) + ".forkop-move." + owner_pid();
+    let staged_path = as_string(target_path) + ".tachyon-move." + owner_pid();
     remove_file(staged_path);
     if (!command_success_from_args([ "cp", "-p", source_path, staged_path ]) ||
         !fs.rename(staged_path, target_path)) {
@@ -1113,7 +1113,7 @@ function move_file_portable(source_path, target_path) {
 }
 
 function install_staged_file(source_path, target_path, mode) {
-    let staged_path = as_string(target_path) + ".forkop-new." + owner_pid();
+    let staged_path = as_string(target_path) + ".tachyon-new." + owner_pid();
     remove_file(staged_path);
     if (!command_success_from_args([ "cp", "-f", source_path, staged_path ]) ||
         !command_success_from_args([ "chmod", mode, staged_path ]) ||
@@ -1409,7 +1409,7 @@ function install_sing_box_extended_package(action) {
     if (!run_logged("Updating package lists before sing-box-extended package installation", pkg_list_update_command()))
         action_fail("sing_box", action, "Failed to update package lists", current_version, latest_version);
 
-    stop_forkop_before_sing_box_change();
+    stop_tachyon_before_sing_box_change();
     prepare_sing_box_package_service_install();
 
     let backup_binary = "";
@@ -1417,13 +1417,13 @@ function install_sing_box_extended_package(action) {
     let cronet_touched = false;
     if (current_variant == "extended" || current_variant == "extended-compressed") {
         if (file_exists("/usr/bin/sing-box")) {
-            backup_binary = "/usr/bin/sing-box.forkop-backup." + owner_pid();
+            backup_binary = "/usr/bin/sing-box.tachyon-backup." + owner_pid();
             if (!move_file_to_backup("/usr/bin/sing-box", backup_binary))
                 action_fail("sing_box", action, "Failed to backup current sing-box binary", current_version, latest_version);
         }
         if (file_exists("/usr/lib/libcronet.so")) {
             cronet_touched = true;
-            backup_cronet = "/usr/lib/libcronet.so.forkop-backup." + owner_pid();
+            backup_cronet = "/usr/lib/libcronet.so.tachyon-backup." + owner_pid();
             if (!move_file_to_backup("/usr/lib/libcronet.so", backup_cronet)) {
                 restore_sing_box_after_failed_extended_package_install(current_variant, backup_binary, backup_cronet, previous_marker, previous_version_state, package_file, cronet_touched);
                 action_fail("sing_box", action, "Failed to backup current libcronet.so", current_version, latest_version);
@@ -1441,7 +1441,7 @@ function install_sing_box_extended_package(action) {
     }
 
     if (backup_binary == "" && file_exists("/usr/bin/sing-box")) {
-        backup_binary = "/usr/bin/sing-box.forkop-backup." + owner_pid();
+        backup_binary = "/usr/bin/sing-box.tachyon-backup." + owner_pid();
         if (!move_file_to_backup("/usr/bin/sing-box", backup_binary)) {
             restore_sing_box_after_failed_extended_package_install(current_variant, backup_binary, backup_cronet, previous_marker, previous_version_state, package_file, cronet_touched);
             action_fail("sing_box", action, "Failed to backup existing sing-box binary", current_version, latest_version);
@@ -1449,7 +1449,7 @@ function install_sing_box_extended_package(action) {
     }
     if (!cronet_touched && file_exists("/usr/lib/libcronet.so")) {
         cronet_touched = true;
-        backup_cronet = "/usr/lib/libcronet.so.forkop-backup." + owner_pid();
+        backup_cronet = "/usr/lib/libcronet.so.tachyon-backup." + owner_pid();
         if (!move_file_to_backup("/usr/lib/libcronet.so", backup_cronet)) {
             restore_sing_box_after_failed_extended_package_install(current_variant, backup_binary, backup_cronet, previous_marker, previous_version_state, package_file, cronet_touched);
             action_fail("sing_box", action, "Failed to backup current libcronet.so", current_version, latest_version);
@@ -1470,17 +1470,17 @@ function install_sing_box_extended_package(action) {
     }
 
     write_sing_box_variant_state("extended", new_version);
-    restart_forkop_after_successful_change();
-    if (!wait_forkop_running_after_sing_box_change()) {
+    restart_tachyon_after_successful_change();
+    if (!wait_tachyon_running_after_sing_box_change()) {
         updates_log("sing-box-extended package did not start cleanly; restoring previous sing-box variant", "error");
         if (file_exists(SERVICE_INIT))
             command_success_from_args([ SERVICE_INIT, "stop" ]);
         if (restore_sing_box_after_failed_extended_package_install(current_variant, backup_binary, backup_cronet, previous_marker, previous_version_state, package_file, cronet_touched)) {
             remove_file(backup_binary);
             remove_file(backup_cronet);
-            action_fail("sing_box", action, "sing-box-extended package was installed but Forkop did not start cleanly; previous sing-box variant was restored", current_version, latest_version);
+            action_fail("sing_box", action, "sing-box-extended package was installed but Tachyon did not start cleanly; previous sing-box variant was restored", current_version, latest_version);
         }
-        action_fail("sing_box", action, "sing-box-extended package was installed but Forkop did not start cleanly and previous sing-box variant could not be restored", current_version, latest_version);
+        action_fail("sing_box", action, "sing-box-extended package was installed but Tachyon did not start cleanly and previous sing-box variant could not be restored", current_version, latest_version);
     }
 
     remove_file(backup_binary);
@@ -1555,7 +1555,7 @@ function install_sing_box_extended(action, compressed) {
     }
 
     remove_file(archive_file);
-    stop_forkop_before_sing_box_change();
+    stop_tachyon_before_sing_box_change();
     let new_version = validate_sing_box_extended_binary(tmp_binary, tmp_dir);
     if (new_version == "") {
         remove_file(tmp_binary);
@@ -1567,7 +1567,7 @@ function install_sing_box_extended(action, compressed) {
     let backup_cronet = "";
     let cronet_touched = false;
     if (file_exists("/usr/bin/sing-box")) {
-        backup_binary = "/usr/bin/sing-box.forkop-backup." + owner_pid();
+        backup_binary = "/usr/bin/sing-box.tachyon-backup." + owner_pid();
         if (!move_file_to_backup("/usr/bin/sing-box", backup_binary)) {
             remove_file(backup_binary);
             remove_file(tmp_binary);
@@ -1579,7 +1579,7 @@ function install_sing_box_extended(action, compressed) {
     if (cronet_path != "") {
         cronet_touched = true;
         if (file_exists("/usr/lib/libcronet.so")) {
-            backup_cronet = "/usr/lib/libcronet.so.forkop-backup." + owner_pid();
+            backup_cronet = "/usr/lib/libcronet.so.tachyon-backup." + owner_pid();
             if (!move_file_to_backup("/usr/lib/libcronet.so", backup_cronet)) {
                 restore_sing_box_after_failed_extended_install(current_variant, backup_binary, backup_cronet, previous_marker, previous_version_state, archive_file, cronet_touched);
                 remove_file(tmp_binary);
@@ -1634,17 +1634,17 @@ function install_sing_box_extended(action, compressed) {
     }
 
     write_sing_box_variant_state("extended-compressed", new_version);
-    restart_forkop_after_successful_change();
-    if (!wait_forkop_running_after_sing_box_change()) {
+    restart_tachyon_after_successful_change();
+    if (!wait_tachyon_running_after_sing_box_change()) {
         updates_log(label + " did not start cleanly; restoring previous sing-box binary", "error");
         if (file_exists(SERVICE_INIT))
             command_success_from_args([ SERVICE_INIT, "stop" ]);
         if (restore_sing_box_after_failed_extended_install(current_variant, backup_binary, backup_cronet, previous_marker, previous_version_state, archive_file, cronet_touched)) {
             remove_file(backup_binary);
             remove_file(backup_cronet);
-            action_fail("sing_box", action, label + " was installed but Forkop did not start cleanly; previous sing-box variant was restored", current_version, latest_version);
+            action_fail("sing_box", action, label + " was installed but Tachyon did not start cleanly; previous sing-box variant was restored", current_version, latest_version);
         }
-        action_fail("sing_box", action, label + " was installed but Forkop did not start cleanly and previous sing-box variant could not be restored", current_version, latest_version);
+        action_fail("sing_box", action, label + " was installed but Tachyon did not start cleanly and previous sing-box variant could not be restored", current_version, latest_version);
     }
 
     remove_file(backup_binary);
@@ -1688,22 +1688,22 @@ function install_package_sing_box(action, tiny) {
     let previous_variant = sing_box_runtime_output("variant", []);
     let previous_marker = sing_box_runtime_output("read-variant-marker", []);
     let previous_version_state = sing_box_runtime_output("read-version-state", []);
-    stop_forkop_before_sing_box_change();
+    stop_tachyon_before_sing_box_change();
 
     let backup_binary = "";
     let backup_cronet = "";
     let cronet_touched = false;
     let backup_on_tmpfs = previous_variant == "extended-compressed";
     if (file_exists("/usr/bin/sing-box")) {
-        backup_binary = backup_on_tmpfs ? tmp_dir + "/sing-box.forkop-backup" :
-            "/usr/bin/sing-box.forkop-backup." + owner_pid();
+        backup_binary = backup_on_tmpfs ? tmp_dir + "/sing-box.tachyon-backup" :
+            "/usr/bin/sing-box.tachyon-backup." + owner_pid();
         if (!move_file_to_backup("/usr/bin/sing-box", backup_binary))
             action_fail("sing_box", action, "Failed to backup current sing-box binary", current_version, latest_version);
     }
     if (file_exists("/usr/lib/libcronet.so")) {
         cronet_touched = true;
-        backup_cronet = backup_on_tmpfs ? tmp_dir + "/libcronet.so.forkop-backup" :
-            "/usr/lib/libcronet.so.forkop-backup." + owner_pid();
+        backup_cronet = backup_on_tmpfs ? tmp_dir + "/libcronet.so.tachyon-backup" :
+            "/usr/lib/libcronet.so.tachyon-backup." + owner_pid();
         if (!move_file_to_backup("/usr/lib/libcronet.so", backup_cronet)) {
             restore_sing_box_backup(backup_binary);
             action_fail("sing_box", action, "Failed to backup current libcronet.so", current_version, latest_version);
@@ -1723,9 +1723,9 @@ function install_package_sing_box(action, tiny) {
         fail_package_sing_box_install(action, tiny, "package was installed, but the active binary is still sing-box-extended", new_version, latest_version,
             package_name, previous_variant, backup_binary, backup_cronet, previous_marker, previous_version_state, cronet_touched);
     write_sing_box_variant_state(tiny ? "tiny" : "stable", new_version);
-    restart_forkop_after_successful_change();
-    if (!wait_forkop_running_after_sing_box_change())
-        fail_package_sing_box_install(action, tiny, "was installed, but Forkop did not start cleanly", new_version, latest_version,
+    restart_tachyon_after_successful_change();
+    if (!wait_tachyon_running_after_sing_box_change())
+        fail_package_sing_box_install(action, tiny, "was installed, but Tachyon did not start cleanly", new_version, latest_version,
             package_name, previous_variant, backup_binary, backup_cronet, previous_marker, previous_version_state, cronet_touched);
     remove_file(backup_binary);
     remove_file(backup_cronet);
@@ -1733,45 +1733,45 @@ function install_package_sing_box(action, tiny) {
     action_success("sing_box", action, label + " has been installed", new_version, latest_version, new_version == current_version ? 0 : 1, "latest");
 }
 
-function check_forkop() {
-    let metadata = fetch_forkop_latest_release_metadata();
+function check_tachyon() {
+    let metadata = fetch_tachyon_latest_release_metadata();
     let fields = split(metadata, "\t");
     let latest_version = length(fields) > 0 && as_string(fields[0]) != "" ? as_string(fields[0]) : "unknown";
     let release_url = length(fields) > 1 ? as_string(fields[1]) : "";
     if (latest_version == "unknown")
-        action_fail("forkop", "check_update", "Failed to check Forkop updates", FORKOP_VERSION, latest_version);
+        action_fail("tachyon", "check_update", "Failed to check Tachyon updates", TACHYON_VERSION, latest_version);
 
-    write_forkop_latest_version_cache(latest_version, now_seconds());
-    if (!helper_success("forkop-release-version-valid", [ FORKOP_VERSION ])) {
-        updates_log("Forkop current version is not a release version (" + FORKOP_VERSION + ")");
-        action_success("forkop", "check_update", "Installed version is newer than release", FORKOP_VERSION, latest_version, 0, "dev", release_url);
+    write_tachyon_latest_version_cache(latest_version, now_seconds());
+    if (!helper_success("tachyon-release-version-valid", [ TACHYON_VERSION ])) {
+        updates_log("Tachyon current version is not a release version (" + TACHYON_VERSION + ")");
+        action_success("tachyon", "check_update", "Installed version is newer than release", TACHYON_VERSION, latest_version, 0, "dev", release_url);
     }
 
-    let compare = trim(helper_output("forkop-release-version-compare", [ FORKOP_VERSION, latest_version ]));
+    let compare = trim(helper_output("tachyon-release-version-compare", [ TACHYON_VERSION, latest_version ]));
     if (compare == "")
-        action_fail("forkop", "check_update", "Failed to compare Forkop versions", FORKOP_VERSION, latest_version);
+        action_fail("tachyon", "check_update", "Failed to compare Tachyon versions", TACHYON_VERSION, latest_version);
     let status = status_from_compare(int(compare));
     if (status == "")
-        action_fail("forkop", "check_update", "Failed to compare Forkop versions", FORKOP_VERSION, latest_version);
+        action_fail("tachyon", "check_update", "Failed to compare Tachyon versions", TACHYON_VERSION, latest_version);
     if (status == "latest") {
-        updates_log("Forkop is already up to date (" + FORKOP_VERSION + ")");
-        action_success("forkop", "check_update", "Latest version is installed", FORKOP_VERSION, latest_version, 0, status, release_url);
+        updates_log("Tachyon is already up to date (" + TACHYON_VERSION + ")");
+        action_success("tachyon", "check_update", "Latest version is installed", TACHYON_VERSION, latest_version, 0, status, release_url);
     }
     if (status == "outdated") {
-        updates_log("Forkop update found: " + FORKOP_VERSION + " -> " + latest_version);
-        action_success("forkop", "check_update", "Update is available", FORKOP_VERSION, latest_version, 0, status, release_url);
+        updates_log("Tachyon update found: " + TACHYON_VERSION + " -> " + latest_version);
+        action_success("tachyon", "check_update", "Update is available", TACHYON_VERSION, latest_version, 0, status, release_url);
     }
-    updates_log("Forkop installed version is newer than upstream release: " + FORKOP_VERSION + " -> " + latest_version);
-    action_success("forkop", "check_update", "Installed version is newer than release", FORKOP_VERSION, latest_version, 0, status, release_url);
+    updates_log("Tachyon installed version is newer than upstream release: " + TACHYON_VERSION + " -> " + latest_version);
+    action_success("tachyon", "check_update", "Installed version is newer than release", TACHYON_VERSION, latest_version, 0, status, release_url);
 }
 
-function resolve_forkop_release(latest_version) {
-    let release_json = latest_forkop_release_json();
+function resolve_tachyon_release(latest_version) {
+    let release_json = latest_tachyon_release_json();
     if (release_json == "")
         return null;
     let asset_ext = is_apk() ? "apk" : "ipk";
-    let i18n_required = pkg_is_installed("luci-i18n-forkop-ru") ? "1" : "0";
-    let plan = trim(helper_output_input(release_json, "forkop-release-plan", [ latest_version, asset_ext, i18n_required ]));
+    let i18n_required = pkg_is_installed("luci-i18n-tachyon-ru") ? "1" : "0";
+    let plan = trim(helper_output_input(release_json, "tachyon-release-plan", [ latest_version, asset_ext, i18n_required ]));
     let fields = split(plan, "\t");
     if (length(fields) < 7 || as_string(fields[1]) == "" || as_string(fields[2]) == "" || as_string(fields[3]) == "" || as_string(fields[4]) == "")
         return null;
@@ -1786,19 +1786,19 @@ function resolve_forkop_release(latest_version) {
     };
 }
 
-function install_forkop() {
-    let latest_version = latest_forkop_version();
+function install_tachyon() {
+    let latest_version = latest_tachyon_version();
     if (latest_version == "")
         latest_version = "unknown";
     if (latest_version == "unknown")
-        action_fail("forkop", "install", "Failed to resolve Forkop release", FORKOP_VERSION, latest_version);
+        action_fail("tachyon", "install", "Failed to resolve Tachyon release", TACHYON_VERSION, latest_version);
 
-    write_forkop_latest_version_cache(latest_version, now_seconds());
-    init_tmp_dir() || action_fail("forkop", "install", "Failed to create temporary directory", FORKOP_VERSION, latest_version);
-    updates_log("Resolving Forkop release " + latest_version + " packages");
-    let release = resolve_forkop_release(latest_version);
+    write_tachyon_latest_version_cache(latest_version, now_seconds());
+    init_tmp_dir() || action_fail("tachyon", "install", "Failed to create temporary directory", TACHYON_VERSION, latest_version);
+    updates_log("Resolving Tachyon release " + latest_version + " packages");
+    let release = resolve_tachyon_release(latest_version);
     if (release == null)
-        action_fail("forkop", "install", "Failed to resolve Forkop release packages", FORKOP_VERSION, latest_version);
+        action_fail("tachyon", "install", "Failed to resolve Tachyon release packages", TACHYON_VERSION, latest_version);
 
     let backend_file = tmp_dir + "/" + release.backend_name;
     let app_file = tmp_dir + "/" + release.app_name;
@@ -1806,14 +1806,14 @@ function install_forkop() {
     if (!download_with_retry(release.backend_url, backend_file, release.backend_name) ||
         !download_with_retry(release.app_url, app_file, release.app_name) ||
         (release.i18n_url != "" && !download_with_retry(release.i18n_url, i18n_file, release.i18n_name)))
-        action_fail("forkop", "install", "Failed to download Forkop release packages", FORKOP_VERSION, latest_version);
+        action_fail("tachyon", "install", "Failed to download Tachyon release packages", TACHYON_VERSION, latest_version);
 
     if (!run_logged("Installing LuCI app package " + release.app_name, pkg_install_files_command([ app_file ])))
-        action_fail("forkop", "install", "Failed to install LuCI app package", FORKOP_VERSION, latest_version);
+        action_fail("tachyon", "install", "Failed to install LuCI app package", TACHYON_VERSION, latest_version);
     if (i18n_file != "" && !run_logged("Installing LuCI Russian i18n package " + release.i18n_name, pkg_install_files_command([ i18n_file ])))
-        action_fail("forkop", "install", "Failed to install LuCI Russian i18n package", FORKOP_VERSION, latest_version);
-    if (!run_logged("Installing Forkop package " + release.backend_name, pkg_install_files_command([ backend_file ])))
-        action_fail("forkop", "install", "Failed to install Forkop package", FORKOP_VERSION, latest_version);
+        action_fail("tachyon", "install", "Failed to install LuCI Russian i18n package", TACHYON_VERSION, latest_version);
+    if (!run_logged("Installing Tachyon package " + release.backend_name, pkg_install_files_command([ backend_file ])))
+        action_fail("tachyon", "install", "Failed to install Tachyon package", TACHYON_VERSION, latest_version);
 
     remove_file("/var/luci-indexcache");
     command_success("rm -f /var/luci-indexcache* /tmp/luci-indexcache* 2>/dev/null");
@@ -1822,13 +1822,13 @@ function install_forkop() {
         command_success_from_args([ "/etc/init.d/rpcd", "restart" ]);
     command_success_from_args([ "killall", "-HUP", "rpcd" ]);
 
-    restart_forkop_after_successful_change();
+    restart_tachyon_after_successful_change();
     clear_version_caches();
-    let new_version = installed_package_version("forkop");
+    let new_version = installed_package_version("tachyon");
     if (new_version == "")
         new_version = latest_version;
-    updates_log("Forkop updated to " + new_version);
-    action_success("forkop", "install", "Forkop has been installed", new_version, latest_version, 1, "latest", release.release_url);
+    updates_log("Tachyon updated to " + new_version);
+    action_success("tachyon", "install", "Tachyon has been installed", new_version, latest_version, 1, "latest", release.release_url);
 }
 
 function dispatch_sing_box(action) {
@@ -1864,8 +1864,8 @@ function normalize_component_name(component) {
     component = as_string(component);
     if (component == "sing-box" || component == "singbox")
         return "sing_box";
-    if (component == "forkop")
-        return "forkop";
+    if (component == "tachyon")
+        return "tachyon";
     return component;
 }
 
@@ -1876,12 +1876,12 @@ function component_action(component, action) {
         action_fail(component != "" ? component : "unknown", action != "" ? action : "unknown", "Another component action is already running");
     if (!init_tmp_dir())
         action_fail(component != "" ? component : "unknown", action != "" ? action : "unknown", "Failed to create temporary directory");
-    capture_forkop_running_state();
+    capture_tachyon_running_state();
 
-    if (component == "forkop" && action == "check_update")
-        check_forkop();
-    else if (component == "forkop" && action == "install")
-        install_forkop();
+    if (component == "tachyon" && action == "check_update")
+        check_tachyon();
+    else if (component == "tachyon" && action == "install")
+        install_tachyon();
     else if (component == "sing_box" && (action == "check_update" || action == "install" ||
         action == "install_extended" || action == "install_extended_compressed" ||
         action == "install_tiny" || action == "install_stable"))
@@ -1906,13 +1906,13 @@ let mode = ARGV[0] || "";
 
 if (mode == "component-action")
     component_action(ARGV[1], ARGV[2]);
-else if (mode == "latest-forkop-release-json")
-    print(latest_forkop_release_json());
-else if (mode == "latest-forkop-version")
-    print(latest_forkop_version(), "\n");
-else if (mode == "forkop-release-metadata")
-    print(fetch_forkop_latest_release_metadata(), "\n");
+else if (mode == "latest-tachyon-release-json")
+    print(latest_tachyon_release_json());
+else if (mode == "latest-tachyon-version")
+    print(latest_tachyon_version(), "\n");
+else if (mode == "tachyon-release-metadata")
+    print(fetch_tachyon_latest_release_metadata(), "\n");
 else {
-    warn("Usage: components/action.uc <component-action|latest-forkop-version|forkop-release-metadata> ...\n");
+    warn("Usage: components/action.uc <component-action|latest-tachyon-version|tachyon-release-metadata> ...\n");
     exit(1);
 }

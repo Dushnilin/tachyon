@@ -19,18 +19,18 @@ let list_option = common.list_option;
 let bool_option = common.bool_option;
 let object_or_empty = common.object_or_empty;
 
-const CONFIG_NAME = getenv("FORKOP_CONFIG_NAME") || "forkop";
+const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
 const TMP_SUBSCRIPTION_FOLDER = getenv("TMP_SUBSCRIPTION_FOLDER") || "/tmp/sing-box/subscriptions";
-const FORKOP_RUNTIME_STATE_DIR = getenv("FORKOP_RUNTIME_STATE_DIR") || "/var/run/forkop";
-const FORKOP_SUBSCRIPTION_LINKS_DIR = getenv("FORKOP_SUBSCRIPTION_LINKS_DIR") || FORKOP_RUNTIME_STATE_DIR + "/subscription-links";
-const FORKOP_SUBSCRIPTION_METADATA_DIR = getenv("FORKOP_SUBSCRIPTION_METADATA_DIR") || FORKOP_RUNTIME_STATE_DIR + "/subscription-metadata";
-const FORKOP_OUTBOUND_METADATA_DIR = getenv("FORKOP_OUTBOUND_METADATA_DIR") || FORKOP_RUNTIME_STATE_DIR + "/outbound-metadata";
-const FORKOP_SECTION_CACHE_DIR = getenv("FORKOP_SECTION_CACHE_DIR") || FORKOP_RUNTIME_STATE_DIR + "/section-cache";
-const FORKOP_RUNTIME_CACHE_FORMAT_FILE = getenv("FORKOP_RUNTIME_CACHE_FORMAT_FILE") || FORKOP_RUNTIME_STATE_DIR + "/cache-format";
-const FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_DIR = getenv("FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_DIR") || "/etc/forkop/subscription-cache";
-const FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE = getenv("FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE") || FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_DIR + "/cache-format";
-const FORKOP_INTERNAL_CONFIG_TRIGGER_GUARD = getenv("FORKOP_INTERNAL_CONFIG_TRIGGER_GUARD") || "/var/run/forkop.internal-config-change";
-const FORKOP_RUNTIME_CACHE_FORMAT = getenv("FORKOP_RUNTIME_CACHE_FORMAT") || "7";
+const TACHYON_RUNTIME_STATE_DIR = getenv("TACHYON_RUNTIME_STATE_DIR") || "/var/run/tachyon";
+const TACHYON_SUBSCRIPTION_LINKS_DIR = getenv("TACHYON_SUBSCRIPTION_LINKS_DIR") || TACHYON_RUNTIME_STATE_DIR + "/subscription-links";
+const TACHYON_SUBSCRIPTION_METADATA_DIR = getenv("TACHYON_SUBSCRIPTION_METADATA_DIR") || TACHYON_RUNTIME_STATE_DIR + "/subscription-metadata";
+const TACHYON_OUTBOUND_METADATA_DIR = getenv("TACHYON_OUTBOUND_METADATA_DIR") || TACHYON_RUNTIME_STATE_DIR + "/outbound-metadata";
+const TACHYON_SECTION_CACHE_DIR = getenv("TACHYON_SECTION_CACHE_DIR") || TACHYON_RUNTIME_STATE_DIR + "/section-cache";
+const TACHYON_RUNTIME_CACHE_FORMAT_FILE = getenv("TACHYON_RUNTIME_CACHE_FORMAT_FILE") || TACHYON_RUNTIME_STATE_DIR + "/cache-format";
+const TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR = getenv("TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR") || "/etc/tachyon/subscription-cache";
+const TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE = getenv("TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE") || TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR + "/cache-format";
+const TACHYON_INTERNAL_CONFIG_TRIGGER_GUARD = getenv("TACHYON_INTERNAL_CONFIG_TRIGGER_GUARD") || "/var/run/tachyon.internal-config-change";
+const TACHYON_RUNTIME_CACHE_FORMAT = getenv("TACHYON_RUNTIME_CACHE_FORMAT") || "7";
 const CONFIG_VERSION_OPTION = "config_version";
 const APPLIED_MIGRATIONS_OPTION = "applied_migrations";
 const SERVER_COUNTRY_METHOD_FLAG_EMOJI = "flag_emoji";
@@ -558,10 +558,10 @@ function subscription_cache_paths(section) {
         TMP_SUBSCRIPTION_FOLDER + "/" + section + ".json",
         TMP_SUBSCRIPTION_FOLDER + "/" + section + ".url",
         TMP_SUBSCRIPTION_FOLDER + "/" + section + ".user_agent",
-        FORKOP_SUBSCRIPTION_METADATA_DIR + "/" + section + ".json",
-        FORKOP_SUBSCRIPTION_LINKS_DIR + "/" + section + ".json",
-        FORKOP_OUTBOUND_METADATA_DIR + "/" + section + ".json",
-        FORKOP_SECTION_CACHE_DIR + "/" + section + ".json",
+        TACHYON_SUBSCRIPTION_METADATA_DIR + "/" + section + ".json",
+        TACHYON_SUBSCRIPTION_LINKS_DIR + "/" + section + ".json",
+        TACHYON_OUTBOUND_METADATA_DIR + "/" + section + ".json",
+        TACHYON_SECTION_CACHE_DIR + "/" + section + ".json",
         TMP_SUBSCRIPTION_FOLDER + "/" + section + "-subscription-*.json",
         TMP_SUBSCRIPTION_FOLDER + "/" + section + "-subscription-*.url",
         TMP_SUBSCRIPTION_FOLDER + "/" + section + "-subscription-*.user_agent"
@@ -631,7 +631,7 @@ function migrate_proxy_rule(ctx, section, proxy_config_type) {
     delete_option(ctx, section, "proxy_config_type");
 }
 
-// Podkop Plus -> Forkop source migration.
+// Podkop Plus -> Tachyon source migration.
 function migrated_rule_action(section) {
     let action = option(section, "action", "");
     let proxy_config_type = option(section, "proxy_config_type", "");
@@ -1324,7 +1324,7 @@ function migrate_podkop_model(model, constants) {
     return ctx;
 }
 
-function migrate_forkop_model(model) {
+function migrate_tachyon_model(model) {
     let ctx = migration_context(model);
     apply_migrations(ctx);
     return ctx;
@@ -1346,41 +1346,41 @@ function ensure_dir(path) {
 function clear_subscription_runtime_cache() {
     run("rm -rf " +
         shell_quote(TMP_SUBSCRIPTION_FOLDER) + " " +
-        shell_quote(FORKOP_SUBSCRIPTION_LINKS_DIR) + " " +
-        shell_quote(FORKOP_SUBSCRIPTION_METADATA_DIR) + " " +
-        shell_quote(FORKOP_OUTBOUND_METADATA_DIR) + " " +
-        shell_quote(FORKOP_SECTION_CACHE_DIR));
+        shell_quote(TACHYON_SUBSCRIPTION_LINKS_DIR) + " " +
+        shell_quote(TACHYON_SUBSCRIPTION_METADATA_DIR) + " " +
+        shell_quote(TACHYON_OUTBOUND_METADATA_DIR) + " " +
+        shell_quote(TACHYON_SECTION_CACHE_DIR));
 }
 
 function ensure_runtime_dirs() {
     ensure_dir(TMP_SUBSCRIPTION_FOLDER);
-    ensure_dir(FORKOP_RUNTIME_STATE_DIR);
-    ensure_dir(FORKOP_SUBSCRIPTION_LINKS_DIR);
-    ensure_dir(FORKOP_SUBSCRIPTION_METADATA_DIR);
-    ensure_dir(FORKOP_OUTBOUND_METADATA_DIR);
-    ensure_dir(FORKOP_SECTION_CACHE_DIR);
+    ensure_dir(TACHYON_RUNTIME_STATE_DIR);
+    ensure_dir(TACHYON_SUBSCRIPTION_LINKS_DIR);
+    ensure_dir(TACHYON_SUBSCRIPTION_METADATA_DIR);
+    ensure_dir(TACHYON_OUTBOUND_METADATA_DIR);
+    ensure_dir(TACHYON_SECTION_CACHE_DIR);
 }
 
 function ensure_runtime_cache_format() {
-    ensure_dir(FORKOP_RUNTIME_STATE_DIR);
+    ensure_dir(TACHYON_RUNTIME_STATE_DIR);
 
-    if (first_line(FORKOP_RUNTIME_CACHE_FORMAT_FILE) != FORKOP_RUNTIME_CACHE_FORMAT) {
+    if (first_line(TACHYON_RUNTIME_CACHE_FORMAT_FILE) != TACHYON_RUNTIME_CACHE_FORMAT) {
         clear_subscription_runtime_cache();
         ensure_runtime_dirs();
-        fs.writefile(FORKOP_RUNTIME_CACHE_FORMAT_FILE, FORKOP_RUNTIME_CACHE_FORMAT + "\n");
+        fs.writefile(TACHYON_RUNTIME_CACHE_FORMAT_FILE, TACHYON_RUNTIME_CACHE_FORMAT + "\n");
     }
 
-    if (first_line(FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE) != FORKOP_RUNTIME_CACHE_FORMAT) {
-        run("rm -rf " + shell_quote(FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_DIR));
-        ensure_dir(FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_DIR);
-        run("chmod 700 " + shell_quote(FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_DIR) + " >/dev/null 2>&1");
-        fs.writefile(FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE, FORKOP_RUNTIME_CACHE_FORMAT + "\n");
-        run("chmod 600 " + shell_quote(FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE) + " >/dev/null 2>&1");
+    if (first_line(TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE) != TACHYON_RUNTIME_CACHE_FORMAT) {
+        run("rm -rf " + shell_quote(TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR));
+        ensure_dir(TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR);
+        run("chmod 700 " + shell_quote(TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR) + " >/dev/null 2>&1");
+        fs.writefile(TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE, TACHYON_RUNTIME_CACHE_FORMAT + "\n");
+        run("chmod 600 " + shell_quote(TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE) + " >/dev/null 2>&1");
     }
 }
 
 function remove_legacy_server_country_cache() {
-    fs.unlink(FORKOP_RUNTIME_STATE_DIR + "/server-country-cache.json");
+    fs.unlink(TACHYON_RUNTIME_STATE_DIR + "/server-country-cache.json");
 }
 
 function remove_cache_path(path) {
@@ -1460,14 +1460,14 @@ function current_config_hash() {
 function mark_internal_config_guard() {
     let hash = current_config_hash();
     if (hash == "") {
-        fs.unlink(FORKOP_INTERNAL_CONFIG_TRIGGER_GUARD);
+        fs.unlink(TACHYON_INTERNAL_CONFIG_TRIGGER_GUARD);
         return;
     }
 
     let stamp = clock();
-    let tmp_path = FORKOP_INTERNAL_CONFIG_TRIGGER_GUARD + "." + stamp[0] + "." + stamp[1];
+    let tmp_path = TACHYON_INTERNAL_CONFIG_TRIGGER_GUARD + "." + stamp[0] + "." + stamp[1];
     fs.writefile(tmp_path, as_string(stamp[0]) + "\n" + hash + "\n");
-    if (!fs.rename(tmp_path, FORKOP_INTERNAL_CONFIG_TRIGGER_GUARD))
+    if (!fs.rename(tmp_path, TACHYON_INTERNAL_CONFIG_TRIGGER_GUARD))
         fs.unlink(tmp_path);
 }
 
@@ -1481,7 +1481,7 @@ function commit_cursor(cursor) {
 function migrate_model(model, source) {
     return source == "podkop"
         ? migrate_podkop_model(model, constants_context())
-        : migrate_forkop_model(model);
+        : migrate_tachyon_model(model);
 }
 
 function migrate_runtime(source) {
@@ -1521,20 +1521,20 @@ function main(argv) {
     let mode = argv[0] || "";
 
     if (mode == "migrate")
-        return migrate_runtime("forkop") ? 0 : 1;
+        return migrate_runtime("tachyon") ? 0 : 1;
     if (mode == "migrate-podkop")
         return migrate_runtime("podkop") ? 0 : 1;
     if (mode == "commit")
         return commit_runtime() ? 0 : 1;
     if (mode == "migrate-fixture") {
-        migrate_fixture(argv[1], argv[2] || "forkop");
+        migrate_fixture(argv[1], argv[2] || "tachyon");
         return 0;
     }
 
     warn("Usage: config/migration.uc migrate\n");
     warn("       config/migration.uc migrate-podkop\n");
     warn("       config/migration.uc commit\n");
-    warn("       config/migration.uc migrate-fixture <fixture.json> [forkop|podkop]\n");
+    warn("       config/migration.uc migrate-fixture <fixture.json> [tachyon|podkop]\n");
     return 1;
 }
 
@@ -1542,7 +1542,7 @@ function module_exports() {
     return {
         main: main,
         migrate_model: migrate_model,
-        migrate_forkop_model: migrate_forkop_model,
+        migrate_tachyon_model: migrate_tachyon_model,
         migrate_podkop_model: migrate_podkop_model,
         mark_internal_config_guard: mark_internal_config_guard
     };

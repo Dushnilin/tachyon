@@ -5,13 +5,13 @@
 "require network";
 "require ui";
 "require uci";
-"require view.forkop.local_devices as localDevices";
-"require view.forkop.main as main";
+"require view.tachyon.local_devices as localDevices";
+"require view.tachyon.main as main";
 
-const UCI_PACKAGE = main.FORKOP_UCI_PACKAGE;
+const UCI_PACKAGE = main.TACHYON_UCI_PACKAGE;
 const ACTION_PROVIDERS_AVAILABILITY_EVENT =
-  main.FORKOP_ACTION_PROVIDERS_AVAILABILITY_EVENT ||
-  "forkop:action-providers-availability";
+  main.TACHYON_ACTION_PROVIDERS_AVAILABILITY_EVENT ||
+  "tachyon:action-providers-availability";
 const RULE_SET_ITEM_SETTINGS_KEY = "rule_set_settings";
 const ROUTING_ACTIONS = [
   "connection",
@@ -165,7 +165,7 @@ const BYEDPI_DEFAULT_CMD_OPTS = "-o 2 --auto=t,r,a,s -d 2";
 const ANNOTATED_TEXTAREA_STYLE_ID = "fkp-annotated-textarea-styles";
 const CONNECTIONS_DYNLIST_STYLE_ID = "fkp-connections-dynlist-styles";
 const NFQWS_REMOTE_VALIDATION_DEBOUNCE_MS = 500;
-const NFQWS_VALIDATION_COMMAND = "/usr/bin/forkop";
+const NFQWS_VALIDATION_COMMAND = "/usr/bin/tachyon";
 const nfqwsRemoteValidationCache = new Map();
 const nfqwsRemoteValidationInflight = new Map();
 const nfqws2RemoteValidationCache = new Map();
@@ -431,7 +431,7 @@ let actionProvidersAvailabilityLoader = null;
 const outboundNameChoicesCache = new Map();
 const outboundNameChoicesInflight = new Map();
 const outboundNameSourceOptions = new Map();
-const SECTION_CACHE_DIR = "/var/run/forkop/section-cache";
+const SECTION_CACHE_DIR = "/var/run/tachyon/section-cache";
 const COUNTRY_CODES =
   "AD AE AF AG AI AL AM AO AQ AR AS AT AU AW AX AZ BA BB BD BE BF BG BH BI BJ BL BM BN BO BQ BR BS BT BV BW BY BZ CA CC CD CF CG CH CI CK CL CM CN CO CR CU CV CW CX CY CZ DE DJ DK DM DO DZ EC EE EG EH ER ES ET FI FJ FK FM FO FR GA GB GD GE GF GG GH GI GL GM GN GP GQ GR GS GT GU GW GY HK HM HN HR HT HU ID IE IL IM IN IO IQ IR IS IT JE JM JO JP KE KG KH KI KM KN KP KR KW KY KZ LA LB LC LI LK LR LS LT LU LV LY MA MC MD ME MF MG MH MK ML MM MN MO MP MQ MR MS MT MU MV MW MX MY MZ NA NC NE NF NG NI NL NO NP NR NU NZ OM PA PE PF PG PH PK PL PM PN PR PS PT PW PY QA RE RO RS RU RW SA SB SC SD SE SG SH SI SJ SK SL SM SN SO SR SS ST SV SX SY SZ TC TD TF TG TH TJ TK TL TM TN TO TR TT TV TW TZ UA UG UM US UY UZ VA VC VE VG VI VN VU WF WS YE YT ZA ZM ZW XK".split(
     " ",
@@ -3550,9 +3550,9 @@ function ensureActionProvidersAvailabilityLoaded() {
   }
 
   actionProvidersAvailabilityPromise = Promise.allSettled([
-    main.ForkopShellMethods.checkZapretRuntime(),
-    main.ForkopShellMethods.checkZapret2Runtime(),
-    main.ForkopShellMethods.checkByedpiRuntime(),
+    main.TachyonShellMethods.checkZapretRuntime(),
+    main.TachyonShellMethods.checkZapret2Runtime(),
+    main.TachyonShellMethods.checkByedpiRuntime(),
   ])
     .then(([zapretResult, zapret2Result, byedpiResult]) => {
       const zapret =
@@ -4441,9 +4441,9 @@ function attachAnnotatedTextarea(textarea, analyzer) {
 
   ensureAnnotatedTextareaStyles();
 
-  if (textarea.__forkopAnnotatedTextareaController) {
-    textarea.__forkopAnnotatedTextareaController.analyzer = analyzer;
-    textarea.__forkopAnnotatedTextareaController.update();
+  if (textarea.__tachyonAnnotatedTextareaController) {
+    textarea.__tachyonAnnotatedTextareaController.analyzer = analyzer;
+    textarea.__tachyonAnnotatedTextareaController.update();
     return;
   }
 
@@ -4474,7 +4474,7 @@ function attachAnnotatedTextarea(textarea, analyzer) {
     },
   };
 
-  textarea.__forkopAnnotatedTextareaController = controller;
+  textarea.__tachyonAnnotatedTextareaController = controller;
 
   const updateAnnotatedTextarea = () => controller.update();
   textarea.addEventListener("input", updateAnnotatedTextarea);
@@ -4500,21 +4500,21 @@ function refreshAnnotatedTextareaValidation(option, section_id, textarea) {
 
   if (
     textarea &&
-    textarea.__forkopAnnotatedTextareaController &&
-    typeof textarea.__forkopAnnotatedTextareaController.update === "function"
+    textarea.__tachyonAnnotatedTextareaController &&
+    typeof textarea.__tachyonAnnotatedTextareaController.update === "function"
   ) {
-    textarea.__forkopAnnotatedTextareaController.update();
+    textarea.__tachyonAnnotatedTextareaController.update();
   }
 }
 
 function attachNfqwsRemoteValidation(option, section_id, textarea) {
-  if (!textarea || textarea.__forkopNfqwsRemoteValidationAttached) {
+  if (!textarea || textarea.__tachyonNfqwsRemoteValidationAttached) {
     return;
   }
 
-  textarea.__forkopNfqwsRemoteValidationAttached = true;
-  textarea.__forkopNfqwsRemoteValidationRequestId = 0;
-  textarea.__forkopNfqwsRemoteValidationTimer = null;
+  textarea.__tachyonNfqwsRemoteValidationAttached = true;
+  textarea.__tachyonNfqwsRemoteValidationRequestId = 0;
+  textarea.__tachyonNfqwsRemoteValidationTimer = null;
 
   const runValidation = () => {
     const value = textarea.value;
@@ -4525,11 +4525,11 @@ function attachNfqwsRemoteValidation(option, section_id, textarea) {
     }
 
     const requestId =
-      (textarea.__forkopNfqwsRemoteValidationRequestId || 0) + 1;
-    textarea.__forkopNfqwsRemoteValidationRequestId = requestId;
+      (textarea.__tachyonNfqwsRemoteValidationRequestId || 0) + 1;
+    textarea.__tachyonNfqwsRemoteValidationRequestId = requestId;
 
     validateNfqwsStrategyRemotely(value).then(() => {
-      if (textarea.__forkopNfqwsRemoteValidationRequestId !== requestId) {
+      if (textarea.__tachyonNfqwsRemoteValidationRequestId !== requestId) {
         return;
       }
 
@@ -4538,12 +4538,12 @@ function attachNfqwsRemoteValidation(option, section_id, textarea) {
   };
 
   const scheduleValidation = (delay = NFQWS_REMOTE_VALIDATION_DEBOUNCE_MS) => {
-    if (textarea.__forkopNfqwsRemoteValidationTimer) {
-      window.clearTimeout(textarea.__forkopNfqwsRemoteValidationTimer);
+    if (textarea.__tachyonNfqwsRemoteValidationTimer) {
+      window.clearTimeout(textarea.__tachyonNfqwsRemoteValidationTimer);
     }
 
-    textarea.__forkopNfqwsRemoteValidationTimer = window.setTimeout(() => {
-      textarea.__forkopNfqwsRemoteValidationTimer = null;
+    textarea.__tachyonNfqwsRemoteValidationTimer = window.setTimeout(() => {
+      textarea.__tachyonNfqwsRemoteValidationTimer = null;
       runValidation();
     }, delay);
   };
@@ -4556,13 +4556,13 @@ function attachNfqwsRemoteValidation(option, section_id, textarea) {
 }
 
 function attachNfqws2RemoteValidation(option, section_id, textarea) {
-  if (!textarea || textarea.__forkopNfqws2RemoteValidationAttached) {
+  if (!textarea || textarea.__tachyonNfqws2RemoteValidationAttached) {
     return;
   }
 
-  textarea.__forkopNfqws2RemoteValidationAttached = true;
-  textarea.__forkopNfqws2RemoteValidationRequestId = 0;
-  textarea.__forkopNfqws2RemoteValidationTimer = null;
+  textarea.__tachyonNfqws2RemoteValidationAttached = true;
+  textarea.__tachyonNfqws2RemoteValidationRequestId = 0;
+  textarea.__tachyonNfqws2RemoteValidationTimer = null;
 
   const runValidation = () => {
     const value = textarea.value;
@@ -4573,11 +4573,11 @@ function attachNfqws2RemoteValidation(option, section_id, textarea) {
     }
 
     const requestId =
-      (textarea.__forkopNfqws2RemoteValidationRequestId || 0) + 1;
-    textarea.__forkopNfqws2RemoteValidationRequestId = requestId;
+      (textarea.__tachyonNfqws2RemoteValidationRequestId || 0) + 1;
+    textarea.__tachyonNfqws2RemoteValidationRequestId = requestId;
 
     validateNfqws2StrategyRemotely(value).then(() => {
-      if (textarea.__forkopNfqws2RemoteValidationRequestId !== requestId) {
+      if (textarea.__tachyonNfqws2RemoteValidationRequestId !== requestId) {
         return;
       }
 
@@ -4586,12 +4586,12 @@ function attachNfqws2RemoteValidation(option, section_id, textarea) {
   };
 
   const scheduleValidation = (delay = NFQWS_REMOTE_VALIDATION_DEBOUNCE_MS) => {
-    if (textarea.__forkopNfqws2RemoteValidationTimer) {
-      window.clearTimeout(textarea.__forkopNfqws2RemoteValidationTimer);
+    if (textarea.__tachyonNfqws2RemoteValidationTimer) {
+      window.clearTimeout(textarea.__tachyonNfqws2RemoteValidationTimer);
     }
 
-    textarea.__forkopNfqws2RemoteValidationTimer = window.setTimeout(() => {
-      textarea.__forkopNfqws2RemoteValidationTimer = null;
+    textarea.__tachyonNfqws2RemoteValidationTimer = window.setTimeout(() => {
+      textarea.__tachyonNfqws2RemoteValidationTimer = null;
       runValidation();
     }, delay);
   };
@@ -5026,7 +5026,7 @@ function validateNfqwsStrategyRemotely(value) {
 
 function getNfqwsForbiddenTokenInfo(token, index) {
   const configFileMessage = _(
-    "External nfqws config files bypass Forkop queue management and explicit validation.",
+    "External nfqws config files bypass Tachyon queue management and explicit validation.",
   );
   const hostSelectionMessage = _(
     "Resource selection by hostname inside nfqws is not supported here; sing-box selects resources before NFQUEUE.",
@@ -5035,16 +5035,16 @@ function getNfqwsForbiddenTokenInfo(token, index) {
     "Resource selection by IP or CIDR inside nfqws is not supported here; sing-box selects resources before NFQUEUE.",
   );
   const placeholderMessage = _(
-    "Zapret hostlist templates are not supported here because Forkop does not expand them for per-rule NFQWS strategies.",
+    "Zapret hostlist templates are not supported here because Tachyon does not expand them for per-rule NFQWS strategies.",
   );
   const queueMessage = _(
-    "The NFQUEUE number is assigned by Forkop for each rule and must not be overridden here.",
+    "The NFQUEUE number is assigned by Tachyon for each rule and must not be overridden here.",
   );
   const fwmarkMessage = _(
-    "The desync fwmark is managed by Forkop for loop prevention and must not be overridden here.",
+    "The desync fwmark is managed by Tachyon for loop prevention and must not be overridden here.",
   );
   const daemonMessage = _(
-    "Forkop manages the nfqws process lifecycle itself, so daemon mode is not allowed here.",
+    "Tachyon manages the nfqws process lifecycle itself, so daemon mode is not allowed here.",
   );
   const dryRunMessage = _(
     "This field must start a working nfqws strategy; --dry-run exits immediately and is not allowed here.",
@@ -5471,7 +5471,7 @@ function validateNfqws2StrategyRemotely(value) {
 
 function getNfqws2ForbiddenTokenInfo(token, index, nextToken) {
   const configFileMessage = _(
-    "External nfqws2 config files bypass Forkop queue management and explicit validation.",
+    "External nfqws2 config files bypass Tachyon queue management and explicit validation.",
   );
   const hostSelectionMessage = _(
     "Resource selection by hostname inside nfqws2 is not supported here; sing-box selects resources before NFQUEUE.",
@@ -5480,22 +5480,22 @@ function getNfqws2ForbiddenTokenInfo(token, index, nextToken) {
     "Resource selection by IP or CIDR inside nfqws2 is not supported here; sing-box selects resources before NFQUEUE.",
   );
   const placeholderMessage = _(
-    "Zapret2 hostlist templates are not supported here because Forkop does not expand them for per-rule NFQWS2 strategies.",
+    "Zapret2 hostlist templates are not supported here because Tachyon does not expand them for per-rule NFQWS2 strategies.",
   );
   const queueMessage = _(
-    "The NFQUEUE number is assigned by Forkop for each rule and must not be overridden here.",
+    "The NFQUEUE number is assigned by Tachyon for each rule and must not be overridden here.",
   );
   const fwmarkMessage = _(
-    "The desync fwmark is managed by Forkop for loop prevention and must not be overridden here.",
+    "The desync fwmark is managed by Tachyon for loop prevention and must not be overridden here.",
   );
   const fuzzMessage = _(
-    "Fuzzing is not supported here because Forkop needs deterministic runtime validation.",
+    "Fuzzing is not supported here because Tachyon needs deterministic runtime validation.",
   );
   const interceptMessage = _(
-    "Disabling interception is incompatible with action=zapret2 because Forkop sends matched traffic through NFQUEUE.",
+    "Disabling interception is incompatible with action=zapret2 because Tachyon sends matched traffic through NFQUEUE.",
   );
   const daemonMessage = _(
-    "Forkop manages the nfqws2 process lifecycle itself, so daemon mode is not allowed here.",
+    "Tachyon manages the nfqws2 process lifecycle itself, so daemon mode is not allowed here.",
   );
   const dryRunMessage = _(
     "This field must start a working nfqws2 strategy; --dry-run exits immediately and is not allowed here.",
@@ -5891,16 +5891,16 @@ function byedpiTokenLooksLikeOption(token) {
 
 function getByedpiControlledTokenInfo(token) {
   const listenMessage = _(
-    "ByeDPI listen address and port are assigned by Forkop and must not be set in the strategy.",
+    "ByeDPI listen address and port are assigned by Tachyon and must not be set in the strategy.",
   );
   const transparentMessage = _(
-    "Transparent proxy mode is incompatible with action=byedpi because Forkop connects to ciadpi through SOCKS.",
+    "Transparent proxy mode is incompatible with action=byedpi because Tachyon connects to ciadpi through SOCKS.",
   );
   const daemonMessage = _(
-    "Forkop manages the ciadpi process lifecycle itself, so daemon mode is not allowed here.",
+    "Tachyon manages the ciadpi process lifecycle itself, so daemon mode is not allowed here.",
   );
   const pidfileMessage = _(
-    "Forkop manages ciadpi pid files itself, so pidfile options are not allowed here.",
+    "Tachyon manages ciadpi pid files itself, so pidfile options are not allowed here.",
   );
   const exitMessage = _(
     "This field must start a working ciadpi strategy; help/version options exit immediately and are not allowed here.",
@@ -6630,7 +6630,7 @@ function createSectionContent(section) {
     form.ListValue,
     "action",
     _("Action"),
-    _("What Forkop should do when this section matches"),
+    _("What Tachyon should do when this section matches"),
   );
   populateActionOptionValues(o);
   o.default = "connection";

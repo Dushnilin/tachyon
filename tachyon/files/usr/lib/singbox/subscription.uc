@@ -10,13 +10,13 @@ let object_or_empty = common.object_or_empty;
 let object_key_count = common.object_key_count;
 
 const TMP_SUBSCRIPTION_FOLDER = getenv("TMP_SUBSCRIPTION_FOLDER") || "/tmp/sing-box/subscriptions";
-const FORKOP_RUNTIME_STATE_DIR = getenv("FORKOP_RUNTIME_STATE_DIR") || "/var/run/forkop";
-const FORKOP_SECTION_CACHE_DIR = getenv("FORKOP_SECTION_CACHE_DIR") || FORKOP_RUNTIME_STATE_DIR + "/section-cache";
-const FORKOP_SUBSCRIPTION_METADATA_DIR = getenv("FORKOP_SUBSCRIPTION_METADATA_DIR") || FORKOP_RUNTIME_STATE_DIR + "/subscription-metadata";
-const FORKOP_RUNTIME_CACHE_FORMAT = int(getenv("FORKOP_RUNTIME_CACHE_FORMAT") || "7");
-const FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_DIR = getenv("FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_DIR") || "/etc/forkop/subscription-cache";
+const TACHYON_RUNTIME_STATE_DIR = getenv("TACHYON_RUNTIME_STATE_DIR") || "/var/run/tachyon";
+const TACHYON_SECTION_CACHE_DIR = getenv("TACHYON_SECTION_CACHE_DIR") || TACHYON_RUNTIME_STATE_DIR + "/section-cache";
+const TACHYON_SUBSCRIPTION_METADATA_DIR = getenv("TACHYON_SUBSCRIPTION_METADATA_DIR") || TACHYON_RUNTIME_STATE_DIR + "/subscription-metadata";
+const TACHYON_RUNTIME_CACHE_FORMAT = int(getenv("TACHYON_RUNTIME_CACHE_FORMAT") || "7");
+const TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR = getenv("TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR") || "/etc/tachyon/subscription-cache";
 
-let section_cache_dir = FORKOP_SECTION_CACHE_DIR;
+let section_cache_dir = TACHYON_SECTION_CACHE_DIR;
 
 function set_section_cache_dir(path) {
     path = as_string(path);
@@ -33,11 +33,11 @@ function section_cache_path(section_name) {
 }
 
 function legacy_metadata_path(section_name) {
-    return FORKOP_SUBSCRIPTION_METADATA_DIR + "/" + section_name + ".json";
+    return TACHYON_SUBSCRIPTION_METADATA_DIR + "/" + section_name + ".json";
 }
 
 function persistent_source_path(source_section, suffix) {
-    return FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_DIR + "/" + source_section + suffix;
+    return TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR + "/" + source_section + suffix;
 }
 
 function persistent_metadata_path(source_section) {
@@ -350,7 +350,7 @@ function read_source_outbounds(source_section) {
 
 function new_section_state(section_name) {
     return {
-        version: FORKOP_RUNTIME_CACHE_FORMAT,
+        version: TACHYON_RUNTIME_CACHE_FORMAT,
         section: section_name,
         links: {},
         linkRefs: {},

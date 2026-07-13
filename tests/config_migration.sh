@@ -2,12 +2,12 @@
 set -eo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-FORKOP_LIB="$ROOT_DIR/forkop/files/usr/lib"
-RUNTIME_MIGRATION="$FORKOP_LIB/config/migration.uc"
+TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
+RUNTIME_MIGRATION="$TACHYON_LIB/config/migration.uc"
 INSTALLER="$ROOT_DIR/install.sh"
 WORK_DIR="$(mktemp -d)"
 MIGRATION="$RUNTIME_MIGRATION"
-MIGRATIONS_DIR="$FORKOP_LIB/config/migrations"
+MIGRATIONS_DIR="$TACHYON_LIB/config/migrations"
 
 cleanup() {
   rm -rf "$WORK_DIR"
@@ -19,7 +19,7 @@ fail() {
   exit 1
 }
 
-if grep -n -E 'FORKOP_CONFIG_MIGRATION_EOF|installer_config_migration_path' "$INSTALLER" >/dev/null 2>&1; then
+if grep -n -E 'TACHYON_CONFIG_MIGRATION_EOF|installer_config_migration_path' "$INSTALLER" >/dev/null 2>&1; then
   fail "install.sh must not embed configuration migration logic"
 fi
 [ -s "$MIGRATION" ] || fail "runtime configuration migration module is missing"
@@ -37,7 +37,7 @@ grep -Fq '{ id: "enable_component_checks", run: migrate_enable_component_checks 
 grep -Fq 'release_at_most(ctx, "1.0.1")' "$MIGRATION" ||
   fail "release-specific migrations must use the source release only as a condition"
 
-eval "$(ucode -L "$FORKOP_LIB" "$FORKOP_LIB/core/constants.uc" shell-env)"
+eval "$(ucode -L "$TACHYON_LIB" "$TACHYON_LIB/core/constants.uc" shell-env)"
 export ZAPRET_LEGACY_DEFAULT_NFQWS_OPT ZAPRET_DEFAULT_NFQWS_OPT
 
 node >"$WORK_DIR/fixture.json" <<'NODE'
@@ -155,7 +155,7 @@ const fixture = {
 process.stdout.write(`${JSON.stringify(fixture, null, 2)}\n`);
 NODE
 
-FORKOP_LIB="$FORKOP_LIB" ucode -L "$FORKOP_LIB" "$MIGRATION" migrate-fixture "$WORK_DIR/fixture.json" podkop >"$WORK_DIR/output.json"
+TACHYON_LIB="$TACHYON_LIB" ucode -L "$TACHYON_LIB" "$MIGRATION" migrate-fixture "$WORK_DIR/fixture.json" podkop >"$WORK_DIR/output.json"
 
 node - "$WORK_DIR/output.json" <<'NODE'
 const fs = require('fs');
@@ -350,10 +350,10 @@ assert(legacyOutboundCollision.outbound_jsons.length === 2, 'legacy JSON outboun
 assert(JSON.parse(legacyOutboundCollision.outbound_jsons[1]).tag === 'legacy-outbound-collision-json-2-out-1', 'legacy JSON outbound tag avoids existing list tags');
 
 assert(out.removed_caches.includes('/tmp/sing-box/subscriptions/legacy-sub.json'), 'subscription runtime cache removal');
-assert(out.removed_caches.includes('/var/run/forkop/section-cache/legacy-sub.json'), 'section cache removal');
+assert(out.removed_caches.includes('/var/run/tachyon/section-cache/legacy-sub.json'), 'section cache removal');
 NODE
 
-cat >"$WORK_DIR/forkop-1.0.1.json" <<'JSON'
+cat >"$WORK_DIR/tachyon-1.0.1.json" <<'JSON'
 {
   "settings": {
     ".name": "settings",
@@ -372,9 +372,9 @@ cat >"$WORK_DIR/forkop-1.0.1.json" <<'JSON'
 }
 JSON
 
-FORKOP_LIB="$FORKOP_LIB" ucode -L "$FORKOP_LIB" "$MIGRATION" migrate-fixture "$WORK_DIR/forkop-1.0.1.json" >"$WORK_DIR/forkop-1.0.2.json"
+TACHYON_LIB="$TACHYON_LIB" ucode -L "$TACHYON_LIB" "$MIGRATION" migrate-fixture "$WORK_DIR/tachyon-1.0.1.json" >"$WORK_DIR/tachyon-1.0.2.json"
 
-node - "$WORK_DIR/forkop-1.0.2.json" <<'NODE'
+node - "$WORK_DIR/tachyon-1.0.2.json" <<'NODE'
 const fs = require('fs');
 const out = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
 const section = out.config.section[0];
@@ -401,7 +401,7 @@ for (const item of interfaces) {
 }
 NODE
 
-cat >"$WORK_DIR/forkop-1.0.2-disabled.json" <<'JSON'
+cat >"$WORK_DIR/tachyon-1.0.2-disabled.json" <<'JSON'
 {
   "settings": {
     ".name": "settings",
@@ -413,9 +413,9 @@ cat >"$WORK_DIR/forkop-1.0.2-disabled.json" <<'JSON'
 }
 JSON
 
-FORKOP_LIB="$FORKOP_LIB" ucode -L "$FORKOP_LIB" "$MIGRATION" migrate-fixture "$WORK_DIR/forkop-1.0.2-disabled.json" >"$WORK_DIR/forkop-1.0.2-disabled-output.json"
+TACHYON_LIB="$TACHYON_LIB" ucode -L "$TACHYON_LIB" "$MIGRATION" migrate-fixture "$WORK_DIR/tachyon-1.0.2-disabled.json" >"$WORK_DIR/tachyon-1.0.2-disabled-output.json"
 
-node - "$WORK_DIR/forkop-1.0.2-disabled-output.json" <<'NODE'
+node - "$WORK_DIR/tachyon-1.0.2-disabled-output.json" <<'NODE'
 const fs = require('fs');
 const out = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
 
@@ -431,112 +431,112 @@ assert(JSON.stringify(out.config.settings.applied_migrations) === JSON.stringify
 NODE
 
 cat >"$WORK_DIR/runtime-migrate.state" <<'EOF_UCI'
-forkop.settings=settings
-forkop.settings.routing_excluded_ips=192.0.2.0/24
-forkop.legacy=rule
-forkop.legacy.enabled=1
-forkop.legacy.connection_type=proxy
-forkop.legacy.proxy_config_type=url
-forkop.legacy.proxy_string=vless://one
-forkop.old_direct=section
-forkop.old_direct.enabled=1
-forkop.old_direct.action=direct
-forkop.vpn=section
-forkop.vpn.enabled=1
-forkop.vpn.connection_type=vpn
-forkop.vpn.interface=awg0
-forkop.vpn.domain_resolver_enabled=1
-forkop.vpn.domain_resolver_dns_type=doh
-forkop.vpn.domain_resolver_dns_server=https://dns.example/dns-query
+tachyon.settings=settings
+tachyon.settings.routing_excluded_ips=192.0.2.0/24
+tachyon.legacy=rule
+tachyon.legacy.enabled=1
+tachyon.legacy.connection_type=proxy
+tachyon.legacy.proxy_config_type=url
+tachyon.legacy.proxy_string=vless://one
+tachyon.old_direct=section
+tachyon.old_direct.enabled=1
+tachyon.old_direct.action=direct
+tachyon.vpn=section
+tachyon.vpn.enabled=1
+tachyon.vpn.connection_type=vpn
+tachyon.vpn.interface=awg0
+tachyon.vpn.domain_resolver_enabled=1
+tachyon.vpn.domain_resolver_dns_type=doh
+tachyon.vpn.domain_resolver_dns_server=https://dns.example/dns-query
 EOF_UCI
 mkdir -p "$WORK_DIR/runtime" "$WORK_DIR/persistent-cache"
 : >"$WORK_DIR/runtime-migrate.log"
-FORKOP_UCI_STATE_FILE="$WORK_DIR/runtime-migrate.state" \
-FORKOP_UCI_LOG_FILE="$WORK_DIR/runtime-migrate.log" \
-FORKOP_CONFIG_NAME="forkop" \
+TACHYON_UCI_STATE_FILE="$WORK_DIR/runtime-migrate.state" \
+TACHYON_UCI_LOG_FILE="$WORK_DIR/runtime-migrate.log" \
+TACHYON_CONFIG_NAME="tachyon" \
 TMP_SUBSCRIPTION_FOLDER="$WORK_DIR/tmp-subscriptions" \
-FORKOP_RUNTIME_STATE_DIR="$WORK_DIR/runtime" \
-FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_DIR="$WORK_DIR/persistent-cache" \
-FORKOP_INTERNAL_CONFIG_TRIGGER_GUARD="$WORK_DIR/internal-config-change" \
-ucode -L "$FORKOP_LIB" "$MIGRATION" migrate-podkop
+TACHYON_RUNTIME_STATE_DIR="$WORK_DIR/runtime" \
+TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR="$WORK_DIR/persistent-cache" \
+TACHYON_INTERNAL_CONFIG_TRIGGER_GUARD="$WORK_DIR/internal-config-change" \
+ucode -L "$TACHYON_LIB" "$MIGRATION" migrate-podkop
 
-grep -Fxq 'forkop.legacy=section' "$WORK_DIR/runtime-migrate.state" ||
+grep -Fxq 'tachyon.legacy=section' "$WORK_DIR/runtime-migrate.state" ||
   fail "runtime migration must convert legacy rule type through core.uci"
-grep -Fxq 'forkop.legacy.action=connection' "$WORK_DIR/runtime-migrate.state" ||
+grep -Fxq 'tachyon.legacy.action=connection' "$WORK_DIR/runtime-migrate.state" ||
   fail "runtime migration must write migrated action through core.uci"
-grep -Fxq 'forkop.old_direct.action=bypass' "$WORK_DIR/runtime-migrate.state" ||
+grep -Fxq 'tachyon.old_direct.action=bypass' "$WORK_DIR/runtime-migrate.state" ||
   fail "runtime migration must convert direct action to bypass through core.uci"
-grep -Eq '^forkop\\.cfg[0-9a-f]+=$' "$WORK_DIR/runtime-migrate.state" && fail "anonymous fixture section should include a type"
-grep -Fxq 'forkop.legacy.selector_proxy_links=vless://one' "$WORK_DIR/runtime-migrate.state" ||
+grep -Eq '^tachyon\\.cfg[0-9a-f]+=$' "$WORK_DIR/runtime-migrate.state" && fail "anonymous fixture section should include a type"
+grep -Fxq 'tachyon.legacy.selector_proxy_links=vless://one' "$WORK_DIR/runtime-migrate.state" ||
   fail "runtime migration must keep connection URLs in the parent section"
 if grep -Fq '=connection_url' "$WORK_DIR/runtime-migrate.state"; then
   fail "runtime migration must not create connection_url child sections"
 fi
-grep -Eq '^forkop\.cfg[0-9a-f]+=section_interface$' "$WORK_DIR/runtime-migrate.state" ||
+grep -Eq '^tachyon\.cfg[0-9a-f]+=section_interface$' "$WORK_DIR/runtime-migrate.state" ||
   fail "runtime migration must create an anonymous interface settings section"
-grep -Eq '^forkop\.cfg[0-9a-f]+\.section=vpn$' "$WORK_DIR/runtime-migrate.state" ||
+grep -Eq '^tachyon\.cfg[0-9a-f]+\.section=vpn$' "$WORK_DIR/runtime-migrate.state" ||
   fail "runtime interface settings section must reference its parent"
-grep -Eq '^forkop\.cfg[0-9a-f]+\.name=' "$WORK_DIR/runtime-migrate.state" ||
+grep -Eq '^tachyon\.cfg[0-9a-f]+\.name=' "$WORK_DIR/runtime-migrate.state" ||
   fail "runtime interface settings section must store the interface name"
-if grep -Fq 'forkop.legacy.urltest_enabled=' "$WORK_DIR/runtime-migrate.state"; then
+if grep -Fq 'tachyon.legacy.urltest_enabled=' "$WORK_DIR/runtime-migrate.state"; then
   fail "runtime migration must delete migrated urltest_enabled through core.uci"
 fi
-if grep -Fq 'forkop.settings.routing_excluded_ips=' "$WORK_DIR/runtime-migrate.state"; then
+if grep -Fq 'tachyon.settings.routing_excluded_ips=' "$WORK_DIR/runtime-migrate.state"; then
   fail "runtime migration must delete removed routing_excluded_ips through core.uci"
 fi
-if grep -Fq 'forkop.legacy.proxy_string=' "$WORK_DIR/runtime-migrate.state"; then
+if grep -Fq 'tachyon.legacy.proxy_string=' "$WORK_DIR/runtime-migrate.state"; then
   fail "runtime migration must delete legacy proxy_string through core.uci"
 fi
-grep -Fxq 'commit forkop' "$WORK_DIR/runtime-migrate.log" ||
+grep -Fxq 'commit tachyon' "$WORK_DIR/runtime-migrate.log" ||
   fail "runtime migration must commit through core.uci"
 
 cat >"$WORK_DIR/runtime-version.state" <<'EOF_UCI'
-forkop.settings=settings
-forkop.settings.config_version=1.0.1
-forkop.settings.component_update_check_enabled=0
-forkop.main=section
-forkop.main.enabled=1
-forkop.main.action=connection
-forkop.main.interfaces=awg0
+tachyon.settings=settings
+tachyon.settings.config_version=1.0.1
+tachyon.settings.component_update_check_enabled=0
+tachyon.main=section
+tachyon.main.enabled=1
+tachyon.main.action=connection
+tachyon.main.interfaces=awg0
 EOF_UCI
 : >"$WORK_DIR/runtime-version.log"
-FORKOP_UCI_STATE_FILE="$WORK_DIR/runtime-version.state" \
-FORKOP_UCI_LOG_FILE="$WORK_DIR/runtime-version.log" \
-FORKOP_CONFIG_NAME="forkop" \
-FORKOP_INTERNAL_CONFIG_TRIGGER_GUARD="$WORK_DIR/internal-config-change" \
-ucode -L "$FORKOP_LIB" "$MIGRATION" migrate
+TACHYON_UCI_STATE_FILE="$WORK_DIR/runtime-version.state" \
+TACHYON_UCI_LOG_FILE="$WORK_DIR/runtime-version.log" \
+TACHYON_CONFIG_NAME="tachyon" \
+TACHYON_INTERNAL_CONFIG_TRIGGER_GUARD="$WORK_DIR/internal-config-change" \
+ucode -L "$TACHYON_LIB" "$MIGRATION" migrate
 
-grep -Fxq 'forkop.settings.config_version=1.0.2' "$WORK_DIR/runtime-version.state" ||
+grep -Fxq 'tachyon.settings.config_version=1.0.2' "$WORK_DIR/runtime-version.state" ||
   fail "runtime version migration must advance config_version"
-grep -Fxq 'forkop.settings.component_update_check_enabled=1' "$WORK_DIR/runtime-version.state" ||
+grep -Fxq 'tachyon.settings.component_update_check_enabled=1' "$WORK_DIR/runtime-version.state" ||
   fail "runtime version migration must enable component update checks"
-grep -Fq 'forkop.settings.applied_migrations=interface_sections enable_component_checks' "$WORK_DIR/runtime-version.state" ||
+grep -Fq 'tachyon.settings.applied_migrations=interface_sections enable_component_checks' "$WORK_DIR/runtime-version.state" ||
   fail "runtime migration must record stable migration names"
-grep -Eq '^forkop\.cfg[0-9a-f]+=section_interface$' "$WORK_DIR/runtime-version.state" ||
+grep -Eq '^tachyon\.cfg[0-9a-f]+=section_interface$' "$WORK_DIR/runtime-version.state" ||
   fail "runtime version migration must create interface child settings"
-if grep -Fq 'forkop.main.interfaces=' "$WORK_DIR/runtime-version.state"; then
+if grep -Fq 'tachyon.main.interfaces=' "$WORK_DIR/runtime-version.state"; then
   fail "runtime version migration must remove the parent interface list"
 fi
 
 : >"$WORK_DIR/runtime-version.log"
-FORKOP_UCI_STATE_FILE="$WORK_DIR/runtime-version.state" \
-FORKOP_UCI_LOG_FILE="$WORK_DIR/runtime-version.log" \
-FORKOP_CONFIG_NAME="forkop" \
-FORKOP_INTERNAL_CONFIG_TRIGGER_GUARD="$WORK_DIR/internal-config-change" \
-ucode -L "$FORKOP_LIB" "$MIGRATION" migrate
-if grep -Fq 'commit forkop' "$WORK_DIR/runtime-version.log"; then
+TACHYON_UCI_STATE_FILE="$WORK_DIR/runtime-version.state" \
+TACHYON_UCI_LOG_FILE="$WORK_DIR/runtime-version.log" \
+TACHYON_CONFIG_NAME="tachyon" \
+TACHYON_INTERNAL_CONFIG_TRIGGER_GUARD="$WORK_DIR/internal-config-change" \
+ucode -L "$TACHYON_LIB" "$MIGRATION" migrate
+if grep -Fq 'commit tachyon' "$WORK_DIR/runtime-version.log"; then
   fail "completed named migrations must be idempotent"
 fi
 
 : >"$WORK_DIR/uci-commit.log"
 : >"$WORK_DIR/uci-commit.state"
-FORKOP_UCI_STATE_FILE="$WORK_DIR/uci-commit.state" \
-FORKOP_UCI_LOG_FILE="$WORK_DIR/uci-commit.log" \
-FORKOP_CONFIG_NAME="forkop" \
-FORKOP_INTERNAL_CONFIG_TRIGGER_GUARD="$WORK_DIR/internal-config-change" \
-ucode -L "$FORKOP_LIB" "$MIGRATION" commit
+TACHYON_UCI_STATE_FILE="$WORK_DIR/uci-commit.state" \
+TACHYON_UCI_LOG_FILE="$WORK_DIR/uci-commit.log" \
+TACHYON_CONFIG_NAME="tachyon" \
+TACHYON_INTERNAL_CONFIG_TRIGGER_GUARD="$WORK_DIR/internal-config-change" \
+ucode -L "$TACHYON_LIB" "$MIGRATION" commit
 
-grep -Fxq 'commit forkop' "$WORK_DIR/uci-commit.log" ||
-  fail "commit mode must commit forkop through core.uci"
+grep -Fxq 'commit tachyon' "$WORK_DIR/uci-commit.log" ||
+  fail "commit mode must commit tachyon through core.uci"
 
 printf 'installer config migration checks passed\n'

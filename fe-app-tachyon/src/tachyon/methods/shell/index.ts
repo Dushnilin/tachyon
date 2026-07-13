@@ -1,5 +1,5 @@
 import { callBaseMethod } from './callBaseMethod';
-import { ClashAPI, Forkop } from '../../types';
+import { ClashAPI, Tachyon } from '../../types';
 import { executeShellCommand } from '../../../helpers';
 import { isTransientRpcError } from '../../helpers/isTransientRpcError';
 
@@ -16,7 +16,7 @@ const COMPONENT_ACTION_POLL_INTERVAL_MS = 1500;
 const COMPONENT_ACTION_STATUS_REFRESH_INTERVAL_MS = 15000;
 const COMPONENT_ACTION_SELF_UPDATE_SETTLE_MS = 30000;
 const COMPONENT_ACTION_TRANSIENT_RPC_GRACE_MS = 30000;
-const COMPONENT_ACTION_STATE_DIR = '/var/run/forkop/component-actions';
+const COMPONENT_ACTION_STATE_DIR = '/var/run/tachyon/component-actions';
 const GET_UI_STATE_RPC_TIMEOUT_MS = 3000;
 
 function sleep(ms: number) {
@@ -50,7 +50,7 @@ function parseJsonObjectOutput<T>(output: string): T | null {
 }
 
 function parseComponentActionOutput(output: string) {
-  return parseJsonObjectOutput<Forkop.ComponentActionResult>(output);
+  return parseJsonObjectOutput<Tachyon.ComponentActionResult>(output);
 }
 
 function parseComponentActionResult(
@@ -68,13 +68,13 @@ function parseComponentActionStartResult(
     return null;
   }
 
-  return parsedResponse as unknown as Forkop.ComponentActionStartResult;
+  return parsedResponse as unknown as Tachyon.ComponentActionStartResult;
 }
 
 function parseSubscriptionUpdateStartResult(
   response: Awaited<ReturnType<typeof executeShellCommand>>,
 ) {
-  return parseJsonObjectOutput<Forkop.SubscriptionUpdateStartResult>(
+  return parseJsonObjectOutput<Tachyon.SubscriptionUpdateStartResult>(
     response.stdout,
   );
 }
@@ -82,7 +82,7 @@ function parseSubscriptionUpdateStartResult(
 function parseSubscriptionUpdateJobState(
   response: Awaited<ReturnType<typeof executeShellCommand>>,
 ) {
-  return parseJsonObjectOutput<Forkop.SubscriptionUpdateJobState>(
+  return parseJsonObjectOutput<Tachyon.SubscriptionUpdateJobState>(
     response.stdout,
   );
 }
@@ -90,19 +90,19 @@ function parseSubscriptionUpdateJobState(
 function parseUiActionStartResult(
   response: Awaited<ReturnType<typeof executeShellCommand>>,
 ) {
-  return parseJsonObjectOutput<Forkop.UiActionStartResult>(response.stdout);
+  return parseJsonObjectOutput<Tachyon.UiActionStartResult>(response.stdout);
 }
 
 function parseServiceActionState(
   response: Awaited<ReturnType<typeof executeShellCommand>>,
 ) {
-  return parseJsonObjectOutput<Forkop.ServiceActionState>(response.stdout);
+  return parseJsonObjectOutput<Tachyon.ServiceActionState>(response.stdout);
 }
 
 function parseLatencyActionState(
   response: Awaited<ReturnType<typeof executeShellCommand>>,
 ) {
-  return parseJsonObjectOutput<Forkop.LatencyActionState>(response.stdout);
+  return parseJsonObjectOutput<Tachyon.LatencyActionState>(response.stdout);
 }
 
 function isComponentActionJobId(jobId: string) {
@@ -123,9 +123,9 @@ async function readComponentActionState(jobId: string) {
   }
 }
 
-async function readForkopVersion() {
+async function readTachyonVersion() {
   const response = await executeShellCommand({
-    command: '/usr/bin/forkop',
+    command: '/usr/bin/tachyon',
     args: ['show_version'],
     timeout: COMPONENT_ACTION_RPC_TIMEOUT_MS,
   });
@@ -139,13 +139,13 @@ async function readForkopVersion() {
 
 async function isComponentActionStillRunning(
   jobId: string,
-  component: Forkop.ComponentName,
-  action: Forkop.ComponentAction,
+  component: Tachyon.ComponentName,
+  action: Tachyon.ComponentAction,
 ) {
-  const response = await callBaseMethod<Forkop.UiState>(
-    Forkop.AvailableMethods.GET_UI_STATE,
+  const response = await callBaseMethod<Tachyon.UiState>(
+    Tachyon.AvailableMethods.GET_UI_STATE,
     [],
-    '/usr/bin/forkop',
+    '/usr/bin/tachyon',
     { timeout: GET_UI_STATE_RPC_TIMEOUT_MS },
   );
 
@@ -163,12 +163,12 @@ async function isComponentActionStillRunning(
 
 function componentActionFailure(
   response: Awaited<ReturnType<typeof executeShellCommand>>,
-  parsedResponse?: Pick<Forkop.ComponentActionResult, 'message'> | null,
+  parsedResponse?: Pick<Tachyon.ComponentActionResult, 'message'> | null,
 ) {
   return {
     success: false,
     error: parsedResponse?.message || response.stderr || _('Failed to execute'),
-  } as Forkop.MethodFailureResponse;
+  } as Tachyon.MethodFailureResponse;
 }
 
 function uiActionFailure(
@@ -179,7 +179,7 @@ function uiActionFailure(
   return {
     success: false,
     error: parsedResponse?.message || response.stderr || fallback,
-  } as Forkop.MethodFailureResponse;
+  } as Tachyon.MethodFailureResponse;
 }
 
 function createTransientRpcGraceTracker(graceMs: number) {
@@ -204,170 +204,170 @@ function createTransientRpcGraceTracker(graceMs: number) {
   };
 }
 
-export const ForkopShellMethods = {
+export const TachyonShellMethods = {
   checkDNSAvailable: async () =>
-    callBaseMethod<Forkop.DnsCheckResult>(
-      Forkop.AvailableMethods.CHECK_DNS_AVAILABLE,
+    callBaseMethod<Tachyon.DnsCheckResult>(
+      Tachyon.AvailableMethods.CHECK_DNS_AVAILABLE,
     ),
   checkFakeIP: async () =>
-    callBaseMethod<Forkop.FakeIPCheckResult>(
-      Forkop.AvailableMethods.CHECK_FAKEIP,
+    callBaseMethod<Tachyon.FakeIPCheckResult>(
+      Tachyon.AvailableMethods.CHECK_FAKEIP,
     ),
   checkNftRules: async () =>
-    callBaseMethod<Forkop.NftRulesCheckResult>(
-      Forkop.AvailableMethods.CHECK_NFT_RULES,
+    callBaseMethod<Tachyon.NftRulesCheckResult>(
+      Tachyon.AvailableMethods.CHECK_NFT_RULES,
     ),
   checkZapretRuntime: async () =>
-    callBaseMethod<Forkop.ZapretCheckResult>(
-      Forkop.AvailableMethods.CHECK_ZAPRET_RUNTIME,
+    callBaseMethod<Tachyon.ZapretCheckResult>(
+      Tachyon.AvailableMethods.CHECK_ZAPRET_RUNTIME,
     ),
   checkZapret2Runtime: async () =>
-    callBaseMethod<Forkop.Zapret2CheckResult>(
-      Forkop.AvailableMethods.CHECK_ZAPRET2_RUNTIME,
+    callBaseMethod<Tachyon.Zapret2CheckResult>(
+      Tachyon.AvailableMethods.CHECK_ZAPRET2_RUNTIME,
     ),
   checkByedpiRuntime: async () =>
-    callBaseMethod<Forkop.ByedpiCheckResult>(
-      Forkop.AvailableMethods.CHECK_BYEDPI_RUNTIME,
+    callBaseMethod<Tachyon.ByedpiCheckResult>(
+      Tachyon.AvailableMethods.CHECK_BYEDPI_RUNTIME,
     ),
   checkInboundsConfig: async () =>
-    callBaseMethod<Forkop.InboundsConfigCheckResult>(
-      Forkop.AvailableMethods.CHECK_INBOUNDS_CONFIG,
+    callBaseMethod<Tachyon.InboundsConfigCheckResult>(
+      Tachyon.AvailableMethods.CHECK_INBOUNDS_CONFIG,
     ),
   getStatus: async () =>
-    callBaseMethod<Forkop.GetStatus>(Forkop.AvailableMethods.GET_STATUS),
+    callBaseMethod<Tachyon.GetStatus>(Tachyon.AvailableMethods.GET_STATUS),
   getOutboundLink: async (section: string, tag: string) =>
-    callBaseMethod<Forkop.GetOutboundLink>(
-      Forkop.AvailableMethods.GET_OUTBOUND_LINK,
+    callBaseMethod<Tachyon.GetOutboundLink>(
+      Tachyon.AvailableMethods.GET_OUTBOUND_LINK,
       [section, tag],
     ),
   getOutboundLinkStates: async (section: string) =>
-    callBaseMethod<Forkop.GetOutboundLinkStates>(
-      Forkop.AvailableMethods.GET_OUTBOUND_LINK_STATES,
+    callBaseMethod<Tachyon.GetOutboundLinkStates>(
+      Tachyon.AvailableMethods.GET_OUTBOUND_LINK_STATES,
       [section],
     ),
   getOutboundMetadata: async (section: string) =>
-    callBaseMethod<Forkop.GetOutboundMetadata>(
-      Forkop.AvailableMethods.GET_OUTBOUND_METADATA,
+    callBaseMethod<Tachyon.GetOutboundMetadata>(
+      Tachyon.AvailableMethods.GET_OUTBOUND_METADATA,
       [section],
     ),
   getSubscriptionMetadata: async (section: string) =>
-    callBaseMethod<Forkop.SubscriptionMetadata | Forkop.SubscriptionMetadata[]>(
-      Forkop.AvailableMethods.GET_SUBSCRIPTION_METADATA,
+    callBaseMethod<Tachyon.SubscriptionMetadata | Tachyon.SubscriptionMetadata[]>(
+      Tachyon.AvailableMethods.GET_SUBSCRIPTION_METADATA,
       [section],
     ),
   checkSingBox: async () =>
-    callBaseMethod<Forkop.SingBoxCheckResult>(
-      Forkop.AvailableMethods.CHECK_SING_BOX,
+    callBaseMethod<Tachyon.SingBoxCheckResult>(
+      Tachyon.AvailableMethods.CHECK_SING_BOX,
     ),
   checkInbounds: async () =>
-    callBaseMethod<Forkop.InboundsCheckResult>(
-      Forkop.AvailableMethods.CHECK_INBOUNDS,
+    callBaseMethod<Tachyon.InboundsCheckResult>(
+      Tachyon.AvailableMethods.CHECK_INBOUNDS,
     ),
   getSingBoxStatus: async () =>
-    callBaseMethod<Forkop.GetSingBoxStatus>(
-      Forkop.AvailableMethods.GET_SING_BOX_STATUS,
+    callBaseMethod<Tachyon.GetSingBoxStatus>(
+      Tachyon.AvailableMethods.GET_SING_BOX_STATUS,
     ),
   getZapretStatus: async () =>
-    callBaseMethod<Forkop.GetZapretStatus>(
-      Forkop.AvailableMethods.GET_ZAPRET_STATUS,
+    callBaseMethod<Tachyon.GetZapretStatus>(
+      Tachyon.AvailableMethods.GET_ZAPRET_STATUS,
     ),
   getZapret2Status: async () =>
-    callBaseMethod<Forkop.GetZapret2Status>(
-      Forkop.AvailableMethods.GET_ZAPRET2_STATUS,
+    callBaseMethod<Tachyon.GetZapret2Status>(
+      Tachyon.AvailableMethods.GET_ZAPRET2_STATUS,
     ),
   getByedpiStatus: async () =>
-    callBaseMethod<Forkop.GetByedpiStatus>(
-      Forkop.AvailableMethods.GET_BYEDPI_STATUS,
+    callBaseMethod<Tachyon.GetByedpiStatus>(
+      Tachyon.AvailableMethods.GET_BYEDPI_STATUS,
     ),
   getClashApiProxies: async () =>
-    callBaseMethod<ClashAPI.Proxies>(Forkop.AvailableMethods.CLASH_API, [
-      Forkop.AvailableClashAPIMethods.GET_PROXIES,
+    callBaseMethod<ClashAPI.Proxies>(Tachyon.AvailableMethods.CLASH_API, [
+      Tachyon.AvailableClashAPIMethods.GET_PROXIES,
     ]),
   getClashApiConnections: async () =>
-    callBaseMethod<unknown>(Forkop.AvailableMethods.CLASH_API, [
-      Forkop.AvailableClashAPIMethods.GET_CONNECTIONS,
+    callBaseMethod<unknown>(Tachyon.AvailableMethods.CLASH_API, [
+      Tachyon.AvailableClashAPIMethods.GET_CONNECTIONS,
     ]),
   getClashApiProxyLatency: async (tag: string, timeout = '5000') =>
-    callBaseMethod<Forkop.GetClashApiProxyLatency>(
-      Forkop.AvailableMethods.CLASH_API,
-      [Forkop.AvailableClashAPIMethods.GET_PROXY_LATENCY, tag, timeout],
+    callBaseMethod<Tachyon.GetClashApiProxyLatency>(
+      Tachyon.AvailableMethods.CLASH_API,
+      [Tachyon.AvailableClashAPIMethods.GET_PROXY_LATENCY, tag, timeout],
     ),
   getClashApiProxyLatencies: async (tags: string[]) =>
-    callBaseMethod<Forkop.GetClashApiProxyLatencies>(
-      Forkop.AvailableMethods.CLASH_API,
+    callBaseMethod<Tachyon.GetClashApiProxyLatencies>(
+      Tachyon.AvailableMethods.CLASH_API,
       [
-        Forkop.AvailableClashAPIMethods.GET_PROXY_LATENCIES,
+        Tachyon.AvailableClashAPIMethods.GET_PROXY_LATENCIES,
         JSON.stringify(tags),
         '5000',
       ],
     ),
   getClashApiGroupLatency: async (tag: string) =>
-    callBaseMethod<Forkop.GetClashApiGroupLatency>(
-      Forkop.AvailableMethods.CLASH_API,
-      [Forkop.AvailableClashAPIMethods.GET_GROUP_LATENCY, tag, '10000'],
+    callBaseMethod<Tachyon.GetClashApiGroupLatency>(
+      Tachyon.AvailableMethods.CLASH_API,
+      [Tachyon.AvailableClashAPIMethods.GET_GROUP_LATENCY, tag, '10000'],
     ),
   setClashApiGroupProxy: async (group: string, proxy: string) =>
-    callBaseMethod<unknown>(Forkop.AvailableMethods.CLASH_API, [
-      Forkop.AvailableClashAPIMethods.SET_GROUP_PROXY,
+    callBaseMethod<unknown>(Tachyon.AvailableMethods.CLASH_API, [
+      Tachyon.AvailableClashAPIMethods.SET_GROUP_PROXY,
       group,
       proxy,
     ]),
   closeClashApiConnection: async (connectionId: string) =>
-    callBaseMethod<unknown>(Forkop.AvailableMethods.CLASH_API, [
-      Forkop.AvailableClashAPIMethods.CLOSE_CONNECTION,
+    callBaseMethod<unknown>(Tachyon.AvailableMethods.CLASH_API, [
+      Tachyon.AvailableClashAPIMethods.CLOSE_CONNECTION,
       connectionId,
     ]),
   closeAllClashApiConnections: async () =>
-    callBaseMethod<unknown>(Forkop.AvailableMethods.CLASH_API, [
-      Forkop.AvailableClashAPIMethods.CLOSE_ALL_CONNECTIONS,
+    callBaseMethod<unknown>(Tachyon.AvailableMethods.CLASH_API, [
+      Tachyon.AvailableClashAPIMethods.CLOSE_ALL_CONNECTIONS,
     ]),
   enable: async () =>
     callBaseMethod<unknown>(
-      Forkop.AvailableMethods.ENABLE,
+      Tachyon.AvailableMethods.ENABLE,
       [],
-      '/etc/init.d/forkop',
+      '/etc/init.d/tachyon',
     ),
   disable: async () =>
     callBaseMethod<unknown>(
-      Forkop.AvailableMethods.DISABLE,
+      Tachyon.AvailableMethods.DISABLE,
       [],
-      '/etc/init.d/forkop',
+      '/etc/init.d/tachyon',
     ),
   globalCheck: async (masked = true) =>
-    callBaseMethod<unknown>(Forkop.AvailableMethods.GLOBAL_CHECK, [
+    callBaseMethod<unknown>(Tachyon.AvailableMethods.GLOBAL_CHECK, [
       masked ? 'masked' : 'raw',
     ]),
   showSingBoxConfig: async (masked = true) =>
-    callBaseMethod<unknown>(Forkop.AvailableMethods.SHOW_SING_BOX_CONFIG, [
+    callBaseMethod<unknown>(Tachyon.AvailableMethods.SHOW_SING_BOX_CONFIG, [
       masked ? 'masked' : 'raw',
     ]),
   checkLogs: async () =>
-    callBaseMethod<unknown>(Forkop.AvailableMethods.CHECK_LOGS),
+    callBaseMethod<unknown>(Tachyon.AvailableMethods.CHECK_LOGS),
   checkSingBoxLogs: async () =>
-    callBaseMethod<unknown>(Forkop.AvailableMethods.CHECK_SING_BOX_LOGS),
+    callBaseMethod<unknown>(Tachyon.AvailableMethods.CHECK_SING_BOX_LOGS),
   getSystemInfo: async () =>
-    callBaseMethod<Forkop.GetSystemInfo>(
-      Forkop.AvailableMethods.GET_SYSTEM_INFO,
+    callBaseMethod<Tachyon.GetSystemInfo>(
+      Tachyon.AvailableMethods.GET_SYSTEM_INFO,
     ),
   getServerCapabilities: async () =>
-    callBaseMethod<Forkop.GetServerCapabilities>(
-      Forkop.AvailableMethods.GET_SERVER_CAPABILITIES,
+    callBaseMethod<Tachyon.GetServerCapabilities>(
+      Tachyon.AvailableMethods.GET_SERVER_CAPABILITIES,
     ),
   getUiCapabilities: async () =>
-    callBaseMethod<Forkop.GetUiCapabilities>(
-      Forkop.AvailableMethods.GET_UI_CAPABILITIES,
+    callBaseMethod<Tachyon.GetUiCapabilities>(
+      Tachyon.AvailableMethods.GET_UI_CAPABILITIES,
     ),
   getUiState: async () =>
-    callBaseMethod<Forkop.UiState>(
-      Forkop.AvailableMethods.GET_UI_STATE,
+    callBaseMethod<Tachyon.UiState>(
+      Tachyon.AvailableMethods.GET_UI_STATE,
       [],
-      '/usr/bin/forkop',
+      '/usr/bin/tachyon',
       { timeout: GET_UI_STATE_RPC_TIMEOUT_MS },
     ),
-  serviceActionStart: async (action: Forkop.ServiceAction) => {
+  serviceActionStart: async (action: Tachyon.ServiceAction) => {
     const response = await executeShellCommand({
-      command: '/usr/bin/forkop',
-      args: [Forkop.AvailableMethods.SERVICE_ACTION_ASYNC, action],
+      command: '/usr/bin/tachyon',
+      args: [Tachyon.AvailableMethods.SERVICE_ACTION_ASYNC, action],
       timeout: UI_ACTION_RPC_TIMEOUT_MS,
     });
     const parsedResponse = parseUiActionStartResult(response);
@@ -387,12 +387,12 @@ export const ForkopShellMethods = {
     return {
       success: true,
       data: parsedResponse,
-    } as Forkop.MethodSuccessResponse<Forkop.UiActionStartResult>;
+    } as Tachyon.MethodSuccessResponse<Tachyon.UiActionStartResult>;
   },
   serviceActionStatus: async (jobId: string) => {
     const response = await executeShellCommand({
-      command: '/usr/bin/forkop',
-      args: [Forkop.AvailableMethods.SERVICE_ACTION_STATUS, jobId],
+      command: '/usr/bin/tachyon',
+      args: [Tachyon.AvailableMethods.SERVICE_ACTION_STATUS, jobId],
       timeout: UI_ACTION_RPC_TIMEOUT_MS,
     });
     const parsedResponse = parseServiceActionState(response);
@@ -408,13 +408,13 @@ export const ForkopShellMethods = {
     return {
       success: true,
       data: parsedResponse,
-    } as Forkop.MethodSuccessResponse<Forkop.ServiceActionState>;
+    } as Tachyon.MethodSuccessResponse<Tachyon.ServiceActionState>;
   },
   waitServiceActionJob: async (jobId: string, startedAt = Date.now()) => {
     while (Date.now() - startedAt < SERVICE_ACTION_TIMEOUT_MS) {
       await sleep(SERVICE_ACTION_POLL_INTERVAL_MS);
 
-      const response = await ForkopShellMethods.serviceActionStatus(jobId);
+      const response = await TachyonShellMethods.serviceActionStatus(jobId);
 
       if (!response.success) {
         return response;
@@ -430,18 +430,18 @@ export const ForkopShellMethods = {
     return {
       success: false,
       error: _('Operation timed out'),
-    } as Forkop.MethodFailureResponse;
+    } as Tachyon.MethodFailureResponse;
   },
   latencyTestStart: async (
-    latencyType: Forkop.LatencyActionState['latency_type'],
+    latencyType: Tachyon.LatencyActionState['latency_type'],
     section: string,
     tag: string,
     timeout?: string,
   ) => {
     const response = await executeShellCommand({
-      command: '/usr/bin/forkop',
+      command: '/usr/bin/tachyon',
       args: [
-        Forkop.AvailableMethods.LATENCY_TEST_ASYNC,
+        Tachyon.AvailableMethods.LATENCY_TEST_ASYNC,
         latencyType,
         section,
         tag,
@@ -466,12 +466,12 @@ export const ForkopShellMethods = {
     return {
       success: true,
       data: parsedResponse,
-    } as Forkop.MethodSuccessResponse<Forkop.UiActionStartResult>;
+    } as Tachyon.MethodSuccessResponse<Tachyon.UiActionStartResult>;
   },
   latencyTestStatus: async (jobId: string) => {
     const response = await executeShellCommand({
-      command: '/usr/bin/forkop',
-      args: [Forkop.AvailableMethods.LATENCY_TEST_STATUS, jobId],
+      command: '/usr/bin/tachyon',
+      args: [Tachyon.AvailableMethods.LATENCY_TEST_STATUS, jobId],
       timeout: UI_ACTION_RPC_TIMEOUT_MS,
     });
     const parsedResponse = parseLatencyActionState(response);
@@ -487,7 +487,7 @@ export const ForkopShellMethods = {
     return {
       success: true,
       data: parsedResponse,
-    } as Forkop.MethodSuccessResponse<Forkop.LatencyActionState>;
+    } as Tachyon.MethodSuccessResponse<Tachyon.LatencyActionState>;
   },
   waitLatencyTestJob: async (jobId: string, startedAt = Date.now()) => {
     const transientRpc = createTransientRpcGraceTracker(
@@ -497,7 +497,7 @@ export const ForkopShellMethods = {
     while (Date.now() - startedAt < LATENCY_TEST_TIMEOUT_MS) {
       await sleep(LATENCY_TEST_POLL_INTERVAL_MS);
 
-      const response = await ForkopShellMethods.latencyTestStatus(jobId);
+      const response = await TachyonShellMethods.latencyTestStatus(jobId);
 
       if (!response.success) {
         if (transientRpc.shouldContinue(response.error)) {
@@ -518,15 +518,15 @@ export const ForkopShellMethods = {
     return {
       success: false,
       error: _('Operation timed out'),
-    } as Forkop.MethodFailureResponse;
+    } as Tachyon.MethodFailureResponse;
   },
   uiActionAck: async (
     kind: 'service' | 'latency' | 'component' | 'subscription',
     jobId: string,
   ) => {
     const response = await executeShellCommand({
-      command: '/usr/bin/forkop',
-      args: [Forkop.AvailableMethods.UI_ACTION_ACK, kind, jobId],
+      command: '/usr/bin/tachyon',
+      args: [Tachyon.AvailableMethods.UI_ACTION_ACK, kind, jobId],
       timeout: UI_ACTION_RPC_TIMEOUT_MS,
     });
     const parsedResponse = parseUiActionStartResult(response);
@@ -538,15 +538,15 @@ export const ForkopShellMethods = {
     return {
       success: true,
       data: parsedResponse,
-    } as Forkop.MethodSuccessResponse<Forkop.UiActionStartResult>;
+    } as Tachyon.MethodSuccessResponse<Tachyon.UiActionStartResult>;
   },
   componentActionStart: async (
-    component: Forkop.ComponentName,
-    action: Forkop.ComponentAction,
+    component: Tachyon.ComponentName,
+    action: Tachyon.ComponentAction,
   ) => {
     const response = await executeShellCommand({
-      command: '/usr/bin/forkop',
-      args: [Forkop.AvailableMethods.COMPONENT_ACTION_ASYNC, component, action],
+      command: '/usr/bin/tachyon',
+      args: [Tachyon.AvailableMethods.COMPONENT_ACTION_ASYNC, component, action],
       timeout: COMPONENT_ACTION_RPC_TIMEOUT_MS,
     });
     const parsedResponse = parseComponentActionStartResult(response);
@@ -562,12 +562,12 @@ export const ForkopShellMethods = {
     return {
       success: true,
       data: parsedResponse,
-    } as Forkop.MethodSuccessResponse<Forkop.ComponentActionStartResult>;
+    } as Tachyon.MethodSuccessResponse<Tachyon.ComponentActionStartResult>;
   },
   componentActionStatus: async (jobId: string) => {
     const response = await executeShellCommand({
-      command: '/usr/bin/forkop',
-      args: [Forkop.AvailableMethods.COMPONENT_ACTION_STATUS, jobId],
+      command: '/usr/bin/tachyon',
+      args: [Tachyon.AvailableMethods.COMPONENT_ACTION_STATUS, jobId],
       timeout: COMPONENT_ACTION_RPC_TIMEOUT_MS,
     });
     const parsedResponse = parseComponentActionResult(response);
@@ -579,16 +579,16 @@ export const ForkopShellMethods = {
     return {
       success: true,
       data: parsedResponse,
-    } as Forkop.MethodSuccessResponse<Forkop.ComponentActionResult>;
+    } as Tachyon.MethodSuccessResponse<Tachyon.ComponentActionResult>;
   },
   componentUpdateCheckCache: async () =>
-    callBaseMethod<Forkop.ComponentUpdateCheckCache>(
-      Forkop.AvailableMethods.COMPONENT_UPDATE_CHECK_CACHE,
+    callBaseMethod<Tachyon.ComponentUpdateCheckCache>(
+      Tachyon.AvailableMethods.COMPONENT_UPDATE_CHECK_CACHE,
     ),
   waitComponentActionJob: async (
     jobId: string,
-    component: Forkop.ComponentName,
-    action: Forkop.ComponentAction,
+    component: Tachyon.ComponentName,
+    action: Tachyon.ComponentAction,
     expectedLatestVersion?: string,
   ) => {
     let selfUpdateVersionMatchedAt = 0;
@@ -608,7 +608,7 @@ export const ForkopShellMethods = {
           return {
             success: true,
             data: stateResponse,
-          } as Forkop.MethodSuccessResponse<Forkop.ComponentActionResult>;
+          } as Tachyon.MethodSuccessResponse<Tachyon.ComponentActionResult>;
         }
 
         if (
@@ -621,8 +621,8 @@ export const ForkopShellMethods = {
 
       lastStatusRefreshAt = Date.now();
       const statusResponse = await executeShellCommand({
-        command: '/usr/bin/forkop',
-        args: [Forkop.AvailableMethods.COMPONENT_ACTION_STATUS, jobId],
+        command: '/usr/bin/tachyon',
+        args: [Tachyon.AvailableMethods.COMPONENT_ACTION_STATUS, jobId],
         timeout: COMPONENT_ACTION_RPC_TIMEOUT_MS,
       });
       const parsedResponse = parseComponentActionResult(statusResponse);
@@ -644,9 +644,9 @@ export const ForkopShellMethods = {
           continue;
         }
 
-        if (component === 'forkop' && action === 'install') {
+        if (component === 'tachyon' && action === 'install') {
           const installedVersion = expectedLatestVersion
-            ? await readForkopVersion()
+            ? await readTachyonVersion()
             : '';
 
           if (
@@ -667,13 +667,13 @@ export const ForkopShellMethods = {
                   success: true,
                   component,
                   action,
-                  message: translate('Forkop has been installed'),
+                  message: translate('Tachyon has been installed'),
                   current_version: installedVersion,
                   latest_version: expectedLatestVersion,
                   changed: true,
                   status: 'latest',
                 },
-              } as Forkop.MethodSuccessResponse<Forkop.ComponentActionResult>;
+              } as Tachyon.MethodSuccessResponse<Tachyon.ComponentActionResult>;
             }
           }
 
@@ -691,17 +691,17 @@ export const ForkopShellMethods = {
       return {
         success: true,
         data: parsedResponse,
-      } as Forkop.MethodSuccessResponse<Forkop.ComponentActionResult>;
+      } as Tachyon.MethodSuccessResponse<Tachyon.ComponentActionResult>;
     }
   },
   subscriptionUpdateStart: async (section?: string, sourceIndex?: number) => {
     const startArgs = [
-      Forkop.AvailableMethods.SUBSCRIPTION_UPDATE_ASYNC,
+      Tachyon.AvailableMethods.SUBSCRIPTION_UPDATE_ASYNC,
       ...(section ? [section] : []),
       ...(section && sourceIndex !== undefined ? [String(sourceIndex)] : []),
     ];
     const response = await executeShellCommand({
-      command: '/usr/bin/forkop',
+      command: '/usr/bin/tachyon',
       args: startArgs,
       timeout: SUBSCRIPTION_UPDATE_RPC_TIMEOUT_MS,
     });
@@ -718,18 +718,18 @@ export const ForkopShellMethods = {
           parsedResponse?.message ||
           response.stderr ||
           _('Subscription update failed'),
-      } as Forkop.MethodFailureResponse;
+      } as Tachyon.MethodFailureResponse;
     }
 
     return {
       success: true,
       data: parsedResponse,
-    } as Forkop.MethodSuccessResponse<Forkop.SubscriptionUpdateStartResult>;
+    } as Tachyon.MethodSuccessResponse<Tachyon.SubscriptionUpdateStartResult>;
   },
   subscriptionUpdateStatus: async (jobId: string) => {
     const response = await executeShellCommand({
-      command: '/usr/bin/forkop',
-      args: [Forkop.AvailableMethods.SUBSCRIPTION_UPDATE_STATUS, jobId],
+      command: '/usr/bin/tachyon',
+      args: [Tachyon.AvailableMethods.SUBSCRIPTION_UPDATE_STATUS, jobId],
       timeout: SUBSCRIPTION_UPDATE_RPC_TIMEOUT_MS,
     });
     const parsedResponse = parseSubscriptionUpdateJobState(response);
@@ -738,13 +738,13 @@ export const ForkopShellMethods = {
       return {
         success: false,
         error: response.stderr || _('Subscription update failed'),
-      } as Forkop.MethodFailureResponse;
+      } as Tachyon.MethodFailureResponse;
     }
 
     return {
       success: true,
       data: parsedResponse,
-    } as Forkop.MethodSuccessResponse<Forkop.SubscriptionUpdateJobState>;
+    } as Tachyon.MethodSuccessResponse<Tachyon.SubscriptionUpdateJobState>;
   },
   waitSubscriptionUpdateJob: async (jobId: string) => {
     const transientRpc = createTransientRpcGraceTracker(
@@ -754,7 +754,7 @@ export const ForkopShellMethods = {
     while (true) {
       await sleep(SUBSCRIPTION_UPDATE_POLL_INTERVAL_MS);
 
-      const response = await ForkopShellMethods.subscriptionUpdateStatus(jobId);
+      const response = await TachyonShellMethods.subscriptionUpdateStatus(jobId);
 
       if (!response.success) {
         if (transientRpc.shouldContinue(response.error)) {

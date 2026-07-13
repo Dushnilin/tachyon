@@ -20,16 +20,16 @@ export namespace ClashAPI {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-namespace
-export namespace Forkop {
+export namespace Tachyon {
   // Available commands:
-  // start                   Start forkop service
-  // stop                    Stop forkop service
-  // reload                  Reload forkop configuration
-  // restart                 Restart forkop service
-  // enable                  Enable forkop autostart
-  // disable                 Disable forkop autostart
-  // uninstall               Remove forkop files installed outside opkg/apk
-  // main                    Run main forkop process
+  // start                   Start tachyon service
+  // stop                    Stop tachyon service
+  // reload                  Reload tachyon configuration
+  // restart                 Restart tachyon service
+  // enable                  Enable tachyon autostart
+  // disable                 Disable tachyon autostart
+  // uninstall               Remove tachyon files installed outside opkg/apk
+  // main                    Run main tachyon process
   // list_update             Update domain lists
   // check_proxy             Check proxy connectivity
   // check_nft               Check NFT rules
@@ -37,15 +37,15 @@ export namespace Forkop {
   // check_sing_box          Check sing-box installation and status
   // check_inbounds_config   Check whether enabled server inbounds are configured
   // check_inbounds          Check server inbounds from the Servers tab
-  // check_logs              Show forkop logs from system journal
+  // check_logs              Show tachyon logs from system journal
   // check_sing_box_logs     Show sing-box logs
   // check_fakeip            Test sing-box FakeIP DNS
   // clash_api               Clash API interface for managing proxies and groups
-  // show_config             Display current forkop configuration
-  // show_version            Show forkop version
+  // show_config             Display current tachyon configuration
+  // show_version            Show tachyon version
   // show_sing_box_config    Show sing-box configuration
   // show_sing_box_version   Show sing-box version
-  // get_status              Get forkop service status
+  // get_status              Get tachyon service status
   // get_sing_box_status     Get sing-box service status
   // get_ui_capabilities     Get lightweight UI capabilities
   // check_dns_available     Check DNS server availability
@@ -455,8 +455,8 @@ export namespace Forkop {
   }
 
   export interface GetSystemInfo {
-    forkop_version: string;
-    forkop_latest_version: string;
+    tachyon_version: string;
+    tachyon_latest_version: string;
     luci_app_version: string;
     sing_box_version: string;
     sing_box_extended: 0 | 1;
@@ -527,7 +527,7 @@ export namespace Forkop {
 
   export interface UiState {
     service: {
-      forkop: GetStatus;
+      tachyon: GetStatus;
       sing_box: GetSingBoxStatus;
     };
     capabilities: GetUiCapabilities;
@@ -540,7 +540,7 @@ export namespace Forkop {
   }
 
   export type ComponentName =
-    | 'forkop'
+    | 'tachyon'
     | 'sing_box'
     | 'zapret'
     | 'zapret2'

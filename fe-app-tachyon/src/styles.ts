@@ -1,10 +1,10 @@
 // language=CSS
-import { DashboardTab } from './forkop/tabs/dashboard';
-import { DiagnosticTab } from './forkop/tabs/diagnostic';
-import { MonitoringTab } from './forkop/tabs/monitoring';
-import { UpdatesTab } from './forkop/tabs/updates';
+import { DashboardTab } from './tachyon/tabs/dashboard';
+import { DiagnosticTab } from './tachyon/tabs/diagnostic';
+import { MonitoringTab } from './tachyon/tabs/monitoring';
+import { UpdatesTab } from './tachyon/tabs/updates';
 import { PartialStyles } from './partials';
-import { FORKOP_UCI_PACKAGE as FORKOP_CBI_PREFIX } from './constants';
+import { TACHYON_UCI_PACKAGE as TACHYON_CBI_PREFIX } from './constants';
 
 export const GlobalStyles = `
 ${DashboardTab.styles}
@@ -15,49 +15,49 @@ ${PartialStyles}
 
 
 /* Hide extra H3 for settings tab */
-#cbi-${FORKOP_CBI_PREFIX}-settings > h3 {
+#cbi-${TACHYON_CBI_PREFIX}-settings > h3 {
     display: none;
 }
 
 /* Hide extra H3 for rules tab */
-#cbi-${FORKOP_CBI_PREFIX}-section > h3:nth-child(1) {
+#cbi-${TACHYON_CBI_PREFIX}-section > h3:nth-child(1) {
     display: none;
 }
 
 /* Vertical align for remove rule action button */
-#cbi-${FORKOP_CBI_PREFIX}-section > .cbi-section-remove {
+#cbi-${TACHYON_CBI_PREFIX}-section > .cbi-section-remove {
     margin-bottom: -32px;
 }
 
-#cbi-${FORKOP_CBI_PREFIX}-section .cbi-section-actions > div {
+#cbi-${TACHYON_CBI_PREFIX}-section .cbi-section-actions > div {
     display: inline-flex;
     align-items: center;
     gap: 4px;
 }
 
-#cbi-${FORKOP_CBI_PREFIX}-section .cbi-section-actions {
+#cbi-${TACHYON_CBI_PREFIX}-section .cbi-section-actions {
     text-align: right;
 }
 
 /* Rule reorder visuals */
-#cbi-${FORKOP_CBI_PREFIX}-section {
+#cbi-${TACHYON_CBI_PREFIX}-section {
     position: relative;
 }
 
-#cbi-${FORKOP_CBI_PREFIX}-section .cbi-section-table-row {
+#cbi-${TACHYON_CBI_PREFIX}-section .cbi-section-table-row {
     position: relative;
 }
 
-#cbi-${FORKOP_CBI_PREFIX}-section .cbi-section-table-row.placeholder {
+#cbi-${TACHYON_CBI_PREFIX}-section .cbi-section-table-row.placeholder {
     opacity: 1;
 }
 
-#cbi-${FORKOP_CBI_PREFIX}-section .cbi-section-table-row.placeholder em {
+#cbi-${TACHYON_CBI_PREFIX}-section .cbi-section-table-row.placeholder em {
     font-style: italic;
 }
 
-#cbi-${FORKOP_CBI_PREFIX}-section .cbi-section-table-row.drag-over-above::after,
-#cbi-${FORKOP_CBI_PREFIX}-section .cbi-section-table-row.drag-over-below::after {
+#cbi-${TACHYON_CBI_PREFIX}-section .cbi-section-table-row.drag-over-above::after,
+#cbi-${TACHYON_CBI_PREFIX}-section .cbi-section-table-row.drag-over-below::after {
     content: '';
     position: absolute;
     left: 10px;
@@ -69,11 +69,11 @@ ${PartialStyles}
     z-index: 2;
 }
 
-#cbi-${FORKOP_CBI_PREFIX}-section .cbi-section-table-row.drag-over-above::after {
+#cbi-${TACHYON_CBI_PREFIX}-section .cbi-section-table-row.drag-over-above::after {
     top: -1px;
 }
 
-#cbi-${FORKOP_CBI_PREFIX}-section .cbi-section-table-row.drag-over-below::after {
+#cbi-${TACHYON_CBI_PREFIX}-section .cbi-section-table-row.drag-over-below::after {
     bottom: -1px;
 }
 

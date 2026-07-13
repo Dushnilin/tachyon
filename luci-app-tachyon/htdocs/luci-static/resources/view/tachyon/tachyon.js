@@ -4,30 +4,30 @@
 "require baseclass";
 "require uci";
 "require ui";
-"require view.forkop.main as main";
+"require view.tachyon.main as main";
 
 // Global settings
-"require view.forkop.settings as settings";
+"require view.tachyon.settings as settings";
 
 // Sections
-"require view.forkop.section as section";
+"require view.tachyon.section as section";
 
 // Server
-"require view.forkop.server as server";
+"require view.tachyon.server as server";
 
 // Dashboard
-"require view.forkop.dashboard as dashboard";
+"require view.tachyon.dashboard as dashboard";
 
 // Monitoring
-"require view.forkop.monitoring as monitoring";
+"require view.tachyon.monitoring as monitoring";
 
 // Diagnostic
-"require view.forkop.diagnostic as diagnostic";
+"require view.tachyon.diagnostic as diagnostic";
 
 // Updates
-"require view.forkop.updates as updates";
+"require view.tachyon.updates as updates";
 
-const UCI_PACKAGE = main.FORKOP_UCI_PACKAGE;
+const UCI_PACKAGE = main.TACHYON_UCI_PACKAGE;
 const CBI_PREFIX = UCI_PACKAGE;
 
 function renderSectionAdd(sectionRef, extra_class) {
@@ -121,7 +121,7 @@ const EntryPoint = {
 
       if (typeof window !== "undefined") {
         window.dispatchEvent(
-          new CustomEvent(main.FORKOP_ACTION_PROVIDERS_AVAILABILITY_EVENT, {
+          new CustomEvent(main.TACHYON_ACTION_PROVIDERS_AVAILABILITY_EVENT, {
             detail: {
               zapretInstalled: uiCapabilities.zapretInstalled,
               zapret2Installed: uiCapabilities.zapret2Installed,
@@ -209,9 +209,9 @@ const EntryPoint = {
             failed: false,
             data: {
               singbox: Number(data.service.sing_box?.running) || 0,
-              forkopRunning: Number(data.service.forkop?.running) || 0,
-              forkopEnabled: Number(data.service.forkop?.enabled) || 0,
-              forkopStatus: data.service.forkop?.status || "",
+              tachyonRunning: Number(data.service.tachyon?.running) || 0,
+              tachyonEnabled: Number(data.service.tachyon?.enabled) || 0,
+              tachyonStatus: data.service.tachyon?.status || "",
             },
           },
         });
@@ -222,11 +222,11 @@ const EntryPoint = {
 
     const loadFallbackUiCapabilities = function () {
       return Promise.allSettled([
-        main.ForkopShellMethods.getServerCapabilities(),
-        main.ForkopShellMethods.checkZapretRuntime(),
-        main.ForkopShellMethods.checkZapret2Runtime(),
-        main.ForkopShellMethods.checkByedpiRuntime(),
-        main.ForkopShellMethods.checkInboundsConfig(),
+        main.TachyonShellMethods.getServerCapabilities(),
+        main.TachyonShellMethods.checkZapretRuntime(),
+        main.TachyonShellMethods.checkZapret2Runtime(),
+        main.TachyonShellMethods.checkByedpiRuntime(),
+        main.TachyonShellMethods.checkInboundsConfig(),
       ]).then(
         ([
           serverCapabilitiesResult,
@@ -308,7 +308,7 @@ const EntryPoint = {
         return uiCapabilitiesPromise;
       }
 
-      uiCapabilitiesPromise = main.ForkopShellMethods.getUiCapabilities()
+      uiCapabilitiesPromise = main.TachyonShellMethods.getUiCapabilities()
         .then((response) => {
           if (!response?.success) {
             throw new Error("UI capabilities request failed");
@@ -317,8 +317,8 @@ const EntryPoint = {
           return updateUiCapabilities(response.data);
         })
         .catch((error) => {
-          console.warn("Failed to load Forkop UI capabilities", error);
-          return main.ForkopShellMethods.getUiState()
+          console.warn("Failed to load Tachyon UI capabilities", error);
+          return main.TachyonShellMethods.getUiState()
             .then((response) => {
               if (!response?.success) {
                 throw new Error("UI state request failed");
@@ -327,7 +327,7 @@ const EntryPoint = {
               return applyUiState(response.data);
             })
             .catch((fallbackError) => {
-              console.warn("Failed to load Forkop UI state", fallbackError);
+              console.warn("Failed to load Tachyon UI state", fallbackError);
               return loadFallbackUiCapabilities();
             });
         })
@@ -337,16 +337,16 @@ const EntryPoint = {
 
       return uiCapabilitiesPromise;
     };
-    const forkopMap = new form.Map(
+    const tachyonMap = new form.Map(
       UCI_PACKAGE,
-      _("Forkop Settings"),
-      _("Configuration for Forkop service"),
+      _("Tachyon Settings"),
+      _("Configuration for Tachyon service"),
     );
-    forkopMap.tabbed = true;
-    const originalHandleSaveApply = forkopMap.handleSaveApply;
-    forkopMap.handleSaveApply = function (ev, mode) {
+    tachyonMap.tabbed = true;
+    const originalHandleSaveApply = tachyonMap.handleSaveApply;
+    tachyonMap.handleSaveApply = function (ev, mode) {
       const refreshUiState = function () {
-        main.ForkopShellMethods.getUiState()
+        main.TachyonShellMethods.getUiState()
           .then((response) => {
             if (
               response?.success &&
@@ -365,7 +365,7 @@ const EntryPoint = {
             ...servicesInfoWidget,
             data: {
               ...servicesInfoWidget.data,
-              forkopStatus: "reloading",
+              tachyonStatus: "reloading",
             },
           },
         });
@@ -384,7 +384,7 @@ const EntryPoint = {
         });
     };
 
-    const rulesSection = forkopMap.section(
+    const rulesSection = tachyonMap.section(
       form.GridSection,
       "section",
       _("Sections"),
@@ -401,7 +401,7 @@ const EntryPoint = {
     });
     section.createSectionContent(rulesSection);
 
-    const serverSection = forkopMap.section(
+    const serverSection = tachyonMap.section(
       form.GridSection,
       "server",
       _("Servers"),
@@ -419,7 +419,7 @@ const EntryPoint = {
     });
     server.createServerContent(serverSection, uiCapabilities);
 
-    const settingsSection = forkopMap.section(
+    const settingsSection = tachyonMap.section(
       form.TypedSection,
       "settings",
       _("Settings"),
@@ -431,7 +431,7 @@ const EntryPoint = {
     };
     settings.createSettingsContent(settingsSection, uiCapabilities);
 
-    const diagnosticSection = forkopMap.section(
+    const diagnosticSection = tachyonMap.section(
       form.TypedSection,
       "diagnostic",
       _("Diagnostics"),
@@ -443,7 +443,7 @@ const EntryPoint = {
     };
     diagnostic.createDiagnosticContent(diagnosticSection);
 
-    const dashboardSection = forkopMap.section(
+    const dashboardSection = tachyonMap.section(
       form.TypedSection,
       "dashboard",
       _("Dashboard"),
@@ -455,7 +455,7 @@ const EntryPoint = {
     };
     dashboard.createDashboardContent(dashboardSection);
 
-    const monitoringSection = forkopMap.section(
+    const monitoringSection = tachyonMap.section(
       form.TypedSection,
       "monitoring",
       _("Monitoring"),
@@ -467,7 +467,7 @@ const EntryPoint = {
     };
     monitoring.createMonitoringContent(monitoringSection);
 
-    const updatesSection = forkopMap.section(
+    const updatesSection = tachyonMap.section(
       form.TypedSection,
       "updates",
       _("Components"),
@@ -481,7 +481,7 @@ const EntryPoint = {
 
     await loadUiCapabilities().catch(() => null);
 
-    const rendered = await forkopMap.render();
+    const rendered = await tachyonMap.render();
     main.coreService({
       waitForLogWatcherStart: loadUiCapabilities,
       logWatcherStartDelayMs: 5000,

@@ -1,15 +1,15 @@
-import { ForkopShellMethods } from '../methods';
+import { TachyonShellMethods } from '../methods';
 import { logger } from '../services/logger.service';
 import { store } from '../services/store.service';
 import { refreshRuntimeUiState } from '../services/runtimeUiState.service';
-import { Forkop } from '../types';
+import { Tachyon } from '../types';
 
 let latestServicesInfoRequestId = 0;
 
 function getSettledMethodResponse<T>(
   scope: string,
-  result: PromiseSettledResult<Forkop.MethodResponse<T>>,
-): Forkop.MethodResponse<T> {
+  result: PromiseSettledResult<Tachyon.MethodResponse<T>>,
+): Tachyon.MethodResponse<T> {
   if (result.status === 'fulfilled') {
     return result.value;
   }
@@ -34,34 +34,34 @@ export async function fetchServicesInfo() {
     return uiState;
   }
 
-  const [forkopResult, singboxResult] = await Promise.allSettled([
-    ForkopShellMethods.getStatus(),
-    ForkopShellMethods.getSingBoxStatus(),
+  const [tachyonResult, singboxResult] = await Promise.allSettled([
+    TachyonShellMethods.getStatus(),
+    TachyonShellMethods.getSingBoxStatus(),
   ]);
 
   if (requestId !== latestServicesInfoRequestId) {
     return;
   }
 
-  const forkop = getSettledMethodResponse('getStatus', forkopResult);
+  const tachyon = getSettledMethodResponse('getStatus', tachyonResult);
   const singbox = getSettledMethodResponse('getSingBoxStatus', singboxResult);
   const previousData = store.get().servicesInfoWidget.data;
 
   store.set({
     servicesInfoWidget: {
       loading: false,
-      failed: !forkop.success || !singbox.success,
+      failed: !tachyon.success || !singbox.success,
       data: {
         singbox: singbox.success ? singbox.data.running : previousData.singbox,
-        forkopRunning: forkop.success
-          ? forkop.data.running
-          : previousData.forkopRunning,
-        forkopEnabled: forkop.success
-          ? forkop.data.enabled
-          : previousData.forkopEnabled,
-        forkopStatus: forkop.success
-          ? forkop.data.status
-          : previousData.forkopStatus,
+        tachyonRunning: tachyon.success
+          ? tachyon.data.running
+          : previousData.tachyonRunning,
+        tachyonEnabled: tachyon.success
+          ? tachyon.data.enabled
+          : previousData.tachyonEnabled,
+        tachyonStatus: tachyon.success
+          ? tachyon.data.status
+          : previousData.tachyonStatus,
       },
     },
   });

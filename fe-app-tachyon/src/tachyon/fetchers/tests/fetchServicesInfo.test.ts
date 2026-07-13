@@ -20,7 +20,7 @@ describe('fetchServicesInfo', () => {
   it('returns the fast UI state after applying it to the shared store', async () => {
     const uiState = {
       service: {
-        forkop: {
+        tachyon: {
           running: 1,
           enabled: 1,
           status: 'restarting',
@@ -67,7 +67,7 @@ describe('fetchServicesInfo', () => {
 
     const state = store.get();
 
-    expect(state.servicesInfoWidget.data.forkopStatus).toBe('restarting');
+    expect(state.servicesInfoWidget.data.tachyonStatus).toBe('restarting');
     expect(state.diagnosticsActions.restart.loading).toBe(true);
   });
 
@@ -78,9 +78,9 @@ describe('fetchServicesInfo', () => {
         failed: false,
         data: {
           singbox: 1,
-          forkopRunning: 1,
-          forkopEnabled: 1,
-          forkopStatus: 'running & enabled',
+          tachyonRunning: 1,
+          tachyonEnabled: 1,
+          tachyonStatus: 'running & enabled',
         },
       },
     });
@@ -113,9 +113,9 @@ describe('fetchServicesInfo', () => {
     expect(state.servicesInfoWidget.failed).toBe(true);
     expect(state.servicesInfoWidget.data).toEqual({
       singbox: 0,
-      forkopRunning: 1,
-      forkopEnabled: 1,
-      forkopStatus: 'running & enabled',
+      tachyonRunning: 1,
+      tachyonEnabled: 1,
+      tachyonStatus: 'running & enabled',
     });
   });
 });

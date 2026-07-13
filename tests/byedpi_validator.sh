@@ -2,8 +2,8 @@
 set -eo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-FORKOP_LIB="$ROOT_DIR/forkop/files/usr/lib"
-VALIDATOR="$ROOT_DIR/forkop/files/usr/lib/providers/byedpi/validator.uc"
+TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
+VALIDATOR="$ROOT_DIR/tachyon/files/usr/lib/providers/byedpi/validator.uc"
 WORK_DIR="$(mktemp -d)"
 
 cleanup() {
@@ -73,6 +73,6 @@ if (validator.strategy_or_default("", "--default\t1") != "--default 1")
     exit(1);
 UCODE
 
-ucode -L "$FORKOP_LIB" "$WORK_DIR/require-byedpi-validator.uc"
+ucode -L "$TACHYON_LIB" "$WORK_DIR/require-byedpi-validator.uc"
 
 printf 'ByeDPI validator checks passed\n'

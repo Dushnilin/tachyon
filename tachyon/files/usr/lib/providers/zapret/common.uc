@@ -3,7 +3,7 @@
 let constants = require("core.constants");
 let validator_module = null;
 
-const LIB_DIR = getenv("FORKOP_LIB") || "/usr/lib/forkop";
+const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
 
 function validator() {
     if (validator_module == null)

@@ -1,13 +1,13 @@
 import { TabServiceInstance } from './tab.service';
 import { store } from './store.service';
 import { logger } from './logger.service';
-import { ForkopLogWatcher } from './forkopLogWatcher.service';
+import { TachyonLogWatcher } from './tachyonLogWatcher.service';
 import {
-  getForkopLogNotification,
+  getTachyonLogNotification,
   LogNotificationDeduper,
-  ForkopLogNotification,
+  TachyonLogNotification,
 } from './logNotificationDeduper.service';
-import { ForkopShellMethods } from '../methods';
+import { TachyonShellMethods } from '../methods';
 import {
   registerRuntimeStateResumeRefresh,
   startRuntimeUiStatePolling,
@@ -23,7 +23,7 @@ const LOG_WATCHER_START_DELAY_MS = 5000;
 
 function componentDisplayName(component: string) {
   const names: Record<string, string> = {
-    forkop: 'Forkop',
+    tachyon: 'Tachyon',
     sing_box: 'sing-box',
     zapret: 'Zapret',
     zapret2: 'Zapret2',
@@ -33,7 +33,7 @@ function componentDisplayName(component: string) {
   return names[component] || component;
 }
 
-function showLogNotification(notification: ForkopLogNotification) {
+function showLogNotification(notification: TachyonLogNotification) {
   if (notification.kind === 'component-update') {
     const message = _('New version %s is available for %s')
       .replace('%s', notification.version)
@@ -49,7 +49,7 @@ function showLogNotification(notification: ForkopLogNotification) {
   }
 
   ui.addNotification(
-    _('Forkop Error'),
+    _('Tachyon Error'),
     E('div', {}, notification.line),
     'error',
     'fkp-log-error-notification',
@@ -67,12 +67,12 @@ export function coreService(options: CoreServiceOptions = {}) {
     });
   });
 
-  const watcher = ForkopLogWatcher.getInstance();
+  const watcher = TachyonLogWatcher.getInstance();
   const logNotificationDeduper = new LogNotificationDeduper();
 
   watcher.init(
     async () => {
-      const logs = await ForkopShellMethods.checkLogs();
+      const logs = await TachyonShellMethods.checkLogs();
 
       if (logs.success) {
         return logs.data as string;
@@ -84,7 +84,7 @@ export function coreService(options: CoreServiceOptions = {}) {
       intervalMs: LOG_WATCHER_INTERVAL_MS,
       onNewLog: (line) => {
         if (logNotificationDeduper.shouldNotify(line)) {
-          const notification = getForkopLogNotification(line);
+          const notification = getTachyonLogNotification(line);
           if (notification) {
             showLogNotification(notification);
           }

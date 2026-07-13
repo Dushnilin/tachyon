@@ -1,5 +1,5 @@
 import { executeShellCommand } from '../../../helpers';
-import { Forkop } from '../../types';
+import { Tachyon } from '../../types';
 
 interface CallBaseMethodOptions {
   allowNonZeroWithStdout?: boolean;
@@ -7,11 +7,11 @@ interface CallBaseMethodOptions {
 }
 
 export async function callBaseMethod<T>(
-  method: Forkop.AvailableMethods,
+  method: Tachyon.AvailableMethods,
   args: string[] = [],
-  command: string = '/usr/bin/forkop',
+  command: string = '/usr/bin/tachyon',
   options: CallBaseMethodOptions = {},
-): Promise<Forkop.MethodResponse<T>> {
+): Promise<Tachyon.MethodResponse<T>> {
   try {
     const response = await executeShellCommand({
       command,

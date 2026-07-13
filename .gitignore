@@ -1,7 +1,7 @@
 .idea
-fe-app-forkop/node_modules
-fe-app-forkop/.yarn/
-fe-app-forkop/.env
+fe-app-tachyon/node_modules
+fe-app-tachyon/.yarn/
+fe-app-tachyon/.env
 .DS_Store
 
 sandbox/

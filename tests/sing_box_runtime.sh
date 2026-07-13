@@ -2,13 +2,13 @@
 set -eo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-FORKOP_LIB="$ROOT_DIR/forkop/files/usr/lib"
-FORKOP_BIN="$ROOT_DIR/forkop/files/usr/bin/forkop"
-CLI_UC="$FORKOP_BIN"
-SING_BOX_RUNTIME_SH="$FORKOP_LIB/sing_box_runtime.sh"
-LIFECYCLE_UC="$FORKOP_LIB/service/lifecycle.uc"
-SINGBOX_RUNTIME_UC="$FORKOP_LIB/singbox/runtime.uc"
-SINGBOX_GENERATOR_UC="$FORKOP_LIB/singbox/generator.uc"
+TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
+TACHYON_BIN="$ROOT_DIR/tachyon/files/usr/bin/tachyon"
+CLI_UC="$TACHYON_BIN"
+SING_BOX_RUNTIME_SH="$TACHYON_LIB/sing_box_runtime.sh"
+LIFECYCLE_UC="$TACHYON_LIB/service/lifecycle.uc"
+SINGBOX_RUNTIME_UC="$TACHYON_LIB/singbox/runtime.uc"
+SINGBOX_GENERATOR_UC="$TACHYON_LIB/singbox/generator.uc"
 WORK_DIR="$(mktemp -d)"
 
 cleanup() {
@@ -23,13 +23,13 @@ fail() {
 
 [ ! -e "$SING_BOX_RUNTIME_SH" ] ||
   fail "sing_box_runtime.sh shell owner must be removed"
-grep -Fq '#!/usr/bin/ucode' "$FORKOP_BIN" ||
-  fail "forkop entrypoint must be a direct ucode executable"
+grep -Fq '#!/usr/bin/ucode' "$TACHYON_BIN" ||
+  fail "tachyon entrypoint must be a direct ucode executable"
 grep -Fq 'service/lifecycle.uc' "$CLI_UC" ||
   fail "service/cli.uc must dispatch lifecycle orchestration through service/lifecycle.uc"
 grep -Fq 'singbox/runtime.uc' "$LIFECYCLE_UC" ||
   fail "service/lifecycle.uc must call singbox/runtime.uc for sing-box runtime operations"
-if grep -R -n -E 'sing_box_runtime_ucode|rulesets_ucode|sing_box_configure_service|sing_box_init_config|get_service_listen_address|get_device_ipv4_address|get_download_detour_tag' "$FORKOP_BIN" "$FORKOP_LIB" --include='*.sh' >/dev/null 2>&1; then
+if grep -R -n -E 'sing_box_runtime_ucode|rulesets_ucode|sing_box_configure_service|sing_box_init_config|get_service_listen_address|get_device_ipv4_address|get_download_detour_tag' "$TACHYON_BIN" "$TACHYON_LIB" --include='*.sh' >/dev/null 2>&1; then
   fail "sing-box runtime shell symbols must not remain"
 fi
 grep -Fq 'mode == "configure-service"' "$SINGBOX_RUNTIME_UC" ||
@@ -54,7 +54,7 @@ if grep -n -E 'require\("uci"\)\.cursor|uci -q|uci", "-q"' "$SINGBOX_GENERATOR_U
 fi
 grep -Fq 'require("core.uci")' "$SINGBOX_GENERATOR_UC" ||
   fail "singbox/generator.uc must import core.uci"
-grep -Fq 'FORKOP_RULE_CONDITION_CACHE_DIR' "$LIFECYCLE_UC" ||
+grep -Fq 'TACHYON_RULE_CONDITION_CACHE_DIR' "$LIFECYCLE_UC" ||
   fail "service/lifecycle.uc must pass rule-condition cache dir through module environment"
 if awk '
 /"write-current-reload-state-clean"|"write-captured-reload-state"/ {
@@ -84,9 +84,9 @@ EOF_SING_BOX
 chmod +x "$WORK_DIR/bin/sing-box"
 stable_variant="$({
   PATH="$WORK_DIR/bin:$PATH" \
-    FORKOP_LIB="$FORKOP_LIB" \
+    TACHYON_LIB="$TACHYON_LIB" \
     SB_VARIANT_STATE_FILE="$WORK_DIR/sing-box-variant" \
-    ucode -L "$FORKOP_LIB" "$SINGBOX_RUNTIME_UC" variant
+    ucode -L "$TACHYON_LIB" "$SINGBOX_RUNTIME_UC" variant
 } 2>"$WORK_DIR/stable-variant.stderr")" ||
   fail "singbox/runtime.uc must detect a stable binary without a ucode call-order failure"
 [ "$stable_variant" = "stable" ] ||
@@ -104,7 +104,7 @@ EOF_SING_BOX_CHECK
 chmod +x "$WORK_DIR/check-bin/sing-box"
 : >"$WORK_DIR/invalid-config.json"
 if PATH="$WORK_DIR/check-bin:$PATH" \
-  ucode -L "$FORKOP_LIB" "$SINGBOX_RUNTIME_UC" check-config-fixture \
+  ucode -L "$TACHYON_LIB" "$SINGBOX_RUNTIME_UC" check-config-fixture \
   "$WORK_DIR/invalid-config.json" "$WORK_DIR/sing-box-check.log" \
   >"$WORK_DIR/sing-box-check.reason"; then
   fail "singbox/runtime.uc check fixture should preserve a failed sing-box status"
@@ -118,7 +118,7 @@ cat >"$WORK_DIR/generator-failure.log" <<'EOF_GENERATOR_FAILURE'
 skipped incompatible subscription outbound for rule 'only_xhttp': Only XHTTP node (XHTTP requires sing-box-extended)
 connection section has no usable outbounds
 EOF_GENERATOR_FAILURE
-generator_reason="$(ucode -L "$FORKOP_LIB" "$SINGBOX_RUNTIME_UC" generator-failure-reason-fixture \
+generator_reason="$(ucode -L "$TACHYON_LIB" "$SINGBOX_RUNTIME_UC" generator-failure-reason-fixture \
   "$WORK_DIR/generator-failure.log" 2)"
 [ "$generator_reason" = 'connection section has no usable outbounds' ] ||
   fail "singbox/runtime.uc must report the terminal generator error instead of an earlier warning"
@@ -126,7 +126,7 @@ generator_reason="$(ucode -L "$FORKOP_LIB" "$SINGBOX_RUNTIME_UC" generator-failu
 mkdir -p "$WORK_DIR/etc" "$WORK_DIR/tmp"
 printf 'old config\n' >"$WORK_DIR/etc/config.json"
 printf 'new config\n' >"$WORK_DIR/tmp/config.json"
-ucode -L "$FORKOP_LIB" "$SINGBOX_RUNTIME_UC" save-config-file-fixture \
+ucode -L "$TACHYON_LIB" "$SINGBOX_RUNTIME_UC" save-config-file-fixture \
   "$WORK_DIR/tmp/config.json" "$WORK_DIR/etc/config.json"
 [ "$(cat "$WORK_DIR/etc/config.json")" = "new config" ] ||
   fail "singbox/runtime.uc must replace an existing config from a temp file"
@@ -139,7 +139,7 @@ generate_config() {
   local mwan3_active="${3:-0}"
 
   mkdir -p "$output.section-cache" "$output.rulesets"
-  ucode -L "$FORKOP_LIB" "$FORKOP_LIB/singbox/generator.uc" generate-config-fixture \
+  ucode -L "$TACHYON_LIB" "$TACHYON_LIB/singbox/generator.uc" generate-config-fixture \
     "$fixture" "$output" "127.0.0.1" "$mwan3_active"
 }
 
@@ -150,8 +150,8 @@ generate_config_with_subscription_cache() {
 
   mkdir -p "$output.section-cache" "$output.rulesets"
   TMP_SUBSCRIPTION_FOLDER="$WORK_DIR/subscriptions" \
-    FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_DIR="$WORK_DIR/persistent-subscription-cache" \
-    ucode -L "$FORKOP_LIB" "$FORKOP_LIB/singbox/generator.uc" generate-config-fixture \
+    TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR="$WORK_DIR/persistent-subscription-cache" \
+    ucode -L "$TACHYON_LIB" "$TACHYON_LIB/singbox/generator.uc" generate-config-fixture \
       "$fixture" "$output" "127.0.0.1" "0" "$supports_xhttp"
 }
 
@@ -168,7 +168,7 @@ cat >"$WORK_DIR/no-enabled-fixture.json" <<'JSON'
 }
 JSON
 
-if ucode -L "$FORKOP_LIB" "$SINGBOX_GENERATOR_UC" generate-config-fixture \
+if ucode -L "$TACHYON_LIB" "$SINGBOX_GENERATOR_UC" generate-config-fixture \
   "$WORK_DIR/no-enabled-fixture.json" "$WORK_DIR/no-enabled.json" "127.0.0.1" "0" \
   >"$WORK_DIR/no-enabled.stdout" 2>"$WORK_DIR/no-enabled.stderr"; then
   fail "generator should reject a config without enabled sections"
@@ -180,21 +180,21 @@ grep -Fxq 'no enabled sections' "$WORK_DIR/no-enabled.stderr" ||
   fail "generator failure reason should be concise"
 
 cat >"$WORK_DIR/generator-uci.state" <<'EOF_UCI'
-forkop.settings=settings
-forkop.settings.dns_server=1.1.1.1
-forkop.settings.bootstrap_dns_server=1.1.1.1
-forkop.settings.config_path=/tmp/sing-box/config.json
-forkop.settings.cache_path=/tmp/sing-box/cache.db
-forkop.settings.log_level=warn
-forkop.uci_proxy=section
-forkop.uci_proxy.enabled=1
-forkop.uci_proxy.action=connection
-forkop.uci_proxy.outbound_jsons={"type":"direct"}
-forkop.uci_proxy.domain_suffix=example.org
+tachyon.settings=settings
+tachyon.settings.dns_server=1.1.1.1
+tachyon.settings.bootstrap_dns_server=1.1.1.1
+tachyon.settings.config_path=/tmp/sing-box/config.json
+tachyon.settings.cache_path=/tmp/sing-box/cache.db
+tachyon.settings.log_level=warn
+tachyon.uci_proxy=section
+tachyon.uci_proxy.enabled=1
+tachyon.uci_proxy.action=connection
+tachyon.uci_proxy.outbound_jsons={"type":"direct"}
+tachyon.uci_proxy.domain_suffix=example.org
 EOF_UCI
-FORKOP_UCI_STATE_FILE="$WORK_DIR/generator-uci.state" \
-  FORKOP_SECTION_CACHE_DIR="$WORK_DIR/generated-from-uci.section-cache" \
-  ucode -L "$FORKOP_LIB" "$SINGBOX_GENERATOR_UC" generate-config "$WORK_DIR/generated-from-uci.json" "127.0.0.1" "0"
+TACHYON_UCI_STATE_FILE="$WORK_DIR/generator-uci.state" \
+  TACHYON_SECTION_CACHE_DIR="$WORK_DIR/generated-from-uci.section-cache" \
+  ucode -L "$TACHYON_LIB" "$SINGBOX_GENERATOR_UC" generate-config "$WORK_DIR/generated-from-uci.json" "127.0.0.1" "0"
 grep -Fq '"example.org"' "$WORK_DIR/generated-from-uci.json" ||
   fail "singbox/generator.uc must read section matchers from core.uci"
 grep -Fq '"uci_proxy-out"' "$WORK_DIR/generated-from-uci.json" ||
@@ -885,7 +885,7 @@ cat >"$WORK_DIR/subscriptions/grouped-subscription-1.json" <<'JSON'
       "interval": "10m",
       "tolerance": 50,
       "remark": "Provider Group",
-      "__forkop_allow_group": true
+      "__tachyon_allow_group": true
     },
     {
       "type": "vless",
@@ -894,7 +894,7 @@ cat >"$WORK_DIR/subscriptions/grouped-subscription-1.json" <<'JSON'
       "server_port": 443,
       "uuid": "00000000-0000-4000-8000-000000000001",
       "tls": { "enabled": true, "server_name": "example.com" },
-      "__forkop_hidden": true
+      "__tachyon_hidden": true
     },
     {
       "type": "vless",
@@ -903,7 +903,7 @@ cat >"$WORK_DIR/subscriptions/grouped-subscription-1.json" <<'JSON'
       "server_port": 443,
       "uuid": "00000000-0000-4000-8000-000000000002",
       "tls": { "enabled": true, "server_name": "example.org" },
-      "__forkop_hidden": true
+      "__tachyon_hidden": true
     },
     {
       "type": "direct",
@@ -924,7 +924,7 @@ cat >"$WORK_DIR/subscriptions/xhttp-subscription-1.json" <<'JSON'
       "default": "xhttp-node",
       "url": "https://www.gstatic.com/generate_204",
       "remark": "Provider XHTTP Group",
-      "__forkop_allow_group": true
+      "__tachyon_allow_group": true
     },
     {
       "type": "vless",
@@ -934,7 +934,7 @@ cat >"$WORK_DIR/subscriptions/xhttp-subscription-1.json" <<'JSON'
       "server_port": 443,
       "uuid": "00000000-0000-4000-8000-000000000010",
       "transport": { "type": "xhttp" },
-      "__forkop_hidden": true
+      "__tachyon_hidden": true
     },
     {
       "type": "socks",
@@ -942,7 +942,7 @@ cat >"$WORK_DIR/subscriptions/xhttp-subscription-1.json" <<'JSON'
       "remark": "Plain node",
       "server": "127.0.0.11",
       "server_port": 1080,
-      "__forkop_hidden": true
+      "__tachyon_hidden": true
     },
     {
       "type": "socks",
@@ -1018,7 +1018,7 @@ grep -Fq "Only XHTTP node (XHTTP requires sing-box-extended)" "$WORK_DIR/subscri
   fail "all-XHTTP subscription failure should end with the actionable generator error"
 
 for fixture in manual-xhttp json-xhttp; do
-  if ucode -L "$FORKOP_LIB" "$SINGBOX_GENERATOR_UC" generate-config-fixture \
+  if ucode -L "$TACHYON_LIB" "$SINGBOX_GENERATOR_UC" generate-config-fixture \
     "$WORK_DIR/$fixture-fixture.json" "$WORK_DIR/$fixture-stable.json" "127.0.0.1" "0" "0" \
     >"$WORK_DIR/$fixture-stable.stdout" 2>"$WORK_DIR/$fixture-stable.stderr"; then
     fail "stable sing-box should reject explicit $fixture configuration"

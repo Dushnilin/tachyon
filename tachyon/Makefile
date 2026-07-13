@@ -1,17 +1,17 @@
 include $(TOPDIR)/rules.mk
 
-PKG_NAME:=forkop
+PKG_NAME:=tachyon
 
-FORKOP_SOURCE_VERSION:=$(or $(FORKOP_PACKAGE_VERSION),$(FORKOP_VERSION))
-FORKOP_HAS_RELEASE_VERSION:=$(if $(filter dev,$(FORKOP_SOURCE_VERSION)),,$(FORKOP_SOURCE_VERSION))
-FORKOP_COMPILED_VERSION:=$(if $(FORKOP_HAS_RELEASE_VERSION),$(FORKOP_SOURCE_VERSION),$(or $(FORKOP_SOURCE_VERSION),dev))
-FORKOP_RELEASE_VERSION_VALID:=$(if $(FORKOP_HAS_RELEASE_VERSION),$(shell printf '%s\n' '$(FORKOP_SOURCE_VERSION)' | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$$' && printf '1'),1)
+TACHYON_SOURCE_VERSION:=$(or $(TACHYON_PACKAGE_VERSION),$(TACHYON_VERSION))
+TACHYON_HAS_RELEASE_VERSION:=$(if $(filter dev,$(TACHYON_SOURCE_VERSION)),,$(TACHYON_SOURCE_VERSION))
+TACHYON_COMPILED_VERSION:=$(if $(TACHYON_HAS_RELEASE_VERSION),$(TACHYON_SOURCE_VERSION),$(or $(TACHYON_SOURCE_VERSION),dev))
+TACHYON_RELEASE_VERSION_VALID:=$(if $(TACHYON_HAS_RELEASE_VERSION),$(shell printf '%s\n' '$(TACHYON_SOURCE_VERSION)' | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$$' && printf '1'),1)
 
-ifeq ($(FORKOP_RELEASE_VERSION_VALID),)
-$(error FORKOP_PACKAGE_VERSION and FORKOP_VERSION must use x.y.z format)
+ifeq ($(TACHYON_RELEASE_VERSION_VALID),)
+$(error TACHYON_PACKAGE_VERSION and TACHYON_VERSION must use x.y.z format)
 endif
 
-PKG_VERSION:=$(or $(FORKOP_HAS_RELEASE_VERSION),0.0.0)
+PKG_VERSION:=$(or $(TACHYON_HAS_RELEASE_VERSION),0.0.0)
 PKG_RELEASE:=
 
 PKG_MAINTAINER:=Dushnilin <dushnilin@gmail.com>
@@ -19,18 +19,18 @@ PKG_LICENSE:=GPL-2.0-or-later
 
 include $(INCLUDE_DIR)/package.mk
 
-define Package/forkop
+define Package/tachyon
 	SECTION:=net
 	CATEGORY:=Network
 	DEPENDS:=+ca-bundle +kmod-inet-diag +kmod-netlink-diag +kmod-tun +curl +ucode +ucode-mod-fs +ucode-mod-uci +kmod-nft-tproxy +coreutils-base64 +coreutils-sort +bind-dig +nftables +kmod-nft-nat +ip-full
 	CONFLICTS:=https-dns-proxy nextdns luci-app-passwall luci-app-passwall2
-	TITLE:=Forkop backend service
+	TITLE:=Tachyon backend service
 	URL:=https://github.com/Dushnilin/tachyon
 	PKGARCH:=all
 endef
 
-define Package/forkop/description
-	Rule-based Forkop backend with hybrid sing-box + zapret orchestration
+define Package/tachyon/description
+	Rule-based Tachyon backend with hybrid sing-box + zapret orchestration
 endef
 
 define Build/Configure
@@ -39,40 +39,40 @@ endef
 define Build/Compile
 endef
 
-define Package/forkop/prerm
+define Package/tachyon/prerm
 #!/usr/bin/ucode
 
 if (getenv("IPKG_INSTROOT") == null || getenv("IPKG_INSTROOT") == "")
-	system("/usr/bin/forkop package_prerm >/dev/null 2>&1");
+	system("/usr/bin/tachyon package_prerm >/dev/null 2>&1");
 
 exit(0);
 endef
 
-define Package/forkop/postinst
+define Package/tachyon/postinst
 #!/bin/sh
 
 [ -n "$${IPKG_INSTROOT}" ] && exit 0
-FORKOP_LIB=/usr/lib/forkop ucode -L /usr/lib/forkop /usr/lib/forkop/config/migration.uc migrate
+TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate
 endef
 
-define Package/forkop/conffiles
-/etc/config/forkop
+define Package/tachyon/conffiles
+/etc/config/tachyon
 endef
 
-define Package/forkop/install
+define Package/tachyon/install
 	$(INSTALL_DIR) $(1)/etc/init.d
-	$(INSTALL_BIN) ./files/etc/init.d/forkop $(1)/etc/init.d/forkop
+	$(INSTALL_BIN) ./files/etc/init.d/tachyon $(1)/etc/init.d/tachyon
 
 	$(INSTALL_DIR) $(1)/etc/config
-	$(INSTALL_CONF) ./files/etc/config/forkop $(1)/etc/config/forkop
+	$(INSTALL_CONF) ./files/etc/config/tachyon $(1)/etc/config/tachyon
 
 	$(INSTALL_DIR) $(1)/usr/bin
-	$(INSTALL_BIN) ./files/usr/bin/forkop $(1)/usr/bin/forkop
+	$(INSTALL_BIN) ./files/usr/bin/tachyon $(1)/usr/bin/tachyon
 
-	$(INSTALL_DIR) $(1)/usr/lib/forkop
-	$(CP) ./files/usr/lib/. $(1)/usr/lib/forkop/
+	$(INSTALL_DIR) $(1)/usr/lib/tachyon
+	$(CP) ./files/usr/lib/. $(1)/usr/lib/tachyon/
 
-	sed -i -e 's/__COMPILED_VERSION_VARIABLE__/$(FORKOP_COMPILED_VERSION)/g' $(1)/usr/lib/forkop/core/constants.uc
+	sed -i -e 's/__COMPILED_VERSION_VARIABLE__/$(TACHYON_COMPILED_VERSION)/g' $(1)/usr/lib/tachyon/core/constants.uc
 endef
 
-$(eval $(call BuildPackage,forkop))
+$(eval $(call BuildPackage,tachyon))

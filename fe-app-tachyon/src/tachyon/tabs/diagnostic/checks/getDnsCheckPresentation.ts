@@ -1,9 +1,9 @@
-import type { Forkop } from '../../../types';
+import type { Tachyon } from '../../../types';
 import { getMeta } from '../helpers/getMeta';
 
 type DnsCheckState = 'error' | 'success' | 'warning';
 
-export function getDnsCheckPresentation(data: Forkop.DnsCheckResult) {
+export function getDnsCheckPresentation(data: Tachyon.DnsCheckResult) {
   const dhcpManagedManually = Boolean(data.dont_touch_dhcp);
   const dhcpCheckOk = dhcpManagedManually || Boolean(data.dhcp_config_status);
 

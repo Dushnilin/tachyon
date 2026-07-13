@@ -6,7 +6,7 @@ let uci_core = require("core.uci");
 let as_string = common.as_string;
 let object_or_empty = common.object_or_empty;
 
-const CONFIG_NAME = getenv("FORKOP_CONFIG_NAME") || "forkop";
+const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
 const ITEM_TYPES = [
     "subscription_url",
     "section_interface",

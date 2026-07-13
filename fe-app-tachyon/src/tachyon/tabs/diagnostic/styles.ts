@@ -1,13 +1,13 @@
 // language=CSS
-import { FORKOP_UCI_PACKAGE as FORKOP_CBI_PREFIX } from '../../../constants';
+import { TACHYON_UCI_PACKAGE as TACHYON_CBI_PREFIX } from '../../../constants';
 
 export const styles = `
 
-#cbi-${FORKOP_CBI_PREFIX}-diagnostic-_mount_node > div {
+#cbi-${TACHYON_CBI_PREFIX}-diagnostic-_mount_node > div {
     width: 100%;
 }
 
-#cbi-${FORKOP_CBI_PREFIX}-diagnostic > h3 {
+#cbi-${TACHYON_CBI_PREFIX}-diagnostic > h3 {
     display: none;
 }
 

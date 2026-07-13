@@ -2,11 +2,11 @@
 set -eo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-FORKOP_BIN="$ROOT_DIR/forkop/files/usr/bin/forkop"
-FORKOP_LIB="$ROOT_DIR/forkop/files/usr/lib"
-PACKAGE_UC="$FORKOP_LIB/service/package.uc"
-FORKOP_MAKEFILE="$ROOT_DIR/forkop/Makefile"
-LUCI_UCI_DEFAULTS="$ROOT_DIR/luci-app-forkop/root/etc/uci-defaults/50_luci-forkop"
+TACHYON_BIN="$ROOT_DIR/tachyon/files/usr/bin/tachyon"
+TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
+PACKAGE_UC="$TACHYON_LIB/service/package.uc"
+TACHYON_MAKEFILE="$ROOT_DIR/tachyon/Makefile"
+LUCI_UCI_DEFAULTS="$ROOT_DIR/luci-app-tachyon/root/etc/uci-defaults/50_luci-tachyon"
 BUILD_SCRIPT="$ROOT_DIR/build.sh"
 WORK_DIR="$(mktemp -d)"
 
@@ -27,119 +27,119 @@ if grep -n -E 'require\("uci"\)\.cursor|uci -q|uci", "-q"' "$PACKAGE_UC" >/dev/n
 fi
 grep -Fq 'require("core.uci")' "$PACKAGE_UC" ||
   fail "service/package.uc must import core.uci"
-grep -Fq 'package_prerm: [ "service/package.uc", "prerm", 0 ]' "$FORKOP_BIN" ||
-  fail "forkop entrypoint must dispatch package prerm cleanup through service/package.uc"
-grep -Fq 'luci_postinst: [ "service/package.uc", "luci-postinst", 0 ]' "$FORKOP_BIN" ||
-  fail "forkop entrypoint must dispatch LuCI postinstall cleanup through service/package.uc"
+grep -Fq 'package_prerm: [ "service/package.uc", "prerm", 0 ]' "$TACHYON_BIN" ||
+  fail "tachyon entrypoint must dispatch package prerm cleanup through service/package.uc"
+grep -Fq 'luci_postinst: [ "service/package.uc", "luci-postinst", 0 ]' "$TACHYON_BIN" ||
+  fail "tachyon entrypoint must dispatch LuCI postinstall cleanup through service/package.uc"
 grep -Fq '#!/bin/sh' "$LUCI_UCI_DEFAULTS" ||
   fail "LuCI uci-defaults must remain a shell script because OpenWrt default_postinst runs it through shell"
-grep -Fq '/usr/bin/forkop luci_postinst' "$LUCI_UCI_DEFAULTS" ||
+grep -Fq '/usr/bin/tachyon luci_postinst' "$LUCI_UCI_DEFAULTS" ||
   fail "LuCI uci-defaults must delegate cache/rpcd handling to ucode"
-if grep -E 'rm -f /var/luci-indexcache|rm -f /tmp/luci-indexcache|logger -t "forkop"' "$LUCI_UCI_DEFAULTS" >/dev/null; then
+if grep -E 'rm -f /var/luci-indexcache|rm -f /tmp/luci-indexcache|logger -t "tachyon"' "$LUCI_UCI_DEFAULTS" >/dev/null; then
   fail "LuCI uci-defaults must not own cache/logger shell logic"
 fi
 
-if grep -n -E 'grep -q "105 forkop"|sed -i "/105 forkop|forkop_dont_touch_dhcp=.*uci|cp /etc/config/forkop|rm -f /tmp/luci-indexcache|killall -HUP rpcd' "$FORKOP_MAKEFILE" "$BUILD_SCRIPT" >/dev/null; then
+if grep -n -E 'grep -q "105 tachyon"|sed -i "/105 tachyon|tachyon_dont_touch_dhcp=.*uci|cp /etc/config/tachyon|rm -f /tmp/luci-indexcache|killall -HUP rpcd' "$TACHYON_MAKEFILE" "$BUILD_SCRIPT" >/dev/null; then
   fail "package scripts must not keep backend/LuCI lifecycle business logic in shell"
 fi
-grep -Fq '#!/usr/bin/ucode' "$FORKOP_MAKEFILE" ||
-  fail "forkop Makefile package hooks must use ucode entrypoints"
-grep -Fq '/usr/bin/forkop package_prerm' "$FORKOP_MAKEFILE" ||
-  fail "forkop Makefile prerm must delegate cleanup to package_prerm"
-grep -Fq '/usr/bin/forkop luci_postinst' "$BUILD_SCRIPT" ||
+grep -Fq '#!/usr/bin/ucode' "$TACHYON_MAKEFILE" ||
+  fail "tachyon Makefile package hooks must use ucode entrypoints"
+grep -Fq '/usr/bin/tachyon package_prerm' "$TACHYON_MAKEFILE" ||
+  fail "tachyon Makefile prerm must delegate cleanup to package_prerm"
+grep -Fq '/usr/bin/tachyon luci_postinst' "$BUILD_SCRIPT" ||
   fail "manual package builder must delegate LuCI cache/rpcd handling to luci_postinst"
-if grep -n -E 'Package/forkop/preinst|copy_legacy_config|FORKOP_LEGACY_CONFIG|mode == "preinst"' \
-  "$FORKOP_MAKEFILE" "$BUILD_SCRIPT" "$PACKAGE_UC" >/dev/null 2>&1; then
+if grep -n -E 'Package/tachyon/preinst|copy_legacy_config|TACHYON_LEGACY_CONFIG|mode == "preinst"' \
+  "$TACHYON_MAKEFILE" "$BUILD_SCRIPT" "$PACKAGE_UC" >/dev/null 2>&1; then
   fail "package hooks and runtime service must not own configuration migration"
 fi
 
 rt_tables="$WORK_DIR/rt_tables"
 cat >"$rt_tables" <<'EOF'
 100 main
-105 forkop
+105 tachyon
 200 custom
 EOF
-FORKOP_PACKAGE_TEST_MODE=1 FORKOP_RT_TABLES="$rt_tables" \
-  ucode -L "$FORKOP_LIB" "$PACKAGE_UC" prerm
-if grep -Fq '105 forkop' "$rt_tables"; then
-  fail "package prerm must remove the Forkop routing table entry"
+TACHYON_PACKAGE_TEST_MODE=1 TACHYON_RT_TABLES="$rt_tables" \
+  ucode -L "$TACHYON_LIB" "$PACKAGE_UC" prerm
+if grep -Fq '105 tachyon' "$rt_tables"; then
+  fail "package prerm must remove the Tachyon routing table entry"
 fi
 grep -Fq '200 custom' "$rt_tables" ||
   fail "package prerm must preserve unrelated rt_tables entries"
 
-cat >"$WORK_DIR/forkop-init" <<'SH'
+cat >"$WORK_DIR/tachyon-init" <<'SH'
 #!/usr/bin/env bash
-grep -Fq '105 forkop' "${FORKOP_RT_TABLES:?}" || exit 1
-printf '%s\n' 'stop-with-route-table' >>"${FORKOP_STOP_LOG:?}"
+grep -Fq '105 tachyon' "${TACHYON_RT_TABLES:?}" || exit 1
+printf '%s\n' 'stop-with-route-table' >>"${TACHYON_STOP_LOG:?}"
 SH
-chmod 0755 "$WORK_DIR/forkop-init"
+chmod 0755 "$WORK_DIR/tachyon-init"
 cat >"$WORK_DIR/stop-order.state" <<'EOF_UCI'
-forkop.settings=settings
-forkop.settings.dont_touch_dhcp=1
+tachyon.settings=settings
+tachyon.settings.dont_touch_dhcp=1
 EOF_UCI
-printf '105 forkop\n' >"$WORK_DIR/rt_tables_stop_order"
+printf '105 tachyon\n' >"$WORK_DIR/rt_tables_stop_order"
 : >"$WORK_DIR/stop-order.log"
-FORKOP_UCI_STATE_FILE="$WORK_DIR/stop-order.state" \
-FORKOP_INIT="$WORK_DIR/forkop-init" \
-FORKOP_STOP_LOG="$WORK_DIR/stop-order.log" \
-FORKOP_BIN="$WORK_DIR/missing-forkop-bin" \
-FORKOP_DNS_APPLY_UC="$WORK_DIR/missing-dns-apply.uc" \
-FORKOP_SING_BOX_INIT="$WORK_DIR/missing-sing-box-init" \
-FORKOP_SING_BOX_BIN="$WORK_DIR/missing-sing-box-bin" \
-FORKOP_SING_BOX_CRONET="$WORK_DIR/missing-cronet" \
-FORKOP_RT_TABLES="$WORK_DIR/rt_tables_stop_order" \
-  ucode -L "$FORKOP_LIB" "$PACKAGE_UC" prerm
+TACHYON_UCI_STATE_FILE="$WORK_DIR/stop-order.state" \
+TACHYON_INIT="$WORK_DIR/tachyon-init" \
+TACHYON_STOP_LOG="$WORK_DIR/stop-order.log" \
+TACHYON_BIN="$WORK_DIR/missing-tachyon-bin" \
+TACHYON_DNS_APPLY_UC="$WORK_DIR/missing-dns-apply.uc" \
+TACHYON_SING_BOX_INIT="$WORK_DIR/missing-sing-box-init" \
+TACHYON_SING_BOX_BIN="$WORK_DIR/missing-sing-box-bin" \
+TACHYON_SING_BOX_CRONET="$WORK_DIR/missing-cronet" \
+TACHYON_RT_TABLES="$WORK_DIR/rt_tables_stop_order" \
+  ucode -L "$TACHYON_LIB" "$PACKAGE_UC" prerm
 grep -Fxq 'stop-with-route-table' "$WORK_DIR/stop-order.log" ||
-  fail "package prerm must stop Forkop before removing its routing table name"
+  fail "package prerm must stop Tachyon before removing its routing table name"
 [ ! -s "$WORK_DIR/rt_tables_stop_order" ] ||
-  fail "package prerm must remove the routing table name after Forkop stops"
+  fail "package prerm must remove the routing table name after Tachyon stops"
 
 touch "$WORK_DIR/luci-indexcache.one" "$WORK_DIR/luci-indexcache.two"
-FORKOP_PACKAGE_TEST_MODE=1 FORKOP_LUCI_CACHE_GLOBS="$WORK_DIR/luci-indexcache*" \
-  ucode -L "$FORKOP_LIB" "$PACKAGE_UC" luci-postinst
+TACHYON_PACKAGE_TEST_MODE=1 TACHYON_LUCI_CACHE_GLOBS="$WORK_DIR/luci-indexcache*" \
+  ucode -L "$TACHYON_LIB" "$PACKAGE_UC" luci-postinst
 if compgen -G "$WORK_DIR/luci-indexcache*" >/dev/null; then
   fail "luci-postinst must remove LuCI index cache files"
 fi
 
-cat >"$WORK_DIR/forkop-bin" <<'SH'
+cat >"$WORK_DIR/tachyon-bin" <<'SH'
 #!/usr/bin/env bash
-printf '%s\n' "$*" >> "${FORKOP_RESTORE_LOG:?}"
+printf '%s\n' "$*" >> "${TACHYON_RESTORE_LOG:?}"
 SH
-chmod 0755 "$WORK_DIR/forkop-bin"
+chmod 0755 "$WORK_DIR/tachyon-bin"
 
 cat >"$WORK_DIR/dont-touch.state" <<'EOF_UCI'
-forkop.settings=settings
-forkop.settings.dont_touch_dhcp=1
+tachyon.settings=settings
+tachyon.settings.dont_touch_dhcp=1
 EOF_UCI
-printf '105 forkop\n' >"$WORK_DIR/rt_tables_dont_touch"
+printf '105 tachyon\n' >"$WORK_DIR/rt_tables_dont_touch"
 : >"$WORK_DIR/restore-dont-touch.log"
-FORKOP_UCI_STATE_FILE="$WORK_DIR/dont-touch.state" \
-FORKOP_RESTORE_LOG="$WORK_DIR/restore-dont-touch.log" \
-FORKOP_BIN="$WORK_DIR/forkop-bin" \
-FORKOP_DNS_APPLY_UC="$WORK_DIR/missing-dns-apply.uc" \
-FORKOP_SING_BOX_INIT="$WORK_DIR/missing-sing-box-init" \
-FORKOP_SING_BOX_BIN="$WORK_DIR/missing-sing-box-bin" \
-FORKOP_SING_BOX_CRONET="$WORK_DIR/missing-cronet" \
-FORKOP_RT_TABLES="$WORK_DIR/rt_tables_dont_touch" \
-  ucode -L "$FORKOP_LIB" "$PACKAGE_UC" prerm
+TACHYON_UCI_STATE_FILE="$WORK_DIR/dont-touch.state" \
+TACHYON_RESTORE_LOG="$WORK_DIR/restore-dont-touch.log" \
+TACHYON_BIN="$WORK_DIR/tachyon-bin" \
+TACHYON_DNS_APPLY_UC="$WORK_DIR/missing-dns-apply.uc" \
+TACHYON_SING_BOX_INIT="$WORK_DIR/missing-sing-box-init" \
+TACHYON_SING_BOX_BIN="$WORK_DIR/missing-sing-box-bin" \
+TACHYON_SING_BOX_CRONET="$WORK_DIR/missing-cronet" \
+TACHYON_RT_TABLES="$WORK_DIR/rt_tables_dont_touch" \
+  ucode -L "$TACHYON_LIB" "$PACKAGE_UC" prerm
 [ ! -s "$WORK_DIR/restore-dont-touch.log" ] ||
   fail "package prerm must skip dnsmasq restore when dont_touch_dhcp is enabled"
 
 cat >"$WORK_DIR/restore.state" <<'EOF_UCI'
-forkop.settings=settings
-forkop.settings.dont_touch_dhcp=0
+tachyon.settings=settings
+tachyon.settings.dont_touch_dhcp=0
 EOF_UCI
-printf '105 forkop\n' >"$WORK_DIR/rt_tables_restore"
+printf '105 tachyon\n' >"$WORK_DIR/rt_tables_restore"
 : >"$WORK_DIR/restore.log"
-FORKOP_UCI_STATE_FILE="$WORK_DIR/restore.state" \
-FORKOP_RESTORE_LOG="$WORK_DIR/restore.log" \
-FORKOP_BIN="$WORK_DIR/forkop-bin" \
-FORKOP_DNS_APPLY_UC="$WORK_DIR/missing-dns-apply.uc" \
-FORKOP_SING_BOX_INIT="$WORK_DIR/missing-sing-box-init" \
-FORKOP_SING_BOX_BIN="$WORK_DIR/missing-sing-box-bin" \
-FORKOP_SING_BOX_CRONET="$WORK_DIR/missing-cronet" \
-FORKOP_RT_TABLES="$WORK_DIR/rt_tables_restore" \
-  ucode -L "$FORKOP_LIB" "$PACKAGE_UC" prerm
+TACHYON_UCI_STATE_FILE="$WORK_DIR/restore.state" \
+TACHYON_RESTORE_LOG="$WORK_DIR/restore.log" \
+TACHYON_BIN="$WORK_DIR/tachyon-bin" \
+TACHYON_DNS_APPLY_UC="$WORK_DIR/missing-dns-apply.uc" \
+TACHYON_SING_BOX_INIT="$WORK_DIR/missing-sing-box-init" \
+TACHYON_SING_BOX_BIN="$WORK_DIR/missing-sing-box-bin" \
+TACHYON_SING_BOX_CRONET="$WORK_DIR/missing-cronet" \
+TACHYON_RT_TABLES="$WORK_DIR/rt_tables_restore" \
+  ucode -L "$TACHYON_LIB" "$PACKAGE_UC" prerm
 grep -Fxq 'restore_dnsmasq' "$WORK_DIR/restore.log" ||
   fail "package prerm must restore dnsmasq when dont_touch_dhcp is disabled"
 

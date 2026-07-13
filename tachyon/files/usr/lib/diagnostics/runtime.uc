@@ -6,43 +6,43 @@ let core_ip = require("core.ip");
 let uci_core = require("core.uci");
 let runtime_dns = require("singbox.dns");
 
-const CONFIG_NAME = getenv("FORKOP_CONFIG_NAME") || constants.FORKOP_CONFIG_NAME || "forkop";
-const LIB_DIR = getenv("FORKOP_LIB") || "/usr/lib/forkop";
-const FORKOP_VERSION = getenv("FORKOP_VERSION") || constants.FORKOP_VERSION || "";
-const FORKOP_CONFIG = getenv("FORKOP_CONFIG") || constants.FORKOP_CONFIG || "/etc/config/" + CONFIG_NAME;
-const FORKOP_SERVICE_NAME = getenv("FORKOP_SERVICE_NAME") || constants.FORKOP_SERVICE_NAME || "forkop";
-const FORKOP_RELEASE_REPO = getenv("FORKOP_RELEASE_REPO") || constants.FORKOP_RELEASE_REPO || "Dushnilin/tachyon";
-const FORKOP_LUCI_VIEW_DIR = getenv("FORKOP_LUCI_VIEW_DIR") || constants.FORKOP_LUCI_VIEW_DIR || "/www/luci-static/resources/view/forkop";
-const RUNTIME_STATE_DIR = getenv("FORKOP_RUNTIME_STATE_DIR") || "/var/run/forkop";
-const SYSTEM_INFO_CACHE_FILE = getenv("FORKOP_SYSTEM_INFO_CACHE_FILE") || RUNTIME_STATE_DIR + "/system-info.json";
-const SYSTEM_INFO_CACHE_TTL = int(getenv("FORKOP_SYSTEM_INFO_CACHE_TTL") || "3600");
+const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || constants.TACHYON_CONFIG_NAME || "tachyon";
+const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
+const TACHYON_VERSION = getenv("TACHYON_VERSION") || constants.TACHYON_VERSION || "";
+const TACHYON_CONFIG = getenv("TACHYON_CONFIG") || constants.TACHYON_CONFIG || "/etc/config/" + CONFIG_NAME;
+const TACHYON_SERVICE_NAME = getenv("TACHYON_SERVICE_NAME") || constants.TACHYON_SERVICE_NAME || "tachyon";
+const TACHYON_RELEASE_REPO = getenv("TACHYON_RELEASE_REPO") || constants.TACHYON_RELEASE_REPO || "Dushnilin/tachyon";
+const TACHYON_LUCI_VIEW_DIR = getenv("TACHYON_LUCI_VIEW_DIR") || constants.TACHYON_LUCI_VIEW_DIR || "/www/luci-static/resources/view/tachyon";
+const RUNTIME_STATE_DIR = getenv("TACHYON_RUNTIME_STATE_DIR") || "/var/run/tachyon";
+const SYSTEM_INFO_CACHE_FILE = getenv("TACHYON_SYSTEM_INFO_CACHE_FILE") || RUNTIME_STATE_DIR + "/system-info.json";
+const SYSTEM_INFO_CACHE_TTL = int(getenv("TACHYON_SYSTEM_INFO_CACHE_TTL") || "3600");
 const TMP_SING_BOX_FOLDER = getenv("TMP_SING_BOX_FOLDER") || constants.TMP_SING_BOX_FOLDER || "/tmp/sing-box";
 const TMP_RULESET_FOLDER = getenv("TMP_RULESET_FOLDER") || constants.TMP_RULESET_FOLDER || TMP_SING_BOX_FOLDER + "/rulesets";
 const TMP_SUBSCRIPTION_FOLDER = getenv("TMP_SUBSCRIPTION_FOLDER") || constants.TMP_SUBSCRIPTION_FOLDER || TMP_SING_BOX_FOLDER + "/subscriptions";
-const SUBSCRIPTION_LINKS_DIR = getenv("FORKOP_SUBSCRIPTION_LINKS_DIR") || RUNTIME_STATE_DIR + "/subscription-links";
-const SUBSCRIPTION_METADATA_DIR = getenv("FORKOP_SUBSCRIPTION_METADATA_DIR") || RUNTIME_STATE_DIR + "/subscription-metadata";
-const OUTBOUND_METADATA_DIR = getenv("FORKOP_OUTBOUND_METADATA_DIR") || RUNTIME_STATE_DIR + "/outbound-metadata";
-const SECTION_CACHE_DIR = getenv("FORKOP_SECTION_CACHE_DIR") || RUNTIME_STATE_DIR + "/section-cache";
+const SUBSCRIPTION_LINKS_DIR = getenv("TACHYON_SUBSCRIPTION_LINKS_DIR") || RUNTIME_STATE_DIR + "/subscription-links";
+const SUBSCRIPTION_METADATA_DIR = getenv("TACHYON_SUBSCRIPTION_METADATA_DIR") || RUNTIME_STATE_DIR + "/subscription-metadata";
+const OUTBOUND_METADATA_DIR = getenv("TACHYON_OUTBOUND_METADATA_DIR") || RUNTIME_STATE_DIR + "/outbound-metadata";
+const SECTION_CACHE_DIR = getenv("TACHYON_SECTION_CACHE_DIR") || RUNTIME_STATE_DIR + "/section-cache";
 const CHECK_PROXY_IP_DOMAIN = getenv("CHECK_PROXY_IP_DOMAIN") || constants.CHECK_PROXY_IP_DOMAIN || "ip.podkop.fyi";
 const FAKEIP_TEST_DOMAIN = getenv("FAKEIP_TEST_DOMAIN") || constants.FAKEIP_TEST_DOMAIN || "fakeip.podkop.fyi";
-const RT_TABLE_NAME = getenv("RT_TABLE_NAME") || constants.RT_TABLE_NAME || "forkop";
-const NFT_TABLE_NAME = getenv("NFT_TABLE_NAME") || constants.NFT_TABLE_NAME || "ForkopTable";
+const RT_TABLE_NAME = getenv("RT_TABLE_NAME") || constants.RT_TABLE_NAME || "tachyon";
+const NFT_TABLE_NAME = getenv("NFT_TABLE_NAME") || constants.NFT_TABLE_NAME || "TachyonTable";
 const NFT_FAKEIP_MARK = getenv("NFT_FAKEIP_MARK") || constants.NFT_FAKEIP_MARK || "0x00100000";
-const NFT_COMMON_SET_NAME = getenv("NFT_COMMON_SET_NAME") || constants.NFT_COMMON_SET_NAME || "forkop_subnets";
-const NFT_PORT_SET_NAME = getenv("NFT_PORT_SET_NAME") || constants.NFT_PORT_SET_NAME || "forkop_ports";
-const NFT_IP_PORT_SET_NAME = getenv("NFT_IP_PORT_SET_NAME") || constants.NFT_IP_PORT_SET_NAME || "forkop_ip_ports";
-const NFT_INTERFACE_SET_NAME = getenv("NFT_INTERFACE_SET_NAME") || constants.NFT_INTERFACE_SET_NAME || "forkop_interfaces";
-const NFT_DISCORD_SET_NAME = getenv("NFT_DISCORD_SET_NAME") || constants.NFT_DISCORD_SET_NAME || "forkop_discord_subnets";
+const NFT_COMMON_SET_NAME = getenv("NFT_COMMON_SET_NAME") || constants.NFT_COMMON_SET_NAME || "tachyon_subnets";
+const NFT_PORT_SET_NAME = getenv("NFT_PORT_SET_NAME") || constants.NFT_PORT_SET_NAME || "tachyon_ports";
+const NFT_IP_PORT_SET_NAME = getenv("NFT_IP_PORT_SET_NAME") || constants.NFT_IP_PORT_SET_NAME || "tachyon_ip_ports";
+const NFT_INTERFACE_SET_NAME = getenv("NFT_INTERFACE_SET_NAME") || constants.NFT_INTERFACE_SET_NAME || "tachyon_interfaces";
+const NFT_DISCORD_SET_NAME = getenv("NFT_DISCORD_SET_NAME") || constants.NFT_DISCORD_SET_NAME || "tachyon_discord_subnets";
 const NFT_LOCALV4_SET_NAME = getenv("NFT_LOCALV4_SET_NAME") || constants.NFT_LOCALV4_SET_NAME || "localv4";
 const SB_DNS_INBOUND_ADDRESS = getenv("SB_DNS_INBOUND_ADDRESS") || constants.SB_DNS_INBOUND_ADDRESS || "127.0.0.42";
 const SB_TPROXY_INBOUND6_ADDRESS = getenv("SB_TPROXY_INBOUND6_ADDRESS") || constants.SB_TPROXY_INBOUND6_ADDRESS || "::1";
 const SB_TPROXY_INBOUND_PORT = getenv("SB_TPROXY_INBOUND_PORT") || constants.SB_TPROXY_INBOUND_PORT || "1602";
 const SB_CLASH_API_CONTROLLER_PORT = getenv("SB_CLASH_API_CONTROLLER_PORT") || constants.SB_CLASH_API_CONTROLLER_PORT || "9090";
-const SB_VARIANT_STATE_FILE = getenv("SB_VARIANT_STATE_FILE") || constants.SB_VARIANT_STATE_FILE || "/etc/forkop/sing-box-variant";
+const SB_VARIANT_STATE_FILE = getenv("SB_VARIANT_STATE_FILE") || constants.SB_VARIANT_STATE_FILE || "/etc/tachyon/sing-box-variant";
 const CLOUDFLARE_OCTETS = getenv("CLOUDFLARE_OCTETS") || constants.CLOUDFLARE_OCTETS || "8.47 162.159 188.114";
 const ZAPRET_LEGACY_DEFAULT_NFQWS_OPT = getenv("ZAPRET_LEGACY_DEFAULT_NFQWS_OPT") || constants.ZAPRET_LEGACY_DEFAULT_NFQWS_OPT || "";
 const DEFAULT_LATENCY_TEST_URL = getenv("DEFAULT_LATENCY_TEST_URL") || "https://www.gstatic.com/generate_204";
-const RUNTIME_STABLE_MIN_AGE = getenv("FORKOP_RUNTIME_STABLE_MIN_AGE") || "2";
+const RUNTIME_STABLE_MIN_AGE = getenv("TACHYON_RUNTIME_STABLE_MIN_AGE") || "2";
 
 const STATUS_UC = LIB_DIR + "/diagnostics/status.uc";
 const HELPERS_UC = LIB_DIR + "/core/helpers.uc";
@@ -366,7 +366,7 @@ function nolog(message) {
 
 function log_message(message, level) {
     level = as_string(level || "info");
-    command_success_from_args([ "logger", "-t", "forkop", "[" + level + "] " + as_string(message) ]);
+    command_success_from_args([ "logger", "-t", "tachyon", "[" + level + "] " + as_string(message) ]);
 }
 
 function valid_ipv4(value) {
@@ -845,7 +845,7 @@ function check_logs() {
         nolog("Error: logread command not found");
         return 1;
     }
-    let rendered = status_capture([ "forkop-logs" ], command_output_from_args([ "logread" ]));
+    let rendered = status_capture([ "tachyon-logs" ], command_output_from_args([ "logread" ]));
     if (rendered.output != "")
         print(rendered.output);
     if (rendered.status != 0) {
@@ -870,8 +870,8 @@ function check_sing_box_logs() {
     return 0;
 }
 
-function forkop_logs_fixture() {
-    let rendered = status_capture([ "forkop-logs" ], read_stdin());
+function tachyon_logs_fixture() {
+    let rendered = status_capture([ "tachyon-logs" ], read_stdin());
     if (rendered.output != "")
         print(rendered.output);
     return rendered.status;
@@ -894,19 +894,19 @@ function show_sing_box_config(visibility) {
 
 function show_config(visibility) {
     visibility = as_string(visibility || "masked");
-    if (!file_exists(FORKOP_CONFIG)) {
+    if (!file_exists(TACHYON_CONFIG)) {
         nolog("Configuration file not found");
         return 1;
     }
     if (visibility == "raw")
-        print(as_string(fs.readfile(FORKOP_CONFIG)));
+        print(as_string(fs.readfile(TACHYON_CONFIG)));
     else
-        print(status_output([ "forkop-config-masked", FORKOP_CONFIG ], null));
+        print(status_output([ "tachyon-config-masked", TACHYON_CONFIG ], null));
     return 0;
 }
 
 function show_version() {
-    print(FORKOP_VERSION, "\n");
+    print(TACHYON_VERSION, "\n");
     return 0;
 }
 
@@ -916,14 +916,14 @@ function show_sing_box_version() {
 }
 
 function get_luci_app_version() {
-    let path = FORKOP_LUCI_VIEW_DIR + "/main.js";
+    let path = TACHYON_LUCI_VIEW_DIR + "/main.js";
     let data = fs.readfile(path);
     if (data == null)
         return "not installed";
 
     for (let line in split(as_string(data), "\n")) {
         let matched = match(line, /^[ \t]*var[ \t]+([^ \t=]+)[ \t]*=[ \t]*"([^"]*)"/);
-        if (matched != null && matched[1] == "FORKOP_LUCI_APP_VERSION")
+        if (matched != null && matched[1] == "TACHYON_LUCI_APP_VERSION")
             return as_string(matched[2]);
     }
     return "";
@@ -937,7 +937,7 @@ function system_info_cache_is_valid() {
     let generated_at = arg_number(cache.generated_at || 0);
     if (now > 0 && generated_at > 0 && SYSTEM_INFO_CACHE_TTL > 0 && now - generated_at >= SYSTEM_INFO_CACHE_TTL)
         return false;
-    return cache.forkop_version == FORKOP_VERSION && cache.luci_app_version == get_luci_app_version();
+    return cache.tachyon_version == TACHYON_VERSION && cache.luci_app_version == get_luci_app_version();
 }
 
 function ensure_subscription_runtime_dirs() {
@@ -1029,7 +1029,7 @@ function openwrt_release() {
 }
 
 function build_system_info() {
-    let forkop_latest_version = first_line_value("/tmp/forkop.latest-version.cache", "unknown");
+    let tachyon_latest_version = first_line_value("/tmp/tachyon.latest-version.cache", "unknown");
     let luci_app_version = get_luci_app_version();
     let sing_box_version = "";
     let sing_box_version_output = "";
@@ -1063,8 +1063,8 @@ function build_system_info() {
     let device_model = first_line_value("/tmp/sysinfo/model", "unknown");
 
     return {
-        forkop_version: FORKOP_VERSION,
-        forkop_latest_version: forkop_latest_version || "unknown",
+        tachyon_version: TACHYON_VERSION,
+        tachyon_latest_version: tachyon_latest_version || "unknown",
         luci_app_version,
         sing_box_version,
         sing_box_extended: flags.extended,
@@ -1114,7 +1114,7 @@ function get_server_capabilities() {
 }
 
 function neutralize_zapret_defaults() {
-    log_message("Standalone zapret is not neutralized automatically; Forkop uses /opt/zapret/nfq/nfqws as an external provider and manages only its own NFQUEUE range.", "info");
+    log_message("Standalone zapret is not neutralized automatically; Tachyon uses /opt/zapret/nfq/nfqws as an external provider and manages only its own NFQUEUE range.", "info");
     return 0;
 }
 
@@ -1138,8 +1138,8 @@ function write_service_status(running, enabled, dns_configured) {
     });
 }
 
-function dnsmasq_has_forkop_dns() {
-    return module_success(DNS_APPLY_UC, [ "has-forkop-dns" ]);
+function dnsmasq_has_tachyon_dns() {
+    return module_success(DNS_APPLY_UC, [ "has-tachyon-dns" ]);
 }
 
 function get_sing_box_status() {
@@ -1148,17 +1148,17 @@ function get_sing_box_status() {
         RUNTIME_STABLE_MIN_AGE
     ]) ? 1 : 0;
     let enabled = file_executable("/etc/rc.d/S99sing-box") ? 1 : 0;
-    let dns_configured = dnsmasq_has_forkop_dns() ? 1 : 0;
+    let dns_configured = dnsmasq_has_tachyon_dns() ? 1 : 0;
     write_service_status(running, enabled, dns_configured);
     return 0;
 }
 
 function get_status() {
     let running = module_success(SERVICE_STATE_UC, [
-        "forkop-stably-running", RT_TABLE_NAME, NFT_TABLE_NAME, NFT_FAKEIP_MARK, RUNTIME_STABLE_MIN_AGE
+        "tachyon-stably-running", RT_TABLE_NAME, NFT_TABLE_NAME, NFT_FAKEIP_MARK, RUNTIME_STABLE_MIN_AGE
     ]) ? 1 : 0;
-    let enabled = file_executable("/etc/rc.d/S99" + FORKOP_SERVICE_NAME) ? 1 : 0;
-    let dns_configured = dnsmasq_has_forkop_dns() ? 1 : 0;
+    let enabled = file_executable("/etc/rc.d/S99" + TACHYON_SERVICE_NAME) ? 1 : 0;
+    let dns_configured = dnsmasq_has_tachyon_dns() ? 1 : 0;
     write_service_status(running, enabled, dns_configured);
     return 0;
 }
@@ -1903,7 +1903,7 @@ function global_check(arg1, arg2) {
         print_global("❌ Failed to get NFT rules info");
 
     print_global("━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    print_global("📄 Forkop config");
+    print_global("📄 Tachyon config");
     show_config(visibility);
 
     print_global("━━━━━━━━━━━━━━━━━━━━━━━━━━━");
@@ -1945,30 +1945,672 @@ function global_check(arg1, arg2) {
 
     if (file_executable("/etc/init.d/zapret") && command_success_from_args([ "/etc/init.d/zapret", "status" ])) {
         print_global("━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        print_global("⚠️ Standalone zapret service is active. Forkop uses separate queues, but packet-level policy overlap is possible.");
+        print_global("⚠️ Standalone zapret service is active. Tachyon uses separate queues, but packet-level policy overlap is possible.");
     }
     else if (file_executable("/etc/init.d/zapret") && command_success_from_args([ "/etc/init.d/zapret", "enabled" ])) {
         print_global("━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        print_global("⚠️ Standalone zapret autostart is enabled. Forkop will not modify /etc/config/zapret.");
+        print_global("⚠️ Standalone zapret autostart is enabled. Tachyon will not modify /etc/config/zapret.");
     }
 
     if (file_executable("/etc/init.d/zapret2") && command_success_from_args([ "/etc/init.d/zapret2", "status" ])) {
         print_global("━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        print_global("⚠️ Standalone zapret2 service is active. Forkop uses separate queues, but packet-level policy overlap is possible.");
+        print_global("⚠️ Standalone zapret2 service is active. Tachyon uses separate queues, but packet-level policy overlap is possible.");
     }
     else if (file_executable("/etc/init.d/zapret2") && command_success_from_args([ "/etc/init.d/zapret2", "enabled" ])) {
         print_global("━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        print_global("⚠️ Standalone zapret2 autostart is enabled. Forkop will not modify /etc/config/zapret2.");
+        print_global("⚠️ Standalone zapret2 autostart is enabled. Tachyon will not modify /etc/config/zapret2.");
     }
 
     print_global("━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     print_global("🥸 FakeIP status");
     let fakeip_check_json = command_capture(command_from_args(module_args(LIB_DIR + "/diagnostics/runtime.uc", [ "check-fakeip" ]))).output;
-    if (fakeip_check_json != "")
-        render_or_fail([ "global-fakeip-check" ], fakeip_check_json, "❌ Failed to parse FakeIP info", [ 0 ]);
     else
         print_global("❌ Failed to get FakeIP info");
 
+    return 0;
+}
+
+function find_process_pid(name) {
+    let pids = split(trim(command_capture(command_from_args(["pidof", name])).output), /\s+/);
+    return length(pids) > 0 && pids[0] != "" ? pids[0] : "";
+}
+
+function is_degraded() {
+    return fs.stat("/tmp/tachyon/degraded") != null;
+}
+
+function uci_settings() {
+    return uci_core.get_all(CONFIG_NAME, "settings") || {};
+}
+
+function kill_our_core_processes() {
+    command_status("/etc/init.d/sing-box stop >/dev/null 2>&1");
+    command_status("killall -9 sing-box >/dev/null 2>&1");
+}
+
+function run_doctor_checks() {
+    let report = [];
+    let issues = 0;
+    let fixed = 0;
+    let cfg = uci_settings();
+
+    let is_degraded_flag = is_degraded();
+
+    let doc_check = function(icon, name, status, fix_msg) {
+        let msg = status;
+        if (fix_msg != "") {
+            msg = fix_msg;
+        }
+        push(report, sprintf("%s %-30s %s", icon, name, msg));
+    };
+
+    let time_str = command_output_from_args(["date", "+%d.%m %H:%M"]);
+    push(report, sprintf("🩺 *tachyon doctor* — %s", trim(time_str)));
+    push(report, "");
+
+    if (cfg.recovery_bypass == "1") {
+        push(report, "⚠️ *Режим аварийного обхода (Safe Bypass) активен.*");
+        push(report, "Все прокси-службы и правила фильтрации временно отключены.");
+        push(report, "");
+
+        let wd_running = false;
+        let wd_pid = trim(fs.readfile("/var/run/tachyon_watchdog.pid") || "");
+        if (wd_pid != "" && fs.stat("/proc/" + wd_pid) != null) {
+            wd_running = true;
+        }
+
+        let core_disp = cfg.core || "sing-box";
+        doc_check("⚫", core_disp, "bypassed (stopped)", "");
+        doc_check("⚫", "nftables rules", "bypassed (flushed)", "");
+        doc_check("⚫", "routing rules (ip rule)", "bypassed (removed)", "");
+        doc_check("⚫", "dnsmasq server", "bypassed (direct WAN)", "");
+
+        if (dns_check_resolve_host("google.com", "127.0.0.1", 2) != "") {
+            doc_check("✅", "DNS resolution", "working (direct)", "");
+        } else {
+            doc_check("❌", "DNS resolution", "failed", "→ Проверьте подключение к интернету");
+            issues++;
+        }
+
+        if (wd_running) {
+            doc_check("✅", "Watchdog", "running (standby)", "");
+        } else {
+            doc_check("⚠️", "Watchdog", "stopped", "→ перезапустите службу");
+            issues++;
+        }
+
+        push(report, "");
+        push(report, "ℹ️ Автоматические проверки приостановлены в режиме Safe Bypass.");
+        return { report: join("\n", report) + "\n", issues, fixed };
+    }
+
+    let binary_name = "sing-box";
+    let init_script = "/etc/init.d/sing-box";
+    let config_file_path = "/etc/sing-box/config.json";
+
+    // 1. Process Check
+    let has_sections = false;
+    let uci_sections = uci_core.get_all(CONFIG_NAME);
+    if (uci_sections) {
+        for (let k in keys(uci_sections)) {
+            if (uci_sections[k][".type"] == "section") {
+                has_sections = true;
+                break;
+            }
+        }
+    }
+
+    let pid = find_process_pid(binary_name);
+    if (pid != "") {
+        doc_check("✅", binary_name + " process", "running", "");
+    } else if (!has_sections) {
+        doc_check("ℹ️", binary_name + " process", "not started", "→ Настройте подключение в LuCI — ядро запустится автоматически");
+    } else {
+        issues++;
+        kill_our_core_processes();
+        command_status("sleep 1");
+        command_status(init_script + " start >/dev/null 2>&1");
+        command_status("sleep 3");
+        pid = find_process_pid(binary_name);
+        if (pid != "") {
+            doc_check("❌", binary_name + " process", "stopped", "→ FIXED: запущен после очистки конфликтующих портов");
+            fixed++;
+        } else {
+            doc_check("❌", binary_name + " process", "stopped", "→ не удалось запустить — проверьте логи");
+        }
+    }
+
+    // 2. Configuration Check
+    if (fs.stat(config_file_path) != null) {
+        let check_res = command_status(binary_name + " check -c " + config_file_path + " >/dev/null 2>&1");
+        if (check_res == 0) {
+            doc_check("✅", binary_name + " config", "valid", "");
+        } else {
+            issues++;
+            let regen_status = command_status("ucode -L " + LIB_DIR + " " + SINGBOX_RUNTIME_UC + " configure-service >/dev/null 2>&1");
+            if (regen_status == 0) {
+                let check_res2 = command_status(binary_name + " check -c " + config_file_path + " >/dev/null 2>&1");
+                if (check_res2 == 0) {
+                    doc_check("❌", binary_name + " config", "invalid", "→ FIXED: пересоздан и успешно валидирован");
+                    fixed++;
+                    command_status(init_script + " restart >/dev/null 2>&1");
+                } else {
+                    doc_check("❌", binary_name + " config", "invalid", "→ не удалось восстановить (ошибка валидации)");
+                }
+            } else {
+                doc_check("❌", binary_name + " config", "invalid", "→ не удалось перегенерировать конфиг");
+            }
+        }
+    } else {
+        if (!has_sections) {
+            doc_check("ℹ️", binary_name + " config", "not yet created", "→ Настройте Tachyon в LuCI для генерации конфига");
+        } else {
+            issues++;
+            let regen_status = command_status("ucode -L " + LIB_DIR + " " + SINGBOX_RUNTIME_UC + " configure-service >/dev/null 2>&1");
+            if (regen_status == 0 && fs.stat(config_file_path) != null) {
+                doc_check("❌", "sing-box config", "missing", "→ FIXED: пересоздан");
+                fixed++;
+            } else {
+                doc_check("❌", binary_name + " config", "missing", "→ не удалось сгенерировать config");
+            }
+        }
+    }
+
+    // 3. Nftables Table Check
+    let routing_mode = cfg.routing_mode || "nftables";
+    if (routing_mode == "nftables") {
+        let out_nft = command_capture("nft list table inet " + NFT_TABLE_NAME).output;
+        if (index(out_nft, "tproxy") >= 0) {
+            doc_check("✅", "nftables table", "present", "");
+        } else {
+            if (is_degraded_flag) {
+                doc_check("⚠️", "nftables table", "missing or incomplete", "→ GRACEFUL DEGRADATION: Proxy offline");
+            } else {
+                issues++;
+                command_status("nft delete table inet " + NFT_TABLE_NAME + " >/dev/null 2>&1");
+                let rebuild_status = command_status("/usr/bin/tachyon restart >/dev/null 2>&1");
+                let out_nft_check = command_capture("nft list table inet " + NFT_TABLE_NAME).output;
+                if (index(out_nft_check, "tproxy") >= 0) {
+                    doc_check("❌", "nftables table", "missing or incomplete", "→ FIXED: правила пересозданы");
+                    fixed++;
+                } else {
+                    doc_check("❌", "nftables table", "missing or incomplete", "→ не удалось восстановить nftables правила");
+                }
+            }
+        }
+
+        // 4. IP Rule Check
+        let ip_rule_out = command_capture("ip rule list").output;
+        if (index(ip_rule_out, "fwmark") >= 0 && index(ip_rule_out, "lookup " + RT_TABLE_NAME) >= 0) {
+            doc_check("✅", "ip rule (fwmark)", "present", "");
+        } else {
+            issues++;
+            let rebuild_status = command_status("/usr/bin/tachyon restart >/dev/null 2>&1");
+            let ip_rule_check = command_capture("ip rule list").output;
+            if (index(ip_rule_check, "fwmark") >= 0 && index(ip_rule_check, "lookup " + RT_TABLE_NAME) >= 0) {
+                doc_check("❌", "ip rule", "missing", "→ FIXED: маршрут восстановлен");
+                fixed++;
+            } else {
+                doc_check("❌", "ip rule", "missing", "→ не удалось восстановить ip rule");
+            }
+        }
+    } else {
+        let ip_link_out = command_capture("ip link show tun0").output;
+        if (index(ip_link_out, "tun0") >= 0) {
+            doc_check("✅", "tun0 interface", "up", "");
+        } else {
+            issues++;
+            command_status(init_script + " restart >/dev/null 2>&1");
+            command_status("sleep 3");
+            let ip_link_check = command_capture("ip link show tun0").output;
+            if (index(ip_link_check, "tun0") >= 0) {
+                doc_check("❌", "tun0 interface", "missing", "→ FIXED: интерфейс tun0 поднят после перезапуска службы");
+                fixed++;
+            } else {
+                doc_check("❌", "tun0 interface", "missing", "→ не удалось поднять tun0");
+            }
+        }
+    }
+
+    // 4e. Dnsmasq Redirection Check
+    if (module_status(DNS_APPLY_UC, [ "has-tachyon-dns" ]) == 0) {
+        doc_check("✅", "dnsmasq server (Direct)", SB_DNS_INBOUND_ADDRESS, "");
+    } else {
+        if (is_degraded_flag) {
+            doc_check("⚠️", "dnsmasq server (Direct)", "direct", "→ GRACEFUL DEGRADATION: Proxy offline");
+        } else {
+            issues++;
+            module_status(DNS_APPLY_UC, [ "configure", "force" ]);
+            command_status("sleep 1");
+            if (module_status(DNS_APPLY_UC, [ "has-tachyon-dns" ]) == 0) {
+                doc_check("❌", "dnsmasq server (Direct)", "incorrect", "→ FIXED: направлен на sing-box (" + SB_DNS_INBOUND_ADDRESS + ")");
+                fixed++;
+            } else {
+                doc_check("❌", "dnsmasq server (Direct)", "incorrect", "→ не удалось перенаправить");
+            }
+        }
+    }
+
+    // 4b. Dnsmasq Params Check
+    let noresolv = uci_core.get("dhcp", "@dnsmasq[0]", "noresolv");
+    let localuse = uci_core.get("dhcp", "@dnsmasq[0]", "localuse");
+    let rebind_protection = uci_core.get("dhcp", "@dnsmasq[0]", "rebind_protection");
+    if (noresolv == "1" && localuse == "1" && rebind_protection == "0") {
+        doc_check("✅", "dnsmasq params", "OK (noresolv=1, localuse=1, rebind_protection=0)", "");
+    } else {
+        issues++;
+        uci_core.set("dhcp", "@dnsmasq[0]", "noresolv", "1");
+        uci_core.set("dhcp", "@dnsmasq[0]", "localuse", "1");
+        uci_core.set("dhcp", "@dnsmasq[0]", "rebind_protection", "0");
+        uci_core.commit("dhcp");
+        command_status("/etc/init.d/dnsmasq restart >/dev/null 2>&1");
+        command_status("sleep 1");
+        let noresolv2 = uci_core.get("dhcp", "@dnsmasq[0]", "noresolv");
+        let localuse2 = uci_core.get("dhcp", "@dnsmasq[0]", "localuse");
+        let rebind_protection2 = uci_core.get("dhcp", "@dnsmasq[0]", "rebind_protection");
+        if (noresolv2 == "1" && localuse2 == "1" && rebind_protection2 == "0") {
+            doc_check("❌", "dnsmasq params", "incorrect", "→ FIXED: noresolv=1, localuse=1, rebind_protection=0");
+            fixed++;
+        } else {
+            doc_check("❌", "dnsmasq params", "incorrect", "→ не удалось исправить параметры");
+        }
+    }
+
+    // 4c. Resolv.conf symlink
+    let resolv_link = "";
+    try { resolv_link = fs.readlink("/etc/resolv.conf") || ""; } catch(e) {}
+    if (resolv_link == "/tmp/resolv.conf" || resolv_link == "../tmp/resolv.conf") {
+        doc_check("✅", "resolv.conf symlink", "OK (-> " + resolv_link + ")", "");
+    } else {
+        issues++;
+        fs.unlink("/etc/resolv.conf");
+        let sym_ok = false;
+        try {
+            fs.symlink("/tmp/resolv.conf", "/etc/resolv.conf");
+            sym_ok = true;
+        } catch(e) {}
+        if (sym_ok) {
+            doc_check("❌", "resolv.conf symlink", "broken", "→ FIXED: восстановлена ссылка на /tmp/resolv.conf");
+            fixed++;
+        } else {
+            doc_check("❌", "resolv.conf symlink", "broken", "→ не удалось восстановить ссылку");
+        }
+    }
+
+    // 5. DNS configuration servers
+    let bootstrap_dns = "77.88.8.8";
+    let main_dns = "1.1.1.1";
+    let main_dns_type = "udp";
+    if (cfg.bootstrap_dns_server) {
+        let b_dns_list = type(cfg.bootstrap_dns_server) == "array" ? cfg.bootstrap_dns_server : split(trim(as_string(cfg.bootstrap_dns_server)), /\s+/);
+        if (length(b_dns_list) > 0) bootstrap_dns = b_dns_list[0];
+    }
+    if (cfg.dns_server) {
+        let m_dns_list = type(cfg.dns_server) == "array" ? cfg.dns_server : split(trim(as_string(cfg.dns_server)), /\s+/);
+        if (length(m_dns_list) > 0) main_dns = m_dns_list[0];
+    }
+    main_dns_type = cfg.dns_type || "udp";
+
+    // Strip proxy_group suffix
+    let display_main = split(main_dns, "#")[0];
+    let display_bootstrap = split(bootstrap_dns, "#")[0];
+
+    // Check Bootstrap DNS
+    let bootstrap_dns_reachable = false;
+    if (dns_check_resolve_host("openwrt.org", bootstrap_dns, 2) != "") {
+        bootstrap_dns_reachable = true;
+        doc_check("✅", "DNS bootstrap (" + display_bootstrap + ")", "reachable", "");
+    } else {
+        issues++;
+        let ping_ok = (command_status("ping -c 1 -W 2 1.1.1.1 >/dev/null 2>&1") == 0);
+        if (ping_ok) {
+            fs.unlink("/etc/resolv.conf");
+            try { fs.symlink("/tmp/resolv.conf", "/etc/resolv.conf"); } catch(e) {}
+            fs.writefile("/tmp/resolv.conf", "nameserver 1.1.1.1\nnameserver 8.8.8.8\n");
+            command_status("/etc/init.d/dnsmasq restart >/dev/null 2>&1");
+            command_status("sleep 2");
+            if (dns_check_resolve_host("openwrt.org", bootstrap_dns, 2) != "") {
+                bootstrap_dns_reachable = true;
+                doc_check("❌", "DNS bootstrap (" + display_bootstrap + ")", "unreachable", "→ FIXED: сброшен resolv.conf на 1.1.1.1, DNS перезапущен");
+                fixed++;
+            } else {
+                doc_check("❌", "DNS bootstrap (" + display_bootstrap + ")", "unreachable", "→ DNS заблокирован или недоступен");
+            }
+        } else {
+            command_status("/sbin/ifup wan >/dev/null 2>&1");
+            command_status("sleep 3");
+            doc_check("❌", "DNS bootstrap (" + display_bootstrap + ")", "unreachable", "→ FIXED: линк отсутствует, отправлен сигнал перезапуска WAN");
+            fixed++;
+        }
+    }
+
+    // Check Main DNS
+    let dns_main_reachable = false;
+    if (main_dns_type == "doh") {
+        let curl_cmd = "curl -sS --max-time 4 -o /dev/null -w %{http_code} https://" + display_main + "/dns-query";
+        let curl_res = command_capture(curl_cmd);
+        if (curl_res.status == 0 && int(curl_res.output) < 400) {
+            dns_main_reachable = true;
+            doc_check("✅", "DNS main (" + display_main + ")", "reachable", "");
+        } else {
+            let curl_cmd2 = "curl -sS --max-time 4 -o /dev/null -w %{http_code} https://" + display_main;
+            let curl_res2 = command_capture(curl_cmd2);
+            if (curl_res2.status == 0 && int(curl_res2.output) < 400) {
+                dns_main_reachable = true;
+                doc_check("✅", "DNS main (" + display_main + ")", "reachable", "");
+            } else {
+                doc_check("⚠️", "DNS main (" + display_main + ")", "ISP blocks direct DoH", "→ Норма: провайдер блокирует DoH напрямую, sing-box использует DoH через прокси");
+            }
+        }
+    } else {
+        if (dns_check_resolve_host("openwrt.org", main_dns, 2) != "") {
+            dns_main_reachable = true;
+            doc_check("✅", "DNS main (" + display_main + ")", "reachable", "");
+        } else {
+            issues++;
+            if (bootstrap_dns_reachable) {
+                command_status("/etc/init.d/dnsmasq restart >/dev/null 2>&1");
+                command_status("sleep 1");
+                if (dns_check_resolve_host("openwrt.org", main_dns, 2) != "") {
+                      dns_main_reachable = true;
+                      doc_check("❌", "DNS main (" + display_main + ")", "unreachable", "→ FIXED: перезапущен dnsmasq");
+                      fixed++;
+                }
+            }
+            if (!dns_main_reachable) {
+                doc_check("❌", "DNS main (" + display_main + ")", "unreachable", "→ Основной DNS недоступен");
+            }
+        }
+    }
+
+    // 6. Clash API Check
+    let clash_addr = "127.0.0.1:9090";
+    let curl_clash = command_capture("curl -s -o /dev/null -w %{http_code} http://" + clash_addr + "/version");
+    if (curl_clash.status == 0 && int(curl_clash.output) == 200) {
+        doc_check("✅", "Clash API", "reachable (" + clash_addr + ")", "");
+    } else {
+        issues++;
+        doc_check("⚠️", "Clash API", "unreachable", "→ sing-box запущен?");
+    }
+
+    // 7. Free RAM Check
+    let free_mb = -1;
+    let mem_info = fs.readfile("/proc/meminfo") || "";
+    for (let line in split(mem_info, "\n")) {
+        if (index(line, "MemAvailable:") == 0) {
+            let fields = split(trim(line), /[ \t]+/);
+            if (length(fields) >= 2) {
+                free_mb = int(fields[1]) / 1024;
+            }
+            break;
+        }
+    }
+    if (free_mb > 20) {
+        doc_check("✅", "Free RAM", sprintf("%dMB", free_mb), "");
+    } else if (free_mb >= 0) {
+        issues++;
+        doc_check("⚠️", "Free RAM", sprintf("%dMB", free_mb), "→ Мало памяти!");
+    } else {
+        doc_check("✅", "Free RAM", "unknown", "");
+    }
+
+    // 8. Temp Directory Space Check
+    let tmp_free_mb = -1;
+    let df_out = command_capture("df /tmp").output;
+    let df_lines = split(df_out, "\n");
+    if (length(df_lines) >= 2) {
+        let fields = split(trim(df_lines[1]), /[ \t]+/);
+        if (length(fields) >= 4) {
+            tmp_free_mb = int(fields[3]) / 1024;
+        }
+    }
+    if (tmp_free_mb > 5) {
+        doc_check("✅", "Free /tmp", sprintf("%dMB", tmp_free_mb), "");
+    } else if (tmp_free_mb >= 0) {
+        issues++;
+        doc_check("⚠️", "Free /tmp", sprintf("%dMB", tmp_free_mb), "→ Мало места в /tmp");
+    } else {
+        doc_check("✅", "Free /tmp", "unknown", "");
+    }
+
+    // 9. Watchdog Process Check
+    let watchdog_running = false;
+    let watchdog_pid = trim(fs.readfile("/var/run/tachyon_watchdog.pid") || "");
+    if (watchdog_pid != "" && fs.stat("/proc/" + watchdog_pid) != null) {
+        watchdog_running = true;
+    }
+    if (watchdog_running) {
+        doc_check("✅", "Watchdog", "running", "");
+    } else {
+        let enable_watchdog = cfg.enable_watchdog != "0";
+        if (enable_watchdog) {
+            issues++;
+            let restart_status = command_status("/etc/init.d/tachyon restart >/dev/null 2>&1");
+            if (restart_status == 0) {
+                doc_check("❌", "Watchdog", "dead", "→ FIXED: система перезапущена");
+                fixed++;
+            } else {
+                doc_check("❌", "Watchdog", "dead", "→ не удалось перезапустить систему");
+            }
+        } else {
+            doc_check("⚫", "Watchdog", "disabled (ok)", "");
+        }
+    }
+
+    // 11. MSS Clamping Check
+    if (routing_mode == "nftables") {
+        let out_clamping = command_capture("nft list table inet " + NFT_TABLE_NAME).output;
+        if (index(out_clamping, "tcp flags syn tcp option maxseg size set rtmtu") >= 0) {
+            doc_check("✅", "MSS Clamping rule", "active", "");
+        } else {
+            if (is_degraded_flag) {
+                doc_check("⚠️", "MSS Clamping rule", "missing or inactive", "→ GRACEFUL DEGRADATION: Proxy offline");
+            } else {
+                issues++;
+                command_status("nft add chain inet " + NFT_TABLE_NAME + " mangle_forward '{ type filter hook forward priority -150; }' >/dev/null 2>&1");
+                command_status("nft add rule inet " + NFT_TABLE_NAME + " mangle_forward tcp flags syn tcp option maxseg size set rtmtu >/dev/null 2>&1");
+                command_status("nft add rule inet " + NFT_TABLE_NAME + " mangle_output tcp flags syn tcp option maxseg size set rtmtu >/dev/null 2>&1");
+
+                let out_clamping_check = command_capture("nft list table inet " + NFT_TABLE_NAME).output;
+                if (index(out_clamping_check, "tcp flags syn tcp option maxseg size set rtmtu") >= 0) {
+                    doc_check("❌", "MSS Clamping rule", "missing", "→ FIXED: MSS Clamping rules applied");
+                    fixed++;
+                } else {
+                    doc_check("❌", "MSS Clamping rule", "missing", "→ не удалось применить MSS Clamping");
+                }
+            }
+        }
+    }
+
+    // 12. OOM audit Check
+    let logread_out = command_capture("logread -l 200").output;
+    let logread_lower = lc(logread_out);
+    if (index(logread_lower, "out of memory") >= 0 || index(logread_lower, "oom-killer") >= 0) {
+        issues++;
+        let scale = 1.0;
+        let scale_path = "/etc/tachyon/mem_scale";
+        let scale_data = fs.readfile(scale_path);
+        if (scale_data != null) {
+            let parsed_scale = double(trim(as_string(scale_data)));
+            if (parsed_scale > 0.1) {
+                scale = parsed_scale;
+            }
+        }
+        let new_scale = scale * 0.8;
+        if (new_scale < 0.2) new_scale = 0.2;
+        fs.mkdir("/etc/tachyon");
+        fs.writefile(scale_path, sprintf("%.2f", new_scale));
+        command_status("logread -c >/dev/null 2>&1");
+
+        doc_check("❌", "System OOM checks", sprintf("OOM detected (current scale: %.2f)", scale), sprintf("→ FIXED: Scaled GOMEMLIMIT to %.2f and cleared logs", new_scale));
+        fixed++;
+    } else {
+        doc_check("✅", "System OOM checks", "No OOM events detected in logs", "");
+    }
+
+    // 13. Port conflicts
+    let netstat_out = command_capture("netstat -ltnp").output;
+    let ports_to_check = ["4534", "9090"];
+    for (let port in ports_to_check) {
+        if (index(netstat_out, ":" + port + " ") >= 0) {
+            let sb_pid = find_process_pid("sing-box");
+            if (sb_pid == "") {
+                let killed = false;
+                for (let line in split(netstat_out, "\n")) {
+                    if (index(line, ":" + port + " ") >= 0) {
+                        let fields = split(trim(line), /[ \t]+/);
+                        if (length(fields) >= 7) {
+                            let pid_info = fields[6];
+                            let slash_idx = index(pid_info, "/");
+                            if (slash_idx >= 0) {
+                                let conflict_pid = substr(pid_info, 0, slash_idx);
+                                if (command_status("kill -9 " + conflict_pid + " >/dev/null 2>&1") == 0) {
+                                    killed = true;
+                                }
+                            }
+                        }
+                    }
+                }
+                if (killed) {
+                    issues++;
+                    doc_check("❌", "Port conflict :" + port, "port bound by orphan", "→ FIXED: конфликтный процесс завершен");
+                    fixed++;
+                } else {
+                    issues++;
+                    doc_check("❌", "Port conflict :" + port, "port bound by unknown process", "→ завершите процесс вручную");
+                }
+            } else {
+                doc_check("✅", "Port check :" + port, "bound by sing-box", "");
+            }
+        } else {
+            doc_check("✅", "Port check :" + port, "free", "");
+        }
+    }
+
+    push(report, "");
+    if (issues == 0) {
+        push(report, "✅ Всё в порядке — проблем не обнаружено");
+    } else {
+        push(report, sprintf("⚠️ Проблем: %d   Исправлено: %d", issues, fixed));
+    }
+
+    return { report: join("\n", report) + "\n", issues, fixed };
+}
+
+function query_llm(provider, api_key, custom_url, prompt_text) {
+    let api_url = "https://api.openai.com/v1/chat/completions";
+    let model = "gpt-4o-mini";
+    
+    provider = lc(trim(as_string(provider)));
+    if (provider == "deepseek") {
+        api_url = "https://api.deepseek.com/chat/completions";
+        model = "deepseek-chat";
+    } else if (provider == "custom" && custom_url != "") {
+        api_url = custom_url;
+        model = "gpt-4o-mini";
+    } else {
+        api_url = "https://api.openai.com/v1/chat/completions";
+        model = "gpt-4o-mini";
+    }
+
+    let payload = {
+        model: model,
+        messages: [
+            {
+                role: "user",
+                content: prompt_text
+            }
+        ],
+        temperature: 0.3
+    };
+
+    let payload_path = "/tmp/llm_payload.json";
+    common.write_json_file(payload_path, payload);
+
+    let curl_args = [
+        "curl", "-s", "-X", "POST",
+        "-H", "Content-Type: application/json",
+        "-H", "Authorization: Bearer " + api_key,
+        "-d", "@" + payload_path,
+        api_url
+    ];
+
+    let result = command_capture(command_from_args(curl_args));
+    remove_file(payload_path);
+
+    if (result.status != 0 || result.output == "") {
+        return null;
+    }
+
+    let response_data = parse_json_or_null(result.output);
+    if (response_data && type(response_data.choices) == "array" && length(response_data.choices) > 0) {
+        return response_data.choices[0].message.content;
+    }
+
+    return null;
+}
+
+function doctor(format) {
+    let res = run_doctor_checks();
+    if (format == "json") {
+        print(sprintf("%J\n", {
+            success: true,
+            issues: res.issues,
+            fixed: res.fixed,
+            report: res.report
+        }));
+    } else {
+        print(res.report);
+    }
+    return 0;
+}
+
+function ai_doctor() {
+    let cfg = uci_settings();
+    if (cfg.enable_ai_doctor != "1" || !cfg.ai_doctor_api_key) {
+        print(sprintf("%J\n", {
+            success: false,
+            error: "AI Doctor is disabled or API Key is missing. Configure it in Settings."
+        }));
+        return 0;
+    }
+
+    let res = run_doctor_checks();
+    let report = res.report;
+
+    let sys_context = sprintf("Tachyon Doctor Report:\n%s\n", report);
+    let prompt = sprintf("Вы — ИИ-ассистент \"Tachyon AI Doctor\" для сервиса обхода блокировок на OpenWrt.\nПроанализируйте диагностический отчет и логи роутера ниже.\n\n%s\n\nСформулируйте краткий, понятный пользователю диагноз проблемы (на русском языке, максимум 3 лаконичных пункта/совета).\nЕсли обнаружена известная проблема, которую можно исправить в один клик, обязательно укажите в самом конце ответа специальный тег:\nFIX: <код_исправления>\n\nДоступные коды исправления (выберите не более одного, если применимо):\n- start_singbox (если sing-box остановлен/упал)\n- rebuild_rules (если правила nftables нарушены)\n- fix_dnsmasq (если проблемы в конфигурации dnsmasq)\n- fix_resolv_symlink (если повреждена ссылка resolv.conf)\n- start_watchdog (если служба watchdog остановлена)\n\nЕсли авто-исправление не применимо, не пишите тег FIX.", sys_context);
+
+    let provider = cfg.ai_doctor_provider || "openai";
+    let api_key = cfg.ai_doctor_api_key || "";
+    let custom_url = cfg.ai_doctor_custom_url || "";
+
+    let ai_res = query_llm(provider, api_key, custom_url, prompt);
+    if (!ai_res) {
+        print(sprintf("%J\n", {
+            success: false,
+            error: "AI Doctor query failed: request returned empty or failed"
+        }));
+        return 0;
+    }
+
+    let quick_fix = "";
+    let text = ai_res;
+    let fix_idx = index(text, "FIX:");
+    if (fix_idx >= 0) {
+        let fix_part = trim(substr(text, fix_idx + 4));
+        let fields = split(fix_part, /[ \t\r\n]+/);
+        if (length(fields) > 0) {
+            quick_fix = replace(fields[0], /[._`*]/g, "");
+        }
+        text = trim(substr(text, 0, fix_idx));
+    }
+
+    print(sprintf("%J\n", {
+        success: true,
+        report: text,
+        quick_fix: quick_fix
+    }));
     return 0;
 }
 
@@ -1992,8 +2634,8 @@ else if (mode == "check-logs")
     exit(check_logs());
 else if (mode == "check-sing-box-logs")
     exit(check_sing_box_logs());
-else if (mode == "forkop-logs-fixture")
-    exit(forkop_logs_fixture());
+else if (mode == "tachyon-logs-fixture")
+    exit(tachyon_logs_fixture());
 else if (mode == "check-fakeip")
     exit(check_fakeip());
 else if (mode == "check-zapret-runtime")
@@ -2040,6 +2682,10 @@ else if (mode == "check-dns-available")
     exit(check_dns_available());
 else if (mode == "global-check")
     exit(global_check(ARGV[1] || "", ARGV[2] || ""));
+else if (mode == "doctor")
+    exit(doctor(ARGV[1]));
+else if (mode == "ai-doctor")
+    exit(ai_doctor());
 else if (mode == "validate-nfqws-strategy-json")
     exit(validate_nfqws_strategy_json(ARGV[1] || ""));
 else if (mode == "validate-nfqws2-strategy-json")

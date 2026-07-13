@@ -2,14 +2,14 @@ import { logger } from './logger.service';
 
 type LogFetcher = () => Promise<string> | string;
 
-interface ForkopLogWatcherOptions {
+interface TachyonLogWatcherOptions {
   intervalMs?: number;
   onNewLog?: (line: string) => void;
   maxTrackedLines?: number;
 }
 
-export class ForkopLogWatcher {
-  private static instance: ForkopLogWatcher;
+export class TachyonLogWatcher {
+  private static instance: TachyonLogWatcher;
   private fetcher?: LogFetcher;
   private onNewLog?: (line: string) => void;
   private intervalMs = 5000;
@@ -29,21 +29,21 @@ export class ForkopLogWatcher {
     }
   }
 
-  static getInstance(): ForkopLogWatcher {
-    if (!ForkopLogWatcher.instance) {
-      ForkopLogWatcher.instance = new ForkopLogWatcher();
+  static getInstance(): TachyonLogWatcher {
+    if (!TachyonLogWatcher.instance) {
+      TachyonLogWatcher.instance = new TachyonLogWatcher();
     }
-    return ForkopLogWatcher.instance;
+    return TachyonLogWatcher.instance;
   }
 
-  init(fetcher: LogFetcher, options?: ForkopLogWatcherOptions): void {
+  init(fetcher: LogFetcher, options?: TachyonLogWatcherOptions): void {
     this.fetcher = fetcher;
     this.onNewLog = options?.onNewLog;
     this.intervalMs = options?.intervalMs ?? 5000;
     this.maxTrackedLines = options?.maxTrackedLines ?? 500;
     this.lastLines = new Set();
     logger.info(
-      '[ForkopLogWatcher]',
+      '[TachyonLogWatcher]',
       `initialized (interval: ${this.intervalMs}ms)`,
     );
   }
@@ -54,18 +54,18 @@ export class ForkopLogWatcher {
 
   async checkOnce(): Promise<void> {
     if (!this.fetcher) {
-      logger.warn('[ForkopLogWatcher]', 'fetcher not found');
+      logger.warn('[TachyonLogWatcher]', 'fetcher not found');
       return;
     }
 
     if (this.paused) {
-      logger.debug('[ForkopLogWatcher]', 'skipped check — tab not visible');
+      logger.debug('[TachyonLogWatcher]', 'skipped check — tab not visible');
       return;
     }
 
     if (this.checking) {
       logger.debug(
-        '[ForkopLogWatcher]',
+        '[TachyonLogWatcher]',
         'skipped check — previous check is running',
       );
       return;
@@ -92,7 +92,7 @@ export class ForkopLogWatcher {
         );
       }
     } catch (err) {
-      logger.error('[ForkopLogWatcher]', 'failed to read logs:', err);
+      logger.error('[TachyonLogWatcher]', 'failed to read logs:', err);
     } finally {
       this.checking = false;
     }
@@ -101,7 +101,7 @@ export class ForkopLogWatcher {
   start(): void {
     if (this.running) return;
     if (!this.fetcher) {
-      logger.warn('[ForkopLogWatcher]', 'attempted to start without fetcher');
+      logger.warn('[TachyonLogWatcher]', 'attempted to start without fetcher');
       return;
     }
 
@@ -109,7 +109,7 @@ export class ForkopLogWatcher {
     void this.checkOnce();
     this.timer = setInterval(() => this.checkOnce(), this.intervalMs);
     logger.info(
-      '[ForkopLogWatcher]',
+      '[TachyonLogWatcher]',
       `started (interval: ${this.intervalMs}ms)`,
     );
   }
@@ -118,25 +118,25 @@ export class ForkopLogWatcher {
     if (!this.running) return;
     this.running = false;
     if (this.timer) clearInterval(this.timer);
-    logger.info('[ForkopLogWatcher]', 'stopped');
+    logger.info('[TachyonLogWatcher]', 'stopped');
   }
 
   pause(): void {
     if (!this.running || this.paused) return;
     this.paused = true;
-    logger.info('[ForkopLogWatcher]', 'paused (tab not visible)');
+    logger.info('[TachyonLogWatcher]', 'paused (tab not visible)');
   }
 
   resume(): void {
     if (!this.running || !this.paused) return;
     this.paused = false;
-    logger.info('[ForkopLogWatcher]', 'resumed (tab active)');
+    logger.info('[TachyonLogWatcher]', 'resumed (tab active)');
     void this.checkOnce();
   }
 
   reset(): void {
     this.lastLines = new Set();
     this.checking = false;
-    logger.info('[ForkopLogWatcher]', 'log history reset');
+    logger.info('[TachyonLogWatcher]', 'log history reset');
   }
 }

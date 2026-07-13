@@ -1,11 +1,11 @@
 import { getComponentActionKey } from '../helpers/getComponentActionKey';
 import { normalizeSingBoxVariantFields } from '../helpers/singBoxVariant';
-import type { Forkop } from '../types';
+import type { Tachyon } from '../types';
 import { getLocalActionOverlay } from './localActionOverlay.service';
 import { store } from './store.service';
 import type { StoreType } from './store.service';
 
-type UiActionMap = Partial<Forkop.UiState['actions']>;
+type UiActionMap = Partial<Tachyon.UiState['actions']>;
 
 function isRunningAction(state: { running?: boolean }) {
   return state.running === true;
@@ -13,8 +13,8 @@ function isRunningAction(state: { running?: boolean }) {
 
 function getEmptyUpdatesActions(): StoreType['updatesActions'] {
   return {
-    forkopCheck: { loading: false },
-    forkopInstall: { loading: false },
+    tachyonCheck: { loading: false },
+    tachyonInstall: { loading: false },
     singBoxCheck: { loading: false },
     singBoxInstall: { loading: false },
     singBoxInstallExtended: { loading: false },
@@ -43,8 +43,8 @@ function getEmptyDiagnosticsActions(): StoreType['diagnosticsActions'] {
 }
 
 function normalizeLatencyProgress(
-  progress?: Forkop.LatencyActionProgress,
-): Forkop.LatencyActionProgress | undefined {
+  progress?: Tachyon.LatencyActionProgress,
+): Tachyon.LatencyActionProgress | undefined {
   const total = Math.trunc(Number(progress?.total ?? 0));
 
   if (!Number.isFinite(total) || total <= 0) {
@@ -65,7 +65,7 @@ function normalizeLatencyProgress(
   };
 }
 
-function applyServiceState(uiState: Forkop.UiState) {
+function applyServiceState(uiState: Tachyon.UiState) {
   const currentSystemInfo = store.get().diagnosticsSystemInfo;
   const nextSystemInfo = {
     ...currentSystemInfo,
@@ -88,9 +88,9 @@ function applyServiceState(uiState: Forkop.UiState) {
       failed: false,
       data: {
         singbox: uiState.service.sing_box.running,
-        forkopRunning: uiState.service.forkop.running,
-        forkopEnabled: uiState.service.forkop.enabled,
-        forkopStatus: uiState.service.forkop.status,
+        tachyonRunning: uiState.service.tachyon.running,
+        tachyonEnabled: uiState.service.tachyon.enabled,
+        tachyonStatus: uiState.service.tachyon.status,
       },
     },
     diagnosticsSystemInfo: normalizeSingBoxVariantFields(nextSystemInfo),
@@ -104,7 +104,7 @@ function applyActionState(actions: UiActionMap = {}) {
     current.sectionsWidget.latencyProgressSections;
   const subscriptionUpdatingSections: Record<string, boolean> = {};
   const latencyFetchingSections: Record<string, boolean> = {};
-  const latencyProgressSections: Record<string, Forkop.LatencyActionProgress> =
+  const latencyProgressSections: Record<string, Tachyon.LatencyActionProgress> =
     {};
   const updatesActions = getEmptyUpdatesActions();
   const diagnosticsActions = getEmptyDiagnosticsActions();
@@ -188,7 +188,7 @@ function applyActionState(actions: UiActionMap = {}) {
   });
 }
 
-export function applyUiStateToStore(uiState: Forkop.UiState) {
+export function applyUiStateToStore(uiState: Tachyon.UiState) {
   applyServiceState(uiState);
   applyActionState(uiState.actions);
 }
