@@ -1298,6 +1298,16 @@ installer_text() {
             sing_box_stable) printf '%s\n' "singbox stable" ;;
             sing_box_extended) printf '%s\n' "singbox extended (если нужен xhttp)" ;;
             sing_box_skip_msg) printf '%s\n' "Пропускаю установку sing-box." ;;
+            install_start) printf '%s\n' "=== Начало установки Tachyon ===" ;;
+            pkg_list_update) printf '%s\n' "Обновление списков пакетов..." ;;
+            resolving_release) printf '%s\n' "Определение последней версии релиза Tachyon..." ;;
+            downloading_packages) printf '%s\n' "Скачивание пакетов релиза Tachyon..." ;;
+            cleaning_legacy) printf '%s\n' "Удаление старых или конфликтующих пакетов..." ;;
+            installing_backend) printf '%s\n' "Установка основного пакета Tachyon..." ;;
+            migrating_config) printf '%s\n' "Перенос существующей конфигурации..." ;;
+            installing_ui) printf '%s\n' "Установка пакетов интерфейса LuCI..." ;;
+            installing_singbox) printf '%s\n' "Установка выбранной версии sing-box..." ;;
+            running_postinstall) printf '%s\n' "Применение финальных настроек (post-install)..." ;;
             *) printf '%s\n' "$key" ;;
         esac
         return 0
@@ -1316,6 +1326,16 @@ installer_text() {
         sing_box_stable) printf '%s\n' "singbox stable" ;;
         sing_box_extended) printf '%s\n' "singbox extended (if xhttp is needed)" ;;
         sing_box_skip_msg) printf '%s\n' "Skipping sing-box installation." ;;
+        install_start) printf '%s\n' "=== Starting Tachyon Installation ===" ;;
+        pkg_list_update) printf '%s\n' "Updating package lists..." ;;
+        resolving_release) printf '%s\n' "Resolving latest Tachyon release version..." ;;
+        downloading_packages) printf '%s\n' "Downloading Tachyon release packages..." ;;
+        cleaning_legacy) printf '%s\n' "Cleaning up legacy or conflicting packages..." ;;
+        installing_backend) printf '%s\n' "Installing Tachyon backend package..." ;;
+        migrating_config) printf '%s\n' "Migrating legacy configuration..." ;;
+        installing_ui) printf '%s\n' "Installing Tachyon LuCI web interface packages..." ;;
+        installing_singbox) printf '%s\n' "Installing selected sing-box variant..." ;;
+        running_postinstall) printf '%s\n' "Running post-install configuration..." ;;
         *) printf '%s\n' "$key" ;;
     esac
 }
@@ -1705,17 +1725,34 @@ main() {
     decide_i18n_installation
     select_sing_box_installation
 
+    msg "$(installer_text install_start)"
+
+    msg "$(installer_text pkg_list_update)"
     pkg_list_update || fail "Failed to update package lists"
     ensure_bootstrap_ucode_runtime
 
+    msg "$(installer_text resolving_release)"
     resolve_tachyon_release
+
+    msg "$(installer_text downloading_packages)"
     download_tachyon_packages
 
+    msg "$(installer_text cleaning_legacy)"
     cleanup_legacy_installation
+
+    msg "$(installer_text installing_backend)"
     install_backend_package
+
+    msg "$(installer_text migrating_config)"
     migrate_legacy_configuration
+
+    msg "$(installer_text installing_ui)"
     install_ui_packages
+
+    msg "$(installer_text installing_singbox)"
     install_selected_sing_box
+
+    msg "$(installer_text running_postinstall)"
     post_install
 
     msg "Tachyon $TACHYON_PACKAGE_VERSION has been installed successfully"

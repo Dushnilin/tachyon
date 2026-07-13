@@ -137,6 +137,24 @@ function remove_luci_index_cache() {
 
 function luci_postinst() {
     remove_luci_index_cache();
+    try {
+        let uci = require("uci");
+        let cursor = uci.cursor();
+        cursor.load(CONFIG_NAME);
+        if (cursor.get(CONFIG_NAME, "telegram") == null) {
+            cursor.set(CONFIG_NAME, "telegram", "telegram");
+            cursor.set(CONFIG_NAME, "telegram", "enabled", "0");
+            cursor.set(CONFIG_NAME, "telegram", "poll_interval", "5");
+            cursor.set(CONFIG_NAME, "telegram", "notify_crash", "1");
+            cursor.set(CONFIG_NAME, "telegram", "notify_restart", "1");
+            cursor.set(CONFIG_NAME, "telegram", "notify_server_switch", "1");
+            cursor.set(CONFIG_NAME, "telegram", "notify_subscription", "1");
+            cursor.set(CONFIG_NAME, "telegram", "notify_cert", "1");
+            cursor.set(CONFIG_NAME, "telegram", "notify_dns_leak", "1");
+            cursor.commit(CONFIG_NAME);
+        }
+    } catch(e) {}
+
     if (!PACKAGE_TEST_MODE) {
         if (path_exists("/etc/init.d/rpcd"))
             command_success_from_args([ "/etc/init.d/rpcd", "reload" ]);
