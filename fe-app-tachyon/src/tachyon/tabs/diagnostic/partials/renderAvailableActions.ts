@@ -25,6 +25,7 @@ interface IRenderAvailableActionsProps {
   enable: ActionProps;
   disable: ActionProps;
   globalCheck: ActionProps;
+  doctor: ActionProps;
   viewLogs: ActionProps;
   showSingBoxConfig: ActionProps;
 }
@@ -36,6 +37,7 @@ export function renderAvailableActions({
   enable,
   disable,
   globalCheck,
+  doctor,
   viewLogs,
   showSingBoxConfig,
 }: IRenderAvailableActionsProps) {
@@ -98,6 +100,15 @@ export function renderAvailableActions({
         text: _('Get global check'),
         loading: globalCheck.loading,
         disabled: globalCheck.disabled,
+      }),
+    ]),
+    ...insertIf(doctor.visible, [
+      renderButton({
+        onClick: doctor.onClick,
+        icon: renderRotateCcwIcon24,
+        text: _('Run doctor repair'),
+        loading: doctor.loading,
+        disabled: doctor.disabled,
       }),
     ]),
     ...insertIf(viewLogs.visible, [

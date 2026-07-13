@@ -74,6 +74,7 @@ export namespace Tachyon {
     ENABLE = 'enable',
     DISABLE = 'disable',
     GLOBAL_CHECK = 'global_check',
+    DOCTOR = 'doctor',
     SHOW_SING_BOX_CONFIG = 'show_sing_box_config',
     CHECK_LOGS = 'check_logs',
     CHECK_SING_BOX_LOGS = 'check_sing_box_logs',

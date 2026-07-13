@@ -698,6 +698,31 @@ async function handleShowGlobalCheck() {
   }
 }
 
+async function handleRunDoctor() {
+  setDiagnosticActionLoading('doctor', true);
+
+  try {
+    const doctorRes = await TachyonShellMethods.doctor();
+
+    if (doctorRes.success) {
+      ui.showModal(
+        _('Run doctor repair'),
+        renderModal(doctorRes.data ?? '', 'doctor_repair', {
+          initialAutoRefresh: false,
+        }),
+      );
+    } else {
+      logger.error('[DIAGNOSTIC]', 'handleRunDoctor - e', doctorRes);
+    }
+  } catch (e) {
+    logger.error('[DIAGNOSTIC]', 'handleRunDoctor - e', e);
+  } finally {
+    setDiagnosticActionLoading('doctor', false);
+    // Reload state so the diagnostics dashboard indicators reflect the newly fixed parameters!
+    runChecks();
+  }
+}
+
 async function handleViewLogs() {
   setDiagnosticActionLoading('viewLogs', true);
 
@@ -881,6 +906,12 @@ function renderDiagnosticAvailableActionsWidget() {
       loading: diagnosticsActions.globalCheck.loading,
       visible: true,
       onClick: handleShowGlobalCheck,
+      disabled: utilityActionsDisabled,
+    },
+    doctor: {
+      loading: diagnosticsActions.doctor.loading,
+      visible: true,
+      onClick: handleRunDoctor,
       disabled: utilityActionsDisabled,
     },
     viewLogs: {
