@@ -3,6 +3,10 @@ set -eo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RELOAD_UC="$ROOT_DIR/tachyon/files/usr/lib/service/reload.uc"
+TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
+ucode() {
+  command ucode -L "$TACHYON_LIB" "$@"
+}
 WORK_DIR="$(mktemp -d)"
 
 cleanup() {

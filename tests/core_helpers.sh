@@ -3,6 +3,11 @@ set -eo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 HELPERS_UC="$ROOT_DIR/tachyon/files/usr/lib/core/helpers.uc"
+TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
+
+ucode() {
+  command ucode -L "$TACHYON_LIB" "$@"
+}
 
 fail() {
   printf 'FAIL: %s\n' "$1" >&2

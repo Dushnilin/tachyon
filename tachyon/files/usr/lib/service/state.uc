@@ -19,8 +19,6 @@ let common = require("core.common");
 let as_string = common.as_string;
 let shell_quote = common.shell_quote;
 let read_json_file = common.read_json_file;
-
-let list_option = common.list_option;
 let command_success_from_args = common.command_success_from_args;
 let bool_option = common.bool_option;
 let command_output_from_args = common.command_output_from_args;
@@ -30,6 +28,17 @@ let object_or_empty = common.object_or_empty;
 let read_stdin = common.read_stdin;
 let read_stdin_json = common.read_stdin_json;
 let option = common.option;
+
+function list_option(section, key, fallback) {
+    let value = object_or_empty(section)[key];
+    if (type(value) == "array")
+        return value;
+    value = trim(as_string(value));
+    if (value != "")
+        return split(value, /[ \t\r\n]+/);
+    fallback = as_string(fallback);
+    return fallback == "" ? [] : [ fallback ];
+}
 
 
 

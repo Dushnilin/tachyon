@@ -3,6 +3,9 @@ set -eo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
+ucode() {
+  command ucode -L "$TACHYON_LIB" "$@"
+}
 PARSER="$ROOT_DIR/tachyon/files/usr/lib/subscription/parser.uc"
 WORK_DIR="$(mktemp -d)"
 

@@ -258,6 +258,15 @@ function item_option(section, key, item, option_name, fallback) {
     return as_string(value);
 }
 
+function bool_value(value, fallback) {
+    if (value == null)
+        return !!fallback;
+    if (type(value) == "boolean")
+        return value;
+    value = lc(as_string(value));
+    return value == "1" || value == "true" || value == "yes" || value == "on";
+}
+
 function item_bool(section, key, item, option_name, fallback) {
     return bool_value(item_settings(section, key, item)[option_name], fallback);
 }
@@ -973,6 +982,7 @@ return {
     set_item_sections,
     set_item_sections_from_cursor,
     set_item_sections_from_data,
+    item_index_from_cursor,
     settings_map,
     item_settings,
     item_option,

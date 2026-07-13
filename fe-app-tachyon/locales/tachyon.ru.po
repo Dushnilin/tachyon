@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-07-13 13:18+0300\n"
-"PO-Revision-Date: 2026-07-13 13:18+0300\n"
+"POT-Creation-Date: 2026-07-13 23:43+0300\n"
+"PO-Revision-Date: 2026-07-13 23:43+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -89,6 +89,9 @@ msgstr "Дополнительно отбирать серверы по прот
 msgid "Address"
 msgstr "Адрес"
 
+msgid "Administrator Chat IDs"
+msgstr ""
+
 msgid "Advertise exit node"
 msgstr "Анонсировать exit node"
 
@@ -133,6 +136,9 @@ msgstr "Alter ID"
 
 msgid "Apply section rules only to the specified local IP addresses"
 msgstr "Применять правила секции только к указанным локальным IP-адресам"
+
+msgid "At least one Admin Chat ID is required"
+msgstr ""
 
 msgid "At least one valid domain must be specified."
 msgstr "Нужно указать хотя бы один корректный домен."
@@ -301,6 +307,9 @@ msgstr "Закрыть подключение"
 
 msgid "Closed"
 msgstr "Закрытые"
+
+msgid "Comma-separated list of Telegram user IDs authorized to control the bot."
+msgstr ""
 
 msgid "Component update available"
 msgstr "Доступно обновление компонента"
@@ -590,11 +599,17 @@ msgstr "Включить авторизацию смешанного прокс�
 msgid "Enable Output Network Interface"
 msgstr "Включить выходной сетевой интерфейс"
 
+msgid "Enable Telegram Bot"
+msgstr ""
+
 msgid "Enable YACD"
 msgstr "Включить YACD"
 
 msgid "Enable YACD WAN Access"
 msgstr "Включить доступ YACD WAN"
+
+msgid "Enables the background daemon that polls Telegram for commands and sends notifications."
+msgstr ""
 
 msgid "Enter a complete sing-box inbound object"
 msgstr "Введите полный объект inbound sing-box"
@@ -613,6 +628,9 @@ msgstr "Укажите корректный адрес DNS-сервера"
 
 msgid "Enter HWID"
 msgstr "Укажите HWID"
+
+msgid "Enter the API token obtained from @BotFather."
+msgstr ""
 
 msgid "Enter the HWID sent with subscription requests"
 msgstr "HWID, который будет отправляться при запросах подписки"
@@ -775,6 +793,9 @@ msgstr "Как часто проверять верхние уровни при�
 
 msgid "How often the currently selected server is checked"
 msgstr "Как часто проверяется текущий выбранный сервер"
+
+msgid "How often to check Telegram for new messages (default: 5)."
+msgstr ""
 
 msgid "How often to check the active DNS servers."
 msgstr "Как часто проверять активные DNS-серверы."
@@ -1172,6 +1193,9 @@ msgstr "Наблюдаемые интерфейсы"
 msgid "Monitoring"
 msgstr "Мониторинг"
 
+msgid "Must be a comma-separated list of numeric IDs"
+msgstr ""
+
 msgid "Must be a number in the range of 0 - 10000"
 msgstr "Должно быть числом в диапазоне 0 - 10000"
 
@@ -1271,6 +1295,24 @@ msgstr "Не отвечает"
 msgid "Not running"
 msgstr "Не запущено"
 
+msgid "Notify on Certificate Warnings"
+msgstr ""
+
+msgid "Notify on Core Crashes"
+msgstr ""
+
+msgid "Notify on DNS Leaks"
+msgstr ""
+
+msgid "Notify on Server Switches"
+msgstr ""
+
+msgid "Notify on Service Restarts"
+msgstr ""
+
+msgid "Notify on Subscription Updates"
+msgstr ""
+
 msgid "Obfuscation"
 msgstr "Обфускация"
 
@@ -1360,6 +1402,12 @@ msgstr "Периодически проверять текущий уровен�
 
 msgid "Pin on dashboard"
 msgstr "Закрепить в дашборде"
+
+msgid "Polling Interval (seconds)"
+msgstr ""
+
+msgid "Polling interval must be at least 1 second"
+msgstr ""
 
 msgid "Port cannot be empty"
 msgstr "Порт не может быть пустым"
@@ -1541,6 +1589,9 @@ msgstr "Правила прокси существуют"
 msgid "Run Diagnostic"
 msgstr "Запустить диагностику"
 
+msgid "Run doctor repair"
+msgstr ""
+
 msgid "Russia inside restrictions"
 msgstr "Ограничения Russia inside"
 
@@ -1630,6 +1681,24 @@ msgstr "Выбранная секция"
 
 msgid "Selector and URLTest outbounds must contain a non-empty outbounds array"
 msgstr "Selector и URLTest outbound должны содержать непустой массив outbounds"
+
+msgid "Send a Telegram notification if a potential DNS leak is detected."
+msgstr ""
+
+msgid "Send a Telegram notification if sing-box or nftables rules crash and get auto-restored."
+msgstr ""
+
+msgid "Send a Telegram notification if SSL/TLS certificates are close to expiration."
+msgstr ""
+
+msgid "Send a Telegram notification if the Tachyon service is restarted by the watchdog."
+msgstr ""
+
+msgid "Send a Telegram notification when a URLTest group switches to a new server."
+msgstr ""
+
+msgid "Send a Telegram notification when proxy subscriptions are successfully updated."
+msgstr ""
 
 msgid "Server"
 msgstr "Сервер"
@@ -1874,6 +1943,12 @@ msgstr "Tailscale endpoint"
 msgid "Tailscale hostname"
 msgstr "Hostname Tailscale"
 
+msgid "Telegram Bot"
+msgstr ""
+
+msgid "Telegram Bot Token"
+msgstr ""
+
 msgid "Test latency"
 msgstr "Тестирование задержки"
 
@@ -1951,6 +2026,9 @@ msgstr "Допуск расхождения времени"
 
 msgid "tiny"
 msgstr "tiny"
+
+msgid "Token is required when the bot is enabled"
+msgstr ""
 
 msgid "Tolerance"
 msgstr "Допуск"

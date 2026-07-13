@@ -10,6 +10,21 @@ UPDATES_UC="$ROOT_DIR/tachyon/files/usr/lib/components/updates.uc"
 ACTION_UC="$ROOT_DIR/tachyon/files/usr/lib/components/action.uc"
 WORK_DIR="$(mktemp -d)"
 
+ucode() {
+  local has_L=0
+  for arg in "$@"; do
+    if [ "$arg" = "-L" ]; then
+      has_L=1
+      break
+    fi
+  done
+  if [ "$has_L" -eq 1 ]; then
+    command ucode "$@"
+  else
+    command ucode -L "$TACHYON_LIB" "$@"
+  fi
+}
+
 cleanup() {
   rm -rf "$WORK_DIR"
 }
@@ -137,6 +152,7 @@ assert_eq "extracted payload" "$(cat "$command_success_output")" \
   "component command success preserves explicit output redirection"
 
 awk '
+{ sub(/\r$/, "") }
 prev2 == "    remove_file(archive_file);" &&
 prev1 == "    stop_tachyon_before_sing_box_change();" &&
 $0 == "    let new_version = validate_sing_box_extended_binary(tmp_binary, tmp_dir);" {
@@ -166,6 +182,7 @@ package_runtime_lib="$WORK_DIR/package-runtime-lib"
 package_runtime_bin="$WORK_DIR/package-runtime-bin"
 mkdir -p "$package_runtime_lib/components" "$package_runtime_lib/core" "$package_runtime_lib/singbox" "$package_runtime_bin"
 cp "$UPDATER" "$package_runtime_lib/components/updater.uc"
+cp "$TACHYON_LIB/core/common.uc" "$package_runtime_lib/core/common.uc"
 cat >"$package_runtime_lib/core/constants.uc" <<'UCODE'
 function module_exports() {
   return {};
