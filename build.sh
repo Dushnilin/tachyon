@@ -329,6 +329,8 @@ write_backend_ipk_control() {
 Package: tachyon
 Version: ${RELEASE_VERSION}
 Depends: ${BACKEND_DEPENDS_IPK}
+Provides: forkop
+Replaces: forkop
 License: GPL-2.0-or-later
 Section: net
 URL: ${PROJECT_URL}
@@ -345,6 +347,25 @@ EOF
   cat > "$control_dir/postinst" <<'EOF'
 #!/bin/sh
 [ -n "${IPKG_INSTROOT}" ] && exit 0
+
+rm -rf /usr/lib/lua/luci/i18n/forkop.* /www/luci-static/resources/i18n/forkop.* \
+       /usr/share/luci/menu.d/luci-app-forkop.json /usr/share/rpcd/acl.d/luci-app-forkop.json \
+       /etc/uci-defaults/50_luci-forkop 2>/dev/null || true
+
+if [ -f /etc/config/forkop ]; then
+	mv /etc/config/forkop /etc/config/tachyon
+elif [ -f /etc/config/forkop_plus ]; then
+	mv /etc/config/forkop_plus /etc/config/tachyon
+elif [ -f /etc/config/podkop ]; then
+	mv /etc/config/podkop /etc/config/tachyon
+	TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate-podkop
+	exit 0
+elif [ -f /etc/config/podkop_plus ]; then
+	mv /etc/config/podkop_plus /etc/config/tachyon
+	TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate-podkop
+	exit 0
+fi
+
 TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate
 EOF
 
@@ -371,6 +392,8 @@ write_app_ipk_control() {
 Package: luci-app-tachyon
 Version: ${RELEASE_VERSION}
 Depends: ${APP_DEPENDS_IPK}
+Provides: luci-app-forkop
+Replaces: luci-app-forkop
 License: GPL-2.0-or-later
 Section: luci
 URL: ${PROJECT_URL}
@@ -493,8 +516,24 @@ EOF
 
   cat > "$scripts_dir/backend-post-install.sh" <<'EOF'
 #!/usr/bin/ucode
-if (getenv("IPKG_INSTROOT") == null || getenv("IPKG_INSTROOT") == "")
+if (getenv("IPKG_INSTROOT") == null || getenv("IPKG_INSTROOT") == "") {
+    system("rm -rf /usr/lib/lua/luci/i18n/forkop.* /www/luci-static/resources/i18n/forkop.* /usr/share/luci/menu.d/luci-app-forkop.json /usr/share/rpcd/acl.d/luci-app-forkop.json /etc/uci-defaults/50_luci-forkop 2>/dev/null || true");
+    let fs = require("fs");
+    if (fs.stat("/etc/config/forkop")) {
+        fs.rename("/etc/config/forkop", "/etc/config/tachyon");
+    } else if (fs.stat("/etc/config/forkop_plus")) {
+        fs.rename("/etc/config/forkop_plus", "/etc/config/tachyon");
+    } else if (fs.stat("/etc/config/podkop")) {
+        fs.rename("/etc/config/podkop", "/etc/config/tachyon");
+        system("TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate-podkop");
+        exit(0);
+    } else if (fs.stat("/etc/config/podkop_plus")) {
+        fs.rename("/etc/config/podkop_plus", "/etc/config/tachyon");
+        system("TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate-podkop");
+        exit(0);
+    }
     exit(system("TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate"));
+}
 exit(0);
 EOF
 
@@ -514,8 +553,24 @@ EOF
 
   cat > "$scripts_dir/backend-post-upgrade.sh" <<'EOF'
 #!/usr/bin/ucode
-if (getenv("IPKG_INSTROOT") == null || getenv("IPKG_INSTROOT") == "")
+if (getenv("IPKG_INSTROOT") == null || getenv("IPKG_INSTROOT") == "") {
+    system("rm -rf /usr/lib/lua/luci/i18n/forkop.* /www/luci-static/resources/i18n/forkop.* /usr/share/luci/menu.d/luci-app-forkop.json /usr/share/rpcd/acl.d/luci-app-forkop.json /etc/uci-defaults/50_luci-forkop 2>/dev/null || true");
+    let fs = require("fs");
+    if (fs.stat("/etc/config/forkop")) {
+        fs.rename("/etc/config/forkop", "/etc/config/tachyon");
+    } else if (fs.stat("/etc/config/forkop_plus")) {
+        fs.rename("/etc/config/forkop_plus", "/etc/config/tachyon");
+    } else if (fs.stat("/etc/config/podkop")) {
+        fs.rename("/etc/config/podkop", "/etc/config/tachyon");
+        system("TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate-podkop");
+        exit(0);
+    } else if (fs.stat("/etc/config/podkop_plus")) {
+        fs.rename("/etc/config/podkop_plus", "/etc/config/tachyon");
+        system("TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate-podkop");
+        exit(0);
+    }
     exit(system("TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate"));
+}
 exit(0);
 EOF
 
@@ -640,6 +695,13 @@ build_apk_package() {
   local maintainer="${10}"
   local stderr_file
 
+  local extra_args=()
+  if [[ "$package_name" == "tachyon" ]]; then
+    extra_args+=(-I "provides:forkop" -I "replaces:forkop")
+  elif [[ "$package_name" == "luci-app-tachyon" ]]; then
+    extra_args+=(-I "provides:luci-app-forkop" -I "replaces:luci-app-forkop")
+  fi
+
   rm -rf "$temp_root" "$temp_scripts"
   cp -a "$files_root" "$temp_root"
   cp -a "$scripts_dir" "$temp_scripts"
@@ -658,6 +720,7 @@ build_apk_package() {
       -I "maintainer:${maintainer}" \
       -I "url:${PROJECT_URL}" \
       -I "depends:${depends}" \
+      "${extra_args[@]}" \
       -s "pre-install:${temp_scripts}/${script_prefix}-pre-install.sh" \
       -s "post-install:${temp_scripts}/${script_prefix}-post-install.sh" \
       -s "pre-deinstall:${temp_scripts}/${script_prefix}-pre-deinstall.sh" \
@@ -677,6 +740,7 @@ build_apk_package() {
       -I "maintainer:${maintainer}" \
       -I "url:${PROJECT_URL}" \
       -I "depends:${depends}" \
+      "${extra_args[@]}" \
       -s "pre-install:${temp_scripts}/${script_prefix}-pre-install.sh" \
       -s "post-install:${temp_scripts}/${script_prefix}-post-install.sh" \
       -s "pre-deinstall:${temp_scripts}/${script_prefix}-pre-deinstall.sh" \
@@ -699,6 +763,7 @@ build_apk_package() {
         -I 'maintainer:${maintainer}' \
         -I 'url:${PROJECT_URL}' \
         -I 'depends:${depends}' \
+        '${extra_args[@]}' \
         -s pre-install:'$temp_scripts/${script_prefix}-pre-install.sh' \
         -s post-install:'$temp_scripts/${script_prefix}-post-install.sh' \
         -s pre-deinstall:'$temp_scripts/${script_prefix}-pre-deinstall.sh' \
@@ -721,6 +786,7 @@ build_apk_package() {
         -I 'maintainer:${maintainer}' \
         -I 'url:${PROJECT_URL}' \
         -I 'depends:${depends}' \
+        '${extra_args[@]}' \
         -s pre-install:'$temp_scripts/${script_prefix}-pre-install.sh' \
         -s post-install:'$temp_scripts/${script_prefix}-post-install.sh' \
         -s pre-deinstall:'$temp_scripts/${script_prefix}-pre-deinstall.sh' \
