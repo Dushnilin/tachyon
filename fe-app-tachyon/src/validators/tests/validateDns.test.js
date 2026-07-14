@@ -19,7 +19,13 @@ export const additionalValidDns = [
 
 const validDns = [...validIPs, ...validDomains, ...additionalValidDns];
 
-const invalidDns = [...invalidIPs, ...invalidDomains];
+const invalidDns = [
+  ...invalidIPs,
+  ...invalidDomains,
+  ['Non-numeric port', '8.8.8.8:abc'],
+  ['Port too high', 'dns.example.com:99999'],
+  ['Zero IPv6 port', '[2606:4700:4700::1111]:0'],
+];
 
 describe('validateDns', () => {
   describe.each(validDns)('Valid dns: %s', (_desc, domain) => {

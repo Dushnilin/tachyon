@@ -48,10 +48,11 @@ invalid_json="$(ucode -L "$TACHYON_LIB" -- "$VALIDATOR" validate-json '--port 10
 assert_json_field "$invalid_json" valid false
 assert_json_field "$invalid_json" needle --port
 
-if ucode -L "$TACHYON_LIB" -- "$VALIDATOR" validate '--transparent' >/tmp/byedpi-validator.out 2>/dev/null; then
+validator_output="$WORK_DIR/byedpi-validator.out"
+if ucode -L "$TACHYON_LIB" -- "$VALIDATOR" validate '--transparent' >"$validator_output" 2>/dev/null; then
   fail "controlled transparent mode should be rejected"
 fi
-grep -q 'Transparent proxy mode is incompatible' /tmp/byedpi-validator.out ||
+grep -q 'Transparent proxy mode is incompatible' "$validator_output" ||
   fail "reject message should explain transparent mode"
 
 if ucode -L "$TACHYON_LIB" -- "$VALIDATOR" validate '--disorder --fake example.org' >/dev/null 2>&1; then

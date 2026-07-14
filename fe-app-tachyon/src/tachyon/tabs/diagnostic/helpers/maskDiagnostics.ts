@@ -1,4 +1,4 @@
-const MASKED_VALUE = 'MASKED';
+﻿const MASKED_VALUE = 'MASKED';
 
 const SING_BOX_MASKED_KEYS = new Set([
   'auth_key',
@@ -30,6 +30,7 @@ const SING_BOX_MASKED_KEYS = new Set([
 
 const TACHYON_MASK_AFTER_TOKEN = [
   'option proxy_string',
+  'option hwid',
   'option subscription_url',
   'list subscription_urls',
   'list urltest_proxy_links',

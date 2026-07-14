@@ -5,22 +5,6 @@ let as_string = common.as_string;
 
 
 
-function str_last_index(value, needle) {
-    value = as_string(value);
-    needle = as_string(needle);
-    let result = -1;
-    let start = 0;
-
-    while (true) {
-        let offset = index(substr(value, start), needle);
-        if (offset < 0)
-            return result;
-
-        result = start + offset;
-        start = result + length(needle);
-    }
-}
-
 function decimal_text(value, strict) {
     value = as_string(value);
     if (value == "" || match(value, /^[0-9]+$/) == null)

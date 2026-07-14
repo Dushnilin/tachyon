@@ -1,4 +1,4 @@
-#!/usr/bin/env ucode
+﻿#!/usr/bin/env ucode
 
 let fs = require("fs");
 let uci_core = require("core.uci");

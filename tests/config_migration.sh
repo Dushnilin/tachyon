@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+﻿#!/usr/bin/env bash
 set -eo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -527,6 +527,55 @@ ucode -L "$TACHYON_LIB" "$MIGRATION" migrate
 if grep -Fq 'commit tachyon' "$WORK_DIR/runtime-version.log"; then
   fail "completed named migrations must be idempotent"
 fi
+
+mkdir -p \
+  "$WORK_DIR/cache-migration/runtime/section-cache" \
+  "$WORK_DIR/cache-migration/runtime/subscription-links" \
+  "$WORK_DIR/cache-migration/persistent"
+printf '7\n' >"$WORK_DIR/cache-migration/runtime/cache-format"
+printf 'stale\n' >"$WORK_DIR/cache-migration/runtime/section-cache/stale.json"
+printf 'stale\n' >"$WORK_DIR/cache-migration/runtime/subscription-links/stale.json"
+printf '7\n' >"$WORK_DIR/cache-migration/persistent/cache-format"
+cat >"$WORK_DIR/cache-migration/persistent/proxy-subscription-1.json" <<'JSON'
+{
+  "version": 1,
+  "format": "sing-box-json",
+  "outbounds": [
+    {
+      "type": "vless",
+      "tag": "stable-cache-node",
+      "server": "stable.example",
+      "server_port": 443,
+      "uuid": "00000000-0000-4000-8000-000000000001"
+    }
+  ]
+}
+JSON
+
+TACHYON_UCI_STATE_FILE="$WORK_DIR/runtime-version.state" \
+TACHYON_UCI_LOG_FILE="$WORK_DIR/runtime-version.log" \
+TACHYON_CONFIG_NAME="tachyon" \
+TMP_SUBSCRIPTION_FOLDER="$WORK_DIR/cache-migration/tmp-subscriptions" \
+TACHYON_RUNTIME_STATE_DIR="$WORK_DIR/cache-migration/runtime" \
+TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR="$WORK_DIR/cache-migration/persistent" \
+TACHYON_INTERNAL_CONFIG_TRIGGER_GUARD="$WORK_DIR/internal-config-change" \
+ucode -L "$TACHYON_LIB" "$MIGRATION" migrate
+
+[ "$(sed -n '1p' "$WORK_DIR/cache-migration/runtime/cache-format")" = "8" ] ||
+  fail "package migration must advance the runtime cache format"
+[ ! -e "$WORK_DIR/cache-migration/runtime/section-cache/stale.json" ] ||
+  fail "package migration must clear the legacy section cache"
+[ ! -d "$WORK_DIR/cache-migration/runtime/subscription-links" ] ||
+  fail "package migration must remove the retired subscription link cache"
+node - "$WORK_DIR/cache-migration/persistent/proxy-subscription-1.json" <<'NODE'
+const fs = require('fs');
+const subscription = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+const outbound = subscription.outbounds[0];
+if (outbound.server !== 'stable.example' || !outbound.share_link?.startsWith('vless://')) {
+  console.error('package migration must preserve stable subscription data and backfill its direct link');
+  process.exit(1);
+}
+NODE
 
 : >"$WORK_DIR/uci-commit.log"
 : >"$WORK_DIR/uci-commit.state"

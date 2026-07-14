@@ -1,6 +1,6 @@
 import { ValidationResult } from './types';
 import { parseQueryString } from '../helpers/parseQueryString';
-import { parseHostPort } from './hostPort';
+import { isValidPort, parseHostPort } from './hostPort';
 
 export function validateVlessUrl(url: string): ValidationResult {
   try {
@@ -51,8 +51,7 @@ export function validateVlessUrl(url: string): ValidationResult {
       return { valid: false, message: 'Invalid VLESS URL: missing port' };
 
     const cleanedPort = port.replace('/', '');
-    const portNum = Number(cleanedPort);
-    if (!Number.isInteger(portNum) || portNum < 1 || portNum > 65535)
+    if (!isValidPort(cleanedPort))
       return {
         valid: false,
         message: 'Invalid VLESS URL: invalid port number',

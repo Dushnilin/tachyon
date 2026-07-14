@@ -184,19 +184,6 @@ function strip_first_scheme_marker(value) {
     return marker >= 0 ? substr(value, marker + 3) : value;
 }
 
-function str_last_index(value, needle) {
-    value = as_string(value);
-    needle = as_string(needle);
-    if (needle == "")
-        return length(value);
-
-    for (let i = length(value) - length(needle); i >= 0; i--)
-        if (substr(value, i, length(needle)) == needle)
-            return i;
-
-    return -1;
-}
-
 function url_get_scheme(value) {
     value = as_string(value);
     let marker = index(value, "://");
@@ -268,7 +255,7 @@ function url_get_query_param(value, param) {
 
 function url_file_extension(value) {
     let basename = as_string(value);
-    let slash = str_last_index(basename, "/");
+    let slash = rindex(basename, "/");
     if (slash >= 0)
         basename = substr(basename, slash + 1);
 
@@ -280,7 +267,7 @@ function url_file_extension(value) {
     if (fragment >= 0)
         basename = substr(basename, 0, fragment);
 
-    let dot = str_last_index(basename, ".");
+    let dot = rindex(basename, ".");
     if (dot >= 0)
         print(substr(basename, dot + 1), "\n");
     else

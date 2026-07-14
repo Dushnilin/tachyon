@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+﻿import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   getZapretStatus: vi.fn(),
@@ -58,7 +58,7 @@ describe('provider diagnostics checks', () => {
 
     await expect(runZapretCheck()).resolves.toBeUndefined();
 
-    const result = mocks.updateCheckStore.mock.calls.at(-1)?.[0];
+    const result = mocks.updateCheckStore.mock.calls.slice(-1)[0]?.[0];
 
     expect(result).toMatchObject({
       state: 'success',
@@ -95,7 +95,7 @@ describe('provider diagnostics checks', () => {
 
     await expect(runZapretCheck()).resolves.toBeUndefined();
 
-    const result = mocks.updateCheckStore.mock.calls.at(-1)?.[0];
+    const result = mocks.updateCheckStore.mock.calls.slice(-1)[0]?.[0];
 
     expect(result).toMatchObject({
       state: 'error',
@@ -122,7 +122,7 @@ describe('provider diagnostics checks', () => {
 
     await expect(runZapret2Check()).resolves.toBeUndefined();
 
-    const result = mocks.updateCheckStore.mock.calls.at(-1)?.[0];
+    const result = mocks.updateCheckStore.mock.calls.slice(-1)[0]?.[0];
 
     expect(result).toMatchObject({
       state: 'success',
@@ -171,7 +171,7 @@ describe('provider diagnostics checks', () => {
 
     await expect(runByedpiCheck()).resolves.toBeUndefined();
 
-    const result = mocks.updateCheckStore.mock.calls.at(-1)?.[0];
+    const result = mocks.updateCheckStore.mock.calls.slice(-1)[0]?.[0];
 
     expect(result).toMatchObject({
       state: 'success',

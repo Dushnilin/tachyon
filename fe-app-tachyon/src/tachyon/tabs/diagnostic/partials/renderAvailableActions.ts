@@ -1,4 +1,4 @@
-import { renderButton } from '../../../../partials';
+﻿import { renderButton } from '../../../../partials';
 import {
   renderCircleCheckBigIcon24,
   renderCirclePlayIcon24,

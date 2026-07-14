@@ -39,15 +39,15 @@ vi.mock('../../../services/runtimeUiState.service', () => ({
 describe('dashboard initController', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    globalThis.E = vi
+    (globalThis as any).E = vi
       .fn()
       .mockImplementation((tag) => document.createElement(tag));
-    globalThis.ui = {
+    (globalThis as any).ui = {
       showModal: vi.fn(),
       hideModal: vi.fn(),
       addNotification: vi.fn(),
     } as any;
-    globalThis.uci = {
+    (globalThis as any).uci = {
       sections: vi.fn().mockResolvedValue([]),
     } as any;
   });

@@ -60,10 +60,11 @@ fi
 assert_json_field "$invalid_nfqws" valid false
 assert_json_field "$invalid_nfqws" needle --hostlist
 
-if ucode -L "$TACHYON_LIB" -- "$VALIDATOR" validate nfqws '--qnum=200' >/tmp/zapret-validator.out 2>/dev/null; then
+validator_output="$WORK_DIR/zapret-validator.out"
+if ucode -L "$TACHYON_LIB" -- "$VALIDATOR" validate nfqws '--qnum=200' >"$validator_output" 2>/dev/null; then
   fail "qnum override should be rejected for nfqws"
 fi
-grep -q 'NFQUEUE number is assigned by Tachyon' /tmp/zapret-validator.out ||
+grep -q 'NFQUEUE number is assigned by Tachyon' "$validator_output" ||
   fail "qnum rejection should explain ownership"
 
 valid_nfqws2="$(ucode -L "$TACHYON_LIB" -- "$ZAPRET2_VALIDATOR" validate-json nfqws2 '--name tachyon --intercept=1')"

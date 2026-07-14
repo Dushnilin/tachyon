@@ -256,5 +256,4 @@ if (!contains(selector.outbounds, "proxy-2-out"))
 if (!contains(selector.outbounds, "proxy-urltest-cfg020001-out"))
     die("URLTest outbound should remain in selector\n");
 ' "$hide_added_output" || fail "URLTest hide added selector regression"
-
 printf 'URLTest interrupt checks passed\n'

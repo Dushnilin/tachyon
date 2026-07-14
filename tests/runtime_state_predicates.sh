@@ -5,6 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
 STATE_UC="$ROOT_DIR/tachyon/files/usr/lib/service/state.uc"
 NFT_UC="$ROOT_DIR/tachyon/files/usr/lib/nft/apply.uc"
+UCODE_BIN="$(command -v ucode)"
 WORK_DIR="$(mktemp -d)"
 export ZAPRET_DEFAULT_NFQWS_OPT="--default-zapret"
 export ZAPRET2_DEFAULT_NFQWS2_OPT="--default-zapret2"
@@ -124,6 +125,79 @@ assert_eq "0" \
 assert_eq "0" \
   "$(state_ucode sing-box-reload-previous-pid-fixture missing old new)" \
   "missing sing-box PID replacement constraint"
+if state_ucode sing-box-runtime-reload-needed-fixture same same 0 >/dev/null 2>&1; then
+  fail "unchanged sing-box config must skip an ordinary runtime reload"
+fi
+state_ucode sing-box-runtime-reload-needed-fixture old new 0 >/dev/null ||
+  fail "changed sing-box config must reload the runtime"
+state_ucode sing-box-runtime-reload-needed-fixture same same 1 >/dev/null ||
+  fail "forced runtime reload must reload unchanged sing-box config"
+
+assert_eq "8" \
+  "$(state_ucode process-age-seconds-fixture 786161359 786162159)" \
+  "process age on a shared kernel tick scale"
+if state_ucode process-age-seconds-fixture 786162159 786161359 >/dev/null 2>&1; then
+  fail "process age must reject a current tick value older than the process"
+fi
+if sed -n '/^function process_age_seconds(pid) {$/,/^}$/p' "$STATE_UC" | grep -Fq '/proc/uptime'; then
+  fail "process age must not mix process start ticks with virtualized /proc/uptime"
+fi
+
+mkdir -p "$WORK_DIR/stable-start-bin"
+cp "$(command -v sleep)" "$WORK_DIR/stable-start-bin/sing-box"
+cat >"$WORK_DIR/stable-start-bin/ubus" <<'SH'
+#!/usr/bin/env bash
+set -eo pipefail
+
+pid="$(cat "${SING_BOX_TEST_PID_FILE:?}")"
+if [ -r "/proc/$pid/exe" ] && [ "$(basename "$(readlink "/proc/$pid/exe")")" = "sing-box" ]; then
+  printf '{"sing-box":{"instances":{"instance1":{"running":true,"pid":%s}}}}\n' "$pid"
+else
+  printf '{"sing-box":{"instances":{}}}\n'
+fi
+SH
+cat >"$WORK_DIR/stable-start-bin/nft" <<'SH'
+#!/usr/bin/env bash
+exit 0
+SH
+cat >"$WORK_DIR/stable-start-bin/ucode" <<'SH'
+#!/usr/bin/env bash
+if [ "$#" -ge 4 ] && [ "$1" = "-L" ] && [ "${3##*/}" = "apply.uc" ] && [ "$4" = "tproxy-route-rule-present" ]; then
+  exit 0
+fi
+exec "${REAL_UCODE:?}" "$@"
+SH
+chmod 0755 "$WORK_DIR/stable-start-bin/ubus" "$WORK_DIR/stable-start-bin/nft" "$WORK_DIR/stable-start-bin/ucode"
+
+"$WORK_DIR/stable-start-bin/sing-box" 30 &
+sing_box_pid=$!
+printf '%s\n' "$sing_box_pid" >"$WORK_DIR/sing-box.pid"
+if ! PATH="$WORK_DIR/stable-start-bin:$PATH" \
+  REAL_UCODE="$UCODE_BIN" \
+  SING_BOX_TEST_PID_FILE="$WORK_DIR/sing-box.pid" \
+  state_ucode sing-box-service-running; then
+  kill "$sing_box_pid" >/dev/null 2>&1 || true
+  wait "$sing_box_pid" 2>/dev/null || true
+  fail "stable-start fixture must expose a running sing-box process"
+fi
+if ! PATH="$WORK_DIR/stable-start-bin:$PATH" \
+  REAL_UCODE="$UCODE_BIN" \
+  SING_BOX_TEST_PID_FILE="$WORK_DIR/sing-box.pid" \
+  state_ucode tachyon-running tachyon TachyonTable 0x00100000; then
+  kill "$sing_box_pid" >/dev/null 2>&1 || true
+  wait "$sing_box_pid" 2>/dev/null || true
+  fail "stable-start fixture must expose configured Tachyon networking"
+fi
+if ! PATH="$WORK_DIR/stable-start-bin:$PATH" \
+  REAL_UCODE="$UCODE_BIN" \
+  SING_BOX_TEST_PID_FILE="$WORK_DIR/sing-box.pid" \
+  state_ucode wait-tachyon-stable-start tachyon TachyonTable 0x00100000 2 2; then
+  kill "$sing_box_pid" >/dev/null 2>&1 || true
+  wait "$sing_box_pid" 2>/dev/null || true
+  fail "stable-start wait must check runtime state after its final sleep"
+fi
+kill "$sing_box_pid" >/dev/null 2>&1 || true
+wait "$sing_box_pid" 2>/dev/null || true
 
 PENDING_RELOAD_FILE="$WORK_DIR/reload.pending"
 state_ucode mark-pending-reload "$PENDING_RELOAD_FILE" "reload_busy"
@@ -351,6 +425,24 @@ cat >"$WORK_DIR/sing-box-signature.json" <<'JSON'
       "enabled": "1",
       "action": "proxy",
       "selector_proxy_links": [ "vless://one", "vless://two" ],
+      "dashboard_filter_mode": "mixed",
+      "dashboard_detect_server_country": "country_is",
+      "dashboard_include_countries": [ "NL" ],
+      "dashboard_include_outbounds": [ "node-a" ],
+      "dashboard_include_regex": [ "^A" ],
+      "dashboard_include_proxy_parameters": "1",
+      "dashboard_include_protocols": [ "vless" ],
+      "dashboard_include_transports": [ "ws" ],
+      "dashboard_include_securities": [ "reality" ],
+      "dashboard_include_groups": [ "urltest" ],
+      "dashboard_exclude_countries": [ "RU" ],
+      "dashboard_exclude_outbounds": [ "node-b" ],
+      "dashboard_exclude_regex": [ "backup" ],
+      "dashboard_exclude_proxy_parameters": "1",
+      "dashboard_exclude_protocols": [ "http" ],
+      "dashboard_exclude_transports": [ "tcp" ],
+      "dashboard_exclude_securities": [ "none" ],
+      "dashboard_exclude_groups": [ "urltest" ],
       "subscription_urls": [ "https://example.com/sub.txt" ],
       "subscription_url_settings": "{\"https://example.com/sub.txt\":{\"prefix_nodes\":\"1\",\"node_prefix\":\"Example\"}}",
       "urltest_enabled": "1",
@@ -502,9 +594,11 @@ proxy
 [rule.proxy1.legacy_outbound_json]
 
 [rule.proxy1.urltests]
-[ { "id": "urltest", "display_name": "Fastest", "check_interval": "3m", "tolerance": "75", "testing_url": "https://www.gstatic.com/generate_204", "idle_timeout": "", "interrupt_exist_connections": "1", "pin_dashboard": "1", "hide_added_outbounds": "0", "filter_mode": "exclude", "detect_server_country": "1", "include_countries": [ ], "include_outbounds": [ "node-a" ], "include_regex": [ ], "exclude_countries": [ "RU" ], "exclude_outbounds": [ ], "exclude_regex": [ ] } ]
+[ { "id": "urltest", "display_name": "Fastest", "check_interval": "3m", "tolerance": "75", "testing_url": "https://www.gstatic.com/generate_204", "idle_timeout": "", "interrupt_exist_connections": "1", "pin_dashboard": "1", "filter_mode": "exclude", "detect_server_country": "1", "include_countries": [ ], "include_outbounds": [ "node-a" ], "include_regex": [ ], "exclude_countries": [ "RU" ], "exclude_outbounds": [ ], "exclude_regex": [ ] } ]
 [rule.proxy1.priority_groups]
 [ ]
+[rule.proxy1.dashboard_filter]
+{ "filter_mode": "mixed", "detect_server_country": "country_is", "include_countries": [ "NL" ], "include_outbounds": [ "node-a" ], "include_regex": [ "^A" ], "include_proxy_parameters": "1", "include_protocols": [ "vless" ], "include_transports": [ "ws" ], "include_securities": [ "reality" ], "include_groups": [ "urltest" ], "exclude_countries": [ "RU" ], "exclude_outbounds": [ "node-b" ], "exclude_regex": [ "backup" ], "exclude_proxy_parameters": "1", "exclude_protocols": [ "http" ], "exclude_transports": [ "tcp" ], "exclude_securities": [ "none" ], "exclude_groups": [ "urltest" ] }
 [rule.proxy1.urltest_enabled]
 1
 [rule.proxy1.detect_server_country]
@@ -589,6 +683,8 @@ outbound
 [ ]
 [rule.out1.priority_groups]
 [ ]
+[rule.out1.dashboard_filter]
+{ "filter_mode": "disabled", "detect_server_country": "flag_emoji", "include_countries": [ ], "include_outbounds": [ ], "include_regex": [ ], "include_proxy_parameters": "0", "include_protocols": [ ], "include_transports": [ ], "include_securities": [ ], "include_groups": [ ], "exclude_countries": [ ], "exclude_outbounds": [ ], "exclude_regex": [ ], "exclude_proxy_parameters": "0", "exclude_protocols": [ ], "exclude_transports": [ ], "exclude_securities": [ ], "exclude_groups": [ ] }
 [rule.out1.urltest_enabled]
 0
 [rule.out1.detect_server_country]
@@ -695,6 +791,8 @@ wg0
 [ ]
 [rule.vpn1.priority_groups]
 [ ]
+[rule.vpn1.dashboard_filter]
+{ "filter_mode": "disabled", "detect_server_country": "flag_emoji", "include_countries": [ ], "include_outbounds": [ ], "include_regex": [ ], "include_proxy_parameters": "0", "include_protocols": [ ], "include_transports": [ ], "include_securities": [ ], "include_groups": [ ], "exclude_countries": [ ], "exclude_outbounds": [ ], "exclude_regex": [ ], "exclude_proxy_parameters": "0", "exclude_protocols": [ ], "exclude_transports": [ ], "exclude_securities": [ ], "exclude_groups": [ ] }
 [rule.vpn1.urltest_enabled]
 0
 [rule.vpn1.detect_server_country]

@@ -1,4 +1,4 @@
-"use strict";
+﻿"use strict";
 "require baseclass";
 "require form";
 "require view.tachyon.local_devices as localDevices";

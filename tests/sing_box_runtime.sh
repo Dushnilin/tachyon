@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+﻿#!/usr/bin/env bash
 set -eo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -856,7 +856,7 @@ JSON
 mkdir -p "$WORK_DIR/subscriptions" "$WORK_DIR/persistent-subscription-cache"
 for source in proxy-subscription-1 proxy-subscription-2 test-subscription-1; do
   cat >"$WORK_DIR/subscriptions/$source.json" <<'JSON'
-{"outbounds":[{"type":"socks","tag":"subscription-proxy","server":"127.0.0.1","server_port":1080,"share_link":"socks5://127.0.0.1:1080#subscription-proxy"}]}
+{"outbounds":[{"type":"socks","tag":"subscription-proxy","server":"127.0.0.1","server_port":1080}]}
 JSON
   printf '%s' 'https://example.com/sub.txt' >"$WORK_DIR/subscriptions/$source.url"
   cat >"$WORK_DIR/persistent-subscription-cache/$source.metadata.json" <<'JSON'
@@ -1304,8 +1304,9 @@ assert(grouped_state.outboundMetadata.names["Provider Group"] == "Provider Group
 assert(grouped_state.outboundMetadata.names["grouped-out-1"] == "grouped-out", "hidden leaf metadata visible");
 assert(length(grouped_state.urltestGroups["Provider Group"].outbounds) == 2, "provider group membership cached");
 assert(grouped_state.urltestGroups["Provider Group"].outbounds[0] == "grouped-out-1", "provider group membership retagged");
-assert(grouped_state.linkRefs["Provider Group"] == null, "provider group has no source link ref");
-assert(grouped_state.linkRefs["grouped-out-1"].sourceIndex == 2, "hidden leaf keeps source link ref");
+assert(grouped_state.linkRefs == null, "section cache omits source link refs");
+assert(index(grouped_state.links["grouped-out-1"], "vless://") == 0, "hidden leaf caches its direct proxy link");
+assert(index(grouped_state.links["leaf"], "vless://") == 0, "second hidden leaf caches its direct proxy link");
 let subscription_group_disabled = cfg("subscription-group-disabled");
 assert(outbound(subscription_group_disabled, "Provider Group") == null, "provider URLTest group skipped when import is disabled");
 let disabled_grouped_leaf = outbound(subscription_group_disabled, "grouped-out-1");
@@ -1315,7 +1316,8 @@ let disabled_grouped_selector = outbound(subscription_group_disabled, "grouped-o
 assert(disabled_grouped_selector && contains(disabled_grouped_selector.outbounds, "grouped-out-1") && contains(disabled_grouped_selector.outbounds, "leaf"), "selector exposes URLTest group leaves when import is disabled");
 let disabled_grouped_state = cfg("subscription-group-disabled.json.section-cache/grouped");
 assert(disabled_grouped_state.urltestGroups["Provider Group"] == null, "skipped provider group is not cached as URLTest");
-assert(disabled_grouped_state.linkRefs["grouped-out-1"].sourceIndex == 2, "visible leaf keeps source link ref when group import is disabled");
+assert(disabled_grouped_state.linkRefs == null, "disabled group cache omits source link refs");
+assert(index(disabled_grouped_state.links["grouped-out-1"], "vless://") == 0, "visible leaf caches its direct proxy link when group import is disabled");
 
 let xhttp_stable = cfg("subscription-xhttp-stable");
 assert(outbound(xhttp_stable, "xhttp-node") == null, "stable sing-box excludes XHTTP subscription leaf");
@@ -1342,6 +1344,7 @@ for (let tag, link in proxy_cache.links || {})
     if (link == "socks5://127.0.0.1:1080#subscription-proxy")
         proxy_share_link_cached = true;
 assert(proxy_share_link_cached, "subscription share link cached for instant dashboard copy");
+assert(proxy_cache.linkRefs == null && test_cache.linkRefs == null, "subscription caches contain direct links without source refs");
 let proxy_metadata = as_array(proxy_cache.subscriptionMetadata);
 let test_metadata = as_array(test_cache.subscriptionMetadata);
 assert(length(proxy_metadata) == 2, "duplicate subscription URL metadata kept for both proxy sources");

@@ -1,5 +1,5 @@
 import { validateDomain } from './validateDomain';
-import { parseHostPort, unbracketHost } from './hostPort';
+import { isValidPort, parseHostPort, unbracketHost } from './hostPort';
 import { validateIP } from './validateIp';
 import { ValidationResult } from './types';
 
@@ -16,6 +16,10 @@ export function validateDNS(value: string): ValidationResult {
   const domainValue = parsedHostPort
     ? host + (pathParts.length > 0 ? `/${pathParts.join('/')}` : '')
     : value.replace(/:(\d+)(?=\/|$)/, '');
+
+  if (parsedHostPort && !isValidPort(parsedHostPort.port)) {
+    return { valid: false, message: _('Invalid DNS server port') };
+  }
 
   if (validateIP(host).valid) {
     return { valid: true, message: _('Valid') };

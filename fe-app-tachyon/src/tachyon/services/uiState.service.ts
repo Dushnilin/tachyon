@@ -1,4 +1,4 @@
-import { getComponentActionKey } from '../helpers/getComponentActionKey';
+﻿import { getComponentActionKey } from '../helpers/getComponentActionKey';
 import { normalizeSingBoxVariantFields } from '../helpers/singBoxVariant';
 import type { Tachyon } from '../types';
 import { getLocalActionOverlay } from './localActionOverlay.service';

@@ -1,5 +1,5 @@
 import { ValidationResult } from './types';
-import { parseHostPort } from './hostPort';
+import { isValidPort, parseHostPort } from './hostPort';
 
 // TODO refactor current validation and add tests
 export function validateShadowsocksUrl(url: string): ValidationResult {
@@ -85,9 +85,7 @@ export function validateShadowsocksUrl(url: string): ValidationResult {
       };
     }
 
-    const portNum = parseInt(port, 10);
-
-    if (isNaN(portNum) || portNum < 1 || portNum > 65535) {
+    if (!isValidPort(port)) {
       return {
         valid: false,
         message: _('Invalid port number. Must be between 1 and 65535'),

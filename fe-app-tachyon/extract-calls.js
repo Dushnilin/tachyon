@@ -1,4 +1,4 @@
-import fs from 'fs/promises';
+﻿import fs from 'fs/promises';
 import path from 'path';
 import glob from 'fast-glob';
 import { parse } from '@babel/parser';
