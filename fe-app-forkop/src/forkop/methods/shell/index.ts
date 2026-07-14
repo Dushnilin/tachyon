@@ -235,16 +235,6 @@ export const ForkopShellMethods = {
     ),
   getStatus: async () =>
     callBaseMethod<Forkop.GetStatus>(Forkop.AvailableMethods.GET_STATUS),
-  getOutboundLink: async (section: string, tag: string) =>
-    callBaseMethod<Forkop.GetOutboundLink>(
-      Forkop.AvailableMethods.GET_OUTBOUND_LINK,
-      [section, tag],
-    ),
-  getOutboundLinkStates: async (section: string) =>
-    callBaseMethod<Forkop.GetOutboundLinkStates>(
-      Forkop.AvailableMethods.GET_OUTBOUND_LINK_STATES,
-      [section],
-    ),
   getOutboundMetadata: async (section: string) =>
     callBaseMethod<Forkop.GetOutboundMetadata>(
       Forkop.AvailableMethods.GET_OUTBOUND_METADATA,

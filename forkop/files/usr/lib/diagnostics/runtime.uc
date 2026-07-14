@@ -19,7 +19,6 @@ const SYSTEM_INFO_CACHE_TTL = int(getenv("FORKOP_SYSTEM_INFO_CACHE_TTL") || "360
 const TMP_SING_BOX_FOLDER = getenv("TMP_SING_BOX_FOLDER") || constants.TMP_SING_BOX_FOLDER || "/tmp/sing-box";
 const TMP_RULESET_FOLDER = getenv("TMP_RULESET_FOLDER") || constants.TMP_RULESET_FOLDER || TMP_SING_BOX_FOLDER + "/rulesets";
 const TMP_SUBSCRIPTION_FOLDER = getenv("TMP_SUBSCRIPTION_FOLDER") || constants.TMP_SUBSCRIPTION_FOLDER || TMP_SING_BOX_FOLDER + "/subscriptions";
-const SUBSCRIPTION_LINKS_DIR = getenv("FORKOP_SUBSCRIPTION_LINKS_DIR") || RUNTIME_STATE_DIR + "/subscription-links";
 const SUBSCRIPTION_METADATA_DIR = getenv("FORKOP_SUBSCRIPTION_METADATA_DIR") || RUNTIME_STATE_DIR + "/subscription-metadata";
 const OUTBOUND_METADATA_DIR = getenv("FORKOP_OUTBOUND_METADATA_DIR") || RUNTIME_STATE_DIR + "/outbound-metadata";
 const SECTION_CACHE_DIR = getenv("FORKOP_SECTION_CACHE_DIR") || RUNTIME_STATE_DIR + "/section-cache";
@@ -1194,26 +1193,6 @@ function section_safe(section) {
     return section != "" && index(section, "/") < 0 && index(section, "..") < 0;
 }
 
-function get_outbound_link(section, outbound_tag) {
-    subscription_cache([ "ensure-runtime-dirs" ]);
-    if (!section_safe(section))
-        return print_subscription_result(subscription_cache([ "empty-link" ]), "");
-    let result = subscription_cache([ "get-link", SECTION_CACHE_DIR, TMP_SUBSCRIPTION_FOLDER, section, outbound_tag, SUBSCRIPTION_LINKS_DIR ]);
-    if (result.status != 0)
-        result = subscription_cache([ "empty-link" ]);
-    return print_subscription_result(result, "");
-}
-
-function get_outbound_link_states(section) {
-    subscription_cache([ "ensure-runtime-dirs" ]);
-    if (!section_safe(section)) {
-        print("{}\n");
-        return 0;
-    }
-    let result = subscription_cache([ "get-link-states", SECTION_CACHE_DIR, section, SUBSCRIPTION_LINKS_DIR ]);
-    return print_subscription_result(result, "{}\n");
-}
-
 function get_outbound_metadata(section) {
     subscription_cache([ "ensure-runtime-dirs" ]);
     if (!section_safe(section))
@@ -2029,10 +2008,6 @@ else if (mode == "show-sing-box-version")
     exit(show_sing_box_version());
 else if (mode == "get-status")
     exit(get_status());
-else if (mode == "get-outbound-link")
-    exit(get_outbound_link(ARGV[1], ARGV[2]));
-else if (mode == "get-outbound-link-states")
-    exit(get_outbound_link_states(ARGV[1]));
 else if (mode == "get-outbound-metadata")
     exit(get_outbound_metadata(ARGV[1]));
 else if (mode == "get-subscription-metadata")

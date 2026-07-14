@@ -2,6 +2,7 @@
 
 let fs = require("fs");
 let common = require("core.common");
+let subscription_share_link = require("subscription.share_link");
 
 let as_string = common.as_string;
 let read_json_file = common.read_json_file;
@@ -13,7 +14,7 @@ const TMP_SUBSCRIPTION_FOLDER = getenv("TMP_SUBSCRIPTION_FOLDER") || "/tmp/sing-
 const FORKOP_RUNTIME_STATE_DIR = getenv("FORKOP_RUNTIME_STATE_DIR") || "/var/run/forkop";
 const FORKOP_SECTION_CACHE_DIR = getenv("FORKOP_SECTION_CACHE_DIR") || FORKOP_RUNTIME_STATE_DIR + "/section-cache";
 const FORKOP_SUBSCRIPTION_METADATA_DIR = getenv("FORKOP_SUBSCRIPTION_METADATA_DIR") || FORKOP_RUNTIME_STATE_DIR + "/subscription-metadata";
-const FORKOP_RUNTIME_CACHE_FORMAT = int(getenv("FORKOP_RUNTIME_CACHE_FORMAT") || "7");
+const FORKOP_RUNTIME_CACHE_FORMAT = int(getenv("FORKOP_RUNTIME_CACHE_FORMAT") || "8");
 const FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_DIR = getenv("FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_DIR") || "/etc/forkop/subscription-cache";
 
 let section_cache_dir = FORKOP_SECTION_CACHE_DIR;
@@ -223,38 +224,14 @@ function remember_outbound_metadata(state, tag_name, display_name, outbound) {
         state.servers[tag_name] = server;
 }
 
-function starts_with(value, prefix) {
-    value = as_string(value);
-    prefix = as_string(prefix);
-    return substr(value, 0, length(prefix)) == prefix;
-}
-
-function is_copyable_link(value) {
-    value = lc(as_string(value));
-    let prefixes = [
-        "vless://", "vmess://", "trojan://", "ss://", "ssr://",
-        "hysteria2://", "hy2://", "tuic://",
-        "socks4://", "socks4a://", "socks5://"
-    ];
-    for (let prefix in prefixes)
-        if (starts_with(value, prefix))
-            return true;
-    return false;
-}
-
-function remember_source_outbound(state, tag_name, source_section, source_index, source_outbound_index, display_name, outbound) {
+function remember_source_outbound(state, tag_name, display_name, outbound, source_link) {
     if (type(state) != "object")
         return;
     remember_outbound_metadata(state, tag_name, display_name, outbound);
     let outbound_type = as_string(outbound.type || "");
     if (outbound_type != "selector" && outbound_type != "urltest") {
-        let source_link = as_string(outbound.source_link || "");
-        if (is_copyable_link(source_link))
+        if (subscription_share_link.is_copyable_link(source_link))
             state.links[tag_name] = source_link;
-        state.linkRefs[tag_name] = {
-            sourceSection: source_section,
-            sourceIndex: source_outbound_index
-        };
     }
 }
 
@@ -353,7 +330,6 @@ function new_section_state(section_name) {
         version: FORKOP_RUNTIME_CACHE_FORMAT,
         section: section_name,
         links: {},
-        linkRefs: {},
         outboundMetadata: {
             names: {},
             countries: {},

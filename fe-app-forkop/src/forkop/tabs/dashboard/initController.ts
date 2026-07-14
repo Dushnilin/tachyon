@@ -733,24 +733,11 @@ async function handleTestLatency(
   }
 }
 
-async function handleCopyOutbound(
-  section: Forkop.OutboundGroup,
-  outbound: Forkop.Outbound,
-) {
+function handleCopyOutbound(outbound: Forkop.Outbound) {
   const link = outbound.link;
 
   if (link && isCopyableProxyLink(link)) {
     copyToClipboard(link);
-    return;
-  }
-
-  const response = await ForkopShellMethods.getOutboundLink(
-    section.sectionName,
-    outbound.code,
-  );
-
-  if (response.success && isCopyableProxyLink(response.data.link)) {
-    copyToClipboard(response.data.link);
     return;
   }
 
@@ -996,7 +983,7 @@ function renderUrlTestInfoModal(
                   member.canCopyLink
                     ? renderUrlTestCopyButton(_('Copy proxy link'), (event) => {
                         event.preventDefault();
-                        void handleCopyOutbound(section, member);
+                        handleCopyOutbound(member);
                       })
                     : E('span', {
                         class:
@@ -1252,7 +1239,7 @@ function renderPriorityInfoModal(
                   member.canCopyLink
                     ? renderUrlTestCopyButton(_('Copy proxy link'), (event) => {
                         event.preventDefault();
-                        void handleCopyOutbound(section, member);
+                        handleCopyOutbound(member);
                       })
                     : E('span', {
                         class:
@@ -1509,8 +1496,8 @@ async function renderSectionsWidget() {
       onChooseOutbound: (sectionName, selector, tag) => {
         void handleChooseOutbound(sectionName, selector, tag);
       },
-      onCopyOutbound: (section, outbound) => {
-        void handleCopyOutbound(section, outbound);
+      onCopyOutbound: (_section, outbound) => {
+        handleCopyOutbound(outbound);
       },
       onShowUrlTestInfo: (section, outbound) => {
         handleShowUrlTestInfo(section, outbound);

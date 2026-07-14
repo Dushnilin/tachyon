@@ -15,6 +15,7 @@ let runtime_urltest = require("singbox.urltest");
 let source_rulesets = require("routing.rulesets");
 let rule_config = require("config.rule");
 let connections = require("config.connections");
+let subscription_share_link = require("subscription.share_link");
 let uci = null;
 let fixture_uci_data = null;
 let runtime_settings_cache = null;
@@ -599,13 +600,6 @@ function compatible_subscription_outbounds(outbounds, section_name) {
     }
 }
 
-function subscription_source_outbound_index(source_outbounds, outbound) {
-    for (let i = 0; i < length(source_outbounds); i++)
-        if (source_outbounds[i] === outbound)
-            return i + 1;
-    return 0;
-}
-
 function copy_subscription_outbound(outbound, new_tag) {
     let copy = {};
     for (let key, value in outbound) {
@@ -768,7 +762,6 @@ function add_subscription_source_with_state(config, section, source_index, sourc
         hide_urltest_group_outbounds = false;
     node_prefix = trim(as_string(node_prefix));
     let prepared = [];
-    let source_indices = [];
     let display_names = [];
     let source_links = [];
     let group_flags = [];
@@ -792,9 +785,11 @@ function add_subscription_source_with_state(config, section, source_index, sourc
         if (as_string(outbound.remark || "") != "")
             tag_map[as_string(outbound.remark)] = new_tag;
         push(prepared, copy_subscription_outbound(outbound, new_tag));
-        push(source_indices, subscription_source_outbound_index(source_outbounds, outbound));
         push(display_names, display_name);
-        push(source_links, as_string(outbound.share_link || ""));
+        let source_link = as_string(outbound.share_link || "");
+        if (!subscription_share_link.is_copyable_link(source_link))
+            source_link = subscription_share_link.serialize_outbound_link(outbound);
+        push(source_links, source_link);
         push(group_flags, subscription_group_outbound(outbound));
         push(hidden_flags, subscription_hidden_outbound(outbound, visibility_refs, hide_urltest_group_outbounds, hide_detour_outbounds));
     }
@@ -816,10 +811,13 @@ function add_subscription_source_with_state(config, section, source_index, sourc
         added++;
         if (!is_group)
             push(urltest_candidate_tags, outbound.tag);
-        if (source_links[i] != "")
-            outbound.source_link = source_links[i];
-        runtime_subscription.remember_source_outbound(state, outbound.tag, source_section, source_index, source_indices[i], display_names[i], outbound);
-        delete outbound.source_link;
+        runtime_subscription.remember_source_outbound(
+            state,
+            outbound.tag,
+            display_names[i],
+            outbound,
+            source_links[i]
+        );
         if (hidden_flags[i] !== true) {
             push(selector_tags, outbound.tag);
             runtime_subscription.remember_urltest_group(state, outbound.tag, display_names[i], outbound);

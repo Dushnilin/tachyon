@@ -774,7 +774,7 @@ describe('getDashboardSections', () => {
     ).toBe('US');
   });
 
-  it('marks subscription outbounds as copyable when section cache has link refs', async () => {
+  it('ignores legacy link refs without a resolved proxy link', async () => {
     mocks.getConfigSections.mockResolvedValue([
       proxySection({
         subscription_urls: ['https://subscription.example/list'],
@@ -800,7 +800,7 @@ describe('getDashboardSections', () => {
 
     expect(result.success).toBe(true);
     expect(subscriptionOutbound?.link).toBe('');
-    expect(subscriptionOutbound?.canCopyLink).toBe(true);
+    expect(subscriptionOutbound?.canCopyLink).toBe(false);
   });
 
   it('uses cached subscription links without a click-time backend lookup', async () => {
@@ -818,12 +818,6 @@ describe('getDashboardSections', () => {
         links: {
           'main-2-out':
             'vless://00000000-0000-4000-8000-000000000002@example.com:443#Subscription',
-        },
-        linkRefs: {
-          'main-2-out': {
-            sourceSection: 'main-subscription-1',
-            sourceIndex: 1,
-          },
         },
       }),
     );

@@ -27,7 +27,6 @@ type DashboardSectionCache = {
   version?: number;
   section?: string;
   links?: Record<string, string>;
-  linkRefs?: Record<string, unknown>;
   outboundMetadata?: Forkop.GetOutboundMetadata;
   urltestGroups?: Record<string, UrlTestCacheGroup>;
   priorityGroups?: Record<string, PriorityCacheGroup>;
@@ -847,7 +846,6 @@ function buildUrlTestInfo({
   manualLinkByCode,
   cachedProxyLinks,
   outboundMetadata,
-  subscriptionCopyableCodes,
   showDetectedCountries,
 }: {
   code: string;
@@ -858,7 +856,6 @@ function buildUrlTestInfo({
   manualLinkByCode: Map<string, string>;
   cachedProxyLinks: Map<string, string>;
   outboundMetadata?: Forkop.GetOutboundMetadata;
-  subscriptionCopyableCodes: Set<string>;
   showDetectedCountries: boolean;
 }): Forkop.UrlTestInfo {
   const childCodes = uniqueCodes(
@@ -874,8 +871,7 @@ function buildUrlTestInfo({
         manualLinkByCode.get(childCode) ||
         cachedProxyLinks.get(childCode) ||
         '';
-      const canCopyLink =
-        isCopyableProxyLink(link) || subscriptionCopyableCodes.has(childCode);
+      const canCopyLink = isCopyableProxyLink(link);
 
       return [
         {
@@ -885,7 +881,7 @@ function buildUrlTestInfo({
             childEntry,
             link,
             outboundMetadata,
-            subscriptionCopyableCodes.has(childCode),
+            cachedProxyLinks.has(childCode),
           ),
           latency: childEntry?.value?.history?.[0]?.delay || 0,
           type: childEntry?.value?.type || '',
@@ -925,7 +921,6 @@ function buildPriorityInfo({
   manualLinkByCode,
   cachedProxyLinks,
   outboundMetadata,
-  subscriptionCopyableCodes,
   showDetectedCountries,
 }: {
   config: PriorityConfig;
@@ -935,7 +930,6 @@ function buildPriorityInfo({
   manualLinkByCode: Map<string, string>;
   cachedProxyLinks: Map<string, string>;
   outboundMetadata?: Forkop.GetOutboundMetadata;
-  subscriptionCopyableCodes: Set<string>;
   showDetectedCountries: boolean;
 }): Forkop.PriorityInfo {
   const selectedCode = entry?.value.now || '';
@@ -991,8 +985,7 @@ function buildPriorityInfo({
         manualLinkByCode.get(childCode) ||
         cachedProxyLinks.get(childCode) ||
         '';
-      const canCopyLink =
-        isCopyableProxyLink(link) || subscriptionCopyableCodes.has(childCode);
+      const canCopyLink = isCopyableProxyLink(link);
 
       return {
         code: childCode,
@@ -1001,7 +994,7 @@ function buildPriorityInfo({
           childEntry,
           link,
           outboundMetadata,
-          subscriptionCopyableCodes.has(childCode),
+          cachedProxyLinks.has(childCode),
         ),
         latency: childEntry?.value?.history?.[0]?.delay || 0,
         type: childEntry?.value?.type || '',
@@ -1066,7 +1059,6 @@ function buildProxyGroupOutbounds(
   outboundMetadata?: Forkop.GetOutboundMetadata,
   urltestGroups: Record<string, UrlTestCacheGroup> = {},
   priorityGroups: Record<string, PriorityCacheGroup> = {},
-  subscriptionCopyableCodes: Set<string> = new Set(),
   cachedProxyLinks: Map<string, string> = new Map(),
 ) {
   const sectionName = section['.name'];
@@ -1119,8 +1111,7 @@ function buildProxyGroupOutbounds(
     }
 
     const link = manualLinkByCode.get(code) || cachedProxyLinks.get(code) || '';
-    const canCopyLink =
-      isCopyableProxyLink(link) || subscriptionCopyableCodes.has(code);
+    const canCopyLink = isCopyableProxyLink(link);
     const displayName =
       priorityConfig?.displayName ||
       urlTestConfig?.displayName ||
@@ -1129,7 +1120,7 @@ function buildProxyGroupOutbounds(
         item,
         link,
         outboundMetadata,
-        subscriptionCopyableCodes.has(code),
+        cachedProxyLinks.has(code),
       );
     const isRuntimeUrlTest = isUrlTestProxyEntry(item);
 
@@ -1157,7 +1148,6 @@ function buildProxyGroupOutbounds(
                 manualLinkByCode,
                 cachedProxyLinks,
                 outboundMetadata,
-                subscriptionCopyableCodes,
                 showDetectedCountries:
                   urlTestConfig?.showDetectedCountries || showDetectedCountries,
               })
@@ -1171,7 +1161,6 @@ function buildProxyGroupOutbounds(
               manualLinkByCode,
               cachedProxyLinks,
               outboundMetadata,
-              subscriptionCopyableCodes,
               showDetectedCountries: priorityConfig.showDetectedCountries,
             })
           : undefined,
@@ -1352,22 +1341,6 @@ function getOutboundMetadata(dashboardCache?: DashboardSectionCache) {
   };
 }
 
-function getSubscriptionCopyableCodes(dashboardCache?: DashboardSectionCache) {
-  const legacyLinks = objectMap(dashboardCache?.links);
-  const linkRefs = dashboardCache?.linkRefs;
-  const codes = new Set(
-    Object.entries(legacyLinks)
-      .filter(([, link]) => isCopyableProxyLink(link))
-      .map(([code]) => code),
-  );
-
-  if (linkRefs && typeof linkRefs === 'object' && !Array.isArray(linkRefs)) {
-    Object.keys(linkRefs).forEach((code) => codes.add(code));
-  }
-
-  return codes;
-}
-
 function getCachedProxyLinks(dashboardCache?: DashboardSectionCache) {
   return new Map(
     Object.entries(objectMap(dashboardCache?.links)).filter(([, link]) =>
@@ -1422,9 +1395,6 @@ export async function getDashboardSections(
                 dashboardCache,
               )
             : undefined;
-          const subscriptionCopyableCodes = includeSubscriptionCopyState
-            ? getSubscriptionCopyableCodes(dashboardCache)
-            : new Set<string>();
           const cachedProxyLinks = includeSubscriptionCopyState
             ? getCachedProxyLinks(dashboardCache)
             : new Map<string, string>();
@@ -1437,7 +1407,6 @@ export async function getDashboardSections(
               outboundMetadata,
               urltestGroups,
               priorityGroups,
-              subscriptionCopyableCodes,
               cachedProxyLinks,
             );
 
