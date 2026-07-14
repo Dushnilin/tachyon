@@ -148,6 +148,10 @@ function command_success(command) {
     return command_status("(" + command + ") >/dev/null 2>&1") == 0;
 }
 
+function command_success_from_args(args) {
+    return command_success(command_from_args(args));
+}
+
 return {
     as_string,
     read_json_file,
@@ -168,5 +172,6 @@ return {
     shell_quote,
     command_from_args,
     command_status,
-    command_success
+    command_success,
+    command_success_from_args
 };
