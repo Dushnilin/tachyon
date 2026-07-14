@@ -162,7 +162,7 @@ function format_bytes(b) {
 }
  
 function get_clash_proxies_data() {
-    let args = [ "curl", "-s", "http://192.168.2.1:9090/proxies" ];
+    let args = [ "curl", "-s", "http://127.0.0.1:9090/proxies" ];
     let res = command_capture(command_from_args(args));
     if (res.status == 0 && res.output != "") {
         try {
@@ -225,7 +225,7 @@ function handle_servers(token, chat_id) {
 }
  
 function handle_traffic(token, chat_id) {
-    let args = [ "curl", "-s", "http://192.168.2.1:9090/connections" ];
+    let args = [ "curl", "-s", "http://127.0.0.1:9090/connections" ];
     let res = command_capture(command_from_args(args));
     if (res.status != 0 || res.output == "") {
         send_message_with_keyboard(token, chat_id, "❌ Не удалось получить статистику трафика.");
