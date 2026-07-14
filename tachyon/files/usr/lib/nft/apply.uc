@@ -137,6 +137,10 @@ function log_debug(message) {
     run_args([ "logger", "-t", "tachyon", "[debug] " + as_string(message) ]);
 }
 
+function log_warn(message) {
+    run_args([ "logger", "-t", "tachyon", "[warn] " + as_string(message) ]);
+}
+
 function log_fatal(message) {
     run_args([ "logger", "-t", "tachyon", "[fatal] " + as_string(message) ]);
 }
@@ -443,7 +447,14 @@ function nft_create_ifname_set(table, name) {
 }
 
 function nft_add_set_elements(table, set_name, elements) {
-    return run_args([ "nft", "add", "element", "inet", table, set_name, "{ " + as_string(elements) + " }" ]);
+    let cmd = [ "nft", "add", "element", "inet", table, set_name, "{ " + as_string(elements) + " }" ];
+    let cmd_str = command_from_args(cmd);
+    let res = system(cmd_str + " 2>/tmp/nft_err.log");
+    if (res != 0) {
+        let err_msg = trim(as_string(fs.readfile("/tmp/nft_err.log") || ""));
+        log_fatal("nft add element failed: cmd='" + cmd_str + "', code=" + res + ", err='" + err_msg + "'");
+    }
+    return res == 0;
 }
 
 function whitespace_values(value) {
@@ -1296,10 +1307,19 @@ function ensure_rt_table_entry(path, table_id, table_name) {
         return true;
 
     data = data == null ? "" : as_string(data);
-    if (data != "" && substr(data, length(data) - 1, 1) != "\n")
-        data += "\n";
+    let out = [];
+    for (let line in split(data, "\n")) {
+        let fields = normalized_fields(line);
+        if (length(fields) >= 2 && fields[0] == as_string(table_id))
+            continue;
+        push(out, line);
+    }
+    
+    while (length(out) > 0 && out[length(out) - 1] == "")
+        pop(out);
 
-    return write_text_file(path, data + as_string(table_id) + " " + as_string(table_name) + "\n");
+    push(out, as_string(table_id) + " " + as_string(table_name));
+    return write_text_file(path, join("\n", out) + "\n");
 }
 
 function tproxy_route4_present(table) {
@@ -1709,6 +1729,11 @@ function nft_populate_runtime_sets_from_sections(sections, populate_enabled, def
 function nft_populate_runtime_sets_from_uci(populate_enabled, deferred_section_names, table, common_set, port_set, ip_port_set, interface_set, localv4_set, mark, common6_set, ip_port6_set, localv6_set) {
     if (!arg_bool(populate_enabled))
         return true;
+
+    if (!nft_table_present(table)) {
+        log_warn("nft_populate_runtime_sets_from_uci: Table " + table + " does not exist. Rebuilding firewall rules dynamically.");
+        system("/usr/bin/tachyon reload_firewall");
+    }
 
     return nft_populate_runtime_sets_from_sections(uci_sections("section"), populate_enabled, deferred_section_names, table, common_set, port_set, ip_port_set, interface_set, localv4_set, mark, common6_set, ip_port6_set, localv6_set);
 }
