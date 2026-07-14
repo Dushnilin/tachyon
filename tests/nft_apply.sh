@@ -223,7 +223,7 @@ assert_contains "$NFT_LOG" '::/128,::1/128,64:ff9b::/96' "runtime localv6 elemen
 assert_contains "$NFT_LOG" $'nft\tadd\tset\tinet\tForkopTable\tforkop_interfaces\t{ type ifname; flags interval; }' "runtime interface set"
 assert_contains "$NFT_LOG" $'nft\tadd\telement\tinet\tForkopTable\tforkop_interfaces\t{ br-lan }' "runtime br-lan interface"
 assert_contains "$NFT_LOG" $'nft\tadd\telement\tinet\tForkopTable\tforkop_interfaces\t{ tun0 }' "runtime tun0 interface"
-assert_contains "$NFT_LOG" $'nft\tadd\tchain\tinet\tForkopTable\tmangle\t{ type filter hook prerouting priority -150; policy accept; }' "runtime mangle chain"
+assert_contains "$NFT_LOG" $'nft\tadd\tchain\tinet\tForkopTable\tmangle\t{ type filter hook prerouting priority -149; policy accept; }' "runtime mangle chain runs after Tailscale connmark restore"
 assert_contains "$NFT_LOG" $'nft\tadd\tchain\tinet\tForkopTable\tpriority_rules\t{ }' "runtime priority chain"
 assert_contains "$NFT_LOG" $'nft\tadd\tchain\tinet\tForkopTable\tpriority_output_rules\t{ }' "runtime priority output chain"
 assert_contains "$NFT_LOG" $'nft\tadd\trule\tinet\tForkopTable\tpriority_output_rules\tmeta\tmark\t!=\t0\treturn' "runtime priority output preserves provider marks"
