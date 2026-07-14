@@ -22,7 +22,7 @@ function constants_map() {
     c.TACHYON_BIN = env("TACHYON_BIN", "/usr/bin/tachyon");
     c.TACHYON_SERVICE_NAME = env("TACHYON_SERVICE_NAME", "tachyon");
     c.TACHYON_SERVICE_INIT = env("TACHYON_SERVICE_INIT", "/etc/init.d/tachyon");
-    c.TACHYON_RELEASE_REPO = env("TACHYON_RELEASE_REPO", "ushan0v/tachyon");
+    c.TACHYON_RELEASE_REPO = env("TACHYON_RELEASE_REPO", "Dushnilin/tachyon");
     c.TACHYON_LUCI_VIEW_NAMESPACE = env("TACHYON_LUCI_VIEW_NAMESPACE", "tachyon");
     c.TACHYON_LUCI_VIEW_DIR = env("TACHYON_LUCI_VIEW_DIR", "/www/luci-static/resources/view/" + c.TACHYON_LUCI_VIEW_NAMESPACE);
     c.TACHYON_LUCI_I18N_DOMAIN = env("TACHYON_LUCI_I18N_DOMAIN", "tachyon");
