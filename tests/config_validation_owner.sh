@@ -1,31 +1,31 @@
-#!/usr/bin/env bash
+﻿#!/usr/bin/env bash
 set -eo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-FORKOP_FILES="$ROOT_DIR/forkop/files"
-FORKOP_BIN="$FORKOP_FILES/usr/bin/forkop"
-FORKOP_LIB="$FORKOP_FILES/usr/lib"
-CLI_UC="$FORKOP_BIN"
-VALIDATOR="$FORKOP_LIB/config/validator.uc"
-RULE_CONFIG="$FORKOP_LIB/config/rule.uc"
-GENERATOR="$FORKOP_LIB/singbox/generator.uc"
-SECTION_JS="$ROOT_DIR/luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js"
-LIFECYCLE="$FORKOP_LIB/service/lifecycle.uc"
+TACHYON_FILES="$ROOT_DIR/tachyon/files"
+TACHYON_BIN="$TACHYON_FILES/usr/bin/tachyon"
+TACHYON_LIB="$TACHYON_FILES/usr/lib"
+CLI_UC="$TACHYON_BIN"
+VALIDATOR="$TACHYON_LIB/config/validator.uc"
+RULE_CONFIG="$TACHYON_LIB/config/rule.uc"
+GENERATOR="$TACHYON_LIB/singbox/generator.uc"
+SECTION_JS="$ROOT_DIR/luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js"
+LIFECYCLE="$TACHYON_LIB/service/lifecycle.uc"
 
 fail() {
   printf 'FAIL: %s\n' "$1" >&2
   exit 1
 }
 
-[ ! -e "$FORKOP_LIB/config_validation.sh" ] ||
+[ ! -e "$TACHYON_LIB/config_validation.sh" ] ||
   fail "config_validation.sh shell owner must be removed"
 
-if grep -R -n "config_validation.sh" "$FORKOP_FILES" >/dev/null 2>&1; then
+if grep -R -n "config_validation.sh" "$TACHYON_FILES" >/dev/null 2>&1; then
   fail "runtime files must not reference config_validation.sh"
 fi
 
-legacy_symbols='(^|[^A-Za-z0-9_])(config_validate_runtime|check_requirements|commit_forkop_config|mwan3_is_active|get_inline_remote_ruleset_format|detect_inline_ruleset_reference_kind)([^A-Za-z0-9_]|$)'
-if grep -R -n -E "$legacy_symbols" "$FORKOP_BIN" "$FORKOP_LIB" --include='*.sh' >/dev/null 2>&1; then
+legacy_symbols='(^|[^A-Za-z0-9_])(config_validate_runtime|check_requirements|commit_tachyon_config|mwan3_is_active|get_inline_remote_ruleset_format|detect_inline_ruleset_reference_kind)([^A-Za-z0-9_]|$)'
+if grep -R -n -E "$legacy_symbols" "$TACHYON_BIN" "$TACHYON_LIB" --include='*.sh' >/dev/null 2>&1; then
   fail "runtime shell must not keep config_validation.sh symbols"
 fi
 
@@ -46,8 +46,8 @@ grep -Fq 'return appendUniqueDomainTextValues(textValue, values);' "$SECTION_JS"
 if grep -n -E 'require\("uci"\)\.cursor|uci -q|uci", "-q"|command_output\("uci' "$VALIDATOR" >/dev/null 2>&1; then
   fail "config validator must not own direct UCI cursor or CLI access"
 fi
-grep -Fq '#!/usr/bin/ucode' "$FORKOP_BIN" ||
-  fail "forkop entrypoint must be a direct ucode executable"
+grep -Fq '#!/usr/bin/ucode' "$TACHYON_BIN" ||
+  fail "tachyon entrypoint must be a direct ucode executable"
 grep -Fq 'service/lifecycle.uc' "$CLI_UC" ||
   fail "service/cli.uc must dispatch service lifecycle through service/lifecycle.uc"
 if grep -n -E 'MIGRATION_UC|config[./]migration|"migrate"' "$LIFECYCLE" >/dev/null 2>&1; then

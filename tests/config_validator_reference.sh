@@ -1,9 +1,9 @@
-#!/usr/bin/env bash
+﻿#!/usr/bin/env bash
 set -eo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-FORKOP_LIB="$ROOT_DIR/forkop/files/usr/lib"
-VALIDATOR="$ROOT_DIR/forkop/files/usr/lib/config/validator.uc"
+TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
+VALIDATOR="$ROOT_DIR/tachyon/files/usr/lib/config/validator.uc"
 COMMUNITY_SERVICES="youtube twitter telegram"
 
 fail() {
@@ -15,7 +15,7 @@ assert_accepts() {
   local label="$1"
   shift
 
-  ucode -L "$FORKOP_LIB" "$VALIDATOR" "$@" >/dev/null ||
+  ucode -L "$TACHYON_LIB" "$VALIDATOR" "$@" >/dev/null ||
     fail "$label should be accepted"
 }
 
@@ -23,7 +23,7 @@ assert_rejects() {
   local label="$1"
   shift
 
-  if ucode -L "$FORKOP_LIB" "$VALIDATOR" "$@" >/dev/null 2>&1; then
+  if ucode -L "$TACHYON_LIB" "$VALIDATOR" "$@" >/dev/null 2>&1; then
     fail "$label should be rejected"
   fi
 }

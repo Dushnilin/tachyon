@@ -1,8 +1,8 @@
-#!/usr/bin/env bash
+﻿#!/usr/bin/env bash
 set -eo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SECTION_JS="$ROOT_DIR/luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js"
+SECTION_JS="$ROOT_DIR/luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js"
 
 fail() {
   printf 'FAIL: %s\n' "$1" >&2
@@ -124,7 +124,7 @@ ports_line="$(grep -n 'dependsOnRoutingAction(portsOption);' <<<"$create_section
 dashboard_line="$(grep -n 'addDashboardServerFilterOptions(section);' <<<"$create_section" | cut -d: -f1)"
 [[ "$dashboard_line" -gt "$ports_line" ]] ||
   fail "dashboard server filter must be the last section option block"
-if grep -Fq '__forkop_no_group__' "$SECTION_JS"; then
+if grep -Fq '__tachyon_no_group__' "$SECTION_JS"; then
   fail "dashboard group selectors must not duplicate the placeholder with a fake choice"
 fi
 

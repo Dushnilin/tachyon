@@ -1,9 +1,9 @@
-#!/usr/bin/env bash
+﻿#!/usr/bin/env bash
 set -eo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-CACHE_UC="$ROOT_DIR/forkop/files/usr/lib/subscription/cache.uc"
-FORKOP_LIB="$ROOT_DIR/forkop/files/usr/lib"
+CACHE_UC="$ROOT_DIR/tachyon/files/usr/lib/subscription/cache.uc"
+TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
 WORK_DIR="$(mktemp -d)"
 
 cleanup() {
@@ -25,7 +25,7 @@ assert_eq() {
 }
 
 cache_ucode() {
-  ucode -L "$FORKOP_LIB" "$CACHE_UC" "$@"
+  ucode -L "$TACHYON_LIB" "$CACHE_UC" "$@"
 }
 
 assert_eq "first second" \
@@ -44,24 +44,24 @@ if cache_ucode state-list-contains "first second" third >/dev/null 2>&1; then
   fail "state list should not contain third"
 fi
 
-SUBSCRIPTION_RUNTIME_SH="$ROOT_DIR/forkop/files/usr/lib/subscription_runtime.sh"
-UPDATES_RUNTIME_SH="$ROOT_DIR/forkop/files/usr/lib/updates_runtime.sh"
+SUBSCRIPTION_RUNTIME_SH="$ROOT_DIR/tachyon/files/usr/lib/subscription_runtime.sh"
+UPDATES_RUNTIME_SH="$ROOT_DIR/tachyon/files/usr/lib/updates_runtime.sh"
 
 [ ! -e "$SUBSCRIPTION_RUNTIME_SH" ] ||
   fail "subscription_runtime.sh shell owner must be removed"
 [ ! -e "$UPDATES_RUNTIME_SH" ] ||
   fail "updates_runtime.sh shell owner must be removed"
 
-if grep -R -n "subscription_runtime.sh" "$ROOT_DIR/forkop/files" >/dev/null 2>&1; then
+if grep -R -n "subscription_runtime.sh" "$ROOT_DIR/tachyon/files" >/dev/null 2>&1; then
   fail "runtime files must not reference subscription_runtime.sh"
 fi
 
 subscription_runtime_shell_symbols='subscription_runtime_|prepare_subscription_caches_for_startup|prepare_subscription_caches_for_runtime_generation|run_deferred_subscription_bootstrap|stop_deferred_subscription_bootstrap_retry_worker'
-if grep -R -n -E "$subscription_runtime_shell_symbols" "$ROOT_DIR/forkop/files/usr/bin/forkop" "$ROOT_DIR/forkop/files/usr/lib" --include='*.sh' >/dev/null 2>&1; then
+if grep -R -n -E "$subscription_runtime_shell_symbols" "$ROOT_DIR/tachyon/files/usr/bin/tachyon" "$ROOT_DIR/tachyon/files/usr/lib" --include='*.sh' >/dev/null 2>&1; then
   fail "subscription_runtime shell symbols must not remain in runtime shell"
 fi
 
-if grep -R -n -E 'get_subscription_metadata_path|get_outbound_metadata_path' "$ROOT_DIR/forkop/files/usr/bin/forkop" "$ROOT_DIR/forkop/files/usr/lib" --include='*.sh' >/dev/null 2>&1; then
+if grep -R -n -E 'get_subscription_metadata_path|get_outbound_metadata_path' "$ROOT_DIR/tachyon/files/usr/bin/tachyon" "$ROOT_DIR/tachyon/files/usr/lib" --include='*.sh' >/dev/null 2>&1; then
   fail "subscription metadata path helpers must be owned by subscription/cache.uc"
 fi
 
@@ -102,10 +102,10 @@ grep -q 'mode == "stop-deferred-bootstrap-worker"' "$CACHE_UC" ||
 assert_eq "proxy-subscription-2" \
   "$(cache_ucode source-id proxy 2)" \
   "source id mode"
-assert_eq "/var/run/forkop/subscription-metadata/proxy.json" \
+assert_eq "/var/run/tachyon/subscription-metadata/proxy.json" \
   "$(cache_ucode subscription-metadata-path proxy)" \
   "subscription metadata path mode"
-assert_eq "/var/run/forkop/outbound-metadata/proxy.json" \
+assert_eq "/var/run/tachyon/outbound-metadata/proxy.json" \
   "$(cache_ucode outbound-metadata-path proxy)" \
   "outbound metadata path mode"
 if cache_ucode subscription-metadata-path '../bad' >/dev/null 2>&1; then
@@ -137,17 +137,17 @@ runtime_env() {
   TMP_SING_BOX_FOLDER="$WORK_DIR/runtime/tmp-sing-box" \
     TMP_RULESET_FOLDER="$WORK_DIR/runtime/tmp-sing-box/rulesets" \
     TMP_SUBSCRIPTION_FOLDER="$WORK_DIR/runtime/tmp-sing-box/subscriptions" \
-    FORKOP_RUNTIME_STATE_DIR="$WORK_DIR/runtime/run" \
-    FORKOP_SUBSCRIPTION_UPDATE_STATE_DIR="$WORK_DIR/runtime/run/subscription-update" \
-    FORKOP_SUBSCRIPTION_LINKS_DIR="$WORK_DIR/runtime/run/subscription-links" \
-    FORKOP_SUBSCRIPTION_METADATA_DIR="$WORK_DIR/runtime/run/subscription-metadata" \
-    FORKOP_OUTBOUND_METADATA_DIR="$WORK_DIR/runtime/run/outbound-metadata" \
-    FORKOP_SECTION_CACHE_DIR="$WORK_DIR/runtime/run/section-cache" \
-    FORKOP_RUNTIME_CACHE_FORMAT_FILE="$WORK_DIR/runtime/run/cache-format" \
-    FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_DIR="$WORK_DIR/runtime/persistent" \
-    FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE="$WORK_DIR/runtime/persistent/cache-format" \
-    FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT="7" \
-    FORKOP_SUBSCRIPTION_BOOTSTRAP_RETRY_PID_FILE="$WORK_DIR/runtime/run/bootstrap.pid" \
+    TACHYON_RUNTIME_STATE_DIR="$WORK_DIR/runtime/run" \
+    TACHYON_SUBSCRIPTION_UPDATE_STATE_DIR="$WORK_DIR/runtime/run/subscription-update" \
+    TACHYON_SUBSCRIPTION_LINKS_DIR="$WORK_DIR/runtime/run/subscription-links" \
+    TACHYON_SUBSCRIPTION_METADATA_DIR="$WORK_DIR/runtime/run/subscription-metadata" \
+    TACHYON_OUTBOUND_METADATA_DIR="$WORK_DIR/runtime/run/outbound-metadata" \
+    TACHYON_SECTION_CACHE_DIR="$WORK_DIR/runtime/run/section-cache" \
+    TACHYON_RUNTIME_CACHE_FORMAT_FILE="$WORK_DIR/runtime/run/cache-format" \
+    TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR="$WORK_DIR/runtime/persistent" \
+    TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE="$WORK_DIR/runtime/persistent/cache-format" \
+    TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT="7" \
+    TACHYON_SUBSCRIPTION_BOOTSTRAP_RETRY_PID_FILE="$WORK_DIR/runtime/run/bootstrap.pid" \
     "$@"
 }
 
@@ -416,7 +416,7 @@ cat >"$WORK_DIR/link-subscriptions/proxy-subscription-1.json" <<'JSON'
 }
 JSON
 serialize_outbound_link() {
-  ucode -L "$FORKOP_LIB" -e '
+  ucode -L "$TACHYON_LIB" -e '
     let fs = require("fs");
     let share_link = require("subscription.share_link");
     let source = json(fs.readfile(ARGV[0]));

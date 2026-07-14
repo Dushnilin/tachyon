@@ -1,9 +1,9 @@
-#!/usr/bin/env bash
+﻿#!/usr/bin/env bash
 set -eo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SOURCE_STYLES="$ROOT_DIR/fe-app-forkop/src/forkop/tabs/updates/styles.ts"
-BUNDLE="$ROOT_DIR/luci-app-forkop/htdocs/luci-static/resources/view/forkop/main.js"
+SOURCE_STYLES="$ROOT_DIR/fe-app-tachyon/src/tachyon/tabs/updates/styles.ts"
+BUNDLE="$ROOT_DIR/luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js"
 
 fail() {
   printf 'FAIL: %s\n' "$1" >&2

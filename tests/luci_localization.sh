@@ -1,10 +1,10 @@
-#!/usr/bin/env bash
+﻿#!/usr/bin/env bash
 set -eo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SECTION_JS="$ROOT_DIR/luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js"
-SOURCE_PO="$ROOT_DIR/fe-app-forkop/locales/forkop.ru.po"
-PACKAGE_PO="$ROOT_DIR/luci-app-forkop/po/ru/forkop.po"
+SECTION_JS="$ROOT_DIR/luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js"
+SOURCE_PO="$ROOT_DIR/fe-app-tachyon/locales/tachyon.ru.po"
+PACKAGE_PO="$ROOT_DIR/luci-app-tachyon/po/ru/tachyon.po"
 
 fail() {
   printf 'FAIL: %s\n' "$1" >&2
@@ -12,10 +12,10 @@ fail() {
 }
 
 if grep -Fq '_("Dismiss")' "$SECTION_JS"; then
-  fail "Forkop modals must use Close instead of the shared LuCI Dismiss key"
+  fail "Tachyon modals must use Close instead of the shared LuCI Dismiss key"
 fi
 grep -Fq '_("Close")' "$SECTION_JS" ||
-  fail "Forkop section settings modal must expose a Close action"
+  fail "Tachyon section settings modal must expose a Close action"
 
 for po in "$SOURCE_PO" "$PACKAGE_PO"; do
   awk '

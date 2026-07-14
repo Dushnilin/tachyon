@@ -1,8 +1,8 @@
-#!/usr/bin/env bash
+﻿#!/usr/bin/env bash
 set -eo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-HELPERS_UC="$ROOT_DIR/forkop/files/usr/lib/core/helpers.uc"
+HELPERS_UC="$ROOT_DIR/tachyon/files/usr/lib/core/helpers.uc"
 
 fail() {
   printf 'FAIL: %s\n' "$1" >&2

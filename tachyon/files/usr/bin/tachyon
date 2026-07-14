@@ -1,0 +1,233 @@
+﻿#!/usr/bin/ucode
+
+let fs = require("fs");
+
+function as_string(value) {
+    return value == null ? "" : "" + value;
+}
+
+const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
+const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
+const BIN_PATH = getenv("TACHYON_BIN") || "/usr/bin/tachyon";
+const SERVICE_INIT = getenv("TACHYON_SERVICE_INIT") || "/etc/init.d/tachyon";
+
+function shell_quote(value) {
+    return "'" + replace(as_string(value), /'/g, "'\\''") + "'";
+}
+
+function command_from_args(args) {
+    let parts = [];
+    for (let arg in args)
+        push(parts, shell_quote(arg));
+    return join(" ", parts);
+}
+
+function normalize_status(status) {
+    status = int(status);
+    return status > 255 ? int(status / 256) : status;
+}
+
+function module_path(path) {
+    return LIB_DIR + "/" + as_string(path);
+}
+
+function file_readable(path) {
+    return fs.stat(as_string(path)) != null;
+}
+
+function restore_dnsmasq_failsafe() {
+    let module = module_path("dns/apply.uc");
+    if (!file_readable(module))
+        return;
+    system(command_from_args([ "ucode", "-L", LIB_DIR, module, "failsafe-restore" ]) + " >/dev/null 2>&1");
+}
+
+function restore_dnsmasq_failsafe_on_loader_failure(command) {
+    command = as_string(command);
+    if (command == "start" || command == "stop" || command == "restart" ||
+        command == "reload" || command == "uninstall" ||
+        command == "dnsmasq_restore" || command == "restore_dnsmasq")
+        restore_dnsmasq_failsafe();
+}
+
+function show_help() {
+    print("Usage: ", BIN_PATH, " COMMAND\n\n");
+    print("Available commands:\n");
+    print("    start                   Start Tachyon service\n");
+    print("    stop                    Stop Tachyon service\n");
+    print("    reload                  Reload Tachyon configuration\n");
+    print("    restart                 Restart Tachyon service\n");
+    print("    enable                  Enable Tachyon autostart\n");
+    print("    disable                 Disable Tachyon autostart\n");
+    print("    uninstall               Remove Tachyon files installed outside opkg/apk\n");
+    print("    main                    Run main Tachyon process\n");
+    print("    list_update             Update remote lists\n");
+    print("    list_update_if_due      Update remote lists only when the configured interval has elapsed\n");
+    print("    subscription_update [rule] [source_index]\n");
+    print("                            Update all subscription proxies, one rule, or one source in a rule\n");
+    print("    subscription_update_async [rule] [source_index]\n");
+    print("                            Start forced subscription update in the background\n");
+    print("    subscription_update_status [job_id]\n");
+    print("                            Get background subscription update status\n");
+    print("    subscription_update_if_due\n");
+    print("                            Update subscription proxies only when per-rule intervals have elapsed\n");
+    print("    check_proxy             Check proxy connectivity\n");
+    print("    check_nft               Check NFT rules\n");
+    print("    check_nft_rules         Check NFT rules status\n");
+    print("    check_sing_box          Check sing-box installation and status\n");
+    print("    check_inbounds_config   Check whether enabled server inbounds are configured\n");
+    print("    check_inbounds          Check server inbounds from the Servers tab\n");
+    print("    check_logs              Show Tachyon logs from system journal\n");
+    print("    check_sing_box_logs     Show sing-box logs\n");
+    print("    check_fakeip            Test sing-box FakeIP DNS\n");
+    print("    check_zapret_runtime    Check external zapret provider state\n");
+    print("    check_zapret2_runtime   Check external zapret2 provider state\n");
+    print("    check_byedpi_runtime    Check external ByeDPI provider state\n");
+    print("    neutralize_zapret_defaults\n");
+    print("                            Compatibility no-op; Tachyon does not manage standalone zapret\n");
+    print("    clash_api               Clash API interface for managing proxies and groups\n");
+    print("    show_config             Display current Tachyon configuration\n");
+    print("    show_version            Show Tachyon version\n");
+    print("    show_sing_box_config    Show sing-box configuration\n");
+    print("    show_sing_box_version   Show sing-box version\n");
+    print("    get_status              Get Tachyon service status\n");
+    print("    get_outbound_metadata   Get generated outbound display names and countries\n");
+    print("    get_subscription_metadata\n");
+    print("                            Get UI-only metadata for a subscription rule\n");
+    print("    get_sing_box_status     Get sing-box service status\n");
+    print("    get_zapret_status       Get zapret provider and Tachyon-managed nfqws status\n");
+    print("    get_zapret2_status      Get zapret2 provider and Tachyon-managed nfqws2 status\n");
+    print("    get_byedpi_status       Get ByeDPI provider and Tachyon-managed ciadpi status\n");
+    print("    get_system_info         Get system information in JSON format\n");
+    print("    get_server_capabilities Get server UI capabilities in JSON format\n");
+    print("    get_ui_capabilities     Get lightweight UI capabilities in JSON format\n");
+    print("    get_ui_state            Get lightweight UI service/action state in JSON format\n");
+    print("    service_action_async    Start a service action in the background\n");
+    print("    service_action_status   Get background service action status\n");
+    print("    latency_test_async      Start a dashboard latency test in the background\n");
+    print("    latency_test_status     Get background latency test status\n");
+    print("    ui_action_ack           Acknowledge a finished UI action state\n");
+    print("    generate_reality_keypair\n");
+    print("                            Generate a sing-box Reality key pair in JSON format\n");
+    print("    get_tls_certificate_sha256 [server]\n");
+    print("                            Get a server TLS certificate SHA-256 fingerprint in JSON format\n");
+    print("    component_action        Manage Tachyon, sing-box, zapret, zapret2, and ByeDPI components\n");
+    print("    component_action_async  Start a component action in the background\n");
+    print("    component_action_status Get background component action status\n");
+    print("    component_updates_if_due Check installed components for updates when due\n");
+    print("    component_update_check_cache Get cached component update check results\n");
+    print("    check_dns_available     Check DNS server availability\n");
+    print("    global_check            Run global system check\n");
+    print("    validate_nfqws_strategy_json\n");
+    print("                            Validate an NFQWS strategy and print JSON result\n");
+    print("    validate_nfqws2_strategy_json\n");
+    print("                            Validate an NFQWS2 strategy and print JSON result\n");
+    print("    validate_byedpi_strategy_json\n");
+    print("                            Validate a ByeDPI ciadpi strategy and print JSON result\n");
+}
+
+function command_spec(command) {
+    let commands = {
+        start: [ "service/lifecycle.uc", "start", 0 ],
+        stop: [ "service/lifecycle.uc", "stop", 0 ],
+        reload: [ "service/lifecycle.uc", "reload", 1 ],
+        dns_failover_apply: [ "service/lifecycle.uc", "dns-failover-apply", 1 ],
+        restart: [ "service/lifecycle.uc", "restart", 0 ],
+        enable: [ "service/lifecycle.uc", "enable", 0 ],
+        disable: [ "service/lifecycle.uc", "disable", 0 ],
+        uninstall: [ "service/lifecycle.uc", "uninstall", 0 ],
+        dnsmasq_restore: [ "service/lifecycle.uc", "dnsmasq-restore", 0 ],
+        restore_dnsmasq: [ "service/lifecycle.uc", "dnsmasq-restore", 0 ],
+        main: [ "service/lifecycle.uc", "main", 0 ],
+        list_update: [ "components/updates.uc", "list-update", 0 ],
+        list_update_if_due: [ "components/updates.uc", "list-update-if-due", 0 ],
+        subscription_update: [ "components/updates.uc", "subscription-update", 2 ],
+        subscription_update_async: [ "components/updates.uc", "subscription-update-async", 2 ],
+        subscription_update_status: [ "components/updates.uc", "subscription-update-status", 1 ],
+        subscription_update_if_due: [ "components/updates.uc", "subscription-update-if-due", 0 ],
+        check_proxy: [ "diagnostics/runtime.uc", "check-proxy", 0 ],
+        check_nft: [ "diagnostics/runtime.uc", "check-nft", 0 ],
+        check_nft_rules: [ "diagnostics/runtime.uc", "check-nft-rules", 0 ],
+        check_sing_box: [ "diagnostics/runtime.uc", "check-sing-box", 0 ],
+        check_inbounds_config: [ "diagnostics/runtime.uc", "check-inbounds-config", 0 ],
+        check_inbounds: [ "diagnostics/runtime.uc", "check-inbounds", 0 ],
+        check_logs: [ "diagnostics/runtime.uc", "check-logs", 0 ],
+        check_sing_box_logs: [ "diagnostics/runtime.uc", "check-sing-box-logs", 0 ],
+        check_fakeip: [ "diagnostics/runtime.uc", "check-fakeip", 0 ],
+        check_zapret_runtime: [ "diagnostics/runtime.uc", "check-zapret-runtime", 0 ],
+        check_zapret2_runtime: [ "diagnostics/runtime.uc", "check-zapret2-runtime", 0 ],
+        check_byedpi_runtime: [ "diagnostics/runtime.uc", "check-byedpi-runtime", 0 ],
+        neutralize_zapret_defaults: [ "diagnostics/runtime.uc", "neutralize-zapret-defaults", 0 ],
+        clash_api: [ "diagnostics/runtime.uc", "clash-api", 4 ],
+        show_config: [ "diagnostics/runtime.uc", "show-config", 1 ],
+        show_version: [ "diagnostics/runtime.uc", "show-version", 0 ],
+        show_sing_box_config: [ "diagnostics/runtime.uc", "show-sing-box-config", 1 ],
+        show_sing_box_version: [ "diagnostics/runtime.uc", "show-sing-box-version", 0 ],
+        get_status: [ "diagnostics/runtime.uc", "get-status", 0 ],
+        get_outbound_metadata: [ "diagnostics/runtime.uc", "get-outbound-metadata", 1 ],
+        get_subscription_metadata: [ "diagnostics/runtime.uc", "get-subscription-metadata", 1 ],
+        get_sing_box_status: [ "diagnostics/runtime.uc", "get-sing-box-status", 0 ],
+        get_zapret_status: [ "diagnostics/runtime.uc", "get-zapret-status", 0 ],
+        get_zapret2_status: [ "diagnostics/runtime.uc", "get-zapret2-status", 0 ],
+        get_byedpi_status: [ "diagnostics/runtime.uc", "get-byedpi-status", 0 ],
+        get_system_info: [ "diagnostics/runtime.uc", "get-system-info", 0 ],
+        get_server_capabilities: [ "diagnostics/runtime.uc", "get-server-capabilities", 0 ],
+        get_ui_capabilities: [ "service/ui.uc", "get-ui-capabilities", 0 ],
+        get_ui_state: [ "service/ui.uc", "get-ui-state", 0 ],
+        service_action_async: [ "service/ui.uc", "service-action-async", 1 ],
+        service_action_status: [ "service/ui.uc", "service-action-status", 1 ],
+        latency_test_async: [ "service/ui.uc", "latency-test-async", 4 ],
+        latency_test_status: [ "service/ui.uc", "latency-test-status", 1 ],
+        ui_action_ack: [ "service/ui.uc", "action-ack", 2 ],
+        generate_reality_keypair: [ "server/service.uc", "generate-reality-keypair", 0 ],
+        get_tls_certificate_sha256: [ "server/service.uc", "tls-certificate-sha256", 1 ],
+        component_action: [ "components/action.uc", "component-action", 2 ],
+        component_action_async: [ "components/updates.uc", "component-action-async", 2 ],
+        component_action_status: [ "components/updates.uc", "component-action-status", 1 ],
+        component_updates_if_due: [ "components/updates.uc", "component-updates-if-due", 0 ],
+        component_update_check_cache: [ "components/updates.uc", "component-update-check-cache", 0 ],
+        check_dns_available: [ "diagnostics/runtime.uc", "check-dns-available", 0 ],
+        global_check: [ "diagnostics/runtime.uc", "global-check", 2 ],
+        validate_nfqws_strategy_json: [ "diagnostics/runtime.uc", "validate-nfqws-strategy-json", 1 ],
+        validate_nfqws2_strategy_json: [ "diagnostics/runtime.uc", "validate-nfqws2-strategy-json", 1 ],
+        validate_byedpi_strategy_json: [ "providers/byedpi/validator.uc", "validate-json", 1 ],
+        package_prerm: [ "service/package.uc", "prerm", 1 ],
+        package_postinst: [ "service/package.uc", "postinst", 0 ],
+        luci_postinst: [ "service/package.uc", "luci-postinst", 0 ]
+    };
+
+    return commands[as_string(command)];
+}
+
+function run_spec(command, spec, user_args) {
+    let module = module_path(spec[0]);
+    if (!file_readable(module)) {
+        warn("Error: required file '", module, "' is missing or not readable\n");
+        restore_dnsmasq_failsafe_on_loader_failure(command);
+        return 1;
+    }
+
+    let args = [ "ucode", "-L", LIB_DIR, module, spec[1] ];
+    let count = int(spec[2] || 0);
+    for (let i = 0; i < count; i++)
+        push(args, user_args[i] || "");
+
+    return normalize_status(system(command_from_args(args)));
+}
+
+function main() {
+    let command = ARGV[0] || "";
+    let spec = command_spec(command);
+    if (spec == null) {
+        show_help();
+        return 1;
+    }
+
+    let user_args = [];
+    for (let i = 1; i < length(ARGV); i++)
+        push(user_args, ARGV[i]);
+
+    return run_spec(command, spec, user_args);
+}
+
+exit(main());
