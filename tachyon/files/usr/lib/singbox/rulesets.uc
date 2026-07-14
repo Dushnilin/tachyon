@@ -5,9 +5,6 @@ const SRS_ADS_HAGEZI_PRO_URL = "https://github.com/zxc-rv/ad-filter/releases/lat
 const SRS_SUPERCELL_URL = "https://raw.githubusercontent.com/ushan0v/sing-box-supercell-ruleset/main/supercell.srs";
 const SRS_GITHUB_URL = "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/github.srs";
 
-let common = require("core.common");
-let as_string = common.as_string;
-
 const COMMUNITY_SERVICES = {
     russia_inside: true,
     russia_outside: true,
@@ -38,6 +35,9 @@ const COMMUNITY_SERVICES = {
     github: true
 };
 
+function as_string(value) {
+    return value == null ? "" : "" + value;
+}
 
 function is_community(name) {
     return COMMUNITY_SERVICES[as_string(name)] === true;

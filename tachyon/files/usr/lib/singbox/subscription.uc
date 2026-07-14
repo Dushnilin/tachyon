@@ -2,6 +2,7 @@
 
 let fs = require("fs");
 let common = require("core.common");
+let subscription_share_link = require("subscription.share_link");
 
 let as_string = common.as_string;
 let read_json_file = common.read_json_file;
@@ -13,7 +14,7 @@ const TMP_SUBSCRIPTION_FOLDER = getenv("TMP_SUBSCRIPTION_FOLDER") || "/tmp/sing-
 const TACHYON_RUNTIME_STATE_DIR = getenv("TACHYON_RUNTIME_STATE_DIR") || "/var/run/tachyon";
 const TACHYON_SECTION_CACHE_DIR = getenv("TACHYON_SECTION_CACHE_DIR") || TACHYON_RUNTIME_STATE_DIR + "/section-cache";
 const TACHYON_SUBSCRIPTION_METADATA_DIR = getenv("TACHYON_SUBSCRIPTION_METADATA_DIR") || TACHYON_RUNTIME_STATE_DIR + "/subscription-metadata";
-const TACHYON_RUNTIME_CACHE_FORMAT = int(getenv("TACHYON_RUNTIME_CACHE_FORMAT") || "7");
+const TACHYON_RUNTIME_CACHE_FORMAT = int(getenv("TACHYON_RUNTIME_CACHE_FORMAT") || "8");
 const TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR = getenv("TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR") || "/etc/tachyon/subscription-cache";
 
 let section_cache_dir = TACHYON_SECTION_CACHE_DIR;
@@ -223,38 +224,14 @@ function remember_outbound_metadata(state, tag_name, display_name, outbound) {
         state.servers[tag_name] = server;
 }
 
-function starts_with(value, prefix) {
-    value = as_string(value);
-    prefix = as_string(prefix);
-    return substr(value, 0, length(prefix)) == prefix;
-}
-
-function is_copyable_link(value) {
-    value = lc(as_string(value));
-    let prefixes = [
-        "vless://", "vmess://", "trojan://", "ss://", "ssr://",
-        "hysteria2://", "hy2://", "tuic://",
-        "socks4://", "socks4a://", "socks5://"
-    ];
-    for (let prefix in prefixes)
-        if (starts_with(value, prefix))
-            return true;
-    return false;
-}
-
-function remember_source_outbound(state, tag_name, source_section, source_index, source_outbound_index, display_name, outbound) {
+function remember_source_outbound(state, tag_name, display_name, outbound, source_link) {
     if (type(state) != "object")
         return;
     remember_outbound_metadata(state, tag_name, display_name, outbound);
     let outbound_type = as_string(outbound.type || "");
     if (outbound_type != "selector" && outbound_type != "urltest") {
-        let source_link = as_string(outbound.source_link || "");
-        if (is_copyable_link(source_link))
+        if (subscription_share_link.is_copyable_link(source_link))
             state.links[tag_name] = source_link;
-        state.linkRefs[tag_name] = {
-            sourceSection: source_section,
-            sourceIndex: source_outbound_index
-        };
     }
 }
 
@@ -298,11 +275,6 @@ function remember_priority_group(state, tag_name, group) {
         return;
 
     state.priorityGroups[tag_name] = object_or_empty(group);
-}
-
-function remember_visible_outbound(state, tag_name, source_section, source_index, source_outbound_index, display_name, outbound) {
-    remember_source_outbound(state, tag_name, source_section, source_index, source_outbound_index, display_name, outbound);
-    remember_urltest_group(state, tag_name, display_name, outbound);
 }
 
 function source_hwid_path(source_section) {
@@ -353,7 +325,6 @@ function new_section_state(section_name) {
         version: TACHYON_RUNTIME_CACHE_FORMAT,
         section: section_name,
         links: {},
-        linkRefs: {},
         outboundMetadata: {
             names: {},
             countries: {},
@@ -379,7 +350,6 @@ return {
     remember_urltest_group,
     remember_urltest_group_config,
     remember_priority_group,
-    remember_visible_outbound,
     source_cache_is_current,
     read_source_outbounds,
     new_section_state

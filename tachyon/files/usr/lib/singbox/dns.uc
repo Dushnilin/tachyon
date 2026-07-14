@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env ucode
+#!/usr/bin/env ucode
 
 let common = require("core.common");
 let core_ip = require("core.ip");

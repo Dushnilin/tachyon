@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env ucode
+#!/usr/bin/env ucode
 
 let common = require("core.common");
 let uci_core = require("core.uci");
@@ -17,10 +17,24 @@ const ITEM_TYPES = [
 
 let item_sections = null;
 
-let option = common.option;
-let bool_option = common.bool_option;
 function raw_option(section, key) {
-    return common.object_or_empty(section)[key];
+    return object_or_empty(section)[key];
+}
+
+function option(section, key, fallback) {
+    return common.option(section, key, fallback);
+}
+
+function bool_value(value, fallback) {
+    if (value == null || value == "")
+        return !!fallback;
+
+    value = as_string(value);
+    return value == "1" || value == "true" || value == "yes" || value == "on";
+}
+
+function bool_option(section, key, fallback) {
+    return bool_value(raw_option(section, key), fallback);
 }
 
 function list_value(section, key) {
@@ -256,15 +270,6 @@ function item_option(section, key, item, option_name, fallback) {
     if (value == null)
         return as_string(fallback);
     return as_string(value);
-}
-
-function bool_value(value, fallback) {
-    if (value == null)
-        return !!fallback;
-    if (type(value) == "boolean")
-        return value;
-    value = lc(as_string(value));
-    return value == "1" || value == "true" || value == "yes" || value == "on";
 }
 
 function item_bool(section, key, item, option_name, fallback) {
@@ -1042,7 +1047,6 @@ return {
     set_item_sections,
     set_item_sections_from_cursor,
     set_item_sections_from_data,
-    item_index_from_cursor,
     settings_map,
     item_settings,
     item_option,
@@ -1158,5 +1162,6 @@ return {
     priority_level_regex,
     priority_level_detect_server_country,
     subscription_download_targets,
-    subscription_download_target_port
+    subscription_download_target_port,
+    item_index_from_cursor
 };

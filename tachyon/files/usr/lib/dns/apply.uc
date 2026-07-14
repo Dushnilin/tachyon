@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env ucode
+#!/usr/bin/env ucode
 
 let fs = require("fs");
 let uci = require("core.uci");
@@ -7,9 +7,13 @@ const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
 const SB_DNS_INBOUND_ADDRESS = getenv("SB_DNS_INBOUND_ADDRESS") || "127.0.0.42";
 const DNSMASQ_INIT = getenv("DNSMASQ_INIT") || "/etc/init.d/dnsmasq";
 
-let common = require("core.common");
-let as_string = common.as_string;
-let shell_quote = common.shell_quote;
+function as_string(value) {
+    return value == null ? "" : "" + value;
+}
+
+function shell_quote(value) {
+    return "'" + replace(as_string(value), /'/g, "'\\''") + "'";
+}
 
 function run(command) {
     return system(command) == 0;

@@ -1,21 +1,46 @@
-﻿#!/usr/bin/env ucode
+#!/usr/bin/env ucode
 
 let fs = require("fs");
 
-let common = require("core.common");
-let as_string = common.as_string;
-let write_json = common.write_json;
-let read_json_file = common.read_json_file;
-let object_or_empty = common.object_or_empty;
-let read_stdin = common.read_stdin;
-let array_or_empty = common.array_or_empty;
-let read_stdin_json = common.read_stdin_json;
+function as_string(value) {
+    return value == null ? "" : "" + value;
+}
 
+function read_json_file(path) {
+    let data = fs.readfile(path);
+    if (data == null)
+        return null;
 
+    try {
+        return json(data);
+    }
+    catch (e) {
+        return null;
+    }
+}
 
+function read_stdin() {
+    let input = fs.open("/dev/stdin", "r");
+    if (!input)
+        return "";
+    let data = input.read("all");
+    input.close();
+    return data == null ? "" : data;
+}
 
+function read_stdin_json() {
+    let data = read_stdin();
+    try {
+        return json(data);
+    }
+    catch (e) {
+        return null;
+    }
+}
 
-
+function write_json(value) {
+    print(sprintf("%J", value), "\n");
+}
 
 function stdin_contains_ci(needle) {
     needle = lc(as_string(needle));
@@ -59,7 +84,13 @@ function object_get_default(key, fallback) {
         print(as_string(fallback), "\n");
 }
 
+function object_or_empty(value) {
+    return type(value) == "object" ? value : {};
+}
 
+function array_or_empty(value) {
+    return type(value) == "array" ? value : [];
+}
 
 function str_contains(haystack, needle) {
     return index(as_string(haystack), as_string(needle)) >= 0;

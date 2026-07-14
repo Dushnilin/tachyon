@@ -1,8 +1,5 @@
 #!/usr/bin/env ucode
 
-let common = require("core.common");
-let as_string = common.as_string;
-
 const DNS_SERVER_TAG = "dns-server";
 const FAKEIP_DNS_SERVER_TAG = "fakeip-server";
 const BOOTSTRAP_DNS_SERVER_TAG = "bootstrap-dns-server";
@@ -54,6 +51,9 @@ const RESERVED_TAGS = {
     [BYPASS_OUTBOUND_TAG]: true
 };
 
+function as_string(value) {
+    return value == null ? "" : "" + value;
+}
 
 function tag(base, postfix) {
     let candidate = as_string(base) + "-" + as_string(postfix);

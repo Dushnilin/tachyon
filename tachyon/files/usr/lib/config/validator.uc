@@ -16,27 +16,41 @@ let connections = require("config.connections");
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
 const DEFAULT_LATENCY_TEST_URL = "https://www.gstatic.com/generate_204";
 
-let common = require("core.common");
-let as_string = common.as_string;
-let shell_quote = common.shell_quote;
-let read_json_file = common.read_json_file;
+function as_string(value) {
+    return value == null ? "" : "" + value;
+}
 
-let read_stdin = common.read_stdin;
-let read_stdin_json = common.read_stdin_json;
-let option = common.option;
-let list_option = common.list_option;
-let bool_option = common.bool_option;
-let command_from_args = common.command_from_args;
-let run_args = common.run_args;
-let command_success_from_args = common.command_success_from_args;
-let command_output = common.command_output;
-let command_output_from_args = common.command_output_from_args;
-let command_trimmed_output_from_args = common.command_trimmed_output_from_args;
-let command_exists = common.command_exists;
+function read_stdin() {
+    let input = fs.open("/dev/stdin", "r");
+    if (!input)
+        return "";
+    let data = input.read("all");
+    input.close();
+    return data == null ? "" : data;
+}
 
-let object_or_empty = common.object_or_empty;
-let array_or_empty = common.array_or_empty;
+function read_stdin_json() {
+    let data = read_stdin();
+    try {
+        return json(data);
+    }
+    catch (e) {
+        return null;
+    }
+}
 
+function read_json_file(path) {
+    let data = fs.readfile(as_string(path));
+    if (data == null)
+        return null;
+
+    try {
+        return json(data);
+    }
+    catch (e) {
+        return null;
+    }
+}
 
 function string_starts_with(value, prefix) {
     value = as_string(value);
@@ -77,7 +91,13 @@ function list_has_value(values, needle) {
     return false;
 }
 
+function object_or_empty(value) {
+    return type(value) == "object" ? value : {};
+}
 
+function array_or_empty(value) {
+    return type(value) == "array" ? value : [];
+}
 
 function contains(values, needle) {
     for (let value in array_or_empty(values))
@@ -86,10 +106,35 @@ function contains(values, needle) {
     return false;
 }
 
+function option(section, key, fallback) {
+    if (fallback == null)
+        fallback = "";
 
+    let value = object_or_empty(section)[key];
+    if (value == null)
+        return fallback;
+    if (type(value) == "array")
+        return join(" ", value);
+    return as_string(value);
+}
 
-function file_exists(path) {
-    return fs.stat(as_string(path)) != null;
+function list_option(section, key) {
+    let value = object_or_empty(section)[key];
+    if (value == null)
+        return [];
+    if (type(value) == "array")
+        return value;
+
+    value = trim(as_string(value));
+    return value == "" ? [] : split(value, " ");
+}
+
+function bool_option(section, key, fallback) {
+    if (fallback == null)
+        fallback = false;
+
+    let value = option(section, key, fallback ? "1" : "0");
+    return value == "1" || value == "true" || value == "yes" || value == "on";
 }
 
 function file_executable(path) {
@@ -105,9 +150,47 @@ function file_nonempty(path) {
     return stat != null && stat.size != null && stat.size > 0;
 }
 
+function shell_quote(value) {
+    return "'" + replace(as_string(value), /'/g, "'\\''") + "'";
+}
 
+function command_from_args(args) {
+    let parts = [];
 
+    for (let arg in args)
+        push(parts, shell_quote(arg));
 
+    return join(" ", parts);
+}
+
+function run_args(args) {
+    return system(command_from_args(args)) == 0;
+}
+
+function command_success_from_args(args) {
+    return system(command_from_args(args) + " >/dev/null 2>&1") == 0;
+}
+
+function command_output(command) {
+    let pipe = fs.popen(command, "r");
+    if (!pipe)
+        return "";
+
+    let data = pipe.read("all");
+    let status = pipe.close();
+    if (status != 0 || data == null)
+        return "";
+
+    return as_string(data);
+}
+
+function command_output_from_args(args) {
+    return command_output(command_from_args(args));
+}
+
+function command_exists(name) {
+    return system("command -v " + shell_quote(name) + " >/dev/null 2>&1") == 0;
+}
 
 function log_message(message, level) {
     level = as_string(level || "info");
@@ -942,6 +1025,13 @@ function validate_urltest_filter_mode_value(value, section) {
     fail_validation("Invalid URLTest filter mode '" + value + "' in rule '" + section + "'. Aborted.");
 }
 
+function validate_dashboard_filter_mode_value(value, section) {
+    if (as_string(value) == "" || contains([ "disabled", "exclude", "include", "mixed" ], value))
+        return;
+
+    fail_validation("Invalid dashboard filter mode '" + value + "' in rule '" + section + "'. Aborted.");
+}
+
 function validate_priority_filter_mode_value(value, section, group_id, level_id) {
     if (contains([ "disabled", "exclude", "include", "mixed" ], value))
         return;
@@ -1072,6 +1162,56 @@ function validate_priority_group(section, group_id) {
                     name
                 );
         }
+    }
+}
+
+function validate_dashboard_group_references(section, values) {
+    let available = {};
+    for (let group_id in connections.urltests(section))
+        available[connections.urltest_display_name(section, group_id)] = true;
+    for (let group_id in connections.priority_groups(section))
+        available[connections.priority_group_display_name(section, group_id)] = true;
+
+    for (let group_name in values)
+        if (!available[group_name])
+            fail_validation("Unknown dashboard URLTest/Priority group '" + group_name + "' in rule '" + section_name(section) + "'. Aborted.");
+}
+
+function validate_dashboard_filter(section) {
+    let name = section_name(section);
+    let filter_mode = connections.dashboard_filter_mode(section);
+    validate_dashboard_filter_mode_value(filter_mode, name);
+    if (filter_mode == "disabled")
+        return;
+
+    validate_detect_server_country_value(connections.dashboard_detect_server_country(section), name);
+    if (filter_mode == "include" || filter_mode == "mixed") {
+        for (let value in connections.dashboard_include_countries(section))
+            validate_country_code_value(value, name);
+        for (let value in connections.dashboard_include_regex(section))
+            validate_urltest_regex_value(value, name);
+        validate_dashboard_group_references(section, connections.dashboard_include_groups(section));
+        if (connections.dashboard_include_proxy_parameters(section))
+            validate_proxy_parameter_filters(
+                connections.dashboard_include_protocols(section),
+                connections.dashboard_include_transports(section),
+                connections.dashboard_include_securities(section),
+                name
+            );
+    }
+    if (filter_mode == "exclude" || filter_mode == "mixed") {
+        for (let value in connections.dashboard_exclude_countries(section))
+            validate_country_code_value(value, name);
+        for (let value in connections.dashboard_exclude_regex(section))
+            validate_urltest_regex_value(value, name);
+        validate_dashboard_group_references(section, connections.dashboard_exclude_groups(section));
+        if (connections.dashboard_exclude_proxy_parameters(section))
+            validate_proxy_parameter_filters(
+                connections.dashboard_exclude_protocols(section),
+                connections.dashboard_exclude_transports(section),
+                connections.dashboard_exclude_securities(section),
+                name
+            );
     }
 }
 
@@ -1306,6 +1446,8 @@ function validate_rule(section, sections, context) {
     }
 
     if (connections.is_connections_action(action)) {
+        validate_dashboard_filter(section);
+
         for (let urltest_id in connections.urltests(section)) {
             validate_urltest_identifier_value(urltest_id, name);
 
@@ -1409,11 +1551,6 @@ function download_via_proxy_section(settings, purpose) {
 function download_via_proxy_enabled(settings, purpose) {
     let enabled_option = download_via_proxy_option_for_purpose(purpose);
     return enabled_option != "" && bool_option(settings, enabled_option, false);
-}
-
-function download_via_proxy_any_enabled(settings) {
-    return download_via_proxy_enabled(settings, "lists") ||
-        download_via_proxy_enabled(settings, "components");
 }
 
 function basic_rows_from_sections(sections) {

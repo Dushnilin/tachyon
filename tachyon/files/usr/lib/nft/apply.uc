@@ -13,25 +13,31 @@ const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
 let common_read_json_file = common.read_json_file;
 let list_option = common.list_option;
 let bool_option = common.bool_option;
-let as_string = common.as_string;
 
-let write_compact_string_array = common.write_compact_string_array;
-let run_args = common.run_args;
-let read_stdin = common.read_stdin;
-let command_output_from_args = common.command_output_from_args;
-let csv_to_json_array = common.csv_to_json_array;
-let command_from_args = common.command_from_args;
-let object_or_empty = common.object_or_empty;
-let write_json = common.write_json;
-let option = common.option;
-
+function as_string(value) {
+    return value == null ? "" : "" + value;
+}
 
 function arg_bool(value) {
     value = lc(as_string(value));
     return value == "1" || value == "true" || value == "yes";
 }
 
+function object_or_empty(value) {
+    return type(value) == "object" ? value : {};
+}
 
+function option(section, key, fallback) {
+    if (fallback == null)
+        fallback = "";
+
+    let value = object_or_empty(section)[key];
+    if (value == null)
+        return fallback;
+    if (type(value) == "array")
+        return join(" ", value);
+    return as_string(value);
+}
 
 function uci_section(section_name) {
     return object_or_empty(uci_core.get_all(CONFIG_NAME, section_name));
@@ -45,8 +51,15 @@ function uci_settings() {
     return uci_section("settings");
 }
 
-
-
+function write_compact_string_array(values) {
+    print("[");
+    for (let i = 0; i < length(values); i++) {
+        if (i > 0)
+            print(",");
+        print(sprintf("%J", as_string(values[i])));
+    }
+    print("]\n");
+}
 
 function write_text_file(path, text) {
     let result = fs.writefile(path, as_string(text));
@@ -73,14 +86,52 @@ function unlink_file(path) {
     }
 }
 
-let shell_quote = common.shell_quote;
+function shell_quote(value) {
+    return "'" + replace(as_string(value), /'/g, "'\\''") + "'";
+}
 
+function command_from_args(args) {
+    let parts = [];
 
+    for (let arg in args)
+        push(parts, shell_quote(arg));
+
+    return join(" ", parts);
+}
+
+function run_args(args) {
+    return system(command_from_args(args)) == 0;
+}
 
 function run_args_quiet(args) {
     return system(command_from_args(args) + " >/dev/null 2>&1") == 0;
 }
 
+function command_output_from_args(args) {
+    let pipe = fs.popen(command_from_args(args), "r");
+    if (!pipe)
+        return "";
+
+    let data = pipe.read("all");
+    let status = pipe.close();
+    if (status != 0 || data == null)
+        return "";
+
+    return as_string(data);
+}
+
+function command_output_quiet_from_args(args) {
+    let pipe = fs.popen(command_from_args(args) + " 2>/dev/null", "r");
+    if (!pipe)
+        return "";
+
+    let data = pipe.read("all");
+    let status = pipe.close();
+    if (status != 0 || data == null)
+        return "";
+
+    return as_string(data);
+}
 
 function log_debug(message) {
     run_args([ "logger", "-t", "tachyon", "[debug] " + as_string(message) ]);
@@ -129,6 +180,15 @@ function text_list_to_csv(value, separator_mode) {
     print_csv(text_list_values(value, separator_mode));
 }
 
+function csv_to_json_array(value) {
+    value = as_string(value);
+    if (value == "") {
+        print("[]\n");
+        return;
+    }
+
+    write_compact_string_array(split(value, ","));
+}
 
 function csv_list_contains(value, needle) {
     needle = as_string(needle);
@@ -171,14 +231,6 @@ function valid_ipv4_cidr(value) {
     return core_ip.valid_ipv4_cidr(value, false);
 }
 
-function nft_ipv4(value, allow_trailing_dot) {
-    return core_ip.valid_ipv4(value, allow_trailing_dot, true);
-}
-
-function nft_ipv4_cidr(value) {
-    return core_ip.valid_ipv4_cidr(value, true);
-}
-
 function nft_ip_or_cidr(value) {
     return core_ip.nft_ip_or_cidr(value);
 }
@@ -193,16 +245,6 @@ function domain_subnet_line_values(data) {
     }
 
     return result;
-}
-
-function domain_subnet_value_valid(value, kind) {
-    kind = as_string(kind);
-    if (kind == "domains")
-        return domain_config.valid_suffix(value);
-    if (kind == "subnets")
-        return core_ip.valid_ip_or_cidr(value);
-
-    exit(1);
 }
 
 function normalize_domain_subnet_value(value, kind) {
@@ -903,22 +945,6 @@ function nft_invalid(invalid, value, message) {
     push(invalid, as_string(value) + "\t" + message);
 }
 
-function str_last_index(value, needle) {
-    value = as_string(value);
-    needle = as_string(needle);
-    let result = -1;
-    let start = 0;
-
-    while (true) {
-        let offset = index(substr(value, start), needle);
-        if (offset < 0)
-            return result;
-
-        result = start + offset;
-        start = result + length(needle);
-    }
-}
-
 function nft_trimmed_lines(path) {
     let data = fs.readfile(path);
     if (data == null)
@@ -972,7 +998,7 @@ function nft_build_chunks_from_values(values, kind, ports_csv, chunk_size_text, 
 
         if (kind == "ip-ports") {
             let separator = index(line, " . ");
-            let last_separator = str_last_index(line, " . ");
+            let last_separator = rindex(line, " . ");
             if (separator < 0 || last_separator < 0) {
                 nft_invalid(invalid, line, "is not an IP/CIDR and port nft tuple");
                 continue;
@@ -1179,10 +1205,6 @@ function nft_ensure_fully_routed_ip_rules_from_chain(source_ip, table, interface
     return true;
 }
 
-function nft_ensure_fully_routed_ip_rules(source_ip, table, interface_set, localv4_set, mark, localv6_set) {
-    return nft_ensure_fully_routed_ip_rules_from_chain(source_ip, table, interface_set, localv4_set, localv6_set, mark, read_stdin(), {});
-}
-
 function normalized_fields(line) {
     line = trim(replace(as_string(line), /\r/g, ""));
     line = replace(line, /[[:space:]]+/g, " ");
@@ -1281,11 +1303,11 @@ function ensure_rt_table_entry(path, table_id, table_name) {
 }
 
 function tproxy_route4_present(table) {
-    return has_local_default_route_text(command_output_from_args([ "ip", "route", "list", "table", table ]), 4);
+    return has_local_default_route_text(command_output_quiet_from_args([ "ip", "route", "list", "table", table ]), 4);
 }
 
 function tproxy_route6_present(table) {
-    return has_local_default_route_text(command_output_from_args([ "ip", "-6", "route", "list", "table", table ]), 6);
+    return has_local_default_route_text(command_output_quiet_from_args([ "ip", "-6", "route", "list", "table", table ]), 6);
 }
 
 function tproxy_route_present(table) {

@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env bash
+#!/usr/bin/env bash
 set -eo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -87,9 +87,9 @@ require_pattern 'return "current reload";' \
   "reload-time queued reload must be distinguishable in logs"
 require_file_pattern "$LIFECYCLE_UC" '>/dev/null 2>&1 1000>&- &' \
   "service/lifecycle.uc background modules must close inherited procd lock fd"
-require_file_pattern "$INITD_UC" 'reload pending </dev/null >/dev/null 2>&1 1000<&- &' \
+require_file_pattern "$INITD_UC" 'reload pending >/dev/null 2>&1 1000>&- &' \
   "service/initd.uc pending reload worker must close inherited procd lock fd"
-require_file_pattern "$STATE_UC" 'reload pending </dev/null >/dev/null 2>&1 1000<&- &' \
+require_file_pattern "$STATE_UC" 'reload pending >/dev/null 2>&1 1000>&- &' \
   "service/state.uc pending reload worker must close inherited procd lock fd"
 require_file_pattern "$TACHYON_INIT" 'TACHYON_LAST_START_STATUS="$?"' \
   "init.d start_service must preserve backend start status for rc.common"

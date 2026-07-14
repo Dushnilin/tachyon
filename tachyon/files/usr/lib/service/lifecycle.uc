@@ -4,20 +4,9 @@ let fs = require("fs");
 let constants = require("core.constants");
 let uci_core = require("core.uci");
 
-let common = require("core.common");
-let as_string = common.as_string;
-let shell_quote = common.shell_quote;
-let read_json_file = common.read_json_file;
-
-let command_status = common.command_status;
-let command_success_from_args = common.command_success_from_args;
-let command_output_from_args = common.command_output_from_args;
-let command_from_args = common.command_from_args;
-let object_or_empty = common.object_or_empty;
-let write_json = common.write_json;
-let array_or_empty = common.array_or_empty;
-let command_output = common.command_output;
-
+function as_string(value) {
+    return value == null ? "" : "" + value;
+}
 
 function constant_value(name, fallback) {
     let value = constants[name];
@@ -40,7 +29,6 @@ const RELOAD_STATE_SNAPSHOT_FILE = getenv("TACHYON_RELOAD_STATE_SNAPSHOT_FILE") 
 const PENDING_RELOAD_FILE = getenv("TACHYON_PENDING_RELOAD_FILE") || RUNTIME_STATE_DIR + "/reload.pending";
 const SERVICE_TRIGGER_SYNC_FILE = getenv("TACHYON_SERVICE_TRIGGER_SYNC_FILE") || RUNTIME_STATE_DIR + "/service-triggers.sync";
 const SUBSCRIPTION_UPDATE_STATE_DIR = getenv("TACHYON_SUBSCRIPTION_UPDATE_STATE_DIR") || RUNTIME_STATE_DIR + "/subscription-update";
-const SUBSCRIPTION_UPDATE_JOB_DIR = getenv("TACHYON_SUBSCRIPTION_UPDATE_JOB_DIR") || RUNTIME_STATE_DIR + "/subscription-update-jobs";
 const SUBSCRIPTION_LINKS_DIR = getenv("TACHYON_SUBSCRIPTION_LINKS_DIR") || RUNTIME_STATE_DIR + "/subscription-links";
 const SUBSCRIPTION_METADATA_DIR = getenv("TACHYON_SUBSCRIPTION_METADATA_DIR") || RUNTIME_STATE_DIR + "/subscription-metadata";
 const OUTBOUND_METADATA_DIR = getenv("TACHYON_OUTBOUND_METADATA_DIR") || RUNTIME_STATE_DIR + "/outbound-metadata";
@@ -49,6 +37,7 @@ const RULE_CONDITION_CACHE_DIR = getenv("TACHYON_RULE_CONDITION_CACHE_DIR") || R
 const RUNTIME_CACHE_FORMAT_FILE = getenv("TACHYON_RUNTIME_CACHE_FORMAT_FILE") || RUNTIME_STATE_DIR + "/cache-format";
 const PERSISTENT_SUBSCRIPTION_CACHE_DIR = getenv("TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR") || "/etc/tachyon/subscription-cache";
 const PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE = getenv("TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE") || PERSISTENT_SUBSCRIPTION_CACHE_DIR + "/cache-format";
+const PERSISTENT_SUBSCRIPTION_CACHE_FORMAT = getenv("TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT") || "7";
 const SUBSCRIPTION_BOOTSTRAP_RETRY_PID_FILE = getenv("TACHYON_SUBSCRIPTION_BOOTSTRAP_RETRY_PID_FILE") || RUNTIME_STATE_DIR + "/subscription-bootstrap-retry.pid";
 const DNS_FAILOVER_STATE_FILE = getenv("TACHYON_DNS_FAILOVER_STATE_FILE") || RUNTIME_STATE_DIR + "/dns-failover.json";
 const DNS_FAILOVER_PID_FILE = getenv("TACHYON_DNS_FAILOVER_PID_FILE") || RUNTIME_STATE_DIR + "/dns-failover.pid";
@@ -60,7 +49,7 @@ const LIST_UPDATE_CRON_MARKER = getenv("TACHYON_LIST_UPDATE_CRON_MARKER") || "# 
 const SUBSCRIPTION_UPDATE_CRON_MARKER = getenv("TACHYON_SUBSCRIPTION_UPDATE_CRON_MARKER") || "# tachyon-subscription-update";
 const COMPONENT_UPDATE_CHECK_CRON_MARKER = getenv("TACHYON_COMPONENT_UPDATE_CHECK_CRON_MARKER") || "# tachyon-component-update-check";
 const RELOAD_STATE_FORMAT = int(getenv("TACHYON_RELOAD_STATE_FORMAT") || "1");
-const RUNTIME_CACHE_FORMAT = int(getenv("TACHYON_RUNTIME_CACHE_FORMAT") || "7");
+const RUNTIME_CACHE_FORMAT = int(getenv("TACHYON_RUNTIME_CACHE_FORMAT") || "8");
 const RUNTIME_STABLE_MIN_AGE = int(getenv("TACHYON_RUNTIME_STABLE_MIN_AGE") || "2");
 const SING_BOX_START_STABLE_MIN_AGE = int(getenv("TACHYON_SING_BOX_START_STABLE_MIN_AGE") || "8");
 const SING_BOX_START_VERIFY_TIMEOUT = int(getenv("TACHYON_SING_BOX_START_VERIFY_TIMEOUT") || "10");
@@ -121,8 +110,6 @@ const ZAPRET_UC = LIB_DIR + "/providers/zapret/runtime.uc";
 const ZAPRET2_UC = LIB_DIR + "/providers/zapret2/runtime.uc";
 const BYEDPI_UC = LIB_DIR + "/providers/byedpi/runtime.uc";
 const PACKAGES_UC = LIB_DIR + "/core/packages.uc";
-const WATCHDOG_UC = LIB_DIR + "/service/watchdog.uc";
-const TELEGRAM_UC = LIB_DIR + "/service/telegram.uc";
 
 let start_subscription_update_lock_held = false;
 let subscription_caches_prepared = getenv("TACHYON_SUBSCRIPTION_CACHES_PREPARED") || "0";
@@ -132,14 +119,25 @@ let nft_populate_enabled = NFT_POPULATE_ENABLED_DEFAULT;
 let rule_condition_cache_enabled = 0;
 let startup_config_fingerprint = "";
 
+function shell_quote(value) {
+    return "'" + replace(as_string(value), /'/g, "'\\''") + "'";
+}
 
-
+function command_from_args(args) {
+    let parts = [];
+    for (let arg in args)
+        push(parts, shell_quote(arg));
+    return join(" ", parts);
+}
 
 function normalize_status(status) {
     status = int(status);
     return status > 255 ? int(status / 256) : status;
 }
 
+function command_status(command) {
+    return normalize_status(system(command));
+}
 
 function command_capture(command) {
     let pipe = fs.popen(command, "r");
@@ -151,9 +149,27 @@ function command_capture(command) {
     return { status, output: data == null ? "" : as_string(data) };
 }
 
+function command_output(command) {
+    let result = command_capture(command);
+    return result.status == 0 ? result.output : "";
+}
 
+function read_json_file(path) {
+    let data = fs.readfile(as_string(path));
+    if (data == null)
+        return null;
 
+    try {
+        return json(data);
+    }
+    catch (e) {
+        return null;
+    }
+}
 
+function write_json(value) {
+    print(sprintf("%J", value), "\n");
+}
 
 function command_success(command) {
     return command_status(command + " >/dev/null 2>&1") == 0;
@@ -163,7 +179,13 @@ function command_status_from_args(args) {
     return command_status(command_from_args(args));
 }
 
+function command_output_from_args(args) {
+    return command_output(command_from_args(args) + " 2>/dev/null");
+}
 
+function command_success_from_args(args) {
+    return command_status(command_from_args(args) + " >/dev/null 2>&1") == 0;
+}
 
 function external_config_fingerprint() {
     let data = fs.readfile(CONFIG_FILE);
@@ -187,16 +209,18 @@ function owner_pid() {
     return match(pid, /^[0-9]+$/) != null ? pid : "0";
 }
 
-function now_seconds() {
-    return int(clock()[0]);
-}
-
 function bool_text(value) {
     value = lc(as_string(value));
     return value == "1" || value == "true" || value == "yes" || value == "on";
 }
 
+function object_or_empty(value) {
+    return type(value) == "object" ? value : {};
+}
 
+function array_or_empty(value) {
+    return type(value) == "array" ? value : [];
+}
 
 function string_array_contains(values, needle) {
     needle = as_string(needle);
@@ -246,6 +270,7 @@ function lifecycle_env() {
         TACHYON_RUNTIME_CACHE_FORMAT: as_string(RUNTIME_CACHE_FORMAT),
         TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR: PERSISTENT_SUBSCRIPTION_CACHE_DIR,
         TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE: PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE,
+        TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT: PERSISTENT_SUBSCRIPTION_CACHE_FORMAT,
         TACHYON_SUBSCRIPTION_BOOTSTRAP_RETRY_PID_FILE: SUBSCRIPTION_BOOTSTRAP_RETRY_PID_FILE,
         TACHYON_DNS_FAILOVER_STATE_FILE: DNS_FAILOVER_STATE_FILE,
         TACHYON_DNS_FAILOVER_PID_FILE: DNS_FAILOVER_PID_FILE,
@@ -690,11 +715,6 @@ function start_main() {
 
     module_success(BYEDPI_UC, [ "start-runtime" ]);
 
-    if (command_success_from_args([ "test", "-f", "/etc/tachyon/cache.db.backup" ])) {
-        command_success_from_args([ "mkdir", "-p", TMP_SING_BOX_FOLDER ]);
-        command_success_from_args([ "cp", "/etc/tachyon/cache.db.backup", TMP_SING_BOX_FOLDER + "/cache.db" ]);
-    }
-
     if (!command_success_from_args([ "/etc/init.d/sing-box", "start" ])) {
         log_message("Failed to start sing-box. Aborted.", "fatal");
         return 1;
@@ -709,7 +729,8 @@ function start_main() {
         as_string(SING_BOX_START_VERIFY_TIMEOUT)
     ]);
     if (status != 0) {
-        log_message("sing-box did not reach a stable running state after start (WAN might be down). Will retry automatically.", "warn");
+        log_message("sing-box did not reach a stable running state after start. Aborted.", "fatal");
+        return status;
     }
 
     status = module_status(PRIORITY_UC, [ "start-runtime" ]);
@@ -768,17 +789,6 @@ function start_impl() {
         return status;
     }
 
-    status = module_status(WATCHDOG_UC, [ "start-runtime" ]);
-    if (status != 0) {
-        log_message("Failed to start Watchdog runtime", "fatal");
-        return status;
-    }
-
-    status = module_status(TELEGRAM_UC, [ "start-runtime" ]);
-    if (status != 0) {
-        log_message("Failed to start Telegram Bot runtime", "warn");
-    }
-
     module_background(DIAGNOSTICS_UC, [ "get-system-info" ]);
     return 0;
 }
@@ -788,8 +798,6 @@ function stop_main() {
 
     log_message("Stopping Tachyon", "info");
     module_success(DNS_FAILOVER_UC, [ "stop-runtime" ]);
-    module_success(WATCHDOG_UC, [ "stop-runtime" ]);
-    module_success(TELEGRAM_UC, [ "stop-runtime" ]);
     module_success(PRIORITY_UC, [ "stop-runtime" ]);
     module_success(SUBSCRIPTION_CACHE_UC, [ "stop-deferred-bootstrap-worker" ]);
     module_success(UPDATES_UC, [ "stop-list-update" ]);
@@ -816,11 +824,6 @@ function stop_main() {
     let sing_box_status = command_status_from_args([ "/etc/init.d/sing-box", "stop" ]);
     if (sing_box_status != 0)
         status = sing_box_status;
-
-    if (command_success_from_args([ "test", "-f", TMP_SING_BOX_FOLDER + "/cache.db" ])) {
-        command_success_from_args([ "mkdir", "-p", "/etc/tachyon" ]);
-        command_success_from_args([ "cp", TMP_SING_BOX_FOLDER + "/cache.db", "/etc/tachyon/cache.db.backup" ]);
-    }
 
     return status;
 }
@@ -1228,7 +1231,8 @@ function reload(reason) {
             "reload-sing-box-runtime",
             sing_box_pid_before,
             sing_box_config_hash_before,
-            file_md5(sing_box_config_path)
+            file_md5(sing_box_config_path),
+            as_string(force_runtime_reload)
         ]);
         if (status != 0)
             return abort_reload(status, true);

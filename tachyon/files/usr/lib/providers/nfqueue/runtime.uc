@@ -10,39 +10,58 @@ const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
 const SB_TPROXY_INBOUND_TAG = getenv("SB_TPROXY_INBOUND_TAG") || constants.SB_TPROXY_INBOUND_TAG || "tproxy-in";
 const NFT_TABLE_NAME = getenv("NFT_TABLE_NAME") || constants.NFT_TABLE_NAME || "TachyonTable";
 
-let common = require("core.common");
-let as_string = common.as_string;
-let shell_quote = common.shell_quote;
-let read_json_file = common.read_json_file;
-
-let option = common.option;
-let command_status = common.command_status;
-let command_success_from_args = common.command_success_from_args;
-let bool_option = common.bool_option;
-let command_output_from_args = common.command_output_from_args;
-let command_exists = common.command_exists;
-let command_from_args = common.command_from_args;
-let object_or_empty = common.object_or_empty;
-let write_json = common.write_json;
-let array_or_empty = common.array_or_empty;
-let command_output = common.command_output;
-
+function as_string(value) {
+    return value == null ? "" : "" + value;
+}
 
 function bool_value(value) {
     value = lc(as_string(value));
     return value == "1" || value == "true" || value == "yes" || value == "on";
 }
 
+function write_json(value) {
+    print(sprintf("%J", value), "\n");
+}
 
+function shell_quote(value) {
+    return "'" + replace(as_string(value), /'/g, "'\\''") + "'";
+}
 
+function command_from_args(args) {
+    let parts = [];
+    for (let arg in args)
+        push(parts, shell_quote(arg));
+    return join(" ", parts);
+}
 
+function command_output(command) {
+    let pipe = fs.popen(command, "r");
+    if (!pipe)
+        return "";
 
+    let data = pipe.read("all");
+    let status = pipe.close();
+    if (status != 0 || data == null)
+        return "";
+    return as_string(data);
+}
+
+function command_output_from_args(args) {
+    return command_output(command_from_args(args));
+}
+
+function command_status(command) {
+    let status = int(system(command));
+    return status > 255 ? int(status / 256) : status;
+}
 
 function command_success(command) {
     return command_status(command + " >/dev/null 2>&1") == 0;
 }
 
-
+function command_success_from_args(args) {
+    return system(command_from_args(args) + " >/dev/null 2>&1") == 0;
+}
 
 function module_command(args) {
     let command_args = [ "ucode", "-L", LIB_DIR ];
@@ -60,9 +79,30 @@ function log_message(message, level) {
     command_success_from_args([ "logger", "-t", "tachyon", "[" + level + "] " + as_string(message) ]);
 }
 
+function object_or_empty(value) {
+    return type(value) == "object" ? value : {};
+}
 
+function array_or_empty(value) {
+    return type(value) == "array" ? value : [];
+}
 
+function option(section, key, fallback) {
+    if (fallback == null)
+        fallback = "";
 
+    let value = object_or_empty(section)[key];
+    if (value == null)
+        return fallback;
+    if (type(value) == "array")
+        return join(" ", value);
+    return as_string(value);
+}
+
+function bool_option(section, key, fallback) {
+    let value = object_or_empty(section)[key];
+    return value == null ? !!fallback : bool_value(value);
+}
 
 function section_name(section) {
     return as_string(object_or_empty(section)[".name"]);
@@ -110,16 +150,6 @@ function enabled_sections(cfg) {
         if (bool_option(section, "enabled", true) && option(section, "action", "") == cfg.action)
             push(result, section);
     return result;
-}
-
-function rule_index(name, sections) {
-    let index_value = 0;
-    for (let section in array_or_empty(sections)) {
-        index_value++;
-        if (section_name(section) == as_string(name))
-            return index_value;
-    }
-    return 0;
 }
 
 function hex_digit_value(value) {
@@ -451,7 +481,17 @@ function runtime_tag(base, postfix) {
     return runtime_constants.tag(base, postfix);
 }
 
-
+function read_json_file(path) {
+    let data = fs.readfile(as_string(path));
+    if (data == null)
+        return null;
+    try {
+        return json(data);
+    }
+    catch (e) {
+        return null;
+    }
+}
 
 function value_contains(value, needle) {
     if (type(value) == "array") {

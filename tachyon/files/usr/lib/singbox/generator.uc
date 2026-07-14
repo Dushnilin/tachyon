@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env ucode
+#!/usr/bin/env ucode
 
 let fs = require("fs");
 let common = require("core.common");
@@ -975,7 +975,7 @@ function regex_match_set(tags, names, regexes) {
 
 function tag_name_filter_matches(tag, names, name_filter, regex_set) {
     let name = tag_display_name(tag, names);
-    return array_contains(name_filter, name) || regex_set[tag];
+    return array_contains(name_filter, name) || array_contains(name_filter, tag) || regex_set[tag];
 }
 
 function tag_country_filter_matches(tag, countries, country_filter) {

@@ -2,10 +2,9 @@
 
 let fs = require("fs");
 
-let common = require("core.common");
-let as_string = common.as_string;
-
-
+function as_string(value) {
+    return value == null ? "" : "" + value;
+}
 
 function arg_bool(value) {
     return value === true || value == "true" || value == "1" || value == 1;

@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env bash
+#!/usr/bin/env bash
 set -eo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -138,12 +138,16 @@ tmp_file_line="$(grep -n '^function make_tmp_file' "$ACTION_UC" | cut -d: -f1)"
 [ -n "$init_line" ] && [ -n "$tmp_file_line" ] && [ "$init_line" -lt "$tmp_file_line" ] ||
   fail "components/action.uc must declare init_tmp_dir before make_tmp_file for OpenWrt ucode"
 
-awk '
-/^function as_string\(value\)/ { capture = 1 }
-/^function command_output\(command\)/ { capture = 0 }
-capture { print }
-' "$ACTION_UC" >"$WORK_DIR/action-command-success.uc"
-cat >>"$WORK_DIR/action-command-success.uc" <<'UCODE'
+cat >"$WORK_DIR/action-command-success.uc" <<'UCODE'
+let common = require("core.common");
+let command_from_args = common.command_from_args;
+let shell_quote = common.shell_quote;
+let command_status = common.command_status;
+
+function command_success(command) {
+    return command_status("(" + command + ") >/dev/null 2>&1") == 0;
+}
+
 let output_path = ARGV[0] || "";
 if (output_path == "" ||
     !command_success(command_from_args([ "printf", "%s", "extracted payload" ]) + " >" + shell_quote(output_path)))

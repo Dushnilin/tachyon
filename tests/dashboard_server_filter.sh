@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env bash
+#!/usr/bin/env bash
 set -eo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -113,7 +113,7 @@ const source = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
 const outputDir = process.argv[3];
 
 for (const mode of ['disabled', 'include', 'exclude']) {
-  const fixture = structuredClone(source);
+  const fixture = JSON.parse(JSON.stringify(source));
   const section = fixture.section[0];
   section.dashboard_filter_mode = mode;
   if (mode === 'disabled') {
@@ -133,11 +133,11 @@ for (const mode of ['disabled', 'include', 'exclude']) {
   fs.writeFileSync(path.join(outputDir, `${mode}.json`), JSON.stringify(fixture));
 }
 
-const invalid = structuredClone(source);
+const invalid = JSON.parse(JSON.stringify(source));
 invalid.section[0].dashboard_include_groups = ['missing_group'];
 fs.writeFileSync(path.join(outputDir, 'invalid-group.json'), JSON.stringify(invalid));
 
-const invalidMode = structuredClone(source);
+const invalidMode = JSON.parse(JSON.stringify(source));
 invalidMode.section[0].dashboard_filter_mode = 'unknown';
 fs.writeFileSync(path.join(outputDir, 'invalid-mode.json'), JSON.stringify(invalidMode));
 JS

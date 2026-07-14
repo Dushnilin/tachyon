@@ -34,8 +34,9 @@ APP_DESCRIPTION="Rule-based Tachyon LuCI app with hybrid sing-box + zapret orche
 I18N_DESCRIPTION="Translation for luci-app-tachyon - Русский (Russian)"
 MAINTAINER="Dushnilin <dushnilin@gmail.com>"
 PROJECT_URL="https://github.com/Dushnilin/tachyon"
-BACKEND_DEPENDS_IPK="libc, ca-bundle, curl, ucode, ucode-mod-fs, ucode-mod-uci, coreutils-base64, coreutils-sort, bind-dig, nftables, ip-full"
-BACKEND_DEPENDS_APK="bind-dig ca-bundle coreutils-base64 coreutils-sort curl ip-full libc nftables ucode ucode-mod-fs ucode-mod-uci"
+BACKEND_CONFLICTS_IPK="https-dns-proxy, nextdns, luci-app-passwall, luci-app-passwall2"
+BACKEND_DEPENDS_IPK="libc, ca-bundle, curl, ucode, ucode-mod-fs, ucode-mod-uci, coreutils-base64, bind-dig, nftables, ip-full"
+BACKEND_DEPENDS_APK="bind-dig ca-bundle coreutils-base64 curl ip-full libc nftables ucode ucode-mod-fs ucode-mod-uci !https-dns-proxy !nextdns !luci-app-passwall !luci-app-passwall2"
 APP_DEPENDS_IPK="libc, luci-base, tachyon"
 APP_DEPENDS_APK="libc luci-base tachyon"
 
@@ -329,6 +330,7 @@ write_backend_ipk_control() {
 Package: tachyon
 Version: ${RELEASE_VERSION}
 Depends: ${BACKEND_DEPENDS_IPK}
+Conflicts: ${BACKEND_CONFLICTS_IPK}
 Provides: forkop
 Replaces: forkop
 License: GPL-2.0-or-later
@@ -525,13 +527,13 @@ if (getenv("IPKG_INSTROOT") == null || getenv("IPKG_INSTROOT") == "") {
     } else if (system("test -f /etc/config/podkop") == 0) {
         system("mv /etc/config/podkop /etc/config/tachyon");
         system("TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate-podkop");
-        exit(0);
+        exit(system("/usr/bin/tachyon package_postinst"));
     } else if (system("test -f /etc/config/podkop_plus") == 0) {
         system("mv /etc/config/podkop_plus /etc/config/tachyon");
         system("TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate-podkop");
-        exit(0);
+        exit(system("/usr/bin/tachyon package_postinst"));
     }
-    exit(system("TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate"));
+    exit(system("TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate && /usr/bin/tachyon package_postinst"));
 }
 exit(0);
 EOF
@@ -547,6 +549,8 @@ EOF
 
   cat > "$scripts_dir/backend-pre-upgrade.sh" <<'EOF'
 #!/usr/bin/ucode
+if (getenv("IPKG_INSTROOT") == null || getenv("IPKG_INSTROOT") == "")
+    exit(system("/usr/bin/tachyon package_prerm upgrade >/dev/null 2>&1"));
 exit(0);
 EOF
 
@@ -561,13 +565,13 @@ if (getenv("IPKG_INSTROOT") == null || getenv("IPKG_INSTROOT") == "") {
     } else if (system("test -f /etc/config/podkop") == 0) {
         system("mv /etc/config/podkop /etc/config/tachyon");
         system("TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate-podkop");
-        exit(0);
+        exit(system("/usr/bin/tachyon package_postinst"));
     } else if (system("test -f /etc/config/podkop_plus") == 0) {
         system("mv /etc/config/podkop_plus /etc/config/tachyon");
         system("TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate-podkop");
-        exit(0);
+        exit(system("/usr/bin/tachyon package_postinst"));
     }
-    exit(system("TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate"));
+    exit(system("TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate && /usr/bin/tachyon package_postinst"));
 }
 exit(0);
 EOF
