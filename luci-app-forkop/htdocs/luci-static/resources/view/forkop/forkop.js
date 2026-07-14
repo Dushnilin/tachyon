@@ -28,7 +28,6 @@
 "require view.forkop.updates as updates";
 
 const UCI_PACKAGE = main.FORKOP_UCI_PACKAGE;
-const CBI_PREFIX = UCI_PACKAGE;
 
 function renderSectionAdd(sectionRef, extra_class) {
   const el = form.GridSection.prototype.renderSectionAdd.apply(sectionRef, [

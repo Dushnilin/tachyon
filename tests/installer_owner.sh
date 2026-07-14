@@ -32,6 +32,17 @@ fail() {
 
 [ -r "$INSTALLER" ] || fail "install.sh is missing"
 
+grep -Fq 'trap cleanup EXIT' "$INSTALLER" ||
+  fail "installer cleanup must run on every exit"
+for signal_status in "HUP 129" "INT 130" "TERM 143"; do
+  set -- $signal_status
+  grep -Fq "trap 'exit $2' $1" "$INSTALLER" ||
+    fail "installer must stop with status $2 on $1"
+done
+if grep -Fq 'trap cleanup EXIT HUP INT TERM' "$INSTALLER"; then
+  fail "installer signal handlers must not resume installation after cleanup"
+fi
+
 deadline_helper="$WORK_DIR/install-deadline.sh"
 awk '
   /cat > "\$deadline_helper_path" <<'\''EOF'\''/ { capture = 1; next }

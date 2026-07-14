@@ -24,6 +24,12 @@ export function isValidHost(host: string): boolean {
   );
 }
 
+export function isValidPort(port: unknown): boolean {
+  const normalized = String(port ?? '');
+  const value = Number(normalized);
+  return /^\d+$/.test(normalized) && value >= 1 && value <= 65535;
+}
+
 export function parseHostPort(value: string): ParsedHostPort | null {
   if (!value) {
     return null;
@@ -35,10 +41,11 @@ export function parseHostPort(value: string): ParsedHostPort | null {
       return null;
     }
 
-    return {
+    const parsed = {
       host: value.slice(1, end),
       port: value.slice(end + 2),
     };
+    return isValidHost(parsed.host) ? parsed : null;
   }
 
   const firstColon = value.indexOf(':');
@@ -47,8 +54,9 @@ export function parseHostPort(value: string): ParsedHostPort | null {
     return null;
   }
 
-  return {
+  const parsed = {
     host: value.slice(0, firstColon),
     port: value.slice(firstColon + 1),
   };
+  return isValidHost(parsed.host) ? parsed : null;
 }

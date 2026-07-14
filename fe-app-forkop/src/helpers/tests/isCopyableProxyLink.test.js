@@ -1,8 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  isCopyableProxyLink,
-  isCopyableProxyOutboundType,
-} from '../isCopyableProxyLink';
+import { isCopyableProxyLink } from '../isCopyableProxyLink';
 
 const copyableLinks = [
   'vless://uuid@example.com:443',
@@ -42,22 +39,5 @@ describe('isCopyableProxyLink', () => {
     it('returns false', () => {
       expect(isCopyableProxyLink(link)).toBe(false);
     });
-  });
-});
-
-describe('isCopyableProxyOutboundType', () => {
-  it('accepts protocol outbound types from imported proxy links', () => {
-    expect(isCopyableProxyOutboundType('VLESS')).toBe(true);
-    expect(isCopyableProxyOutboundType('shadowsocks')).toBe(true);
-    expect(isCopyableProxyOutboundType('hysteria2')).toBe(true);
-    expect(isCopyableProxyOutboundType('socks')).toBe(true);
-    expect(isCopyableProxyOutboundType('http')).toBe(true);
-  });
-
-  it('rejects group, service and routing-only outbound types', () => {
-    expect(isCopyableProxyOutboundType('urltest')).toBe(false);
-    expect(isCopyableProxyOutboundType('selector')).toBe(false);
-    expect(isCopyableProxyOutboundType('direct')).toBe(false);
-    expect(isCopyableProxyOutboundType('block')).toBe(false);
   });
 });

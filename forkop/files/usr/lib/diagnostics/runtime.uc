@@ -36,6 +36,7 @@ const SB_TPROXY_INBOUND6_ADDRESS = getenv("SB_TPROXY_INBOUND6_ADDRESS") || const
 const SB_TPROXY_INBOUND_PORT = getenv("SB_TPROXY_INBOUND_PORT") || constants.SB_TPROXY_INBOUND_PORT || "1602";
 const SB_CLASH_API_CONTROLLER_PORT = getenv("SB_CLASH_API_CONTROLLER_PORT") || constants.SB_CLASH_API_CONTROLLER_PORT || "9090";
 const SB_VARIANT_STATE_FILE = getenv("SB_VARIANT_STATE_FILE") || constants.SB_VARIANT_STATE_FILE || "/etc/forkop/sing-box-variant";
+const SING_BOX_BIN_PATH = getenv("FORKOP_DIAGNOSTICS_SING_BOX_BIN_PATH") || "/usr/bin/sing-box";
 const CLOUDFLARE_OCTETS = getenv("CLOUDFLARE_OCTETS") || constants.CLOUDFLARE_OCTETS || "8.47 162.159 188.114";
 const ZAPRET_LEGACY_DEFAULT_NFQWS_OPT = getenv("ZAPRET_LEGACY_DEFAULT_NFQWS_OPT") || constants.ZAPRET_LEGACY_DEFAULT_NFQWS_OPT || "";
 const DEFAULT_LATENCY_TEST_URL = getenv("DEFAULT_LATENCY_TEST_URL") || "https://www.gstatic.com/generate_204";
@@ -975,7 +976,9 @@ function sing_box_component_action_running() {
 }
 
 function sing_box_live_probe_disabled() {
-    return sing_box_marker_is("extended-compressed") || sing_box_component_action_running();
+    return sing_box_marker_is("extended") ||
+        sing_box_marker_is("extended-compressed") ||
+        sing_box_component_action_running();
 }
 
 function sing_box_tiny_package_installed() {
@@ -992,7 +995,7 @@ function sing_box_capability_flags(sing_box_version, sing_box_version_output) {
         module_success(SINGBOX_RUNTIME_UC, [ "is-extended", sing_box_version ]))
         extended = 1;
 
-    if (extended == 0 && (sing_box_tiny_package_installed() || sing_box_marker_is("tiny")))
+    if (extended == 0 && (sing_box_marker_is("tiny") || sing_box_tiny_package_installed()))
         tiny = 1;
 
     if (extended == 1)
@@ -1102,6 +1105,15 @@ function get_system_info() {
 }
 
 function get_server_capabilities() {
+    if (!file_executable(SING_BOX_BIN_PATH)) {
+        write_json({
+            sing_box_extended: 0,
+            sing_box_tiny: 0,
+            sing_box_tailscale: 0
+        });
+        return 0;
+    }
+
     let sing_box_version_output = "";
     let sing_box_version = "";
     if (sing_box_live_probe_disabled())

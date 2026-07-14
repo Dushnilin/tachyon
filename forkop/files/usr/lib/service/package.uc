@@ -21,6 +21,7 @@ const SING_BOX_INIT = env("FORKOP_SING_BOX_INIT", "/etc/init.d/sing-box");
 const SING_BOX_BIN = env("FORKOP_SING_BOX_BIN", "/usr/bin/sing-box");
 const SING_BOX_CRONET = env("FORKOP_SING_BOX_CRONET", "/usr/lib/libcronet.so");
 const SING_BOX_MANAGED_MARKER = env("SB_MANAGED_SERVICE_MARKER", "Forkop managed sing-box service for binary variants");
+const PACKAGE_UPGRADE_STATE = env("FORKOP_PACKAGE_UPGRADE_STATE", "/tmp/forkop-package-was-running");
 const PACKAGE_TEST_MODE = env("FORKOP_PACKAGE_TEST_MODE", "") != "";
 
 function shell_quote(value) {
@@ -108,16 +109,38 @@ function remove_managed_sing_box() {
     unlink_if_exists(SING_BOX_CRONET);
 }
 
-function prerm_cleanup() {
+function remember_upgrade_state(action) {
+    if (as_string(action) != "upgrade") {
+        unlink_if_exists(PACKAGE_UPGRADE_STATE);
+        return;
+    }
+
+    if (command_success_from_args([ INIT_PATH, "status" ]))
+        fs.writefile(PACKAGE_UPGRADE_STATE, "1\n");
+}
+
+function prerm_cleanup(action) {
     if (env("IPKG_INSTROOT", "") != "")
         return true;
 
+    remember_upgrade_state(action);
     if (!PACKAGE_TEST_MODE) {
         command_success_from_args([ INIT_PATH, "stop" ]);
         restore_dnsmasq_if_needed();
         remove_managed_sing_box();
     }
     return remove_rt_tables_entry();
+}
+
+function postinst_restore() {
+    if (env("IPKG_INSTROOT", "") != "" || !path_exists(PACKAGE_UPGRADE_STATE))
+        return true;
+
+    if (!command_success_from_args([ INIT_PATH, "start" ]))
+        return false;
+
+    unlink_if_exists(PACKAGE_UPGRADE_STATE);
+    return true;
 }
 
 function luci_cache_globs() {
@@ -152,12 +175,14 @@ function luci_postinst() {
 let mode = ARGV[0] || "";
 
 if (mode == "prerm")
-    exit(prerm_cleanup() ? 0 : 1);
+    exit(prerm_cleanup(ARGV[1]) ? 0 : 1);
+else if (mode == "postinst")
+    exit(postinst_restore() ? 0 : 1);
 else if (mode == "remove-rt-tables-entry")
     exit(remove_rt_tables_entry() ? 0 : 1);
 else if (mode == "luci-postinst")
     exit(luci_postinst() ? 0 : 1);
 else {
-    warn("Usage: service/package.uc <prerm|remove-rt-tables-entry|luci-postinst>\n");
+    warn("Usage: service/package.uc <prerm|postinst|remove-rt-tables-entry|luci-postinst>\n");
     exit(1);
 }

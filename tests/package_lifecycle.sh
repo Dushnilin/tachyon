@@ -9,6 +9,7 @@ FORKOP_MAKEFILE="$ROOT_DIR/forkop/Makefile"
 LUCI_UCI_DEFAULTS="$ROOT_DIR/luci-app-forkop/root/etc/uci-defaults/50_luci-forkop"
 BUILD_SCRIPT="$ROOT_DIR/build.sh"
 WORK_DIR="$(mktemp -d)"
+export FORKOP_PACKAGE_UPGRADE_STATE="$WORK_DIR/package-was-running"
 
 cleanup() {
   rm -rf "$WORK_DIR"
@@ -27,8 +28,10 @@ if grep -n -E 'require\("uci"\)\.cursor|uci -q|uci", "-q"' "$PACKAGE_UC" >/dev/n
 fi
 grep -Fq 'require("core.uci")' "$PACKAGE_UC" ||
   fail "service/package.uc must import core.uci"
-grep -Fq 'package_prerm: [ "service/package.uc", "prerm", 0 ]' "$FORKOP_BIN" ||
+grep -Fq 'package_prerm: [ "service/package.uc", "prerm", 1 ]' "$FORKOP_BIN" ||
   fail "forkop entrypoint must dispatch package prerm cleanup through service/package.uc"
+grep -Fq 'package_postinst: [ "service/package.uc", "postinst", 0 ]' "$FORKOP_BIN" ||
+  fail "forkop entrypoint must dispatch package postinst recovery through service/package.uc"
 grep -Fq 'luci_postinst: [ "service/package.uc", "luci-postinst", 0 ]' "$FORKOP_BIN" ||
   fail "forkop entrypoint must dispatch LuCI postinstall cleanup through service/package.uc"
 grep -Fq '#!/bin/sh' "$LUCI_UCI_DEFAULTS" ||
@@ -46,6 +49,12 @@ grep -Fq '#!/usr/bin/ucode' "$FORKOP_MAKEFILE" ||
   fail "forkop Makefile package hooks must use ucode entrypoints"
 grep -Fq '/usr/bin/forkop package_prerm' "$FORKOP_MAKEFILE" ||
   fail "forkop Makefile prerm must delegate cleanup to package_prerm"
+grep -Fq '/usr/bin/forkop package_postinst' "$FORKOP_MAKEFILE" ||
+  fail "forkop Makefile postinst must restore a service that was running before upgrade"
+grep -Fq '/usr/bin/forkop package_prerm upgrade' "$BUILD_SCRIPT" ||
+  fail "manual APK pre-upgrade must record and stop the running service"
+grep -Fq '/usr/bin/forkop package_postinst' "$BUILD_SCRIPT" ||
+  fail "manual packages must restore a service that was running before upgrade"
 grep -Fq '/usr/bin/forkop luci_postinst' "$BUILD_SCRIPT" ||
   fail "manual package builder must delegate LuCI cache/rpcd handling to luci_postinst"
 if grep -n -E 'Package/forkop/preinst|copy_legacy_config|FORKOP_LEGACY_CONFIG|mode == "preinst"' \
@@ -142,5 +151,39 @@ FORKOP_RT_TABLES="$WORK_DIR/rt_tables_restore" \
   ucode -L "$FORKOP_LIB" "$PACKAGE_UC" prerm
 grep -Fxq 'restore_dnsmasq' "$WORK_DIR/restore.log" ||
   fail "package prerm must restore dnsmasq when dont_touch_dhcp is disabled"
+
+cat >"$WORK_DIR/upgrade-init" <<'SH'
+#!/usr/bin/env bash
+case "$1" in
+  status) exit "${FORKOP_FAKE_STATUS:-0}" ;;
+  start) printf '%s\n' start >>"${FORKOP_START_LOG:?}" ;;
+esac
+SH
+chmod 0755 "$WORK_DIR/upgrade-init"
+: >"$WORK_DIR/upgrade-start.log"
+: >"$WORK_DIR/rt_tables_upgrade"
+FORKOP_PACKAGE_TEST_MODE=1 \
+FORKOP_INIT="$WORK_DIR/upgrade-init" \
+FORKOP_START_LOG="$WORK_DIR/upgrade-start.log" \
+FORKOP_RT_TABLES="$WORK_DIR/rt_tables_upgrade" \
+  ucode -L "$FORKOP_LIB" "$PACKAGE_UC" prerm upgrade
+[ -f "$FORKOP_PACKAGE_UPGRADE_STATE" ] ||
+  fail "package pre-upgrade must remember a running service"
+FORKOP_PACKAGE_TEST_MODE=1 \
+FORKOP_INIT="$WORK_DIR/upgrade-init" \
+FORKOP_START_LOG="$WORK_DIR/upgrade-start.log" \
+  ucode -L "$FORKOP_LIB" "$PACKAGE_UC" postinst
+grep -Fxq start "$WORK_DIR/upgrade-start.log" ||
+  fail "package postinst must restart a service that was running before upgrade"
+[ ! -e "$FORKOP_PACKAGE_UPGRADE_STATE" ] ||
+  fail "package postinst must clear the consumed upgrade state"
+
+FORKOP_PACKAGE_TEST_MODE=1 \
+FORKOP_FAKE_STATUS=1 \
+FORKOP_INIT="$WORK_DIR/upgrade-init" \
+FORKOP_RT_TABLES="$WORK_DIR/rt_tables_upgrade" \
+  ucode -L "$FORKOP_LIB" "$PACKAGE_UC" prerm upgrade
+[ ! -e "$FORKOP_PACKAGE_UPGRADE_STATE" ] ||
+  fail "package pre-upgrade must not mark an already stopped service"
 
 printf 'package lifecycle checks passed\n'

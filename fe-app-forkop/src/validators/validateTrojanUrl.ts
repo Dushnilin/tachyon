@@ -1,5 +1,5 @@
 import { ValidationResult } from './types';
-import { parseHostPort } from './hostPort';
+import { isValidPort, parseHostPort } from './hostPort';
 
 export function validateTrojanUrl(url: string): ValidationResult {
   try {
@@ -52,9 +52,7 @@ export function validateTrojanUrl(url: string): ValidationResult {
     if (!port)
       return { valid: false, message: 'Invalid Trojan URL: missing port' };
 
-    const portNum = Number(port);
-
-    if (!Number.isInteger(portNum) || portNum < 1 || portNum > 65535)
+    if (!isValidPort(port))
       return {
         valid: false,
         message: 'Invalid Trojan URL: invalid port number',

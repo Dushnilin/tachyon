@@ -34,8 +34,9 @@ APP_DESCRIPTION="Rule-based Forkop LuCI app with hybrid sing-box + zapret orches
 I18N_DESCRIPTION="Translation for luci-app-forkop - Русский (Russian)"
 MAINTAINER="ushan0v <ushan0v@users.noreply.github.com>"
 PROJECT_URL="https://github.com/ushan0v/forkop"
-BACKEND_DEPENDS_IPK="libc, ca-bundle, kmod-inet-diag, kmod-netlink-diag, kmod-tun, curl, ucode, ucode-mod-fs, ucode-mod-uci, kmod-nft-tproxy, coreutils-base64, coreutils-sort, bind-dig, nftables, kmod-nft-nat, ip-full"
-BACKEND_DEPENDS_APK="bind-dig ca-bundle coreutils-base64 coreutils-sort curl ip-full kmod-inet-diag kmod-netlink-diag kmod-nft-nat kmod-nft-tproxy kmod-tun libc nftables ucode ucode-mod-fs ucode-mod-uci"
+BACKEND_DEPENDS_IPK="libc, ca-bundle, kmod-inet-diag, kmod-netlink-diag, kmod-tun, curl, ucode, ucode-mod-fs, ucode-mod-uci, kmod-nft-tproxy, coreutils-base64, bind-dig, nftables, kmod-nft-nat, ip-full"
+BACKEND_DEPENDS_APK="bind-dig ca-bundle coreutils-base64 curl ip-full kmod-inet-diag kmod-netlink-diag kmod-nft-nat kmod-nft-tproxy kmod-tun libc nftables ucode ucode-mod-fs ucode-mod-uci !https-dns-proxy !nextdns !luci-app-passwall !luci-app-passwall2"
+BACKEND_CONFLICTS_IPK="https-dns-proxy, nextdns, luci-app-passwall, luci-app-passwall2"
 APP_DEPENDS_IPK="libc, luci-base, forkop"
 APP_DEPENDS_APK="libc luci-base forkop"
 
@@ -255,18 +256,10 @@ build_app_root() {
   rm -rf "$output_root"
   make_dir "$output_root/www"
 
-  if [[ -d "$ROOT_DIR/luci-app-forkop/htdocs" ]]; then
-    cp -a "$ROOT_DIR/luci-app-forkop/htdocs/." "$output_root/www/"
-  fi
-
-  if [[ -d "$ROOT_DIR/luci-app-forkop/root" ]]; then
-    cp -a "$ROOT_DIR/luci-app-forkop/root/." "$output_root/"
-  fi
-
-  if [[ -f "$output_root/www/luci-static/resources/view/forkop/main.js" ]]; then
-    sed -i -e "s/__COMPILED_VERSION_VARIABLE__/${RELEASE_VERSION}/g" \
-      "$output_root/www/luci-static/resources/view/forkop/main.js"
-  fi
+  cp -a "$ROOT_DIR/luci-app-forkop/htdocs/." "$output_root/www/"
+  cp -a "$ROOT_DIR/luci-app-forkop/root/." "$output_root/"
+  sed -i -e "s/__COMPILED_VERSION_VARIABLE__/${RELEASE_VERSION}/g" \
+    "$output_root/www/luci-static/resources/view/forkop/main.js"
 
   normalize_package_root_modes "$output_root"
   find "$output_root/etc/uci-defaults" -type f -exec chmod 0755 {} + 2>/dev/null || true
@@ -329,6 +322,7 @@ write_backend_ipk_control() {
 Package: forkop
 Version: ${RELEASE_VERSION}
 Depends: ${BACKEND_DEPENDS_IPK}
+Conflicts: ${BACKEND_CONFLICTS_IPK}
 License: GPL-2.0-or-later
 Section: net
 URL: ${PROJECT_URL}
@@ -345,14 +339,15 @@ EOF
   cat > "$control_dir/postinst" <<'EOF'
 #!/bin/sh
 [ -n "${IPKG_INSTROOT}" ] && exit 0
-FORKOP_LIB=/usr/lib/forkop ucode -L /usr/lib/forkop /usr/lib/forkop/config/migration.uc migrate
+FORKOP_LIB=/usr/lib/forkop ucode -L /usr/lib/forkop /usr/lib/forkop/config/migration.uc migrate || exit $?
+/usr/bin/forkop package_postinst
 EOF
 
   cat > "$control_dir/prerm" <<'EOF'
 #!/usr/bin/ucode
 
 if (getenv("IPKG_INSTROOT") == null || getenv("IPKG_INSTROOT") == "")
-	system("/usr/bin/forkop package_prerm >/dev/null 2>&1");
+	system("/usr/bin/forkop package_prerm " + (ARGV[0] || "") + " >/dev/null 2>&1");
 
 exit(0);
 EOF
@@ -494,7 +489,7 @@ EOF
   cat > "$scripts_dir/backend-post-install.sh" <<'EOF'
 #!/usr/bin/ucode
 if (getenv("IPKG_INSTROOT") == null || getenv("IPKG_INSTROOT") == "")
-    exit(system("FORKOP_LIB=/usr/lib/forkop ucode -L /usr/lib/forkop /usr/lib/forkop/config/migration.uc migrate"));
+    exit(system("FORKOP_LIB=/usr/lib/forkop ucode -L /usr/lib/forkop /usr/lib/forkop/config/migration.uc migrate && /usr/bin/forkop package_postinst"));
 exit(0);
 EOF
 
@@ -502,20 +497,22 @@ EOF
 #!/usr/bin/ucode
 
 if (getenv("IPKG_INSTROOT") == null || getenv("IPKG_INSTROOT") == "")
-	system("/usr/bin/forkop package_prerm >/dev/null 2>&1");
+	system("/usr/bin/forkop package_prerm remove >/dev/null 2>&1");
 
 exit(0);
 EOF
 
-  cat > "$scripts_dir/backend-pre-upgrade.sh" <<'EOF'
+cat > "$scripts_dir/backend-pre-upgrade.sh" <<'EOF'
 #!/usr/bin/ucode
+if (getenv("IPKG_INSTROOT") == null || getenv("IPKG_INSTROOT") == "")
+    exit(system("/usr/bin/forkop package_prerm upgrade >/dev/null 2>&1"));
 exit(0);
 EOF
 
   cat > "$scripts_dir/backend-post-upgrade.sh" <<'EOF'
 #!/usr/bin/ucode
 if (getenv("IPKG_INSTROOT") == null || getenv("IPKG_INSTROOT") == "")
-    exit(system("FORKOP_LIB=/usr/lib/forkop ucode -L /usr/lib/forkop /usr/lib/forkop/config/migration.uc migrate"));
+    exit(system("FORKOP_LIB=/usr/lib/forkop ucode -L /usr/lib/forkop /usr/lib/forkop/config/migration.uc migrate && /usr/bin/forkop package_postinst"));
 exit(0);
 EOF
 
@@ -747,6 +744,9 @@ verify_ipk_metadata() {
   tar -xzf "$tmp_dir/control.tar.gz" -C "$tmp_dir"
   grep -q "^Package: ${expected_package}$" "$tmp_dir/control"
   grep -q "^Version: ${expected_version}$" "$tmp_dir/control"
+  if [[ "$expected_package" == "forkop" ]]; then
+    grep -q "^Conflicts: ${BACKEND_CONFLICTS_IPK}$" "$tmp_dir/control"
+  fi
   rm -rf "$tmp_dir"
 }
 
@@ -761,6 +761,11 @@ verify_apk_metadata() {
   "$apk_bin" adbdump "$package_file" > "$dump_file"
   grep -q "^  name: ${expected_package}$" "$dump_file"
   grep -q "^  version: ${expected_version}$" "$dump_file"
+  if [[ "$expected_package" == "forkop" ]]; then
+    for conflict in https-dns-proxy nextdns luci-app-passwall luci-app-passwall2; do
+      grep -q "^[[:space:]]*- '!${conflict}'$" "$dump_file"
+    done
+  fi
   rm -f "$dump_file"
 }
 

@@ -945,22 +945,6 @@ function nft_invalid(invalid, value, message) {
     push(invalid, as_string(value) + "\t" + message);
 }
 
-function str_last_index(value, needle) {
-    value = as_string(value);
-    needle = as_string(needle);
-    let result = -1;
-    let start = 0;
-
-    while (true) {
-        let offset = index(substr(value, start), needle);
-        if (offset < 0)
-            return result;
-
-        result = start + offset;
-        start = result + length(needle);
-    }
-}
-
 function nft_trimmed_lines(path) {
     let data = fs.readfile(path);
     if (data == null)
@@ -1014,7 +998,7 @@ function nft_build_chunks_from_values(values, kind, ports_csv, chunk_size_text, 
 
         if (kind == "ip-ports") {
             let separator = index(line, " . ");
-            let last_separator = str_last_index(line, " . ");
+            let last_separator = rindex(line, " . ");
             if (separator < 0 || last_separator < 0) {
                 nft_invalid(invalid, line, "is not an IP/CIDR and port nft tuple");
                 continue;

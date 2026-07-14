@@ -8,7 +8,7 @@
 const UCI_PACKAGE = main.FORKOP_UCI_PACKAGE;
 
 function isSingBoxDuration(value) {
-  return /^([0-9]+(?:\.[0-9]+)?(?:ns|us|ms|s|m|h|d))+$/.test(value);
+  return /^(?=.*[1-9])([0-9]+(?:\.[0-9]+)?(?:ns|us|ms|s|m|h|d))+$/.test(value);
 }
 
 function latencyTestUrlChoices() {

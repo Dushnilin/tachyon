@@ -64,8 +64,8 @@ class SocketManager {
 
     this.sockets.set(url, ws);
     this.connected.set(url, false);
-    this.listeners.set(url, new Set());
-    this.errorListeners.set(url, new Set());
+    if (!this.listeners.has(url)) this.listeners.set(url, new Set());
+    if (!this.errorListeners.has(url)) this.errorListeners.set(url, new Set());
 
     ws.addEventListener('open', () => {
       this.connected.set(url, true);

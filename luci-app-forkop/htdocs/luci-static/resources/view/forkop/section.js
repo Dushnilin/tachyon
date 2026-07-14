@@ -4095,20 +4095,6 @@ function populateActionOptionValues(option) {
   }
 }
 
-function setFlagOptionWidgetValue(section_id, optionName, enabled) {
-  const frame = document.getElementById(
-    `cbid.${UCI_PACKAGE}.${section_id}.${optionName}`,
-  );
-  const checkbox = frame ? frame.querySelector('input[type="checkbox"]') : null;
-
-  if (!checkbox || checkbox.checked === Boolean(enabled)) {
-    return;
-  }
-
-  checkbox.checked = Boolean(enabled);
-  checkbox.dispatchEvent(new Event("change", { bubbles: true }));
-}
-
 function getConfigListValues(section_id, key) {
   return normalizeOptionValues(uci.get(UCI_PACKAGE, section_id, key));
 }
@@ -4398,21 +4384,7 @@ function validateKeyword(_section_id, value) {
 }
 
 function isSingBoxDuration(value) {
-  return /^([0-9]+(?:\.[0-9]+)?(?:ns|us|ms|s|m|h|d))+$/.test(value);
-}
-
-function readDurationOptionWithDefault(section_id, key, defaultValue) {
-  if (uci.get(UCI_PACKAGE, section_id, `${key}_disabled`) === "1") {
-    return "";
-  }
-
-  const rawValue = uci.get(UCI_PACKAGE, section_id, key);
-
-  if (rawValue == null) {
-    return defaultValue;
-  }
-
-  return `${rawValue}`;
+  return /^(?=.*[1-9])([0-9]+(?:\.[0-9]+)?(?:ns|us|ms|s|m|h|d))+$/.test(value);
 }
 
 function writeOptionalDurationOption(section_id, key, value) {
@@ -4426,10 +4398,6 @@ function writeOptionalDurationOption(section_id, key, value) {
     uci.unset(UCI_PACKAGE, section_id, key);
     uci.set(UCI_PACKAGE, section_id, disabledKey, "1");
   }
-}
-
-function removeOptionalDurationOption(section_id, key) {
-  writeOptionalDurationOption(section_id, key, "");
 }
 
 function validateOptionalSingBoxDuration(value) {
@@ -4491,39 +4459,6 @@ function validateSubscriptionUrlEntry(_section_id, value) {
   return validation.valid ? true : validation.message;
 }
 
-function parseRequiredValueOnSave(section_id) {
-  const active = this.isActive(section_id);
-
-  if (active && !this.isValid(section_id)) {
-    const title = this.stripTags(this.title).trim();
-    const error = this.getValidationError(section_id);
-    return Promise.reject(
-      new TypeError(
-        `${_('Option "%s" contains an invalid input value.').format(title || this.option)} ${error}`,
-      ),
-    );
-  }
-
-  if (active) {
-    const formValue = this.formvalue(section_id);
-    const normalized = formValue ? `${formValue}`.trim() : "";
-
-    if (!normalized.length) {
-      return Promise.reject(
-        new TypeError(_("Subscription URL cannot be empty")),
-      );
-    }
-
-    return Promise.resolve(this.write(section_id, normalized));
-  }
-
-  if (!this.retain) {
-    return Promise.resolve(this.remove(section_id));
-  }
-
-  return Promise.resolve();
-}
-
 function getDuplicateTextListErrors(values, normalizeValue, duplicateMessage) {
   const seen = new Set();
   const duplicates = [];
@@ -4542,57 +4477,6 @@ function getDuplicateTextListErrors(values, normalizeValue, duplicateMessage) {
   });
 
   return duplicates.map((item) => `${item}: ${duplicateMessage}`);
-}
-
-function validateTextList(
-  _section_id,
-  value,
-  validateItem,
-  emptyMessage,
-  options = {},
-) {
-  if (!value || value.length === 0) {
-    return true;
-  }
-
-  const values = main.parseValueList(value);
-
-  if (!values.length) {
-    return emptyMessage;
-  }
-
-  if (!validateItem) {
-    const duplicateErrors = getDuplicateTextListErrors(
-      values,
-      options.normalizeDuplicateValue,
-      options.duplicateMessage || _("Duplicate value"),
-    );
-
-    if (!duplicateErrors.length) {
-      return true;
-    }
-
-    return [_("Validation errors:"), ...duplicateErrors].join("\n");
-  }
-
-  const { valid, results } = main.bulkValidate(values, validateItem);
-
-  const duplicateErrors = getDuplicateTextListErrors(
-    values,
-    options.normalizeDuplicateValue,
-    options.duplicateMessage || _("Duplicate value"),
-  );
-
-  if (valid && !duplicateErrors.length) {
-    return true;
-  }
-
-  const errors = results
-    .filter((item) => !item.valid)
-    .map((item) => `${item.value}: ${item.message}`)
-    .concat(duplicateErrors);
-
-  return [_("Validation errors:"), ...errors].join("\n");
 }
 
 function getValidationHeaderText() {

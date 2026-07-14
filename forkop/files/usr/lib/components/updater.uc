@@ -123,19 +123,6 @@ function path_basename(value) {
     return length(parts) > 0 ? as_string(parts[length(parts) - 1]) : "";
 }
 
-function str_last_index(value, needle) {
-    value = as_string(value);
-    needle = as_string(needle);
-    if (needle == "")
-        return length(value);
-
-    for (let i = length(value) - length(needle); i >= 0; i--)
-        if (substr(value, i, length(needle)) == needle)
-            return i;
-
-    return -1;
-}
-
 function arg_bool(value) {
     return value === true || value == "true" || value == "1" || value == 1;
 }
@@ -295,7 +282,7 @@ function openwrt_release_value(path, key) {
             continue;
 
         let rest = substr(line, length(prefix));
-        let quote = str_last_index(rest, "'");
+        let quote = rindex(rest, "'");
         if (quote >= 0)
             print(substr(rest, 0, quote), "\n");
         return;
@@ -313,7 +300,7 @@ function openwrt_release_series(path) {
             continue;
 
         let value = substr(line, length(prefix));
-        let quote = str_last_index(value, "'");
+        let quote = rindex(value, "'");
         if (quote >= 0)
             value = substr(value, 0, quote);
 

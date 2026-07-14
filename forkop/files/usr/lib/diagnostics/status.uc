@@ -346,6 +346,7 @@ function mask_option_path(line, token) {
 
 function forkop_config_masked_line(line) {
     line = mask_after_token(line, "option proxy_string");
+    line = mask_after_token(line, "option hwid");
     line = mask_after_token(line, "option subscription_url");
     line = mask_after_token(line, "list subscription_urls");
     line = mask_after_token(line, "list urltest_proxy_links");
@@ -631,19 +632,6 @@ function str_remove_suffix(value, suffix) {
     return str_endswith(value, suffix) ? substr(value, 0, length(value) - length(suffix)) : value;
 }
 
-function str_last_index(value, needle) {
-    value = as_string(value);
-    needle = as_string(needle);
-    if (needle == "")
-        return length(value);
-
-    for (let i = length(value) - length(needle); i >= 0; i--)
-        if (substr(value, i, length(needle)) == needle)
-            return i;
-
-    return -1;
-}
-
 function contains(values, needle) {
     needle = as_string(needle);
     for (let value in array_or_empty(values))
@@ -659,7 +647,7 @@ function netstat_fields(line) {
 
 function netstat_addr_port(addr) {
     addr = as_string(addr);
-    let colon = str_last_index(addr, ":");
+    let colon = rindex(addr, ":");
     return colon >= 0 ? substr(addr, colon + 1) : addr;
 }
 
@@ -669,7 +657,7 @@ function netstat_addr_host(addr) {
         let end = index(addr, "]");
         return end > 0 ? substr(addr, 1, end - 1) : addr;
     }
-    let colon = str_last_index(addr, ":");
+    let colon = rindex(addr, ":");
     return colon >= 0 ? substr(addr, 0, colon) : addr;
 }
 

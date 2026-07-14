@@ -61,6 +61,34 @@ grep -Fq '"forkop-stably-running", RT_TABLE_NAME, NFT_TABLE_NAME, NFT_FAKEIP_MAR
 grep -Fq '"sing-box-service-stable",' "$DIAGNOSTICS_RUNTIME" ||
   fail "diagnostics sing-box status must use stable runtime state to avoid crash-loop flicker"
 
+capabilities="$(
+  FORKOP_DIAGNOSTICS_SING_BOX_BIN_PATH="$WORK_DIR/missing-sing-box" \
+  FORKOP_LIB="$FORKOP_LIB" \
+    ucode -L "$FORKOP_LIB" "$DIAGNOSTICS_RUNTIME" get-server-capabilities
+)"
+JSON_VALUE="$capabilities" node - <<'NODE'
+const value = JSON.parse(process.env.JSON_VALUE);
+if (value.sing_box_extended !== 0 || value.sing_box_tiny !== 0 || value.sing_box_tailscale !== 0) {
+  console.error('missing sing-box must not expose stale capabilities');
+  process.exit(1);
+}
+NODE
+
+masked_config="$WORK_DIR/forkop-masked"
+cat >"$masked_config" <<'EOF'
+config settings 'main'
+        option hwid 'device-secret'
+        option proxy_string 'vless://secret@example.com:443'
+EOF
+masked_output="$(status_ucode forkop-config-masked "$masked_config")"
+case "$masked_output" in
+  *device-secret*|*vless://secret*) fail "masked Forkop config leaked a secret" ;;
+esac
+case "$masked_output" in
+  *"option hwid 'MASKED'"*) ;;
+  *) fail "masked Forkop config must preserve the HWID option shape" ;;
+esac
+
 legacy_json="$(status_ucode service-status-json 1 0 ignored 1)"
 JSON_VALUE="$legacy_json" node - <<'NODE'
 const value = JSON.parse(process.env.JSON_VALUE);

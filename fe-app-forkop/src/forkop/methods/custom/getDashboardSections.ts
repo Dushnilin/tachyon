@@ -132,10 +132,6 @@ function getDisplayName(section: Forkop.ConfigSection) {
   return section.label || section['.name'];
 }
 
-function getSectionAction(section: Forkop.ConfigSection) {
-  return section.action || '';
-}
-
 function getSettingsSection(configSections: Forkop.ConfigSection[]) {
   return configSections.find((section) => section['.type'] === 'settings');
 }
@@ -358,8 +354,10 @@ function getJsonOutbounds(section: Forkop.ConfigSection) {
   return values.length ? values : getListValues(section.outbound_json);
 }
 
-function isConnectionAction(action: string) {
-  return ['connection', 'proxy', 'outbound', 'vpn'].includes(action);
+function isConnectionAction(action?: string) {
+  return Boolean(
+    action && ['connection', 'proxy', 'outbound', 'vpn'].includes(action),
+  );
 }
 
 function hasSubscriptionSources(section: Forkop.ConfigSection) {
@@ -1374,13 +1372,12 @@ export async function getDashboardSections(
     configSections
       .filter(
         (section) =>
-          section.enabled !== '0' &&
-          isConnectionAction(getSectionAction(section)),
+          section.enabled !== '0' && isConnectionAction(section.action),
       )
       .map(async (section) => {
         const displayName = getDisplayName(section);
         const sectionName = section['.name'];
-        const sectionAction = getSectionAction(section);
+        const sectionAction = section.action;
         const proxyConfigType = getSectionProxyConfigType(section);
 
         if (isConnectionAction(sectionAction) && shouldUseProxyGroup(section)) {

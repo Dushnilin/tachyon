@@ -60,6 +60,7 @@ describe('diagnostic masking', () => {
     const raw = [
       "config section 'main'",
       "\toption proxy_string 'vless://secret@example.com:443'",
+      "\toption hwid 'device-secret'",
       "\tlist domain 'example.com'",
       "\toption outbound_json '{",
       '  "server": "example.com",',
@@ -77,6 +78,7 @@ describe('diagnostic masking', () => {
 
     expect(masked.split('\n')).toHaveLength(raw.split('\n').length);
     expect(masked).not.toContain('vless://secret');
+    expect(masked).not.toContain('device-secret');
     expect(masked).not.toContain('example.com",');
     expect(masked).not.toContain('192.168.1.1');
     expect(masked).not.toContain('provider-password');

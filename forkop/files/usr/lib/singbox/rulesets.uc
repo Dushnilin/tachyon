@@ -54,19 +54,6 @@ function community_url(name) {
     return SRS_MAIN_URL + "/" + name + ".srs";
 }
 
-function str_last_index(value, needle) {
-    value = as_string(value);
-    needle = as_string(needle);
-    if (needle == "")
-        return length(value);
-
-    for (let i = length(value) - length(needle); i >= 0; i--)
-        if (substr(value, i, length(needle)) == needle)
-            return i;
-
-    return -1;
-}
-
 function hash12(value) {
     value = as_string(value);
     let first = 2166136261;
@@ -83,7 +70,7 @@ function hash12(value) {
 
 function file_extension(value) {
     let basename = as_string(value);
-    let slash = str_last_index(basename, "/");
+    let slash = rindex(basename, "/");
     if (slash >= 0)
         basename = substr(basename, slash + 1);
 
@@ -95,7 +82,7 @@ function file_extension(value) {
     if (fragment >= 0)
         basename = substr(basename, 0, fragment);
 
-    let dot = str_last_index(basename, ".");
+    let dot = rindex(basename, ".");
     return dot >= 0 ? lc(substr(basename, dot + 1)) : "";
 }
 

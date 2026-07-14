@@ -24,6 +24,7 @@ const invalidUrls = [
   ['No prefix', 'uuid@127.0.0.1:443?type=tcp'],
   ['No host', 'ss://password@:443?type=tcp'],
   ['No port', 'ss://password@127.0.0.1?type=tcp'],
+  ['Invalid host', 'ss://password@bad_host:443?type=tcp'],
   ['Invalid port', 'ss://password@127.0.0.1:abc?type=tcp'],
   ['Missing type', 'ss://password@127.0.0.1:443'],
   ['Contains space', 'ss://password@127.0.0.1:443?type=tcp #extra'],

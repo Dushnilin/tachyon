@@ -24,32 +24,12 @@ function trim_left_space(value) {
     return substr(value, i);
 }
 
-function last_index(value, needle) {
-    value = as_string(value);
-    needle = as_string(needle);
-    let result = -1;
-    let offset = 0;
-
-    if (needle == "")
-        return -1;
-
-    while (offset <= length(value)) {
-        let found = index(substr(value, offset), needle);
-        if (found < 0)
-            break;
-        result = offset + found;
-        offset = result + length(needle);
-    }
-
-    return result;
-}
-
 function strip_binary_prefix(line, binary) {
     line = as_string(line);
     binary = as_string(binary || "nfqws");
 
     let path_marker = "/" + binary + ":";
-    let path_index = last_index(line, path_marker);
+    let path_index = rindex(line, path_marker);
     if (path_index >= 0)
         return trim_left_space(substr(line, path_index + length(path_marker)));
 
@@ -111,7 +91,7 @@ function validation_summary(binary) {
 }
 
 function value_after_last_colon(summary) {
-    let colon = last_index(summary, ":");
+    let colon = rindex(summary, ":");
     if (colon < 0)
         return "";
 

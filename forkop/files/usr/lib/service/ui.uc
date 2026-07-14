@@ -144,7 +144,7 @@ function now_seconds() {
 }
 
 function ensure_dir(path) {
-    command_success_from_args([ "mkdir", "-p", path ]);
+    return fs.mkdir(path, 0755) || fs.stat(path) != null;
 }
 
 function ensure_dirs() {
@@ -737,23 +737,26 @@ function state_file_ack_expired(path) {
 
 function cleanup_dir(dir) {
     dir = as_string(dir);
+    let now = now_seconds();
+    let ttl_minutes = unsigned_number(ACTION_FINISHED_TTL_MINUTES);
+
     for (let path in fs.glob(dir + "/*.json")) {
         let value = read_json_file(path);
         if (!valid_action_state(value)) {
             remove_state_file(path);
             continue;
         }
-        if (value.running === false && state_file_ack_expired(path))
-            remove_state_file(path);
-    }
 
-    let old = command_output_from_args([ "find", dir, "-type", "f", "-name", "*.json", "-mmin", "+" + as_string(ACTION_FINISHED_TTL_MINUTES) ]);
-    for (let path in split(old, "\n")) {
-        path = trim(as_string(path));
-        if (path == "")
+        if (value.running !== false)
             continue;
-        let value = read_json_file(path);
-        if (type(value) == "object" && value.running === false)
+
+        if (state_file_ack_expired(path)) {
+            remove_state_file(path);
+            continue;
+        }
+
+        let stat = fs.stat(path);
+        if (stat != null && ttl_minutes != null && now - int(stat.mtime || 0) > ttl_minutes * 60)
             remove_state_file(path);
     }
 }
@@ -1041,7 +1044,7 @@ function capability_flags() {
             result.sing_box_extended = 1;
             result.sing_box_tailscale = 1;
         }
-        else if (tiny_package_installed() || marker_is("tiny")) {
+        else if (marker_is("tiny") || tiny_package_installed()) {
             result.sing_box_tiny = 1;
         }
         else if (component_action_running_for("sing_box")) {
@@ -1076,7 +1079,7 @@ function current_ui_state_json() {
     let capabilities = capability_flags();
     let forkop_is_running = forkop_running() ? 1 : 0;
     let forkop_is_enabled = service_enabled() ? 1 : 0;
-    let sing_box_is_running = sing_box_running() ? 1 : 0;
+    let sing_box_is_running = forkop_is_running ? 1 : (sing_box_running() ? 1 : 0);
     let sing_box_is_enabled = sing_box_enabled() ? 1 : 0;
     let forkop_status = service_status_text(forkop_is_running, forkop_is_enabled);
     let sing_box_status = service_status_text(sing_box_is_running, sing_box_is_enabled);
