@@ -52,7 +52,7 @@ const RELOAD_STATE_FORMAT = int(getenv("TACHYON_RELOAD_STATE_FORMAT") || "1");
 const RUNTIME_CACHE_FORMAT = int(getenv("TACHYON_RUNTIME_CACHE_FORMAT") || "8");
 const RUNTIME_STABLE_MIN_AGE = int(getenv("TACHYON_RUNTIME_STABLE_MIN_AGE") || "2");
 const SING_BOX_START_STABLE_MIN_AGE = int(getenv("TACHYON_SING_BOX_START_STABLE_MIN_AGE") || "8");
-const SING_BOX_START_VERIFY_TIMEOUT = int(getenv("TACHYON_SING_BOX_START_VERIFY_TIMEOUT") || "10");
+const SING_BOX_START_VERIFY_TIMEOUT = int(getenv("TACHYON_SING_BOX_START_VERIFY_TIMEOUT") || "45");
 const NFT_POPULATE_ENABLED_DEFAULT = int(getenv("TACHYON_NFT_POPULATE_ENABLED") || "1");
 
 const TMP_SING_BOX_FOLDER = getenv("TMP_SING_BOX_FOLDER") || constant_value("TMP_SING_BOX_FOLDER", "/tmp/sing-box");
@@ -110,6 +110,8 @@ const ZAPRET_UC = LIB_DIR + "/providers/zapret/runtime.uc";
 const ZAPRET2_UC = LIB_DIR + "/providers/zapret2/runtime.uc";
 const BYEDPI_UC = LIB_DIR + "/providers/byedpi/runtime.uc";
 const PACKAGES_UC = LIB_DIR + "/core/packages.uc";
+const WATCHDOG_UC = LIB_DIR + "/service/watchdog.uc";
+const TELEGRAM_UC = LIB_DIR + "/service/telegram.uc";
 
 let start_subscription_update_lock_held = false;
 let subscription_caches_prepared = getenv("TACHYON_SUBSCRIPTION_CACHES_PREPARED") || "0";
@@ -620,6 +622,14 @@ function nft_populate_runtime_sets() {
     ]);
 }
 
+function reload_firewall() {
+    let status = nft_rebuild_runtime();
+    if (status != 0)
+        return status;
+
+    return nft_populate_runtime_sets();
+}
+
 function singbox_init_config() {
     let result = module_capture(SINGBOX_UC, [
         "init-config",
@@ -729,7 +739,7 @@ function start_main() {
         as_string(SING_BOX_START_VERIFY_TIMEOUT)
     ]);
     if (status != 0) {
-        log_message("sing-box did not reach a stable running state after start. Aborted.", "fatal");
+        log_message("Startup verification failed after Tachyon was started; rolling back DNS changes", "warn");
         return status;
     }
 
@@ -789,6 +799,17 @@ function start_impl() {
         return status;
     }
 
+    status = module_status(WATCHDOG_UC, [ "start-runtime" ]);
+    if (status != 0) {
+        log_message("Failed to start Watchdog runtime", "fatal");
+        return status;
+    }
+
+    status = module_status(TELEGRAM_UC, [ "start-runtime" ]);
+    if (status != 0) {
+        log_message("Failed to start Telegram Bot runtime", "warn");
+    }
+
     module_background(DIAGNOSTICS_UC, [ "get-system-info" ]);
     return 0;
 }
@@ -798,6 +819,8 @@ function stop_main() {
 
     log_message("Stopping Tachyon", "info");
     module_success(DNS_FAILOVER_UC, [ "stop-runtime" ]);
+    module_success(WATCHDOG_UC, [ "stop-runtime" ]);
+    module_success(TELEGRAM_UC, [ "stop-runtime" ]);
     module_success(PRIORITY_UC, [ "stop-runtime" ]);
     module_success(SUBSCRIPTION_CACHE_UC, [ "stop-deferred-bootstrap-worker" ]);
     module_success(UPDATES_UC, [ "stop-list-update" ]);
@@ -821,7 +844,11 @@ function stop_main() {
     if (module_success(NFT_UC, [ "tproxy-route6-present", RT_TABLE_NAME ]))
         command_success_from_args([ "ip", "-6", "route", "flush", "table", RT_TABLE_NAME ]);
 
+    let cache_path = uci_core.get(CONFIG_NAME + ".settings.cache_path") || "/tmp/sing-box/cache.db";
+    remove_file(cache_path);
+
     let sing_box_status = command_status_from_args([ "/etc/init.d/sing-box", "stop" ]);
+    command_success_from_args([ "killall", "-q", "-9", "sing-box" ]);
     if (sing_box_status != 0)
         status = sing_box_status;
 
@@ -876,12 +903,9 @@ function start() {
     mark_pending_reload_if_config_changed(startup_config_fingerprint, "config_changed_during_start");
 
     status = module_status(STATE_UC, [
-        "wait-tachyon-stable-start",
-        RT_TABLE_NAME,
-        NFT_TABLE_NAME,
-        NFT_FAKEIP_MARK,
-        as_string(RUNTIME_STABLE_MIN_AGE),
-        "8"
+        "wait-sing-box-service-stable",
+        as_string(SING_BOX_START_STABLE_MIN_AGE),
+        as_string(SING_BOX_START_VERIFY_TIMEOUT)
     ]);
     if (status != 0) {
         log_message("Startup verification failed after Tachyon was started; rolling back DNS changes", "warn");
@@ -947,12 +971,9 @@ function restart_runtime_for_reload() {
     }
 
     status = module_status(STATE_UC, [
-        "wait-tachyon-stable-start",
-        RT_TABLE_NAME,
-        NFT_TABLE_NAME,
-        NFT_FAKEIP_MARK,
-        as_string(RUNTIME_STABLE_MIN_AGE),
-        "8"
+        "wait-sing-box-service-stable",
+        as_string(SING_BOX_START_STABLE_MIN_AGE),
+        as_string(SING_BOX_START_VERIFY_TIMEOUT)
     ]);
     if (status != 0) {
         log_message("Reload runtime restart verification failed after Tachyon was started; rolling back DNS changes", "fatal");
@@ -1237,10 +1258,7 @@ function reload(reason) {
         if (status != 0)
             return abort_reload(status, true);
         status = module_status(STATE_UC, [
-            "wait-tachyon-stable-start",
-            RT_TABLE_NAME,
-            NFT_TABLE_NAME,
-            NFT_FAKEIP_MARK,
+            "wait-sing-box-service-stable",
             as_string(SING_BOX_START_STABLE_MIN_AGE),
             as_string(SING_BOX_START_VERIFY_TIMEOUT)
         ]);
@@ -1424,6 +1442,8 @@ else if (mode == "start")
     status = start();
 else if (mode == "stop")
     status = stop();
+else if (mode == "reload-firewall")
+    status = reload_firewall();
 else if (mode == "reload")
     status = reload_tracked(ARGV[1] || "");
 else if (mode == "dns-failover-apply")

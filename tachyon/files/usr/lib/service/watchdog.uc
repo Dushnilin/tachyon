@@ -15,7 +15,25 @@ let shell_quote = common.shell_quote;
 let command_from_args = common.command_from_args;
 let command_status = common.command_status;
 let command_success_from_args = common.command_success_from_args;
-let command_output_from_args = common.command_output_from_args;
+
+function command_capture(command) {
+    let pipe = fs.popen(command, "r");
+    if (!pipe)
+        return { status: 1, output: "" };
+    let data = pipe.read("all");
+    let status = pipe.close();
+    if (status > 255) status = int(status / 256);
+    return { status, output: data == null ? "" : as_string(data) };
+}
+
+function command_output(command) {
+    let result = command_capture(command);
+    return result.status == 0 ? result.output : "";
+}
+
+function command_output_from_args(args) {
+    return command_output(command_from_args(args) + " 2>/dev/null");
+}
 
 function settings() {
     return common.object_or_empty(uci_core.get_all(CONFIG_NAME, "settings"));
@@ -132,6 +150,8 @@ function worker() {
     let ttl = cfg.honeypot_ttl || "86400";
     let nft_table = getenv("NFT_TABLE_NAME") || "TachyonTable";
 
+    command_success_from_args(["sh", "-c", "kill -9 $(pgrep -f 'tail -f /tmp/tachyon_honeypot.fifo') 2>/dev/null"]);
+
     system("tail -f /tmp/tachyon_honeypot.fifo | while read ip; do " +
            "if [ -n \"$ip\" ]; then " +
            "nft add element inet " + nft_table + " tachyon_honeypot { \"$ip\" timeout " + ttl + "s } >/dev/null 2>&1; " +
@@ -161,18 +181,40 @@ function worker() {
 
         let pids = split(trim(command_output_from_args(["pidof", binary_name])), /\s+/);
         let pid = (length(pids) > 0 && pids[0] != "") ? pids[0] : "";
-        if (pid == "" && has_sections) {
+        
+        let list_update_pid = trim(fs.readfile("/var/run/tachyon_list_update.pid") || "");
+        let list_update_running = process_running(list_update_pid);
+
+        let tachyon_cli_running = false;
+        let tachyon_cli_pids = split(trim(command_output_from_args(["pgrep", "-f", "/usr/bin/tachyon "])), /\s+/);
+        for (let cli_pid in tachyon_cli_pids) {
+            if (cli_pid == "") continue;
+            let cmdline = trim(command_output_from_args(["cat", "/proc/" + cli_pid + "/cmdline"]) || "");
+            if (index(cmdline, "start") >= 0 || index(cmdline, "restart") >= 0 || index(cmdline, "reload") >= 0 || index(cmdline, "stop") >= 0) {
+                tachyon_cli_running = true;
+                break;
+            }
+        }
+
+        if (tachyon_cli_running) {
+            sleep(10);
+            continue;
+        }
+
+        if (pid == "" && has_sections && !list_update_running) {
             log_message("sing-box is stopped. Restarting Tachyon...", "warn");
             let tcfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
             if (tcfg.notify_crash != "0") {
                 send_telegram_notification("⚠️ *Watchdog:* sing-box остановлен. Перезапускаю службы Tachyon...");
             }
-            command_status("/usr/bin/tachyon restart >/dev/null 2>&1");
+            system("/etc/init.d/tachyon restart </dev/null >/dev/null 2>&1 &");
+            sleep(60);
+            continue;
         }
 
         // 2. Firewall / NFT Check
         let routing_mode = cfg.routing_mode || "nftables";
-        if (routing_mode == "nftables") {
+        if (routing_mode == "nftables" && !list_update_running) {
             let out_nft = command_output_from_args(["nft", "list", "table", "inet", nft_table]);
             if (index(out_nft, "tproxy") < 0) {
                 log_message("nftables rules are missing or corrupted. Rebuilding...", "warn");
@@ -180,7 +222,9 @@ function worker() {
                 if (tcfg.notify_crash != "0") {
                     send_telegram_notification("⚠️ *Watchdog:* правила nftables повреждены или отсутствуют. Выполняю пересборку...");
                 }
-                command_status("/usr/bin/tachyon restart >/dev/null 2>&1");
+                system("/etc/init.d/tachyon restart </dev/null >/dev/null 2>&1 &");
+                sleep(60);
+                continue;
             }
         }
 

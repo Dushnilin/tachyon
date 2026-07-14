@@ -601,6 +601,19 @@ function wait_tachyon_stable_start(rt_table, nft_table, mark, min_age, timeout) 
     return tachyon_stably_running(rt_table, nft_table, mark, min_age);
 }
 
+function wait_sing_box_service_stable(min_age, timeout) {
+    timeout = int(timeout || 8);
+    while (timeout > 0) {
+        if (sing_box_service_stable(min_age))
+            return true;
+
+        command_success_from_args([ "sleep", "1" ]);
+        timeout--;
+    }
+
+    return sing_box_service_stable(min_age);
+}
+
 function whitespace_fields(value) {
     value = as_string(value);
     let result = [];
@@ -1841,6 +1854,8 @@ else if (mode == "tachyon-stably-running")
     exit(tachyon_stably_running(ARGV[1], ARGV[2], ARGV[3], ARGV[4]) ? 0 : 1);
 else if (mode == "wait-tachyon-stable-start")
     exit(wait_tachyon_stable_start(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5]) ? 0 : 1);
+else if (mode == "wait-sing-box-service-stable")
+    exit(wait_sing_box_service_stable(ARGV[1], ARGV[2]) ? 0 : 1);
 else if (mode == "list-has-remote-references" || mode == "list-has-remote-sing-box-rulesets")
     exit(list_has_remote_references(ARGV[1]) ? 0 : 1);
 else if (mode == "community-service-has-subnet-list")
