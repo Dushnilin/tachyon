@@ -86,6 +86,12 @@ assert_eq "0 0 * * *" \
 assert_eq "*/30 * * * * /usr/bin/forkop list_update_if_due # list" \
   "$(updates_ucode list-update-cron-job 30m /usr/bin/forkop '# list')" \
   "list update cron job"
+assert_eq $'https://raw.githubusercontent.com/itdoginfo/allow-domains/main/Subnets/IPv4/telegram.lst\nhttps://raw.githubusercontent.com/itdoginfo/allow-domains/main/Subnets/IPv6/telegram.lst' \
+  "$(updates_ucode builtin-subnet-urls telegram)" \
+  "Telegram built-in subnet families"
+assert_eq 'https://raw.githubusercontent.com/itdoginfo/allow-domains/main/Subnets/IPv4/roblox.lst' \
+  "$(updates_ucode builtin-subnet-urls roblox)" \
+  "Roblox available subnet family"
 assert_eq "0 */2 * * * /usr/bin/forkop subscription_update_if_due # subscription" \
   "$(updates_ucode subscription-update-cron-job 7200 /usr/bin/forkop '# subscription')" \
   "subscription update cron job"
