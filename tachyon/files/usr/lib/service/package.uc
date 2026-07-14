@@ -136,9 +136,7 @@ function postinst_restore() {
     if (env("IPKG_INSTROOT", "") != "" || !path_exists(PACKAGE_UPGRADE_STATE))
         return true;
 
-    if (!command_success_from_args([ INIT_PATH, "start" ]))
-        return false;
-
+    command_success_from_args([ INIT_PATH, "start" ]);
     unlink_if_exists(PACKAGE_UPGRADE_STATE);
     return true;
 }
