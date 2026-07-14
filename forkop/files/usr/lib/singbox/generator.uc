@@ -498,7 +498,7 @@ function supported_subscription_outbound(outbound) {
     if (t == "direct" || t == "selector" || t == "urltest" || t == "dns" || t == "block")
         return false;
     return t == "vless" || t == "vmess" || t == "trojan" || t == "shadowsocks" ||
-        t == "socks" || t == "http" || t == "hysteria2";
+        t == "socks" || t == "hysteria2";
 }
 
 function outbound_uses_xhttp(outbound) {
@@ -1747,32 +1747,6 @@ function apply_link_transport(outbound, query) {
     outbound.transport = result;
 }
 
-function manual_http_outbound(link, tag_name) {
-    let scheme = url_scheme(link);
-    let host = url_host(link);
-    let port = parse_port(url_port(link));
-    let path = url_path(link);
-    if (host == "" || port == null || (path != "" && path != "/") || index(link, "?") >= 0)
-        runtime_generate_unsupported("manual HTTP proxy link is invalid");
-
-    let outbound = {
-        type: "http",
-        tag: tag_name,
-        server: host,
-        server_port: port
-    };
-    let userinfo = url_userinfo(link);
-    if (userinfo != "") {
-        let colon = index(userinfo, ":");
-        outbound.username = colon >= 0 ? substr(userinfo, 0, colon) : userinfo;
-        if (colon >= 0)
-            outbound.password = substr(userinfo, colon + 1);
-    }
-    if (scheme == "https")
-        outbound.tls = { enabled: true };
-    return outbound;
-}
-
 function manual_socks_outbound(link, tag_name) {
     let scheme = url_scheme(link);
     let host = url_host(link);
@@ -2021,8 +1995,6 @@ function manual_link_outbound(link, tag_name) {
 
     link = url_strip_fragment_value(url_decode(link));
     scheme = url_scheme(link);
-    if (scheme == "http" || scheme == "https")
-        return manual_http_outbound(link, tag_name);
     if (scheme == "socks4" || scheme == "socks4a" || scheme == "socks5")
         return manual_socks_outbound(link, tag_name);
     if (scheme == "ss")

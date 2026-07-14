@@ -421,14 +421,33 @@ cat >"$WORK_DIR/urltest-filter-fixture.json" <<'JSON'
       ".type": "section",
       "enabled": "1",
       "action": "proxy",
-      "selector_proxy_links": [
-        "http://127.0.0.1:18081#Keep",
-        "http://127.0.0.1:18082#Drop"
+      "outbound_jsons": [
+        "{\"type\":\"http\",\"tag\":\"Keep\",\"server\":\"127.0.0.1\",\"server_port\":18081}",
+        "{\"type\":\"http\",\"tag\":\"Drop\",\"server\":\"127.0.0.1\",\"server_port\":18082}"
       ],
       "urltest_enabled": "1",
       "urltest_filter_mode": "include",
       "urltest_include_outbounds": [ "Keep" ],
       "domain_suffix": [ "example.org" ]
+    }
+  ]
+}
+JSON
+
+cat >"$WORK_DIR/manual-http-fixture.json" <<'JSON'
+{
+  "settings": {
+    ".name": "settings",
+    ".type": "settings",
+    "dns_server": "1.1.1.1"
+  },
+  "section": [
+    {
+      ".name": "proxy",
+      ".type": "section",
+      "enabled": "1",
+      "action": "connection",
+      "selector_proxy_links": [ "http://127.0.0.1:8080" ]
     }
   ]
 }
@@ -908,6 +927,12 @@ cat >"$WORK_DIR/subscriptions/grouped-subscription-1.json" <<'JSON'
     {
       "type": "direct",
       "tag": "provider-direct"
+    },
+    {
+      "type": "http",
+      "tag": "provider-http",
+      "server": "127.0.0.3",
+      "server_port": 8080
     }
   ]
 }
@@ -989,6 +1014,12 @@ generate_config "$WORK_DIR/server-inbound-fixture.json" "$WORK_DIR/server.json"
 generate_config "$WORK_DIR/runtime-matchers-fixture.json" "$WORK_DIR/matchers.json"
 generate_config "$WORK_DIR/dns-action-fixture.json" "$WORK_DIR/dns-action.json"
 generate_config "$WORK_DIR/urltest-filter-fixture.json" "$WORK_DIR/urltest.json"
+if generate_config "$WORK_DIR/manual-http-fixture.json" "$WORK_DIR/manual-http.json" \
+  >"$WORK_DIR/manual-http.stdout" 2>"$WORK_DIR/manual-http.stderr"; then
+  fail "generator should reject native HTTP connection URLs"
+fi
+grep -Fxq 'manual proxy link scheme is not supported by sing-box config generation yet' "$WORK_DIR/manual-http.stderr" ||
+  fail "native HTTP connection URL failure should identify the unsupported scheme"
 generate_config "$WORK_DIR/provider-actions-fixture.json" "$WORK_DIR/providers.json"
 generate_config "$WORK_DIR/manual-transport-fixture.json" "$WORK_DIR/manual.json"
 generate_config "$WORK_DIR/vpn-interface-fixture.json" "$WORK_DIR/vpn.json"
@@ -1213,7 +1244,8 @@ assert(index(sprintf("%J", dns_list), "198.51.100.0/24") < 0, "DNS action drops 
 
 let urltest = cfg("urltest");
 let urltest_out = outbound(urltest, "proxy-urltest-out");
-assert(urltest_out && length(urltest_out.outbounds) == 1 && urltest_out.outbounds[0] == "proxy-1-out", "URLTest include filter");
+assert(urltest_out && length(urltest_out.outbounds) == 1 && urltest_out.outbounds[0] == "Keep", "URLTest include filter");
+assert(outbound(urltest, "Keep").type == "http", "HTTP JSON outbound remains supported");
 assert(outbound(urltest, "proxy-out").default == "proxy-urltest-out", "selector defaults to URLTest");
 
 let providers = cfg("providers");
@@ -1297,6 +1329,7 @@ let second_leaf = outbound(subscription_group, "leaf");
 assert(grouped_leaf && grouped_leaf.detour == null, "hidden subscription leaf does not receive connection URL detour");
 assert(second_leaf && second_leaf.detour == null, "second hidden subscription leaf does not receive connection URL detour");
 assert(outbound(subscription_group, "provider-direct") == null, "provider direct outbound skipped");
+assert(outbound(subscription_group, "provider-http") == null, "provider HTTP outbound skipped");
 let grouped_selector = outbound(subscription_group, "grouped-out");
 assert(grouped_selector && length(grouped_selector.outbounds) == 1 && grouped_selector.outbounds[0] == "Provider Group", "selector exposes provider group only");
 let grouped_state = cfg("subscription-group.json.section-cache/grouped");

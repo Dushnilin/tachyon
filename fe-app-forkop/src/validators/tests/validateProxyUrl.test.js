@@ -31,8 +31,6 @@ const validUrls = [
   ['socks4', 'socks4://127.0.0.1:1080'],
   ['socks4a', 'socks4a://example.com:1080'],
   ['socks5', 'socks5://user:pass@example.com:1080'],
-  ['http proxy', 'http://127.0.0.1:80'],
-  ['https proxy', 'https://user:pass@example.com:443'],
   ['hysteria2', 'hysteria2://password@example.com:443'],
   ['hy2', 'hy2://password@example.com:443'],
 ];
@@ -57,15 +55,14 @@ describe('validateProxyUrl', () => {
     expect(res.valid).toBe(false);
     expect(res.message).toContain('vmess://');
     expect(res.message).toContain('socks4a://');
-    expect(res.message).toContain('http://');
     expect(res.message).toContain('hy2://');
   });
 
-  it('rejects HTTP URLs that look like subscription URLs rather than proxy endpoints', () => {
-    const res = validateProxyUrl('https://example.com/subscription');
+  it('rejects native HTTP proxy URLs', () => {
+    const res = validateProxyUrl('https://user:pass@example.com:443');
 
     expect(res.valid).toBe(false);
-    expect(res.message).toContain('path');
+    expect(res.message).not.toContain('http://');
   });
 
   it('rejects VMess configs with an invalid server host', () => {
