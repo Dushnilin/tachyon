@@ -97,6 +97,9 @@ define Package/tachyon/install
 	$(INSTALL_DIR) $(1)/usr/lib/tachyon
 	$(CP) ./files/usr/lib/. $(1)/usr/lib/tachyon/
 
+	$(INSTALL_DIR) $(1)/etc/hotplug.d/iface
+	$(INSTALL_BIN) ./files/etc/hotplug.d/iface/99-tachyon-wan-monitor $(1)/etc/hotplug.d/iface/99-tachyon-wan-monitor
+
 	sed -i -e 's/__COMPILED_VERSION_VARIABLE__/$(TACHYON_COMPILED_VERSION)/g' $(1)/usr/lib/tachyon/core/constants.uc
 endef
 

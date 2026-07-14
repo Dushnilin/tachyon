@@ -44,6 +44,7 @@ shell_scripts="$(
 expected_shell_scripts="$(
   printf '%s\n' \
     'luci-app-tachyon/root/etc/uci-defaults/50_luci-tachyon' \
+    'tachyon/files/etc/hotplug.d/iface/99-tachyon-wan-monitor' \
     'tachyon/files/etc/init.d/tachyon' |
     LC_ALL=C sort
 )"

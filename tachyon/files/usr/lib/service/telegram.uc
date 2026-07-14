@@ -285,29 +285,180 @@ function run_speedtest(token, chat_id) {
     send_message_with_keyboard(token, chat_id, result_text, "Markdown");
 }
  
+function escape_html(text) {
+    text = replace(as_string(text), /&/g, "&amp;");
+    text = replace(text, /</g, "&lt;");
+    text = replace(text, />/g, "&gt;");
+    return text;
+}
+
+function manage_domain_list(action_type, domain, do_delete) {
+    let c = uci_core.cursor();
+    if (!c) return { success: false, error: "Не удалось инициализировать UCI" };
+    c.load(CONFIG_NAME);
+
+    let target_section = null;
+    c.foreach(CONFIG_NAME, "section", function(s) {
+        if (s.enabled == "1" && s.action == action_type) {
+            target_section = s[".name"];
+            return false;
+        }
+    });
+
+    if (!target_section) {
+        return { success: false, error: "Не найдено активное правило с действием '" + action_type + "'." };
+    }
+
+    let option_path = CONFIG_NAME + "." + target_section + ".domain";
+
+    if (do_delete) {
+        let deleted = uci_core.del_list(option_path, domain);
+        if (deleted) {
+            uci_core.commit(CONFIG_NAME);
+            command_status("/usr/bin/tachyon reload");
+            return { success: true, message: "Домен `" + domain + "` успешно удален из правила." };
+        } else {
+            return { success: false, error: "Домен `" + domain + "` не найден в правиле." };
+        }
+    } else {
+        let current_val = uci_core.get(option_path);
+        let exists = false;
+        if (current_val != "") {
+            for (let item in split(current_val, " ")) {
+                if (item == domain) {
+                    exists = true;
+                    break;
+                }
+            }
+        }
+        if (exists) {
+            return { success: false, error: "Домен `" + domain + "` уже есть в правиле." };
+        }
+
+        let added = uci_core.add_list(option_path, domain);
+        if (added) {
+            uci_core.commit(CONFIG_NAME);
+            command_status("/usr/bin/tachyon reload");
+            return { success: true, message: "Домен `" + domain + "` успешно добавлен в правило." };
+        }
+        return { success: false, error: "Не удалось добавить домен в конфигурацию." };
+    }
+}
+
+function manage_mac_block(mac, do_unblock) {
+    let c = uci_core.cursor();
+    if (!c) return { success: false, error: "Не удалось инициализировать UCI" };
+    c.load("firewall");
+
+    mac = uc(as_string(mac));
+
+    if (do_unblock) {
+        let deleted = false;
+        c.foreach("firewall", "rule", function(r) {
+            if (uc(as_string(r.src_mac)) == mac && r.target == "REJECT") {
+                c.delete("firewall", r[".name"]);
+                deleted = true;
+            }
+        });
+
+        if (deleted) {
+            c.commit("firewall");
+            command_status("/etc/init.d/firewall reload");
+            return { success: true, message: "Блокировка с MAC-адреса `" + mac + "` успешно снята." };
+        }
+        return { success: false, error: "Блокировка для MAC `" + mac + "` не найдена." };
+    } else {
+        let exists = false;
+        c.foreach("firewall", "rule", function(r) {
+            if (uc(as_string(r.src_mac)) == mac && r.target == "REJECT") {
+                exists = true;
+                return false;
+            }
+        });
+
+        if (exists) {
+            return { success: false, error: "Устройство с MAC `" + mac + "` уже заблокировано." };
+        }
+
+        let section = c.add("firewall", "rule");
+        c.set("firewall", section, "name", "Block_MAC_" + replace(mac, /:/g, "_"));
+        c.set("firewall", section, "src", "lan");
+        c.set("firewall", section, "dest", "*");
+        c.set("firewall", section, "src_mac", mac);
+        c.set("firewall", section, "target", "REJECT");
+        c.commit("firewall");
+
+        command_status("/etc/init.d/firewall reload");
+        return { success: true, message: "Устройство с MAC `" + mac + "` успешно заблокировано." };
+    }
+}
+
+function handle_backup(token, chat_id) {
+    send_message(token, chat_id, "⏳ <b>Создание резервной копии настроек...</b>", "HTML");
+    
+    let backup_path = "/tmp/tachyon_backup.tar.gz";
+    let tar_cmd = "tar -czf " + backup_path + " -C /etc config/ -C /usr/lib/tachyon/ providers/";
+    let res = command_capture(tar_cmd);
+    
+    if (res.status != 0 || fs.stat(backup_path) == null) {
+        send_message(token, chat_id, "❌ Не удалось создать архив резервной копии.", "HTML");
+        return;
+    }
+    
+    let url = "https://api.telegram.org/bot" + token + "/sendDocument";
+    let args = [
+        "curl", "-s", "-X", "POST",
+        "-F", "chat_id=" + as_string(chat_id),
+        "-F", "document=@" + backup_path
+    ];
+    let proxy = get_proxy_args();
+    for (let p in proxy) {
+        push(args, p);
+    }
+    push(args, url);
+    
+    let send_res = command_capture(command_from_args(args));
+    fs.unlink(backup_path);
+    
+    if (send_res.status == 0) {
+        send_message(token, chat_id, "✅ Резервная копия успешно отправлена!", "HTML");
+    } else {
+        send_message(token, chat_id, "❌ Ошибка при отправке файла резервной копии.", "HTML");
+    }
+}
+
 function process_command(token, chat_id, text) {
     let cmd = trim(as_string(text));
     if (cmd == "/start" || cmd == "/help") {
-        let help_text = "🤖 *Tachyon Bot* — Панель управления роутером\n\n" +
-            "Доступные команды:\n" +
-            "⚡ /status — Статус системы и RAM/CPU\n" +
+        let help_text = "🤖 <b>Tachyon Bot</b> — Панель управления роутером\n\n" +
+            "<b>Доступные команды:</b>\n" +
+            "📊 /status — Статус системы и RAM/CPU\n" +
             "📡 /servers — Список серверов и задержка\n" +
             "⚡ /test — Проверка интернет-соединения\n" +
             "🚀 /speed — Замер скорости интернета\n" +
-            "📊 /traffic — Статистика трафика sing-box\n" +
+            "📈 /traffic — Статистика трафика sing-box\n" +
             "🩺 /doctor — Диагностика и ремонт ошибок\n" +
             "🔄 /restart — Перезапустить службы Tachyon\n" +
-            "📋 /logs — Посмотреть последние логи\n";
-        send_message_with_keyboard(token, chat_id, help_text, "Markdown");
+            "📋 /logs — Посмотреть последние логи\n" +
+            "💾 /backup — Резервная копия настроек роутера\n" +
+            "🌐 /bypass_add &lt;домен&gt; — Добавить домен в обход\n" +
+            "🌐 /bypass_del &lt;домен&gt; — Удалить домен из обхода\n" +
+            "🌐 /direct_add &lt;домен&gt; — Добавить домен в прямой доступ\n" +
+            "🌐 /direct_del &lt;домен&gt; — Удалить домен из прямого доступа\n" +
+            "🚫 /block_mac &lt;MAC&gt; — Заблокировать устройство по MAC\n" +
+            "🔓 /unblock_mac &lt;MAC&gt; — Разблокировать устройство по MAC\n" +
+            "💻 /sh &lt;команда&gt; — Выполнить консольную команду\n" +
+            "❓ /help — Справка по командам\n";
+        send_message_with_keyboard(token, chat_id, help_text, "HTML");
     }
     else if (cmd == "/status") {
         let sys = get_system_status();
-        let status_text = "📊 *Статус Tachyon роутера*\n\n" +
-            "Uptime: `" + sys.uptime + "`\n" +
-            "CPU Load: `" + sys.cpu + "`\n" +
-            "RAM: `" + sys.ram_avail + "MB / " + sys.ram_total + "MB` свободного\n" +
-            "sing-box: `" + sys.singbox + "`";
-        send_message_with_keyboard(token, chat_id, status_text, "Markdown");
+        let status_text = "📊 <b>Статус Tachyon роутера</b>\n\n" +
+            "Uptime: <code>" + sys.uptime + "</code>\n" +
+            "CPU Load: <code>" + sys.cpu + "</code>\n" +
+            "RAM: <code>" + sys.ram_avail + "MB / " + sys.ram_total + "MB</code> свободного\n" +
+            "sing-box: <code>" + sys.singbox + "</code>";
+        send_message_with_keyboard(token, chat_id, status_text, "HTML");
     }
     else if (cmd == "/servers") {
         handle_servers(token, chat_id);
@@ -321,28 +472,119 @@ function process_command(token, chat_id, text) {
     else if (cmd == "/traffic") {
         handle_traffic(token, chat_id);
     }
+    else if (cmd == "/backup") {
+        handle_backup(token, chat_id);
+    }
     else if (cmd == "/doctor") {
-        send_message(token, chat_id, "⏳ *Запуск диагностики и авто-исправления...*");
+        send_message(token, chat_id, "⏳ <b>Запуск диагностики и авто-исправления...</b>", "HTML");
         let doctor_res = command_capture("/usr/bin/tachyon doctor");
         let report = doctor_res.output || "Нет вывода диагностики.";
-        send_message_with_keyboard(token, chat_id, "🩺 *Результаты Tachyon Doctor:*\n\n```\n" + report + "\n```", "Markdown");
+        send_message_with_keyboard(token, chat_id, "🩺 <b>Результаты Tachyon Doctor:</b>\n\n<pre>" + escape_html(report) + "</pre>", "HTML");
     }
     else if (cmd == "/restart") {
-        send_message(token, chat_id, "🔄 *Перезапускаю службы Tachyon...*");
+        send_message(token, chat_id, "🔄 <b>Перезапускаю службы Tachyon...</b>", "HTML");
         let restart_status = command_status("/usr/bin/tachyon restart");
         if (restart_status == 0) {
-            send_message_with_keyboard(token, chat_id, "✅ *Перезапуск выполнен успешно!*");
+            send_message_with_keyboard(token, chat_id, "✅ <b>Перезапуск выполнен успешно!</b>", "HTML");
         } else {
-            send_message_with_keyboard(token, chat_id, "❌ *Ошибка при перезапуске служб.*");
+            send_message_with_keyboard(token, chat_id, "❌ <b>Ошибка при перезапуске служб.</b>", "HTML");
         }
     }
     else if (cmd == "/logs") {
         let logs_res = command_capture("logread -e tachyon | tail -n 25");
         let logs = logs_res.output || "Логи отсутствуют.";
-        send_message_with_keyboard(token, chat_id, "📋 *Последние логи Tachyon:*\n\n```\n" + logs + "\n```", "Markdown");
+        send_message_with_keyboard(token, chat_id, "📋 <b>Последние логи Tachyon:</b>\n\n<pre>" + escape_html(logs) + "</pre>", "HTML");
+    }
+    else if (match(cmd, /^\/bypass_add /) != null) {
+        let dom = trim(substr(cmd, 12));
+        if (dom == "") {
+            send_message_with_keyboard(token, chat_id, "❌ Укажите домен. Пример: `/bypass_add site.com`", "HTML");
+            return;
+        }
+        let res = manage_domain_list("bypass", dom, false);
+        if (res.success) {
+            send_message_with_keyboard(token, chat_id, "✅ " + res.message, "HTML");
+        } else {
+            send_message_with_keyboard(token, chat_id, "❌ " + res.error, "HTML");
+        }
+    }
+    else if (match(cmd, /^\/bypass_del /) != null) {
+        let dom = trim(substr(cmd, 12));
+        if (dom == "") {
+            send_message_with_keyboard(token, chat_id, "❌ Укажите домен. Пример: `/bypass_del site.com`", "HTML");
+            return;
+        }
+        let res = manage_domain_list("bypass", dom, true);
+        if (res.success) {
+            send_message_with_keyboard(token, chat_id, "✅ " + res.message, "HTML");
+        } else {
+            send_message_with_keyboard(token, chat_id, "❌ " + res.error, "HTML");
+        }
+    }
+    else if (match(cmd, /^\/direct_add /) != null) {
+        let dom = trim(substr(cmd, 12));
+        if (dom == "") {
+            send_message_with_keyboard(token, chat_id, "❌ Укажите домен. Пример: `/direct_add site.com`", "HTML");
+            return;
+        }
+        let res = manage_domain_list("direct", dom, false);
+        if (res.success) {
+            send_message_with_keyboard(token, chat_id, "✅ " + res.message, "HTML");
+        } else {
+            send_message_with_keyboard(token, chat_id, "❌ " + res.error, "HTML");
+        }
+    }
+    else if (match(cmd, /^\/direct_del /) != null) {
+        let dom = trim(substr(cmd, 12));
+        if (dom == "") {
+            send_message_with_keyboard(token, chat_id, "❌ Укажите домен. Пример: `/direct_del site.com`", "HTML");
+            return;
+        }
+        let res = manage_domain_list("direct", dom, true);
+        if (res.success) {
+            send_message_with_keyboard(token, chat_id, "✅ " + res.message, "HTML");
+        } else {
+            send_message_with_keyboard(token, chat_id, "❌ " + res.error, "HTML");
+        }
+    }
+    else if (match(cmd, /^\/block_mac /) != null) {
+        let mac = trim(substr(cmd, 11));
+        if (match(mac, /^[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}$/) == null) {
+            send_message_with_keyboard(token, chat_id, "❌ Неверный формат MAC-адреса. Пример: `00:1A:2B:3C:4D:5E`", "HTML");
+            return;
+        }
+        let res = manage_mac_block(mac, false);
+        if (res.success) {
+            send_message_with_keyboard(token, chat_id, "✅ " + res.message, "HTML");
+        } else {
+            send_message_with_keyboard(token, chat_id, "❌ " + res.error, "HTML");
+        }
+    }
+    else if (match(cmd, /^\/unblock_mac /) != null) {
+        let mac = trim(substr(cmd, 13));
+        if (match(mac, /^[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}$/) == null) {
+            send_message_with_keyboard(token, chat_id, "❌ Неверный формат MAC-адреса. Пример: `00:1A:2B:3C:4D:5E`", "HTML");
+            return;
+        }
+        let res = manage_mac_block(mac, true);
+        if (res.success) {
+            send_message_with_keyboard(token, chat_id, "✅ " + res.message, "HTML");
+        } else {
+            send_message_with_keyboard(token, chat_id, "❌ " + res.error, "HTML");
+        }
+    }
+    else if (match(cmd, /^\/sh /) != null) {
+        let shell_cmd = substr(cmd, 4);
+        send_message(token, chat_id, "⏳ <b>Выполнение команды:</b> <code>" + escape_html(shell_cmd) + "</code>", "HTML");
+        let shell_res = command_capture(shell_cmd);
+        let output = shell_res.output || "Команда выполнена без вывода.";
+        if (length(output) > 3000) {
+            output = substr(output, 0, 3000) + "\n...[вывод обрезан]...";
+        }
+        send_message_with_keyboard(token, chat_id, "💻 <b>Результат (код " + shell_res.status + "):</b>\n\n<pre>" + escape_html(output) + "</pre>", "HTML");
     }
     else {
-        send_message_with_keyboard(token, chat_id, "⚠️ Неизвестная команда. Введите /help для списка команд.");
+        send_message_with_keyboard(token, chat_id, "⚠️ Неизвестная команда. Введите /help для списка команд.", "HTML");
     }
 }
  
@@ -384,10 +626,78 @@ function process_updates(token, admin_ids) {
             continue;
         }
         
-        process_command(token, chat_id, msg.text);
     }
 }
- 
+
+function check_new_dhcp_leases(token, admin_ids) {
+    let lease_file = "/tmp/dhcp.leases";
+    let data = fs.readfile(lease_file);
+    if (!data) return;
+
+    let known_macs_file = "/tmp/tachyon_known_macs.json";
+    let known_macs = {};
+    let known_data = fs.readfile(known_macs_file);
+    if (known_data) {
+        try {
+            known_macs = json(known_data);
+        } catch(e) {}
+    }
+
+    let is_first_run = (length(keys(known_macs)) == 0);
+    let changed = false;
+
+    for (let line in split(data, "\n")) {
+        line = trim(line);
+        if (line == "") continue;
+        let fields = split(line, / /);
+        if (length(fields) < 4) continue;
+
+        let mac = uc(as_string(fields[1]));
+        let ip = fields[2];
+        let hostname = fields[3] == "*" ? "Неизвестно" : fields[3];
+
+        if (!known_macs[mac]) {
+            known_macs[mac] = { ip: ip, hostname: hostname, first_seen: time() };
+            changed = true;
+
+            if (!is_first_run) {
+                let text = "📡 <b>Подключено новое устройство!</b>\n\n" +
+                    "🖥️ Имя: <code>" + escape_html(hostname) + "</code>\n" +
+                    "🌐 IP: <code>" + ip + "</code>\n" +
+                    "🏷️ MAC: <code>" + mac + "</code>";
+
+                let payload = {
+                    text: text,
+                    parse_mode: "HTML",
+                    reply_markup: {
+                        inline_keyboard: [
+                            [
+                                { text: "❌ Заблокировать", callback_data: "/block_mac " + mac }
+                            ]
+                        ]
+                    }
+                };
+
+                let admins = split(admin_ids, /,/);
+                for (let admin in admins) {
+                    let chat_id = trim(admin);
+                    if (chat_id != "") {
+                        let p = { chat_id: int(chat_id) };
+                        for (let k in keys(payload)) {
+                            p[k] = payload[k];
+                        }
+                        tg_request(token, "sendMessage", p);
+                    }
+                }
+            }
+        }
+    }
+
+    if (changed) {
+        fs.writefile(known_macs_file, sprintf("%J", known_macs));
+    }
+}
+
 function worker() {
     let cfg = settings();
     if (cfg.enabled != "1" || !cfg.bot_token || !cfg.admin_ids) {
@@ -411,6 +721,8 @@ function worker() {
     let poll_interval = int(cfg.poll_interval || "5");
     if (poll_interval < 1) poll_interval = 1;
     
+    let last_dhcp_check = 0;
+    
     while (true) {
         cfg = settings();
         if (cfg.enabled != "1") {
@@ -418,6 +730,13 @@ function worker() {
         }
         
         process_updates(cfg.bot_token, cfg.admin_ids);
+        
+        let now = time();
+        if (now - last_dhcp_check >= 30) {
+            check_new_dhcp_leases(cfg.bot_token, cfg.admin_ids);
+            last_dhcp_check = now;
+        }
+        
         sleep(poll_interval * 1000);
     }
     return 0;

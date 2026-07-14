@@ -1,0 +1,14 @@
+#!/bin/sh
+# Only process ifup and ifdown events for WAN interfaces
+case "$INTERFACE" in
+    wan*|wwan*|lte*)
+        case "$ACTION" in
+            ifup)
+                /usr/bin/tachyon telegram send "🟢 Интерфейс *${INTERFACE}* поднялся!"
+                ;;
+            ifdown)
+                /usr/bin/tachyon telegram send "⚠️ Интерфейс *${INTERFACE}* упал!"
+                ;;
+        esac
+        ;;
+esac
