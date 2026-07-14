@@ -371,6 +371,7 @@ cat >"$WORK_DIR/legacy-bin" <<'SH'
 printf '%s\n' "$*" >> "$FORKOP_INSTALLER_BIN_LOG"
 case "$1" in
   get_status) printf '%s\n' '{"running":1}' ;;
+  restore_dnsmasq) exit "${FORKOP_INSTALLER_FAIL_BACKEND_RESTORE:-0}" ;;
 esac
 exit 0
 SH
@@ -402,6 +403,7 @@ FORKOP_INSTALLER_FAKE_LEGACY_BACKEND="$LEGACY_BACKEND" \
 FORKOP_INSTALLER_OPKG_LOG="$WORK_DIR/opkg.log" \
 FORKOP_INSTALLER_INIT_LOG="$WORK_DIR/init.log" \
 FORKOP_INSTALLER_BIN_LOG="$WORK_DIR/bin.log" \
+FORKOP_INSTALLER_FAIL_BACKEND_RESTORE=1 \
 FORKOP_UCI_STATE_FILE="$WORK_DIR/empty-uci.state" \
   ucode "$helper" installer-cleanup-legacy >"$state"
 
