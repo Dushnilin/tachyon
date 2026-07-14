@@ -9,6 +9,7 @@ type HtmlAttributes<T extends HtmlTag = 'div'> = Partial<
     'aria-busy'?: string;
     'aria-disabled'?: string;
     'aria-label'?: string;
+    'data-latency-section'?: string;
     click?: (event: MouseEvent) => void;
     onclick?: (event: MouseEvent) => void;
   }
@@ -45,7 +46,7 @@ declare global {
   const _ = (_key: string) => string;
 
   const ui = {
-    showModal: (_title: stirng, _content: HtmlElement) => undefined,
+    showModal: (_title: string, _content: HTMLElement) => undefined,
     hideModal: () => undefined,
     addNotification: (
       _title: string,

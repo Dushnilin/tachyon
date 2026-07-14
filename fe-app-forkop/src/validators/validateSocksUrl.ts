@@ -1,5 +1,5 @@
 import { ValidationResult } from './types';
-import { isValidHost, parseHostPort } from './hostPort';
+import { isValidPort, parseHostPort } from './hostPort';
 
 export function validateSocksUrl(url: string): ValidationResult {
   try {
@@ -62,18 +62,10 @@ export function validateSocksUrl(url: string): ValidationResult {
       return { valid: false, message: _('Invalid SOCKS URL: missing port') };
     }
 
-    const portNum = Number(port);
-    if (!Number.isInteger(portNum) || portNum < 1 || portNum > 65535) {
+    if (!isValidPort(port)) {
       return {
         valid: false,
         message: _('Invalid SOCKS URL: invalid port number'),
-      };
-    }
-
-    if (!isValidHost(host)) {
-      return {
-        valid: false,
-        message: _('Invalid SOCKS URL: invalid host format'),
       };
     }
   } catch (_e) {

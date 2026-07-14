@@ -1,6 +1,6 @@
 import { ValidationResult } from './types';
 import { parseQueryString } from '../helpers/parseQueryString';
-import { parseHostPort } from './hostPort';
+import { isValidPort, parseHostPort } from './hostPort';
 
 export function validateHysteria2Url(url: string): ValidationResult {
   try {
@@ -64,22 +64,13 @@ export function validateHysteria2Url(url: string): ValidationResult {
     const cleanedPort = port.replace('/', '');
     const portEntries = cleanedPort.split(',');
 
-    const isValidPortNumber = (value: string) => {
-      if (!/^\d+$/.test(value)) {
-        return false;
-      }
-
-      const portNum = Number(value);
-      return Number.isInteger(portNum) && portNum >= 1 && portNum <= 65535;
-    };
-
     const isValidPortEntry = (entry: string) => {
       if (!entry) {
         return false;
       }
 
       if (!entry.includes('-')) {
-        return isValidPortNumber(entry);
+        return isValidPort(entry);
       }
 
       const rangeParts = entry.split('-');
@@ -89,9 +80,7 @@ export function validateHysteria2Url(url: string): ValidationResult {
 
       const [start, end] = rangeParts;
       return (
-        isValidPortNumber(start) &&
-        isValidPortNumber(end) &&
-        Number(start) <= Number(end)
+        isValidPort(start) && isValidPort(end) && Number(start) <= Number(end)
       );
     };
 

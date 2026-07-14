@@ -878,10 +878,7 @@ function renderUrlTestCopyButton(
   );
 }
 
-function renderUrlTestInfoModal(
-  section: Forkop.OutboundGroup,
-  outbound: Forkop.Outbound,
-) {
+function renderUrlTestInfoModal(outbound: Forkop.Outbound) {
   const info = outbound.urlTestInfo;
 
   if (!info) {
@@ -1017,10 +1014,7 @@ function renderUrlTestInfoModal(
   ]);
 }
 
-function handleShowUrlTestInfo(
-  section: Forkop.OutboundGroup,
-  outbound: Forkop.Outbound,
-) {
+function handleShowUrlTestInfo(outbound: Forkop.Outbound) {
   if (!outbound.urlTestInfo) {
     return;
   }
@@ -1029,7 +1023,7 @@ function handleShowUrlTestInfo(
     `${_('URLTest details')}: ${
       outbound.urlTestInfo.displayName || outbound.displayName
     }`,
-    renderUrlTestInfoModal(section, outbound),
+    renderUrlTestInfoModal(outbound),
   );
 }
 
@@ -1105,10 +1099,7 @@ function renderPriorityMemberName(member: Forkop.PriorityMember) {
   ];
 }
 
-function renderPriorityInfoModal(
-  section: Forkop.OutboundGroup,
-  outbound: Forkop.Outbound,
-) {
+function renderPriorityInfoModal(outbound: Forkop.Outbound) {
   const info = outbound.priorityInfo;
 
   if (!info) {
@@ -1273,10 +1264,7 @@ function renderPriorityInfoModal(
   ]);
 }
 
-function handleShowPriorityInfo(
-  section: Forkop.OutboundGroup,
-  outbound: Forkop.Outbound,
-) {
+function handleShowPriorityInfo(outbound: Forkop.Outbound) {
   if (!outbound.priorityInfo) {
     return;
   }
@@ -1285,7 +1273,7 @@ function handleShowPriorityInfo(
     `${_('Priority details')}: ${
       outbound.priorityInfo.displayName || outbound.displayName
     }`,
-    renderPriorityInfoModal(section, outbound),
+    renderPriorityInfoModal(outbound),
   );
 }
 
@@ -1499,11 +1487,11 @@ async function renderSectionsWidget() {
       onCopyOutbound: (_section, outbound) => {
         handleCopyOutbound(outbound);
       },
-      onShowUrlTestInfo: (section, outbound) => {
-        handleShowUrlTestInfo(section, outbound);
+      onShowUrlTestInfo: (outbound) => {
+        handleShowUrlTestInfo(outbound);
       },
-      onShowPriorityInfo: (section, outbound) => {
-        handleShowPriorityInfo(section, outbound);
+      onShowPriorityInfo: (outbound) => {
+        handleShowPriorityInfo(outbound);
       },
       onUpdateSubscription: (section) => {
         void handleUpdateSubscription(section);

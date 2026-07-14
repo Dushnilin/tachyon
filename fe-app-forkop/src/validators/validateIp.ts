@@ -20,22 +20,6 @@ export function isIPv6(ip: string): boolean {
   }
 }
 
-export function validateIPV4(ip: string): ValidationResult {
-  if (isIPv4(ip)) {
-    return { valid: true, message: _('Valid') };
-  }
-
-  return { valid: false, message: _('Invalid IP address') };
-}
-
-export function validateIPv6(ip: string): ValidationResult {
-  if (isIPv6(ip)) {
-    return { valid: true, message: _('Valid') };
-  }
-
-  return { valid: false, message: _('Invalid IP address') };
-}
-
 export function validateIP(ip: string): ValidationResult {
   if (isIPv4(ip) || isIPv6(ip)) {
     return { valid: true, message: _('Valid') };

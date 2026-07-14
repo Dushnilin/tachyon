@@ -650,10 +650,6 @@ function ensure_runtime_cache_format() {
     }
 }
 
-function remove_legacy_server_country_cache() {
-    unlink_path(FORKOP_RUNTIME_STATE_DIR + "/server-country-cache.json");
-}
-
 function temp_path(dir, section, kind) {
     ensure_dir(dir);
     let stamp = clock();
@@ -661,7 +657,6 @@ function temp_path(dir, section, kind) {
 }
 
 function move_file(source, target) {
-    unlink_path(target);
     return fs.rename(as_string(source), as_string(target));
 }
 
@@ -2481,9 +2476,6 @@ else if (mode == "clear-runtime-cache") {
 }
 else if (mode == "ensure-runtime-cache-format") {
     ensure_runtime_cache_format();
-}
-else if (mode == "remove-legacy-server-country-cache") {
-    remove_legacy_server_country_cache();
 }
 else if (mode == "stale-cache-delete-paths") {
     stale_cache_delete_paths(uci_sections(), ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5], ARGV[6]);

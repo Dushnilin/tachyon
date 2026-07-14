@@ -54,8 +54,4 @@ jobs:
       - name: Run backend tests
         shell: bash
         run: |
-          for test_script in tests/*.sh; do
-            echo "::group::$test_script"
-            bash "$test_script"
-            echo "::endgroup::"
-          done
+          printf '%s\0' tests/*.sh | xargs -0 -n1 -P4 bash

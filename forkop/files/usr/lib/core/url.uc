@@ -4,19 +4,6 @@ let common = require("core.common");
 
 let as_string = common.as_string;
 
-function str_last_index(value, needle) {
-    value = as_string(value);
-    needle = as_string(needle);
-    if (needle == "")
-        return length(value);
-
-    for (let i = length(value) - length(needle); i >= 0; i--)
-        if (substr(value, i, length(needle)) == needle)
-            return i;
-
-    return -1;
-}
-
 function first_index_any(value, needles, start) {
     value = as_string(value);
     start = int(start || 0);
@@ -104,7 +91,7 @@ function strip_first_scheme_marker(value) {
 
 function authority(value) {
     value = strip_first_scheme_marker(value);
-    let at = str_last_index(value, "@");
+    let at = rindex(value, "@");
     if (at >= 0)
         value = substr(value, at + 1);
 
@@ -123,7 +110,7 @@ function host(value) {
     if (colon < 0)
         return value_authority;
 
-    return str_last_index(value_authority, ":") == colon ? substr(value_authority, 0, colon) : value_authority;
+    return rindex(value_authority, ":") == colon ? substr(value_authority, 0, colon) : value_authority;
 }
 
 function port(value) {
@@ -136,7 +123,7 @@ function port(value) {
     }
 
     let colon = index(value_authority, ":");
-    if (colon < 0 || str_last_index(value_authority, ":") != colon)
+    if (colon < 0 || rindex(value_authority, ":") != colon)
         return "";
 
     return substr(value_authority, colon + 1);
@@ -146,7 +133,7 @@ function userinfo(value) {
     let value_authority = strip_first_scheme_marker(strip_fragment(value));
     let end = first_index_any(value_authority, ["/", "?", "#"], 0);
     value_authority = end >= 0 ? substr(value_authority, 0, end) : value_authority;
-    let at = str_last_index(value_authority, "@");
+    let at = rindex(value_authority, "@");
     return at >= 0 ? decode(substr(value_authority, 0, at)) : "";
 }
 

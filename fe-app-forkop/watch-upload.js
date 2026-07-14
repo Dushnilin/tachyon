@@ -12,27 +12,37 @@ const config = {
   port: Number(process.env.SFTP_PORT || 22),
   username: process.env.SFTP_USER,
   ...(process.env.SFTP_PRIVATE_KEY
-      ? { privateKey: fs.readFileSync(process.env.SFTP_PRIVATE_KEY) }
-      : { password: process.env.SFTP_PASS }),
+    ? { privateKey: fs.readFileSync(process.env.SFTP_PRIVATE_KEY) }
+    : { password: process.env.SFTP_PASS }),
 };
 
 const syncDirs = [
   {
-    local: path.resolve(process.env.LOCAL_DIR_FE ?? '../luci-app-forkop/htdocs/luci-static/resources/view/forkop'),
-    remote: process.env.REMOTE_DIR_FE ?? '/www/luci-static/resources/view/forkop',
+    local: path.resolve(
+      process.env.LOCAL_DIR_FE ??
+        '../luci-app-forkop/htdocs/luci-static/resources/view/forkop',
+    ),
+    remote:
+      process.env.REMOTE_DIR_FE ?? '/www/luci-static/resources/view/forkop',
   },
   {
-    local: path.resolve(process.env.LOCAL_DIR_BIN ?? '../forkop/files/usr/bin/'),
+    local: path.resolve(
+      process.env.LOCAL_DIR_BIN ?? '../forkop/files/usr/bin/',
+    ),
     remote: process.env.REMOTE_DIR_BIN ?? '/usr/bin/',
   },
   {
-    local: path.resolve(process.env.LOCAL_DIR_LIB ?? '../forkop/files/usr/lib/'),
+    local: path.resolve(
+      process.env.LOCAL_DIR_LIB ?? '../forkop/files/usr/lib/',
+    ),
     remote: process.env.REMOTE_DIR_LIB ?? '/usr/lib/forkop/',
   },
   {
-    local: path.resolve(process.env.LOCAL_DIR_INIT ?? '../forkop/files/etc/init.d/'),
+    local: path.resolve(
+      process.env.LOCAL_DIR_INIT ?? '../forkop/files/etc/init.d/',
+    ),
     remote: process.env.REMOTE_DIR_INIT ?? '/etc/init.d/',
-  }
+  },
 ];
 
 async function uploadFile(filePath, baseDir, remoteBase) {
@@ -79,13 +89,15 @@ async function main() {
   await uploadAllFiles();
 
   for (const { local, remote } of syncDirs) {
-    chokidar.watch(local, { ignoreInitial: true }).on('all', async (event, filePath) => {
-      if (event === 'add' || event === 'change') {
-        await uploadFile(filePath, local, remote);
-      } else if (event === 'unlink') {
-        await deleteFile(filePath, local, remote);
-      }
-    });
+    chokidar
+      .watch(local, { ignoreInitial: true })
+      .on('all', async (event, filePath) => {
+        if (event === 'add' || event === 'change') {
+          await uploadFile(filePath, local, remote);
+        } else if (event === 'unlink') {
+          await deleteFile(filePath, local, remote);
+        }
+      });
   }
 
   process.on('SIGINT', async () => {
@@ -96,5 +108,6 @@ async function main() {
 }
 
 main().catch((err) => {
+  process.exitCode = 1;
   console.error('💥 Fatal:', err);
 });

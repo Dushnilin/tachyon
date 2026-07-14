@@ -22,7 +22,7 @@ include $(INCLUDE_DIR)/package.mk
 define Package/forkop
 	SECTION:=net
 	CATEGORY:=Network
-	DEPENDS:=+ca-bundle +kmod-inet-diag +kmod-netlink-diag +kmod-tun +curl +ucode +ucode-mod-fs +ucode-mod-uci +kmod-nft-tproxy +coreutils-base64 +coreutils-sort +bind-dig +nftables +kmod-nft-nat +ip-full
+	DEPENDS:=+ca-bundle +kmod-inet-diag +kmod-netlink-diag +kmod-tun +curl +ucode +ucode-mod-fs +ucode-mod-uci +kmod-nft-tproxy +coreutils-base64 +bind-dig +nftables +kmod-nft-nat +ip-full
 	CONFLICTS:=https-dns-proxy nextdns luci-app-passwall luci-app-passwall2
 	TITLE:=Forkop backend service
 	URL:=https://github.com/ushan0v/forkop
@@ -43,7 +43,7 @@ define Package/forkop/prerm
 #!/usr/bin/ucode
 
 if (getenv("IPKG_INSTROOT") == null || getenv("IPKG_INSTROOT") == "")
-	system("/usr/bin/forkop package_prerm >/dev/null 2>&1");
+	system("/usr/bin/forkop package_prerm " + (ARGV[0] || "") + " >/dev/null 2>&1");
 
 exit(0);
 endef
@@ -52,7 +52,8 @@ define Package/forkop/postinst
 #!/bin/sh
 
 [ -n "$${IPKG_INSTROOT}" ] && exit 0
-FORKOP_LIB=/usr/lib/forkop ucode -L /usr/lib/forkop /usr/lib/forkop/config/migration.uc migrate
+FORKOP_LIB=/usr/lib/forkop ucode -L /usr/lib/forkop /usr/lib/forkop/config/migration.uc migrate || exit $$?
+/usr/bin/forkop package_postinst
 endef
 
 define Package/forkop/conffiles

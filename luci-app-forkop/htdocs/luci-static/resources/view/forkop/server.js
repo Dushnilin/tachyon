@@ -496,10 +496,6 @@ function getFirstListValue(sectionId, option) {
   return asList(uci.get(UCI_PACKAGE, sectionId, option))[0] || "";
 }
 
-function serverInboundTag(sectionId) {
-  return `server-${sectionId}-in`;
-}
-
 function getProtocol(sectionId) {
   return uci.get(UCI_PACKAGE, sectionId, "protocol") || DEFAULT_SERVER_PROTOCOL;
 }

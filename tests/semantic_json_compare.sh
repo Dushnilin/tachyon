@@ -62,11 +62,12 @@ cat >"$WORK_DIR/different-array-order.json" <<'JSON'
 }
 JSON
 
-if node "$COMPARE" "$WORK_DIR/expected.json" "$WORK_DIR/different-array-order.json" >/tmp/forkop-semantic-json.out 2>&1; then
+compare_output="$WORK_DIR/semantic-json.out"
+if node "$COMPARE" "$WORK_DIR/expected.json" "$WORK_DIR/different-array-order.json" >"$compare_output" 2>&1; then
   fail "array order mismatch should be rejected"
 fi
 
-grep -Fq '$.outbounds[0].tag: "first" != "second"' /tmp/forkop-semantic-json.out ||
+grep -Fq '$.outbounds[0].tag: "first" != "second"' "$compare_output" ||
   fail "array order mismatch reported unexpected diff"
 
 printf 'semantic JSON compare checks passed\n'

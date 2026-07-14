@@ -631,6 +631,8 @@ export namespace Forkop {
     legacy_runtime_present: 0 | 1;
     ready: 0 | 1;
     conflict: 0 | 1;
+    outbounds_configured: 0 | 1;
+    routes_configured: 0 | 1;
     status_message: string;
   }
 

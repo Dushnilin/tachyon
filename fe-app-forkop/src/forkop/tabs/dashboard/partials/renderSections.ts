@@ -22,14 +22,8 @@ interface IRenderSectionsProps {
     section: Forkop.OutboundGroup,
     outbound: Forkop.Outbound,
   ) => void;
-  onShowUrlTestInfo: (
-    section: Forkop.OutboundGroup,
-    outbound: Forkop.Outbound,
-  ) => void;
-  onShowPriorityInfo: (
-    section: Forkop.OutboundGroup,
-    outbound: Forkop.Outbound,
-  ) => void;
+  onShowUrlTestInfo: (outbound: Forkop.Outbound) => void;
+  onShowPriorityInfo: (outbound: Forkop.Outbound) => void;
   onUpdateSubscription: (section: Forkop.OutboundGroup) => void;
   latencyFetching: boolean;
   latencyProgress?: Forkop.LatencyActionProgress;
@@ -386,7 +380,7 @@ function renderDefaultState({
                     'aria-label': _('URLTest details'),
                     click: (event: MouseEvent) => {
                       event.stopPropagation();
-                      onShowUrlTestInfo(section, outbound);
+                      onShowUrlTestInfo(outbound);
                     },
                   },
                   renderInfoIcon24(),
@@ -405,7 +399,7 @@ function renderDefaultState({
                     'aria-label': _('Priority details'),
                     click: (event: MouseEvent) => {
                       event.stopPropagation();
-                      onShowPriorityInfo(section, outbound);
+                      onShowPriorityInfo(outbound);
                     },
                   },
                   renderInfoIcon24(),

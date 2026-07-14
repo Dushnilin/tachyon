@@ -28,7 +28,7 @@ PKG_LICENSE:=GPL-2.0-or-later
 LUCI_LANGUAGES:=en ru
 
 define Build/Prepare/$(PKG_NAME)
-	sed -i -e 's/__COMPILED_VERSION_VARIABLE__/$(FORKOP_COMPILED_VERSION)/g' $(PKG_BUILD_DIR)/htdocs/luci-static/resources/view/forkop/main.js || true
+	sed -i -e 's/__COMPILED_VERSION_VARIABLE__/$(FORKOP_COMPILED_VERSION)/g' $(PKG_BUILD_DIR)/htdocs/luci-static/resources/view/forkop/main.js
 endef
 
 include $(TOPDIR)/feeds/luci/luci.mk

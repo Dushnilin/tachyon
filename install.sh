@@ -1676,34 +1676,10 @@ numbered_yes_no_prompt() {
     done
 }
 
-confirm_prompt() {
-    prompt_text="$1"
-    numbered_yes_no_prompt "$prompt_text"
-}
-
 get_luci_main_lang() {
     command_exists ucode || return 0
     ucode -e 'require("fs"); require("uci");' >/dev/null 2>&1 || return 0
     install_json_ucode uci-get luci.main.lang 2>/dev/null || true
-}
-
-extract_package_version() {
-    package_name="$1"
-
-    case "$package_name" in
-        forkop_*.ipk|forkop_*.apk)
-            printf '%s\n' "$package_name" | sed 's/^forkop_//;s/\.ipk$//;s/\.apk$//'
-            ;;
-        luci-app-forkop_*.ipk|luci-app-forkop_*.apk)
-            printf '%s\n' "$package_name" | sed 's/^luci-app-forkop_//;s/\.ipk$//;s/\.apk$//'
-            ;;
-        luci-i18n-forkop-ru_*.ipk|luci-i18n-forkop-ru_*.apk)
-            printf '%s\n' "$package_name" | sed 's/^luci-i18n-forkop-ru_//;s/\.ipk$//;s/\.apk$//'
-            ;;
-        *)
-            printf '%s\n' "$package_name"
-            ;;
-    esac
 }
 
 fetch_github_latest_release_json() {
@@ -1747,7 +1723,7 @@ resolve_forkop_release() {
 
     FORKOP_BACKEND_NAME="$(basename "$FORKOP_BACKEND_URL")"
     FORKOP_APP_NAME="$(basename "$FORKOP_APP_URL")"
-    FORKOP_PACKAGE_VERSION="$(extract_package_version "$FORKOP_BACKEND_NAME")"
+    FORKOP_PACKAGE_VERSION="$(printf '%s\n' "$FORKOP_BACKEND_NAME" | sed 's/^forkop_//;s/\.ipk$//;s/\.apk$//')"
 
     FORKOP_I18N_URL=""
     FORKOP_I18N_NAME=""
@@ -1899,7 +1875,7 @@ decide_i18n_installation() {
             ;;
     esac
 
-    if confirm_prompt "$(installer_text i18n_prompt)"; then
+    if numbered_yes_no_prompt "$(installer_text i18n_prompt)"; then
         FORKOP_I18N_REQUESTED=1
         INSTALLER_LANG="ru"
         return 0
@@ -1965,7 +1941,10 @@ post_install() {
 }
 
 main() {
-    trap cleanup EXIT HUP INT TERM
+    trap cleanup EXIT
+    trap 'exit 129' HUP
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
 
     parse_args "$@"
     check_root

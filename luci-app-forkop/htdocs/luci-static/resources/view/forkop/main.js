@@ -21,18 +21,6 @@ function isIPv6(ip) {
     return false;
   }
 }
-function validateIPV4(ip) {
-  if (isIPv4(ip)) {
-    return { valid: true, message: _("Valid") };
-  }
-  return { valid: false, message: _("Invalid IP address") };
-}
-function validateIPv6(ip) {
-  if (isIPv6(ip)) {
-    return { valid: true, message: _("Valid") };
-  }
-  return { valid: false, message: _("Invalid IP address") };
-}
 function validateIP(ip) {
   if (isIPv4(ip) || isIPv6(ip)) {
     return { valid: true, message: _("Valid") };
@@ -104,6 +92,11 @@ function isValidHost(host) {
   const normalizedHost = unbracketHost(host);
   return isIPv4(normalizedHost) || isIPv6(normalizedHost) || validateDomain(normalizedHost).valid;
 }
+function isValidPort(port) {
+  const normalized = String(port ?? "");
+  const value = Number(normalized);
+  return /^\d+$/.test(normalized) && value >= 1 && value <= 65535;
+}
 function parseHostPort(value) {
   if (!value) {
     return null;
@@ -113,20 +106,22 @@ function parseHostPort(value) {
     if (end <= 1 || value.slice(end + 1, end + 2) !== ":") {
       return null;
     }
-    return {
+    const parsed2 = {
       host: value.slice(1, end),
       port: value.slice(end + 2)
     };
+    return isValidHost(parsed2.host) ? parsed2 : null;
   }
   const firstColon = value.indexOf(":");
   const lastColon = value.lastIndexOf(":");
   if (firstColon < 0 || firstColon !== lastColon) {
     return null;
   }
-  return {
+  const parsed = {
     host: value.slice(0, firstColon),
     port: value.slice(firstColon + 1)
   };
+  return isValidHost(parsed.host) ? parsed : null;
 }
 
 // src/validators/validateDns.ts
@@ -138,6 +133,9 @@ function validateDNS(value) {
   const parsedHostPort = parseHostPort(addressPart);
   const host = parsedHostPort ? parsedHostPort.host : unbracketHost(addressPart);
   const domainValue = parsedHostPort ? host + (pathParts.length > 0 ? `/${pathParts.join("/")}` : "") : value.replace(/:(\d+)(?=\/|$)/, "");
+  if (parsedHostPort && !isValidPort(parsedHostPort.port)) {
+    return { valid: false, message: _("Invalid DNS server port") };
+  }
   if (validateIP(host).valid) {
     return { valid: true, message: _("Valid") };
   }
@@ -166,8 +164,7 @@ function validateUrl(url, protocols = ["http:", "https:"]) {
   try {
     const parsed = new URL(url);
     const host = parsed.hostname.startsWith("[") ? parsed.hostname.slice(1, -1) : parsed.hostname;
-    const portNum = parsed.port ? Number(parsed.port) : 0;
-    if ((isValidHost(host) || host === "localhost") && (!parsed.port || Number.isInteger(portNum) && portNum >= 1 && portNum <= 65535)) {
+    if ((isValidHost(host) || host === "localhost") && (!parsed.port || isValidPort(parsed.port))) {
       return { valid: true, message: _("Valid") };
     }
   } catch (_e) {
@@ -396,8 +393,7 @@ function validateShadowsocksUrl(url) {
         message: _("Invalid Shadowsocks URL: missing port")
       };
     }
-    const portNum = parseInt(port, 10);
-    if (isNaN(portNum) || portNum < 1 || portNum > 65535) {
+    if (!isValidPort(port)) {
       return {
         valid: false,
         message: _("Invalid port number. Must be between 1 and 65535")
@@ -467,8 +463,7 @@ function validateVlessUrl(url) {
     if (!port)
       return { valid: false, message: "Invalid VLESS URL: missing port" };
     const cleanedPort = port.replace("/", "");
-    const portNum = Number(cleanedPort);
-    if (!Number.isInteger(portNum) || portNum < 1 || portNum > 65535)
+    if (!isValidPort(cleanedPort))
       return {
         valid: false,
         message: "Invalid VLESS URL: invalid port number"
@@ -566,11 +561,10 @@ function validateVmessUrl(url) {
       return { valid: false, message: "Invalid VMess URL: invalid config" };
     }
     const { add, port, id } = config;
-    if (!add || typeof add !== "string") {
-      return { valid: false, message: "Invalid VMess URL: missing server" };
+    if (!add || typeof add !== "string" || !isValidHost(add)) {
+      return { valid: false, message: "Invalid VMess URL: invalid server" };
     }
-    const portNum = Number(port);
-    if (!Number.isInteger(portNum) || portNum < 1 || portNum > 65535) {
+    if (!isValidPort(port)) {
       return {
         valid: false,
         message: "Invalid VMess URL: invalid port number"
@@ -627,8 +621,7 @@ function validateTrojanUrl(url) {
       return { valid: false, message: "Invalid Trojan URL: missing hostname" };
     if (!port)
       return { valid: false, message: "Invalid Trojan URL: missing port" };
-    const portNum = Number(port);
-    if (!Number.isInteger(portNum) || portNum < 1 || portNum > 65535)
+    if (!isValidPort(port))
       return {
         valid: false,
         message: "Invalid Trojan URL: invalid port number"
@@ -691,17 +684,10 @@ function validateSocksUrl(url) {
     if (!port) {
       return { valid: false, message: _("Invalid SOCKS URL: missing port") };
     }
-    const portNum = Number(port);
-    if (!Number.isInteger(portNum) || portNum < 1 || portNum > 65535) {
+    if (!isValidPort(port)) {
       return {
         valid: false,
         message: _("Invalid SOCKS URL: invalid port number")
-      };
-    }
-    if (!isValidHost(host)) {
-      return {
-        valid: false,
-        message: _("Invalid SOCKS URL: invalid host format")
       };
     }
   } catch (_e) {
@@ -760,26 +746,19 @@ function validateHysteria2Url(url) {
     }
     const cleanedPort = port.replace("/", "");
     const portEntries = cleanedPort.split(",");
-    const isValidPortNumber = (value) => {
-      if (!/^\d+$/.test(value)) {
-        return false;
-      }
-      const portNum = Number(value);
-      return Number.isInteger(portNum) && portNum >= 1 && portNum <= 65535;
-    };
     const isValidPortEntry = (entry) => {
       if (!entry) {
         return false;
       }
       if (!entry.includes("-")) {
-        return isValidPortNumber(entry);
+        return isValidPort(entry);
       }
       const rangeParts = entry.split("-");
       if (rangeParts.length !== 2) {
         return false;
       }
       const [start, end] = rangeParts;
-      return isValidPortNumber(start) && isValidPortNumber(end) && Number(start) <= Number(end);
+      return isValidPort(start) && isValidPort(end) && Number(start) <= Number(end);
     };
     if (!portEntries.every(isValidPortEntry)) {
       return {
@@ -894,17 +873,10 @@ function validateHttpProxyUrl(url) {
         message: _("Invalid HTTP proxy URL: missing port")
       };
     }
-    const portNum = Number(port);
-    if (!Number.isInteger(portNum) || portNum < 1 || portNum > 65535) {
+    if (!isValidPort(port)) {
       return {
         valid: false,
         message: _("Invalid HTTP proxy URL: invalid port number")
-      };
-    }
-    if (!isValidHost(host)) {
-      return {
-        valid: false,
-        message: _("Invalid HTTP proxy URL: invalid host format")
       };
     }
   } catch (_e) {
@@ -2164,7 +2136,7 @@ function renderDefaultState({
                 "aria-label": _("URLTest details"),
                 click: (event) => {
                   event.stopPropagation();
-                  onShowUrlTestInfo(section, outbound);
+                  onShowUrlTestInfo(outbound);
                 }
               },
               renderInfoIcon24()
@@ -2180,7 +2152,7 @@ function renderDefaultState({
                 "aria-label": _("Priority details"),
                 click: (event) => {
                   event.stopPropagation();
-                  onShowPriorityInfo(section, outbound);
+                  onShowPriorityInfo(outbound);
                 }
               },
               renderInfoIcon24()
@@ -3190,9 +3162,6 @@ var DASHBOARD_SECTION_CACHE_DIR = "/var/run/forkop/section-cache";
 function getDisplayName(section) {
   return section.label || section[".name"];
 }
-function getSectionAction(section) {
-  return section.action || "";
-}
 function getSettingsSection(configSections) {
   return configSections.find((section) => section[".type"] === "settings");
 }
@@ -3365,7 +3334,9 @@ function getJsonOutbounds(section) {
   return values.length ? values : getListValues(section.outbound_json);
 }
 function isConnectionAction(action) {
-  return ["connection", "proxy", "outbound", "vpn"].includes(action);
+  return Boolean(
+    action && ["connection", "proxy", "outbound", "vpn"].includes(action)
+  );
 }
 function hasSubscriptionSources(section) {
   return getSubscriptionSourceCount(section) > 0;
@@ -4049,11 +4020,11 @@ async function getDashboardSections(options = {}) {
   );
   const data = await Promise.all(
     configSections.filter(
-      (section) => section.enabled !== "0" && isConnectionAction(getSectionAction(section))
+      (section) => section.enabled !== "0" && isConnectionAction(section.action)
     ).map(async (section) => {
       const displayName = getDisplayName(section);
       const sectionName = section[".name"];
-      const sectionAction = getSectionAction(section);
+      const sectionAction = section.action;
       const proxyConfigType = getSectionProxyConfigType(section);
       if (isConnectionAction(sectionAction) && shouldUseProxyGroup(section)) {
         const subscriptionSourceCount = getSubscriptionSourceCount(section);
@@ -5293,8 +5264,8 @@ var SocketManager = class _SocketManager {
     }
     this.sockets.set(url, ws);
     this.connected.set(url, false);
-    this.listeners.set(url, /* @__PURE__ */ new Set());
-    this.errorListeners.set(url, /* @__PURE__ */ new Set());
+    if (!this.listeners.has(url)) this.listeners.set(url, /* @__PURE__ */ new Set());
+    if (!this.errorListeners.has(url)) this.errorListeners.set(url, /* @__PURE__ */ new Set());
     ws.addEventListener("open", () => {
       this.connected.set(url, true);
       logger.info("[SOCKET]", "Connected to", url);
@@ -6202,7 +6173,7 @@ function renderUrlTestCopyButton(title, onClick) {
     renderCopyIcon24()
   );
 }
-function renderUrlTestInfoModal(section, outbound) {
+function renderUrlTestInfoModal(outbound) {
   const info = outbound.urlTestInfo;
   if (!info) {
     return E("div", {}, _("URLTest details are unavailable"));
@@ -6318,13 +6289,13 @@ function renderUrlTestInfoModal(section, outbound) {
     ])
   ]);
 }
-function handleShowUrlTestInfo(section, outbound) {
+function handleShowUrlTestInfo(outbound) {
   if (!outbound.urlTestInfo) {
     return;
   }
   ui.showModal(
     `${_("URLTest details")}: ${outbound.urlTestInfo.displayName || outbound.displayName}`,
-    renderUrlTestInfoModal(section, outbound)
+    renderUrlTestInfoModal(outbound)
   );
 }
 function renderPrioritySelectedValue(info) {
@@ -6385,7 +6356,7 @@ function renderPriorityMemberName(member) {
     )
   ];
 }
-function renderPriorityInfoModal(section, outbound) {
+function renderPriorityInfoModal(outbound) {
   const info = outbound.priorityInfo;
   if (!info) {
     return E("div", {}, _("Priority details are unavailable"));
@@ -6527,13 +6498,13 @@ function renderPriorityInfoModal(section, outbound) {
     ])
   ]);
 }
-function handleShowPriorityInfo(section, outbound) {
+function handleShowPriorityInfo(outbound) {
   if (!outbound.priorityInfo) {
     return;
   }
   ui.showModal(
     `${_("Priority details")}: ${outbound.priorityInfo.displayName || outbound.displayName}`,
-    renderPriorityInfoModal(section, outbound)
+    renderPriorityInfoModal(outbound)
   );
 }
 async function handleUpdateSubscription(section) {
@@ -6702,11 +6673,11 @@ async function renderSectionsWidget() {
       onCopyOutbound: (_section, outbound) => {
         handleCopyOutbound(outbound);
       },
-      onShowUrlTestInfo: (section2, outbound) => {
-        handleShowUrlTestInfo(section2, outbound);
+      onShowUrlTestInfo: (outbound) => {
+        handleShowUrlTestInfo(outbound);
       },
-      onShowPriorityInfo: (section2, outbound) => {
-        handleShowPriorityInfo(section2, outbound);
+      onShowPriorityInfo: (outbound) => {
+        handleShowPriorityInfo(outbound);
       },
       onUpdateSubscription: (section2) => {
         void handleUpdateSubscription(section2);
@@ -9592,6 +9563,7 @@ var SING_BOX_MASKED_KEYS = /* @__PURE__ */ new Set([
 ]);
 var FORKOP_MASK_AFTER_TOKEN = [
   "option proxy_string",
+  "option hwid",
   "option subscription_url",
   "list subscription_urls",
   "list urltest_proxy_links",
@@ -14249,8 +14221,6 @@ return baseclass.extend({
   validateDNS,
   validateDomain,
   validateIP,
-  validateIPV4,
-  validateIPv6,
   validateOutboundJson,
   validatePath,
   validateProxyUrl,

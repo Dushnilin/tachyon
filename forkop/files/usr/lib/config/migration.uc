@@ -300,19 +300,6 @@ function whitespace_list_values(section, key) {
     return list_option(section, key);
 }
 
-function str_last_index(value, needle) {
-    value = as_string(value);
-    needle = as_string(needle);
-    if (needle == "")
-        return length(value);
-
-    for (let i = length(value) - length(needle); i >= 0; i--)
-        if (substr(value, i, length(needle)) == needle)
-            return i;
-
-    return -1;
-}
-
 function subscription_url_entry_profile(value) {
     let entry = trim(as_string(value));
     let result = {
@@ -322,7 +309,7 @@ function subscription_url_entry_profile(value) {
         changed: false
     };
     let delimiter = " | ";
-    let delimiter_index = str_last_index(entry, delimiter);
+    let delimiter_index = rindex(entry, delimiter);
 
     if (delimiter_index < 0)
         return result;

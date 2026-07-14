@@ -46,6 +46,19 @@ require_file "$FORKOP_CONFIG"
 require_file "$BUILD_SCRIPT"
 require_file "$FORKOP_LIB"
 
+for conflict in https-dns-proxy nextdns luci-app-passwall luci-app-passwall2; do
+  grep -E 'CONFLICTS:=' "$FORKOP_MAKEFILE" | grep -Fq "$conflict" ||
+    fail "forkop/Makefile conflicts are missing $conflict"
+  grep -E '^BACKEND_CONFLICTS_IPK=' "$BUILD_SCRIPT" | grep -Fq "$conflict" ||
+    fail "manual IPK conflicts are missing $conflict"
+  grep -E '^BACKEND_DEPENDS_APK=' "$BUILD_SCRIPT" | grep -Fq "!$conflict" ||
+    fail "manual APK conflicts are missing $conflict"
+done
+
+if grep -Fq 'coreutils-sort' "$FORKOP_MAKEFILE" "$BUILD_SCRIPT"; then
+  fail "unused coreutils-sort runtime dependency must not be packaged"
+fi
+
 grep -Fq "must use x.y.z format" "$FORKOP_MAKEFILE" ||
   fail "forkop/Makefile must enforce the three-part release version contract"
 grep -Fq 'APK_INTERNAL_VERSION="$RELEASE_VERSION"' "$BUILD_SCRIPT" ||
