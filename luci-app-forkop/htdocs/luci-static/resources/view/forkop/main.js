@@ -2560,8 +2560,6 @@ var Forkop;
     AvailableMethods2["CHECK_BYEDPI_RUNTIME"] = "check_byedpi_runtime";
     AvailableMethods2["CHECK_INBOUNDS_CONFIG"] = "check_inbounds_config";
     AvailableMethods2["GET_STATUS"] = "get_status";
-    AvailableMethods2["GET_OUTBOUND_LINK"] = "get_outbound_link";
-    AvailableMethods2["GET_OUTBOUND_LINK_STATES"] = "get_outbound_link_states";
     AvailableMethods2["GET_OUTBOUND_METADATA"] = "get_outbound_metadata";
     AvailableMethods2["GET_SUBSCRIPTION_METADATA"] = "get_subscription_metadata";
     AvailableMethods2["CHECK_SING_BOX"] = "check_sing_box";
@@ -2783,14 +2781,6 @@ var ForkopShellMethods = {
     Forkop.AvailableMethods.CHECK_INBOUNDS_CONFIG
   ),
   getStatus: async () => callBaseMethod(Forkop.AvailableMethods.GET_STATUS),
-  getOutboundLink: async (section, tag) => callBaseMethod(
-    Forkop.AvailableMethods.GET_OUTBOUND_LINK,
-    [section, tag]
-  ),
-  getOutboundLinkStates: async (section) => callBaseMethod(
-    Forkop.AvailableMethods.GET_OUTBOUND_LINK_STATES,
-    [section]
-  ),
   getOutboundMetadata: async (section) => callBaseMethod(
     Forkop.AvailableMethods.GET_OUTBOUND_METADATA,
     [section]
@@ -3711,7 +3701,6 @@ function buildUrlTestInfo({
   manualLinkByCode,
   cachedProxyLinks,
   outboundMetadata,
-  subscriptionCopyableCodes,
   showDetectedCountries
 }) {
   const childCodes = uniqueCodes(
@@ -3722,7 +3711,7 @@ function buildUrlTestInfo({
     childCodes.flatMap((childCode) => {
       const childEntry = proxyByCode.get(childCode);
       const link = manualLinkByCode.get(childCode) || cachedProxyLinks.get(childCode) || "";
-      const canCopyLink = isCopyableProxyLink(link) || subscriptionCopyableCodes.has(childCode);
+      const canCopyLink = isCopyableProxyLink(link);
       return [
         {
           code: childCode,
@@ -3731,7 +3720,7 @@ function buildUrlTestInfo({
             childEntry,
             link,
             outboundMetadata,
-            subscriptionCopyableCodes.has(childCode)
+            cachedProxyLinks.has(childCode)
           ),
           latency: childEntry?.value?.history?.[0]?.delay || 0,
           type: childEntry?.value?.type || "",
@@ -3765,7 +3754,6 @@ function buildPriorityInfo({
   manualLinkByCode,
   cachedProxyLinks,
   outboundMetadata,
-  subscriptionCopyableCodes,
   showDetectedCountries
 }) {
   const selectedCode = entry?.value.now || "";
@@ -3801,7 +3789,7 @@ function buildPriorityInfo({
     const members = uniqueCodes(level.outbounds || []).map((childCode) => {
       const childEntry = proxyByCode.get(childCode);
       const link = manualLinkByCode.get(childCode) || cachedProxyLinks.get(childCode) || "";
-      const canCopyLink = isCopyableProxyLink(link) || subscriptionCopyableCodes.has(childCode);
+      const canCopyLink = isCopyableProxyLink(link);
       return {
         code: childCode,
         displayName: getOutboundDisplayName(
@@ -3809,7 +3797,7 @@ function buildPriorityInfo({
           childEntry,
           link,
           outboundMetadata,
-          subscriptionCopyableCodes.has(childCode)
+          cachedProxyLinks.has(childCode)
         ),
         latency: childEntry?.value?.history?.[0]?.delay || 0,
         type: childEntry?.value?.type || "",
@@ -3847,7 +3835,7 @@ function buildPriorityInfo({
     outbounds
   };
 }
-function buildProxyGroupOutbounds(section, proxies, outboundMetadata, urltestGroups = {}, priorityGroups = {}, subscriptionCopyableCodes = /* @__PURE__ */ new Set(), cachedProxyLinks = /* @__PURE__ */ new Map()) {
+function buildProxyGroupOutbounds(section, proxies, outboundMetadata, urltestGroups = {}, priorityGroups = {}, cachedProxyLinks = /* @__PURE__ */ new Map()) {
   const sectionName = section[".name"];
   const proxyByCode = getProxyEntryByCode(proxies);
   const selectorTag = getOutboundTagBySection(sectionName);
@@ -3893,13 +3881,13 @@ function buildProxyGroupOutbounds(section, proxies, outboundMetadata, urltestGro
       return [];
     }
     const link = manualLinkByCode.get(code) || cachedProxyLinks.get(code) || "";
-    const canCopyLink = isCopyableProxyLink(link) || subscriptionCopyableCodes.has(code);
+    const canCopyLink = isCopyableProxyLink(link);
     const displayName = priorityConfig?.displayName || urlTestConfig?.displayName || getOutboundDisplayName(
       code,
       item,
       link,
       outboundMetadata,
-      subscriptionCopyableCodes.has(code)
+      cachedProxyLinks.has(code)
     );
     const isRuntimeUrlTest = isUrlTestProxyEntry(item);
     return [
@@ -3922,7 +3910,6 @@ function buildProxyGroupOutbounds(section, proxies, outboundMetadata, urltestGro
           manualLinkByCode,
           cachedProxyLinks,
           outboundMetadata,
-          subscriptionCopyableCodes,
           showDetectedCountries: urlTestConfig?.showDetectedCountries || showDetectedCountries
         }) : void 0,
         priorityInfo: priorityConfig ? buildPriorityInfo({
@@ -3933,7 +3920,6 @@ function buildProxyGroupOutbounds(section, proxies, outboundMetadata, urltestGro
           manualLinkByCode,
           cachedProxyLinks,
           outboundMetadata,
-          subscriptionCopyableCodes,
           showDetectedCountries: priorityConfig.showDetectedCountries
         }) : void 0
       }
@@ -4038,17 +4024,6 @@ function getOutboundMetadata(dashboardCache) {
     countries: objectMap(metadata.countries)
   };
 }
-function getSubscriptionCopyableCodes(dashboardCache) {
-  const legacyLinks = objectMap(dashboardCache?.links);
-  const linkRefs = dashboardCache?.linkRefs;
-  const codes = new Set(
-    Object.entries(legacyLinks).filter(([, link]) => isCopyableProxyLink(link)).map(([code]) => code)
-  );
-  if (linkRefs && typeof linkRefs === "object" && !Array.isArray(linkRefs)) {
-    Object.keys(linkRefs).forEach((code) => codes.add(code));
-  }
-  return codes;
-}
 function getCachedProxyLinks(dashboardCache) {
   return new Map(
     Object.entries(objectMap(dashboardCache?.links)).filter(
@@ -4090,7 +4065,6 @@ async function getDashboardSections(options = {}) {
           subscriptionSourceCount,
           dashboardCache
         ) : void 0;
-        const subscriptionCopyableCodes = includeSubscriptionCopyState ? getSubscriptionCopyableCodes(dashboardCache) : /* @__PURE__ */ new Set();
         const cachedProxyLinks = includeSubscriptionCopyState ? getCachedProxyLinks(dashboardCache) : /* @__PURE__ */ new Map();
         const urltestGroups = getUrlTestGroups(dashboardCache);
         const priorityGroups = getPriorityGroups(dashboardCache);
@@ -4100,7 +4074,6 @@ async function getDashboardSections(options = {}) {
           outboundMetadata,
           urltestGroups,
           priorityGroups,
-          subscriptionCopyableCodes,
           cachedProxyLinks
         );
         return {
@@ -6114,18 +6087,10 @@ async function handleTestLatency(latencyType, sectionName, tag, timeout) {
     }
   }
 }
-async function handleCopyOutbound(section, outbound) {
+function handleCopyOutbound(outbound) {
   const link = outbound.link;
   if (link && isCopyableProxyLink(link)) {
     copyToClipboard(link);
-    return;
-  }
-  const response = await ForkopShellMethods.getOutboundLink(
-    section.sectionName,
-    outbound.code
-  );
-  if (response.success && isCopyableProxyLink(response.data.link)) {
-    copyToClipboard(response.data.link);
     return;
   }
   showToast(_("Proxy link is unavailable"), "error");
@@ -6323,7 +6288,7 @@ function renderUrlTestInfoModal(section, outbound) {
               ),
               member.canCopyLink ? renderUrlTestCopyButton(_("Copy proxy link"), (event) => {
                 event.preventDefault();
-                void handleCopyOutbound(section, member);
+                handleCopyOutbound(member);
               }) : E("span", {
                 class: "fkp_dashboard-page__urltest-details__copy-placeholder"
               })
@@ -6532,7 +6497,7 @@ function renderPriorityInfoModal(section, outbound) {
               ),
               member.canCopyLink ? renderUrlTestCopyButton(_("Copy proxy link"), (event) => {
                 event.preventDefault();
-                void handleCopyOutbound(section, member);
+                handleCopyOutbound(member);
               }) : E("span", {
                 class: "fkp_dashboard-page__urltest-details__copy-placeholder"
               })
@@ -6734,8 +6699,8 @@ async function renderSectionsWidget() {
       onChooseOutbound: (sectionName, selector, tag) => {
         void handleChooseOutbound(sectionName, selector, tag);
       },
-      onCopyOutbound: (section2, outbound) => {
-        void handleCopyOutbound(section2, outbound);
+      onCopyOutbound: (_section, outbound) => {
+        handleCopyOutbound(outbound);
       },
       onShowUrlTestInfo: (section2, outbound) => {
         handleShowUrlTestInfo(section2, outbound);

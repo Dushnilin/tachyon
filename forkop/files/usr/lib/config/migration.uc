@@ -9,6 +9,7 @@ let uci_core = require("core.uci");
 let constants_module = require("core.constants");
 let singbox_constants_module = require("singbox.constants");
 let domain_config = require("config.domain");
+let subscription_share_link = require("subscription.share_link");
 
 let as_string = common.as_string;
 let read_json_file = common.read_json_file;
@@ -28,8 +29,9 @@ const FORKOP_SECTION_CACHE_DIR = getenv("FORKOP_SECTION_CACHE_DIR") || FORKOP_RU
 const FORKOP_RUNTIME_CACHE_FORMAT_FILE = getenv("FORKOP_RUNTIME_CACHE_FORMAT_FILE") || FORKOP_RUNTIME_STATE_DIR + "/cache-format";
 const FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_DIR = getenv("FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_DIR") || "/etc/forkop/subscription-cache";
 const FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE = getenv("FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE") || FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_DIR + "/cache-format";
+const FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT = getenv("FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT") || "7";
 const FORKOP_INTERNAL_CONFIG_TRIGGER_GUARD = getenv("FORKOP_INTERNAL_CONFIG_TRIGGER_GUARD") || "/var/run/forkop.internal-config-change";
-const FORKOP_RUNTIME_CACHE_FORMAT = getenv("FORKOP_RUNTIME_CACHE_FORMAT") || "7";
+const FORKOP_RUNTIME_CACHE_FORMAT = getenv("FORKOP_RUNTIME_CACHE_FORMAT") || "8";
 const CONFIG_VERSION_OPTION = "config_version";
 const APPLIED_MIGRATIONS_OPTION = "applied_migrations";
 const SERVER_COUNTRY_METHOD_FLAG_EMOJI = "flag_emoji";
@@ -1356,7 +1358,6 @@ function clear_subscription_runtime_cache() {
 function ensure_runtime_dirs() {
     ensure_dir(TMP_SUBSCRIPTION_FOLDER);
     ensure_dir(FORKOP_RUNTIME_STATE_DIR);
-    ensure_dir(FORKOP_SUBSCRIPTION_LINKS_DIR);
     ensure_dir(FORKOP_SUBSCRIPTION_METADATA_DIR);
     ensure_dir(FORKOP_OUTBOUND_METADATA_DIR);
     ensure_dir(FORKOP_SECTION_CACHE_DIR);
@@ -1366,16 +1367,18 @@ function ensure_runtime_cache_format() {
     ensure_dir(FORKOP_RUNTIME_STATE_DIR);
 
     if (first_line(FORKOP_RUNTIME_CACHE_FORMAT_FILE) != FORKOP_RUNTIME_CACHE_FORMAT) {
+        if (first_line(FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE) == FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT)
+            subscription_share_link.populate_subscription_dir(FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_DIR);
         clear_subscription_runtime_cache();
         ensure_runtime_dirs();
         fs.writefile(FORKOP_RUNTIME_CACHE_FORMAT_FILE, FORKOP_RUNTIME_CACHE_FORMAT + "\n");
     }
 
-    if (first_line(FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE) != FORKOP_RUNTIME_CACHE_FORMAT) {
+    if (first_line(FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE) != FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT) {
         run("rm -rf " + shell_quote(FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_DIR));
         ensure_dir(FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_DIR);
         run("chmod 700 " + shell_quote(FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_DIR) + " >/dev/null 2>&1");
-        fs.writefile(FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE, FORKOP_RUNTIME_CACHE_FORMAT + "\n");
+        fs.writefile(FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE, FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT + "\n");
         run("chmod 600 " + shell_quote(FORKOP_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE) + " >/dev/null 2>&1");
     }
 }

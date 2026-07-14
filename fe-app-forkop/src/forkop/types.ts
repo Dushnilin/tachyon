@@ -60,8 +60,6 @@ export namespace Forkop {
     CHECK_BYEDPI_RUNTIME = 'check_byedpi_runtime',
     CHECK_INBOUNDS_CONFIG = 'check_inbounds_config',
     GET_STATUS = 'get_status',
-    GET_OUTBOUND_LINK = 'get_outbound_link',
-    GET_OUTBOUND_LINK_STATES = 'get_outbound_link_states',
     GET_OUTBOUND_METADATA = 'get_outbound_metadata',
     GET_SUBSCRIPTION_METADATA = 'get_subscription_metadata',
     CHECK_SING_BOX = 'check_sing_box',
@@ -453,12 +451,6 @@ export namespace Forkop {
     status: string;
     dns_configured?: number;
   }
-
-  export interface GetOutboundLink {
-    link: string;
-  }
-
-  export type GetOutboundLinkStates = Record<string, boolean>;
 
   export interface GetOutboundMetadata {
     names?: Record<string, string>;
