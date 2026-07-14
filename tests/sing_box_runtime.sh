@@ -1218,7 +1218,7 @@ assert(outbound(urltest, "proxy-out").default == "proxy-urltest-out", "selector 
 
 let providers = cfg("providers");
 assert(outbound(providers, "zap-out").routing_mark == 0x01000001, "Zapret mark");
-assert(outbound(providers, "zap2-out").routing_mark == 0x01010001, "Zapret2 mark");
+assert(outbound(providers, "zap2-out").routing_mark == 0x02000001, "Zapret2 mark");
 assert(outbound(providers, "bye-out").type == "socks" && outbound(providers, "bye-out").server_port == 1080, "ByeDPI outbound");
 
 let manual = cfg("manual");

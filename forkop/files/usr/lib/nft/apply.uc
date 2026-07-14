@@ -768,7 +768,7 @@ function nft_create_runtime_base(table, localv4_set, common_set, port_set, ip_po
         if (!nft_add_set_elements(table, interface_set, interface))
             return false;
 
-    if (!nft_create_chain(table, "mangle", "{ type filter hook prerouting priority -150; policy accept; }") ||
+    if (!nft_create_chain(table, "mangle", "{ type filter hook prerouting priority -149; policy accept; }") ||
         !nft_create_chain(table, "mangle_output", "{ type route hook output priority -150; policy accept; }") ||
         !nft_create_priority_chains(table) ||
         !nft_create_chain(table, "proxy", "{ type filter hook prerouting priority -100; policy accept; }"))

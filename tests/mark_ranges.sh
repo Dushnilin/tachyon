@@ -44,10 +44,16 @@ assert_mark_range_no_overlap() {
 
 eval "$(ucode -L "$FORKOP_LIB" "$FORKOP_LIB/core/constants.uc" shell-env)"
 
+TAILSCALE_FWMARK_MASK=0x00ff0000
+
+assert_no_overlap "FakeIP" "$((NFT_FAKEIP_MARK))" "$((TAILSCALE_FWMARK_MASK))" "Tailscale"
+assert_no_overlap "outbound" "$((NFT_OUTBOUND_MARK))" "$((TAILSCALE_FWMARK_MASK))" "Tailscale"
 assert_mark_range_no_overlap "Zapret" "$((ZAPRET_ROUTE_MARK_BASE))" "$ZAPRET_QUEUE_RANGE_SIZE" "$((NFT_FAKEIP_MARK))" "FakeIP"
 assert_mark_range_no_overlap "Zapret" "$((ZAPRET_ROUTE_MARK_BASE))" "$ZAPRET_QUEUE_RANGE_SIZE" "$((NFT_OUTBOUND_MARK))" "outbound"
 assert_mark_range_no_overlap "Zapret2" "$((ZAPRET2_ROUTE_MARK_BASE))" "$ZAPRET2_QUEUE_RANGE_SIZE" "$((NFT_FAKEIP_MARK))" "FakeIP"
 assert_mark_range_no_overlap "Zapret2" "$((ZAPRET2_ROUTE_MARK_BASE))" "$ZAPRET2_QUEUE_RANGE_SIZE" "$((NFT_OUTBOUND_MARK))" "outbound"
+assert_mark_range_no_overlap "Zapret" "$((ZAPRET_ROUTE_MARK_BASE))" "$ZAPRET_QUEUE_RANGE_SIZE" "$((TAILSCALE_FWMARK_MASK))" "Tailscale"
+assert_mark_range_no_overlap "Zapret2" "$((ZAPRET2_ROUTE_MARK_BASE))" "$ZAPRET2_QUEUE_RANGE_SIZE" "$((TAILSCALE_FWMARK_MASK))" "Tailscale"
 
 cat >"$WORK_DIR/fixture.json" <<'JSON'
 {
@@ -57,6 +63,8 @@ JSON
 
 context_json() {
   local zapret2_base="${1:-$ZAPRET2_ROUTE_MARK_BASE}"
+  local fakeip_mark="${2:-$NFT_FAKEIP_MARK}"
+  local outbound_mark="${3:-$NFT_OUTBOUND_MARK}"
 
   cat <<JSON
 {
@@ -72,16 +80,22 @@ context_json() {
   "zapret_queue_range_size": "$ZAPRET_QUEUE_RANGE_SIZE",
   "zapret2_route_mark_base": "$zapret2_base",
   "zapret2_queue_range_size": "$ZAPRET2_QUEUE_RANGE_SIZE",
-  "nft_fakeip_mark": "$NFT_FAKEIP_MARK",
-  "nft_outbound_mark": "$NFT_OUTBOUND_MARK"
+  "nft_fakeip_mark": "$fakeip_mark",
+  "nft_outbound_mark": "$outbound_mark"
 }
 JSON
 }
 
 FORKOP_LIB="$FORKOP_LIB" ucode -L "$FORKOP_LIB" "$VALIDATOR" validate-runtime-fixture "$WORK_DIR/fixture.json" "$(context_json)"
 
-if FORKOP_LIB="$FORKOP_LIB" ucode -L "$FORKOP_LIB" "$VALIDATOR" validate-runtime-fixture "$WORK_DIR/fixture.json" "$(context_json "0x01100000")" >/dev/null 2>&1; then
-  fail "legacy Zapret2 route mark base should overlap FakeIP mark"
+if FORKOP_LIB="$FORKOP_LIB" ucode -L "$FORKOP_LIB" "$VALIDATOR" validate-runtime-fixture "$WORK_DIR/fixture.json" "$(context_json "0x01010000")" >/dev/null 2>&1; then
+  fail "legacy Zapret2 route mark base should overlap Tailscale fwmark mask"
+fi
+if FORKOP_LIB="$FORKOP_LIB" ucode -L "$FORKOP_LIB" "$VALIDATOR" validate-runtime-fixture "$WORK_DIR/fixture.json" "$(context_json "" "0x00100000")" >/dev/null 2>&1; then
+  fail "legacy FakeIP mark should overlap Tailscale fwmark mask"
+fi
+if FORKOP_LIB="$FORKOP_LIB" ucode -L "$FORKOP_LIB" "$VALIDATOR" validate-runtime-fixture "$WORK_DIR/fixture.json" "$(context_json "" "" "0x00200000")" >/dev/null 2>&1; then
+  fail "legacy outbound mark should overlap Tailscale fwmark mask"
 fi
 
 printf 'mark range checks passed\n'
