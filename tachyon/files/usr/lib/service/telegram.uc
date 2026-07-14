@@ -625,7 +625,7 @@ function process_updates(token, admin_ids) {
             send_message(token, chat_id, "❌ Доступ запрещен. Ваш Chat ID: `" + chat_id + "`", "Markdown");
             continue;
         }
-        
+        process_command(token, chat_id, msg.text);
     }
 }
 

@@ -2,6 +2,12 @@
 
 let fs = require("fs");
 
+global.double = function(v) {
+    if (v == null || v == "")
+        return 0.0;
+    return v * 1.0;
+};
+
 function as_string(value) {
     return value == null ? "" : "" + value;
 }
