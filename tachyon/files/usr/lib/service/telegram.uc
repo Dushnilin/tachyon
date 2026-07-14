@@ -161,8 +161,27 @@ function format_bytes(b) {
     return sprintf("%d B", b);
 }
  
+function get_clash_url(endpoint) {
+    let host = "127.0.0.1:9090"; // default fallback
+    let config_data = fs.readfile("/etc/sing-box/config.json");
+    if (config_data) {
+        try {
+            let sb_cfg = json(config_data);
+            let ext = sb_cfg.experimental?.clash_api?.external_controller;
+            if (ext) {
+                if (index(ext, "0.0.0.0:") == 0) {
+                    host = "127.0.0.1" + substr(ext, 7);
+                } else {
+                    host = ext;
+                }
+            }
+        } catch(e) {}
+    }
+    return "http://" + host + "/" + endpoint;
+}
+
 function get_clash_proxies_data() {
-    let args = [ "curl", "-s", "http://127.0.0.1:9090/proxies" ];
+    let args = [ "curl", "-s", get_clash_url("proxies") ];
     let res = command_capture(command_from_args(args));
     if (res.status == 0 && res.output != "") {
         try {
@@ -225,7 +244,7 @@ function handle_servers(token, chat_id) {
 }
  
 function handle_traffic(token, chat_id) {
-    let args = [ "curl", "-s", "http://127.0.0.1:9090/connections" ];
+    let args = [ "curl", "-s", get_clash_url("connections") ];
     let res = command_capture(command_from_args(args));
     if (res.status != 0 || res.output == "") {
         send_message_with_keyboard(token, chat_id, "❌ Не удалось получить статистику трафика.");
