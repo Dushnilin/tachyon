@@ -1,0 +1,79 @@
+﻿include $(TOPDIR)/rules.mk
+
+PKG_NAME:=tachyon
+
+TACHYON_SOURCE_VERSION:=$(or $(TACHYON_PACKAGE_VERSION),$(TACHYON_VERSION))
+TACHYON_HAS_RELEASE_VERSION:=$(if $(filter dev,$(TACHYON_SOURCE_VERSION)),,$(TACHYON_SOURCE_VERSION))
+TACHYON_COMPILED_VERSION:=$(if $(TACHYON_HAS_RELEASE_VERSION),$(TACHYON_SOURCE_VERSION),$(or $(TACHYON_SOURCE_VERSION),dev))
+TACHYON_RELEASE_VERSION_VALID:=$(if $(TACHYON_HAS_RELEASE_VERSION),$(shell printf '%s\n' '$(TACHYON_SOURCE_VERSION)' | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$$' && printf '1'),1)
+
+ifeq ($(TACHYON_RELEASE_VERSION_VALID),)
+$(error TACHYON_PACKAGE_VERSION and TACHYON_VERSION must use x.y.z format)
+endif
+
+PKG_VERSION:=$(or $(TACHYON_HAS_RELEASE_VERSION),0.0.0)
+PKG_RELEASE:=
+
+PKG_MAINTAINER:=ushan0v <ushan0v@users.noreply.github.com>
+PKG_LICENSE:=GPL-2.0-or-later
+
+include $(INCLUDE_DIR)/package.mk
+
+define Package/tachyon
+	SECTION:=net
+	CATEGORY:=Network
+	DEPENDS:=+ca-bundle +kmod-inet-diag +kmod-netlink-diag +kmod-tun +curl +ucode +ucode-mod-fs +ucode-mod-uci +kmod-nft-tproxy +coreutils-base64 +bind-dig +nftables +kmod-nft-nat +ip-full
+	CONFLICTS:=https-dns-proxy nextdns luci-app-passwall luci-app-passwall2
+	TITLE:=Tachyon backend service
+	URL:=https://github.com/ushan0v/tachyon
+	PKGARCH:=all
+endef
+
+define Package/tachyon/description
+	Rule-based Tachyon backend with hybrid sing-box + zapret orchestration
+endef
+
+define Build/Configure
+endef
+
+define Build/Compile
+endef
+
+define Package/tachyon/prerm
+#!/usr/bin/ucode
+
+if (getenv("IPKG_INSTROOT") == null || getenv("IPKG_INSTROOT") == "")
+	system("/usr/bin/tachyon package_prerm " + (ARGV[0] || "") + " >/dev/null 2>&1");
+
+exit(0);
+endef
+
+define Package/tachyon/postinst
+#!/bin/sh
+
+[ -n "$${IPKG_INSTROOT}" ] && exit 0
+TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate || exit $$?
+/usr/bin/tachyon package_postinst
+endef
+
+define Package/tachyon/conffiles
+/etc/config/tachyon
+endef
+
+define Package/tachyon/install
+	$(INSTALL_DIR) $(1)/etc/init.d
+	$(INSTALL_BIN) ./files/etc/init.d/tachyon $(1)/etc/init.d/tachyon
+
+	$(INSTALL_DIR) $(1)/etc/config
+	$(INSTALL_CONF) ./files/etc/config/tachyon $(1)/etc/config/tachyon
+
+	$(INSTALL_DIR) $(1)/usr/bin
+	$(INSTALL_BIN) ./files/usr/bin/tachyon $(1)/usr/bin/tachyon
+
+	$(INSTALL_DIR) $(1)/usr/lib/tachyon
+	$(CP) ./files/usr/lib/. $(1)/usr/lib/tachyon/
+
+	sed -i -e 's/__COMPILED_VERSION_VARIABLE__/$(TACHYON_COMPILED_VERSION)/g' $(1)/usr/lib/tachyon/core/constants.uc
+endef
+
+$(eval $(call BuildPackage,tachyon))

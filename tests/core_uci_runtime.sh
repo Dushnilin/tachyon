@@ -1,8 +1,8 @@
-#!/usr/bin/env bash
+﻿#!/usr/bin/env bash
 set -eo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-UCODE_LIB="$ROOT_DIR/forkop/files/usr/lib"
+UCODE_LIB="$ROOT_DIR/tachyon/files/usr/lib"
 WORK_DIR="$(mktemp -d)"
 
 cleanup() {

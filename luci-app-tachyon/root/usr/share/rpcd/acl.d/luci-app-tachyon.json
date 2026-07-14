@@ -1,0 +1,61 @@
+﻿{
+  "luci-app-tachyon": {
+    "description": "Grant UCI and RPC access to LuCI app Tachyon",
+    "read": {
+      "file": {
+        "/etc/init.d/tachyon": [
+          "exec"
+        ],
+        "/var/run/tachyon/section-cache/*": [
+          "read"
+        ],
+        "/var/run/tachyon/component-actions/*": [
+          "read"
+        ],
+        "/var/run/tachyon/ui-state/*": [
+          "read"
+        ],
+        "/var/run/tachyon/ui-state/service-actions/*": [
+          "read"
+        ],
+        "/var/run/tachyon/ui-state/latency-actions/*": [
+          "read"
+        ],
+        "/usr/bin/tachyon": [
+          "exec"
+        ]
+      },
+      "ubus": {
+        "luci-rpc": [
+          "getDHCPLeases",
+          "getHostHints"
+        ],
+        "network.interface": [
+          "dump"
+        ],
+        "service": [
+          "list"
+        ]
+      },
+      "uci": [
+        "tachyon"
+      ]
+    },
+    "write": {
+      "file": {
+        "/var/run/tachyon/ui-state/*": [
+          "write"
+        ],
+        "/var/run/tachyon/ui-state/service-actions/*": [
+          "write"
+        ],
+        "/var/run/tachyon/ui-state/latency-actions/*": [
+          "write"
+        ]
+      },
+      "uci": [
+        "tachyon"
+      ]
+    }
+  }
+}
