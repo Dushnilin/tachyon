@@ -1,4 +1,4 @@
-import { defineConfig } from 'tsup';
+﻿import { defineConfig } from 'tsup';
 import fs from 'fs';
 import path from 'path';
 

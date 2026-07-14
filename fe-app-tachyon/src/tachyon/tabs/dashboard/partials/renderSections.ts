@@ -22,14 +22,8 @@ interface IRenderSectionsProps {
     section: Tachyon.OutboundGroup,
     outbound: Tachyon.Outbound,
   ) => void;
-  onShowUrlTestInfo: (
-    section: Tachyon.OutboundGroup,
-    outbound: Tachyon.Outbound,
-  ) => void;
-  onShowPriorityInfo: (
-    section: Tachyon.OutboundGroup,
-    outbound: Tachyon.Outbound,
-  ) => void;
+  onShowUrlTestInfo: (outbound: Tachyon.Outbound) => void;
+  onShowPriorityInfo: (outbound: Tachyon.Outbound) => void;
   onUpdateSubscription: (section: Tachyon.OutboundGroup) => void;
   latencyFetching: boolean;
   latencyProgress?: Tachyon.LatencyActionProgress;
@@ -391,7 +385,7 @@ function renderDefaultState({
                       'aria-label': _('URLTest details'),
                       click: (event: MouseEvent) => {
                         event.stopPropagation();
-                        onShowUrlTestInfo(section, outbound);
+                        onShowUrlTestInfo(outbound);
                       },
                     },
                     renderInfoIcon24(),
@@ -410,7 +404,7 @@ function renderDefaultState({
                       'aria-label': _('Priority details'),
                       click: (event: MouseEvent) => {
                         event.stopPropagation();
-                        onShowPriorityInfo(section, outbound);
+                        onShowPriorityInfo(outbound);
                       },
                     },
                     renderInfoIcon24(),

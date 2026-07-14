@@ -1,4 +1,4 @@
-#!/usr/bin/env ucode
+﻿#!/usr/bin/env ucode
 
 let common = require("core.common");
 let as_string = common.as_string;

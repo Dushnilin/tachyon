@@ -1,4 +1,4 @@
-// eslint-disable-next-line @typescript-eslint/no-namespace
+﻿// eslint-disable-next-line @typescript-eslint/no-namespace
 export namespace ClashAPI {
   interface ProxyHistoryEntry {
     time: string;
@@ -60,8 +60,6 @@ export namespace Tachyon {
     CHECK_BYEDPI_RUNTIME = 'check_byedpi_runtime',
     CHECK_INBOUNDS_CONFIG = 'check_inbounds_config',
     GET_STATUS = 'get_status',
-    GET_OUTBOUND_LINK = 'get_outbound_link',
-    GET_OUTBOUND_LINK_STATES = 'get_outbound_link_states',
     GET_OUTBOUND_METADATA = 'get_outbound_metadata',
     GET_SUBSCRIPTION_METADATA = 'get_subscription_metadata',
     CHECK_SING_BOX = 'check_sing_box',
@@ -268,6 +266,24 @@ export namespace Tachyon {
     urltest_settings?: string;
     priority_groups?: string[];
     priority_group_settings?: string;
+    dashboard_filter_mode?: 'disabled' | 'exclude' | 'include' | 'mixed';
+    dashboard_detect_server_country?: 'flag_emoji' | 'country_is';
+    dashboard_include_countries?: string[];
+    dashboard_include_outbounds?: string[];
+    dashboard_include_regex?: string[];
+    dashboard_include_proxy_parameters?: '0' | '1';
+    dashboard_include_protocols?: string[];
+    dashboard_include_transports?: string[];
+    dashboard_include_securities?: string[];
+    dashboard_include_groups?: string[];
+    dashboard_exclude_countries?: string[];
+    dashboard_exclude_outbounds?: string[];
+    dashboard_exclude_regex?: string[];
+    dashboard_exclude_proxy_parameters?: '0' | '1';
+    dashboard_exclude_protocols?: string[];
+    dashboard_exclude_transports?: string[];
+    dashboard_exclude_securities?: string[];
+    dashboard_exclude_groups?: string[];
     urltest_proxy_links?: string[];
     subscription_url?: string;
     subscription_user_agent?: string;
@@ -299,7 +315,6 @@ export namespace Tachyon {
     idle_timeout?: string;
     interrupt_exist_connections?: '0' | '1';
     pin_dashboard?: '0' | '1';
-    hide_added_outbounds?: '0' | '1';
     filter_mode?: 'disabled' | 'exclude' | 'include' | 'mixed';
     include_countries?: string[];
     include_outbounds?: string[];
@@ -437,12 +452,6 @@ export namespace Tachyon {
     status: string;
     dns_configured?: number;
   }
-
-  export interface GetOutboundLink {
-    link: string;
-  }
-
-  export type GetOutboundLinkStates = Record<string, boolean>;
 
   export interface GetOutboundMetadata {
     names?: Record<string, string>;
@@ -623,6 +632,8 @@ export namespace Tachyon {
     legacy_runtime_present: 0 | 1;
     ready: 0 | 1;
     conflict: 0 | 1;
+    outbounds_configured: 0 | 1;
+    routes_configured: 0 | 1;
     status_message: string;
   }
 

@@ -8,7 +8,7 @@
     "format:js": "prettier --write ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon",
     "lint": "eslint src --ext .ts,.tsx",
     "lint:fix": "eslint src --ext .ts,.tsx --fix",
-    "build": "tsup src/main.ts",
+    "build": "tsc --noEmit && tsup src/main.ts",
     "dev": "tsup src/main.ts --watch",
     "test": "vitest",
     "ci": "npm run format && npm run lint --max-warnings=0 && npm run test -- --run && npm run build",

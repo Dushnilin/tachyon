@@ -737,27 +737,13 @@ async function handleTestLatency(
   }
 }
 
-async function handleCopyOutbound(
-  section: Tachyon.OutboundGroup,
-  outbound: Tachyon.Outbound,
-) {
+function handleCopyOutbound(outbound: Tachyon.Outbound) {
   const link = outbound.link;
 
   if (link && isCopyableProxyLink(link)) {
     copyToClipboard(link);
     return;
   }
-
-  const response = await TachyonShellMethods.getOutboundLink(
-    section.sectionName,
-    outbound.code,
-  );
-
-  if (response.success && isCopyableProxyLink(response.data.link)) {
-    copyToClipboard(response.data.link);
-    return;
-  }
-
   showToast(_('Proxy link is unavailable'), 'error');
 }
 
@@ -899,7 +885,6 @@ function renderUrlTestCopyButton(
 
 function renderCommonDetailsModal(
   info: any,
-  section: Tachyon.OutboundGroup,
   fields: Array<{
     label: string;
     value?: unknown;
@@ -1009,7 +994,7 @@ function renderCommonDetailsModal(
                   member.canCopyLink
                     ? renderUrlTestCopyButton(_('Copy proxy link'), (event) => {
                         event.preventDefault();
-                        void handleCopyOutbound(section, member);
+                        void handleCopyOutbound(member);
                       })
                     : E('span', {
                         class:
@@ -1043,10 +1028,7 @@ function renderCommonDetailsModal(
   ]);
 }
 
-function renderUrlTestInfoModal(
-  section: Tachyon.OutboundGroup,
-  outbound: Tachyon.Outbound,
-) {
+function renderUrlTestInfoModal(outbound: Tachyon.Outbound) {
   const info = outbound.urlTestInfo;
 
   if (!info) {
@@ -1067,24 +1049,20 @@ function renderUrlTestInfoModal(
     { label: _('Tolerance'), value: info.tolerance },
     { label: _('Idle timeout'), value: info.idleTimeout },
     {
-      label: _('Interrupt existing connections'),
+      label: _('Interrupt connections'),
       value: info.interruptExistConnections,
     },
   ];
 
   return renderCommonDetailsModal(
     info,
-    section,
     fields,
     (member) => renderDetailsMemberName(member),
     false,
   );
 }
 
-function handleShowUrlTestInfo(
-  section: Tachyon.OutboundGroup,
-  outbound: Tachyon.Outbound,
-) {
+function handleShowUrlTestInfo(outbound: Tachyon.Outbound) {
   if (!outbound.urlTestInfo) {
     return;
   }
@@ -1093,7 +1071,7 @@ function handleShowUrlTestInfo(
     `${_('URLTest details')}: ${
       outbound.urlTestInfo.displayName || outbound.displayName
     }`,
-    renderUrlTestInfoModal(section, outbound),
+    renderUrlTestInfoModal(outbound),
   );
 }
 
@@ -1171,10 +1149,7 @@ function renderPriorityMemberName(member: Tachyon.PriorityMember) {
   ];
 }
 
-function renderPriorityInfoModal(
-  section: Tachyon.OutboundGroup,
-  outbound: Tachyon.Outbound,
-) {
+function renderPriorityInfoModal(outbound: Tachyon.Outbound) {
   const info = outbound.priorityInfo;
 
   if (!info) {
@@ -1217,24 +1192,20 @@ function renderPriorityInfoModal(
         ]
       : []),
     {
-      label: _('Interrupt existing connections'),
+      label: _('Interrupt connections'),
       value: info.interruptExistConnections,
     },
   ];
 
   return renderCommonDetailsModal(
     info,
-    section,
     fields,
     (member) => renderPriorityMemberName(member),
     true,
   );
 }
 
-function handleShowPriorityInfo(
-  section: Tachyon.OutboundGroup,
-  outbound: Tachyon.Outbound,
-) {
+function handleShowPriorityInfo(outbound: Tachyon.Outbound) {
   if (!outbound.priorityInfo) {
     return;
   }
@@ -1243,7 +1214,7 @@ function handleShowPriorityInfo(
     `${_('Priority details')}: ${
       outbound.priorityInfo.displayName || outbound.displayName
     }`,
-    renderPriorityInfoModal(section, outbound),
+    renderPriorityInfoModal(outbound),
   );
 }
 
@@ -1454,14 +1425,14 @@ async function renderSectionsWidget() {
       onChooseOutbound: (sectionName, selector, tag) => {
         void handleChooseOutbound(sectionName, selector, tag);
       },
-      onCopyOutbound: (section, outbound) => {
-        void handleCopyOutbound(section, outbound);
+      onCopyOutbound: (_section, outbound) => {
+        handleCopyOutbound(outbound);
       },
-      onShowUrlTestInfo: (section, outbound) => {
-        handleShowUrlTestInfo(section, outbound);
+      onShowUrlTestInfo: (outbound) => {
+        handleShowUrlTestInfo(outbound);
       },
-      onShowPriorityInfo: (section, outbound) => {
-        handleShowPriorityInfo(section, outbound);
+      onShowPriorityInfo: (outbound) => {
+        handleShowPriorityInfo(outbound);
       },
       onUpdateSubscription: (section) => {
         void handleUpdateSubscription(section);

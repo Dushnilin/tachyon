@@ -1,4 +1,4 @@
-import type { StoreType } from '../../services';
+﻿import type { StoreType } from '../../services';
 import type { DiagnosticsProviderOptions } from './diagnostic.store';
 import { DIAGNOSTICS_CHECKS } from './checks/contstants';
 

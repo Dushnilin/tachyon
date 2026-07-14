@@ -21,18 +21,6 @@ function isIPv6(ip) {
     return false;
   }
 }
-function validateIPV4(ip) {
-  if (isIPv4(ip)) {
-    return { valid: true, message: _("Valid") };
-  }
-  return { valid: false, message: _("Invalid IP address") };
-}
-function validateIPv6(ip) {
-  if (isIPv6(ip)) {
-    return { valid: true, message: _("Valid") };
-  }
-  return { valid: false, message: _("Invalid IP address") };
-}
 function validateIP(ip) {
   if (isIPv4(ip) || isIPv6(ip)) {
     return { valid: true, message: _("Valid") };
@@ -104,6 +92,11 @@ function isValidHost(host) {
   const normalizedHost = unbracketHost(host);
   return isIPv4(normalizedHost) || isIPv6(normalizedHost) || validateDomain(normalizedHost).valid;
 }
+function isValidPort(port) {
+  const normalized = String(port ?? "");
+  const value = Number(normalized);
+  return /^\d+$/.test(normalized) && value >= 1 && value <= 65535;
+}
 function parseHostPort(value) {
   if (!value) {
     return null;
@@ -113,20 +106,22 @@ function parseHostPort(value) {
     if (end <= 1 || value.slice(end + 1, end + 2) !== ":") {
       return null;
     }
-    return {
+    const parsed2 = {
       host: value.slice(1, end),
       port: value.slice(end + 2)
     };
+    return isValidHost(parsed2.host) ? parsed2 : null;
   }
   const firstColon = value.indexOf(":");
   const lastColon = value.lastIndexOf(":");
   if (firstColon < 0 || firstColon !== lastColon) {
     return null;
   }
-  return {
+  const parsed = {
     host: value.slice(0, firstColon),
     port: value.slice(firstColon + 1)
   };
+  return isValidHost(parsed.host) ? parsed : null;
 }
 
 // src/validators/validateDns.ts
@@ -138,6 +133,9 @@ function validateDNS(value) {
   const parsedHostPort = parseHostPort(addressPart);
   const host = parsedHostPort ? parsedHostPort.host : unbracketHost(addressPart);
   const domainValue = parsedHostPort ? host + (pathParts.length > 0 ? `/${pathParts.join("/")}` : "") : value.replace(/:(\d+)(?=\/|$)/, "");
+  if (parsedHostPort && !isValidPort(parsedHostPort.port)) {
+    return { valid: false, message: _("Invalid DNS server port") };
+  }
   if (validateIP(host).valid) {
     return { valid: true, message: _("Valid") };
   }
@@ -166,8 +164,7 @@ function validateUrl(url, protocols = ["http:", "https:"]) {
   try {
     const parsed = new URL(url);
     const host = parsed.hostname.startsWith("[") ? parsed.hostname.slice(1, -1) : parsed.hostname;
-    const portNum = parsed.port ? Number(parsed.port) : 0;
-    if ((isValidHost(host) || host === "localhost") && (!parsed.port || Number.isInteger(portNum) && portNum >= 1 && portNum <= 65535)) {
+    if ((isValidHost(host) || host === "localhost") && (!parsed.port || isValidPort(parsed.port))) {
       return { valid: true, message: _("Valid") };
     }
   } catch (_e) {
@@ -396,8 +393,7 @@ function validateShadowsocksUrl(url) {
         message: _("Invalid Shadowsocks URL: missing port")
       };
     }
-    const portNum = parseInt(port, 10);
-    if (isNaN(portNum) || portNum < 1 || portNum > 65535) {
+    if (!isValidPort(port)) {
       return {
         valid: false,
         message: _("Invalid port number. Must be between 1 and 65535")
@@ -467,8 +463,7 @@ function validateVlessUrl(url) {
     if (!port)
       return { valid: false, message: "Invalid VLESS URL: missing port" };
     const cleanedPort = port.replace("/", "");
-    const portNum = Number(cleanedPort);
-    if (!Number.isInteger(portNum) || portNum < 1 || portNum > 65535)
+    if (!isValidPort(cleanedPort))
       return {
         valid: false,
         message: "Invalid VLESS URL: invalid port number"
@@ -566,11 +561,10 @@ function validateVmessUrl(url) {
       return { valid: false, message: "Invalid VMess URL: invalid config" };
     }
     const { add, port, id } = config;
-    if (!add || typeof add !== "string") {
-      return { valid: false, message: "Invalid VMess URL: missing server" };
+    if (!add || typeof add !== "string" || !isValidHost(add)) {
+      return { valid: false, message: "Invalid VMess URL: invalid server" };
     }
-    const portNum = Number(port);
-    if (!Number.isInteger(portNum) || portNum < 1 || portNum > 65535) {
+    if (!isValidPort(port)) {
       return {
         valid: false,
         message: "Invalid VMess URL: invalid port number"
@@ -627,8 +621,7 @@ function validateTrojanUrl(url) {
       return { valid: false, message: "Invalid Trojan URL: missing hostname" };
     if (!port)
       return { valid: false, message: "Invalid Trojan URL: missing port" };
-    const portNum = Number(port);
-    if (!Number.isInteger(portNum) || portNum < 1 || portNum > 65535)
+    if (!isValidPort(port))
       return {
         valid: false,
         message: "Invalid Trojan URL: invalid port number"
@@ -691,17 +684,10 @@ function validateSocksUrl(url) {
     if (!port) {
       return { valid: false, message: _("Invalid SOCKS URL: missing port") };
     }
-    const portNum = Number(port);
-    if (!Number.isInteger(portNum) || portNum < 1 || portNum > 65535) {
+    if (!isValidPort(port)) {
       return {
         valid: false,
         message: _("Invalid SOCKS URL: invalid port number")
-      };
-    }
-    if (!isValidHost(host)) {
-      return {
-        valid: false,
-        message: _("Invalid SOCKS URL: invalid host format")
       };
     }
   } catch (_e) {
@@ -760,26 +746,19 @@ function validateHysteria2Url(url) {
     }
     const cleanedPort = port.replace("/", "");
     const portEntries = cleanedPort.split(",");
-    const isValidPortNumber = (value) => {
-      if (!/^\d+$/.test(value)) {
-        return false;
-      }
-      const portNum = Number(value);
-      return Number.isInteger(portNum) && portNum >= 1 && portNum <= 65535;
-    };
     const isValidPortEntry = (entry) => {
       if (!entry) {
         return false;
       }
       if (!entry.includes("-")) {
-        return isValidPortNumber(entry);
+        return isValidPort(entry);
       }
       const rangeParts = entry.split("-");
       if (rangeParts.length !== 2) {
         return false;
       }
       const [start, end] = rangeParts;
-      return isValidPortNumber(start) && isValidPortNumber(end) && Number(start) <= Number(end);
+      return isValidPort(start) && isValidPort(end) && Number(start) <= Number(end);
     };
     if (!portEntries.every(isValidPortEntry)) {
       return {
@@ -894,17 +873,10 @@ function validateHttpProxyUrl(url) {
         message: _("Invalid HTTP proxy URL: missing port")
       };
     }
-    const portNum = Number(port);
-    if (!Number.isInteger(portNum) || portNum < 1 || portNum > 65535) {
+    if (!isValidPort(port)) {
       return {
         valid: false,
         message: _("Invalid HTTP proxy URL: invalid port number")
-      };
-    }
-    if (!isValidHost(host)) {
-      return {
-        valid: false,
-        message: _("Invalid HTTP proxy URL: invalid host format")
       };
     }
   } catch (_e) {
@@ -2167,7 +2139,7 @@ function renderDefaultState({
                   "aria-label": _("URLTest details"),
                   click: (event) => {
                     event.stopPropagation();
-                    onShowUrlTestInfo(section, outbound);
+                    onShowUrlTestInfo(outbound);
                   }
                 },
                 renderInfoIcon24()
@@ -2183,7 +2155,7 @@ function renderDefaultState({
                   "aria-label": _("Priority details"),
                   click: (event) => {
                     event.stopPropagation();
-                    onShowPriorityInfo(section, outbound);
+                    onShowPriorityInfo(outbound);
                   }
                 },
                 renderInfoIcon24()
@@ -2576,8 +2548,6 @@ var Tachyon;
     AvailableMethods2["CHECK_BYEDPI_RUNTIME"] = "check_byedpi_runtime";
     AvailableMethods2["CHECK_INBOUNDS_CONFIG"] = "check_inbounds_config";
     AvailableMethods2["GET_STATUS"] = "get_status";
-    AvailableMethods2["GET_OUTBOUND_LINK"] = "get_outbound_link";
-    AvailableMethods2["GET_OUTBOUND_LINK_STATES"] = "get_outbound_link_states";
     AvailableMethods2["GET_OUTBOUND_METADATA"] = "get_outbound_metadata";
     AvailableMethods2["GET_SUBSCRIPTION_METADATA"] = "get_subscription_metadata";
     AvailableMethods2["CHECK_SING_BOX"] = "check_sing_box";
@@ -2800,19 +2770,14 @@ var TachyonShellMethods = {
     Tachyon.AvailableMethods.CHECK_INBOUNDS_CONFIG
   ),
   getStatus: async () => callBaseMethod(Tachyon.AvailableMethods.GET_STATUS),
-  getOutboundLink: async (section, tag) => callBaseMethod(
-    Tachyon.AvailableMethods.GET_OUTBOUND_LINK,
-    [section, tag]
-  ),
-  getOutboundLinkStates: async (section) => callBaseMethod(
-    Tachyon.AvailableMethods.GET_OUTBOUND_LINK_STATES,
-    [section]
-  ),
   getOutboundMetadata: async (section) => callBaseMethod(
     Tachyon.AvailableMethods.GET_OUTBOUND_METADATA,
     [section]
   ),
-  getSubscriptionMetadata: async (section) => callBaseMethod(Tachyon.AvailableMethods.GET_SUBSCRIPTION_METADATA, [section]),
+  getSubscriptionMetadata: async (section) => callBaseMethod(
+    Tachyon.AvailableMethods.GET_SUBSCRIPTION_METADATA,
+    [section]
+  ),
   checkSingBox: async () => callBaseMethod(
     Tachyon.AvailableMethods.CHECK_SING_BOX
   ),
@@ -3040,11 +3005,7 @@ var TachyonShellMethods = {
   componentActionStart: async (component, action) => {
     const response = await executeShellCommand({
       command: "/usr/bin/tachyon",
-      args: [
-        Tachyon.AvailableMethods.COMPONENT_ACTION_ASYNC,
-        component,
-        action
-      ],
+      args: [Tachyon.AvailableMethods.COMPONENT_ACTION_ASYNC, component, action],
       timeout: COMPONENT_ACTION_RPC_TIMEOUT_MS
     });
     const parsedResponse = parseComponentActionStartResult(response);
@@ -3219,9 +3180,6 @@ var DASHBOARD_SECTION_CACHE_DIR = "/var/run/tachyon/section-cache";
 function getDisplayName(section) {
   return section.label || section[".name"];
 }
-function getSectionAction(section) {
-  return section.action || "";
-}
 function getSettingsSection(configSections) {
   return configSections.find((section) => section[".type"] === "settings");
 }
@@ -3328,7 +3286,6 @@ function hydrateConfigSections(configSections) {
           idle_timeout: item.idle_timeout,
           interrupt_exist_connections: item.interrupt_exist_connections,
           pin_dashboard: item.pin_dashboard,
-          hide_added_outbounds: item.hide_added_outbounds,
           urltest_filter_mode: item.filter_mode,
           detect_server_country: item.detect_server_country,
           urltest_include_countries: item.include_countries,
@@ -3375,7 +3332,6 @@ function hydrateConfigSections(configSections) {
           fastest_check_interval: item.fastest_check_interval,
           interrupt_exist_connections: item.interrupt_exist_connections,
           pin_dashboard: item.pin_dashboard,
-          hide_added_outbounds: item.hide_added_outbounds,
           levels
         };
       });
@@ -3396,7 +3352,9 @@ function getJsonOutbounds(section) {
   return values.length ? values : getListValues(section.outbound_json);
 }
 function isConnectionAction(action) {
-  return ["connection", "proxy", "outbound", "vpn"].includes(action);
+  return Boolean(
+    action && ["connection", "proxy", "outbound", "vpn"].includes(action)
+  );
 }
 function hasSubscriptionSources(section) {
   return getSubscriptionSourceCount(section) > 0;
@@ -3591,11 +3549,6 @@ function getUrlTestConfigs(section) {
       displayName: getUrlTestDisplayName(section, id, settings),
       settings,
       pinDashboard: itemSettingBoolean(settings, "pin_dashboard", true),
-      hideAddedOutbounds: itemSettingBoolean(
-        settings,
-        "hide_added_outbounds",
-        false
-      ),
       showDetectedCountries: filteringEnabled && itemSettingString(settings, "detect_server_country", "flag_emoji") === "country_is"
     };
   });
@@ -3654,11 +3607,6 @@ function getPriorityConfigs(section) {
       displayName: itemSettingString(settings, "name", id),
       settings,
       pinDashboard: itemSettingBoolean(settings, "pin_dashboard", true),
-      hideAddedOutbounds: itemSettingBoolean(
-        settings,
-        "hide_added_outbounds",
-        false
-      ),
       healthUrl: itemSettingString(
         settings,
         "health_url",
@@ -3742,7 +3690,6 @@ function buildUrlTestInfo({
   manualLinkByCode,
   cachedProxyLinks,
   outboundMetadata,
-  subscriptionCopyableCodes,
   showDetectedCountries
 }) {
   const childCodes = uniqueCodes(
@@ -3753,7 +3700,7 @@ function buildUrlTestInfo({
     childCodes.flatMap((childCode) => {
       const childEntry = proxyByCode.get(childCode);
       const link = manualLinkByCode.get(childCode) || cachedProxyLinks.get(childCode) || "";
-      const canCopyLink = isCopyableProxyLink(link) || subscriptionCopyableCodes.has(childCode);
+      const canCopyLink = isCopyableProxyLink(link);
       return [
         {
           code: childCode,
@@ -3762,7 +3709,7 @@ function buildUrlTestInfo({
             childEntry,
             link,
             outboundMetadata,
-            subscriptionCopyableCodes.has(childCode)
+            cachedProxyLinks.has(childCode)
           ),
           latency: childEntry?.value?.history?.[0]?.delay || 0,
           type: childEntry?.value?.type || "",
@@ -3796,7 +3743,6 @@ function buildPriorityInfo({
   manualLinkByCode,
   cachedProxyLinks,
   outboundMetadata,
-  subscriptionCopyableCodes,
   showDetectedCountries
 }) {
   const selectedCode = entry?.value.now || "";
@@ -3832,7 +3778,7 @@ function buildPriorityInfo({
     const members = uniqueCodes(level.outbounds || []).map((childCode) => {
       const childEntry = proxyByCode.get(childCode);
       const link = manualLinkByCode.get(childCode) || cachedProxyLinks.get(childCode) || "";
-      const canCopyLink = isCopyableProxyLink(link) || subscriptionCopyableCodes.has(childCode);
+      const canCopyLink = isCopyableProxyLink(link);
       return {
         code: childCode,
         displayName: getOutboundDisplayName(
@@ -3840,7 +3786,7 @@ function buildPriorityInfo({
           childEntry,
           link,
           outboundMetadata,
-          subscriptionCopyableCodes.has(childCode)
+          cachedProxyLinks.has(childCode)
         ),
         latency: childEntry?.value?.history?.[0]?.delay || 0,
         type: childEntry?.value?.type || "",
@@ -3878,7 +3824,7 @@ function buildPriorityInfo({
     outbounds
   };
 }
-function buildProxyGroupOutbounds(section, proxies, outboundMetadata, urltestGroups = {}, priorityGroups = {}, subscriptionCopyableCodes = /* @__PURE__ */ new Set(), cachedProxyLinks = /* @__PURE__ */ new Map()) {
+function buildProxyGroupOutbounds(section, proxies, outboundMetadata, urltestGroups = {}, priorityGroups = {}, cachedProxyLinks = /* @__PURE__ */ new Map()) {
   const sectionName = section[".name"];
   const proxyByCode = getProxyEntryByCode(proxies);
   const selectorTag = getOutboundTagBySection(sectionName);
@@ -3903,23 +3849,6 @@ function buildProxyGroupOutbounds(section, proxies, outboundMetadata, urltestGro
   const selectorCodes = selector?.value?.all ?? [];
   const urlTestCodes = urlTestConfigs.map((config) => config.code);
   const priorityCodes = priorityConfigs.map((config) => config.code);
-  const urlTestCodeSet = new Set(urlTestCodes);
-  const priorityCodeSet = new Set(priorityCodes);
-  const hideAddedCodeSet = /* @__PURE__ */ new Set();
-  urlTestEntries.forEach(({ config, entry }) => {
-    if (!config.hideAddedOutbounds) {
-      return;
-    }
-    const childCodes = urltestGroups[config.code]?.outbounds?.length ? urltestGroups[config.code].outbounds || [] : entry?.value.all || [];
-    childCodes.forEach((code) => hideAddedCodeSet.add(code));
-  });
-  priorityEntries.forEach(({ config, entry }) => {
-    if (!config.hideAddedOutbounds) {
-      return;
-    }
-    const childCodes = priorityGroups[config.code]?.outbounds?.length ? priorityGroups[config.code].outbounds || [] : entry?.value.all || [];
-    childCodes.forEach((code) => hideAddedCodeSet.add(code));
-  });
   const showDetectedCountries = urlTestConfigs.some((config) => config.showDetectedCountries) || priorityConfigs.some((config) => config.showDetectedCountries);
   const builtInUrltestCode = urlTestCodes[0] || "";
   const fallbackCodes = uniqueCodes([
@@ -3932,12 +3861,7 @@ function buildProxyGroupOutbounds(section, proxies, outboundMetadata, urltestGro
     ...selectorCodes.length ? selectorCodes : fallbackCodes,
     ...urlTestCodes,
     ...priorityCodes
-  ]).filter((code) => {
-    if (!hideAddedCodeSet.has(code)) {
-      return true;
-    }
-    return urlTestCodeSet.has(code) || priorityCodeSet.has(code) || isUrlTestProxyEntry(proxyByCode.get(code));
-  });
+  ]);
   const outbounds = uniqueCodes(groupCodes).flatMap((code) => {
     const item = proxyByCode.get(code);
     const urlTestConfig = urlTestConfigByCode.get(code);
@@ -3946,13 +3870,13 @@ function buildProxyGroupOutbounds(section, proxies, outboundMetadata, urltestGro
       return [];
     }
     const link = manualLinkByCode.get(code) || cachedProxyLinks.get(code) || "";
-    const canCopyLink = isCopyableProxyLink(link) || subscriptionCopyableCodes.has(code);
+    const canCopyLink = isCopyableProxyLink(link);
     const displayName = priorityConfig?.displayName || urlTestConfig?.displayName || getOutboundDisplayName(
       code,
       item,
       link,
       outboundMetadata,
-      subscriptionCopyableCodes.has(code)
+      cachedProxyLinks.has(code)
     );
     const isRuntimeUrlTest = isUrlTestProxyEntry(item);
     return [
@@ -3975,7 +3899,6 @@ function buildProxyGroupOutbounds(section, proxies, outboundMetadata, urltestGro
           manualLinkByCode,
           cachedProxyLinks,
           outboundMetadata,
-          subscriptionCopyableCodes,
           showDetectedCountries: urlTestConfig?.showDetectedCountries || showDetectedCountries
         }) : void 0,
         priorityInfo: priorityConfig ? buildPriorityInfo({
@@ -3986,7 +3909,6 @@ function buildProxyGroupOutbounds(section, proxies, outboundMetadata, urltestGro
           manualLinkByCode,
           cachedProxyLinks,
           outboundMetadata,
-          subscriptionCopyableCodes,
           showDetectedCountries: priorityConfig.showDetectedCountries
         }) : void 0
       }
@@ -4091,17 +4013,6 @@ function getOutboundMetadata(dashboardCache) {
     countries: objectMap(metadata.countries)
   };
 }
-function getSubscriptionCopyableCodes(dashboardCache) {
-  const legacyLinks = objectMap(dashboardCache?.links);
-  const linkRefs = dashboardCache?.linkRefs;
-  const codes = new Set(
-    Object.entries(legacyLinks).filter(([, link]) => isCopyableProxyLink(link)).map(([code]) => code)
-  );
-  if (linkRefs && typeof linkRefs === "object" && !Array.isArray(linkRefs)) {
-    Object.keys(linkRefs).forEach((code) => codes.add(code));
-  }
-  return codes;
-}
 function getCachedProxyLinks(dashboardCache) {
   return new Map(
     Object.entries(objectMap(dashboardCache?.links)).filter(
@@ -4127,11 +4038,11 @@ async function getDashboardSections(options = {}) {
   );
   const data = await Promise.all(
     configSections.filter(
-      (section) => section.enabled !== "0" && isConnectionAction(getSectionAction(section))
+      (section) => section.enabled !== "0" && isConnectionAction(section.action)
     ).map(async (section) => {
       const displayName = getDisplayName(section);
       const sectionName = section[".name"];
-      const sectionAction = getSectionAction(section);
+      const sectionAction = section.action;
       const proxyConfigType = getSectionProxyConfigType(section);
       if (isConnectionAction(sectionAction) && shouldUseProxyGroup(section)) {
         const subscriptionSourceCount = getSubscriptionSourceCount(section);
@@ -4143,7 +4054,6 @@ async function getDashboardSections(options = {}) {
           subscriptionSourceCount,
           dashboardCache
         ) : void 0;
-        const subscriptionCopyableCodes = includeSubscriptionCopyState ? getSubscriptionCopyableCodes(dashboardCache) : /* @__PURE__ */ new Set();
         const cachedProxyLinks = includeSubscriptionCopyState ? getCachedProxyLinks(dashboardCache) : /* @__PURE__ */ new Map();
         const urltestGroups = getUrlTestGroups(dashboardCache);
         const priorityGroups = getPriorityGroups(dashboardCache);
@@ -4153,7 +4063,6 @@ async function getDashboardSections(options = {}) {
           outboundMetadata,
           urltestGroups,
           priorityGroups,
-          subscriptionCopyableCodes,
           cachedProxyLinks
         );
         return {
@@ -5410,8 +5319,8 @@ var SocketManager = class _SocketManager {
     }
     this.sockets.set(url, ws);
     this.connected.set(url, false);
-    this.listeners.set(url, /* @__PURE__ */ new Set());
-    this.errorListeners.set(url, /* @__PURE__ */ new Set());
+    if (!this.listeners.has(url)) this.listeners.set(url, /* @__PURE__ */ new Set());
+    if (!this.errorListeners.has(url)) this.errorListeners.set(url, /* @__PURE__ */ new Set());
     ws.addEventListener("open", () => {
       this.connected.set(url, true);
       this.reconnectAttempts.set(url, 0);
@@ -6217,18 +6126,10 @@ async function handleTestLatency(latencyType, sectionName, tag, timeout) {
     }
   }
 }
-async function handleCopyOutbound(section, outbound) {
+function handleCopyOutbound(outbound) {
   const link = outbound.link;
   if (link && isCopyableProxyLink(link)) {
     copyToClipboard(link);
-    return;
-  }
-  const response = await TachyonShellMethods.getOutboundLink(
-    section.sectionName,
-    outbound.code
-  );
-  if (response.success && isCopyableProxyLink(response.data.link)) {
-    copyToClipboard(response.data.link);
     return;
   }
   showToast(_("Proxy link is unavailable"), "error");
@@ -6342,7 +6243,7 @@ function renderUrlTestCopyButton(title, onClick) {
     renderCopyIcon24()
   );
 }
-function renderCommonDetailsModal(info, section, fields, renderMemberName, isPriority) {
+function renderCommonDetailsModal(info, fields, renderMemberName, isPriority) {
   return E("div", { class: "tachyon_dashboard-page__urltest-details" }, [
     E(
       "dl",
@@ -6427,7 +6328,7 @@ function renderCommonDetailsModal(info, section, fields, renderMemberName, isPri
               ),
               member.canCopyLink ? renderUrlTestCopyButton(_("Copy proxy link"), (event) => {
                 event.preventDefault();
-                void handleCopyOutbound(section, member);
+                void handleCopyOutbound(member);
               }) : E("span", {
                 class: "tachyon_dashboard-page__urltest-details__copy-placeholder"
               })
@@ -6457,7 +6358,7 @@ function renderCommonDetailsModal(info, section, fields, renderMemberName, isPri
     ])
   ]);
 }
-function renderUrlTestInfoModal(section, outbound) {
+function renderUrlTestInfoModal(outbound) {
   const info = outbound.urlTestInfo;
   if (!info) {
     return E("div", {}, _("URLTest details are unavailable"));
@@ -6472,25 +6373,24 @@ function renderUrlTestInfoModal(section, outbound) {
     { label: _("Tolerance"), value: info.tolerance },
     { label: _("Idle timeout"), value: info.idleTimeout },
     {
-      label: _("Interrupt existing connections"),
+      label: _("Interrupt connections"),
       value: info.interruptExistConnections
     }
   ];
   return renderCommonDetailsModal(
     info,
-    section,
     fields,
     (member) => renderDetailsMemberName(member),
     false
   );
 }
-function handleShowUrlTestInfo(section, outbound) {
+function handleShowUrlTestInfo(outbound) {
   if (!outbound.urlTestInfo) {
     return;
   }
   ui.showModal(
     `${_("URLTest details")}: ${outbound.urlTestInfo.displayName || outbound.displayName}`,
-    renderUrlTestInfoModal(section, outbound)
+    renderUrlTestInfoModal(outbound)
   );
 }
 function renderPrioritySelectedValue(info) {
@@ -6553,7 +6453,7 @@ function renderPriorityMemberName(member) {
     )
   ];
 }
-function renderPriorityInfoModal(section, outbound) {
+function renderPriorityInfoModal(outbound) {
   const info = outbound.priorityInfo;
   if (!info) {
     return E("div", {}, _("Priority details are unavailable"));
@@ -6588,25 +6488,24 @@ function renderPriorityInfoModal(section, outbound) {
       }
     ] : [],
     {
-      label: _("Interrupt existing connections"),
+      label: _("Interrupt connections"),
       value: info.interruptExistConnections
     }
   ];
   return renderCommonDetailsModal(
     info,
-    section,
     fields,
     (member) => renderPriorityMemberName(member),
     true
   );
 }
-function handleShowPriorityInfo(section, outbound) {
+function handleShowPriorityInfo(outbound) {
   if (!outbound.priorityInfo) {
     return;
   }
   ui.showModal(
     `${_("Priority details")}: ${outbound.priorityInfo.displayName || outbound.displayName}`,
-    renderPriorityInfoModal(section, outbound)
+    renderPriorityInfoModal(outbound)
   );
 }
 async function handleUpdateSubscription(section) {
@@ -6772,14 +6671,14 @@ async function renderSectionsWidget() {
       onChooseOutbound: (sectionName, selector, tag) => {
         void handleChooseOutbound(sectionName, selector, tag);
       },
-      onCopyOutbound: (section2, outbound) => {
-        void handleCopyOutbound(section2, outbound);
+      onCopyOutbound: (_section, outbound) => {
+        handleCopyOutbound(outbound);
       },
-      onShowUrlTestInfo: (section2, outbound) => {
-        handleShowUrlTestInfo(section2, outbound);
+      onShowUrlTestInfo: (outbound) => {
+        handleShowUrlTestInfo(outbound);
       },
-      onShowPriorityInfo: (section2, outbound) => {
-        handleShowPriorityInfo(section2, outbound);
+      onShowPriorityInfo: (outbound) => {
+        handleShowPriorityInfo(outbound);
       },
       onUpdateSubscription: (section2) => {
         void handleUpdateSubscription(section2);
@@ -9639,6 +9538,7 @@ var SING_BOX_MASKED_KEYS = /* @__PURE__ */ new Set([
 ]);
 var TACHYON_MASK_AFTER_TOKEN = [
   "option proxy_string",
+  "option hwid",
   "option subscription_url",
   "list subscription_urls",
   "list urltest_proxy_links",
@@ -14343,8 +14243,6 @@ return baseclass.extend({
   validateDNS,
   validateDomain,
   validateIP,
-  validateIPV4,
-  validateIPv6,
   validateOutboundJson,
   validatePath,
   validateProxyUrl,

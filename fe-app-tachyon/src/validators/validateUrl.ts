@@ -1,5 +1,5 @@
 import { ValidationResult } from './types';
-import { isValidHost } from './hostPort';
+import { isValidHost, isValidPort } from './hostPort';
 
 export function validateUrl(
   url: string,
@@ -25,11 +25,9 @@ export function validateUrl(
     const host = parsed.hostname.startsWith('[')
       ? parsed.hostname.slice(1, -1)
       : parsed.hostname;
-    const portNum = parsed.port ? Number(parsed.port) : 0;
     if (
       (isValidHost(host) || host === 'localhost') &&
-      (!parsed.port ||
-        (Number.isInteger(portNum) && portNum >= 1 && portNum <= 65535))
+      (!parsed.port || isValidPort(parsed.port))
     ) {
       return { valid: true, message: _('Valid') };
     }

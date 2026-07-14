@@ -1,4 +1,5 @@
 import { ValidationResult } from './types';
+import { isValidHost, isValidPort } from './hostPort';
 
 function decodeBase64Json(value: string): unknown {
   const normalized = value.replace(/-/g, '+').replace(/_/g, '/');
@@ -47,12 +48,11 @@ export function validateVmessUrl(url: string): ValidationResult {
     }
 
     const { add, port, id } = config as Record<string, unknown>;
-    if (!add || typeof add !== 'string') {
-      return { valid: false, message: 'Invalid VMess URL: missing server' };
+    if (!add || typeof add !== 'string' || !isValidHost(add)) {
+      return { valid: false, message: 'Invalid VMess URL: invalid server' };
     }
 
-    const portNum = Number(port);
-    if (!Number.isInteger(portNum) || portNum < 1 || portNum > 65535) {
+    if (!isValidPort(port)) {
       return {
         valid: false,
         message: 'Invalid VMess URL: invalid port number',

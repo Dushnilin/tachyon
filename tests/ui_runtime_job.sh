@@ -63,6 +63,12 @@ grep -Fq '"tachyon-stably-running"' "$UI_UC" ||
   fail "UI Tachyon status must use stable runtime state to avoid crash-loop flicker"
 grep -Fq '"sing-box-service-stable"' "$UI_UC" ||
   fail "UI sing-box status must use stable runtime state to avoid crash-loop flicker"
+if sed -n '/^function ensure_dir(/,/^}/p' "$UI_UC" | grep -Fq 'mkdir", "-p'; then
+  fail "UI state refresh must not spawn mkdir for existing directories"
+fi
+if sed -n '/^function cleanup_dir(/,/^}/p' "$UI_UC" | grep -Fq '"find"'; then
+  fail "UI state refresh must clean action files without spawning find"
+fi
 grep -Fq 'run_pending_reload_after_service_action(action, success)' "$UI_UC" ||
   fail "UI service actions must run pending reload after the current action finishes"
 grep -Fq 'service_action_wait_for_expected_state(action, SERVICE_ACTION_TIMEOUT_SECONDS, SERVICE_ACTION_SETTLE_SECONDS)' "$UI_UC" ||
@@ -207,6 +213,12 @@ ui_ucode cleanup-action-dir-fixture "$cleanup_dir"
 [ ! -e "$cleanup_dir/done.out.json" ] ||
   fail "expired acknowledged action JSON sidecar should be cleaned"
 
+old_state="$cleanup_dir/old.json"
+printf '%s\n' '{"running":false}' >"$old_state"
+touch -d '2 hours ago' "$old_state"
+TACHYON_UI_ACTION_FINISHED_TTL_MINUTES=60 ui_ucode cleanup-action-dir-fixture "$cleanup_dir"
+[ ! -e "$old_state" ] ||
+  fail "old finished action state should be cleaned without find"
 export TACHYON_UI_STATE_DIR="$WORK_DIR/ui-state"
 export TACHYON_UI_SERVICE_ACTION_DIR="$TACHYON_UI_STATE_DIR/service-actions"
 export TACHYON_UI_SERVICE_ACTION_LOCK_DIR="$TACHYON_UI_STATE_DIR/service-actions.lock"

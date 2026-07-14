@@ -1,4 +1,4 @@
-import { getConfigSections } from './getConfigSections';
+﻿import { getConfigSections } from './getConfigSections';
 import { ClashAPI, Tachyon } from '../../types';
 import {
   canUseDirectClashApi,
@@ -27,7 +27,6 @@ type DashboardSectionCache = {
   version?: number;
   section?: string;
   links?: Record<string, string>;
-  linkRefs?: Record<string, unknown>;
   outboundMetadata?: Tachyon.GetOutboundMetadata;
   urltestGroups?: Record<string, UrlTestCacheGroup>;
   priorityGroups?: Record<string, PriorityCacheGroup>;
@@ -70,7 +69,6 @@ type PriorityCacheGroup = {
   fastest_check_interval?: string;
   interrupt_exist_connections?: boolean;
   pin_dashboard?: boolean;
-  hide_added_outbounds?: boolean;
   outbounds?: string[];
   levels?: PriorityCacheLevel[];
 };
@@ -100,7 +98,6 @@ type UrlTestConfig = {
   displayName: string;
   settings: ItemSettings;
   pinDashboard: boolean;
-  hideAddedOutbounds: boolean;
   showDetectedCountries: boolean;
 };
 
@@ -110,7 +107,6 @@ type PriorityConfig = {
   displayName: string;
   settings: ItemSettings;
   pinDashboard: boolean;
-  hideAddedOutbounds: boolean;
   healthUrl: string;
   activeCheckInterval: string;
   checkTimeout: string;
@@ -134,10 +130,6 @@ const DASHBOARD_SECTION_CACHE_DIR = '/var/run/tachyon/section-cache';
 
 function getDisplayName(section: Tachyon.ConfigSection) {
   return section.label || section['.name'];
-}
-
-function getSectionAction(section: Tachyon.ConfigSection) {
-  return section.action || '';
 }
 
 function getSettingsSection(configSections: Tachyon.ConfigSection[]) {
@@ -286,7 +278,6 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
           idle_timeout: item.idle_timeout,
           interrupt_exist_connections: item.interrupt_exist_connections,
           pin_dashboard: item.pin_dashboard,
-          hide_added_outbounds: item.hide_added_outbounds,
           urltest_filter_mode: item.filter_mode,
           detect_server_country: item.detect_server_country,
           urltest_include_countries: item.include_countries,
@@ -339,7 +330,6 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
           fastest_check_interval: item.fastest_check_interval,
           interrupt_exist_connections: item.interrupt_exist_connections,
           pin_dashboard: item.pin_dashboard,
-          hide_added_outbounds: item.hide_added_outbounds,
           levels,
         };
       });
@@ -364,8 +354,10 @@ function getJsonOutbounds(section: Tachyon.ConfigSection) {
   return values.length ? values : getListValues(section.outbound_json);
 }
 
-function isConnectionAction(action: string) {
-  return ['connection', 'proxy', 'outbound', 'vpn'].includes(action);
+function isConnectionAction(action?: string) {
+  return Boolean(
+    action && ['connection', 'proxy', 'outbound', 'vpn'].includes(action),
+  );
 }
 
 function hasSubscriptionSources(section: Tachyon.ConfigSection) {
@@ -661,11 +653,6 @@ function getUrlTestConfigs(section: Tachyon.ConfigSection): UrlTestConfig[] {
       displayName: getUrlTestDisplayName(section, id, settings),
       settings,
       pinDashboard: itemSettingBoolean(settings, 'pin_dashboard', true),
-      hideAddedOutbounds: itemSettingBoolean(
-        settings,
-        'hide_added_outbounds',
-        false,
-      ),
       showDetectedCountries:
         filteringEnabled &&
         itemSettingString(settings, 'detect_server_country', 'flag_emoji') ===
@@ -748,11 +735,6 @@ function getPriorityConfigs(section: Tachyon.ConfigSection): PriorityConfig[] {
       displayName: itemSettingString(settings, 'name', id),
       settings,
       pinDashboard: itemSettingBoolean(settings, 'pin_dashboard', true),
-      hideAddedOutbounds: itemSettingBoolean(
-        settings,
-        'hide_added_outbounds',
-        false,
-      ),
       healthUrl: itemSettingString(
         settings,
         'health_url',
@@ -862,7 +844,6 @@ function buildUrlTestInfo({
   manualLinkByCode,
   cachedProxyLinks,
   outboundMetadata,
-  subscriptionCopyableCodes,
   showDetectedCountries,
 }: {
   code: string;
@@ -873,7 +854,6 @@ function buildUrlTestInfo({
   manualLinkByCode: Map<string, string>;
   cachedProxyLinks: Map<string, string>;
   outboundMetadata?: Tachyon.GetOutboundMetadata;
-  subscriptionCopyableCodes: Set<string>;
   showDetectedCountries: boolean;
 }): Tachyon.UrlTestInfo {
   const childCodes = uniqueCodes(
@@ -889,8 +869,7 @@ function buildUrlTestInfo({
         manualLinkByCode.get(childCode) ||
         cachedProxyLinks.get(childCode) ||
         '';
-      const canCopyLink =
-        isCopyableProxyLink(link) || subscriptionCopyableCodes.has(childCode);
+      const canCopyLink = isCopyableProxyLink(link);
 
       return [
         {
@@ -900,7 +879,7 @@ function buildUrlTestInfo({
             childEntry,
             link,
             outboundMetadata,
-            subscriptionCopyableCodes.has(childCode),
+            cachedProxyLinks.has(childCode),
           ),
           latency: childEntry?.value?.history?.[0]?.delay || 0,
           type: childEntry?.value?.type || '',
@@ -940,7 +919,6 @@ function buildPriorityInfo({
   manualLinkByCode,
   cachedProxyLinks,
   outboundMetadata,
-  subscriptionCopyableCodes,
   showDetectedCountries,
 }: {
   config: PriorityConfig;
@@ -950,7 +928,6 @@ function buildPriorityInfo({
   manualLinkByCode: Map<string, string>;
   cachedProxyLinks: Map<string, string>;
   outboundMetadata?: Tachyon.GetOutboundMetadata;
-  subscriptionCopyableCodes: Set<string>;
   showDetectedCountries: boolean;
 }): Tachyon.PriorityInfo {
   const selectedCode = entry?.value.now || '';
@@ -1006,8 +983,7 @@ function buildPriorityInfo({
         manualLinkByCode.get(childCode) ||
         cachedProxyLinks.get(childCode) ||
         '';
-      const canCopyLink =
-        isCopyableProxyLink(link) || subscriptionCopyableCodes.has(childCode);
+      const canCopyLink = isCopyableProxyLink(link);
 
       return {
         code: childCode,
@@ -1016,7 +992,7 @@ function buildPriorityInfo({
           childEntry,
           link,
           outboundMetadata,
-          subscriptionCopyableCodes.has(childCode),
+          cachedProxyLinks.has(childCode),
         ),
         latency: childEntry?.value?.history?.[0]?.delay || 0,
         type: childEntry?.value?.type || '',
@@ -1081,7 +1057,6 @@ function buildProxyGroupOutbounds(
   outboundMetadata?: Tachyon.GetOutboundMetadata,
   urltestGroups: Record<string, UrlTestCacheGroup> = {},
   priorityGroups: Record<string, PriorityCacheGroup> = {},
-  subscriptionCopyableCodes: Set<string> = new Set(),
   cachedProxyLinks: Map<string, string> = new Map(),
 ) {
   const sectionName = section['.name'];
@@ -1108,31 +1083,6 @@ function buildProxyGroupOutbounds(
   const selectorCodes = selector?.value?.all ?? [];
   const urlTestCodes = urlTestConfigs.map((config) => config.code);
   const priorityCodes = priorityConfigs.map((config) => config.code);
-  const urlTestCodeSet = new Set(urlTestCodes);
-  const priorityCodeSet = new Set(priorityCodes);
-  const hideAddedCodeSet = new Set<string>();
-  urlTestEntries.forEach(({ config, entry }) => {
-    if (!config.hideAddedOutbounds) {
-      return;
-    }
-
-    const childCodes = urltestGroups[config.code]?.outbounds?.length
-      ? urltestGroups[config.code].outbounds || []
-      : entry?.value.all || [];
-
-    childCodes.forEach((code) => hideAddedCodeSet.add(code));
-  });
-  priorityEntries.forEach(({ config, entry }) => {
-    if (!config.hideAddedOutbounds) {
-      return;
-    }
-
-    const childCodes = priorityGroups[config.code]?.outbounds?.length
-      ? priorityGroups[config.code].outbounds || []
-      : entry?.value.all || [];
-
-    childCodes.forEach((code) => hideAddedCodeSet.add(code));
-  });
   const showDetectedCountries =
     urlTestConfigs.some((config) => config.showDetectedCountries) ||
     priorityConfigs.some((config) => config.showDetectedCountries);
@@ -1147,17 +1097,7 @@ function buildProxyGroupOutbounds(
     ...(selectorCodes.length ? selectorCodes : fallbackCodes),
     ...urlTestCodes,
     ...priorityCodes,
-  ]).filter((code) => {
-    if (!hideAddedCodeSet.has(code)) {
-      return true;
-    }
-
-    return (
-      urlTestCodeSet.has(code) ||
-      priorityCodeSet.has(code) ||
-      isUrlTestProxyEntry(proxyByCode.get(code))
-    );
-  });
+  ]);
 
   const outbounds = uniqueCodes(groupCodes).flatMap((code) => {
     const item = proxyByCode.get(code);
@@ -1169,8 +1109,7 @@ function buildProxyGroupOutbounds(
     }
 
     const link = manualLinkByCode.get(code) || cachedProxyLinks.get(code) || '';
-    const canCopyLink =
-      isCopyableProxyLink(link) || subscriptionCopyableCodes.has(code);
+    const canCopyLink = isCopyableProxyLink(link);
     const displayName =
       priorityConfig?.displayName ||
       urlTestConfig?.displayName ||
@@ -1179,7 +1118,7 @@ function buildProxyGroupOutbounds(
         item,
         link,
         outboundMetadata,
-        subscriptionCopyableCodes.has(code),
+        cachedProxyLinks.has(code),
       );
     const isRuntimeUrlTest = isUrlTestProxyEntry(item);
 
@@ -1207,7 +1146,6 @@ function buildProxyGroupOutbounds(
                 manualLinkByCode,
                 cachedProxyLinks,
                 outboundMetadata,
-                subscriptionCopyableCodes,
                 showDetectedCountries:
                   urlTestConfig?.showDetectedCountries || showDetectedCountries,
               })
@@ -1221,7 +1159,6 @@ function buildProxyGroupOutbounds(
               manualLinkByCode,
               cachedProxyLinks,
               outboundMetadata,
-              subscriptionCopyableCodes,
               showDetectedCountries: priorityConfig.showDetectedCountries,
             })
           : undefined,
@@ -1402,22 +1339,6 @@ function getOutboundMetadata(dashboardCache?: DashboardSectionCache) {
   };
 }
 
-function getSubscriptionCopyableCodes(dashboardCache?: DashboardSectionCache) {
-  const legacyLinks = objectMap(dashboardCache?.links);
-  const linkRefs = dashboardCache?.linkRefs;
-  const codes = new Set(
-    Object.entries(legacyLinks)
-      .filter(([, link]) => isCopyableProxyLink(link))
-      .map(([code]) => code),
-  );
-
-  if (linkRefs && typeof linkRefs === 'object' && !Array.isArray(linkRefs)) {
-    Object.keys(linkRefs).forEach((code) => codes.add(code));
-  }
-
-  return codes;
-}
-
 function getCachedProxyLinks(dashboardCache?: DashboardSectionCache) {
   return new Map(
     Object.entries(objectMap(dashboardCache?.links)).filter(([, link]) =>
@@ -1451,13 +1372,12 @@ export async function getDashboardSections(
     configSections
       .filter(
         (section) =>
-          section.enabled !== '0' &&
-          isConnectionAction(getSectionAction(section)),
+          section.enabled !== '0' && isConnectionAction(section.action),
       )
       .map(async (section) => {
         const displayName = getDisplayName(section);
         const sectionName = section['.name'];
-        const sectionAction = getSectionAction(section);
+        const sectionAction = section.action;
         const proxyConfigType = getSectionProxyConfigType(section);
 
         if (isConnectionAction(sectionAction) && shouldUseProxyGroup(section)) {
@@ -1472,9 +1392,6 @@ export async function getDashboardSections(
                 dashboardCache,
               )
             : undefined;
-          const subscriptionCopyableCodes = includeSubscriptionCopyState
-            ? getSubscriptionCopyableCodes(dashboardCache)
-            : new Set<string>();
           const cachedProxyLinks = includeSubscriptionCopyState
             ? getCachedProxyLinks(dashboardCache)
             : new Map<string, string>();
@@ -1487,7 +1404,6 @@ export async function getDashboardSections(
               outboundMetadata,
               urltestGroups,
               priorityGroups,
-              subscriptionCopyableCodes,
               cachedProxyLinks,
             );
 

@@ -4,9 +4,13 @@ import { getDnsCheckPresentation } from '../getDnsCheckPresentation';
 const baseDnsResult = {
   dns_type: 'udp' as const,
   dns_server: '77.88.8.8',
+  dns_server_index: 0,
+  dns_server_count: 1,
   dns_status: 1 as const,
   dns_on_router: 1 as const,
   bootstrap_dns_server: '77.88.8.8',
+  bootstrap_dns_server_index: 0,
+  bootstrap_dns_server_count: 1,
   bootstrap_dns_status: 1 as const,
   dhcp_config_status: 0 as const,
   dont_touch_dhcp: 0 as const,

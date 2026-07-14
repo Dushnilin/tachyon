@@ -111,7 +111,6 @@ SH
 chmod +x "$WORK_DIR/apk-bin/apk"
 [ "$(PATH="$WORK_DIR/apk-bin:$PATH" ucode -L "$TACHYON_LIB" "$PACKAGES_UC" apk-available-version sing-box)" = "1.2.3-r1" ] ||
   fail "APK available version lookup must select the exact package name, not a higher-priority provider"
-
 mark_hex="$(ucode -L "$TACHYON_LIB" "$RULES_UC" mark-hex 0x01000000 2)"
 [ "$mark_hex" = "0x01000002" ] ||
   fail "providers/rules.uc mark math changed"

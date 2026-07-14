@@ -67,4 +67,12 @@ describe('validateProxyUrl', () => {
     expect(res.valid).toBe(false);
     expect(res.message).toContain('path');
   });
+
+  it('rejects VMess configs with an invalid server host', () => {
+    const config = Buffer.from(
+      JSON.stringify({ add: 'bad_host', port: '443', id: 'uuid' }),
+    ).toString('base64');
+
+    expect(validateProxyUrl(`vmess://${config}`).valid).toBe(false);
+  });
 });

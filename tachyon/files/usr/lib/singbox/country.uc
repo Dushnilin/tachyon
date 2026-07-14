@@ -1,4 +1,4 @@
-#!/usr/bin/env ucode
+﻿#!/usr/bin/env ucode
 
 let fs = require("fs");
 let common = require("core.common");

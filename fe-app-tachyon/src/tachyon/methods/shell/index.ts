@@ -235,25 +235,16 @@ export const TachyonShellMethods = {
     ),
   getStatus: async () =>
     callBaseMethod<Tachyon.GetStatus>(Tachyon.AvailableMethods.GET_STATUS),
-  getOutboundLink: async (section: string, tag: string) =>
-    callBaseMethod<Tachyon.GetOutboundLink>(
-      Tachyon.AvailableMethods.GET_OUTBOUND_LINK,
-      [section, tag],
-    ),
-  getOutboundLinkStates: async (section: string) =>
-    callBaseMethod<Tachyon.GetOutboundLinkStates>(
-      Tachyon.AvailableMethods.GET_OUTBOUND_LINK_STATES,
-      [section],
-    ),
   getOutboundMetadata: async (section: string) =>
     callBaseMethod<Tachyon.GetOutboundMetadata>(
       Tachyon.AvailableMethods.GET_OUTBOUND_METADATA,
       [section],
     ),
   getSubscriptionMetadata: async (section: string) =>
-    callBaseMethod<
-      Tachyon.SubscriptionMetadata | Tachyon.SubscriptionMetadata[]
-    >(Tachyon.AvailableMethods.GET_SUBSCRIPTION_METADATA, [section]),
+    callBaseMethod<Tachyon.SubscriptionMetadata | Tachyon.SubscriptionMetadata[]>(
+      Tachyon.AvailableMethods.GET_SUBSCRIPTION_METADATA,
+      [section],
+    ),
   checkSingBox: async () =>
     callBaseMethod<Tachyon.SingBoxCheckResult>(
       Tachyon.AvailableMethods.CHECK_SING_BOX,
@@ -546,11 +537,7 @@ export const TachyonShellMethods = {
   ) => {
     const response = await executeShellCommand({
       command: '/usr/bin/tachyon',
-      args: [
-        Tachyon.AvailableMethods.COMPONENT_ACTION_ASYNC,
-        component,
-        action,
-      ],
+      args: [Tachyon.AvailableMethods.COMPONENT_ACTION_ASYNC, component, action],
       timeout: COMPONENT_ACTION_RPC_TIMEOUT_MS,
     });
     const parsedResponse = parseComponentActionStartResult(response);
@@ -758,8 +745,7 @@ export const TachyonShellMethods = {
     while (true) {
       await sleep(SUBSCRIPTION_UPDATE_POLL_INTERVAL_MS);
 
-      const response =
-        await TachyonShellMethods.subscriptionUpdateStatus(jobId);
+      const response = await TachyonShellMethods.subscriptionUpdateStatus(jobId);
 
       if (!response.success) {
         if (transientRpc.shouldContinue(response.error)) {

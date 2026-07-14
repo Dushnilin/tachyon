@@ -1,4 +1,4 @@
-import {
+﻿import {
   DIAGNOSTICS_CHECKS,
   DIAGNOSTICS_CHECKS_MAP,
 } from './checks/contstants';

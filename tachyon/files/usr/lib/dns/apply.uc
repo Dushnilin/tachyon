@@ -1,4 +1,4 @@
-#!/usr/bin/env ucode
+﻿#!/usr/bin/env ucode
 
 let fs = require("fs");
 let uci = require("core.uci");
@@ -13,19 +13,6 @@ let shell_quote = common.shell_quote;
 
 function run(command) {
     return system(command) == 0;
-}
-
-function output(command) {
-    let pipe = fs.popen(command, "r");
-    if (!pipe)
-        return "";
-
-    let data = pipe.read("all");
-    let status = pipe.close();
-    if (status != 0 || data == null)
-        return "";
-
-    return replace(as_string(data), /[\r\n]+$/g, "");
 }
 
 function uci_available() {

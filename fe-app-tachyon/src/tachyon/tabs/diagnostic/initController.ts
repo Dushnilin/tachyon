@@ -764,8 +764,7 @@ async function handleShowSingBoxConfig() {
   setDiagnosticActionLoading('showSingBoxConfig', true);
 
   try {
-    const showSingBoxConfig =
-      await TachyonShellMethods.showSingBoxConfig(false);
+    const showSingBoxConfig = await TachyonShellMethods.showSingBoxConfig(false);
 
     if (showSingBoxConfig.success) {
       const rawSingBoxConfigText = stringifySingBoxConfig(

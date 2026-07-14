@@ -442,7 +442,6 @@ const EntryPoint = {
       return ["telegram"];
     };
     settings.createTelegramContent(telegramSection);
-
     const diagnosticSection = tachyonMap.section(
       form.TypedSection,
       "diagnostic",

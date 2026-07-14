@@ -104,6 +104,7 @@ const invalidUrls = [
   ['No password', 'trojan://@127.0.0.1:443?type=tcp&security=tls'],
   ['No host', 'trojan://pass@:443?type=tcp&security=tls'],
   ['No port', 'trojan://pass@127.0.0.1?type=tcp&security=tls'],
+  ['Invalid host', 'trojan://pass@bad_host:443?type=tcp&security=tls'],
   ['Invalid port', 'trojan://pass@127.0.0.1:abc?type=tcp&security=tls'],
   [
     'Unbracketed IPv6 with port',

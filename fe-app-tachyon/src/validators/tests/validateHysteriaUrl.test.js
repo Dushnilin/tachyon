@@ -46,6 +46,7 @@ const invalidUrls = [
   ['Missing password', 'hysteria2://@example.com:443/'],
   ['Missing host', 'hysteria2://pw@:443/'],
   ['Missing port', 'hysteria2://pw@example.com/'],
+  ['Invalid host', 'hysteria2://pw@bad_host:443/'],
   ['Non-numeric port', 'hysteria2://pw@example.com:port/'],
   ['Port out of range', 'hysteria2://pw@example.com:99999/'],
   ['Invalid port range order', 'hysteria2://pw@example.com:6000-5000/'],

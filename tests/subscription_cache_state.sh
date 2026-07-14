@@ -69,6 +69,14 @@ if grep -n -E 'require\("uci"\)\.cursor|uci -q' "$CACHE_UC" >/dev/null 2>&1; the
   fail "subscription/cache.uc must use core.uci instead of owning direct UCI cursor or CLI calls"
 fi
 
+move_file_source="$(sed -n '/^function move_file(/,/^}/p' "$CACHE_UC")"
+if grep -Fq 'unlink_path(target)' <<<"$move_file_source"; then
+  fail "subscription cache replacement must keep the current file until atomic rename succeeds"
+fi
+if grep -Fq 'remove-legacy-server-country-cache' "$CACHE_UC"; then
+  fail "subscription/cache.uc must not expose the migrated legacy cache cleanup"
+fi
+
 grep -q 'mode == "ensure-runtime-dirs"' "$CACHE_UC" ||
   fail "subscription/cache.uc must expose ensure-runtime-dirs owner mode"
 grep -q 'mode == "ensure-runtime-cache-format"' "$CACHE_UC" ||
@@ -138,6 +146,7 @@ runtime_env() {
     TACHYON_RUNTIME_CACHE_FORMAT_FILE="$WORK_DIR/runtime/run/cache-format" \
     TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR="$WORK_DIR/runtime/persistent" \
     TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE="$WORK_DIR/runtime/persistent/cache-format" \
+    TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT="7" \
     TACHYON_SUBSCRIPTION_BOOTSTRAP_RETRY_PID_FILE="$WORK_DIR/runtime/run/bootstrap.pid" \
     "$@"
 }
@@ -149,24 +158,57 @@ for dir in \
   "$WORK_DIR/runtime/tmp-sing-box/subscriptions" \
   "$WORK_DIR/runtime/run" \
   "$WORK_DIR/runtime/run/subscription-update" \
-  "$WORK_DIR/runtime/run/subscription-links" \
   "$WORK_DIR/runtime/run/subscription-metadata" \
   "$WORK_DIR/runtime/run/outbound-metadata" \
   "$WORK_DIR/runtime/run/section-cache"; do
   [ -d "$dir" ] || fail "ensure-runtime-dirs should create $dir"
 done
 
-printf 'old\n' >"$WORK_DIR/runtime/run/cache-format"
+if [ -d "$WORK_DIR/runtime/run/subscription-links" ]; then
+  fail "ensure-runtime-dirs should not recreate the retired subscription-links directory"
+fi
+
+mkdir -p "$WORK_DIR/runtime/run/subscription-links" "$WORK_DIR/runtime/persistent"
+printf '7\n' >"$WORK_DIR/runtime/run/cache-format"
 printf 'stale\n' >"$WORK_DIR/runtime/run/section-cache/stale.json"
+printf 'stale\n' >"$WORK_DIR/runtime/run/subscription-links/stale.json"
+printf '7\n' >"$WORK_DIR/runtime/persistent/cache-format"
+cat >"$WORK_DIR/runtime/persistent/proxy-subscription-1.json" <<'JSON'
+{
+  "version": 1,
+  "format": "sing-box-json",
+  "outbounds": [
+    {
+      "type": "socks",
+      "tag": "preserved-node",
+      "server": "127.0.0.1",
+      "server_port": 1080
+    }
+  ]
+}
+JSON
 runtime_env cache_ucode ensure-runtime-cache-format
-assert_eq "7" \
+assert_eq "8" \
   "$(sed -n '1p' "$WORK_DIR/runtime/run/cache-format")" \
   "runtime cache format"
 [ ! -e "$WORK_DIR/runtime/run/section-cache/stale.json" ] ||
   fail "ensure-runtime-cache-format should clear old runtime section cache"
+[ ! -e "$WORK_DIR/runtime/run/subscription-links" ] ||
+  fail "runtime format migration should remove the retired subscription-links directory"
 assert_eq "7" \
   "$(sed -n '1p' "$WORK_DIR/runtime/persistent/cache-format")" \
   "persistent cache format"
+[ -f "$WORK_DIR/runtime/persistent/proxy-subscription-1.json" ] ||
+  fail "runtime format migration should preserve the compatible persistent subscription cache"
+node - "$WORK_DIR/runtime/persistent/proxy-subscription-1.json" <<'NODE'
+const fs = require('fs');
+const subscription = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+const outbound = subscription.outbounds[0];
+if (outbound.server !== '127.0.0.1' || outbound.share_link !== 'socks5://127.0.0.1:1080#preserved-node') {
+  console.error('runtime format migration should preserve the outbound and backfill its direct link');
+  process.exit(1);
+}
+NODE
 runtime_env cache_ucode run-deferred-bootstrap ""
 runtime_env cache_ucode stop-deferred-bootstrap-worker
 
@@ -350,22 +392,7 @@ if cache_ucode section-current-usable-cache-fixture \
   fail "section without subscription URLs should not have usable subscription cache"
 fi
 
-mkdir -p "$WORK_DIR/link-cache" "$WORK_DIR/link-subscriptions"
-cat >"$WORK_DIR/link-cache/proxy.json" <<'JSON'
-{
-  "links": {},
-  "linkRefs": {
-    "vless-encrypted": {
-      "sourceSection": "proxy-subscription-1",
-      "sourceIndex": 1
-    },
-    "vless-none": {
-      "sourceSection": "proxy-subscription-1",
-      "sourceIndex": 2
-    }
-  }
-}
-JSON
+mkdir -p "$WORK_DIR/link-subscriptions"
 cat >"$WORK_DIR/link-subscriptions/proxy-subscription-1.json" <<'JSON'
 {
   "outbounds": [
@@ -388,22 +415,24 @@ cat >"$WORK_DIR/link-subscriptions/proxy-subscription-1.json" <<'JSON'
   ]
 }
 JSON
-encrypted_link="$(cache_ucode get-link "$WORK_DIR/link-cache" "$WORK_DIR/link-subscriptions" proxy vless-encrypted "")"
-JSON_VALUE="$encrypted_link" node - <<'NODE'
-const value = JSON.parse(process.env.JSON_VALUE);
-if (!value.link.includes("encryption=mlkem768x25519plus.native.test")) {
-  console.error(`expected VLESS encryption in serialized link, got ${value.link}`);
-  process.exit(1);
+serialize_outbound_link() {
+  ucode -L "$TACHYON_LIB" -e '
+    let fs = require("fs");
+    let share_link = require("subscription.share_link");
+    let source = json(fs.readfile(ARGV[0]));
+    print(share_link.serialize_outbound_link(source.outbounds[int(ARGV[1])]), "\n");
+  ' "$1" "$2"
 }
-NODE
-none_link="$(cache_ucode get-link "$WORK_DIR/link-cache" "$WORK_DIR/link-subscriptions" proxy vless-none "")"
-JSON_VALUE="$none_link" node - <<'NODE'
-const value = JSON.parse(process.env.JSON_VALUE);
-if (value.link.includes("encryption=none")) {
-  console.error(`did not expect encryption=none in serialized link, got ${value.link}`);
-  process.exit(1);
-}
-NODE
+
+encrypted_link="$(serialize_outbound_link "$WORK_DIR/link-subscriptions/proxy-subscription-1.json" 0)"
+case "$encrypted_link" in
+  *encryption=mlkem768x25519plus.native.test*) ;;
+  *) fail "expected VLESS encryption in serialized link, got $encrypted_link" ;;
+esac
+none_link="$(serialize_outbound_link "$WORK_DIR/link-subscriptions/proxy-subscription-1.json" 1)"
+case "$none_link" in
+  *encryption=none*) fail "did not expect encryption=none in serialized link, got $none_link" ;;
+esac
 
 mkdir -p "$WORK_DIR/persist-runtime" "$WORK_DIR/persist-empty" "$WORK_DIR/persist-fresh"
 cat >"$WORK_DIR/persist-runtime/proxy-subscription-1.json" <<'JSON'

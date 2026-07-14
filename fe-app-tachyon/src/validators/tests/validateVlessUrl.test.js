@@ -67,6 +67,7 @@ const invalidUrls = [
   ['No uuid', 'vless://@127.0.0.1:443?type=tcp&security=tls'],
   ['No host', 'vless://uuid@:443?type=tcp&security=tls'],
   ['No port', 'vless://uuid@127.0.0.1?type=tcp&security=tls'],
+  ['Invalid host', 'vless://uuid@bad_host:443?type=tcp&security=tls'],
   ['Invalid port', 'vless://uuid@127.0.0.1:abc?type=tcp&security=tls'],
   [
     'Unbracketed IPv6 with port',

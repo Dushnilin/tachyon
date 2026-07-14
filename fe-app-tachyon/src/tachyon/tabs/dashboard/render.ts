@@ -1,4 +1,4 @@
-import { renderSections, renderWidget } from './partials';
+﻿import { renderSections, renderWidget } from './partials';
 
 export function render() {
   return E(
