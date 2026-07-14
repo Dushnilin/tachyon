@@ -546,16 +546,18 @@ function reload_sing_box_runtime(previous_pid, config_hash_before, config_hash_a
     }
 
     previous_pid = sing_box_reload_previous_pid(previous_pid, config_hash_before, config_hash_after);
-    command_success_from_args([ "logger", "-t", "tachyon", "[info] Reloading sing-box runtime" ]);
-    if (!command_success_from_args([ "/etc/init.d/sing-box", "reload" ])) {
-        command_success_from_args([ "logger", "-t", "tachyon", "[fatal] Failed to reload sing-box. Aborted." ]);
-        exit(1);
-    }
-
-    let timeout = getenv("TACHYON_SING_BOX_RELOAD_PID_TIMEOUT") || "15";
-    if (previous_pid > 0 && !wait_sing_box_pid_replacement(previous_pid, timeout)) {
-        command_success_from_args([ "logger", "-t", "tachyon", "[fatal] sing-box reload did not replace the running process. Aborted." ]);
-        exit(1);
+    command_success_from_args([ "logger", "-t", "tachyon", "[info] Hot-reloading sing-box runtime (SIGHUP) PID: " + previous_pid ]);
+    if (previous_pid > 0) {
+        if (!command_success_from_args([ "kill", "-HUP", as_string(previous_pid) ])) {
+            command_success_from_args([ "logger", "-t", "tachyon", "[fatal] Failed to send SIGHUP to sing-box. Aborted." ]);
+            exit(1);
+        }
+    } else {
+        command_success_from_args([ "logger", "-t", "tachyon", "[info] sing-box is not running. Using start." ]);
+        if (!command_success_from_args([ "/etc/init.d/sing-box", "start" ])) {
+            command_success_from_args([ "logger", "-t", "tachyon", "[fatal] Failed to start sing-box. Aborted." ]);
+            exit(1);
+        }
     }
 }
 
