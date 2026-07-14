@@ -625,7 +625,8 @@ function section_needs_priority_sets(section) {
 
 function nft_create_priority_chains(table) {
     return nft_create_chain(table, "priority_rules", "{ }") &&
-        nft_create_chain(table, "priority_output_rules", "{ }");
+        nft_create_chain(table, "priority_output_rules", "{ }") &&
+        nft_add_rule(table, "priority_output_rules", [ "meta", "mark", "!=", "0", "return" ]);
 }
 
 function nft_create_priority_sets(table, sets) {
