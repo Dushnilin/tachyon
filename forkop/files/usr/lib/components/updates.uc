@@ -56,16 +56,16 @@ const SB_SERVICE_MIXED_INBOUND_PORT = getenv("SB_SERVICE_MIXED_INBOUND_PORT") ||
 const SB_VARIANT_STATE_FILE = getenv("SB_VARIANT_STATE_FILE") || "/etc/forkop/sing-box-variant";
 const GITHUB_RAW_URL = getenv("GITHUB_RAW_URL") || "https://raw.githubusercontent.com/itdoginfo/allow-domains/main";
 const BUILTIN_SUBNET_URLS = {
-    twitter: getenv("SUBNETS_TWITTER") || GITHUB_RAW_URL + "/Subnets/IPv4/twitter.lst",
-    meta: getenv("SUBNETS_META") || GITHUB_RAW_URL + "/Subnets/IPv4/meta.lst",
-    discord: getenv("SUBNETS_DISCORD") || GITHUB_RAW_URL + "/Subnets/IPv4/discord.lst",
-    roblox: getenv("SUBNETS_ROBLOX") || GITHUB_RAW_URL + "/Subnets/IPv4/roblox.lst",
-    telegram: getenv("SUBNETS_TELERAM") || GITHUB_RAW_URL + "/Subnets/IPv4/telegram.lst",
-    cloudflare: getenv("SUBNETS_CLOUDFLARE") || GITHUB_RAW_URL + "/Subnets/IPv4/cloudflare.lst",
-    hetzner: getenv("SUBNETS_HETZNER") || GITHUB_RAW_URL + "/Subnets/IPv4/hetzner.lst",
-    ovh: getenv("SUBNETS_OVH") || GITHUB_RAW_URL + "/Subnets/IPv4/ovh.lst",
-    digitalocean: getenv("SUBNETS_DIGITALOCEAN") || GITHUB_RAW_URL + "/Subnets/IPv4/digitalocean.lst",
-    cloudfront: getenv("SUBNETS_CLOUDFRONT") || GITHUB_RAW_URL + "/Subnets/IPv4/cloudfront.lst"
+    twitter: [ getenv("SUBNETS_TWITTER") || GITHUB_RAW_URL + "/Subnets/IPv4/twitter.lst", getenv("SUBNETS_TWITTER6") || GITHUB_RAW_URL + "/Subnets/IPv6/twitter.lst" ],
+    meta: [ getenv("SUBNETS_META") || GITHUB_RAW_URL + "/Subnets/IPv4/meta.lst", getenv("SUBNETS_META6") || GITHUB_RAW_URL + "/Subnets/IPv6/meta.lst" ],
+    discord: [ getenv("SUBNETS_DISCORD") || GITHUB_RAW_URL + "/Subnets/IPv4/discord.lst", getenv("SUBNETS_DISCORD6") || GITHUB_RAW_URL + "/Subnets/IPv6/discord.lst" ],
+    roblox: [ getenv("SUBNETS_ROBLOX") || GITHUB_RAW_URL + "/Subnets/IPv4/roblox.lst" ],
+    telegram: [ getenv("SUBNETS_TELERAM") || GITHUB_RAW_URL + "/Subnets/IPv4/telegram.lst", getenv("SUBNETS_TELERAM6") || GITHUB_RAW_URL + "/Subnets/IPv6/telegram.lst" ],
+    cloudflare: [ getenv("SUBNETS_CLOUDFLARE") || GITHUB_RAW_URL + "/Subnets/IPv4/cloudflare.lst", getenv("SUBNETS_CLOUDFLARE6") || GITHUB_RAW_URL + "/Subnets/IPv6/cloudflare.lst" ],
+    hetzner: [ getenv("SUBNETS_HETZNER") || GITHUB_RAW_URL + "/Subnets/IPv4/hetzner.lst", getenv("SUBNETS_HETZNER6") || GITHUB_RAW_URL + "/Subnets/IPv6/hetzner.lst" ],
+    ovh: [ getenv("SUBNETS_OVH") || GITHUB_RAW_URL + "/Subnets/IPv4/ovh.lst", getenv("SUBNETS_OVH6") || GITHUB_RAW_URL + "/Subnets/IPv6/ovh.lst" ],
+    digitalocean: [ getenv("SUBNETS_DIGITALOCEAN") || GITHUB_RAW_URL + "/Subnets/IPv4/digitalocean.lst", getenv("SUBNETS_DIGITALOCEAN6") || GITHUB_RAW_URL + "/Subnets/IPv6/digitalocean.lst" ],
+    cloudfront: [ getenv("SUBNETS_CLOUDFRONT") || GITHUB_RAW_URL + "/Subnets/IPv4/cloudfront.lst", getenv("SUBNETS_CLOUDFRONT6") || GITHUB_RAW_URL + "/Subnets/IPv6/cloudfront.lst" ]
 };
 let rule_config = null;
 let routing_rulesets_module_value = null;
@@ -2120,41 +2120,43 @@ function import_builtin_subnets_from_rule(section, settings) {
         if (!singbox_rulesets_module().is_community(service))
             continue;
 
-        let url = BUILTIN_SUBNET_URLS[as_string(service)];
-        if (url == null)
+        let urls = BUILTIN_SUBNET_URLS[as_string(service)];
+        if (type(urls) != "array")
             continue;
 
-        let tmpfile = temp_path();
-        if (tmpfile == "") {
-            ok = false;
-            continue;
-        }
+        for (let url in urls) {
+            let tmpfile = temp_path();
+            if (tmpfile == "") {
+                ok = false;
+                continue;
+            }
 
-        if (!download_to_file(url, tmpfile, service_proxy_address(settings, "lists")) || !file_nonempty(tmpfile)) {
-            log_message("Failed to download built-in " + as_string(service) + " subnet list; skipping it until the next successful update", "warn");
+            if (!download_to_file(url, tmpfile, service_proxy_address(settings, "lists")) || !file_nonempty(tmpfile)) {
+                log_message("Failed to download built-in " + as_string(service) + " subnet list; skipping it until the next successful update", "warn");
+                remove_file(tmpfile);
+                continue;
+            }
+
+            if (!nft_module_success([
+                "nft-add-community-subnet-file-for-uci-section",
+                section_name(section),
+                service,
+                tmpfile,
+                NFT_TABLE_NAME,
+                NFT_COMMON_SET_NAME,
+                NFT_IP_PORT_SET_NAME,
+                NFT_INTERFACE_SET_NAME,
+                NFT_DISCORD_SET_NAME,
+                NFT_FAKEIP_MARK,
+                "5000",
+                NFT_COMMON6_SET_NAME,
+                NFT_IP_PORT6_SET_NAME,
+                NFT_DISCORD6_SET_NAME
+            ]))
+                ok = false;
+
             remove_file(tmpfile);
-            continue;
         }
-
-        if (!nft_module_success([
-            "nft-add-community-subnet-file-for-uci-section",
-            section_name(section),
-            service,
-            tmpfile,
-            NFT_TABLE_NAME,
-            NFT_COMMON_SET_NAME,
-            NFT_IP_PORT_SET_NAME,
-            NFT_INTERFACE_SET_NAME,
-            NFT_DISCORD_SET_NAME,
-            NFT_FAKEIP_MARK,
-            "5000",
-            NFT_COMMON6_SET_NAME,
-            NFT_IP_PORT6_SET_NAME,
-            NFT_DISCORD6_SET_NAME
-        ]))
-            ok = false;
-
-        remove_file(tmpfile);
     }
 
     return ok;
@@ -2859,6 +2861,11 @@ function fixture_subscription_update_section_due_status(path, section_name_value
     subscription_update_section_due_status(fixture_section_by_name(data, section_name_value), timestamp_path, now);
 }
 
+function print_builtin_subnet_urls(service) {
+    for (let url in array_or_empty(BUILTIN_SUBNET_URLS[as_string(service)]))
+        print(url, "\n");
+}
+
 let mode = ARGV[0] || "";
 
 if (mode == "json-length")
@@ -2867,6 +2874,8 @@ else if (mode == "update-is-due")
     update_is_due(ARGV[1], ARGV[2], ARGV[3]);
 else if (mode == "duration-to-seconds")
     duration_to_seconds(ARGV[1]);
+else if (mode == "builtin-subnet-urls")
+    print_builtin_subnet_urls(ARGV[1]);
 else if (mode == "due-check-cron-schedule")
     due_check_cron_schedule(ARGV[1]);
 else if (mode == "list-update-cron-job")
