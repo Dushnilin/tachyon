@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env bash
+#!/usr/bin/env bash
 set -eo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -10,8 +10,8 @@ fail() {
   exit 1
 }
 
-source_card_styles="$(sed -n '/^\.fkp_updates-page__component {$/,/^}$/p' "$SOURCE_STYLES")"
-bundle_card_styles="$(sed -n '/^\.fkp_updates-page__component {$/,/^}$/p' "$BUNDLE")"
+source_card_styles="$(sed -n '/^\.tachyon_updates-page__component {$/,/^}$/p' "$SOURCE_STYLES")"
+bundle_card_styles="$(sed -n '/^\.tachyon_updates-page__component {$/,/^}$/p' "$BUNDLE")"
 
 [[ -n "$source_card_styles" ]] ||
   fail "component card styles must exist in the frontend source"

@@ -2,21 +2,40 @@
 
 let fs = require("fs");
 
-let common = require("core.common");
-let as_string = common.as_string;
-let shell_quote = common.shell_quote;
+function as_string(value) {
+    return value == null ? "" : "" + value;
+}
 
-let command_exists = common.command_exists;
-let command_from_args = common.command_from_args;
-let command_output = common.command_output_from_args;
+function shell_quote(value) {
+    return "'" + replace(as_string(value), /'/g, "'\\''") + "'";
+}
 
-
+function command_from_args(args) {
+    let parts = [];
+    for (let arg in args)
+        push(parts, shell_quote(arg));
+    return join(" ", parts);
+}
 
 function command_success(args) {
     return system(command_from_args(args) + " >/dev/null 2>&1") == 0;
 }
 
+function command_output(args) {
+    let pipe = fs.popen(command_from_args(args), "r");
+    if (!pipe)
+        return "";
 
+    let data = pipe.read("all");
+    let status = pipe.close();
+    if (status != 0 || data == null)
+        return "";
+    return as_string(data);
+}
+
+function command_exists(name) {
+    return command_success([ "command", "-v", name ]);
+}
 
 function apk_installed(package_name) {
     return command_exists("apk") && command_success([ "apk", "info", "-e", as_string(package_name) ]);

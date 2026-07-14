@@ -2,14 +2,9 @@
 
 let fs = require("fs");
 
-let common = require("core.common");
-let as_string = common.as_string;
-let write_json = common.write_json;
-let read_json_file = common.read_json_file;
-let read_stdin = common.read_stdin;
-let array_or_empty = common.array_or_empty;
-
-
+function as_string(value) {
+    return value == null ? "" : "" + value;
+}
 
 function int_arg(value) {
     value = as_string(value);
@@ -21,9 +16,35 @@ function bool_arg(value) {
     return value == "1" || value == "true";
 }
 
+function read_stdin() {
+    let input = fs.open("/dev/stdin", "r");
+    if (!input)
+        return "";
+    let data = input.read("all");
+    input.close();
+    return data == null ? "" : data;
+}
 
+function read_json_file(path) {
+    let data = fs.readfile(path);
+    if (data == null)
+        return null;
 
+    try {
+        return json(data);
+    }
+    catch (e) {
+        return null;
+    }
+}
 
+function array_or_empty(value) {
+    return type(value) == "array" ? value : [];
+}
+
+function write_json(value) {
+    print(sprintf("%J", value), "\n");
+}
 
 function first_field(line) {
     let fields = split(trim(as_string(line)), /[ \t\r\n]+/);

@@ -1,4 +1,4 @@
-﻿#!/bin/sh /etc/rc.common
+#!/bin/sh /etc/rc.common
 # shellcheck disable=SC2034
 
 START=99

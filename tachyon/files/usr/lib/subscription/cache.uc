@@ -3,6 +3,7 @@
 let fs = require("fs");
 let uci_core = require("core.uci");
 let connections = require("config.connections");
+let subscription_share_link = require("subscription.share_link");
 
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
 const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
@@ -16,9 +17,10 @@ const TACHYON_SUBSCRIPTION_METADATA_DIR = getenv("TACHYON_SUBSCRIPTION_METADATA_
 const TACHYON_OUTBOUND_METADATA_DIR = getenv("TACHYON_OUTBOUND_METADATA_DIR") || TACHYON_RUNTIME_STATE_DIR + "/outbound-metadata";
 const TACHYON_SECTION_CACHE_DIR = getenv("TACHYON_SECTION_CACHE_DIR") || TACHYON_RUNTIME_STATE_DIR + "/section-cache";
 const TACHYON_RUNTIME_CACHE_FORMAT_FILE = getenv("TACHYON_RUNTIME_CACHE_FORMAT_FILE") || TACHYON_RUNTIME_STATE_DIR + "/cache-format";
-const TACHYON_RUNTIME_CACHE_FORMAT = getenv("TACHYON_RUNTIME_CACHE_FORMAT") || "7";
+const TACHYON_RUNTIME_CACHE_FORMAT = getenv("TACHYON_RUNTIME_CACHE_FORMAT") || "8";
 const TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR = getenv("TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR") || "/etc/tachyon/subscription-cache";
 const TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE = getenv("TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE") || TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR + "/cache-format";
+const TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT = getenv("TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT") || "7";
 const TACHYON_SUBSCRIPTION_BOOTSTRAP_RETRY_PID_FILE = getenv("TACHYON_SUBSCRIPTION_BOOTSTRAP_RETRY_PID_FILE") || TACHYON_RUNTIME_STATE_DIR + "/subscription-bootstrap-retry.pid";
 const TACHYON_SUBSCRIPTION_UPDATE_LOCK_DIR = getenv("TACHYON_SUBSCRIPTION_UPDATE_LOCK_DIR") || TACHYON_RUNTIME_STATE_DIR + "/subscription-update.lock";
 const TACHYON_PENDING_RELOAD_FILE = getenv("TACHYON_PENDING_RELOAD_FILE") || TACHYON_RUNTIME_STATE_DIR + "/reload.pending";
@@ -31,24 +33,14 @@ const ZAPRET_PROVIDER_NFQWS_BIN = getenv("ZAPRET_PROVIDER_NFQWS_BIN") || "/opt/z
 const ZAPRET2_PROVIDER_NFQWS2_BIN = getenv("ZAPRET2_PROVIDER_NFQWS2_BIN") || "/opt/zapret2/nfq2/nfqws2";
 const BYEDPI_BIN = getenv("BYEDPI_BIN") || "/usr/bin/ciadpi";
 
-let common = require("core.common");
-let as_string = common.as_string;
-let shell_quote = common.shell_quote;
+function as_string(value) {
+    return value == null ? "" : "" + value;
+}
 
-let command_output = common.command_output;
-let write_json = common.write_json_file;
-let list_option = common.list_option;
-let command_success_from_args = common.command_success_from_args;
-let bool_option = common.bool_option;
-let command_output_from_args = common.command_output_from_args;
-let command_from_args = common.command_from_args;
-let object_key_count = common.object_key_count;
-let object_or_empty = common.object_or_empty;
-let read_stdin = common.read_stdin;
-let array_or_empty = common.array_or_empty;
-let option = common.option;
-
-
+function read_stdin() {
+    let data = fs.readfile("/dev/stdin");
+    return data == null ? "" : data;
+}
 
 function read_json(path) {
     if (path == null || path == "" || path == "-")
@@ -70,6 +62,9 @@ function write_file(path, value) {
     return fs.writefile(path, value) != null;
 }
 
+function write_json(path, value) {
+    return write_file(path, sprintf("%J", value) + "\n");
+}
 
 function write_stdout_json(value) {
     print(sprintf("%J", value), "\n");
@@ -138,7 +133,21 @@ function append_state_list_once(list, value) {
     print(list, list != "" ? " " : "", value, "\n");
 }
 
+function object_or_empty(value) {
+    return type(value) == "object" ? value : {};
+}
 
+function option(section, key, fallback) {
+    if (fallback == null)
+        fallback = "";
+
+    let value = object_or_empty(section)[key];
+    if (value == null)
+        return fallback;
+    if (type(value) == "array")
+        return join(" ", value);
+    return as_string(value);
+}
 
 function bool_value(value, fallback) {
     if (value == null)
@@ -148,6 +157,9 @@ function bool_value(value, fallback) {
     return value == "1" || value == "true" || value == "yes" || value == "on";
 }
 
+function bool_option(section, key, fallback) {
+    return bool_value(object_or_empty(section)[key], fallback);
+}
 
 function unsigned_number(value) {
     value = as_string(value);
@@ -521,8 +533,18 @@ function files_equal(left, right) {
     return left_data != null && right_data != null && left_data == right_data;
 }
 
+function shell_quote(value) {
+    return "'" + replace(as_string(value), /'/g, "'\\''") + "'";
+}
 
+function command_from_args(args) {
+    let parts = [];
 
+    for (let arg in args)
+        push(parts, shell_quote(arg));
+
+    return join(" ", parts);
+}
 
 function command_env(assignments) {
     let parts = [];
@@ -544,8 +566,26 @@ function command_args_with(base, extra) {
     return result;
 }
 
+function command_output(command) {
+    let pipe = fs.popen(command, "r");
+    if (!pipe)
+        return "";
 
+    let data = pipe.read("all");
+    let status = pipe.close();
+    if (status != 0 || data == null)
+        return "";
 
+    return as_string(data);
+}
+
+function command_output_from_args(args) {
+    return command_output(command_from_args(args));
+}
+
+function command_success_from_args(args) {
+    return system(command_from_args(args) + " >/dev/null 2>&1") == 0;
+}
 
 function command_status_from_args(args) {
     let status = int(system(command_from_args(args)));
@@ -575,7 +615,6 @@ function ensure_runtime_dirs() {
     ensure_dir(TMP_SUBSCRIPTION_FOLDER);
     ensure_dir(TACHYON_RUNTIME_STATE_DIR);
     ensure_dir(TACHYON_SUBSCRIPTION_UPDATE_STATE_DIR);
-    ensure_dir(TACHYON_SUBSCRIPTION_LINKS_DIR);
     ensure_dir(TACHYON_SUBSCRIPTION_METADATA_DIR);
     ensure_dir(TACHYON_OUTBOUND_METADATA_DIR);
     ensure_dir(TACHYON_SECTION_CACHE_DIR);
@@ -595,22 +634,20 @@ function ensure_runtime_cache_format() {
 
     if (file_first_line_value(TACHYON_RUNTIME_CACHE_FORMAT_FILE) != TACHYON_RUNTIME_CACHE_FORMAT) {
         log_message("Runtime subscription cache format changed; clearing old subscription cache", "info");
+        if (file_first_line_value(TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE) == TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT)
+            subscription_share_link.populate_subscription_dir(TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR);
         clear_subscription_runtime_cache();
         ensure_runtime_dirs();
         write_file(TACHYON_RUNTIME_CACHE_FORMAT_FILE, TACHYON_RUNTIME_CACHE_FORMAT + "\n");
     }
 
-    if (file_first_line_value(TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE) != TACHYON_RUNTIME_CACHE_FORMAT) {
+    if (file_first_line_value(TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE) != TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT) {
         run_silent("rm -rf " + shell_quote(TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR));
         ensure_dir(TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR);
         chmod_path(TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR, "700");
-        write_file(TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE, TACHYON_RUNTIME_CACHE_FORMAT + "\n");
+        write_file(TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE, TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT + "\n");
         chmod_path(TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE, "600");
     }
-}
-
-function remove_legacy_server_country_cache() {
-    unlink_path(TACHYON_RUNTIME_STATE_DIR + "/server-country-cache.json");
 }
 
 function temp_path(dir, section, kind) {
@@ -620,7 +657,6 @@ function temp_path(dir, section, kind) {
 }
 
 function move_file(source, target) {
-    unlink_path(target);
     return fs.rename(as_string(source), as_string(target));
 }
 
@@ -784,7 +820,6 @@ function uci_section(section_name_value) {
 function uci_named_section(section_name_value) {
     return object_or_empty(uci_core.get_all(CONFIG_NAME, section_name_value));
 }
-
 
 function find_section(sections, name) {
     name = as_string(name);
@@ -961,10 +996,6 @@ function write_user_agent_candidates(path, configured_user_agent, preferred_user
         exit(1);
 }
 
-function write_empty_link() {
-    write_stdout_json({ link: "" });
-}
-
 function write_empty_outbound_metadata() {
     write_stdout_json({
         names: {},
@@ -976,6 +1007,9 @@ function is_array(value) {
     return type(value) == "array";
 }
 
+function array_or_empty(value) {
+    return type(value) == "array" ? value : [];
+}
 
 function int_or_zero(value) {
     value = as_string(value);
@@ -1020,6 +1054,9 @@ function log_subscription_source_summary(section_name_value, source_index, norma
     log_message(subscription_source_summary(section_name_value, source_index, normalized_path, result), "info");
 }
 
+function object_key_count(value) {
+    return type(value) == "object" ? length(keys(value)) : 0;
+}
 
 function valid_metadata_object(value) {
     return type(value) == "object" && object_key_count(value) > 1;
@@ -1053,7 +1090,6 @@ function normalize_cache(cache, section, format_version) {
     cache.version = int(format_version || 0);
     cache.section = as_string(section);
     cache.links = object_or_empty(cache.links);
-    cache.linkRefs = object_or_empty(cache.linkRefs);
     cache.outboundMetadata = object_or_empty(cache.outboundMetadata);
     cache.outboundMetadata.names = object_or_empty(cache.outboundMetadata.names);
     cache.outboundMetadata.countries = object_or_empty(cache.outboundMetadata.countries);
@@ -1077,13 +1113,6 @@ function save_cache(cache_dir, section, format_version, cache) {
         fs.unlink(tmp_path);
         exit(1);
     }
-}
-
-function write_link_cache(cache_dir, format_version, section, links_path, link_refs_path) {
-    let cache = load_cache(cache_dir, section);
-    cache.links = object_or_empty(read_json(links_path));
-    cache.linkRefs = object_or_empty(read_json(link_refs_path));
-    save_cache(cache_dir, section, format_version, cache);
 }
 
 function write_outbound_metadata(cache_dir, format_version, section, names_path, countries_path, servers_path) {
@@ -1253,402 +1282,6 @@ function write_source_metadata(cache_dir, format_version, section, source_index,
 
     cache.subscriptionMetadata = kept;
     save_cache(cache_dir, section, format_version, cache);
-}
-
-function starts_with(value, prefix) {
-    value = as_string(value);
-    prefix = as_string(prefix);
-    return substr(value, 0, length(prefix)) == prefix;
-}
-
-function uri_encode(value) {
-    value = as_string(value);
-    let result = "";
-    for (let i = 0; i < length(value); i++) {
-        let char = substr(value, i, 1);
-        let code = ord(char);
-        if ((code >= 48 && code <= 57) ||
-            (code >= 65 && code <= 90) ||
-            (code >= 97 && code <= 122) ||
-            char == "-" || char == "_" || char == "." || char == "~")
-            result += char;
-        else
-            result += sprintf("%%%02X", code);
-    }
-    return result;
-}
-
-function base64_encode(value) {
-    let encoded = b64enc(as_string(value));
-    while (length(encoded) > 0 && substr(encoded, length(encoded) - 1) == "=")
-        encoded = substr(encoded, 0, length(encoded) - 1);
-    return encoded;
-}
-
-function host_port(server, port) {
-    server = as_string(server);
-    if (index(server, ":") >= 0 && !starts_with(server, "["))
-        server = "[" + server + "]";
-    return server + ":" + as_string(port);
-}
-
-function hysteria2_server_port_entry(value) {
-    value = as_string(value);
-    let colon = index(value, ":");
-    if (colon < 0)
-        return value;
-
-    let start = substr(value, 0, colon);
-    let end = substr(value, colon + 1);
-    if (start == "" || end == "")
-        return "";
-
-    return start == end ? start : (start + "-" + end);
-}
-
-function hysteria2_server_ports_uri(outbound) {
-    let server_ports = array_or_empty(outbound.server_ports);
-    if (length(server_ports) == 0)
-        return "";
-
-    let result = [];
-    for (let item in server_ports) {
-        let port = hysteria2_server_port_entry(item);
-        if (port != "")
-            push(result, port);
-    }
-
-    return join(",", result);
-}
-
-function add_query(params, key, value) {
-    value = as_string(value);
-    if (value != "")
-        push(params, uri_encode(key) + "=" + uri_encode(value));
-}
-
-function add_xhttp_extra_query(params, transport) {
-    let extra = {};
-    for (let item in [
-        ["xPaddingBytes", "x_padding_bytes"],
-        ["noGRPCHeader", "no_grpc_header"],
-        ["scMaxEachPostBytes", "sc_max_each_post_bytes"],
-        ["scMinPostsIntervalMs", "sc_min_posts_interval_ms"],
-        ["scStreamUpServerSecs", "sc_stream_up_server_secs"]
-    ]) {
-        if (transport[item[1]] != null)
-            extra[item[0]] = transport[item[1]];
-    }
-
-    if (type(transport.xmux) == "object") {
-        let xmux = {};
-        for (let item in [
-            ["maxConcurrency", "max_concurrency"],
-            ["maxConnections", "max_connections"],
-            ["cMaxReuseTimes", "c_max_reuse_times"],
-            ["hMaxRequestTimes", "h_max_request_times"],
-            ["hMaxReusableSecs", "h_max_reusable_secs"],
-            ["hKeepAlivePeriod", "h_keep_alive_period"]
-        ]) {
-            if (transport.xmux[item[1]] != null)
-                xmux[item[0]] = transport.xmux[item[1]];
-        }
-        if (length(keys(xmux)) > 0)
-            extra.xmux = xmux;
-    }
-
-    if (length(keys(extra)) > 0)
-        add_query(params, "extra", sprintf("%J", extra));
-}
-
-function add_tls_query(params, outbound, trojan_default_tls) {
-    let tls = type(outbound.tls) == "object" ? outbound.tls : null;
-    if (!tls || tls.enabled === false) {
-        if (trojan_default_tls)
-            add_query(params, "security", "tls");
-        return;
-    }
-
-    let reality = type(tls.reality) == "object" ? tls.reality : null;
-    if (reality && reality.enabled !== false) {
-        add_query(params, "security", "reality");
-        add_query(params, "pbk", reality.public_key);
-        add_query(params, "sid", reality.short_id);
-    }
-    else {
-        add_query(params, "security", "tls");
-    }
-
-    add_query(params, "sni", tls.server_name);
-    if (tls.insecure === true)
-        add_query(params, "allowInsecure", "1");
-    if (type(tls.utls) == "object" && tls.utls.enabled !== false)
-        add_query(params, "fp", tls.utls.fingerprint);
-    if (type(tls.alpn) == "array" && length(tls.alpn) > 0)
-        add_query(params, "alpn", join(",", tls.alpn));
-}
-
-function add_transport_query(params, outbound) {
-    let transport = type(outbound.transport) == "object" ? outbound.transport : null;
-    if (!transport) {
-        add_query(params, "type", "tcp");
-        return;
-    }
-
-    let transport_type = as_string(transport.type);
-    add_query(params, "type", transport_type != "" ? transport_type : "tcp");
-
-    if (transport_type == "ws") {
-        add_query(params, "path", transport.path);
-        if (type(transport.headers) == "object")
-            add_query(params, "host", transport.headers.Host || transport.headers.host);
-    }
-    else if (transport_type == "grpc") {
-        add_query(params, "serviceName", transport.service_name);
-    }
-    else if (transport_type == "http") {
-        add_query(params, "path", transport.path);
-        if (type(transport.host) == "array" && length(transport.host) > 0)
-            add_query(params, "host", join(",", transport.host));
-        else
-            add_query(params, "host", transport.host);
-    }
-    else if (transport_type == "xhttp") {
-        add_query(params, "path", transport.path);
-        add_query(params, "host", transport.host);
-        add_query(params, "mode", transport.mode);
-        add_xhttp_extra_query(params, transport);
-    }
-}
-
-function query_string(params) {
-    return length(params) == 0 ? "" : "?" + join("&", params);
-}
-
-function fragment(outbound) {
-    let tag = as_string(outbound.tag);
-    return tag == "" ? "" : "#" + uri_encode(tag);
-}
-
-function serialize_vless(outbound) {
-    if (as_string(outbound.uuid) == "" || as_string(outbound.server) == "" || outbound.server_port == null)
-        return "";
-    let params = [];
-    add_tls_query(params, outbound, false);
-    add_transport_query(params, outbound);
-    let encryption = as_string(outbound.encryption);
-    if (encryption != "" && encryption != "none")
-        add_query(params, "encryption", encryption);
-    add_query(params, "flow", outbound.flow);
-    add_query(params, "packetEncoding", outbound.packet_encoding);
-    return "vless://" + uri_encode(outbound.uuid) + "@" +
-        host_port(outbound.server, outbound.server_port) + query_string(params) + fragment(outbound);
-}
-
-function serialize_trojan(outbound) {
-    if (as_string(outbound.password) == "" || as_string(outbound.server) == "" || outbound.server_port == null)
-        return "";
-    let params = [];
-    add_tls_query(params, outbound, true);
-    add_transport_query(params, outbound);
-    return "trojan://" + uri_encode(outbound.password) + "@" +
-        host_port(outbound.server, outbound.server_port) + query_string(params) + fragment(outbound);
-}
-
-function serialize_shadowsocks(outbound) {
-    if (as_string(outbound.method) == "" || as_string(outbound.password) == "" ||
-        as_string(outbound.server) == "" || outbound.server_port == null)
-        return "";
-    let userinfo = base64_encode(as_string(outbound.method) + ":" + as_string(outbound.password));
-    return userinfo == "" ? "" :
-        "ss://" + userinfo + "@" + host_port(outbound.server, outbound.server_port) + fragment(outbound);
-}
-
-function serialize_socks(outbound) {
-    if (as_string(outbound.server) == "" || outbound.server_port == null)
-        return "";
-
-    let scheme = "socks" + as_string(outbound.version || "5");
-    let auth = "";
-    if (as_string(outbound.username) != "") {
-        auth = uri_encode(outbound.username);
-        if (as_string(outbound.password) != "")
-            auth += ":" + uri_encode(outbound.password);
-        auth += "@";
-    }
-
-    return scheme + "://" + auth + host_port(outbound.server, outbound.server_port) + fragment(outbound);
-}
-
-function serialize_hysteria2(outbound) {
-    let port = hysteria2_server_ports_uri(outbound);
-    if (port == "" && outbound.server_port != null)
-        port = as_string(outbound.server_port);
-
-    if (as_string(outbound.password) == "" || as_string(outbound.server) == "" || port == "")
-        return "";
-
-    let params = [];
-    let tls = type(outbound.tls) == "object" ? outbound.tls : null;
-    if (tls) {
-        add_query(params, "sni", tls.server_name);
-        if (tls.insecure === true)
-            add_query(params, "insecure", "1");
-        if (type(tls.alpn) == "array" && length(tls.alpn) > 0)
-            add_query(params, "alpn", join(",", tls.alpn));
-    }
-    if (type(outbound.obfs) == "object") {
-        add_query(params, "obfs", outbound.obfs.type);
-        add_query(params, "obfs-password", outbound.obfs.password);
-    }
-
-    return "hysteria2://" + uri_encode(outbound.password) + "@" +
-        host_port(outbound.server, port) + query_string(params) + fragment(outbound);
-}
-
-function serialize_vmess(outbound) {
-    if (as_string(outbound.uuid) == "" || as_string(outbound.server) == "" || outbound.server_port == null)
-        return "";
-
-    let vmess = {
-        v: "2",
-        ps: as_string(outbound.tag),
-        add: as_string(outbound.server),
-        port: as_string(outbound.server_port),
-        id: as_string(outbound.uuid),
-        aid: as_string(outbound.alter_id || 0),
-        scy: as_string(outbound.security || "auto"),
-        net: "tcp",
-        type: "none",
-        host: "",
-        path: "",
-        tls: "",
-        sni: ""
-    };
-
-    if (type(outbound.tls) == "object" && outbound.tls.enabled !== false) {
-        vmess.tls = "tls";
-        vmess.sni = as_string(outbound.tls.server_name);
-        if (type(outbound.tls.utls) == "object")
-            vmess.fp = as_string(outbound.tls.utls.fingerprint);
-    }
-
-    if (type(outbound.transport) == "object") {
-        vmess.net = as_string(outbound.transport.type || "tcp");
-        if (vmess.net == "ws") {
-            vmess.path = as_string(outbound.transport.path);
-            if (type(outbound.transport.headers) == "object")
-                vmess.host = as_string(outbound.transport.headers.Host || outbound.transport.headers.host);
-        }
-        else if (vmess.net == "grpc") {
-            vmess.path = as_string(outbound.transport.service_name);
-        }
-        else if (vmess.net == "http") {
-            vmess.path = as_string(outbound.transport.path);
-            if (type(outbound.transport.host) == "array" && length(outbound.transport.host) > 0)
-                vmess.host = join(",", outbound.transport.host);
-            else
-                vmess.host = as_string(outbound.transport.host);
-        }
-    }
-
-    let encoded = base64_encode(sprintf("%J", vmess));
-    return encoded == "" ? "" : "vmess://" + encoded;
-}
-
-function serialize_outbound_link(outbound) {
-    if (type(outbound) != "object")
-        return "";
-
-    let outbound_type = as_string(outbound.type);
-    if (outbound_type == "vless")
-        return serialize_vless(outbound);
-    if (outbound_type == "trojan")
-        return serialize_trojan(outbound);
-    if (outbound_type == "shadowsocks")
-        return serialize_shadowsocks(outbound);
-    if (outbound_type == "socks")
-        return serialize_socks(outbound);
-    if (outbound_type == "hysteria2")
-        return serialize_hysteria2(outbound);
-    if (outbound_type == "vmess")
-        return serialize_vmess(outbound);
-    return "";
-}
-
-function is_copyable_link(value) {
-    value = lc(as_string(value));
-    let prefixes = [
-        "vless://", "vmess://", "trojan://", "ss://", "ssr://",
-        "hysteria2://", "hy2://", "tuic://",
-        "socks4://", "socks4a://", "socks5://"
-    ];
-    for (let prefix in prefixes) {
-        if (starts_with(value, prefix))
-            return true;
-    }
-    return false;
-}
-
-function get_source_link(subscription_dir, ref) {
-    if (type(ref) != "object")
-        return "";
-
-    let source_section = as_string(ref.sourceSection || ref.source_section);
-    let source_index = int(ref.sourceIndex || ref.source_index || 0);
-    if (!safe_section(source_section) || source_index < 1)
-        return "";
-
-    let source = read_json(subscription_dir + "/" + source_section + ".json");
-    if (type(source) != "object" || type(source.outbounds) != "array")
-        return "";
-
-    let outbound = source.outbounds[source_index - 1];
-    if (type(outbound) != "object")
-        return "";
-
-    let link = as_string(outbound.share_link);
-    if (link == "")
-        link = serialize_outbound_link(outbound);
-    return is_copyable_link(link) ? link : "";
-}
-
-function get_link(cache_dir, subscription_dir, section, tag, legacy_links_dir) {
-    let cache = load_cache(cache_dir, section);
-    let links = object_or_empty(cache.links);
-    let link_refs = object_or_empty(cache.linkRefs);
-    let link = as_string(links[tag]);
-
-    if (!is_copyable_link(link))
-        link = get_source_link(subscription_dir, link_refs[tag]);
-
-    if (!is_copyable_link(link) && legacy_links_dir != null && legacy_links_dir != "") {
-        let legacy = object_or_empty(read_json(legacy_links_dir + "/" + section + ".json"));
-        link = as_string(legacy[tag]);
-    }
-
-    if (!is_copyable_link(link))
-        link = "";
-
-    write_stdout_json({ link: link });
-}
-
-function get_link_states(cache_dir, section, legacy_links_dir) {
-    let cache = load_cache(cache_dir, section);
-    let result = {};
-
-    for (let tag, link in object_or_empty(cache.links))
-        result[tag] = is_copyable_link(link);
-    for (let tag, _ in object_or_empty(cache.linkRefs))
-        result[tag] = true;
-
-    if (length(keys(result)) == 0 && legacy_links_dir != null && legacy_links_dir != "") {
-        let legacy = object_or_empty(read_json(legacy_links_dir + "/" + section + ".json"));
-        for (let tag, link in legacy)
-            result[tag] = is_copyable_link(link);
-    }
-
-    write_stdout_json(result);
 }
 
 function get_outbound_metadata(cache_dir, section, legacy_path) {
@@ -2014,6 +1647,9 @@ function download_subscription_into_cache(section_name_value, subscription_url, 
                 log_message("Downloaded subscription for rule '" + section_name_value + "' is invalid; trying another compatibility profile", "warn");
             continue;
         }
+
+        if (!subscription_share_link.populate_subscription_file(normalized_tmpfile))
+            log_message("Failed to cache direct proxy links for subscription rule '" + section_name_value + "'", "warn");
 
         if (!subscription_config_is_current(section_name_value, subscription_url, subscription_user_agent, subscription_hwid, sections)) {
             log_message("Subscription source settings changed while updating rule '" + section_name_value + "'; discarding superseded download", "warn");
@@ -2686,6 +2322,7 @@ function worker_env() {
         TACHYON_RUNTIME_CACHE_FORMAT,
         TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR,
         TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE,
+        TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT,
         TACHYON_SUBSCRIPTION_BOOTSTRAP_RETRY_PID_FILE,
         TACHYON_SUBSCRIPTION_UPDATE_LOCK_DIR,
         TACHYON_PENDING_RELOAD_FILE,
@@ -2798,13 +2435,7 @@ function deferred_subscription_bootstrap_retry_worker(remaining_sections) {
 
 let mode = ARGV[0] || "";
 
-if (mode == "write-link-cache") {
-    let cache_dir = ARGV[1], format_version = ARGV[2], section = ARGV[3];
-    if (!safe_section(section))
-        exit(1);
-    write_link_cache(cache_dir, format_version, section, ARGV[4], ARGV[5]);
-}
-else if (mode == "file-first-line") {
+if (mode == "file-first-line") {
     file_first_line(ARGV[1]);
 }
 else if (mode == "file-has-exact-line") {
@@ -2845,9 +2476,6 @@ else if (mode == "clear-runtime-cache") {
 }
 else if (mode == "ensure-runtime-cache-format") {
     ensure_runtime_cache_format();
-}
-else if (mode == "remove-legacy-server-country-cache") {
-    remove_legacy_server_country_cache();
 }
 else if (mode == "stale-cache-delete-paths") {
     stale_cache_delete_paths(uci_sections(), ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5], ARGV[6]);
@@ -2970,29 +2598,12 @@ else if (mode == "write-source-metadata") {
         exit(1);
     write_source_metadata(cache_dir, format_version, section, ARGV[4], ARGV[5], ARGV[6], ARGV[7]);
 }
-else if (mode == "get-link") {
-    let cache_dir = ARGV[1], subscription_dir = ARGV[2], section = ARGV[3];
-    if (!safe_section(section))
-        write_empty_link();
-    else
-        get_link(cache_dir, subscription_dir, section, ARGV[4] || "", ARGV[5] || "");
-}
-else if (mode == "get-link-states") {
-    let cache_dir = ARGV[1], section = ARGV[2];
-    if (!safe_section(section))
-        print("{}\n");
-    else
-        get_link_states(cache_dir, section, ARGV[3] || "");
-}
 else if (mode == "get-outbound-metadata") {
     let cache_dir = ARGV[1], section = ARGV[2];
     if (!safe_section(section))
         write_empty_outbound_metadata();
     else
         get_outbound_metadata(cache_dir, section, ARGV[3]);
-}
-else if (mode == "empty-link") {
-    write_empty_link();
 }
 else if (mode == "empty-outbound-metadata") {
     write_empty_outbound_metadata();

@@ -9,10 +9,9 @@ const PUNYCODE_INITIAL_BIAS = 72;
 const PUNYCODE_INITIAL_N = 128;
 const PUNYCODE_DELIMITER = "-";
 
-let common = require("core.common");
-let as_string = common.as_string;
-
-
+function as_string(value) {
+    return value == null ? "" : "" + value;
+}
 
 function ascii_lower(value) {
     let upper = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";

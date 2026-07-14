@@ -4,19 +4,6 @@ let fs = require("fs");
 let uci_core = require("core.uci");
 let connections = require("config.connections");
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
-
-let common = require("core.common");
-let option = common.option;
-let command_status = common.command_status;
-let command_success_from_args = common.command_success_from_args;
-let bool_option = common.bool_option;
-let command_output_from_args = common.command_output_from_args;
-let command_from_args = common.command_from_args;
-let object_or_empty = common.object_or_empty;
-let write_json = common.write_json;
-let array_or_empty = common.array_or_empty;
-let command_output = common.command_output;
-
 const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
 const BIN_PATH = getenv("TACHYON_BIN") || "/usr/bin/tachyon";
 const TMP_SING_BOX_FOLDER = getenv("TMP_SING_BOX_FOLDER") || "/tmp/sing-box";
@@ -73,7 +60,7 @@ const BUILTIN_SUBNET_URLS = {
     meta: getenv("SUBNETS_META") || GITHUB_RAW_URL + "/Subnets/IPv4/meta.lst",
     discord: getenv("SUBNETS_DISCORD") || GITHUB_RAW_URL + "/Subnets/IPv4/discord.lst",
     roblox: getenv("SUBNETS_ROBLOX") || GITHUB_RAW_URL + "/Subnets/IPv4/roblox.lst",
-    telegram: getenv("SUBNETS_TELEGRAM") || getenv("SUBNETS_TELERAM") || GITHUB_RAW_URL + "/Subnets/IPv4/telegram.lst",
+    telegram: getenv("SUBNETS_TELERAM") || GITHUB_RAW_URL + "/Subnets/IPv4/telegram.lst",
     cloudflare: getenv("SUBNETS_CLOUDFLARE") || GITHUB_RAW_URL + "/Subnets/IPv4/cloudflare.lst",
     hetzner: getenv("SUBNETS_HETZNER") || GITHUB_RAW_URL + "/Subnets/IPv4/hetzner.lst",
     ovh: getenv("SUBNETS_OVH") || GITHUB_RAW_URL + "/Subnets/IPv4/ovh.lst",
@@ -96,11 +83,27 @@ function singbox_rulesets_module() {
     return singbox_rulesets_module_value;
 }
 
-let as_string = common.as_string;
-let shell_quote = common.shell_quote;
-let read_json_file = common.read_json_file;
-let read_stdin = common.read_stdin;
+function as_string(value) {
+    return value == null ? "" : "" + value;
+}
 
+function read_stdin() {
+    let data = fs.readfile("/dev/stdin");
+    return data == null ? "" : data;
+}
+
+function shell_quote(value) {
+    return "'" + replace(as_string(value), /'/g, "'\\''") + "'";
+}
+
+function command_from_args(args) {
+    let parts = [];
+
+    for (let arg in args)
+        push(parts, shell_quote(arg));
+
+    return join(" ", parts);
+}
 
 function command_env(assignments) {
     let parts = [];
@@ -111,6 +114,18 @@ function command_env(assignments) {
     return join(" ", parts);
 }
 
+function command_output(command) {
+    let pipe = fs.popen(command, "r");
+    if (!pipe)
+        return "";
+
+    let data = pipe.read("all");
+    let status = pipe.close();
+    if (status != 0 || data == null)
+        return "";
+
+    return as_string(data);
+}
 
 function file_md5(path) {
     path = as_string(path);
@@ -121,12 +136,22 @@ function file_md5(path) {
     return length(fields) > 0 ? as_string(fields[0]) : "";
 }
 
+function command_output_from_args(args) {
+    return command_output(command_from_args(args));
+}
 
+function command_status(command) {
+    let status = int(system(command));
+    return status > 255 ? int(status / 256) : status;
+}
 
 function command_success(command) {
     return command_status(command + " >/dev/null 2>&1") == 0;
 }
 
+function command_success_from_args(args) {
+    return system(command_from_args(args) + " >/dev/null 2>&1") == 0;
+}
 
 function now_seconds() {
     return int(clock()[0]);
@@ -141,8 +166,22 @@ function log_message(message, level) {
     command_success_from_args([ "logger", "-t", "tachyon", "[" + level + "] " + as_string(message) ]);
 }
 
+function read_json_file(path) {
+    let data = fs.readfile(path);
+    if (data == null)
+        return null;
 
+    try {
+        return json(data);
+    }
+    catch (e) {
+        return null;
+    }
+}
 
+function write_json(value) {
+    print(sprintf("%J", value), "\n");
+}
 
 function json_text(value) {
     return sprintf("%J", value) + "\n";
@@ -206,6 +245,9 @@ function arg_number(value) {
     return int(value);
 }
 
+function object_or_empty(value) {
+    return type(value) == "object" ? value : {};
+}
 
 function text_first_chars(value, max_chars) {
     value = as_string(value);
@@ -229,8 +271,26 @@ function file_last_nonblank_line_value(path, fallback, max_chars) {
     return text_first_chars(result, max_chars);
 }
 
+function array_or_empty(value) {
+    return type(value) == "array" ? value : [];
+}
 
+function option(section, key, fallback) {
+    if (fallback == null)
+        fallback = "";
 
+    let value = object_or_empty(section)[key];
+    if (value == null)
+        return fallback;
+    if (type(value) == "array")
+        return join(" ", value);
+    return as_string(value);
+}
+
+function bool_option(section, key, fallback) {
+    let value = object_or_empty(section)[key];
+    return value == null ? !!fallback : arg_bool(value);
+}
 
 function section_name(section) {
     return as_string(object_or_empty(section)[".name"]);

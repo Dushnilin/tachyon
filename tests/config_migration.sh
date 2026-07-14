@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env bash
+#!/usr/bin/env bash
 set -eo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -571,7 +571,7 @@ node - "$WORK_DIR/cache-migration/persistent/proxy-subscription-1.json" <<'NODE'
 const fs = require('fs');
 const subscription = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
 const outbound = subscription.outbounds[0];
-if (outbound.server !== 'stable.example' || !outbound.share_link?.startsWith('vless://')) {
+if (outbound.server !== 'stable.example' || !outbound.share_link || !outbound.share_link.startsWith('vless://')) {
   console.error('package migration must preserve stable subscription data and backfill its direct link');
   process.exit(1);
 }

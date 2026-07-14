@@ -1,16 +1,12 @@
 #!/usr/bin/env ucode
 
-let common = require("core.common");
-let as_string = common.as_string;
-let write_json = common.write_json;
-
-
-
-function bool_arg(value) {
-    value = as_string(value);
-    return value == "1" || value == "true";
+function as_string(value) {
+    return value == null ? "" : "" + value;
 }
 
+function write_json(value) {
+    print(sprintf("%J", value), "\n");
+}
 
 function normalize_strategy_whitespace(value) {
     value = replace(as_string(value), /[\t\r\n]/g, " ");

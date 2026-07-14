@@ -22,7 +22,7 @@ include $(INCLUDE_DIR)/package.mk
 define Package/tachyon
 	SECTION:=net
 	CATEGORY:=Network
-	DEPENDS:=+ca-bundle +curl +ucode +ucode-mod-fs +ucode-mod-uci +coreutils-base64 +coreutils-sort +bind-dig +nftables +ip-full
+	DEPENDS:=+ca-bundle +curl +ucode +ucode-mod-fs +ucode-mod-uci +coreutils-base64 +bind-dig +nftables +ip-full
 	CONFLICTS:=https-dns-proxy nextdns luci-app-passwall luci-app-passwall2
 	PROVIDES:=forkop
 	REPLACES:=forkop
@@ -77,6 +77,7 @@ elif [ -f /etc/config/podkop_plus ]; then
 fi
 
 TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate
+/usr/bin/tachyon package_postinst
 endef
 
 define Package/tachyon/conffiles

@@ -15,15 +15,36 @@ const SB_SERVICE_MIXED_INBOUND_TAG = getenv("SB_SERVICE_MIXED_INBOUND_TAG") || "
 const SB_DIRECT_OUTBOUND_TAG = getenv("SB_DIRECT_OUTBOUND_TAG") || "direct-out";
 const SB_BYPASS_OUTBOUND_TAG = getenv("SB_BYPASS_OUTBOUND_TAG") || "bypass-out";
 
-let common = require("core.common");
-let core_ip = require("core.ip");
-let as_string = common.as_string;
-
-function ascii_lower(value) {
-    return lc(as_string(value));
+function as_string(value) {
+    return value == null ? "" : "" + value;
 }
 
+function ascii_lower(value) {
+    let upper = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    let lower = "abcdefghijklmnopqrstuvwxyz";
+    return replace(as_string(value), /[A-Z]/g, function(ch) {
+        return substr(lower, index(upper, ch), 1);
+    });
+}
 
+function read_stdin() {
+    let input = fs.open("/dev/stdin", "r");
+    if (!input)
+        return "";
+    let data = input.read("all");
+    input.close();
+    return data == null ? "" : data;
+}
+
+function read_stdin_json() {
+    let data = read_stdin();
+    try {
+        return json(data);
+    }
+    catch (e) {
+        return null;
+    }
+}
 
 function file_has_cr(path) {
     let data = fs.readfile(as_string(path));
@@ -69,14 +90,58 @@ function file_remove_cr(path) {
     return true;
 }
 
+function write_compact_string_array(values) {
+    print("[");
+    for (let i = 0; i < length(values); i++) {
+        if (i > 0)
+            print(",");
+        print(sprintf("%J", as_string(values[i])));
+    }
+    print("]\n");
+}
 
+function valid_ipv4_octet(value) {
+    value = as_string(value);
+    return match(value, /^(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]?|0)$/) != null;
+}
 
 function valid_ipv4(value) {
-    return core_ip.valid_ipv4(value, true, true);
+    value = as_string(value);
+
+    let trailing_dot = length(value) > 0 && substr(value, length(value) - 1) == ".";
+    if (trailing_dot)
+        value = substr(value, 0, length(value) - 1);
+
+    let parts = split(value, ".");
+    if (length(parts) != 4)
+        return false;
+
+    for (let part in parts)
+        if (!valid_ipv4_octet(part))
+            return false;
+
+    return true;
 }
 
 function valid_ipv4_cidr(value) {
-    return core_ip.valid_ipv4_cidr(value, true);
+    value = as_string(value);
+    let slash = index(value, "/");
+    if (slash < 0)
+        return false;
+
+    let ip = substr(value, 0, slash);
+    let mask = substr(value, slash + 1);
+    if (length(ip) > 0 && substr(ip, length(ip) - 1) == ".")
+        return false;
+
+    if (index(mask, "/") >= 0 || !valid_ipv4(ip))
+        return false;
+
+    if (mask == "" || match(mask, /[^0-9]/) != null)
+        return false;
+
+    let bits = int(mask);
+    return bits >= 0 && bits <= 32;
 }
 
 function valid_domain(value) {
@@ -323,7 +388,7 @@ function text_list_to_lines(value, separator_mode) {
 }
 
 function stdin_lines_to_json_array() {
-    let input = common.read_stdin();
+    let input = read_stdin();
     if (input == "") {
         print("[]\n");
         return;
@@ -332,11 +397,11 @@ function stdin_lines_to_json_array() {
     if (substr(input, length(input) - 1) == "\n")
         input = substr(input, 0, length(input) - 1);
 
-    common.write_compact_string_array(split(input, "\n"));
+    write_compact_string_array(split(input, "\n"));
 }
 
 function network_status_ipv4_address() {
-    let value = common.read_stdin_json();
+    let value = read_stdin_json();
     if (type(value) != "object")
         return;
 
@@ -350,7 +415,7 @@ function network_status_ipv4_address() {
 }
 
 function stdin_first_line_last_field() {
-    let input = common.read_stdin();
+    let input = read_stdin();
     if (input == "")
         return;
 
@@ -370,7 +435,7 @@ function stdin_first_line_last_field() {
 }
 
 function stdin_trim_string() {
-    print(trim(common.read_stdin()), "\n");
+    print(trim(read_stdin()), "\n");
 }
 
 function whitespace_list_contains(list, needle) {
@@ -393,7 +458,7 @@ function download_via_proxy_option_for_purpose(purpose) {
 }
 
 function md5sum_hex_prefix(prefix_length) {
-    let input = common.read_stdin();
+    let input = read_stdin();
     let newline = index(input, "\n");
     let line = newline >= 0 ? substr(input, 0, newline) : input;
     let fields = split(trim(as_string(line)), /[ \t\r\n]+/);
@@ -405,7 +470,7 @@ function md5sum_hex_prefix(prefix_length) {
 }
 
 function md5sum_hwid() {
-    let input = common.read_stdin();
+    let input = read_stdin();
     let newline = index(input, "\n");
     let line = newline >= 0 ? substr(input, 0, newline) : input;
     let fields = split(trim(as_string(line)), /[ \t\r\n]+/);

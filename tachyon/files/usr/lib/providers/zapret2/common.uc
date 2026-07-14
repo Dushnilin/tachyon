@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env ucode
+#!/usr/bin/env ucode
 
 let constants = require("core.constants");
 let validator_module = null;

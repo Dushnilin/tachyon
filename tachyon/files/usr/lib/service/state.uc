@@ -15,33 +15,41 @@ const ZAPRET_DEFAULT_NFQWS_OPT = getenv("ZAPRET_DEFAULT_NFQWS_OPT") || "";
 const ZAPRET2_DEFAULT_NFQWS2_OPT = getenv("ZAPRET2_DEFAULT_NFQWS2_OPT") || "";
 const BYEDPI_DEFAULT_CMD_OPTS = getenv("BYEDPI_DEFAULT_CMD_OPTS") || "";
 
-let common = require("core.common");
-let as_string = common.as_string;
-let shell_quote = common.shell_quote;
-let read_json_file = common.read_json_file;
-let command_success_from_args = common.command_success_from_args;
-let bool_option = common.bool_option;
-let command_output_from_args = common.command_output_from_args;
-let command_from_args = common.command_from_args;
-let command_trimmed_output_from_args = common.command_trimmed_output_from_args;
-let object_or_empty = common.object_or_empty;
-let read_stdin = common.read_stdin;
-let read_stdin_json = common.read_stdin_json;
-let option = common.option;
-
-function list_option(section, key, fallback) {
-    let value = object_or_empty(section)[key];
-    if (type(value) == "array")
-        return value;
-    value = trim(as_string(value));
-    if (value != "")
-        return split(value, /[ \t\r\n]+/);
-    fallback = as_string(fallback);
-    return fallback == "" ? [] : [ fallback ];
+function as_string(value) {
+    return value == null ? "" : "" + value;
 }
 
+function read_stdin() {
+    let input = fs.open("/dev/stdin", "r");
+    if (!input)
+        return "";
+    let data = input.read("all");
+    input.close();
+    return data == null ? "" : data;
+}
 
+function read_stdin_json() {
+    let data = read_stdin();
+    try {
+        return json(data);
+    }
+    catch (e) {
+        return null;
+    }
+}
 
+function read_json_file(path) {
+    let data = fs.readfile(path);
+    if (data == null)
+        return null;
+
+    try {
+        return json(data);
+    }
+    catch (e) {
+        return null;
+    }
+}
 
 function write_text_file(path, text) {
     let result = fs.writefile(path, as_string(text));
@@ -60,9 +68,39 @@ function unlink_file(path) {
     }
 }
 
+function shell_quote(value) {
+    return "'" + replace(as_string(value), /'/g, "'\\''") + "'";
+}
 
+function command_from_args(args) {
+    let parts = [];
 
+    for (let arg in args)
+        push(parts, shell_quote(arg));
 
+    return join(" ", parts);
+}
+
+function command_output_from_args(args) {
+    let pipe = fs.popen(command_from_args(args), "r");
+    if (!pipe)
+        return "";
+
+    let data = pipe.read("all");
+    let status = pipe.close();
+    if (status != 0 || data == null)
+        return "";
+
+    return as_string(data);
+}
+
+function command_trimmed_output_from_args(args) {
+    return replace(command_output_from_args(args), /[\r\n]+$/g, "");
+}
+
+function command_success_from_args(args) {
+    return system(command_from_args(args) + " >/dev/null 2>&1") == 0;
+}
 
 function uci_get(path) {
     return uci_core.get(path);
@@ -72,6 +110,9 @@ function uci_exists(path) {
     return uci_core.exists(path);
 }
 
+function object_or_empty(value) {
+    return type(value) == "object" ? value : {};
+}
 
 function file_first_line(path) {
     let data = fs.readfile(path);
@@ -165,11 +206,6 @@ function current_epoch() {
     return numeric_text(value) ? value : "0";
 }
 
-function config_file_hash(path) {
-    let hash_line = trim(command_output_from_args([ "md5sum", as_string(path) ]));
-    return length(hash_line) >= 32 ? substr(hash_line, 0, 32) : "";
-}
-
 function current_year() {
     let value = command_trimmed_output_from_args([ "date", "+%Y" ]);
     return numeric_text(value) ? int(value) : null;
@@ -224,7 +260,7 @@ function run_pending_reload_if_requested(path, init_script) {
         return;
 
     command_success_from_args([ "logger", "-t", "tachyon", "[info] Applying pending Tachyon reload" ]);
-    system(shell_quote(init_script) + " reload pending </dev/null >/dev/null 2>&1 1000<&- &");
+    system(shell_quote(init_script) + " reload pending >/dev/null 2>&1 1000>&- &");
 }
 
 function first_line_value(path) {
@@ -419,15 +455,8 @@ function hup_sing_box_runtime() {
         exit(1);
 }
 
-function process_age_seconds(pid) {
-    pid = as_string(pid);
-    if (match(pid, /^[0-9]+$/) == null)
-        return null;
-
-    let stat = fs.readfile("/proc/" + pid + "/stat");
-    if (stat == null)
-        return null;
-
+function process_start_ticks(stat) {
+    stat = as_string(stat);
     let marker = index(stat, ") ");
     if (marker < 0)
         return null;
@@ -440,15 +469,34 @@ function process_age_seconds(pid) {
     if (match(start_ticks, /^[0-9]+$/) == null)
         return null;
 
-    let uptime = fs.readfile("/proc/uptime");
-    if (uptime == null)
+    return int(start_ticks);
+}
+
+function process_age_seconds_from_ticks(start_ticks, current_ticks) {
+    start_ticks = as_string(start_ticks);
+    current_ticks = as_string(current_ticks);
+    if (match(start_ticks, /^[0-9]+$/) == null || match(current_ticks, /^[0-9]+$/) == null)
         return null;
 
-    let uptime_seconds = split(trim(as_string(uptime)), /[ \t\r\n.]+/)[0];
-    if (match(uptime_seconds, /^[0-9]+$/) == null)
+    start_ticks = int(start_ticks);
+    current_ticks = int(current_ticks);
+    if (current_ticks < start_ticks)
         return null;
 
-    return int(uptime_seconds) - int(int(start_ticks) / 100);
+    return int((current_ticks - start_ticks) / 100);
+}
+
+function process_age_seconds(pid) {
+    pid = as_string(pid);
+    if (match(pid, /^[0-9]+$/) == null)
+        return null;
+
+    let start_ticks = process_start_ticks(fs.readfile("/proc/" + pid + "/stat"));
+    if (start_ticks == null)
+        return null;
+
+    let current_ticks = process_start_ticks(command_output_from_args([ "cat", "/proc/self/stat" ]));
+    return process_age_seconds_from_ticks(start_ticks, current_ticks);
 }
 
 function sing_box_pid_replaced(previous_pid, current_pid, current_is_sing_box) {
@@ -482,7 +530,21 @@ function sing_box_reload_previous_pid(previous_pid, config_hash_before, config_h
     return int(previous_pid);
 }
 
-function reload_sing_box_runtime(previous_pid, config_hash_before, config_hash_after) {
+function arg_bool(value) {
+    value = lc(as_string(value));
+    return value == "1" || value == "true" || value == "yes" || value == "on";
+}
+
+function sing_box_runtime_reload_needed(config_hash_before, config_hash_after, force) {
+    return arg_bool(force) || as_string(config_hash_before) != as_string(config_hash_after);
+}
+
+function reload_sing_box_runtime(previous_pid, config_hash_before, config_hash_after, force) {
+    if (!sing_box_runtime_reload_needed(config_hash_before, config_hash_after, force)) {
+        command_success_from_args([ "logger", "-t", "tachyon", "[info] sing-box reload skipped: configuration is unchanged" ]);
+        return;
+    }
+
     previous_pid = sing_box_reload_previous_pid(previous_pid, config_hash_before, config_hash_after);
     command_success_from_args([ "logger", "-t", "tachyon", "[info] Reloading sing-box runtime" ]);
     if (!command_success_from_args([ "/etc/init.d/sing-box", "reload" ])) {
@@ -536,7 +598,7 @@ function wait_tachyon_stable_start(rt_table, nft_table, mark, min_age, timeout) 
         timeout--;
     }
 
-    return false;
+    return tachyon_stably_running(rt_table, nft_table, mark, min_age);
 }
 
 function whitespace_fields(value) {
@@ -548,13 +610,34 @@ function whitespace_fields(value) {
     return result;
 }
 
-function arg_bool(value) {
-    value = lc(as_string(value));
-    return value == "1" || value == "true" || value == "yes" || value == "on";
+function option(section, key, fallback) {
+    if (fallback == null)
+        fallback = "";
+
+    let value = object_or_empty(section)[key];
+    if (value == null)
+        return fallback;
+    if (type(value) == "array")
+        return join(" ", value);
+    return as_string(value);
 }
 
+function list_option(section, key, fallback) {
+    let value = object_or_empty(section)[key];
+    if (type(value) == "array")
+        return value;
 
+    value = trim(as_string(value));
+    if (value != "")
+        return split(value, /[ \t\r\n]+/);
 
+    fallback = as_string(fallback);
+    return fallback == "" ? [] : [ fallback ];
+}
+
+function bool_option(section, key, fallback) {
+    return arg_bool(option(section, key, fallback ? "1" : "0"));
+}
 
 function bool_value(value) {
     return arg_bool(value) ? "1" : "0";
@@ -668,23 +751,9 @@ function download_via_proxy_option_for_purpose(purpose) {
     return "";
 }
 
-function download_via_proxy_section_option_for_purpose(purpose) {
-    purpose = as_string(purpose || "lists");
-    if (purpose == "lists")
-        return "download_lists_via_proxy_section";
-    if (purpose == "components")
-        return "download_components_via_proxy_section";
-    return "";
-}
-
 function download_via_proxy_enabled(settings, purpose) {
     let enabled_option = download_via_proxy_option_for_purpose(purpose);
     return enabled_option != "" && bool_option(settings, enabled_option, false);
-}
-
-function download_via_proxy_any_enabled(settings) {
-    return download_via_proxy_enabled(settings, "lists") ||
-        download_via_proxy_enabled(settings, "components");
 }
 
 function signature_add_value(body, key, value) {
@@ -892,6 +961,29 @@ function interfaces_signature(section) {
     return sprintf("%J", result);
 }
 
+function dashboard_filter_signature(section) {
+    return sprintf("%J", {
+        filter_mode: connections.dashboard_filter_mode(section),
+        detect_server_country: connections.dashboard_detect_server_country(section),
+        include_countries: connections.dashboard_include_countries(section),
+        include_outbounds: connections.dashboard_include_outbounds(section),
+        include_regex: connections.dashboard_include_regex(section),
+        include_proxy_parameters: connections.dashboard_include_proxy_parameters(section) ? "1" : "0",
+        include_protocols: connections.dashboard_include_protocols(section),
+        include_transports: connections.dashboard_include_transports(section),
+        include_securities: connections.dashboard_include_securities(section),
+        include_groups: connections.dashboard_include_groups(section),
+        exclude_countries: connections.dashboard_exclude_countries(section),
+        exclude_outbounds: connections.dashboard_exclude_outbounds(section),
+        exclude_regex: connections.dashboard_exclude_regex(section),
+        exclude_proxy_parameters: connections.dashboard_exclude_proxy_parameters(section) ? "1" : "0",
+        exclude_protocols: connections.dashboard_exclude_protocols(section),
+        exclude_transports: connections.dashboard_exclude_transports(section),
+        exclude_securities: connections.dashboard_exclude_securities(section),
+        exclude_groups: connections.dashboard_exclude_groups(section)
+    });
+}
+
 function urltests_signature(section) {
     let result = [];
     for (let entry in connections.urltests(section)) {
@@ -904,7 +996,6 @@ function urltests_signature(section) {
             idle_timeout: connections.urltest_idle_timeout(section, entry),
             interrupt_exist_connections: connections.urltest_interrupt_exist_connections(section, entry) ? "1" : "0",
             pin_dashboard: connections.urltest_pin_dashboard(section, entry) ? "1" : "0",
-            hide_added_outbounds: connections.urltest_hide_added_outbounds(section, entry) ? "1" : "0",
             filter_mode: connections.urltest_filter_mode(section, entry),
             detect_server_country: connections.urltest_detect_server_country(section, entry),
             include_countries: connections.urltest_include_countries(section, entry),
@@ -951,7 +1042,6 @@ function priority_groups_signature(section) {
             fastest_check_interval: connections.priority_group_fastest_check_interval(section, group_id),
             interrupt_exist_connections: connections.priority_group_interrupt_exist_connections(section, group_id) ? "1" : "0",
             pin_dashboard: connections.priority_group_pin_dashboard(section, group_id) ? "1" : "0",
-            hide_added_outbounds: connections.priority_group_hide_added_outbounds(section, group_id) ? "1" : "0",
             levels
         });
     }
@@ -1138,6 +1228,7 @@ function append_sing_box_rule_signature_body(body, section, sections) {
         body = signature_add_value(body, prefix + ".legacy_outbound_json", option(section, "outbound_json", ""));
         body = signature_add_value(body, prefix + ".urltests", urltests_signature(section));
         body = signature_add_value(body, prefix + ".priority_groups", priority_groups_signature(section));
+        body = signature_add_value(body, prefix + ".dashboard_filter", dashboard_filter_signature(section));
         body = signature_add_value(body, prefix + ".urltest_enabled", bool_option_value(section, "urltest_enabled", false));
         body = signature_add_value(body, prefix + ".detect_server_country", normalize_detect_server_country_method(option(section, "detect_server_country", "flag_emoji")));
         body = signature_add_value(body, prefix + ".urltest_check_interval", section_urltest_check_interval(section));
@@ -1695,7 +1786,7 @@ else if (mode == "acquire-runtime-dir-lock-wait")
 else if (mode == "release-runtime-dir-lock")
     release_runtime_dir_lock(ARGV[1]);
 else if (mode == "reload-sing-box-runtime")
-    reload_sing_box_runtime(ARGV[1], ARGV[2], ARGV[3]);
+    reload_sing_box_runtime(ARGV[1], ARGV[2], ARGV[3], ARGV[4]);
 else if (mode == "hup-sing-box-runtime")
     hup_sing_box_runtime();
 else if (mode == "clear-reload-state")
@@ -1732,10 +1823,18 @@ else if (mode == "sing-box-service-running")
     exit(sing_box_service_running() ? 0 : 1);
 else if (mode == "sing-box-service-stable")
     exit(sing_box_service_stable(ARGV[1]) ? 0 : 1);
+else if (mode == "process-age-seconds-fixture") {
+    let age = process_age_seconds_from_ticks(ARGV[1], ARGV[2]);
+    if (age == null)
+        exit(1);
+    print(age, "\n");
+}
 else if (mode == "sing-box-pid-replaced-fixture")
     exit(sing_box_pid_replaced(ARGV[1], ARGV[2], ARGV[3]) ? 0 : 1);
 else if (mode == "sing-box-reload-previous-pid-fixture")
     print(sing_box_reload_previous_pid(ARGV[1], ARGV[2], ARGV[3]), "\n");
+else if (mode == "sing-box-runtime-reload-needed-fixture")
+    exit(sing_box_runtime_reload_needed(ARGV[1], ARGV[2], ARGV[3]) ? 0 : 1);
 else if (mode == "tachyon-running")
     exit(tachyon_running(ARGV[1], ARGV[2], ARGV[3]) ? 0 : 1);
 else if (mode == "tachyon-stably-running")

@@ -1,28 +1,15 @@
-<<<<<<<< HEAD:luci-app-tachyon/po/ru/tachyon.po
 # RU translations for TACHYON package.
 # Copyright (C) 2026 THE TACHYON COPYRIGHT HOLDER
 # This file is distributed under the same license as the TACHYON package.
 # Dushnilin, 2026.
-========
-﻿# RU translations for TACHYON package.
-# Copyright (C) 2026 THE TACHYON COPYRIGHT HOLDER
-# This file is distributed under the same license as the TACHYON package.
-# ushan0v, 2026.
->>>>>>>> temp-upstream-rebrand:fe-app-tachyon/locales/tachyon.ru.po
 #
 msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-<<<<<<<< HEAD:luci-app-tachyon/po/ru/tachyon.po
-"POT-Creation-Date: 2026-07-13 23:43+0300\n"
-"PO-Revision-Date: 2026-07-13 23:43+0300\n"
+"POT-Creation-Date: 2026-07-14 08:07+0300\n"
+"PO-Revision-Date: 2026-07-14 08:07+0300\n"
 "Last-Translator: Dushnilin\n"
-========
-"POT-Creation-Date: 2026-07-13 01:05+0300\n"
-"PO-Revision-Date: 2026-07-13 01:05+0300\n"
-"Last-Translator: ushan0v\n"
->>>>>>>> temp-upstream-rebrand:fe-app-tachyon/locales/tachyon.ru.po
 "Language-Team: none\n"
 "Language: ru\n"
 "MIME-Version: 1.0\n"
@@ -756,66 +743,6 @@ msgstr "Исправьте подсвеченные поля и сохранит
 msgid "Forced device routing"
 msgstr "Принудительная маршрутизация устройств"
 
-<<<<<<<< HEAD:luci-app-tachyon/po/ru/tachyon.po
-========
-msgid "Tachyon Error"
-msgstr "Ошибка Tachyon"
-
-msgid "Tachyon manages ciadpi pid files itself, so pidfile options are not allowed here."
-msgstr "Tachyon сам управляет pid-файлами ciadpi, поэтому параметры pidfile здесь запрещены."
-
-msgid "Tachyon manages the ciadpi process lifecycle itself, so daemon mode is not allowed here."
-msgstr "Tachyon сам управляет жизненным циклом ciadpi, поэтому режим daemon здесь запрещён."
-
-msgid "Tachyon manages the nfqws process lifecycle itself, so daemon mode is not allowed here."
-msgstr "Tachyon сам управляет жизненным циклом nfqws, поэтому режим daemon здесь запрещён."
-
-msgid "Tachyon manages the nfqws2 process lifecycle itself, so daemon mode is not allowed here."
-msgstr "Tachyon сам управляет жизненным циклом nfqws2, поэтому режим daemon здесь запрещён."
-
-msgid "Tachyon service is stopped. Start the service to display connections."
-msgstr "Служба Tachyon остановлена. Запустите сервис для отображения подключений."
-
-msgid "Tachyon service is stopped. Start the service to display the dashboard."
-msgstr "Служба Tachyon остановлена. Запустите сервис для отображения дашборда."
-
-msgid "Tachyon Settings"
-msgstr "Настройки Tachyon"
-
-msgid "Tachyon will not modify your DHCP configuration"
-msgstr "Tachyon не будет изменять вашу конфигурацию DHCP"
-
-msgid "Tachyon-managed ciadpi runtime has restarted"
-msgstr "ciadpi Tachyon перезапускался"
-
-msgid "Tachyon-managed ciadpi runtime is not ready"
-msgstr "ciadpi Tachyon не готов"
-
-msgid "Tachyon-managed ciadpi runtime is not running"
-msgstr "ciadpi Tachyon не запущен"
-
-msgid "Tachyon-managed ciadpi runtime is ready"
-msgstr "ciadpi Tachyon готов"
-
-msgid "Tachyon-managed nfqws runtime is not ready"
-msgstr "NFQWS Tachyon не готов"
-
-msgid "Tachyon-managed nfqws runtime is not running"
-msgstr "NFQWS Tachyon не запущен"
-
-msgid "Tachyon-managed nfqws runtime is ready"
-msgstr "NFQWS Tachyon готов"
-
-msgid "Tachyon-managed nfqws2 runtime is not ready"
-msgstr "NFQWS2 Tachyon не готов"
-
-msgid "Tachyon-managed nfqws2 runtime is not running"
-msgstr "NFQWS2 Tachyon не запущен"
-
-msgid "Tachyon-managed nfqws2 runtime is ready"
-msgstr "NFQWS2 Tachyon готов"
-
->>>>>>>> temp-upstream-rebrand:fe-app-tachyon/locales/tachyon.ru.po
 msgid "Fronting IP"
 msgstr "IP фронтинга"
 
@@ -990,6 +917,9 @@ msgstr "Неверный префикс CIDR"
 msgid "Invalid DNS server format. Examples: 8.8.8.8 or dns.example.com or dns.example.com/nicedns for DoH"
 msgstr "Неверный формат DNS-сервера. Примеры: 8.8.8.8, dns.example.com или dns.example.com/nicedns для DoH"
 
+msgid "Invalid DNS server port"
+msgstr ""
+
 msgid "Invalid domain address"
 msgstr "Неверный домен"
 
@@ -998,9 +928,6 @@ msgstr "Неверный формат. Используйте IP-адрес ил
 
 msgid "Invalid HTTP proxy URL: invalid host and port"
 msgstr "Неверный URL HTTP proxy: неверный хост и порт"
-
-msgid "Invalid HTTP proxy URL: invalid host format"
-msgstr "Неверный URL HTTP proxy: неверный формат хоста"
 
 msgid "Invalid HTTP proxy URL: invalid port number"
 msgstr "Неверный URL HTTP proxy: неверный номер порта"
@@ -1124,9 +1051,6 @@ msgstr "Неверный URL Shadowsocks: ошибка разбора"
 
 msgid "Invalid SOCKS URL: invalid host and port"
 msgstr "Некорректный SOCKS URL: некорректные хост и порт"
-
-msgid "Invalid SOCKS URL: invalid host format"
-msgstr "Неверный URL SOCKS: неверный формат хоста"
 
 msgid "Invalid SOCKS URL: invalid port number"
 msgstr "Неверный URL SOCKS: неверный номер порта"
@@ -1986,9 +1910,6 @@ msgstr "Интервал обновления подписки"
 msgid "Subscription URL"
 msgstr "URL подписки"
 
-msgid "Subscription URL cannot be empty"
-msgstr "URL подписки не может быть пустым"
-
 msgid "Subscription URL settings"
 msgstr "Настройки URL подписки"
 
@@ -2223,18 +2144,6 @@ msgstr "Таймаут недоступности"
 msgid "Unexpected ByeDPI strategy argument: %s"
 msgstr "Неожиданный аргумент стратегии ByeDPI: %s"
 
-<<<<<<<< HEAD:luci-app-tachyon/po/ru/tachyon.po
-========
-msgid "Unexpected Tachyon-managed ciadpi runtime is running"
-msgstr "Обнаружен лишний ciadpi Tachyon"
-
-msgid "Unexpected Tachyon-managed nfqws runtime is running"
-msgstr "Обнаружен лишний NFQWS Tachyon"
-
-msgid "Unexpected Tachyon-managed nfqws2 runtime is running"
-msgstr "Обнаружен лишний NFQWS2 Tachyon"
-
->>>>>>>> temp-upstream-rebrand:fe-app-tachyon/locales/tachyon.ru.po
 msgid "Unexpected standalone token. Use explicit flags such as --name or --name=value."
 msgstr "Неожиданный отдельный токен. Используйте явные флаги вида --имя или --имя=значение."
 

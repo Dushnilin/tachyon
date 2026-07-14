@@ -5,12 +5,18 @@ let uci_core = require("core.uci");
 
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
 
-let common = require("core.common");
-let as_string = common.as_string;
-let read_stdin = common.read_stdin;
+function as_string(value) {
+    return value == null ? "" : "" + value;
+}
 
-
-
+function read_stdin() {
+    let input = fs.open("/dev/stdin", "r");
+    if (!input)
+        return "";
+    let data = input.read("all");
+    input.close();
+    return data == null ? "" : data;
+}
 
 function hex_digit_value(value) {
     let pos = index("0123456789abcdef", lc(as_string(value)));

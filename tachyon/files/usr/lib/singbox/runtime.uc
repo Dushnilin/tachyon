@@ -17,9 +17,10 @@ const SUBSCRIPTION_METADATA_DIR = getenv("TACHYON_SUBSCRIPTION_METADATA_DIR") ||
 const OUTBOUND_METADATA_DIR = getenv("TACHYON_OUTBOUND_METADATA_DIR") || RUNTIME_STATE_DIR + "/outbound-metadata";
 const SECTION_CACHE_DIR = getenv("TACHYON_SECTION_CACHE_DIR") || RUNTIME_STATE_DIR + "/section-cache";
 const RUNTIME_CACHE_FORMAT_FILE = getenv("TACHYON_RUNTIME_CACHE_FORMAT_FILE") || RUNTIME_STATE_DIR + "/cache-format";
-const RUNTIME_CACHE_FORMAT = getenv("TACHYON_RUNTIME_CACHE_FORMAT") || "7";
+const RUNTIME_CACHE_FORMAT = getenv("TACHYON_RUNTIME_CACHE_FORMAT") || "8";
 const PERSISTENT_SUBSCRIPTION_CACHE_DIR = getenv("TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR") || "/etc/tachyon/subscription-cache";
 const PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE = getenv("TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE") || PERSISTENT_SUBSCRIPTION_CACHE_DIR + "/cache-format";
+const PERSISTENT_SUBSCRIPTION_CACHE_FORMAT = getenv("TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT") || "7";
 const PENDING_RELOAD_FILE = getenv("TACHYON_PENDING_RELOAD_FILE") || RUNTIME_STATE_DIR + "/reload.pending";
 const SERVICE_INIT = getenv("TACHYON_SERVICE_INIT") || "/etc/init.d/tachyon";
 const NFT_TABLE_NAME = getenv("NFT_TABLE_NAME") || "TachyonTable";
@@ -38,21 +39,20 @@ const SB_VARIANT_STATE_FILE = getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/s
 const SB_VERSION_STATE_FILE = getenv("SB_VERSION_STATE_FILE") || "/etc/tachyon/sing-box-version";
 const SB_MANAGED_SERVICE_MARKER = getenv("SB_MANAGED_SERVICE_MARKER") || "Tachyon managed sing-box service for binary variants";
 
-let as_string = common.as_string;
-let shell_quote = common.shell_quote;
+function as_string(value) {
+    return value == null ? "" : "" + value;
+}
 
-let option = common.option;
-let command_status = common.command_status;
-let command_success_from_args = common.command_success_from_args;
-let bool_option = common.bool_option;
-let command_output_from_args = common.command_output_from_args;
-let command_exists = common.command_exists;
-let command_from_args = common.command_from_args;
-let object_or_empty = common.object_or_empty;
-let array_or_empty = common.array_or_empty;
-let command_output = common.command_output;
+function shell_quote(value) {
+    return "'" + replace(as_string(value), /'/g, "'\\''") + "'";
+}
 
-
+function command_from_args(args) {
+    let parts = [];
+    for (let arg in args)
+        push(parts, shell_quote(arg));
+    return join(" ", parts);
+}
 
 function command_env(assignments) {
     let parts = [];
@@ -61,14 +61,34 @@ function command_env(assignments) {
     return join(" ", parts);
 }
 
+function command_output(command) {
+    let pipe = fs.popen(command, "r");
+    if (!pipe)
+        return "";
 
-
-
-function command_success(command) {
-    return command_status(command + " >/dev/null 2>&1") == 0;
+    let data = pipe.read("all");
+    let status = pipe.close();
+    if (status != 0 || data == null)
+        return "";
+    return as_string(data);
 }
 
+function command_output_from_args(args) {
+    return command_output(command_from_args(args));
+}
 
+function command_status(command) {
+    let status = int(system(command));
+    return status > 255 ? int(status / 256) : status;
+}
+
+function command_success_from_args(args) {
+    return system(command_from_args(args) + " >/dev/null 2>&1") == 0;
+}
+
+function command_exists(name) {
+    return command_success_from_args([ "command", "-v", name ]);
+}
 
 function write_file(path, value) {
     return fs.writefile(as_string(path), as_string(value)) != null;
@@ -96,14 +116,35 @@ function file_first_line(path) {
     return trim(newline >= 0 ? substr(data, 0, newline) : data);
 }
 
+function object_or_empty(value) {
+    return type(value) == "object" ? value : {};
+}
 
+function array_or_empty(value) {
+    return type(value) == "array" ? value : [];
+}
 
+function option(section, key, fallback) {
+    if (fallback == null)
+        fallback = "";
+
+    let value = object_or_empty(section)[key];
+    if (value == null)
+        return fallback;
+    if (type(value) == "array")
+        return join(" ", value);
+    return as_string(value);
+}
 
 function arg_bool(value) {
     value = lc(as_string(value));
     return value == "true" || value == "1" || value == "yes" || value == "on";
 }
 
+function bool_option(section, key, fallback) {
+    let value = object_or_empty(section)[key];
+    return value == null ? !!fallback : arg_bool(value);
+}
 
 function whitespace_items(value) {
     let result = [];
@@ -546,7 +587,7 @@ function service_listen_address_value(settings) {
             return address;
     }
 
-    log_message("Failed to determine the listening IP address. Please open an issue to report this problem: https://github.com/Dushnilin/tachyon/issues", "error");
+    log_message("Failed to determine the listening IP address. Please open an issue to report this problem: https://github.com/ushan0v/tachyon/issues", "error");
     return "";
 }
 
@@ -567,6 +608,7 @@ function subscription_cache_env() {
         TACHYON_RUNTIME_CACHE_FORMAT: RUNTIME_CACHE_FORMAT,
         TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR: PERSISTENT_SUBSCRIPTION_CACHE_DIR,
         TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE: PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE,
+        TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT: PERSISTENT_SUBSCRIPTION_CACHE_FORMAT,
         TACHYON_PENDING_RELOAD_FILE: PENDING_RELOAD_FILE,
         TACHYON_SERVICE_INIT: SERVICE_INIT
     };

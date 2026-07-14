@@ -4,15 +4,13 @@ let fs = require("fs");
 let constants = require("core.constants");
 let uci_core = require("core.uci");
 
-const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || constants.TACHYON_CONFIG_NAME || "tachyon";
 const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
 const BIN_PATH = getenv("TACHYON_BIN") || constants.TACHYON_BIN || "/usr/bin/tachyon";
 const SERVICE_INIT = getenv("TACHYON_SERVICE_INIT") || constants.TACHYON_SERVICE_INIT || "/etc/init.d/tachyon";
 const TACHYON_VERSION = getenv("TACHYON_VERSION") || constants.TACHYON_VERSION || "";
-const TACHYON_RELEASE_REPO = getenv("TACHYON_RELEASE_REPO") || constants.TACHYON_RELEASE_REPO || "Dushnilin/tachyon";
+const TACHYON_RELEASE_REPO = getenv("TACHYON_RELEASE_REPO") || constants.TACHYON_RELEASE_REPO || "ushan0v/tachyon";
 const RUNTIME_STATE_DIR = getenv("TACHYON_RUNTIME_STATE_DIR") || "/var/run/tachyon";
 const SYSTEM_INFO_CACHE_FILE = getenv("TACHYON_SYSTEM_INFO_CACHE_FILE") || RUNTIME_STATE_DIR + "/system-info.json";
-const COMPONENT_JOB_DIR = getenv("UPDATES_JOB_DIR") || getenv("TACHYON_UI_COMPONENT_ACTION_DIR") || RUNTIME_STATE_DIR + "/component-actions";
 const COMPONENT_LOCK_DIR = getenv("UPDATES_LOCK_DIR") || RUNTIME_STATE_DIR + "/component-action.lock";
 const TMP_STALE_TTL_MINUTES = getenv("UPDATES_TMP_STALE_TTL_MINUTES") || "30";
 const TMP_FILE_STALE_TTL_MINUTES = getenv("UPDATES_TMP_FILE_STALE_TTL_MINUTES") || "10";
@@ -23,24 +21,20 @@ let lock_held = false;
 let tachyon_was_running = false;
 let tachyon_stopped_for_sing_box_change = false;
 
-let common = require("core.common");
-let as_string = common.as_string;
-let shell_quote = common.shell_quote;
-
-let command_status = common.command_status;
-let command_success_from_args = common.command_success_from_args;
-let command_output_from_args = common.command_output_from_args;
-let command_exists = common.command_exists;
-let command_from_args = common.command_from_args;
-let write_json = common.write_json;
-let command_output = common.command_output;
-
-
-function arg_bool(value) {
-    value = lc(as_string(value));
-    return value == "1" || value == "true" || value == "yes" || value == "on";
+function as_string(value) {
+    return value == null ? "" : "" + value;
 }
 
+function shell_quote(value) {
+    return "'" + replace(as_string(value), /'/g, "'\\''") + "'";
+}
+
+function command_from_args(args) {
+    let parts = [];
+    for (let arg in args)
+        push(parts, shell_quote(arg));
+    return join(" ", parts);
+}
 
 function command_env(assignments) {
     let parts = [];
@@ -49,15 +43,42 @@ function command_env(assignments) {
     return join(" ", parts);
 }
 
+function command_status(command) {
+    let status = int(system(command));
+    return status > 255 ? int(status / 256) : status;
+}
 
 function command_success(command) {
     return command_status("(" + command + ") >/dev/null 2>&1") == 0;
 }
 
+function command_success_from_args(args) {
+    return command_success(command_from_args(args));
+}
 
+function command_output(command) {
+    let pipe = fs.popen(command, "r");
+    if (!pipe)
+        return "";
 
+    let data = pipe.read("all");
+    let status = pipe.close();
+    if (status != 0 || data == null)
+        return "";
+    return as_string(data);
+}
 
+function command_output_from_args(args) {
+    return command_output(command_from_args(args));
+}
 
+function command_exists(name) {
+    return command_success_from_args([ "command", "-v", name ]);
+}
+
+function write_json(value) {
+    print(sprintf("%J", value), "\n");
+}
 
 function write_file(path, value) {
     return fs.writefile(as_string(path), as_string(value)) != null;
@@ -92,17 +113,6 @@ function file_nonempty(path) {
 function path_basename(path) {
     let parts = split(as_string(path), "/");
     return length(parts) > 0 ? as_string(parts[length(parts) - 1]) : "";
-}
-
-function parent_dir(path) {
-    path = as_string(path);
-    let slash = rindex(path, "/");
-    return slash >= 0 ? substr(path, 0, slash) : "";
-}
-
-function ensure_parent_dir(path) {
-    let dir = parent_dir(path);
-    return dir == "" || dir == "." || ensure_dir(dir);
 }
 
 function now_seconds() {
@@ -381,15 +391,6 @@ function pkg_install_files_command(files) {
 
 function pkg_install_files(files) {
     return command_success(pkg_install_files_command(files));
-}
-
-function pkg_remove_name(package_name) {
-    package_name = as_string(package_name);
-    if (!pkg_is_installed(package_name))
-        return true;
-    if (is_apk())
-        return command_success(command_from_args([ "apk", "del", package_name ]) + " </dev/null");
-    return command_success(command_from_args([ "opkg", "remove", "--force-depends", package_name ]) + " </dev/null");
 }
 
 function pkg_remove_sing_box_conflict(package_name) {
@@ -978,11 +979,8 @@ function install_zapret_like(component, action, runtime_module, resolve_fn, labe
     if (pkg == null)
         action_fail(component, action, "Failed to download " + label + " package", current_version, release.version, "", release.release_url || "");
 
-    if (!run_logged("Installing " + label + " package " + pkg.name, pkg_install_files_command([ pkg.file ]))) {
-        if (!pkg_is_installed(pkg.name)) {
-            action_fail(component, action, "Failed to install " + label + " package", current_version, pkg.version, "", release.release_url || "");
-        }
-    }
+    if (!run_logged("Installing " + label + " package " + pkg.name, pkg_install_files_command([ pkg.file ])))
+        action_fail(component, action, "Failed to install " + label + " package", current_version, pkg.version, "", release.release_url || "");
 
     disable_standalone_service(component);
     restart_tachyon_after_successful_change();
@@ -1026,11 +1024,8 @@ function install_byedpi(action) {
     let pkg = download_byedpi_package(release);
     if (pkg == null)
         action_fail("byedpi", action, "Failed to download ByeDPI package");
-    if (!run_logged("Installing ByeDPI package " + pkg.name, pkg_install_files_command([ pkg.file ]))) {
-        if (!pkg_is_installed("byedpi")) {
-            action_fail("byedpi", action, "Failed to install ByeDPI package", current_version, pkg.version);
-        }
-    }
+    if (!run_logged("Installing ByeDPI package " + pkg.name, pkg_install_files_command([ pkg.file ])))
+        action_fail("byedpi", action, "Failed to install ByeDPI package", current_version, pkg.version);
 
     disable_standalone_service("byedpi");
     restart_tachyon_after_successful_change();
@@ -1439,10 +1434,8 @@ function install_sing_box_extended_package(action) {
     }
 
     if (!run_logged("Installing sing-box-extended package " + release.asset_name, pkg_install_files_command([ package_file ]))) {
-        if (!pkg_is_installed("sing-box-extended")) {
-            restore_sing_box_after_failed_extended_package_install(current_variant, backup_binary, backup_cronet, previous_marker, previous_version_state, package_file, cronet_touched);
-            action_fail("sing_box", action, "Failed to install sing-box-extended package", current_version, latest_version);
-        }
+        restore_sing_box_after_failed_extended_package_install(current_variant, backup_binary, backup_cronet, previous_marker, previous_version_state, package_file, cronet_touched);
+        action_fail("sing_box", action, "Failed to install sing-box-extended package", current_version, latest_version);
     }
     remove_file(package_file);
 
@@ -1792,21 +1785,12 @@ function install_tachyon() {
         (release.i18n_url != "" && !download_with_retry(release.i18n_url, i18n_file, release.i18n_name)))
         action_fail("tachyon", "install", "Failed to download Tachyon release packages", TACHYON_VERSION, latest_version);
 
-    if (!run_logged("Installing LuCI app package " + release.app_name, pkg_install_files_command([ app_file ]))) {
-        if (installed_package_version("luci-app-tachyon") != latest_version) {
-            action_fail("tachyon", "install", "Failed to install LuCI app package", TACHYON_VERSION, latest_version);
-        }
-    }
-    if (i18n_file != "" && !run_logged("Installing LuCI Russian i18n package " + release.i18n_name, pkg_install_files_command([ i18n_file ]))) {
-        if (installed_package_version("luci-i18n-tachyon-ru") != latest_version) {
-            action_fail("tachyon", "install", "Failed to install LuCI Russian i18n package", TACHYON_VERSION, latest_version);
-        }
-    }
-    if (!run_logged("Installing Tachyon package " + release.backend_name, pkg_install_files_command([ backend_file ]))) {
-        if (installed_package_version("tachyon") != latest_version) {
-            action_fail("tachyon", "install", "Failed to install Tachyon package", TACHYON_VERSION, latest_version);
-        }
-    }
+    if (!run_logged("Installing LuCI app package " + release.app_name, pkg_install_files_command([ app_file ])))
+        action_fail("tachyon", "install", "Failed to install LuCI app package", TACHYON_VERSION, latest_version);
+    if (i18n_file != "" && !run_logged("Installing LuCI Russian i18n package " + release.i18n_name, pkg_install_files_command([ i18n_file ])))
+        action_fail("tachyon", "install", "Failed to install LuCI Russian i18n package", TACHYON_VERSION, latest_version);
+    if (!run_logged("Installing Tachyon package " + release.backend_name, pkg_install_files_command([ backend_file ])))
+        action_fail("tachyon", "install", "Failed to install Tachyon package", TACHYON_VERSION, latest_version);
 
     remove_file("/var/luci-indexcache");
     command_success("rm -f /var/luci-indexcache* /tmp/luci-indexcache* 2>/dev/null");

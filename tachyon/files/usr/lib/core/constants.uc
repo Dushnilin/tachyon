@@ -1,12 +1,16 @@
 #!/usr/bin/env ucode
 
-let common = require("core.common");
-let as_string = common.as_string;
-let shell_quote = common.shell_quote;
+function as_string(value) {
+    return value == null ? "" : "" + value;
+}
 
 function env(name, fallback) {
     let value = getenv(name);
     return value == null ? as_string(fallback) : as_string(value);
+}
+
+function shell_quote(value) {
+    return "'" + replace(as_string(value), /'/g, "'\\''") + "'";
 }
 
 function constants_map() {
@@ -18,7 +22,7 @@ function constants_map() {
     c.TACHYON_BIN = env("TACHYON_BIN", "/usr/bin/tachyon");
     c.TACHYON_SERVICE_NAME = env("TACHYON_SERVICE_NAME", "tachyon");
     c.TACHYON_SERVICE_INIT = env("TACHYON_SERVICE_INIT", "/etc/init.d/tachyon");
-    c.TACHYON_RELEASE_REPO = env("TACHYON_RELEASE_REPO", "Dushnilin/tachyon");
+    c.TACHYON_RELEASE_REPO = env("TACHYON_RELEASE_REPO", "ushan0v/tachyon");
     c.TACHYON_LUCI_VIEW_NAMESPACE = env("TACHYON_LUCI_VIEW_NAMESPACE", "tachyon");
     c.TACHYON_LUCI_VIEW_DIR = env("TACHYON_LUCI_VIEW_DIR", "/www/luci-static/resources/view/" + c.TACHYON_LUCI_VIEW_NAMESPACE);
     c.TACHYON_LUCI_I18N_DOMAIN = env("TACHYON_LUCI_I18N_DOMAIN", "tachyon");
@@ -82,7 +86,7 @@ function constants_map() {
     c.SUBNETS_META = env("SUBNETS_META", c.GITHUB_RAW_URL + "/Subnets/IPv4/meta.lst");
     c.SUBNETS_DISCORD = env("SUBNETS_DISCORD", c.GITHUB_RAW_URL + "/Subnets/IPv4/discord.lst");
     c.SUBNETS_ROBLOX = env("SUBNETS_ROBLOX", c.GITHUB_RAW_URL + "/Subnets/IPv4/roblox.lst");
-    c.SUBNETS_TELEGRAM = env("SUBNETS_TELEGRAM", env("SUBNETS_TELERAM", c.GITHUB_RAW_URL + "/Subnets/IPv4/telegram.lst"));
+    c.SUBNETS_TELERAM = env("SUBNETS_TELERAM", c.GITHUB_RAW_URL + "/Subnets/IPv4/telegram.lst");
     c.SUBNETS_CLOUDFLARE = env("SUBNETS_CLOUDFLARE", c.GITHUB_RAW_URL + "/Subnets/IPv4/cloudflare.lst");
     c.SUBNETS_HETZNER = env("SUBNETS_HETZNER", c.GITHUB_RAW_URL + "/Subnets/IPv4/hetzner.lst");
     c.SUBNETS_OVH = env("SUBNETS_OVH", c.GITHUB_RAW_URL + "/Subnets/IPv4/ovh.lst");

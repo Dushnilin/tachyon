@@ -9,16 +9,15 @@ let uci_core = require("core.uci");
 let constants_module = require("core.constants");
 let singbox_constants_module = require("singbox.constants");
 let domain_config = require("config.domain");
+let subscription_share_link = require("subscription.share_link");
 
 let as_string = common.as_string;
-let shell_quote = common.shell_quote;
 let read_json_file = common.read_json_file;
 let write_json = common.write_json;
 let option = common.option;
 let list_option = common.list_option;
 let bool_option = common.bool_option;
 let object_or_empty = common.object_or_empty;
-let command_output = common.command_output;
 
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
 const TMP_SUBSCRIPTION_FOLDER = getenv("TMP_SUBSCRIPTION_FOLDER") || "/tmp/sing-box/subscriptions";
@@ -30,8 +29,9 @@ const TACHYON_SECTION_CACHE_DIR = getenv("TACHYON_SECTION_CACHE_DIR") || TACHYON
 const TACHYON_RUNTIME_CACHE_FORMAT_FILE = getenv("TACHYON_RUNTIME_CACHE_FORMAT_FILE") || TACHYON_RUNTIME_STATE_DIR + "/cache-format";
 const TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR = getenv("TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR") || "/etc/tachyon/subscription-cache";
 const TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE = getenv("TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE") || TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR + "/cache-format";
+const TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT = getenv("TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT") || "7";
 const TACHYON_INTERNAL_CONFIG_TRIGGER_GUARD = getenv("TACHYON_INTERNAL_CONFIG_TRIGGER_GUARD") || "/var/run/tachyon.internal-config-change";
-const TACHYON_RUNTIME_CACHE_FORMAT = getenv("TACHYON_RUNTIME_CACHE_FORMAT") || "7";
+const TACHYON_RUNTIME_CACHE_FORMAT = getenv("TACHYON_RUNTIME_CACHE_FORMAT") || "8";
 const CONFIG_VERSION_OPTION = "config_version";
 const APPLIED_MIGRATIONS_OPTION = "applied_migrations";
 const SERVER_COUNTRY_METHOD_FLAG_EMOJI = "flag_emoji";
@@ -42,8 +42,22 @@ const CHILD_ITEM_TYPES = [
     "urltest"
 ];
 
+function shell_quote(value) {
+    return "'" + replace(as_string(value), /'/g, "'\\''") + "'";
+}
 
+function command_output(command) {
+    let pipe = fs.popen(command, "r");
+    if (!pipe)
+        return "";
 
+    let data = pipe.read("all");
+    let status = pipe.close();
+    if (status != 0 || data == null)
+        return "";
+
+    return replace(as_string(data), /[\r\n]+$/g, "");
+}
 
 function run(command) {
     return system(command) == 0;
@@ -215,10 +229,6 @@ function set_list_option_if_not_empty(ctx, section, key, values) {
         set_list_option(ctx, section, key, values);
 }
 
-function set_option_json(ctx, section, key, value) {
-    set_option(ctx, section, key, sprintf("%J", value));
-}
-
 function delete_option(ctx, section, key) {
     if (!option_exists(section, key))
         return;
@@ -290,78 +300,6 @@ function whitespace_list_values(section, key) {
     return list_option(section, key);
 }
 
-function parse_json_object(value) {
-    value = as_string(value);
-    if (value == "")
-        return {};
-
-    try {
-        value = json(value);
-    }
-    catch (e) {
-        return {};
-    }
-
-    return object_or_empty(value);
-}
-
-function str_last_index(value, needle) {
-    value = as_string(value);
-    needle = as_string(needle);
-    if (needle == "")
-        return length(value);
-
-    for (let i = length(value) - length(needle); i >= 0; i--)
-        if (substr(value, i, length(needle)) == needle)
-            return i;
-
-    return -1;
-}
-
-function settings_entry(map, item) {
-    item = as_string(item);
-    let entry = object_or_empty(map[item]);
-    map[item] = entry;
-    return entry;
-}
-
-function settings_entry_set_if_missing(map, item, key, value) {
-    let entry = settings_entry(map, item);
-    if (entry[key] == null)
-        entry[key] = as_string(value);
-}
-
-function settings_entry_set_value_if_missing(map, item, key, value) {
-    let entry = settings_entry(map, item);
-    if (entry[key] == null)
-        entry[key] = value;
-}
-
-function settings_entry_set_bool_if_missing(map, item, key, value) {
-    settings_entry_set_if_missing(map, item, key, value ? "1" : "0");
-}
-
-function settings_entry_set_list_if_not_empty(map, item, key, value) {
-    value = option_list_values({ value }, "value");
-    if (length(value) > 0)
-        settings_entry_set_value_if_missing(map, item, key, value);
-}
-
-function settings_entry_move_if_needed(map, from_item, to_item) {
-    from_item = as_string(from_item);
-    to_item = as_string(to_item);
-    if (from_item == "" || to_item == "" || from_item == to_item || map[from_item] == null)
-        return;
-
-    let from_entry = object_or_empty(map[from_item]);
-    let to_entry = settings_entry(map, to_item);
-    for (let key in keys(from_entry))
-        if (to_entry[key] == null)
-            to_entry[key] = from_entry[key];
-
-    delete map[from_item];
-}
-
 function subscription_url_entry_profile(value) {
     let entry = trim(as_string(value));
     let result = {
@@ -371,7 +309,7 @@ function subscription_url_entry_profile(value) {
         changed: false
     };
     let delimiter = " | ";
-    let delimiter_index = str_last_index(entry, delimiter);
+    let delimiter_index = rindex(entry, delimiter);
 
     if (delimiter_index < 0)
         return result;
@@ -1344,7 +1282,6 @@ function clear_subscription_runtime_cache() {
 function ensure_runtime_dirs() {
     ensure_dir(TMP_SUBSCRIPTION_FOLDER);
     ensure_dir(TACHYON_RUNTIME_STATE_DIR);
-    ensure_dir(TACHYON_SUBSCRIPTION_LINKS_DIR);
     ensure_dir(TACHYON_SUBSCRIPTION_METADATA_DIR);
     ensure_dir(TACHYON_OUTBOUND_METADATA_DIR);
     ensure_dir(TACHYON_SECTION_CACHE_DIR);
@@ -1354,16 +1291,18 @@ function ensure_runtime_cache_format() {
     ensure_dir(TACHYON_RUNTIME_STATE_DIR);
 
     if (first_line(TACHYON_RUNTIME_CACHE_FORMAT_FILE) != TACHYON_RUNTIME_CACHE_FORMAT) {
+        if (first_line(TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE) == TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT)
+            subscription_share_link.populate_subscription_dir(TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR);
         clear_subscription_runtime_cache();
         ensure_runtime_dirs();
         fs.writefile(TACHYON_RUNTIME_CACHE_FORMAT_FILE, TACHYON_RUNTIME_CACHE_FORMAT + "\n");
     }
 
-    if (first_line(TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE) != TACHYON_RUNTIME_CACHE_FORMAT) {
+    if (first_line(TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE) != TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT) {
         run("rm -rf " + shell_quote(TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR));
         ensure_dir(TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR);
         run("chmod 700 " + shell_quote(TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR) + " >/dev/null 2>&1");
-        fs.writefile(TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE, TACHYON_RUNTIME_CACHE_FORMAT + "\n");
+        fs.writefile(TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE, TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT + "\n");
         run("chmod 600 " + shell_quote(TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE) + " >/dev/null 2>&1");
     }
 }

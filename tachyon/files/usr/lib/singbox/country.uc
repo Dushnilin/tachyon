@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env ucode
+#!/usr/bin/env ucode
 
 let fs = require("fs");
 let common = require("core.common");
@@ -10,13 +10,28 @@ let object_or_empty = common.object_or_empty;
 const COUNTRY_IS_URL = getenv("TACHYON_COUNTRY_IS_URL") || "https://api.country.is/";
 const COUNTRY_IS_BATCH_SIZE = 100;
 
-let shell_quote = common.shell_quote;
+function shell_quote(value) {
+    return "'" + replace(as_string(value), /'/g, "'\\''") + "'";
+}
 
-let command_output_from_args = common.command_output_from_args;
-let command_from_args = common.command_from_args;
+function command_from_args(args) {
+    let parts = [];
+    for (let arg in args)
+        push(parts, shell_quote(arg));
+    return join(" ", parts);
+}
 
+function command_output_from_args(args) {
+    let pipe = fs.popen(command_from_args(args) + " 2>/dev/null", "r");
+    if (!pipe)
+        return "";
 
-
+    let data = pipe.read("all");
+    let status = pipe.close();
+    if (status != 0 || data == null)
+        return "";
+    return as_string(data);
+}
 
 function remove_file(path) {
     if (as_string(path) != "")

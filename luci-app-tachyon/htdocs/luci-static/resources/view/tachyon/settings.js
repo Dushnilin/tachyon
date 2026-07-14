@@ -1,4 +1,4 @@
-﻿"use strict";
+"use strict";
 "require form";
 "require uci";
 "require baseclass";

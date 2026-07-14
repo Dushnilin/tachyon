@@ -97,13 +97,8 @@ fi
 mkdir -p "$WORK_DIR/apk-bin"
 cat >"$WORK_DIR/apk-bin/apk" <<'SH'
 #!/usr/bin/env sh
-if [ "$1 $2 $3 $4" = "list --available --manifest sing-box" ]; then
-  printf '%s\n' \
-    'P:sing-box-extended' \
-    'V:9.9.9-r1' \
-    'p:sing-box' \
-    'P:sing-box' \
-    'V:1.2.3-r1'
+if [ "$*" = "query --from repositories --available --format json --fields name,version sing-box" ]; then
+  printf '%s\n' '[{"name":"sing-box","version":"1.2.3-r1"}]'
   exit 0
 fi
 exit 1

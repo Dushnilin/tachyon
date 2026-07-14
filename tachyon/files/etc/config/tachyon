@@ -1,4 +1,4 @@
-﻿config settings 'settings'
+config settings 'settings'
         option config_version '1.0.2'
         list applied_migrations 'interface_sections'
         list applied_migrations 'enable_component_checks'
