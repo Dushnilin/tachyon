@@ -1395,50 +1395,6 @@ msgstr ""
 msgid "Invalid format. Use an IP address or CIDR subnet"
 msgstr ""
 
-#: src/validators/validateHttpProxyUrl.ts:57
-msgid "Invalid HTTP proxy URL: invalid host and port"
-msgstr ""
-
-#: src/validators/validateHttpProxyUrl.ts:87
-msgid "Invalid HTTP proxy URL: invalid host format"
-msgstr ""
-
-#: src/validators/validateHttpProxyUrl.ts:80
-msgid "Invalid HTTP proxy URL: invalid port number"
-msgstr ""
-
-#: src/validators/validateHttpProxyUrl.ts:49
-msgid "Invalid HTTP proxy URL: missing host and port"
-msgstr ""
-
-#: src/validators/validateHttpProxyUrl.ts:65
-msgid "Invalid HTTP proxy URL: missing hostname or IP"
-msgstr ""
-
-#: src/validators/validateHttpProxyUrl.ts:72
-msgid "Invalid HTTP proxy URL: missing port"
-msgstr ""
-
-#: src/validators/validateHttpProxyUrl.ts:41
-msgid "Invalid HTTP proxy URL: missing username"
-msgstr ""
-
-#: src/validators/validateHttpProxyUrl.ts:18
-msgid "Invalid HTTP proxy URL: must not contain spaces"
-msgstr ""
-
-#: src/validators/validateHttpProxyUrl.ts:9
-msgid "Invalid HTTP proxy URL: must start with http:// or https://"
-msgstr ""
-
-#: src/validators/validateHttpProxyUrl.ts:93
-msgid "Invalid HTTP proxy URL: parsing failed"
-msgstr ""
-
-#: src/validators/validateHttpProxyUrl.ts:26
-msgid "Invalid HTTP proxy URL: path, query, and fragment are not supported"
-msgstr ""
-
 #: src/validators/validateHysteriaUrl.ts:115
 msgid "Invalid HY2 URL: insecure must be 0 or 1"
 msgstr ""
@@ -3078,8 +3034,8 @@ msgstr ""
 msgid "Uploaded"
 msgstr ""
 
-#: src/validators/validateProxyUrl.ts:47
-msgid "URL must start with vless://, vmess://, ss://, trojan://, socks4://, socks4a://, socks5://, http://, https://, hysteria2://, or hy2://"
+#: src/validators/validateProxyUrl.ts:43
+msgid "URL must start with vless://, vmess://, ss://, trojan://, socks4://, socks4a://, socks5://, hysteria2://, or hy2://"
 msgstr ""
 
 #: src/validators/validateUrl.ts:18
@@ -3205,7 +3161,6 @@ msgstr ""
 #: src/validators/validateDns.ts:25
 #: src/validators/validateDomain.ts:57
 #: src/validators/validateDomain.ts:76
-#: src/validators/validateHttpProxyUrl.ts:97
 #: src/validators/validateHysteriaUrl.ts:162
 #: src/validators/validateIp.ts:25
 #: src/validators/validateIp.ts:33
@@ -3253,8 +3208,8 @@ msgstr ""
 msgid "VLESS flow"
 msgstr ""
 
-#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:7253
-msgid "vless://, vmess://, ss://, trojan://, socks4/5://, http(s)://, hy2/hysteria2:// links"
+#: ../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:7138
+msgid "vless://, vmess://, ss://, trojan://, socks4/5://, hy2/hysteria2:// links"
 msgstr ""
 
 #: src/forkop/tabs/diagnostic/checks/runInboundsCheck.ts:70

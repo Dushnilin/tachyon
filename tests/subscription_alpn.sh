@@ -125,10 +125,16 @@ proxies:
     alpn: [h2, http/1.1]
     ws-opts:
       path: /ws
+  - name: clash-http
+    type: http
+    server: proxy.example
+    port: 8080
 YAML
 ucode "$PARSER" normalize-clash-yaml "$clash_input" "$clash_output"
 assert_contains "$clash_output" '"alpn": [ "http/1.1" ]' "clash-vless-ws"
 assert_contains "$clash_output" '"encryption": "mlkem768x25519plus.native.test"' "clash-vless-ws"
+assert_not_contains "$clash_output" '"tag": "clash-http"' "clash-http"
+assert_contains "$clash_output" '"skipped": 1' "clash-http"
 
 xray_input="$WORK_DIR/xray.json"
 xray_output="$WORK_DIR/xray-normalized.json"

@@ -16,6 +16,14 @@ describe('validateOutboundJson', () => {
     expect(result.valid).toBe(true);
   });
 
+  it('accepts HTTP only as a JSON outbound', () => {
+    const result = validateOutboundJson(
+      '{"type":"http","tag":"http","server":"127.0.0.1","server_port":8080}',
+    );
+
+    expect(result.valid).toBe(true);
+  });
+
   it('accepts a URLTest outbound with referenced outbounds', () => {
     const result = validateOutboundJson(
       '{"type":"urltest","tag":"auto","outbounds":["proxy-1"],"url":"https://www.gstatic.com/generate_204"}',

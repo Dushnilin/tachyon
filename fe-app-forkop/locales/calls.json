@@ -2321,83 +2321,6 @@
     ]
   },
   {
-    "call": "Invalid HTTP proxy URL: invalid host and port",
-    "key": "Invalid HTTP proxy URL: invalid host and port",
-    "places": [
-      "src/validators/validateHttpProxyUrl.ts:57"
-    ]
-  },
-  {
-    "call": "Invalid HTTP proxy URL: invalid host format",
-    "key": "Invalid HTTP proxy URL: invalid host format",
-    "places": [
-      "src/validators/validateHttpProxyUrl.ts:87"
-    ]
-  },
-  {
-    "call": "Invalid HTTP proxy URL: invalid port number",
-    "key": "Invalid HTTP proxy URL: invalid port number",
-    "places": [
-      "src/validators/validateHttpProxyUrl.ts:80"
-    ]
-  },
-  {
-    "call": "Invalid HTTP proxy URL: missing host and port",
-    "key": "Invalid HTTP proxy URL: missing host and port",
-    "places": [
-      "src/validators/validateHttpProxyUrl.ts:49"
-    ]
-  },
-  {
-    "call": "Invalid HTTP proxy URL: missing hostname or IP",
-    "key": "Invalid HTTP proxy URL: missing hostname or IP",
-    "places": [
-      "src/validators/validateHttpProxyUrl.ts:65"
-    ]
-  },
-  {
-    "call": "Invalid HTTP proxy URL: missing port",
-    "key": "Invalid HTTP proxy URL: missing port",
-    "places": [
-      "src/validators/validateHttpProxyUrl.ts:72"
-    ]
-  },
-  {
-    "call": "Invalid HTTP proxy URL: missing username",
-    "key": "Invalid HTTP proxy URL: missing username",
-    "places": [
-      "src/validators/validateHttpProxyUrl.ts:41"
-    ]
-  },
-  {
-    "call": "Invalid HTTP proxy URL: must not contain spaces",
-    "key": "Invalid HTTP proxy URL: must not contain spaces",
-    "places": [
-      "src/validators/validateHttpProxyUrl.ts:18"
-    ]
-  },
-  {
-    "call": "Invalid HTTP proxy URL: must start with http:// or https://",
-    "key": "Invalid HTTP proxy URL: must start with http:// or https://",
-    "places": [
-      "src/validators/validateHttpProxyUrl.ts:9"
-    ]
-  },
-  {
-    "call": "Invalid HTTP proxy URL: parsing failed",
-    "key": "Invalid HTTP proxy URL: parsing failed",
-    "places": [
-      "src/validators/validateHttpProxyUrl.ts:93"
-    ]
-  },
-  {
-    "call": "Invalid HTTP proxy URL: path, query, and fragment are not supported",
-    "key": "Invalid HTTP proxy URL: path, query, and fragment are not supported",
-    "places": [
-      "src/validators/validateHttpProxyUrl.ts:26"
-    ]
-  },
-  {
     "call": "Invalid HY2 URL: insecure must be 0 or 1",
     "key": "Invalid HY2 URL: insecure must be 0 or 1",
     "places": [
@@ -5177,10 +5100,10 @@
     ]
   },
   {
-    "call": "URL must start with vless://, vmess://, ss://, trojan://, socks4://, socks4a://, socks5://, http://, https://, hysteria2://, or hy2://",
-    "key": "URL must start with vless://, vmess://, ss://, trojan://, socks4://, socks4a://, socks5://, http://, https://, hysteria2://, or hy2://",
+    "call": "URL must start with vless://, vmess://, ss://, trojan://, socks4://, socks4a://, socks5://, hysteria2://, or hy2://",
+    "key": "URL must start with vless://, vmess://, ss://, trojan://, socks4://, socks4a://, socks5://, hysteria2://, or hy2://",
     "places": [
-      "src/validators/validateProxyUrl.ts:47"
+      "src/validators/validateProxyUrl.ts:43"
     ]
   },
   {
@@ -5385,7 +5308,6 @@
       "src/validators/validateDns.ts:25",
       "src/validators/validateDomain.ts:57",
       "src/validators/validateDomain.ts:76",
-      "src/validators/validateHttpProxyUrl.ts:97",
       "src/validators/validateHysteriaUrl.ts:162",
       "src/validators/validateIp.ts:25",
       "src/validators/validateIp.ts:33",
@@ -5454,10 +5376,10 @@
     ]
   },
   {
-    "call": "vless://, vmess://, ss://, trojan://, socks4/5://, http(s)://, hy2/hysteria2:// links",
-    "key": "vless://, vmess://, ss://, trojan://, socks4/5://, http(s)://, hy2/hysteria2:// links",
+    "call": "vless://, vmess://, ss://, trojan://, socks4/5://, hy2/hysteria2:// links",
+    "key": "vless://, vmess://, ss://, trojan://, socks4/5://, hy2/hysteria2:// links",
     "places": [
-      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:7253"
+      "../luci-app-forkop/htdocs/luci-static/resources/view/forkop/section.js:7138"
     ]
   },
   {

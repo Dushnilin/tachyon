@@ -34,8 +34,12 @@ grep -Fq '{ id: "interface_sections", run: migrate_interface_sections }' "$MIGRA
   fail "interface section migration must have a stable named marker"
 grep -Fq '{ id: "enable_component_checks", run: migrate_enable_component_checks }' "$MIGRATION" ||
   fail "component check migration must have a stable named marker"
+grep -Fq '{ id: "http_connection_urls", run: migrate_http_connection_urls }' "$MIGRATION" ||
+  fail "HTTP connection URL migration must have a stable named marker"
 grep -Fq 'release_at_most(ctx, "1.0.1")' "$MIGRATION" ||
   fail "release-specific migrations must use the source release only as a condition"
+grep -Fq 'release_at_most(ctx, "1.0.4")' "$MIGRATION" ||
+  fail "HTTP connection URLs must only migrate from Forkop 1.0.4 and below"
 
 eval "$(ucode -L "$FORKOP_LIB" "$FORKOP_LIB/core/constants.uc" shell-env)"
 export ZAPRET_LEGACY_DEFAULT_NFQWS_OPT ZAPRET_DEFAULT_NFQWS_OPT
@@ -169,9 +173,9 @@ const urltests = childByType('urltest');
 
 assert(JSON.stringify(config.settings.dns_server) === JSON.stringify(['9.9.9.9']), 'legacy main DNS scalar migrated to ordered list');
 assert(JSON.stringify(config.settings.bootstrap_dns_server) === JSON.stringify(['1.1.1.1']), 'legacy Bootstrap DNS scalar migrated to ordered list');
-assert(config.settings.config_version === '1.0.2', 'legacy config should be marked at the current schema version');
+assert(config.settings.config_version === '1.0.5', 'legacy config should be marked at the current schema version');
 assert(config.settings.component_update_check_enabled === '1', 'component update checks should be enabled during migration');
-assert(JSON.stringify(config.settings.applied_migrations) === JSON.stringify(['interface_sections', 'enable_component_checks']), 'legacy config should record named migrations');
+assert(JSON.stringify(config.settings.applied_migrations) === JSON.stringify(['interface_sections', 'enable_component_checks', 'http_connection_urls']), 'legacy config should record named migrations');
 
 function assert(condition, message) {
   if (!condition) {
@@ -388,9 +392,9 @@ function assert(condition, message) {
 }
 
 assert(out.changed === true, '1.0.1 config should require migration');
-assert(out.config.settings.config_version === '1.0.2', 'config schema version should advance to 1.0.2');
+assert(out.config.settings.config_version === '1.0.5', 'config schema version should advance to 1.0.5');
 assert(out.config.settings.component_update_check_enabled === '1', 'updates from 1.0.1 and below should enable component update checks');
-assert(JSON.stringify(out.config.settings.applied_migrations) === JSON.stringify(['interface_sections', 'enable_component_checks']), 'named migrations should be recorded');
+assert(JSON.stringify(out.config.settings.applied_migrations) === JSON.stringify(['interface_sections', 'enable_component_checks', 'http_connection_urls']), 'named migrations should be recorded');
 assert(!Object.prototype.hasOwnProperty.call(section, 'interfaces'), 'parent interface list should be removed');
 assert(JSON.stringify(interfaces.map(item => item.name)) === JSON.stringify(['awg0', 'tun0']), 'interfaces should keep their order');
 for (const item of interfaces) {
@@ -427,7 +431,105 @@ function assert(condition, message) {
 }
 
 assert(out.config.settings.component_update_check_enabled === '0', '1.0.2 config must preserve an explicitly disabled component check');
-assert(JSON.stringify(out.config.settings.applied_migrations) === JSON.stringify(['interface_sections', 'enable_component_checks']), 'newer configs should mark skipped migrations');
+assert(out.config.settings.config_version === '1.0.5', '1.0.2 config should advance through the HTTP URL migration schema');
+assert(JSON.stringify(out.config.settings.applied_migrations) === JSON.stringify(['interface_sections', 'enable_component_checks', 'http_connection_urls']), 'newer configs should mark skipped migrations');
+NODE
+
+cat >"$WORK_DIR/forkop-1.0.4-http.json" <<'JSON'
+{
+  "settings": {
+    ".name": "settings",
+    ".type": "settings",
+    "config_version": "1.0.4"
+  },
+  "section": [
+    {
+      ".name": "main",
+      ".type": "section",
+      "action": "connection",
+      "selector_proxy_links": [
+        "https://user:p%2540ss@[2001:db8::1]:8443/#Secure%20HTTP",
+        "vless://00000000-0000-4000-8000-000000000001@example.com:443",
+        "http://proxy.example:8080",
+        "https://invalid.example/no-port"
+      ],
+      "outbound_jsons": [
+        "{\"type\":\"direct\",\"tag\":\"http\"}"
+      ]
+    }
+  ]
+}
+JSON
+
+FORKOP_LIB="$FORKOP_LIB" ucode -L "$FORKOP_LIB" "$MIGRATION" migrate-fixture "$WORK_DIR/forkop-1.0.4-http.json" >"$WORK_DIR/forkop-1.0.4-http-output.json"
+
+node - "$WORK_DIR/forkop-1.0.4-http-output.json" <<'NODE'
+const fs = require('fs');
+const out = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+const section = out.config.section[0];
+const jsonOutbounds = section.outbound_jsons.map(JSON.parse);
+
+function assert(condition, message) {
+  if (!condition) {
+    console.error(message);
+    process.exit(1);
+  }
+}
+
+assert(out.config.settings.config_version === '1.0.5', '1.0.4 config should advance to schema 1.0.5');
+assert(JSON.stringify(section.selector_proxy_links) === JSON.stringify([
+  'vless://00000000-0000-4000-8000-000000000001@example.com:443',
+  'https://invalid.example/no-port',
+]), 'only valid native HTTP proxy links should leave Connection URLs');
+assert(jsonOutbounds.length === 3, 'migrated HTTP outbounds should precede the existing JSON list');
+assert(JSON.stringify(jsonOutbounds[0]) === JSON.stringify({
+  type: 'http',
+  tag: 'Secure HTTP',
+  server: '2001:db8::1',
+  server_port: 8443,
+  username: 'user',
+  password: 'p@ss',
+  tls: { enabled: true },
+}), 'HTTPS URL should preserve its name, credentials, IPv6 server, port, and TLS');
+assert(JSON.stringify(jsonOutbounds[1]) === JSON.stringify({
+  type: 'http',
+  tag: 'http-1',
+  server: 'proxy.example',
+  server_port: 8080,
+}), 'unnamed HTTP URL should receive a unique http tag');
+assert(jsonOutbounds[2].type === 'direct' && jsonOutbounds[2].tag === 'http', 'existing JSON outbounds should remain unchanged');
+assert(JSON.stringify(out.config.settings.applied_migrations) === JSON.stringify(['interface_sections', 'enable_component_checks', 'http_connection_urls']), 'HTTP URL migration should be recorded');
+NODE
+
+cat >"$WORK_DIR/forkop-1.0.5-http.json" <<'JSON'
+{
+  "settings": {
+    ".name": "settings",
+    ".type": "settings",
+    "config_version": "1.0.5"
+  },
+  "section": [
+    {
+      ".name": "main",
+      ".type": "section",
+      "action": "connection",
+      "selector_proxy_links": [ "http://proxy.example:8080" ]
+    }
+  ]
+}
+JSON
+
+FORKOP_LIB="$FORKOP_LIB" ucode -L "$FORKOP_LIB" "$MIGRATION" migrate-fixture "$WORK_DIR/forkop-1.0.5-http.json" >"$WORK_DIR/forkop-1.0.5-http-output.json"
+
+node - "$WORK_DIR/forkop-1.0.5-http-output.json" <<'NODE'
+const fs = require('fs');
+const out = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+const section = out.config.section[0];
+
+if (JSON.stringify(section.selector_proxy_links) !== JSON.stringify(['http://proxy.example:8080']) || section.outbound_jsons) {
+  console.error('1.0.5 and newer configs must not run the legacy HTTP URL conversion');
+  process.exit(1);
+}
 NODE
 
 cat >"$WORK_DIR/runtime-migrate.state" <<'EOF_UCI'
@@ -498,6 +600,7 @@ forkop.main=section
 forkop.main.enabled=1
 forkop.main.action=connection
 forkop.main.interfaces=awg0
+forkop.main.selector_proxy_links=http://proxy.example:8080
 EOF_UCI
 : >"$WORK_DIR/runtime-version.log"
 FORKOP_UCI_STATE_FILE="$WORK_DIR/runtime-version.state" \
@@ -506,12 +609,17 @@ FORKOP_CONFIG_NAME="forkop" \
 FORKOP_INTERNAL_CONFIG_TRIGGER_GUARD="$WORK_DIR/internal-config-change" \
 ucode -L "$FORKOP_LIB" "$MIGRATION" migrate
 
-grep -Fxq 'forkop.settings.config_version=1.0.2' "$WORK_DIR/runtime-version.state" ||
+grep -Fxq 'forkop.settings.config_version=1.0.5' "$WORK_DIR/runtime-version.state" ||
   fail "runtime version migration must advance config_version"
 grep -Fxq 'forkop.settings.component_update_check_enabled=1' "$WORK_DIR/runtime-version.state" ||
   fail "runtime version migration must enable component update checks"
-grep -Fq 'forkop.settings.applied_migrations=interface_sections enable_component_checks' "$WORK_DIR/runtime-version.state" ||
+grep -Fq 'forkop.settings.applied_migrations=interface_sections enable_component_checks http_connection_urls' "$WORK_DIR/runtime-version.state" ||
   fail "runtime migration must record stable migration names"
+grep -Eq '^forkop\.main\.outbound_jsons=\{ "type": "http", "tag": "http", "server": "proxy\.example", "server_port": 8080 \}$' "$WORK_DIR/runtime-version.state" ||
+  fail "runtime migration must convert native HTTP proxy links to JSON outbounds"
+if grep -Fq 'forkop.main.selector_proxy_links=' "$WORK_DIR/runtime-version.state"; then
+  fail "runtime migration must remove converted HTTP connection URLs"
+fi
 grep -Eq '^forkop\.cfg[0-9a-f]+=section_interface$' "$WORK_DIR/runtime-version.state" ||
   fail "runtime version migration must create interface child settings"
 if grep -Fq 'forkop.main.interfaces=' "$WORK_DIR/runtime-version.state"; then

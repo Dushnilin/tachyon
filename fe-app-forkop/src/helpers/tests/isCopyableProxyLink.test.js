@@ -13,8 +13,6 @@ const copyableLinks = [
   'socks4://example.com:1080',
   'socks4a://example.com:1080',
   'socks5://user:pass@example.com:1080',
-  'http://example.com:80',
-  'https://user:pass@example.com:443',
 ];
 
 const nonCopyableLinks = [
@@ -22,6 +20,8 @@ const nonCopyableLinks = [
   'direct',
   'block',
   'urltest',
+  'http://example.com:80',
+  'https://user:pass@example.com:443',
   'https://example.com/subscription',
   'https://example.com',
   'http://example.com:99999',
