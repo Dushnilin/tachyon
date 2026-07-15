@@ -2374,3 +2374,22 @@ msgstr "sing-box outbound для Zapret2 настроен"
 
 msgid "Zapret2 sing-box outbound is not configured"
 msgstr "sing-box outbound для Zapret2 не настроен"
+
+msgid "Local Address"
+msgstr "Локальный адрес (Local Address)"
+
+msgid "Private Key"
+msgstr "Приватный ключ (Private Key)"
+
+msgid "Peer Public Key"
+msgstr "Публичный ключ пира (Peer Public Key)"
+
+msgid "Preshared Key"
+msgstr "Общий ключ (Preshared Key)"
+
+
+msgid "P2P Leak Protection"
+msgstr "Изоляция торрент-трафика (P2P)"
+
+msgid "Route BitTorrent traffic directly, bypassing all proxies."
+msgstr "Направлять BitTorrent-трафик напрямую, в обход всех прокси-серверов."
