@@ -24,9 +24,20 @@ else
   ROOT_DIR="$(pwd)"
 fi
 
+# Convert WSL or Sandbox mount paths to Windows-friendly drive paths for docker.exe
+if [ "$DOCKER_BIN" = "docker.exe" ]; then
+  if [[ "$ROOT_DIR" =~ /mnt/host/([a-zA-Z])/(.*) ]]; then
+    ROOT_DIR="${BASH_REMATCH[1]}:/${BASH_REMATCH[2]}"
+  elif [[ "$ROOT_DIR" =~ ^/mnt/([a-zA-Z])/(.*) ]]; then
+    ROOT_DIR="${BASH_REMATCH[1]}:/${BASH_REMATCH[2]}"
+  elif [[ "$ROOT_DIR" =~ ^/([a-zA-Z])/(.*) ]]; then
+    ROOT_DIR="${BASH_REMATCH[1]}:/${BASH_REMATCH[2]}"
+  fi
+fi
+
+
 echo "=== Building Tachyon Package inside Ubuntu Container ==="
 VERSION="1.0.0"
-BUILD_OUT="$ROOT_DIR/build-out"
 mkdir -p "$BUILD_OUT"
 
 "$DOCKER_BIN" run --rm \
@@ -34,7 +45,7 @@ mkdir -p "$BUILD_OUT"
   -w /work \
   -e SDK_CACHE_DIR="/work/.wsl-build/sdk-cache" \
   ubuntu:22.04 \
-  bash -c "apt-get update && apt-get install -y sudo && chmod +x ./build.sh && ./build.sh $VERSION /work/build-out"
+  bash -c "apt-get update && apt-get install -y sudo && sed -i 's/\r$//' ./build.sh && bash ./build.sh $VERSION /work/build-out"
 
 echo "=== Starting OpenWrt Container ==="
 CONTAINER_NAME="tachyon-e2e-test"
