@@ -207,7 +207,7 @@
     "call": "Administrator Chat IDs",
     "key": "Administrator Chat IDs",
     "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:715"
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:721"
     ]
   },
   {
@@ -320,7 +320,7 @@
     "call": "At least one Admin Chat ID is required",
     "key": "At least one Admin Chat ID is required",
     "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:723"
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:729"
     ]
   },
   {
@@ -764,7 +764,7 @@
     "call": "Comma-separated list of Telegram user IDs authorized to control the bot.",
     "key": "Comma-separated list of Telegram user IDs authorized to control the bot.",
     "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:716"
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:722"
     ]
   },
   {
@@ -1462,7 +1462,14 @@
     "call": "Enable Telegram Bot",
     "key": "Enable Telegram Bot",
     "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:690"
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:696"
+    ]
+  },
+  {
+    "call": "Enable Watchdog",
+    "key": "Enable Watchdog",
+    "places": [
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:683"
     ]
   },
   {
@@ -1483,7 +1490,14 @@
     "call": "Enables the background daemon that polls Telegram for commands and sends notifications.",
     "key": "Enables the background daemon that polls Telegram for commands and sends notifications.",
     "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:691"
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:697"
+    ]
+  },
+  {
+    "call": "Enables the background watchdog process to monitor services and auto-recover on failures.",
+    "key": "Enables the background watchdog process to monitor services and auto-recover on failures.",
+    "places": [
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:684"
     ]
   },
   {
@@ -1536,7 +1550,7 @@
     "call": "Enter the API token obtained from @BotFather.",
     "key": "Enter the API token obtained from @BotFather.",
     "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:700"
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:706"
     ]
   },
   {
@@ -1989,7 +2003,7 @@
     "call": "How often to check Telegram for new messages (default: 5).",
     "key": "How often to check Telegram for new messages (default: 5).",
     "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:736"
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:742"
     ]
   },
   {
@@ -2875,7 +2889,7 @@
     "call": "Must be a comma-separated list of numeric IDs",
     "key": "Must be a comma-separated list of numeric IDs",
     "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:726"
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:732"
     ]
   },
   {
@@ -3136,42 +3150,42 @@
     "call": "Notify on Certificate Warnings",
     "key": "Notify on Certificate Warnings",
     "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:792"
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:798"
     ]
   },
   {
     "call": "Notify on Core Crashes",
     "key": "Notify on Core Crashes",
     "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:752"
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:758"
     ]
   },
   {
     "call": "Notify on DNS Leaks",
     "key": "Notify on DNS Leaks",
     "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:802"
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:808"
     ]
   },
   {
     "call": "Notify on Server Switches",
     "key": "Notify on Server Switches",
     "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:772"
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:778"
     ]
   },
   {
     "call": "Notify on Service Restarts",
     "key": "Notify on Service Restarts",
     "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:762"
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:768"
     ]
   },
   {
     "call": "Notify on Subscription Updates",
     "key": "Notify on Subscription Updates",
     "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:782"
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:788"
     ]
   },
   {
@@ -3397,14 +3411,14 @@
     "call": "Polling Interval (seconds)",
     "key": "Polling Interval (seconds)",
     "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:735"
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:741"
     ]
   },
   {
     "call": "Polling interval must be at least 1 second",
     "key": "Polling interval must be at least 1 second",
     "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:744"
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:750"
     ]
   },
   {
@@ -4073,42 +4087,42 @@
     "call": "Send a Telegram notification if a potential DNS leak is detected.",
     "key": "Send a Telegram notification if a potential DNS leak is detected.",
     "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:803"
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:809"
     ]
   },
   {
     "call": "Send a Telegram notification if sing-box or nftables rules crash and get auto-restored.",
     "key": "Send a Telegram notification if sing-box or nftables rules crash and get auto-restored.",
     "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:753"
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:759"
     ]
   },
   {
     "call": "Send a Telegram notification if SSL/TLS certificates are close to expiration.",
     "key": "Send a Telegram notification if SSL/TLS certificates are close to expiration.",
     "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:793"
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:799"
     ]
   },
   {
     "call": "Send a Telegram notification if the Tachyon service is restarted by the watchdog.",
     "key": "Send a Telegram notification if the Tachyon service is restarted by the watchdog.",
     "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:763"
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:769"
     ]
   },
   {
     "call": "Send a Telegram notification when a URLTest group switches to a new server.",
     "key": "Send a Telegram notification when a URLTest group switches to a new server.",
     "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:773"
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:779"
     ]
   },
   {
     "call": "Send a Telegram notification when proxy subscriptions are successfully updated.",
     "key": "Send a Telegram notification when proxy subscriptions are successfully updated.",
     "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:783"
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:789"
     ]
   },
   {
@@ -4748,7 +4762,7 @@
     "call": "Telegram Bot Token",
     "key": "Telegram Bot Token",
     "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:699"
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:705"
     ]
   },
   {
@@ -4948,7 +4962,7 @@
     "call": "Token is required when the bot is enabled",
     "key": "Token is required when the bot is enabled",
     "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:707"
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:713"
     ]
   },
   {

@@ -46,21 +46,29 @@ function get_proxy_args() {
 function tg_request(token, method, payload) {
     if (!token) return null;
     let url = "https://api.telegram.org/bot" + token + "/" + method;
-    let payload_path = "/tmp/tg_payload_" + method + ".json";
+    let payload_path = "/tmp/tg_payload_" + method + "_" + time() + "_" + clock()[1] + ".json";
     
-    fs.writefile(payload_path, sprintf("%J", payload));
-    
-    let args = [ "curl", "-s", "-X", "POST", "-H", "Content-Type: application/json", "-d", "@" + payload_path ];
-    let proxy = get_proxy_args();
-    for (let p in proxy) {
-        push(args, p);
+    let res = null;
+    try {
+        fs.writefile(payload_path, sprintf("%J", payload));
+        
+        let args = [ "curl", "-s", "-X", "POST", "-H", "Content-Type: application/json", "-d", "@" + payload_path ];
+        let proxy = get_proxy_args();
+        for (let p in proxy) {
+            push(args, p);
+        }
+        push(args, url);
+        
+        res = command_capture(command_from_args(args));
     }
-    push(args, url);
+    catch (e) {
+        try { fs.unlink(payload_path); } catch(err) {}
+        return null;
+    }
     
-    let res = command_capture(command_from_args(args));
-    fs.unlink(payload_path);
+    try { fs.unlink(payload_path); } catch(err) {}
     
-    if (res.status != 0 || res.output == "") {
+    if (!res || res.status != 0 || res.output == "") {
         return null;
     }
     
@@ -169,11 +177,9 @@ function get_clash_url(endpoint) {
             let sb_cfg = json(config_data);
             let ext = sb_cfg.experimental?.clash_api?.external_controller;
             if (ext) {
-                if (index(ext, "0.0.0.0:") == 0) {
-                    host = "127.0.0.1" + substr(ext, 7);
-                } else {
-                    host = ext;
-                }
+                let parts = split(ext, ":");
+                let port = (length(parts) > 1) ? parts[length(parts) - 1] : "9090";
+                host = "127.0.0.1:" + port;
             }
         } catch(e) {}
     }
@@ -209,7 +215,7 @@ function handle_servers(token, chat_id) {
     }
     
     let active_server = "Не определен";
-    let main_out = data.proxies["MAIN-out"];
+    let main_out = data.proxies["main-out"];
     if (main_out && main_out.now) {
         active_server = main_out.now;
     }
@@ -220,7 +226,7 @@ function handle_servers(token, chat_id) {
     for (let name in keys(data.proxies)) {
         let proxy = data.proxies[name];
         let p_type = lc(as_string(proxy.type || ""));
-        if (p_type == "vless" || p_type == "vmess" || p_type == "shadowsocks" || p_type == "trojan" || p_type == "socks" || p_type == "http") {
+        if (p_type == "vless" || p_type == "vmess" || p_type == "shadowsocks" || p_type == "trojan" || p_type == "socks" || p_type == "http" || p_type == "hysteria2" || p_type == "tuic" || p_type == "wireguard" || p_type == "hysteria" || p_type == "ssr") {
             let delay = "N/A";
             if (type(proxy.history) == "array" && length(proxy.history) > 0) {
                 let last = proxy.history[length(proxy.history) - 1];

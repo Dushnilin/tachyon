@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-07-15 18:04+0300\n"
-"PO-Revision-Date: 2026-07-15 18:04+0300\n"
+"POT-Creation-Date: 2026-07-15 21:44+0300\n"
+"PO-Revision-Date: 2026-07-15 21:44+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -614,6 +614,9 @@ msgstr "Включить выходной сетевой интерфейс"
 msgid "Enable Telegram Bot"
 msgstr "Включить Telegram-бота"
 
+msgid "Enable Watchdog"
+msgstr "Включить сторожевой таймер (Watchdog)"
+
 msgid "Enable YACD"
 msgstr "Включить YACD"
 
@@ -622,6 +625,9 @@ msgstr "Включить доступ YACD WAN"
 
 msgid "Enables the background daemon that polls Telegram for commands and sends notifications."
 msgstr "Включает фоновый процесс, который опрашивает Telegram на наличие команд и отправляет уведомления."
+
+msgid "Enables the background watchdog process to monitor services and auto-recover on failures."
+msgstr "Включает фоновый процесс watchdog для мониторинга служб и автоматического восстановления при сбоях."
 
 msgid "Enter a complete sing-box inbound object"
 msgstr "Введите полный объект inbound sing-box"
