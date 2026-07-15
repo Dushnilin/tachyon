@@ -38,6 +38,7 @@ fi
 
 echo "=== Building Tachyon Package inside Ubuntu Container ==="
 VERSION="1.0.0"
+BUILD_OUT="$ROOT_DIR/build-out"
 mkdir -p "$BUILD_OUT"
 
 "$DOCKER_BIN" run --rm \
