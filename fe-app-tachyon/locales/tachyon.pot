@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-07-15 06:45+0300\n"
-"PO-Revision-Date: 2026-07-15 06:45+0300\n"
+"POT-Creation-Date: 2026-07-15 15:04+0300\n"
+"PO-Revision-Date: 2026-07-15 15:04+0300\n"
 "Last-Translator: Dushnilin <dushnilin@gmail.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -3049,6 +3049,7 @@ msgstr ""
 msgid "unique UCI identifier"
 msgstr ""
 
+#: src/tachyon/helpers/singBoxVariant.ts:28
 #: src/tachyon/services/systemInfo.service.ts:10
 #: src/tachyon/services/systemInfo.service.ts:11
 #: src/tachyon/services/systemInfo.service.ts:12
@@ -3058,7 +3059,6 @@ msgstr ""
 #: src/tachyon/services/systemInfo.service.ts:22
 #: src/tachyon/services/systemInfo.service.ts:25
 #: src/tachyon/services/systemInfo.service.ts:26
-#: src/tachyon/helpers/singBoxVariant.ts:28
 #: src/tachyon/tabs/updates/initController.ts:329
 #: src/tachyon/tabs/diagnostic/checks/runInboundsCheck.ts:25
 msgid "unknown"

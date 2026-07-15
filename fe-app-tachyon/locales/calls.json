@@ -5148,6 +5148,7 @@
     "call": "unknown",
     "key": "unknown",
     "places": [
+      "src/tachyon/helpers/singBoxVariant.ts:28",
       "src/tachyon/services/systemInfo.service.ts:10",
       "src/tachyon/services/systemInfo.service.ts:11",
       "src/tachyon/services/systemInfo.service.ts:12",
@@ -5157,7 +5158,6 @@
       "src/tachyon/services/systemInfo.service.ts:22",
       "src/tachyon/services/systemInfo.service.ts:25",
       "src/tachyon/services/systemInfo.service.ts:26",
-      "src/tachyon/helpers/singBoxVariant.ts:28",
       "src/tachyon/tabs/updates/initController.ts:329",
       "src/tachyon/tabs/diagnostic/checks/runInboundsCheck.ts:25"
     ]
