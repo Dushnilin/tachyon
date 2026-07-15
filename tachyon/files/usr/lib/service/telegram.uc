@@ -80,6 +80,42 @@ function tg_request(token, method, payload) {
     }
 }
  
+function clash_request(method, endpoint, payload) {
+    let url = get_clash_url(endpoint);
+    let payload_path = "/tmp/clash_payload_" + method + "_" + time() + "_" + clock()[1] + ".json";
+    let res = null;
+    try {
+        let args = [ "curl", "-s", "-X", method ];
+        if (payload) {
+            fs.writefile(payload_path, sprintf("%J", payload));
+            push(args, "-H", "Content-Type: application/json", "-d", "@" + payload_path);
+        }
+        push(args, url);
+        res = command_capture(command_from_args(args));
+    }
+    catch (e) {
+        if (payload) {
+            try { fs.unlink(payload_path); } catch(err) {}
+        }
+        return null;
+    }
+    
+    if (payload) {
+        try { fs.unlink(payload_path); } catch(err) {}
+    }
+    
+    if (!res || res.status != 0 || res.output == "") {
+        return null;
+    }
+    
+    try {
+        return json(res.output);
+    }
+    catch (e) {
+        return res.output;
+    }
+}
+
 function send_message(token, chat_id, text, parse_mode) {
     let payload = {
         chat_id: int(chat_id),
@@ -99,11 +135,12 @@ function send_message_with_keyboard(token, chat_id, text, parse_mode) {
             inline_keyboard: [
                 [
                     { text: "📡 Серверы", callback_data: "/servers" },
-                    { text: "🚀 Скорость", callback_data: "/speed" },
-                    { text: "📊 Трафик", callback_data: "/traffic" }
+                    { text: "🛡️ Правила", callback_data: "/rules" },
+                    { text: "💻 Устройства", callback_data: "/devices" }
                 ],
                 [
-                    { text: "⚡ Проверить", callback_data: "/test" },
+                    { text: "🚀 Скорость", callback_data: "/speed" },
+                    { text: "📊 Трафик", callback_data: "/traffic" },
                     { text: "🩺 Диагностика", callback_data: "/doctor" }
                 ]
             ]
@@ -223,6 +260,10 @@ function handle_servers(token, chat_id) {
     let text = "📡 *Список серверов и задержка:*\n\n";
     let count = 0;
     
+    let keyboard = [];
+    let row = [];
+    let btn_count = 0;
+    
     for (let name in keys(data.proxies)) {
         let proxy = data.proxies[name];
         let p_type = lc(as_string(proxy.type || ""));
@@ -237,7 +278,20 @@ function handle_servers(token, chat_id) {
             let marker = (name == active_server) ? "🔵" : "•";
             text += marker + " `" + name + "`: `" + delay + "`\n";
             count++;
+            
+            if (btn_count < 18) {
+                push(row, { text: (name == active_server ? "🔵 " : "") + name, callback_data: "/switch " + name });
+                if (length(row) == 2) {
+                    push(keyboard, row);
+                    row = [];
+                }
+                btn_count++;
+            }
         }
+    }
+    
+    if (length(row) > 0) {
+        push(keyboard, row);
     }
     
     if (count == 0) {
@@ -246,7 +300,15 @@ function handle_servers(token, chat_id) {
         text += "\nℹ️ Активный сервер: *" + active_server + "*";
     }
     
-    send_message_with_keyboard(token, chat_id, text, "Markdown");
+    push(keyboard, [ { text: "⬅️ Назад в меню", callback_data: "/help" } ]);
+    
+    let payload = {
+        chat_id: int(chat_id),
+        text: text,
+        parse_mode: "Markdown",
+        reply_markup: { inline_keyboard: keyboard }
+    };
+    tg_request(token, "sendMessage", payload);
 }
  
 function handle_traffic(token, chat_id) {
@@ -452,26 +514,140 @@ function handle_backup(token, chat_id) {
     }
 }
 
+function handle_rules(token, chat_id) {
+    let c = uci_core.cursor();
+    if (!c) {
+        send_message(token, chat_id, "❌ Не удалось прочитать конфигурацию.");
+        return;
+    }
+    c.load(CONFIG_NAME);
+    
+    let text = "🛡️ <b>Управление правилами обхода:</b>\n\n";
+    let keyboard = [];
+    let count = 0;
+    
+    c.foreach(CONFIG_NAME, "section", function(s) {
+        let name = s[".name"];
+        let label = s.label || name;
+        let enabled = s.enabled != "0";
+        let status_icon = enabled ? "🟢" : "🔴";
+        let action = s.action || "bypass";
+        
+        text += status_icon + " <b>" + escape_html(label) + "</b> (" + action + ")\n";
+        
+        push(keyboard, [
+            {
+                text: (enabled ? "🔴 Выключить " : "🟢 Включить ") + label,
+                callback_data: "/toggle_rule " + name
+            }
+        ]);
+        count++;
+    });
+    
+    if (count == 0) {
+        text += "<i>Правила отсутствуют.</i>\n";
+    }
+    
+    push(keyboard, [ { text: "⬅️ Назад в меню", callback_data: "/help" } ]);
+    
+    let payload = {
+        chat_id: int(chat_id),
+        text: text,
+        parse_mode: "HTML",
+        reply_markup: { inline_keyboard: keyboard }
+    };
+    tg_request(token, "sendMessage", payload);
+}
+
+function handle_devices(token, chat_id) {
+    let lease_file = "/tmp/dhcp.leases";
+    let data = fs.readfile(lease_file);
+    
+    let firewall_c = uci_core.cursor();
+    if (!firewall_c) {
+        send_message(token, chat_id, "❌ Не удалось прочитать конфигурацию файрвола.");
+        return;
+    }
+    firewall_c.load("firewall");
+    let blocked_macs = {};
+    firewall_c.foreach("firewall", "rule", function(r) {
+        if (r.target == "REJECT" && r.src_mac) {
+            blocked_macs[uc(as_string(r.src_mac))] = true;
+        }
+    });
+    
+    let text = "💻 <b>Активные устройства в сети:</b>\n\n";
+    let keyboard = [];
+    let count = 0;
+    
+    if (data) {
+        for (let line in split(data, "\n")) {
+            line = trim(line);
+            if (line == "") continue;
+            let fields = split(line, / /);
+            if (length(fields) < 4) continue;
+            
+            let mac = uc(as_string(fields[1]));
+            let ip = fields[2];
+            let hostname = fields[3] == "*" ? "Неизвестно" : fields[3];
+            
+            let is_blocked = blocked_macs[mac] ? true : false;
+            let status_icon = is_blocked ? "🚫" : "🟢";
+            
+            text += status_icon + " <b>" + escape_html(hostname) + "</b>\n";
+            text += "└ IP: <code>" + ip + "</code> | MAC: <code>" + mac + "</code>\n\n";
+            
+            push(keyboard, [
+                {
+                    text: (is_blocked ? "🔓 Разблокировать " : "🚫 Заблокировать ") + hostname,
+                    callback_data: "/toggle_mac " + mac
+                }
+            ]);
+            count++;
+        }
+    }
+    
+    if (count == 0) {
+        text += "<i>Устройства не найдены.</i>\n";
+    }
+    
+    push(keyboard, [ { text: "⬅️ Назад в меню", callback_data: "/help" } ]);
+    
+    let payload = {
+        chat_id: int(chat_id),
+        text: text,
+        parse_mode: "HTML",
+        reply_markup: { inline_keyboard: keyboard }
+    };
+    tg_request(token, "sendMessage", payload);
+}
+
 function process_command(token, chat_id, text) {
     let cmd = trim(as_string(text));
     if (cmd == "/start" || cmd == "/help") {
         let help_text = "🤖 <b>Tachyon Bot</b> — Панель управления роутером\n\n" +
             "<b>Доступные команды:</b>\n" +
             "📊 /status — Статус системы и RAM/CPU\n" +
-            "📡 /servers — Список серверов и задержка\n" +
-            "⚡ /test — Проверка интернет-соединения\n" +
-            "🚀 /speed — Замер скорости интернета\n" +
+            "📡 /servers — Выбрать активный прокси-сервер\n" +
+            "🛡️ /rules — Управление правилами обхода\n" +
+            "💻 /devices — Подключенные устройства (DHCP)\n" +
+            "🔄 /sub_update — Обновить прокси-подписки\n" +
+            "⚡ /test — Быстрая проверка интернет-соединения\n" +
+            "🚀 /speed — Замер скорости интернета (5MB)\n" +
             "📈 /traffic — Статистика трафика sing-box\n" +
-            "🩺 /doctor — Диагностика и ремонт ошибок\n" +
+            "🩺 /doctor — Запуск диагностики и ремонта\n" +
             "🔄 /restart — Перезапустить службы Tachyon\n" +
             "📋 /logs — Посмотреть последние логи\n" +
-            "💾 /backup — Резервная копия настроек роутера\n" +
+            "💾 /backup — Скачать резервную копию настроек\n" +
             "🌐 /bypass_add &lt;домен&gt; — Добавить домен в обход\n" +
             "🌐 /bypass_del &lt;домен&gt; — Удалить домен из обхода\n" +
             "🌐 /direct_add &lt;домен&gt; — Добавить домен в прямой доступ\n" +
             "🌐 /direct_del &lt;домен&gt; — Удалить домен из прямого доступа\n" +
             "🚫 /block_mac &lt;MAC&gt; — Заблокировать устройство по MAC\n" +
             "🔓 /unblock_mac &lt;MAC&gt; — Разблокировать устройство по MAC\n" +
+            "📡 /ping &lt;хост&gt; — Пинг сетевого узла напрямую\n" +
+            "🌐 /curl &lt;URL&gt; — Запрос к URL напрямую и через прокси\n" +
+            "🔍 /nslookup &lt;домен&gt; — DNS-запрос через localhost роутера\n" +
             "💻 /sh &lt;команда&gt; — Выполнить консольную команду\n" +
             "❓ /help — Справка по командам\n";
         send_message_with_keyboard(token, chat_id, help_text, "HTML");
@@ -597,6 +773,93 @@ function process_command(token, chat_id, text) {
         } else {
             send_message_with_keyboard(token, chat_id, "❌ " + res.error, "HTML");
         }
+    }
+    else if (cmd == "/rules") {
+        handle_rules(token, chat_id);
+    }
+    else if (match(cmd, /^\/toggle_rule /) != null) {
+        let section = trim(substr(cmd, 13));
+        let c = uci_core.cursor();
+        if (c) {
+            c.load("tachyon");
+            let current = c.get("tachyon", section, "enabled") == "1" ? "0" : "1";
+            c.set("tachyon", section, "enabled", current);
+            c.commit("tachyon");
+            command_status("/usr/bin/tachyon reload");
+        }
+        handle_rules(token, chat_id);
+    }
+    else if (cmd == "/devices") {
+        handle_devices(token, chat_id);
+    }
+    else if (match(cmd, /^\/toggle_mac /) != null) {
+        let mac = trim(substr(cmd, 12));
+        let blocked = false;
+        let c = uci_core.cursor();
+        if (c) {
+            c.load("firewall");
+            c.foreach("firewall", "rule", function(r) {
+                if (uc(as_string(r.src_mac)) == uc(mac) && r.target == "REJECT") {
+                    blocked = true;
+                    return false;
+                }
+            });
+        }
+        manage_mac_block(mac, blocked);
+        handle_devices(token, chat_id);
+    }
+    else if (cmd == "/sub_update") {
+        send_message(token, chat_id, "🔄 <b>Запуск обновления подписок...</b>", "HTML");
+        let sub_res = command_capture("/usr/bin/tachyon subscription_update");
+        let output = sub_res.output || "Обновление завершено.";
+        send_message_with_keyboard(token, chat_id, "✅ <b>Результат обновления подписок:</b>\n\n<pre>" + escape_html(output) + "</pre>", "HTML");
+    }
+    else if (match(cmd, /^\/ping /) != null) {
+        let host = trim(substr(cmd, 6));
+        if (host == "" || match(host, /^[a-zA-Z0-9\.\-]+$/) == null) {
+            send_message_with_keyboard(token, chat_id, "❌ Укажите корректный хост. Пример: `/ping google.com`", "HTML");
+            return;
+        }
+        send_message(token, chat_id, "⏳ <b>Выполняю пинг " + escape_html(host) + "...</b>", "HTML");
+        let ping_res = command_capture("ping -c 4 " + shell_quote(host));
+        let output = ping_res.output || "Нет ответа.";
+        send_message_with_keyboard(token, chat_id, "📡 <b>Результат пинга:</b>\n\n<pre>" + escape_html(output) + "</pre>", "HTML");
+    }
+    else if (match(cmd, /^\/curl /) != null) {
+        let url = trim(substr(cmd, 6));
+        if (url == "" || match(url, /^https?:\/\/[a-zA-Z0-9\.\-\/]+$/) == null) {
+            send_message_with_keyboard(token, chat_id, "❌ Укажите корректный URL. Пример: `/curl https://google.com`", "HTML");
+            return;
+        }
+        send_message(token, chat_id, "⏳ <b>Запрос к " + escape_html(url) + "...</b>", "HTML");
+        
+        let res_direct = command_capture("curl -I -s --connect-timeout 5 " + shell_quote(url));
+        let out_direct = res_direct.output || "Нет ответа.";
+        
+        let res_proxy = command_capture("curl -I -s --connect-timeout 5 --proxy http://127.0.0.1:4534 " + shell_quote(url));
+        let out_proxy = res_proxy.output || "Нет ответа.";
+        
+        let report = "🌐 <b>Результаты HTTP-запроса:</b>\n\n" +
+            "<b>Напрямую:</b>\n<pre>" + escape_html(out_direct) + "</pre>\n" +
+            "<b>Через прокси:</b>\n<pre>" + escape_html(out_proxy) + "</pre>";
+            
+        send_message_with_keyboard(token, chat_id, report, "HTML");
+    }
+    else if (match(cmd, /^\/nslookup /) != null) {
+        let domain = trim(substr(cmd, 10));
+        if (domain == "" || match(domain, /^[a-zA-Z0-9\.\-]+$/) == null) {
+            send_message_with_keyboard(token, chat_id, "❌ Укажите корректный домен. Пример: `/nslookup google.com`", "HTML");
+            return;
+        }
+        send_message(token, chat_id, "⏳ <b>Выполняю nslookup " + escape_html(domain) + " через localhost...</b>", "HTML");
+        let lookup_res = command_capture("nslookup " + shell_quote(domain) + " 127.0.0.1");
+        let output = lookup_res.output || "Нет ответа.";
+        send_message_with_keyboard(token, chat_id, "🔍 <b>Результат DNS-запроса через localhost:</b>\n\n<pre>" + escape_html(output) + "</pre>", "HTML");
+    }
+    else if (match(cmd, /^\/switch /) != null) {
+        let server_name = trim(substr(cmd, 8));
+        clash_request("PUT", "proxies/main-out", { name: server_name });
+        handle_servers(token, chat_id);
     }
     else if (match(cmd, /^\/sh /) != null) {
         let shell_cmd = substr(cmd, 4);
