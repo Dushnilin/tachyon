@@ -396,6 +396,7 @@ const PORT_PROTOCOLS = [
   "vless",
   "trojan",
   "hysteria2",
+  "awg",
 ];
 const EXTENDED_PORT_PROTOCOLS = ["mtproto"];
 const PASSWORD_PROTOCOLS = ["shadowsocks", "socks", "trojan", "hysteria2"];
@@ -407,6 +408,7 @@ const BASE_PROTOCOL_LABELS = {
   vmess: "VMess",
   trojan: "Trojan",
   hysteria2: "Hysteria2",
+  awg: "AmneziaWG",
 };
 const EXTENDED_PROTOCOL_LABELS = {
   mtproto: "MTProto",
@@ -434,6 +436,7 @@ const SECURITY_BY_PROTOCOL = {
   mtproto: ["none"],
   tailscale: ["none"],
   json_inbound: ["none"],
+  awg: ["none"],
 };
 
 function getSecurityLabel(security) {

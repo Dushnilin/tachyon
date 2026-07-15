@@ -807,11 +807,11 @@ function rule_action(section) {
 }
 
 function rule_action_supported(action) {
-    return contains([ "connection", "proxy", "outbound", "vpn", "bypass", "block", "dns", "zapret", "zapret2", "byedpi" ], as_string(action));
+    return contains([ "connection", "proxy", "outbound", "vpn", "awg", "bypass", "block", "dns", "zapret", "zapret2", "byedpi" ], as_string(action));
 }
 
 function server_routing_section_action_supported(action) {
-    return contains([ "connection", "proxy", "outbound", "vpn", "zapret", "zapret2", "byedpi" ], as_string(action));
+    return contains([ "connection", "proxy", "outbound", "vpn", "awg", "zapret", "zapret2", "byedpi" ], as_string(action));
 }
 
 function duration_to_seconds_value(value) {
@@ -1058,7 +1058,7 @@ function validate_proxy_parameter_value(value, allowed, parameter, section) {
 function validate_proxy_parameter_filters(protocols, transports, securities, section) {
     for (let value in protocols)
         validate_proxy_parameter_value(value,
-            [ "direct", "http", "hysteria2", "shadowsocks", "socks", "trojan", "vless", "vmess" ],
+            [ "awg", "direct", "http", "hysteria2", "shadowsocks", "socks", "trojan", "vless", "vmess" ],
             "protocol", section);
     for (let value in transports)
         validate_proxy_parameter_value(value,
@@ -1642,7 +1642,7 @@ function validate_server_routing_sections(sections) {
         if (!target.enabled)
             fail_validation("Server '" + name + "' references disabled routing section '" + target_name + "'. Aborted.");
         if (!server_routing_section_action_supported(target.action))
-            fail_validation("Server '" + name + "' references routing section '" + target_name + "' with unsupported action '" + target.action + "'. Select a Connection, proxy, JSON outbound, VPN, Zapret, Zapret2, or ByeDPI section. Aborted.");
+            fail_validation("Server '" + name + "' references routing section '" + target_name + "' with unsupported action '" + target.action + "'. Select a Connection, proxy, JSON outbound, VPN, AWG, Zapret, Zapret2, or ByeDPI section. Aborted.");
     }
 }
 

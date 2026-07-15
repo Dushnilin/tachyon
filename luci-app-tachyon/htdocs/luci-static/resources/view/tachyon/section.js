@@ -4044,6 +4044,8 @@ function getActionOptionLabel(action) {
       return "Zapret2";
     case "byedpi":
       return "ByeDPI";
+    case "awg":
+      return "AmneziaWG";
     case "outbound":
       return _("JSON outbound");
     case "proxy":
@@ -4067,6 +4069,10 @@ function getRuleActionDisplayValue(section_id) {
     return "ByeDPI";
   }
 
+  if (action === "awg") {
+    return "AmneziaWG";
+  }
+
   return getActionOptionLabel(action);
 }
 
@@ -4079,6 +4085,7 @@ function populateActionOptionValues(option) {
   delete option.vallist;
 
   option.value("connection", getActionOptionLabel("connection"));
+  option.value("awg", getActionOptionLabel("awg"));
   option.value("bypass", "Bypass");
   option.value("block", "Block");
   option.value("dns", "DNS");
@@ -7126,6 +7133,126 @@ function createSectionContent(section) {
     return analysis.valid ? true : analysis.message;
   };
   configureTextareaOption(o, analyzeByedpiStrategy);
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "awg_local_address",
+    _("Local Address"),
+  );
+  o.modalonly = true;
+  o.rmempty = false;
+  o.depends("action", "awg");
+  o.validate = validateRequiredText;
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "awg_private_key",
+    _("Private Key"),
+  );
+  o.modalonly = true;
+  o.rmempty = false;
+  o.depends("action", "awg");
+  o.validate = validateRequiredText;
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "awg_peer_public_key",
+    _("Peer Public Key"),
+  );
+  o.modalonly = true;
+  o.rmempty = false;
+  o.depends("action", "awg");
+  o.validate = validateRequiredText;
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "awg_server_address",
+    _("Server Address"),
+  );
+  o.modalonly = true;
+  o.rmempty = false;
+  o.depends("action", "awg");
+  o.validate = validateRequiredText;
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "awg_server_port",
+    _("Server Port"),
+  );
+  o.modalonly = true;
+  o.rmempty = false;
+  o.datatype = "port";
+  o.depends("action", "awg");
+  o.validate = validateRequiredText;
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "awg_preshared_key",
+    _("Preshared Key"),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.depends("action", "awg");
+
+  o = section.taboption("settings", form.Value, "awg_jc", "Jc");
+  o.default = "120";
+  o.modalonly = true;
+  o.rmempty = false;
+  o.depends("action", "awg");
+
+  o = section.taboption("settings", form.Value, "awg_jmin", "Jmin");
+  o.default = "23";
+  o.modalonly = true;
+  o.rmempty = false;
+  o.depends("action", "awg");
+
+  o = section.taboption("settings", form.Value, "awg_jmax", "Jmax");
+  o.default = "911";
+  o.modalonly = true;
+  o.rmempty = false;
+  o.depends("action", "awg");
+
+  o = section.taboption("settings", form.Value, "awg_s1", "S1");
+  o.default = "0";
+  o.modalonly = true;
+  o.rmempty = false;
+  o.depends("action", "awg");
+
+  o = section.taboption("settings", form.Value, "awg_s2", "S2");
+  o.default = "0";
+  o.modalonly = true;
+  o.rmempty = false;
+  o.depends("action", "awg");
+
+  o = section.taboption("settings", form.Value, "awg_h1", "H1");
+  o.default = "1";
+  o.modalonly = true;
+  o.rmempty = false;
+  o.depends("action", "awg");
+
+  o = section.taboption("settings", form.Value, "awg_h2", "H2");
+  o.default = "2";
+  o.modalonly = true;
+  o.rmempty = false;
+  o.depends("action", "awg");
+
+  o = section.taboption("settings", form.Value, "awg_h3", "H3");
+  o.default = "3";
+  o.modalonly = true;
+  o.rmempty = false;
+  o.depends("action", "awg");
+
+  o = section.taboption("settings", form.Value, "awg_h4", "H4");
+  o.default = "4";
+  o.modalonly = true;
+  o.rmempty = false;
+  o.depends("action", "awg");
 
   o = section.taboption(
     "settings",
