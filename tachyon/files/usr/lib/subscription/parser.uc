@@ -292,9 +292,23 @@ function read_json_file(path) {
     return data == null ? null : json_decode_text(data);
 }
 
+function reality_public_key_valid(value) {
+    return match(as_string(value), /^[A-Za-z0-9_-]{43}$/) != null;
+}
+
 function validate_subscription(path) {
     let value = read_json_file(path);
-    return type(value) == "object" && type(value.outbounds) == "array" && length(value.outbounds) > 0;
+    if (type(value) != "object" || type(value.outbounds) != "array" || length(value.outbounds) == 0)
+        return false;
+
+    for (let outbound in value.outbounds) {
+        let tls = type(outbound) == "object" && type(outbound.tls) == "object" ? outbound.tls : {};
+        let reality = tls.reality;
+        if (type(reality) == "object" && reality.enabled !== false && !reality_public_key_valid(reality.public_key))
+            return false;
+    }
+
+    return true;
 }
 
 function write_json_file(path, value) {
@@ -1474,17 +1488,6 @@ function parse_clash_record(record) {
             outbound.password = as_string(record.password);
         return outbound;
     }
-    if (proxy_type == "http" || proxy_type == "https") {
-        let outbound = { type: "http", tag: name, server: server, server_port: port };
-        if (as_string(record.username) != "")
-            outbound.username = as_string(record.username);
-        if (as_string(record.password) != "")
-            outbound.password = as_string(record.password);
-        if (proxy_type == "https" || is_true(record.tls))
-            outbound.tls = { enabled: true };
-        return outbound;
-    }
-
     return null;
 }
 

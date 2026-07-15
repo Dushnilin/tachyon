@@ -765,6 +765,8 @@ function select_dns_owner(legacy) {
     }
 }
 
+let dnsmasq_failsafe_restore;
+
 function installer_restore_dnsmasq(bin_path, legacy) {
     if (path_executable(bin_path) && run_args([ bin_path, "restore_dnsmasq" ]))
         return true;
@@ -1098,7 +1100,7 @@ function dnsmasq_restore_default_instance() {
     }
 }
 
-function dnsmasq_failsafe_restore() {
+dnsmasq_failsafe_restore = function() {
     if (!uci_available())
         return true;
 
@@ -1113,7 +1115,7 @@ function dnsmasq_failsafe_restore() {
     uci_commit("dhcp");
     restart_dnsmasq();
     return true;
-}
+};
 
 function release_version_valid(value) {
     return match(as_string(value), /^[0-9]+[.][0-9]+[.][0-9]+$/) != null;

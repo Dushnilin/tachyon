@@ -75,7 +75,7 @@ export async function runNftCheck() {
         value: '',
       },
       {
-        state: data.rules_mangle_counters ? 'success' : 'error',
+        state: data.rules_mangle_counters ? 'success' : 'warning',
         key: _('Rules mangle counters'),
         value: '',
       },

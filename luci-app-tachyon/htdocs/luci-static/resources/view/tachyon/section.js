@@ -7135,7 +7135,7 @@ function createSectionContent(section) {
     "selector_proxy_links",
     _("Connection URL"),
     _(
-      "vless://, vmess://, ss://, trojan://, socks4/5://, http(s)://, hy2/hysteria2:// links",
+      "vless://, vmess://, ss://, trojan://, socks4/5://, hy2/hysteria2:// links",
     ),
   );
   o.depends("action", "connection");

@@ -144,7 +144,7 @@ if sed -n '/^function process_age_seconds(pid) {$/,/^}$/p' "$STATE_UC" | grep -F
 fi
 
 mkdir -p "$WORK_DIR/stable-start-bin"
-cp "$(command -v sleep)" "$WORK_DIR/stable-start-bin/sing-box"
+cp "$(command -v ucode)" "$WORK_DIR/stable-start-bin/sing-box"
 cat >"$WORK_DIR/stable-start-bin/ubus" <<'SH'
 #!/usr/bin/env bash
 set -eo pipefail
@@ -169,7 +169,7 @@ exec "${REAL_UCODE:?}" "$@"
 SH
 chmod 0755 "$WORK_DIR/stable-start-bin/ubus" "$WORK_DIR/stable-start-bin/nft" "$WORK_DIR/stable-start-bin/ucode"
 
-"$WORK_DIR/stable-start-bin/sing-box" 30 &
+"$WORK_DIR/stable-start-bin/sing-box" -e "system('sleep 30')" &
 sing_box_pid=$!
 printf '%s\n' "$sing_box_pid" >"$WORK_DIR/sing-box.pid"
 if ! PATH="$WORK_DIR/stable-start-bin:$PATH" \

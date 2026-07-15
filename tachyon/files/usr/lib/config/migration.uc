@@ -6,6 +6,7 @@
 let fs = require("fs");
 let common = require("core.common");
 let uci_core = require("core.uci");
+let core_url = require("core.url");
 let constants_module = require("core.constants");
 let singbox_constants_module = require("singbox.constants");
 let domain_config = require("config.domain");
@@ -1183,9 +1184,110 @@ function migrate_enable_component_checks(ctx) {
     set_option(ctx, ctx.model.settings, "component_update_check_enabled", "1");
 }
 
+function migration_port(value) {
+    value = as_string(value);
+    if (match(value, /^[0-9]+$/) == null)
+        return null;
+
+    value = int(value);
+    return value >= 1 && value <= 65535 ? value : null;
+}
+
+function unique_migration_tag(base, taken) {
+    base = trim(as_string(base));
+    if (base == "")
+        base = "http";
+    if (!taken[base])
+        return base;
+
+    for (let suffix = 1; suffix < 100000; suffix++) {
+        let candidate = base + "-" + suffix;
+        if (!taken[candidate])
+            return candidate;
+    }
+    return base + "-overflow";
+}
+
+function migrated_http_outbound(link, tag_name) {
+    link = core_url.strip_fragment(core_url.decode(link));
+    let scheme = core_url.scheme(link);
+    if (scheme != "http" && scheme != "https")
+        return null;
+
+    let host = core_url.host(link);
+    let port = migration_port(core_url.port(link));
+    let path = core_url.path(link);
+    if (host == "" || port == null || (path != "" && path != "/") || index(link, "?") >= 0)
+        return null;
+
+    let outbound = {
+        type: "http",
+        tag: tag_name,
+        server: host,
+        server_port: port
+    };
+    let userinfo = core_url.userinfo(link);
+    if (userinfo != "") {
+        let colon = index(userinfo, ":");
+        outbound.username = colon >= 0 ? substr(userinfo, 0, colon) : userinfo;
+        if (colon >= 0)
+            outbound.password = substr(userinfo, colon + 1);
+    }
+    if (scheme == "https")
+        outbound.tls = { enabled: true };
+    return outbound;
+}
+
+function migrate_http_connection_urls(ctx) {
+    if (!release_at_most(ctx, "1.0.4"))
+        return;
+
+    for (let section in ctx.model.sections) {
+        let existing_jsons = option_list_values(section, "outbound_jsons");
+        let taken = {};
+        for (let value in existing_jsons) {
+            try {
+                let outbound = json(value);
+                let tag_name = type(outbound) == "object" ? trim(as_string(outbound.tag || "")) : "";
+                if (tag_name != "")
+                    taken[tag_name] = true;
+            }
+            catch (e) {
+            }
+        }
+
+        let remaining_links = [];
+        let migrated_jsons = [];
+        for (let link in option_list_values(section, "selector_proxy_links")) {
+            let tag_name = unique_migration_tag(core_url.fragment(link), taken);
+            let outbound = migrated_http_outbound(link, tag_name);
+            if (outbound == null) {
+                push(remaining_links, link);
+                continue;
+            }
+
+            taken[tag_name] = true;
+            push(migrated_jsons, sprintf("%J", outbound));
+        }
+
+        if (length(migrated_jsons) == 0)
+            continue;
+
+        if (length(remaining_links) > 0)
+            set_list_option(ctx, section, "selector_proxy_links", remaining_links);
+        else
+            delete_option(ctx, section, "selector_proxy_links");
+
+        for (let value in existing_jsons)
+            push(migrated_jsons, value);
+        set_list_option(ctx, section, "outbound_jsons", migrated_jsons);
+    }
+}
+
 const MIGRATIONS = [
     { id: "interface_sections", run: migrate_interface_sections },
-    { id: "enable_component_checks", run: migrate_enable_component_checks }
+    { id: "enable_component_checks", run: migrate_enable_component_checks },
+    { id: "http_connection_urls", run: migrate_http_connection_urls }
 ];
 
 function apply_migrations(ctx) {
@@ -1215,8 +1317,8 @@ function apply_migrations(ctx) {
     if (added)
         set_list_option(ctx, ctx.model.settings, APPLIED_MIGRATIONS_OPTION, applied);
 
-    if (release_at_most(ctx, "1.0.1"))
-        set_option(ctx, ctx.model.settings, CONFIG_VERSION_OPTION, "1.0.2");
+    if (release_at_most(ctx, "1.0.4"))
+        set_option(ctx, ctx.model.settings, CONFIG_VERSION_OPTION, "1.0.5");
 }
 
 function migrate_podkop_model(model, constants) {

@@ -215,7 +215,8 @@ ui_ucode cleanup-action-dir-fixture "$cleanup_dir"
 
 old_state="$cleanup_dir/old.json"
 printf '%s\n' '{"running":false}' >"$old_state"
-touch -d '2 hours ago' "$old_state"
+two_hours_ago="$(( $(date +%s) - 7200 ))"
+touch -d "@$two_hours_ago" "$old_state"
 TACHYON_UI_ACTION_FINISHED_TTL_MINUTES=60 ui_ucode cleanup-action-dir-fixture "$cleanup_dir"
 [ ! -e "$old_state" ] ||
   fail "old finished action state should be cleaned without find"

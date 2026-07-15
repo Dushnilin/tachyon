@@ -15,6 +15,7 @@ let connections = require("config.connections");
 
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
 const DEFAULT_LATENCY_TEST_URL = "https://www.gstatic.com/generate_204";
+const TAILSCALE_FWMARK_MASK = 0x00ff0000;
 
 function as_string(value) {
     return value == null ? "" : "" + value;
@@ -1658,11 +1659,21 @@ function validate_list_update_settings(settings) {
 function validate_runtime_mark_ranges_context(context) {
     let fakeip_mark = parse_number(context.nft_fakeip_mark);
     let outbound_mark = parse_number(context.nft_outbound_mark);
+
+    if (fakeip_mark == null || outbound_mark == null)
+        fail_validation("Tachyon marks contain invalid numeric constants. Aborted.");
+    if ((fakeip_mark & TAILSCALE_FWMARK_MASK) != 0)
+        fail_validation("FakeIP mark overlaps Tailscale fwmark mask 0x00ff0000. Aborted.");
+    if ((outbound_mark & TAILSCALE_FWMARK_MASK) != 0)
+        fail_validation("Outbound mark overlaps Tailscale fwmark mask 0x00ff0000. Aborted.");
+
     let ranges = [
         [ "Zapret", context.zapret_route_mark_base, context.zapret_queue_range_size, fakeip_mark, "FakeIP mark " + context.nft_fakeip_mark ],
         [ "Zapret", context.zapret_route_mark_base, context.zapret_queue_range_size, outbound_mark, "outbound mark " + context.nft_outbound_mark ],
         [ "Zapret2", context.zapret2_route_mark_base, context.zapret2_queue_range_size, fakeip_mark, "FakeIP mark " + context.nft_fakeip_mark ],
-        [ "Zapret2", context.zapret2_route_mark_base, context.zapret2_queue_range_size, outbound_mark, "outbound mark " + context.nft_outbound_mark ]
+        [ "Zapret2", context.zapret2_route_mark_base, context.zapret2_queue_range_size, outbound_mark, "outbound mark " + context.nft_outbound_mark ],
+        [ "Zapret", context.zapret_route_mark_base, context.zapret_queue_range_size, TAILSCALE_FWMARK_MASK, "Tailscale fwmark mask 0x00ff0000" ],
+        [ "Zapret2", context.zapret2_route_mark_base, context.zapret2_queue_range_size, TAILSCALE_FWMARK_MASK, "Tailscale fwmark mask 0x00ff0000" ]
     ];
 
     for (let range in ranges) {

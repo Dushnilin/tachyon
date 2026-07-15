@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-07-14 05:07+0300\n"
-"PO-Revision-Date: 2026-07-14 05:07+0300\n"
+"POT-Creation-Date: 2026-07-15 06:45+0300\n"
+"PO-Revision-Date: 2026-07-15 06:45+0300\n"
 "Last-Translator: Dushnilin <dushnilin@gmail.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -1064,7 +1064,7 @@ msgstr ""
 msgid "Faster server search interval"
 msgstr ""
 
-#: src/tachyon/methods/custom/getDashboardSections.ts:638
+#: src/tachyon/methods/custom/getDashboardSections.ts:647
 msgid "Fastest"
 msgstr ""
 
@@ -1345,46 +1345,6 @@ msgstr ""
 
 #: src/validators/validateSubnet.ts:10
 msgid "Invalid format. Use an IP address or CIDR subnet"
-msgstr ""
-
-#: src/validators/validateHttpProxyUrl.ts:57
-msgid "Invalid HTTP proxy URL: invalid host and port"
-msgstr ""
-
-#: src/validators/validateHttpProxyUrl.ts:79
-msgid "Invalid HTTP proxy URL: invalid port number"
-msgstr ""
-
-#: src/validators/validateHttpProxyUrl.ts:49
-msgid "Invalid HTTP proxy URL: missing host and port"
-msgstr ""
-
-#: src/validators/validateHttpProxyUrl.ts:65
-msgid "Invalid HTTP proxy URL: missing hostname or IP"
-msgstr ""
-
-#: src/validators/validateHttpProxyUrl.ts:72
-msgid "Invalid HTTP proxy URL: missing port"
-msgstr ""
-
-#: src/validators/validateHttpProxyUrl.ts:41
-msgid "Invalid HTTP proxy URL: missing username"
-msgstr ""
-
-#: src/validators/validateHttpProxyUrl.ts:18
-msgid "Invalid HTTP proxy URL: must not contain spaces"
-msgstr ""
-
-#: src/validators/validateHttpProxyUrl.ts:9
-msgid "Invalid HTTP proxy URL: must start with http:// or https://"
-msgstr ""
-
-#: src/validators/validateHttpProxyUrl.ts:85
-msgid "Invalid HTTP proxy URL: parsing failed"
-msgstr ""
-
-#: src/validators/validateHttpProxyUrl.ts:26
-msgid "Invalid HTTP proxy URL: path, query, and fragment are not supported"
 msgstr ""
 
 #: src/validators/validateHysteriaUrl.ts:104
@@ -3089,7 +3049,6 @@ msgstr ""
 msgid "unique UCI identifier"
 msgstr ""
 
-#: src/tachyon/helpers/singBoxVariant.ts:28
 #: src/tachyon/services/systemInfo.service.ts:10
 #: src/tachyon/services/systemInfo.service.ts:11
 #: src/tachyon/services/systemInfo.service.ts:12
@@ -3099,6 +3058,7 @@ msgstr ""
 #: src/tachyon/services/systemInfo.service.ts:22
 #: src/tachyon/services/systemInfo.service.ts:25
 #: src/tachyon/services/systemInfo.service.ts:26
+#: src/tachyon/helpers/singBoxVariant.ts:28
 #: src/tachyon/tabs/updates/initController.ts:329
 #: src/tachyon/tabs/diagnostic/checks/runInboundsCheck.ts:25
 msgid "unknown"
@@ -3166,8 +3126,8 @@ msgstr ""
 msgid "Uploaded"
 msgstr ""
 
-#: src/validators/validateProxyUrl.ts:47
-msgid "URL must start with vless://, vmess://, ss://, trojan://, socks4://, socks4a://, socks5://, http://, https://, hysteria2://, or hy2://"
+#: src/validators/validateProxyUrl.ts:42
+msgid "URL must start with vless://, vmess://, ss://, trojan://, socks4://, socks4a://, socks5://, hysteria2://, or hy2://"
 msgstr ""
 
 #: src/validators/validateUrl.ts:18
@@ -3293,7 +3253,6 @@ msgstr ""
 #: src/validators/validateDns.ts:29
 #: src/validators/validateDomain.ts:57
 #: src/validators/validateDomain.ts:76
-#: src/validators/validateHttpProxyUrl.ts:89
 #: src/validators/validateHysteriaUrl.ts:151
 #: src/validators/validateIp.ts:25
 #: src/validators/validateOutboundJson.ts:118
@@ -3338,7 +3297,7 @@ msgid "VLESS flow"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:7137
-msgid "vless://, vmess://, ss://, trojan://, socks4/5://, http(s)://, hy2/hysteria2:// links"
+msgid "vless://, vmess://, ss://, trojan://, socks4/5://, hy2/hysteria2:// links"
 msgstr ""
 
 #: src/tachyon/tabs/diagnostic/checks/runInboundsCheck.ts:70

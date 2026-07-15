@@ -5,7 +5,6 @@ import { validateVmessUrl } from './validateVmessUrl';
 import { validateTrojanUrl } from './validateTrojanUrl';
 import { validateSocksUrl } from './validateSocksUrl';
 import { validateHysteria2Url } from './validateHysteriaUrl';
-import { validateHttpProxyUrl } from './validateHttpProxyUrl';
 
 // TODO refactor current validation and add tests
 export function validateProxyUrl(url: string): ValidationResult {
@@ -31,10 +30,6 @@ export function validateProxyUrl(url: string): ValidationResult {
     return validateSocksUrl(trimmedUrl);
   }
 
-  if (/^https?:\/\//.test(trimmedUrl)) {
-    return validateHttpProxyUrl(trimmedUrl);
-  }
-
   if (
     trimmedUrl.startsWith('hysteria2://') ||
     trimmedUrl.startsWith('hy2://')
@@ -45,7 +40,7 @@ export function validateProxyUrl(url: string): ValidationResult {
   return {
     valid: false,
     message: _(
-      'URL must start with vless://, vmess://, ss://, trojan://, socks4://, socks4a://, socks5://, http://, https://, hysteria2://, or hy2://',
+      'URL must start with vless://, vmess://, ss://, trojan://, socks4://, socks4a://, socks5://, hysteria2://, or hy2://',
     ),
   };
 }

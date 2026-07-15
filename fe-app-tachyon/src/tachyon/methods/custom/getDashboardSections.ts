@@ -1,4 +1,4 @@
-﻿import { getConfigSections } from './getConfigSections';
+import { getConfigSections } from './getConfigSections';
 import { ClashAPI, Tachyon } from '../../types';
 import {
   canUseDirectClashApi,
@@ -127,6 +127,7 @@ type ChildType =
   | 'priority_level';
 
 const DASHBOARD_SECTION_CACHE_DIR = '/var/run/tachyon/section-cache';
+const CLASH_API_FETCH_TIMEOUT_MS = 5000;
 
 function getDisplayName(section: Tachyon.ConfigSection) {
   return section.label || section['.name'];
@@ -149,10 +150,16 @@ async function getClashApiProxies(
 ): Promise<Tachyon.MethodResponse<ClashAPI.Proxies>> {
   if (canFetchClashApiDirectly()) {
     const secret = getClashApiSecret(configSections);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(
+      () => controller.abort(),
+      CLASH_API_FETCH_TIMEOUT_MS,
+    );
 
     try {
       const response = await fetch(`${getClashHttpUrl()}/proxies`, {
         headers: secret ? { Authorization: `Bearer ${secret}` } : undefined,
+        signal: controller.signal,
       });
 
       if (response.ok) {
@@ -163,6 +170,8 @@ async function getClashApiProxies(
       }
     } catch (_error) {
       // Fall back to rpcd below for controllers unavailable from the browser.
+    } finally {
+      clearTimeout(timeoutId);
     }
   }
 

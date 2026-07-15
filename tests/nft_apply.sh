@@ -52,8 +52,8 @@ assert_line_before() {
   local first_line
   local second_line
 
-  first_line="$(grep -Fn "$first" "$file" | head -n 1 | cut -d: -f1 || true)"
-  second_line="$(grep -Fn "$second" "$file" | head -n 1 | cut -d: -f1 || true)"
+  first_line="$(awk -v pat="$first" 'index($0, pat) { print NR; exit }' "$file")"
+  second_line="$(awk -v pat="$second" 'index($0, pat) { print NR; exit }' "$file")"
   [ -n "$first_line" ] || fail "$label: missing first line '$first'"
   [ -n "$second_line" ] || fail "$label: missing second line '$second'"
   [ "$first_line" -lt "$second_line" ] || fail "$label: expected first line before second"
@@ -223,9 +223,10 @@ assert_contains "$NFT_LOG" '::/128,::1/128,64:ff9b::/96' "runtime localv6 elemen
 assert_contains "$NFT_LOG" $'nft\tadd\tset\tinet\tTachyonTable\ttachyon_interfaces\t{ type ifname; flags interval; }' "runtime interface set"
 assert_contains "$NFT_LOG" $'nft\tadd\telement\tinet\tTachyonTable\ttachyon_interfaces\t{ br-lan }' "runtime br-lan interface"
 assert_contains "$NFT_LOG" $'nft\tadd\telement\tinet\tTachyonTable\ttachyon_interfaces\t{ tun0 }' "runtime tun0 interface"
-assert_contains "$NFT_LOG" $'nft\tadd\tchain\tinet\tTachyonTable\tmangle\t{ type filter hook prerouting priority -150; policy accept; }' "runtime mangle chain"
+assert_contains "$NFT_LOG" $'nft\tadd\tchain\tinet\tTachyonTable\tmangle\t{ type filter hook prerouting priority -149; policy accept; }' "runtime mangle chain runs after Tailscale connmark restore"
 assert_contains "$NFT_LOG" $'nft\tadd\tchain\tinet\tTachyonTable\tpriority_rules\t{ }' "runtime priority chain"
 assert_contains "$NFT_LOG" $'nft\tadd\tchain\tinet\tTachyonTable\tpriority_output_rules\t{ }' "runtime priority output chain"
+assert_contains "$NFT_LOG" $'nft\tadd\trule\tinet\tTachyonTable\tpriority_output_rules\tmeta\tmark\t!=\t0\treturn' "runtime priority output preserves provider marks"
 assert_contains "$NFT_LOG" $'nft\tadd\trule\tinet\tTachyonTable\tmangle\tjump\tpriority_rules' "runtime priority jump"
 assert_contains "$NFT_LOG" $'nft\tadd\trule\tinet\tTachyonTable\tmangle\tiifname\t@tachyon_interfaces\tip\tdaddr\t@tachyon_subnets\tmeta\tl4proto\ttcp\tmeta\tmark\tset\t0x00100000\tcounter' "runtime common tcp rule"
 assert_contains "$NFT_LOG" $'nft\tadd\trule\tinet\tTachyonTable\tmangle\tiifname\t@tachyon_interfaces\tip6\tdaddr\t@tachyon_subnets6\tmeta\tl4proto\ttcp\tmeta\tmark\tset\t0x00100000\tcounter' "runtime common6 tcp rule"
