@@ -2515,9 +2515,7 @@ function addUrlTestItemOptions(itemSection, options = {}) {
     form.Flag,
     "interrupt_exist_connections",
     _("Interrupt connections"),
-    _(
-      "Interrupt connections when URLTest switches the selected server",
-    ),
+    _("Interrupt connections when URLTest switches the selected server"),
   );
   o.default = "1";
   o.rmempty = false;

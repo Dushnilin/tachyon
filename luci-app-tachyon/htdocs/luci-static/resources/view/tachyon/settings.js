@@ -677,10 +677,16 @@ function createSettingsContent(section, capabilities) {
       "Exclude NTP protocol traffic from the tunnel to prevent it from being routed through the proxy or VPN",
     ),
   );
-  o.default = "0";
+  o = section.option(
+    form.Flag,
+    "enable_watchdog",
+    _("Enable Watchdog"),
+    _(
+      "Enables the background watchdog process to monitor services and auto-recover on failures.",
+    ),
+  );
+  o.default = "1";
   o.rmempty = false;
-
-
 }
 
 function createTelegramContent(section) {
@@ -688,7 +694,9 @@ function createTelegramContent(section) {
     form.Flag,
     "enabled",
     _("Enable Telegram Bot"),
-    _("Enables the background daemon that polls Telegram for commands and sends notifications."),
+    _(
+      "Enables the background daemon that polls Telegram for commands and sends notifications.",
+    ),
   );
   o.default = "0";
   o.rmempty = false;
@@ -713,7 +721,9 @@ function createTelegramContent(section) {
     form.Value,
     "admin_ids",
     _("Administrator Chat IDs"),
-    _("Comma-separated list of Telegram user IDs authorized to control the bot."),
+    _(
+      "Comma-separated list of Telegram user IDs authorized to control the bot.",
+    ),
   );
   o.depends("enabled", "1");
   o.rmempty = false;
@@ -750,7 +760,9 @@ function createTelegramContent(section) {
     form.Flag,
     "notify_crash",
     _("Notify on Core Crashes"),
-    _("Send a Telegram notification if sing-box or nftables rules crash and get auto-restored."),
+    _(
+      "Send a Telegram notification if sing-box or nftables rules crash and get auto-restored.",
+    ),
   );
   o.depends("enabled", "1");
   o.default = "1";
@@ -760,7 +772,9 @@ function createTelegramContent(section) {
     form.Flag,
     "notify_restart",
     _("Notify on Service Restarts"),
-    _("Send a Telegram notification if the Tachyon service is restarted by the watchdog."),
+    _(
+      "Send a Telegram notification if the Tachyon service is restarted by the watchdog.",
+    ),
   );
   o.depends("enabled", "1");
   o.default = "1";
@@ -770,7 +784,9 @@ function createTelegramContent(section) {
     form.Flag,
     "notify_server_switch",
     _("Notify on Server Switches"),
-    _("Send a Telegram notification when a URLTest group switches to a new server."),
+    _(
+      "Send a Telegram notification when a URLTest group switches to a new server.",
+    ),
   );
   o.depends("enabled", "1");
   o.default = "1";
@@ -780,7 +796,9 @@ function createTelegramContent(section) {
     form.Flag,
     "notify_subscription",
     _("Notify on Subscription Updates"),
-    _("Send a Telegram notification when proxy subscriptions are successfully updated."),
+    _(
+      "Send a Telegram notification when proxy subscriptions are successfully updated.",
+    ),
   );
   o.depends("enabled", "1");
   o.default = "1";
@@ -790,7 +808,9 @@ function createTelegramContent(section) {
     form.Flag,
     "notify_cert",
     _("Notify on Certificate Warnings"),
-    _("Send a Telegram notification if SSL/TLS certificates are close to expiration."),
+    _(
+      "Send a Telegram notification if SSL/TLS certificates are close to expiration.",
+    ),
   );
   o.depends("enabled", "1");
   o.default = "1";

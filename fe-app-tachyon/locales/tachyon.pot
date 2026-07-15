@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-07-15 15:04+0300\n"
-"PO-Revision-Date: 2026-07-15 15:04+0300\n"
+"POT-Creation-Date: 2026-07-15 18:44+0300\n"
+"PO-Revision-Date: 2026-07-15 18:44+0300\n"
 "Last-Translator: Dushnilin <dushnilin@gmail.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -139,7 +139,7 @@ msgstr ""
 msgid "Address"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:715
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:721
 msgid "Administrator Chat IDs"
 msgstr ""
 
@@ -204,7 +204,7 @@ msgstr ""
 msgid "Apply section rules only to the specified local IP addresses"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:723
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:729
 msgid "At least one Admin Chat ID is required"
 msgstr ""
 
@@ -474,7 +474,7 @@ msgstr ""
 msgid "Closed"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:716
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:722
 msgid "Comma-separated list of Telegram user IDs authorized to control the bot."
 msgstr ""
 
@@ -881,8 +881,12 @@ msgstr ""
 msgid "Enable Output Network Interface"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:690
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:696
 msgid "Enable Telegram Bot"
+msgstr ""
+
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:683
+msgid "Enable Watchdog"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:413
@@ -893,8 +897,12 @@ msgstr ""
 msgid "Enable YACD WAN Access"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:691
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:697
 msgid "Enables the background daemon that polls Telegram for commands and sends notifications."
+msgstr ""
+
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:684
+msgid "Enables the background watchdog process to monitor services and auto-recover on failures."
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/server.js:2582
@@ -925,7 +933,7 @@ msgstr ""
 msgid "Enter HWID"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:700
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:706
 msgid "Enter the API token obtained from @BotFather."
 msgstr ""
 
@@ -1195,7 +1203,7 @@ msgstr ""
 msgid "How often the currently selected server is checked"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:736
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:742
 msgid "How often to check Telegram for new messages (default: 5)."
 msgstr ""
 
@@ -1715,7 +1723,7 @@ msgstr ""
 msgid "Monitoring"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:726
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:732
 msgid "Must be a comma-separated list of numeric IDs"
 msgstr ""
 
@@ -1874,27 +1882,27 @@ msgstr ""
 msgid "Not running"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:792
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:798
 msgid "Notify on Certificate Warnings"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:752
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:758
 msgid "Notify on Core Crashes"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:802
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:808
 msgid "Notify on DNS Leaks"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:772
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:778
 msgid "Notify on Server Switches"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:762
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:768
 msgid "Notify on Service Restarts"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:782
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:788
 msgid "Notify on Subscription Updates"
 msgstr ""
 
@@ -2027,11 +2035,11 @@ msgstr ""
 msgid "Pin on dashboard"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:735
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:741
 msgid "Polling Interval (seconds)"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:744
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:750
 msgid "Polling interval must be at least 1 second"
 msgstr ""
 
@@ -2421,27 +2429,27 @@ msgstr ""
 msgid "Selector and URLTest outbounds must contain a non-empty outbounds array"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:803
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:809
 msgid "Send a Telegram notification if a potential DNS leak is detected."
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:753
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:759
 msgid "Send a Telegram notification if sing-box or nftables rules crash and get auto-restored."
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:793
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:799
 msgid "Send a Telegram notification if SSL/TLS certificates are close to expiration."
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:763
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:769
 msgid "Send a Telegram notification if the Tachyon service is restarted by the watchdog."
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:773
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:779
 msgid "Send a Telegram notification when a URLTest group switches to a new server."
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:783
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:789
 msgid "Send a Telegram notification when proxy subscriptions are successfully updated."
 msgstr ""
 
@@ -2811,7 +2819,7 @@ msgstr ""
 msgid "Telegram Bot"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:699
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:705
 msgid "Telegram Bot Token"
 msgstr ""
 
@@ -2930,7 +2938,7 @@ msgstr ""
 msgid "tiny"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:707
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:713
 msgid "Token is required when the bot is enabled"
 msgstr ""
 
