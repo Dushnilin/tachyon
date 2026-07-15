@@ -24,7 +24,7 @@ const CHECK_PROXY_IP_DOMAIN = getenv("CHECK_PROXY_IP_DOMAIN") || constants.CHECK
 const FAKEIP_TEST_DOMAIN = getenv("FAKEIP_TEST_DOMAIN") || constants.FAKEIP_TEST_DOMAIN || "fakeip.podkop.fyi";
 const RT_TABLE_NAME = getenv("RT_TABLE_NAME") || constants.RT_TABLE_NAME || "tachyon";
 const NFT_TABLE_NAME = getenv("NFT_TABLE_NAME") || constants.NFT_TABLE_NAME || "TachyonTable";
-const NFT_FAKEIP_MARK = getenv("NFT_FAKEIP_MARK") || constants.NFT_FAKEIP_MARK || "0x00100000";
+const NFT_FAKEIP_MARK = getenv("NFT_FAKEIP_MARK") || constants.NFT_FAKEIP_MARK || "0x04000000";
 const NFT_COMMON_SET_NAME = getenv("NFT_COMMON_SET_NAME") || constants.NFT_COMMON_SET_NAME || "tachyon_subnets";
 const NFT_PORT_SET_NAME = getenv("NFT_PORT_SET_NAME") || constants.NFT_PORT_SET_NAME || "tachyon_ports";
 const NFT_IP_PORT_SET_NAME = getenv("NFT_IP_PORT_SET_NAME") || constants.NFT_IP_PORT_SET_NAME || "tachyon_ip_ports";
@@ -1624,7 +1624,7 @@ function clash_proxy_type_map(base_url, auth) {
 
 function clash_latency_endpoint(base_url, proxy_tag, proxy_type) {
     proxy_type = as_string(proxy_type);
-    if (proxy_type == "URLTest" || proxy_type == "urltest")
+    if (lc(proxy_type) == "urltest")
         return base_url + "/group/" + clash_urlencode(proxy_tag) + "/delay";
     return base_url + "/proxies/" + clash_urlencode(proxy_tag) + "/delay";
 }
@@ -1689,7 +1689,15 @@ function clash_api(action, arg1, arg2, arg3) {
             module_success(SERVICE_UI_UC, [ "latency-progress-state", progress_path, count, total, failed ]);
 
         let proxy_types = clash_proxy_type_map(base_url, auth);
-        for (let proxy_tag in proxy_tags) {
+        let ordered_proxy_tags = [];
+        for (let proxy_tag in proxy_tags)
+            if (lc(as_string(proxy_types[proxy_tag])) != "urltest")
+                push(ordered_proxy_tags, proxy_tag);
+        for (let proxy_tag in proxy_tags)
+            if (lc(as_string(proxy_types[proxy_tag])) == "urltest")
+                push(ordered_proxy_tags, proxy_tag);
+
+        for (let proxy_tag in ordered_proxy_tags) {
             let args = [ "curl", "-G", "-s", clash_latency_endpoint(base_url, proxy_tag, proxy_types[proxy_tag]) ];
             for (let item in auth) push(args, item);
             push(args, "--data-urlencode");

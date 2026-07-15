@@ -5,6 +5,9 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SECTION_JS="$ROOT_DIR/luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js"
 SOURCE_PO="$ROOT_DIR/fe-app-tachyon/locales/tachyon.ru.po"
 PACKAGE_PO="$ROOT_DIR/luci-app-tachyon/po/ru/tachyon.po"
+SOURCE_POT="$ROOT_DIR/fe-app-tachyon/locales/tachyon.pot"
+PACKAGE_POT="$ROOT_DIR/luci-app-tachyon/po/templates/tachyon.pot"
+CALLS_JSON="$ROOT_DIR/fe-app-tachyon/locales/calls.json"
 
 fail() {
   printf 'FAIL: %s\n' "$1" >&2
@@ -16,6 +19,13 @@ if grep -Fq '_("Dismiss")' "$SECTION_JS"; then
 fi
 grep -Fq '_("Close")' "$SECTION_JS" ||
   fail "Tachyon section settings modal must expose a Close action"
+
+if grep -Fq 'http(s)://, hy2/hysteria2:// links' \
+  "$SECTION_JS" "$SOURCE_PO" "$PACKAGE_PO" "$SOURCE_POT" "$PACKAGE_POT" "$CALLS_JSON"; then
+  fail "Connection URL help must not advertise removed HTTP proxy links"
+fi
+grep -Fq 'socks4/5://, hy2/hysteria2:// links' "$SECTION_JS" ||
+  fail "Connection URL help must list the remaining native proxy links"
 
 for po in "$SOURCE_PO" "$PACKAGE_PO"; do
   awk '

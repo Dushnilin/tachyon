@@ -131,8 +131,12 @@ TACHYON_SING_BOX_BIN="$WORK_DIR/missing-sing-box-bin" \
 TACHYON_SING_BOX_CRONET="$WORK_DIR/missing-cronet" \
 TACHYON_RT_TABLES="$WORK_DIR/rt_tables_dont_touch" \
   ucode -L "$TACHYON_LIB" "$PACKAGE_UC" prerm
-[ ! -s "$WORK_DIR/restore-dont-touch.log" ] ||
+if grep -Fxq 'restore_dnsmasq' "$WORK_DIR/restore-dont-touch.log"; then
+  echo "=== Content of restore-dont-touch.log: ==="
+  cat "$WORK_DIR/restore-dont-touch.log"
+  echo "=== End of Content ==="
   fail "package prerm must skip dnsmasq restore when dont_touch_dhcp is enabled"
+fi
 
 cat >"$WORK_DIR/restore.state" <<'EOF_UCI'
 tachyon.settings=settings

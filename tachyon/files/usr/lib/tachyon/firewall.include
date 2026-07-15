@@ -1,0 +1,6 @@
+#!/bin/sh
+# Rebuild Tachyon nftables rules when firewall reloads
+if /etc/init.d/tachyon status | grep -q "running"; then
+    logger -t tachyon "Firewall reload/restart detected. Restoring nftables rules."
+    /usr/bin/tachyon reload_firewall >/dev/null 2>&1
+fi

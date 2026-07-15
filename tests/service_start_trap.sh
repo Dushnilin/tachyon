@@ -76,8 +76,8 @@ require_pattern 'function abort_reload(status, runtime_changed)' \
   "reload failures must share one cleanup decision owner"
 require_pattern 'return abort_reload(status, true);' \
   "reload failures after runtime mutation must clean the partial runtime"
-cleanup_function_line="$(grep -nF 'function cleanup_failed_runtime()' "$LIFECYCLE_UC" | head -n1 | cut -d: -f1)"
-abort_function_line="$(grep -nF 'function abort_reload(status, runtime_changed)' "$LIFECYCLE_UC" | head -n1 | cut -d: -f1)"
+cleanup_function_line="$(awk '/function cleanup_failed_runtime\(\)/ { print NR; exit }' "$LIFECYCLE_UC")"
+abort_function_line="$(awk '/function abort_reload\(status, runtime_changed\)/ { print NR; exit }' "$LIFECYCLE_UC")"
 [ -n "$cleanup_function_line" ] && [ -n "$abort_function_line" ] &&
   [ "$cleanup_function_line" -lt "$abort_function_line" ] ||
   fail "cleanup_failed_runtime must be declared before abort_reload for ucode runtime calls"

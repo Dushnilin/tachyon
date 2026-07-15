@@ -90,6 +90,8 @@ fi
 
 pending_file="$WORK_DIR/reload.pending"
 if TACHYON_PENDING_RELOAD_FILE="$pending_file" \
+   TACHYON_INTERNAL_CONFIG_TRIGGER_GUARD="$guard_file" \
+   TACHYON_CONFIG_FILE="$config_file" \
   initd_ucode reload-begin-fixture on_config_change 123 0 1 start >/dev/null 2>&1; then
   fail "queued config-change reload should not run immediately while service is starting"
 fi
@@ -100,6 +102,8 @@ grep -Fq 'reason=on_config_change' "$pending_file" ||
 
 rm -f "$pending_file"
 if TACHYON_PENDING_RELOAD_FILE="$pending_file" \
+   TACHYON_INTERNAL_CONFIG_TRIGGER_GUARD="$guard_file" \
+   TACHYON_CONFIG_FILE="$config_file" \
   initd_ucode reload-begin-fixture pending 123 1 1 start >/dev/null 2>&1; then
   fail "pending reload should not run while another service action is active"
 fi
@@ -243,8 +247,8 @@ grep -Fq 'schedule_start_retry(START_RETRY_PID_FILE, START_RETRY_DELAY_SECONDS)'
   fail "failed service start must schedule a retry even if WAN is already up"
 grep -Fq 'start_retry_pending(START_RETRY_FILE)' "$INITD_UC" ||
   fail "WAN retry must be gated by a failed-start marker"
-service_enabled_line="$(grep -nF 'function service_is_enabled()' "$INITD_UC" | head -n1 | cut -d: -f1)"
-retry_start_line="$(grep -nF 'function retry_start_on_wan_up(' "$INITD_UC" | head -n1 | cut -d: -f1)"
+service_enabled_line="$(awk '/function service_is_enabled\(\)/ { print NR; exit }' "$INITD_UC")"
+retry_start_line="$(awk '/function retry_start_on_wan_up\(/ { print NR; exit }' "$INITD_UC")"
 [ -n "$service_enabled_line" ] && [ -n "$retry_start_line" ] && [ "$service_enabled_line" -lt "$retry_start_line" ] ||
   fail "service_is_enabled must be declared before retry_start_on_wan_up for ucode runtime calls"
 grep -Fq 'trigger-plan' "$INITD" ||

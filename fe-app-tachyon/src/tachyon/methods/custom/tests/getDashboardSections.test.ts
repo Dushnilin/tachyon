@@ -1043,11 +1043,40 @@ describe('getDashboardSections', () => {
     expect(result.success).toBe(true);
     expect(fetchMock).toHaveBeenCalledWith(
       'http://router.example:9090/proxies',
-      {
+      expect.objectContaining({
         headers: { Authorization: 'Bearer secret' },
-      },
+        signal: expect.anything(),
+      }),
     );
     expect(mocks.getClashApiProxies).not.toHaveBeenCalled();
+  });
+
+  it('uses rpcd fallback when direct Clash API access times out', async () => {
+    vi.useFakeTimers();
+
+    try {
+      mocks.getConfigSections.mockResolvedValue([proxySection()]);
+      mocks.canUseDirectClashApi.mockReturnValue(true);
+      const fetchMock = vi.fn(
+        (_url: string, options?: RequestInit) =>
+          new Promise<Response>((_resolve, reject) => {
+            options?.signal?.addEventListener('abort', () =>
+              reject(new Error('aborted')),
+            );
+          }),
+      );
+
+      vi.stubGlobal('fetch', fetchMock);
+
+      const resultPromise = getDashboardSections();
+      await vi.advanceTimersByTimeAsync(5000);
+      const result = await resultPromise;
+
+      expect(result.success).toBe(true);
+      expect(mocks.getClashApiProxies).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('uses rpcd fallback when direct Clash API access is unsafe', async () => {

@@ -71,12 +71,12 @@ grep -Fq '"dashboard_include_groups"' <<<"$dashboard_options" ||
   fail "dashboard include filters must support URLTest and Priority groups"
 grep -Fq '"dashboard_exclude_groups"' <<<"$dashboard_options" ||
   fail "dashboard exclude filters must support URLTest and Priority groups"
-include_group_line="$(grep -n '"dashboard_include_groups"' <<<"$dashboard_options" | head -n1 | cut -d: -f1)"
-include_proxy_line="$(grep -n 'includeProxyParameterOptions' <<<"$dashboard_options" | tail -n1 | cut -d: -f1)"
+include_group_line="$(awk '/"dashboard_include_groups"/ { print NR; exit }' <<<"$dashboard_options")"
+include_proxy_line="$(awk '/includeProxyParameterOptions/ { last = NR } END { print last }' <<<"$dashboard_options")"
 [[ "$include_group_line" -lt "$include_proxy_line" ]] ||
   fail "dashboard include group selector must precede the proxy-parameter toggle"
-exclude_group_line="$(grep -n '"dashboard_exclude_groups"' <<<"$dashboard_options" | head -n1 | cut -d: -f1)"
-exclude_proxy_line="$(grep -n 'excludeProxyParameterOptions' <<<"$dashboard_options" | tail -n1 | cut -d: -f1)"
+exclude_group_line="$(awk '/"dashboard_exclude_groups"/ { print NR; exit }' <<<"$dashboard_options")"
+exclude_proxy_line="$(awk '/excludeProxyParameterOptions/ { last = NR } END { print last }' <<<"$dashboard_options")"
 [[ "$exclude_group_line" -lt "$exclude_proxy_line" ]] ||
   fail "dashboard exclude group selector must precede the proxy-parameter toggle"
 grep -Fq 'const liveValues = currentLiveDynamicListValues(section_id, typeName);' "$SECTION_JS" ||
