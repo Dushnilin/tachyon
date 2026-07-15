@@ -2249,6 +2249,37 @@ function enabled_action_index(sections, target_section, action_name) {
     return 0;
 }
 
+function add_awg_outbound(config, section) {
+    let tag = outbound_tag(section[".name"]);
+    let outbound = {
+        type: "wireguard",
+        tag: tag,
+        local_address: list_option(section, "awg_local_address"),
+        private_key: option(section, "awg_private_key", ""),
+        peer_public_key: option(section, "awg_peer_public_key", ""),
+        server: option(section, "awg_server_address", ""),
+        server_port: as_integer(option(section, "awg_server_port", "0"))
+    };
+
+    let preshared_key = option(section, "awg_preshared_key", "");
+    if (preshared_key != "")
+        outbound.pre_shared_key = preshared_key;
+
+    // AmneziaWG obfuscation parameters
+    outbound.reserved = [0, 0, 0];
+    outbound.jc = as_integer(option(section, "awg_jc", "120"));
+    outbound.jmin = as_integer(option(section, "awg_jmin", "23"));
+    outbound.jmax = as_integer(option(section, "awg_jmax", "911"));
+    outbound.s1 = as_integer(option(section, "awg_s1", "0"));
+    outbound.s2 = as_integer(option(section, "awg_s2", "0"));
+    outbound.h1 = as_integer(option(section, "awg_h1", "1"));
+    outbound.h2 = as_integer(option(section, "awg_h2", "2"));
+    outbound.h3 = as_integer(option(section, "awg_h3", "3"));
+    outbound.h4 = as_integer(option(section, "awg_h4", "4"));
+
+    push(config.outbounds, outbound);
+}
+
 function add_zapret_outbound(config, section, sections) {
     let index = enabled_action_index(sections, section, "zapret");
     if (index <= 0)
@@ -2725,6 +2756,8 @@ function add_outbound_for_section(config, section, taken, sections) {
 
     if (connections.is_connections_action(action))
         add_connections_outbound(config, section, taken);
+    else if (action == "awg")
+        add_awg_outbound(config, section);
     else if (action == "zapret")
         add_zapret_outbound(config, section, sections);
     else if (action == "zapret2")
@@ -2749,7 +2782,7 @@ function reserve_section_outbound_tags(sections, taken) {
     for (let section in sections) {
         let action = option(section, "action", "");
         if (connections.is_connections_action(action) ||
-            action == "byedpi" || action == "zapret" || action == "zapret2")
+            action == "awg" || action == "byedpi" || action == "zapret" || action == "zapret2")
             taken[outbound_tag(section[".name"])] = true;
 
         if (!connections.is_connections_action(action))

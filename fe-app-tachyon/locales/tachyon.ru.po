@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-07-15 21:44+0300\n"
-"PO-Revision-Date: 2026-07-15 21:44+0300\n"
+"POT-Creation-Date: 2026-07-15 23:22+0300\n"
+"PO-Revision-Date: 2026-07-15 23:22+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -1079,6 +1079,9 @@ msgstr "Только IPv4"
 msgid "IPv6 only"
 msgstr "Только IPv6"
 
+msgid "Isolate BitTorrent traffic and force it direct to prevent VPN bans"
+msgstr ""
+
 msgid "Issues detected"
 msgstr "Обнаружены проблемы"
 
@@ -1153,6 +1156,9 @@ msgstr "Загрузка подключений"
 
 msgid "Loading..."
 msgstr "Загрузка..."
+
+msgid "Local Address"
+msgstr ""
 
 msgid "Log Level"
 msgstr "Уровень логов"
@@ -1373,6 +1379,9 @@ msgstr "outbounds должен быть непустым массивом стр
 msgid "Output Network Interface"
 msgstr "Выходной сетевой интерфейс"
 
+msgid "P2P Leak Protection"
+msgstr ""
+
 msgid "Padding"
 msgstr "Padding"
 
@@ -1396,6 +1405,9 @@ msgstr "Путь должен заканчиваться на cache.db"
 
 msgid "Pause updates"
 msgstr "Приостановить обновление"
+
+msgid "Peer Public Key"
+msgstr ""
 
 msgid "Pending"
 msgstr "Ожидает запуска"
@@ -1442,6 +1454,9 @@ msgstr "Предпочитаемый IP"
 msgid "Prefix text"
 msgstr "Текст префикса"
 
+msgid "Preshared Key"
+msgstr ""
+
 msgid "Priority"
 msgstr "Приоритет"
 
@@ -1459,6 +1474,9 @@ msgstr "Уровни приоритета"
 
 msgid "Priority settings"
 msgstr "Настройки приоритета"
+
+msgid "Private Key"
+msgstr ""
 
 msgid "Protocol"
 msgstr "Протокол"

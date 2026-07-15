@@ -452,6 +452,17 @@ function createSettingsContent(section, capabilities) {
 
   o = section.option(
     form.Flag,
+    "isolate_p2p",
+    _("P2P Leak Protection"),
+    _(
+      "Isolate BitTorrent traffic and force it direct to prevent VPN bans",
+    ),
+  );
+  o.default = "0";
+  o.rmempty = false;
+
+  o = section.option(
+    form.Flag,
     "list_update_enabled",
     _("Enable list updates"),
     _("Enable automatic updates for remote lists and rule sets"),
