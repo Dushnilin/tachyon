@@ -2060,11 +2060,26 @@ function import_domain_ip_list_file_into_rulesets(filepath, section) {
         ok = ruleset_module_success([ "import-plain-list", domains_tmpfile, ruleset_filepath, "domain_suffix", "domains", "5000" ]);
     if (ok && !domains_only)
         ok = ruleset_module_success([ "import-plain-list", subnets_tmpfile, ruleset_filepath, "ip_cidr", "subnets", "5000" ]);
-    if (ok && !domains_only)
-        ok = add_plain_subnet_file_to_nft_for_section(section, subnets_tmpfile);
+    // NOTE: nft apply for domain/ip list subnets is intentionally deferred to Phase 2
+    // (apply_domain_ip_list_subnets_to_nft_from_rule) so it runs under RELOAD_LOCK_DIR.
 
     remove_files([ domains_tmpfile, subnets_tmpfile ]);
     return ok;
+}
+
+// Применяет суbnets из уже сохранённого ruleset-файла domain_ip_list к nft.
+// Вызывается в Phase 2 list_update() — под RELOAD_LOCK_DIR.
+function apply_domain_ip_list_subnets_to_nft_from_rule(section) {
+    if (!bool_option(section, "enabled", true))
+        return true;
+    if (option(section, "action", "") == "dns")
+        return true;
+
+    let ruleset_path = domain_ip_list_ruleset_path(section);
+    if (!file_exists_value(ruleset_path))
+        return true;
+
+    return add_json_ruleset_subnets_to_nft_for_section(section, ruleset_path, "domain-ip-list");
 }
 
 function import_domain_ip_list_reference_into_rulesets(reference, section, settings) {
@@ -2522,6 +2537,10 @@ function list_update() {
             ok = false;
     for (let section in sections)
         if (!import_rule_sets_with_subnets_from_rule(section, settings))
+            ok = false;
+    // Fix race condition #2: subnets из domain/ip lists тоже применяем под локом
+    for (let section in sections)
+        if (!apply_domain_ip_list_subnets_to_nft_from_rule(section))
             ok = false;
 
     release_runtime_lock(RELOAD_LOCK_DIR);
