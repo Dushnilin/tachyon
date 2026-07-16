@@ -232,8 +232,13 @@ function get_clash_url(endpoint) {
             let ext = sb_cfg.experimental?.clash_api?.external_controller;
             if (ext) {
                 let parts = split(ext, ":");
+                let ip = (length(parts) > 1) ? parts[0] : "";
                 let port = (length(parts) > 1) ? parts[length(parts) - 1] : "9090";
-                host = "127.0.0.1:" + port;
+                if (ip == "0.0.0.0" || ip == "") {
+                    host = "127.0.0.1:" + port;
+                } else {
+                    host = ext;
+                }
             }
         } catch(e) {}
     }
@@ -665,50 +670,7 @@ function handle_backup(token, chat_id) {
     }
 }
 
-function handle_rules(token, chat_id) {
-    let c = uci_core.cursor();
-    if (!c) {
-        send_message(token, chat_id, "❌ Не удалось прочитать конфигурацию.");
-        return;
-    }
-    c.load(CONFIG_NAME);
-    
-    let text = "🛡️ <b>Управление правилами обхода:</b>\n\n";
-    let keyboard = [];
-    let count = 0;
-    
-    c.foreach(CONFIG_NAME, "section", function(s) {
-        let name = s[".name"];
-        let label = s.label || name;
-        let enabled = s.enabled != "0";
-        let status_icon = enabled ? "🟢" : "🔴";
-        let action = s.action || "bypass";
-        
-        text += status_icon + " <b>" + escape_html(label) + "</b> (" + action + ")\n";
-        
-        push(keyboard, [
-            {
-                text: (enabled ? "🔴 Выключить " : "🟢 Включить ") + label,
-                callback_data: "/toggle_rule " + name
-            }
-        ]);
-        count++;
-    });
-    
-    if (count == 0) {
-        text += "<i>Правила отсутствуют.</i>\n";
-    }
-    
-    push(keyboard, [ { text: "⬅️ Назад в меню", callback_data: "/help" } ]);
-    
-    let payload = {
-        chat_id: int(chat_id),
-        text: text,
-        parse_mode: "HTML",
-        reply_markup: { inline_keyboard: keyboard }
-    };
-    tg_request(token, "sendMessage", payload);
-}
+
 
 function handle_devices(token, chat_id) {
     let lease_file = "/tmp/dhcp.leases";
