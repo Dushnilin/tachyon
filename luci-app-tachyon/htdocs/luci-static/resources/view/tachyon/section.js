@@ -8004,3 +8004,13 @@ const EntryPoint = {
 };
 
 return baseclass.extend(EntryPoint);
+
+function validateRequiredText(_sectionId, value) {
+  const normalized = value ? String(value).trim() : "";
+  if (!normalized) {
+    return _("This field is required");
+  }
+  return /[\u0000-\u001F\u007F]/.test(normalized)
+    ? _("Value must not contain control characters")
+    : true;
+}
