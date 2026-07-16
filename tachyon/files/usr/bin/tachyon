@@ -122,6 +122,9 @@ function show_help() {
     print("    doctor                  Run doctor diagnostics checks\n");
     print("    ai_doctor               Run AI doctor diagnostics completions\n");
     print("    watchdog                Manage watchdog daemon (start-runtime|stop-runtime|status)\n");
+    print("    telegram_status         Get Telegram bot running status\n");
+    print("    telegram_start          Start Telegram bot\n");
+    print("    telegram_stop           Stop Telegram bot\n");
     print("    validate_nfqws_strategy_json\n");
     print("                            Validate an NFQWS strategy and print JSON result\n");
     print("    validate_nfqws2_strategy_json\n");
@@ -197,6 +200,9 @@ function command_spec(command) {
         ai_doctor: [ "diagnostics/runtime.uc", "ai-doctor", 0 ],
         watchdog: [ "service/watchdog.uc", "", 1 ],
         telegram: [ "service/telegram.uc", "", 2 ],
+        telegram_status: [ "service/telegram.uc", "status", 0 ],
+        telegram_start: [ "service/telegram.uc", "start-runtime", 0 ],
+        telegram_stop: [ "service/telegram.uc", "stop-runtime", 0 ],
         validate_nfqws_strategy_json: [ "diagnostics/runtime.uc", "validate-nfqws-strategy-json", 1 ],
         validate_nfqws2_strategy_json: [ "diagnostics/runtime.uc", "validate-nfqws2-strategy-json", 1 ],
         validate_byedpi_strategy_json: [ "providers/byedpi/validator.uc", "validate-json", 1 ],
