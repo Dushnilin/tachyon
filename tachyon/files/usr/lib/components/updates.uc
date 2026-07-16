@@ -2497,14 +2497,25 @@ function list_update() {
     let sections = uci_sections("section");
     let ok = true;
 
+    // Фаза 1: скачивание файлов (без блокировки, не трогает nft)
     for (let section in sections)
         if (!rebuild_domain_ip_lists_from_rule(section, settings))
             ok = false;
     for (let section in sections)
-        if (!import_builtin_subnets_from_rule(section, settings))
-            ok = false;
-    for (let section in sections)
         if (!import_domains_from_remote_domain_lists(section, settings))
+            ok = false;
+
+    // Фаза 2: применение к nft (захватываем лок reload, чтобы не конфликтовать
+    // с reload-firewall, который пересоздаёт таблицы и сеты nftables)
+    log_message("Waiting for reload lock to apply nft rules", "debug");
+    if (!acquire_runtime_lock(RELOAD_LOCK_DIR, true)) {
+        log_message("Could not acquire reload lock for nft apply; skipping nft update", "warn");
+        list_update_pid_end();
+        exit(1);
+    }
+
+    for (let section in sections)
+        if (!import_builtin_subnets_from_rule(section, settings))
             ok = false;
     for (let section in sections)
         if (!import_subnets_from_remote_subnet_lists(section, settings))
@@ -2512,6 +2523,8 @@ function list_update() {
     for (let section in sections)
         if (!import_rule_sets_with_subnets_from_rule(section, settings))
             ok = false;
+
+    release_runtime_lock(RELOAD_LOCK_DIR);
 
     if (ok) {
         write_list_update_timestamp(now_seconds());

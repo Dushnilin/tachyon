@@ -532,7 +532,9 @@ async function completeComponentActionJob(
   });
 }
 
-async function followComponentActionState(state: Tachyon.ComponentActionResult) {
+async function followComponentActionState(
+  state: Tachyon.ComponentActionResult,
+) {
   const jobId = state.job_id;
   const key = getComponentActionKey(state.component, state.action);
 

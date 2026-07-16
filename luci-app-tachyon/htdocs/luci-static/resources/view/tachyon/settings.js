@@ -2,6 +2,7 @@
 "require form";
 "require uci";
 "require baseclass";
+"require fs";
 "require tools.widgets as widgets";
 "require view.tachyon.main as main";
 
@@ -700,7 +701,143 @@ function createSettingsContent(section, capabilities) {
   o.rmempty = false;
 }
 
+function createTelegramStatusWidget() {
+  const wrapper = E("div", {
+    id: "tachyon-telegram-status-widget",
+    style:
+      "display:flex;align-items:center;gap:12px;padding:10px 0;flex-wrap:wrap;",
+  });
+
+  const indicator = E("span", {
+    id: "tachyon-telegram-status-indicator",
+    style:
+      "display:inline-flex;align-items:center;gap:6px;font-weight:bold;font-size:14px;",
+  });
+
+  const dot = E("span", {
+    id: "tachyon-telegram-status-dot",
+    style:
+      "display:inline-block;width:10px;height:10px;border-radius:50%;background:#aaa;",
+  });
+
+  const statusText = E("span", {
+    id: "tachyon-telegram-status-text",
+  });
+  statusText.textContent = _("Checking…");
+
+  indicator.appendChild(dot);
+  indicator.appendChild(statusText);
+
+  const btnStart = E("button", {
+    id: "tachyon-telegram-btn-start",
+    class: "btn cbi-button cbi-button-action",
+    style: "display:none;",
+  });
+  btnStart.textContent = _("Start bot");
+
+  const btnStop = E("button", {
+    id: "tachyon-telegram-btn-stop",
+    class: "btn cbi-button cbi-button-negative",
+    style: "display:none;",
+  });
+  btnStop.textContent = _("Stop bot");
+
+  const statusMsg = E("span", {
+    id: "tachyon-telegram-status-msg",
+    style: "font-size:12px;color:var(--text-color-medium,#888);",
+  });
+
+  function applyStatus(running, pid) {
+    if (running) {
+      dot.style.background = "#4caf50";
+      statusText.textContent = pid
+        ? _("Running") + " (PID " + pid + ")"
+        : _("Running");
+      btnStart.style.display = "none";
+      btnStop.style.display = "";
+    } else {
+      dot.style.background = "#f44336";
+      statusText.textContent = _("Stopped");
+      btnStart.style.display = "";
+      btnStop.style.display = "none";
+    }
+  }
+
+  function refreshStatus() {
+    return fs
+      .exec("/usr/bin/tachyon", ["telegram_status"])
+      .then(function (res) {
+        const out = (res.stdout || "").trim();
+        const pidMatch = out.match(/\(pid\s+(\d+)\)/);
+        const pid = pidMatch ? pidMatch[1] : null;
+        applyStatus(out.indexOf("running") === 0, pid);
+      })
+      .catch(function () {
+        dot.style.background = "#aaa";
+        statusText.textContent = _("Unknown");
+      });
+  }
+
+  btnStart.addEventListener("click", function () {
+    btnStart.disabled = true;
+    statusMsg.textContent = _("Starting…");
+    fs.exec("/usr/bin/tachyon", ["telegram_start"])
+      .then(function () {
+        statusMsg.textContent = "";
+        return refreshStatus();
+      })
+      .catch(function () {
+        statusMsg.textContent = _("Failed to start bot");
+        btnStart.disabled = false;
+      });
+  });
+
+  btnStop.addEventListener("click", function () {
+    btnStop.disabled = true;
+    statusMsg.textContent = _("Stopping…");
+    fs.exec("/usr/bin/tachyon", ["telegram_stop"])
+      .then(function () {
+        statusMsg.textContent = "";
+        return refreshStatus();
+      })
+      .catch(function () {
+        statusMsg.textContent = _("Failed to stop bot");
+        btnStop.disabled = false;
+      });
+  });
+
+  wrapper.appendChild(indicator);
+  wrapper.appendChild(btnStart);
+  wrapper.appendChild(btnStop);
+  wrapper.appendChild(statusMsg);
+
+  // Initial status fetch
+  refreshStatus();
+  // Refresh every 10s while visible
+  const timer = setInterval(refreshStatus, 10000);
+  const observer = new MutationObserver(function () {
+    if (!document.body.contains(wrapper)) {
+      clearInterval(timer);
+      observer.disconnect();
+    }
+  });
+  observer.observe(document.body, { childList: true, subtree: true });
+
+  return wrapper;
+}
+
 function createTelegramContent(section) {
+  // Виджет статуса бота: показывает состояние и кнопки управления
+  const statusOpt = section.option(
+    form.DummyValue,
+    "_telegram_status",
+    _("Bot Status"),
+  );
+  statusOpt.rawhtml = true;
+  statusOpt.cfgvalue = function () {
+    return createTelegramStatusWidget();
+  };
+
   let o = section.option(
     form.Flag,
     "enabled",
