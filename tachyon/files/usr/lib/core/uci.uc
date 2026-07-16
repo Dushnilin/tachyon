@@ -609,6 +609,7 @@ function section_objects(package_name, type_name) {
 
 return {
     available,
+    cursor,
     load,
     get,
     get_all,
