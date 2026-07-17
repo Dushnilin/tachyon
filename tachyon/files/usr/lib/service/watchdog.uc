@@ -157,8 +157,8 @@ function smart_detect_run(last_time) {
         if (index(ll, "direct") < 0 && index(ll, "DIRECT") < 0) continue;
         if (index(ll, "failed") < 0 && index(ll, "timeout") < 0 && index(ll, "reset") < 0) continue;
         // Extract quoted hostname like "twitch.tv:443"
-        let m = match(line, /"([a-zA-Z0-9][a-zA-Z0-9\-\.]{1,60}\.[a-zA-Z]{2,})(:[0-9]+)?"/);
-        if (!m) m = match(line, /target[= ]([a-zA-Z0-9][a-zA-Z0-9\-\.]{1,60}\.[a-zA-Z]{2,})/);
+        let m = match(line, /"([a-zA-Z0-9][a-zA-Z0-9.-]{1,60}\.[a-zA-Z]{2,})(:[0-9]+)?"/);
+        if (!m) m = match(line, /target[= ]([a-zA-Z0-9][a-zA-Z0-9.-]{1,60}\.[a-zA-Z]{2,})/);
         if (!m) continue;
         let domain = m[1];
         if (!domain || length(domain) < 5) continue;
