@@ -1,4 +1,4 @@
-# RU translations for TACHYON package.
+﻿# RU translations for TACHYON package.
 # Copyright (C) 2026 THE TACHYON COPYRIGHT HOLDER
 # This file is distributed under the same license as the TACHYON package.
 # Dushnilin, 2026.
@@ -18,19 +18,19 @@ msgstr ""
 "Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
 
 msgid "-- Select --"
-msgstr ""
+msgstr "-- Выбрать --"
 
 msgid "+ Add JSON outbound"
-msgstr ""
+msgstr "+ Добавить JSON outbound"
 
 msgid "+ Add level"
-msgstr ""
+msgstr "+ Добавить уровень"
 
 msgid "+ Add priority"
-msgstr ""
+msgstr "+ Добавить приоритет"
 
 msgid "+ Add URLTest"
-msgstr ""
+msgstr "+ Добавить URLTest"
 
 msgid "⏹ Stop"
 msgstr "⏹ Стоп"
@@ -54,7 +54,7 @@ msgid "Accept routes"
 msgstr "Принимать маршруты"
 
 msgid "Action"
-msgstr ""
+msgstr "Действие"
 
 msgid "Active"
 msgstr "Активные"
@@ -78,31 +78,31 @@ msgid "Add at least one DNS server"
 msgstr "Добавьте хотя бы один DNS-сервер"
 
 msgid "Add prefix to nodes"
-msgstr ""
+msgstr "Добавить префикс к узлам"
 
 msgid "Add URLs or local paths to .lst lists. Only domain rules are supported."
-msgstr ""
+msgstr "Добавьте URL или локальные пути к .lst спискам. Поддерживаются только доменные правила."
 
 msgid "Add URLs or local paths to .srs / .json lists. Only domain rules are supported."
-msgstr ""
+msgstr "Добавьте URL или локальные пути к .srs / .json спискам. Поддерживаются только доменные правила."
 
 msgid "Add URLTest / Priority group"
-msgstr ""
+msgstr "Добавить URLTest / группу приоритетов"
 
 msgid "Additional marking rules found"
 msgstr "Найдены дополнительные правила маркировки"
 
 msgid "Additionally exclude servers by protocol, transport, and security. Exclude only servers matching the specified parameters."
-msgstr ""
+msgstr "Дополнительно исключить серверы по протоколу, транспорту и безопасности. Исключаются только серверы, соответствующие указанным параметрам."
 
 msgid "Additionally filter servers by protocol, transport, and security. Add only servers matching the specified parameters."
-msgstr ""
+msgstr "Дополнительно фильтровать серверы по протоколу, транспорту и безопасности. Добавляются только серверы, соответствующие указанным параметрам."
 
 msgid "Additionally hide servers by protocol, transport, and security. Hide servers matching the specified parameters."
-msgstr ""
+msgstr "Дополнительно скрыть серверы по протоколу, транспорту и безопасности. Скрываются серверы, соответствующие указанным параметрам."
 
 msgid "Additionally show servers by protocol, transport, and security. Add only servers matching the specified parameters."
-msgstr ""
+msgstr "Дополнительно показать серверы по протоколу, транспорту и безопасности. Добавляются только серверы, соответствующие указанным параметрам."
 
 msgid "Address"
 msgstr "Адрес"
@@ -120,31 +120,31 @@ msgid "All"
 msgstr "Все"
 
 msgid "All except selected"
-msgstr ""
+msgstr "Все кроме выбранных"
 
 msgid "All remaining except selected"
-msgstr ""
+msgstr "Все оставшиеся кроме выбранных"
 
 msgid "All remaining servers"
-msgstr ""
+msgstr "Все оставшиеся серверы"
 
 msgid "All remaining servers means every server not already assigned to a higher-priority level."
-msgstr ""
+msgstr "Все оставшиеся серверы — это все серверы, не назначенные на уровень с более высоким приоритетом."
 
 msgid "All servers"
-msgstr ""
+msgstr "Все серверы"
 
 msgid "All traffic from these IP addresses will be routed through the section unconditionally, ignoring all other conditions."
-msgstr ""
+msgstr "Весь трафик с этих IP-адресов будет направляться через секцию безусловно, игнорируя все остальные условия."
 
 msgid "Allowed domain prefixes are full:, keyword:, and regex:"
-msgstr ""
+msgstr "Допустимые префиксы доменов: full:, keyword: и regex:"
 
 msgid "Allows access to YACD from the WAN. Make sure to open the appropriate port in your firewall."
 msgstr "Обеспечивает доступ к YACD из WAN. Убедитесь, что в брандмауэре открыт соответствующий порт."
 
 msgid "Allows limiting the list of servers for URLTest"
-msgstr ""
+msgstr "Позволяет ограничить список серверов для URLTest"
 
 msgid "ALPN"
 msgstr "ALPN"
@@ -153,16 +153,16 @@ msgid "Alter ID"
 msgstr "Alter ID"
 
 msgid "Apply section rules only to the specified local IP addresses"
-msgstr ""
+msgstr "Применять правила секции только к указанным локальным IP-адресам"
 
 msgid "At least one Admin Chat ID is required"
 msgstr "Требуется хотя бы один Admin Chat ID"
 
 msgid "At least one valid domain must be specified."
-msgstr ""
+msgstr "Необходимо указать хотя бы один корректный домен."
 
 msgid "At least one valid IP or subnet must be specified."
-msgstr ""
+msgstr "Необходимо указать хотя бы один корректный IP или подсеть."
 
 msgid "Auto refresh"
 msgstr "Автообновление"
@@ -180,16 +180,16 @@ msgid "Auto-detects blocked domains from logs and adds them to the first section
 msgstr "Автоматически определяет заблокированные домены из логов и добавляет их в первую секцию, где они работают через прокси."
 
 msgid "Auto-generate HWID"
-msgstr ""
+msgstr "Автогенерация HWID"
 
 msgid "Automatic component update checks"
 msgstr "Автоматическая проверка обновлений компонентов"
 
 msgid "Automatic User-Agent selection"
-msgstr ""
+msgstr "Автоматический выбор User-Agent"
 
 msgid "Automatically add text to the name of each server from this subscription for convenient filtering."
-msgstr ""
+msgstr "Автоматически добавлять текст к имени каждого сервера из этой подписки для удобной фильтрации."
 
 msgid "Automatically check installed components for new versions"
 msgstr "Автоматически проверять наличие новых версий установленных компонентов"
@@ -201,7 +201,7 @@ msgid "Available actions"
 msgstr "Доступные действия"
 
 msgid "Backend validation failed: %s"
-msgstr ""
+msgstr "Ошибка валидации на бэкенде: %s"
 
 msgid "Bootstrap DNS"
 msgstr "Bootstrap DNS"
@@ -222,22 +222,22 @@ msgid "Browser is using FakeIP correctly"
 msgstr "Браузер использует FakeIP"
 
 msgid "Built-in rule sets"
-msgstr ""
+msgstr "Встроенные наборы правил"
 
 msgid "By flag emoji from name"
-msgstr ""
+msgstr "По эмодзи флага из имени"
 
 msgid "ByeDPI listen address and port are assigned by Tachyon and must not be set in the strategy."
-msgstr ""
+msgstr "Адрес и порт прослушивания ByeDPI назначаются Tachyon и не должны указываться в стратегии."
 
 msgid "ByeDPI option does not accept a compact value: %s"
-msgstr ""
+msgstr "Опция ByeDPI не принимает компактное значение: %s"
 
 msgid "ByeDPI option does not accept a value: %s"
-msgstr ""
+msgstr "Опция ByeDPI не принимает значение: %s"
 
 msgid "ByeDPI option requires a value: %s"
-msgstr ""
+msgstr "Опция ByeDPI требует значение: %s"
 
 msgid "ByeDPI package is installed"
 msgstr "Пакет ByeDPI установлен"
@@ -258,10 +258,10 @@ msgid "ByeDPI sing-box outbound is not configured"
 msgstr "Outbound ByeDPI в sing-box не настроен"
 
 msgid "ByeDPI Strategy"
-msgstr ""
+msgstr "Стратегия ByeDPI"
 
 msgid "ByeDPI strategy cannot be empty"
-msgstr ""
+msgstr "Стратегия ByeDPI не может быть пустой"
 
 msgid "Cache File Path"
 msgstr "Путь к файлу кэша"
@@ -279,7 +279,7 @@ msgid "Cannot save settings"
 msgstr "Не удалось сохранить настройки"
 
 msgid "Cascade connection"
-msgstr ""
+msgstr "Каскадное подключение"
 
 msgid "Certificate path"
 msgstr "Путь к сертификату"
@@ -291,7 +291,7 @@ msgid "Check interval"
 msgstr "Интервал проверки"
 
 msgid "Check timeout after which the server is considered dead"
-msgstr ""
+msgstr "Таймаут проверки, после которого сервер считается недоступным"
 
 msgid "Check update"
 msgstr "Проверить обновление"
@@ -303,7 +303,7 @@ msgid "Checking, please wait"
 msgstr "Проверяем, пожалуйста подождите"
 
 msgid "Checking…"
-msgstr ""
+msgstr "Проверка…"
 
 msgid "checks"
 msgstr "проверки"
@@ -363,7 +363,7 @@ msgid "Concurrency"
 msgstr "Параллелизм"
 
 msgid "Conditions"
-msgstr ""
+msgstr "Условия"
 
 msgid "Config File Path"
 msgstr "Путь к файлу конфигурации"
@@ -372,13 +372,13 @@ msgid "Configuration for Tachyon service"
 msgstr "Настройки сервиса Tachyon"
 
 msgid "Configure User-Agent in the item settings"
-msgstr ""
+msgstr "Настройте User-Agent в настройках элемента"
 
 msgid "Connect through"
-msgstr ""
+msgstr "Подключаться через"
 
 msgid "Connection URL"
-msgstr ""
+msgstr "URL подключения"
 
 msgid "Connections are unavailable"
 msgstr "Подключения недоступны"
@@ -399,16 +399,16 @@ msgid "Could not compare FakeIP and control public IPs"
 msgstr "Не удалось сравнить публичные IP FakeIP и контрольной проверки"
 
 msgid "Current section cannot be used as its own transit section"
-msgstr ""
+msgstr "Текущая секция не может быть транзитной для самой себя"
 
 msgid "Current section cannot download its own subscription"
-msgstr ""
+msgstr "Текущая секция не может скачивать собственную подписку"
 
 msgid "Currently unavailable"
 msgstr "Временно недоступно"
 
 msgid "Custom outbound configurations in JSON format"
-msgstr ""
+msgstr "Пользовательские конфигурации outbound в формате JSON"
 
 msgid "Dashboard"
 msgstr "Дашборд"
@@ -429,13 +429,13 @@ msgid "Delete"
 msgstr "Удалить"
 
 msgid "Detect server country"
-msgstr ""
+msgstr "Определять страну сервера"
 
 msgid "detour must be a non-empty string"
 msgstr "detour должен быть непустой строкой"
 
 msgid "Device filter"
-msgstr ""
+msgstr "Фильтр устройств"
 
 msgid "Device IPs (one per line):"
 msgstr "IP устройств (по одному на строку):"
@@ -444,7 +444,7 @@ msgid "Device IPs saved"
 msgstr "IP устройств сохранены"
 
 msgid "Device or IP"
-msgstr ""
+msgstr "Устройство или IP"
 
 msgid "Devices listed here are always routed through the assigned section, regardless of global rules."
 msgstr "Устройства из этого списка всегда маршрутизируются через назначенную секцию, независимо от глобальных правил."
@@ -462,7 +462,7 @@ msgid "Direct"
 msgstr "Напрямую"
 
 msgid "Direct connection"
-msgstr ""
+msgstr "Прямое подключение"
 
 msgid "Disable autostart"
 msgstr "Отключить автостарт"
@@ -474,10 +474,10 @@ msgid "Disable the QUIC protocol to improve compatibility or fix issues with vid
 msgstr "Отключить QUIC протокол для улучшения совместимости или исправления видео стриминга"
 
 msgid "Disabling interception is incompatible with action=zapret2 because Tachyon sends matched traffic through NFQUEUE."
-msgstr ""
+msgstr "Отключение перехвата несовместимо с action=zapret2, так как Tachyon направляет совпадающий трафик через NFQUEUE."
 
 msgid "Display name"
-msgstr ""
+msgstr "Отображаемое имя"
 
 msgid "DNS Check Interval"
 msgstr "Период проверки DNS"
@@ -492,13 +492,13 @@ msgid "DNS over TLS (DoT)"
 msgstr "DNS через TLS (DoT)"
 
 msgid "DNS protocol"
-msgstr ""
+msgstr "DNS протокол"
 
 msgid "DNS Protocol Type"
 msgstr "Тип протокола DNS"
 
 msgid "DNS protocol used by the resolver"
-msgstr ""
+msgstr "Протокол DNS, используемый резолвером"
 
 msgid "DNS requests through section"
 msgstr "DNS-запросы через секцию"
@@ -507,13 +507,13 @@ msgid "DNS Rewrite TTL"
 msgstr "Перезапись TTL для DNS"
 
 msgid "DNS server"
-msgstr ""
+msgstr "DNS сервер"
 
 msgid "DNS server address cannot be empty"
 msgstr "Адрес DNS-сервера не может быть пустым"
 
 msgid "DNS server used by the resolver"
-msgstr ""
+msgstr "DNS сервер, используемый резолвером"
 
 msgid "DNS server used to obtain IP addresses for upstream DNS and proxies. If multiple servers are selected, a timeout switches to a backup."
 msgstr "DNS-сервер для получения IP вышестоящих DNS и прокси. Если выбрать несколько, то при таймауте произойдёт переключение на резервный."
@@ -528,7 +528,7 @@ msgid "DNS through proxy"
 msgstr "DNS через прокси"
 
 msgid "DNS through section"
-msgstr ""
+msgstr "DNS через секцию"
 
 msgid "DNS Unavailability Timeout"
 msgstr "Таймаут недоступности DNS"
@@ -537,37 +537,37 @@ msgid "Do not panic, everything can be fixed, just..."
 msgstr "Не паникуйте, всё можно исправить, просто..."
 
 msgid "Do not test servers from these countries."
-msgstr ""
+msgstr "Не тестировать серверы из этих стран."
 
 msgid "Do not test servers whose names match the expression."
-msgstr ""
+msgstr "Не тестировать серверы, имена которых совпадают с выражением."
 
 msgid "Do not test servers with one of the selected protocols."
-msgstr ""
+msgstr "Не тестировать серверы с одним из выбранных протоколов."
 
 msgid "Do not test servers with one of the selected security types."
-msgstr ""
+msgstr "Не тестировать серверы с одним из выбранных типов безопасности."
 
 msgid "Do not test servers with one of the selected transports."
-msgstr ""
+msgstr "Не тестировать серверы с одним из выбранных транспортов."
 
 msgid "Do not test specified servers."
-msgstr ""
+msgstr "Не тестировать указанные серверы."
 
 msgid "Does not resolve"
 msgstr "Не резолвится"
 
 msgid "Domain lists"
-msgstr ""
+msgstr "Списки доменов"
 
 msgid "Domain Resolver"
-msgstr ""
+msgstr "Резолвер доменов"
 
 msgid "Domain test sections"
 msgstr "Секции тестирования доменов"
 
 msgid "Domains"
-msgstr ""
+msgstr "Домены"
 
 msgid "Domains automatically detected by Smart Detect or added via Telegram bot. You can manually edit or remove them here."
 msgstr "Домены, автоматически обнаруженные Smart Detect или добавленные через Telegram-бота. Вы можете вручную изменить или удалить их здесь."
@@ -600,13 +600,13 @@ msgid "Download remote lists and rule sets via the selected section"
 msgstr "Скачивать удаленные списки и наборы правил через выбранную секцию"
 
 msgid "Download subscription through a section"
-msgstr ""
+msgstr "Скачивать подписку через секцию"
 
 msgid "Download subscriptions via the selected section"
-msgstr ""
+msgstr "Скачивать подписки через выбранную секцию"
 
 msgid "Download through"
-msgstr ""
+msgstr "Скачивать через"
 
 msgid "Downloaded"
 msgstr "Загружено"
@@ -618,7 +618,7 @@ msgid "Duplicate JSON outbound tag"
 msgstr "Такой тег JSON outbound уже используется"
 
 msgid "Duplicate value"
-msgstr ""
+msgstr "Дублирующееся значение"
 
 msgid "Edit rule action"
 msgstr "Изменить"
@@ -636,16 +636,16 @@ msgid "Enable autostart"
 msgstr "Включить автостарт"
 
 msgid "Enable built-in DNS resolver for domains handled by this section"
-msgstr ""
+msgstr "Включить встроенный DNS резолвер для доменов, обрабатываемых этой секцией"
 
 msgid "Enable list updates"
 msgstr "Включить обновление списков"
 
 msgid "Enable Mixed Proxy"
-msgstr ""
+msgstr "Включить смешанный прокси"
 
 msgid "Enable Mixed Proxy Authentication"
-msgstr ""
+msgstr "Включить аутентификацию смешанного прокси"
 
 msgid "Enable Output Network Interface"
 msgstr "Включить выходной сетевой интерфейс"
@@ -675,37 +675,37 @@ msgid "Enter a complete sing-box inbound object"
 msgstr "Введите полный объект inbound sing-box"
 
 msgid "Enter a complete sing-box outbound object"
-msgstr ""
+msgstr "Введите полный объект outbound для sing-box"
 
 msgid "Enter a display name"
-msgstr ""
+msgstr "Введите отображаемое имя"
 
 msgid "Enter a level name"
-msgstr ""
+msgstr "Введите название уровня"
 
 msgid "Enter a valid DNS server address"
-msgstr ""
+msgstr "Введите корректный адрес DNS сервера"
 
 msgid "Enter HWID"
-msgstr ""
+msgstr "Введите HWID"
 
 msgid "Enter the API token obtained from @BotFather."
 msgstr "Введите токен API, полученный от @BotFather."
 
 msgid "Enter the HWID sent with subscription requests"
-msgstr ""
+msgstr "Введите HWID, отправляемый с запросами подписки"
 
 msgid "Enter the subscription URL"
-msgstr ""
+msgstr "Введите URL подписки"
 
 msgid "Exclude by proxy parameters"
-msgstr ""
+msgstr "Исключить по параметрам прокси"
 
 msgid "Exclude by regular expression"
-msgstr ""
+msgstr "Исключить по регулярному выражению"
 
 msgid "Exclude countries"
-msgstr ""
+msgstr "Исключить страны"
 
 msgid "Exclude NTP"
 msgstr "Исключить NTP"
@@ -714,22 +714,22 @@ msgid "Exclude NTP protocol traffic from the tunnel to prevent it from being rou
 msgstr "Исключите трафик протокола NTP из туннеля, чтобы предотвратить его маршрутизацию через прокси-сервер или VPN."
 
 msgid "Exclude servers"
-msgstr ""
+msgstr "Исключить серверы"
 
 msgid "Exclude servers with one of the selected protocols from this level."
-msgstr ""
+msgstr "Исключить с этого уровня серверы с одним из выбранных протоколов."
 
 msgid "Exclude servers with one of the selected security types from this level."
-msgstr ""
+msgstr "Исключить с этого уровня серверы с одним из выбранных типов безопасности."
 
 msgid "Exclude servers with one of the selected transports from this level."
-msgstr ""
+msgstr "Исключить с этого уровня серверы с одним из выбранных транспортов."
 
 msgid "Exclude URLTest / Priority group"
-msgstr ""
+msgstr "Исключить URLTest / группу приоритетов"
 
 msgid "Excluded devices"
-msgstr ""
+msgstr "Исключённые устройства"
 
 msgid "Expecting: %s"
 msgstr "Ожидается: %s"
@@ -738,13 +738,13 @@ msgid "Expires"
 msgstr "Истекает"
 
 msgid "Expose this section as a local HTTP+SOCKS proxy"
-msgstr ""
+msgstr "Предоставить эту секцию как локальный HTTP+SOCKS прокси"
 
 msgid "External nfqws config files bypass Tachyon queue management and explicit validation."
-msgstr ""
+msgstr "Внешние файлы конфигурации nfqws обходят управление очередями Tachyon и явную валидацию."
 
 msgid "External nfqws2 config files bypass Tachyon queue management and explicit validation."
-msgstr ""
+msgstr "Внешние файлы конфигурации nfqws2 обходят управление очередями Tachyon и явную валидацию."
 
 msgid "Failed to close connection"
 msgstr "Не удалось закрыть подключение"
@@ -801,7 +801,7 @@ msgid "Fastest"
 msgstr "Самый быстрый"
 
 msgid "Filter the servers that will be displayed on the dashboard."
-msgstr ""
+msgstr "Фильтровать серверы, отображаемые на дашборде."
 
 msgid "Firewall WAN port"
 msgstr "Порт в firewall для WAN"
@@ -810,7 +810,7 @@ msgid "Fix the highlighted fields and save again."
 msgstr "Исправьте подсвеченные поля и сохраните снова."
 
 msgid "Forced device routing"
-msgstr ""
+msgstr "Принудительная маршрутизация устройств"
 
 msgid "Fronting IP"
 msgstr "IP фронтинга"
@@ -822,10 +822,10 @@ msgid "Fronting proxy protocol"
 msgstr "Proxy protocol для фронтинга"
 
 msgid "Fuzzing is not supported here because Tachyon needs deterministic runtime validation."
-msgstr ""
+msgstr "Фаззинг здесь не поддерживается, так как Tachyon требует детерминированной валидации во время выполнения."
 
 msgid "Generate HWID from router hardware information for this subscription"
-msgstr ""
+msgstr "Генерировать HWID из аппаратной информации роутера для этой подписки"
 
 msgid "Generated inbound"
 msgstr "Созданный inbound"
@@ -843,37 +843,37 @@ msgid "Handshake timeout"
 msgstr "Таймаут рукопожатия"
 
 msgid "Hide cascade connection nodes"
-msgstr ""
+msgstr "Скрыть узлы каскадных подключений"
 
 msgid "Hide individual nodes that are already included in imported subscription URLTest groups"
-msgstr ""
+msgstr "Скрыть отдельные узлы, уже включённые в импортированные группы URLTest подписки"
 
 msgid "Hide intermediate nodes used as detours by other subscription nodes"
-msgstr ""
+msgstr "Скрыть промежуточные узлы, используемые как транзиты другими узлами подписки"
 
 msgid "Hide selected servers."
-msgstr ""
+msgstr "Скрыть выбранные серверы."
 
 msgid "Hide servers from selected groups without repeating their filtering criteria."
-msgstr ""
+msgstr "Скрыть серверы из выбранных групп без повторения их критериев фильтрации."
 
 msgid "Hide servers from the specified countries."
-msgstr ""
+msgstr "Скрыть серверы из указанных стран."
 
 msgid "Hide servers whose names match the expression."
-msgstr ""
+msgstr "Скрыть серверы, имена которых совпадают с выражением."
 
 msgid "Hide servers with one of the selected protocols."
-msgstr ""
+msgstr "Скрыть серверы с одним из выбранных протоколов."
 
 msgid "Hide servers with one of the selected security types."
-msgstr ""
+msgstr "Скрыть серверы с одним из выбранных типов безопасности."
 
 msgid "Hide servers with one of the selected transports."
-msgstr ""
+msgstr "Скрыть серверы с одним из выбранных транспортов."
 
 msgid "Hide URLTest group nodes"
-msgstr ""
+msgstr "Скрыть узлы группы URLTest"
 
 msgid "Hide values"
 msgstr "Скрывать значения"
@@ -888,10 +888,10 @@ msgid "Host"
 msgstr "Хост"
 
 msgid "How often higher priority levels are checked while a lower level is active"
-msgstr ""
+msgstr "Как часто проверяются уровни с более высоким приоритетом, пока активен уровень с более низким"
 
 msgid "How often the currently selected server is checked"
-msgstr ""
+msgstr "Как часто проверяется текущий выбранный сервер"
 
 msgid "How often to check Telegram for new messages (default: 5)."
 msgstr "Как часто проверять Telegram на наличие новых сообщений (по умолчанию: 5)."
@@ -909,16 +909,16 @@ msgid "HTTP hosts"
 msgstr "HTTP-хосты"
 
 msgid "HWID"
-msgstr ""
+msgstr "HWID"
 
 msgid "Idle timeout"
 msgstr "Таймаут простоя"
 
 msgid "Import subscription URLTest groups"
-msgstr ""
+msgstr "Импортировать группы URLTest подписки"
 
 msgid "Import URLTest groups returned by this subscription provider"
-msgstr ""
+msgstr "Импортировать группы URLTest, возвращаемые этим провайдером подписок"
 
 msgid "Inbound JSON"
 msgstr "Inbound JSON"
@@ -930,19 +930,19 @@ msgid "Inbound JSON must be an object with a type field"
 msgstr "Inbound JSON должен быть объектом с полем type"
 
 msgid "Include by proxy parameters"
-msgstr ""
+msgstr "Включить по параметрам прокси"
 
 msgid "Include by regular expression"
-msgstr ""
+msgstr "Включить по регулярному выражению"
 
 msgid "Include countries"
-msgstr ""
+msgstr "Включить страны"
 
 msgid "Include IP addresses and subnets"
-msgstr ""
+msgstr "Включить IP-адреса и подсети"
 
 msgid "Include servers"
-msgstr ""
+msgstr "Включить серверы"
 
 msgid "Information"
 msgstr "Информация"
@@ -969,16 +969,16 @@ msgid "Interrupt connections"
 msgstr "Прерывать соединения"
 
 msgid "Interrupt connections when priority failover switches server"
-msgstr ""
+msgstr "Прерывать соединения при переключении сервера в режиме приоритета"
 
 msgid "Interrupt connections when URLTest switches the selected server"
-msgstr ""
+msgstr "Прерывать соединения при переключении URLTest на другой сервер"
 
 msgid "Interval"
 msgstr "Интервал"
 
 msgid "Invalid ByeDPI strategy"
-msgstr ""
+msgstr "Некорректная стратегия ByeDPI"
 
 msgid "Invalid CIDR prefix"
 msgstr "Неверный префикс CIDR"
@@ -1044,7 +1044,7 @@ msgid "Invalid JSON format"
 msgstr "Неверный формат JSON"
 
 msgid "Invalid NFQWS2 strategy"
-msgstr ""
+msgstr "Некорректная стратегия NFQWS2"
 
 msgid "Invalid path format. Path must start with \"/\" and contain valid characters"
 msgstr "Неверный формат пути. Путь должен начинаться с \"/\" и содержать допустимые символы"
@@ -1053,10 +1053,10 @@ msgid "Invalid port number. Must be between 1 and 65535"
 msgstr "Неверный номер порта. Допустимо от 1 до 65535"
 
 msgid "Invalid port or range. Use 80 or 1000-2000"
-msgstr ""
+msgstr "Некорректный порт или диапазон. Используйте 80 или 1000-2000"
 
 msgid "Invalid regular expression"
-msgstr ""
+msgstr "Некорректное регулярное выражение"
 
 msgid "Invalid Shadowsocks URL: decoded credentials must contain method:password"
 msgstr "Неверный URL Shadowsocks: декодированные данные должны содержать method:password"
@@ -1134,7 +1134,7 @@ msgid "Invalid VMess URL: parsing failed"
 msgstr "Некорректный VMess URL: ошибка разбора"
 
 msgid "IPs"
-msgstr ""
+msgstr "IP-адреса"
 
 msgid "IPv4 only"
 msgstr "Только IPv4"
@@ -1149,7 +1149,7 @@ msgid "Issues detected"
 msgstr "Обнаружены проблемы"
 
 msgid "JSON outbound"
-msgstr ""
+msgstr "JSON outbound"
 
 msgid "JSON outbound cannot be empty"
 msgstr "JSON outbound не может быть пустым"
@@ -1164,19 +1164,19 @@ msgid "JSON outbound must contain a non-empty type field"
 msgstr "JSON outbound должен содержать непустое поле type"
 
 msgid "JSON outbound settings"
-msgstr ""
+msgstr "Настройки JSON outbound"
 
 msgid "Keep Priority before latency-sorted servers"
-msgstr ""
+msgstr "Держать Priority перед серверами, отсортированными по задержке"
 
 msgid "Keep URLTest before latency-sorted servers"
-msgstr ""
+msgstr "Держать URLTest перед серверами, отсортированными по задержке"
 
 msgid "Key path"
 msgstr "Путь к ключу"
 
 msgid "Keyword must not contain spaces or commas"
-msgstr ""
+msgstr "Ключевое слово не должно содержать пробелы или запятые"
 
 msgid "Latency test failed"
 msgstr "Проверка задержки не удалась"
@@ -1194,10 +1194,10 @@ msgid "Level"
 msgstr "Уровень"
 
 msgid "Level name"
-msgstr ""
+msgstr "Название уровня"
 
 msgid "List must be an HTTP(S) URL or a local .lst path"
-msgstr ""
+msgstr "Список должен быть HTTP(S) URL или локальным путём .lst"
 
 msgid "List of domains automatically detected and the section they were added to. To edit or remove them, open the routing rules of the respective section."
 msgstr "Список автоматически обнаруженных доменов и секций, в которые они были добавлены. Чтобы изменить или удалить их, откройте правила маршрутизации соответствующей секции."
@@ -1224,10 +1224,10 @@ msgid "Loading..."
 msgstr "Загрузка..."
 
 msgid "Loading…"
-msgstr ""
+msgstr "Загрузка…"
 
 msgid "Local Address"
-msgstr ""
+msgstr "Локальный адрес"
 
 msgid "Log Level"
 msgstr "Уровень логов"
@@ -1239,10 +1239,10 @@ msgid "Main DNS server. If multiple servers are selected, a timeout switches to 
 msgstr "Основной DNS-сервер. Если выбрать несколько, то при таймауте произойдёт переключение на резервный."
 
 msgid "Match destination IPs or subnets"
-msgstr ""
+msgstr "Совпадение по IP или подсети назначения"
 
 msgid "Match destination ports. Use a single port or a range"
-msgstr ""
+msgstr "Совпадение по портам назначения. Используйте один порт или диапазон"
 
 msgid "Maximum time to wait for example.com to resolve during a DNS health check."
 msgstr "Максимальное время ожидания разрешения example.com при проверке доступности DNS."
@@ -1254,16 +1254,16 @@ msgid "Method"
 msgstr "Метод"
 
 msgid "Minimum latency difference in milliseconds that triggers switching to a faster server."
-msgstr ""
+msgstr "Минимальная разница в задержке (мс), при которой происходит переключение на более быстрый сервер."
 
 msgid "Mixed Proxy Password"
-msgstr ""
+msgstr "Пароль смешанного прокси"
 
 msgid "Mixed Proxy Port"
-msgstr ""
+msgstr "Порт смешанного прокси"
 
 msgid "Mixed Proxy Username"
-msgstr ""
+msgstr "Имя пользователя смешанного прокси"
 
 msgid "Monitored Interfaces"
 msgstr "Наблюдаемые интерфейсы"
@@ -1281,19 +1281,19 @@ msgid "Must be a comma-separated list of numeric IDs"
 msgstr "Должен быть список числовых ID через запятую"
 
 msgid "Must be a number in the range of 0 - 10000"
-msgstr ""
+msgstr "Должно быть числом в диапазоне от 0 до 10000"
 
 msgid "Name displayed on the dashboard"
-msgstr ""
+msgstr "Имя, отображаемое на дашборде"
 
 msgid "Name shown in the priority level list"
-msgstr ""
+msgstr "Имя, отображаемое в списке уровней приоритета"
 
 msgid "Network Interface"
-msgstr ""
+msgstr "Сетевой интерфейс"
 
 msgid "Network interface settings"
-msgstr ""
+msgstr "Настройки сетевого интерфейса"
 
 msgid "New version %s is available for %s"
 msgstr "Доступна новая версия %s для %s"
@@ -1305,16 +1305,16 @@ msgid "NFQUEUE range overlaps with another rule"
 msgstr "Диапазон NFQUEUE пересекается с другим правилом"
 
 msgid "NFQWS Strategy"
-msgstr ""
+msgstr "Стратегия NFQWS"
 
 msgid "NFQWS strategy cannot be empty"
-msgstr ""
+msgstr "Стратегия NFQWS не может быть пустой"
 
 msgid "NFQWS2 Strategy"
-msgstr ""
+msgstr "Стратегия NFQWS2"
 
 msgid "NFQWS2 strategy cannot be empty"
-msgstr ""
+msgstr "Стратегия NFQWS2 не может быть пустой"
 
 msgid "No"
 msgstr "Нет"
@@ -1410,34 +1410,34 @@ msgid "Obfuscation password"
 msgstr "Пароль обфускации"
 
 msgid "Only from the specified countries."
-msgstr ""
+msgstr "Только из указанных стран."
 
 msgid "Only selected"
-msgstr ""
+msgstr "Только выбранные"
 
 msgid "Only selected except exclusions"
-msgstr ""
+msgstr "Только выбранные, кроме исключений"
 
 msgid "Only servers whose names match the expression."
-msgstr ""
+msgstr "Только серверы, имена которых совпадают с выражением."
 
 msgid "Only servers with one of the selected protocols."
-msgstr ""
+msgstr "Только серверы с одним из выбранных протоколов."
 
 msgid "Only servers with one of the selected security types."
-msgstr ""
+msgstr "Только серверы с одним из выбранных типов безопасности."
 
 msgid "Only servers with one of the selected transports."
-msgstr ""
+msgstr "Только серверы с одним из выбранных транспортов."
 
 msgid "Only the specified servers."
-msgstr ""
+msgstr "Только указанные серверы."
 
 msgid "Open"
 msgstr "Открыть"
 
 msgid "Open priority settings and enter a display name"
-msgstr ""
+msgstr "Откройте настройки приоритета и введите отображаемое имя"
 
 msgid "Open Project Page"
 msgstr "Открыть страницу проекта"
@@ -1446,13 +1446,13 @@ msgid "Operation timed out"
 msgstr "Время ожидания истекло"
 
 msgid "Option \"%s\" contains an invalid input value."
-msgstr ""
+msgstr "Опция \\"%s\\" содержит некорректное значение."
 
 msgid "Optional values must be attached with '=' here; a separate token would be ignored by nfqws."
-msgstr ""
+msgstr "Опциональные значения должны быть указаны через '=' здесь; отдельный токен будет проигнорирован nfqws."
 
 msgid "Optional values must be attached with '=' here; a separate token would be ignored by nfqws2."
-msgstr ""
+msgstr "Опциональные значения должны быть указаны через '=' здесь; отдельный токен будет проигнорирован nfqws2."
 
 msgid "outbounds must be a non-empty array of strings"
 msgstr "outbounds должен быть непустым массивом строк"
@@ -1470,7 +1470,7 @@ msgid "Password"
 msgstr "Пароль"
 
 msgid "Password cannot be empty"
-msgstr ""
+msgstr "Пароль не может быть пустым"
 
 msgid "Path cannot be empty"
 msgstr "Путь не может быть пустым"
@@ -1488,7 +1488,7 @@ msgid "Pause updates"
 msgstr "Приостановить обновление"
 
 msgid "Peer Public Key"
-msgstr ""
+msgstr "Публичный ключ пира"
 
 msgid "Pending"
 msgstr "Ожидает запуска"
@@ -1497,10 +1497,10 @@ msgid "Per-Device Routing"
 msgstr "Маршрутизация по устройствам"
 
 msgid "Periodically check the current level and switch to a faster server even when the current one works."
-msgstr ""
+msgstr "Периодически проверять текущий уровень и переключаться на более быстрый сервер, даже если текущий работает."
 
 msgid "Pin on dashboard"
-msgstr ""
+msgstr "Закрепить на дашборде"
 
 msgid "Polling Interval (seconds)"
 msgstr "Интервал опроса (секунды)"
@@ -1509,22 +1509,22 @@ msgid "Polling interval must be at least 1 second"
 msgstr "Интервал опроса должен быть не менее 1 секунды"
 
 msgid "Port cannot be empty"
-msgstr ""
+msgstr "Порт не может быть пустым"
 
 msgid "Port conflict"
 msgstr "Конфликт порта"
 
 msgid "Port for the local mixed proxy of this section"
-msgstr ""
+msgstr "Порт локального смешанного прокси этой секции"
 
 msgid "Port must be between 1 and 65535"
 msgstr "Порт должен быть от 1 до 65535"
 
 msgid "Port range start must be less than or equal to end"
-msgstr ""
+msgstr "Начало диапазона портов должно быть меньше или равно концу"
 
 msgid "Ports"
-msgstr ""
+msgstr "Порты"
 
 msgid "Prefer IPv4"
 msgstr "Предпочитать IPv4"
@@ -1536,13 +1536,13 @@ msgid "Preferred IP"
 msgstr "Предпочитаемый IP"
 
 msgid "Prefix text"
-msgstr ""
+msgstr "Текст префикса"
 
 msgid "Preshared Key"
-msgstr ""
+msgstr "Общий ключ"
 
 msgid "Priority"
-msgstr ""
+msgstr "Приоритет"
 
 msgid "Priority details"
 msgstr "Детали Priority"
@@ -1551,16 +1551,16 @@ msgid "Priority details are unavailable"
 msgstr "Детали Priority недоступны"
 
 msgid "Priority level settings"
-msgstr ""
+msgstr "Настройки уровня приоритета"
 
 msgid "Priority levels"
-msgstr ""
+msgstr "Уровни приоритета"
 
 msgid "Priority settings"
-msgstr ""
+msgstr "Настройки приоритета"
 
 msgid "Private Key"
-msgstr ""
+msgstr "Приватный ключ"
 
 msgid "Protocol"
 msgstr "Протокол"
@@ -1599,43 +1599,43 @@ msgid "Refill"
 msgstr "Сброс"
 
 msgid "Regional options cannot be used together"
-msgstr ""
+msgstr "Региональные опции не могут использоваться одновременно"
 
 msgid "Regular expression must not contain spaces or commas"
-msgstr ""
+msgstr "Регулярное выражение не должно содержать пробелы или запятые"
 
 msgid "Remove"
 msgstr "Удалить"
 
 msgid "Remove servers from the specified countries from this level."
-msgstr ""
+msgstr "Удалить серверы из указанных стран с этого уровня."
 
 msgid "Remove servers whose names match the expression from this level."
-msgstr ""
+msgstr "Удалить с этого уровня серверы, имена которых совпадают с выражением."
 
 msgid "Remove the specified servers from this level."
-msgstr ""
+msgstr "Удалить указанные серверы с этого уровня."
 
 msgid "Require a username and password for the local mixed proxy"
-msgstr ""
+msgstr "Требовать имя пользователя и пароль для локального смешанного прокси"
 
 msgid "Resolve domain names before routing so sing-box can use real destination IPs."
-msgstr ""
+msgstr "Разрешать доменные имена до маршрутизации, чтобы sing-box мог использовать реальные IP назначения."
 
 msgid "Resolve real IP for routing"
-msgstr ""
+msgstr "Определять реальный IP для маршрутизации"
 
 msgid "Resource selection by hostname inside nfqws is not supported here; sing-box selects resources before NFQUEUE."
-msgstr ""
+msgstr "Выбор ресурсов по имени хоста внутри nfqws не поддерживается здесь; sing-box выбирает ресурсы до NFQUEUE."
 
 msgid "Resource selection by hostname inside nfqws2 is not supported here; sing-box selects resources before NFQUEUE."
-msgstr ""
+msgstr "Выбор ресурсов по имени хоста внутри nfqws2 не поддерживается здесь; sing-box выбирает ресурсы до NFQUEUE."
 
 msgid "Resource selection by IP or CIDR inside nfqws is not supported here; sing-box selects resources before NFQUEUE."
-msgstr ""
+msgstr "Выбор ресурсов по IP или CIDR внутри nfqws не поддерживается здесь; sing-box выбирает ресурсы до NFQUEUE."
 
 msgid "Resource selection by IP or CIDR inside nfqws2 is not supported here; sing-box selects resources before NFQUEUE."
-msgstr ""
+msgstr "Выбор ресурсов по IP или CIDR внутри nfqws2 не поддерживается здесь; sing-box выбирает ресурсы до NFQUEUE."
 
 msgid "Restart Tachyon"
 msgstr "Перезапустить Tachyon"
@@ -1650,7 +1650,7 @@ msgid "Route main DNS requests through the selected section."
 msgstr "Маршрутизировать основные DNS-запросы через выбранную секцию."
 
 msgid "Route requests to this DNS server through another section."
-msgstr ""
+msgstr "Маршрутизировать запросы к этому DNS серверу через другую секцию."
 
 msgid "Routing mode"
 msgstr "Режим маршрутизации"
@@ -1662,13 +1662,13 @@ msgid "Routing section"
 msgstr "Секция маршрутизации"
 
 msgid "Rule set must be an HTTP(S) URL or a local .srs / .json path"
-msgstr ""
+msgstr "Набор правил должен быть HTTP(S) URL или локальным путём .srs / .json"
 
 msgid "Rule set settings"
-msgstr ""
+msgstr "Настройки набора правил"
 
 msgid "Rule sets"
-msgstr ""
+msgstr "Наборы правил"
 
 msgid "Rules"
 msgstr "Правила"
@@ -1701,7 +1701,7 @@ msgid "Running"
 msgstr "Запущен"
 
 msgid "Russia inside restrictions"
-msgstr ""
+msgstr "Ограничения для России внутри"
 
 msgid "Save"
 msgstr "Сохранить"
@@ -1725,7 +1725,7 @@ msgid "Section"
 msgstr "Секция"
 
 msgid "Section name"
-msgstr ""
+msgstr "Название секции"
 
 msgid "Section test order (checked = active, drag rows with △▽):"
 msgstr "Порядок тестирования (отмечены активные, сортировка △▽):"
@@ -1737,31 +1737,31 @@ msgid "Security"
 msgstr "Защита"
 
 msgid "Select a common client profile or enter a custom User-Agent"
-msgstr ""
+msgstr "Выберите стандартный профиль клиента или введите пользовательский User-Agent"
 
 msgid "Select a network interface"
-msgstr ""
+msgstr "Выберите сетевой интерфейс"
 
 msgid "Select a predefined domain list"
-msgstr ""
+msgstr "Выберите предопределённый список доменов"
 
 msgid "Select a section"
 msgstr "Выберите секцию"
 
 msgid "Select a section for downloading this subscription"
-msgstr ""
+msgstr "Выберите секцию для скачивания этой подписки"
 
 msgid "Select a transit section"
-msgstr ""
+msgstr "Выберите транзитную секцию"
 
 msgid "Select an existing network interface"
-msgstr ""
+msgstr "Выберите существующий сетевой интерфейс"
 
 msgid "Select an existing URLTest or Priority group"
-msgstr ""
+msgstr "Выберите существующий URLTest или группу приоритетов"
 
 msgid "Select an intermediate section"
-msgstr ""
+msgstr "Выберите промежуточную секцию"
 
 msgid "Select and order the sections through which blocked domains are tested. Checked sections are tried top-to-bottom."
 msgstr "Выберите и упорядочьте секции для тестирования заблокированных доменов. Отмеченные секции проверяются сверху вниз."
@@ -1770,10 +1770,10 @@ msgid "Select DNS protocol to use"
 msgstr "Выберите протокол DNS"
 
 msgid "Select network interface for VPN connection"
-msgstr ""
+msgstr "Выберите сетевой интерфейс для VPN соединения"
 
 msgid "Select or enter a User-Agent"
-msgstr ""
+msgstr "Выберите или введите User-Agent"
 
 msgid "Select or enter path for sing-box cache file. Change this ONLY if you know what you are doing"
 msgstr "Выберите или введите путь к файлу кеша sing-box. Изменяйте это, ТОЛЬКО если вы знаете, что делаете"
@@ -1827,16 +1827,16 @@ msgid "Server"
 msgstr "Сервер"
 
 msgid "Server Address"
-msgstr ""
+msgstr "Адрес сервера"
 
 msgid "Server filtering"
-msgstr ""
+msgstr "Фильтрация серверов"
 
 msgid "Server group for automatic lowest-latency selection"
-msgstr ""
+msgstr "Группа серверов для автоматического выбора с наименьшей задержкой"
 
 msgid "Server group for priority failover"
-msgstr ""
+msgstr "Группа серверов для резервного переключения по приоритету"
 
 msgid "Server information"
 msgstr "Информация о сервере"
@@ -1854,7 +1854,7 @@ msgid "Server outbound must contain a numeric server_port from 1 to 65535"
 msgstr "Серверный outbound должен содержать числовой server_port от 1 до 65535"
 
 msgid "Server Port"
-msgstr ""
+msgstr "Порт сервера"
 
 msgid "server_port must be a number from 1 to 65535"
 msgstr "server_port должен быть числом от 1 до 65535"
@@ -1863,13 +1863,13 @@ msgid "Servers"
 msgstr "Серверы"
 
 msgid "Servers on dashboard"
-msgstr ""
+msgstr "Серверы на дашборде"
 
 msgid "Service action failed"
 msgstr "Действие сервиса не выполнено"
 
 msgid "Service list"
-msgstr ""
+msgstr "Список сервисов"
 
 msgid "Services info"
 msgstr "Информация о сервисах"
@@ -1878,34 +1878,34 @@ msgid "Settings"
 msgstr "Настройки"
 
 msgid "Show metadata on dashboard"
-msgstr ""
+msgstr "Показывать метаданные на дашборде"
 
 msgid "Show only selected servers."
-msgstr ""
+msgstr "Показывать только выбранные серверы."
 
 msgid "Show only servers with one of the selected protocols."
-msgstr ""
+msgstr "Показывать только серверы с одним из выбранных протоколов."
 
 msgid "Show only servers with one of the selected security types."
-msgstr ""
+msgstr "Показывать только серверы с одним из выбранных типов безопасности."
 
 msgid "Show only servers with one of the selected transports."
-msgstr ""
+msgstr "Показывать только серверы с одним из выбранных транспортов."
 
 msgid "Show servers from selected groups without repeating their filtering criteria."
-msgstr ""
+msgstr "Показывать серверы из выбранных групп без повторения их критериев фильтрации."
 
 msgid "Show servers only from the specified countries."
-msgstr ""
+msgstr "Показывать серверы только из указанных стран."
 
 msgid "Show servers whose names match the expression."
-msgstr ""
+msgstr "Показывать серверы, имена которых совпадают с выражением."
 
 msgid "Show sing-box config"
 msgstr "Показать sing-box конфигурацию"
 
 msgid "Show subscription metadata for this source on the dashboard"
-msgstr ""
+msgstr "Показывать метаданные подписки для этого источника на дашборде"
 
 msgid "Sing-box autostart disabled"
 msgstr "Автостарт sing-box отключен"
@@ -1938,10 +1938,10 @@ msgid "Smart Detect settings saved"
 msgstr "Настройки Smart Detect сохранены"
 
 msgid "Sort by latency"
-msgstr ""
+msgstr "Сортировка по задержке"
 
 msgid "Sorts servers in this section by lowest latency in the dashboard."
-msgstr ""
+msgstr "Сортирует серверы в этой секции по наименьшей задержке на дашборде."
 
 msgid "Source"
 msgstr "Источник"
@@ -1998,7 +1998,7 @@ msgid "Start Tachyon"
 msgstr "Запустить Tachyon"
 
 msgid "Starting…"
-msgstr ""
+msgstr "Запуск…"
 
 msgid "Status"
 msgstr "Статус"
@@ -2010,7 +2010,7 @@ msgid "Stop bot"
 msgstr "Остановить бота"
 
 msgid "Stop checking when URLTest group is not used. Use sing-box duration format like 1d, 12h or 30m."
-msgstr ""
+msgstr "Прекратить проверку, когда группа URLTest не используется. Используйте формат длительности sing-box, например 1d, 12h или 30m."
 
 msgid "Stop Tachyon"
 msgstr "Остановить Tachyon"
@@ -2019,13 +2019,13 @@ msgid "Stopped"
 msgstr "Остановлен"
 
 msgid "Stopping…"
-msgstr ""
+msgstr "Остановка…"
 
 msgid "Subnets from the list will be extracted and added to nftables"
-msgstr ""
+msgstr "Подсети из списка будут извлечены и добавлены в nftables"
 
 msgid "Subscription auto update"
-msgstr ""
+msgstr "Автообновление подписки"
 
 msgid "Subscription info:"
 msgstr "Информация о подписке:"
@@ -2034,13 +2034,13 @@ msgid "Subscription update failed"
 msgstr "Обновление подписки завершилось ошибкой"
 
 msgid "Subscription update interval"
-msgstr ""
+msgstr "Интервал обновления подписки"
 
 msgid "Subscription URL"
-msgstr ""
+msgstr "URL подписки"
 
 msgid "Subscription URL settings"
-msgstr ""
+msgstr "Настройки URL подписки"
 
 msgid "Subscriptions updated"
 msgstr "Подписки обновлены"
@@ -2058,16 +2058,16 @@ msgid "Tachyon Error"
 msgstr "Ошибка Tachyon"
 
 msgid "Tachyon manages ciadpi pid files itself, so pidfile options are not allowed here."
-msgstr ""
+msgstr "Tachyon самостоятельно управляет pid файлами ciadpi, поэтому параметры pidfile недопустимы здесь."
 
 msgid "Tachyon manages the ciadpi process lifecycle itself, so daemon mode is not allowed here."
-msgstr ""
+msgstr "Tachyon самостоятельно управляет жизненным циклом процесса ciadpi, поэтому режим демона недопустим здесь."
 
 msgid "Tachyon manages the nfqws process lifecycle itself, so daemon mode is not allowed here."
-msgstr ""
+msgstr "Tachyon самостоятельно управляет жизненным циклом процесса nfqws, поэтому режим демона недопустим здесь."
 
 msgid "Tachyon manages the nfqws2 process lifecycle itself, so daemon mode is not allowed here."
-msgstr ""
+msgstr "Tachyon самостоятельно управляет жизненным циклом процесса nfqws2, поэтому режим демона недопустим здесь."
 
 msgid "Tachyon service is stopped. Start the service to display connections."
 msgstr "Служба Tachyon остановлена. Запустите сервис для отображения подключений."
@@ -2133,34 +2133,34 @@ msgid "Test latency"
 msgstr "Тестирование задержки"
 
 msgid "Test only selected servers."
-msgstr ""
+msgstr "Тестировать только выбранные серверы."
 
 msgid "Test only servers with one of the selected protocols."
-msgstr ""
+msgstr "Тестировать только серверы с одним из выбранных протоколов."
 
 msgid "Test only servers with one of the selected security types."
-msgstr ""
+msgstr "Тестировать только серверы с одним из выбранных типов безопасности."
 
 msgid "Test only servers with one of the selected transports."
-msgstr ""
+msgstr "Тестировать только серверы с одним из выбранных транспортов."
 
 msgid "Test servers only from the specified countries."
-msgstr ""
+msgstr "Тестировать серверы только из указанных стран."
 
 msgid "Test servers whose names match the expression."
-msgstr ""
+msgstr "Тестировать серверы, имена которых совпадают с выражением."
 
 msgid "Testing URL"
 msgstr "URL проверки"
 
 msgid "The desync fwmark is managed by Tachyon for loop prevention and must not be overridden here."
-msgstr ""
+msgstr "Метка fwmark для десинхронизации управляется Tachyon для предотвращения петель и не должна переопределяться здесь."
 
 msgid "The NFQUEUE number is assigned by Tachyon for each rule and must not be overridden here."
-msgstr ""
+msgstr "Номер NFQUEUE назначается Tachyon для каждого правила и не должен переопределяться здесь."
 
 msgid "The rule applies to the domain and all its subdomains. Use full:, keyword:, or regex: prefixes for exact match, keyword match, or regular expression."
-msgstr ""
+msgstr "Правило применяется к домену и всем его поддоменам. Используйте префиксы full:, keyword: или regex: для точного совпадения, совпадения по ключевому слову или регулярного выражения."
 
 msgid "There are rules using ByeDPI"
 msgstr "Есть правила, использующие ByeDPI"
@@ -2175,25 +2175,25 @@ msgid "This field is required"
 msgstr "Заполните это поле"
 
 msgid "This field must start a working ciadpi strategy; help/version options exit immediately and are not allowed here."
-msgstr ""
+msgstr "Это поле должно начинаться с рабочей стратегии ciadpi; опции help/version немедленно завершаются и недопустимы здесь."
 
 msgid "This field must start a working nfqws strategy; --dry-run exits immediately and is not allowed here."
-msgstr ""
+msgstr "Это поле должно начинаться с рабочей стратегии nfqws; --dry-run немедленно завершается и недопустим здесь."
 
 msgid "This field must start a working nfqws strategy; --version exits immediately and is not allowed here."
-msgstr ""
+msgstr "Это поле должно начинаться с рабочей стратегии nfqws; --version немедленно завершается и недопустим здесь."
 
 msgid "This field must start a working nfqws2 strategy; --dry-run exits immediately and is not allowed here."
-msgstr ""
+msgstr "Это поле должно начинаться с рабочей стратегии nfqws2; --dry-run немедленно завершается и недопустим здесь."
 
 msgid "This field must start a working nfqws2 strategy; --version exits immediately and is not allowed here."
-msgstr ""
+msgstr "Это поле должно начинаться с рабочей стратегии nfqws2; --version немедленно завершается и недопустим здесь."
 
 msgid "This flag does not accept a value."
-msgstr ""
+msgstr "Этот флаг не принимает значение."
 
 msgid "This option requires a value."
-msgstr ""
+msgstr "Эта опция требует значение."
 
 msgid "Time"
 msgstr "Время"
@@ -2214,22 +2214,22 @@ msgid "Tolerance"
 msgstr "Допуск"
 
 msgid "Top level has the highest priority; lower levels are used as fallback"
-msgstr ""
+msgstr "Верхний уровень имеет наивысший приоритет; нижние уровни используются как резерв"
 
 msgid "Traffic"
 msgstr "Трафик"
 
 msgid "Traffic for this level goes directly."
-msgstr ""
+msgstr "Трафик для этого уровня проходит напрямую."
 
 msgid "Traffic from these IP addresses will never be routed through this section, even if other conditions match."
-msgstr ""
+msgstr "Трафик с этих IP-адресов никогда не будет направляться через эту секцию, даже если другие условия совпадают."
 
 msgid "Traffic Total"
 msgstr "Всего трафика"
 
 msgid "Transparent proxy mode is incompatible with action=byedpi because Tachyon connects to ciadpi through SOCKS."
-msgstr ""
+msgstr "Режим прозрачного прокси несовместим с action=byedpi, так как Tachyon подключается к ciadpi через SOCKS."
 
 msgid "Transport"
 msgstr "Транспорт"
@@ -2247,7 +2247,7 @@ msgid "Troubleshooting"
 msgstr "Устранение неполадок"
 
 msgid "Try compatible User-Agent profiles automatically when downloading this subscription"
-msgstr ""
+msgstr "Автоматически пробовать совместимые профили User-Agent при скачивании этой подписки"
 
 msgid "TTL must be a positive number"
 msgstr "TTL должно быть положительным числом"
@@ -2262,22 +2262,22 @@ msgid "UDP (Unprotected DNS)"
 msgstr "UDP (Незащищённый DNS)"
 
 msgid "Unable to validate the ByeDPI strategy through the backend parser."
-msgstr ""
+msgstr "Не удалось валидировать стратегию ByeDPI через парсер бэкенда."
 
 msgid "Unable to validate the NFQWS strategy through the backend parser."
-msgstr ""
+msgstr "Не удалось валидировать стратегию NFQWS через парсер бэкенда."
 
 msgid "Unable to validate the NFQWS2 strategy through the backend parser."
-msgstr ""
+msgstr "Не удалось валидировать стратегию NFQWS2 через парсер бэкенда."
 
 msgid "Unavailability timeout"
 msgstr "Таймаут недоступности"
 
 msgid "Unexpected ByeDPI strategy argument: %s"
-msgstr ""
+msgstr "Неожиданный аргумент стратегии ByeDPI: %s"
 
 msgid "Unexpected standalone token. Use explicit flags such as --name or --name=value."
-msgstr ""
+msgstr "Неожиданный отдельный токен. Используйте явные флаги, например --name или --name=value."
 
 msgid "Unexpected Tachyon-managed ciadpi runtime is running"
 msgstr "Обнаружен лишний ciadpi Tachyon"
@@ -2298,19 +2298,19 @@ msgid "Unknown"
 msgstr "Неизвестно"
 
 msgid "Unknown ByeDPI option: %s"
-msgstr ""
+msgstr "Неизвестная опция ByeDPI: %s"
 
 msgid "Unknown country"
-msgstr ""
+msgstr "Неизвестная страна"
 
 msgid "Unknown error"
 msgstr "Неизвестная ошибка"
 
 msgid "Unknown NFQWS flag."
-msgstr ""
+msgstr "Неизвестный флаг NFQWS."
 
 msgid "Unknown NFQWS2 flag."
-msgstr ""
+msgstr "Неизвестный флаг NFQWS2."
 
 msgid "Unspecified IP address is not allowed"
 msgstr "Неуказанный IP-адрес не разрешён"
@@ -2331,7 +2331,7 @@ msgid "Update subscriptions"
 msgstr "Обновить подписки"
 
 msgid "Update this subscription automatically"
-msgstr ""
+msgstr "Автоматически обновлять эту подписку"
 
 msgid "Uplink"
 msgstr "Исходящий"
@@ -2346,13 +2346,13 @@ msgid "URL must use one of the following protocols:"
 msgstr "URL должен использовать один из следующих протоколов:"
 
 msgid "URL used to check whether a server is alive"
-msgstr ""
+msgstr "URL для проверки доступности сервера"
 
 msgid "URL used to test server latency"
-msgstr ""
+msgstr "URL для тестирования задержки сервера"
 
 msgid "URLTest"
-msgstr ""
+msgstr "URLTest"
 
 msgid "URLTest details"
 msgstr "Детали URLTest"
@@ -2361,7 +2361,7 @@ msgid "URLTest details are unavailable"
 msgstr "Детали URLTest недоступны"
 
 msgid "URLTest settings"
-msgstr ""
+msgstr "Настройки URLTest"
 
 msgid "Use 32 hex characters"
 msgstr "Укажите 32 hex-символа"
@@ -2388,7 +2388,7 @@ msgid "Use an IP listen address"
 msgstr "Используйте IP-адрес для прослушивания"
 
 msgid "Use another section as an intermediate hop to connect to servers in this section. Does not apply to network interfaces or JSON outbounds."
-msgstr ""
+msgstr "Использовать другую секцию как промежуточный узел для подключения к серверам этой секции. Не применяется к сетевым интерфейсам и JSON outbound."
 
 msgid "Use CIDR prefixes like 192.168.1.0/24 or 2001:db8::/32"
 msgstr "Используйте CIDR-префиксы, например 192.168.1.0/24 или 2001:db8::/32"
@@ -2409,40 +2409,40 @@ msgid "Used by"
 msgstr "Используется"
 
 msgid "User-Agent"
-msgstr ""
+msgstr "User-Agent"
 
 msgid "Username"
 msgstr "Имя пользователя"
 
 msgid "Username cannot be empty"
-msgstr ""
+msgstr "Имя пользователя не может быть пустым"
 
 msgid "Valid"
 msgstr "Валидно"
 
 msgid "Validation errors:"
-msgstr ""
+msgstr "Ошибки валидации:"
 
 msgid "Value cannot be empty"
-msgstr ""
+msgstr "Значение не может быть пустым"
 
 msgid "Value must not contain control characters"
 msgstr "Значение не должно содержать управляющие символы"
 
 msgid "Via country.is"
-msgstr ""
+msgstr "Через country.is"
 
 msgid "View logs"
 msgstr "Посмотреть логи"
 
 msgid "Visible name of this section"
-msgstr ""
+msgstr "Видимое имя этой секции"
 
 msgid "VLESS flow"
 msgstr "VLESS flow"
 
 msgid "vless://, vmess://, ss://, trojan://, socks4/5://, hy2/hysteria2:// links"
-msgstr ""
+msgstr "ссылки vless://, vmess://, ss://, trojan://, socks4/5://, hy2/hysteria2://"
 
 msgid "WAN"
 msgstr "WAN"
@@ -2451,10 +2451,10 @@ msgid "WAN public IP"
 msgstr "Публичный WAN IP"
 
 msgid "Warning: %s cannot be used together with %s. Previous selections have been removed."
-msgstr ""
+msgstr "Предупреждение: %s нельзя использовать вместе с %s. Предыдущие выборы были удалены."
 
 msgid "Warning: Russia inside can only be used with %s. %s already in Russia inside and have been removed from selection."
-msgstr ""
+msgstr "Предупреждение: «Россия внутри» можно использовать только с %s. %s уже находятся в «России внутри» и были удалены из выбора."
 
 msgid "Watchdog"
 msgstr "Сторожевой таймер"
@@ -2463,10 +2463,10 @@ msgid "Watchdog Status"
 msgstr "Статус watchdog"
 
 msgid "What Tachyon should do when this section matches"
-msgstr ""
+msgstr "Что должен делать Tachyon, когда эта секция совпадает"
 
 msgid "When switching to another level, test every server and select the fastest instead of the first working one."
-msgstr ""
+msgstr "При переключении на другой уровень проверить каждый сервер и выбрать самый быстрый, а не первый рабочий."
 
 msgid "XHTTP mode"
 msgstr "Режим XHTTP"
@@ -2481,7 +2481,7 @@ msgid "You can select Output Network Interface, by default autodetect"
 msgstr "Вы можете выбрать выходной сетевой интерфейс, по умолчанию он определяется автоматически."
 
 msgid "Zapret hostlist templates are not supported here because Tachyon does not expand them for per-rule NFQWS strategies."
-msgstr ""
+msgstr "Шаблоны списков хостов Zapret не поддерживаются здесь, так как Tachyon не разворачивает их для поправильных стратегий NFQWS."
 
 msgid "Zapret package is installed"
 msgstr "Пакет Zapret установлен"
@@ -2502,7 +2502,7 @@ msgid "Zapret sing-box outbound is not configured"
 msgstr "sing-box outbound для Zapret не настроен"
 
 msgid "Zapret2 hostlist templates are not supported here because Tachyon does not expand them for per-rule NFQWS2 strategies."
-msgstr ""
+msgstr "Шаблоны списков хостов Zapret2 не поддерживаются здесь, так как Tachyon не разворачивает их для поправильных стратегий NFQWS2."
 
 msgid "Zapret2 package is installed"
 msgstr "Пакет Zapret2 установлен"
