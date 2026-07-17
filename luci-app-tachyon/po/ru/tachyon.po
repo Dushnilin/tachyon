@@ -2393,3 +2393,46 @@ msgstr "Изоляция торрент-трафика (P2P)"
 
 msgid "Route BitTorrent traffic directly, bypassing all proxies."
 msgstr "Направлять BitTorrent-трафик напрямую, в обход всех прокси-серверов."
+
+msgid "Checking…"
+msgstr "Проверка…"
+
+msgid "Starting…"
+msgstr "Запуск…"
+
+msgid "Stopping…"
+msgstr "Остановка…"
+
+msgid "Failed to start watchdog"
+msgstr "Не удалось запустить Watchdog"
+
+msgid "Failed to stop watchdog"
+msgstr "Не удалось остановить Watchdog"
+
+msgid "No active routing sections found."
+msgstr "Активных секций маршрутизации не найдено."
+
+msgid "Saved"
+msgstr "Сохранено"
+
+msgid "Saving…"
+msgstr "Сохранение…"
+
+msgid "Error saving"
+msgstr "Ошибка сохранения"
+
+msgid "Watchdog Status"
+msgstr "Состояние Watchdog"
+
+msgid "Enable Smart Detect"
+msgstr "Включить Smart Detect"
+
+msgid "Auto-detects blocked domains from logs and adds them to the first section where they work via proxy."
+msgstr "Автоматически обнаруживает заблокированные домены из логов и добавляет их в первую секцию, через которую они работают."
+
+msgid "Domain test sections"
+msgstr "Секции для тестирования доменов"
+
+msgid "Select and order the sections through which blocked domains are tested. Checked sections are tried top-to-bottom."
+msgstr "Выберите и упорядочьте секции, через которые тестируются заблокированные домены. Отмеченные секции проверяются сверху вниз."
+
