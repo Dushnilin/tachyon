@@ -199,6 +199,8 @@ function command_spec(command) {
         doctor: [ "diagnostics/runtime.uc", "doctor", 1 ],
         ai_doctor: [ "diagnostics/runtime.uc", "ai-doctor", 0 ],
         watchdog: [ "service/watchdog.uc", "", 1 ],
+        watchdog_start: [ "service/watchdog.uc", "start-runtime", 0 ],
+        watchdog_stop: [ "service/watchdog.uc", "stop-runtime", 0 ],
         telegram: [ "service/telegram.uc", "", 2 ],
         telegram_status: [ "service/telegram.uc", "status", 0 ],
         telegram_start: [ "service/telegram.uc", "start-runtime", 0 ],
