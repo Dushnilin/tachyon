@@ -7951,6 +7951,15 @@ function createSectionContent(section) {
   });
   dependsOnRoutingAction(fullyRoutedOption);
 
+  const excludedIpsOption = addLocalDeviceSubnetDynamicField(section, {
+    key: "excluded_ips",
+    label: _("Excluded devices"),
+    description: _(
+      "Traffic from these IP addresses will never be routed through this section, even if other conditions match.",
+    ),
+  });
+  dependsOnRoutingAction(excludedIpsOption);
+
   const portsOption = addDynamicConditionField(section, {
     key: "ports",
     label: _("Ports"),

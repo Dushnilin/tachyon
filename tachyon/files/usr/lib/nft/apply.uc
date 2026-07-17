@@ -670,6 +670,23 @@ function nft_source_match_args(section, family, sets) {
         : [ "ip", "saddr", "@" + as_string(sets.sources) ];
 }
 
+// Build a negative nftables source-IP match for excluded_ips.
+// nft accepts: ip saddr != { addr1, addr2, ... }  as a single argument.
+function nft_excluded_source_match_args(section, family) {
+    let excluded = list_option(section, "excluded_ips");
+    if (length(excluded) == 0)
+        return [];
+    let ip_key = family == 6 ? "ip6" : "ip";
+    let want_family = family;
+    let addrs = [];
+    for (let ip in excluded)
+        if (core_ip.ip_family(as_string(ip)) == want_family)
+            push(addrs, as_string(ip));
+    if (length(addrs) == 0)
+        return [];
+    return [ ip_key, "saddr", "!=", "{ " + join(", ", addrs) + " }" ];
+}
+
 function nft_priority_rule_args(section, family, local_set, match_args, mark) {
     let sets = section_priority_sets(section);
     let args = [];
@@ -677,11 +694,13 @@ function nft_priority_rule_args(section, family, local_set, match_args, mark) {
         append_array(args, nft_source_match_args(section, 4, sets));
     else
         append_array(args, nft_source_match_args(section, 6, sets));
+    append_array(args, nft_excluded_source_match_args(section, family));
     append_array(args, [ family == 6 ? "ip6" : "ip", "daddr", "!=", "@" + as_string(local_set) ]);
     append_array(args, match_args);
     append_array(args, nft_priority_verdict_args(section_priority_action(section), mark));
     return args;
 }
+
 
 function nft_priority_prerouting_args(section, family, interface_set, local_set, match_args, mark) {
     let args = [ "iifname", "@" + as_string(interface_set) ];
@@ -1461,6 +1480,7 @@ function nft_rule_signature_body(body, section) {
     body = signature_add_value(body, "rule." + section_name + ".source_ip_cidr", section_rule_condition_csv(section, "source_ip_cidr", "subnets"));
     body = signature_add_value(body, "rule." + section_name + ".ports", section_rule_ports_csv(section));
     body = signature_add_value(body, "rule." + section_name + ".fully_routed_ips", option(section, "fully_routed_ips", ""));
+    body = signature_add_value(body, "rule." + section_name + ".excluded_ips", option(section, "excluded_ips", ""));
     body = signature_add_value(body, "rule." + section_name + ".community_subnet_lists", filter_community_subnet_lists_value(connections.community_lists_value(section)));
     body = signature_add_value(body, "rule." + section_name + ".remote_subnet_lists", option(section, "remote_subnet_lists", ""));
     body = signature_add_value(body, "rule." + section_name + ".rule_set_with_subnets", connections.rule_sets_with_subnets_value(section));

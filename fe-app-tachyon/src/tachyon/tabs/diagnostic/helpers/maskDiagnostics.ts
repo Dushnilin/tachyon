@@ -1,4 +1,4 @@
-﻿const MASKED_VALUE = 'MASKED';
+const MASKED_VALUE = 'MASKED';
 
 const SING_BOX_MASKED_KEYS = new Set([
   'auth_key',
@@ -57,6 +57,7 @@ const TACHYON_MASK_AFTER_TOKEN_SPACE = [
   'list ip_cidr',
   'list source_ip_cidr',
   'list fully_routed_ips',
+  'list excluded_ips',
   'option dns_server',
   'option bootstrap_dns_server',
   'list dns_server',
