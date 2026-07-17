@@ -154,6 +154,285 @@ function configureDnsDuration(
   configureDnsFailoverVisibility(option, dnsOption, bootstrapOption);
 }
 
+function createWatchdogStatusWidget() {
+  const wrapper = E("div", {
+    id: "tachyon-watchdog-status-widget",
+    style: "display:flex;align-items:center;gap:12px;padding:4px 0;flex-wrap:wrap;",
+  });
+
+  const indicator = E("span", {
+    style: "display:inline-flex;align-items:center;gap:6px;",
+  });
+
+  const dot = E("span", {
+    id: "tachyon-watchdog-status-dot",
+    style: "display:inline-block;width:10px;height:10px;border-radius:50%;background:#aaa;flex-shrink:0;",
+  });
+
+  const statusText = E("span", { id: "tachyon-watchdog-status-text" });
+  statusText.textContent = _("Checking\u2026");
+
+  indicator.appendChild(dot);
+  indicator.appendChild(statusText);
+
+  const btnStart = E("button", {
+    class: "btn cbi-button cbi-button-action",
+    type: "button",
+    style: "display:none;",
+  });
+  btnStart.textContent = _("Start");
+
+  const btnStop = E("button", {
+    class: "btn cbi-button cbi-button-negative",
+    type: "button",
+    style: "display:none;",
+  });
+  btnStop.textContent = _("Stop");
+
+  const msgEl = E("span", {
+    style: "font-size:12px;color:var(--text-color-medium,#888);",
+  });
+
+  function applyWdStatus(running) {
+    if (running) {
+      dot.style.background = "#4caf50";
+      statusText.textContent = _("Running");
+      btnStart.style.display = "none";
+      btnStop.style.display = "";
+      btnStop.disabled = false;
+    } else {
+      dot.style.background = "#f44336";
+      statusText.textContent = _("Stopped");
+      btnStart.style.display = "";
+      btnStart.disabled = false;
+      btnStop.style.display = "none";
+    }
+  }
+
+  function refreshWdStatus() {
+    return fs
+      .exec("/usr/bin/tachyon", ["watchdog", "status"])
+      .then(function (res) {
+        const out = ((res && res.stdout) || "").trim();
+        try {
+          const data = JSON.parse(out);
+          applyWdStatus(Boolean(data.running));
+        } catch (e) {
+          applyWdStatus(out.indexOf("running") === 0);
+        }
+      })
+      .catch(function () {
+        dot.style.background = "#aaa";
+        statusText.textContent = _("Unknown");
+      });
+  }
+
+  btnStart.addEventListener("click", function () {
+    btnStart.disabled = true;
+    msgEl.textContent = _("Starting\u2026");
+    fs.exec("/usr/bin/tachyon", ["watchdog_start"])
+      .then(function () {
+        msgEl.textContent = "";
+        return refreshWdStatus();
+      })
+      .catch(function () {
+        msgEl.textContent = _("Failed to start watchdog");
+        btnStart.disabled = false;
+      });
+  });
+
+  btnStop.addEventListener("click", function () {
+    btnStop.disabled = true;
+    msgEl.textContent = _("Stopping\u2026");
+    fs.exec("/usr/bin/tachyon", ["watchdog_stop"])
+      .then(function () {
+        msgEl.textContent = "";
+        return refreshWdStatus();
+      })
+      .catch(function () {
+        msgEl.textContent = _("Failed to stop watchdog");
+        btnStop.disabled = false;
+      });
+  });
+
+  wrapper.appendChild(indicator);
+  wrapper.appendChild(btnStart);
+  wrapper.appendChild(btnStop);
+  wrapper.appendChild(msgEl);
+
+  refreshWdStatus();
+
+  const wdTimer = setInterval(refreshWdStatus, 10000);
+  const wdObserver = new MutationObserver(function () {
+    if (!document.body.contains(wrapper)) {
+      clearInterval(wdTimer);
+      wdObserver.disconnect();
+    }
+  });
+  wdObserver.observe(document.body, { childList: true, subtree: true });
+
+  return wrapper;
+}
+
+function createSmartDetectSectionsWidget(section_id) {
+  const allSections = (uci.sections(UCI_PACKAGE, "rule") || [])
+    .filter(function (s) { return s.enabled !== "0"; })
+    .map(function (s) { return s[".name"]; });
+
+  if (allSections.length === 0) {
+    const empty = E("em", { style: "color:var(--text-color-medium,#888);font-size:0.9rem;" });
+    empty.textContent = _("No active routing sections found.");
+    return empty;
+  }
+
+  const rawVal = uci.get(UCI_PACKAGE, section_id, "smart_detect_sections");
+  const savedSections = L.toArray(rawVal || []);
+
+  // Build ordered list: saved sections first (preserving order), then any not yet included
+  const ordered = [];
+  savedSections.forEach(function (name) {
+    if (allSections.indexOf(name) >= 0 && ordered.indexOf(name) < 0) {
+      ordered.push(name);
+    }
+  });
+  allSections.forEach(function (name) {
+    if (ordered.indexOf(name) < 0) ordered.push(name);
+  });
+
+  // enabledSet: which sections are checked
+  const enabledSet = {};
+  if (savedSections.length > 0) {
+    savedSections.forEach(function (name) { enabledSet[name] = true; });
+  } else if (ordered.length > 0) {
+    enabledSet[ordered[0]] = true;
+  }
+
+  const wrapper = E("div", {});
+  const listEl = E("div", {
+    style: "border:1px solid var(--border-color,#dee2e6);border-radius:4px;overflow:hidden;margin-bottom:8px;max-width:480px;",
+  });
+  const footer = E("div", { style: "display:flex;align-items:center;gap:10px;" });
+  const saveBtn = E("button", {
+    class: "btn cbi-button cbi-button-save",
+    type: "button",
+  });
+  saveBtn.textContent = _("Save");
+  const sdMsgEl = E("span", { style: "font-size:12px;color:var(--text-color-medium,#888);" });
+
+  function renderSdRow(name, idx, totalLen) {
+    const isEnabled = Boolean(enabledSet[name]);
+    const row = E("div", {
+      style: [
+        "display:flex;align-items:center;gap:10px;padding:7px 10px;",
+        idx < totalLen - 1 ? "border-bottom:1px solid var(--border-color,#dee2e6);" : "",
+        isEnabled ? "" : "opacity:0.5;",
+      ].join(""),
+    });
+
+    const cb = E("input", { type: "checkbox" });
+    cb.checked = isEnabled;
+    cb.addEventListener("change", function (ev) {
+      enabledSet[name] = ev.target.checked;
+      renderSdList();
+    });
+
+    const label = E("span", { style: "flex:1;font-family:monospace;font-size:0.9rem;user-select:none;" });
+    label.textContent = name;
+
+    const upBtn = E("button", {
+      class: "btn",
+      type: "button",
+      style: "padding:1px 8px;font-size:0.75rem;line-height:1.4;border:1px solid var(--border-color,#ccc);border-radius:3px;background:transparent;cursor:pointer;",
+    });
+    upBtn.disabled = (idx === 0);
+    upBtn.textContent = "\u25b3";
+    upBtn.addEventListener("click", function () {
+      if (idx > 0) {
+        const tmp = ordered[idx - 1];
+        ordered[idx - 1] = ordered[idx];
+        ordered[idx] = tmp;
+        renderSdList();
+      }
+    });
+
+    const downBtn = E("button", {
+      class: "btn",
+      type: "button",
+      style: "padding:1px 8px;font-size:0.75rem;line-height:1.4;border:1px solid var(--border-color,#ccc);border-radius:3px;background:transparent;cursor:pointer;",
+    });
+    downBtn.disabled = (idx === totalLen - 1);
+    downBtn.textContent = "\u25bd";
+    downBtn.addEventListener("click", function () {
+      if (idx < ordered.length - 1) {
+        const tmp = ordered[idx + 1];
+        ordered[idx + 1] = ordered[idx];
+        ordered[idx] = tmp;
+        renderSdList();
+      }
+    });
+
+    row.appendChild(cb);
+    row.appendChild(label);
+    row.appendChild(upBtn);
+    row.appendChild(downBtn);
+    return row;
+  }
+
+  function renderSdList() {
+    while (listEl.firstChild) listEl.removeChild(listEl.firstChild);
+    ordered.forEach(function (name, idx) {
+      listEl.appendChild(renderSdRow(name, idx, ordered.length));
+    });
+  }
+
+  renderSdList();
+
+  saveBtn.addEventListener("click", function () {
+    saveBtn.disabled = true;
+    sdMsgEl.textContent = _("Saving\u2026");
+
+    const sectionsToSave = ordered.filter(function (name) {
+      return Boolean(enabledSet[name]);
+    });
+
+    fs.exec("/sbin/uci", [
+      "delete",
+      UCI_PACKAGE + ".settings.smart_detect_sections",
+    ])
+      .catch(function () {})
+      .then(function () {
+        return sectionsToSave.reduce(function (p, sec) {
+          return p.then(function () {
+            return fs.exec("/sbin/uci", [
+              "add_list",
+              UCI_PACKAGE + ".settings.smart_detect_sections=" + sec,
+            ]);
+          });
+        }, Promise.resolve());
+      })
+      .then(function () {
+        return fs.exec("/sbin/uci", [
+          "commit", UCI_PACKAGE,
+        ]);
+      })
+      .then(function () {
+        sdMsgEl.textContent = _("Saved");
+        saveBtn.disabled = false;
+        setTimeout(function () { sdMsgEl.textContent = ""; }, 2000);
+      })
+      .catch(function () {
+        sdMsgEl.textContent = _("Error saving");
+        saveBtn.disabled = false;
+      });
+  });
+
+  footer.appendChild(saveBtn);
+  footer.appendChild(sdMsgEl);
+  wrapper.appendChild(listEl);
+  wrapper.appendChild(footer);
+  return wrapper;
+}
+
 function createSettingsContent(section, capabilities) {
   let o = section.option(
     form.ListValue,
@@ -699,6 +978,45 @@ function createSettingsContent(section, capabilities) {
   );
   o.default = "1";
   o.rmempty = false;
+
+  // Watchdog runtime status & controls
+  const wdStatusOpt = section.option(
+    form.DummyValue,
+    "_watchdog_status",
+    _("Watchdog Status"),
+  );
+  wdStatusOpt.rawhtml = true;
+  wdStatusOpt.cfgvalue = function () {
+    return createWatchdogStatusWidget();
+  };
+  wdStatusOpt.depends("enable_watchdog", "1");
+
+  // Smart Detect
+  o = section.option(
+    form.Flag,
+    "smart_detect",
+    _("Enable Smart Detect"),
+    _(
+      "Auto-detects blocked domains from logs and adds them to the first section where they work via proxy.",
+    ),
+  );
+  o.default = "0";
+  o.rmempty = false;
+
+  // Smart Detect sections (domain test order)
+  const sdSectionsOpt = section.option(
+    form.DummyValue,
+    "_smart_detect_sections",
+    _("Domain test sections"),
+    _(
+      "Select and order the sections through which blocked domains are tested. Checked sections are tried top-to-bottom.",
+    ),
+  );
+  sdSectionsOpt.rawhtml = true;
+  sdSectionsOpt.depends("smart_detect", "1");
+  sdSectionsOpt.cfgvalue = function (section_id) {
+    return createSmartDetectSectionsWidget(section_id);
+  };
 }
 
 function createTelegramStatusWidget() {

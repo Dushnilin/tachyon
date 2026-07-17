@@ -20,7 +20,7 @@ import {
   store,
   StoreType,
 } from '../../services';
-import { getLatencyTestLabel, renderSections, renderWidget, loadAdvancedSettingsState } from './partials';
+import { getLatencyTestLabel, renderSections, renderWidget } from './partials';
 import { fetchServicesInfo } from '../../fetchers/fetchServicesInfo';
 import { getClashApiSecret } from '../../methods/custom/getClashApiSecret';
 import { Tachyon } from '../../types';
@@ -1617,8 +1617,7 @@ async function onPageMount() {
   void renderSystemInfoWidget();
   void renderServicesInfoWidget();
   syncDashboardServiceAvailability();
-  // Load Advanced Settings panel data (watchdog, smart detect, device IPs)
-  void loadAdvancedSettingsState();
+
 
   if (hasRuntimeSnapshot) {
     void refreshRuntimeUiState({ force: true });
