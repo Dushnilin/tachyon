@@ -310,17 +310,16 @@ function createSmartDetectSectionsWidget(section_id) {
     enabledSet[ordered[0]] = true;
   }
 
-  const wrapper = E("div", {});
+  const wrapper = E("div", { id: "smart-detect-sections-widget-" + section_id });
   const listEl = E("div", {
     style: "border:1px solid var(--border-color,#dee2e6);border-radius:4px;overflow:hidden;margin-bottom:8px;max-width:480px;",
   });
-  const footer = E("div", { style: "display:flex;align-items:center;gap:10px;" });
-  const saveBtn = E("button", {
-    class: "btn cbi-button cbi-button-save",
-    type: "button",
-  });
-  saveBtn.textContent = _("Save");
-  const sdMsgEl = E("span", { style: "font-size:12px;color:var(--text-color-medium,#888);" });
+
+  function updateValue() {
+    wrapper.value = ordered.filter(function (name) {
+      return Boolean(enabledSet[name]);
+    });
+  }
 
   function renderSdRow(name, idx, totalLen) {
     const isEnabled = Boolean(enabledSet[name]);
@@ -336,6 +335,7 @@ function createSmartDetectSectionsWidget(section_id) {
     cb.checked = isEnabled;
     cb.addEventListener("change", function (ev) {
       enabledSet[name] = ev.target.checked;
+      updateValue();
       renderSdList();
     });
 
@@ -354,6 +354,7 @@ function createSmartDetectSectionsWidget(section_id) {
         const tmp = ordered[idx - 1];
         ordered[idx - 1] = ordered[idx];
         ordered[idx] = tmp;
+        updateValue();
         renderSdList();
       }
     });
@@ -370,6 +371,7 @@ function createSmartDetectSectionsWidget(section_id) {
         const tmp = ordered[idx + 1];
         ordered[idx + 1] = ordered[idx];
         ordered[idx] = tmp;
+        updateValue();
         renderSdList();
       }
     });
@@ -389,50 +391,9 @@ function createSmartDetectSectionsWidget(section_id) {
   }
 
   renderSdList();
+  updateValue();
 
-  saveBtn.addEventListener("click", function () {
-    saveBtn.disabled = true;
-    sdMsgEl.textContent = _("Saving\u2026");
-
-    const sectionsToSave = ordered.filter(function (name) {
-      return Boolean(enabledSet[name]);
-    });
-
-    fs.exec("/sbin/uci", [
-      "delete",
-      UCI_PACKAGE + ".settings.smart_detect_sections",
-    ])
-      .catch(function () {})
-      .then(function () {
-        return sectionsToSave.reduce(function (p, sec) {
-          return p.then(function () {
-            return fs.exec("/sbin/uci", [
-              "add_list",
-              UCI_PACKAGE + ".settings.smart_detect_sections=" + sec,
-            ]);
-          });
-        }, Promise.resolve());
-      })
-      .then(function () {
-        return fs.exec("/sbin/uci", [
-          "commit", UCI_PACKAGE,
-        ]);
-      })
-      .then(function () {
-        sdMsgEl.textContent = _("Saved");
-        saveBtn.disabled = false;
-        setTimeout(function () { sdMsgEl.textContent = ""; }, 2000);
-      })
-      .catch(function () {
-        sdMsgEl.textContent = _("Error saving");
-        saveBtn.disabled = false;
-      });
-  });
-
-  footer.appendChild(saveBtn);
-  footer.appendChild(sdMsgEl);
   wrapper.appendChild(listEl);
-  wrapper.appendChild(footer);
   return wrapper;
 }
 
@@ -1008,7 +969,7 @@ function createSettingsContent(section, capabilities) {
 
   // Smart Detect sections (domain test order)
   const sdSectionsOpt = section.option(
-    form.DummyValue,
+    form.Value,
     "_smart_detect_sections",
     _("Domain test sections"),
     _(
@@ -1017,8 +978,22 @@ function createSettingsContent(section, capabilities) {
   );
   sdSectionsOpt.rawhtml = true;
   sdSectionsOpt.depends("smart_detect", "1");
-  sdSectionsOpt.cfgvalue = function (section_id) {
+  sdSectionsOpt.renderWidget = function (section_id, option_index, cfgvalue) {
     return createSmartDetectSectionsWidget(section_id);
+  };
+  sdSectionsOpt.formvalue = function (section_id) {
+    const el = document.getElementById("smart-detect-sections-widget-" + section_id);
+    return el ? el.value : [];
+  };
+  sdSectionsOpt.write = function (section_id, formvalue) {
+    if (Array.isArray(formvalue) && formvalue.length > 0) {
+      uci.set(UCI_PACKAGE, section_id, "smart_detect_sections", formvalue);
+    } else {
+      uci.unset(UCI_PACKAGE, section_id, "smart_detect_sections");
+    }
+  };
+  sdSectionsOpt.remove = function (section_id) {
+    uci.unset(UCI_PACKAGE, section_id, "smart_detect_sections");
   };
 }
 
