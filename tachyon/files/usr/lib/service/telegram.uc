@@ -241,6 +241,39 @@ function tg_request(token, method, payload) {
         return null;
     }
 }
+
+function get_clash_url(endpoint) {
+    let host = "127.0.0.1:9090"; // default fallback
+    let config_data = fs.readfile("/etc/sing-box/config.json");
+    if (config_data) {
+        try {
+            let sb_cfg = json(config_data);
+            let ext = sb_cfg.experimental?.clash_api?.external_controller;
+            if (ext) {
+                let parts = split(ext, ":");
+                let ip = (length(parts) > 1) ? parts[0] : "";
+                let port = (length(parts) > 1) ? parts[length(parts) - 1] : "9090";
+                if (ip == "0.0.0.0" || ip == "") {
+                    host = "127.0.0.1:" + port;
+                } else {
+                    host = ext;
+                }
+            }
+        } catch(e) {}
+    }
+    return "http://" + host + "/" + endpoint;
+}
+
+function get_clash_proxies_data() {
+    let args = [ "curl", "-s", get_clash_url("proxies") ];
+    let res = command_capture(command_from_args(args));
+    if (res.status == 0 && res.output != "") {
+        try {
+            return json(res.output);
+        } catch (e) {}
+    }
+    return null;
+}
  
 function clash_request(method, endpoint, payload) {
     let url = get_clash_url(endpoint);
@@ -313,6 +346,18 @@ function send_message_with_keyboard(token, chat_id, text, parse_mode) {
     }
     return tg_request(token, "sendMessage", payload);
 }
+
+function send_message_custom_keyboard(token, chat_id, text, parse_mode, keyboard) {
+    let payload = {
+        chat_id: int(chat_id),
+        text: text,
+        reply_markup: { inline_keyboard: keyboard }
+    };
+    if (parse_mode) {
+        payload.parse_mode = parse_mode;
+    }
+    return tg_request(token, "sendMessage", payload);
+}
  
 function is_admin(chat_id, admin_ids_str) {
     if (!admin_ids_str) return false;
@@ -323,38 +368,14 @@ function is_admin(chat_id, admin_ids_str) {
     return false;
 }
 
-function get_clash_url(endpoint) {
-    let host = "127.0.0.1:9090"; // default fallback
-    let config_data = fs.readfile("/etc/sing-box/config.json");
-    if (config_data) {
-        try {
-            let sb_cfg = json(config_data);
-            let ext = sb_cfg.experimental?.clash_api?.external_controller;
-            if (ext) {
-                let parts = split(ext, ":");
-                let ip = (length(parts) > 1) ? parts[0] : "";
-                let port = (length(parts) > 1) ? parts[length(parts) - 1] : "9090";
-                if (ip == "0.0.0.0" || ip == "") {
-                    host = "127.0.0.1:" + port;
-                } else {
-                    host = ext;
-                }
-            }
-        } catch(e) {}
-    }
-    return "http://" + host + "/" + endpoint;
+function escape_html(text) {
+    text = replace(as_string(text), /&/g, "&amp;");
+    text = replace(text, /</g, "&lt;");
+    text = replace(text, />/g, "&gt;");
+    return text;
 }
 
-function get_clash_proxies_data() {
-    let args = [ "curl", "-s", get_clash_url("proxies") ];
-    let res = command_capture(command_from_args(args));
-    if (res.status == 0 && res.output != "") {
-        try {
-            return json(res.output);
-        } catch (e) {}
-    }
-    return null;
-}
+
  
 function get_system_status() {
     let status_obj = {};
@@ -583,17 +604,7 @@ function run_speedtest(token, chat_id) {
     send_message_with_keyboard(token, chat_id, result_text, "Markdown");
 }
  
-function send_message_custom_keyboard(token, chat_id, text, parse_mode, keyboard) {
-    let payload = {
-        chat_id: int(chat_id),
-        text: text,
-        reply_markup: { inline_keyboard: keyboard }
-    };
-    if (parse_mode) {
-        payload.parse_mode = parse_mode;
-    }
-    return tg_request(token, "sendMessage", payload);
-}
+
 
 function handle_rules(token, chat_id) {
     let c = uci_core.cursor();
@@ -681,59 +692,6 @@ function handle_rule_view(token, chat_id, sec_name) {
 }
 
 
-function manage_domain_list_by_section(sec_name, domain, do_delete) {
-    let c = uci_core.cursor();
-    if (!c) return { success: false, error: "Не удалось инициализировать UCI" };
-    c.load(CONFIG_NAME);
-
-    let s = c.get_all(CONFIG_NAME, sec_name);
-    if (!s) {
-        return { success: false, error: "Секция '" + sec_name + "' не найдена." };
-    }
-
-    let option_path = CONFIG_NAME + "." + sec_name + ".domain";
-
-    if (do_delete) {
-        let deleted = uci_core.del_list(option_path, domain);
-        if (deleted) {
-            uci_core.commit(CONFIG_NAME);
-            command_status("/usr/bin/tachyon reload");
-            return { success: true, message: "Запись <code>" + domain + "</code> удалена." };
-        } else {
-            return { success: false, error: "Запись <code>" + domain + "</code> не найдена." };
-        }
-    } else {
-        let current_val = uci_core.get(option_path);
-        let exists = false;
-        if (current_val != "") {
-            for (let item in split(current_val, " ")) {
-                if (item == domain) {
-                    exists = true;
-                    break;
-                }
-            }
-        }
-        if (exists) {
-            return { success: false, error: "Запись <code>" + domain + "</code> уже есть в секции." };
-        }
-
-        let added = uci_core.add_list(option_path, domain);
-        if (added) {
-            uci_core.commit(CONFIG_NAME);
-            command_status("/usr/bin/tachyon reload");
-            return { success: true, message: "Запись <code>" + domain + "</code> добавлена." };
-        }
-        return { success: false, error: "Не удалось добавить запись." };
-    }
-}
-
-function escape_html(text) {
-    text = replace(as_string(text), /&/g, "&amp;");
-    text = replace(text, /</g, "&lt;");
-    text = replace(text, />/g, "&gt;");
-    return text;
-}
-
 function manage_domain_list(action_type, domain, do_delete) {
     let c = uci_core.cursor();
     if (!c) return { success: false, error: "Не удалось инициализировать UCI" };
@@ -784,6 +742,52 @@ function manage_domain_list(action_type, domain, do_delete) {
             return { success: true, message: "Домен `" + domain + "` успешно добавлен в правило." };
         }
         return { success: false, error: "Не удалось добавить домен в конфигурацию." };
+    }
+}
+
+function manage_domain_list_by_section(sec_name, domain, do_delete) {
+    let c = uci_core.cursor();
+    if (!c) return { success: false, error: "Не удалось инициализировать UCI" };
+    c.load(CONFIG_NAME);
+
+    let s = c.get_all(CONFIG_NAME, sec_name);
+    if (!s) {
+        return { success: false, error: "Секция '" + sec_name + "' не найдена." };
+    }
+
+    let option_path = CONFIG_NAME + "." + sec_name + ".domain";
+
+    if (do_delete) {
+        let deleted = uci_core.del_list(option_path, domain);
+        if (deleted) {
+            uci_core.commit(CONFIG_NAME);
+            command_status("/usr/bin/tachyon reload");
+            return { success: true, message: "Запись <code>" + domain + "</code> удалена." };
+        } else {
+            return { success: false, error: "Запись <code>" + domain + "</code> не найдена." };
+        }
+    } else {
+        let current_val = uci_core.get(option_path);
+        let exists = false;
+        if (current_val != "") {
+            for (let item in split(current_val, " ")) {
+                if (item == domain) {
+                    exists = true;
+                    break;
+                }
+            }
+        }
+        if (exists) {
+            return { success: false, error: "Запись <code>" + domain + "</code> уже есть в секции." };
+        }
+
+        let added = uci_core.add_list(option_path, domain);
+        if (added) {
+            uci_core.commit(CONFIG_NAME);
+            command_status("/usr/bin/tachyon reload");
+            return { success: true, message: "Запись <code>" + domain + "</code> добавлена." };
+        }
+        return { success: false, error: "Не удалось добавить запись." };
     }
 }
 
@@ -1607,7 +1611,7 @@ function start_runtime() {
     }
     
     let command = command_from_args([ "ucode", "-L", LIB_DIR, LIB_DIR + "/service/telegram.uc", "worker" ]) +
-        " </dev/null >/dev/null 2>&1 1000<&- & echo $! >" + shell_quote(PID_FILE);
+        " </dev/null >/var/log/tachyon_telegram.log 2>&1 1000<&- & echo $! >" + shell_quote(PID_FILE);
     return command_status(command);
 }
  
