@@ -754,3 +754,4 @@ if grep -Fq $'nft\tinsert\trule' "$NFT_LOG"; then
 fi
 
 printf 'NFT apply checks passed\n'
+
