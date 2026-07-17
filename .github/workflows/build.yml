@@ -62,7 +62,7 @@ jobs:
           ls -la "$PWD/filtered-bin/release"
 
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v4.6.2
+        uses: actions/upload-artifact@v4
         with:
           name: release-files-${{ needs.preparation.outputs.version }}
           path: ./filtered-bin/release/*
@@ -88,7 +88,7 @@ jobs:
 
       - name: Release
         if: ${{ inputs.release_notes == '' }}
-        uses: softprops/action-gh-release@v2.4.0
+        uses: softprops/action-gh-release@v2
         with:
           files: ./filtered-bin/release/*.*
           draft: false
