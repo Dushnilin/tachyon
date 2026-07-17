@@ -322,6 +322,39 @@ function is_admin(chat_id, admin_ids_str) {
     }
     return false;
 }
+
+function get_clash_url(endpoint) {
+    let host = "127.0.0.1:9090"; // default fallback
+    let config_data = fs.readfile("/etc/sing-box/config.json");
+    if (config_data) {
+        try {
+            let sb_cfg = json(config_data);
+            let ext = sb_cfg.experimental?.clash_api?.external_controller;
+            if (ext) {
+                let parts = split(ext, ":");
+                let ip = (length(parts) > 1) ? parts[0] : "";
+                let port = (length(parts) > 1) ? parts[length(parts) - 1] : "9090";
+                if (ip == "0.0.0.0" || ip == "") {
+                    host = "127.0.0.1:" + port;
+                } else {
+                    host = ext;
+                }
+            }
+        } catch(e) {}
+    }
+    return "http://" + host + "/" + endpoint;
+}
+
+function get_clash_proxies_data() {
+    let args = [ "curl", "-s", get_clash_url("proxies") ];
+    let res = command_capture(command_from_args(args));
+    if (res.status == 0 && res.output != "") {
+        try {
+            return json(res.output);
+        } catch (e) {}
+    }
+    return null;
+}
  
 function get_system_status() {
     let status_obj = {};
@@ -410,39 +443,6 @@ function format_bytes(b) {
     if (b > 1048576) return sprintf("%.2f MB", b / 1048576);
     if (b > 1024) return sprintf("%.2f KB", b / 1024);
     return sprintf("%d B", b);
-}
- 
-function get_clash_url(endpoint) {
-    let host = "127.0.0.1:9090"; // default fallback
-    let config_data = fs.readfile("/etc/sing-box/config.json");
-    if (config_data) {
-        try {
-            let sb_cfg = json(config_data);
-            let ext = sb_cfg.experimental?.clash_api?.external_controller;
-            if (ext) {
-                let parts = split(ext, ":");
-                let ip = (length(parts) > 1) ? parts[0] : "";
-                let port = (length(parts) > 1) ? parts[length(parts) - 1] : "9090";
-                if (ip == "0.0.0.0" || ip == "") {
-                    host = "127.0.0.1:" + port;
-                } else {
-                    host = ext;
-                }
-            }
-        } catch(e) {}
-    }
-    return "http://" + host + "/" + endpoint;
-}
-
-function get_clash_proxies_data() {
-    let args = [ "curl", "-s", get_clash_url("proxies") ];
-    let res = command_capture(command_from_args(args));
-    if (res.status == 0 && res.output != "") {
-        try {
-            return json(res.output);
-        } catch (e) {}
-    }
-    return null;
 }
  
 function check_connection() {
