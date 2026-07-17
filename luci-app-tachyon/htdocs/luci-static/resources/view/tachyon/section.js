@@ -7395,9 +7395,8 @@ function createSectionContent(section) {
     _("Cloudflare WARP API access token"),
   );
   o.modalonly = true;
-  o.rmempty = false;
+  o.rmempty = true;
   o.depends("action", "warp");
-  o.validate = validateRequiredText;
 
   // ── AnyTLS (sing-box-extended) ────────────────────────────────────────────
 
