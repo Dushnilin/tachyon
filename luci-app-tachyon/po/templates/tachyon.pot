@@ -3427,3 +3427,45 @@ msgstr ""
 #: src/tachyon/tabs/diagnostic/checks/runZapret2Check.ts:107
 msgid "Zapret2 sing-box outbound is not configured"
 msgstr ""
+
+msgid "Checking…"
+msgstr ""
+
+msgid "Starting…"
+msgstr ""
+
+msgid "Stopping…"
+msgstr ""
+
+msgid "Failed to start watchdog"
+msgstr ""
+
+msgid "Failed to stop watchdog"
+msgstr ""
+
+msgid "No active routing sections found."
+msgstr ""
+
+msgid "Saved"
+msgstr ""
+
+msgid "Saving…"
+msgstr ""
+
+msgid "Error saving"
+msgstr ""
+
+msgid "Watchdog Status"
+msgstr ""
+
+msgid "Enable Smart Detect"
+msgstr ""
+
+msgid "Auto-detects blocked domains from logs and adds them to the first section where they work via proxy."
+msgstr ""
+
+msgid "Domain test sections"
+msgstr ""
+
+msgid "Select and order the sections through which blocked domains are tested. Checked sections are tried top-to-bottom."
+msgstr ""
