@@ -1,4 +1,4 @@
-import { renderSections, renderWidget, renderAdvancedSettingsPanel } from './partials';
+import { renderSections, renderWidget } from './partials';
 
 export function render() {
   return E(
@@ -88,8 +88,7 @@ export function render() {
             selectorSwitchingTag: undefined,
           }),
         ),
-        // Advanced Settings panel (Watchdog / Smart Detect / Per-Device Routing)
-        renderAdvancedSettingsPanel(),
+
       ]),
     ],
   );

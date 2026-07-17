@@ -117,6 +117,7 @@ describe('fetchServicesInfo', () => {
       tachyonRunning: 1,
       tachyonEnabled: 1,
       tachyonStatus: 'running & enabled',
+      watchdogRunning: 0,
     });
   });
 });
