@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-07-17 12:36+0300\n"
-"PO-Revision-Date: 2026-07-17 12:36+0300\n"
+"POT-Creation-Date: 2026-07-17 12:57+0300\n"
+"PO-Revision-Date: 2026-07-17 12:57+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -18,13 +18,13 @@ msgstr ""
 "Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
 
 msgid "⏹ Stop"
-msgstr ""
+msgstr "⏹ Стоп"
 
 msgid "▶ Start"
-msgstr ""
+msgstr "▶ Старт"
 
 msgid "⚙ Advanced Settings"
-msgstr ""
+msgstr "⚙ Настройки"
 
 msgid "✔ Running"
 msgstr "✔ Работает"
@@ -87,7 +87,7 @@ msgid "Alter ID"
 msgstr "Alter ID"
 
 msgid "At least one Admin Chat ID is required"
-msgstr ""
+msgstr "Требуется хотя бы один Admin Chat ID"
 
 msgid "Auto refresh"
 msgstr "Автообновление"
@@ -96,7 +96,7 @@ msgid "Auto update"
 msgstr "Автообновление"
 
 msgid "Auto-detects blocked domains from logs and adds them to the first section where they work via proxy."
-msgstr ""
+msgstr "Автоматически определяет заблокированные домены из логов и добавляет их в первую секцию, где они работают через прокси."
 
 msgid "Automatic component update checks"
 msgstr "Автоматическая проверка обновлений компонентов"
@@ -117,7 +117,7 @@ msgid "Bootstrap DNS Servers"
 msgstr "Bootstrap DNS-серверы"
 
 msgid "Bot Status"
-msgstr ""
+msgstr "Статус бота"
 
 msgid "Browser FakeIP check could not be completed"
 msgstr "Не удалось выполнить проверку FakeIP в браузере"
@@ -285,13 +285,13 @@ msgid "detour must be a non-empty string"
 msgstr "detour должен быть непустой строкой"
 
 msgid "Device IPs (one per line):"
-msgstr ""
+msgstr "IP устройств (по одному на строку):"
 
 msgid "Device IPs saved"
-msgstr ""
+msgstr "IP устройств сохранены"
 
 msgid "Devices listed here are always routed through the assigned section, regardless of global rules."
-msgstr ""
+msgstr "Устройства из этого списка всегда маршрутизируются через назначенную секцию, независимо от глобальных правил."
 
 msgid "DHCP has DNS server"
 msgstr "DHCP содержит DNS сервер"
@@ -360,7 +360,7 @@ msgid "Does not resolve"
 msgstr "Не резолвится"
 
 msgid "Domain test sections"
-msgstr ""
+msgstr "Секции тестирования доменов"
 
 msgid "Dont Touch My DHCP!"
 msgstr "Отключить управление DHCP"
@@ -420,7 +420,7 @@ msgid "Enable Output Network Interface"
 msgstr "Включить выходной сетевой интерфейс"
 
 msgid "Enable Smart Detect"
-msgstr ""
+msgstr "Включить Smart Detect"
 
 msgid "Enable Telegram Bot"
 msgstr "Включить Telegram-бота"
@@ -447,7 +447,7 @@ msgid "Enter the API token obtained from @BotFather."
 msgstr "Введите токен API, полученный от @BotFather."
 
 msgid "Error saving"
-msgstr ""
+msgstr "Ошибка сохранения"
 
 msgid "Exclude NTP"
 msgstr "Исключить NTP"
@@ -474,22 +474,22 @@ msgid "Failed to execute"
 msgstr "Не удалось выполнить"
 
 msgid "Failed to save device IPs"
-msgstr ""
+msgstr "Ошибка сохранения IP устройств"
 
 msgid "Failed to save Smart Detect settings"
-msgstr ""
+msgstr "Ошибка сохранения настроек Smart Detect"
 
 msgid "Failed to start bot"
-msgstr ""
+msgstr "Ошибка запуска бота"
 
 msgid "Failed to start watchdog"
-msgstr ""
+msgstr "Ошибка запуска watchdog"
 
 msgid "Failed to stop bot"
-msgstr ""
+msgstr "Ошибка остановки бота"
 
 msgid "Failed to stop watchdog"
-msgstr ""
+msgstr "Ошибка остановки watchdog"
 
 msgid "Failed to update subscriptions"
 msgstr "Не удалось обновить подписки"
@@ -618,7 +618,7 @@ msgid "Invalid DNS server format. Examples: 8.8.8.8 or dns.example.com or dns.ex
 msgstr "Неверный формат DNS-сервера. Примеры: 8.8.8.8, dns.example.com или dns.example.com/nicedns для DoH"
 
 msgid "Invalid DNS server port"
-msgstr ""
+msgstr "Неверный порт DNS-сервера"
 
 msgid "Invalid domain address"
 msgstr "Неверный домен"
@@ -762,7 +762,7 @@ msgid "IPv6 only"
 msgstr "Только IPv6"
 
 msgid "Isolate BitTorrent traffic and force it direct to prevent VPN bans"
-msgstr ""
+msgstr "Изолировать BitTorrent-трафик и направлять напрямую во избежание банов VPN"
 
 msgid "Issues detected"
 msgstr "Обнаружены проблемы"
@@ -846,13 +846,13 @@ msgid "Monitoring"
 msgstr "Мониторинг"
 
 msgid "Move down"
-msgstr ""
+msgstr "Вниз"
 
 msgid "Move up"
-msgstr ""
+msgstr "Вверх"
 
 msgid "Must be a comma-separated list of numeric IDs"
-msgstr ""
+msgstr "Должен быть список числовых ID через запятую"
 
 msgid "New version %s is available for %s"
 msgstr "Доступна новая версия %s для %s"
@@ -870,7 +870,7 @@ msgid "No active connections"
 msgstr "Нет активных подключений"
 
 msgid "No active routing sections found."
-msgstr ""
+msgstr "Активные секции маршрутизации не найдены."
 
 msgid "No closed connections"
 msgstr "Нет закрытых подключений"
@@ -954,7 +954,7 @@ msgid "Obfuscation password"
 msgstr "Пароль обфускации"
 
 msgid "Open"
-msgstr ""
+msgstr "Открыть"
 
 msgid "Open Project Page"
 msgstr "Открыть страницу проекта"
@@ -996,13 +996,13 @@ msgid "Pending"
 msgstr "Ожидает запуска"
 
 msgid "Per-Device Routing"
-msgstr ""
+msgstr "Маршрутизация по устройствам"
 
 msgid "Polling Interval (seconds)"
-msgstr ""
+msgstr "Интервал опроса (секунды)"
 
 msgid "Polling interval must be at least 1 second"
-msgstr ""
+msgstr "Интервал опроса должен быть не менее 1 секунды"
 
 msgid "Port conflict"
 msgstr "Конфликт порта"
@@ -1110,22 +1110,22 @@ msgid "Run Diagnostic"
 msgstr "Запустить диагностику"
 
 msgid "Run doctor repair"
-msgstr ""
+msgstr "Запустить восстановление"
 
 msgid "Running"
-msgstr ""
+msgstr "Запущен"
 
 msgid "Save"
 msgstr "Сохранить"
 
 msgid "Save Smart Detect Settings"
-msgstr ""
+msgstr "Сохранить настройки Smart Detect"
 
 msgid "Saved"
-msgstr ""
+msgstr "Сохранено"
 
 msgid "Saving…"
-msgstr ""
+msgstr "Сохранение…"
 
 msgid "Search"
 msgstr "Поиск"
@@ -1140,7 +1140,7 @@ msgid "Section"
 msgstr "Секция"
 
 msgid "Section test order (checked = active, drag rows with △▽):"
-msgstr ""
+msgstr "Порядок тестирования (отмечены активные, сортировка △▽):"
 
 msgid "Sections"
 msgstr "Секции"
@@ -1152,7 +1152,7 @@ msgid "Select a section"
 msgstr "Выберите секцию"
 
 msgid "Select and order the sections through which blocked domains are tested. Checked sections are tried top-to-bottom."
-msgstr ""
+msgstr "Выберите и упорядочьте секции для тестирования заблокированных доменов. Отмеченные секции проверяются сверху вниз."
 
 msgid "Select DNS protocol to use"
 msgstr "Выберите протокол DNS"
@@ -1266,10 +1266,10 @@ msgid "Sing-box version is compatible (newer than 1.12.4)"
 msgstr "Версия Sing-box совместима (новее 1.12.4)"
 
 msgid "Smart Detect"
-msgstr ""
+msgstr "Smart Detect"
 
 msgid "Smart Detect settings saved"
-msgstr ""
+msgstr "Настройки Smart Detect сохранены"
 
 msgid "Source"
 msgstr "Источник"
@@ -1317,10 +1317,10 @@ msgid "Standalone Zapret2 service is inactive"
 msgstr "Отдельная служба Zapret2 неактивна"
 
 msgid "Start"
-msgstr ""
+msgstr "Запустить"
 
 msgid "Start bot"
-msgstr ""
+msgstr "Запустить бота"
 
 msgid "Start Tachyon"
 msgstr "Запустить Tachyon"
@@ -1329,19 +1329,19 @@ msgid "Starting…"
 msgstr ""
 
 msgid "Status"
-msgstr ""
+msgstr "Статус"
 
 msgid "Stop"
-msgstr ""
+msgstr "Остановить"
 
 msgid "Stop bot"
-msgstr ""
+msgstr "Остановить бота"
 
 msgid "Stop Tachyon"
 msgstr "Остановить Tachyon"
 
 msgid "Stopped"
-msgstr ""
+msgstr "Остановлен"
 
 msgid "Stopping…"
 msgstr ""
@@ -1458,7 +1458,7 @@ msgid "tiny"
 msgstr "tiny"
 
 msgid "Token is required when the bot is enabled"
-msgstr ""
+msgstr "Токен обязателен при включённом боте"
 
 msgid "Tolerance"
 msgstr "Допуск"
@@ -1515,7 +1515,7 @@ msgid "unknown"
 msgstr "неизвестно"
 
 msgid "Unknown"
-msgstr ""
+msgstr "Неизвестно"
 
 msgid "Unknown error"
 msgstr "Неизвестная ошибка"
@@ -1545,7 +1545,7 @@ msgid "Uploaded"
 msgstr "Отдано"
 
 msgid "URL must start with vless://, vmess://, ss://, trojan://, socks4://, socks4a://, socks5://, hysteria2://, or hy2://"
-msgstr ""
+msgstr "URL должен начинаться с vless://, vmess://, ss://, trojan://, socks4://, socks4a://, socks5://, hysteria2:// или hy2://"
 
 msgid "URL must use one of the following protocols:"
 msgstr "URL должен использовать один из следующих протоколов:"
@@ -1620,10 +1620,10 @@ msgid "WAN public IP"
 msgstr "Публичный WAN IP"
 
 msgid "Watchdog"
-msgstr ""
+msgstr "Сторожевой таймер"
 
 msgid "Watchdog Status"
-msgstr ""
+msgstr "Статус watchdog"
 
 msgid "XHTTP mode"
 msgstr "Режим XHTTP"
@@ -1672,3 +1672,15 @@ msgstr "sing-box outbound для Zapret2 настроен"
 
 msgid "Zapret2 sing-box outbound is not configured"
 msgstr "sing-box outbound для Zapret2 не настроен"
+
+msgid "Checking:"
+msgstr "Проверка:"
+
+msgid "Loading:"
+msgstr "Загрузка:"
+
+msgid "Starting:"
+msgstr "Запуск:"
+
+msgid "Stopping:"
+msgstr "Остановка:"
