@@ -2539,3 +2539,21 @@ msgstr "Запуск:"
 
 msgid "Stopping:"
 msgstr "Остановка:"
+
+msgid "WARP Private Key"
+msgstr "Приватный ключ WARP"
+
+msgid "WireGuard private key from your Cloudflare WARP account"
+msgstr "Приватный ключ WireGuard от вашего аккаунта Cloudflare WARP"
+
+msgid "WARP Account ID"
+msgstr "ID аккаунта WARP"
+
+msgid "Cloudflare WARP account / device ID"
+msgstr "ID аккаунта / устройства Cloudflare WARP"
+
+msgid "WARP Access Token"
+msgstr "Токен доступа WARP"
+
+msgid "Cloudflare WARP API access token"
+msgstr "Токен доступа к API Cloudflare WARP"

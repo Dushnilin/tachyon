@@ -1,14 +1,10 @@
-.idea
-.mimocode
 fe-app-tachyon/node_modules
 fe-app-tachyon/.yarn/
 fe-app-tachyon/.env
 .DS_Store
 shellcheck-v0.10.0/
-AGENTS.md
 
 sandbox/
 .wsl-build/
 dist/
 build-out/
-

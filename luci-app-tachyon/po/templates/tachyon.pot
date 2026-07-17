@@ -3640,3 +3640,21 @@ msgstr ""
 #: src/tachyon/tabs/diagnostic/checks/runZapret2Check.ts:107
 msgid "Zapret2 sing-box outbound is not configured"
 msgstr ""
+
+msgid "WARP Private Key"
+msgstr ""
+
+msgid "WireGuard private key from your Cloudflare WARP account"
+msgstr ""
+
+msgid "WARP Account ID"
+msgstr ""
+
+msgid "Cloudflare WARP account / device ID"
+msgstr ""
+
+msgid "WARP Access Token"
+msgstr ""
+
+msgid "Cloudflare WARP API access token"
+msgstr ""

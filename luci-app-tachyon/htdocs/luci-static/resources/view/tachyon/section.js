@@ -425,6 +425,7 @@ const actionProvidersAvailabilityState = {
   zapretInstalled: false,
   zapret2Installed: false,
   byedpiInstalled: false,
+  singBoxExtended: false,
 };
 let actionProvidersAvailabilityPromise = null;
 let actionProvidersAvailabilityLoader = null;
@@ -468,6 +469,12 @@ function updateActionProvidersAvailabilityState(nextState) {
     );
   }
 
+  if (typeof nextState.singBoxExtended !== "undefined") {
+    actionProvidersAvailabilityState.singBoxExtended = Boolean(
+      nextState.singBoxExtended,
+    );
+  }
+
   actionProvidersAvailabilityPromise = null;
 }
 
@@ -480,6 +487,7 @@ function updateActionProvidersAvailabilityFromSystemInfo(systemInfo) {
     zapretInstalled: Boolean(systemInfo.zapret_installed),
     zapret2Installed: Boolean(systemInfo.zapret2_installed),
     byedpiInstalled: Boolean(systemInfo.byedpi_installed),
+    singBoxExtended: Boolean(systemInfo.sing_box_extended),
   });
 }
 
@@ -3942,6 +3950,7 @@ function ensureActionProvidersAvailabilityLoaded() {
           zapretInstalled: Boolean(capabilities?.zapretInstalled),
           zapret2Installed: Boolean(capabilities?.zapret2Installed),
           byedpiInstalled: Boolean(capabilities?.byedpiInstalled),
+          singBoxExtended: Boolean(capabilities?.singBoxExtended),
         });
         return actionProvidersAvailabilityState;
       })
@@ -3996,6 +4005,7 @@ function ensureActionProvidersAvailabilityLoaded() {
       actionProvidersAvailabilityState.zapretInstalled = false;
       actionProvidersAvailabilityState.zapret2Installed = false;
       actionProvidersAvailabilityState.byedpiInstalled = false;
+      // singBoxExtended is set via systemInfo, keep existing value
       return actionProvidersAvailabilityState;
     })
     .finally(() => {
@@ -4015,6 +4025,10 @@ function isZapret2InstalledForUi() {
 
 function isByedpiInstalledForUi() {
   return actionProvidersAvailabilityState.byedpiInstalled;
+}
+
+function isSingBoxExtendedForUi() {
+  return actionProvidersAvailabilityState.singBoxExtended;
 }
 
 function getRuleConfiguredAction(section_id) {
@@ -4046,6 +4060,8 @@ function getActionOptionLabel(action) {
       return "ByeDPI";
     case "awg":
       return "AmneziaWG";
+    case "warp":
+      return "WARP";
     case "outbound":
       return _("JSON outbound");
     case "proxy":
@@ -4073,6 +4089,10 @@ function getRuleActionDisplayValue(section_id) {
     return "AmneziaWG";
   }
 
+  if (action === "warp") {
+    return "WARP";
+  }
+
   return getActionOptionLabel(action);
 }
 
@@ -4086,6 +4106,9 @@ function populateActionOptionValues(option) {
 
   option.value("connection", getActionOptionLabel("connection"));
   option.value("awg", getActionOptionLabel("awg"));
+  if (isSingBoxExtendedForUi()) {
+    option.value("warp", getActionOptionLabel("warp"));
+  }
   option.value("bypass", "Bypass");
   option.value("block", "Block");
   option.value("dns", "DNS");
@@ -7295,6 +7318,44 @@ function createSectionContent(section) {
   o.modalonly = true;
   o.rmempty = false;
   o.depends("action", "awg");
+
+  // ── WARP (Cloudflare WARP via sing-box-extended) ──────────────────────────
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "warp_private_key",
+    _("WARP Private Key"),
+    _("WireGuard private key from your Cloudflare WARP account"),
+  );
+  o.modalonly = true;
+  o.rmempty = false;
+  o.depends("action", "warp");
+  o.validate = validateRequiredText;
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "warp_account_id",
+    _("WARP Account ID"),
+    _("Cloudflare WARP account / device ID"),
+  );
+  o.modalonly = true;
+  o.rmempty = false;
+  o.depends("action", "warp");
+  o.validate = validateRequiredText;
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "warp_access_token",
+    _("WARP Access Token"),
+    _("Cloudflare WARP API access token"),
+  );
+  o.modalonly = true;
+  o.rmempty = false;
+  o.depends("action", "warp");
+  o.validate = validateRequiredText;
 
   o = section.taboption(
     "settings",

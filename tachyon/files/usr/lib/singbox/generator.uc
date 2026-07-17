@@ -2287,6 +2287,32 @@ function add_awg_outbound(config, section) {
     push(config.outbounds, outbound);
 }
 
+function add_warp_endpoint(config, section) {
+    let tag = outbound_tag(section[".name"]);
+    let account_id = option(section, "warp_account_id", "");
+    let access_token = option(section, "warp_access_token", "");
+    let private_key = option(section, "warp_private_key", "");
+
+    if (private_key == "")
+        runtime_generate_unsupported("WARP section '" + section[".name"] + "' missing warp_private_key");
+    if (account_id == "")
+        runtime_generate_unsupported("WARP section '" + section[".name"] + "' missing warp_account_id");
+    if (access_token == "")
+        runtime_generate_unsupported("WARP section '" + section[".name"] + "' missing warp_access_token");
+
+    push(config.endpoints, {
+        type: "warp",
+        tag,
+        name: tag,
+        profiles: [{
+            id: account_id,
+            auth_token: access_token,
+            private_key
+        }]
+    });
+}
+
+
 function add_zapret_outbound(config, section, sections) {
     let index = enabled_action_index(sections, section, "zapret");
     if (index <= 0)
@@ -2782,6 +2808,8 @@ function add_outbound_for_section(config, section, taken, sections) {
         add_connections_outbound(config, section, taken);
     else if (action == "awg")
         add_awg_outbound(config, section);
+    else if (action == "warp")
+        add_warp_endpoint(config, section);
     else if (action == "zapret")
         add_zapret_outbound(config, section, sections);
     else if (action == "zapret2")
@@ -2806,7 +2834,7 @@ function reserve_section_outbound_tags(sections, taken) {
     for (let section in sections) {
         let action = option(section, "action", "");
         if (connections.is_connections_action(action) ||
-            action == "awg" || action == "byedpi" || action == "zapret" || action == "zapret2")
+            action == "awg" || action == "warp" || action == "byedpi" || action == "zapret" || action == "zapret2")
             taken[outbound_tag(section[".name"])] = true;
 
         if (!connections.is_connections_action(action))
@@ -2831,7 +2859,7 @@ function add_service_route_rules(config, sections) {
     for (let section in sections) {
         let action = option(section, "action", "");
         if (connections.is_connections_action(action) ||
-            action == "awg" || action == "byedpi" || action == "zapret" || action == "zapret2") {
+            action == "awg" || action == "warp" || action == "byedpi" || action == "zapret" || action == "zapret2") {
             first = section;
             break;
         }
