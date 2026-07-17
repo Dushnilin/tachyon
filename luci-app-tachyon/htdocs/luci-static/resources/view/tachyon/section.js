@@ -7398,6 +7398,19 @@ function createSectionContent(section) {
   o.rmempty = true;
   o.depends("action", "warp");
 
+  o = section.taboption(
+    "settings",
+    form.ListValue,
+    "warp_detour",
+    _("Registration Detour"),
+    _("Proxy to use for WARP API registration (api.cloudflareclient.com)"),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.depends("action", "warp");
+  o.value("", _("Direct (Default)"));
+  outboundNameSourceOptions.set("warp_detour", o);
+
   // ── AnyTLS (sing-box-extended) ────────────────────────────────────────────
 
   o = section.taboption("settings", form.Value, "anytls_server", _("Server Address"));

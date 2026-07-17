@@ -2290,7 +2290,7 @@ function add_awg_outbound(config, section) {
 function add_warp_endpoint(config, section) {
     let tag = outbound_tag(section[".name"]);
     let account_id = option(section, "warp_account_id", "");
-    let access_token = option(section, "warp_access_token", "");
+    let access_token = replace(option(section, "warp_access_token", ""), /^ +| +$/g, "");
     let private_key = option(section, "warp_private_key", "");
 
     if (private_key == "")
@@ -2299,14 +2299,23 @@ function add_warp_endpoint(config, section) {
         runtime_generate_unsupported("WARP section '" + section[".name"] + "' missing warp_account_id");
 
     let profile = { id: account_id, private_key };
-    if (access_token != "") profile.auth_token = access_token;
+    if (access_token != "") {
+        profile.auth_token = access_token;
+    }
 
-    push(config.endpoints, {
+    let detour = option(section, "warp_detour", "");
+    let endpoint = {
         type: "warp",
         tag,
         name: tag,
         profile
-    });
+    };
+
+    if (detour != "") {
+        endpoint.detour = outbound_tag(detour);
+    }
+
+    push(config.endpoints, endpoint);
 }
 
 
