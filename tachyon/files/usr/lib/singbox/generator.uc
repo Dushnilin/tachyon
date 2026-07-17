@@ -2635,6 +2635,22 @@ function add_fully_routed_ips_rule(config, section) {
     push(config.route.rules, route_rule);
 }
 
+// Excluded devices: higher-priority direct-outbound rule so these IPs
+// are never routed through the section, even when other conditions match.
+function add_excluded_ips_rule(config, section) {
+    let excluded = list_option(section, "excluded_ips");
+    if (length(excluded) == 0)
+        return;
+
+    let route_rule = {
+        action: "route",
+        inbound: tproxy_inbound_matcher(),
+        outbound: runtime_constants.DIRECT_OUTBOUND_TAG,
+        source_ip_cidr: single_or_array(excluded)
+    };
+    push(config.route.rules, route_rule);
+}
+
 function add_combined_route_for_section(config, section) {
     let domains = domain_conditions(section);
     let domain = domains.domain;
@@ -2647,6 +2663,7 @@ function add_combined_route_for_section(config, section) {
     let dns_rule_set_tags = [];
     let section_name = section[".name"];
 
+    add_excluded_ips_rule(config, section);   // must be first — highest priority
     add_fully_routed_ips_rule(config, section);
 
     for (let community in connections.community_lists(section)) {

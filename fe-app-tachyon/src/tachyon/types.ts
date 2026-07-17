@@ -351,6 +351,7 @@ export namespace Tachyon {
     hide_detour_outbounds?: '0' | '1';
     yacd_secret_key?: string;
     fully_routed_ips?: string | string[];
+    excluded_ips?: string | string[];
     user_domains?: string | string[];
     smart_detect?: '0' | '1';
     smart_detect_section?: string;

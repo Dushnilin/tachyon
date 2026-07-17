@@ -746,6 +746,12 @@ msgstr "Порт в firewall для WAN"
 msgid "Fix the highlighted fields and save again."
 msgstr "Исправьте подсвеченные поля и сохраните снова."
 
+msgid "Excluded devices"
+msgstr "Исключить устройства"
+
+msgid "Traffic from these IP addresses will never be routed through this section, even if other conditions match."
+msgstr "Трафик с этих IP-адресов никогда не будет направлен через эту секцию, даже если другие условия совпадают."
+
 msgid "Forced device routing"
 msgstr "Принудительная маршрутизация устройств"
 
