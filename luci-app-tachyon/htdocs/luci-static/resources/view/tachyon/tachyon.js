@@ -343,6 +343,18 @@ const EntryPoint = {
       _("Configuration for Tachyon service"),
     );
     tachyonMap.tabbed = true;
+    tachyonMap.load = function () {
+      const self = this;
+      return uci.load(self.config).then(() => {
+        if (!uci.get(self.config, "settings")) {
+          uci.add(self.config, "settings", "settings");
+        }
+        if (!uci.get(self.config, "telegram")) {
+          uci.add(self.config, "telegram", "telegram");
+        }
+        return form.Map.prototype.load.call(self);
+      });
+    };
     const originalHandleSaveApply = tachyonMap.handleSaveApply;
     tachyonMap.handleSaveApply = function (ev, mode) {
       const refreshUiState = function () {

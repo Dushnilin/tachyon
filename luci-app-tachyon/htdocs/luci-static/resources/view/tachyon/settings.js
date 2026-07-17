@@ -1183,6 +1183,7 @@ function createTelegramContent(section) {
     _("Enter the API token obtained from @BotFather."),
   );
   o.depends("enabled", "1");
+  o.retain = true;
   o.password = true;
   o.rmempty = false;
   o.validate = function (section_id, value) {
@@ -1201,13 +1202,14 @@ function createTelegramContent(section) {
     ),
   );
   o.depends("enabled", "1");
+  o.retain = true;
   o.rmempty = false;
   o.validate = function (section_id, value) {
     if (this.section.formvalue(section_id, "enabled") === "1") {
       if (!value) {
         return _("At least one Admin Chat ID is required");
       }
-      if (!/^[0-9]+(,[0-9]+)*$/.test(value)) {
+      if (!/^-?[0-9]+(,-?[0-9]+)*$/.test(value)) {
         return _("Must be a comma-separated list of numeric IDs");
       }
     }
@@ -1221,9 +1223,13 @@ function createTelegramContent(section) {
     _("How often to check Telegram for new messages (default: 5)."),
   );
   o.depends("enabled", "1");
+  o.retain = true;
   o.default = "5";
   o.rmempty = false;
   o.validate = function (section_id, value) {
+    if (this.section.formvalue(section_id, "enabled") !== "1") {
+      return true;
+    }
     const val = parseInt(value);
     if (isNaN(val) || val < 1) {
       return _("Polling interval must be at least 1 second");
@@ -1240,6 +1246,7 @@ function createTelegramContent(section) {
     ),
   );
   o.depends("enabled", "1");
+  o.retain = true;
   o.default = "1";
   o.rmempty = false;
 
@@ -1252,6 +1259,7 @@ function createTelegramContent(section) {
     ),
   );
   o.depends("enabled", "1");
+  o.retain = true;
   o.default = "1";
   o.rmempty = false;
 
@@ -1264,6 +1272,7 @@ function createTelegramContent(section) {
     ),
   );
   o.depends("enabled", "1");
+  o.retain = true;
   o.default = "1";
   o.rmempty = false;
 
@@ -1276,6 +1285,7 @@ function createTelegramContent(section) {
     ),
   );
   o.depends("enabled", "1");
+  o.retain = true;
   o.default = "1";
   o.rmempty = false;
 
@@ -1288,6 +1298,7 @@ function createTelegramContent(section) {
     ),
   );
   o.depends("enabled", "1");
+  o.retain = true;
   o.default = "1";
   o.rmempty = false;
 
@@ -1298,6 +1309,7 @@ function createTelegramContent(section) {
     _("Send a Telegram notification if a potential DNS leak is detected."),
   );
   o.depends("enabled", "1");
+  o.retain = true;
   o.default = "1";
   o.rmempty = false;
 }
