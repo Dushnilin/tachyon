@@ -2557,3 +2557,111 @@ msgstr "Токен доступа WARP"
 
 msgid "Cloudflare WARP API access token"
 msgstr "Токен доступа к API Cloudflare WARP"
+
+msgid "AnyTLS"
+msgstr "AnyTLS"
+
+msgid "Snell"
+msgstr "Snell"
+
+msgid "Mieru"
+msgstr "Mieru"
+
+msgid "Sudoku"
+msgstr "Sudoku"
+
+msgid "MASQUE"
+msgstr "MASQUE"
+
+msgid "OpenVPN"
+msgstr "OpenVPN"
+
+msgid "PSK"
+msgstr "PSK"
+
+msgid "Pre-shared key"
+msgstr "Предварительно распределённый ключ"
+
+msgid "Snell Version"
+msgstr "Версия Snell"
+
+msgid "Transport"
+msgstr "Транспорт"
+
+msgid "Key"
+msgstr "Ключ"
+
+msgid "AEAD Method"
+msgstr "Метод AEAD"
+
+msgid "Optional — leave empty for default"
+msgstr "Опционально — оставьте пустым для значения по умолчанию"
+
+msgid "MASQUE Private Key"
+msgstr "Приватный ключ MASQUE"
+
+msgid "WireGuard private key from your Cloudflare account"
+msgstr "WireGuard приватный ключ из вашего аккаунта Cloudflare"
+
+msgid "MASQUE Account ID"
+msgstr "ID аккаунта MASQUE"
+
+msgid "Cloudflare account / device ID"
+msgstr "ID аккаунта / устройства Cloudflare"
+
+msgid "MASQUE Access Token"
+msgstr "Токен доступа MASQUE"
+
+msgid "Cloudflare API access token"
+msgstr "Токен доступа Cloudflare API"
+
+msgid "Protocol"
+msgstr "Протокол"
+
+msgid "Cipher"
+msgstr "Шифрование"
+
+msgid "e.g. AES-256-GCM — leave empty for default"
+msgstr "например AES-256-GCM — оставьте пустым для значения по умолчанию"
+
+msgid "Auth Digest"
+msgstr "Алгоритм аутентификации"
+
+msgid "e.g. SHA256 — leave empty for default"
+msgstr "например SHA256 — оставьте пустым для значения по умолчанию"
+
+msgid "CA Certificate"
+msgstr "CA сертификат"
+
+msgid "PEM-encoded CA certificate"
+msgstr "CA сертификат в формате PEM"
+
+msgid "Client Certificate"
+msgstr "Сертификат клиента"
+
+msgid "PEM-encoded client certificate"
+msgstr "Клиентский сертификат в формате PEM"
+
+msgid "Client Key"
+msgstr "Ключ клиента"
+
+msgid "PEM-encoded client private key"
+msgstr "Приватный ключ клиента в формате PEM"
+
+msgid "TLS Auth/Crypt Key"
+msgstr "Ключ TLS Auth/Crypt"
+
+msgid "Optional tls-auth or tls-crypt key"
+msgstr "Опциональный ключ tls-auth или tls-crypt"
+
+msgid "TLS SNI"
+msgstr "TLS SNI"
+
+msgid "Server Name Indication — leave empty to use server address"
+msgstr "Server Name Indication — оставьте пустым для использования адреса сервера"
+
+msgid "Allow Insecure TLS"
+msgstr "Разрешить небезопасный TLS"
+
+msgid "Skip TLS certificate verification"
+msgstr "Пропустить проверку TLS сертификата"

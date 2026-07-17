@@ -4062,6 +4062,18 @@ function getActionOptionLabel(action) {
       return "AmneziaWG";
     case "warp":
       return "WARP";
+    case "anytls":
+      return "AnyTLS";
+    case "snell":
+      return "Snell";
+    case "mieru":
+      return "Mieru";
+    case "sudoku":
+      return "Sudoku";
+    case "masque":
+      return "MASQUE";
+    case "openvpn":
+      return "OpenVPN";
     case "outbound":
       return _("JSON outbound");
     case "proxy":
@@ -4093,6 +4105,30 @@ function getRuleActionDisplayValue(section_id) {
     return "WARP";
   }
 
+  if (action === "anytls") {
+    return "AnyTLS";
+  }
+
+  if (action === "snell") {
+    return "Snell";
+  }
+
+  if (action === "mieru") {
+    return "Mieru";
+  }
+
+  if (action === "sudoku") {
+    return "Sudoku";
+  }
+
+  if (action === "masque") {
+    return "MASQUE";
+  }
+
+  if (action === "openvpn") {
+    return "OpenVPN";
+  }
+
   return getActionOptionLabel(action);
 }
 
@@ -4105,9 +4141,15 @@ function populateActionOptionValues(option) {
   delete option.vallist;
 
   option.value("connection", getActionOptionLabel("connection"));
-  option.value("awg", getActionOptionLabel("awg"));
   if (isSingBoxExtendedForUi()) {
+    option.value("awg", getActionOptionLabel("awg"));
     option.value("warp", getActionOptionLabel("warp"));
+    option.value("masque", getActionOptionLabel("masque"));
+    option.value("openvpn", getActionOptionLabel("openvpn"));
+    option.value("anytls", getActionOptionLabel("anytls"));
+    option.value("snell", getActionOptionLabel("snell"));
+    option.value("mieru", getActionOptionLabel("mieru"));
+    option.value("sudoku", getActionOptionLabel("sudoku"));
   }
   option.value("bypass", "Bypass");
   option.value("block", "Block");
@@ -7356,6 +7398,278 @@ function createSectionContent(section) {
   o.rmempty = false;
   o.depends("action", "warp");
   o.validate = validateRequiredText;
+
+  // ── AnyTLS (sing-box-extended) ────────────────────────────────────────────
+
+  o = section.taboption("settings", form.Value, "anytls_server", _("Server Address"));
+  o.modalonly = true;
+  o.rmempty = false;
+  o.depends("action", "anytls");
+  o.validate = validateRequiredText;
+
+  o = section.taboption("settings", form.Value, "anytls_server_port", _("Server Port"));
+  o.modalonly = true;
+  o.rmempty = false;
+  o.datatype = "port";
+  o.depends("action", "anytls");
+
+  o = section.taboption("settings", form.Value, "anytls_password", _("Password"));
+  o.modalonly = true;
+  o.rmempty = false;
+  o.password = true;
+  o.depends("action", "anytls");
+  o.validate = validateRequiredText;
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "anytls_sni",
+    _("TLS SNI"),
+    _("Server Name Indication — leave empty to use server address"),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.depends("action", "anytls");
+
+  o = section.taboption(
+    "settings",
+    form.Flag,
+    "anytls_insecure",
+    _("Allow Insecure TLS"),
+    _("Skip TLS certificate verification (not recommended)"),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.depends("action", "anytls");
+
+  // ── Snell (sing-box-extended) ─────────────────────────────────────────────
+
+  o = section.taboption("settings", form.Value, "snell_server", _("Server Address"));
+  o.modalonly = true;
+  o.rmempty = false;
+  o.depends("action", "snell");
+  o.validate = validateRequiredText;
+
+  o = section.taboption("settings", form.Value, "snell_server_port", _("Server Port"));
+  o.modalonly = true;
+  o.rmempty = false;
+  o.datatype = "port";
+  o.depends("action", "snell");
+
+  o = section.taboption("settings", form.Value, "snell_psk", _("PSK"), _("Pre-shared key"));
+  o.modalonly = true;
+  o.rmempty = false;
+  o.password = true;
+  o.depends("action", "snell");
+  o.validate = validateRequiredText;
+
+  o = section.taboption("settings", form.ListValue, "snell_version", _("Snell Version"));
+  o.modalonly = true;
+  o.rmempty = true;
+  o.value("4", "v4");
+  o.value("3", "v3");
+  o.value("2", "v2");
+  o.value("1", "v1");
+  o.default = "4";
+  o.depends("action", "snell");
+
+  // ── Mieru (sing-box-extended) ─────────────────────────────────────────────
+
+  o = section.taboption("settings", form.Value, "mieru_server", _("Server Address"));
+  o.modalonly = true;
+  o.rmempty = false;
+  o.depends("action", "mieru");
+  o.validate = validateRequiredText;
+
+  o = section.taboption("settings", form.Value, "mieru_server_port", _("Server Port"));
+  o.modalonly = true;
+  o.rmempty = false;
+  o.datatype = "port";
+  o.depends("action", "mieru");
+
+  o = section.taboption("settings", form.ListValue, "mieru_transport", _("Transport"));
+  o.modalonly = true;
+  o.rmempty = true;
+  o.value("TCP", "TCP");
+  o.value("UDP", "UDP");
+  o.default = "TCP";
+  o.depends("action", "mieru");
+
+  o = section.taboption("settings", form.Value, "mieru_username", _("Username"));
+  o.modalonly = true;
+  o.rmempty = false;
+  o.depends("action", "mieru");
+  o.validate = validateRequiredText;
+
+  o = section.taboption("settings", form.Value, "mieru_password", _("Password"));
+  o.modalonly = true;
+  o.rmempty = false;
+  o.password = true;
+  o.depends("action", "mieru");
+  o.validate = validateRequiredText;
+
+  // ── Sudoku (sing-box-extended) ────────────────────────────────────────────
+
+  o = section.taboption("settings", form.Value, "sudoku_server", _("Server Address"));
+  o.modalonly = true;
+  o.rmempty = false;
+  o.depends("action", "sudoku");
+  o.validate = validateRequiredText;
+
+  o = section.taboption("settings", form.Value, "sudoku_server_port", _("Server Port"));
+  o.modalonly = true;
+  o.rmempty = false;
+  o.datatype = "port";
+  o.depends("action", "sudoku");
+
+  o = section.taboption("settings", form.Value, "sudoku_key", _("Key"));
+  o.modalonly = true;
+  o.rmempty = false;
+  o.password = true;
+  o.depends("action", "sudoku");
+  o.validate = validateRequiredText;
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "sudoku_aead_method",
+    _("AEAD Method"),
+    _("Optional — leave empty for default"),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.depends("action", "sudoku");
+
+  // ── MASQUE (Cloudflare MASQUE via sing-box-extended) ──────────────────────
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "masque_private_key",
+    _("MASQUE Private Key"),
+    _("WireGuard private key from your Cloudflare account"),
+  );
+  o.modalonly = true;
+  o.rmempty = false;
+  o.depends("action", "masque");
+  o.validate = validateRequiredText;
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "masque_account_id",
+    _("MASQUE Account ID"),
+    _("Cloudflare account / device ID"),
+  );
+  o.modalonly = true;
+  o.rmempty = false;
+  o.depends("action", "masque");
+  o.validate = validateRequiredText;
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "masque_access_token",
+    _("MASQUE Access Token"),
+    _("Cloudflare API access token"),
+  );
+  o.modalonly = true;
+  o.rmempty = false;
+  o.depends("action", "masque");
+  o.validate = validateRequiredText;
+
+  // ── OpenVPN (sing-box-extended) ───────────────────────────────────────────
+
+  o = section.taboption("settings", form.Value, "openvpn_server", _("Server Address"));
+  o.modalonly = true;
+  o.rmempty = false;
+  o.depends("action", "openvpn");
+  o.validate = validateRequiredText;
+
+  o = section.taboption("settings", form.Value, "openvpn_server_port", _("Server Port"));
+  o.modalonly = true;
+  o.rmempty = false;
+  o.datatype = "port";
+  o.placeholder = "1194";
+  o.depends("action", "openvpn");
+
+  o = section.taboption("settings", form.ListValue, "openvpn_proto", _("Protocol"));
+  o.modalonly = true;
+  o.rmempty = true;
+  o.value("udp", "UDP");
+  o.value("tcp", "TCP");
+  o.default = "udp";
+  o.depends("action", "openvpn");
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "openvpn_cipher",
+    _("Cipher"),
+    _("e.g. AES-256-GCM — leave empty for default"),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.depends("action", "openvpn");
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "openvpn_auth",
+    _("Auth Digest"),
+    _("e.g. SHA256 — leave empty for default"),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.depends("action", "openvpn");
+
+  o = section.taboption(
+    "settings",
+    form.TextValue,
+    "openvpn_ca",
+    _("CA Certificate"),
+    _("PEM-encoded CA certificate"),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.rows = 6;
+  o.depends("action", "openvpn");
+
+  o = section.taboption(
+    "settings",
+    form.TextValue,
+    "openvpn_cert",
+    _("Client Certificate"),
+    _("PEM-encoded client certificate"),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.rows = 6;
+  o.depends("action", "openvpn");
+
+  o = section.taboption(
+    "settings",
+    form.TextValue,
+    "openvpn_key",
+    _("Client Key"),
+    _("PEM-encoded client private key"),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.rows = 6;
+  o.depends("action", "openvpn");
+
+  o = section.taboption(
+    "settings",
+    form.TextValue,
+    "openvpn_tls_auth",
+    _("TLS Auth/Crypt Key"),
+    _("Optional tls-auth or tls-crypt key"),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.rows = 6;
+  o.depends("action", "openvpn");
 
   o = section.taboption(
     "settings",

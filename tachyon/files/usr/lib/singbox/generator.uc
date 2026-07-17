@@ -2313,6 +2313,107 @@ function add_warp_endpoint(config, section) {
 }
 
 
+
+function add_anytls_outbound(config, section) {
+    let tag = outbound_tag(section[".name"]);
+    let outbound = {
+        type: "anytls",
+        tag,
+        server: option(section, "anytls_server", ""),
+        server_port: as_integer(option(section, "anytls_server_port", "0")),
+        password: option(section, "anytls_password", ""),
+    };
+    let sni = option(section, "anytls_sni", "");
+    let insecure = bool_flag(option(section, "anytls_insecure", "0"));
+    outbound.tls = { enabled: true };
+    if (sni != "") outbound.tls.server_name = sni;
+    if (insecure)   outbound.tls.insecure = true;
+    push(config.outbounds, outbound);
+}
+
+function add_snell_outbound(config, section) {
+    push(config.outbounds, {
+        type: "snell",
+        tag: outbound_tag(section[".name"]),
+        server: option(section, "snell_server", ""),
+        server_port: as_integer(option(section, "snell_server_port", "0")),
+        psk: option(section, "snell_psk", ""),
+        version: as_integer(option(section, "snell_version", "4"))
+    });
+}
+
+function add_mieru_outbound(config, section) {
+    push(config.outbounds, {
+        type: "mieru",
+        tag: outbound_tag(section[".name"]),
+        server: option(section, "mieru_server", ""),
+        server_port: as_integer(option(section, "mieru_server_port", "0")),
+        transport: option(section, "mieru_transport", "TCP"),
+        username: option(section, "mieru_username", ""),
+        password: option(section, "mieru_password", "")
+    });
+}
+
+function add_sudoku_outbound(config, section) {
+    let outbound = {
+        type: "sudoku",
+        tag: outbound_tag(section[".name"]),
+        server: option(section, "sudoku_server", ""),
+        server_port: as_integer(option(section, "sudoku_server_port", "0")),
+        key: option(section, "sudoku_key", "")
+    };
+    let method = option(section, "sudoku_aead_method", "");
+    if (method != "") outbound.aead_method = method;
+    push(config.outbounds, outbound);
+}
+
+function add_masque_endpoint(config, section) {
+    let tag = outbound_tag(section[".name"]);
+    let private_key = option(section, "masque_private_key", "");
+    let account_id  = option(section, "masque_account_id", "");
+    let access_token = option(section, "masque_access_token", "");
+    if (private_key == "")
+        runtime_generate_unsupported("MASQUE section '" + section[".name"] + "' missing masque_private_key");
+    if (account_id == "")
+        runtime_generate_unsupported("MASQUE section '" + section[".name"] + "' missing masque_account_id");
+    if (access_token == "")
+        runtime_generate_unsupported("MASQUE section '" + section[".name"] + "' missing masque_access_token");
+    push(config.endpoints, {
+        type: "masque",
+        tag,
+        name: tag,
+        profiles: [{ id: account_id, auth_token: access_token, private_key }]
+    });
+}
+
+function add_openvpn_endpoint(config, section) {
+    let tag = outbound_tag(section[".name"]);
+    let endpoint = {
+        type: "openvpn",
+        tag,
+        name: tag,
+        system: true,
+        servers: [{
+            server: option(section, "openvpn_server", ""),
+            server_port: as_integer(option(section, "openvpn_server_port", "1194"))
+        }],
+        proto: option(section, "openvpn_proto", "udp")
+    };
+    let cipher = option(section, "openvpn_cipher", "");
+    if (cipher != "") endpoint.cipher = cipher;
+    let auth = option(section, "openvpn_auth", "");
+    if (auth != "") endpoint.auth = auth;
+    let ca   = option(section, "openvpn_ca", "");
+    if (ca != "")   endpoint.ca = ca;
+    let cert = option(section, "openvpn_cert", "");
+    if (cert != "") endpoint.cert = cert;
+    let key  = option(section, "openvpn_key", "");
+    if (key != "")  endpoint.key = key;
+    let tls_auth = option(section, "openvpn_tls_auth", "");
+    if (tls_auth != "") endpoint.tls_auth = tls_auth;
+    push(config.endpoints, endpoint);
+}
+
 function add_zapret_outbound(config, section, sections) {
     let index = enabled_action_index(sections, section, "zapret");
     if (index <= 0)
@@ -2810,6 +2911,18 @@ function add_outbound_for_section(config, section, taken, sections) {
         add_awg_outbound(config, section);
     else if (action == "warp")
         add_warp_endpoint(config, section);
+    else if (action == "anytls")
+        add_anytls_outbound(config, section);
+    else if (action == "snell")
+        add_snell_outbound(config, section);
+    else if (action == "mieru")
+        add_mieru_outbound(config, section);
+    else if (action == "sudoku")
+        add_sudoku_outbound(config, section);
+    else if (action == "masque")
+        add_masque_endpoint(config, section);
+    else if (action == "openvpn")
+        add_openvpn_endpoint(config, section);
     else if (action == "zapret")
         add_zapret_outbound(config, section, sections);
     else if (action == "zapret2")
@@ -2834,7 +2947,9 @@ function reserve_section_outbound_tags(sections, taken) {
     for (let section in sections) {
         let action = option(section, "action", "");
         if (connections.is_connections_action(action) ||
-            action == "awg" || action == "warp" || action == "byedpi" || action == "zapret" || action == "zapret2")
+            action == "awg" || action == "warp" || action == "byedpi" || action == "zapret" || action == "zapret2" ||
+            action == "anytls" || action == "snell" || action == "mieru" || action == "sudoku" ||
+            action == "masque" || action == "openvpn")
             taken[outbound_tag(section[".name"])] = true;
 
         if (!connections.is_connections_action(action))
@@ -2859,7 +2974,9 @@ function add_service_route_rules(config, sections) {
     for (let section in sections) {
         let action = option(section, "action", "");
         if (connections.is_connections_action(action) ||
-            action == "awg" || action == "warp" || action == "byedpi" || action == "zapret" || action == "zapret2") {
+            action == "awg" || action == "warp" || action == "byedpi" || action == "zapret" || action == "zapret2" ||
+            action == "anytls" || action == "snell" || action == "mieru" || action == "sudoku" ||
+            action == "masque" || action == "openvpn") {
             first = section;
             break;
         }

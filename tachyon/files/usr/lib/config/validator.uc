@@ -556,7 +556,9 @@ function download_section_action_available(action, byedpi_installed, zapret_inst
     action = as_string(action);
     if (connections.is_connections_action(action))
         return true;
-    if (action == "awg" || action == "warp")
+    if (action == "awg" || action == "warp" ||
+        action == "anytls" || action == "snell" || action == "mieru" ||
+        action == "sudoku" || action == "masque" || action == "openvpn")
         return true;
     if (action == "byedpi")
         return bool_flag(byedpi_installed);
@@ -809,11 +811,15 @@ function rule_action(section) {
 }
 
 function rule_action_supported(action) {
-    return contains([ "connection", "proxy", "outbound", "vpn", "awg", "warp", "bypass", "block", "dns", "zapret", "zapret2", "byedpi" ], as_string(action));
+    return contains([ "connection", "proxy", "outbound", "vpn", "awg", "warp",
+        "anytls", "snell", "mieru", "sudoku", "masque", "openvpn",
+        "bypass", "block", "dns", "zapret", "zapret2", "byedpi" ], as_string(action));
 }
 
 function server_routing_section_action_supported(action) {
-    return contains([ "connection", "proxy", "outbound", "vpn", "awg", "warp", "zapret", "zapret2", "byedpi" ], as_string(action));
+    return contains([ "connection", "proxy", "outbound", "vpn", "awg", "warp",
+        "anytls", "snell", "mieru", "sudoku", "masque", "openvpn",
+        "zapret", "zapret2", "byedpi" ], as_string(action));
 }
 
 function duration_to_seconds_value(value) {
