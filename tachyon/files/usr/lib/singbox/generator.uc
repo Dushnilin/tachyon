@@ -2276,6 +2276,13 @@ function add_awg_outbound(config, section) {
     outbound.h2 = as_integer(option(section, "awg_h2", "2"));
     outbound.h3 = as_integer(option(section, "awg_h3", "3"));
     outbound.h4 = as_integer(option(section, "awg_h4", "4"));
+    outbound.s3 = as_integer(option(section, "awg_s3", "0"));
+    outbound.s4 = as_integer(option(section, "awg_s4", "0"));
+    outbound.i1 = as_integer(option(section, "awg_i1", "0"));
+    outbound.i2 = as_integer(option(section, "awg_i2", "0"));
+    outbound.i3 = as_integer(option(section, "awg_i3", "0"));
+    outbound.i4 = as_integer(option(section, "awg_i4", "0"));
+    outbound.i5 = as_integer(option(section, "awg_i5", "0"));
 
     push(config.outbounds, outbound);
 }
