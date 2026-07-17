@@ -51,7 +51,7 @@ function getHeader(lang) {
 }
 
 function parsePo(content) {
-    const lines = content.split('\n');
+    const lines = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
     const translations = new Map();
     let msgid = null;
     let msgstr = null;
@@ -82,6 +82,9 @@ async function generatePo() {
     const oldTranslations = parsePo(oldPoRaw);
     const header = getHeader(lang);
 
+    const tsKeys = new Set(calls.map(({ key }) => key));
+
+    // TypeScript-sourced strings (always present)
     const body = calls
         .map(({ key }) => {
             const msgid = key;
@@ -94,9 +97,22 @@ async function generatePo() {
         })
         .join('\n');
 
-    const finalPo = header.join('\n') + '\n' + body;
+    // Extra strings from old PO (static JS files: settings.js, section.js, etc.)
+    // Preserved so that locales:actualize doesn't wipe them.
+    const extraBody = [...oldTranslations.entries()]
+        .filter(([msgid]) => msgid !== '' && !tsKeys.has(msgid))
+        .map(([msgid, msgstr]) => [
+            `msgid "${escapePoString(msgid)}"`,
+            `msgstr "${escapePoString(msgstr)}"`,
+            ''
+        ].join('\n'))
+        .join('\n');
+
+    const finalPo = header.join('\n') + '\n' + body + (extraBody ? '\n' + extraBody : '');
 
     await fs.writeFile(poPath, finalPo, 'utf8');
+    const translated = [...oldTranslations.values()].filter(v => v !== '').length;
+    const total = tsKeys.size + (oldTranslations.size - 1); // -1 for header entry
     console.log(`✅ Файл ${poPath} успешно сгенерирован. Переведено ${[...oldTranslations.keys()].length}/${calls.length}`);
 }
 
