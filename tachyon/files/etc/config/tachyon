@@ -37,6 +37,10 @@ config settings 'settings'
         option log_level 'warn'
         option exclude_ntp '0'
         option shutdown_correctly '0'
+        option smart_detect '0'
+        #option smart_detect_section ''
+        # smart_detect: set to 1 to enable self-healing routing (auto-adds blocked domains to proxy section)
+
 
 #config section 'subscription_example'
 #        option label 'Subscription'
@@ -177,3 +181,7 @@ config telegram 'telegram'
         option notify_subscription '1'
         option notify_cert '1'
         option notify_dns_leak '1'
+        #option language 'ru'
+        # language: auto-detected from LuCI if not set.
+        # Values: ru (default), en
+

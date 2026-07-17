@@ -8,6 +8,9 @@ const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
 const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
 const PID_FILE = "/var/run/tachyon_watchdog.pid";
 const WATCHDOG_UC = LIB_DIR + "/service/watchdog.uc";
+const PAUSE_FILE = "/tmp/tachyon_paused_until";
+const SMART_DETECT_SEEN_FILE = "/tmp/tachyon_smart_detect_seen.json";
+
 
 let as_string = common.as_string;
 let shell_quote = common.shell_quote;
@@ -78,6 +81,155 @@ function stop_runtime() {
     remove_file("/tmp/tachyon_honeypot.fifo");
 
     return 0;
+}
+
+// ─── Pause auto-resume ────────────────────────────────────────────────────────
+function check_auto_resume_pause() {
+    let val = trim(fs.readfile(PAUSE_FILE) || "");
+    if (val == "") return false;
+    let until = int(val);
+    let now = time();
+    if (until <= now) {
+        remove_file(PAUSE_FILE);
+        log_message("Pause expired, auto-resuming Tachyon...", "info");
+        command_status("/usr/bin/tachyon start > /dev/null 2>&1");
+        let tcfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
+        if (tcfg.enabled == "1" && tcfg.bot_token && tcfg.admin_ids) {
+            send_telegram_notification("▶️ Прокси возобновлён (пауза истекла).");
+        }
+        return false;
+    }
+    return true; // still paused, skip normal checks
+}
+
+// ─── Smart Detect — self-healing routing ─────────────────────────────────────
+function smart_detect_get_proxy_sections() {
+    let c = uci_core.cursor();
+    if (!c) return [];
+    c.load(CONFIG_NAME);
+    let secs = [];
+    c.foreach(CONFIG_NAME, "section", function(s) {
+        if (s.enabled != "1") return;
+        let act = as_string(s.action || "");
+        if (act == "proxy" || act == "connection" || act == "outbound" || act == "vpn") {
+            push(secs, s[".name"]);
+        }
+    });
+    return secs;
+}
+
+function smart_detect_add_domain(sec_name, domain) {
+    let c = uci_core.cursor();
+    if (!c) return false;
+    c.load(CONFIG_NAME);
+    let sec = c.get_all(CONFIG_NAME, sec_name);
+    if (!sec) return false;
+    let existing = sec.user_domains;
+    if (type(existing) != "array") {
+        existing = (existing && trim(as_string(existing)) != "") ? [trim(as_string(existing))] : [];
+    }
+    for (let d in existing) {
+        if (trim(as_string(d)) == domain) return true;
+    }
+    c.list_add(CONFIG_NAME, sec_name, "user_domains", domain);
+    c.commit(CONFIG_NAME);
+    command_status("/usr/bin/tachyon reload > /dev/null 2>&1");
+    return true;
+}
+
+function smart_detect_run(last_time) {
+    let cfg = settings();
+    if (cfg.smart_detect != "1") return last_time;
+    let now = time();
+    if (now - last_time < 60) return last_time;
+
+    let seen = {};
+    let seen_data = fs.readfile(SMART_DETECT_SEEN_FILE);
+    if (seen_data) {
+        try { seen = json(seen_data) || {}; } catch(e) {}
+    }
+
+    // Parse recent sing-box log lines for direct dial failures
+    let log_out = command_output_from_args(["logread", "-l", "150"]) || "";
+    let domains_to_check = {};
+    for (let line in split(log_out, "\n")) {
+        let ll = lc(line);
+        if (index(ll, "direct") < 0 && index(ll, "DIRECT") < 0) continue;
+        if (index(ll, "failed") < 0 && index(ll, "timeout") < 0 && index(ll, "reset") < 0) continue;
+        // Extract quoted hostname like "twitch.tv:443"
+        let m = match(line, /"([a-zA-Z0-9][a-zA-Z0-9\-\.]{1,60}\.[a-zA-Z]{2,})(:[0-9]+)?"/);
+        if (!m) m = match(line, /target[= ]([a-zA-Z0-9][a-zA-Z0-9\-\.]{1,60}\.[a-zA-Z]{2,})/);
+        if (!m) continue;
+        let domain = m[1];
+        if (!domain || length(domain) < 5) continue;
+        if (seen[domain]) continue;
+        domains_to_check[domain] = true;
+    }
+
+    let domain_list = keys(domains_to_check);
+    if (length(domain_list) == 0) {
+        return now;
+    }
+
+    let sections = smart_detect_get_proxy_sections();
+    if (length(sections) == 0) return now;
+
+    // Determine proxy address
+    let proxy_addr = "127.0.0.1:4534";
+    let sb_cfg_data = fs.readfile("/etc/sing-box/config.json");
+    if (sb_cfg_data) {
+        try {
+            let sb_cfg = json(sb_cfg_data);
+            if (sb_cfg.inbounds) {
+                for (let inb in sb_cfg.inbounds) {
+                    if (inb.type == "http" || inb.type == "mixed") {
+                        proxy_addr = "127.0.0.1:" + as_string(inb.listen_port || 4534);
+                        break;
+                    }
+                }
+            }
+        } catch(e) {}
+    }
+
+    // Target section: configurable via smart_detect_section UCI option
+    let target_section = sections[0];
+    if (cfg.smart_detect_section) target_section = as_string(cfg.smart_detect_section);
+
+    for (let domain in domain_list) {
+        seen[domain] = now;
+        // Verify it actually fails directly
+        let direct_ok = command_success_from_args([
+            "curl", "-s", "-I", "--connect-timeout", "4", "--max-time", "6",
+            "https://" + domain
+        ]);
+        if (direct_ok) continue;
+        // Verify it works via proxy
+        let proxy_ok = command_success_from_args([
+            "curl", "-s", "-I", "--connect-timeout", "5", "--max-time", "8",
+            "--proxy", "http://" + proxy_addr,
+            "https://" + domain
+        ]);
+        if (!proxy_ok) continue;
+        // Add to section!
+        log_message("Smart Detect: adding " + domain + " to section " + target_section, "info");
+        if (smart_detect_add_domain(target_section, domain)) {
+            let tcfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
+            if (tcfg.enabled == "1" && tcfg.bot_token && tcfg.admin_ids) {
+                send_telegram_notification(
+                    "\ud83d\udd0d *Smart Detect*: `" + domain + "` \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u0435\u043d \u043d\u0430\u043f\u0440\u044f\u043c\u0443\u044e, \u0440\u0430\u0431\u043e\u0442\u0430\u0435\u0442 \u0447\u0435\u0440\u0435\u0437 \u043f\u0440\u043e\u043a\u0441\u0438.\n\u0414\u043e\u0431\u0430\u0432\u043b\u0435\u043d \u0432 \u0441\u0435\u043a\u0446\u0438\u044e *" + target_section + "*."
+                );
+            }
+        }
+    }
+
+    // Prune seen cache (keep only last 24h)
+    let clean = {};
+    let cutoff = now - 86400;
+    for (let k in keys(seen)) {
+        if (seen[k] >= cutoff) clean[k] = seen[k];
+    }
+    fs.writefile(SMART_DETECT_SEEN_FILE, sprintf("%J", clean));
+    return now;
 }
 
 function start_runtime() {
@@ -158,10 +310,17 @@ function worker() {
            "fi; done </dev/null >/dev/null 2>&1 1000<&- & echo $! > /var/run/tachyon_honeypot_listener.pid");
 
     let zero_rtt_done = false;
+    let smart_detect_last_run = 0;
 
     while (true) {
         cfg = settings();
         if (cfg.recovery_bypass == "1") {
+            sleep(10);
+            continue;
+        }
+
+        // 0. Check pause file — skip health checks if proxy is intentionally paused
+        if (check_auto_resume_pause()) {
             sleep(10);
             continue;
         }
@@ -270,6 +429,9 @@ function worker() {
             run_zero_rtt_prefetching();
             zero_rtt_done = true;
         }
+
+        // 5. Smart Detect — self-healing routing
+        smart_detect_last_run = smart_detect_run(smart_detect_last_run);
 
         sleep(15);
     }

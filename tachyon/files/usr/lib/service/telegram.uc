@@ -8,6 +8,9 @@ const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
 const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
 const PID_FILE = "/var/run/tachyon_telegram.pid";
 const OFFSET_FILE = "/var/run/tachyon_telegram_offset";
+const PAUSE_FILE = "/tmp/tachyon_paused_until";
+const WATCHDOG_PID_FILE = "/var/run/tachyon_watchdog.pid";
+const SMART_DETECT_COOLDOWN_FILE = "/tmp/tachyon_smart_detect_seen";
  
 let as_string = common.as_string;
 let shell_quote = common.shell_quote;
@@ -17,7 +20,149 @@ let command_status = common.command_status;
 let command_success_from_args = common.command_success_from_args;
 let command_from_args = common.command_from_args;
 
- 
+// ─── Language / Translation ───────────────────────────────────────────────────
+let TG_LANG_RU = {
+    status_title:      "📊 <b>Статус Tachyon роутера</b>",
+    uptime:            "Аптайм",
+    cpu_load:          "CPU Load",
+    ram_free:          "RAM свободно",
+    singbox_status:    "sing-box",
+    active_server:     "🔵 Активный сервер",
+    latency:           "Задержка",
+    watchdog_status:   "Watchdog",
+    paused_label:      "⏸️ На паузе, ещё",
+    not_paused:        "",
+    paused_notice:     "\n⏸️ <b>Прокси НА ПАУЗЕ</b> — ещё %s",
+    pause_done:        "⏸️ Прокси приостановлен на <b>%s</b>. Возобновится через %s.",
+    pause_invalid:     "❌ Укажите длительность: <code>/pause 30m</code> или <code>/pause 1h</code>",
+    pause_max:         "❌ Максимальная пауза — 24 часа.",
+    resume_done:       "▶️ Прокси возобновлён!",
+    resume_not_paused: "ℹ️ Прокси не был на паузе.",
+    wd_title:          "🐕 <b>Watchdog Tachyon</b>",
+    wd_running:        "🟢 Запущен",
+    wd_stopped:        "🔴 Остановлен",
+    wd_btn_start:      "▶️ Запустить Watchdog",
+    wd_btn_stop:       "⏹️ Остановить Watchdog",
+    wd_started:        "✅ Watchdog запущен.",
+    wd_stopped_msg:    "✅ Watchdog остановлен.",
+    pick_section:      "Выберите секцию для <code>%s</code>:",
+    no_sections_type:  "❌ Нет активных секций с действием '%s'.",
+    pick_no_state:     "❌ Нет ожидающего домена. Введите /add <домен>.",
+    domain_usage:      "❌ Укажите домен: <code>%s site.com</code>",
+    smart_detect_title: "🔍 <b>Smart Detect</b> сработал!",
+    smart_detect_msg:  "Домен <code>%s</code> недоступен напрямую, но работает через прокси.\nАвтоматически добавлен в секцию <b>%s</b>.",
+    cmd_pause:  "Остановить прокси на время",
+    cmd_resume: "Возобновить прокси",
+    cmd_watchdog: "Управление Watchdog",
+    cmd_add:    "Добавить домен в прокси-секцию",
+    cmd_bypass: "Добавить домен в bypass"
+};
+
+let TG_LANG_EN = {
+    status_title:      "📊 <b>Tachyon Router Status</b>",
+    uptime:            "Uptime",
+    cpu_load:          "CPU Load",
+    ram_free:          "RAM free",
+    singbox_status:    "sing-box",
+    active_server:     "🔵 Active server",
+    latency:           "Latency",
+    watchdog_status:   "Watchdog",
+    paused_label:      "⏸️ Paused, remaining",
+    not_paused:        "",
+    paused_notice:     "\n⏸️ <b>Proxy is PAUSED</b> — %s remaining",
+    pause_done:        "⏸️ Proxy paused for <b>%s</b>. Will resume in %s.",
+    pause_invalid:     "❌ Specify duration: <code>/pause 30m</code> or <code>/pause 1h</code>",
+    pause_max:         "❌ Maximum pause is 24 hours.",
+    resume_done:       "▶️ Proxy resumed!",
+    resume_not_paused: "ℹ️ Proxy was not paused.",
+    wd_title:          "🐕 <b>Tachyon Watchdog</b>",
+    wd_running:        "🟢 Running",
+    wd_stopped:        "🔴 Stopped",
+    wd_btn_start:      "▶️ Start Watchdog",
+    wd_btn_stop:       "⏹️ Stop Watchdog",
+    wd_started:        "✅ Watchdog started.",
+    wd_stopped_msg:    "✅ Watchdog stopped.",
+    pick_section:      "Choose a section for <code>%s</code>:",
+    no_sections_type:  "❌ No active sections with action '%s'.",
+    pick_no_state:     "❌ No pending domain. Use /add <domain>.",
+    domain_usage:      "❌ Specify domain: <code>%s site.com</code>",
+    smart_detect_title: "🔍 <b>Smart Detect</b> triggered!",
+    smart_detect_msg:  "Domain <code>%s</code> is unreachable directly but works via proxy.\nAutomatically added to section <b>%s</b>.",
+    cmd_pause:  "Pause proxy for a while",
+    cmd_resume: "Resume proxy",
+    cmd_watchdog: "Watchdog control",
+    cmd_add:    "Add domain to proxy section",
+    cmd_bypass: "Add domain to bypass"
+};
+
+function get_lang() {
+    let cfg = object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
+    let lang = trim(as_string(cfg.language || ""));
+    if (lang == "") {
+        // Auto-detect from LuCI config
+        let luci_c = uci_core.cursor();
+        if (luci_c) {
+            try {
+                luci_c.load("luci");
+                let luci_lang = as_string(luci_c.get("luci", "main", "lang") || "");
+                if (index(luci_lang, "en") >= 0) lang = "en";
+                else lang = "ru";
+            } catch(e) { lang = "ru"; }
+        } else { lang = "ru"; }
+    }
+    return (lang == "en") ? "en" : "ru";
+}
+
+function tl(lang, key) {
+    let tr = (lang == "en") ? TG_LANG_EN : TG_LANG_RU;
+    let val = tr[key];
+    return (val != null) ? val : (key || "");
+}
+
+// ─── Pause / Resume helpers ───────────────────────────────────────────────────
+function parse_pause_duration(str) {
+    str = trim(as_string(str || ""));
+    if (str == "") return 0;
+    let m = match(str, /^([0-9]+)([mhMH]?)$/);
+    if (!m) return 0;
+    let n = int(m[1]);
+    let unit = lc(m[2] || "m");
+    if (unit == "h") return n * 3600;
+    return n * 60;
+}
+
+function format_duration(seconds, lang) {
+    seconds = int(seconds);
+    if (seconds <= 0) return (lang == "en") ? "0 min" : "0 мин";
+    let h = int(seconds / 3600);
+    let m = int((seconds % 3600) / 60);
+    if (lang == "en") {
+        if (h > 0 && m > 0) return h + " h " + m + " min";
+        if (h > 0) return h + " h";
+        return m + " min";
+    } else {
+        if (h > 0 && m > 0) return h + " ч " + m + " мин";
+        if (h > 0) return h + " ч";
+        return m + " мин";
+    }
+}
+
+function get_pause_remaining() {
+    let val = trim(fs.readfile(PAUSE_FILE) || "");
+    if (val == "") return 0;
+    let until = int(val);
+    let now = time();
+    if (until <= now) return 0;
+    return until - now;
+}
+
+function process_running_by_pidfile(pidfile) {
+    let pid = trim(fs.readfile(pidfile) || "");
+    return pid != "" && match(pid, /^[0-9]+$/) != null &&
+           command_success_from_args(["kill", "-0", pid]);
+}
+
+
 function get_tg_state(chat_id) {
     let f = "/tmp/tg_state_" + chat_id + ".json";
     let data = fs.readfile(f);
@@ -180,26 +325,25 @@ function is_admin(chat_id, admin_ids_str) {
  
 function get_system_status() {
     let status_obj = {};
-    
+
     // CPU
     let stat = fs.readfile("/proc/loadavg") || "";
     let load = split(stat, / /);
     status_obj.cpu = (length(load) > 0) ? load[0] : "unknown";
-    
+
     // RAM
     let mem = fs.readfile("/proc/meminfo") || "";
     let total_kb = 0, avail_kb = 0;
     for (let line in split(mem, "\n")) {
         if (index(line, "MemTotal:") == 0) {
             total_kb = int(split(trim(line), /[ \t]+/)[1]);
-        }
-        else if (index(line, "MemAvailable:") == 0) {
+        } else if (index(line, "MemAvailable:") == 0) {
             avail_kb = int(split(trim(line), /[ \t]+/)[1]);
         }
     }
     status_obj.ram_total = total_kb ? int(total_kb / 1024) : 0;
     status_obj.ram_avail = avail_kb ? int(avail_kb / 1024) : 0;
-    
+
     // Uptime
     let upt = fs.readfile("/proc/uptime") || "";
     let up_sec = double(split(upt, / /)[0] || 0);
@@ -207,12 +351,57 @@ function get_system_status() {
     let h = int((up_sec - (d * 86400)) / 3600);
     let m = int((up_sec - (d * 86400) - (h * 3600)) / 60);
     status_obj.uptime = sprintf("%d дн. %02d:%02d", d, h, m);
-    
+
     // sing-box status
     let sb_running = command_success_from_args(["pidof", "sing-box"]);
     status_obj.singbox = sb_running ? "🟢 running" : "🔴 stopped";
-    
+
+    // Active server + latency from Clash API
+    status_obj.active_server = "";
+    status_obj.latency = "";
+    let pdata = get_clash_proxies_data();
+    if (pdata && pdata.proxies) {
+        let main_out = pdata.proxies["main-out"];
+        if (main_out && main_out.now) {
+            status_obj.active_server = main_out.now;
+            let srv = pdata.proxies[main_out.now];
+            if (srv && type(srv.history) == "array" && length(srv.history) > 0) {
+                let last = srv.history[length(srv.history) - 1];
+                if (last && last.delay) {
+                    status_obj.latency = last.delay + " ms";
+                }
+            }
+        }
+    }
+
+    // Watchdog status
+    status_obj.watchdog_running = process_running_by_pidfile(WATCHDOG_PID_FILE);
+
+    // Pause state
+    status_obj.pause_remaining = get_pause_remaining();
+
     return status_obj;
+}
+
+function build_status_text(sys, lang) {
+    let l = lang || "ru";
+    let text = tl(l, "status_title") + "\n\n";
+    text += tl(l, "uptime") + ": <code>" + sys.uptime + "</code>\n";
+    text += tl(l, "cpu_load") + ": <code>" + sys.cpu + "</code>\n";
+    text += tl(l, "ram_free") + ": <code>" + sys.ram_avail + "MB / " + sys.ram_total + "MB</code>\n";
+    text += tl(l, "singbox_status") + ": <code>" + sys.singbox + "</code>\n";
+    if (sys.active_server != "") {
+        text += tl(l, "active_server") + ": <code>" + escape_html(sys.active_server) + "</code>";
+        if (sys.latency != "") {
+            text += " (" + tl(l, "latency") + ": <code>" + sys.latency + "</code>)";
+        }
+        text += "\n";
+    }
+    text += tl(l, "watchdog_status") + ": <code>" + (sys.watchdog_running ? "🟢 running" : "🔴 stopped") + "</code>";
+    if (sys.pause_remaining > 0) {
+        text += sprintf(tl(l, "paused_notice"), format_duration(sys.pause_remaining, l));
+    }
+    return text;
 }
  
 function format_bytes(b) {
@@ -735,9 +924,112 @@ function handle_devices(token, chat_id) {
     tg_request(token, "sendMessage", payload);
 }
 
+// ─── Pause / Resume handlers ──────────────────────────────────────────────────
+function handle_pause(token, chat_id, duration_str, lang) {
+    let seconds = parse_pause_duration(duration_str);
+    if (seconds <= 0) {
+        send_message_with_keyboard(token, chat_id, tl(lang, "pause_invalid"), "HTML");
+        return;
+    }
+    if (seconds > 86400) {
+        send_message_with_keyboard(token, chat_id, tl(lang, "pause_max"), "HTML");
+        return;
+    }
+    fs.writefile(PAUSE_FILE, as_string(time() + seconds));
+    command_status("/usr/bin/tachyon stop");
+    // Schedule auto-resume in background
+    let resume_cmd = "sleep " + as_string(seconds) +
+        " && rm -f " + shell_quote(PAUSE_FILE) +
+        " && /usr/bin/tachyon start";
+    command_status("(" + resume_cmd + ") < /dev/null > /dev/null 2>&1 &");
+    let dur_str = format_duration(seconds, lang);
+    let text = sprintf(tl(lang, "pause_done"), dur_str, dur_str);
+    send_message_with_keyboard(token, chat_id, text, "HTML");
+}
+
+function handle_resume(token, chat_id, lang) {
+    let remaining = get_pause_remaining();
+    if (remaining <= 0) {
+        send_message_with_keyboard(token, chat_id, tl(lang, "resume_not_paused"), "HTML");
+        return;
+    }
+    fs.unlink(PAUSE_FILE);
+    command_status("/usr/bin/tachyon start");
+    send_message_with_keyboard(token, chat_id, tl(lang, "resume_done"), "HTML");
+}
+
+// ─── Watchdog control ─────────────────────────────────────────────────────────
+function handle_watchdog(token, chat_id, lang) {
+    let running = process_running_by_pidfile(WATCHDOG_PID_FILE);
+    let status_str = running ? tl(lang, "wd_running") : tl(lang, "wd_stopped");
+    let text = tl(lang, "wd_title") + "\n\n" +
+        "Watchdog: <code>" + status_str + "</code>";
+    let keyboard = [[
+        running
+            ? { text: tl(lang, "wd_btn_stop"), callback_data: "/wd_stop" }
+            : { text: tl(lang, "wd_btn_start"), callback_data: "/wd_start" }
+    ], [
+        { text: "⬅️ " + (lang == "en" ? "Back" : "Назад"), callback_data: "/help" }
+    ]];
+    let payload = {
+        chat_id: int(chat_id),
+        text: text,
+        parse_mode: "HTML",
+        reply_markup: { inline_keyboard: keyboard }
+    };
+    tg_request(token, "sendMessage", payload);
+}
+
+// ─── Domain add with section picker ──────────────────────────────────────────
+function handle_add_domain_picker(token, chat_id, domain, action_type, lang) {
+    domain = trim(as_string(domain || ""));
+    if (domain == "") {
+        let usage = sprintf(tl(lang, "domain_usage"), "/" + action_type);
+        send_message_with_keyboard(token, chat_id, usage, "HTML");
+        return;
+    }
+    let c = uci_core.cursor();
+    if (!c) {
+        send_message(token, chat_id, "❌ UCI error");
+        return;
+    }
+    c.load(CONFIG_NAME);
+    let keyboard = [];
+    let section_actions = (action_type == "bypass") ? ["bypass"] : ["proxy", "connection", "outbound", "vpn"];
+    c.foreach(CONFIG_NAME, "section", function(s) {
+        if (s.enabled != "1") return;
+        let act = as_string(s.action || "");
+        let ok = false;
+        for (let sa in section_actions) {
+            if (sa == act) { ok = true; break; }
+        }
+        if (!ok) return;
+        let label = as_string(s.label || s[".name"]);
+        push(keyboard, [{ text: label + " (" + act + ")", callback_data: "/do_pick " + s[".name"] }]);
+    });
+    if (length(keyboard) == 0) {
+        let msg = sprintf(tl(lang, "no_sections_type"), action_type);
+        send_message_with_keyboard(token, chat_id, msg, "HTML");
+        return;
+    }
+    if (length(keyboard) == 1) {
+        // Only one section — add directly
+        let sec = split(keyboard[0][0].callback_data, " ")[1];
+        let res = manage_domain_list_by_section(sec, domain, false);
+        send_message_with_keyboard(token, chat_id, (res.success ? "✅ " : "❌ ") + (res.message || res.error), "HTML");
+        return;
+    }
+    // Store domain in state, show section picker
+    set_tg_state(chat_id, { action: "pick_section_add", domain: domain, action_type: action_type });
+    push(keyboard, [{ text: "🔙 " + (lang == "en" ? "Cancel" : "Отмена"), callback_data: "/cancel" }]);
+    let prompt = sprintf(tl(lang, "pick_section"), escape_html(domain));
+    send_message_custom_keyboard(token, chat_id, prompt, "HTML", keyboard);
+}
+
 function process_command(token, chat_id, text) {
     let cmd = trim(as_string(text));
-    
+    let lang = get_lang();
+
     let state = get_tg_state(chat_id);
     if (state && cmd != "/cancel" && cmd != "/rules" && cmd != "/start") {
         if (state.action == "wait_add") {
@@ -762,39 +1054,40 @@ function process_command(token, chat_id, text) {
             return;
         }
     }
-    
+
     if (cmd == "/cancel") {
         set_tg_state(chat_id, null);
-        send_message(token, chat_id, "ℹ️ Действие отменено.");
+        send_message(token, chat_id, "ℹ️ " + (lang == "en" ? "Action cancelled." : "Действие отменено."));
         return;
     }
-    
+
     if (cmd == "/start" || cmd == "/help") {
-        let help_text = "🤖 <b>Tachyon Bot</b> — Панель управления роутером\n\n" +
-            "<b>Доступные команды:</b>\n" +
-            "📊 /status — Статус системы и RAM/CPU\n" +
-            "📡 /rules — Управление правилами обхода\n" +
-            "📡 /servers — Выбрать активный прокси-сервер\n" +
-            "💻 /devices — Подключенные устройства (DHCP)\n" +
-            "🔄 /sub_update — Обновить прокси-подписки\n" +
-            "⚡ /test — Быстрая проверка интернет-соединения\n" +
-            "🚀 /speed — Замер скорости интернета (5MB)\n" +
-            "📈 /traffic — Статистика трафика sing-box\n" +
-            "🩺 /doctor — Запуск диагностики и ремонта\n" +
-            "🔄 /restart — Перезапустить службы Tachyon\n" +
-            "📋 /logs — Посмотреть последние логи\n" +
-            "💾 /backup — Скачать резервную копию настроек\n" +
-            "🌐 /bypass_add &lt;домен&gt; — Добавить домен в обход\n" +
-            "🌐 /bypass_del &lt;домен&gt; — Удалить домен из обхода\n" +
-            "🌐 /direct_add &lt;домен&gt; — Добавить домен в прямой доступ\n" +
-            "🌐 /direct_del &lt;домен&gt; — Удалить домен из прямого доступа\n" +
-            "🚫 /block_mac &lt;MAC&gt; — Заблокировать устройство по MAC\n" +
-            "🔓 /unblock_mac &lt;MAC&gt; — Разблокировать устройство по MAC\n" +
-            "📡 /ping &lt;хост&gt; — Пинг сетевого узла напрямую\n" +
-            "🌐 /curl &lt;URL&gt; — Запрос к URL напрямую и через прокси\n" +
-            "🔍 /nslookup &lt;домен&gt; — DNS-запрос через localhost роутера\n" +
-            "💻 /sh &lt;команда&gt; — Выполнить консольную команду\n" +
-            "❓ /help — Справка по командам\n";
+        let en = (lang == "en");
+        let help_text = "🤖 <b>Tachyon Bot</b> — " + (en ? "Router Control Panel" : "Панель управления роутером") + "\n\n" +
+            "<b>" + (en ? "Commands:" : "Доступные команды:") + "</b>\n" +
+            "📊 /status — " + (en ? "System status, server, latency" : "Статус системы, сервер, задержка") + "\n" +
+            "📡 /rules — " + (en ? "Manage routing rules" : "Управление правилами обхода") + "\n" +
+            "📡 /servers — " + (en ? "Select active proxy server" : "Выбрать активный прокси-сервер") + "\n" +
+            "💻 /devices — " + (en ? "Connected devices (DHCP)" : "Подключенные устройства (DHCP)") + "\n" +
+            "⏸️ /pause &lt;30m|1h&gt; — " + (en ? "Pause proxy for a period" : "Приостановить прокси на время") + "\n" +
+            "▶️ /resume — " + (en ? "Resume proxy" : "Возобновить прокси") + "\n" +
+            "🐕 /watchdog — " + (en ? "Watchdog status and control" : "Watchdog: статус и управление") + "\n" +
+            "➕ /add &lt;domain&gt; — " + (en ? "Add domain to proxy section" : "Добавить домен в прокси-секцию") + "\n" +
+            "🛡️ /bypass &lt;domain&gt; — " + (en ? "Add domain to bypass section" : "Добавить домен в bypass") + "\n" +
+            "🔄 /sub_update — " + (en ? "Update proxy subscriptions" : "Обновить прокси-подписки") + "\n" +
+            "⚡ /test — " + (en ? "Quick connection check" : "Быстрая проверка соединения") + "\n" +
+            "🚀 /speed — " + (en ? "Speed test (5MB)" : "Замер скорости интернета (5MB)") + "\n" +
+            "📈 /traffic — " + (en ? "sing-box traffic stats" : "Статистика трафика sing-box") + "\n" +
+            "🩺 /doctor — " + (en ? "Diagnostics and repair" : "Запуск диагностики и ремонта") + "\n" +
+            "🔄 /restart — " + (en ? "Restart Tachyon services" : "Перезапустить службы Tachyon") + "\n" +
+            "📋 /logs — " + (en ? "View recent logs" : "Посмотреть последние логи") + "\n" +
+            "💾 /backup — " + (en ? "Download settings backup" : "Скачать резервную копию настроек") + "\n" +
+            "🌐 /bypass_add &lt;domain&gt; — " + (en ? "Add to bypass" : "Добавить домен в обход") + "\n" +
+            "🌐 /direct_add &lt;domain&gt; — " + (en ? "Add to direct" : "Добавить домен в прямой доступ") + "\n" +
+            "🚫 /block_mac &lt;MAC&gt; — " + (en ? "Block device by MAC" : "Заблокировать устройство по MAC") + "\n" +
+            "📡 /ping &lt;host&gt; — " + (en ? "Ping host" : "Пинг сетевого узла") + "\n" +
+            "💻 /sh &lt;cmd&gt; — " + (en ? "Execute shell command" : "Выполнить консольную команду") + "\n" +
+            "❓ /help — " + (en ? "This help" : "Справка по командам") + "\n";
         send_message_with_keyboard(token, chat_id, help_text, "HTML");
     }
     else if (cmd == "/rules") {
@@ -802,12 +1095,7 @@ function process_command(token, chat_id, text) {
     }
     else if (cmd == "/status") {
         let sys = get_system_status();
-        let status_text = "📊 <b>Статус Tachyon роутера</b>\n\n" +
-            "Uptime: <code>" + sys.uptime + "</code>\n" +
-            "CPU Load: <code>" + sys.cpu + "</code>\n" +
-            "RAM: <code>" + sys.ram_avail + "MB / " + sys.ram_total + "MB</code> свободного\n" +
-            "sing-box: <code>" + sys.singbox + "</code>";
-        send_message_with_keyboard(token, chat_id, status_text, "HTML");
+        send_message_with_keyboard(token, chat_id, build_status_text(sys, lang), "HTML");
     }
     else if (cmd == "/servers") {
         handle_servers(token, chat_id);
@@ -1019,8 +1307,29 @@ function process_command(token, chat_id, text) {
         }
         send_message_with_keyboard(token, chat_id, "💻 <b>Результат (код " + shell_res.status + "):</b>\n\n<pre>" + escape_html(output) + "</pre>", "HTML");
     }
+    else if (match(cmd, /^\/pause( |$)/) != null) {
+        let dur = trim(substr(cmd, 7));
+        handle_pause(token, chat_id, dur, lang);
+    }
+    else if (cmd == "/resume") {
+        handle_resume(token, chat_id, lang);
+    }
+    else if (cmd == "/watchdog") {
+        handle_watchdog(token, chat_id, lang);
+    }
+    else if (match(cmd, /^\/add( |$)/) != null) {
+        let dom = trim(substr(cmd, 5));
+        handle_add_domain_picker(token, chat_id, dom, "proxy", lang);
+    }
+    else if (match(cmd, /^\/bypass( |$)/) != null) {
+        let dom = trim(substr(cmd, 8));
+        handle_add_domain_picker(token, chat_id, dom, "bypass", lang);
+    }
     else {
-        send_message_with_keyboard(token, chat_id, "⚠️ Неизвестная команда. Введите /help для списка команд.", "HTML");
+        let unknown = (lang == "en")
+            ? "⚠️ Unknown command. Type /help for the list."
+            : "⚠️ Неизвестная команда. Введите /help для списка команд.";
+        send_message_with_keyboard(token, chat_id, unknown, "HTML");
     }
 }
  
@@ -1049,18 +1358,25 @@ function process_updates(token, admin_ids) {
             }
             
             let data = callback_query.data;
+            let lang = get_lang();
             if (match(data, /^\/rule_view /) != null) {
                 handle_rule_view(token, chat_id, trim(substr(data, 11)));
             }
             else if (match(data, /^\/rule_add /) != null) {
                 let sec = trim(substr(data, 10));
                 set_tg_state(chat_id, { action: "wait_add", section: sec });
-                send_message_custom_keyboard(token, chat_id, "Отправьте мне один или несколько доменов/IP (каждый с новой строки) для добавления в секцию <code>" + sec + "</code>:\n\n<i>Или нажмите /cancel для отмены</i>", "HTML", [[{text:"🔙 Отмена", callback_data:"/cancel"}]]);
+                let prompt = (lang == "en")
+                    ? "Send me domains/IPs (one per line) to add to section <code>" + sec + "</code>:\n\n<i>Or press /cancel</i>"
+                    : "Отправьте домены/IP (каждый с новой строки) для добавления в секцию <code>" + sec + "</code>:\n\n<i>Или нажмите /cancel</i>";
+                send_message_custom_keyboard(token, chat_id, prompt, "HTML", [[{text:"🔙 " + (lang == "en" ? "Cancel" : "Отмена"), callback_data:"/cancel"}]]);
             }
             else if (match(data, /^\/rule_del /) != null) {
                 let sec = trim(substr(data, 10));
                 set_tg_state(chat_id, { action: "wait_del", section: sec });
-                send_message_custom_keyboard(token, chat_id, "Отправьте мне домен/IP для УДАЛЕНИЯ из секции <code>" + sec + "</code>:\n\n<i>Или нажмите /cancel для отмены</i>", "HTML", [[{text:"🔙 Отмена", callback_data:"/cancel"}]]);
+                let prompt = (lang == "en")
+                    ? "Send me the domain/IP to DELETE from section <code>" + sec + "</code>:\n\n<i>Or press /cancel</i>"
+                    : "Отправьте домен/IP для УДАЛЕНИЯ из секции <code>" + sec + "</code>:\n\n<i>Или нажмите /cancel</i>";
+                send_message_custom_keyboard(token, chat_id, prompt, "HTML", [[{text:"🔙 " + (lang == "en" ? "Cancel" : "Отмена"), callback_data:"/cancel"}]]);
             }
             else if (match(data, /^\/rule_toggle /) != null) {
                 let sec = trim(substr(data, 13));
@@ -1077,10 +1393,49 @@ function process_updates(token, admin_ids) {
             }
             else if (data == "/cancel") {
                 set_tg_state(chat_id, null);
-                send_message(token, chat_id, "ℹ️ Действие отменено.");
+                send_message(token, chat_id, "ℹ️ " + (lang == "en" ? "Action cancelled." : "Действие отменено."));
             }
             else if (data == "/rules") {
                 handle_rules(token, chat_id);
+            }
+            else if (data == "/wd_start") {
+                command_status("/usr/bin/tachyon watchdog_start");
+                let msg_text = tl(lang, "wd_started");
+                send_message(token, chat_id, msg_text, "HTML");
+                handle_watchdog(token, chat_id, lang);
+            }
+            else if (data == "/wd_stop") {
+                command_status("/usr/bin/tachyon watchdog_stop");
+                let msg_text = tl(lang, "wd_stopped_msg");
+                send_message(token, chat_id, msg_text, "HTML");
+                handle_watchdog(token, chat_id, lang);
+            }
+            else if (match(data, /^\/do_pick /) != null) {
+                let sec_name = trim(substr(data, 9));
+                let st = get_tg_state(chat_id);
+                if (st && st.action == "pick_section_add" && st.domain) {
+                    set_tg_state(chat_id, null);
+                    let res = manage_domain_list_by_section(sec_name, st.domain, false);
+                    send_message_with_keyboard(token, chat_id, (res.success ? "✅ " : "❌ ") + (res.message || res.error), "HTML");
+                } else {
+                    send_message(token, chat_id, tl(lang, "pick_no_state"), "HTML");
+                }
+            }
+            else if (match(data, /^\/toggle_mac /) != null) {
+                let mac = trim(substr(data, 12));
+                let blocked = false;
+                let c = uci_core.cursor();
+                if (c) {
+                    c.load("firewall");
+                    c.foreach("firewall", "rule", function(r) {
+                        if (uc(as_string(r.src_mac)) == uc(mac) && r.target == "REJECT") {
+                            blocked = true;
+                            return false;
+                        }
+                    });
+                }
+                manage_mac_block(mac, blocked);
+                handle_devices(token, chat_id);
             }
             else {
                 process_command(token, chat_id, data);
@@ -1176,40 +1531,49 @@ function worker() {
     if (cfg.enabled != "1" || !cfg.bot_token || !cfg.admin_ids) {
         return 0;
     }
-    
-    // Register commands on Telegram servers
+
+    // Register commands on Telegram servers (language-aware)
+    let lang = get_lang();
     let commands = [
-        { command: "status", description: "Статус системы и RAM/CPU" },
-        { command: "servers", description: "Список серверов и задержка" },
-        { command: "test", description: "Проверка интернет-соединения" },
-        { command: "speed", description: "Замер скорости интернета" },
-        { command: "traffic", description: "Статистика трафика sing-box" },
-        { command: "doctor", description: "Диагностика и ремонт ошибок" },
-        { command: "restart", description: "Перезапустить службы Tachyon" },
-        { command: "logs", description: "Посмотреть последние логи" },
-        { command: "help", description: "Справка по командам" }
+        { command: "status",    description: (lang == "en") ? "System status, server, latency"  : "Статус системы, сервер, задержка" },
+        { command: "servers",   description: (lang == "en") ? "Proxy servers and latency"        : "Список серверов и задержка" },
+        { command: "pause",     description: (lang == "en") ? "Pause proxy (e.g. /pause 30m)"    : "Пауза прокси (напр. /pause 30m)" },
+        { command: "resume",    description: (lang == "en") ? "Resume proxy"                     : "Возобновить прокси" },
+        { command: "watchdog",  description: (lang == "en") ? "Watchdog status and control"      : "Watchdog: статус и управление" },
+        { command: "add",       description: (lang == "en") ? "Add domain to proxy section"      : "Добавить домен в прокси-секцию" },
+        { command: "bypass",    description: (lang == "en") ? "Add domain to bypass section"     : "Добавить домен в bypass" },
+        { command: "test",      description: (lang == "en") ? "Quick connection check"           : "Проверка интернет-соединения" },
+        { command: "speed",     description: (lang == "en") ? "Speed test (5MB)"                : "Замер скорости интернета (5MB)" },
+        { command: "traffic",   description: (lang == "en") ? "sing-box traffic stats"           : "Статистика трафика sing-box" },
+        { command: "doctor",    description: (lang == "en") ? "Diagnostics and repair"           : "Диагностика и ремонт ошибок" },
+        { command: "restart",   description: (lang == "en") ? "Restart Tachyon services"         : "Перезапустить службы Tachyon" },
+        { command: "devices",   description: (lang == "en") ? "Connected devices (DHCP)"         : "Подключённые устройства (DHCP)" },
+        { command: "rules",     description: (lang == "en") ? "Manage routing rules"             : "Управление правилами" },
+        { command: "logs",      description: (lang == "en") ? "Recent logs"                     : "Последние логи" },
+        { command: "backup",    description: (lang == "en") ? "Download settings backup"         : "Резервная копия настроек" },
+        { command: "help",      description: (lang == "en") ? "Help"                            : "Справка по командам" }
     ];
     tg_request(cfg.bot_token, "setMyCommands", { commands: commands });
-    
+
     let poll_interval = int(cfg.poll_interval || "5");
     if (poll_interval < 1) poll_interval = 1;
-    
+
     let last_dhcp_check = 0;
-    
+
     while (true) {
         cfg = settings();
         if (cfg.enabled != "1") {
             break;
         }
-        
+
         process_updates(cfg.bot_token, cfg.admin_ids);
-        
+
         let now = time();
         if (now - last_dhcp_check >= 30) {
             check_new_dhcp_leases(cfg.bot_token, cfg.admin_ids);
             last_dhcp_check = now;
         }
-        
+
         sleep(poll_interval * 1000);
     }
     return 0;
