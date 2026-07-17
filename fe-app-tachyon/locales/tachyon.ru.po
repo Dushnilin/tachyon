@@ -171,10 +171,10 @@ msgid "Auto update"
 msgstr "Автообновление"
 
 msgid "Auto-detected domains"
-msgstr ""
+msgstr "Авто-добавленные домены"
 
 msgid "Auto-detected Domains"
-msgstr ""
+msgstr "Авто-добавленные домены"
 
 msgid "Auto-detects blocked domains from logs and adds them to the first section where they work via proxy."
 msgstr "Автоматически определяет заблокированные домены из логов и добавляет их в первую секцию, где они работают через прокси."
@@ -570,7 +570,7 @@ msgid "Domains"
 msgstr ""
 
 msgid "Domains automatically detected by Smart Detect or added via Telegram bot. You can manually edit or remove them here."
-msgstr ""
+msgstr "Домены, автоматически обнаруженные Smart Detect или добавленные через Telegram-бота. Вы можете вручную изменить или удалить их здесь."
 
 msgid "Dont Touch My DHCP!"
 msgstr "Отключить управление DHCP"
@@ -1200,7 +1200,7 @@ msgid "List must be an HTTP(S) URL or a local .lst path"
 msgstr ""
 
 msgid "List of domains automatically detected and the section they were added to. To edit or remove them, open the routing rules of the respective section."
-msgstr ""
+msgstr "Список автоматически обнаруженных доменов и секций, в которые они были добавлены. Чтобы изменить или удалить их, откройте правила маршрутизации соответствующей секции."
 
 msgid "List Update Frequency"
 msgstr "Частота обновления списков"
@@ -1332,7 +1332,7 @@ msgid "No conflict detected"
 msgstr "Конфликт не обнаружен"
 
 msgid "No domains detected yet"
-msgstr ""
+msgstr "Домены пока не обнаружены"
 
 msgid "No enabled server inbounds configured"
 msgstr "Включённые серверные inbounds не настроены"
