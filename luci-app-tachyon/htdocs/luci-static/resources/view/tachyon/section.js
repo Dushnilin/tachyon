@@ -7408,8 +7408,12 @@ function createSectionContent(section) {
   o.modalonly = true;
   o.rmempty = true;
   o.depends("action", "warp");
-  o.value("", _("Direct (Default)"));
-  outboundNameSourceOptions.set("warp_detour", o);
+  o.load = function (itemId) {
+    const choices = subscriptionDownloadTargetChoices(itemId);
+    choices.unshift({ value: "", label: _("Direct (Default)") });
+    refreshOptionChoices(this, choices);
+    return optionMapValue(this, itemId, "warp_detour") || "";
+  };
 
   // ── AnyTLS (sing-box-extended) ────────────────────────────────────────────
 
