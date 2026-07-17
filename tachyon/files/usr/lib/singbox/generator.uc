@@ -2321,7 +2321,7 @@ function add_anytls_outbound(config, section) {
         tag,
         server: option(section, "anytls_server", ""),
         server_port: as_integer(option(section, "anytls_server_port", "0")),
-        password: option(section, "anytls_password", ""),
+        password: option(section, "anytls_password", "")
     };
     let sni = option(section, "anytls_sni", "");
     let insecure = bool_flag(option(section, "anytls_insecure", "0"));
