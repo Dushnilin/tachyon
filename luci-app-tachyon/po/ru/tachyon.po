@@ -276,7 +276,7 @@ msgid "Cannot save server"
 msgstr "Не удалось сохранить сервер"
 
 msgid "Cannot save settings"
-msgstr ""
+msgstr "Не удалось сохранить настройки"
 
 msgid "Cascade connection"
 msgstr ""
