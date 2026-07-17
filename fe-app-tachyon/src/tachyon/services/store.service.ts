@@ -161,6 +161,7 @@ export interface StoreType {
       tachyonRunning: number;
       tachyonEnabled: number;
       tachyonStatus: string;
+      watchdogRunning: number;
     };
   };
   sectionsWidget: {
@@ -266,6 +267,7 @@ const initialStore: StoreType = {
       tachyonRunning: 0,
       tachyonEnabled: 0,
       tachyonStatus: '',
+      watchdogRunning: 0,
     },
   },
   sectionsWidget: {

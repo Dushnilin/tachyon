@@ -2235,141 +2235,6 @@ function renderWidget(props) {
   return renderDefaultState2(props);
 }
 
-// src/tachyon/tabs/dashboard/render.ts
-function render() {
-  return E(
-    "div",
-    {
-      id: "dashboard-status",
-      class: "tachyon_dashboard-page"
-    },
-    [
-      E(
-        "div",
-        {
-          class: "tachyon_dashboard-page__service-stopped",
-          role: "status"
-        },
-        _(
-          "Tachyon service is stopped. Start the service to display the dashboard."
-        )
-      ),
-      E("div", { class: "tachyon_dashboard-page__content" }, [
-        // Widgets section
-        E("div", { class: "tachyon_dashboard-page__widgets-section" }, [
-          E(
-            "div",
-            { id: "dashboard-widget-traffic" },
-            renderWidget({
-              loading: true,
-              failed: false,
-              title: "",
-              items: []
-            })
-          ),
-          E(
-            "div",
-            { id: "dashboard-widget-traffic-total" },
-            renderWidget({
-              loading: true,
-              failed: false,
-              title: "",
-              items: []
-            })
-          ),
-          E(
-            "div",
-            { id: "dashboard-widget-system-info" },
-            renderWidget({
-              loading: true,
-              failed: false,
-              title: "",
-              items: []
-            })
-          ),
-          E(
-            "div",
-            { id: "dashboard-widget-service-info" },
-            renderWidget({
-              loading: true,
-              failed: false,
-              title: "",
-              items: []
-            })
-          )
-        ]),
-        // All outbounds
-        E(
-          "div",
-          { id: "dashboard-sections-grid" },
-          renderSections({
-            loading: true,
-            failed: false,
-            section: {
-              code: "",
-              sectionName: "",
-              displayName: "",
-              outbounds: [],
-              withTagSelect: false
-            },
-            onTestLatency: () => {
-            },
-            onChooseOutbound: () => {
-            },
-            onCopyOutbound: () => {
-            },
-            onShowUrlTestInfo: () => {
-            },
-            onShowPriorityInfo: () => {
-            },
-            onUpdateSubscription: () => {
-            },
-            latencyFetching: false,
-            latencyProgress: void 0,
-            subscriptionUpdating: false,
-            selectorSwitchingTag: void 0
-          })
-        )
-      ])
-    ]
-  );
-}
-
-// src/helpers/showToast.ts
-function showToast(message, type, duration = 3e3) {
-  let container = document.querySelector(".toast-container");
-  if (!container) {
-    container = document.createElement("div");
-    container.className = "toast-container";
-    document.body.appendChild(container);
-  }
-  const toast = document.createElement("div");
-  toast.className = `toast toast-${type}`;
-  toast.textContent = message;
-  container.appendChild(toast);
-  setTimeout(() => toast.classList.add("visible"), 100);
-  setTimeout(() => {
-    toast.classList.remove("visible");
-    setTimeout(() => toast.remove(), 300);
-  }, duration);
-}
-
-// src/helpers/copyToClipboard.ts
-function copyToClipboard(text) {
-  const textarea = document.createElement("textarea");
-  textarea.value = text;
-  document.body.appendChild(textarea);
-  textarea.select();
-  try {
-    document.execCommand("copy");
-    showToast(_("Copied"), "success");
-  } catch (_err) {
-    showToast(_("Failed to copy!"), "error");
-    console.error("copyToClipboard - e", _err);
-  }
-  document.body.removeChild(textarea);
-}
-
 // src/tachyon/methods/custom/getConfigSections.ts
 async function getConfigSections() {
   return uci.load(TACHYON_UCI_PACKAGE).then(() => uci.sections(TACHYON_UCI_PACKAGE));
@@ -3081,6 +2946,51 @@ var TachyonShellMethods = {
       }
       return response;
     }
+  },
+  getWatchdogStatus: async () => {
+    const response = await executeShellCommand({
+      command: "/usr/bin/tachyon",
+      args: ["watchdog", "status"],
+      timeout: 5e3
+    });
+    return {
+      success: true,
+      data: { running: (response.code ?? 1) === 0 }
+    };
+  },
+  watchdogStart: async () => {
+    const response = await executeShellCommand({
+      command: "/usr/bin/tachyon",
+      args: ["watchdog_start"],
+      timeout: 8e3
+    });
+    return {
+      success: (response.code ?? 1) === 0
+    };
+  },
+  watchdogStop: async () => {
+    const response = await executeShellCommand({
+      command: "/usr/bin/tachyon",
+      args: ["watchdog_stop"],
+      timeout: 8e3
+    });
+    return {
+      success: (response.code ?? 1) === 0
+    };
+  },
+  /**
+   * Run an arbitrary UCI command via shell — used for saving Smart Detect
+   * settings and per-device routing IPs from the Advanced Settings panel.
+   */
+  uciRunCommand: async (args) => {
+    const response = await executeShellCommand({
+      command: "/sbin/uci",
+      args,
+      timeout: 5e3
+    });
+    return {
+      success: (response.code ?? 1) === 0
+    };
   }
 };
 
@@ -4134,6 +4044,459 @@ var RemoteFakeIPMethods = {
   getIpCheck
 };
 
+// src/helpers/showToast.ts
+function showToast(message, type, duration = 3e3) {
+  let container = document.querySelector(".toast-container");
+  if (!container) {
+    container = document.createElement("div");
+    container.className = "toast-container";
+    document.body.appendChild(container);
+  }
+  const toast = document.createElement("div");
+  toast.className = `toast toast-${type}`;
+  toast.textContent = message;
+  container.appendChild(toast);
+  setTimeout(() => toast.classList.add("visible"), 100);
+  setTimeout(() => {
+    toast.classList.remove("visible");
+    setTimeout(() => toast.remove(), 300);
+  }, duration);
+}
+
+// src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts
+var _state = {
+  watchdogRunning: false,
+  watchdogLoading: false,
+  smartDetectEnabled: false,
+  smartDetectSections: [],
+  allSectionNames: [],
+  deviceIpsPerSection: {},
+  saving: false,
+  loaded: false
+};
+function rerender() {
+  const el = document.getElementById("tachyon-advanced-settings");
+  if (!el) return;
+  const inner = document.getElementById("tachyon-advanced-settings-inner");
+  if (!inner) return;
+  const next = renderAdvancedSettingsBody(_state);
+  inner.replaceChildren(...Array.isArray(next) ? next : [next]);
+}
+async function loadAdvancedSettingsState() {
+  const sections = await getConfigSections();
+  const settingsSec = sections.find((s) => s[".type"] === "settings");
+  const smartDetect = settingsSec?.smart_detect === "1";
+  const raw = settingsSec?.smart_detect_sections;
+  const smartDetectSections = Array.isArray(raw) ? raw : raw && typeof raw === "string" && raw.trim() ? [raw.trim()] : [];
+  const ruleSections = sections.filter(
+    (s) => s[".type"] === "rule" && s.enabled !== "0"
+  );
+  const allSectionNames = ruleSections.map((s) => s[".name"]);
+  const deviceIpsPerSection = {};
+  for (const s of ruleSections) {
+    const name = s[".name"];
+    const ips = s.fully_routed_ips;
+    deviceIpsPerSection[name] = Array.isArray(ips) ? ips : ips && typeof ips === "string" && ips.trim() ? [ips.trim()] : [];
+  }
+  const wdRes = await TachyonShellMethods.getWatchdogStatus();
+  const watchdogRunning = wdRes.success ? Boolean(wdRes.data.running) : false;
+  _state = {
+    ..._state,
+    watchdogRunning,
+    smartDetectEnabled: smartDetect,
+    smartDetectSections: smartDetectSections.length > 0 ? smartDetectSections : allSectionNames.slice(0, 1),
+    allSectionNames,
+    deviceIpsPerSection,
+    loaded: true
+  };
+  rerender();
+}
+async function toggleWatchdog() {
+  _state = { ..._state, watchdogLoading: true };
+  rerender();
+  if (_state.watchdogRunning) {
+    await TachyonShellMethods.watchdogStop();
+  } else {
+    await TachyonShellMethods.watchdogStart();
+  }
+  const wdRes = await TachyonShellMethods.getWatchdogStatus();
+  const running = wdRes.success ? wdRes.data.running : _state.watchdogRunning;
+  _state = { ..._state, watchdogRunning: running, watchdogLoading: false };
+  rerender();
+}
+async function saveSmartDetect() {
+  _state = { ..._state, saving: true };
+  rerender();
+  try {
+    await TachyonShellMethods.uciRunCommand([
+      "set",
+      `${TACHYON_UCI_PACKAGE}.settings.smart_detect=${_state.smartDetectEnabled ? "1" : "0"}`
+    ]);
+    await TachyonShellMethods.uciRunCommand([
+      "delete",
+      `${TACHYON_UCI_PACKAGE}.settings.smart_detect_sections`
+    ]);
+    for (const sec of _state.smartDetectSections) {
+      await TachyonShellMethods.uciRunCommand([
+        "add_list",
+        `${TACHYON_UCI_PACKAGE}.settings.smart_detect_sections=${sec}`
+      ]);
+    }
+    await TachyonShellMethods.uciRunCommand(["commit", TACHYON_UCI_PACKAGE]);
+    showToast(_("Smart Detect settings saved"), "success");
+  } catch {
+    showToast(_("Failed to save Smart Detect settings"), "error");
+  }
+  _state = { ..._state, saving: false };
+  rerender();
+}
+async function saveDeviceIps(sectionName, ipsText) {
+  _state = { ..._state, saving: true };
+  rerender();
+  try {
+    const ips = ipsText.split("\n").map((l) => l.trim()).filter(Boolean);
+    await TachyonShellMethods.uciRunCommand([
+      "delete",
+      `${TACHYON_UCI_PACKAGE}.${sectionName}.fully_routed_ips`
+    ]);
+    for (const ip of ips) {
+      await TachyonShellMethods.uciRunCommand([
+        "add_list",
+        `${TACHYON_UCI_PACKAGE}.${sectionName}.fully_routed_ips=${ip}`
+      ]);
+    }
+    await TachyonShellMethods.uciRunCommand(["commit", TACHYON_UCI_PACKAGE]);
+    _state.deviceIpsPerSection[sectionName] = ips;
+    showToast(_("Device IPs saved"), "success");
+    void TachyonShellMethods.uciRunCommand(["-q", "commit", TACHYON_UCI_PACKAGE]);
+  } catch {
+    showToast(_("Failed to save device IPs"), "error");
+  }
+  _state = { ..._state, saving: false };
+  rerender();
+}
+function moveSectionUp(idx) {
+  if (idx <= 0) return;
+  const arr = [..._state.smartDetectSections];
+  [arr[idx - 1], arr[idx]] = [arr[idx], arr[idx - 1]];
+  _state = { ..._state, smartDetectSections: arr };
+  rerender();
+}
+function moveSectionDown(idx) {
+  const arr = [..._state.smartDetectSections];
+  if (idx >= arr.length - 1) return;
+  [arr[idx], arr[idx + 1]] = [arr[idx + 1], arr[idx]];
+  _state = { ..._state, smartDetectSections: arr };
+  rerender();
+}
+function toggleSectionInList(sectionName, checked) {
+  let arr = [..._state.smartDetectSections];
+  if (checked && !arr.includes(sectionName)) {
+    arr.push(sectionName);
+  } else if (!checked) {
+    arr = arr.filter((s) => s !== sectionName);
+  }
+  _state = { ..._state, smartDetectSections: arr };
+  rerender();
+}
+function renderWatchdogSection(state) {
+  const { watchdogRunning, watchdogLoading } = state;
+  return E("div", { class: "tachyon_adv__section" }, [
+    E("div", { class: "tachyon_adv__section-header" }, [
+      E("span", { class: "tachyon_adv__section-icon" }, "\u{1F415}"),
+      E("h3", { class: "tachyon_adv__section-title" }, _("Watchdog"))
+    ]),
+    E("div", { class: "tachyon_adv__row" }, [
+      E("span", { class: "tachyon_adv__label" }, _("Status")),
+      E(
+        "span",
+        {
+          class: watchdogRunning ? "tachyon_adv__badge tachyon_adv__badge--ok" : "tachyon_adv__badge tachyon_adv__badge--err"
+        },
+        watchdogRunning ? _("\u2714 Running") : _("\u2718 Stopped")
+      ),
+      E(
+        "button",
+        {
+          class: `btn cbi-button ${watchdogRunning ? "cbi-button-negative" : "cbi-button-action"} tachyon_adv__ctrl-btn`,
+          type: "button",
+          disabled: watchdogLoading,
+          onclick: () => void toggleWatchdog()
+        },
+        watchdogLoading ? "\u2026" : watchdogRunning ? _("\u23F9 Stop") : _("\u25B6 Start")
+      )
+    ])
+  ]);
+}
+function renderSmartDetectSection(state) {
+  const { smartDetectEnabled, smartDetectSections, allSectionNames, saving } = state;
+  const unselected = allSectionNames.filter((s) => !smartDetectSections.includes(s));
+  const rows = [];
+  smartDetectSections.forEach((secName, idx) => {
+    rows.push(
+      E("div", { class: "tachyon_adv__priority-row" }, [
+        E("label", { class: "tachyon_adv__priority-label" }, [
+          E("input", {
+            type: "checkbox",
+            checked: true,
+            onchange: (e) => toggleSectionInList(secName, e.target.checked)
+          }),
+          E("span", { class: "tachyon_adv__priority-name" }, `${idx + 1}. ${secName}`)
+        ]),
+        E("div", { class: "tachyon_adv__arrows" }, [
+          E("button", {
+            class: "btn tachyon_adv__arrow",
+            type: "button",
+            title: _("Move up"),
+            disabled: idx === 0,
+            onclick: () => moveSectionUp(idx)
+          }, "\u25B3"),
+          E("button", {
+            class: "btn tachyon_adv__arrow",
+            type: "button",
+            title: _("Move down"),
+            disabled: idx === smartDetectSections.length - 1,
+            onclick: () => moveSectionDown(idx)
+          }, "\u25BD")
+        ])
+      ])
+    );
+  });
+  unselected.forEach((secName) => {
+    rows.push(
+      E("div", { class: "tachyon_adv__priority-row tachyon_adv__priority-row--off" }, [
+        E("label", { class: "tachyon_adv__priority-label" }, [
+          E("input", {
+            type: "checkbox",
+            checked: false,
+            onchange: (e) => toggleSectionInList(secName, e.target.checked)
+          }),
+          E("span", { class: "tachyon_adv__priority-name tachyon_adv__priority-name--off" }, secName)
+        ])
+      ])
+    );
+  });
+  return E("div", { class: "tachyon_adv__section" }, [
+    E("div", { class: "tachyon_adv__section-header" }, [
+      E("span", { class: "tachyon_adv__section-icon" }, "\u{1F50D}"),
+      E("h3", { class: "tachyon_adv__section-title" }, _("Smart Detect"))
+    ]),
+    E("p", { class: "tachyon_adv__hint" }, _(
+      "Auto-detects blocked domains from logs and adds them to the first section where they work via proxy."
+    )),
+    E("div", { class: "tachyon_adv__row" }, [
+      E("label", { class: "tachyon_adv__toggle" }, [
+        E("input", {
+          type: "checkbox",
+          checked: smartDetectEnabled,
+          onchange: (e) => {
+            _state = { ..._state, smartDetectEnabled: e.target.checked };
+            rerender();
+          }
+        }),
+        E("span", {}, _("Enable Smart Detect"))
+      ])
+    ]),
+    smartDetectEnabled && rows.length > 0 ? E("div", { class: "tachyon_adv__priority-list" }, [
+      E("p", { class: "tachyon_adv__sub-hint" }, _(
+        "Section test order (checked = active, drag rows with \u25B3\u25BD):"
+      )),
+      ...rows
+    ]) : E("span", {}),
+    E("button", {
+      class: "btn cbi-button cbi-button-save tachyon_adv__save-btn",
+      type: "button",
+      disabled: saving,
+      onclick: () => void saveSmartDetect()
+    }, saving ? _("Saving\u2026") : _("Save Smart Detect Settings"))
+  ]);
+}
+function renderDeviceRoutingSection(state) {
+  const { allSectionNames, deviceIpsPerSection, saving } = state;
+  if (allSectionNames.length === 0) {
+    return E("div", { class: "tachyon_adv__section" }, [
+      E("div", { class: "tachyon_adv__section-header" }, [
+        E("span", { class: "tachyon_adv__section-icon" }, "\u{1F5A5}"),
+        E("h3", { class: "tachyon_adv__section-title" }, _("Per-Device Routing"))
+      ]),
+      E("p", { class: "tachyon_adv__hint" }, _("No active routing sections found."))
+    ]);
+  }
+  const editors = allSectionNames.map((secName) => {
+    const currentIps = (deviceIpsPerSection[secName] || []).join("\n");
+    const taId = `tachyon-device-ips-${secName}`;
+    return E("div", { class: "tachyon_adv__device-block" }, [
+      E("div", { class: "tachyon_adv__device-name" }, secName),
+      E("label", { class: "tachyon_adv__device-label" }, _("Device IPs (one per line):")),
+      E("textarea", {
+        id: taId,
+        class: "cbi-input-textarea tachyon_adv__device-ta",
+        rows: 3,
+        placeholder: "192.168.1.100\n192.168.1.105"
+      }, currentIps),
+      E("button", {
+        class: "btn cbi-button cbi-button-save tachyon_adv__save-btn",
+        type: "button",
+        disabled: saving,
+        onclick: () => {
+          const ta = document.getElementById(taId);
+          void saveDeviceIps(secName, ta ? ta.value : "");
+        }
+      }, saving ? _("Saving\u2026") : _("Save"))
+    ]);
+  });
+  return E("div", { class: "tachyon_adv__section" }, [
+    E("div", { class: "tachyon_adv__section-header" }, [
+      E("span", { class: "tachyon_adv__section-icon" }, "\u{1F5A5}"),
+      E("h3", { class: "tachyon_adv__section-title" }, _("Per-Device Routing"))
+    ]),
+    E("p", { class: "tachyon_adv__hint" }, _(
+      "Devices listed here are always routed through the assigned section, regardless of global rules."
+    )),
+    ...editors
+  ]);
+}
+function renderAdvancedSettingsBody(state) {
+  if (!state.loaded) {
+    return E("div", { class: "tachyon_adv__loading" }, _("Loading\u2026"));
+  }
+  return E("div", { class: "tachyon_adv__body" }, [
+    renderWatchdogSection(state),
+    E("hr", { class: "tachyon_adv__divider" }),
+    renderSmartDetectSection(state),
+    E("hr", { class: "tachyon_adv__divider" }),
+    renderDeviceRoutingSection(state)
+  ]);
+}
+function renderAdvancedSettingsPanel() {
+  return E("div", { id: "tachyon-advanced-settings", class: "tachyon_adv" }, [
+    E("details", { class: "tachyon_adv__details" }, [
+      E("summary", { class: "tachyon_adv__summary" }, _("\u2699 Advanced Settings")),
+      E("div", { id: "tachyon-advanced-settings-inner", class: "tachyon_adv__inner" }, [
+        renderAdvancedSettingsBody(_state)
+      ])
+    ])
+  ]);
+}
+
+// src/tachyon/tabs/dashboard/render.ts
+function render() {
+  return E(
+    "div",
+    {
+      id: "dashboard-status",
+      class: "tachyon_dashboard-page"
+    },
+    [
+      E(
+        "div",
+        {
+          class: "tachyon_dashboard-page__service-stopped",
+          role: "status"
+        },
+        _(
+          "Tachyon service is stopped. Start the service to display the dashboard."
+        )
+      ),
+      E("div", { class: "tachyon_dashboard-page__content" }, [
+        // Widgets section
+        E("div", { class: "tachyon_dashboard-page__widgets-section" }, [
+          E(
+            "div",
+            { id: "dashboard-widget-traffic" },
+            renderWidget({
+              loading: true,
+              failed: false,
+              title: "",
+              items: []
+            })
+          ),
+          E(
+            "div",
+            { id: "dashboard-widget-traffic-total" },
+            renderWidget({
+              loading: true,
+              failed: false,
+              title: "",
+              items: []
+            })
+          ),
+          E(
+            "div",
+            { id: "dashboard-widget-system-info" },
+            renderWidget({
+              loading: true,
+              failed: false,
+              title: "",
+              items: []
+            })
+          ),
+          E(
+            "div",
+            { id: "dashboard-widget-service-info" },
+            renderWidget({
+              loading: true,
+              failed: false,
+              title: "",
+              items: []
+            })
+          )
+        ]),
+        // All outbounds
+        E(
+          "div",
+          { id: "dashboard-sections-grid" },
+          renderSections({
+            loading: true,
+            failed: false,
+            section: {
+              code: "",
+              sectionName: "",
+              displayName: "",
+              outbounds: [],
+              withTagSelect: false
+            },
+            onTestLatency: () => {
+            },
+            onChooseOutbound: () => {
+            },
+            onCopyOutbound: () => {
+            },
+            onShowUrlTestInfo: () => {
+            },
+            onShowPriorityInfo: () => {
+            },
+            onUpdateSubscription: () => {
+            },
+            latencyFetching: false,
+            latencyProgress: void 0,
+            subscriptionUpdating: false,
+            selectorSwitchingTag: void 0
+          })
+        ),
+        // Advanced Settings panel (Watchdog / Smart Detect / Per-Device Routing)
+        renderAdvancedSettingsPanel()
+      ])
+    ]
+  );
+}
+
+// src/helpers/copyToClipboard.ts
+function copyToClipboard(text) {
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  document.body.appendChild(textarea);
+  textarea.select();
+  try {
+    document.execCommand("copy");
+    showToast(_("Copied"), "success");
+  } catch (_err) {
+    showToast(_("Failed to copy!"), "error");
+    console.error("copyToClipboard - e", _err);
+  }
+  document.body.removeChild(textarea);
+}
+
 // src/tachyon/services/tab.service.ts
 var TabService = class _TabService {
   constructor() {
@@ -4489,7 +4852,8 @@ var initialStore = {
       singbox: 0,
       tachyonRunning: 0,
       tachyonEnabled: 0,
-      tachyonStatus: ""
+      tachyonStatus: "",
+      watchdogRunning: 0
     }
   },
   sectionsWidget: {
@@ -4871,7 +5235,8 @@ function applyServiceState(uiState) {
         singbox: uiState.service.sing_box.running,
         tachyonRunning: uiState.service.tachyon.running,
         tachyonEnabled: uiState.service.tachyon.enabled,
-        tachyonStatus: uiState.service.tachyon.status
+        tachyonStatus: uiState.service.tachyon.status,
+        watchdogRunning: store.get().servicesInfoWidget.data.watchdogRunning
       }
     },
     diagnosticsSystemInfo: normalizeSingBoxVariantFields(nextSystemInfo)
@@ -5464,15 +5829,17 @@ async function fetchServicesInfo() {
   if (uiState) {
     return uiState;
   }
-  const [tachyonResult, singboxResult] = await Promise.allSettled([
+  const [tachyonResult, singboxResult, watchdogResult] = await Promise.allSettled([
     TachyonShellMethods.getStatus(),
-    TachyonShellMethods.getSingBoxStatus()
+    TachyonShellMethods.getSingBoxStatus(),
+    TachyonShellMethods.getWatchdogStatus()
   ]);
   if (requestId !== latestServicesInfoRequestId) {
     return;
   }
   const tachyon = getSettledMethodResponse("getStatus", tachyonResult);
   const singbox = getSettledMethodResponse("getSingBoxStatus", singboxResult);
+  const watchdog = getSettledMethodResponse("getWatchdogStatus", watchdogResult);
   const previousData = store.get().servicesInfoWidget.data;
   store.set({
     servicesInfoWidget: {
@@ -5482,7 +5849,8 @@ async function fetchServicesInfo() {
         singbox: singbox.success ? singbox.data.running : previousData.singbox,
         tachyonRunning: tachyon.success ? tachyon.data.running : previousData.tachyonRunning,
         tachyonEnabled: tachyon.success ? tachyon.data.enabled : previousData.tachyonEnabled,
-        tachyonStatus: tachyon.success ? tachyon.data.status : previousData.tachyonStatus
+        tachyonStatus: tachyon.success ? tachyon.data.status : previousData.tachyonStatus,
+        watchdogRunning: watchdog.success ? Number(watchdog.data.running) : previousData.watchdogRunning
       }
     }
   });
@@ -6736,6 +7104,7 @@ async function onPageMount() {
   void renderSystemInfoWidget();
   void renderServicesInfoWidget();
   syncDashboardServiceAvailability();
+  void loadAdvancedSettingsState();
   if (hasRuntimeSnapshot) {
     void refreshRuntimeUiState({ force: true });
   }
@@ -7471,6 +7840,235 @@ var styles = `
         grid-column: 1 / -1;
         justify-content: flex-start;
     }
+}
+
+/* \u2500\u2500\u2500 Advanced Settings Panel \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */
+
+.tachyon_adv {
+    margin-top: 20px;
+    width: 100%;
+}
+
+.tachyon_adv__details {
+    border: 1px solid var(--border-color, #dee2e6);
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.tachyon_adv__summary {
+    padding: 12px 16px;
+    font-weight: 600;
+    font-size: 0.95rem;
+    cursor: pointer;
+    user-select: none;
+    background: var(--section-header-bg, rgba(0,0,0,0.03));
+    border-bottom: 1px solid transparent;
+    list-style: none;
+}
+
+.tachyon_adv__details[open] .tachyon_adv__summary {
+    border-bottom-color: var(--border-color, #dee2e6);
+}
+
+.tachyon_adv__summary::-webkit-details-marker { display: none; }
+.tachyon_adv__summary::before {
+    content: '\u25B6 ';
+    font-size: 0.75em;
+    opacity: 0.6;
+    transition: transform 0.15s;
+}
+.tachyon_adv__details[open] .tachyon_adv__summary::before {
+    content: '\u25BC ';
+}
+
+.tachyon_adv__inner {
+    padding: 0;
+}
+
+.tachyon_adv__body {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+
+.tachyon_adv__loading {
+    padding: 20px 16px;
+    opacity: 0.6;
+}
+
+.tachyon_adv__section {
+    padding: 16px;
+}
+
+.tachyon_adv__section-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.tachyon_adv__section-icon {
+    font-size: 1.1rem;
+}
+
+.tachyon_adv__section-title {
+    margin: 0;
+    font-size: 0.95rem;
+    font-weight: 600;
+}
+
+.tachyon_adv__divider {
+    margin: 0;
+    border: none;
+    border-top: 1px solid var(--border-color, #dee2e6);
+}
+
+.tachyon_adv__row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+}
+
+.tachyon_adv__label {
+    font-weight: 500;
+    min-width: 60px;
+}
+
+.tachyon_adv__badge {
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+.tachyon_adv__badge--ok {
+    background: var(--success-bg, #d4edda);
+    color: var(--success-fg, #155724);
+}
+
+.tachyon_adv__badge--err {
+    background: var(--danger-bg, #f8d7da);
+    color: var(--danger-fg, #721c24);
+}
+
+.tachyon_adv__ctrl-btn {
+    margin-left: auto;
+}
+
+.tachyon_adv__hint {
+    margin: 0 0 10px 0;
+    font-size: 0.85rem;
+    opacity: 0.75;
+}
+
+.tachyon_adv__sub-hint {
+    margin: 8px 0 6px 0;
+    font-size: 0.82rem;
+    opacity: 0.7;
+}
+
+.tachyon_adv__toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-weight: 500;
+}
+
+.tachyon_adv__priority-list {
+    margin: 8px 0 12px 0;
+    border: 1px solid var(--border-color, #dee2e6);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.tachyon_adv__priority-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 7px 10px;
+    border-bottom: 1px solid var(--border-color, #dee2e6);
+}
+
+.tachyon_adv__priority-row:last-child {
+    border-bottom: none;
+}
+
+.tachyon_adv__priority-row--off {
+    opacity: 0.5;
+}
+
+.tachyon_adv__priority-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    flex: 1;
+}
+
+.tachyon_adv__priority-name {
+    font-family: monospace;
+    font-size: 0.9rem;
+}
+
+.tachyon_adv__priority-name--off {
+    text-decoration: line-through;
+}
+
+.tachyon_adv__arrows {
+    display: flex;
+    gap: 4px;
+}
+
+.tachyon_adv__arrow {
+    padding: 1px 7px;
+    font-size: 0.75rem;
+    line-height: 1.4;
+    border: 1px solid var(--border-color, #ccc);
+    border-radius: 3px;
+    background: transparent;
+    cursor: pointer;
+}
+
+.tachyon_adv__arrow:disabled {
+    opacity: 0.3;
+    cursor: default;
+}
+
+.tachyon_adv__save-btn {
+    margin-top: 10px;
+}
+
+/* Per-device routing */
+.tachyon_adv__device-block {
+    margin-bottom: 16px;
+    padding: 12px;
+    border: 1px solid var(--border-color, #dee2e6);
+    border-radius: 5px;
+}
+
+.tachyon_adv__device-name {
+    font-family: monospace;
+    font-weight: 600;
+    margin-bottom: 6px;
+    font-size: 0.95rem;
+}
+
+.tachyon_adv__device-label {
+    display: block;
+    font-size: 0.85rem;
+    opacity: 0.75;
+    margin-bottom: 4px;
+}
+
+.tachyon_adv__device-ta {
+    width: 100%;
+    max-width: 360px;
+    font-family: monospace;
+    font-size: 0.875rem;
+    resize: vertical;
 }
 
 `;

@@ -191,9 +191,17 @@ function smart_detect_run(last_time) {
         } catch(e) {}
     }
 
-    // Target section: configurable via smart_detect_section UCI option
-    let target_section = sections[0];
-    if (cfg.smart_detect_section) target_section = as_string(cfg.smart_detect_section);
+    // Build ordered test list: smart_detect_sections UCI list → fallback to proxy sections
+    let detect_sections = [];
+    let raw_list = cfg.smart_detect_sections;
+    if (type(raw_list) == "array") {
+        detect_sections = raw_list;
+    } else if (raw_list && trim(as_string(raw_list)) != "") {
+        detect_sections = [ trim(as_string(raw_list)) ];
+    }
+    if (length(detect_sections) == 0) {
+        detect_sections = sections; // fallback: all proxy sections in UCI order
+    }
 
     for (let domain in domain_list) {
         seen[domain] = now;
@@ -203,22 +211,36 @@ function smart_detect_run(last_time) {
             "https://" + domain
         ]);
         if (direct_ok) continue;
-        // Verify it works via proxy
-        let proxy_ok = command_success_from_args([
-            "curl", "-s", "-I", "--connect-timeout", "5", "--max-time", "8",
-            "--proxy", "http://" + proxy_addr,
-            "https://" + domain
-        ]);
-        if (!proxy_ok) continue;
-        // Add to section!
-        log_message("Smart Detect: adding " + domain + " to section " + target_section, "info");
-        if (smart_detect_add_domain(target_section, domain)) {
-            let tcfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
-            if (tcfg.enabled == "1" && tcfg.bot_token && tcfg.admin_ids) {
-                send_telegram_notification(
-                    "\ud83d\udd0d *Smart Detect*: `" + domain + "` \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u0435\u043d \u043d\u0430\u043f\u0440\u044f\u043c\u0443\u044e, \u0440\u0430\u0431\u043e\u0442\u0430\u0435\u0442 \u0447\u0435\u0440\u0435\u0437 \u043f\u0440\u043e\u043a\u0441\u0438.\n\u0414\u043e\u0431\u0430\u0432\u043b\u0435\u043d \u0432 \u0441\u0435\u043a\u0446\u0438\u044e *" + target_section + "*."
-                );
+
+        // Try each section in priority order
+        let added = false;
+        for (let sec_name in detect_sections) {
+            sec_name = trim(as_string(sec_name));
+            if (sec_name == "") continue;
+
+            // Try via this section's proxy (we test with global proxy address first)
+            let proxy_ok = command_success_from_args([
+                "curl", "-s", "-I", "--connect-timeout", "5", "--max-time", "8",
+                "--proxy", "http://" + proxy_addr,
+                "https://" + domain
+            ]);
+            if (!proxy_ok) continue;
+
+            // Works through proxy — add to this section
+            log_message("Smart Detect: adding " + domain + " to section " + sec_name, "info");
+            if (smart_detect_add_domain(sec_name, domain)) {
+                let tcfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
+                if (tcfg.enabled == "1" && tcfg.bot_token && tcfg.admin_ids) {
+                    send_telegram_notification(
+                        "\ud83d\udd0d *Smart Detect*: `" + domain + "` \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u0435\u043d \u043d\u0430\u043f\u0440\u044f\u043c\u0443\u044e, \u0440\u0430\u0431\u043e\u0442\u0430\u0435\u0442 \u0447\u0435\u0440\u0435\u0437 \u043f\u0440\u043e\u043a\u0441\u0438.\n\u0414\u043e\u0431\u0430\u0432\u043b\u0435\u043d \u0432 \u0441\u0435\u043a\u0446\u0438\u044e *" + sec_name + "*."
+                    );
+                }
+                added = true;
+                break; // domain handled, move to next
             }
+        }
+        if (!added) {
+            log_message("Smart Detect: domain " + domain + " not handled by any section", "info");
         }
     }
 
@@ -231,6 +253,7 @@ function smart_detect_run(last_time) {
     fs.writefile(SMART_DETECT_SEEN_FILE, sprintf("%J", clean));
     return now;
 }
+
 
 function start_runtime() {
     let cfg = settings();

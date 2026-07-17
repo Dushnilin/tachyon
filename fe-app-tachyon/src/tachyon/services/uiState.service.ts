@@ -1,4 +1,4 @@
-﻿import { getComponentActionKey } from '../helpers/getComponentActionKey';
+import { getComponentActionKey } from '../helpers/getComponentActionKey';
 import { normalizeSingBoxVariantFields } from '../helpers/singBoxVariant';
 import type { Tachyon } from '../types';
 import { getLocalActionOverlay } from './localActionOverlay.service';
@@ -91,6 +91,7 @@ function applyServiceState(uiState: Tachyon.UiState) {
         tachyonRunning: uiState.service.tachyon.running,
         tachyonEnabled: uiState.service.tachyon.enabled,
         tachyonStatus: uiState.service.tachyon.status,
+        watchdogRunning: store.get().servicesInfoWidget.data.watchdogRunning,
       },
     },
     diagnosticsSystemInfo: normalizeSingBoxVariantFields(nextSystemInfo),

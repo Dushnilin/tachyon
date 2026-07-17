@@ -1,4 +1,4 @@
-﻿import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   executeShellCommand: vi.fn(),
@@ -81,6 +81,7 @@ describe('fetchServicesInfo', () => {
           tachyonRunning: 1,
           tachyonEnabled: 1,
           tachyonStatus: 'running & enabled',
+          watchdogRunning: 0,
         },
       },
     });

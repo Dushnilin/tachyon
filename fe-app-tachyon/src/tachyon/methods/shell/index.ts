@@ -767,4 +767,54 @@ export const TachyonShellMethods = {
       return response;
     }
   },
+
+  getWatchdogStatus: async () => {
+    const response = await executeShellCommand({
+      command: '/usr/bin/tachyon',
+      args: ['watchdog', 'status'],
+      timeout: 5000,
+    });
+    return {
+      success: true,
+      data: { running: (response.code ?? 1) === 0 },
+    } as Tachyon.MethodSuccessResponse<{ running: boolean }>;
+  },
+
+  watchdogStart: async () => {
+    const response = await executeShellCommand({
+      command: '/usr/bin/tachyon',
+      args: ['watchdog_start'],
+      timeout: 8000,
+    });
+    return {
+      success: (response.code ?? 1) === 0,
+    } as Tachyon.MethodResponse<void>;
+  },
+
+  watchdogStop: async () => {
+    const response = await executeShellCommand({
+      command: '/usr/bin/tachyon',
+      args: ['watchdog_stop'],
+      timeout: 8000,
+    });
+    return {
+      success: (response.code ?? 1) === 0,
+    } as Tachyon.MethodResponse<void>;
+  },
+
+  /**
+   * Run an arbitrary UCI command via shell — used for saving Smart Detect
+   * settings and per-device routing IPs from the Advanced Settings panel.
+   */
+  uciRunCommand: async (args: string[]) => {
+    const response = await executeShellCommand({
+      command: '/sbin/uci',
+      args,
+      timeout: 5000,
+    });
+    return {
+      success: (response.code ?? 1) === 0,
+    } as Tachyon.MethodResponse<void>;
+  },
 };
+
