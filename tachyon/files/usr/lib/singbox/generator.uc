@@ -2305,7 +2305,7 @@ function add_warp_endpoint(config, section) {
         type: "warp",
         tag,
         name: tag,
-        profiles: [profile]
+        profile
     });
 }
 
