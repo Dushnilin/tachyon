@@ -48,6 +48,18 @@ let url_query_params = runtime_url.query_params;
 
 const CONFIG_NAME = "tachyon";
 
+// Convert a UCI value that may be a binary buffer (<b 0x...>) to a plain hex string.
+// UCI stores values written as '<b 0x...>' strings as binary, which when
+// serialized back to JSON appear as '<b 0x...>' — invalid for sing-box.
+function uci_bin_to_hex(val) {
+    if (val == null || val == "") return "";
+    // Coerce to string — binary buffer becomes "<b 0x...>"
+    let s = replace("" + val, "<b 0x", "");
+    s = replace(s, ">", "");
+    s = replace(s, " ", "");
+    return s;
+}
+
 function parent_dir(path) {
     path = as_string(path);
     let slash = rindex(path, "/");
@@ -2283,16 +2295,16 @@ function add_awg_endpoint(config, section) {
         s3: int_option(section, "awg_s3", "0"),
         s4: int_option(section, "awg_s4", "0")
     };
-    let i1 = option(section, "awg_i1", "");
-    let i2 = option(section, "awg_i2", "");
-    let i3 = option(section, "awg_i3", "");
-    let i4 = option(section, "awg_i4", "");
-    let i5 = option(section, "awg_i5", "");
+    let i1 = uci_bin_to_hex(option(section, "awg_i1", ""));
+    let i2 = uci_bin_to_hex(option(section, "awg_i2", ""));
+    let i3 = uci_bin_to_hex(option(section, "awg_i3", ""));
+    let i4 = uci_bin_to_hex(option(section, "awg_i4", ""));
+    let i5 = uci_bin_to_hex(option(section, "awg_i5", ""));
     if (i1 != "") amnezia.i1 = i1;
     if (i2 != "") amnezia.i2 = i2;
-    if (i3 != "") amnezia.i3 = i3;
-    if (i4 != "") amnezia.i4 = i4;
-    if (i5 != "") amnezia.i5 = i5;
+    if (i3 != "" && i3 != "0") amnezia.i3 = i3;
+    if (i4 != "" && i4 != "0") amnezia.i4 = i4;
+    if (i5 != "" && i5 != "0") amnezia.i5 = i5;
 
     endpoint.amnezia = amnezia;
 

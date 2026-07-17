@@ -7199,6 +7199,164 @@ function createSectionContent(section) {
   };
   configureTextareaOption(o, analyzeByedpiStrategy);
 
+
+  o = section.taboption(
+    "settings",
+    form.Button,
+    "_generate_warp",
+    _("AmneziaWG Generator"),
+    _("Automatically generate a Cloudflare WARP account and configure all AmneziaWG settings.")
+  );
+  o.modalonly = true;
+  o.inputtitle = _("Generate WARP Config");
+  o.depends("action", "awg");
+
+  // Custom render: beautiful gradient button with loading / success / error states
+  o.renderWidget = function(section_id) {
+    if (!document.getElementById("tachyon-warp-btn-css")) {
+      const s = document.createElement("style");
+      s.id = "tachyon-warp-btn-css";
+      s.textContent = `
+        .twg-spinner {
+          width: 13px; height: 13px;
+          border: 1.5px solid currentColor;
+          border-top-color: transparent;
+          border-radius: 50%;
+          display: none;
+          flex-shrink: 0;
+          animation: twg-spin 0.7s linear infinite;
+          opacity: 0.6;
+        }
+        .twg-loading .twg-spinner { display: inline-block; }
+        .twg-loading .twg-icon    { display: none; }
+        .twg-icon { flex-shrink: 0; }
+        .twg-btn.twg-loading { opacity: 0.65; }
+        .twg-btn.twg-success { color: #4caf50 !important; border-color: #4caf50 !important; }
+        .twg-btn.twg-error   { color: #ef5350 !important; border-color: #ef5350 !important; animation: twg-shake 0.4s ease; }
+        @keyframes twg-spin  { to { transform: rotate(360deg); } }
+        @keyframes twg-shake {
+          0%,100% { transform: translateX(0); }
+          20%     { transform: translateX(-5px); }
+          60%     { transform: translateX(5px); }
+          80%     { transform: translateX(-3px); }
+        }
+      `;
+      document.head.appendChild(s);
+    }
+
+    const spinner = E("span", { "class": "twg-spinner" });
+    const icon    = E("span", { "class": "twg-icon" }, ["↺"]);
+    const label   = E("span", { "class": "twg-label" }, [_("Generate WARP Config")]);
+    const btn     = E("button", {
+      "class": "btn cbi-button cbi-button-neutral twg-btn",
+      "type": "button",
+      "style": "display:inline-flex;align-items:center;gap:8px;"
+    }, [spinner, icon, label]);
+
+    btn.addEventListener("click", (ev) => this.onclick && this.onclick.call(this, ev, section_id));
+    return btn;
+  };
+
+
+
+  o.onclick = function(ev, section_id) {
+    const btn   = ev.target.closest(".twg-btn");
+    const label = btn ? btn.querySelector(".twg-label") : null;
+    const origText = _("Generate WARP Config");
+
+    const setState = (state, text) => {
+      if (!btn) return;
+      btn.className = "btn cbi-button cbi-button-neutral twg-btn" + (state ? " twg-" + state : "");
+      btn.disabled  = (state === "loading");
+      if (label && text) label.textContent = text;
+    };
+
+    const showStatusModal = (title, msg, isError) =>
+      ui.addNotification(title, E("p", {}, msg), isError ? "danger" : "success");
+
+    const resetAfter = (ms) =>
+      setTimeout(() => setState("", origText), ms);
+
+    setState("loading", _("Generating…"));
+
+    fs.exec("/usr/bin/tachyon", ["generate_warp"])
+      .then(function(response) {
+        if (!response || (response.code ?? 0) !== 0 || !response.stdout) {
+          setState("error", _("Error"));
+          resetAfter(2500);
+          showStatusModal(_("Error"), _("Failed to generate WARP config: ") + (response?.stderr || "Unknown error"), true);
+          return;
+        }
+
+        try {
+          const data = JSON.parse(response.stdout);
+          if (!data.success) {
+            setState("error", _("Error"));
+            resetAfter(2500);
+            showStatusModal(_("Error"), _("Failed to generate WARP config: ") + (data.message || "Unknown error"), true);
+            return;
+          }
+
+          const getControlWidget = (opt) => {
+            const widget = document.getElementById(`widget.cbid.${UCI_PACKAGE}.${section_id}.${opt}`);
+            if (!widget) return null;
+            if (/^(INPUT|SELECT|TEXTAREA)$/.test(widget.tagName)) return widget;
+            return widget.querySelector("input:not([type='hidden']), select, textarea");
+          };
+
+          const stripUciBinary = (val) => {
+            if (typeof val !== "string") return val;
+            return val.replace(/<b 0x/g, "").replace(/>/g, "").replace(/\s/g, "");
+          };
+
+          const setWidgetValue = (opt, val) => {
+            const widget = getControlWidget(opt);
+            if (widget) {
+              widget.value = val;
+              widget.dispatchEvent(new Event("input",  { bubbles: true }));
+              widget.dispatchEvent(new Event("change", { bubbles: true }));
+            }
+            uci.set(UCI_PACKAGE, section_id, opt, val);
+          };
+
+          setWidgetValue("awg_local_address",   data.local_address);
+          setWidgetValue("awg_private_key",     data.private_key);
+          setWidgetValue("awg_peer_public_key", data.peer_public_key);
+          setWidgetValue("awg_server_address",  data.server_address);
+          setWidgetValue("awg_server_port",     data.server_port);
+          setWidgetValue("awg_jc",   `${data.awg_jc}`);
+          setWidgetValue("awg_jmin", `${data.awg_jmin}`);
+          setWidgetValue("awg_jmax", `${data.awg_jmax}`);
+          setWidgetValue("awg_s1",   `${data.awg_s1}`);
+          setWidgetValue("awg_s2",   `${data.awg_s2}`);
+          setWidgetValue("awg_h1",   `${data.awg_h1}`);
+          setWidgetValue("awg_h2",   `${data.awg_h2}`);
+          setWidgetValue("awg_h3",   `${data.awg_h3}`);
+          setWidgetValue("awg_h4",   `${data.awg_h4}`);
+          setWidgetValue("awg_s3",   `${data.awg_s3}`);
+          setWidgetValue("awg_s4",   `${data.awg_s4}`);
+          setWidgetValue("awg_i1",   stripUciBinary(data.awg_i1));
+          setWidgetValue("awg_i2",   stripUciBinary(data.awg_i2));
+          setWidgetValue("awg_i3",   stripUciBinary(data.awg_i3));
+          setWidgetValue("awg_i4",   stripUciBinary(data.awg_i4));
+          setWidgetValue("awg_i5",   stripUciBinary(data.awg_i5));
+
+          setState("success", _("Generated!"));
+          resetAfter(2500);
+          showStatusModal(_("Success"), _("WARP Configuration generated and loaded successfully!"), false);
+        } catch (err) {
+          setState("error", _("Error"));
+          resetAfter(2500);
+          showStatusModal(_("Error"), _("Failed to parse WARP config: ") + err.message, true);
+        }
+      })
+      .catch(function(error) {
+        setState("error", _("Error"));
+        resetAfter(2500);
+        showStatusModal(_("Error"), _("Error running generator: ") + error.message, true);
+      });
+  };
+
   o = section.taboption(
     "settings",
     form.Value,

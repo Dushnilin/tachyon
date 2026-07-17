@@ -1,4 +1,4 @@
-﻿# RU translations for TACHYON package.
+# RU translations for TACHYON package.
 # Copyright (C) 2026 THE TACHYON COPYRIGHT HOLDER
 # This file is distributed under the same license as the TACHYON package.
 # Dushnilin, 2026.
@@ -2665,3 +2665,28 @@ msgstr "Разрешить небезопасный TLS"
 
 msgid "Skip TLS certificate verification"
 msgstr "Пропустить проверку TLS сертификата"
+
+msgid "AmneziaWG Generator"
+msgstr "Генератор AmneziaWG"
+
+msgid "Automatically generate a Cloudflare WARP account and configure all AmneziaWG settings."
+msgstr "Автоматически сгенерировать аккаунт Cloudflare WARP и настроить все параметры AmneziaWG."
+
+msgid "Generate WARP Config"
+msgstr "Сгенерировать конфиг WARP"
+
+msgid "Generating..."
+msgstr "Генерация..."
+
+msgid "Failed to generate WARP config: "
+msgstr "Не удалось сгенерировать конфиг WARP: "
+
+msgid "WARP Configuration generated and loaded successfully!"
+msgstr "Конфигурация WARP успешно сгенерирована и загружена!"
+
+msgid "Failed to parse WARP config: "
+msgstr "Не удалось разобрать конфиг WARP: "
+
+msgid "Error running generator: "
+msgstr "Ошибка при запуске генератора: "
+
