@@ -47,16 +47,16 @@ declare global {
     ) => Promise<T>;
   };
 
-  const _ = (_key: string) => string;
+  const _: (_key: string) => string;
 
-  const ui = {
-    showModal: (_title: string, _content: HTMLElement) => undefined,
-    hideModal: () => undefined,
+  const ui: {
+    showModal: (_title: string, _content: HTMLElement) => void;
+    hideModal: () => void;
     addNotification: (
       _title: string,
       _children: HtmlElement | HtmlElement[],
       ..._classNames: string[]
-    ) => HTMLElement,
+    ) => HTMLElement;
   };
 }
 

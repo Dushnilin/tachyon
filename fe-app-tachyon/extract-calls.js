@@ -1,4 +1,4 @@
-﻿import fs from 'fs/promises';
+import fs from 'fs/promises';
 import path from 'path';
 import glob from 'fast-glob';
 import { parse } from '@babel/parser';
@@ -40,10 +40,11 @@ for (const file of files) {
     try {
         ast = parse(content, {
             sourceType: 'module',
+            allowReturnOutsideFunction: true,
             plugins: file.endsWith('.ts') ? ['typescript'] : [],
         });
     } catch (e) {
-        console.warn(`⚠️ Parse error in ${relativePath}, skipping`);
+        console.warn(`⚠️ Parse error in ${relativePath}, skipping:`, e.message);
         continue;
     }
 
