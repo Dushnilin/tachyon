@@ -657,6 +657,8 @@ ads
 443,80,443-444
 [rule.proxy1.fully_routed_ips]
 198.51.100.2
+[rule.proxy1.excluded_ips]
+
 [rule.proxy1.community_lists]
 telegram
 [rule.proxy1.rule_set]
@@ -733,6 +735,8 @@ disabled
 
 [rule.out1.fully_routed_ips]
 
+[rule.out1.excluded_ips]
+
 [rule.out1.community_lists]
 
 [rule.out1.rule_set]
@@ -764,6 +768,8 @@ byedpi
 [rule.bye1.ports]
 
 [rule.bye1.fully_routed_ips]
+
+[rule.bye1.excluded_ips]
 
 [rule.bye1.community_lists]
 
@@ -840,6 +846,8 @@ disabled
 [rule.vpn1.ports]
 
 [rule.vpn1.fully_routed_ips]
+
+[rule.vpn1.excluded_ips]
 
 [rule.vpn1.community_lists]
 
