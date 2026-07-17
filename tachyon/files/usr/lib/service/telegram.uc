@@ -621,44 +621,49 @@ function handle_rule_view(token, chat_id, sec_name) {
     let c = uci_core.cursor();
     if (!c) return;
     c.load(CONFIG_NAME);
-    
+
     let s = c.get_all(CONFIG_NAME, sec_name);
     if (!s) {
-        send_message(token, chat_id, "❌ Секция не найдена.");
+        send_message(token, chat_id, "❌ Секция не найдена: " + sec_name);
         return;
     }
-    
-    let act = s.action || "";
+
+    let act    = s.action || "";
     let status = (s.enabled == "1") ? "Включена ✅" : "Выключена ❌";
-    let doms = s.domain || [];
+
+    // user_domains — домены, добавленные через бот/Smart Detect
+    // domain      — статические правила из конфига
+    let doms = s.user_domains || s.domain || [];
     if (type(doms) != "array") {
-        doms = split(doms, " ");
+        doms = (trim(as_string(doms)) != "") ? split(trim(as_string(doms)), " ") : [];
     }
-    
+
     let dom_list = "";
     let count = 0;
     for (let d in doms) {
-        if (trim(d) == "") continue;
+        d = trim(as_string(d));
+        if (d == "") continue;
         dom_list += "• <code>" + escape_html(d) + "</code>\n";
         count++;
         if (count >= 15) {
-            dom_list += "<i>...и еще " + (length(doms) - 15) + "</i>\n";
+            dom_list += "<i>...и ещё " + (length(doms) - 15) + "</i>\n";
             break;
         }
     }
     if (count == 0) {
-        dom_list = "<i>Секция пуста</i>\n";
+        dom_list = "<i>Пользовательские домены не добавлены</i>\n";
     }
-    
-    let text = "⚙️ <b>Секция:</b> " + (s.label || sec_name) + "\n" +
-               "Тип: <code>" + act + "</code>\n" +
+
+    let label = escape_html(s.label || sec_name);
+    let text = "⚙️ <b>Секция:</b> " + label + "\n" +
+               "Тип: <code>" + escape_html(act) + "</code>\n" +
                "Статус: <b>" + status + "</b>\n\n" +
-               "<b>Домены/IP:</b>\n" + dom_list;
-    
+               "<b>Домены/IP (пользовательские):</b>\n" + dom_list;
+
     let keyboard = [
         [
             { text: "➕ Добавить", callback_data: "/rule_add " + sec_name },
-            { text: "➖ Удалить", callback_data: "/rule_del " + sec_name }
+            { text: "➖ Удалить",  callback_data: "/rule_del " + sec_name }
         ],
         [
             { text: "⚡ Вкл / Выкл", callback_data: "/rule_toggle " + sec_name }
@@ -667,9 +672,14 @@ function handle_rule_view(token, chat_id, sec_name) {
             { text: "🔙 Назад к списку", callback_data: "/rules" }
         ]
     ];
-    
-    send_message_custom_keyboard(token, chat_id, text, "HTML", keyboard);
+
+    let res = send_message_custom_keyboard(token, chat_id, text, "HTML", keyboard);
+    if (!res || !res.ok) {
+        let desc = (res && res.description) ? " (" + res.description + ")" : "";
+        send_message(token, chat_id, "❌ Ошибка отображения секции" + desc + ". Секция: " + sec_name + ", действие: " + act);
+    }
 }
+
 
 function manage_domain_list_by_section(sec_name, domain, do_delete) {
     let c = uci_core.cursor();
