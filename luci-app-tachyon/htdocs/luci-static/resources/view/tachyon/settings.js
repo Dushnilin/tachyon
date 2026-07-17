@@ -995,6 +995,37 @@ function createSettingsContent(section, capabilities) {
   sdSectionsOpt.remove = function (section_id) {
     uci.unset(UCI_PACKAGE, section_id, "smart_detect_sections");
   };
+
+  const sdDomainsOpt = section.option(
+    form.DummyValue,
+    "_smart_detect_domains",
+    _("Auto-detected domains"),
+    _("List of domains automatically detected and the section they were added to. To edit or remove them, open the routing rules of the respective section.")
+  );
+  sdDomainsOpt.depends("smart_detect", "1");
+  sdDomainsOpt.rawhtml = true;
+  sdDomainsOpt.cfgvalue = function (section_id) {
+    const allDomains = [];
+    const allSections = uci.sections(UCI_PACKAGE, "section") || [];
+    allSections.forEach(function (s) {
+      const ud = L.toArray(s.user_domains || []);
+      ud.forEach(function (d) {
+        allDomains.push({ domain: d, section: s[".name"] });
+      });
+    });
+
+    if (allDomains.length === 0) {
+      return "<em>" + _("No domains detected yet") + "</em>";
+    }
+
+    function esc(s) { return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+    let html = "<ul style=\"margin:0;padding-left:1.5rem;\">";
+    allDomains.forEach(function (item) {
+      html += "<li><code>" + esc(item.domain) + "</code> &rarr; <b>" + esc(item.section) + "</b></li>";
+    });
+    html += "</ul>";
+    return html;
+  };
 }
 
 function createTelegramStatusWidget() {

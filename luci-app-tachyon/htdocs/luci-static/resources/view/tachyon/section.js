@@ -7752,6 +7752,17 @@ function createSectionContent(section) {
     },
   });
 
+  addTextConditionField(section, {
+    key: "user_domains",
+    optionName: "user_domains",
+    legacyTextOptionName: "user_domains_text",
+    label: _("Auto-detected Domains"),
+    description: _(
+      "Domains automatically detected by Smart Detect or added via Telegram bot. You can manually edit or remove them here.",
+    ),
+    textAnalyze: analyzeDomainSuffixText,
+  });
+
   const ipConditionOption = addTextConditionField(section, {
     key: "ip_cidr",
     optionName: "ip_cidr",
