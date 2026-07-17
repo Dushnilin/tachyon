@@ -2297,18 +2297,15 @@ function add_warp_endpoint(config, section) {
         runtime_generate_unsupported("WARP section '" + section[".name"] + "' missing warp_private_key");
     if (account_id == "")
         runtime_generate_unsupported("WARP section '" + section[".name"] + "' missing warp_account_id");
-    if (access_token == "")
-        runtime_generate_unsupported("WARP section '" + section[".name"] + "' missing warp_access_token");
+
+    let profile = { id: account_id, private_key };
+    if (access_token != "") profile.auth_token = access_token;
 
     push(config.endpoints, {
         type: "warp",
         tag,
         name: tag,
-        profiles: [{
-            id: account_id,
-            auth_token: access_token,
-            private_key
-        }]
+        profiles: [profile]
     });
 }
 
