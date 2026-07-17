@@ -2249,42 +2249,59 @@ function enabled_action_index(sections, target_section, action_name) {
     return 0;
 }
 
-function add_awg_outbound(config, section) {
+function add_awg_endpoint(config, section) {
     let tag = outbound_tag(section[".name"]);
-    let outbound = {
+    let endpoint = {
         type: "wireguard",
         tag: tag,
-        local_address: list_option(section, "awg_local_address"),
+        name: tag,
+        address: list_option(section, "awg_local_address"),
         private_key: option(section, "awg_private_key", ""),
-        peer_public_key: option(section, "awg_peer_public_key", ""),
-        server: option(section, "awg_server_address", ""),
-        server_port: as_integer(option(section, "awg_server_port", "0"))
+        peers: [{
+            address: option(section, "awg_server_address", ""),
+            port: int_option(section, "awg_server_port", "0"),
+            public_key: option(section, "awg_peer_public_key", ""),
+            allowed_ips: ["0.0.0.0/0", "::/0"]
+        }]
     };
 
     let preshared_key = option(section, "awg_preshared_key", "");
     if (preshared_key != "")
-        outbound.pre_shared_key = preshared_key;
+        endpoint.peers[0].pre_shared_key = preshared_key;
 
     // AmneziaWG obfuscation parameters
-    outbound.reserved = [0, 0, 0];
-    outbound.jc = as_integer(option(section, "awg_jc", "120"));
-    outbound.jmin = as_integer(option(section, "awg_jmin", "23"));
-    outbound.jmax = as_integer(option(section, "awg_jmax", "911"));
-    outbound.s1 = as_integer(option(section, "awg_s1", "0"));
-    outbound.s2 = as_integer(option(section, "awg_s2", "0"));
-    outbound.h1 = as_integer(option(section, "awg_h1", "1"));
-    outbound.h2 = as_integer(option(section, "awg_h2", "2"));
-    outbound.h3 = as_integer(option(section, "awg_h3", "3"));
-    outbound.h4 = as_integer(option(section, "awg_h4", "4"));
-    outbound.s3 = as_integer(option(section, "awg_s3", "0"));
-    outbound.s4 = as_integer(option(section, "awg_s4", "0"));
-    outbound.i1 = as_integer(option(section, "awg_i1", "0"));
-    outbound.i2 = as_integer(option(section, "awg_i2", "0"));
-    outbound.i3 = as_integer(option(section, "awg_i3", "0"));
-    outbound.i4 = as_integer(option(section, "awg_i4", "0"));
-    outbound.i5 = as_integer(option(section, "awg_i5", "0"));
+    let amnezia = {
+        jc: int_option(section, "awg_jc", "120"),
+        jmin: int_option(section, "awg_jmin", "23"),
+        jmax: int_option(section, "awg_jmax", "911"),
+        s1: int_option(section, "awg_s1", "0"),
+        s2: int_option(section, "awg_s2", "0"),
+        h1: int_option(section, "awg_h1", "1"),
+        h2: int_option(section, "awg_h2", "2"),
+        h3: int_option(section, "awg_h3", "3"),
+        h4: int_option(section, "awg_h4", "4"),
+        s3: int_option(section, "awg_s3", "0"),
+        s4: int_option(section, "awg_s4", "0")
+    };
+    let i1 = option(section, "awg_i1", "");
+    let i2 = option(section, "awg_i2", "");
+    let i3 = option(section, "awg_i3", "");
+    let i4 = option(section, "awg_i4", "");
+    let i5 = option(section, "awg_i5", "");
+    if (i1 != "") amnezia.i1 = i1;
+    if (i2 != "") amnezia.i2 = i2;
+    if (i3 != "") amnezia.i3 = i3;
+    if (i4 != "") amnezia.i4 = i4;
+    if (i5 != "") amnezia.i5 = i5;
 
-    push(config.outbounds, outbound);
+    endpoint.amnezia = amnezia;
+
+    let detour = option(section, "awg_detour", "");
+    if (detour != "") {
+        endpoint.detour = outbound_tag(detour);
+    }
+
+    push(config.endpoints, endpoint);
 }
 
 function add_warp_endpoint(config, section) {
@@ -2326,7 +2343,7 @@ function add_anytls_outbound(config, section) {
         type: "anytls",
         tag,
         server: option(section, "anytls_server", ""),
-        server_port: as_integer(option(section, "anytls_server_port", "0")),
+        server_port: int_option(section, "anytls_server_port", "0"),
         password: option(section, "anytls_password", "")
     };
     let sni = option(section, "anytls_sni", "");
@@ -2342,9 +2359,9 @@ function add_snell_outbound(config, section) {
         type: "snell",
         tag: outbound_tag(section[".name"]),
         server: option(section, "snell_server", ""),
-        server_port: as_integer(option(section, "snell_server_port", "0")),
+        server_port: int_option(section, "snell_server_port", "0"),
         psk: option(section, "snell_psk", ""),
-        version: as_integer(option(section, "snell_version", "4"))
+        version: int_option(section, "snell_version", "4")
     });
 }
 
@@ -2353,7 +2370,7 @@ function add_mieru_outbound(config, section) {
         type: "mieru",
         tag: outbound_tag(section[".name"]),
         server: option(section, "mieru_server", ""),
-        server_port: as_integer(option(section, "mieru_server_port", "0")),
+        server_port: int_option(section, "mieru_server_port", "0"),
         transport: option(section, "mieru_transport", "TCP"),
         username: option(section, "mieru_username", ""),
         password: option(section, "mieru_password", "")
@@ -2365,7 +2382,7 @@ function add_sudoku_outbound(config, section) {
         type: "sudoku",
         tag: outbound_tag(section[".name"]),
         server: option(section, "sudoku_server", ""),
-        server_port: as_integer(option(section, "sudoku_server_port", "0")),
+        server_port: int_option(section, "sudoku_server_port", "0"),
         key: option(section, "sudoku_key", "")
     };
     let method = option(section, "sudoku_aead_method", "");
@@ -2401,7 +2418,7 @@ function add_openvpn_endpoint(config, section) {
         system: true,
         servers: [{
             server: option(section, "openvpn_server", ""),
-            server_port: as_integer(option(section, "openvpn_server_port", "1194"))
+            server_port: int_option(section, "openvpn_server_port", "1194")
         }],
         proto: option(section, "openvpn_proto", "udp")
     };
@@ -2914,7 +2931,7 @@ function add_outbound_for_section(config, section, taken, sections) {
     if (connections.is_connections_action(action))
         add_connections_outbound(config, section, taken);
     else if (action == "awg")
-        add_awg_outbound(config, section);
+        add_awg_endpoint(config, section);
     else if (action == "warp")
         add_warp_endpoint(config, section);
     else if (action == "anytls")
