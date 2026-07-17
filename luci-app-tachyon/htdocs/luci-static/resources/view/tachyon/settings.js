@@ -275,7 +275,7 @@ function createWatchdogStatusWidget() {
 }
 
 function createSmartDetectSectionsWidget(section_id) {
-  const allSections = (uci.sections(UCI_PACKAGE, "rule") || [])
+  const allSections = (uci.sections(UCI_PACKAGE, "section") || [])
     .filter(function (s) { return s.enabled !== "0"; })
     .map(function (s) { return s[".name"]; });
 
