@@ -38,8 +38,11 @@ config settings 'settings'
         option exclude_ntp '0'
         option shutdown_correctly '0'
         option smart_detect '0'
-        #option smart_detect_section ''
-        # smart_detect: set to 1 to enable self-healing routing (auto-adds blocked domains to proxy section)
+        # smart_detect: auto-detects blocked domains from logs and adds them to the first
+        # section in smart_detect_sections that works via proxy.
+        # list smart_detect_sections 'zapret-section'
+        # list smart_detect_sections 'main-proxy'
+        # Ordered: first section where the domain works via proxy wins.
 
 
 #config section 'subscription_example'

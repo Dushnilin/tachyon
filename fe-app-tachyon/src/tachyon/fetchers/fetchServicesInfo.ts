@@ -34,9 +34,10 @@ export async function fetchServicesInfo() {
     return uiState;
   }
 
-  const [tachyonResult, singboxResult] = await Promise.allSettled([
+  const [tachyonResult, singboxResult, watchdogResult] = await Promise.allSettled([
     TachyonShellMethods.getStatus(),
     TachyonShellMethods.getSingBoxStatus(),
+    TachyonShellMethods.getWatchdogStatus(),
   ]);
 
   if (requestId !== latestServicesInfoRequestId) {
@@ -45,6 +46,7 @@ export async function fetchServicesInfo() {
 
   const tachyon = getSettledMethodResponse('getStatus', tachyonResult);
   const singbox = getSettledMethodResponse('getSingBoxStatus', singboxResult);
+  const watchdog = getSettledMethodResponse('getWatchdogStatus', watchdogResult);
   const previousData = store.get().servicesInfoWidget.data;
 
   store.set({
@@ -62,9 +64,13 @@ export async function fetchServicesInfo() {
         tachyonStatus: tachyon.success
           ? tachyon.data.status
           : previousData.tachyonStatus,
+        watchdogRunning: watchdog.success
+          ? Number((watchdog.data as { running: boolean }).running)
+          : previousData.watchdogRunning,
       },
     },
   });
 
   return undefined;
 }
+
