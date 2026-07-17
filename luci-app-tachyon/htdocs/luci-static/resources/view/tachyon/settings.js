@@ -275,8 +275,11 @@ function createWatchdogStatusWidget() {
 }
 
 function createSmartDetectSectionsWidget(section_id) {
+  const TESTABLE_ACTIONS = ["connection", "proxy", "outbound", "vpn", "zapret", "zapret2", "byedpi"];
   const allSections = (uci.sections(UCI_PACKAGE, "section") || [])
-    .filter(function (s) { return s.enabled !== "0"; })
+    .filter(function (s) {
+      return s.enabled !== "0" && TESTABLE_ACTIONS.indexOf(s.action) >= 0;
+    })
     .map(function (s) { return s[".name"]; });
 
   if (allSections.length === 0) {
