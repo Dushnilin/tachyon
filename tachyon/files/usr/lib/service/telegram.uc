@@ -1643,7 +1643,7 @@ else if (mode == "status") {
     exit(get_status());
 }
 else if (mode == "send") {
-    let msg = (ARGV[1] == "") ? ARGV[2] : ARGV[1];
+    let msg = (ARGV[0] == "") ? ARGV[2] : ARGV[1];
     exit(send_api(msg));
 }
 else {
