@@ -7254,6 +7254,48 @@ function createSectionContent(section) {
   o.rmempty = false;
   o.depends("action", "awg");
 
+  o = section.taboption("settings", form.Value, "awg_s3", "S3");
+  o.default = "0";
+  o.modalonly = true;
+  o.rmempty = false;
+  o.depends("action", "awg");
+
+  o = section.taboption("settings", form.Value, "awg_s4", "S4");
+  o.default = "0";
+  o.modalonly = true;
+  o.rmempty = false;
+  o.depends("action", "awg");
+
+  o = section.taboption("settings", form.Value, "awg_i1", "I1");
+  o.default = "0";
+  o.modalonly = true;
+  o.rmempty = false;
+  o.depends("action", "awg");
+
+  o = section.taboption("settings", form.Value, "awg_i2", "I2");
+  o.default = "0";
+  o.modalonly = true;
+  o.rmempty = false;
+  o.depends("action", "awg");
+
+  o = section.taboption("settings", form.Value, "awg_i3", "I3");
+  o.default = "0";
+  o.modalonly = true;
+  o.rmempty = false;
+  o.depends("action", "awg");
+
+  o = section.taboption("settings", form.Value, "awg_i4", "I4");
+  o.default = "0";
+  o.modalonly = true;
+  o.rmempty = false;
+  o.depends("action", "awg");
+
+  o = section.taboption("settings", form.Value, "awg_i5", "I5");
+  o.default = "0";
+  o.modalonly = true;
+  o.rmempty = false;
+  o.depends("action", "awg");
+
   o = section.taboption(
     "settings",
     form.DynamicList,
