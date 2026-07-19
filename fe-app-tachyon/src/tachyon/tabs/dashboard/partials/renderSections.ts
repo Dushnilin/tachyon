@@ -456,10 +456,41 @@ function renderDefaultState({
                 ? connectionStatusText
                 : (outbound.latency ? `${outbound.latency}ms` : 'N/A'),
             ),
+            ...(isConnectionNode ? [
+              E(
+                'button',
+                {
+                  type: 'button',
+                  class: 'btn dashboard-sections-grid-item-test-latency',
+                  style: 'margin-left: 8px; padding: 2px 8px; height: 26px;',
+                  disabled: latencyFetching ? true : undefined,
+                  click: (event: MouseEvent) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    if (latencyFetching) return;
+                    testLatency();
+                  },
+                },
+                latencyFetching
+                  ? [
+                      renderLoaderCircleIcon24(),
+                      E('span', { class: 'dashboard-sections-grid-item-test-latency__label' }, _('Checking...')),
+                    ]
+                  : E('span', { class: 'dashboard-sections-grid-item-test-latency__label' }, _('Check Connection')),
+              )
+            ] : []),
           ],
         ),
       ],
     );
+  }
+
+  if (isConnectionNode) {
+    return E('div', { class: 'tachyon_dashboard-page__outbound-section', style: 'border: none; padding: 0;' }, [
+      E('div', { class: 'tachyon_dashboard-page__outbound-grid', style: 'padding: 0;' }, [
+        ...section.outbounds.map((outbound) => renderOutbound(outbound)),
+      ])
+    ]);
   }
 
   const metadataNodes = (section.subscriptionMetadata || [])

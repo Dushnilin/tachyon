@@ -2097,11 +2097,39 @@ function renderDefaultState({
               "div",
               { class: getLatencyClass() },
               isConnectionNode ? connectionStatusText : outbound.latency ? `${outbound.latency}ms` : "N/A"
-            )
+            ),
+            ...isConnectionNode ? [
+              E(
+                "button",
+                {
+                  type: "button",
+                  class: "btn dashboard-sections-grid-item-test-latency",
+                  style: "margin-left: 8px; padding: 2px 8px; height: 26px;",
+                  disabled: latencyFetching ? true : void 0,
+                  click: (event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    if (latencyFetching) return;
+                    testLatency();
+                  }
+                },
+                latencyFetching ? [
+                  renderLoaderCircleIcon24(),
+                  E("span", { class: "dashboard-sections-grid-item-test-latency__label" }, _("Checking..."))
+                ] : E("span", { class: "dashboard-sections-grid-item-test-latency__label" }, _("Check Connection"))
+              )
+            ] : []
           ]
         )
       ]
     );
+  }
+  if (isConnectionNode) {
+    return E("div", { class: "tachyon_dashboard-page__outbound-section", style: "border: none; padding: 0;" }, [
+      E("div", { class: "tachyon_dashboard-page__outbound-grid", style: "padding: 0;" }, [
+        ...section.outbounds.map((outbound) => renderOutbound(outbound))
+      ])
+    ]);
   }
   const metadataNodes = (section.subscriptionMetadata || []).map((metadata) => renderSubscriptionMetadata(metadata)).filter(Boolean);
   const subscriptionUpdateAction = renderSubscriptionUpdateAction(
@@ -5745,6 +5773,7 @@ function toggleSectionExpanded(sectionCode) {
   }
   localStorage.setItem(DASHBOARD_EXPANDED_SECTIONS_KEY, JSON.stringify(Array.from(expandedSections)));
   void renderSectionsWidget();
+  void renderConnectionsWidget();
 }
 var SECTIONS_REFRESH_INTERVAL_MS = 1e4;
 var LATENCY_TEST_BUTTON_CLASS = "dashboard-sections-grid-item-test-latency";

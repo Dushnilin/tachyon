@@ -44,6 +44,7 @@ function toggleSectionExpanded(sectionCode: string) {
   }
   localStorage.setItem(DASHBOARD_EXPANDED_SECTIONS_KEY, JSON.stringify(Array.from(expandedSections)));
   void renderSectionsWidget();
+  void renderConnectionsWidget();
 }
 import { getClashApiSecret } from '../../methods/custom/getClashApiSecret';
 import { Tachyon } from '../../types';
