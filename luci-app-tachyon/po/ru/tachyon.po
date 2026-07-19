@@ -2760,3 +2760,28 @@ msgstr "Неверный формат. Используйте: домен ip"
 
 msgid "Persistent Keepalive"
 msgstr "Интервал Keepalive"
+
+msgid "Checking Connection..."
+msgstr "Проверка..."
+
+msgid "Check Connection"
+msgstr "Проверить"
+
+msgid "Generate bug report"
+msgstr "Сгенерировать баг-репорт"
+
+msgid "Global check"
+msgstr "Глобальная проверка"
+
+msgid "Bug Report"
+msgstr "Баг-репорт"
+
+msgid "Failed to fetch config"
+msgstr "Не удалось получить конфигурацию"
+
+msgid "Failed to fetch tachyon logs"
+msgstr "Не удалось получить логи tachyon"
+
+msgid "Failed to fetch sing-box logs"
+msgstr "Не удалось получить логи sing-box"
+
