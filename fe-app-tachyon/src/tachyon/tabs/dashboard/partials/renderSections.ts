@@ -294,6 +294,9 @@ function renderDefaultState({
       return 'tachyon_dashboard-page__outbound-grid__item__latency--red';
     }
 
+    const isConnectionNode = ['vpn', 'awg', 'warp'].includes(section.action || '');
+    const connectionStatusText = outbound.latency > 0 ? _('Connected') : _('Not tested');
+
     const canCopyLink =
       Boolean(outbound.canCopyLink) || isCopyableProxyLink(outbound.link);
     const selectorSwitching = Boolean(selectorSwitchingTag);
@@ -426,7 +429,9 @@ function renderDefaultState({
             E(
               'div',
               { class: getLatencyClass() },
-              outbound.latency ? `${outbound.latency}ms` : 'N/A',
+              isConnectionNode
+                ? connectionStatusText
+                : (outbound.latency ? `${outbound.latency}ms` : 'N/A'),
             ),
           ],
         ),

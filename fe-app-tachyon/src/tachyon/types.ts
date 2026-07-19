@@ -217,7 +217,9 @@ export namespace Tachyon {
     | 'block'
     | 'zapret'
     | 'zapret2'
-    | 'byedpi';
+    | 'byedpi'
+    | 'awg'
+    | 'warp';
   type LegacyConnectionType = 'proxy' | 'vpn' | 'block' | 'exclusion';
   type ProxyConfigType =
     | 'urltest'

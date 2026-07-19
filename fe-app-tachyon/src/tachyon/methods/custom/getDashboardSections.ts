@@ -365,7 +365,7 @@ function getJsonOutbounds(section: Tachyon.ConfigSection) {
 
 function isConnectionAction(action?: string) {
   return Boolean(
-    action && ['connection', 'proxy', 'outbound', 'vpn'].includes(action),
+    action && ['connection', 'proxy', 'outbound', 'vpn', 'awg', 'warp'].includes(action),
   );
 }
 
@@ -1431,7 +1431,7 @@ export async function getDashboardSections(
           };
         }
 
-        if (sectionAction === 'vpn') {
+        if (sectionAction === 'vpn' || sectionAction === 'awg' || sectionAction === 'warp') {
           const outboundTag = getOutboundTagBySection(sectionName);
           const outbound = proxies.find((proxy) => proxy.code === outboundTag);
 
@@ -1445,7 +1445,10 @@ export async function getDashboardSections(
             outbounds: [
               {
                 code: outbound?.code || sectionName,
-                displayName: section.interface || outbound?.value?.name || '',
+                displayName:
+                  section.interface ||
+                  outbound?.value?.name ||
+                  (sectionAction === 'awg' ? 'AmneziaWG' : sectionAction.toUpperCase()),
                 latency: outbound?.value?.history?.[0]?.delay || 0,
                 type: outbound?.value?.type || '',
                 selected: true,

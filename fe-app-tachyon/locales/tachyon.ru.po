@@ -2729,3 +2729,12 @@ msgstr "Готово"
 
 msgid "Конфиг AmneziaWG успешно загружен!"
 msgstr "Конфиг AmneziaWG успешно загружен!"
+
+msgid "Connected"
+msgstr "Подключено"
+
+msgid "Not tested"
+msgstr "Не проверено"
+
+msgid "Test connection"
+msgstr "Проверить подключение"

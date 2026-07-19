@@ -1972,6 +1972,8 @@ function renderDefaultState({
       }
       return "tachyon_dashboard-page__outbound-grid__item__latency--red";
     }
+    const isConnectionNode = ["vpn", "awg", "warp"].includes(section.action || "");
+    const connectionStatusText = outbound.latency > 0 ? _("Connected") : _("Not tested");
     const canCopyLink = Boolean(outbound.canCopyLink) || isCopyableProxyLink(outbound.link);
     const selectorSwitching = Boolean(selectorSwitchingTag);
     const outboundSwitching = selectorSwitchingTag === outbound.code;
@@ -2075,7 +2077,7 @@ function renderDefaultState({
             E(
               "div",
               { class: getLatencyClass() },
-              outbound.latency ? `${outbound.latency}ms` : "N/A"
+              isConnectionNode ? connectionStatusText : outbound.latency ? `${outbound.latency}ms` : "N/A"
             )
           ]
         )
@@ -3308,7 +3310,7 @@ function getJsonOutbounds(section) {
 }
 function isConnectionAction(action) {
   return Boolean(
-    action && ["connection", "proxy", "outbound", "vpn"].includes(action)
+    action && ["connection", "proxy", "outbound", "vpn", "awg", "warp"].includes(action)
   );
 }
 function hasSubscriptionSources(section) {
@@ -4034,7 +4036,7 @@ async function getDashboardSections(options = {}) {
           outbounds
         };
       }
-      if (sectionAction === "vpn") {
+      if (sectionAction === "vpn" || sectionAction === "awg" || sectionAction === "warp") {
         const outboundTag = getOutboundTagBySection(sectionName);
         const outbound = proxies.find((proxy) => proxy.code === outboundTag);
         return {
@@ -4047,7 +4049,7 @@ async function getDashboardSections(options = {}) {
           outbounds: [
             {
               code: outbound?.code || sectionName,
-              displayName: section.interface || outbound?.value?.name || "",
+              displayName: section.interface || outbound?.value?.name || (sectionAction === "awg" ? "AmneziaWG" : sectionAction.toUpperCase()),
               latency: outbound?.value?.history?.[0]?.delay || 0,
               type: outbound?.value?.type || "",
               selected: true,
