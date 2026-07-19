@@ -263,6 +263,8 @@ function renderDefaultState({
   subscriptionUpdating,
   selectorSwitchingTag,
 }: IRenderSectionsProps) {
+  const isConnectionNode = ['vpn', 'awg', 'warp'].includes(section.action || '');
+
   function testLatency() {
     if (section.withTagSelect) {
       return onTestLatency(
@@ -294,7 +296,6 @@ function renderDefaultState({
       return 'tachyon_dashboard-page__outbound-grid__item__latency--red';
     }
 
-    const isConnectionNode = ['vpn', 'awg', 'warp'].includes(section.action || '');
     const connectionStatusText = outbound.latency > 0 ? _('Connected') : _('Not tested');
 
     const canCopyLink =
@@ -504,7 +505,7 @@ function renderDefaultState({
                     {
                       class: 'dashboard-sections-grid-item-test-latency__label',
                     },
-                    _('Test latency'),
+                    isConnectionNode ? _('Test connection') : _('Test latency'),
                   ),
             ),
           ],
