@@ -79,6 +79,8 @@ const followedLatencyJobs = new Set<string>();
 const handledSubscriptionJobs = new Set<string>();
 const handledLatencyJobs = new Set<string>();
 
+const customProxyLatencies = new Map<string, number>();
+
 if (typeof window !== 'undefined') {
   window.addEventListener('pagehide', () => {
     pageUnloading = true;
@@ -738,28 +740,42 @@ async function handleTestLatency(
   let completed = false;
 
   try {
-    const startResponse = await TachyonShellMethods.latencyTestStart(
-      latencyType,
-      sectionName,
-      tag,
-      timeout,
-    );
-
-    if (!startResponse.success) {
-      throw new Error(startResponse.error);
-    }
-
-    jobId = startResponse.data.job_id;
-    if (followedLatencyJobs.has(jobId)) {
+    if (latencyType === 'proxy') {
+      // Test proxy latency immediately
+      const parsedTag = tag.startsWith('[') ? JSON.parse(tag)[0] : tag;
+      const response = await TachyonShellMethods.getClashApiProxyLatency(parsedTag, timeout);
+      if (response.success && response.data) {
+        customProxyLatencies.set(tag, response.data.delay || -1);
+      } else {
+        customProxyLatencies.set(tag, -1);
+      }
       completed = true;
-      return;
-    }
+      void fetchDashboardSections({ force: true });
+    } else {
+      const startResponse = await TachyonShellMethods.latencyTestStart(
+        latencyType,
+        sectionName,
+        tag,
+        timeout,
+      );
 
-    followedLatencyJobs.add(jobId);
-    ownsJobFollow = true;
-    await TachyonShellMethods.waitLatencyTestJob(jobId);
-    await completeLatencyTestJob(jobId, sectionName);
-    completed = true;
+      if (!startResponse.success) {
+        setLatencyFetching(sectionName, false);
+        return;
+      }
+
+      jobId = startResponse.data.job_id;
+      if (!jobId) {
+        setLatencyFetching(sectionName, false);
+        return;
+      }
+
+      followedLatencyJobs.add(jobId);
+      ownsJobFollow = true;
+      await TachyonShellMethods.waitLatencyTestJob(jobId);
+      await completeLatencyTestJob(jobId, sectionName);
+      completed = true;
+    }
   } catch (error) {
     logger.error('[DASHBOARD]', 'handleTestLatency: failed', error);
   } finally {
@@ -1401,6 +1417,16 @@ async function renderSectionsWidget() {
     return;
   }
 
+  const sectionsWithCustomLatencies = sectionsWidget.data.map((section) => ({
+    ...section,
+    outbounds: section.outbounds.map((outbound) => ({
+      ...outbound,
+      latency: customProxyLatencies.has(outbound.code)
+        ? customProxyLatencies.get(outbound.code)!
+        : outbound.latency,
+    })),
+  }));
+
   if (sectionsWidget.loading || sectionsWidget.failed) {
     const renderedWidget = renderSections({
       loading: sectionsWidget.loading,
@@ -1431,7 +1457,7 @@ async function renderSectionsWidget() {
     });
   }
 
-  const renderedWidgets = sectionsWidget.data.map((section) =>
+  const renderedWidgets = sectionsWithCustomLatencies.map((section) =>
     renderSections({
       loading: sectionsWidget.loading,
       failed: sectionsWidget.failed,
