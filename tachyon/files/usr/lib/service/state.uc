@@ -1400,7 +1400,7 @@ function sing_box_signature_body(settings, sections, servers, mwan3_active) {
     body = signature_add_value(body, "settings.disable_quic", bool_option_value(settings, "disable_quic", false));
     if (sing_box_signature_has_remote_ruleset_sources(sections))
         body = signature_add_value(body, "settings.update_interval", settings_update_interval(settings));
-    body = signature_add_value(body, "settings.cache_path", option(settings, "cache_path", "/tmp/sing-box/cache.db"));
+    body = signature_add_value(body, "settings.cache_path", option(settings, "cache_path", "/etc/sing-box/cache.db"));
     body = signature_add_value(body, "settings.config_path", option(settings, "config_path", ""));
     body = signature_add_value(body, "settings.log_level", option(settings, "log_level", "warn"));
     body = signature_add_value(body, "settings.service_listen_address", option(settings, "service_listen_address", ""));

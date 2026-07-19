@@ -880,12 +880,9 @@ function createSettingsContent(section, capabilities) {
       "Select or enter path for sing-box cache file. Change this ONLY if you know what you are doing",
     ),
   );
-  o.value("/tmp/sing-box/cache.db", "RAM (/tmp/sing-box/cache.db)");
-  o.value(
-    "/usr/share/sing-box/cache.db",
-    "Flash (/usr/share/sing-box/cache.db)",
-  );
-  o.default = "/tmp/sing-box/cache.db";
+  o.value("/etc/sing-box/cache.db", _("Persistent (/etc/sing-box/cache.db)"));
+  o.value("/tmp/sing-box/cache.db", _("RAM — lost on reboot (/tmp/sing-box/cache.db)"));
+  o.default = "/etc/sing-box/cache.db";
   o.rmempty = false;
   o.validate = function (section_id, value) {
     if (!value) {
