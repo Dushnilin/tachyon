@@ -1,3 +1,4 @@
+import { svgEl } from '../../../../helpers';
 import { prettyBytes } from '../../../../helpers/prettyBytes';
 
 export interface IConnection {
@@ -8,13 +9,32 @@ export interface IConnection {
   name?: string;
 }
 
-export function renderConnections(connections: IConnection[]) {
+export function renderConnections(connections: IConnection[], isCollapsed: boolean, onToggleCollapse: () => void) {
   if (connections.length === 0) {
     return E('div', { class: 'tachyon_dashboard-page__outbound-section' }, [
-      E('div', { class: 'tachyon_dashboard-page__outbound-section__title-section' }, [
-        E('div', { class: 'tachyon_dashboard-page__outbound-section__title-section__title' }, _('Active Clients')),
+      E('div', { 
+        class: 'tachyon_dashboard-page__outbound-section__title-section',
+        style: 'cursor: pointer; user-select: none;',
+        click: onToggleCollapse
+      }, [
+        E('div', { class: 'tachyon_dashboard-page__outbound-section__title-section__title', style: 'display: flex; align-items: center; gap: 8px;' }, [
+          svgEl('svg', {
+            width: '16',
+            height: '16',
+            viewBox: '0 0 24 24',
+            fill: 'none',
+            stroke: 'currentColor',
+            'stroke-width': '2',
+            'stroke-linecap': 'round',
+            'stroke-linejoin': 'round',
+            style: `transition: transform 0.2s; transform: rotate(${isCollapsed ? '-90deg' : '0deg'})`
+          }, [
+            svgEl('polyline', { points: '6 9 12 15 18 9' })
+          ]),
+          _('Active Clients')
+        ]),
       ]),
-      E('div', { class: 'tachyon_dashboard-page__outbound-section centered', style: 'height: 60px;' }, _('No active clients')),
+      isCollapsed ? '' : E('div', { class: 'tachyon_dashboard-page__outbound-section centered', style: 'height: 60px;' }, _('No active clients')),
     ]);
   }
 
@@ -29,9 +49,28 @@ export function renderConnections(connections: IConnection[]) {
   });
 
   return E('div', { class: 'tachyon_dashboard-page__outbound-section' }, [
-    E('div', { class: 'tachyon_dashboard-page__outbound-section__title-section' }, [
-      E('div', { class: 'tachyon_dashboard-page__outbound-section__title-section__title' }, _('Active Clients')),
+    E('div', { 
+      class: 'tachyon_dashboard-page__outbound-section__title-section',
+      style: 'cursor: pointer; user-select: none;',
+      click: onToggleCollapse
+    }, [
+      E('div', { class: 'tachyon_dashboard-page__outbound-section__title-section__title', style: 'display: flex; align-items: center; gap: 8px;' }, [
+        svgEl('svg', {
+          width: '16',
+          height: '16',
+          viewBox: '0 0 24 24',
+          fill: 'none',
+          stroke: 'currentColor',
+          'stroke-width': '2',
+          'stroke-linecap': 'round',
+          'stroke-linejoin': 'round',
+          style: `transition: transform 0.2s; transform: rotate(${isCollapsed ? '-90deg' : '0deg'})`
+        }, [
+          svgEl('polyline', { points: '6 9 12 15 18 9' })
+        ]),
+        _('Active Clients')
+      ]),
     ]),
-    E('div', { class: 'tachyon_dashboard-page__outbound-grid', style: 'padding: 12px; display: block;' }, rows),
+    isCollapsed ? '' : E('div', { class: 'tachyon_dashboard-page__outbound-grid', style: 'padding: 12px; display: block;' }, rows),
   ]);
 }

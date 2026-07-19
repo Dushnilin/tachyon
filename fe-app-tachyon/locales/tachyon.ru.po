@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-07-19 21:24+0300\n"
-"PO-Revision-Date: 2026-07-19 21:24+0300\n"
+"POT-Creation-Date: 2026-07-19 21:37+0300\n"
+"PO-Revision-Date: 2026-07-19 21:37+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -507,7 +507,7 @@ msgid "Currently unavailable"
 msgstr "Временно недоступно"
 
 msgid "Custom DNS Records (Hosts)"
-msgstr ""
+msgstr "Пользовательские записи DNS (Hosts)"
 
 msgid "Custom outbound configurations in JSON format"
 msgstr "Пользовательские конфигурации outbound в формате JSON"
@@ -1392,7 +1392,7 @@ msgid "Main DNS server. If multiple servers are selected, a timeout switches to 
 msgstr "Основной DNS-сервер. Если выбрать несколько, то при таймауте произойдёт переключение на резервный."
 
 msgid "Map domains to specific IP addresses (A/AAAA). Format: <code>example.com 192.168.1.100</code>"
-msgstr ""
+msgstr "Сопоставление доменов с IP-адресами (A/AAAA). Формат: <code>example.com 192.168.1.100</code>"
 
 msgid "MASQUE Access Token"
 msgstr "Токен доступа MASQUE"

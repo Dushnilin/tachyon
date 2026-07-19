@@ -1969,10 +1969,12 @@ function renderDefaultState({
         if (latencyFetching) {
           return "tachyon_dashboard-page__outbound-grid__item__latency--yellow";
         }
-        if (outbound.latency === -1) {
+        if (outbound.latency === -1 || !outbound.runtimeAvailable) {
           return "tachyon_dashboard-page__outbound-grid__item__latency--red";
         }
-        return outbound.runtimeAvailable ? "tachyon_dashboard-page__outbound-grid__item__latency--green" : "tachyon_dashboard-page__outbound-grid__item__latency--red";
+        if (!outbound.latency) {
+          return "tachyon_dashboard-page__outbound-grid__item__latency--green";
+        }
       }
       if (!outbound.latency) {
         return "tachyon_dashboard-page__outbound-grid__item__latency--empty";
@@ -1985,7 +1987,7 @@ function renderDefaultState({
       }
       return "tachyon_dashboard-page__outbound-grid__item__latency--red";
     }
-    const connectionStatusText = latencyFetching ? _("Checking...") : outbound.latency === -1 || !outbound.runtimeAvailable ? _("Not connected") : outbound.latency && outbound.latency > 0 ? `${outbound.latency}ms` : _("Connected");
+    const connectionStatusText = latencyFetching ? `\u25CF ${_("Checking...")}` : outbound.latency === -1 || !outbound.runtimeAvailable ? `\u25CF N/A` : outbound.latency && outbound.latency > 0 ? `\u25CF ${outbound.latency}ms` : `\u25CF N/A`;
     const canCopyLink = Boolean(outbound.canCopyLink) || isCopyableProxyLink(outbound.link);
     const selectorSwitching = Boolean(selectorSwitchingTag);
     const outboundSwitching = selectorSwitchingTag === outbound.code;
@@ -2293,13 +2295,32 @@ function renderWidget(props) {
 }
 
 // src/tachyon/tabs/dashboard/partials/renderConnections.ts
-function renderConnections(connections) {
+function renderConnections(connections, isCollapsed, onToggleCollapse) {
   if (connections.length === 0) {
     return E("div", { class: "tachyon_dashboard-page__outbound-section" }, [
-      E("div", { class: "tachyon_dashboard-page__outbound-section__title-section" }, [
-        E("div", { class: "tachyon_dashboard-page__outbound-section__title-section__title" }, _("Active Clients"))
+      E("div", {
+        class: "tachyon_dashboard-page__outbound-section__title-section",
+        style: "cursor: pointer; user-select: none;",
+        click: onToggleCollapse
+      }, [
+        E("div", { class: "tachyon_dashboard-page__outbound-section__title-section__title", style: "display: flex; align-items: center; gap: 8px;" }, [
+          svgEl("svg", {
+            width: "16",
+            height: "16",
+            viewBox: "0 0 24 24",
+            fill: "none",
+            stroke: "currentColor",
+            "stroke-width": "2",
+            "stroke-linecap": "round",
+            "stroke-linejoin": "round",
+            style: `transition: transform 0.2s; transform: rotate(${isCollapsed ? "-90deg" : "0deg"})`
+          }, [
+            svgEl("polyline", { points: "6 9 12 15 18 9" })
+          ]),
+          _("Active Clients")
+        ])
       ]),
-      E("div", { class: "tachyon_dashboard-page__outbound-section centered", style: "height: 60px;" }, _("No active clients"))
+      isCollapsed ? "" : E("div", { class: "tachyon_dashboard-page__outbound-section centered", style: "height: 60px;" }, _("No active clients"))
     ]);
   }
   const rows = connections.map((c) => {
@@ -2312,10 +2333,29 @@ function renderConnections(connections) {
     ]);
   });
   return E("div", { class: "tachyon_dashboard-page__outbound-section" }, [
-    E("div", { class: "tachyon_dashboard-page__outbound-section__title-section" }, [
-      E("div", { class: "tachyon_dashboard-page__outbound-section__title-section__title" }, _("Active Clients"))
+    E("div", {
+      class: "tachyon_dashboard-page__outbound-section__title-section",
+      style: "cursor: pointer; user-select: none;",
+      click: onToggleCollapse
+    }, [
+      E("div", { class: "tachyon_dashboard-page__outbound-section__title-section__title", style: "display: flex; align-items: center; gap: 8px;" }, [
+        svgEl("svg", {
+          width: "16",
+          height: "16",
+          viewBox: "0 0 24 24",
+          fill: "none",
+          stroke: "currentColor",
+          "stroke-width": "2",
+          "stroke-linecap": "round",
+          "stroke-linejoin": "round",
+          style: `transition: transform 0.2s; transform: rotate(${isCollapsed ? "-90deg" : "0deg"})`
+        }, [
+          svgEl("polyline", { points: "6 9 12 15 18 9" })
+        ]),
+        _("Active Clients")
+      ])
     ]),
-    E("div", { class: "tachyon_dashboard-page__outbound-grid", style: "padding: 12px; display: block;" }, rows)
+    isCollapsed ? "" : E("div", { class: "tachyon_dashboard-page__outbound-grid", style: "padding: 12px; display: block;" }, rows)
   ]);
 }
 
@@ -5688,17 +5728,17 @@ function getServiceAvailability({
 }
 
 // src/tachyon/tabs/dashboard/initController.ts
-var DASHBOARD_COLLAPSED_SECTIONS_KEY = "tachyon_dashboard_collapsed_sections";
-var collapsedSections = new Set(
-  JSON.parse(localStorage.getItem(DASHBOARD_COLLAPSED_SECTIONS_KEY) || "[]")
+var DASHBOARD_EXPANDED_SECTIONS_KEY = "tachyon_dashboard_expanded_sections";
+var expandedSections = new Set(
+  JSON.parse(localStorage.getItem(DASHBOARD_EXPANDED_SECTIONS_KEY) || "[]")
 );
-function toggleSectionCollapsed(sectionCode) {
-  if (collapsedSections.has(sectionCode)) {
-    collapsedSections.delete(sectionCode);
+function toggleSectionExpanded(sectionCode) {
+  if (expandedSections.has(sectionCode)) {
+    expandedSections.delete(sectionCode);
   } else {
-    collapsedSections.add(sectionCode);
+    expandedSections.add(sectionCode);
   }
-  localStorage.setItem(DASHBOARD_COLLAPSED_SECTIONS_KEY, JSON.stringify(Array.from(collapsedSections)));
+  localStorage.setItem(DASHBOARD_EXPANDED_SECTIONS_KEY, JSON.stringify(Array.from(expandedSections)));
   void renderSectionsWidget();
 }
 var SECTIONS_REFRESH_INTERVAL_MS = 1e4;
@@ -5721,6 +5761,7 @@ var followedSubscriptionJobs = /* @__PURE__ */ new Set();
 var followedLatencyJobs = /* @__PURE__ */ new Set();
 var handledSubscriptionJobs = /* @__PURE__ */ new Set();
 var handledLatencyJobs = /* @__PURE__ */ new Set();
+var customProxyLatencies = /* @__PURE__ */ new Map();
 if (typeof window !== "undefined") {
   window.addEventListener("pagehide", () => {
     pageUnloading = true;
@@ -6205,25 +6246,39 @@ async function handleTestLatency(latencyType, sectionName, tag, timeout) {
   let ownsJobFollow = false;
   let completed = false;
   try {
-    const startResponse = await TachyonShellMethods.latencyTestStart(
-      latencyType,
-      sectionName,
-      tag,
-      timeout
-    );
-    if (!startResponse.success) {
-      throw new Error(startResponse.error);
-    }
-    jobId = startResponse.data.job_id;
-    if (followedLatencyJobs.has(jobId)) {
+    if (latencyType === "proxy") {
+      const parsedTag = tag.startsWith("[") ? JSON.parse(tag)[0] : tag;
+      const response = await TachyonShellMethods.getClashApiProxyLatency(parsedTag, timeout);
+      if (response.success && response.data) {
+        customProxyLatencies.set(tag, response.data.delay || -1);
+      } else {
+        customProxyLatencies.set(tag, -1);
+      }
+      setLatencyFetching(sectionName, false);
       completed = true;
-      return;
+      void fetchDashboardSections({ force: true });
+    } else {
+      const startResponse = await TachyonShellMethods.latencyTestStart(
+        latencyType,
+        sectionName,
+        tag,
+        timeout
+      );
+      if (!startResponse.success) {
+        setLatencyFetching(sectionName, false);
+        return;
+      }
+      jobId = startResponse.data.job_id;
+      if (!jobId) {
+        setLatencyFetching(sectionName, false);
+        return;
+      }
+      followedLatencyJobs.add(jobId);
+      ownsJobFollow = true;
+      await TachyonShellMethods.waitLatencyTestJob(jobId);
+      await completeLatencyTestJob(jobId, sectionName);
+      completed = true;
     }
-    followedLatencyJobs.add(jobId);
-    ownsJobFollow = true;
-    await TachyonShellMethods.waitLatencyTestJob(jobId);
-    await completeLatencyTestJob(jobId, sectionName);
-    completed = true;
   } catch (error) {
     logger.error("[DASHBOARD]", "handleTestLatency: failed", error);
   } finally {
@@ -6717,6 +6772,13 @@ async function renderSectionsWidget() {
   if (!container) {
     return;
   }
+  const sectionsWithCustomLatencies = sectionsWidget.data.map((section) => ({
+    ...section,
+    outbounds: section.outbounds.map((outbound) => ({
+      ...outbound,
+      latency: customProxyLatencies.has(outbound.code) ? customProxyLatencies.get(outbound.code) : outbound.latency
+    }))
+  }));
   if (sectionsWidget.loading || sectionsWidget.failed) {
     const renderedWidget = renderSections({
       loading: sectionsWidget.loading,
@@ -6752,13 +6814,13 @@ async function renderSectionsWidget() {
       container.replaceChildren(renderedWidget);
     });
   }
-  const renderedWidgets = sectionsWidget.data.map(
+  const renderedWidgets = sectionsWithCustomLatencies.map(
     (section) => renderSections({
       loading: sectionsWidget.loading,
       failed: sectionsWidget.failed,
       section,
-      isCollapsed: collapsedSections.has(section.code),
-      onToggleCollapse: () => toggleSectionCollapsed(section.code),
+      isCollapsed: !expandedSections.has(section.code),
+      onToggleCollapse: () => toggleSectionExpanded(section.code),
       latencyFetching: Boolean(
         sectionsWidget.latencyFetchingSections[section.sectionName]
       ),
@@ -6866,11 +6928,11 @@ async function fetchConnections() {
 function renderConnectionsWidget() {
   const container = document.getElementById("dashboard-connections-grid");
   if (!container) return;
-  if (connectionsFailed && currentConnections.length === 0) {
-    container.innerHTML = "";
-    return;
-  }
-  container.replaceChildren(renderConnections(currentConnections));
+  container.replaceChildren(renderConnections(
+    currentConnections,
+    !expandedSections.has("active_clients"),
+    () => toggleSectionExpanded("active_clients")
+  ));
 }
 async function renderBandwidthWidget() {
   renderStoreWidget(

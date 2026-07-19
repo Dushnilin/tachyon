@@ -31,18 +31,18 @@ import {
 import { fetchServicesInfo } from '../../fetchers/fetchServicesInfo';
 import { fetchHostnames } from '../../fetchers/fetchHostnames';
 
-const DASHBOARD_COLLAPSED_SECTIONS_KEY = 'tachyon_dashboard_collapsed_sections';
-const collapsedSections = new Set<string>(
-  JSON.parse(localStorage.getItem(DASHBOARD_COLLAPSED_SECTIONS_KEY) || '[]')
+const DASHBOARD_EXPANDED_SECTIONS_KEY = 'tachyon_dashboard_expanded_sections';
+const expandedSections = new Set<string>(
+  JSON.parse(localStorage.getItem(DASHBOARD_EXPANDED_SECTIONS_KEY) || '[]')
 );
 
-function toggleSectionCollapsed(sectionCode: string) {
-  if (collapsedSections.has(sectionCode)) {
-    collapsedSections.delete(sectionCode);
+function toggleSectionExpanded(sectionCode: string) {
+  if (expandedSections.has(sectionCode)) {
+    expandedSections.delete(sectionCode);
   } else {
-    collapsedSections.add(sectionCode);
+    expandedSections.add(sectionCode);
   }
-  localStorage.setItem(DASHBOARD_COLLAPSED_SECTIONS_KEY, JSON.stringify(Array.from(collapsedSections)));
+  localStorage.setItem(DASHBOARD_EXPANDED_SECTIONS_KEY, JSON.stringify(Array.from(expandedSections)));
   void renderSectionsWidget();
 }
 import { getClashApiSecret } from '../../methods/custom/getClashApiSecret';
@@ -744,13 +744,14 @@ async function handleTestLatency(
       // Test proxy latency immediately
       const parsedTag = tag.startsWith('[') ? JSON.parse(tag)[0] : tag;
       const response = await TachyonShellMethods.getClashApiProxyLatency(parsedTag, timeout);
-      if (response.success && response.data) {
-        customProxyLatencies.set(tag, response.data.delay || -1);
-      } else {
-        customProxyLatencies.set(tag, -1);
-      }
-      completed = true;
-      void fetchDashboardSections({ force: true });
+        if (response.success && response.data) {
+          customProxyLatencies.set(tag, response.data.delay || -1);
+        } else {
+          customProxyLatencies.set(tag, -1);
+        }
+        setLatencyFetching(sectionName, false);
+        completed = true;
+        void fetchDashboardSections({ force: true });
     } else {
       const startResponse = await TachyonShellMethods.latencyTestStart(
         latencyType,
@@ -1462,8 +1463,8 @@ async function renderSectionsWidget() {
       loading: sectionsWidget.loading,
       failed: sectionsWidget.failed,
       section,
-      isCollapsed: collapsedSections.has(section.code),
-      onToggleCollapse: () => toggleSectionCollapsed(section.code),
+      isCollapsed: !expandedSections.has(section.code),
+      onToggleCollapse: () => toggleSectionExpanded(section.code),
       latencyFetching: Boolean(
         sectionsWidget.latencyFetchingSections[section.sectionName],
       ),
@@ -1595,11 +1596,12 @@ async function fetchConnections() {
 function renderConnectionsWidget() {
   const container = document.getElementById('dashboard-connections-grid');
   if (!container) return;
-  if (connectionsFailed && currentConnections.length === 0) {
-    container.innerHTML = '';
-    return;
-  }
-  container.replaceChildren(renderConnections(currentConnections));
+  
+  container.replaceChildren(renderConnections(
+    currentConnections,
+    !expandedSections.has('active_clients'),
+    () => toggleSectionExpanded('active_clients')
+  ));
 }
 
 async function renderBandwidthWidget() {

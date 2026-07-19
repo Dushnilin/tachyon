@@ -290,12 +290,13 @@ function renderDefaultState({
         if (latencyFetching) {
           return 'tachyon_dashboard-page__outbound-grid__item__latency--yellow';
         }
-        if (outbound.latency === -1) {
+        if (outbound.latency === -1 || !outbound.runtimeAvailable) {
           return 'tachyon_dashboard-page__outbound-grid__item__latency--red';
         }
-        return outbound.runtimeAvailable
-          ? 'tachyon_dashboard-page__outbound-grid__item__latency--green'
-          : 'tachyon_dashboard-page__outbound-grid__item__latency--red';
+        if (!outbound.latency) {
+          return 'tachyon_dashboard-page__outbound-grid__item__latency--green';
+        }
+        // Fall through to normal latency color if we have a ping
       }
 
       if (!outbound.latency) {
@@ -314,10 +315,10 @@ function renderDefaultState({
     }
 
     const connectionStatusText = latencyFetching
-      ? _('Checking...')
+      ? `● ${_('Checking...')}`
       : outbound.latency === -1 || !outbound.runtimeAvailable
-      ? _('Not connected')
-      : (outbound.latency && outbound.latency > 0 ? `${outbound.latency}ms` : _('Connected'));
+      ? `● N/A`
+      : (outbound.latency && outbound.latency > 0 ? `● ${outbound.latency}ms` : `● N/A`);
 
     const canCopyLink =
       Boolean(outbound.canCopyLink) || isCopyableProxyLink(outbound.link);
