@@ -12,29 +12,6 @@ export const LATENCY_TEST_URL_OPTIONS = [
   'https://connectivity-check.ubuntu.com',
 ];
 
-export const REGIONAL_OPTIONS = [
-  'russia_inside',
-  'russia_outside',
-  'ukraine_inside',
-];
-
-export const ALLOWED_WITH_RUSSIA_INSIDE = [
-  'russia_inside',
-  'meta',
-  'twitter',
-  'discord',
-  'telegram',
-  'cloudflare',
-  'google_ai',
-  'google_play',
-  'hetzner',
-  'ovh',
-  'hodca',
-  'roblox',
-  'digitalocean',
-  'cloudfront',
-];
-
 export const DOMAIN_LIST_OPTIONS = {
   russia_inside: 'Russia inside',
   russia_outside: 'Russia outside',

@@ -8545,55 +8545,6 @@ function createSectionContent(section) {
       let newValues = [...values];
       const notifications = [];
 
-      const selectedRegionalOptions = main.REGIONAL_OPTIONS.filter((opt) =>
-        newValues.includes(opt),
-      );
-
-      if (selectedRegionalOptions.length > 1) {
-        const lastSelected =
-          selectedRegionalOptions[selectedRegionalOptions.length - 1];
-        const removedRegions = selectedRegionalOptions.slice(0, -1);
-        newValues = newValues.filter(
-          (v) => v === lastSelected || !main.REGIONAL_OPTIONS.includes(v),
-        );
-        notifications.push(
-          E("p", {}, [
-            E("strong", {}, _("Regional options cannot be used together")),
-            E("br"),
-            _(
-              "Warning: %s cannot be used together with %s. Previous selections have been removed.",
-            ).format(removedRegions.join(", "), lastSelected),
-          ]),
-        );
-      }
-
-      if (newValues.includes("russia_inside")) {
-        const removedServices = newValues.filter(
-          (v) => !main.ALLOWED_WITH_RUSSIA_INSIDE.includes(v),
-        );
-        if (removedServices.length > 0) {
-          newValues = newValues.filter((v) =>
-            main.ALLOWED_WITH_RUSSIA_INSIDE.includes(v),
-          );
-          notifications.push(
-            E("p", { class: "alert-message warning" }, [
-              E("strong", {}, _("Russia inside restrictions")),
-              E("br"),
-              _(
-                "Warning: Russia inside can only be used with %s. %s already in Russia inside and have been removed from selection.",
-              ).format(
-                main.ALLOWED_WITH_RUSSIA_INSIDE.map(
-                  (key) => main.DOMAIN_LIST_OPTIONS[key],
-                )
-                  .filter((label) => label !== "Russia inside")
-                  .join(", "),
-                removedServices.join(", "),
-              ),
-            ]),
-          );
-        }
-      }
-
       if (
         JSON.stringify(newValues.slice().sort()) !==
         JSON.stringify(values.slice().sort())

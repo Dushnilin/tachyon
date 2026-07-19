@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 'require baseclass';
 'require fs';
 'require uci';
@@ -30,7 +30,6 @@ export { DiagnosticTab } from './tachyon/tabs/diagnostic';
 export { MonitoringTab } from './tachyon/tabs/monitoring';
 export { UpdatesTab } from './tachyon/tabs/updates';
 export {
-  ALLOWED_WITH_RUSSIA_INSIDE,
   BOOTSTRAP_DNS_SERVER_OPTIONS,
   DEFAULT_LATENCY_TEST_URL,
   DNS_SERVER_OPTIONS,
@@ -38,5 +37,4 @@ export {
   LATENCY_TEST_URL_OPTIONS,
   TACHYON_ACTION_PROVIDERS_AVAILABILITY_EVENT,
   TACHYON_UCI_PACKAGE,
-  REGIONAL_OPTIONS,
 } from './constants';
