@@ -2140,7 +2140,7 @@ function renderDefaultState({
   }
   if (isConnectionNode) {
     return E("div", { class: "tachyon_dashboard-page__outbound-section", style: "border: none; padding: 0;" }, [
-      E("div", { class: "tachyon_dashboard-page__outbound-grid", style: "padding: 0;" }, [
+      E("div", { style: "display: flex; flex-direction: column; gap: 8px; padding: 0;" }, [
         ...section.outbounds.map((outbound) => renderOutbound(outbound))
       ])
     ]);
