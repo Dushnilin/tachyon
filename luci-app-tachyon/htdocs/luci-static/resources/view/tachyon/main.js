@@ -896,6 +896,9 @@ var Logger = class {
     if (!this.levels.includes(level)) level = "info";
     const message = this.format(level, ...args);
     this.logs.push(message);
+    if (this.logs.length > 2e3) {
+      this.logs.shift();
+    }
     switch (level) {
       case "error":
         console.error(message);
@@ -907,7 +910,9 @@ var Logger = class {
         console.info(message);
         break;
       default:
-        console.log(message);
+        if (typeof localStorage !== "undefined" && localStorage.getItem("tachyon_debug") === "true") {
+          console.log(message);
+        }
     }
   }
   debug(...args) {

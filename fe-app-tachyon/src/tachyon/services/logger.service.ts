@@ -14,6 +14,9 @@ class Logger {
     if (!this.levels.includes(level)) level = 'info';
     const message = this.format(level, ...args);
     this.logs.push(message);
+    if (this.logs.length > 2000) {
+      this.logs.shift(); // Prevent memory leak from infinite polling
+    }
 
     switch (level) {
       case 'error':
@@ -26,7 +29,10 @@ class Logger {
         console.info(message);
         break;
       default:
-        console.log(message);
+        // Hide spammy debug logs from console unless explicitly enabled
+        if (typeof localStorage !== 'undefined' && localStorage.getItem('tachyon_debug') === 'true') {
+          console.log(message);
+        }
     }
   }
 
