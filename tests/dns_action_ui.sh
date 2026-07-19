@@ -42,8 +42,8 @@ if (source.slice(server, requiredIndex('"dns_detour_enabled"', server)).includes
 for (const expected of [
   '_("DNS server used by the resolver")',
   '_("DNS requests through section")',
-  '"Add URLs or local paths to .srs / .json lists. Only domain rules are supported."',
-  '"Add URLs or local paths to .lst lists. Only domain rules are supported."',
+  '"Add URLs or local paths to .srs / .json lists. Subnets are ignored by default."',
+  '"Add URLs or local paths to .lst lists containing domains. IP entries are ignored."',
 ]) {
   requiredIndex(expected);
 }
