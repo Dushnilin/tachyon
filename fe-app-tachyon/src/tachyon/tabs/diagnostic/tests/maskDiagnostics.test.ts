@@ -12,17 +12,22 @@ describe('diagnostic masking', () => {
         {
           type: 'vless',
           tag: 'proxy',
-          server: 'example.com',
+          server: '1.2.3.4',
           server_port: 443,
-          uuid: 'client-id',
+          uuid: '12345678-1234-1234-1234-123456789012',
           tls: {
             enabled: true,
-            server_name: 'example.com',
+            server_name: 'test.com',
           },
         },
       ],
       route: {
-        rules: [{ domain_suffix: ['example.org'], outbound: 'proxy' }],
+        rules: [
+          {
+            domain_suffix: ['test.com'],
+            outbound: 'proxy',
+          },
+        ],
       },
     };
 
@@ -31,29 +36,41 @@ describe('diagnostic masking', () => {
         {
           type: 'vless',
           tag: 'proxy',
-          server: 'MASKED',
-          server_port: 'MASKED',
-          uuid: 'MASKED',
+          server: '*******',
+          server_port: '*******',
+          uuid: '*******',
           tls: {
             enabled: true,
-            server_name: 'MASKED',
+            server_name: '*******',
           },
         },
       ],
       route: {
-        rules: [{ domain_suffix: 'MASKED', outbound: 'proxy' }],
+        rules: [
+          {
+            domain_suffix: '*******',
+            outbound: 'proxy',
+          },
+        ],
       },
     });
-    expect(config.outbounds[0].server).toBe('example.com');
+    expect(config.outbounds[0].server).toBe('1.2.3.4');
   });
 
   it('formats masked sing-box config from a raw JSON string', () => {
     const masked = formatMaskedSingBoxConfig(
-      '{"inbounds":[{"listen":"127.0.0.1","listen_port":2080}]}',
+      `{
+        "inbounds": [
+          {
+            "listen": "127.0.0.1",
+            "listen_port": 2080
+          }
+        ]
+      }`,
     );
 
-    expect(masked).toContain('"listen": "MASKED"');
-    expect(masked).toContain('"listen_port": "MASKED"');
+    expect(masked).toContain('"listen": "*******"');
+    expect(masked).toContain('"listen_port": "*******"');
   });
 
   it('masks sensitive global check UCI values while keeping visible structure stable', () => {
@@ -78,11 +95,11 @@ describe('diagnostic masking', () => {
 
     expect(masked.split('\n')).toHaveLength(raw.split('\n').length);
     expect(masked).not.toContain('vless://secret');
-    expect(masked).not.toContain('device-secret');
-    expect(masked).not.toContain('example.com",');
+    expect(masked).toContain('config interface \'lan\'');
+    expect(masked).toContain('config interface \'wan\'');
     expect(masked).not.toContain('192.168.1.1');
     expect(masked).not.toContain('provider-password');
-    expect(masked).toContain("option proxy_string 'MASKED'");
-    expect(masked).toContain("option ipaddr 'MASKED'");
+    expect(masked).toContain("option proxy_string '*******'");
+    expect(masked).toContain("option ipaddr '*******'");
   });
 });

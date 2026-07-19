@@ -18,6 +18,9 @@ globalThis.document = {
   querySelectorAll: () => [],
 } as any;
 
+(globalThis as any).rpc = { declare: vi.fn() };
+(globalThis as any).localStorage = { getItem: vi.fn(), setItem: vi.fn() };
+
 // Define mocks before importing
 vi.mock('../../../helpers', () => ({
   onMount: vi.fn().mockImplementation(() => Promise.resolve()),
