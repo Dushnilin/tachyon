@@ -7357,12 +7357,157 @@ function createSectionContent(section) {
       });
   };
 
+  // ── Load .conf button ──────────────────────────────────────────────────────
+  o = section.taboption(
+    "settings",
+    form.Button,
+    "_load_awg_conf",
+    _("Загрузить конфиг .conf"),
+    _("Импортировать настройки AmneziaWG из файла .conf")
+  );
+  o.modalonly = true;
+  o.depends("action", "awg");
+
+  o.renderWidget = function(section_id) {
+    // Parse INI-style .conf into { sectionName: { key: value } }
+    const parseConf = (text) => {
+      const out = {};
+      let cur = null;
+      for (const raw of text.split(/\r?\n/)) {
+        const line = raw.trim();
+        if (!line || line.startsWith("#")) continue;
+        const sm = line.match(/^\[(\w+)\]$/);
+        if (sm) { cur = sm[1].toLowerCase(); out[cur] = out[cur] || {}; continue; }
+        const kv = line.match(/^(\w+)\s*=\s*(.+)$/);
+        if (kv && cur) out[cur][kv[1]] = kv[2].trim();
+      }
+      return out;
+    };
+
+    // Add /32 or /128 prefix if missing; join with space
+    const normalizeAddr = (str) =>
+      str.split(",").map(s => s.trim()).filter(Boolean).map(a =>
+        a.includes("/") ? a : (a.includes(":") ? a + "/128" : a + "/32")
+      ).join(" ");
+
+    // Strip UCI binary literal format: <b 0xHEX> → HEX
+    const stripBin = (v) =>
+      typeof v === "string" ? v.replace(/^<b\s+0x/, "").replace(/>$/, "").trim() : "";
+
+    // Write value into a form widget and the UCI cache
+    const setVal = (opt, val) => {
+      if (val === undefined || val === null) return;
+      const str = String(val);
+      const el = document.getElementById(`widget.cbid.${UCI_PACKAGE}.${section_id}.${opt}`);
+      const w = el && (/^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName)
+        ? el
+        : el.querySelector("input:not([type='hidden']),select,textarea"));
+      if (w) {
+        w.value = str;
+        w.dispatchEvent(new Event("input",  { bubbles: true }));
+        w.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+      uci.set(UCI_PACKAGE, section_id, opt, str);
+    };
+
+    // Hidden file picker
+    const fileInput = E("input", { "type": "file", "accept": ".conf", "style": "display:none" });
+
+    const icon  = E("span", {}, ["📂"]);
+    const label = E("span", { "class": "twg-label" }, [_("Загрузить .conf")]);
+    const btn   = E("button", {
+      "class": "btn cbi-button cbi-button-neutral twg-btn",
+      "type": "button",
+      "style": "display:inline-flex;align-items:center;gap:8px;"
+    }, [icon, label]);
+
+    const setBtn = (state, text) => {
+      btn.className = "btn cbi-button cbi-button-neutral twg-btn" + (state ? " twg-" + state : "");
+      label.textContent = text || _("Загрузить .conf");
+    };
+
+    fileInput.addEventListener("change", () => {
+      const file = fileInput.files[0];
+      fileInput.value = "";
+      if (!file) return;
+
+      if (!file.name.endsWith(".conf")) {
+        ui.addNotification(_("Ошибка"), E("p", {}, _("Выберите файл с расширением .conf")), "danger");
+        return;
+      }
+
+      const reader = new FileReader();
+
+      reader.onload = (ev) => {
+        let cfg;
+        try {
+          cfg = parseConf(ev.target.result);
+        } catch (err) {
+          setBtn("error", _("Ошибка"));
+          setTimeout(() => setBtn("", null), 2500);
+          ui.addNotification(_("Ошибка"), E("p", {}, _("Не удалось разобрать файл: ") + err.message), "danger");
+          return;
+        }
+
+        const iface = cfg.interface || {};
+        const peer  = cfg.peer     || {};
+
+        // --- [Interface] ---
+        if (iface.Address)              setVal("awg_local_address",   normalizeAddr(iface.Address));
+        if (iface.PrivateKey)           setVal("awg_private_key",     iface.PrivateKey);
+        if (iface.Jc   !== undefined)   setVal("awg_jc",   iface.Jc);
+        if (iface.Jmin !== undefined)   setVal("awg_jmin", iface.Jmin);
+        if (iface.Jmax !== undefined)   setVal("awg_jmax", iface.Jmax);
+        if (iface.S1   !== undefined)   setVal("awg_s1",   iface.S1);
+        if (iface.S2   !== undefined)   setVal("awg_s2",   iface.S2);
+        if (iface.S3   !== undefined)   setVal("awg_s3",   iface.S3);
+        if (iface.S4   !== undefined)   setVal("awg_s4",   iface.S4);
+        if (iface.H1   !== undefined)   setVal("awg_h1",   iface.H1);
+        if (iface.H2   !== undefined)   setVal("awg_h2",   iface.H2);
+        if (iface.H3   !== undefined)   setVal("awg_h3",   iface.H3);
+        if (iface.H4   !== undefined)   setVal("awg_h4",   iface.H4);
+        if (iface.I1)                   setVal("awg_i1",   stripBin(iface.I1));
+        if (iface.I2)                   setVal("awg_i2",   stripBin(iface.I2));
+        if (iface.I3)                   setVal("awg_i3",   stripBin(iface.I3));
+        if (iface.I4)                   setVal("awg_i4",   stripBin(iface.I4));
+        if (iface.I5)                   setVal("awg_i5",   stripBin(iface.I5));
+
+        // --- [Peer] ---
+        if (peer.PublicKey)             setVal("awg_peer_public_key", peer.PublicKey);
+        if (peer.PresharedKey)          setVal("awg_preshared_key",   peer.PresharedKey);
+        if (peer.Endpoint) {
+          const i = peer.Endpoint.lastIndexOf(":");
+          if (i > 0) {
+            setVal("awg_server_address", peer.Endpoint.slice(0, i));
+            setVal("awg_server_port",    peer.Endpoint.slice(i + 1));
+          }
+        }
+
+        setBtn("success", _("Загружено!"));
+        setTimeout(() => setBtn("", null), 2000);
+        ui.addNotification(_("Готово"), E("p", {}, _("Конфиг AmneziaWG успешно загружен!")), "success");
+      };
+
+      reader.onerror = () => {
+        setBtn("error", _("Ошибка чтения"));
+        setTimeout(() => setBtn("", null), 2500);
+      };
+
+      reader.readAsText(file);
+    });
+
+    btn.addEventListener("click", () => fileInput.click());
+
+    return E("div", { "style": "display:contents" }, [fileInput, btn]);
+  };
+
   o = section.taboption(
     "settings",
     form.Value,
     "awg_local_address",
     _("Local Address"),
   );
+
   o.modalonly = true;
   o.rmempty = false;
   o.depends("action", "awg");

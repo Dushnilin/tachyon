@@ -2690,3 +2690,30 @@ msgstr "Не удалось разобрать конфиг WARP: "
 msgid "Error running generator: "
 msgstr "Ошибка при запуске генератора: "
 
+
+msgid "Загрузить конфиг .conf"
+msgstr "Загрузить конфиг .conf"
+
+msgid "Импортировать настройки AmneziaWG из файла .conf"
+msgstr "Импортировать настройки AmneziaWG из файла .conf"
+
+msgid "Загрузить .conf"
+msgstr "Загрузить .conf"
+
+msgid "Загружено!"
+msgstr "Загружено!"
+
+msgid "Выберите файл с расширением .conf"
+msgstr "Выберите файл с расширением .conf"
+
+msgid "Не удалось разобрать файл: "
+msgstr "Не удалось разобрать файл: "
+
+msgid "Ошибка чтения"
+msgstr "Ошибка чтения"
+
+msgid "Готово"
+msgstr "Готово"
+
+msgid "Конфиг AmneziaWG успешно загружен!"
+msgstr "Конфиг AmneziaWG успешно загружен!"
