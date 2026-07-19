@@ -118,6 +118,8 @@ export const styles = `
     border: 2px var(--background-color-low, lightgray) solid;
     border-radius: 4px;
     padding: 10px;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .tachyon_dashboard-page__outbound-section__title-section {

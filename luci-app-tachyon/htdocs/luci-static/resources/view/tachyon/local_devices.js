@@ -2,6 +2,7 @@
 "require baseclass";
 "require rpc";
 "require ui";
+"require uci";
 "require view.tachyon.main as main";
 
 const callHostHints = rpc.declare({
@@ -104,7 +105,7 @@ function buildRouterIpMap(networkInterfaces) {
   return routerIps;
 }
 
-function buildLocalDeviceChoices(hostHints, dhcpLeases, networkInterfaces) {
+function buildLocalDeviceChoices(hostHints, dhcpLeases, networkInterfaces, dhcpHosts) {
   const choices = {};
   const routerIps = buildRouterIpMap(networkInterfaces);
 
@@ -133,6 +134,14 @@ function buildLocalDeviceChoices(hostHints, dhcpLeases, networkInterfaces) {
       addLocalDeviceChoice(choices, lease.ipaddr, lease.hostname);
     });
   }
+  
+  if (Array.isArray(dhcpHosts)) {
+    dhcpHosts.forEach((host) => {
+      if (host && host.ip && main.validateIP(host.ip).valid) {
+        addLocalDeviceChoice(choices, host.ip, host.name || host.mac);
+      }
+    });
+  }
 
   Object.keys(routerIps).forEach((ip) => {
     delete choices[ip];
@@ -154,12 +163,14 @@ function loadLocalDeviceChoices() {
     callHostHints().catch(() => ({})),
     callDHCPLeases().catch(() => ({})),
     callNetworkInterfaceDump().catch(() => []),
+    uci.load("dhcp").then(() => uci.sections("dhcp", "host")).catch(() => []),
   ])
-    .then(([hostHints, dhcpLeases, networkInterfaces]) => {
+    .then(([hostHints, dhcpLeases, networkInterfaces, dhcpHosts]) => {
       localDeviceChoicesCache = buildLocalDeviceChoices(
         hostHints,
         dhcpLeases,
         networkInterfaces,
+        dhcpHosts
       );
       return localDeviceChoicesCache;
     })

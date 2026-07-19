@@ -170,25 +170,36 @@ function now_seconds() {
     return int(clock()[0]);
 }
 
-function choose_index(kind, state, current_index, timeout_seconds, recovery) {
+function choose_index(kind, state, current_index, timeout_seconds, recovery, strikes) {
     let values = kind == "main" ? state.main_servers : state.bootstrap_servers;
     if (length(values) <= 1)
         return { index: 0, reason: "single", alive: true };
 
+    let is_probe_ok = function(i) {
+        let ok = probe_port(kind, i, timeout_seconds);
+        if (ok) {
+            strikes[kind][i] = 0;
+        } else {
+            strikes[kind][i] = (strikes[kind][i] || 0) + 1;
+        }
+        return ok;
+    };
+
     if (recovery && current_index > 0) {
         for (let i = 0; i < current_index; i++)
-            if (probe_port(kind, i, timeout_seconds))
+            if (is_probe_ok(i))
                 return { index: i, reason: "recovery", alive: true };
         return { index: current_index, reason: "unchanged", alive: true };
     }
 
-    if (probe_port(kind, current_index, timeout_seconds))
+    let current_ok = is_probe_ok(current_index);
+    if (current_ok || strikes[kind][current_index] < 3)
         return { index: current_index, reason: "alive", alive: true };
 
     for (let i = 0; i < length(values); i++) {
         if (i == current_index)
             continue;
-        if (probe_port(kind, i, timeout_seconds))
+        if (is_probe_ok(i))
             return { index: i, reason: i < current_index ? "recovery" : "active_dead", alive: true };
     }
     return { index: current_index, reason: "all_down", alive: false };
@@ -230,6 +241,25 @@ function apply_selections(state, selections) {
         let values = item.kind == "main" ? state.main_servers : state.bootstrap_servers;
         let selected = item.selected;
         log_message("switched " + item.kind + " DNS to priority " + as_string(selected.index + 1) + " (" + values[selected.index] + ", " + selected.reason + ")", "info");
+
+        let tcfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
+        if (tcfg.enabled == "1" && tcfg.bot_token && tcfg.admin_ids) {
+            let is_isp = false;
+            let cfg = settings();
+            let conf_key = item.kind == "main" ? "dns_server" : "bootstrap_dns_server";
+            let configured_len = length(common.list_option(cfg, conf_key));
+            if (configured_len == 0) configured_len = 1;
+            
+            if (selected.index >= configured_len) {
+                is_isp = true;
+            }
+            
+            if (is_isp) {
+                system("/usr/bin/tachyon telegram send '⚠️ Все основные " + item.kind + " DNS недоступны. Включен аварийный DNS провайдера (" + values[selected.index] + ")! Запросы теперь видит ваш провайдер.' </dev/null >/dev/null 2>&1 1000<&- &");
+            } else if (selected.reason == "recovery" && selected.index < configured_len) {
+                system("/usr/bin/tachyon telegram send '✅ " + item.kind + " DNS восстановлен. Возврат на безопасный сервер: " + values[selected.index] + "' </dev/null >/dev/null 2>&1 1000<&- &");
+            }
+        }
     }
     return true;
 }
@@ -248,6 +278,7 @@ function worker() {
     let next_active = now_seconds();
     let next_recovery = now_seconds() + recovery_interval;
     let all_down = { main: false, bootstrap: false };
+    let strikes = { main: {}, bootstrap: {} };
 
     while (true) {
         let now = now_seconds();
@@ -256,13 +287,13 @@ function worker() {
             return 0;
 
         if (now >= next_active) {
-            let bootstrap = choose_index("bootstrap", state, int(state.bootstrap_index), timeout_seconds, false);
+            let bootstrap = choose_index("bootstrap", state, int(state.bootstrap_index), timeout_seconds, false, strikes);
             if (!bootstrap.alive && !all_down.bootstrap)
                 log_message("all configured bootstrap DNS servers are unavailable", "warn");
             all_down.bootstrap = !bootstrap.alive;
 
             if (bootstrap.index != int(state.bootstrap_index)) {
-                let main = choose_index("main", state, int(state.main_index), timeout_seconds, false);
+                let main = choose_index("main", state, int(state.main_index), timeout_seconds, false, strikes);
                 let selections = { bootstrap };
                 if (main.alive)
                     selections.main = main;
@@ -270,7 +301,7 @@ function worker() {
                 next_active = now_seconds() + (applied && !main.alive ? 1 : active_interval);
             }
             else {
-                let main = choose_index("main", state, int(state.main_index), timeout_seconds, false);
+                let main = choose_index("main", state, int(state.main_index), timeout_seconds, false, strikes);
                 if (!main.alive && !all_down.main)
                     log_message("all configured main DNS servers are unavailable", "warn");
                 all_down.main = !main.alive;
@@ -280,8 +311,8 @@ function worker() {
         }
 
         if (now >= next_recovery) {
-            let bootstrap = choose_index("bootstrap", state, int(state.bootstrap_index), timeout_seconds, true);
-            let main = choose_index("main", state, int(state.main_index), timeout_seconds, true);
+            let bootstrap = choose_index("bootstrap", state, int(state.bootstrap_index), timeout_seconds, true, strikes);
+            let main = choose_index("main", state, int(state.main_index), timeout_seconds, true, strikes);
             let has_changes = bootstrap.index != int(state.bootstrap_index) || main.index != int(state.main_index);
             let applied = apply_selections(state, { bootstrap, main });
             let completed = now_seconds();

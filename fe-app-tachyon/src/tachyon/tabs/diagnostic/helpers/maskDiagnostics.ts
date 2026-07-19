@@ -87,6 +87,9 @@ const TACHYON_MASK_AFTER_TOKEN_SPACE = [
   'option username',
   'option password',
   'option private_key',
+  'option awg_private_key',
+  'option bot_token',
+  'option admin_ids',
   'option url',
 ];
 

@@ -6,6 +6,12 @@
         "/etc/init.d/tachyon": [
           "exec"
         ],
+        "/etc/config/tachyon": [
+          "read"
+        ],
+        "/sbin/logread": [
+          "exec"
+        ],
         "/var/run/tachyon/section-cache/*": [
           "read"
         ],

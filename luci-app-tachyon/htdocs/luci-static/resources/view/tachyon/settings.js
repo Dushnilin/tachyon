@@ -435,6 +435,23 @@ function createSettingsContent(section, capabilities) {
   );
 
   o = section.option(
+    form.Flag,
+    "fallback_wan_main",
+    _("Enable WAN DNS Fallback for Main DNS"),
+    _("⚠️ If all Main DNS fail 3 times, queries will be sent to your ISP's DNS in plaintext. Only use as a last resort to prevent complete internet loss."),
+  );
+  o.default = o.disabled;
+
+  o = section.option(
+    form.Flag,
+    "fallback_wan_bootstrap",
+    _("Enable WAN DNS Fallback for Bootstrap DNS"),
+    _("⚠️ If all Bootstrap DNS fail 3 times, queries will be sent to your ISP's DNS in plaintext. Only use as a last resort to prevent complete internet loss."),
+  );
+  o.default = o.disabled;
+
+
+  o = section.option(
     form.Value,
     "dns_check_interval",
     _("DNS Check Interval"),

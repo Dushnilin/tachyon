@@ -3,6 +3,7 @@
 'require fs';
 'require uci';
 'require ui';
+'require rpc';
 
 if (typeof structuredClone !== 'function')
   globalThis.structuredClone = (obj) => JSON.parse(JSON.stringify(obj));

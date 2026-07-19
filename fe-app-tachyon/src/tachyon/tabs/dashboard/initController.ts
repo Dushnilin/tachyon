@@ -25,8 +25,26 @@ import {
   renderFlagEmojis,
   renderSections,
   renderWidget,
+  renderConnections,
+  IConnection,
 } from './partials';
 import { fetchServicesInfo } from '../../fetchers/fetchServicesInfo';
+import { fetchHostnames } from '../../fetchers/fetchHostnames';
+
+const DASHBOARD_COLLAPSED_SECTIONS_KEY = 'tachyon_dashboard_collapsed_sections';
+const collapsedSections = new Set<string>(
+  JSON.parse(localStorage.getItem(DASHBOARD_COLLAPSED_SECTIONS_KEY) || '[]')
+);
+
+function toggleSectionCollapsed(sectionCode: string) {
+  if (collapsedSections.has(sectionCode)) {
+    collapsedSections.delete(sectionCode);
+  } else {
+    collapsedSections.add(sectionCode);
+  }
+  localStorage.setItem(DASHBOARD_COLLAPSED_SECTIONS_KEY, JSON.stringify(Array.from(collapsedSections)));
+  void renderSectionsWidget();
+}
 import { getClashApiSecret } from '../../methods/custom/getClashApiSecret';
 import { Tachyon } from '../../types';
 import {
@@ -51,6 +69,10 @@ let dashboardMounted = false;
 let dashboardMountId = 0;
 let dashboardDataUpdatesStarted = false;
 let dashboardDataUpdatesId = 0;
+let connectionsRefreshTimer: ReturnType<typeof setInterval> | null = null;
+let currentConnections: IConnection[] = [];
+let connectionsLoading = true;
+let connectionsFailed = false;
 let pageUnloading = false;
 const followedSubscriptionJobs = new Set<string>();
 const followedLatencyJobs = new Set<string>();
@@ -589,6 +611,10 @@ function stopDashboardDataUpdates() {
     clearInterval(sectionsRefreshTimer);
     sectionsRefreshTimer = null;
   }
+  if (connectionsRefreshTimer) {
+    clearInterval(connectionsRefreshTimer);
+    connectionsRefreshTimer = null;
+  }
 
   sectionsRefreshQueued = false;
   socket.resetAll();
@@ -609,6 +635,11 @@ function startDashboardDataUpdates() {
   void connectToClashSockets(dataUpdatesId);
   sectionsRefreshTimer = setInterval(() => {
     void fetchDashboardSections();
+  }, SECTIONS_REFRESH_INTERVAL_MS);
+  
+  void fetchConnections();
+  connectionsRefreshTimer = setInterval(() => {
+    void fetchConnections();
   }, SECTIONS_REFRESH_INTERVAL_MS);
 }
 
@@ -1381,6 +1412,8 @@ async function renderSectionsWidget() {
         outbounds: [],
         withTagSelect: false,
       },
+      isCollapsed: false,
+      onToggleCollapse: () => {},
       onTestLatency: () => {},
       onChooseOutbound: () => {},
       onCopyOutbound: () => {},
@@ -1403,6 +1436,8 @@ async function renderSectionsWidget() {
       loading: sectionsWidget.loading,
       failed: sectionsWidget.failed,
       section,
+      isCollapsed: collapsedSections.has(section.code),
+      onToggleCollapse: () => toggleSectionCollapsed(section.code),
       latencyFetching: Boolean(
         sectionsWidget.latencyFetchingSections[section.sectionName],
       ),
@@ -1493,6 +1528,52 @@ function renderStoreWidget(
     items: getItems(widgetState.data),
   });
   container.replaceChildren(renderedWidget);
+}
+
+async function fetchConnections() {
+  try {
+    const [res, hostnames] = await Promise.all([
+      TachyonShellMethods.getClashApiConnections(),
+      fetchHostnames()
+    ]);
+    if (res.success && res.data && typeof res.data === 'object' && Array.isArray((res.data as any).connections)) {
+      const connectionsList = (res.data as any).connections;
+      const map = new Map<string, IConnection>();
+      for (const conn of connectionsList) {
+        const ip = conn.metadata?.sourceIP;
+        if (!ip) continue;
+        const up = Number(conn.upload) || 0;
+        const down = Number(conn.download) || 0;
+        if (map.has(ip)) {
+          const existing = map.get(ip)!;
+          existing.count++;
+          existing.upload += up;
+          existing.download += down;
+        } else {
+          const name = hostnames.get(ip);
+          map.set(ip, { ip, count: 1, upload: up, download: down, name });
+        }
+      }
+      currentConnections = Array.from(map.values()).sort((a, b) => (b.download + b.upload) - (a.download + a.upload));
+      connectionsLoading = false;
+      connectionsFailed = false;
+    } else {
+      connectionsFailed = true;
+    }
+  } catch(e) {
+    connectionsFailed = true;
+  }
+  renderConnectionsWidget();
+}
+
+function renderConnectionsWidget() {
+  const container = document.getElementById('dashboard-connections-grid');
+  if (!container) return;
+  if (connectionsFailed && currentConnections.length === 0) {
+    container.innerHTML = '';
+    return;
+  }
+  container.replaceChildren(renderConnections(currentConnections));
 }
 
 async function renderBandwidthWidget() {
@@ -1623,6 +1704,7 @@ async function onPageMount() {
   store.subscribe(onStoreUpdate);
   startActionStateWatcher();
   void renderSectionsWidget();
+  void renderConnectionsWidget();
   void renderBandwidthWidget();
   void renderTrafficTotalWidget();
   void renderSystemInfoWidget();

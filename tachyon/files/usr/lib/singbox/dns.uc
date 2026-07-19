@@ -4,6 +4,7 @@ let common = require("core.common");
 let core_ip = require("core.ip");
 let runtime_constants = require("singbox.constants");
 let runtime_url = require("core.url");
+let fs = require("fs");
 
 let as_string = common.as_string;
 let bool_option = common.bool_option;
@@ -16,12 +17,35 @@ const DNS_FAILOVER_STATE_FILE = getenv("TACHYON_DNS_FAILOVER_STATE_FILE") || "/v
 const DNS_HEALTH_ADDRESS = getenv("TACHYON_DNS_HEALTH_ADDRESS") || "127.0.0.42";
 const DNS_HEALTH_PORT_BASE = int(getenv("TACHYON_DNS_HEALTH_PORT_BASE") || "10053");
 
+function get_wan_dns_servers() {
+    let result = [];
+    let resolv_data = fs.readfile("/tmp/resolv.conf.d/resolv.conf.auto") || fs.readfile("/tmp/resolv.conf.auto");
+    if (resolv_data) {
+        for (let line in split(resolv_data, "\n")) {
+            let parts = split(trim(line), /[ \t]+/);
+            if (length(parts) >= 2 && parts[0] == "nameserver") {
+                let ip = parts[1];
+                if (ip != "127.0.0.1" && ip != "127.0.0.42" && ip != "::1") {
+                    push(result, ip);
+                }
+            }
+        }
+    }
+    return result;
+}
+
 function server_list(settings, key, fallback) {
     let result = [];
     for (let value in list_option(settings, key)) {
         value = trim(as_string(value));
         if (value != "")
             push(result, value);
+    }
+    let fallback_key = (key == "dns_server") ? "fallback_wan_main" : "fallback_wan_bootstrap";
+    if (bool_option(settings, fallback_key, false)) {
+        for (let wan_ip in get_wan_dns_servers()) {
+            push(result, wan_ip);
+        }
     }
     if (length(result) == 0)
         push(result, fallback);

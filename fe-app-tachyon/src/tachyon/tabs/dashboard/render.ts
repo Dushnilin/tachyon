@@ -62,6 +62,8 @@ export function render() {
             }),
           ),
         ]),
+        // Clients section
+        E('div', { id: 'dashboard-connections-grid' }, []),
         // All outbounds
         E(
           'div',

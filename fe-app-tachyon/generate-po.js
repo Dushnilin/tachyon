@@ -57,9 +57,19 @@ function parsePo(content) {
     let msgstr = null;
     for (const line of lines) {
         if (line.startsWith('msgid ')) {
-            msgid = JSON.parse(line.slice(6));
+            try {
+                msgid = JSON.parse(line.slice(6));
+            } catch (e) {
+                console.error('Failed to parse msgid on line:', line);
+                throw e;
+            }
         } else if (line.startsWith('msgstr ') && msgid !== null) {
-            msgstr = JSON.parse(line.slice(7));
+            try {
+                msgstr = JSON.parse(line.slice(7));
+            } catch (e) {
+                console.error('Failed to parse msgstr on line:', line);
+                throw e;
+            }
             translations.set(msgid, msgstr);
             msgid = null;
             msgstr = null;

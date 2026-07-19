@@ -801,13 +801,13 @@ async function handleShowSingBoxConfig() {
 async function handleGenerateBugReport() {
   setDiagnosticActionLoading('generateBugReport', true);
   try {
-    const configResult = await executeShellCommand({ command: 'cat', args: ['/etc/config/tachyon'] });
-    const logsResult = await executeShellCommand({ command: 'logread', args: ['-e', 'tachyon', '-l', '1000'] });
-    const singboxLogsResult = await executeShellCommand({ command: 'logread', args: ['-e', 'sing-box', '-l', '1000'] });
+    const configResult = await fs.read('/etc/config/tachyon').catch(() => '');
+    const logsResult = await executeShellCommand({ command: '/sbin/logread', args: ['-e', 'tachyon', '-l', '1000'] });
+    const singboxLogsResult = await executeShellCommand({ command: '/sbin/logread', args: ['-e', 'sing-box', '-l', '1000'] });
 
     const rawReport = [
       '--- TACHYON CONFIG ---',
-      configResult.code === 0 ? configResult.stdout : 'Failed to fetch config',
+      configResult || 'Failed to fetch config',
       '',
       '--- TACHYON LOGS ---',
       logsResult.code === 0 ? logsResult.stdout : 'Failed to fetch tachyon logs',

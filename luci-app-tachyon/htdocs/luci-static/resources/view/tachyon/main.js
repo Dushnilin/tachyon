@@ -4,6 +4,7 @@
 "require fs";
 "require uci";
 "require ui";
+"require rpc";
 
 // src/validators/validateIp.ts
 function isIPv4(ip) {
@@ -1947,7 +1948,9 @@ function renderDefaultState({
   latencyFetching,
   latencyProgress,
   subscriptionUpdating,
-  selectorSwitchingTag
+  selectorSwitchingTag,
+  isCollapsed,
+  onToggleCollapse
 }) {
   const isConnectionNode = ["vpn", "awg", "warp"].includes(section.action || "");
   function testLatency() {
@@ -1982,7 +1985,7 @@ function renderDefaultState({
       }
       return "tachyon_dashboard-page__outbound-grid__item__latency--red";
     }
-    const connectionStatusText = latencyFetching ? _("Checking...") : outbound.latency === -1 || !outbound.runtimeAvailable ? _("Not connected") : _("Connected");
+    const connectionStatusText = latencyFetching ? _("Checking...") : outbound.latency === -1 || !outbound.runtimeAvailable ? _("Not connected") : outbound.latency && outbound.latency > 0 ? `${outbound.latency}ms` : _("Connected");
     const canCopyLink = Boolean(outbound.canCopyLink) || isCopyableProxyLink(outbound.link);
     const selectorSwitching = Boolean(selectorSwitchingTag);
     const outboundSwitching = selectorSwitchingTag === outbound.code;
@@ -2103,14 +2106,65 @@ function renderDefaultState({
     // Title with test latency
     E(
       "div",
-      { class: "tachyon_dashboard-page__outbound-section__title-section" },
+      {
+        class: "tachyon_dashboard-page__outbound-section__title-section",
+        click: (e) => {
+          if (e.target && e.target.closest("button")) return;
+          onToggleCollapse?.();
+        },
+        style: "cursor: pointer; user-select: none;"
+      },
       [
         E(
           "div",
           {
-            class: "tachyon_dashboard-page__outbound-section__title-section__title"
+            class: "tachyon_dashboard-page__outbound-section__title-section__title",
+            style: "display: flex; align-items: center; gap: 8px;"
           },
-          section.displayName
+          [
+            svgEl("svg", {
+              width: "16",
+              height: "16",
+              viewBox: "0 0 24 24",
+              fill: "none",
+              stroke: "currentColor",
+              "stroke-width": "2",
+              "stroke-linecap": "round",
+              "stroke-linejoin": "round",
+              style: `transition: transform 0.2s; transform: rotate(${isCollapsed ? "-90deg" : "0deg"})`
+            }, [
+              svgEl("polyline", { points: "6 9 12 15 18 9" })
+            ]),
+            E("span", {}, section.displayName),
+            isCollapsed ? (() => {
+              const selectedOutbound = section.outbounds.find((o) => o.selected);
+              if (!selectedOutbound) return "";
+              const isConnectionNode2 = ["vpn", "awg", "warp"].includes(section.action || "");
+              function getLatencyColor() {
+                if (isConnectionNode2) {
+                  if (latencyFetching) return "var(--warn-color-medium, orange)";
+                  if (selectedOutbound.latency === -1) return "var(--error-color-medium, red)";
+                  return selectedOutbound.runtimeAvailable ? "var(--success-color-medium, green)" : "var(--error-color-medium, red)";
+                }
+                if (!selectedOutbound.latency) return "var(--primary-color-low, lightgray)";
+                if (selectedOutbound.latency < 800) return "var(--success-color-medium, green)";
+                if (selectedOutbound.latency < 1500) return "var(--warn-color-medium, orange)";
+                return "var(--error-color-medium, red)";
+              }
+              let latencyText = "";
+              if (isConnectionNode2) {
+                latencyText = latencyFetching ? _("Checking...") : selectedOutbound.latency === -1 || !selectedOutbound.runtimeAvailable ? _("Not connected") : selectedOutbound.latency && selectedOutbound.latency > 0 ? `${selectedOutbound.latency}ms` : _("Connected");
+              } else {
+                latencyText = selectedOutbound.latency ? `${selectedOutbound.latency}ms` : "";
+              }
+              return E("span", {
+                style: "font-size: 13px; font-weight: normal; margin-left: 8px; display: inline-flex; align-items: center; gap: 6px;"
+              }, [
+                E("span", { style: "opacity: 0.7;" }, selectedOutbound.displayName),
+                latencyText ? E("span", { style: `color: ${getLatencyColor()};` }, latencyText) : ""
+              ]);
+            })() : ""
+          ]
         ),
         E(
           "div",
@@ -2156,10 +2210,10 @@ function renderDefaultState({
         )
       ]
     ),
-    E("div", { class: "tachyon_dashboard-page__outbound-grid" }, [
+    !isCollapsed ? E("div", { class: "tachyon_dashboard-page__outbound-grid" }, [
       ...metadataNodes,
       ...section.outbounds.map((outbound) => renderOutbound(outbound))
-    ])
+    ]) : ""
   ]);
 }
 function renderSections(props) {
@@ -2238,6 +2292,33 @@ function renderWidget(props) {
   return renderDefaultState2(props);
 }
 
+// src/tachyon/tabs/dashboard/partials/renderConnections.ts
+function renderConnections(connections) {
+  if (connections.length === 0) {
+    return E("div", { class: "tachyon_dashboard-page__outbound-section" }, [
+      E("div", { class: "tachyon_dashboard-page__outbound-section__title-section" }, [
+        E("div", { class: "tachyon_dashboard-page__outbound-section__title-section__title" }, _("Active Clients"))
+      ]),
+      E("div", { class: "tachyon_dashboard-page__outbound-section centered", style: "height: 60px;" }, _("No active clients"))
+    ]);
+  }
+  const rows = connections.map((c) => {
+    return E("div", { class: "tachyon_dashboard-page__widgets-section__item__row", style: "padding: 8px 0; border-bottom: 1px solid rgba(128, 128, 128, 0.1); display: flex; justify-content: space-between;" }, [
+      E("div", {}, [
+        E("b", {}, c.name ? `${c.name} (${c.ip})` : c.ip),
+        E("span", { style: "opacity: 0.7; font-size: 13px; margin-left: 8px;" }, `(${c.count} conns)`)
+      ]),
+      E("div", { style: "font-size: 13px;" }, `\u25B2 ${prettyBytes(c.upload)} | \u25BC ${prettyBytes(c.download)}`)
+    ]);
+  });
+  return E("div", { class: "tachyon_dashboard-page__outbound-section" }, [
+    E("div", { class: "tachyon_dashboard-page__outbound-section__title-section" }, [
+      E("div", { class: "tachyon_dashboard-page__outbound-section__title-section__title" }, _("Active Clients"))
+    ]),
+    E("div", { class: "tachyon_dashboard-page__outbound-grid", style: "padding: 12px; display: block;" }, rows)
+  ]);
+}
+
 // src/tachyon/tabs/dashboard/render.ts
 function render() {
   return E(
@@ -2301,6 +2382,8 @@ function render() {
             })
           )
         ]),
+        // Clients section
+        E("div", { id: "dashboard-connections-grid" }, []),
         // All outbounds
         E(
           "div",
@@ -5544,6 +5627,34 @@ async function fetchServicesInfo() {
   return void 0;
 }
 
+// src/tachyon/fetchers/fetchHostnames.ts
+var callHostHints = rpc.declare({
+  object: "luci-rpc",
+  method: "getHostHints",
+  expect: { "": {} }
+});
+async function fetchHostnames() {
+  const hostnames = /* @__PURE__ */ new Map();
+  try {
+    const hints = await callHostHints();
+    if (hints && typeof hints === "object") {
+      for (const mac of Object.keys(hints)) {
+        const hint = hints[mac];
+        if (hint.name && hint.ipaddrs && Array.isArray(hint.ipaddrs)) {
+          for (const ip of hint.ipaddrs) {
+            if (!hostnames.has(ip)) {
+              hostnames.set(ip, hint.name);
+            }
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.error("fetchHostnames error", e);
+  }
+  return hostnames;
+}
+
 // src/tachyon/helpers/isActiveLuciTab.ts
 function isActiveLuciTab(tabId) {
   if (typeof document === "undefined") {
@@ -5577,6 +5688,19 @@ function getServiceAvailability({
 }
 
 // src/tachyon/tabs/dashboard/initController.ts
+var DASHBOARD_COLLAPSED_SECTIONS_KEY = "tachyon_dashboard_collapsed_sections";
+var collapsedSections = new Set(
+  JSON.parse(localStorage.getItem(DASHBOARD_COLLAPSED_SECTIONS_KEY) || "[]")
+);
+function toggleSectionCollapsed(sectionCode) {
+  if (collapsedSections.has(sectionCode)) {
+    collapsedSections.delete(sectionCode);
+  } else {
+    collapsedSections.add(sectionCode);
+  }
+  localStorage.setItem(DASHBOARD_COLLAPSED_SECTIONS_KEY, JSON.stringify(Array.from(collapsedSections)));
+  void renderSectionsWidget();
+}
 var SECTIONS_REFRESH_INTERVAL_MS = 1e4;
 var LATENCY_TEST_BUTTON_CLASS = "dashboard-sections-grid-item-test-latency";
 var LATENCY_TEST_BUTTON_LABEL_CLASS = "dashboard-sections-grid-item-test-latency__label";
@@ -5588,6 +5712,10 @@ var dashboardMounted = false;
 var dashboardMountId = 0;
 var dashboardDataUpdatesStarted = false;
 var dashboardDataUpdatesId = 0;
+var connectionsRefreshTimer = null;
+var currentConnections = [];
+var connectionsLoading = true;
+var connectionsFailed = false;
 var pageUnloading = false;
 var followedSubscriptionJobs = /* @__PURE__ */ new Set();
 var followedLatencyJobs = /* @__PURE__ */ new Set();
@@ -5991,6 +6119,10 @@ function stopDashboardDataUpdates() {
     clearInterval(sectionsRefreshTimer);
     sectionsRefreshTimer = null;
   }
+  if (connectionsRefreshTimer) {
+    clearInterval(connectionsRefreshTimer);
+    connectionsRefreshTimer = null;
+  }
   sectionsRefreshQueued = false;
   socket.resetAll();
 }
@@ -6004,6 +6136,10 @@ function startDashboardDataUpdates() {
   void connectToClashSockets(dataUpdatesId);
   sectionsRefreshTimer = setInterval(() => {
     void fetchDashboardSections();
+  }, SECTIONS_REFRESH_INTERVAL_MS);
+  void fetchConnections();
+  connectionsRefreshTimer = setInterval(() => {
+    void fetchConnections();
   }, SECTIONS_REFRESH_INTERVAL_MS);
 }
 function syncDashboardServiceAvailability() {
@@ -6592,6 +6728,9 @@ async function renderSectionsWidget() {
         outbounds: [],
         withTagSelect: false
       },
+      isCollapsed: false,
+      onToggleCollapse: () => {
+      },
       onTestLatency: () => {
       },
       onChooseOutbound: () => {
@@ -6618,6 +6757,8 @@ async function renderSectionsWidget() {
       loading: sectionsWidget.loading,
       failed: sectionsWidget.failed,
       section,
+      isCollapsed: collapsedSections.has(section.code),
+      onToggleCollapse: () => toggleSectionCollapsed(section.code),
       latencyFetching: Boolean(
         sectionsWidget.latencyFetchingSections[section.sectionName]
       ),
@@ -6686,6 +6827,50 @@ function renderStoreWidget(containerId, storeKey, title, getItems, debugName) {
     items: getItems(widgetState.data)
   });
   container.replaceChildren(renderedWidget);
+}
+async function fetchConnections() {
+  try {
+    const [res, hostnames] = await Promise.all([
+      TachyonShellMethods.getClashApiConnections(),
+      fetchHostnames()
+    ]);
+    if (res.success && res.data && typeof res.data === "object" && Array.isArray(res.data.connections)) {
+      const connectionsList = res.data.connections;
+      const map = /* @__PURE__ */ new Map();
+      for (const conn of connectionsList) {
+        const ip = conn.metadata?.sourceIP;
+        if (!ip) continue;
+        const up = Number(conn.upload) || 0;
+        const down = Number(conn.download) || 0;
+        if (map.has(ip)) {
+          const existing = map.get(ip);
+          existing.count++;
+          existing.upload += up;
+          existing.download += down;
+        } else {
+          const name = hostnames.get(ip);
+          map.set(ip, { ip, count: 1, upload: up, download: down, name });
+        }
+      }
+      currentConnections = Array.from(map.values()).sort((a, b) => b.download + b.upload - (a.download + a.upload));
+      connectionsLoading = false;
+      connectionsFailed = false;
+    } else {
+      connectionsFailed = true;
+    }
+  } catch (e) {
+    connectionsFailed = true;
+  }
+  renderConnectionsWidget();
+}
+function renderConnectionsWidget() {
+  const container = document.getElementById("dashboard-connections-grid");
+  if (!container) return;
+  if (connectionsFailed && currentConnections.length === 0) {
+    container.innerHTML = "";
+    return;
+  }
+  container.replaceChildren(renderConnections(currentConnections));
 }
 async function renderBandwidthWidget() {
   renderStoreWidget(
@@ -6789,6 +6974,7 @@ async function onPageMount() {
   store.subscribe(onStoreUpdate);
   startActionStateWatcher();
   void renderSectionsWidget();
+  void renderConnectionsWidget();
   void renderBandwidthWidget();
   void renderTrafficTotalWidget();
   void renderSystemInfoWidget();
@@ -6974,6 +7160,8 @@ var styles = `
     border: 2px var(--background-color-low, lightgray) solid;
     border-radius: 4px;
     padding: 10px;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .tachyon_dashboard-page__outbound-section__title-section {
@@ -9596,6 +9784,9 @@ var TACHYON_MASK_AFTER_TOKEN_SPACE = [
   "option username",
   "option password",
   "option private_key",
+  "option awg_private_key",
+  "option bot_token",
+  "option admin_ids",
   "option url"
 ];
 function isRecord2(value) {
@@ -10264,12 +10455,12 @@ async function handleShowSingBoxConfig() {
 async function handleGenerateBugReport() {
   setDiagnosticActionLoading("generateBugReport", true);
   try {
-    const configResult = await executeShellCommand({ command: "cat", args: ["/etc/config/tachyon"] });
-    const logsResult = await executeShellCommand({ command: "logread", args: ["-e", "tachyon", "-l", "1000"] });
-    const singboxLogsResult = await executeShellCommand({ command: "logread", args: ["-e", "sing-box", "-l", "1000"] });
+    const configResult = await fs.read("/etc/config/tachyon").catch(() => "");
+    const logsResult = await executeShellCommand({ command: "/sbin/logread", args: ["-e", "tachyon", "-l", "1000"] });
+    const singboxLogsResult = await executeShellCommand({ command: "/sbin/logread", args: ["-e", "sing-box", "-l", "1000"] });
     const rawReport = [
       "--- TACHYON CONFIG ---",
-      configResult.code === 0 ? configResult.stdout : "Failed to fetch config",
+      configResult || "Failed to fetch config",
       "",
       "--- TACHYON LOGS ---",
       logsResult.code === 0 ? logsResult.stdout : "Failed to fetch tachyon logs",
@@ -11392,7 +11583,7 @@ function applyConnectionsPayload(payload) {
   failed = false;
   if (monitoringMounted && mountId === monitoringMountId) {
     renderControls();
-    renderConnections();
+    renderConnections2();
   }
 }
 function setTab(tab) {
@@ -11401,7 +11592,7 @@ function setTab(tab) {
   }
   activeTab = tab;
   renderControls();
-  renderConnections();
+  renderConnections2();
 }
 function getKnownSourceIps() {
   const ips = /* @__PURE__ */ new Set();
@@ -11677,7 +11868,7 @@ function isTextSelectionInsideMonitoring() {
   }
   return isNodeInsideMonitoring(selection.anchorNode) || isNodeInsideMonitoring(selection.focusNode);
 }
-function renderConnections(options = {}) {
+function renderConnections2(options = {}) {
   const container = document.getElementById("monitoring-connections");
   if (!container) {
     return;
@@ -11732,7 +11923,7 @@ function flushRenderAfterSelection() {
   if (!renderSkippedForSelection || isTextSelectionInsideMonitoring()) {
     return;
   }
-  renderConnections({ force: true });
+  renderConnections2({ force: true });
 }
 function setMonitoringPaused(paused) {
   if (monitoringPaused === paused) {
@@ -11754,7 +11945,7 @@ function setMonitoringPaused(paused) {
       return;
     }
   }
-  renderConnections();
+  renderConnections2();
 }
 function isElementOverflowing(element) {
   return element.scrollWidth > element.clientWidth + 1;
@@ -11892,7 +12083,7 @@ async function closeConnection(connectionId) {
     return;
   }
   closingConnectionIds.add(connectionId);
-  renderConnections();
+  renderConnections2();
   try {
     const response = await TachyonShellMethods.closeClashApiConnection(connectionId);
     if (!response.success) {
@@ -11913,7 +12104,7 @@ async function closeConnection(connectionId) {
     showToast(_("Failed to close connection"), "error");
   } finally {
     closingConnectionIds.delete(connectionId);
-    renderConnections();
+    renderConnections2();
   }
 }
 async function closeAllConnections() {
@@ -11941,7 +12132,7 @@ async function closeAllConnections() {
   } finally {
     closingAll = false;
     renderControls();
-    renderConnections();
+    renderConnections2();
   }
 }
 function bindControls() {
@@ -11978,13 +12169,13 @@ function bindControls() {
   if (select) {
     select.onchange = () => {
       selectedDeviceFilter = select.value || ALL_FILTER_VALUE;
-      renderConnections();
+      renderConnections2();
     };
   }
   if (searchInput) {
     searchInput.oninput = () => {
       searchQuery = searchInput.value;
-      renderConnections();
+      renderConnections2();
     };
   }
   if (connectionsContainer) {
@@ -12007,7 +12198,7 @@ async function loadLocalDevices() {
     localDeviceChoices = {};
   } finally {
     renderControls();
-    renderConnections();
+    renderConnections2();
   }
 }
 async function loadRouteDisplayNames() {
@@ -12018,7 +12209,7 @@ async function loadRouteDisplayNames() {
     buildRouteDisplayNames([]);
   } finally {
     renderControls();
-    renderConnections();
+    renderConnections2();
   }
 }
 async function pollConnectionsSnapshot() {
@@ -12035,7 +12226,7 @@ async function pollConnectionsSnapshot() {
     if (!response.success) {
       failed = true;
       loading = false;
-      renderConnections();
+      renderConnections2();
       return;
     }
     applyConnectionsPayload(normalizeConnectionsPayload(response.data));
@@ -12046,7 +12237,7 @@ async function pollConnectionsSnapshot() {
     logger.error("[MONITORING]", "connections polling failed", error);
     failed = true;
     loading = false;
-    renderConnections();
+    renderConnections2();
   } finally {
     pollingConnections = false;
   }
@@ -12085,7 +12276,7 @@ async function connectToConnectionsSocket(updatesId) {
       }
       failed = true;
       loading = false;
-      renderConnections();
+      renderConnections2();
     }
   );
 }
@@ -12135,7 +12326,7 @@ function setServiceAvailability(next) {
     }
   }
   renderControls();
-  renderConnections();
+  renderConnections2();
 }
 function watchServiceState() {
   serviceStateUnsubscribe?.();
@@ -12182,7 +12373,7 @@ async function onPageMount3() {
   resetMonitoringState();
   bindControls();
   renderControls();
-  renderConnections();
+  renderConnections2();
   watchServiceState();
   void loadLocalDevices();
   void loadRouteDisplayNames();
@@ -12203,7 +12394,7 @@ async function onPageMount3() {
     if (monitoringPaused) {
       return;
     }
-    renderConnections();
+    renderConnections2();
   }, RENDER_INTERVAL_MS);
 }
 function onPageUnmount3() {
