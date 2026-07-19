@@ -810,6 +810,12 @@ function installer_cleanup_legacy() {
         run_args([ active_init, "disable" ]);
     }
 
+    if (path_executable("/etc/init.d/netshift")) {
+        if (installer_service_running("/etc/init.d/netshift"))
+            run_args([ "/etc/init.d/netshift", "stop" ]);
+        run_args([ "/etc/init.d/netshift", "disable" ]);
+    }
+
     let packages_removed = true;
     for (let package_name in [ "luci-app-https-dns-proxy", "https-dns-proxy" ])
         if (!installer_remove_package(package_name))
@@ -833,6 +839,18 @@ function installer_cleanup_legacy() {
             packages_removed = false;
         if (!installer_remove_package("forkop"))
             packages_removed = false;
+    }
+
+    if (installer_package_installed("netshift")) {
+        if (!installer_remove_package_prefix("luci-i18n-netshift"))
+            packages_removed = false;
+        if (!installer_remove_package("luci-app-netshift"))
+            packages_removed = false;
+        if (!installer_remove_package("netshift"))
+            packages_removed = false;
+        remove_path("/tmp/netshift");
+        remove_path("/var/run/netshift");
+        remove_path("/etc/netshift");
     }
 
     if (!installer_remove_package_prefix("luci-i18n-tachyon"))
@@ -1693,6 +1711,7 @@ cleanup_legacy_installation() {
 detect_legacy_installation() {
     TACHYON_LEGACY_DETECTED=0
     TACHYON_FORKOP_MIGRATION=0
+    TACHYON_NETSHIFT_MIGRATION=0
     LEGACY_CONFIG_BACKUP=""
 
     if pkg_is_installed "forkop" || pkg_is_installed "luci-app-forkop"; then
@@ -1700,13 +1719,22 @@ detect_legacy_installation() {
         TACHYON_FORKOP_MIGRATION=1
     fi
 
-    for legacy_config_path in "/etc/config/forkop" "/etc/config/forkop_plus"; do
+    if pkg_is_installed "netshift" || pkg_is_installed "luci-app-netshift"; then
+        TACHYON_LEGACY_DETECTED=1
+        TACHYON_NETSHIFT_MIGRATION=1
+    fi
+
+    for legacy_config_path in "/etc/config/netshift" "/etc/config/forkop" "/etc/config/forkop_plus"; do
         if [ -r "$legacy_config_path" ]; then
             LEGACY_CONFIG_BACKUP="$TMP_DIR/legacy-config.backup"
             cp "$legacy_config_path" "$LEGACY_CONFIG_BACKUP" ||
                 fail "Failed to back up the legacy configuration"
             TACHYON_LEGACY_DETECTED=1
-            TACHYON_FORKOP_MIGRATION=1
+            if [ "$legacy_config_path" = "/etc/config/netshift" ]; then
+                TACHYON_NETSHIFT_MIGRATION=1
+            else
+                TACHYON_FORKOP_MIGRATION=1
+            fi
             break
         fi
     done
@@ -1830,7 +1858,7 @@ migrate_legacy_configuration() {
 
         msg "Migrating the legacy configuration to Tachyon"
         local migration_mode="migrate-podkop"
-        if [ "$TACHYON_FORKOP_MIGRATION" -eq 1 ]; then
+        if [ "$TACHYON_FORKOP_MIGRATION" -eq 1 ] || [ "$TACHYON_NETSHIFT_MIGRATION" -eq 1 ]; then
             migration_mode="migrate"
         fi
 
