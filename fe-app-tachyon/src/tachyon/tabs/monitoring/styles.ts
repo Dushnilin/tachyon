@@ -2,6 +2,10 @@
 import { TACHYON_UCI_PACKAGE as TACHYON_CBI_PREFIX } from '../../../constants';
 
 export const styles = `
+.tachyon_monitoring-page {
+    --tachyon-monitoring-danger-color: #d9534f;
+}
+
 #cbi-${TACHYON_CBI_PREFIX}-monitoring-_mount_node {
     margin: 16px 0 22px;
     padding: 0;
@@ -88,13 +92,13 @@ export const styles = `
     order: 2;
     border-color: rgba(217, 83, 79, 0.4) !important;
     background: transparent !important;
-    color: #d9534f !important;
+    color: var(--tachyon-monitoring-danger-color) !important;
 }
 
 .tachyon_monitoring-page #monitoring-close-all.btn.tachyon_monitoring-page__icon-button:hover:not(:disabled) {
     border-color: rgba(217, 83, 79, 0.6) !important;
     background: transparent !important;
-    color: #d9534f !important;
+    color: color-mix(in srgb, var(--tachyon-monitoring-danger-color) 70%, white) !important;
 }
 
 .tachyon_monitoring-page #monitoring-pause-toggle.btn.tachyon_monitoring-page__icon-button,

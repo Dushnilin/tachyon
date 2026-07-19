@@ -20,7 +20,12 @@ import {
   store,
   StoreType,
 } from '../../services';
-import { getLatencyTestLabel, renderSections, renderWidget } from './partials';
+import {
+  getLatencyTestLabel,
+  renderFlagEmojis,
+  renderSections,
+  renderWidget,
+} from './partials';
 import { fetchServicesInfo } from '../../fetchers/fetchServicesInfo';
 import { getClashApiSecret } from '../../methods/custom/getClashApiSecret';
 import { Tachyon } from '../../types';
@@ -810,7 +815,7 @@ function getDetectedCountryFlag(country?: string) {
 function renderDetailsMemberName(member: Tachyon.UrlTestMember) {
   const countryFlag = getDetectedCountryFlag(member.country);
   if (!countryFlag) {
-    return member.displayName;
+    return renderFlagEmojis(member.displayName);
   }
 
   return [
@@ -819,7 +824,7 @@ function renderDetailsMemberName(member: Tachyon.UrlTestMember) {
       { class: 'tachyon_dashboard-page__urltest-details__country-badge' },
       countryFlag,
     ),
-    member.displayName,
+    ...renderFlagEmojis(member.displayName),
   ];
 }
 

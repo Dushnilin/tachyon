@@ -7,6 +7,7 @@ import {
 import { isCopyableProxyLink, svgEl } from '../../../../helpers';
 import { prettyBytes } from '../../../../helpers/prettyBytes';
 import { Tachyon } from '../../../types';
+import { renderFlagEmojis } from './renderFlagEmojis';
 
 interface IRenderSectionsProps {
   loading: boolean;
@@ -353,7 +354,7 @@ function renderDefaultState({
           'div',
           { class: 'tachyon_dashboard-page__outbound-grid__item__header' },
           [
-            E('b', {}, outbound.displayName),
+            E('b', {}, renderFlagEmojis(outbound.displayName)),
             ...(canCopyLink
               ? [
                   E(

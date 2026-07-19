@@ -856,6 +856,19 @@ function getProxyUrlName(url) {
   }
 }
 
+// src/tachyon/tabs/dashboard/partials/renderFlagEmojis.ts
+var FLAG_EMOJI_PATTERN = /([\u{1f1e6}-\u{1f1ff}]{2}|\u{1f3f4}[\u{e0061}-\u{e007a}]+\u{e007f})/gu;
+var EXACT_FLAG_EMOJI_PATTERN = /^([\u{1f1e6}-\u{1f1ff}]{2}|\u{1f3f4}[\u{e0061}-\u{e007a}]+\u{e007f})$/u;
+function renderFlagEmojis(value) {
+  return value.split(FLAG_EMOJI_PATTERN).filter(Boolean).map(
+    (part) => EXACT_FLAG_EMOJI_PATTERN.test(part) ? E(
+      "span",
+      { class: "tachyon_dashboard-page__flag-emoji" },
+      part
+    ) : part
+  );
+}
+
 // src/helpers/downloadAsTxt.ts
 function downloadAsTxt(text, filename) {
   const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
@@ -952,27 +965,6 @@ var LATENCY_TEST_URL_OPTIONS = [
   "https://cp.cloudflare.com/generate_204",
   "https://captive.apple.com",
   "https://connectivity-check.ubuntu.com"
-];
-var REGIONAL_OPTIONS = [
-  "russia_inside",
-  "russia_outside",
-  "ukraine_inside"
-];
-var ALLOWED_WITH_RUSSIA_INSIDE = [
-  "russia_inside",
-  "meta",
-  "twitter",
-  "discord",
-  "telegram",
-  "cloudflare",
-  "google_ai",
-  "google_play",
-  "hetzner",
-  "ovh",
-  "hodca",
-  "roblox",
-  "digitalocean",
-  "cloudfront"
 ];
 var DOMAIN_LIST_OPTIONS = {
   russia_inside: "Russia inside",
@@ -2020,7 +2012,7 @@ function renderDefaultState({
           "div",
           { class: "tachyon_dashboard-page__outbound-grid__item__header" },
           [
-            E("b", {}, outbound.displayName),
+            E("b", {}, renderFlagEmojis(outbound.displayName)),
             ...canCopyLink ? [
               E(
                 "button",
@@ -6152,7 +6144,7 @@ function getDetectedCountryFlag(country) {
 function renderDetailsMemberName(member) {
   const countryFlag = getDetectedCountryFlag(member.country);
   if (!countryFlag) {
-    return member.displayName;
+    return renderFlagEmojis(member.displayName);
   }
   return [
     E(
@@ -6160,7 +6152,7 @@ function renderDetailsMemberName(member) {
       { class: "tachyon_dashboard-page__urltest-details__country-badge" },
       countryFlag
     ),
-    member.displayName
+    ...renderFlagEmojis(member.displayName)
   ];
 }
 function renderUrlTestSelectedValue(info) {
@@ -6850,6 +6842,15 @@ async function initController() {
 
 // src/tachyon/tabs/dashboard/styles.ts
 var styles = `
+@font-face {
+    font-family: "Twemoji Country Flags";
+    src: url("/luci-static/resources/view/tachyon/fonts/TwemojiCountryFlags.woff2") format("woff2");
+    font-display: swap;
+    font-style: normal;
+    font-weight: normal;
+    unicode-range: U+1F1E6-1F1FF, U+1F3F4, U+E0062-E0063, U+E0065, U+E0067, U+E006C, U+E006E, U+E0073-E0074, U+E0077, U+E007F;
+}
+
 #cbi-${TACHYON_UCI_PACKAGE}-dashboard-_mount_node > .cbi-value-title {
     display: none;
 }
@@ -7445,6 +7446,13 @@ var styles = `
     border-radius: 4px;
     background: rgba(128, 128, 128, 0.15);
     line-height: 1;
+}
+
+.tachyon_dashboard-page__flag-emoji,
+.tachyon_dashboard-page__urltest-details__country-badge {
+    font-family: "Twemoji Country Flags";
+    font-style: normal;
+    font-weight: normal;
 }
 
 .tachyon_dashboard-page__urltest-details__priority-node {
@@ -9532,6 +9540,7 @@ var TACHYON_MASK_AFTER_TOKEN_SPACE = [
   "list ip_cidr",
   "list source_ip_cidr",
   "list fully_routed_ips",
+  "list excluded_ips",
   "option dns_server",
   "option bootstrap_dns_server",
   "list dns_server",
@@ -12179,6 +12188,10 @@ async function initController3(controllerDependencies = {}) {
 
 // src/tachyon/tabs/monitoring/styles.ts
 var styles5 = `
+.tachyon_monitoring-page {
+    --tachyon-monitoring-danger-color: #d9534f;
+}
+
 #cbi-${TACHYON_UCI_PACKAGE}-monitoring-_mount_node {
     margin: 16px 0 22px;
     padding: 0;
@@ -12265,13 +12278,13 @@ var styles5 = `
     order: 2;
     border-color: rgba(217, 83, 79, 0.4) !important;
     background: transparent !important;
-    color: #d9534f !important;
+    color: var(--tachyon-monitoring-danger-color) !important;
 }
 
 .tachyon_monitoring-page #monitoring-close-all.btn.tachyon_monitoring-page__icon-button:hover:not(:disabled) {
     border-color: rgba(217, 83, 79, 0.6) !important;
     background: transparent !important;
-    color: #d9534f !important;
+    color: color-mix(in srgb, var(--tachyon-monitoring-danger-color) 70%, white) !important;
 }
 
 .tachyon_monitoring-page #monitoring-pause-toggle.btn.tachyon_monitoring-page__icon-button,
@@ -14184,7 +14197,6 @@ function injectGlobalStyles() {
 if (typeof structuredClone !== "function")
   globalThis.structuredClone = (obj) => JSON.parse(JSON.stringify(obj));
 return baseclass.extend({
-  ALLOWED_WITH_RUSSIA_INSIDE,
   BOOTSTRAP_DNS_SERVER_OPTIONS,
   DEFAULT_LATENCY_TEST_URL,
   DNS_SERVER_OPTIONS,
@@ -14193,7 +14205,6 @@ return baseclass.extend({
   DiagnosticTab,
   LATENCY_TEST_URL_OPTIONS,
   MonitoringTab,
-  REGIONAL_OPTIONS,
   TACHYON_ACTION_PROVIDERS_AVAILABILITY_EVENT,
   TACHYON_UCI_PACKAGE,
   TachyonShellMethods,

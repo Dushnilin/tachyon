@@ -1,7 +1,16 @@
-﻿// language=CSS
+// language=CSS
 import { TACHYON_UCI_PACKAGE as TACHYON_CBI_PREFIX } from '../../../constants';
 
 export const styles = `
+@font-face {
+    font-family: "Twemoji Country Flags";
+    src: url("/luci-static/resources/view/tachyon/fonts/TwemojiCountryFlags.woff2") format("woff2");
+    font-display: swap;
+    font-style: normal;
+    font-weight: normal;
+    unicode-range: U+1F1E6-1F1FF, U+1F3F4, U+E0062-E0063, U+E0065, U+E0067, U+E006C, U+E006E, U+E0073-E0074, U+E0077, U+E007F;
+}
+
 #cbi-${TACHYON_CBI_PREFIX}-dashboard-_mount_node > .cbi-value-title {
     display: none;
 }
@@ -597,6 +606,13 @@ export const styles = `
     border-radius: 4px;
     background: rgba(128, 128, 128, 0.15);
     line-height: 1;
+}
+
+.tachyon_dashboard-page__flag-emoji,
+.tachyon_dashboard-page__urltest-details__country-badge {
+    font-family: "Twemoji Country Flags";
+    font-style: normal;
+    font-weight: normal;
 }
 
 .tachyon_dashboard-page__urltest-details__priority-node {
