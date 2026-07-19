@@ -4695,7 +4695,7 @@ function writeStoredKeys(storage, keys) {
 }
 function isErrorLogLine(line) {
   const lower = line.toLowerCase();
-  return lower.includes("[error]") || lower.includes("[fatal]");
+  return lower.includes("[error]") || lower.includes("[fatal]") || lower.includes("sing-box") && lower.includes("rule-set") && /\b(error|fatal)\b/.test(lower);
 }
 function getTachyonLogNotification(line) {
   if (isErrorLogLine(line)) {
@@ -9568,7 +9568,9 @@ var TACHYON_MASK_AFTER_TOKEN_SPACE = [
   "option netmask",
   "option gateway",
   "option username",
-  "option password"
+  "option password",
+  "option private_key",
+  "option url"
 ];
 function isRecord2(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
