@@ -1963,6 +1963,12 @@ function renderDefaultState({
   function renderOutbound(outbound) {
     function getLatencyClass() {
       if (isConnectionNode) {
+        if (latencyFetching) {
+          return "tachyon_dashboard-page__outbound-grid__item__latency--yellow";
+        }
+        if (outbound.latency === -1) {
+          return "tachyon_dashboard-page__outbound-grid__item__latency--red";
+        }
         return outbound.runtimeAvailable ? "tachyon_dashboard-page__outbound-grid__item__latency--green" : "tachyon_dashboard-page__outbound-grid__item__latency--red";
       }
       if (!outbound.latency) {
@@ -1976,7 +1982,7 @@ function renderDefaultState({
       }
       return "tachyon_dashboard-page__outbound-grid__item__latency--red";
     }
-    const connectionStatusText = outbound.runtimeAvailable ? _("Connected") : _("Not connected");
+    const connectionStatusText = latencyFetching ? _("Checking...") : outbound.latency === -1 || !outbound.runtimeAvailable ? _("Not connected") : _("Connected");
     const canCopyLink = Boolean(outbound.canCopyLink) || isCopyableProxyLink(outbound.link);
     const selectorSwitching = Boolean(selectorSwitchingTag);
     const outboundSwitching = selectorSwitchingTag === outbound.code;
@@ -2113,41 +2119,39 @@ function renderDefaultState({
           },
           [
             ...subscriptionUpdateAction ? [subscriptionUpdateAction] : [],
-            ...!isConnectionNode ? [
-              E(
-                "button",
-                {
-                  type: "button",
-                  class: "btn dashboard-sections-grid-item-test-latency",
-                  "data-latency-section": section.sectionName,
-                  disabled: latencyFetching ? true : void 0,
-                  click: (event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    if (latencyFetching) {
-                      return;
-                    }
-                    testLatency();
+            E(
+              "button",
+              {
+                type: "button",
+                class: "btn dashboard-sections-grid-item-test-latency",
+                "data-latency-section": section.sectionName,
+                disabled: latencyFetching ? true : void 0,
+                click: (event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  if (latencyFetching) {
+                    return;
                   }
-                },
-                latencyFetching ? [
-                  renderLoaderCircleIcon24(),
-                  E(
-                    "span",
-                    {
-                      class: "dashboard-sections-grid-item-test-latency__label"
-                    },
-                    getLatencyTestLabel(latencyProgress)
-                  )
-                ] : E(
+                  testLatency();
+                }
+              },
+              latencyFetching ? [
+                renderLoaderCircleIcon24(),
+                E(
                   "span",
                   {
                     class: "dashboard-sections-grid-item-test-latency__label"
                   },
-                  _("Test latency")
+                  isConnectionNode ? _("Checking...") : getLatencyTestLabel(latencyProgress)
                 )
+              ] : E(
+                "span",
+                {
+                  class: "dashboard-sections-grid-item-test-latency__label"
+                },
+                isConnectionNode ? _("Check Connection") : _("Test latency")
               )
-            ] : []
+            )
           ]
         )
       ]
@@ -4054,7 +4058,7 @@ async function getDashboardSections(options = {}) {
             {
               code: outbound?.code || sectionName,
               displayName: section.interface || outbound?.value?.name || (sectionAction === "awg" ? "AmneziaWG" : sectionAction.toUpperCase()),
-              latency: 0,
+              latency: outbound?.value?.history?.length ? outbound.value.history[0].delay > 0 ? outbound.value.history[0].delay : -1 : 0,
               type: outbound?.value?.type || "",
               selected: true,
               canCopyLink: false,
@@ -4384,6 +4388,9 @@ var initialDiagnosticStore = {
       loading: false
     },
     showSingBoxConfig: {
+      loading: false
+    },
+    generateBugReport: {
       loading: false
     }
   },
@@ -6555,7 +6562,10 @@ function updateLatencyProgressInline(sectionsWidget) {
     if (!label) {
       return false;
     }
-    const text = getLatencyTestLabel(
+    const isConnectionNode = ["vpn", "awg", "warp"].includes(
+      section.action || ""
+    );
+    const text = isConnectionNode ? _("Checking Connection...") : getLatencyTestLabel(
       sectionsWidget.latencyProgressSections[section.sectionName]
     );
     if (label.textContent !== text) {
@@ -8845,7 +8855,8 @@ function renderAvailableActions({
   globalCheck,
   doctor,
   viewLogs,
-  showSingBoxConfig
+  showSingBoxConfig,
+  generateBugReport
 }) {
   return E("div", { class: "tachyon_diagnostic-page__right-bar__actions" }, [
     E("b", {}, _("Available actions")),
@@ -8933,6 +8944,15 @@ function renderAvailableActions({
         text: _("Show sing-box config"),
         loading: showSingBoxConfig.loading,
         disabled: showSingBoxConfig.disabled
+      })
+    ]),
+    ...insertIf(generateBugReport.visible, [
+      renderButton({
+        onClick: generateBugReport.onClick,
+        icon: renderDownloadIcon24,
+        text: _("Generate bug report"),
+        loading: generateBugReport.loading,
+        disabled: generateBugReport.disabled
       })
     ])
   ]);
@@ -9490,7 +9510,7 @@ function clearPersistedDiagnosticRun(storage = getSessionStorage3()) {
 }
 
 // src/tachyon/tabs/diagnostic/helpers/maskDiagnostics.ts
-var MASKED_VALUE = "MASKED";
+var MASKED_VALUE = "*******";
 var SING_BOX_MASKED_KEYS = /* @__PURE__ */ new Set([
   "auth_key",
   "control_url",
@@ -9614,7 +9634,7 @@ function maskOptionPath(line, token) {
     return line;
   }
   const quote = quoteOffset + slash + 1;
-  return `${line.slice(0, slash)}/MASKED'${line.slice(quote + 1)}`;
+  return `${line.slice(0, slash)}/*******'${line.slice(quote + 1)}`;
 }
 function maskGlobalCheckLine(line) {
   let maskedLine = line;
@@ -10241,6 +10261,41 @@ async function handleShowSingBoxConfig() {
     setDiagnosticActionLoading("showSingBoxConfig", false);
   }
 }
+async function handleGenerateBugReport() {
+  setDiagnosticActionLoading("generateBugReport", true);
+  try {
+    const configResult = await executeShellCommand({ command: "cat", args: ["/etc/config/tachyon"] });
+    const logsResult = await executeShellCommand({ command: "logread", args: ["-e", "tachyon", "-l", "1000"] });
+    const singboxLogsResult = await executeShellCommand({ command: "logread", args: ["-e", "sing-box", "-l", "1000"] });
+    const rawReport = [
+      "--- TACHYON CONFIG ---",
+      configResult.code === 0 ? configResult.stdout : "Failed to fetch config",
+      "",
+      "--- TACHYON LOGS ---",
+      logsResult.code === 0 ? logsResult.stdout : "Failed to fetch tachyon logs",
+      "",
+      "--- SING-BOX LOGS ---",
+      singboxLogsResult.code === 0 ? singboxLogsResult.stdout : "Failed to fetch sing-box logs"
+    ].join("\n");
+    const maskedReport = maskGlobalCheckText(rawReport);
+    const blob = new Blob([maskedReport], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `tachyon-bugreport-${(/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-")}.txt`;
+    a.style.display = "none";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast(_("Bug report downloaded"), "success");
+  } catch (e) {
+    logger.error("[DIAGNOSTIC]", "handleGenerateBugReport - e", e);
+    showToast(_("Failed to generate bug report"), "error");
+  } finally {
+    setDiagnosticActionLoading("generateBugReport", false);
+  }
+}
 function renderWikiDisclaimerWidget() {
   const diagnosticsChecks = store.get().diagnosticsChecks;
   function getWikiKind() {
@@ -10349,6 +10404,12 @@ function renderDiagnosticAvailableActionsWidget() {
       loading: diagnosticsActions.showSingBoxConfig.loading,
       visible: true,
       onClick: handleShowSingBoxConfig,
+      disabled: utilityActionsDisabled
+    },
+    generateBugReport: {
+      loading: diagnosticsActions.generateBugReport.loading,
+      visible: true,
+      onClick: handleGenerateBugReport,
       disabled: utilityActionsDisabled
     }
   });

@@ -283,6 +283,12 @@ function renderDefaultState({
   function renderOutbound(outbound: Tachyon.Outbound) {
     function getLatencyClass() {
       if (isConnectionNode) {
+        if (latencyFetching) {
+          return 'tachyon_dashboard-page__outbound-grid__item__latency--yellow';
+        }
+        if (outbound.latency === -1) {
+          return 'tachyon_dashboard-page__outbound-grid__item__latency--red';
+        }
         return outbound.runtimeAvailable
           ? 'tachyon_dashboard-page__outbound-grid__item__latency--green'
           : 'tachyon_dashboard-page__outbound-grid__item__latency--red';
@@ -303,7 +309,11 @@ function renderDefaultState({
       return 'tachyon_dashboard-page__outbound-grid__item__latency--red';
     }
 
-    const connectionStatusText = outbound.runtimeAvailable ? _('Connected') : _('Not connected');
+    const connectionStatusText = latencyFetching
+      ? _('Checking...')
+      : outbound.latency === -1 || !outbound.runtimeAvailable
+      ? _('Not connected')
+      : _('Connected');
 
     const canCopyLink =
       Boolean(outbound.canCopyLink) || isCopyableProxyLink(outbound.link);
@@ -478,11 +488,9 @@ function renderDefaultState({
           },
           [
             ...(subscriptionUpdateAction ? [subscriptionUpdateAction] : []),
-            ...(!isConnectionNode
-              ? [
-                  E(
-                    'button',
-                    {
+            E(
+              'button',
+              {
                 type: 'button',
                 class: 'btn dashboard-sections-grid-item-test-latency',
                 'data-latency-section': section.sectionName,
@@ -506,7 +514,7 @@ function renderDefaultState({
                         class:
                           'dashboard-sections-grid-item-test-latency__label',
                       },
-                      getLatencyTestLabel(latencyProgress),
+                      isConnectionNode ? _('Checking...') : getLatencyTestLabel(latencyProgress),
                     ),
                   ]
                 : E(
@@ -514,10 +522,9 @@ function renderDefaultState({
                     {
                       class: 'dashboard-sections-grid-item-test-latency__label',
                     },
-                    _('Test latency'),
+                    isConnectionNode ? _('Check Connection') : _('Test latency'),
                   ),
             ),
-          ] : []),
           ],
         ),
       ],

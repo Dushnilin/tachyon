@@ -1,4 +1,4 @@
-﻿import {
+import {
   DIAGNOSTICS_CHECKS,
   DIAGNOSTICS_CHECKS_MAP,
 } from './checks/contstants';
@@ -121,6 +121,9 @@ export const initialDiagnosticStore: Pick<
       loading: false,
     },
     showSingBoxConfig: {
+      loading: false,
+    },
+    generateBugReport: {
       loading: false,
     },
   },

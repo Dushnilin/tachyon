@@ -1,4 +1,4 @@
-﻿import { renderButton } from '../../../../partials';
+import { renderButton } from '../../../../partials';
 import {
   renderCircleCheckBigIcon24,
   renderCirclePlayIcon24,
@@ -8,6 +8,7 @@ import {
   renderPlayIcon24,
   renderRotateCcwIcon24,
   renderSquareChartGanttIcon24,
+  renderDownloadIcon24,
 } from '../../../../icons';
 import { insertIf } from '../../../../helpers';
 
@@ -28,6 +29,7 @@ interface IRenderAvailableActionsProps {
   doctor: ActionProps;
   viewLogs: ActionProps;
   showSingBoxConfig: ActionProps;
+  generateBugReport: ActionProps;
 }
 
 export function renderAvailableActions({
@@ -40,6 +42,7 @@ export function renderAvailableActions({
   doctor,
   viewLogs,
   showSingBoxConfig,
+  generateBugReport,
 }: IRenderAvailableActionsProps) {
   return E('div', { class: 'tachyon_diagnostic-page__right-bar__actions' }, [
     E('b', {}, _('Available actions')),
@@ -127,6 +130,15 @@ export function renderAvailableActions({
         text: _('Show sing-box config'),
         loading: showSingBoxConfig.loading,
         disabled: showSingBoxConfig.disabled,
+      }),
+    ]),
+    ...insertIf(generateBugReport.visible, [
+      renderButton({
+        onClick: generateBugReport.onClick,
+        icon: renderDownloadIcon24,
+        text: _('Generate bug report'),
+        loading: generateBugReport.loading,
+        disabled: generateBugReport.disabled,
       }),
     ]),
   ]);

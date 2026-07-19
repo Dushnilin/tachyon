@@ -468,6 +468,21 @@ function createSettingsContent(section, capabilities) {
   );
   o.default = "60";
   o.rmempty = false;
+
+  o = section.option(
+    form.DynamicList,
+    "dns_hosts",
+    _("Custom DNS Records (Hosts)"),
+    _("Map domains to specific IP addresses (A/AAAA). Format: <code>example.com 192.168.1.100</code>"),
+  );
+  o.validate = function(section_id, value) {
+    if (!value) return true;
+    var parts = value.trim().split(/\s+/);
+    if (parts.length !== 2) {
+      return _("Invalid format. Use: domain ip");
+    }
+    return true;
+  };
   o.validate = function (section_id, value) {
     if (!value) {
       return _("TTL value cannot be empty");

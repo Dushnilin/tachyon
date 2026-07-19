@@ -1,4 +1,5 @@
-import { onMount, preserveScrollForPage } from '../../../helpers';
+import { onMount, preserveScrollForPage, executeShellCommand } from '../../../helpers';
+import { showToast } from '../../../helpers/showToast';
 import { runDnsCheck } from './checks/runDnsCheck';
 import { runSingBoxCheck } from './checks/runSingBoxCheck';
 import { runInboundsCheck } from './checks/runInboundsCheck';
@@ -797,6 +798,48 @@ async function handleShowSingBoxConfig() {
   }
 }
 
+async function handleGenerateBugReport() {
+  setDiagnosticActionLoading('generateBugReport', true);
+  try {
+    const configResult = await executeShellCommand({ command: 'cat', args: ['/etc/config/tachyon'] });
+    const logsResult = await executeShellCommand({ command: 'logread', args: ['-e', 'tachyon', '-l', '1000'] });
+    const singboxLogsResult = await executeShellCommand({ command: 'logread', args: ['-e', 'sing-box', '-l', '1000'] });
+
+    const rawReport = [
+      '--- TACHYON CONFIG ---',
+      configResult.code === 0 ? configResult.stdout : 'Failed to fetch config',
+      '',
+      '--- TACHYON LOGS ---',
+      logsResult.code === 0 ? logsResult.stdout : 'Failed to fetch tachyon logs',
+      '',
+      '--- SING-BOX LOGS ---',
+      singboxLogsResult.code === 0 ? singboxLogsResult.stdout : 'Failed to fetch sing-box logs',
+    ].join('\n');
+
+    const maskedReport = maskGlobalCheckText(rawReport);
+    
+    // Download as a text file instead of using clipboard, because navigator.clipboard
+    // is undefined in insecure contexts (HTTP) which is common for router web interfaces.
+    const blob = new Blob([maskedReport], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `tachyon-bugreport-${new Date().toISOString().replace(/[:.]/g, '-')}.txt`;
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    showToast(_('Bug report downloaded'), 'success');
+  } catch (e) {
+    logger.error('[DIAGNOSTIC]', 'handleGenerateBugReport - e', e);
+    showToast(_('Failed to generate bug report'), 'error');
+  } finally {
+    setDiagnosticActionLoading('generateBugReport', false);
+  }
+}
+
 function renderWikiDisclaimerWidget() {
   const diagnosticsChecks = store.get().diagnosticsChecks;
 
@@ -924,6 +967,12 @@ function renderDiagnosticAvailableActionsWidget() {
       loading: diagnosticsActions.showSingBoxConfig.loading,
       visible: true,
       onClick: handleShowSingBoxConfig,
+      disabled: utilityActionsDisabled,
+    },
+    generateBugReport: {
+      loading: diagnosticsActions.generateBugReport.loading,
+      visible: true,
+      onClick: handleGenerateBugReport,
       disabled: utilityActionsDisabled,
     },
   });

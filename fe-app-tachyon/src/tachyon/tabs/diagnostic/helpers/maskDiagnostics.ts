@@ -1,4 +1,4 @@
-const MASKED_VALUE = 'MASKED';
+const MASKED_VALUE = '*******';
 
 const SING_BOX_MASKED_KEYS = new Set([
   'auth_key',
@@ -147,7 +147,7 @@ function maskOptionPath(line: string, token: string) {
 
   const quote = quoteOffset + slash + 1;
 
-  return `${line.slice(0, slash)}/MASKED'${line.slice(quote + 1)}`;
+  return `${line.slice(0, slash)}/*******'${line.slice(quote + 1)}`;
 }
 
 function maskGlobalCheckLine(line: string) {

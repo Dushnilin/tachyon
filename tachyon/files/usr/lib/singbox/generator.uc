@@ -431,6 +431,34 @@ function base_config(settings, service_address, runtime_context) {
         runtime_generate_unsupported(dns_config.unsupported);
 
     let dns_rules = [];
+    
+    let dns_hosts = common.list_option(settings, "dns_hosts");
+    let dns_hosts_idx = 0;
+    let dns_hosts_servers = [];
+    for (let host_entry in dns_hosts) {
+        let parts = split(trim(host_entry), /[ \t]+/);
+        if (length(parts) >= 2) {
+            dns_hosts_idx++;
+            let tag = "static-host-" + dns_hosts_idx;
+            let domain = parts[0];
+            let ip = parts[1];
+            let is_ipv6 = index(ip, ":") != -1;
+            
+            push(dns_hosts_servers, {
+                type: "fakeip",
+                tag: tag,
+                inet4_range: is_ipv6 ? null : ip + "/32",
+                inet6_range: is_ipv6 ? ip + "/128" : null
+            });
+            
+            push(dns_rules, {
+                action: "route",
+                server: tag,
+                domain: [domain]
+            });
+        }
+    }
+    
     for (let rule in dns_config.rules)
         push(dns_rules, rule);
     for (let rule in [
@@ -446,6 +474,8 @@ function base_config(settings, service_address, runtime_context) {
         push(dns_rules, rule);
 
     let dns_servers = [];
+    for (let server in dns_hosts_servers)
+        push(dns_servers, server);
     for (let server in dns_config.servers)
         push(dns_servers, server);
     push(dns_servers, {
@@ -2284,6 +2314,10 @@ function add_awg_endpoint(config, section) {
     let mtu = int_option(section, "awg_mtu", "0");
     if (mtu > 0)
         endpoint.mtu = mtu;
+
+    let keepalive = int_option(section, "awg_keepalive", "0");
+    if (keepalive > 0)
+        endpoint.peers[0].persistent_keepalive_interval = keepalive;
 
     // AmneziaWG obfuscation parameters
     let amnezia = {

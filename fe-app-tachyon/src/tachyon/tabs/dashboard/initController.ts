@@ -1341,9 +1341,15 @@ function updateLatencyProgressInline(
       return false;
     }
 
-    const text = getLatencyTestLabel(
-      sectionsWidget.latencyProgressSections[section.sectionName],
+    const isConnectionNode = ['vpn', 'awg', 'warp'].includes(
+      section.action || '',
     );
+
+    const text = isConnectionNode 
+      ? _('Checking Connection...') 
+      : getLatencyTestLabel(
+          sectionsWidget.latencyProgressSections[section.sectionName],
+        );
 
     if (label.textContent !== text) {
       label.textContent = text;

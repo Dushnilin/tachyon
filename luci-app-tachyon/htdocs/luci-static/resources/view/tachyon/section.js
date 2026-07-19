@@ -6888,12 +6888,43 @@ function addTextConditionField(section, config) {
   return o;
 }
 
+var DOMAIN_LIST_HINTS = {
+  russia_inside:    "rutracker.org, pikabu.ru, lenta.ru, sports.ru, ...",
+  russia_outside:   "youtube.com, instagram.com, twitter.com, ...",
+  ukraine_inside:   "ukr.net, pravda.com.ua, suspilne.media, ...",
+  geoblock:         "Все домены, заблокированные в РФ",
+  block:            "Заблокировать совсем (без прокси)",
+  porn:             "Pornhub, xvideos, xhamster, ...",
+  news:             "meduza.io, bbc.com, gordonua.com, ...",
+  anime:            "crunchyroll.com, anilist.co, myanimelist.net, ...",
+  youtube:          "youtube.com, youtu.be, googlevideo.com, ...",
+  discord:          "discord.com, discord.gg, discordapp.com, ...",
+  meta:             "facebook.com, instagram.com, whatsapp.com, ...",
+  twitter:          "twitter.com, x.com, t.co, ...",
+  hdrezka:          "hdrezka.ag, hdrezka.me, ...",
+  tiktok:           "tiktok.com, tiktokcdn.com, ...",
+  telegram:         "telegram.org, t.me, ...",
+  cloudflare:       "все IP/домены Cloudflare (1.1.1.1, etc.)",
+  google_ai:        "gemini.google.com, bard.google.com, ...",
+  google_play:      "play.google.com, googleplay.com, ...",
+  hodca:            "H.O.D.C.A. (HDRezka, OnlineDisk, etc.)",
+  roblox:           "roblox.com, rbxcdn.com, ...",
+  ads_hagezi_pro:   "Блокировка рекламы (Hagezi Pro список)",
+  supercell:        "supercell.com, clashofclans.com, ...",
+  github:           "github.com, raw.githubusercontent.com, ...",
+  hetzner:          "IP-адреса Hetzner (ASN)",
+  ovh:              "IP-адреса OVH (ASN)",
+  digitalocean:     "IP-адреса DigitalOcean (ASN)",
+  cloudfront:       "IP-адреса CloudFront/Amazon (ASN)",
+};
+
 function loadRulesetValues(option) {
   delete option.keylist;
   delete option.vallist;
 
   Object.entries(main.DOMAIN_LIST_OPTIONS).forEach(([key, label]) => {
-    option.value(key, _(label));
+    const hint = DOMAIN_LIST_HINTS[key];
+    option.value(key, hint ? `${_(label)} — ${hint}` : _(label));
   });
 }
 
@@ -7524,6 +7555,7 @@ function createSectionContent(section) {
         if (iface.Address)              setVal("awg_local_address",   normalizeAddr(iface.Address));
         if (iface.PrivateKey)           setVal("awg_private_key",     iface.PrivateKey);
         if (iface.MTU !== undefined)    setVal("awg_mtu",             iface.MTU);
+        if (peer.PersistentKeepalive)   setVal("awg_keepalive",       peer.PersistentKeepalive);
         if (iface.Jc   !== undefined)   setVal("awg_jc",   iface.Jc);
         if (iface.Jmin !== undefined)   setVal("awg_jmin", iface.Jmin);
         if (iface.Jmax !== undefined)   setVal("awg_jmax", iface.Jmax);
@@ -7640,6 +7672,13 @@ function createSectionContent(section) {
   o = section.taboption("settings", form.Value, "awg_mtu", _("MTU"));
   o.datatype = "uinteger";
   o.placeholder = "1280";
+  o.modalonly = true;
+  o.rmempty = true;
+  o.depends("action", "awg");
+
+  o = section.taboption("settings", form.Value, "awg_keepalive", _("Persistent Keepalive"));
+  o.datatype = "uinteger";
+  o.placeholder = "25";
   o.modalonly = true;
   o.rmempty = true;
   o.depends("action", "awg");

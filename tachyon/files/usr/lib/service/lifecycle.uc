@@ -536,6 +536,35 @@ function dnsmasq_has_tachyon_managed_state() {
     return dns_apply_success([ "has-managed-state" ]);
 }
 
+function discover_awg_mtu() {
+    let sections = uci_core.get_all(CONFIG_NAME, "outbound") || {};
+    let changed = false;
+    for (let section in sections) {
+        if (section.action == "awg" && (section.awg_mtu == "" || section.awg_mtu == "0" || section.awg_mtu == null)) {
+            let endpoint = section.awg_server_address;
+            if (endpoint) {
+                log_message("Auto-discovering optimal MTU for AWG section '" + section[".name"] + "'...", "info");
+                let best_mtu = 1500;
+                let test_mtus = [1500, 1400, 1280, 1200];
+                for (let test_mtu in test_mtus) {
+                    let payload = test_mtu - 28;
+                    let result = system(sprintf("ping -c 1 -W 1 -M do -s %d %s >/dev/null 2>&1", payload, endpoint));
+                    if (result == 0) {
+                        best_mtu = test_mtu;
+                        break;
+                    }
+                }
+                log_message(sprintf("Discovered optimal MTU %d for %s", best_mtu, section[".name"]), "info");
+                system(sprintf("uci set tachyon.%s.awg_mtu='%d'", section[".name"], best_mtu));
+                changed = true;
+            }
+        }
+    }
+    if (changed) {
+        system("uci commit tachyon");
+    }
+}
+
 function validate_start_config() {
     let status = module_status(VALIDATOR_UC, [ "check-requirements" ]);
     if (status != 0)
@@ -681,6 +710,8 @@ function start_main() {
     let status;
 
     log_message("Starting Tachyon", "info");
+
+    discover_awg_mtu();
 
     status = validate_start_config();
     if (status != 0)
