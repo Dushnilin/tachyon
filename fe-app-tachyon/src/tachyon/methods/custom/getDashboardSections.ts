@@ -1441,7 +1441,6 @@ export async function getDashboardSections(
             sectionName,
             displayName,
             action: sectionAction,
-            latencyTestTimeout: '10000',
             outbounds: [
               {
                 code: outbound?.code || sectionName,
@@ -1449,7 +1448,7 @@ export async function getDashboardSections(
                   section.interface ||
                   outbound?.value?.name ||
                   (sectionAction === 'awg' ? 'AmneziaWG' : sectionAction.toUpperCase()),
-                latency: outbound?.value?.history?.[0]?.delay || 0,
+                latency: 0,
                 type: outbound?.value?.type || '',
                 selected: true,
                 canCopyLink: false,

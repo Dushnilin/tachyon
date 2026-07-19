@@ -2738,3 +2738,6 @@ msgstr "Не проверено"
 
 msgid "Test connection"
 msgstr "Проверить подключение"
+
+msgid "Not connected"
+msgstr "Не подключено"

@@ -266,6 +266,7 @@ function renderDefaultState({
   const isConnectionNode = ['vpn', 'awg', 'warp'].includes(section.action || '');
 
   function testLatency() {
+
     if (section.withTagSelect) {
       return onTestLatency(
         section.latencyTestCodes?.length
@@ -281,6 +282,12 @@ function renderDefaultState({
 
   function renderOutbound(outbound: Tachyon.Outbound) {
     function getLatencyClass() {
+      if (isConnectionNode) {
+        return outbound.runtimeAvailable
+          ? 'tachyon_dashboard-page__outbound-grid__item__latency--green'
+          : 'tachyon_dashboard-page__outbound-grid__item__latency--red';
+      }
+
       if (!outbound.latency) {
         return 'tachyon_dashboard-page__outbound-grid__item__latency--empty';
       }
@@ -296,7 +303,7 @@ function renderDefaultState({
       return 'tachyon_dashboard-page__outbound-grid__item__latency--red';
     }
 
-    const connectionStatusText = outbound.latency > 0 ? _('Connected') : _('Not tested');
+    const connectionStatusText = outbound.runtimeAvailable ? _('Connected') : _('Not connected');
 
     const canCopyLink =
       Boolean(outbound.canCopyLink) || isCopyableProxyLink(outbound.link);
@@ -471,9 +478,11 @@ function renderDefaultState({
           },
           [
             ...(subscriptionUpdateAction ? [subscriptionUpdateAction] : []),
-            E(
-              'button',
-              {
+            ...(!isConnectionNode
+              ? [
+                  E(
+                    'button',
+                    {
                 type: 'button',
                 class: 'btn dashboard-sections-grid-item-test-latency',
                 'data-latency-section': section.sectionName,
@@ -505,9 +514,10 @@ function renderDefaultState({
                     {
                       class: 'dashboard-sections-grid-item-test-latency__label',
                     },
-                    isConnectionNode ? _('Test connection') : _('Test latency'),
+                    _('Test latency'),
                   ),
             ),
+          ] : []),
           ],
         ),
       ],
