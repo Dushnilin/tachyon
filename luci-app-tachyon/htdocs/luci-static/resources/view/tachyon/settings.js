@@ -485,6 +485,18 @@ function createSettingsContent(section, capabilities) {
   );
   o.default = "60";
   o.rmempty = false;
+  o.validate = function (section_id, value) {
+    if (!value) {
+      return _("TTL value cannot be empty");
+    }
+
+    const ttl = parseInt(value);
+    if (isNaN(ttl) || ttl < 0) {
+      return _("TTL must be a positive number");
+    }
+
+    return true;
+  };
 
   o = section.option(
     form.DynamicList,
@@ -498,18 +510,6 @@ function createSettingsContent(section, capabilities) {
     if (parts.length !== 2) {
       return _("Invalid format. Use: domain ip");
     }
-    return true;
-  };
-  o.validate = function (section_id, value) {
-    if (!value) {
-      return _("TTL value cannot be empty");
-    }
-
-    const ttl = parseInt(value);
-    if (isNaN(ttl) || ttl < 0) {
-      return _("TTL must be a positive number");
-    }
-
     return true;
   };
 
