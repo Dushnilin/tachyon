@@ -83,8 +83,17 @@ msgstr "Добавить префикс к узлам"
 msgid "Add URLs or local paths to .lst lists. Only domain rules are supported."
 msgstr "Добавьте URL или локальные пути к .lst спискам. Поддерживаются только доменные правила."
 
+msgid "Add URLs or local paths to .lst lists containing domains and subnets."
+msgstr "Добавьте URL или локальные пути к .lst спискам с доменами и подсетями."
+
+msgid "Add URLs or local paths to .lst lists containing domains. IP entries are ignored."
+msgstr "Добавьте URL или локальные пути к .lst спискам с доменами. IP-адреса игнорируются."
+
 msgid "Add URLs or local paths to .srs / .json lists. Only domain rules are supported."
 msgstr "Добавьте URL или локальные пути к .srs / .json спискам. Поддерживаются только доменные правила."
+
+msgid "Add URLs or local paths to .srs / .json lists. Subnets are ignored by default."
+msgstr "Добавьте URL или локальные пути к .srs / .json спискам. Подсети по умолчанию игнорируются."
 
 msgid "Add URLTest / Priority group"
 msgstr "Добавить URLTest / группу приоритетов"
@@ -556,6 +565,9 @@ msgstr "Не тестировать указанные серверы."
 
 msgid "Does not resolve"
 msgstr "Не резолвится"
+
+msgid "Domain and IP lists"
+msgstr "Списки доменов и IP"
 
 msgid "Domain lists"
 msgstr "Списки доменов"

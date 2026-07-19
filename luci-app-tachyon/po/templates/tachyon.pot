@@ -118,9 +118,16 @@ msgstr ""
 msgid "Add URLs or local paths to .lst lists. Only domain rules are supported."
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:7881
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:7910
+msgid "Add URLs or local paths to .lst lists containing domains and subnets."
+msgstr ""
+
+msgid "Add URLs or local paths to .lst lists containing domains. IP entries are ignored."
+msgstr ""
+
 msgid "Add URLs or local paths to .srs / .json lists. Only domain rules are supported."
+msgstr ""
+
+msgid "Add URLs or local paths to .srs / .json lists. Subnets are ignored by default."
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:3284
@@ -810,6 +817,9 @@ msgid "Does not resolve"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:7934
+msgid "Domain and IP lists"
+msgstr ""
+
 msgid "Domain lists"
 msgstr ""
 
