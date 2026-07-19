@@ -2004,6 +2004,41 @@ function renderDefaultState({
       section.withTagSelect && !canChooseOutbound ? "tachyon_dashboard-page__outbound-grid__item--disabled" : "",
       outboundSwitching ? "tachyon_dashboard-page__outbound-grid__item--switching" : ""
     ].filter(Boolean).join(" ");
+    if (isConnectionNode) {
+      return E(
+        "div",
+        {
+          class: className,
+          style: "display: flex; align-items: center; justify-content: space-between; padding: 12px; min-width: 0; gap: 16px;"
+        },
+        [
+          E("div", { style: "display: flex; align-items: center; gap: 12px; min-width: 0;" }, [
+            E("b", { style: "overflow-wrap: anywhere; word-break: break-all; min-width: 0;" }, renderFlagEmojis(outbound.displayName)),
+            E("span", { style: "opacity: 0.7; font-size: 13px; white-space: nowrap; flex-shrink: 0;" }, [outbound.type].filter(Boolean)),
+            E("div", { class: getLatencyClass(), style: "white-space: nowrap; flex-shrink: 0;" }, connectionStatusText)
+          ]),
+          E(
+            "button",
+            {
+              type: "button",
+              class: "btn dashboard-sections-grid-item-test-latency",
+              style: "padding: 4px 12px; height: 30px; flex-shrink: 0;",
+              disabled: latencyFetching ? true : void 0,
+              click: (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                if (latencyFetching) return;
+                testLatency();
+              }
+            },
+            latencyFetching ? [
+              renderLoaderCircleIcon24(),
+              E("span", { class: "dashboard-sections-grid-item-test-latency__label" }, _("Checking..."))
+            ] : E("span", { class: "dashboard-sections-grid-item-test-latency__label" }, _("Check Connection"))
+          )
+        ]
+      );
+    }
     return E(
       "div",
       {
@@ -2097,28 +2132,7 @@ function renderDefaultState({
               "div",
               { class: getLatencyClass() },
               isConnectionNode ? connectionStatusText : outbound.latency ? `${outbound.latency}ms` : "N/A"
-            ),
-            ...isConnectionNode ? [
-              E(
-                "button",
-                {
-                  type: "button",
-                  class: "btn dashboard-sections-grid-item-test-latency",
-                  style: "margin-left: 8px; padding: 2px 8px; height: 26px;",
-                  disabled: latencyFetching ? true : void 0,
-                  click: (event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    if (latencyFetching) return;
-                    testLatency();
-                  }
-                },
-                latencyFetching ? [
-                  renderLoaderCircleIcon24(),
-                  E("span", { class: "dashboard-sections-grid-item-test-latency__label" }, _("Checking..."))
-                ] : E("span", { class: "dashboard-sections-grid-item-test-latency__label" }, _("Check Connection"))
-              )
-            ] : []
+            )
           ]
         )
       ]
