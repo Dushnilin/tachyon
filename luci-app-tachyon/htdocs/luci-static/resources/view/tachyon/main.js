@@ -1949,6 +1949,7 @@ function renderDefaultState({
   subscriptionUpdating,
   selectorSwitchingTag
 }) {
+  const isConnectionNode = ["vpn", "awg", "warp"].includes(section.action || "");
   function testLatency() {
     if (section.withTagSelect) {
       return onTestLatency(
@@ -1961,6 +1962,9 @@ function renderDefaultState({
   }
   function renderOutbound(outbound) {
     function getLatencyClass() {
+      if (isConnectionNode) {
+        return outbound.runtimeAvailable ? "tachyon_dashboard-page__outbound-grid__item__latency--green" : "tachyon_dashboard-page__outbound-grid__item__latency--red";
+      }
       if (!outbound.latency) {
         return "tachyon_dashboard-page__outbound-grid__item__latency--empty";
       }
@@ -1972,8 +1976,7 @@ function renderDefaultState({
       }
       return "tachyon_dashboard-page__outbound-grid__item__latency--red";
     }
-    const isConnectionNode = ["vpn", "awg", "warp"].includes(section.action || "");
-    const connectionStatusText = outbound.latency > 0 ? _("Connected") : _("Not tested");
+    const connectionStatusText = outbound.runtimeAvailable ? _("Connected") : _("Not connected");
     const canCopyLink = Boolean(outbound.canCopyLink) || isCopyableProxyLink(outbound.link);
     const selectorSwitching = Boolean(selectorSwitchingTag);
     const outboundSwitching = selectorSwitchingTag === outbound.code;
@@ -2110,39 +2113,41 @@ function renderDefaultState({
           },
           [
             ...subscriptionUpdateAction ? [subscriptionUpdateAction] : [],
-            E(
-              "button",
-              {
-                type: "button",
-                class: "btn dashboard-sections-grid-item-test-latency",
-                "data-latency-section": section.sectionName,
-                disabled: latencyFetching ? true : void 0,
-                click: (event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  if (latencyFetching) {
-                    return;
+            ...!isConnectionNode ? [
+              E(
+                "button",
+                {
+                  type: "button",
+                  class: "btn dashboard-sections-grid-item-test-latency",
+                  "data-latency-section": section.sectionName,
+                  disabled: latencyFetching ? true : void 0,
+                  click: (event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    if (latencyFetching) {
+                      return;
+                    }
+                    testLatency();
                   }
-                  testLatency();
-                }
-              },
-              latencyFetching ? [
-                renderLoaderCircleIcon24(),
-                E(
+                },
+                latencyFetching ? [
+                  renderLoaderCircleIcon24(),
+                  E(
+                    "span",
+                    {
+                      class: "dashboard-sections-grid-item-test-latency__label"
+                    },
+                    getLatencyTestLabel(latencyProgress)
+                  )
+                ] : E(
                   "span",
                   {
                     class: "dashboard-sections-grid-item-test-latency__label"
                   },
-                  getLatencyTestLabel(latencyProgress)
+                  _("Test latency")
                 )
-              ] : E(
-                "span",
-                {
-                  class: "dashboard-sections-grid-item-test-latency__label"
-                },
-                _("Test latency")
               )
-            )
+            ] : []
           ]
         )
       ]
@@ -4045,12 +4050,11 @@ async function getDashboardSections(options = {}) {
           sectionName,
           displayName,
           action: sectionAction,
-          latencyTestTimeout: "10000",
           outbounds: [
             {
               code: outbound?.code || sectionName,
               displayName: section.interface || outbound?.value?.name || (sectionAction === "awg" ? "AmneziaWG" : sectionAction.toUpperCase()),
-              latency: outbound?.value?.history?.[0]?.delay || 0,
+              latency: 0,
               type: outbound?.value?.type || "",
               selected: true,
               canCopyLink: false,

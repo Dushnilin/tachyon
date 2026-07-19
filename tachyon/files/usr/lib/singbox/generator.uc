@@ -2281,6 +2281,10 @@ function add_awg_endpoint(config, section) {
     if (preshared_key != "")
         endpoint.peers[0].pre_shared_key = preshared_key;
 
+    let mtu = int_option(section, "awg_mtu", "0");
+    if (mtu > 0)
+        endpoint.mtu = mtu;
+
     // AmneziaWG obfuscation parameters
     let amnezia = {
         jc: int_option(section, "awg_jc", "120"),

@@ -837,9 +837,9 @@ function nft_create_runtime_base(table, localv4_set, common_set, port_set, ip_po
     if (!nft_create_chain(table, "mangle_forward", "{ type filter hook forward priority -150; policy accept; }"))
         return false;
 
-    let rtmtu_ok = nft_add_rule(table, "mangle_forward", [ "tcp", "flags", "syn", "tcp", "option", "maxseg", "size", "set", "rtmtu" ]);
+    let rtmtu_ok = nft_add_rule(table, "mangle_forward", [ "tcp", "flags", "syn", "tcp", "option", "maxseg", "size", "set", "rt", "mtu" ]);
     if (rtmtu_ok) {
-        if (!nft_add_rule(table, "mangle_output", [ "tcp", "flags", "syn", "tcp", "option", "maxseg", "size", "set", "rtmtu" ]))
+        if (!nft_add_rule(table, "mangle_output", [ "tcp", "flags", "syn", "tcp", "option", "maxseg", "size", "set", "rt", "mtu" ]))
             return false;
     } else {
         if (!nft_add_rule(table, "mangle_forward", [ "tcp", "flags", "syn", "tcp", "option", "maxseg", "size", "set", "1400" ]) ||

@@ -2320,7 +2320,7 @@ function run_doctor_checks() {
     // 11. MSS Clamping Check
     if (routing_mode == "nftables") {
         let out_clamping = command_capture("nft list table inet " + NFT_TABLE_NAME).output;
-        if (index(out_clamping, "tcp flags syn tcp option maxseg size set rtmtu") >= 0 || index(out_clamping, "tcp flags syn tcp option maxseg size set 1400") >= 0) {
+        if (index(out_clamping, "tcp flags syn tcp option maxseg size set rt mtu") >= 0 || index(out_clamping, "tcp flags syn tcp option maxseg size set 1400") >= 0) {
             doc_check("✅", "MSS Clamping rule", "active", "");
         } else {
             if (is_degraded_flag) {
@@ -2329,15 +2329,15 @@ function run_doctor_checks() {
                 issues++;
                 command_status("nft add chain inet " + NFT_TABLE_NAME + " mangle_forward '{ type filter hook forward priority -150; }' >/dev/null 2>&1");
                 command_status("nft add chain inet " + NFT_TABLE_NAME + " mangle_output '{ type filter hook output priority -150; }' >/dev/null 2>&1");
-                let r1 = command_status("nft add rule inet " + NFT_TABLE_NAME + " mangle_forward tcp flags syn tcp option maxseg size set rtmtu >/dev/null 2>&1");
-                let r2 = command_status("nft add rule inet " + NFT_TABLE_NAME + " mangle_output tcp flags syn tcp option maxseg size set rtmtu >/dev/null 2>&1");
+                let r1 = command_status("nft add rule inet " + NFT_TABLE_NAME + " mangle_forward tcp flags syn tcp option maxseg size set rt mtu >/dev/null 2>&1");
+                let r2 = command_status("nft add rule inet " + NFT_TABLE_NAME + " mangle_output tcp flags syn tcp option maxseg size set rt mtu >/dev/null 2>&1");
                 if (r1 != 0 || r2 != 0) {
                     command_status("nft add rule inet " + NFT_TABLE_NAME + " mangle_forward tcp flags syn tcp option maxseg size set 1400 >/dev/null 2>&1");
                     command_status("nft add rule inet " + NFT_TABLE_NAME + " mangle_output tcp flags syn tcp option maxseg size set 1400 >/dev/null 2>&1");
                 }
 
                 let out_clamping_check = command_capture("nft list table inet " + NFT_TABLE_NAME).output;
-                if (index(out_clamping_check, "tcp flags syn tcp option maxseg size set rtmtu") >= 0 || index(out_clamping_check, "tcp flags syn tcp option maxseg size set 1400") >= 0) {
+                if (index(out_clamping_check, "tcp flags syn tcp option maxseg size set rt mtu") >= 0 || index(out_clamping_check, "tcp flags syn tcp option maxseg size set 1400") >= 0) {
                     doc_check("❌", "MSS Clamping rule", "missing", "→ FIXED: MSS Clamping rules applied");
                     fixed++;
                 } else {

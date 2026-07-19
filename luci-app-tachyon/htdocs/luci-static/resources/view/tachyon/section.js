@@ -7523,6 +7523,7 @@ function createSectionContent(section) {
         // --- [Interface] ---
         if (iface.Address)              setVal("awg_local_address",   normalizeAddr(iface.Address));
         if (iface.PrivateKey)           setVal("awg_private_key",     iface.PrivateKey);
+        if (iface.MTU !== undefined)    setVal("awg_mtu",             iface.MTU);
         if (iface.Jc   !== undefined)   setVal("awg_jc",   iface.Jc);
         if (iface.Jmin !== undefined)   setVal("awg_jmin", iface.Jmin);
         if (iface.Jmax !== undefined)   setVal("awg_jmax", iface.Jmax);
@@ -7632,6 +7633,13 @@ function createSectionContent(section) {
     "awg_preshared_key",
     _("Preshared Key"),
   );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.depends("action", "awg");
+
+  o = section.taboption("settings", form.Value, "awg_mtu", _("MTU"));
+  o.datatype = "uinteger";
+  o.placeholder = "1280";
   o.modalonly = true;
   o.rmempty = true;
   o.depends("action", "awg");
