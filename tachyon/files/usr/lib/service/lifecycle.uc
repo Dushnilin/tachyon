@@ -725,9 +725,6 @@ function start_main() {
 
     module_success(BYEDPI_UC, [ "start-runtime" ]);
 
-    // Ensure persistent cache directory exists before sing-box starts
-    ensure_dir("/etc/sing-box");
-
     if (!command_success_from_args([ "/etc/init.d/sing-box", "start" ])) {
         log_message("Failed to start sing-box. Aborted.", "fatal");
         return 1;
@@ -847,7 +844,7 @@ function stop_main() {
     if (module_success(NFT_UC, [ "tproxy-route6-present", RT_TABLE_NAME ]))
         command_success_from_args([ "ip", "-6", "route", "flush", "table", RT_TABLE_NAME ]);
 
-    let cache_path = uci_core.get(CONFIG_NAME + ".settings.cache_path") || "/etc/sing-box/cache.db";
+    let cache_path = uci_core.get(CONFIG_NAME + ".settings.cache_path") || "/tmp/sing-box/cache.db";
     remove_file(cache_path);
 
     let sing_box_status = command_status_from_args([ "/etc/init.d/sing-box", "stop" ]);

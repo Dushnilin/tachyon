@@ -425,7 +425,7 @@ function tproxy_inbound_matcher() {
 function base_config(settings, service_address, runtime_context) {
     let log_level = option(settings, "log_level", "warn");
     let rewrite_ttl = int_option(settings, "dns_rewrite_ttl", "60");
-    let cache_path = option(settings, "cache_path", "/etc/sing-box/cache.db");
+    let cache_path = option(settings, "cache_path", "/tmp/sing-box/cache.db");
     let dns_config = runtime_dns.config(settings);
     if (dns_config.unsupported)
         runtime_generate_unsupported(dns_config.unsupported);
