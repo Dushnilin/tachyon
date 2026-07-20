@@ -478,7 +478,7 @@ function worker() {
 function stop_runtime() {
     let pid = trim(fs.readfile(PID_FILE) || "");
     if (pid != "" && match(pid, /^[0-9]+$/) != null && command_success_from_args([ "kill", "-0", pid ])) {
-        command_success_from_args([ "kill", pid ]);
+        command_success_from_args([ "kill", "-9", pid ]);
     }
     fs.unlink(PID_FILE);
     return 0;

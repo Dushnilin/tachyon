@@ -339,7 +339,7 @@ function process_running(pid) {
 function stop_runtime() {
     let pid = file_first_line(PID_FILE);
     if (process_running(pid))
-        command_success_from_args([ "kill", pid ]);
+        command_success_from_args([ "kill", "-9", pid ]);
     remove_file(PID_FILE);
     return 0;
 }
