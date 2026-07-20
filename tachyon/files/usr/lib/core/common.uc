@@ -158,6 +158,25 @@ function command_success_from_args(args) {
     return command_success(command_from_args(args));
 }
 
+function command_capture(command) {
+    let output = "";
+    let p = fs.popen(command, "r");
+    if (!p) return null;
+    let chunk;
+    while ((chunk = p.read('all')) != null) {
+        if (length(chunk) == 0) break;
+        output += chunk;
+    }
+    let status = p.close();
+    status = status > 255 ? int(status / 256) : status;
+    return { status: status, output: output };
+}
+
+function command_output(command) {
+    let res = command_capture(command);
+    return res ? res.output : "";
+}
+
 return {
     as_string,
     read_json_file,
@@ -179,5 +198,7 @@ return {
     command_from_args,
     command_status,
     command_success,
-    command_success_from_args
+    command_success_from_args,
+    command_capture,
+    command_output
 };

@@ -10,6 +10,7 @@ let as_string = common.as_string;
 let command_capture = common.command_capture;
 let command_success_from_args = common.command_success_from_args;
 let command_from_args = common.command_from_args;
+let command_output = common.command_output;
 
 // Helper to get clash url
 function get_clash_url(endpoint) {
@@ -49,6 +50,17 @@ function process_running_by_pidfile(pidfile) {
     let pid = trim(fs.readfile(pidfile) || "");
     return pid != "" && match(pid, /^[0-9]+$/) != null &&
            command_success_from_args(["kill", "-0", pid]);
+}
+
+function get_clash_proxies_data() {
+    let args = [ "curl", "-s", get_clash_url("proxies") ];
+    let res = command_capture(command_from_args(args));
+    if (res && res.status == 0 && res.output != "") {
+        try {
+            return json(res.output);
+        } catch (e) {}
+    }
+    return null;
 }
 
 function get_system_status() {
@@ -122,17 +134,6 @@ function get_system_status() {
     status_obj.tachyon_version = split(trim(opkg_out), " ")[1] || "unknown";
 
     return status_obj;
-}
-
-function get_clash_proxies_data() {
-    let args = [ "curl", "-s", get_clash_url("proxies") ];
-    let res = command_capture(command_from_args(args));
-    if (res.status == 0 && res.output != "") {
-        try {
-            return json(res.output);
-        } catch (e) {}
-    }
-    return null;
 }
 
 function clash_request(method, endpoint, payload) {
