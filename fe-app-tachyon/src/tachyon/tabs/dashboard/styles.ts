@@ -29,7 +29,8 @@ export const styles = `
 }
 
 .tachyon_dashboard-page {
-    width: 100%;
+    width: 0;
+    min-width: 100%;
     --dashboard-grid-columns: 4;
     --dashboard-grid-min-width: 180px;
 }
@@ -389,6 +390,7 @@ export const styles = `
     align-items: flex-start;
     justify-content: space-between;
     gap: 8px;
+    min-width: 0;
 }
 
 .tachyon_dashboard-page__outbound-grid__item__header b {
@@ -424,6 +426,7 @@ export const styles = `
     justify-content: space-between;
     gap: 8px;
     margin-top: 10px;
+    min-width: 0;
 }
 
 .tachyon_dashboard-page__outbound-grid__item__type {
