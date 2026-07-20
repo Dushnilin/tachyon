@@ -29,8 +29,9 @@ export const styles = `
 }
 
 .tachyon_dashboard-page {
-    width: 0;
-    min-width: 100%;
+    display: table;
+    table-layout: fixed;
+    width: 100%;
     --dashboard-grid-columns: 4;
     --dashboard-grid-min-width: 180px;
 }
