@@ -1,4 +1,4 @@
-let fs = require("fs");
+﻿let fs = require("fs");
 let uci_core = require("core.uci");
 let common = require("core.common");
 
@@ -36,7 +36,7 @@ function get_clash_url(endpoint) {
 
 // ─── API Functions ───────────────────────────────────────────────────────────
 
-export function get_pause_remaining() {
+function get_pause_remaining() {
     let val = trim(fs.readfile(PAUSE_FILE) || "");
     if (val == "") return 0;
     let until = int(val);
@@ -45,13 +45,13 @@ export function get_pause_remaining() {
     return until - now;
 }
 
-export function process_running_by_pidfile(pidfile) {
+function process_running_by_pidfile(pidfile) {
     let pid = trim(fs.readfile(pidfile) || "");
     return pid != "" && match(pid, /^[0-9]+$/) != null &&
            command_success_from_args(["kill", "-0", pid]);
 }
 
-export function get_system_status() {
+function get_system_status() {
     let status_obj = {};
 
     // CPU
@@ -124,7 +124,7 @@ export function get_system_status() {
     return status_obj;
 }
 
-export function get_clash_proxies_data() {
+function get_clash_proxies_data() {
     let args = [ "curl", "-s", get_clash_url("proxies") ];
     let res = command_capture(command_from_args(args));
     if (res.status == 0 && res.output != "") {
@@ -135,7 +135,7 @@ export function get_clash_proxies_data() {
     return null;
 }
 
-export function clash_request(method, endpoint, payload) {
+function clash_request(method, endpoint, payload) {
     let url = get_clash_url(endpoint);
     let payload_path = "/tmp/clash_payload_" + method + "_" + time() + "_" + clock()[1] + ".json";
     let res = null;
@@ -171,7 +171,7 @@ export function clash_request(method, endpoint, payload) {
     }
 }
 
-export function get_clash_connections() {
+function get_clash_connections() {
     let args = [ "curl", "-s", get_clash_url("connections") ];
     let res = command_capture(command_from_args(args));
     if (res.status == 0 && res.output != "") {
@@ -182,7 +182,7 @@ export function get_clash_connections() {
     return null;
 }
 
-export function check_connection() {
+function check_connection() {
     let res_direct = command_capture("curl -I -s --connect-timeout 5 https://www.google.com");
     let direct_ok = (res_direct.status == 0) ? true : false;
     
@@ -192,7 +192,7 @@ export function check_connection() {
     return { direct: direct_ok, proxy: proxy_ok };
 }
 
-export function run_speedtest() {
+function run_speedtest() {
     // Direct speedtest
     let res_direct = command_capture("curl -s -w '%{speed_download}' -o /dev/null --connect-timeout 8 https://speed.cloudflare.com/__down?bytes=5242880");
     let direct_speed = double(res_direct.output || 0);
@@ -206,7 +206,7 @@ export function run_speedtest() {
     return { direct_mbps: direct_mbps, proxy_mbps: proxy_mbps };
 }
 
-export function manage_domain_list(action_type, domain, do_delete) {
+function manage_domain_list(action_type, domain, do_delete) {
     let c = uci_core.cursor();
     if (!c) return { success: false, error: "Не удалось инициализировать UCI" };
     c.load(CONFIG_NAME);
@@ -226,7 +226,7 @@ export function manage_domain_list(action_type, domain, do_delete) {
     return manage_domain_list_by_section(target_section, domain, do_delete);
 }
 
-export function manage_domain_list_by_section(sec_name, domain, do_delete) {
+function manage_domain_list_by_section(sec_name, domain, do_delete) {
     let c = uci_core.cursor();
     if (!c) return { success: false, error: "Не удалось инициализировать UCI" };
     c.load(CONFIG_NAME);
@@ -272,7 +272,7 @@ export function manage_domain_list_by_section(sec_name, domain, do_delete) {
     }
 }
 
-export function get_sections() {
+function get_sections() {
     let c = uci_core.cursor();
     if (!c) return [];
     c.load(CONFIG_NAME);
@@ -284,7 +284,7 @@ export function get_sections() {
     return sections;
 }
 
-export function get_servers() {
+function get_servers() {
     let c = uci_core.cursor();
     if (!c) return [];
     c.load(CONFIG_NAME);
@@ -296,12 +296,12 @@ export function get_servers() {
     return servers;
 }
 
-export function reload_tachyon() {
+function reload_tachyon() {
     common.command_status("/usr/bin/tachyon reload");
     return true;
 }
 
-export function toggle_section(sec_name) {
+function toggle_section(sec_name) {
     let c = uci_core.cursor();
     if (!c) return false;
     c.load(CONFIG_NAME);
@@ -315,3 +315,19 @@ export function toggle_section(sec_name) {
     reload_tachyon();
     return true;
 }
+return {
+    get_pause_remaining,
+    process_running_by_pidfile,
+    get_system_status,
+    get_clash_proxies_data,
+    clash_request,
+    get_clash_connections,
+    check_connection,
+    run_speedtest,
+    manage_domain_list,
+    manage_domain_list_by_section,
+    get_sections,
+    get_servers,
+    reload_tachyon,
+    toggle_section
+};
