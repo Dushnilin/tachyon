@@ -514,3 +514,19 @@ function send_api(message) {
     }
     return 0;
 }
+
+let mode = (ARGV[0] == "") ? ARGV[1] : ARGV[0];
+if (!mode) mode = "";
+
+if (mode == "start-runtime")
+    exit(start_runtime());
+else if (mode == "stop-runtime")
+    exit(stop_runtime());
+else if (mode == "worker")
+    exit(worker());
+else if (mode == "status")
+    exit(status());
+else if (mode != "") {
+    warn("Usage: service/telegram.uc <start-runtime|stop-runtime|worker|status> ...\n");
+    exit(1);
+}
