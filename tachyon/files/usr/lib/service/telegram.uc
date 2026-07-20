@@ -16,19 +16,7 @@ let object_or_empty = common.object_or_empty;
 let command_status = common.command_status;
 let command_success_from_args = common.command_success_from_args;
 let command_from_args = common.command_from_args;
-let command_capture = function(command) {
-    let output = "";
-    let p = fs.popen(command, "r");
-    if (!p) return null;
-    let chunk;
-    while ((chunk = p.read('all')) != null) {
-        if (length(chunk) == 0) break;
-        output += chunk;
-    }
-    let status = p.close();
-    status = status > 255 ? int(status / 256) : status;
-    return { status: status, output: output };
-};
+let command_capture = common.command_capture;
 
 // ─── Settings & Config ────────────────────────────────────────────────────────
 
@@ -256,6 +244,7 @@ function handle_switch(token, chat_id, msg_id, server_name) {
     view_outbounds(token, chat_id, msg_id);
 }
 
+
 function view_sections(token, chat_id, msg_id) {
     let sections = api.get_sections();
     let text = "⚙️ <b>Секции Маршрутизации</b>\n\n";
@@ -270,12 +259,13 @@ function view_sections(token, chat_id, msg_id) {
         }
     }
     
+    push(keyboard, [{ text: "➕ Создать секцию", callback_data: "/sec_create" }]);
     push(keyboard, [{ text: "⬅️ Назад", callback_data: "/menu" }]);
     if (msg_id) edit_message(token, chat_id, msg_id, text, "HTML", keyboard);
     else send_message(token, chat_id, text, "HTML", keyboard);
 }
 
-function view_section_detail(token, chat_id, msg_id, sec_name) {
+function view_section_editor(token, chat_id, msg_id, sec_name) {
     let c = uci_core.cursor();
     c.load(CONFIG_NAME);
     let s = c.get_all(CONFIG_NAME, sec_name);
@@ -286,12 +276,166 @@ function view_section_detail(token, chat_id, msg_id, sec_name) {
                "Тип: <code>" + escape_html(s.action || "none") + "</code>\n" +
                "Статус: <b>" + status + "</b>\n\n";
                
+    if (s.action == "proxy" || s.action == "route") {
+        text += "Цель (Target): <code>" + escape_html(s.target || "main-out") + "</code>\n";
+    }
+    
+    let d_count = length(common.list_option(s, "domain")) + length(common.list_option(s, "domain_suffix")) + length(common.list_option(s, "domain_keyword")) + length(common.list_option(s, "domain_regex"));
+    let ip_count = length(common.list_option(s, "ip")) + length(common.list_option(s, "ip_cidr"));
+    let src_count = length(common.list_option(s, "src_ip")) + length(common.list_option(s, "src_mac")) + length(common.list_option(s, "src_device"));
+    let rs_count = length(common.list_option(s, "community_lists"));
+               
     let keyboard = [];
-    push(keyboard, [{ text: (s.enabled == "1" ? "🔴 Выключить" : "🟢 Включить"), callback_data: "/sec_toggle " + sec_name }]);
-    push(keyboard, [{ text: "🔙 Назад к списку", callback_data: "/sections" }]);
+    push(keyboard, [
+        { text: (s.enabled == "1" ? "🔴 Выкл" : "🟢 Вкл"), callback_data: "/sec_toggle " + sec_name },
+        { text: "✏️ Имя", callback_data: "/sec_rename " + sec_name }
+    ]);
+    
+    push(keyboard, [{ text: "🔀 Действие: " + (s.action || "none"), callback_data: "/sec_action " + sec_name }]);
+    if (s.action == "proxy" || s.action == "route") {
+        push(keyboard, [{ text: "🌐 Цель: " + (s.target || "main-out"), callback_data: "/sec_target " + sec_name }]);
+    }
+    
+    push(keyboard, [
+        { text: "📝 Домены (" + d_count + ")", callback_data: "/sec_list " + sec_name + " domain" },
+        { text: "📝 IP (" + ip_count + ")", callback_data: "/sec_list " + sec_name + " ip" }
+    ]);
+    push(keyboard, [
+        { text: "📝 Источники (" + src_count + ")", callback_data: "/sec_list " + sec_name + " src" },
+        { text: "📝 Rulesets (" + rs_count + ")", callback_data: "/sec_list " + sec_name + " ruleset" }
+    ]);
+    
+    push(keyboard, [{ text: "🗑 Удалить секцию", callback_data: "/sec_delete " + sec_name }]);
+    push(keyboard, [{ text: "🔙 К списку секций", callback_data: "/sections" }]);
     
     if (msg_id) edit_message(token, chat_id, msg_id, text, "HTML", keyboard);
     else send_message(token, chat_id, text, "HTML", keyboard);
+}
+
+function handle_sec_toggle(token, chat_id, msg_id, sec_name) {
+    api.toggle_section(sec_name);
+    return view_section_editor(token, chat_id, msg_id, sec_name);
+}
+
+function handle_sec_action(token, chat_id, msg_id, sec_name) {
+    let c = uci_core.cursor();
+    c.load(CONFIG_NAME);
+    let s = c.get_all(CONFIG_NAME, sec_name);
+    if (!s) return;
+    let acts = ["proxy", "bypass", "block", "connection"];
+    let idx = -1;
+    for (let i = 0; i < length(acts); i++) { if (acts[i] == s.action) idx = i; }
+    let next_act = acts[(idx + 1) % length(acts)];
+    c.set(CONFIG_NAME, sec_name, "action", next_act);
+    c.commit(CONFIG_NAME);
+    return view_section_editor(token, chat_id, msg_id, sec_name);
+}
+
+function view_sec_list(token, chat_id, msg_id, sec_name, list_type) {
+    let c = uci_core.cursor();
+    c.load(CONFIG_NAME);
+    let s = c.get_all(CONFIG_NAME, sec_name);
+    if (!s) return;
+    
+    let items = [];
+    let title = "";
+    if (list_type == "domain") {
+        title = "Домены";
+        let ds = common.list_option(s, "domain_suffix");
+        for (let x in ds) push(items, {type: "domain_suffix", val: x});
+        let d = common.list_option(s, "domain");
+        for (let x in d) push(items, {type: "domain", val: x});
+        let dk = common.list_option(s, "domain_keyword");
+        for (let x in dk) push(items, {type: "domain_keyword", val: x});
+        let dr = common.list_option(s, "domain_regex");
+        for (let x in dr) push(items, {type: "domain_regex", val: x});
+    } else if (list_type == "ip") {
+        title = "IP адреса";
+        let ipc = common.list_option(s, "ip_cidr");
+        for (let x in ipc) push(items, {type: "ip_cidr", val: x});
+        let ip = common.list_option(s, "ip");
+        for (let x in ip) push(items, {type: "ip", val: x});
+    } else if (list_type == "src") {
+        title = "Источники (Source)";
+        let sdev = common.list_option(s, "src_device");
+        for (let x in sdev) push(items, {type: "src_device", val: x});
+        let sip = common.list_option(s, "src_ip");
+        for (let x in sip) push(items, {type: "src_ip", val: x});
+        let smac = common.list_option(s, "src_mac");
+        for (let x in smac) push(items, {type: "src_mac", val: x});
+    } else if (list_type == "ruleset") {
+        title = "Rulesets";
+        let rs = common.list_option(s, "community_lists");
+        for (let x in rs) push(items, {type: "community_lists", val: x});
+    }
+    
+    let text = "⚙️ <b>Секция:</b> " + escape_html(s.label || sec_name) + "\n" +
+               "📋 <b>" + title + "</b>:\n\n";
+               
+    let keyboard = [];
+    if (length(items) == 0) {
+        text += "<i>Пусто.</i>\n";
+    } else {
+        for (let i = 0; i < length(items); i++) {
+            let it = items[i];
+            text += "• <code>" + escape_html(it.val) + "</code> (" + it.type + ")\n";
+            // Add individual delete buttons (up to 20 for UI limits)
+            if (i < 20) {
+                push(keyboard, [{ text: "❌ Удалить " + it.val, callback_data: "/sec_del_it " + sec_name + " " + it.type + " " + it.val }]);
+            }
+        }
+        if (length(items) > 20) text += "\n<i>(Показаны не все элементы для удаления)</i>\n";
+    }
+    
+    push(keyboard, [
+        { text: "➕ Добавить", callback_data: "/sec_add " + sec_name + " " + list_type },
+        { text: "➖ Очистить все", callback_data: "/sec_clear " + sec_name + " " + list_type }
+    ]);
+    push(keyboard, [{ text: "🔙 Назад к секции", callback_data: "/sec_view " + sec_name }]);
+    
+    if (msg_id) edit_message(token, chat_id, msg_id, text, "HTML", keyboard);
+    else send_message(token, chat_id, text, "HTML", keyboard);
+}
+
+function handle_sec_del_it(token, chat_id, msg_id, sec_name, type, val) {
+    let c = uci_core.cursor();
+    c.load(CONFIG_NAME);
+    let s = c.get_all(CONFIG_NAME, sec_name);
+    if (!s) return;
+    
+    let current = common.list_option(s, type);
+    let new_list = [];
+    for (let x in current) if (x != val) push(new_list, x);
+    
+    c.set(CONFIG_NAME, sec_name, type, new_list);
+    c.commit(CONFIG_NAME);
+    
+    // figure out parent list_type
+    let list_type = "domain";
+    if (match(type, /^ip/)) list_type = "ip";
+    else if (match(type, /^src/)) list_type = "src";
+    else if (type == "community_lists") list_type = "ruleset";
+    
+    return view_sec_list(token, chat_id, msg_id, sec_name, list_type);
+}
+
+function handle_sec_clear(token, chat_id, msg_id, sec_name, list_type) {
+    let c = uci_core.cursor();
+    c.load(CONFIG_NAME);
+    let s = c.get_all(CONFIG_NAME, sec_name);
+    if (!s) return;
+    
+    let keys = [];
+    if (list_type == "domain") keys = ["domain", "domain_suffix", "domain_keyword", "domain_regex"];
+    else if (list_type == "ip") keys = ["ip", "ip_cidr"];
+    else if (list_type == "src") keys = ["src_ip", "src_mac", "src_device"];
+    else if (list_type == "ruleset") keys = ["community_lists"];
+    
+    for (let k in keys) {
+        c.delete(CONFIG_NAME, sec_name, k);
+    }
+    c.commit(CONFIG_NAME);
+    return view_sec_list(token, chat_id, msg_id, sec_name, list_type);
 }
 
 function exec_doctor(token, chat_id) {
@@ -399,6 +543,67 @@ function dispatch_command(token, chat_id, text, msg_id) {
     }
     
     // Commands with args
+    
+    if (match(cmd, /^\/sec_create/)) {
+        set_tg_state(chat_id, { action: "sec_create" });
+        return send_message(token, chat_id, "📝 Введите латинское имя для новой секции (например, <code>my_vpn</code>):\n\n<i>Отправьте /cancel для отмены</i>", "HTML");
+    }
+    if (match(cmd, /^\/sec_rename /)) {
+        let sec = trim(substr(cmd, 12));
+        set_tg_state(chat_id, { action: "sec_rename", sec: sec });
+        return send_message(token, chat_id, "📝 Введите новое понятное имя (Label) для секции <code>" + sec + "</code>:\n\n<i>Отправьте /cancel для отмены</i>", "HTML");
+    }
+    if (match(cmd, /^\/sec_target /)) {
+        let sec = trim(substr(cmd, 12));
+        set_tg_state(chat_id, { action: "sec_target", sec: sec });
+        return send_message(token, chat_id, "🌐 Введите имя исходящего интерфейса (target) для секции <code>" + sec + "</code> (например, <code>main-out</code> или <code>direct-out</code>):\n\n<i>Отправьте /cancel для отмены</i>", "HTML");
+    }
+    if (match(cmd, /^\/sec_action /)) {
+        let sec = trim(substr(cmd, 12));
+        return handle_sec_action(token, chat_id, msg_id, sec);
+    }
+    if (match(cmd, /^\/sec_delete /)) {
+        let sec = trim(substr(cmd, 12));
+        let c = uci_core.cursor();
+        c.load(CONFIG_NAME);
+        c.delete(CONFIG_NAME, sec);
+        c.commit(CONFIG_NAME);
+        send_message(token, chat_id, "✅ Секция <code>" + sec + "</code> удалена.", "HTML");
+        return view_sections(token, chat_id, null);
+    }
+    if (match(cmd, /^\/sec_list /)) {
+        let parts = split(trim(substr(cmd, 10)), " ");
+        if (length(parts) == 2) return view_sec_list(token, chat_id, msg_id, parts[0], parts[1]);
+    }
+    if (match(cmd, /^\/sec_add /)) {
+        let parts = split(trim(substr(cmd, 9)), " ");
+        if (length(parts) == 2) {
+            set_tg_state(chat_id, { action: "sec_add", sec: parts[0], list: parts[1] });
+            return send_message(token, chat_id, "➕ Отправьте элементы для добавления (по одному в строке или через пробел):\n\n<i>Отправьте /cancel для отмены</i>", "HTML");
+        }
+    }
+    if (match(cmd, /^\/sec_clear /)) {
+        let parts = split(trim(substr(cmd, 11)), " ");
+        if (length(parts) == 2) return handle_sec_clear(token, chat_id, msg_id, parts[0], parts[1]);
+    }
+    if (match(cmd, /^\/sec_del_it /)) {
+        let parts = split(trim(substr(cmd, 12)), " ");
+        if (length(parts) >= 3) {
+            let sec = parts[0];
+            let type = parts[1];
+            let val = join(" ", slice(parts, 2));
+            return handle_sec_del_it(token, chat_id, msg_id, sec, type, val);
+        }
+    }
+    if (match(cmd, /^\/sec_view /)) {
+        let sec = trim(substr(cmd, 10));
+        return view_section_editor(token, chat_id, msg_id, sec);
+    }
+    if (match(cmd, /^\/sec_toggle /)) {
+        let sec = trim(substr(cmd, 12));
+        return handle_sec_toggle(token, chat_id, msg_id, sec);
+    }
+
     if (match(cmd, /^\/switch /)) {
         let srv = trim(substr(cmd, 8));
         return handle_switch(token, chat_id, msg_id, srv);
@@ -453,6 +658,72 @@ function process_updates(token, admin_ids) {
                 send_message(token, chat_id, "❌ Доступ запрещен. Ваш Chat ID: `" + chat_id + "`", "Markdown");
                 continue;
             }
+            
+            if (msg.text == "/cancel") {
+                set_tg_state(chat_id, null);
+                send_message(token, chat_id, "❌ Действие отменено.", "HTML", [[{text:"⬅️ Меню", callback_data:"/menu"}]]);
+                continue;
+            }
+            
+            let state = get_tg_state(chat_id);
+            if (state) {
+                // handle state
+                set_tg_state(chat_id, null); // clear immediately
+                let c = uci_core.cursor();
+                c.load(CONFIG_NAME);
+                
+                if (state.action == "sec_create") {
+                    let new_sec = trim(msg.text);
+                    if (match(new_sec, /^[a-zA-Z0-9_]+$/)) {
+                        c.set(CONFIG_NAME, new_sec, "section");
+                        c.set(CONFIG_NAME, new_sec, "action", "proxy");
+                        c.set(CONFIG_NAME, new_sec, "enabled", "1");
+                        c.set(CONFIG_NAME, new_sec, "label", new_sec);
+                        c.commit(CONFIG_NAME);
+                        send_message(token, chat_id, "✅ Секция создана!");
+                        view_section_editor(token, chat_id, null, new_sec);
+                    } else {
+                        send_message(token, chat_id, "❌ Неверное имя. Разрешены только буквы, цифры и подчеркивания.");
+                    }
+                }
+                else if (state.action == "sec_rename") {
+                    let new_label = trim(msg.text);
+                    c.set(CONFIG_NAME, state.sec, "label", new_label);
+                    c.commit(CONFIG_NAME);
+                    send_message(token, chat_id, "✅ Имя изменено.");
+                    view_section_editor(token, chat_id, null, state.sec);
+                }
+                else if (state.action == "sec_target") {
+                    let new_target = trim(msg.text);
+                    c.set(CONFIG_NAME, state.sec, "target", new_target);
+                    c.commit(CONFIG_NAME);
+                    send_message(token, chat_id, "✅ Цель изменена.");
+                    view_section_editor(token, chat_id, null, state.sec);
+                }
+                else if (state.action == "sec_add") {
+                    let items = split(trim(msg.text), /[ \n,;]+/);
+                    let valid_items = [];
+                    for (let x in items) if (trim(x) != "") push(valid_items, trim(x));
+                    
+                    if (length(valid_items) > 0) {
+                        let field = "domain_suffix";
+                        if (state.list == "ip") field = "ip_cidr";
+                        else if (state.list == "src") field = "src_ip";
+                        else if (state.list == "ruleset") field = "community_lists";
+                        
+                        let current = common.list_option(c.get_all(CONFIG_NAME, state.sec), field);
+                        for (let x in valid_items) push(current, x);
+                        c.set(CONFIG_NAME, state.sec, field, current);
+                        c.commit(CONFIG_NAME);
+                        send_message(token, chat_id, "✅ Добавлено " + length(valid_items) + " элементов.");
+                    } else {
+                        send_message(token, chat_id, "❌ Ничего не добавлено.");
+                    }
+                    view_sec_list(token, chat_id, null, state.sec, state.list);
+                }
+                continue;
+            }
+
             dispatch_command(token, chat_id, msg.text, null);
         }
     }

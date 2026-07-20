@@ -117,7 +117,7 @@ function list_option(section, key) {
     if (type(value) == "array")
         return value;
     let text = trim(as_string(value));
-    return text == "" ? [] : split(text, " ");
+    return text == "" ? [] : split(text, /[ \t\r\n]+/);
 }
 
 function bool_option(section, key, fallback) {
