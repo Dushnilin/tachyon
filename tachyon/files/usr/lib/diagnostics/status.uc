@@ -1146,11 +1146,12 @@ function write_server_capabilities_json(sing_box_extended, sing_box_tiny, sing_b
     });
 }
 
-function write_ui_capabilities_json(sing_box_extended, sing_box_tiny, sing_box_compressed, sing_box_tailscale, zapret_installed, zapret2_installed, byedpi_installed, server_inbounds_enabled_count) {
+function write_ui_capabilities_json(sing_box_extended, sing_box_tiny, sing_box_compressed, sing_box_lx, sing_box_tailscale, zapret_installed, zapret2_installed, byedpi_installed, server_inbounds_enabled_count) {
     write_json({
         sing_box_extended: arg_number(sing_box_extended),
         sing_box_tiny: arg_number(sing_box_tiny),
         sing_box_compressed: arg_number(sing_box_compressed),
+        sing_box_lx: arg_number(sing_box_lx),
         sing_box_tailscale: arg_number(sing_box_tailscale),
         zapret_installed: arg_number(zapret_installed),
         zapret2_installed: arg_number(zapret2_installed),
@@ -1313,7 +1314,9 @@ function render_flag_line(value, key, ok_message, fail_message) {
 
 function sing_box_core_label(value) {
     if (flag_is_one(value.sing_box_extended) && flag_is_one(value.sing_box_compressed))
-        return "extended compressed";
+        return "extended-compressed";
+    if (flag_is_one(value.sing_box_extended) && flag_is_one(value.sing_box_lx))
+        return "lx";
     if (flag_is_one(value.sing_box_extended))
         return "extended";
     if (flag_is_one(value.sing_box_tiny))
@@ -1654,16 +1657,17 @@ function system_info_json() {
         sing_box_extended: arg_number(ARGV[5]),
         sing_box_tiny: arg_number(ARGV[6]),
         sing_box_compressed: arg_number(ARGV[7]),
-        sing_box_tailscale: arg_number(ARGV[8]),
-        zapret_version: as_string(ARGV[9]),
-        zapret_installed: arg_number(ARGV[10]),
-        zapret2_version: as_string(ARGV[11]),
-        zapret2_installed: arg_number(ARGV[12]),
-        byedpi_version: as_string(ARGV[13]),
-        byedpi_installed: arg_number(ARGV[14]),
-        openwrt_version: as_string(ARGV[15]),
-        device_model: as_string(ARGV[16]),
-        generated_at: arg_number(ARGV[17])
+        sing_box_lx: arg_number(ARGV[8]),
+        sing_box_tailscale: arg_number(ARGV[9]),
+        zapret_version: as_string(ARGV[10]),
+        zapret_installed: arg_number(ARGV[11]),
+        zapret2_version: as_string(ARGV[12]),
+        zapret2_installed: arg_number(ARGV[13]),
+        byedpi_version: as_string(ARGV[14]),
+        byedpi_installed: arg_number(ARGV[15]),
+        openwrt_version: as_string(ARGV[16]),
+        device_model: as_string(ARGV[17]),
+        generated_at: arg_number(ARGV[18])
     });
 }
 
@@ -1944,7 +1948,7 @@ else if (mode == "inbounds-check-json")
 else if (mode == "server-capabilities-json")
     write_server_capabilities_json(ARGV[1], ARGV[2], ARGV[3]);
 else if (mode == "ui-capabilities-json")
-    write_ui_capabilities_json(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5], ARGV[6], ARGV[7], ARGV[8]);
+    write_ui_capabilities_json(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5], ARGV[6], ARGV[7], ARGV[8], ARGV[9]);
 else if (mode == "service-status-json")
     write_service_status_json(ARGV[1], ARGV[2], ARGV[3], ARGV[4]);
 else if (mode == "service-status-running")

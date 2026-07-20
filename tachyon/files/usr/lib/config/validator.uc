@@ -1798,6 +1798,10 @@ function sing_box_extended_marker_set(ctx) {
     return sing_box_variant_marker(ctx, "extended");
 }
 
+function sing_box_lx_marker_set(ctx) {
+    return sing_box_variant_marker(ctx, "lx");
+}
+
 function sing_box_version_state(ctx) {
     let path = as_string(ctx.sing_box_version_state_file);
     if (path == "")
@@ -1825,12 +1829,23 @@ function sing_box_version_is_extended(version) {
     return index(as_string(version), "extended") >= 0;
 }
 
+function sing_box_version_is_lx(version) {
+    return index(as_string(version), "-lx") >= 0;
+}
+
 function sing_box_is_extended(ctx, version) {
     if (as_string(version) == "" && command_exists("sing-box") &&
         (sing_box_compressed_marker_set(ctx) || sing_box_extended_marker_set(ctx)))
         return true;
 
     return sing_box_version_is_extended(version != null ? version : get_sing_box_version(ctx));
+}
+
+function sing_box_is_lx(ctx, version) {
+    if (as_string(version) == "" && command_exists("sing-box") && sing_box_lx_marker_set(ctx))
+        return true;
+
+    return sing_box_version_is_lx(version != null ? version : get_sing_box_version(ctx));
 }
 
 function sing_box_output_has_build_tag(output, tag) {

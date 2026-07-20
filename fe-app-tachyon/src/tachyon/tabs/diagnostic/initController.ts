@@ -370,6 +370,7 @@ async function fetchDiagnosticsProviderInfo({
         sing_box_extended: uiState.capabilities.sing_box_extended,
         sing_box_tiny: uiState.capabilities.sing_box_tiny,
         sing_box_compressed: uiState.capabilities.sing_box_compressed,
+        sing_box_lx: uiState.capabilities.sing_box_lx,
         sing_box_tailscale: uiState.capabilities.sing_box_tailscale,
         zapret_installed: uiState.capabilities.zapret_installed,
         zapret2_installed: uiState.capabilities.zapret2_installed,

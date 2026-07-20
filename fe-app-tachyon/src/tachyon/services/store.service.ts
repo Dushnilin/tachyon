@@ -200,6 +200,7 @@ export interface StoreType {
     sing_box_extended: number;
     sing_box_tiny: number;
     sing_box_compressed: number;
+    sing_box_lx: number;
     sing_box_tailscale: number;
     zapret_version: string;
     zapret_installed: number;
@@ -218,6 +219,7 @@ export interface StoreType {
     singBoxInstall: { loading: boolean };
     singBoxInstallExtended: { loading: boolean };
     singBoxInstallExtendedCompressed: { loading: boolean };
+    singBoxInstallLx: { loading: boolean };
     singBoxInstallTiny: { loading: boolean };
     singBoxInstallStable: { loading: boolean };
     zapretCheck: { loading: boolean };

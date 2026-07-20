@@ -999,6 +999,9 @@ function sing_box_capability_flags(sing_box_version, sing_box_version_output) {
         module_success(SINGBOX_RUNTIME_UC, [ "is-extended", sing_box_version ]))
         extended = 1;
 
+    if (sing_box_marker_is("lx") || module_success(SINGBOX_RUNTIME_UC, [ "is-lx", sing_box_version ]))
+        extended = 1;
+
     if (extended == 0 && (sing_box_marker_is("tiny") || sing_box_tiny_package_installed()))
         tiny = 1;
 
@@ -1066,6 +1069,7 @@ function build_system_info() {
 
     let flags = sing_box_capability_flags(sing_box_version, sing_box_version_output);
     let sing_box_compressed = flags.extended == 1 && sing_box_marker_is("extended-compressed") ? 1 : 0;
+    let sing_box_lx = flags.extended == 1 && sing_box_marker_is("lx") ? 1 : 0;
 
     let zapret_installed = provider_installed(ZAPRET_RUNTIME_UC) ? 1 : 0;
     let zapret_version = zapret_installed ? provider_version(ZAPRET_RUNTIME_UC) : "not installed";
@@ -1083,6 +1087,7 @@ function build_system_info() {
         sing_box_extended: flags.extended,
         sing_box_tiny: flags.tiny,
         sing_box_compressed,
+        sing_box_lx,
         sing_box_tailscale: flags.tailscale,
         zapret_version,
         zapret_installed,
@@ -1510,12 +1515,14 @@ function check_sing_box() {
         sing_box_installed = 1;
         let version = strip_leading_v(replace(module_output(SINGBOX_RUNTIME_UC, [ "version" ]), /[\r\n]+$/g, ""));
         if (version != "") {
-            if (sing_box_marker_is("extended-compressed") || module_success(SINGBOX_RUNTIME_UC, [ "is-extended", version ]))
+            if (sing_box_marker_is("lx") || module_success(SINGBOX_RUNTIME_UC, [ "is-lx", version ]))
+                sing_box_extended = 1;
+            else if (sing_box_marker_is("extended-compressed") || module_success(SINGBOX_RUNTIME_UC, [ "is-extended", version ]))
                 sing_box_extended = 1;
             if (module_success(HELPERS_UC, [ "version-at-least", version, "1.12.4" ]))
                 sing_box_version_ok = 1;
         }
-        else if (sing_box_marker_is("extended-compressed"))
+        else if (sing_box_marker_is("extended-compressed") || sing_box_marker_is("lx"))
             sing_box_extended = 1;
     }
 

@@ -339,6 +339,7 @@ function patchSystemInfoAfterMutation(result: Tachyon.ComponentActionResult) {
       nextSystemInfo.sing_box_extended = 1;
       nextSystemInfo.sing_box_tiny = 0;
       nextSystemInfo.sing_box_compressed = 0;
+      nextSystemInfo.sing_box_lx = 0;
       nextSystemInfo.sing_box_tailscale = 1;
     }
 
@@ -346,6 +347,15 @@ function patchSystemInfoAfterMutation(result: Tachyon.ComponentActionResult) {
       nextSystemInfo.sing_box_extended = 1;
       nextSystemInfo.sing_box_tiny = 0;
       nextSystemInfo.sing_box_compressed = 1;
+      nextSystemInfo.sing_box_lx = 0;
+      nextSystemInfo.sing_box_tailscale = 1;
+    }
+
+    if (result.action === 'install_lx') {
+      nextSystemInfo.sing_box_extended = 1;
+      nextSystemInfo.sing_box_tiny = 0;
+      nextSystemInfo.sing_box_compressed = 0;
+      nextSystemInfo.sing_box_lx = 1;
       nextSystemInfo.sing_box_tailscale = 1;
     }
 
@@ -353,6 +363,7 @@ function patchSystemInfoAfterMutation(result: Tachyon.ComponentActionResult) {
       nextSystemInfo.sing_box_extended = 0;
       nextSystemInfo.sing_box_tiny = 0;
       nextSystemInfo.sing_box_compressed = 0;
+      nextSystemInfo.sing_box_lx = 0;
       nextSystemInfo.sing_box_tailscale = 1;
     }
 
@@ -360,6 +371,7 @@ function patchSystemInfoAfterMutation(result: Tachyon.ComponentActionResult) {
       nextSystemInfo.sing_box_extended = 0;
       nextSystemInfo.sing_box_tiny = 1;
       nextSystemInfo.sing_box_compressed = 0;
+      nextSystemInfo.sing_box_lx = 0;
       nextSystemInfo.sing_box_tailscale = 0;
     }
   }
@@ -820,10 +832,13 @@ function getComponentCards(): ComponentCard[] {
     !systemInfo.sing_box_extended &&
     !systemInfo.sing_box_tiny;
   const singBoxExtended =
-    Boolean(systemInfo.sing_box_extended) && !systemInfo.sing_box_compressed;
+    Boolean(systemInfo.sing_box_extended) && !systemInfo.sing_box_compressed && !systemInfo.sing_box_lx;
   const singBoxExtendedCompressed =
     Boolean(systemInfo.sing_box_extended) &&
     Boolean(systemInfo.sing_box_compressed);
+  const singBoxLx =
+    Boolean(systemInfo.sing_box_extended) &&
+    Boolean(systemInfo.sing_box_lx);
   const singBoxTiny = Boolean(systemInfo.sing_box_tiny);
 
   const tachyonActions = getInstalledUpdateActions(
@@ -873,6 +888,15 @@ function getComponentCards(): ComponentCard[] {
       icon: renderDownloadIcon24,
       component: 'sing_box',
       action: 'install_extended_compressed',
+    });
+  }
+  if (!singBoxLx) {
+    singBoxActions.push({
+      key: 'singBoxInstallLx',
+      text: 'Leadaxe (lx)',
+      icon: renderDownloadIcon24,
+      component: 'sing_box',
+      action: 'install_lx',
     });
   }
 

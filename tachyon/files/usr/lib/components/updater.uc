@@ -698,6 +698,22 @@ function sing_box_extended_asset_url(arch_suffix, _unused, compressed) {
     exit(1);
 }
 
+function sing_box_lx_asset_url(arch_suffix) {
+    let release = object_or_empty(read_stdin_json());
+
+    arch_suffix = as_string(arch_suffix);
+    if (arch_suffix == "")
+        exit(1);
+
+    let url = release_asset_url_by_suffix_from_release(release, "linux-" + arch_suffix + ".tar.gz");
+    if (url != "") {
+        print(url, "\n");
+        return;
+    }
+
+    exit(1);
+}
+
 function sing_box_extended_package_asset_url(distrib_arch, asset_ext) {
     let release = object_or_empty(read_stdin_json());
     let suffix;
@@ -909,6 +925,21 @@ function sing_box_extended_release_tag() {
         let tag = as_string(release.tag_name || "");
         let lowered = lc(tag);
         if (tag != "" && !str_contains(lowered, "alpha") && !str_contains(lowered, "beta") && !str_contains(lowered, "rc")) {
+            print(tag, "\n");
+            return;
+        }
+    }
+}
+
+function sing_box_lx_release_tag() {
+    for (let release in array_or_empty(read_stdin_json())) {
+        if (type(release) != "object")
+            continue;
+        if (release.draft === true || release.prerelease === true)
+            continue;
+        let tag = as_string(release.tag_name || "");
+        let lowered = lc(tag);
+        if (tag != "" && str_contains(lowered, "-lx") && !str_contains(lowered, "alpha") && !str_contains(lowered, "beta") && !str_contains(lowered, "rc")) {
             print(tag, "\n");
             return;
         }
@@ -1205,6 +1236,8 @@ else if (mode == "sing-box-extended-arch-suffix")
     sing_box_extended_arch_suffix(ARGV[1], ARGV[2]);
 else if (mode == "sing-box-extended-asset-url")
     sing_box_extended_asset_url(ARGV[1], ARGV[2], ARGV[3]);
+else if (mode == "sing-box-lx-asset-url")
+    sing_box_lx_asset_url(ARGV[1]);
 else if (mode == "sing-box-extended-package-asset-url")
     sing_box_extended_package_asset_url(ARGV[1], ARGV[2]);
 else if (mode == "updates-opkg-package-installed")
@@ -1225,6 +1258,8 @@ else if (mode == "byedpi-select-asset")
     byedpi_select_asset(ARGV[1], ARGV[2], ARGV[3]);
 else if (mode == "sing-box-extended-release-tag")
     sing_box_extended_release_tag();
+else if (mode == "sing-box-lx-release-tag")
+    sing_box_lx_release_tag();
 else if (mode == "file-last-nonblank-line")
     file_last_nonblank_line(ARGV[1], ARGV[2], ARGV[3]);
 else if (mode == "file-flat-snippet")

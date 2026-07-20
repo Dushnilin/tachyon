@@ -322,11 +322,12 @@ function ui_state_json() {
             sing_box_extended: arg_number(ARGV[8]),
             sing_box_tiny: arg_number(ARGV[9]),
             sing_box_compressed: arg_number(ARGV[10]),
-            sing_box_tailscale: arg_number(ARGV[11]),
-            zapret_installed: arg_number(ARGV[12]),
-            zapret2_installed: arg_number(ARGV[13]),
-            byedpi_installed: arg_number(ARGV[14]),
-            server_inbounds_enabled_count: arg_number(ARGV[15])
+            sing_box_lx: arg_number(ARGV[11]),
+            sing_box_tailscale: arg_number(ARGV[12]),
+            zapret_installed: arg_number(ARGV[13]),
+            zapret2_installed: arg_number(ARGV[14]),
+            byedpi_installed: arg_number(ARGV[15]),
+            server_inbounds_enabled_count: arg_number(ARGV[16])
         },
         actions: action_state
     });
@@ -1027,6 +1028,7 @@ function capability_flags() {
         sing_box_extended: 0,
         sing_box_tiny: 0,
         sing_box_compressed: 0,
+        sing_box_lx: 0,
         sing_box_tailscale: 0,
         zapret_installed: file_executable(ZAPRET_PROVIDER_NFQWS_BIN) ? 1 : 0,
         zapret2_installed: file_executable(ZAPRET2_PROVIDER_NFQWS2_BIN) ? 1 : 0,
@@ -1035,7 +1037,12 @@ function capability_flags() {
     };
 
     if (file_executable(SING_BOX_BIN_PATH)) {
-        if (marker_is("extended-compressed")) {
+        if (marker_is("lx")) {
+            result.sing_box_extended = 1;
+            result.sing_box_lx = 1;
+            result.sing_box_tailscale = 1;
+        }
+        else if (marker_is("extended-compressed")) {
             result.sing_box_extended = 1;
             result.sing_box_compressed = 1;
             result.sing_box_tailscale = 1;
@@ -1052,7 +1059,12 @@ function capability_flags() {
         }
         else {
             let info = sing_box_version_info();
-            if (info != null && index(info.version, "extended") >= 0) {
+            if (info != null && index(info.version, "-lx") >= 0) {
+                result.sing_box_extended = 1;
+                result.sing_box_lx = 1;
+                result.sing_box_tailscale = 1;
+            }
+            else if (info != null && index(info.version, "extended") >= 0) {
                 result.sing_box_extended = 1;
                 result.sing_box_tailscale = 1;
             }

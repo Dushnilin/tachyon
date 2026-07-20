@@ -19,6 +19,7 @@ function getEmptyUpdatesActions(): StoreType['updatesActions'] {
     singBoxInstall: { loading: false },
     singBoxInstallExtended: { loading: false },
     singBoxInstallExtendedCompressed: { loading: false },
+    singBoxInstallLx: { loading: false },
     singBoxInstallTiny: { loading: false },
     singBoxInstallStable: { loading: false },
     zapretCheck: { loading: false },
@@ -80,6 +81,7 @@ function applyServiceState(uiState: Tachyon.UiState) {
   nextSystemInfo.sing_box_extended = uiState.capabilities.sing_box_extended;
   nextSystemInfo.sing_box_tiny = uiState.capabilities.sing_box_tiny;
   nextSystemInfo.sing_box_compressed = uiState.capabilities.sing_box_compressed;
+  nextSystemInfo.sing_box_lx = uiState.capabilities.sing_box_lx;
   nextSystemInfo.sing_box_tailscale = uiState.capabilities.sing_box_tailscale;
 
   store.set({

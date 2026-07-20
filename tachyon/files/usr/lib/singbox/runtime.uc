@@ -265,6 +265,18 @@ function sing_box_is_extended(value) {
     return sing_box_version_is_extended(value != "" ? value : sing_box_version());
 }
 
+function sing_box_version_is_lx(value) {
+    return index(as_string(value), "-lx") >= 0;
+}
+
+function sing_box_is_lx(value) {
+    value = as_string(value);
+    if (value == "" && command_exists("sing-box") && sing_box_marker_is("lx"))
+        return true;
+
+    return sing_box_version_is_lx(value != "" ? value : sing_box_version());
+}
+
 function output_has_build_tag(output, tag) {
     tag = as_string(tag);
     if (tag == "")
@@ -280,9 +292,9 @@ function sing_box_supports_tailscale(version, version_output) {
     version = as_string(version);
     version_output = as_string(version_output);
 
-    if (command_exists("sing-box") && sing_box_marker_is("extended-compressed"))
+    if (command_exists("sing-box") && (sing_box_marker_is("extended-compressed") || sing_box_marker_is("lx")))
         return true;
-    if (sing_box_is_extended(version))
+    if (sing_box_is_extended(version) || sing_box_is_lx(version))
         return true;
     if (version_output != "")
         return output_has_build_tag(version_output, "with_tailscale");
@@ -308,9 +320,10 @@ function sing_box_is_tiny(version, version_output) {
     version = as_string(version);
     version_output = as_string(version_output);
 
-    if (command_exists("sing-box") && sing_box_marker_is("extended-compressed"))
+    if (command_exists("sing-box") && (sing_box_marker_is("extended-compressed") || sing_box_marker_is("lx")))
         return false;
-    if (sing_box_is_extended(version != "" ? version : sing_box_version()))
+    let computed_version = version != "" ? version : sing_box_version();
+    if (sing_box_is_extended(computed_version) || sing_box_is_lx(computed_version))
         return false;
     if (sing_box_package_installed("sing-box-tiny"))
         return true;
@@ -324,10 +337,14 @@ function sing_box_variant() {
 
     if (!command_exists("sing-box"))
         return "not-installed";
+    if (sing_box_marker_is("lx"))
+        return "lx";
     if (sing_box_marker_is("extended-compressed"))
         return "extended-compressed";
 
     version = sing_box_version();
+    if (sing_box_is_lx(version))
+        return "lx";
     if (sing_box_is_extended(version))
         return sing_box_marker_is("extended-compressed") ? "extended-compressed" : "extended";
     if (sing_box_is_tiny(version, ""))
@@ -914,6 +931,8 @@ else if (mode == "marker-is")
     exit(sing_box_marker_is(ARGV[1]) ? 0 : 1);
 else if (mode == "is-extended")
     exit(sing_box_is_extended(ARGV[1]) ? 0 : 1);
+else if (mode == "is-lx")
+    exit(sing_box_is_lx(ARGV[1]) ? 0 : 1);
 else if (mode == "is-tiny")
     exit(sing_box_is_tiny(ARGV[1], ARGV[2]) ? 0 : 1);
 else if (mode == "supports-tailscale")

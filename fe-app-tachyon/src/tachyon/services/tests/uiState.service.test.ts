@@ -1,4 +1,4 @@
-﻿import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { applyUiStateToStore } from '../uiState.service';
 import { store } from '../store.service';
 import { Tachyon } from '../../types';
@@ -32,6 +32,7 @@ function createUiState(
       sing_box_extended: 1,
       sing_box_tiny: 0,
       sing_box_compressed: 0,
+      sing_box_lx: 0,
       sing_box_tailscale: 1,
       zapret_installed: 1,
       zapret2_installed: 0,
@@ -311,8 +312,9 @@ describe('applyUiStateToStore', () => {
     applyUiStateToStore(
       createUiState(undefined, {
         sing_box_extended: 0,
-        sing_box_tiny: 1,
+        sing_box_tiny: 0,
         sing_box_compressed: 0,
+        sing_box_lx: 0,
         sing_box_tailscale: 0,
       }),
     );

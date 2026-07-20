@@ -503,6 +503,7 @@ export namespace Tachyon {
     sing_box_extended: 0 | 1;
     sing_box_tiny: 0 | 1;
     sing_box_compressed: 0 | 1;
+    sing_box_lx: 0 | 1;
     sing_box_tailscale: 0 | 1;
     zapret_installed: 0 | 1;
     zapret2_installed: 0 | 1;
@@ -571,6 +572,7 @@ export namespace Tachyon {
     | 'remove'
     | 'install_extended'
     | 'install_extended_compressed'
+    | 'install_lx'
     | 'install_tiny'
     | 'install_stable';
 

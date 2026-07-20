@@ -3,11 +3,16 @@ type SingBoxVariantFields = {
   sing_box_extended?: number;
   sing_box_tiny?: number;
   sing_box_compressed?: number;
+  sing_box_lx?: number;
   sing_box_tailscale?: number;
 };
 
 export function isExtendedSingBoxVersion(version?: string) {
-  return String(version || '').includes('extended');
+  return String(version || '').includes('extended') || String(version || '').includes('-lx');
+}
+
+export function isLxSingBoxVersion(version?: string) {
+  return String(version || '').includes('-lx');
 }
 
 function isVersionPlaceholder(version?: string) {
@@ -49,6 +54,11 @@ export function formatSingBoxVersion(value: SingBoxVariantFields) {
     normalizedValue.sing_box_compressed
   ) {
     variant = _('compressed');
+  } else if (
+    normalizedValue.sing_box_extended &&
+    normalizedValue.sing_box_lx
+  ) {
+    variant = _('lx');
   } else if (normalizedValue.sing_box_tiny) {
     variant = _('tiny');
   }
@@ -67,6 +77,7 @@ export function normalizeSingBoxVariantFields<T extends SingBoxVariantFields>(
     sing_box_extended: singBoxExtended ? 1 : 0,
     sing_box_tiny: singBoxExtended ? 0 : value.sing_box_tiny ? 1 : 0,
     sing_box_compressed: singBoxExtended && value.sing_box_compressed ? 1 : 0,
+    sing_box_lx: singBoxExtended && value.sing_box_lx ? 1 : 0,
     sing_box_tailscale: singBoxExtended || value.sing_box_tailscale ? 1 : 0,
   } as T;
 }
