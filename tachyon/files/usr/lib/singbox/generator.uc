@@ -2338,13 +2338,33 @@ function add_awg_endpoint(config, section) {
     let i3 = uci_bin_to_hex(option(section, "awg_i3", ""));
     let i4 = uci_bin_to_hex(option(section, "awg_i4", ""));
     let i5 = uci_bin_to_hex(option(section, "awg_i5", ""));
-    if (i1 != "") amnezia.i1 = i1;
-    if (i2 != "") amnezia.i2 = i2;
-    if (i3 != "" && i3 != "0") amnezia.i3 = i3;
-    if (i4 != "" && i4 != "0") amnezia.i4 = i4;
-    if (i5 != "" && i5 != "0") amnezia.i5 = i5;
+    let is_lx = trim(fs.readfile("/usr/share/tachyon/sing-box-variant-state") || "") == "lx";
 
-    endpoint.amnezia = amnezia;
+    if (is_lx) {
+        endpoint.jc = amnezia.jc;
+        endpoint.jmin = amnezia.jmin;
+        endpoint.jmax = amnezia.jmax;
+        endpoint.s1 = amnezia.s1;
+        endpoint.s2 = amnezia.s2;
+        endpoint.h1 = amnezia.h1;
+        endpoint.h2 = amnezia.h2;
+        endpoint.h3 = amnezia.h3;
+        endpoint.h4 = amnezia.h4;
+        endpoint.s3 = amnezia.s3;
+        endpoint.s4 = amnezia.s4;
+        if (i1 != "") endpoint.i1 = i1;
+        if (i2 != "") endpoint.i2 = i2;
+        if (i3 != "" && i3 != "0") endpoint.i3 = i3;
+        if (i4 != "" && i4 != "0") endpoint.i4 = i4;
+        if (i5 != "" && i5 != "0") endpoint.i5 = i5;
+    } else {
+        if (i1 != "") amnezia.i1 = i1;
+        if (i2 != "") amnezia.i2 = i2;
+        if (i3 != "" && i3 != "0") amnezia.i3 = i3;
+        if (i4 != "" && i4 != "0") amnezia.i4 = i4;
+        if (i5 != "" && i5 != "0") amnezia.i5 = i5;
+        endpoint.amnezia = amnezia;
+    }
 
     let detour = option(section, "awg_detour", "");
     if (detour != "") {
