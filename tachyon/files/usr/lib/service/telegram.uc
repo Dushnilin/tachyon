@@ -111,6 +111,227 @@ function format_bytes(b) {
     return sprintf("%d B", b);
 }
 
+
+let setting_schema = {
+    settings: {
+        config_version: "Версия конфига",
+        dns_type: "Тип DNS",
+        dns_server: "DNS Серверы",
+        bootstrap_dns_server: "Bootstrap DNS",
+        dns_strategy: "Стратегия DNS",
+        dns_detour_enabled: "DNS Detour",
+        source_network_interfaces: "Входящие интерфейсы",
+        enable_output_network_interface: "Привязка к WAN",
+        enable_badwan_interface_monitoring: "Мониторинг WAN",
+        enable_yacd: "Панель YACD",
+        disable_quic: "Блокировать QUIC",
+        list_update_enabled: "Обновление списков",
+        component_update_check_enabled: "Обновление ядра",
+        download_lists_via_proxy: "Списки через прокси",
+        download_components_via_proxy: "Ядро через прокси",
+        dont_touch_dhcp: "Не трогать DHCP",
+        isolate_p2p: "Изолировать P2P",
+        log_level: "Уровень логов",
+        exclude_ntp: "Исключить NTP",
+        shutdown_correctly: "Корректное завершение",
+        smart_detect: "Smart Detect",
+        smart_detect_sections: "Секции Smart Detect"
+    },
+    telegram: {
+        enabled: "Бот Включен",
+        bot_token: "Токен",
+        admin_ids: "Admin IDs",
+        poll_interval: "Интервал опроса",
+        notify_crash: "Сбои ядра",
+        notify_restart: "Перезапуски",
+        notify_server_switch: "Переключение серверов",
+        notify_subscription: "Статус подписок",
+        notify_cert: "Сертификаты",
+        notify_dns_leak: "Утечки DNS",
+        language: "Язык"
+    },
+    subscription_url: {
+        section: "Секция",
+        url: "URL",
+        auto_user_agent: "Auto User-Agent",
+        user_agent: "User-Agent",
+        auto_hwid: "Auto HWID",
+        subscription_update_enabled: "Автообновление",
+        subscription_update_interval: "Интервал обновления",
+        download_via_proxy_enabled: "Через прокси",
+        show_dashboard_metadata: "Метаданные подписки",
+        prefix_nodes: "Префикс узлов",
+        node_prefix: "Строка префикса",
+        include_urltest_groups: "Группы URL-Test",
+        hide_urltest_group_outbounds: "Скрыть узлы групп",
+        hide_detour_outbounds: "Скрыть Detour узлы"
+    },
+    server: {
+        label: "Название",
+        enabled: "Включен",
+        protocol: "Протокол",
+        routing_mode: "Режим"
+    }
+};
+
+function get_schema_label(stype, key) {
+    if (setting_schema[stype] && setting_schema[stype][key]) return setting_schema[stype][key];
+    return key;
+}
+
+function is_boolean_key(key) {
+    let b = ["enabled", "auto_user_agent", "auto_hwid", "subscription_update_enabled",
+             "download_via_proxy_enabled", "show_dashboard_metadata", "prefix_nodes",
+             "include_urltest_groups", "hide_urltest_group_outbounds", "hide_detour_outbounds",
+             "dns_detour_enabled", "enable_output_network_interface", "enable_badwan_interface_monitoring",
+             "enable_yacd", "disable_quic", "list_update_enabled", "component_update_check_enabled",
+             "download_lists_via_proxy", "download_components_via_proxy", "dont_touch_dhcp",
+             "isolate_p2p", "exclude_ntp", "shutdown_correctly", "smart_detect",
+             "notify_crash", "notify_restart", "notify_server_switch", "notify_subscription", "notify_cert", "notify_dns_leak"];
+    for (let x in b) if (x == key) return true;
+    return false;
+}
+
+function is_list_key(key) {
+    let l = ["dns_server", "bootstrap_dns_server", "source_network_interfaces",
+             "badwan_monitored_interfaces", "smart_detect_sections"];
+    for (let x in l) if (x == key) return true;
+    return false;
+}
+
+function view_settings_menu(token, chat_id, msg_id) {
+    let text = "⚙️ <b>Все Настройки</b>\n\nВыберите категорию для редактирования:";
+    let keyboard = [
+        [{ text: "🌍 Глобальные настройки", callback_data: "/set_cat settings settings" }],
+        [{ text: "🤖 Настройки Telegram", callback_data: "/set_cat telegram telegram" }],
+        [{ text: "🔗 Подписки", callback_data: "/set_list subscription_url" }],
+        [{ text: "🖥 Кастомные серверы", callback_data: "/set_list server" }],
+        [{ text: "⬅️ Назад", callback_data: "/menu" }]
+    ];
+    if (msg_id) edit_message(token, chat_id, msg_id, text, "HTML", keyboard);
+    else send_message(token, chat_id, text, "HTML", keyboard);
+}
+
+function view_set_list(token, chat_id, msg_id, stype) {
+    let c = uci_core.cursor();
+    c.load(CONFIG_NAME);
+    let all = c.get_all(CONFIG_NAME);
+    let keyboard = [];
+    for (let sname in all) {
+        let s = all[sname];
+        if (s[".type"] == stype) {
+            let label = s.label || s.url || sname;
+            if (length(label) > 30) label = substr(label, 0, 30) + "...";
+            push(keyboard, [{ text: (s.enabled == "0" ? "❌ " : "✅ ") + label, callback_data: "/set_cat " + stype + " " + sname }]);
+        }
+    }
+    push(keyboard, [{ text: "🔙 Категории", callback_data: "/settings" }]);
+    let text = "⚙️ <b>Категория: " + stype + "</b>\nВыберите объект:";
+    if (msg_id) edit_message(token, chat_id, msg_id, text, "HTML", keyboard);
+    else send_message(token, chat_id, text, "HTML", keyboard);
+}
+
+function view_set_cat(token, chat_id, msg_id, stype, sname, page) {
+    if (!page) page = 0;
+    else page = int(page);
+    let c = uci_core.cursor();
+    c.load(CONFIG_NAME);
+    let s = c.get_all(CONFIG_NAME, sname);
+    if (!s) return view_settings_menu(token, chat_id, msg_id);
+    
+    let text = "⚙️ <b>Редактирование:</b> <code>" + escape_html(sname) + "</code> (" + stype + ")\n\n";
+    let keyboard = [];
+    
+    let keys = [];
+    // Collect known keys first to keep them at top, then unknowns
+    if (setting_schema[stype]) {
+        for (let k in setting_schema[stype]) {
+            if (s[k] != null) push(keys, k);
+        }
+    }
+    for (let k in s) {
+        if (match(k, /^\./)) continue; // ignore .name, .type, .anonymous
+        let found = false;
+        for (let x in keys) if (x == k) { found = true; break; }
+        if (!found) push(keys, k);
+    }
+    
+    let per_page = 14;
+    let total = length(keys);
+    let start = page * per_page;
+    let end = start + per_page;
+    if (end > total) end = total;
+    
+    for (let i = start; i < end; i++) {
+        let k = keys[i];
+        let label = get_schema_label(stype, k);
+        if (is_boolean_key(k)) {
+            let b = (s[k] == "1" || s[k] == "true");
+            push(keyboard, [{ text: (b ? "✅ " : "❌ ") + label, callback_data: "/set_tog " + stype + " " + sname + " " + k + " " + page }]);
+        } else if (is_list_key(k) || type(s[k]) == "array") {
+            let cnt = length(common.list_option(s, k));
+            push(keyboard, [{ text: "📝 " + label + " (" + cnt + ")", callback_data: "/set_arr " + stype + " " + sname + " " + k }]);
+        } else {
+            let val = s[k] || "";
+            if (length(val) > 15) val = substr(val, 0, 15) + "...";
+            push(keyboard, [{ text: "✏️ " + label + ": " + val, callback_data: "/set_str " + stype + " " + sname + " " + k }]);
+        }
+    }
+    
+    let nav = [];
+    if (start > 0) push(nav, { text: "◀️ Пред", callback_data: "/set_cat " + stype + " " + sname + " " + (page - 1) });
+    if (end < total) push(nav, { text: "След ▶️", callback_data: "/set_cat " + stype + " " + sname + " " + (page + 1) });
+    if (length(nav) > 0) push(keyboard, nav);
+    
+    if (stype == "settings" || stype == "telegram") {
+        push(keyboard, [{ text: "🔙 Назад", callback_data: "/settings" }]);
+    } else {
+        push(keyboard, [{ text: "🔙 Назад", callback_data: "/set_list " + stype }]);
+    }
+    
+    if (msg_id) edit_message(token, chat_id, msg_id, text, "HTML", keyboard);
+    else send_message(token, chat_id, text, "HTML", keyboard);
+}
+
+function handle_set_tog(token, chat_id, msg_id, stype, sname, key, page) {
+    let c = uci_core.cursor();
+    c.load(CONFIG_NAME);
+    let s = c.get_all(CONFIG_NAME, sname);
+    if (!s) return;
+    let b = (s[key] == "1" || s[key] == "true");
+    c.set(CONFIG_NAME, sname, key, b ? "0" : "1");
+    c.commit(CONFIG_NAME);
+    return view_set_cat(token, chat_id, msg_id, stype, sname, page);
+}
+
+function view_set_arr(token, chat_id, msg_id, stype, sname, key) {
+    let c = uci_core.cursor();
+    c.load(CONFIG_NAME);
+    let s = c.get_all(CONFIG_NAME, sname);
+    if (!s) return;
+    let items = common.list_option(s, key);
+    let label = get_schema_label(stype, key);
+    
+    let text = "⚙️ <b>Список:</b> " + escape_html(label) + "\n\n";
+    let keyboard = [];
+    
+    if (length(items) == 0) text += "<i>Пусто</i>\n";
+    for (let i = 0; i < length(items); i++) {
+        text += "• <code>" + escape_html(items[i]) + "</code>\n";
+        if (i < 20) {
+            push(keyboard, [{ text: "❌ Удалить " + items[i], callback_data: "/set_arr_del " + stype + " " + sname + " " + key + " " + items[i] }]);
+        }
+    }
+    
+    push(keyboard, [{ text: "➕ Добавить элементы", callback_data: "/set_arr_add " + stype + " " + sname + " " + key }]);
+    push(keyboard, [{ text: "➖ Очистить список", callback_data: "/set_arr_clr " + stype + " " + sname + " " + key }]);
+    push(keyboard, [{ text: "🔙 Назад", callback_data: "/set_cat " + stype + " " + sname }]);
+    
+    if (msg_id) edit_message(token, chat_id, msg_id, text, "HTML", keyboard);
+    else send_message(token, chat_id, text, "HTML", keyboard);
+}
+
+
 function view_menu(token, chat_id, msg_id) {
     let sys = api.get_system_status();
     let text = "🏠 <b>Tachyon Control Panel</b>\n\n" +
@@ -602,7 +823,61 @@ function dispatch_command(token, chat_id, text, msg_id) {
         return handle_sec_toggle(token, chat_id, msg_id, sec);
     }
 
-    if (match(cmd, /^\/switch /)) {
+    
+    if (cmd == "/settings") return view_settings_menu(token, chat_id, msg_id);
+    if (match(cmd, /^\/set_list /)) {
+        let stype = trim(substr(cmd, 10));
+        return view_set_list(token, chat_id, msg_id, stype);
+    }
+    if (match(cmd, /^\/set_cat /)) {
+        let parts = split(trim(substr(cmd, 9)), " ");
+        if (length(parts) >= 2) return view_set_cat(token, chat_id, msg_id, parts[0], parts[1], parts[2]);
+    }
+    if (match(cmd, /^\/set_tog /)) {
+        let parts = split(trim(substr(cmd, 9)), " ");
+        if (length(parts) >= 4) return handle_set_tog(token, chat_id, msg_id, parts[0], parts[1], parts[2], parts[3]);
+    }
+    if (match(cmd, /^\/set_arr /)) {
+        let parts = split(trim(substr(cmd, 9)), " ");
+        if (length(parts) >= 3) return view_set_arr(token, chat_id, msg_id, parts[0], parts[1], parts[2]);
+    }
+    if (match(cmd, /^\/set_arr_del /)) {
+        let parts = split(trim(substr(cmd, 13)), " ");
+        if (length(parts) >= 4) {
+            let stype = parts[0]; let sname = parts[1]; let key = parts[2]; let val = join(" ", slice(parts, 3));
+            let c = uci_core.cursor(); c.load(CONFIG_NAME);
+            let s = c.get_all(CONFIG_NAME, sname);
+            let current = common.list_option(s, key);
+            let n = [];
+            for (let x in current) if (x != val) push(n, x);
+            c.set(CONFIG_NAME, sname, key, n); c.commit(CONFIG_NAME);
+            return view_set_arr(token, chat_id, msg_id, stype, sname, key);
+        }
+    }
+    if (match(cmd, /^\/set_arr_clr /)) {
+        let parts = split(trim(substr(cmd, 13)), " ");
+        if (length(parts) >= 3) {
+            let c = uci_core.cursor(); c.load(CONFIG_NAME);
+            c.delete(CONFIG_NAME, parts[1], parts[2]); c.commit(CONFIG_NAME);
+            return view_set_arr(token, chat_id, msg_id, parts[0], parts[1], parts[2]);
+        }
+    }
+    if (match(cmd, /^\/set_str /)) {
+        let parts = split(trim(substr(cmd, 9)), " ");
+        if (length(parts) >= 3) {
+            set_tg_state(chat_id, { action: "set_str", stype: parts[0], sname: parts[1], key: parts[2] });
+            return send_message(token, chat_id, "📝 Введите новое значение для <code>" + parts[2] + "</code>:\n\n<i>Отправьте /cancel для отмены</i>", "HTML");
+        }
+    }
+    if (match(cmd, /^\/set_arr_add /)) {
+        let parts = split(trim(substr(cmd, 13)), " ");
+        if (length(parts) >= 3) {
+            set_tg_state(chat_id, { action: "set_arr_add", stype: parts[0], sname: parts[1], key: parts[2] });
+            return send_message(token, chat_id, "➕ Отправьте элементы для добавления в список (через пробел или с новой строки):\n\n<i>Отправьте /cancel для отмены</i>", "HTML");
+        }
+    }
+
+if (match(cmd, /^\/switch /)) {
         let srv = trim(substr(cmd, 8));
         return handle_switch(token, chat_id, msg_id, srv);
     }
@@ -670,6 +945,27 @@ function process_updates(token, admin_ids) {
                 let c = uci_core.cursor();
                 c.load(CONFIG_NAME);
                 
+                if (state.action == "set_str") {
+                    let val = trim(msg.text);
+                    c.set(CONFIG_NAME, state.sname, state.key, val);
+                    c.commit(CONFIG_NAME);
+                    send_message(token, chat_id, "✅ Значение <code>" + state.key + "</code> сохранено.", "HTML");
+                    view_set_cat(token, chat_id, null, state.stype, state.sname, 0);
+                }
+                else if (state.action == "set_arr_add") {
+                    let items = split(trim(msg.text), /[ \t\r\n,;]+/);
+                    let valid = [];
+                    for (let x in items) if (trim(x) != "") push(valid, trim(x));
+                    if (length(valid) > 0) {
+                        let cur = common.list_option(c.get_all(CONFIG_NAME, state.sname), state.key);
+                        for (let x in valid) push(cur, x);
+                        c.set(CONFIG_NAME, state.sname, state.key, cur);
+                        c.commit(CONFIG_NAME);
+                        send_message(token, chat_id, "✅ Добавлено элементов: " + length(valid));
+                    }
+                    view_set_arr(token, chat_id, null, state.stype, state.sname, state.key);
+                }
+
                 if (state.action == "sec_create") {
                     let new_sec = trim(msg.text);
                     if (match(new_sec, /^[a-zA-Z0-9_]+$/)) {
