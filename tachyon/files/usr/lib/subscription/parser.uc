@@ -191,12 +191,12 @@ function xhttp_range_value(value, positive) {
     if (type(value) == "object") {
         let from = positive ? xhttp_positive_integer_value(value.from) : xhttp_non_negative_integer_value(value.from);
         let to = positive ? xhttp_positive_integer_value(value.to) : xhttp_non_negative_integer_value(value.to);
-        return from != null && to != null && from <= to ? { from, to } : null;
+        return from != null && to != null && from <= to ? (from == to ? as_string(from) : from + "-" + to) : null;
     }
 
     let number = positive ? xhttp_positive_integer_value(value) : xhttp_non_negative_integer_value(value);
     if (number != null)
-        return number;
+        return as_string(number);
 
     value = trim(as_string(value));
     let dash = index(value, "-");
@@ -2628,9 +2628,23 @@ function normalize_sing_box_xhttp_transport(outbound) {
         return outbound;
 
     outbound.transport.x_padding_bytes = xhttp_positive_range_or_default(outbound.transport.x_padding_bytes, "100-1000");
+
     let sc_max_each_post_bytes = xhttp_present_positive_range_or_default(outbound.transport.sc_max_each_post_bytes, "1000000");
     if (sc_max_each_post_bytes != null)
         outbound.transport.sc_max_each_post_bytes = sc_max_each_post_bytes;
+
+    let sc_min_posts_interval_ms = xhttp_present_positive_range_or_default(outbound.transport.sc_min_posts_interval_ms, "30");
+    if (sc_min_posts_interval_ms != null)
+        outbound.transport.sc_min_posts_interval_ms = sc_min_posts_interval_ms;
+
+    let uplink_chunk_size = xhttp_present_positive_range_or_default(outbound.transport.uplink_chunk_size, "2048-3072");
+    if (uplink_chunk_size != null)
+        outbound.transport.uplink_chunk_size = uplink_chunk_size;
+
+    let sc_stream_up_server_secs = xhttp_present_positive_range_or_default(outbound.transport.sc_stream_up_server_secs, "0");
+    if (sc_stream_up_server_secs != null)
+        outbound.transport.sc_stream_up_server_secs = sc_stream_up_server_secs;
+
     return outbound;
 }
 
