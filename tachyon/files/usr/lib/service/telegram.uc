@@ -448,7 +448,7 @@ function process_updates(token, admin_ids) {
 
 // ─── Entry Point ─────────────────────────────────────────────────────────────
 
-export function worker() {
+function worker() {
     let cfg = settings();
     if (cfg.enabled != "1" || !cfg.bot_token || !cfg.admin_ids) return 0;
 
@@ -475,7 +475,7 @@ export function worker() {
     return 0;
 }
 
-export function stop_runtime() {
+function stop_runtime() {
     let pid = trim(fs.readfile(PID_FILE) || "");
     if (pid != "" && match(pid, /^[0-9]+$/) != null && command_success_from_args([ "kill", "-0", pid ])) {
         command_success_from_args([ "kill", pid ]);
@@ -484,7 +484,7 @@ export function stop_runtime() {
     return 0;
 }
 
-export function start_runtime() {
+function start_runtime() {
     let cfg = settings();
     stop_runtime();
     if (cfg.enabled != "1" || !cfg.bot_token || !cfg.admin_ids) return 0;
@@ -494,7 +494,7 @@ export function start_runtime() {
     return command_status(command);
 }
 
-export function get_status() {
+function get_status() {
     let pid = trim(fs.readfile(PID_FILE) || "");
     if (pid != "" && match(pid, /^[0-9]+$/) != null && command_success_from_args([ "kill", "-0", pid ])) {
         print("running (pid " + pid + ")\n");
@@ -504,7 +504,7 @@ export function get_status() {
     return 1;
 }
 
-export function send_api(message) {
+function send_api(message) {
     let cfg = settings();
     if (cfg.enabled != "1" || !cfg.bot_token || !cfg.admin_ids) return 1;
     let admins = split(cfg.admin_ids, /,/);
