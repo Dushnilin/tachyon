@@ -1,4 +1,4 @@
-﻿import { canUseDirectClashApi, getClashWsUrl, onMount } from '../../../helpers';
+import { canUseDirectClashApi, getClashWsUrl, onMount } from '../../../helpers';
 import { prettyBytes } from '../../../helpers/prettyBytes';
 import { showToast } from '../../../helpers/showToast';
 import {
@@ -482,12 +482,8 @@ function getVisibleConnections(): MonitoredConnection[] {
     const isMatchingDevice = selectedDeviceFilter === ALL_FILTER_VALUE || sourceIp === selectedDeviceFilter;
 
     let isMatchingRoute = selectedRouteFilter === ALL_FILTER_VALUE;
-    if (!isMatchingRoute && connection.chains && connection.chains.length > 0) {
-      const outChain = connection.chains[0];
-      const routeDisplayName = getRouteDisplayNameByTag(outChain);
-      if (routeDisplayName === selectedRouteFilter) {
-        isMatchingRoute = true;
-      }
+    if (!isMatchingRoute && getRoute(connection) === selectedRouteFilter) {
+      isMatchingRoute = true;
     }
 
     if (!isMatchingDevice || !isMatchingRoute) {

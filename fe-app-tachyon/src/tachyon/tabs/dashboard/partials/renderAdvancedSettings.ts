@@ -55,7 +55,7 @@ export async function loadAdvancedSettingsState() {
       : [];
 
   const ruleSections = sections.filter(
-    s => s['.type'] === 'rule' && s.enabled !== '0',
+    s => s['.type'] === 'section' && s.enabled !== '0',
   );
   const allSectionNames = ruleSections.map(s => s['.name'] as string);
 
