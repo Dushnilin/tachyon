@@ -11658,12 +11658,8 @@ function getVisibleConnections() {
     const sourceIp = getConnectionSourceIp(connection);
     const isMatchingDevice = selectedDeviceFilter === ALL_FILTER_VALUE || sourceIp === selectedDeviceFilter;
     let isMatchingRoute = selectedRouteFilter === ALL_FILTER_VALUE;
-    if (!isMatchingRoute && connection.chains && connection.chains.length > 0) {
-      const outChain = connection.chains[0];
-      const routeDisplayName = getRouteDisplayNameByTag(outChain);
-      if (routeDisplayName === selectedRouteFilter) {
-        isMatchingRoute = true;
-      }
+    if (!isMatchingRoute && getRoute(connection) === selectedRouteFilter) {
+      isMatchingRoute = true;
     }
     if (!isMatchingDevice || !isMatchingRoute) {
       return false;
