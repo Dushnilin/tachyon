@@ -251,12 +251,9 @@ function view_sections(token, chat_id, msg_id) {
     let keyboard = [];
     
     for (let s in sections) {
-        let act = s.action || "";
-        if (act == "proxy" || act == "bypass" || act == "block" || act == "connection") {
-            let label = s.label || s[".name"];
-            let status = (s.enabled == "1") ? "✅" : "❌";
-            push(keyboard, [{ text: status + " " + label, callback_data: "/sec_view " + s[".name"] }]);
-        }
+        let label = s.label || s[".name"];
+        let status = (s.enabled == "1") ? "✅" : "❌";
+        push(keyboard, [{ text: status + " " + label, callback_data: "/sec_view " + s[".name"] }]);
     }
     
     push(keyboard, [{ text: "➕ Создать секцию", callback_data: "/sec_create" }]);
@@ -325,6 +322,7 @@ function handle_sec_action(token, chat_id, msg_id, sec_name) {
     let acts = ["proxy", "bypass", "block", "connection"];
     let idx = -1;
     for (let i = 0; i < length(acts); i++) { if (acts[i] == s.action) idx = i; }
+    if (idx == -1) push(acts, s.action);
     let next_act = acts[(idx + 1) % length(acts)];
     c.set(CONFIG_NAME, sec_name, "action", next_act);
     c.commit(CONFIG_NAME);
