@@ -1071,7 +1071,7 @@ function read_sing_box_binary_version(binary, library_dir) {
 
 function validate_sing_box_extended_binary(binary, library_dir) {
     let version = read_sing_box_binary_version(binary, library_dir || "");
-    return index(version, "extended") >= 0 ? version : "";
+    return version != "" ? version : "";
 }
 
 function move_file_portable(source_path, target_path) {
