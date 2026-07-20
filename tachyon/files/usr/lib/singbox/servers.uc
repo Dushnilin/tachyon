@@ -177,7 +177,7 @@ function apply_transport(inbound, section, protocol) {
         transport.headers = {};
         transport.x_padding_bytes = "100-1000";
         transport.no_sse_header = false;
-        transport.sc_max_each_post_bytes = 1000000;
+        transport.sc_max_each_post_bytes = "1000000";
         transport.sc_max_buffered_posts = 30;
         transport.sc_stream_up_server_secs = "20-80";
         transport.server_max_header_bytes = 8192;

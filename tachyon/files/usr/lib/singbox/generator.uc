@@ -1777,8 +1777,8 @@ function apply_link_transport(outbound, query) {
         result.path = as_string(query.path || "") != "" ? as_string(query.path) : "/";
         result.x_padding_bytes = "100-1000";
         result.no_grpc_header = false;
-        result.sc_max_each_post_bytes = 1000000;
-        result.sc_min_posts_interval_ms = 30;
+        result.sc_max_each_post_bytes = "1000000";
+        result.sc_min_posts_interval_ms = "30";
         optional_query_string(result, "host", as_string(query.host || "") != "" ? query.host : query.sni);
     }
     else {

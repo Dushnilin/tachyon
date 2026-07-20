@@ -665,8 +665,8 @@ function add_transport(url) {
             path: path,
             x_padding_bytes: "100-1000",
             no_grpc_header: false,
-            sc_max_each_post_bytes: 1000000,
-            sc_min_posts_interval_ms: 30
+            sc_max_each_post_bytes: "1000000",
+            sc_min_posts_interval_ms: "30"
         };
         if (host != "")
             result.host = host;
@@ -2154,8 +2154,8 @@ function xray_transport_from_stream(stream) {
             path: as_string(settings.path || "/"),
             x_padding_bytes: "100-1000",
             no_grpc_header: false,
-            sc_max_each_post_bytes: 1000000,
-            sc_min_posts_interval_ms: 30
+            sc_max_each_post_bytes: "1000000",
+            sc_min_posts_interval_ms: "30"
         };
         if (result.mode != "auto" && result.mode != "packet-up" && result.mode != "stream-up" && result.mode != "stream-one")
             result.mode = "auto";
@@ -2628,7 +2628,7 @@ function normalize_sing_box_xhttp_transport(outbound) {
         return outbound;
 
     outbound.transport.x_padding_bytes = xhttp_positive_range_or_default(outbound.transport.x_padding_bytes, "100-1000");
-    let sc_max_each_post_bytes = xhttp_present_positive_range_or_default(outbound.transport.sc_max_each_post_bytes, 1000000);
+    let sc_max_each_post_bytes = xhttp_present_positive_range_or_default(outbound.transport.sc_max_each_post_bytes, "1000000");
     if (sc_max_each_post_bytes != null)
         outbound.transport.sc_max_each_post_bytes = sc_max_each_post_bytes;
     return outbound;
