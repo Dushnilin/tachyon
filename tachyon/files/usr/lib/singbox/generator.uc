@@ -2338,7 +2338,7 @@ function add_awg_endpoint(config, section) {
     let i3 = uci_bin_to_hex(option(section, "awg_i3", ""));
     let i4 = uci_bin_to_hex(option(section, "awg_i4", ""));
     let i5 = uci_bin_to_hex(option(section, "awg_i5", ""));
-    let is_lx = trim(fs.readfile("/usr/share/tachyon/sing-box-variant-state") || "") == "lx";
+    let is_lx = trim(fs.readfile("/etc/tachyon/sing-box-variant") || "") == "lx";
 
     if (is_lx) {
         endpoint.jc = amnezia.jc;
