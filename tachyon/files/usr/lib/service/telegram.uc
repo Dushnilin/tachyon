@@ -1705,30 +1705,7 @@ function send_api(message) {
     }
     return 0;
 }
- 
-let mode = (ARGV[0] == "") ? ARGV[1] : ARGV[0];
-if (!mode) mode = "";
- 
-if (mode == "start-runtime") {
-    exit(start_runtime());
-}
-else if (mode == "stop-runtime") {
-    exit(stop_runtime());
-}
-else if (mode == "worker") {
-    exit(worker());
-}
-else if (mode == "status") {
-    exit(get_status());
-}
-else if (mode == "send") {
-    let msg = (ARGV[0] == "") ? ARGV[2] : ARGV[1];
-    exit(send_api(msg));
-}
-else {
-    warn("Usage: service/telegram.uc <start-runtime|stop-runtime|worker|status|send> ...\n");
-    exit(1);
-}
+
 
 function get_random_string(length) {
     let chars = "abcdefghijklmnopqrstuvwxyz0123456789";
