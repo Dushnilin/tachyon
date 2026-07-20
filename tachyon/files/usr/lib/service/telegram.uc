@@ -16,7 +16,19 @@ let object_or_empty = common.object_or_empty;
 let command_status = common.command_status;
 let command_success_from_args = common.command_success_from_args;
 let command_from_args = common.command_from_args;
-let command_capture = common.command_capture;
+let command_capture = function(command) {
+    let output = "";
+    let p = fs.popen(command, "r");
+    if (!p) return null;
+    let chunk;
+    while ((chunk = p.read('all')) != null) {
+        if (length(chunk) == 0) break;
+        output += chunk;
+    }
+    let status = p.close();
+    status = status > 255 ? int(status / 256) : status;
+    return { status: status, output: output };
+};
 
 // ─── Settings & Config ────────────────────────────────────────────────────────
 
