@@ -3974,3 +3974,15 @@ msgstr ""
 #: src/tachyon/tabs/diagnostic/checks/runZapret2Check.ts:107
 msgid "Zapret2 sing-box outbound is not configured"
 msgstr ""
+
+msgid "Destination IP or CIDR"
+msgstr ""
+
+msgid "Forced destination routing"
+msgstr ""
+
+msgid "All traffic to these destination IPs will be routed through the section unconditionally, ignoring all other conditions."
+msgstr ""
+
+msgid "All Routes"
+msgstr ""
