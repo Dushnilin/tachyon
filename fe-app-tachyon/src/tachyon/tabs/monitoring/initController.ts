@@ -1311,6 +1311,9 @@ function bindControls() {
   const select = document.getElementById(
     'monitoring-device-filter',
   ) as HTMLSelectElement | null;
+  const routeSelect = document.getElementById(
+    'monitoring-route-filter',
+  ) as HTMLSelectElement | null;
   const searchInput = document.getElementById(
     'monitoring-search',
   ) as HTMLInputElement | null;
@@ -1344,6 +1347,13 @@ function bindControls() {
   if (select) {
     select.onchange = () => {
       selectedDeviceFilter = select.value || ALL_FILTER_VALUE;
+      renderConnections();
+    };
+  }
+
+  if (routeSelect) {
+    routeSelect.onchange = () => {
+      selectedRouteFilter = routeSelect.value || ALL_FILTER_VALUE;
       renderConnections();
     };
   }
