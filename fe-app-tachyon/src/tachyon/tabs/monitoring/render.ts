@@ -39,6 +39,15 @@ export function render() {
               },
               [E('option', { value: 'all' }, _('All'))],
             ),
+            E(
+              'select',
+              {
+                id: 'monitoring-route-filter',
+                class:
+                  'cbi-input-select tachyon_monitoring-page__device-filter tachyon_monitoring-page__route-filter',
+              },
+              [E('option', { value: 'all' }, _('All Routes'))],
+            ),
             E('label', { class: 'tachyon_monitoring-page__search' }, [
               E('span', { class: 'tachyon_monitoring-page__search-icon' }, []),
               E('input', {

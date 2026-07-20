@@ -450,7 +450,7 @@ function process_updates(token, admin_ids) {
 
 function worker() {
     let cfg = settings();
-    if (cfg.enabled != "1" || !cfg.bot_token || !cfg.admin_ids) return 0;
+    if (cfg.enabled != "1" || !cfg.bot_token) return 0;
 
     let commands = [
         { command: "menu",      description: "Main Menu" },
@@ -487,7 +487,7 @@ function stop_runtime() {
 function start_runtime() {
     let cfg = settings();
     stop_runtime();
-    if (cfg.enabled != "1" || !cfg.bot_token || !cfg.admin_ids) return 0;
+    if (cfg.enabled != "1" || !cfg.bot_token) return 0;
     
     let command = command_from_args([ "ucode", "-L", LIB_DIR, LIB_DIR + "/service/telegram.uc", "worker" ]) +
         " </dev/null >/var/log/tachyon_telegram.log 2>&1 1000<&- & echo $! >" + shell_quote(PID_FILE);
@@ -525,7 +525,7 @@ else if (mode == "stop-runtime")
 else if (mode == "worker")
     exit(worker());
 else if (mode == "status")
-    exit(status());
+    exit(get_status());
 else if (mode != "") {
     warn("Usage: service/telegram.uc <start-runtime|stop-runtime|worker|status> ...\n");
     exit(1);

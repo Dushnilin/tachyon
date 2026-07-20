@@ -11281,6 +11281,14 @@ function render3() {
               },
               [E("option", { value: "all" }, _("All"))]
             ),
+            E(
+              "select",
+              {
+                id: "monitoring-route-filter",
+                class: "cbi-input-select tachyon_monitoring-page__device-filter tachyon_monitoring-page__route-filter"
+              },
+              [E("option", { value: "all" }, _("All Routes"))]
+            ),
             E("label", { class: "tachyon_monitoring-page__search" }, [
               E("span", { class: "tachyon_monitoring-page__search-icon" }, []),
               E("input", {
@@ -11365,6 +11373,7 @@ var pendingConnectionsPayload = null;
 var pollingConnections = false;
 var activeTab = "active";
 var selectedDeviceFilter = ALL_FILTER_VALUE;
+var selectedRouteFilter = ALL_FILTER_VALUE;
 var searchQuery = "";
 var localDeviceChoices = {};
 var routeDisplayNames = {};
@@ -11647,7 +11656,16 @@ function getVisibleConnections() {
   const normalizedSearch = normalizeSearchValue(searchQuery);
   return getConnectionsForActiveTab().filter((connection) => {
     const sourceIp = getConnectionSourceIp(connection);
-    if (selectedDeviceFilter !== ALL_FILTER_VALUE && sourceIp !== selectedDeviceFilter) {
+    const isMatchingDevice = selectedDeviceFilter === ALL_FILTER_VALUE || sourceIp === selectedDeviceFilter;
+    let isMatchingRoute = selectedRouteFilter === ALL_FILTER_VALUE;
+    if (!isMatchingRoute && connection.chains && connection.chains.length > 0) {
+      const outChain = connection.chains[0];
+      const routeDisplayName = getRouteDisplayNameByTag(outChain);
+      if (routeDisplayName === selectedRouteFilter) {
+        isMatchingRoute = true;
+      }
+    }
+    if (!isMatchingDevice || !isMatchingRoute) {
       return false;
     }
     if (!normalizedSearch) {
@@ -11738,6 +11756,26 @@ function getKnownSourceIps() {
     );
     return byLabel || a.localeCompare(b);
   });
+}
+function renderRouteFilterOptions() {
+  const select = document.getElementById(
+    "monitoring-route-filter"
+  );
+  if (!select) return;
+  const uniqueRoutes = /* @__PURE__ */ new Set();
+  Object.values(routeDisplayNames).forEach((name) => {
+    if (name) uniqueRoutes.add(name);
+  });
+  const routes = Array.from(uniqueRoutes).sort();
+  if (selectedRouteFilter !== ALL_FILTER_VALUE && !routes.includes(selectedRouteFilter)) {
+    selectedRouteFilter = ALL_FILTER_VALUE;
+  }
+  const options = [
+    E("option", { value: ALL_FILTER_VALUE }, _("All Routes")),
+    ...routes.map((name) => E("option", { value: name }, name))
+  ];
+  select.replaceChildren(...options);
+  select.value = selectedRouteFilter;
 }
 function renderDeviceFilterOptions() {
   const select = document.getElementById(
@@ -11831,6 +11869,7 @@ function renderControls() {
     searchIcon.replaceChildren(renderSearchIcon24());
   }
   renderDeviceFilterOptions();
+  renderRouteFilterOptions();
   const select = document.getElementById(
     "monitoring-device-filter"
   );
@@ -12470,6 +12509,7 @@ function watchServiceState() {
 function resetMonitoringState() {
   activeTab = "active";
   selectedDeviceFilter = ALL_FILTER_VALUE;
+  selectedRouteFilter = ALL_FILTER_VALUE;
   searchQuery = "";
   lastDeviceFilterSignature = "";
   loading = true;

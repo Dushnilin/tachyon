@@ -91,6 +91,7 @@ let pollingConnections = false;
 
 let activeTab: MonitoringTabId = 'active';
 let selectedDeviceFilter = ALL_FILTER_VALUE;
+let selectedRouteFilter = ALL_FILTER_VALUE;
 let searchQuery = '';
 let localDeviceChoices: LocalDeviceChoices = {};
 let routeDisplayNames: Record<string, string> = {};
@@ -478,10 +479,18 @@ function getVisibleConnections(): MonitoredConnection[] {
 
   return getConnectionsForActiveTab().filter((connection) => {
     const sourceIp = getConnectionSourceIp(connection);
-    if (
-      selectedDeviceFilter !== ALL_FILTER_VALUE &&
-      sourceIp !== selectedDeviceFilter
-    ) {
+    const isMatchingDevice = selectedDeviceFilter === ALL_FILTER_VALUE || sourceIp === selectedDeviceFilter;
+
+    let isMatchingRoute = selectedRouteFilter === ALL_FILTER_VALUE;
+    if (!isMatchingRoute && connection.chains && connection.chains.length > 0) {
+      const outChain = connection.chains[0];
+      const routeDisplayName = getRouteDisplayNameByTag(outChain);
+      if (routeDisplayName === selectedRouteFilter) {
+        isMatchingRoute = true;
+      }
+    }
+
+    if (!isMatchingDevice || !isMatchingRoute) {
       return false;
     }
 
@@ -592,6 +601,35 @@ function getKnownSourceIps(): string[] {
     );
     return byLabel || a.localeCompare(b);
   });
+}
+
+function renderRouteFilterOptions() {
+  const select = document.getElementById(
+    'monitoring-route-filter',
+  ) as HTMLSelectElement | null;
+  if (!select) return;
+
+  const uniqueRoutes = new Set<string>();
+  Object.values(routeDisplayNames).forEach((name) => {
+    if (name) uniqueRoutes.add(name);
+  });
+
+  const routes = Array.from(uniqueRoutes).sort();
+  
+  if (
+    selectedRouteFilter !== ALL_FILTER_VALUE &&
+    !routes.includes(selectedRouteFilter)
+  ) {
+    selectedRouteFilter = ALL_FILTER_VALUE;
+  }
+
+  const options = [
+    E('option', { value: ALL_FILTER_VALUE }, _('All Routes')),
+    ...routes.map((name) => E('option', { value: name }, name)),
+  ];
+
+  select.replaceChildren(...options);
+  select.value = selectedRouteFilter;
 }
 
 function renderDeviceFilterOptions() {
@@ -709,6 +747,7 @@ function renderControls() {
   }
 
   renderDeviceFilterOptions();
+  renderRouteFilterOptions();
 
   const select = document.getElementById(
     'monitoring-device-filter',
@@ -1546,6 +1585,7 @@ function watchServiceState() {
 function resetMonitoringState() {
   activeTab = 'active';
   selectedDeviceFilter = ALL_FILTER_VALUE;
+  selectedRouteFilter = ALL_FILTER_VALUE;
   searchQuery = '';
   lastDeviceFilterSignature = '';
   loading = true;

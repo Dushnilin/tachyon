@@ -2824,3 +2824,15 @@ msgstr "Не проверено"
 
 msgid "Test connection"
 msgstr "Проверить подключение"
+
+msgid "Destination IP or CIDR"
+msgstr "IP или CIDR назначения"
+
+msgid "Forced destination routing"
+msgstr "Принудительная маршрутизация по IP (Dest)"
+
+msgid "All traffic to these destination IPs will be routed through the section unconditionally, ignoring all other conditions."
+msgstr "Весь трафик к этим IP назначения будет направлен через секцию безусловно, игнорируя все остальные условия."
+
+msgid "All Routes"
+msgstr "Все маршруты"
