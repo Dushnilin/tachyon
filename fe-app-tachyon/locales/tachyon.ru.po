@@ -960,7 +960,7 @@ msgid "Fuzzing is not supported here because Tachyon needs deterministic runtime
 msgstr "Фаззинг здесь не поддерживается, так как Tachyon требует детерминированной валидации во время выполнения."
 
 msgid "Generate bug report"
-msgstr ""
+msgstr "Сгенерировать баг-репорт"
 
 msgid "Generate HWID from router hardware information for this subscription"
 msgstr "Генерировать HWID из аппаратной информации роутера для этой подписки"
