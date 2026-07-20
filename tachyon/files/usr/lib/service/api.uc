@@ -1,4 +1,4 @@
-﻿let fs = require("fs");
+let fs = require("fs");
 let uci_core = require("core.uci");
 let common = require("core.common");
 
