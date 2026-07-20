@@ -330,7 +330,7 @@ function send_message_with_keyboard(token, chat_id, text, parse_mode) {
             inline_keyboard: [
                 [
                     { text: "📡 Серверы", callback_data: "/servers" },
-                    { text: "🛡️ Правила", callback_data: "/rules" },
+                    { text: "🗂 Секции", callback_data: "/sections" },
                     { text: "💻 Устройства", callback_data: "/devices" }
                 ],
                 [
@@ -606,23 +606,30 @@ function run_speedtest(token, chat_id) {
  
 
 
-function handle_rules(token, chat_id) {
+function handle_sections(token, chat_id) {
     let c = uci_core.cursor();
     if (!c) return;
     c.load(CONFIG_NAME);
     
     let keyboard = [];
-    let text = "🛡️ *Секции маршрутизации:*\n\nВыберите секцию для редактирования:";
+    let text = "🗂 *Управление секциями:*\n\nВыберите секцию для редактирования или создайте новую:";
     
     c.foreach(CONFIG_NAME, "section", function(s) {
         let act = s.action || "";
         if (act == "proxy" || act == "bypass" || act == "block" || act == "connection" || act == "awg" || act == "zapret" || act == "byedpi") {
             let label = s.label || s[".name"];
             let status = (s.enabled == "1") ? "✅" : "❌";
-            push(keyboard, [{ text: status + " " + label + " (" + act + ")", callback_data: "/rule_view " + s[".name"] }]);
+            push(keyboard, [{ text: status + " " + label + " (" + act + ")", callback_data: "/sec_view " + s[".name"] }]);
         }
     });
+
+    c.foreach(CONFIG_NAME, "server", function(s) {
+        let label = s.label || s[".name"];
+        let status = (s.enabled == "1") ? "✅" : "❌";
+        push(keyboard, [{ text: status + " " + label + " (inbound)", callback_data: "/sec_view " + s[".name"] }]);
+    });
     
+    push(keyboard, [{ text: "➕ Создать секцию", callback_data: "/sec_create" }]);
     push(keyboard, [{ text: "🔙 Отмена", callback_data: "/cancel" }]);
     
     send_message_custom_keyboard(token, chat_id, text, "Markdown", keyboard);
@@ -1058,13 +1065,39 @@ function process_command(token, chat_id, text) {
             }
             send_message(token, chat_id, msg, "HTML");
             set_tg_state(chat_id, null);
-            handle_rule_view(token, chat_id, state.section);
+            handle_sec_view(token, chat_id, state.section);
             return;
         } else if (state.action == "wait_del") {
             let r = manage_domain_list_by_section(state.section, cmd, true);
             send_message(token, chat_id, (r.success ? "✅ " : "❌ ") + (r.message || r.error), "HTML");
             set_tg_state(chat_id, null);
-            handle_rule_view(token, chat_id, state.section);
+            handle_sec_view(token, chat_id, state.section);
+            return;
+        } else if (state.action == "wait_sec_name") {
+            let name = trim(cmd);
+            if (name == "") {
+                send_message(token, chat_id, "❌ Имя не может быть пустым.");
+                return;
+            }
+            set_tg_state(chat_id, null);
+            do_sec_create(token, chat_id, name, state.type);
+            return;
+        } else if (state.action == "wait_sec_url") {
+            let url = trim(cmd);
+            if (url == "") return;
+            let c = uci_core.cursor();
+            c.load(CONFIG_NAME);
+            let sub = null;
+            c.foreach(CONFIG_NAME, "subscription_url", function(u) {
+                if (u.section == state.section) sub = u;
+            });
+            if (sub) {
+                c.set(CONFIG_NAME, sub[".name"], "url", url);
+                c.commit(CONFIG_NAME);
+                command_status("/usr/bin/tachyon reload");
+            }
+            set_tg_state(chat_id, null);
+            handle_sec_view(token, chat_id, state.section, "section");
             return;
         }
     }
@@ -1080,7 +1113,7 @@ function process_command(token, chat_id, text) {
         let help_text = "🤖 <b>Tachyon Bot</b> — " + (en ? "Router Control Panel" : "Панель управления роутером") + "\n\n" +
             "<b>" + (en ? "Commands:" : "Доступные команды:") + "</b>\n" +
             "📊 /status — " + (en ? "System status, server, latency" : "Статус системы, сервер, задержка") + "\n" +
-            "📡 /rules — " + (en ? "Manage routing rules" : "Управление правилами обхода") + "\n" +
+            "🗂 /sections — " + (en ? "Manage routing sections" : "Управление секциями") + "\n" +
             "📡 /servers — " + (en ? "Select active proxy server" : "Выбрать активный прокси-сервер") + "\n" +
             "💻 /devices — " + (en ? "Connected devices (DHCP)" : "Подключенные устройства (DHCP)") + "\n" +
             "⏸️ /pause &lt;30m|1h&gt; — " + (en ? "Pause proxy for a period" : "Приостановить прокси на время") + "\n" +
@@ -1104,8 +1137,8 @@ function process_command(token, chat_id, text) {
             "❓ /help — " + (en ? "This help" : "Справка по командам") + "\n";
         send_message_with_keyboard(token, chat_id, help_text, "HTML");
     }
-    else if (cmd == "/rules") {
-        handle_rules(token, chat_id);
+    else if (cmd == "/sections") {
+        handle_sections(token, chat_id);
     }
     else if (cmd == "/status") {
         let sys = get_system_status();
@@ -1224,8 +1257,8 @@ function process_command(token, chat_id, text) {
             send_message_with_keyboard(token, chat_id, "❌ " + res.error, "HTML");
         }
     }
-    else if (cmd == "/rules") {
-        handle_rules(token, chat_id);
+    else if (cmd == "/sections") {
+        handle_sections(token, chat_id);
     }
     else if (match(cmd, /^\/toggle_rule /) != null) {
         let section = trim(substr(cmd, 13));
@@ -1373,27 +1406,44 @@ function process_updates(token, admin_ids) {
             
             let data = callback_query.data;
             let lang = get_lang();
-            if (match(data, /^\/rule_view /) != null) {
-                handle_rule_view(token, chat_id, trim(substr(data, 11)));
+            if (match(data, /^\/sec_create/) != null) {
+                handle_sec_create(token, chat_id);
             }
-            else if (match(data, /^\/rule_add /) != null) {
-                let sec = trim(substr(data, 10));
-                set_tg_state(chat_id, { action: "wait_add", section: sec });
-                let prompt = (lang == "en")
-                    ? "Send me domains/IPs (one per line) to add to section <code>" + sec + "</code>:\n\n<i>Or press /cancel</i>"
-                    : "Отправьте домены/IP (каждый с новой строки) для добавления в секцию <code>" + sec + "</code>:\n\n<i>Или нажмите /cancel</i>";
-                send_message_custom_keyboard(token, chat_id, prompt, "HTML", [[{text:"🔙 " + (lang == "en" ? "Cancel" : "Отмена"), callback_data:"/cancel"}]]);
+            else if (match(data, /^\/sec_new /) != null) {
+                handle_sec_new(token, chat_id, trim(substr(data, 9)));
             }
-            else if (match(data, /^\/rule_del /) != null) {
-                let sec = trim(substr(data, 10));
-                set_tg_state(chat_id, { action: "wait_del", section: sec });
-                let prompt = (lang == "en")
-                    ? "Send me the domain/IP to DELETE from section <code>" + sec + "</code>:\n\n<i>Or press /cancel</i>"
-                    : "Отправьте домен/IP для УДАЛЕНИЯ из секции <code>" + sec + "</code>:\n\n<i>Или нажмите /cancel</i>";
-                send_message_custom_keyboard(token, chat_id, prompt, "HTML", [[{text:"🔙 " + (lang == "en" ? "Cancel" : "Отмена"), callback_data:"/cancel"}]]);
+            else if (match(data, /^\/sec_view /) != null) {
+                handle_sec_view(token, chat_id, trim(substr(data, 10)), null);
             }
-            else if (match(data, /^\/rule_toggle /) != null) {
-                let sec = trim(substr(data, 13));
+            else if (match(data, /^\/sec_com /) != null) {
+                handle_sec_communities(token, chat_id, trim(substr(data, 9)));
+            }
+            else if (match(data, /^\/sec_ctog /) != null) {
+                let parts = split(trim(substr(data, 10)), " ");
+                let sec_id = parts[0];
+                let com = parts[1];
+                let c = uci_core.cursor();
+                c.load(CONFIG_NAME);
+                let current = c.get(CONFIG_NAME, sec_id, "community_lists") || [];
+                if (type(current) != "array") current = split(current, " ");
+                let n_list = [];
+                let found = false;
+                for (let i in current) {
+                    if (trim(current[i]) == com) found = true;
+                    else if (trim(current[i]) != "") push(n_list, trim(current[i]));
+                }
+                if (!found) push(n_list, com);
+                c.set(CONFIG_NAME, sec_id, "community_lists", n_list);
+                c.commit(CONFIG_NAME);
+                handle_sec_communities(token, chat_id, sec_id);
+            }
+            else if (match(data, /^\/sec_save /) != null) {
+                let sec_id = trim(substr(data, 10));
+                command_status("/usr/bin/tachyon reload");
+                handle_sec_view(token, chat_id, sec_id, null);
+            }
+            else if (match(data, /^\/sec_toggle /) != null) {
+                let sec = trim(substr(data, 12));
                 let c = uci_core.cursor();
                 c.load(CONFIG_NAME);
                 let s = c.get_all(CONFIG_NAME, sec);
@@ -1403,14 +1453,29 @@ function process_updates(token, admin_ids) {
                     c.commit(CONFIG_NAME);
                     command_status("/usr/bin/tachyon reload");
                 }
-                handle_rule_view(token, chat_id, sec);
+                handle_sec_view(token, chat_id, sec, null);
+            }
+            else if (match(data, /^\/sec_del /) != null) {
+                let sec = trim(substr(data, 9));
+                let c = uci_core.cursor();
+                c.load(CONFIG_NAME);
+                c.del(CONFIG_NAME, sec);
+                c.commit(CONFIG_NAME);
+                command_status("/usr/bin/tachyon reload");
+                handle_sections(token, chat_id);
+            }
+            else if (match(data, /^\/sec_url /) != null) {
+                let sec = trim(substr(data, 9));
+                set_tg_state(chat_id, { action: "wait_sec_url", section: sec });
+                let text = "🔗 Отправьте новый URL подписки текстом:\n\n_Или нажмите /cancel_";
+                send_message_custom_keyboard(token, chat_id, text, "Markdown", [[{text:"🔙 Отмена", callback_data:"/cancel"}]]);
             }
             else if (data == "/cancel") {
                 set_tg_state(chat_id, null);
                 send_message(token, chat_id, "ℹ️ " + (lang == "en" ? "Action cancelled." : "Действие отменено."));
             }
-            else if (data == "/rules") {
-                handle_rules(token, chat_id);
+            else if (data == "/sections") {
+                handle_sections(token, chat_id);
             }
             else if (data == "/wd_start") {
                 command_status("/usr/bin/tachyon watchdog_start");
@@ -1664,3 +1729,157 @@ else {
     warn("Usage: service/telegram.uc <start-runtime|stop-runtime|worker|status|send> ...\n");
     exit(1);
 }
+
+function get_random_string(length) {
+    let chars = "abcdefghijklmnopqrstuvwxyz0123456789";
+    let res = "";
+    for (let i = 0; i < length; i++) {
+        res += substr(chars, int(rand() * length(chars)), 1);
+    }
+    return res;
+}
+
+function handle_sec_create(token, chat_id) {
+    let text = "➕ *Создание секции*\n\nВыберите тип секции:";
+    let keyboard = [
+        [{ text: "🔗 Подписка (Subscription)", callback_data: "/sec_new sub" }],
+        [{ text: "📝 Пользовательский JSON Outbound", callback_data: "/sec_new json" }],
+        [{ text: "💻 Входящий сервер (Inbound)", callback_data: "/sec_new srv" }],
+        [{ text: "🔙 Отмена", callback_data: "/sections" }]
+    ];
+    send_message_custom_keyboard(token, chat_id, text, "Markdown", keyboard);
+}
+
+function handle_sec_new(token, chat_id, type_arg) {
+    set_tg_state(chat_id, { action: "wait_sec_name", type: type_arg });
+    let text = "✏️ Отправьте название (label) для новой секции текстом:\n\n_Или нажмите /cancel_";
+    send_message_custom_keyboard(token, chat_id, text, "Markdown", [[{text:"🔙 Отмена", callback_data:"/cancel"}]]);
+}
+
+function do_sec_create(token, chat_id, name, type_arg) {
+    let c = uci_core.cursor();
+    c.load(CONFIG_NAME);
+    let sec_id = "";
+    if (type_arg == "sub") sec_id = "sub_" + get_random_string(6);
+    else if (type_arg == "json") sec_id = "json_" + get_random_string(6);
+    else if (type_arg == "srv") sec_id = "srv_" + get_random_string(6);
+    else sec_id = "sec_" + get_random_string(6);
+    
+    if (type_arg == "srv") {
+        c.add(CONFIG_NAME, "server", sec_id);
+    } else {
+        c.add(CONFIG_NAME, "section", sec_id);
+    }
+    c.set(CONFIG_NAME, sec_id, "label", name);
+    c.set(CONFIG_NAME, sec_id, "enabled", "0");
+    if (type_arg != "srv") {
+        c.set(CONFIG_NAME, sec_id, "action", "connection");
+    }
+    
+    if (type_arg == "sub") {
+        c.add(CONFIG_NAME, "subscription_url", sec_id);
+        c.set(CONFIG_NAME, sec_id, "section", sec_id);
+        c.set(CONFIG_NAME, sec_id, "url", "https://...");
+    } else if (type_arg == "json") {
+        c.set(CONFIG_NAME, sec_id, "outbound_jsons", "{\"type\":\"socks\",\"tag\":\"Local SOCKS\",\"server\":\"127.0.0.1\",\"server_port\":1080,\"version\":\"5\"}");
+    } else if (type_arg == "srv") {
+        c.set(CONFIG_NAME, sec_id, "protocol", "vless");
+    }
+    
+    c.commit(CONFIG_NAME);
+    send_message(token, chat_id, "✅ Секция `" + sec_id + "` создана. Пожалуйста, настройте её ниже.", "Markdown");
+    handle_sec_view(token, chat_id, sec_id, type_arg == "srv" ? "server" : "section");
+}
+
+function handle_sec_view(token, chat_id, sec_id, config_type) {
+    let c = uci_core.cursor();
+    c.load(CONFIG_NAME);
+    if (!config_type) {
+        config_type = "section";
+        if (c.get_all(CONFIG_NAME, sec_id) == null) {
+            c.foreach(CONFIG_NAME, "server", function(s) {
+                if (s[".name"] == sec_id) config_type = "server";
+            });
+        }
+    }
+    let s = c.get_all(CONFIG_NAME, sec_id);
+    if (!s) {
+        send_message(token, chat_id, "❌ Секция не найдена: " + sec_id);
+        return;
+    }
+
+    let status = (s.enabled == "1") ? "Включена ✅" : "Выключена ❌";
+    let label = escape_html(s.label || sec_id);
+    let act = escape_html(s.action || s.protocol || "none");
+    
+    let text = "⚙️ <b>Секция:</b> " + label + "\n" +
+               "Тип: <code>" + act + "</code>\n" +
+               "Статус: <b>" + status + "</b>\n\n";
+
+    let keyboard = [];
+    push(keyboard, [{ text: (s.enabled == "1" ? "🔴 Выключить" : "🟢 Включить"), callback_data: "/sec_toggle " + sec_id }]);
+    push(keyboard, [{ text: "✏️ Переименовать", callback_data: "/sec_rename " + sec_id }]);
+    
+    if (config_type == "section") {
+        push(keyboard, [{ text: "⚙️ Изменить Action", callback_data: "/sec_action " + sec_id }]);
+        push(keyboard, [{ text: "📋 Списки маршрутизации", callback_data: "/sec_com " + sec_id }]);
+    }
+    
+    let sub = null;
+    c.foreach(CONFIG_NAME, "subscription_url", function(u) {
+        if (u.section == sec_id) sub = u;
+    });
+    
+    if (sub) {
+        let url = escape_html(sub.url || "отсутствует");
+        text += "URL Подписки:\n<code>" + url + "</code>\n";
+        push(keyboard, [{ text: "🔗 Изменить URL", callback_data: "/sec_url " + sec_id }]);
+    }
+    
+    if (config_type == "server") {
+        text += "Входящий протокол: <code>" + act + "</code>\n";
+    }
+
+    push(keyboard, [{ text: "🗑 Удалить", callback_data: "/sec_del " + sec_id }]);
+    push(keyboard, [{ text: "🔙 Назад к списку", callback_data: "/sections" }]);
+
+    send_message_custom_keyboard(token, chat_id, text, "HTML", keyboard);
+}
+
+function handle_sec_communities(token, chat_id, sec_id) {
+    let c = uci_core.cursor();
+    c.load(CONFIG_NAME);
+    let s = c.get_all(CONFIG_NAME, sec_id);
+    if (!s) return;
+    
+    let current = s.community_lists || [];
+    if (type(current) != "array") current = split(current, " ");
+    let cur_map = {};
+    for (let com in current) {
+        if (trim(com) != "") cur_map[trim(com)] = true;
+    }
+    
+    let all_communities = "russia_inside russia_outside ukraine_inside geoblock block porn news anime youtube hdrezka tiktok google_ai google_play hodca discord meta twitter cloudflare cloudfront digitalocean hetzner ovh telegram roblox ads_hagezi_pro supercell github";
+    let com_list = split(all_communities, " ");
+    
+    let text = "📋 <b>Списки маршрутизации для:</b> " + escape_html(s.label || sec_id) + "\n\nВыберите нужные списки:";
+    let keyboard = [];
+    
+    let row = [];
+    for (let com in com_list) {
+        let is_sel = cur_map[com] === true;
+        let btn_text = (is_sel ? "✅ " : "⬜️ ") + com;
+        push(row, { text: btn_text, callback_data: "/sec_ctog " + sec_id + " " + com });
+        if (length(row) == 2) {
+            push(keyboard, row);
+            row = [];
+        }
+    }
+    if (length(row) > 0) push(keyboard, row);
+    
+    push(keyboard, [{ text: "💾 Сохранить и применить", callback_data: "/sec_save " + sec_id }]);
+    push(keyboard, [{ text: "🔙 Назад к секции", callback_data: "/sec_view " + sec_id }]);
+    
+    send_message_custom_keyboard(token, chat_id, text, "HTML", keyboard);
+}
+
