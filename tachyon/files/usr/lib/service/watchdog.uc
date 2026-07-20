@@ -338,13 +338,13 @@ function worker() {
     while (true) {
         cfg = settings();
         if (cfg.recovery_bypass == "1") {
-            sleep(10);
+            sleep(10000);
             continue;
         }
 
         // 0. Check pause file — skip health checks if proxy is intentionally paused
         if (check_auto_resume_pause()) {
-            sleep(10);
+            sleep(10000);
             continue;
         }
 
@@ -379,7 +379,7 @@ function worker() {
         }
 
         if (tachyon_cli_running) {
-            sleep(10);
+            sleep(10000);
             continue;
         }
 
@@ -390,7 +390,7 @@ function worker() {
                 send_telegram_notification("⚠️ *Watchdog:* sing-box остановлен. Перезапускаю службы Tachyon...");
             }
             system("/etc/init.d/tachyon restart </dev/null >/dev/null 2>&1 &");
-            sleep(60);
+            sleep(60000);
             continue;
         }
 
@@ -405,7 +405,7 @@ function worker() {
                     send_telegram_notification("⚠️ *Watchdog:* правила nftables повреждены или отсутствуют. Выполняю пересборку...");
                 }
                 system("/etc/init.d/tachyon restart </dev/null >/dev/null 2>&1 &");
-                sleep(60);
+                sleep(60000);
                 continue;
             }
         }
@@ -456,7 +456,7 @@ function worker() {
         // 5. Smart Detect — self-healing routing
         smart_detect_last_run = smart_detect_run(smart_detect_last_run);
 
-        sleep(15);
+        sleep(15000);
     }
 }
 
