@@ -1873,6 +1873,19 @@ function sing_box_supports_tailscale(ctx, version, version_output) {
     return sing_box_output_has_build_tag(version_output, "with_tailscale");
 }
 
+function sing_box_supports_xhttp(ctx, version, version_output) {
+    if (command_exists("sing-box") && (sing_box_compressed_marker_set(ctx) || sing_box_lx_marker_set(ctx)))
+        return true;
+
+    if (sing_box_is_extended(ctx, version) || sing_box_is_lx(ctx, version))
+        return true;
+
+    if (as_string(version_output) == "")
+        version_output = command_output_from_args([ "sing-box", "version" ]);
+
+    return sing_box_output_has_build_tag(version_output, "with_xhttp");
+}
+
 function managed_sing_box_service_script(marker) {
     marker = as_string(marker);
     if (marker == "")
@@ -1949,8 +1962,8 @@ function validate_extended_server_features(ctx, sing_box_version, sing_box_versi
         if (protocol == "tailscale" && !sing_box_supports_tailscale(ctx, sing_box_version, sing_box_version_output))
             fail_requirement("Server '" + name + "' uses Tailscale, but the installed sing-box binary was built without Tailscale support. Install full sing-box or sing-box-extended, or disable this server. Aborted.", "fatal");
 
-        if (transport == "xhttp")
-            fail_requirement("Server '" + name + "' uses XHTTP transport, but sing-box-extended is not installed. Install sing-box-extended or change the transport. Aborted.", "fatal");
+        if (transport == "xhttp" && !sing_box_supports_xhttp(ctx, sing_box_version, sing_box_version_output))
+            fail_requirement("Server '" + name + "' uses XHTTP transport, but the installed sing-box binary does not support it. Install sing-box-extended or a binary with XHTTP support, or change the transport. Aborted.", "fatal");
     }
 }
 

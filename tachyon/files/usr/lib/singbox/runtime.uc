@@ -301,6 +301,19 @@ function sing_box_supports_tailscale(version, version_output) {
     return output_has_build_tag(sing_box_version_output(), "with_tailscale");
 }
 
+function sing_box_supports_xhttp(version, version_output) {
+    version = as_string(version);
+    version_output = as_string(version_output);
+
+    if (command_exists("sing-box") && (sing_box_marker_is("extended-compressed") || sing_box_marker_is("lx")))
+        return true;
+    if (sing_box_is_extended(version) || sing_box_is_lx(version))
+        return true;
+    if (version_output != "")
+        return output_has_build_tag(version_output, "with_xhttp");
+    return output_has_build_tag(sing_box_version_output(), "with_xhttp");
+}
+
 function module_command(args) {
     let command_args = [ "ucode", "-L", LIB_DIR ];
     for (let arg in args)
@@ -816,7 +829,7 @@ function init_config(populate_nft, caches_prepared, no_refresh) {
             temp_config,
             service_listen_address_value(settings),
             mwan3_active ? "1" : "0",
-            sing_box_is_extended(sing_box_version()) ? "1" : "0"
+            sing_box_supports_xhttp(sing_box_version()) ? "1" : "0"
         ]) + " >" + shell_quote(runtime_log) + " 2>&1"
     );
     if (generate_status != 0) {
