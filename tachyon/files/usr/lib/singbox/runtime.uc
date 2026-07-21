@@ -248,7 +248,7 @@ function sing_box_restore_variant_marker(variant) {
 function sing_box_version() {
     if (!command_exists("sing-box"))
         return "";
-    if (sing_box_marker_is("extended-compressed"))
+    if (sing_box_marker_is("extended-compressed") || sing_box_marker_is("lx"))
         return sing_box_version_state();
     return first_line_last_field(sing_box_version_output());
 }
