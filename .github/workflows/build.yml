@@ -87,6 +87,11 @@ jobs:
           name: release-files-${{ needs.preparation.outputs.version }}
           path: ./filtered-bin/release
 
+      - name: Delete old release
+        run: gh release delete ${{ needs.preparation.outputs.version }} --cleanup-tag --yes || true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Release
         if: ${{ inputs.release_notes == '' }}
         uses: softprops/action-gh-release@v2
