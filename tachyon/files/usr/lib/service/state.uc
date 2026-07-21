@@ -202,13 +202,12 @@ function numeric_text(value) {
 }
 
 function current_epoch() {
-    let value = command_trimmed_output_from_args([ "date", "+%s" ]);
-    return numeric_text(value) ? value : "0";
+    return as_string(time());
 }
 
 function current_year() {
-    let value = command_trimmed_output_from_args([ "date", "+%Y" ]);
-    return numeric_text(value) ? int(value) : null;
+    let tm = localtime(time());
+    return tm ? tm.year + 1900 : null;
 }
 
 function time_sync_needed(year) {

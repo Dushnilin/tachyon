@@ -202,13 +202,10 @@ function external_config_fingerprint() {
     return join("\n", lines);
 }
 
-function trim(value) {
-    return replace(as_string(value), /^[ \t\r\n]+|[ \t\r\n]+$/g, "");
-}
-
 function owner_pid() {
-    let pid = trim(command_output_from_args([ "sh", "-c", "echo $PPID" ]));
-    return match(pid, /^[0-9]+$/) != null ? pid : "0";
+    let status = fs.readfile("/proc/self/status") || "";
+    let m = match(status, /PPid:\s+([0-9]+)/);
+    return m ? m[1] : "0";
 }
 
 function bool_text(value) {

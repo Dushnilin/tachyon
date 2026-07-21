@@ -62,7 +62,7 @@ function send_telegram_notification(message) {
 }
 
 function process_running(pid) {
-    return match(as_string(pid), /^[0-9]+$/) != null && command_success_from_args([ "kill", "-0", pid ]);
+    return match(as_string(pid), /^[0-9]+$/) != null && fs.stat("/proc/" + pid) != null;
 }
 
 function stop_runtime() {
@@ -361,21 +361,42 @@ function worker() {
             }
         }
 
-        let pids = split(trim(command_output_from_args(["pidof", binary_name])), /\s+/);
-        let pid = (length(pids) > 0 && pids[0] != "") ? pids[0] : "";
+        let pid = "";
+        let proc = fs.opendir("/proc");
+        if (proc) {
+            let entry;
+            while ((entry = proc.read()) != null) {
+                if (match(entry, /^[0-9]+$/)) {
+                    let exe = fs.readlink("/proc/" + entry + "/exe") || "";
+                    let slash = rindex(exe, "/");
+                    if ((slash >= 0 ? substr(exe, slash + 1) : exe) == binary_name) {
+                        pid = entry;
+                        break;
+                    }
+                }
+            }
+            proc.close();
+        }
         
         let list_update_pid = trim(fs.readfile("/var/run/tachyon_list_update.pid") || "");
         let list_update_running = process_running(list_update_pid);
 
         let tachyon_cli_running = false;
-        let tachyon_cli_pids = split(trim(command_output_from_args(["pgrep", "-f", "/usr/bin/tachyon "])), /\s+/);
-        for (let cli_pid in tachyon_cli_pids) {
-            if (cli_pid == "") continue;
-            let cmdline = trim(command_output_from_args(["cat", "/proc/" + cli_pid + "/cmdline"]) || "");
-            if (index(cmdline, "start") >= 0 || index(cmdline, "restart") >= 0 || index(cmdline, "reload") >= 0 || index(cmdline, "stop") >= 0) {
-                tachyon_cli_running = true;
-                break;
+        proc = fs.opendir("/proc");
+        if (proc) {
+            let entry;
+            while ((entry = proc.read()) != null) {
+                if (match(entry, /^[0-9]+$/)) {
+                    let cmdline = fs.readfile("/proc/" + entry + "/cmdline") || "";
+                    if (index(cmdline, "/usr/bin/tachyon") >= 0) {
+                        if (index(cmdline, "start") >= 0 || index(cmdline, "restart") >= 0 || index(cmdline, "reload") >= 0 || index(cmdline, "stop") >= 0) {
+                            tachyon_cli_running = true;
+                            break;
+                        }
+                    }
+                }
             }
+            proc.close();
         }
 
         if (tachyon_cli_running) {

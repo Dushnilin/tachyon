@@ -11,20 +11,14 @@ let int_option = common.int_option;
 let array_or_empty = common.array_or_empty;
 
 function safe_filename(value) {
-    value = as_string(value);
-    let result = "";
-    for (let i = 0; i < length(value); i++) {
-        let ch = substr(value, i, 1);
-        result += match(ch, /^[A-Za-z0-9_.-]$/) ? ch : "_";
-    }
-    return result;
+    return replace(as_string(value), /[^A-Za-z0-9_.-]/g, "_");
 }
 
 function string_to_hex(value) {
     value = as_string(value);
     let result = "";
     for (let i = 0; i < length(value); i++)
-        result += sprintf("%02x", ord(substr(value, i, 1)));
+        result += sprintf("%02x", ord(value, i));
     return result;
 }
 

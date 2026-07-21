@@ -6,36 +6,9 @@ function as_string(value) {
     return value == null ? "" : "" + value;
 }
 
-function trim(value) {
-    value = as_string(value);
-    let start = 0;
-    let end = length(value);
-
-    while (start < end) {
-        let c = substr(value, start, 1);
-        if (c != " " && c != "\t" && c != "\r" && c != "\n")
-            break;
-        start++;
-    }
-
-    while (end > start) {
-        let c = substr(value, end - 1, 1);
-        if (c != " " && c != "\t" && c != "\r" && c != "\n")
-            break;
-        end--;
-    }
-
-    return substr(value, start, end - start);
-}
-
 function first_non_ws_char(value) {
-    value = as_string(value);
-    for (let i = 0; i < length(value); i++) {
-        let c = substr(value, i, 1);
-        if (c != " " && c != "\t" && c != "\r" && c != "\n")
-            return c;
-    }
-    return "";
+    let m = match(as_string(value), /^[ \t\r\n]*([^ \t\r\n])/);
+    return m ? m[1] : "";
 }
 
 function starts_with(value, prefix) {
@@ -83,14 +56,7 @@ function is_true(value) {
 }
 
 function is_integer_string(value) {
-    if (type(value) != "string" || value == "")
-        return false;
-    for (let i = 0; i < length(value); i++) {
-        let code = ord(substr(value, i, 1));
-        if (code < 48 || code > 57)
-            return false;
-    }
-    return true;
+    return type(value) == "string" && match(value, /^[0-9]+$/) != null;
 }
 
 function xhttp_value_present(value) {
@@ -1687,39 +1653,14 @@ function metadata_clean_text(value, max, decode_base64) {
         value = decoded == null ? "" : decoded;
     }
 
-    let cleaned = "";
-    let last_space = false;
-    for (let i = 0; i < length(value); i++) {
-        let char = substr(value, i, 1);
-        let code = ord(char);
-        if (code < 32 || code == 127)
-            char = " ";
-
-        if (char == " ") {
-            if (!last_space)
-                cleaned += " ";
-            last_space = true;
-        }
-        else {
-            cleaned += char;
-            last_space = false;
-        }
-    }
-
-    cleaned = trim(cleaned);
+    let cleaned = trim(replace(replace(value, /[\x00-\x1f\x7f]/g, " "), / +/g, " "));
     if (cleaned == "")
         return null;
     return length(cleaned) > max ? substr(cleaned, 0, max) : cleaned;
 }
 
 function metadata_has_control_or_space(value) {
-    value = as_string(value);
-    for (let i = 0; i < length(value); i++) {
-        let code = ord(substr(value, i, 1));
-        if (code <= 32 || code == 127)
-            return true;
-    }
-    return false;
+    return match(as_string(value), /[\x00-\x20\x7f]/) != null;
 }
 
 function metadata_clean_url(value) {
@@ -1733,23 +1674,13 @@ function metadata_clean_url(value) {
 
 function metadata_clean_number(value) {
     value = metadata_trim_text(value);
-    if (value == "")
+    if (value == "" || value == null)
         return null;
-    for (let i = 0; i < length(value); i++) {
-        let code = ord(substr(value, i, 1));
-        if (code < 48 || code > 57)
-            return null;
-    }
-    return value;
+    return match(value, /^[0-9]+$/) != null ? value : null;
 }
 
 function metadata_replace_path_separators(value) {
-    let result = "";
-    for (let i = 0; i < length(value); i++) {
-        let char = substr(value, i, 1);
-        result += (char == "/" || char == "\\") ? "_" : char;
-    }
-    return result;
+    return replace(as_string(value), /[\/\\]/g, "_");
 }
 
 function metadata_content_disposition_filename(value) {

@@ -3,11 +3,17 @@ set -eo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SECTION_JS="$ROOT_DIR/luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js"
+# Normalize SECTION_JS line endings to a temp file to prevent sed parsing failures on CRLF checkouts
+SECTION_JS_LF="$(mktemp)"
+tr -d '\r' < "$SECTION_JS" > "$SECTION_JS_LF"
+SECTION_JS="$SECTION_JS_LF"
+trap 'rm -f "$SECTION_JS_LF"' EXIT
 
 fail() {
   printf 'FAIL: %s\n' "$1" >&2
   exit 1
 }
+
 
 wrapper_styles="$(sed -n '/^\.fkp-button-add-dynlist > \.add-item {$/,/^}$/p' "$SECTION_JS")"
 button_styles="$(sed -n '/^\.fkp-button-add-dynlist > \.add-item > \.cbi-button-add {$/,/^}$/p' "$SECTION_JS")"

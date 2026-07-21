@@ -15,14 +15,14 @@ function starts_with(value, prefix) {
 function uri_encode(value) {
     value = as_string(value);
     let result = "";
-    for (let i = 0; i < length(value); i++) {
-        let char = substr(value, i, 1);
-        let code = ord(char);
+    let len = length(value);
+    for (let i = 0; i < len; i++) {
+        let code = ord(value, i);
         if ((code >= 48 && code <= 57) ||
             (code >= 65 && code <= 90) ||
             (code >= 97 && code <= 122) ||
-            char == "-" || char == "_" || char == "." || char == "~")
-            result += char;
+            code == 45 || code == 95 || code == 46 || code == 126)
+            result += chr(code);
         else
             result += sprintf("%%%02X", code);
     }
@@ -30,10 +30,7 @@ function uri_encode(value) {
 }
 
 function base64_encode(value) {
-    let encoded = b64enc(as_string(value));
-    while (length(encoded) > 0 && substr(encoded, length(encoded) - 1) == "=")
-        encoded = substr(encoded, 0, length(encoded) - 1);
-    return encoded;
+    return replace(b64enc(as_string(value)), /=+$/, "");
 }
 
 function host_port(server, port) {

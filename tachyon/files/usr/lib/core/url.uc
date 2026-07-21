@@ -18,35 +18,42 @@ function first_index_any(value, needles, start) {
     return -1;
 }
 
-function hex_digit_value(value) {
-    value = ord(lc(as_string(value)));
-    if (value >= 48 && value <= 57)
-        return value - 48;
-    if (value >= 97 && value <= 102)
-        return value - 87;
+function hex_digit_value(code) {
+    if (code >= 48 && code <= 57)
+        return code - 48;
+    if (code >= 97 && code <= 102)
+        return code - 87;
+    if (code >= 65 && code <= 70)
+        return code - 55;
     return -1;
 }
 
 function decode(value) {
     value = as_string(value);
-    let result = "";
+    if (index(value, "%") < 0 && index(value, "+") < 0)
+        return value;
 
-    for (let i = 0; i < length(value); i++) {
-        let c = substr(value, i, 1);
-        if (c == "+") {
+    let result = "";
+    let len = length(value);
+
+    for (let i = 0; i < len; i++) {
+        let code = ord(value, i);
+        if (code == 43) {
             result += " ";
             continue;
         }
-        if (c == "%") {
-            let high = i + 1 < length(value) ? hex_digit_value(substr(value, i + 1, 1)) : -1;
-            let low = i + 2 < length(value) ? hex_digit_value(substr(value, i + 2, 1)) : -1;
-            if (high >= 0 && low >= 0) {
-                result += chr(high * 16 + low);
-                i += 2;
-                continue;
+        if (code == 37) {
+            if (i + 2 < len) {
+                let high = hex_digit_value(ord(value, i + 1));
+                let low = hex_digit_value(ord(value, i + 2));
+                if (high >= 0 && low >= 0) {
+                    result += chr(high * 16 + low);
+                    i += 2;
+                    continue;
+                }
             }
         }
-        result += c;
+        result += chr(code);
     }
 
     return result;

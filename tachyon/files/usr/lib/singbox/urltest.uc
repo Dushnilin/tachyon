@@ -38,7 +38,7 @@ function normalized_country_list(values) {
 }
 
 function byte_at(value, index) {
-    return ord(substr(value, index, 1));
+    return ord(value, index);
 }
 
 function regional_indicator_letter(value, index) {
@@ -90,14 +90,24 @@ function regex_matching_tag_array(tags, names, regexes) {
     tags = array_or_empty(tags);
     names = object_or_empty(names);
     regexes = array_or_empty(regexes);
+    
+    let compiled = [];
+    for (let pattern in regexes) {
+        let pat_str = as_string(pattern);
+        if (pat_str != "") {
+            try {
+                push(compiled, regexp(pat_str));
+            } catch(e) {}
+        }
+    }
+    
     let result = [];
-
     for (let tag in tags) {
         let name = names[tag];
         name = name == null || as_string(name) == "" ? tag : as_string(name);
 
-        for (let pattern in regexes) {
-            if (regex_matches(name, pattern)) {
+        for (let re in compiled) {
+            if (match(name, re) != null) {
                 push(result, tag);
                 break;
             }
