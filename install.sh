@@ -1560,9 +1560,17 @@ fetch_github_latest_release_json() {
 
     response="$(http_get "$url" 2>/dev/null || true)"
     if [ -z "$response" ] || printf '%s' "$response" | grep -q '"message": "Not Found"'; then
+        warn "Latest release query failed; trying via gh-proxy.com mirror..."
+        response="$(http_get "https://gh-proxy.com/$url" 2>/dev/null || true)"
+    fi
+    if [ -z "$response" ] || printf '%s' "$response" | grep -q '"message": "Not Found"'; then
         warn "Latest release query failed; trying release list..."
         url="https://api.github.com/repos/${owner}/${repo}/releases"
         response="$(http_get "$url" 2>/dev/null || true)"
+        if [ -z "$response" ] || printf '%s' "$response" | grep -q '"message": "Not Found"'; then
+            warn "Release list query failed; trying via gh-proxy.com mirror..."
+            response="$(http_get "https://gh-proxy.com/$url" 2>/dev/null || true)"
+        fi
     fi
     [ -n "$response" ] || fail "Failed to query GitHub latest release metadata for ${owner}/${repo}"
 

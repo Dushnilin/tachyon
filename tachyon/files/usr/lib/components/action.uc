@@ -559,26 +559,45 @@ function download_file_once(url, output_path) {
 
 function download_with_retry(url, output_path, label) {
     for (let attempt = 1; attempt <= 3; attempt++) {
-        updates_log("Downloading " + as_string(label) + " (" + attempt + "/3)");
-        if (download_file_once(url, output_path) && file_nonempty(output_path))
+        let current_url = url;
+        if (attempt == 2 && index(current_url, "https://github.com/") == 0) {
+            updates_log("Retrying " + as_string(label) + " via gh-proxy.com mirror", "warn");
+            current_url = "https://gh-proxy.com/" + url;
+        } else if (attempt == 3 && index(current_url, "https://github.com/") == 0) {
+            updates_log("Retrying " + as_string(label) + " via ghproxy.net mirror", "warn");
+            current_url = "https://ghproxy.net/" + url;
+        } else if (attempt > 1) {
+            updates_log("Retrying " + as_string(label), "warn");
+        } else {
+            updates_log("Downloading " + as_string(label) + " (" + attempt + "/3)");
+        }
+
+        if (download_file_once(current_url, output_path) && file_nonempty(output_path))
             return true;
         remove_file(output_path);
-        updates_log("Retrying " + as_string(label), "warn");
     }
     return false;
 }
 
 function fetch_github_release_json(owner, repo) {
-    let response = http_get("https://api.github.com/repos/" + as_string(owner) + "/" + as_string(repo) + "/releases/latest");
-    if (response == "" || !helper_success_input(response, "github-response-ok", []))
-        return "";
+    let url = "https://api.github.com/repos/" + as_string(owner) + "/" + as_string(repo) + "/releases/latest";
+    let response = http_get(url);
+    if (response == "" || !helper_success_input(response, "github-response-ok", [])) {
+        response = http_get("https://gh-proxy.com/" + url);
+        if (response == "" || !helper_success_input(response, "github-response-ok", []))
+            return "";
+    }
     return response;
 }
 
 function fetch_github_releases_json(owner, repo, per_page) {
-    let response = http_get("https://api.github.com/repos/" + as_string(owner) + "/" + as_string(repo) + "/releases?per_page=" + as_string(per_page || "30"));
-    if (response == "" || !helper_success_input(response, "github-response-ok", []))
-        return "";
+    let url = "https://api.github.com/repos/" + as_string(owner) + "/" + as_string(repo) + "/releases?per_page=" + as_string(per_page || "30");
+    let response = http_get(url);
+    if (response == "" || !helper_success_input(response, "github-response-ok", [])) {
+        response = http_get("https://gh-proxy.com/" + url);
+        if (response == "" || !helper_success_input(response, "github-response-ok", []))
+            return "";
+    }
     return response;
 }
 
@@ -1127,7 +1146,7 @@ function restore_file_backup(target_path, backup_path) {
 }
 
 function restore_sing_box_service_from_marker(marker) {
-    if (as_string(marker) == "extended-compressed" ||
+    if (as_string(marker) == "extended-compressed" || as_string(marker) == "lx" ||
         (!file_exists("/etc/init.d/sing-box") && file_nonempty("/usr/bin/sing-box")))
         return install_managed_sing_box_service_script();
     remove_managed_sing_box_service_script();
