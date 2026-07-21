@@ -456,6 +456,28 @@ function worker() {
         // 5. Smart Detect — self-healing routing
         smart_detect_last_run = smart_detect_run(smart_detect_last_run);
 
+        // 6. URLTest Proxy Switch Alerts
+        let tcfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
+        if (tcfg.enabled == "1" && tcfg.notify_crash != "0") {
+            let p_res = command_capture(command_from_args(["curl", "-s", "http://127.0.0.1:4534/proxies"]));
+            if (p_res && p_res.status == 0 && p_res.output) {
+                try {
+                    let p_data = json(p_res.output);
+                    let proxies = p_data.proxies;
+                    for (let name in proxies) {
+                        let p = proxies[name];
+                        if (p.type == "URLTest" && p.now) {
+                            let last_now = trim(fs.readfile("/tmp/watchdog_urltest_" + name) || "");
+                            if (last_now != "" && last_now != p.now) {
+                                send_telegram_notification("🔀 *Watchdog:* Смена прокси в группе `" + name + "`\nНовый активный узел: `" + p.now + "`");
+                            }
+                            fs.writefile("/tmp/watchdog_urltest_" + name, p.now);
+                        }
+                    }
+                } catch(e) {}
+            }
+        }
+
         sleep(15000);
     }
 }

@@ -25,8 +25,12 @@ function settings() {
 }
 
 function get_proxy_args() {
+    let cfg = settings();
     if (command_success_from_args(["pidof", "sing-box"])) {
         return [ "--proxy", "http://127.0.0.1:4534" ];
+    }
+    if (cfg.fallback_socks && trim(cfg.fallback_socks) != "") {
+        return [ "--proxy", "socks5h://" + trim(cfg.fallback_socks) ];
     }
     return [];
 }
@@ -68,6 +72,26 @@ function edit_message(token, chat_id, message_id, text, parse_mode, keyboard) {
     if (parse_mode) payload.parse_mode = parse_mode;
     if (keyboard) payload.reply_markup = { inline_keyboard: keyboard };
     return tg_request(token, "editMessageText", payload);
+}
+
+function send_document(token, chat_id, file_path) {
+    if (!token) return null;
+    let url = "https://api.telegram.org/bot" + token + "/sendDocument";
+    let args = [ "curl", "-s", "-X", "POST", "-F", "chat_id=" + chat_id, "-F", "document=@" + file_path ];
+    let proxy = get_proxy_args();
+    for (let p in proxy) push(args, p);
+    push(args, url);
+    let res = command_capture(command_from_args(args));
+    if (!res || res.status != 0 || res.output == "") return null;
+    try { return json(res.output); } catch (e) { return null; }
+}
+
+function get_file_url(token, file_id) {
+    let res = tg_request(token, "getFile", { file_id: file_id });
+    if (res && res.ok && res.result && res.result.file_path) {
+        return "https://api.telegram.org/file/bot" + token + "/" + res.result.file_path;
+    }
+    return null;
 }
 
 // ─── State Management ────────────────────────────────────────────────────────
@@ -168,6 +192,9 @@ let setting_schema = {
     },
     server: {
         label: "Название",
+        daily_report_enabled: "Ежедневный отчет",
+        daily_report_hour: "Время отчета (час)",
+        fallback_socks: "Резервный SOCKS5",
         enabled: "Включен",
         protocol: "Протокол",
         routing_mode: "Режим"
@@ -734,6 +761,79 @@ function exec_restart(token, chat_id) {
     else send_message(token, chat_id, "❌ <b>Ошибка при перезапуске.</b>", "HTML", [[{text:"⬅️ Меню", callback_data:"/menu"}]]);
 }
 
+function exec_backup(token, chat_id) {
+    send_message(token, chat_id, "⏳ <b>Собираю бэкап...</b>", "HTML");
+    let file_path = "/tmp/tachyon_backup.tar.gz";
+    let cmd = "tar -czf " + file_path + " -C /etc config/tachyon tachyon 2>/dev/null";
+    command_status(cmd);
+    
+    if (fs.stat(file_path)) {
+        send_document(token, chat_id, file_path);
+        fs.unlink(file_path);
+    } else {
+        send_message(token, chat_id, "❌ <b>Ошибка создания бэкапа.</b>", "HTML", [[{text:"⬅️ Меню", callback_data:"/menu"}]]);
+    }
+}
+
+function exec_support_bundle(token, chat_id) {
+    send_message(token, chat_id, "⏳ <b>Формирую Support Bundle...</b>", "HTML");
+    command_status("ip route > /tmp/tachyon_ip_route.txt");
+    command_status("logread > /tmp/tachyon_logread.txt");
+    let file_path = "/tmp/support_bundle.tar.gz";
+    let cmd = "tar -czf " + file_path + " /etc/config/tachyon /var/etc/tachyon /etc/config/network /etc/config/firewall /tmp/dhcp.leases /tmp/tachyon_ip_route.txt /tmp/tachyon_logread.txt 2>/dev/null";
+    command_status(cmd);
+    
+    if (fs.stat(file_path)) {
+        send_document(token, chat_id, file_path);
+        fs.unlink(file_path);
+    } else {
+        send_message(token, chat_id, "❌ <b>Ошибка генерации Bundle.</b>", "HTML");
+    }
+    try { fs.unlink("/tmp/tachyon_ip_route.txt"); fs.unlink("/tmp/tachyon_logread.txt"); } catch(e) {}
+}
+
+function exec_close_connections(token, chat_id) {
+    let out = command_capture(command_from_args(["curl", "-s", "-X", "DELETE", "http://127.0.0.1:4534/connections"]));
+    send_message(token, chat_id, "✅ <b>Все активные соединения сброшены.</b>\nОни будут переустановлены по новым маршрутам.", "HTML", [[{text:"⬅️ Меню", callback_data:"/menu"}]]);
+}
+
+function view_instances(token, chat_id, msg_id) {
+    let res = command_capture(command_from_args(["curl", "-s", "http://127.0.0.1:4534/proxies"]));
+    let text = "🖧 <b>Live Server Instances</b>\n\n";
+    if (res && res.status == 0 && res.output) {
+        try {
+            let data = json(res.output);
+            let proxies = data.proxies;
+            let count = 0;
+            for (let name in proxies) {
+                let p = proxies[name];
+                if (p.type == "Selector" || p.type == "URLTest" || p.type == "Direct" || p.type == "Reject" || p.type == "Compatible") continue;
+                let delay = "➖";
+                if (p.history && length(p.history) > 0) {
+                    let last = p.history[length(p.history) - 1];
+                    if (last.delay > 0) delay = last.delay + " ms";
+                    else delay = "❌ Timeout";
+                }
+                text += "• <code>" + escape_html(name) + "</code> (" + p.type + "): <b>" + delay + "</b>\n";
+                count++;
+            }
+            if (count == 0) text += "Серверы не найдены или sing-box не запущен.";
+        } catch(e) {
+            text += "Ошибка парсинга API: " + e;
+        }
+    } else {
+        text += "❌ Не удалось подключиться к API sing-box.";
+    }
+    
+    let kb = [[
+        {text: "🔄 Обновить", callback_data: "/instances"},
+        {text: "⬅️ Назад", callback_data: "/status"}
+    ]];
+    
+    if (msg_id) edit_message(token, chat_id, msg_id, text, "HTML", kb);
+    else send_message(token, chat_id, text, "HTML", kb);
+}
+
 function view_devices(token, chat_id, msg_id) {
     let lease_file = "/tmp/dhcp.leases";
     let data = fs.readfile(lease_file);
@@ -820,6 +920,31 @@ function dispatch_command(token, chat_id, text, msg_id) {
     if (cmd == "/watchdog") return view_watchdog(token, chat_id, msg_id);
     if (cmd == "/doctor") return exec_doctor(token, chat_id);
     if (cmd == "/restart") return exec_restart(token, chat_id);
+    if (cmd == "/backup") return exec_backup(token, chat_id);
+    if (cmd == "/support_bundle") return exec_support_bundle(token, chat_id);
+    if (cmd == "/close_connections") return exec_close_connections(token, chat_id);
+    if (cmd == "/instances") return view_instances(token, chat_id, msg_id);
+    
+    if (match(cmd, /^\/admin_add /)) {
+        let fwd_id = trim(substr(cmd, 11));
+        let c = uci_core.cursor(); c.load(CONFIG_NAME);
+        let s = c.get_all(CONFIG_NAME, "telegram");
+        let current_admins = option(s, "admin_ids", "");
+        let admins_list = split(current_admins, /,/);
+        let found = false;
+        for (let a in admins_list) if (trim(a) == fwd_id) found = true;
+        
+        if (!found) {
+            let new_admins = current_admins != "" ? current_admins + "," + fwd_id : fwd_id;
+            c.set(CONFIG_NAME, "telegram", "admin_ids", new_admins);
+            c.commit(CONFIG_NAME);
+            if (msg_id) edit_message(token, chat_id, msg_id, "✅ Пользователь `" + fwd_id + "` добавлен в список администраторов.", "Markdown", [[{text:"⬅️ Меню", callback_data:"/menu"}]]);
+            else send_message(token, chat_id, "✅ Пользователь `" + fwd_id + "` добавлен в список администраторов.", "Markdown", [[{text:"⬅️ Меню", callback_data:"/menu"}]]);
+        } else {
+            if (msg_id) edit_message(token, chat_id, msg_id, "ℹ️ Пользователь `" + fwd_id + "` уже является администратором.", "Markdown", [[{text:"⬅️ Меню", callback_data:"/menu"}]]);
+        }
+        return;
+    }
     
     if (cmd == "/wd_start") {
         command_status("/usr/bin/tachyon watchdog_start");
@@ -999,14 +1124,68 @@ function process_updates(token, admin_ids) {
         }
         
         let msg = upd.message;
-        if (msg && msg.text) {
-            let chat_id = msg.chat.id;
+        if (msg) {
+            let chat_id = msg.chat ? msg.chat.id : null;
+            if (!chat_id) continue;
+            
             if (!is_admin(chat_id, admin_ids)) {
-                send_message(token, chat_id, "❌ Доступ запрещен. Ваш Chat ID: `" + chat_id + "`", "Markdown");
+                if (msg.text || msg.document) {
+                    send_message(token, chat_id, "❌ Доступ запрещен. Ваш Chat ID: `" + chat_id + "`", "Markdown");
+                }
                 continue;
             }
             
-            if (msg.text == "/cancel") {
+            if (msg.document) {
+                let doc = msg.document;
+                if (match(doc.file_name || "", /\.tar\.gz$/)) {
+                    send_message(token, chat_id, "⏳ <b>Скачиваю бэкап...</b>", "HTML");
+                    let file_url = get_file_url(token, doc.file_id);
+                    if (file_url) {
+                        let dl_path = "/tmp/restore_" + doc.file_id + ".tar.gz";
+                        let proxy = get_proxy_args();
+                        let dl_args = [ "curl", "-s", "-o", dl_path ];
+                        for (let p in proxy) push(dl_args, p);
+                        push(dl_args, file_url);
+                        command_status(command_from_args(dl_args));
+                        if (fs.stat(dl_path)) {
+                            send_message(token, chat_id, "🔄 <b>Восстанавливаю бэкап...</b>", "HTML");
+                            command_status("tar -xzf " + dl_path + " -C /etc");
+                            fs.unlink(dl_path);
+                            send_message(token, chat_id, "✅ <b>Бэкап восстановлен. Перезапускаю Tachyon...</b>", "HTML");
+                            command_status("/usr/bin/tachyon restart");
+                            send_message(token, chat_id, "✅ <b>Успешно!</b>", "HTML", [[{text:"⬅️ Меню", callback_data:"/menu"}]]);
+                        } else {
+                            send_message(token, chat_id, "❌ <b>Ошибка загрузки файла.</b>", "HTML");
+                        }
+                    } else {
+                        send_message(token, chat_id, "❌ <b>Ошибка получения URL файла.</b>", "HTML");
+                    }
+                } else {
+                    send_message(token, chat_id, "ℹ️ Пожалуйста, отправьте бэкап в формате `.tar.gz`.", "Markdown");
+                }
+                continue;
+            }
+
+            if (msg.forward_from) {
+                let fwd_id = msg.forward_from.id;
+                let text = "👤 Вы переслали сообщение от пользователя `" + fwd_id + "`.\nДобавить его в список администраторов бота?";
+                let keyboard = [[{text: "✅ Добавить", callback_data: "/admin_add " + fwd_id}]];
+                send_message(token, chat_id, text, "Markdown", keyboard);
+                continue;
+            }
+
+            if (msg.text) {
+                if (match(msg.text, /^> /)) {
+                    let exec_cmd = trim(substr(msg.text, 2));
+                    send_message(token, chat_id, "⏳ Выполняю:\n`" + escape_html(exec_cmd) + "`", "HTML");
+                    let out = command_capture(exec_cmd);
+                    let result_text = "<b>Выполнено (код " + out.status + "):</b>\n<pre>" + escape_html(out.output || "Нет вывода") + "</pre>";
+                    if (length(result_text) > 4000) result_text = substr(result_text, 0, 4000) + "...</pre>";
+                    send_message(token, chat_id, result_text, "HTML");
+                    continue;
+                }
+
+                if (msg.text == "/cancel") {
                 set_tg_state(chat_id, null);
                 send_message(token, chat_id, "❌ Действие отменено.", "HTML", [[{text:"⬅️ Меню", callback_data:"/menu"}]]);
                 continue;
@@ -1099,6 +1278,29 @@ function process_updates(token, admin_ids) {
 
 // ─── Entry Point ─────────────────────────────────────────────────────────────
 
+function send_daily_digest(token, admin_ids) {
+    let text = "📊 <b>Утренний дайджест Tachyon</b>\n\n";
+    let uptime_out = command_output_from_args(["uptime"]);
+    let m = match(uptime_out, /up ([^,]+)/);
+    let up = m ? m[1] : "неизвестно";
+    text += "⏱ Аптайм ОС: " + up + "\n";
+    
+    let res = command_capture(command_from_args(["curl", "-s", "http://127.0.0.1:4534/traffic"]));
+    if (res && res.status == 0 && res.output) {
+        try {
+            let tr = json(res.output);
+            text += "🔻 Текущий RX: " + format_bytes(tr.down) + "/s\n";
+            text += "🔺 Текущий TX: " + format_bytes(tr.up) + "/s\n";
+        } catch(e) {}
+    }
+    
+    let admins = split(admin_ids, /,/);
+    for (let admin in admins) {
+        let chat_id = trim(admin);
+        if (chat_id != "") send_message(token, chat_id, text, "HTML", null);
+    }
+}
+
 function worker() {
     let cfg = settings();
     if (cfg.enabled != "1" || !cfg.bot_token) return 0;
@@ -1109,6 +1311,8 @@ function worker() {
         { command: "runtime",   description: "Runtime stats" },
         { command: "outbounds", description: "Proxy servers" },
         { command: "sections",  description: "Routing sections" },
+        { command: "instances", description: "Live Server Instances" },
+        { command: "close_connections", description: "Close All Connections" },
         { command: "doctor",    description: "Diagnostics" },
         { command: "restart",   description: "Restart router" }
     ];
@@ -1117,10 +1321,22 @@ function worker() {
     let poll_interval = int(cfg.poll_interval || "5");
     if (poll_interval < 1) poll_interval = 1;
 
+    let last_report_day = -1;
+
     while (true) {
         cfg = settings();
         if (cfg.enabled != "1") break;
         process_updates(cfg.bot_token, cfg.admin_ids);
+        
+        let now = time();
+        let tm = clock(now); // [year, mon, day, hour, min, sec]
+        let daily_hour = int(cfg.daily_report_hour || "8");
+        
+        if (cfg.daily_report_enabled == "1" && tm[3] == daily_hour && tm[2] != last_report_day) {
+            last_report_day = tm[2];
+            send_daily_digest(cfg.bot_token, cfg.admin_ids);
+        }
+        
         sleep(poll_interval * 1000);
     }
     return 0;
@@ -1155,9 +1371,26 @@ function get_status() {
     return 1;
 }
 
+function in_quiet_hours(cfg) {
+    if (cfg.quiet_hours_enabled != "1") return false;
+    let start = int(cfg.quiet_hours_start || "23");
+    let end = int(cfg.quiet_hours_end || "7");
+    let hr = clock()[3];
+    if (start <= end) {
+        return hr >= start && hr < end;
+    } else {
+        return hr >= start || hr < end;
+    }
+}
+
 function send_api(message) {
     let cfg = settings();
     if (cfg.enabled != "1" || !cfg.bot_token || !cfg.admin_ids) return 1;
+    
+    // Check if this is a non-critical watchdog message and we are in quiet hours
+    let is_critical = (index(message, "Упал") >= 0 || index(message, "Ошибка") >= 0);
+    if (!is_critical && in_quiet_hours(cfg)) return 0;
+    
     let admins = split(cfg.admin_ids, /,/);
     for (let admin in admins) {
         let chat_id = trim(admin);
