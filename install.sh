@@ -1,7 +1,7 @@
 #!/bin/sh
 # shellcheck shell=dash
 
-INSTALLER_VERSION="2.0.0"
+INSTALLER_VERSION="2.0.1"
 
 REPO_OWNER="Dushnilin"
 REPO_NAME="tachyon"
@@ -1617,13 +1617,7 @@ select_sing_box_installation() {
     answer=""
     default_choice=1
 
-    if [ "$TACHYON_LEGACY_DETECTED" -eq 1 ] &&
-        [ -r /etc/init.d/sing-box ] &&
-        grep -Fq 'managed sing-box service for binary variants' /etc/init.d/sing-box; then
-        SING_BOX_INSTALL_VARIANT="extended-compressed"
-        msg "The legacy binary-managed sing-box variant will be reinstalled for Tachyon"
-        return 0
-    fi
+    # Removed legacy sing-box overwrite to respect Leadaxe sing-box
 
     if sing_box_is_present; then
         SING_BOX_INSTALL_VARIANT=""
