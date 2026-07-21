@@ -1319,6 +1319,7 @@ function process_updates(token, admin_ids) {
         }
     }
 }
+}
 
 // ─── Entry Point ─────────────────────────────────────────────────────────────
 
