@@ -98,6 +98,7 @@ let routeDisplayNames: Record<string, string> = {};
 let routeSections: Array<{ sectionName: string; displayName: string }> = [];
 let serverDisplayNames: Record<string, string> = {};
 let lastDeviceFilterSignature = '';
+let lastRouteFilterSignature = '';
 let loading = true;
 let failed = false;
 let closingAll = false;
@@ -618,6 +619,18 @@ function renderRouteFilterOptions() {
   ) {
     selectedRouteFilter = ALL_FILTER_VALUE;
   }
+
+  const signature = [
+    selectedRouteFilter,
+    ...routes,
+  ].join('|');
+  
+  if (signature === lastRouteFilterSignature) {
+    select.value = selectedRouteFilter;
+    return;
+  }
+  
+  lastRouteFilterSignature = signature;
 
   const options = [
     E('option', { value: ALL_FILTER_VALUE }, _('All Routes')),
@@ -1594,6 +1607,7 @@ function resetMonitoringState() {
   selectedRouteFilter = ALL_FILTER_VALUE;
   searchQuery = '';
   lastDeviceFilterSignature = '';
+  lastRouteFilterSignature = '';
   loading = true;
   failed = false;
   closingAll = false;

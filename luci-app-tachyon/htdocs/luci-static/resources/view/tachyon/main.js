@@ -11380,6 +11380,7 @@ var routeDisplayNames = {};
 var routeSections = [];
 var serverDisplayNames = {};
 var lastDeviceFilterSignature = "";
+var lastRouteFilterSignature = "";
 var loading = true;
 var failed = false;
 var closingAll = false;
@@ -11766,6 +11767,15 @@ function renderRouteFilterOptions() {
   if (selectedRouteFilter !== ALL_FILTER_VALUE && !routes.includes(selectedRouteFilter)) {
     selectedRouteFilter = ALL_FILTER_VALUE;
   }
+  const signature = [
+    selectedRouteFilter,
+    ...routes
+  ].join("|");
+  if (signature === lastRouteFilterSignature) {
+    select.value = selectedRouteFilter;
+    return;
+  }
+  lastRouteFilterSignature = signature;
   const options = [
     E("option", { value: ALL_FILTER_VALUE }, _("All Routes")),
     ...routes.map((name) => E("option", { value: name }, name))
@@ -12300,6 +12310,9 @@ function bindControls() {
   const select = document.getElementById(
     "monitoring-device-filter"
   );
+  const routeSelect = document.getElementById(
+    "monitoring-route-filter"
+  );
   const searchInput = document.getElementById(
     "monitoring-search"
   );
@@ -12328,6 +12341,12 @@ function bindControls() {
   if (select) {
     select.onchange = () => {
       selectedDeviceFilter = select.value || ALL_FILTER_VALUE;
+      renderConnections2();
+    };
+  }
+  if (routeSelect) {
+    routeSelect.onchange = () => {
+      selectedRouteFilter = routeSelect.value || ALL_FILTER_VALUE;
       renderConnections2();
     };
   }
@@ -12508,6 +12527,7 @@ function resetMonitoringState() {
   selectedRouteFilter = ALL_FILTER_VALUE;
   searchQuery = "";
   lastDeviceFilterSignature = "";
+  lastRouteFilterSignature = "";
   loading = true;
   failed = false;
   closingAll = false;

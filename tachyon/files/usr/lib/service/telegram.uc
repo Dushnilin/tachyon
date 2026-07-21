@@ -797,6 +797,41 @@ function exec_close_connections(token, chat_id) {
     send_message(token, chat_id, "✅ <b>Все активные соединения сброшены.</b>\nОни будут переустановлены по новым маршрутам.", "HTML", [[{text:"⬅️ Меню", callback_data:"/menu"}]]);
 }
 
+function exec_check_updates(token, chat_id, msg_id) {
+    let out = command_output_from_args(["/usr/bin/tachyon", "component_update_check_cache"]);
+    let text = "📦 <b>Обновления компонентов</b>\n\n";
+    let keyboard = [];
+    if (out && out != "") {
+        try {
+            let data = json(out);
+            let has_updates = false;
+            for (let name in data) {
+                let comp = data[name];
+                let title = (name == "sing_box") ? "sing-box" : name;
+                text += "• <b>" + title + "</b>: " + comp.installed_version;
+                if (comp.status == "outdated") {
+                    text += " ➡️ <code>" + comp.latest_version + "</code> ⚠️\n";
+                    push(keyboard, [{text: "🔄 Обновить " + title, callback_data: "/update_component " + name}]);
+                    has_updates = true;
+                } else {
+                    text += " (Актуально)\n";
+                }
+            }
+            if (!has_updates) text += "\n✅ Все компоненты актуальны.";
+        } catch(e) {
+            text += "❌ Ошибка парсинга кэша: " + e;
+        }
+    } else {
+        text += "ℹ️ Кэш проверок пуст или недоступен.\nЗайдите позже или включите проверку обновлений в UI.";
+    }
+    
+    push(keyboard, [{ text: "🔄 Обновить кэш", callback_data: "/check_updates" }]);
+    push(keyboard, [{ text: "⬅️ Назад", callback_data: "/menu" }]);
+    
+    if (msg_id) edit_message(token, chat_id, msg_id, text, "HTML", keyboard);
+    else send_message(token, chat_id, text, "HTML", keyboard);
+}
+
 function view_instances(token, chat_id, msg_id) {
     let res = command_capture(command_from_args(["curl", "-s", "http://127.0.0.1:4534/proxies"]));
     let text = "🖧 <b>Live Server Instances</b>\n\n";
@@ -924,6 +959,15 @@ function dispatch_command(token, chat_id, text, msg_id) {
     if (cmd == "/support_bundle") return exec_support_bundle(token, chat_id);
     if (cmd == "/close_connections") return exec_close_connections(token, chat_id);
     if (cmd == "/instances") return view_instances(token, chat_id, msg_id);
+    if (cmd == "/check_updates") return exec_check_updates(token, chat_id, msg_id);
+    
+    if (match(cmd, /^\/update_component /)) {
+        let comp = trim(substr(cmd, 17));
+        if (msg_id) edit_message(token, chat_id, msg_id, "⏳ <b>Запуск обновления " + comp + "...</b>\nПроцесс запущен в фоне. Зайдите позже.", "HTML", [[{text:"⬅️ Меню", callback_data:"/menu"}]]);
+        else send_message(token, chat_id, "⏳ <b>Запуск обновления " + comp + "...</b>\nПроцесс запущен в фоне. Зайдите позже.", "HTML", [[{text:"⬅️ Меню", callback_data:"/menu"}]]);
+        command_status("/usr/bin/tachyon component_action_async " + comp + " install");
+        return;
+    }
     
     if (match(cmd, /^\/admin_add /)) {
         let fwd_id = trim(substr(cmd, 11));
@@ -1301,6 +1345,40 @@ function send_daily_digest(token, admin_ids) {
     }
 }
 
+function check_notified_updates(token, admin_ids) {
+    let out = command_output_from_args(["/usr/bin/tachyon", "component_update_check_cache"]);
+    if (!out || out == "") return;
+    try {
+        let data = json(out);
+        let notified_file = "/tmp/tg_notified_updates.json";
+        let notified = {};
+        let ndata = fs.readfile(notified_file);
+        if (ndata) { try { notified = json(ndata); } catch(e){} }
+        
+        let changed = false;
+        for (let name in data) {
+            let comp = data[name];
+            if (comp.status == "outdated") {
+                let latest = comp.latest_version;
+                if (notified[name] != latest) {
+                    let title = (name == "sing_box") ? "sing-box" : name;
+                    let msg = "📦 <b>Доступно обновление компонента!</b>\n" + title + ": <code>" + comp.installed_version + "</code> ➡️ <code>" + latest + "</code>";
+                    let kb = [[{text: "🔄 Обновить " + title, callback_data: "/update_component " + name}]];
+                    
+                    let admins = split(admin_ids, /,/);
+                    for (let admin in admins) {
+                        let cid = trim(admin);
+                        if (cid != "") send_message(token, cid, msg, "HTML", kb);
+                    }
+                    notified[name] = latest;
+                    changed = true;
+                }
+            }
+        }
+        if (changed) fs.writefile(notified_file, sprintf("%J", notified));
+    } catch(e) {}
+}
+
 function worker() {
     let cfg = settings();
     if (cfg.enabled != "1" || !cfg.bot_token) return 0;
@@ -1312,6 +1390,7 @@ function worker() {
         { command: "outbounds", description: "Proxy servers" },
         { command: "sections",  description: "Routing sections" },
         { command: "instances", description: "Live Server Instances" },
+        { command: "check_updates", description: "Check component updates" },
         { command: "close_connections", description: "Close All Connections" },
         { command: "doctor",    description: "Diagnostics" },
         { command: "restart",   description: "Restart router" }
@@ -1322,6 +1401,7 @@ function worker() {
     if (poll_interval < 1) poll_interval = 1;
 
     let last_report_day = -1;
+    let last_update_check = 0;
 
     while (true) {
         cfg = settings();
@@ -1335,6 +1415,11 @@ function worker() {
         if (cfg.daily_report_enabled == "1" && tm[3] == daily_hour && tm[2] != last_report_day) {
             last_report_day = tm[2];
             send_daily_digest(cfg.bot_token, cfg.admin_ids);
+        }
+        
+        if (now - last_update_check > 3600) { // check every hour
+            check_notified_updates(cfg.bot_token, cfg.admin_ids);
+            last_update_check = now;
         }
         
         sleep(poll_interval * 1000);
