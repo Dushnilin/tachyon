@@ -445,6 +445,7 @@ const actionProvidersAvailabilityState = {
   zapretInstalled: false,
   zapret2Installed: false,
   byedpiInstalled: false,
+  torInstalled: false,
   singBoxExtended: false,
 };
 let actionProvidersAvailabilityPromise = null;
@@ -4047,6 +4048,10 @@ function isByedpiInstalledForUi() {
   return actionProvidersAvailabilityState.byedpiInstalled;
 }
 
+function isTorInstalledForUi() {
+  return actionProvidersAvailabilityState.torInstalled;
+}
+
 function isSingBoxExtendedForUi() {
   return actionProvidersAvailabilityState.singBoxExtended;
 }
@@ -4078,6 +4083,8 @@ function getActionOptionLabel(action) {
       return "Zapret2";
     case "byedpi":
       return "ByeDPI";
+    case "tor":
+      return "Route via Tor Darknet";
     case "awg":
       return "AmneziaWG";
     case "warp":
@@ -4183,6 +4190,7 @@ function populateActionOptionValues(option) {
   if (isByedpiInstalledForUi()) {
     option.value("byedpi", getActionOptionLabel("byedpi"));
   }
+  option.value("tor", getActionOptionLabel("tor"));
 }
 
 function getConfigListValues(section_id, key) {
@@ -7096,6 +7104,44 @@ function createSectionContent(section) {
     _("What Tachyon should do when this section matches"),
   );
   populateActionOptionValues(o);
+  
+  const super_validate = o.validate;
+  o.validate = function(section_id, value) {
+    if (value === "tor" && !isTorInstalledForUi()) {
+      ui.showModal(_("Install Tor"), [
+        E("p", _("The tor package is required to use the Darknet gateway. Do you want to install it automatically? (This will take about a minute)")),
+        E("div", { class: "right" }, [
+          E("button", {
+            class: "cbi-button cbi-button-neutral",
+            click: ui.hideModal
+          }, _("Cancel")),
+          E("button", {
+            class: "cbi-button cbi-button-action important",
+            click: function() {
+              ui.showModal(_("Installing Tor..."), [
+                E("p", { class: "spinning" }, _("Please wait. Installing via package manager..."))
+              ]);
+              main.TachyonShellMethods.installTor().then(function(res) {
+                ui.hideModal();
+                if (res && res.success) {
+                  ui.addNotification(null, E("p", _("Tor successfully installed! Please select the action again.")));
+                  actionProvidersAvailabilityState.torInstalled = true;
+                } else {
+                  ui.addNotification(null, E("p", _("Failed to install Tor. Code: ") + (res ? res.code : "unknown")));
+                }
+              }).catch(function(err) {
+                ui.hideModal();
+                ui.addNotification(null, E("p", _("Command execution error: ") + err.message));
+              });
+            }
+          }, _("Install"))
+        ])
+      ]);
+      return _("The tor package is not installed.");
+    }
+    return super_validate ? super_validate.apply(this, [section_id, value]) : true;
+  };
+
   o.default = "connection";
   o.rmempty = false;
   o.modalonly = true;

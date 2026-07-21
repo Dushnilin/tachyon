@@ -813,13 +813,13 @@ function rule_action(section) {
 function rule_action_supported(action) {
     return contains([ "connection", "proxy", "outbound", "vpn", "awg", "warp",
         "anytls", "snell", "mieru", "sudoku", "masque", "openvpn",
-        "bypass", "block", "dns", "zapret", "zapret2", "byedpi" ], as_string(action));
+        "bypass", "block", "dns", "zapret", "zapret2", "byedpi", "tor" ], as_string(action));
 }
 
 function server_routing_section_action_supported(action) {
     return contains([ "connection", "proxy", "outbound", "vpn", "awg", "warp",
         "anytls", "snell", "mieru", "sudoku", "masque", "openvpn",
-        "zapret", "zapret2", "byedpi" ], as_string(action));
+        "zapret", "zapret2", "byedpi", "tor" ], as_string(action));
 }
 
 function duration_to_seconds_value(value) {
@@ -1835,10 +1835,11 @@ function sing_box_version_is_lx(version) {
 
 function sing_box_is_extended(ctx, version) {
     if (as_string(version) == "" && command_exists("sing-box") &&
-        (sing_box_compressed_marker_set(ctx) || sing_box_extended_marker_set(ctx)))
+        (sing_box_compressed_marker_set(ctx) || sing_box_extended_marker_set(ctx) || sing_box_lx_marker_set(ctx)))
         return true;
 
-    return sing_box_version_is_extended(version != null ? version : get_sing_box_version(ctx));
+    version = version != null ? version : get_sing_box_version(ctx);
+    return sing_box_version_is_extended(version) || sing_box_version_is_lx(version);
 }
 
 function sing_box_is_lx(ctx, version) {

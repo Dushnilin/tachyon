@@ -2576,6 +2576,22 @@ else if (mode == "check-zapret2-runtime")
     exit(module_passthrough(ZAPRET2_RUNTIME_UC, [ "check" ]));
 else if (mode == "check-byedpi-runtime")
     exit(module_passthrough(BYEDPI_RUNTIME_UC, [ "check" ]));
+else if (mode == "check-tor-runtime") {
+    print(common.to_json({ success: true, data: { tor_installed: command_exists("tor") } }));
+    exit(0);
+}
+else if (mode == "install-tor") {
+    let code = 1;
+    if (command_exists("apk")) {
+        system("apk update >/dev/null 2>&1");
+        code = system("apk add tor >/dev/null 2>&1");
+    } else {
+        system("opkg update >/dev/null 2>&1");
+        code = system("opkg install tor >/dev/null 2>&1");
+    }
+    print(common.to_json({ success: command_exists("tor"), code: code }));
+    exit(0);
+}
 else if (mode == "neutralize-zapret-defaults")
     exit(neutralize_zapret_defaults());
 else if (mode == "clash-api")

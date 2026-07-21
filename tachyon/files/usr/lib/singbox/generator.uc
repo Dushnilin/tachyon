@@ -493,6 +493,27 @@ function base_config(settings, service_address, runtime_context) {
     for (let inbound in dns_config.inbounds)
         push(inbounds, inbound);
 
+    let has_tor = false;
+    for (let sec in uci_core.section_objects(CONFIG_NAME, "section")) {
+        if (option(sec, "action", "") == "tor") {
+            has_tor = true;
+            break;
+        }
+    }
+
+    let default_outbounds = [
+        { type: "direct", tag: runtime_constants.DIRECT_OUTBOUND_TAG },
+        { type: "direct", tag: runtime_constants.BYPASS_OUTBOUND_TAG }
+    ];
+    
+    if (has_tor) {
+        push(default_outbounds, {
+            type: "tor",
+            tag: "tor-out",
+            executable_path: option(settings, "tor_executable_path", "/usr/sbin/tor")
+        });
+    }
+
     runtime_context = object_or_empty(runtime_context);
     runtime_context.dns_health_inbounds = dns_config.sniff_inbounds;
     runtime_context.default_domain_resolver = runtime_dns.default_domain_resolver(settings);
@@ -514,10 +535,7 @@ function base_config(settings, service_address, runtime_context) {
         certificate: {},
         endpoints: [],
         inbounds,
-        outbounds: [
-            { type: "direct", tag: runtime_constants.DIRECT_OUTBOUND_TAG },
-            { type: "direct", tag: runtime_constants.BYPASS_OUTBOUND_TAG }
-        ],
+        outbounds: default_outbounds,
         route: runtime_route.config(settings, runtime_context),
         services: [],
         experimental: {

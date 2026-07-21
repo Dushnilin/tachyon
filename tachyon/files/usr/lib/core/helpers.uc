@@ -533,7 +533,7 @@ function allocate_runtime_tag(base, postfix) {
 }
 
 function sing_box_version_is_extended(value) {
-    return index(as_string(value), "extended") >= 0;
+    return index(as_string(value), "extended") >= 0 || index(as_string(value), "-lx") >= 0;
 }
 
 let mode = ARGV[0] || "";

@@ -257,16 +257,17 @@ function sing_box_version_is_extended(value) {
     return index(as_string(value), "extended") >= 0;
 }
 
-function sing_box_is_extended(value) {
-    value = as_string(value);
-    if (value == "" && command_exists("sing-box") && (sing_box_marker_is("extended-compressed") || sing_box_marker_is("extended")))
-        return true;
-
-    return sing_box_version_is_extended(value != "" ? value : sing_box_version());
-}
-
 function sing_box_version_is_lx(value) {
     return index(as_string(value), "-lx") >= 0;
+}
+
+function sing_box_is_extended(value) {
+    value = as_string(value);
+    if (value == "" && command_exists("sing-box") && (sing_box_marker_is("extended-compressed") || sing_box_marker_is("extended") || sing_box_marker_is("lx")))
+        return true;
+
+    value = value != "" ? value : sing_box_version();
+    return sing_box_version_is_extended(value) || sing_box_version_is_lx(value);
 }
 
 function sing_box_is_lx(value) {
