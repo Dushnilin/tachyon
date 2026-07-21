@@ -3979,10 +3979,45 @@ msgid "Destination IP or CIDR"
 msgstr ""
 
 msgid "Forced destination routing"
+
+msgid "Destination IP or CIDR"
+msgstr ""
+
+msgid "Forced destination routing"
 msgstr ""
 
 msgid "All traffic to these destination IPs will be routed through the section unconditionally, ignoring all other conditions."
 msgstr ""
 
 msgid "All Routes"
+msgstr ""
+
+msgid "Install Tor"
+msgstr ""
+
+msgid "The tor package is required to use the Darknet gateway. Do you want to install it automatically? (This will take about a minute)"
+msgstr ""
+
+msgid "Cancel"
+msgstr ""
+
+msgid "Installing Tor..."
+msgstr ""
+
+msgid "Please wait. Installing via package manager..."
+msgstr ""
+
+msgid "Tor successfully installed! Please select the action again."
+msgstr ""
+
+msgid "Failed to install Tor. Code: "
+msgstr ""
+
+msgid "Command execution error: "
+msgstr ""
+
+msgid "Install"
+msgstr ""
+
+msgid "The tor package is not installed."
 msgstr ""

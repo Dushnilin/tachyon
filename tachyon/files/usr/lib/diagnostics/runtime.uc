@@ -1095,7 +1095,6 @@ function build_system_info() {
         zapret2_installed,
         byedpi_version,
         byedpi_installed,
-        tor_installed: command_exists("tor") ? 1 : 0,
         openwrt_version: openwrt_release(),
         device_model,
         generated_at: int(clock()[0])
@@ -2578,19 +2577,7 @@ else if (mode == "check-zapret2-runtime")
 else if (mode == "check-byedpi-runtime")
     exit(module_passthrough(BYEDPI_RUNTIME_UC, [ "check" ]));
 else if (mode == "check-tor-runtime") {
-    print(sprintf("%J", { success: true, data: { tor_installed: command_exists("tor") } }));
-    exit(0);
-}
-else if (mode == "install-tor") {
-    let code = 1;
-    if (command_exists("apk")) {
-        system("apk update >/dev/null 2>&1");
-        code = system("apk add tor >/dev/null 2>&1");
-    } else {
-        system("opkg update >/dev/null 2>&1");
-        code = system("opkg install tor >/dev/null 2>&1");
-    }
-    print(sprintf("%J", { success: command_exists("tor"), code: code }));
+    print(sprintf("%J", { success: true, data: { tor_installed: 0 } }));
     exit(0);
 }
 else if (mode == "neutralize-zapret-defaults")

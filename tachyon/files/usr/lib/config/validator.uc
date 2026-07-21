@@ -813,13 +813,13 @@ function rule_action(section) {
 function rule_action_supported(action) {
     return contains([ "connection", "proxy", "outbound", "vpn", "awg", "warp",
         "anytls", "snell", "mieru", "sudoku", "masque", "openvpn",
-        "bypass", "block", "dns", "zapret", "zapret2", "byedpi", "tor" ], as_string(action));
+        "bypass", "block", "dns", "zapret", "zapret2", "byedpi" ], as_string(action));
 }
 
 function server_routing_section_action_supported(action) {
     return contains([ "connection", "proxy", "outbound", "vpn", "awg", "warp",
         "anytls", "snell", "mieru", "sudoku", "masque", "openvpn",
-        "zapret", "zapret2", "byedpi", "tor" ], as_string(action));
+        "zapret", "zapret2", "byedpi" ], as_string(action));
 }
 
 function duration_to_seconds_value(value) {

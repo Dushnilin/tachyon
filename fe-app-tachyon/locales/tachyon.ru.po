@@ -2843,32 +2843,4 @@ msgstr "Закрыть"
 msgid "Cannot save settings"
 msgstr "Не удалось сохранить настройки"
 
-msgid "Install Tor"
-msgstr "Установить Tor"
 
-msgid "The tor package is required to use the Darknet gateway. Do you want to install it automatically? (This will take about a minute)"
-msgstr "Для работы шлюза Darknet необходим пакет tor. Хотите установить его автоматически? (Это займёт около минуты)"
-
-msgid "Cancel"
-msgstr "Отмена"
-
-msgid "Installing Tor..."
-msgstr "Установка Tor..."
-
-msgid "Please wait. Installing via package manager..."
-msgstr "Пожалуйста, подождите. Идёт установка через пакетный менеджер..."
-
-msgid "Tor successfully installed! Please select the action again."
-msgstr "Tor успешно установлен! Пожалуйста, выберите действие снова."
-
-msgid "Failed to install Tor. Code: "
-msgstr "Не удалось установить Tor. Код: "
-
-msgid "Command execution error: "
-msgstr "Ошибка выполнения команды: "
-
-msgid "Install"
-msgstr "Установить"
-
-msgid "The tor package is not installed."
-msgstr "Пакет tor не установлен."

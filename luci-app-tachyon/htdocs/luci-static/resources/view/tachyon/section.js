@@ -3998,9 +3998,8 @@ function ensureActionProvidersAvailabilityLoaded() {
     main.TachyonShellMethods.checkZapretRuntime(),
     main.TachyonShellMethods.checkZapret2Runtime(),
     main.TachyonShellMethods.checkByedpiRuntime(),
-    main.TachyonShellMethods.checkTorRuntime(),
   ])
-    .then(([zapretResult, zapret2Result, byedpiResult, torResult]) => {
+    .then(([zapretResult, zapret2Result, byedpiResult]) => {
       const zapret =
         zapretResult && zapretResult.status === "fulfilled"
           ? zapretResult.value
@@ -4013,10 +4012,7 @@ function ensureActionProvidersAvailabilityLoaded() {
         byedpiResult && byedpiResult.status === "fulfilled"
           ? byedpiResult.value
           : null;
-      const tor =
-        torResult && torResult.status === "fulfilled"
-          ? torResult.value
-          : null;
+
 
       actionProvidersAvailabilityState.loaded = true;
       actionProvidersAvailabilityState.zapretInstalled = Boolean(
@@ -4031,9 +4027,7 @@ function ensureActionProvidersAvailabilityLoaded() {
       actionProvidersAvailabilityState.byedpiInstalled = Boolean(
         byedpi && byedpi.success && byedpi.data && byedpi.data.byedpi_installed,
       );
-      actionProvidersAvailabilityState.torInstalled = Boolean(
-        tor && tor.success && tor.data && tor.data.tor_installed,
-      );
+
       return actionProvidersAvailabilityState;
     })
     .catch(() => {
@@ -4041,7 +4035,7 @@ function ensureActionProvidersAvailabilityLoaded() {
       actionProvidersAvailabilityState.zapretInstalled = false;
       actionProvidersAvailabilityState.zapret2Installed = false;
       actionProvidersAvailabilityState.byedpiInstalled = false;
-      actionProvidersAvailabilityState.torInstalled = false;
+
       // singBoxExtended is set via systemInfo, keep existing value
       return actionProvidersAvailabilityState;
     })
@@ -4064,9 +4058,7 @@ function isByedpiInstalledForUi() {
   return actionProvidersAvailabilityState.byedpiInstalled;
 }
 
-function isTorInstalledForUi() {
-  return actionProvidersAvailabilityState.torInstalled;
-}
+
 
 function isSingBoxExtendedForUi() {
   return actionProvidersAvailabilityState.singBoxExtended;
@@ -4099,8 +4091,7 @@ function getActionOptionLabel(action) {
       return "Zapret2";
     case "byedpi":
       return "ByeDPI";
-    case "tor":
-      return "Route via Tor Darknet";
+
     case "awg":
       return "AmneziaWG";
     case "warp":
@@ -4206,7 +4197,7 @@ function populateActionOptionValues(option) {
   if (isByedpiInstalledForUi()) {
     option.value("byedpi", getActionOptionLabel("byedpi"));
   }
-  option.value("tor", getActionOptionLabel("tor"));
+
 }
 
 function getConfigListValues(section_id, key) {
@@ -7123,38 +7114,7 @@ function createSectionContent(section) {
   
   const super_validate = o.validate;
   o.validate = function(section_id, value) {
-    if (value === "tor" && !isTorInstalledForUi()) {
-      ui.showModal(_("Install Tor"), [
-        E("p", _("The tor package is required to use the Darknet gateway. Do you want to install it automatically? (This will take about a minute)")),
-        E("div", { class: "right" }, [
-          E("button", {
-            class: "cbi-button cbi-button-neutral",
-            click: ui.hideModal
-          }, _("Cancel")),
-          E("button", {
-            class: "cbi-button cbi-button-action important",
-            click: function() {
-              ui.showModal(_("Installing Tor..."), [
-                E("p", { class: "spinning" }, _("Please wait. Installing via package manager..."))
-              ]);
-              main.TachyonShellMethods.installTor().then(function(res) {
-                ui.hideModal();
-                if (res && res.success) {
-                  ui.addNotification(null, E("p", _("Tor successfully installed! Please select the action again.")));
-                  actionProvidersAvailabilityState.torInstalled = true;
-                } else {
-                  ui.addNotification(null, E("p", _("Failed to install Tor. Code: ") + (res ? (res.error || res.code || "timeout") : "unknown")));
-                }
-              }).catch(function(err) {
-                ui.hideModal();
-                ui.addNotification(null, E("p", _("Command execution error: ") + err.message));
-              });
-            }
-          }, _("Install"))
-        ])
-      ]);
-      return _("The tor package is not installed.");
-    }
+
     return super_validate ? super_validate.apply(this, [section_id, value]) : true;
   };
 

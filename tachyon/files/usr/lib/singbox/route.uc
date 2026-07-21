@@ -55,8 +55,6 @@ function target(section, outbound_tag_name) {
         action == "masque" || action == "openvpn" ||
         action == "byedpi" || action == "zapret" || action == "zapret2")
         return { action: "route", outbound: outbound_tag_name };
-    if (action == "tor")
-        return { action: "route", outbound: "tor-out" };
     if (action == "bypass")
         return { action: "route", outbound: runtime_constants.BYPASS_OUTBOUND_TAG };
     if (action == "block")

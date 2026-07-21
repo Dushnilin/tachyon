@@ -493,26 +493,10 @@ function base_config(settings, service_address, runtime_context) {
     for (let inbound in dns_config.inbounds)
         push(inbounds, inbound);
 
-    let has_tor = false;
-    for (let sec in uci_core.section_objects(CONFIG_NAME, "section")) {
-        if (option(sec, "action", "") == "tor") {
-            has_tor = true;
-            break;
-        }
-    }
-
     let default_outbounds = [
         { type: "direct", tag: runtime_constants.DIRECT_OUTBOUND_TAG },
         { type: "direct", tag: runtime_constants.BYPASS_OUTBOUND_TAG }
     ];
-    
-    if (has_tor) {
-        push(default_outbounds, {
-            type: "tor",
-            tag: "tor-out",
-            executable_path: option(settings, "tor_executable_path", "/usr/sbin/tor")
-        });
-    }
 
     runtime_context = object_or_empty(runtime_context);
     runtime_context.dns_health_inbounds = dns_config.sniff_inbounds;
@@ -1525,7 +1509,7 @@ function apply_section_detour_to_connection_outbounds(config, start_index, detou
 
 function mixed_proxy_enabled_action(action) {
     return action == "connection" || action == "proxy" || action == "outbound" || action == "vpn" ||
-        action == "awg" || action == "byedpi" || action == "zapret" || action == "zapret2" || action == "tor";
+        action == "awg" || action == "byedpi" || action == "zapret" || action == "zapret2";
 }
 
 function add_mixed_proxy_for_section(config, section, service_address) {
@@ -2560,16 +2544,6 @@ function add_byedpi_outbound(config, section, sections) {
     });
 }
 
-function add_tor_outbound(config, section) {
-    push(config.outbounds, {
-        type: "socks",
-        tag: outbound_tag(section[".name"]),
-        server: "127.0.0.1",
-        server_port: 9050,
-        version: "5"
-    });
-}
-
 function ensure_community_ruleset(config, section_name, community) {
     if (!runtime_rulesets.is_community(community))
         runtime_generate_unsupported("unknown community list " + community);
@@ -3050,8 +3024,6 @@ function add_outbound_for_section(config, section, taken, sections) {
         add_zapret2_outbound(config, section, sections);
     else if (action == "byedpi")
         add_byedpi_outbound(config, section, sections);
-    else if (action == "tor")
-        add_tor_outbound(config, section);
     else if (action == "bypass") {
         /* route-only action */
     }
@@ -3072,7 +3044,7 @@ function reserve_section_outbound_tags(sections, taken) {
         if (connections.is_connections_action(action) ||
             action == "awg" || action == "warp" || action == "byedpi" || action == "zapret" || action == "zapret2" ||
             action == "anytls" || action == "snell" || action == "mieru" || action == "sudoku" ||
-            action == "masque" || action == "openvpn" || action == "tor")
+            action == "masque" || action == "openvpn")
             taken[outbound_tag(section[".name"])] = true;
 
         if (!connections.is_connections_action(action))
@@ -3099,7 +3071,7 @@ function add_service_route_rules(config, sections) {
         if (connections.is_connections_action(action) ||
             action == "awg" || action == "warp" || action == "byedpi" || action == "zapret" || action == "zapret2" ||
             action == "anytls" || action == "snell" || action == "mieru" || action == "sudoku" ||
-            action == "masque" || action == "openvpn" || action == "tor") {
+            action == "masque" || action == "openvpn") {
             first = section;
             break;
         }

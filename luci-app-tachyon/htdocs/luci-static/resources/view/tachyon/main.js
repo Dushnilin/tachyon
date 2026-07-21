@@ -2627,8 +2627,6 @@ var Tachyon;
     AvailableMethods2["CHECK_ZAPRET_RUNTIME"] = "check_zapret_runtime";
     AvailableMethods2["CHECK_ZAPRET2_RUNTIME"] = "check_zapret2_runtime";
     AvailableMethods2["CHECK_BYEDPI_RUNTIME"] = "check_byedpi_runtime";
-    AvailableMethods2["CHECK_TOR_RUNTIME"] = "check_tor_runtime";
-    AvailableMethods2["INSTALL_TOR"] = "install_tor";
     AvailableMethods2["CHECK_INBOUNDS_CONFIG"] = "check_inbounds_config";
     AvailableMethods2["GET_STATUS"] = "get_status";
     AvailableMethods2["GET_OUTBOUND_METADATA"] = "get_outbound_metadata";
@@ -2848,15 +2846,6 @@ var TachyonShellMethods = {
   ),
   checkByedpiRuntime: async () => callBaseMethod(
     Tachyon.AvailableMethods.CHECK_BYEDPI_RUNTIME
-  ),
-  checkTorRuntime: async () => callBaseMethod(
-    Tachyon.AvailableMethods.CHECK_TOR_RUNTIME
-  ),
-  installTor: async () => callBaseMethod(
-    Tachyon.AvailableMethods.INSTALL_TOR,
-    [],
-    "/usr/bin/tachyon",
-    { timeout: 120000 }
   ),
   checkInboundsConfig: async () => callBaseMethod(
     Tachyon.AvailableMethods.CHECK_INBOUNDS_CONFIG
@@ -13496,8 +13485,7 @@ function notifyActionProvidersAvailabilityChanged(systemInfo) {
       detail: {
         zapretInstalled: Boolean(systemInfo.zapret_installed),
         zapret2Installed: Boolean(systemInfo.zapret2_installed),
-        byedpiInstalled: Boolean(systemInfo.byedpi_installed),
-        torInstalled: Boolean(systemInfo.tor_installed)
+        byedpiInstalled: Boolean(systemInfo.byedpi_installed)
       }
     })
   );
