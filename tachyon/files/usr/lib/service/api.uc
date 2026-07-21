@@ -131,8 +131,18 @@ function get_system_status() {
     status_obj.wan_ip = as_string(common.command_output("ip route get 8.8.8.8 2>/dev/null | grep -Eo 'src [0-9.]+' | awk '{print $2}'"));
     
     // Tachyon Version
+    let ver = "unknown";
     let opkg_out = common.command_output("opkg status tachyon 2>/dev/null | grep Version");
-    status_obj.tachyon_version = split(trim(opkg_out), " ")[1] || "unknown";
+    if (opkg_out && trim(opkg_out) != "") {
+        ver = split(trim(opkg_out), " ")[1];
+    } else {
+        let apk_out = common.command_output("apk list tachyon 2>/dev/null");
+        if (apk_out && trim(apk_out) != "") {
+            let m = match(apk_out, /tachyon-([0-9\.\-a-zA-Z]+)/);
+            if (m && m[1]) ver = m[1];
+        }
+    }
+    status_obj.tachyon_version = ver || "unknown";
 
     return status_obj;
 }
