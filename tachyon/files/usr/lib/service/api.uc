@@ -98,22 +98,23 @@ function get_system_status() {
     status_obj.singbox = sb_running ? "🟢 running" : "🔴 stopped";
     status_obj.tachyon_running = command_success_from_args(["/etc/init.d/tachyon", "status"]);
 
-    // Active server + latency from Clash API
-    status_obj.active_server = "";
-    status_obj.latency = "";
-    status_obj.active_tag = "";
+    // Active servers for all Selector groups
+    status_obj.active_servers = {};
     
     let pdata = get_clash_proxies_data();
     if (pdata && pdata.proxies) {
-        let main_out = pdata.proxies["main-out"];
-        if (main_out && main_out.now) {
-            status_obj.active_server = main_out.now;
-            status_obj.active_tag = "main-out"; // Or derive from actual proxy tag
-            let srv = pdata.proxies[main_out.now];
-            if (srv && type(srv.history) == "array" && length(srv.history) > 0) {
-                let last = srv.history[length(srv.history) - 1];
-                if (last && last.delay) {
-                    status_obj.latency = last.delay; // int
+        for (let gname in keys(pdata.proxies)) {
+            let p = pdata.proxies[gname];
+            if (p.type == "Selector" || p.type == "URLTest" || p.type == "Fallback") {
+                if (p.now) {
+                    let srv_name = p.now;
+                    let latency = "N/A";
+                    let srv = pdata.proxies[srv_name];
+                    if (srv && type(srv.history) == "array" && length(srv.history) > 0) {
+                        let last = srv.history[length(srv.history) - 1];
+                        if (last && last.delay) latency = last.delay;
+                    }
+                    status_obj.active_servers[gname] = { server: srv_name, latency: latency };
                 }
             }
         }

@@ -336,9 +336,22 @@ function view_menu(token, chat_id, msg_id) {
     let sys = api.get_system_status();
     let text = "🏠 <b>Tachyon Control Panel</b>\n\n" +
                "Версия: <code>" + sys.tachyon_version + "</code>\n" +
-               "Роутер CPU: <code>" + sys.cpu + "</code>\n" +
-               "Активный сервер: <code>" + escape_html(sys.active_server || "Не выбран") + "</code>\n\n" +
-               "Выберите раздел для управления:";
+               "Роутер CPU: <code>" + sys.cpu + "</code>\n\n";
+               
+    let keys_servers = keys(sys.active_servers || {});
+    if (length(keys_servers) > 0) {
+        text += "Активные серверы:\n";
+        for (let i = 0; i < length(keys_servers); i++) {
+            let gname = keys_servers[i];
+            let srv = sys.active_servers[gname];
+            text += "└ " + escape_html(gname) + ": <code>" + escape_html(srv.server) + "</code>\n";
+        }
+        text += "\n";
+    } else {
+         text += "Активный сервер: <code>Не выбран</code>\n\n";
+    }
+
+    text += "Выберите раздел для управления:";
                
     let keyboard = [
         [
@@ -356,6 +369,9 @@ function view_menu(token, chat_id, msg_id) {
         [
             { text: "🩺 Диагностика", callback_data: "/doctor" },
             { text: "🔄 Перезапуск", callback_data: "/restart" }
+        ],
+        [
+            { text: "⚙️ Все Настройки", callback_data: "/settings" }
         ]
     ];
     
@@ -372,11 +388,21 @@ function view_status(token, chat_id, msg_id) {
                "sing-box: <code>" + sys.singbox + "</code>\n" +
                "Watchdog: <code>" + (sys.watchdog_running ? "🟢 running" : "🔴 stopped") + "</code>\n\n" +
                "WAN IP: <code>" + (sys.wan_ip || "unknown") + "</code>\n" +
-               "LAN IP: <code>" + (sys.lan_ip || "unknown") + "</code>\n\n" +
-               "Активный прокси: <code>" + escape_html(sys.active_server || "нет") + "</code>";
+               "LAN IP: <code>" + (sys.lan_ip || "unknown") + "</code>\n\n";
                
-    if (sys.latency) text += " (" + sys.latency + " ms)";
-    
+    let keys_servers = keys(sys.active_servers || {});
+    if (length(keys_servers) > 0) {
+        text += "Активные серверы:\n";
+        for (let i = 0; i < length(keys_servers); i++) {
+            let gname = keys_servers[i];
+            let srv = sys.active_servers[gname];
+            let lat = srv.latency != "N/A" ? " (" + srv.latency + " ms)" : "";
+            text += "└ " + escape_html(gname) + ": <code>" + escape_html(srv.server) + lat + "</code>\n";
+        }
+    } else {
+         text += "Активный сервер: <code>нет</code>";
+    }
+               
     let keyboard = [
         [{ text: "🔄 Обновить", callback_data: "/status" }],
         [{ text: "⬅️ Назад", callback_data: "/menu" }]
@@ -407,7 +433,7 @@ function view_runtime(token, chat_id, msg_id) {
     else send_message(token, chat_id, text, "HTML", keyboard);
 }
 
-function view_outbounds(token, chat_id, msg_id) {
+function view_outbounds(token, chat_id, msg_id, group_name) {
     let data = api.get_clash_proxies_data();
     if (!data || !data.proxies) {
         let err = "❌ Не удалось получить список серверов.";
@@ -416,30 +442,63 @@ function view_outbounds(token, chat_id, msg_id) {
         return;
     }
     
-    let active_server = "";
-    let main_out = data.proxies["main-out"];
-    if (main_out && main_out.now) active_server = main_out.now;
+    let groups = [];
+    for (let gname in keys(data.proxies)) {
+        let p = data.proxies[gname];
+        if (p.type == "Selector" || p.type == "URLTest" || p.type == "Fallback") {
+            push(groups, gname);
+        }
+    }
+    
+    if (length(groups) == 0) {
+        let err = "❌ Группы прокси не найдены.";
+        if (msg_id) edit_message(token, chat_id, msg_id, err, "HTML", [[{text:"⬅️ Назад", callback_data:"/menu"}]]);
+        else send_message(token, chat_id, err, "HTML", [[{text:"⬅️ Назад", callback_data:"/menu"}]]);
+        return;
+    }
+    
+    if (length(groups) == 1 && !group_name) {
+        group_name = groups[0];
+    }
     
     let text = "🌐 <b>Outbounds (Серверы)</b>\n\n";
     let keyboard = [];
-    let row = [];
-    let count = 0;
     
-    for (let name in keys(data.proxies)) {
-        let proxy = data.proxies[name];
-        let p_type = lc(as_string(proxy.type || ""));
-        // Filter standard proxy types
-        if (p_type == "vless" || p_type == "vmess" || p_type == "shadowsocks" || p_type == "trojan" || p_type == "socks" || p_type == "http" || p_type == "hysteria2" || p_type == "wireguard" || p_type == "hysteria") {
+    if (!group_name) {
+        text += "Выберите группу для настройки сервера:\n\n";
+        for (let i = 0; i < length(groups); i++) {
+            let gname = groups[i];
+            let active = data.proxies[gname].now || "none";
+            text += "• <b>" + escape_html(gname) + "</b>: <code>" + escape_html(active) + "</code>\n";
+            push(keyboard, [{ text: "🌐 " + gname, callback_data: "/outbounds " + gname }]);
+        }
+        push(keyboard, [{ text: "🔄 Обновить", callback_data: "/outbounds" }]);
+        push(keyboard, [{ text: "⬅️ Назад", callback_data: "/menu" }]);
+    } else {
+        let group_data = data.proxies[group_name];
+        if (!group_data) return view_outbounds(token, chat_id, msg_id);
+        
+        text += "Группа: <b>" + escape_html(group_name) + "</b>\n\n";
+        let active_server = group_data.now || "";
+        
+        let row = [];
+        let count = 0;
+        let servers = group_data.all || [];
+        
+        for (let i = 0; i < length(servers); i++) {
+            let name = servers[i];
+            let proxy = data.proxies[name];
+            if (!proxy) continue;
             let delay = "N/A";
             if (type(proxy.history) == "array" && length(proxy.history) > 0) {
                 let last = proxy.history[length(proxy.history) - 1];
                 if (last && last.delay) delay = last.delay + " ms";
             }
             let marker = (name == active_server) ? "🔵" : "•";
-            text += marker + " <code>" + name + "</code>: <code>" + delay + "</code>\n";
+            text += marker + " <code>" + escape_html(name) + "</code>: <code>" + delay + "</code>\n";
             
             if (count < 18) {
-                push(row, { text: (name == active_server ? "🔵 " : "") + name, callback_data: "/switch " + name });
+                push(row, { text: (name == active_server ? "🔵 " : "") + name, callback_data: "/sw " + group_name + " " + name });
                 if (length(row) == 2) {
                     push(keyboard, row);
                     row = [];
@@ -447,22 +506,26 @@ function view_outbounds(token, chat_id, msg_id) {
                 count++;
             }
         }
+        if (length(row) > 0) push(keyboard, row);
+        
+        if (count == 0) text += "<i>Серверы не найдены.</i>\n";
+        else text += "\nℹ️ Нажмите кнопку, чтобы переключить сервер.";
+        
+        push(keyboard, [{ text: "🔄 Обновить", callback_data: "/outbounds " + group_name }]);
+        if (length(groups) > 1) {
+            push(keyboard, [{ text: "🔙 К списку групп", callback_data: "/outbounds" }]);
+        } else {
+            push(keyboard, [{ text: "⬅️ Назад", callback_data: "/menu" }]);
+        }
     }
-    if (length(row) > 0) push(keyboard, row);
-    
-    if (count == 0) text += "<i>Серверы не найдены.</i>\n";
-    else text += "\nℹ️ Нажмите кнопку, чтобы переключить сервер.";
-    
-    push(keyboard, [{ text: "🔄 Обновить", callback_data: "/outbounds" }]);
-    push(keyboard, [{ text: "⬅️ Назад", callback_data: "/menu" }]);
     
     if (msg_id) edit_message(token, chat_id, msg_id, text, "HTML", keyboard);
     else send_message(token, chat_id, text, "HTML", keyboard);
 }
 
-function handle_switch(token, chat_id, msg_id, server_name) {
-    api.clash_request("PUT", "proxies/main-out", { name: server_name });
-    view_outbounds(token, chat_id, msg_id);
+function handle_switch(token, chat_id, msg_id, group_name, server_name) {
+    api.clash_request("PUT", "proxies/" + group_name, { name: server_name });
+    view_outbounds(token, chat_id, msg_id, group_name);
 }
 
 
@@ -745,7 +808,13 @@ function dispatch_command(token, chat_id, text, msg_id) {
     if (cmd == "/start" || cmd == "/menu") return view_menu(token, chat_id, msg_id);
     if (cmd == "/status") return view_status(token, chat_id, msg_id);
     if (cmd == "/runtime") return view_runtime(token, chat_id, msg_id);
+    
     if (cmd == "/outbounds") return view_outbounds(token, chat_id, msg_id);
+    if (match(cmd, /^\/outbounds /)) {
+        let grp = trim(substr(cmd, 11));
+        return view_outbounds(token, chat_id, msg_id, grp);
+    }
+    
     if (cmd == "/sections") return view_sections(token, chat_id, msg_id);
     if (cmd == "/devices") return view_devices(token, chat_id, msg_id);
     if (cmd == "/watchdog") return view_watchdog(token, chat_id, msg_id);
@@ -877,9 +946,14 @@ function dispatch_command(token, chat_id, text, msg_id) {
         }
     }
 
-if (match(cmd, /^\/switch /)) {
-        let srv = trim(substr(cmd, 8));
-        return handle_switch(token, chat_id, msg_id, srv);
+    if (match(cmd, /^\/sw /)) {
+        let rest = trim(substr(cmd, 4));
+        let space_idx = index(rest, " ");
+        if (space_idx > 0) {
+            let grp = substr(rest, 0, space_idx);
+            let srv = substr(rest, space_idx + 1);
+            return handle_switch(token, chat_id, msg_id, grp, srv);
+        }
     }
     
     if (match(cmd, /^\/sec_view /)) {
