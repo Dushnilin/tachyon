@@ -1095,6 +1095,7 @@ function build_system_info() {
         zapret2_installed,
         byedpi_version,
         byedpi_installed,
+        tor_installed: command_exists("tor") ? 1 : 0,
         openwrt_version: openwrt_release(),
         device_model,
         generated_at: int(clock()[0])

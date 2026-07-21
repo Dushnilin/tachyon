@@ -13496,7 +13496,8 @@ function notifyActionProvidersAvailabilityChanged(systemInfo) {
       detail: {
         zapretInstalled: Boolean(systemInfo.zapret_installed),
         zapret2Installed: Boolean(systemInfo.zapret2_installed),
-        byedpiInstalled: Boolean(systemInfo.byedpi_installed)
+        byedpiInstalled: Boolean(systemInfo.byedpi_installed),
+        torInstalled: Boolean(systemInfo.tor_installed)
       }
     })
   );

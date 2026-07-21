@@ -496,6 +496,12 @@ function updateActionProvidersAvailabilityState(nextState) {
     );
   }
 
+  if (typeof nextState.torInstalled !== "undefined") {
+    actionProvidersAvailabilityState.torInstalled = Boolean(
+      nextState.torInstalled,
+    );
+  }
+
   actionProvidersAvailabilityPromise = null;
 }
 
@@ -509,6 +515,7 @@ function updateActionProvidersAvailabilityFromSystemInfo(systemInfo) {
     zapret2Installed: Boolean(systemInfo.zapret2_installed),
     byedpiInstalled: Boolean(systemInfo.byedpi_installed),
     singBoxExtended: Boolean(systemInfo.sing_box_extended),
+    torInstalled: Boolean(systemInfo.tor_installed),
   });
 }
 
@@ -3991,8 +3998,9 @@ function ensureActionProvidersAvailabilityLoaded() {
     main.TachyonShellMethods.checkZapretRuntime(),
     main.TachyonShellMethods.checkZapret2Runtime(),
     main.TachyonShellMethods.checkByedpiRuntime(),
+    main.TachyonShellMethods.checkTorRuntime(),
   ])
-    .then(([zapretResult, zapret2Result, byedpiResult]) => {
+    .then(([zapretResult, zapret2Result, byedpiResult, torResult]) => {
       const zapret =
         zapretResult && zapretResult.status === "fulfilled"
           ? zapretResult.value
@@ -4004,6 +4012,10 @@ function ensureActionProvidersAvailabilityLoaded() {
       const byedpi =
         byedpiResult && byedpiResult.status === "fulfilled"
           ? byedpiResult.value
+          : null;
+      const tor =
+        torResult && torResult.status === "fulfilled"
+          ? torResult.value
           : null;
 
       actionProvidersAvailabilityState.loaded = true;
@@ -4019,6 +4031,9 @@ function ensureActionProvidersAvailabilityLoaded() {
       actionProvidersAvailabilityState.byedpiInstalled = Boolean(
         byedpi && byedpi.success && byedpi.data && byedpi.data.byedpi_installed,
       );
+      actionProvidersAvailabilityState.torInstalled = Boolean(
+        tor && tor.success && tor.data && tor.data.tor_installed,
+      );
       return actionProvidersAvailabilityState;
     })
     .catch(() => {
@@ -4026,6 +4041,7 @@ function ensureActionProvidersAvailabilityLoaded() {
       actionProvidersAvailabilityState.zapretInstalled = false;
       actionProvidersAvailabilityState.zapret2Installed = false;
       actionProvidersAvailabilityState.byedpiInstalled = false;
+      actionProvidersAvailabilityState.torInstalled = false;
       // singBoxExtended is set via systemInfo, keep existing value
       return actionProvidersAvailabilityState;
     })
@@ -7127,7 +7143,7 @@ function createSectionContent(section) {
                   ui.addNotification(null, E("p", _("Tor successfully installed! Please select the action again.")));
                   actionProvidersAvailabilityState.torInstalled = true;
                 } else {
-                  ui.addNotification(null, E("p", _("Failed to install Tor. Code: ") + (res ? res.code : "unknown")));
+                  ui.addNotification(null, E("p", _("Failed to install Tor. Code: ") + (res ? (res.error || res.code || "timeout") : "unknown")));
                 }
               }).catch(function(err) {
                 ui.hideModal();
