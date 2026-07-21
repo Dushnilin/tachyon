@@ -1426,8 +1426,11 @@ installer_text() {
             i18n_skip) printf '%s\n' "Продолжаю без русского пакета интерфейса." ;;
             luci_ru) printf '%s\n' "Русский пакет интерфейса будет установлен автоматически." ;;
             sing_box_prompt) printf '%s\n' "Какую сборку singbox ставить?" ;;
-            sing_box_stable) printf '%s\n' "singbox stable" ;;
+            sing_box_stable) printf '%s\n' "singbox stable (без xhttp)" ;;
             sing_box_extended) printf '%s\n' "singbox extended (если нужен xhttp)" ;;
+            sing_box_extended_compressed) printf '%s\n' "singbox extended (сжатая UPX версия)" ;;
+            sing_box_tiny) printf '%s\n' "singbox tiny (минимум функций)" ;;
+            sing_box_lx) printf '%s\n' "singbox Leadaxe (lx)" ;;
             sing_box_skip_msg) printf '%s\n' "Пропускаю установку sing-box." ;;
             install_start) printf '%s\n' "=== Начало установки Tachyon ===" ;;
             pkg_list_update) printf '%s\n' "Обновление списков пакетов..." ;;
@@ -1454,8 +1457,11 @@ installer_text() {
         i18n_skip) printf '%s\n' "Continuing without the Russian interface language package." ;;
         luci_ru) printf '%s\n' "The Russian interface package will be installed automatically." ;;
         sing_box_prompt) printf '%s\n' "Which singbox build should be installed?" ;;
-        sing_box_stable) printf '%s\n' "singbox stable" ;;
+        sing_box_stable) printf '%s\n' "singbox stable (without xhttp)" ;;
         sing_box_extended) printf '%s\n' "singbox extended (if xhttp is needed)" ;;
+        sing_box_extended_compressed) printf '%s\n' "singbox extended (UPX compressed)" ;;
+        sing_box_tiny) printf '%s\n' "singbox tiny (minimal features)" ;;
+        sing_box_lx) printf '%s\n' "singbox Leadaxe (lx)" ;;
         sing_box_skip_msg) printf '%s\n' "Skipping sing-box installation." ;;
         install_start) printf '%s\n' "=== Starting Tachyon Installation ===" ;;
         pkg_list_update) printf '%s\n' "Updating package lists..." ;;
@@ -1634,6 +1640,9 @@ select_sing_box_installation() {
         printf '\n%s\n' "$(installer_text sing_box_prompt)"
         printf '  1) %s\n' "$(installer_text sing_box_stable)"
         printf '  2) %s\n' "$(installer_text sing_box_extended)"
+        printf '  3) %s\n' "$(installer_text sing_box_extended_compressed)"
+        printf '  4) %s\n' "$(installer_text sing_box_lx)"
+        printf '  5) %s\n' "$(installer_text sing_box_tiny)"
         printf '%s [%s]: ' "$(installer_text select)" "$default_choice"
         read -r answer || return 1
         [ -n "$answer" ] || answer="$default_choice"
@@ -1644,6 +1653,18 @@ select_sing_box_installation() {
         fi
         if [ "$answer" = "2" ]; then
             SING_BOX_INSTALL_VARIANT="extended"
+            return 0
+        fi
+        if [ "$answer" = "3" ]; then
+            SING_BOX_INSTALL_VARIANT="extended-compressed"
+            return 0
+        fi
+        if [ "$answer" = "4" ]; then
+            SING_BOX_INSTALL_VARIANT="lx"
+            return 0
+        fi
+        if [ "$answer" = "5" ]; then
+            SING_BOX_INSTALL_VARIANT="tiny"
             return 0
         fi
 
@@ -1668,6 +1689,12 @@ install_selected_sing_box() {
             ;;
         extended-compressed)
             action="install_extended_compressed"
+            ;;
+        lx)
+            action="install_lx"
+            ;;
+        tiny)
+            action="install_tiny"
             ;;
         *)
             fail "Unknown sing-box installation variant: $SING_BOX_INSTALL_VARIANT"
