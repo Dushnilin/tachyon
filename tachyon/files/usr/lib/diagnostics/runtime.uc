@@ -2578,7 +2578,7 @@ else if (mode == "check-zapret2-runtime")
 else if (mode == "check-byedpi-runtime")
     exit(module_passthrough(BYEDPI_RUNTIME_UC, [ "check" ]));
 else if (mode == "check-tor-runtime") {
-    print(common.to_json({ success: true, data: { tor_installed: command_exists("tor") } }));
+    print(sprintf("%J", { success: true, data: { tor_installed: command_exists("tor") } }));
     exit(0);
 }
 else if (mode == "install-tor") {
@@ -2590,7 +2590,7 @@ else if (mode == "install-tor") {
         system("opkg update >/dev/null 2>&1");
         code = system("opkg install tor >/dev/null 2>&1");
     }
-    print(common.to_json({ success: command_exists("tor"), code: code }));
+    print(sprintf("%J", { success: command_exists("tor"), code: code }));
     exit(0);
 }
 else if (mode == "neutralize-zapret-defaults")
