@@ -2068,11 +2068,11 @@ function check_runtime_requirements() {
 
     let ctx = context_from_runtime();
     let sing_box_version_output = command_exists("sing-box") ? command_output_from_args([ "sing-box", "version" ]) : "";
-    let sing_box_version = sing_box_compressed_marker_set(ctx) ? sing_box_version_state(ctx) : first_line_last_field(sing_box_version_output);
+    let sing_box_version = (sing_box_compressed_marker_set(ctx) || sing_box_lx_marker_set(ctx)) ? sing_box_version_state(ctx) : first_line_last_field(sing_box_version_output);
     let coreutils_base64_version = first_line_field_from_text(command_output("base64 --version 2>/dev/null"), 4);
 
     if (sing_box_version == "") {
-        if (!command_exists("sing-box") || !sing_box_compressed_marker_set(ctx))
+        if (!command_exists("sing-box") || !(sing_box_compressed_marker_set(ctx) || sing_box_lx_marker_set(ctx)))
             fail_requirement("Package 'sing-box' is not installed. Aborted.", "error");
     }
     else if (!version_at_least(sing_box_version, ctx.sing_box_required_version)) {

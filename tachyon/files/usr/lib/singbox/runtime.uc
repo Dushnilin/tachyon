@@ -348,12 +348,12 @@ function sing_box_is_tiny(version, version_output) {
 function sing_box_variant() {
     let version = "";
 
-    if (!command_exists("sing-box"))
-        return "not-installed";
     if (sing_box_marker_is("lx"))
         return "lx";
     if (sing_box_marker_is("extended-compressed"))
         return "extended-compressed";
+    if (!command_exists("sing-box"))
+        return "not-installed";
 
     version = sing_box_version();
     if (sing_box_is_lx(version))

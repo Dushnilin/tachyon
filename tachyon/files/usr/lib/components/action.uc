@@ -1199,7 +1199,7 @@ function set_sing_box_lx_release_from_json(release_json) {
         return null;
     let tag = trim(helper_output_input(release_json, "object-get-default", [ "tag_name", "" ]));
     let lowered = lc(tag);
-    if (tag == "" || index(lowered, "alpha") >= 0 || index(lowered, "beta") >= 0 || index(lowered, "rc") >= 0 || index(lowered, "-lx") < 0)
+    if (tag == "" || index(lowered, "alpha") >= 0 || index(lowered, "beta") >= 0 || index(lowered, "rc") >= 0)
         return null;
 
     let arch_suffix = resolve_sing_box_extended_arch_suffix();
