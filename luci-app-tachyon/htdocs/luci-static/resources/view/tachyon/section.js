@@ -9340,53 +9340,33 @@ async function performTrace(query) {
 function createTracerSearchWidget(sectionRef) {
   const container = document.createElement("div");
   container.className = "cbi-section pdk-search-tracer-card";
-  container.style.marginBottom = "1rem";
-  container.style.padding = "0.6rem 0.8rem";
+  container.style.marginTop = "1rem";
+  container.style.marginBottom = "0.5rem";
+  container.style.padding = "0.5rem 0.8rem";
   container.style.border = "1px solid var(--border-color, #e0e0e0)";
   container.style.borderRadius = "6px";
   container.style.background = "var(--background-color-high, #fff)";
-  container.style.boxShadow = "0 1px 3px rgba(0,0,0,0.05)";
+  container.style.boxShadow = "0 1px 2px rgba(0,0,0,0.03)";
 
   container.innerHTML = `
-    <div class="pdk-tracer-header" style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; user-select: none;">
-      <h3 style="margin: 0; display: flex; align-items: center; gap: 0.5rem; color: var(--text-color-high, #333); font-size: 1.1rem; font-weight: bold;">
-        <span>${_("Routing Rule Tracer")}</span>
-      </h3>
-      <span class="pdk-tracer-toggle-icon" style="font-size: 0.8rem; color: var(--text-color-medium, #666); transition: transform 0.2s; padding-right: 0.2rem;">►</span>
-    </div>
-    <div class="pdk-tracer-content" style="display: none; margin-top: 0.6rem; border-top: 1px solid var(--border-color, #e0e0e0); padding-top: 0.6rem;">
-      <p style="margin-top: 0; margin-bottom: 0.8rem; color: var(--text-color-medium, #666); font-size: 85%; line-height: 1.35;">
-        ${_("Enter a domain, IP address, or port to test routing. The tracer will show which section intercepts the traffic and which rule matches.")}
-      </p>
-      <div style="display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap;">
-        <input type="text" class="cbi-input-text pdk-tracer-input" placeholder="${_("e.g. google.com, 1.1.1.1, 443")}" style="flex: 1; min-width: 200px; padding: 0.3rem 0.5rem; border-radius: 4px; font-size: 90%;" />
-        <button class="cbi-button cbi-button-action pdk-tracer-btn" style="padding: 0.3rem 0.8rem; font-weight: bold; cursor: pointer; font-size: 90%;">${_("Trace")}</button>
-        <button class="cbi-button cbi-button-neutral pdk-tracer-clear-btn" style="padding: 0.3rem 0.8rem; cursor: pointer; font-size: 90%; display: none;">${_("Clear")}</button>
+    <div class="pdk-tracer-content" style="margin: 0; padding: 0;">
+      <div style="display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; font-size: 85%;">
+        <span style="font-weight: bold; color: var(--text-color-high, #333); white-space: nowrap; display: flex; align-items: center; gap: 0.3rem;">
+          <span style="font-size: 1rem;">🔍</span>
+          <span>${_("Routing Rule Tracer")}</span>
+        </span>
+        <input type="text" class="cbi-input-text pdk-tracer-input" placeholder="${_("e.g. google.com, 1.1.1.1, 443")}" style="flex: 1; min-width: 180px; padding: 0.2rem 0.5rem; border: 1px solid var(--border-color, #ccc); border-radius: 4px; font-size: 90%; height: 28px; box-sizing: border-box;" />
+        <button class="cbi-button cbi-button-action pdk-tracer-btn" style="padding: 0 0.8rem; font-weight: bold; cursor: pointer; font-size: 90%; height: 28px; line-height: 28px; box-sizing: border-box;">${_("Trace")}</button>
+        <button class="cbi-button cbi-button-neutral pdk-tracer-clear-btn" style="padding: 0 0.8rem; cursor: pointer; font-size: 90%; height: 28px; line-height: 28px; box-sizing: border-box; display: none;">${_("Clear")}</button>
       </div>
-      <div class="pdk-tracer-results" style="margin-top: 0.8rem; padding-top: 0.8rem; border-top: 1px dashed var(--border-color, #e0e0e0); display: none;"></div>
+      <div class="pdk-tracer-results" style="margin-top: 0.5rem; display: none;"></div>
     </div>
   `;
 
-  const headerEl = container.querySelector(".pdk-tracer-header");
-  const contentEl = container.querySelector(".pdk-tracer-content");
-  const toggleIcon = container.querySelector(".pdk-tracer-toggle-icon");
   const inputEl = container.querySelector(".pdk-tracer-input");
   const btnEl = container.querySelector(".pdk-tracer-btn");
   const clearEl = container.querySelector(".pdk-tracer-clear-btn");
   const resultsEl = container.querySelector(".pdk-tracer-results");
-
-  headerEl.addEventListener("click", () => {
-    const isCollapsed = contentEl.style.display === "none";
-    if (isCollapsed) {
-      contentEl.style.display = "block";
-      toggleIcon.textContent = "▼";
-      container.style.padding = "0.8rem 1rem";
-    } else {
-      contentEl.style.display = "none";
-      toggleIcon.textContent = "►";
-      container.style.padding = "0.6rem 0.8rem";
-    }
-  });
 
   function clearResults() {
     inputEl.value = "";
@@ -9404,8 +9384,8 @@ function createTracerSearchWidget(sectionRef) {
 
     clearEl.style.display = "inline-block";
     resultsEl.style.display = "block";
-    resultsEl.innerHTML = `<div style="color: var(--text-color-medium, #666); display: flex; align-items: center; gap: 0.5rem;">
-      <span class="pdk-spinner" style="border: 2px solid var(--border-color, #ccc); border-top: 2px solid var(--primary-color, #4a90d9); border-radius: 50%; width: 14px; height: 14px; display: inline-block; animation: spin 1s linear infinite;"></span>
+    resultsEl.innerHTML = `<div style="color: var(--text-color-medium, #666); display: flex; align-items: center; gap: 0.5rem; font-size: 90%;">
+      <span class="pdk-spinner" style="border: 2px solid var(--border-color, #ccc); border-top: 2px solid var(--primary-color, #4a90d9); border-radius: 50%; width: 12px; height: 12px; display: inline-block; animation: spin 1s linear infinite;"></span>
       <span>${_("Tracing routing rules...")}</span>
     </div>`;
 
@@ -9416,10 +9396,10 @@ function createTracerSearchWidget(sectionRef) {
         let actionLabel = result.action.toUpperCase();
 
         resultsEl.innerHTML = `
-          <div style="padding: 0.6rem 0.8rem; border-radius: 4px; background: var(--background-color-low, #f9f9f9); border-left: 3px solid ${actionBadgeColor}; font-size: 90%; line-height: 1.4;">
+          <div style="padding: 0.4rem 0.6rem; border-radius: 4px; background: var(--background-color-low, #f9f9f9); border-left: 3px solid ${actionBadgeColor}; font-size: 90%; line-height: 1.4;">
             <div style="display: flex; flex-wrap: wrap; gap: 0.8rem; align-items: center;">
               <strong>${_("Match Found")}:</strong>
-              <span>${result.label} <span style="background: ${actionBadgeColor}; color: #fff; padding: 1px 5px; border-radius: 3px; font-weight: bold; font-size: 80%; margin-left: 0.2rem;">${actionLabel}</span></span>
+              <span>${result.label} <span style="background: ${actionBadgeColor}; color: #fff; padding: 1px 4px; border-radius: 3px; font-weight: bold; font-size: 80%; margin-left: 0.1rem;">${actionLabel}</span></span>
               <span style="color: var(--text-color-medium, #666);">|</span>
               <span><strong>${_("Rule")}:</strong> <code>${result.ruleType}</code> (${result.pattern})</span>
               <span style="color: var(--text-color-medium, #666);">|</span>
@@ -9429,7 +9409,7 @@ function createTracerSearchWidget(sectionRef) {
         `;
       } else {
         resultsEl.innerHTML = `
-          <div style="padding: 0.6rem 0.8rem; border-radius: 4px; background: var(--background-color-low, #f9f9f9); border-left: 3px solid var(--warning-color, #f1c40f); font-size: 90%; color: var(--text-color-high, #333);">
+          <div style="padding: 0.4rem 0.6rem; border-radius: 4px; background: var(--background-color-low, #f9f9f9); border-left: 3px solid var(--warning-color, #f1c40f); font-size: 90%; color: var(--text-color-high, #333);">
             <strong>${_("No Custom Rules Matched")}:</strong> ${_("Traffic will go through the default route (Direct/Default).")}
           </div>
         `;
@@ -9437,7 +9417,7 @@ function createTracerSearchWidget(sectionRef) {
     } catch (e) {
       console.error(e);
       resultsEl.innerHTML = `
-        <div style="padding: 1rem; border-radius: 6px; background: var(--background-color-low, #f9f9f9); border-left: 4px solid var(--error-color, #e74c3c); color: var(--error-color, #e74c3c);">
+        <div style="padding: 0.6rem 0.8rem; border-radius: 4px; background: var(--background-color-low, #f9f9f9); border-left: 3px solid var(--error-color, #e74c3c); color: var(--error-color, #e74c3c); font-size: 90%;">
           <strong>${_("Error running trace:")}</strong> ${e.message || e}
         </div>
       `;
@@ -9482,11 +9462,7 @@ function configureSectionSection(sectionRef, options = {}) {
     return originalRender.apply(this, arguments).then((node) => {
       if (node) {
         const tracer = createTracerSearchWidget(sectionRef);
-        if (node.firstChild) {
-          node.insertBefore(tracer, node.firstChild);
-        } else {
-          node.appendChild(tracer);
-        }
+        node.appendChild(tracer);
       }
       return node;
     });
