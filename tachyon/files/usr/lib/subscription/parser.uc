@@ -1658,14 +1658,14 @@ function metadata_clean_text(value, max, decode_base64) {
         value = decoded == null ? "" : decoded;
     }
 
-    let cleaned = trim(replace(replace(value, /[\x00-\x1f\x7f]/g, " "), / +/g, " "));
+    let cleaned = trim(replace(replace(value, regexp('[\\x00-\\x1f\\x7f]', 'g'), " "), regexp(' +', 'g'), " "));
     if (cleaned == "")
         return null;
     return length(cleaned) > max ? substr(cleaned, 0, max) : cleaned;
 }
 
 function metadata_has_control_or_space(value) {
-    return match(as_string(value), /[\x00-\x20\x7f]/) != null;
+    return match(as_string(value), regexp('[\\x00-\\x20\\x7f]')) != null;
 }
 
 function metadata_clean_url(value) {

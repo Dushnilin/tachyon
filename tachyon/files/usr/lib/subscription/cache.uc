@@ -709,6 +709,10 @@ function get_device_model() {
     return model != "" ? model : "OpenWrt Router";
 }
 
+function get_kernel_version() {
+    return trim(command_output_from_args([ "uname", "-r" ]));
+}
+
 function generate_hwid() {
     let mac = trim(as_string(fs.readfile("/sys/class/net/eth0/address")));
     if (mac == "")
@@ -1449,10 +1453,6 @@ function append_available_cached_metadata(array_path, section, source_index, sou
     append_persistent_source_metadata(array_path, source_index, source_section) ||
         append_cached_metadata(array_path, TACHYON_SECTION_CACHE_DIR, section, TACHYON_SUBSCRIPTION_METADATA_DIR + "/" + section + ".json", source_index, source_section);
     return length(array_or_empty(read_json(array_path))) > before;
-}
-
-function get_kernel_version() {
-    return trim(command_output_from_args([ "uname", "-r" ]));
 }
 
 function sing_box_version_from_output(output) {
