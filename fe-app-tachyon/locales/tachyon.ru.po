@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-07-19 21:37+0300\n"
-"PO-Revision-Date: 2026-07-19 21:37+0300\n"
+"POT-Creation-Date: 2026-07-22 21:48+0300\n"
+"PO-Revision-Date: 2026-07-22 21:48+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -178,6 +178,9 @@ msgstr "Все оставшиеся серверы"
 
 msgid "All remaining servers means every server not already assigned to a higher-priority level."
 msgstr "Все оставшиеся серверы — это все серверы, не назначенные на уровень с более высоким приоритетом."
+
+msgid "All Routes"
+msgstr "Все маршруты"
 
 msgid "All servers"
 msgstr "Все серверы"
@@ -368,6 +371,9 @@ msgstr "Проверить обновление"
 msgid "Check URL"
 msgstr "URL проверки"
 
+msgid "checked"
+msgstr "проверено"
+
 msgid "Checking Connection..."
 msgstr ""
 
@@ -397,6 +403,9 @@ msgstr "CIDR должен быть от 0 до 32 для IPv4 или от 0 до
 
 msgid "Cipher"
 msgstr "Шифрование"
+
+msgid "Clear"
+msgstr "Сбросить"
 
 msgid "Client Certificate"
 msgstr "Сертификат клиента"
@@ -731,6 +740,9 @@ msgstr "Дублирующееся значение"
 msgid "e.g. AES-256-GCM — leave empty for default"
 msgstr "например AES-256-GCM — оставьте пустым для значения по умолчанию"
 
+msgid "e.g. google.com, 1.1.1.1, 443"
+msgstr "например: google.com, 1.1.1.1, 443"
+
 msgid "e.g. SHA256 — leave empty for default"
 msgstr "например SHA256 — оставьте пустым для значения по умолчанию"
 
@@ -800,6 +812,9 @@ msgstr "Введите полный объект outbound для sing-box"
 msgid "Enter a display name"
 msgstr "Введите отображаемое имя"
 
+msgid "Enter a domain, IP address, or port to test routing. The tracer will show which section intercepts the traffic and which rule matches."
+msgstr "Введите домен, IP-адрес или порт для проверки маршрутизации. Трассировщик покажет, в какую секцию попадет трафик и какое именно правило сработает."
+
 msgid "Enter a level name"
 msgstr "Введите название уровня"
 
@@ -823,6 +838,9 @@ msgstr ""
 
 msgid "Error running generator:"
 msgstr ""
+
+msgid "Error running trace:"
+msgstr "Ошибка при выполнении трассировки:"
 
 msgid "Exclude by proxy parameters"
 msgstr "Исключить по параметрам прокси"
@@ -1385,6 +1403,9 @@ msgstr "Локальный адрес"
 msgid "Log Level"
 msgstr "Уровень логов"
 
+msgid "lx"
+msgstr ""
+
 msgid "Main DNS"
 msgstr "Основной DNS"
 
@@ -1408,6 +1429,12 @@ msgstr "Совпадение по IP или подсети назначения"
 
 msgid "Match destination ports. Use a single port or a range"
 msgstr "Совпадение по портам назначения. Используйте один порт или диапазон"
+
+msgid "Match Found"
+msgstr "Совпадение найдено"
+
+msgid "Matching Rule"
+msgstr "Сработавшее правило"
 
 msgid "Maximum time to wait for example.com to resolve during a DNS health check."
 msgstr "Максимальное время ожидания разрешения example.com при проверке доступности DNS."
@@ -1493,6 +1520,9 @@ msgstr "Нет активных клиентов"
 msgid "No active connections"
 msgstr "Нет активных подключений"
 
+msgid "No active routing section intercepts this traffic. Traffic will bypass the custom routing logic and be handled by the default route (Direct/Default)."
+msgstr "Этот трафик не перехватывается ни одной активной секцией маршрутизации. Он пойдет в обход кастомных правил и будет обработан маршрутом по умолчанию (Напрямую/Дефолт)."
+
 msgid "No active routing sections found."
 msgstr "Активные секции маршрутизации не найдены."
 
@@ -1501,6 +1531,9 @@ msgstr "Нет закрытых подключений"
 
 msgid "No conflict detected"
 msgstr "Конфликт не обнаружен"
+
+msgid "No Custom Rules Matched"
+msgstr "Пользовательские правила не совпали"
 
 msgid "No domains detected yet"
 msgstr "Домены пока не обнаружены"
@@ -1633,6 +1666,9 @@ msgstr "Опциональные значения должны быть указ
 
 msgid "Optional values must be attached with '=' here; a separate token would be ignored by nfqws2."
 msgstr "Опциональные значения должны быть указаны через '=' здесь; отдельный токен будет проигнорирован nfqws2."
+
+msgid "out of"
+msgstr "из"
 
 msgid "outbounds must be a non-empty array of strings"
 msgstr "outbounds должен быть непустым массивом строк"
@@ -1856,10 +1892,16 @@ msgstr "Маршрутизировать запросы к этому DNS сер
 msgid "Routing mode"
 msgstr "Режим маршрутизации"
 
+msgid "Routing Rule Tracer"
+msgstr "Трассировщик правил маршрутизации"
+
 msgid "Routing rules"
 msgstr "Правила маршрутизации"
 
 msgid "Routing section"
+msgstr "Секция маршрутизации"
+
+msgid "Routing Section"
 msgstr "Секция маршрутизации"
 
 msgid "Rule set must be an HTTP(S) URL or a local .srs / .json path"
@@ -2432,6 +2474,12 @@ msgstr "Допуск"
 msgid "Top level has the highest priority; lower levels are used as fallback"
 msgstr "Верхний уровень имеет наивысший приоритет; нижние уровни используются как резерв"
 
+msgid "Trace"
+msgstr "Проверить"
+
+msgid "Tracing routing rules..."
+msgstr "Выполняется трассировка..."
+
 msgid "Traffic"
 msgstr "Трафик"
 
@@ -2834,13 +2882,29 @@ msgstr "Принудительная маршрутизация по IP (Dest)"
 msgid "All traffic to these destination IPs will be routed through the section unconditionally, ignoring all other conditions."
 msgstr "Весь трафик к этим IP назначения будет направлен через секцию безусловно, игнорируя все остальные условия."
 
-msgid "All Routes"
-msgstr "Все маршруты"
+msgid "DNS Failures Before Switching"
+msgstr "Ошибок DNS перед переключением"
 
-msgid "Close"
-msgstr "Закрыть"
+msgid "DNS Successful Checks Before Recovery"
+msgstr "Успешных проверок DNS перед восстановлением"
 
-msgid "Cannot save settings"
-msgstr "Не удалось сохранить настройки"
+msgid "Number of consecutive failed checks required before switching DNS servers."
+msgstr "Количество последовательных неудачных проверок, необходимое для переключения DNS-сервера."
 
+msgid "Number of consecutive successful checks required before returning to a higher-priority DNS server."
+msgstr "Количество последовательных успешных проверок, необходимое для возврата к DNS-серверу с более высоким приоритетом."
 
+msgid "Custom device headers"
+msgstr "Кастомные заголовки устройства"
+
+msgid "Override the default OpenWrt device headers for this subscription"
+msgstr "Переопределить стандартные заголовки OpenWrt для этой подписки"
+
+msgid "Generate HWID"
+msgstr "Сгенерировать HWID"
+
+msgid "Generate a random 16-character hexadecimal HWID"
+msgstr "Сгенерировать случайный 16-символьный шестнадцатеричный HWID"
+
+msgid "Leave empty to omit this header"
+msgstr "Оставьте пустым, чтобы опустить этот заголовок"

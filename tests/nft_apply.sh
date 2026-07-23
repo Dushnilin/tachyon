@@ -80,6 +80,16 @@ set -eo pipefail
   printf '\n'
 } >> "${NFT_LOG:?}"
 
+if [ "$1" = "-f" ] && [ -f "$2" ]; then
+  while read -r line || [ -n "$line" ]; do
+    if [[ "$line" =~ ^add[[:space:]]+element[[:space:]]+inet[[:space:]]+([^[:space:]]+)[[:space:]]+([^[:space:]]+)[[:space:]]+(.*)$ ]]; then
+      printf 'nft\tadd\telement\tinet\t%s\t%s\t%s\n' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" "${BASH_REMATCH[3]}" >> "${NFT_LOG:?}"
+    else
+      printf '%s\n' "$line" >> "${NFT_LOG:?}"
+    fi
+  done < "$2"
+fi
+
 if [ "$#" -eq 5 ] && [ "$1" = "list" ] && [ "$2" = "chain" ] &&
   [ "$3" = "inet" ] && [ "$5" = "mangle" ] && [ -n "${NFT_MANGLE_CHAIN_OUTPUT:-}" ]; then
   printf '%s\n' "$NFT_MANGLE_CHAIN_OUTPUT"

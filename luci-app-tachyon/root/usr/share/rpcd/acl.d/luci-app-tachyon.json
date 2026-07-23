@@ -29,6 +29,18 @@
         ],
         "/usr/bin/tachyon": [
           "exec"
+        ],
+        "/usr/bin/sing-box": [
+          "exec"
+        ],
+        "/usr/sbin/sing-box": [
+          "exec"
+        ],
+        "/bin/uclient-fetch": [
+          "exec"
+        ],
+        "/usr/bin/wget": [
+          "exec"
         ]
       },
       "ubus": {

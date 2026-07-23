@@ -479,6 +479,32 @@ function createSettingsContent(section, capabilities) {
 
   o = section.option(
     form.Value,
+    "dns_failure_threshold",
+    _("DNS Failures Before Switching"),
+    _(
+      "Number of consecutive failed checks required before switching DNS servers.",
+    ),
+  );
+  o.default = "3";
+  o.rmempty = false;
+  o.datatype = "range(1, 10)";
+  configureDnsFailoverVisibility(o, dnsOption, bootstrapOption);
+
+  o = section.option(
+    form.Value,
+    "dns_recovery_threshold",
+    _("DNS Successful Checks Before Recovery"),
+    _(
+      "Number of consecutive successful checks required before returning to a higher-priority DNS server.",
+    ),
+  );
+  o.default = "3";
+  o.rmempty = false;
+  o.datatype = "range(1, 10)";
+  configureDnsFailoverVisibility(o, dnsOption, bootstrapOption);
+
+  o = section.option(
+    form.Value,
     "dns_rewrite_ttl",
     _("DNS Rewrite TTL"),
     _("Time in seconds for DNS record caching (default: 60)"),

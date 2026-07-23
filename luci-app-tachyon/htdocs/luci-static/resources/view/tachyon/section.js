@@ -2029,6 +2029,22 @@ function validateUrlTestUrl(value) {
   return validation.valid ? true : validation.message;
 }
 
+function generateHwid16() {
+  const bytes = new Uint8Array(8);
+
+  if (window.crypto && window.crypto.getRandomValues) {
+    window.crypto.getRandomValues(bytes);
+  } else {
+    for (let i = 0; i < bytes.length; i += 1) {
+      bytes[i] = Math.floor(Math.random() * 256);
+    }
+  }
+
+  return Array.from(bytes)
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
 function optionMapValue(option, section_id, key) {
   const value =
     option && option.map && option.map.data
@@ -2048,6 +2064,13 @@ function subscriptionUrlSettingsKeys() {
     "user_agent",
     "auto_hwid",
     "hwid",
+    "custom_device_headers",
+    "device_os",
+    "ver_os",
+    "device_model",
+    "device_locale",
+    "app_version",
+    "accept_language",
     "show_dashboard_metadata",
     "prefix_nodes",
     "node_prefix",
@@ -2067,6 +2090,13 @@ function defaultSubscriptionUrlSettings() {
     user_agent: "",
     auto_hwid: "1",
     hwid: "",
+    custom_device_headers: "0",
+    device_os: "",
+    ver_os: "",
+    device_model: "",
+    device_locale: "",
+    app_version: "",
+    accept_language: "",
     show_dashboard_metadata: "1",
     prefix_nodes: "0",
     node_prefix: "",
@@ -2363,20 +2393,61 @@ function addSubscriptionUrlItemOptions(itemSection, options = {}) {
   o.default = "1";
   o.rmempty = false;
 
-  o = itemSection.option(
+  const hwidOption = itemSection.option(
     form.Value,
     "hwid",
     _("HWID"),
     _("Enter the HWID sent with subscription requests"),
   );
-  o.depends("auto_hwid", "0");
-  o.rmempty = false;
-  o.validate = function (itemId, value) {
+  hwidOption.depends("auto_hwid", "0");
+  hwidOption.rmempty = false;
+  hwidOption.validate = function (itemId, value) {
     if (optionMapValue(this, itemId, "auto_hwid") !== "0") {
       return true;
     }
     return `${value || ""}`.trim() ? true : _("Enter HWID");
   };
+
+  o = itemSection.option(
+    form.Button,
+    "_generate_hwid",
+    _("Generate HWID"),
+    _("Generate a random 16-character hexadecimal HWID"),
+  );
+  o.depends("auto_hwid", "0");
+  o.inputstyle = "action";
+  o.inputtitle = _("Generate HWID");
+  o.onclick = function (_event, itemId) {
+    hwidOption.getUIElement(itemId).setValue(generateHwid16());
+  };
+
+  o = itemSection.option(
+    form.Flag,
+    "custom_device_headers",
+    _("Custom device headers"),
+    _("Override the default OpenWrt device headers for this subscription"),
+  );
+  o.default = "0";
+  o.rmempty = false;
+
+  [
+    ["device_os", "X-Device-OS"],
+    ["ver_os", "X-Ver-OS"],
+    ["device_model", "X-Device-Model"],
+    ["device_locale", "X-Device-Locale"],
+    ["app_version", "X-App-Version"],
+    ["accept_language", "Accept-Language"],
+  ].forEach(([key, label]) => {
+    o = itemSection.option(
+      form.Value,
+      key,
+      label,
+      _("Leave empty to omit this header"),
+    );
+    o.depends("custom_device_headers", "1");
+    o.rmempty = true;
+    o.retain = true;
+  });
 
   o = itemSection.option(
     form.Flag,
@@ -8867,6 +8938,536 @@ function loadSectionTableOptions(sectionRef) {
   return Promise.all(tasks);
 }
 
+const ACTION_COLORS = {
+  connection: "#2980b9",
+  proxy: "#2980b9",
+  outbound: "#3498db",
+  vpn: "#1abc9c",
+  bypass: "#27ae60",
+  block: "#c0392b",
+  zapret: "#8e44ad",
+  zapret2: "#9b59b6",
+  byedpi: "#d35400",
+};
+
+function ip4ToInt(ip) {
+  return ip.split('.').reduce((int, octet) => (int << 8) + parseInt(octet, 10), 0) >>> 0;
+}
+
+function ipMatchesCidr(ip, cidr) {
+  const parts = cidr.split('/');
+  const subnet = parts[0];
+  const bits = parts[1] ? parseInt(parts[1], 10) : 32;
+
+  if (bits === 0) return true;
+
+  const ipInt = ip4ToInt(ip);
+  const subnetInt = ip4ToInt(subnet);
+
+  const mask = (~0 << (32 - bits)) >>> 0;
+  return (ipInt & mask) === (subnetInt & mask);
+}
+
+function matchIpInCidrs(ip, cidrs) {
+  for (let i = 0; i < cidrs.length; i++) {
+    const cidr = cidrs[i];
+    if (!cidr) continue;
+    try {
+      if (ipMatchesCidr(ip, cidr)) {
+        return cidr;
+      }
+    } catch (e) {}
+  }
+  return null;
+}
+
+function matchIpInRuleset(ip, ruleset) {
+  if (!ruleset || !Array.isArray(ruleset.rules)) return null;
+  for (const rule of ruleset.rules) {
+    if (Array.isArray(rule.ip_cidr)) {
+      const matched = matchIpInCidrs(ip, rule.ip_cidr);
+      if (matched) {
+        return matched;
+      }
+    }
+  }
+  return null;
+}
+
+function matchDomainInList(domain, list) {
+  domain = domain.toLowerCase();
+  for (let i = 0; i < list.length; i++) {
+    const item = list[i].trim().toLowerCase();
+    if (!item) continue;
+
+    if (item.startsWith("full:")) {
+      const target = item.substring(5);
+      if (domain === target) return item;
+    } else if (item.startsWith("keyword:")) {
+      const target = item.substring(8);
+      if (domain.indexOf(target) !== -1) return item;
+    } else if (item.startsWith("regex:")) {
+      const target = item.substring(6);
+      try {
+        const re = new RegExp(target);
+        if (re.test(domain)) return item;
+      } catch (e) {}
+    } else {
+      if (domain === item || domain.endsWith("." + item)) {
+        return item;
+      }
+    }
+  }
+  return null;
+}
+
+function matchDomainInRuleset(domain, ruleset) {
+  if (!ruleset || !Array.isArray(ruleset.rules)) return null;
+  domain = domain.toLowerCase();
+
+  for (const rule of ruleset.rules) {
+    if (Array.isArray(rule.domain)) {
+      for (let i = 0; i < rule.domain.length; i++) {
+        const d = rule.domain[i];
+        if (d.toLowerCase() === domain) return `domain:${d}`;
+      }
+    }
+    if (Array.isArray(rule.domain_suffix)) {
+      for (let i = 0; i < rule.domain_suffix.length; i++) {
+        const ds = rule.domain_suffix[i];
+        const dsLower = ds.toLowerCase();
+        if (domain === dsLower || domain.endsWith("." + dsLower)) {
+          return `domain_suffix:${ds}`;
+        }
+      }
+    }
+    if (Array.isArray(rule.domain_keyword)) {
+      for (let i = 0; i < rule.domain_keyword.length; i++) {
+        const dk = rule.domain_keyword[i];
+        if (domain.indexOf(dk.toLowerCase()) !== -1) {
+          return `domain_keyword:${dk}`;
+        }
+      }
+    }
+    if (Array.isArray(rule.domain_regex)) {
+      for (let i = 0; i < rule.domain_regex.length; i++) {
+        const dr = rule.domain_regex[i];
+        try {
+          const re = new RegExp(dr);
+          if (re.test(domain)) return `domain_regex:${dr}`;
+        } catch (e) {}
+      }
+    }
+  }
+  return null;
+}
+
+function matchPort(port, portsList) {
+  const queryPort = parseInt(port, 10);
+  if (isNaN(queryPort)) return null;
+
+  for (let i = 0; i < portsList.length; i++) {
+    const item = portsList[i];
+    if (!item) continue;
+    if (item.indexOf("-") !== -1) {
+      const parts = item.split("-");
+      const start = parseInt(parts[0], 10);
+      const end = parseInt(parts[1], 10);
+      if (!isNaN(start) && !isNaN(end) && queryPort >= start && queryPort <= end) {
+        return item;
+      }
+    } else {
+      const p = parseInt(item, 10);
+      if (p === queryPort) return item;
+    }
+  }
+  return null;
+}
+
+function detectQueryType(query) {
+  query = query.trim();
+  if (/^\d+$/.test(query)) {
+    return 'port';
+  }
+  if (/^[\d./]+$/.test(query) && query.indexOf('.') !== -1) {
+    return 'ip';
+  }
+  if (query.indexOf(':') !== -1) {
+    return 'ip';
+  }
+  return 'domain';
+}
+
+function readRulesetFile(path) {
+  return fs.read(path)
+    .then((content) => {
+      if (!content) return null;
+      try {
+        return JSON.parse(content);
+      } catch (e) {
+        console.warn("Failed to parse ruleset file JSON:", path, e);
+        return null;
+      }
+    })
+    .catch(() => null);
+}
+
+async function findCachedSrsFile(secName, community) {
+  const tag = `${secName}-${community}-community-ruleset`;
+  const localPath = `/tmp/sing-box/rulesets/community_${tag}.srs`;
+  
+  // Check if we already have extracted it
+  let localStat = await fs.stat(localPath).catch(() => null);
+  let dbStat = await fs.stat("/etc/sing-box/cache.db").catch(() => null);
+  
+  // If extracted file exists and is newer than cache.db, use it directly!
+  if (localStat && localStat.type === "file" && dbStat && localStat.mtime >= dbStat.mtime) {
+    return localPath;
+  }
+  
+  // Otherwise, extract it using the ucode backend command!
+  const res = await fs.exec("/usr/bin/tachyon", ["extract_ruleset", tag]).catch(() => null);
+  if (res && res.code === 0 && res.stdout) {
+    return res.stdout.trim();
+  }
+  
+  // Fallback to check if it exists anyway (if extract failed but old file is there)
+  if (localStat && localStat.type === "file") {
+    return localPath;
+  }
+  
+  return null;
+}
+
+async function matchCommunityList(secName, community, query, type) {
+  const srsPath = await findCachedSrsFile(secName, community);
+  if (!srsPath) return false;
+
+  // Try /usr/bin/sing-box first
+  let res = await fs.exec("/usr/bin/sing-box", ["rule-set", "match", srsPath, query, "-f", "binary"]).catch(() => null);
+  if (res && res.code === 0) {
+    return true;
+  }
+  // Fallback to /usr/sbin/sing-box
+  res = await fs.exec("/usr/sbin/sing-box", ["rule-set", "match", srsPath, query, "-f", "binary"]).catch(() => null);
+  if (res && res.code === 0) {
+    return true;
+  }
+  return false;
+}
+
+
+async function performTrace(query) {
+  const type = detectQueryType(query);
+  const sections = uci.sections(UCI_PACKAGE, "section") || [];
+  const totalSections = sections.length;
+  
+  let queryForMatching = query;
+  if (type === 'ip' && query.indexOf('/') !== -1) {
+    queryForMatching = query.split('/')[0];
+  }
+
+  for (let i = 0; i < sections.length; i++) {
+    const sec = sections[i];
+    const secName = sec[".name"];
+
+    if (uci.get(UCI_PACKAGE, secName, "enabled") === "0") {
+      continue;
+    }
+
+    const label = uci.get(UCI_PACKAGE, secName, "label") || secName;
+    const action = uci.get(UCI_PACKAGE, secName, "action") || "connection";
+
+    if (type === 'port') {
+      const ports = normalizeOptionValues(uci.get(UCI_PACKAGE, secName, "ports"));
+      const matchedPort = matchPort(queryForMatching, ports);
+      if (matchedPort) {
+        return {
+          matched: true,
+          sectionName: secName,
+          label: label,
+          action: action,
+          ruleType: "Ports",
+          pattern: matchedPort,
+          priority: i + 1,
+          totalSections: totalSections
+        };
+      }
+    }
+
+    if (type === 'ip') {
+      const ipCidr = normalizeOptionValues(uci.get(UCI_PACKAGE, secName, "ip_cidr"));
+      const matchedCidr = matchIpInCidrs(queryForMatching, ipCidr);
+      if (matchedCidr) {
+        return {
+          matched: true,
+          sectionName: secName,
+          label: label,
+          action: action,
+          ruleType: "IPs (UCI)",
+          pattern: matchedCidr,
+          priority: i + 1,
+          totalSections: totalSections
+        };
+      }
+
+      const listsRuleset = await readRulesetFile(`/tmp/sing-box/rulesets/${secName}-lists-ruleset.json`);
+      const matchedListIp = matchIpInRuleset(queryForMatching, listsRuleset);
+      if (matchedListIp) {
+        return {
+          matched: true,
+          sectionName: secName,
+          label: label,
+          action: action,
+          ruleType: "IP/Subnet List (community/plain)",
+          pattern: matchedListIp,
+          priority: i + 1,
+          totalSections: totalSections
+        };
+      }
+
+      const remoteSubnetRuleset = await readRulesetFile(`/tmp/sing-box/rulesets/${secName}-remote-subnet-ruleset.json`);
+      const matchedRemoteIp = matchIpInRuleset(queryForMatching, remoteSubnetRuleset);
+      if (matchedRemoteIp) {
+        return {
+          matched: true,
+          sectionName: secName,
+          label: label,
+          action: action,
+          ruleType: "Remote Subnet List",
+          pattern: matchedRemoteIp,
+          priority: i + 1,
+          totalSections: totalSections
+        };
+      }
+
+      // Check community list rulesets for matching IPs
+      const communityLists = normalizeOptionValues(uci.get(UCI_PACKAGE, secName, "community_lists"));
+      for (const community of communityLists) {
+        if (await matchCommunityList(secName, community, queryForMatching, type)) {
+          return {
+            matched: true,
+            sectionName: secName,
+            label: label,
+            action: action,
+            ruleType: "Community List (" + community + ")",
+            pattern: queryForMatching,
+            priority: i + 1,
+            totalSections: totalSections
+          };
+        }
+      }
+    }
+
+    if (type === 'domain') {
+      const domainSuffixes = normalizeOptionValues(uci.get(UCI_PACKAGE, secName, "domain_suffix"));
+      const exactDomains = normalizeOptionValues(uci.get(UCI_PACKAGE, secName, "domain")).map(d => `full:${d}`);
+      const domainKeywords = normalizeOptionValues(uci.get(UCI_PACKAGE, secName, "domain_keyword")).map(k => `keyword:${k}`);
+      const domainRegexes = normalizeOptionValues(uci.get(UCI_PACKAGE, secName, "domain_regex")).map(r => `regex:${r}`);
+      const userDomains = normalizeOptionValues(uci.get(UCI_PACKAGE, secName, "user_domains"));
+      const allUciDomains = [...domainSuffixes, ...exactDomains, ...domainKeywords, ...domainRegexes, ...userDomains];
+
+      const matchedUciDomain = matchDomainInList(queryForMatching, allUciDomains);
+      if (matchedUciDomain) {
+        return {
+          matched: true,
+          sectionName: secName,
+          label: label,
+          action: action,
+          ruleType: "Domains (UCI)",
+          pattern: matchedUciDomain,
+          priority: i + 1,
+          totalSections: totalSections
+        };
+      }
+
+      const listsRuleset = await readRulesetFile(`/tmp/sing-box/rulesets/${secName}-lists-ruleset.json`);
+      if (listsRuleset) {
+        const matchedListDomain = matchDomainInRuleset(queryForMatching, listsRuleset);
+        if (matchedListDomain) {
+          return {
+            matched: true,
+            sectionName: secName,
+            label: label,
+            action: action,
+            ruleType: "Domain List (community/plain)",
+            pattern: matchedListDomain,
+            priority: i + 1,
+            totalSections: totalSections
+          };
+        }
+      }
+
+      const remoteDomainRuleset = await readRulesetFile(`/tmp/sing-box/rulesets/${secName}-remote-domain-ruleset.json`);
+      if (remoteDomainRuleset) {
+        const matchedRemoteDomain = matchDomainInRuleset(queryForMatching, remoteDomainRuleset);
+        if (matchedRemoteDomain) {
+          return {
+            matched: true,
+            sectionName: secName,
+            label: label,
+            action: action,
+            ruleType: "Remote Domain List",
+            pattern: matchedRemoteDomain,
+            priority: i + 1,
+            totalSections: totalSections
+          };
+        }
+      }
+
+      // Check community list rulesets for matching domains
+      const communityLists = normalizeOptionValues(uci.get(UCI_PACKAGE, secName, "community_lists"));
+      for (const community of communityLists) {
+        if (await matchCommunityList(secName, community, queryForMatching, type)) {
+          return {
+            matched: true,
+            sectionName: secName,
+            label: label,
+            action: action,
+            ruleType: "Community List (" + community + ")",
+            pattern: queryForMatching,
+            priority: i + 1,
+            totalSections: totalSections
+          };
+        }
+      }
+    }
+  }
+
+  return { matched: false };
+}
+
+function createTracerSearchWidget(sectionRef) {
+  const container = document.createElement("div");
+  container.className = "cbi-section pdk-search-tracer-card";
+  container.style.marginBottom = "1rem";
+  container.style.padding = "0.6rem 0.8rem";
+  container.style.border = "1px solid var(--border-color, #e0e0e0)";
+  container.style.borderRadius = "6px";
+  container.style.background = "var(--background-color-high, #fff)";
+  container.style.boxShadow = "0 1px 3px rgba(0,0,0,0.05)";
+
+  container.innerHTML = `
+    <div class="pdk-tracer-header" style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; user-select: none;">
+      <h3 style="margin: 0; display: flex; align-items: center; gap: 0.5rem; color: var(--text-color-high, #333); font-size: 1.1rem; font-weight: bold;">
+        <span>${_("Routing Rule Tracer")}</span>
+      </h3>
+      <span class="pdk-tracer-toggle-icon" style="font-size: 0.8rem; color: var(--text-color-medium, #666); transition: transform 0.2s; padding-right: 0.2rem;">►</span>
+    </div>
+    <div class="pdk-tracer-content" style="display: none; margin-top: 0.6rem; border-top: 1px solid var(--border-color, #e0e0e0); padding-top: 0.6rem;">
+      <p style="margin-top: 0; margin-bottom: 0.8rem; color: var(--text-color-medium, #666); font-size: 85%; line-height: 1.35;">
+        ${_("Enter a domain, IP address, or port to test routing. The tracer will show which section intercepts the traffic and which rule matches.")}
+      </p>
+      <div style="display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap;">
+        <input type="text" class="cbi-input-text pdk-tracer-input" placeholder="${_("e.g. google.com, 1.1.1.1, 443")}" style="flex: 1; min-width: 200px; padding: 0.3rem 0.5rem; border-radius: 4px; font-size: 90%;" />
+        <button class="cbi-button cbi-button-action pdk-tracer-btn" style="padding: 0.3rem 0.8rem; font-weight: bold; cursor: pointer; font-size: 90%;">${_("Trace")}</button>
+        <button class="cbi-button cbi-button-neutral pdk-tracer-clear-btn" style="padding: 0.3rem 0.8rem; cursor: pointer; font-size: 90%; display: none;">${_("Clear")}</button>
+      </div>
+      <div class="pdk-tracer-results" style="margin-top: 0.8rem; padding-top: 0.8rem; border-top: 1px dashed var(--border-color, #e0e0e0); display: none;"></div>
+    </div>
+  `;
+
+  const headerEl = container.querySelector(".pdk-tracer-header");
+  const contentEl = container.querySelector(".pdk-tracer-content");
+  const toggleIcon = container.querySelector(".pdk-tracer-toggle-icon");
+  const inputEl = container.querySelector(".pdk-tracer-input");
+  const btnEl = container.querySelector(".pdk-tracer-btn");
+  const clearEl = container.querySelector(".pdk-tracer-clear-btn");
+  const resultsEl = container.querySelector(".pdk-tracer-results");
+
+  headerEl.addEventListener("click", () => {
+    const isCollapsed = contentEl.style.display === "none";
+    if (isCollapsed) {
+      contentEl.style.display = "block";
+      toggleIcon.textContent = "▼";
+      container.style.padding = "0.8rem 1rem";
+    } else {
+      contentEl.style.display = "none";
+      toggleIcon.textContent = "►";
+      container.style.padding = "0.6rem 0.8rem";
+    }
+  });
+
+  function clearResults() {
+    inputEl.value = "";
+    resultsEl.style.display = "none";
+    resultsEl.innerHTML = "";
+    clearEl.style.display = "none";
+  }
+
+  async function handleTrace() {
+    const query = inputEl.value.trim();
+    if (!query) {
+      clearResults();
+      return;
+    }
+
+    clearEl.style.display = "inline-block";
+    resultsEl.style.display = "block";
+    resultsEl.innerHTML = `<div style="color: var(--text-color-medium, #666); display: flex; align-items: center; gap: 0.5rem;">
+      <span class="pdk-spinner" style="border: 2px solid var(--border-color, #ccc); border-top: 2px solid var(--primary-color, #4a90d9); border-radius: 50%; width: 14px; height: 14px; display: inline-block; animation: spin 1s linear infinite;"></span>
+      <span>${_("Tracing routing rules...")}</span>
+    </div>`;
+
+    try {
+      const result = await performTrace(query);
+      if (result && result.matched) {
+        let actionBadgeColor = ACTION_COLORS[result.action] || "#7f8c8d";
+        let actionLabel = result.action.toUpperCase();
+
+        resultsEl.innerHTML = `
+          <div style="padding: 0.6rem 0.8rem; border-radius: 4px; background: var(--background-color-low, #f9f9f9); border-left: 3px solid ${actionBadgeColor}; font-size: 90%; line-height: 1.4;">
+            <div style="display: flex; flex-wrap: wrap; gap: 0.8rem; align-items: center;">
+              <strong>${_("Match Found")}:</strong>
+              <span>${result.label} <span style="background: ${actionBadgeColor}; color: #fff; padding: 1px 5px; border-radius: 3px; font-weight: bold; font-size: 80%; margin-left: 0.2rem;">${actionLabel}</span></span>
+              <span style="color: var(--text-color-medium, #666);">|</span>
+              <span><strong>${_("Rule")}:</strong> <code>${result.ruleType}</code> (${result.pattern})</span>
+              <span style="color: var(--text-color-medium, #666);">|</span>
+              <span><strong>${_("Priority")}:</strong> ${result.priority}/${result.totalSections}</span>
+            </div>
+          </div>
+        `;
+      } else {
+        resultsEl.innerHTML = `
+          <div style="padding: 0.6rem 0.8rem; border-radius: 4px; background: var(--background-color-low, #f9f9f9); border-left: 3px solid var(--warning-color, #f1c40f); font-size: 90%; color: var(--text-color-high, #333);">
+            <strong>${_("No Custom Rules Matched")}:</strong> ${_("Traffic will go through the default route (Direct/Default).")}
+          </div>
+        `;
+      }
+    } catch (e) {
+      console.error(e);
+      resultsEl.innerHTML = `
+        <div style="padding: 1rem; border-radius: 6px; background: var(--background-color-low, #f9f9f9); border-left: 4px solid var(--error-color, #e74c3c); color: var(--error-color, #e74c3c);">
+          <strong>${_("Error running trace:")}</strong> ${e.message || e}
+        </div>
+      `;
+    }
+  }
+
+  btnEl.addEventListener("click", handleTrace);
+  clearEl.addEventListener("click", clearResults);
+  inputEl.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      handleTrace();
+    }
+  });
+
+  if (!document.getElementById("pdk-tracer-styles")) {
+    const style = document.createElement("style");
+    style.id = "pdk-tracer-styles";
+    style.textContent = `
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  return container;
+}
+
 function configureSectionSection(sectionRef, options = {}) {
   setActionProvidersAvailabilityLoader(options.loadActionProvidersAvailability);
 
@@ -8874,6 +9475,21 @@ function configureSectionSection(sectionRef, options = {}) {
     // The table renders only non-modal fields; the cloned Add/Edit modal loads
     // action/provider details when the user opens it.
     return loadSectionTableOptions(this);
+  };
+
+  const originalRender = sectionRef.render;
+  sectionRef.render = function () {
+    return originalRender.apply(this, arguments).then((node) => {
+      if (node) {
+        const tracer = createTracerSearchWidget(sectionRef);
+        if (node.firstChild) {
+          node.insertBefore(tracer, node.firstChild);
+        } else {
+          node.appendChild(tracer);
+        }
+      }
+      return node;
+    });
   };
 }
 

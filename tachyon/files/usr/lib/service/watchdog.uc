@@ -3,6 +3,7 @@
 let fs = require("fs");
 let uci_core = require("core.uci");
 let common = require("core.common");
+let helpers = require("core.helpers");
 
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
 const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
@@ -18,6 +19,7 @@ let shell_quote = common.shell_quote;
 let command_from_args = common.command_from_args;
 let command_status = common.command_status;
 let command_success_from_args = common.command_success_from_args;
+let is_process_name_running = helpers.is_process_name_running;
 
 function command_capture(command) {
     let pipe = fs.popen(command, "r");
@@ -51,7 +53,23 @@ function remove_file(path) {
 }
 
 function log_message(message, level) {
-    command_success_from_args([ "logger", "-t", "tachyon", "[" + as_string(level || "info") + "] Watchdog: " + as_string(message) ]);
+    let priority = 6;
+    let lvl = as_string(level || "info");
+    if (lvl == "warn" || lvl == "warning") {
+        priority = 4;
+    } else if (lvl == "err" || lvl == "error" || lvl == "fatal") {
+        priority = 3;
+    } else if (lvl == "debug") {
+        priority = 7;
+    }
+    
+    let kmsg = fs.open("/dev/kmsg", "w");
+    if (kmsg) {
+        kmsg.write(sprintf("<%d>tachyon: [%s] Watchdog: %s\n", priority, lvl, as_string(message)));
+        kmsg.close();
+    } else {
+        command_success_from_args([ "logger", "-t", "tachyon", "[" + lvl + "] Watchdog: " + as_string(message) ]);
+    }
 }
 
 function send_telegram_notification(message) {
@@ -61,14 +79,27 @@ function send_telegram_notification(message) {
     }
 }
 
-function process_running(pid) {
-    return match(as_string(pid), /^[0-9]+$/) != null && fs.stat("/proc/" + pid) != null;
+function process_running(pid, expected_name) {
+    if (match(as_string(pid), /^[0-9]+$/) == null)
+        return false;
+    if (expected_name != null && expected_name != "") {
+        return is_process_name_running(pid, expected_name);
+    }
+    return fs.stat("/proc/" + pid) != null;
 }
 
 function stop_runtime() {
     let pid = trim(fs.readfile(PID_FILE) || "");
-    if (process_running(pid)) {
-        command_success_from_args([ "kill", "-9", pid ]);
+    if (process_running(pid, "ucode")) {
+        command_success_from_args([ "kill", pid ]);
+        let wait_limit = 50; // 5 seconds
+        while (wait_limit > 0 && process_running(pid, "ucode")) {
+            sleep(100);
+            wait_limit--;
+        }
+        if (process_running(pid, "ucode")) {
+            command_success_from_args([ "kill", "-9", pid ]);
+        }
     }
     remove_file(PID_FILE);
 
@@ -76,6 +107,14 @@ function stop_runtime() {
     let hp_pid = trim(fs.readfile("/var/run/tachyon_honeypot_listener.pid") || "");
     if (process_running(hp_pid)) {
         command_success_from_args([ "kill", hp_pid ]);
+        let wait_limit = 20; // 2 seconds
+        while (wait_limit > 0 && process_running(hp_pid)) {
+            sleep(100);
+            wait_limit--;
+        }
+        if (process_running(hp_pid)) {
+            command_success_from_args([ "kill", "-9", hp_pid ]);
+        }
     }
     remove_file("/var/run/tachyon_honeypot_listener.pid");
     remove_file("/tmp/tachyon_honeypot.fifo");
@@ -137,122 +176,7 @@ function smart_detect_add_domain(sec_name, domain) {
     return true;
 }
 
-function smart_detect_run(last_time) {
-    let cfg = settings();
-    if (cfg.smart_detect != "1") return last_time;
-    let now = time();
-    if (now - last_time < 60) return last_time;
 
-    let seen = {};
-    let seen_data = fs.readfile(SMART_DETECT_SEEN_FILE);
-    if (seen_data) {
-        try { seen = json(seen_data) || {}; } catch(e) {}
-    }
-
-    // Parse recent sing-box log lines for direct dial failures
-    let log_out = command_output_from_args(["logread", "-l", "150"]) || "";
-    let domains_to_check = {};
-    for (let line in split(log_out, "\n")) {
-        let ll = lc(line);
-        if (index(ll, "direct") < 0 && index(ll, "DIRECT") < 0) continue;
-        if (index(ll, "failed") < 0 && index(ll, "timeout") < 0 && index(ll, "reset") < 0) continue;
-        // Extract quoted hostname like "twitch.tv:443"
-        let m = match(line, /"([a-zA-Z0-9][a-zA-Z0-9.-]{1,60}\.[a-zA-Z]{2,})(:[0-9]+)?"/);
-        if (!m) m = match(line, /target[= ]([a-zA-Z0-9][a-zA-Z0-9.-]{1,60}\.[a-zA-Z]{2,})/);
-        if (!m) continue;
-        let domain = m[1];
-        if (!domain || length(domain) < 5) continue;
-        if (seen[domain]) continue;
-        domains_to_check[domain] = true;
-    }
-
-    let domain_list = keys(domains_to_check);
-    if (length(domain_list) == 0) {
-        return now;
-    }
-
-    let sections = smart_detect_get_proxy_sections();
-    if (length(sections) == 0) return now;
-
-    // Determine proxy address
-    let proxy_addr = "127.0.0.1:4534";
-    let sb_cfg_data = fs.readfile("/etc/sing-box/config.json");
-    if (sb_cfg_data) {
-        try {
-            let sb_cfg = json(sb_cfg_data);
-            if (sb_cfg.inbounds) {
-                for (let inb in sb_cfg.inbounds) {
-                    if (inb.type == "http" || inb.type == "mixed") {
-                        proxy_addr = "127.0.0.1:" + as_string(inb.listen_port || 4534);
-                        break;
-                    }
-                }
-            }
-        } catch(e) {}
-    }
-
-    // Build ordered test list: smart_detect_sections UCI list → fallback to proxy sections
-    let detect_sections = [];
-    let raw_list = cfg.smart_detect_sections;
-    if (type(raw_list) == "array") {
-        detect_sections = raw_list;
-    } else if (raw_list && trim(as_string(raw_list)) != "") {
-        detect_sections = [ trim(as_string(raw_list)) ];
-    }
-    if (length(detect_sections) == 0) {
-        detect_sections = sections; // fallback: all proxy sections in UCI order
-    }
-
-    for (let domain in domain_list) {
-        seen[domain] = now;
-        // Verify it actually fails directly
-        let direct_ok = command_success_from_args([
-            "curl", "-s", "-I", "--connect-timeout", "4", "--max-time", "6",
-            "https://" + domain
-        ]);
-        if (direct_ok) continue;
-
-        // Try each section in priority order
-        let added = false;
-        for (let sec_name in detect_sections) {
-            sec_name = trim(as_string(sec_name));
-            if (sec_name == "") continue;
-
-            // Try via this section's proxy (we test with global proxy address first)
-            let proxy_ok = command_success_from_args([
-                "curl", "-s", "-I", "--connect-timeout", "5", "--max-time", "8",
-                "--proxy", "http://" + proxy_addr,
-                "https://" + domain
-            ]);
-            if (!proxy_ok) continue;
-
-            // Works through proxy — add to this section
-            log_message("Smart Detect: adding " + domain + " to section " + sec_name, "info");
-            if (smart_detect_add_domain(sec_name, domain)) {
-                let tcfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
-                if (tcfg.enabled == "1" && tcfg.bot_token && tcfg.admin_ids) {
-                    send_telegram_notification(
-                        "\ud83d\udd0d *Smart Detect*: `" + domain + "` \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u0435\u043d \u043d\u0430\u043f\u0440\u044f\u043c\u0443\u044e, \u0440\u0430\u0431\u043e\u0442\u0430\u0435\u0442 \u0447\u0435\u0440\u0435\u0437 \u043f\u0440\u043e\u043a\u0441\u0438.\n\u0414\u043e\u0431\u0430\u0432\u043b\u0435\u043d \u0432 \u0441\u0435\u043a\u0446\u0438\u044e *" + sec_name + "*."
-                    );
-                }
-                added = true;
-                break; // domain handled, move to next
-            }
-        }
-        if (!added) {
-            log_message("Smart Detect: domain " + domain + " not handled by any section", "info");
-        }
-    }
-
-    // Prune seen cache (keep only last 24h)
-    let clean = {};
-    let cutoff = now - 86400;
-    for (let k in keys(seen)) {
-        if (seen[k] >= cutoff) clean[k] = seen[k];
-    }
-    fs.writefile(SMART_DETECT_SEEN_FILE, sprintf("%J", clean));
-    return now;
-}
 
 
 function start_runtime() {
@@ -279,7 +203,6 @@ function run_zero_rtt_prefetching() {
         let sec = sections[k];
         if (sec.enabled == "0") continue;
 
-        // Collect custom domains
         let list_val = sec.user_domains;
         let list_array = [];
         if (type(list_val) == "array") {
@@ -309,149 +232,308 @@ function run_zero_rtt_prefetching() {
     let domain_list = keys(unique_domains);
     if (length(domain_list) == 0) return;
 
-    log_message("Zero-RTT Prefetcher: pre-resolving " + length(domain_list) + " domains...", "info");
-    for (let dom in domain_list) {
-        system("dig @127.0.0.1 " + shell_quote(dom) + " A </dev/null >/dev/null 2>&1 1000<&- &");
+    log_message("Zero-RTT Prefetcher: pre-resolving " + length(domain_list) + " domains in batches...", "info");
+    let batch = [];
+    for (let i, dom in domain_list) {
+        push(batch, shell_quote(dom));
+        if (length(batch) >= 15 || i == length(domain_list) - 1) {
+            let batch_cmd = "for d in " + join(" ", batch) + "; do dig @127.0.0.1 \"$d\" A >/dev/null 2>&1; done &";
+            system(batch_cmd + " </dev/null >/dev/null 2>&1 1000<&-");
+            batch = [];
+        }
     }
 }
 
-function worker() {
-    log_message("Watchdog daemon started.", "info");
+let uloop = null;
+let ubus = null;
+try { uloop = require("uloop"); } catch (e) {}
+try { ubus = require("ubus"); } catch (e) {}
 
-    system("mkfifo /tmp/tachyon_honeypot.fifo >/dev/null 2>&1");
-    system("chmod 0660 /tmp/tachyon_honeypot.fifo >/dev/null 2>&1");
+let last_oom_time = 0;
+let last_restart_time = 0;
+let last_urltest_check = 0;
+let pending_smart_domains = {};
+let smart_detect_last_run = 0;
 
-    let cfg = settings();
-    let ttl = cfg.honeypot_ttl || "86400";
-    let nft_table = getenv("NFT_TABLE_NAME") || "TachyonTable";
-
-    command_success_from_args(["sh", "-c", "kill -9 $(pgrep -f 'tail -f /tmp/tachyon_honeypot.fifo') 2>/dev/null"]);
-
-    system("tail -f /tmp/tachyon_honeypot.fifo | while read ip; do " +
-           "if [ -n \"$ip\" ]; then " +
-           "nft add element inet " + nft_table + " tachyon_honeypot { \"$ip\" timeout " + ttl + "s } >/dev/null 2>&1; " +
-           "fi; done </dev/null >/dev/null 2>&1 1000<&- & echo $! > /var/run/tachyon_honeypot_listener.pid");
-
-    let zero_rtt_done = false;
-    let smart_detect_last_run = 0;
-
-    while (true) {
-        cfg = settings();
-        if (cfg.recovery_bypass == "1") {
-            sleep(10000);
-            continue;
-        }
-
-        // 0. Check pause file — skip health checks if proxy is intentionally paused
-        if (check_auto_resume_pause()) {
-            sleep(10000);
-            continue;
-        }
-
-        // 1. Process Check
-        let binary_name = "sing-box";
-        let has_sections = false;
-        let uci_sections = uci_core.get_all(CONFIG_NAME);
-        if (uci_sections) {
-            for (let k in keys(uci_sections)) {
-                if (uci_sections[k][".type"] == "section") {
-                    has_sections = true;
-                    break;
-                }
-            }
-        }
-
-        let pid = "";
-        let proc = fs.opendir("/proc");
-        if (proc) {
-            let entry;
-            while ((entry = proc.read()) != null) {
-                if (match(entry, /^[0-9]+$/)) {
-                    let exe = fs.readlink("/proc/" + entry + "/exe") || "";
-                    let slash = rindex(exe, "/");
-                    if ((slash >= 0 ? substr(exe, slash + 1) : exe) == binary_name) {
-                        pid = entry;
+function check_tachyon_cli_running() {
+    let running = false;
+    let proc = fs.opendir("/proc");
+    if (proc) {
+        let entry;
+        while ((entry = proc.read()) != null) {
+            if (match(entry, /^[0-9]+$/)) {
+                let cmdline = fs.readfile("/proc/" + entry + "/cmdline") || "";
+                if (index(cmdline, "/usr/bin/tachyon") >= 0) {
+                    if (index(cmdline, "start") >= 0 || index(cmdline, "restart") >= 0 || index(cmdline, "reload") >= 0 || index(cmdline, "stop") >= 0) {
+                        running = true;
                         break;
                     }
                 }
             }
-            proc.close();
         }
-        
-        let list_update_pid = trim(fs.readfile("/var/run/tachyon_list_update.pid") || "");
-        let list_update_running = process_running(list_update_pid);
+        proc.close();
+    }
+    return running;
+}
 
-        let tachyon_cli_running = false;
-        proc = fs.opendir("/proc");
-        if (proc) {
-            let entry;
-            while ((entry = proc.read()) != null) {
-                if (match(entry, /^[0-9]+$/)) {
-                    let cmdline = fs.readfile("/proc/" + entry + "/cmdline") || "";
-                    if (index(cmdline, "/usr/bin/tachyon") >= 0) {
-                        if (index(cmdline, "start") >= 0 || index(cmdline, "restart") >= 0 || index(cmdline, "reload") >= 0 || index(cmdline, "stop") >= 0) {
-                            tachyon_cli_running = true;
-                            break;
-                        }
-                    }
-                }
-            }
-            proc.close();
-        }
+function handle_singbox_stop_event(reason) {
+    let now = time();
+    if (now - last_restart_time < 30) return;
+    last_restart_time = now;
 
-        if (tachyon_cli_running) {
-            sleep(10000);
-            continue;
-        }
+    let cfg = settings();
+    if (cfg.recovery_bypass == "1") return;
+    if (check_auto_resume_pause()) return;
+    if (check_tachyon_cli_running()) return;
 
-        if (pid == "" && has_sections && !list_update_running) {
-            log_message("sing-box is stopped. Restarting Tachyon...", "warn");
-            let tcfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
-            if (tcfg.notify_crash != "0") {
-                send_telegram_notification("⚠️ *Watchdog:* sing-box остановлен. Перезапускаю службы Tachyon...");
-            }
-            system("/etc/init.d/tachyon restart </dev/null >/dev/null 2>&1 &");
-            sleep(60000);
-            continue;
-        }
+    let list_update_pid = trim(fs.readfile("/var/run/tachyon_list_update.pid") || "");
+    if (process_running(list_update_pid, "ucode")) return;
 
-        // 2. Firewall / NFT Check
-        let routing_mode = cfg.routing_mode || "nftables";
-        if (routing_mode == "nftables" && !list_update_running) {
-            let out_nft = command_output_from_args(["nft", "list", "table", "inet", nft_table]);
-            if (index(out_nft, "tproxy") < 0) {
-                log_message("nftables rules are missing or corrupted. Rebuilding...", "warn");
-                let tcfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
-                if (tcfg.notify_crash != "0") {
-                    send_telegram_notification("⚠️ *Watchdog:* правила nftables повреждены или отсутствуют. Выполняю пересборку...");
-                }
-                system("/etc/init.d/tachyon restart </dev/null >/dev/null 2>&1 &");
-                sleep(60000);
-                continue;
-            }
-        }
+    log_message("sing-box is stopped (" + as_string(reason || "health check") + "). Restarting Tachyon...", "warn");
+    let tcfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
+    if (tcfg.notify_crash != "0") {
+        send_telegram_notification("⚠️ *Watchdog:* sing-box остановлен. Перезапускаю службы Tachyon...");
+    }
+    system("/etc/init.d/tachyon restart </dev/null >/dev/null 2>&1 &");
+}
 
-        // 3. Memory & OOM Mitigation
-        let free_mb = -1;
-        let mem_info = fs.readfile("/proc/meminfo") || "";
-        for (let line in split(mem_info, "\n")) {
-            if (index(line, "MemAvailable:") == 0) {
-                let fields = split(trim(line), /[ \t]+/);
-                if (length(fields) >= 2) {
-                    free_mb = int(fields[1]) / 1024;
-                }
+function check_singbox_process() {
+    let cfg = settings();
+    if (cfg.recovery_bypass == "1") return;
+    if (check_auto_resume_pause()) return;
+    if (check_tachyon_cli_running()) return;
+
+    let list_update_pid = trim(fs.readfile("/var/run/tachyon_list_update.pid") || "");
+    if (process_running(list_update_pid, "ucode")) return;
+
+    // Fast-path check: verify if sing-box PID file exists and process is active
+    let sb_pid = trim(fs.readfile("/var/run/sing-box.pid") || "");
+    if (sb_pid != "" && process_running(sb_pid, "sing-box")) {
+        return;
+    }
+
+    let has_sections = false;
+    let uci_sections = uci_core.get_all(CONFIG_NAME);
+    if (uci_sections) {
+        for (let k in keys(uci_sections)) {
+            if (uci_sections[k][".type"] == "section") {
+                has_sections = true;
                 break;
             }
         }
-        if (free_mb >= 0 && free_mb < 15) {
-            log_message("Low memory detected (" + free_mb + "MB). Clearing caches...", "warn");
-            system("echo 3 > /proc/sys/vm/drop_caches");
-        }
+    }
+    if (!has_sections) return;
 
-        let logread_out = command_output_from_args(["logread", "-l", "100"]);
-        let logread_lower = lc(logread_out);
-        if (index(logread_lower, "out of memory") >= 0 || index(logread_lower, "oom-killer") >= 0) {
-            log_message("OOM event detected! Reducing GOMEMLIMIT scaling...", "err");
+    let binary_name = "sing-box";
+    let pid = "";
+    let proc = fs.opendir("/proc");
+    if (proc) {
+        let entry;
+        while ((entry = proc.read()) != null) {
+            if (match(entry, /^[0-9]+$/)) {
+                let exe = fs.readlink("/proc/" + entry + "/exe") || "";
+                let slash = rindex(exe, "/");
+                if ((slash >= 0 ? substr(exe, slash + 1) : exe) == binary_name) {
+                    pid = entry;
+                    break;
+                }
+            }
+        }
+        proc.close();
+    }
+
+    if (pid == "") {
+        handle_singbox_stop_event("process missing from /proc");
+    }
+}
+
+function check_firewall_rules() {
+    let cfg = settings();
+    let routing_mode = cfg.routing_mode || "nftables";
+    let nft_table = getenv("NFT_TABLE_NAME") || "TachyonTable";
+
+    let list_update_pid = trim(fs.readfile("/var/run/tachyon_list_update.pid") || "");
+    if (process_running(list_update_pid, "ucode")) return;
+
+    if (routing_mode == "nftables") {
+        let out_nft = command_output_from_args(["nft", "list", "table", "inet", nft_table]);
+        if (index(out_nft, "tproxy") < 0) {
+            log_message("nftables rules are missing or corrupted. Rebuilding...", "warn");
+            let tcfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
+            if (tcfg.notify_crash != "0") {
+                send_telegram_notification("⚠️ *Watchdog:* правила nftables повреждены или отсутствуют. Выполняю пересборку...");
+            }
+            system("/etc/init.d/tachyon restart </dev/null >/dev/null 2>&1 &");
+        }
+    }
+}
+
+function check_memory() {
+    let free_mb = -1;
+    let mem_info = fs.readfile("/proc/meminfo") || "";
+    for (let line in split(mem_info, "\n")) {
+        if (index(line, "MemAvailable:") == 0) {
+            let fields = split(trim(line), /[ \t]+/);
+            if (length(fields) >= 2) {
+                free_mb = int(fields[1]) / 1024;
+            }
+            break;
+        }
+    }
+    if (free_mb >= 0 && free_mb < 15) {
+        log_message("Low memory detected (" + free_mb + "MB). Clearing caches...", "warn");
+        system("echo 3 > /proc/sys/vm/drop_caches");
+    }
+}
+
+function check_urltest_switches() {
+    let now = time();
+    if (now - last_urltest_check < 5) return;
+    last_urltest_check = now;
+
+    let tcfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
+    if (tcfg.enabled != "1" || tcfg.notify_crash == "0") return;
+
+    let p_res = command_capture(command_from_args(["curl", "-s", "http://127.0.0.1:4534/proxies"]));
+    if (p_res && p_res.status == 0 && p_res.output) {
+        try {
+            let p_data = json(p_res.output);
+            let proxies = p_data.proxies;
+            for (let name in proxies) {
+                let p = proxies[name];
+                if (p.type == "URLTest" && p.now) {
+                    let last_now = trim(fs.readfile("/tmp/watchdog_urltest_" + name) || "");
+                    if (last_now != "" && last_now != p.now) {
+                        send_telegram_notification("🔀 *Watchdog:* Смена прокси в группе `" + name + "`\nНовый активный узел: `" + p.now + "`");
+                    }
+                    fs.writefile("/tmp/watchdog_urltest_" + name, p.now);
+                }
+            }
+        } catch(e) {}
+    }
+}
+
+function smart_detect_process_pending() {
+    let cfg = settings();
+    if (cfg.smart_detect != "1") {
+        pending_smart_domains = {};
+        return;
+    }
+    let now = time();
+    if (now - smart_detect_last_run < 60) return;
+
+    let domain_list = keys(pending_smart_domains);
+    if (length(domain_list) == 0) return;
+    smart_detect_last_run = now;
+
+    let seen = {};
+    let seen_data = fs.readfile(SMART_DETECT_SEEN_FILE);
+    if (seen_data) {
+        try { seen = json(seen_data) || {}; } catch(e) {}
+    }
+
+    let candidate_domains = [];
+    for (let dom in domain_list) {
+        if (!seen[dom]) {
+            push(candidate_domains, dom);
+        }
+    }
+    pending_smart_domains = {};
+
+    if (length(candidate_domains) == 0) return;
+
+    let sections = smart_detect_get_proxy_sections();
+    if (length(sections) == 0) return;
+
+    let proxy_addr = "127.0.0.1:4534";
+    let sb_cfg_data = fs.readfile("/etc/sing-box/config.json");
+    if (sb_cfg_data) {
+        try {
+            let sb_cfg = json(sb_cfg_data);
+            if (sb_cfg.inbounds) {
+                for (let inb in sb_cfg.inbounds) {
+                    if (inb.type == "http" || inb.type == "mixed") {
+                        proxy_addr = "127.0.0.1:" + as_string(inb.listen_port || 4534);
+                        break;
+                    }
+                }
+            }
+        } catch(e) {}
+    }
+
+    let detect_sections = [];
+    let raw_list = cfg.smart_detect_sections;
+    if (type(raw_list) == "array") {
+        detect_sections = raw_list;
+    } else if (raw_list && trim(as_string(raw_list)) != "") {
+        detect_sections = [ trim(as_string(raw_list)) ];
+    }
+    if (length(detect_sections) == 0) {
+        detect_sections = sections;
+    }
+
+    for (let domain in candidate_domains) {
+        seen[domain] = now;
+        let direct_ok = command_success_from_args([
+            "curl", "-s", "-I", "--connect-timeout", "4", "--max-time", "6",
+            "https://" + domain
+        ]);
+        if (direct_ok) continue;
+
+        let added = false;
+        for (let sec_name in detect_sections) {
+            sec_name = trim(as_string(sec_name));
+            if (sec_name == "") continue;
+
+            let proxy_ok = command_success_from_args([
+                "curl", "-s", "-I", "--connect-timeout", "5", "--max-time", "8",
+                "--proxy", "http://" + proxy_addr,
+                "https://" + domain
+            ]);
+            if (!proxy_ok) continue;
+
+            log_message("Smart Detect: adding " + domain + " to section " + sec_name, "info");
+            if (smart_detect_add_domain(sec_name, domain)) {
+                let tcfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
+                if (tcfg.enabled == "1" && tcfg.bot_token && tcfg.admin_ids) {
+                    send_telegram_notification(
+                        "🔍 *Smart Detect*: `" + domain + "` недоступен напрямую, работает через прокси.\nДобавлен в секцию *" + sec_name + "*."
+                    );
+                }
+                added = true;
+                break;
+            }
+        }
+        if (!added) {
+            log_message("Smart Detect: domain " + domain + " not handled by any section", "info");
+        }
+    }
+
+    let clean = {};
+    let cutoff = now - 86400;
+    for (let k in keys(seen)) {
+        if (seen[k] >= cutoff) clean[k] = seen[k];
+    }
+    fs.writefile(SMART_DETECT_SEEN_FILE, sprintf("%J", clean));
+}
+
+function handle_log_line(line) {
+    if (!line || line == "") return;
+
+    // Fast keyword pre-filter: skip 95%+ of irrelevant log lines instantly
+    if (index(line, "direct") < 0 && index(line, "DIRECT") < 0 &&
+        index(line, "memory") < 0 && index(line, "oom") < 0 && index(line, "OOM") < 0 &&
+        index(line, "URLTest") < 0 && index(line, "proxy") < 0) {
+        return;
+    }
+    let line_lower = lc(line);
+
+    // 1. OOM Detection
+    if (index(line_lower, "out of memory") >= 0 || index(line_lower, "oom-killer") >= 0) {
+        let now = time();
+        if (now - last_oom_time > 30) {
+            last_oom_time = now;
+            log_message("OOM event detected from syslog! Reducing GOMEMLIMIT scaling...", "err");
             send_telegram_notification("🚨 *Watchdog:* Обнаружено событие OOM (Out Of Memory)! Уменьшаю GOMEMLIMIT и перезапускаю службы...");
             let scale = 1.0;
             let scale_path = "/etc/tachyon/mem_scale";
@@ -467,45 +549,164 @@ function worker() {
             system("logread -c >/dev/null 2>&1");
             command_status("/usr/bin/tachyon restart >/dev/null 2>&1");
         }
+        return;
+    }
 
-        // 4. Zero-RTT Prefetching
-        if (!zero_rtt_done) {
-            run_zero_rtt_prefetching();
-            zero_rtt_done = true;
-        }
-
-        // 5. Smart Detect — self-healing routing
-        smart_detect_last_run = smart_detect_run(smart_detect_last_run);
-
-        // 6. URLTest Proxy Switch Alerts
-        let tcfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
-        if (tcfg.enabled == "1" && tcfg.notify_crash != "0") {
-            let p_res = command_capture(command_from_args(["curl", "-s", "http://127.0.0.1:4534/proxies"]));
-            if (p_res && p_res.status == 0 && p_res.output) {
-                try {
-                    let p_data = json(p_res.output);
-                    let proxies = p_data.proxies;
-                    for (let name in proxies) {
-                        let p = proxies[name];
-                        if (p.type == "URLTest" && p.now) {
-                            let last_now = trim(fs.readfile("/tmp/watchdog_urltest_" + name) || "");
-                            if (last_now != "" && last_now != p.now) {
-                                send_telegram_notification("🔀 *Watchdog:* Смена прокси в группе `" + name + "`\nНовый активный узел: `" + p.now + "`");
-                            }
-                            fs.writefile("/tmp/watchdog_urltest_" + name, p.now);
-                        }
-                    }
-                } catch(e) {}
+    // 2. Smart Detect candidate domain extraction
+    let cfg = settings();
+    if (cfg.smart_detect == "1") {
+        if ((index(line_lower, "direct") >= 0 || index(line_lower, "DIRECT") >= 0) &&
+            (index(line_lower, "failed") >= 0 || index(line_lower, "timeout") >= 0 || index(line_lower, "reset") >= 0)) {
+            let m = match(line, /"([a-zA-Z0-9][a-zA-Z0-9.-]{1,60}\.[a-zA-Z]{2,})(:[0-9]+)?"/);
+            if (!m) m = match(line, /target[= ]([a-zA-Z0-9][a-zA-Z0-9.-]{1,60}\.[a-zA-Z]{2,})/);
+            if (m && m[1] && length(m[1]) >= 5) {
+                pending_smart_domains[m[1]] = time();
             }
         }
-
-        sleep(15000);
     }
+
+    // 3. URLTest proxy switch notifications
+    if (index(line, "URLTest") >= 0 || index(line_lower, "selected proxy") >= 0 || index(line_lower, "switch proxy") >= 0) {
+        check_urltest_switches();
+    }
+}
+
+function setup_honeypot_listener() {
+    system("mkfifo /tmp/tachyon_honeypot.fifo >/dev/null 2>&1");
+    system("chmod 0660 /tmp/tachyon_honeypot.fifo >/dev/null 2>&1");
+
+    command_success_from_args(["sh", "-c", "kill -9 $(pgrep -f 'tail -f /tmp/tachyon_honeypot.fifo') 2>/dev/null"]);
+
+    let fifo_fd = fs.open("/tmp/tachyon_honeypot.fifo", "r+");
+    if (uloop && fifo_fd) {
+        try {
+            uloop.handle(fifo_fd.fileno(), function(events) {
+                let line;
+                while ((line = fifo_fd.read("line")) != null) {
+                    let ip = trim(as_string(line));
+                    if (ip != "" && match(ip, /^[0-9a-fA-F:.]+$/) != null) {
+                        let cfg = settings();
+                        let ttl = cfg.honeypot_ttl || "86400";
+                        let nft_table = getenv("NFT_TABLE_NAME") || "TachyonTable";
+                        command_success_from_args(["nft", "add", "element", "inet", nft_table, "tachyon_honeypot", "{", ip, "timeout", ttl + "s", "}"]);
+                    }
+                }
+            }, uloop.ULOOP_READ);
+        } catch (e) {
+            log_message("Failed to bind honeypot fifo to uloop: " + as_string(e), "warn");
+        }
+    } else {
+        let cfg = settings();
+        let ttl = cfg.honeypot_ttl || "86400";
+        let nft_table = getenv("NFT_TABLE_NAME") || "TachyonTable";
+        system("tail -f /tmp/tachyon_honeypot.fifo | while read ip; do " +
+               "if [ -n \"$ip\" ]; then " +
+               "nft add element inet " + nft_table + " tachyon_honeypot { \"$ip\" timeout " + ttl + "s } >/dev/null 2>&1; " +
+               "fi; done </dev/null >/dev/null 2>&1 1000<&- & echo $! > /var/run/tachyon_honeypot_listener.pid");
+    }
+}
+
+function setup_syslog_listener() {
+    if (!uloop) return null;
+    let log_pipe = fs.popen("logread -f 2>/dev/null", "r");
+    if (!log_pipe) return null;
+
+    try {
+        uloop.handle(log_pipe.fileno(), function(events) {
+            let line;
+            while ((line = log_pipe.read("line")) != null) {
+                handle_log_line(trim(as_string(line)));
+            }
+        }, uloop.ULOOP_READ);
+    } catch (e) {
+        log_message("Failed to register syslog listener: " + as_string(e), "warn");
+    }
+    return log_pipe;
+}
+
+function setup_ubus_listener() {
+    if (!ubus || !uloop) return null;
+    let conn = null;
+    try { conn = ubus.connect(); } catch (e) {}
+    if (!conn) return null;
+
+    try {
+        conn.listen({
+            "service.instance.stop": function(ev, msg) {
+                if (type(msg) == "object" && msg.name == "sing-box") {
+                    handle_singbox_stop_event("ubus service.instance.stop event");
+                }
+            },
+            "service.stop": function(ev, msg) {
+                if (type(msg) == "object" && msg.name == "sing-box") {
+                    handle_singbox_stop_event("ubus service.stop event");
+                }
+            },
+            "firewall.reload": function(ev, msg) {
+                check_firewall_rules();
+            }
+        });
+    } catch (e) {
+        log_message("Failed to register ubus listeners: " + as_string(e), "warn");
+    }
+    return conn;
+}
+
+function worker() {
+    log_message("Watchdog daemon started.", "info");
+
+    setup_honeypot_listener();
+    run_zero_rtt_prefetching();
+
+    if (uloop) {
+        try {
+            uloop.init();
+        } catch (e) {
+            log_message("Failed to initialize uloop: " + as_string(e), "warn");
+        }
+    }
+
+    let log_pipe = setup_syslog_listener();
+    let ubus_conn = setup_ubus_listener();
+
+    function perform_periodic_checks() {
+        check_auto_resume_pause();
+        check_singbox_process();
+        check_firewall_rules();
+        check_memory();
+        smart_detect_process_pending();
+    }
+
+    if (uloop) {
+        let timer_cb;
+        timer_cb = function() {
+            try {
+                perform_periodic_checks();
+            } catch (e) {
+                log_message("Error in periodic check: " + as_string(e), "err");
+            }
+            uloop.timer(120000, timer_cb);
+        };
+        uloop.timer(10000, timer_cb);
+
+        log_message("Watchdog running in event-driven uloop mode.", "info");
+        uloop.run();
+    } else {
+        log_message("uloop not available. Running Watchdog in legacy fallback loop mode.", "warn");
+        while (true) {
+            perform_periodic_checks();
+            sleep(60000);
+        }
+    }
+
+    if (log_pipe) log_pipe.close();
+    if (ubus_conn) try { ubus_conn.close(); } catch (e) {}
+    return 0;
 }
 
 function get_status() {
     let pid = trim(fs.readfile(PID_FILE) || "");
-    if (process_running(pid)) {
+    if (process_running(pid, "ucode")) {
         print("running (pid " + pid + ")\n");
         return 0;
     }

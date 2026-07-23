@@ -24,10 +24,10 @@ function read_json_file(path) {
 
 function write_text_file(path, text) {
     let result = fs.writefile(path, text);
-    if (result == null)
+    if (result == null || (type(result) == "boolean" && !result)) {
+        warn("WRITE_TEXT_FILE FAILED: path=", path, "\n");
         return false;
-    if (type(result) == "boolean" && !result)
-        return false;
+    }
     return true;
 }
 

@@ -133,16 +133,38 @@ function command_output_quiet_from_args(args) {
     return as_string(data);
 }
 
+function log_to_kmsg(message, level) {
+    if (getenv("LOGGER_LOG") != null)
+        return false;
+
+    let priority = 6;
+    let lvl = as_string(level || "info");
+    if (lvl == "warn") priority = 4;
+    else if (lvl == "fatal") priority = 3;
+    else if (lvl == "debug") priority = 7;
+
+    let kmsg = fs.open("/dev/kmsg", "w");
+    if (kmsg) {
+        kmsg.write(sprintf("<%d>tachyon: [%s] %s\n", priority, lvl, as_string(message)));
+        kmsg.close();
+        return true;
+    }
+    return false;
+}
+
 function log_debug(message) {
-    run_args([ "logger", "-t", "tachyon", "[debug] " + as_string(message) ]);
+    if (!log_to_kmsg(message, "debug"))
+        run_args([ "logger", "-t", "tachyon", "[debug] " + as_string(message) ]);
 }
 
 function log_warn(message) {
-    run_args([ "logger", "-t", "tachyon", "[warn] " + as_string(message) ]);
+    if (!log_to_kmsg(message, "warn"))
+        run_args([ "logger", "-t", "tachyon", "[warn] " + as_string(message) ]);
 }
 
 function log_fatal(message) {
-    run_args([ "logger", "-t", "tachyon", "[fatal] " + as_string(message) ]);
+    if (!log_to_kmsg(message, "fatal"))
+        run_args([ "logger", "-t", "tachyon", "[fatal] " + as_string(message) ]);
 }
 
 function strip_list_comment(line) {
@@ -447,9 +469,25 @@ function nft_create_ifname_set(table, name) {
 }
 
 function nft_add_set_elements(table, set_name, elements) {
-    let cmd = [ "nft", "add", "element", "inet", table, set_name, "{ " + as_string(elements) + " }" ];
-    let cmd_str = command_from_args(cmd);
+    let stamp = clock();
+    let tmp_path = sprintf("/tmp/nft_elements.%d.%d.tmp", stamp[0], stamp[1]);
+    let rules_content = sprintf("add element inet %s %s { %s }\n", table, set_name, as_string(elements));
+    
+    let write_stamp = clock();
+    let real_tmp = sprintf("%s.write.%d.%d", tmp_path, write_stamp[0], write_stamp[1]);
+    if (fs.writefile(real_tmp, rules_content) == null) {
+        fs.unlink(real_tmp);
+        return false;
+    }
+    if (!fs.rename(real_tmp, tmp_path)) {
+        fs.unlink(real_tmp);
+        return false;
+    }
+
+    let cmd_str = sprintf("nft -f %s", shell_quote(tmp_path));
     let res = system(cmd_str + " 2>/tmp/nft_err.log");
+    fs.unlink(tmp_path);
+
     if (res != 0) {
         let err_msg = trim(as_string(fs.readfile("/tmp/nft_err.log") || ""));
         log_fatal("nft add element failed: cmd='" + cmd_str + "', code=" + res + ", err='" + err_msg + "'");
@@ -1694,7 +1732,7 @@ function nft_add_extracted_ruleset_subnets(unscoped_path, scoped_path, label, ta
     }
 
     if (!has_entries)
-        run_args([ "logger", "-t", "tachyon", "[warn] " + as_string(label) + " has no ip_cidr entries for nftables" ]);
+        log_warn(as_string(label) + " has no ip_cidr entries for nftables");
 
     return true;
 }

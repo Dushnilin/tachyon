@@ -2546,9 +2546,116 @@ function ai_doctor() {
     return 0;
 }
 
+function extract_ruleset(tag) {
+    if (tag == "") {
+        warn("tag is required\n");
+        return 1;
+    }
+
+    let db_path = "/etc/sing-box/cache.db";
+    let f = fs.open(db_path, "r");
+    if (!f) {
+        warn("failed to open " + db_path + "\n");
+        return 1;
+    }
+
+    let page_size = 4096;
+    let found_data = null;
+    
+    while (true) {
+        let header = f.read(16);
+        if (!header || length(header) < 16) {
+            break;
+        }
+
+        let flags = (ord(header, 9) << 8) | ord(header, 8);
+        let count = (ord(header, 11) << 8) | ord(header, 10);
+        let overflow = (ord(header, 15) << 24) | (ord(header, 14) << 16) | (ord(header, 13) << 8) | ord(header, 12);
+        
+        let remaining_page_size = page_size - 16;
+        if (overflow > 0) {
+            remaining_page_size += overflow * page_size;
+        }
+        
+        let page_body = f.read(remaining_page_size);
+        if (!page_body || length(page_body) < remaining_page_size) {
+            break;
+        }
+        
+        let page_data = header + page_body;
+        
+        if (flags == 0x02 && count > 0) {
+            let elem_offset = 16;
+            for (let i = 0; i < count; i++) {
+                if (elem_offset + 16 > length(page_data)) break;
+                
+                let pos = (ord(page_data, elem_offset + 7) << 24) |
+                          (ord(page_data, elem_offset + 6) << 16) |
+                          (ord(page_data, elem_offset + 5) << 8) |
+                          ord(page_data, elem_offset + 4);
+                let ksize = (ord(page_data, elem_offset + 11) << 24) |
+                            (ord(page_data, elem_offset + 10) << 16) |
+                            (ord(page_data, elem_offset + 9) << 8) |
+                            ord(page_data, elem_offset + 8);
+                let vsize = (ord(page_data, elem_offset + 15) << 24) |
+                            (ord(page_data, elem_offset + 14) << 16) |
+                            (ord(page_data, elem_offset + 13) << 8) |
+                            ord(page_data, elem_offset + 12);
+                
+                let key_start = elem_offset + pos;
+                if (key_start + ksize + vsize <= length(page_data)) {
+                    let key = substr(page_data, key_start, ksize);
+                    if (key == tag) {
+                        let raw_val = substr(page_data, key_start + ksize, vsize);
+                        // Parse varint length of the ruleset to skip cache header
+                        let offset = 1; // skip cache type (0x01)
+                        let len = 0;
+                        let shift = 0;
+                        while (offset < length(raw_val)) {
+                            let b = ord(raw_val, offset);
+                            len |= ((b & 0x7F) << shift);
+                            offset++;
+                            if (!(b & 0x80)) {
+                                break;
+                            }
+                            shift += 7;
+                        }
+                        found_data = substr(raw_val, offset, len);
+                        break;
+                    }
+                }
+                
+                elem_offset += 16;
+            }
+        }
+        if (found_data) break;
+    }
+    
+    f.close();
+
+    if (!found_data) {
+        warn("tag " + tag + " not found in cache.db\n");
+        return 1;
+    }
+
+    let out_dir = "/tmp/sing-box/rulesets";
+    system("mkdir -p " + out_dir);
+
+    let out_path = out_dir + "/community_" + tag + ".srs";
+    if (fs.writefile(out_path, found_data) == null) {
+        warn("failed to write ruleset to " + out_path + "\n");
+        return 1;
+    }
+
+    print(out_path + "\n");
+    return 0;
+}
+
 let mode = ARGV[0] || "";
 
-if (mode == "check-proxy")
+if (mode == "extract-ruleset")
+    exit(extract_ruleset(ARGV[1] || ""));
+else if (mode == "check-proxy")
     exit(check_proxy());
 else if (mode == "check-nft")
     exit(check_nft());

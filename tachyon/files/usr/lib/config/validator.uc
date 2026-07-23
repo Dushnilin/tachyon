@@ -1,7 +1,7 @@
 #!/usr/bin/env ucode
 
 let fs = require("fs");
-let uci_core_module = null;
+let uci_core = require("core.uci");
 let fixture_uci_data = null;
 let subscription_parser_module = null;
 let zapret_validator_module = null;
@@ -666,7 +666,7 @@ function mwan3_has_enabled_interface() {
 }
 
 function mwan3_has_enabled_interface_from_sections() {
-    for (let section in uci_core().section_objects("mwan3", "interface"))
+    for (let section in uci_core.section_objects("mwan3", "interface"))
         if (option(section, "enabled", "0") == "1")
             return true;
     return false;
@@ -741,11 +741,7 @@ function runtime_constants() {
     return constants_module;
 }
 
-function uci_core() {
-    if (uci_core_module == null)
-        uci_core_module = require("core.uci");
-    return uci_core_module;
-}
+
 
 function fixture_section_list(type_name) {
     let value = object_or_empty(fixture_uci_data)[type_name];
@@ -781,7 +777,7 @@ function use_fixture_cursor(path) {
 function settings_section() {
     if (fixture_uci_data != null)
         return object_or_empty(fixture_get_section("settings"));
-    return object_or_empty(uci_core().get_all(CONFIG_NAME, "settings"));
+    return object_or_empty(uci_core.get_all(CONFIG_NAME, "settings"));
 }
 
 function sections_by_type(type_name) {
@@ -789,7 +785,7 @@ function sections_by_type(type_name) {
         return fixture_section_list(type_name);
 
     let result = [];
-    for (let section in uci_core().section_objects(CONFIG_NAME, type_name))
+    for (let section in uci_core.section_objects(CONFIG_NAME, type_name))
         push(result, object_or_empty(section));
     return result;
 }
@@ -929,6 +925,11 @@ function validate_dns_settings(settings, sections, context) {
         validate_required_duration_option(option(settings, "dns_check_interval", "10s"), "settings.dns_check_interval");
         validate_required_duration_option(option(settings, "dns_recovery_check_interval", "60s"), "settings.dns_recovery_check_interval");
         validate_required_duration_option(option(settings, "dns_check_timeout", "2s"), "settings.dns_check_timeout");
+        for (let name in [ "dns_failure_threshold", "dns_recovery_threshold" ]) {
+            let value = trim(option(settings, name, "3"));
+            if (match(value, /^[0-9]+$/) == null || int(value) < 1 || int(value) > 10)
+                fail_validation("Invalid " + name + " value '" + value + "'. Use a number from 1 to 10. Aborted.");
+        }
     }
 
     if (!bool_option(settings, "dns_detour_enabled", false))

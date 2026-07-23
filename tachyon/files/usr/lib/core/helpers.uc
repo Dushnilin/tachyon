@@ -68,6 +68,33 @@ function write_text_file(path, text) {
     return true;
 }
 
+function write_file_atomic(path, text) {
+    path = as_string(path);
+    let stamp = clock();
+    let tmp_path = sprintf("%s.%d.%d.tmp", path, stamp[0], stamp[1]);
+    let result = fs.writefile(tmp_path, as_string(text));
+    if (result == null || (type(result) == "boolean" && !result)) {
+        fs.unlink(tmp_path);
+        return false;
+    }
+    if (!fs.rename(tmp_path, path)) {
+        fs.unlink(tmp_path);
+        return false;
+    }
+    return true;
+}
+
+function is_process_name_running(pid, expected_name) {
+    pid = as_string(pid);
+    expected_name = as_string(expected_name);
+    if (match(pid, /^[0-9]+$/) == null)
+        return false;
+    let comm = fs.readfile("/proc/" + pid + "/comm");
+    if (comm == null)
+        return false;
+    return trim(comm) == expected_name;
+}
+
 function file_remove_cr(path) {
     path = as_string(path);
     let data = fs.readfile(path);
@@ -536,10 +563,24 @@ function sing_box_version_is_extended(value) {
     return index(as_string(value), "extended") >= 0 || index(as_string(value), "-lx") >= 0;
 }
 
+function module_exports() {
+    return {
+        write_file_atomic,
+        is_process_name_running
+    };
+}
+
+if (sourcepath(1) != null && sourcepath(1) != "")
+    return module_exports();
+
 let mode = ARGV[0] || "";
 
 if (mode == "stdin-lines-to-json-array")
     stdin_lines_to_json_array();
+else if (mode == "write-file-atomic")
+    exit(write_file_atomic(ARGV[1], ARGV[2]) ? 0 : 1);
+else if (mode == "is-process-name-running")
+    exit(is_process_name_running(ARGV[1], ARGV[2]) ? 0 : 1);
 else if (mode == "file-has-cr")
     file_has_cr_exit(ARGV[1]);
 else if (mode == "file-remove-cr")

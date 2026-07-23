@@ -170,7 +170,7 @@ function now_seconds() {
     return int(clock()[0]);
 }
 
-function choose_index(kind, state, current_index, timeout_seconds, recovery, strikes) {
+function choose_index(kind, state, current_index, timeout_seconds, recovery, strikes, failure_threshold, recovery_threshold) {
     let values = kind == "main" ? state.main_servers : state.bootstrap_servers;
     if (length(values) <= 1)
         return { index: 0, reason: "single", alive: true };
@@ -179,21 +179,38 @@ function choose_index(kind, state, current_index, timeout_seconds, recovery, str
         let ok = probe_port(kind, i, timeout_seconds);
         if (ok) {
             strikes[kind][i] = 0;
+            if (strikes.recovery_successes && strikes.recovery_successes[kind]) {
+                // Do not reset recovery successes on success, we count them!
+            }
         } else {
             strikes[kind][i] = (strikes[kind][i] || 0) + 1;
+            if (strikes.recovery_successes && strikes.recovery_successes[kind]) {
+                strikes.recovery_successes[kind][i] = 0;
+            }
         }
         return ok;
     };
 
     if (recovery && current_index > 0) {
-        for (let i = 0; i < current_index; i++)
-            if (is_probe_ok(i))
-                return { index: i, reason: "recovery", alive: true };
+        for (let i = 0; i < current_index; i++) {
+            if (is_probe_ok(i)) {
+                let succ = (strikes.recovery_successes[kind][i] || 0) + 1;
+                strikes.recovery_successes[kind][i] = succ;
+                if (succ >= recovery_threshold) {
+                    strikes.recovery_successes[kind][i] = 0;
+                    return { index: i, reason: "recovery", alive: true };
+                }
+            } else {
+                if (strikes.recovery_successes && strikes.recovery_successes[kind]) {
+                    strikes.recovery_successes[kind][i] = 0;
+                }
+            }
+        }
         return { index: current_index, reason: "unchanged", alive: true };
     }
 
     let current_ok = is_probe_ok(current_index);
-    if (current_ok || strikes[kind][current_index] < 3)
+    if (current_ok || (strikes[kind][current_index] || 0) < failure_threshold)
         return { index: current_index, reason: "alive", alive: true };
 
     for (let i = 0; i < length(values); i++) {
@@ -278,7 +295,7 @@ function worker() {
     let next_active = now_seconds();
     let next_recovery = now_seconds() + recovery_interval;
     let all_down = { main: false, bootstrap: false };
-    let strikes = { main: {}, bootstrap: {} };
+    let strikes = { main: {}, bootstrap: {}, recovery_successes: { main: {}, bootstrap: {} } };
 
     while (true) {
         let now = now_seconds();
@@ -286,14 +303,17 @@ function worker() {
         if (!runtime_dns.state_matches(runtime_dns.state_template(current_cfg), state))
             return 0;
 
+        let failure_threshold = int(common.option(current_cfg, "dns_failure_threshold", "3"));
+        let recovery_threshold = int(common.option(current_cfg, "dns_recovery_threshold", "3"));
+
         if (now >= next_active) {
-            let bootstrap = choose_index("bootstrap", state, int(state.bootstrap_index), timeout_seconds, false, strikes);
+            let bootstrap = choose_index("bootstrap", state, int(state.bootstrap_index), timeout_seconds, false, strikes, failure_threshold, recovery_threshold);
             if (!bootstrap.alive && !all_down.bootstrap)
                 log_message("all configured bootstrap DNS servers are unavailable", "warn");
             all_down.bootstrap = !bootstrap.alive;
 
             if (bootstrap.index != int(state.bootstrap_index)) {
-                let main = choose_index("main", state, int(state.main_index), timeout_seconds, false, strikes);
+                let main = choose_index("main", state, int(state.main_index), timeout_seconds, false, strikes, failure_threshold, recovery_threshold);
                 let selections = { bootstrap };
                 if (main.alive)
                     selections.main = main;
@@ -301,7 +321,7 @@ function worker() {
                 next_active = now_seconds() + (applied && !main.alive ? 1 : active_interval);
             }
             else {
-                let main = choose_index("main", state, int(state.main_index), timeout_seconds, false, strikes);
+                let main = choose_index("main", state, int(state.main_index), timeout_seconds, false, strikes, failure_threshold, recovery_threshold);
                 if (!main.alive && !all_down.main)
                     log_message("all configured main DNS servers are unavailable", "warn");
                 all_down.main = !main.alive;
@@ -311,8 +331,8 @@ function worker() {
         }
 
         if (now >= next_recovery) {
-            let bootstrap = choose_index("bootstrap", state, int(state.bootstrap_index), timeout_seconds, true, strikes);
-            let main = choose_index("main", state, int(state.main_index), timeout_seconds, true, strikes);
+            let bootstrap = choose_index("bootstrap", state, int(state.bootstrap_index), timeout_seconds, true, strikes, failure_threshold, recovery_threshold);
+            let main = choose_index("main", state, int(state.main_index), timeout_seconds, true, strikes, failure_threshold, recovery_threshold);
             let has_changes = bootstrap.index != int(state.bootstrap_index) || main.index != int(state.main_index);
             let applied = apply_selections(state, { bootstrap, main });
             let completed = now_seconds();

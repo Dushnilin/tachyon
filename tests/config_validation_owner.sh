@@ -39,7 +39,7 @@ grep -Fq 'text_list_values,' "$RULE_CONFIG" ||
   fail "config.rule must export the shared comment-aware text parser"
 grep -Fq 'rule_config.text_list_values(value, "comma-space")' "$VALIDATOR" ||
   fail "domain validation must use the shared comment-aware text parser"
-grep -Fq 'rule_config.text_list_values(option(section, "domain", ""), "comma-space")' "$GENERATOR" ||
+grep -Fq 'rule_config.text_list_values(option(section, "domain", ""), "comma-space")' "$TACHYON_LIB/singbox/generator_routes.uc" ||
   fail "sing-box domain generation must use the shared comment-aware text parser"
 grep -Fq 'return appendUniqueDomainTextValues(textValue, values);' "$SECTION_JS" ||
   fail "Domains field loading must preserve the original combined text"

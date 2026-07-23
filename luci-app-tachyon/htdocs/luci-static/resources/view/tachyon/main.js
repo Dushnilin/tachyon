@@ -5425,7 +5425,9 @@ var SocketManager = class _SocketManager {
     logger.info("[SOCKET]", "All connections and state have been reset.");
   }
   scheduleReconnect(url) {
-    if (this.reconnectTimers.has(url)) return;
+    if (this.reconnectTimers.has(url) || (this.listeners.get(url)?.size || 0) === 0) {
+      return;
+    }
     const attempts = this.reconnectAttempts.get(url) || 0;
     if (attempts >= 10) {
       logger.error(
@@ -5442,9 +5444,8 @@ var SocketManager = class _SocketManager {
     );
     const timer = setTimeout(() => {
       this.reconnectTimers.delete(url);
-      if (this.sockets.has(url)) {
+      if ((this.listeners.get(url)?.size || 0) > 0) {
         logger.info("[SOCKET]", `Attempting reconnect to ${url}`);
-        this.sockets.delete(url);
         this.connect(url);
       }
     }, delay);
@@ -5491,6 +5492,7 @@ var SocketManager = class _SocketManager {
       logger.warn("[SOCKET]", `Disconnected: ${url}`);
       this.triggerError(url, "Connection closed");
       if (this.sockets.get(url) === ws) {
+        this.sockets.delete(url);
         this.scheduleReconnect(url);
       }
     });
@@ -5506,18 +5508,21 @@ var SocketManager = class _SocketManager {
     if (onError) {
       this.errorListeners.get(url)?.add(onError);
     }
-    if (!this.sockets.has(url)) {
-      this.connect(url);
-    }
     if (!this.listeners.has(url)) {
       this.listeners.set(url, /* @__PURE__ */ new Set());
     }
     this.listeners.get(url)?.add(listener);
+    if (!this.sockets.has(url)) {
+      this.connect(url);
+    }
   }
   unsubscribe(url, listener, onError) {
     this.listeners.get(url)?.delete(listener);
     if (onError) {
       this.errorListeners.get(url)?.delete(onError);
+    }
+    if (this.listeners.get(url)?.size === 0) {
+      this.disconnect(url);
     }
   }
   // eslint-disable-next-line

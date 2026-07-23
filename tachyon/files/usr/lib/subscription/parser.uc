@@ -250,6 +250,11 @@ function json_decode_text(text) {
 }
 
 function read_file(path) {
+    let stat = fs.stat(path);
+    if (stat != null && stat.size != null && stat.size > 15728640) {
+        warn(sprintf("File %s exceeds maximum size limit (15MB)\n", path));
+        return null;
+    }
     return fs.readfile(path);
 }
 

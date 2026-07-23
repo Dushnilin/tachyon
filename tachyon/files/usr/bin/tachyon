@@ -198,6 +198,7 @@ function command_spec(command) {
         component_action_status: [ "components/updates.uc", "component-action-status", 1 ],
         component_updates_if_due: [ "components/updates.uc", "component-updates-if-due", 0 ],
         component_update_check_cache: [ "components/updates.uc", "component-update-check-cache", 0 ],
+        extract_ruleset: [ "diagnostics/runtime.uc", "extract-ruleset", 1 ],
         check_dns_available: [ "diagnostics/runtime.uc", "check-dns-available", 0 ],
         global_check: [ "diagnostics/runtime.uc", "global-check", 2 ],
         doctor: [ "diagnostics/runtime.uc", "doctor", 1 ],

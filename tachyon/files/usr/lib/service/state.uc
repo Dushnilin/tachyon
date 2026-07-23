@@ -952,6 +952,13 @@ function subscription_urls_signature(section) {
             user_agent: connections.subscription_user_agent(section, entry),
             auto_hwid: connections.subscription_auto_hwid(section, entry) ? "1" : "0",
             hwid: connections.subscription_hwid(section, entry),
+            custom_device_headers: connections.subscription_custom_device_headers(section, entry) ? "1" : "0",
+            device_os: connections.subscription_device_os(section, entry),
+            ver_os: connections.subscription_ver_os(section, entry),
+            device_model: connections.subscription_device_model(section, entry),
+            device_locale: connections.subscription_device_locale(section, entry),
+            app_version: connections.subscription_app_version(section, entry),
+            accept_language: connections.subscription_accept_language(section, entry),
             show_dashboard_metadata: connections.subscription_dashboard_metadata_enabled(section, entry) ? "1" : "0",
             prefix_nodes: connections.subscription_prefix_nodes(section, entry) ? "1" : "0",
             node_prefix: connections.subscription_node_prefix(section, entry),
@@ -1390,6 +1397,8 @@ function sing_box_signature_body(settings, sections, servers, mwan3_active) {
     body = signature_add_value(body, "settings.dns_check_interval", option(settings, "dns_check_interval", "10s"));
     body = signature_add_value(body, "settings.dns_recovery_check_interval", option(settings, "dns_recovery_check_interval", "60s"));
     body = signature_add_value(body, "settings.dns_check_timeout", option(settings, "dns_check_timeout", "2s"));
+    body = signature_add_value(body, "settings.dns_failure_threshold", option(settings, "dns_failure_threshold", "3"));
+    body = signature_add_value(body, "settings.dns_recovery_threshold", option(settings, "dns_recovery_threshold", "3"));
     let dns_detour_enabled = bool_option_value(settings, "dns_detour_enabled", false);
     body = signature_add_value(body, "settings.dns_detour_enabled", dns_detour_enabled);
     if (dns_detour_enabled == "1")
