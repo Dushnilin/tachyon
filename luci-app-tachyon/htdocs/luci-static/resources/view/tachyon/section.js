@@ -9448,8 +9448,118 @@ function createTracerSearchWidget(sectionRef) {
   return container;
 }
 
+function renderSectionRuleCountersNode(section_id) {
+  const normalize = (val) => {
+    if (!val) return [];
+    if (Array.isArray(val)) return val.filter(Boolean);
+    return `${val}`.split(/\s+/).map((s) => s.trim()).filter(Boolean);
+  };
+
+  const domains = normalize(uci.get(UCI_PACKAGE, section_id, "domains"));
+  const ips = normalize(uci.get(UCI_PACKAGE, section_id, "ip"));
+  const community = normalize(uci.get(UCI_PACKAGE, section_id, "community_lists"));
+  const ruleSets = normalize(uci.get(UCI_PACKAGE, section_id, "rule_set"));
+  const domainIpLists = normalize(uci.get(UCI_PACKAGE, section_id, "domain_ip_lists"));
+  const geosite = normalize(uci.get(UCI_PACKAGE, section_id, "geosite"));
+  const geoip = normalize(uci.get(UCI_PACKAGE, section_id, "geoip"));
+  const sourceIp = normalize(uci.get(UCI_PACKAGE, section_id, "source_ip_cidr"));
+  const ports = normalize(uci.get(UCI_PACKAGE, section_id, "ports"));
+
+  const items = [];
+
+  if (domains.length > 0) {
+    items.push({ count: domains.length, label: _("доменов"), icon: "🌐", bg: "rgba(41, 128, 185, 0.15)", color: "#2980b9" });
+  }
+  if (ips.length > 0) {
+    items.push({ count: ips.length, label: _("IP"), icon: "💻", bg: "rgba(142, 68, 173, 0.15)", color: "#8e44ad" });
+  }
+  if (community.length > 0) {
+    items.push({ count: community.length, label: _("списки"), icon: "📦", bg: "rgba(39, 174, 96, 0.15)", color: "#27ae60" });
+  }
+  if (ruleSets.length > 0) {
+    items.push({ count: ruleSets.length, label: _("наборы правил"), icon: "📑", bg: "rgba(211, 84, 0, 0.15)", color: "#d35400" });
+  }
+  if (domainIpLists.length > 0) {
+    items.push({ count: domainIpLists.length, label: _(".lst списки"), icon: "📄", bg: "rgba(22, 160, 133, 0.15)", color: "#16a085" });
+  }
+  if (geosite.length > 0 || geoip.length > 0) {
+    items.push({ count: geosite.length + geoip.length, label: _("Geo"), icon: "🗺️", bg: "rgba(243, 156, 18, 0.15)", color: "#f39c12" });
+  }
+  if (sourceIp.length > 0) {
+    items.push({ count: sourceIp.length, label: _("устройств"), icon: "📱", bg: "rgba(52, 73, 94, 0.15)", color: "#34495e" });
+  }
+  if (ports.length > 0) {
+    items.push({ count: ports.length, label: _("портов"), icon: "🔌", bg: "rgba(127, 140, 141, 0.15)", color: "#7f8c8d" });
+  }
+
+  const labelText = uci.get(UCI_PACKAGE, section_id, "label") || section_id;
+  const container = document.createElement("div");
+  container.className = "pdk-section-title-wrapper";
+  container.style.display = "flex";
+  container.style.alignItems = "center";
+  container.style.gap = "0.5rem";
+  container.style.flexWrap = "wrap";
+
+  const nameSpan = document.createElement("span");
+  nameSpan.style.fontWeight = "bold";
+  nameSpan.style.color = "var(--text-color-high, #333)";
+  nameSpan.textContent = labelText;
+  container.appendChild(nameSpan);
+
+  const badgesWrapper = document.createElement("span");
+  badgesWrapper.style.display = "inline-flex";
+  badgesWrapper.style.gap = "0.3rem";
+  badgesWrapper.style.flexWrap = "wrap";
+  badgesWrapper.style.alignItems = "center";
+
+  if (items.length === 0) {
+    const emptyBadge = document.createElement("span");
+    emptyBadge.style.fontSize = "75%";
+    emptyBadge.style.padding = "1px 6px";
+    emptyBadge.style.borderRadius = "8px";
+    emptyBadge.style.color = "var(--text-color-medium, #888)";
+    emptyBadge.style.background = "var(--background-color-low, rgba(0,0,0,0.05))";
+    emptyBadge.style.fontWeight = "normal";
+    emptyBadge.textContent = _("нет правил");
+    badgesWrapper.appendChild(emptyBadge);
+  } else {
+    items.forEach((item) => {
+      const badge = document.createElement("span");
+      badge.style.fontSize = "75%";
+      badge.style.padding = "2px 6px";
+      badge.style.borderRadius = "10px";
+      badge.style.fontWeight = "bold";
+      badge.style.background = item.bg;
+      badge.style.color = item.color;
+      badge.style.border = `1px solid ${item.color}40`;
+      badge.style.display = "inline-flex";
+      badge.style.alignItems = "center";
+      badge.style.gap = "3px";
+      badge.style.whiteSpace = "nowrap";
+
+      const iconSpan = document.createElement("span");
+      iconSpan.style.fontSize = "90%";
+      iconSpan.textContent = item.icon;
+
+      const textSpan = document.createElement("span");
+      textSpan.textContent = `${item.count} ${item.label}`;
+
+      badge.appendChild(iconSpan);
+      badge.appendChild(textSpan);
+      badgesWrapper.appendChild(badge);
+    });
+  }
+
+  container.appendChild(badgesWrapper);
+  return container;
+}
+
 function configureSectionSection(sectionRef, options = {}) {
   setActionProvidersAvailabilityLoader(options.loadActionProvidersAvailability);
+
+  sectionRef.sectiontitle = function (section_id) {
+    return renderSectionRuleCountersNode(section_id);
+  };
 
   sectionRef.load = function () {
     // The table renders only non-modal fields; the cloned Add/Edit modal loads
