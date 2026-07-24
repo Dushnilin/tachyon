@@ -628,23 +628,21 @@ function setup_ubus_listener() {
     if (!ubus || !uloop) return null;
     let conn = null;
     try { conn = ubus.connect(); } catch (e) {}
-    if (!conn) return null;
+    if (!conn || type(conn.listener) != "function") return null;
 
     try {
-        conn.listen({
-            "service.instance.stop": function(ev, msg) {
-                if (type(msg) == "object" && msg.name == "sing-box") {
-                    handle_singbox_stop_event("ubus service.instance.stop event");
-                }
-            },
-            "service.stop": function(ev, msg) {
-                if (type(msg) == "object" && msg.name == "sing-box") {
-                    handle_singbox_stop_event("ubus service.stop event");
-                }
-            },
-            "firewall.reload": function(ev, msg) {
-                check_firewall_rules();
+        conn.listener("service.instance.stop", function(ev, msg) {
+            if (type(msg) == "object" && msg.name == "sing-box") {
+                handle_singbox_stop_event("ubus service.instance.stop event");
             }
+        });
+        conn.listener("service.stop", function(ev, msg) {
+            if (type(msg) == "object" && msg.name == "sing-box") {
+                handle_singbox_stop_event("ubus service.stop event");
+            }
+        });
+        conn.listener("firewall.reload", function(ev, msg) {
+            check_firewall_rules();
         });
     } catch (e) {
         log_message("Failed to register ubus listeners: " + as_string(e), "warn");

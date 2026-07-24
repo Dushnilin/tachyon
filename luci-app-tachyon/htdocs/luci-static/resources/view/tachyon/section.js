@@ -7168,8 +7168,21 @@ function createSectionContent(section) {
     _("Rules"),
   );
   o.modalonly = false;
-  o.renderWidget = function (section_id) {
-    return renderSectionRuleCountersNode(section_id);
+  o.rawhtml = true;
+  o.textvalue = function (section_id) {
+    return E("button", {
+      type: "button",
+      class: "btn cbi-button cbi-button-neutral",
+      style: "padding: 2px 10px; font-size: 85%; display: inline-flex; align-items: center; gap: 5px;",
+      click: (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        showSectionRulesModal(section_id);
+      }
+    }, [
+      E("span", {}, "🔍"),
+      E("span", {}, _("Правила"))
+    ]);
   };
 
   o = section.taboption(
@@ -9459,95 +9472,75 @@ function createTracerSearchWidget(sectionRef) {
   return container;
 }
 
-function renderSectionRuleCountersNode(section_id) {
-  const normalize = (val) => {
-    if (!val) return [];
-    if (Array.isArray(val)) return val.filter(Boolean);
-    return `${val}`.split(/\s+/).map((s) => s.trim()).filter(Boolean);
+function showSectionRulesModal(section_id) {
+  const sectionLabel = uci.get(UCI_PACKAGE, section_id, "label") || section_id;
+  
+  const domains = getConfigListValues(section_id, "domain");
+  const ips = getConfigListValues(section_id, "ip_cidr");
+  const community = getConfigListValues(section_id, "community_lists");
+  const ruleSets = getConfigListValues(section_id, "rule_set");
+  const domainIpLists = getConfigListValues(section_id, "domain_ip_lists");
+  const geosite = getConfigListValues(section_id, "geosite");
+  const geoip = getConfigListValues(section_id, "geoip");
+  const sourceIp = getConfigListValues(section_id, "source_ip_cidr");
+  const ports = getConfigListValues(section_id, "ports");
+
+  const createCard = (title, icon, items, color, bg) => {
+    let contentNode;
+    if (!items || items.length === 0) {
+      contentNode = E("em", { style: "color: var(--text-color-medium, #888);" }, _("Не заданы"));
+    } else {
+      contentNode = E("div", { style: "display: flex; flex-wrap: wrap; gap: 6px; max-height: 180px; overflow-y: auto; padding-right: 4px;" },
+        items.map((item) => E("span", {
+          style: `font-size: 85%; padding: 3px 8px; border-radius: 6px; background: ${bg}; color: ${color}; font-weight: 500; border: 1px solid ${color}40; word-break: break-all;`
+        }, item))
+      );
+    }
+
+    return E("div", {
+      style: "background: var(--background-color-low, rgba(0,0,0,0.03)); border: 1px solid var(--border-color-low, rgba(255,255,255,0.08)); border-radius: 8px; padding: 10px 14px; margin-bottom: 12px;"
+    }, [
+      E("div", { style: "font-weight: bold; margin-bottom: 6px; display: flex; align-items: center; justify-content: space-between; color: var(--text-color-high, #333);" }, [
+        E("span", { style: "display: flex; align-items: center; gap: 6px;" }, [
+          E("span", {}, icon),
+          E("span", {}, title)
+        ]),
+        E("span", { style: "font-size: 80%; opacity: 0.7; font-weight: normal;" }, `${items ? items.length : 0}`)
+      ]),
+      contentNode
+    ]);
   };
 
-  const domains = normalize(uci.get(UCI_PACKAGE, section_id, "domains"));
-  const ips = normalize(uci.get(UCI_PACKAGE, section_id, "ip"));
-  const community = normalize(uci.get(UCI_PACKAGE, section_id, "community_lists"));
-  const ruleSets = normalize(uci.get(UCI_PACKAGE, section_id, "rule_set"));
-  const domainIpLists = normalize(uci.get(UCI_PACKAGE, section_id, "domain_ip_lists"));
-  const geosite = normalize(uci.get(UCI_PACKAGE, section_id, "geosite"));
-  const geoip = normalize(uci.get(UCI_PACKAGE, section_id, "geoip"));
-  const sourceIp = normalize(uci.get(UCI_PACKAGE, section_id, "source_ip_cidr"));
-  const ports = normalize(uci.get(UCI_PACKAGE, section_id, "ports"));
+  const modalBody = E("div", { style: "min-width: 320px; max-width: 650px; font-size: 90%;" }, [
+    E("div", { style: "margin-bottom: 14px; padding: 10px 14px; border-radius: 8px; background: var(--background-color-medium, rgba(0,0,0,0.05)); font-weight: 500; display: flex; justify-content: space-between; align-items: center; border-left: 4px solid #2980b9;" }, [
+      E("span", { style: "font-weight: bold;" }, _("Действие секции")),
+      E("span", { style: "font-weight: bold; color: var(--text-color-high, #2980b9);" }, getRuleActionDisplayValue(section_id))
+    ]),
 
-  const items = [];
+    createCard(_("Списки сообщества (Community Lists)"), "📦", community, "#27ae60", "rgba(39, 174, 96, 0.12)"),
+    createCard(_("Домены (Domains)"), "🌐", domains, "#2980b9", "rgba(41, 128, 185, 0.12)"),
+    createCard(_("IP-адреса и подсети (IP CIDR)"), "💻", ips, "#8e44ad", "rgba(142, 68, 173, 0.12)"),
+    createCard(_("Наборы правил (.srs / .json)"), "📑", ruleSets, "#d35400", "rgba(211, 84, 0, 0.12)"),
+    createCard(_(".lst списки"), "📄", domainIpLists, "#16a085", "rgba(22, 160, 133, 0.12)"),
+    (geosite.length || geoip.length) ? createCard(_("GeoSite / GeoIP"), "🗺️", [...geosite, ...geoip], "#f39c12", "rgba(243, 156, 18, 0.12)") : null,
+    sourceIp.length ? createCard(_("Устройства-источники"), "📱", sourceIp, "#34495e", "rgba(52, 73, 94, 0.12)") : null,
+    ports.length ? createCard(_("Порты"), "🔌", ports, "#7f8c8d", "rgba(127, 140, 141, 0.12)") : null,
+  ].filter(Boolean));
 
-  if (domains.length > 0) {
-    items.push({ count: domains.length, label: _("доменов"), icon: "🌐", bg: "rgba(41, 128, 185, 0.15)", color: "#2980b9" });
-  }
-  if (ips.length > 0) {
-    items.push({ count: ips.length, label: _("IP"), icon: "💻", bg: "rgba(142, 68, 173, 0.15)", color: "#8e44ad" });
-  }
-  if (community.length > 0) {
-    items.push({ count: community.length, label: _("списки"), icon: "📦", bg: "rgba(39, 174, 96, 0.15)", color: "#27ae60" });
-  }
-  if (ruleSets.length > 0) {
-    items.push({ count: ruleSets.length, label: _("наборы правил"), icon: "📑", bg: "rgba(211, 84, 0, 0.15)", color: "#d35400" });
-  }
-  if (domainIpLists.length > 0) {
-    items.push({ count: domainIpLists.length, label: _(".lst списки"), icon: "📄", bg: "rgba(22, 160, 133, 0.15)", color: "#16a085" });
-  }
-  if (geosite.length > 0 || geoip.length > 0) {
-    items.push({ count: geosite.length + geoip.length, label: _("Geo"), icon: "🗺️", bg: "rgba(243, 156, 18, 0.15)", color: "#f39c12" });
-  }
-  if (sourceIp.length > 0) {
-    items.push({ count: sourceIp.length, label: _("устройств"), icon: "📱", bg: "rgba(52, 73, 94, 0.15)", color: "#34495e" });
-  }
-  if (ports.length > 0) {
-    items.push({ count: ports.length, label: _("портов"), icon: "🔌", bg: "rgba(127, 140, 141, 0.15)", color: "#7f8c8d" });
-  }
-
-  const container = document.createElement("div");
-  container.style.display = "inline-flex";
-  container.style.gap = "0.3rem";
-  container.style.flexWrap = "wrap";
-  container.style.alignItems = "center";
-
-  if (items.length === 0) {
-    const emptyBadge = document.createElement("span");
-    emptyBadge.style.fontSize = "75%";
-    emptyBadge.style.padding = "2px 6px";
-    emptyBadge.style.borderRadius = "8px";
-    emptyBadge.style.color = "var(--text-color-medium, #888)";
-    emptyBadge.style.background = "var(--background-color-low, rgba(0,0,0,0.05))";
-    emptyBadge.style.fontWeight = "normal";
-    emptyBadge.textContent = _("нет правил");
-    container.appendChild(emptyBadge);
-  } else {
-    items.forEach((item) => {
-      const badge = document.createElement("span");
-      badge.style.fontSize = "75%";
-      badge.style.padding = "2px 6px";
-      badge.style.borderRadius = "10px";
-      badge.style.fontWeight = "bold";
-      badge.style.background = item.bg;
-      badge.style.color = item.color;
-      badge.style.border = `1px solid ${item.color}40`;
-      badge.style.display = "inline-flex";
-      badge.style.alignItems = "center";
-      badge.style.gap = "3px";
-      badge.style.whiteSpace = "nowrap";
-
-      const iconSpan = document.createElement("span");
-      iconSpan.style.fontSize = "90%";
-      iconSpan.textContent = item.icon;
-
-      const textSpan = document.createElement("span");
-      textSpan.textContent = `${item.count} ${item.label}`;
-
-      badge.appendChild(iconSpan);
-      badge.appendChild(textSpan);
-      container.appendChild(badge);
-    });
-  }
-
-  return container;
+  ui.showModal(
+    _("Содержимое правил секции") + `: ${sectionLabel}`,
+    [
+      modalBody,
+      E("div", { class: "button-row", style: "display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px;" }, [
+        E("button", {
+          class: "btn cbi-button cbi-button-neutral",
+          type: "button",
+          click: () => ui.hideModal()
+        }, _("Закрыть"))
+      ])
+    ],
+    "cbi-modal"
+  );
 }
 
 function configureSectionSection(sectionRef, options = {}) {

@@ -17,6 +17,7 @@ let command_status = common.command_status;
 let command_success_from_args = common.command_success_from_args;
 let command_from_args = common.command_from_args;
 let command_capture = common.command_capture;
+let command_output_from_args = common.command_output_from_args;
 
 // ─── Settings & Config ────────────────────────────────────────────────────────
 

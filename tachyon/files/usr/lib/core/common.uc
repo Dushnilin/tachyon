@@ -172,6 +172,10 @@ function command_output(command) {
     return res ? res.output : "";
 }
 
+function command_output_from_args(args) {
+    return command_output(command_from_args(args) + " 2>/dev/null");
+}
+
 return {
     as_string,
     read_json_file,
@@ -195,5 +199,6 @@ return {
     command_success,
     command_success_from_args,
     command_capture,
-    command_output
+    command_output,
+    command_output_from_args
 };
