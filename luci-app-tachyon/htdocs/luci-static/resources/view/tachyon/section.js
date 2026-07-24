@@ -7163,6 +7163,18 @@ function createSectionContent(section) {
 
   o = section.taboption(
     "settings",
+    form.DummyValue,
+    "_rules_summary",
+    _("Rules"),
+  );
+  o.modalonly = false;
+  o.rawhtml = true;
+  o.cfgvalue = function (section_id) {
+    return renderSectionRuleCountersMarkup(section_id);
+  };
+
+  o = section.taboption(
+    "settings",
     form.Value,
     "label",
     _("Section name"),
@@ -9448,7 +9460,7 @@ function createTracerSearchWidget(sectionRef) {
   return container;
 }
 
-function renderSectionRuleCountersNode(section_id) {
+function renderSectionRuleCountersMarkup(section_id) {
   const normalize = (val) => {
     if (!val) return [];
     if (Array.isArray(val)) return val.filter(Boolean);
@@ -9492,73 +9504,25 @@ function renderSectionRuleCountersNode(section_id) {
     items.push({ count: ports.length, label: _("портов"), icon: "🔌", bg: "rgba(127, 140, 141, 0.15)", color: "#7f8c8d" });
   }
 
-  const labelText = uci.get(UCI_PACKAGE, section_id, "label") || section_id;
-  const container = document.createElement("div");
-  container.className = "pdk-section-title-wrapper";
-  container.style.display = "flex";
-  container.style.alignItems = "center";
-  container.style.gap = "0.5rem";
-  container.style.flexWrap = "wrap";
-
-  const nameSpan = document.createElement("span");
-  nameSpan.style.fontWeight = "bold";
-  nameSpan.style.color = "var(--text-color-high, #333)";
-  nameSpan.textContent = labelText;
-  container.appendChild(nameSpan);
-
-  const badgesWrapper = document.createElement("span");
-  badgesWrapper.style.display = "inline-flex";
-  badgesWrapper.style.gap = "0.3rem";
-  badgesWrapper.style.flexWrap = "wrap";
-  badgesWrapper.style.alignItems = "center";
-
   if (items.length === 0) {
-    const emptyBadge = document.createElement("span");
-    emptyBadge.style.fontSize = "75%";
-    emptyBadge.style.padding = "1px 6px";
-    emptyBadge.style.borderRadius = "8px";
-    emptyBadge.style.color = "var(--text-color-medium, #888)";
-    emptyBadge.style.background = "var(--background-color-low, rgba(0,0,0,0.05))";
-    emptyBadge.style.fontWeight = "normal";
-    emptyBadge.textContent = _("нет правил");
-    badgesWrapper.appendChild(emptyBadge);
-  } else {
-    items.forEach((item) => {
-      const badge = document.createElement("span");
-      badge.style.fontSize = "75%";
-      badge.style.padding = "2px 6px";
-      badge.style.borderRadius = "10px";
-      badge.style.fontWeight = "bold";
-      badge.style.background = item.bg;
-      badge.style.color = item.color;
-      badge.style.border = `1px solid ${item.color}40`;
-      badge.style.display = "inline-flex";
-      badge.style.alignItems = "center";
-      badge.style.gap = "3px";
-      badge.style.whiteSpace = "nowrap";
-
-      const iconSpan = document.createElement("span");
-      iconSpan.style.fontSize = "90%";
-      iconSpan.textContent = item.icon;
-
-      const textSpan = document.createElement("span");
-      textSpan.textContent = `${item.count} ${item.label}`;
-
-      badge.appendChild(iconSpan);
-      badge.appendChild(textSpan);
-      badgesWrapper.appendChild(badge);
-    });
+    return `<span style="font-size: 75%; padding: 2px 6px; border-radius: 8px; color: var(--text-color-medium, #888); background: var(--background-color-low, rgba(0,0,0,0.05)); font-weight: normal;">${_("нет правил")}</span>`;
   }
 
-  container.appendChild(badgesWrapper);
-  return container;
+  return `<div style="display: inline-flex; gap: 0.3rem; flex-wrap: wrap; align-items: center;">` +
+    items.map((item) => `
+      <span style="font-size: 75%; padding: 2px 6px; border-radius: 10px; font-weight: bold; background: ${item.bg}; color: ${item.color}; border: 1px solid ${item.color}40; display: inline-flex; align-items: center; gap: 3px; white-space: nowrap;">
+        <span style="font-size: 90%;">${item.icon}</span>
+        <span>${item.count} ${item.label}</span>
+      </span>
+    `).join("") +
+  `</div>`;
 }
 
 function configureSectionSection(sectionRef, options = {}) {
   setActionProvidersAvailabilityLoader(options.loadActionProvidersAvailability);
 
   sectionRef.sectiontitle = function (section_id) {
-    return renderSectionRuleCountersNode(section_id);
+    return uci.get(UCI_PACKAGE, section_id, "label") || section_id;
   };
 
   sectionRef.load = function () {
