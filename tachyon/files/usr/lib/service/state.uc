@@ -60,6 +60,9 @@ function write_text_file(path, text) {
     return true;
 }
 
+// The empty catch is the point: every caller means "make sure this path is
+// gone", and an absent file already satisfies that. fs.unlink throws on ENOENT,
+// so the alternative is a stat() race with no better outcome.
 function unlink_file(path) {
     try {
         fs.unlink(as_string(path));
@@ -349,6 +352,9 @@ function release_runtime_dir_lock(lock_dir) {
     command_success_from_args([ "rmdir", lock_dir ]);
 }
 
+// The two unlinks below clean up the temporary file after a failed write or
+// rename. Both paths exit(1) immediately after, so the failure is already
+// reported; an unlink that throws means the temp file was never created.
 function write_reload_state(path, values) {
     if (!ensure_parent_dir(path))
         exit(1);
@@ -467,7 +473,11 @@ function sing_box_service_pid_runtime() {
         if (pid > 0 && pid_is_sing_box(pid))
             return pid;
     }
-    catch (e) {}
+    catch (e) {
+        // ubus is unavailable or answered with something that is not the
+        // service list; the pid files below are the fallback that exists for
+        // exactly this case.
+    }
 
     for (let path in [ "/var/run/sing-box.pid", "/var/run/sing-box/sing-box.pid" ]) {
         let pid = int(trim(fs.readfile(path) || "0"));

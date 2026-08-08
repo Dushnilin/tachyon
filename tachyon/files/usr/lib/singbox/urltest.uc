@@ -97,7 +97,14 @@ function regex_matching_tag_array(tags, names, regexes) {
         if (pat_str != "") {
             try {
                 push(compiled, regexp(pat_str));
-            } catch(e) {}
+            }
+            catch (e) {
+                // The pattern comes from the user's own config. Dropping it
+                // silently leaves a group that quietly matches fewer outbounds
+                // than the config says it should — a routing change with no
+                // visible cause. The remaining patterns still apply.
+                warn("urltest: ignoring invalid regex " + pat_str + ": " + as_string(e) + "\n");
+            }
         }
     }
     

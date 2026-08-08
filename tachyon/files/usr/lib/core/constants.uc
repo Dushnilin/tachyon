@@ -28,7 +28,11 @@ function detect_installed_version() {
             ver = pkgs.version("luci-app-tachyon");
             if (ver != null && ver != "") return ver;
         }
-    } catch (e) {}
+    }
+    catch (e) {
+        // core.packages is absent on a source checkout and opkg is absent in
+        // the test image; both fall through to the .control files below.
+    }
 
     for (let path in [
         "/usr/lib/opkg/info/tachyon.control",

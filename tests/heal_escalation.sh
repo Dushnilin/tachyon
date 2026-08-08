@@ -59,7 +59,7 @@ level_line="$(grep -n 'let level = (force_level != null' "$WATCHDOG_UC" | cut -d
   || fail "the rate limit is checked after the rung is chosen; light restarts would escape it"
 
 # The lock, likewise, is taken before the rung is chosen.
-lock_line="$(grep -n 'fs.writefile(PROXY_RESTART_LOCK, as_string(now))' "$WATCHDOG_UC" | cut -d: -f1)"
+lock_line="$(grep -n 'write_state_file(PROXY_RESTART_LOCK, as_string(now)' "$WATCHDOG_UC" | cut -d: -f1)"
 [ -n "$lock_line" ] || fail "the proxy restart lock is no longer written"
 [ "$lock_line" -lt "$level_line" ] \
   || fail "the lock is taken after the rung is chosen; light restarts would bypass it"

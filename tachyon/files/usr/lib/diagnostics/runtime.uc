@@ -109,6 +109,10 @@ function command_capture(command) {
     return { status, output: data == null ? "" : as_string(data) };
 }
 
+// The inner unlinks clean up the temp file after a failed write or rename;
+// both paths return false, so the failure is already reported. The outer catch
+// covers an unreadable /etc/tachyon or an unwritable backup directory, which
+// the caller treats as "no backup available".
 function uci_backup_save() {
     try {
         let data = fs.readfile(TACHYON_CONFIG);
@@ -127,6 +131,8 @@ function uci_backup_save() {
     } catch (e) { return false; }
 }
 
+// Same shape as uci_backup_save above: the inner unlinks clean up after a
+// failed write or rename, and both paths return false.
 function uci_backup_restore() {
     try {
         let data = fs.readfile(UCI_BACKUP_PATH);
@@ -437,6 +443,9 @@ function ensure_dir(path) {
     return command_success_from_args([ "mkdir", "-p", as_string(path) ]);
 }
 
+// The empty catch is the point: every caller means "make sure this path is
+// gone", and an absent file already satisfies that. fs.unlink throws on ENOENT,
+// so the alternative is a stat() race with no better outcome.
 function remove_file(path) {
     try {
         fs.unlink(as_string(path));
@@ -2282,6 +2291,8 @@ function run_doctor_checks() {
 
     // 4c. Resolv.conf symlink
     let resolv_link = "";
+    // Throws when /etc/resolv.conf is a regular file rather than a symlink,
+    // which is precisely the broken state the branch below repairs.
     try { resolv_link = fs.readlink("/etc/resolv.conf") || ""; } catch(e) {}
     if (resolv_link == "/tmp/resolv.conf" || resolv_link == "../tmp/resolv.conf") {
         doc_check("✅", "resolv.conf symlink", "OK (-> " + resolv_link + ")", "");
@@ -2292,7 +2303,11 @@ function run_doctor_checks() {
         try {
             fs.symlink("/tmp/resolv.conf", "/etc/resolv.conf");
             sym_ok = true;
-        } catch(e) {}
+        }
+        catch (e) {
+            // sym_ok stays false and the failure is reported to the user through
+            // doc_check() below, which is this module's output channel.
+        }
         if (sym_ok) {
             doc_check("❌", "resolv.conf symlink", "broken", "→ FIXED: восстановлена ссылка на /tmp/resolv.conf");
             fixed++;
@@ -2329,6 +2344,9 @@ function run_doctor_checks() {
         let ping_ok = (command_status("ping -c 1 -W 2 1.1.1.1 >/dev/null 2>&1") == 0);
         if (ping_ok) {
             fs.unlink("/etc/resolv.conf");
+            // If the symlink cannot be created the writefile below still lands on
+            // /tmp/resolv.conf and the dnsmasq restart still picks it up; the
+            // resolve check that follows decides whether any of it worked.
             try { fs.symlink("/tmp/resolv.conf", "/etc/resolv.conf"); } catch(e) {}
             fs.writefile("/tmp/resolv.conf", "nameserver 1.1.1.1\nnameserver 8.8.8.8\n");
             command_status("/etc/init.d/dnsmasq restart >/dev/null 2>&1");

@@ -99,6 +99,9 @@ function write_file(path, value) {
     return fs.writefile(as_string(path), as_string(value)) != null;
 }
 
+// The empty catch is the point: every caller means "make sure this path is
+// gone", and an absent file already satisfies that. fs.unlink throws on ENOENT,
+// so the alternative is a stat() race with no better outcome.
 function remove_file(path) {
     try {
         fs.unlink(as_string(path));
@@ -595,6 +598,8 @@ function network_interface_ipv4(name) {
             return as_string(object_or_empty(addresses[0]).address);
     }
     catch (e) {
+        // An interface that is down answers with an error rather than a status
+        // object. The empty string the caller gets back means the same thing.
     }
     return "";
 }
@@ -829,7 +834,11 @@ function init_config(populate_nft, caches_prepared, no_refresh) {
         let stale = trim(command_output_from_args([ "find", "/tmp", "-maxdepth", "1", "-name", "config.json.*.tmp.*", "-mmin", "+5", "-type", "f" ]));
         for (let path in split(stale, "\n"))
             if (trim(path) != "") remove_file(trim(path));
-    } catch(e) {}
+    }
+    catch (e) {
+        // Housekeeping for temp files left by earlier failed runs. Failing here
+        // leaves a few stale files in /tmp and must not stop the start.
+    }
 
     let mwan3_active = module_success([ LIB_DIR + "/config/validator.uc", "mwan3-is-active" ]);
     let output_interface = option(settings, "output_network_interface", "");

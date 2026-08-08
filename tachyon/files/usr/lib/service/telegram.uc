@@ -37,7 +37,15 @@ function cb_map_load() {
         try {
             let obj = json(data);
             if (type(obj) == "object") return obj;
-        } catch (e) {}
+        }
+        catch (e) {
+            // A truncated map is recoverable: the tokens in it are short-lived
+            // and the next store rewrites the file. Starting from empty costs
+            // the user a "кнопка устарела" on old keyboards, which is what the
+            // caller reports anyway when a token is missing.
+            command_success_from_args([ "logger", "-t", "tachyon-telegram",
+                "[warn] callback map is unparseable, starting from empty: " + as_string(e) ]);
+        }
     }
     return {};
 }
@@ -53,7 +61,22 @@ function cb_map_store(token, value) {
         map = pruned;
     }
     map[token] = value;
-    try { fs.writefile(CB_MAP_FILE, sprintf("%J", map)); } catch (e) {}
+    // The token has already been embedded in the keyboard by the time this runs,
+    // so a failed write hands the user a button that will answer "кнопка
+    // устарела" the moment they press it. Silently swallowing that made the
+    // keyboard look intermittently broken with nothing in the log.
+    let stored = false;
+    try {
+        stored = fs.writefile(CB_MAP_FILE, sprintf("%J", map)) != null;
+    }
+    catch (e) {
+        command_success_from_args([ "logger", "-t", "tachyon-telegram",
+            "[err] Failed to store callback map, buttons in this keyboard will not work: " + as_string(e) ]);
+        return;
+    }
+    if (!stored)
+        command_success_from_args([ "logger", "-t", "tachyon-telegram",
+            "[err] Failed to store callback map, buttons in this keyboard will not work" ]);
 }
 
 function cb_map_get(token) {
@@ -168,6 +191,8 @@ function get_tg_state(chat_id) {
     let f = tg_state_path(chat_id);
     if (!f) return null;
     let data = fs.readfile(f);
+    // A corrupt per-chat state file drops that conversation back to the main
+    // menu, which is the same thing a missing file does.
     if (data) { try { return json(data); } catch(e) {} }
     return null;
 }
@@ -175,6 +200,7 @@ function get_tg_state(chat_id) {
 function set_tg_state(chat_id, state_obj) {
     let f = tg_state_path(chat_id);
     if (!f) return;
+    // Absent file already satisfies the caller; fs.unlink throws on ENOENT.
     if (state_obj == null) { try { fs.unlink(f); } catch(e) {} }
     else fs.writefile(f, sprintf("%J", state_obj));
 }
@@ -1209,6 +1235,7 @@ function exec_support_bundle(token, chat_id) {
     } else {
         send_message(token, chat_id, "❌ <b>Ошибка генерации Bundle.</b>", "HTML");
     }
+    // Absent file already satisfies the caller; fs.unlink throws on ENOENT.
     try { fs.unlink("/etc/.tachyon/ip_route.txt"); fs.unlink("/etc/.tachyon/logread.txt"); } catch(e) {}
 }
 
@@ -1391,7 +1418,12 @@ function view_quick_test(token, chat_id, msg_id) {
     try {
         let dns_res = command_capture(command_from_args(["nslookup", "google.com", "127.0.0.1"]));
         dns_ok = dns_res && dns_res.status == 0;
-    } catch(e) {}
+    }
+    catch (e) {
+        // dns_ok stays false, which is what the report line below prints. A
+        // failing DNS check and a failing nslookup invocation mean the same
+        // thing to the reader.
+    }
     text += (dns_ok ? "✅" : "❌") + " DNS на роутере\n";
 
     if (sys && sys.pause_remaining > 0) {
@@ -1676,6 +1708,7 @@ function exec_export_config(token, chat_id, msg_id) {
     if (res && res.status == 0 && res.output) {
         fs.writefile(export_path, res.output);
         send_document(token, chat_id, export_path);
+        // Absent file already satisfies the caller; fs.unlink throws on ENOENT.
         try { fs.unlink(export_path); } catch(e) {}
         send_message(token, chat_id, "✅ Конфиг экспортирован.\n\n⚠️ Файл содержит чувствительные данные. Не публикуйте его.", "HTML", [[{ text: "⬅️ Меню", callback_data: "/menu" }]]);
     } else {
@@ -2465,7 +2498,11 @@ function send_daily_digest(token, admin_ids) {
             let tr = json(res.output);
             text += "🔻 Текущий RX: " + format_bytes(tr.down) + "/s\n";
             text += "🔺 Текущий TX: " + format_bytes(tr.up) + "/s\n";
-        } catch(e) {}
+        }
+        catch (e) {
+            // Traffic counters are decoration on a status message; a clash API
+            // that answers with something unparseable just omits two lines.
+        }
     }
     
     let admins = split(admin_ids, /,/);
@@ -2483,6 +2520,7 @@ function check_notified_updates(token, admin_ids) {
         let notified_file = "/tmp/tg_notified_updates.json";
         let notified = {};
         let ndata = fs.readfile(notified_file);
+        // A corrupt notified-file re-announces updates already announced once.
         if (ndata) { try { notified = json(ndata); } catch(e){} }
         
         let changed = false;
@@ -2510,7 +2548,12 @@ function check_notified_updates(token, admin_ids) {
             }
         }
         if (changed) fs.writefile(notified_file, sprintf("%J", notified));
-    } catch(e) {}
+    }
+    catch (e) {
+        // The update-check cache is written by another process and may be
+        // half-written when read. Skipping this round costs one notification
+        // cycle; the next worker pass reads it again.
+    }
 }
 
 function worker() {
@@ -2600,6 +2643,7 @@ function stop_runtime() {
             command_success_from_args([ "kill", "-9", pid ]);
         }
     }
+    // Absent file already satisfies the caller; fs.unlink throws on ENOENT.
     try { fs.unlink(PID_FILE); } catch(e) {}
     return 0;
 }

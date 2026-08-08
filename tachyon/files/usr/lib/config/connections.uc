@@ -95,6 +95,10 @@ function item_index_from_cursor(cursor, config_name) {
             });
         }
         catch (e) {
+            // An absent config or an unknown section type throws here. The
+            // index simply ends up without entries of that type, which is the
+            // same state as a config that declares none; uci reports the parse
+            // error itself to the system log.
         }
     }
 

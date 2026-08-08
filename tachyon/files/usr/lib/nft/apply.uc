@@ -79,6 +79,9 @@ function file_executable(path) {
     return (int(stat.mode) & 73) != 0;
 }
 
+// The empty catch is the point: every caller means "make sure this path is
+// gone", and an absent file already satisfies that. fs.unlink throws on ENOENT,
+// so the alternative is a stat() race with no better outcome.
 function unlink_file(path) {
     try {
         fs.unlink(as_string(path));

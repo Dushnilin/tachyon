@@ -60,7 +60,12 @@ function call_api(method, url, auth_header, body_file) {
                     if (parsed) {
                         return parsed;
                     }
-                } catch(e) {}
+                }
+                catch (e) {
+                    // Not JSON - the API answered with an error page or a rate-limit
+                    // notice. Kept in last_res and returned to the caller as the
+                    // failure message, which is more useful than a parse error.
+                }
                 last_res = res;
             }
         }
@@ -79,7 +84,12 @@ if (clash_data_str != "") {
             original_server = parsed.now || "";
             available_servers = parsed.all || [];
         }
-    } catch(e) {}
+    }
+    catch (e) {
+        // No clash API means no proxy rotation: original_server stays empty and
+        // restore_original_server() below becomes a no-op. Generating a WARP
+        // config without rotation is the normal path on a direct connection.
+    }
 }
 
 function restore_original_server() {

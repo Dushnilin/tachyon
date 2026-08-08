@@ -63,6 +63,10 @@ function csv_to_json_array(value) {
     write_compact_string_array(value == "" ? [] : split(value, ","));
 }
 
+// The two unlinks below clean up the temporary file after a failed write or
+// rename. Both failure paths already report to the caller through `false`, and
+// an unlink that throws means the temp file was never created — nothing left
+// to clean up.
 function write_json_file(path, value) {
     path = as_string(path);
     let stamp = clock();

@@ -183,6 +183,9 @@ function write_state_file(path, value) {
     return true;
 }
 
+// The empty catch is the point: every caller means "make sure this path is
+// gone", and an absent file already satisfies that. fs.unlink throws on ENOENT,
+// so the alternative is a stat() race with no better outcome.
 function remove_file(path) {
     try {
         fs.unlink(as_string(path));

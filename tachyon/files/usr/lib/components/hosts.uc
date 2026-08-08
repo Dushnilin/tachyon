@@ -63,7 +63,13 @@ function enabled_hosts_sections() {
             if (!bool_opt(section, "enabled", true)) return;
             push(result, section);
         });
-    } catch(e) {}
+    }
+    catch (e) {
+        // A UCI parse error leaves `result` holding whatever sections were
+        // pushed before the throw. Returning the partial list is the same
+        // behaviour as an empty config and keeps the caller on its no-hosts
+        // path; the parse error itself is reported by uci to the system log.
+    }
     return result;
 }
 

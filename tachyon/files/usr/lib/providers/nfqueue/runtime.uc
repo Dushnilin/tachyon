@@ -291,6 +291,7 @@ function live_pid_count(path) {
         if (runtime_pid_running(pid))
             count++;
         else {
+            // Absent file already satisfies the caller; fs.unlink throws on ENOENT.
             try { fs.unlink(pidfile); } catch (e) {}
         }
     }

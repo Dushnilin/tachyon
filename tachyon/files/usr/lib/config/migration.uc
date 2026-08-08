@@ -812,6 +812,9 @@ function migrate_outbound_json_list(ctx, section, legacy_connection_kind) {
                         taken[tag_name] = true;
                 }
                 catch (e) {
+                    // Collecting tags already in use so the new one does not
+                    // collide. An entry that is not valid JSON has no tag to
+                    // collide with, so skipping it is exactly right.
                 }
             }
 
@@ -1254,6 +1257,8 @@ function migrate_http_connection_urls(ctx) {
                     taken[tag_name] = true;
             }
             catch (e) {
+                // Same as above: an unparseable entry owns no tag, so it
+                // cannot collide with the one being generated.
             }
         }
 
@@ -1504,6 +1509,7 @@ function ensure_runtime_cache_format() {
 }
 
 function remove_legacy_server_country_cache() {
+    // Absent file already satisfies the caller; fs.unlink throws on ENOENT.
     try { fs.unlink(TACHYON_RUNTIME_STATE_DIR + "/server-country-cache.json"); } catch(e) {}
 }
 

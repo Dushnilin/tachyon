@@ -55,6 +55,9 @@ function settings() {
     return common.object_or_empty(uci_core.get_all(CONFIG_NAME, "settings"));
 }
 
+// The empty catch is the point: every caller means "make sure this path is
+// gone", and an absent file already satisfies that. fs.unlink throws on ENOENT,
+// so the alternative is a stat() race with no better outcome.
 function remove_file(path) {
     try {
         fs.unlink(as_string(path));
@@ -81,6 +84,48 @@ function log_message(message, level) {
     } else {
         command_success_from_args([ "logger", "-t", "tachyon", "[" + lvl + "] Watchdog: " + as_string(message) ]);
     }
+}
+
+// Files the watchdog writes to keep its own state: the restart lock, the OOM
+// scale, the keepalive stamp. A failed write here is not cosmetic — the lock
+// not landing means the next tick restarts the proxy again with the rate limit
+// none the wiser, and a missing keepalive makes init.d conclude the watchdog
+// died and restart it. These writes used to be wrapped in an empty catch, so
+// the failure was invisible in every case.
+//
+// The keepalive is written on every uloop tick, so an unconditional log line
+// would flood syslog on a full filesystem — the exact condition where the log
+// matters most. Each path therefore reports its first failure and then stays
+// quiet until it succeeds again, which also makes recovery visible.
+let write_failures = {};
+
+function write_state_file(path, value, description) {
+    path = as_string(path);
+    let ok = false;
+
+    try {
+        ok = fs.writefile(path, as_string(value)) != null;
+    }
+    catch (e) {
+        log_message("Failed to write " + description + " (" + path + "): " + as_string(e),
+            write_failures[path] ? "debug" : "err");
+        write_failures[path] = true;
+        return false;
+    }
+
+    if (!ok) {
+        log_message("Failed to write " + description + " (" + path + ")",
+            write_failures[path] ? "debug" : "err");
+        write_failures[path] = true;
+        return false;
+    }
+
+    if (write_failures[path]) {
+        log_message("Write to " + description + " (" + path + ") succeeded again", "warn");
+        delete write_failures[path];
+    }
+
+    return true;
 }
 
 function send_telegram_notification(message) {
@@ -295,6 +340,8 @@ function run_zero_rtt_prefetching() {
 
 let uloop = null;
 let ubus = null;
+// Optional modules: absent in the Docker test image and on a router without
+// libubus, where the watchdog degrades to the polling path below.
 try { uloop = require("uloop"); } catch (e) {}
 try { ubus = require("ubus"); } catch (e) {}
 
@@ -660,7 +707,7 @@ function safe_proxy_restart(reason, force_level) {
         log_message("Proxy restart lock stale (age " + as_string(lock_age) + "s), removing", "warn");
         remove_file(PROXY_RESTART_LOCK);
     }
-    try { fs.writefile(PROXY_RESTART_LOCK, as_string(now)); } catch(e) {}
+    write_state_file(PROXY_RESTART_LOCK, as_string(now), "proxy restart lock");
     proxy_restart_count++;
     // The proxy port can change across a restart, so the controller's cached
     // lookup is invalidated here rather than after the fact.
@@ -1032,6 +1079,7 @@ function write_dns_recovery_state(state) {
 }
 
 function remove_dns_recovery_state() {
+    // Absent file already satisfies the caller; fs.unlink throws on ENOENT.
     try { fs.unlink(DNS_RECOVERY_STATE_FILE); } catch(e) {}
 }
 
@@ -1141,6 +1189,8 @@ function export_metrics() {
     let data = { hours: [] };
     let existing = fs.readfile(metrics_path);
     if (existing) {
+        // A truncated metrics file is discarded and rebuilt from the empty shape
+        // above: these are rolling hourly buckets, not authoritative state.
         try { data = json(existing) || data; } catch(e) {}
     }
 
@@ -1252,7 +1302,12 @@ function notify_urltest_switch(ev) {
                     fs.writefile("/tmp/watchdog_urltest_" + safe_name, p.now);
                 }
             }
-        } catch(e) {}
+        }
+        catch (e) {
+            // The clash API is optional and answers with an error page while
+            // sing-box is restarting. Missing one proxy-switch notification is
+            // the whole cost; the next tick reads it again.
+        }
     }
 }
 
@@ -1272,6 +1327,7 @@ function smart_detect_process_pending() {
     let seen = {};
     let seen_data = fs.readfile(SMART_DETECT_SEEN_FILE);
     if (seen_data) {
+        // Corrupt seen-file means domains get re-detected once, not lost.
         try { seen = json(seen_data) || {}; } catch(e) {}
     }
 
@@ -1301,7 +1357,11 @@ function smart_detect_process_pending() {
                     }
                 }
             }
-        } catch(e) {}
+        }
+        catch (e) {
+            // Falls back to the default 4534 set above. The controller logs the
+            // unparseable config once per process, so this does not repeat it.
+        }
     }
 
     let detect_sections = [];
@@ -1476,7 +1536,7 @@ function recover_oom_scale(ev) {
     let new_scale = current_scale + 0.05;
     if (new_scale > 1.0) new_scale = 1.0;
     log_message("OOM recovery: restoring GOMEMLIMIT scale from " + sprintf("%.2f", current_scale) + " to " + sprintf("%.2f", new_scale), "info");
-    try { fs.writefile(scale_path, sprintf("%.2f", new_scale)); } catch(e) {}
+    write_state_file(scale_path, sprintf("%.2f", new_scale), "GOMEMLIMIT scale");
 }
 
 function setup_syslog_listener() {
@@ -1507,6 +1567,8 @@ function setup_syslog_listener() {
 function setup_ubus_listener() {
     if (!ubus || !uloop) return null;
     let conn = null;
+    // Null conn is handled on the next line: without ubus the watchdog falls
+    // back to polling, which is the same path taken when the module is absent.
     try { conn = ubus.connect(); } catch (e) {}
     if (!conn || type(conn.listener) != "function") return null;
 
@@ -1670,16 +1732,18 @@ function worker() {
     run_zero_rtt_prefetching();
 
     // Ensure /etc/tachyon exists for persistent smart detect
+    // Throws when it already exists, which is the expected case on every boot
+    // after the first.
     try { fs.mkdir("/etc/tachyon"); } catch(e) {}
 
     // H-14: Save config backup after successful start
     let current_cfg = fs.readfile("/etc/config/tachyon");
     if (current_cfg != null && current_cfg != "") {
-        try { fs.writefile("/etc/backup/tachyon_config", current_cfg); } catch(e) {}
+        write_state_file("/etc/backup/tachyon_config", current_cfg, "config backup");
     }
 
     // H-8: Write keepalive timestamp for init.d supervision
-    try { fs.writefile("/var/run/tachyon_watchdog.keepalive", as_string(time())); } catch(e) {}
+    write_state_file("/var/run/tachyon_watchdog.keepalive", as_string(time()), "keepalive stamp");
 
     if (uloop) {
         try {
@@ -1716,7 +1780,7 @@ function worker() {
         tick = function() {
             let now = time();
             try {
-                try { fs.writefile("/var/run/tachyon_watchdog.keepalive", as_string(time())); } catch(e) {}
+                write_state_file("/var/run/tachyon_watchdog.keepalive", as_string(time()), "keepalive stamp");
                 if (now - last_fast_check >= 15) {
                     last_fast_check = now;
                     perform_fast_checks();
@@ -1751,6 +1815,8 @@ function worker() {
     }
 
     if (log_pipe) log_pipe.close();
+    // Shutdown path: a connection already torn down by the peer throws here, and
+    // there is nothing left to salvage either way.
     if (ubus_conn) try { ubus_conn.close(); } catch (e) {}
     return 0;
 }
@@ -1792,11 +1858,18 @@ function print_ai_status_full() {
                     let starttime = int(fields[21]);
                     let clk_tck = 100;
                     let uptime_seconds = 0;
+                    // Leaves uptime at 0, which the caller reads as "age unknown" — /proc/uptime
+                    // is only unreadable if /proc is not mounted, and then nothing else works
+                    // either.
                     try { uptime_seconds = int(trim(fs.readfile("/proc/uptime") || "0")); } catch(e) {}
                     sb_uptime = uptime_seconds - int(starttime / clk_tck);
                 }
             }
-        } catch(e) {}
+        }
+        catch (e) {
+            // sb_uptime stays -1, which the report renders as "unknown". The
+            // process can exit between reading its pid and reading its stat.
+        }
     }
 
     let mem_mb = -1;

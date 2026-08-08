@@ -30,7 +30,11 @@ function get_clash_url(endpoint) {
                     host = ext;
                 }
             }
-        } catch(e) {}
+        }
+        catch (e) {
+            // Falls through to the default host below. The clash API is optional
+            // and every caller already treats an unreachable one as "no data".
+        }
     }
     return "http://" + host + "/" + endpoint;
 }
@@ -194,7 +198,11 @@ function get_clash_connections() {
     if (res && res.status == 0 && res.output != "") {
         try {
             return json(res.output);
-        } catch (e) {}
+        }
+        catch (e) {
+            // Falls through to null, which every caller already handles as "the
+            // clash API gave us nothing" - the same result as a failed curl.
+        }
     }
     return null;
 }

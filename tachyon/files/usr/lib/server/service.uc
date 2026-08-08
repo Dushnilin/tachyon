@@ -1011,9 +1011,15 @@ function cleanup_orphaned_server_certs() {
             if (substr(entry, 0, 1) == ".") continue;
             if (active_names[entry]) continue;
             let path = cert_dir + "/" + entry;
+            // Absent file already satisfies the caller; fs.unlink throws on ENOENT.
             try { fs.unlink(path); } catch(e) {}
         }
-    } catch(e) {}
+    }
+    catch (e) {
+        // Best-effort housekeeping: a missing cert directory or an unreadable
+        // UCI section leaves stale certs on disk, which costs a few kilobytes
+        // and nothing else. Never worth failing the caller over.
+    }
 }
 
 function prepare_all_server_defaults() {

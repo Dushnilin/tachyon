@@ -194,6 +194,36 @@ function is_reload_in_progress() {
     return fs.stat("/var/run/tachyon.reload.lock") != null || check_tachyon_cli_running();
 }
 
+// Reads a port out of the generated sing-box config. Both callers fall back to
+// a compiled-in default when the file cannot be parsed, and that fallback is
+// worth a log line: a watchdog probing 4534 while sing-box listens elsewhere
+// reports the proxy as down forever and heals it in a loop. The failure used to
+// be swallowed by an empty catch, so the symptom was a permanently unhealthy
+// proxy with nothing in the log to connect it to the config.
+//
+// Logged once per process — these are called on every tick, and a config that
+// fails to parse fails to parse every time.
+let sb_config_parse_reported = false;
+
+function parse_singbox_config() {
+    let data = fs.readfile("/etc/sing-box/config.json");
+    if (data == null)
+        return null;
+
+    try {
+        return json(data);
+    }
+    catch (e) {
+        if (!sb_config_parse_reported) {
+            sb_config_parse_reported = true;
+            command_success_from_args([ "logger", "-t", "tachyon",
+                "[err] Watchdog: /etc/sing-box/config.json is unparseable (" + as_string(e) +
+                "); falling back to default inbound ports, proxy checks may probe the wrong port" ]);
+        }
+        return null;
+    }
+}
+
 // Reads the http/mixed inbound port from the generated sing-box config.
 // Cached because the config only changes across a reload.
 let cached_proxy_port = null;
@@ -202,19 +232,14 @@ function proxy_port() {
         return as_string(cached_proxy_port);
 
     let port = "4534";
-    let sb_cfg_data = fs.readfile("/etc/sing-box/config.json");
-    if (sb_cfg_data) {
-        try {
-            let sb_cfg = json(sb_cfg_data);
-            if (sb_cfg.inbounds) {
-                for (let inb in sb_cfg.inbounds) {
-                    if (inb.type == "http" || inb.type == "mixed") {
-                        port = as_string(inb.listen_port || 4534);
-                        break;
-                    }
-                }
+    let sb_cfg = parse_singbox_config();
+    if (sb_cfg && sb_cfg.inbounds) {
+        for (let inb in sb_cfg.inbounds) {
+            if (inb.type == "http" || inb.type == "mixed") {
+                port = as_string(inb.listen_port || 4534);
+                break;
             }
-        } catch(e) {}
+        }
     }
     cached_proxy_port = port;
     return port;
@@ -222,23 +247,19 @@ function proxy_port() {
 
 function forget_proxy_port() {
     cached_proxy_port = null;
+    sb_config_parse_reported = false;
 }
 
 function tproxy_port() {
     let port = 4530;
-    let sb_cfg_data = fs.readfile("/etc/sing-box/config.json");
-    if (sb_cfg_data) {
-        try {
-            let sb_cfg = json(sb_cfg_data);
-            if (sb_cfg.inbounds) {
-                for (let inb in sb_cfg.inbounds) {
-                    if (inb.type == "tproxy") {
-                        port = int(inb.listen_port || port);
-                        break;
-                    }
-                }
+    let sb_cfg = parse_singbox_config();
+    if (sb_cfg && sb_cfg.inbounds) {
+        for (let inb in sb_cfg.inbounds) {
+            if (inb.type == "tproxy") {
+                port = int(inb.listen_port || port);
+                break;
             }
-        } catch(e) {}
+        }
     }
     return port;
 }
@@ -816,6 +837,7 @@ function controller(bus, opts) {
         if (scale_data == null) return;
         let current_scale = double(trim(as_string(scale_data)));
         if (current_scale >= 1.0) {
+            // Absent file already satisfies the caller; fs.unlink throws on ENOENT.
             try { fs.unlink(scale_path); } catch (e) {}
             return;
         }

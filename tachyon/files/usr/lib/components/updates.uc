@@ -226,6 +226,9 @@ function write_state_file(path, value) {
     return true;
 }
 
+// The empty catch is the point: every caller means "make sure this path is
+// gone", and an absent file already satisfies that. fs.unlink throws on ENOENT,
+// so the alternative is a stat() race with no better outcome.
 function remove_file(path) {
     try {
         fs.unlink(as_string(path));
@@ -1682,6 +1685,9 @@ function output_json_object(path) {
             return value;
     }
     catch (e) {
+        // A job state file written by a worker that died mid-write is not JSON
+        // as a whole. The line scan below recovers the last complete object in
+        // it, which is the point of the fallback.
     }
 
     let result = null;
@@ -1696,6 +1702,8 @@ function output_json_object(path) {
                 result = value;
         }
         catch (e) {
+            // A partial line is expected here - that is what made the whole-file
+            // parse above fail. Skip it and keep the last complete one.
         }
     }
 
@@ -2703,7 +2711,19 @@ function list_update() {
     log_message("Waiting for reload lock to apply nft rules", "debug");
     if (!acquire_runtime_lock(RELOAD_LOCK_DIR, true)) {
         log_message("Could not acquire reload lock for nft apply; saving pending marker for next attempt", "warn");
-        try { fs.writefile("/tmp/tachyon_list_update_pending_nft", as_string(now_seconds())); } catch(e) {}
+        // Without this marker the deferred apply is lost for good — nothing else
+        // records that the nft phase still owes work. An empty catch here meant
+        // the lists were updated on disk and never reached nftables, with the
+        // "saving pending marker" line above as the only (untrue) evidence.
+        let marker_written = false;
+        try {
+            marker_written = fs.writefile("/tmp/tachyon_list_update_pending_nft", as_string(now_seconds())) != null;
+        }
+        catch (e) {
+            log_message("Failed to save pending nft marker, this list update will not be re-applied: " + as_string(e), "err");
+        }
+        if (!marker_written)
+            log_message("Failed to save pending nft marker, this list update will not be re-applied", "err");
         list_update_pid_end();
         exit(1);
     }
