@@ -352,6 +352,29 @@ function check_tachyon_cli_running() {
     return running;
 }
 
+// ─── Recovery watch: registration ─────────────────────────────────────────────
+// A repair that goes through safe_proxy_restart() is spawned into the
+// background, so its return value says only that the restart was launched. The
+// only honest evidence that it worked is the system recovering afterwards —
+// which the controller already publishes as PROXY_UP / DNS_UP.
+//
+// A healer therefore registers what it expects to see. settle_recovery(), below
+// ai_heal_report(), turns the arrival of that fact into a `fixed` report and a
+// watch left open past its deadline into a `failed` one.
+let recovery_watches = {};
+
+// Two fast ticks plus margin: long enough for a restarted sing-box to answer,
+// short enough that a failure is reported while it is still actionable.
+const RECOVERY_DEADLINE = 45;
+
+function watch_recovery(key, recovery_event, incident) {
+    recovery_watches[key] = {
+        event: recovery_event,
+        incident: incident,
+        deadline: time() + RECOVERY_DEADLINE
+    };
+}
+
 // The 30s floor is the original restart debounce: procd emits several stop
 // events for one crash, and each would otherwise queue its own restart.
 function heal_singbox_stopped(ev) {
@@ -373,7 +396,17 @@ function heal_singbox_stopped(ev) {
     if (tcfg.notify_crash != "0") {
         send_telegram_notification("⚠️ *Watchdog:* sing-box остановлен. Перезапускаю службы Tachyon...");
     }
-    safe_proxy_restart("singbox_stopped");
+    // This healer sends its own notification above and deliberately did not file
+    // an incident, so it does not start one now. It does register the watch: a
+    // restart that never brings the proxy back is worth a `failed` report, and
+    // that report is the only thing here that is new.
+    if (safe_proxy_restart("singbox_stopped")) {
+        watch_recovery("proxy", EV.PROXY_UP, {
+            type: "singbox_stopped",
+            description: "sing-box остановлен (" + as_string(ev.payload.reason || "health check") + ")",
+            resolution: "Выполнен перезапуск служб Tachyon"
+        });
+    }
 }
 
 function get_sing_box_pid() {
@@ -397,26 +430,85 @@ function ai_export_status() {
     fs.writefile("/tmp/tachyon_ai_status.json", sprintf("%J\n", status_obj));
 }
 
-function ai_heal_report(event_type, description, resolution, status_code) {
+// `outcome` is what actually happened, not what was attempted:
+//
+//   fixed    the repair ran and the fault is gone
+//   pending  the repair ran; the system has not recovered yet
+//   failed   the repair ran and the fault outlived the deadline
+//   skipped  the repair did not run (rate limit, lock, guard)
+//   warn     an observation reported for the record, with no repair
+//
+// Repairs whose effect is asynchronous (anything going through
+// safe_proxy_restart) cannot know their outcome at call time, so they report
+// `pending` and let the recovery watch below settle it.
+function ai_heal_report(event_type, description, resolution, outcome) {
+    let status_code = as_string(outcome || "fixed");
+
     ai_incidents_count++;
     controller.note_incident();
     last_ai_incident = {
         type: event_type,
         description: description,
         resolution: resolution,
+        outcome: status_code,
         timestamp: time()
     };
 
-    let log_msg = sprintf("🤖 [AI Watchdog] %s. Action taken: %s", description, resolution);
-    log_message(log_msg, "warn");
+    let log_msg = sprintf("🤖 [AI Watchdog] %s. Action taken: %s [%s]",
+        description, resolution, status_code);
+    log_message(log_msg, status_code == "failed" ? "err" : "warn");
 
+    // A repair still in flight is not news: notifying on `pending` would send
+    // one message on the attempt and a second on the outcome. The settled
+    // report carries the whole story, so only that one is sent.
     let tcfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
-    if (tcfg.enabled == "1" && tcfg.bot_token && tcfg.admin_ids && tcfg.notify_crash != "0") {
-        let tg_msg = sprintf("🤖 *[ИИ-Автомеханик Tachyon]*\n⚠️ *Проблема:* %s\n🔧 *Авто-решение:* %s", description, resolution);
+    if (status_code != "pending" &&
+        tcfg.enabled == "1" && tcfg.bot_token && tcfg.admin_ids && tcfg.notify_crash != "0") {
+        let icon = status_code == "failed" ? "❌" : "🔧";
+        let verdict = status_code == "failed" ? "*Не помогло:*" :
+                      (status_code == "skipped" ? "*Пропущено:*" : "*Авто-решение:*");
+        let tg_msg = sprintf("🤖 *[ИИ-Автомеханик Tachyon]*\n⚠️ *Проблема:* %s\n%s %s %s",
+            description, icon, verdict, resolution);
         send_telegram_notification(tg_msg);
     }
 
     ai_export_status();
+}
+
+// ─── Recovery watch: settling ─────────────────────────────────────────────────
+// The registration half lives above heal_singbox_stopped, its first caller.
+// Settling has to live here instead, below ai_heal_report — ucode captures a
+// closure's upvalues at creation, so a function declared above ai_heal_report
+// could not call it.
+//
+// Settling reports the outcome the caller observed, reusing the description and
+// resolution the healer already wrote so the two reports read as one story.
+function settle_recovery(key, outcome) {
+    let watch = recovery_watches[key];
+    if (watch == null) return false;
+    delete recovery_watches[key];
+
+    let incident = watch.incident;
+    ai_heal_report(incident.type, incident.description, incident.resolution, outcome);
+    return true;
+}
+
+function settle_expired_recoveries() {
+    let now = time();
+    for (let key in keys(recovery_watches)) {
+        if (recovery_watches[key].deadline <= now)
+            settle_recovery(key, "failed");
+    }
+}
+
+// Recovery facts are already published by the probes; these subscribers are the
+// only thing that was missing.
+function note_proxy_recovered(ev) {
+    settle_recovery("proxy", "fixed");
+}
+
+function note_dns_recovered(ev) {
+    settle_recovery("dns", "fixed");
 }
 
 // Guard: skip if a tachyon reload is already in progress (prevents concurrent reload_firewall races)
@@ -504,13 +596,21 @@ function heal_dns_stall(ev) {
     controller.reset_dns_streak();
 
     log_message("Watchdog: DNS stalled after 3 attempts, soft-reloading proxy runtime", "warn");
-    safe_proxy_restart("dns_stalled");
-    ai_heal_report(
-        "dns",
-        "DNS resolution stalled on sing-box (port 53)",
-        "Soft-reloaded proxy runtime safely without breaking active TCP/RDP connections",
-        "fixed"
-    );
+
+    let incident = {
+        type: "dns",
+        description: "DNS resolution stalled on sing-box (port 53)",
+        resolution: "Soft-reloaded proxy runtime safely without breaking active TCP/RDP connections"
+    };
+
+    // The restart is asynchronous, so `true` means only that it was launched.
+    // The watch on DNS_UP decides whether it worked.
+    if (!safe_proxy_restart("dns_stalled")) {
+        ai_heal_report(incident.type, incident.description,
+            "Перезапуск не выполнен: лимит частоты или активная блокировка", "skipped");
+        return;
+    }
+    watch_recovery("dns", EV.DNS_UP, incident);
 }
 
 // Only a proxy that fails while the uplink itself works is worth restarting
@@ -521,14 +621,21 @@ function heal_proxy_connectivity(ev) {
     if (!ev.payload.direct_ok) return;
 
     let proxy_addr = "127.0.0.1:" + as_string(ev.payload.port);
-    ai_heal_report(
-        "proxy",
-        "Зависание или неполный отклик прокси-порту sing-box (" + proxy_addr + ")",
-        "Очищена база cache.db и выполнен перезапуск sing-box",
-        "fixed"
-    );
+    let incident = {
+        type: "proxy",
+        description: "Зависание или неполный отклик прокси-порту sing-box (" + proxy_addr + ")",
+        resolution: "Очищена база cache.db и выполнен перезапуск sing-box"
+    };
+
     remove_file("/tmp/sing-box/cache.db");
-    safe_proxy_restart("proxy_connectivity");
+    // Reporting used to happen here, before the restart, so a rate-limited
+    // attempt still announced a repair that never ran.
+    if (!safe_proxy_restart("proxy_connectivity")) {
+        ai_heal_report(incident.type, incident.description,
+            "Очищена база cache.db; перезапуск пропущен по лимиту частоты", "skipped");
+        return;
+    }
+    watch_recovery("proxy", EV.PROXY_UP, incident);
 }
 
 // ─── Subnet cache restore: /etc/tachyon/rulesets/ → /tmp/sing-box/rulesets/ ──
@@ -661,20 +768,28 @@ function heal_proxy_health(ev) {
     let fails = int(ev.payload.streak);
     if (fails < threshold) return;
 
-    ai_heal_report(
-        "proxy_health",
-        sprintf("Proxy health check failed %d times consecutively (port %s)", fails, as_string(ev.payload.port)),
-        "Restarting Tachyon to restore proxy connectivity",
-        "fixed"
-    );
+    let incident = {
+        type: "proxy_health",
+        description: sprintf("Proxy health check failed %d times consecutively (port %s)", fails, as_string(ev.payload.port)),
+        resolution: "Restarting Tachyon to restore proxy connectivity"
+    };
+
     // A restart on a config sing-box will refuse to load leaves the proxy down
-    // for good, so validation gates the restart, not the report.
+    // for good, so validation gates the restart. It now also gates the report:
+    // a refused restart is not a repair.
     if (ai_enabled("ai_config_validation_enabled", "1") && !validate_singbox_config()) {
         log_message("sing-box config validation failed before proxy restart", "err");
+        ai_heal_report(incident.type, incident.description,
+            "Перезапуск отменён: конфигурация sing-box не проходит валидацию", "skipped");
         return;
     }
-    safe_proxy_restart("proxy_health");
+    if (!safe_proxy_restart("proxy_health")) {
+        ai_heal_report(incident.type, incident.description,
+            "Перезапуск пропущен по лимиту частоты", "skipped");
+        return;
+    }
     controller.reset_proxy_consecutive();
+    watch_recovery("proxy", EV.PROXY_UP, incident);
 }
 
 // ─── DNS Continuous Check ─────────────────────────────────────────────────────
@@ -684,16 +799,19 @@ function heal_dns_continuous(ev) {
     if (!ai_enabled("ai_dns_continuous_enabled", "1")) return;
     if (int(ev.payload.consecutive) < 3) return;
 
+    // Synchronous repair: uci and the dnsmasq reload both return before this
+    // function does, so the outcome is known here and needs no recovery watch.
+    system("/sbin/uci set dhcp.@dnsmasq[0].noresolv='1' >/dev/null 2>&1");
+    system("/sbin/uci commit dhcp >/dev/null 2>&1");
+    let rc = system("/etc/init.d/dnsmasq reload >/dev/null 2>&1");
+    controller.reset_dns_consecutive();
+
     ai_heal_report(
         "dns_continuous",
         "DNS resolution failed 3 times consecutively",
         "Restoring dnsmasq config and reloading",
-        "fixed"
+        rc == 0 ? "fixed" : "failed"
     );
-    system("/sbin/uci set dhcp.@dnsmasq[0].noresolv='1' >/dev/null 2>&1");
-    system("/sbin/uci commit dhcp >/dev/null 2>&1");
-    system("/etc/init.d/dnsmasq reload >/dev/null 2>&1");
-    controller.reset_dns_consecutive();
 }
 
 // ─── AI Empty Sections Recovery ─────────────────────────────────────────────
@@ -909,14 +1027,15 @@ function safe_call(fn, name) {
 
 // ─── rpcd FD leak ─────────────────────────────────────────────────────────────
 function heal_rpcd(ev) {
+    // Synchronous restart, so its exit status is the outcome.
+    let rc = system("/etc/init.d/rpcd restart </dev/null >/dev/null 2>&1");
     ai_heal_report(
         "rpcd_fd_leak",
         sprintf("rpcd накопил %d открытых FD (порог %d/1024) — LuCI не может запускать команды",
             int(ev.payload.fd_count), int(ev.payload.threshold)),
         "Выполнен перезапуск rpcd для освобождения файловых дескрипторов",
-        "fixed"
+        rc == 0 ? "fixed" : "failed"
     );
-    system("/etc/init.d/rpcd restart </dev/null >/dev/null 2>&1");
 }
 
 // ─── Low memory ───────────────────────────────────────────────────────────────
@@ -1300,6 +1419,15 @@ function register_subscribers() {
     subscribe(EV.DNS_DOWN, heal_dns_continuous,
         { name: "heal_dns_continuous", priority: 51 });
 
+    // Recovery facts. These were published from the start but had no subscriber,
+    // which is why a repair could only ever report its own intent. No cooldown:
+    // settle_recovery() is a no-op unless a watch is actually open, and skipping
+    // the one emit that closes a watch would leave it to expire as `failed`.
+    subscribe(EV.PROXY_UP, note_proxy_recovered,
+        { name: "note_proxy_recovered", priority: 5 });
+    subscribe(EV.DNS_UP, note_dns_recovered,
+        { name: "note_dns_recovered", priority: 5 });
+
     subscribe(EV.SECTIONS_EMPTY, heal_empty_sections,
         { name: "heal_empty_sections", priority: 60, cooldown: 120 });
     subscribe(EV.SUBSCRIPTION_UNREACHABLE, heal_subscriptions,
@@ -1336,6 +1464,7 @@ function ai_full_health_audit() {
     controller.probe_normal();
     controller.probe_slow();
     safe_call(ai_heal_dns_loop, "ai_heal_dns_loop");
+    safe_call(settle_expired_recoveries, "settle_expired_recoveries");
     ai_export_status();
 }
 
@@ -1376,6 +1505,9 @@ function worker() {
 
     function perform_fast_checks() {
         controller.probe_fast();
+        // After the probes, so a recovery observed on this very tick closes its
+        // watch before the deadline is tested against it.
+        safe_call(settle_expired_recoveries, "settle_expired_recoveries");
     }
 
     function perform_normal_checks() {
