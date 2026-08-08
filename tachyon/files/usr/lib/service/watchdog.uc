@@ -949,6 +949,30 @@ function heal_dns_continuous(ev) {
     if (int(ev.payload.consecutive) < 3) return;
     if (suppressed_by_root_cause("heal_dns_continuous", PRIORITY_DNS)) return;
 
+    // This repair only ever sets noresolv to the one value it wants, so on the
+    // second and later failures it rewrote a setting that already held that
+    // value — and reloaded dnsmasq anyway, which drops its cache and re-reads
+    // every config file for nothing. DNS failing three times running is exactly
+    // when it is likely to fail a fourth, so the useless reload arrived
+    // precisely when the resolver could least afford it.
+    //
+    // Reading first makes agreement a no-op and leaves divergence repaired.
+    let current = trim(as_string(uci_core.get("dhcp.@dnsmasq[0].noresolv") || ""));
+    if (current == "1") {
+        // The counter still resets: the fact was handled, by establishing that
+        // dnsmasq already holds the configuration this healer wants. The DNS
+        // failure therefore has another cause, and re-running this repair on
+        // every tick would keep finding the same thing.
+        controller.reset_dns_consecutive();
+        ai_heal_report(
+            "dns_continuous",
+            "DNS resolution failed 3 times consecutively",
+            "dnsmasq уже настроен (noresolv=1), перезагрузка не требуется",
+            "skipped"
+        );
+        return;
+    }
+
     // Synchronous repair: uci and the dnsmasq reload both return before this
     // function does, so the outcome is known here and needs no recovery watch.
     system("/sbin/uci set dhcp.@dnsmasq[0].noresolv='1' >/dev/null 2>&1");
