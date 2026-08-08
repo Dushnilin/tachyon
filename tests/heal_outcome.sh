@@ -42,7 +42,7 @@ grep -q 'if (status_code != "pending" &&' "$WATCHDOG_UC" \
   || fail "a pending outcome would send a Telegram notification of its own"
 
 # --- the recovery watch exists and is settled from both sides ---
-grep -q 'function watch_recovery(key, recovery_event, incident)' "$WATCHDOG_UC" \
+grep -q 'function watch_recovery(key, recovery_event, incident, reason)' "$WATCHDOG_UC" \
   || fail "watch_recovery() is gone; asynchronous repairs cannot report an outcome"
 grep -q 'function settle_recovery(key, outcome)' "$WATCHDOG_UC" \
   || fail "settle_recovery() is gone"

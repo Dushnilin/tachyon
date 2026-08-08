@@ -56,6 +56,7 @@ const EV = {
     TPROXY_DOWN:            "tproxy.down",
     RPCD_FD_LEAK:           "rpcd.fd_leak",
     WAN_DOWN:               "wan.down",
+    WAN_UP:                 "wan.up",
     SUBNETS_EMPTY:          "subnets.empty",
     SUBSCRIPTION_UNREACHABLE: "subscription.unreachable",
     CONFIG_CORRUPT:         "config.corrupt",
@@ -698,6 +699,8 @@ function controller(bus, opts) {
 
         if (no_address || no_gateway)
             bus.emit(EV.WAN_DOWN, { iface: iface, no_address: no_address, no_gateway: no_gateway });
+        else
+            bus.emit(EV.WAN_UP, { iface: iface });
     }
 
     // ── Probe: community subnet nft sets ──────────────────────────────────────

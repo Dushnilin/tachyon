@@ -352,6 +352,65 @@ function check_tachyon_cli_running() {
     return running;
 }
 
+// ─── Root-cause suppression ───────────────────────────────────────────────────
+// A dead WAN takes the proxy, DNS and the health check down with it. Each of
+// those has its own subscriber, and each used to conclude independently that a
+// restart was in order — three repairs for one fault, none of which could work
+// until the uplink came back. safe_proxy_restart()'s rate limit throttled the
+// pile-up after the fact, but nothing expressed that they were consequences.
+//
+// The bus already ranks the healers by cause: WAN 10, sing-box 20, proxy 40/41,
+// DNS 50/51. That ordering is reused here rather than inventing a second
+// hierarchy — a healer stands down while a strictly lower number is being
+// repaired.
+//
+// The window is bounded on both ends: the recovery fact clears it, and a
+// deadline clears it regardless, so a root cause that never recovers cannot
+// suppress its consequences forever.
+const SUPPRESSION_DEADLINE = 90;
+
+// The causal ranks. Named because they are now read in two places — the
+// subscription priority and the suppression check — and a silent drift between
+// them would either suppress nothing or suppress the cause with its own effect.
+const PRIORITY_WAN     = 10;
+const PRIORITY_SINGBOX = 20;
+const PRIORITY_PROXY   = 40;
+const PRIORITY_DNS     = 50;
+
+// priority of the healing root cause → when the claim lapses.
+let active_root_causes = {};
+
+function claim_root_cause(priority) {
+    active_root_causes[as_string(priority)] = time() + SUPPRESSION_DEADLINE;
+}
+
+function release_root_cause(priority) {
+    delete active_root_causes[as_string(priority)];
+}
+
+// Returns the priority of an active cause outranking `priority`, or null.
+function suppressing_cause(priority) {
+    let now = time();
+    for (let key in keys(active_root_causes)) {
+        if (active_root_causes[key] <= now) {
+            delete active_root_causes[key];   // lapsed; never suppress on it again
+            continue;
+        }
+        if (int(key) < int(priority)) return int(key);
+    }
+    return null;
+}
+
+// A skip is logged, never silent: "the watchdog did nothing" and "the watchdog
+// deliberately stood down" look identical in a log that omits this.
+function suppressed_by_root_cause(healer, priority) {
+    let cause = suppressing_cause(priority);
+    if (cause == null) return false;
+    log_message(sprintf("%s: standing down, a higher-priority repair (%d) is in progress",
+        healer, cause), "info");
+    return true;
+}
+
 // ─── Escalation ladder ────────────────────────────────────────────────────────
 // Every diagnosis used to end in the same action: a full `/etc/init.d/tachyon
 // restart`, which tears down nftables, TPROXY and routing and drops every live
@@ -446,6 +505,9 @@ function heal_singbox_stopped(ev) {
     // escalate over. Starting the service is the whole repair, and tearing down
     // nftables and routing would not make a stopped process start any better.
     if (safe_proxy_restart("singbox_stopped", ESCALATION_LIGHT)) {
+        // sing-box coming back is what the proxy and DNS probes are measuring,
+        // so their failures during the restart are this repair's own doing.
+        claim_root_cause(PRIORITY_SINGBOX);
         watch_recovery("proxy", EV.PROXY_UP, {
             type: "singbox_stopped",
             description: "sing-box остановлен (" + as_string(ev.payload.reason || "health check") + ")",
@@ -553,6 +615,9 @@ function settle_expired_recoveries() {
 // Recovery facts are already published by the probes; these subscribers are the
 // only thing that was missing.
 function note_proxy_recovered(ev) {
+    // A working proxy means sing-box is back, so its claim is over regardless of
+    // whether a watch was open.
+    release_root_cause(PRIORITY_SINGBOX);
     settle_recovery("proxy", "fixed");
 }
 
@@ -660,6 +725,7 @@ function is_dns_working() {
 function heal_dns_stall(ev) {
     if (settings().recovery_bypass == "1") return;
     if (int(ev.payload.streak) < 3) return;
+    if (suppressed_by_root_cause("heal_dns_stall", PRIORITY_DNS)) return;
 
     controller.reset_dns_streak();
 
@@ -687,6 +753,7 @@ function heal_dns_stall(ev) {
 function heal_proxy_connectivity(ev) {
     if (settings().recovery_bypass == "1") return;
     if (!ev.payload.direct_ok) return;
+    if (suppressed_by_root_cause("heal_proxy_connectivity", PRIORITY_PROXY)) return;
 
     let proxy_addr = "127.0.0.1:" + as_string(ev.payload.port);
     let incident = {
@@ -777,7 +844,18 @@ function heal_wan_and_gateway(ev) {
     if (tcfg.notify_crash != "0") {
         send_telegram_notification("⚠️ *Watchdog:* WAN/Gateway проблема. Перезапуск wan...");
     }
+    // Claimed before the interface goes down, not after: ifdown itself is what
+    // makes the proxy and DNS probes fail, and those facts arrive while ifup is
+    // still running.
+    claim_root_cause(PRIORITY_WAN);
     bg_system("/sbin/ifdown wan >/dev/null 2>&1 && /sbin/ifup wan >/dev/null 2>&1 &");
+}
+
+// The uplink answering again is what ends the WAN repair. probe_wan publishes
+// this on every pass, so the claim is released at the first healthy tick rather
+// than waiting out SUPPRESSION_DEADLINE.
+function note_wan_recovered(ev) {
+    release_root_cause(PRIORITY_WAN);
 }
 
 function heal_subscriptions(ev) {
@@ -837,6 +915,7 @@ function heal_proxy_health(ev) {
     let threshold = int(ai_setting("ai_proxy_health_fail_threshold", "3"));
     let fails = int(ev.payload.streak);
     if (fails < threshold) return;
+    if (suppressed_by_root_cause("heal_proxy_health", PRIORITY_PROXY)) return;
 
     let incident = {
         type: "proxy_health",
@@ -868,6 +947,7 @@ function heal_proxy_health(ev) {
 function heal_dns_continuous(ev) {
     if (!ai_enabled("ai_dns_continuous_enabled", "1")) return;
     if (int(ev.payload.consecutive) < 3) return;
+    if (suppressed_by_root_cause("heal_dns_continuous", PRIORITY_DNS)) return;
 
     // Synchronous repair: uci and the dnsmasq reload both return before this
     // function does, so the outcome is known here and needs no recovery watch.
@@ -1452,10 +1532,10 @@ function register_subscribers() {
     subscribers_registered = true;
 
     subscribe(EV.WAN_DOWN, heal_wan_and_gateway,
-        { name: "heal_wan_and_gateway", priority: 10, cooldown: 300 });
+        { name: "heal_wan_and_gateway", priority: PRIORITY_WAN, cooldown: 300 });
 
     subscribe(EV.SINGBOX_STOPPED, heal_singbox_stopped,
-        { name: "heal_singbox_stopped", priority: 20 });
+        { name: "heal_singbox_stopped", priority: PRIORITY_SINGBOX });
 
     subscribe(EV.CONFIG_CORRUPT, heal_uci_config,
         { name: "heal_uci_config", priority: 25 });
@@ -1477,9 +1557,9 @@ function register_subscribers() {
     // pacing. Without it a single stall would restart sing-box eight times as
     // often — the aggressive-restart regression fixed in c8052ee6.
     subscribe(EV.PROXY_DOWN, heal_proxy_connectivity,
-        { name: "heal_proxy_connectivity", priority: 40, cooldown: 120 });
+        { name: "heal_proxy_connectivity", priority: PRIORITY_PROXY, cooldown: 120 });
     subscribe(EV.PROXY_DOWN, heal_proxy_health,
-        { name: "heal_proxy_health", priority: 41 });
+        { name: "heal_proxy_health", priority: PRIORITY_PROXY + 1 });
 
     // Same split for DNS: ai_heal_dns_continuous was fast, ai_heal_dns was part
     // of the normal-tier audit. The streak the stall healer thresholds on is
@@ -1487,9 +1567,9 @@ function register_subscribers() {
     // the cooldown here is a second bound on how often a restart can be issued,
     // so a streak that stays at 3 cannot restart the proxy every 15 seconds.
     subscribe(EV.DNS_DOWN, heal_dns_stall,
-        { name: "heal_dns_stall", priority: 50, cooldown: 120 });
+        { name: "heal_dns_stall", priority: PRIORITY_DNS, cooldown: 120 });
     subscribe(EV.DNS_DOWN, heal_dns_continuous,
-        { name: "heal_dns_continuous", priority: 51 });
+        { name: "heal_dns_continuous", priority: PRIORITY_DNS + 1 });
 
     // Recovery facts. These were published from the start but had no subscriber,
     // which is why a repair could only ever report its own intent. No cooldown:
@@ -1499,6 +1579,11 @@ function register_subscribers() {
         { name: "note_proxy_recovered", priority: 5 });
     subscribe(EV.DNS_UP, note_dns_recovered,
         { name: "note_dns_recovered", priority: 5 });
+    // The uplink coming back releases the WAN claim, so the proxy and DNS
+    // healers resume at the first healthy tick instead of waiting out the
+    // suppression deadline.
+    subscribe(EV.WAN_UP, note_wan_recovered,
+        { name: "note_wan_recovered", priority: 5 });
 
     subscribe(EV.SECTIONS_EMPTY, heal_empty_sections,
         { name: "heal_empty_sections", priority: 60, cooldown: 120 });
