@@ -2194,18 +2194,20 @@ function import_community_srs_file(service, settings) {
         return false;
 
     let ok = true;
-    if (download_to_file(url, tmpfile, service_proxy_address(settings, "lists")) && file_nonempty(tmpfile)) {
+    if (download_to_file(url, tmpfile, service_proxy_address(settings, "lists")) && file_nonempty(tmpfile) && helpers.file_is_usable(tmpfile, 100)) {
         ensure_dir(TMP_RULESET_FOLDER);
         copy_file(tmpfile, cached_file);
         ensure_dir("/etc/tachyon/rulesets");
         copy_file(tmpfile, persistent_file);
         log_message("Successfully cached preset ruleset " + service, "info");
     }
-    else if (file_exists_value(persistent_file)) {
+    else if (helpers.file_is_usable(persistent_file, 100)) {
         ensure_dir(TMP_RULESET_FOLDER);
         copy_file(persistent_file, cached_file);
     }
     else {
+        remove_file(persistent_file);
+        remove_file(cached_file);
         log_message("Failed to download preset ruleset " + service + "; skipping it until next update", "warn");
         ok = false;
     }
