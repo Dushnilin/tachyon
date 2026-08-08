@@ -278,10 +278,10 @@ function apply_selections(state, selections) {
             
             if (is_isp) {
                 let notice = "⚠️ Все основные " + item.kind + " DNS недоступны. Включен аварийный DNS провайдера (" + values[selected.index] + ")! Запросы теперь видит ваш провайдер.";
-                system(command_from_args([ "/usr/bin/tachyon", "telegram", "send", notice ]) + " </dev/null >/dev/null 2>&1 1000<&- &");
+                system(common.background_command(command_from_args([ "/usr/bin/tachyon", "telegram", "send", notice ])));
             } else if (selected.reason == "recovery" && selected.index < configured_len) {
                 let notice = "✅ " + item.kind + " DNS восстановлен. Возврат на безопасный сервер: " + values[selected.index];
-                system(command_from_args([ "/usr/bin/tachyon", "telegram", "send", notice ]) + " </dev/null >/dev/null 2>&1 1000<&- &");
+                system(common.background_command(command_from_args([ "/usr/bin/tachyon", "telegram", "send", notice ])));
             }
         }
     }
@@ -381,8 +381,9 @@ function start_runtime() {
     if (!ensure_dir(RUNTIME_STATE_DIR))
         return 1;
 
-    let command = command_from_args([ "ucode", "-L", LIB_DIR, DNS_FAILOVER_UC, "worker" ]) +
-        " >/dev/null 2>&1 1000>&- & echo $! >" + shell_quote(PID_FILE);
+    let command = common.background_command_with_pid(
+        command_from_args([ "ucode", "-L", LIB_DIR, DNS_FAILOVER_UC, "worker" ]),
+        ">/dev/null", ">" + shell_quote(PID_FILE));
     return command_status(command);
 }
 

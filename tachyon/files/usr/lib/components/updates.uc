@@ -1,6 +1,7 @@
 #!/usr/bin/env ucode
 
 let fs = require("fs");
+let common = require("core.common");
 let helpers = require("core.helpers");
 let uci_core = require("core.uci");
 let connections = require("config.connections");
@@ -1259,9 +1260,8 @@ function launch_subscription_worker(args) {
     for (let arg in args)
         push(command_args, arg);
 
-    let command = command_env(subscription_worker_env()) + " " +
-        command_from_args(command_args) +
-        " >/dev/null 2>&1 1000>&- & echo $!";
+    let command = common.background_command_with_pid(
+        command_env(subscription_worker_env()) + " " + command_from_args(command_args));
     return trim(command_output("sh -c " + shell_quote(command)));
 }
 
@@ -1761,9 +1761,8 @@ function launch_component_worker(args) {
     for (let arg in args)
         push(command_args, arg);
 
-    let command = command_env(component_worker_env()) + " " +
-        command_from_args(command_args) +
-        " >/dev/null 2>&1 1000>&- & echo $!";
+    let command = common.background_command_with_pid(
+        command_env(component_worker_env()) + " " + command_from_args(command_args));
     return trim(command_output("sh -c " + shell_quote(command)));
 }
 
@@ -2345,7 +2344,7 @@ function import_builtin_subnets_from_rule(section, settings) {
             write_file(cached_file, join("\n", combined_lines) + "\n");
             ensure_dir("/etc/tachyon/rulesets");
             write_file(persistent_file, join("\n", combined_lines) + "\n");
-            system("/etc/init.d/tachyon reload </dev/null >/dev/null 2>&1 &");
+            system(common.background_command("/etc/init.d/tachyon reload"));
         }
     }
 

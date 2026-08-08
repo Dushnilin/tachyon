@@ -489,7 +489,7 @@ function restore_selector_state(snapshot) {
 }
 
 function module_background(module_path, args) {
-    return command_status(module_command(module_path, args) + " >/dev/null 2>&1 1000>&- &") == 0;
+    return command_status(common.background_command(module_command(module_path, args))) == 0;
 }
 
 function config_get(path, fallback) {

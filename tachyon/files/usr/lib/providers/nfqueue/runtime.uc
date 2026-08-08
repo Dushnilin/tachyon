@@ -1,6 +1,7 @@
 #!/usr/bin/env ucode
 
 let fs = require("fs");
+let common = require("core.common");
 let constants = require("core.constants");
 let uci_core = require("core.uci");
 let runtime_constants = require("singbox.constants");
@@ -445,7 +446,7 @@ function start_rule(cfg, section, index_value) {
     let logfile = cfg.log_dir + "/" + name + ".log";
 
     log_message("Starting " + cfg.binary_name + " for rule '" + name + "' on queue " + queue + " with mark " + mark, "info");
-    let command = command_from_args([
+    let command = common.background_command_with_pid(command_from_args([
         "ucode",
         "-L", LIB_DIR,
         cfg.runtime_path,
@@ -454,7 +455,7 @@ function start_rule(cfg, section, index_value) {
         "" + queue,
         raw_opt,
         child_pidfile
-    ]) + " >>" + shell_quote(logfile) + " 2>&1 1000>&- & echo $!";
+    ]), ">>" + shell_quote(logfile));
     let pid = trim(command_output("sh -c " + shell_quote(command)));
     if (pid == "" || fs.writefile(pidfile, pid + "\n") == null) {
         log_message(cfg.binary_name + " failed to start for rule '" + name + "'. Check " + logfile + ".", "fatal");

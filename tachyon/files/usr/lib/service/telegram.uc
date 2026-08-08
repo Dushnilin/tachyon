@@ -1740,7 +1740,7 @@ function handle_toggle_mac(token, chat_id, mac_raw) {
     }
     c.commit("firewall");
     // Reload in the background so the poll loop is not blocked by fw4
-    system("/etc/init.d/firewall reload </dev/null >/dev/null 2>&1 &");
+    system(common.background_command("/etc/init.d/firewall reload"));
 
     send_message(token, chat_id,
         (blocked_now ? "🚫 Устройство <code>" : "🔓 Устройство <code>") + mac +
@@ -1880,7 +1880,7 @@ function handle_qos_toggle(token, chat_id, msg_id) {
     let new_val = (cfg.qos_priority_engine == "0") ? "1" : "0";
     c.set(CONFIG_NAME, "settings", "qos_priority_engine", new_val);
     c.commit(CONFIG_NAME);
-    system("/usr/bin/tachyon reload_firewall </dev/null >/dev/null 2>&1 &");
+    system(common.background_command("/usr/bin/tachyon reload_firewall"));
     view_qos(token, chat_id, msg_id);
 }
 
@@ -2609,8 +2609,9 @@ function start_runtime() {
     stop_runtime();
     if (cfg.enabled != "1" || !cfg.bot_token) return 0;
     
-    let command = command_from_args([ "ucode", "-L", LIB_DIR, LIB_DIR + "/service/telegram.uc", "worker" ]) +
-        " </dev/null >/var/log/tachyon_telegram.log 2>&1 1000<&- & echo $! >" + shell_quote(PID_FILE);
+    let command = common.background_command_with_pid(
+        command_from_args([ "ucode", "-L", LIB_DIR, LIB_DIR + "/service/telegram.uc", "worker" ]),
+        ">/var/log/tachyon_telegram.log", ">" + shell_quote(PID_FILE));
     return command_status(command);
 }
 

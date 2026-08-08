@@ -1907,7 +1907,7 @@ function nft_populate_runtime_sets_from_uci(populate_enabled, deferred_section_n
 
     if (!nft_table_present(table)) {
         log_warn("nft_populate_runtime_sets_from_uci: Table " + table + " does not exist. Rebuilding firewall rules dynamically.");
-        system("/usr/bin/tachyon reload_firewall </dev/null >/dev/null 2>&1 &");
+        system(common.background_command("/usr/bin/tachyon reload_firewall"));
     }
 
     return nft_populate_runtime_sets_from_sections(uci_sections("section"), populate_enabled, deferred_section_names, table, common_set, port_set, ip_port_set, interface_set, localv4_set, mark, common6_set, ip_port6_set, localv6_set);

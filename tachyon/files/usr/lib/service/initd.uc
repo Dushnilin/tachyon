@@ -47,6 +47,18 @@ function command_from_args(args) {
     return join(" ", parts);
 }
 
+// Local copy of core/common.uc's background_command(). This module runs on the
+// early-boot path and deliberately carries its own helpers rather than pulling
+// in core.common; see the rationale there for why the descriptors have to be
+// closed by hand.
+function background_command(command) {
+    return "{ if ( eval \"exec 10<&-\" ) 2>/dev/null; then __tfd=999; else __tfd=9; fi; " +
+        "for f in /proc/self/fd/*; do i=${f##*/}; case $i in 0|1|2) continue;; esac; " +
+        "[ \"$i\" -le $__tfd ] 2>/dev/null || continue; " +
+        "eval \"exec $i<&-\" 2>/dev/null || true; done; " +
+        as_string(command) + "; } </dev/null >/dev/null 2>&1 &";
+}
+
 function normalize_status(status) {
     status = int(status);
     if (status == -1)
@@ -305,7 +317,7 @@ function run_pending_reload_if_requested(path, init_script) {
         return;
 
     command_success_from_args([ "logger", "-t", SERVICE_NAME, "[info] Applying pending Tachyon reload" ]);
-    system(shell_quote(init_script) + " reload pending >/dev/null 2>&1 1000>&- &");
+    system(background_command(shell_quote(init_script) + " reload pending"));
 }
 
 function uci_settings() {

@@ -85,28 +85,40 @@ require_pattern 'pending_reload_log_context(reason)' \
   "startup queued reload must be visible in logs"
 require_pattern 'return "current reload";' \
   "reload-time queued reload must be distinguishable in logs"
-require_file_pattern "$LIFECYCLE_UC" '>/dev/null 2>&1 1000>&- &' \
-  "service/lifecycle.uc background modules must close inherited procd lock fd"
-require_file_pattern "$INITD_UC" 'reload pending >/dev/null 2>&1 1000>&- &' \
-  "service/initd.uc pending reload worker must close inherited procd lock fd"
-require_file_pattern "$STATE_UC" 'reload pending >/dev/null 2>&1 1000>&- &' \
-  "service/state.uc pending reload worker must close inherited procd lock fd"
+# Background spawns must route through the shared helpers, which close the
+# descriptors the child would otherwise inherit — the procd lock among them.
+#
+# These assertions used to require a literal `1000>&-` in each of these files,
+# which is why that string spread to 22 sites in 13 modules. It closed nothing:
+# no descriptor 1000 is ever opened, and every real one falls in 6..89. The test
+# pinned the appearance of the fix and would have gone on passing forever with
+# the leak intact. What matters is that each site delegates to a helper that
+# closes what is actually open; tests/background_spawn_fds.sh proves the helper
+# does that at runtime.
+require_file_pattern "$LIFECYCLE_UC" 'common.background_command(module_command(module_path, args))' \
+  "service/lifecycle.uc background modules must close inherited descriptors via the shared helper"
+require_file_pattern "$INITD_UC" 'background_command(shell_quote(init_script) + " reload pending")' \
+  "service/initd.uc pending reload worker must close inherited descriptors"
+require_file_pattern "$STATE_UC" 'background_command(shell_quote(init_script) + " reload pending")' \
+  "service/state.uc pending reload worker must close inherited descriptors"
+for background_owner in "$UI_UC" "$UPDATES_UC" "$SUBSCRIPTION_CACHE_UC" \
+    "$NFQUEUE_RUNTIME_UC" "$BYEDPI_RUNTIME_UC" "$PRIORITY_UC"; do
+  require_file_pattern "$background_owner" 'common.background_command_with_pid(' \
+    "$(basename "$background_owner") workers must spawn through background_command_with_pid"
+done
+
+# initd.uc and state.uc sit on the early-boot path and carry their own copies of
+# the helper rather than pulling in core.common, so their prologue is checked
+# separately. Both copies and the shared one must ask the shell what it can close
+# before closing anything — see core/common.uc for why a fixed range is fatal.
+for prologue_owner in "$ROOT_DIR/tachyon/files/usr/lib/core/common.uc" "$INITD_UC" "$STATE_UC"; do
+  require_file_pattern "$prologue_owner" 'eval \"exec 10<&-\"' \
+    "$(basename "$prologue_owner") descriptor prologue must probe the shell before closing high descriptors"
+done
 require_file_pattern "$TACHYON_INIT" 'TACHYON_LAST_START_STATUS="$?"' \
   "init.d start_service must preserve backend start status for rc.common"
 require_file_pattern "$TACHYON_INIT" 'service_started()' \
   "init.d must return preserved start status through rc.common service_started hook"
-require_file_pattern "$UI_UC" '>/dev/null 2>&1 1000>&- & echo $!' \
-  "service/ui.uc service action workers must close inherited procd lock fd"
-require_file_pattern "$UPDATES_UC" '>/dev/null 2>&1 1000>&- & echo $!' \
-  "components/updates.uc async workers must close inherited procd lock fd"
-require_file_pattern "$SUBSCRIPTION_CACHE_UC" '>/dev/null 2>&1 1000>&- & echo $!' \
-  "subscription/cache.uc retry worker must close inherited procd lock fd"
-require_file_pattern "$NFQUEUE_RUNTIME_UC" '>>" + shell_quote(logfile) + " 2>&1 1000>&- & echo $!' \
-  "nfqueue provider supervisors must close inherited procd lock fd"
-require_file_pattern "$BYEDPI_RUNTIME_UC" '>>" + shell_quote(logfile) + " 2>&1 1000>&- & echo $!' \
-  "byedpi supervisor must close inherited procd lock fd"
-require_file_pattern "$PRIORITY_UC" '>/dev/null 2>&1 1000>&- & echo $!' \
-  "priority worker must close inherited procd lock fd"
 awk '
   /function cleanup_failed_runtime\(\)/ { in_cleanup = 1 }
   in_cleanup && /stop_main\(\);/ { saw_stop = 1 }

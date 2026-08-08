@@ -1,6 +1,7 @@
 #!/usr/bin/env ucode
 
 let fs = require("fs");
+let common = require("core.common");
 let uci_core = require("core.uci");
 
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
@@ -1253,9 +1254,8 @@ function launch_worker(args) {
         ZAPRET_PROVIDER_NFQWS_BIN,
         ZAPRET2_PROVIDER_NFQWS2_BIN,
         BYEDPI_BIN
-    }) + " " +
-        command_from_args(command_args) +
-        " >/dev/null 2>&1 1000>&- & echo $!";
+    }) + " " + command_from_args(command_args);
+    command = common.background_command_with_pid(command);
     return trim(command_output("sh -c " + shell_quote(command)));
 }
 

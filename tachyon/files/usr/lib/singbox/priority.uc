@@ -464,8 +464,9 @@ function start_runtime() {
     if (!ensure_dir(RUNTIME_STATE_DIR))
         return 1;
 
-    let command = command_from_args([ "ucode", "-L", LIB_DIR, PRIORITY_UC, "worker" ]) +
-        " >/dev/null 2>&1 1000>&- & echo $! >" + shell_quote(PRIORITY_PID_FILE);
+    let command = common.background_command_with_pid(
+        command_from_args([ "ucode", "-L", LIB_DIR, PRIORITY_UC, "worker" ]),
+        ">/dev/null", ">" + shell_quote(PRIORITY_PID_FILE));
     return command_status(command);
 }
 

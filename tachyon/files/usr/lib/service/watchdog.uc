@@ -24,8 +24,6 @@ let proxy_restart_window_start = time();
 const PROXY_RESTART_LOCK = "/var/run/tachyon_proxy_restart.lock";
 let telegram_msg_count = 0;
 let telegram_msg_window = time();
-// FD-cascade prevention: track logread pipe FD to close it in background spawns
-let logread_pipe_fd = -1;
 
 let command_from_args = common.command_from_args;
 let command_status = common.command_status;
@@ -42,15 +40,15 @@ function command_capture(command) {
     return { status, output: data == null ? "" : as_string(data) };
 }
 
-// Run a command in background, explicitly closing the logread pipe FD to
-// prevent FD-cascade: each restart/reload inherits read-end of logread pipe,
-// keeping orphaned logread -f processes alive across watchdog generations.
+// Background spawn for the watchdog. This used to close only the logread pipe,
+// by number, because that was the one descriptor known to leak: each restart
+// inherited its read end and kept orphaned `logread -f` processes alive across
+// watchdog generations. The pipe was never special, though — it was just the
+// leak that got noticed. The shared prologue closes every inherited descriptor,
+// so the logread FD needs no separate handling and this is now a thin alias
+// kept for the call sites.
 function bg_system(cmd) {
-    if (logread_pipe_fd >= 0) {
-        system(sprintf("%d<&- ", logread_pipe_fd) + cmd);
-    } else {
-        system(cmd);
-    }
+    system(common.background_command(cmd));
 }
 
 function settings() {
@@ -95,7 +93,7 @@ function send_telegram_notification(message) {
     telegram_msg_count++;
     let tcfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
     if (tcfg.enabled == "1" && tcfg.bot_token && tcfg.admin_ids) {
-        system("/usr/bin/tachyon telegram send " + shell_quote(message) + " </dev/null >/dev/null 2>&1 1000<&- &");
+        system(common.background_command("/usr/bin/tachyon telegram send " + shell_quote(message)));
     }
 }
 
@@ -234,8 +232,9 @@ function start_runtime() {
         return 0;
     }
 
-    let command = command_from_args([ "ucode", "-L", LIB_DIR, WATCHDOG_UC, "worker" ]) +
-        " </dev/null >/dev/null 2>&1 1000<&- & echo $! >" + shell_quote(PID_FILE);
+    let command = common.background_command_with_pid(
+        command_from_args([ "ucode", "-L", LIB_DIR, WATCHDOG_UC, "worker" ]),
+        ">/dev/null", ">" + shell_quote(PID_FILE));
     return command_status(command);
 }
 
@@ -283,8 +282,12 @@ function run_zero_rtt_prefetching() {
     for (let i, dom in domain_list) {
         push(batch, shell_quote(dom));
         if (length(batch) >= 15 || i == length(domain_list) - 1) {
-            let batch_cmd = "for d in " + join(" ", batch) + "; do dig @127.0.0.1 \"$d\" A >/dev/null 2>&1; done &";
-            system(batch_cmd + " </dev/null >/dev/null 2>&1 1000<&-");
+            // The `&` used to sit inside batch_cmd, which left the redirections
+            // that followed it attached to a null command in this shell instead
+            // of to the backgrounded loop. Backgrounding is now the wrapper's
+            // job, so the loop gets the redirections it was always meant to have.
+            let batch_cmd = "for d in " + join(" ", batch) + "; do dig @127.0.0.1 \"$d\" A >/dev/null 2>&1; done";
+            system(common.background_command(batch_cmd));
             batch = [];
         }
     }
@@ -671,11 +674,16 @@ function safe_proxy_restart(reason, force_level) {
         // Sequential stop/start rather than `restart`: lifecycle.uc drives the
         // service the same way, and a stop that fails must not be followed by a
         // start that races it.
-        bg_system("/etc/init.d/sing-box stop </dev/null >/dev/null 2>&1; " +
-            "/etc/init.d/sing-box start </dev/null >/dev/null 2>&1; rm -f " + lock_path + " &");
+        bg_system("/etc/init.d/sing-box stop >/dev/null 2>&1; " +
+            "/etc/init.d/sing-box start >/dev/null 2>&1; rm -f " + lock_path);
     } else {
         log_message("Escalating to full Tachyon restart (" + reason + "): the lighter restart did not restore service", "warn");
-        bg_system("/etc/init.d/tachyon restart </dev/null >/dev/null 2>&1 & rm -f " + lock_path + " &");
+        // The lock is released after the restart, not alongside it. This line used
+        // to read `restart & rm -f lock &`, which backgrounded both halves at once
+        // and dropped the lock immediately — so a second escalation could start
+        // while the first restart was still running, which is the one thing the
+        // lock exists to prevent.
+        bg_system("/etc/init.d/tachyon restart >/dev/null 2>&1; rm -f " + lock_path);
     }
     return true;
 }
@@ -686,7 +694,7 @@ function safe_reload_firewall() {
     let min_interval = 120;
     if (now - last_reload_time < min_interval) return;
     last_reload_time = now;
-    bg_system("/usr/bin/tachyon reload_firewall </dev/null >/dev/null 2>&1 &");
+    bg_system("/usr/bin/tachyon reload_firewall");
 }
 
 // ─── Repairs ──────────────────────────────────────────────────────────────────
@@ -822,7 +830,7 @@ function heal_community_subnet_sets(ev) {
         "Восстановлены nftables sets из persistent кеша (/etc/tachyon/rulesets/)",
         "fixed"
     );
-    bg_system("/usr/bin/tachyon reload_firewall </dev/null >/dev/null 2>&1 &");
+    bg_system("/usr/bin/tachyon reload_firewall");
 }
 
 
@@ -848,7 +856,7 @@ function heal_wan_and_gateway(ev) {
     // makes the proxy and DNS probes fail, and those facts arrive while ifup is
     // still running.
     claim_root_cause(PRIORITY_WAN);
-    bg_system("/sbin/ifdown wan >/dev/null 2>&1 && /sbin/ifup wan >/dev/null 2>&1 &");
+    bg_system("/sbin/ifdown wan >/dev/null 2>&1 && /sbin/ifup wan >/dev/null 2>&1");
 }
 
 // The uplink answering again is what ends the WAN repair. probe_wan publishes
@@ -995,7 +1003,7 @@ function heal_empty_sections(ev) {
 
     for (let name in recovered) {
         log_message("Empty proxy section '" + name + "' — triggering subscription update", "warn");
-        bg_system("/usr/bin/tachyon subscription_update_async " + common.shell_quote(name) + " </dev/null >/dev/null 2>&1 1000<&- &");
+        bg_system("/usr/bin/tachyon subscription_update_async " + common.shell_quote(name));
     }
 
     ai_heal_report(
@@ -1075,7 +1083,7 @@ function ai_heal_dns_loop() {
     if (recovery.phase == "detour_disabled") {
         // Already in recovery — just wait and retry
         log_message("DNS loop recovery: DNS still dead, retrying subscription update", "info");
-        bg_system("/usr/bin/tachyon subscription_update_async " + common.shell_quote(detour_section) + " </dev/null >/dev/null 2>&1 1000<&- &");
+        bg_system("/usr/bin/tachyon subscription_update_async " + common.shell_quote(detour_section));
         return;
     }
 
@@ -1099,7 +1107,7 @@ function ai_heal_dns_loop() {
     write_dns_recovery_state({ phase: "detour_disabled", section: detour_section, ts: now });
 
     // Trigger subscription update for the empty section
-    bg_system("/usr/bin/tachyon subscription_update_async " + common.shell_quote(detour_section) + " </dev/null >/dev/null 2>&1 1000<&- &");
+    bg_system("/usr/bin/tachyon subscription_update_async " + common.shell_quote(detour_section));
 
     ai_heal_report(
         "dns_loop_detected",
@@ -1445,10 +1453,12 @@ function setup_honeypot_listener() {
         let cfg = settings();
         let ttl = cfg.honeypot_ttl || "86400";
         let nft_table = getenv("NFT_TABLE_NAME") || "TachyonTable";
-        let hp_cmd = "tail -f /tmp/tachyon_honeypot.fifo | while read ip; do " +
+        let hp_cmd = common.background_pipeline_with_pid(
+            "tail -f /tmp/tachyon_honeypot.fifo | while read ip; do " +
             "if [ -n \"$ip\" ]; then " +
             "nft add element inet " + shell_quote(nft_table) + " tachyon_honeypot { \"$ip\" timeout " + shell_quote(ttl) + "s } >/dev/null 2>&1; " +
-            "fi; done </dev/null >/dev/null 2>&1 1000<&- & echo $! > /var/run/tachyon_honeypot_listener.pid";
+            "fi; done",
+            "> /var/run/tachyon_honeypot_listener.pid");
         system(hp_cmd);
     }
 }
@@ -1480,8 +1490,6 @@ function setup_syslog_listener() {
     system("pkill -f 'logread -f' 2>/dev/null; true");
     let log_pipe = fs.popen("logread -f 2>/dev/null", "r");
     if (!log_pipe) return null;
-    // Track the FD so bg_system() can close it before spawning background processes
-    logread_pipe_fd = log_pipe.fileno();
 
     try {
         uloop.handle(log_pipe.fileno(), function(events) {
