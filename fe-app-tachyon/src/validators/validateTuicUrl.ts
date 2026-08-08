@@ -135,7 +135,9 @@ export function validateTuicUrl(url: string): ValidationResult {
       ) {
         return {
           valid: false,
-          message: _('Invalid TUIC URL: zero_rtt_handshake must be 0, 1, true, or false'),
+          message: _(
+            'Invalid TUIC URL: zero_rtt_handshake must be 0, 1, true, or false',
+          ),
         };
       }
 

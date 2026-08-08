@@ -373,9 +373,7 @@ function isConnectionAction(action?: string) {
 }
 
 function isServiceAction(action?: string) {
-  return Boolean(
-    action && ['zapret', 'zapret2', 'byedpi'].includes(action),
-  );
+  return Boolean(action && ['zapret', 'zapret2', 'byedpi'].includes(action));
 }
 
 function hasSubscriptionSources(section: Tachyon.ConfigSection) {
@@ -1506,10 +1504,7 @@ export async function getDashboardSections(
         }
 
         if (isServiceAction(sectionAction)) {
-          const serviceType = sectionAction as
-            | 'zapret'
-            | 'zapret2'
-            | 'byedpi';
+          const serviceType = sectionAction as 'zapret' | 'zapret2' | 'byedpi';
 
           let serviceStatus: Tachyon.ServiceStatus | undefined;
 

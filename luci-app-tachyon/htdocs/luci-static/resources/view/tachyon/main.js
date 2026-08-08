@@ -912,7 +912,9 @@ function validateTuicUrl(url) {
       if (paramsKeys.includes("zero_rtt_handshake") && !["0", "1", "true", "false"].includes(params.zero_rtt_handshake)) {
         return {
           valid: false,
-          message: _("Invalid TUIC URL: zero_rtt_handshake must be 0, 1, true, or false")
+          message: _(
+            "Invalid TUIC URL: zero_rtt_handshake must be 0, 1, true, or false"
+          )
         };
       }
       if (paramsKeys.includes("sni") && !params.sni) {
@@ -2370,102 +2372,94 @@ function renderDefaultState({
     const statusColor = ss.ready ? "var(--success-color-medium, green)" : ss.conflict ? "var(--error-color-medium, red)" : ss.configured ? "var(--warn-color-medium, orange)" : "var(--primary-color-low, lightgray)";
     const statusText = ss.ready ? _("Running") : ss.conflict ? _("Conflict") : ss.configured ? _("Stopped") : _("Not configured");
     const typeLabel = ss.serviceType === "zapret" ? "Zapret" : ss.serviceType === "zapret2" ? "Zapret2" : "ByeDPI";
-    return E(
-      "div",
-      { class: "tachyon_dashboard-page__outbound-section" },
-      [
-        E(
-          "div",
-          {
-            class: "tachyon_dashboard-page__outbound-section__title-section",
-            style: "cursor: default;"
-          },
-          [
+    return E("div", { class: "tachyon_dashboard-page__outbound-section" }, [
+      E(
+        "div",
+        {
+          class: "tachyon_dashboard-page__outbound-section__title-section",
+          style: "cursor: default;"
+        },
+        [
+          E(
+            "div",
+            {
+              class: "tachyon_dashboard-page__outbound-section__title-section__title",
+              style: "display: flex; align-items: center; gap: 8px;"
+            },
+            [
+              E("span", {}, section.displayName),
+              E(
+                "span",
+                {
+                  style: "font-size: 12px; opacity: 0.6; font-weight: normal;"
+                },
+                typeLabel
+              )
+            ]
+          )
+        ]
+      ),
+      E(
+        "div",
+        {
+          style: "display: flex; flex-wrap: wrap; gap: 16px; padding: 8px 16px 12px;"
+        },
+        [
+          E("div", { style: "display: flex; align-items: center; gap: 6px;" }, [
             E(
-              "div",
-              {
-                class: "tachyon_dashboard-page__outbound-section__title-section__title",
-                style: "display: flex; align-items: center; gap: 8px;"
-              },
-              [
-                E("span", {}, section.displayName),
-                E(
-                  "span",
-                  {
-                    style: "font-size: 12px; opacity: 0.6; font-weight: normal;"
-                  },
-                  typeLabel
-                )
-              ]
-            )
-          ]
-        ),
-        E(
-          "div",
-          {
-            style: "display: flex; flex-wrap: wrap; gap: 16px; padding: 8px 16px 12px;"
-          },
-          [
-            E(
-              "div",
-              { style: "display: flex; align-items: center; gap: 6px;" },
-              [
-                E(
-                  "span",
-                  { style: "opacity: 0.7; font-size: 13px;" },
-                  _("Status") + ":"
-                ),
-                E(
-                  "span",
-                  {
-                    style: `font-size: 13px; font-weight: 500; color: ${statusColor};`
-                  },
-                  statusText
-                )
-              ]
+              "span",
+              { style: "opacity: 0.7; font-size: 13px;" },
+              _("Status") + ":"
             ),
-            ss.restartCount > 0 ? E(
-              "div",
-              { style: "display: flex; align-items: center; gap: 6px;" },
-              [
-                E(
-                  "span",
-                  { style: "opacity: 0.7; font-size: 13px;" },
-                  _("Restarts") + ":"
-                ),
-                E(
-                  "span",
-                  {
-                    style: "font-size: 13px; font-weight: 500; color: var(--warn-color-medium, orange);"
-                  },
-                  `${ss.restartCount}`
-                )
-              ]
-            ) : "",
-            ss.unstable ? E(
-              "div",
-              { style: "display: flex; align-items: center; gap: 6px;" },
-              [
-                E(
-                  "span",
-                  {
-                    style: "font-size: 13px; font-weight: 500; color: var(--error-color-medium, red);"
-                  },
-                  _("Unstable")
-                )
-              ]
-            ) : ""
-          ]
-        ),
-        ss.statusMessage ? E(
-          "div",
-          {
-            style: "padding: 0 16px 8px; font-size: 12px; opacity: 0.6; word-break: break-word;"
-          },
-          ss.statusMessage
-        ) : ""
-      ]
-    );
+            E(
+              "span",
+              {
+                style: `font-size: 13px; font-weight: 500; color: ${statusColor};`
+              },
+              statusText
+            )
+          ]),
+          ss.restartCount > 0 ? E(
+            "div",
+            { style: "display: flex; align-items: center; gap: 6px;" },
+            [
+              E(
+                "span",
+                { style: "opacity: 0.7; font-size: 13px;" },
+                _("Restarts") + ":"
+              ),
+              E(
+                "span",
+                {
+                  style: "font-size: 13px; font-weight: 500; color: var(--warn-color-medium, orange);"
+                },
+                `${ss.restartCount}`
+              )
+            ]
+          ) : "",
+          ss.unstable ? E(
+            "div",
+            { style: "display: flex; align-items: center; gap: 6px;" },
+            [
+              E(
+                "span",
+                {
+                  style: "font-size: 13px; font-weight: 500; color: var(--error-color-medium, red);"
+                },
+                _("Unstable")
+              )
+            ]
+          ) : ""
+        ]
+      ),
+      ss.statusMessage ? E(
+        "div",
+        {
+          style: "padding: 0 16px 8px; font-size: 12px; opacity: 0.6; word-break: break-word;"
+        },
+        ss.statusMessage
+      ) : ""
+    ]);
   }
   const metadataNodes = (section.subscriptionMetadata || []).map((metadata) => renderSubscriptionMetadata(metadata)).filter(Boolean);
   const subscriptionUpdateAction = renderSubscriptionUpdateAction(
@@ -3321,7 +3315,12 @@ var TachyonShellMethods = {
   globalCheck: async (masked = true) => callBaseMethod(Tachyon.AvailableMethods.GLOBAL_CHECK, [
     masked ? "masked" : "raw"
   ]),
-  doctor: async () => callBaseMethod(Tachyon.AvailableMethods.DOCTOR, [], "/usr/bin/tachyon", { timeout: 3e4 }),
+  doctor: async () => callBaseMethod(
+    Tachyon.AvailableMethods.DOCTOR,
+    [],
+    "/usr/bin/tachyon",
+    { timeout: 3e4 }
+  ),
   showSingBoxConfig: async (masked = true) => callBaseMethod(Tachyon.AvailableMethods.SHOW_SING_BOX_CONFIG, [
     masked ? "masked" : "raw"
   ]),
@@ -3895,9 +3894,7 @@ function isConnectionAction(action) {
   );
 }
 function isServiceAction(action) {
-  return Boolean(
-    action && ["zapret", "zapret2", "byedpi"].includes(action)
-  );
+  return Boolean(action && ["zapret", "zapret2", "byedpi"].includes(action));
 }
 function hasSubscriptionSources(section) {
   return getSubscriptionSourceCount(section) > 0;
@@ -6229,7 +6226,7 @@ async function fetchHostnames() {
     if (hints && typeof hints === "object") {
       for (const mac of Object.keys(hints)) {
         const hint = hints[mac];
-        if (hint.name && hint.ipaddrs && Array.isArray(hint.ipaddrs)) {
+        if (hint && hint.name && hint.ipaddrs && Array.isArray(hint.ipaddrs)) {
           for (const ip of hint.ipaddrs) {
             if (!hostnames.has(ip)) {
               hostnames.set(ip, hint.name);
@@ -14442,11 +14439,7 @@ function getComponentCards() {
   const singBoxLx = Boolean(systemInfo.sing_box_extended) && Boolean(systemInfo.sing_box_lx);
   const singBoxTiny = Boolean(systemInfo.sing_box_tiny);
   const tachyonActions = [
-    ...getInstalledUpdateActions(
-      "tachyon",
-      "tachyonCheck",
-      "tachyonInstall"
-    ),
+    ...getInstalledUpdateActions("tachyon", "tachyonCheck", "tachyonInstall"),
     {
       key: "tachyonReinstall",
       text: _("Reinstall"),
@@ -14645,7 +14638,10 @@ function renderComponentCard(card) {
         latestValueNodes.push(
           E(
             "span",
-            { class: "tachyon_updates-page__component__sha-info", title: _("Installed build \u2192 Available build") },
+            {
+              class: "tachyon_updates-page__component__sha-info",
+              title: _("Installed build \u2192 Available build")
+            },
             shaText
           )
         );

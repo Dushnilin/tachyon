@@ -96,7 +96,11 @@ function isNotInstalled(version: string | undefined) {
 function shouldShowInstallAfterCheck(component: Tachyon.ComponentName) {
   const status = getVisibleCheckResult(component)?.status;
 
-  return status === 'outdated' || status === 'dev' || status === 'outdated_same_release';
+  return (
+    status === 'outdated' ||
+    status === 'dev' ||
+    status === 'outdated_same_release'
+  );
 }
 
 function getVisibleCheckResult(component: Tachyon.ComponentName) {
@@ -206,7 +210,12 @@ function applyCachedCheckResults(results: Tachyon.ComponentActionResult[]) {
   results.forEach((result) => {
     const status = result.status || null;
 
-    if (status === 'latest' || status === 'outdated' || status === 'dev' || status === 'outdated_same_release') {
+    if (
+      status === 'latest' ||
+      status === 'outdated' ||
+      status === 'dev' ||
+      status === 'outdated_same_release'
+    ) {
       setCheckResult(
         result.component,
         status,
@@ -455,7 +464,12 @@ async function applyCompletedComponentAction({
 
     const status = result.status || null;
 
-    if (status === 'latest' || status === 'outdated' || status === 'dev' || status === 'outdated_same_release') {
+    if (
+      status === 'latest' ||
+      status === 'outdated' ||
+      status === 'dev' ||
+      status === 'outdated_same_release'
+    ) {
       setCheckResult(
         result.component,
         status,
@@ -861,11 +875,7 @@ function getComponentCards(): ComponentCard[] {
   const singBoxTiny = Boolean(systemInfo.sing_box_tiny);
 
   const tachyonActions = [
-    ...getInstalledUpdateActions(
-      'tachyon',
-      'tachyonCheck',
-      'tachyonInstall',
-    ),
+    ...getInstalledUpdateActions('tachyon', 'tachyonCheck', 'tachyonInstall'),
     {
       key: 'tachyonReinstall' as const,
       text: _('Reinstall'),
@@ -1093,16 +1103,24 @@ function renderComponentCard(card: ComponentCard) {
     } else if (checkResult.status === 'outdated_same_release') {
       labelText = _('Update is available for current release');
       // Show short commit SHAs so user understands it's the same version, different build
-      const currentSha = checkResult.current_sha ? checkResult.current_sha.substring(0, 8) : '';
-      const latestSha = checkResult.latest_sha ? checkResult.latest_sha.substring(0, 8) : '';
+      const currentSha = checkResult.current_sha
+        ? checkResult.current_sha.substring(0, 8)
+        : '';
+      const latestSha = checkResult.latest_sha
+        ? checkResult.latest_sha.substring(0, 8)
+        : '';
       if (currentSha || latestSha) {
-        const shaText = currentSha && latestSha
-          ? `${currentSha} → ${latestSha}`
-          : (currentSha || latestSha);
+        const shaText =
+          currentSha && latestSha
+            ? `${currentSha} → ${latestSha}`
+            : currentSha || latestSha;
         latestValueNodes.push(
           E(
             'span',
-            { class: 'tachyon_updates-page__component__sha-info', title: _('Installed build → Available build') },
+            {
+              class: 'tachyon_updates-page__component__sha-info',
+              title: _('Installed build → Available build'),
+            },
             shaText,
           ),
         );
@@ -1199,8 +1217,7 @@ function renderComponentCard(card: ComponentCard) {
       text: action.text,
       icon: action.icon,
       loading,
-      disabled:
-        systemInfoLoading || (anyActionLoading && !loading),
+      disabled: systemInfoLoading || (anyActionLoading && !loading),
       onClick: () => void handleComponentAction(action),
     });
   });
@@ -1213,8 +1230,7 @@ function renderComponentCard(card: ComponentCard) {
       text: action.text,
       icon: action.icon,
       loading,
-      disabled:
-        systemInfoLoading || (anyActionLoading && !loading),
+      disabled: systemInfoLoading || (anyActionLoading && !loading),
       onClick: () => void handleComponentAction(action),
     });
   });
@@ -1236,9 +1252,7 @@ function renderComponentCard(card: ComponentCard) {
         text: action.text,
         icon: action.icon,
         loading,
-        disabled:
-          systemInfoLoading ||
-          (anyActionLoading && !loading),
+        disabled: systemInfoLoading || (anyActionLoading && !loading),
         onClick: () => void handleComponentAction(action),
       });
     });
