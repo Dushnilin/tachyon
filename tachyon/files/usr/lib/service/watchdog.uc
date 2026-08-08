@@ -352,6 +352,44 @@ function check_tachyon_cli_running() {
     return running;
 }
 
+// ─── Escalation ladder ────────────────────────────────────────────────────────
+// Every diagnosis used to end in the same action: a full `/etc/init.d/tachyon
+// restart`, which tears down nftables, TPROXY and routing and drops every live
+// TCP/RDP session. That is the right hammer for a broken stack and far too much
+// for a sing-box that merely stopped answering — the same class of problem
+// c8052ee6 fixed for DNS.
+//
+// So a reason starts on the light rung: restart the sing-box service alone, the
+// mechanism lifecycle.uc already uses (:799, :929). nftables, TPROXY and routes
+// stay in place, and only connections through the proxy break.
+//
+// `tachyon reload` cannot serve as this rung: it returns immediately when the
+// config hash is unchanged (lifecycle.uc:1220), and during a repair the config
+// is exactly what did not change.
+//
+// A reason escalates to the heavy rung only after the light one demonstrably
+// failed — which is knowable because the recovery watch reports outcomes.
+const ESCALATION_LIGHT = "light";
+const ESCALATION_HEAVY = "heavy";
+
+// reason → the rung its NEXT attempt should use.
+let escalation_level = {};
+
+function next_escalation(reason) {
+    return escalation_level[reason] == ESCALATION_HEAVY ? ESCALATION_HEAVY : ESCALATION_LIGHT;
+}
+
+// Called from the outcome path: a repair that did not bring the system back
+// earns the heavier rung next time; one that worked drops the reason back to
+// light so a later, unrelated fault is not met with a full restart.
+function note_escalation_outcome(reason, outcome) {
+    if (reason == null || reason == "") return;
+    if (outcome == "failed")
+        escalation_level[reason] = ESCALATION_HEAVY;
+    else if (outcome == "fixed")
+        delete escalation_level[reason];
+}
+
 // ─── Recovery watch: registration ─────────────────────────────────────────────
 // A repair that goes through safe_proxy_restart() is spawned into the
 // background, so its return value says only that the restart was launched. The
@@ -367,10 +405,13 @@ let recovery_watches = {};
 // short enough that a failure is reported while it is still actionable.
 const RECOVERY_DEADLINE = 45;
 
-function watch_recovery(key, recovery_event, incident) {
+// `reason` ties the watch back to the escalation ladder: settling decides
+// whether that reason's next attempt stays light or goes heavy.
+function watch_recovery(key, recovery_event, incident, reason) {
     recovery_watches[key] = {
         event: recovery_event,
         incident: incident,
+        reason: reason,
         deadline: time() + RECOVERY_DEADLINE
     };
 }
@@ -400,12 +441,16 @@ function heal_singbox_stopped(ev) {
     // an incident, so it does not start one now. It does register the watch: a
     // restart that never brings the proxy back is worth a `failed` report, and
     // that report is the only thing here that is new.
-    if (safe_proxy_restart("singbox_stopped")) {
+    //
+    // Pinned to the light rung: sing-box is not running, so there is nothing to
+    // escalate over. Starting the service is the whole repair, and tearing down
+    // nftables and routing would not make a stopped process start any better.
+    if (safe_proxy_restart("singbox_stopped", ESCALATION_LIGHT)) {
         watch_recovery("proxy", EV.PROXY_UP, {
             type: "singbox_stopped",
             description: "sing-box остановлен (" + as_string(ev.payload.reason || "health check") + ")",
             resolution: "Выполнен перезапуск служб Tachyon"
-        });
+        }, "singbox_stopped");
     }
 }
 
@@ -488,6 +533,10 @@ function settle_recovery(key, outcome) {
     if (watch == null) return false;
     delete recovery_watches[key];
 
+    // Before reporting: feed the outcome back into the ladder, so the next
+    // attempt on this reason knows whether the lighter rung was enough.
+    note_escalation_outcome(watch.reason, outcome);
+
     let incident = watch.incident;
     ai_heal_report(incident.type, incident.description, incident.resolution, outcome);
     return true;
@@ -517,12 +566,18 @@ function is_reload_in_progress() {
         || check_tachyon_cli_running();
 }
 
-function safe_proxy_restart(reason) {
+// `force_level` pins the rung instead of consulting the ladder. Only
+// heal_singbox_stopped uses it: a process that is not running is started, not
+// escalated over.
+function safe_proxy_restart(reason, force_level) {
     let now = time();
     if (now - proxy_restart_window_start > 600) {
         proxy_restart_count = 0;
         proxy_restart_window_start = now;
     }
+    // The rate limit and the lock below gate both rungs. A light restart is
+    // cheaper, not free — three of them in ten minutes is still a proxy that is
+    // not going to be fixed by a fourth.
     if (proxy_restart_count >= 3) {
         log_message("Proxy restart rate limit: " + as_string(proxy_restart_count) + " in 10 min, skipping (" + reason + ")", "warn");
         return false;
@@ -542,8 +597,21 @@ function safe_proxy_restart(reason) {
     // The proxy port can change across a restart, so the controller's cached
     // lookup is invalidated here rather than after the fact.
     controller.forget_proxy_port();
+
+    let level = (force_level != null && force_level != "") ? force_level : next_escalation(reason);
     let lock_path = shell_quote(PROXY_RESTART_LOCK);
-    bg_system("/etc/init.d/tachyon restart </dev/null >/dev/null 2>&1 & rm -f " + lock_path + " &");
+
+    if (level == ESCALATION_LIGHT) {
+        log_message("Restarting sing-box service only (" + reason + ")", "warn");
+        // Sequential stop/start rather than `restart`: lifecycle.uc drives the
+        // service the same way, and a stop that fails must not be followed by a
+        // start that races it.
+        bg_system("/etc/init.d/sing-box stop </dev/null >/dev/null 2>&1; " +
+            "/etc/init.d/sing-box start </dev/null >/dev/null 2>&1; rm -f " + lock_path + " &");
+    } else {
+        log_message("Escalating to full Tachyon restart (" + reason + "): the lighter restart did not restore service", "warn");
+        bg_system("/etc/init.d/tachyon restart </dev/null >/dev/null 2>&1 & rm -f " + lock_path + " &");
+    }
     return true;
 }
 
@@ -610,7 +678,7 @@ function heal_dns_stall(ev) {
             "Перезапуск не выполнен: лимит частоты или активная блокировка", "skipped");
         return;
     }
-    watch_recovery("dns", EV.DNS_UP, incident);
+    watch_recovery("dns", EV.DNS_UP, incident, "dns_stalled");
 }
 
 // Only a proxy that fails while the uplink itself works is worth restarting
@@ -635,7 +703,7 @@ function heal_proxy_connectivity(ev) {
             "Очищена база cache.db; перезапуск пропущен по лимиту частоты", "skipped");
         return;
     }
-    watch_recovery("proxy", EV.PROXY_UP, incident);
+    watch_recovery("proxy", EV.PROXY_UP, incident, "proxy_connectivity");
 }
 
 // ─── Subnet cache restore: /etc/tachyon/rulesets/ → /tmp/sing-box/rulesets/ ──
@@ -737,7 +805,9 @@ function heal_uci_config(ev) {
     if (fs.writefile(tmp, backup) != null) {
         fs.rename(tmp, "/etc/config/tachyon");
         system("chmod 0600 /etc/config/tachyon 2>/dev/null");
-        safe_proxy_restart("uci_config_restore");
+        // Pinned heavy: the config file on disk was just replaced, and only a
+        // full restart re-reads it into every part of the stack.
+        safe_proxy_restart("uci_config_restore", ESCALATION_HEAVY);
     }
 }
 
@@ -789,7 +859,7 @@ function heal_proxy_health(ev) {
         return;
     }
     controller.reset_proxy_consecutive();
-    watch_recovery("proxy", EV.PROXY_UP, incident);
+    watch_recovery("proxy", EV.PROXY_UP, incident, "proxy_health");
 }
 
 // ─── DNS Continuous Check ─────────────────────────────────────────────────────
@@ -881,7 +951,9 @@ function ai_heal_dns_loop() {
                 log_message("DNS loop recovery: DNS works, re-enabling DNS detour section", "info");
                 system("/sbin/uci set tachyon.settings.dns_detour_enabled='1' >/dev/null 2>&1");
                 system("/sbin/uci commit tachyon >/dev/null 2>&1");
-                safe_proxy_restart("dns_loop_recovery");
+                // Pinned heavy for the same reason as uci_config_restore: the
+                // UCI change above only takes effect through a full restart.
+                safe_proxy_restart("dns_loop_recovery", ESCALATION_HEAVY);
                 remove_dns_recovery_state();
                 ai_heal_report(
                     "dns_loop_recovery",
@@ -919,7 +991,7 @@ function ai_heal_dns_loop() {
     log_message("DNS loop detected: DNS detour section '" + detour_section + "' is empty, disabling DNS detour to recover", "warn");
     system("/sbin/uci set tachyon.settings.dns_detour_enabled='0' >/dev/null 2>&1");
     system("/sbin/uci commit tachyon >/dev/null 2>&1");
-    safe_proxy_restart("dns_loop_disable");
+    safe_proxy_restart("dns_loop_disable", ESCALATION_HEAVY);
     write_dns_recovery_state({ phase: "detour_disabled", section: detour_section, ts: now });
 
     // Trigger subscription update for the empty section
