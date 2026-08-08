@@ -14,6 +14,7 @@ const TACHYON_SERVICE_NAME = getenv("TACHYON_SERVICE_NAME") || constants.TACHYON
 const TACHYON_RELEASE_REPO = getenv("TACHYON_RELEASE_REPO") || constants.TACHYON_RELEASE_REPO || "Dushnilin/tachyon";
 const TACHYON_LUCI_VIEW_DIR = getenv("TACHYON_LUCI_VIEW_DIR") || constants.TACHYON_LUCI_VIEW_DIR || "/www/luci-static/resources/view/tachyon";
 const RUNTIME_STATE_DIR = getenv("TACHYON_RUNTIME_STATE_DIR") || "/var/run/tachyon";
+const LOGREAD_LINE_LIMIT = "500";
 const SYSTEM_INFO_CACHE_FILE = getenv("TACHYON_SYSTEM_INFO_CACHE_FILE") || RUNTIME_STATE_DIR + "/system-info.json";
 const SYSTEM_INFO_CACHE_TTL = int(getenv("TACHYON_SYSTEM_INFO_CACHE_TTL") || "3600");
 const TMP_SING_BOX_FOLDER = getenv("TMP_SING_BOX_FOLDER") || constants.TMP_SING_BOX_FOLDER || "/tmp/sing-box";
@@ -955,7 +956,7 @@ function check_logs() {
         nolog("Error: logread command not found");
         return 1;
     }
-    let rendered = status_capture([ "tachyon-logs" ], command_output_from_args([ "logread" ]));
+    let rendered = status_capture([ "tachyon-logs" ], command_output_from_args([ "logread", "-l", LOGREAD_LINE_LIMIT ]));
     if (rendered.output != "")
         print(rendered.output);
     if (rendered.status != 0) {
@@ -970,7 +971,7 @@ function check_sing_box_logs() {
         nolog("Error: logread command not found");
         return 1;
     }
-    let rendered = status_capture([ "matching-log-tail", "sing-box", "100" ], command_output_from_args([ "logread" ]));
+    let rendered = status_capture([ "matching-log-tail", "sing-box", "100" ], command_output_from_args([ "logread", "-l", LOGREAD_LINE_LIMIT ]));
     if (rendered.output != "")
         print(rendered.output);
     if (rendered.status != 0) {
@@ -1947,7 +1948,8 @@ function global_check(arg1, arg2) {
     if (nft_check_json != "") {
         let nft_render = render_or_fail([ "global-nft-check" ], nft_check_json, "тЭМ Failed to parse NFT rules info", [ 0 ]);
         if (nft_render == 0 && status_success([ "global-nft-other-mark-exists" ], nft_check_json))
-            print(status_output([ "nft-ruleset-other-mark-lines", NFT_TABLE_NAME ], command_output_from_args([ "nft", "list", "ruleset" ])));
+            print(status_output([ "nft-ruleset-other-mark-lines", NFT_TABLE_NAME ],
+                command_output_from_args([ "sh", "-c", "nft list ruleset | grep -E '^table|mark set|meta mark'; exit 0" ])));
     }
     else
         print_global("тЭМ Failed to get NFT rules info");
@@ -2192,7 +2194,7 @@ function run_doctor_checks() {
     // 3. Nftables Table Check
     let routing_mode = cfg.routing_mode || "nftables";
     if (routing_mode == "nftables") {
-        let out_nft = command_capture("nft list table inet " + NFT_TABLE_NAME).output;
+        let out_nft = command_capture("nft list table inet " + NFT_TABLE_NAME + " | grep tproxy").output;
         if (index(out_nft, "tproxy") >= 0) {
             doc_check("✅", "nftables table", "present", "");
         } else {
@@ -2202,7 +2204,7 @@ function run_doctor_checks() {
                 issues++;
                 command_status("nft delete table inet " + NFT_TABLE_NAME + " >/dev/null 2>&1");
                 let rebuild_status = command_status("/usr/bin/tachyon restart >/dev/null 2>&1");
-                let out_nft_check = command_capture("nft list table inet " + NFT_TABLE_NAME).output;
+                let out_nft_check = command_capture("nft list table inet " + NFT_TABLE_NAME + " | grep tproxy").output;
                 if (index(out_nft_check, "tproxy") >= 0) {
                     doc_check("❌", "nftables table", "missing or incomplete", "→ FIXED: правила пересозданы");
                     fixed++;
@@ -2532,7 +2534,7 @@ function run_doctor_checks() {
 
     // 11. MSS Clamping Check
     if (routing_mode == "nftables") {
-        let out_clamping = command_capture("nft list table inet " + NFT_TABLE_NAME).output;
+        let out_clamping = command_capture("nft list table inet " + NFT_TABLE_NAME + " | grep maxseg").output;
         if (index(out_clamping, "tcp flags syn tcp option maxseg size set rt mtu") >= 0 || index(out_clamping, "tcp flags syn tcp option maxseg size set 1400") >= 0) {
             doc_check("✅", "MSS Clamping rule", "active", "");
         } else {
@@ -2549,7 +2551,7 @@ function run_doctor_checks() {
                     command_status("nft add rule inet " + NFT_TABLE_NAME + " mangle_output tcp flags syn tcp option maxseg size set 1400 >/dev/null 2>&1");
                 }
 
-                let out_clamping_check = command_capture("nft list table inet " + NFT_TABLE_NAME).output;
+                let out_clamping_check = command_capture("nft list table inet " + NFT_TABLE_NAME + " | grep maxseg").output;
                 if (index(out_clamping_check, "tcp flags syn tcp option maxseg size set rt mtu") >= 0 || index(out_clamping_check, "tcp flags syn tcp option maxseg size set 1400") >= 0) {
                     doc_check("❌", "MSS Clamping rule", "missing", "→ FIXED: MSS Clamping rules applied");
                     fixed++;

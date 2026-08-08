@@ -2790,17 +2790,12 @@ function gzip_decode_file(input_file, output_file) {
         return false;
 
     for (let command in [ "gzip -dc", "gunzip -c", "zcat" ]) {
-        let pipe = fs.popen(command + " " + shell_quote(input_file) + " 2>/dev/null", "r");
-        if (!pipe)
-            continue;
-
-        let data = pipe.read("all");
-        let status = pipe.close();
-        if (status == 0 && data != null && data != "") {
-            if (fs.writefile(output_file, data))
+        let status = system(command + " " + shell_quote(input_file) +
+            " > " + shell_quote(output_file) + " 2>/dev/null");
+        if (status == 0) {
+            let stat = fs.stat(output_file);
+            if (stat && int(stat.size) > 0)
                 return true;
-            fs.unlink(output_file);
-            return false;
         }
         fs.unlink(output_file);
     }

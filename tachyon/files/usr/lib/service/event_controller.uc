@@ -630,8 +630,8 @@ function controller(bus, opts) {
 
         let nft_table = getenv("NFT_TABLE_NAME") || "TachyonTable";
         let routing_mode = setting("routing_mode", "nftables");
-        // One `nft list` serves both the table check and the QoS check.
-        let out_nft = command_output_from_args(["nft", "list", "table", "inet", nft_table]);
+        let out_nft = command_output_from_args(["sh", "-c",
+            "nft list table inet " + nft_table + " | grep -E 'chain|tproxy|priority_rules|dscp'; exit 0"]);
 
         if (routing_mode == "nftables") {
             if (index(out_nft, "tproxy") < 0 || index(out_nft, "priority_rules") < 0) {
