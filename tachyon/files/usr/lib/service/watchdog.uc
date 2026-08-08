@@ -5,6 +5,8 @@ let uci_core = require("core.uci");
 let common = require("core.common");
 let helpers = require("core.helpers");
 let connections = require("config.connections");
+let events = require("core.events");
+let event_controller = require("service.event_controller");
 
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
 const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
@@ -24,7 +26,6 @@ let telegram_msg_count = 0;
 let telegram_msg_window = time();
 // FD-cascade prevention: track logread pipe FD to close it in background spawns
 let logread_pipe_fd = -1;
-let syslog_start_time = 0;
 
 let command_from_args = common.command_from_args;
 let command_status = common.command_status;
@@ -39,15 +40,6 @@ function command_capture(command) {
     let status = pipe.close();
     if (status > 255) status = int(status / 256);
     return { status, output: data == null ? "" : as_string(data) };
-}
-
-function command_output(command) {
-    let result = command_capture(command);
-    return result.status == 0 ? result.output : "";
-}
-
-function command_output_from_args(args) {
-    return command_output(command_from_args(args) + " 2>/dev/null");
 }
 
 // Run a command in background, explicitly closing the logread pipe FD to
@@ -303,27 +295,41 @@ let ubus = null;
 try { uloop = require("uloop"); } catch (e) {}
 try { ubus = require("ubus"); } catch (e) {}
 
-let last_oom_time = 0;
+// ─── Event bus and observation controller ─────────────────────────────────────
+// The controller observes and publishes facts; everything below subscribes and
+// repairs. Splitting the two is what removes the detection prologue that used
+// to be copy-pasted into the head of every ai_heal_* function.
+let EV = event_controller.EV;
+let bus = events.bus();
+let controller = event_controller.controller(bus, {
+    log: function(message, level) { log_message(message, level); }
+});
+
+// A subscriber that throws must not silence the subscribers behind it. This is
+// the isolation safe_call() gave each check in the old loop, now applied once
+// by the bus to every handler.
+bus.on_error(function(name, event_type, err) {
+    log_message("Graceful degradation: " + name + " (" + event_type + ") failed: " + as_string(err), "err");
+});
+
+// Repair-side pacing. Unlike the observation counters below, these belong to
+// the action: they debounce how often a healer is allowed to act, not how often
+// the world is measured.
 let last_oom_recovery_time = 0;
 let last_restart_time = 0;
-let last_urltest_check = 0;
+let last_reload_time = 0;
 let pending_smart_domains = {};
 let smart_detect_last_run = 0;
-let last_subnet_heal_time = 0;
-let last_wan_heal_time = 0;
-let last_gateway_heal_time = 0;
-let last_reload_time = 0;
-let proxy_consecutive_fails = 0;
-let dns_consecutive_fails = 0;
-let ai_healthy_streak = 0;
-let cached_proxy_port = null;
-let proxy_latency_history = [];
-let dns_latency_history = [];
-let last_anomaly_check = 0;
-let last_metrics_export = 0;
 let last_fast_check = 0;
 let last_normal_check = 0;
 let last_slow_check = 0;
+
+// Observation state lives in the controller; these read through to it so the
+// status and metrics contracts keep reporting exactly the same numbers.
+function proxy_consecutive_fails() { return controller.proxy_consecutive_fails(); }
+function dns_consecutive_fails() { return controller.dns_consecutive_fails(); }
+function proxy_latency_history() { return controller.proxy_latency_history(); }
+function dns_latency_history() { return controller.dns_latency_history(); }
 
 function check_tachyon_cli_running() {
     let running = false;
@@ -346,7 +352,9 @@ function check_tachyon_cli_running() {
     return running;
 }
 
-function handle_singbox_stop_event(reason) {
+// The 30s floor is the original restart debounce: procd emits several stop
+// events for one crash, and each would otherwise queue its own restart.
+function heal_singbox_stopped(ev) {
     let now = time();
     if (now - last_restart_time < 30) return;
     last_restart_time = now;
@@ -359,7 +367,7 @@ function handle_singbox_stop_event(reason) {
     let list_update_pid = trim(fs.readfile("/var/run/tachyon_list_update.pid") || "");
     if (process_running(list_update_pid, "ucode")) return;
 
-    log_message("sing-box is stopped (" + as_string(reason || "health check") + "). Restarting Tachyon...", "warn");
+    log_message("sing-box is stopped (" + as_string(ev.payload.reason || "health check") + "). Restarting Tachyon...", "warn");
     increment_reconnect_count();
     let tcfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
     if (tcfg.notify_crash != "0") {
@@ -369,98 +377,7 @@ function handle_singbox_stop_event(reason) {
 }
 
 function get_sing_box_pid() {
-    for (let path in [ "/var/run/sing-box.pid", "/var/run/sing-box/sing-box.pid" ]) {
-        let pid = trim(fs.readfile(path) || "");
-        if (pid != "" && process_running(pid, "sing-box")) return pid;
-    }
-
-    let ubus_res = command_capture("ubus call service list '{\"name\":\"sing-box\"}' 2>/dev/null");
-    if (ubus_res.status == 0 && ubus_res.output != "") {
-        let matched = match(ubus_res.output, /"pid":\s*([0-9]+)/);
-        if (matched && matched[1] != "") {
-            let pid = matched[1];
-            if (process_running(pid, "sing-box")) return pid;
-        }
-    }
-
-    let pidof_res = command_capture("pidof sing-box 2>/dev/null");
-    if (pidof_res.status == 0 && pidof_res.output != "") {
-        let fields = split(trim(pidof_res.output), /[ \t]+/);
-        if (length(fields) > 0 && fields[0] != "") {
-            let pid = fields[0];
-            if (process_running(pid, "sing-box")) return pid;
-        }
-    }
-
-    return "";
-}
-
-function check_singbox_process() {
-    let cfg = settings();
-    if (cfg.recovery_bypass == "1") return;
-    if (check_auto_resume_pause()) return;
-    if (check_tachyon_cli_running()) return;
-
-    let list_update_pid = trim(fs.readfile("/var/run/tachyon_list_update.pid") || "");
-    if (process_running(list_update_pid, "ucode")) return;
-
-    // Fast-path check: verify if sing-box process is active
-    let sb_pid = get_sing_box_pid();
-    if (sb_pid != "" && process_running(sb_pid, "sing-box")) {
-        return;
-    }
-
-    let has_sections = false;
-    let uci_sections = uci_core.get_all(CONFIG_NAME);
-    if (uci_sections) {
-        for (let k in keys(uci_sections)) {
-            if (uci_sections[k][".type"] == "section") {
-                has_sections = true;
-                break;
-            }
-        }
-    }
-    if (!has_sections) return;
-
-    let binary_name = "sing-box";
-    let pid = "";
-    let proc = fs.opendir("/proc");
-    if (proc) {
-        let entry;
-        while ((entry = proc.read()) != null) {
-            if (match(entry, /^[0-9]+$/)) {
-                let exe = fs.readlink("/proc/" + entry + "/exe") || "";
-                let slash = rindex(exe, "/");
-                if ((slash >= 0 ? substr(exe, slash + 1) : exe) == binary_name) {
-                    pid = entry;
-                    break;
-                }
-            }
-        }
-        proc.close();
-    }
-
-    if (pid == "") {
-        handle_singbox_stop_event("process missing from /proc");
-    }
-}
-
-function check_memory() {
-    let free_mb = -1;
-    let mem_info = fs.readfile("/proc/meminfo") || "";
-    for (let line in split(mem_info, "\n")) {
-        if (index(line, "MemAvailable:") == 0) {
-            let fields = split(trim(line), /[ \t]+/);
-            if (length(fields) >= 2) {
-                free_mb = int(fields[1]) / 1024;
-            }
-            break;
-        }
-    }
-    if (free_mb >= 0 && free_mb < 15) {
-        log_message("Low memory detected (" + free_mb + "MB). Clearing caches...", "warn");
-        system("echo 3 > /proc/sys/vm/drop_caches");
-    }
+    return controller.get_sing_box_pid();
 }
 
 // ─── AI Watchdog Self-Healing Matrix ──────────────────────────────────────────
@@ -469,7 +386,7 @@ let last_ai_incident = null;
 
 function ai_export_status() {
     let is_healthy = last_ai_incident == null || (time() - last_ai_incident.timestamp >= 300);
-    if (is_healthy) ai_healthy_streak++;
+    if (is_healthy) controller.note_healthy();
     let status_obj = {
         timestamp: time(),
         status: is_healthy ? "healthy" : "repaired",
@@ -482,7 +399,7 @@ function ai_export_status() {
 
 function ai_heal_report(event_type, description, resolution, status_code) {
     ai_incidents_count++;
-    ai_healthy_streak = 0;
+    controller.note_incident();
     last_ai_incident = {
         type: event_type,
         description: description,
@@ -530,7 +447,9 @@ function safe_proxy_restart(reason) {
     }
     try { fs.writefile(PROXY_RESTART_LOCK, as_string(now)); } catch(e) {}
     proxy_restart_count++;
-    cached_proxy_port = null;
+    // The proxy port can change across a restart, so the controller's cached
+    // lookup is invalidated here rather than after the fact.
+    controller.forget_proxy_port();
     let lock_path = shell_quote(PROXY_RESTART_LOCK);
     bg_system("/etc/init.d/tachyon restart </dev/null >/dev/null 2>&1 & rm -f " + lock_path + " &");
     return true;
@@ -545,87 +464,44 @@ function safe_reload_firewall() {
     bg_system("/usr/bin/tachyon reload_firewall </dev/null >/dev/null 2>&1 &");
 }
 
-function ai_heal_nftables() {
-    let cfg = settings();
-    let routing_mode = cfg.routing_mode || "nftables";
-    let nft_table = getenv("NFT_TABLE_NAME") || "TachyonTable";
+// ─── Repairs ──────────────────────────────────────────────────────────────────
+// Each function below is the *action* half of a former ai_heal_* function: the
+// detection it used to perform now happens in the controller and arrives as a
+// fact. The repair bodies themselves are unchanged, so thresholds, messages and
+// side effects stay identical.
 
-    let list_update_pid = trim(fs.readfile("/var/run/tachyon_list_update.pid") || "");
-    if (process_running(list_update_pid, "ucode")) return true;
-    if (is_reload_in_progress()) return true;
-
-    if (routing_mode == "nftables") {
-        let out_nft = command_output_from_args(["nft", "list", "table", "inet", nft_table]);
-        if (index(out_nft, "tproxy") < 0 || index(out_nft, "priority_rules") < 0) {
-            ai_heal_report(
-                "nftables",
-                "Таблица правил nftables очищена или повреждена",
-                "Выполнена быстрая регенерация правил TachyonTable и цепочки TPROXY",
-                "fixed"
-            );
-            safe_reload_firewall();
-            return false;
-        }
-    }
-    return true;
+function heal_nftables(ev) {
+    ai_heal_report(
+        "nftables",
+        "Таблица правил nftables очищена или повреждена",
+        "Выполнена быстрая регенерация правил TachyonTable и цепочки TPROXY",
+        "fixed"
+    );
+    safe_reload_firewall();
 }
 
-function ai_heal_qos() {
-    let cfg = settings();
-    if (cfg.qos_priority_engine == "0") return true;
-    if (is_reload_in_progress()) return true;
-
-    let nft_table = getenv("NFT_TABLE_NAME") || "TachyonTable";
-    let out_nft = command_output_from_args(["nft", "list", "table", "inet", nft_table]);
-    if ((index(out_nft, "dscp set 0x2e") < 0 && index(out_nft, "dscp set ef") < 0) || (index(out_nft, "dscp set 0x22") < 0 && index(out_nft, "dscp set af41") < 0)) {
-        ai_heal_report(
-            "qos_priority",
-            "Правила Игрового & Голосового QoS Ускорителя не найдены в nftables",
-            "Применены высокоприоритетные метки DSCP EF (0x2e) для Voice/RTC и DSCP AF41 (0x22) для Gaming",
-            "fixed"
-        );
-        safe_reload_firewall();
-        return false;
-    }
-    return true;
+function heal_qos(ev) {
+    ai_heal_report(
+        "qos_priority",
+        "Правила Игрового & Голосового QoS Ускорителя не найдены в nftables",
+        "Применены высокоприоритетные метки DSCP EF (0x2e) для Voice/RTC и DSCP AF41 (0x22) для Gaming",
+        "fixed"
+    );
+    safe_reload_firewall();
 }
-
-let dns_fail_streak = 0;
 
 function is_dns_working() {
-    return command_success_from_args([ "nslookup", "-timeout=2", "yandex.ru", "127.0.0.1" ]) ||
-           command_success_from_args([ "nslookup", "-timeout=2", "connectivitycheck.gstatic.com", "127.0.0.1" ]) ||
-           command_success_from_args([ "nslookup", "-timeout=2", "google.com", "127.0.0.1" ]);
+    return controller.is_dns_working();
 }
 
-function ai_heal_dns() {
-    let cfg = settings();
-    if (cfg.recovery_bypass == "1") return true;
+// Threshold 3 is the original ai_heal_dns() streak: two isolated failures are
+// noise, three in a row is a stall. The streak reset after acting prevents the
+// in-flight restart from tripping the same threshold on the next tick.
+function heal_dns_stall(ev) {
+    if (settings().recovery_bypass == "1") return;
+    if (int(ev.payload.streak) < 3) return;
 
-    if (is_reload_in_progress()) {
-        dns_fail_streak = 0;
-        return true;
-    }
-
-    let sb_pid = get_sing_box_pid();
-    if (sb_pid == "" || !process_running(sb_pid, "sing-box")) {
-        dns_fail_streak = 0;
-        return true;
-    }
-
-    if (is_dns_working()) {
-        dns_fail_streak = 0;
-        return true;
-    }
-
-    dns_fail_streak++;
-    log_message("Watchdog: DNS check failed (" + as_string(dns_fail_streak) + "/3 failures)", "warn");
-
-    if (dns_fail_streak < 3) {
-        return true;
-    }
-
-    dns_fail_streak = 0;
+    controller.reset_dns_streak();
 
     log_message("Watchdog: DNS stalled after 3 attempts, soft-reloading proxy runtime", "warn");
     safe_proxy_restart("dns_stalled");
@@ -635,62 +511,24 @@ function ai_heal_dns() {
         "Soft-reloaded proxy runtime safely without breaking active TCP/RDP connections",
         "fixed"
     );
-    return false;
 }
 
-function ai_heal_proxy_connectivity() {
-    let cfg = settings();
-    if (cfg.recovery_bypass == "1") return true;
+// Only a proxy that fails while the uplink itself works is worth restarting
+// over: when direct access is down too, the fault is upstream and a restart
+// would drop live connections for nothing.
+function heal_proxy_connectivity(ev) {
+    if (settings().recovery_bypass == "1") return;
+    if (!ev.payload.direct_ok) return;
 
-    let sb_pid = get_sing_box_pid();
-    if (sb_pid == "" || !process_running(sb_pid, "sing-box")) return true;
-
-    let now = time();
-    let proxy_addr = "127.0.0.1:4534";
-    if (cached_proxy_port !== null) {
-        proxy_addr = "127.0.0.1:" + as_string(cached_proxy_port);
-    } else {
-        let sb_cfg_data = fs.readfile("/etc/sing-box/config.json");
-        if (sb_cfg_data) {
-            try {
-                let sb_cfg = json(sb_cfg_data);
-                if (sb_cfg.inbounds) {
-                    for (let inb in sb_cfg.inbounds) {
-                        if (inb.type == "http" || inb.type == "mixed") {
-                            cached_proxy_port = inb.listen_port || 4534;
-                            proxy_addr = "127.0.0.1:" + as_string(cached_proxy_port);
-                            break;
-                        }
-                    }
-                }
-            } catch(e) {}
-        }
-    }
-
-    let proxy_ok = command_success_from_args([
-        "curl", "-s", "-I", "--connect-timeout", "3", "--max-time", "5",
-        "--proxy", "http://" + proxy_addr,
-        "https://cp.cloudflare.com/generate_204"
-    ]);
-
-    if (!proxy_ok) {
-        let direct_ok = command_success_from_args([
-            "curl", "-s", "-I", "--connect-timeout", "3", "--max-time", "5",
-            "https://cp.cloudflare.com/generate_204"
-        ]);
-        if (direct_ok) {
-            ai_heal_report(
-                "proxy",
-                "Зависание или неполный отклик прокси-порту sing-box (" + proxy_addr + ")",
-                "Очищена база cache.db и выполнен перезапуск sing-box",
-                "fixed"
-            );
-            remove_file("/tmp/sing-box/cache.db");
-            safe_proxy_restart("proxy_connectivity");
-            return false;
-        }
-    }
-    return true;
+    let proxy_addr = "127.0.0.1:" + as_string(ev.payload.port);
+    ai_heal_report(
+        "proxy",
+        "Зависание или неполный отклик прокси-порту sing-box (" + proxy_addr + ")",
+        "Очищена база cache.db и выполнен перезапуск sing-box",
+        "fixed"
+    );
+    remove_file("/tmp/sing-box/cache.db");
+    safe_proxy_restart("proxy_connectivity");
 }
 
 // ─── Subnet cache restore: /etc/tachyon/rulesets/ → /tmp/sing-box/rulesets/ ──
@@ -729,144 +567,37 @@ function ai_heal_subnet_cache() {
 }
 
 // ─── Check nft sets are populated (community subnets) ─────────────────────────
-function ai_heal_community_subnet_sets() {
-    let cfg = settings();
-    if (cfg.recovery_bypass == "1") return true;
+function heal_community_subnet_sets(ev) {
+    if (settings().recovery_bypass == "1") return;
 
-    // Don't run more than once every 5 minutes
-    let now = time();
-    if (now - last_subnet_heal_time < 300) return true;
-    if (is_reload_in_progress()) return true;
+    for (let set_name in common.array_or_empty(ev.payload.sets))
+        log_message("Community subnet set " + set_name + " is empty — will repopulate", "warn");
 
-    // Skip if list-update is running (it will populate sets itself)
-    let list_update_pid = trim(fs.readfile("/var/run/tachyon_list_update.pid") || "");
-    if (process_running(list_update_pid, "ucode")) return true;
-
-    let sb_pid = get_sing_box_pid();
-    if (sb_pid == "" || !process_running(sb_pid, "sing-box")) return true;
-
-    let nft_table = getenv("NFT_TABLE_NAME") || "TachyonTable";
-    let all_sections = uci_core.get_all(CONFIG_NAME);
-    if (!all_sections) return true;
-
-    let empty_sets_found = false;
-
-    for (let sec_name in keys(all_sections)) {
-        let s = all_sections[sec_name];
-        if (s[".type"] != "section" || s.enabled != "1") continue;
-        if (!s.community_lists) continue;
-
-        // Check if the _subnets set exists for this section.
-        // If nft returns a valid set definition but no 'elements =' block → it's empty.
-        // If nft exits non-zero (set doesn't exist) → section has no subnet community → skip.
-        let set_name = "tachyon_rule_" + sec_name + "_subnets";
-        let result = command_capture(command_from_args(["nft", "list", "set", "inet", nft_table, set_name]) + " 2>/dev/null");
-        if (result.status != 0 || result.output == "") continue; // set doesn't exist for this section
-        if (index(result.output, "elements") < 0) {
-            log_message("Community subnet set " + set_name + " is empty — will repopulate", "warn");
-            empty_sets_found = true;
-        }
-    }
-
-    if (empty_sets_found) {
-        last_subnet_heal_time = now;
-        ai_heal_subnet_cache();
-        ai_heal_report(
-            "nft_community_sets",
-            "Пустые nftables sets подсетей (community) — данные не были загружены при reload",
-            "Восстановлены nftables sets из persistent кеша (/etc/tachyon/rulesets/)",
-            "fixed"
-        );
-        bg_system("/usr/bin/tachyon reload_firewall </dev/null >/dev/null 2>&1 &");
-        return false;
-    }
-    return true;
+    ai_heal_subnet_cache();
+    ai_heal_report(
+        "nft_community_sets",
+        "Пустые nftables sets подсетей (community) — данные не были загружены при reload",
+        "Восстановлены nftables sets из persistent кеша (/etc/tachyon/rulesets/)",
+        "fixed"
+    );
+    bg_system("/usr/bin/tachyon reload_firewall </dev/null >/dev/null 2>&1 &");
 }
 
 
-// ─── TPROXY port liveness check ───────────────────────────────────────────────
-function ai_heal_tproxy_port() {
-    let cfg = settings();
-    if (cfg.recovery_bypass == "1") return true;
+// ─── TPROXY port liveness ─────────────────────────────────────────────────────
+function heal_tproxy_port(ev) {
+    if (settings().recovery_bypass == "1") return;
 
-    let sb_pid = get_sing_box_pid();
-    if (sb_pid == "" || !process_running(sb_pid, "sing-box")) return true;
-    if (is_reload_in_progress()) return true;
-
-    // Read TPROXY port from sing-box config
-    let tproxy_port = 4530;
-    let sb_cfg_data = fs.readfile("/etc/sing-box/config.json");
-    if (sb_cfg_data) {
-        try {
-            let sb_cfg = json(sb_cfg_data);
-            if (sb_cfg.inbounds) {
-                for (let inb in sb_cfg.inbounds) {
-                    if (inb.type == "tproxy") {
-                        tproxy_port = int(inb.listen_port || tproxy_port);
-                        break;
-                    }
-                }
-            }
-        } catch(e) {}
-    }
-
-    // Check /proc/net/tcp6 and /proc/net/tcp for the TPROXY port (hex format)
-    let hex_port = sprintf("%04X", tproxy_port);
-    let listening = false;
-    for (let proc_file in ["/proc/net/tcp6", "/proc/net/tcp"]) {
-        let tcp_data = fs.readfile(proc_file) || "";
-        // Format: local_address (0.0.0.0:PORT in hex), state 0A = LISTEN
-        for (let line in split(tcp_data, "\n")) {
-            if (index(line, ":" + hex_port + " ") >= 0 && index(line, " 0A ") >= 0) {
-                listening = true;
-                break;
-            }
-        }
-        if (listening) break;
-    }
-
-    if (!listening) {
-        ai_heal_report(
-            "tproxy_port",
-            sprintf("TPROXY порт %d не слушает — правила перехвата трафика не работают", tproxy_port),
-            "Выполнен reload_firewall для восстановления TPROXY правил",
-            "fixed"
-        );
-        safe_reload_firewall();
-        return false;
-    }
-    return true;
+    ai_heal_report(
+        "tproxy_port",
+        sprintf("TPROXY порт %d не слушает — правила перехвата трафика не работают", int(ev.payload.port)),
+        "Выполнен reload_firewall для восстановления TPROXY правил",
+        "fixed"
+    );
+    safe_reload_firewall();
 }
 
-// ─── Fixes undefined function referenced from ubus firewall.reload handler ────
-function check_firewall_rules() {
-    ai_heal_nftables();
-    ai_heal_community_subnet_sets();
-}
-
-function ai_heal_wan_and_gateway() {
-    let now = time();
-    if (now - last_wan_heal_time < 300) return;
-    if (is_reload_in_progress()) return;
-
-    let need_restart = false;
-
-    // Check WAN interface
-    let proto = uci_core.get("network", "wan", "proto") || "pppoe";
-    let device = trim(uci_core.get("network", "wan", "device") || "eth0");
-    let iface_to_check = device;
-    if (proto == "pppoe") iface_to_check = "pppoe-wan";
-
-    let out = command_capture("ip addr show " + shell_quote(iface_to_check) + " 2>/dev/null").output;
-    if (index(out, "inet ") < 0) need_restart = true;
-
-    // Check gateway
-    let route_out = command_capture("ip route 2>/dev/null").output;
-    if (index(route_out, "default") < 0) need_restart = true;
-
-    if (!need_restart) return;
-
-    last_wan_heal_time = now;
+function heal_wan_and_gateway(ev) {
     let tcfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
     if (tcfg.notify_crash != "0") {
         send_telegram_notification("⚠️ *Watchdog:* WAN/Gateway проблема. Перезапуск wan...");
@@ -874,43 +605,32 @@ function ai_heal_wan_and_gateway() {
     bg_system("/sbin/ifdown wan >/dev/null 2>&1 && /sbin/ifup wan >/dev/null 2>&1 &");
 }
 
-function ai_heal_subscriptions() {
-    let cfg = settings();
-    let sub_url = trim(cfg.subscription_url || "");
-    if (sub_url == "") return;
-
-    let res = command_capture("curl -s -o /dev/null -w %{http_code} --connect-timeout 10 " + shell_quote(sub_url) + " 2>&1");
-    let code = int(res.output);
-    if (res.status == 0 && code >= 200 && code < 400) return;
-
+function heal_subscriptions(ev) {
     let tcfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
     if (tcfg.notify_crash != "0") {
-        send_telegram_notification("⚠️ *Watchdog:* Подписка недоступна (HTTP " + code + "). Обновите подписку вручную.");
+        send_telegram_notification("⚠️ *Watchdog:* Подписка недоступна (HTTP " + int(ev.payload.code) + "). Обновите подписку вручную.");
     }
 }
 
-function ai_heal_uci_config() {
-    let data = fs.readfile("/etc/config/tachyon");
-    if (data == null || data == "") {
-        let tcfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
-        if (tcfg.notify_crash != "0") {
-            send_telegram_notification("⚠️ *Watchdog:* Конфигурация Tachyon повреждена! Восстановление из backup...");
-        }
-        let backup = fs.readfile("/etc/backup/tachyon_config");
-        if (backup != null && backup != "") {
-            let valid = command_success_from_args([ "uci", "-c", "/etc/config", "valid", CONFIG_NAME ]) ||
-                        command_success_from_args([ "/sbin/uci", "valid", CONFIG_NAME ]);
-            if (!valid) {
-                log_message("Backup config also invalid, skipping restore", "warn");
-                return;
-            }
-            let tmp = "/etc/config/tachyon.restore-tmp";
-            if (fs.writefile(tmp, backup) != null) {
-                fs.rename(tmp, "/etc/config/tachyon");
-                system("chmod 0600 /etc/config/tachyon 2>/dev/null");
-                safe_proxy_restart("uci_config_restore");
-            }
-        }
+function heal_uci_config(ev) {
+    let tcfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
+    if (tcfg.notify_crash != "0") {
+        send_telegram_notification("⚠️ *Watchdog:* Конфигурация Tachyon повреждена! Восстановление из backup...");
+    }
+    let backup = fs.readfile("/etc/backup/tachyon_config");
+    if (backup == null || backup == "") return;
+
+    let valid = command_success_from_args([ "uci", "-c", "/etc/config", "valid", CONFIG_NAME ]) ||
+                command_success_from_args([ "/sbin/uci", "valid", CONFIG_NAME ]);
+    if (!valid) {
+        log_message("Backup config also invalid, skipping restore", "warn");
+        return;
+    }
+    let tmp = "/etc/config/tachyon.restore-tmp";
+    if (fs.writefile(tmp, backup) != null) {
+        fs.rename(tmp, "/etc/config/tachyon");
+        system("chmod 0600 /etc/config/tachyon 2>/dev/null");
+        safe_proxy_restart("uci_config_restore");
     }
 }
 
@@ -930,154 +650,68 @@ function validate_singbox_config() {
     return command_success_from_args(["sing-box", "check", "-c", "/etc/sing-box/config.json"]);
 }
 
-// ─── Proxy Health Monitor (fast tier) ─────────────────────────────────────────
-function ai_heal_proxy_health() {
+// ─── Proxy Health Monitor ─────────────────────────────────────────────────────
+// The second proxy subscriber: where heal_proxy_connectivity() reacts to a
+// single failure with a working uplink, this one waits for a configurable run
+// of failures and validates the sing-box config before restarting.
+function heal_proxy_health(ev) {
     if (!ai_enabled("ai_proxy_health_enabled", "1")) return;
-    if (is_reload_in_progress()) return;
 
-    let sb_pid = get_sing_box_pid();
-    if (sb_pid == "" || !process_running(sb_pid, "sing-box")) return;
-
-    let proxy_port = "4534";
-    let sb_cfg_data = fs.readfile("/etc/sing-box/config.json");
-    if (sb_cfg_data) {
-        try {
-            let sb_cfg = json(sb_cfg_data);
-            if (sb_cfg.inbounds) {
-                for (let inb in sb_cfg.inbounds) {
-                    if (inb.type == "http" || inb.type == "mixed") {
-                        proxy_port = as_string(inb.listen_port || 4534);
-                        break;
-                    }
-                }
-            }
-        } catch(e) {}
-    }
-
-    let check_url = ai_setting("ai_proxy_health_url", "https://cp.cloudflare.com/generate_204");
     let threshold = int(ai_setting("ai_proxy_health_fail_threshold", "3"));
+    let fails = int(ev.payload.streak);
+    if (fails < threshold) return;
 
-    let start_time = time();
-    let proxy_ok = command_success_from_args([
-        "curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", "--connect-timeout", "3", "--max-time", "5",
-        "--proxy", "http://127.0.0.1:" + proxy_port,
-        check_url
-    ]);
-    let elapsed = (time() - start_time) * 1000;
-
-    push(proxy_latency_history, { ok: proxy_ok, ms: elapsed, ts: time() });
-    if (length(proxy_latency_history) > 20) {
-        let new_arr = [];
-        for (let i = length(proxy_latency_history) - 20; i < length(proxy_latency_history); i++)
-            push(new_arr, proxy_latency_history[i]);
-        proxy_latency_history = new_arr;
+    ai_heal_report(
+        "proxy_health",
+        sprintf("Proxy health check failed %d times consecutively (port %s)", fails, as_string(ev.payload.port)),
+        "Restarting Tachyon to restore proxy connectivity",
+        "fixed"
+    );
+    // A restart on a config sing-box will refuse to load leaves the proxy down
+    // for good, so validation gates the restart, not the report.
+    if (ai_enabled("ai_config_validation_enabled", "1") && !validate_singbox_config()) {
+        log_message("sing-box config validation failed before proxy restart", "err");
+        return;
     }
-
-    if (!proxy_ok) {
-        proxy_consecutive_fails++;
-        if (proxy_consecutive_fails >= threshold) {
-            ai_heal_report(
-                "proxy_health",
-                sprintf("Proxy health check failed %d times consecutively (port %s)", proxy_consecutive_fails, proxy_port),
-                "Restarting Tachyon to restore proxy connectivity",
-                "fixed"
-            );
-            if (ai_enabled("ai_config_validation_enabled", "1") && !validate_singbox_config()) {
-                log_message("sing-box config validation failed before proxy restart", "err");
-                return;
-            }
-            safe_proxy_restart("proxy_health");
-            proxy_consecutive_fails = 0;
-        }
-    } else {
-        proxy_consecutive_fails = 0;
-    }
+    safe_proxy_restart("proxy_health");
+    controller.reset_proxy_consecutive();
 }
 
-// ─── DNS Continuous Check (fast tier) ─────────────────────────────────────────
-function ai_heal_dns_continuous() {
+// ─── DNS Continuous Check ─────────────────────────────────────────────────────
+// The second DNS subscriber: restores dnsmasq's own configuration rather than
+// restarting the proxy, so it is complementary to heal_dns_stall().
+function heal_dns_continuous(ev) {
     if (!ai_enabled("ai_dns_continuous_enabled", "1")) return;
-    if (is_reload_in_progress()) return;
+    if (int(ev.payload.consecutive) < 3) return;
 
-    let sb_pid = get_sing_box_pid();
-    if (sb_pid == "" || !process_running(sb_pid, "sing-box")) return;
-
-    let start_time = time();
-    let dns_ok = is_dns_working();
-    let elapsed = (time() - start_time) * 1000;
-
-    push(dns_latency_history, { ok: dns_ok, ms: elapsed, ts: time() });
-    if (length(dns_latency_history) > 20) {
-        let new_arr = [];
-        for (let i = length(dns_latency_history) - 20; i < length(dns_latency_history); i++)
-            push(new_arr, dns_latency_history[i]);
-        dns_latency_history = new_arr;
-    }
-
-    if (!dns_ok) {
-        dns_consecutive_fails++;
-        if (dns_consecutive_fails >= 3) {
-            ai_heal_report(
-                "dns_continuous",
-                "DNS resolution failed 3 times consecutively",
-                "Restoring dnsmasq config and reloading",
-                "fixed"
-            );
-            system("/sbin/uci set dhcp.@dnsmasq[0].noresolv='1' >/dev/null 2>&1");
-            system("/sbin/uci commit dhcp >/dev/null 2>&1");
-            system("/etc/init.d/dnsmasq reload >/dev/null 2>&1");
-            dns_consecutive_fails = 0;
-        }
-    } else {
-        dns_consecutive_fails = 0;
-    }
+    ai_heal_report(
+        "dns_continuous",
+        "DNS resolution failed 3 times consecutively",
+        "Restoring dnsmasq config and reloading",
+        "fixed"
+    );
+    system("/sbin/uci set dhcp.@dnsmasq[0].noresolv='1' >/dev/null 2>&1");
+    system("/sbin/uci commit dhcp >/dev/null 2>&1");
+    system("/etc/init.d/dnsmasq reload >/dev/null 2>&1");
+    controller.reset_dns_consecutive();
 }
 
 // ─── AI Empty Sections Recovery ─────────────────────────────────────────────
-let last_section_heal_attempt = 0;
-function ai_heal_empty_sections() {
-    if (!ai_enabled("ai_section_failover_enabled", "1")) return;
-    if (is_reload_in_progress()) return;
-    let now = time();
-    if (now - last_section_heal_attempt < 120) return;
-    last_section_heal_attempt = now;
+function heal_empty_sections(ev) {
+    let recovered = common.array_or_empty(ev.payload.sections);
+    if (length(recovered) == 0) return;
 
-    let cfg = settings();
-    let sections = common.object_or_empty(uci_core.get_all(CONFIG_NAME));
-    let recovered = [];
-
-    for (let name in sections) {
-        let s = common.object_or_empty(sections[name]);
-        let action = common.as_string(s.action || "");
-        if (!connections.is_connections_action(action)) continue;
-        let sub_urls = common.list_option(s, "subscription_url");
-        if (length(sub_urls) == 0) continue;
-
-        let cache_path = "/var/run/tachyon/section-cache/" + name + ".json";
-        let cache = common.object_or_empty(common.read_json_file(cache_path));
-        let servers = common.array_or_empty(cache.servers);
-        let urls = common.array_or_empty(cache.urls);
-        let selector_urls = common.array_or_empty(cache.selector_urls);
-        let domains = common.array_or_empty(cache.domain);
-        let domain_suffixes = common.array_or_empty(cache.domain_suffix);
-        let ip_cidrs = common.array_or_empty(cache.ip_cidr);
-        let usable = length(servers) + length(urls) + length(selector_urls) + length(domains) + length(domain_suffixes) + length(ip_cidrs);
-        if (usable > 0) continue;
-
-        // Section with subscriptions but 0 usable outbounds — trigger async reload
+    for (let name in recovered) {
         log_message("Empty proxy section '" + name + "' — triggering subscription update", "warn");
         bg_system("/usr/bin/tachyon subscription_update_async " + common.shell_quote(name) + " </dev/null >/dev/null 2>&1 1000<&- &");
-        push(recovered, name);
     }
 
-    if (length(recovered) > 0) {
-        ai_heal_report(
-            "empty_proxy_sections",
-            "Empty proxy sections detected: " + join(", ", recovered),
-            "Auto-triggering subscription update for " + as_string(length(recovered)) + " section(s)",
-            "fixed"
-        );
-    }
+    ai_heal_report(
+        "empty_proxy_sections",
+        "Empty proxy sections detected: " + join(", ", recovered),
+        "Auto-triggering subscription update for " + as_string(length(recovered)) + " section(s)",
+        "fixed"
+    );
 }
 
 // ─── DNS Loop Recovery (dead proxy + DNS detour = total DNS loss) ────────────
@@ -1101,13 +735,14 @@ function remove_dns_recovery_state() {
     try { fs.unlink(DNS_RECOVERY_STATE_FILE); } catch(e) {}
 }
 
-let last_dns_loop_heal_attempt = 0;
+// Kept as a self-contained check rather than a fact subscriber: it needs the
+// *current* resolver state at the moment it acts (it re-tests DNS to decide
+// whether to re-enable the detour), so acting on a fact observed earlier in the
+// tick could re-enable a detour against a resolver that has since died.
 function ai_heal_dns_loop() {
     if (!ai_enabled("ai_dns_loop_heal_enabled", "1")) return;
     if (is_reload_in_progress()) return;
     let now = time();
-    if (now - last_dns_loop_heal_attempt < 60) return;
-    last_dns_loop_heal_attempt = now;
 
     let cfg = settings();
     let detour_enabled = common.bool_option(cfg, "dns_detour_enabled", false);
@@ -1210,16 +845,16 @@ function export_metrics() {
     let hour_bucket = int(now / 3600) * 3600;
     let last_bucket = length(data.hours) > 0 ? data.hours[length(data.hours) - 1] : null;
     if (last_bucket && int(last_bucket.ts) == hour_bucket) {
-        last_bucket.proxy_ok = proxy_consecutive_fails == 0;
-        last_bucket.proxy_lat_ms = average_latency(proxy_latency_history);
-        last_bucket.dns_lat_ms = average_latency(dns_latency_history);
+        last_bucket.proxy_ok = proxy_consecutive_fails() == 0;
+        last_bucket.proxy_lat_ms = average_latency(proxy_latency_history());
+        last_bucket.dns_lat_ms = average_latency(dns_latency_history());
         last_bucket.incidents = ai_incidents_count;
     } else {
         push(data.hours, {
             ts: hour_bucket,
-            proxy_ok: proxy_consecutive_fails == 0,
-            proxy_lat_ms: average_latency(proxy_latency_history),
-            dns_lat_ms: average_latency(dns_latency_history),
+            proxy_ok: proxy_consecutive_fails() == 0,
+            proxy_lat_ms: average_latency(proxy_latency_history()),
+            dns_lat_ms: average_latency(dns_latency_history()),
             incidents: ai_incidents_count
         });
     }
@@ -1231,28 +866,18 @@ function export_metrics() {
     fs.writefile(metrics_path, sprintf("%J\n", data));
 }
 
-// ─── Anomaly Detection (slow tier) ────────────────────────────────────────────
-function analyze_anomalies() {
+// ─── Anomaly Detection ────────────────────────────────────────────────────────
+function heal_anomaly_reconnects(ev) {
     if (!ai_enabled("ai_anomaly_detection_enabled", "1")) return;
 
-    let now = time();
-    if (now - last_anomaly_check < 300) return;
-    last_anomaly_check = now;
-
-    let threshold = int(ai_setting("ai_anomaly_reconnect_threshold", "10"));
-    let count_file = "/tmp/tachyon_reconnect_count";
-    let count_data = fs.readfile(count_file) || "0";
-    let reconnects = int(trim(count_data));
-
-    if (reconnects > threshold) {
-        ai_heal_report(
-            "anomaly_reconnects",
-            sprintf("sing-box reconnected %d times in the last hour (threshold: %d)", reconnects, threshold),
-            "High reconnect rate detected. Check proxy server health or ISP stability.",
-            "warn"
-        );
-        fs.writefile(count_file, "0\n");
-    }
+    ai_heal_report(
+        "anomaly_reconnects",
+        sprintf("sing-box reconnected %d times in the last hour (threshold: %d)",
+            int(ev.payload.count), int(ev.payload.threshold)),
+        "High reconnect rate detected. Check proxy server health or ISP stability.",
+        "warn"
+    );
+    fs.writefile("/tmp/tachyon_reconnect_count", "0\n");
 }
 
 function increment_reconnect_count() {
@@ -1263,11 +888,13 @@ function increment_reconnect_count() {
 
 // ─── Adaptive Intervals ───────────────────────────────────────────────────────
 function adaptive_normal_interval() {
-    if (!ai_enabled("ai_adaptive_intervals_enabled", "1")) return 120;
-    return ai_healthy_streak > 25 ? 300 : 120;
+    return controller.adaptive_normal_interval();
 }
 
 // ─── Graceful Degradation wrapper ─────────────────────────────────────────────
+// Still used for the few actions that are not bus subscribers (the metrics
+// export, smart-detect batch processing, the ai-heal CLI audit). Subscribers
+// get the same isolation from the bus itself.
 function safe_call(fn, name) {
     if (!ai_enabled("ai_graceful_degradation_enabled", "1")) {
         fn();
@@ -1280,70 +907,29 @@ function safe_call(fn, name) {
     }
 }
 
-// ─── rpcd FD leak watchdog ────────────────────────────────────────────────────
-// rpcd accumulates file descriptors over time from LuCI API calls.
-// When FD count approaches the process limit (~1024), it can no longer
-// fork to execute /usr/bin/tachyon → LuCI shows everything as "stopped".
-// Threshold 512 = 50% of limit, safe to restart without user impact.
-const RPCD_FD_THRESHOLD = 512;
-
-function ai_heal_rpcd() {
-    // Find rpcd PID via /proc scan (avoid shell fork for pidof)
-    let rpcd_pid = null;
-    let proc_dir = fs.opendir("/proc");
-    if (!proc_dir) return true;
-    let entry;
-    while ((entry = proc_dir.read()) != null) {
-        if (!match(entry, /^[0-9]+$/)) continue;
-        let comm = trim(fs.readfile("/proc/" + entry + "/comm") || "");
-        if (comm == "rpcd") { rpcd_pid = entry; break; }
-    }
-    proc_dir.close();
-    if (!rpcd_pid) return true;
-
-    // Count open file descriptors
-    let fd_dir = fs.opendir("/proc/" + rpcd_pid + "/fd");
-    if (!fd_dir) return true;
-    let fd_count = 0;
-    while ((entry = fd_dir.read()) != null) {
-        if (match(entry, /^[0-9]+$/)) fd_count++;
-    }
-    fd_dir.close();
-
-    if (fd_count > RPCD_FD_THRESHOLD) {
-        ai_heal_report(
-            "rpcd_fd_leak",
-            sprintf("rpcd накопил %d открытых FD (порог %d/1024) — LuCI не может запускать команды", fd_count, RPCD_FD_THRESHOLD),
-            "Выполнен перезапуск rpcd для освобождения файловых дескрипторов",
-            "fixed"
-        );
-        system("/etc/init.d/rpcd restart </dev/null >/dev/null 2>&1");
-        return false;
-    }
-    return true;
+// ─── rpcd FD leak ─────────────────────────────────────────────────────────────
+function heal_rpcd(ev) {
+    ai_heal_report(
+        "rpcd_fd_leak",
+        sprintf("rpcd накопил %d открытых FD (порог %d/1024) — LuCI не может запускать команды",
+            int(ev.payload.fd_count), int(ev.payload.threshold)),
+        "Выполнен перезапуск rpcd для освобождения файловых дескрипторов",
+        "fixed"
+    );
+    system("/etc/init.d/rpcd restart </dev/null >/dev/null 2>&1");
 }
 
-// ─── Full health audit ────────────────────────────────────────────────────────
-function ai_full_health_audit() {
-    safe_call(check_memory, "check_memory");
-    safe_call(ai_heal_rpcd, "ai_heal_rpcd");
-    safe_call(ai_heal_nftables, "ai_heal_nftables");
-    safe_call(ai_heal_qos, "ai_heal_qos");
-    safe_call(ai_heal_dns, "ai_heal_dns");
-    safe_call(ai_heal_proxy_connectivity, "ai_heal_proxy_connectivity");
-    safe_call(ai_heal_community_subnet_sets, "ai_heal_community_subnet_sets");
-    safe_call(ai_heal_wan_and_gateway, "ai_heal_wan_and_gateway");
-    safe_call(ai_heal_subscriptions, "ai_heal_subscriptions");
-    safe_call(ai_heal_uci_config, "ai_heal_uci_config");
-    safe_call(ai_heal_tproxy_port, "ai_heal_tproxy_port");
-    safe_call(ai_export_status, "ai_export_status");
+// ─── Low memory ───────────────────────────────────────────────────────────────
+// Deliberately silent: dropping caches is routine housekeeping, not an
+// incident, so it never called ai_heal_report() and still does not.
+function heal_low_memory(ev) {
+    log_message("Low memory detected (" + as_string(ev.payload.free_mb) + "MB). Clearing caches...", "warn");
+    system("echo 3 > /proc/sys/vm/drop_caches");
 }
 
-function check_urltest_switches() {
-    let now = time();
-    if (now - last_urltest_check < 5) return;
-    last_urltest_check = now;
-
+// The 5s throttle that used to live here is now the controller's emit_once
+// window on urltest.switched, so a burst of log lines still costs one poll.
+function notify_urltest_switch(ev) {
     let tcfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
     if (tcfg.enabled != "1" || tcfg.notify_crash == "0") return;
 
@@ -1489,65 +1075,43 @@ function smart_detect_process_pending() {
     fs.writefile(SMART_DETECT_SEEN_FILE, sprintf("%J", clean));
 }
 
-function handle_log_line(line) {
-    if (!line || line == "") return;
-
-    // Fast keyword pre-filter: skip 95%+ of irrelevant log lines instantly
-    if (index(line, "direct") < 0 && index(line, "DIRECT") < 0 &&
-        index(line, "memory") < 0 && index(line, "oom") < 0 && index(line, "OOM") < 0 &&
-        index(line, "URLTest") < 0 && index(line, "proxy") < 0) {
-        return;
+// ─── OOM response ─────────────────────────────────────────────────────────────
+// Shrinks the GOMEMLIMIT scale by 20% per OOM, floored at 0.2 so sing-box is
+// never starved into permanent failure, then restarts to apply it.
+function heal_oom(ev) {
+    log_message("OOM event detected from syslog! Reducing GOMEMLIMIT scaling...", "err");
+    send_telegram_notification("🚨 *Watchdog:* Обнаружено событие OOM (Out Of Memory)! Уменьшаю GOMEMLIMIT и перезапускаю службы...");
+    let scale = 1.0;
+    let scale_path = "/etc/tachyon/mem_scale";
+    let scale_data = fs.readfile(scale_path);
+    if (scale_data != null) {
+        let parsed_scale = double(trim(as_string(scale_data)));
+        if (parsed_scale > 0.1) scale = parsed_scale;
     }
-    let line_lower = lc(line);
+    let new_scale = scale * 0.8;
+    if (new_scale < 0.2) new_scale = 0.2;
+    fs.mkdir("/etc/tachyon");
+    fs.writefile(scale_path, sprintf("%.2f", new_scale));
+    system("logread -c >/dev/null 2>&1");
+    command_status("/usr/bin/tachyon restart >/dev/null 2>&1");
+}
 
-    // 1. OOM Detection (Kernel OOM-killer or sing-box process OOM crash only)
-    let is_oom = (index(line_lower, "oom-killer") >= 0 ||
-                  index(line_lower, "out of memory: kill process") >= 0 ||
-                  (index(line_lower, "kernel:") >= 0 && index(line_lower, "out of memory") >= 0) ||
-                  (index(line_lower, "sing-box") >= 0 && index(line_lower, "out of memory") >= 0) ||
-                  index(line_lower, "fatal error: out of memory") >= 0);
-    let is_netlink_warning = (index(line_lower, "netlink") >= 0 || index(line_lower, "nlbwmon") >= 0);
+// Candidate domains are queued here and probed in a batch by
+// smart_detect_process_pending(): probing inside the log handler would block
+// the event loop on curl for every failing connection.
+function collect_smart_detect_candidate(ev) {
+    pending_smart_domains[ev.payload.domain] = time();
+}
 
-    if (is_oom && !is_netlink_warning) {
-        let now = time();
-        // Ignore replay of old historical log buffer dumped when logread -f starts
-        if (syslog_start_time > 0 && (now - syslog_start_time > 3) && (now - last_oom_time > 60)) {
-            last_oom_time = now;
-            log_message("OOM event detected from syslog! Reducing GOMEMLIMIT scaling...", "err");
-            send_telegram_notification("🚨 *Watchdog:* Обнаружено событие OOM (Out Of Memory)! Уменьшаю GOMEMLIMIT и перезапускаю службы...");
-            let scale = 1.0;
-            let scale_path = "/etc/tachyon/mem_scale";
-            let scale_data = fs.readfile(scale_path);
-            if (scale_data != null) {
-                let parsed_scale = double(trim(as_string(scale_data)));
-                if (parsed_scale > 0.1) scale = parsed_scale;
-            }
-            let new_scale = scale * 0.8;
-            if (new_scale < 0.2) new_scale = 0.2;
-            fs.mkdir("/etc/tachyon");
-            fs.writefile(scale_path, sprintf("%.2f", new_scale));
-            system("logread -c >/dev/null 2>&1");
-            command_status("/usr/bin/tachyon restart >/dev/null 2>&1");
-        }
-        return;
-    }
-
-    // 2. Smart Detect candidate domain extraction
+// ─── Honeypot ─────────────────────────────────────────────────────────────────
+// The controller has already validated the address shape, so nothing
+// unvalidated reaches the nft command line here.
+function heal_honeypot_hit(ev) {
     let cfg = settings();
-    if (cfg.smart_detect == "1") {
-        if ((index(line_lower, "direct") >= 0 || index(line_lower, "DIRECT") >= 0) &&
-            (index(line_lower, "failed") >= 0 || index(line_lower, "timeout") >= 0 || index(line_lower, "reset") >= 0)) {
-            let domain = smart_detect_extract_domain(line);
-            if (domain != null) {
-                pending_smart_domains[domain] = time();
-            }
-        }
-    }
-
-    // 3. URLTest proxy switch notifications
-    if (index(line, "URLTest") >= 0 || index(line_lower, "selected proxy") >= 0 || index(line_lower, "switch proxy") >= 0) {
-        check_urltest_switches();
-    }
+    let ttl = cfg.honeypot_ttl || "86400";
+    let nft_table = getenv("NFT_TABLE_NAME") || "TachyonTable";
+    command_success_from_args(["nft", "add", "element", "inet", nft_table, "tachyon_honeypot",
+        "{", ev.payload.ip, "timeout", ttl + "s", "}"]);
 }
 
 function setup_honeypot_listener() {
@@ -1576,13 +1140,7 @@ function setup_honeypot_listener() {
             uloop.handle(fifo_fd.fileno(), function(events) {
                 let line;
                 while ((line = fifo_fd.read("line")) != null) {
-                    let ip = trim(as_string(line));
-                    if (ip != "" && match(ip, /^[0-9a-fA-F:.]+$/) != null) {
-                        let cfg = settings();
-                        let ttl = cfg.honeypot_ttl || "86400";
-                        let nft_table = getenv("NFT_TABLE_NAME") || "TachyonTable";
-                        command_success_from_args(["nft", "add", "element", "inet", nft_table, "tachyon_honeypot", "{", ip, "timeout", ttl + "s", "}"]);
-                    }
+                    controller.handle_honeypot_line(line);
                 }
             }, uloop.ULOOP_READ);
         } catch (e) {
@@ -1600,21 +1158,16 @@ function setup_honeypot_listener() {
     }
 }
 
-function recover_oom_scale() {
+// The "OOM was long enough ago" and "scale is below 1.0" tests are the
+// controller's oom.recovery probe; what is left here is the write-back.
+// The 600s self-cooldown stays local because it paces the healer, not the fact.
+function recover_oom_scale(ev) {
     let now = time();
-    if (now - last_oom_time < 1800) return;
-    if (last_oom_time == 0) return;
     if (now - last_oom_recovery_time < 600) return;
     last_oom_recovery_time = now;
 
     let scale_path = "/etc/tachyon/mem_scale";
-    let scale_data = fs.readfile(scale_path);
-    if (scale_data == null) return;
-    let current_scale = double(trim(as_string(scale_data)));
-    if (current_scale >= 1.0 || current_scale < 0.1) {
-        if (current_scale >= 1.0) try { fs.unlink(scale_path); } catch(e) {}
-        return;
-    }
+    let current_scale = double(ev.payload.scale);
     let new_scale = current_scale + 0.05;
     if (new_scale > 1.0) new_scale = 1.0;
     log_message("OOM recovery: restoring GOMEMLIMIT scale from " + sprintf("%.2f", current_scale) + " to " + sprintf("%.2f", new_scale), "info");
@@ -1623,7 +1176,7 @@ function recover_oom_scale() {
 
 function setup_syslog_listener() {
     if (!uloop) return null;
-    syslog_start_time = time();
+    controller.set_syslog_start(time());
     // Kill orphaned logread -f processes from previous watchdog instances.
     // Without this, every restart cascades: new watchdog inherits old watchdog's
     // logread pipe read-end, keeping old logread alive. Over N restarts,
@@ -1639,7 +1192,7 @@ function setup_syslog_listener() {
         uloop.handle(log_pipe.fileno(), function(events) {
             let line;
             while ((line = log_pipe.read("line")) != null) {
-                handle_log_line(trim(as_string(line)));
+                controller.handle_log_line(trim(as_string(line)));
             }
         }, uloop.ULOOP_READ);
     } catch (e) {
@@ -1656,17 +1209,15 @@ function setup_ubus_listener() {
 
     try {
         conn.listener("service.instance.stop", function(ev, msg) {
-            if (type(msg) == "object" && msg.name == "sing-box") {
-                handle_singbox_stop_event("ubus service.instance.stop event");
-            }
+            if (type(msg) == "object")
+                controller.handle_ubus_service_stop(msg.name, "ubus service.instance.stop event");
         });
         conn.listener("service.stop", function(ev, msg) {
-            if (type(msg) == "object" && msg.name == "sing-box") {
-                handle_singbox_stop_event("ubus service.stop event");
-            }
+            if (type(msg) == "object")
+                controller.handle_ubus_service_stop(msg.name, "ubus service.stop event");
         });
         conn.listener("firewall.reload", function(ev, msg) {
-            check_firewall_rules();
+            controller.handle_ubus_firewall_reload();
         });
     } catch (e) {
         log_message("Failed to register ubus listeners: " + as_string(e), "warn");
@@ -1674,8 +1225,126 @@ function setup_ubus_listener() {
     return conn;
 }
 
+// Idempotent: the ai-heal CLI mode and worker() both need the subscriptions in
+// place, and registering twice would double every repair.
+let subscribers_registered = false;
+
+// ─── Subscriptions ────────────────────────────────────────────────────────────
+// One table, one place: what the watchdog reacts to and in what order. Priority
+// encodes the old tier ordering — restore the uplink before blaming the proxy,
+// restore the proxy before touching DNS — so a single tick that observes several
+// faults repairs them bottom-up like the sequential check list used to.
+//
+// `cooldown` values are the module globals the old code hand-rolled:
+//   heal_wan_and_gateway     ← last_wan_heal_time      (300s)
+//   heal_community_subnet…   ← last_subnet_heal_time   (300s)
+//   heal_empty_sections      ← last_section_heal_attempt (120s)
+//   heal_anomaly_reconnects  ← last_anomaly_check      (300s)
+// Debounces that belong to the repair rather than the fact (the 30s sing-box
+// restart floor, the 600s OOM-recovery pacing) stay inside their handlers.
+// A handler that is not a function makes bus.on() return false and register
+// nothing — the repair would then silently never run, with no error anywhere.
+// ucode does not hoist function declarations, so that is exactly what happens if
+// a heal_* is moved below this function. subscribe() turns that silent loss into
+// a startup failure.
+function subscribe(event_type, handler, opts) {
+    if (!bus.on(event_type, handler, opts)) {
+        let label = (type(opts) == "object" && opts.name != null) ? opts.name : as_string(event_type);
+        log_message("FATAL: subscriber " + label + " for " + as_string(event_type) +
+            " could not be registered; this repair would never run", "err");
+        die("watchdog: failed to register subscriber " + label);
+    }
+}
+
+function register_subscribers() {
+    if (subscribers_registered) return;
+    subscribers_registered = true;
+
+    subscribe(EV.WAN_DOWN, heal_wan_and_gateway,
+        { name: "heal_wan_and_gateway", priority: 10, cooldown: 300 });
+
+    subscribe(EV.SINGBOX_STOPPED, heal_singbox_stopped,
+        { name: "heal_singbox_stopped", priority: 20 });
+
+    subscribe(EV.CONFIG_CORRUPT, heal_uci_config,
+        { name: "heal_uci_config", priority: 25 });
+
+    subscribe(EV.NFT_MISSING, heal_nftables,
+        { name: "heal_nftables", priority: 30 });
+    subscribe(EV.QOS_MISSING, heal_qos,
+        { name: "heal_qos", priority: 30 });
+    subscribe(EV.TPROXY_DOWN, heal_tproxy_port,
+        { name: "heal_tproxy_port", priority: 30 });
+    subscribe(EV.SUBNETS_EMPTY, heal_community_subnet_sets,
+        { name: "heal_community_subnet_sets", priority: 30, cooldown: 300 });
+
+    // Both proxy subscribers see the same fact, but they used to be measured on
+    // different tiers, and their thresholds are calibrated to those rates:
+    // ai_heal_proxy_health ran fast (15s), ai_heal_proxy_connectivity ran inside
+    // the normal-tier audit (120s+). The probe now runs once at the fast rate,
+    // so the connectivity healer carries a 120s cooldown to keep its original
+    // pacing. Without it a single stall would restart sing-box eight times as
+    // often — the aggressive-restart regression fixed in c8052ee6.
+    subscribe(EV.PROXY_DOWN, heal_proxy_connectivity,
+        { name: "heal_proxy_connectivity", priority: 40, cooldown: 120 });
+    subscribe(EV.PROXY_DOWN, heal_proxy_health,
+        { name: "heal_proxy_health", priority: 41 });
+
+    // Same split for DNS: ai_heal_dns_continuous was fast, ai_heal_dns was part
+    // of the normal-tier audit. The streak the stall healer thresholds on is
+    // already paced at the normal rate inside the probe (DNS_STREAK_INTERVAL);
+    // the cooldown here is a second bound on how often a restart can be issued,
+    // so a streak that stays at 3 cannot restart the proxy every 15 seconds.
+    subscribe(EV.DNS_DOWN, heal_dns_stall,
+        { name: "heal_dns_stall", priority: 50, cooldown: 120 });
+    subscribe(EV.DNS_DOWN, heal_dns_continuous,
+        { name: "heal_dns_continuous", priority: 51 });
+
+    subscribe(EV.SECTIONS_EMPTY, heal_empty_sections,
+        { name: "heal_empty_sections", priority: 60, cooldown: 120 });
+    subscribe(EV.SUBSCRIPTION_UNREACHABLE, heal_subscriptions,
+        { name: "heal_subscriptions", priority: 60 });
+
+    subscribe(EV.OOM_DETECTED, heal_oom,
+        { name: "heal_oom", priority: 70 });
+    subscribe(EV.OOM_RECOVERABLE, recover_oom_scale,
+        { name: "recover_oom_scale", priority: 70 });
+    subscribe(EV.MEMORY_LOW, heal_low_memory,
+        { name: "heal_low_memory", priority: 70 });
+    subscribe(EV.RPCD_FD_LEAK, heal_rpcd,
+        { name: "heal_rpcd", priority: 70 });
+
+    subscribe(EV.ANOMALY_RECONNECTS, heal_anomaly_reconnects,
+        { name: "heal_anomaly_reconnects", priority: 80, cooldown: 300 });
+
+    // Observers, not repairs: they must run after the healers above.
+    subscribe(EV.SMARTDETECT_CANDIDATE, collect_smart_detect_candidate,
+        { name: "collect_smart_detect_candidate", priority: 90 });
+    subscribe(EV.URLTEST_SWITCHED, notify_urltest_switch,
+        { name: "notify_urltest_switch", priority: 90 });
+    subscribe(EV.HONEYPOT_HIT, heal_honeypot_hit,
+        { name: "heal_honeypot_hit", priority: 90 });
+    subscribe(EV.PAUSE_EXPIRED, function(ev) { check_auto_resume_pause(); },
+        { name: "resume_after_pause", priority: 5 });
+}
+
+// One synchronous sweep of every tier, used by the `ai-heal` CLI mode where no
+// worker is running: probe, let the subscribers repair, then publish status.
+function ai_full_health_audit() {
+    register_subscribers();
+    controller.probe_fast();
+    controller.probe_normal();
+    controller.probe_slow();
+    safe_call(ai_heal_dns_loop, "ai_heal_dns_loop");
+    ai_export_status();
+}
+
 function worker() {
     log_message("Watchdog daemon started.", "info");
+
+    // Subscribe before any source is wired up, so no fact observed during
+    // startup is published into an empty bus and lost.
+    register_subscribers();
 
     setup_honeypot_listener();
     // Restore subnet cache from persistent storage at startup (in case /tmp was cleared)
@@ -1706,27 +1375,19 @@ function worker() {
     let ubus_conn = setup_ubus_listener();
 
     function perform_fast_checks() {
-        safe_call(check_singbox_process, "check_singbox_process");
-        safe_call(ai_heal_proxy_health, "ai_heal_proxy_health");
-        safe_call(ai_heal_dns_continuous, "ai_heal_dns_continuous");
+        controller.probe_fast();
     }
 
     function perform_normal_checks() {
-        safe_call(check_auto_resume_pause, "check_auto_resume_pause");
-        safe_call(ai_full_health_audit, "ai_full_health_audit");
+        controller.probe_normal();
         safe_call(smart_detect_process_pending, "smart_detect_process_pending");
         safe_call(export_metrics, "export_metrics");
+        safe_call(ai_export_status, "ai_export_status");
     }
 
     function perform_slow_checks() {
-        safe_call(ai_heal_community_subnet_sets, "ai_heal_community_subnet_sets");
-        safe_call(ai_heal_tproxy_port, "ai_heal_tproxy_port");
-        safe_call(ai_heal_subscriptions, "ai_heal_subscriptions");
-        safe_call(ai_heal_uci_config, "ai_heal_uci_config");
-        safe_call(ai_heal_empty_sections, "ai_heal_empty_sections");
+        controller.probe_slow();
         safe_call(ai_heal_dns_loop, "ai_heal_dns_loop");
-        safe_call(analyze_anomalies, "analyze_anomalies");
-        safe_call(recover_oom_scale, "recover_oom_scale");
     }
 
     if (uloop) {
@@ -1794,8 +1455,10 @@ function print_ai_status() {
 
 function print_ai_status_full() {
     let now = time();
-    let proxy_ok = proxy_consecutive_fails == 0;
-    let dns_ok = dns_consecutive_fails == 0;
+    let proxy_fails = proxy_consecutive_fails();
+    let dns_fails = dns_consecutive_fails();
+    let proxy_ok = proxy_fails == 0;
+    let dns_ok = dns_fails == 0;
 
     let sb_uptime = 0;
     let sb_pid = get_sing_box_pid();
@@ -1833,14 +1496,14 @@ function print_ai_status_full() {
         uptime_s: sb_uptime,
         memory_mb: mem_mb,
         proxy_ok: proxy_ok,
-        proxy_latency_ms: average_latency(proxy_latency_history),
-        proxy_consecutive_fails: proxy_consecutive_fails,
+        proxy_latency_ms: average_latency(proxy_latency_history()),
+        proxy_consecutive_fails: proxy_fails,
         dns_ok: dns_ok,
-        dns_latency_ms: average_latency(dns_latency_history),
-        dns_consecutive_fails: dns_consecutive_fails,
+        dns_latency_ms: average_latency(dns_latency_history()),
+        dns_consecutive_fails: dns_fails,
         incidents_total: ai_incidents_count,
         last_incident: last_ai_incident,
-        healthy_streak: ai_healthy_streak,
+        healthy_streak: controller.healthy_streak(),
         adaptive_interval_s: adaptive_normal_interval(),
         reconnects_hour: int(trim(fs.readfile("/tmp/tachyon_reconnect_count") || "0"))
     };
