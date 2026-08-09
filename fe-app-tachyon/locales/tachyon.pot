@@ -2769,6 +2769,18 @@ msgstr ""
 msgid "Notify on DNS Leaks"
 msgstr ""
 
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:1682
+msgid "Default (auto)"
+msgstr ""
+
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:1669
+msgid "Proxy Section for Bot"
+msgstr ""
+
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:1670
+msgid "Route bot API requests through this section. Leave empty to use the default mixed proxy."
+msgstr ""
+
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:1621
 msgid "Notify on Server Switches"
 msgstr ""
