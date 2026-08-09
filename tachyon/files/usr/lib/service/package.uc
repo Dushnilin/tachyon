@@ -130,12 +130,12 @@ function prerm_cleanup(action) {
 
     remember_upgrade_state(action);
     if (!PACKAGE_TEST_MODE) {
-        // Kill all flock -w 1000 processes (rc.common lock waiters) to unblock
-        // the init.d serialization lock before stopping the service.
-        // Do it twice to catch any that spawn during the loop.
-        system("ps 2>/dev/null | awk '/flock 1000/{print $1}' | while read _pid; do kill -9 \"$_pid\" 2>/dev/null; done; true");
+        // 1. Kill retry_start_on_wan_up and other background init.d/tachyon
+        //    processes that continuously spawn new flock -w 1000 waiters.
+        system("ps 2>/dev/null | awk '/init.d\\/tachyon/{print $1}' | while read _pid; do kill -9 \"$_pid\" 2>/dev/null; done; true");
+        // 2. Kill any remaining flock -w 1000 waiters (rc.common serialization lock).
         system("sleep 1; ps 2>/dev/null | awk '/flock 1000/{print $1}' | while read _pid; do kill -9 \"$_pid\" 2>/dev/null; done; true");
-        // Stop via ubus (no rc.common/flock involved) then fallback to init.d
+        // 3. Stop service via ubus (no rc.common/flock involved).
         system("ubus call service delete '{\"name\":\"tachyon\"}' 2>/dev/null; true");
         system("sleep 1; timeout 5 " + shell_quote(INIT_PATH) + " stop >/dev/null 2>&1; true");
         restore_dnsmasq_if_needed();
