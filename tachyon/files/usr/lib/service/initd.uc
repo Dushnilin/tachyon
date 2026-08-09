@@ -50,9 +50,9 @@ function command_from_args(args) {
 // Local copy of core/common.uc's background_command(). This module runs on the
 // early-boot path and deliberately carries its own helpers rather than pulling
 // in core.common; see the rationale there for why the descriptors have to be
-// closed by hand.
+// closed by hand — including why the ceiling must stay above procd's fd 1000.
 function background_command(command) {
-    return "{ if ( eval \"exec 10<&-\" ) 2>/dev/null; then __tfd=999; else __tfd=9; fi; " +
+    return "{ if ( eval \"exec 10<&-\" ) 2>/dev/null; then __tfd=1048576; else __tfd=9; fi; " +
         "for f in /proc/self/fd/*; do i=${f##*/}; case $i in 0|1|2) continue;; esac; " +
         "[ \"$i\" -le $__tfd ] 2>/dev/null || continue; " +
         "eval \"exec $i<&-\" 2>/dev/null || true; done; " +

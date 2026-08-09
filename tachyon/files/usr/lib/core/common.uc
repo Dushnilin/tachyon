@@ -192,9 +192,21 @@ function command_from_args(args) {
 // The glob's own descriptor may appear in the listing and close underneath the
 // loop; `|| true` keeps that from ending it. /proc is always mounted on OpenWrt.
 //
+// The ceiling has to sit above 1000, not below it. procd_lock() in
+// /lib/functions/procd.sh does `exec 1000>/var/lock/procd_<svc>.lock` and then
+// `flock 1000` with no -w, so descriptor 1000 IS the procd serialization lock.
+// A ceiling of 999 skipped exactly that descriptor: every background spawn
+// inherited the held lock, and the lock outlived the init script that took it —
+// watchdog workers, logread -f, the zapret2 supervisors, nfqws2, the telegram
+// worker and stray curls were all found pinning /var/lock/procd_tachyon.lock.
+// With the lock never released, any later /etc/init.d/tachyon call blocks
+// forever in flock, which is how package_prerm hung until apk killed it and
+// rolled the upgrade back. Killing the flock processes cannot help while an
+// inheriting child still holds the descriptor.
+//
 // stdin/stdout/stderr are left alone — callers redirect those themselves.
 function close_inherited_fds() {
-    return "if ( eval \"exec 10<&-\" ) 2>/dev/null; then __tfd=999; else __tfd=9; fi; " +
+    return "if ( eval \"exec 10<&-\" ) 2>/dev/null; then __tfd=1048576; else __tfd=9; fi; " +
         "for f in /proc/self/fd/*; do i=${f##*/}; case $i in 0|1|2) continue;; esac; " +
         "[ \"$i\" -le $__tfd ] 2>/dev/null || continue; " +
         "eval \"exec $i<&-\" 2>/dev/null || true; done; ";

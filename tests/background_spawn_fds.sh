@@ -119,6 +119,47 @@ if [ "$closes_high" = yes ]; then
     || fail "background_command left $closed descriptors open in the child; expected the standard three"
 fi
 
+# ── the fd ceiling must sit above procd's lock descriptor ─────────────────────
+# Structural, because the runtime check below only runs on a shell that can close
+# high descriptors — dash cannot, so CI would never reach it. Every copy of the
+# prologue (core/common.uc plus the two early-boot duplicates) must agree.
+#
+# Matched per occurrence, not per line: one line carries both the real ceiling
+# and the dash fallback `__tfd=9`, so a line-wise filter would discard both.
+ceilings="$(grep -rho '__tfd=[0-9]*' "$LIB_DIR" | sort -u | grep -v '^__tfd=9$' || true)"
+[ -n "$ceilings" ] || fail "no fd ceiling found; the spawn prologue lost its __tfd assignment"
+for entry in $ceilings; do
+  value="${entry#__tfd=}"
+  [ "$value" -gt 1000 ] 2>/dev/null \
+    || fail "fd ceiling $value does not cover procd lock descriptor 1000 (procd_lock does exec 1000> then flock 1000)"
+done
+
+# ── descriptor 1000 is the procd lock and must not survive the prologue ───────
+# procd_lock() in /lib/functions/procd.sh does `exec 1000>/var/lock/procd_<svc>.lock`
+# then `flock 1000` with no -w. A ceiling of 999 skipped exactly that descriptor,
+# so every background spawn inherited the held lock and outlived the init script
+# that took it — after which any /etc/init.d/tachyon call blocked in flock
+# forever, which is how package_prerm hung until apk rolled the upgrade back.
+# Killing the flock processes cannot help while an inheriting child holds the fd.
+if [ "$closes_high" = yes ]; then
+  LOCK_OUT="$(mktemp "${TMPDIR:-/tmp}/tachyon_spawn_lock.XXXXXX")"
+  LOCK_FILE="$(mktemp "${TMPDIR:-/tmp}/tachyon_spawn_lockfile.XXXXXX")"
+  trap 'rm -f "$SPAWN_UC" "$COUNT_OUT" "$LOCK_OUT" "$LOCK_FILE"' EXIT
+
+  cat > "$SPAWN_UC" <<UCODE
+let common = require("core.common");
+print(common.background_command("{ ls /proc/self/fd | grep -c '^1000\$' || true; } >>$LOCK_OUT"), "\n");
+UCODE
+
+  lock_command="$(ucode -L "$LIB_DIR" "$SPAWN_UC")"
+  # Opened the way procd opens it, in this shell, so the child inherits it.
+  ( eval "exec 1000>\"\$LOCK_FILE\""; eval "$lock_command"; sleep 0.4 )
+
+  lock_seen="$(tr -d ' \n' < "$LOCK_OUT")"
+  [ "$lock_seen" = 0 ] \
+    || fail "background_command left procd's lock descriptor 1000 open in the child (saw '$lock_seen'); the fd ceiling must sit above 1000"
+fi
+
 # ── the pid-carrying form reports the daemon, not a wrapper ───────────────────
 # `exec` has to replace the subshell, or `$!` names a shell that exits at once
 # and the recorded pid belongs to nothing. Checked against a real spawn: the
