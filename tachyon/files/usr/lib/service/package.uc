@@ -130,12 +130,14 @@ function prerm_cleanup(action) {
 
     remember_upgrade_state(action);
     if (!PACKAGE_TEST_MODE) {
-        // Kill all processes waiting on procd_tachyon.lock (flock -w 1000) to
-        // prevent deadlock. rc.common uses flock to serialize init.d calls and
-        // if retry_start_on_wan_up processes are queued, init.d stop blocks
-        // up to 1000 seconds per queued process.
+        // Kill all flock -w 1000 processes (rc.common lock waiters) to unblock
+        // the init.d serialization lock before stopping the service.
+        // Do it twice to catch any that spawn during the loop.
         system("ps 2>/dev/null | awk '/flock 1000/{print $1}' | while read _pid; do kill -9 \"$_pid\" 2>/dev/null; done; true");
-        system("timeout 10 " + shell_quote(INIT_PATH) + " stop >/dev/null 2>&1; true");
+        system("sleep 1; ps 2>/dev/null | awk '/flock 1000/{print $1}' | while read _pid; do kill -9 \"$_pid\" 2>/dev/null; done; true");
+        // Stop via ubus (no rc.common/flock involved) then fallback to init.d
+        system("ubus call service delete '{\"name\":\"tachyon\"}' 2>/dev/null; true");
+        system("sleep 1; timeout 5 " + shell_quote(INIT_PATH) + " stop >/dev/null 2>&1; true");
         restore_dnsmasq_if_needed();
         remove_managed_sing_box();
     }
