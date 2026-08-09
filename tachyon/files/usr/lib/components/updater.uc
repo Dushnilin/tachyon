@@ -274,8 +274,18 @@ function release_metadata_tsv() {
 function release_commit_sha() {
     let release = object_or_empty(read_stdin_json());
     let sha = as_string(release.target_commitish || "");
-    if (sha != "")
+    if (sha != "" && match(sha, /^[0-9a-fA-F]{7,40}$/) != null) {
         print(sha, "\n");
+        return;
+    }
+    let body = as_string(release.body || "");
+    if (body != "") {
+        let m = match(body, /(?:[Cc]ommit|[Ss][Hh][Aa]):?\s*([0-9a-fA-F]{7,40})/);
+        if (m && m[1]) {
+            print(m[1], "\n");
+            return;
+        }
+    }
 }
 
 function openwrt_release_value(path, key) {

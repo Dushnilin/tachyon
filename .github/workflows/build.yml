@@ -94,6 +94,8 @@ jobs:
           files: ./filtered-bin/release/*
           tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }}
+          target_commitish: ${{ needs.preparation.outputs.commitish }}
+          body: "Commit: ${{ needs.preparation.outputs.commitish }}"
           draft: false
           prerelease: false
           make_latest: true
@@ -105,7 +107,11 @@ jobs:
           files: ./filtered-bin/release/*
           tag_name: ${{ needs.preparation.outputs.version }}
           name: ${{ needs.preparation.outputs.version }}
+          target_commitish: ${{ needs.preparation.outputs.commitish }}
           draft: false
           prerelease: false
           make_latest: true
-          body: ${{ inputs.release_notes }}
+          body: |
+            Commit: ${{ needs.preparation.outputs.commitish }}
+            ${{ inputs.release_notes }}
+
