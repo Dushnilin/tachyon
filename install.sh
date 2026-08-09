@@ -419,6 +419,24 @@ run_logged_timeout() {
     return "$_rc"
 }
 
+# Retry an APK command up to 10 times if the database is locked (exit 227).
+# Usage: apk_with_lock_retry <tag> <timeout> <apk args...>
+apk_with_lock_retry() {
+    local _tag="$1" _secs="$2"
+    shift 2
+    local _attempt=0 _rc=227
+    while [ "$_attempt" -lt 10 ] && [ "$_rc" -eq 227 ]; do
+        if [ "$_attempt" -gt 0 ]; then
+            log_line "WARN  [$_tag] APK database locked (exit 227), retrying in 3s (attempt $((_attempt+1))/10)..."
+            sleep 3
+        fi
+        run_logged_timeout "$_tag" "$_secs" "$@"
+        _rc=$?
+        _attempt=$((_attempt+1))
+    done
+    return "$_rc"
+}
+
 msg() {
     log_line "INFO  $1"
     [ "$QUIET" -eq 1 ] && return 0
@@ -1691,7 +1709,7 @@ pkg_list_update() {
     fi
 
     if [ "$PKG_IS_APK" -eq 1 ]; then
-        run_logged_timeout "apk" 120 apk update
+        apk_with_lock_retry "apk" 120 apk update
     else
         run_logged_timeout "opkg" 120 opkg update
     fi
@@ -1715,7 +1733,7 @@ pkg_install_name() {
     fi
 
     if [ "$PKG_IS_APK" -eq 1 ]; then
-        run_logged_timeout "apk" 120 apk add "$pkg_name"
+        apk_with_lock_retry "apk" 120 apk add "$pkg_name"
     else
         run_logged_timeout "opkg" 120 opkg install "$pkg_name"
     fi
@@ -1737,7 +1755,7 @@ pkg_install_files() {
     fi
 
     if [ "$PKG_IS_APK" -eq 1 ]; then
-        run_logged_timeout "apk" 120 apk add --allow-untrusted "$@"
+        apk_with_lock_retry "apk" 120 apk add --allow-untrusted "$@"
         local rc=$?
         if [ $rc -ne 0 ]; then
             # apk may report warnings as errors even though the package installed successfully
