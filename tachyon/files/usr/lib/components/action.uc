@@ -13,6 +13,9 @@ const TACHYON_COMMIT_SHA = getenv("TACHYON_COMMIT_SHA") || constants.TACHYON_COM
 const TACHYON_RELEASE_REPO = getenv("TACHYON_RELEASE_REPO") || constants.TACHYON_RELEASE_REPO || "Dushnilin/tachyon";
 const RUNTIME_STATE_DIR = getenv("TACHYON_RUNTIME_STATE_DIR") || "/var/run/tachyon";
 const SYSTEM_INFO_CACHE_FILE = getenv("TACHYON_SYSTEM_INFO_CACHE_FILE") || RUNTIME_STATE_DIR + "/system-info.json";
+// Persistent, not RUNTIME_STATE_DIR: the fingerprint describes the build that is
+// on disk, so it has to survive a reboot the same way the package does.
+const TACHYON_BUILD_STATE_FILE = getenv("TACHYON_BUILD_STATE_FILE") || "/etc/.tachyon/build-state";
 const COMPONENT_LOCK_DIR = getenv("UPDATES_LOCK_DIR") || RUNTIME_STATE_DIR + "/component-action.lock";
 const TMP_STALE_TTL_MINUTES = getenv("UPDATES_TMP_STALE_TTL_MINUTES") || "30";
 const TMP_FILE_STALE_TTL_MINUTES = getenv("UPDATES_TMP_FILE_STALE_TTL_MINUTES") || "10";
@@ -405,8 +408,14 @@ function pkg_install_name_downgrade(package_name, package_version) {
         command_success(command_from_args([ "opkg", "install", "--force-downgrade", package_name ]) + " </dev/null");
 }
 
-function pkg_install_files_command(files) {
+// force_reinstall matters only for opkg: installing an .ipk whose version equals
+// the installed one is a no-op unless --force-reinstall is passed, so a rebuild
+// published under the same tag would silently not be applied. apk always writes
+// the file it is handed, so its argument list stays untouched.
+function pkg_install_files_command(files, force_reinstall) {
     let args = is_apk() ? [ "apk", "add", "--allow-untrusted" ] : [ "opkg", "install", "--force-overwrite", "--force-downgrade" ];
+    if (!is_apk() && force_reinstall)
+        push(args, "--force-reinstall");
     for (let file in files)
         push(args, file);
     return command_from_args(args) + " </dev/null";
@@ -760,6 +769,49 @@ function write_tachyon_latest_version_cache(value, timestamp) {
     if (as_string(value) == "")
         return;
     write_file("/tmp/tachyon.latest-version.cache", as_string(value) + "\n" + as_string(timestamp) + "\n");
+}
+
+// A release tag can be rebuilt, so the version alone cannot answer "is the build
+// on disk the build the release publishes now?". The fingerprint recorded at
+// install time answers it, including for releases that carry no commit SHA.
+function read_tachyon_build_fingerprint() {
+    let fields = split(trim(read_file(TACHYON_BUILD_STATE_FILE)), "\t");
+    if (length(fields) < 2 || trim(as_string(fields[0])) != trim(as_string(TACHYON_VERSION)))
+        return "";
+    return trim(as_string(fields[1]));
+}
+
+function write_tachyon_build_fingerprint(version, fingerprint) {
+    if (as_string(version) == "" || as_string(fingerprint) == "")
+        return;
+    let dir = replace(TACHYON_BUILD_STATE_FILE, /\/[^\/]*$/, "");
+    if (dir != "")
+        ensure_dir(dir);
+    write_file(TACHYON_BUILD_STATE_FILE, as_string(version) + "\t" + as_string(fingerprint) + "\n");
+}
+
+// Called after a successful install/reinstall. TACHYON_COMMIT_SHA still holds the
+// SHA of the build that is running this code, not the one just written to disk,
+// so the release we installed from is the only source for the new identity.
+function record_tachyon_installed_build(version) {
+    let release_json = latest_tachyon_release_json();
+    if (release_json == "")
+        return null;
+
+    let sha = trim(helper_output_input(release_json, "release-commit-sha", []));
+    if (sha != "" && match(sha, /^[0-9a-fA-F]{7,40}$/) == null)
+        sha = "";
+    let fingerprint = trim(helper_output_input(release_json, "release-build-fingerprint", []));
+    write_tachyon_build_fingerprint(version, fingerprint);
+
+    if (sha == "" && fingerprint == "")
+        return null;
+    let extra = { current_sha: sha, latest_sha: sha };
+    if (fingerprint != "") {
+        extra.current_build = fingerprint;
+        extra.latest_build = fingerprint;
+    }
+    return extra;
 }
 
 function retry_resolve(description, fn) {
@@ -2196,21 +2248,33 @@ function check_tachyon() {
 
     // Fetch remote commit SHA for information display
     let remote_sha = "";
+    let remote_fingerprint = "";
     let local_sha = TACHYON_COMMIT_SHA != "" && TACHYON_COMMIT_SHA != "unknown" ? TACHYON_COMMIT_SHA : "";
+    let local_fingerprint = read_tachyon_build_fingerprint();
     if (release_json != "") {
         remote_sha = trim(helper_output_input(release_json, "release-commit-sha", []));
         if (remote_sha != "" && match(remote_sha, /^[0-9a-fA-F]{7,40}$/) == null)
             remote_sha = "";
+        remote_fingerprint = trim(helper_output_input(release_json, "release-build-fingerprint", []));
     }
 
-    let sha_extra = local_sha != "" ? { current_sha: local_sha, latest_sha: remote_sha } : null;
+    let sha_extra = null;
+    if (local_sha != "" || remote_fingerprint != "" || local_fingerprint != "") {
+        sha_extra = { current_sha: local_sha, latest_sha: remote_sha };
+        if (local_fingerprint != "")
+            sha_extra.current_build = local_fingerprint;
+        if (remote_fingerprint != "")
+            sha_extra.latest_build = remote_fingerprint;
+    }
 
     if (status == "latest") {
-        if (local_sha != "" && remote_sha != "" &&
-            substr(remote_sha, 0, length(local_sha)) != local_sha &&
-            substr(local_sha, 0, length(remote_sha)) != remote_sha) {
+        // Same tag can carry several builds. Decide via SHA when both sides have
+        // one, otherwise via the fingerprint recorded at install time.
+        if (helper_success("tachyon-build-differs", [ local_sha, remote_sha, local_fingerprint, remote_fingerprint ])) {
             status = "outdated_same_release";
-            updates_log("Tachyon build update found for current release (" + TACHYON_VERSION + "): " + local_sha + " -> " + remote_sha);
+            updates_log("Tachyon build update found for current release (" + TACHYON_VERSION + "): " +
+                (local_sha != "" && remote_sha != "" ? local_sha + " -> " + remote_sha :
+                    local_fingerprint + " -> " + remote_fingerprint));
             action_success("tachyon", "check_update", "Update is available for current release", TACHYON_VERSION, latest_version, 0, status, release_url, sha_extra);
         }
         updates_log("Tachyon is already up to date (" + TACHYON_VERSION + ")");
@@ -2286,7 +2350,7 @@ function reinstall_tachyon() {
     let reinstall_files = [ app_file, backend_file ];
     if (i18n_file != "")
         push(reinstall_files, i18n_file);
-    if (!run_logged_retrying("Reinstalling Tachyon packages", pkg_install_files_command(reinstall_files)))
+    if (!run_logged_retrying("Reinstalling Tachyon packages", pkg_install_files_command(reinstall_files, true)))
         action_fail("tachyon", "reinstall", "Failed to reinstall Tachyon packages", TACHYON_VERSION, latest_version);
 
     remove_file("/var/luci-indexcache");
@@ -2302,7 +2366,8 @@ function reinstall_tachyon() {
     if (new_version == "")
         new_version = latest_version;
     updates_log("Tachyon reinstalled to " + new_version);
-    action_success("tachyon", "reinstall", "Tachyon has been reinstalled", new_version, latest_version, 1, "latest", release.release_url);
+    let build_extra = record_tachyon_installed_build(new_version);
+    action_success("tachyon", "reinstall", "Tachyon has been reinstalled", new_version, latest_version, 1, "latest", release.release_url, build_extra);
 }
 
 function install_tachyon() {
@@ -2330,7 +2395,10 @@ function install_tachyon() {
     let install_files = [ app_file, backend_file ];
     if (i18n_file != "")
         push(install_files, i18n_file);
-    if (!run_logged_retrying("Installing Tachyon packages", pkg_install_files_command(install_files)))
+    // Installing the same tag means a rebuild of the current release; opkg skips
+    // it as "already installed" unless it is forced.
+    let same_release_build = trim(as_string(latest_version)) == trim(as_string(TACHYON_VERSION));
+    if (!run_logged_retrying("Installing Tachyon packages", pkg_install_files_command(install_files, same_release_build)))
         action_fail("tachyon", "install", "Failed to install Tachyon packages", TACHYON_VERSION, latest_version);
 
     remove_file("/var/luci-indexcache");
@@ -2346,7 +2414,8 @@ function install_tachyon() {
     if (new_version == "")
         new_version = latest_version;
     updates_log("Tachyon updated to " + new_version);
-    action_success("tachyon", "install", "Tachyon has been installed", new_version, latest_version, 1, "latest", release.release_url);
+    let build_extra = record_tachyon_installed_build(new_version);
+    action_success("tachyon", "install", "Tachyon has been installed", new_version, latest_version, 1, "latest", release.release_url, build_extra);
 }
 
 function dispatch_sing_box(action) {
@@ -2439,6 +2508,8 @@ else if (mode == "latest-tachyon-version")
     print(latest_tachyon_version(), "\n");
 else if (mode == "tachyon-release-metadata")
     print(fetch_tachyon_latest_release_metadata(), "\n");
+else if (mode == "pkg-install-files-command")
+    print(pkg_install_files_command(slice(ARGV, 2), ARGV[1] == "1"), "\n");
 else {
     warn("Usage: components/action.uc <component-action|latest-tachyon-version|tachyon-release-metadata> ...\n");
     exit(1);

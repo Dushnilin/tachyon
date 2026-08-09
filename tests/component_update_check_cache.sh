@@ -61,7 +61,7 @@ cat >"$fake_lib/components/action.uc" <<'UCODE'
 #!/usr/bin/env ucode
 let component = ARGV[1] || "tachyon";
 let action = ARGV[2] || "check_update";
-print(sprintf("%J\n", {
+let result = {
     success: true,
     component,
     action,
@@ -71,7 +71,16 @@ print(sprintf("%J\n", {
     release_url: "https://example.com/release",
     changed: 0,
     status: "outdated"
-}));
+};
+// An install reports which build it actually put on disk; a same-tag rebuild is
+// only distinguishable by that value.
+if (getenv("TEST_ACTION_CURRENT_SHA")) {
+    result.current_sha = getenv("TEST_ACTION_CURRENT_SHA");
+    result.latest_sha = getenv("TEST_ACTION_CURRENT_SHA");
+    result.status = "latest";
+    result.changed = 1;
+}
+print(sprintf("%J\n", result));
 UCODE
 
 cat >"$fake_lib/providers/zapret/runtime.uc" <<'UCODE'
@@ -115,6 +124,28 @@ TEST_COMPONENT_UPDATE_CHECK_ENABLED=0 updates_ucode \
 [ ! -e "$cache_dir/zapret.json" ] ||
   fail "manual checks must not be cached while automatic checks are disabled"
 
+# A successful install must record the build identity it installed, not just
+# "latest". A release tag can be rebuilt, so without the SHA the next check has
+# nothing to compare against and either re-offers the same build or hides an
+# install that silently changed nothing.
+rm -rf "$cache_dir"
+rm -f "$state_file"
+TEST_ACTION_CURRENT_SHA=abc1234 updates_ucode \
+  component-action-worker "$state_file" "$output_file" tachyon install
+[ -s "$cache_dir/tachyon.json" ] ||
+  fail "a successful install must refresh the Tachyon cache entry"
+
+install_cache="$(updates_ucode component-update-check-cache)"
+node -e '
+const value = JSON.parse(process.argv[1]);
+const entry = value.results.find((item) => item.component === "tachyon");
+if (!entry) process.exit(1);
+if (entry.status !== "latest") process.exit(1);
+if (entry.current_sha !== "abc1234") process.exit(1);
+if (entry.latest_sha !== "abc1234") process.exit(1);
+' "$install_cache" || fail "install must cache the installed build sha"
+
+rm -rf "$cache_dir"
 rm -f "$state_file" "$timestamp_file"
 updates_ucode component-updates-if-due
 [ -s "$cache_dir/tachyon.json" ] ||

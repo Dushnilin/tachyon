@@ -1247,6 +1247,36 @@ function exec_close_connections(token, chat_id) {
         send_message(token, chat_id, "❌ <b>Ошибка сброса соединений.</b>\nsing-box Clash API недоступен.", "HTML", [[{text:"⬅️ Меню", callback_data:"/menu"}]]);
 }
 
+// A rebuild published under an existing tag keeps its version, so "1.2.66 ➡️
+// 1.2.66" is all the version fields can say. These helpers name the build
+// instead: the commit SHA when the release carries one, else the fingerprint
+// derived from publish timestamps and asset size.
+function build_label(sha, fingerprint) {
+    sha = as_string(sha);
+    if (sha != "")
+        return length(sha) > 7 ? substr(sha, 0, 7) : sha;
+    fingerprint = as_string(fingerprint);
+    if (fingerprint == "")
+        return "";
+    let published = match(fingerprint, /pub=([0-9]{4}-[0-9]{2}-[0-9]{2})T([0-9]{2}:[0-9]{2})/);
+    if (published)
+        return as_string(published[1]) + " " + as_string(published[2]);
+    return length(fingerprint) > 24 ? substr(fingerprint, 0, 24) : fingerprint;
+}
+
+function build_transition(comp) {
+    let from = build_label(comp.current_sha, comp.current_build);
+    let to = build_label(comp.latest_sha, comp.latest_build);
+    if (from == "" || to == "" || from == to)
+        return to != "" ? "<code>" + escape_html(to) + "</code>" : "";
+    return "<code>" + escape_html(from) + "</code> ➡️ <code>" + escape_html(to) + "</code>";
+}
+
+function build_identity_key(comp) {
+    let sha = as_string(comp.latest_sha);
+    return sha != "" ? sha : as_string(comp.latest_build);
+}
+
 function exec_check_updates(token, chat_id, msg_id) {
     let out = command_output_from_args(["/usr/bin/tachyon", "component_update_check_cache"]);
     let text = "📦 <b>Обновления компонентов</b>\n\n";
@@ -1268,7 +1298,13 @@ function exec_check_updates(token, chat_id, msg_id) {
                     let lat = comp.latest_version || "?";
                     if (!comp.success) {
                         text += "• <b>" + title + "</b>: ❌ Ошибка проверки\n";
-                    } else if (comp.status == "outdated" || comp.status == "outdated_same_release") {
+                    } else if (comp.status == "outdated_same_release") {
+                        let transition = build_transition(comp);
+                        text += "• <b>" + title + "</b>: <code>" + cur + "</code> — новая сборка релиза" +
+                            (transition != "" ? " " + transition : "") + " ⚠️\n";
+                        push(keyboard, [{text: "🔄 Обновить " + title, callback_data: "/update_component " + name}]);
+                        has_updates = true;
+                    } else if (comp.status == "outdated") {
                         text += "• <b>" + title + "</b>: <code>" + cur + "</code> ➡️ <code>" + lat + "</code> ⚠️\n";
                         push(keyboard, [{text: "🔄 Обновить " + title, callback_data: "/update_component " + name}]);
                         has_updates = true;
@@ -2529,20 +2565,33 @@ function check_notified_updates(token, admin_ids) {
             let name = comp.component || "";
             if (name == "") continue;
             if (comp.success !== true) continue;
-            if (comp.status == "outdated") {
+            if (comp.status == "outdated" || comp.status == "outdated_same_release") {
                 let latest = comp.latest_version;
-                if (notified[name] != latest) {
+                // Keyed by version *and* build: a rebuild under an existing tag
+                // leaves the version untouched, so a version-only key would
+                // suppress its notification forever. Entries written by older
+                // builds hold a bare version and simply miss once.
+                let identity = build_identity_key(comp);
+                let key = as_string(latest) + (identity != "" ? ":" + identity : "");
+                if (notified[name] != key) {
                     let title = (name == "sing_box") ? "sing-box" : name;
                     let cur = comp.current_version || "?";
-                    let msg = "📦 <b>Доступно обновление компонента!</b>\n" + title + ": <code>" + escape_html(cur) + "</code> ➡️ <code>" + escape_html(as_string(latest)) + "</code>";
+                    let msg;
+                    if (comp.status == "outdated_same_release") {
+                        let transition = build_transition(comp);
+                        msg = "📦 <b>Новая сборка текущего релиза!</b>\n" + title + ": <code>" + escape_html(cur) + "</code>" +
+                            (transition != "" ? "\nСборка: " + transition : "");
+                    } else {
+                        msg = "📦 <b>Доступно обновление компонента!</b>\n" + title + ": <code>" + escape_html(cur) + "</code> ➡️ <code>" + escape_html(as_string(latest)) + "</code>";
+                    }
                     let kb = [[{text: "🔄 Обновить " + title, callback_data: "/update_component " + name}]];
-                    
+
                     let admins = split(admin_ids, /,/);
                     for (let admin in admins) {
                         let cid = trim(admin);
                         if (cid != "") send_message(token, cid, msg, "HTML", kb);
                     }
-                    notified[name] = latest;
+                    notified[name] = key;
                     changed = true;
                 }
             }

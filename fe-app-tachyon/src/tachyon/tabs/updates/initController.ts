@@ -26,6 +26,7 @@ import {
   shouldRefreshComponentStateBeforeRender,
   shouldResetCheckResultsOnMount,
 } from './checkResultLifecycle';
+import { describeSameReleaseBuild } from './sameReleaseBuild';
 import { TachyonShellMethods } from '../../methods';
 import {
   logger,
@@ -1106,28 +1107,20 @@ function renderComponentCard(card: ComponentCard) {
     } else if (checkResult.status === 'outdated_same_release') {
       labelText = _('Update is available for current release');
       // Show short commit SHAs so user understands it's the same version, different build
-      const currentSha = checkResult.current_sha
-        ? checkResult.current_sha.substring(0, 8)
-        : '';
-      const latestSha = checkResult.latest_sha
-        ? checkResult.latest_sha.substring(0, 8)
-        : '';
-      if (currentSha || latestSha) {
-        const shaText =
-          currentSha && latestSha
-            ? `${currentSha} → ${latestSha}`
-            : currentSha || latestSha;
-        latestValueNodes.push(
-          E(
-            'span',
-            {
-              class: 'tachyon_updates-page__component__sha-info',
-              title: _('Installed build → Available build'),
-            },
-            shaText,
-          ),
-        );
-      }
+      const build = describeSameReleaseBuild({
+        currentSha: checkResult.current_sha,
+        latestSha: checkResult.latest_sha,
+      });
+      latestValueNodes.push(
+        E(
+          'span',
+          {
+            class: 'tachyon_updates-page__component__sha-info',
+            title: _('Installed build → Available build'),
+          },
+          build.kind === 'sha' ? build.text : _('Rebuilt release'),
+        ),
+      );
     } else if (checkResult.status === 'latest') {
       labelText = _('Latest version is installed');
     } else if (checkResult.status === 'dev') {

@@ -1443,13 +1443,25 @@ function cache_component_update_check_result(value, notify_update) {
         cached.current_sha = as_string(value.current_sha);
     if (as_string(value.latest_sha) != "")
         cached.latest_sha = as_string(value.latest_sha);
+    // Build fingerprints answer "is this the build the release publishes now?" for
+    // releases that carry no commit SHA at all.
+    if (as_string(value.current_build) != "")
+        cached.current_build = as_string(value.current_build);
+    if (as_string(value.latest_build) != "")
+        cached.latest_build = as_string(value.latest_build);
     if (!write_state_file(path, cached))
         return false;
 
-    if (arg_bool(notify_update) && cached.status == "outdated" &&
-        (as_string(previous.status) != "outdated" ||
-            as_string(previous.latest_version) != cached.latest_version)) {
-        log_message("[component-update] " + component + " " + cached.latest_version, "info");
+    // A rebuild keeps latest_version, so the build identity has to take part in the
+    // "is this new to us?" test or same-tag rebuilds would never be logged.
+    let build_key = as_string(cached.latest_sha) != "" ? as_string(cached.latest_sha) : as_string(cached.latest_build);
+    let previous_build_key = as_string(previous.latest_sha) != "" ? as_string(previous.latest_sha) : as_string(previous.latest_build);
+    if (arg_bool(notify_update) && (cached.status == "outdated" || cached.status == "outdated_same_release") &&
+        (as_string(previous.status) != cached.status ||
+            as_string(previous.latest_version) != cached.latest_version ||
+            previous_build_key != build_key)) {
+        log_message("[component-update] " + component + " " + cached.latest_version +
+            (cached.status == "outdated_same_release" && build_key != "" ? " (build " + build_key + ")" : ""), "info");
     }
 
     return true;
@@ -1483,6 +1495,10 @@ function update_component_check_cache_from_action(value) {
             latest_version = current_ver;
         if (current_ver == "" || current_ver != latest_version)
             current_ver = latest_version;
+        // The action reports which build it actually put on disk. Carrying it into
+        // the cache is what keeps a same-tag rebuild from re-appearing as an update
+        // right after it was installed — and, if the install silently changed
+        // nothing, from being hidden behind a bare "latest".
         cache_component_update_check_result({
             success: true,
             component,
@@ -1491,7 +1507,11 @@ function update_component_check_cache_from_action(value) {
             current_version: current_ver,
             latest_version,
             release_url: as_string(value.release_url),
-            status: "latest"
+            status: "latest",
+            current_sha: as_string(value.current_sha),
+            latest_sha: as_string(value.latest_sha),
+            current_build: as_string(value.current_build),
+            latest_build: as_string(value.latest_build)
         }, false);
     }
 }

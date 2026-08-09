@@ -271,21 +271,101 @@ function release_metadata_tsv() {
     print(tag, "\t", as_string(release.html_url || ""), "\n");
 }
 
-function release_commit_sha() {
-    let release = object_or_empty(read_stdin_json());
+function release_commit_sha_value(release) {
+    release = object_or_empty(release);
     let sha = as_string(release.target_commitish || "");
-    if (sha != "" && match(sha, /^[0-9a-fA-F]{7,40}$/) != null) {
-        print(sha, "\n");
-        return;
-    }
+    if (sha != "" && match(sha, /^[0-9a-fA-F]{7,40}$/) != null)
+        return sha;
+
     let body = as_string(release.body || "");
     if (body != "") {
-        let m = match(body, /(?:[Cc]ommit|[Ss][Hh][Aa]):?\s*([0-9a-fA-F]{7,40})/);
-        if (m && m[1]) {
-            print(m[1], "\n");
-            return;
+        // ucode's regex engine rejects non-capturing groups, so the two spellings
+        // are matched separately rather than as one alternation.
+        for (let pattern in [ /[Cc]ommit:?[ \t]*([0-9a-fA-F]{7,40})/,
+                              /[Ss][Hh][Aa]:?[ \t]*([0-9a-fA-F]{7,40})/ ]) {
+            let m = match(body, pattern);
+            if (m && m[1])
+                return as_string(m[1]);
         }
     }
+
+    return "";
+}
+
+function release_commit_sha() {
+    let sha = release_commit_sha_value(read_stdin_json());
+    if (sha != "")
+        print(sha, "\n");
+}
+
+// A rebuild published under an existing tag keeps tag_name identical, so the tag
+// alone cannot tell two builds apart. Releases created before the workflow began
+// stamping "Commit: <sha>" into the body have no usable SHA either — for those
+// this fingerprint is the only signal that the assets were replaced.
+//
+// Preference order: the release SHA, then the publish/upload timestamps and the
+// size of the backend asset. Timestamps alone would miss a re-upload that keeps
+// published_at, and size alone collides across near-identical builds; together
+// they change whenever the artifacts do.
+function release_build_fingerprint_value(release) {
+    release = object_or_empty(release);
+
+    let sha = release_commit_sha_value(release);
+    if (sha != "")
+        return "sha:" + sha;
+
+    let parts = [];
+    let published = as_string(release.published_at || release.created_at || "");
+    if (published != "")
+        push(parts, "pub=" + published);
+
+    for (let asset in array_or_empty(release.assets)) {
+        if (type(asset) != "object")
+            continue;
+        let name = as_string(asset.name || "");
+        if (!str_startswith(name, "tachyon_"))
+            continue;
+        let updated = as_string(asset.updated_at || asset.created_at || "");
+        if (updated != "")
+            push(parts, "upd=" + updated);
+        if (asset.size != null)
+            push(parts, "size=" + as_string(asset.size));
+        break;
+    }
+
+    if (length(parts) == 0)
+        return "";
+
+    return "build:" + join("|", parts);
+}
+
+function release_build_fingerprint() {
+    let fingerprint = release_build_fingerprint_value(read_stdin_json());
+    if (fingerprint != "")
+        print(fingerprint, "\n");
+}
+
+// Decides whether the installed build differs from the published one. Exits 0
+// when they differ (an update exists), 1 when they match or when there is not
+// enough information to tell — an unknown state must never be reported as an
+// available update, or the UI would offer an install that changes nothing.
+function tachyon_build_differs(local_sha, remote_sha, local_fingerprint, remote_fingerprint) {
+    local_sha = trim(as_string(local_sha));
+    remote_sha = trim(as_string(remote_sha));
+
+    // Build.sh and the OpenWrt Makefile both stamp a short SHA, while the GitHub
+    // release may carry the full one; compare on the shorter of the two.
+    if (local_sha != "" && remote_sha != "") {
+        let shorter = length(local_sha) < length(remote_sha) ? length(local_sha) : length(remote_sha);
+        return substr(local_sha, 0, shorter) != substr(remote_sha, 0, shorter);
+    }
+
+    local_fingerprint = trim(as_string(local_fingerprint));
+    remote_fingerprint = trim(as_string(remote_fingerprint));
+    if (local_fingerprint != "" && remote_fingerprint != "")
+        return local_fingerprint != remote_fingerprint;
+
+    return false;
 }
 
 function openwrt_release_value(path, key) {
@@ -1240,6 +1320,10 @@ else if (mode == "release-metadata-tsv")
     release_metadata_tsv();
 else if (mode == "release-commit-sha")
     release_commit_sha();
+else if (mode == "release-build-fingerprint")
+    release_build_fingerprint();
+else if (mode == "tachyon-build-differs")
+    exit(tachyon_build_differs(ARGV[1], ARGV[2], ARGV[3], ARGV[4]) ? 0 : 1);
 else if (mode == "openwrt-release-value")
     openwrt_release_value(ARGV[1], ARGV[2]);
 else if (mode == "openwrt-release-series")

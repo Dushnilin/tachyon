@@ -3557,9 +3557,10 @@ var TachyonShellMethods = {
         if (transientRpc.shouldContinue(failure.error)) {
           continue;
         }
-        if (component === "tachyon" && action === "install") {
-          const installedVersion = expectedLatestVersion ? await readTachyonVersion() : "";
-          if (expectedLatestVersion && installedVersion === expectedLatestVersion) {
+        if (component === "tachyon" && (action === "install" || action === "reinstall")) {
+          const installedVersion = await readTachyonVersion();
+          const targetVersion = expectedLatestVersion || installedVersion;
+          if (targetVersion && installedVersion === targetVersion) {
             if (!selfUpdateVersionMatchedAt) {
               selfUpdateVersionMatchedAt = Date.now();
             }
@@ -13868,6 +13869,22 @@ function shouldExposeCheckResults({
   return mounted && cacheResolved;
 }
 
+// src/tachyon/tabs/updates/sameReleaseBuild.ts
+function describeSameReleaseBuild({
+  currentSha,
+  latestSha
+}) {
+  const current = (currentSha || "").substring(0, 8);
+  const latest = (latestSha || "").substring(0, 8);
+  if (current && latest) {
+    return { kind: "sha", text: `${current} \u2192 ${latest}` };
+  }
+  if (current || latest) {
+    return { kind: "sha", text: current || latest };
+  }
+  return { kind: "fallback", text: "" };
+}
+
 // src/tachyon/tabs/updates/initController.ts
 var updatesLifecycleRegistered = false;
 var updatesControllerInitialized = false;
@@ -14645,21 +14662,20 @@ function renderComponentCard(card) {
       }
     } else if (checkResult.status === "outdated_same_release") {
       labelText = _("Update is available for current release");
-      const currentSha = checkResult.current_sha ? checkResult.current_sha.substring(0, 8) : "";
-      const latestSha = checkResult.latest_sha ? checkResult.latest_sha.substring(0, 8) : "";
-      if (currentSha || latestSha) {
-        const shaText = currentSha && latestSha ? `${currentSha} \u2192 ${latestSha}` : currentSha || latestSha;
-        latestValueNodes.push(
-          E(
-            "span",
-            {
-              class: "tachyon_updates-page__component__sha-info",
-              title: _("Installed build \u2192 Available build")
-            },
-            shaText
-          )
-        );
-      }
+      const build = describeSameReleaseBuild({
+        currentSha: checkResult.current_sha,
+        latestSha: checkResult.latest_sha
+      });
+      latestValueNodes.push(
+        E(
+          "span",
+          {
+            class: "tachyon_updates-page__component__sha-info",
+            title: _("Installed build \u2192 Available build")
+          },
+          build.kind === "sha" ? build.text : _("Rebuilt release")
+        )
+      );
     } else if (checkResult.status === "latest") {
       labelText = _("Latest version is installed");
     } else if (checkResult.status === "dev") {

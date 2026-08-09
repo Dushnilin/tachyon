@@ -651,10 +651,7 @@ export const TachyonShellMethods = {
           const installedVersion = await readTachyonVersion();
           const targetVersion = expectedLatestVersion || installedVersion;
 
-          if (
-            targetVersion &&
-            installedVersion === targetVersion
-          ) {
+          if (targetVersion && installedVersion === targetVersion) {
             if (!selfUpdateVersionMatchedAt) {
               selfUpdateVersionMatchedAt = Date.now();
             }

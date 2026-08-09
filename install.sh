@@ -1776,7 +1776,10 @@ pkg_install_files() {
             return $rc
         fi
     else
-        run_logged_timeout "opkg" 120 opkg install --force-overwrite --force-downgrade "$@"
+        # --force-reinstall: a release tag can be rebuilt, so the .ipk version may
+        # equal the installed one. Without it opkg treats that as "already
+        # installed" and the rebuild is never written.
+        run_logged_timeout "opkg" 120 opkg install --force-overwrite --force-downgrade --force-reinstall "$@"
         local rc=$?
         if [ $rc -ne 0 ]; then
             log_line "FAIL  opkg install failed (exit $rc)"
