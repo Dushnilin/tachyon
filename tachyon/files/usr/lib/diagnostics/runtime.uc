@@ -2678,6 +2678,73 @@ function run_doctor_checks() {
         }
     }
 
+    // 15b. Community Lists Presence Check
+    // For every enabled section that declares community_lists, verify the
+    // corresponding .srs files have been downloaded into TMP_RULESET_FOLDER.
+    // Missing or empty files mean sing-box is running without the expected
+    // routing data — this is the silent green-screen failure the user reported.
+    {
+        let missing_lists = [];
+        let all_required = [];
+
+        // Collect all unique community list names across enabled sections
+        let all_sections = uci_core.section_objects(CONFIG_NAME, "section");
+        for (let sec in all_sections) {
+            if (sec.enabled == "0") continue;
+            let cl = sec.community_lists;
+            if (!cl) continue;
+            let list_arr = type(cl) == "array" ? cl : split(trim("" + cl), /\s+/);
+            for (let entry in list_arr) {
+                let name = trim("" + entry);
+                if (name == "") continue;
+                // Deduplicate
+                let already = false;
+                for (let existing in all_required) {
+                    if (existing == name) { already = true; break; }
+                }
+                if (!already) push(all_required, name);
+            }
+        }
+
+        if (length(all_required) > 0) {
+            for (let list_name in all_required) {
+                let srs_path = TMP_RULESET_FOLDER + "/community-" + list_name + ".srs";
+                let srs_stat = fs.stat(srs_path);
+                if (srs_stat == null || srs_stat.size == 0) {
+                    push(missing_lists, list_name);
+                }
+            }
+
+            if (length(missing_lists) == 0) {
+                doc_check("✅", "Community lists", sprintf("all %d lists present", length(all_required)), "");
+            } else {
+                issues++;
+                // Attempt repair: download missing lists
+                command_status("/usr/bin/tachyon list_update > /dev/null 2>&1");
+
+                let still_missing = [];
+                for (let list_name in missing_lists) {
+                    let srs_path = TMP_RULESET_FOLDER + "/community-" + list_name + ".srs";
+                    let srs_stat = fs.stat(srs_path);
+                    if (srs_stat == null || srs_stat.size == 0) {
+                        push(still_missing, list_name);
+                    }
+                }
+
+                if (length(still_missing) == 0) {
+                    doc_check("❌", "Community lists",
+                        sprintf("%d/%d missing", length(missing_lists), length(all_required)),
+                        "→ FIXED: загружены через list_update");
+                    fixed++;
+                } else {
+                    doc_check("❌", "Community lists",
+                        sprintf("%d/%d отсутствуют: %s", length(still_missing), length(all_required), join(", ", still_missing)),
+                        "→ не удалось загрузить — проверьте интернет-соединение");
+                }
+            }
+        }
+    }
+
     // 16. Subscription Health Check
     if (has_sections && cfg.subscription_url) {
         let sub_url = trim(as_string(cfg.subscription_url));
