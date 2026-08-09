@@ -58,7 +58,10 @@ define Package/tachyon/postupgrade
 # Kill everything that could hold or wait for the procd serialization lock
 # (rc.common flock -w 1000). procd re-triggers retry_start_on_wan_up between
 # pre-upgrade and post-upgrade, which continuously creates new flock waiters.
-ps 2>/dev/null | awk '/\/etc\/init\.d\/tachyon|flock 1000|99-tachyon-wan/{print $$1}' | while read _pid; do
+ps 2>/dev/null | grep -E '99-tachyon-wan|flock 1000' | awk '{print $$1}' | while read _pid; do
+    kill -9 "$$_pid" 2>/dev/null
+done
+ps 2>/dev/null | grep -F '/etc/init.d/tachyon' | awk '{print $$1}' | while read _pid; do
     kill -9 "$$_pid" 2>/dev/null
 done
 
