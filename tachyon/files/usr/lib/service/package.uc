@@ -130,7 +130,9 @@ function prerm_cleanup(action) {
 
     remember_upgrade_state(action);
     if (!PACKAGE_TEST_MODE) {
-        command_success_from_args([ INIT_PATH, "stop" ]);
+        // Use timeout to avoid deadlock when procd_tachyon.lock is held
+        // by retry_start_on_wan_up or other background init.d processes
+        system("timeout 15 " + shell_quote(INIT_PATH) + " stop >/dev/null 2>&1; true");
         restore_dnsmasq_if_needed();
         remove_managed_sing_box();
     }
