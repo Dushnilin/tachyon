@@ -139,7 +139,8 @@ function prerm_cleanup(action) {
         restore_dnsmasq_if_needed();
         remove_managed_sing_box();
     }
-    return remove_rt_tables_entry();
+    remove_rt_tables_entry(); // best-effort, never block the upgrade
+    return true;
 }
 
 function postinst_restore() {
