@@ -88,7 +88,7 @@ jobs:
           path: ./filtered-bin/release
 
       - name: Release
-        if: ${{ inputs.release_notes == '' }}
+        if: ${{ github.event_name == 'push' || inputs.release_notes == '' }}
         uses: softprops/action-gh-release@v2
         with:
           files: ./filtered-bin/release/*.*
@@ -100,7 +100,7 @@ jobs:
           target_commitish: ${{ needs.preparation.outputs.commitish }}
 
       - name: Release with notes
-        if: ${{ inputs.release_notes != '' }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.release_notes != '' }}
         uses: softprops/action-gh-release@v2.4.0
         with:
           files: ./filtered-bin/release/*.*
