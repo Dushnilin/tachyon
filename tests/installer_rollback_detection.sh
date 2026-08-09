@@ -106,6 +106,20 @@ for pattern in '99-tachyon-wan|flock 1000' '/etc/init.d/tachyon'; do
     fail "installer_release_init_lock must clear '$pattern' waiters"
 done
 
+# Killing by name misses the actual holders. procd_lock() does `exec 1000>` on the
+# lock file and `flock 1000` with no -w, so every background spawn inheriting fd 1000
+# keeps the lock. On a live router the holders were watchdog workers, logread, the
+# zapret2 supervisors, nfqws2 and a curl — none of which match a tachyon name.
+grep -Fq '/fd/1000' "$WORK_DIR/lock.uc" ||
+  fail "installer_release_init_lock must clear lock holders by descriptor, not only by name"
+grep -Fq 'procd_tachyon' "$WORK_DIR/lock.uc" ||
+  fail "installer_release_init_lock must only kill holders of Tachyon's own procd lock"
+
+# The installer runs as a child of /usr/bin/tachyon during an upgrade, so a sweep that
+# does not exclude its own ancestors kills the process performing the install.
+grep -Fq '/stat' "$WORK_DIR/lock.uc" ||
+  fail "installer_release_init_lock must walk /proc/<pid>/stat to spare its own ancestors"
+
 # ucode resolves names lexically and does not hoist, so a call placed above the
 # declaration silently becomes null and the lock is never released.
 lock_decl="$(grep -n '^function installer_release_init_lock() {' "$INSTALLER" | head -1 | cut -d: -f1)"

@@ -1206,6 +1206,28 @@ function installer_release_init_lock() {
     for (let pattern in [ "99-tachyon-wan|flock 1000", "/etc/init.d/tachyon" ])
         system("ps 2>/dev/null | grep -E '" + pattern + "' | grep -v grep | awk '{print $1}' | " +
             "while read _pid; do kill -9 \"$_pid\" 2>/dev/null; done; true");
+
+    // Killing by name is not enough. procd_lock() does `exec 1000>` on
+    // /var/lock/procd_tachyon.lock and then `flock 1000` with no -w, and every
+    // background spawn that inherits descriptor 1000 keeps the lock held long after
+    // the init script that took it exited. Builds up to 1.2.66 swept /proc/self/fd
+    // only as far as 999 and so missed exactly that descriptor — on a live router
+    // eleven unrelated processes (watchdog workers, logread, the zapret2 supervisors,
+    // nfqws2, a stray curl) were found pinning it. None of them match a tachyon name
+    // pattern, so the holders are cleared by descriptor. While any of them lives, the
+    // old pre-upgrade hook blocks in flock until the package manager kills it and
+    // rolls the whole transaction back.
+    //
+    // The installer's own process tree is skipped: this runs as a child of
+    // /usr/bin/tachyon on an upgrade, and killing an ancestor takes the install down.
+    system("__anc=\" \"; __p=$$; " +
+        "while [ -n \"$__p\" ] && [ \"$__p\" -gt 1 ] 2>/dev/null; do " +
+        "__anc=\"$__anc$__p \"; " +
+        "__p=$(awk '{ sub(/.*\\) /, \"\"); print $2 }' \"/proc/$__p/stat\" 2>/dev/null); done; " +
+        "for __f in /proc/[0-9]*; do [ -e \"$__f/fd/1000\" ] || continue; " +
+        "case \"$(readlink \"$__f/fd/1000\" 2>/dev/null)\" in *procd_tachyon*) " +
+        "__pid=${__f##*/}; case \"$__anc\" in *\" $__pid \"*) continue;; esac; " +
+        "kill -9 \"$__pid\" 2>/dev/null;; esac; done; true");
     return true;
 }
 

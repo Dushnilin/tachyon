@@ -100,6 +100,23 @@ function bounded_command_success_from_args(args, seconds) {
     return command_success_from_args(bounded);
 }
 
+// A kill sweep must not take out the process running it. `ps | grep '/usr/bin/tachyon'`
+// matches this very hook — /usr/bin/tachyon is what invoked it — so the naive sweep
+// killed its own parent; the parent died on SIGKILL, and apk saw the pre-upgrade hook
+// exit 247 (128+119) and reported a failed hook. The ancestor chain of the shell doing
+// the sweep is walked out of /proc and skipped. Field 2 after the ")" of /proc/<pid>/stat
+// is the ppid; the comm field is stripped first because it may itself contain spaces.
+function kill_matching_command(grep_args) {
+    return "__anc=\" \"; __p=$$; " +
+        "while [ -n \"$__p\" ] && [ \"$__p\" -gt 1 ] 2>/dev/null; do " +
+        "__anc=\"$__anc$__p \"; " +
+        "__p=$(awk '{ sub(/.*\\) /, \"\"); print $2 }' \"/proc/$__p/stat\" 2>/dev/null); " +
+        "done; " +
+        "ps 2>/dev/null | grep " + grep_args + " | grep -v grep | awk '{print $1}' | " +
+        "while read _pid; do case \"$__anc\" in *\" $_pid \"*) continue;; esac; " +
+        "kill -9 \"$_pid\" 2>/dev/null; done; true";
+}
+
 function path_exists(path) {
     return fs.stat(as_string(path)) != null;
 }
@@ -186,8 +203,19 @@ function prerm_cleanup(action) {
         // to prevent INIT_PATH stop from blocking indefinitely on rc.common flock -w 1000.
         // This has to happen before the status probe below, or that probe becomes the
         // very thing that waits on the lock those processes hold.
-        system("ps 2>/dev/null | grep -E '99-tachyon-wan|flock 1000|init[.]d/tachyon' | awk '{print $1}' | while read _pid; do kill -9 \"$_pid\" 2>/dev/null; done; true");
-        system("ps 2>/dev/null | grep -F '/etc/init.d/tachyon' | awk '{print $1}' | while read _pid; do kill -9 \"$_pid\" 2>/dev/null; done; true");
+        system(kill_matching_command("-E '99-tachyon-wan|flock 1000|init[.]d/tachyon'"));
+        system(kill_matching_command("-F '/etc/init.d/tachyon'"));
+        // procd leaks its serialization lock: procd_lock() does `exec 1000>` on
+        // /var/lock/procd_tachyon.lock and then `flock 1000` with no -w, so every
+        // background spawn that inherits fd 1000 keeps the lock held after the init
+        // script exits. Builds before this fix swept /proc/self/fd only up to 999 and
+        // missed exactly that descriptor. The holders may therefore be pre-fix
+        // processes with no other reason to die, so they are cleared by descriptor
+        // rather than by name — otherwise INIT_PATH below blocks forever.
+        system("for __f in /proc/[0-9]*; do [ -e \"$__f/fd/1000\" ] || continue; " +
+            "case \"$(readlink \"$__f/fd/1000\" 2>/dev/null)\" in *procd_tachyon*) " +
+            "__pid=${__f##*/}; [ \"$__pid\" = \"$$\" ] || kill -9 \"$__pid\" 2>/dev/null;; " +
+            "esac; done; true");
     }
 
     remember_upgrade_state(action);
@@ -196,8 +224,8 @@ function prerm_cleanup(action) {
         bounded_command_success_from_args([BIN_PATH, "stop"]);
         bounded_command_success_from_args([INIT_PATH, "stop"]);
 
-        // Kill any remaining tachyon processes
-        system("ps 2>/dev/null | grep -F '/usr/bin/tachyon' | awk '{print $1}' | while read _pid; do kill -9 \"$_pid\" 2>/dev/null; done; true");
+        // Kill any remaining tachyon processes, minus this hook's own ancestors.
+        system(kill_matching_command("-F '" + BIN_PATH + "'"));
         restore_dnsmasq_if_needed();
         remove_managed_sing_box();
     }
@@ -211,8 +239,8 @@ function postinst_restore() {
 
     if (!PACKAGE_TEST_MODE) {
         // Kill any flock waiters and init.d/tachyon processes that appeared since prerm ran.
-        system("ps 2>/dev/null | grep -E '99-tachyon-wan|flock 1000' | awk '{print $1}' | while read _pid; do kill -9 \"$_pid\" 2>/dev/null; done; true");
-        system("ps 2>/dev/null | grep -F '/etc/init.d/tachyon' | awk '{print $1}' | while read _pid; do kill -9 \"$_pid\" 2>/dev/null; done; true");
+        system(kill_matching_command("-E '99-tachyon-wan|flock 1000'"));
+        system(kill_matching_command("-F '/etc/init.d/tachyon'"));
     }
     // Start via INIT_PATH. Bounded: a start that hangs must not take the package
     // transaction down with it — the service can be started by hand afterwards,

@@ -241,4 +241,42 @@ hang_elapsed="$(( $(date +%s) - hang_start ))"
 [ ! -e "$TACHYON_PACKAGE_UPGRADE_STATE" ] ||
   fail "package postinst must clear the upgrade state even when the start times out"
 
+# The kill sweep must not take out the process running it. `ps | grep /usr/bin/tachyon`
+# matches the hook itself — /usr/bin/tachyon is what invoked it — so the naive sweep
+# killed its own parent, the parent died on SIGKILL, and apk saw the pre-upgrade hook
+# exit 247 (128+119) and rolled the whole upgrade back. Verified by running the sweep
+# under a parent whose command line matches the pattern: the parent must survive.
+sweep_parent="$WORK_DIR/usr-bin-tachyon-lookalike"
+cat >"$sweep_parent" <<'SH'
+#!/usr/bin/env bash
+# Command line contains the BIN_PATH the sweep greps for, exactly as the real
+# /usr/bin/tachyon parent does.
+"$@"
+printf '%s\n' parent-survived >>"${TACHYON_SWEEP_LOG:?}"
+SH
+chmod 0755 "$sweep_parent"
+: >"$WORK_DIR/sweep.log"
+: >"$WORK_DIR/rt_tables_sweep"
+TACHYON_SWEEP_LOG="$WORK_DIR/sweep.log" \
+  "$sweep_parent" env \
+  TACHYON_HOOK_COMMAND_TIMEOUT=5 \
+  TACHYON_BIN="$sweep_parent" \
+  TACHYON_INIT="$WORK_DIR/upgrade-init" \
+  TACHYON_DNS_APPLY_UC="$WORK_DIR/missing-dns-apply.uc" \
+  TACHYON_SING_BOX_INIT="$WORK_DIR/missing-sing-box-init" \
+  TACHYON_UCI_STATE_FILE="$WORK_DIR/dont-touch.state" \
+  TACHYON_RT_TABLES="$WORK_DIR/rt_tables_sweep" \
+  TACHYON_SWEEP_LOG="$WORK_DIR/sweep.log" \
+  ucode -L "$TACHYON_LIB" "$PACKAGE_UC" prerm upgrade || true
+grep -Fxq 'parent-survived' "$WORK_DIR/sweep.log" ||
+  fail "package prerm killed its own parent process; apk reports the hook as exit 247 and rolls the upgrade back"
+
+# Holders of procd's lock descriptor are cleared by descriptor, not by name: the
+# processes found pinning it on a router (logread, nfqws2, curl) match no tachyon
+# name pattern, and while any of them lives every init call blocks in flock.
+grep -Fq '/fd/1000' "$PACKAGE_UC" ||
+  fail "package prerm must clear procd lock holders by descriptor"
+grep -Fq 'procd_tachyon' "$PACKAGE_UC" ||
+  fail "package prerm must only kill holders of Tachyon's own procd lock"
+
 printf 'package lifecycle checks passed\n'
