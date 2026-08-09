@@ -106,6 +106,19 @@ function settings() {
 function get_proxy_args() {
     let cfg = settings();
     if (command_success_from_args(["pidof", "sing-box"])) {
+        // If a specific section is configured for the bot, force-select it
+        // through the Mihomo REST API so the mixed proxy routes bot traffic
+        // through the right outbound.
+        let bot_section = cfg.bot_proxy_section ? trim(cfg.bot_proxy_section) : "";
+        if (bot_section != "") {
+            let tag = bot_section + "-out";
+            command_capture(command_from_args([
+                "curl", "-s", "-X", "PUT",
+                "-H", "Content-Type: application/json",
+                "-d", sprintf("%J", { name: tag }),
+                "http://127.0.0.1:9090/proxies/GLOBAL"
+            ]));
+        }
         return [ "--proxy", "http://127.0.0.1:4534" ];
     }
     if (cfg.fallback_socks && trim(cfg.fallback_socks) != "") {
@@ -2316,7 +2329,8 @@ function process_updates(token, admin_ids) {
         try {
         let cb = upd.callback_query;
         if (cb) {
-            let chat_id = cb.message ? cb.message.chat.id : cb.from.id;
+            let chat_id = cb.message ? cb.message.chat.id : (cb.from ? cb.from.id : null);
+            if (!chat_id) continue;
             if (!is_admin(chat_id, admin_ids)) {
                 tg_request(token, "answerCallbackQuery", { callback_query_id: cb.id, text: "Access Denied" });
                 continue;

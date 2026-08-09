@@ -1664,6 +1664,43 @@ function createTelegramContent(section) {
   o.retain = true;
   o.default = "1";
   o.rmempty = false;
+
+  o = section.option(
+    form.ListValue,
+    "bot_proxy_section",
+    _("Proxy Section for Bot"),
+    _("Route bot API requests through this section. Leave empty to use the default mixed proxy."),
+  );
+  o.depends("enabled", "1");
+  o.retain = true;
+  o.default = "";
+  o.rmempty = true;
+  o.value("", _("Default (auto)"));
+  o.load = function (section_id) {
+    const sections = this.map?.data?.state?.values?.[UCI_PACKAGE] ?? {};
+    for (const secName in sections) {
+      const sec = sections[secName];
+      if (
+        sec[".type"] === "section" &&
+        sec.enabled !== "0" &&
+        isDownloadSectionAction(sec.action, null)
+      ) {
+        this.value(secName, sec.label || secName);
+      }
+    }
+    return uci.get(UCI_PACKAGE, "telegram", "bot_proxy_section") || "";
+  };
+  o.write = function (_section_id, value) {
+    const normalized = value ? `${value}`.trim() : "";
+    if (normalized) {
+      uci.set(UCI_PACKAGE, "telegram", "bot_proxy_section", normalized);
+    } else {
+      uci.unset(UCI_PACKAGE, "telegram", "bot_proxy_section");
+    }
+  };
+  o.remove = function () {
+    uci.unset(UCI_PACKAGE, "telegram", "bot_proxy_section");
+  };
 }
 
 const EntryPoint = {

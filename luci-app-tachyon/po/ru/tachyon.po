@@ -1928,6 +1928,15 @@ msgstr "Уведомлять о сбоях ядра"
 msgid "Notify on DNS Leaks"
 msgstr "Уведомлять об утечках DNS"
 
+msgid "Default (auto)"
+msgstr "По умолчанию (авто)"
+
+msgid "Proxy Section for Bot"
+msgstr "Секция прокси для бота"
+
+msgid "Route bot API requests through this section. Leave empty to use the default mixed proxy."
+msgstr "Направлять запросы бота к Telegram API через эту секцию. Оставьте пустым для использования стандартного прокси."
+
 msgid "Notify on Server Switches"
 msgstr "Уведомлять о переключениях серверов"
 
