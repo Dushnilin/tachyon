@@ -266,7 +266,7 @@ function acquire_component_lock() {
         return false;
 
     remove_file(COMPONENT_LOCK_DIR + "/pid");
-    command_success_from_args([ "rmdir", COMPONENT_LOCK_DIR ]);
+    command_success_from_args([ "rm", "-rf", COMPONENT_LOCK_DIR ]);
     if (!command_success_from_args([ "mkdir", COMPONENT_LOCK_DIR ]))
         return false;
 
@@ -279,7 +279,7 @@ function release_component_lock() {
     if (!lock_held)
         return;
     remove_file(COMPONENT_LOCK_DIR + "/pid");
-    command_success_from_args([ "rmdir", COMPONENT_LOCK_DIR ]);
+    command_success_from_args([ "rm", "-rf", COMPONENT_LOCK_DIR ]);
     lock_held = false;
 }
 
