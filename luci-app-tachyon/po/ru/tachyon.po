@@ -1344,7 +1344,7 @@ msgid "Install another build:"
 msgstr "Установить другую сборку:"
 
 msgid "Installed build → Available build"
-msgstr ""
+msgstr "Установленная сборка → Доступная сборка"
 
 msgid "Installed version is newer than release"
 msgstr "Установлена версия новее релиза"
@@ -2217,7 +2217,7 @@ msgid "Reality short ID must contain 1-8 hex digits"
 msgstr "Reality short ID должен содержать 1-8 hex-символов"
 
 msgid "Rebuilt release"
-msgstr ""
+msgstr "Пересобранный релиз"
 
 msgid "Reconnect Threshold"
 msgstr "Порог переподключений"
