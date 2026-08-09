@@ -89,22 +89,23 @@ jobs:
 
       - name: Release on tag push
         if: ${{ github.event_name == 'push' }}
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v2.4.0
         with:
-          files: ./filtered-bin/release/*.*
+          files: ./filtered-bin/release/*
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
           draft: false
           prerelease: false
           make_latest: true
 
       - name: Release on workflow dispatch
         if: ${{ github.event_name == 'workflow_dispatch' }}
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v2.4.0
         with:
-          files: ./filtered-bin/release/*.*
+          files: ./filtered-bin/release/*
+          tag_name: ${{ needs.preparation.outputs.version }}
+          name: ${{ needs.preparation.outputs.version }}
           draft: false
           prerelease: false
           make_latest: true
-          name: ${{ needs.preparation.outputs.version }}
-          tag_name: ${{ needs.preparation.outputs.version }}
-          target_commitish: ${{ needs.preparation.outputs.commitish }}
           body: ${{ inputs.release_notes }}
