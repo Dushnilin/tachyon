@@ -155,8 +155,8 @@ function postinst_restore() {
         system("ps 2>/dev/null | grep -E '99-tachyon-wan|flock 1000' | awk '{print $1}' | while read _pid; do kill -9 \"$_pid\" 2>/dev/null; done; true");
         system("ps 2>/dev/null | grep -F '/etc/init.d/tachyon' | awk '{print $1}' | while read _pid; do kill -9 \"$_pid\" 2>/dev/null; done; true");
     }
-    // Start via BIN_PATH directly (bypasses rc.common flock deadlock)
-    command_success_from_args([BIN_PATH, "start"]);
+    // Start via INIT_PATH.
+    command_success_from_args([INIT_PATH, "start"]);
     unlink_if_exists(PACKAGE_UPGRADE_STATE);
     return true;
 }
