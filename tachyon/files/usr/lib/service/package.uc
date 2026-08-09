@@ -130,14 +130,14 @@ function prerm_cleanup(action) {
 
     remember_upgrade_state(action);
     if (!PACKAGE_TEST_MODE) {
-        // 1. Kill retry_start_on_wan_up and other background init.d/tachyon
-        //    processes that continuously spawn new flock -w 1000 waiters.
-        system("ps 2>/dev/null | awk '/init.d\\/tachyon/{print $1}' | while read _pid; do kill -9 \"$_pid\" 2>/dev/null; done; true");
-        // 2. Kill any remaining flock -w 1000 waiters (rc.common serialization lock).
+        // 1. Kill all /etc/init.d/tachyon background processes (retry_start_on_wan_up
+        //    and other procd triggers) — these continuously spawn new flock -w 1000
+        //    waiters that deadlock any subsequent init.d call.
+        system("ps 2>/dev/null | awk '/\/etc\/init.d\/tachyon/{print $1}' | while read _pid; do kill -9 \"$_pid\" 2>/dev/null; done; true");
+        // 2. Kill any remaining flock -w 1000 waiters.
         system("sleep 1; ps 2>/dev/null | awk '/flock 1000/{print $1}' | while read _pid; do kill -9 \"$_pid\" 2>/dev/null; done; true");
-        // 3. Stop service via ubus (no rc.common/flock involved).
-        system("ubus call service delete '{\"name\":\"tachyon\"}' 2>/dev/null; true");
-        system("sleep 1; timeout 5 " + shell_quote(INIT_PATH) + " stop >/dev/null 2>&1; true");
+        // 3. Stop via tachyon binary (lifecycle.uc) — bypasses rc.common, no flock.
+        system(shell_quote(BIN_PATH) + " stop >/dev/null 2>&1; true");
         restore_dnsmasq_if_needed();
         remove_managed_sing_box();
     }
@@ -149,9 +149,13 @@ function postinst_restore() {
     if (env("IPKG_INSTROOT", "") != "" || !path_exists(PACKAGE_UPGRADE_STATE))
         return true;
 
-    let started = command_success_from_args([ INIT_PATH, "start" ]);
+    // Kill any flock waiters that appeared since prerm ran (procd re-triggers
+    // retry_start_on_wan_up between prerm and postinst).
+    system("ps 2>/dev/null | awk '/\/etc\/init.d\/tachyon/{print $1}' | while read _pid; do kill -9 \"$_pid\" 2>/dev/null; done; true");
+    system("sleep 1; ps 2>/dev/null | awk '/flock 1000/{print $1}' | while read _pid; do kill -9 \"$_pid\" 2>/dev/null; done; true");
+    command_success_from_args([ INIT_PATH, "start" ]);
     unlink_if_exists(PACKAGE_UPGRADE_STATE);
-    return started;
+    return true; // never roll back the upgrade due to service start failure
 }
 
 function luci_cache_globs() {

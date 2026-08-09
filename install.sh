@@ -1760,17 +1760,19 @@ pkg_install_files() {
         if [ $rc -ne 0 ]; then
             # apk may report warnings as errors even though the package installed successfully
             # (e.g., ip-full conflict with ip, missing optional deps, etc.)
-            # Check if at least one of the requested packages is now installed
+            # Verify the CORRECT version is now installed, not just any version.
             local pkg_file
             for pkg_file in "$@"; do
-                local pkg_name
+                local pkg_name pkg_expected_ver pkg_actual_ver
                 pkg_name="$(basename "$pkg_file" | sed 's/\.[^.]*$//; s/_[0-9].*$//')"
-                if pkg_is_installed "$pkg_name"; then
+                pkg_expected_ver="$(basename "$pkg_file" | sed 's/^[^_]*_//; s/\.apk$//')"
+                pkg_actual_ver="$(apk info "$pkg_name" 2>/dev/null | head -1 | sed "s/${pkg_name}-//")"
+                if [ "$pkg_actual_ver" = "$pkg_expected_ver" ]; then
                     warn "Package manager reported non-critical errors during installation (package is installed OK)"
                     return 0
                 fi
             done
-            log_line "FAIL  apk install output reported error (exit $rc)"
+            log_line "FAIL  apk install failed (exit $rc); package was rolled back"
             return $rc
         fi
     else
