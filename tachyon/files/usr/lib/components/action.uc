@@ -2178,6 +2178,13 @@ function check_tachyon() {
     let sha_extra = local_sha != "" ? { current_sha: local_sha, latest_sha: remote_sha } : null;
 
     if (status == "latest") {
+        if (local_sha != "" && remote_sha != "" &&
+            substr(remote_sha, 0, length(local_sha)) != local_sha &&
+            substr(local_sha, 0, length(remote_sha)) != remote_sha) {
+            status = "outdated_same_release";
+            updates_log("Tachyon build update found for current release (" + TACHYON_VERSION + "): " + local_sha + " -> " + remote_sha);
+            action_success("tachyon", "check_update", "Update is available for current release", TACHYON_VERSION, latest_version, 0, status, release_url, sha_extra);
+        }
         updates_log("Tachyon is already up to date (" + TACHYON_VERSION + ")");
         action_success("tachyon", "check_update", "Latest version is installed", TACHYON_VERSION, latest_version, 0, status, release_url, sha_extra);
     }
