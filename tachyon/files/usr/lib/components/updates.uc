@@ -1476,16 +1476,19 @@ function update_component_check_cache_from_action(value) {
         return;
     }
 
-    if (value.success === true && (action == "install" || match(action, /^install_/) != null)) {
+    if (value.success === true && (action == "install" || action == "reinstall" || match(action, /^install_/) != null)) {
         let latest_version = as_string(value.latest_version);
+        let current_ver = as_string(value.current_version);
         if (latest_version == "")
-            latest_version = as_string(value.current_version);
+            latest_version = current_ver;
+        if (current_ver == "" || current_ver != latest_version)
+            current_ver = latest_version;
         cache_component_update_check_result({
             success: true,
             component,
             action: "check_update",
             message: "Latest version is installed",
-            current_version: as_string(value.current_version),
+            current_version: current_ver,
             latest_version,
             release_url: as_string(value.release_url),
             status: "latest"

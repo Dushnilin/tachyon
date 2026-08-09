@@ -165,8 +165,18 @@ function remove_luci_index_cache() {
     }
 }
 
+function remove_component_update_cache() {
+    for (let path in fs.glob("/var/run/tachyon/component-update-checks/*.json"))
+        unlink_if_exists(path);
+    unlink_if_exists("/var/run/tachyon/component-update-check.timestamp");
+    command_success_from_args([ "rm", "-rf", "/var/run/tachyon/component-action.lock" ]);
+    for (let path in fs.glob("/var/run/tachyon/component-actions/*"))
+        unlink_if_exists(path);
+}
+
 function luci_postinst() {
     remove_luci_index_cache();
+    remove_component_update_cache();
     if (!PACKAGE_TEST_MODE) {
         if (path_exists("/etc/init.d/rpcd"))
             command_success_from_args([ "/etc/init.d/rpcd", "reload" ]);
