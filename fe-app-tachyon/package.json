@@ -1,4 +1,4 @@
-﻿{
+{
   "name": "fe-app-tachyon",
   "version": "1.2.47",
   "license": "MIT",
@@ -37,6 +37,7 @@
     "vitest": "^4.1.10"
   },
   "overrides": {
-    "postcss": "8.5.23"
+    "postcss": "8.5.23",
+    "js-yaml": "^5.2.1"
   }
 }

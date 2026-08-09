@@ -131,13 +131,17 @@ function prerm_cleanup(action) {
 
     remember_upgrade_state(action);
     if (!PACKAGE_TEST_MODE) {
+        // Stop the service first so it can clean up while the routing table entry is still present.
+        command_success_from_args([INIT_PATH, "stop"]);
         // Kill the WAN hotplug monitor and all init.d/tachyon processes that
         // continuously re-spawn flock -w 1000 waiters (the root cause of deadlocks).
-        system("ps 2>/dev/null | awk '/99-tachyon-wan|init\.d\/tachyon/{print $1}' | while read _pid; do kill -9 \"$_pid\" 2>/dev/null; done; true");
+        // Use grep -E for alternation: BusyBox awk does not support | in regex literals.
+        system("ps 2>/dev/null | grep -E '99-tachyon-wan|init[.]d/tachyon' | awk '{print $1}' | while read _pid; do kill -9 \"$_pid\" 2>/dev/null; done; true");
         // Kill any remaining flock -w 1000 waiters.
         system("ps 2>/dev/null | awk '/flock 1000/{print $1}' | while read _pid; do kill -9 \"$_pid\" 2>/dev/null; done; true");
         // Kill the tachyon service processes directly (no init.d, no flock).
-        system("ps 2>/dev/null | awk '/\/usr\/bin\/tachyon/{print $1}' | while read _pid; do kill \"$_pid\" 2>/dev/null; done; true");
+        // Use grep -F: BusyBox awk mangles \/ escaping inside regex literals.
+        system("ps 2>/dev/null | grep -F '/usr/bin/tachyon' | awk '{print $1}' | while read _pid; do kill \"$_pid\" 2>/dev/null; done; true");
         restore_dnsmasq_if_needed();
         remove_managed_sing_box();
     }
@@ -152,7 +156,9 @@ function postinst_restore() {
     // Kill any flock waiters and init.d/tachyon processes that appeared since
     // prerm ran. procd continuously re-triggers retry_start_on_wan_up which
     // spawns new flock -w 1000 waiters.
-    system("ps 2>/dev/null | awk '/\\/etc\\/init.d\\/tachyon|flock 1000|99-tachyon-wan/{print $1}' | while read _pid; do kill -9 \"$_pid\" 2>/dev/null; done; true");
+    // Use grep -E for alternation and grep -F for path: BusyBox awk mangles | and \/ in regex literals.
+    system("ps 2>/dev/null | grep -E '99-tachyon-wan|flock 1000' | awk '{print $1}' | while read _pid; do kill -9 \"$_pid\" 2>/dev/null; done; true");
+    system("ps 2>/dev/null | grep -F '/etc/init.d/tachyon' | awk '{print $1}' | while read _pid; do kill -9 \"$_pid\" 2>/dev/null; done; true");
     // Use BIN_PATH start (lifecycle.uc) instead of INIT_PATH start (rc.common).
     // init.d/tachyon start goes through rc.common which uses flock -w 1000 and
     // will deadlock if ANY other init.d/tachyon process holds the procd lock.
