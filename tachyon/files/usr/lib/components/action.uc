@@ -2255,12 +2255,11 @@ function reinstall_tachyon() {
         (release.i18n_url != "" && !download_with_retry(release.i18n_url, i18n_file, release.i18n_name)))
         action_fail("tachyon", "reinstall", "Failed to download Tachyon release packages", TACHYON_VERSION, latest_version);
 
-    if (!run_logged("Reinstalling LuCI app package " + release.app_name, pkg_install_files_command([ app_file ])))
-        action_fail("tachyon", "reinstall", "Failed to reinstall LuCI app package", TACHYON_VERSION, latest_version);
-    if (i18n_file != "" && !run_logged("Reinstalling LuCI Russian i18n package " + release.i18n_name, pkg_install_files_command([ i18n_file ])))
-        action_fail("tachyon", "reinstall", "Failed to reinstall LuCI Russian i18n package", TACHYON_VERSION, latest_version);
-    if (!run_logged("Reinstalling Tachyon package " + release.backend_name, pkg_install_files_command([ backend_file ])))
-        action_fail("tachyon", "reinstall", "Failed to reinstall Tachyon package", TACHYON_VERSION, latest_version);
+    let reinstall_files = [ app_file, backend_file ];
+    if (i18n_file != "")
+        push(reinstall_files, i18n_file);
+    if (!run_logged("Reinstalling Tachyon packages", pkg_install_files_command(reinstall_files)))
+        action_fail("tachyon", "reinstall", "Failed to reinstall Tachyon packages", TACHYON_VERSION, latest_version);
 
     remove_file("/var/luci-indexcache");
     command_success("rm -f /var/luci-indexcache* /tmp/luci-indexcache* 2>/dev/null");
@@ -2300,12 +2299,11 @@ function install_tachyon() {
         (release.i18n_url != "" && !download_with_retry(release.i18n_url, i18n_file, release.i18n_name)))
         action_fail("tachyon", "install", "Failed to download Tachyon release packages", TACHYON_VERSION, latest_version);
 
-    if (!run_logged("Installing LuCI app package " + release.app_name, pkg_install_files_command([ app_file ])))
-        action_fail("tachyon", "install", "Failed to install LuCI app package", TACHYON_VERSION, latest_version);
-    if (i18n_file != "" && !run_logged("Installing LuCI Russian i18n package " + release.i18n_name, pkg_install_files_command([ i18n_file ])))
-        action_fail("tachyon", "install", "Failed to install LuCI Russian i18n package", TACHYON_VERSION, latest_version);
-    if (!run_logged("Installing Tachyon package " + release.backend_name, pkg_install_files_command([ backend_file ])))
-        action_fail("tachyon", "install", "Failed to install Tachyon package", TACHYON_VERSION, latest_version);
+    let install_files = [ app_file, backend_file ];
+    if (i18n_file != "")
+        push(install_files, i18n_file);
+    if (!run_logged("Installing Tachyon packages", pkg_install_files_command(install_files)))
+        action_fail("tachyon", "install", "Failed to install Tachyon packages", TACHYON_VERSION, latest_version);
 
     remove_file("/var/luci-indexcache");
     command_success("rm -f /var/luci-indexcache* /tmp/luci-indexcache* 2>/dev/null");
