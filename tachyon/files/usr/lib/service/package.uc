@@ -153,19 +153,21 @@ function postinst_restore() {
     if (env("IPKG_INSTROOT", "") != "" || !path_exists(PACKAGE_UPGRADE_STATE))
         return true;
 
-    // Kill any flock waiters and init.d/tachyon processes that appeared since
-    // prerm ran. procd continuously re-triggers retry_start_on_wan_up which
-    // spawns new flock -w 1000 waiters.
-    // Use grep -E for alternation and grep -F for path: BusyBox awk mangles | and \/ in regex literals.
-    system("ps 2>/dev/null | grep -E '99-tachyon-wan|flock 1000' | awk '{print $1}' | while read _pid; do kill -9 \"$_pid\" 2>/dev/null; done; true");
-    system("ps 2>/dev/null | grep -F '/etc/init.d/tachyon' | awk '{print $1}' | while read _pid; do kill -9 \"$_pid\" 2>/dev/null; done; true");
-    // Use BIN_PATH start (lifecycle.uc) instead of INIT_PATH start (rc.common).
-    // init.d/tachyon start goes through rc.common which uses flock -w 1000 and
-    // will deadlock if ANY other init.d/tachyon process holds the procd lock.
-    system(shell_quote(BIN_PATH) + " start >/dev/null 2>&1; true");
+    if (!PACKAGE_TEST_MODE) {
+        // Kill any flock waiters and init.d/tachyon processes that appeared since
+        // prerm ran. procd continuously re-triggers retry_start_on_wan_up which
+        // spawns new flock -w 1000 waiters.
+        // Use grep -E for alternation and grep -F for path: BusyBox awk mangles | and \/ in regex literals.
+        system("ps 2>/dev/null | grep -E '99-tachyon-wan|flock 1000' | awk '{print $1}' | while read _pid; do kill -9 \"$_pid\" 2>/dev/null; done; true");
+        system("ps 2>/dev/null | grep -F '/etc/init.d/tachyon' | awk '{print $1}' | while read _pid; do kill -9 \"$_pid\" 2>/dev/null; done; true");
+    }
+    // Start via INIT_PATH. Flock waiters were already killed by prerm_cleanup so
+    // the init.d flock -w 1000 path is safe here.
+    command_success_from_args([INIT_PATH, "start"]);
     unlink_if_exists(PACKAGE_UPGRADE_STATE);
     return true;
 }
+
 
 function luci_cache_globs() {
     let configured = env("TACHYON_LUCI_CACHE_GLOBS", "");
