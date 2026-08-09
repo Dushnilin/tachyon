@@ -130,9 +130,12 @@ function prerm_cleanup(action) {
 
     remember_upgrade_state(action);
     if (!PACKAGE_TEST_MODE) {
-        // Use timeout to avoid deadlock when procd_tachyon.lock is held
-        // by retry_start_on_wan_up or other background init.d processes
-        system("timeout 15 " + shell_quote(INIT_PATH) + " stop >/dev/null 2>&1; true");
+        // Kill all processes waiting on procd_tachyon.lock (flock -w 1000) to
+        // prevent deadlock. rc.common uses flock to serialize init.d calls and
+        // if retry_start_on_wan_up processes are queued, init.d stop blocks
+        // up to 1000 seconds per queued process.
+        system("ps 2>/dev/null | awk '/flock 1000/{print $1}' | while read _pid; do kill -9 \"$_pid\" 2>/dev/null; done; true");
+        system("timeout 10 " + shell_quote(INIT_PATH) + " stop >/dev/null 2>&1; true");
         restore_dnsmasq_if_needed();
         remove_managed_sing_box();
     }
