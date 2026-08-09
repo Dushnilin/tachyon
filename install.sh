@@ -2450,19 +2450,28 @@ install_backend_package() {
         cfg_hash_before="${_sha_out%% *}"
     fi
 
-    local backend_sha_before
+    local backend_sha_before backend_present_before=0
     backend_sha_before="$(installed_backend_sha)"
+    pkg_is_installed "tachyon" && backend_present_before=1
 
     if ! pkg_install_files "$TACHYON_BACKEND_FILE"; then
         # "tachyon is installed" is not evidence of success on a rebuilt tag: apk
         # rolls the transaction back to the identical old version, so both the
         # package name and its version still check out. Only a moved commit SHA
-        # proves new files landed. Without a SHA to compare (fresh install, or an
-        # unstamped build) fall back to the presence check.
+        # proves new files landed.
+        #
+        # An empty backend_sha_before does NOT mean "fresh install". installed_backend_sha
+        # rejects the unsubstituted __COMPILED_COMMIT_SHA__ placeholder and the literal
+        # "unknown", and a stale build on disk is exactly where both show up — so the
+        # upgrade this check exists to catch used to land in the presence branch and
+        # print a success warning over a rolled-back transaction. Presence before the
+        # install is what distinguishes an upgrade from a first install.
         local backend_sha_after
         backend_sha_after="$(installed_backend_sha)"
         if [ -n "$backend_sha_before" ] && [ "$backend_sha_before" = "$backend_sha_after" ]; then
             fail "tachyon installation failed: still running build $backend_sha_before, the package manager rolled the upgrade back (see $LOG_FILE)"
+        elif [ "$backend_present_before" = 1 ] && [ -z "$backend_sha_after" ]; then
+            fail "tachyon installation failed: the installed build still reports no commit SHA, so the package manager rolled the upgrade back (see $LOG_FILE)"
         elif pkg_is_installed "tachyon"; then
             warn "Package manager reported errors during installation, but tachyon is installed — continuing"
         else

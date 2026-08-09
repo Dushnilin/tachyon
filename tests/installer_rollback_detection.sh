@@ -70,6 +70,19 @@ assert_eq "" "$(read_sha "")" "a missing constants module must yield no SHA"
 grep -Fq 'rolled the upgrade back' "$INSTALLER" ||
   fail "install.sh must fail loudly when the backend SHA did not move after install"
 
+# An empty "before" SHA is not evidence of a fresh install: installed_backend_sha
+# rejects both the placeholder and "unknown", which is exactly what a stale build
+# on disk reports. Presence before the install is what separates an upgrade from a
+# first install, so the rollback check must consult it — otherwise a rolled-back
+# upgrade of an unstamped build reaches the "installed — continuing" branch and the
+# run marches on over a failure.
+sed -n '/^install_backend_package() {/,/^}/p' "$INSTALLER" >"$WORK_DIR/backend.sh"
+[ -s "$WORK_DIR/backend.sh" ] || fail "install.sh must define install_backend_package"
+grep -Fq 'backend_present_before' "$WORK_DIR/backend.sh" ||
+  fail "install_backend_package must record whether tachyon was installed before the upgrade"
+grep -Fq 'still reports no commit SHA' "$WORK_DIR/backend.sh" ||
+  fail "an upgrade that leaves the installed build without a SHA must fail, not warn and continue"
+
 # 120s was below the time the package hooks legitimately need to stop and restart
 # the service; being killed there makes apk roll the transaction back.
 for pm in apk opkg; do
