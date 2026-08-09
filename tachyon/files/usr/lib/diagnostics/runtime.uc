@@ -1079,10 +1079,36 @@ function sing_box_component_action_running() {
     return module_success(SERVICE_UI_UC, [ "component-action-running-for", "sing_box" ]);
 }
 
+// Only the variants whose binary cannot be executed for a version string fall back
+// to the state file: `extended-compressed` is a self-extracting stub and `lx` needs
+// a runtime that may be absent. Plain `extended` runs `sing-box version` fine, and
+// listing it here made the UI show whatever was last written to
+// /etc/tachyon/sing-box-version — a file only the component action updates. A
+// sing-box installed any other way (install.sh, opkg, by hand) then displayed a
+// stale version forever, and the update badge compared against it.
 function sing_box_live_probe_disabled() {
-    return sing_box_marker_is("extended") ||
-        sing_box_marker_is("extended-compressed") ||
+    return sing_box_marker_is("extended-compressed") ||
+        sing_box_marker_is("lx") ||
         sing_box_component_action_running();
+}
+
+// Resolves the pair (version, version-output) both callers below need. The state
+// file is only consulted for variants whose binary cannot be run, and an empty or
+// missing state falls through to the live probe rather than reporting "unknown":
+// the state is written by the component action alone, so any sing-box installed by
+// install.sh, opkg or by hand has none.
+function sing_box_resolved_version() {
+    if (sing_box_live_probe_disabled()) {
+        let state = replace(module_output(SINGBOX_RUNTIME_UC, [ "read-version-state" ]), /[\r\n]+$/g, "");
+        if (state != "")
+            return { version: state, output: "" };
+    }
+
+    let output = module_output(SINGBOX_RUNTIME_UC, [ "version-output" ]);
+    return {
+        version: replace(module_output_stdin(SINGBOX_RUNTIME_UC, [ "version-from-output" ], output), /[\r\n]+$/g, ""),
+        output: output
+    };
 }
 
 function sing_box_tiny_package_installed() {
@@ -1151,14 +1177,9 @@ function build_system_info() {
     let sing_box_version_output = "";
 
     if (command_exists("sing-box")) {
-        if (sing_box_live_probe_disabled()) {
-            sing_box_version = replace(module_output(SINGBOX_RUNTIME_UC, [ "read-version-state" ]), /[\r\n]+$/g, "");
-            sing_box_version_output = "";
-        }
-        else {
-            sing_box_version_output = module_output(SINGBOX_RUNTIME_UC, [ "version-output" ]);
-            sing_box_version = replace(module_output_stdin(SINGBOX_RUNTIME_UC, [ "version-from-output" ], sing_box_version_output), /[\r\n]+$/g, "");
-        }
+        let resolved = sing_box_resolved_version();
+        sing_box_version = resolved.version;
+        sing_box_version_output = resolved.output;
         if (sing_box_version == "")
             sing_box_version = "unknown";
     }
@@ -1231,15 +1252,8 @@ function get_server_capabilities() {
         return 0;
     }
 
-    let sing_box_version_output = "";
-    let sing_box_version = "";
-    if (sing_box_live_probe_disabled())
-        sing_box_version = replace(module_output(SINGBOX_RUNTIME_UC, [ "read-version-state" ]), /[\r\n]+$/g, "");
-    else {
-        sing_box_version_output = module_output(SINGBOX_RUNTIME_UC, [ "version-output" ]);
-        sing_box_version = replace(module_output_stdin(SINGBOX_RUNTIME_UC, [ "version-from-output" ], sing_box_version_output), /[\r\n]+$/g, "");
-    }
-    let flags = sing_box_capability_flags(sing_box_version, sing_box_version_output);
+    let resolved = sing_box_resolved_version();
+    let flags = sing_box_capability_flags(resolved.version, resolved.output);
     write_json({
         sing_box_extended: flags.extended,
         sing_box_tiny: flags.tiny,
