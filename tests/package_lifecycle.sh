@@ -47,6 +47,21 @@ if grep -n -E 'grep -q "105 tachyon"|sed -i "/105 tachyon|tachyon_dont_touch_dhc
 fi
 grep -Fq '#!/usr/bin/ucode' "$TACHYON_MAKEFILE" ||
   fail "tachyon Makefile package hooks must use ucode entrypoints"
+
+# The prerm hook lives inside a Makefile define, so ucode_syntax_lint.sh never
+# sees it. A syntax error there only surfaces on a router mid-upgrade.
+sed -n '/define Package\/tachyon\/prerm/,/^endef/p' "$TACHYON_MAKEFILE" |
+  sed '1d;$d' >"$WORK_DIR/prerm-hook.uc"
+[ -s "$WORK_DIR/prerm-hook.uc" ] ||
+  fail "tachyon Makefile must define a prerm hook"
+ucode -c -o /dev/null "$WORK_DIR/prerm-hook.uc" 2>"$WORK_DIR/prerm-hook.err" ||
+  fail "tachyon Makefile prerm hook must compile: $(cat "$WORK_DIR/prerm-hook.err")"
+
+# apk runs prerm as pre-upgrade and rolls the whole transaction back if it does
+# not finish, so the cleanup call — which executes the OLD installed build — must
+# be bounded from the outside.
+grep -Fq 'timeout' "$WORK_DIR/prerm-hook.uc" ||
+  fail "tachyon Makefile prerm must bound package_prerm so a stuck cleanup cannot roll the upgrade back"
 grep -Fq '/usr/bin/tachyon package_prerm' "$TACHYON_MAKEFILE" ||
   fail "tachyon Makefile prerm must delegate cleanup to package_prerm"
 grep -Fq '/usr/bin/tachyon package_postinst' "$TACHYON_MAKEFILE" ||
@@ -189,5 +204,41 @@ TACHYON_RT_TABLES="$WORK_DIR/rt_tables_upgrade" \
   ucode -L "$TACHYON_LIB" "$PACKAGE_UC" prerm upgrade
 [ ! -e "$TACHYON_PACKAGE_UPGRADE_STATE" ] ||
   fail "package pre-upgrade must not mark an already stopped service"
+
+# Every init.d call goes through rc.common's `flock -w 1000`, so a wedged start
+# or retry_start_on_wan_up holding that lock used to stall pre-upgrade for a
+# quarter of an hour — long enough for apk (or the installer) to kill the hook and
+# roll the new build back. The hook must give up on its own instead.
+cat >"$WORK_DIR/hanging-init" <<'SH'
+#!/usr/bin/env bash
+sleep 600
+SH
+chmod 0755 "$WORK_DIR/hanging-init"
+: >"$WORK_DIR/rt_tables_hang"
+hang_start="$(date +%s)"
+TACHYON_HOOK_COMMAND_TIMEOUT=2 \
+TACHYON_INIT="$WORK_DIR/hanging-init" \
+TACHYON_BIN="$WORK_DIR/hanging-init" \
+TACHYON_DNS_APPLY_UC="$WORK_DIR/missing-dns-apply.uc" \
+TACHYON_SING_BOX_INIT="$WORK_DIR/missing-sing-box-init" \
+TACHYON_UCI_STATE_FILE="$WORK_DIR/dont-touch.state" \
+TACHYON_RT_TABLES="$WORK_DIR/rt_tables_hang" \
+  ucode -L "$TACHYON_LIB" "$PACKAGE_UC" prerm upgrade
+hang_elapsed="$(( $(date +%s) - hang_start ))"
+[ "$hang_elapsed" -lt 30 ] ||
+  fail "package pre-upgrade must abandon a blocked init call, took ${hang_elapsed}s"
+
+# Same for the restart in postinst: a start that never returns must not hold the
+# package transaction open.
+printf '1\n' >"$TACHYON_PACKAGE_UPGRADE_STATE"
+hang_start="$(date +%s)"
+TACHYON_HOOK_START_TIMEOUT=2 \
+TACHYON_INIT="$WORK_DIR/hanging-init" \
+  ucode -L "$TACHYON_LIB" "$PACKAGE_UC" postinst
+hang_elapsed="$(( $(date +%s) - hang_start ))"
+[ "$hang_elapsed" -lt 30 ] ||
+  fail "package postinst must abandon a blocked service start, took ${hang_elapsed}s"
+[ ! -e "$TACHYON_PACKAGE_UPGRADE_STATE" ] ||
+  fail "package postinst must clear the upgrade state even when the start times out"
 
 printf 'package lifecycle checks passed\n'

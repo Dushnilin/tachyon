@@ -1732,10 +1732,12 @@ pkg_install_name() {
         return 0
     fi
 
+    # 300s: named packages carry postinst hooks too (sing-box, kmods pulling deps
+    # from the network), and a kill mid-transaction is rolled back on apk.
     if [ "$PKG_IS_APK" -eq 1 ]; then
-        apk_with_lock_retry "apk" 120 apk add "$pkg_name"
+        apk_with_lock_retry "apk" 300 apk add "$pkg_name"
     else
-        run_logged_timeout "opkg" 120 opkg install "$pkg_name"
+        run_logged_timeout "opkg" 300 opkg install "$pkg_name"
     fi
     local rc=$?
 
@@ -1748,14 +1750,37 @@ pkg_install_name() {
     return 0
 }
 
+# Commit SHA baked into the currently installed backend, read straight from the
+# installed constants module. Empty when nothing is installed or the placeholder
+# was never substituted. This is what tells a rebuild of the same tag apart from
+# the build already on disk — the version string cannot.
+installed_backend_sha() {
+    _sha_file="/usr/lib/tachyon/core/constants.uc"
+    [ -r "$_sha_file" ] || return 0
+    # "unknown" is what the Makefile substitutes when git is unavailable at build
+    # time, and the placeholder survives an unprocessed tree; neither identifies a
+    # build, so both must read as "no SHA" rather than as a SHA that never moves.
+    sed -n 's/.*TACHYON_COMMIT_SHA", *"\([^"]*\)".*/\1/p' "$_sha_file" 2>/dev/null |
+        head -1 | grep -v -e COMPILED -e '^unknown$' || true
+}
+
 pkg_install_files() {
     if [ "$DRY_RUN" -eq 1 ]; then
         msg "[dry-run] would install downloaded package file(s): $*"
         return 0
     fi
 
+    # Recorded before the transaction so a rolled-back rebuild of the same tag is
+    # detectable: the version stays identical, only the SHA moves.
+    local sha_before
+    sha_before="$(installed_backend_sha)"
+
     if [ "$PKG_IS_APK" -eq 1 ]; then
-        apk_with_lock_retry "apk" 120 apk add --allow-untrusted "$@"
+        # 300s, not 120s: the package hooks stop and restart the service, and on a
+        # loaded router that legitimately outlives two minutes. Being killed here
+        # makes apk roll the whole transaction back, which silently leaves the old
+        # build installed — the exact failure this ceiling used to cause.
+        apk_with_lock_retry "apk" 300 apk add --allow-untrusted "$@"
         local rc=$?
         if [ $rc -ne 0 ]; then
             # apk may report warnings as errors even though the package installed successfully
@@ -1768,6 +1793,14 @@ pkg_install_files() {
                 pkg_expected_ver="$(basename "$pkg_file" | sed 's/^[^_]*_//; s/\.apk$//')"
                 pkg_actual_ver="$(apk info "$pkg_name" 2>/dev/null | head -1 | sed "s/${pkg_name}-//")"
                 if [ "$pkg_actual_ver" = "$pkg_expected_ver" ]; then
+                    # A matching version proves nothing for a rebuilt tag: it also
+                    # matches when apk rolled back to the identical old version. If
+                    # the backend SHA did not move either, nothing was written.
+                    if [ "$pkg_name" = "tachyon" ] && [ -n "$sha_before" ] &&
+                        [ "$(installed_backend_sha)" = "$sha_before" ]; then
+                        log_line "FAIL  apk install failed (exit $rc); backend still at $sha_before, transaction was rolled back"
+                        return $rc
+                    fi
                     warn "Package manager reported non-critical errors during installation (package is installed OK)"
                     return 0
                 fi
@@ -1779,7 +1812,8 @@ pkg_install_files() {
         # --force-reinstall: a release tag can be rebuilt, so the .ipk version may
         # equal the installed one. Without it opkg treats that as "already
         # installed" and the rebuild is never written.
-        run_logged_timeout "opkg" 120 opkg install --force-overwrite --force-downgrade --force-reinstall "$@"
+        # 300s for the same reason as the apk branch: the hooks restart the service.
+        run_logged_timeout "opkg" 300 opkg install --force-overwrite --force-downgrade --force-reinstall "$@"
         local rc=$?
         if [ $rc -ne 0 ]; then
             log_line "FAIL  opkg install failed (exit $rc)"
@@ -2400,8 +2434,20 @@ install_backend_package() {
         cfg_hash_before="${_sha_out%% *}"
     fi
 
+    local backend_sha_before
+    backend_sha_before="$(installed_backend_sha)"
+
     if ! pkg_install_files "$TACHYON_BACKEND_FILE"; then
-        if pkg_is_installed "tachyon"; then
+        # "tachyon is installed" is not evidence of success on a rebuilt tag: apk
+        # rolls the transaction back to the identical old version, so both the
+        # package name and its version still check out. Only a moved commit SHA
+        # proves new files landed. Without a SHA to compare (fresh install, or an
+        # unstamped build) fall back to the presence check.
+        local backend_sha_after
+        backend_sha_after="$(installed_backend_sha)"
+        if [ -n "$backend_sha_before" ] && [ "$backend_sha_before" = "$backend_sha_after" ]; then
+            fail "tachyon installation failed: still running build $backend_sha_before, the package manager rolled the upgrade back (see $LOG_FILE)"
+        elif pkg_is_installed "tachyon"; then
             warn "Package manager reported errors during installation, but tachyon is installed — continuing"
         else
             fail "tachyon installation failed"

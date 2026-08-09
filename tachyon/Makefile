@@ -44,9 +44,26 @@ endef
 define Package/tachyon/prerm
 #!/usr/bin/ucode
 
-if (getenv("IPKG_INSTROOT") == null || getenv("IPKG_INSTROOT") == "")
-	system("/usr/bin/tachyon package_prerm >/dev/null 2>&1");
+// apk runs this as <pkg>-<version>.pre-upgrade and rolls the whole transaction
+// back if the hook does not finish, which leaves the old build installed. The
+// cleanup invoked below belongs to the OLD version, so it cannot be trusted to
+// bound itself — the hook bounds it from the outside. 90s sits far below any
+// package-manager or installer patience and far above a healthy cleanup.
+// BusyBox timeout wanted `-t SECONDS` on older builds and rejects it on newer
+// ones; the spelling is probed against /bin/true because probing with the real
+// command would run the cleanup twice whenever the first form is unsupported.
+if (getenv("IPKG_INSTROOT") == null || getenv("IPKG_INSTROOT") == "") {
+	let prefix = "";
+	if (system("timeout 1 /bin/true >/dev/null 2>&1") == 0)
+		prefix = "timeout 90 ";
+	else if (system("timeout -t 1 /bin/true >/dev/null 2>&1") == 0)
+		prefix = "timeout -t 90 ";
 
+	system(prefix + "/usr/bin/tachyon package_prerm >/dev/null 2>&1");
+}
+
+// Whatever the cleanup managed to do, the removal itself must proceed: a failing
+// prerm aborts the upgrade on both package managers.
 exit(0);
 endef
 
