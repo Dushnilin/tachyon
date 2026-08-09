@@ -644,14 +644,16 @@ export const TachyonShellMethods = {
           continue;
         }
 
-        if (component === 'tachyon' && action === 'install') {
-          const installedVersion = expectedLatestVersion
-            ? await readTachyonVersion()
-            : '';
+        if (
+          component === 'tachyon' &&
+          (action === 'install' || action === 'reinstall')
+        ) {
+          const installedVersion = await readTachyonVersion();
+          const targetVersion = expectedLatestVersion || installedVersion;
 
           if (
-            expectedLatestVersion &&
-            installedVersion === expectedLatestVersion
+            targetVersion &&
+            installedVersion === targetVersion
           ) {
             if (!selfUpdateVersionMatchedAt) {
               selfUpdateVersionMatchedAt = Date.now();
