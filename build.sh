@@ -387,8 +387,17 @@ EOF
   cat > "$control_dir/prerm" <<'EOF'
 #!/usr/bin/ucode
 
-if (getenv("IPKG_INSTROOT") == null || getenv("IPKG_INSTROOT") == "")
-	system("/usr/bin/tachyon package_prerm >/dev/null 2>&1");
+// Bounded from the outside like every other prerm here: the cleanup being invoked
+// is the OLD installed one, so it cannot be trusted to bound itself.
+if (getenv("IPKG_INSTROOT") == null || getenv("IPKG_INSTROOT") == "") {
+	let prefix = "";
+	if (system("timeout 1 /bin/true >/dev/null 2>&1") == 0)
+		prefix = "timeout 90 ";
+	else if (system("timeout -t 1 /bin/true >/dev/null 2>&1") == 0)
+		prefix = "timeout -t 90 ";
+
+	system(prefix + "/usr/bin/tachyon package_prerm >/dev/null 2>&1");
+}
 
 exit(0);
 EOF
@@ -596,16 +605,48 @@ EOF
   cat > "$scripts_dir/backend-pre-deinstall.sh" <<'EOF'
 #!/usr/bin/ucode
 
-if (getenv("IPKG_INSTROOT") == null || getenv("IPKG_INSTROOT") == "")
-	system("/usr/bin/tachyon package_prerm >/dev/null 2>&1");
+// Bounded for the same reason as backend-pre-upgrade.sh: this runs the OLD
+// installed cleanup, and a hook that never returns takes the removal down with it.
+if (getenv("IPKG_INSTROOT") == null || getenv("IPKG_INSTROOT") == "") {
+	let prefix = "";
+	if (system("timeout 1 /bin/true >/dev/null 2>&1") == 0)
+		prefix = "timeout 90 ";
+	else if (system("timeout -t 1 /bin/true >/dev/null 2>&1") == 0)
+		prefix = "timeout -t 90 ";
+
+	system(prefix + "/usr/bin/tachyon package_prerm >/dev/null 2>&1");
+}
 
 exit(0);
 EOF
 
   cat > "$scripts_dir/backend-pre-upgrade.sh" <<'EOF'
 #!/usr/bin/ucode
-if (getenv("IPKG_INSTROOT") == null || getenv("IPKG_INSTROOT") == "")
-    exit(system("/usr/bin/tachyon package_prerm upgrade >/dev/null 2>&1"));
+
+// Must mirror Package/tachyon/prerm in tachyon/Makefile: the APK packages are
+// assembled here rather than by OpenWrt's packaging, so a fix applied only to the
+// Makefile never reaches them.
+//
+// apk rolls the whole transaction back if this hook fails or outlives its
+// patience, which leaves the old build installed. The cleanup invoked below
+// belongs to the OLD version, so it cannot be trusted to bound itself — the hook
+// bounds it from the outside. BusyBox timeout wanted `-t SECONDS` on older builds
+// and rejects it on newer ones; the spelling is probed against /bin/true because
+// probing with the real command would run the cleanup twice whenever the first
+// form is unsupported.
+if (getenv("IPKG_INSTROOT") == null || getenv("IPKG_INSTROOT") == "") {
+    let prefix = "";
+    if (system("timeout 1 /bin/true >/dev/null 2>&1") == 0)
+        prefix = "timeout 90 ";
+    else if (system("timeout -t 1 /bin/true >/dev/null 2>&1") == 0)
+        prefix = "timeout -t 90 ";
+
+    system(prefix + "/usr/bin/tachyon package_prerm upgrade >/dev/null 2>&1");
+}
+
+// Whatever the cleanup managed to do, the upgrade itself must proceed: the old
+// `exit(system(...))` form returned a raw wait status, so a killed or merely
+// unhappy cleanup aborted the upgrade and rolled the new build back.
 exit(0);
 EOF
 
