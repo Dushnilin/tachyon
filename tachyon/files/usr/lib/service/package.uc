@@ -115,13 +115,10 @@ function remove_managed_sing_box() {
 }
 
 function remember_upgrade_state(action) {
-    if (as_string(action) != "upgrade") {
+    if (as_string(action) != "upgrade" || !command_success_from_args([ INIT_PATH, "status" ])) {
         unlink_if_exists(PACKAGE_UPGRADE_STATE);
         return;
     }
-    // Do NOT call init.d/tachyon status — it uses rc.common flock and hangs
-    // indefinitely when retry_start_on_wan_up holds the procd lock.
-    // For upgrades, unconditionally write the state file so postinst restarts the service.
     fs.writefile(PACKAGE_UPGRADE_STATE, "1\n");
 }
 
