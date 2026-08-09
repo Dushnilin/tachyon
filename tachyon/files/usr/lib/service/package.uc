@@ -149,13 +149,16 @@ function postinst_restore() {
     if (env("IPKG_INSTROOT", "") != "" || !path_exists(PACKAGE_UPGRADE_STATE))
         return true;
 
-    // Kill any flock waiters that appeared since prerm ran (procd re-triggers
-    // retry_start_on_wan_up between prerm and postinst).
-    system("ps 2>/dev/null | awk '/\/etc\/init.d\/tachyon/{print $1}' | while read _pid; do kill -9 \"$_pid\" 2>/dev/null; done; true");
-    system("sleep 1; ps 2>/dev/null | awk '/flock 1000/{print $1}' | while read _pid; do kill -9 \"$_pid\" 2>/dev/null; done; true");
-    command_success_from_args([ INIT_PATH, "start" ]);
+    // Kill any flock waiters and init.d/tachyon processes that appeared since
+    // prerm ran. procd continuously re-triggers retry_start_on_wan_up which
+    // spawns new flock -w 1000 waiters.
+    system("ps 2>/dev/null | awk '/\\/etc\\/init.d\\/tachyon|flock 1000|99-tachyon-wan/{print $1}' | while read _pid; do kill -9 \"$_pid\" 2>/dev/null; done; true");
+    // Use BIN_PATH start (lifecycle.uc) instead of INIT_PATH start (rc.common).
+    // init.d/tachyon start goes through rc.common which uses flock -w 1000 and
+    // will deadlock if ANY other init.d/tachyon process holds the procd lock.
+    system(shell_quote(BIN_PATH) + " start >/dev/null 2>&1; true");
     unlink_if_exists(PACKAGE_UPGRADE_STATE);
-    return true; // never roll back the upgrade due to service start failure
+    return true;
 }
 
 function luci_cache_globs() {

@@ -55,14 +55,19 @@ define Package/tachyon/postupgrade
 
 [ -n "$${IPKG_INSTROOT}" ] && exit 0
 
-# Kill any flock waiters that re-appeared between pre-upgrade and post-upgrade.
-ps 2>/dev/null | awk '/\/etc\/init\.d\/tachyon|flock 1000/{print $$1}' | while read _pid; do
+# Kill everything that could hold or wait for the procd serialization lock
+# (rc.common flock -w 1000). procd re-triggers retry_start_on_wan_up between
+# pre-upgrade and post-upgrade, which continuously creates new flock waiters.
+ps 2>/dev/null | awk '/\/etc\/init\.d\/tachyon|flock 1000|99-tachyon-wan/{print $$1}' | while read _pid; do
     kill -9 "$$_pid" 2>/dev/null
 done
 
-/usr/bin/tachyon package_postinst upgrade 2>/dev/null
-chmod 600 /etc/config/tachyon 2>/dev/null
-chown root:root /etc/config/tachyon 2>/dev/null
+# Start via tachyon binary (lifecycle.uc) which registers with procd directly,
+# bypassing rc.common and its flock entirely.
+/usr/bin/tachyon start >/dev/null 2>&1 || true
+rm -f /var/run/tachyon/upgrade_state 2>/dev/null || true
+chmod 600 /etc/config/tachyon 2>/dev/null || true
+chown root:root /etc/config/tachyon 2>/dev/null || true
 exit 0
 endef
 
