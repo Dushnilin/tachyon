@@ -128,17 +128,17 @@ function prerm_cleanup(action) {
 
     remember_upgrade_state(action);
     if (!PACKAGE_TEST_MODE) {
-        // Stop the service first so it can clean up while the routing table entry is still present.
+        // Kill the WAN hotplug monitor and all init.d/tachyon/flock processes FIRST
+        // to prevent INIT_PATH stop from blocking indefinitely on rc.common flock -w 1000.
+        system("ps 2>/dev/null | grep -E '99-tachyon-wan|flock 1000|init[.]d/tachyon' | awk '{print $1}' | while read _pid; do kill -9 \"$_pid\" 2>/dev/null; done; true");
+        system("ps 2>/dev/null | grep -F '/etc/init.d/tachyon' | awk '{print $1}' | while read _pid; do kill -9 \"$_pid\" 2>/dev/null; done; true");
+
+        // Stop the service using BIN_PATH directly (bypasses rc.common flock)
+        command_success_from_args([BIN_PATH, "stop"]);
         command_success_from_args([INIT_PATH, "stop"]);
-        // Kill the WAN hotplug monitor and all init.d/tachyon processes that
-        // continuously re-spawn flock -w 1000 waiters (the root cause of deadlocks).
-        // Use grep -E for alternation: BusyBox awk does not support | in regex literals.
-        system("ps 2>/dev/null | grep -E '99-tachyon-wan|init[.]d/tachyon' | awk '{print $1}' | while read _pid; do kill -9 \"$_pid\" 2>/dev/null; done; true");
-        // Kill any remaining flock -w 1000 waiters.
-        system("ps 2>/dev/null | awk '/flock 1000/{print $1}' | while read _pid; do kill -9 \"$_pid\" 2>/dev/null; done; true");
-        // Kill the tachyon service processes directly (no init.d, no flock).
-        // Use grep -F: BusyBox awk mangles \/ escaping inside regex literals.
-        system("ps 2>/dev/null | grep -F '/usr/bin/tachyon' | awk '{print $1}' | while read _pid; do kill \"$_pid\" 2>/dev/null; done; true");
+
+        // Kill any remaining tachyon processes
+        system("ps 2>/dev/null | grep -F '/usr/bin/tachyon' | awk '{print $1}' | while read _pid; do kill -9 \"$_pid\" 2>/dev/null; done; true");
         restore_dnsmasq_if_needed();
         remove_managed_sing_box();
     }
@@ -151,16 +151,12 @@ function postinst_restore() {
         return true;
 
     if (!PACKAGE_TEST_MODE) {
-        // Kill any flock waiters and init.d/tachyon processes that appeared since
-        // prerm ran. procd continuously re-triggers retry_start_on_wan_up which
-        // spawns new flock -w 1000 waiters.
-        // Use grep -E for alternation and grep -F for path: BusyBox awk mangles | and \/ in regex literals.
+        // Kill any flock waiters and init.d/tachyon processes that appeared since prerm ran.
         system("ps 2>/dev/null | grep -E '99-tachyon-wan|flock 1000' | awk '{print $1}' | while read _pid; do kill -9 \"$_pid\" 2>/dev/null; done; true");
         system("ps 2>/dev/null | grep -F '/etc/init.d/tachyon' | awk '{print $1}' | while read _pid; do kill -9 \"$_pid\" 2>/dev/null; done; true");
     }
-    // Start via INIT_PATH. Flock waiters were already killed by prerm_cleanup so
-    // the init.d flock -w 1000 path is safe here.
-    command_success_from_args([INIT_PATH, "start"]);
+    // Start via BIN_PATH directly (bypasses rc.common flock deadlock)
+    command_success_from_args([BIN_PATH, "start"]);
     unlink_if_exists(PACKAGE_UPGRADE_STATE);
     return true;
 }
