@@ -78,6 +78,7 @@ export const initialDiagnosticStore: Pick<
     loaded: false,
     providerInfoLoaded: false,
     tachyon_version: 'loading',
+    tachyon_commit_sha: '',
     tachyon_latest_version: 'loading',
     luci_app_version: 'loading',
     sing_box_version: 'loading',

@@ -4994,6 +4994,7 @@ var initialDiagnosticStore = {
     loaded: false,
     providerInfoLoaded: false,
     tachyon_version: "loading",
+    tachyon_commit_sha: "",
     tachyon_latest_version: "loading",
     luci_app_version: "loading",
     sing_box_version: "loading",
@@ -9172,6 +9173,7 @@ var UNKNOWN_SYSTEM_INFO = {
   loaded: false,
   providerInfoLoaded: false,
   tachyon_version: _("unknown"),
+  tachyon_commit_sha: "",
   tachyon_latest_version: _("unknown"),
   luci_app_version: _("unknown"),
   sing_box_version: _("unknown"),
@@ -9989,9 +9991,15 @@ function renderSystemInfo({ items }) {
 }
 
 // src/helpers/normalizeCompiledVersion.ts
-function normalizeCompiledVersion(version) {
-  if (version.includes("COMPILED")) {
+function normalizeCompiledVersion(version, commitSha) {
+  if (!version || version.includes("COMPILED")) {
     return "dev";
+  }
+  if (commitSha && commitSha !== "unknown" && !commitSha.includes("COMPILED")) {
+    const shortSha = commitSha.substring(0, 8);
+    if (shortSha && !version.includes(shortSha)) {
+      return `${version} (${shortSha})`;
+    }
   }
   return version;
 }
@@ -11290,7 +11298,10 @@ function renderDiagnosticSystemInfoWidget() {
   const items = [
     {
       key: "Tachyon",
-      value: normalizeCompiledVersion(diagnosticsSystemInfo.tachyon_version)
+      value: normalizeCompiledVersion(
+        diagnosticsSystemInfo.tachyon_version,
+        diagnosticsSystemInfo.tachyon_commit_sha
+      )
     },
     {
       key: "Luci App",
@@ -14525,7 +14536,10 @@ function getComponentCards() {
       component: "tachyon",
       column: 0,
       title: "Tachyon",
-      version: systemInfoLoading ? _("Loading...") : normalizeCompiledVersion(systemInfo.tachyon_version),
+      version: systemInfoLoading ? _("Loading...") : normalizeCompiledVersion(
+        systemInfo.tachyon_version,
+        systemInfo.tachyon_commit_sha
+      ),
       latestVersion: getLatestVersion("tachyon"),
       releaseUrl: getGitHubReleaseUrl("tachyon"),
       repoUrl: COMPONENT_REPO_URLS.tachyon,

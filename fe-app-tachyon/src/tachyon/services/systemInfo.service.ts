@@ -8,6 +8,7 @@ const UNKNOWN_SYSTEM_INFO: StoreType['diagnosticsSystemInfo'] = {
   loaded: false,
   providerInfoLoaded: false,
   tachyon_version: _('unknown'),
+  tachyon_commit_sha: '',
   tachyon_latest_version: _('unknown'),
   luci_app_version: _('unknown'),
   sing_box_version: _('unknown'),

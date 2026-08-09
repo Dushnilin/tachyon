@@ -149,6 +149,7 @@ function get_system_status() {
         }
     }
     status_obj.tachyon_version = ver || "unknown";
+    status_obj.tachyon_commit_sha = constants.TACHYON_COMMIT_SHA && !match(constants.TACHYON_COMMIT_SHA, /COMPILED/) ? constants.TACHYON_COMMIT_SHA : "";
 
     return status_obj;
 }

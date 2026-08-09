@@ -1187,6 +1187,7 @@ function build_system_info() {
 
     return {
         tachyon_version: TACHYON_VERSION,
+        tachyon_commit_sha: constants.TACHYON_COMMIT_SHA && !match(constants.TACHYON_COMMIT_SHA, /COMPILED/) ? constants.TACHYON_COMMIT_SHA : "",
         tachyon_latest_version: tachyon_latest_version || "unknown",
         luci_app_version,
         sing_box_version,

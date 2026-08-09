@@ -1043,7 +1043,10 @@ function renderDiagnosticSystemInfoWidget() {
   const items = [
     {
       key: 'Tachyon',
-      value: normalizeCompiledVersion(diagnosticsSystemInfo.tachyon_version),
+      value: normalizeCompiledVersion(
+        diagnosticsSystemInfo.tachyon_version,
+        diagnosticsSystemInfo.tachyon_commit_sha,
+      ),
     },
     {
       key: 'Luci App',

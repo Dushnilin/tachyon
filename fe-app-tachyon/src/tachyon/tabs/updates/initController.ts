@@ -967,7 +967,10 @@ function getComponentCards(): ComponentCard[] {
       title: 'Tachyon',
       version: systemInfoLoading
         ? _('Loading...')
-        : normalizeCompiledVersion(systemInfo.tachyon_version),
+        : normalizeCompiledVersion(
+            systemInfo.tachyon_version,
+            systemInfo.tachyon_commit_sha,
+          ),
       latestVersion: getLatestVersion('tachyon'),
       releaseUrl: getGitHubReleaseUrl('tachyon'),
       repoUrl: COMPONENT_REPO_URLS.tachyon,

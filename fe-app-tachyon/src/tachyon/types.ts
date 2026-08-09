@@ -511,6 +511,7 @@ export namespace Tachyon {
 
   export interface GetSystemInfo {
     tachyon_version: string;
+    tachyon_commit_sha?: string;
     tachyon_latest_version: string;
     luci_app_version: string;
     sing_box_version: string;
