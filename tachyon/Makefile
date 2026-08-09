@@ -50,6 +50,22 @@ if (getenv("IPKG_INSTROOT") == null || getenv("IPKG_INSTROOT") == "")
 exit(0);
 endef
 
+define Package/tachyon/postupgrade
+#!/bin/sh
+
+[ -n "$${IPKG_INSTROOT}" ] && exit 0
+
+# Kill any flock waiters that re-appeared between pre-upgrade and post-upgrade.
+ps 2>/dev/null | awk '/\/etc\/init\.d\/tachyon|flock 1000/{print $$1}' | while read _pid; do
+    kill -9 "$$_pid" 2>/dev/null
+done
+
+/usr/bin/tachyon package_postinst upgrade 2>/dev/null
+chmod 600 /etc/config/tachyon 2>/dev/null
+chown root:root /etc/config/tachyon 2>/dev/null
+exit 0
+endef
+
 define Package/tachyon/postinst
 #!/bin/sh
 

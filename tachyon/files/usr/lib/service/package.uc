@@ -119,9 +119,10 @@ function remember_upgrade_state(action) {
         unlink_if_exists(PACKAGE_UPGRADE_STATE);
         return;
     }
-
-    if (command_success_from_args([ INIT_PATH, "status" ]))
-        fs.writefile(PACKAGE_UPGRADE_STATE, "1\n");
+    // Do NOT call init.d/tachyon status — it uses rc.common flock and hangs
+    // indefinitely when retry_start_on_wan_up holds the procd lock.
+    // For upgrades, unconditionally write the state file so postinst restarts the service.
+    fs.writefile(PACKAGE_UPGRADE_STATE, "1\n");
 }
 
 function prerm_cleanup(action) {
@@ -130,18 +131,17 @@ function prerm_cleanup(action) {
 
     remember_upgrade_state(action);
     if (!PACKAGE_TEST_MODE) {
-        // 1. Kill all /etc/init.d/tachyon background processes (retry_start_on_wan_up
-        //    and other procd triggers) — these continuously spawn new flock -w 1000
-        //    waiters that deadlock any subsequent init.d call.
-        system("ps 2>/dev/null | awk '/\/etc\/init.d\/tachyon/{print $1}' | while read _pid; do kill -9 \"$_pid\" 2>/dev/null; done; true");
-        // 2. Kill any remaining flock -w 1000 waiters.
-        system("sleep 1; ps 2>/dev/null | awk '/flock 1000/{print $1}' | while read _pid; do kill -9 \"$_pid\" 2>/dev/null; done; true");
-        // 3. Stop via tachyon binary (lifecycle.uc) — bypasses rc.common, no flock.
-        system(shell_quote(BIN_PATH) + " stop >/dev/null 2>&1; true");
+        // Kill the WAN hotplug monitor and all init.d/tachyon processes that
+        // continuously re-spawn flock -w 1000 waiters (the root cause of deadlocks).
+        system("ps 2>/dev/null | awk '/99-tachyon-wan|init\.d\/tachyon/{print $1}' | while read _pid; do kill -9 \"$_pid\" 2>/dev/null; done; true");
+        // Kill any remaining flock -w 1000 waiters.
+        system("ps 2>/dev/null | awk '/flock 1000/{print $1}' | while read _pid; do kill -9 \"$_pid\" 2>/dev/null; done; true");
+        // Kill the tachyon service processes directly (no init.d, no flock).
+        system("ps 2>/dev/null | awk '/\/usr\/bin\/tachyon/{print $1}' | while read _pid; do kill \"$_pid\" 2>/dev/null; done; true");
         restore_dnsmasq_if_needed();
         remove_managed_sing_box();
     }
-    remove_rt_tables_entry(); // best-effort, never block the upgrade
+    remove_rt_tables_entry(); // best-effort
     return true;
 }
 
