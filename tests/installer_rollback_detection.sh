@@ -78,4 +78,34 @@ for pm in apk opkg; do
   fi
 done
 
+# Bounding the hooks only helps the build being installed; during THIS upgrade the
+# package manager runs the prerm of whatever is already on disk, and every release
+# up to 1.2.66 shipped one with no timeout. It blocks on rc.common's `flock -w
+# 1000`, so the installer has to free that lock itself before invoking the package
+# manager — otherwise the pre-upgrade hook outlives apk's patience and the whole
+# transaction is rolled back.
+sed -n '/^function installer_release_init_lock() {/,/^}/p' "$INSTALLER" >"$WORK_DIR/lock.uc"
+[ -s "$WORK_DIR/lock.uc" ] ||
+  fail "install.sh must define installer_release_init_lock to unwedge the old prerm hook"
+
+for pattern in '99-tachyon-wan|flock 1000' '/etc/init.d/tachyon'; do
+  grep -Fq "$pattern" "$WORK_DIR/lock.uc" ||
+    fail "installer_release_init_lock must clear '$pattern' waiters"
+done
+
+# ucode resolves names lexically and does not hoist, so a call placed above the
+# declaration silently becomes null and the lock is never released.
+lock_decl="$(grep -n '^function installer_release_init_lock() {' "$INSTALLER" | head -1 | cut -d: -f1)"
+lock_call="$(grep -n 'installer_release_init_lock();' "$INSTALLER" | head -1 | cut -d: -f1)"
+[ -n "$lock_decl" ] && [ -n "$lock_call" ] ||
+  fail "installer_release_init_lock must be both declared and called"
+[ "$lock_decl" -lt "$lock_call" ] ||
+  fail "installer_release_init_lock is called before its declaration (ucode does not hoist)"
+
+# The lock has to be dropped as part of stopping the service, i.e. before any
+# package is handed to the package manager.
+sed -n '/^function installer_cleanup_legacy() {/,/^}/p' "$INSTALLER" >"$WORK_DIR/cleanup.uc"
+grep -Fq 'installer_release_init_lock();' "$WORK_DIR/cleanup.uc" ||
+  fail "installer_cleanup_legacy must release the init lock before the packages are installed"
+
 printf 'PASS: installer rollback detection\n'

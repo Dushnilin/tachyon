@@ -1194,6 +1194,21 @@ function installer_deactivate_legacy_base() {
     return true;
 }
 
+// Every /etc/init.d/tachyon call goes through rc.common, which serializes on
+// `flock -w 1000`. procd re-triggers retry_start_on_wan_up between a package's
+// pre- and post-upgrade, so waiters keep appearing and a wedged one holds the
+// lock for a quarter of an hour. That is long enough for the package manager to
+// give up on the pre-upgrade hook and roll the whole transaction back, leaving
+// the old build installed. Builds from 1.2.66 and earlier ship a prerm with no
+// timeout of its own, and it is that OLD hook which runs during this upgrade —
+// so the lock has to be free before the package manager is invoked at all.
+function installer_release_init_lock() {
+    for (let pattern in [ "99-tachyon-wan|flock 1000", "/etc/init.d/tachyon" ])
+        system("ps 2>/dev/null | grep -E '" + pattern + "' | grep -v grep | awk '{print $1}' | " +
+            "while read _pid; do kill -9 \"$_pid\" 2>/dev/null; done; true");
+    return true;
+}
+
 function installer_cleanup_legacy() {
     let tachyon_installed = installer_package_installed("tachyon");
     let legacy_installed = LEGACY_BRAND != "" && installer_package_installed(LEGACY_BACKEND_PACKAGE);
@@ -1212,6 +1227,7 @@ function installer_cleanup_legacy() {
         run_args([ "timeout", "10", active_init, "stop" ]);
         installer_restore_dnsmasq(active_bin, legacy_installed);
         run_args([ "timeout", "10", active_init, "disable" ]);
+        installer_release_init_lock();
     }
 
     if (path_executable("/etc/init.d/netshift")) {
