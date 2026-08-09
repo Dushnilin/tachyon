@@ -416,6 +416,34 @@ function pkg_install_files(files) {
     return command_success(pkg_install_files_command(files));
 }
 
+// Like run_logged but retries up to 10 times on APK database lock (exit code 227)
+function run_logged_retrying(description, command) {
+    init_tmp_dir();
+    let output_file = make_tmp_file("command");
+    if (output_file == "")
+        output_file = "/tmp/tachyon-updates-command." + owner_pid();
+
+    updates_log(description);
+    let status = 227;
+    let max_attempts = 10;
+    for (let attempt = 0; attempt < max_attempts; attempt++) {
+        if (attempt > 0) {
+            updates_log(description + ": APK database locked, retrying in 3s (attempt " + (attempt + 1) + "/" + max_attempts + ")");
+            command_success("sleep 3");
+        }
+        status = command_status(as_string(command) + " >" + shell_quote(output_file) + " 2>&1");
+        if (status != 227)
+            break;
+    }
+    for (let line in split(read_file(output_file), "\n"))
+        if (trim(as_string(line)) != "")
+            updates_log(line);
+    remove_file(output_file);
+    if (status != 0)
+        updates_log(description + " failed with exit code " + status, "warn");
+    return status == 0;
+}
+
 function pkg_remove_sing_box_conflict(package_name) {
     package_name = as_string(package_name);
     if (!pkg_is_installed(package_name))
@@ -2258,7 +2286,7 @@ function reinstall_tachyon() {
     let reinstall_files = [ app_file, backend_file ];
     if (i18n_file != "")
         push(reinstall_files, i18n_file);
-    if (!run_logged("Reinstalling Tachyon packages", pkg_install_files_command(reinstall_files)))
+    if (!run_logged_retrying("Reinstalling Tachyon packages", pkg_install_files_command(reinstall_files)))
         action_fail("tachyon", "reinstall", "Failed to reinstall Tachyon packages", TACHYON_VERSION, latest_version);
 
     remove_file("/var/luci-indexcache");
@@ -2302,7 +2330,7 @@ function install_tachyon() {
     let install_files = [ app_file, backend_file ];
     if (i18n_file != "")
         push(install_files, i18n_file);
-    if (!run_logged("Installing Tachyon packages", pkg_install_files_command(install_files)))
+    if (!run_logged_retrying("Installing Tachyon packages", pkg_install_files_command(install_files)))
         action_fail("tachyon", "install", "Failed to install Tachyon packages", TACHYON_VERSION, latest_version);
 
     remove_file("/var/luci-indexcache");
