@@ -77,6 +77,19 @@ function command_output_from_args(args) {
     return command_output(command_from_args(args));
 }
 
+// Like command_output but keeps stdout regardless of the exit status. popen()'s
+// close() yields a raw wait status, so a command that prints a good answer and
+// then exits non-zero - or is signalled - loses all of it above.
+function command_output_lenient(command) {
+    let pipe = fs.popen(command, "r");
+    if (!pipe)
+        return "";
+
+    let data = pipe.read("all");
+    pipe.close();
+    return data != null ? as_string(data) : "";
+}
+
 function command_status(command) {
     let status = int(system(command));
     if (status == -1)
@@ -207,8 +220,12 @@ function first_line_last_field(value) {
     return length(fields) > 0 ? as_string(fields[length(fields) - 1]) : "";
 }
 
+// The version string is taken from stdout whatever the exit status: sing-box
+// prints "sing-box version X" first and may still exit non-zero (a warning about
+// a missing config, a signal from a concurrent service stop). Gating on the exit
+// code made the dashboard fall back to "unknown" for a perfectly working binary.
 function sing_box_version_output() {
-    return command_exists("sing-box") ? command_output_from_args([ "sing-box", "version" ]) : "";
+    return command_exists("sing-box") ? command_output_lenient(command_from_args([ "sing-box", "version" ]) + " 2>/dev/null") : "";
 }
 
 function sing_box_marker_is(value) {

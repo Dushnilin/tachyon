@@ -86,6 +86,19 @@ function command_output(command) {
     return as_string(data);
 }
 
+// Like command_output but keeps stdout regardless of the exit status. popen()'s
+// close() yields a raw wait status, so a command that writes a perfectly good
+// answer and then exits non-zero - or is signalled - loses all of it above.
+function command_output_lenient(command) {
+    let pipe = fs.popen(command, "r");
+    if (!pipe)
+        return "";
+
+    let data = pipe.read("all");
+    pipe.close();
+    return data != null ? as_string(data) : "";
+}
+
 function command_output_from_args(args) {
     return command_output(command_from_args(args));
 }
@@ -1328,11 +1341,16 @@ function read_sing_box_binary_version(binary, library_dir) {
     if (binary == "" || !file_exists(binary))
         return "";
 
+    // stderr is dropped but stdout is kept whatever the exit status: sing-box
+    // prints "sing-box version X" and can still exit non-zero (or be signalled by
+    // the service stop that precedes the install). Judging the binary by its exit
+    // code made every install report "failed validation" and roll a working
+    // sing-box back - the version string itself is the only reliable signal.
     let command = command_from_args([ binary, "version" ]);
     if (as_string(library_dir || "") != "")
         command = command_env({ LD_LIBRARY_PATH: as_string(library_dir) }) + " " + command;
 
-    return trim(helper_output_input(command_output(command), "stdin-first-line-last-field", []));
+    return trim(helper_output_input(command_output_lenient("(" + command + ") 2>/dev/null"), "stdin-first-line-last-field", []));
 }
 
 function validate_sing_box_extended_binary(binary, library_dir) {

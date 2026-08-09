@@ -1641,6 +1641,7 @@ function component_cleanup_jobs() {
         let state_file = component_job_state_path_value(path_basename_without_suffix(output_path, ".out"));
         if (state_file == "" || fs.stat(state_file) == null || !component_job_running_is(state_file, true)) {
             remove_file(output_path);
+            remove_file(output_path + ".stderr");
             remove_file(output_path + ".json");
         }
     }
@@ -1650,6 +1651,14 @@ function component_cleanup_jobs() {
         COMPONENT_JOB_DIR,
         "-type", "f",
         "-name", "*.out",
+        "-mmin", "+" + as_string(COMPONENT_JOB_ORPHAN_OUTPUT_TTL_MINUTES),
+        "-delete"
+    ]);
+    command_success_from_args([
+        "find",
+        COMPONENT_JOB_DIR,
+        "-type", "f",
+        "-name", "*.out.stderr",
         "-mmin", "+" + as_string(COMPONENT_JOB_ORPHAN_OUTPUT_TTL_MINUTES),
         "-delete"
     ]);
@@ -1764,11 +1773,17 @@ function finish_component_job(path, component, action, exit_code, output_file) {
         ok = write_state_file(path, value);
     }
     else {
-        let raw_output = file_last_nonblank_line_value(output_file, "Failed to execute", 240);
+        // No JSON at all means the worker really did die before printing its
+        // result. Its stderr, kept out of the result channel above, holds the
+        // reason; fall back to the result file only if stderr is empty.
+        let raw_output = file_last_nonblank_line_value(output_file + ".stderr", "", 240);
+        if (raw_output == "")
+            raw_output = file_last_nonblank_line_value(output_file, "Failed to execute", 240);
         ok = write_state_file(path, component_fallback_job_state(component, action, raw_output, exit_code, updated_at));
     }
 
     remove_file(output_file);
+    remove_file(output_file + ".stderr");
     remove_file(output_file + ".json");
     return ok;
 }
@@ -1799,6 +1814,11 @@ function launch_component_worker(args) {
 
 function component_action_worker(state_file, output_file, component, action) {
     component = normalize_component_name(component);
+    // stderr gets its own file instead of being merged into the result channel.
+    // Merging put apk/opkg warnings and init-script chatter into the same file as
+    // the JSON result - the whole-file parse then failed, the line scan found no
+    // object, and a successful action was reported to the UI as "Failed to
+    // execute" with the tail of a log as its message.
     let command = command_env(component_worker_env()) + " " +
         command_from_args([
             "ucode",
@@ -1807,7 +1827,7 @@ function component_action_worker(state_file, output_file, component, action) {
             "component-action",
             as_string(component),
             as_string(action)
-        ]) + " >" + shell_quote(output_file) + " 2>&1";
+        ]) + " >" + shell_quote(output_file) + " 2>" + shell_quote(output_file + ".stderr");
     let status = command_status(command);
 
     finish_component_job(state_file, component, action, status, output_file);
@@ -1896,7 +1916,7 @@ function run_automatic_component_update_check(component) {
             "component-action",
             as_string(component),
             "check_update"
-        ]) + " >" + shell_quote(output_file) + " 2>&1";
+        ]) + " >" + shell_quote(output_file) + " 2>/dev/null";
     let status = command_status(command);
     let value = output_json_object(output_file);
     remove_file(output_file);
