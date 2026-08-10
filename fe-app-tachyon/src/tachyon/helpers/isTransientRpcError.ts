@@ -2,6 +2,7 @@ const TRANSIENT_RPC_ERROR_PATTERNS = [
   'no related rpc reply',
   'request aborted',
   'operation was aborted',
+  'failed to execute',
 ];
 
 export function isTransientRpcError(message?: string | null) {

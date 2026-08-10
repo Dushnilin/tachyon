@@ -3071,7 +3071,8 @@ var Tachyon;
 var TRANSIENT_RPC_ERROR_PATTERNS = [
   "no related rpc reply",
   "request aborted",
-  "operation was aborted"
+  "operation was aborted",
+  "failed to execute"
 ];
 function isTransientRpcError(message) {
   if (!message) {

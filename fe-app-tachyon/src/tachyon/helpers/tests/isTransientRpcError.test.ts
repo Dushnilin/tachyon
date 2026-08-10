@@ -8,6 +8,7 @@ describe('isTransientRpcError', () => {
     expect(isTransientRpcError('Request aborted while waiting for RPC')).toBe(
       true,
     );
+    expect(isTransientRpcError('Failed to execute')).toBe(true);
   });
 
   it('does not treat backend action failures as transient transport errors', () => {

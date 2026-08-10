@@ -117,7 +117,7 @@ function kill_matching_command(grep_args) {
         "__anc=\"$__anc$__p \"; " +
         "__p=$(awk '{ sub(/.*\\) /, \"\"); print $2 }' \"/proc/$__p/stat\" 2>/dev/null); " +
         "done; " +
-        "ps 2>/dev/null | grep " + grep_args + " | grep -v grep | awk '{print $1}' | " +
+        "ps 2>/dev/null | grep " + grep_args + " | grep -v grep | grep -v -E 'action[.]uc|updates[.]uc' | awk '{print $1}' | " +
         "while read _pid; do case \"$__anc\" in *\" $_pid \"*) continue;; esac; " +
         "kill -9 \"$_pid\" 2>/dev/null; done; true";
 }
@@ -219,7 +219,9 @@ function prerm_cleanup(action) {
         // rather than by name — otherwise INIT_PATH below blocks forever.
         system("for __f in /proc/[0-9]*; do [ -e \"$__f/fd/1000\" ] || continue; " +
             "case \"$(readlink \"$__f/fd/1000\" 2>/dev/null)\" in *procd_tachyon*) " +
-            "__pid=${__f##*/}; [ \"$__pid\" = \"$$\" ] || kill -9 \"$__pid\" 2>/dev/null;; " +
+            "__pid=${__f##*/}; [ \"$__pid\" = \"$$\" ] || " +
+            "case \"$(readlink \"$__f/exe\" 2>/dev/null)\" in *ucode*) continue;; esac; " +
+            "kill -9 \"$__pid\" 2>/dev/null;; " +
             "esac; done; true");
     }
 
