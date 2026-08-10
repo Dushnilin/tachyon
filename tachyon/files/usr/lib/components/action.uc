@@ -159,7 +159,12 @@ function owner_pid() {
 
 function pid_running(pid) {
     pid = as_string(pid);
-    return match(pid, /^[0-9]+$/) != null && command_success_from_args([ "kill", "-0", pid ]);
+    if (match(pid, /^[0-9]+$/) == null || !command_success_from_args([ "kill", "-0", pid ]))
+        return false;
+    let cmd = fs.readfile("/proc/" + pid + "/cmdline");
+    if (cmd != null && match(cmd, /ucode|tachyon|sh/) == null)
+        return false;
+    return true;
 }
 
 function log_message(message, level) {
@@ -278,7 +283,10 @@ function acquire_component_lock() {
     }
 
     let current_owner = trim(read_file(COMPONENT_LOCK_DIR + "/pid"));
-    if (current_owner != "" && pid_running(current_owner))
+    let lock_stat = fs.stat(COMPONENT_LOCK_DIR + "/pid") || fs.stat(COMPONENT_LOCK_DIR);
+    let lock_age = (lock_stat && lock_stat.mtime) ? (now_seconds() - lock_stat.mtime) : 9999;
+
+    if (current_owner != "" && pid_running(current_owner) && lock_age < 300)
         return false;
 
     remove_file(COMPONENT_LOCK_DIR + "/pid");
@@ -2483,8 +2491,15 @@ function normalize_component_name(component) {
 function component_action(component, action) {
     component = normalize_component_name(component);
     action = as_string(action);
-    if (!acquire_component_lock())
+    if (!acquire_component_lock()) {
+        if (action == "check_update") {
+            updates_log("Component action lock is busy; skipping background check for " + component, "debug");
+            updates_response(false, component, action, "Another component action is already running", "", "", 0, "busy", "", null);
+            cleanup_action();
+            exit(0);
+        }
         action_fail(component != "" ? component : "unknown", action != "" ? action : "unknown", "Another component action is already running");
+    }
     if (!init_tmp_dir())
         action_fail(component != "" ? component : "unknown", action != "" ? action : "unknown", "Failed to create temporary directory");
     capture_tachyon_running_state();

@@ -191,7 +191,12 @@ function config_file_hash(path) {
 
 function pid_alive(pid) {
     pid = as_string(pid);
-    return match(pid, /^[0-9]+$/) != null && command_success_from_args([ "kill", "-0", pid ]);
+    if (match(pid, /^[0-9]+$/) == null || !command_success_from_args([ "kill", "-0", pid ]))
+        return false;
+    let cmd = fs.readfile("/proc/" + pid + "/cmdline");
+    if (cmd != null && match(cmd, /ucode|tachyon|sh|sing-box/) == null)
+        return false;
+    return true;
 }
 
 function lock_dir_write_owner(lock_dir, owner_pid) {
@@ -211,7 +216,10 @@ function acquire_runtime_dir_lock(lock_dir, owner_pid) {
         return false;
     }
 
-    if (pid_alive(first_line_value(lock_dir + "/pid")))
+    let lock_stat = fs.stat(lock_dir + "/pid") || fs.stat(lock_dir);
+    let lock_age = (lock_stat && lock_stat.mtime) ? (int(clock()[0]) - lock_stat.mtime) : 9999;
+
+    if (pid_alive(first_line_value(lock_dir + "/pid")) && lock_age < 300)
         return false;
 
     command_success_from_args([ "rm", "-f", lock_dir + "/pid" ]);
