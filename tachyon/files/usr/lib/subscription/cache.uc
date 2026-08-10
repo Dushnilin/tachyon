@@ -1558,6 +1558,10 @@ function download_subscription(url, filepath, http_proxy_address, headers_filepa
             if (http_proxy_address != "") {
                 push(args, "-x");
                 push(args, "http://" + http_proxy_address);
+            } else {
+                // Bootstrap DNS: use public resolvers in case system DNS is
+                // unavailable during startup or when proxy falls back to direct.
+                push(args, "--dns-servers", "8.8.8.8,1.1.1.1");
             }
             if (headers_tmpfile != "") {
                 push(args, "-D");
@@ -1661,6 +1665,19 @@ function get_subscription_download_proxy_address(section_name_value, sections, p
     }
 
     let address = SB_SERVICE_MIXED_INBOUND_ADDRESS + ":" + as_string(port);
+    // Verify the proxy port is actually accepting connections — the sing-box
+    // process may be running but the mixed inbound not yet ready after a
+    // component update restart.
+    let probe_status = command_status_from_args([
+        "curl", "-s", "--connect-timeout", "2", "-m", "4",
+        "-x", "http://" + address, "http://1.1.1.1/", "-o", "/dev/null"
+    ]);
+    if (probe_status == 7 || probe_status == 28) {
+        log_message("Subscription source for rule '" + section_name_value +
+            "' is configured to download via rule '" + download_section +
+            "', but service proxy is not yet accepting connections; downloading directly", "warn");
+        return "";
+    }
     log_message("Downloading subscription for rule '" + section_name_value + "' via service proxy " + address, "debug");
     return address;
 }

@@ -2051,6 +2051,24 @@ function download_to_file(url, filepath, proxy_address) {
 
             attempt++;
         }
+
+        // If a service proxy was configured but all proxy attempts failed (e.g., the
+        // proxy port was not yet ready after a component update restart), retry once
+        // directly using bootstrap DNS. This prevents a temporarily unavailable proxy
+        // from permanently blocking list updates.
+        if (as_string(proxy_address) != "" && command_exists("curl")) {
+            log_message("Download via service proxy failed for " + as_string(candidate) + "; retrying directly with bootstrap DNS", "warn");
+            let fallback_args = [
+                "curl", "--connect-timeout", "5", "-m", "10", "-fsSL",
+                "--dns-servers", "8.8.8.8,1.1.1.1",
+                candidate, "-o", filepath
+            ];
+            if (command_success_from_args(fallback_args) && file_nonempty(filepath)) {
+                if (candidate != url)
+                    log_message("Successfully downloaded " + as_string(url) + " via mirror " + candidate + " (direct, proxy unavailable)", "info");
+                return true;
+            }
+        }
     }
 
     if (file_nonempty(filepath)) {
@@ -2663,10 +2681,40 @@ function list_update_pid_end() {
     remove_file(LIST_UPDATE_PID_FILE);
 }
 
+function service_proxy_is_ready(proxy_address) {
+    // Probe the service proxy by attempting a connection through it to a
+    // well-known public IP (no DNS resolution required). If the port is not
+    // yet open — e.g., sing-box is still starting after a component update —
+    // curl returns exit 7 (CURLE_COULDNT_CONNECT) or 28 (timeout).
+    // Any other result means the port is accepting connections.
+    let status = command_status(
+        command_from_args([
+            "curl", "-s", "--connect-timeout", "2", "-m", "4",
+            "-x", "http://" + as_string(proxy_address),
+            "http://1.1.1.1/", "-o", "/dev/null"
+        ]) + " 2>/dev/null"
+    );
+    return status != 7 && status != 28;
+}
+
 function dns_probe_passed(proxy_address) {
     if (as_string(proxy_address) != "") {
-        log_message("DNS check skipped because list downloads use service proxy", "info");
-        return true;
+        // When a service proxy is configured, verify it is actually accepting
+        // TCP connections before proceeding — sing-box may still be starting
+        // up after a component update or restart and the proxy port may not be
+        // ready even though the process is already running.
+        let attempt = 1;
+        while (attempt <= 10) {
+            if (service_proxy_is_ready(proxy_address)) {
+                log_message("Service proxy is ready", "info");
+                return true;
+            }
+            log_message("Service proxy not yet ready [" + attempt + "/10]", "info");
+            command_success_from_args([ "sleep", "3" ]);
+            attempt++;
+        }
+        log_message("Service proxy is not accepting connections after 10 attempts; skipping list update", "info");
+        return false;
     }
 
     let attempt = 1;
