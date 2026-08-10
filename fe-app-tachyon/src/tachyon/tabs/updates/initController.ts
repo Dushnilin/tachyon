@@ -626,12 +626,18 @@ async function followAlreadyRunningComponentAction(
     return false;
   }
 
-  const state = uiState.actions.component.find(
+  let state = uiState.actions.component.find(
     (item) =>
       item.running &&
       item.component === button.component &&
       item.action === button.action,
   );
+
+  if (!state) {
+    state = uiState.actions.component.find(
+      (item) => item.running && item.component === button.component,
+    );
+  }
 
   if (!state) {
     return false;
@@ -717,18 +723,28 @@ async function handleComponentAction(button: ComponentActionButton) {
 
     if (!startResponse.success) {
       if (isComponentActionAlreadyRunningError(startResponse.error)) {
-        setActionLoading(button.key, false);
-        if (!(await followAlreadyRunningComponentAction(button))) {
-          await refreshComponentActionState();
+        if (await followAlreadyRunningComponentAction(button)) {
+          return;
         }
+        await new Promise((resolve) => setTimeout(resolve, 800));
+        if (await followAlreadyRunningComponentAction(button)) {
+          return;
+        }
+        setActionLoading(button.key, false);
+        await refreshComponentActionState();
         return;
       }
 
       if (isTransientRpcError(startResponse.error)) {
-        if (!(await followAlreadyRunningComponentAction(button))) {
-          setActionLoading(button.key, false);
-          await refreshComponentActionState();
+        if (await followAlreadyRunningComponentAction(button)) {
+          return;
         }
+        await new Promise((resolve) => setTimeout(resolve, 800));
+        if (await followAlreadyRunningComponentAction(button)) {
+          return;
+        }
+        setActionLoading(button.key, false);
+        await refreshComponentActionState();
         return;
       }
 
