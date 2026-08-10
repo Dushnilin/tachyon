@@ -1948,8 +1948,8 @@ check_system() {
     release="$(read_openwrt_release_value "DISTRIB_RELEASE")"
     major="$(printf '%s' "$release" | sed 's/[^0-9].*$//' | cut -d. -f1)"
 
-    if [ -n "$major" ] && [ "$major" -lt 24 ]; then
-        fail "Tachyon requires OpenWrt 24.10 or newer"
+    if [ -n "$major" ] && [ "$major" -lt 23 ]; then
+        fail "Tachyon requires OpenWrt 23.05 or newer"
     fi
 
     available_space="$(df /overlay 2>/dev/null | awk 'NR==2 {print $4}')"
