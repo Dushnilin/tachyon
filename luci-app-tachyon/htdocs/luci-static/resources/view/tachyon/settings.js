@@ -500,9 +500,17 @@ function createSmartDetectSectionsWidget(section_id) {
 }
 
 function createSettingsContent(section, capabilities) {
+  section.tab("dns", _("DNS Settings"));
+  section.tab("network", _("Network & Interfaces"));
+  section.tab("services", _("Services & Access"));
+  section.tab("updates", _("Updates & Downloads"));
+  section.tab("ai", _("AI & Watchdog"));
+  section.tab("advanced", _("Advanced System"));
+
   settingsDnsDynamicState.dnsType = uci.get(UCI_PACKAGE, "settings", "dns_type") || "udp";
 
-  let o = section.option(
+  let o = section.taboption(
+    "dns",
     form.ListValue,
     "dns_type",
     _("DNS Protocol Type"),
@@ -517,7 +525,8 @@ function createSettingsContent(section, capabilities) {
 
   const dnsTypeOption = o;
 
-  const dnsOption = section.option(
+  const dnsOption = section.taboption(
+    "dns",
     form.DynamicList,
     "dns_server",
     _("DNS Servers"),
@@ -530,7 +539,8 @@ function createSettingsContent(section, capabilities) {
     return getDnsServerChoices(dnsType);
   }, "77.88.8.8");
 
-  const bootstrapOption = section.option(
+  const bootstrapOption = section.taboption(
+    "dns",
     form.DynamicList,
     "bootstrap_dns_server",
     _("Bootstrap DNS Servers"),
@@ -565,7 +575,8 @@ function createSettingsContent(section, capabilities) {
     }
   };
 
-  o = section.option(
+  o = section.taboption(
+    "dns",
     form.Flag,
     "fallback_wan_main",
     _("Enable WAN DNS Fallback for Main DNS"),
@@ -573,7 +584,8 @@ function createSettingsContent(section, capabilities) {
   );
   o.default = o.disabled;
 
-  o = section.option(
+  o = section.taboption(
+    "dns",
     form.Flag,
     "fallback_wan_bootstrap",
     _("Enable WAN DNS Fallback for Bootstrap DNS"),
@@ -582,7 +594,8 @@ function createSettingsContent(section, capabilities) {
   o.default = o.disabled;
 
 
-  o = section.option(
+  o = section.taboption(
+    "dns",
     form.Value,
     "dns_check_interval",
     _("DNS Check Interval"),
@@ -590,7 +603,8 @@ function createSettingsContent(section, capabilities) {
   );
   configureDnsDuration(o, "10s", dnsOption, bootstrapOption);
 
-  o = section.option(
+  o = section.taboption(
+    "dns",
     form.Value,
     "dns_recovery_check_interval",
     _("Higher-priority DNS Check"),
@@ -598,7 +612,8 @@ function createSettingsContent(section, capabilities) {
   );
   configureDnsDuration(o, "60s", dnsOption, bootstrapOption);
 
-  o = section.option(
+  o = section.taboption(
+    "dns",
     form.Value,
     "dns_check_timeout",
     _("DNS Unavailability Timeout"),
@@ -608,7 +623,8 @@ function createSettingsContent(section, capabilities) {
   );
   configureDnsDuration(o, "2s", dnsOption, bootstrapOption);
 
-  o = section.option(
+  o = section.taboption(
+    "dns",
     form.Value,
     "dns_failure_threshold",
     _("DNS Failures Before Switching"),
@@ -621,7 +637,8 @@ function createSettingsContent(section, capabilities) {
   o.datatype = "range(1, 10)";
   configureDnsFailoverVisibility(o, dnsOption, bootstrapOption);
 
-  o = section.option(
+  o = section.taboption(
+    "dns",
     form.Value,
     "dns_recovery_threshold",
     _("DNS Successful Checks Before Recovery"),
@@ -634,7 +651,8 @@ function createSettingsContent(section, capabilities) {
   o.datatype = "range(1, 10)";
   configureDnsFailoverVisibility(o, dnsOption, bootstrapOption);
 
-  o = section.option(
+  o = section.taboption(
+    "dns",
     form.Value,
     "dns_rewrite_ttl",
     _("DNS Rewrite TTL"),
@@ -655,7 +673,8 @@ function createSettingsContent(section, capabilities) {
     return true;
   };
 
-  o = section.option(
+  o = section.taboption(
+    "dns",
     form.Flag,
     "dns_turbo_cache",
     _("DNS Turbo Cache"),
@@ -668,7 +687,7 @@ function createSettingsContent(section, capabilities) {
 
   // ─── DNS Strategy ────────────────────────────────────────────────────────
 
-  o = section.option(form.ListValue, "dns_strategy", _("DNS Strategy"));
+  o = section.taboption("dns", form.ListValue, "dns_strategy", _("DNS Strategy"));
   o.value("prefer_ipv4", _("Prefer IPv4"));
   o.value("ipv4_only", _("IPv4 only"));
   o.value("prefer_ipv6", _("Prefer IPv6"));
@@ -676,7 +695,8 @@ function createSettingsContent(section, capabilities) {
   o.default = "prefer_ipv4";
   o.rmempty = false;
 
-  o = section.option(
+  o = section.taboption(
+    "dns",
     form.Flag,
     "dns_detour_enabled",
     _("DNS through proxy"),
@@ -684,7 +704,8 @@ function createSettingsContent(section, capabilities) {
   );
   configureDownloadViaProxyFlag(o, "dns_detour_section");
 
-  o = section.option(
+  o = section.taboption(
+    "dns",
     form.ListValue,
     "dns_detour_section",
     _("DNS requests through section"),
@@ -692,7 +713,8 @@ function createSettingsContent(section, capabilities) {
   o.depends("dns_detour_enabled", "1");
   configureDownloadSectionOption(o, "dns_detour_section", capabilities);
 
-  o = section.option(
+  o = section.taboption(
+    "network",
     widgets.DeviceSelect,
     "source_network_interfaces",
     _("Source Network Interface"),
@@ -729,7 +751,8 @@ function createSettingsContent(section, capabilities) {
     return !isWireless;
   };
 
-  o = section.option(
+  o = section.taboption(
+    "network",
     form.Flag,
     "enable_output_network_interface",
     _("Enable Output Network Interface"),
@@ -738,7 +761,8 @@ function createSettingsContent(section, capabilities) {
   o.default = "0";
   o.rmempty = false;
 
-  o = section.option(
+  o = section.taboption(
+    "network",
     widgets.DeviceSelect,
     "output_network_interface",
     _("Output Network Interface"),
@@ -790,7 +814,8 @@ function createSettingsContent(section, capabilities) {
     return !isWireless;
   };
 
-  o = section.option(
+  o = section.taboption(
+    "network",
     form.Flag,
     "enable_badwan_interface_monitoring",
     _("Interface Monitoring"),
@@ -799,7 +824,8 @@ function createSettingsContent(section, capabilities) {
   o.default = "0";
   o.rmempty = false;
 
-  o = section.option(
+  o = section.taboption(
+    "network",
     widgets.NetworkSelect,
     "badwan_monitored_interfaces",
     _("Monitored Interfaces"),
@@ -822,7 +848,8 @@ function createSettingsContent(section, capabilities) {
     return true;
   };
 
-  o = section.option(
+  o = section.taboption(
+    "network",
     form.Value,
     "badwan_reload_delay",
     _("Interface Monitoring Delay"),
@@ -838,7 +865,8 @@ function createSettingsContent(section, capabilities) {
     return true;
   };
 
-  o = section.option(
+  o = section.taboption(
+    "services",
     form.Flag,
     "enable_yacd",
     _("Enable YACD"),
@@ -847,7 +875,8 @@ function createSettingsContent(section, capabilities) {
   o.default = "0";
   o.rmempty = false;
 
-  o = section.option(
+  o = section.taboption(
+    "services",
     form.Flag,
     "enable_yacd_wan_access",
     _("Enable YACD WAN Access"),
@@ -859,7 +888,8 @@ function createSettingsContent(section, capabilities) {
   o.default = "0";
   o.rmempty = false;
 
-  o = section.option(
+  o = section.taboption(
+    "services",
     form.Value,
     "yacd_secret_key",
     _("YACD Secret Key"),
@@ -870,7 +900,8 @@ function createSettingsContent(section, capabilities) {
   o.depends("enable_yacd_wan_access", "1");
   o.rmempty = false;
 
-  o = section.option(
+  o = section.taboption(
+    "services",
     form.Flag,
     "disable_quic",
     _("Disable QUIC"),
@@ -881,7 +912,8 @@ function createSettingsContent(section, capabilities) {
   o.default = "0";
   o.rmempty = false;
 
-  o = section.option(
+  o = section.taboption(
+    "services",
     form.Flag,
     "isolate_p2p",
     _("P2P Leak Protection"),
@@ -892,7 +924,8 @@ function createSettingsContent(section, capabilities) {
   o.default = "0";
   o.rmempty = false;
 
-  o = section.option(
+  o = section.taboption(
+    "services",
     form.Flag,
     "game_console_optimizer",
     _("Game Console Optimizer (NAT Type 1)"),
@@ -901,7 +934,8 @@ function createSettingsContent(section, capabilities) {
   o.default = "0";
   o.rmempty = false;
 
-  const gameConsoleIpsOpt = section.option(
+  const gameConsoleIpsOpt = section.taboption(
+    "services",
     form.DynamicList,
     "game_console_ips",
     _("Game Console IPs"),
@@ -917,7 +951,8 @@ function createSettingsContent(section, capabilities) {
     );
   };
 
-  o = section.option(
+  o = section.taboption(
+    "updates",
     form.Flag,
     "list_update_enabled",
     _("Enable list updates"),
@@ -926,7 +961,8 @@ function createSettingsContent(section, capabilities) {
   o.default = "1";
   o.rmempty = false;
 
-  o = section.option(
+  o = section.taboption(
+    "updates",
     form.Value,
     "update_interval",
     _("List Update Frequency"),
@@ -962,7 +998,8 @@ function createSettingsContent(section, capabilities) {
     return _("Use sing-box duration format like 1d, 12h or 30m");
   };
 
-  o = section.option(
+  o = section.taboption(
+    "updates",
     form.Flag,
     "download_all_presets",
     _("Pre-download all preset lists"),
@@ -974,7 +1011,8 @@ function createSettingsContent(section, capabilities) {
   o.default = "0";
   o.rmempty = false;
 
-  o = section.option(
+  o = section.taboption(
+    "updates",
     form.Flag,
     "component_update_check_enabled",
     _("Automatic component update checks"),
@@ -983,7 +1021,8 @@ function createSettingsContent(section, capabilities) {
   o.default = "0";
   o.rmempty = false;
 
-  o = section.option(
+  o = section.taboption(
+    "updates",
     form.Value,
     "component_update_check_interval",
     _("Component update check interval"),
@@ -1018,7 +1057,8 @@ function createSettingsContent(section, capabilities) {
     return _("Use sing-box duration format like 1d, 12h or 30m");
   };
 
-  o = section.option(
+  o = section.taboption(
+    "updates",
     form.Value,
     "latency_test_url",
     _("Latency test URL"),
@@ -1034,7 +1074,8 @@ function createSettingsContent(section, capabilities) {
     return validateLatencyTestUrl(value);
   };
 
-  o = section.option(
+  o = section.taboption(
+    "updates",
     form.Flag,
     "download_lists_via_proxy",
     _("Download lists through a section"),
@@ -1042,7 +1083,8 @@ function createSettingsContent(section, capabilities) {
   );
   configureDownloadViaProxyFlag(o, "download_lists_via_proxy_section");
 
-  o = section.option(
+  o = section.taboption(
+    "updates",
     form.ListValue,
     "download_lists_via_proxy_section",
     _("Download lists through"),
@@ -1054,7 +1096,8 @@ function createSettingsContent(section, capabilities) {
     capabilities,
   );
 
-  o = section.option(
+  o = section.taboption(
+    "updates",
     form.Flag,
     "download_components_via_proxy",
     _("Download components through a section"),
@@ -1062,7 +1105,8 @@ function createSettingsContent(section, capabilities) {
   );
   configureDownloadViaProxyFlag(o, "download_components_via_proxy_section");
 
-  o = section.option(
+  o = section.taboption(
+    "updates",
     form.ListValue,
     "download_components_via_proxy_section",
     _("Download components through"),
@@ -1074,7 +1118,8 @@ function createSettingsContent(section, capabilities) {
     capabilities,
   );
 
-  o = section.option(
+  o = section.taboption(
+    "advanced",
     form.Flag,
     "dont_touch_dhcp",
     _("Dont Touch My DHCP!"),
@@ -1083,7 +1128,8 @@ function createSettingsContent(section, capabilities) {
   o.default = "0";
   o.rmempty = false;
 
-  o = section.option(
+  o = section.taboption(
+    "advanced",
     form.ListValue,
     "config_path",
     _("Config File Path"),
@@ -1096,7 +1142,8 @@ function createSettingsContent(section, capabilities) {
   o.default = "/etc/sing-box/config.json";
   o.rmempty = false;
 
-  o = section.option(
+  o = section.taboption(
+    "advanced",
     form.Value,
     "cache_path",
     _("Cache File Path"),
@@ -1132,7 +1179,8 @@ function createSettingsContent(section, capabilities) {
     return true;
   };
 
-  o = section.option(
+  o = section.taboption(
+    "advanced",
     form.ListValue,
     "log_level",
     _("Log Level"),
@@ -1149,7 +1197,8 @@ function createSettingsContent(section, capabilities) {
   o.rmempty = false;
 
   // Anonymization and Security
-  o = section.option(
+  o = section.taboption(
+    "advanced",
     form.Flag,
     "webrtc_leak_protect",
     _("WebRTC Leak Protection"),
@@ -1158,7 +1207,8 @@ function createSettingsContent(section, capabilities) {
   o.default = "0";
   o.rmempty = false;
 
-  o = section.option(
+  o = section.taboption(
+    "advanced",
     form.Flag,
     "dns_doq_ech",
     _("Strict ECH + DoQ DNS Enforcer"),
@@ -1167,15 +1217,8 @@ function createSettingsContent(section, capabilities) {
   o.default = "0";
   o.rmempty = false;
 
-  o = section.option(
-    form.Flag,
-    "exclude_ntp",
-    _("Exclude NTP"),
-    _(
-      "Exclude NTP protocol traffic from the tunnel to prevent it from being routed through the proxy or VPN",
-    ),
-  );
-  o = section.option(
+  o = section.taboption(
+    "ai",
     form.Flag,
     "enable_watchdog",
     _("Enable Watchdog"),
@@ -1187,7 +1230,8 @@ function createSettingsContent(section, capabilities) {
   o.rmempty = false;
 
   // AI Agent API Settings
-  o = section.option(
+  o = section.taboption(
+    "ai",
     form.Value,
     "agent_api_token",
     _("AI Agent REST API Bearer Token"),
@@ -1199,7 +1243,8 @@ function createSettingsContent(section, capabilities) {
   o.rmempty = true;
 
   // AI Doctor (ChatGPT / LLM Integration)
-  o = section.option(
+  o = section.taboption(
+    "ai",
     form.Flag,
     "enable_ai_doctor",
     _("Enable AI Doctor (ChatGPT / LLM Analysis)"),
@@ -1210,7 +1255,8 @@ function createSettingsContent(section, capabilities) {
   o.default = "0";
   o.rmempty = false;
 
-  o = section.option(
+  o = section.taboption(
+    "ai",
     form.ListValue,
     "ai_doctor_provider",
     _("AI Provider"),
@@ -1223,7 +1269,8 @@ function createSettingsContent(section, capabilities) {
   o.value("custom", "Custom OpenAI-Compatible API (OpenRouter / Ollama)");
   o.default = "openai";
 
-  o = section.option(
+  o = section.taboption(
+    "ai",
     form.Value,
     "ai_doctor_api_key",
     _("AI API Key"),
@@ -1233,7 +1280,8 @@ function createSettingsContent(section, capabilities) {
   o.password = true;
   o.rmempty = false;
 
-  o = section.option(
+  o = section.taboption(
+    "ai",
     form.Value,
     "ai_doctor_custom_url",
     _("Custom API Endpoint URL"),
@@ -1245,7 +1293,8 @@ function createSettingsContent(section, capabilities) {
   o.rmempty = true;
 
   // Watchdog runtime status & controls
-  const wdStatusOpt = section.option(
+  const wdStatusOpt = section.taboption(
+    "ai",
     form.DummyValue,
     "_watchdog_status",
     _("Watchdog Status"),
@@ -1259,105 +1308,105 @@ function createSettingsContent(section, capabilities) {
   // ─── AI Watchdog Settings ──────────────────────────────────────────────────
 
   // Proxy Health Monitor
-  o = section.option(form.Flag, "ai_proxy_health_enabled", _("Enable Proxy Health Monitor"),
+  o = section.taboption("ai", form.Flag, "ai_proxy_health_enabled", _("Enable Proxy Health Monitor"),
     _("Periodically checks if the proxy is responding. Restarts Tachyon after consecutive failures."));
   o.default = "1";
   o.rmempty = false;
   o.depends("enable_watchdog", "1");
 
-  o = section.option(form.Value, "ai_proxy_health_interval", _("Proxy Health Check Interval (s)"),
+  o = section.taboption("ai", form.Value, "ai_proxy_health_interval", _("Proxy Health Check Interval (s)"),
     _("How often to check proxy health in seconds (fast tier, default 30)."));
   o.default = "30";
   o.datatype = "min(15)";
   o.depends("ai_proxy_health_enabled", "1");
 
-  o = section.option(form.Value, "ai_proxy_health_fail_threshold", _("Proxy Fail Threshold"),
+  o = section.taboption("ai", form.Value, "ai_proxy_health_fail_threshold", _("Proxy Fail Threshold"),
     _("Number of consecutive failures before restarting (default 3)."));
   o.default = "3";
   o.datatype = "min(1)";
   o.depends("ai_proxy_health_enabled", "1");
 
-  o = section.option(form.Value, "ai_proxy_health_url", _("Proxy Health Check URL"),
+  o = section.taboption("ai", form.Value, "ai_proxy_health_url", _("Proxy Health Check URL"),
     _("URL to test through the proxy (default: Cloudflare 204)."));
   o.default = "https://cp.cloudflare.com/generate_204";
   o.depends("ai_proxy_health_enabled", "1");
 
   // DNS Continuous Check
-  o = section.option(form.Flag, "ai_dns_continuous_enabled", _("Enable DNS Continuous Check"),
+  o = section.taboption("ai", form.Flag, "ai_dns_continuous_enabled", _("Enable DNS Continuous Check"),
     _("Faster DNS health monitoring than the default cycle. Switches bootstrap DNS on failure."));
   o.default = "1";
   o.rmempty = false;
   o.depends("enable_watchdog", "1");
 
-  o = section.option(form.Value, "ai_dns_interval", _("DNS Check Interval (s)"),
+  o = section.taboption("ai", form.Value, "ai_dns_interval", _("DNS Check Interval (s)"),
     _("How often to check DNS health in seconds (default 60)."));
   o.default = "60";
   o.datatype = "min(30)";
   o.depends("ai_dns_continuous_enabled", "1");
 
   // Reload Dedup
-  o = section.option(form.Flag, "ai_reload_dedup_enabled", _("Enable Firewall Reload Dedup"),
+  o = section.taboption("ai", form.Flag, "ai_reload_dedup_enabled", _("Enable Firewall Reload Dedup"),
     _("Prevents multiple reload_firewall calls within 120 seconds to avoid connection drops."));
   o.default = "1";
   o.rmempty = false;
   o.depends("enable_watchdog", "1");
 
   // Metrics
-  o = section.option(form.Flag, "ai_metrics_enabled", _("Enable Health Metrics"),
+  o = section.taboption("ai", form.Flag, "ai_metrics_enabled", _("Enable Health Metrics"),
     _("Records proxy/DNS latency and health status in hourly buckets for analysis."));
   o.default = "1";
   o.rmempty = false;
   o.depends("enable_watchdog", "1");
 
-  o = section.option(form.Value, "ai_metrics_retention_hours", _("Metrics Retention (hours)"),
+  o = section.taboption("ai", form.Value, "ai_metrics_retention_hours", _("Metrics Retention (hours)"),
     _("How many hours of metrics to keep (default 24)."));
   o.default = "24";
   o.datatype = "min(1)";
   o.depends("ai_metrics_enabled", "1");
 
   // Smart Cooldowns
-  o = section.option(form.Flag, "ai_smart_cooldowns_enabled", _("Enable Smart Cooldowns"),
+  o = section.taboption("ai", form.Flag, "ai_smart_cooldowns_enabled", _("Enable Smart Cooldowns"),
     _("Use 3-tier check intervals: fast (15s), normal (120s), slow (300s) instead of a single interval."));
   o.default = "1";
   o.rmempty = false;
   o.depends("enable_watchdog", "1");
 
   // Config Validation
-  o = section.option(form.Flag, "ai_config_validation_enabled", _("Enable Config Validation"),
+  o = section.taboption("ai", form.Flag, "ai_config_validation_enabled", _("Enable Config Validation"),
     _("Validates sing-box config before restart to prevent boot loops on broken configs."));
   o.default = "1";
   o.rmempty = false;
   o.depends("enable_watchdog", "1");
 
   // Graceful Degradation
-  o = section.option(form.Flag, "ai_graceful_degradation_enabled", _("Enable Graceful Degradation"),
+  o = section.taboption("ai", form.Flag, "ai_graceful_degradation_enabled", _("Enable Graceful Degradation"),
     _("If one health check fails with an error, continue running other checks instead of stopping."));
   o.default = "1";
   o.rmempty = false;
   o.depends("enable_watchdog", "1");
 
   // Persistent Smart Detect
-  o = section.option(form.Flag, "ai_persistent_smart_detect", _("Persistent Smart Detect"),
+  o = section.taboption("ai", form.Flag, "ai_persistent_smart_detect", _("Persistent Smart Detect"),
     _("Store auto-detected domains in /etc instead of /tmp to survive reboots."));
   o.default = "1";
   o.rmempty = false;
   o.depends("enable_watchdog", "1");
 
   // Adaptive Intervals
-  o = section.option(form.Flag, "ai_adaptive_intervals_enabled", _("Enable Adaptive Intervals"),
+  o = section.taboption("ai", form.Flag, "ai_adaptive_intervals_enabled", _("Enable Adaptive Intervals"),
     _("Automatically increase check intervals when healthy (to 5 min) and decrease on problems (to 120s)."));
   o.default = "1";
   o.rmempty = false;
   o.depends("enable_watchdog", "1");
 
   // Anomaly Detection
-  o = section.option(form.Flag, "ai_anomaly_detection_enabled", _("Enable Anomaly Detection"),
+  o = section.taboption("ai", form.Flag, "ai_anomaly_detection_enabled", _("Enable Anomaly Detection"),
     _("Monitors sing-box reconnect frequency. Alerts if too many reconnects per hour."));
   o.default = "1";
   o.rmempty = false;
   o.depends("enable_watchdog", "1");
 
-  o = section.option(form.Value, "ai_anomaly_reconnect_threshold", _("Reconnect Threshold"),
+  o = section.taboption("ai", form.Value, "ai_anomaly_reconnect_threshold", _("Reconnect Threshold"),
     _("Max reconnects per hour before alert (default 10)."));
   o.default = "10";
   o.datatype = "min(1)";
@@ -1366,7 +1415,8 @@ function createSettingsContent(section, capabilities) {
   // ─── End AI Watchdog Settings ──────────────────────────────────────────────
 
   // Smart Detect
-  o = section.option(
+  o = section.taboption(
+    "services",
     form.Flag,
     "smart_detect",
     _("Enable Smart Detect"),
@@ -1378,7 +1428,8 @@ function createSettingsContent(section, capabilities) {
   o.rmempty = false;
 
   // Smart Detect sections (domain test order)
-  const sdSectionsOpt = section.option(
+  const sdSectionsOpt = section.taboption(
+    "services",
     form.Value,
     "_smart_detect_sections",
     _("Domain test sections"),
