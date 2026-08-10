@@ -2771,10 +2771,51 @@ function run_doctor_checks() {
 }
 
 function query_llm(provider, api_key, custom_url, prompt_text) {
+    provider = lc(trim(as_string(provider)));
+
+    if (provider == "anthropic" || provider == "claude") {
+        let api_url = "https://api.anthropic.com/v1/messages";
+        let model = "claude-3-5-haiku-20241022";
+        let payload = {
+            model: model,
+            max_tokens: 1024,
+            messages: [
+                {
+                    role: "user",
+                    content: prompt_text
+                }
+            ]
+        };
+        let payload_path = "/tmp/llm_payload.json";
+        common.write_json_file(payload_path, payload);
+
+        let curl_args = [
+            "curl", "-s", "-X", "POST",
+            "-H", "Content-Type: application/json",
+            "-H", "x-api-key: " + api_key,
+            "-H", "anthropic-version: 2023-06-01",
+            "-d", "@" + payload_path,
+            api_url
+        ];
+
+        let result = command_capture(command_from_args(curl_args));
+        remove_file(payload_path);
+
+        if (result.status != 0 || result.output == "") {
+            return null;
+        }
+
+        let response_data = parse_json_or_null(result.output);
+        if (response_data && type(response_data.content) == "array" && length(response_data.content) > 0) {
+            return response_data.content[0].text;
+        }
+
+        return null;
+    }
+
     let api_url = "https://api.openai.com/v1/chat/completions";
     let model = "gpt-4o-mini";
     
-    provider = lc(trim(as_string(provider)));
     if (provider == "deepseek") {
         api_url = "https://api.deepseek.com/chat/completions";
         model = "deepseek-chat";

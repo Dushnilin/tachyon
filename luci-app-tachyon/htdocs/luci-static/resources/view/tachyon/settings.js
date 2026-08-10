@@ -1198,6 +1198,52 @@ function createSettingsContent(section, capabilities) {
   o.password = true;
   o.rmempty = true;
 
+  // AI Doctor (ChatGPT / LLM Integration)
+  o = section.option(
+    form.Flag,
+    "enable_ai_doctor",
+    _("Enable AI Doctor (ChatGPT / LLM Analysis)"),
+    _(
+      "Allows Tachyon to send diagnostic snapshots to ChatGPT or DeepSeek API for intelligent root-cause analysis and auto-repair recommendations.",
+    ),
+  );
+  o.default = "0";
+  o.rmempty = false;
+
+  o = section.option(
+    form.ListValue,
+    "ai_doctor_provider",
+    _("AI Provider"),
+    _("Select AI LLM provider for diagnostics"),
+  );
+  o.depends("enable_ai_doctor", "1");
+  o.value("openai", "OpenAI (ChatGPT)");
+  o.value("anthropic", "Anthropic (Claude API)");
+  o.value("deepseek", "DeepSeek API");
+  o.value("custom", "Custom OpenAI-Compatible API (OpenRouter / Ollama)");
+  o.default = "openai";
+
+  o = section.option(
+    form.Value,
+    "ai_doctor_api_key",
+    _("AI API Key"),
+    _("API Key for OpenAI (sk-...) or DeepSeek"),
+  );
+  o.depends("enable_ai_doctor", "1");
+  o.password = true;
+  o.rmempty = false;
+
+  o = section.option(
+    form.Value,
+    "ai_doctor_custom_url",
+    _("Custom API Endpoint URL"),
+    _(
+      "Custom OpenAI-compatible API endpoint URL (e.g. https://openrouter.ai/api/v1/chat/completions)",
+    ),
+  );
+  o.depends("ai_doctor_provider", "custom");
+  o.rmempty = true;
+
   // Watchdog runtime status & controls
   const wdStatusOpt = section.option(
     form.DummyValue,

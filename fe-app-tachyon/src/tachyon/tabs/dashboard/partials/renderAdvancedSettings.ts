@@ -15,6 +15,10 @@ interface AdvancedSettingsState {
   deviceIpsPerSection: Record<string, string[]>;
   dnsTurboCache: boolean;
   agentApiToken: string;
+  enableAiDoctor: boolean;
+  aiDoctorProvider: string;
+  aiDoctorApiKey: string;
+  aiDoctorCustomUrl: string;
   aiWatchdog: {
     proxyHealthEnabled: boolean;
     proxyHealthInterval: string;
@@ -46,6 +50,10 @@ let _state: AdvancedSettingsState = {
   deviceIpsPerSection: {},
   dnsTurboCache: false,
   agentApiToken: '',
+  enableAiDoctor: false,
+  aiDoctorProvider: 'openai',
+  aiDoctorApiKey: '',
+  aiDoctorCustomUrl: '',
   aiWatchdog: {
     proxyHealthEnabled: true,
     proxyHealthInterval: '30',
@@ -134,6 +142,18 @@ export async function loadAdvancedSettingsState() {
     agentApiToken:
       ((settingsSec as unknown as Record<string, unknown>)
         ?.agent_api_token as string) || '',
+    enableAiDoctor:
+      (settingsSec as unknown as Record<string, unknown>)?.enable_ai_doctor ===
+      '1',
+    aiDoctorProvider:
+      ((settingsSec as unknown as Record<string, unknown>)
+        ?.ai_doctor_provider as string) || 'openai',
+    aiDoctorApiKey:
+      ((settingsSec as unknown as Record<string, unknown>)
+        ?.ai_doctor_api_key as string) || '',
+    aiDoctorCustomUrl:
+      ((settingsSec as unknown as Record<string, unknown>)
+        ?.ai_doctor_custom_url as string) || '',
     aiWatchdog: {
       proxyHealthEnabled: settingsSec?.ai_proxy_health_enabled !== '0',
       proxyHealthInterval:
@@ -273,6 +293,22 @@ async function saveAiWatchdogSettings() {
       [
         'set',
         `${TACHYON_UCI_PACKAGE}.settings.agent_api_token=${_state.agentApiToken}`,
+      ],
+      [
+        'set',
+        `${TACHYON_UCI_PACKAGE}.settings.enable_ai_doctor=${_state.enableAiDoctor ? '1' : '0'}`,
+      ],
+      [
+        'set',
+        `${TACHYON_UCI_PACKAGE}.settings.ai_doctor_provider=${_state.aiDoctorProvider}`,
+      ],
+      [
+        'set',
+        `${TACHYON_UCI_PACKAGE}.settings.ai_doctor_api_key=${_state.aiDoctorApiKey}`,
+      ],
+      [
+        'set',
+        `${TACHYON_UCI_PACKAGE}.settings.ai_doctor_custom_url=${_state.aiDoctorCustomUrl}`,
       ],
       [
         'set',
@@ -676,6 +712,123 @@ function renderAiWatchdogSection(state: AdvancedSettingsState) {
           'GET endpoints are open on LAN. POST endpoints require Authorization: Bearer <token>.',
         ),
       ),
+    ]),
+
+    // AI Doctor (ChatGPT / DeepSeek API) group
+    E('div', { class: 'tachyon_adv__group' }, [
+      E(
+        'h4',
+        { class: 'tachyon_adv__group-title' },
+        _('AI Doctor (ChatGPT / DeepSeek API)'),
+      ),
+      E(
+        'p',
+        { class: 'tachyon_adv__hint' },
+        _(
+          'Connect ChatGPT, DeepSeek or local LLM to get automated diagnostic reports and intelligent root-cause analysis.',
+        ),
+      ),
+      E('div', { class: 'tachyon_adv__row' }, [
+        E('label', { class: 'tachyon_adv__toggle' }, [
+          E('input', {
+            type: 'checkbox',
+            checked: state.enableAiDoctor,
+            onchange: (e: Event) => {
+              const enabled = (e.target as HTMLInputElement).checked;
+              _state = { ..._state, enableAiDoctor: enabled };
+              rerender();
+            },
+          }),
+          E('span', {}, _('Enable AI Doctor (LLM Integration)')),
+        ]),
+      ]),
+      state.enableAiDoctor
+        ? E('div', { class: 'tachyon_adv__subrows' }, [
+            E('div', { class: 'tachyon_adv__row' }, [
+              E('label', { class: 'tachyon_adv__label' }, _('AI Provider')),
+              E(
+                'select',
+                {
+                  class: 'cbi-input-select',
+                  onchange: (e: Event) => {
+                    const val = (e.target as HTMLSelectElement).value;
+                    _state = { ..._state, aiDoctorProvider: val };
+                    rerender();
+                  },
+                },
+                [
+                  E(
+                    'option',
+                    {
+                      value: 'openai',
+                      selected: state.aiDoctorProvider === 'openai',
+                    },
+                    'OpenAI (ChatGPT)',
+                  ),
+                  E(
+                    'option',
+                    {
+                      value: 'anthropic',
+                      selected: state.aiDoctorProvider === 'anthropic',
+                    },
+                    'Anthropic (Claude API)',
+                  ),
+                  E(
+                    'option',
+                    {
+                      value: 'deepseek',
+                      selected: state.aiDoctorProvider === 'deepseek',
+                    },
+                    'DeepSeek API',
+                  ),
+                  E(
+                    'option',
+                    {
+                      value: 'custom',
+                      selected: state.aiDoctorProvider === 'custom',
+                    },
+                    'Custom OpenAI-Compatible API',
+                  ),
+                ],
+              ),
+            ]),
+            E('div', { class: 'tachyon_adv__row' }, [
+              E('label', { class: 'tachyon_adv__label' }, _('AI API Key')),
+              E('input', {
+                type: 'password',
+                class: 'cbi-input-text',
+                value: state.aiDoctorApiKey,
+                placeholder: 'sk-...',
+                style: 'width: 100%;',
+                onchange: (e: Event) => {
+                  const val = (e.target as HTMLInputElement).value;
+                  _state = { ..._state, aiDoctorApiKey: val.trim() };
+                },
+              }),
+            ]),
+            state.aiDoctorProvider === 'custom'
+              ? E('div', { class: 'tachyon_adv__row' }, [
+                  E(
+                    'label',
+                    { class: 'tachyon_adv__label' },
+                    _('Custom API Endpoint URL'),
+                  ),
+                  E('input', {
+                    type: 'text',
+                    class: 'cbi-input-text',
+                    value: state.aiDoctorCustomUrl,
+                    placeholder:
+                      'https://openrouter.ai/api/v1/chat/completions',
+                    style: 'width: 100%;',
+                    onchange: (e: Event) => {
+                      const val = (e.target as HTMLInputElement).value;
+                      _state = { ..._state, aiDoctorCustomUrl: val.trim() };
+                    },
+                  }),
+                ])
+              : E('span', {}),
+          ])
+        : E('span', {}),
     ]),
 
     E(

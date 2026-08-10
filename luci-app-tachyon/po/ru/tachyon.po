@@ -3364,3 +3364,36 @@ msgstr "Токен авторизации AI Agent REST API"
 
 msgid "Secret token for authorizing WRITE operations (POST/PUT) on /cgi-bin/tachyon-agent/. Leave empty if auth is not required."
 msgstr "Секретный токен для авторизации WRITE-операций (POST/PUT) по адресу /cgi-bin/tachyon-agent/. Оставьте пустым, если авторизация не требуется."
+
+msgid "Enable AI Doctor (ChatGPT / LLM Analysis)"
+msgstr "Включить AI Doctor (анализ через ChatGPT / LLM)"
+
+msgid "Allows Tachyon to send diagnostic snapshots to ChatGPT or DeepSeek API for intelligent root-cause analysis and auto-repair recommendations."
+msgstr "Позволяет Tachyon отправлять снимки диагностики в ChatGPT или DeepSeek API для интеллектуального анализа причин неисправностей и рекомендаций по авто-ремонту."
+
+msgid "AI Provider"
+msgstr "Провайдер ИИ"
+
+msgid "Select AI LLM provider for diagnostics"
+msgstr "Выберите провайдера LLM для диагностики"
+
+msgid "AI API Key"
+msgstr "API-ключ ИИ"
+
+msgid "API Key for OpenAI (sk-...) or DeepSeek"
+msgstr "API-ключ для OpenAI (sk-...) или DeepSeek"
+
+msgid "Custom API Endpoint URL"
+msgstr "Пользовательский URL эндпоинта API"
+
+msgid "Custom OpenAI-compatible API endpoint URL (e.g. https://openrouter.ai/api/v1/chat/completions)"
+msgstr "URL эндпоинта OpenAI-совместимого API (например, https://openrouter.ai/api/v1/chat/completions)"
+
+msgid "AI Doctor (ChatGPT / DeepSeek API)"
+msgstr "AI Doctor (ChatGPT / DeepSeek API)"
+
+msgid "Connect ChatGPT, DeepSeek or local LLM to get automated diagnostic reports and intelligent root-cause analysis."
+msgstr "Подключите ChatGPT, DeepSeek или локальную модель LLM для получения автоматических диагностических отчётов и умного анализа сетевых проблем."
+
+msgid "Enable AI Doctor (LLM Integration)"
+msgstr "Включить AI Doctor (интеграция с LLM)"
