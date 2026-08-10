@@ -1013,17 +1013,17 @@
     "call": "Checks failed",
     "key": "Checks failed",
     "places": [
-      "src/tachyon/tabs/diagnostic/helpers/getMeta.ts:26",
-      "src/tachyon/tabs/diagnostic/checks/getCheckItemsMeta.ts:10"
+      "src/tachyon/tabs/diagnostic/checks/getCheckItemsMeta.ts:10",
+      "src/tachyon/tabs/diagnostic/helpers/getMeta.ts:26"
     ]
   },
   {
     "call": "Checks passed",
     "key": "Checks passed",
     "places": [
-      "src/tachyon/tabs/diagnostic/helpers/getMeta.ts:13",
       "src/tachyon/tabs/diagnostic/checks/getCheckItemsMeta.ts:23",
-      "src/tachyon/tabs/diagnostic/checks/runFakeIPCheck.ts:43"
+      "src/tachyon/tabs/diagnostic/checks/runFakeIPCheck.ts:43",
+      "src/tachyon/tabs/diagnostic/helpers/getMeta.ts:13"
     ]
   },
   {
@@ -1403,6 +1403,13 @@
     "key": "Dashboard currently unavailable",
     "places": [
       "src/tachyon/tabs/dashboard/partials/renderSections.ts:44"
+    ]
+  },
+  {
+    "call": "Default (auto)",
+    "key": "Default (auto)",
+    "places": [
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:1678"
     ]
   },
   {
@@ -3844,8 +3851,8 @@
     "call": "Issues detected",
     "key": "Issues detected",
     "places": [
-      "src/tachyon/tabs/diagnostic/helpers/getMeta.ts:20",
-      "src/tachyon/tabs/diagnostic/checks/getCheckItemsMeta.ts:17"
+      "src/tachyon/tabs/diagnostic/checks/getCheckItemsMeta.ts:17",
+      "src/tachyon/tabs/diagnostic/helpers/getMeta.ts:20"
     ]
   },
   {
@@ -5269,6 +5276,13 @@
     ]
   },
   {
+    "call": "Proxy Section for Bot",
+    "key": "Proxy Section for Bot",
+    "places": [
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:1671"
+    ]
+  },
+  {
     "call": "Proxy to use for WARP API registration (api.cloudflareclient.com)",
     "key": "Proxy to use for WARP API registration (api.cloudflareclient.com)",
     "places": [
@@ -5544,6 +5558,13 @@
     "places": [
       "src/tachyon/tabs/monitoring/initController.ts:871",
       "src/tachyon/tabs/monitoring/initController.ts:929"
+    ]
+  },
+  {
+    "call": "Route bot API requests through this section. Leave empty to use the default mixed proxy.",
+    "key": "Route bot API requests through this section. Leave empty to use the default mixed proxy.",
+    "places": [
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:1672"
     ]
   },
   {

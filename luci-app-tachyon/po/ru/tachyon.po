@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-08-09 16:50+0300\n"
-"PO-Revision-Date: 2026-08-09 16:50+0300\n"
+"POT-Creation-Date: 2026-08-10 13:53+0300\n"
+"PO-Revision-Date: 2026-08-10 13:53+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -78,10 +78,10 @@ msgid "Конфиг AmneziaWG успешно загружен!"
 msgstr "Конфиг AmneziaWG успешно загружен!"
 
 msgid "Не удалось разобрать файл:"
-msgstr ""
+msgstr "Не удалось разобрать файл:"
 
 msgid "Ошибка"
-msgstr ""
+msgstr "Ошибка"
 
 msgid "Ошибка чтения"
 msgstr "Ошибка чтения"
@@ -291,7 +291,7 @@ msgid "Backend validation failed: %s"
 msgstr "Ошибка валидации на бэкенде: %s"
 
 msgid "Belarus (by)"
-msgstr ""
+msgstr "Беларусь (by)"
 
 msgid "BitTorrent / P2P"
 msgstr "BitTorrent / P2P Торренты"
@@ -315,7 +315,7 @@ msgid "Browser is using FakeIP correctly"
 msgstr "Браузер использует FakeIP"
 
 msgid "Bug report downloaded"
-msgstr ""
+msgstr "Отчёт об ошибке загружен"
 
 msgid "Built-in rule sets"
 msgstr "Встроенные наборы правил"
@@ -375,7 +375,7 @@ msgid "Cache file path cannot be empty"
 msgstr "Путь к файлу кэша не может быть пустым"
 
 msgid "Cancel"
-msgstr ""
+msgstr "Отмена"
 
 msgid "Cannot receive checks result"
 msgstr "Не удалось получить результаты проверки"
@@ -411,16 +411,16 @@ msgid "Check URL"
 msgstr "URL проверки"
 
 msgid "Checking Connection..."
-msgstr ""
+msgstr "Проверка соединения..."
 
 msgid "Checking, please wait"
 msgstr "Проверяем, пожалуйста подождите"
 
 msgid "Checking..."
-msgstr ""
+msgstr "Проверка..."
 
 msgid "Checking…"
-msgstr ""
+msgstr "Проверка…"
 
 msgid "checks"
 msgstr "проверки"
@@ -435,7 +435,7 @@ msgid "Checks passed with manual DHCP"
 msgstr "Проверки пройдены с ручным DHCP"
 
 msgid "China (cn)"
-msgstr ""
+msgstr "Китай (cn)"
 
 msgid "Choose Hosts File..."
 msgstr "Выбрать hosts-файл..."
@@ -531,7 +531,7 @@ msgid "Configure User-Agent in the item settings"
 msgstr "Настройте User-Agent в настройках элемента"
 
 msgid "Conflict"
-msgstr ""
+msgstr "Конфликт"
 
 msgid "Connect through"
 msgstr "Подключаться через"
@@ -561,7 +561,7 @@ msgid "Could not compare FakeIP and control public IPs"
 msgstr "Не удалось сравнить публичные IP FakeIP и контрольной проверки"
 
 msgid "Country code (e.g. ru, us, de)"
-msgstr ""
+msgstr "Код страны (например, ru, us, de)"
 
 msgid "Current section cannot be used as its own transit section"
 msgstr "Текущая секция не может быть транзитной для самой себя"
@@ -586,6 +586,9 @@ msgstr "Дашборд"
 
 msgid "Dashboard currently unavailable"
 msgstr "Дашборд сейчас недоступен"
+
+msgid "Default (auto)"
+msgstr "По умолчанию (авто)"
 
 msgid "Default address for checking server availability and latency. URLTest uses its own address."
 msgstr "Адрес по умолчанию для проверки доступности и задержки серверов. Для URLTest используется собственный адрес."
@@ -636,7 +639,7 @@ msgid "Direct"
 msgstr "Напрямую"
 
 msgid "Direct (Default)"
-msgstr ""
+msgstr "Напрямую (по умолчанию)"
 
 msgid "Direct connection"
 msgstr "Прямое подключение"
@@ -657,7 +660,7 @@ msgid "Display name"
 msgstr "Отображаемое имя"
 
 msgid "DNS"
-msgstr ""
+msgstr "DNS"
 
 msgid "DNS Check Interval"
 msgstr "Период проверки DNS"
@@ -675,7 +678,7 @@ msgid "DNS over HTTPS (DoH)"
 msgstr "DNS через HTTPS (DoH)"
 
 msgid "DNS over QUIC (DoQ)"
-msgstr ""
+msgstr "DNS over QUIC (DoQ)"
 
 msgid "DNS over TLS (DoT)"
 msgstr "DNS через TLS (DoT)"
@@ -726,7 +729,7 @@ msgid "DNS Turbo Cache"
 msgstr "Быстрый DNS-кэш"
 
 msgid "DNS Turbo Cache saved"
-msgstr ""
+msgstr "DNS Turbo Cache сохранён"
 
 msgid "DNS Unavailability Timeout"
 msgstr "Таймаут недоступности DNS"
@@ -753,10 +756,10 @@ msgid "Do not test specified servers."
 msgstr "Не тестировать указанные серверы."
 
 msgid "Doctor failed"
-msgstr ""
+msgstr "Доктор завершился с ошибкой"
 
 msgid "Doctor repair"
-msgstr ""
+msgstr "Исправление доктором"
 
 msgid "Does not resolve"
 msgstr "Не резолвится"
@@ -951,10 +954,10 @@ msgid "Enter the subscription URL"
 msgstr "Введите URL подписки"
 
 msgid "Error"
-msgstr ""
+msgstr "Ошибка"
 
 msgid "Error running generator:"
-msgstr ""
+msgstr "Ошибка запуска генератора:"
 
 msgid "Error running trace:"
 msgstr "Ошибка при выполнении трассировки:"
@@ -1026,13 +1029,13 @@ msgid "Failed to execute"
 msgstr "Не удалось выполнить"
 
 msgid "Failed to generate bug report"
-msgstr ""
+msgstr "Не удалось создать отчёт об ошибке"
 
 msgid "Failed to generate WARP config:"
-msgstr ""
+msgstr "Не удалось создать конфиг WARP:"
 
 msgid "Failed to parse WARP config:"
-msgstr ""
+msgstr "Не удалось разобрать конфиг WARP:"
 
 msgid "Failed to save AI Watchdog settings"
 msgstr "Ошибка сохранения настроек AI Watchdog"
@@ -1041,7 +1044,7 @@ msgid "Failed to save device IPs"
 msgstr "Ошибка сохранения IP устройств"
 
 msgid "Failed to save DNS Turbo Cache"
-msgstr ""
+msgstr "Не удалось сохранить DNS Turbo Cache"
 
 msgid "Failed to save Smart Detect settings"
 msgstr "Ошибка сохранения настроек Smart Detect"
@@ -1089,7 +1092,7 @@ msgid "Filter the servers that will be displayed on the dashboard."
 msgstr "Фильтровать серверы, отображаемые на дашборде."
 
 msgid "Finland (fi)"
-msgstr ""
+msgstr "Финляндия (fi)"
 
 msgid "Firewall WAN port"
 msgstr "Порт в firewall для WAN"
@@ -1098,7 +1101,7 @@ msgid "Fix the highlighted fields and save again."
 msgstr "Исправьте подсвеченные поля и сохраните снова."
 
 msgid "Fixed"
-msgstr ""
+msgstr "Исправлено"
 
 msgid "Forced device routing"
 msgstr "Принудительная маршрутизация устройств"
@@ -1107,7 +1110,7 @@ msgid "Forces sing-box to tunnel DNS requests via DoQ with Encrypted Client Hell
 msgstr "Принудительно направляет DNS-запросы через DoQ с Encrypted Client Hello (ECH) для скрытия SNI."
 
 msgid "France (fr)"
-msgstr ""
+msgstr "Франция (fr)"
 
 msgid "Fronting IP"
 msgstr "IP фронтинга"
@@ -1146,10 +1149,10 @@ msgid "Generated inbound"
 msgstr "Созданный inbound"
 
 msgid "Generated!"
-msgstr ""
+msgstr "Сгенерировано!"
 
 msgid "Generating…"
-msgstr ""
+msgstr "Генерация…"
 
 msgid "GeoIP Countries"
 msgstr "Страны для фильтрации GeoIP"
@@ -1158,10 +1161,10 @@ msgid "GeoIP Mode"
 msgstr "Режим фильтрации GeoIP"
 
 msgid "GeoSite / GeoIP"
-msgstr ""
+msgstr "GeoSite / GeoIP"
 
 msgid "Germany (de)"
-msgstr ""
+msgstr "Германия (de)"
 
 msgid "Get global check"
 msgstr "Получить глобальную проверку"
@@ -1254,7 +1257,7 @@ msgid "How often to check whether a higher-priority DNS server has recovered."
 msgstr "Как часто проверять, восстановился ли DNS-сервер с более высоким приоритетом."
 
 msgid "HTTP"
-msgstr ""
+msgstr "HTTP"
 
 msgid "HTTP error"
 msgstr "Ошибка HTTP"
@@ -1518,52 +1521,52 @@ msgid "Invalid Trojan URL: parsing failed"
 msgstr "Неверный URL Trojan: ошибка разбора"
 
 msgid "Invalid TUIC URL: congestion_control must be bbr, cubic, or new_reno"
-msgstr ""
+msgstr "Неверный TUIC URL: congestion_control должен быть bbr, cubic или new_reno"
 
 msgid "Invalid TUIC URL: insecure must be 0 or 1"
-msgstr ""
+msgstr "Неверный TUIC URL: insecure должен быть 0 или 1"
 
 msgid "Invalid TUIC URL: invalid host & port"
-msgstr ""
+msgstr "Неверный TUIC URL: неверный хост и порт"
 
 msgid "Invalid TUIC URL: invalid port number"
-msgstr ""
+msgstr "Неверный TUIC URL: неверный номер порта"
 
 msgid "Invalid TUIC URL: missing credentials/server"
-msgstr ""
+msgstr "Неверный TUIC URL: отсутствуют учётные данные/сервер"
 
 msgid "Invalid TUIC URL: missing host"
-msgstr ""
+msgstr "Неверный TUIC URL: отсутствует хост"
 
 msgid "Invalid TUIC URL: missing host & port"
-msgstr ""
+msgstr "Неверный TUIC URL: отсутствует хост и порт"
 
 msgid "Invalid TUIC URL: missing port"
-msgstr ""
+msgstr "Неверный TUIC URL: отсутствует порт"
 
 msgid "Invalid TUIC URL: missing UUID"
-msgstr ""
+msgstr "Неверный TUIC URL: отсутствует UUID"
 
 msgid "Invalid TUIC URL: must not contain spaces"
-msgstr ""
+msgstr "Неверный TUIC URL: не должен содержать пробелы"
 
 msgid "Invalid TUIC URL: must start with tuic://"
-msgstr ""
+msgstr "Неверный TUIC URL: должен начинаться с tuic://"
 
 msgid "Invalid TUIC URL: parsing failed"
-msgstr ""
+msgstr "Неверный TUIC URL: ошибка разбора"
 
 msgid "Invalid TUIC URL: sni cannot be empty"
-msgstr ""
+msgstr "Неверный TUIC URL: sni не может быть пустым"
 
 msgid "Invalid TUIC URL: udp_relay_mode must be native, quic, or qux"
-msgstr ""
+msgstr "Неверный TUIC URL: udp_relay_mode должен быть native, quic или qux"
 
 msgid "Invalid TUIC URL: UUID must be a valid UUID v4 format"
-msgstr ""
+msgstr "Неверный TUIC URL: UUID должен быть в корректном формате UUID v4"
 
 msgid "Invalid TUIC URL: zero_rtt_handshake must be 0, 1, true, or false"
-msgstr ""
+msgstr "Неверный TUIC URL: zero_rtt_handshake должен быть 0, 1, true или false"
 
 msgid "Invalid URL format"
 msgstr "Неверный формат URL"
@@ -1590,13 +1593,13 @@ msgid "Isolate BitTorrent traffic and force it direct to prevent VPN bans"
 msgstr "Изолировать BitTorrent-трафик и направлять напрямую во избежание банов VPN"
 
 msgid "Issues"
-msgstr ""
+msgstr "Проблемы"
 
 msgid "Issues detected"
 msgstr "Обнаружены проблемы"
 
 msgid "Japan (jp)"
-msgstr ""
+msgstr "Япония (jp)"
 
 msgid "JSON outbound"
 msgstr "JSON outbound"
@@ -1626,7 +1629,7 @@ msgid "Junk Packet Count (Jc)"
 msgstr "Количество Junk-пакетов (Jc)"
 
 msgid "Kazakhstan (kz)"
-msgstr ""
+msgstr "Казахстан (kz)"
 
 msgid "Keep Priority before latency-sorted servers"
 msgstr "Держать Priority перед серверами, отсортированными по задержке"
@@ -1710,7 +1713,7 @@ msgid "Log Level"
 msgstr "Уровень логов"
 
 msgid "lx"
-msgstr ""
+msgstr "lx"
 
 msgid "Main DNS"
 msgstr "Основной DNS"
@@ -1773,7 +1776,7 @@ msgid "Monitoring"
 msgstr "Мониторинг"
 
 msgid "Monitoring & Analytics"
-msgstr ""
+msgstr "Мониторинг и аналитика"
 
 msgid "Monitors sing-box reconnect frequency. Alerts if too many reconnects per hour."
 msgstr "Мониторит частоту переподключений sing-box. Уведомляет при превышении лимита."
@@ -1785,7 +1788,7 @@ msgid "Move up"
 msgstr "Вверх"
 
 msgid "MTU"
-msgstr ""
+msgstr "MTU"
 
 msgid "Must be a comma-separated list of numeric IDs"
 msgstr "Должен быть список числовых ID через запятую"
@@ -1800,7 +1803,7 @@ msgid "Name shown in the priority level list"
 msgstr "Имя, отображаемое в списке уровней приоритета"
 
 msgid "Netherlands (nl)"
-msgstr ""
+msgstr "Нидерланды (nl)"
 
 msgid "Network Interface"
 msgstr "Сетевой интерфейс"
@@ -1863,7 +1866,7 @@ msgid "No file selected"
 msgstr "Файл не выбран"
 
 msgid "No issues found"
-msgstr ""
+msgstr "Проблем не обнаружено"
 
 msgid "No other marking rules found"
 msgstr "Другие правила маркировки не найдены"
@@ -1928,15 +1931,6 @@ msgstr "Уведомлять о сбоях ядра"
 msgid "Notify on DNS Leaks"
 msgstr "Уведомлять об утечках DNS"
 
-msgid "Default (auto)"
-msgstr "По умолчанию (авто)"
-
-msgid "Proxy Section for Bot"
-msgstr "Секция прокси для бота"
-
-msgid "Route bot API requests through this section. Leave empty to use the default mixed proxy."
-msgstr "Направлять запросы бота к Telegram API через эту секцию. Оставьте пустым для использования стандартного прокси."
-
 msgid "Notify on Server Switches"
 msgstr "Уведомлять о переключениях серверов"
 
@@ -1962,7 +1956,7 @@ msgid "Obfuscation password"
 msgstr "Пароль обфускации"
 
 msgid "One record per line: <code>example.com 192.168.1.100</code> or <code>192.168.1.100 example.com</code>. Lines starting with <code>#</code> are ignored."
-msgstr ""
+msgstr "По одной записи на строку: <code>example.com 192.168.1.100</code> или <code>192.168.1.100 example.com</code>. Строки, начинающиеся с <code>#</code>, игнорируются."
 
 msgid "Only from the specified countries."
 msgstr "Только из указанных стран."
@@ -2001,7 +1995,7 @@ msgid "Operation timed out"
 msgstr "Время ожидания истекло"
 
 msgid "Optimization"
-msgstr ""
+msgstr "Оптимизация"
 
 msgid "Option \"%s\" contains an invalid input value."
 msgstr "Параметр \"%s\" содержит недопустимое значение."
@@ -2091,7 +2085,7 @@ msgid "Periodically checks if the proxy is responding. Restarts Tachyon after co
 msgstr "Периодически проверяет работоспособность прокси. Перезапускает Tachyon после последовательных сбоев."
 
 msgid "Persistent Keepalive"
-msgstr ""
+msgstr "Persistent Keepalive"
 
 msgid "Persistent Smart Detect"
 msgstr "Persistent Smart Detect"
@@ -2169,7 +2163,7 @@ msgid "Private Key"
 msgstr "Приватный ключ"
 
 msgid "Protection"
-msgstr ""
+msgstr "Защита"
 
 msgid "Protocol"
 msgstr "Протокол"
@@ -2186,8 +2180,11 @@ msgstr "URL проверки прокси"
 msgid "Proxy link is unavailable"
 msgstr "Ссылка прокси недоступна"
 
+msgid "Proxy Section for Bot"
+msgstr "Секция прокси для бота"
+
 msgid "Proxy to use for WARP API registration (api.cloudflareclient.com)"
-msgstr ""
+msgstr "Прокси для регистрации WARP API (api.cloudflareclient.com)"
 
 msgid "PSK"
 msgstr "PSK"
@@ -2202,7 +2199,7 @@ msgid "QUIC (HTTP/3)"
 msgstr "QUIC (HTTP/3)"
 
 msgid "RDP"
-msgstr ""
+msgstr "RDP"
 
 msgid "Reality fake site"
 msgstr "Fake-сайт Reality"
@@ -2241,7 +2238,7 @@ msgid "Refill"
 msgstr "Сброс"
 
 msgid "Registration Detour"
-msgstr ""
+msgstr "Обходной путь регистрации"
 
 msgid "Regular expression must not contain spaces or commas"
 msgstr "Регулярное выражение не должно содержать пробелы или запятые"
@@ -2295,13 +2292,16 @@ msgid "Restart Tachyon"
 msgstr "Перезапустить Tachyon"
 
 msgid "Restarts"
-msgstr ""
+msgstr "Перезапуски"
 
 msgid "Resume updates"
 msgstr "Продолжить обновление"
 
 msgid "Route"
 msgstr "Маршрут"
+
+msgid "Route bot API requests through this section. Leave empty to use the default mixed proxy."
+msgstr "Направлять запросы бота к Telegram API через эту секцию. Оставьте пустым для использования стандартного прокси."
 
 msgid "Route main DNS requests through the selected section."
 msgstr "Маршрутизировать основные DNS-запросы через выбранную секцию."
@@ -2322,7 +2322,7 @@ msgid "Routing section"
 msgstr "Секция маршрутизации"
 
 msgid "Rule"
-msgstr ""
+msgstr "Правило"
 
 msgid "Rule set must be an HTTP(S) URL or a local .srs / .json path"
 msgstr "Набор правил должен быть HTTP(S) URL или локальным путём .srs / .json"
@@ -2367,7 +2367,7 @@ msgid "Running"
 msgstr "Запущен"
 
 msgid "Russia (ru)"
-msgstr ""
+msgstr "Россия (ru)"
 
 msgid "Save"
 msgstr "Сохранить"
@@ -2616,13 +2616,13 @@ msgid "Sing-box version is compatible (newer than 1.12.4)"
 msgstr "Версия Sing-box совместима (новее 1.12.4)"
 
 msgid "Singapore (sg)"
-msgstr ""
+msgstr "Сингапур (sg)"
 
 msgid "Skip loopback & local entries (127.0.0.1, ::1, 0.0.0.0, localhost)"
 msgstr "Пропускать локальные и loopback-записи (127.0.0.1, ::1, 0.0.0.0, localhost)"
 
 msgid "Skip TLS certificate verification (not recommended)"
-msgstr ""
+msgstr "Пропустить проверку TLS-сертификата (не рекомендуется)"
 
 msgid "Skipped comments/invalid:"
 msgstr "Пропущено комментариев/невалидных:"
@@ -2664,7 +2664,7 @@ msgid "Specify different files"
 msgstr "Укажите разные файлы"
 
 msgid "SSH"
-msgstr ""
+msgstr "SSH"
 
 msgid "Standalone ByeDPI autostart is enabled"
 msgstr "Автозапуск отдельной службы ByeDPI включен"
@@ -2769,13 +2769,13 @@ msgid "Subscriptions updated"
 msgstr "Подписки обновлены"
 
 msgid "Success"
-msgstr ""
+msgstr "Успешно"
 
 msgid "Successfully imported %d DNS record(s)"
 msgstr "Успешно импортировано %d DNS-записей"
 
 msgid "Sweden (se)"
-msgstr ""
+msgstr "Швеция (se)"
 
 msgid "System info"
 msgstr "Системная информация"
@@ -2940,7 +2940,7 @@ msgid "tiny"
 msgstr "tiny"
 
 msgid "TLS / HTTPS"
-msgstr ""
+msgstr "TLS / HTTPS"
 
 msgid "TLS Auth/Crypt Key"
 msgstr "Ключ TLS Auth/Crypt"
@@ -2985,7 +2985,7 @@ msgid "Traffic type filter"
 msgstr "Фильтр по типам трафика"
 
 msgid "Traffic will go through the default route (Direct/Default)."
-msgstr ""
+msgstr "Трафик пройдёт через маршрут по умолчанию (Напрямую/По умолчанию)."
 
 msgid "Transparent proxy mode is incompatible with action=byedpi because Tachyon connects to ciadpi through SOCKS."
 msgstr "Режим прозрачного прокси несовместим с action=byedpi, так как Tachyon подключается к ciadpi через SOCKS."
@@ -3015,7 +3015,7 @@ msgid "TTL value cannot be empty"
 msgstr "Значение TTL не может быть пустым"
 
 msgid "Turkey (tr)"
-msgstr ""
+msgstr "Турция (tr)"
 
 msgid "Type"
 msgstr "Тип"
@@ -3024,7 +3024,7 @@ msgid "UDP (Unprotected DNS)"
 msgstr "UDP (Незащищённый DNS)"
 
 msgid "Ukraine (ua)"
-msgstr ""
+msgstr "Украина (ua)"
 
 msgid "Unable to validate the ByeDPI strategy through the backend parser."
 msgstr "Не удалось валидировать стратегию ByeDPI через парсер бэкенда."
@@ -3069,10 +3069,10 @@ msgid "unique UCI identifier"
 msgstr "уникальный идентификатор UCI"
 
 msgid "United Kingdom (gb)"
-msgstr ""
+msgstr "Великобритания (gb)"
 
 msgid "United States (us)"
-msgstr ""
+msgstr "США (us)"
 
 msgid "unknown"
 msgstr "неизвестно"
@@ -3099,7 +3099,7 @@ msgid "Unspecified IP address is not allowed"
 msgstr "Неуказанный IP-адрес не разрешён"
 
 msgid "Unstable"
-msgstr ""
+msgstr "Нестабильно"
 
 msgid "Unsupported security mode for this protocol"
 msgstr "Этот протокол не поддерживает выбранный режим защиты"
@@ -3132,7 +3132,7 @@ msgid "Uploaded"
 msgstr "Отдано"
 
 msgid "URL must start with vless://, vmess://, ss://, trojan://, socks4://, socks4a://, socks5://, hysteria2://, hy2://, or tuic://"
-msgstr ""
+msgstr "URL должен начинаться с vless://, vmess://, ss://, trojan://, socks4://, socks4a://, socks5://, hysteria2://, hy2:// или tuic://"
 
 msgid "URL must use one of the following protocols:"
 msgstr "URL должен использовать один из следующих протоколов:"
@@ -3147,7 +3147,7 @@ msgid "URL used to test server latency"
 msgstr "URL для тестирования задержки сервера"
 
 msgid "URLs of remote hosts files to download and apply. Supports standard hosts format: <code>IP domain</code>."
-msgstr ""
+msgstr "URL удалённых файлов hosts для загрузки и применения. Поддерживается стандартный формат hosts: <code>IP domain</code>."
 
 msgid "URLTest"
 msgstr "URLTest"

@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-08-09 13:50+0300\n"
-"PO-Revision-Date: 2026-08-09 13:50+0300\n"
+"POT-Creation-Date: 2026-08-10 10:53+0300\n"
+"PO-Revision-Date: 2026-08-10 10:53+0300\n"
 "Last-Translator: Dushnilin <dushnilin@gmail.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -618,14 +618,14 @@ msgstr ""
 msgid "checks"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/helpers/getMeta.ts:26
 #: src/tachyon/tabs/diagnostic/checks/getCheckItemsMeta.ts:10
+#: src/tachyon/tabs/diagnostic/helpers/getMeta.ts:26
 msgid "Checks failed"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/helpers/getMeta.ts:13
 #: src/tachyon/tabs/diagnostic/checks/getCheckItemsMeta.ts:23
 #: src/tachyon/tabs/diagnostic/checks/runFakeIPCheck.ts:43
+#: src/tachyon/tabs/diagnostic/helpers/getMeta.ts:13
 msgid "Checks passed"
 msgstr ""
 
@@ -850,6 +850,10 @@ msgstr ""
 
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:44
 msgid "Dashboard currently unavailable"
+msgstr ""
+
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:1678
+msgid "Default (auto)"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:1025
@@ -2282,8 +2286,8 @@ msgstr ""
 msgid "Issues"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/helpers/getMeta.ts:20
 #: src/tachyon/tabs/diagnostic/checks/getCheckItemsMeta.ts:17
+#: src/tachyon/tabs/diagnostic/helpers/getMeta.ts:20
 msgid "Issues detected"
 msgstr ""
 
@@ -2769,18 +2773,6 @@ msgstr ""
 msgid "Notify on DNS Leaks"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:1682
-msgid "Default (auto)"
-msgstr ""
-
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:1669
-msgid "Proxy Section for Bot"
-msgstr ""
-
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:1670
-msgid "Route bot API requests through this section. Leave empty to use the default mixed proxy."
-msgstr ""
-
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:1621
 msgid "Notify on Server Switches"
 msgstr ""
@@ -3137,6 +3129,10 @@ msgstr ""
 msgid "Proxy link is unavailable"
 msgstr ""
 
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:1671
+msgid "Proxy Section for Bot"
+msgstr ""
+
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8457
 msgid "Proxy to use for WARP API registration (api.cloudflareclient.com)"
 msgstr ""
@@ -3296,6 +3292,10 @@ msgstr ""
 #: src/tachyon/tabs/monitoring/initController.ts:871
 #: src/tachyon/tabs/monitoring/initController.ts:929
 msgid "Route"
+msgstr ""
+
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:1672
+msgid "Route bot API requests through this section. Leave empty to use the default mixed proxy."
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:683
