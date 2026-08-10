@@ -55,8 +55,22 @@ function writeStoredKeys(storage: Storage | null, keys: string[]) {
   }
 }
 
+// Log lines that are expected/transient and should NOT produce a toast notification.
+// These are operational noise, not actionable errors for the user.
+const SUPPRESSED_LOG_PATTERNS: RegExp[] = [
+  /another component action is already running/i,
+  /subscription dns resolution failed for rule.*retrying in/i,
+];
+
 export function isErrorLogLine(line: string) {
   const lower = line.toLowerCase();
+
+  if (
+    SUPPRESSED_LOG_PATTERNS.some((pattern) => pattern.test(lower))
+  ) {
+    return false;
+  }
+
   return (
     lower.includes('[error]') ||
     lower.includes('[fatal]') ||

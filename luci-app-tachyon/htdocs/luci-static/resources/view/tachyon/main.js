@@ -5362,8 +5362,15 @@ function writeStoredKeys(storage, keys) {
   } catch {
   }
 }
+var SUPPRESSED_LOG_PATTERNS = [
+  /another component action is already running/i,
+  /subscription dns resolution failed for rule.*retrying in/i
+];
 function isErrorLogLine(line) {
   const lower = line.toLowerCase();
+  if (SUPPRESSED_LOG_PATTERNS.some((pattern) => pattern.test(lower))) {
+    return false;
+  }
   return lower.includes("[error]") || lower.includes("[fatal]") || lower.includes("sing-box") && lower.includes("rule-set") && /\b(error|fatal)\b/.test(lower);
 }
 function getTachyonLogNotification(line) {
