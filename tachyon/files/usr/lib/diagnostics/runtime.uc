@@ -2834,6 +2834,72 @@ function doctor(format) {
     return 0;
 }
 
+// ─── AI Agent: structured JSON diagnostics ────────────────────────────────────
+// Same checks as run_doctor_checks() but output is machine-readable JSON for
+// LLM agents. Each problem has: id, severity, description, suggested_fix.
+function diagnose_json() {
+    let res = run_doctor_checks();
+    let problems = [];
+
+    // Parse the text report lines into structured objects
+    for (let line in split(res.report, "\n")) {
+        line = trim(as_string(line));
+        if (line == "") continue;
+
+        let severity = null;
+        let fixed_inline = false;
+        if (index(line, "❌") >= 0) {
+            severity = "critical";
+        } else if (index(line, "⚠️") >= 0) {
+            severity = "warning";
+        } else if (index(line, "ℹ️") >= 0) {
+            severity = "info";
+        }
+
+        if (severity == null) continue;
+
+        // Extract check name and message (format: icon  name   message)
+        let clean = replace(replace(replace(replace(
+            line, "❌", ""), "⚠️", ""), "ℹ️", ""), "✅", "");
+        clean = trim(clean);
+
+        let arrow_idx = index(clean, "→");
+        let description = trim(arrow_idx >= 0 ? substr(clean, 0, arrow_idx) : clean);
+        // "→" is U+2192, encoded as 3 UTF-8 bytes (E2 86 92); skip all 3
+        let suggested_fix = arrow_idx >= 0 ? trim(substr(clean, arrow_idx + 3)) : "";
+
+        // Detect if already fixed inline (FIXED: prefix in suggested_fix)
+        if (index(suggested_fix, "FIXED:") >= 0) {
+            fixed_inline = true;
+            severity = "info"; // was critical but already fixed
+        }
+
+        push(problems, {
+            severity:      severity,
+            description:   description,
+            suggested_fix: suggested_fix,
+            fixed:         fixed_inline
+        });
+    }
+
+    let ai_status_data = {};
+    let ai_status_raw = fs.readfile("/tmp/tachyon_ai_status.json");
+    if (ai_status_raw) {
+        try { ai_status_data = json(ai_status_raw); } catch(e) {}
+    }
+
+    print(sprintf("%J\n", {
+        success:          true,
+        timestamp:        time(),
+        issues_found:     res.issues,
+        issues_fixed:     res.fixed,
+        overall:          (res.issues == 0) ? "healthy" : ((res.fixed == res.issues) ? "repaired" : "degraded"),
+        problems:         problems,
+        watchdog_status:  ai_status_data
+    }));
+    return 0;
+}
+
 function ai_doctor() {
     let cfg = uci_settings();
     if (cfg.enable_ai_doctor != "1" || !cfg.ai_doctor_api_key) {
@@ -3073,6 +3139,8 @@ else if (mode == "global-check")
     exit(global_check(ARGV[1] || "", ARGV[2] || ""));
 else if (mode == "doctor")
     exit(doctor(ARGV[1]));
+else if (mode == "diagnose-json")
+    exit(diagnose_json());
 else if (mode == "ai-doctor")
     exit(ai_doctor());
 else if (mode == "validate-nfqws-strategy-json")

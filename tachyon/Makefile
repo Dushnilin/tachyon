@@ -123,6 +123,12 @@ TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/m
 # Harden config: telegram bot_token must not be world-readable
 chmod 600 /etc/config/tachyon
 chown root:root /etc/config/tachyon
+
+# Install AI Agent API CGI handler into uhttpd's cgi-bin
+if [ -d /www/cgi-bin ]; then
+	cp /usr/lib/cgi-bin/tachyon-agent /www/cgi-bin/tachyon-agent 2>/dev/null || true
+	chmod 755 /www/cgi-bin/tachyon-agent 2>/dev/null || true
+fi
 endef
 
 define Package/tachyon/conffiles
@@ -144,6 +150,10 @@ define Package/tachyon/install
 
 	$(INSTALL_DIR) $(1)/etc/hotplug.d/iface
 	$(INSTALL_BIN) ./files/etc/hotplug.d/iface/99-tachyon-wan-monitor $(1)/etc/hotplug.d/iface/99-tachyon-wan-monitor
+
+	# AI Agent API CGI handler (executable shell wrapper for uhttpd)
+	$(INSTALL_DIR) $(1)/usr/lib/cgi-bin
+	$(INSTALL_BIN) ./files/usr/lib/cgi-bin/tachyon-agent $(1)/usr/lib/cgi-bin/tachyon-agent
 
 	sed -i -e 's/__COMPILED_VERSION_VARIABLE__/$(TACHYON_COMPILED_VERSION)/g' \
 		-e 's/__COMPILED_COMMIT_SHA__/$(shell git -C $(TOPDIR)/../ rev-parse --short HEAD 2>/dev/null || echo unknown)/g' \

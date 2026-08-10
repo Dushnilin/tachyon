@@ -133,6 +133,10 @@ function show_help() {
     print("    ai_status               Show AI watchdog status\n");
     print("    ai_status_full          Show full AI watchdog status (JSON)\n");
     print("    ai_heal                 Run AI watchdog heal cycle\n");
+    print("    diagnose_json           Run diagnostics and return structured JSON (for AI agents)\n");
+    print("    agent <path> <method> [body_json] [bearer]\n");
+    print("                            AI Agent API: call a /tachyon/agent/v1/* endpoint\n");
+    print("    agent_cgi               AI Agent API: CGI handler (called by uhttpd)\n");
     print("    watchdog                Manage watchdog daemon (start-runtime|stop-runtime|status)\n");
     print("    telegram_status         Get Telegram bot running status\n");
     print("    telegram_start          Start Telegram bot\n");
@@ -215,6 +219,8 @@ function command_spec(command) {
         global_check: [ "diagnostics/runtime.uc", "global-check", 2 ],
         doctor: [ "diagnostics/runtime.uc", "doctor", 1 ],
         ai_doctor: [ "diagnostics/runtime.uc", "ai-doctor", 0 ],
+        diagnose_json: [ "diagnostics/runtime.uc", "diagnose-json", 0 ],
+        agent_cgi: [ "service/agent_api.uc", "__cgi", 0 ],
         watchdog: [ "service/watchdog.uc", "", 1 ],
         watchdog_start: [ "service/watchdog.uc", "start-runtime", 0 ],
         watchdog_stop: [ "service/watchdog.uc", "stop-runtime", 0 ],
@@ -253,8 +259,34 @@ function run_spec(command, spec, user_args) {
     return normalize_status(system(command_from_args(args)));
 }
 
+function run_agent(user_args) {
+    // tachyon agent <path> <method> [body_json] [bearer_token]
+    // passes all 4 args directly to agent_api.uc which reads them as ARGV[0..3]
+    let module = module_path("service/agent_api.uc");
+    if (!file_readable(module)) {
+        warn("Error: service/agent_api.uc is missing\n");
+        return 1;
+    }
+    let args = [ "ucode", "-L", LIB_DIR, module,
+        user_args[0] || "/",
+        user_args[1] || "GET",
+        user_args[2] || "{}",
+        user_args[3] || ""
+    ];
+    return normalize_status(system(command_from_args(args)));
+}
+
 function main() {
     let command = ARGV[0] || "";
+
+    // agent command gets all remaining args passed verbatim
+    if (command == "agent") {
+        let user_args = [];
+        for (let i = 1; i < length(ARGV); i++)
+            push(user_args, ARGV[i]);
+        return run_agent(user_args);
+    }
+
     let spec = command_spec(command);
     if (spec == null) {
         show_help();

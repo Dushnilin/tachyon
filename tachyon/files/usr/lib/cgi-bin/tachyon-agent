@@ -1,0 +1,35 @@
+﻿#!/bin/sh
+# Tachyon AI Agent API — CGI handler for uhttpd
+# Install at: /usr/lib/cgi-bin/tachyon-agent
+# then symlink: ln -sf /usr/lib/cgi-bin/tachyon-agent /www/cgi-bin/tachyon-agent
+#
+# API is served at: http://<router>/cgi-bin/tachyon-agent/<endpoint>
+# Examples:
+#   curl http://192.168.1.1/cgi-bin/tachyon-agent/health
+#   curl http://192.168.1.1/cgi-bin/tachyon-agent/snapshot
+#   curl http://192.168.1.1/cgi-bin/tachyon-agent/diagnose
+#   curl -X POST -H "Authorization: Bearer mytoken" \
+#        http://192.168.1.1/cgi-bin/tachyon-agent/heal
+
+TACHYON_LIB=/usr/lib/tachyon
+AGENT_UC="$TACHYON_LIB/service/agent_api.uc"
+
+PATH_INFO="${PATH_INFO:-/}"
+API_PATH="/tachyon/agent/v1${PATH_INFO}"
+METHOD="${REQUEST_METHOD:-GET}"
+AUTH="${HTTP_AUTHORIZATION:-}"
+
+BODY="{}"
+if [ "$METHOD" = "POST" ] || [ "$METHOD" = "PUT" ]; then
+    if [ -n "$CONTENT_LENGTH" ] && [ "$CONTENT_LENGTH" -gt 0 ] 2>/dev/null; then
+        BODY=$(dd bs=1 count="$CONTENT_LENGTH" 2>/dev/null)
+    fi
+fi
+
+OUTPUT=$(ucode -L "$TACHYON_LIB" "$AGENT_UC" "$API_PATH" "$METHOD" "$BODY" "$AUTH" 2>/dev/null)
+
+printf 'Content-Type: application/json\r\n'
+printf 'Access-Control-Allow-Origin: *\r\n'
+printf 'Cache-Control: no-cache\r\n'
+printf '\r\n'
+printf '%s\n' "$OUTPUT"
