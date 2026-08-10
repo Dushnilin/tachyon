@@ -3072,7 +3072,17 @@ var TRANSIENT_RPC_ERROR_PATTERNS = [
   "no related rpc reply",
   "request aborted",
   "operation was aborted",
-  "failed to execute"
+  "failed to execute",
+  "networkerror",
+  "fetch failed",
+  "connection refused",
+  "connection reset",
+  "connection timed out",
+  "timeout",
+  "bad gateway",
+  "service unavailable",
+  "ubus error",
+  "ipc error"
 ];
 function isTransientRpcError(message) {
   if (!message) {
@@ -3097,7 +3107,8 @@ var COMPONENT_ACTION_RPC_TIMEOUT_MS = 15e3;
 var COMPONENT_ACTION_POLL_INTERVAL_MS = 1500;
 var COMPONENT_ACTION_STATUS_REFRESH_INTERVAL_MS = 15e3;
 var COMPONENT_ACTION_SELF_UPDATE_SETTLE_MS = 3e4;
-var COMPONENT_ACTION_TRANSIENT_RPC_GRACE_MS = 3e4;
+var COMPONENT_ACTION_TRANSIENT_RPC_GRACE_MS = 6e4;
+var COMPONENT_ACTION_MIN_ELAPSED_FOR_SELF_UPDATE_MS = 1e4;
 var COMPONENT_ACTION_STATE_DIR = "/var/run/tachyon/component-actions";
 var GET_UI_STATE_RPC_TIMEOUT_MS = 3e3;
 function sleep(ms) {
@@ -3518,6 +3529,7 @@ var TachyonShellMethods = {
     Tachyon.AvailableMethods.COMPONENT_UPDATE_CHECK_CACHE
   ),
   waitComponentActionJob: async (jobId, component, action, expectedLatestVersion) => {
+    const jobStartedAt = Date.now();
     let selfUpdateVersionMatchedAt = 0;
     let lastStatusRefreshAt = 0;
     const transientRpc = createTransientRpcGraceTracker(
@@ -3559,26 +3571,29 @@ var TachyonShellMethods = {
           continue;
         }
         if (component === "tachyon" && (action === "install" || action === "reinstall")) {
-          const installedVersion = await readTachyonVersion();
-          const targetVersion = expectedLatestVersion || installedVersion;
-          if (targetVersion && installedVersion === targetVersion) {
-            if (!selfUpdateVersionMatchedAt) {
-              selfUpdateVersionMatchedAt = Date.now();
-            }
-            if (Date.now() - selfUpdateVersionMatchedAt >= COMPONENT_ACTION_SELF_UPDATE_SETTLE_MS) {
-              return {
-                success: true,
-                data: {
+          const elapsed = Date.now() - jobStartedAt;
+          if (elapsed >= COMPONENT_ACTION_MIN_ELAPSED_FOR_SELF_UPDATE_MS) {
+            const installedVersion = await readTachyonVersion();
+            const targetVersion = expectedLatestVersion || installedVersion;
+            if (targetVersion && installedVersion === targetVersion) {
+              if (!selfUpdateVersionMatchedAt) {
+                selfUpdateVersionMatchedAt = Date.now();
+              }
+              if (Date.now() - selfUpdateVersionMatchedAt >= COMPONENT_ACTION_SELF_UPDATE_SETTLE_MS) {
+                return {
                   success: true,
-                  component,
-                  action,
-                  message: translate("Tachyon has been installed"),
-                  current_version: installedVersion,
-                  latest_version: expectedLatestVersion,
-                  changed: true,
-                  status: "latest"
-                }
-              };
+                  data: {
+                    success: true,
+                    component,
+                    action,
+                    message: translate("Tachyon has been installed"),
+                    current_version: installedVersion,
+                    latest_version: expectedLatestVersion,
+                    changed: true,
+                    status: "latest"
+                  }
+                };
+              }
             }
           }
           continue;

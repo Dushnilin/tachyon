@@ -1,4 +1,4 @@
-﻿import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   executeShellCommand: vi.fn(),
@@ -59,7 +59,7 @@ describe('TachyonShellMethods.componentAction', () => {
       '0.7.17.11',
     );
 
-    await vi.advanceTimersByTimeAsync(33000);
+    await vi.advanceTimersByTimeAsync(45000);
 
     await expect(responsePromise).resolves.toEqual({
       success: true,

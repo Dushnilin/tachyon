@@ -3,6 +3,16 @@ const TRANSIENT_RPC_ERROR_PATTERNS = [
   'request aborted',
   'operation was aborted',
   'failed to execute',
+  'networkerror',
+  'fetch failed',
+  'connection refused',
+  'connection reset',
+  'connection timed out',
+  'timeout',
+  'bad gateway',
+  'service unavailable',
+  'ubus error',
+  'ipc error',
 ];
 
 export function isTransientRpcError(message?: string | null) {
