@@ -3340,3 +3340,27 @@ msgstr "sing-box outbound для Zapret2 настроен"
 
 msgid "Zapret2 sing-box outbound is not configured"
 msgstr "sing-box outbound для Zapret2 не настроен"
+
+msgid "AI Agent REST API (12 Endpoints)"
+msgstr "HTTP REST API ИИ-агента (12 эндпоинтов)"
+
+msgid "HTTP REST API for external AI agents (Claude, GPT, Open-WebUI) served at /cgi-bin/tachyon-agent/"
+msgstr "HTTP REST API для внешних ИИ-агентов (Claude, GPT, Open-WebUI), доступен по адресу /cgi-bin/tachyon-agent/"
+
+msgid "Bearer Auth Token"
+msgstr "Токен авторизации (Bearer)"
+
+msgid "Secret token for WRITE requests"
+msgstr "Секретный токен для POST/PUT запросов"
+
+msgid "🔑 Generate"
+msgstr "🔑 Сгенерировать"
+
+msgid "GET endpoints are open on LAN. POST endpoints require Authorization: Bearer <token>."
+msgstr "GET-эндпоинты открыты в локальной сети. POST-эндпоинты требуют Authorization: Bearer <token>."
+
+msgid "AI Agent REST API Bearer Token"
+msgstr "Токен авторизации AI Agent REST API"
+
+msgid "Secret token for authorizing WRITE operations (POST/PUT) on /cgi-bin/tachyon-agent/. Leave empty if auth is not required."
+msgstr "Секретный токен для авторизации WRITE-операций (POST/PUT) по адресу /cgi-bin/tachyon-agent/. Оставьте пустым, если авторизация не требуется."
