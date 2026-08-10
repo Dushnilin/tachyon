@@ -1186,6 +1186,18 @@ function createSettingsContent(section, capabilities) {
   o.default = "1";
   o.rmempty = false;
 
+  // AI Agent API Settings
+  o = section.option(
+    form.Value,
+    "agent_api_token",
+    _("AI Agent REST API Bearer Token"),
+    _(
+      "Secret token for authorizing WRITE operations (POST/PUT) on /cgi-bin/tachyon-agent/. Leave empty if auth is not required.",
+    ),
+  );
+  o.password = true;
+  o.rmempty = true;
+
   // Watchdog runtime status & controls
   const wdStatusOpt = section.option(
     form.DummyValue,
