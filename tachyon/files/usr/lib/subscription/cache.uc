@@ -2475,17 +2475,43 @@ function run_deferred_subscription_bootstrap(deferred_sections) {
         return;
 
     log_message("Waiting for sing-box service proxy before retrying deferred subscription rule(s): " + deferred_sections, "info");
-    let ready = false;
+    let process_ready = false;
     for (let attempt = 1; attempt <= 10; attempt++) {
         if (sing_box_service_running()) {
-            ready = true;
+            process_ready = true;
             break;
         }
         system("sleep 1");
     }
 
-    if (!ready) {
+    if (!process_ready) {
         log_message("sing-box service proxy did not become ready in time; deferred subscription rule(s) will remain disabled until the next successful subscription update", "warn");
+        start_deferred_subscription_bootstrap_retry_worker(deferred_sections);
+        return;
+    }
+
+    // Wait for the proxy port to actually accept TCP connections — the sing-box
+    // process may be running but the mixed inbound port not yet ready. Without
+    // this check, the deferred download falls back to a direct connection that
+    // may fail for subscription URLs only reachable through the proxy.
+    let proxy_address = SB_SERVICE_MIXED_INBOUND_ADDRESS + ":" + SB_SERVICE_MIXED_INBOUND_PORT;
+    let port_ready = false;
+    for (let attempt = 1; attempt <= 10; attempt++) {
+        let probe = command_status_from_args([
+            "curl", "-s", "--connect-timeout", "2", "-m", "4",
+            "-x", "http://" + proxy_address, "http://1.1.1.1/", "-o", "/dev/null"
+        ]);
+        if (probe != 7 && probe != 28) {
+            log_message("Service proxy is ready for deferred subscription bootstrap", "info");
+            port_ready = true;
+            break;
+        }
+        log_message("Service proxy port not yet ready for deferred bootstrap [" + attempt + "/10]", "info");
+        system("sleep 3");
+    }
+
+    if (!port_ready) {
+        log_message("Service proxy port is not accepting connections; starting bootstrap retry worker for: " + deferred_sections, "warn");
         start_deferred_subscription_bootstrap_retry_worker(deferred_sections);
         return;
     }
