@@ -14,6 +14,7 @@ interface AdvancedSettingsState {
   allSectionNames: string[];
   deviceIpsPerSection: Record<string, string[]>;
   dnsTurboCache: boolean;
+  agentApiToken: string;
   aiWatchdog: {
     proxyHealthEnabled: boolean;
     proxyHealthInterval: string;
@@ -44,6 +45,7 @@ let _state: AdvancedSettingsState = {
   allSectionNames: [],
   deviceIpsPerSection: {},
   dnsTurboCache: false,
+  agentApiToken: '',
   aiWatchdog: {
     proxyHealthEnabled: true,
     proxyHealthInterval: '30',
@@ -129,6 +131,9 @@ export async function loadAdvancedSettingsState() {
     allSectionNames,
     deviceIpsPerSection,
     dnsTurboCache: settingsSec?.dns_turbo_cache === '1',
+    agentApiToken:
+      ((settingsSec as unknown as Record<string, unknown>)
+        ?.agent_api_token as string) || '',
     aiWatchdog: {
       proxyHealthEnabled: settingsSec?.ai_proxy_health_enabled !== '0',
       proxyHealthInterval:
@@ -265,6 +270,10 @@ async function saveAiWatchdogSettings() {
   try {
     const ai = _state.aiWatchdog;
     const cmds: string[][] = [
+      [
+        'set',
+        `${TACHYON_UCI_PACKAGE}.settings.agent_api_token=${_state.agentApiToken}`,
+      ],
       [
         'set',
         `${TACHYON_UCI_PACKAGE}.settings.ai_proxy_health_enabled=${ai.proxyHealthEnabled ? '1' : '0'}`,
@@ -610,6 +619,62 @@ function renderAiWatchdogSection(state: AdvancedSettingsState) {
       toggle(
         'persistentSmartDetect',
         'Persistent Smart Detect (survive reboots)',
+      ),
+    ]),
+
+    // AI Agent API group
+    E('div', { class: 'tachyon_adv__group' }, [
+      E(
+        'h4',
+        { class: 'tachyon_adv__group-title' },
+        _('AI Agent REST API (12 Endpoints)'),
+      ),
+      E(
+        'p',
+        { class: 'tachyon_adv__hint' },
+        _(
+          'HTTP REST API for external AI agents (Claude, GPT, Open-WebUI) served at /cgi-bin/tachyon-agent/',
+        ),
+      ),
+      E('div', { class: 'tachyon_adv__row' }, [
+        E('label', { class: 'tachyon_adv__label' }, _('Bearer Auth Token')),
+        E('div', { style: 'display: flex; gap: 8px; flex: 1;' }, [
+          E('input', {
+            type: 'text',
+            class: 'cbi-input-text',
+            value: state.agentApiToken,
+            placeholder: _('Secret token for WRITE requests'),
+            style: 'flex: 1;',
+            onchange: (e: Event) => {
+              const val = (e.target as HTMLInputElement).value;
+              _state = { ..._state, agentApiToken: val.trim() };
+            },
+          }),
+          E(
+            'button',
+            {
+              class: 'btn cbi-button cbi-button-action',
+              type: 'button',
+              onclick: () => {
+                const randomBytes = new Uint8Array(16);
+                crypto.getRandomValues(randomBytes);
+                const token = Array.from(randomBytes)
+                  .map((b) => b.toString(16).padStart(2, '0'))
+                  .join('');
+                _state = { ..._state, agentApiToken: token };
+                rerender();
+              },
+            },
+            _('🔑 Generate'),
+          ),
+        ]),
+      ]),
+      E(
+        'span',
+        { class: 'tachyon_adv__hint' },
+        _(
+          'GET endpoints are open on LAN. POST endpoints require Authorization: Bearer <token>.',
+        ),
       ),
     ]),
 
