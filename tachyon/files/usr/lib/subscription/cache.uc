@@ -615,6 +615,16 @@ function command_status_from_args(args) {
     return (status >> 8) & 255;
 }
 
+// curl --dns-servers requires libcurl built with c-ares (not available on all OpenWrt builds).
+// Cache the result once per process lifetime.
+let _curl_has_dns_servers = null;
+function curl_push_dns_servers(args) {
+    if (_curl_has_dns_servers === null)
+        _curl_has_dns_servers = (system("curl --dns-servers 8.8.8.8 -V >/dev/null 2>&1") == 0);
+    if (_curl_has_dns_servers)
+        push(args, "--dns-servers", "8.8.8.8,1.1.1.1");
+}
+
 function run_silent(command) {
     system(command + " >/dev/null 2>&1");
 }
@@ -1561,7 +1571,7 @@ function download_subscription(url, filepath, http_proxy_address, headers_filepa
             } else {
                 // Bootstrap DNS: use public resolvers in case system DNS is
                 // unavailable during startup or when proxy falls back to direct.
-                push(args, "--dns-servers", "8.8.8.8,1.1.1.1");
+                curl_push_dns_servers(args);
             }
             if (headers_tmpfile != "") {
                 push(args, "-D");
@@ -1599,7 +1609,23 @@ function download_subscription(url, filepath, http_proxy_address, headers_filepa
             unlink_path(tmpfile);
             unlink_path(headers_tmpfile);
 
-            if (status == 5 || status == 6) {
+            if (status == 5) {
+                // Proxy/SSL tunnel failure — no point retrying this URL
+                resolution_failed = true;
+                break;
+            }
+
+            if (status == 6) {
+                // DNS resolution failure: this often happens transiently right
+                // after a sing-box restart (Tachyon's intercepting resolver is
+                // briefly unavailable). Retry with an increasing pause so DNS
+                // has time to recover before giving up (issue #24).
+                let dns_wait = attempt * 5;
+                if (attempt < retries) {
+                    log_message("Subscription DNS resolution failed for rule; retrying in " + dns_wait + "s (attempt " + attempt + "/" + retries + ")", "debug");
+                    system("sleep " + dns_wait);
+                    continue;
+                }
                 resolution_failed = true;
                 break;
             }

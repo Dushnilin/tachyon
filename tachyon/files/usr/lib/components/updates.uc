@@ -172,6 +172,16 @@ function command_exists(name) {
     return command_success_from_args([ "command", "-v", name ]);
 }
 
+// curl --dns-servers requires libcurl built with c-ares (not available on all OpenWrt builds).
+// Cache the result once per process lifetime.
+let _curl_has_dns_servers = null;
+function curl_push_dns_servers(args) {
+    if (_curl_has_dns_servers === null)
+        _curl_has_dns_servers = (system("curl --dns-servers 8.8.8.8 -V >/dev/null 2>&1") == 0);
+    if (_curl_has_dns_servers)
+        push(args, "--dns-servers", "8.8.8.8,1.1.1.1");
+}
+
 function now_seconds() {
     return int(clock()[0]);
 }
@@ -2029,7 +2039,7 @@ function download_to_file(url, filepath, proxy_address) {
                 } else {
                     // Bootstrap DNS: use public resolvers in case Tachyon DNS isn't active yet
                     // (e.g., during startup before sing-box is running)
-                    push(curl_args, "--dns-servers", "8.8.8.8,1.1.1.1");
+                    curl_push_dns_servers(curl_args);
                 }
                 push(curl_args, candidate);
                 push(curl_args, "-o");
@@ -2059,10 +2069,10 @@ function download_to_file(url, filepath, proxy_address) {
         if (as_string(proxy_address) != "" && command_exists("curl")) {
             log_message("Download via service proxy failed for " + as_string(candidate) + "; retrying directly with bootstrap DNS", "warn");
             let fallback_args = [
-                "curl", "--connect-timeout", "5", "-m", "10", "-fsSL",
-                "--dns-servers", "8.8.8.8,1.1.1.1",
-                candidate, "-o", filepath
+                "curl", "--connect-timeout", "5", "-m", "10", "-fsSL"
             ];
+            curl_push_dns_servers(fallback_args);
+            push(fallback_args, candidate, "-o", filepath);
             if (command_success_from_args(fallback_args) && file_nonempty(filepath)) {
                 if (candidate != url)
                     log_message("Successfully downloaded " + as_string(url) + " via mirror " + candidate + " (direct, proxy unavailable)", "info");
