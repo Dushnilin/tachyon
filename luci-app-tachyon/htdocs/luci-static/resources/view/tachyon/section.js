@@ -8160,8 +8160,8 @@ function createSectionContent(section) {
     "settings",
     form.Button,
     "_load_awg_conf",
-    _("Загрузить конфиг .conf"),
-    _("Импортировать настройки AmneziaWG из файла .conf")
+    _("Load .conf config"),
+    _("Import AmneziaWG settings from .conf file")
   );
   o.modalonly = true;
   o.depends("action", "awg");
@@ -8212,7 +8212,7 @@ function createSectionContent(section) {
     const fileInput = E("input", { "type": "file", "accept": ".conf", "style": "display:none" });
 
     const icon  = E("span", {}, ["📂"]);
-    const label = E("span", { "class": "twg-label" }, [_("Загрузить .conf")]);
+    const label = E("span", { "class": "twg-label" }, [_("Load .conf")]);
     const btn   = E("button", {
       "class": "btn cbi-button cbi-button-neutral twg-btn",
       "type": "button",
@@ -8221,7 +8221,7 @@ function createSectionContent(section) {
 
     const setBtn = (state, text) => {
       btn.className = "btn cbi-button cbi-button-neutral twg-btn" + (state ? " twg-" + state : "");
-      label.textContent = text || _("Загрузить .conf");
+      label.textContent = text || _("Load .conf");
     };
 
     fileInput.addEventListener("change", () => {
@@ -8230,7 +8230,7 @@ function createSectionContent(section) {
       if (!file) return;
 
       if (!file.name.endsWith(".conf")) {
-        ui.addNotification(_("Ошибка"), E("p", {}, _("Выберите файл с расширением .conf")), "danger");
+        ui.addNotification(_("Error"), E("p", {}, _("Select a file with .conf extension")), "danger");
         return;
       }
 
@@ -8241,9 +8241,9 @@ function createSectionContent(section) {
         try {
           cfg = parseConf(ev.target.result);
         } catch (err) {
-          setBtn("error", _("Ошибка"));
+          setBtn("error", _("Error"));
           setTimeout(() => setBtn("", null), 2500);
-          ui.addNotification(_("Ошибка"), E("p", {}, _("Не удалось разобрать файл: ") + err.message), "danger");
+          ui.addNotification(_("Error"), E("p", {}, _("Failed to parse file: ") + err.message), "danger");
           return;
         }
 
@@ -8287,13 +8287,13 @@ function createSectionContent(section) {
           }
         }
 
-        setBtn("success", _("Загружено!"));
+        setBtn("success", _("Loaded!"));
         setTimeout(() => setBtn("", null), 2000);
-        ui.addNotification(_("Готово"), E("p", {}, _("Конфиг AmneziaWG успешно загружен!")), "success");
+        ui.addNotification(_("Done"), E("p", {}, _("AmneziaWG config loaded successfully!")), "success");
       };
 
       reader.onerror = () => {
-        setBtn("error", _("Ошибка чтения"));
+        setBtn("error", _("Read error"));
         setTimeout(() => setBtn("", null), 2500);
       };
 

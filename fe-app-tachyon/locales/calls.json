@@ -103,79 +103,6 @@
     ]
   },
   {
-    "call": "Выберите файл с расширением .conf",
-    "key": "Выберите файл с расширением .conf",
-    "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8233"
-    ]
-  },
-  {
-    "call": "Готово",
-    "key": "Готово",
-    "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8292"
-    ]
-  },
-  {
-    "call": "Загружено!",
-    "key": "Загружено!",
-    "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8290"
-    ]
-  },
-  {
-    "call": "Загрузить .conf",
-    "key": "Загрузить .conf",
-    "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8215",
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8224"
-    ]
-  },
-  {
-    "call": "Загрузить конфиг .conf",
-    "key": "Загрузить конфиг .conf",
-    "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8163"
-    ]
-  },
-  {
-    "call": "Импортировать настройки AmneziaWG из файла .conf",
-    "key": "Импортировать настройки AmneziaWG из файла .conf",
-    "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8164"
-    ]
-  },
-  {
-    "call": "Конфиг AmneziaWG успешно загружен!",
-    "key": "Конфиг AmneziaWG успешно загружен!",
-    "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8292"
-    ]
-  },
-  {
-    "call": "Не удалось разобрать файл:",
-    "key": "Не удалось разобрать файл:",
-    "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8246"
-    ]
-  },
-  {
-    "call": "Ошибка",
-    "key": "Ошибка",
-    "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8233",
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8244",
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8246"
-    ]
-  },
-  {
-    "call": "Ошибка чтения",
-    "key": "Ошибка чтения",
-    "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8296"
-    ]
-  },
-  {
     "call": "Accept external proxy connections and route them with sing-box.",
     "key": "Accept external proxy connections and route them with sing-box.",
     "places": [
@@ -490,6 +417,13 @@
     "key": "Alter ID",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/server.js:2878"
+    ]
+  },
+  {
+    "call": "AmneziaWG config loaded successfully!",
+    "key": "AmneziaWG config loaded successfully!",
+    "places": [
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8292"
     ]
   },
   {
@@ -1271,8 +1205,8 @@
     "key": "Conflict",
     "places": [
       "src/tachyon/methods/custom/getDashboardSections.ts:1569",
-      "src/tachyon/tabs/dashboard/partials/renderSections.ts:583",
-      "src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:141"
+      "src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:141",
+      "src/tachyon/tabs/dashboard/partials/renderSections.ts:583"
     ]
   },
   {
@@ -1878,6 +1812,13 @@
     ]
   },
   {
+    "call": "Done",
+    "key": "Done",
+    "places": [
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8292"
+    ]
+  },
+  {
     "call": "Dont Touch My DHCP!",
     "key": "Dont Touch My DHCP!",
     "places": [
@@ -2297,7 +2238,10 @@
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8146",
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8148",
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8152",
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8154"
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8154",
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8233",
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8244",
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8246"
     ]
   },
   {
@@ -2476,12 +2420,12 @@
     "call": "Failed to execute",
     "key": "Failed to execute",
     "places": [
+      "src/tachyon/methods/shell/index.ts:170",
+      "src/tachyon/methods/shell/index.ts:177",
       "src/tachyon/tabs/updates/initController.ts:545",
       "src/tachyon/tabs/updates/initController.ts:546",
       "src/tachyon/tabs/updates/initController.ts:608",
-      "src/tachyon/tabs/updates/initController.ts:758",
-      "src/tachyon/methods/shell/index.ts:170",
-      "src/tachyon/methods/shell/index.ts:177"
+      "src/tachyon/tabs/updates/initController.ts:758"
     ]
   },
   {
@@ -2497,6 +2441,13 @@
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8085",
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8094"
+    ]
+  },
+  {
+    "call": "Failed to parse file:",
+    "key": "Failed to parse file:",
+    "places": [
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8246"
     ]
   },
   {
@@ -3089,6 +3040,13 @@
     "key": "Import (%d records)",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:7637"
+    ]
+  },
+  {
+    "call": "Import AmneziaWG settings from .conf file",
+    "key": "Import AmneziaWG settings from .conf file",
+    "places": [
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8164"
     ]
   },
   {
@@ -4072,6 +4030,21 @@
     ]
   },
   {
+    "call": "Load .conf",
+    "key": "Load .conf",
+    "places": [
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8215",
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8224"
+    ]
+  },
+  {
+    "call": "Load .conf config",
+    "key": "Load .conf config",
+    "places": [
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8163"
+    ]
+  },
+  {
     "call": "Load Current Records",
     "key": "Load Current Records",
     "places": [
@@ -4083,6 +4056,13 @@
     "key": "Loaded %d current record(s)",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:7547"
+    ]
+  },
+  {
+    "call": "Loaded!",
+    "key": "Loaded!",
+    "places": [
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8290"
     ]
   },
   {
@@ -4569,9 +4549,9 @@
     "key": "Not configured",
     "places": [
       "src/tachyon/methods/custom/getDashboardSections.ts:1572",
-      "src/tachyon/tabs/dashboard/partials/renderSections.ts:586",
       "src/tachyon/tabs/diagnostic/checks/runInboundsCheck.ts:46",
-      "src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:152"
+      "src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:152",
+      "src/tachyon/tabs/dashboard/partials/renderSections.ts:586"
     ]
   },
   {
@@ -5328,6 +5308,13 @@
     ]
   },
   {
+    "call": "Read error",
+    "key": "Read error",
+    "places": [
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8296"
+    ]
+  },
+  {
     "call": "Reality fake site",
     "key": "Reality fake site",
     "places": [
@@ -5720,8 +5707,8 @@
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:1433",
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:1434",
       "src/tachyon/methods/custom/getDashboardSections.ts:1567",
-      "src/tachyon/tabs/dashboard/partials/renderSections.ts:581",
-      "src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:135"
+      "src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:135",
+      "src/tachyon/tabs/dashboard/partials/renderSections.ts:581"
     ]
   },
   {
@@ -5839,6 +5826,13 @@
     "key": "Select a common client profile or enter a custom User-Agent",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:2436"
+    ]
+  },
+  {
+    "call": "Select a file with .conf extension",
+    "key": "Select a file with .conf extension",
+    "places": [
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8233"
     ]
   },
   {
@@ -6175,9 +6169,9 @@
     "call": "Service action failed",
     "key": "Service action failed",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:602",
       "src/tachyon/methods/shell/index.ts:379",
-      "src/tachyon/methods/shell/index.ts:400"
+      "src/tachyon/methods/shell/index.ts:400",
+      "src/tachyon/tabs/diagnostic/initController.ts:602"
     ]
   },
   {
@@ -6609,8 +6603,8 @@
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:307",
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:1439",
       "src/tachyon/methods/custom/getDashboardSections.ts:1571",
-      "src/tachyon/tabs/dashboard/partials/renderSections.ts:585",
-      "src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:147"
+      "src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:147",
+      "src/tachyon/tabs/dashboard/partials/renderSections.ts:585"
     ]
   },
   {

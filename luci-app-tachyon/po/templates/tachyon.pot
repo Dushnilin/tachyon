@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-08-10 10:53+0300\n"
-"PO-Revision-Date: 2026-08-10 10:53+0300\n"
+"POT-Creation-Date: 2026-08-10 11:00+0300\n"
+"PO-Revision-Date: 2026-08-10 11:00+0300\n"
 "Last-Translator: Dushnilin <dushnilin@gmail.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -78,49 +78,6 @@ msgstr ""
 #: src/tachyon/tabs/dashboard/initController.ts:1679
 #: src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:394
 msgid "✘ Stopped"
-msgstr ""
-
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8233
-msgid "Выберите файл с расширением .conf"
-msgstr ""
-
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8292
-msgid "Готово"
-msgstr ""
-
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8290
-msgid "Загружено!"
-msgstr ""
-
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8215
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8224
-msgid "Загрузить .conf"
-msgstr ""
-
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8163
-msgid "Загрузить конфиг .conf"
-msgstr ""
-
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8164
-msgid "Импортировать настройки AmneziaWG из файла .conf"
-msgstr ""
-
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8292
-msgid "Конфиг AmneziaWG успешно загружен!"
-msgstr ""
-
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8246
-msgid "Не удалось разобрать файл:"
-msgstr ""
-
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8233
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8244
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8246
-msgid "Ошибка"
-msgstr ""
-
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8296
-msgid "Ошибка чтения"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/tachyon.js:444
@@ -306,6 +263,10 @@ msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/server.js:2878
 msgid "Alter ID"
+msgstr ""
+
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8292
+msgid "AmneziaWG config loaded successfully!"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8005
@@ -771,8 +732,8 @@ msgid "Configure User-Agent in the item settings"
 msgstr ""
 
 #: src/tachyon/methods/custom/getDashboardSections.ts:1569
-#: src/tachyon/tabs/dashboard/partials/renderSections.ts:583
 #: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:141
+#: src/tachyon/tabs/dashboard/partials/renderSections.ts:583
 msgid "Conflict"
 msgstr ""
 
@@ -1129,6 +1090,10 @@ msgstr ""
 msgid "Domains automatically detected by Smart Detect or added via Telegram bot. You can manually edit or remove them here."
 msgstr ""
 
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8292
+msgid "Done"
+msgstr ""
+
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:1080
 msgid "Dont Touch My DHCP!"
 msgstr ""
@@ -1375,6 +1340,9 @@ msgstr ""
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8148
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8152
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8154
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8233
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8244
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8246
 msgid "Error"
 msgstr ""
 
@@ -1481,12 +1449,12 @@ msgstr ""
 msgid "Failed to copy!"
 msgstr ""
 
+#: src/tachyon/methods/shell/index.ts:170
+#: src/tachyon/methods/shell/index.ts:177
 #: src/tachyon/tabs/updates/initController.ts:545
 #: src/tachyon/tabs/updates/initController.ts:546
 #: src/tachyon/tabs/updates/initController.ts:608
 #: src/tachyon/tabs/updates/initController.ts:758
-#: src/tachyon/methods/shell/index.ts:170
-#: src/tachyon/methods/shell/index.ts:177
 msgid "Failed to execute"
 msgstr ""
 
@@ -1497,6 +1465,10 @@ msgstr ""
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8085
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8094
 msgid "Failed to generate WARP config:"
+msgstr ""
+
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8246
+msgid "Failed to parse file:"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8148
@@ -1843,6 +1815,10 @@ msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:7637
 msgid "Import (%d records)"
+msgstr ""
+
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8164
+msgid "Import AmneziaWG settings from .conf file"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:7691
@@ -2417,12 +2393,25 @@ msgstr ""
 msgid "Listening port"
 msgstr ""
 
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8215
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8224
+msgid "Load .conf"
+msgstr ""
+
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8163
+msgid "Load .conf config"
+msgstr ""
+
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:7550
 msgid "Load Current Records"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:7547
 msgid "Loaded %d current record(s)"
+msgstr ""
+
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8290
+msgid "Loaded!"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/server.js:1702
@@ -2707,9 +2696,9 @@ msgid "None"
 msgstr ""
 
 #: src/tachyon/methods/custom/getDashboardSections.ts:1572
-#: src/tachyon/tabs/dashboard/partials/renderSections.ts:586
 #: src/tachyon/tabs/diagnostic/checks/runInboundsCheck.ts:46
 #: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:152
+#: src/tachyon/tabs/dashboard/partials/renderSections.ts:586
 msgid "Not configured"
 msgstr ""
 
@@ -3160,6 +3149,10 @@ msgstr ""
 msgid "RDP"
 msgstr ""
 
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8296
+msgid "Read error"
+msgstr ""
+
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/server.js:2687
 msgid "Reality fake site"
 msgstr ""
@@ -3387,8 +3380,8 @@ msgstr ""
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:1433
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:1434
 #: src/tachyon/methods/custom/getDashboardSections.ts:1567
-#: src/tachyon/tabs/dashboard/partials/renderSections.ts:581
 #: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:135
+#: src/tachyon/tabs/dashboard/partials/renderSections.ts:581
 msgid "Running"
 msgstr ""
 
@@ -3459,6 +3452,10 @@ msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:2436
 msgid "Select a common client profile or enter a custom User-Agent"
+msgstr ""
+
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8233
+msgid "Select a file with .conf extension"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8824
@@ -3656,9 +3653,9 @@ msgstr ""
 msgid "Servers on dashboard"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:602
 #: src/tachyon/methods/shell/index.ts:379
 #: src/tachyon/methods/shell/index.ts:400
+#: src/tachyon/tabs/diagnostic/initController.ts:602
 msgid "Service action failed"
 msgstr ""
 
@@ -3910,8 +3907,8 @@ msgstr ""
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:307
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:1439
 #: src/tachyon/methods/custom/getDashboardSections.ts:1571
-#: src/tachyon/tabs/dashboard/partials/renderSections.ts:585
 #: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:147
+#: src/tachyon/tabs/dashboard/partials/renderSections.ts:585
 msgid "Stopped"
 msgstr ""
 

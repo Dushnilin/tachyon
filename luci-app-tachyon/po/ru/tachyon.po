@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-08-10 13:53+0300\n"
-"PO-Revision-Date: 2026-08-10 13:53+0300\n"
+"POT-Creation-Date: 2026-08-10 14:00+0300\n"
+"PO-Revision-Date: 2026-08-10 14:00+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -55,36 +55,6 @@ msgstr "✔ Работает"
 
 msgid "✘ Stopped"
 msgstr "✘ Остановлено"
-
-msgid "Выберите файл с расширением .conf"
-msgstr "Выберите файл с расширением .conf"
-
-msgid "Готово"
-msgstr "Готово"
-
-msgid "Загружено!"
-msgstr "Загружено!"
-
-msgid "Загрузить .conf"
-msgstr "Загрузить .conf"
-
-msgid "Загрузить конфиг .conf"
-msgstr "Загрузить конфиг .conf"
-
-msgid "Импортировать настройки AmneziaWG из файла .conf"
-msgstr "Импортировать настройки AmneziaWG из файла .conf"
-
-msgid "Конфиг AmneziaWG успешно загружен!"
-msgstr "Конфиг AmneziaWG успешно загружен!"
-
-msgid "Не удалось разобрать файл:"
-msgstr "Не удалось разобрать файл:"
-
-msgid "Ошибка"
-msgstr "Ошибка"
-
-msgid "Ошибка чтения"
-msgstr "Ошибка чтения"
 
 msgid "Accept external proxy connections and route them with sing-box."
 msgstr "Принимает внешние прокси-подключения и маршрутизирует их через sing-box."
@@ -217,6 +187,9 @@ msgstr "ALPN"
 
 msgid "Alter ID"
 msgstr "Alter ID"
+
+msgid "AmneziaWG config loaded successfully!"
+msgstr "Конфиг AmneziaWG успешно загружен!"
 
 msgid "AmneziaWG Generator"
 msgstr "Генератор AmneziaWG"
@@ -782,6 +755,9 @@ msgstr "Домены (Domains)"
 msgid "Domains automatically detected by Smart Detect or added via Telegram bot. You can manually edit or remove them here."
 msgstr "Домены, автоматически обнаруженные Smart Detect или добавленные через Telegram-бота. Вы можете вручную изменить или удалить их здесь."
 
+msgid "Done"
+msgstr "Готово"
+
 msgid "Dont Touch My DHCP!"
 msgstr "Отключить управление DHCP"
 
@@ -1034,6 +1010,9 @@ msgstr "Не удалось создать отчёт об ошибке"
 msgid "Failed to generate WARP config:"
 msgstr "Не удалось создать конфиг WARP:"
 
+msgid "Failed to parse file:"
+msgstr "Не удалось разобрать файл:"
+
 msgid "Failed to parse WARP config:"
 msgstr "Не удалось разобрать конфиг WARP:"
 
@@ -1279,6 +1258,9 @@ msgstr "Импортировать"
 
 msgid "Import (%d records)"
 msgstr "Импортировать (%d записей)"
+
+msgid "Import AmneziaWG settings from .conf file"
+msgstr "Импортировать настройки AmneziaWG из файла .conf"
 
 msgid "Import Hosts File"
 msgstr "Импортировать hosts-файл"
@@ -1688,11 +1670,20 @@ msgstr "Порт прослушивания"
 msgid "Listening port"
 msgstr "Слушающий порт"
 
+msgid "Load .conf"
+msgstr "Загрузить .conf"
+
+msgid "Load .conf config"
+msgstr "Загрузить конфиг .conf"
+
 msgid "Load Current Records"
 msgstr "Загрузить текущие записи"
 
 msgid "Loaded %d current record(s)"
 msgstr "Загружено %d текущих записей"
+
+msgid "Loaded!"
+msgstr "Загружено!"
 
 msgid "Loading client link..."
 msgstr "Загрузка клиентской ссылки..."
@@ -2201,6 +2192,9 @@ msgstr "QUIC (HTTP/3)"
 msgid "RDP"
 msgstr "RDP"
 
+msgid "Read error"
+msgstr "Ошибка чтения"
+
 msgid "Reality fake site"
 msgstr "Fake-сайт Reality"
 
@@ -2413,6 +2407,9 @@ msgstr "Защита"
 
 msgid "Select a common client profile or enter a custom User-Agent"
 msgstr "Выберите стандартный профиль клиента или введите пользовательский User-Agent"
+
+msgid "Select a file with .conf extension"
+msgstr "Выберите файл с расширением .conf"
 
 msgid "Select a network interface"
 msgstr "Выберите сетевой интерфейс"
