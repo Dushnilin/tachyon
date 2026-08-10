@@ -22,6 +22,11 @@ const SING_BOX_BIN = env("TACHYON_SING_BOX_BIN", "/usr/bin/sing-box");
 const SING_BOX_CRONET = env("TACHYON_SING_BOX_CRONET", "/usr/lib/libcronet.so");
 const SING_BOX_MANAGED_MARKER = env("SB_MANAGED_SERVICE_MARKER", "Tachyon managed sing-box service for binary variants");
 const PACKAGE_UPGRADE_STATE = env("TACHYON_PACKAGE_UPGRADE_STATE", "/tmp/tachyon-package-was-running");
+const RUNTIME_STATE_DIR = env("TACHYON_RUNTIME_STATE_DIR", "/var/run/tachyon");
+const COMPONENT_ACTION_DIR = env("TACHYON_UI_COMPONENT_ACTION_DIR", RUNTIME_STATE_DIR + "/component-actions");
+const COMPONENT_UPDATE_CHECK_DIR = env("TACHYON_COMPONENT_UPDATE_CHECK_CACHE_DIR", RUNTIME_STATE_DIR + "/component-update-checks");
+const COMPONENT_UPDATE_CHECK_TIMESTAMP = env("TACHYON_COMPONENT_UPDATE_CHECK_STATE_FILE", RUNTIME_STATE_DIR + "/component-update-check.timestamp");
+const COMPONENT_ACTION_LOCK = env("TACHYON_COMPONENT_ACTION_LOCK", RUNTIME_STATE_DIR + "/component-action.lock");
 const PACKAGE_TEST_MODE = env("TACHYON_PACKAGE_TEST_MODE", "") != "";
 // apk aborts and rolls the whole transaction back if a hook outlives its
 // patience, and the installer kills it even sooner. Anything that touches
@@ -270,13 +275,27 @@ function remove_luci_index_cache() {
     }
 }
 
+// A Tachyon self-update is itself a component job: the job installs the package
+// whose postinst this is. Wiping the whole directory therefore deleted the state
+// file of the job that was still running, so the UI polled a job that no longer
+// existed, got no message and no stderr, and rendered its "Failed to execute"
+// fallback over an update that had in fact succeeded. Only finished results are
+// stale; a job still marked running must survive to write its own result.
+function component_job_is_running(path) {
+    let data = fs.readfile(path);
+    if (data == null)
+        return false;
+    return match(as_string(data), /"running"[ \t]*:[ \t]*(true|1)/) != null;
+}
+
 function remove_component_update_cache() {
-    for (let path in fs.glob("/var/run/tachyon/component-update-checks/*.json"))
+    for (let path in fs.glob(COMPONENT_UPDATE_CHECK_DIR + "/*.json"))
         unlink_if_exists(path);
-    unlink_if_exists("/var/run/tachyon/component-update-check.timestamp");
-    command_success_from_args([ "rm", "-rf", "/var/run/tachyon/component-action.lock" ]);
-    for (let path in fs.glob("/var/run/tachyon/component-actions/*"))
-        unlink_if_exists(path);
+    unlink_if_exists(COMPONENT_UPDATE_CHECK_TIMESTAMP);
+    command_success_from_args([ "rm", "-rf", COMPONENT_ACTION_LOCK ]);
+    for (let path in fs.glob(COMPONENT_ACTION_DIR + "/*"))
+        if (!component_job_is_running(path))
+            unlink_if_exists(path);
 }
 
 function luci_postinst() {
