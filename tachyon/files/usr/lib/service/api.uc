@@ -1,6 +1,7 @@
 let fs = require("fs");
 let uci_core = require("core.uci");
 let common = require("core.common");
+let constants = require("core.constants");
 
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
 const PAUSE_FILE = "/tmp/tachyon_paused_until";
