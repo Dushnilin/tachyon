@@ -173,13 +173,22 @@ function command_exists(name) {
 }
 
 // curl --dns-servers requires libcurl built with c-ares (not available on all OpenWrt builds).
-// Cache the result once per process lifetime.
+// Fall back to --doh-url https://1.1.1.1/dns-query if --dns-servers is unsupported.
 let _curl_has_dns_servers = null;
+let _curl_has_doh_url = null;
 function curl_push_dns_servers(args) {
     if (_curl_has_dns_servers === null)
         _curl_has_dns_servers = (system("curl --dns-servers 8.8.8.8 -V >/dev/null 2>&1") == 0);
-    if (_curl_has_dns_servers)
+    if (_curl_has_dns_servers) {
         push(args, "--dns-servers", "8.8.8.8,1.1.1.1");
+        return;
+    }
+
+    if (_curl_has_doh_url === null)
+        _curl_has_doh_url = (system("curl --doh-url https://1.1.1.1/dns-query -V >/dev/null 2>&1") == 0);
+    if (_curl_has_doh_url) {
+        push(args, "--doh-url", "https://1.1.1.1/dns-query");
+    }
 }
 
 function now_seconds() {
