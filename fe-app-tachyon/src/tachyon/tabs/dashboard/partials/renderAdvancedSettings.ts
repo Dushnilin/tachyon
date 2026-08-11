@@ -17,6 +17,7 @@ interface AdvancedSettingsState {
   agentApiToken: string;
   enableAiDoctor: boolean;
   aiDoctorProvider: string;
+  aiDoctorModel: string;
   aiDoctorApiKey: string;
   aiDoctorCustomUrl: string;
   aiWatchdog: {
@@ -52,6 +53,7 @@ let _state: AdvancedSettingsState = {
   agentApiToken: '',
   enableAiDoctor: false,
   aiDoctorProvider: 'openai',
+  aiDoctorModel: '',
   aiDoctorApiKey: '',
   aiDoctorCustomUrl: '',
   aiWatchdog: {
@@ -148,6 +150,9 @@ export async function loadAdvancedSettingsState() {
     aiDoctorProvider:
       ((settingsSec as unknown as Record<string, unknown>)
         ?.ai_doctor_provider as string) || 'openai',
+    aiDoctorModel:
+      ((settingsSec as unknown as Record<string, unknown>)
+        ?.ai_doctor_model as string) || '',
     aiDoctorApiKey:
       ((settingsSec as unknown as Record<string, unknown>)
         ?.ai_doctor_api_key as string) || '',
@@ -301,6 +306,10 @@ async function saveAiWatchdogSettings() {
       [
         'set',
         `${TACHYON_UCI_PACKAGE}.settings.ai_doctor_provider=${_state.aiDoctorProvider}`,
+      ],
+      [
+        'set',
+        `${TACHYON_UCI_PACKAGE}.settings.ai_doctor_model=${_state.aiDoctorModel}`,
       ],
       [
         'set',
@@ -752,7 +761,12 @@ function renderAiWatchdogSection(state: AdvancedSettingsState) {
                   class: 'cbi-input-select',
                   onchange: (e: Event) => {
                     const val = (e.target as HTMLSelectElement).value;
-                    _state = { ..._state, aiDoctorProvider: val };
+                    // Reset model when provider changes — defaults differ per provider
+                    _state = {
+                      ..._state,
+                      aiDoctorProvider: val,
+                      aiDoctorModel: '',
+                    };
                     rerender();
                   },
                 },
@@ -791,6 +805,74 @@ function renderAiWatchdogSection(state: AdvancedSettingsState) {
                   ),
                 ],
               ),
+            ]),
+            // ── Model selector ────────────────────────────────────────────────
+            E('div', { class: 'tachyon_adv__row' }, [
+              E('label', { class: 'tachyon_adv__label' }, _('AI Model')),
+              (() => {
+                const MODELS: Record<
+                  string,
+                  { value: string; label: string }[]
+                > = {
+                  openai: [
+                    { value: '', label: 'gpt-4o-mini (default)' },
+                    { value: 'gpt-4o', label: 'gpt-4o' },
+                    { value: 'gpt-4.1-mini', label: 'gpt-4.1-mini' },
+                    { value: 'gpt-4.1', label: 'gpt-4.1' },
+                    { value: 'o4-mini', label: 'o4-mini' },
+                  ],
+                  anthropic: [
+                    { value: '', label: 'claude-3-5-haiku (default)' },
+                    {
+                      value: 'claude-3-5-sonnet-20241022',
+                      label: 'claude-3-5-sonnet',
+                    },
+                    {
+                      value: 'claude-3-7-sonnet-20250219',
+                      label: 'claude-3-7-sonnet',
+                    },
+                  ],
+                  deepseek: [
+                    { value: '', label: 'deepseek-chat (default)' },
+                    { value: 'deepseek-reasoner', label: 'deepseek-reasoner' },
+                  ],
+                };
+                const opts = MODELS[state.aiDoctorProvider];
+                if (opts) {
+                  return E(
+                    'select',
+                    {
+                      class: 'cbi-input-select',
+                      onchange: (e: Event) => {
+                        const val = (e.target as HTMLSelectElement).value;
+                        _state = { ..._state, aiDoctorModel: val };
+                      },
+                    },
+                    opts.map((o) =>
+                      E(
+                        'option',
+                        {
+                          value: o.value,
+                          selected: state.aiDoctorModel === o.value,
+                        },
+                        o.label,
+                      ),
+                    ),
+                  );
+                }
+                // custom provider — free text
+                return E('input', {
+                  type: 'text',
+                  class: 'cbi-input-text',
+                  value: state.aiDoctorModel,
+                  placeholder: 'gpt-4o-mini',
+                  style: 'width: 100%;',
+                  onchange: (e: Event) => {
+                    const val = (e.target as HTMLInputElement).value;
+                    _state = { ..._state, aiDoctorModel: val.trim() };
+                  },
+                });
+              })(),
             ]),
             E('div', { class: 'tachyon_adv__row' }, [
               E('label', { class: 'tachyon_adv__label' }, _('AI API Key')),

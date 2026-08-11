@@ -2770,12 +2770,12 @@ function run_doctor_checks() {
     return { report: join("\n", report) + "\n", issues, fixed };
 }
 
-function query_llm(provider, api_key, custom_url, prompt_text) {
+function query_llm(provider, api_key, custom_url, prompt_text, model_override) {
     provider = lc(trim(as_string(provider)));
 
     if (provider == "anthropic" || provider == "claude") {
         let api_url = "https://api.anthropic.com/v1/messages";
-        let model = "claude-3-5-haiku-20241022";
+        let model = model_override || "claude-3-5-haiku-20241022";
         let payload = {
             model: model,
             max_tokens: 1024,
@@ -2814,11 +2814,11 @@ function query_llm(provider, api_key, custom_url, prompt_text) {
     }
 
     let api_url = "https://api.openai.com/v1/chat/completions";
-    let model = "gpt-4o-mini";
+    let model = model_override || "gpt-4o-mini";
     
     if (provider == "deepseek") {
         api_url = "https://api.deepseek.com/chat/completions";
-        model = "deepseek-chat";
+        model = model_override || "deepseek-chat";
     } else if (provider == "custom" && custom_url != "") {
         api_url = custom_url;
         model = "gpt-4o-mini";
@@ -2974,7 +2974,8 @@ function ai_doctor() {
     let api_key = cfg.ai_doctor_api_key || "";
     let custom_url = cfg.ai_doctor_custom_url || "";
 
-    let ai_res = query_llm(provider, api_key, custom_url, prompt);
+    let model_override = trim(cfg.ai_doctor_model || "");
+    let ai_res = query_llm(provider, api_key, custom_url, prompt, model_override);
     if (!ai_res) {
         print(sprintf("%J\n", {
             success: false,

@@ -1272,6 +1272,20 @@ function createSettingsContent(section, capabilities) {
   o = section.taboption(
     "ai",
     form.Value,
+    "ai_doctor_model",
+    _("AI Model"),
+    _(
+      "Model name to use. Leave empty to use the provider default (gpt-4o-mini / claude-3-5-haiku / deepseek-chat). Examples: gpt-4o, claude-3-5-sonnet-20241022, deepseek-reasoner",
+    ),
+  );
+  o.depends("enable_ai_doctor", "1");
+  o.rmempty = true;
+  o.placeholder = _("(provider default)");
+
+
+  o = section.taboption(
+    "ai",
+    form.Value,
     "ai_doctor_api_key",
     _("AI API Key"),
     _("API Key for OpenAI (sk-...) or DeepSeek"),
