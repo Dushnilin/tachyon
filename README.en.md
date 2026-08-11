@@ -15,97 +15,89 @@
 
 ## ⚡ About Tachyon
 
-**Tachyon** is a direct fork of **[Forkop by @ushan0v](https://github.com/ushan0v/forkop)** (formerly **Podkop Plus**). The project has evolved into an independent, high-performance network routing engine and DPI bypass framework designed specifically for **OpenWrt** (fully supporting **OpenWrt 23.05, 24.10, 25.x, and SNAPSHOT** builds).
+**Tachyon** is an advanced, autonomous network routing, proxy orchestration, and anti-censorship engine designed specifically for **OpenWrt** routers (fully supporting **OpenWrt 23.05, 24.10, 25.x, and SNAPSHOT** builds). Direct fork of **[Forkop by @ushan0v](https://github.com/ushan0v/forkop)** (formerly **Podkop Plus**).
 
-I built upon the solid engineering foundations of the original [Podkop by @itdoginfo](https://github.com/itdoginfo/podkop) and its evolution in [Forkop by @ushan0v](https://github.com/ushan0v/forkop), introducing enterprise-grade resilience, multi-protocol routing, and dynamic system self-healing.
+Tachyon combines the power of **sing-box**, local DPI bypass engines (**Zapret v1 / Zapret v2 / ByeDPI**), an interactive **Telegram bot**, and a cutting-edge **2026 AI Stack** (autonomous **AI Doctor** & **HTTP REST Agent API / OpenAPI 3.0**).
 
-The core backend of Tachyon is written in **ucode** — OpenWrt's native, lightweight scripting language — delivering blazingly fast execution with minimal RAM footprint on embedded hardware.
+The entire backend logic is written in **ucode** — OpenWrt's native, lightweight scripting language — delivering instant response times with minimal RAM footprint (starting from 128 MB RAM devices).
 
 ---
 
-## 🔥 Key Features
+## 🔥 Core Features & Architecture
 
-### 🛡️ Multi-Protocol Proxying & Local DPI Bypass
-* **sing-box Integration**: Native support for modern proxy protocols including **VLESS**, **VMess**, **Shadowsocks**, **Trojan**, and **WireGuard**.
-* **Local DPI Bypass (Zapret v1 / Zapret v2 / ByeDPI)**: 
-  * Full built-in integration with **Zapret v1 (`nfqws`)**, **Zapret v2 (`nfqws2`)**, and **ByeDPI** (`ciadpi`) desync engines for flexible local packet manipulation directly on the router without third-party proxy servers.
+### 🛡️ 1. Multi-Protocol Proxying & Local DPI Bypass
+* **sing-box Engine**: Native support for modern proxy protocols — **VLESS (Reality / gRPC / WS)**, **VMess**, **Shadowsocks**, **Trojan**, and **WireGuard**.
+* **Local DPI Bypass Without External VPS**: 
+  * Full built-in integration with **Zapret v1 (`nfqws`)**, **Zapret v2 (`nfqws2`)**, and **ByeDPI (`ciadpi`)** desync engines for local packet manipulation directly on the router.
 * **Multi-Dimensional Selective Routing**: 
-  * **By Domains, IP Subnets & Ports**: Route only selected target traffic through proxy or DPI desync engines.
-  * **By Client Devices (MAC / IP)**: Per-device routing rules for individual home network clients (Smart TVs, phones, PCs).
-  * **By GeoIP & Countries**: Filter and route traffic based on destination country (GeoIP / GeoSite) with full inclusion/exclusion list controls.
-* **Automated Subscription Updates**: Background fetching and parsing of remote proxy subscription links.
+  * **By Domains & IP Subnets**: Route only target traffic through proxies or desync engines.
+  * **By Client Devices (MAC / IP)**: Per-device routing rules for Smart TVs, smartphones, PCs, and gaming consoles.
+  * **By GeoIP & Countries**: Flexible inclusion/exclusion list controls based on destination country.
+* **Automated Subscription Updates**: Background fetching, parsing, and node rotation from remote subscription URLs.
 
-### 🤖 Interactive Telegram Control Bot
-A feature-rich control center right inside your messenger:
-* **Live Rule Management**: View active routing lists and instantly add new domains or IP subnets on the fly.
-* **Instant Toggle**: Enable or disable routing sections with a single button.
-* **Server Selection & Latency**: Switch active proxy nodes with live RTT ping measurements.
-* **Device Access Control**: View active DHCP clients and block/unblock internet access by MAC address.
-* **Network Diagnostics**: Trigger connection tests directly from Telegram.
+---
 
-### 🤖 AI Doctor & HTTP REST Agent API (2026 AI Stack)
-* **Tachyon AI Doctor (v2)**: Advanced AI diagnostic engine supporting modern LLMs (**OpenAI**, **Anthropic Claude**, **DeepSeek**, and custom OpenAI-compatible servers/OpenRouter/Ollama).
-  * **Contextual Intelligence**: Feeds the LLM real-time service status, Watchdog failure history (OOM events, error streaks), and compressed system logs.
+### 🤖 2. AI Doctor & HTTP REST Agent API (2026 AI Stack)
+* **Tachyon AI Doctor (v2)**: Advanced AI diagnostic engine supporting modern LLMs (**OpenAI**, **Anthropic Claude**, **DeepSeek**, or local models via OpenRouter / Ollama).
+  * **Deep Contextual Intelligence**: Feeds real-time service health, Watchdog failure history (OOM events, error streaks), and compressed system logs into the LLM prompt.
   * **Multi-Fix Execution Chains**: Generates multi-action repair sequences with dedicated UI buttons per fix or a single "Fix All" action.
-  * **13 Built-in Quick Fix Codes**: Automated repairs for sing-box, nftables, dnsmasq, resolv.conf, DNS cache clearing, subscription refreshing, and network restarts.
+  * **13 Built-in Quick Fix Codes**: Automated repairs for sing-box, nftables, dnsmasq, resolv.conf, DNS cache clearing, subscription refreshing, and network stack restarts.
   * **Language Modes**: Configurable diagnosis output language (`ru` / `en`).
 * **🤖 Interactive Telegram Commands (`/ai_doctor` & `/fix`)**:
   * Trigger AI diagnostics directly from Telegram using `/ai_doctor` with interactive Inline Keyboards for instant quick-fix execution.
 * **🌐 HTTP REST Agent API & OpenAPI 3.0 (Swagger)**:
   * Full-featured API at `/cgi-bin/tachyon-agent/` with granular READ/WRITE permission controls secured by a Bearer token (`agent_api_token`).
-  * Native **OpenAPI 3.0.3** spec (`GET /cgi-bin/tachyon-agent/openapi.json`) and OpenAI Function Calling schema (`GET /tools`) for seamless integration with **ChatGPT Custom GPTs**, N8N, Dify, Flowise, and autonomous LLM agents (Cursor, AutoGPT, Claude Code).
+  * Native **OpenAPI 3.0.3** spec (`GET /cgi-bin/tachyon-agent/openapi.json`) for seamless integration with **ChatGPT Custom GPTs**, N8N, Dify, Flowise, and autonomous LLM agents (Cursor, AutoGPT, Claude Code).
 
-### 🩺 System Self-Healing — Tachyon Doctor
-An intelligent local diagnostic and repair engine available via CLI (`tachyon doctor`) or WebUI:
-* Scans all core services (`sing-box`, `zapret`, `zapret2`, `byedpi`, `dnsmasq`, `watchdog`).
-* Validates `nftables` chains and local DNS resolution health.
-* **Auto-Repair**: Automatically rebuilds broken firewall rules and restarts crashed services without requiring a full router reboot.
+---
 
-### ⚡ Reliability, OpenWrt 25+ & Watchdog
-* **OpenWrt 25+ Full Compatibility**: Full support for upcoming release branches and bleeding-edge OpenWrt toolchains.
-* **Seamless Hot-Reload**: Rule updates and server switches apply softly without dropping active TCP connections (Discord calls, VoIP, and downloads remain uninterrupted).
-* **OOM Watchdog & Memory Tuning**: Continuous RAM health monitoring. Dynamically adjusts process limits (`GOMEMLIMIT`) under memory pressure and sends Telegram alerts.
-* **MSS Clamping (MTU Fix)**: Automated resolution of MTU fragmentation and frozen TCP handshakes over tunnel interfaces.
+### 📱 3. Interactive Telegram Control Bot
+A feature-rich control center right inside your messenger:
+* **Live Rule Management**: View active routing lists and instantly add new domains or IP subnets on the fly.
+* **Instant Toggle**: Enable or disable routing sections with a single button.
+* **Server Selection & Latency**: Switch active proxy nodes with live RTT ping measurements.
+* **Device Access Control**: View active DHCP clients and block/unblock internet access by MAC address.
+* **Diagnostics & Commands**: `/doctor`, `/ai_doctor`, `/fix <code_name>`, `/restart`, `/backup`.
 
-#### 🛡️ Watchdog — Protection & Self-Healing System
+---
 
-Watchdog is the heart of Tachyon's stability. It continuously monitors all critical services and automatically recovers from failures without rebooting the router. Version 1.2.57 introduces a comprehensive overhaul of the protection system:
+### 🛡️ 4. Watchdog — Protection & Self-Healing System
+Watchdog is the heart of Tachyon's stability, running every 5–15 seconds without external dependencies:
+* **Atomic Operations & UCI Backups**: Configuration writes via `tmp` + `mv` prevent file corruption during sudden power losses.
+* **Restart-Loop Protection**: Maximum 3 restarts per 10 minutes (`safe_proxy_restart()`), `PROXY_RESTART_LOCK` mutex, and DNS query loop cooldowns.
+* **Memory Optimization (OOM Watchdog)**: Dynamic `GOMEMLIMIT` adjustment under memory pressure with automated Telegram alerts.
+* **Seamless Hot-Reload**: Rule updates and server switches apply softly without dropping active TCP connections (Discord calls, gaming, and downloads remain uninterrupted).
+* **WAN & Gateway Recovery**: Active interface monitoring and automated route recovery during ISP outages.
 
-**Atomic Operations & Data Integrity:**
-* **Atomic UCI Restore**: All configuration changes are written through an intermediate backup — if a write fails, the system restores the previous working state.
-* **Backup Validation**: Before restoring configuration, backups are checked for integrity and validity — corrupted backups are discarded.
-* **Atomic JSON Writes**: sing-box generator, subscription cache, diagnostics, and runtime write configs via `tmp` + `mv`, preventing partial writes on crash.
+---
 
-**Restart-Loop Protection:**
-* **Proxy Cooldown**: Maximum 3 proxy restarts per 10 minutes (`safe_proxy_restart()`). When the limit is exceeded, restarts are suspended and a notification is sent.
-* **Restart Lock**: A `PROXY_RESTART_LOCK` mutex prevents concurrent sing-box restarts from different threads.
-* **DNS Loop Cooldown**: When DNS query loops are detected, automatic switching is suspended for 5 minutes to allow stabilization.
-
-**Data Correctness:**
-* **Empty Section Validation**: Checks for actual data in `domain`, `domain_suffix`, `ip_cidr` sections — empty sections are not written to config.
-* **Correct Config Reading**: Fixed a bug where the `"network"` section was read instead of `CONFIG_NAME`.
-* **nslookup Fix**: BusyBox compatibility — correct `nslookup -type=A` and `-port=53` operation.
-
-**Telegram Bot & Notifications:**
-* **Notification Rate Limiting**: Maximum 10 Telegram notifications per 5 minutes, preventing spam during mass failures.
-* **Atomic Telegram Config Restore**: Bot config is restored via `cp` to tmp then `mv` — preventing corruption on failure.
-* **Persistent Paths**: Backups and staging files stored in `/etc/.tachyon/` — survive between reboots.
-
-**Firewall & nftables:**
-* **Background Reload**: Firewall reload runs in the background (`reload_firewall &`), not blocking the main watchdog thread.
-* **nftables Table Check**: nftables operations only execute after confirming the table exists.
-* **Reload Deduplication**: Eliminated duplicate `reload_firewall` calls from different modules.
-
-**Wan-Monitor & Routing:**
-* **Wan-Monitor Notification Rate Limit**: 60-second cooldown between WAN problem notifications.
-* **Merged Recovery**: Unified function for restoring both WAN and gateway routes — prevents races during parallel recovery.
-* **Orphan Config Cleanup**: Automatic removal of temporary configs left over from interrupted startups.
-
-### 🖥️ Modern Web Interface (LuCI)
+### 🖥️ 5. Modern Web Interface (LuCI - TypeScript)
 * Native integration into OpenWrt's LuCI dashboard.
-* Real-time latency tracking, subscription manager, rule editor, and service controls.
-* **Dynamic Repository Links**: The globe icon in each component card links to the installed variant's repository (extended → `shtorm-7/sing-box-extended`, lx → `Leadaxe/sing-box-lx`, stable → `SagerNet/sing-box`).
-* **Commit-Level Update Tracking**: The updates interface shows "Update available for current release" when a newer commit is available within the same release tag (e.g., 1.2.57).
+* **Interactive Dashboard**: Real-time latency tracking, subscription manager, rule editor, and service controls in a few clicks.
+* **Dynamic Repository Links**: Component cards link directly to the installed variant's GitHub repository (extended, lx, stable).
+* **Commit-Level Update Tracking**: Alerts for newer commits within the same release tag.
+
+---
+
+## 🛠️ CLI & API Quick Reference
+
+```bash
+# === System Diagnostics ===
+tachyon doctor                            # Run local diagnostics without LLM
+tachyon ai_doctor                         # Run AI Doctor analysis (with LLM)
+tachyon ai_doctor_last                    # View last saved AI report
+tachyon apply_quick_fix clear_dns_cache   # Apply specific quick fix code
+tachyon diagnose_json                     # Output full diagnostic JSON
+
+# === Service Management & Watchdog ===
+tachyon ai_heal                           # Trigger manual self-healing cycle
+tachyon ai_status                         # View concise Watchdog status
+tachyon ai_status_full                    # View full Watchdog metrics
+
+# === HTTP REST API Checks ===
+curl http://192.168.1.1/cgi-bin/tachyon-agent/health
+curl http://192.168.1.1/cgi-bin/tachyon-agent/openapi.json
+```
 
 ---
 
@@ -118,7 +110,7 @@ sh <(wget -O - https://raw.githubusercontent.com/Dushnilin/tachyon/main/install.
 ```
 
 > [!NOTE]
-> **Automatic Migration:** Existing configurations from **Forkop**, **Podkop Plus**, or original **Podkop** are fully compatible. The installer will automatically migrate your settings to `/etc/config/tachyon`.
+> **Automatic Migration:** Existing configurations from **Forkop**, **Podkop Plus**, or original **Podkop** are fully compatible. The installer will automatically migrate your settings to `/etc/config/tachyon` without data loss.
 
 ---
 
@@ -136,7 +128,7 @@ Tachyon stands on the shoulders of incredible open-source projects:
 
 ## 💖 Support & Donations
 
-If Tachyon powers your daily networking and helps keep your connection fast and secure, consider supporting ongoing development! ☕ 🧀 🌭
+If Tachyon powers your daily networking and keeps your connection fast and secure, consider supporting ongoing development! ☕ 🧀 🌭
 
 💳 **Credit Cards / SBP / Tinkoff Pay:**  
 👉 [**Support the project via CloudTips**](https://pay.cloudtips.ru/p/48c57581)
