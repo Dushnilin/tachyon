@@ -43,8 +43,20 @@ A feature-rich control center right inside your messenger:
 * **Device Access Control**: View active DHCP clients and block/unblock internet access by MAC address.
 * **Network Diagnostics**: Trigger connection tests directly from Telegram.
 
+### 🤖 AI Doctor & HTTP REST Agent API (2026 AI Stack)
+* **Tachyon AI Doctor (v2)**: Advanced AI diagnostic engine supporting modern LLMs (**OpenAI**, **Anthropic Claude**, **DeepSeek**, and custom OpenAI-compatible servers/OpenRouter/Ollama).
+  * **Contextual Intelligence**: Feeds the LLM real-time service status, Watchdog failure history (OOM events, error streaks), and compressed system logs.
+  * **Multi-Fix Execution Chains**: Generates multi-action repair sequences with dedicated UI buttons per fix or a single "Fix All" action.
+  * **13 Built-in Quick Fix Codes**: Automated repairs for sing-box, nftables, dnsmasq, resolv.conf, DNS cache clearing, subscription refreshing, and network restarts.
+  * **Language Modes**: Configurable diagnosis output language (`ru` / `en`).
+* **🤖 Interactive Telegram Commands (`/ai_doctor` & `/fix`)**:
+  * Trigger AI diagnostics directly from Telegram using `/ai_doctor` with interactive Inline Keyboards for instant quick-fix execution.
+* **🌐 HTTP REST Agent API & OpenAPI 3.0 (Swagger)**:
+  * Full-featured API at `/cgi-bin/tachyon-agent/` with granular READ/WRITE permission controls secured by a Bearer token (`agent_api_token`).
+  * Native **OpenAPI 3.0.3** spec (`GET /cgi-bin/tachyon-agent/openapi.json`) and OpenAI Function Calling schema (`GET /tools`) for seamless integration with **ChatGPT Custom GPTs**, N8N, Dify, Flowise, and autonomous LLM agents (Cursor, AutoGPT, Claude Code).
+
 ### 🩺 System Self-Healing — Tachyon Doctor
-An intelligent diagnostic and repair engine available via CLI (`tachyon doctor`) or WebUI:
+An intelligent local diagnostic and repair engine available via CLI (`tachyon doctor`) or WebUI:
 * Scans all core services (`sing-box`, `zapret`, `zapret2`, `byedpi`, `dnsmasq`, `watchdog`).
 * Validates `nftables` chains and local DNS resolution health.
 * **Auto-Repair**: Automatically rebuilds broken firewall rules and restarts crashed services without requiring a full router reboot.

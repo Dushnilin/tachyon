@@ -2941,6 +2941,43 @@ function diagnose_json() {
     return 0;
 }
 
+function compress_log_snippet(raw_snippet) {
+    if (!raw_snippet || raw_snippet == "") return "No recent system errors logged.";
+    let lines = split(raw_snippet, "\n");
+    let compressed = [];
+    let prev_line = "";
+    let repeat_cnt = 1;
+
+    for (let i = 0; i < length(lines); i++) {
+        let line = trim(as_string(lines[i]));
+        if (line == "") continue;
+        let normalized = replace(line, /^[A-Z][a-z]{2}\s+\d+\s+\d+:\d+:\d+\s+[^\s]+\s+/, "");
+        normalized = replace(normalized, /^\d{4}-\d{2}-\d{2}\s+\d+:\d+:\d+\s+/, "");
+
+        if (normalized == prev_line) {
+            repeat_cnt++;
+        } else {
+            if (prev_line != "") {
+                if (repeat_cnt > 1) {
+                    push(compressed, sprintf("%s [repeated %dx]", lines[i-1], repeat_cnt));
+                } else {
+                    push(compressed, lines[i-1]);
+                }
+            }
+            prev_line = normalized;
+            repeat_cnt = 1;
+        }
+    }
+    if (prev_line != "" && length(lines) > 0) {
+        if (repeat_cnt > 1) {
+            push(compressed, sprintf("%s [repeated %dx]", lines[length(lines)-1], repeat_cnt));
+        } else {
+            push(compressed, lines[length(lines)-1]);
+        }
+    }
+    return join("\n", compressed);
+}
+
 function apply_quick_fix(codes_str) {
     if (!codes_str || codes_str == "") {
         print(sprintf("%J\n", { success: false, error: "No fix code provided" }));
@@ -3083,7 +3120,8 @@ function ai_doctor() {
         }
     }
 
-    let log_snippet = trim(command_output("logread | grep -iE 'tachyon|sing-box|dnsmasq|oom|error|fatal' | tail -n 15 2>/dev/null")) || "No recent system errors logged.";
+    let raw_log_snippet = trim(command_output("logread | grep -iE 'tachyon|sing-box|dnsmasq|oom|error|fatal' | tail -n 25 2>/dev/null")) || "No recent system errors logged.";
+    let log_snippet = compress_log_snippet(raw_log_snippet);
 
     let sys_context = sprintf(
         "Tachyon Doctor Report:\n%s\n\n" +
@@ -3098,27 +3136,53 @@ function ai_doctor() {
         watchdog_info, log_snippet
     );
 
-    let prompt = sprintf(
-        "Вы — ИИ-ассистент \"Tachyon AI Doctor\" для сервиса обхода блокировок на OpenWrt.\n" +
-        "Проанализируйте диагностический отчет и логи ниже.\n\n%s\n\n" +
-        "Сформулируйте краткий диагноз (на русском, максимум 3-4 пункта).\n" +
-        "Если авто-исправление возможно, укажите в самом конце ответа строчку:\n" +
-        "FIX: код1, код2\n\n" +
-        "Доступные коды быстрого исправления:\n" +
-        "- start_singbox (sing-box упал или остановлен)\n" +
-        "- rebuild_rules (nftables или ip rule правила нарушены)\n" +
-        "- fix_dnsmasq (конфиг или сервис dnsmasq не отвечает)\n" +
-        "- fix_resolv_symlink (resolv.conf повреждён)\n" +
-        "- start_watchdog (watchdog остановлен)\n" +
-        "- restart_singbox_dns (sing-box DNS не отвечает)\n" +
-        "- fix_uci_config (конфиг Tachyon повреждён)\n" +
-        "- fix_wan_interface (WAN интерфейс не работает)\n" +
-        "- fix_gateway (шлюз отсутствует)\n" +
-        "- clear_dns_cache (очистить кэш DNS и перезапустить dnsmasq)\n" +
-        "- update_subscriptions (принудительно обновить прокси подписки)\n" +
-        "- reset_firewall (перезапустить файрвол роутера)\n" +
-        "- restart_network (перезапустить сетевой стек)\n\n" +
-        "Если авто-исправление не применимо, не пишите тег FIX.", sys_context);
+    let lang = lc(trim(cfg.ai_doctor_lang || "ru"));
+    let prompt = "";
+    if (lang == "en") {
+        prompt = sprintf(
+            "You are \"Tachyon AI Doctor\", an AI assistant for anti-censorship and proxy services on OpenWrt.\n" +
+            "Analyze the diagnostic report and system logs below.\n\n%s\n\n" +
+            "Formulate a concise diagnosis (in English, max 3-4 bullet points).\n" +
+            "If automatic quick fix is possible, include at the very end of your response:\n" +
+            "FIX: code1, code2\n\n" +
+            "Available quick fix codes:\n" +
+            "- start_singbox (sing-box process is stopped or missing)\n" +
+            "- rebuild_rules (nftables or ip rules damaged)\n" +
+            "- fix_dnsmasq (dnsmasq service not responding)\n" +
+            "- fix_resolv_symlink (resolv.conf symlink broken)\n" +
+            "- start_watchdog (watchdog daemon stopped)\n" +
+            "- restart_singbox_dns (sing-box DNS failed)\n" +
+            "- fix_uci_config (Tachyon UCI config corrupted)\n" +
+            "- fix_wan_interface (WAN interface down)\n" +
+            "- fix_gateway (default gateway missing)\n" +
+            "- clear_dns_cache (clear DNS cache & restart dnsmasq)\n" +
+            "- update_subscriptions (force update proxy subscriptions)\n" +
+            "- reset_firewall (restart router firewall)\n" +
+            "- restart_network (restart network service)\n\n" +
+            "If no quick fix applies, do NOT output any FIX tag.", sys_context);
+    } else {
+        prompt = sprintf(
+            "Вы — ИИ-ассистент \"Tachyon AI Doctor\" для сервиса обхода блокировок на OpenWrt.\n" +
+            "Проанализируйте диагностический отчет и логи ниже.\n\n%s\n\n" +
+            "Сформулируйте краткий диагноз (на русском, максимум 3-4 пункта).\n" +
+            "Если авто-исправление возможно, укажите в самом конце ответа строчку:\n" +
+            "FIX: код1, код2\n\n" +
+            "Доступные коды быстрого исправления:\n" +
+            "- start_singbox (sing-box упал или остановлен)\n" +
+            "- rebuild_rules (nftables или ip rule правила нарушены)\n" +
+            "- fix_dnsmasq (конфиг или сервис dnsmasq не отвечает)\n" +
+            "- fix_resolv_symlink (resolv.conf повреждён)\n" +
+            "- start_watchdog (watchdog остановлен)\n" +
+            "- restart_singbox_dns (sing-box DNS не отвечает)\n" +
+            "- fix_uci_config (конфиг Tachyon повреждён)\n" +
+            "- fix_wan_interface (WAN интерфейс не работает)\n" +
+            "- fix_gateway (шлюз отсутствует)\n" +
+            "- clear_dns_cache (очистить кэш DNS и перезапустить dnsmasq)\n" +
+            "- update_subscriptions (принудительно обновить прокси подписки)\n" +
+            "- reset_firewall (перезапустить файрвол роутера)\n" +
+            "- restart_network (перезапустить сетевой стек)\n\n" +
+            "Если авто-исправление не применимо, не пишите тег FIX.", sys_context);
+    }
 
     let provider = cfg.ai_doctor_provider || "openai";
     let api_key = cfg.ai_doctor_api_key || "";

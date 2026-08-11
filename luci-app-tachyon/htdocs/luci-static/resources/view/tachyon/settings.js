@@ -1282,6 +1282,18 @@ function createSettingsContent(section, capabilities) {
   o.rmempty = true;
   o.placeholder = _("(provider default)");
 
+  o = section.taboption(
+    "ai",
+    form.ListValue,
+    "ai_doctor_lang",
+    _("AI Doctor Language"),
+    _("Language for AI Doctor diagnosis responses"),
+  );
+  o.depends("enable_ai_doctor", "1");
+  o.value("ru", "Русский (Russian)");
+  o.value("en", "English");
+  o.default = "ru";
+
 
   o = section.taboption(
     "ai",

@@ -18,6 +18,7 @@ interface AdvancedSettingsState {
   enableAiDoctor: boolean;
   aiDoctorProvider: string;
   aiDoctorModel: string;
+  aiDoctorLang: string;
   aiDoctorApiKey: string;
   aiDoctorCustomUrl: string;
   aiWatchdog: {
@@ -54,6 +55,7 @@ let _state: AdvancedSettingsState = {
   enableAiDoctor: false,
   aiDoctorProvider: 'openai',
   aiDoctorModel: '',
+  aiDoctorLang: 'ru',
   aiDoctorApiKey: '',
   aiDoctorCustomUrl: '',
   aiWatchdog: {
@@ -153,6 +155,9 @@ export async function loadAdvancedSettingsState() {
     aiDoctorModel:
       ((settingsSec as unknown as Record<string, unknown>)
         ?.ai_doctor_model as string) || '',
+    aiDoctorLang:
+      ((settingsSec as unknown as Record<string, unknown>)
+        ?.ai_doctor_lang as string) || 'ru',
     aiDoctorApiKey:
       ((settingsSec as unknown as Record<string, unknown>)
         ?.ai_doctor_api_key as string) || '',
@@ -310,6 +315,10 @@ async function saveAiWatchdogSettings() {
       [
         'set',
         `${TACHYON_UCI_PACKAGE}.settings.ai_doctor_model=${_state.aiDoctorModel}`,
+      ],
+      [
+        'set',
+        `${TACHYON_UCI_PACKAGE}.settings.ai_doctor_lang=${_state.aiDoctorLang}`,
       ],
       [
         'set',
@@ -825,6 +834,42 @@ function renderAiWatchdogSection(state: AdvancedSettingsState) {
                   _state = { ..._state, aiDoctorModel: val.trim() };
                 },
               }),
+            ]),
+            E('div', { class: 'tachyon_adv__row' }, [
+              E(
+                'label',
+                { class: 'tachyon_adv__label' },
+                _('AI Doctor Language'),
+              ),
+              E(
+                'select',
+                {
+                  class: 'cbi-input-select',
+                  onchange: (e: Event) => {
+                    const val = (e.target as HTMLSelectElement).value;
+                    _state = { ..._state, aiDoctorLang: val };
+                    rerender();
+                  },
+                },
+                [
+                  E(
+                    'option',
+                    {
+                      value: 'ru',
+                      selected: state.aiDoctorLang === 'ru',
+                    },
+                    'Русский (Russian)',
+                  ),
+                  E(
+                    'option',
+                    {
+                      value: 'en',
+                      selected: state.aiDoctorLang === 'en',
+                    },
+                    'English',
+                  ),
+                ],
+              ),
             ]),
             E('div', { class: 'tachyon_adv__row' }, [
               E('label', { class: 'tachyon_adv__label' }, _('AI API Key')),

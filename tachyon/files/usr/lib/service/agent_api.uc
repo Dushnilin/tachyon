@@ -446,6 +446,165 @@ function handle_domain_add(body) {
     ok({ message: "Domain '" + domain + "' added to section '" + section + "'" });
 }
 
+function handle_openapi() {
+    let spec = {
+        openapi: "3.0.3",
+        info: {
+            title: "Tachyon Router AI Agent API",
+            description: "OpenAPI 3.0 REST API for managing Tachyon anti-censorship orchestration & AI Doctor on OpenWrt routers. Supports ChatGPT Custom GPTs, N8N, Dify, and LLM Agents.",
+            version: "1.0.0"
+        },
+        servers: [
+            {
+                url: "/cgi-bin/tachyon-agent",
+                description: "Tachyon Router Agent API Gateway"
+            }
+        ],
+        paths: {
+            "/health": {
+                get: {
+                    summary: "System health check",
+                    operationId: "getHealth",
+                    responses: { "200": { description: "Health status" } }
+                }
+            },
+            "/snapshot": {
+                get: {
+                    summary: "Full system state snapshot for LLM context",
+                    operationId: "getSnapshot",
+                    responses: { "200": { description: "Complete system snapshot" } }
+                }
+            },
+            "/diagnose": {
+                get: {
+                    summary: "Run system diagnostics and auto-repair",
+                    operationId: "getDiagnose",
+                    responses: { "200": { description: "Diagnostic report" } }
+                }
+            },
+            "/logs": {
+                get: {
+                    summary: "Get recent system log entries",
+                    operationId: "getLogs",
+                    responses: { "200": { description: "System log lines" } }
+                }
+            },
+            "/config": {
+                get: {
+                    summary: "Get UCI configuration (secrets masked)",
+                    operationId: "getConfig",
+                    responses: { "200": { description: "UCI settings" } }
+                }
+            },
+            "/tools": {
+                get: {
+                    summary: "Get tool definitions in OpenAI Function Calling format",
+                    operationId: "getTools",
+                    responses: { "200": { description: "Tool schemas" } }
+                }
+            },
+            "/ai-doctor/last": {
+                get: {
+                    summary: "Get last AI Doctor diagnosis report",
+                    operationId: "getAiDoctorLast",
+                    responses: { "200": { description: "AI Doctor history report" } }
+                }
+            },
+            "/heal": {
+                post: {
+                    summary: "Trigger autonomous repair cycle",
+                    operationId: "postHeal",
+                    security: [{ BearerAuth: [] }],
+                    responses: { "200": { description: "Repair initiated" } }
+                }
+            },
+            "/ai-doctor/fix": {
+                post: {
+                    summary: "Apply AI Doctor quick fix codes",
+                    operationId: "postAiDoctorFix",
+                    security: [{ BearerAuth: [] }],
+                    requestBody: {
+                        required: true,
+                        content: {
+                            "application/json": {
+                                schema: {
+                                    type: "object",
+                                    properties: {
+                                        fix: { type: "string", example: "clear_dns_cache,start_singbox" }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    responses: { "200": { description: "Quick fix results" } }
+                }
+            },
+            "/restart": {
+                post: {
+                    summary: "Restart system service",
+                    operationId: "postRestart",
+                    security: [{ BearerAuth: [] }],
+                    requestBody: {
+                        required: true,
+                        content: {
+                            "application/json": {
+                                schema: {
+                                    type: "object",
+                                    properties: {
+                                        service: { type: "string", enum: ["singbox", "tachyon", "dnsmasq", "watchdog"] }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    responses: { "200": { description: "Restart outcome" } }
+                }
+            },
+            "/reload": {
+                post: {
+                    summary: "Reload firewall rules & configs",
+                    operationId: "postReload",
+                    security: [{ BearerAuth: [] }],
+                    responses: { "200": { description: "Reload status" } }
+                }
+            },
+            "/config/set": {
+                post: {
+                    summary: "Set UCI configuration option",
+                    operationId: "postConfigSet",
+                    security: [{ BearerAuth: [] }],
+                    requestBody: {
+                        required: true,
+                        content: {
+                            "application/json": {
+                                schema: {
+                                    type: "object",
+                                    properties: {
+                                        section: { type: "string" },
+                                        option: { type: "string" },
+                                        value: { type: "string" }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    responses: { "200": { description: "UCI update result" } }
+                }
+            }
+        },
+        components: {
+            securitySchemes: {
+                BearerAuth: {
+                    type: "http",
+                    scheme: "bearer",
+                    bearerFormat: "Secret Token"
+                }
+            }
+        }
+    };
+    write_json(spec);
+}
+
 function handle_ai_doctor_last() {
     let raw = fs.readfile("/tmp/ai_doctor_last.json");
     if (!raw) {
@@ -504,6 +663,8 @@ if (method == "GET") {
         handle_tools();
     else if (route == "/ai-doctor/last" || route == "/ai-doctor/last/")
         handle_ai_doctor_last();
+    else if (route == "/openapi.json" || route == "/openapi.json/")
+        handle_openapi();
     else
         err("Unknown endpoint: GET " + route, 404);
 } else if (method == "POST") {
