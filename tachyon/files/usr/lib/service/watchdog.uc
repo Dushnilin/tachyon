@@ -1047,13 +1047,13 @@ function ai_heal_dns_loop() {
     if (detour_section == "") return;
 
     // Check if DNS is working
-    if (is_dns_working()) {
+    if (controller.is_dns_working()) {
         // DNS works — if we were in recovery, try to restore
         let recovery = read_dns_recovery_state();
         if (recovery.phase == "detour_disabled") {
             let reenable_cooldown = recovery.ts ? (now - int(recovery.ts)) : 0;
             if (reenable_cooldown < 300) return;
-            let test_dns = is_dns_working();
+            let test_dns = controller.is_dns_working();
             if (test_dns) {
                 log_message("DNS loop recovery: DNS works, re-enabling DNS detour section", "info");
                 system("/sbin/uci set tachyon.settings.dns_detour_enabled='1' >/dev/null 2>&1");
