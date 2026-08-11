@@ -2244,7 +2244,7 @@ function check_tachyon() {
         let tsv = trim(helper_output_input(release_json, "release-metadata-tsv", []));
         if (tsv != "") {
             let fields = split(tsv, "\t");
-            latest_version = length(fields) > 0 && as_string(fields[0]) != "" ? as_string(fields[0]) : "unknown";
+            latest_version = length(fields) > 0 && as_string(fields[0]) != "" ? replace(as_string(fields[0]), /^[vV]/, "") : "unknown";
             release_url = length(fields) > 1 ? as_string(fields[1]) : "";
         }
     }
@@ -2252,7 +2252,7 @@ function check_tachyon() {
     if (latest_version == "unknown") {
         metadata = fetch_tachyon_latest_release_metadata();
         let fields = split(metadata, "\t");
-        latest_version = length(fields) > 0 && as_string(fields[0]) != "" ? as_string(fields[0]) : "unknown";
+        latest_version = length(fields) > 0 && as_string(fields[0]) != "" ? replace(as_string(fields[0]), /^[vV]/, "") : "unknown";
         release_url = length(fields) > 1 ? as_string(fields[1]) : "";
     }
 

@@ -263,7 +263,9 @@ function tachyon_release_plan(latest_version, asset_ext, i18n_required) {
 
 function release_metadata_tsv() {
     let release = object_or_empty(read_stdin_json());
-    let tag = as_string(release.tag_name || "");
+    let tag = trim(as_string(release.tag_name || ""));
+    if (substr(tag, 0, 1) == "v" || substr(tag, 0, 1) == "V")
+        tag = substr(tag, 1);
 
     if (tag == "")
         return;
@@ -507,8 +509,7 @@ function tachyon_normalized_release_version(value) {
 }
 
 function tachyon_release_version_valid(value) {
-    value = tachyon_normalized_release_version(value);
-    return match(value, /^[0-9]+[.][0-9]+[.][0-9]+$/) != null;
+    return match(as_string(value), /^[0-9]+[.][0-9]+[.][0-9]+$/) != null;
 }
 
 function tachyon_release_version_parts(value) {
