@@ -923,9 +923,6 @@ function stop_main() {
     if (module_success(NFT_UC, [ "tproxy-route6-present", RT_TABLE_NAME ]))
         command_success_from_args([ "ip", "-6", "route", "flush", "table", RT_TABLE_NAME ]);
 
-    let cache_path = uci_core.get(CONFIG_NAME + ".settings.cache_path") || "/tmp/sing-box/cache.db";
-    remove_file(cache_path);
-
     let sing_box_status = command_status_from_args([ "/etc/init.d/sing-box", "stop" ]);
     command_success_from_args([ "killall", "-q", "-9", "sing-box" ]);
     if (sing_box_status != 0)

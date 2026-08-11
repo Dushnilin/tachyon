@@ -394,6 +394,10 @@ function base_config(settings, service_address, runtime_context) {
     let rewrite_ttl = int_option(settings, "dns_rewrite_ttl", "60");
     let turbo_cache = bool_option(settings, "dns_turbo_cache", false);
     let cache_path = option(settings, "cache_path", turbo_cache ? "/etc/sing-box/cache.db" : "/tmp/sing-box/cache.db");
+    let cache_dir = replace(cache_path, /\/[^\/]+$/, "");
+    if (cache_dir != "" && cache_dir != cache_path) {
+        try { fs.mkdir(cache_dir, 0755); } catch(e) {}
+    }
     let dns_config = runtime_dns.config(settings);
     if (dns_config.unsupported)
         runtime_generate_unsupported(dns_config.unsupported);

@@ -773,10 +773,9 @@ function heal_proxy_connectivity(ev) {
     let incident = {
         type: "proxy",
         description: "Зависание или неполный отклик прокси-порту sing-box (" + proxy_addr + ")",
-        resolution: "Очищена база cache.db и выполнен перезапуск sing-box"
+        resolution: "Выполнен перезапуск sing-box"
     };
 
-    remove_file("/tmp/sing-box/cache.db");
     // Reporting used to happen here, before the restart, so a rate-limited
     // attempt still announced a repair that never ran.
     if (!safe_proxy_restart("proxy_connectivity")) {
