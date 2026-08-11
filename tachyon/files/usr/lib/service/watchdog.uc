@@ -374,12 +374,6 @@ let last_fast_check = 0;
 let last_normal_check = 0;
 let last_slow_check = 0;
 
-// Observation state lives in the controller; these read through to it so the
-// status and metrics contracts keep reporting exactly the same numbers.
-function proxy_consecutive_fails() { return controller.proxy_consecutive_fails(); }
-function dns_consecutive_fails() { return controller.dns_consecutive_fails(); }
-function proxy_latency_history() { return controller.proxy_latency_history(); }
-function dns_latency_history() { return controller.dns_latency_history(); }
 
 
 // ─── Root-cause suppression ───────────────────────────────────────────────────
@@ -407,38 +401,26 @@ const PRIORITY_SINGBOX = 20;
 const PRIORITY_PROXY   = 40;
 const PRIORITY_DNS     = 50;
 
-// priority of the healing root cause → when the claim lapses.
-let active_root_causes = {};
-
-function claim_root_cause(priority) {
-    active_root_causes[as_string(priority)] = time() + SUPPRESSION_DEADLINE;
-}
-
-function release_root_cause(priority) {
-    delete active_root_causes[as_string(priority)];
-}
-
-// Returns the priority of an active cause outranking `priority`, or null.
-function suppressing_cause(priority) {
-    let now = time();
-    for (let key in keys(active_root_causes)) {
-        if (active_root_causes[key] <= now) {
-            delete active_root_causes[key];   // lapsed; never suppress on it again
-            continue;
-        }
-        if (int(key) < int(priority)) return int(key);
-    }
-    return null;
-}
+// Two deadline vars replace the general registry: only WAN (priority 10) and
+// sing-box (priority 20) are ever claimed; proxy (40) and DNS (50) healers only
+// need to know if either is active. A named pair is clearer than a keyed object
+// with a runtime keys() iteration and has the same effect.
+let wan_repair_until = 0;
+let singbox_repair_until = 0;
 
 // A skip is logged, never silent: "the watchdog did nothing" and "the watchdog
 // deliberately stood down" look identical in a log that omits this.
-function suppressed_by_root_cause(healer, priority) {
-    let cause = suppressing_cause(priority);
-    if (cause == null) return false;
-    log_message(sprintf("%s: standing down, a higher-priority repair (%d) is in progress",
-        healer, cause), "info");
-    return true;
+function suppressed_by_root_cause(healer) {
+    let now = time();
+    if (wan_repair_until > now) {
+        log_message(sprintf("%s: standing down, WAN repair is in progress", healer), "info");
+        return true;
+    }
+    if (singbox_repair_until > now) {
+        log_message(sprintf("%s: standing down, sing-box restart is in progress", healer), "info");
+        return true;
+    }
+    return false;
 }
 
 // ─── Escalation ladder ────────────────────────────────────────────────────────
@@ -496,9 +478,8 @@ const RECOVERY_DEADLINE = 45;
 
 // `reason` ties the watch back to the escalation ladder: settling decides
 // whether that reason's next attempt stays light or goes heavy.
-function watch_recovery(key, recovery_event, incident, reason) {
+function watch_recovery(key, incident, reason) {
     recovery_watches[key] = {
-        event: recovery_event,
         incident: incident,
         reason: reason,
         deadline: time() + RECOVERY_DEADLINE
@@ -537,8 +518,8 @@ function heal_singbox_stopped(ev) {
     if (safe_proxy_restart("singbox_stopped", ESCALATION_LIGHT)) {
         // sing-box coming back is what the proxy and DNS probes are measuring,
         // so their failures during the restart are this repair's own doing.
-        claim_root_cause(PRIORITY_SINGBOX);
-        watch_recovery("proxy", EV.PROXY_UP, {
+        singbox_repair_until = time() + SUPPRESSION_DEADLINE;
+        watch_recovery("proxy", {
             type: "singbox_stopped",
             description: "sing-box остановлен (" + as_string(ev.payload.reason || "health check") + ")",
             resolution: "Выполнен перезапуск служб Tachyon"
@@ -546,9 +527,6 @@ function heal_singbox_stopped(ev) {
     }
 }
 
-function get_sing_box_pid() {
-    return controller.get_sing_box_pid();
-}
 
 // ─── AI Watchdog Self-Healing Matrix ──────────────────────────────────────────
 let ai_incidents_count = 0;
@@ -647,7 +625,7 @@ function settle_expired_recoveries() {
 function note_proxy_recovered(ev) {
     // A working proxy means sing-box is back, so its claim is over regardless of
     // whether a watch was open.
-    release_root_cause(PRIORITY_SINGBOX);
+    singbox_repair_until = 0;
     settle_recovery("proxy", "fixed");
 }
 
@@ -750,17 +728,13 @@ function heal_qos(ev) {
     safe_reload_firewall();
 }
 
-function is_dns_working() {
-    return controller.is_dns_working();
-}
-
 // Threshold 3 is the original ai_heal_dns() streak: two isolated failures are
 // noise, three in a row is a stall. The streak reset after acting prevents the
 // in-flight restart from tripping the same threshold on the next tick.
 function heal_dns_stall(ev) {
     if (settings().recovery_bypass == "1") return;
     if (int(ev.payload.streak) < 3) return;
-    if (suppressed_by_root_cause("heal_dns_stall", PRIORITY_DNS)) return;
+    if (suppressed_by_root_cause("heal_dns_stall")) return;
 
     controller.reset_dns_streak();
 
@@ -779,7 +753,7 @@ function heal_dns_stall(ev) {
             "Перезапуск не выполнен: лимит частоты или активная блокировка", "skipped");
         return;
     }
-    watch_recovery("dns", EV.DNS_UP, incident, "dns_stalled");
+    watch_recovery("dns", incident, "dns_stalled");
 }
 
 // Only a proxy that fails while the uplink itself works is worth restarting
@@ -793,7 +767,7 @@ function heal_proxy_connectivity(ev) {
     // restart sing-box. The heal_proxy_health subscriber handles single-failure
     // recovery via the threshold it already carries.
     if (int(ev.payload.streak) < 2) return;
-    if (suppressed_by_root_cause("heal_proxy_connectivity", PRIORITY_PROXY)) return;
+    if (suppressed_by_root_cause("heal_proxy_connectivity")) return;
 
     let proxy_addr = "127.0.0.1:" + as_string(ev.payload.port);
     let incident = {
@@ -810,7 +784,7 @@ function heal_proxy_connectivity(ev) {
             "Очищена база cache.db; перезапуск пропущен по лимиту частоты", "skipped");
         return;
     }
-    watch_recovery("proxy", EV.PROXY_UP, incident, "proxy_connectivity");
+    watch_recovery("proxy", incident, "proxy_connectivity");
 }
 
 // ─── Subnet cache restore: /etc/tachyon/rulesets/ → /tmp/sing-box/rulesets/ ──
@@ -887,7 +861,7 @@ function heal_wan_and_gateway(ev) {
     // Claimed before the interface goes down, not after: ifdown itself is what
     // makes the proxy and DNS probes fail, and those facts arrive while ifup is
     // still running.
-    claim_root_cause(PRIORITY_WAN);
+    wan_repair_until = time() + SUPPRESSION_DEADLINE;
     bg_system("/sbin/ifdown wan >/dev/null 2>&1 && /sbin/ifup wan >/dev/null 2>&1");
 }
 
@@ -895,7 +869,7 @@ function heal_wan_and_gateway(ev) {
 // this on every pass, so the claim is released at the first healthy tick rather
 // than waiting out SUPPRESSION_DEADLINE.
 function note_wan_recovered(ev) {
-    release_root_cause(PRIORITY_WAN);
+    wan_repair_until = 0;
 }
 
 function heal_subscriptions(ev) {
@@ -929,19 +903,10 @@ function heal_uci_config(ev) {
     }
 }
 
-// ─── AI Settings helpers ──────────────────────────────────────────────────────
-function ai_setting(key, default_val) {
-    let cfg = settings();
-    let val = cfg[key];
-    return val != null ? as_string(val) : as_string(default_val);
-}
-function ai_enabled(key, default_val) {
-    return ai_setting(key, default_val) == "1";
-}
 
 // ─── Config validation: sing-box check ────────────────────────────────────────
 function validate_singbox_config() {
-    if (!ai_enabled("ai_config_validation_enabled", "1")) return true;
+    if (settings().ai_config_validation_enabled == "0") return true;
     return command_success_from_args(["sing-box", "check", "-c", "/etc/sing-box/config.json"]);
 }
 
@@ -950,12 +915,12 @@ function validate_singbox_config() {
 // single failure with a working uplink, this one waits for a configurable run
 // of failures and validates the sing-box config before restarting.
 function heal_proxy_health(ev) {
-    if (!ai_enabled("ai_proxy_health_enabled", "1")) return;
+    if (settings().ai_proxy_health_enabled == "0") return;
 
-    let threshold = int(ai_setting("ai_proxy_health_fail_threshold", "3"));
+    let threshold = int(settings().ai_proxy_health_fail_threshold || "3");
     let fails = int(ev.payload.streak);
     if (fails < threshold) return;
-    if (suppressed_by_root_cause("heal_proxy_health", PRIORITY_PROXY)) return;
+    if (suppressed_by_root_cause("heal_proxy_health")) return;
 
     let incident = {
         type: "proxy_health",
@@ -966,7 +931,7 @@ function heal_proxy_health(ev) {
     // A restart on a config sing-box will refuse to load leaves the proxy down
     // for good, so validation gates the restart. It now also gates the report:
     // a refused restart is not a repair.
-    if (ai_enabled("ai_config_validation_enabled", "1") && !validate_singbox_config()) {
+    if (settings().ai_config_validation_enabled != "0" && !validate_singbox_config()) {
         log_message("sing-box config validation failed before proxy restart", "err");
         ai_heal_report(incident.type, incident.description,
             "Перезапуск отменён: конфигурация sing-box не проходит валидацию", "skipped");
@@ -978,16 +943,16 @@ function heal_proxy_health(ev) {
         return;
     }
     controller.reset_proxy_consecutive();
-    watch_recovery("proxy", EV.PROXY_UP, incident, "proxy_health");
+    watch_recovery("proxy", incident, "proxy_health");
 }
 
 // ─── DNS Continuous Check ─────────────────────────────────────────────────────
 // The second DNS subscriber: restores dnsmasq's own configuration rather than
 // restarting the proxy, so it is complementary to heal_dns_stall().
 function heal_dns_continuous(ev) {
-    if (!ai_enabled("ai_dns_continuous_enabled", "1")) return;
+    if (settings().ai_dns_continuous_enabled == "0") return;
     if (int(ev.payload.consecutive) < 3) return;
-    if (suppressed_by_root_cause("heal_dns_continuous", PRIORITY_DNS)) return;
+    if (suppressed_by_root_cause("heal_dns_continuous")) return;
 
     // This repair only ever sets noresolv to the one value it wants, so on the
     // second and later failures it rewrote a setting that already held that
@@ -1070,7 +1035,7 @@ function remove_dns_recovery_state() {
 // whether to re-enable the detour), so acting on a fact observed earlier in the
 // tick could re-enable a detour against a resolver that has since died.
 function ai_heal_dns_loop() {
-    if (!ai_enabled("ai_dns_loop_heal_enabled", "1")) return;
+    if (settings().ai_dns_loop_heal_enabled == "0") return;
     if (is_reload_in_progress()) return;
     let now = time();
 
@@ -1164,7 +1129,7 @@ function average_latency(history) {
 
 // ─── Metrics export (normal tier) ─────────────────────────────────────────────
 function export_metrics() {
-    if (!ai_enabled("ai_metrics_enabled", "1")) return;
+    if (settings().ai_metrics_enabled == "0") return;
 
     let now = time();
     let metrics_path = "/tmp/tachyon_metrics.json";
@@ -1179,21 +1144,21 @@ function export_metrics() {
     let hour_bucket = int(now / 3600) * 3600;
     let last_bucket = length(data.hours) > 0 ? data.hours[length(data.hours) - 1] : null;
     if (last_bucket && int(last_bucket.ts) == hour_bucket) {
-        last_bucket.proxy_ok = proxy_consecutive_fails() == 0;
-        last_bucket.proxy_lat_ms = average_latency(proxy_latency_history());
-        last_bucket.dns_lat_ms = average_latency(dns_latency_history());
+        last_bucket.proxy_ok = controller.proxy_consecutive_fails() == 0;
+        last_bucket.proxy_lat_ms = average_latency(controller.proxy_latency_history());
+        last_bucket.dns_lat_ms = average_latency(controller.dns_latency_history());
         last_bucket.incidents = ai_incidents_count;
     } else {
         push(data.hours, {
             ts: hour_bucket,
-            proxy_ok: proxy_consecutive_fails() == 0,
-            proxy_lat_ms: average_latency(proxy_latency_history()),
-            dns_lat_ms: average_latency(dns_latency_history()),
+            proxy_ok: controller.proxy_consecutive_fails() == 0,
+            proxy_lat_ms: average_latency(controller.proxy_latency_history()),
+            dns_lat_ms: average_latency(controller.dns_latency_history()),
             incidents: ai_incidents_count
         });
     }
 
-    let retention = int(ai_setting("ai_metrics_retention_hours", "24"));
+    let retention = int(settings().ai_metrics_retention_hours || "24");
     while (length(data.hours) > retention)
         data.hours = slice(data.hours, 1);
 
@@ -1202,7 +1167,7 @@ function export_metrics() {
 
 // ─── Anomaly Detection ────────────────────────────────────────────────────────
 function heal_anomaly_reconnects(ev) {
-    if (!ai_enabled("ai_anomaly_detection_enabled", "1")) return;
+    if (settings().ai_anomaly_detection_enabled == "0") return;
 
     ai_heal_report(
         "anomaly_reconnects",
@@ -1221,19 +1186,12 @@ function increment_reconnect_count() {
 }
 
 // ─── Adaptive Intervals ───────────────────────────────────────────────────────
-function adaptive_normal_interval() {
-    return controller.adaptive_normal_interval();
-}
 
 // ─── Graceful Degradation wrapper ─────────────────────────────────────────────
 // Still used for the few actions that are not bus subscribers (the metrics
 // export, smart-detect batch processing, the ai-heal CLI audit). Subscribers
 // get the same isolation from the bus itself.
 function safe_call(fn, name) {
-    if (!ai_enabled("ai_graceful_degradation_enabled", "1")) {
-        fn();
-        return;
-    }
     try {
         fn();
     } catch(e) {
@@ -1751,7 +1709,7 @@ function worker() {
                     last_fast_check = now;
                     perform_fast_checks();
                 }
-                if (now - last_normal_check >= adaptive_normal_interval()) {
+                if (now - last_normal_check >= controller.adaptive_normal_interval()) {
                     last_normal_check = now;
                     perform_normal_checks();
                 }
@@ -1808,13 +1766,13 @@ function print_ai_status() {
 
 function print_ai_status_full() {
     let now = time();
-    let proxy_fails = proxy_consecutive_fails();
-    let dns_fails = dns_consecutive_fails();
+    let proxy_fails = controller.proxy_consecutive_fails();
+    let dns_fails = controller.dns_consecutive_fails();
     let proxy_ok = proxy_fails == 0;
     let dns_ok = dns_fails == 0;
 
     let sb_uptime = 0;
-    let sb_pid = get_sing_box_pid();
+    let sb_pid = controller.get_sing_box_pid();
     if (sb_pid != "" && process_running(sb_pid, "sing-box")) {
         try {
             let stat_data = fs.readfile("/proc/" + sb_pid + "/stat");
@@ -1856,15 +1814,15 @@ function print_ai_status_full() {
         uptime_s: sb_uptime,
         memory_mb: mem_mb,
         proxy_ok: proxy_ok,
-        proxy_latency_ms: average_latency(proxy_latency_history()),
+        proxy_latency_ms: average_latency(controller.proxy_latency_history()),
         proxy_consecutive_fails: proxy_fails,
         dns_ok: dns_ok,
-        dns_latency_ms: average_latency(dns_latency_history()),
+        dns_latency_ms: average_latency(controller.dns_latency_history()),
         dns_consecutive_fails: dns_fails,
         incidents_total: ai_incidents_count,
         last_incident: last_ai_incident,
         healthy_streak: controller.healthy_streak(),
-        adaptive_interval_s: adaptive_normal_interval(),
+        adaptive_interval_s: controller.adaptive_normal_interval(),
         reconnects_hour: int(trim(fs.readfile("/tmp/tachyon_reconnect_count") || "0"))
     };
 

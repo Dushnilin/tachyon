@@ -164,25 +164,21 @@ function is_dns_working() {
 }
 
 function check_tachyon_cli_running() {
-    let running = false;
-    let proc = fs.opendir("/proc");
-    if (proc) {
-        let entry;
-        while ((entry = proc.read()) != null) {
-            if (match(entry, /^[0-9]+$/)) {
-                let cmdline = fs.readfile("/proc/" + entry + "/cmdline") || "";
-                if (index(cmdline, "/usr/bin/tachyon") >= 0) {
-                    if (index(cmdline, "start") >= 0 || index(cmdline, "restart") >= 0 ||
-                        index(cmdline, "reload") >= 0 || index(cmdline, "stop") >= 0) {
-                        running = true;
-                        break;
-                    }
-                }
-            }
-        }
-        proc.close();
+    // pgrep -f matches against the full command line and is cheaper than
+    // scanning all of /proc ourselves: it returns only tachyon PIDs, then we
+    // read /proc/<pid>/cmdline only for those (typically 0-1 processes),
+    // not for every process on the system.
+    let pids_res = command_capture("pgrep -f '/usr/bin/tachyon' 2>/dev/null");
+    if (pids_res.status != 0 || trim(pids_res.output) == "") return false;
+    for (let pid in split(trim(pids_res.output), "\n")) {
+        pid = trim(pid);
+        if (pid == "" || match(pid, /^[0-9]+$/) == null) continue;
+        let cmdline = fs.readfile("/proc/" + pid + "/cmdline") || "";
+        if (index(cmdline, "start") >= 0 || index(cmdline, "restart") >= 0 ||
+            index(cmdline, "reload") >= 0 || index(cmdline, "stop") >= 0)
+            return true;
     }
-    return running;
+    return false;
 }
 
 function is_list_update_running() {
@@ -227,6 +223,7 @@ function parse_singbox_config() {
 // Reads the http/mixed inbound port from the generated sing-box config.
 // Cached because the config only changes across a reload.
 let cached_proxy_port = null;
+let cached_tproxy_port = null;
 function proxy_port() {
     if (cached_proxy_port !== null)
         return as_string(cached_proxy_port);
@@ -247,10 +244,13 @@ function proxy_port() {
 
 function forget_proxy_port() {
     cached_proxy_port = null;
+    cached_tproxy_port = null;
     sb_config_parse_reported = false;
 }
 
 function tproxy_port() {
+    if (cached_tproxy_port !== null)
+        return cached_tproxy_port;
     let port = 4530;
     let sb_cfg = parse_singbox_config();
     if (sb_cfg && sb_cfg.inbounds) {
@@ -261,6 +261,7 @@ function tproxy_port() {
             }
         }
     }
+    cached_tproxy_port = port;
     return port;
 }
 
