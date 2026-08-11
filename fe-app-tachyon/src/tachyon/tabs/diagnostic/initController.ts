@@ -40,7 +40,8 @@ import {
 import { TachyonShellMethods } from '../../methods';
 import { fetchServicesInfo } from '../../fetchers/fetchServicesInfo';
 import { normalizeCompiledVersion } from '../../../helpers/normalizeCompiledVersion';
-import { renderModal } from '../../../partials';
+import { copyToClipboard } from '../../../helpers/copyToClipboard';
+import { renderModal, renderButton } from '../../../partials';
 import { TACHYON_LUCI_APP_VERSION } from '../../../constants';
 import { renderWikiDisclaimer } from './partials/renderWikiDisclaimer';
 import { runSectionsCheck } from './checks/runSectionsCheck';
@@ -792,38 +793,38 @@ async function handleRunAiDoctor() {
 
       const title = _('AI Doctor Diagnosis');
 
-      const modalContent = E('div', { class: 'tachyon_ai_doctor_modal' }, [
-        E(
-          'pre',
-          {
-            style:
-              'white-space: pre-wrap; font-family: inherit; background: rgba(0,0,0,0.04); padding: 12px; border-radius: 6px; font-size: 13px; line-height: 1.5;',
-          },
-          report,
-        ),
-        quickFixes.length > 0
-          ? E(
-              'div',
-              {
-                style:
-                  'margin-top: 15px; padding-top: 12px; border-top: 1px solid rgba(0,0,0,0.1);',
-              },
-              [
-                E('b', {}, _('Recommended Quick Fixes:')),
-                E(
-                  'div',
-                  {
-                    style:
-                      'display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px;',
-                  },
-                  [
-                    ...quickFixes.map((code) =>
-                      E(
-                        'button',
-                        {
-                          class: 'btn cbi-button cbi-button-apply',
-                          type: 'button',
-                          onclick: async () => {
+      const modalContent = E('div', { class: 'tachyon-partial-modal__body' }, [
+        E('div', {}, [
+          E(
+            'pre',
+            {
+              class: 'tachyon-partial-modal__content',
+              style:
+                'white-space: pre-wrap; font-family: inherit; font-size: 13px; line-height: 1.5; max-height: 400px; overflow-y: auto;',
+            },
+            E('code', {}, report),
+          ),
+          quickFixes.length > 0
+            ? E(
+                'div',
+                {
+                  style:
+                    'margin-top: 15px; padding: 12px; background: rgba(0,0,0,0.03); border-radius: 6px; border: 1px solid rgba(0,0,0,0.08);',
+                },
+                [
+                  E('b', {}, _('Recommended Quick Fixes:')),
+                  E(
+                    'div',
+                    {
+                      style:
+                        'display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px;',
+                    },
+                    [
+                      ...quickFixes.map((code) =>
+                        renderButton({
+                          classNames: ['cbi-button-apply'],
+                          text: _('Fix') + ': ' + code,
+                          onClick: async () => {
                             showToast(
                               _('Applying fix') + ': ' + code + '...',
                               'success',
@@ -846,17 +847,13 @@ async function handleRunAiDoctor() {
                               );
                             }
                           },
-                        },
-                        _('Fix') + ': ' + code,
+                        }),
                       ),
-                    ),
-                    quickFixes.length > 1
-                      ? E(
-                          'button',
-                          {
-                            class: 'btn cbi-button cbi-button-save',
-                            type: 'button',
-                            onclick: async () => {
+                      quickFixes.length > 1
+                        ? renderButton({
+                            classNames: ['cbi-button-save'],
+                            text: _('Fix All'),
+                            onClick: async () => {
                               showToast(_('Applying all fixes...'), 'success');
                               const fixRes =
                                 await TachyonShellMethods.applyQuickFix(
@@ -875,19 +872,41 @@ async function handleRunAiDoctor() {
                                 showToast(_('Some fixes failed'), 'error');
                               }
                             },
-                          },
-                          _('Fix All'),
-                        )
-                      : E('span', {}),
-                  ],
-                ),
-              ],
-            )
-          : E(
-              'div',
-              { style: 'margin-top: 10px; color: #2e7d32;' },
-              '✅ ' + _('No quick fix required'),
-            ),
+                          })
+                        : E('span', {}),
+                    ],
+                  ),
+                ],
+              )
+            : E(
+                'div',
+                {
+                  style: 'margin-top: 10px; color: #2e7d32; font-weight: 500;',
+                },
+                '✅ ' + _('No quick fix required'),
+              ),
+          E(
+            'div',
+            {
+              class: 'tachyon-partial-modal__footer',
+              style: 'margin-top: 15px;',
+            },
+            [
+              renderButton({
+                classNames: ['cbi-button-apply'],
+                text: _('Copy'),
+                onClick: () => copyToClipboard(`\`\`\`\n${report}\n\`\`\``),
+              }),
+              renderButton({
+                classNames: ['cbi-button-remove'],
+                text: _('Close'),
+                onClick: () => {
+                  ui.hideModal();
+                },
+              }),
+            ],
+          ),
+        ]),
       ]);
 
       ui.showModal(title, modalContent);
