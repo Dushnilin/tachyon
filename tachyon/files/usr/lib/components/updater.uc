@@ -500,7 +500,10 @@ function updates_normalize_zapret_version(value) {
 }
 
 function tachyon_normalized_release_version(value) {
-    return as_string(value);
+    let str = trim(as_string(value));
+    if (substr(str, 0, 1) == "v" || substr(str, 0, 1) == "V")
+        str = substr(str, 1);
+    return str;
 }
 
 function tachyon_release_version_valid(value) {
