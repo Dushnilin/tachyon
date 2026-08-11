@@ -1169,7 +1169,7 @@ function renderDiagnosticAvailableActionsWidget() {
     },
     doctor: {
       loading: diagnosticsActions.doctor.loading,
-      visible: true,
+      visible: false,
       onClick: handleRunDoctor,
       disabled: utilityActionsDisabled,
     },
@@ -1177,7 +1177,7 @@ function renderDiagnosticAvailableActionsWidget() {
       loading: diagnosticsActions.aiDoctor.loading,
       visible: true,
       onClick: handleRunAiDoctor,
-      disabled: utilityActionsDisabled,
+      disabled: diagnosticsActions.aiDoctor.loading,
     },
     viewLogs: {
       loading: diagnosticsActions.viewLogs.loading,
