@@ -62,11 +62,31 @@ function detect_installed_version() {
     return "";
 }
 
+function detect_installed_commit_sha() {
+    let sha = env("TACHYON_COMMIT_SHA", "__COMPILED_COMMIT_SHA__");
+    if (sha != "" && !match(sha, /COMPILED/) && sha != "unknown")
+        return sha;
+
+    let file_sha = trim(as_string(fs.readfile("/etc/tachyon_commit")));
+    if (file_sha != "" && file_sha != "unknown")
+        return file_sha;
+
+    let proc = fs.popen("git rev-parse --short HEAD 2>/dev/null");
+    if (proc != null) {
+        let git_sha = trim(as_string(proc.read("all")));
+        proc.close();
+        if (git_sha != "" && match(git_sha, /^[0-9a-fA-F]{7,40}$/) != null)
+            return git_sha;
+    }
+
+    return "";
+}
+
 function constants_map() {
     let c = {};
 
     c.TACHYON_VERSION = detect_installed_version();
-    c.TACHYON_COMMIT_SHA = env("TACHYON_COMMIT_SHA", "__COMPILED_COMMIT_SHA__");
+    c.TACHYON_COMMIT_SHA = detect_installed_commit_sha();
     c.TACHYON_CONFIG_NAME = env("TACHYON_CONFIG_NAME", "tachyon");
     c.TACHYON_CONFIG = env("TACHYON_CONFIG", "/etc/config/" + c.TACHYON_CONFIG_NAME);
     c.TACHYON_BIN = env("TACHYON_BIN", "/usr/bin/tachyon");

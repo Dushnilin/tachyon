@@ -1061,13 +1061,23 @@ function renderComponentCard(card: ComponentCard) {
   const anyActionLoading = isAnyActionLoading();
   const systemInfoLoading = isSystemInfoLoading();
 
+  const checkResult = getVisibleCheckResult(card.component);
+  let versionText = card.version;
+  const sha =
+    checkResult?.current_sha ||
+    store.get().diagnosticsSystemInfo?.tachyon_commit_sha;
+  if (card.component === 'tachyon' && sha && sha !== 'unknown') {
+    const shortSha = sha.substring(0, 7);
+    versionText = `${card.version} (${shortSha})`;
+  }
+
   // 1. Header (displays Title, Current Version, no badges)
   const headerChildren: Node[] = [
     E('b', { class: 'tachyon_updates-page__component__title' }, card.title),
     E(
       'span',
       { class: 'tachyon_updates-page__component__header-version' },
-      card.version,
+      versionText,
     ),
   ];
   if (card.repoUrl) {
@@ -1093,7 +1103,6 @@ function renderComponentCard(card: ComponentCard) {
 
   // 2. Details (renders status messages for check results)
   const detailsChildren: Node[] = [];
-  const checkResult = getVisibleCheckResult(card.component);
 
   if (checkResult && checkResult.status) {
     let labelText = '';

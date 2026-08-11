@@ -255,8 +255,13 @@ build_backend_root() {
   install -m 0755 "$ROOT_DIR/tachyon/files/usr/bin/tachyon" "$output_root/usr/bin/tachyon"
   cp -a "$ROOT_DIR/tachyon/files/usr/lib/." "$output_root/usr/lib/tachyon/"
 
+  local commit_sha="${GIT_COMMIT_SHA:-}"
+  if [[ -z "$commit_sha" || "$commit_sha" == "unknown" ]]; then
+    commit_sha="$(git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || echo "unknown")"
+  fi
+
   sed -i -e "s/__COMPILED_VERSION_VARIABLE__/${RELEASE_VERSION}/g" \
-    -e "s/__COMPILED_COMMIT_SHA__/${GIT_COMMIT_SHA}/g" \
+    -e "s/__COMPILED_COMMIT_SHA__/${commit_sha}/g" \
     "$output_root/usr/lib/tachyon/core/constants.uc"
 
   normalize_package_root_modes "$output_root"
