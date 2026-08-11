@@ -1062,14 +1062,6 @@ function renderComponentCard(card: ComponentCard) {
   const systemInfoLoading = isSystemInfoLoading();
 
   const checkResult = getVisibleCheckResult(card.component);
-  let versionText = card.version;
-  const sha =
-    checkResult?.current_sha ||
-    store.get().diagnosticsSystemInfo?.tachyon_commit_sha;
-  if (card.component === 'tachyon' && sha && sha !== 'unknown') {
-    const shortSha = sha.substring(0, 7);
-    versionText = `${card.version} (${shortSha})`;
-  }
 
   // 1. Header (displays Title, Current Version, no badges)
   const headerChildren: Node[] = [
@@ -1077,7 +1069,7 @@ function renderComponentCard(card: ComponentCard) {
     E(
       'span',
       { class: 'tachyon_updates-page__component__header-version' },
-      versionText,
+      card.version,
     ),
   ];
   if (card.repoUrl) {

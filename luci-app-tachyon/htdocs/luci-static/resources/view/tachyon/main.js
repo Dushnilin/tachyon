@@ -14799,18 +14799,12 @@ function renderComponentCard(card) {
   const anyActionLoading = isAnyActionLoading();
   const systemInfoLoading = isSystemInfoLoading();
   const checkResult = getVisibleCheckResult(card.component);
-  let versionText = card.version;
-  const sha = checkResult?.current_sha || store.get().diagnosticsSystemInfo?.tachyon_commit_sha;
-  if (card.component === "tachyon" && sha && sha !== "unknown") {
-    const shortSha = sha.substring(0, 7);
-    versionText = `${card.version} (${shortSha})`;
-  }
   const headerChildren = [
     E("b", { class: "tachyon_updates-page__component__title" }, card.title),
     E(
       "span",
       { class: "tachyon_updates-page__component__header-version" },
-      versionText
+      card.version
     )
   ];
   if (card.repoUrl) {
