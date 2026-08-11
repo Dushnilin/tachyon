@@ -2302,9 +2302,10 @@ function check_tachyon() {
                 (local_sha != "" && remote_sha != "" ? local_sha + " -> " + remote_sha :
                     local_fingerprint + " -> " + remote_fingerprint));
             action_success("tachyon", "check_update", "Update is available for current release", TACHYON_VERSION, latest_version, 0, status, release_url, sha_extra);
+        } else {
+            updates_log("Tachyon is already up to date (" + TACHYON_VERSION + ")");
+            action_success("tachyon", "check_update", "Latest version is installed", TACHYON_VERSION, latest_version, 0, status, release_url, sha_extra);
         }
-        updates_log("Tachyon is already up to date (" + TACHYON_VERSION + ")");
-        action_success("tachyon", "check_update", "Latest version is installed", TACHYON_VERSION, latest_version, 0, status, release_url, sha_extra);
     }
     if (status == "outdated") {
         updates_log("Tachyon update found: " + TACHYON_VERSION + " -> " + latest_version);
