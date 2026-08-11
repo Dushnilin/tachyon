@@ -2929,6 +2929,9 @@ function diagnose_json() {
         try { ai_status_data = json(ai_status_raw); } catch(e) {}
     }
 
+    let raw_log_snippet = trim(command_output("logread | grep -iE 'tachyon|sing-box|dnsmasq|oom|error|fatal|byedpi|zapret|nftables' | tail -n 50 2>/dev/null")) || "No recent system errors logged.";
+    let log_snippet = compress_log_snippet(raw_log_snippet);
+
     print(sprintf("%J\n", {
         success:          true,
         timestamp:        time(),
@@ -2936,6 +2939,7 @@ function diagnose_json() {
         issues_fixed:     res.fixed,
         overall:          (res.issues == 0) ? "healthy" : ((res.fixed == res.issues) ? "repaired" : "degraded"),
         problems:         problems,
+        log_snippet:      log_snippet,
         watchdog_status:  ai_status_data
     }));
     return 0;

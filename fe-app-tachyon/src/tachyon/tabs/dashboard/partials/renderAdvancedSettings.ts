@@ -807,6 +807,22 @@ function renderAiWatchdogSection(state: AdvancedSettingsState) {
                   E(
                     'option',
                     {
+                      value: 'ollama',
+                      selected: state.aiDoctorProvider === 'ollama',
+                    },
+                    'Ollama (Локально на ПК / Сервере)',
+                  ),
+                  E(
+                    'option',
+                    {
+                      value: 'lmstudio',
+                      selected: state.aiDoctorProvider === 'lmstudio',
+                    },
+                    'LM Studio (Локально на ПК / Сервере)',
+                  ),
+                  E(
+                    'option',
+                    {
                       value: 'custom',
                       selected: state.aiDoctorProvider === 'custom',
                     },

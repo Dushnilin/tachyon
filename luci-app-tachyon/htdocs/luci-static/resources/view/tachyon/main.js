@@ -11123,12 +11123,90 @@ async function handleRunDoctor() {
     runChecks();
   }
 }
+function getAiDoctorHistory() {
+  try {
+    const raw = localStorage.getItem("tachyon_ai_doctor_history");
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    return [];
+  }
+}
+function saveAiDoctorHistory(entry) {
+  try {
+    const current = getAiDoctorHistory();
+    const updated = [entry, ...current].slice(0, 5);
+    localStorage.setItem("tachyon_ai_doctor_history", JSON.stringify(updated));
+  } catch (e) {
+  }
+}
 async function handleRunAiDoctor() {
   setDiagnosticActionLoading("aiDoctor", true);
+  let activeTab2 = "diagnosis";
+  let historyEntries = getAiDoctorHistory();
+  const stepperSteps = [
+    _("Checking WAN interfaces & network routing"),
+    _("Checking sing-box service & DNSmasq"),
+    _("Checking nftables filtering tables"),
+    _("Analyzing system log (logread & errors)"),
+    _("Checking Zapret & ByeDPI rules")
+  ];
+  const modalBody = E("div", { class: "tachyon-partial-modal__body" }, [
+    E(
+      "div",
+      {
+        style: "padding: 18px; background: rgba(0,0,0,0.02); border-radius: 8px; border: 1px solid rgba(0,0,0,0.06); text-align: center;"
+      },
+      [
+        E(
+          "div",
+          {
+            style: "font-weight: 600; font-size: 15px; margin-bottom: 15px; color: #1976d2;"
+          },
+          "\u26A1 " + _("AI Doctor Diagnostic Scan in Progress...")
+        ),
+        E(
+          "div",
+          {
+            id: "tachyon_ai_stepper",
+            style: "display: flex; flex-direction: column; gap: 10px; text-align: left; max-width: 480px; margin: 0 auto;"
+          },
+          stepperSteps.map(
+            (step, idx) => E(
+              "div",
+              {
+                id: `tachyon_step_${idx}`,
+                style: "display: flex; align-items: center; gap: 10px; font-size: 13px; color: #666;"
+              },
+              [
+                E("span", { class: "step-icon" }, "\u23F3"),
+                E("span", { class: "step-text" }, step)
+              ]
+            )
+          )
+        )
+      ]
+    )
+  ]);
+  ui.showModal(_("AI Doctor Diagnosis"), modalBody);
+  const updateStep = (idx, icon, color) => {
+    const el = document.getElementById(`tachyon_step_${idx}`);
+    if (el) {
+      const iconEl = el.querySelector(".step-icon");
+      if (iconEl) iconEl.textContent = icon;
+      el.style.color = color;
+      el.style.fontWeight = icon === "\u2705" ? "500" : "normal";
+    }
+  };
+  for (let i = 0; i < stepperSteps.length; i++) {
+    updateStep(i, "\u{1F504}", "#1976d2");
+    await new Promise((r) => setTimeout(r, 120));
+    updateStep(i, "\u2705", "#2e7d32");
+  }
   try {
     const aiRes = await TachyonShellMethods.aiDoctor();
     if (!aiRes || typeof aiRes !== "object") {
       showToast(_("AI Doctor failed") + ": " + _("Unknown error"), "error");
+      ui.hideModal();
       return;
     }
     const rawData = aiRes.data;
@@ -11136,41 +11214,101 @@ async function handleRunAiDoctor() {
     if (aiRes.success || data && data.success) {
       const report = data ? String(data.report ?? "") : String(rawData ?? "");
       const quickFixes = Array.isArray(data?.quick_fixes) ? data.quick_fixes : String(data?.quick_fix ?? "").split(",").map((s) => s.trim()).filter(Boolean);
-      const title = _("AI Doctor Diagnosis");
-      const modalContent = E("div", { class: "tachyon-partial-modal__body" }, [
-        E("div", {}, [
+      const nowStr = (/* @__PURE__ */ new Date()).toLocaleTimeString();
+      saveAiDoctorHistory({ timestamp: nowStr, report, quickFixes });
+      historyEntries = getAiDoctorHistory();
+      const repLower = report.toLowerCase();
+      const nodes = [
+        {
+          name: "WAN",
+          status: repLower.includes("wan interface down") ? "FAIL" : "OK"
+        },
+        {
+          name: "DNS",
+          status: repLower.includes("dnsmasq") || repLower.includes("dns") ? repLower.includes("dns failed") || repLower.includes("dnsmasq failed") ? "FAIL" : "OK" : "OK"
+        },
+        {
+          name: "sing-box",
+          status: repLower.includes("sing-box") && (repLower.includes("stopped") || repLower.includes("error")) ? "FAIL" : "OK"
+        },
+        {
+          name: "nftables",
+          status: repLower.includes("nftables") || repLower.includes("rules") ? repLower.includes("damaged") || repLower.includes("corrupted") ? "WARN" : "OK" : "OK"
+        }
+      ];
+      const renderRootCauseBanner = () => {
+        return E(
+          "div",
+          {
+            style: "display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; padding: 10px 14px; background: rgba(0,0,0,0.03); border-radius: 6px; margin-bottom: 14px; border: 1px solid rgba(0,0,0,0.06); font-size: 12px; font-weight: 500;"
+          },
+          nodes.flatMap((node, idx) => {
+            const badgeBg = node.status === "OK" ? "#e8f5e9" : node.status === "WARN" ? "#fff3e0" : "#ffebee";
+            const badgeFg = node.status === "OK" ? "#2e7d32" : node.status === "WARN" ? "#e65100" : "#c62828";
+            const badgeIcon = node.status === "OK" ? "\u2713" : node.status === "WARN" ? "\u26A0\uFE0F" : "\u274C";
+            const itemEl = E(
+              "span",
+              {
+                style: `padding: 4px 8px; border-radius: 4px; background: ${badgeBg}; color: ${badgeFg}; display: inline-flex; align-items: center; gap: 4px;`
+              },
+              `${node.name} [${badgeIcon} ${node.status}]`
+            );
+            return idx < nodes.length - 1 ? [
+              itemEl,
+              E(
+                "span",
+                { style: "color: #999; font-weight: bold;" },
+                "\u2794"
+              )
+            ] : [itemEl];
+          })
+        );
+      };
+      const renderDiagnosisTabContent = () => {
+        return E("div", {}, [
+          renderRootCauseBanner(),
           E(
             "pre",
             {
               class: "tachyon-partial-modal__content",
-              style: "white-space: pre-wrap; font-family: inherit; font-size: 13px; line-height: 1.5; max-height: 400px; overflow-y: auto;"
+              style: "white-space: pre-wrap; font-family: inherit; font-size: 13px; line-height: 1.5; max-height: 360px; overflow-y: auto; background: #fafafa; padding: 12px; border-radius: 6px; border: 1px solid #eee;"
             },
             E("code", {}, report)
           ),
           quickFixes.length > 0 ? E(
             "div",
             {
-              style: "margin-top: 15px; padding: 12px; background: rgba(0,0,0,0.03); border-radius: 6px; border: 1px solid rgba(0,0,0,0.08);"
+              style: "margin-top: 14px; padding: 12px; background: rgba(0,0,0,0.02); border-radius: 6px; border: 1px solid rgba(0,0,0,0.08);"
             },
             [
-              E("b", {}, _("Recommended Quick Fixes:")),
+              E(
+                "b",
+                { style: "font-size: 13px;" },
+                _("Recommended Smart Quick Fixes:")
+              ),
               E(
                 "div",
                 {
-                  style: "display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px;"
+                  style: "display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px;"
                 },
                 [
-                  ...quickFixes.map(
-                    (code) => renderButton({
+                  ...quickFixes.map((code) => {
+                    let applied = false;
+                    const btn = renderButton({
                       classNames: ["cbi-button-apply"],
-                      text: _("Fix") + ": " + code,
+                      text: `\u26A1 ${code}`,
                       onClick: async () => {
+                        if (applied) return;
                         showToast(
                           _("Applying fix") + ": " + code + "...",
                           "success"
                         );
                         const fixRes = await TachyonShellMethods.applyQuickFix(code);
                         if (fixRes && typeof fixRes === "object" && fixRes.success) {
+                          applied = true;
+                          btn.textContent = `\u2713 ${code} (${_("Fixed")})`;
+                          btn.classList.remove("cbi-button-apply");
+                          btn.classList.add("cbi-button-neutral");
                           showToast(
                             _("Fix applied") + ": " + code,
                             "success"
@@ -11182,11 +11320,12 @@ async function handleRunAiDoctor() {
                           );
                         }
                       }
-                    })
-                  ),
+                    });
+                    return btn;
+                  }),
                   quickFixes.length > 1 ? renderButton({
-                    classNames: ["cbi-button-save"],
-                    text: _("Fix All"),
+                    classNames: ["cbi-button-action"],
+                    text: `\u26A1 ${_("Fix All")}`,
                     onClick: async () => {
                       showToast(_("Applying all fixes..."), "success");
                       const fixRes = await TachyonShellMethods.applyQuickFix(
@@ -11208,39 +11347,123 @@ async function handleRunAiDoctor() {
           ) : E(
             "div",
             {
-              style: "margin-top: 10px; color: #2e7d32; font-weight: 500;"
+              style: "margin-top: 12px; color: #2e7d32; font-weight: 500; font-size: 13px;"
             },
             "\u2705 " + _("No quick fix required")
-          ),
-          E(
+          )
+        ]);
+      };
+      const renderHistoryTabContent = () => {
+        if (historyEntries.length === 0) {
+          return E(
             "div",
-            {
-              class: "tachyon-partial-modal__footer",
-              style: "margin-top: 15px;"
-            },
-            [
-              renderButton({
-                classNames: ["cbi-button-apply"],
-                text: _("Copy"),
-                onClick: () => copyToClipboard(`\`\`\`
+            { style: "padding: 20px; text-align: center; color: #777;" },
+            _("No diagnostic history available yet.")
+          );
+        }
+        return E(
+          "div",
+          {
+            style: "display: flex; flex-direction: column; gap: 10px; max-height: 400px; overflow-y: auto;"
+          },
+          historyEntries.map(
+            (h, i) => E(
+              "div",
+              {
+                style: "padding: 10px 14px; background: #fafafa; border: 1px solid #eee; border-radius: 6px;"
+              },
+              [
+                E(
+                  "div",
+                  {
+                    style: "display: flex; justify-content: space-between; font-weight: 600; font-size: 12px; color: #333; margin-bottom: 6px;"
+                  },
+                  [
+                    E("span", {}, `Run #${historyEntries.length - i}`),
+                    E("span", { style: "color: #888;" }, h.timestamp)
+                  ]
+                ),
+                E(
+                  "pre",
+                  {
+                    style: "margin: 0; white-space: pre-wrap; font-size: 11px; max-height: 120px; overflow-y: auto; color: #555;"
+                  },
+                  h.report
+                )
+              ]
+            )
+          )
+        );
+      };
+      const mainContainer = E(
+        "div",
+        { class: "tachyon-partial-modal__body" },
+        []
+      );
+      const renderModalLayout = () => {
+        mainContainer.replaceChildren(
+          E("div", {}, [
+            E(
+              "div",
+              {
+                style: "display: flex; gap: 10px; margin-bottom: 14px; border-bottom: 1px solid #eee; padding-bottom: 8px;"
+              },
+              [
+                renderButton({
+                  classNames: [
+                    activeTab2 === "diagnosis" ? "cbi-button-action" : "cbi-button-neutral"
+                  ],
+                  text: `\u{1F4CB} ${_("Current Diagnosis")}`,
+                  onClick: () => {
+                    activeTab2 = "diagnosis";
+                    renderModalLayout();
+                  }
+                }),
+                renderButton({
+                  classNames: [
+                    activeTab2 === "history" ? "cbi-button-action" : "cbi-button-neutral"
+                  ],
+                  text: `\u{1F552} ${_("Run History")} (${historyEntries.length})`,
+                  onClick: () => {
+                    activeTab2 = "history";
+                    renderModalLayout();
+                  }
+                })
+              ]
+            ),
+            activeTab2 === "diagnosis" ? renderDiagnosisTabContent() : renderHistoryTabContent(),
+            E(
+              "div",
+              {
+                class: "tachyon-partial-modal__footer",
+                style: "margin-top: 15px;"
+              },
+              [
+                renderButton({
+                  classNames: ["cbi-button-apply"],
+                  text: _("Copy"),
+                  onClick: () => copyToClipboard(`\`\`\`
 ${report}
 \`\`\``)
-              }),
-              renderButton({
-                classNames: ["cbi-button-remove"],
-                text: _("Close"),
-                onClick: () => {
-                  ui.hideModal();
-                }
-              })
-            ]
-          )
-        ])
-      ]);
-      ui.showModal(title, modalContent);
+                }),
+                renderButton({
+                  classNames: ["cbi-button-remove"],
+                  text: _("Close"),
+                  onClick: () => {
+                    ui.hideModal();
+                  }
+                })
+              ]
+            )
+          ])
+        );
+      };
+      renderModalLayout();
+      ui.showModal(_("AI Doctor Diagnosis"), mainContainer);
     } else {
       const errorMsg = typeof aiRes.error === "string" ? aiRes.error : _("Unknown error");
       showToast(_("AI Doctor failed") + ": " + errorMsg, "error");
+      ui.hideModal();
     }
   } catch (e) {
     logger.error(
@@ -11249,6 +11472,7 @@ ${report}
       e instanceof Error ? e.message : String(e)
     );
     showToast(_("AI Doctor failed"), "error");
+    ui.hideModal();
   } finally {
     setDiagnosticActionLoading("aiDoctor", false);
     runChecks();

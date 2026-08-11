@@ -8,8 +8,8 @@ CLAUDE.md
 opencode.json
 
 sandbox/
-.wsl-build/
 dist/
+.wsl-build/
 build-out/
 scratch/
 tmp_*/
