@@ -42,8 +42,13 @@ grep -q 'if (status_code != "pending" &&' "$WATCHDOG_UC" \
   || fail "a pending outcome would send a Telegram notification of its own"
 
 # --- the recovery watch exists and is settled from both sides ---
-grep -q 'function watch_recovery(key, recovery_event, incident, reason)' "$WATCHDOG_UC" \
+grep -q 'function watch_recovery(key, incident, reason)' "$WATCHDOG_UC" \
   || fail "watch_recovery() is gone; asynchronous repairs cannot report an outcome"
+# The recovery_event parameter was removed: settle_recovery() settles on whatever
+# fact caused it, not on a specific EV.* value stored at registration time. The
+# reason field (used to escalate or reset the ladder) must still be stored.
+grep -q 'reason: reason,' "$WATCHDOG_UC" \
+  || fail "watch_recovery() no longer records the reason behind the repair"
 grep -q 'function settle_recovery(key, outcome)' "$WATCHDOG_UC" \
   || fail "settle_recovery() is gone"
 grep -q 'function settle_expired_recoveries()' "$WATCHDOG_UC" \

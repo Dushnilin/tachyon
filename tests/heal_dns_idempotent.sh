@@ -51,12 +51,12 @@ let noresolv = "";
 
 function as_string(v) { return "" + v; }
 function system(cmd) { push(ran, cmd); return 0; }
-function ai_enabled(key, dflt) { return true; }
-function suppressed_by_root_cause(healer, priority) { return false; }
+// ai_enabled() was removed; heal_dns_continuous now reads settings() directly.
+function settings() { return {}; }
+function suppressed_by_root_cause(healer) { return false; }
 function ai_heal_report(t, d, r, outcome) { push(reports, outcome); }
 let uci_core = { get: function(path) { return path == "dhcp.@dnsmasq[0].noresolv" ? noresolv : ""; } };
 let controller = { reset_dns_consecutive: function() { resets++; } };
-const PRIORITY_DNS = 50;
 PRELUDE
 
 awk '
