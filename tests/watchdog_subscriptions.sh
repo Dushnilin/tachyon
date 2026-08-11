@@ -39,14 +39,14 @@ subscribed="$(grep -oE 'subscribe\(EV\.[A-Z_]+' "$WATCHDOG_UC" \
 # --- every emitted fault has a subscriber ---
 for ev in $emitted; do
   is_informational "$ev" && continue
-  printf '%s\n' "$subscribed" | grep -qx "$ev" \
+  grep -qxF "$ev" <<< "$subscribed" \
     || fail "event_controller emits EV.$ev but watchdog subscribes to nothing for it"
 done
 
 # --- every subscription has a matching emit site ---
 # A dead subscription means a repair that can never run.
 for ev in $subscribed; do
-  printf '%s\n' "$emitted" | grep -qx "$ev" \
+  grep -qxF "$ev" <<< "$emitted" \
     || fail "watchdog subscribes to EV.$ev but event_controller never emits it"
 done
 
