@@ -17,7 +17,7 @@
 
 **Tachyon** is an advanced, autonomous network routing, proxy orchestration, and anti-censorship engine designed specifically for **OpenWrt** routers (fully supporting **OpenWrt 23.05, 24.10, 25.x, and SNAPSHOT** builds). Direct fork of **[Forkop by @ushan0v](https://github.com/ushan0v/forkop)** (formerly **Podkop Plus**).
 
-Tachyon combines the power of **sing-box**, local DPI bypass engines (**Zapret v1 / Zapret v2 / ByeDPI**), an interactive **Telegram bot**, and a cutting-edge **2026 AI Stack** (autonomous **AI Doctor** & **HTTP REST Agent API / OpenAPI 3.0**).
+Tachyon combines the power of **sing-box**, local DPI bypass engines (**Zapret v1 / Zapret v2 / ByeDPI**), an interactive **Telegram bot**, and a cutting-edge **AI Stack** (autonomous **AI Doctor** & **HTTP REST Agent API / OpenAPI 3.0**).
 
 The entire backend logic is written in **ucode** — OpenWrt's native, lightweight scripting language — delivering instant response times with minimal RAM footprint (starting from 128 MB RAM devices).
 
@@ -37,7 +37,7 @@ The entire backend logic is written in **ucode** — OpenWrt's native, lightweig
 
 ---
 
-### 🤖 2. AI Doctor & HTTP REST Agent API (2026 AI Stack)
+### 🤖 2. AI Doctor & HTTP REST Agent API (AI Stack)
 * **Tachyon AI Doctor (v2)**: Advanced AI diagnostic engine supporting modern LLMs (**OpenAI**, **Anthropic Claude**, **DeepSeek**, or local models via OpenRouter / Ollama).
   * **Deep Contextual Intelligence**: Feeds real-time service health, Watchdog failure history (OOM events, error streaks), and compressed system logs into the LLM prompt.
   * **Multi-Fix Execution Chains**: Generates multi-action repair sequences with dedicated UI buttons per fix or a single "Fix All" action.
