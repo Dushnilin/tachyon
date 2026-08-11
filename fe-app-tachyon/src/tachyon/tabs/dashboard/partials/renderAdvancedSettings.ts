@@ -810,7 +810,7 @@ function renderAiWatchdogSection(state: AdvancedSettingsState) {
                       value: 'ollama',
                       selected: state.aiDoctorProvider === 'ollama',
                     },
-                    'Ollama (Локально на ПК / Сервере)',
+                    _('Ollama (Local PC / Server)'),
                   ),
                   E(
                     'option',
@@ -818,7 +818,7 @@ function renderAiWatchdogSection(state: AdvancedSettingsState) {
                       value: 'lmstudio',
                       selected: state.aiDoctorProvider === 'lmstudio',
                     },
-                    'LM Studio (Локально на ПК / Сервере)',
+                    _('LM Studio (Local PC / Server)'),
                   ),
                   E(
                     'option',

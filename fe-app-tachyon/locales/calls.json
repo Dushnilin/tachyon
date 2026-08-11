@@ -1249,9 +1249,9 @@
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/server.js:1717",
       "src/partials/modal/renderModal.ts:263",
       "src/tachyon/tabs/dashboard/initController.ts:1085",
+      "src/tachyon/tabs/diagnostic/initController.ts:1194",
       "src/tachyon/tabs/monitoring/initController.ts:884",
-      "src/tachyon/tabs/monitoring/initController.ts:934",
-      "src/tachyon/tabs/diagnostic/initController.ts:1194"
+      "src/tachyon/tabs/monitoring/initController.ts:934"
     ]
   },
   {
@@ -1522,6 +1522,13 @@
     "key": "Custom DNS Records (Hosts)",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:7720"
+    ]
+  },
+  {
+    "call": "Custom OpenAI-Compatible API (OpenRouter)",
+    "key": "Custom OpenAI-Compatible API (OpenRouter)",
+    "places": [
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:1271"
     ]
   },
   {
@@ -4293,6 +4300,14 @@
     ]
   },
   {
+    "call": "LM Studio (Local PC / Server)",
+    "key": "LM Studio (Local PC / Server)",
+    "places": [
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:1270",
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:821"
+    ]
+  },
+  {
     "call": "Load .conf",
     "key": "Load .conf",
     "places": [
@@ -4995,6 +5010,14 @@
     "key": "Obfuscation password",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/server.js:2922"
+    ]
+  },
+  {
+    "call": "Ollama (Local PC / Server)",
+    "key": "Ollama (Local PC / Server)",
+    "places": [
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:1269",
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:813"
     ]
   },
   {

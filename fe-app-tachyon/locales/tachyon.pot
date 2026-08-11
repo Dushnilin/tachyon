@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-08-11 19:27+0300\n"
-"PO-Revision-Date: 2026-08-11 19:27+0300\n"
+"POT-Creation-Date: 2026-08-11 19:28+0300\n"
+"PO-Revision-Date: 2026-08-11 19:28+0300\n"
 "Last-Translator: Dushnilin <dushnilin@gmail.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -758,9 +758,9 @@ msgstr ""
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/server.js:1717
 #: src/partials/modal/renderModal.ts:263
 #: src/tachyon/tabs/dashboard/initController.ts:1085
+#: src/tachyon/tabs/diagnostic/initController.ts:1194
 #: src/tachyon/tabs/monitoring/initController.ts:884
 #: src/tachyon/tabs/monitoring/initController.ts:934
-#: src/tachyon/tabs/diagnostic/initController.ts:1194
 msgid "Close"
 msgstr ""
 
@@ -921,6 +921,10 @@ msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:7720
 msgid "Custom DNS Records (Hosts)"
+msgstr ""
+
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:1271
+msgid "Custom OpenAI-Compatible API (OpenRouter)"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:1316
@@ -2548,6 +2552,11 @@ msgstr ""
 msgid "Listening port"
 msgstr ""
 
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:1270
+#: src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:821
+msgid "LM Studio (Local PC / Server)"
+msgstr ""
+
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8215
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8224
 msgid "Load .conf"
@@ -2963,6 +2972,11 @@ msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/server.js:2922
 msgid "Obfuscation password"
+msgstr ""
+
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:1269
+#: src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:813
+msgid "Ollama (Local PC / Server)"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:7721
