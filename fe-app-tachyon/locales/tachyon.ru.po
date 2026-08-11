@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-08-10 14:00+0300\n"
-"PO-Revision-Date: 2026-08-10 14:00+0300\n"
+"POT-Creation-Date: 2026-08-11 22:00+0300\n"
+"PO-Revision-Date: 2026-08-11 22:00+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -22,6 +22,9 @@ msgstr "-- Выбрать --"
 
 msgid ".lst Lists"
 msgstr ".lst списки"
+
+msgid "(provider default)"
+msgstr ""
 
 msgid "+ Add JSON outbound"
 msgstr "+ Добавить JSON outbound"
@@ -55,6 +58,9 @@ msgstr "✔ Работает"
 
 msgid "✘ Stopped"
 msgstr "✘ Остановлено"
+
+msgid "🔑 Generate"
+msgstr "🔑 Сгенерировать"
 
 msgid "Accept external proxy connections and route them with sing-box."
 msgstr "Принимает внешние прокси-подключения и маршрутизирует их через sing-box."
@@ -131,6 +137,9 @@ msgstr "Telegram ID администраторов"
 msgid "Advanced self-healing features. Requires Watchdog to be enabled."
 msgstr "Расширенные функции самовосстановления. Требуется включённый Watchdog."
 
+msgid "Advanced System"
+msgstr ""
+
 msgid "Advertise exit node"
 msgstr "Анонсировать exit node"
 
@@ -139,6 +148,39 @@ msgstr "Анонсировать маршруты"
 
 msgid "AEAD Method"
 msgstr "Метод AEAD"
+
+msgid "AI & Watchdog"
+msgstr ""
+
+msgid "AI Agent REST API (12 Endpoints)"
+msgstr "HTTP REST API ИИ-агента (12 эндпоинтов)"
+
+msgid "AI Agent REST API Bearer Token"
+msgstr "Токен авторизации AI Agent REST API"
+
+msgid "AI API Key"
+msgstr "API-ключ ИИ"
+
+msgid "AI Doctor (ChatGPT / DeepSeek API)"
+msgstr "AI Doctor (ChatGPT / DeepSeek API)"
+
+msgid "AI Doctor Diagnosis"
+msgstr ""
+
+msgid "AI Doctor Diagnostic Scan in Progress..."
+msgstr ""
+
+msgid "AI Doctor failed"
+msgstr ""
+
+msgid "AI Doctor Language"
+msgstr ""
+
+msgid "AI Model"
+msgstr ""
+
+msgid "AI Provider"
+msgstr "Провайдер ИИ"
 
 msgid "AI Watchdog"
 msgstr "ИИ Watchdog"
@@ -151,6 +193,9 @@ msgstr "Все"
 
 msgid "All except selected"
 msgstr "Все кроме выбранных"
+
+msgid "All fixes applied successfully"
+msgstr ""
 
 msgid "All remaining except selected"
 msgstr "Все оставшиеся кроме выбранных"
@@ -182,6 +227,9 @@ msgstr "Обеспечивает доступ к YACD из WAN. Убедитес
 msgid "Allows limiting the list of servers for URLTest"
 msgstr "Позволяет ограничить список серверов для URLTest"
 
+msgid "Allows Tachyon to send diagnostic snapshots to ChatGPT or DeepSeek API for intelligent root-cause analysis and auto-repair recommendations."
+msgstr "Позволяет Tachyon отправлять снимки диагностики в ChatGPT или DeepSeek API для интеллектуального анализа причин неисправностей и рекомендаций по авто-ремонту."
+
 msgid "ALPN"
 msgstr "ALPN"
 
@@ -194,11 +242,23 @@ msgstr "Конфиг AmneziaWG успешно загружен!"
 msgid "AmneziaWG Generator"
 msgstr "Генератор AmneziaWG"
 
+msgid "Analyzing system log (logread & errors)"
+msgstr ""
+
+msgid "API Key for OpenAI (sk-...) or DeepSeek"
+msgstr "API-ключ для OpenAI (sk-...) или DeepSeek"
+
 msgid "Apply rules of this section only to selected protocols."
 msgstr "Применять правила этой секции только к выбранным протоколам."
 
 msgid "Apply section rules only to the specified local IP addresses"
 msgstr "Применять правила секции только к указанным локальным IP-адресам"
+
+msgid "Applying all fixes..."
+msgstr ""
+
+msgid "Applying fix"
+msgstr ""
 
 msgid "At least one Admin Chat ID is required"
 msgstr "Требуется хотя бы один Admin Chat ID"
@@ -262,6 +322,9 @@ msgstr "Доступные действия"
 
 msgid "Backend validation failed: %s"
 msgstr "Ошибка валидации на бэкенде: %s"
+
+msgid "Bearer Auth Token"
+msgstr "Токен авторизации (Bearer)"
 
 msgid "Belarus (by)"
 msgstr "Беларусь (by)"
@@ -386,6 +449,18 @@ msgstr "URL проверки"
 msgid "Checking Connection..."
 msgstr "Проверка соединения..."
 
+msgid "Checking nftables filtering tables"
+msgstr ""
+
+msgid "Checking sing-box service & DNSmasq"
+msgstr ""
+
+msgid "Checking WAN interfaces & network routing"
+msgstr ""
+
+msgid "Checking Zapret & ByeDPI rules"
+msgstr ""
+
 msgid "Checking, please wait"
 msgstr "Проверяем, пожалуйста подождите"
 
@@ -506,6 +581,9 @@ msgstr "Настройте User-Agent в настройках элемента"
 msgid "Conflict"
 msgstr "Конфликт"
 
+msgid "Connect ChatGPT, DeepSeek or local LLM to get automated diagnostic reports and intelligent root-cause analysis."
+msgstr "Подключите ChatGPT, DeepSeek или локальную модель LLM для получения автоматических диагностических отчётов и умного анализа сетевых проблем."
+
 msgid "Connect through"
 msgstr "Подключаться через"
 
@@ -536,6 +614,9 @@ msgstr "Не удалось сравнить публичные IP FakeIP и к�
 msgid "Country code (e.g. ru, us, de)"
 msgstr "Код страны (например, ru, us, de)"
 
+msgid "Current Diagnosis"
+msgstr ""
+
 msgid "Current section cannot be used as its own transit section"
 msgstr "Текущая секция не может быть транзитной для самой себя"
 
@@ -545,11 +626,17 @@ msgstr "Текущая секция не может скачивать собс�
 msgid "Currently unavailable"
 msgstr "Временно недоступно"
 
+msgid "Custom API Endpoint URL"
+msgstr "Пользовательский URL эндпоинта API"
+
 msgid "Custom device headers"
 msgstr "Кастомные заголовки устройства"
 
 msgid "Custom DNS Records (Hosts)"
 msgstr "Пользовательские записи DNS (Hosts)"
+
+msgid "Custom OpenAI-compatible API endpoint URL (e.g. https://openrouter.ai/api/v1/chat/completions)"
+msgstr "URL эндпоинта OpenAI-совместимого API (например, https://openrouter.ai/api/v1/chat/completions)"
 
 msgid "Custom outbound configurations in JSON format"
 msgstr "Пользовательские конфигурации outbound в формате JSON"
@@ -685,6 +772,9 @@ msgstr "DNS-сервер для получения IP вышестоящих DNS
 
 msgid "DNS Servers"
 msgstr "DNS-серверы"
+
+msgid "DNS Settings"
+msgstr ""
 
 msgid "DNS Strategy"
 msgstr "Стратегия DNS"
@@ -827,6 +917,12 @@ msgstr "Включить"
 msgid "Enable Adaptive Intervals"
 msgstr "Адаптивные интервалы"
 
+msgid "Enable AI Doctor (ChatGPT / LLM Analysis)"
+msgstr "Включить AI Doctor (анализ через ChatGPT / LLM)"
+
+msgid "Enable AI Doctor (LLM Integration)"
+msgstr "Включить AI Doctor (интеграция с LLM)"
+
 msgid "Enable Anomaly Detection"
 msgstr "Обнаружение аномалий"
 
@@ -947,12 +1043,6 @@ msgstr "Исключить по регулярному выражению"
 msgid "Exclude countries"
 msgstr "Исключить страны"
 
-msgid "Exclude NTP"
-msgstr "Исключить NTP"
-
-msgid "Exclude NTP protocol traffic from the tunnel to prevent it from being routed through the proxy or VPN"
-msgstr "Исключите трафик протокола NTP из туннеля, чтобы предотвратить его маршрутизацию через прокси-сервер или VPN."
-
 msgid "Exclude selected countries"
 msgstr "Исключить выбранные страны"
 
@@ -991,6 +1081,9 @@ msgstr "Внешние файлы конфигурации nfqws обходят 
 
 msgid "External nfqws2 config files bypass Tachyon queue management and explicit validation."
 msgstr "Внешние файлы конфигурации nfqws2 обходят управление очередями Tachyon и явную валидацию."
+
+msgid "Failed to apply fix"
+msgstr ""
 
 msgid "Failed to close connection"
 msgstr "Не удалось закрыть подключение"
@@ -1076,6 +1169,12 @@ msgstr "Финляндия (fi)"
 msgid "Firewall WAN port"
 msgstr "Порт в firewall для WAN"
 
+msgid "Fix All"
+msgstr ""
+
+msgid "Fix applied"
+msgstr ""
+
 msgid "Fix the highlighted fields and save again."
 msgstr "Исправьте подсвеченные поля и сохраните снова."
 
@@ -1144,6 +1243,9 @@ msgstr "GeoSite / GeoIP"
 
 msgid "Germany (de)"
 msgstr "Германия (de)"
+
+msgid "GET endpoints are open on LAN. POST endpoints require Authorization: Bearer <token>."
+msgstr "GET-эндпоинты открыты в локальной сети. POST-эндпоинты требуют Authorization: Bearer <token>."
 
 msgid "Get global check"
 msgstr "Получить глобальную проверку"
@@ -1243,6 +1345,9 @@ msgstr "Ошибка HTTP"
 
 msgid "HTTP hosts"
 msgstr "HTTP-хосты"
+
+msgid "HTTP REST API for external AI agents (Claude, GPT, Open-WebUI) served at /cgi-bin/tachyon-agent/"
+msgstr "HTTP REST API для внешних ИИ-агентов (Claude, GPT, Open-WebUI), доступен по адресу /cgi-bin/tachyon-agent/"
 
 msgid "HWID"
 msgstr "HWID"
@@ -1631,6 +1736,9 @@ msgstr "Путь к ключу"
 msgid "Keyword must not contain spaces or commas"
 msgstr "Ключевое слово не должно содержать пробелы или запятые"
 
+msgid "Language for AI Doctor diagnosis responses"
+msgstr ""
+
 msgid "Latency test failed"
 msgstr "Проверка задержки не удалась"
 
@@ -1760,6 +1868,9 @@ msgstr "Порт смешанного прокси"
 msgid "Mixed Proxy Username"
 msgstr "Имя пользователя смешанного прокси"
 
+msgid "Model name to use. Leave empty to use the provider default (gpt-4o-mini / claude-3-5-haiku / deepseek-chat). Examples: gpt-4o, claude-3-5-sonnet-20241022, deepseek-reasoner"
+msgstr ""
+
 msgid "Monitored Interfaces"
 msgstr "Наблюдаемые интерфейсы"
 
@@ -1795,6 +1906,9 @@ msgstr "Имя, отображаемое в списке уровней прио
 
 msgid "Netherlands (nl)"
 msgstr "Нидерланды (nl)"
+
+msgid "Network & Interfaces"
+msgstr ""
 
 msgid "Network Interface"
 msgstr "Сетевой интерфейс"
@@ -1847,6 +1961,9 @@ msgstr "Конфликт не обнаружен"
 msgid "No Custom Rules Matched"
 msgstr "Пользовательские правила не совпали"
 
+msgid "No diagnostic history available yet."
+msgstr ""
+
 msgid "No domains detected yet"
 msgstr "Домены пока не обнаружены"
 
@@ -1864,6 +1981,9 @@ msgstr "Другие правила маркировки не найдены"
 
 msgid "No public firewall port required"
 msgstr "Публичный порт в firewall не требуется"
+
+msgid "No quick fix required"
+msgstr ""
 
 msgid "No rules use ByeDPI"
 msgstr "Нет правил, использующих ByeDPI"
@@ -2219,6 +2339,9 @@ msgstr "Reality short ID должен содержать 1-8 hex-символо�
 msgid "Rebuilt release"
 msgstr "Пересобранный релиз"
 
+msgid "Recommended Smart Quick Fixes:"
+msgstr ""
+
 msgid "Reconnect Threshold"
 msgstr "Порог переподключений"
 
@@ -2351,11 +2474,17 @@ msgstr "Счётчики правил proxy"
 msgid "Rules proxy exist"
 msgstr "Правила прокси существуют"
 
+msgid "Run AI Doctor"
+msgstr ""
+
 msgid "Run Diagnostic"
 msgstr "Запустить диагностику"
 
 msgid "Run doctor repair"
 msgstr "Запустить восстановление"
+
+msgid "Run History"
+msgstr ""
 
 msgid "Running"
 msgstr "Запущен"
@@ -2383,6 +2512,12 @@ msgstr "Секрет"
 
 msgid "Secret key for authenticating remote access to YACD when WAN access is enabled."
 msgstr "Секретный ключ для аутентификации удаленного доступа к YACD при включенном доступе через WAN."
+
+msgid "Secret token for authorizing WRITE operations (POST/PUT) on /cgi-bin/tachyon-agent/. Leave empty if auth is not required."
+msgstr "Секретный токен для авторизации WRITE-операций (POST/PUT) по адресу /cgi-bin/tachyon-agent/. Оставьте пустым, если авторизация не требуется."
+
+msgid "Secret token for WRITE requests"
+msgstr "Секретный токен для POST/PUT запросов"
 
 msgid "Section"
 msgstr "Секция"
@@ -2425,6 +2560,9 @@ msgstr "Выберите секцию для скачивания этой по�
 
 msgid "Select a transit section"
 msgstr "Выберите транзитную секцию"
+
+msgid "Select AI LLM provider for diagnostics"
+msgstr "Выберите провайдера LLM для диагностики"
 
 msgid "Select an existing network interface"
 msgstr "Выберите существующий сетевой интерфейс"
@@ -2552,6 +2690,9 @@ msgstr "Действие сервиса не выполнено"
 msgid "Service list"
 msgstr "Список сервисов"
 
+msgid "Services & Access"
+msgstr ""
+
 msgid "Services info"
 msgstr "Информация о сервисах"
 
@@ -2635,6 +2776,9 @@ msgstr "Настройки Smart Detect сохранены"
 
 msgid "Snell Version"
 msgstr "Версия Snell"
+
+msgid "Some fixes failed"
+msgstr ""
 
 msgid "Sort Alphabetically"
 msgstr "Сортировать по алфавиту"
@@ -3122,6 +3266,9 @@ msgstr "Автоматически обновлять эту подписку"
 msgid "Updated/duplicates:"
 msgstr "Обновлено/дубликатов:"
 
+msgid "Updates & Downloads"
+msgstr ""
+
 msgid "Uplink"
 msgstr "Исходящий"
 
@@ -3340,60 +3487,3 @@ msgstr "sing-box outbound для Zapret2 настроен"
 
 msgid "Zapret2 sing-box outbound is not configured"
 msgstr "sing-box outbound для Zapret2 не настроен"
-
-msgid "AI Agent REST API (12 Endpoints)"
-msgstr "HTTP REST API ИИ-агента (12 эндпоинтов)"
-
-msgid "HTTP REST API for external AI agents (Claude, GPT, Open-WebUI) served at /cgi-bin/tachyon-agent/"
-msgstr "HTTP REST API для внешних ИИ-агентов (Claude, GPT, Open-WebUI), доступен по адресу /cgi-bin/tachyon-agent/"
-
-msgid "Bearer Auth Token"
-msgstr "Токен авторизации (Bearer)"
-
-msgid "Secret token for WRITE requests"
-msgstr "Секретный токен для POST/PUT запросов"
-
-msgid "🔑 Generate"
-msgstr "🔑 Сгенерировать"
-
-msgid "GET endpoints are open on LAN. POST endpoints require Authorization: Bearer <token>."
-msgstr "GET-эндпоинты открыты в локальной сети. POST-эндпоинты требуют Authorization: Bearer <token>."
-
-msgid "AI Agent REST API Bearer Token"
-msgstr "Токен авторизации AI Agent REST API"
-
-msgid "Secret token for authorizing WRITE operations (POST/PUT) on /cgi-bin/tachyon-agent/. Leave empty if auth is not required."
-msgstr "Секретный токен для авторизации WRITE-операций (POST/PUT) по адресу /cgi-bin/tachyon-agent/. Оставьте пустым, если авторизация не требуется."
-
-msgid "Enable AI Doctor (ChatGPT / LLM Analysis)"
-msgstr "Включить AI Doctor (анализ через ChatGPT / LLM)"
-
-msgid "Allows Tachyon to send diagnostic snapshots to ChatGPT or DeepSeek API for intelligent root-cause analysis and auto-repair recommendations."
-msgstr "Позволяет Tachyon отправлять снимки диагностики в ChatGPT или DeepSeek API для интеллектуального анализа причин неисправностей и рекомендаций по авто-ремонту."
-
-msgid "AI Provider"
-msgstr "Провайдер ИИ"
-
-msgid "Select AI LLM provider for diagnostics"
-msgstr "Выберите провайдера LLM для диагностики"
-
-msgid "AI API Key"
-msgstr "API-ключ ИИ"
-
-msgid "API Key for OpenAI (sk-...) or DeepSeek"
-msgstr "API-ключ для OpenAI (sk-...) или DeepSeek"
-
-msgid "Custom API Endpoint URL"
-msgstr "Пользовательский URL эндпоинта API"
-
-msgid "Custom OpenAI-compatible API endpoint URL (e.g. https://openrouter.ai/api/v1/chat/completions)"
-msgstr "URL эндпоинта OpenAI-совместимого API (например, https://openrouter.ai/api/v1/chat/completions)"
-
-msgid "AI Doctor (ChatGPT / DeepSeek API)"
-msgstr "AI Doctor (ChatGPT / DeepSeek API)"
-
-msgid "Connect ChatGPT, DeepSeek or local LLM to get automated diagnostic reports and intelligent root-cause analysis."
-msgstr "Подключите ChatGPT, DeepSeek или локальную модель LLM для получения автоматических диагностических отчётов и умного анализа сетевых проблем."
-
-msgid "Enable AI Doctor (LLM Integration)"
-msgstr "Включить AI Doctor (интеграция с LLM)"
