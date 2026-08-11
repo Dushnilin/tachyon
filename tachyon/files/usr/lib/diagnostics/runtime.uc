@@ -3048,6 +3048,18 @@ function apply_quick_fix(codes_str) {
             command_status("/etc/init.d/network restart >/dev/null 2>&1");
             status = true;
             msg = "Network service restarted";
+        } else if (c == "restart_zapret") {
+            command_status("/etc/init.d/zapret restart 2>/dev/null; /etc/init.d/byedpi restart 2>/dev/null");
+            status = true;
+            msg = "Zapret/ByeDPI engines restarted";
+        } else if (c == "optimize_memory") {
+            command_status("sync; echo 3 > /proc/sys/vm/drop_caches 2>/dev/null; /etc/init.d/sing-box restart >/dev/null 2>&1");
+            status = true;
+            msg = "Memory caches flushed and sing-box restarted";
+        } else if (c == "switch_to_doh") {
+            command_status("uci set tachyon.settings.dns_type='doh'; uci commit tachyon; /etc/init.d/tachyon reload >/dev/null 2>&1");
+            status = true;
+            msg = "Switched DNS mode to DoH and reloaded firewall";
         } else {
             status = false;
             msg = "Unknown fix code: " + c;
@@ -3085,13 +3097,162 @@ function ai_doctor_last() {
     return 0;
 }
 
+function local_rule_doctor() {
+    let cfg = uci_settings();
+    let lang = lc(trim(cfg.ai_doctor_lang || "ru"));
+    let res = run_doctor_checks();
+    let checks = res.checks || [];
+
+    let causes = [];
+    let quick_fixes = [];
+    let fix_set = {};
+
+    function add_fix(code) {
+        if (!fix_set[code]) {
+            fix_set[code] = true;
+            push(quick_fixes, code);
+        }
+    }
+
+    for (let c in checks) {
+        if (c.name == "sing-box service" && c.status != "pass") {
+            push(causes, {
+                probability: 95,
+                cause: lang == "en" ? "sing-box process is stopped or non-functional" : "Процесс sing-box остановлен или не функционирует",
+                fix: "start_singbox"
+            });
+            add_fix("start_singbox");
+        } else if (c.name == "Internet & Gateway" && c.status != "pass") {
+            push(causes, {
+                probability: 90,
+                cause: lang == "en" ? "WAN default gateway or Internet uplink is unreachable" : "Шлюз по умолчанию или внешний интернет недоступен",
+                fix: "fix_wan_interface"
+            });
+            add_fix("fix_wan_interface");
+        } else if (c.name == "DNS Resolution" && c.status != "pass") {
+            push(causes, {
+                probability: 85,
+                cause: lang == "en" ? "DNS resolution failed or is hijacked by ISP" : "Сбой разрешения DNS-имён или перехват оператором",
+                fix: "clear_dns_cache"
+            });
+            add_fix("clear_dns_cache");
+            add_fix("switch_to_doh");
+        } else if (c.name == "Firewall / NFTables" && c.status != "pass") {
+            push(causes, {
+                probability: 80,
+                cause: lang == "en" ? "NFTables routing or firewall rules compromised" : "Нарушены правила файрвола nftables или маршрутизация",
+                fix: "rebuild_rules"
+            });
+            add_fix("rebuild_rules");
+        }
+    }
+
+    let watchdog_status_raw = fs.readfile("/tmp/tachyon_ai_status.json");
+    if (watchdog_status_raw) {
+        let wd_json = parse_json_or_null(watchdog_status_raw);
+        if (wd_json) {
+            if (int(wd_json.proxy_fail_streak || 0) > 3) {
+                push(causes, {
+                    probability: 88,
+                    cause: lang == "en" ? "Proxy fail streak (ISP SNI reset or proxy node offline)" : "Серия сбоев прокси (сброс SNI провайдером или узел офлайн)",
+                    fix: "update_subscriptions"
+                });
+                add_fix("update_subscriptions");
+                add_fix("restart_zapret");
+            }
+            if (int(wd_json.dns_fail_streak || 0) > 3) {
+                push(causes, {
+                    probability: 82,
+                    cause: lang == "en" ? "DNS fail streak (ISP plaintext DNS tampering)" : "Серия сбоев DNS (подмена DNS оператором)",
+                    fix: "switch_to_doh"
+                });
+                add_fix("switch_to_doh");
+            }
+        }
+    }
+
+    let raw_log = trim(command_output("logread | grep -iE 'tachyon|sing-box|dnsmasq|oom|reset|handshake|kill' | tail -n 30 2>/dev/null"));
+    if (index(raw_log, "Out of memory") >= 0 || index(raw_log, "oom-killer") >= 0 || index(raw_log, "Killed process") >= 0) {
+        push(causes, {
+            probability: 92,
+            cause: lang == "en" ? "RAM pressure (Out-Of-Memory kill) detected" : "Обнаружена нехватка оперативной памяти (OOM Kill)",
+            fix: "optimize_memory"
+        });
+        add_fix("optimize_memory");
+    }
+    if (index(raw_log, "connection reset by peer") >= 0 || index(raw_log, "TLS handshake timeout") >= 0) {
+        push(causes, {
+            probability: 86,
+            cause: lang == "en" ? "DPI TCP RST / TLS Handshake drop signature detected" : "Сигнатура блокировки DPI (TCP RST / TLS Handshake Drop)",
+            fix: "restart_zapret"
+        });
+        add_fix("restart_zapret");
+    }
+
+    let meminfo = fs.readfile("/proc/meminfo") || "";
+    let mem_avail_line = match(meminfo, /MemAvailable:\s+(\d+)\s+kB/);
+    if (mem_avail_line) {
+        let mem_avail_mb = int(mem_avail_line[1]) / 1024;
+        if (mem_avail_mb < 24) {
+            push(causes, {
+                probability: 78,
+                cause: lang == "en" ? sprintf("Critical RAM pressure (Available: %d MB)", mem_avail_mb) : sprintf("Дефицит оперативной памяти (Свободно: %d MB)", mem_avail_mb),
+                fix: "optimize_memory"
+            });
+            add_fix("optimize_memory");
+        }
+    }
+
+    let report_lines = [];
+    if (lang == "en") {
+        push(report_lines, "### Tachyon Local AI Doctor Analysis");
+        if (length(causes) == 0) {
+            push(report_lines, "✓ All system services, DNS, firewall, and proxy checks passed successfully.");
+            push(report_lines, "✓ No DPI drops or RAM pressure detected.");
+        } else {
+            push(report_lines, "#### Root Cause Analysis:");
+            for (let c in causes) {
+                push(report_lines, sprintf("- [%d%% Probability] %s", c.probability, c.cause));
+            }
+        }
+    } else {
+        push(report_lines, "### Анализ Tachyon Local AI Doctor");
+        if (length(causes) == 0) {
+            push(report_lines, "✓ Все системные компоненты, маршрутизация, DNS и прокси работают штатно.");
+            push(report_lines, "✓ Блокировок DPI и нехватки оперативной памяти не обнаружено.");
+        } else {
+            push(report_lines, "#### Анализ возможных причин сбоя:");
+            for (let c in causes) {
+                push(report_lines, sprintf("- [%d%% вероятность] %s", c.probability, c.cause));
+            }
+        }
+    }
+
+    let quick_fix = length(quick_fixes) > 0 ? join(",", quick_fixes) : "";
+    let doctor_res = {
+        success: true,
+        timestamp: time(),
+        report: join("\n", report_lines),
+        quick_fix: quick_fix,
+        quick_fixes: quick_fixes,
+        provider: "local_heuristic",
+        model: "rule_engine_v2"
+    };
+
+    let f = fs.open("/tmp/ai_doctor_last.json", "w");
+    if (f) {
+        f.write(sprintf("%J\n", doctor_res));
+        f.close();
+    }
+    return doctor_res;
+}
+
 function ai_doctor() {
     let cfg = uci_settings();
+    let local_res = local_rule_doctor();
+
     if (cfg.enable_ai_doctor != "1" || !cfg.ai_doctor_api_key) {
-        print(sprintf("%J\n", {
-            success: false,
-            error: "AI Doctor is disabled or API Key is missing. Configure it in Settings."
-        }));
+        print(sprintf("%J\n", local_res));
         return 0;
     }
 
@@ -3125,6 +3286,7 @@ function ai_doctor() {
 
     let sys_context = sprintf(
         "Tachyon Doctor Report:\n%s\n\n" +
+        "Local Rule Diagnosis:\n%s\n\n" +
         "System Parameters:\n" +
         "Version: %s\n" +
         "DNS type: %s\n" +
@@ -3132,7 +3294,7 @@ function ai_doctor() {
         "Uptime: %d minutes\n\n" +
         "%s\n\n" +
         "Recent Critical System Logs:\n%s\n",
-        report, version, dns_type, singbox_running ? "yes" : "no", uptime_min,
+        report, local_res.report, version, dns_type, singbox_running ? "yes" : "no", uptime_min,
         watchdog_info, log_snippet
     );
 
@@ -3158,7 +3320,10 @@ function ai_doctor() {
             "- clear_dns_cache (clear DNS cache & restart dnsmasq)\n" +
             "- update_subscriptions (force update proxy subscriptions)\n" +
             "- reset_firewall (restart router firewall)\n" +
-            "- restart_network (restart network service)\n\n" +
+            "- restart_network (restart network service)\n" +
+            "- restart_zapret (restart Zapret/ByeDPI engines)\n" +
+            "- optimize_memory (flush memory caches)\n" +
+            "- switch_to_doh (switch DNS interception to DoH)\n\n" +
             "If no quick fix applies, do NOT output any FIX tag.", sys_context);
     } else {
         prompt = sprintf(
@@ -3180,7 +3345,10 @@ function ai_doctor() {
             "- clear_dns_cache (очистить кэш DNS и перезапустить dnsmasq)\n" +
             "- update_subscriptions (принудительно обновить прокси подписки)\n" +
             "- reset_firewall (перезапустить файрвол роутера)\n" +
-            "- restart_network (перезапустить сетевой стек)\n\n" +
+            "- restart_network (перезапустить сетевой стек)\n" +
+            "- restart_zapret (перезапустить службы Zapret/ByeDPI)\n" +
+            "- optimize_memory (очистить оперативно память)\n" +
+            "- switch_to_doh (переключить DNS на DoH)\n\n" +
             "Если авто-исправление не применимо, не пишите тег FIX.", sys_context);
     }
 
@@ -3191,10 +3359,7 @@ function ai_doctor() {
     let model_override = trim(cfg.ai_doctor_model || "");
     let ai_res = query_llm(provider, api_key, custom_url, prompt, model_override);
     if (!ai_res) {
-        print(sprintf("%J\n", {
-            success: false,
-            error: "AI Doctor query failed: request returned empty or failed"
-        }));
+        print(sprintf("%J\n", local_res));
         return 0;
     }
 
@@ -3225,7 +3390,11 @@ function ai_doctor() {
         model: model_override != "" ? model_override : "default"
     };
 
-    common.write_json_file("/tmp/ai_doctor_last.json", doctor_res);
+    let f = fs.open("/tmp/ai_doctor_last.json", "w");
+    if (f) {
+        f.write(sprintf("%J\n", doctor_res));
+        f.close();
+    }
 
     print(sprintf("%J\n", doctor_res));
     return 0;
