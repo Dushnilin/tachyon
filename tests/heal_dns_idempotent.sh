@@ -37,7 +37,7 @@ set_line="$(grep -n "uci set dhcp.@dnsmasq\[0\].noresolv" "$WATCHDOG_UC" | cut -
 # watchdog.uc is a CLI module with no exports, so the function is lifted out of
 # the source verbatim — extracted, not copied, so a change to the logic changes
 # the test's subject too. The shell and uci calls are replaced by recorders.
-DNS_UC="$(mktemp "${TMPDIR:-/tmp}/tachyon_dns_idem.XXXXXX.uc")"
+DNS_UC="$(mktemp "${TMPDIR:-/tmp}/tachyon_dns_idem_XXXXXX")"
 trap 'rm -f "$DNS_UC"' EXIT
 
 # The stubs go in first: ucode captures a closure's upvalues when the closure is

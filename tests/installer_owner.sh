@@ -263,7 +263,7 @@ ORPHAN_PROBE_PPID=""
 for _ in $(seq 1 20); do
   ORPHAN_PROBE_PPID="$(awk '/^PPid:/ { print $2 }' "/proc/$ORPHAN_PROBE_PID/status" 2>/dev/null || true)"
   [ -n "$ORPHAN_PROBE_PPID" ] && break
-  sleep 0.05
+  sleep 1
 done
 [ -n "$ORPHAN_PROBE_PPID" ] ||
   fail "failed to create an orphaned init.d probe fixture"

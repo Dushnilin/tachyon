@@ -124,7 +124,7 @@ for _ in $(seq 1 30); do
   if JSON_VALUE="$final_status" node -e 'process.exit(JSON.parse(process.env.JSON_VALUE).running ? 1 : 0)' >/dev/null 2>&1; then
     break
   fi
-  sleep 0.1
+  sleep 1
 done
 
 JSON_VALUE="$final_status" node - <<'NODE'

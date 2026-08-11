@@ -82,7 +82,7 @@ done
 # CLI module with no exports, so the ladder block is lifted out of the source
 # verbatim — extracted, not copied, so a change to the logic changes the test's
 # subject too.
-LADDER_UC="$(mktemp "${TMPDIR:-/tmp}/tachyon_ladder.XXXXXX.uc")"
+LADDER_UC="$(mktemp "${TMPDIR:-/tmp}/tachyon_ladder_XXXXXX")"
 trap 'rm -f "$LADDER_UC"' EXIT
 
 sed -n '/^const ESCALATION_LIGHT/,/^}$/p;' "$WATCHDOG_UC" > "$LADDER_UC"

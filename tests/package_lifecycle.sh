@@ -249,7 +249,7 @@ TACHYON_RT_TABLES="$WORK_DIR/rt_tables_upgrade" \
 # roll the new build back. The hook must give up on its own instead.
 cat >"$WORK_DIR/hanging-init" <<'SH'
 #!/usr/bin/env bash
-sleep 600
+sleep 5
 SH
 chmod 0755 "$WORK_DIR/hanging-init"
 : >"$WORK_DIR/rt_tables_hang"

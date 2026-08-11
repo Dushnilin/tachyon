@@ -22,7 +22,7 @@ classify() {
 
 # Prints the classified types joined by '+' so a multi-fact line is one token.
 classify_joined() {
-  classify "$1" | paste -sd '+' -
+  classify "$1" | tr '\n' '+' | sed 's/+$//'
 }
 
 assert_eq() {
@@ -126,7 +126,7 @@ done
 run_case() {
   local body="$1"
   local tmp
-  tmp="$(mktemp "${TMPDIR:-/tmp}/tachyon_ec_case.XXXXXX.uc")"
+  tmp="$(mktemp "${TMPDIR:-/tmp}/tachyon_ec_case_XXXXXX")"
   {
     printf '%s\n' 'let events = require("core.events");'
     printf '%s\n' 'let ec = require("service.event_controller");'

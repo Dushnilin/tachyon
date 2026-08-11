@@ -52,7 +52,8 @@ done < <(find "$TACHYON_LIB" -name '*.uc' | sort)
 [ "$found" -eq 0 ] || fail "nested functions are used before their declaration (ucode does not hoist them)"
 
 # The scan is only worth trusting if it fires on a known-bad file.
-canary="$(mktemp "${TMPDIR:-/tmp}/tachyon_fwd_canary.XXXXXX.uc")"
+canary="$(mktemp "${TMPDIR:-/tmp}/tachyon_fwd_canary_XXXXXX")"
+trap 'rm -f "$canary"' EXIT
 cat > "$canary" <<'EOF'
 function outer() {
     let self = {};
@@ -63,14 +64,13 @@ function outer() {
 EOF
 [ -n "$(scan_forward_refs "$canary")" ] \
   || { rm -f "$canary"; fail "the forward-reference scan does not detect a known-bad file"; }
-rm -f "$canary"
 
 # ── 2. runtime invocation ───────────────────────────────────────────────────
 # Calling the handlers is what actually proves the bindings resolve. The probes
 # they drive touch nft and /proc, which do not exist in the test container, so
 # run_probe's isolation absorbs the failures — a null binding would still raise
 # "left-hand side is not a function" before any probe body runs.
-driver="$(mktemp "${TMPDIR:-/tmp}/tachyon_fwd.XXXXXX.uc")"
+driver="$(mktemp "${TMPDIR:-/tmp}/tachyon_fwd_XXXXXX")"
 cat > "$driver" <<'EOF'
 let events = require("core.events");
 let ec = require("service.event_controller");

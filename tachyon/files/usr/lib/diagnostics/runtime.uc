@@ -3037,7 +3037,7 @@ function apply_quick_fix(codes_str) {
             status = true;
             msg = "DNS cache cleared and dnsmasq restarted";
         } else if (c == "update_subscriptions") {
-            command_status("/usr/bin/tachyon component_action update_subscriptions >/dev/null 2>&1 &");
+            command_status(command_from_args([ "/usr/bin/tachyon", "component_action_async", "update_subscriptions", "update" ]));
             status = true;
             msg = "Subscription update triggered";
         } else if (c == "reset_firewall") {

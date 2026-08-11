@@ -98,7 +98,7 @@ grep -qE 'standing down, WAN repair|standing down, sing-box restart' "$WATCHDOG_
 # watchdog.uc is a CLI module with no exports, so the block is lifted out of the
 # source verbatim — extracted, not copied, so a change to the logic changes the
 # test's subject too.
-SUPPRESS_UC="$(mktemp "${TMPDIR:-/tmp}/tachyon_suppress.XXXXXX.uc")"
+SUPPRESS_UC="$(mktemp "${TMPDIR:-/tmp}/tachyon_suppress_XXXXXX")"
 trap 'rm -f "$SUPPRESS_UC"' EXIT
 
 # log_message, as_string, sprintf are module-level in watchdog.uc, outside the

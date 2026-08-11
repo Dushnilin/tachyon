@@ -224,7 +224,7 @@ state_ucode mark-pending-reload "$PENDING_RELOAD_FILE" "reload_busy"
 state_ucode run-pending-reload-if-requested "$PENDING_RELOAD_FILE" "$WORK_DIR/fake-init"
 for _ in $(seq 1 20); do
   [ -s "$TACHYON_FAKE_INIT_CAPTURE" ] && break
-  sleep 0.1
+  sleep 1
 done
 assert_eq "reload" \
   "$(cat "$TACHYON_FAKE_INIT_CAPTURE")" \

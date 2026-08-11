@@ -153,7 +153,7 @@ UCODE
 
   lock_command="$(ucode -L "$LIB_DIR" "$SPAWN_UC")"
   # Opened the way procd opens it, in this shell, so the child inherits it.
-  ( eval "exec 1000>\"\$LOCK_FILE\""; eval "$lock_command"; sleep 0.4 )
+  ( eval "exec 1000>\"\$LOCK_FILE\""; eval "$lock_command"; sleep 1 )
 
   lock_seen="$(tr -d ' \n' < "$LOCK_OUT")"
   [ "$lock_seen" = 0 ] \
@@ -174,7 +174,7 @@ UCODE
 
 pid_command="$(ucode -L "$LIB_DIR" "$SPAWN_UC")"
 eval "$pid_command" >/dev/null
-sleep 0.3
+sleep 1
 
 pid="$(tr -d ' \n' < "$PID_OUT")"
 [ -n "$pid" ] || fail "background_command_with_pid wrote no pid"
