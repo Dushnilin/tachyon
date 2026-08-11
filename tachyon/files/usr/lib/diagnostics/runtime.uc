@@ -2819,12 +2819,18 @@ function query_llm(provider, api_key, custom_url, prompt_text, model_override) {
     if (provider == "deepseek") {
         api_url = "https://api.deepseek.com/chat/completions";
         model = model_override || "deepseek-chat";
+    } else if (provider == "ollama") {
+        api_url = custom_url != "" ? custom_url : "http://192.168.1.100:11434/v1/chat/completions";
+        model = model_override || "llama3:latest";
+    } else if (provider == "lmstudio") {
+        api_url = custom_url != "" ? custom_url : "http://192.168.1.100:1234/v1/chat/completions";
+        model = model_override || "local-model";
     } else if (provider == "custom" && custom_url != "") {
         api_url = custom_url;
-        model = "gpt-4o-mini";
+        model = model_override || "gpt-4o-mini";
     } else {
         api_url = "https://api.openai.com/v1/chat/completions";
-        model = "gpt-4o-mini";
+        model = model_override || "gpt-4o-mini";
     }
 
     let payload = {
@@ -3255,7 +3261,11 @@ function ai_doctor() {
     let cfg = uci_settings();
     let local_res = local_rule_doctor();
 
-    if (cfg.enable_ai_doctor != "1" || !cfg.ai_doctor_api_key) {
+    let prov = lc(trim(as_string(cfg.ai_doctor_provider || "openai")));
+    let has_key = (cfg.ai_doctor_api_key && cfg.ai_doctor_api_key != "");
+    let is_local_or_custom = (prov == "ollama" || prov == "lmstudio" || (prov == "custom" && cfg.ai_doctor_custom_url != ""));
+
+    if (cfg.enable_ai_doctor != "1" || (!has_key && !is_local_or_custom)) {
         print(sprintf("%J\n", local_res));
         return 0;
     }

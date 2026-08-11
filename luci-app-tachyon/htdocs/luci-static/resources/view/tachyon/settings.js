@@ -1266,7 +1266,9 @@ function createSettingsContent(section, capabilities) {
   o.value("openai", "OpenAI (ChatGPT)");
   o.value("anthropic", "Anthropic (Claude API)");
   o.value("deepseek", "DeepSeek API");
-  o.value("custom", "Custom OpenAI-Compatible API (OpenRouter / Ollama)");
+  o.value("ollama", "Ollama (Локально на ПК / Сервере)");
+  o.value("lmstudio", "LM Studio (Локально на ПК / Сервере)");
+  o.value("custom", "Custom OpenAI-Compatible API (OpenRouter)");
   o.default = "openai";
 
   o = section.taboption(
@@ -1275,7 +1277,7 @@ function createSettingsContent(section, capabilities) {
     "ai_doctor_model",
     _("AI Model"),
     _(
-      "Model name to use. Leave empty to use the provider default (gpt-4o-mini / claude-3-5-haiku / deepseek-chat). Examples: gpt-4o, claude-3-5-sonnet-20241022, deepseek-reasoner",
+      "Model name to use. Leave empty to use default (gpt-4o-mini / claude-3-5-haiku / deepseek-chat / llama3:latest).",
     ),
   );
   o.depends("enable_ai_doctor", "1");
@@ -1300,11 +1302,11 @@ function createSettingsContent(section, capabilities) {
     form.Value,
     "ai_doctor_api_key",
     _("AI API Key"),
-    _("API Key for OpenAI (sk-...) or DeepSeek"),
+    _("API Key for OpenAI (sk-...) or DeepSeek (optional for Ollama / LM Studio)"),
   );
   o.depends("enable_ai_doctor", "1");
   o.password = true;
-  o.rmempty = false;
+  o.rmempty = true;
 
   o = section.taboption(
     "ai",
@@ -1312,11 +1314,14 @@ function createSettingsContent(section, capabilities) {
     "ai_doctor_custom_url",
     _("Custom API Endpoint URL"),
     _(
-      "Custom OpenAI-compatible API endpoint URL (e.g. https://openrouter.ai/api/v1/chat/completions)",
+      "Custom OpenAI-compatible API endpoint URL (e.g. http://192.168.1.100:11434/v1/chat/completions)",
     ),
   );
   o.depends("ai_doctor_provider", "custom");
+  o.depends("ai_doctor_provider", "ollama");
+  o.depends("ai_doctor_provider", "lmstudio");
   o.rmempty = true;
+  o.placeholder = "http://192.168.1.100:11434/v1/chat/completions";
 
   // Watchdog runtime status & controls
   const wdStatusOpt = section.taboption(
