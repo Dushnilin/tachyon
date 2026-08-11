@@ -45,7 +45,7 @@ grep -q 'note_escalation_outcome(watch.reason, outcome);' "$WATCHDOG_UC" \
 
 # A watch has to carry its reason, otherwise settling cannot tell the ladder
 # which reason failed.
-grep -q 'function watch_recovery(key, recovery_event, incident, reason)' "$WATCHDOG_UC" \
+grep -q 'function watch_recovery(key, incident, reason)' "$WATCHDOG_UC" \
   || fail "watch_recovery() no longer records the reason behind the repair"
 
 # ── the rate limit still gates both rungs ─────────────────────────────────────
