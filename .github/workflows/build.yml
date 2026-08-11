@@ -97,7 +97,7 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }}
           target_commitish: ${{ needs.preparation.outputs.commitish }}
-          body: "Commit: ${{ needs.preparation.outputs.commitish }}"
+          generate_release_notes: true
           draft: false
           prerelease: false
           make_latest: true
@@ -112,6 +112,7 @@ jobs:
           tag_name: ${{ needs.preparation.outputs.version }}
           name: ${{ needs.preparation.outputs.version }}
           target_commitish: ${{ needs.preparation.outputs.commitish }}
+          generate_release_notes: true
           draft: false
           prerelease: false
           make_latest: true
