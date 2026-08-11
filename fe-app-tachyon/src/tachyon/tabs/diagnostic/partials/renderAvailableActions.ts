@@ -27,6 +27,7 @@ interface IRenderAvailableActionsProps {
   disable: ActionProps;
   globalCheck: ActionProps;
   doctor: ActionProps;
+  aiDoctor: ActionProps;
   viewLogs: ActionProps;
   showSingBoxConfig: ActionProps;
   generateBugReport: ActionProps;
@@ -40,6 +41,7 @@ export function renderAvailableActions({
   disable,
   globalCheck,
   doctor,
+  aiDoctor,
   viewLogs,
   showSingBoxConfig,
   generateBugReport,
@@ -112,6 +114,16 @@ export function renderAvailableActions({
         text: _('Run doctor repair'),
         loading: doctor.loading,
         disabled: doctor.disabled,
+      }),
+    ]),
+    ...insertIf(aiDoctor.visible, [
+      renderButton({
+        classNames: ['cbi-button-action'],
+        onClick: aiDoctor.onClick,
+        icon: renderRotateCcwIcon24,
+        text: _('Run AI Doctor'),
+        loading: aiDoctor.loading,
+        disabled: aiDoctor.disabled,
       }),
     ]),
     ...insertIf(viewLogs.visible, [

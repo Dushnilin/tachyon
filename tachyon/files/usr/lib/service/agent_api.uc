@@ -446,6 +446,39 @@ function handle_domain_add(body) {
     ok({ message: "Domain '" + domain + "' added to section '" + section + "'" });
 }
 
+function handle_ai_doctor_last() {
+    let raw = fs.readfile("/tmp/ai_doctor_last.json");
+    if (!raw) {
+        err("No previous AI Doctor report found", 404);
+        return;
+    }
+    let data = parse_json_safe(raw);
+    if (!data) {
+        err("Corrupted AI Doctor history file", 500);
+        return;
+    }
+    ok(data);
+}
+
+function handle_ai_doctor_fix(body) {
+    let fix_code = as_string(body.fix || "");
+    if (fix_code == "" && type(body.fixes) == "array") {
+        fix_code = join(",", body.fixes);
+    }
+    if (fix_code == "") {
+        err("fix (code string) or fixes (string array) is required");
+        return;
+    }
+
+    let res = command_capture("/usr/bin/tachyon apply_quick_fix " + shell_quote(fix_code));
+    let parsed = parse_json_safe(res.output);
+    if (parsed) {
+        write_json(parsed);
+    } else {
+        ok({ message: "Quick fix command executed", code: fix_code });
+    }
+}
+
 // ─── Dispatcher ───────────────────────────────────────────────────────────────
 
 let path_arg = as_string(ARGV[0] || "");
@@ -469,6 +502,8 @@ if (method == "GET") {
         handle_config();
     else if (route == "/tools" || route == "/tools/")
         handle_tools();
+    else if (route == "/ai-doctor/last" || route == "/ai-doctor/last/")
+        handle_ai_doctor_last();
     else
         err("Unknown endpoint: GET " + route, 404);
 } else if (method == "POST") {
@@ -487,6 +522,8 @@ if (method == "GET") {
             handle_section_toggle(body);
         else if (route == "/domain/add")
             handle_domain_add(body);
+        else if (route == "/ai-doctor/fix" || route == "/ai-doctor/fix/")
+            handle_ai_doctor_fix(body);
         else
             err("Unknown endpoint: POST " + route, 404);
     }

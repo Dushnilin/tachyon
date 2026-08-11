@@ -334,6 +334,27 @@ export const TachyonShellMethods = {
       '/usr/bin/tachyon',
       { timeout: 30000 },
     ),
+  aiDoctor: async () =>
+    callBaseMethod<unknown>(
+      Tachyon.AvailableMethods.AI_DOCTOR,
+      [],
+      '/usr/bin/tachyon',
+      { timeout: 60000 },
+    ),
+  aiDoctorLast: async () =>
+    callBaseMethod<unknown>(
+      Tachyon.AvailableMethods.AI_DOCTOR_LAST,
+      [],
+      '/usr/bin/tachyon',
+      { timeout: 10000 },
+    ),
+  applyQuickFix: async (fixCode: string) =>
+    callBaseMethod<unknown>(
+      Tachyon.AvailableMethods.APPLY_QUICK_FIX,
+      [fixCode],
+      '/usr/bin/tachyon',
+      { timeout: 30000 },
+    ),
   showSingBoxConfig: async (masked = true) =>
     callBaseMethod<unknown>(Tachyon.AvailableMethods.SHOW_SING_BOX_CONFIG, [
       masked ? 'masked' : 'raw',

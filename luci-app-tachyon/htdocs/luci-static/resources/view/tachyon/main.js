@@ -3036,6 +3036,9 @@ var Tachyon;
     AvailableMethods2["DISABLE"] = "disable";
     AvailableMethods2["GLOBAL_CHECK"] = "global_check";
     AvailableMethods2["DOCTOR"] = "doctor";
+    AvailableMethods2["AI_DOCTOR"] = "ai_doctor";
+    AvailableMethods2["AI_DOCTOR_LAST"] = "ai_doctor_last";
+    AvailableMethods2["APPLY_QUICK_FIX"] = "apply_quick_fix";
     AvailableMethods2["SHOW_SING_BOX_CONFIG"] = "show_sing_box_config";
     AvailableMethods2["CHECK_LOGS"] = "check_logs";
     AvailableMethods2["CHECK_SING_BOX_LOGS"] = "check_sing_box_logs";
@@ -3330,6 +3333,24 @@ var TachyonShellMethods = {
   doctor: async () => callBaseMethod(
     Tachyon.AvailableMethods.DOCTOR,
     [],
+    "/usr/bin/tachyon",
+    { timeout: 3e4 }
+  ),
+  aiDoctor: async () => callBaseMethod(
+    Tachyon.AvailableMethods.AI_DOCTOR,
+    [],
+    "/usr/bin/tachyon",
+    { timeout: 6e4 }
+  ),
+  aiDoctorLast: async () => callBaseMethod(
+    Tachyon.AvailableMethods.AI_DOCTOR_LAST,
+    [],
+    "/usr/bin/tachyon",
+    { timeout: 1e4 }
+  ),
+  applyQuickFix: async (fixCode) => callBaseMethod(
+    Tachyon.AvailableMethods.APPLY_QUICK_FIX,
+    [fixCode],
     "/usr/bin/tachyon",
     { timeout: 3e4 }
   ),
@@ -5051,6 +5072,9 @@ var initialDiagnosticStore = {
       loading: false
     },
     doctor: {
+      loading: false
+    },
+    aiDoctor: {
       loading: false
     },
     viewLogs: {
@@ -9693,6 +9717,7 @@ function renderAvailableActions({
   disable,
   globalCheck,
   doctor,
+  aiDoctor,
   viewLogs,
   showSingBoxConfig,
   generateBugReport
@@ -9765,6 +9790,16 @@ function renderAvailableActions({
         text: _("Run doctor repair"),
         loading: doctor.loading,
         disabled: doctor.disabled
+      })
+    ]),
+    ...insertIf(aiDoctor.visible, [
+      renderButton({
+        classNames: ["cbi-button-action"],
+        onClick: aiDoctor.onClick,
+        icon: renderRotateCcwIcon24,
+        text: _("Run AI Doctor"),
+        loading: aiDoctor.loading,
+        disabled: aiDoctor.disabled
       })
     ]),
     ...insertIf(viewLogs.visible, [
@@ -11088,6 +11123,117 @@ async function handleRunDoctor() {
     runChecks();
   }
 }
+async function handleRunAiDoctor() {
+  setDiagnosticActionLoading("aiDoctor", true);
+  try {
+    const aiRes = await TachyonShellMethods.aiDoctor();
+    if (!aiRes || typeof aiRes !== "object") {
+      showToast(_("AI Doctor failed") + ": " + _("Unknown error"), "error");
+      return;
+    }
+    const rawData = aiRes.data;
+    const data = typeof rawData === "object" && rawData !== null ? rawData : null;
+    if (aiRes.success || data && data.success) {
+      const report = data ? String(data.report ?? "") : String(rawData ?? "");
+      const quickFixes = Array.isArray(data?.quick_fixes) ? data.quick_fixes : String(data?.quick_fix ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+      const title = _("AI Doctor Diagnosis");
+      const modalContent = E("div", { class: "tachyon_ai_doctor_modal" }, [
+        E(
+          "pre",
+          {
+            style: "white-space: pre-wrap; font-family: inherit; background: rgba(0,0,0,0.04); padding: 12px; border-radius: 6px; font-size: 13px; line-height: 1.5;"
+          },
+          report
+        ),
+        quickFixes.length > 0 ? E(
+          "div",
+          {
+            style: "margin-top: 15px; padding-top: 12px; border-top: 1px solid rgba(0,0,0,0.1);"
+          },
+          [
+            E("b", {}, _("Recommended Quick Fixes:")),
+            E(
+              "div",
+              {
+                style: "display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px;"
+              },
+              [
+                ...quickFixes.map(
+                  (code) => E(
+                    "button",
+                    {
+                      class: "btn cbi-button cbi-button-apply",
+                      type: "button",
+                      onclick: async () => {
+                        showToast(
+                          _("Applying fix") + ": " + code + "...",
+                          "success"
+                        );
+                        const fixRes = await TachyonShellMethods.applyQuickFix(code);
+                        if (fixRes && typeof fixRes === "object" && fixRes.success) {
+                          showToast(
+                            _("Fix applied") + ": " + code,
+                            "success"
+                          );
+                        } else {
+                          showToast(
+                            _("Failed to apply fix") + ": " + code,
+                            "error"
+                          );
+                        }
+                      }
+                    },
+                    _("Fix") + ": " + code
+                  )
+                ),
+                quickFixes.length > 1 ? E(
+                  "button",
+                  {
+                    class: "btn cbi-button cbi-button-save",
+                    type: "button",
+                    onclick: async () => {
+                      showToast(_("Applying all fixes..."), "success");
+                      const fixRes = await TachyonShellMethods.applyQuickFix(
+                        quickFixes.join(",")
+                      );
+                      if (fixRes && typeof fixRes === "object" && fixRes.success) {
+                        showToast(
+                          _("All fixes applied successfully"),
+                          "success"
+                        );
+                      } else {
+                        showToast(_("Some fixes failed"), "error");
+                      }
+                    }
+                  },
+                  _("Fix All")
+                ) : E("span", {})
+              ]
+            )
+          ]
+        ) : E(
+          "div",
+          { style: "margin-top: 10px; color: #2e7d32;" },
+          "\u2705 " + _("No quick fix required")
+        )
+      ]);
+      ui.showModal(title, modalContent);
+    } else {
+      const errorMsg = typeof aiRes.error === "string" ? aiRes.error : _("Unknown error");
+      showToast(_("AI Doctor failed") + ": " + errorMsg, "error");
+    }
+  } catch (e) {
+    logger.error(
+      "[DIAGNOSTIC]",
+      "handleRunAiDoctor - e",
+      e instanceof Error ? e.message : String(e)
+    );
+    showToast(_("AI Doctor failed"), "error");
+  } finally {
+    setDiagnosticActionLoading("aiDoctor", false);
+    runChecks();
+  }
+}
 async function handleViewLogs() {
   setDiagnosticActionLoading("viewLogs", true);
   try {
@@ -11288,6 +11434,12 @@ function renderDiagnosticAvailableActionsWidget() {
       loading: diagnosticsActions.doctor.loading,
       visible: true,
       onClick: handleRunDoctor,
+      disabled: utilityActionsDisabled
+    },
+    aiDoctor: {
+      loading: diagnosticsActions.aiDoctor.loading,
+      visible: true,
+      onClick: handleRunAiDoctor,
       disabled: utilityActionsDisabled
     },
     viewLogs: {

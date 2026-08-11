@@ -764,6 +764,153 @@ async function handleRunDoctor() {
   }
 }
 
+async function handleRunAiDoctor() {
+  setDiagnosticActionLoading('aiDoctor', true);
+
+  try {
+    const aiRes = await TachyonShellMethods.aiDoctor();
+
+    if (!aiRes || typeof aiRes !== 'object') {
+      showToast(_('AI Doctor failed') + ': ' + _('Unknown error'), 'error');
+      return;
+    }
+
+    const rawData = (aiRes as { data?: unknown }).data;
+    const data =
+      typeof rawData === 'object' && rawData !== null
+        ? (rawData as Record<string, unknown>)
+        : null;
+
+    if ((aiRes as { success?: boolean }).success || (data && data.success)) {
+      const report = data ? String(data.report ?? '') : String(rawData ?? '');
+      const quickFixes: string[] = Array.isArray(data?.quick_fixes)
+        ? (data.quick_fixes as string[])
+        : String(data?.quick_fix ?? '')
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean);
+
+      const title = _('AI Doctor Diagnosis');
+
+      const modalContent = E('div', { class: 'tachyon_ai_doctor_modal' }, [
+        E(
+          'pre',
+          {
+            style:
+              'white-space: pre-wrap; font-family: inherit; background: rgba(0,0,0,0.04); padding: 12px; border-radius: 6px; font-size: 13px; line-height: 1.5;',
+          },
+          report,
+        ),
+        quickFixes.length > 0
+          ? E(
+              'div',
+              {
+                style:
+                  'margin-top: 15px; padding-top: 12px; border-top: 1px solid rgba(0,0,0,0.1);',
+              },
+              [
+                E('b', {}, _('Recommended Quick Fixes:')),
+                E(
+                  'div',
+                  {
+                    style:
+                      'display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px;',
+                  },
+                  [
+                    ...quickFixes.map((code) =>
+                      E(
+                        'button',
+                        {
+                          class: 'btn cbi-button cbi-button-apply',
+                          type: 'button',
+                          onclick: async () => {
+                            showToast(
+                              _('Applying fix') + ': ' + code + '...',
+                              'success',
+                            );
+                            const fixRes =
+                              await TachyonShellMethods.applyQuickFix(code);
+                            if (
+                              fixRes &&
+                              typeof fixRes === 'object' &&
+                              (fixRes as { success?: boolean }).success
+                            ) {
+                              showToast(
+                                _('Fix applied') + ': ' + code,
+                                'success',
+                              );
+                            } else {
+                              showToast(
+                                _('Failed to apply fix') + ': ' + code,
+                                'error',
+                              );
+                            }
+                          },
+                        },
+                        _('Fix') + ': ' + code,
+                      ),
+                    ),
+                    quickFixes.length > 1
+                      ? E(
+                          'button',
+                          {
+                            class: 'btn cbi-button cbi-button-save',
+                            type: 'button',
+                            onclick: async () => {
+                              showToast(_('Applying all fixes...'), 'success');
+                              const fixRes =
+                                await TachyonShellMethods.applyQuickFix(
+                                  quickFixes.join(','),
+                                );
+                              if (
+                                fixRes &&
+                                typeof fixRes === 'object' &&
+                                (fixRes as { success?: boolean }).success
+                              ) {
+                                showToast(
+                                  _('All fixes applied successfully'),
+                                  'success',
+                                );
+                              } else {
+                                showToast(_('Some fixes failed'), 'error');
+                              }
+                            },
+                          },
+                          _('Fix All'),
+                        )
+                      : E('span', {}),
+                  ],
+                ),
+              ],
+            )
+          : E(
+              'div',
+              { style: 'margin-top: 10px; color: #2e7d32;' },
+              '✅ ' + _('No quick fix required'),
+            ),
+      ]);
+
+      ui.showModal(title, modalContent);
+    } else {
+      const errorMsg =
+        typeof (aiRes as { error?: string }).error === 'string'
+          ? (aiRes as { error?: string }).error
+          : _('Unknown error');
+      showToast(_('AI Doctor failed') + ': ' + errorMsg, 'error');
+    }
+  } catch (e) {
+    logger.error(
+      '[DIAGNOSTIC]',
+      'handleRunAiDoctor - e',
+      e instanceof Error ? e.message : String(e),
+    );
+    showToast(_('AI Doctor failed'), 'error');
+  } finally {
+    setDiagnosticActionLoading('aiDoctor', false);
+    runChecks();
+  }
+}
+
 async function handleViewLogs() {
   setDiagnosticActionLoading('viewLogs', true);
 
@@ -1005,6 +1152,12 @@ function renderDiagnosticAvailableActionsWidget() {
       loading: diagnosticsActions.doctor.loading,
       visible: true,
       onClick: handleRunDoctor,
+      disabled: utilityActionsDisabled,
+    },
+    aiDoctor: {
+      loading: diagnosticsActions.aiDoctor.loading,
+      visible: true,
+      onClick: handleRunAiDoctor,
       disabled: utilityActionsDisabled,
     },
     viewLogs: {

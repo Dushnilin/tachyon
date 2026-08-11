@@ -120,6 +120,9 @@ export const initialDiagnosticStore: Pick<
     doctor: {
       loading: false,
     },
+    aiDoctor: {
+      loading: false,
+    },
     viewLogs: {
       loading: false,
     },

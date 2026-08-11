@@ -2941,6 +2941,113 @@ function diagnose_json() {
     return 0;
 }
 
+function apply_quick_fix(codes_str) {
+    if (!codes_str || codes_str == "") {
+        print(sprintf("%J\n", { success: false, error: "No fix code provided" }));
+        return 1;
+    }
+
+    let codes = split(replace(codes_str, /[ \[\]"]/g, ""), ",");
+    let results = [];
+    let all_ok = true;
+
+    for (let c in codes) {
+        c = trim(c);
+        if (c == "") continue;
+
+        let status = false;
+        let msg = "";
+
+        if (c == "start_singbox") {
+            command_status("/etc/init.d/sing-box restart >/dev/null 2>&1");
+            status = true;
+            msg = "sing-box restarted";
+        } else if (c == "rebuild_rules") {
+            command_status("/etc/init.d/tachyon reload >/dev/null 2>&1");
+            status = true;
+            msg = "Firewall rules rebuilt";
+        } else if (c == "fix_dnsmasq") {
+            command_status("/etc/init.d/dnsmasq restart >/dev/null 2>&1");
+            status = true;
+            msg = "dnsmasq restarted";
+        } else if (c == "fix_resolv_symlink") {
+            command_status("ln -sf /tmp/resolv.conf.auto /etc/resolv.conf");
+            status = true;
+            msg = "resolv.conf symlink fixed";
+        } else if (c == "start_watchdog") {
+            command_status("/etc/init.d/tachyon restart >/dev/null 2>&1");
+            status = true;
+            msg = "Watchdog started";
+        } else if (c == "restart_singbox_dns") {
+            command_status("/etc/init.d/sing-box restart >/dev/null 2>&1");
+            status = true;
+            msg = "sing-box DNS restarted";
+        } else if (c == "fix_uci_config") {
+            command_status("cp /etc/config/tachyon.bak /etc/config/tachyon 2>/dev/null");
+            status = true;
+            msg = "UCI config restored from backup";
+        } else if (c == "fix_wan_interface") {
+            command_status("ifup wan 2>/dev/null");
+            status = true;
+            msg = "WAN interface re-up triggered";
+        } else if (c == "fix_gateway") {
+            command_status("/etc/init.d/network restart >/dev/null 2>&1");
+            status = true;
+            msg = "Network restarted to resolve gateway";
+        } else if (c == "clear_dns_cache") {
+            command_status("/etc/init.d/dnsmasq restart >/dev/null 2>&1");
+            command_status("rm -f /etc/sing-box/cache.db 2>/dev/null");
+            status = true;
+            msg = "DNS cache cleared and dnsmasq restarted";
+        } else if (c == "update_subscriptions") {
+            command_status("/usr/bin/tachyon component_action update_subscriptions >/dev/null 2>&1 &");
+            status = true;
+            msg = "Subscription update triggered";
+        } else if (c == "reset_firewall") {
+            command_status("/etc/init.d/firewall restart >/dev/null 2>&1");
+            status = true;
+            msg = "Firewall restarted";
+        } else if (c == "restart_network") {
+            command_status("/etc/init.d/network restart >/dev/null 2>&1");
+            status = true;
+            msg = "Network service restarted";
+        } else {
+            status = false;
+            msg = "Unknown fix code: " + c;
+            all_ok = false;
+        }
+
+        push(results, { code: c, success: status, message: msg });
+    }
+
+    print(sprintf("%J\n", {
+        success: all_ok,
+        results: results
+    }));
+    return all_ok ? 0 : 1;
+}
+
+function ai_doctor_last() {
+    let raw = fs.readfile("/tmp/ai_doctor_last.json");
+    if (!raw) {
+        print(sprintf("%J\n", {
+            success: false,
+            error: "No previous AI Doctor report found"
+        }));
+        return 0;
+    }
+    let data = parse_json_or_null(raw);
+    if (!data) {
+        print(sprintf("%J\n", {
+            success: false,
+            error: "Corrupted AI Doctor history file"
+        }));
+        return 0;
+    }
+    print(sprintf("%J\n", data));
+    return 0;
+}
+
 function ai_doctor() {
     let cfg = uci_settings();
     if (cfg.enable_ai_doctor != "1" || !cfg.ai_doctor_api_key) {
@@ -2960,15 +3067,58 @@ function ai_doctor() {
     let uptime_out = trim(command_output("cat /proc/uptime 2>/dev/null"));
     let uptime_min = uptime_out != "" ? int(split(uptime_out, ".")[0]) / 60 : 0;
 
+    let watchdog_status_raw = fs.readfile("/tmp/tachyon_ai_status.json");
+    let watchdog_info = "Watchdog Status: unavailable";
+    if (watchdog_status_raw) {
+        let wd_json = parse_json_or_null(watchdog_status_raw);
+        if (wd_json) {
+            watchdog_info = sprintf(
+                "Watchdog Status:\n- Last OOM: %s\n- WAN fail streak: %d\n- Proxy fail streak: %d\n- DNS fail streak: %d\n- Active repairs: %s",
+                as_string(wd_json.last_oom_time || "none"),
+                int(wd_json.wan_fail_streak || 0),
+                int(wd_json.proxy_fail_streak || 0),
+                int(wd_json.dns_fail_streak || 0),
+                as_string(wd_json.active_repairs || "none")
+            );
+        }
+    }
+
+    let log_snippet = trim(command_output("logread | grep -iE 'tachyon|sing-box|dnsmasq|oom|error|fatal' | tail -n 15 2>/dev/null")) || "No recent system errors logged.";
+
     let sys_context = sprintf(
-        "Tachyon Doctor Report:\n%s\n" +
+        "Tachyon Doctor Report:\n%s\n\n" +
+        "System Parameters:\n" +
         "Version: %s\n" +
         "DNS type: %s\n" +
         "sing-box running: %s\n" +
-        "Uptime: %d minutes\n",
-        report, version, dns_type, singbox_running ? "yes" : "no", uptime_min
+        "Uptime: %d minutes\n\n" +
+        "%s\n\n" +
+        "Recent Critical System Logs:\n%s\n",
+        report, version, dns_type, singbox_running ? "yes" : "no", uptime_min,
+        watchdog_info, log_snippet
     );
-    let prompt = sprintf("Вы — ИИ-ассистент \"Tachyon AI Doctor\" для сервиса обхода блокировок на OpenWrt.\nПроанализируйте диагностический отчет ниже.\n\n%s\n\nСформулируйте краткий диагноз (на русском, максимум 3 пункта).\nЕсли авто-исправление возможно, укажите в конце:\nFIX: <код>\n\nДоступные коды:\n- start_singbox (sing-box упал)\n- rebuild_rules (nftables нарушены)\n- fix_dnsmasq (конфиг dnsmasq)\n- fix_resolv_symlink (resolv.conf повреждён)\n- start_watchdog (watchdog остановлен)\n- restart_singbox_dns (sing-box DNS не отвечает)\n- fix_uci_config (конфиг Tachyon повреждён)\n- fix_wan_interface (WAN интерфейс не работает)\n- fix_gateway (шлюз отсутствует)\n\nЕсли авто-исправление не применимо, не пишите тег FIX.", sys_context);
+
+    let prompt = sprintf(
+        "Вы — ИИ-ассистент \"Tachyon AI Doctor\" для сервиса обхода блокировок на OpenWrt.\n" +
+        "Проанализируйте диагностический отчет и логи ниже.\n\n%s\n\n" +
+        "Сформулируйте краткий диагноз (на русском, максимум 3-4 пункта).\n" +
+        "Если авто-исправление возможно, укажите в самом конце ответа строчку:\n" +
+        "FIX: код1, код2\n\n" +
+        "Доступные коды быстрого исправления:\n" +
+        "- start_singbox (sing-box упал или остановлен)\n" +
+        "- rebuild_rules (nftables или ip rule правила нарушены)\n" +
+        "- fix_dnsmasq (конфиг или сервис dnsmasq не отвечает)\n" +
+        "- fix_resolv_symlink (resolv.conf повреждён)\n" +
+        "- start_watchdog (watchdog остановлен)\n" +
+        "- restart_singbox_dns (sing-box DNS не отвечает)\n" +
+        "- fix_uci_config (конфиг Tachyon повреждён)\n" +
+        "- fix_wan_interface (WAN интерфейс не работает)\n" +
+        "- fix_gateway (шлюз отсутствует)\n" +
+        "- clear_dns_cache (очистить кэш DNS и перезапустить dnsmasq)\n" +
+        "- update_subscriptions (принудительно обновить прокси подписки)\n" +
+        "- reset_firewall (перезапустить файрвол роутера)\n" +
+        "- restart_network (перезапустить сетевой стек)\n\n" +
+        "Если авто-исправление не применимо, не пишите тег FIX.", sys_context);
 
     let provider = cfg.ai_doctor_provider || "openai";
     let api_key = cfg.ai_doctor_api_key || "";
@@ -2984,23 +3134,36 @@ function ai_doctor() {
         return 0;
     }
 
-    let quick_fix = "";
+    let quick_fixes = [];
     let text = ai_res;
     let fix_idx = index(text, "FIX:");
     if (fix_idx >= 0) {
         let fix_part = trim(substr(text, fix_idx + 4));
-        let fields = split(fix_part, /[ \t\r\n]+/);
-        if (length(fields) > 0) {
-            quick_fix = replace(fields[0], /[._`*]/g, "");
+        let raw_codes = split(fix_part, /[,\r\n]+/);
+        for (let code in raw_codes) {
+            let clean_code = trim(replace(code, /[._`*]/g, ""));
+            let first_token = split(clean_code, /[ \t]+/)[0];
+            if (first_token != "") {
+                push(quick_fixes, first_token);
+            }
         }
         text = trim(substr(text, 0, fix_idx));
     }
+    let quick_fix = length(quick_fixes) > 0 ? join(",", quick_fixes) : "";
 
-    print(sprintf("%J\n", {
+    let doctor_res = {
         success: true,
+        timestamp: time(),
         report: text,
-        quick_fix: quick_fix
-    }));
+        quick_fix: quick_fix,
+        quick_fixes: quick_fixes,
+        provider: provider,
+        model: model_override != "" ? model_override : "default"
+    };
+
+    common.write_json_file("/tmp/ai_doctor_last.json", doctor_res);
+
+    print(sprintf("%J\n", doctor_res));
     return 0;
 }
 
@@ -3185,6 +3348,10 @@ else if (mode == "diagnose-json")
     exit(diagnose_json());
 else if (mode == "ai-doctor")
     exit(ai_doctor());
+else if (mode == "ai-doctor-last")
+    exit(ai_doctor_last());
+else if (mode == "apply-quick-fix")
+    exit(apply_quick_fix(ARGV[1] || ""));
 else if (mode == "validate-nfqws-strategy-json")
     exit(validate_nfqws_strategy_json(ARGV[1] || ""));
 else if (mode == "validate-nfqws2-strategy-json")
