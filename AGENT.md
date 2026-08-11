@@ -1,150 +1,188 @@
-﻿# Tachyon AI Agent API
+# Tachyon AI & Agent API Integration
 
-Tachyon поддерживает подключение внешних ИИ-агентов (Claude, GPT, Open-WebUI, Cursor и т.д.) через встроенный HTTP REST API и CLI-интерфейс.
+Tachyon предоставляет встроенные инструменты интеграции с искусственным интеллектом:
+1. **AI Doctor** — автоматическая диагностика системы с участием LLM (OpenAI, Anthropic, DeepSeek или локальные/кастомные модели) и кнопками быстрого исправления (Quick Fix).
+2. **HTTP REST Agent API & CLI** — программный интерфейс для внешних ИИ-агентов (Claude, GPT, Open-WebUI, Cursor, AutoGPT и т.д.).
+3. **Автономный Watchdog** — работающая из коробки система самодиагностики и самовосстановления без внешних зависимостей.
 
-## Самодиагностика и самовосстановление (из коробки)
+---
 
-Watchdog Tachyon уже работает автономно: каждые 5–15 секунд он проверяет состояние всех подсистем и автоматически исправляет проблемы. Для принудительного запуска диагностики и восстановления:
+## 1. AI Doctor (Встроенная LLM-диагностика)
+
+AI Doctor собирает снимок состояния роутера (проверки sing-box, nftables, DNS, WAN, памяти, uptime и процессов), передаёт его в выбранную LLM и выдаёт краткий вердикт на русском языке. При наличии устранимой проблемы AI Doctor генерирует код быстрого исправления (`FIX: <код>`).
+
+### 1.1. Настройка AI Doctor
+
+Настройка выполняется в LuCI Web UI (**Настройки → Дополнительные → AI Doctor**) или через UCI CLI:
 
 ```sh
-tachyon ai_heal          # полный цикл диагностики + авто-починки
-tachyon ai_status        # текущий JSON-статус watchdog
-tachyon ai_status_full   # расширенный JSON с метриками
-tachyon doctor           # текстовый отчёт доктора
-tachyon diagnose_json    # структурированный JSON для ИИ-агента
+# 1. Включить модуль AI Doctor
+uci set tachyon.settings.enable_ai_doctor='1'
+
+# 2. Выбрать провадера: openai | anthropic | deepseek | custom
+uci set tachyon.settings.ai_doctor_provider='openai'
+
+# 3. Выказать модель (опционально - если пустое, используется дефолт провайдера)
+uci set tachyon.settings.ai_doctor_model='gpt-4o-mini'
+
+# 4. Указать API Key
+uci set tachyon.settings.ai_doctor_api_key='sk-proj-...'
+
+# 5. Для custom-провайдера (опционально)
+uci set tachyon.settings.ai_doctor_custom_url='https://openrouter.ai/api/v1/chat/completions'
+
+# Сохранить изменения
+uci commit tachyon
+```
+
+### 1.2. Поддерживаемые провайдеры и модели
+
+| Провайдер | UCI `ai_doctor_provider` | Модель по умолчанию (если `ai_doctor_model` пустое) | Примеры моделей (`ai_doctor_model`) |
+|---|---|---|---|
+| **OpenAI** | `openai` | `gpt-4o-mini` | `gpt-4o`, `gpt-4.1-mini`, `o4-mini` |
+| **Anthropic** | `anthropic` | `claude-3-5-haiku-20241022` | `claude-3-5-sonnet-20241022`, `claude-3-7-sonnet-20250219` |
+| **DeepSeek** | `deepseek` | `deepseek-chat` | `deepseek-reasoner` |
+| **Custom API** | `custom` | `gpt-4o-mini` | Название любой модели вашего сервера (например `llama-3.3-70b`, `qwen-2.5-72b`) |
+
+### 1.3. Коды быстрого исправления (Quick Fix Codes)
+
+Если LLM находит известную проблему, она возвращает код быстрого исправления. Tachyon поддерживает следующие автоматические исправления:
+
+- `start_singbox` — перезапуск упавшего сервиса sing-box
+- `rebuild_rules` — пересборка и сброс nftables-правил фильтрации
+- `fix_dnsmasq` — восстановление корректной конфигурации dnsmasq
+- `fix_resolv_symlink` — исправление повреждённого символического звена `/etc/resolv.conf`
+- `start_watchdog` — запуск остановленного процесса Watchdog
+- `restart_singbox_dns` — перезапуск DNS-модуля sing-box при сбое ответов
+- `fix_uci_config` — восстановление повреждённого UCI-конфига Tachyon из бэкапа
+- `fix_wan_interface` — перезапуск сбойного сетевого интерфейса WAN
+- `fix_gateway` — исправление отсутствующего или некорректного системного шлюза
+
+---
+
+## 2. Автономная самодиагностика и Watchdog
+
+Watchdog Tachyon работает автономно на роутере каждые 5–15 секунд без использования внешних API.
+
+### Полезные CLI-команды:
+
+```sh
+tachyon ai_doctor          # запуск анализа AI Doctor (вызывает LLM)
+tachyon ai_heal            # ручной запуск полного цикла авто-починки Watchdog
+tachyon ai_status          # краткий JSON-статус Watchdog
+tachyon ai_status_full     # полный JSON-статус с метриками и таймерами
+tachyon doctor             # текстовый отчёт встроенного доктора (без LLM)
+tachyon diagnose_json      # структурированный JSON отчёт для сторонних агентов
 ```
 
 ---
 
-## HTTP REST API (для ИИ-агентов)
+## 3. HTTP REST Agent API (для внешних ИИ-агентов)
 
-После установки Tachyon поднимает CGI-эндпоинт через uhttpd:
+Для работы внешних ИИ-агентов (Cursor, Open-WebUI, Claude Desktop, AutoGPT) Tachyon поднимает CGI эндпоинт через `uhttpd`:
 
 ```
 http://<ip-роутера>/cgi-bin/tachyon-agent/<endpoint>
 ```
 
-### Настройка токена (обязательна для WRITE-операций)
+### 3.1. Настройка токена доступа (Agent API Token)
+
+WRITE-операции (изменение настроек, перезапуск сервисов) требуют Bearer-авторизации:
 
 ```sh
-uci set tachyon.settings.agent_api_token='ВАШ_СЕКРЕТНЫЙ_ТОКЕН'
+uci set tachyon.settings.agent_api_token='СЕКРЕТНЫЙ_ТОКЕН_АГЕНТА'
 uci commit tachyon
 ```
 
-Без токена READ-эндпоинты работают свободно с локальной сети. WRITE-эндпоинты всегда требуют `Authorization: Bearer <token>`.
+### 3.2. Эндпоинты API
 
----
-
-## Эндпоинты
-
-### READ (без токена)
+#### READ (Без авторизации в LAN):
 
 | Метод | Путь | Описание |
 |---|---|---|
-| GET | `/cgi-bin/tachyon-agent/health` | Быстрый статус служб |
-| GET | `/cgi-bin/tachyon-agent/snapshot` | Полный снимок системы для LLM |
-| GET | `/cgi-bin/tachyon-agent/diagnose` | Диагностика + автоисправление |
-| GET | `/cgi-bin/tachyon-agent/logs` | Последние 100 строк лога |
+| GET | `/cgi-bin/tachyon-agent/health` | Быстрая проверка работоспособности служб |
+| GET | `/cgi-bin/tachyon-agent/snapshot` | Полный сним ок системы для LLM |
+| GET | `/cgi-bin/tachyon-agent/diagnose` | Результаты диагностики + предложения по ремонту |
+| GET | `/cgi-bin/tachyon-agent/logs` | Последние 100 строк системного лога Tachyon |
 | GET | `/cgi-bin/tachyon-agent/config` | Конфигурация UCI (секреты скрыты) |
-| GET | `/cgi-bin/tachyon-agent/tools` | JSON-схема инструментов для LLM |
+| GET | `/cgi-bin/tachyon-agent/tools` | Схема инструментов в формате OpenAI Function Calling / MCP |
 
-### WRITE (Bearer token обязателен)
+#### WRITE (Обязателен заголовок `Authorization: Bearer <токен>`):
 
-| Метод | Путь | Тело | Описание |
+| Метод | Путь | Тело запроса | Описание |
 |---|---|---|---|
-| POST | `/cgi-bin/tachyon-agent/heal` | `{}` | Авто-диагностика и ремонт |
-| POST | `/cgi-bin/tachyon-agent/restart` | `{"service":"singbox"}` | Перезапуск службы |
-| POST | `/cgi-bin/tachyon-agent/reload` | `{}` | Перезагрузка конфигурации |
-| POST | `/cgi-bin/tachyon-agent/config/set` | `{"section":"settings","option":"dns_type","value":"doh"}` | Установить UCI-опцию |
-| POST | `/cgi-bin/tachyon-agent/section/toggle` | `{"section":"myrule"}` | Вкл/выкл секцию |
-| POST | `/cgi-bin/tachyon-agent/domain/add` | `{"section":"myrule","domain":"example.com"}` | Добавить домен |
+| POST | `/cgi-bin/tachyon-agent/heal` | `{}` | Принудительный запуск авто-ремонта |
+| POST | `/cgi-bin/tachyon-agent/restart` | `{"service":"singbox"}` | Перезапуск службы (`singbox`, `watchdog`, `dnsmasq`) |
+| POST | `/cgi-bin/tachyon-agent/reload` | `{}` | Перезагрузка правил и конфигурации |
+| POST | `/cgi-bin/tachyon-agent/config/set` | `{"section":"settings","option":"dns_type","value":"doh"}` | Изменение параметров UCI |
+| POST | `/cgi-bin/tachyon-agent/section/toggle` | `{"section":"имя_секции"}` | Включение / выключение правил обхода |
+| POST | `/cgi-bin/tachyon-agent/domain/add` | `{"section":"имя_секции","domain":"example.com"}` | Добавление домена в списки |
 
 ---
 
-## Примеры curl
+## 4. Примеры вызовов и интеграции
+
+### 4.1. Примеры cURL
 
 ```sh
-# Быстрый статус
+# Проверка здоровья
 curl http://192.168.1.1/cgi-bin/tachyon-agent/health
 
-# Полный снимок системы
+# Полный снимок системы для промпта LLM
 curl http://192.168.1.1/cgi-bin/tachyon-agent/snapshot | jq .
 
-# Запуск диагностики и авто-починки
-curl http://192.168.1.1/cgi-bin/tachyon-agent/diagnose | jq .
-
-# Принудительный heal с токеном
+# Вызов команды восстановления с токеном
 curl -X POST \
-  -H "Authorization: Bearer ВАШ_ТОКЕН" \
+  -H "Authorization: Bearer СЕКРЕТНЫЙ_ТОКЕН_АГЕНТА" \
   http://192.168.1.1/cgi-bin/tachyon-agent/heal
 
-# Перезапуск sing-box
+# Изменение настроек UCI через API
 curl -X POST \
-  -H "Authorization: Bearer ВАШ_ТОКЕН" \
+  -H "Authorization: Bearer СЕКРЕТНЫЙ_ТОКЕН_АГЕНТА" \
   -H "Content-Type: application/json" \
-  -d '{"service":"singbox"}' \
-  http://192.168.1.1/cgi-bin/tachyon-agent/restart
+  -d '{"section":"settings","option":"ai_doctor_model","value":"gpt-4o"}' \
+  http://192.168.1.1/cgi-bin/tachyon-agent/config/set
 ```
 
----
+### 4.2. CLI вызовы через SSH
 
-## CLI через SSH
-
-Для ИИ-агентов с SSH-доступом:
+Для внешних агентов с SSH-доступом:
 
 ```sh
-# Полный диагностический JSON
+# Структурированный отчёт
 tachyon diagnose_json
 
-# Вызов любого эндпоинта
+# Вызов API через внутреннюю утилиту agent
 tachyon agent /tachyon/agent/v1/health GET
 tachyon agent /tachyon/agent/v1/snapshot GET
-tachyon agent /tachyon/agent/v1/diagnose GET
-tachyon agent /tachyon/agent/v1/heal POST '{}' 'Bearer ВАШ_ТОКЕН'
-tachyon agent /tachyon/agent/v1/restart POST '{"service":"singbox"}' 'Bearer ВАШ_ТОКЕН'
+tachyon agent /tachyon/agent/v1/heal POST '{}' 'Bearer СЕКРЕТНЫЙ_ТОКЕН_АГЕНТА'
 ```
+
+### 4.3. Подключение к Cursor / Claude Desktop / Open-WebUI
+
+1. **Запросить схему инструментов:**
+   ```sh
+   curl http://192.168.1.1/cgi-bin/tachyon-agent/tools
+   ```
+2. **Системный промпт для внешнего ИИ-агента:**
+   ```text
+   You are a network administrator AI agent connected to Tachyon OpenWrt router.
+   Base API URL: http://192.168.1.1/cgi-bin/tachyon-agent/
+   Auth Header for POST commands: Authorization: Bearer <YOUR_AGENT_API_TOKEN>
+
+   1. Call GET /snapshot to read the current network state.
+   2. Call GET /diagnose to check system issues.
+   3. Execute actions using POST endpoints provided in GET /tools.
+   ```
 
 ---
 
-## Подключение к Claude / Open-WebUI / Cursor
+## 5. Безопасность
 
-### 1. Получить схему инструментов
-
-```sh
-curl http://192.168.1.1/cgi-bin/tachyon-agent/tools
-```
-
-Ответ содержит массив `tools` в формате OpenAI Function Calling / MCP.
-
-### 2. Системный промпт для ИИ-агента
-
-```
-You are a network assistant connected to a Tachyon OpenWrt router.
-Router API base: http://192.168.1.1/cgi-bin/tachyon-agent/
-Authorization token for write operations: Bearer <ВАШ_ТОКЕН>
-
-Start by calling GET /snapshot to understand the current system state.
-Then call GET /diagnose to check for problems.
-Use the tools listed at GET /tools to interact with the system.
-```
-
-### 3. Через Open-WebUI с MCP
-
-Добавьте URL инструментов в конфигурацию Open-WebUI:
-```
-http://192.168.1.1/cgi-bin/tachyon-agent/tools
-```
-
----
-
-## Безопасность
-
-- **READ-эндпоинты** доступны с локальной сети без токена (данные не содержат секретов)
-- **WRITE-эндпоинты** всегда требуют Bearer-токен
-- Токен хранится в UCI: `tachyon.settings.agent_api_token`
-- Внешний (WAN) доступ закрыт фаерволом OpenWrt по умолчанию
-- Для удалённого доступа используйте SSH-туннель:
+- **READ-эндпоинты** не передают пароли, приватные ключи подписчиков и бот-токены.
+- **WRITE-эндпоинты** всегда блокируются без валидного Bearer-токена.
+- **По умолчанию WAN-доступ к HTTP API закрыт** брандмауэром OpenWrt.
+- Для удаленного управления рекомендуется использовать SSH-туннелирование:
   ```sh
-  ssh -L 8080:192.168.1.1:80 root@ваш-роутер
-  curl http://localhost:8080/cgi-bin/tachyon-agent/health
+  ssh -L 8080:192.168.1.1:80 root@router-ip
   ```
