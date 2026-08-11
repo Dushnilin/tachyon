@@ -35,6 +35,13 @@ The entire backend logic is written in **ucode** — OpenWrt's native, lightweig
   * **By GeoIP & Countries**: Flexible inclusion/exclusion list controls based on destination country.
 * **Automated Subscription Updates**: Background fetching, parsing, and node rotation from remote subscription URLs.
 
+#### 🌐 Hosts Sections & DNS Overrides (Hosts Engine)
+* **Static DNS Overriding (`dns_hosts`)**: Direct mapping of domains to static IP addresses in sing-box DNS and dnsmasq without editing `/etc/hosts`.
+* **Remote Hosts Lists Ingestion (`hosts_list_urls`)**: Automatic background downloading and parsing of external host lists and blocklists (AdAway, StevenBlack, custom blocklists).
+* **Unified Cache (`combined.txt`)**: High-performance deduplication, merging, and global caching of multiple remote host sources into a single lightweight cache.
+* **GitHub Mirror Failover**: Resilient downloads that automatically retry via mirrors (`gh-proxy.com`, `ghproxy.net`) if direct access to github.com is blocked or throttled.
+* **Hosts-Only Action Sections (`action = hosts`)**: Dedicated routing sections operating purely as DNS override engines without requiring an outbound proxy association.
+
 ---
 
 ### 🤖 2. AI Doctor & HTTP REST Agent API (AI Stack)
