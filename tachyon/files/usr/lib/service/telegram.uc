@@ -132,22 +132,18 @@ function get_proxy_args() {
 function tg_request(token, method, payload) {
     if (!token) return null;
     let url = "https://api.telegram.org/bot" + token + "/" + method;
-    let payload_path = "/tmp/tg_payload_" + method + "_" + time() + "_" + clock()[1] + ".json";
-    
-    let res = null;
-    try {
-        fs.writefile(payload_path, sprintf("%J", payload));
-        let args = [ "curl", "-s", "-m", "35", "--connect-timeout", "10", "-X", "POST", "-H", "Content-Type: application/json", "-d", "@" + payload_path ];
-        let proxy = get_proxy_args();
-        for (let p in proxy) push(args, p);
-        push(args, url);
-        res = command_capture(command_from_args(args));
-    } catch (e) {
-        try { fs.unlink(payload_path); } catch(err) {}
-        return null;
-    }
-    try { fs.unlink(payload_path); } catch(err) {}
-    
+    // Pass the JSON body directly to curl's -d argument so there is no temp
+    // file to leak: the old /tmp/tg_payload_*.json files were left behind
+    // whenever the process was killed mid-request (e.g. during the 20-second
+    // getUpdates long-poll on reboot or watchdog restart).
+    let body = sprintf("%J", payload);
+    let args = [ "curl", "-s", "-m", "35", "--connect-timeout", "10",
+                 "-X", "POST", "-H", "Content-Type: application/json",
+                 "-d", body ];
+    let proxy = get_proxy_args();
+    for (let p in proxy) push(args, p);
+    push(args, url);
+    let res = command_capture(command_from_args(args));
     if (!res || res.status != 0 || res.output == "") return null;
     try { return json(res.output); } catch (e) { return null; }
 }
@@ -2644,6 +2640,18 @@ function worker() {
         { command: "restart",   description: "Перезапуск служб Tachyon" }
     ];
     tg_request(cfg.bot_token, "setMyCommands", { commands: commands });
+
+    // Clean up leftover payload temp-files from previous runs that were
+    // interrupted (e.g. killed during a 20-second getUpdates long-poll).
+    let tmp = fs.opendir("/tmp");
+    if (tmp) {
+        let entry;
+        while ((entry = tmp.read()) != null) {
+            if (index(entry, "tg_payload_") == 0 && substr(entry, -5) == ".json")
+                try { fs.unlink("/tmp/" + entry); } catch(e) {}
+        }
+        tmp.close();
+    }
 
     let poll_interval = int(cfg.poll_interval || "5");
     if (poll_interval < 1) poll_interval = 1;

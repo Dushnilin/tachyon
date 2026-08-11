@@ -381,26 +381,6 @@ function dns_consecutive_fails() { return controller.dns_consecutive_fails(); }
 function proxy_latency_history() { return controller.proxy_latency_history(); }
 function dns_latency_history() { return controller.dns_latency_history(); }
 
-function check_tachyon_cli_running() {
-    let running = false;
-    let proc = fs.opendir("/proc");
-    if (proc) {
-        let entry;
-        while ((entry = proc.read()) != null) {
-            if (match(entry, /^[0-9]+$/)) {
-                let cmdline = fs.readfile("/proc/" + entry + "/cmdline") || "";
-                if (index(cmdline, "/usr/bin/tachyon") >= 0) {
-                    if (index(cmdline, "start") >= 0 || index(cmdline, "restart") >= 0 || index(cmdline, "reload") >= 0 || index(cmdline, "stop") >= 0) {
-                        running = true;
-                        break;
-                    }
-                }
-            }
-        }
-        proc.close();
-    }
-    return running;
-}
 
 // ─── Root-cause suppression ───────────────────────────────────────────────────
 // A dead WAN takes the proxy, DNS and the health check down with it. Each of
@@ -535,7 +515,7 @@ function heal_singbox_stopped(ev) {
     let cfg = settings();
     if (cfg.recovery_bypass == "1") return;
     if (check_auto_resume_pause()) return;
-    if (check_tachyon_cli_running()) return;
+    if (controller.check_tachyon_cli_running()) return;
 
     let list_update_pid = trim(fs.readfile("/var/run/tachyon_list_update.pid") || "");
     if (process_running(list_update_pid, "ucode")) return;
@@ -678,7 +658,7 @@ function note_dns_recovered(ev) {
 // Guard: skip if a tachyon reload is already in progress (prevents concurrent reload_firewall races)
 function is_reload_in_progress() {
     return fs.stat("/var/run/tachyon.reload.lock") != null
-        || check_tachyon_cli_running();
+        || controller.check_tachyon_cli_running();
 }
 
 // `force_level` pins the rung instead of consulting the ladder. Only
@@ -808,6 +788,11 @@ function heal_dns_stall(ev) {
 function heal_proxy_connectivity(ev) {
     if (settings().recovery_bypass == "1") return;
     if (!ev.payload.direct_ok) return;
+    // Two consecutive failures before acting: a single brief proxy-node timeout
+    // (e.g. URLTest selecting a slow node for 5–10s) must not wipe cache.db and
+    // restart sing-box. The heal_proxy_health subscriber handles single-failure
+    // recovery via the threshold it already carries.
+    if (int(ev.payload.streak) < 2) return;
     if (suppressed_by_root_cause("heal_proxy_connectivity", PRIORITY_PROXY)) return;
 
     let proxy_addr = "127.0.0.1:" + as_string(ev.payload.port);
@@ -1065,9 +1050,6 @@ function heal_empty_sections(ev) {
 let DNS_RECOVERY_STATE_FILE = "/var/run/tachyon/dns-detour-recovery.json";
 let dns_recovery_active = false;
 
-function is_dns_dead() {
-    return !is_dns_working();
-}
 
 function read_dns_recovery_state() {
     let data = common.read_json_file(DNS_RECOVERY_STATE_FILE);
@@ -1099,8 +1081,8 @@ function ai_heal_dns_loop() {
     let detour_section = common.option(cfg, "dns_detour_section", "");
     if (detour_section == "") return;
 
-    // Check if DNS is dead
-    if (!is_dns_dead()) {
+    // Check if DNS is working
+    if (is_dns_working()) {
         // DNS works — if we were in recovery, try to restore
         let recovery = read_dns_recovery_state();
         if (recovery.phase == "detour_disabled") {
@@ -1344,25 +1326,9 @@ function smart_detect_process_pending() {
     let sections = smart_detect_get_proxy_sections();
     if (length(sections) == 0) return;
 
-    let proxy_addr = "127.0.0.1:4534";
-    let sb_cfg_data = fs.readfile("/etc/sing-box/config.json");
-    if (sb_cfg_data) {
-        try {
-            let sb_cfg = json(sb_cfg_data);
-            if (sb_cfg.inbounds) {
-                for (let inb in sb_cfg.inbounds) {
-                    if (inb.type == "http" || inb.type == "mixed") {
-                        proxy_addr = "127.0.0.1:" + as_string(inb.listen_port || 4534);
-                        break;
-                    }
-                }
-            }
-        }
-        catch (e) {
-            // Falls back to the default 4534 set above. The controller logs the
-            // unparseable config once per process, so this does not repeat it.
-        }
-    }
+    // Reuse the controller's cached port value: re-parsing config.json here
+    // would duplicate the work event_controller already does (and caches).
+    let proxy_addr = "127.0.0.1:" + controller.proxy_port();
 
     let detect_sections = [];
     let raw_list = cfg.smart_detect_sections;

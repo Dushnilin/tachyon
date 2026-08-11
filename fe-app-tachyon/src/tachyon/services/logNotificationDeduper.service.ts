@@ -65,9 +65,7 @@ const SUPPRESSED_LOG_PATTERNS: RegExp[] = [
 export function isErrorLogLine(line: string) {
   const lower = line.toLowerCase();
 
-  if (
-    SUPPRESSED_LOG_PATTERNS.some((pattern) => pattern.test(lower))
-  ) {
+  if (SUPPRESSED_LOG_PATTERNS.some((pattern) => pattern.test(lower))) {
     return false;
   }
 

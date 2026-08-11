@@ -63,7 +63,7 @@ else
   closes_high=no
 fi
 
-SPAWN_UC="$(mktemp "${TMPDIR:-/tmp}/tachyon_spawn_fds.XXXXXX.uc")"
+SPAWN_UC="$(mktemp "${TMPDIR:-/tmp}/tachyon_spawn_fds.XXXXXX")"
 COUNT_OUT="$(mktemp "${TMPDIR:-/tmp}/tachyon_spawn_count.XXXXXX")"
 trap 'rm -f "$SPAWN_UC" "$COUNT_OUT"' EXIT
 

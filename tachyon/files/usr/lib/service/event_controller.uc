@@ -358,7 +358,8 @@ function controller(bus, opts) {
         syslog_start_time: 0,
         logread_pipe_fd: -1,
         last_oom_time: 0,
-        healthy_streak: 0
+        healthy_streak: 0,
+        subscription_fail_streak: 0
     };
 
     let self = { EV: EV, state: state };
@@ -368,10 +369,7 @@ function controller(bus, opts) {
     function push_history(history, entry) {
         push(history, entry);
         if (length(history) > 20) {
-            let trimmed = [];
-            for (let i = length(history) - 20; i < length(history); i++)
-                push(trimmed, history[i]);
-            return trimmed;
+            return slice(history, length(history) - 20);
         }
         return history;
     }
@@ -525,9 +523,12 @@ function controller(bus, opts) {
 
         // Distinguish "proxy is broken" from "the whole uplink is down": only
         // the former is worth restarting sing-box over.
+        // Use the same URL as the proxy check so the two measurements are
+        // comparable: if the user changed ai_proxy_health_url, direct_ok
+        // must probe the same target, not always fall back to Cloudflare.
         let direct_ok = command_success_from_args([
             "curl", "-s", "-I", "--connect-timeout", "3", "--max-time", "5",
-            "https://cp.cloudflare.com/generate_204"
+            check_url
         ]);
 
         bus.emit(EV.PROXY_DOWN, {
@@ -765,9 +766,16 @@ function controller(bus, opts) {
         let res = command_capture(
             "curl -s -o /dev/null -w %{http_code} --connect-timeout 10 " + shell_quote(sub_url) + " 2>&1");
         let code = int(res.output);
-        if (res.status == 0 && code >= 200 && code < 400) return;
+        if (res.status == 0 && code >= 200 && code < 400) {
+            state.subscription_fail_streak = 0;
+            return;
+        }
+        // Two consecutive failures before alerting: a single network hiccup
+        // (provider momentarily unreachable) must not trigger a Telegram message.
+        state.subscription_fail_streak++;
+        if (state.subscription_fail_streak < 2) return;
 
-        bus.emit(EV.SUBSCRIPTION_UNREACHABLE, { url: sub_url, code: code });
+        bus.emit(EV.SUBSCRIPTION_UNREACHABLE, { url: sub_url, code: code, streak: state.subscription_fail_streak });
     }
 
     // ── Probe: UCI config integrity ───────────────────────────────────────────

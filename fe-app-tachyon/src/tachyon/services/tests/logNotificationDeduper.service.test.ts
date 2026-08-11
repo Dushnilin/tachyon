@@ -61,7 +61,9 @@ describe('LogNotificationDeduper', () => {
       ),
     ).toBe(false);
     expect(
-      isErrorLogLine('tachyon: [error] another component action is already running'),
+      isErrorLogLine(
+        'tachyon: [error] another component action is already running',
+      ),
     ).toBe(false);
     // DNS retry during sing-box restart is transient
     expect(
@@ -70,9 +72,10 @@ describe('LogNotificationDeduper', () => {
       ),
     ).toBe(false);
     // Other real errors must still fire
-    expect(isErrorLogLine('tachyon: [error] sing-box crashed unexpectedly')).toBe(true);
+    expect(
+      isErrorLogLine('tachyon: [error] sing-box crashed unexpectedly'),
+    ).toBe(true);
   });
-
 
   it('dedupes already shown log lines through session storage', () => {
     const storage = new MemoryStorage();
