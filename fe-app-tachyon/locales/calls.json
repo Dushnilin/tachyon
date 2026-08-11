@@ -74,7 +74,7 @@
     "call": "⚙ Advanced Settings",
     "key": "⚙ Advanced Settings",
     "places": [
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1183"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1189"
     ]
   },
   {
@@ -352,7 +352,7 @@
     "key": "AI API Key",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:1302",
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:891"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:893"
     ]
   },
   {
@@ -391,7 +391,7 @@
     "key": "AI Doctor Language",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:1289",
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:858"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:860"
     ]
   },
   {
@@ -655,7 +655,7 @@
     "key": "Auto-detects blocked domains from logs and adds them to the first section where they work via proxy.",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:1449",
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1040"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1046"
     ]
   },
   {
@@ -1248,10 +1248,10 @@
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:10221",
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/server.js:1717",
       "src/partials/modal/renderModal.ts:263",
+      "src/tachyon/tabs/diagnostic/initController.ts:1194",
       "src/tachyon/tabs/dashboard/initController.ts:1085",
       "src/tachyon/tabs/monitoring/initController.ts:884",
-      "src/tachyon/tabs/monitoring/initController.ts:934",
-      "src/tachyon/tabs/diagnostic/initController.ts:1194"
+      "src/tachyon/tabs/monitoring/initController.ts:934"
     ]
   },
   {
@@ -1388,8 +1388,8 @@
     "key": "Conflict",
     "places": [
       "src/tachyon/methods/custom/getDashboardSections.ts:1569",
-      "src/tachyon/tabs/dashboard/partials/renderSections.ts:583",
-      "src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:141"
+      "src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:141",
+      "src/tachyon/tabs/dashboard/partials/renderSections.ts:583"
     ]
   },
   {
@@ -1507,7 +1507,7 @@
     "key": "Custom API Endpoint URL",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:1313",
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:909"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:911"
     ]
   },
   {
@@ -1621,7 +1621,7 @@
     "call": "Device IPs (one per line):",
     "key": "Device IPs (one per line):",
     "places": [
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1113"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1119"
     ]
   },
   {
@@ -1642,7 +1642,7 @@
     "call": "Devices listed here are always routed through the assigned section, regardless of global rules.",
     "key": "Devices listed here are always routed through the assigned section, regardless of global rules.",
     "places": [
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1151"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1157"
     ]
   },
   {
@@ -2342,7 +2342,7 @@
     "key": "Enable Smart Detect",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:1448",
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1057"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1063"
     ]
   },
   {
@@ -2647,12 +2647,12 @@
     "call": "Failed to execute",
     "key": "Failed to execute",
     "places": [
+      "src/tachyon/methods/shell/index.ts:171",
+      "src/tachyon/methods/shell/index.ts:178",
       "src/tachyon/tabs/updates/initController.ts:545",
       "src/tachyon/tabs/updates/initController.ts:546",
       "src/tachyon/tabs/updates/initController.ts:608",
-      "src/tachyon/tabs/updates/initController.ts:774",
-      "src/tachyon/methods/shell/index.ts:171",
-      "src/tachyon/methods/shell/index.ts:178"
+      "src/tachyon/tabs/updates/initController.ts:774"
     ]
   },
   {
@@ -4358,7 +4358,7 @@
     "call": "Loading…",
     "key": "Loading…",
     "places": [
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1161"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1167"
     ]
   },
   {
@@ -4547,14 +4547,14 @@
     "call": "Move down",
     "key": "Move down",
     "places": [
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:991"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:997"
     ]
   },
   {
     "call": "Move up",
     "key": "Move up",
     "places": [
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:980"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:986"
     ]
   },
   {
@@ -4710,7 +4710,7 @@
     "key": "No active routing sections found.",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:389",
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1099"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1105"
     ]
   },
   {
@@ -4840,9 +4840,9 @@
     "key": "Not configured",
     "places": [
       "src/tachyon/methods/custom/getDashboardSections.ts:1572",
-      "src/tachyon/tabs/dashboard/partials/renderSections.ts:586",
       "src/tachyon/tabs/diagnostic/checks/runInboundsCheck.ts:46",
-      "src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:152"
+      "src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:152",
+      "src/tachyon/tabs/dashboard/partials/renderSections.ts:586"
     ]
   },
   {
@@ -5116,6 +5116,13 @@
     ]
   },
   {
+    "call": "Optional for local LLM",
+    "key": "Optional for local LLM",
+    "places": [
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:898"
+    ]
+  },
+  {
     "call": "Optional tls-auth or tls-crypt key",
     "key": "Optional tls-auth or tls-crypt key",
     "places": [
@@ -5292,8 +5299,8 @@
     "call": "Per-Device Routing",
     "key": "Per-Device Routing",
     "places": [
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1093",
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1146"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1099",
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1152"
     ]
   },
   {
@@ -6019,8 +6026,8 @@
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:1568",
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:1569",
       "src/tachyon/methods/custom/getDashboardSections.ts:1567",
-      "src/tachyon/tabs/dashboard/partials/renderSections.ts:581",
-      "src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:135"
+      "src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:135",
+      "src/tachyon/tabs/dashboard/partials/renderSections.ts:581"
     ]
   },
   {
@@ -6035,21 +6042,21 @@
     "key": "Save",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:3660",
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1138"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1144"
     ]
   },
   {
     "call": "Save AI Watchdog Settings",
     "key": "Save AI Watchdog Settings",
     "places": [
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:940"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:946"
     ]
   },
   {
     "call": "Save Smart Detect Settings",
     "key": "Save Smart Detect Settings",
     "places": [
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1078"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1084"
     ]
   },
   {
@@ -6057,9 +6064,9 @@
     "key": "Saving…",
     "places": [
       "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:502",
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:938",
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1078",
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1138"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:944",
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1084",
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1144"
     ]
   },
   {
@@ -6129,7 +6136,7 @@
     "call": "Section test order (checked = active, drag rows with △▽):",
     "key": "Section test order (checked = active, drag rows with △▽):",
     "places": [
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1065"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1071"
     ]
   },
   {
@@ -6502,9 +6509,9 @@
     "call": "Service action failed",
     "key": "Service action failed",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:603",
       "src/tachyon/methods/shell/index.ts:401",
-      "src/tachyon/methods/shell/index.ts:422"
+      "src/tachyon/methods/shell/index.ts:422",
+      "src/tachyon/tabs/diagnostic/initController.ts:603"
     ]
   },
   {
@@ -6703,7 +6710,7 @@
     "call": "Smart Detect",
     "key": "Smart Detect",
     "places": [
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1035"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1041"
     ]
   },
   {
@@ -6896,7 +6903,7 @@
     "call": "Start Watchdog first",
     "key": "Start Watchdog first",
     "places": [
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:941"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:947"
     ]
   },
   {
@@ -6950,8 +6957,8 @@
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:307",
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:1574",
       "src/tachyon/methods/custom/getDashboardSections.ts:1571",
-      "src/tachyon/tabs/dashboard/partials/renderSections.ts:585",
-      "src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:147"
+      "src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:147",
+      "src/tachyon/tabs/dashboard/partials/renderSections.ts:585"
     ]
   },
   {
@@ -7783,7 +7790,6 @@
     "call": "unknown",
     "key": "unknown",
     "places": [
-      "src/tachyon/helpers/singBoxVariant.ts:37",
       "src/tachyon/services/systemInfo.service.ts:10",
       "src/tachyon/services/systemInfo.service.ts:12",
       "src/tachyon/services/systemInfo.service.ts:13",
@@ -7793,6 +7799,7 @@
       "src/tachyon/services/systemInfo.service.ts:25",
       "src/tachyon/services/systemInfo.service.ts:28",
       "src/tachyon/services/systemInfo.service.ts:29",
+      "src/tachyon/helpers/singBoxVariant.ts:37",
       "src/tachyon/tabs/updates/initController.ts:337",
       "src/tachyon/tabs/diagnostic/checks/runInboundsCheck.ts:25"
     ]

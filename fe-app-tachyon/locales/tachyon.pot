@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-08-11 19:00+0300\n"
-"PO-Revision-Date: 2026-08-11 19:00+0300\n"
+"POT-Creation-Date: 2026-08-11 19:11+0300\n"
+"PO-Revision-Date: 2026-08-11 19:11+0300\n"
 "Last-Translator: Dushnilin <dushnilin@gmail.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -60,7 +60,7 @@ msgstr ""
 msgid "▶ Start"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1183
+#: src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1189
 msgid "⚙ Advanced Settings"
 msgstr ""
 
@@ -224,7 +224,7 @@ msgid "AI Agent REST API Bearer Token"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:1302
-#: src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:891
+#: src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:893
 msgid "AI API Key"
 msgstr ""
 
@@ -248,7 +248,7 @@ msgid "AI Doctor failed"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:1289
-#: src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:858
+#: src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:860
 msgid "AI Doctor Language"
 msgstr ""
 
@@ -401,7 +401,7 @@ msgid "Auto-detected Domains"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:1449
-#: src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1040
+#: src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1046
 msgid "Auto-detects blocked domains from logs and adds them to the first section where they work via proxy."
 msgstr ""
 
@@ -757,10 +757,10 @@ msgstr ""
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:10221
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/server.js:1717
 #: src/partials/modal/renderModal.ts:263
+#: src/tachyon/tabs/diagnostic/initController.ts:1194
 #: src/tachyon/tabs/dashboard/initController.ts:1085
 #: src/tachyon/tabs/monitoring/initController.ts:884
 #: src/tachyon/tabs/monitoring/initController.ts:934
-#: src/tachyon/tabs/diagnostic/initController.ts:1194
 msgid "Close"
 msgstr ""
 
@@ -840,8 +840,8 @@ msgid "Configure User-Agent in the item settings"
 msgstr ""
 
 #: src/tachyon/methods/custom/getDashboardSections.ts:1569
-#: src/tachyon/tabs/dashboard/partials/renderSections.ts:583
 #: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:141
+#: src/tachyon/tabs/dashboard/partials/renderSections.ts:583
 msgid "Conflict"
 msgstr ""
 
@@ -911,7 +911,7 @@ msgid "Currently unavailable"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:1313
-#: src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:909
+#: src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:911
 msgid "Custom API Endpoint URL"
 msgstr ""
 
@@ -977,7 +977,7 @@ msgstr ""
 msgid "Device filter"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1113
+#: src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1119
 msgid "Device IPs (one per line):"
 msgstr ""
 
@@ -989,7 +989,7 @@ msgstr ""
 msgid "Device or IP"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1151
+#: src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1157
 msgid "Devices listed here are always routed through the assigned section, regardless of global rules."
 msgstr ""
 
@@ -1398,7 +1398,7 @@ msgid "Enable Smart Cooldowns"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:1448
-#: src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1057
+#: src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1063
 msgid "Enable Smart Detect"
 msgstr ""
 
@@ -1583,12 +1583,12 @@ msgstr ""
 msgid "Failed to copy!"
 msgstr ""
 
+#: src/tachyon/methods/shell/index.ts:171
+#: src/tachyon/methods/shell/index.ts:178
 #: src/tachyon/tabs/updates/initController.ts:545
 #: src/tachyon/tabs/updates/initController.ts:546
 #: src/tachyon/tabs/updates/initController.ts:608
 #: src/tachyon/tabs/updates/initController.ts:774
-#: src/tachyon/methods/shell/index.ts:171
-#: src/tachyon/methods/shell/index.ts:178
 msgid "Failed to execute"
 msgstr ""
 
@@ -2586,7 +2586,7 @@ msgstr ""
 msgid "Loading..."
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1161
+#: src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1167
 msgid "Loading…"
 msgstr ""
 
@@ -2694,11 +2694,11 @@ msgstr ""
 msgid "Monitors sing-box reconnect frequency. Alerts if too many reconnects per hour."
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:991
+#: src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:997
 msgid "Move down"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:980
+#: src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:986
 msgid "Move up"
 msgstr ""
 
@@ -2791,7 +2791,7 @@ msgid "No active connections"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:389
-#: src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1099
+#: src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1105
 msgid "No active routing sections found."
 msgstr ""
 
@@ -2867,9 +2867,9 @@ msgid "None"
 msgstr ""
 
 #: src/tachyon/methods/custom/getDashboardSections.ts:1572
-#: src/tachyon/tabs/dashboard/partials/renderSections.ts:586
 #: src/tachyon/tabs/diagnostic/checks/runInboundsCheck.ts:46
 #: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:152
+#: src/tachyon/tabs/dashboard/partials/renderSections.ts:586
 msgid "Not configured"
 msgstr ""
 
@@ -3035,6 +3035,10 @@ msgstr ""
 msgid "Optional — leave empty for default"
 msgstr ""
 
+#: src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:898
+msgid "Optional for local LLM"
+msgstr ""
+
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8734
 msgid "Optional tls-auth or tls-crypt key"
 msgstr ""
@@ -3136,8 +3140,8 @@ msgstr ""
 msgid "Pending"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1093
-#: src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1146
+#: src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1099
+#: src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1152
 msgid "Per-Device Routing"
 msgstr ""
 
@@ -3563,8 +3567,8 @@ msgstr ""
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:1568
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:1569
 #: src/tachyon/methods/custom/getDashboardSections.ts:1567
-#: src/tachyon/tabs/dashboard/partials/renderSections.ts:581
 #: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:135
+#: src/tachyon/tabs/dashboard/partials/renderSections.ts:581
 msgid "Running"
 msgstr ""
 
@@ -3573,22 +3577,22 @@ msgid "Russia (ru)"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:3660
-#: src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1138
+#: src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1144
 msgid "Save"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:940
+#: src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:946
 msgid "Save AI Watchdog Settings"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1078
+#: src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1084
 msgid "Save Smart Detect Settings"
 msgstr ""
 
 #: src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:502
-#: src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:938
-#: src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1078
-#: src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1138
+#: src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:944
+#: src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1084
+#: src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1144
 msgid "Saving…"
 msgstr ""
 
@@ -3628,7 +3632,7 @@ msgstr ""
 msgid "Section Rules Content"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1065
+#: src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1071
 msgid "Section test order (checked = active, drag rows with △▽):"
 msgstr ""
 
@@ -3848,9 +3852,9 @@ msgstr ""
 msgid "Servers on dashboard"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:603
 #: src/tachyon/methods/shell/index.ts:401
 #: src/tachyon/methods/shell/index.ts:422
+#: src/tachyon/tabs/diagnostic/initController.ts:603
 msgid "Service action failed"
 msgstr ""
 
@@ -3965,7 +3969,7 @@ msgstr ""
 msgid "Skipped loopback:"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1035
+#: src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1041
 msgid "Smart Detect"
 msgstr ""
 
@@ -4077,7 +4081,7 @@ msgstr ""
 msgid "Start Tachyon"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:941
+#: src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:947
 msgid "Start Watchdog first"
 msgstr ""
 
@@ -4110,8 +4114,8 @@ msgstr ""
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:307
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:1574
 #: src/tachyon/methods/custom/getDashboardSections.ts:1571
-#: src/tachyon/tabs/dashboard/partials/renderSections.ts:585
 #: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:147
+#: src/tachyon/tabs/dashboard/partials/renderSections.ts:585
 msgid "Stopped"
 msgstr ""
 
@@ -4598,7 +4602,6 @@ msgstr ""
 msgid "United States (us)"
 msgstr ""
 
-#: src/tachyon/helpers/singBoxVariant.ts:37
 #: src/tachyon/services/systemInfo.service.ts:10
 #: src/tachyon/services/systemInfo.service.ts:12
 #: src/tachyon/services/systemInfo.service.ts:13
@@ -4608,6 +4611,7 @@ msgstr ""
 #: src/tachyon/services/systemInfo.service.ts:25
 #: src/tachyon/services/systemInfo.service.ts:28
 #: src/tachyon/services/systemInfo.service.ts:29
+#: src/tachyon/helpers/singBoxVariant.ts:37
 #: src/tachyon/tabs/updates/initController.ts:337
 #: src/tachyon/tabs/diagnostic/checks/runInboundsCheck.ts:25
 msgid "unknown"

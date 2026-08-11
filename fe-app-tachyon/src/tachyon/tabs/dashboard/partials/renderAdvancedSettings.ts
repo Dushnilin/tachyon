@@ -843,6 +843,8 @@ function renderAiWatchdogSection(state: AdvancedSettingsState) {
                     openai: 'gpt-4o-mini',
                     anthropic: 'claude-3-5-haiku-20241022',
                     deepseek: 'deepseek-chat',
+                    ollama: 'llama3:latest',
+                    lmstudio: 'local-model',
                   }[state.aiDoctorProvider] ?? 'gpt-4o-mini',
                 style: 'width: 100%;',
                 onchange: (e: Event) => {
@@ -893,7 +895,11 @@ function renderAiWatchdogSection(state: AdvancedSettingsState) {
                 type: 'password',
                 class: 'cbi-input-text',
                 value: state.aiDoctorApiKey,
-                placeholder: 'sk-...',
+                placeholder: ['ollama', 'lmstudio'].includes(
+                  state.aiDoctorProvider,
+                )
+                  ? _('Optional for local LLM')
+                  : 'sk-...',
                 style: 'width: 100%;',
                 onchange: (e: Event) => {
                   const val = (e.target as HTMLInputElement).value;
@@ -901,7 +907,7 @@ function renderAiWatchdogSection(state: AdvancedSettingsState) {
                 },
               }),
             ]),
-            state.aiDoctorProvider === 'custom'
+            ['custom', 'ollama', 'lmstudio'].includes(state.aiDoctorProvider)
               ? E('div', { class: 'tachyon_adv__row' }, [
                   E(
                     'label',
@@ -913,7 +919,14 @@ function renderAiWatchdogSection(state: AdvancedSettingsState) {
                     class: 'cbi-input-text',
                     value: state.aiDoctorCustomUrl,
                     placeholder:
-                      'https://openrouter.ai/api/v1/chat/completions',
+                      {
+                        ollama:
+                          'http://192.168.1.100:11434/v1/chat/completions',
+                        lmstudio:
+                          'http://192.168.1.100:1234/v1/chat/completions',
+                        custom: 'https://openrouter.ai/api/v1/chat/completions',
+                      }[state.aiDoctorProvider] ??
+                      'http://192.168.1.100:11434/v1/chat/completions',
                     style: 'width: 100%;',
                     onchange: (e: Event) => {
                       const val = (e.target as HTMLInputElement).value;
