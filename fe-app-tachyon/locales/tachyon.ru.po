@@ -3646,3 +3646,57 @@ msgstr "Редактировать"
 
 msgid "Connection"
 msgstr "Соединение"
+
+msgid "Operation in progress..."
+msgstr "Выполняется операция..."
+
+msgid "Checking for updates..."
+msgstr "Проверка обновлений..."
+
+msgid "Updating"
+msgstr "Обновление"
+
+msgid "Installing"
+msgstr "Установка"
+
+msgid "Removing"
+msgstr "Удаление"
+
+msgid "Initializing operation..."
+msgstr "Инициализация операции..."
+
+msgid "Downloading package from repository..."
+msgstr "Загрузка пакета из репозитория..."
+
+msgid "Installing package & updating configurations..."
+msgstr "Установка пакета и обновление настроек..."
+
+msgid "Applying changes & reloading services..."
+msgstr "Применение изменений и перезапуск служб..."
+
+msgid "Connecting to update server..."
+msgstr "Подключение к серверу обновлений..."
+
+msgid "Comparing version releases..."
+msgstr "Сравнение версий релизов..."
+
+msgid "Update completed successfully!"
+msgstr "Обновление успешно завершено!"
+
+msgid "Installation completed successfully!"
+msgstr "Установка успешно завершена!"
+
+msgid "Removal completed successfully!"
+msgstr "Удаление успешно завершено!"
+
+msgid "Check completed!"
+msgstr "Проверка завершена!"
+
+msgid "Reloading page in"
+msgstr "Перезагрузка страницы через"
+
+msgid "Please wait, operation is running..."
+msgstr "Пожалуйста, подождите, выполняется операция..."
+
+msgid "Operation failed"
+msgstr "Операция не выполнена"

@@ -49,7 +49,25 @@ const dictionary = {
   "Add a server inbound": "Добавить серверный инбаунд",
   "Accept external proxy connections and route them with sing-box.": "Принимать внешние прокси-подключения и маршрутизировать их через sing-box.",
   "Section": "Секция",
-  "Server": "Сервер"
+  "Server": "Сервер",
+  "Operation in progress...": "Выполняется операция...",
+  "Checking for updates...": "Проверка обновлений...",
+  "Updating": "Обновление",
+  "Installing": "Установка",
+  "Removing": "Удаление",
+  "Initializing operation...": "Инициализация операции...",
+  "Downloading package from repository...": "Загрузка пакета из репозитория...",
+  "Installing package & updating configurations...": "Установка пакета и обновление настроек...",
+  "Applying changes & reloading services...": "Применение изменений и перезапуск служб...",
+  "Connecting to update server...": "Подключение к серверу обновлений...",
+  "Comparing version releases...": "Сравнение версий релизов...",
+  "Update completed successfully!": "Обновление успешно завершено!",
+  "Installation completed successfully!": "Установка успешно завершена!",
+  "Removal completed successfully!": "Удаление успешно завершено!",
+  "Check completed!": "Проверка завершена!",
+  "Reloading page in": "Перезагрузка страницы через",
+  "Please wait, operation is running...": "Пожалуйста, подождите, выполняется операция...",
+  "Operation failed": "Операция не выполнена"
 };
 
 async function run() {

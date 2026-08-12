@@ -43,6 +43,48 @@ import {
   subscribeRuntimeUiState,
 } from '../../services/runtimeUiState.service';
 import { Tachyon } from '../../types';
+import {
+  getActiveProgressModalController,
+  setActiveProgressModalJobId,
+  showUpdateProgressModal,
+} from './partials/renderUpdateProgressModal';
+
+function getComponentCardTitle(component: Tachyon.ComponentName): string {
+  switch (component) {
+    case 'tachyon':
+      return 'Tachyon';
+    case 'sing_box':
+      return 'Sing-box';
+    case 'zapret':
+      return 'Zapret';
+    case 'zapret2':
+      return 'Zapret2';
+    case 'byedpi':
+      return 'ByeDPI';
+    default:
+      return String(component);
+  }
+}
+
+function getComponentCurrentVersion(
+  component: Tachyon.ComponentName,
+): string | undefined {
+  const sys = store.get().diagnosticsSystemInfo;
+  switch (component) {
+    case 'tachyon':
+      return sys.tachyon_version;
+    case 'sing_box':
+      return sys.sing_box_version;
+    case 'zapret':
+      return sys.zapret_version;
+    case 'zapret2':
+      return sys.zapret2_version;
+    case 'byedpi':
+      return sys.byedpi_version;
+    default:
+      return undefined;
+  }
+}
 
 type UpdateStatus = StoreType['updatesChecks'][Tachyon.ComponentName]['status'];
 
@@ -447,10 +489,13 @@ async function applyCompletedComponentAction({
   result: Tachyon.ComponentActionResult;
   notify: boolean;
 }) {
+  const modalController = getActiveProgressModalController();
+
   if (result.action === 'check_update') {
     setActionLoading(key, false);
 
     if (!shouldApplyCompletedComponentActionResult(result, notify)) {
+      modalController?.completeSuccess(_('Check completed!'));
       return;
     }
 
@@ -484,6 +529,7 @@ async function applyCompletedComponentAction({
     if (notify) {
       showToast(getCheckToastMessage(status), 'success');
     }
+    modalController?.completeSuccess(getCheckToastMessage(status));
     return;
   }
 
@@ -509,7 +555,10 @@ async function applyCompletedComponentAction({
     }
 
     if (notify) {
+      modalController?.completeSuccess(result.message, { reloadPage: true });
       reloadPageAfterTachyonUpdate();
+    } else {
+      modalController?.completeSuccess(result.message);
     }
     return;
   }
@@ -517,6 +566,7 @@ async function applyCompletedComponentAction({
   if (notify && result.message) {
     showToast(result.message, 'success');
   }
+  modalController?.completeSuccess(result.message);
 
   void refreshSystemInfoAfterMutation();
 }
@@ -539,6 +589,7 @@ async function completeComponentActionJob(
   }
 
   const shouldNotify = shouldNotifyOwnedUiAction('component', jobId);
+  const modalController = getActiveProgressModalController();
 
   if (!response.success || response.data.success === false) {
     const message = response.success
@@ -556,6 +607,7 @@ async function completeComponentActionJob(
     if (shouldNotify) {
       showToast(message, 'error');
     }
+    modalController?.completeError(message);
     await ackComponentActionJob(jobId);
     return;
   }
@@ -586,6 +638,16 @@ async function followComponentActionState(
   followedComponentJobs.add(jobId);
   if (shouldShowLoadingForRestoredAction(state)) {
     setActionLoading(key, true);
+    if (!getActiveProgressModalController()) {
+      setActiveProgressModalJobId(jobId);
+      showUpdateProgressModal({
+        component: state.component,
+        action: state.action,
+        componentTitle: getComponentCardTitle(state.component),
+        currentVersion: state.current_version,
+        targetVersion: state.latest_version,
+      });
+    }
   }
 
   try {
@@ -610,6 +672,7 @@ async function followComponentActionState(
       setActionLoading(key, false);
       if (!isTransientRpcError(message)) {
         showToast(message, 'error');
+        getActiveProgressModalController()?.completeError(message);
       }
     }
   } finally {
@@ -712,6 +775,18 @@ async function handleComponentAction(button: ComponentActionButton) {
     return;
   }
 
+  const cardTitle = getComponentCardTitle(button.component);
+  const currentVersion = getComponentCurrentVersion(button.component);
+  const targetVersion = getExpectedLatestVersionForAction(button);
+
+  const modalController = showUpdateProgressModal({
+    component: button.component,
+    action: button.action,
+    componentTitle: cardTitle,
+    currentVersion,
+    targetVersion,
+  });
+
   let jobId = '';
   let ownsJobFollow = false;
 
@@ -731,6 +806,9 @@ async function handleComponentAction(button: ComponentActionButton) {
           return;
         }
         setActionLoading(button.key, false);
+        modalController.completeError(
+          _('Another component action is already running'),
+        );
         await refreshComponentActionState();
         return;
       }
@@ -744,6 +822,9 @@ async function handleComponentAction(button: ComponentActionButton) {
           return;
         }
         setActionLoading(button.key, false);
+        modalController.completeError(
+          startResponse.error || _('Transient connection error'),
+        );
         await refreshComponentActionState();
         return;
       }
@@ -752,6 +833,7 @@ async function handleComponentAction(button: ComponentActionButton) {
     }
 
     jobId = startResponse.data.job_id;
+    setActiveProgressModalJobId(jobId);
     markUiActionOwned('component', jobId);
     if (followedComponentJobs.has(jobId)) {
       return;
@@ -777,6 +859,7 @@ async function handleComponentAction(button: ComponentActionButton) {
       if (!isTransientRpcError(message)) {
         showToast(message, 'error');
       }
+      modalController.completeError(message);
       void refreshComponentActionState();
     }
   } finally {

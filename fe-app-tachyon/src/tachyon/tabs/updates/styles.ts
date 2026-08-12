@@ -187,4 +187,180 @@ export const styles = `
     flex-wrap: nowrap;
     gap: 6px;
 }
+
+.tachyon-update-modal__body {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    width: 100%;
+    max-width: 520px;
+    box-sizing: border-box;
+    padding: 6px 0;
+}
+
+.tachyon-update-modal__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    border-bottom: 1px solid var(--border-color, rgba(255,255,255,0.12));
+    padding-bottom: 10px;
+}
+
+.tachyon-update-modal__header-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.tachyon-update-modal__component-name {
+    font-size: 16px;
+    color: var(--text-color-high, #fff);
+}
+
+.tachyon-update-modal__version-badge {
+    font-size: 12px;
+    font-family: monospace;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: var(--background-color-low, rgba(0,0,0,0.1));
+    color: var(--text-color-medium, #aaa);
+    border: 1px solid var(--border-color, rgba(255,255,255,0.1));
+}
+
+.tachyon-update-modal__timer-badge {
+    font-size: 13px;
+    font-family: monospace;
+    color: var(--text-color-medium, #888);
+}
+
+.tachyon-update-modal__progress-track {
+    width: 100%;
+    height: 12px;
+    background: var(--background-color-low, rgba(0,0,0,0.15));
+    border-radius: 6px;
+    overflow: hidden;
+    position: relative;
+    border: 1px solid var(--border-color, rgba(255,255,255,0.1));
+}
+
+.tachyon-update-modal__progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #3498db, #2ecc71);
+    background-size: 300% 100%;
+    border-radius: 6px;
+    transition: width 0.4s ease-out;
+    animation: tachyon-progress-stripes 2s linear infinite;
+}
+
+.tachyon-update-modal__progress-fill--success {
+    background: #2ecc71 !important;
+    animation: none;
+}
+
+.tachyon-update-modal__progress-fill--error {
+    background: #e74c3c !important;
+    animation: none;
+}
+
+@keyframes tachyon-progress-stripes {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+
+.tachyon-update-modal__step-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    background: var(--background-color-low, rgba(0,0,0,0.05));
+    padding: 10px 12px;
+    border-radius: 6px;
+    border: 1px solid var(--border-color, rgba(255,255,255,0.08));
+}
+
+.tachyon-update-modal__step-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    color: var(--text-color-medium, #888);
+    opacity: 0.6;
+    transition: opacity 0.2s, color 0.2s;
+}
+
+.tachyon-update-modal__step-item--active {
+    opacity: 1;
+    color: var(--text-color-high, #fff);
+    font-weight: 500;
+}
+
+.tachyon-update-modal__step-item--done {
+    opacity: 0.9;
+    color: var(--text-color-high, #fff);
+}
+
+.tachyon-update-modal__step-icon {
+    width: 20px;
+    height: 20px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: bold;
+    border-radius: 50%;
+    background: var(--background-color-high, rgba(255,255,255,0.08));
+    flex-shrink: 0;
+}
+
+.tachyon-update-modal__step-item--active .tachyon-update-modal__step-icon {
+    background: var(--link-color, #3498db);
+    color: #fff;
+    animation: tachyon-step-pulse 1.2s infinite alternate;
+}
+
+.tachyon-update-modal__step-item--done .tachyon-update-modal__step-icon {
+    background: #2ecc71;
+    color: #fff;
+}
+
+@keyframes tachyon-step-pulse {
+    0% { transform: scale(0.95); opacity: 0.8; }
+    100% { transform: scale(1.1); opacity: 1; }
+}
+
+.tachyon-update-modal__status-msg {
+    font-size: 13px;
+    color: var(--text-color-high);
+    min-height: 28px;
+    display: flex;
+    align-items: center;
+}
+
+.tachyon-update-modal__success-banner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #2ecc71;
+    font-weight: bold;
+}
+
+.tachyon-update-modal__error-banner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #e74c3c;
+    font-weight: bold;
+}
+
+.tachyon-update-modal__actions {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 8px;
+    margin-top: 6px;
+    border-top: 1px solid var(--border-color, rgba(255,255,255,0.12));
+    padding-top: 10px;
+}
 `;

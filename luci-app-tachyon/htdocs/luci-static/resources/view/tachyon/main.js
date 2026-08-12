@@ -15087,7 +15087,324 @@ function describeSameReleaseBuild({
   return { kind: "fallback", text: "" };
 }
 
+// src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts
+var activeModalController = null;
+var activeModalJobId = null;
+function getActiveProgressModalController() {
+  return activeModalController;
+}
+function setActiveProgressModalJobId(jobId) {
+  activeModalJobId = jobId;
+}
+function showUpdateProgressModal(options) {
+  if (activeModalController) {
+    activeModalController.close();
+  }
+  const isCheckAction = options.action === "check_update";
+  const isRemoveAction = options.action === "remove";
+  const isInstallOrUpdate = !isCheckAction && !isRemoveAction;
+  let modalTitleText = _("Operation in progress...");
+  if (isCheckAction) {
+    modalTitleText = `${_("Checking for updates...")}: ${options.componentTitle}`;
+  } else if (isRemoveAction) {
+    modalTitleText = `${_("Removing")} ${options.componentTitle}...`;
+  } else {
+    modalTitleText = `${_("Updating")} ${options.componentTitle}...`;
+  }
+  const steps = isCheckAction ? [_("Connecting to update server..."), _("Comparing version releases...")] : [
+    _("Initializing operation..."),
+    _("Downloading package from repository..."),
+    _("Installing package & updating configurations..."),
+    _("Applying changes & reloading services...")
+  ];
+  let currentStepIndex = 0;
+  let elapsedSeconds = 0;
+  let timerInterval = null;
+  let autoAdvanceTimer = null;
+  let isCompleted = false;
+  const timerBadgeEl = E(
+    "div",
+    { class: "tachyon-update-modal__timer-badge" },
+    "\u23F1\uFE0F 00:00"
+  );
+  const titleBadgeEl = E(
+    "span",
+    { class: "tachyon-update-modal__version-badge" },
+    options.targetVersion ? `${options.currentVersion || ""} \u2192 ${options.targetVersion}` : options.currentVersion || options.action
+  );
+  const headerEl = E("div", { class: "tachyon-update-modal__header" }, [
+    E("div", { class: "tachyon-update-modal__header-info" }, [
+      E(
+        "b",
+        { class: "tachyon-update-modal__component-name" },
+        options.componentTitle
+      ),
+      titleBadgeEl
+    ]),
+    timerBadgeEl
+  ]);
+  const progressBarFillEl = E("div", {
+    class: "tachyon-update-modal__progress-fill",
+    style: "width: 15%;"
+  });
+  const progressBarTrackEl = E(
+    "div",
+    { class: "tachyon-update-modal__progress-track" },
+    [progressBarFillEl]
+  );
+  const stepItemEls = steps.map((stepText, index) => {
+    const iconEl = E(
+      "span",
+      { class: "tachyon-update-modal__step-icon" },
+      index === 0 ? "\u26A1" : "\u25CB"
+    );
+    const labelEl = E(
+      "span",
+      { class: "tachyon-update-modal__step-label" },
+      stepText
+    );
+    return E(
+      "div",
+      {
+        class: [
+          "tachyon-update-modal__step-item",
+          index === 0 ? "tachyon-update-modal__step-item--active" : ""
+        ].filter(Boolean).join(" ")
+      },
+      [iconEl, labelEl]
+    );
+  });
+  const stepListEl = E(
+    "div",
+    { class: "tachyon-update-modal__step-list" },
+    stepItemEls
+  );
+  const statusMsgEl = E(
+    "div",
+    { class: "tachyon-update-modal__status-msg" },
+    steps[0] || _("Please wait, operation is running...")
+  );
+  const actionButtonContainer = E(
+    "div",
+    { class: "tachyon-update-modal__actions" },
+    [
+      renderButton({
+        text: _("Operation in progress..."),
+        disabled: true,
+        loading: true,
+        onClick: () => {
+        }
+      })
+    ]
+  );
+  const modalBodyEl = E("div", { class: "tachyon-update-modal__body" }, [
+    headerEl,
+    progressBarTrackEl,
+    stepListEl,
+    statusMsgEl,
+    actionButtonContainer
+  ]);
+  const updateTimerDisplay = () => {
+    const mins = Math.floor(elapsedSeconds / 60).toString().padStart(2, "0");
+    const secs = (elapsedSeconds % 60).toString().padStart(2, "0");
+    timerBadgeEl.textContent = `\u23F1\uFE0F ${mins}:${secs}`;
+  };
+  timerInterval = setInterval(() => {
+    elapsedSeconds += 1;
+    updateTimerDisplay();
+  }, 1e3);
+  if (isInstallOrUpdate) {
+    autoAdvanceTimer = setInterval(() => {
+      if (isCompleted) return;
+      if (elapsedSeconds >= 4 && currentStepIndex === 0) {
+        setStep(1);
+      } else if (elapsedSeconds >= 12 && currentStepIndex === 1) {
+        setStep(2);
+      } else if (elapsedSeconds >= 25 && currentStepIndex === 2) {
+        setStep(3);
+      }
+    }, 1e3);
+  } else if (isCheckAction) {
+    autoAdvanceTimer = setInterval(() => {
+      if (isCompleted) return;
+      if (elapsedSeconds >= 1 && currentStepIndex === 0) {
+        setStep(1);
+      }
+    }, 800);
+  }
+  function setStep(stepIndex, customStatus) {
+    if (stepIndex < 0 || stepIndex >= steps.length) return;
+    currentStepIndex = stepIndex;
+    const percent = Math.round((stepIndex + 1) / (steps.length + 0.5) * 100);
+    progressBarFillEl.style.width = `${Math.min(percent, 92)}%`;
+    stepItemEls.forEach((item, idx) => {
+      const iconEl = item.querySelector(".tachyon-update-modal__step-icon");
+      item.classList.remove(
+        "tachyon-update-modal__step-item--active",
+        "tachyon-update-modal__step-item--done"
+      );
+      if (idx < stepIndex) {
+        item.classList.add("tachyon-update-modal__step-item--done");
+        if (iconEl) iconEl.textContent = "\u2713";
+      } else if (idx === stepIndex) {
+        item.classList.add("tachyon-update-modal__step-item--active");
+        if (iconEl) iconEl.textContent = "\u26A1";
+      } else {
+        if (iconEl) iconEl.textContent = "\u25CB";
+      }
+    });
+    if (customStatus) {
+      statusMsgEl.textContent = customStatus;
+    } else if (steps[stepIndex]) {
+      statusMsgEl.textContent = steps[stepIndex];
+    }
+  }
+  function cleanupTimers() {
+    if (timerInterval) {
+      clearInterval(timerInterval);
+      timerInterval = null;
+    }
+    if (autoAdvanceTimer) {
+      clearInterval(autoAdvanceTimer);
+      autoAdvanceTimer = null;
+    }
+  }
+  const controller = {
+    updateStep: (stepIndex, statusText) => {
+      setStep(stepIndex, statusText);
+    },
+    updateStatus: (statusText) => {
+      statusMsgEl.textContent = statusText;
+    },
+    completeSuccess: (message, opts) => {
+      isCompleted = true;
+      cleanupTimers();
+      progressBarFillEl.style.width = "100%";
+      progressBarFillEl.classList.add(
+        "tachyon-update-modal__progress-fill--success"
+      );
+      stepItemEls.forEach((item) => {
+        item.classList.remove("tachyon-update-modal__step-item--active");
+        item.classList.add("tachyon-update-modal__step-item--done");
+        const iconEl = item.querySelector(".tachyon-update-modal__step-icon");
+        if (iconEl) iconEl.textContent = "\u2713";
+      });
+      const successMsg = message || (isCheckAction ? _("Check completed!") : isRemoveAction ? _("Removal completed successfully!") : _("Update completed successfully!"));
+      statusMsgEl.replaceChildren(
+        E("div", { class: "tachyon-update-modal__success-banner" }, [
+          renderCheckIcon24(),
+          E("span", {}, successMsg)
+        ])
+      );
+      if (opts?.reloadPage) {
+        let secondsLeft = 3;
+        const reloadBtnText = () => `${_("Reloading page in")} ${secondsLeft}s...`;
+        const closeBtn = renderButton({
+          classNames: ["cbi-button-save"],
+          text: reloadBtnText(),
+          onClick: () => {
+            window.location.reload();
+          }
+        });
+        actionButtonContainer.replaceChildren(closeBtn);
+        const reloadTimer = setInterval(() => {
+          secondsLeft -= 1;
+          if (secondsLeft <= 0) {
+            clearInterval(reloadTimer);
+            window.location.reload();
+          } else {
+            closeBtn.textContent = reloadBtnText();
+          }
+        }, 1e3);
+      } else {
+        const closeBtn = renderButton({
+          classNames: ["cbi-button-apply"],
+          text: _("Close"),
+          onClick: () => {
+            controller.close();
+          }
+        });
+        actionButtonContainer.replaceChildren(closeBtn);
+        const autoCloseMs = opts?.autoCloseMs ?? (isCheckAction ? 1e3 : 2200);
+        if (autoCloseMs > 0) {
+          setTimeout(() => {
+            if (activeModalController === controller) {
+              controller.close();
+            }
+          }, autoCloseMs);
+        }
+      }
+    },
+    completeError: (errorMessage) => {
+      isCompleted = true;
+      cleanupTimers();
+      progressBarFillEl.style.width = "100%";
+      progressBarFillEl.classList.add(
+        "tachyon-update-modal__progress-fill--error"
+      );
+      statusMsgEl.replaceChildren(
+        E("div", { class: "tachyon-update-modal__error-banner" }, [
+          renderXIcon24(),
+          E("span", {}, errorMessage || _("Operation failed"))
+        ])
+      );
+      const closeBtn = renderButton({
+        classNames: ["cbi-button-remove"],
+        text: _("Close"),
+        onClick: () => {
+          controller.close();
+        }
+      });
+      actionButtonContainer.replaceChildren(closeBtn);
+    },
+    close: () => {
+      cleanupTimers();
+      if (activeModalController === controller) {
+        activeModalController = null;
+        activeModalJobId = null;
+      }
+      ui.hideModal();
+    }
+  };
+  activeModalController = controller;
+  ui.showModal(modalTitleText, modalBodyEl);
+  return controller;
+}
+
 // src/tachyon/tabs/updates/initController.ts
+function getComponentCardTitle(component) {
+  switch (component) {
+    case "tachyon":
+      return "Tachyon";
+    case "sing_box":
+      return "Sing-box";
+    case "zapret":
+      return "Zapret";
+    case "zapret2":
+      return "Zapret2";
+    case "byedpi":
+      return "ByeDPI";
+    default:
+      return String(component);
+  }
+}
+function getComponentCurrentVersion(component) {
+  const sys = store.get().diagnosticsSystemInfo;
+  switch (component) {
+    case "tachyon":
+      return sys.tachyon_version;
+    case "sing_box":
+      return sys.sing_box_version;
+    case "zapret":
+      return sys.zapret_version;
+    case "zapret2":
+      return sys.zapret2_version;
+    case "byedpi":
+      return sys.byedpi_version;
+    default:
+      return void 0;
+  }
+}
 var updatesLifecycleRegistered = false;
 var updatesControllerInitialized = false;
 var updatesMounted = false;
@@ -15359,9 +15676,11 @@ async function applyCompletedComponentAction({
   result,
   notify
 }) {
+  const modalController = getActiveProgressModalController();
   if (result.action === "check_update") {
     setActionLoading(key, false);
     if (!shouldApplyCompletedComponentActionResult(result, notify)) {
+      modalController?.completeSuccess(_("Check completed!"));
       return;
     }
     if (shouldPreserveCompletedCheckResultOnNextMount({
@@ -15384,6 +15703,7 @@ async function applyCompletedComponentAction({
     if (notify) {
       showToast(getCheckToastMessage(status), "success");
     }
+    modalController?.completeSuccess(getCheckToastMessage(status));
     return;
   }
   if (result.action === "install" || result.action === "reinstall" || result.action.startsWith("install_")) {
@@ -15398,13 +15718,17 @@ async function applyCompletedComponentAction({
       showToast(result.message, "success", 1200);
     }
     if (notify) {
+      modalController?.completeSuccess(result.message, { reloadPage: true });
       reloadPageAfterTachyonUpdate();
+    } else {
+      modalController?.completeSuccess(result.message);
     }
     return;
   }
   if (notify && result.message) {
     showToast(result.message, "success");
   }
+  modalController?.completeSuccess(result.message);
   void refreshSystemInfoAfterMutation();
 }
 async function completeComponentActionJob(key, jobId, response) {
@@ -15418,6 +15742,7 @@ async function completeComponentActionJob(key, jobId, response) {
     return;
   }
   const shouldNotify = shouldNotifyOwnedUiAction("component", jobId);
+  const modalController = getActiveProgressModalController();
   if (!response.success || response.data.success === false) {
     const message = response.success ? response.data.message || _("Failed to execute") : response.error || _("Failed to execute");
     if (isTransientRpcError(message)) {
@@ -15430,6 +15755,7 @@ async function completeComponentActionJob(key, jobId, response) {
     if (shouldNotify) {
       showToast(message, "error");
     }
+    modalController?.completeError(message);
     await ackComponentActionJob(jobId);
     return;
   }
@@ -15453,6 +15779,16 @@ async function followComponentActionState(state) {
   followedComponentJobs.add(jobId);
   if (shouldShowLoadingForRestoredAction(state)) {
     setActionLoading(key, true);
+    if (!getActiveProgressModalController()) {
+      setActiveProgressModalJobId(jobId);
+      showUpdateProgressModal({
+        component: state.component,
+        action: state.action,
+        componentTitle: getComponentCardTitle(state.component),
+        currentVersion: state.current_version,
+        targetVersion: state.latest_version
+      });
+    }
   }
   try {
     const response = state.running ? await TachyonShellMethods.waitComponentActionJob(
@@ -15472,6 +15808,7 @@ async function followComponentActionState(state) {
       setActionLoading(key, false);
       if (!isTransientRpcError(message)) {
         showToast(message, "error");
+        getActiveProgressModalController()?.completeError(message);
       }
     }
   } finally {
@@ -15549,6 +15886,16 @@ async function handleComponentAction(button) {
   if (!beginComponentAction(button)) {
     return;
   }
+  const cardTitle = getComponentCardTitle(button.component);
+  const currentVersion = getComponentCurrentVersion(button.component);
+  const targetVersion = getExpectedLatestVersionForAction(button);
+  const modalController = showUpdateProgressModal({
+    component: button.component,
+    action: button.action,
+    componentTitle: cardTitle,
+    currentVersion,
+    targetVersion
+  });
   let jobId = "";
   let ownsJobFollow = false;
   try {
@@ -15566,6 +15913,9 @@ async function handleComponentAction(button) {
           return;
         }
         setActionLoading(button.key, false);
+        modalController.completeError(
+          _("Another component action is already running")
+        );
         await refreshComponentActionState();
         return;
       }
@@ -15578,12 +15928,16 @@ async function handleComponentAction(button) {
           return;
         }
         setActionLoading(button.key, false);
+        modalController.completeError(
+          startResponse.error || _("Transient connection error")
+        );
         await refreshComponentActionState();
         return;
       }
       throw new Error(startResponse.error);
     }
     jobId = startResponse.data.job_id;
+    setActiveProgressModalJobId(jobId);
     markUiActionOwned("component", jobId);
     if (followedComponentJobs.has(jobId)) {
       return;
@@ -15605,6 +15959,7 @@ async function handleComponentAction(button) {
       if (!isTransientRpcError(message)) {
         showToast(message, "error");
       }
+      modalController.completeError(message);
       void refreshComponentActionState();
     }
   } finally {
@@ -16339,6 +16694,182 @@ var styles6 = `
     display: flex;
     flex-wrap: nowrap;
     gap: 6px;
+}
+
+.tachyon-update-modal__body {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    width: 100%;
+    max-width: 520px;
+    box-sizing: border-box;
+    padding: 6px 0;
+}
+
+.tachyon-update-modal__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    border-bottom: 1px solid var(--border-color, rgba(255,255,255,0.12));
+    padding-bottom: 10px;
+}
+
+.tachyon-update-modal__header-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.tachyon-update-modal__component-name {
+    font-size: 16px;
+    color: var(--text-color-high, #fff);
+}
+
+.tachyon-update-modal__version-badge {
+    font-size: 12px;
+    font-family: monospace;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: var(--background-color-low, rgba(0,0,0,0.1));
+    color: var(--text-color-medium, #aaa);
+    border: 1px solid var(--border-color, rgba(255,255,255,0.1));
+}
+
+.tachyon-update-modal__timer-badge {
+    font-size: 13px;
+    font-family: monospace;
+    color: var(--text-color-medium, #888);
+}
+
+.tachyon-update-modal__progress-track {
+    width: 100%;
+    height: 12px;
+    background: var(--background-color-low, rgba(0,0,0,0.15));
+    border-radius: 6px;
+    overflow: hidden;
+    position: relative;
+    border: 1px solid var(--border-color, rgba(255,255,255,0.1));
+}
+
+.tachyon-update-modal__progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #3498db, #2ecc71);
+    background-size: 300% 100%;
+    border-radius: 6px;
+    transition: width 0.4s ease-out;
+    animation: tachyon-progress-stripes 2s linear infinite;
+}
+
+.tachyon-update-modal__progress-fill--success {
+    background: #2ecc71 !important;
+    animation: none;
+}
+
+.tachyon-update-modal__progress-fill--error {
+    background: #e74c3c !important;
+    animation: none;
+}
+
+@keyframes tachyon-progress-stripes {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+
+.tachyon-update-modal__step-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    background: var(--background-color-low, rgba(0,0,0,0.05));
+    padding: 10px 12px;
+    border-radius: 6px;
+    border: 1px solid var(--border-color, rgba(255,255,255,0.08));
+}
+
+.tachyon-update-modal__step-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    color: var(--text-color-medium, #888);
+    opacity: 0.6;
+    transition: opacity 0.2s, color 0.2s;
+}
+
+.tachyon-update-modal__step-item--active {
+    opacity: 1;
+    color: var(--text-color-high, #fff);
+    font-weight: 500;
+}
+
+.tachyon-update-modal__step-item--done {
+    opacity: 0.9;
+    color: var(--text-color-high, #fff);
+}
+
+.tachyon-update-modal__step-icon {
+    width: 20px;
+    height: 20px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: bold;
+    border-radius: 50%;
+    background: var(--background-color-high, rgba(255,255,255,0.08));
+    flex-shrink: 0;
+}
+
+.tachyon-update-modal__step-item--active .tachyon-update-modal__step-icon {
+    background: var(--link-color, #3498db);
+    color: #fff;
+    animation: tachyon-step-pulse 1.2s infinite alternate;
+}
+
+.tachyon-update-modal__step-item--done .tachyon-update-modal__step-icon {
+    background: #2ecc71;
+    color: #fff;
+}
+
+@keyframes tachyon-step-pulse {
+    0% { transform: scale(0.95); opacity: 0.8; }
+    100% { transform: scale(1.1); opacity: 1; }
+}
+
+.tachyon-update-modal__status-msg {
+    font-size: 13px;
+    color: var(--text-color-high);
+    min-height: 28px;
+    display: flex;
+    align-items: center;
+}
+
+.tachyon-update-modal__success-banner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #2ecc71;
+    font-weight: bold;
+}
+
+.tachyon-update-modal__error-banner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #e74c3c;
+    font-weight: bold;
+}
+
+.tachyon-update-modal__actions {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 8px;
+    margin-top: 6px;
+    border-top: 1px solid var(--border-color, rgba(255,255,255,0.12));
+    padding-top: 10px;
 }
 `;
 
