@@ -235,10 +235,6 @@ function add_standard_inbound(config, section, protocol, tag_name) {
         maybe_string(inbound, "tolerate_time_skewness", option(section, "mtproto_tolerate_time_skewness", "3s"));
         maybe_string(inbound, "idle_timeout", option(section, "mtproto_idle_timeout", "5m"));
         maybe_string(inbound, "handshake_timeout", option(section, "mtproto_handshake_timeout", "10s"));
-        // Prevent SIGHUP hot-reload crash: MTProto clients keep connections alive indefinitely;
-        // without a close_timeout sing-box hangs waiting for them to close and exits with FATAL.
-        // 10 s is enough to terminate stale connections while keeping reload fast (issue #15).
-        maybe_string(inbound, "close_timeout", option(section, "mtproto_close_timeout", "10s"));
     }
     else {
         inbound.users = users(section, protocol);

@@ -597,9 +597,32 @@ function sing_box_runtime_reload_needed(config_hash_before, config_hash_after, f
     return arg_bool(force) || as_string(config_hash_before) != as_string(config_hash_after);
 }
 
+function has_active_mtproxy_inbound() {
+    let uci = require("uci");
+    let cursor = uci.cursor();
+    cursor.load("tachyon");
+    let found = false;
+    cursor.foreach("tachyon", "server", function(s) {
+        if (s.enabled == "1" && (s.protocol == "mtproto" || s.protocol == "mtproxy")) {
+            found = true;
+            return false;
+        }
+    });
+    return found;
+}
+
 function reload_sing_box_runtime(previous_pid, config_hash_before, config_hash_after, force) {
     if (!sing_box_runtime_reload_needed(config_hash_before, config_hash_after, force)) {
         command_success_from_args([ "logger", "-t", "tachyon", "[info] sing-box reload skipped: configuration is unchanged" ]);
+        return;
+    }
+
+    if (has_active_mtproxy_inbound()) {
+        command_success_from_args([ "logger", "-t", "tachyon", "[info] MTProxy inbound active: performing full sing-box restart instead of SIGHUP (issue #30)" ]);
+        if (!command_success_from_args([ "/etc/init.d/sing-box", "restart" ])) {
+            command_success_from_args([ "logger", "-t", "tachyon", "[fatal] Failed to restart sing-box. Aborted." ]);
+            exit(1);
+        }
         return;
     }
 
