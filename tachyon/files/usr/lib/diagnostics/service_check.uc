@@ -35,11 +35,11 @@ function perform_curl_check(domain) {
         return { success: false, error: "curl_failed", exit_code: exit_code };
     }
     
-    let time_namelookup = int(1000 * float(parts[0]));
-    let time_connect = int(1000 * float(parts[1]));
-    let time_appconnect = int(1000 * float(parts[2]));
-    let time_starttransfer = int(1000 * float(parts[3]));
-    let time_total = int(1000 * float(parts[4]));
+    let time_namelookup = int(1000 * +(parts[0]));
+    let time_connect = int(1000 * +(parts[1]));
+    let time_appconnect = int(1000 * +(parts[2]));
+    let time_starttransfer = int(1000 * +(parts[3]));
+    let time_total = int(1000 * +(parts[4]));
     let http_code = int(parts[5]);
     let remote_ip = parts[6];
     
