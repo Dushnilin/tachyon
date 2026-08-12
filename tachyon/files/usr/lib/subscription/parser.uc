@@ -1737,11 +1737,57 @@ function metadata_trim_text(value) {
     return trim(as_string(value));
 }
 
+function hex_val(ch) {
+    let code = ord(ch);
+    if (code >= 48 && code <= 57) return code - 48;
+    if (code >= 65 && code <= 70) return code - 55;
+    if (code >= 97 && code <= 102) return code - 87;
+    return 0;
+}
+
+function hex_to_int(str) {
+    if (length(str) < 2) return 0;
+    return (hex_val(substr(str, 0, 1)) << 4) | hex_val(substr(str, 1, 1));
+}
+
+function decode_url_component(str) {
+    str = as_string(str);
+    str = replace(str, /\+/g, " ");
+    return replace(str, /%([0-9A-Fa-f]{2})/g, function(match, hex) {
+        return chr(hex_to_int(hex));
+    });
+}
+
+function decode_rfc2047(val) {
+    val = as_string(val);
+    let m = match(val, /^=\?([^?]+)\?([BbQq])\?([^?]+)\?=$/);
+    if (m) {
+        let encoding = lc(m[2]);
+        let data = m[3];
+        if (encoding == "b") {
+            let decoded = base64_decode(data);
+            if (decoded != null) return decoded;
+        } else if (encoding == "q") {
+            let qdecoded = replace(data, /_/g, " ");
+            qdecoded = replace(qdecoded, /=([0-9A-Fa-f]{2})/g, function(full, hex) {
+                return chr(hex_to_int(hex));
+            });
+            return qdecoded;
+        }
+    }
+    return val;
+}
+
 function metadata_clean_text(value, max, decode_base64) {
     value = as_string(value);
+    if (starts_with(value, "=?"))
+        value = decode_rfc2047(value);
     if (decode_base64 && lc(substr(value, 0, 7)) == "base64:") {
         let decoded = base64_decode(substr(value, 7));
         value = decoded == null ? "" : decoded;
+    }
+    if (index(value, "%") >= 0) {
+        value = decode_url_component(value);
     }
 
     let cleaned = trim(replace(replace(value, regexp('[\\x00-\\x1f\\x7f]', 'g'), " "), regexp(' +', 'g'), " "));
@@ -1777,27 +1823,46 @@ function metadata_replace_path_separators(value) {
 function metadata_content_disposition_filename(value) {
     value = as_string(value);
     let filename = null;
-    let quoted_marker = "filename=\"";
-    let quoted_pos = index(value, quoted_marker);
-    if (quoted_pos >= 0) {
-        let rest = substr(value, quoted_pos + length(quoted_marker));
-        let quote_end = index(rest, "\"");
-        filename = quote_end >= 0 ? substr(rest, 0, quote_end) : rest;
-    }
-    else {
-        let marker = "filename=";
-        let pos = index(value, marker);
-        if (pos < 0)
-            return null;
 
-        let rest = substr(value, pos + length(marker));
+    let pos_ext = index(value, "filename*=");
+    if (pos_ext >= 0) {
+        let rest = substr(value, pos_ext + 10);
         let semicolon = index(rest, ";");
-        filename = semicolon >= 0 ? substr(rest, 0, semicolon) : rest;
-        if (length(filename) > 0 && substr(filename, 0, 1) == "\"")
-            filename = substr(filename, 1);
-        if (length(filename) > 0 && substr(filename, length(filename) - 1) == "\"")
-            filename = substr(filename, 0, length(filename) - 1);
+        let ext_val = semicolon >= 0 ? substr(rest, 0, semicolon) : rest;
+        ext_val = trim(ext_val);
+        let quote = index(ext_val, "''");
+        if (quote >= 0) {
+            filename = decode_url_component(substr(ext_val, quote + 2));
+        } else {
+            filename = decode_url_component(ext_val);
+        }
     }
+
+    if (filename == null) {
+        let quoted_marker = "filename=\"";
+        let quoted_pos = index(value, quoted_marker);
+        if (quoted_pos >= 0) {
+            let rest = substr(value, quoted_pos + length(quoted_marker));
+            let quote_end = index(rest, "\"");
+            filename = quote_end >= 0 ? substr(rest, 0, quote_end) : rest;
+        }
+        else {
+            let marker = "filename=";
+            let pos = index(value, marker);
+            if (pos >= 0) {
+                let rest = substr(value, pos + length(marker));
+                let semicolon = index(rest, ";");
+                filename = semicolon >= 0 ? substr(rest, 0, semicolon) : rest;
+                if (length(filename) > 0 && substr(filename, 0, 1) == "\"")
+                    filename = substr(filename, 1);
+                if (length(filename) > 0 && substr(filename, length(filename) - 1) == "\"")
+                    filename = substr(filename, 0, length(filename) - 1);
+            }
+        }
+    }
+
+    if (filename == null)
+        return null;
 
     filename = metadata_clean_text(filename, 120, false);
     if (filename == null)

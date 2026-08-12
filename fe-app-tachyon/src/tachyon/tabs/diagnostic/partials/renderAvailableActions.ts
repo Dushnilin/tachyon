@@ -28,6 +28,7 @@ interface IRenderAvailableActionsProps {
   globalCheck: ActionProps;
   doctor: ActionProps;
   aiDoctor: ActionProps;
+  aiChat?: ActionProps;
   viewLogs: ActionProps;
   showSingBoxConfig: ActionProps;
   generateBugReport: ActionProps;
@@ -43,6 +44,7 @@ export function renderAvailableActions({
   globalCheck,
   doctor,
   aiDoctor,
+  aiChat,
   viewLogs,
   showSingBoxConfig,
   generateBugReport,
@@ -128,9 +130,19 @@ export function renderAvailableActions({
         disabled: aiDoctor.disabled,
       }),
     ]),
+    ...insertIf(!!aiChat?.visible, [
+      renderButton({
+        classNames: ['cbi-button-action'],
+        onClick: aiChat!.onClick,
+        icon: renderCircleCheckBigIcon24,
+        text: _('AI Chat Assistant'),
+        loading: aiChat!.loading,
+        disabled: aiChat!.disabled,
+      }),
+    ]),
     ...insertIf(checkServices.visible, [
       renderButton({
-        classNames: ['cbi-button-apply'],
+        classNames: ['cbi-button-action'],
         onClick: checkServices.onClick,
         icon: renderSquareChartGanttIcon24,
         text: _('Check Services'),

@@ -93,6 +93,7 @@ export namespace Tachyon {
     COMPONENT_UPDATE_CHECK_CACHE = 'component_update_check_cache',
     SUBSCRIPTION_UPDATE_ASYNC = 'subscription_update_async',
     SUBSCRIPTION_UPDATE_STATUS = 'subscription_update_status',
+    SERVICE_HEALTH_CHECK = 'service_health_check',
   }
 
   export enum AvailableClashAPIMethods {

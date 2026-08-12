@@ -3599,6 +3599,13 @@ else if (mode == "ai-doctor-last")
     exit(ai_doctor_last());
 else if (mode == "apply-quick-fix")
     exit(apply_quick_fix(ARGV[1] || ""));
+else if (mode == "service-health-check") {
+    let args = [];
+    for (let i = 1; i < length(ARGV); i++) {
+        push(args, ARGV[i]);
+    }
+    exit(module_passthrough(LIB_DIR + "/diagnostics/service_check.uc", args));
+}
 else if (mode == "validate-nfqws-strategy-json")
     exit(validate_nfqws_strategy_json(ARGV[1] || ""));
 else if (mode == "validate-nfqws2-strategy-json")

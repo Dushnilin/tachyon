@@ -19,15 +19,15 @@ function stripIllegalReturn(code) {
 
 const files = await glob([
     'src/**/*.ts',
-    '../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/**/*.js',
+    'src/**/*.tsx',
 ], {
+    cwd: __dirname,
     ignore: [
         '**/*.test.ts',
-        '**/main.js',
-        '../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js',
     ],
     absolute: true,
 });
+console.log('Found files:', files.length);
 
 const results = {};
 

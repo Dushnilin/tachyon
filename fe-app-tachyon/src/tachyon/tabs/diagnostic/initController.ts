@@ -37,6 +37,7 @@ import {
   renderRunAction,
   renderSystemInfo,
   renderServiceCheckModal,
+  renderAiChatModal,
 } from './partials';
 import { TachyonShellMethods } from '../../methods';
 import { fetchServicesInfo } from '../../fetchers/fetchServicesInfo';
@@ -624,9 +625,9 @@ async function handleServiceRuntimeAction({
   }
 }
 
-  function handleCheckServicesAction() {
-    renderServiceCheckModal();
-  }
+function handleCheckServicesAction() {
+  renderServiceCheckModal();
+}
 
 async function handleRestart() {
   await handleServiceRuntimeAction({
@@ -795,88 +796,51 @@ function saveAiDoctorHistory(entry: AiDoctorHistoryEntry) {
   }
 }
 
+async function handleViewLogs() {
+  setDiagnosticActionLoading('viewLogs', true);
+
+  try {
+    const viewLogs = await TachyonShellMethods.checkLogs();
+
+    if (viewLogs.success) {
+      const getLatestLogs = async () => {
+        const latestLogs = await TachyonShellMethods.checkLogs();
+
+        if (!latestLogs.success) {
+          throw latestLogs;
+        }
+
+        return (latestLogs.data as string) ?? '';
+      };
+
+      ui.showModal(
+        _('View logs'),
+        renderModal(viewLogs.data as string, 'view_logs', {
+          getText: getLatestLogs,
+          refreshMs: 250,
+          initialAutoRefresh: true,
+          showAutoRefreshToggle: true,
+          startAtEnd: true,
+        }),
+      );
+    } else {
+      logger.error('[DIAGNOSTIC]', 'handleViewLogs - e', viewLogs);
+    }
+  } catch (e) {
+    logger.error('[DIAGNOSTIC]', 'handleViewLogs - e', e);
+  } finally {
+    setDiagnosticActionLoading('viewLogs', false);
+  }
+}
+
 async function handleRunAiDoctor() {
   setDiagnosticActionLoading('aiDoctor', true);
-
-  let activeTab: 'diagnosis' | 'history' = 'diagnosis';
-  let historyEntries = getAiDoctorHistory();
-
-  // Create Live Stepper Container
-  const stepperSteps = [
-    _('Checking WAN interfaces & network routing'),
-    _('Checking sing-box service & DNSmasq'),
-    _('Checking nftables filtering tables'),
-    _('Analyzing system log (logread & errors)'),
-    _('Checking Zapret & ByeDPI rules'),
-  ];
-
-  const modalBody = E('div', { class: 'tachyon-partial-modal__body' }, [
-    E(
-      'div',
-      {
-        style:
-          'padding: 18px; background: rgba(0,0,0,0.02); border-radius: 8px; border: 1px solid rgba(0,0,0,0.06); text-align: center;',
-      },
-      [
-        E(
-          'div',
-          {
-            style:
-              'font-weight: 600; font-size: 15px; margin-bottom: 15px; color: #1976d2;',
-          },
-          '⚡ ' + _('AI Doctor Diagnostic Scan in Progress...'),
-        ),
-        E(
-          'div',
-          {
-            id: 'tachyon_ai_stepper',
-            style:
-              'display: flex; flex-direction: column; gap: 10px; text-align: left; max-width: 480px; margin: 0 auto;',
-          },
-          stepperSteps.map((step, idx) =>
-            E(
-              'div',
-              {
-                id: `tachyon_step_${idx}`,
-                style:
-                  'display: flex; align-items: center; gap: 10px; font-size: 13px; color: #666;',
-              },
-              [
-                E('span', { class: 'step-icon' }, '⏳'),
-                E('span', { class: 'step-text' }, step),
-              ],
-            ),
-          ),
-        ),
-      ],
-    ),
-  ]);
-
-  ui.showModal(_('AI Doctor Diagnosis'), modalBody);
-
-  // Animate Live Stepper
-  const updateStep = (idx: number, icon: string, color: string) => {
-    const el = document.getElementById(`tachyon_step_${idx}`);
-    if (el) {
-      const iconEl = el.querySelector('.step-icon');
-      if (iconEl) iconEl.textContent = icon;
-      el.style.color = color;
-      el.style.fontWeight = icon === '✅' ? '500' : 'normal';
-    }
-  };
-
-  for (let i = 0; i < stepperSteps.length; i++) {
-    updateStep(i, '🔄', '#1976d2');
-    await new Promise((r) => setTimeout(r, 120));
-    updateStep(i, '✅', '#2e7d32');
-  }
 
   try {
     const aiRes = await TachyonShellMethods.aiDoctor();
 
     if (!aiRes || typeof aiRes !== 'object') {
       showToast(_('AI Doctor failed') + ': ' + _('Unknown error'), 'error');
-      ui.hideModal();
       return;
     }
 
@@ -886,10 +850,15 @@ async function handleRunAiDoctor() {
         ? (rawData as Record<string, unknown>)
         : null;
 
-    if ((aiRes as { success?: boolean }).success || (data && data.success)) {
-      const report = data ? String(data.report ?? '') : String(rawData ?? '');
+    if (
+      (aiRes as { success?: boolean }).success ||
+      (data && data.success !== false)
+    ) {
+      const report = data
+        ? String(data.report ?? data.summary ?? rawData ?? '')
+        : String(rawData ?? '');
       const quickFixes: string[] = Array.isArray(data?.quick_fixes)
-        ? (data.quick_fixes as string[])
+        ? (data!.quick_fixes as string[])
         : String(data?.quick_fix ?? '')
             .split(',')
             .map((s) => s.trim())
@@ -898,7 +867,8 @@ async function handleRunAiDoctor() {
       // Save to History
       const nowStr = new Date().toLocaleTimeString();
       saveAiDoctorHistory({ timestamp: nowStr, report, quickFixes });
-      historyEntries = getAiDoctorHistory();
+      let historyEntries = getAiDoctorHistory();
+      let activeTab: 'diagnosis' | 'history' = 'diagnosis';
 
       // Root Cause Analysis from Report
       const repLower = report.toLowerCase();
@@ -941,28 +911,34 @@ async function handleRunAiDoctor() {
           'div',
           {
             style:
-              'display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; padding: 10px 14px; background: rgba(0,0,0,0.03); border-radius: 6px; margin-bottom: 14px; border: 1px solid rgba(0,0,0,0.06); font-size: 12px; font-weight: 500;',
+              'display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; padding: 10px 14px; background: rgba(255,255,255,0.03); border-radius: 8px; margin-bottom: 14px; border: 1px solid var(--border-color, rgba(255,255,255,0.1)); font-size: 12px; font-weight: 500; width: 100%; box-sizing: border-box;',
           },
           nodes.flatMap((node, idx) => {
             const badgeBg =
               node.status === 'OK'
-                ? '#e8f5e9'
+                ? 'rgba(40, 167, 69, 0.18)'
                 : node.status === 'WARN'
-                  ? '#fff3e0'
-                  : '#ffebee';
+                  ? 'rgba(255, 193, 7, 0.18)'
+                  : 'rgba(220, 53, 69, 0.18)';
+            const badgeBorder =
+              node.status === 'OK'
+                ? 'rgba(40, 167, 69, 0.4)'
+                : node.status === 'WARN'
+                  ? 'rgba(255, 193, 7, 0.4)'
+                  : 'rgba(220, 53, 69, 0.4)';
             const badgeFg =
               node.status === 'OK'
-                ? '#2e7d32'
+                ? '#28a745'
                 : node.status === 'WARN'
-                  ? '#e65100'
-                  : '#c62828';
+                  ? '#ffc107'
+                  : '#dc3545';
             const badgeIcon =
               node.status === 'OK' ? '✓' : node.status === 'WARN' ? '⚠️' : '❌';
 
             const itemEl = E(
               'span',
               {
-                style: `padding: 4px 8px; border-radius: 4px; background: ${badgeBg}; color: ${badgeFg}; display: inline-flex; align-items: center; gap: 4px;`,
+                style: `padding: 4px 10px; border-radius: 12px; background: ${badgeBg}; border: 1px solid ${badgeBorder}; color: ${badgeFg}; display: inline-flex; align-items: center; gap: 4px; font-weight: 600;`,
               },
               `${node.name} [${badgeIcon} ${node.status}]`,
             );
@@ -970,11 +946,7 @@ async function handleRunAiDoctor() {
             return idx < nodes.length - 1
               ? [
                   itemEl,
-                  E(
-                    'span',
-                    { style: 'color: #999; font-weight: bold;' },
-                    '\u2794',
-                  ),
+                  E('span', { style: 'opacity: 0.5; font-weight: bold;' }, '➔'),
                 ]
               : [itemEl];
           }),
@@ -982,14 +954,14 @@ async function handleRunAiDoctor() {
       };
 
       const renderDiagnosisTabContent = () => {
-        return E('div', {}, [
+        return E('div', { style: 'width: 100%; box-sizing: border-box;' }, [
           renderRootCauseBanner(),
           E(
             'pre',
             {
               class: 'tachyon-partial-modal__content',
               style:
-                'white-space: pre-wrap; font-family: inherit; font-size: 13px; line-height: 1.5; max-height: 360px; overflow-y: auto; background: #fafafa; padding: 12px; border-radius: 6px; border: 1px solid #eee;',
+                'white-space: pre-wrap; font-family: inherit; font-size: 13px; line-height: 1.5; max-height: 360px; overflow-y: auto; overflow-x: hidden; background: rgba(0, 0, 0, 0.25); padding: 12px; border-radius: 8px; border: 1px solid var(--border-color, rgba(255, 255, 255, 0.15)); color: inherit; width: 100%; box-sizing: border-box;',
             },
             E('code', {}, report),
           ),
@@ -998,13 +970,13 @@ async function handleRunAiDoctor() {
                 'div',
                 {
                   style:
-                    'margin-top: 14px; padding: 12px; background: rgba(0,0,0,0.02); border-radius: 6px; border: 1px solid rgba(0,0,0,0.08);',
+                    'margin-top: 14px; padding: 12px; background: rgba(40, 167, 69, 0.08); border-radius: 8px; border: 1px solid rgba(40, 167, 69, 0.3); width: 100%; box-sizing: border-box;',
                 },
                 [
                   E(
                     'b',
-                    { style: 'font-size: 13px;' },
-                    _('Recommended Smart Quick Fixes:'),
+                    { style: 'font-size: 13px; color: #28a745;' },
+                    '🛠️ ' + _('Recommended Quick Fixes:'),
                   ),
                   E(
                     'div',
@@ -1012,69 +984,42 @@ async function handleRunAiDoctor() {
                       style:
                         'display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px;',
                     },
-                    [
-                      ...quickFixes.map((code) => {
-                        let applied = false;
-                        const btn = renderButton({
-                          classNames: ['cbi-button-apply'],
-                          text: `⚡ ${code}`,
-                          onClick: async () => {
-                            if (applied) return;
+                    quickFixes.map((code) => {
+                      let applied = false;
+                      const btn = renderButton({
+                        classNames: ['cbi-button-apply'],
+                        text: `⚡ ${code}`,
+                        onClick: async () => {
+                          if (applied) return;
+                          showToast(
+                            _('Applying fix') + ': ' + code + '...',
+                            'success',
+                          );
+                          const fixRes =
+                            await TachyonShellMethods.applyQuickFix(code);
+                          if (
+                            fixRes &&
+                            typeof fixRes === 'object' &&
+                            (fixRes as { success?: boolean }).success
+                          ) {
+                            applied = true;
+                            btn.textContent = `✓ ${code} (${_('Fixed')})`;
+                            btn.classList.remove('cbi-button-apply');
+                            btn.classList.add('cbi-button-neutral');
                             showToast(
-                              _('Applying fix') + ': ' + code + '...',
+                              _('Fix applied') + ': ' + code,
                               'success',
                             );
-                            const fixRes =
-                              await TachyonShellMethods.applyQuickFix(code);
-                            if (
-                              fixRes &&
-                              typeof fixRes === 'object' &&
-                              (fixRes as { success?: boolean }).success
-                            ) {
-                              applied = true;
-                              btn.textContent = `✓ ${code} (${_('Fixed')})`;
-                              btn.classList.remove('cbi-button-apply');
-                              btn.classList.add('cbi-button-neutral');
-                              showToast(
-                                _('Fix applied') + ': ' + code,
-                                'success',
-                              );
-                            } else {
-                              showToast(
-                                _('Failed to apply fix') + ': ' + code,
-                                'error',
-                              );
-                            }
-                          },
-                        });
-                        return btn;
-                      }),
-                      quickFixes.length > 1
-                        ? renderButton({
-                            classNames: ['cbi-button-action'],
-                            text: `⚡ ${_('Fix All')}`,
-                            onClick: async () => {
-                              showToast(_('Applying all fixes...'), 'success');
-                              const fixRes =
-                                await TachyonShellMethods.applyQuickFix(
-                                  quickFixes.join(','),
-                                );
-                              if (
-                                fixRes &&
-                                typeof fixRes === 'object' &&
-                                (fixRes as { success?: boolean }).success
-                              ) {
-                                showToast(
-                                  _('All fixes applied successfully'),
-                                  'success',
-                                );
-                              } else {
-                                showToast(_('Some fixes failed'), 'error');
-                              }
-                            },
-                          })
-                        : E('span', {}),
-                    ],
+                          } else {
+                            showToast(
+                              _('Failed to apply fix') + ': ' + code,
+                              'error',
+                            );
+                          }
+                        },
+                      });
+                      return btn;
+                    }),
                   ),
                 ],
               )
@@ -1082,7 +1027,7 @@ async function handleRunAiDoctor() {
                 'div',
                 {
                   style:
-                    'margin-top: 12px; color: #2e7d32; font-weight: 500; font-size: 13px;',
+                    'margin-top: 12px; color: #28a745; font-weight: 500; font-size: 13px;',
                 },
                 '✅ ' + _('No quick fix required'),
               ),
@@ -1093,7 +1038,7 @@ async function handleRunAiDoctor() {
         if (historyEntries.length === 0) {
           return E(
             'div',
-            { style: 'padding: 20px; text-align: center; color: #777;' },
+            { style: 'padding: 20px; text-align: center; opacity: 0.6;' },
             _('No diagnostic history available yet.'),
           );
         }
@@ -1102,32 +1047,32 @@ async function handleRunAiDoctor() {
           'div',
           {
             style:
-              'display: flex; flex-direction: column; gap: 10px; max-height: 400px; overflow-y: auto;',
+              'display: flex; flex-direction: column; gap: 10px; max-height: 400px; overflow-y: auto; width: 100%; box-sizing: border-box;',
           },
           historyEntries.map((h, i) =>
             E(
               'div',
               {
                 style:
-                  'padding: 10px 14px; background: #fafafa; border: 1px solid #eee; border-radius: 6px;',
+                  'padding: 12px; background: rgba(255, 255, 255, 0.04); border: 1px solid var(--border-color, rgba(255, 255, 255, 0.12)); border-radius: 8px; width: 100%; box-sizing: border-box;',
               },
               [
                 E(
                   'div',
                   {
                     style:
-                      'display: flex; justify-content: space-between; font-weight: 600; font-size: 12px; color: #333; margin-bottom: 6px;',
+                      'display: flex; justify-content: space-between; font-weight: 600; font-size: 12px; margin-bottom: 8px;',
                   },
                   [
-                    E('span', {}, `Run #${historyEntries.length - i}`),
-                    E('span', { style: 'color: #888;' }, h.timestamp),
+                    E('span', {}, `#${historyEntries.length - i}`),
+                    E('span', { style: 'opacity: 0.65;' }, h.timestamp),
                   ],
                 ),
                 E(
                   'pre',
                   {
                     style:
-                      'margin: 0; white-space: pre-wrap; font-size: 11px; max-height: 120px; overflow-y: auto; color: #555;',
+                      'margin: 0; white-space: pre-wrap; font-size: 12px; max-height: 140px; overflow-y: auto; overflow-x: hidden; background: rgba(0, 0, 0, 0.25); padding: 10px; border-radius: 6px; border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1)); color: inherit; width: 100%; box-sizing: border-box;',
                   },
                   h.report,
                 ),
@@ -1139,7 +1084,10 @@ async function handleRunAiDoctor() {
 
       const mainContainer = E(
         'div',
-        { class: 'tachyon-partial-modal__body' },
+        {
+          class: 'tachyon-partial-modal__body',
+          style: 'width: 100%; max-width: 680px; box-sizing: border-box;',
+        },
         [],
       );
 
@@ -1150,7 +1098,7 @@ async function handleRunAiDoctor() {
               'div',
               {
                 style:
-                  'display: flex; gap: 10px; margin-bottom: 14px; border-bottom: 1px solid #eee; padding-bottom: 8px;',
+                  'display: flex; gap: 10px; margin-bottom: 14px; border-bottom: 1px solid var(--border-color, #eee); padding-bottom: 8px;',
               },
               [
                 renderButton({
@@ -1159,7 +1107,7 @@ async function handleRunAiDoctor() {
                       ? 'cbi-button-action'
                       : 'cbi-button-neutral',
                   ],
-                  text: `📋 ${_('Current Diagnosis')}`,
+                  text: _('Current Diagnosis'),
                   onClick: () => {
                     activeTab = 'diagnosis';
                     renderModalLayout();
@@ -1171,8 +1119,9 @@ async function handleRunAiDoctor() {
                       ? 'cbi-button-action'
                       : 'cbi-button-neutral',
                   ],
-                  text: `🕒 ${_('Run History')} (${historyEntries.length})`,
+                  text: `${_('History')} (${historyEntries.length})`,
                   onClick: () => {
+                    historyEntries = getAiDoctorHistory();
                     activeTab = 'history';
                     renderModalLayout();
                   },
@@ -1186,20 +1135,14 @@ async function handleRunAiDoctor() {
               'div',
               {
                 class: 'tachyon-partial-modal__footer',
-                style: 'margin-top: 15px;',
+                style:
+                  'margin-top: 15px; display: flex; justify-content: flex-end; gap: 8px;',
               },
               [
                 renderButton({
-                  classNames: ['cbi-button-apply'],
-                  text: _('Copy'),
-                  onClick: () => copyToClipboard(`\`\`\`\n${report}\n\`\`\``),
-                }),
-                renderButton({
-                  classNames: ['cbi-button-remove'],
+                  classNames: ['cbi-button-neutral'],
                   text: _('Close'),
-                  onClick: () => {
-                    ui.hideModal();
-                  },
+                  onClick: () => ui.hideModal(),
                 }),
               ],
             ),
@@ -1215,7 +1158,6 @@ async function handleRunAiDoctor() {
           ? (aiRes as { error?: string }).error
           : _('Unknown error');
       showToast(_('AI Doctor failed') + ': ' + errorMsg, 'error');
-      ui.hideModal();
     }
   } catch (e) {
     logger.error(
@@ -1224,48 +1166,13 @@ async function handleRunAiDoctor() {
       e instanceof Error ? e.message : String(e),
     );
     showToast(_('AI Doctor failed'), 'error');
-    ui.hideModal();
   } finally {
     setDiagnosticActionLoading('aiDoctor', false);
-    runChecks();
   }
 }
 
-async function handleViewLogs() {
-  setDiagnosticActionLoading('viewLogs', true);
-
-  try {
-    const viewLogs = await TachyonShellMethods.checkLogs();
-
-    if (viewLogs.success) {
-      const getLatestLogs = async () => {
-        const latestLogs = await TachyonShellMethods.checkLogs();
-
-        if (!latestLogs.success) {
-          throw latestLogs;
-        }
-
-        return (latestLogs.data as string) ?? '';
-      };
-
-      ui.showModal(
-        _('View logs'),
-        renderModal(viewLogs.data as string, 'view_logs', {
-          getText: getLatestLogs,
-          refreshMs: 250,
-          initialAutoRefresh: true,
-          showAutoRefreshToggle: true,
-          startAtEnd: true,
-        }),
-      );
-    } else {
-      logger.error('[DIAGNOSTIC]', 'handleViewLogs - e', viewLogs);
-    }
-  } catch (e) {
-    logger.error('[DIAGNOSTIC]', 'handleViewLogs - e', e);
-  } finally {
-    setDiagnosticActionLoading('viewLogs', false);
-  }
+function handleOpenAiChat() {
+  renderAiChatModal();
 }
 
 async function handleShowSingBoxConfig() {
@@ -1479,6 +1386,12 @@ function renderDiagnosticAvailableActionsWidget() {
       visible: true,
       onClick: handleRunAiDoctor,
       disabled: diagnosticsActions.aiDoctor.loading,
+    },
+    aiChat: {
+      loading: false,
+      visible: true,
+      onClick: handleOpenAiChat,
+      disabled: false,
     },
     checkServices: {
       visible: true,

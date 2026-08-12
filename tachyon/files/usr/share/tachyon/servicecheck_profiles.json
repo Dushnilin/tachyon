@@ -1,0 +1,220 @@
+{
+  "version": 2,
+  "updated": "2026-08-12",
+  "profiles": [
+    {
+      "id": "baseline",
+      "title": "Базовая связность",
+      "group": "system",
+      "description": "Проверяет, что интернет и TLS вообще работают. Если этот профиль красный — остальные результаты бессмысленны.",
+      "targets": [
+        { "kind": "https", "host": "cp.cloudflare.com", "path": "/generate_204", "expect": [204], "label": "Cloudflare generate_204" },
+        { "kind": "https", "host": "www.gstatic.com", "path": "/generate_204", "expect": [204], "label": "Google generate_204" },
+        { "kind": "tcp", "host": "1.1.1.1", "port": 443, "label": "TCP 1.1.1.1:443" }
+      ]
+    },
+    {
+      "id": "telegram",
+      "title": "Telegram",
+      "group": "messenger",
+      "description": "Веб-версия, Bot API и основные домены Telegram.",
+      "targets": [
+        { "kind": "https", "host": "web.telegram.org", "path": "/", "expect": [200, 301, 302] },
+        { "kind": "https", "host": "api.telegram.org", "path": "/", "expect": [200, 302, 404] },
+        { "kind": "https", "host": "core.telegram.org", "path": "/", "expect": [200, 301, 302] },
+        { "kind": "https", "host": "t.me", "path": "/", "expect": [200, 301, 302] }
+      ]
+    },
+    {
+      "id": "instagram",
+      "title": "Instagram",
+      "group": "social",
+      "description": "Веб-фронт, приватное API приложения и CDN с картинками и видео.",
+      "targets": [
+        { "kind": "https", "host": "www.instagram.com", "path": "/", "expect": [200, 301, 302] },
+        { "kind": "https", "host": "i.instagram.com", "path": "/", "expect": [200, 301, 302, 400, 403, 404] },
+        { "kind": "https", "host": "graph.instagram.com", "path": "/", "expect": [200, 400, 401, 403, 404] },
+        { "kind": "https", "host": "scontent.cdninstagram.com", "path": "/", "expect": [200, 204, 400, 403, 404], "label": "CDN scontent.cdninstagram.com" },
+        { "kind": "https", "host": "static.cdninstagram.com", "path": "/", "expect": [200, 400, 403, 404], "optional": true }
+      ]
+    },
+    {
+      "id": "youtube",
+      "title": "YouTube",
+      "group": "video",
+      "description": "Сайт, API плеера, превью и раздача самого видео с googlevideo.",
+      "targets": [
+        { "kind": "https", "host": "www.youtube.com", "path": "/generate_204", "expect": [204] },
+        { "kind": "https", "host": "www.youtube.com", "path": "/", "expect": [200, 301, 302] },
+        { "kind": "https", "host": "youtubei.googleapis.com", "path": "/", "expect": [200, 400, 403, 404, 405], "label": "API плеера" },
+        { "kind": "https", "host": "i.ytimg.com", "path": "/", "expect": [200, 400, 403, 404], "label": "Превью i.ytimg.com" },
+        { "kind": "https", "host": "redirector.googlevideo.com", "path": "/", "expect": [200, 204, 400, 403, 404], "optional": true, "label": "Раздача видео googlevideo" }
+      ]
+    },
+    {
+      "id": "tiktok",
+      "title": "TikTok",
+      "group": "video",
+      "description": "Веб-версия, API приложения и CDN с видео и превью.",
+      "targets": [
+        { "kind": "https", "host": "www.tiktok.com", "path": "/", "expect": [200, 301, 302, 403] },
+        { "kind": "https", "host": "api16-normal-c-useast1a.tiktokv.com", "path": "/", "expect": [200, 400, 403, 404], "label": "API приложения" },
+        { "kind": "https", "host": "p16-sign-va.tiktokcdn.com", "path": "/", "expect": [200, 400, 403, 404], "label": "CDN превью" },
+        { "kind": "https", "host": "v16-webapp-prime.tiktok.com", "path": "/", "expect": [200, 400, 403, 404], "optional": true, "label": "Раздача видео" },
+        { "kind": "https", "host": "webcast.tiktok.com", "path": "/", "expect": [200, 400, 403, 404], "optional": true, "label": "Прямые эфиры" }
+      ]
+    },
+    {
+      "id": "chatgpt",
+      "title": "ChatGPT / OpenAI",
+      "group": "ai",
+      "description": "Веб-интерфейс, API и статика. Требует, чтобы выходной IP не был в бане OpenAI.",
+      "targets": [
+        { "kind": "https", "host": "chatgpt.com", "path": "/", "expect": [200, 301, 302, 307, 403] },
+        { "kind": "https", "host": "api.openai.com", "path": "/v1/models", "expect": [401, 403], "label": "api.openai.com (ожидается 401)" },
+        { "kind": "https", "host": "ab.chatgpt.com", "path": "/", "expect": [200, 400, 403, 404], "optional": true },
+        { "kind": "https", "host": "cdn.oaistatic.com", "path": "/", "expect": [200, 400, 403, 404], "optional": true }
+      ]
+    },
+    {
+      "id": "gemini",
+      "title": "Gemini / Google AI",
+      "group": "ai",
+      "description": "Веб-интерфейс Gemini, AI Studio и API. Геодоступность API проверяется отдельно по ответу Google; для неё укажите свой API-ключ в настройках карточки.",
+      "targets": [
+        { "kind": "https", "host": "gemini.google.com", "path": "/", "expect": [200, 301, 302, 307], "label": "gemini.google.com" },
+        { "kind": "https", "host": "aistudio.google.com", "path": "/", "expect": [200, 301, 302, 307, 403], "label": "aistudio.google.com" },
+        { "kind": "gemini_geo", "host": "generativelanguage.googleapis.com", "path": "/v1beta/models", "label": "Геодоступность Gemini API" },
+        { "kind": "https", "host": "ai.google.dev", "path": "/", "expect": [200, 301, 302, 404], "optional": true, "label": "Документация ai.google.dev" },
+        { "kind": "https", "host": "notebooklm.google.com", "path": "/", "expect": [200, 301, 302, 307, 403], "optional": true, "label": "NotebookLM" }
+      ]
+    },
+    {
+      "id": "discord",
+      "title": "Discord",
+      "group": "messenger",
+      "description": "Сайт, WebSocket-шлюз и CDN. Голосовой UDP-трафик этой проверкой не покрывается.",
+      "targets": [
+        { "kind": "https", "host": "discord.com", "path": "/", "expect": [200, 301, 302] },
+        { "kind": "https", "host": "gateway.discord.gg", "path": "/", "expect": [200, 400, 404, 426], "label": "WebSocket-шлюз" },
+        { "kind": "https", "host": "cdn.discordapp.com", "path": "/", "expect": [200, 400, 403, 404] },
+        { "kind": "https", "host": "media.discordapp.net", "path": "/", "expect": [200, 400, 401, 403, 404], "optional": true }
+      ]
+    },
+    {
+      "id": "x",
+      "title": "X (Twitter)",
+      "group": "social",
+      "description": "Сайт, API и медиа-CDN.",
+      "targets": [
+        { "kind": "https", "host": "x.com", "path": "/", "expect": [200, 301, 302] },
+        { "kind": "https", "host": "api.x.com", "path": "/", "expect": [200, 400, 403, 404] },
+        { "kind": "https", "host": "abs.twimg.com", "path": "/", "expect": [200, 400, 403, 404] },
+        { "kind": "https", "host": "video.twimg.com", "path": "/", "expect": [200, 400, 403, 404], "optional": true }
+      ]
+    },
+    {
+      "id": "facebook",
+      "title": "Facebook",
+      "group": "social",
+      "description": "Веб-фронт, Graph API и CDN.",
+      "targets": [
+        { "kind": "https", "host": "www.facebook.com", "path": "/", "expect": [200, 301, 302, 400] },
+        { "kind": "https", "host": "graph.facebook.com", "path": "/", "expect": [200, 400, 403] },
+        { "kind": "https", "host": "scontent.xx.fbcdn.net", "path": "/", "expect": [200, 204, 400, 403, 404], "optional": true }
+      ]
+    },
+    {
+      "id": "whatsapp",
+      "title": "WhatsApp",
+      "group": "messenger",
+      "description": "Веб-версия, медиа-серверы и XMPP-порт клиента.",
+      "targets": [
+        { "kind": "https", "host": "web.whatsapp.com", "path": "/", "expect": [200, 301, 302, 400] },
+        { "kind": "https", "host": "mmg.whatsapp.net", "path": "/", "expect": [200, 400, 403, 404] },
+        { "kind": "tcp", "host": "g.whatsapp.net", "port": 5222, "label": "XMPP g.whatsapp.net:5222" },
+        { "kind": "tcp", "host": "g.whatsapp.net", "port": 443, "optional": true }
+      ]
+    },
+    {
+      "id": "netflix",
+      "title": "Netflix",
+      "group": "video",
+      "description": "Сайт, публичная статика и раздающая инфраструктура Netflix. Проверка показывает доступность сети без входа в аккаунт.",
+      "targets": [
+        { "kind": "https", "host": "www.netflix.com", "path": "/", "expect": [200, 301, 302] },
+        { "kind": "https", "host": "assets.nflxext.com", "path": "/", "expect": [200, 301, 302, 403, 404], "label": "Публичная статика nflxext.com" },
+        { "kind": "https", "host": "occ-0-1360-1361.1.nflxso.net", "path": "/", "expect": [200, 400, 403, 404, 422], "optional": true, "label": "CDN nflxso.net" }
+      ]
+    },
+    {
+      "id": "spotify",
+      "title": "Spotify",
+      "group": "music",
+      "description": "Веб-плеер, API и раздача аудио.",
+      "targets": [
+        { "kind": "https", "host": "open.spotify.com", "path": "/", "expect": [200, 301, 302] },
+        { "kind": "https", "host": "api.spotify.com", "path": "/v1/me", "expect": [400, 401, 403] },
+        { "kind": "https", "host": "i.scdn.co", "path": "/", "expect": [200, 400, 403, 404], "optional": true }
+      ]
+    },
+    {
+      "id": "twitch",
+      "title": "Twitch",
+      "group": "video",
+      "description": "Сайт, GraphQL API и выдача плейлистов стримов.",
+      "targets": [
+        { "kind": "https", "host": "www.twitch.tv", "path": "/", "expect": [200, 301, 302] },
+        { "kind": "https", "host": "gql.twitch.tv", "path": "/", "expect": [200, 400, 403, 405] },
+        { "kind": "https", "host": "usher.ttvnw.net", "path": "/", "expect": [200, 400, 403, 404], "optional": true }
+      ]
+    },
+    {
+      "id": "steam",
+      "title": "Steam",
+      "group": "games",
+      "description": "Магазин, API и CDN с контентом игр.",
+      "targets": [
+        { "kind": "https", "host": "store.steampowered.com", "path": "/", "expect": [200, 301, 302] },
+        { "kind": "https", "host": "api.steampowered.com", "path": "/", "expect": [200, 400, 403, 404] },
+        { "kind": "https", "host": "cdn.cloudflare.steamstatic.com", "path": "/", "expect": [200, 400, 403, 404], "optional": true }
+      ]
+    },
+    {
+      "id": "github",
+      "title": "GitHub",
+      "group": "dev",
+      "description": "Сайт, API и раздача файлов — важно для обновлений Forkop/Podkop и списков правил.",
+      "targets": [
+        { "kind": "https", "host": "github.com", "path": "/", "expect": [200, 301, 302] },
+        { "kind": "https", "host": "api.github.com", "path": "/", "expect": [200] },
+        { "kind": "https", "host": "raw.githubusercontent.com", "path": "/", "expect": [200, 400, 403, 404] },
+        { "kind": "https", "host": "objects.githubusercontent.com", "path": "/", "expect": [200, 400, 403, 404], "optional": true }
+      ]
+    },
+    {
+      "id": "blocked_ru",
+      "title": "Заблокированные в РФ",
+      "group": "bypass",
+      "description": "Сайты, недоступные без обхода. Зелёный результат — прямое доказательство, что обход работает.",
+      "targets": [
+        { "kind": "https", "host": "rutracker.org", "path": "/forum/index.php", "expect": [200, 301, 302] },
+        { "kind": "https", "host": "www.linkedin.com", "path": "/", "expect": [200, 301, 302, 403, 999] },
+        { "kind": "https", "host": "medium.com", "path": "/", "expect": [200, 301, 302, 403] }
+      ]
+    },
+    {
+      "id": "udp_common",
+      "title": "UDP / QUIC",
+      "group": "network",
+      "description": "Двусторонняя проверка UDP через DNS-ответы и best-effort отправка QUIC.",
+      "targets": [
+        { "kind": "udp_dns", "host": "1.1.1.1", "port": 53, "query": "example.com", "label": "Cloudflare DNS UDP :53" },
+        { "kind": "udp_dns", "host": "8.8.8.8", "port": 53, "query": "example.com", "label": "Google DNS UDP :53", "optional": true },
+        { "kind": "udp", "host": "cloudflare.com", "port": 443, "label": "Cloudflare QUIC :443" },
+        { "kind": "udp", "host": "google.com", "port": 443, "label": "Google QUIC :443" },
+        { "kind": "udp", "host": "g.whatsapp.net", "port": 443, "label": "WhatsApp UDP :443", "optional": true }
+      ]
+    }
+  ]
+}

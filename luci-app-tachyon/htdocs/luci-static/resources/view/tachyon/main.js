@@ -3056,6 +3056,7 @@ var Tachyon;
     AvailableMethods2["COMPONENT_UPDATE_CHECK_CACHE"] = "component_update_check_cache";
     AvailableMethods2["SUBSCRIPTION_UPDATE_ASYNC"] = "subscription_update_async";
     AvailableMethods2["SUBSCRIPTION_UPDATE_STATUS"] = "subscription_update_status";
+    AvailableMethods2["SERVICE_HEALTH_CHECK"] = "service_health_check";
   })(AvailableMethods = Tachyon2.AvailableMethods || (Tachyon2.AvailableMethods = {}));
   let AvailableClashAPIMethods;
   ((AvailableClashAPIMethods2) => {
@@ -9721,6 +9722,7 @@ function renderAvailableActions({
   globalCheck,
   doctor,
   aiDoctor,
+  aiChat,
   viewLogs,
   showSingBoxConfig,
   generateBugReport,
@@ -9806,9 +9808,19 @@ function renderAvailableActions({
         disabled: aiDoctor.disabled
       })
     ]),
+    ...insertIf(!!aiChat?.visible, [
+      renderButton({
+        classNames: ["cbi-button-action"],
+        onClick: aiChat.onClick,
+        icon: renderCircleCheckBigIcon24,
+        text: _("AI Chat Assistant"),
+        loading: aiChat.loading,
+        disabled: aiChat.disabled
+      })
+    ]),
     ...insertIf(checkServices.visible, [
       renderButton({
-        classNames: ["cbi-button-apply"],
+        classNames: ["cbi-button-action"],
         onClick: checkServices.onClick,
         icon: renderSquareChartGanttIcon24,
         text: _("Check Services"),
@@ -10025,134 +10037,833 @@ function renderRunAction({
 
 // src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts
 function renderServiceCheckModal() {
-  const container = E("div", { class: "tachyon-service-check-modal" }, [
-    E("p", {}, _("Fetching service status, please wait...")),
-    E("div", { class: "spinning" }, "...")
-  ]);
-  ui.showModal(_("Service Health Check"), E("div", {}, [
-    container,
-    E("div", { style: "margin-top: 15px; text-align: right;" }, [
-      renderButton({
-        text: _("Close"),
-        onClick: () => ui.hideModal()
-      })
-    ])
-  ]));
-  callBaseMethod("diagnostics/status.uc", [
-    "service-health-check"
-  ]).then((res) => {
-    container.innerHTML = "";
-    if (!res.success) {
-      container.appendChild(E("p", {}, _("Failed to execute service check.")));
-      return;
-    }
-    let results = [];
-    try {
-      if (typeof res.data === "string") {
-        results = JSON.parse(res.data);
-      }
-    } catch (e) {
-      container.appendChild(E("p", {}, _("Failed to parse service check results.")));
-      return;
-    }
-    if (results.length === 0) {
-      container.appendChild(E("p", {}, _("No domains found to check.")));
-    }
-    const table = E("table", { class: "table cbi-section-table" }, [
-      E("tr", { class: "tr cbi-section-table-titles" }, [
-        E("th", { class: "th" }, _("Section / Domain")),
-        E("th", { class: "th" }, _("Outbound")),
-        E("th", { class: "th" }, _("IP / DNS")),
-        E("th", { class: "th" }, _("TCP (ms)")),
-        E("th", { class: "th" }, _("TLS (ms)")),
-        E("th", { class: "th" }, _("HTTP (ms)")),
-        E("th", { class: "th" }, _("Verdict"))
-      ])
-    ]);
-    results.forEach((item) => {
-      const badgeColor = item.success ? "#28a745" : item.status_class.includes("Timeout") || item.status_class.includes("HTTP") || item.status_class.includes("Reset") ? "#dc3545" : "#ffc107";
-      const badge = E(
-        "span",
+  let currentTargetMode = "active";
+  const container = E(
+    "div",
+    {
+      class: "tachyon-service-check-modal-wrapper",
+      style: "width: 100%; max-width: 820px; box-sizing: border-box;"
+    },
+    [
+      E(
+        "p",
+        { style: "text-align: center; margin-top: 20px;" },
+        _("Fetching service targets...")
+      ),
+      E(
+        "div",
         {
-          style: `display: inline-block; padding: 2px 6px; border-radius: 4px; color: white; font-weight: bold; font-size: 11px; background: ${badgeColor};`
+          class: "spinning",
+          style: "text-align: center; font-size: 24px; color: var(--border-color, #007bff);"
         },
-        item.status_class
-      );
-      table.appendChild(
-        E("tr", { class: "tr cbi-rowstyle-1" }, [
-          E("td", { class: "td" }, [
-            E("strong", {}, item.section),
-            E("br"),
-            E("small", {}, item.domain)
-          ]),
-          E("td", { class: "td" }, item.route_type),
-          E("td", { class: "td" }, [
-            item.ip || "?",
-            E("br"),
-            E("small", {}, `${item.dns_ms}ms`)
-          ]),
-          E("td", { class: "td" }, item.tcp_ms > 0 ? `${item.tcp_ms}` : "-"),
-          E("td", { class: "td" }, item.tls_ms > 0 ? `${item.tls_ms}` : "-"),
-          E("td", { class: "td" }, item.http_ms > 0 ? `${item.http_ms}` : "-"),
-          E("td", { class: "td" }, badge)
-        ])
-      );
-    });
-    if (results.length > 0) {
-      container.appendChild(table);
-    }
-    const customDomainWrap = E("div", { style: "margin-top: 15px; display: flex; gap: 10px;" }, [
-      E("input", { type: "text", id: "custom-domain-check-input", placeholder: _("Custom domain (e.g. google.com)") })
-    ]);
-    let customBtn;
-    customBtn = renderButton({
-      text: _("Check Custom Domain"),
-      classNames: ["cbi-button-action"],
-      onClick: () => {
-        const input = document.getElementById("custom-domain-check-input");
-        if (!input || !input.value) return;
-        const domain = input.value.trim();
-        if (customBtn) {
-          customBtn.disabled = true;
-          customBtn.textContent = "...";
+        "\u26A1"
+      )
+    ]
+  );
+  const modalContent = E(
+    "div",
+    { style: "width: 100%; max-width: 820px; box-sizing: border-box;" },
+    [
+      container,
+      E(
+        "div",
+        {
+          id: "tachyon-service-check-footer",
+          style: "margin-top: 15px; display: flex; justify-content: space-between; align-items: center; gap: 10px; border-top: 1px solid var(--border-color, rgba(255,255,255,0.15)); padding-top: 12px; flex-wrap: wrap;"
+        },
+        [
+          renderButton({
+            text: _("Close"),
+            onClick: () => ui.hideModal()
+          })
+        ]
+      )
+    ]
+  );
+  ui.showModal(_("Service Health Check"), modalContent);
+  const loadTargets = (targetMode) => {
+    currentTargetMode = targetMode;
+    container.innerHTML = "";
+    container.appendChild(
+      E(
+        "p",
+        { style: "text-align: center; margin-top: 20px;" },
+        _("Fetching service targets...")
+      )
+    );
+    const args = targetMode === "all" ? ["get-targets", "all"] : ["get-targets"];
+    callBaseMethod(Tachyon.AvailableMethods.SERVICE_HEALTH_CHECK, args).then((res) => {
+      const response = res;
+      container.innerHTML = "";
+      if (!response || !response.success) {
+        container.appendChild(
+          E(
+            "p",
+            { style: "color: #dc3545;" },
+            _("Failed to run service check.")
+          )
+        );
+        return;
+      }
+      let targets = [];
+      try {
+        if (typeof response.data === "string") {
+          targets = JSON.parse(response.data);
+        } else if (Array.isArray(response.data)) {
+          targets = response.data;
         }
-        callBaseMethod("diagnostics/status.uc", ["service-health-check", "check-custom", domain]).then((cRes) => {
-          if (customBtn) {
-            customBtn.disabled = false;
-            customBtn.textContent = _("Check Custom Domain");
-          }
-          if (cRes && cRes.success) {
-            try {
-              const cResults = JSON.parse(cRes.data);
-              if (cResults.length > 0) {
-                const cItem = cResults[0];
-                const cBadgeColor = cItem.success ? "#28a745" : "#dc3545";
-                const cBadge = E("span", { style: `display: inline-block; padding: 2px 6px; border-radius: 4px; color: white; font-weight: bold; font-size: 11px; background: ${cBadgeColor};` }, cItem.status_class);
-                if (results.length === 0 && !document.body.contains(table)) {
-                  container.insertBefore(table, customDomainWrap);
-                }
-                table.appendChild(E("tr", { class: "tr cbi-rowstyle-2" }, [
-                  E("td", { class: "td" }, [E("strong", {}, cItem.section), E("br"), E("small", {}, cItem.domain)]),
-                  E("td", { class: "td" }, cItem.route_type),
-                  E("td", { class: "td" }, [cItem.ip || "?", E("br"), E("small", {}, `${cItem.dns_ms}ms`)]),
-                  E("td", { class: "td" }, cItem.tcp_ms > 0 ? `${cItem.tcp_ms}` : "-"),
-                  E("td", { class: "td" }, cItem.tls_ms > 0 ? `${cItem.tls_ms}` : "-"),
-                  E("td", { class: "td" }, cItem.http_ms > 0 ? `${cItem.http_ms}` : "-"),
-                  E("td", { class: "td" }, cBadge)
-                ]));
-              }
-            } catch (e) {
+      } catch (_e) {
+        container.appendChild(
+          E(
+            "p",
+            { style: "color: #dc3545;" },
+            _("Failed to parse target list.")
+          )
+        );
+        return;
+      }
+      if (targets.length === 0) {
+        container.appendChild(
+          E("p", {}, _("No targets found in section configs."))
+        );
+        return;
+      }
+      const activeSectionsBtn = renderButton({
+        text: _("Active Sections"),
+        classNames: [
+          targetMode === "active" ? "cbi-button-action" : "cbi-button-neutral"
+        ],
+        onClick: () => loadTargets("active")
+      });
+      activeSectionsBtn.style.fontSize = "12px";
+      activeSectionsBtn.style.padding = "3px 12px";
+      const allProfilesBtn = renderButton({
+        text: _("All Profiles"),
+        classNames: [
+          targetMode === "all" ? "cbi-button-action" : "cbi-button-neutral"
+        ],
+        onClick: () => loadTargets("all")
+      });
+      allProfilesBtn.style.fontSize = "12px";
+      allProfilesBtn.style.padding = "3px 12px";
+      const modeSwitcherBar = E(
+        "div",
+        {
+          style: "display: flex; gap: 8px; align-items: center; margin-bottom: 12px; border-bottom: 1px solid var(--border-color, rgba(255,255,255,0.1)); padding-bottom: 8px;"
+        },
+        [
+          E(
+            "span",
+            { style: "font-weight: 600; font-size: 12px; opacity: 0.8;" },
+            _("Check Mode:")
+          ),
+          activeSectionsBtn,
+          allProfilesBtn
+        ]
+      );
+      const sectionNames = Array.from(new Set(targets.map((t) => t.section)));
+      let activeFilter = "ALL";
+      let searchQuery2 = "";
+      const totalStatEl = E(
+        "div",
+        {
+          class: "stat-val",
+          style: "font-size: 18px; font-weight: bold; margin-top: 2px;"
+        },
+        `${targets.length}`
+      );
+      const passedStatEl = E(
+        "div",
+        {
+          class: "stat-val",
+          style: "font-size: 18px; font-weight: bold; color: #28a745; margin-top: 2px;"
+        },
+        "0"
+      );
+      const failedStatEl = E(
+        "div",
+        {
+          class: "stat-val",
+          style: "font-size: 18px; font-weight: bold; color: #dc3545; margin-top: 2px;"
+        },
+        "0"
+      );
+      const latencyStatEl = E(
+        "div",
+        {
+          class: "stat-val",
+          style: "font-size: 18px; font-weight: bold; color: #17a2b8; margin-top: 2px;"
+        },
+        "-"
+      );
+      const statsBar = E(
+        "div",
+        {
+          style: "display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; width: 100%; box-sizing: border-box;"
+        },
+        [
+          E(
+            "div",
+            {
+              style: "flex: 1 1 120px; min-width: 110px; background: var(--background-color-secondary, rgba(255,255,255,0.05)); border: 1px solid var(--border-color, rgba(255,255,255,0.15)); border-radius: 6px; padding: 6px 10px; text-align: center; box-sizing: border-box;"
+            },
+            [
+              E(
+                "small",
+                { style: "display: block; font-size: 11px; opacity: 0.75;" },
+                _("Total Targets")
+              ),
+              totalStatEl
+            ]
+          ),
+          E(
+            "div",
+            {
+              style: "flex: 1 1 120px; min-width: 110px; background: var(--background-color-secondary, rgba(255,255,255,0.05)); border: 1px solid var(--border-color, rgba(255,255,255,0.15)); border-radius: 6px; padding: 6px 10px; text-align: center; box-sizing: border-box;"
+            },
+            [
+              E(
+                "small",
+                { style: "display: block; font-size: 11px; opacity: 0.75;" },
+                _("Passed")
+              ),
+              passedStatEl
+            ]
+          ),
+          E(
+            "div",
+            {
+              style: "flex: 1 1 120px; min-width: 110px; background: var(--background-color-secondary, rgba(255,255,255,0.05)); border: 1px solid var(--border-color, rgba(255,255,255,0.15)); border-radius: 6px; padding: 6px 10px; text-align: center; box-sizing: border-box;"
+            },
+            [
+              E(
+                "small",
+                { style: "display: block; font-size: 11px; opacity: 0.75;" },
+                _("Failed")
+              ),
+              failedStatEl
+            ]
+          ),
+          E(
+            "div",
+            {
+              style: "flex: 1 1 120px; min-width: 110px; background: var(--background-color-secondary, rgba(255,255,255,0.05)); border: 1px solid var(--border-color, rgba(255,255,255,0.15)); border-radius: 6px; padding: 6px 10px; text-align: center; box-sizing: border-box;"
+            },
+            [
+              E(
+                "small",
+                { style: "display: block; font-size: 11px; opacity: 0.75;" },
+                _("Avg Latency")
+              ),
+              latencyStatEl
+            ]
+          )
+        ]
+      );
+      const progressBarInner = E("div", {
+        style: "width: 0%; height: 100%; background: #28a745; transition: width 0.2s ease;"
+      });
+      const progressBarContainer = E(
+        "div",
+        {
+          style: "width: 100%; height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden; margin-bottom: 12px; display: none;"
+        },
+        [progressBarInner]
+      );
+      const createFilterTab = (label, sectionKey) => {
+        const isActive = activeFilter === sectionKey;
+        const btn = E(
+          "button",
+          {
+            type: "button",
+            class: `cbi-button ${isActive ? "cbi-button-action" : "cbi-button-neutral"}`,
+            style: "padding: 3px 10px; font-size: 12px; border-radius: 12px;"
+          },
+          label
+        );
+        btn.onclick = () => {
+          activeFilter = sectionKey;
+          updateFilterTabs();
+          applyTableFilter();
+        };
+        return btn;
+      };
+      const filterTabsContainer = E("div", {
+        style: "display: flex; gap: 6px; flex-wrap: wrap; align-items: center;"
+      });
+      const updateFilterTabs = () => {
+        filterTabsContainer.innerHTML = "";
+        filterTabsContainer.appendChild(createFilterTab(_("All"), "ALL"));
+        sectionNames.forEach((sec) => {
+          filterTabsContainer.appendChild(createFilterTab(sec, sec));
+        });
+      };
+      updateFilterTabs();
+      const searchInput = E("input", {
+        type: "text",
+        placeholder: _("Search domain..."),
+        class: "cbi-input-text",
+        style: "width: 180px; padding: 4px 8px; font-size: 12px; border-radius: 4px;"
+      });
+      searchInput.oninput = (e) => {
+        const targetInput = e.target;
+        searchQuery2 = (targetInput?.value || "").toLowerCase().trim();
+        applyTableFilter();
+      };
+      const toolbar = E(
+        "div",
+        {
+          style: "display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; gap: 10px; flex-wrap: wrap;"
+        },
+        [filterTabsContainer, searchInput]
+      );
+      const tableHead = E("tr", { class: "tr cbi-section-table-titles" }, [
+        E(
+          "th",
+          { class: "th", style: "width: 28%; padding: 6px 8px;" },
+          _("Section / Target")
+        ),
+        E(
+          "th",
+          { class: "th", style: "width: 17%; padding: 6px 8px;" },
+          _("Outbound Route")
+        ),
+        E(
+          "th",
+          { class: "th", style: "width: 20%; padding: 6px 8px;" },
+          _("Resolved IP / DNS")
+        ),
+        E(
+          "th",
+          {
+            class: "th",
+            style: "text-align: right; width: 7%; padding: 6px 4px;"
+          },
+          _("TCP")
+        ),
+        E(
+          "th",
+          {
+            class: "th",
+            style: "text-align: right; width: 7%; padding: 6px 4px;"
+          },
+          _("TLS")
+        ),
+        E(
+          "th",
+          {
+            class: "th",
+            style: "text-align: right; width: 7%; padding: 6px 4px;"
+          },
+          _("HTTP")
+        ),
+        E(
+          "th",
+          {
+            class: "th",
+            style: "text-align: center; width: 14%; padding: 6px 6px;"
+          },
+          _("Verdict")
+        )
+      ]);
+      const tableBody = E("tbody", {});
+      const table = E(
+        "table",
+        {
+          class: "table cbi-section-table",
+          style: "width: 100%; margin: 0; table-layout: fixed; box-sizing: border-box;"
+        },
+        [
+          E(
+            "thead",
+            {
+              style: "position: sticky; top: 0; background: var(--background-color-primary, #1e1e1e); z-index: 2;"
+            },
+            [tableHead]
+          ),
+          tableBody
+        ]
+      );
+      const tableScrollWrapper = E(
+        "div",
+        {
+          style: "max-height: 380px; overflow-y: auto; overflow-x: hidden; border: 1px solid var(--border-color, rgba(255,255,255,0.15)); border-radius: 6px; width: 100%; box-sizing: border-box;"
+        },
+        [table]
+      );
+      const rowMap = [];
+      targets.forEach((item) => {
+        const badge = E(
+          "span",
+          {
+            style: "display: inline-block; padding: 2px 6px; border-radius: 8px; color: #fff; font-size: 10px; font-weight: 500; background: #6c757d; text-align: center; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis;"
+          },
+          _("Pending")
+        );
+        const tr = E("tr", { class: "tr cbi-rowstyle-1" }, [
+          E("td", { class: "td", style: "word-break: break-all;" }, [
+            E(
+              "span",
+              { style: "font-weight: 600; font-size: 12px;" },
+              item.section
+            ),
+            E("br"),
+            E("small", { style: "opacity: 0.8;" }, item.domain)
+          ]),
+          E("td", { class: "td", style: "font-size: 11px;" }, [
+            E(
+              "code",
+              {
+                style: "background: rgba(255,255,255,0.06); padding: 2px 4px; border-radius: 3px;"
+              },
+              item.route_type
+            )
+          ]),
+          E("td", { class: "td", style: "font-size: 11px;" }, [
+            E("span", {}, "?"),
+            E("br"),
+            E("small", { style: "opacity: 0.6;" }, `-`)
+          ]),
+          E(
+            "td",
+            { class: "td", style: "text-align: right; font-size: 12px;" },
+            "-"
+          ),
+          E(
+            "td",
+            { class: "td", style: "text-align: right; font-size: 12px;" },
+            "-"
+          ),
+          E(
+            "td",
+            { class: "td", style: "text-align: right; font-size: 12px;" },
+            "-"
+          ),
+          E("td", { class: "td", style: "text-align: center;" }, badge)
+        ]);
+        rowMap.push({ target: item, tr });
+        tableBody.appendChild(tr);
+      });
+      const applyTableFilter = () => {
+        rowMap.forEach(({ target, tr }) => {
+          const matchesSection = activeFilter === "ALL" || target.section === activeFilter;
+          const matchesSearch = !searchQuery2 || target.domain.toLowerCase().includes(searchQuery2) || target.section.toLowerCase().includes(searchQuery2);
+          tr.style.display = matchesSection && matchesSearch ? "" : "none";
+        });
+      };
+      const updateSummaryStats = () => {
+        let passed = 0;
+        let failed2 = 0;
+        let totalLat = 0;
+        let countLat = 0;
+        rowMap.forEach(({ result }) => {
+          if (result) {
+            if (result.success) passed++;
+            else failed2++;
+            const lat = result.http_ms || result.tls_ms || result.tcp_ms || 0;
+            if (lat > 0) {
+              totalLat += lat;
+              countLat++;
             }
           }
         });
+        passedStatEl.textContent = `${passed}`;
+        failedStatEl.textContent = `${failed2}`;
+        latencyStatEl.textContent = countLat > 0 ? `${Math.round(totalLat / countLat)} ms` : "-";
+      };
+      container.appendChild(modeSwitcherBar);
+      container.appendChild(statsBar);
+      container.appendChild(progressBarContainer);
+      container.appendChild(toolbar);
+      container.appendChild(tableScrollWrapper);
+      const footer = document.getElementById("tachyon-service-check-footer");
+      if (footer) {
+        footer.innerHTML = "";
+        const customDomainInput = E("input", {
+          type: "text",
+          id: "custom-domain-input",
+          placeholder: _("Check domain or IP (e.g. example.com)..."),
+          class: "cbi-input-text",
+          style: "width: 260px; font-size: 12px;"
+        });
+        const customBtn = renderButton({
+          text: _("Check Custom"),
+          classNames: ["cbi-button-neutral"],
+          onClick: async () => {
+            const domain = customDomainInput.value.trim();
+            if (!domain) return;
+            customBtn.disabled = true;
+            customBtn.textContent = "...";
+            try {
+              const cRes = await callBaseMethod(
+                Tachyon.AvailableMethods.SERVICE_HEALTH_CHECK,
+                ["check-custom", domain]
+              );
+              if (cRes && cRes.success) {
+                const cResults = typeof cRes.data === "string" ? JSON.parse(cRes.data) : cRes.data || [];
+                if (cResults && cResults.length > 0) {
+                  const cItem = cResults[0];
+                  const cBadgeColor = cItem.success ? "#28a745" : "#dc3545";
+                  const cBadge = E(
+                    "span",
+                    {
+                      style: `display: inline-block; padding: 2px 6px; border-radius: 8px; color: #fff; font-size: 10px; font-weight: 500; background: ${cBadgeColor}; text-align: center; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis;`
+                    },
+                    cItem.status_class
+                  );
+                  const customTr = E("tr", { class: "tr cbi-rowstyle-2" }, [
+                    E(
+                      "td",
+                      { class: "td", style: "word-break: break-all;" },
+                      [
+                        E(
+                          "span",
+                          { style: "font-weight:600;" },
+                          cItem.section
+                        ),
+                        E("br"),
+                        E("small", {}, cItem.domain)
+                      ]
+                    ),
+                    E("td", { class: "td", style: "font-size: 11px;" }, [
+                      E("code", {}, cItem.route_type)
+                    ]),
+                    E("td", { class: "td", style: "font-size: 11px;" }, [
+                      cItem.ip || "?",
+                      E("br"),
+                      E("small", {}, `${cItem.dns_ms}ms`)
+                    ]),
+                    E(
+                      "td",
+                      { class: "td", style: "text-align: right;" },
+                      cItem.tcp_ms > 0 ? `${cItem.tcp_ms}` : "-"
+                    ),
+                    E(
+                      "td",
+                      { class: "td", style: "text-align: right;" },
+                      cItem.tls_ms > 0 ? `${cItem.tls_ms}` : "-"
+                    ),
+                    E(
+                      "td",
+                      { class: "td", style: "text-align: right;" },
+                      cItem.http_ms > 0 ? `${cItem.http_ms}` : "-"
+                    ),
+                    E(
+                      "td",
+                      { class: "td", style: "text-align: center;" },
+                      cBadge
+                    )
+                  ]);
+                  tableBody.insertBefore(customTr, tableBody.firstChild);
+                  rowMap.unshift({
+                    target: {
+                      section: "Custom",
+                      route_type: "auto",
+                      domain: cItem.domain
+                    },
+                    tr: customTr,
+                    result: cItem
+                  });
+                  updateSummaryStats();
+                  customDomainInput.value = "";
+                }
+              }
+            } catch (_e) {
+            } finally {
+              customBtn.disabled = false;
+              customBtn.textContent = _("Check Custom");
+            }
+          }
+        });
+        const leftWrap = E(
+          "div",
+          {
+            style: "display: flex; gap: 8px; align-items: center; flex-wrap: wrap;"
+          },
+          [customDomainInput, customBtn]
+        );
+        const checkAllBtn = renderButton({
+          text: _("Check All"),
+          classNames: ["cbi-button-action"],
+          onClick: async () => {
+            checkAllBtn.disabled = true;
+            checkAllBtn.textContent = _("Checking...");
+            progressBarContainer.style.display = "block";
+            progressBarInner.style.width = "0%";
+            for (let i = 0; i < rowMap.length; i++) {
+              const itemObj = rowMap[i];
+              const { target, tr } = itemObj;
+              progressBarInner.style.width = `${Math.round((i + 1) / rowMap.length * 100)}%`;
+              const badgeCell = tr.childNodes[6];
+              badgeCell.innerHTML = "";
+              badgeCell.appendChild(
+                E(
+                  "span",
+                  {
+                    style: "display: inline-block; padding: 2px 6px; border-radius: 8px; color: #fff; font-size: 10px; font-weight: 500; background: #007bff; text-align: center; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis;"
+                  },
+                  _("Testing...")
+                )
+              );
+              try {
+                const cRes = await callBaseMethod(
+                  Tachyon.AvailableMethods.SERVICE_HEALTH_CHECK,
+                  ["check-domain", JSON.stringify(target)]
+                );
+                if (cRes && cRes.success) {
+                  const cResults = typeof cRes.data === "string" ? JSON.parse(cRes.data) : cRes.data || [];
+                  if (cResults && cResults.length > 0) {
+                    const cItem = cResults[0];
+                    itemObj.result = cItem;
+                    const cBadgeColor = cItem.success ? "#28a745" : "#dc3545";
+                    const cBadge = E(
+                      "span",
+                      {
+                        style: `display: inline-block; padding: 2px 6px; border-radius: 8px; color: #fff; font-size: 10px; font-weight: 500; background: ${cBadgeColor}; text-align: center; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis;`
+                      },
+                      cItem.status_class
+                    );
+                    tr.childNodes[2].innerHTML = "";
+                    tr.childNodes[2].appendChild(
+                      document.createTextNode(cItem.ip || "?")
+                    );
+                    tr.childNodes[2].appendChild(E("br"));
+                    tr.childNodes[2].appendChild(
+                      E(
+                        "small",
+                        { style: "opacity: 0.6;" },
+                        `${cItem.dns_ms}ms`
+                      )
+                    );
+                    tr.childNodes[3].textContent = cItem.tcp_ms > 0 ? `${cItem.tcp_ms}` : "-";
+                    tr.childNodes[4].textContent = cItem.tls_ms > 0 ? `${cItem.tls_ms}` : "-";
+                    tr.childNodes[5].textContent = cItem.http_ms > 0 ? `${cItem.http_ms}` : "-";
+                    badgeCell.innerHTML = "";
+                    badgeCell.appendChild(cBadge);
+                  }
+                }
+              } catch (_e) {
+                badgeCell.innerHTML = "";
+                badgeCell.appendChild(
+                  E(
+                    "span",
+                    {
+                      style: "display: inline-block; padding: 2px 6px; border-radius: 8px; color: #fff; font-size: 10px; font-weight: 500; background: #dc3545; text-align: center; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis;"
+                    },
+                    _("Failed")
+                  )
+                );
+              }
+              updateSummaryStats();
+            }
+            checkAllBtn.textContent = _("Check Again");
+            checkAllBtn.disabled = false;
+          }
+        });
+        const closeBtn = renderButton({
+          text: _("Close"),
+          onClick: () => ui.hideModal()
+        });
+        const rightWrap = E("div", { style: "display: flex; gap: 8px;" }, [
+          checkAllBtn,
+          closeBtn
+        ]);
+        footer.appendChild(leftWrap);
+        footer.appendChild(rightWrap);
       }
+    }).catch(() => {
+      container.innerHTML = "";
+      container.appendChild(
+        E(
+          "p",
+          { style: "color: #dc3545;" },
+          _("Failed to run service check.")
+        )
+      );
     });
-    customDomainWrap.appendChild(customBtn);
-    container.appendChild(customDomainWrap);
-  }).catch(() => {
-    container.innerHTML = "";
-    container.appendChild(E("p", {}, _("An error occurred while checking services.")));
+  };
+  loadTargets("active");
+}
+
+// src/tachyon/tabs/diagnostic/partials/renderAiChatModal.ts
+var chatHistory = [
+  {
+    sender: "assistant",
+    text: _(
+      "Hello! I am Tachyon AI Assistant. How can I help you today? Ask me about domain blocks, diagnostics, or router settings."
+    ),
+    timestamp: (/* @__PURE__ */ new Date()).toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit"
+    })
+  }
+];
+function renderAiChatModal() {
+  const messageListContainer = E("div", {
+    style: "height: 360px; overflow-y: auto; padding: 12px; background: var(--background-color-secondary, rgba(0,0,0,0.2)); border: 1px solid var(--border-color, rgba(255,255,255,0.15)); border-radius: 8px; display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; width: 100%; box-sizing: border-box;"
   });
+  const renderMessages = () => {
+    messageListContainer.innerHTML = "";
+    chatHistory.forEach((msg) => {
+      const isUser = msg.sender === "user";
+      const bubble = E(
+        "div",
+        {
+          style: `max-width: 82%; align-self: ${isUser ? "flex-end" : "flex-start"}; background: ${isUser ? "#007bff" : "var(--background-color-primary, #2a2a2a)"}; color: #fff; padding: 8px 12px; border-radius: 12px; font-size: 13px; border: 1px solid ${isUser ? "#0056b3" : "var(--border-color, rgba(255,255,255,0.15))"}; line-height: 1.4; word-break: break-word;`
+        },
+        [
+          E("div", {}, msg.text),
+          E(
+            "small",
+            {
+              style: "display: block; opacity: 0.65; text-align: right; font-size: 10px; margin-top: 4px;"
+            },
+            msg.timestamp
+          )
+        ]
+      );
+      messageListContainer.appendChild(bubble);
+    });
+    messageListContainer.scrollTop = messageListContainer.scrollHeight;
+  };
+  renderMessages();
+  const chatInput = E("input", {
+    type: "text",
+    placeholder: _("Ask Tachyon AI Assistant a question..."),
+    class: "cbi-input-text",
+    style: "flex: 1 1 auto; min-width: 0; font-size: 13px; padding: 6px 10px; border-radius: 6px; box-sizing: border-box;"
+  });
+  const sendBtn = renderButton({
+    text: _("Send"),
+    classNames: ["cbi-button-action"],
+    onClick: () => handleSend()
+  });
+  const handleSend = async (queryText) => {
+    const text = (queryText || chatInput.value).trim();
+    if (!text) return;
+    const userMsg = {
+      sender: "user",
+      text,
+      timestamp: (/* @__PURE__ */ new Date()).toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit"
+      })
+    };
+    chatHistory.push(userMsg);
+    chatInput.value = "";
+    renderMessages();
+    const typingMsg = {
+      sender: "assistant",
+      text: "\u{1F916} " + _("Thinking..."),
+      timestamp: (/* @__PURE__ */ new Date()).toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit"
+      })
+    };
+    chatHistory.push(typingMsg);
+    renderMessages();
+    try {
+      const res = await callBaseMethod(
+        Tachyon.AvailableMethods.AI_DOCTOR
+      );
+      chatHistory.pop();
+      let answerText = _("Failed to receive response from AI service.");
+      if (res && res.success) {
+        if (typeof res.data === "string") {
+          try {
+            const parsed = JSON.parse(res.data);
+            answerText = parsed.summary || parsed.message || parsed.raw || res.data;
+          } catch (_e) {
+            answerText = res.data;
+          }
+        } else if (typeof res.data === "object" && res.data !== null && "message" in res.data) {
+          answerText = String(res.data.message);
+        }
+      }
+      chatHistory.push({
+        sender: "assistant",
+        text: answerText,
+        timestamp: (/* @__PURE__ */ new Date()).toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit"
+        })
+      });
+    } catch (e) {
+      chatHistory.pop();
+      const errMsg = e instanceof Error ? e.message : _("Server unavailable");
+      chatHistory.push({
+        sender: "assistant",
+        text: "\u274C " + _("AI service error") + ": " + errMsg,
+        timestamp: (/* @__PURE__ */ new Date()).toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit"
+        })
+      });
+    }
+    renderMessages();
+  };
+  chatInput.onkeydown = (e) => {
+    if (e.key === "Enter") handleSend();
+  };
+  const quickPrompts = [
+    { label: "\u{1FA7A} " + _("Check YouTube"), query: "Check YouTube availability" },
+    { label: "\u{1F50D} " + _("Why Discord fails?"), query: "Why Discord fails?" },
+    {
+      label: "\u{1F6E0}\uFE0F " + _("Full System Diagnostic"),
+      query: "Run full system diagnostic"
+    }
+  ];
+  const quickPromptsBar = E(
+    "div",
+    {
+      style: "display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; width: 100%; box-sizing: border-box;"
+    },
+    quickPrompts.map((qp) => {
+      const btn = E(
+        "button",
+        {
+          type: "button",
+          class: "cbi-button cbi-button-neutral",
+          style: "font-size: 11px; padding: 2px 8px; border-radius: 10px;"
+        },
+        qp.label
+      );
+      btn.onclick = () => handleSend(qp.query);
+      return btn;
+    })
+  );
+  const inputToolbar = E(
+    "div",
+    {
+      style: "display: flex; gap: 8px; align-items: center; width: 100%; box-sizing: border-box;"
+    },
+    [chatInput, sendBtn]
+  );
+  const modalWrapper = E(
+    "div",
+    { style: "width: 100%; max-width: 680px; box-sizing: border-box;" },
+    [quickPromptsBar, messageListContainer, inputToolbar]
+  );
+  const modalContent = E(
+    "div",
+    { style: "width: 100%; max-width: 680px; box-sizing: border-box;" },
+    [
+      modalWrapper,
+      E(
+        "div",
+        {
+          style: "margin-top: 12px; display: flex; justify-content: flex-end; border-top: 1px solid var(--border-color, rgba(255,255,255,0.15)); padding-top: 10px;"
+        },
+        [
+          renderButton({
+            text: _("Close"),
+            onClick: () => ui.hideModal()
+          })
+        ]
+      )
+    ]
+  );
+  ui.showModal(_("AI Chat & Tachyon Assistant"), modalContent);
 }
 
 // src/tachyon/tabs/diagnostic/partials/renderSystemInfo.ts
@@ -11288,345 +11999,6 @@ function saveAiDoctorHistory(entry) {
   } catch (e) {
   }
 }
-async function handleRunAiDoctor() {
-  setDiagnosticActionLoading("aiDoctor", true);
-  let activeTab2 = "diagnosis";
-  let historyEntries = getAiDoctorHistory();
-  const stepperSteps = [
-    _("Checking WAN interfaces & network routing"),
-    _("Checking sing-box service & DNSmasq"),
-    _("Checking nftables filtering tables"),
-    _("Analyzing system log (logread & errors)"),
-    _("Checking Zapret & ByeDPI rules")
-  ];
-  const modalBody = E("div", { class: "tachyon-partial-modal__body" }, [
-    E(
-      "div",
-      {
-        style: "padding: 18px; background: rgba(0,0,0,0.02); border-radius: 8px; border: 1px solid rgba(0,0,0,0.06); text-align: center;"
-      },
-      [
-        E(
-          "div",
-          {
-            style: "font-weight: 600; font-size: 15px; margin-bottom: 15px; color: #1976d2;"
-          },
-          "\u26A1 " + _("AI Doctor Diagnostic Scan in Progress...")
-        ),
-        E(
-          "div",
-          {
-            id: "tachyon_ai_stepper",
-            style: "display: flex; flex-direction: column; gap: 10px; text-align: left; max-width: 480px; margin: 0 auto;"
-          },
-          stepperSteps.map(
-            (step, idx) => E(
-              "div",
-              {
-                id: `tachyon_step_${idx}`,
-                style: "display: flex; align-items: center; gap: 10px; font-size: 13px; color: #666;"
-              },
-              [
-                E("span", { class: "step-icon" }, "\u23F3"),
-                E("span", { class: "step-text" }, step)
-              ]
-            )
-          )
-        )
-      ]
-    )
-  ]);
-  ui.showModal(_("AI Doctor Diagnosis"), modalBody);
-  const updateStep = (idx, icon, color) => {
-    const el = document.getElementById(`tachyon_step_${idx}`);
-    if (el) {
-      const iconEl = el.querySelector(".step-icon");
-      if (iconEl) iconEl.textContent = icon;
-      el.style.color = color;
-      el.style.fontWeight = icon === "\u2705" ? "500" : "normal";
-    }
-  };
-  for (let i = 0; i < stepperSteps.length; i++) {
-    updateStep(i, "\u{1F504}", "#1976d2");
-    await new Promise((r) => setTimeout(r, 120));
-    updateStep(i, "\u2705", "#2e7d32");
-  }
-  try {
-    const aiRes = await TachyonShellMethods.aiDoctor();
-    if (!aiRes || typeof aiRes !== "object") {
-      showToast(_("AI Doctor failed") + ": " + _("Unknown error"), "error");
-      ui.hideModal();
-      return;
-    }
-    const rawData = aiRes.data;
-    const data = typeof rawData === "object" && rawData !== null ? rawData : null;
-    if (aiRes.success || data && data.success) {
-      const report = data ? String(data.report ?? "") : String(rawData ?? "");
-      const quickFixes = Array.isArray(data?.quick_fixes) ? data.quick_fixes : String(data?.quick_fix ?? "").split(",").map((s) => s.trim()).filter(Boolean);
-      const nowStr = (/* @__PURE__ */ new Date()).toLocaleTimeString();
-      saveAiDoctorHistory({ timestamp: nowStr, report, quickFixes });
-      historyEntries = getAiDoctorHistory();
-      const repLower = report.toLowerCase();
-      const nodes = [
-        {
-          name: "WAN",
-          status: repLower.includes("wan interface down") ? "FAIL" : "OK"
-        },
-        {
-          name: "DNS",
-          status: repLower.includes("dnsmasq") || repLower.includes("dns") ? repLower.includes("dns failed") || repLower.includes("dnsmasq failed") ? "FAIL" : "OK" : "OK"
-        },
-        {
-          name: "sing-box",
-          status: repLower.includes("sing-box") && (repLower.includes("stopped") || repLower.includes("error")) ? "FAIL" : "OK"
-        },
-        {
-          name: "nftables",
-          status: repLower.includes("nftables") || repLower.includes("rules") ? repLower.includes("damaged") || repLower.includes("corrupted") ? "WARN" : "OK" : "OK"
-        }
-      ];
-      const renderRootCauseBanner = () => {
-        return E(
-          "div",
-          {
-            style: "display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; padding: 10px 14px; background: rgba(0,0,0,0.03); border-radius: 6px; margin-bottom: 14px; border: 1px solid rgba(0,0,0,0.06); font-size: 12px; font-weight: 500;"
-          },
-          nodes.flatMap((node, idx) => {
-            const badgeBg = node.status === "OK" ? "#e8f5e9" : node.status === "WARN" ? "#fff3e0" : "#ffebee";
-            const badgeFg = node.status === "OK" ? "#2e7d32" : node.status === "WARN" ? "#e65100" : "#c62828";
-            const badgeIcon = node.status === "OK" ? "\u2713" : node.status === "WARN" ? "\u26A0\uFE0F" : "\u274C";
-            const itemEl = E(
-              "span",
-              {
-                style: `padding: 4px 8px; border-radius: 4px; background: ${badgeBg}; color: ${badgeFg}; display: inline-flex; align-items: center; gap: 4px;`
-              },
-              `${node.name} [${badgeIcon} ${node.status}]`
-            );
-            return idx < nodes.length - 1 ? [
-              itemEl,
-              E(
-                "span",
-                { style: "color: #999; font-weight: bold;" },
-                "\u2794"
-              )
-            ] : [itemEl];
-          })
-        );
-      };
-      const renderDiagnosisTabContent = () => {
-        return E("div", {}, [
-          renderRootCauseBanner(),
-          E(
-            "pre",
-            {
-              class: "tachyon-partial-modal__content",
-              style: "white-space: pre-wrap; font-family: inherit; font-size: 13px; line-height: 1.5; max-height: 360px; overflow-y: auto; background: #fafafa; padding: 12px; border-radius: 6px; border: 1px solid #eee;"
-            },
-            E("code", {}, report)
-          ),
-          quickFixes.length > 0 ? E(
-            "div",
-            {
-              style: "margin-top: 14px; padding: 12px; background: rgba(0,0,0,0.02); border-radius: 6px; border: 1px solid rgba(0,0,0,0.08);"
-            },
-            [
-              E(
-                "b",
-                { style: "font-size: 13px;" },
-                _("Recommended Smart Quick Fixes:")
-              ),
-              E(
-                "div",
-                {
-                  style: "display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px;"
-                },
-                [
-                  ...quickFixes.map((code) => {
-                    let applied = false;
-                    const btn = renderButton({
-                      classNames: ["cbi-button-apply"],
-                      text: `\u26A1 ${code}`,
-                      onClick: async () => {
-                        if (applied) return;
-                        showToast(
-                          _("Applying fix") + ": " + code + "...",
-                          "success"
-                        );
-                        const fixRes = await TachyonShellMethods.applyQuickFix(code);
-                        if (fixRes && typeof fixRes === "object" && fixRes.success) {
-                          applied = true;
-                          btn.textContent = `\u2713 ${code} (${_("Fixed")})`;
-                          btn.classList.remove("cbi-button-apply");
-                          btn.classList.add("cbi-button-neutral");
-                          showToast(
-                            _("Fix applied") + ": " + code,
-                            "success"
-                          );
-                        } else {
-                          showToast(
-                            _("Failed to apply fix") + ": " + code,
-                            "error"
-                          );
-                        }
-                      }
-                    });
-                    return btn;
-                  }),
-                  quickFixes.length > 1 ? renderButton({
-                    classNames: ["cbi-button-action"],
-                    text: `\u26A1 ${_("Fix All")}`,
-                    onClick: async () => {
-                      showToast(_("Applying all fixes..."), "success");
-                      const fixRes = await TachyonShellMethods.applyQuickFix(
-                        quickFixes.join(",")
-                      );
-                      if (fixRes && typeof fixRes === "object" && fixRes.success) {
-                        showToast(
-                          _("All fixes applied successfully"),
-                          "success"
-                        );
-                      } else {
-                        showToast(_("Some fixes failed"), "error");
-                      }
-                    }
-                  }) : E("span", {})
-                ]
-              )
-            ]
-          ) : E(
-            "div",
-            {
-              style: "margin-top: 12px; color: #2e7d32; font-weight: 500; font-size: 13px;"
-            },
-            "\u2705 " + _("No quick fix required")
-          )
-        ]);
-      };
-      const renderHistoryTabContent = () => {
-        if (historyEntries.length === 0) {
-          return E(
-            "div",
-            { style: "padding: 20px; text-align: center; color: #777;" },
-            _("No diagnostic history available yet.")
-          );
-        }
-        return E(
-          "div",
-          {
-            style: "display: flex; flex-direction: column; gap: 10px; max-height: 400px; overflow-y: auto;"
-          },
-          historyEntries.map(
-            (h, i) => E(
-              "div",
-              {
-                style: "padding: 10px 14px; background: #fafafa; border: 1px solid #eee; border-radius: 6px;"
-              },
-              [
-                E(
-                  "div",
-                  {
-                    style: "display: flex; justify-content: space-between; font-weight: 600; font-size: 12px; color: #333; margin-bottom: 6px;"
-                  },
-                  [
-                    E("span", {}, `Run #${historyEntries.length - i}`),
-                    E("span", { style: "color: #888;" }, h.timestamp)
-                  ]
-                ),
-                E(
-                  "pre",
-                  {
-                    style: "margin: 0; white-space: pre-wrap; font-size: 11px; max-height: 120px; overflow-y: auto; color: #555;"
-                  },
-                  h.report
-                )
-              ]
-            )
-          )
-        );
-      };
-      const mainContainer = E(
-        "div",
-        { class: "tachyon-partial-modal__body" },
-        []
-      );
-      const renderModalLayout = () => {
-        mainContainer.replaceChildren(
-          E("div", {}, [
-            E(
-              "div",
-              {
-                style: "display: flex; gap: 10px; margin-bottom: 14px; border-bottom: 1px solid #eee; padding-bottom: 8px;"
-              },
-              [
-                renderButton({
-                  classNames: [
-                    activeTab2 === "diagnosis" ? "cbi-button-action" : "cbi-button-neutral"
-                  ],
-                  text: `\u{1F4CB} ${_("Current Diagnosis")}`,
-                  onClick: () => {
-                    activeTab2 = "diagnosis";
-                    renderModalLayout();
-                  }
-                }),
-                renderButton({
-                  classNames: [
-                    activeTab2 === "history" ? "cbi-button-action" : "cbi-button-neutral"
-                  ],
-                  text: `\u{1F552} ${_("Run History")} (${historyEntries.length})`,
-                  onClick: () => {
-                    activeTab2 = "history";
-                    renderModalLayout();
-                  }
-                })
-              ]
-            ),
-            activeTab2 === "diagnosis" ? renderDiagnosisTabContent() : renderHistoryTabContent(),
-            E(
-              "div",
-              {
-                class: "tachyon-partial-modal__footer",
-                style: "margin-top: 15px;"
-              },
-              [
-                renderButton({
-                  classNames: ["cbi-button-apply"],
-                  text: _("Copy"),
-                  onClick: () => copyToClipboard(`\`\`\`
-${report}
-\`\`\``)
-                }),
-                renderButton({
-                  classNames: ["cbi-button-remove"],
-                  text: _("Close"),
-                  onClick: () => {
-                    ui.hideModal();
-                  }
-                })
-              ]
-            )
-          ])
-        );
-      };
-      renderModalLayout();
-      ui.showModal(_("AI Doctor Diagnosis"), mainContainer);
-    } else {
-      const errorMsg = typeof aiRes.error === "string" ? aiRes.error : _("Unknown error");
-      showToast(_("AI Doctor failed") + ": " + errorMsg, "error");
-      ui.hideModal();
-    }
-  } catch (e) {
-    logger.error(
-      "[DIAGNOSTIC]",
-      "handleRunAiDoctor - e",
-      e instanceof Error ? e.message : String(e)
-    );
-    showToast(_("AI Doctor failed"), "error");
-    ui.hideModal();
-  } finally {
-    setDiagnosticActionLoading("aiDoctor", false);
-    runChecks();
-  }
-}
 async function handleViewLogs() {
   setDiagnosticActionLoading("viewLogs", true);
   try {
@@ -11657,6 +12029,256 @@ async function handleViewLogs() {
   } finally {
     setDiagnosticActionLoading("viewLogs", false);
   }
+}
+async function handleRunAiDoctor() {
+  setDiagnosticActionLoading("aiDoctor", true);
+  try {
+    const aiRes = await TachyonShellMethods.aiDoctor();
+    if (!aiRes || typeof aiRes !== "object") {
+      showToast(_("AI Doctor failed") + ": " + _("Unknown error"), "error");
+      return;
+    }
+    const rawData = aiRes.data;
+    const data = typeof rawData === "object" && rawData !== null ? rawData : null;
+    if (aiRes.success || data && data.success !== false) {
+      const report = data ? String(data.report ?? data.summary ?? rawData ?? "") : String(rawData ?? "");
+      const quickFixes = Array.isArray(data?.quick_fixes) ? data.quick_fixes : String(data?.quick_fix ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+      const nowStr = (/* @__PURE__ */ new Date()).toLocaleTimeString();
+      saveAiDoctorHistory({ timestamp: nowStr, report, quickFixes });
+      let historyEntries = getAiDoctorHistory();
+      let activeTab2 = "diagnosis";
+      const repLower = report.toLowerCase();
+      const nodes = [
+        {
+          name: "WAN",
+          status: repLower.includes("wan interface down") ? "FAIL" : "OK"
+        },
+        {
+          name: "DNS",
+          status: repLower.includes("dnsmasq") || repLower.includes("dns") ? repLower.includes("dns failed") || repLower.includes("dnsmasq failed") ? "FAIL" : "OK" : "OK"
+        },
+        {
+          name: "sing-box",
+          status: repLower.includes("sing-box") && (repLower.includes("stopped") || repLower.includes("error")) ? "FAIL" : "OK"
+        },
+        {
+          name: "nftables",
+          status: repLower.includes("nftables") || repLower.includes("rules") ? repLower.includes("damaged") || repLower.includes("corrupted") ? "WARN" : "OK" : "OK"
+        }
+      ];
+      const renderRootCauseBanner = () => {
+        return E(
+          "div",
+          {
+            style: "display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; padding: 10px 14px; background: rgba(255,255,255,0.03); border-radius: 8px; margin-bottom: 14px; border: 1px solid var(--border-color, rgba(255,255,255,0.1)); font-size: 12px; font-weight: 500; width: 100%; box-sizing: border-box;"
+          },
+          nodes.flatMap((node, idx) => {
+            const badgeBg = node.status === "OK" ? "rgba(40, 167, 69, 0.18)" : node.status === "WARN" ? "rgba(255, 193, 7, 0.18)" : "rgba(220, 53, 69, 0.18)";
+            const badgeBorder = node.status === "OK" ? "rgba(40, 167, 69, 0.4)" : node.status === "WARN" ? "rgba(255, 193, 7, 0.4)" : "rgba(220, 53, 69, 0.4)";
+            const badgeFg = node.status === "OK" ? "#28a745" : node.status === "WARN" ? "#ffc107" : "#dc3545";
+            const badgeIcon = node.status === "OK" ? "\u2713" : node.status === "WARN" ? "\u26A0\uFE0F" : "\u274C";
+            const itemEl = E(
+              "span",
+              {
+                style: `padding: 4px 10px; border-radius: 12px; background: ${badgeBg}; border: 1px solid ${badgeBorder}; color: ${badgeFg}; display: inline-flex; align-items: center; gap: 4px; font-weight: 600;`
+              },
+              `${node.name} [${badgeIcon} ${node.status}]`
+            );
+            return idx < nodes.length - 1 ? [
+              itemEl,
+              E("span", { style: "opacity: 0.5; font-weight: bold;" }, "\u2794")
+            ] : [itemEl];
+          })
+        );
+      };
+      const renderDiagnosisTabContent = () => {
+        return E("div", { style: "width: 100%; box-sizing: border-box;" }, [
+          renderRootCauseBanner(),
+          E(
+            "pre",
+            {
+              class: "tachyon-partial-modal__content",
+              style: "white-space: pre-wrap; font-family: inherit; font-size: 13px; line-height: 1.5; max-height: 360px; overflow-y: auto; overflow-x: hidden; background: rgba(0, 0, 0, 0.25); padding: 12px; border-radius: 8px; border: 1px solid var(--border-color, rgba(255, 255, 255, 0.15)); color: inherit; width: 100%; box-sizing: border-box;"
+            },
+            E("code", {}, report)
+          ),
+          quickFixes.length > 0 ? E(
+            "div",
+            {
+              style: "margin-top: 14px; padding: 12px; background: rgba(40, 167, 69, 0.08); border-radius: 8px; border: 1px solid rgba(40, 167, 69, 0.3); width: 100%; box-sizing: border-box;"
+            },
+            [
+              E(
+                "b",
+                { style: "font-size: 13px; color: #28a745;" },
+                "\u{1F6E0}\uFE0F " + _("Recommended Quick Fixes:")
+              ),
+              E(
+                "div",
+                {
+                  style: "display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px;"
+                },
+                quickFixes.map((code) => {
+                  let applied = false;
+                  const btn = renderButton({
+                    classNames: ["cbi-button-apply"],
+                    text: `\u26A1 ${code}`,
+                    onClick: async () => {
+                      if (applied) return;
+                      showToast(
+                        _("Applying fix") + ": " + code + "...",
+                        "success"
+                      );
+                      const fixRes = await TachyonShellMethods.applyQuickFix(code);
+                      if (fixRes && typeof fixRes === "object" && fixRes.success) {
+                        applied = true;
+                        btn.textContent = `\u2713 ${code} (${_("Fixed")})`;
+                        btn.classList.remove("cbi-button-apply");
+                        btn.classList.add("cbi-button-neutral");
+                        showToast(
+                          _("Fix applied") + ": " + code,
+                          "success"
+                        );
+                      } else {
+                        showToast(
+                          _("Failed to apply fix") + ": " + code,
+                          "error"
+                        );
+                      }
+                    }
+                  });
+                  return btn;
+                })
+              )
+            ]
+          ) : E(
+            "div",
+            {
+              style: "margin-top: 12px; color: #28a745; font-weight: 500; font-size: 13px;"
+            },
+            "\u2705 " + _("No quick fix required")
+          )
+        ]);
+      };
+      const renderHistoryTabContent = () => {
+        if (historyEntries.length === 0) {
+          return E(
+            "div",
+            { style: "padding: 20px; text-align: center; opacity: 0.6;" },
+            _("No diagnostic history available yet.")
+          );
+        }
+        return E(
+          "div",
+          {
+            style: "display: flex; flex-direction: column; gap: 10px; max-height: 400px; overflow-y: auto; width: 100%; box-sizing: border-box;"
+          },
+          historyEntries.map(
+            (h, i) => E(
+              "div",
+              {
+                style: "padding: 12px; background: rgba(255, 255, 255, 0.04); border: 1px solid var(--border-color, rgba(255, 255, 255, 0.12)); border-radius: 8px; width: 100%; box-sizing: border-box;"
+              },
+              [
+                E(
+                  "div",
+                  {
+                    style: "display: flex; justify-content: space-between; font-weight: 600; font-size: 12px; margin-bottom: 8px;"
+                  },
+                  [
+                    E("span", {}, `#${historyEntries.length - i}`),
+                    E("span", { style: "opacity: 0.65;" }, h.timestamp)
+                  ]
+                ),
+                E(
+                  "pre",
+                  {
+                    style: "margin: 0; white-space: pre-wrap; font-size: 12px; max-height: 140px; overflow-y: auto; overflow-x: hidden; background: rgba(0, 0, 0, 0.25); padding: 10px; border-radius: 6px; border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1)); color: inherit; width: 100%; box-sizing: border-box;"
+                  },
+                  h.report
+                )
+              ]
+            )
+          )
+        );
+      };
+      const mainContainer = E(
+        "div",
+        {
+          class: "tachyon-partial-modal__body",
+          style: "width: 100%; max-width: 680px; box-sizing: border-box;"
+        },
+        []
+      );
+      const renderModalLayout = () => {
+        mainContainer.replaceChildren(
+          E("div", {}, [
+            E(
+              "div",
+              {
+                style: "display: flex; gap: 10px; margin-bottom: 14px; border-bottom: 1px solid var(--border-color, #eee); padding-bottom: 8px;"
+              },
+              [
+                renderButton({
+                  classNames: [
+                    activeTab2 === "diagnosis" ? "cbi-button-action" : "cbi-button-neutral"
+                  ],
+                  text: _("Current Diagnosis"),
+                  onClick: () => {
+                    activeTab2 = "diagnosis";
+                    renderModalLayout();
+                  }
+                }),
+                renderButton({
+                  classNames: [
+                    activeTab2 === "history" ? "cbi-button-action" : "cbi-button-neutral"
+                  ],
+                  text: `${_("History")} (${historyEntries.length})`,
+                  onClick: () => {
+                    historyEntries = getAiDoctorHistory();
+                    activeTab2 = "history";
+                    renderModalLayout();
+                  }
+                })
+              ]
+            ),
+            activeTab2 === "diagnosis" ? renderDiagnosisTabContent() : renderHistoryTabContent(),
+            E(
+              "div",
+              {
+                class: "tachyon-partial-modal__footer",
+                style: "margin-top: 15px; display: flex; justify-content: flex-end; gap: 8px;"
+              },
+              [
+                renderButton({
+                  classNames: ["cbi-button-neutral"],
+                  text: _("Close"),
+                  onClick: () => ui.hideModal()
+                })
+              ]
+            )
+          ])
+        );
+      };
+      renderModalLayout();
+      ui.showModal(_("AI Doctor Diagnosis"), mainContainer);
+    } else {
+      const errorMsg = typeof aiRes.error === "string" ? aiRes.error : _("Unknown error");
+      showToast(_("AI Doctor failed") + ": " + errorMsg, "error");
+    }
+  } catch (e) {
+    logger.error(
+      "[DIAGNOSTIC]",
+      "handleRunAiDoctor - e",
+      e instanceof Error ? e.message : String(e)
+    );
+    showToast(_("AI Doctor failed"), "error");
+  } finally {
+    setDiagnosticActionLoading("aiDoctor", false);
+  }
+}
+function handleOpenAiChat() {
+  renderAiChatModal();
 }
 async function handleShowSingBoxConfig() {
   setDiagnosticActionLoading("showSingBoxConfig", true);
@@ -11834,6 +12456,12 @@ function renderDiagnosticAvailableActionsWidget() {
       visible: true,
       onClick: handleRunAiDoctor,
       disabled: diagnosticsActions.aiDoctor.loading
+    },
+    aiChat: {
+      loading: false,
+      visible: true,
+      onClick: handleOpenAiChat,
+      disabled: false
     },
     checkServices: {
       visible: true,
