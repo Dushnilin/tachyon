@@ -291,13 +291,6 @@ function ipv4_in_cidr(ip, cidr) {
     return (ipv4_to_int(ip) & mask) == (ipv4_to_int(parts[0]) & mask);
 }
 
-function tachyon_get_targets() {
-    return read_json_file("/etc/tachyon/targets.json") || [];
-}
-
-function tachyon_check_target(target) {
-    return true;
-}
 
 function ipv4_in_any_cidr(ip, cidrs) {
     for (let cidr in array_or_empty(cidrs))
