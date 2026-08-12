@@ -52,8 +52,12 @@ async function run() {
       const searchTargetCRLF = `msgid "${key}"\r\nmsgstr ""`;
       const replaceWith = `msgid "${key}"\nmsgstr "${val}"`;
 
-      content = content.replace(searchTarget, replaceWith);
-      content = content.replace(searchTargetCRLF, replaceWith);
+      if (content.includes(`msgid "${key}"`)) {
+        content = content.replace(searchTarget, replaceWith);
+        content = content.replace(searchTargetCRLF, replaceWith);
+      } else {
+        content += `\nmsgid "${key}"\nmsgstr "${val}"\n`;
+      }
     }
     await fs.writeFile(p, content, 'utf8');
     console.log(`Updated ${p}`);

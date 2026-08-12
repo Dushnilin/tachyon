@@ -1336,3 +1336,9 @@ msgstr "sing-box outbound для Zapret2 настроен"
 
 msgid "Zapret2 sing-box outbound is not configured"
 msgstr "sing-box outbound для Zapret2 не настроен"
+
+msgid "Check YouTube availability"
+msgstr "Проверить доступность YouTube"
+
+msgid "Cannot save settings"
+msgstr "Не удалось сохранить настройки"
