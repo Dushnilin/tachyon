@@ -1866,7 +1866,10 @@ function tachyon_get_targets(all_mode) {
 
         // 2. Include custom user domains from all UCI sections
         cursor.foreach("tachyon", "section", function(s) {
-            let label = s.label || s['.name'];
+            let raw_name = as_string(s['.name']);
+            let custom_label = as_string(s.label);
+            let has_custom_label = custom_label != "" && custom_label != raw_name && match(custom_label, /^section_\d+$/) == null && match(custom_label, /^cfg[0-9a-fA-F]+$/) == null;
+            let label = has_custom_label ? custom_label : "Свои домены";
             let route_type = s.action || "direct";
             if (s.action == "zapret" && s.zapret_strategy) route_type = "zapret (" + s.zapret_strategy + ")";
             else if (s.action == "zapret2" && s.zapret2_strategy) route_type = "zapret2 (" + s.zapret2_strategy + ")";
@@ -1929,7 +1932,9 @@ function tachyon_get_targets(all_mode) {
             }
         }
         
-        let label = s.label || s['.name'];
+        let raw_name = as_string(s['.name']);
+        let custom_label = as_string(s.label);
+        let has_custom_label = custom_label != "" && custom_label != raw_name && match(custom_label, /^section_\d+$/) == null && match(custom_label, /^cfg[0-9a-fA-F]+$/) == null;
         let route_type = s.action || "direct";
         
         if (s.action == "zapret" && s.zapret_strategy) route_type = "zapret (" + s.zapret_strategy + ")";
@@ -1938,13 +1943,16 @@ function tachyon_get_targets(all_mode) {
 
         for (let i = 0; i < length(profiles_to_check); i++) {
             let profile = profiles_to_check[i];
+            let profile_title = profile.title || profile.name || profile.id;
+            let display_section = has_custom_label ? custom_label : profile_title;
+
             for (let j = 0; j < length(profile.targets); j++) {
                 let t = profile.targets[j];
                 let host = t.host || t.query || "";
                 if (!host) continue;
 
                 push(targets, {
-                    section: label,
+                    section: display_section,
                     route_type: route_type,
                     domain: host,
                     port: t.port || (t.kind == "https" ? 443 : 80),
@@ -1975,9 +1983,10 @@ function tachyon_get_targets(all_mode) {
             }
         }
 
+        let custom_section = has_custom_label ? custom_label : "Свои домены";
         for (let cd in custom_domains) {
             push(targets, {
-                section: label,
+                section: custom_section,
                 route_type: route_type,
                 domain: cd,
                 port: 443,

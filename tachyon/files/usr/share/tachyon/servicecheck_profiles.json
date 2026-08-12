@@ -4,7 +4,7 @@
   "profiles": [
     {
       "id": "baseline",
-      "title": "Базовая связность",
+      "title": "🌐 Основной интернет & TLS",
       "group": "system",
       "description": "Проверяет, что интернет и TLS вообще работают. Если этот профиль красный — остальные результаты бессмысленны.",
       "targets": [
@@ -15,7 +15,7 @@
     },
     {
       "id": "telegram",
-      "title": "Telegram",
+      "title": "💬 Telegram и Bot API",
       "group": "messenger",
       "description": "Веб-версия, Bot API и основные домены Telegram.",
       "targets": [
@@ -27,7 +27,7 @@
     },
     {
       "id": "instagram",
-      "title": "Instagram",
+      "title": "📷 Instagram и CDN",
       "group": "social",
       "description": "Веб-фронт, приватное API приложения и CDN с картинками и видео.",
       "targets": [
@@ -40,7 +40,7 @@
     },
     {
       "id": "youtube",
-      "title": "YouTube",
+      "title": "▶️ YouTube и Видео-трафик",
       "group": "video",
       "description": "Сайт, API плеера, превью и раздача самого видео с googlevideo.",
       "targets": [
@@ -53,7 +53,7 @@
     },
     {
       "id": "tiktok",
-      "title": "TikTok",
+      "title": "🎵 TikTok и CDN-серверы",
       "group": "video",
       "description": "Веб-версия, API приложения и CDN с видео и превью.",
       "targets": [
@@ -66,7 +66,7 @@
     },
     {
       "id": "chatgpt",
-      "title": "ChatGPT / OpenAI",
+      "title": "🤖 ChatGPT и сервисы OpenAI",
       "group": "ai",
       "description": "Веб-интерфейс, API и статика. Требует, чтобы выходной IP не был в бане OpenAI.",
       "targets": [
@@ -78,7 +78,7 @@
     },
     {
       "id": "gemini",
-      "title": "Gemini / Google AI",
+      "title": "✨ Google Gemini и AI Studio",
       "group": "ai",
       "description": "Веб-интерфейс Gemini, AI Studio и API. Геодоступность API проверяется отдельно по ответу Google; для неё укажите свой API-ключ в настройках карточки.",
       "targets": [
@@ -91,7 +91,7 @@
     },
     {
       "id": "discord",
-      "title": "Discord",
+      "title": "🎮 Discord (Чат и веб-шлюз)",
       "group": "messenger",
       "description": "Сайт, WebSocket-шлюз и CDN. Голосовой UDP-трафик этой проверкой не покрывается.",
       "targets": [
@@ -103,7 +103,7 @@
     },
     {
       "id": "x",
-      "title": "X (Twitter)",
+      "title": "🐦 X (бывший Twitter)",
       "group": "social",
       "description": "Сайт, API и медиа-CDN.",
       "targets": [
@@ -115,7 +115,7 @@
     },
     {
       "id": "facebook",
-      "title": "Facebook",
+      "title": "👥 Facebook и сервисы Meta",
       "group": "social",
       "description": "Веб-фронт, Graph API и CDN.",
       "targets": [
@@ -126,7 +126,7 @@
     },
     {
       "id": "whatsapp",
-      "title": "WhatsApp",
+      "title": "🟢 WhatsApp и медиа-серверы",
       "group": "messenger",
       "description": "Веб-версия, медиа-серверы и XMPP-порт клиента.",
       "targets": [
@@ -138,7 +138,7 @@
     },
     {
       "id": "netflix",
-      "title": "Netflix",
+      "title": "🎬 Стриминг Netflix",
       "group": "video",
       "description": "Сайт, публичная статика и раздающая инфраструктура Netflix. Проверка показывает доступность сети без входа в аккаунт.",
       "targets": [
@@ -149,7 +149,7 @@
     },
     {
       "id": "spotify",
-      "title": "Spotify",
+      "title": "🎧 Музыкальный сервис Spotify",
       "group": "music",
       "description": "Веб-плеер, API и раздача аудио.",
       "targets": [
@@ -160,7 +160,7 @@
     },
     {
       "id": "twitch",
-      "title": "Twitch",
+      "title": "🟣 Стриминговая платформа Twitch",
       "group": "video",
       "description": "Сайт, GraphQL API и выдача плейлистов стримов.",
       "targets": [
@@ -171,7 +171,7 @@
     },
     {
       "id": "steam",
-      "title": "Steam",
+      "title": "🕹️ Игровой магазин Steam",
       "group": "games",
       "description": "Магазин, API и CDN с контентом игр.",
       "targets": [
@@ -182,9 +182,9 @@
     },
     {
       "id": "github",
-      "title": "GitHub",
+      "title": "🐙 GitHub и Репозитории",
       "group": "dev",
-      "description": "Сайт, API и раздача файлов — важно для обновлений Forkop/Podkop и списков правил.",
+      "description": "Сайт, API и раздача файлов — важно для обновлений Tachyon и списков правил.",
       "targets": [
         { "kind": "https", "host": "github.com", "path": "/", "expect": [200, 301, 302] },
         { "kind": "https", "host": "api.github.com", "path": "/", "expect": [200] },
@@ -194,7 +194,7 @@
     },
     {
       "id": "blocked_ru",
-      "title": "Заблокированные в РФ",
+      "title": "🚫 Заблокированные ресурсы (РКН)",
       "group": "bypass",
       "description": "Сайты, недоступные без обхода. Зелёный результат — прямое доказательство, что обход работает.",
       "targets": [
@@ -205,7 +205,7 @@
     },
     {
       "id": "udp_common",
-      "title": "UDP / QUIC",
+      "title": "⚡ Протоколы UDP и QUIC",
       "group": "network",
       "description": "Двусторонняя проверка UDP через DNS-ответы и best-effort отправка QUIC.",
       "targets": [

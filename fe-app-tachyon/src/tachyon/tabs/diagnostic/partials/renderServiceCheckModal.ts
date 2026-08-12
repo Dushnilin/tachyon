@@ -295,14 +295,29 @@ export function renderServiceCheckModal() {
         // Filter Tabs Toolbar
         const createFilterTab = (label: string, sectionKey: string) => {
           const isActive = activeFilter === sectionKey;
+          const targetCount =
+            sectionKey === 'ALL'
+              ? targets.length
+              : targets.filter((t) => t.section === sectionKey).length;
+
+          const badge = E(
+            'span',
+            {
+              style:
+                'margin-left: 5px; padding: 1px 6px; border-radius: 10px; font-size: 10px; opacity: 0.85; background: rgba(255,255,255,0.18); font-weight: bold;',
+            },
+            `${targetCount}`,
+          );
+
           const btn = E(
             'button',
             {
               type: 'button',
               class: `cbi-button ${isActive ? 'cbi-button-action' : 'cbi-button-neutral'}`,
-              style: 'padding: 3px 10px; font-size: 12px; border-radius: 12px;',
+              style:
+                'padding: 3px 10px; font-size: 12px; border-radius: 14px; display: inline-flex; align-items: center;',
             },
-            label,
+            [E('span', {}, label), badge],
           );
           btn.onclick = () => {
             activeFilter = sectionKey;
