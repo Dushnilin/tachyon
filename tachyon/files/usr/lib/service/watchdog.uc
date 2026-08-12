@@ -103,6 +103,11 @@ function write_state_file(path, value, description) {
     path = as_string(path);
     let ok = false;
 
+    let parent_m = match(path, /^(.+)\/[^\/]+$/);
+    if (parent_m && parent_m[1] != "") {
+        try { fs.mkdir(parent_m[1]); } catch (e) {}
+    }
+
     try {
         ok = fs.writefile(path, as_string(value)) != null;
     }

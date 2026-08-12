@@ -2670,7 +2670,8 @@ function worker() {
                 consecutive_failures++;
                 let backoff = poll_interval * (1 << min(consecutive_failures - 1, 4));
                 if (backoff > 300) backoff = 300;
-                command_success_from_args(["logger", "-t", "tachyon-telegram", "[warn] API failure " + as_string(consecutive_failures) + ", backing off " + as_string(backoff) + "s"]);
+                let log_level = consecutive_failures >= 3 ? "[warn]" : "[info]";
+                command_success_from_args(["logger", "-t", "tachyon-telegram", log_level + " API poll retry " + as_string(consecutive_failures) + ", backing off " + as_string(backoff) + "s"]);
                 sleep(backoff * 1000);
                 continue;
             }
