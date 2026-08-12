@@ -132,6 +132,9 @@ export const initialDiagnosticStore: Pick<
     generateBugReport: {
       loading: false,
     },
+    checkServices: {
+      loading: false,
+    },
   },
   diagnosticsRunAction: { loading: false },
   diagnosticsChecks: getDiagnosticsChecks(_('Not running')),

@@ -36,6 +36,7 @@ import {
   renderCheckSection,
   renderRunAction,
   renderSystemInfo,
+  renderServiceCheckModal,
 } from './partials';
 import { TachyonShellMethods } from '../../methods';
 import { fetchServicesInfo } from '../../fetchers/fetchServicesInfo';
@@ -622,6 +623,10 @@ async function handleServiceRuntimeAction({
     }
   }
 }
+
+  function handleCheckServicesAction() {
+    renderServiceCheckModal();
+  }
 
 async function handleRestart() {
   await handleServiceRuntimeAction({
@@ -1474,6 +1479,12 @@ function renderDiagnosticAvailableActionsWidget() {
       visible: true,
       onClick: handleRunAiDoctor,
       disabled: diagnosticsActions.aiDoctor.loading,
+    },
+    checkServices: {
+      visible: true,
+      loading: diagnosticsActions.checkServices.loading,
+      disabled: utilityActionsDisabled,
+      onClick: handleCheckServicesAction,
     },
     viewLogs: {
       loading: diagnosticsActions.viewLogs.loading,

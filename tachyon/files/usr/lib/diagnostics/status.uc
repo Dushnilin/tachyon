@@ -2031,6 +2031,8 @@ else if (mode == "clash-proxy-latencies-result")
     clash_proxy_latencies_result(ARGV[1], ARGV[2]);
 else if (mode == "clash-unknown-action")
     clash_unknown_action();
+else if (mode == "service-health-check")
+    system("ucode /usr/lib/tachyon/diagnostics/service_check.uc " + (ARGV[1] || ""));
 else {
     warn("Usage: diagnostics/status.uc <operation> ...\n");
     exit(1);

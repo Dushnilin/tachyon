@@ -31,6 +31,7 @@ interface IRenderAvailableActionsProps {
   viewLogs: ActionProps;
   showSingBoxConfig: ActionProps;
   generateBugReport: ActionProps;
+  checkServices: ActionProps;
 }
 
 export function renderAvailableActions({
@@ -45,6 +46,7 @@ export function renderAvailableActions({
   viewLogs,
   showSingBoxConfig,
   generateBugReport,
+  checkServices,
 }: IRenderAvailableActionsProps) {
   return E('div', { class: 'tachyon_diagnostic-page__right-bar__actions' }, [
     E('b', {}, _('Available actions')),
@@ -124,6 +126,16 @@ export function renderAvailableActions({
         text: _('Run AI Doctor'),
         loading: aiDoctor.loading,
         disabled: aiDoctor.disabled,
+      }),
+    ]),
+    ...insertIf(checkServices.visible, [
+      renderButton({
+        classNames: ['cbi-button-apply'],
+        onClick: checkServices.onClick,
+        icon: renderSquareChartGanttIcon24,
+        text: _('Check Services'),
+        loading: checkServices.loading,
+        disabled: checkServices.disabled,
       }),
     ]),
     ...insertIf(viewLogs.visible, [

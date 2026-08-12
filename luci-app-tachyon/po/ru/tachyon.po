@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-08-11 22:28+0300\n"
-"PO-Revision-Date: 2026-08-11 22:28+0300\n"
+"POT-Creation-Date: 2026-08-12 10:20+0300\n"
+"PO-Revision-Date: 2026-08-12 10:20+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -242,6 +242,9 @@ msgstr "Конфиг AmneziaWG успешно загружен!"
 msgid "AmneziaWG Generator"
 msgstr "Генератор AmneziaWG"
 
+msgid "An error occurred while checking services."
+msgstr ""
+
 msgid "Analyzing system log (logread & errors)"
 msgstr ""
 
@@ -434,8 +437,14 @@ msgstr "Пин сертификата недоступен. Примените �
 msgid "Check Connection"
 msgstr "Проверить подключение"
 
+msgid "Check Custom Domain"
+msgstr ""
+
 msgid "Check interval"
 msgstr "Интервал проверки"
+
+msgid "Check Services"
+msgstr ""
 
 msgid "Check timeout after which the server is considered dead"
 msgstr "Таймаут проверки, после которого сервер считается недоступным"
@@ -634,6 +643,9 @@ msgstr "Кастомные заголовки устройства"
 
 msgid "Custom DNS Records (Hosts)"
 msgstr "Пользовательские записи DNS (Hosts)"
+
+msgid "Custom domain (e.g. google.com)"
+msgstr ""
 
 msgid "Custom OpenAI-Compatible API (OpenRouter)"
 msgstr ""
@@ -1100,6 +1112,9 @@ msgstr "Не удалось скопировать!"
 msgid "Failed to execute"
 msgstr "Не удалось выполнить"
 
+msgid "Failed to execute service check."
+msgstr ""
+
 msgid "Failed to generate bug report"
 msgstr "Не удалось создать отчёт об ошибке"
 
@@ -1108,6 +1123,9 @@ msgstr "Не удалось создать конфиг WARP:"
 
 msgid "Failed to parse file:"
 msgstr "Не удалось разобрать файл:"
+
+msgid "Failed to parse service check results."
+msgstr ""
 
 msgid "Failed to parse WARP config:"
 msgstr "Не удалось разобрать конфиг WARP:"
@@ -1162,6 +1180,9 @@ msgstr "Интервал поиска более быстрого сервера
 
 msgid "Fastest"
 msgstr "Самый быстрый"
+
+msgid "Fetching service status, please wait..."
+msgstr ""
 
 msgid "Filter the servers that will be displayed on the dashboard."
 msgstr "Фильтровать серверы, отображаемые на дашборде."
@@ -1342,6 +1363,9 @@ msgstr "Как часто проверять, восстановился ли DN
 
 msgid "HTTP"
 msgstr "HTTP"
+
+msgid "HTTP (ms)"
+msgstr ""
 
 msgid "HTTP error"
 msgstr "Ошибка HTTP"
@@ -1667,6 +1691,9 @@ msgstr "Неверный URL VLESS: ошибка разбора"
 msgid "Invalid VMess URL: parsing failed"
 msgstr "Некорректный VMess URL: ошибка разбора"
 
+msgid "IP / DNS"
+msgstr ""
+
 msgid "IP Addresses (IP CIDR)"
 msgstr "IP-адреса и подсети (IP CIDR)"
 
@@ -1973,6 +2000,9 @@ msgstr ""
 msgid "No domains detected yet"
 msgstr "Домены пока не обнаружены"
 
+msgid "No domains found to check."
+msgstr ""
+
 msgid "No enabled server inbounds configured"
 msgstr "Включённые серверные inbounds не настроены"
 
@@ -2137,6 +2167,9 @@ msgstr "Опциональные значения должны быть указ
 
 msgid "Or paste hosts file content:"
 msgstr "Или вставьте содержимое hosts-файла:"
+
+msgid "Outbound"
+msgstr ""
 
 msgid "outbounds must be a non-empty array of strings"
 msgstr "outbounds должен быть непустым массивом строк"
@@ -2534,6 +2567,9 @@ msgstr "Секретный токен для POST/PUT запросов"
 msgid "Section"
 msgstr "Секция"
 
+msgid "Section / Domain"
+msgstr ""
+
 msgid "Section action"
 msgstr "Действие секции"
 
@@ -2698,6 +2734,9 @@ msgstr "Серверы на дашборде"
 
 msgid "Service action failed"
 msgstr "Действие сервиса не выполнено"
+
+msgid "Service Health Check"
+msgstr ""
 
 msgid "Service list"
 msgstr "Список сервисов"
@@ -3008,6 +3047,9 @@ msgstr "Tailscale endpoint"
 msgid "Tailscale hostname"
 msgstr "Hostname Tailscale"
 
+msgid "TCP (ms)"
+msgstr ""
+
 msgid "Telegram Bot"
 msgstr "Telegram-бот"
 
@@ -3091,6 +3133,9 @@ msgstr "Допуск расхождения времени"
 
 msgid "tiny"
 msgstr "tiny"
+
+msgid "TLS (ms)"
+msgstr ""
 
 msgid "TLS / HTTPS"
 msgstr "TLS / HTTPS"
@@ -3391,6 +3436,9 @@ msgstr "Значение не может быть пустым"
 
 msgid "Value must not contain control characters"
 msgstr "Значение не должно содержать управляющие символы"
+
+msgid "Verdict"
+msgstr ""
 
 msgid "Via country.is"
 msgstr "Через country.is"
