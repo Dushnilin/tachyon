@@ -618,7 +618,12 @@ function reload_sing_box_runtime(previous_pid, config_hash_before, config_hash_a
     }
 
     if (has_active_mtproxy_inbound()) {
-        command_success_from_args([ "logger", "-t", "tachyon", "[info] MTProxy inbound active: performing full sing-box restart instead of SIGHUP (issue #30)" ]);
+        command_success_from_args([ "logger", "-t", "tachyon", "[info] MTProxy inbound active: terminating sing-box and performing full restart (issue #30)" ]);
+        let active_pid = sing_box_service_pid_runtime();
+        if (active_pid > 0 && pid_is_sing_box(active_pid)) {
+            command_success_from_args([ "kill", "-9", as_string(active_pid) ]);
+            command_success_from_args([ "sleep", "0.2" ]);
+        }
         if (!command_success_from_args([ "/etc/init.d/sing-box", "restart" ])) {
             command_success_from_args([ "logger", "-t", "tachyon", "[fatal] Failed to restart sing-box. Aborted." ]);
             exit(1);
