@@ -1,6 +1,6 @@
 #!/usr/bin/env ucode
 
-// Forkop Service Check - probe engine for Forkop and Podkop.
+// Tachyon Service Check - probe engine for Tachyon.
 //
 // Проверяет доступность сервисов так, как это делает клиент сети: имя резолвится
 // через тот же dnsmasq -> sing-box, а соединение уходит из роутера и попадает в
@@ -11,13 +11,12 @@
 let fs = require("fs");
 let common = require("core.common");
 
-const LIB_DIR = getenv("FORKOP_SC_LIB") || "/usr/lib/forkop-servicecheck";
+const LIB_DIR = getenv("TACHYON_SC_LIB") || "/usr/lib/tachyon-servicecheck";
 const ENGINE = LIB_DIR + "/probe.uc";
 const PROFILES_OVERRIDE = "/etc/tachyon/servicecheck_profiles.json";
 const PROFILES_DEFAULT = "/usr/share/tachyon/servicecheck_profiles.json";
 const STATE_DIR = "/var/run/tachyon-servicecheck";
-const FORKOP_BIN = "/usr/bin/tachyon";
-const PODKOP_BIN = "/usr/bin/podkop";
+const TACHYON_BIN = "/usr/bin/tachyon";
 const DEFAULT_SING_BOX_CONFIG = "/etc/sing-box/config.json";
 const NETNS_NAME = "fkpsc";
 const NETNS_VETH_HOST = "fkpsc0";
@@ -130,23 +129,21 @@ function icmp_tproxy_patch() {
 }
 
 function available_fixes() {
-    // Эти исправления меняют внутренние файлы Forkop и не должны предлагаться
-    // на Podkop, даже если общий диагностический backend работает нормально.
-    if (fs.stat(FORKOP_BIN) == null)
+    if (fs.stat(TACHYON_BIN) == null)
         return [];
 
     return [
         {
             id: "xhttp_import",
             title: "Фикс xHTTP импорта подписок",
-            description: "Исправляет импорт дополнительных полей xHTTP из подписок в parser.uc Forkop.",
+            description: "Исправляет импорт дополнительных полей xHTTP из подписок в parser.uc Tachyon.",
             risk: "Создаётся резервная копия parser.uc; патч проверяется через ucode до замены."
         },
         {
             id: "icmp_tproxy",
             title: "Фикс ping/ICMP для правил подсетей",
             description: "Ограничивает метку TProxy в priority_rules протоколами TCP и UDP, чтобы ICMP не уходил в локальный TProxy-сокет.",
-            risk: "Создаётся резервная копия nft/apply.uc; патч проверяется через ucode. Работающий Forkop перезапускается, live-правила проверяются, а при ошибке выполняется откат."
+            risk: "Создаётся резервная копия nft/apply.uc; патч проверяется через ucode. Работающий Tachyon перезапускается, live-правила проверяются, а при ошибке выполняется откат."
         }
     ];
 }
@@ -157,8 +154,8 @@ function list_fixes() {
 }
 
 function run_fix(id) {
-    if (fs.stat(FORKOP_BIN) == null) {
-        write_json({ success: false, message: "фиксы доступны только при установленном Forkop" });
+    if (fs.stat(TACHYON_BIN) == null) {
+        write_json({ success: false, message: "фиксы доступны только при установленном Tachyon" });
         return 1;
     }
 
@@ -310,32 +307,28 @@ function uci_get(path) {
 }
 
 function backend_id() {
-    let override = lc(trim(as_string(getenv("FORKOP_SC_BACKEND"))));
-    if (override == "forkop" || override == "podkop")
+    let override = lc(trim(as_string(getenv("TACHYON_SC_BACKEND"))));
+    if (override == "tachyon")
         return override;
-    if (fs.stat(FORKOP_BIN) != null)
-        return "forkop";
-    if (fs.stat(PODKOP_BIN) != null)
-        return "podkop";
+    if (fs.stat(TACHYON_BIN) != null)
+        return "tachyon";
     return "none";
 }
 
 function backend_name(id) {
     id = as_string(id);
-    if (id == "forkop")
-        return "Forkop";
-    if (id == "podkop")
-        return "Podkop";
+    if (id == "tachyon")
+        return "Tachyon";
     return "Sing-box";
 }
 
 function sing_box_config_path() {
-    let overridden = trim(as_string(getenv("FORKOP_SC_SING_BOX_CONFIG")));
+    let overridden = trim(as_string(getenv("TACHYON_SC_SING_BOX_CONFIG")));
     if (overridden != "")
         return overridden;
 
-    if (backend_id() == "podkop") {
-        let configured = trim(uci_get("podkop.settings.config_path"));
+    if (backend_id() == "tachyon") {
+        let configured = trim(uci_get("tachyon.settings.config_path"));
         if (configured != "")
             return configured;
     }
