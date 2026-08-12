@@ -1342,3 +1342,42 @@ msgstr "Проверить доступность YouTube"
 
 msgid "Cannot save settings"
 msgstr "Не удалось сохранить настройки"
+
+msgid "Sections"
+msgstr "Секции"
+
+msgid "Servers"
+msgstr "Серверы"
+
+msgid "Monitoring"
+msgstr "Мониторинг"
+
+msgid "Components"
+msgstr "Компоненты"
+
+msgid "Drag rows to change priority. The rule at the top is checked first."
+msgstr "Перетащите строки для изменения приоритета. Правило вверху проверяется первым."
+
+msgid "Rules"
+msgstr "Правила"
+
+msgid "Edit"
+msgstr "Редактировать"
+
+msgid "Connection"
+msgstr "Соединение"
+
+msgid "Add a section"
+msgstr "Добавить секцию"
+
+msgid "Add a server inbound"
+msgstr "Добавить серверный инбаунд"
+
+msgid "Accept external proxy connections and route them with sing-box."
+msgstr "Принимать внешние прокси-подключения и маршрутизировать их через sing-box."
+
+msgid "Section"
+msgstr "Секция"
+
+msgid "Server"
+msgstr "Сервер"

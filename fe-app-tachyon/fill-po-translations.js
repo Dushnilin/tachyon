@@ -36,7 +36,20 @@ const dictionary = {
   "Check Mode:": "Режим проверки:",
   "Active Sections": "Активные секции",
   "All Profiles": "Все сервисы и профили",
-  "Cannot save settings": "Не удалось сохранить настройки"
+  "Cannot save settings": "Не удалось сохранить настройки",
+  "Sections": "Секции",
+  "Servers": "Серверы",
+  "Monitoring": "Мониторинг",
+  "Components": "Компоненты",
+  "Drag rows to change priority. The rule at the top is checked first.": "Перетащите строки для изменения приоритета. Правило вверху проверяется первым.",
+  "Rules": "Правила",
+  "Edit": "Редактировать",
+  "Connection": "Соединение",
+  "Add a section": "Добавить секцию",
+  "Add a server inbound": "Добавить серверный инбаунд",
+  "Accept external proxy connections and route them with sing-box.": "Принимать внешние прокси-подключения и маршрутизировать их через sing-box.",
+  "Section": "Секция",
+  "Server": "Сервер"
 };
 
 async function run() {
