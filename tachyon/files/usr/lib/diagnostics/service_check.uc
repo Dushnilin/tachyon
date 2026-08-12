@@ -9,6 +9,7 @@
 // что дополнительно воспроизводит правила секций, привязанные к source IP.
 
 let fs = require("fs");
+let common = require("core.common");
 
 const LIB_DIR = getenv("FORKOP_SC_LIB") || "/usr/lib/forkop-servicecheck";
 const ENGINE = LIB_DIR + "/probe.uc";
@@ -1165,7 +1166,7 @@ function detect_live_route(ctx, host, port, remote_ip) {
         return unknown;
     }
 
-    let launched = normalize_status(system("( " + command + " ) >/dev/null 2>&1 &")) == 0;
+    let launched = normalize_status(system(common.background_command(command))) == 0;
     if (!launched)
         return unknown;
 

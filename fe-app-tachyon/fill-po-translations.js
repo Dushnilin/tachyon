@@ -35,7 +35,8 @@ const dictionary = {
   "Why Discord fails?": "Почему не работает Discord?",
   "Check Mode:": "Режим проверки:",
   "Active Sections": "Активные секции",
-  "All Profiles": "Все сервисы и профили"
+  "All Profiles": "Все сервисы и профили",
+  "Cannot save settings": "Не удалось сохранить настройки"
 };
 
 async function run() {

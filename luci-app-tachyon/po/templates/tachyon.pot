@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-08-12 09:15+0300\n"
-"PO-Revision-Date: 2026-08-12 09:15+0300\n"
+"POT-Creation-Date: 2026-08-12 09:39+0300\n"
+"PO-Revision-Date: 2026-08-12 09:39+0300\n"
 "Last-Translator: Dushnilin <dushnilin@gmail.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -66,7 +66,7 @@ msgstr ""
 msgid "Active Main DNS"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:130
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:131
 msgid "Active Sections"
 msgstr ""
 
@@ -134,11 +134,11 @@ msgstr ""
 
 #: src/tachyon/tabs/monitoring/initController.ts:672
 #: src/tachyon/tabs/monitoring/render.ts:40
-#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:318
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:322
 msgid "All"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:140
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:143
 msgid "All Profiles"
 msgstr ""
 
@@ -171,7 +171,7 @@ msgstr ""
 msgid "Available actions"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:270
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:273
 msgid "Avg Latency"
 msgstr ""
 
@@ -235,11 +235,11 @@ msgstr ""
 msgid "Cannot receive checks result"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:760
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:762
 msgid "Check Again"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:661
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:665
 msgid "Check All"
 msgstr ""
 
@@ -248,12 +248,12 @@ msgstr ""
 msgid "Check Connection"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:549
-#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:646
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:553
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:650
 msgid "Check Custom"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:543
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:547
 msgid "Check domain or IP (e.g. example.com)..."
 msgstr ""
 
@@ -261,7 +261,7 @@ msgstr ""
 msgid "Check interval"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:159
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:162
 msgid "Check Mode:"
 msgstr ""
 
@@ -298,11 +298,11 @@ msgstr ""
 msgid "Checking, please wait"
 msgstr ""
 
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:669
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:322
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:420
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:775
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:849
-#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:665
 msgid "Checking..."
 msgstr ""
 
@@ -310,14 +310,14 @@ msgstr ""
 msgid "checks"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/checks/getCheckItemsMeta.ts:10
 #: src/tachyon/tabs/diagnostic/helpers/getMeta.ts:26
+#: src/tachyon/tabs/diagnostic/checks/getCheckItemsMeta.ts:10
 msgid "Checks failed"
 msgstr ""
 
+#: src/tachyon/tabs/diagnostic/helpers/getMeta.ts:13
 #: src/tachyon/tabs/diagnostic/checks/getCheckItemsMeta.ts:23
 #: src/tachyon/tabs/diagnostic/checks/runFakeIPCheck.ts:43
-#: src/tachyon/tabs/diagnostic/helpers/getMeta.ts:13
 msgid "Checks passed"
 msgstr ""
 
@@ -330,13 +330,13 @@ msgid "CIDR must be between 0 and 32 for IPv4 or 0 and 128 for IPv6"
 msgstr ""
 
 #: src/partials/modal/renderModal.ts:263
+#: src/tachyon/tabs/diagnostic/initController.ts:1144
 #: src/tachyon/tabs/dashboard/initController.ts:1085
 #: src/tachyon/tabs/monitoring/initController.ts:884
 #: src/tachyon/tabs/monitoring/initController.ts:934
-#: src/tachyon/tabs/diagnostic/initController.ts:1144
 #: src/tachyon/tabs/diagnostic/partials/renderAiChatModal.ts:212
 #: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:62
-#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:766
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:768
 msgid "Close"
 msgstr ""
 
@@ -364,8 +364,8 @@ msgid "compressed"
 msgstr ""
 
 #: src/tachyon/methods/custom/getDashboardSections.ts:1569
-#: src/tachyon/tabs/dashboard/partials/renderSections.ts:583
 #: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:141
+#: src/tachyon/tabs/dashboard/partials/renderSections.ts:583
 msgid "Conflict"
 msgstr ""
 
@@ -520,8 +520,8 @@ msgstr ""
 msgid "Expires"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:255
-#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:752
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:258
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:754
 msgid "Failed"
 msgstr ""
 
@@ -556,7 +556,7 @@ msgstr ""
 msgid "Failed to generate bug report"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:115
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:116
 msgid "Failed to parse target list."
 msgstr ""
 
@@ -564,8 +564,8 @@ msgstr ""
 msgid "Failed to receive response from AI service."
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:97
-#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:785
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:98
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:787
 msgid "Failed to run service check."
 msgstr ""
 
@@ -682,7 +682,7 @@ msgstr ""
 msgid "Host"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:387
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:391
 msgid "HTTP"
 msgstr ""
 
@@ -989,8 +989,8 @@ msgstr ""
 msgid "Issues"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/checks/getCheckItemsMeta.ts:17
 #: src/tachyon/tabs/diagnostic/helpers/getMeta.ts:20
+#: src/tachyon/tabs/diagnostic/checks/getCheckItemsMeta.ts:17
 msgid "Issues detected"
 msgstr ""
 
@@ -1158,7 +1158,7 @@ msgstr ""
 msgid "No rules use Zapret2"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:123
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:124
 msgid "No targets found in section configs."
 msgstr ""
 
@@ -1171,9 +1171,9 @@ msgid "Nodes"
 msgstr ""
 
 #: src/tachyon/methods/custom/getDashboardSections.ts:1572
-#: src/tachyon/tabs/dashboard/partials/renderSections.ts:586
 #: src/tachyon/tabs/diagnostic/checks/runInboundsCheck.ts:46
 #: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:152
+#: src/tachyon/tabs/dashboard/partials/renderSections.ts:586
 msgid "Not configured"
 msgstr ""
 
@@ -1248,7 +1248,7 @@ msgstr ""
 msgid "Optional for local LLM"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:358
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:362
 msgid "Outbound Route"
 msgstr ""
 
@@ -1256,7 +1256,7 @@ msgstr ""
 msgid "outbounds must be a non-empty array of strings"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:240
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:243
 msgid "Passed"
 msgstr ""
 
@@ -1271,7 +1271,7 @@ msgid "Pause updates"
 msgstr ""
 
 #: src/tachyon/tabs/diagnostic/diagnostic.store.ts:63
-#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:442
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:446
 msgid "Pending"
 msgstr ""
 
@@ -1326,7 +1326,7 @@ msgstr ""
 msgid "Remove"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:363
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:367
 msgid "Resolved IP / DNS"
 msgstr ""
 
@@ -1390,8 +1390,8 @@ msgid "Run doctor repair"
 msgstr ""
 
 #: src/tachyon/methods/custom/getDashboardSections.ts:1567
-#: src/tachyon/tabs/dashboard/partials/renderSections.ts:581
 #: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:135
+#: src/tachyon/tabs/dashboard/partials/renderSections.ts:581
 msgid "Running"
 msgstr ""
 
@@ -1418,7 +1418,7 @@ msgstr ""
 msgid "Search"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:328
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:332
 msgid "Search domain..."
 msgstr ""
 
@@ -1426,7 +1426,7 @@ msgstr ""
 msgid "Secret token for WRITE requests"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:353
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:357
 msgid "Section / Target"
 msgstr ""
 
@@ -1593,8 +1593,8 @@ msgid "Stop Tachyon"
 msgstr ""
 
 #: src/tachyon/methods/custom/getDashboardSections.ts:1571
-#: src/tachyon/tabs/dashboard/partials/renderSections.ts:585
 #: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:147
+#: src/tachyon/tabs/dashboard/partials/renderSections.ts:585
 msgid "Stopped"
 msgstr ""
 
@@ -1679,7 +1679,7 @@ msgstr ""
 msgid "Tailscale endpoint"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:371
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:375
 msgid "TCP"
 msgstr ""
 
@@ -1693,7 +1693,7 @@ msgstr ""
 msgid "Testing URL"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:685
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:689
 msgid "Testing..."
 msgstr ""
 
@@ -1722,7 +1722,7 @@ msgstr ""
 msgid "tiny"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:379
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:383
 msgid "TLS"
 msgstr ""
 
@@ -1730,7 +1730,7 @@ msgstr ""
 msgid "Tolerance"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:225
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:228
 msgid "Total Targets"
 msgstr ""
 
@@ -1876,7 +1876,7 @@ msgstr ""
 msgid "Valid"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:395
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:399
 msgid "Verdict"
 msgstr ""
 
