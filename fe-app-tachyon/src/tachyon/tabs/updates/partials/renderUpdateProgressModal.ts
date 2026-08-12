@@ -111,13 +111,24 @@ export function showUpdateProgressModal(
   }
 
   const steps = isCheckAction
-    ? [_('Connecting to update server...'), _('Comparing version releases...')]
-    : [
-        _('Initializing operation...'),
-        _('Downloading package from repository...'),
-        _('Installing package & updating configurations...'),
-        _('Applying changes & reloading services...'),
-      ];
+    ? [
+        _('Connecting to update server...'),
+        _('Fetching release & commit metadata...'),
+        _('Comparing versions & fingerprint check...'),
+      ]
+    : isRemoveAction
+      ? [
+          _('Stopping active services...'),
+          _('Removing binaries & package files...'),
+          _('Cleaning configuration & reloading...'),
+        ]
+      : [
+          _('Environment preparation & dependency check...'),
+          _('Downloading package from repository...'),
+          _('Unpacking & installing binaries...'),
+          _('Updating configuration & access permissions...'),
+          _('Applying changes & reloading services...'),
+        ];
 
   let currentStepIndex = 0;
   let elapsedSeconds = 0;
@@ -235,21 +246,34 @@ export function showUpdateProgressModal(
   if (isInstallOrUpdate) {
     autoAdvanceTimer = setInterval(() => {
       if (isCompleted) return;
-      if (elapsedSeconds >= 4 && currentStepIndex === 0) {
+      if (elapsedSeconds >= 2 && currentStepIndex === 0) {
         setStep(1);
-      } else if (elapsedSeconds >= 12 && currentStepIndex === 1) {
+      } else if (elapsedSeconds >= 5 && currentStepIndex === 1) {
         setStep(2);
-      } else if (elapsedSeconds >= 25 && currentStepIndex === 2) {
+      } else if (elapsedSeconds >= 9 && currentStepIndex === 2) {
         setStep(3);
+      } else if (elapsedSeconds >= 14 && currentStepIndex === 3) {
+        setStep(4);
       }
-    }, 1000);
+    }, 500);
   } else if (isCheckAction) {
     autoAdvanceTimer = setInterval(() => {
       if (isCompleted) return;
       if (elapsedSeconds >= 1 && currentStepIndex === 0) {
         setStep(1);
+      } else if (elapsedSeconds >= 2 && currentStepIndex === 1) {
+        setStep(2);
       }
-    }, 800);
+    }, 500);
+  } else if (isRemoveAction) {
+    autoAdvanceTimer = setInterval(() => {
+      if (isCompleted) return;
+      if (elapsedSeconds >= 1 && currentStepIndex === 0) {
+        setStep(1);
+      } else if (elapsedSeconds >= 3 && currentStepIndex === 1) {
+        setStep(2);
+      }
+    }, 500);
   }
 
   function setStep(stepIndex: number, customStatus?: string) {

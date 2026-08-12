@@ -3700,3 +3700,27 @@ msgstr "Пожалуйста, подождите, выполняется опе�
 
 msgid "Operation failed"
 msgstr "Операция не выполнена"
+
+msgid "Fetching release & commit metadata..."
+msgstr "Запрос метаданных релизов и коммитов..."
+
+msgid "Comparing versions & fingerprint check..."
+msgstr "Сравнение версий и проверка целостности..."
+
+msgid "Stopping active services..."
+msgstr "Остановка активных служб..."
+
+msgid "Removing binaries & package files..."
+msgstr "Удаление бинарных файлов и пакетов..."
+
+msgid "Cleaning configuration & reloading..."
+msgstr "Очистка конфигураций и перезапуск..."
+
+msgid "Environment preparation & dependency check..."
+msgstr "Подготовка окружения и проверка зависимостей..."
+
+msgid "Unpacking & installing binaries..."
+msgstr "Распаковка и установка компонентов..."
+
+msgid "Updating configuration & access permissions..."
+msgstr "Обновление конфигураций и прав доступа..."
