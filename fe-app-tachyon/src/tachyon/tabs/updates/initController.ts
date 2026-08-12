@@ -524,6 +524,12 @@ async function applyCompletedComponentAction({
         result.current_sha || '',
         result.latest_sha || '',
       );
+      modalController?.updateVersions({
+        currentVersion: getComponentCurrentVersion(result.component),
+        targetVersion: result.latest_version || '',
+        currentSha: result.current_sha || '',
+        targetSha: result.latest_sha || '',
+      });
     }
 
     if (notify) {
@@ -778,6 +784,9 @@ async function handleComponentAction(button: ComponentActionButton) {
   const cardTitle = getComponentCardTitle(button.component);
   const currentVersion = getComponentCurrentVersion(button.component);
   const targetVersion = getExpectedLatestVersionForAction(button);
+  const checkResult = getVisibleCheckResult(button.component);
+  const currentSha = checkResult?.current_sha;
+  const targetSha = checkResult?.latest_sha;
 
   const modalController = showUpdateProgressModal({
     component: button.component,
@@ -785,6 +794,8 @@ async function handleComponentAction(button: ComponentActionButton) {
     componentTitle: cardTitle,
     currentVersion,
     targetVersion,
+    currentSha,
+    targetSha,
   });
 
   let jobId = '';

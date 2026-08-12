@@ -15096,6 +15096,38 @@ function describeSameReleaseBuild({
 }
 
 // src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts
+function formatSha(sha) {
+  if (!sha) return "";
+  const clean = sha.trim();
+  return clean.length >= 7 ? clean.slice(0, 7) : clean;
+}
+function renderVersionBadgeText(opts) {
+  const cVer = opts.currentVersion || "";
+  const tVer = opts.targetVersion || "";
+  const cSha = formatSha(opts.currentSha);
+  const tSha = formatSha(opts.targetSha);
+  if (tVer) {
+    if (cVer === tVer) {
+      if (cSha && tSha && cSha !== tSha) {
+        return `${cVer} (${cSha} \u2192 ${tSha})`;
+      }
+      if (tSha) {
+        return `${cVer} (${tSha})`;
+      }
+      if (cSha) {
+        return `${cVer} (${cSha})`;
+      }
+      return `${cVer} \u2192 ${tVer}`;
+    }
+    const currentPart = cVer ? cSha ? `${cVer} (${cSha})` : cVer : "";
+    const targetPart = tSha ? `${tVer} (${tSha})` : tVer;
+    return currentPart ? `${currentPart} \u2192 ${targetPart}` : targetPart;
+  }
+  if (cVer) {
+    return cSha ? `${cSha}` : cVer;
+  }
+  return opts.action;
+}
 var activeModalController = null;
 var activeModalJobId = null;
 function getActiveProgressModalController() {
@@ -15130,6 +15162,7 @@ function showUpdateProgressModal(options) {
   let timerInterval = null;
   let autoAdvanceTimer = null;
   let isCompleted = false;
+  let currentModalVersions = { ...options };
   const timerBadgeEl = E(
     "div",
     { class: "tachyon-update-modal__timer-badge" },
@@ -15138,7 +15171,7 @@ function showUpdateProgressModal(options) {
   const titleBadgeEl = E(
     "span",
     { class: "tachyon-update-modal__version-badge" },
-    options.targetVersion ? `${options.currentVersion || ""} \u2192 ${options.targetVersion}` : options.currentVersion || options.action
+    renderVersionBadgeText(options)
   );
   const headerEl = E("div", { class: "tachyon-update-modal__header" }, [
     E("div", { class: "tachyon-update-modal__header-info" }, [
@@ -15283,6 +15316,13 @@ function showUpdateProgressModal(options) {
     },
     updateStatus: (statusText) => {
       statusMsgEl.textContent = statusText;
+    },
+    updateVersions: (opts) => {
+      currentModalVersions = {
+        ...currentModalVersions,
+        ...opts
+      };
+      titleBadgeEl.textContent = renderVersionBadgeText(currentModalVersions);
     },
     completeSuccess: (message, opts) => {
       isCompleted = true;
@@ -15707,6 +15747,12 @@ async function applyCompletedComponentAction({
         result.current_sha || "",
         result.latest_sha || ""
       );
+      modalController?.updateVersions({
+        currentVersion: getComponentCurrentVersion(result.component),
+        targetVersion: result.latest_version || "",
+        currentSha: result.current_sha || "",
+        targetSha: result.latest_sha || ""
+      });
     }
     if (notify) {
       showToast(getCheckToastMessage(status), "success");
@@ -15897,12 +15943,17 @@ async function handleComponentAction(button) {
   const cardTitle = getComponentCardTitle(button.component);
   const currentVersion = getComponentCurrentVersion(button.component);
   const targetVersion = getExpectedLatestVersionForAction(button);
+  const checkResult = getVisibleCheckResult(button.component);
+  const currentSha = checkResult?.current_sha;
+  const targetSha = checkResult?.latest_sha;
   const modalController = showUpdateProgressModal({
     component: button.component,
     action: button.action,
     componentTitle: cardTitle,
     currentVersion,
-    targetVersion
+    targetVersion,
+    currentSha,
+    targetSha
   });
   let jobId = "";
   let ownsJobFollow = false;

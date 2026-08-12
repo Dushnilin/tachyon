@@ -9,17 +9,70 @@ export interface UpdateProgressModalOptions {
   componentTitle: string;
   currentVersion?: string;
   targetVersion?: string;
+  currentSha?: string;
+  targetSha?: string;
 }
 
 export interface UpdateProgressModalController {
   updateStep: (stepIndex: number, statusText?: string) => void;
   updateStatus: (statusText: string) => void;
+  updateVersions: (opts: {
+    currentVersion?: string;
+    targetVersion?: string;
+    currentSha?: string;
+    targetSha?: string;
+  }) => void;
   completeSuccess: (
     message?: string,
     options?: { autoCloseMs?: number; reloadPage?: boolean },
   ) => void;
   completeError: (errorMessage: string) => void;
   close: () => void;
+}
+
+function formatSha(sha?: string): string {
+  if (!sha) return '';
+  const clean = sha.trim();
+  return clean.length >= 7 ? clean.slice(0, 7) : clean;
+}
+
+function renderVersionBadgeText(opts: {
+  currentVersion?: string;
+  targetVersion?: string;
+  currentSha?: string;
+  targetSha?: string;
+  action: string;
+}): string {
+  const cVer = opts.currentVersion || '';
+  const tVer = opts.targetVersion || '';
+  const cSha = formatSha(opts.currentSha);
+  const tSha = formatSha(opts.targetSha);
+
+  if (tVer) {
+    if (cVer === tVer) {
+      if (cSha && tSha && cSha !== tSha) {
+        return `${cVer} (${cSha} → ${tSha})`;
+      }
+      if (tSha) {
+        return `${cVer} (${tSha})`;
+      }
+      if (cSha) {
+        return `${cVer} (${cSha})`;
+      }
+      return `${cVer} → ${tVer}`;
+    }
+
+    const currentPart = cVer ? (cSha ? `${cVer} (${cSha})` : cVer) : '';
+    const targetPart = tSha ? `${tVer} (${tSha})` : tVer;
+
+    return currentPart ? `${currentPart} → ${targetPart}` : targetPart;
+  }
+
+  if (cVer) {
+    return cSha ? `${cSha}` : cVer;
+  }
+
+  return opts.action;
 }
 
 let activeModalController: UpdateProgressModalController | null = null;
@@ -71,6 +124,7 @@ export function showUpdateProgressModal(
   let timerInterval: ReturnType<typeof setInterval> | null = null;
   let autoAdvanceTimer: ReturnType<typeof setInterval> | null = null;
   let isCompleted = false;
+  let currentModalVersions = { ...options };
 
   const timerBadgeEl = E(
     'div',
@@ -81,9 +135,7 @@ export function showUpdateProgressModal(
   const titleBadgeEl = E(
     'span',
     { class: 'tachyon-update-modal__version-badge' },
-    options.targetVersion
-      ? `${options.currentVersion || ''} → ${options.targetVersion}`
-      : options.currentVersion || options.action,
+    renderVersionBadgeText(options),
   );
 
   const headerEl = E('div', { class: 'tachyon-update-modal__header' }, [
@@ -249,6 +301,18 @@ export function showUpdateProgressModal(
     },
     updateStatus: (statusText: string) => {
       statusMsgEl.textContent = statusText;
+    },
+    updateVersions: (opts: {
+      currentVersion?: string;
+      targetVersion?: string;
+      currentSha?: string;
+      targetSha?: string;
+    }) => {
+      currentModalVersions = {
+        ...currentModalVersions,
+        ...opts,
+      };
+      titleBadgeEl.textContent = renderVersionBadgeText(currentModalVersions);
     },
     completeSuccess: (
       message?: string,
