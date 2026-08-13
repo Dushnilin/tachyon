@@ -223,13 +223,10 @@ export const styles = `
 
 .tachyon_dashboard-page__subscription-meta__title {
     flex: 0 1 auto;
-    width: max-content;
-    max-width: min(28ch, 30%);
-    min-width: min-content;
     color: var(--text-color-high);
     font-weight: 700;
     line-height: 1.25;
-    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
 .tachyon_dashboard-page__subscription-meta__facts {

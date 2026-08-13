@@ -1783,8 +1783,13 @@ function metadata_clean_text(value, max, decode_base64) {
     if (starts_with(value, "=?"))
         value = decode_rfc2047(value);
     if (decode_base64 && lc(substr(value, 0, 7)) == "base64:") {
-        let decoded = base64_decode(substr(value, 7));
-        value = decoded == null ? "" : decoded;
+        let raw_val = substr(value, 7);
+        let decoded = base64_decode(raw_val);
+        if (decoded != null && length(decoded) > 0 && match(decoded, /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/) == null) {
+            value = decoded;
+        } else {
+            value = raw_val;
+        }
     }
     if (index(value, "%") >= 0) {
         value = decode_url_component(value);
