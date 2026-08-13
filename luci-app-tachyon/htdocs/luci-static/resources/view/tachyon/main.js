@@ -10037,16 +10037,16 @@ function renderRunAction({
 
 // src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts
 function formatRouteType(routeType) {
-  if (!routeType) return _("Direct");
+  if (!routeType) return "\u041F\u0440\u044F\u043C\u043E\u0435";
   const clean = routeType.trim();
   if (clean === "connection" || clean === "proxy" || clean === "outbound") {
-    return _("Proxy");
+    return "\u041F\u0440\u043E\u043A\u0441\u0438";
   }
   if (clean === "direct") {
-    return _("Direct");
+    return "\u041F\u0440\u044F\u043C\u043E\u0435";
   }
   if (clean === "auto") {
-    return _("Auto");
+    return "\u0410\u0432\u0442\u043E";
   }
   if (clean.startsWith("zapret2")) {
     return clean.replace(/^zapret2/, "Zapret 2");
@@ -10060,10 +10060,31 @@ function formatRouteType(routeType) {
   return clean;
 }
 function formatSectionName(name) {
-  if (name === "\u0421\u0432\u043E\u0438 \u0434\u043E\u043C\u0435\u043D\u044B") {
-    return _("Custom Domains");
-  }
-  return name;
+  if (!name) return "";
+  const clean = name.trim();
+  const sectionMap = {
+    "\u0411\u0430\u0437\u043E\u0432\u0430\u044F \u0441\u0432\u044F\u0437\u043D\u043E\u0441\u0442\u044C": "\u0411\u0430\u0437\u043E\u0432\u0430\u044F \u0441\u0432\u044F\u0437\u043D\u043E\u0441\u0442\u044C",
+    "\u0417\u0430\u0431\u043B\u043E\u043A\u0438\u0440\u043E\u0432\u0430\u043D\u043D\u044B\u0435 \u0432 \u0420\u0424": "\u0417\u0430\u0431\u043B\u043E\u043A\u0438\u0440\u043E\u0432\u0430\u043D\u043D\u044B\u0435 \u0440\u0435\u0441\u0443\u0440\u0441\u044B",
+    "\u0421\u0432\u043E\u0438 \u0434\u043E\u043C\u0435\u043D\u044B": "\u0421\u043E\u0431\u0441\u0442\u0432\u0435\u043D\u043D\u044B\u0435 \u0434\u043E\u043C\u0435\u043D\u044B",
+    "Custom": "\u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C\u0441\u043A\u0438\u0439",
+    "ChatGPT / OpenAI": "ChatGPT / OpenAI",
+    "Gemini / Google AI": "Gemini / Google AI",
+    "X (Twitter)": "Twitter (X)",
+    "UDP / QUIC": "UDP / QUIC \u043F\u0440\u043E\u0442\u043E\u043A\u043E\u043B\u044B",
+    "Telegram": "Telegram",
+    "Instagram": "Instagram",
+    "YouTube": "YouTube",
+    "TikTok": "TikTok",
+    "Discord": "Discord",
+    "Facebook": "Facebook",
+    "WhatsApp": "WhatsApp",
+    "Netflix": "Netflix",
+    "Spotify": "Spotify",
+    "Twitch": "Twitch",
+    "Steam": "Steam",
+    "GitHub": "GitHub"
+  };
+  return sectionMap[clean] || clean;
 }
 function renderStatusBadge(statusClass, isTesting = false, isPending = false) {
   if (isPending) {
@@ -10073,7 +10094,7 @@ function renderStatusBadge(statusClass, isTesting = false, isPending = false) {
         class: "badge cbi-value-title",
         style: "opacity: 0.6; font-size: 11px; padding: 2px 8px;"
       },
-      _("Pending")
+      "\u041E\u0436\u0438\u0434\u0430\u043D\u0438\u0435..."
     );
   }
   if (isTesting) {
@@ -10083,7 +10104,7 @@ function renderStatusBadge(statusClass, isTesting = false, isPending = false) {
         class: "badge cbi-button-action",
         style: "font-size: 11px; padding: 2px 8px;"
       },
-      _("Testing...")
+      "\u041F\u0440\u043E\u0432\u0435\u0440\u043A\u0430..."
     );
   }
   const cleanStatus = statusClass || "";
@@ -10095,7 +10116,7 @@ function renderStatusBadge(statusClass, isTesting = false, isPending = false) {
         class: "badge cbi-button-save",
         style: "font-weight: bold; font-size: 11px; padding: 2px 8px;"
       },
-      _("Available")
+      "\u0414\u043E\u0441\u0442\u0443\u043F\u0435\u043D"
     );
   }
   return E(
@@ -10104,7 +10125,7 @@ function renderStatusBadge(statusClass, isTesting = false, isPending = false) {
       class: "badge cbi-button-reset",
       style: "font-weight: bold; font-size: 11px; padding: 2px 8px;"
     },
-    cleanStatus || _("Unavailable")
+    cleanStatus || "\u041D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u0435\u043D"
   );
 }
 function renderServiceCheckModal() {
@@ -10118,7 +10139,7 @@ function renderServiceCheckModal() {
       E(
         "p",
         { style: "text-align: center; margin-top: 20px;" },
-        _("Fetching service targets...")
+        "\u041F\u043E\u043B\u0443\u0447\u0435\u043D\u0438\u0435 \u0441\u043F\u0438\u0441\u043A\u0430 \u0441\u0435\u0440\u0432\u0438\u0441\u043E\u0432..."
       ),
       E(
         "div",
@@ -10143,21 +10164,21 @@ function renderServiceCheckModal() {
         },
         [
           renderButton({
-            text: _("Close"),
+            text: "\u0417\u0430\u043A\u0440\u044B\u0442\u044C",
             onClick: () => ui.hideModal()
           })
         ]
       )
     ]
   );
-  ui.showModal(_("Service Availability Check"), modalContent);
+  ui.showModal("\u041F\u0440\u043E\u0432\u0435\u0440\u043A\u0430 \u0434\u043E\u0441\u0442\u0443\u043F\u043D\u043E\u0441\u0442\u0438 \u0441\u0435\u0440\u0432\u0438\u0441\u043E\u0432", modalContent);
   const loadTargets = (targetMode) => {
     container.innerHTML = "";
     container.appendChild(
       E(
         "p",
         { style: "text-align: center; margin-top: 20px;" },
-        _("Fetching service targets...")
+        "\u041F\u043E\u043B\u0443\u0447\u0435\u043D\u0438\u0435 \u0441\u043F\u0438\u0441\u043A\u0430 \u0441\u0435\u0440\u0432\u0438\u0441\u043E\u0432..."
       )
     );
     const args = targetMode === "all" ? ["get-targets", "all"] : ["get-targets"];
@@ -10169,7 +10190,7 @@ function renderServiceCheckModal() {
           E(
             "p",
             { style: "color: var(--color-danger, #dc3545);" },
-            _("Failed to run service check.")
+            "\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u0437\u0430\u043F\u0443\u0441\u0442\u0438\u0442\u044C \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0443 \u0441\u0435\u0440\u0432\u0438\u0441\u043E\u0432."
           )
         );
         return;
@@ -10186,19 +10207,19 @@ function renderServiceCheckModal() {
           E(
             "p",
             { style: "color: var(--color-danger, #dc3545);" },
-            _("Failed to parse target list.")
+            "\u041E\u0448\u0438\u0431\u043A\u0430 \u0440\u0430\u0437\u0431\u043E\u0440\u0430 \u0441\u043F\u0438\u0441\u043A\u0430 \u0446\u0435\u043B\u0435\u0439."
           )
         );
         return;
       }
       if (targets.length === 0) {
         container.appendChild(
-          E("p", {}, _("No targets found in section configs."))
+          E("p", {}, "\u0426\u0435\u043B\u0438 \u0434\u043B\u044F \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0438 \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D\u044B \u0432 \u043A\u043E\u043D\u0444\u0438\u0433\u0443\u0440\u0430\u0446\u0438\u0438.")
         );
         return;
       }
       const activeSectionsBtn = renderButton({
-        text: _("Active Routes"),
+        text: "\u0410\u043A\u0442\u0438\u0432\u043D\u044B\u0435 \u043C\u0430\u0440\u0448\u0440\u0443\u0442\u044B",
         classNames: [
           targetMode === "active" ? "cbi-button-action" : "cbi-button-neutral"
         ],
@@ -10207,7 +10228,7 @@ function renderServiceCheckModal() {
       activeSectionsBtn.style.fontSize = "12px";
       activeSectionsBtn.style.padding = "4px 12px";
       const allProfilesBtn = renderButton({
-        text: _("All Services"),
+        text: "\u0412\u0441\u0435 \u0441\u0435\u0440\u0432\u0438\u0441\u044B",
         classNames: [
           targetMode === "all" ? "cbi-button-action" : "cbi-button-neutral"
         ],
@@ -10224,7 +10245,7 @@ function renderServiceCheckModal() {
           E(
             "span",
             { style: "font-weight: 600; font-size: 13px; opacity: 0.9;" },
-            _("Check Mode:")
+            "\u0420\u0435\u0436\u0438\u043C \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0438:"
           ),
           activeSectionsBtn,
           allProfilesBtn
@@ -10284,10 +10305,10 @@ function renderServiceCheckModal() {
           style: "display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; width: 100%; box-sizing: border-box;"
         },
         [
-          createStatCard(_("Total Targets"), totalStatEl),
-          createStatCard(_("Available"), passedStatEl),
-          createStatCard(_("Unavailable"), failedStatEl),
-          createStatCard(_("Avg Latency"), latencyStatEl)
+          createStatCard("\u0412\u0441\u0435\u0433\u043E \u0446\u0435\u043B\u0435\u0439", totalStatEl),
+          createStatCard("\u0414\u043E\u0441\u0442\u0443\u043F\u043D\u043E", passedStatEl),
+          createStatCard("\u041D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u043D\u043E", failedStatEl),
+          createStatCard("\u0421\u0440. \u0437\u0430\u0434\u0435\u0440\u0436\u043A\u0430", latencyStatEl)
         ]
       );
       const progressBarInner = E("div", {
@@ -10304,13 +10325,13 @@ function renderServiceCheckModal() {
         "select",
         {
           class: "cbi-input-select",
-          style: "padding: 4px 8px; font-size: 12px; border-radius: 4px; max-width: 220px;"
+          style: "padding: 4px 8px; font-size: 12px; border-radius: 4px; max-width: 240px;"
         },
         [
           E(
             "option",
             { value: "ALL" },
-            `${_("All Services")} (${targets.length})`
+            `\u0412\u0441\u0435 \u0441\u0435\u0440\u0432\u0438\u0441\u044B (${targets.length})`
           ),
           ...sectionNames.map((sec) => {
             const count = targets.filter((t) => t.section === sec).length;
@@ -10328,7 +10349,7 @@ function renderServiceCheckModal() {
       };
       const searchInput = E("input", {
         type: "text",
-        placeholder: _("Search domain or service..."),
+        placeholder: "\u041F\u043E\u0438\u0441\u043A \u0434\u043E\u043C\u0435\u043D\u0430 \u0438\u043B\u0438 \u0441\u0435\u0440\u0432\u0438\u0441\u0430...",
         class: "cbi-input-text",
         style: "width: 200px; padding: 4px 10px; font-size: 12px; border-radius: 4px;"
       });
@@ -10352,7 +10373,7 @@ function renderServiceCheckModal() {
               E(
                 "span",
                 { style: "font-size: 12px; opacity: 0.8;" },
-                _("Filter by service:")
+                "\u0424\u0438\u043B\u044C\u0442\u0440 \u043F\u043E \u0441\u0435\u0440\u0432\u0438\u0441\u0443:"
               ),
               sectionSelect
             ]
@@ -10364,17 +10385,17 @@ function renderServiceCheckModal() {
         E(
           "th",
           { class: "th", style: "width: 28%; padding: 8px;" },
-          _("Service / Target")
+          "\u0421\u0435\u0440\u0432\u0438\u0441 / \u0426\u0435\u043B\u044C"
         ),
         E(
           "th",
           { class: "th", style: "width: 17%; padding: 8px;" },
-          _("Route Type")
+          "\u041C\u0430\u0440\u0448\u0440\u0443\u0442"
         ),
         E(
           "th",
           { class: "th", style: "width: 20%; padding: 8px;" },
-          _("Resolved IP / DNS")
+          "IP / DNS"
         ),
         E(
           "th",
@@ -10382,7 +10403,7 @@ function renderServiceCheckModal() {
             class: "th",
             style: "text-align: right; width: 7%; padding: 8px 4px;"
           },
-          _("TCP")
+          "TCP"
         ),
         E(
           "th",
@@ -10390,7 +10411,7 @@ function renderServiceCheckModal() {
             class: "th",
             style: "text-align: right; width: 7%; padding: 8px 4px;"
           },
-          _("TLS")
+          "TLS"
         ),
         E(
           "th",
@@ -10398,7 +10419,7 @@ function renderServiceCheckModal() {
             class: "th",
             style: "text-align: right; width: 7%; padding: 8px 4px;"
           },
-          _("HTTP")
+          "HTTP"
         ),
         E(
           "th",
@@ -10406,7 +10427,7 @@ function renderServiceCheckModal() {
             class: "th",
             style: "text-align: center; width: 14%; padding: 8px 6px;"
           },
-          _("Status")
+          "\u0421\u0442\u0430\u0442\u0443\u0441"
         )
       ]);
       const tableBody = E("tbody", {});
@@ -10521,12 +10542,12 @@ function renderServiceCheckModal() {
         const customDomainInput = E("input", {
           type: "text",
           id: "custom-domain-input",
-          placeholder: _("Check domain or IP (e.g. example.com)..."),
+          placeholder: "\u041F\u0440\u043E\u0432\u0435\u0440\u0438\u0442\u044C \u0434\u043E\u043C\u0435\u043D \u0438\u043B\u0438 IP (\u043D\u0430\u043F\u0440. example.com)...",
           class: "cbi-input-text",
-          style: "width: 260px; font-size: 12px;"
+          style: "width: 270px; font-size: 12px;"
         });
         const customBtn = renderButton({
-          text: _("Check Domain"),
+          text: "\u041F\u0440\u043E\u0432\u0435\u0440\u0438\u0442\u044C \u0434\u043E\u043C\u0435\u043D",
           classNames: ["cbi-button-neutral"],
           onClick: async () => {
             const domain = customDomainInput.value.trim();
@@ -10610,7 +10631,7 @@ function renderServiceCheckModal() {
             } catch (_e) {
             } finally {
               customBtn.disabled = false;
-              customBtn.textContent = _("Check Domain");
+              customBtn.textContent = "\u041F\u0440\u043E\u0432\u0435\u0440\u0438\u0442\u044C \u0434\u043E\u043C\u0435\u043D";
             }
           }
         });
@@ -10622,11 +10643,11 @@ function renderServiceCheckModal() {
           [customDomainInput, customBtn]
         );
         const checkAllBtn = renderButton({
-          text: _("Check All"),
+          text: "\u041F\u0440\u043E\u0432\u0435\u0440\u0438\u0442\u044C \u0432\u0441\u0435",
           classNames: ["cbi-button-action"],
           onClick: async () => {
             checkAllBtn.disabled = true;
-            checkAllBtn.textContent = _("Checking...");
+            checkAllBtn.textContent = "\u041F\u0440\u043E\u0432\u0435\u0440\u043A\u0430...";
             progressBarContainer.style.display = "block";
             progressBarInner.style.width = "0%";
             for (let i = 0; i < rowMap.length; i++) {
@@ -10672,12 +10693,12 @@ function renderServiceCheckModal() {
               }
               updateSummaryStats();
             }
-            checkAllBtn.textContent = _("Check Again");
+            checkAllBtn.textContent = "\u041F\u0440\u043E\u0432\u0435\u0440\u0438\u0442\u044C \u0441\u043D\u043E\u0432\u0430";
             checkAllBtn.disabled = false;
           }
         });
         const closeBtn = renderButton({
-          text: _("Close"),
+          text: "\u0417\u0430\u043A\u0440\u044B\u0442\u044C",
           onClick: () => ui.hideModal()
         });
         const rightWrap = E("div", { style: "display: flex; gap: 8px;" }, [
@@ -10693,7 +10714,7 @@ function renderServiceCheckModal() {
         E(
           "p",
           { style: "color: var(--color-danger, #dc3545);" },
-          _("Failed to run service check.")
+          "\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u0437\u0430\u043F\u0443\u0441\u0442\u0438\u0442\u044C \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0443 \u0441\u0435\u0440\u0432\u0438\u0441\u043E\u0432."
         )
       );
     });

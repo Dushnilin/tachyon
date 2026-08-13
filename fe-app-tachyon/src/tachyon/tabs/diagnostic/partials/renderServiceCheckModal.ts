@@ -19,20 +19,20 @@ interface ServiceCheckResult extends ServiceCheckTarget {
 }
 
 /**
- * Format raw backend route strings into clean, user-friendly labels.
+ * Format raw backend route strings into clean, user-friendly Russian labels.
  */
 function formatRouteType(routeType: string): string {
-  if (!routeType) return _('Direct');
+  if (!routeType) return 'Прямое';
   const clean = routeType.trim();
 
   if (clean === 'connection' || clean === 'proxy' || clean === 'outbound') {
-    return _('Proxy');
+    return 'Прокси';
   }
   if (clean === 'direct') {
-    return _('Direct');
+    return 'Прямое';
   }
   if (clean === 'auto') {
-    return _('Auto');
+    return 'Авто';
   }
   if (clean.startsWith('zapret2')) {
     return clean.replace(/^zapret2/, 'Zapret 2');
@@ -48,13 +48,36 @@ function formatRouteType(routeType: string): string {
 }
 
 /**
- * Format raw section names for UI display.
+ * Map section names to clear, human-readable Russian titles.
  */
 function formatSectionName(name: string): string {
-  if (name === 'Свои домены') {
-    return _('Custom Domains');
-  }
-  return name;
+  if (!name) return '';
+  const clean = name.trim();
+
+  const sectionMap: Record<string, string> = {
+    'Базовая связность': 'Базовая связность',
+    'Заблокированные в РФ': 'Заблокированные ресурсы',
+    'Свои домены': 'Собственные домены',
+    'Custom': 'Пользовательский',
+    'ChatGPT / OpenAI': 'ChatGPT / OpenAI',
+    'Gemini / Google AI': 'Gemini / Google AI',
+    'X (Twitter)': 'Twitter (X)',
+    'UDP / QUIC': 'UDP / QUIC протоколы',
+    'Telegram': 'Telegram',
+    'Instagram': 'Instagram',
+    'YouTube': 'YouTube',
+    'TikTok': 'TikTok',
+    'Discord': 'Discord',
+    'Facebook': 'Facebook',
+    'WhatsApp': 'WhatsApp',
+    'Netflix': 'Netflix',
+    'Spotify': 'Spotify',
+    'Twitch': 'Twitch',
+    'Steam': 'Steam',
+    'GitHub': 'GitHub',
+  };
+
+  return sectionMap[clean] || clean;
 }
 
 /**
@@ -72,7 +95,7 @@ function renderStatusBadge(
         class: 'badge cbi-value-title',
         style: 'opacity: 0.6; font-size: 11px; padding: 2px 8px;',
       },
-      _('Pending'),
+      'Ожидание...',
     );
   }
   if (isTesting) {
@@ -82,7 +105,7 @@ function renderStatusBadge(
         class: 'badge cbi-button-action',
         style: 'font-size: 11px; padding: 2px 8px;',
       },
-      _('Testing...'),
+      'Проверка...',
     );
   }
 
@@ -99,7 +122,7 @@ function renderStatusBadge(
         class: 'badge cbi-button-save',
         style: 'font-weight: bold; font-size: 11px; padding: 2px 8px;',
       },
-      _('Available'),
+      'Доступен',
     );
   }
 
@@ -109,7 +132,7 @@ function renderStatusBadge(
       class: 'badge cbi-button-reset',
       style: 'font-weight: bold; font-size: 11px; padding: 2px 8px;',
     },
-    cleanStatus || _('Unavailable'),
+    cleanStatus || 'Недоступен',
   );
 }
 
@@ -124,7 +147,7 @@ export function renderServiceCheckModal() {
       E(
         'p',
         { style: 'text-align: center; margin-top: 20px;' },
-        _('Fetching service targets...'),
+        'Получение списка сервисов...',
       ),
       E(
         'div',
@@ -152,7 +175,7 @@ export function renderServiceCheckModal() {
         },
         [
           renderButton({
-            text: _('Close'),
+            text: 'Закрыть',
             onClick: () => ui.hideModal(),
           }),
         ],
@@ -160,7 +183,7 @@ export function renderServiceCheckModal() {
     ],
   );
 
-  ui.showModal(_('Service Availability Check'), modalContent);
+  ui.showModal('Проверка доступности сервисов', modalContent);
 
   const loadTargets = (targetMode: 'active' | 'all') => {
     container.innerHTML = '';
@@ -168,7 +191,7 @@ export function renderServiceCheckModal() {
       E(
         'p',
         { style: 'text-align: center; margin-top: 20px;' },
-        _('Fetching service targets...'),
+        'Получение списка сервисов...',
       ),
     );
 
@@ -187,7 +210,7 @@ export function renderServiceCheckModal() {
             E(
               'p',
               { style: 'color: var(--color-danger, #dc3545);' },
-              _('Failed to run service check.'),
+              'Не удалось запустить проверку сервисов.',
             ),
           );
           return;
@@ -205,7 +228,7 @@ export function renderServiceCheckModal() {
             E(
               'p',
               { style: 'color: var(--color-danger, #dc3545);' },
-              _('Failed to parse target list.'),
+              'Ошибка разбора списка целей.',
             ),
           );
           return;
@@ -213,14 +236,14 @@ export function renderServiceCheckModal() {
 
         if (targets.length === 0) {
           container.appendChild(
-            E('p', {}, _('No targets found in section configs.')),
+            E('p', {}, 'Цели для проверки не найдены в конфигурации.'),
           );
           return;
         }
 
         // Mode Switcher Toolbar
         const activeSectionsBtn = renderButton({
-          text: _('Active Routes'),
+          text: 'Активные маршруты',
           classNames: [
             targetMode === 'active'
               ? 'cbi-button-action'
@@ -232,7 +255,7 @@ export function renderServiceCheckModal() {
         activeSectionsBtn.style.padding = '4px 12px';
 
         const allProfilesBtn = renderButton({
-          text: _('All Services'),
+          text: 'Все сервисы',
           classNames: [
             targetMode === 'all' ? 'cbi-button-action' : 'cbi-button-neutral',
           ],
@@ -251,7 +274,7 @@ export function renderServiceCheckModal() {
             E(
               'span',
               { style: 'font-weight: 600; font-size: 13px; opacity: 0.9;' },
-              _('Check Mode:'),
+              'Режим проверки:',
             ),
             activeSectionsBtn,
             allProfilesBtn,
@@ -322,10 +345,10 @@ export function renderServiceCheckModal() {
               'display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; width: 100%; box-sizing: border-box;',
           },
           [
-            createStatCard(_('Total Targets'), totalStatEl),
-            createStatCard(_('Available'), passedStatEl),
-            createStatCard(_('Unavailable'), failedStatEl),
-            createStatCard(_('Avg Latency'), latencyStatEl),
+            createStatCard('Всего целей', totalStatEl),
+            createStatCard('Доступно', passedStatEl),
+            createStatCard('Недоступно', failedStatEl),
+            createStatCard('Ср. задержка', latencyStatEl),
           ],
         );
 
@@ -349,13 +372,13 @@ export function renderServiceCheckModal() {
           {
             class: 'cbi-input-select',
             style:
-              'padding: 4px 8px; font-size: 12px; border-radius: 4px; max-width: 220px;',
+              'padding: 4px 8px; font-size: 12px; border-radius: 4px; max-width: 240px;',
           },
           [
             E(
               'option',
               { value: 'ALL' },
-              `${_('All Services')} (${targets.length})`,
+              `Все сервисы (${targets.length})`,
             ),
             ...sectionNames.map((sec) => {
               const count = targets.filter((t) => t.section === sec).length;
@@ -376,7 +399,7 @@ export function renderServiceCheckModal() {
         // Search Box
         const searchInput = E('input', {
           type: 'text',
-          placeholder: _('Search domain or service...'),
+          placeholder: 'Поиск домена или сервиса...',
           class: 'cbi-input-text',
           style:
             'width: 200px; padding: 4px 10px; font-size: 12px; border-radius: 4px;',
@@ -404,7 +427,7 @@ export function renderServiceCheckModal() {
                 E(
                   'span',
                   { style: 'font-size: 12px; opacity: 0.8;' },
-                  _('Filter by service:'),
+                  'Фильтр по сервису:',
                 ),
                 sectionSelect,
               ],
@@ -418,17 +441,17 @@ export function renderServiceCheckModal() {
           E(
             'th',
             { class: 'th', style: 'width: 28%; padding: 8px;' },
-            _('Service / Target'),
+            'Сервис / Цель',
           ),
           E(
             'th',
             { class: 'th', style: 'width: 17%; padding: 8px;' },
-            _('Route Type'),
+            'Маршрут',
           ),
           E(
             'th',
             { class: 'th', style: 'width: 20%; padding: 8px;' },
-            _('Resolved IP / DNS'),
+            'IP / DNS',
           ),
           E(
             'th',
@@ -436,7 +459,7 @@ export function renderServiceCheckModal() {
               class: 'th',
               style: 'text-align: right; width: 7%; padding: 8px 4px;',
             },
-            _('TCP'),
+            'TCP',
           ),
           E(
             'th',
@@ -444,7 +467,7 @@ export function renderServiceCheckModal() {
               class: 'th',
               style: 'text-align: right; width: 7%; padding: 8px 4px;',
             },
-            _('TLS'),
+            'TLS',
           ),
           E(
             'th',
@@ -452,7 +475,7 @@ export function renderServiceCheckModal() {
               class: 'th',
               style: 'text-align: right; width: 7%; padding: 8px 4px;',
             },
-            _('HTTP'),
+            'HTTP',
           ),
           E(
             'th',
@@ -460,7 +483,7 @@ export function renderServiceCheckModal() {
               class: 'th',
               style: 'text-align: center; width: 14%; padding: 8px 6px;',
             },
-            _('Status'),
+            'Статус',
           ),
         ]);
 
@@ -603,13 +626,13 @@ export function renderServiceCheckModal() {
           const customDomainInput = E('input', {
             type: 'text',
             id: 'custom-domain-input',
-            placeholder: _('Check domain or IP (e.g. example.com)...'),
+            placeholder: 'Проверить домен или IP (напр. example.com)...',
             class: 'cbi-input-text',
-            style: 'width: 260px; font-size: 12px;',
+            style: 'width: 270px; font-size: 12px;',
           });
 
           const customBtn = renderButton({
-            text: _('Check Domain'),
+            text: 'Проверить домен',
             classNames: ['cbi-button-neutral'],
             onClick: async () => {
               const domain = customDomainInput.value.trim();
@@ -706,7 +729,7 @@ export function renderServiceCheckModal() {
                 // Ignore custom check errors
               } finally {
                 customBtn.disabled = false;
-                customBtn.textContent = _('Check Domain');
+                customBtn.textContent = 'Проверить домен';
               }
             },
           });
@@ -721,11 +744,11 @@ export function renderServiceCheckModal() {
           );
 
           const checkAllBtn = renderButton({
-            text: _('Check All'),
+            text: 'Проверить все',
             classNames: ['cbi-button-action'],
             onClick: async () => {
               checkAllBtn.disabled = true;
-              checkAllBtn.textContent = _('Checking...');
+              checkAllBtn.textContent = 'Проверка...';
 
               progressBarContainer.style.display = 'block';
               progressBarInner.style.width = '0%';
@@ -793,13 +816,13 @@ export function renderServiceCheckModal() {
                 updateSummaryStats();
               }
 
-              checkAllBtn.textContent = _('Check Again');
+              checkAllBtn.textContent = 'Проверить снова';
               checkAllBtn.disabled = false;
             },
           });
 
           const closeBtn = renderButton({
-            text: _('Close'),
+            text: 'Закрыть',
             onClick: () => ui.hideModal(),
           });
 
@@ -818,7 +841,7 @@ export function renderServiceCheckModal() {
           E(
             'p',
             { style: 'color: var(--color-danger, #dc3545);' },
-            _('Failed to run service check.'),
+            'Не удалось запустить проверку сервисов.',
           ),
         );
       });

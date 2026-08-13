@@ -83,10 +83,10 @@
     ]
   },
   {
-    "call": "Active Sections",
-    "key": "Active Sections",
+    "call": "Active Routes",
+    "key": "Active Routes",
     "places": [
-      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:131"
+      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:223"
     ]
   },
   {
@@ -201,15 +201,7 @@
     "key": "All",
     "places": [
       "src/tachyon/tabs/monitoring/initController.ts:672",
-      "src/tachyon/tabs/monitoring/render.ts:40",
-      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:322"
-    ]
-  },
-  {
-    "call": "All Profiles",
-    "key": "All Profiles",
-    "places": [
-      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:143"
+      "src/tachyon/tabs/monitoring/render.ts:40"
     ]
   },
   {
@@ -218,6 +210,28 @@
     "places": [
       "src/tachyon/tabs/monitoring/initController.ts:635",
       "src/tachyon/tabs/monitoring/render.ts:49"
+    ]
+  },
+  {
+    "call": "All Services",
+    "key": "All Services",
+    "places": [
+      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:235",
+      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:358"
+    ]
+  },
+  {
+    "call": "Another component action is already running",
+    "key": "Another component action is already running",
+    "places": [
+      "src/tachyon/tabs/updates/initController.ts:835"
+    ]
+  },
+  {
+    "call": "Applying changes & reloading services...",
+    "key": "Applying changes & reloading services...",
+    "places": [
+      "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:133"
     ]
   },
   {
@@ -232,6 +246,13 @@
     "key": "Ask Tachyon AI Assistant a question...",
     "places": [
       "src/tachyon/tabs/diagnostic/partials/renderAiChatModal.ts:60"
+    ]
+  },
+  {
+    "call": "Auto",
+    "key": "Auto",
+    "places": [
+      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:35"
     ]
   },
   {
@@ -256,6 +277,14 @@
     ]
   },
   {
+    "call": "Available",
+    "key": "Available",
+    "places": [
+      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:102",
+      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:326"
+    ]
+  },
+  {
     "call": "Available actions",
     "key": "Available actions",
     "places": [
@@ -266,7 +295,7 @@
     "call": "Avg Latency",
     "key": "Avg Latency",
     "places": [
-      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:273"
+      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:328"
     ]
   },
   {
@@ -372,14 +401,22 @@
     "call": "Check Again",
     "key": "Check Again",
     "places": [
-      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:762"
+      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:796"
     ]
   },
   {
     "call": "Check All",
     "key": "Check All",
     "places": [
-      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:665"
+      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:724"
+    ]
+  },
+  {
+    "call": "Check completed!",
+    "key": "Check completed!",
+    "places": [
+      "src/tachyon/tabs/updates/initController.ts:498",
+      "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:363"
     ]
   },
   {
@@ -391,18 +428,18 @@
     ]
   },
   {
-    "call": "Check Custom",
-    "key": "Check Custom",
+    "call": "Check Domain",
+    "key": "Check Domain",
     "places": [
-      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:553",
-      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:650"
+      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:612",
+      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:709"
     ]
   },
   {
     "call": "Check domain or IP (e.g. example.com)...",
     "key": "Check domain or IP (e.g. example.com)...",
     "places": [
-      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:547"
+      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:606"
     ]
   },
   {
@@ -416,7 +453,7 @@
     "call": "Check Mode:",
     "key": "Check Mode:",
     "places": [
-      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:162"
+      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:254"
     ]
   },
   {
@@ -430,7 +467,7 @@
     "call": "Check update",
     "key": "Check update",
     "places": [
-      "src/tachyon/tabs/updates/initController.ts:795"
+      "src/tachyon/tabs/updates/initController.ts:903"
     ]
   },
   {
@@ -455,6 +492,13 @@
     ]
   },
   {
+    "call": "Checking for updates...",
+    "key": "Checking for updates...",
+    "places": [
+      "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:109"
+    ]
+  },
+  {
     "call": "Checking, please wait",
     "key": "Checking, please wait",
     "places": [
@@ -474,11 +518,11 @@
     "call": "Checking...",
     "key": "Checking...",
     "places": [
-      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:669",
       "src/tachyon/tabs/dashboard/partials/renderSections.ts:322",
       "src/tachyon/tabs/dashboard/partials/renderSections.ts:420",
       "src/tachyon/tabs/dashboard/partials/renderSections.ts:775",
-      "src/tachyon/tabs/dashboard/partials/renderSections.ts:849"
+      "src/tachyon/tabs/dashboard/partials/renderSections.ts:849",
+      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:728"
     ]
   },
   {
@@ -492,17 +536,17 @@
     "call": "Checks failed",
     "key": "Checks failed",
     "places": [
-      "src/tachyon/tabs/diagnostic/helpers/getMeta.ts:26",
-      "src/tachyon/tabs/diagnostic/checks/getCheckItemsMeta.ts:10"
+      "src/tachyon/tabs/diagnostic/checks/getCheckItemsMeta.ts:10",
+      "src/tachyon/tabs/diagnostic/helpers/getMeta.ts:26"
     ]
   },
   {
     "call": "Checks passed",
     "key": "Checks passed",
     "places": [
-      "src/tachyon/tabs/diagnostic/helpers/getMeta.ts:13",
       "src/tachyon/tabs/diagnostic/checks/getCheckItemsMeta.ts:23",
-      "src/tachyon/tabs/diagnostic/checks/runFakeIPCheck.ts:43"
+      "src/tachyon/tabs/diagnostic/checks/runFakeIPCheck.ts:43",
+      "src/tachyon/tabs/diagnostic/helpers/getMeta.ts:13"
     ]
   },
   {
@@ -520,17 +564,26 @@
     ]
   },
   {
+    "call": "Cleaning configuration & reloading...",
+    "key": "Cleaning configuration & reloading...",
+    "places": [
+      "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:126"
+    ]
+  },
+  {
     "call": "Close",
     "key": "Close",
     "places": [
       "src/partials/modal/renderModal.ts:263",
-      "src/tachyon/tabs/diagnostic/initController.ts:1144",
       "src/tachyon/tabs/dashboard/initController.ts:1085",
       "src/tachyon/tabs/monitoring/initController.ts:884",
       "src/tachyon/tabs/monitoring/initController.ts:934",
+      "src/tachyon/tabs/diagnostic/initController.ts:1144",
       "src/tachyon/tabs/diagnostic/partials/renderAiChatModal.ts:212",
-      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:62",
-      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:768"
+      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:155",
+      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:802",
+      "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:416",
+      "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:461"
     ]
   },
   {
@@ -558,6 +611,13 @@
     ]
   },
   {
+    "call": "Comparing versions & fingerprint check...",
+    "key": "Comparing versions & fingerprint check...",
+    "places": [
+      "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:120"
+    ]
+  },
+  {
     "call": "Component update available",
     "key": "Component update available",
     "places": [
@@ -576,8 +636,8 @@
     "key": "Conflict",
     "places": [
       "src/tachyon/methods/custom/getDashboardSections.ts:1569",
-      "src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:141",
-      "src/tachyon/tabs/dashboard/partials/renderSections.ts:583"
+      "src/tachyon/tabs/dashboard/partials/renderSections.ts:583",
+      "src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:141"
     ]
   },
   {
@@ -592,6 +652,13 @@
     "key": "Connected",
     "places": [
       "src/tachyon/tabs/dashboard/partials/renderSections.ts:782"
+    ]
+  },
+  {
+    "call": "Connecting to update server...",
+    "key": "Connecting to update server...",
+    "places": [
+      "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:118"
     ]
   },
   {
@@ -660,6 +727,13 @@
     ]
   },
   {
+    "call": "Custom Domains",
+    "key": "Custom Domains",
+    "places": [
+      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:55"
+    ]
+  },
+  {
     "call": "Dashboard currently unavailable",
     "key": "Dashboard currently unavailable",
     "places": [
@@ -706,6 +780,14 @@
     "key": "DHCP is managed manually",
     "places": [
       "src/tachyon/tabs/diagnostic/checks/getDnsCheckPresentation.ts:36"
+    ]
+  },
+  {
+    "call": "Direct",
+    "key": "Direct",
+    "places": [
+      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:25",
+      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:32"
     ]
   },
   {
@@ -798,6 +880,13 @@
     ]
   },
   {
+    "call": "Downloading package from repository...",
+    "key": "Downloading package from repository...",
+    "places": [
+      "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:130"
+    ]
+  },
+  {
     "call": "Duplicate JSON outbound tag",
     "key": "Duplicate JSON outbound tag",
     "places": [
@@ -833,18 +922,17 @@
     ]
   },
   {
+    "call": "Environment preparation & dependency check...",
+    "key": "Environment preparation & dependency check...",
+    "places": [
+      "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:129"
+    ]
+  },
+  {
     "call": "Expires",
     "key": "Expires",
     "places": [
       "src/tachyon/tabs/dashboard/partials/renderSections.ts:131"
-    ]
-  },
-  {
-    "call": "Failed",
-    "key": "Failed",
-    "places": [
-      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:258",
-      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:754"
     ]
   },
   {
@@ -883,10 +971,10 @@
     "places": [
       "src/tachyon/methods/shell/index.ts:171",
       "src/tachyon/methods/shell/index.ts:178",
-      "src/tachyon/tabs/updates/initController.ts:545",
-      "src/tachyon/tabs/updates/initController.ts:546",
-      "src/tachyon/tabs/updates/initController.ts:608",
-      "src/tachyon/tabs/updates/initController.ts:774"
+      "src/tachyon/tabs/updates/initController.ts:616",
+      "src/tachyon/tabs/updates/initController.ts:617",
+      "src/tachyon/tabs/updates/initController.ts:690",
+      "src/tachyon/tabs/updates/initController.ts:881"
     ]
   },
   {
@@ -900,7 +988,7 @@
     "call": "Failed to parse target list.",
     "key": "Failed to parse target list.",
     "places": [
-      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:116"
+      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:208"
     ]
   },
   {
@@ -914,8 +1002,8 @@
     "call": "Failed to run service check.",
     "key": "Failed to run service check.",
     "places": [
-      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:98",
-      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:787"
+      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:190",
+      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:821"
     ]
   },
   {
@@ -995,11 +1083,25 @@
     ]
   },
   {
+    "call": "Fetching release & commit metadata...",
+    "key": "Fetching release & commit metadata...",
+    "places": [
+      "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:119"
+    ]
+  },
+  {
     "call": "Fetching service targets...",
     "key": "Fetching service targets...",
     "places": [
-      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:34",
-      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:79"
+      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:127",
+      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:171"
+    ]
+  },
+  {
+    "call": "Filter by service:",
+    "key": "Filter by service:",
+    "places": [
+      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:407"
     ]
   },
   {
@@ -1113,7 +1215,7 @@
     "call": "HTTP",
     "key": "HTTP",
     "places": [
-      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:391"
+      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:455"
     ]
   },
   {
@@ -1141,29 +1243,30 @@
     "call": "Install",
     "key": "Install",
     "places": [
-      "src/tachyon/tabs/updates/initController.ts:809"
+      "src/tachyon/tabs/updates/initController.ts:917",
+      "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:405"
     ]
   },
   {
     "call": "Install another build:",
     "key": "Install another build:",
     "places": [
-      "src/tachyon/tabs/updates/initController.ts:1278"
+      "src/tachyon/tabs/updates/initController.ts:1411"
     ]
   },
   {
     "call": "Installed build → Available build",
     "key": "Installed build → Available build",
     "places": [
-      "src/tachyon/tabs/updates/initController.ts:1136"
+      "src/tachyon/tabs/updates/initController.ts:1269"
     ]
   },
   {
     "call": "Installed version is newer than release",
     "key": "Installed version is newer than release",
     "places": [
-      "src/tachyon/tabs/updates/initController.ts:299",
-      "src/tachyon/tabs/updates/initController.ts:1144"
+      "src/tachyon/tabs/updates/initController.ts:341",
+      "src/tachyon/tabs/updates/initController.ts:1277"
     ]
   },
   {
@@ -1645,8 +1748,8 @@
     "call": "Issues detected",
     "key": "Issues detected",
     "places": [
-      "src/tachyon/tabs/diagnostic/helpers/getMeta.ts:20",
-      "src/tachyon/tabs/diagnostic/checks/getCheckItemsMeta.ts:17"
+      "src/tachyon/tabs/diagnostic/checks/getCheckItemsMeta.ts:17",
+      "src/tachyon/tabs/diagnostic/helpers/getMeta.ts:20"
     ]
   },
   {
@@ -1696,15 +1799,15 @@
     "call": "Latest version is installed",
     "key": "Latest version is installed",
     "places": [
-      "src/tachyon/tabs/updates/initController.ts:302",
-      "src/tachyon/tabs/updates/initController.ts:1142"
+      "src/tachyon/tabs/updates/initController.ts:344",
+      "src/tachyon/tabs/updates/initController.ts:1275"
     ]
   },
   {
     "call": "Latest version:",
     "key": "Latest version:",
     "places": [
-      "src/tachyon/tabs/updates/initController.ts:1144"
+      "src/tachyon/tabs/updates/initController.ts:1277"
     ]
   },
   {
@@ -1740,11 +1843,11 @@
     "call": "Loading...",
     "key": "Loading...",
     "places": [
-      "src/tachyon/tabs/updates/initController.ts:986",
-      "src/tachyon/tabs/updates/initController.ts:1001",
-      "src/tachyon/tabs/updates/initController.ts:1019",
-      "src/tachyon/tabs/updates/initController.ts:1033",
-      "src/tachyon/tabs/updates/initController.ts:1047"
+      "src/tachyon/tabs/updates/initController.ts:1119",
+      "src/tachyon/tabs/updates/initController.ts:1134",
+      "src/tachyon/tabs/updates/initController.ts:1152",
+      "src/tachyon/tabs/updates/initController.ts:1166",
+      "src/tachyon/tabs/updates/initController.ts:1180"
     ]
   },
   {
@@ -1931,7 +2034,7 @@
     "call": "No targets found in section configs.",
     "key": "No targets found in section configs.",
     "places": [
-      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:124"
+      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:216"
     ]
   },
   {
@@ -1953,9 +2056,9 @@
     "key": "Not configured",
     "places": [
       "src/tachyon/methods/custom/getDashboardSections.ts:1572",
+      "src/tachyon/tabs/dashboard/partials/renderSections.ts:586",
       "src/tachyon/tabs/diagnostic/checks/runInboundsCheck.ts:46",
-      "src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:152",
-      "src/tachyon/tabs/dashboard/partials/renderSections.ts:586"
+      "src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:152"
     ]
   },
   {
@@ -1986,9 +2089,9 @@
     "places": [
       "src/tachyon/helpers/singBoxVariant.ts:38",
       "src/tachyon/helpers/singBoxVariant.ts:46",
-      "src/tachyon/tabs/updates/initController.ts:1022",
-      "src/tachyon/tabs/updates/initController.ts:1036",
-      "src/tachyon/tabs/updates/initController.ts:1050"
+      "src/tachyon/tabs/updates/initController.ts:1155",
+      "src/tachyon/tabs/updates/initController.ts:1169",
+      "src/tachyon/tabs/updates/initController.ts:1183"
     ]
   },
   {
@@ -2037,8 +2140,8 @@
     "call": "Open",
     "key": "Open",
     "places": [
-      "src/tachyon/tabs/updates/initController.ts:1118",
-      "src/tachyon/tabs/updates/initController.ts:1157"
+      "src/tachyon/tabs/updates/initController.ts:1251",
+      "src/tachyon/tabs/updates/initController.ts:1290"
     ]
   },
   {
@@ -2046,6 +2149,21 @@
     "key": "Open Project Page",
     "places": [
       "src/tachyon/tabs/diagnostic/partials/renderWikiDisclaimer.ts:31"
+    ]
+  },
+  {
+    "call": "Operation failed",
+    "key": "Operation failed",
+    "places": [
+      "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:455"
+    ]
+  },
+  {
+    "call": "Operation in progress...",
+    "key": "Operation in progress...",
+    "places": [
+      "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:107",
+      "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:220"
     ]
   },
   {
@@ -2072,24 +2190,10 @@
     ]
   },
   {
-    "call": "Outbound Route",
-    "key": "Outbound Route",
-    "places": [
-      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:362"
-    ]
-  },
-  {
     "call": "outbounds must be a non-empty array of strings",
     "key": "outbounds must be a non-empty array of strings",
     "places": [
       "src/validators/validateOutboundJson.ts:111"
-    ]
-  },
-  {
-    "call": "Passed",
-    "key": "Passed",
-    "places": [
-      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:243"
     ]
   },
   {
@@ -2113,7 +2217,7 @@
     "key": "Pending",
     "places": [
       "src/tachyon/tabs/diagnostic/diagnostic.store.ts:63",
-      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:446"
+      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:75"
     ]
   },
   {
@@ -2122,6 +2226,13 @@
     "places": [
       "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1106",
       "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1159"
+    ]
+  },
+  {
+    "call": "Please wait, operation is running...",
+    "key": "Please wait, operation is running...",
+    "places": [
+      "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:212"
     ]
   },
   {
@@ -2155,6 +2266,13 @@
     ]
   },
   {
+    "call": "Proxy",
+    "key": "Proxy",
+    "places": [
+      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:29"
+    ]
+  },
+  {
     "call": "Proxy link is unavailable",
     "key": "Proxy link is unavailable",
     "places": [
@@ -2172,7 +2290,7 @@
     "call": "Rebuilt release",
     "key": "Rebuilt release",
     "places": [
-      "src/tachyon/tabs/updates/initController.ts:1138"
+      "src/tachyon/tabs/updates/initController.ts:1271"
     ]
   },
   {
@@ -2193,21 +2311,49 @@
     "call": "Reinstall",
     "key": "Reinstall",
     "places": [
-      "src/tachyon/tabs/updates/initController.ts:898"
+      "src/tachyon/tabs/updates/initController.ts:1031"
+    ]
+  },
+  {
+    "call": "Reloading page in",
+    "key": "Reloading page in",
+    "places": [
+      "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:378"
+    ]
+  },
+  {
+    "call": "Removal completed successfully!",
+    "key": "Removal completed successfully!",
+    "places": [
+      "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:365"
     ]
   },
   {
     "call": "Remove",
     "key": "Remove",
     "places": [
-      "src/tachyon/tabs/updates/initController.ts:854"
+      "src/tachyon/tabs/updates/initController.ts:987"
+    ]
+  },
+  {
+    "call": "Removing",
+    "key": "Removing",
+    "places": [
+      "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:111"
+    ]
+  },
+  {
+    "call": "Removing binaries & package files...",
+    "key": "Removing binaries & package files...",
+    "places": [
+      "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:125"
     ]
   },
   {
     "call": "Resolved IP / DNS",
     "key": "Resolved IP / DNS",
     "places": [
-      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:367"
+      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:431"
     ]
   },
   {
@@ -2237,6 +2383,13 @@
     "places": [
       "src/tachyon/tabs/monitoring/initController.ts:871",
       "src/tachyon/tabs/monitoring/initController.ts:929"
+    ]
+  },
+  {
+    "call": "Route Type",
+    "key": "Route Type",
+    "places": [
+      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:426"
     ]
   },
   {
@@ -2316,8 +2469,8 @@
     "key": "Running",
     "places": [
       "src/tachyon/methods/custom/getDashboardSections.ts:1567",
-      "src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:135",
-      "src/tachyon/tabs/dashboard/partials/renderSections.ts:581"
+      "src/tachyon/tabs/dashboard/partials/renderSections.ts:581",
+      "src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:135"
     ]
   },
   {
@@ -2359,10 +2512,10 @@
     ]
   },
   {
-    "call": "Search domain...",
-    "key": "Search domain...",
+    "call": "Search domain or service...",
+    "key": "Search domain or service...",
     "places": [
-      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:332"
+      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:379"
     ]
   },
   {
@@ -2370,13 +2523,6 @@
     "key": "Secret token for WRITE requests",
     "places": [
       "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:700"
-    ]
-  },
-  {
-    "call": "Section / Target",
-    "key": "Section / Target",
-    "places": [
-      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:357"
     ]
   },
   {
@@ -2444,6 +2590,13 @@
     ]
   },
   {
+    "call": "Service / Target",
+    "key": "Service / Target",
+    "places": [
+      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:421"
+    ]
+  },
+  {
     "call": "Service action failed",
     "key": "Service action failed",
     "places": [
@@ -2453,10 +2606,10 @@
     ]
   },
   {
-    "call": "Service Health Check",
-    "key": "Service Health Check",
+    "call": "Service Availability Check",
+    "key": "Service Availability Check",
     "places": [
-      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:70"
+      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:163"
     ]
   },
   {
@@ -2648,7 +2801,8 @@
     "key": "Status",
     "places": [
       "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:449",
-      "src/tachyon/tabs/dashboard/partials/renderSections.ts:633"
+      "src/tachyon/tabs/dashboard/partials/renderSections.ts:633",
+      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:463"
     ]
   },
   {
@@ -2663,8 +2817,15 @@
     "key": "Stopped",
     "places": [
       "src/tachyon/methods/custom/getDashboardSections.ts:1571",
-      "src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:147",
-      "src/tachyon/tabs/dashboard/partials/renderSections.ts:585"
+      "src/tachyon/tabs/dashboard/partials/renderSections.ts:585",
+      "src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:147"
+    ]
+  },
+  {
+    "call": "Stopping active services...",
+    "key": "Stopping active services...",
+    "places": [
+      "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:124"
     ]
   },
   {
@@ -2812,7 +2973,7 @@
     "call": "TCP",
     "key": "TCP",
     "places": [
-      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:375"
+      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:439"
     ]
   },
   {
@@ -2835,7 +2996,7 @@
     "call": "Testing...",
     "key": "Testing...",
     "places": [
-      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:689"
+      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:85"
     ]
   },
   {
@@ -2885,7 +3046,7 @@
     "call": "TLS",
     "key": "TLS",
     "places": [
-      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:383"
+      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:447"
     ]
   },
   {
@@ -2899,7 +3060,7 @@
     "call": "Total Targets",
     "key": "Total Targets",
     "places": [
-      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:228"
+      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:325"
     ]
   },
   {
@@ -2915,6 +3076,13 @@
     "key": "Traffic Total",
     "places": [
       "src/tachyon/tabs/dashboard/initController.ts:1640"
+    ]
+  },
+  {
+    "call": "Transient connection error",
+    "key": "Transient connection error",
+    "places": [
+      "src/tachyon/tabs/updates/initController.ts:851"
     ]
   },
   {
@@ -2937,6 +3105,14 @@
     "key": "Unavailability timeout",
     "places": [
       "src/tachyon/tabs/dashboard/initController.ts:1233"
+    ]
+  },
+  {
+    "call": "Unavailable",
+    "key": "Unavailable",
+    "places": [
+      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:112",
+      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:327"
     ]
   },
   {
@@ -2974,7 +3150,7 @@
       "src/tachyon/services/systemInfo.service.ts:25",
       "src/tachyon/services/systemInfo.service.ts:28",
       "src/tachyon/services/systemInfo.service.ts:29",
-      "src/tachyon/tabs/updates/initController.ts:337",
+      "src/tachyon/tabs/updates/initController.ts:379",
       "src/tachyon/tabs/diagnostic/checks/runInboundsCheck.ts:25"
     ]
   },
@@ -2997,6 +3173,13 @@
     ]
   },
   {
+    "call": "Unpacking & installing binaries...",
+    "key": "Unpacking & installing binaries...",
+    "places": [
+      "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:131"
+    ]
+  },
+  {
     "call": "Unspecified IP address is not allowed",
     "key": "Unspecified IP address is not allowed",
     "places": [
@@ -3014,28 +3197,35 @@
     "call": "Update",
     "key": "Update",
     "places": [
-      "src/tachyon/tabs/updates/initController.ts:809"
+      "src/tachyon/tabs/updates/initController.ts:917"
+    ]
+  },
+  {
+    "call": "Update completed successfully!",
+    "key": "Update completed successfully!",
+    "places": [
+      "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:366"
     ]
   },
   {
     "call": "Update is available",
     "key": "Update is available",
     "places": [
-      "src/tachyon/tabs/updates/initController.ts:295"
+      "src/tachyon/tabs/updates/initController.ts:337"
     ]
   },
   {
     "call": "Update is available for current release",
     "key": "Update is available for current release",
     "places": [
-      "src/tachyon/tabs/updates/initController.ts:1125"
+      "src/tachyon/tabs/updates/initController.ts:1258"
     ]
   },
   {
     "call": "Update is available:",
     "key": "Update is available:",
     "places": [
-      "src/tachyon/tabs/updates/initController.ts:1104"
+      "src/tachyon/tabs/updates/initController.ts:1237"
     ]
   },
   {
@@ -3045,6 +3235,20 @@
       "src/tachyon/tabs/dashboard/partials/renderSections.ts:218",
       "src/tachyon/tabs/dashboard/partials/renderSections.ts:231",
       "src/tachyon/tabs/dashboard/partials/renderSections.ts:232"
+    ]
+  },
+  {
+    "call": "Updating",
+    "key": "Updating",
+    "places": [
+      "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:113"
+    ]
+  },
+  {
+    "call": "Updating configuration & access permissions...",
+    "key": "Updating configuration & access permissions...",
+    "places": [
+      "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:132"
     ]
   },
   {
@@ -3120,13 +3324,6 @@
       "src/validators/validateUrl.ts:32",
       "src/validators/validateVlessUrl.ts:115",
       "src/validators/validateVmessUrl.ts:66"
-    ]
-  },
-  {
-    "call": "Verdict",
-    "key": "Verdict",
-    "places": [
-      "src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:399"
     ]
   },
   {

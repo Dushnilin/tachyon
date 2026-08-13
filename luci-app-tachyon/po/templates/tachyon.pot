@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-08-12 09:39+0300\n"
-"PO-Revision-Date: 2026-08-12 09:39+0300\n"
+"POT-Creation-Date: 2026-08-13 05:37+0300\n"
+"PO-Revision-Date: 2026-08-13 05:37+0300\n"
 "Last-Translator: Dushnilin <dushnilin@gmail.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -66,8 +66,8 @@ msgstr ""
 msgid "Active Main DNS"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:131
-msgid "Active Sections"
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:223
+msgid "Active Routes"
 msgstr ""
 
 #: src/tachyon/tabs/diagnostic/checks/runNftCheck.ts:106
@@ -134,17 +134,25 @@ msgstr ""
 
 #: src/tachyon/tabs/monitoring/initController.ts:672
 #: src/tachyon/tabs/monitoring/render.ts:40
-#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:322
 msgid "All"
-msgstr ""
-
-#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:143
-msgid "All Profiles"
 msgstr ""
 
 #: src/tachyon/tabs/monitoring/initController.ts:635
 #: src/tachyon/tabs/monitoring/render.ts:49
 msgid "All Routes"
+msgstr ""
+
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:235
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:358
+msgid "All Services"
+msgstr ""
+
+#: src/tachyon/tabs/updates/initController.ts:835
+msgid "Another component action is already running"
+msgstr ""
+
+#: src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:133
+msgid "Applying changes & reloading services..."
 msgstr ""
 
 #: src/tachyon/tabs/diagnostic/initController.ts:995
@@ -153,6 +161,10 @@ msgstr ""
 
 #: src/tachyon/tabs/diagnostic/partials/renderAiChatModal.ts:60
 msgid "Ask Tachyon AI Assistant a question..."
+msgstr ""
+
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:35
+msgid "Auto"
 msgstr ""
 
 #: src/partials/modal/renderModal.ts:286
@@ -167,11 +179,16 @@ msgstr ""
 msgid "Automatically select the fastest node in the current level"
 msgstr ""
 
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:102
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:326
+msgid "Available"
+msgstr ""
+
 #: src/tachyon/tabs/diagnostic/partials/renderAvailableActions.ts:54
 msgid "Available actions"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:273
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:328
 msgid "Avg Latency"
 msgstr ""
 
@@ -235,12 +252,17 @@ msgstr ""
 msgid "Cannot receive checks result"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:762
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:796
 msgid "Check Again"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:665
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:724
 msgid "Check All"
+msgstr ""
+
+#: src/tachyon/tabs/updates/initController.ts:498
+#: src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:363
+msgid "Check completed!"
 msgstr ""
 
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:426
@@ -248,12 +270,12 @@ msgstr ""
 msgid "Check Connection"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:553
-#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:650
-msgid "Check Custom"
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:612
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:709
+msgid "Check Domain"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:547
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:606
 msgid "Check domain or IP (e.g. example.com)..."
 msgstr ""
 
@@ -261,7 +283,7 @@ msgstr ""
 msgid "Check interval"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:162
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:254
 msgid "Check Mode:"
 msgstr ""
 
@@ -269,7 +291,7 @@ msgstr ""
 msgid "Check Services"
 msgstr ""
 
-#: src/tachyon/tabs/updates/initController.ts:795
+#: src/tachyon/tabs/updates/initController.ts:903
 msgid "Check update"
 msgstr ""
 
@@ -285,6 +307,10 @@ msgstr ""
 msgid "Checking Connection..."
 msgstr ""
 
+#: src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:109
+msgid "Checking for updates..."
+msgstr ""
+
 #: src/tachyon/tabs/diagnostic/initController.ts:1552
 #: src/tachyon/tabs/diagnostic/checks/runByedpiCheck.ts:14
 #: src/tachyon/tabs/diagnostic/checks/runDnsCheck.ts:15
@@ -298,11 +324,11 @@ msgstr ""
 msgid "Checking, please wait"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:669
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:322
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:420
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:775
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:849
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:728
 msgid "Checking..."
 msgstr ""
 
@@ -310,14 +336,14 @@ msgstr ""
 msgid "checks"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/helpers/getMeta.ts:26
 #: src/tachyon/tabs/diagnostic/checks/getCheckItemsMeta.ts:10
+#: src/tachyon/tabs/diagnostic/helpers/getMeta.ts:26
 msgid "Checks failed"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/helpers/getMeta.ts:13
 #: src/tachyon/tabs/diagnostic/checks/getCheckItemsMeta.ts:23
 #: src/tachyon/tabs/diagnostic/checks/runFakeIPCheck.ts:43
+#: src/tachyon/tabs/diagnostic/helpers/getMeta.ts:13
 msgid "Checks passed"
 msgstr ""
 
@@ -329,14 +355,20 @@ msgstr ""
 msgid "CIDR must be between 0 and 32 for IPv4 or 0 and 128 for IPv6"
 msgstr ""
 
+#: src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:126
+msgid "Cleaning configuration & reloading..."
+msgstr ""
+
 #: src/partials/modal/renderModal.ts:263
-#: src/tachyon/tabs/diagnostic/initController.ts:1144
 #: src/tachyon/tabs/dashboard/initController.ts:1085
 #: src/tachyon/tabs/monitoring/initController.ts:884
 #: src/tachyon/tabs/monitoring/initController.ts:934
+#: src/tachyon/tabs/diagnostic/initController.ts:1144
 #: src/tachyon/tabs/diagnostic/partials/renderAiChatModal.ts:212
-#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:62
-#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:768
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:155
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:802
+#: src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:416
+#: src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:461
 msgid "Close"
 msgstr ""
 
@@ -355,6 +387,10 @@ msgstr ""
 msgid "Closed"
 msgstr ""
 
+#: src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:120
+msgid "Comparing versions & fingerprint check..."
+msgstr ""
+
 #: src/tachyon/services/core.service.ts:43
 msgid "Component update available"
 msgstr ""
@@ -364,8 +400,8 @@ msgid "compressed"
 msgstr ""
 
 #: src/tachyon/methods/custom/getDashboardSections.ts:1569
-#: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:141
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:583
+#: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:141
 msgid "Conflict"
 msgstr ""
 
@@ -375,6 +411,10 @@ msgstr ""
 
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:782
 msgid "Connected"
+msgstr ""
+
+#: src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:118
+msgid "Connecting to update server..."
 msgstr ""
 
 #: src/tachyon/tabs/monitoring/initController.ts:998
@@ -415,6 +455,10 @@ msgstr ""
 msgid "Custom API Endpoint URL"
 msgstr ""
 
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:55
+msgid "Custom Domains"
+msgstr ""
+
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:44
 msgid "Dashboard currently unavailable"
 msgstr ""
@@ -441,6 +485,11 @@ msgstr ""
 
 #: src/tachyon/tabs/diagnostic/checks/getDnsCheckPresentation.ts:36
 msgid "DHCP is managed manually"
+msgstr ""
+
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:25
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:32
+msgid "Direct"
 msgstr ""
 
 #: src/tachyon/tabs/diagnostic/partials/renderAvailableActions.ts:90
@@ -496,6 +545,10 @@ msgstr ""
 msgid "Downloaded"
 msgstr ""
 
+#: src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:130
+msgid "Downloading package from repository..."
+msgstr ""
+
 #: src/validators/validateOutboundJson.ts:75
 msgid "Duplicate JSON outbound tag"
 msgstr ""
@@ -516,13 +569,12 @@ msgstr ""
 msgid "Enable Smart Detect"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/partials/renderSections.ts:131
-msgid "Expires"
+#: src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:129
+msgid "Environment preparation & dependency check..."
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:258
-#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:754
-msgid "Failed"
+#: src/tachyon/tabs/dashboard/partials/renderSections.ts:131
+msgid "Expires"
 msgstr ""
 
 #: src/tachyon/tabs/diagnostic/initController.ts:1015
@@ -545,10 +597,10 @@ msgstr ""
 
 #: src/tachyon/methods/shell/index.ts:171
 #: src/tachyon/methods/shell/index.ts:178
-#: src/tachyon/tabs/updates/initController.ts:545
-#: src/tachyon/tabs/updates/initController.ts:546
-#: src/tachyon/tabs/updates/initController.ts:608
-#: src/tachyon/tabs/updates/initController.ts:774
+#: src/tachyon/tabs/updates/initController.ts:616
+#: src/tachyon/tabs/updates/initController.ts:617
+#: src/tachyon/tabs/updates/initController.ts:690
+#: src/tachyon/tabs/updates/initController.ts:881
 msgid "Failed to execute"
 msgstr ""
 
@@ -556,7 +608,7 @@ msgstr ""
 msgid "Failed to generate bug report"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:116
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:208
 msgid "Failed to parse target list."
 msgstr ""
 
@@ -564,8 +616,8 @@ msgstr ""
 msgid "Failed to receive response from AI service."
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:98
-#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:787
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:190
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:821
 msgid "Failed to run service check."
 msgstr ""
 
@@ -615,9 +667,17 @@ msgstr ""
 msgid "Fastest"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:34
-#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:79
+#: src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:119
+msgid "Fetching release & commit metadata..."
+msgstr ""
+
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:127
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:171
 msgid "Fetching service targets..."
+msgstr ""
+
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:407
+msgid "Filter by service:"
 msgstr ""
 
 #: src/tachyon/tabs/diagnostic/checks/runInboundsCheck.ts:136
@@ -682,7 +742,7 @@ msgstr ""
 msgid "Host"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:391
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:455
 msgid "HTTP"
 msgstr ""
 
@@ -698,20 +758,21 @@ msgstr ""
 msgid "Idle timeout"
 msgstr ""
 
-#: src/tachyon/tabs/updates/initController.ts:809
+#: src/tachyon/tabs/updates/initController.ts:917
+#: src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:405
 msgid "Install"
 msgstr ""
 
-#: src/tachyon/tabs/updates/initController.ts:1278
+#: src/tachyon/tabs/updates/initController.ts:1411
 msgid "Install another build:"
 msgstr ""
 
-#: src/tachyon/tabs/updates/initController.ts:1136
+#: src/tachyon/tabs/updates/initController.ts:1269
 msgid "Installed build → Available build"
 msgstr ""
 
-#: src/tachyon/tabs/updates/initController.ts:299
-#: src/tachyon/tabs/updates/initController.ts:1144
+#: src/tachyon/tabs/updates/initController.ts:341
+#: src/tachyon/tabs/updates/initController.ts:1277
 msgid "Installed version is newer than release"
 msgstr ""
 
@@ -989,8 +1050,8 @@ msgstr ""
 msgid "Issues"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/helpers/getMeta.ts:20
 #: src/tachyon/tabs/diagnostic/checks/getCheckItemsMeta.ts:17
+#: src/tachyon/tabs/diagnostic/helpers/getMeta.ts:20
 msgid "Issues detected"
 msgstr ""
 
@@ -1019,12 +1080,12 @@ msgstr ""
 msgid "Latency test failed"
 msgstr ""
 
-#: src/tachyon/tabs/updates/initController.ts:302
-#: src/tachyon/tabs/updates/initController.ts:1142
+#: src/tachyon/tabs/updates/initController.ts:344
+#: src/tachyon/tabs/updates/initController.ts:1275
 msgid "Latest version is installed"
 msgstr ""
 
-#: src/tachyon/tabs/updates/initController.ts:1144
+#: src/tachyon/tabs/updates/initController.ts:1277
 msgid "Latest version:"
 msgstr ""
 
@@ -1045,11 +1106,11 @@ msgstr ""
 msgid "Loading connections"
 msgstr ""
 
-#: src/tachyon/tabs/updates/initController.ts:986
-#: src/tachyon/tabs/updates/initController.ts:1001
-#: src/tachyon/tabs/updates/initController.ts:1019
-#: src/tachyon/tabs/updates/initController.ts:1033
-#: src/tachyon/tabs/updates/initController.ts:1047
+#: src/tachyon/tabs/updates/initController.ts:1119
+#: src/tachyon/tabs/updates/initController.ts:1134
+#: src/tachyon/tabs/updates/initController.ts:1152
+#: src/tachyon/tabs/updates/initController.ts:1166
+#: src/tachyon/tabs/updates/initController.ts:1180
 msgid "Loading..."
 msgstr ""
 
@@ -1158,7 +1219,7 @@ msgstr ""
 msgid "No rules use Zapret2"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:124
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:216
 msgid "No targets found in section configs."
 msgstr ""
 
@@ -1171,9 +1232,9 @@ msgid "Nodes"
 msgstr ""
 
 #: src/tachyon/methods/custom/getDashboardSections.ts:1572
+#: src/tachyon/tabs/dashboard/partials/renderSections.ts:586
 #: src/tachyon/tabs/diagnostic/checks/runInboundsCheck.ts:46
 #: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:152
-#: src/tachyon/tabs/dashboard/partials/renderSections.ts:586
 msgid "Not configured"
 msgstr ""
 
@@ -1192,9 +1253,9 @@ msgstr ""
 
 #: src/tachyon/helpers/singBoxVariant.ts:38
 #: src/tachyon/helpers/singBoxVariant.ts:46
-#: src/tachyon/tabs/updates/initController.ts:1022
-#: src/tachyon/tabs/updates/initController.ts:1036
-#: src/tachyon/tabs/updates/initController.ts:1050
+#: src/tachyon/tabs/updates/initController.ts:1155
+#: src/tachyon/tabs/updates/initController.ts:1169
+#: src/tachyon/tabs/updates/initController.ts:1183
 msgid "Not installed"
 msgstr ""
 
@@ -1225,13 +1286,22 @@ msgstr ""
 msgid "Ollama (Local PC / Server)"
 msgstr ""
 
-#: src/tachyon/tabs/updates/initController.ts:1118
-#: src/tachyon/tabs/updates/initController.ts:1157
+#: src/tachyon/tabs/updates/initController.ts:1251
+#: src/tachyon/tabs/updates/initController.ts:1290
 msgid "Open"
 msgstr ""
 
 #: src/tachyon/tabs/diagnostic/partials/renderWikiDisclaimer.ts:31
 msgid "Open Project Page"
+msgstr ""
+
+#: src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:455
+msgid "Operation failed"
+msgstr ""
+
+#: src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:107
+#: src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:220
+msgid "Operation in progress..."
 msgstr ""
 
 #: src/helpers/withTimeout.ts:7
@@ -1248,16 +1318,8 @@ msgstr ""
 msgid "Optional for local LLM"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:362
-msgid "Outbound Route"
-msgstr ""
-
 #: src/validators/validateOutboundJson.ts:111
 msgid "outbounds must be a non-empty array of strings"
-msgstr ""
-
-#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:243
-msgid "Passed"
 msgstr ""
 
 #: src/validators/validatePath.ts:7
@@ -1271,13 +1333,17 @@ msgid "Pause updates"
 msgstr ""
 
 #: src/tachyon/tabs/diagnostic/diagnostic.store.ts:63
-#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:446
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:75
 msgid "Pending"
 msgstr ""
 
 #: src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1106
 #: src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1159
 msgid "Per-Device Routing"
+msgstr ""
+
+#: src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:212
+msgid "Please wait, operation is running..."
 msgstr ""
 
 #: src/tachyon/tabs/diagnostic/checks/runInboundsCheck.ts:19
@@ -1298,6 +1364,10 @@ msgstr ""
 msgid "Protection"
 msgstr ""
 
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:29
+msgid "Proxy"
+msgstr ""
+
 #: src/tachyon/tabs/dashboard/initController.ts:807
 msgid "Proxy link is unavailable"
 msgstr ""
@@ -1306,7 +1376,7 @@ msgstr ""
 msgid "Public host"
 msgstr ""
 
-#: src/tachyon/tabs/updates/initController.ts:1138
+#: src/tachyon/tabs/updates/initController.ts:1271
 msgid "Rebuilt release"
 msgstr ""
 
@@ -1318,15 +1388,31 @@ msgstr ""
 msgid "Refill"
 msgstr ""
 
-#: src/tachyon/tabs/updates/initController.ts:898
+#: src/tachyon/tabs/updates/initController.ts:1031
 msgid "Reinstall"
 msgstr ""
 
-#: src/tachyon/tabs/updates/initController.ts:854
+#: src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:378
+msgid "Reloading page in"
+msgstr ""
+
+#: src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:365
+msgid "Removal completed successfully!"
+msgstr ""
+
+#: src/tachyon/tabs/updates/initController.ts:987
 msgid "Remove"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:367
+#: src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:111
+msgid "Removing"
+msgstr ""
+
+#: src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:125
+msgid "Removing binaries & package files..."
+msgstr ""
+
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:431
 msgid "Resolved IP / DNS"
 msgstr ""
 
@@ -1345,6 +1431,10 @@ msgstr ""
 #: src/tachyon/tabs/monitoring/initController.ts:871
 #: src/tachyon/tabs/monitoring/initController.ts:929
 msgid "Route"
+msgstr ""
+
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:426
+msgid "Route Type"
 msgstr ""
 
 #: src/tachyon/tabs/diagnostic/checks/runInboundsCheck.ts:103
@@ -1390,8 +1480,8 @@ msgid "Run doctor repair"
 msgstr ""
 
 #: src/tachyon/methods/custom/getDashboardSections.ts:1567
-#: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:135
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:581
+#: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:135
 msgid "Running"
 msgstr ""
 
@@ -1418,16 +1508,12 @@ msgstr ""
 msgid "Search"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:332
-msgid "Search domain..."
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:379
+msgid "Search domain or service..."
 msgstr ""
 
 #: src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:700
 msgid "Secret token for WRITE requests"
-msgstr ""
-
-#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:357
-msgid "Section / Target"
 msgstr ""
 
 #: src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1078
@@ -1467,14 +1553,18 @@ msgstr ""
 msgid "server_port must be a number from 1 to 65535"
 msgstr ""
 
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:421
+msgid "Service / Target"
+msgstr ""
+
 #: src/tachyon/methods/shell/index.ts:401
 #: src/tachyon/methods/shell/index.ts:422
 #: src/tachyon/tabs/diagnostic/initController.ts:605
 msgid "Service action failed"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:70
-msgid "Service Health Check"
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:163
+msgid "Service Availability Check"
 msgstr ""
 
 #: src/tachyon/tabs/dashboard/initController.ts:1666
@@ -1585,6 +1675,7 @@ msgstr ""
 
 #: src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:449
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:633
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:463
 msgid "Status"
 msgstr ""
 
@@ -1593,9 +1684,13 @@ msgid "Stop Tachyon"
 msgstr ""
 
 #: src/tachyon/methods/custom/getDashboardSections.ts:1571
-#: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:147
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:585
+#: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:147
 msgid "Stopped"
+msgstr ""
+
+#: src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:124
+msgid "Stopping active services..."
 msgstr ""
 
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:146
@@ -1679,7 +1774,7 @@ msgstr ""
 msgid "Tailscale endpoint"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:375
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:439
 msgid "TCP"
 msgstr ""
 
@@ -1693,7 +1788,7 @@ msgstr ""
 msgid "Testing URL"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:689
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:85
 msgid "Testing..."
 msgstr ""
 
@@ -1722,7 +1817,7 @@ msgstr ""
 msgid "tiny"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:383
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:447
 msgid "TLS"
 msgstr ""
 
@@ -1730,7 +1825,7 @@ msgstr ""
 msgid "Tolerance"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:228
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:325
 msgid "Total Targets"
 msgstr ""
 
@@ -1741,6 +1836,10 @@ msgstr ""
 
 #: src/tachyon/tabs/dashboard/initController.ts:1640
 msgid "Traffic Total"
+msgstr ""
+
+#: src/tachyon/tabs/updates/initController.ts:851
+msgid "Transient connection error"
 msgstr ""
 
 #: src/tachyon/tabs/diagnostic/partials/renderWikiDisclaimer.ts:25
@@ -1754,6 +1853,11 @@ msgstr ""
 
 #: src/tachyon/tabs/dashboard/initController.ts:1233
 msgid "Unavailability timeout"
+msgstr ""
+
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:112
+#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:327
+msgid "Unavailable"
 msgstr ""
 
 #: src/tachyon/tabs/diagnostic/checks/runByedpiCheck.ts:96
@@ -1778,7 +1882,7 @@ msgstr ""
 #: src/tachyon/services/systemInfo.service.ts:25
 #: src/tachyon/services/systemInfo.service.ts:28
 #: src/tachyon/services/systemInfo.service.ts:29
-#: src/tachyon/tabs/updates/initController.ts:337
+#: src/tachyon/tabs/updates/initController.ts:379
 #: src/tachyon/tabs/diagnostic/checks/runInboundsCheck.ts:25
 msgid "unknown"
 msgstr ""
@@ -1795,6 +1899,10 @@ msgstr ""
 msgid "Unknown error"
 msgstr ""
 
+#: src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:131
+msgid "Unpacking & installing binaries..."
+msgstr ""
+
 #: src/validators/validateSubnet.ts:17
 msgid "Unspecified IP address is not allowed"
 msgstr ""
@@ -1803,19 +1911,23 @@ msgstr ""
 msgid "Unstable"
 msgstr ""
 
-#: src/tachyon/tabs/updates/initController.ts:809
+#: src/tachyon/tabs/updates/initController.ts:917
 msgid "Update"
 msgstr ""
 
-#: src/tachyon/tabs/updates/initController.ts:295
+#: src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:366
+msgid "Update completed successfully!"
+msgstr ""
+
+#: src/tachyon/tabs/updates/initController.ts:337
 msgid "Update is available"
 msgstr ""
 
-#: src/tachyon/tabs/updates/initController.ts:1125
+#: src/tachyon/tabs/updates/initController.ts:1258
 msgid "Update is available for current release"
 msgstr ""
 
-#: src/tachyon/tabs/updates/initController.ts:1104
+#: src/tachyon/tabs/updates/initController.ts:1237
 msgid "Update is available:"
 msgstr ""
 
@@ -1823,6 +1935,14 @@ msgstr ""
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:231
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:232
 msgid "Update subscriptions"
+msgstr ""
+
+#: src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:113
+msgid "Updating"
+msgstr ""
+
+#: src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:132
+msgid "Updating configuration & access permissions..."
 msgstr ""
 
 #: src/tachyon/tabs/dashboard/initController.ts:1629
@@ -1874,10 +1994,6 @@ msgstr ""
 #: src/validators/validateVlessUrl.ts:115
 #: src/validators/validateVmessUrl.ts:66
 msgid "Valid"
-msgstr ""
-
-#: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:399
-msgid "Verdict"
 msgstr ""
 
 #: src/tachyon/tabs/diagnostic/initController.ts:817
