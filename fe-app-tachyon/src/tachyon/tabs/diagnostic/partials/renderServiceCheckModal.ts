@@ -258,7 +258,7 @@ export function renderServiceCheckModal() {
           ],
         );
 
-        // Extract unique sections for filter tabs
+        // Extract unique sections for filter dropdown
         const sectionNames = Array.from(new Set(targets.map((t) => t.section)));
         let activeFilter = 'ALL';
         let searchQuery = '';
@@ -343,57 +343,35 @@ export function renderServiceCheckModal() {
           [progressBarInner],
         );
 
-        // Filter Tabs Toolbar
-        const createFilterTab = (label: string, sectionKey: string) => {
-          const isActive = activeFilter === sectionKey;
-          const targetCount =
-            sectionKey === 'ALL'
-              ? targets.length
-              : targets.filter((t) => t.section === sectionKey).length;
+        // Section Filter Dropdown (compact select replacing noisy button grid)
+        const sectionSelect = E(
+          'select',
+          {
+            class: 'cbi-input-select',
+            style:
+              'padding: 4px 8px; font-size: 12px; border-radius: 4px; max-width: 220px;',
+          },
+          [
+            E(
+              'option',
+              { value: 'ALL' },
+              `${_('All Services')} (${targets.length})`,
+            ),
+            ...sectionNames.map((sec) => {
+              const count = targets.filter((t) => t.section === sec).length;
+              return E(
+                'option',
+                { value: sec },
+                `${formatSectionName(sec)} (${count})`,
+              );
+            }),
+          ],
+        ) as HTMLSelectElement;
 
-          const badge = E(
-            'span',
-            {
-              class: 'badge',
-              style:
-                'margin-left: 6px; padding: 1px 6px; font-size: 10px; opacity: 0.85; border-radius: 10px; background: var(--border-color, rgba(128,128,128,0.3)); font-weight: bold;',
-            },
-            `${targetCount}`,
-          );
-
-          const btn = E(
-            'button',
-            {
-              type: 'button',
-              class: `cbi-button ${isActive ? 'cbi-button-action' : 'cbi-button-neutral'}`,
-              style:
-                'padding: 3px 10px; font-size: 12px; border-radius: 14px; display: inline-flex; align-items: center;',
-            },
-            [E('span', {}, label), badge],
-          );
-          btn.onclick = () => {
-            activeFilter = sectionKey;
-            updateFilterTabs();
-            applyTableFilter();
-          };
-          return btn;
+        sectionSelect.onchange = () => {
+          activeFilter = sectionSelect.value;
+          applyTableFilter();
         };
-
-        const filterTabsContainer = E('div', {
-          style:
-            'display: flex; gap: 6px; flex-wrap: wrap; align-items: center;',
-        });
-
-        const updateFilterTabs = () => {
-          filterTabsContainer.innerHTML = '';
-          filterTabsContainer.appendChild(createFilterTab(_('All'), 'ALL'));
-          sectionNames.forEach((sec) => {
-            filterTabsContainer.appendChild(
-              createFilterTab(formatSectionName(sec), sec),
-            );
-          });
-        };
-        updateFilterTabs();
 
         // Search Box
         const searchInput = E('input', {
@@ -415,7 +393,24 @@ export function renderServiceCheckModal() {
             style:
               'display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; gap: 10px; flex-wrap: wrap;',
           },
-          [filterTabsContainer, searchInput],
+          [
+            E(
+              'div',
+              {
+                style:
+                  'display: flex; gap: 8px; align-items: center; flex-wrap: wrap;',
+              },
+              [
+                E(
+                  'span',
+                  { style: 'font-size: 12px; opacity: 0.8;' },
+                  _('Filter by service:'),
+                ),
+                sectionSelect,
+              ],
+            ),
+            searchInput,
+          ],
         );
 
         // Table Container
@@ -506,24 +501,19 @@ export function renderServiceCheckModal() {
         }[] = [];
 
         targets.forEach((item, index) => {
-          const rowClass =
-            index % 2 === 0 ? 'cbi-rowstyle-1' : 'cbi-rowstyle-2';
+          const rowClass = index % 2 === 0 ? 'cbi-rowstyle-1' : 'cbi-rowstyle-2';
           const badge = renderStatusBadge('', false, true);
 
           const tr = E('tr', { class: `tr ${rowClass}` }, [
-            E(
-              'td',
-              { class: 'td', style: 'word-break: break-all; padding: 8px;' },
-              [
-                E(
-                  'span',
-                  { style: 'font-weight: 600; font-size: 12px;' },
-                  formatSectionName(item.section),
-                ),
-                E('br'),
-                E('small', { style: 'opacity: 0.8;' }, item.domain),
-              ],
-            ),
+            E('td', { class: 'td', style: 'word-break: break-all; padding: 8px;' }, [
+              E(
+                'span',
+                { style: 'font-weight: 600; font-size: 12px;' },
+                formatSectionName(item.section),
+              ),
+              E('br'),
+              E('small', { style: 'opacity: 0.8;' }, item.domain),
+            ]),
             E('td', { class: 'td', style: 'font-size: 12px; padding: 8px;' }, [
               E(
                 'span',
@@ -541,33 +531,20 @@ export function renderServiceCheckModal() {
             ]),
             E(
               'td',
-              {
-                class: 'td',
-                style: 'text-align: right; font-size: 12px; padding: 8px 4px;',
-              },
+              { class: 'td', style: 'text-align: right; font-size: 12px; padding: 8px 4px;' },
               '-',
             ),
             E(
               'td',
-              {
-                class: 'td',
-                style: 'text-align: right; font-size: 12px; padding: 8px 4px;',
-              },
+              { class: 'td', style: 'text-align: right; font-size: 12px; padding: 8px 4px;' },
               '-',
             ),
             E(
               'td',
-              {
-                class: 'td',
-                style: 'text-align: right; font-size: 12px; padding: 8px 4px;',
-              },
+              { class: 'td', style: 'text-align: right; font-size: 12px; padding: 8px 4px;' },
               '-',
             ),
-            E(
-              'td',
-              { class: 'td', style: 'text-align: center; padding: 8px 6px;' },
-              badge,
-            ),
+            E('td', { class: 'td', style: 'text-align: center; padding: 8px 6px;' }, badge),
           ]);
 
           rowMap.push({ target: item, tr });
@@ -582,9 +559,7 @@ export function renderServiceCheckModal() {
               !searchQuery ||
               target.domain.toLowerCase().includes(searchQuery) ||
               target.section.toLowerCase().includes(searchQuery) ||
-              formatSectionName(target.section)
-                .toLowerCase()
-                .includes(searchQuery);
+              formatSectionName(target.section).toLowerCase().includes(searchQuery);
             tr.style.display = matchesSection && matchesSearch ? '' : 'none';
           });
         };
@@ -665,10 +640,7 @@ export function renderServiceCheckModal() {
                     const customTr = E('tr', { class: 'tr cbi-rowstyle-1' }, [
                       E(
                         'td',
-                        {
-                          class: 'td',
-                          style: 'word-break: break-all; padding: 8px;',
-                        },
+                        { class: 'td', style: 'word-break: break-all; padding: 8px;' },
                         [
                           E(
                             'span',
@@ -679,65 +651,39 @@ export function renderServiceCheckModal() {
                           E('small', {}, cItem.domain),
                         ],
                       ),
+                      E('td', { class: 'td', style: 'font-size: 12px; padding: 8px;' }, [
+                        E(
+                          'span',
+                          {
+                            class: 'badge cbi-value-title',
+                            style: 'font-size: 11px; padding: 2px 6px;',
+                          },
+                          formatRouteType(cItem.route_type),
+                        ),
+                      ]),
+                      E('td', { class: 'td', style: 'font-size: 12px; padding: 8px;' }, [
+                        cItem.ip || '?',
+                        E('br'),
+                        E('small', {}, `${cItem.dns_ms}ms`),
+                      ]),
                       E(
                         'td',
-                        {
-                          class: 'td',
-                          style: 'font-size: 12px; padding: 8px;',
-                        },
-                        [
-                          E(
-                            'span',
-                            {
-                              class: 'badge cbi-value-title',
-                              style: 'font-size: 11px; padding: 2px 6px;',
-                            },
-                            formatRouteType(cItem.route_type),
-                          ),
-                        ],
-                      ),
-                      E(
-                        'td',
-                        {
-                          class: 'td',
-                          style: 'font-size: 12px; padding: 8px;',
-                        },
-                        [
-                          cItem.ip || '?',
-                          E('br'),
-                          E('small', {}, `${cItem.dns_ms}ms`),
-                        ],
-                      ),
-                      E(
-                        'td',
-                        {
-                          class: 'td',
-                          style: 'text-align: right; padding: 8px 4px;',
-                        },
+                        { class: 'td', style: 'text-align: right; padding: 8px 4px;' },
                         cItem.tcp_ms > 0 ? `${cItem.tcp_ms}` : '-',
                       ),
                       E(
                         'td',
-                        {
-                          class: 'td',
-                          style: 'text-align: right; padding: 8px 4px;',
-                        },
+                        { class: 'td', style: 'text-align: right; padding: 8px 4px;' },
                         cItem.tls_ms > 0 ? `${cItem.tls_ms}` : '-',
                       ),
                       E(
                         'td',
-                        {
-                          class: 'td',
-                          style: 'text-align: right; padding: 8px 4px;',
-                        },
+                        { class: 'td', style: 'text-align: right; padding: 8px 4px;' },
                         cItem.http_ms > 0 ? `${cItem.http_ms}` : '-',
                       ),
                       E(
                         'td',
-                        {
-                          class: 'td',
-                          style: 'text-align: center; padding: 8px 6px;',
-                        },
+                        { class: 'td', style: 'text-align: center; padding: 8px 6px;' },
                         cBadge,
                       ),
                     ]);
