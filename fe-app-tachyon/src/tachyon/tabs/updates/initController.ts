@@ -509,6 +509,8 @@ async function applyCompletedComponentAction({
     }
 
     const status = result.status || null;
+    const hasUpdate =
+      status === 'outdated' || status === 'outdated_same_release';
 
     if (
       status === 'latest' ||
@@ -535,7 +537,19 @@ async function applyCompletedComponentAction({
     if (notify) {
       showToast(getCheckToastMessage(status), 'success');
     }
-    modalController?.completeSuccess(getCheckToastMessage(status));
+
+    if (hasUpdate) {
+      const installButton = getComponentInstallAction(result.component);
+      modalController?.completeSuccess(getCheckToastMessage(status), {
+        autoCloseMs: 0,
+        installText: installButton.text,
+        onInstall: () => {
+          void handleComponentAction(installButton);
+        },
+      });
+    } else {
+      modalController?.completeSuccess(getCheckToastMessage(status));
+    }
     return;
   }
 
@@ -905,6 +919,31 @@ function getInstallAction(
     component,
     action: 'install',
   };
+}
+
+function getComponentInstallKey(
+  component: Tachyon.ComponentName,
+): UpdatesActionKey {
+  switch (component) {
+    case 'tachyon':
+      return 'tachyonInstall';
+    case 'sing_box':
+      return 'singBoxInstall';
+    case 'zapret':
+      return 'zapretInstall';
+    case 'zapret2':
+      return 'zapret2Install';
+    case 'byedpi':
+      return 'byedpiInstall';
+  }
+}
+
+function getComponentInstallAction(
+  component: Tachyon.ComponentName,
+): ComponentActionButton {
+  const isInstalled = !isNotInstalled(getComponentCurrentVersion(component));
+  const key = getComponentInstallKey(component);
+  return getInstallAction(component, key, isInstalled);
 }
 
 function getInstalledUpdateActions(

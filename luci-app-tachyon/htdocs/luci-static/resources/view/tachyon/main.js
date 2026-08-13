@@ -15387,6 +15387,18 @@ function showUpdateProgressModal(options) {
           }
         }, 1e3);
       } else {
+        const actionButtons = [];
+        if (opts?.onInstall) {
+          const installBtn = renderButton({
+            classNames: ["cbi-button-save"],
+            text: opts.installText || _("Install"),
+            onClick: () => {
+              controller.close();
+              opts.onInstall();
+            }
+          });
+          actionButtons.push(installBtn);
+        }
         const closeBtn = renderButton({
           classNames: ["cbi-button-apply"],
           text: _("Close"),
@@ -15394,11 +15406,13 @@ function showUpdateProgressModal(options) {
             controller.close();
           }
         });
-        actionButtonContainer.replaceChildren(closeBtn);
-        const autoCloseMs = opts?.autoCloseMs ?? (isCheckAction ? 1e3 : 2200);
+        actionButtons.push(closeBtn);
+        actionButtonContainer.replaceChildren(...actionButtons);
+        const defaultAutoCloseMs = opts?.onInstall ? 0 : isCheckAction ? 1200 : 1200;
+        const autoCloseMs = opts?.autoCloseMs ?? defaultAutoCloseMs;
         if (autoCloseMs > 0) {
           setTimeout(() => {
-            if (activeModalController === controller) {
+            if (activeModalController === controller || activeModalController === null) {
               controller.close();
             }
           }, autoCloseMs);
@@ -15760,6 +15774,7 @@ async function applyCompletedComponentAction({
       preserveCheckResultsOnNextMount = true;
     }
     const status = result.status || null;
+    const hasUpdate = status === "outdated" || status === "outdated_same_release";
     if (status === "latest" || status === "outdated" || status === "dev" || status === "outdated_same_release") {
       setCheckResult(
         result.component,
@@ -15779,7 +15794,18 @@ async function applyCompletedComponentAction({
     if (notify) {
       showToast(getCheckToastMessage(status), "success");
     }
-    modalController?.completeSuccess(getCheckToastMessage(status));
+    if (hasUpdate) {
+      const installButton = getComponentInstallAction(result.component);
+      modalController?.completeSuccess(getCheckToastMessage(status), {
+        autoCloseMs: 0,
+        installText: installButton.text,
+        onInstall: () => {
+          void handleComponentAction(installButton);
+        }
+      });
+    } else {
+      modalController?.completeSuccess(getCheckToastMessage(status));
+    }
     return;
   }
   if (result.action === "install" || result.action === "reinstall" || result.action.startsWith("install_")) {
@@ -16066,6 +16092,25 @@ function getInstallAction(component, key, installed) {
     component,
     action: "install"
   };
+}
+function getComponentInstallKey(component) {
+  switch (component) {
+    case "tachyon":
+      return "tachyonInstall";
+    case "sing_box":
+      return "singBoxInstall";
+    case "zapret":
+      return "zapretInstall";
+    case "zapret2":
+      return "zapret2Install";
+    case "byedpi":
+      return "byedpiInstall";
+  }
+}
+function getComponentInstallAction(component) {
+  const isInstalled = !isNotInstalled(getComponentCurrentVersion(component));
+  const key = getComponentInstallKey(component);
+  return getInstallAction(component, key, isInstalled);
 }
 function getInstalledUpdateActions(component, checkKey, installKey, installed = true) {
   if (!installed) {

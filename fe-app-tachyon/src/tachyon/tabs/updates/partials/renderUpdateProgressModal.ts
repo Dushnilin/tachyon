@@ -1,4 +1,3 @@
-import { showToast } from '../../../../helpers/showToast';
 import { renderCheckIcon24, renderXIcon24 } from '../../../../icons';
 import { renderButton } from '../../../../partials';
 import { Tachyon } from '../../../types';
@@ -13,6 +12,13 @@ export interface UpdateProgressModalOptions {
   targetSha?: string;
 }
 
+export interface CompleteSuccessOptions {
+  autoCloseMs?: number;
+  reloadPage?: boolean;
+  onInstall?: () => void;
+  installText?: string;
+}
+
 export interface UpdateProgressModalController {
   updateStep: (stepIndex: number, statusText?: string) => void;
   updateStatus: (statusText: string) => void;
@@ -22,10 +28,7 @@ export interface UpdateProgressModalController {
     currentSha?: string;
     targetSha?: string;
   }) => void;
-  completeSuccess: (
-    message?: string,
-    options?: { autoCloseMs?: number; reloadPage?: boolean },
-  ) => void;
+  completeSuccess: (message?: string, options?: CompleteSuccessOptions) => void;
   completeError: (errorMessage: string) => void;
   close: () => void;
 }
@@ -338,10 +341,7 @@ export function showUpdateProgressModal(
       };
       titleBadgeEl.textContent = renderVersionBadgeText(currentModalVersions);
     },
-    completeSuccess: (
-      message?: string,
-      opts?: { autoCloseMs?: number; reloadPage?: boolean },
-    ) => {
+    completeSuccess: (message?: string, opts?: CompleteSuccessOptions) => {
       isCompleted = true;
       cleanupTimers();
 
@@ -397,6 +397,20 @@ export function showUpdateProgressModal(
           }
         }, 1000);
       } else {
+        const actionButtons: HTMLElement[] = [];
+
+        if (opts?.onInstall) {
+          const installBtn = renderButton({
+            classNames: ['cbi-button-save'],
+            text: opts.installText || _('Install'),
+            onClick: () => {
+              controller.close();
+              opts.onInstall!();
+            },
+          });
+          actionButtons.push(installBtn);
+        }
+
         const closeBtn = renderButton({
           classNames: ['cbi-button-apply'],
           text: _('Close'),
@@ -404,13 +418,22 @@ export function showUpdateProgressModal(
             controller.close();
           },
         });
+        actionButtons.push(closeBtn);
 
-        actionButtonContainer.replaceChildren(closeBtn);
+        actionButtonContainer.replaceChildren(...actionButtons);
 
-        const autoCloseMs = opts?.autoCloseMs ?? (isCheckAction ? 1000 : 2200);
+        const defaultAutoCloseMs = opts?.onInstall
+          ? 0
+          : isCheckAction
+            ? 1200
+            : 1200;
+        const autoCloseMs = opts?.autoCloseMs ?? defaultAutoCloseMs;
         if (autoCloseMs > 0) {
           setTimeout(() => {
-            if (activeModalController === controller) {
+            if (
+              activeModalController === controller ||
+              activeModalController === null
+            ) {
               controller.close();
             }
           }, autoCloseMs);
