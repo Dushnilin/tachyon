@@ -20,7 +20,13 @@ trap cleanup EXIT
 
 fail() {
   printf 'FAIL: %s\n' "$1" >&2
+  ls -la "$WORK_DIR" >&2 || true
   exit 1
+}
+
+assert_stale_uc_ready() {
+  [ -f "$STALE_UC" ] || fail "stale.uc is missing right before ucode runs"
+  [ -s "$STALE_UC" ] || fail "stale.uc is empty right before ucode runs"
 }
 
 # ── the identity check exists and is used ────────────────────────────────────
@@ -77,6 +83,7 @@ print((length(stale_calls) > 0 ? "stale" : "running") + "\n");
 DRIVER
 
 # A live worker is not stale.
+assert_stale_uc_ready
 ln -s /bin/sleep "$WORK_DIR/component-action-worker"
 "$WORK_DIR/component-action-worker" 30 &
 worker_pid=$!
