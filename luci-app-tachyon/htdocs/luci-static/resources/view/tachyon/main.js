@@ -10036,13 +10036,83 @@ function renderRunAction({
 }
 
 // src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts
+function formatRouteType(routeType) {
+  if (!routeType) return _("Direct");
+  const clean = routeType.trim();
+  if (clean === "connection" || clean === "proxy" || clean === "outbound") {
+    return _("Proxy");
+  }
+  if (clean === "direct") {
+    return _("Direct");
+  }
+  if (clean === "auto") {
+    return _("Auto");
+  }
+  if (clean.startsWith("zapret2")) {
+    return clean.replace(/^zapret2/, "Zapret 2");
+  }
+  if (clean.startsWith("zapret")) {
+    return clean.replace(/^zapret/, "Zapret");
+  }
+  if (clean.startsWith("byedpi")) {
+    return clean.replace(/^byedpi/, "ByeDPI");
+  }
+  return clean;
+}
+function formatSectionName(name) {
+  if (name === "\u0421\u0432\u043E\u0438 \u0434\u043E\u043C\u0435\u043D\u044B") {
+    return _("Custom Domains");
+  }
+  return name;
+}
+function renderStatusBadge(statusClass, isTesting = false, isPending = false) {
+  if (isPending) {
+    return E(
+      "span",
+      {
+        class: "badge cbi-value-title",
+        style: "opacity: 0.6; font-size: 11px; padding: 2px 8px;"
+      },
+      _("Pending")
+    );
+  }
+  if (isTesting) {
+    return E(
+      "span",
+      {
+        class: "badge cbi-button-action",
+        style: "font-size: 11px; padding: 2px 8px;"
+      },
+      _("Testing...")
+    );
+  }
+  const cleanStatus = statusClass || "";
+  const isOk = cleanStatus.toUpperCase().includes("OK") || cleanStatus === "200" || cleanStatus === "OK";
+  if (isOk) {
+    return E(
+      "span",
+      {
+        class: "badge cbi-button-save",
+        style: "font-weight: bold; font-size: 11px; padding: 2px 8px;"
+      },
+      _("Available")
+    );
+  }
+  return E(
+    "span",
+    {
+      class: "badge cbi-button-reset",
+      style: "font-weight: bold; font-size: 11px; padding: 2px 8px;"
+    },
+    cleanStatus || _("Unavailable")
+  );
+}
 function renderServiceCheckModal() {
-  let currentTargetMode = "active";
   const container = E(
     "div",
     {
       class: "tachyon-service-check-modal-wrapper",
-      style: "width: 100%; max-width: 820px; box-sizing: border-box;"
+      style: "width: 100%; box-sizing: border-box;"
     },
     [
       E(
@@ -10062,14 +10132,14 @@ function renderServiceCheckModal() {
   );
   const modalContent = E(
     "div",
-    { style: "width: 100%; max-width: 820px; box-sizing: border-box;" },
+    { style: "width: 100%; box-sizing: border-box;" },
     [
       container,
       E(
         "div",
         {
           id: "tachyon-service-check-footer",
-          style: "margin-top: 15px; display: flex; justify-content: space-between; align-items: center; gap: 10px; border-top: 1px solid var(--border-color, rgba(255,255,255,0.15)); padding-top: 12px; flex-wrap: wrap;"
+          style: "margin-top: 15px; display: flex; justify-content: space-between; align-items: center; gap: 10px; border-top: 1px solid var(--border-color, rgba(128,128,128,0.2)); padding-top: 12px; flex-wrap: wrap;"
         },
         [
           renderButton({
@@ -10080,9 +10150,8 @@ function renderServiceCheckModal() {
       )
     ]
   );
-  ui.showModal(_("Service Health Check"), modalContent);
+  ui.showModal(_("Service Availability Check"), modalContent);
   const loadTargets = (targetMode) => {
-    currentTargetMode = targetMode;
     container.innerHTML = "";
     container.appendChild(
       E(
@@ -10099,7 +10168,7 @@ function renderServiceCheckModal() {
         container.appendChild(
           E(
             "p",
-            { style: "color: #dc3545;" },
+            { style: "color: var(--color-danger, #dc3545);" },
             _("Failed to run service check.")
           )
         );
@@ -10116,7 +10185,7 @@ function renderServiceCheckModal() {
         container.appendChild(
           E(
             "p",
-            { style: "color: #dc3545;" },
+            { style: "color: var(--color-danger, #dc3545);" },
             _("Failed to parse target list.")
           )
         );
@@ -10129,32 +10198,32 @@ function renderServiceCheckModal() {
         return;
       }
       const activeSectionsBtn = renderButton({
-        text: _("Active Sections"),
+        text: _("Active Routes"),
         classNames: [
           targetMode === "active" ? "cbi-button-action" : "cbi-button-neutral"
         ],
         onClick: () => loadTargets("active")
       });
       activeSectionsBtn.style.fontSize = "12px";
-      activeSectionsBtn.style.padding = "3px 12px";
+      activeSectionsBtn.style.padding = "4px 12px";
       const allProfilesBtn = renderButton({
-        text: _("All Profiles"),
+        text: _("All Services"),
         classNames: [
           targetMode === "all" ? "cbi-button-action" : "cbi-button-neutral"
         ],
         onClick: () => loadTargets("all")
       });
       allProfilesBtn.style.fontSize = "12px";
-      allProfilesBtn.style.padding = "3px 12px";
+      allProfilesBtn.style.padding = "4px 12px";
       const modeSwitcherBar = E(
         "div",
         {
-          style: "display: flex; gap: 8px; align-items: center; margin-bottom: 12px; border-bottom: 1px solid var(--border-color, rgba(255,255,255,0.1)); padding-bottom: 8px;"
+          style: "display: flex; gap: 10px; align-items: center; margin-bottom: 14px; border-bottom: 1px solid var(--border-color, rgba(128,128,128,0.2)); padding-bottom: 10px;"
         },
         [
           E(
             "span",
-            { style: "font-weight: 600; font-size: 12px; opacity: 0.8;" },
+            { style: "font-weight: 600; font-size: 13px; opacity: 0.9;" },
             _("Check Mode:")
           ),
           activeSectionsBtn,
@@ -10165,108 +10234,69 @@ function renderServiceCheckModal() {
       let activeFilter = "ALL";
       let searchQuery2 = "";
       const totalStatEl = E(
-        "div",
+        "b",
         {
-          class: "stat-val",
-          style: "font-size: 18px; font-weight: bold; margin-top: 2px;"
+          style: "font-size: 18px; display: block; margin-top: 2px;"
         },
         `${targets.length}`
       );
       const passedStatEl = E(
-        "div",
+        "b",
         {
-          class: "stat-val",
-          style: "font-size: 18px; font-weight: bold; color: #28a745; margin-top: 2px;"
+          style: "font-size: 18px; color: var(--color-success, #28a745); display: block; margin-top: 2px;"
         },
         "0"
       );
       const failedStatEl = E(
-        "div",
+        "b",
         {
-          class: "stat-val",
-          style: "font-size: 18px; font-weight: bold; color: #dc3545; margin-top: 2px;"
+          style: "font-size: 18px; color: var(--color-danger, #dc3545); display: block; margin-top: 2px;"
         },
         "0"
       );
       const latencyStatEl = E(
-        "div",
+        "b",
         {
-          class: "stat-val",
-          style: "font-size: 18px; font-weight: bold; color: #17a2b8; margin-top: 2px;"
+          style: "font-size: 18px; color: var(--color-info, #17a2b8); display: block; margin-top: 2px;"
         },
         "-"
       );
+      const createStatCard = (title, valueEl) => {
+        return E(
+          "div",
+          {
+            class: "cbi-value",
+            style: "flex: 1 1 110px; min-width: 100px; padding: 8px 10px; border: 1px solid var(--border-color, rgba(128,128,128,0.25)); border-radius: 6px; text-align: center; background: var(--background-color-secondary, rgba(128,128,128,0.05)); margin: 0; box-sizing: border-box;"
+          },
+          [
+            E(
+              "small",
+              { style: "display: block; opacity: 0.75; font-size: 11px;" },
+              title
+            ),
+            valueEl
+          ]
+        );
+      };
       const statsBar = E(
         "div",
         {
-          style: "display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; width: 100%; box-sizing: border-box;"
+          style: "display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; width: 100%; box-sizing: border-box;"
         },
         [
-          E(
-            "div",
-            {
-              style: "flex: 1 1 120px; min-width: 110px; background: var(--background-color-secondary, rgba(255,255,255,0.05)); border: 1px solid var(--border-color, rgba(255,255,255,0.15)); border-radius: 6px; padding: 6px 10px; text-align: center; box-sizing: border-box;"
-            },
-            [
-              E(
-                "small",
-                { style: "display: block; font-size: 11px; opacity: 0.75;" },
-                _("Total Targets")
-              ),
-              totalStatEl
-            ]
-          ),
-          E(
-            "div",
-            {
-              style: "flex: 1 1 120px; min-width: 110px; background: var(--background-color-secondary, rgba(255,255,255,0.05)); border: 1px solid var(--border-color, rgba(255,255,255,0.15)); border-radius: 6px; padding: 6px 10px; text-align: center; box-sizing: border-box;"
-            },
-            [
-              E(
-                "small",
-                { style: "display: block; font-size: 11px; opacity: 0.75;" },
-                _("Passed")
-              ),
-              passedStatEl
-            ]
-          ),
-          E(
-            "div",
-            {
-              style: "flex: 1 1 120px; min-width: 110px; background: var(--background-color-secondary, rgba(255,255,255,0.05)); border: 1px solid var(--border-color, rgba(255,255,255,0.15)); border-radius: 6px; padding: 6px 10px; text-align: center; box-sizing: border-box;"
-            },
-            [
-              E(
-                "small",
-                { style: "display: block; font-size: 11px; opacity: 0.75;" },
-                _("Failed")
-              ),
-              failedStatEl
-            ]
-          ),
-          E(
-            "div",
-            {
-              style: "flex: 1 1 120px; min-width: 110px; background: var(--background-color-secondary, rgba(255,255,255,0.05)); border: 1px solid var(--border-color, rgba(255,255,255,0.15)); border-radius: 6px; padding: 6px 10px; text-align: center; box-sizing: border-box;"
-            },
-            [
-              E(
-                "small",
-                { style: "display: block; font-size: 11px; opacity: 0.75;" },
-                _("Avg Latency")
-              ),
-              latencyStatEl
-            ]
-          )
+          createStatCard(_("Total Targets"), totalStatEl),
+          createStatCard(_("Available"), passedStatEl),
+          createStatCard(_("Unavailable"), failedStatEl),
+          createStatCard(_("Avg Latency"), latencyStatEl)
         ]
       );
       const progressBarInner = E("div", {
-        style: "width: 0%; height: 100%; background: #28a745; transition: width 0.2s ease;"
+        style: "width: 0%; height: 100%; background: var(--color-success, #28a745); transition: width 0.2s ease;"
       });
       const progressBarContainer = E(
         "div",
         {
-          style: "width: 100%; height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden; margin-bottom: 12px; display: none;"
+          style: "width: 100%; height: 6px; background: var(--border-color, rgba(128,128,128,0.2)); border-radius: 3px; overflow: hidden; margin-bottom: 14px; display: none;"
         },
         [progressBarInner]
       );
@@ -10276,7 +10306,8 @@ function renderServiceCheckModal() {
         const badge = E(
           "span",
           {
-            style: "margin-left: 5px; padding: 1px 6px; border-radius: 10px; font-size: 10px; opacity: 0.85; background: rgba(255,255,255,0.18); font-weight: bold;"
+            class: "badge",
+            style: "margin-left: 6px; padding: 1px 6px; font-size: 10px; opacity: 0.85; border-radius: 10px; background: var(--border-color, rgba(128,128,128,0.3)); font-weight: bold;"
           },
           `${targetCount}`
         );
@@ -10303,15 +10334,17 @@ function renderServiceCheckModal() {
         filterTabsContainer.innerHTML = "";
         filterTabsContainer.appendChild(createFilterTab(_("All"), "ALL"));
         sectionNames.forEach((sec) => {
-          filterTabsContainer.appendChild(createFilterTab(sec, sec));
+          filterTabsContainer.appendChild(
+            createFilterTab(formatSectionName(sec), sec)
+          );
         });
       };
       updateFilterTabs();
       const searchInput = E("input", {
         type: "text",
-        placeholder: _("Search domain..."),
+        placeholder: _("Search domain or service..."),
         class: "cbi-input-text",
-        style: "width: 180px; padding: 4px 8px; font-size: 12px; border-radius: 4px;"
+        style: "width: 200px; padding: 4px 10px; font-size: 12px; border-radius: 4px;"
       });
       searchInput.oninput = (e) => {
         const targetInput = e.target;
@@ -10328,24 +10361,24 @@ function renderServiceCheckModal() {
       const tableHead = E("tr", { class: "tr cbi-section-table-titles" }, [
         E(
           "th",
-          { class: "th", style: "width: 28%; padding: 6px 8px;" },
-          _("Section / Target")
+          { class: "th", style: "width: 28%; padding: 8px;" },
+          _("Service / Target")
         ),
         E(
           "th",
-          { class: "th", style: "width: 17%; padding: 6px 8px;" },
-          _("Outbound Route")
+          { class: "th", style: "width: 17%; padding: 8px;" },
+          _("Route Type")
         ),
         E(
           "th",
-          { class: "th", style: "width: 20%; padding: 6px 8px;" },
+          { class: "th", style: "width: 20%; padding: 8px;" },
           _("Resolved IP / DNS")
         ),
         E(
           "th",
           {
             class: "th",
-            style: "text-align: right; width: 7%; padding: 6px 4px;"
+            style: "text-align: right; width: 7%; padding: 8px 4px;"
           },
           _("TCP")
         ),
@@ -10353,7 +10386,7 @@ function renderServiceCheckModal() {
           "th",
           {
             class: "th",
-            style: "text-align: right; width: 7%; padding: 6px 4px;"
+            style: "text-align: right; width: 7%; padding: 8px 4px;"
           },
           _("TLS")
         ),
@@ -10361,7 +10394,7 @@ function renderServiceCheckModal() {
           "th",
           {
             class: "th",
-            style: "text-align: right; width: 7%; padding: 6px 4px;"
+            style: "text-align: right; width: 7%; padding: 8px 4px;"
           },
           _("HTTP")
         ),
@@ -10369,9 +10402,9 @@ function renderServiceCheckModal() {
           "th",
           {
             class: "th",
-            style: "text-align: center; width: 14%; padding: 6px 6px;"
+            style: "text-align: center; width: 14%; padding: 8px 6px;"
           },
-          _("Verdict")
+          _("Status")
         )
       ]);
       const tableBody = E("tbody", {});
@@ -10385,7 +10418,7 @@ function renderServiceCheckModal() {
           E(
             "thead",
             {
-              style: "position: sticky; top: 0; background: var(--background-color-primary, #1e1e1e); z-index: 2;"
+              style: "position: sticky; top: 0; background: var(--background-color-primary, #ffffff); z-index: 2;"
             },
             [tableHead]
           ),
@@ -10395,59 +10428,72 @@ function renderServiceCheckModal() {
       const tableScrollWrapper = E(
         "div",
         {
-          style: "max-height: 380px; overflow-y: auto; overflow-x: hidden; border: 1px solid var(--border-color, rgba(255,255,255,0.15)); border-radius: 6px; width: 100%; box-sizing: border-box;"
+          style: "max-height: 380px; overflow-y: auto; overflow-x: hidden; border: 1px solid var(--border-color, rgba(128,128,128,0.25)); border-radius: 6px; width: 100%; box-sizing: border-box;"
         },
         [table]
       );
       const rowMap = [];
-      targets.forEach((item) => {
-        const badge = E(
-          "span",
-          {
-            style: "display: inline-block; padding: 2px 6px; border-radius: 8px; color: #fff; font-size: 10px; font-weight: 500; background: #6c757d; text-align: center; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis;"
-          },
-          _("Pending")
-        );
-        const tr = E("tr", { class: "tr cbi-rowstyle-1" }, [
-          E("td", { class: "td", style: "word-break: break-all;" }, [
+      targets.forEach((item, index) => {
+        const rowClass = index % 2 === 0 ? "cbi-rowstyle-1" : "cbi-rowstyle-2";
+        const badge = renderStatusBadge("", false, true);
+        const tr = E("tr", { class: `tr ${rowClass}` }, [
+          E(
+            "td",
+            { class: "td", style: "word-break: break-all; padding: 8px;" },
+            [
+              E(
+                "span",
+                { style: "font-weight: 600; font-size: 12px;" },
+                formatSectionName(item.section)
+              ),
+              E("br"),
+              E("small", { style: "opacity: 0.8;" }, item.domain)
+            ]
+          ),
+          E("td", { class: "td", style: "font-size: 12px; padding: 8px;" }, [
             E(
               "span",
-              { style: "font-weight: 600; font-size: 12px;" },
-              item.section
-            ),
-            E("br"),
-            E("small", { style: "opacity: 0.8;" }, item.domain)
-          ]),
-          E("td", { class: "td", style: "font-size: 11px;" }, [
-            E(
-              "code",
               {
-                style: "background: rgba(255,255,255,0.06); padding: 2px 4px; border-radius: 3px;"
+                class: "badge cbi-value-title",
+                style: "font-size: 11px; padding: 2px 6px;"
               },
-              item.route_type
+              formatRouteType(item.route_type)
             )
           ]),
-          E("td", { class: "td", style: "font-size: 11px;" }, [
+          E("td", { class: "td", style: "font-size: 12px; padding: 8px;" }, [
             E("span", {}, "?"),
             E("br"),
             E("small", { style: "opacity: 0.6;" }, `-`)
           ]),
           E(
             "td",
-            { class: "td", style: "text-align: right; font-size: 12px;" },
+            {
+              class: "td",
+              style: "text-align: right; font-size: 12px; padding: 8px 4px;"
+            },
             "-"
           ),
           E(
             "td",
-            { class: "td", style: "text-align: right; font-size: 12px;" },
+            {
+              class: "td",
+              style: "text-align: right; font-size: 12px; padding: 8px 4px;"
+            },
             "-"
           ),
           E(
             "td",
-            { class: "td", style: "text-align: right; font-size: 12px;" },
+            {
+              class: "td",
+              style: "text-align: right; font-size: 12px; padding: 8px 4px;"
+            },
             "-"
           ),
-          E("td", { class: "td", style: "text-align: center;" }, badge)
+          E(
+            "td",
+            { class: "td", style: "text-align: center; padding: 8px 6px;" },
+            badge
+          )
         ]);
         rowMap.push({ target: item, tr });
         tableBody.appendChild(tr);
@@ -10455,7 +10501,7 @@ function renderServiceCheckModal() {
       const applyTableFilter = () => {
         rowMap.forEach(({ target, tr }) => {
           const matchesSection = activeFilter === "ALL" || target.section === activeFilter;
-          const matchesSearch = !searchQuery2 || target.domain.toLowerCase().includes(searchQuery2) || target.section.toLowerCase().includes(searchQuery2);
+          const matchesSearch = !searchQuery2 || target.domain.toLowerCase().includes(searchQuery2) || target.section.toLowerCase().includes(searchQuery2) || formatSectionName(target.section).toLowerCase().includes(searchQuery2);
           tr.style.display = matchesSection && matchesSearch ? "" : "none";
         });
       };
@@ -10495,7 +10541,7 @@ function renderServiceCheckModal() {
           style: "width: 260px; font-size: 12px;"
         });
         const customBtn = renderButton({
-          text: _("Check Custom"),
+          text: _("Check Domain"),
           classNames: ["cbi-button-neutral"],
           onClick: async () => {
             const domain = customDomainInput.value.trim();
@@ -10511,54 +10557,83 @@ function renderServiceCheckModal() {
                 const cResults = typeof cRes.data === "string" ? JSON.parse(cRes.data) : cRes.data || [];
                 if (cResults && cResults.length > 0) {
                   const cItem = cResults[0];
-                  const cBadgeColor = cItem.success ? "#28a745" : "#dc3545";
-                  const cBadge = E(
-                    "span",
-                    {
-                      style: `display: inline-block; padding: 2px 6px; border-radius: 8px; color: #fff; font-size: 10px; font-weight: 500; background: ${cBadgeColor}; text-align: center; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis;`
-                    },
-                    cItem.status_class
-                  );
-                  const customTr = E("tr", { class: "tr cbi-rowstyle-2" }, [
+                  const cBadge = renderStatusBadge(cItem.status_class);
+                  const customTr = E("tr", { class: "tr cbi-rowstyle-1" }, [
                     E(
                       "td",
-                      { class: "td", style: "word-break: break-all;" },
+                      {
+                        class: "td",
+                        style: "word-break: break-all; padding: 8px;"
+                      },
                       [
                         E(
                           "span",
-                          { style: "font-weight:600;" },
-                          cItem.section
+                          { style: "font-weight: 600;" },
+                          formatSectionName(cItem.section)
                         ),
                         E("br"),
                         E("small", {}, cItem.domain)
                       ]
                     ),
-                    E("td", { class: "td", style: "font-size: 11px;" }, [
-                      E("code", {}, cItem.route_type)
-                    ]),
-                    E("td", { class: "td", style: "font-size: 11px;" }, [
-                      cItem.ip || "?",
-                      E("br"),
-                      E("small", {}, `${cItem.dns_ms}ms`)
-                    ]),
                     E(
                       "td",
-                      { class: "td", style: "text-align: right;" },
+                      {
+                        class: "td",
+                        style: "font-size: 12px; padding: 8px;"
+                      },
+                      [
+                        E(
+                          "span",
+                          {
+                            class: "badge cbi-value-title",
+                            style: "font-size: 11px; padding: 2px 6px;"
+                          },
+                          formatRouteType(cItem.route_type)
+                        )
+                      ]
+                    ),
+                    E(
+                      "td",
+                      {
+                        class: "td",
+                        style: "font-size: 12px; padding: 8px;"
+                      },
+                      [
+                        cItem.ip || "?",
+                        E("br"),
+                        E("small", {}, `${cItem.dns_ms}ms`)
+                      ]
+                    ),
+                    E(
+                      "td",
+                      {
+                        class: "td",
+                        style: "text-align: right; padding: 8px 4px;"
+                      },
                       cItem.tcp_ms > 0 ? `${cItem.tcp_ms}` : "-"
                     ),
                     E(
                       "td",
-                      { class: "td", style: "text-align: right;" },
+                      {
+                        class: "td",
+                        style: "text-align: right; padding: 8px 4px;"
+                      },
                       cItem.tls_ms > 0 ? `${cItem.tls_ms}` : "-"
                     ),
                     E(
                       "td",
-                      { class: "td", style: "text-align: right;" },
+                      {
+                        class: "td",
+                        style: "text-align: right; padding: 8px 4px;"
+                      },
                       cItem.http_ms > 0 ? `${cItem.http_ms}` : "-"
                     ),
                     E(
                       "td",
-                      { class: "td", style: "text-align: center;" },
+                      {
+                        class: "td",
+                        style: "text-align: center; padding: 8px 6px;"
+                      },
                       cBadge
                     )
                   ]);
@@ -10579,7 +10654,7 @@ function renderServiceCheckModal() {
             } catch (_e) {
             } finally {
               customBtn.disabled = false;
-              customBtn.textContent = _("Check Custom");
+              customBtn.textContent = _("Check Domain");
             }
           }
         });
@@ -10604,15 +10679,7 @@ function renderServiceCheckModal() {
               progressBarInner.style.width = `${Math.round((i + 1) / rowMap.length * 100)}%`;
               const badgeCell = tr.childNodes[6];
               badgeCell.innerHTML = "";
-              badgeCell.appendChild(
-                E(
-                  "span",
-                  {
-                    style: "display: inline-block; padding: 2px 6px; border-radius: 8px; color: #fff; font-size: 10px; font-weight: 500; background: #007bff; text-align: center; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis;"
-                  },
-                  _("Testing...")
-                )
-              );
+              badgeCell.appendChild(renderStatusBadge("", true));
               try {
                 const cRes = await callBaseMethod(
                   Tachyon.AvailableMethods.SERVICE_HEALTH_CHECK,
@@ -10623,14 +10690,7 @@ function renderServiceCheckModal() {
                   if (cResults && cResults.length > 0) {
                     const cItem = cResults[0];
                     itemObj.result = cItem;
-                    const cBadgeColor = cItem.success ? "#28a745" : "#dc3545";
-                    const cBadge = E(
-                      "span",
-                      {
-                        style: `display: inline-block; padding: 2px 6px; border-radius: 8px; color: #fff; font-size: 10px; font-weight: 500; background: ${cBadgeColor}; text-align: center; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis;`
-                      },
-                      cItem.status_class
-                    );
+                    const cBadge = renderStatusBadge(cItem.status_class);
                     tr.childNodes[2].innerHTML = "";
                     tr.childNodes[2].appendChild(
                       document.createTextNode(cItem.ip || "?")
@@ -10652,15 +10712,7 @@ function renderServiceCheckModal() {
                 }
               } catch (_e) {
                 badgeCell.innerHTML = "";
-                badgeCell.appendChild(
-                  E(
-                    "span",
-                    {
-                      style: "display: inline-block; padding: 2px 6px; border-radius: 8px; color: #fff; font-size: 10px; font-weight: 500; background: #dc3545; text-align: center; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis;"
-                    },
-                    _("Failed")
-                  )
-                );
+                badgeCell.appendChild(renderStatusBadge("Failed"));
               }
               updateSummaryStats();
             }
@@ -10684,7 +10736,7 @@ function renderServiceCheckModal() {
       container.appendChild(
         E(
           "p",
-          { style: "color: #dc3545;" },
+          { style: "color: var(--color-danger, #dc3545);" },
           _("Failed to run service check.")
         )
       );
