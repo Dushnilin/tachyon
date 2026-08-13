@@ -1915,7 +1915,7 @@ function tachyon_get_targets(all_mode) {
     }
 
     // Active mode (default): Check targets in active enabled UCI sections
-    let seen_domains = {};
+    seen_domains = {};
     const profile_aliases = {
         "meta": "instagram",
         "twitter": "x",

@@ -113,6 +113,9 @@ msgstr ""
 msgid "Applying changes & reloading services..."
 msgstr "Применение изменений и перезапуск служб..."
 
+msgid "Cannot save settings"
+msgstr "Не удалось сохранить настройки"
+
 msgid "Applying fix"
 msgstr ""
 
