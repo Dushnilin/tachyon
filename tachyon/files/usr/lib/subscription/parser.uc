@@ -1785,7 +1785,7 @@ function metadata_clean_text(value, max, decode_base64) {
     if (decode_base64 && lc(substr(value, 0, 7)) == "base64:") {
         let raw_val = substr(value, 7);
         let decoded = base64_decode(raw_val);
-        if (decoded != null && length(decoded) > 0 && match(decoded, /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/) == null) {
+        if (decoded != null && length(decoded) > 0 && match(decoded, regexp('[\x01-\x08\x0b\x0c\x0e-\x1f\x7f]')) == null) {
             value = decoded;
         } else {
             value = raw_val;
