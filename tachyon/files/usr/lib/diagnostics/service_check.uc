@@ -1916,28 +1916,43 @@ function tachyon_get_targets(all_mode) {
 
     // Active mode (default): Check targets in active enabled UCI sections
     let seen_domains = {};
+    const profile_aliases = {
+        "meta": "instagram",
+        "twitter": "x",
+        "cloudflare": "baseline",
+        "google_ai": "gemini",
+        "geoblock": "blocked_ru",
+        "russia_inside": "blocked_ru",
+        "russia_outside": "blocked_ru",
+        "hodca": "hdrezka"
+    };
+
     cursor.foreach("tachyon", "section", function(s) {
-        if (s.enabled != "1") return;
+        if (s.enabled == "0" || s.enabled == "false") return;
         
         let profiles_to_check = [];
         let raw_community = s.community_lists;
         
+        const resolve_profile = function(id) {
+            let real_id = profile_aliases[id] || id;
+            if (profiles_map[real_id]) return profiles_map[real_id];
+            return null;
+        };
+
         if (type(raw_community) == "array") {
             for (let item in raw_community) {
                 if (!item) continue;
                 for (let part in split(as_string(item), /[\s,]+/)) {
                     let id = trim(part);
-                    if (id != "" && profiles_map[id]) {
-                        push(profiles_to_check, profiles_map[id]);
-                    }
+                    let p = resolve_profile(id);
+                    if (p) push(profiles_to_check, p);
                 }
             }
         } else if (type(raw_community) == "string") {
             for (let part in split(as_string(raw_community), /[\s,]+/)) {
                 let id = trim(part);
-                if (id != "" && profiles_map[id]) {
-                    push(profiles_to_check, profiles_map[id]);
-                }
+                let p = resolve_profile(id);
+                if (p) push(profiles_to_check, p);
             }
         }
         
@@ -1980,7 +1995,7 @@ function tachyon_get_targets(all_mode) {
             if (!d) continue;
             for (let line in split(as_string(d), /[\n\r,]+/)) {
                 let domain_str = trim(replace(line, /^\*?\./, ""));
-                if (domain_str != "" && substr(domain_str, 0, 1) != "#")
+                if (domain_str != "" && substr(domain_str, 0, 1) != "#" && substr(domain_str, 0, 2) != "//")
                     push(custom_domains, domain_str);
             }
         }
@@ -1988,7 +2003,7 @@ function tachyon_get_targets(all_mode) {
         if (s.user_domains_text) {
             for (let line in split(as_string(s.user_domains_text), /[\n\r,]+/)) {
                 let domain_str = trim(replace(line, /^\*?\./, ""));
-                if (domain_str != "" && substr(domain_str, 0, 1) != "#")
+                if (domain_str != "" && substr(domain_str, 0, 1) != "#" && substr(domain_str, 0, 2) != "//")
                     push(custom_domains, domain_str);
             }
         }

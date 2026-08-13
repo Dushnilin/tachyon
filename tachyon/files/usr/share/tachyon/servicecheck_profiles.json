@@ -215,6 +215,70 @@
         { "kind": "udp", "host": "google.com", "port": 443, "label": "Google QUIC :443" },
         { "kind": "udp", "host": "g.whatsapp.net", "port": 443, "label": "WhatsApp UDP :443", "optional": true }
       ]
+    },
+    {
+      "id": "news",
+      "title": "📰 Новости и СМИ",
+      "group": "media",
+      "description": "Новостные и медиа-ресурсы.",
+      "targets": [
+        { "kind": "https", "host": "meduza.io", "path": "/", "expect": [200, 301, 302] },
+        { "kind": "https", "host": "bbc.com", "path": "/", "expect": [200, 301, 302] }
+      ]
+    },
+    {
+      "id": "porn",
+      "title": "🔞 Adult Content",
+      "group": "media",
+      "description": "Ресурсы для взрослых.",
+      "targets": [
+        { "kind": "https", "host": "pornhub.com", "path": "/", "expect": [200, 301, 302] }
+      ]
+    },
+    {
+      "id": "hdrezka",
+      "title": "🎬 HDRezka",
+      "group": "video",
+      "description": "Онлайн-кинотеатр HDRezka.",
+      "targets": [
+        { "kind": "https", "host": "hdrezka.me", "path": "/", "expect": [200, 301, 302] }
+      ]
+    },
+    {
+      "id": "google_play",
+      "title": "📱 Google Play Store",
+      "group": "system",
+      "description": "Магазин приложений Google Play.",
+      "targets": [
+        { "kind": "https", "host": "play.google.com", "path": "/", "expect": [200, 301, 302] }
+      ]
+    },
+    {
+      "id": "hetzner",
+      "title": "🖥️ Hetzner ASN",
+      "group": "hosting",
+      "description": "Инфраструктура Hetzner.",
+      "targets": [
+        { "kind": "https", "host": "hetzner.com", "path": "/", "expect": [200, 301, 302] }
+      ]
+    },
+    {
+      "id": "ovh",
+      "title": "🖥️ OVH ASN",
+      "group": "hosting",
+      "description": "Инфраструктура OVH.",
+      "targets": [
+        { "kind": "https", "host": "ovh.com", "path": "/", "expect": [200, 301, 302] }
+      ]
+    },
+    {
+      "id": "digitalocean",
+      "title": "🖥️ DigitalOcean ASN",
+      "group": "hosting",
+      "description": "Инфраструктура DigitalOcean.",
+      "targets": [
+        { "kind": "https", "host": "digitalocean.com", "path": "/", "expect": [200, 301, 302] }
+      ]
     }
   ]
 }
