@@ -37,4 +37,20 @@ echo "$fix_out" | grep -Fq '"code": "restart_zapret"' ||
 echo "$fix_out" | grep -Fq '"code": "optimize_memory"' ||
   fail "apply_quick_fix must handle optimize_memory"
 
+# 4. Doctor must work with the service stopped (recovery mode: restore stock
+#    internet, never start Tachyon) and the AI Doctor must verify the system
+#    end-to-end instead of trusting a point-in-time snapshot.
+grep -Fq 'function tachyon_is_running()' "$TACHYON_LIB/diagnostics/runtime.uc" ||
+  fail "runtime.uc must define tachyon_is_running()"
+grep -Fq 'return run_recovery_checks();' "$TACHYON_LIB/diagnostics/runtime.uc" ||
+  fail "doctor no longer dispatches to recovery mode when the service is stopped"
+grep -Fq 'function run_recovery_checks()' "$TACHYON_LIB/diagnostics/runtime.uc" ||
+  fail "runtime.uc must define run_recovery_checks()"
+grep -Fq 'function verify_system()' "$TACHYON_LIB/diagnostics/runtime.uc" ||
+  fail "runtime.uc must define verify_system()"
+grep -Fq 'let verify = verify_system();' "$TACHYON_LIB/diagnostics/runtime.uc" ||
+  fail "local_rule_doctor no longer feeds live verification into its analysis"
+grep -Fq 'wan_fail_streak: int(st.wan_fail_streak || 0)' "$TACHYON_LIB/service/watchdog.uc" ||
+  fail "watchdog status export no longer reports probe streaks to AI Doctor"
+
 printf 'local AI Doctor checks passed\n'

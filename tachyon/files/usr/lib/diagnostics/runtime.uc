@@ -2044,6 +2044,20 @@ function find_process_pid(name) {
     return length(pids) > 0 && pids[0] != "" ? pids[0] : "";
 }
 
+// The main service loop writes its pid file on start (start_runtime in
+// watchdog.uc). With enable_watchdog='0' the loop is not spawned but sing-box
+// keeps running as its own procd service — that state still counts as running:
+// the doctor must never treat a live Tachyon as a stopped one.
+function tachyon_is_running() {
+    let wd_pid = trim(fs.readfile("/var/run/tachyon_watchdog.pid") || "");
+    if (wd_pid != "" && fs.stat("/proc/" + wd_pid) != null) return true;
+    return find_process_pid("sing-box") != "";
+}
+
+function tachyon_is_enabled() {
+    return file_executable("/etc/rc.d/S99" + TACHYON_SERVICE_NAME);
+}
+
 function is_degraded() {
     return fs.stat("/tmp/tachyon/degraded") != null;
 }
@@ -2057,20 +2071,187 @@ function kill_our_core_processes() {
     command_status("killall -9 sing-box >/dev/null 2>&1");
 }
 
+// ─── Recovery mode: Tachyon is stopped, restore stock internet ───────────────
+// The doctor doubles as an emergency repair tool: it must work with the service
+// fully stopped (disabled in LuCI, crashed, or removed) and return the router
+// to a stock state — WAN up, DNS resolving for the LAN — without ever starting
+// Tachyon. Everything here is idempotent: on a cleanly stopped service the
+// checks pass and nothing is touched.
+// Declared before run_doctor_checks(): ucode does not hoist function
+// declarations, and run_doctor_checks() dispatches to this mode.
+function run_recovery_checks() {
+    let report = [];
+    let issues = 0;
+    let fixed = 0;
+
+    let doc_check = function(icon, name, status, fix_msg) {
+        let msg = fix_msg != "" ? fix_msg : status;
+        push(report, sprintf("%s %-30s %s", icon, name, msg));
+    };
+
+    let time_str = command_output_from_args(["date", "+%d.%m %H:%M"]);
+    push(report, sprintf("🩺 *tachyon doctor* — %s — *режим восстановления*", trim(time_str)));
+    push(report, "Сервис Tachyon остановлен. Возвращаю систему в сток и проверяю интернет.");
+    push(report, "");
+
+    // WAN must be up before DNS makes any sense.
+    if (wan_has_ip() && default_gateway_exists()) {
+        doc_check("✅", "WAN interface", get_wan_interface() + " up, gateway present", "");
+    } else {
+        issues++;
+        let had_ip = wan_has_ip();
+        command_status("/sbin/ifup wan >/dev/null 2>&1");
+        command_status("sleep 3");
+        if (!had_ip) {
+            if (wan_has_ip()) {
+                doc_check("❌", "WAN interface", get_wan_interface() + " no IP", "→ FIXED: WAN поднят");
+                fixed++;
+            } else {
+                doc_check("❌", "WAN interface", "no IP address", "→ проверьте подключение к провайдеру");
+            }
+        } else {
+            if (default_gateway_exists()) {
+                doc_check("❌", "Default gateway", "missing", "→ FIXED: маршрут восстановлен");
+                fixed++;
+            } else {
+                doc_check("❌", "Default gateway", "missing", "→ проверьте конфигурацию сети");
+            }
+        }
+    }
+
+    // Leftover routing is what breaks internet when the service is down.
+    // Idempotent cleanup mirroring uninstall.uc.
+    if (command_success_from_args([ "nft", "list", "table", "inet", NFT_TABLE_NAME ])) {
+        command_status("nft delete table inet " + NFT_TABLE_NAME + " >/dev/null 2>&1");
+        doc_check("❌", "nftables table", "leftover", "→ FIXED: удалена");
+        fixed++;
+    } else {
+        doc_check("✅", "nftables table", "absent", "");
+    }
+
+    let ip_rule_out = command_capture("ip rule list").output;
+    if (index(ip_rule_out, "fwmark") >= 0 && index(ip_rule_out, "lookup " + RT_TABLE_NAME) >= 0) {
+        command_status("ip rule del fwmark 0x1/0x1 >/dev/null 2>&1");
+        command_status("ip rule del fwmark 0x2/0x2 >/dev/null 2>&1");
+        command_status("ip route flush table " + RT_TABLE_NAME + " >/dev/null 2>&1");
+        doc_check("❌", "routing rules (fwmark)", "leftover", "→ FIXED: удалены");
+        fixed++;
+    } else {
+        doc_check("✅", "routing rules (fwmark)", "absent", "");
+    }
+
+    // dnsmasq must answer the LAN and talk to upstream directly.
+    if (module_status(DNS_APPLY_UC, [ "has-tachyon-dns" ]) == 0) {
+        issues++;
+        module_status(DNS_APPLY_UC, [ "failsafe-restore" ]);
+        if (module_status(DNS_APPLY_UC, [ "has-tachyon-dns" ]) != 0) {
+            doc_check("❌", "dnsmasq DNS", "redirected to sing-box", "→ FIXED: возвращён на прямые upstream");
+            fixed++;
+        } else {
+            doc_check("❌", "dnsmasq DNS", "redirected to sing-box", "→ не удалось восстановить — проверьте /etc/config/dhcp");
+        }
+    } else {
+        doc_check("✅", "dnsmasq DNS", "direct (stock)", "");
+    }
+
+    let dropins = [ "/etc/dnsmasq.d/tachyon.conf", "/tmp/dnsmasq.d/tachyon.conf" ];
+    let dropins_removed = false;
+    for (let d in dropins) {
+        if (fs.stat(d) != null) {
+            fs.unlink(d);
+            dropins_removed = true;
+        }
+    }
+    if (dropins_removed) {
+        doc_check("❌", "dnsmasq drop-ins", "leftover", "→ FIXED: удалены");
+        fixed++;
+    } else {
+        doc_check("✅", "dnsmasq drop-ins", "absent", "");
+    }
+
+    // resolv.conf must be the stock symlink and point at a working upstream.
+    let resolv_fixed = false;
+    let resolv_link = "";
+    try { resolv_link = fs.readlink("/etc/resolv.conf") || ""; } catch(e) {}
+    if (resolv_link != "/tmp/resolv.conf" && resolv_link != "../tmp/resolv.conf") {
+        fs.unlink("/etc/resolv.conf");
+        try { fs.symlink("/tmp/resolv.conf", "/etc/resolv.conf"); resolv_fixed = true; } catch(e) {}
+    }
+    if (trim(fs.readfile("/tmp/resolv.conf") || "") == "") {
+        fs.writefile("/tmp/resolv.conf", "nameserver 1.1.1.1\nnameserver 8.8.8.8\n");
+        resolv_fixed = true;
+    }
+    if (resolv_fixed) {
+        doc_check("❌", "resolv.conf", "broken", "→ FIXED: восстановлена ссылка и nameserver");
+        fixed++;
+    } else {
+        doc_check("✅", "resolv.conf", "OK (-> /tmp/resolv.conf)", "");
+    }
+
+    // A stray sing-box (crashed service, half-removed install) must not sit
+    // between the LAN and the WAN.
+    if (find_process_pid("sing-box") != "") {
+        kill_our_core_processes();
+        doc_check("❌", "sing-box process", "leftover", "→ FIXED: остановлен");
+        fixed++;
+    } else {
+        doc_check("✅", "sing-box process", "absent", "");
+    }
+
+    // Final verification: DNS through dnsmasq and straight upstream.
+    push(report, "");
+    let lan_dns = dns_check_resolve_host("google.com", "127.0.0.1", 3);
+    let up_dns = dns_check_resolve_host("google.com", "1.1.1.1", 3);
+    if (lan_dns != "" && up_dns != "") {
+        doc_check("✅", "DNS resolution", "LAN + upstream working", "");
+    } else if (lan_dns != "") {
+        issues++;
+        doc_check("⚠️", "DNS resolution", "LAN OK, upstream blocked", "→ провайдер режет upstream, проверьте /tmp/resolv.conf");
+    } else {
+        issues++;
+        doc_check("❌", "DNS resolution", "not working", "→ проверьте интернет-соединение");
+    }
+
+    push(report, "");
+    if (issues == 0) {
+        push(report, "✅ Система в стоковом состоянии — интернет работает напрямую");
+    } else {
+        push(report, sprintf("⚠️ Проблем: %d   Исправлено: %d", issues, fixed));
+    }
+
+    return { report: join("\n", report) + "\n", issues, fixed, checks: [] };
+}
+
 function run_doctor_checks() {
     let report = [];
     let issues = 0;
     let fixed = 0;
     let cfg = uci_settings();
 
+    // With the service stopped the doctor switches to recovery mode: it must
+    // restore the stock internet (DNS back to direct upstream, no leftover
+    // rules) instead of "repairing" the stopped state by re-hijacking dnsmasq
+    // onto a dead sing-box DNS listener — the exact way a user ends up with no
+    // internet after disabling Tachyon (issue #31).
+    if (!tachyon_is_running()) {
+        return run_recovery_checks();
+    }
+
     let is_degraded_flag = is_degraded();
 
+    let checks = [];
     let doc_check = function(icon, name, status, fix_msg) {
         let msg = status;
         if (fix_msg != "") {
             msg = fix_msg;
         }
         push(report, sprintf("%s %-30s %s", icon, name, msg));
+        push(checks, {
+            name: name,
+            status: icon == "✅" ? "pass" : (icon == "⚠️" ? "warn" : (icon == "❌" ? "fail" : "info")),
+            detail: status,
+            fix: fix_msg
+        });
     };
 
     let time_str = command_output_from_args(["date", "+%d.%m %H:%M"]);
@@ -2767,7 +2948,7 @@ function run_doctor_checks() {
         push(report, sprintf("⚠️ Проблем: %d   Исправлено: %d", issues, fixed));
     }
 
-    return { report: join("\n", report) + "\n", issues, fixed };
+    return { report: join("\n", report) + "\n", issues, fixed, checks };
 }
 
 function query_llm(provider, api_key, custom_url, prompt_text, model_override) {
@@ -3107,11 +3288,97 @@ function ai_doctor_last() {
     return 0;
 }
 
+// ─── End-to-end verification: is everything actually working ──────────────────
+// The snapshot checks pass even when the network has been silently flapping for
+// hours: at the moment of the check the WAN is up, so the doctor concludes "all
+// OK". This routine verifies what the LAN client actually experiences — DNS
+// through each layer, HTTP through the proxy — and inspects the recent log
+// history for instability (WAN flaps, service restarts) before anyone is
+// allowed to declare the system healthy.
+function verify_system() {
+    let checks = [];
+    let stability = {
+        wan_flaps: 0,
+        singbox_restarts: 0,
+        dnsmasq_restarts: 0,
+        tachyon_restarts: 0
+    };
+
+    function add(name, status, detail, evidence) {
+        push(checks, { name, status, detail, evidence: evidence || "" });
+    }
+
+    // Live checks — what a client on the LAN experiences right now.
+    let sb_pid = find_process_pid("sing-box");
+    add("sing-box process", sb_pid != "" ? "pass" : "fail",
+        sb_pid != "" ? "running (pid " + sb_pid + ")" : "not running");
+
+    let lan_dns = dns_check_resolve_host("google.com", "127.0.0.1", 3);
+    add("LAN DNS via dnsmasq", lan_dns != "" ? "pass" : "fail",
+        lan_dns != "" ? "google.com resolved" : "no answer from 127.0.0.1");
+
+    let up_dns = dns_check_resolve_host("google.com", "1.1.1.1", 3);
+    add("Upstream DNS", up_dns != "" ? "pass" : "fail",
+        up_dns != "" ? "google.com resolved" : "no answer from 1.1.1.1");
+
+    let sb_dns = dns_check_through_singbox("google.com");
+    add("Proxy DNS via sing-box", sb_dns ? "pass" : (sb_pid != "" ? "fail" : "skip"),
+        sb_dns ? "resolved via " + SB_DNS_INBOUND_ADDRESS : (sb_pid != "" ? "no answer" : "sing-box not running"));
+
+    // HTTP through the service mixed proxy — only present when download_via_proxy
+    // is enabled; otherwise the tproxy/tun path is covered by the checks above.
+    let sb_cfg = fs.readfile("/etc/sing-box/config.json") || "";
+    let has_mixed = index(sb_cfg, "4534") >= 0;
+    if (has_mixed && sb_pid != "") {
+        let res = command_capture("curl -sS --max-time 8 -x http://127.0.0.1:4534 -o /dev/null -w %{http_code} https://www.gstatic.com/generate_204 2>&1");
+        let code = trim(res.output);
+        add("HTTP via proxy", res.status == 0 && code == "204" ? "pass" : "fail",
+            code == "204" ? "end-to-end 204 through sing-box" : "HTTP " + code);
+    } else {
+        add("HTTP via proxy", "skip", "service mixed proxy not in config");
+    }
+
+    add("WAN interface", wan_has_ip() ? "pass" : "fail",
+        wan_has_ip() ? get_wan_interface() + " up" : "no IP");
+    add("Default gateway", default_gateway_exists() ? "pass" : "fail",
+        default_gateway_exists() ? "present" : "missing");
+
+    // History — the flapping the snapshot cannot see. Counted over the last
+    // ~2000 log lines (logd ring buffer), enough to catch a repeating flap.
+    let hist = command_capture("logread 2>/dev/null | tail -n 2000").output;
+    for (let line in split(hist, "\n")) {
+        let l = lc(line);
+        if (index(l, "udhcpc") >= 0 &&
+            (index(l, "deconfig") >= 0 || index(l, "release") >= 0 || index(l, "sigterm") >= 0))
+            stability.wan_flaps++;
+        if (index(l, "wan.down") >= 0 || index(l, "watchdog: wan check failed") >= 0)
+            stability.wan_flaps++;
+        if (index(l, "ifup wan") >= 0 || index(l, "ifdown wan") >= 0)
+            stability.wan_flaps++;
+        if (index(l, "sing-box") >= 0 &&
+            (index(l, "start") >= 0 || index(l, "restart") >= 0 || index(l, "procd") >= 0))
+            stability.singbox_restarts++;
+        if (index(l, "dnsmasq") >= 0 &&
+            (index(l, "start") >= 0 || index(l, "restart") >= 0))
+            stability.dnsmasq_restarts++;
+        if (index(l, "tachyon") >= 0 && index(l, "sing-box") < 0 &&
+            (index(l, "restart") >= 0 || index(l, "reload") >= 0))
+            stability.tachyon_restarts++;
+    }
+
+    let failed = 0;
+    for (let c in checks) {
+        if (c.status == "fail") failed++;
+    }
+    return { checks, stability, failed };
+}
+
 function local_rule_doctor() {
     let cfg = uci_settings();
     let lang = lc(trim(cfg.ai_doctor_lang || "ru"));
     let res = run_doctor_checks();
     let checks = res.checks || [];
+    let verify = verify_system();
 
     let causes = [];
     let quick_fixes = [];
@@ -3124,22 +3391,92 @@ function local_rule_doctor() {
         }
     }
 
-    for (let c in checks) {
-        if (c.name == "sing-box service" && c.status != "pass") {
+    // ── end-to-end verification: what the LAN client actually experiences ──
+    let wan_cause_added = false;
+    for (let c in verify.checks) {
+        if (c.status != "fail") continue;
+        if (c.name == "sing-box process") {
             push(causes, {
                 probability: 95,
                 cause: lang == "en" ? "sing-box process is stopped or non-functional" : "Процесс sing-box остановлен или не функционирует",
                 fix: "start_singbox"
             });
             add_fix("start_singbox");
-        } else if (c.name == "Internet & Gateway" && c.status != "pass") {
+        } else if (c.name == "LAN DNS via dnsmasq" || c.name == "Proxy DNS via sing-box") {
+            push(causes, {
+                probability: 85,
+                cause: lang == "en" ? "DNS resolution failed (LAN or proxy layer)" : "Сбой разрешения DNS (слой LAN или прокси)",
+                fix: "clear_dns_cache"
+            });
+            add_fix("clear_dns_cache");
+            add_fix("switch_to_doh");
+        } else if ((c.name == "WAN interface" || c.name == "Default gateway") && !wan_cause_added) {
+            wan_cause_added = true;
             push(causes, {
                 probability: 90,
                 cause: lang == "en" ? "WAN default gateway or Internet uplink is unreachable" : "Шлюз по умолчанию или внешний интернет недоступен",
                 fix: "fix_wan_interface"
             });
             add_fix("fix_wan_interface");
-        } else if (c.name == "DNS Resolution" && c.status != "pass") {
+        } else if (c.name == "HTTP via proxy") {
+            push(causes, {
+                probability: 88,
+                cause: lang == "en" ? "HTTP through the proxy fails end-to-end (node offline or blocked)" : "HTTP через прокси не проходит (узел офлайн или заблокирован)",
+                fix: "update_subscriptions"
+            });
+            add_fix("update_subscriptions");
+            add_fix("restart_zapret");
+        }
+    }
+
+    // ── instability history: the flapping a snapshot cannot see ──────────────
+    if (verify.stability.wan_flaps >= 3) {
+        push(causes, {
+            probability: 92,
+            cause: lang == "en"
+                ? sprintf("WAN is unstable: %d flaps/restarts in the recent log", verify.stability.wan_flaps)
+                : sprintf("WAN нестабилен: %d переподключений в свежих логах", verify.stability.wan_flaps),
+            fix: "fix_wan_interface"
+        });
+        add_fix("fix_wan_interface");
+    }
+    if (verify.stability.singbox_restarts >= 2) {
+        push(causes, {
+            probability: 80,
+            cause: lang == "en"
+                ? sprintf("sing-box restarted %d times in the recent log — crash loop", verify.stability.singbox_restarts)
+                : sprintf("sing-box перезапускался %d раз в свежих логах — цикл падений", verify.stability.singbox_restarts),
+            fix: "start_singbox"
+        });
+        add_fix("start_singbox");
+    }
+    if (verify.stability.dnsmasq_restarts >= 3) {
+        push(causes, {
+            probability: 75,
+            cause: lang == "en"
+                ? sprintf("dnsmasq restarted %d times in the recent log — DNS instability", verify.stability.dnsmasq_restarts)
+                : sprintf("dnsmasq перезапускался %d раз в свежих логах — нестабильность DNS", verify.stability.dnsmasq_restarts),
+            fix: "fix_dnsmasq"
+        });
+        add_fix("fix_dnsmasq");
+    }
+
+    // ── snapshot check failures not covered above ────────────────────────────
+    for (let c in checks) {
+        if (c.status != "fail") continue;
+        let known = false;
+        for (let v in verify.checks) {
+            if (v.name == c.name) { known = true; break; }
+        }
+        if (known) continue;
+        if (index(c.name, "nftables") >= 0 || index(c.name, "ip rule") >= 0 || index(c.name, "MSS") >= 0) {
+            push(causes, {
+                probability: 80,
+                cause: lang == "en" ? "NFTables routing or firewall rules compromised" : "Нарушены правила файрвола nftables или маршрутизация",
+                fix: "rebuild_rules"
+            });
+            add_fix("rebuild_rules");
+        } else if (index(c.name, "DNS") >= 0 || index(c.name, "dnsmasq") >= 0 || index(c.name, "resolv") >= 0) {
             push(causes, {
                 probability: 85,
                 cause: lang == "en" ? "DNS resolution failed or is hijacked by ISP" : "Сбой разрешения DNS-имён или перехват оператором",
@@ -3147,13 +3484,13 @@ function local_rule_doctor() {
             });
             add_fix("clear_dns_cache");
             add_fix("switch_to_doh");
-        } else if (c.name == "Firewall / NFTables" && c.status != "pass") {
+        } else if (index(c.name, "Clash API") >= 0 || index(c.name, "sing-box") >= 0) {
             push(causes, {
-                probability: 80,
-                cause: lang == "en" ? "NFTables routing or firewall rules compromised" : "Нарушены правила файрвола nftables или маршрутизация",
-                fix: "rebuild_rules"
+                probability: 88,
+                cause: lang == "en" ? "sing-box is not answering its API" : "sing-box не отвечает на свой API",
+                fix: "start_singbox"
             });
-            add_fix("rebuild_rules");
+            add_fix("start_singbox");
         }
     }
 
@@ -3214,11 +3551,19 @@ function local_rule_doctor() {
     }
 
     let report_lines = [];
+    let verify_clean = verify.failed == 0 &&
+        verify.stability.wan_flaps < 3 &&
+        verify.stability.singbox_restarts < 2 &&
+        verify.stability.dnsmasq_restarts < 3;
     if (lang == "en") {
         push(report_lines, "### Tachyon Local AI Doctor Analysis");
         if (length(causes) == 0) {
-            push(report_lines, "✓ All system services, DNS, firewall, and proxy checks passed successfully.");
-            push(report_lines, "✓ No DPI drops or RAM pressure detected.");
+            if (verify_clean) {
+                push(report_lines, "✓ Verified end-to-end: WAN up, DNS resolves (LAN, upstream, via proxy), sing-box answers.");
+                push(report_lines, "✓ No WAN flaps or service crash loops in the recent log. No DPI drops or RAM pressure detected.");
+            } else {
+                push(report_lines, "⚠️ Point-in-time checks pass, but live verification or recent history is not clean — not declaring the system healthy.");
+            }
         } else {
             push(report_lines, "#### Root Cause Analysis:");
             for (let c in causes) {
@@ -3228,8 +3573,12 @@ function local_rule_doctor() {
     } else {
         push(report_lines, "### Анализ Tachyon Local AI Doctor");
         if (length(causes) == 0) {
-            push(report_lines, "✓ Все системные компоненты, маршрутизация, DNS и прокси работают штатно.");
-            push(report_lines, "✓ Блокировок DPI и нехватки оперативной памяти не обнаружено.");
+            if (verify_clean) {
+                push(report_lines, "✓ Проверено вживую: WAN поднят, DNS резолвится (LAN, upstream, через прокси), sing-box отвечает.");
+                push(report_lines, "✓ Флапов WAN и циклов перезапуска сервисов в свежих логах нет. Блокировок DPI и нехватки RAM не обнаружено.");
+            } else {
+                push(report_lines, "⚠️ Проверки «здесь и сейчас» проходят, но живая проверка или история нестабильности нечистые — система не признаётся здоровой.");
+            }
         } else {
             push(report_lines, "#### Анализ возможных причин сбоя:");
             for (let c in causes) {
@@ -3298,6 +3647,19 @@ function ai_doctor() {
     let raw_log_snippet = trim(command_output("logread | grep -iE 'tachyon|sing-box|dnsmasq|oom|error|fatal' | tail -n 25 2>/dev/null")) || "No recent system errors logged.";
     let log_snippet = compress_log_snippet(raw_log_snippet);
 
+    // Live end-to-end verification — the part that catches "all OK on paper,
+    // broken in practice": DNS through each layer, HTTP through the proxy, and
+    // the recent flap/restart history a snapshot cannot see.
+    let verify = verify_system();
+    let verify_lines = [ "Live Verification:" ];
+    for (let c in verify.checks) {
+        push(verify_lines, sprintf("- %s: %s (%s)", c.name, c.status, c.detail));
+    }
+    push(verify_lines, sprintf("Stability (recent log): WAN flaps: %d, sing-box restarts: %d, dnsmasq restarts: %d, tachyon reloads: %d",
+        verify.stability.wan_flaps, verify.stability.singbox_restarts,
+        verify.stability.dnsmasq_restarts, verify.stability.tachyon_restarts));
+    let verify_info = join("\n", verify_lines);
+
     let sys_context = sprintf(
         "Tachyon Doctor Report:\n%s\n\n" +
         "Local Rule Diagnosis:\n%s\n\n" +
@@ -3307,9 +3669,10 @@ function ai_doctor() {
         "sing-box running: %s\n" +
         "Uptime: %d minutes\n\n" +
         "%s\n\n" +
+        "%s\n\n" +
         "Recent Critical System Logs:\n%s\n",
         report, local_res.report, version, dns_type, singbox_running ? "yes" : "no", uptime_min,
-        watchdog_info, log_snippet
+        watchdog_info, verify_info, log_snippet
     );
 
     let lang = lc(trim(cfg.ai_doctor_lang || "ru"));
@@ -3321,6 +3684,7 @@ function ai_doctor() {
             "Formulate a concise diagnosis (in English, max 3-4 bullet points).\n" +
             "If automatic quick fix is possible, include at the very end of your response:\n" +
             "FIX: code1, code2\n\n" +
+            "IMPORTANT: do NOT report \"everything is fine\" when the Live Verification or Stability section shows any FAIL check, WAN flaps, or repeated service restarts — those are real problems even if the point-in-time checks passed.\n\n" +
             "Available quick fix codes:\n" +
             "- start_singbox (sing-box process is stopped or missing)\n" +
             "- rebuild_rules (nftables or ip rules damaged)\n" +
@@ -3346,6 +3710,7 @@ function ai_doctor() {
             "Сформулируйте краткий диагноз (на русском, максимум 3-4 пункта).\n" +
             "Если авто-исправление возможно, укажите в самом конце ответа строчку:\n" +
             "FIX: код1, код2\n\n" +
+            "ВАЖНО: не пишите «всё в порядке», если в секции Live Verification или Stability есть хоть один провал, флапы WAN или повторные перезапуски сервисов — это реальные проблемы, даже если мгновенные проверки прошли.\n\n" +
             "Доступные коды быстрого исправления:\n" +
             "- start_singbox (sing-box упал или остановлен)\n" +
             "- rebuild_rules (nftables или ip rule правила нарушены)\n" +

@@ -540,12 +540,21 @@ let last_ai_incident = null;
 function ai_export_status() {
     let is_healthy = last_ai_incident == null || (time() - last_ai_incident.timestamp >= 300);
     if (is_healthy) controller.note_healthy();
+    // Streaks live in the controller state (probe counters). They are the
+    // evidence AI Doctor reads to see instability that a point-in-time check
+    // cannot: without them the status file always reported zero failures.
+    let st = controller.state || {};
     let status_obj = {
         timestamp: time(),
         status: is_healthy ? "healthy" : "repaired",
         ai_active: true,
         incidents_resolved_total: ai_incidents_count,
-        last_incident: last_ai_incident
+        last_incident: last_ai_incident,
+        wan_fail_streak: int(st.wan_fail_streak || 0),
+        proxy_fail_streak: int(st.proxy_consecutive_fails || 0),
+        dns_fail_streak: int(st.dns_fail_streak || 0),
+        healthy_streak: int(st.healthy_streak || 0),
+        active_repairs: (time() < wan_repair_until || time() < singbox_repair_until) ? "active" : "none"
     };
     fs.writefile("/tmp/tachyon_ai_status.json", sprintf("%J\n", status_obj));
 }
