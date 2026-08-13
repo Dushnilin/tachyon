@@ -3113,6 +3113,7 @@ var COMPONENT_ACTION_STATUS_REFRESH_INTERVAL_MS = 2e3;
 var COMPONENT_ACTION_SELF_UPDATE_SETTLE_MS = 2e3;
 var COMPONENT_ACTION_TRANSIENT_RPC_GRACE_MS = 3e4;
 var COMPONENT_ACTION_MIN_ELAPSED_FOR_SELF_UPDATE_MS = 2e3;
+var COMPONENT_ACTION_SELF_UPDATE_HARD_TIMEOUT_MS = 12e4;
 var COMPONENT_ACTION_STATE_DIR = "/var/run/tachyon/component-actions";
 var GET_UI_STATE_RPC_TIMEOUT_MS = 3e3;
 function sleep(ms) {
@@ -3553,6 +3554,7 @@ var TachyonShellMethods = {
   waitComponentActionJob: async (jobId, component, action, expectedLatestVersion) => {
     const jobStartedAt = Date.now();
     const isSelfUpdate = component === "tachyon" && (action === "install" || action === "reinstall");
+    const targetVersion = expectedLatestVersion || "";
     let baselineVersion = "";
     if (isSelfUpdate) {
       baselineVersion = await readTachyonVersion();
@@ -3562,23 +3564,32 @@ var TachyonShellMethods = {
     const transientRpc = createTransientRpcGraceTracker(
       COMPONENT_ACTION_TRANSIENT_RPC_GRACE_MS
     );
-    const confirmSelfUpdateInstalled = async () => {
+    const confirmedByVersion = async () => {
       if (!isSelfUpdate) return "";
       if (Date.now() - jobStartedAt < COMPONENT_ACTION_MIN_ELAPSED_FOR_SELF_UPDATE_MS) {
         return "";
       }
-      const installedVersion = await readTachyonVersion();
-      if (!installedVersion) return "";
-      const targetVersion = expectedLatestVersion || "";
-      if (targetVersion && installedVersion === targetVersion) {
-        return installedVersion;
+      const version = await readTachyonVersion();
+      if (!version) return "";
+      if (targetVersion && version === targetVersion) {
+        return version;
       }
-      if (!targetVersion && baselineVersion && installedVersion !== baselineVersion) {
-        return installedVersion;
+      if (!targetVersion && baselineVersion && version !== baselineVersion) {
+        return version;
       }
       return "";
     };
-    const settleSelfUpdate = async (installedVersion) => {
+    const confirmedSameVersionReinstall = async () => {
+      if (!isSelfUpdate || action !== "reinstall" || !baselineVersion) {
+        return "";
+      }
+      const version = await readTachyonVersion();
+      if (version === baselineVersion && (!targetVersion || version === targetVersion)) {
+        return version;
+      }
+      return "";
+    };
+    const settleVersion = async (version) => {
       if (!selfUpdateVersionMatchedAt) {
         selfUpdateVersionMatchedAt = Date.now();
         return false;
@@ -3586,12 +3597,14 @@ var TachyonShellMethods = {
       if (Date.now() - selfUpdateVersionMatchedAt < COMPONENT_ACTION_SELF_UPDATE_SETTLE_MS) {
         return false;
       }
-      const settled = await confirmSelfUpdateInstalled();
-      if (!settled || settled !== installedVersion) {
-        selfUpdateVersionMatchedAt = 0;
-        return false;
+      if (await confirmedByVersion() === version) {
+        return true;
       }
-      return true;
+      if (version === baselineVersion && await confirmedSameVersionReinstall() === version) {
+        return true;
+      }
+      selfUpdateVersionMatchedAt = 0;
+      return false;
     };
     const selfUpdateResult = (installedVersion) => ({
       success: true,
@@ -3606,34 +3619,42 @@ var TachyonShellMethods = {
         status: "latest"
       }
     });
+    const jobDoneResult = (data) => ({
+      success: true,
+      data
+    });
     while (true) {
       await sleep(COMPONENT_ACTION_POLL_INTERVAL_MS);
       const stateResponse = await readComponentActionState(jobId);
-      if (stateResponse) {
-        if (!stateResponse.running) {
-          transientRpc.reset();
-          if (isSelfUpdate && stateResponse.success === false) {
-            const installedVersion = await confirmSelfUpdateInstalled();
-            if (installedVersion) {
-              if (await settleSelfUpdate(installedVersion)) {
-                return selfUpdateResult(installedVersion);
-              }
-              continue;
-            }
-          }
+      if (isSelfUpdate && Date.now() - jobStartedAt >= COMPONENT_ACTION_SELF_UPDATE_HARD_TIMEOUT_MS) {
+        if (stateResponse && !stateResponse.running) {
+          return jobDoneResult(stateResponse);
+        }
+        const version = await readTachyonVersion();
+        if (targetVersion && version && version !== targetVersion) {
           return {
-            success: true,
-            data: stateResponse
+            success: false,
+            error: _("Tachyon update did not complete within the timeout")
           };
         }
-        if (Date.now() - lastStatusRefreshAt < COMPONENT_ACTION_STATUS_REFRESH_INTERVAL_MS) {
-          continue;
-        }
-        if (isSelfUpdate) {
-          const installedVersion = await confirmSelfUpdateInstalled();
-          if (installedVersion && await settleSelfUpdate(installedVersion)) {
-            return selfUpdateResult(installedVersion);
+        return selfUpdateResult(version || baselineVersion);
+      }
+      if (stateResponse && !stateResponse.running) {
+        if (isSelfUpdate && stateResponse.success === false) {
+          const version = await confirmedByVersion() || await confirmedSameVersionReinstall();
+          if (version) {
+            if (await settleVersion(version)) {
+              return selfUpdateResult(version);
+            }
+            continue;
           }
+        }
+        return jobDoneResult(stateResponse);
+      }
+      if (stateResponse && stateResponse.running && isSelfUpdate && Date.now() - lastStatusRefreshAt >= COMPONENT_ACTION_STATUS_REFRESH_INTERVAL_MS) {
+        const version = await confirmedByVersion();
+        if (version && await settleVersion(version)) {
+          return selfUpdateResult(version);
         }
       }
       lastStatusRefreshAt = Date.now();
@@ -3649,9 +3670,12 @@ var TachyonShellMethods = {
           continue;
         }
         if (isSelfUpdate) {
-          const installedVersion = await confirmSelfUpdateInstalled();
-          if (installedVersion && await settleSelfUpdate(installedVersion)) {
-            return selfUpdateResult(installedVersion);
+          const version = await confirmedByVersion() || await confirmedSameVersionReinstall();
+          if (version) {
+            if (await settleVersion(version)) {
+              return selfUpdateResult(version);
+            }
+            continue;
           }
           continue;
         }
@@ -3668,26 +3692,23 @@ var TachyonShellMethods = {
       transientRpc.reset();
       if (parsedResponse.running) {
         if (isSelfUpdate) {
-          const installedVersion = await confirmSelfUpdateInstalled();
-          if (installedVersion && await settleSelfUpdate(installedVersion)) {
-            return selfUpdateResult(installedVersion);
+          const version = await confirmedByVersion();
+          if (version && await settleVersion(version)) {
+            return selfUpdateResult(version);
           }
         }
         continue;
       }
       if (isSelfUpdate && parsedResponse.success === false) {
-        const installedVersion = await confirmSelfUpdateInstalled();
-        if (installedVersion) {
-          if (await settleSelfUpdate(installedVersion)) {
-            return selfUpdateResult(installedVersion);
+        const version = await confirmedByVersion() || await confirmedSameVersionReinstall();
+        if (version) {
+          if (await settleVersion(version)) {
+            return selfUpdateResult(version);
           }
           continue;
         }
       }
-      return {
-        success: true,
-        data: parsedResponse
-      };
+      return jobDoneResult(parsedResponse);
     }
   },
   subscriptionUpdateStart: async (section, sourceIndex) => {

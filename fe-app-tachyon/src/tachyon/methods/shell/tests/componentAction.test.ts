@@ -554,4 +554,171 @@ describe('TachyonShellMethods.componentAction', () => {
       },
     });
   });
+
+  it('completes a same-version Tachyon reinstall as success when the target version is unknown and the job is stale', async () => {
+    mocks.fsRead.mockResolvedValue(
+      JSON.stringify({
+        success: false,
+        running: false,
+        component: 'tachyon',
+        action: 'reinstall',
+        message:
+          'Component action job is stale or the worker process exited unexpectedly',
+        job_id: 'job-1',
+      }),
+    );
+
+    mocks.executeShellCommand.mockImplementation(({ args }) => {
+      if (args[0] === 'component_action_status') {
+        return Promise.resolve({
+          stdout: '',
+          stderr: 'Unknown command',
+          code: 1,
+        });
+      }
+
+      if (args[0] === 'show_version') {
+        return Promise.resolve({
+          stdout: '1.2.77\n',
+          stderr: '',
+          code: 0,
+        });
+      }
+
+      return Promise.resolve({
+        stdout: '',
+        stderr: 'Unexpected command',
+        code: 1,
+      });
+    });
+
+    const responsePromise = TachyonShellMethods.waitComponentActionJob(
+      'job-1',
+      'tachyon',
+      'reinstall',
+    );
+
+    await vi.advanceTimersByTimeAsync(5000);
+
+    await expect(responsePromise).resolves.toEqual({
+      success: true,
+      data: {
+        success: true,
+        component: 'tachyon',
+        action: 'reinstall',
+        message: 'Tachyon has been installed',
+        current_version: '1.2.77',
+        latest_version: undefined,
+        changed: true,
+        status: 'latest',
+      },
+    });
+  });
+
+  it('closes the modal with success when a self-update never confirms and the hard timeout is reached', async () => {
+    mocks.fsRead.mockRejectedValue(new Error('Access denied'));
+    mocks.executeShellCommand.mockImplementation(({ args }) => {
+      if (args[0] === 'component_action_status') {
+        return Promise.resolve({
+          stdout: '',
+          stderr: 'Unknown command',
+          code: 1,
+        });
+      }
+
+      if (args[0] === 'show_version') {
+        return Promise.resolve({
+          stdout: '1.2.77\n',
+          stderr: '',
+          code: 0,
+        });
+      }
+
+      return Promise.resolve({
+        stdout: '',
+        stderr: 'Unexpected command',
+        code: 1,
+      });
+    });
+
+    const responsePromise = TachyonShellMethods.waitComponentActionJob(
+      'job-1',
+      'tachyon',
+      'install',
+    );
+
+    await vi.advanceTimersByTimeAsync(121000);
+
+    await expect(responsePromise).resolves.toEqual({
+      success: true,
+      data: {
+        success: true,
+        component: 'tachyon',
+        action: 'install',
+        message: 'Tachyon has been installed',
+        current_version: '1.2.77',
+        latest_version: undefined,
+        changed: true,
+        status: 'latest',
+      },
+    });
+  });
+
+  it('fails a self-update on the hard timeout when the target version is known but never reached', async () => {
+    mocks.fsRead.mockResolvedValue(
+      JSON.stringify({
+        success: true,
+        running: true,
+        component: 'tachyon',
+        action: 'reinstall',
+        message: 'Component action is running',
+        job_id: 'job-1',
+      }),
+    );
+
+    mocks.executeShellCommand.mockImplementation(({ args }) => {
+      if (args[0] === 'component_action_status') {
+        return Promise.resolve({
+          stdout: JSON.stringify({
+            success: true,
+            running: true,
+            component: 'tachyon',
+            action: 'reinstall',
+            message: 'Component action is running',
+            job_id: 'job-1',
+          }),
+          stderr: '',
+          code: 0,
+        });
+      }
+
+      if (args[0] === 'show_version') {
+        return Promise.resolve({
+          stdout: '1.2.77\n',
+          stderr: '',
+          code: 0,
+        });
+      }
+
+      return Promise.resolve({
+        stdout: '',
+        stderr: 'Unexpected command',
+        code: 1,
+      });
+    });
+
+    const responsePromise = TachyonShellMethods.waitComponentActionJob(
+      'job-1',
+      'tachyon',
+      'reinstall',
+      '1.2.78',
+    );
+
+    await vi.advanceTimersByTimeAsync(121000);
+
+    await expect(responsePromise).resolves.toEqual({
+      success: false,
+      error: 'Tachyon update did not complete within the timeout',
+    });
+  });
 });

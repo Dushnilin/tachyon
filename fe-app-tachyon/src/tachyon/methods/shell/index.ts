@@ -17,6 +17,7 @@ const COMPONENT_ACTION_STATUS_REFRESH_INTERVAL_MS = 2000;
 const COMPONENT_ACTION_SELF_UPDATE_SETTLE_MS = 2000;
 const COMPONENT_ACTION_TRANSIENT_RPC_GRACE_MS = 30000;
 const COMPONENT_ACTION_MIN_ELAPSED_FOR_SELF_UPDATE_MS = 2000;
+const COMPONENT_ACTION_SELF_UPDATE_HARD_TIMEOUT_MS = 120000;
 const COMPONENT_ACTION_STATE_DIR = '/var/run/tachyon/component-actions';
 const GET_UI_STATE_RPC_TIMEOUT_MS = 3000;
 
@@ -617,8 +618,9 @@ export const TachyonShellMethods = {
     const isSelfUpdate =
       component === 'tachyon' &&
       (action === 'install' || action === 'reinstall');
-    // Version before the update started: lets the fallback confirm an install
-    // even when the expected target version is unknown.
+    const targetVersion = expectedLatestVersion || '';
+    // Version before the update started: confirms an install even when the
+    // expected target version is unknown.
     let baselineVersion = '';
     if (isSelfUpdate) {
       baselineVersion = await readTachyonVersion();
@@ -629,7 +631,11 @@ export const TachyonShellMethods = {
       COMPONENT_ACTION_TRANSIENT_RPC_GRACE_MS,
     );
 
-    const confirmSelfUpdateInstalled = async () => {
+    // A self-update restarts the service mid-worker: the worker can die
+    // before writing its result, the state file can stay "running" forever
+    // (recycled pid), and RPC can go away during the swap. The installed
+    // version is the only reliable ground truth.
+    const confirmedByVersion = async () => {
       if (!isSelfUpdate) return '';
       if (
         Date.now() - jobStartedAt <
@@ -637,23 +643,38 @@ export const TachyonShellMethods = {
       ) {
         return '';
       }
-      const installedVersion = await readTachyonVersion();
-      if (!installedVersion) return '';
-      const targetVersion = expectedLatestVersion || '';
-      if (targetVersion && installedVersion === targetVersion) {
-        return installedVersion;
+      const version = await readTachyonVersion();
+      if (!version) return '';
+      if (targetVersion && version === targetVersion) {
+        return version;
       }
-      if (
-        !targetVersion &&
-        baselineVersion &&
-        installedVersion !== baselineVersion
-      ) {
-        return installedVersion;
+      if (!targetVersion && baselineVersion && version !== baselineVersion) {
+        return version;
       }
       return '';
     };
 
-    const settleSelfUpdate = async (installedVersion: string) => {
+    // A reinstall of the same version never changes the version string, so
+    // version-based confirmation can never match. Equality with the baseline
+    // is the confirmation — but only once the job is no longer running.
+    const confirmedSameVersionReinstall = async () => {
+      if (!isSelfUpdate || action !== 'reinstall' || !baselineVersion) {
+        return '';
+      }
+      const version = await readTachyonVersion();
+      if (
+        version === baselineVersion &&
+        (!targetVersion || version === targetVersion)
+      ) {
+        return version;
+      }
+      return '';
+    };
+
+    // Version confirmation must be stable for a short settle window: the
+    // package files are replaced mid-install, and a read can catch a moment
+    // where the new version is already visible but the install is not over.
+    const settleVersion = async (version: string) => {
       if (!selfUpdateVersionMatchedAt) {
         selfUpdateVersionMatchedAt = Date.now();
         return false;
@@ -664,12 +685,17 @@ export const TachyonShellMethods = {
       ) {
         return false;
       }
-      const settled = await confirmSelfUpdateInstalled();
-      if (!settled || settled !== installedVersion) {
-        selfUpdateVersionMatchedAt = 0;
-        return false;
+      if ((await confirmedByVersion()) === version) {
+        return true;
       }
-      return true;
+      if (
+        version === baselineVersion &&
+        (await confirmedSameVersionReinstall()) === version
+      ) {
+        return true;
+      }
+      selfUpdateVersionMatchedAt = 0;
+      return false;
     };
 
     const selfUpdateResult = (installedVersion: string) =>
@@ -687,47 +713,66 @@ export const TachyonShellMethods = {
         },
       }) as Tachyon.MethodSuccessResponse<Tachyon.ComponentActionResult>;
 
+    const jobDoneResult = (
+      data: Tachyon.ComponentActionResult,
+    ): Tachyon.MethodSuccessResponse<Tachyon.ComponentActionResult> => ({
+      success: true,
+      data,
+    });
+
     while (true) {
       await sleep(COMPONENT_ACTION_POLL_INTERVAL_MS);
 
       const stateResponse = await readComponentActionState(jobId);
 
-      if (stateResponse) {
-        if (!stateResponse.running) {
-          transientRpc.reset();
-          if (isSelfUpdate && stateResponse.success === false) {
-            // The worker died before writing its result (service restart
-            // during a self-install). The installed version is the truth:
-            // treat a matched version as success instead of a stale error.
-            const installedVersion = await confirmSelfUpdateInstalled();
-            if (installedVersion) {
-              if (await settleSelfUpdate(installedVersion)) {
-                return selfUpdateResult(installedVersion);
-              }
-              continue;
-            }
-          }
+      // Hard ceiling: the modal must never hang forever. Report whatever we
+      // actually know and close it.
+      if (
+        isSelfUpdate &&
+        Date.now() - jobStartedAt >=
+          COMPONENT_ACTION_SELF_UPDATE_HARD_TIMEOUT_MS
+      ) {
+        if (stateResponse && !stateResponse.running) {
+          return jobDoneResult(stateResponse);
+        }
+        const version = await readTachyonVersion();
+        if (targetVersion && version && version !== targetVersion) {
           return {
-            success: true,
-            data: stateResponse,
-          } as Tachyon.MethodSuccessResponse<Tachyon.ComponentActionResult>;
+            success: false,
+            error: _('Tachyon update did not complete within the timeout'),
+          } as Tachyon.MethodFailureResponse;
         }
+        return selfUpdateResult(version || baselineVersion);
+      }
 
-        if (
-          Date.now() - lastStatusRefreshAt <
-          COMPONENT_ACTION_STATUS_REFRESH_INTERVAL_MS
-        ) {
-          continue;
-        }
-
-        if (isSelfUpdate) {
-          // The backend may be stuck reporting the job as running (worker
-          // pid recycled by the service restart). The installed version is
-          // the ground truth: confirm it on every refresh tick.
-          const installedVersion = await confirmSelfUpdateInstalled();
-          if (installedVersion && (await settleSelfUpdate(installedVersion))) {
-            return selfUpdateResult(installedVersion);
+      // The job is over according to the state file.
+      if (stateResponse && !stateResponse.running) {
+        if (isSelfUpdate && stateResponse.success === false) {
+          const version =
+            (await confirmedByVersion()) ||
+            (await confirmedSameVersionReinstall());
+          if (version) {
+            if (await settleVersion(version)) {
+              return selfUpdateResult(version);
+            }
+            continue;
           }
+        }
+        return jobDoneResult(stateResponse);
+      }
+
+      // The backend may be stuck reporting the job as running (worker pid
+      // recycled by the service restart): confirm by version on each tick.
+      if (
+        stateResponse &&
+        stateResponse.running &&
+        isSelfUpdate &&
+        Date.now() - lastStatusRefreshAt >=
+          COMPONENT_ACTION_STATUS_REFRESH_INTERVAL_MS
+      ) {
+        const version = await confirmedByVersion();
+        if (version && (await settleVersion(version))) {
+          return selfUpdateResult(version);
         }
       }
 
@@ -746,9 +791,14 @@ export const TachyonShellMethods = {
         }
 
         if (isSelfUpdate) {
-          const installedVersion = await confirmSelfUpdateInstalled();
-          if (installedVersion && (await settleSelfUpdate(installedVersion))) {
-            return selfUpdateResult(installedVersion);
+          const version =
+            (await confirmedByVersion()) ||
+            (await confirmedSameVersionReinstall());
+          if (version) {
+            if (await settleVersion(version)) {
+              return selfUpdateResult(version);
+            }
+            continue;
           }
           // A self-update replaces the package mid-flight: RPC failures are
           // expected during the swap window and must not fail the operation.
@@ -773,28 +823,27 @@ export const TachyonShellMethods = {
       transientRpc.reset();
       if (parsedResponse.running) {
         if (isSelfUpdate) {
-          const installedVersion = await confirmSelfUpdateInstalled();
-          if (installedVersion && (await settleSelfUpdate(installedVersion))) {
-            return selfUpdateResult(installedVersion);
+          const version = await confirmedByVersion();
+          if (version && (await settleVersion(version))) {
+            return selfUpdateResult(version);
           }
         }
         continue;
       }
 
       if (isSelfUpdate && parsedResponse.success === false) {
-        const installedVersion = await confirmSelfUpdateInstalled();
-        if (installedVersion) {
-          if (await settleSelfUpdate(installedVersion)) {
-            return selfUpdateResult(installedVersion);
+        const version =
+          (await confirmedByVersion()) ||
+          (await confirmedSameVersionReinstall());
+        if (version) {
+          if (await settleVersion(version)) {
+            return selfUpdateResult(version);
           }
           continue;
         }
       }
 
-      return {
-        success: true,
-        data: parsedResponse,
-      } as Tachyon.MethodSuccessResponse<Tachyon.ComponentActionResult>;
+      return jobDoneResult(parsedResponse);
     }
   },
   subscriptionUpdateStart: async (section?: string, sourceIndex?: number) => {
