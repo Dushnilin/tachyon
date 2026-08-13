@@ -909,8 +909,16 @@ function component_action_running_for(component) {
     component = as_string(component);
     for (let path in fs.glob(COMPONENT_ACTION_DIR + "/*.json")) {
         let value = read_json_file(path);
-        if (type(value) == "object" && value.running === true && as_string(value.component) == component)
-            return true;
+        if (type(value) != "object" || value.running !== true || as_string(value.component) != component)
+            continue;
+        // A recycled pid must not keep the job "running" forever: the process
+        // still has to be our component-action worker.
+        let pid = as_string(value.pid || "");
+        if (!job_pid_valid(pid))
+            continue;
+        if (index(as_string(fs.readfile("/proc/" + pid + "/cmdline")), "component-action-worker") < 0)
+            continue;
+        return true;
     }
 
     return false;

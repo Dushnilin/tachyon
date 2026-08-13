@@ -344,4 +344,214 @@ describe('TachyonShellMethods.componentAction', () => {
       },
     });
   });
+
+  it('completes a Tachyon self-update when the backend is stuck reporting the job running (worker pid recycled)', async () => {
+    mocks.fsRead.mockResolvedValue(
+      JSON.stringify({
+        success: true,
+        running: true,
+        component: 'tachyon',
+        action: 'reinstall',
+        message: 'Component action is running',
+        job_id: 'job-1',
+      }),
+    );
+
+    mocks.executeShellCommand.mockImplementation(({ args }) => {
+      if (args[0] === 'component_action_status') {
+        return Promise.resolve({
+          stdout: JSON.stringify({
+            success: true,
+            running: true,
+            component: 'tachyon',
+            action: 'reinstall',
+            message: 'Component action is running',
+            job_id: 'job-1',
+          }),
+          stderr: '',
+          code: 0,
+        });
+      }
+
+      if (args[0] === 'show_version') {
+        return Promise.resolve({
+          stdout: '1.2.78\n',
+          stderr: '',
+          code: 0,
+        });
+      }
+
+      return Promise.resolve({
+        stdout: '',
+        stderr: 'Unexpected command',
+        code: 1,
+      });
+    });
+
+    const responsePromise = TachyonShellMethods.waitComponentActionJob(
+      'job-1',
+      'tachyon',
+      'reinstall',
+      '1.2.78',
+    );
+
+    await vi.advanceTimersByTimeAsync(10000);
+
+    await expect(responsePromise).resolves.toEqual({
+      success: true,
+      data: {
+        success: true,
+        component: 'tachyon',
+        action: 'reinstall',
+        message: 'Tachyon has been installed',
+        current_version: '1.2.78',
+        latest_version: '1.2.78',
+        changed: true,
+        status: 'latest',
+      },
+    });
+  });
+
+  it('treats a stale job state as success for a Tachyon self-update when the installed version matches', async () => {
+    let stateReads = 0;
+
+    const stateFactory = () =>
+      stateReads++ < 4
+        ? {
+            success: true,
+            running: true,
+            component: 'tachyon',
+            action: 'reinstall',
+            message: 'Component action is running',
+            job_id: 'job-1',
+          }
+        : {
+            success: false,
+            running: false,
+            component: 'tachyon',
+            action: 'reinstall',
+            message:
+              'Component action job is stale or the worker process exited unexpectedly',
+            job_id: 'job-1',
+          };
+
+    mocks.fsRead.mockImplementation(() =>
+      Promise.resolve(JSON.stringify(stateFactory())),
+    );
+
+    mocks.executeShellCommand.mockImplementation(({ args }) => {
+      if (args[0] === 'component_action_status') {
+        return Promise.resolve({
+          stdout: JSON.stringify(stateFactory()),
+          stderr: '',
+          code: 0,
+        });
+      }
+
+      if (args[0] === 'show_version') {
+        return Promise.resolve({
+          stdout: '1.2.78\n',
+          stderr: '',
+          code: 0,
+        });
+      }
+
+      return Promise.resolve({
+        stdout: '',
+        stderr: 'Unexpected command',
+        code: 1,
+      });
+    });
+
+    const responsePromise = TachyonShellMethods.waitComponentActionJob(
+      'job-1',
+      'tachyon',
+      'reinstall',
+      '1.2.78',
+    );
+
+    await vi.advanceTimersByTimeAsync(10000);
+
+    await expect(responsePromise).resolves.toEqual({
+      success: true,
+      data: {
+        success: true,
+        component: 'tachyon',
+        action: 'reinstall',
+        message: 'Tachyon has been installed',
+        current_version: '1.2.78',
+        latest_version: '1.2.78',
+        changed: true,
+        status: 'latest',
+      },
+    });
+  });
+
+  it('keeps reporting the stale error when the installed version did not change', async () => {
+    mocks.fsRead.mockResolvedValue(
+      JSON.stringify({
+        success: false,
+        running: false,
+        component: 'tachyon',
+        action: 'reinstall',
+        message:
+          'Component action job is stale or the worker process exited unexpectedly',
+        job_id: 'job-1',
+      }),
+    );
+
+    mocks.executeShellCommand.mockImplementation(({ args }) => {
+      if (args[0] === 'component_action_status') {
+        return Promise.resolve({
+          stdout: JSON.stringify({
+            success: false,
+            running: false,
+            component: 'tachyon',
+            action: 'reinstall',
+            message:
+              'Component action job is stale or the worker process exited unexpectedly',
+            job_id: 'job-1',
+          }),
+          stderr: '',
+          code: 0,
+        });
+      }
+
+      if (args[0] === 'show_version') {
+        return Promise.resolve({
+          stdout: '1.2.77\n',
+          stderr: '',
+          code: 0,
+        });
+      }
+
+      return Promise.resolve({
+        stdout: '',
+        stderr: 'Unexpected command',
+        code: 1,
+      });
+    });
+
+    const responsePromise = TachyonShellMethods.waitComponentActionJob(
+      'job-1',
+      'tachyon',
+      'reinstall',
+      '1.2.78',
+    );
+
+    await vi.advanceTimersByTimeAsync(5000);
+
+    await expect(responsePromise).resolves.toEqual({
+      success: true,
+      data: {
+        success: false,
+        running: false,
+        component: 'tachyon',
+        action: 'reinstall',
+        message:
+          'Component action job is stale or the worker process exited unexpectedly',
+        job_id: 'job-1',
+      },
+    });
+  });
 });

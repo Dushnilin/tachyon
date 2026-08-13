@@ -1189,6 +1189,17 @@ function pid_running(pid) {
     return job_pid_valid(pid) && command_success_from_args([ "kill", "-0", pid ]);
 }
 
+// A bare liveness check is not enough: after a tachyon self-reinstall the
+// service restart recycles the worker's pid quickly, and any new process would
+// keep the job "running" forever. The pid must still belong to our worker.
+function pid_is_component_worker(pid) {
+    pid = as_string(pid);
+    if (!job_pid_valid(pid))
+        return false;
+    let cmdline = fs.readfile("/proc/" + pid + "/cmdline");
+    return index(as_string(cmdline), "component-action-worker") >= 0;
+}
+
 function write_subscription_stale_job_state(path) {
     let value = object_or_empty(read_json_file(path));
     return write_state_file(path, subscription_stale_job_state_value(
@@ -1628,14 +1639,14 @@ function refresh_component_running_job_state(path) {
         return;
     }
 
-    if (pid_running(pid) || within_grace)
+    if ((pid_running(pid) && pid_is_component_worker(pid)) || within_grace)
         return;
 
     command_success_from_args([ "sleep", "1" ]);
     value = read_json_file(path);
     if (type(value) != "object" || value.running !== true)
         return;
-    if (pid_running(pid))
+    if (pid_running(pid) && pid_is_component_worker(pid))
         return;
 
     write_component_stale_job_state(path);

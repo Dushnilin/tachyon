@@ -287,12 +287,16 @@ NODE
 
 component_job="$TACHYON_UI_COMPONENT_ACTION_DIR/component-1.json"
 mkdir -p "$TACHYON_UI_COMPONENT_ACTION_DIR"
-printf '%s\n' '{"running":true,"component":"sing_box","started_at":100}' >"$component_job"
+ln -s /bin/sleep "$TACHYON_UI_COMPONENT_ACTION_DIR/component-action-worker"
+"$TACHYON_UI_COMPONENT_ACTION_DIR/component-action-worker" 30 &
+worker_pid=$!
+printf '%s\n' '{"running":true,"component":"sing_box","pid":"'"$worker_pid"'","started_at":100}' >"$component_job"
 ui_ucode component-action-running-for sing_box >/dev/null ||
   fail "component-action-running-for should detect running sing-box component action"
 if ui_ucode component-action-running-for zapret >/dev/null 2>&1; then
   fail "component-action-running-for should ignore other components"
 fi
+kill "$worker_pid" 2>/dev/null || true
 
 ui_ucode action-ack service "$job_id" >/dev/null ||
   fail "action-ack should acknowledge finished service action"
