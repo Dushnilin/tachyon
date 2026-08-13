@@ -1915,20 +1915,29 @@ function tachyon_get_targets(all_mode) {
     }
 
     // Active mode (default): Check targets in active enabled UCI sections
+    let seen_domains = {};
     cursor.foreach("tachyon", "section", function(s) {
         if (s.enabled != "1") return;
         
         let profiles_to_check = [];
+        let raw_community = s.community_lists;
         
-        if (type(s.community_lists) == "array") {
-            for (let i = 0; i < length(s.community_lists); i++) {
-                if (profiles_map[s.community_lists[i]]) {
-                    push(profiles_to_check, profiles_map[s.community_lists[i]]);
+        if (type(raw_community) == "array") {
+            for (let item in raw_community) {
+                if (!item) continue;
+                for (let part in split(as_string(item), /[\s,]+/)) {
+                    let id = trim(part);
+                    if (id != "" && profiles_map[id]) {
+                        push(profiles_to_check, profiles_map[id]);
+                    }
                 }
             }
-        } else if (type(s.community_lists) == "string") {
-            if (profiles_map[s.community_lists]) {
-                push(profiles_to_check, profiles_map[s.community_lists]);
+        } else if (type(raw_community) == "string") {
+            for (let part in split(as_string(raw_community), /[\s,]+/)) {
+                let id = trim(part);
+                if (id != "" && profiles_map[id]) {
+                    push(profiles_to_check, profiles_map[id]);
+                }
             }
         }
         
@@ -1949,7 +1958,8 @@ function tachyon_get_targets(all_mode) {
             for (let j = 0; j < length(profile.targets); j++) {
                 let t = profile.targets[j];
                 let host = t.host || t.query || "";
-                if (!host) continue;
+                if (!host || seen_domains[host]) continue;
+                seen_domains[host] = true;
 
                 push(targets, {
                     section: display_section,
@@ -1985,6 +1995,9 @@ function tachyon_get_targets(all_mode) {
 
         let custom_section = has_custom_label ? custom_label : "Свои домены";
         for (let cd in custom_domains) {
+            if (!cd || seen_domains[cd]) continue;
+            seen_domains[cd] = true;
+
             push(targets, {
                 section: custom_section,
                 route_type: route_type,
