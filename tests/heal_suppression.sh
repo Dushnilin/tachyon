@@ -56,7 +56,7 @@ grep -q 'function suppressed_by_root_cause(healer)' "$WATCHDOG_UC" \
 # WAN deadline is set before ifdown, not after: ifdown is itself what makes the
 # proxy and DNS probes fail, and those facts arrive while ifup is still running.
 claim_line="$(grep -n 'wan_repair_until = time()' "$WATCHDOG_UC" | cut -d: -f1)"
-ifdown_line="$(grep -n '/sbin/ifdown wan' "$WATCHDOG_UC" | cut -d: -f1)"
+ifdown_line="$(grep -n -m1 '/sbin/ifdown wan' "$WATCHDOG_UC" | cut -d: -f1)"
 [ -n "$claim_line" ] || fail "heal_wan_and_gateway does not set wan_repair_until before ifdown"
 [ -n "$ifdown_line" ] || fail "heal_wan_and_gateway no longer restarts the wan interface"
 [ "$claim_line" -lt "$ifdown_line" ] \
@@ -81,6 +81,29 @@ grep -q 'bus.emit(EV.WAN_UP' "$CONTROLLER_UC" \
   || fail "probe_wan no longer publishes WAN_UP; the deadline could only lapse by expiry"
 grep -qE 'subscribe\(EV\.WAN_UP, note_wan_recovered,' "$WATCHDOG_UC" \
   || fail "nothing subscribes to WAN_UP"
+
+# ── a transient WAN glitch must not bounce the interface ──────────────────────
+# probe_wan used to publish WAN_DOWN on a single miss; the healer's ifdown/ifup
+# then really dropped the interface and its route, repeating every cooldown
+# window — a self-inflicted flap every ~5 minutes (issue #31). The probe now
+# counts consecutive misses, the heal renews gracefully first, and both honour
+# recovery_bypass like every other probe/healer.
+grep -q 'const WAN_FAIL_THRESHOLD' "$CONTROLLER_UC" \
+  || fail "probe_wan has no debounce threshold"
+wan_probe_body="$(sed -n '/function probe_wan()/,/^    }$/p' "$CONTROLLER_UC")"
+echo "$wan_probe_body" | grep -q 'state.wan_fail_streak = 0;' \
+  || fail "probe_wan no longer resets its miss streak on a healthy pass"
+echo "$wan_probe_body" | grep -q 'state.wan_fail_streak++;' \
+  || fail "probe_wan no longer counts consecutive misses"
+echo "$wan_probe_body" | grep -q 'if (state.wan_fail_streak < WAN_FAIL_THRESHOLD) return;' \
+  || fail "probe_wan publishes WAN_DOWN before the debounce threshold"
+echo "$wan_probe_body" | grep -q 'if (setting("recovery_bypass", "0") == "1") return;' \
+  || fail "probe_wan ignores recovery_bypass"
+wan_heal_body="$(sed -n '/function heal_wan_and_gateway/,/^}/p' "$WATCHDOG_UC")"
+echo "$wan_heal_body" | grep -q 'if (settings().recovery_bypass == "1") return;' \
+  || fail "heal_wan_and_gateway ignores recovery_bypass; it was the only healer that could not be disabled"
+echo "$wan_heal_body" | grep -q '/sbin/ubus call network.interface.wan renew' \
+  || fail "heal_wan_and_gateway no longer tries a graceful renew before ifdown/ifup"
 
 # ── the consequences actually check ───────────────────────────────────────────
 for healer in heal_dns_stall heal_proxy_connectivity heal_proxy_health heal_dns_continuous; do

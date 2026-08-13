@@ -858,6 +858,7 @@ function heal_tproxy_port(ev) {
 }
 
 function heal_wan_and_gateway(ev) {
+    if (settings().recovery_bypass == "1") return;
     let tcfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
     if (tcfg.notify_crash != "0") {
         send_telegram_notification("⚠️ *Watchdog:* WAN/Gateway проблема. Перезапуск wan...");
@@ -866,7 +867,19 @@ function heal_wan_and_gateway(ev) {
     // makes the proxy and DNS probes fail, and those facts arrive while ifup is
     // still running.
     wan_repair_until = time() + SUPPRESSION_DEADLINE;
-    bg_system("/sbin/ifdown wan >/dev/null 2>&1 && /sbin/ifup wan >/dev/null 2>&1");
+    // The address is still there but the default route vanished: a graceful
+    // renew re-applies the routes without dropping the interface (issue #31).
+    // Only when the address itself is gone does the interface get recycled,
+    // and even then only if the renew did not restore the route within 5s.
+    let cmd;
+    if (ev.payload.no_address) {
+        cmd = "/sbin/ifdown wan >/dev/null 2>&1 && /sbin/ifup wan >/dev/null 2>&1";
+    } else {
+        cmd = "/sbin/ubus call network.interface.wan renew >/dev/null 2>&1; sleep 5; " +
+            "ip route 2>/dev/null | grep -q default || " +
+            "(/sbin/ifdown wan >/dev/null 2>&1 && /sbin/ifup wan >/dev/null 2>&1)";
+    }
+    bg_system(cmd);
 }
 
 // The uplink answering again is what ends the WAN repair. probe_wan publishes

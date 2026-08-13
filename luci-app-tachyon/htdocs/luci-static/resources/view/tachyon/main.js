@@ -12523,7 +12523,7 @@ function renderDiagnosticAvailableActionsWidget() {
     },
     doctor: {
       loading: diagnosticsActions.doctor.loading,
-      visible: false,
+      visible: true,
       onClick: handleRunDoctor,
       disabled: utilityActionsDisabled
     },

@@ -29,6 +29,13 @@ const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
 // ai_heal_dns() used to step that counter before probing moved to the fast tier.
 const DNS_STREAK_INTERVAL = 120;
 
+// Consecutive WAN probe misses required before WAN_DOWN is published. The old
+// check fired on a single observation: one transient gap in `ip route` (a
+// DHCP renew re-applying the route, a reload_firewall window) made the healer
+// bounce the whole interface, which then really dropped the address and the
+// route — a self-inflicted WAN flap every ~5 minutes (issue #31).
+const WAN_FAIL_THRESHOLD = 3;
+
 let as_string = common.as_string;
 let shell_quote = common.shell_quote;
 let command_from_args = common.command_from_args;
@@ -360,7 +367,8 @@ function controller(bus, opts) {
         logread_pipe_fd: -1,
         last_oom_time: 0,
         healthy_streak: 0,
-        subscription_fail_streak: 0
+        subscription_fail_streak: 0,
+        wan_fail_streak: 0
     };
 
     let self = { EV: EV, state: state };
@@ -707,8 +715,17 @@ function controller(bus, opts) {
     }
 
     // ── Probe: WAN address and default route ──────────────────────────────────
+    // WAN_DOWN is published only after WAN_FAIL_THRESHOLD consecutive misses,
+    // mirroring the streak logic of the other probes. A reload restarts the
+    // firewall, which can briefly drop the default route; failures seen while
+    // that is in progress are not counted, and a healthy pass resets the
+    // streak so one transient gap cannot accumulate into a false trigger.
     function probe_wan() {
-        if (is_reload_in_progress()) return;
+        if (is_reload_in_progress()) {
+            state.wan_fail_streak = 0;
+            return;
+        }
+        if (setting("recovery_bypass", "0") == "1") return;
 
         let proto = uci_core.get("network", "wan", "proto") || "pppoe";
         let device = trim(uci_core.get("network", "wan", "device") || "eth0");
@@ -720,10 +737,23 @@ function controller(bus, opts) {
         let route_out = command_capture("ip route 2>/dev/null").output;
         let no_gateway = index(route_out, "default") < 0;
 
-        if (no_address || no_gateway)
-            bus.emit(EV.WAN_DOWN, { iface: iface, no_address: no_address, no_gateway: no_gateway });
-        else
+        if (!no_address && !no_gateway) {
+            state.wan_fail_streak = 0;
             bus.emit(EV.WAN_UP, { iface: iface });
+            return;
+        }
+
+        state.wan_fail_streak++;
+        log("Watchdog: WAN check failed (" + as_string(state.wan_fail_streak) + "/" +
+            as_string(WAN_FAIL_THRESHOLD) + " misses)", "warn");
+        if (state.wan_fail_streak < WAN_FAIL_THRESHOLD) return;
+
+        bus.emit(EV.WAN_DOWN, {
+            iface: iface,
+            no_address: no_address,
+            no_gateway: no_gateway,
+            streak: state.wan_fail_streak
+        });
     }
 
     // ── Probe: community subnet nft sets ──────────────────────────────────────
