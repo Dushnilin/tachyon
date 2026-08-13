@@ -235,7 +235,9 @@ function proxy_port() {
     if (cached_proxy_port !== null)
         return as_string(cached_proxy_port);
 
-    let port = "4534";
+    // Empty when the generated config has no http/mixed inbound: probing the
+    // default port would measure a dead listener and report the proxy broken.
+    let port = "";
     let sb_cfg = parse_singbox_config();
     if (sb_cfg && sb_cfg.inbounds) {
         for (let inb in sb_cfg.inbounds) {
@@ -508,6 +510,9 @@ function controller(bus, opts) {
         if (pid == "" || !process_running(pid, "sing-box")) return;
 
         let port = proxy_port();
+        // No http/mixed inbound in the generated config: there is nothing to
+        // measure, so the proxy must not be declared broken on a dead port.
+        if (port == "") return;
         let check_url = setting("ai_proxy_health_url", "https://cp.cloudflare.com/generate_204");
 
         let started = time();

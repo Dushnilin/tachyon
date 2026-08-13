@@ -105,6 +105,19 @@ echo "$wan_heal_body" | grep -q 'if (settings().recovery_bypass == "1") return;'
 echo "$wan_heal_body" | grep -q '/sbin/ubus call network.interface.wan renew' \
   || fail "heal_wan_and_gateway no longer tries a graceful renew before ifdown/ifup"
 
+# ── no http/mixed inbound → the proxy probe must not declare it broken ───────
+# proxy_port() used to fall back to the hardcoded 4534, so a config without
+# any http/mixed inbound (economy mode, all mixed proxies off) measured a dead
+# listener and the watchdog restarted sing-box every ~minute (issue #31).
+proxy_port_body="$(sed -n '/^function proxy_port()/,/^}$/p' "$CONTROLLER_UC")"
+echo "$proxy_port_body" | grep -q 'let port = "";' \
+  || fail "proxy_port() still defaults to a fake port instead of signalling 'no proxy inbound'"
+proxy_probe_body="$(sed -n '/function probe_proxy()/,/^    }$/p' "$CONTROLLER_UC")"
+echo "$proxy_probe_body" | grep -q 'if (port == "") return;' \
+  || fail "probe_proxy() probes a dead default port when the config has no http/mixed inbound"
+grep -q 'if (proxy_addr == "127.0.0.1:") return;' "$WATCHDOG_UC" \
+  || fail "smart-detect probes the empty proxy address when the config has no http/mixed inbound"
+
 # ── the consequences actually check ───────────────────────────────────────────
 for healer in heal_dns_stall heal_proxy_connectivity heal_proxy_health heal_dns_continuous; do
   grep -q "suppressed_by_root_cause(\"$healer\")" "$WATCHDOG_UC" \

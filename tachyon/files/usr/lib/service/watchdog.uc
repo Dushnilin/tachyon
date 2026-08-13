@@ -1313,6 +1313,8 @@ function smart_detect_process_pending() {
     // Reuse the controller's cached port value: re-parsing config.json here
     // would duplicate the work event_controller already does (and caches).
     let proxy_addr = "127.0.0.1:" + controller.proxy_port();
+    // No http/mixed inbound in the generated config: probing is pointless.
+    if (proxy_addr == "127.0.0.1:") return;
 
     let detect_sections = [];
     let raw_list = cfg.smart_detect_sections;
