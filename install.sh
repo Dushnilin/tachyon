@@ -331,6 +331,7 @@ LOG_FILE="/tmp/tachyon-install.log"
 START_TIME=""
 TACHYON_WAS_ENABLED=0
 TACHYON_WAS_RUNNING=0
+TACHYON_WAS_INSTALLED=0
 TACHYON_LEGACY_DETECTED=0
 TACHYON_FORKOP_MIGRATION=0
 TACHYON_I18N_REQUESTED=0
@@ -1337,6 +1338,7 @@ function installer_cleanup_legacy() {
 
     print("TACHYON_WAS_ENABLED=", was_enabled ? "1" : "0", "\n");
     print("TACHYON_WAS_RUNNING=", was_running ? "1" : "0", "\n");
+    print("TACHYON_WAS_INSTALLED=", tachyon_installed ? "1" : "0", "\n");
     print("TACHYON_LEGACY_DETECTED=", legacy_installed ? "1" : "0", "\n");
     return true;
 }
@@ -1445,6 +1447,16 @@ function installer_post_install() {
         if (!run_args([ "timeout", "30", INSTALLER_TACHYON_INIT, "start" ]) &&
             !run_args([ "timeout", "30", INSTALLER_TACHYON_INIT, "restart" ]))
             warn("Failed to start Tachyon after upgrade.\n");
+    }
+
+    // Fresh installs must end up in a pristine default state: wipe leftover
+    // caches and runtime state from previous installations and rewrite the
+    // config from the bundled default. Upgrades and legacy migrations keep
+    // the user configuration untouched.
+    if (env("TACHYON_WAS_INSTALLED", "0") != "1" &&
+        env("TACHYON_LEGACY_DETECTED", "0") != "1") {
+        if (!run_args([ "timeout", "60", INSTALLER_TACHYON_BIN, "reset_settings", "no-start" ]))
+            warn("Failed to reset Tachyon settings to defaults after a fresh install.\n");
     }
 
     return true;
@@ -2576,6 +2588,7 @@ post_install() {
     fi
 
     TACHYON_WAS_ENABLED="$TACHYON_WAS_ENABLED" TACHYON_WAS_RUNNING="$TACHYON_WAS_RUNNING" \
+        TACHYON_WAS_INSTALLED="$TACHYON_WAS_INSTALLED" TACHYON_LEGACY_DETECTED="$TACHYON_LEGACY_DETECTED" \
         install_json_ucode installer-post-install ||
         fail "Failed to complete Tachyon post-install actions"
 }

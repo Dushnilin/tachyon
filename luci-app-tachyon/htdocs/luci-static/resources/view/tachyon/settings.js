@@ -376,6 +376,82 @@ function createWatchdogStatusWidget() {
   return wrapper;
 }
 
+function createResetSettingsWidget() {
+  const wrapper = E("div", {
+    id: "tachyon-reset-settings-widget",
+    style: "display:flex;align-items:center;gap:12px;padding:4px 0;flex-wrap:wrap;",
+  });
+
+  const btnReset = E("button", {
+    class: "btn cbi-button cbi-button-negative",
+    type: "button",
+  });
+  btnReset.textContent = _("Reset Settings");
+
+  const msgEl = E("span", {
+    style: "font-size:12px;color:var(--text-color-medium,#888);",
+  });
+
+  function performReset() {
+    if (btnReset.disabled)
+      return;
+    btnReset.disabled = true;
+    msgEl.textContent = _("Resetting\u2026");
+    fs.exec("/usr/bin/tachyon", ["reset_settings"])
+      .then(function (res) {
+        let success = false;
+        try {
+          success = JSON.parse((res && res.stdout) || "").success !== false;
+        } catch (e) {
+          success = false;
+        }
+        if (!success)
+          throw new Error("reset failed");
+        msgEl.textContent = "";
+        ui.addNotification(null, E("p", {}, _("Settings have been reset to defaults. The page will reload.")), "info");
+        setTimeout(function () {
+          location.reload();
+        }, 1500);
+      })
+      .catch(function () {
+        msgEl.textContent = _("Failed to reset settings");
+        btnReset.disabled = false;
+      });
+  }
+
+  btnReset.addEventListener("click", function () {
+    ui.showModal(
+      _("Reset Settings"),
+      [
+        E("p", {}, _("This will erase all Tachyon settings and restore the factory defaults. The service will restart. This action cannot be undone.")),
+        E("div", { class: "button-row" }, [
+          E("button", {
+            class: "btn cbi-button cbi-button-neutral",
+            type: "button",
+            click: function () {
+              ui.hideModal();
+            },
+          }, _("Cancel")),
+          E("button", {
+            class: "btn cbi-button cbi-button-negative",
+            type: "button",
+            click: function () {
+              ui.hideModal();
+              performReset();
+            },
+          }, _("Reset")),
+        ]),
+      ],
+      "cbi-modal",
+    );
+  });
+
+  wrapper.appendChild(btnReset);
+  wrapper.appendChild(msgEl);
+
+  return wrapper;
+}
+
 function createSmartDetectSectionsWidget(section_id) {
   const TESTABLE_ACTIONS = ["connection", "proxy", "outbound", "vpn", "zapret", "zapret2", "byedpi"];
   const allSections = (uci.sections(UCI_PACKAGE, "section") || [])
@@ -1216,6 +1292,20 @@ function createSettingsContent(section, capabilities) {
   );
   o.default = "0";
   o.rmempty = false;
+
+  const resetOpt = section.taboption(
+    "advanced",
+    form.DummyValue,
+    "_reset_settings",
+    _("Reset Settings"),
+    _(
+      "Restores the Tachyon factory defaults: all rules, subscriptions, custom DNS servers and other options will be lost.",
+    ),
+  );
+  resetOpt.rawhtml = true;
+  resetOpt.cfgvalue = function () {
+    return createResetSettingsWidget();
+  };
 
   o = section.taboption(
     "ai",

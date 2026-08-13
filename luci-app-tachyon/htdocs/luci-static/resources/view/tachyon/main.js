@@ -7937,13 +7937,10 @@ var styles = `
 
 .tachyon_dashboard-page__subscription-meta__title {
     flex: 0 1 auto;
-    width: max-content;
-    max-width: min(28ch, 30%);
-    min-width: min-content;
     color: var(--text-color-high);
     font-weight: 700;
     line-height: 1.25;
-    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
 .tachyon_dashboard-page__subscription-meta__facts {
@@ -10066,23 +10063,23 @@ function formatSectionName(name) {
     "\u0411\u0430\u0437\u043E\u0432\u0430\u044F \u0441\u0432\u044F\u0437\u043D\u043E\u0441\u0442\u044C": "\u0411\u0430\u0437\u043E\u0432\u0430\u044F \u0441\u0432\u044F\u0437\u043D\u043E\u0441\u0442\u044C",
     "\u0417\u0430\u0431\u043B\u043E\u043A\u0438\u0440\u043E\u0432\u0430\u043D\u043D\u044B\u0435 \u0432 \u0420\u0424": "\u0417\u0430\u0431\u043B\u043E\u043A\u0438\u0440\u043E\u0432\u0430\u043D\u043D\u044B\u0435 \u0440\u0435\u0441\u0443\u0440\u0441\u044B",
     "\u0421\u0432\u043E\u0438 \u0434\u043E\u043C\u0435\u043D\u044B": "\u0421\u043E\u0431\u0441\u0442\u0432\u0435\u043D\u043D\u044B\u0435 \u0434\u043E\u043C\u0435\u043D\u044B",
-    "Custom": "\u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C\u0441\u043A\u0438\u0439",
+    Custom: "\u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C\u0441\u043A\u0438\u0439",
     "ChatGPT / OpenAI": "ChatGPT / OpenAI",
     "Gemini / Google AI": "Gemini / Google AI",
     "X (Twitter)": "Twitter (X)",
     "UDP / QUIC": "UDP / QUIC \u043F\u0440\u043E\u0442\u043E\u043A\u043E\u043B\u044B",
-    "Telegram": "Telegram",
-    "Instagram": "Instagram",
-    "YouTube": "YouTube",
-    "TikTok": "TikTok",
-    "Discord": "Discord",
-    "Facebook": "Facebook",
-    "WhatsApp": "WhatsApp",
-    "Netflix": "Netflix",
-    "Spotify": "Spotify",
-    "Twitch": "Twitch",
-    "Steam": "Steam",
-    "GitHub": "GitHub"
+    Telegram: "Telegram",
+    Instagram: "Instagram",
+    YouTube: "YouTube",
+    TikTok: "TikTok",
+    Discord: "Discord",
+    Facebook: "Facebook",
+    WhatsApp: "WhatsApp",
+    Netflix: "Netflix",
+    Spotify: "Spotify",
+    Twitch: "Twitch",
+    Steam: "Steam",
+    GitHub: "GitHub"
   };
   return sectionMap[clean] || clean;
 }
@@ -10328,11 +10325,7 @@ function renderServiceCheckModal() {
           style: "padding: 4px 8px; font-size: 12px; border-radius: 4px; max-width: 240px;"
         },
         [
-          E(
-            "option",
-            { value: "ALL" },
-            `\u0412\u0441\u0435 \u0441\u0435\u0440\u0432\u0438\u0441\u044B (${targets.length})`
-          ),
+          E("option", { value: "ALL" }, `\u0412\u0441\u0435 \u0441\u0435\u0440\u0432\u0438\u0441\u044B (${targets.length})`),
           ...sectionNames.map((sec) => {
             const count = targets.filter((t) => t.section === sec).length;
             return E(
@@ -10460,15 +10453,19 @@ function renderServiceCheckModal() {
         const rowClass = index % 2 === 0 ? "cbi-rowstyle-1" : "cbi-rowstyle-2";
         const badge = renderStatusBadge("", false, true);
         const tr = E("tr", { class: `tr ${rowClass}` }, [
-          E("td", { class: "td", style: "word-break: break-all; padding: 8px;" }, [
-            E(
-              "span",
-              { style: "font-weight: 600; font-size: 12px;" },
-              formatSectionName(item.section)
-            ),
-            E("br"),
-            E("small", { style: "opacity: 0.8;" }, item.domain)
-          ]),
+          E(
+            "td",
+            { class: "td", style: "word-break: break-all; padding: 8px;" },
+            [
+              E(
+                "span",
+                { style: "font-weight: 600; font-size: 12px;" },
+                formatSectionName(item.section)
+              ),
+              E("br"),
+              E("small", { style: "opacity: 0.8;" }, item.domain)
+            ]
+          ),
           E("td", { class: "td", style: "font-size: 12px; padding: 8px;" }, [
             E(
               "span",
@@ -10486,20 +10483,33 @@ function renderServiceCheckModal() {
           ]),
           E(
             "td",
-            { class: "td", style: "text-align: right; font-size: 12px; padding: 8px 4px;" },
+            {
+              class: "td",
+              style: "text-align: right; font-size: 12px; padding: 8px 4px;"
+            },
             "-"
           ),
           E(
             "td",
-            { class: "td", style: "text-align: right; font-size: 12px; padding: 8px 4px;" },
+            {
+              class: "td",
+              style: "text-align: right; font-size: 12px; padding: 8px 4px;"
+            },
             "-"
           ),
           E(
             "td",
-            { class: "td", style: "text-align: right; font-size: 12px; padding: 8px 4px;" },
+            {
+              class: "td",
+              style: "text-align: right; font-size: 12px; padding: 8px 4px;"
+            },
             "-"
           ),
-          E("td", { class: "td", style: "text-align: center; padding: 8px 6px;" }, badge)
+          E(
+            "td",
+            { class: "td", style: "text-align: center; padding: 8px 6px;" },
+            badge
+          )
         ]);
         rowMap.push({ target: item, tr });
         tableBody.appendChild(tr);
@@ -10567,7 +10577,10 @@ function renderServiceCheckModal() {
                   const customTr = E("tr", { class: "tr cbi-rowstyle-1" }, [
                     E(
                       "td",
-                      { class: "td", style: "word-break: break-all; padding: 8px;" },
+                      {
+                        class: "td",
+                        style: "word-break: break-all; padding: 8px;"
+                      },
                       [
                         E(
                           "span",
@@ -10578,39 +10591,65 @@ function renderServiceCheckModal() {
                         E("small", {}, cItem.domain)
                       ]
                     ),
-                    E("td", { class: "td", style: "font-size: 12px; padding: 8px;" }, [
-                      E(
-                        "span",
-                        {
-                          class: "badge cbi-value-title",
-                          style: "font-size: 11px; padding: 2px 6px;"
-                        },
-                        formatRouteType(cItem.route_type)
-                      )
-                    ]),
-                    E("td", { class: "td", style: "font-size: 12px; padding: 8px;" }, [
-                      cItem.ip || "?",
-                      E("br"),
-                      E("small", {}, `${cItem.dns_ms}ms`)
-                    ]),
                     E(
                       "td",
-                      { class: "td", style: "text-align: right; padding: 8px 4px;" },
+                      {
+                        class: "td",
+                        style: "font-size: 12px; padding: 8px;"
+                      },
+                      [
+                        E(
+                          "span",
+                          {
+                            class: "badge cbi-value-title",
+                            style: "font-size: 11px; padding: 2px 6px;"
+                          },
+                          formatRouteType(cItem.route_type)
+                        )
+                      ]
+                    ),
+                    E(
+                      "td",
+                      {
+                        class: "td",
+                        style: "font-size: 12px; padding: 8px;"
+                      },
+                      [
+                        cItem.ip || "?",
+                        E("br"),
+                        E("small", {}, `${cItem.dns_ms}ms`)
+                      ]
+                    ),
+                    E(
+                      "td",
+                      {
+                        class: "td",
+                        style: "text-align: right; padding: 8px 4px;"
+                      },
                       cItem.tcp_ms > 0 ? `${cItem.tcp_ms}` : "-"
                     ),
                     E(
                       "td",
-                      { class: "td", style: "text-align: right; padding: 8px 4px;" },
+                      {
+                        class: "td",
+                        style: "text-align: right; padding: 8px 4px;"
+                      },
                       cItem.tls_ms > 0 ? `${cItem.tls_ms}` : "-"
                     ),
                     E(
                       "td",
-                      { class: "td", style: "text-align: right; padding: 8px 4px;" },
+                      {
+                        class: "td",
+                        style: "text-align: right; padding: 8px 4px;"
+                      },
                       cItem.http_ms > 0 ? `${cItem.http_ms}` : "-"
                     ),
                     E(
                       "td",
-                      { class: "td", style: "text-align: center; padding: 8px 6px;" },
+                      {
+                        class: "td",
+                        style: "text-align: center; padding: 8px 6px;"
+                      },
                       cBadge
                     )
                   ]);

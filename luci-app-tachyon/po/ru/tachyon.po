@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-08-13 08:37+0300\n"
-"PO-Revision-Date: 2026-08-13 08:37+0300\n"
+"POT-Creation-Date: 2026-08-13 20:17+0300\n"
+"PO-Revision-Date: 2026-08-13 20:17+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -16,6 +16,27 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
+
+msgid "-- Select --"
+msgstr "-- Выбрать --"
+
+msgid ".lst Lists"
+msgstr "Списки .lst"
+
+msgid "(provider default)"
+msgstr "(по умолчанию провайдера)"
+
+msgid "+ Add JSON outbound"
+msgstr "+ Добавить JSON outbound"
+
+msgid "+ Add level"
+msgstr "+ Добавить уровень"
+
+msgid "+ Add priority"
+msgstr "+ Добавить приоритет"
+
+msgid "+ Add URLTest"
+msgstr "+ Добавить URLTest"
 
 msgid "⏹ Stop"
 msgstr "⏹ Стоп"
@@ -26,6 +47,12 @@ msgstr "▶ Старт"
 msgid "⚙ Advanced Settings"
 msgstr "⚙ Настройки"
 
+msgid "⚠️ If all Bootstrap DNS fail 3 times, queries will be sent to your ISP's DNS in plaintext. Only use as a last resort to prevent complete internet loss."
+msgstr "⚠️ Если все Bootstrap DNS завершатся с ошибкой 3 раза, запросы будут отправлены в DNS вашего провайдера в открытом виде. Используйте только в крайнем случае для предотвращения полной потери интернета."
+
+msgid "⚠️ If all Main DNS fail 3 times, queries will be sent to your ISP's DNS in plaintext. Only use as a last resort to prevent complete internet loss."
+msgstr "⚠️ Если все основные DNS завершатся с ошибкой 3 раза, запросы будут отправлены в DNS вашего провайдера в открытом виде. Используйте только в крайнем случае для предотвращения полной потери интернета."
+
 msgid "✔ Running"
 msgstr "✔ Работает"
 
@@ -34,6 +61,9 @@ msgstr "✘ Остановлено"
 
 msgid "🔑 Generate"
 msgstr "🔑 Сгенерировать"
+
+msgid "Action"
+msgstr "Действие"
 
 msgid "Active"
 msgstr "Активные"
@@ -50,17 +80,62 @@ msgstr "Активные соединения"
 msgid "Active Main DNS"
 msgstr "Активный основной DNS"
 
-msgid "Active Routes"
-msgstr ""
+msgid "Add at least one DNS server"
+msgstr "Добавьте как минимум один DNS-сервер"
+
+msgid "Add prefix to nodes"
+msgstr "Добавить префикс к узлам"
+
+msgid "Add URLs or local paths to .lst lists containing domains and subnets."
+msgstr "Добавьте URL или локальные пути к спискам .lst, содержащим домены и подсети."
+
+msgid "Add URLs or local paths to .lst lists containing domains. IP entries are ignored."
+msgstr "Добавьте URL или локальные пути к спискам .lst, содержащим домены. IP-записи игнорируются."
+
+msgid "Add URLs or local paths to .srs / .json lists. Only domain rules are supported."
+msgstr "Добавьте URL или локальные пути к спискам .srs / .json. Поддерживаются только правила доменов."
+
+msgid "Add URLs or local paths to .srs / .json lists. Subnets are ignored by default."
+msgstr "Добавьте URL или локальные пути к спискам .srs / .json. Подсети игнорируются по умолчанию."
+
+msgid "Add URLTest / Priority group"
+msgstr "Добавить группу URLTest / Приоритет"
 
 msgid "Additional marking rules found"
 msgstr "Найдены дополнительные правила маркировки"
 
+msgid "Additionally exclude servers by protocol, transport, and security. Exclude only servers matching the specified parameters."
+msgstr "Дополнительно исключать серверы по протоколу, транспорту и безопасности. Исключать только серверы, соответствующие указанным параметрам."
+
+msgid "Additionally filter servers by protocol, transport, and security. Add only servers matching the specified parameters."
+msgstr "Дополнительно фильтровать серверы по протоколу, транспорту и безопасности. Добавлять только серверы, соответствующие указанным параметрам."
+
+msgid "Additionally hide servers by protocol, transport, and security. Hide servers matching the specified parameters."
+msgstr "Дополнительно скрывать серверы по протоколу, транспорту и безопасности. Скрывать серверы, соответствующие указанным параметрам."
+
+msgid "Additionally show servers by protocol, transport, and security. Add only servers matching the specified parameters."
+msgstr "Дополнительно показывать серверы по протоколу, транспорту и безопасности. Показывать только серверы, соответствующие указанным параметрам."
+
+msgid "Administrator Chat IDs"
+msgstr "Chat ID администраторов"
+
 msgid "Advanced self-healing features. Requires Watchdog to be enabled."
 msgstr "Расширенные функции самовосстановления. Требуется включённый Watchdog."
 
+msgid "Advanced System"
+msgstr "Расширенные настройки"
+
+msgid "AEAD Method"
+msgstr "Метод AEAD"
+
+msgid "AI & Watchdog"
+msgstr "ИИ и Watchdog"
+
 msgid "AI Agent REST API (12 Endpoints)"
 msgstr "HTTP REST API ИИ-агента (12 эндпоинтов)"
+
+msgid "AI Agent REST API Bearer Token"
+msgstr "Токен Bearer для REST API ИИ-агента"
 
 msgid "AI API Key"
 msgstr "API-ключ ИИ"
@@ -69,22 +144,22 @@ msgid "AI Chat & Tachyon Assistant"
 msgstr "ИИ Чат & Ассистент Tachyon"
 
 msgid "AI Chat Assistant"
-msgstr ""
+msgstr "ИИ Чат-ассистент"
 
 msgid "AI Doctor (ChatGPT / DeepSeek API)"
 msgstr "AI Doctor (ChatGPT / DeepSeek API)"
 
 msgid "AI Doctor Diagnosis"
-msgstr ""
+msgstr "Диагностика ИИ-доктора"
 
 msgid "AI Doctor failed"
-msgstr ""
+msgstr "Ошибка ИИ-доктора"
 
 msgid "AI Doctor Language"
-msgstr ""
+msgstr "Язык ИИ-доктора"
 
 msgid "AI Model"
-msgstr ""
+msgstr "Модель ИИ"
 
 msgid "AI Provider"
 msgstr "Провайдер ИИ"
@@ -101,53 +176,146 @@ msgstr "Настройки AI Watchdog сохранены. Перезапуст�
 msgid "All"
 msgstr "Все"
 
+msgid "All except selected"
+msgstr "Все кроме выбранных"
+
+msgid "All remaining except selected"
+msgstr "Все остальные кроме выбранных"
+
+msgid "All remaining servers"
+msgstr "Все остальные серверы"
+
+msgid "All remaining servers means every server not already assigned to a higher-priority level."
+msgstr "Все остальные серверы — это все серверы, не назначенные на уровень с более высоким приоритетом."
+
 msgid "All Routes"
 msgstr "Все маршруты"
 
-msgid "All Services"
-msgstr ""
+msgid "All servers"
+msgstr "Все серверы"
+
+msgid "All traffic from these IP addresses will be routed through the section unconditionally, ignoring all other conditions."
+msgstr "Весь трафик от этих IP-адресов будет маршрутизирован через секцию безусловно, игнорируя все остальные условия."
+
+msgid "Allow Insecure TLS"
+msgstr "Разрешить небезопасный TLS"
+
+msgid "Allowed domain prefixes are full:, keyword:, and regex:"
+msgstr "Допустимые префиксы доменов: full:, keyword:, и regex:"
+
+msgid "Allows access to YACD from the WAN. Make sure to open the appropriate port in your firewall."
+msgstr "Позволяет доступ к YACD из WAN. Убедитесь, что соответствующий порт открыт в файрволе."
+
+msgid "Allows limiting the list of servers for URLTest"
+msgstr "Позволяет ограничить список серверов для URLTest"
+
+msgid "Allows Tachyon to send diagnostic snapshots to ChatGPT or DeepSeek API for intelligent root-cause analysis and auto-repair recommendations."
+msgstr "Позволяет Tachyon отправлять диагностические снимки в ChatGPT или DeepSeek API для умного анализа причин проблем и рекомендаций по исправлению."
+
+msgid "AmneziaWG config loaded successfully!"
+msgstr "Конфигурация AmneziaWG успешно загружена!"
+
+msgid "AmneziaWG Generator"
+msgstr "Генератор AmneziaWG"
 
 msgid "Another component action is already running"
-msgstr ""
+msgstr "Другое действие уже выполняется"
+
+msgid "API Key for OpenAI (sk-...) or DeepSeek (optional for Ollama / LM Studio)"
+msgstr "API-ключ для OpenAI (sk-...) или DeepSeek (опционально для Ollama / LM Studio)"
+
+msgid "Apply rules of this section only to selected protocols."
+msgstr "Применять правила этой секции только к выбранным протоколам."
+
+msgid "Apply section rules only to the specified local IP addresses"
+msgstr "Применять правила секции только к указанным локальным IP-адресам"
 
 msgid "Applying changes & reloading services..."
 msgstr "Применение изменений и перезапуск служб..."
 
-msgid "Cannot save settings"
-msgstr "Не удалось сохранить настройки"
-
 msgid "Applying fix"
-msgstr ""
+msgstr "Применение исправления"
 
 msgid "Ask Tachyon AI Assistant a question..."
 msgstr "Задайте вопрос ИИ-ассистенту..."
 
-msgid "Auto"
-msgstr ""
+msgid "At least one Admin Chat ID is required"
+msgstr "Требуется как минимум один Chat ID администратора"
+
+msgid "At least one valid domain must be specified."
+msgstr "Должен быть указан как минимум один действительный домен."
+
+msgid "At least one valid IP or subnet must be specified."
+msgstr "Должен быть указан как минимум один действительный IP или подсеть."
+
+msgid "Auth Digest"
+msgstr "Auth Digest"
 
 msgid "Auto refresh"
 msgstr "Автообновление"
 
+msgid "Auto-detected domains"
+msgstr "Автоопределённые домены"
+
+msgid "Auto-detected Domains"
+msgstr "Автоопределённые домены"
+
 msgid "Auto-detects blocked domains from logs and adds them to the first section where they work via proxy."
 msgstr "Автоматически определяет заблокированные домены из логов и добавляет их в первую секцию, где они работают через прокси."
+
+msgid "Auto-generate HWID"
+msgstr "Авто-генерация HWID"
+
+msgid "Auto-update Hosts Lists"
+msgstr "Автообновление списков Hosts"
+
+msgid "Automatic component update checks"
+msgstr "Автоматическая проверка обновлений компонентов"
+
+msgid "Automatic User-Agent selection"
+msgstr "Автоматический выбор User-Agent"
+
+msgid "Automatically add text to the name of each server from this subscription for convenient filtering."
+msgstr "Автоматически добавлять текст к имени каждого сервера из этой подписки для удобной фильтрации."
+
+msgid "Automatically check installed components for new versions"
+msgstr "Автоматически проверять установленные компоненты на наличие новых версий"
+
+msgid "Automatically generate a Cloudflare WARP account and configure all AmneziaWG settings."
+msgstr "Автоматически создать аккаунт Cloudflare WARP и настроить все параметры AmneziaWG."
+
+msgid "Automatically increase check intervals when healthy (to 5 min) and decrease on problems (to 120s)."
+msgstr "Автоматически увеличивать интервалы проверки при нормальном состоянии (до 5 мин) и уменьшать при проблемах (до 120с)."
 
 msgid "Automatically select the fastest node in the current level"
 msgstr "Автовыбор самого быстрого узла уровня"
 
-msgid "Available"
-msgstr ""
+msgid "Automatically update remote hosts lists on schedule"
+msgstr "Автоматически обновлять удалённые списки Hosts по расписанию"
 
 msgid "Available actions"
 msgstr "Доступные действия"
 
-msgid "Avg Latency"
-msgstr "Ср. задержка"
+msgid "Backend validation failed: %s"
+msgstr "Ошибка проверки бэкенда: %s"
 
 msgid "Bearer Auth Token"
 msgstr "Токен авторизации (Bearer)"
 
+msgid "Belarus (by)"
+msgstr "Беларусь (by)"
+
+msgid "BitTorrent / P2P"
+msgstr "BitTorrent / P2P"
+
 msgid "Bootstrap DNS"
 msgstr "Bootstrap DNS"
+
+msgid "Bootstrap DNS Servers"
+msgstr "Bootstrap DNS-серверы"
+
+msgid "Bot Status"
+msgstr "Статус бота"
 
 msgid "Browser FakeIP check could not be completed"
 msgstr "Не удалось выполнить проверку FakeIP в браузере"
@@ -160,6 +328,24 @@ msgstr "Браузер использует FakeIP"
 
 msgid "Bug report downloaded"
 msgstr "Отчёт об ошибке загружен"
+
+msgid "Built-in rule sets"
+msgstr "Встроенные наборы правил"
+
+msgid "By flag emoji from name"
+msgstr "По эмодзи флага из имени"
+
+msgid "ByeDPI listen address and port are assigned by Tachyon and must not be set in the strategy."
+msgstr "Адрес и порт прослушивания ByeDPI назначаются Tachyon и не должны задаваться в стратегии."
+
+msgid "ByeDPI option does not accept a compact value: %s"
+msgstr "Параметр ByeDPI не принимает компактное значение: %s"
+
+msgid "ByeDPI option does not accept a value: %s"
+msgstr "Параметр ByeDPI не принимает значение: %s"
+
+msgid "ByeDPI option requires a value: %s"
+msgstr "Параметр ByeDPI требует значение: %s"
 
 msgid "ByeDPI package is installed"
 msgstr "Пакет ByeDPI установлен"
@@ -179,14 +365,38 @@ msgstr "Outbound ByeDPI в sing-box настроен"
 msgid "ByeDPI sing-box outbound is not configured"
 msgstr "Outbound ByeDPI в sing-box не настроен"
 
+msgid "ByeDPI Strategy"
+msgstr "Стратегия ByeDPI"
+
+msgid "ByeDPI strategy cannot be empty"
+msgstr "Стратегия ByeDPI не может быть пустой"
+
+msgid "Bypasses UDP traffic for selected game consoles (PS5/Xbox) to achieve NAT Type 1 / 2 (Full Cone NAT) for P2P matchmaking, while keeping TCP (PSN/Auth) routed through the proxy."
+msgstr "Обходит UDP-трафик для выбранных игровых консолей (PS5/Xbox) для достижения NAT Type 1 / 2 (Full Cone NAT) для P2P-матчмейкинга, сохраняя TCP (PSN/Auth) через прокси."
+
+msgid "CA Certificate"
+msgstr "CA-сертификат"
+
+msgid "Cache all built-in lists and databases even if they are not currently selected in any section. Recommended if you have plenty of storage space or USB drive."
+msgstr "Кэшировать все встроенные списки и базы данных, даже если они не выбраны ни в одной секции. Рекомендуется при большом объёме хранилища или USB-накопителе."
+
+msgid "Cache File Path"
+msgstr "Путь к файлу кэша"
+
+msgid "Cache file path cannot be empty"
+msgstr "Путь к файлу кэша не может быть пустым"
+
+msgid "Cancel"
+msgstr "Отмена"
+
 msgid "Cannot receive checks result"
 msgstr "Не удалось получить результаты проверки"
 
-msgid "Check Again"
-msgstr "Проверить снова"
+msgid "Cannot save settings"
+msgstr "Не удалось сохранить настройки"
 
-msgid "Check All"
-msgstr "Проверить все"
+msgid "Cascade connection"
+msgstr "Каскадное подключение"
 
 msgid "Check completed!"
 msgstr "Проверка завершена!"
@@ -194,20 +404,14 @@ msgstr "Проверка завершена!"
 msgid "Check Connection"
 msgstr "Проверить подключение"
 
-msgid "Check Domain"
-msgstr ""
-
-msgid "Check domain or IP (e.g. example.com)..."
-msgstr "Проверить домен или IP (напр. example.com)..."
-
 msgid "Check interval"
 msgstr "Интервал проверки"
 
-msgid "Check Mode:"
-msgstr "Режим проверки:"
-
 msgid "Check Services"
-msgstr ""
+msgstr "Проверить сервисы"
+
+msgid "Check timeout after which the server is considered dead"
+msgstr "Таймаут проверки, после которого сервер считается недоступным"
 
 msgid "Check update"
 msgstr "Проверить обновление"
@@ -230,6 +434,9 @@ msgstr "Проверяем, пожалуйста подождите"
 msgid "Checking..."
 msgstr "Проверка..."
 
+msgid "Checking…"
+msgstr "Проверка…"
+
 msgid "checks"
 msgstr "проверки"
 
@@ -242,11 +449,35 @@ msgstr "Проверки пройдены"
 msgid "Checks passed with manual DHCP"
 msgstr "Проверки пройдены с ручным DHCP"
 
+msgid "China (cn)"
+msgstr "Китай (cn)"
+
+msgid "Choose Hosts File..."
+msgstr "Выбрать файл Hosts..."
+
+msgid "Choose whether to route traffic to all destinations except selected countries (Exclude) or only to selected countries (Include)."
+msgstr "Выберите, маршрутизировать ли трафик ко всем назначениям кроме выбранных стран (Исключить) или только в выбранные страны (Включить)."
+
 msgid "CIDR must be between 0 and 32 for IPv4 or 0 and 128 for IPv6"
 msgstr "CIDR должен быть от 0 до 32 для IPv4 или от 0 до 128 для IPv6"
 
+msgid "Cipher"
+msgstr "Шифр"
+
+msgid "Clean Comments"
+msgstr "Очистить комментарии"
+
 msgid "Cleaning configuration & reloading..."
 msgstr "Очистка конфигураций и перезапуск..."
+
+msgid "Clear"
+msgstr "Очистить"
+
+msgid "Client Certificate"
+msgstr "Клиентский сертификат"
+
+msgid "Client Key"
+msgstr "Клиентский ключ"
 
 msgid "Close"
 msgstr "Закрыть"
@@ -260,14 +491,44 @@ msgstr "Закрыть подключение"
 msgid "Closed"
 msgstr "Закрытые"
 
+msgid "Cloudflare account / device ID"
+msgstr "Аккаунт / ID устройства Cloudflare"
+
+msgid "Cloudflare API access token"
+msgstr "Токен доступа Cloudflare API"
+
+msgid "Cloudflare WARP account / device ID"
+msgstr "Аккаунт / ID устройства Cloudflare WARP"
+
+msgid "Cloudflare WARP API access token"
+msgstr "Токен доступа Cloudflare WARP API"
+
+msgid "Comma-separated list of Telegram user IDs authorized to control the bot."
+msgstr "Список Telegram user ID через запятую, авторизованных для управления ботом."
+
+msgid "Community Lists"
+msgstr "Community-списки"
+
 msgid "Comparing versions & fingerprint check..."
 msgstr "Сравнение версий и проверка целостности..."
 
 msgid "Component update available"
 msgstr "Доступно обновление компонента"
 
+msgid "Component update check interval"
+msgstr "Интервал проверки обновлений компонентов"
+
 msgid "compressed"
 msgstr "compressed"
+
+msgid "Conditions"
+msgstr "Условия"
+
+msgid "Config File Path"
+msgstr "Путь к файлу конфигурации"
+
+msgid "Configure User-Agent in the item settings"
+msgstr "Настройте User-Agent в параметрах элемента"
 
 msgid "Conflict"
 msgstr "Конфликт"
@@ -275,11 +536,17 @@ msgstr "Конфликт"
 msgid "Connect ChatGPT, DeepSeek or local LLM to get automated diagnostic reports and intelligent root-cause analysis."
 msgstr "Подключите ChatGPT, DeepSeek или локальную модель LLM для получения автоматических диагностических отчётов и умного анализа сетевых проблем."
 
+msgid "Connect through"
+msgstr "Подключаться через"
+
 msgid "Connected"
 msgstr "Подключено"
 
 msgid "Connecting to update server..."
 msgstr "Подключение к серверу обновлений..."
+
+msgid "Connection URL"
+msgstr "URL подключения"
 
 msgid "Connections are unavailable"
 msgstr "Подключения недоступны"
@@ -299,8 +566,17 @@ msgstr "Скопировать ссылку прокси"
 msgid "Could not compare FakeIP and control public IPs"
 msgstr "Не удалось сравнить публичные IP FakeIP и контрольной проверки"
 
+msgid "Country code (e.g. ru, us, de)"
+msgstr "Код страны (напр. ru, us, de)"
+
 msgid "Current Diagnosis"
-msgstr ""
+msgstr "Текущий диагноз"
+
+msgid "Current section cannot be used as its own transit section"
+msgstr "Текущая секция не может использоваться как собственная транзитная секция"
+
+msgid "Current section cannot download its own subscription"
+msgstr "Текущая секция не может загружать собственную подписку"
 
 msgid "Currently unavailable"
 msgstr "Временно недоступно"
@@ -308,20 +584,56 @@ msgstr "Временно недоступно"
 msgid "Custom API Endpoint URL"
 msgstr "Пользовательский URL эндпоинта API"
 
-msgid "Custom Domains"
-msgstr ""
+msgid "Custom device headers"
+msgstr "Пользовательские заголовки устройства"
+
+msgid "Custom DNS Records (Hosts)"
+msgstr "Пользовательские DNS-записи (Hosts)"
+
+msgid "Custom OpenAI-Compatible API (OpenRouter)"
+msgstr "Пользовательский OpenAI-совместимый API (OpenRouter)"
+
+msgid "Custom OpenAI-compatible API endpoint URL (e.g. http://192.168.1.100:11434/v1/chat/completions)"
+msgstr "Пользовательский URL эндпоинта OpenAI-совместимого API (напр. http://192.168.1.100:11434/v1/chat/completions)"
+
+msgid "Custom outbound configurations in JSON format"
+msgstr "Пользовательские конфигурации outbound в формате JSON"
 
 msgid "Dashboard currently unavailable"
 msgstr "Дашборд сейчас недоступен"
 
+msgid "Default (auto)"
+msgstr "По умолчанию (авто)"
+
+msgid "Default address for checking server availability and latency. URLTest uses its own address."
+msgstr "Адрес по умолчанию для проверки доступности и задержки сервера. URLTest использует свой собственный адрес."
+
+msgid "Delay in milliseconds before reloading Tachyon after interface UP"
+msgstr "Задержка в миллисекундах перед перезагрузкой Tachyon после поднятия интерфейса"
+
+msgid "Delay value cannot be empty"
+msgstr "Значение задержки не может быть пустым"
+
+msgid "Detect server country"
+msgstr "Определять страну сервера"
+
+msgid "Detects and drops STUN/TURN packets in nftables to prevent real IP leaks via WebRTC."
+msgstr "Обнаруживает и отбрасывает пакеты STUN/TURN в nftables для предотвращения утечек реального IP через WebRTC."
+
 msgid "detour must be a non-empty string"
 msgstr "detour должен быть непустой строкой"
+
+msgid "Device filter"
+msgstr "Фильтр устройств"
 
 msgid "Device IPs (one per line):"
 msgstr "IP устройств (по одному на строку):"
 
 msgid "Device IPs saved"
 msgstr "IP устройств сохранены"
+
+msgid "Device or IP"
+msgstr "Устройство или IP"
 
 msgid "Devices listed here are always routed through the assigned section, regardless of global rules."
 msgstr "Устройства из этого списка всегда маршрутизируются через назначенную секцию, независимо от глобальных правил."
@@ -332,17 +644,95 @@ msgstr "DHCP содержит DNS сервер"
 msgid "DHCP is managed manually"
 msgstr "DHCP управляется вручную"
 
-msgid "Direct"
-msgstr "Напрямую"
+msgid "Direct (Default)"
+msgstr "Прямое (по умолчанию)"
+
+msgid "Direct connection"
+msgstr "Прямое подключение"
 
 msgid "Disable autostart"
 msgstr "Отключить автостарт"
 
+msgid "Disable QUIC"
+msgstr "Отключить QUIC"
+
+msgid "Disable the QUIC protocol to improve compatibility or fix issues with video streaming"
+msgstr "Отключить протокол QUIC для улучшения совместимости или исправления проблем с видео-стримингом"
+
+msgid "Disabling interception is incompatible with action=zapret2 because Tachyon sends matched traffic through NFQUEUE."
+msgstr "Отключение перехвата несовместимо с action=zapret2, потому что Tachyon направляет совпавший трафик через NFQUEUE."
+
+msgid "Display name"
+msgstr "Отображаемое имя"
+
+msgid "DNS"
+msgstr "DNS"
+
+msgid "DNS Check Interval"
+msgstr "Интервал проверки DNS"
+
+msgid "DNS Check Interval (s)"
+msgstr "Интервал проверки DNS (с)"
+
+msgid "DNS Failures Before Switching"
+msgstr "Ошибок DNS до переключения"
+
 msgid "DNS on router"
 msgstr "DNS на роутере"
 
+msgid "DNS over HTTPS (DoH)"
+msgstr "DNS через HTTPS (DoH)"
+
+msgid "DNS over QUIC (DoQ)"
+msgstr "DNS через QUIC (DoQ)"
+
+msgid "DNS over TLS (DoT)"
+msgstr "DNS через TLS (DoT)"
+
+msgid "DNS protocol"
+msgstr "Протокол DNS"
+
+msgid "DNS Protocol Type"
+msgstr "Тип протокола DNS"
+
+msgid "DNS protocol used by the resolver"
+msgstr "Протокол DNS, используемый резолвером"
+
+msgid "DNS requests through section"
+msgstr "DNS-запросы через секцию"
+
+msgid "DNS Rewrite TTL"
+msgstr "TTL DNS-записей"
+
+msgid "DNS server"
+msgstr "DNS-сервер"
+
 msgid "DNS server address cannot be empty"
 msgstr "Адрес DNS-сервера не может быть пустым"
+
+msgid "DNS server used by the resolver"
+msgstr "DNS-сервер, используемый резолвером"
+
+msgid "DNS server used to obtain IP addresses for upstream DNS and proxies. If multiple servers are selected, a timeout switches to a backup."
+msgstr "DNS-сервер для получения IP-адресов для вышестоящих DNS и прокси. Если выбрано несколько серверов, при таймауте происходит переключение на резервный."
+
+msgid "DNS Servers"
+msgstr "DNS-серверы"
+
+msgid "DNS Settings"
+msgstr "Настройки DNS"
+
+msgid "DNS Strategy"
+msgstr "Стратегия DNS"
+
+msgid "DNS Successful Checks Before Recovery"
+msgstr "Успешных проверок DNS до восстановления"
+
+msgid "DNS through proxy"
+msgstr "DNS через прокси"
+
+msgid "DNS through section"
+msgstr "DNS через секцию"
 
 msgid "DNS Turbo Cache"
 msgstr "Быстрый DNS-кэш"
@@ -350,8 +740,29 @@ msgstr "Быстрый DNS-кэш"
 msgid "DNS Turbo Cache saved"
 msgstr "DNS Turbo Cache сохранён"
 
+msgid "DNS Unavailability Timeout"
+msgstr "Таймаут недоступности DNS"
+
 msgid "Do not panic, everything can be fixed, just..."
 msgstr "Не паникуйте, всё можно исправить, просто..."
+
+msgid "Do not test servers from these countries."
+msgstr "Не тестировать серверы из этих стран."
+
+msgid "Do not test servers whose names match the expression."
+msgstr "Не тестировать серверы, чьи имена соответствуют выражению."
+
+msgid "Do not test servers with one of the selected protocols."
+msgstr "Не тестировать серверы с одним из выбранных протоколов."
+
+msgid "Do not test servers with one of the selected security types."
+msgstr "Не тестировать серверы с одним из выбранных типов безопасности."
+
+msgid "Do not test servers with one of the selected transports."
+msgstr "Не тестировать серверы с одним из выбранных транспортов."
+
+msgid "Do not test specified servers."
+msgstr "Не тестировать указанные серверы."
 
 msgid "Doctor failed"
 msgstr "Доктор завершился с ошибкой"
@@ -362,11 +773,62 @@ msgstr "Исправление доктором"
 msgid "Does not resolve"
 msgstr "Не резолвится"
 
+msgid "Domain and IP lists"
+msgstr "Списки доменов и IP"
+
+msgid "Domain lists"
+msgstr "Списки доменов"
+
+msgid "Domain Resolver"
+msgstr "Резолвер доменов"
+
+msgid "Domain test sections"
+msgstr "Секции тестирования доменов"
+
+msgid "Domains"
+msgstr "Домены"
+
+msgid "Domains automatically detected by Smart Detect or added via Telegram bot. You can manually edit or remove them here."
+msgstr "Домены, автоматически определённые Smart Detect или добавленные через Telegram-бота. Вы можете вручную отредактировать или удалить их здесь."
+
+msgid "Done"
+msgstr "Готово"
+
+msgid "Dont Touch My DHCP!"
+msgstr "Не трогайте мой DHCP!"
+
 msgid "Downlink"
 msgstr "Входящий"
 
 msgid "Download"
 msgstr "Скачать"
+
+msgid "Download component packages via the selected section"
+msgstr "Загружать пакеты компонентов через выбранную секцию"
+
+msgid "Download components through"
+msgstr "Загружать компоненты через"
+
+msgid "Download components through a section"
+msgstr "Загружать компоненты через секцию"
+
+msgid "Download lists through"
+msgstr "Загружать списки через"
+
+msgid "Download lists through a section"
+msgstr "Загружать списки через секцию"
+
+msgid "Download remote lists and rule sets via the selected section"
+msgstr "Загружать удалённые списки и наборы правил через выбранную секцию"
+
+msgid "Download subscription through a section"
+msgstr "Загружать подписку через секцию"
+
+msgid "Download subscriptions via the selected section"
+msgstr "Загружать подписки через выбранную секцию"
+
+msgid "Download through"
+msgstr "Загружать через"
 
 msgid "Downloaded"
 msgstr "Загружено"
@@ -374,29 +836,191 @@ msgstr "Загружено"
 msgid "Downloading package from repository..."
 msgstr "Загрузка пакета из репозитория..."
 
+msgid "DSCP marks (QoS)"
+msgstr "DSCP-метки (QoS)"
+
 msgid "Duplicate JSON outbound tag"
 msgstr "Такой тег JSON outbound уже используется"
+
+msgid "Duplicate value"
+msgstr "Дублирующееся значение"
+
+msgid "e.g. AES-256-GCM — leave empty for default"
+msgstr "напр. AES-256-GCM — оставьте пустым для значения по умолчанию"
+
+msgid "e.g. google.com, 1.1.1.1, 443"
+msgstr "напр. google.com, 1.1.1.1, 443"
+
+msgid "e.g. SHA256 — leave empty for default"
+msgstr "напр. SHA256 — оставьте пустым для значения по умолчанию"
+
+msgid "Enable"
+msgstr "Включить"
+
+msgid "Enable Adaptive Intervals"
+msgstr "Включить адаптивные интервалы"
+
+msgid "Enable AI Doctor (ChatGPT / LLM Analysis)"
+msgstr "Включить ИИ-доктора (анализ ChatGPT / LLM)"
 
 msgid "Enable AI Doctor (LLM Integration)"
 msgstr "Включить AI Doctor (интеграция с LLM)"
 
+msgid "Enable Anomaly Detection"
+msgstr "Включить обнаружение аномалий"
+
+msgid "Enable automatic updates for remote lists and rule sets"
+msgstr "Включить автообновление удалённых списков и наборов правил"
+
 msgid "Enable autostart"
 msgstr "Включить автостарт"
+
+msgid "Enable built-in DNS resolver for domains handled by this section"
+msgstr "Включить встроенный DNS-резолвер для доменов, обрабатываемых этой секцией"
+
+msgid "Enable Config Validation"
+msgstr "Включить проверку конфигурации"
+
+msgid "Enable DNS Continuous Check"
+msgstr "Непрерывная проверка DNS"
 
 msgid "Enable DNS Turbo Cache"
 msgstr "Включить быстрый DNS-кэш"
 
+msgid "Enable Firewall Reload Dedup"
+msgstr "Включить дедупликацию перезагрузки файрвола"
+
+msgid "Enable Graceful Degradation"
+msgstr "Включить мягкое деградирование"
+
+msgid "Enable Health Metrics"
+msgstr "Включить метрики здоровья"
+
+msgid "Enable list updates"
+msgstr "Включить обновление списков"
+
+msgid "Enable Mixed Proxy"
+msgstr "Включить смешанный прокси"
+
+msgid "Enable Mixed Proxy Authentication"
+msgstr "Включить аутентификацию смешанного прокси"
+
+msgid "Enable Output Network Interface"
+msgstr "Включить выходной сетевой интерфейс"
+
+msgid "Enable Proxy Health Monitor"
+msgstr "Включить мониторинг здоровья прокси"
+
+msgid "Enable Smart Cooldowns"
+msgstr "Включить умные cooldown'ы"
+
 msgid "Enable Smart Detect"
 msgstr "Включить Smart Detect"
+
+msgid "Enable Telegram Bot"
+msgstr "Включить Telegram-бота"
+
+msgid "Enable WAN DNS Fallback for Bootstrap DNS"
+msgstr "Резервный WAN DNS для Bootstrap DNS"
+
+msgid "Enable WAN DNS Fallback for Main DNS"
+msgstr "Резервный WAN DNS для основного DNS"
+
+msgid "Enable Watchdog"
+msgstr "Включить Watchdog"
+
+msgid "Enable YACD"
+msgstr "Включить YACD"
+
+msgid "Enable YACD WAN Access"
+msgstr "Включить WAN-доступ к YACD"
+
+msgid "Enables the background daemon that polls Telegram for commands and sends notifications."
+msgstr "Включает фоновый демон, который опрашивает Telegram на наличие команд и отправляет уведомления."
+
+msgid "Enables the background watchdog process to monitor services and auto-recover on failures."
+msgstr "Включает фоновый процесс watchdog для мониторинга сервисов и автоматического восстановления при сбоях."
+
+msgid "Enter a complete sing-box outbound object"
+msgstr "Введите полный объект outbound sing-box"
+
+msgid "Enter a display name"
+msgstr "Введите отображаемое имя"
+
+msgid "Enter a level name"
+msgstr "Введите имя уровня"
+
+msgid "Enter HWID"
+msgstr "Введите HWID"
+
+msgid "Enter the API token obtained from @BotFather."
+msgstr "Введите токен API, полученный от @BotFather."
+
+msgid "Enter the HWID sent with subscription requests"
+msgstr "Введите HWID, отправляемый с запросами подписки"
+
+msgid "Enter the subscription URL"
+msgstr "Введите URL подписки"
 
 msgid "Environment preparation & dependency check..."
 msgstr "Подготовка окружения и проверка зависимостей..."
 
+msgid "Error"
+msgstr "Ошибка"
+
+msgid "Error running generator:"
+msgstr "Ошибка запуска генератора:"
+
+msgid "Error running trace:"
+msgstr "Ошибка выполнения трассировки:"
+
+msgid "Exclude by proxy parameters"
+msgstr "Исключить по параметрам прокси"
+
+msgid "Exclude by regular expression"
+msgstr "Исключить по регулярному выражению"
+
+msgid "Exclude countries"
+msgstr "Исключить страны"
+
+msgid "Exclude selected countries"
+msgstr "Исключить выбранные страны"
+
+msgid "Exclude servers"
+msgstr "Исключить серверы"
+
+msgid "Exclude servers with one of the selected protocols from this level."
+msgstr "Исключить серверы с одним из выбранных протоколов с этого уровня."
+
+msgid "Exclude servers with one of the selected security types from this level."
+msgstr "Исключить серверы с одним из выбранных типов безопасности с этого уровня."
+
+msgid "Exclude servers with one of the selected transports from this level."
+msgstr "Исключить серверы с одним из выбранных транспортов с этого уровня."
+
+msgid "Exclude traffic types"
+msgstr "Исключить типы трафика"
+
+msgid "Exclude URLTest / Priority group"
+msgstr "Исключить группу URLTest / Приоритет"
+
+msgid "Excluded devices"
+msgstr "Исключённые устройства"
+
 msgid "Expires"
 msgstr "Истекает"
 
+msgid "Expose this section as a local HTTP+SOCKS proxy"
+msgstr "Предоставить эту секцию как локальный HTTP+SOCKS прокси"
+
+msgid "External nfqws config files bypass Tachyon queue management and explicit validation."
+msgstr "Внешние файлы конфигурации nfqws обходят управление очередями Tachyon и явную проверку."
+
+msgid "External nfqws2 config files bypass Tachyon queue management and explicit validation."
+msgstr "Внешние файлы конфигурации nfqws2 обходят управление очередями Tachyon и явную проверку."
+
 msgid "Failed to apply fix"
-msgstr ""
+msgstr "Не удалось применить исправление"
 
 msgid "Failed to close connection"
 msgstr "Не удалось закрыть подключение"
@@ -413,14 +1037,20 @@ msgstr "Не удалось выполнить"
 msgid "Failed to generate bug report"
 msgstr "Не удалось создать отчёт об ошибке"
 
-msgid "Failed to parse target list."
-msgstr "Ошибка обработки списка целей."
+msgid "Failed to generate WARP config:"
+msgstr "Не удалось сгенерировать конфигурацию WARP:"
+
+msgid "Failed to parse file:"
+msgstr "Ошибка разбора файла:"
+
+msgid "Failed to parse WARP config:"
+msgstr "Не удалось разобрать конфигурацию WARP:"
 
 msgid "Failed to receive response from AI service."
 msgstr "Не удалось получить ответ от ИИ-сервиса."
 
-msgid "Failed to run service check."
-msgstr "Не удалось выполнить проверку сервисов."
+msgid "Failed to reset settings"
+msgstr "Не удалось сбросить настройки"
 
 msgid "Failed to save AI Watchdog settings"
 msgstr "Ошибка сохранения настроек AI Watchdog"
@@ -434,6 +1064,18 @@ msgstr "Не удалось сохранить DNS Turbo Cache"
 msgid "Failed to save Smart Detect settings"
 msgstr "Ошибка сохранения настроек Smart Detect"
 
+msgid "Failed to start bot"
+msgstr "Не удалось запустить бота"
+
+msgid "Failed to start watchdog"
+msgstr "Не удалось запустить watchdog"
+
+msgid "Failed to stop bot"
+msgstr "Не удалось остановить бота"
+
+msgid "Failed to stop watchdog"
+msgstr "Не удалось остановить watchdog"
+
 msgid "Failed to update subscriptions"
 msgstr "Не удалось обновить подписки"
 
@@ -446,6 +1088,9 @@ msgstr "FakeIP и контрольная проверка используют �
 msgid "FakeIP works; public IP comparison is inconclusive"
 msgstr "FakeIP работает; сравнение публичных IP не дает однозначного результата"
 
+msgid "Faster DNS health monitoring than the default cycle. Switches bootstrap DNS on failure."
+msgstr "Более быстрый мониторинг состояния DNS, чем стандартный цикл. Переключает bootstrap DNS при сбое."
+
 msgid "Faster server search interval"
 msgstr "Интервал поиска более быстрого сервера"
 
@@ -455,29 +1100,80 @@ msgstr "Самый быстрый"
 msgid "Fetching release & commit metadata..."
 msgstr "Запрос метаданных релизов и коммитов..."
 
-msgid "Fetching service targets..."
-msgstr "Получение списка сервисов..."
+msgid "Filter the servers that will be displayed on the dashboard."
+msgstr "Фильтровать серверы, отображаемые на дашборде."
 
-msgid "Filter by service:"
-msgstr ""
+msgid "Finland (fi)"
+msgstr "Финляндия (fi)"
 
 msgid "Firewall WAN port"
 msgstr "Порт в firewall для WAN"
 
 msgid "Fix applied"
-msgstr ""
+msgstr "Исправление применено"
+
+msgid "Fix the highlighted fields and save again."
+msgstr "Исправьте выделенные поля и сохраните снова."
 
 msgid "Fixed"
 msgstr "Исправлено"
 
+msgid "Forced device routing"
+msgstr "Принудительная маршрутизация устройств"
+
+msgid "Forces sing-box to tunnel DNS requests via DoQ with Encrypted Client Hello (ECH) for SNI hiding."
+msgstr "Принудительно направлять DNS-запросы через DoQ с Encrypted Client Hello (ECH) для скрытия SNI."
+
+msgid "France (fr)"
+msgstr "Франция (fr)"
+
 msgid "Full System Diagnostic"
-msgstr ""
+msgstr "Полная диагностика системы"
+
+msgid "Fuzzing is not supported here because Tachyon needs deterministic runtime validation."
+msgstr "Fuzzing не поддерживается здесь, потому что Tachyon нуждается в детерминированной проверке во время выполнения."
+
+msgid "Game Console IPs"
+msgstr "IP игровых консолей"
+
+msgid "Game Console Optimizer (NAT Type 1)"
+msgstr "Оптимизатор игровых консолей (NAT Type 1)"
+
+msgid "Generate a random 16-character hexadecimal HWID"
+msgstr "Сгенерировать случайный 16-символьный шестнадцатеричный HWID"
 
 msgid "Generate bug report"
 msgstr "Сгенерировать баг-репорт"
 
+msgid "Generate HWID"
+msgstr "Сгенерировать HWID"
+
+msgid "Generate HWID from router hardware information for this subscription"
+msgstr "Сгенерировать HWID из аппаратной информации роутера для этой подписки"
+
+msgid "Generate WARP Config"
+msgstr "Сгенерировать конфигурацию WARP"
+
 msgid "Generated inbound"
 msgstr "Созданный inbound"
+
+msgid "Generated!"
+msgstr "Сгенерировано!"
+
+msgid "Generating…"
+msgstr "Генерация…"
+
+msgid "GeoIP Countries"
+msgstr "Страны GeoIP"
+
+msgid "GeoIP Mode"
+msgstr "Режим GeoIP"
+
+msgid "GeoSite / GeoIP"
+msgstr "GeoSite / GeoIP"
+
+msgid "Germany (de)"
+msgstr "Германия (de)"
 
 msgid "GET endpoints are open on LAN. POST endpoints require Authorization: Bearer <token>."
 msgstr "GET-эндпоинты открыты в локальной сети. POST-эндпоинты требуют Authorization: Bearer <token>."
@@ -494,17 +1190,83 @@ msgstr "Проверки здоровья"
 msgid "Hello! I am Tachyon AI Assistant. How can I help you today? Ask me about domain blocks, diagnostics, or router settings."
 msgstr "Привет! Я ИИ-ассистент Tachyon. Чем могу помочь? Задайте вопрос о блокировках, диагностике или настройках роутера."
 
+msgid "Hide cascade connection nodes"
+msgstr "Скрыть узлы каскадных подключений"
+
+msgid "Hide individual nodes that are already included in imported subscription URLTest groups"
+msgstr "Скрыть отдельные узлы, уже включённые в импортированные группы URLTest подписки"
+
+msgid "Hide intermediate nodes used as detours by other subscription nodes"
+msgstr "Скрыть промежуточные узлы, используемые как detour другими узлами подписки"
+
+msgid "Hide selected servers."
+msgstr "Скрыть выбранные серверы."
+
+msgid "Hide servers from selected groups without repeating their filtering criteria."
+msgstr "Скрыть серверы из выбранных групп без повторения критериев фильтрации."
+
+msgid "Hide servers from the specified countries."
+msgstr "Скрыть серверы из указанных стран."
+
+msgid "Hide servers whose names match the expression."
+msgstr "Скрыть серверы, чьи имена соответствуют выражению."
+
+msgid "Hide servers with one of the selected protocols."
+msgstr "Скрыть серверы с одним из выбранных протоколов."
+
+msgid "Hide servers with one of the selected security types."
+msgstr "Скрыть серверы с одним из выбранных типов безопасности."
+
+msgid "Hide servers with one of the selected transports."
+msgstr "Скрыть серверы с одним из выбранных транспортов."
+
+msgid "Hide URLTest group nodes"
+msgstr "Скрыть узлы групп URLTest"
+
 msgid "Hide values"
 msgstr "Скрывать значения"
 
 msgid "Higher-level check interval"
 msgstr "Интервал проверки высших уровней"
 
+msgid "Higher-priority DNS Check"
+msgstr "Проверка DNS с более высоким приоритетом"
+
 msgid "History"
-msgstr ""
+msgstr "История"
 
 msgid "Host"
 msgstr "Хост"
+
+msgid "Hosts"
+msgstr "Hosts"
+
+msgid "Hosts Lists Update Interval"
+msgstr "Интервал обновления списков Hosts"
+
+msgid "How many hours of metrics to keep (default 24)."
+msgstr "Сколько часов хранить метрики (по умолчанию 24)."
+
+msgid "How often higher priority levels are checked while a lower level is active"
+msgstr "Как часто проверяются уровни с более высоким приоритетом, когда активен нижний уровень"
+
+msgid "How often the currently selected server is checked"
+msgstr "Как часто проверяется текущий сервер"
+
+msgid "How often to check DNS health in seconds (default 60)."
+msgstr "Как часто проверять здоровье DNS в секундах (по умолчанию 60)."
+
+msgid "How often to check proxy health in seconds (fast tier, default 30)."
+msgstr "Как часто проверять здоровье прокси в секундах (быстрый уровень, по умолчанию 30)."
+
+msgid "How often to check Telegram for new messages (default: 5)."
+msgstr "Как часто проверять Telegram на новые сообщения (по умолчанию: 5)."
+
+msgid "How often to check the active DNS servers."
+msgstr "Как часто проверять активные DNS-серверы."
+
+msgid "How often to check whether a higher-priority DNS server has recovered."
+msgstr "Как часто проверять, восстановился ли DNS-сервер с более высоким приоритетом."
 
 msgid "HTTP"
 msgstr "HTTP"
@@ -515,8 +1277,71 @@ msgstr "Ошибка HTTP"
 msgid "HTTP REST API for external AI agents (Claude, GPT, Open-WebUI) served at /cgi-bin/tachyon-agent/"
 msgstr "HTTP REST API для внешних ИИ-агентов (Claude, GPT, Open-WebUI), доступен по адресу /cgi-bin/tachyon-agent/"
 
+msgid "HWID"
+msgstr "HWID"
+
 msgid "Idle timeout"
 msgstr "Таймаут простоя"
+
+msgid "If one health check fails with an error, continue running other checks instead of stopping."
+msgstr "Если одна проверка завершается ошибкой, продолжать другие проверки, а не останавливаться."
+
+msgid "Import"
+msgstr "Импорт"
+
+msgid "Import (%d records)"
+msgstr "Импорт (%d записей)"
+
+msgid "Import AmneziaWG settings from .conf file"
+msgstr "Импортировать настройки AmneziaWG из файла .conf"
+
+msgid "Import Hosts File"
+msgstr "Импортировать файл Hosts"
+
+msgid "Import subscription URLTest groups"
+msgstr "Импортировать группы URLTest подписки"
+
+msgid "Import URLTest groups returned by this subscription provider"
+msgstr "Импортировать группы URLTest, возвращённые этим провайдером подписки"
+
+msgid "Include by proxy parameters"
+msgstr "Включить по параметрам прокси"
+
+msgid "Include by regular expression"
+msgstr "Включить по регулярному выражению"
+
+msgid "Include countries"
+msgstr "Включить страны"
+
+msgid "Include IP addresses and subnets"
+msgstr "Включить IP-адреса и подсети"
+
+msgid "Include selected countries"
+msgstr "Включить выбранные страны"
+
+msgid "Include servers"
+msgstr "Включить серверы"
+
+msgid "Init Packet Magic Header (S1)"
+msgstr "Magic-заголовок пакета инициализации (S1)"
+
+msgid "Init Packet Magic Header (S3)"
+msgstr "Magic-заголовок пакета инициализации (S3)"
+
+msgid "Init Packet Payload (I1)"
+msgstr "Полезная нагрузка пакета инициализации (I1)"
+
+msgid "Init Packet Payload (I2)"
+msgstr "Полезная нагрузка пакета инициализации (I2)"
+
+msgid "Init Packet Payload (I3)"
+msgstr "Полезная нагрузка пакета инициализации (I3)"
+
+msgid "Init Packet Payload (I4)"
+msgstr "Полезная нагрузка пакета инициализации (I4)"
+
+msgid "Init Packet Payload (I5)"
+msgstr "Полезная нагрузка пакета инициализации (I5)"
 
 msgid "Install"
 msgstr "Установить"
@@ -530,11 +1355,29 @@ msgstr "Установленная сборка → Доступная сбор�
 msgid "Installed version is newer than release"
 msgstr "Установлена версия новее релиза"
 
+msgid "Interface Monitoring"
+msgstr "Мониторинг интерфейсов"
+
+msgid "Interface Monitoring Delay"
+msgstr "Задержка мониторинга интерфейсов"
+
+msgid "Interface monitoring for Bad WAN"
+msgstr "Мониторинг интерфейсов для坏 WAN"
+
 msgid "Interrupt connections"
 msgstr "Прерывать соединения"
 
+msgid "Interrupt connections when priority failover switches server"
+msgstr "Разрывать соединения при переключении приоритетного failover"
+
+msgid "Interrupt connections when URLTest switches the selected server"
+msgstr "Разрывать соединения при переключении URLTest на другой сервер"
+
 msgid "Interval"
 msgstr "Интервал"
+
+msgid "Invalid ByeDPI strategy"
+msgstr "Неверная стратегия ByeDPI"
 
 msgid "Invalid CIDR prefix"
 msgstr "Неверный префикс CIDR"
@@ -599,11 +1442,20 @@ msgstr "Неверный IP-адрес"
 msgid "Invalid JSON format"
 msgstr "Неверный формат JSON"
 
+msgid "Invalid line: \"%s\". Use: domain ip or ip domain"
+msgstr "Неверная строка: \"%s\". Используйте: domain ip или ip domain"
+
 msgid "Invalid path format. Path must start with \"/\" and contain valid characters"
-msgstr "Неверный формат пути. Должен начинаться с \"/\" и содержать допустимые символы"
+msgstr "Неверный формат пути. Путь должен начинаться с \"/\" и содержать допустимые символы"
 
 msgid "Invalid port number. Must be between 1 and 65535"
 msgstr "Неверный номер порта. Допустимо от 1 до 65535"
+
+msgid "Invalid port or range. Use 80 or 1000-2000"
+msgstr "Неверный порт или диапазон. Используйте 80 или 1000-2000"
+
+msgid "Invalid regular expression"
+msgstr "Неверное регулярное выражение"
 
 msgid "Invalid Shadowsocks URL: decoded credentials must contain method:password"
 msgstr "Неверный URL Shadowsocks: декодированные данные должны содержать method:password"
@@ -615,7 +1467,7 @@ msgid "Invalid Shadowsocks URL: missing credentials"
 msgstr "Неверный URL Shadowsocks: отсутствуют учетные данные"
 
 msgid "Invalid Shadowsocks URL: missing method and password separator \":\""
-msgstr "Недопустимый Shadowsocks URL: отсутствует разделитель метода и пароля \":\""
+msgstr "Неверный Shadowsocks URL: отсутствует разделитель метода и пароля \":\""
 
 msgid "Invalid Shadowsocks URL: missing port"
 msgstr "Неверный URL Shadowsocks: отсутствует порт"
@@ -728,11 +1580,32 @@ msgstr "Неверный URL VLESS: ошибка разбора"
 msgid "Invalid VMess URL: parsing failed"
 msgstr "Некорректный VMess URL: ошибка разбора"
 
+msgid "IP Addresses (IP CIDR)"
+msgstr "IP-адреса (IP CIDR)"
+
+msgid "IPs"
+msgstr "IP"
+
+msgid "IPv4 only"
+msgstr "Только IPv4"
+
+msgid "IPv6 only"
+msgstr "Только IPv6"
+
+msgid "Isolate BitTorrent traffic and force it direct to prevent VPN bans"
+msgstr "Изолировать трафик BitTorrent и направить его напрямую для предотвращения блокировок VPN"
+
 msgid "Issues"
 msgstr "Проблемы"
 
 msgid "Issues detected"
 msgstr "Обнаружены проблемы"
+
+msgid "Japan (jp)"
+msgstr "Япония (jp)"
+
+msgid "JSON outbound"
+msgstr "JSON outbound"
 
 msgid "JSON outbound cannot be empty"
 msgstr "JSON outbound не может быть пустым"
@@ -746,11 +1619,44 @@ msgstr "JSON outbound должен содержать непустое поле 
 msgid "JSON outbound must contain a non-empty type field"
 msgstr "JSON outbound должен содержать непустое поле type"
 
+msgid "JSON outbound settings"
+msgstr "Настройки JSON outbound"
+
+msgid "Junk Max Size (Jmax)"
+msgstr "Макс. размер мусора (Jmax)"
+
+msgid "Junk Min Size (Jmin)"
+msgstr "Мин. размер мусора (Jmin)"
+
+msgid "Junk Packet Count (Jc)"
+msgstr "Количество мусорных пакетов (Jc)"
+
+msgid "Kazakhstan (kz)"
+msgstr "Казахстан (kz)"
+
+msgid "Keep Priority before latency-sorted servers"
+msgstr "Сохранять приоритет перед серверами, отсортированными по задержке"
+
+msgid "Keep URLTest before latency-sorted servers"
+msgstr "Сохранять URLTest перед серверами, отсортированными по задержке"
+
 msgid "Keeps FakeIP cache persistent across reboots and pre-resolves popular blocked domains on startup so first-visit latency is 0 ms."
 msgstr "Сохраняет FakeIP-кэш между перезагрузками и заранее резолвит популярные заблокированные домены при старте — задержка при первом визите 0 мс."
 
+msgid "Key"
+msgstr "Ключ"
+
+msgid "Keyword must not contain spaces or commas"
+msgstr "Ключевое слово не должно содержать пробелов или запятых"
+
+msgid "Language for AI Doctor diagnosis responses"
+msgstr "Язык ответов диагностики ИИ-доктора"
+
 msgid "Latency test failed"
 msgstr "Проверка задержки не удалась"
+
+msgid "Latency test URL"
+msgstr "URL для теста задержки"
 
 msgid "Latest version is installed"
 msgstr "Установлена последняя версия"
@@ -758,14 +1664,44 @@ msgstr "Установлена последняя версия"
 msgid "Latest version:"
 msgstr "Последняя версия:"
 
+msgid "Leave empty to omit this header"
+msgstr "Оставьте пустым, чтобы пропустить этот заголовок"
+
 msgid "Level"
 msgstr "Уровень"
+
+msgid "Level name"
+msgstr "Имя уровня"
+
+msgid "List must be an HTTP(S) URL or a local .lst path"
+msgstr "Список должен быть HTTP(S) URL или локальным путём .lst"
+
+msgid "List of domains automatically detected and the section they were added to. To edit or remove them, open the routing rules of the respective section."
+msgstr "Список автоматически определённых доменов и секций, в которые они были добавлены. Для редактирования или удаления откройте правила маршрутизации соответствующей секции."
+
+msgid "List Update Frequency"
+msgstr "Частота обновления списков"
 
 msgid "Listening port"
 msgstr "Слушающий порт"
 
 msgid "LM Studio (Local PC / Server)"
-msgstr ""
+msgstr "LM Studio (локальный ПК / сервер)"
+
+msgid "Load .conf"
+msgstr "Загрузить .conf"
+
+msgid "Load .conf config"
+msgstr "Загрузить конфигурацию .conf"
+
+msgid "Load Current Records"
+msgstr "Загрузить текущие записи"
+
+msgid "Loaded %d current record(s)"
+msgstr "Загружено %d текущих записей"
+
+msgid "Loaded!"
+msgstr "Загружено!"
 
 msgid "Loading connections"
 msgstr "Загрузка подключений"
@@ -776,23 +1712,113 @@ msgstr "Загрузка..."
 msgid "Loading…"
 msgstr "Загрузка…"
 
+msgid "Local Address"
+msgstr "Локальный адрес"
+
+msgid "Log Level"
+msgstr "Уровень логирования"
+
 msgid "lx"
 msgstr "lx"
 
 msgid "Main DNS"
 msgstr "Основной DNS"
 
+msgid "Main DNS server. If multiple servers are selected, a timeout switches to a backup."
+msgstr "Основной DNS-сервер. Если выбрано несколько серверов, при таймауте происходит переключение на резервный."
+
+msgid "MASQUE Access Token"
+msgstr "Токен доступа MASQUE"
+
+msgid "MASQUE Account ID"
+msgstr "ID аккаунта MASQUE"
+
+msgid "MASQUE Private Key"
+msgstr "Приватный ключ MASQUE"
+
+msgid "Match destination IPs or subnets"
+msgstr "Сопоставлять IP-адреса или подсети назначения"
+
+msgid "Match destination ports. Use a single port or a range"
+msgstr "Сопоставлять порты назначения. Используйте один порт или диапазон"
+
+msgid "Match Found"
+msgstr "Совпадение найдено"
+
+msgid "Match traffic by packet DSCP mark (assigned in Windows via Policy-Based QoS). Examples: 46 (EF), 0x2e, 34 (AF41)"
+msgstr "Сопоставлять трафик по DSCP-метке пакета (назначается в Windows через Policy-Based QoS). Примеры: 46 (EF), 0x2e, 34 (AF41)"
+
+msgid "Max reconnects per hour before alert (default 10)."
+msgstr "Макс. переподключений в час до оповещения (по умолчанию 10)."
+
+msgid "Maximum time to wait for example.com to resolve during a DNS health check."
+msgstr "Максимальное время ожидания разрешения example.com при проверке DNS."
+
 msgid "Memory Usage"
 msgstr "Использование памяти"
 
+msgid "Metrics Retention (hours)"
+msgstr "Хранение метрик (часы)"
+
+msgid "Minimum latency difference in milliseconds that triggers switching to a faster server."
+msgstr "Минимальная разница задержки в миллисекундах, при которой происходит переключение на более быстрый сервер."
+
+msgid "Mixed Proxy Password"
+msgstr "Пароль смешанного прокси"
+
+msgid "Mixed Proxy Port"
+msgstr "Порт смешанного прокси"
+
+msgid "Mixed Proxy Username"
+msgstr "Имя пользователя смешанного прокси"
+
+msgid "Model name to use. Leave empty to use default (gpt-4o-mini / claude-3-5-haiku / deepseek-chat / llama3:latest)."
+msgstr "Имя модели. Оставьте пустым для использования по умолчанию (gpt-4o-mini / claude-3-5-haiku / deepseek-chat / llama3:latest)."
+
+msgid "Monitored Interfaces"
+msgstr "Отслеживаемые интерфейсы"
+
 msgid "Monitoring & Analytics"
 msgstr "Мониторинг и аналитика"
+
+msgid "Monitors sing-box reconnect frequency. Alerts if too many reconnects per hour."
+msgstr "Отслеживает частоту переподключений sing-box. Оповещает при слишком частых переподключениях."
 
 msgid "Move down"
 msgstr "Вниз"
 
 msgid "Move up"
 msgstr "Вверх"
+
+msgid "MTU"
+msgstr "MTU"
+
+msgid "Must be a comma-separated list of numeric IDs"
+msgstr "Должен быть список числовых ID через запятую"
+
+msgid "Must be a number in the range of 0 - 10000"
+msgstr "Должно быть числом в диапазоне 0 - 10000"
+
+msgid "Name displayed on the dashboard"
+msgstr "Имя, отображаемое на дашборде"
+
+msgid "Name shown in the priority level list"
+msgstr "Имя в списке уровней приоритета"
+
+msgid "Netherlands (nl)"
+msgstr "Нидерланды (nl)"
+
+msgid "Network & Interfaces"
+msgstr "Сеть и интерфейсы"
+
+msgid "Network Interface"
+msgstr "Сетевой интерейс"
+
+msgid "Network interface settings"
+msgstr "Настройки сетевого интерфейса"
+
+msgid "New domains:"
+msgstr "Новые домены:"
 
 msgid "New version %s is available for %s"
 msgstr "Доступна новая версия %s для %s"
@@ -802,6 +1828,18 @@ msgstr "Диапазон NFQUEUE свободен"
 
 msgid "NFQUEUE range overlaps with another rule"
 msgstr "Диапазон NFQUEUE пересекается с другим правилом"
+
+msgid "NFQWS Strategy"
+msgstr "Стратегия NFQWS"
+
+msgid "NFQWS strategy cannot be empty"
+msgstr "Стратегия NFQWS не может быть пустой"
+
+msgid "NFQWS2 Strategy"
+msgstr "Стратегия NFQWS2"
+
+msgid "NFQWS2 strategy cannot be empty"
+msgstr "Стратегия NFQWS2 не может быть пустой"
 
 msgid "No"
 msgstr "Нет"
@@ -821,11 +1859,20 @@ msgstr "Нет закрытых подключений"
 msgid "No conflict detected"
 msgstr "Конфликт не обнаружен"
 
+msgid "No Custom Rules Matched"
+msgstr "Нет совпадений с пользовательскими правилами"
+
 msgid "No diagnostic history available yet."
-msgstr ""
+msgstr "История проверок пока пуста."
+
+msgid "No domains detected yet"
+msgstr "Домены пока не обнаружены"
 
 msgid "No enabled server inbounds configured"
 msgstr "Включённые серверные inbounds не настроены"
+
+msgid "No file selected"
+msgstr "Файл не выбран"
 
 msgid "No issues found"
 msgstr "Проблем не обнаружено"
@@ -837,7 +1884,7 @@ msgid "No public firewall port required"
 msgstr "Публичный порт в firewall не требуется"
 
 msgid "No quick fix required"
-msgstr ""
+msgstr "Быстрая починка не требуется"
 
 msgid "No rules use ByeDPI"
 msgstr "Нет правил, использующих ByeDPI"
@@ -847,9 +1894,6 @@ msgstr "Нет правил, использующих Zapret"
 
 msgid "No rules use Zapret2"
 msgstr "Нет правил, использующих Zapret2"
-
-msgid "No targets found in section configs."
-msgstr "Цели в конфигурациях секций не найдены."
 
 msgid "Node list is empty"
 msgstr "Список узлов пуст"
@@ -884,11 +1928,71 @@ msgstr "Не отвечает"
 msgid "Not running"
 msgstr "Не запущено"
 
+msgid "Not set"
+msgstr "Не задано"
+
+msgid "Notify on Certificate Warnings"
+msgstr "Уведомлять о предупреждениях сертификатов"
+
+msgid "Notify on Core Crashes"
+msgstr "Уведомлять о падениях ядра"
+
+msgid "Notify on DNS Leaks"
+msgstr "Уведомлять об утечках DNS"
+
+msgid "Notify on Server Switches"
+msgstr "Уведомлять о переключениях серверов"
+
+msgid "Notify on Service Restarts"
+msgstr "Уведомлять о перезапусках сервиса"
+
+msgid "Notify on Subscription Updates"
+msgstr "Уведомлять об обновлениях подписок"
+
+msgid "Number of consecutive failed checks required before switching DNS servers."
+msgstr "Количество последовательных неудачных проверок до переключения DNS-серверов."
+
+msgid "Number of consecutive failures before restarting (default 3)."
+msgstr "Количество последовательных ошибок до перезапуска (по умолчанию 3)."
+
+msgid "Number of consecutive successful checks required before returning to a higher-priority DNS server."
+msgstr "Количество последовательных успешных проверок до возврата на DNS-сервер с более высоким приоритетом."
+
 msgid "Ollama (Local PC / Server)"
-msgstr ""
+msgstr "Ollama (локальный ПК / сервер)"
+
+msgid "One record per line: <code>example.com 192.168.1.100</code> or <code>192.168.1.100 example.com</code>. Lines starting with <code>#</code> are ignored."
+msgstr "Одна запись на строку: <code>example.com 192.168.1.100</code> или <code>192.168.1.100 example.com</code>. Строки, начинающиеся с <code>#</code>, игнорируются."
+
+msgid "Only from the specified countries."
+msgstr "Только из указанных стран."
+
+msgid "Only selected"
+msgstr "Только выбранные"
+
+msgid "Only selected except exclusions"
+msgstr "Только выбранные кроме исключений"
+
+msgid "Only servers whose names match the expression."
+msgstr "Только серверы, чьи имена соответствуют выражению."
+
+msgid "Only servers with one of the selected protocols."
+msgstr "Только серверы с одним из выбранных протоколов."
+
+msgid "Only servers with one of the selected security types."
+msgstr "Только серверы с одним из выбранных типов безопасности."
+
+msgid "Only servers with one of the selected transports."
+msgstr "Только серверы с одним из выбранных транспортов."
+
+msgid "Only the specified servers."
+msgstr "Только указанные серверы."
 
 msgid "Open"
 msgstr "Открыть"
+
+msgid "Open priority settings and enter a display name"
+msgstr "Откройте настройки приоритета и введите отображаемое имя"
 
 msgid "Open Project Page"
 msgstr "Открыть страницу проекта"
@@ -905,17 +2009,80 @@ msgstr "Время ожидания истекло"
 msgid "Optimization"
 msgstr "Оптимизация"
 
+msgid "Option \"%s\" contains an invalid input value."
+msgstr "Параметр \"%s\" содержит недопустимое значение."
+
+msgid "Optional — leave empty for default"
+msgstr "Опционально — оставьте пустым для значения по умолчанию"
+
 msgid "Optional for local LLM"
-msgstr ""
+msgstr "Опционально для локальных LLM"
+
+msgid "Optional tls-auth or tls-crypt key"
+msgstr "Опциональный ключ tls-auth или tls-crypt"
+
+msgid "Optional values must be attached with '=' here; a separate token would be ignored by nfqws."
+msgstr "Опциональные значения должны быть присоединены через '=' здесь; отдельный токен будет игнорироваться nfqws."
+
+msgid "Optional values must be attached with '=' here; a separate token would be ignored by nfqws2."
+msgstr "Опциональные значения должны быть присоединены через '=' здесь; отдельный токен будет игнорироваться nfqws2."
+
+msgid "Or paste hosts file content:"
+msgstr "Или вставьте содержимое файла hosts:"
 
 msgid "outbounds must be a non-empty array of strings"
 msgstr "outbounds должен быть непустым массивом строк"
 
+msgid "Output Network Interface"
+msgstr "Выходной сетевой интерфейс"
+
+msgid "Override the default OpenWrt device headers for this subscription"
+msgstr "Переопределить стандартные заголовки устройства OpenWrt для этой подписки"
+
+msgid "Overwrite existing records (if unchecked, merge with existing records)"
+msgstr "Перезаписать существующие записи (если снято — объединить с существующими)"
+
+msgid "P2P Leak Protection"
+msgstr "Защита от утечек P2P"
+
+msgid "Parsed records:"
+msgstr "Обработанные записи:"
+
+msgid "Password"
+msgstr "Пароль"
+
+msgid "Password cannot be empty"
+msgstr "Пароль не может быть пустым"
+
+msgid "Paste content or upload a file to preview imported DNS records."
+msgstr "Вставьте содержимое или загрузите файл для предварительного просмотра импортируемых DNS-записей."
+
 msgid "Path cannot be empty"
 msgstr "Путь не может быть пустым"
 
+msgid "Path must be absolute (start with /)"
+msgstr "Путь должен быть абсолютным (начинаться с /)"
+
+msgid "Path must contain at least one directory (like /tmp/cache.db)"
+msgstr "Путь должен содержать как минимум одну директорию (например /tmp/cache.db)"
+
+msgid "Path must end with cache.db"
+msgstr "Путь должен заканчиваться на cache.db"
+
 msgid "Pause updates"
 msgstr "Приостановить обновление"
+
+msgid "Peer Public Key"
+msgstr "Публичный ключ пира"
+
+msgid "PEM-encoded CA certificate"
+msgstr "CA-сертификат в формате PEM"
+
+msgid "PEM-encoded client certificate"
+msgstr "Клиентский сертификат в формате PEM"
+
+msgid "PEM-encoded client private key"
+msgstr "Приватный ключ клиента в формате PEM"
 
 msgid "Pending"
 msgstr "Ожидает запуска"
@@ -923,11 +2090,71 @@ msgstr "Ожидает запуска"
 msgid "Per-Device Routing"
 msgstr "Маршрутизация по устройствам"
 
+msgid "Periodically check the current level and switch to a faster server even when the current one works."
+msgstr "Периодически проверять текущий уровень и переключаться на более быстрый сервер, даже если текущий работает."
+
+msgid "Periodically checks if the proxy is responding. Restarts Tachyon after consecutive failures."
+msgstr "Периодически проверяет, отвечает ли прокси. Перезапускает Tachyon после последовательных ошибок."
+
+msgid "Persistent Keepalive"
+msgstr "Постоянный Keepalive"
+
+msgid "Persistent Smart Detect"
+msgstr "Постоянное умное определение"
+
+msgid "Pin on dashboard"
+msgstr "Закрепить на дашборде"
+
 msgid "Please wait, operation is running..."
 msgstr "Пожалуйста, подождите, выполняется операция..."
 
+msgid "Polling Interval (seconds)"
+msgstr "Интервал опроса (секунды)"
+
+msgid "Polling interval must be at least 1 second"
+msgstr "Интервал опроса должен быть не менее 1 секунды"
+
+msgid "Port cannot be empty"
+msgstr "Порт не может быть пустым"
+
 msgid "Port conflict"
 msgstr "Конфликт порта"
+
+msgid "Port for the local mixed proxy of this section"
+msgstr "Порт локального смешанного прокси для этой секции"
+
+msgid "Port must be between 1 and 65535"
+msgstr "Порт должен быть от 1 до 65535"
+
+msgid "Port range start must be less than or equal to end"
+msgstr "Начало диапазона портов должно быть меньше или равно концу"
+
+msgid "Ports"
+msgstr "Порты"
+
+msgid "Pre-download all preset lists"
+msgstr "Предзагрузить все предустановленные списки"
+
+msgid "Pre-shared key"
+msgstr "Предварительный общий ключ"
+
+msgid "Prefer IPv4"
+msgstr "Предпочитать IPv4"
+
+msgid "Prefer IPv6"
+msgstr "Предпочитать IPv6"
+
+msgid "Prefix text"
+msgstr "Текст префикса"
+
+msgid "Preshared Key"
+msgstr "Предварительный общий ключ"
+
+msgid "Prevents multiple reload_firewall calls within 120 seconds to avoid connection drops."
+msgstr "Предотвращает множественные вызовы reload_firewall в течение 120 секунд для избежания разрыва соединений."
+
+msgid "Priority"
+msgstr "Приоритет"
 
 msgid "Priority details"
 msgstr "Детали Priority"
@@ -935,26 +2162,80 @@ msgstr "Детали Priority"
 msgid "Priority details are unavailable"
 msgstr "Детали Priority недоступны"
 
+msgid "Priority level settings"
+msgstr "Настройки уровня приоритета"
+
+msgid "Priority levels"
+msgstr "Уровни приоритета"
+
+msgid "Priority settings"
+msgstr "Настройки приоритета"
+
+msgid "Private Key"
+msgstr "Приватный ключ"
+
 msgid "Protection"
 msgstr "Защита"
 
-msgid "Proxy"
-msgstr ""
+msgid "Protocol"
+msgstr "Протокол"
+
+msgid "Proxy Fail Threshold"
+msgstr "Порог ошибок прокси"
+
+msgid "Proxy Health Check Interval (s)"
+msgstr "Интервал проверки здоровья прокси (с)"
+
+msgid "Proxy Health Check URL"
+msgstr "URL проверки здоровья прокси"
 
 msgid "Proxy link is unavailable"
 msgstr "Ссылка прокси недоступна"
 
+msgid "Proxy Section for Bot"
+msgstr "Секция прокси для бота"
+
+msgid "Proxy to use for WARP API registration (api.cloudflareclient.com)"
+msgstr "Прокси для регистрации WARP API (api.cloudflareclient.com)"
+
+msgid "PSK"
+msgstr "PSK"
+
 msgid "Public host"
 msgstr "Публичный хост"
+
+msgid "QUIC (HTTP/3)"
+msgstr "QUIC (HTTP/3)"
+
+msgid "RDP"
+msgstr "RDP"
+
+msgid "Read error"
+msgstr "Ошибка чтения"
 
 msgid "Rebuilt release"
 msgstr "Пересобранный релиз"
 
 msgid "Recommended Quick Fixes:"
-msgstr ""
+msgstr "Рекомендуемые исправления:"
+
+msgid "Reconnect Threshold"
+msgstr "Порог переподключений"
+
+msgid "Records proxy/DNS latency and health status in hourly buckets for analysis."
+msgstr "Записывает задержку прокси/DNS и состояние здоровья в почасовые блоки для анализа."
+
+msgid "Records: %d"
+msgstr "Записей: %d"
 
 msgid "Refill"
 msgstr "Сброс"
+
+msgid "Registration Detour"
+msgstr "Маршрут регистрации"
+
+msgid "Regular expression must not contain spaces or commas"
+msgstr "Регулярное выражение не должно содержать пробелов или запятых"
 
 msgid "Reinstall"
 msgstr "Переустановить"
@@ -962,11 +2243,23 @@ msgstr "Переустановить"
 msgid "Reloading page in"
 msgstr "Перезагрузка страницы через"
 
+msgid "Remote Hosts Lists"
+msgstr "Удалённые списки Hosts"
+
 msgid "Removal completed successfully!"
 msgstr "Удаление успешно завершено!"
 
 msgid "Remove"
 msgstr "Удалить"
+
+msgid "Remove servers from the specified countries from this level."
+msgstr "Удалить серверы из указанных стран с этого уровня."
+
+msgid "Remove servers whose names match the expression from this level."
+msgstr "Удалить серверы, чьи имена соответствуют выражению, с этого уровня."
+
+msgid "Remove the specified servers from this level."
+msgstr "Удалить указанные серверы с этого уровня."
 
 msgid "Removing"
 msgstr "Удаление"
@@ -974,8 +2267,41 @@ msgstr "Удаление"
 msgid "Removing binaries & package files..."
 msgstr "Удаление бинарных файлов и пакетов..."
 
-msgid "Resolved IP / DNS"
-msgstr "IP / DNS"
+msgid "Require a username and password for the local mixed proxy"
+msgstr "Требовать имя пользователя и пароль для локального смешанного прокси"
+
+msgid "Reset"
+msgstr "Сбросить"
+
+msgid "Reset Settings"
+msgstr "Сбросить настройки"
+
+msgid "Resetting…"
+msgstr "Сброс…"
+
+msgid "Resolve domain names before routing so sing-box can use real destination IPs."
+msgstr "Разрешать имена доменов перед маршрутизацией, чтобы sing-box мог использовать реальные IP назначения."
+
+msgid "Resolve real IP for routing"
+msgstr "Разрешать реальный IP для маршрутизации"
+
+msgid "Resource selection by hostname inside nfqws is not supported here; sing-box selects resources before NFQUEUE."
+msgstr "Выбор ресурсов по имени хоста внутри nfqws не поддерживается здесь; sing-box выбирает ресурсы до NFQUEUE."
+
+msgid "Resource selection by hostname inside nfqws2 is not supported here; sing-box selects resources before NFQUEUE."
+msgstr "Выбор ресурсов по имени хоста внутри nfqws2 не поддерживается здесь; sing-box выбирает ресурсы до NFQUEUE."
+
+msgid "Resource selection by IP or CIDR inside nfqws is not supported here; sing-box selects resources before NFQUEUE."
+msgstr "Выбор ресурсов по IP или CIDR внутри nfqws не поддерживается здесь; sing-box выбирает ресурсы до NFQUEUE."
+
+msgid "Resource selection by IP or CIDR inside nfqws2 is not supported here; sing-box selects resources before NFQUEUE."
+msgstr "Выбор ресурсов по IP или CIDR внутри nfqws2 не поддерживается здесь; sing-box выбирает ресурсы до NFQUEUE."
+
+msgid "Response Packet Magic Header (S2)"
+msgstr "Magic-заголовок ответного пакета (S2)"
+
+msgid "Response Packet Magic Header (S4)"
+msgstr "Magic-заголовок ответного пакета (S4)"
 
 msgid "Restart Tachyon"
 msgstr "Перезапустить Tachyon"
@@ -983,17 +2309,44 @@ msgstr "Перезапустить Tachyon"
 msgid "Restarts"
 msgstr "Перезапуски"
 
+msgid "Restores the Tachyon factory defaults: all rules, subscriptions, custom DNS servers and other options will be lost."
+msgstr "Восстанавливает заводские настройки Tachyon: все правила, подписки, пользовательские DNS-серверы и другие параметры будут удалены."
+
 msgid "Resume updates"
 msgstr "Продолжить обновление"
 
 msgid "Route"
 msgstr "Маршрут"
 
-msgid "Route Type"
-msgstr ""
+msgid "Route bot API requests through this section. Leave empty to use the default mixed proxy."
+msgstr "Маршрутизировать запросы API бота через эту секцию. Оставьте пустым для использования смешанного прокси по умолчанию."
+
+msgid "Route main DNS requests through the selected section."
+msgstr "Маршрутизировать основные DNS-запросы через выбранную секцию."
+
+msgid "Route requests to this DNS server through another section."
+msgstr "Маршрутизировать запросы к этому DNS-серверу через другую секцию."
+
+msgid "Routing Rule Tracer"
+msgstr "Трассировщик правил маршрутизации"
 
 msgid "Routing rules"
 msgstr "Правила маршрутизации"
+
+msgid "Rule"
+msgstr "Правило"
+
+msgid "Rule set must be an HTTP(S) URL or a local .srs / .json path"
+msgstr "Набор правил должен быть HTTP(S) URL или локальным путём .srs / .json"
+
+msgid "Rule set settings"
+msgstr "Настройки набора правил"
+
+msgid "Rule sets"
+msgstr "Наборы правил"
+
+msgid "Rule Sets (.srs / .json)"
+msgstr "Наборы правил (.srs / .json)"
 
 msgid "Rules mangle counters"
 msgstr "Счётчики правил mangle"
@@ -1014,7 +2367,7 @@ msgid "Rules proxy exist"
 msgstr "Правила прокси существуют"
 
 msgid "Run AI Doctor"
-msgstr ""
+msgstr "Запустить ИИ-доктора"
 
 msgid "Run Diagnostic"
 msgstr "Запустить диагностику"
@@ -1024,6 +2377,9 @@ msgstr "Запустить восстановление"
 
 msgid "Running"
 msgstr "Запущен"
+
+msgid "Russia (ru)"
+msgstr "Россия (ru)"
 
 msgid "Save"
 msgstr "Сохранить"
@@ -1040,17 +2396,101 @@ msgstr "Сохранение…"
 msgid "Search"
 msgstr "Поиск"
 
-msgid "Search domain or service..."
-msgstr ""
+msgid "Secret key for authenticating remote access to YACD when WAN access is enabled."
+msgstr "Секретный ключ для аутентификации удалённого доступа к YACD при включённом WAN-доступе."
+
+msgid "Secret token for authorizing WRITE operations (POST/PUT) on /cgi-bin/tachyon-agent/. Leave empty if auth is not required."
+msgstr "Секретный токен для авторизации операций записи (POST/PUT) на /cgi-bin/tachyon-agent/. Оставьте пустым, если аутентификация не требуется."
 
 msgid "Secret token for WRITE requests"
 msgstr "Секретный токен для POST/PUT запросов"
 
+msgid "Section action"
+msgstr "Действие секции"
+
+msgid "Section name"
+msgstr "Имя секции"
+
+msgid "Section Rules Content"
+msgstr "Содержимое правил секции"
+
 msgid "Section test order (checked = active, drag rows with △▽):"
 msgstr "Порядок проверки секций (галочка = активна, перетаскивайте △▽):"
 
+msgid "Security"
+msgstr "Безопасность"
+
+msgid "Select a common client profile or enter a custom User-Agent"
+msgstr "Выберите общий профиль клиента или введите пользовательский User-Agent"
+
+msgid "Select a file with .conf extension"
+msgstr "Выберите файл с расширением .conf"
+
+msgid "Select a network interface"
+msgstr "Выберите сетевой интерфейс"
+
+msgid "Select a predefined domain list"
+msgstr "Выберите предустановленный список доменов"
+
+msgid "Select a section"
+msgstr "Выберите секцию"
+
+msgid "Select a section for downloading this subscription"
+msgstr "Выберите секцию для загрузки этой подписки"
+
+msgid "Select a transit section"
+msgstr "Выберите транзитную секцию"
+
+msgid "Select AI LLM provider for diagnostics"
+msgstr "Выберите провайдер ИИ LLM для диагностики"
+
+msgid "Select an existing network interface"
+msgstr "Выберите существующий сетевой интерфейс"
+
+msgid "Select an existing URLTest or Priority group"
+msgstr "Выберите существующую группу URLTest или Приоритет"
+
+msgid "Select an intermediate section"
+msgstr "Выберите промежуточную секцию"
+
+msgid "Select and order the sections through which blocked domains are tested. Checked sections are tried top-to-bottom."
+msgstr "Выберите и упорядочите секции, через которые тестируются заблокированные домены. Отмеченные секции проверяются сверху вниз."
+
+msgid "Select DNS protocol to use"
+msgstr "Выберите протокол DNS"
+
+msgid "Select network interface for VPN connection"
+msgstr "Выберите интерфейс для VPN-подключения"
+
+msgid "Select one or more country ISO codes (e.g. ru, us, de, nl, fr, fi, se, tr, cn, jp, sg, by, kz, ua)."
+msgstr "Выберите один или несколько ISO-кодов стран (напр. ru, us, de, nl, fr, fi, se, tr, cn, jp, sg, by, kz, ua)."
+
+msgid "Select or enter a User-Agent"
+msgstr "Выберите или введите User-Agent"
+
+msgid "Select or enter path for sing-box cache file. Change this ONLY if you know what you are doing"
+msgstr "Выберите или введите путь к файлу кэша sing-box. Изменяйте ТОЛЬКО если точно знаете, что делаете"
+
+msgid "Select or enter the IP addresses of your game consoles."
+msgstr "Выберите или введите IP-адреса ваших игровых консолей."
+
+msgid "Select path for sing-box config file. Change this ONLY if you know what you are doing"
+msgstr "Выберите путь к файлу конфигурации sing-box. Изменяйте ТОЛЬКО если точно знаете, что делаете"
+
 msgid "Select the fastest node"
 msgstr "Выбирать самый быстрый узел"
+
+msgid "Select the log level for sing-box"
+msgstr "Выберите уровень логирования для sing-box"
+
+msgid "Select the network interface from which the traffic will originate"
+msgstr "Выберите интерфейс, с которого будет идти трафик"
+
+msgid "Select the network interface to which the traffic will originate"
+msgstr "Выберите интерфейс, на который будет идти трафик"
+
+msgid "Select the WAN interfaces to be monitored"
+msgstr "Выберите WAN-интерфейсы для отслеживания"
 
 msgid "Selected"
 msgstr "Выбран"
@@ -1061,11 +2501,47 @@ msgstr "Selector и URLTest outbound должны содержать непус�
 msgid "Send"
 msgstr "Отправить"
 
+msgid "Send a Telegram notification if a potential DNS leak is detected."
+msgstr "Отправлять уведомление в Telegram при обнаружении потенциальной утечки DNS."
+
+msgid "Send a Telegram notification if sing-box or nftables rules crash and get auto-restored."
+msgstr "Отправлять уведомление в Telegram, если правила sing-box или nftables упали и были автоматически восстановлены."
+
+msgid "Send a Telegram notification if SSL/TLS certificates are close to expiration."
+msgstr "Отправлять уведомление в Telegram, если SSL/TLS-сертификаты скоро истекут."
+
+msgid "Send a Telegram notification if the Tachyon service is restarted by the watchdog."
+msgstr "Отправлять уведомление в Telegram, если сервис Tachyon перезапущен watchdog."
+
+msgid "Send a Telegram notification when a URLTest group switches to a new server."
+msgstr "Отправлять уведомление в Telegram при переключении группы URLTest на новый сервер."
+
+msgid "Send a Telegram notification when proxy subscriptions are successfully updated."
+msgstr "Отправлять уведомление в Telegram при успешном обновлении подписок прокси."
+
+msgid "Server Address"
+msgstr "Адрес сервера"
+
+msgid "Server filtering"
+msgstr "Фильтрация серверов"
+
+msgid "Server group for automatic lowest-latency selection"
+msgstr "Группа серверов для автоматического выбора с наименьшей задержкой"
+
+msgid "Server group for priority failover"
+msgstr "Группа серверов для приоритетного переключения"
+
+msgid "Server Name Indication — leave empty to use server address"
+msgstr "Server Name Indication — оставьте пустым для использования адреса сервера"
+
 msgid "Server outbound must contain a non-empty server field"
 msgstr "Серверный outbound должен содержать непустое поле server"
 
 msgid "Server outbound must contain a numeric server_port from 1 to 65535"
 msgstr "Серверный outbound должен содержать числовой server_port от 1 до 65535"
+
+msgid "Server Port"
+msgstr "Порт сервера"
 
 msgid "Server unavailable"
 msgstr "Сервер недоступен"
@@ -1073,20 +2549,56 @@ msgstr "Сервер недоступен"
 msgid "server_port must be a number from 1 to 65535"
 msgstr "server_port должен быть числом от 1 до 65535"
 
-msgid "Service / Target"
-msgstr ""
+msgid "Servers on dashboard"
+msgstr "Серверы на дашборде"
 
 msgid "Service action failed"
 msgstr "Действие сервиса не выполнено"
 
-msgid "Service Availability Check"
-msgstr ""
+msgid "Service list"
+msgstr "Список сервисов"
+
+msgid "Services & Access"
+msgstr "Сервисы и доступ"
 
 msgid "Services info"
 msgstr "Информация о сервисах"
 
+msgid "Settings"
+msgstr "Настройки"
+
+msgid "Settings have been reset to defaults. The page will reload."
+msgstr "Настройки сброшены к значениям по умолчанию. Страница будет перезагружена."
+
+msgid "Show metadata on dashboard"
+msgstr "Показывать метаданные на дашборде"
+
+msgid "Show only selected servers."
+msgstr "Показать только выбранные серверы."
+
+msgid "Show only servers with one of the selected protocols."
+msgstr "Показывать только серверы с одним из выбранных протоколов."
+
+msgid "Show only servers with one of the selected security types."
+msgstr "Показывать только серверы с одним из выбранных типов безопасности."
+
+msgid "Show only servers with one of the selected transports."
+msgstr "Показывать только серверы с одним из выбранных транспортов."
+
+msgid "Show servers from selected groups without repeating their filtering criteria."
+msgstr "Показать серверы из выбранных групп без повторения критериев фильтрации."
+
+msgid "Show servers only from the specified countries."
+msgstr "Показывать серверы только из указанных стран."
+
+msgid "Show servers whose names match the expression."
+msgstr "Показывать серверы, чьи имена соответствуют выражению."
+
 msgid "Show sing-box config"
 msgstr "Показать sing-box конфигурацию"
+
+msgid "Show subscription metadata for this source on the dashboard"
+msgstr "Показывать метаданные подписки для этого источника на дашборде"
 
 msgid "Sing-box autostart disabled"
 msgstr "Автостарт sing-box отключен"
@@ -1112,14 +2624,50 @@ msgstr "Сервис sing-box существует"
 msgid "Sing-box version is compatible (newer than 1.12.4)"
 msgstr "Версия Sing-box совместима (новее 1.12.4)"
 
+msgid "Singapore (sg)"
+msgstr "Сингапур (sg)"
+
+msgid "Skip loopback & local entries (127.0.0.1, ::1, 0.0.0.0, localhost)"
+msgstr "Пропустить loopback и локальные записи (127.0.0.1, ::1, 0.0.0.0, localhost)"
+
+msgid "Skip TLS certificate verification (not recommended)"
+msgstr "Пропустить проверку TLS-сертификатов (не рекомендуется)"
+
+msgid "Skipped comments/invalid:"
+msgstr "Пропущены комментарии/невалидные:"
+
+msgid "Skipped loopback:"
+msgstr "Пропущены loopback:"
+
 msgid "Smart Detect"
 msgstr "Smart Detect"
 
 msgid "Smart Detect settings saved"
 msgstr "Настройки Smart Detect сохранены"
 
+msgid "Snell Version"
+msgstr "Версия Snell"
+
+msgid "Sort Alphabetically"
+msgstr "Сортировать по алфавиту"
+
+msgid "Sort by latency"
+msgstr "Сортировать по задержке"
+
+msgid "Sorts servers in this section by lowest latency in the dashboard."
+msgstr "Сортировать серверы в этой секции по наименьшей задержке на дашборде."
+
 msgid "Source"
 msgstr "Источник"
+
+msgid "Source Devices"
+msgstr "Устройства-источники"
+
+msgid "Source Network Interface"
+msgstr "Исходный сетевой интерфейс"
+
+msgid "SSH"
+msgstr "SSH"
 
 msgid "Standalone ByeDPI autostart is enabled"
 msgstr "Автозапуск отдельной службы ByeDPI включен"
@@ -1154,14 +2702,32 @@ msgstr "Отдельная служба Zapret2 активна"
 msgid "Standalone Zapret2 service is inactive"
 msgstr "Отдельная служба Zapret2 неактивна"
 
+msgid "Start"
+msgstr "Старт"
+
+msgid "Start bot"
+msgstr "Запустить бота"
+
 msgid "Start Tachyon"
 msgstr "Запустить Tachyon"
 
 msgid "Start Watchdog first"
 msgstr "Сначала запустите Watchdog"
 
+msgid "Starting…"
+msgstr "Запуск…"
+
 msgid "Status"
 msgstr "Статус"
+
+msgid "Stop"
+msgstr "Стоп"
+
+msgid "Stop bot"
+msgstr "Остановить бота"
+
+msgid "Stop checking when URLTest group is not used. Use sing-box duration format like 1d, 12h or 30m."
+msgstr "Остановить проверку, когда группа URLTest не используется. Используйте формат длительности sing-box, например 1d, 12h или 30m."
 
 msgid "Stop Tachyon"
 msgstr "Остановить Tachyon"
@@ -1172,14 +2738,50 @@ msgstr "Остановлен"
 msgid "Stopping active services..."
 msgstr "Остановка активных служб..."
 
+msgid "Stopping…"
+msgstr "Остановка…"
+
+msgid "Store auto-detected domains in /etc instead of /tmp to survive reboots."
+msgstr "Хранить автоопределённые домены в /etc вместо /tmp для сохранения после перезагрузки."
+
+msgid "Strict ECH + DoQ DNS Enforcer"
+msgstr "Строгий ECH + DoQ DNS Enforcer"
+
+msgid "STUN (P2P Calls)"
+msgstr "STUN (P2P-звонки)"
+
+msgid "Subnets from the list will be extracted and added to nftables"
+msgstr "Подсети из списка будут извлечены и добавлены в nftables"
+
+msgid "Subscription auto update"
+msgstr "Автообновление подписки"
+
 msgid "Subscription info:"
 msgstr "Информация о подписке:"
 
 msgid "Subscription update failed"
 msgstr "Обновление подписки завершилось ошибкой"
 
+msgid "Subscription update interval"
+msgstr "Интервал обновления подписки"
+
+msgid "Subscription URL"
+msgstr "URL подписки"
+
+msgid "Subscription URL settings"
+msgstr "Настройки URL подписки"
+
 msgid "Subscriptions updated"
 msgstr "Подписки обновлены"
+
+msgid "Success"
+msgstr "Успех"
+
+msgid "Successfully imported %d DNS record(s)"
+msgstr "Успешно импортировано %d DNS-записей"
+
+msgid "Sweden (se)"
+msgstr "Швеция (se)"
 
 msgid "System info"
 msgstr "Системная информация"
@@ -1193,11 +2795,26 @@ msgstr "Таблица существует"
 msgid "Tachyon Error"
 msgstr "Ошибка Tachyon"
 
+msgid "Tachyon manages ciadpi pid files itself, so pidfile options are not allowed here."
+msgstr "Tachyon управляет файлами pid ciadpi самостоятельно, поэтому параметры pidfile здесь не допускаются."
+
+msgid "Tachyon manages the ciadpi process lifecycle itself, so daemon mode is not allowed here."
+msgstr "Tachyon управляет жизненным циклом процесса ciadpi самостоятельно, поэтому режим daemon здесь не допускается."
+
+msgid "Tachyon manages the nfqws process lifecycle itself, so daemon mode is not allowed here."
+msgstr "Tachyon управляет жизненным циклом процесса nfqws самостоятельно, поэтому режим daemon здесь не допускается."
+
+msgid "Tachyon manages the nfqws2 process lifecycle itself, so daemon mode is not allowed here."
+msgstr "Tachyon управляет жизненным циклом процесса nfqws2 самостоятельно, поэтому режим daemon здесь не допускается."
+
 msgid "Tachyon service is stopped. Start the service to display connections."
 msgstr "Служба Tachyon остановлена. Запустите сервис для отображения подключений."
 
 msgid "Tachyon service is stopped. Start the service to display the dashboard."
 msgstr "Служба Tachyon остановлена. Запустите сервис для отображения дашборда."
+
+msgid "Tachyon will not modify your DHCP configuration"
+msgstr "Tachyon не будет изменять вашу конфигурацию DHCP"
 
 msgid "Tachyon-managed ciadpi runtime has restarted"
 msgstr "ciadpi Tachyon перезапускался"
@@ -1232,17 +2849,41 @@ msgstr "NFQWS2 Tachyon готов"
 msgid "Tailscale endpoint"
 msgstr "Tailscale endpoint"
 
-msgid "TCP"
-msgstr ""
+msgid "Telegram Bot Token"
+msgstr "Токен Telegram-бота"
 
 msgid "Test latency"
 msgstr "Тестирование задержки"
 
+msgid "Test only selected servers."
+msgstr "Тестировать только выбранные серверы."
+
+msgid "Test only servers with one of the selected protocols."
+msgstr "Тестировать только серверы с одним из выбранных протоколов."
+
+msgid "Test only servers with one of the selected security types."
+msgstr "Тестировать только серверы с одним из выбранных типов безопасности."
+
+msgid "Test only servers with one of the selected transports."
+msgstr "Тестировать только серверы с одним из выбранных транспортов."
+
+msgid "Test servers only from the specified countries."
+msgstr "Тестировать серверы только из указанных стран."
+
+msgid "Test servers whose names match the expression."
+msgstr "Тестировать серверы, чьи имена соответствуют выражению."
+
 msgid "Testing URL"
 msgstr "URL проверки"
 
-msgid "Testing..."
-msgstr "Тестирование..."
+msgid "The desync fwmark is managed by Tachyon for loop prevention and must not be overridden here."
+msgstr "fwmark desync управляется Tachyon для предотвращения циклов и не может быть переопределён здесь."
+
+msgid "The NFQUEUE number is assigned by Tachyon for each rule and must not be overridden here."
+msgstr "Номер NFQUEUE назначается Tachyon для каждого правила и не может быть переопределён здесь."
+
+msgid "The rule applies to the domain and all its subdomains. Use full:, keyword:, or regex: prefixes for exact match, keyword match, or regular expression."
+msgstr "Правило применяется к домену и всем его поддоменам. Используйте префиксы full:, keyword: или regex: для точного совпадения, совпадения по ключевому слову или регулярного выражения."
 
 msgid "There are rules using ByeDPI"
 msgstr "Есть правила, использующие ByeDPI"
@@ -1256,41 +2897,152 @@ msgstr "Есть правила, использующие Zapret2"
 msgid "Thinking..."
 msgstr "Думаю..."
 
+msgid "This field is required"
+msgstr "Это поле обязательно"
+
+msgid "This field must start a working ciadpi strategy; help/version options exit immediately and are not allowed here."
+msgstr "Это поле должно запускать рабочую стратегию ciadpi; опции help/version завершаются немедленно и здесь не допускаются."
+
+msgid "This field must start a working nfqws strategy; --dry-run exits immediately and is not allowed here."
+msgstr "Это поле должно запускать рабочую стратегию nfqws; --dry-run завершается немедленно и здесь не допускается."
+
+msgid "This field must start a working nfqws strategy; --version exits immediately and is not allowed here."
+msgstr "Это поле должно запускать рабочую стратегию nfqws; --version завершается немедленно и здесь не допускается."
+
+msgid "This field must start a working nfqws2 strategy; --dry-run exits immediately and is not allowed here."
+msgstr "Это поле должно запускать рабочую стратегию nfqws2; --dry-run завершается немедленно и здесь не допускается."
+
+msgid "This field must start a working nfqws2 strategy; --version exits immediately and is not allowed here."
+msgstr "Это поле должно запускать рабочую стратегию nfqws2; --version завершается немедленно и здесь не допускается."
+
+msgid "This flag does not accept a value."
+msgstr "Этот флаг не принимает значение."
+
+msgid "This option requires a value."
+msgstr "Этот параметр требует значение."
+
+msgid "This will erase all Tachyon settings and restore the factory defaults. The service will restart. This action cannot be undone."
+msgstr "Все настройки Tachyon будут удалены и восстановлены заводские значения. Сервис будет перезапущен. Это действие нельзя отменить."
+
 msgid "Time"
 msgstr "Время"
+
+msgid "Time in seconds for DNS record caching (default: 60)"
+msgstr "Время кэширования DNS-записей в секундах (по умолчанию: 60)"
 
 msgid "tiny"
 msgstr "tiny"
 
-msgid "TLS"
-msgstr ""
+msgid "TLS / HTTPS"
+msgstr "TLS / HTTPS"
+
+msgid "TLS Auth/Crypt Key"
+msgstr "Ключ TLS Auth/Crypt"
+
+msgid "TLS SNI"
+msgstr "TLS SNI"
+
+msgid "Token is required when the bot is enabled"
+msgstr "Токен обязателен, когда бот включён"
 
 msgid "Tolerance"
 msgstr "Допуск"
 
-msgid "Total Targets"
-msgstr "Всего целей"
+msgid "Top level has the highest priority; lower levels are used as fallback"
+msgstr "Верхний уровень имеет наивысший приоритет; нижние уровни используются как запасные"
+
+msgid "Total lines:"
+msgstr "Всего строк:"
+
+msgid "Trace"
+msgstr "Трассировка"
+
+msgid "Tracing routing rules..."
+msgstr "Трассировка правил маршрутизации..."
 
 msgid "Traffic"
 msgstr "Трафик"
 
+msgid "Traffic for this level goes directly."
+msgstr "Трафик этого уровня идёт напрямую."
+
+msgid "Traffic from these IP addresses will never be routed through this section, even if other conditions match."
+msgstr "Трафик от этих IP-адресов никогда не будет маршрутизирован через эту секцию, даже если другие условия совпадают."
+
+msgid "Traffic of specified protocols (e.g. BitTorrent, QUIC, STUN) will bypass this section."
+msgstr "Трафик указанных протоколов (например BitTorrent, QUIC, STUN) будет обходить эту секцию."
+
 msgid "Traffic Total"
 msgstr "Всего трафика"
 
+msgid "Traffic type filter"
+msgstr "Фильтр типа трафика"
+
+msgid "Traffic will go through the default route (Direct/Default)."
+msgstr "Трафик пойдёт через маршрут по умолчанию (Direct/Default)."
+
 msgid "Transient connection error"
-msgstr ""
+msgstr "Временная ошибка соединения"
+
+msgid "Transparent proxy mode is incompatible with action=byedpi because Tachyon connects to ciadpi through SOCKS."
+msgstr "Режим прозрачного прокси несовместим с action=byedpi, потому что Tachyon подключается к ciadpi через SOCKS."
+
+msgid "Transport"
+msgstr "Транспорт"
 
 msgid "Troubleshooting"
 msgstr "Устранение неполадок"
 
+msgid "Try compatible User-Agent profiles automatically when downloading this subscription"
+msgstr "Пробовать совместимые профили User-Agent автоматически при загрузке этой подписки"
+
+msgid "TTL must be a positive number"
+msgstr "TTL должен быть положительным числом"
+
+msgid "TTL value cannot be empty"
+msgstr "Значение TTL не может быть пустым"
+
+msgid "Turkey (tr)"
+msgstr "Турция (tr)"
+
 msgid "Type"
 msgstr "Тип"
+
+msgid "UDP (Unprotected DNS)"
+msgstr "UDP (незащищённый DNS)"
+
+msgid "Ukraine (ua)"
+msgstr "Украина (ua)"
+
+msgid "Unable to validate the ByeDPI strategy through the backend parser."
+msgstr "Не удалось проверить стратегию ByeDPI через парсер бэкенда."
+
+msgid "Unable to validate the NFQWS strategy through the backend parser."
+msgstr "Не удалось проверить стратегию NFQWS через парсер бэкенда."
+
+msgid "Unable to validate the NFQWS2 strategy through the backend parser."
+msgstr "Не удалось проверить стратегию NFQWS2 через парсер бэкенда."
 
 msgid "Unavailability timeout"
 msgstr "Таймаут недоступности"
 
-msgid "Unavailable"
-msgstr ""
+msgid "Underload Packet Magic Header (H1)"
+msgstr "Magic-заголовок пакета недогрузки (H1)"
+
+msgid "Underload Packet Magic Header (H2)"
+msgstr "Magic-заголовок пакета недогрузки (H2)"
+
+msgid "Underload Packet Magic Header (H3)"
+msgstr "Magic-заголовок пакета недогрузки (H3)"
+
+msgid "Underload Packet Magic Header (H4)"
+msgstr "Magic-заголовок пакета недогрузки (H4)"
+
+msgid "Unexpected ByeDPI strategy argument: %s"
+msgstr "Неожиданный аргумент стратегии ByeDPI: %s"
+
+msgid "Unexpected standalone token. Use explicit flags such as --name or --name=value."
+msgstr "Неожиданный отдельный токен. Используйте явные флаги, такие как --name или --name=value."
 
 msgid "Unexpected Tachyon-managed ciadpi runtime is running"
 msgstr "Обнаружен лишний ciadpi Tachyon"
@@ -1301,14 +3053,32 @@ msgstr "Обнаружен лишний NFQWS Tachyon"
 msgid "Unexpected Tachyon-managed nfqws2 runtime is running"
 msgstr "Обнаружен лишний NFQWS2 Tachyon"
 
+msgid "United Kingdom (gb)"
+msgstr "Великобритания (gb)"
+
+msgid "United States (us)"
+msgstr "США (us)"
+
 msgid "unknown"
 msgstr "неизвестно"
 
 msgid "Unknown"
 msgstr "Неизвестно"
 
+msgid "Unknown ByeDPI option: %s"
+msgstr "Неизвестный параметр ByeDPI: %s"
+
+msgid "Unknown country"
+msgstr "Неизвестная страна"
+
 msgid "Unknown error"
 msgstr "Неизвестная ошибка"
+
+msgid "Unknown NFQWS flag."
+msgstr "Неизвестный флаг NFQWS."
+
+msgid "Unknown NFQWS2 flag."
+msgstr "Неизвестный флаг NFQWS2."
 
 msgid "Unpacking & installing binaries..."
 msgstr "Распаковка и установка компонентов..."
@@ -1337,6 +3107,15 @@ msgstr "Доступна новая версия:"
 msgid "Update subscriptions"
 msgstr "Обновить подписки"
 
+msgid "Update this subscription automatically"
+msgstr "Обновлять эту подписку автоматически"
+
+msgid "Updated/duplicates:"
+msgstr "Обновлено/дубликаты:"
+
+msgid "Updates & Downloads"
+msgstr "Обновления и загрузки"
+
 msgid "Updating"
 msgstr "Обновление"
 
@@ -1355,20 +3134,83 @@ msgstr "URL должен начинаться с vless://, vmess://, ss://, troj
 msgid "URL must use one of the following protocols:"
 msgstr "URL должен использовать один из следующих протоколов:"
 
+msgid "URL to test through the proxy (default: Cloudflare 204)."
+msgstr "URL для теста через прокси (по умолчанию: Cloudflare 204)."
+
+msgid "URL used to check whether a server is alive"
+msgstr "URL для проверки доступности сервера"
+
+msgid "URL used to test server latency"
+msgstr "URL для теста задержки сервера"
+
+msgid "URLs of remote hosts files to download and apply. Supports standard hosts format: <code>IP domain</code>."
+msgstr "URL удалённых файлов hosts для загрузки и применения. Поддерживается стандартный формат hosts: <code>IP domain</code>."
+
+msgid "URLTest"
+msgstr "URLTest"
+
 msgid "URLTest details"
 msgstr "Детали URLTest"
 
 msgid "URLTest details are unavailable"
 msgstr "Детали URLTest недоступны"
 
+msgid "URLTest settings"
+msgstr "Настройки URLTest"
+
+msgid "Use 3-tier check intervals: fast (15s), normal (120s), slow (300s) instead of a single interval."
+msgstr "Использовать 3-уровневые интервалы проверки: быстрый (15с), нормальный (120с), медленный (300с)."
+
+msgid "Use another section as an intermediate hop to connect to servers in this section. Does not apply to network interfaces or JSON outbounds."
+msgstr "Использовать другую секцию в качестве промежуточного узла для подключения к серверам в этой секции. Не применяется к сетевым интерфейсам и JSON-выходам."
+
+msgid "Use sing-box duration format like 10s, 1m or 2m30s"
+msgstr "Используйте формат длительности sing-box, например 10s, 1m или 2m30s"
+
+msgid "Use sing-box duration format like 1d, 12h or 30m"
+msgstr "Используйте формат длительности sing-box, например 1d, 12h или 30m"
+
+msgid "Use sing-box duration format like 1d, 12h or 6h"
+msgstr "Используйте формат длительности sing-box, например 1d, 12h или 6h"
+
 msgid "Used by"
 msgstr "Используется"
+
+msgid "User-Agent"
+msgstr "User-Agent"
+
+msgid "Username"
+msgstr "Имя пользователя"
+
+msgid "Username cannot be empty"
+msgstr "Имя пользователя не может быть пустым"
 
 msgid "Valid"
 msgstr "Валидно"
 
+msgid "Validates sing-box config before restart to prevent boot loops on broken configs."
+msgstr "Проверять конфигурацию sing-box перед перезапуском, чтобы предотвратить циклические перезагрузки."
+
+msgid "Validation errors:"
+msgstr "Ошибки валидации:"
+
+msgid "Value cannot be empty"
+msgstr "Значение не может быть пустым"
+
+msgid "Value must not contain control characters"
+msgstr "Значение не должно содержать символы управления"
+
+msgid "Via country.is"
+msgstr "Через country.is"
+
 msgid "View logs"
 msgstr "Посмотреть логи"
+
+msgid "Visible name of this section"
+msgstr "Видимое имя этой секции"
+
+msgid "vless://, vmess://, ss://, trojan://, socks4/5://, hy2/hysteria2:// links"
+msgstr "Ссылки vless://, vmess://, ss://, trojan://, socks4/5://, hy2/hysteria2://"
 
 msgid "WAN"
 msgstr "WAN"
@@ -1376,14 +3218,53 @@ msgstr "WAN"
 msgid "WAN public IP"
 msgstr "Публичный WAN IP"
 
+msgid "WARP Access Token"
+msgstr "Токен доступа WARP"
+
+msgid "WARP Account ID"
+msgstr "ID аккаунта WARP"
+
+msgid "WARP Configuration generated and loaded successfully!"
+msgstr "Конфигурация WARP успешно сгенерирована и загружена!"
+
+msgid "WARP Private Key"
+msgstr "Приватный ключ WARP"
+
 msgid "Watchdog"
 msgstr "Сторожевой таймер"
+
+msgid "Watchdog Status"
+msgstr "Статус Watchdog"
+
+msgid "WebRTC Leak Protection"
+msgstr "Защита от утечек WebRTC"
+
+msgid "What Tachyon should do when this section matches"
+msgstr "Что должен делать Tachyon при совпадении этой секции"
+
+msgid "When switching to another level, test every server and select the fastest instead of the first working one."
+msgstr "При переключении на другой уровень тестировать каждый сервер и выбирать самый быстрый вместо первого рабочего."
 
 msgid "Why Discord fails?"
 msgstr "Почему не работает Discord?"
 
+msgid "WireGuard private key from your Cloudflare account"
+msgstr "Приватный ключ WireGuard из вашего аккаунта Cloudflare"
+
+msgid "WireGuard private key from your Cloudflare WARP account"
+msgstr "Приватный ключ WireGuard из вашего аккаунта Cloudflare WARP"
+
+msgid "YACD Secret Key"
+msgstr "Секретный ключ YACD"
+
 msgid "Yes"
 msgstr "Да"
+
+msgid "You can select Output Network Interface, by default autodetect"
+msgstr "Вы можете выбрать выходной сетевой интерфейс, по умолчанию автоопределение"
+
+msgid "Zapret hostlist templates are not supported here because Tachyon does not expand them for per-rule NFQWS strategies."
+msgstr "Шаблоны hostlist Zapret не поддерживаются здесь, потому что Tachyon не расширяет их для стратегий NFQWS по правилам."
 
 msgid "Zapret package is installed"
 msgstr "Пакет Zapret установлен"
@@ -1403,6 +3284,9 @@ msgstr "sing-box outbound для Zapret настроен"
 msgid "Zapret sing-box outbound is not configured"
 msgstr "sing-box outbound для Zapret не настроен"
 
+msgid "Zapret2 hostlist templates are not supported here because Tachyon does not expand them for per-rule NFQWS2 strategies."
+msgstr "Шаблоны hostlist Zapret2 не поддерживаются здесь, потому что Tachyon не расширяет их для стратегий NFQWS2 по правилам."
+
 msgid "Zapret2 package is installed"
 msgstr "Пакет Zapret2 установлен"
 
@@ -1420,3 +3304,405 @@ msgstr "sing-box outbound для Zapret2 настроен"
 
 msgid "Zapret2 sing-box outbound is not configured"
 msgstr "sing-box outbound для Zapret2 не настроен"
+
+msgid "Service Health Check"
+msgstr "Проверка доступности сервисов"
+
+msgid "Total Targets"
+msgstr "Всего целей"
+
+msgid "Passed"
+msgstr "Успешно"
+
+msgid "Failed"
+msgstr "Ошибки"
+
+msgid "Avg Latency"
+msgstr "Ср. задержка"
+
+msgid "Search domain..."
+msgstr "Поиск домена..."
+
+msgid "Section / Target"
+msgstr "Секция / Цель"
+
+msgid "Outbound Route"
+msgstr "Маршрут"
+
+msgid "Resolved IP / DNS"
+msgstr "IP / DNS"
+
+msgid "Verdict"
+msgstr "Статус"
+
+msgid "Check domain or IP (e.g. example.com)..."
+msgstr "Проверить домен или IP (напр. example.com)..."
+
+msgid "Check Custom"
+msgstr "Проверить свой"
+
+msgid "Check All"
+msgstr "Проверить все"
+
+msgid "Check Again"
+msgstr "Проверить снова"
+
+msgid "Testing..."
+msgstr "Тестирование..."
+
+msgid "Fetching service targets..."
+msgstr "Получение списка сервисов..."
+
+msgid "Failed to run service check."
+msgstr "Не удалось выполнить проверку сервисов."
+
+msgid "Failed to parse target list."
+msgstr "Ошибка обработки списка целей."
+
+msgid "No targets found in section configs."
+msgstr "Цели в конфигурациях секций не найдены."
+
+msgid "Check YouTube availability"
+msgstr "Проверить доступность YouTube"
+
+msgid "Check Mode:"
+msgstr "Режим проверки:"
+
+msgid "Active Sections"
+msgstr "Активные секции"
+
+msgid "All Profiles"
+msgstr "Все сервисы и профили"
+
+msgid "Sections"
+msgstr "Секции"
+
+msgid "Servers"
+msgstr "Серверы"
+
+msgid "Monitoring"
+msgstr "Мониторинг"
+
+msgid "Components"
+msgstr "Компоненты"
+
+msgid "Drag rows to change priority. The rule at the top is checked first."
+msgstr "Перетащите строки для изменения приоритета. Правило вверху проверяется первым."
+
+msgid "Rules"
+msgstr "Правила"
+
+msgid "Edit"
+msgstr "Редактировать"
+
+msgid "Connection"
+msgstr "Соединение"
+
+msgid "Add a section"
+msgstr "Добавить секцию"
+
+msgid "Add a server inbound"
+msgstr "Добавить серверный инбаунд"
+
+msgid "Accept external proxy connections and route them with sing-box."
+msgstr "Принимать внешние прокси-подключения и маршрутизировать их через sing-box."
+
+msgid "Section"
+msgstr "Секция"
+
+msgid "Server"
+msgstr "Сервер"
+
+msgid "Installing"
+msgstr "Установка"
+
+msgid "Initializing operation..."
+msgstr "Инициализация операции..."
+
+msgid "Installing package & updating configurations..."
+msgstr "Установка пакета и обновление настроек..."
+
+msgid "Installation completed successfully!"
+msgstr "Установка успешно завершена!"
+
+msgid "Direct"
+msgstr "Напрямую"
+
+msgid "Tachyon Settings"
+msgstr "Настройки Tachyon"
+
+msgid "All Services"
+msgstr "Все сервисы"
+
+msgid "Service Availability Check"
+msgstr "Проверка доступности сервисов"
+
+msgid "Filter by service:"
+msgstr "Фильтр по сервису:"
+
+msgid "Search domain or service..."
+msgstr "Поиск домена или сервиса..."
+
+msgid "Service / Target"
+msgstr "Сервис / Цель"
+
+msgid "Route Type"
+msgstr "Тип маршрута"
+
+msgid "Active Routes"
+msgstr "Активные маршруты"
+
+msgid "Custom Domains"
+msgstr "Свои домены"
+
+msgid "Unavailable"
+msgstr "Недоступно"
+
+msgid "Available"
+msgstr "Доступно"
+
+msgid "Auto"
+msgstr "Авто"
+
+msgid "Proxy"
+msgstr "Прокси"
+
+msgid "TCP"
+msgstr "TCP"
+
+msgid "TLS"
+msgstr "TLS"
+
+msgid "Method"
+msgstr "Метод"
+
+msgid "ALPN"
+msgstr "ALPN"
+
+msgid "VLESS flow"
+msgstr "VLESS flow"
+
+msgid "FakeTLS host"
+msgstr "FakeTLS host"
+
+msgid "Concurrency"
+msgstr "Параллелизм"
+
+msgid "Delete"
+msgstr "Удалить"
+
+msgid "Information"
+msgstr "Информация"
+
+msgid "Saving..."
+msgstr "Сохранение..."
+
+msgid "Generating..."
+msgstr "Генерация..."
+
+msgid "Starting..."
+msgstr "Запуск..."
+
+msgid "Stopping..."
+msgstr "Остановка..."
+
+msgid "None"
+msgstr "Нет"
+
+msgid "Enabled"
+msgstr "Включено"
+
+msgid "Disabled"
+msgstr "Отключено"
+
+msgid "Configuration for Tachyon service"
+msgstr "Конфигурация сервиса Tachyon"
+
+msgid "Only the specified servers"
+msgstr "Только указанные серверы"
+
+msgid "Select all"
+msgstr "Выбрать все"
+
+msgid "Routing mode"
+msgstr "Режим маршрутизации"
+
+msgid "Routing section"
+msgstr "Секция маршрутизации"
+
+msgid "Keeps FakeIP cache persistent across reboots and pre-resolves popular blocked domains on startup so first-visit latency is 0 ms."
+msgstr "Сохраняет кэш FakeIP между перезагрузками и предварительно разрешает популярные заблокированные домены при запуске, чтобы задержка первого обращения была 0 мс."
+
+msgid "Configure User-Agent в the item settings"
+msgstr "Настройте User-Agent в параметрах элемента"
+
+msgid "Client link"
+msgstr "Клиентская ссылка"
+
+msgid "Client link QR code"
+msgstr "QR-код клиентской ссылки"
+
+msgid "Client link is not available yet"
+msgstr "Клиентская ссылка пока недоступна"
+
+msgid "Loading client link..."
+msgstr "Загрузка клиентской ссылки..."
+
+msgid "Secret"
+msgstr "Секрет"
+
+msgid "Public Key"
+msgstr "Публичный ключ"
+
+msgid "Certificate path"
+msgstr "Путь к сертификату"
+
+msgid "Key path"
+msgstr "Путь к ключу"
+
+msgid "Specify a file path"
+msgstr "Укажите путь к файлу"
+
+msgid "Specify different files"
+msgstr "Укажите разные файлы"
+
+msgid "Selected section"
+msgstr "Выбранная секция"
+
+msgid "Inbound JSON"
+msgstr "Inbound JSON"
+
+msgid "Inbound JSON cannot be empty"
+msgstr "Inbound JSON не может быть пустым"
+
+msgid "Inbound JSON must be an object with a type field"
+msgstr "Inbound JSON должен быть объектом с полем type"
+
+msgid "Server information"
+msgstr "Информация о сервере"
+
+msgid "Server name"
+msgstr "Имя сервера"
+
+msgid "Server name / SNI"
+msgstr "Имя сервера / SNI"
+
+msgid "Reality fake site"
+msgstr "Фейковый сайт Reality"
+
+msgid "Reality fake site port"
+msgstr "Порт фейкового сайта Reality"
+
+msgid "Reality max time difference"
+msgstr "Макс. разница времени Reality"
+
+msgid "Reality private key"
+msgstr "Приватный ключ Reality"
+
+msgid "Reality public key"
+msgstr "Публичный ключ Reality"
+
+msgid "Reality short ID"
+msgstr "Короткий ID Reality"
+
+msgid "Reality short ID must contain 1-8 hex digits"
+msgstr "Короткий ID Reality должен содержать 1-8 шестнадцатеричных цифр"
+
+msgid "Fronting IP"
+msgstr "Fronting IP"
+
+msgid "Fronting port"
+msgstr "Fronting порт"
+
+msgid "Fronting proxy protocol"
+msgstr "Протокол Fronting прокси"
+
+msgid "gRPC service"
+msgstr "Сервис gRPC"
+
+msgid "Transport host"
+msgstr "Хост транспорта"
+
+msgid "Transport path"
+msgstr "Путь транспорта"
+
+msgid "Transport path must start with /"
+msgstr "Путь транспорта должен начинаться с /"
+
+msgid "HTTP hosts"
+msgstr "HTTP хосты"
+
+msgid "XHTTP mode"
+msgstr "Режим XHTTP"
+
+msgid "Fallback on unknown DC"
+msgstr "Fallback при неизвестном DC"
+
+msgid "Padding"
+msgstr "Padding"
+
+msgid "Handshake timeout"
+msgstr "Таймаут рукопожатия"
+
+msgid "Time skew tolerance"
+msgstr "Допуск отклонения времени"
+
+msgid "Invalid NFQWS strategy"
+msgstr "Неверная стратегия NFQWS"
+
+msgid "Invalid NFQWS2 strategy"
+msgstr "Неверная стратегия NFQWS2"
+
+msgid "Installed build \\u2192 Available build"
+msgstr "Установленная сборка \\u2192 Доступная сборка"
+
+msgid "Prevent multiple reload_firewall calls within 120 seconds to avoid connection drops."
+msgstr "Предотвращать множественные вызовы reload_firewall в течение 120 секунд для избежания разрыва соединений."
+
+msgid "Obfuscation"
+msgstr "Обфускация"
+
+msgid "Obfuscation password"
+msgstr "Пароль обфускации"
+
+msgid "Auto update"
+msgstr "Автообновление"
+
+msgid "Use CIDR prefixes like 192.168.1.0/24 or 2001:db8::/32"
+msgstr "Используйте CIDR-префиксы, например 192.168.1.0/24 или 2001:db8::/32"
+
+msgid "Use an IP address"
+msgstr "Используйте IP-адрес"
+
+msgid "Use an IP listen address"
+msgstr "Используйте IP-адрес прослушивания"
+
+msgid "Use a domain name or IP address"
+msgstr "Используйте имя домена или IP-адрес"
+
+msgid "Use an HTTP or HTTPS URL"
+msgstr "Используйте HTTP или HTTPS URL"
+
+msgid "Use letters, digits, dots, underscores, or hyphens"
+msgstr "Используйте буквы, цифры, точки, подчёркивания или дефисы"
+
+msgid "Use a non-negative integer"
+msgstr "Используйте неотрицательное целое число"
+
+msgid "Use a non-zero secret"
+msgstr "Используйте ненулевой секрет"
+
+msgid "Use 32 hex characters"
+msgstr "Используйте 32 шестнадцатеричных символа"
+
+msgid "Use a duration like 30s, 5m, or 1h30m"
+msgstr "Используйте длительность, например 30s, 5m или 1h30m"
+
+msgid "Expecting: %s"
+msgstr "Ожидалось: %s"
+
+msgid "Cannot save server"
+msgstr "Не удалось сохранить сервер"
+
+msgid "QR code is too large"
+msgstr "QR-код слишком большой"

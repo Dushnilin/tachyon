@@ -51,6 +51,7 @@ function restore_dnsmasq_failsafe_on_loader_failure(command) {
     command = as_string(command);
     if (command == "start" || command == "stop" || command == "restart" ||
         command == "reload" || command == "uninstall" ||
+        command == "reset_settings" ||
         command == "dnsmasq_restore" || command == "restore_dnsmasq")
         restore_dnsmasq_failsafe();
 }
@@ -64,6 +65,8 @@ function show_help() {
     print("    restart                 Restart Tachyon service\n");
     print("    enable                  Enable Tachyon autostart\n");
     print("    disable                 Disable Tachyon autostart\n");
+    print("    reset_settings [no-start]\n");
+    print("                            Reset Tachyon settings to factory defaults\n");
     print("    uninstall               Remove Tachyon files installed outside opkg/apk\n");
     print("    main                    Run main Tachyon process\n");
     print("    list_update             Update remote lists\n");
@@ -160,6 +163,7 @@ function command_spec(command) {
         enable: [ "service/lifecycle.uc", "enable", 0 ],
         disable: [ "service/lifecycle.uc", "disable", 0 ],
         uninstall: [ "service/uninstall.uc", "uninstall", 1 ],
+        reset_settings: [ "service/reset.uc", "reset-settings", 1 ],
         dnsmasq_restore: [ "service/lifecycle.uc", "dnsmasq-restore", 0 ],
         restore_dnsmasq: [ "service/lifecycle.uc", "dnsmasq-restore", 0 ],
         main: [ "service/lifecycle.uc", "main", 0 ],

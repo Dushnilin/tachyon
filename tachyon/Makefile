@@ -148,6 +148,9 @@ define Package/tachyon/install
 	$(INSTALL_DIR) $(1)/usr/lib/tachyon
 	$(CP) ./files/usr/lib/. $(1)/usr/lib/tachyon/
 
+	$(INSTALL_DIR) $(1)/usr/lib/tachyon/defaults
+	$(INSTALL_CONF) ./files/etc/config/tachyon $(1)/usr/lib/tachyon/defaults/config
+
 	$(INSTALL_DIR) $(1)/etc/hotplug.d/iface
 	$(INSTALL_BIN) ./files/etc/hotplug.d/iface/99-tachyon-wan-monitor $(1)/etc/hotplug.d/iface/99-tachyon-wan-monitor
 

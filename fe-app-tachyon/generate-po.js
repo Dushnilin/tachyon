@@ -60,15 +60,13 @@ function parsePo(content) {
             try {
                 msgid = JSON.parse(line.slice(6));
             } catch (e) {
-                console.error('Failed to parse msgid on line:', line);
-                throw e;
+                msgid = parseUnquotedPoValue(line, 'msgid');
             }
         } else if (line.startsWith('msgstr ') && msgid !== null) {
             try {
                 msgstr = JSON.parse(line.slice(7));
             } catch (e) {
-                console.error('Failed to parse msgstr on line:', line);
-                throw e;
+                msgstr = parseUnquotedPoValue(line, 'msgstr');
             }
             translations.set(msgid, msgstr);
             msgid = null;
@@ -76,6 +74,19 @@ function parsePo(content) {
         }
     }
     return translations;
+}
+
+function parseUnquotedPoValue(line, prefix) {
+    const match = line.match(new RegExp(`^${prefix} "(.+)"$`));
+    if (!match) {
+        console.error('Failed to parse line:', line);
+        throw new Error('Failed to parse PO line');
+    }
+    return match[1]
+        .replace(/\\n/g, '\n')
+        .replace(/\\t/g, '\t')
+        .replace(/\\"/g, '"')
+        .replace(/\\\\/g, '\\');
 }
 
 function escapePoString(str) {
