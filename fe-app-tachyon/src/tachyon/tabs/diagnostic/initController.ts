@@ -743,7 +743,11 @@ async function handleRunDoctor() {
             _('Fixed') +
             ': ' +
             fixed
-          : _('Doctor repair') + ' \u2014 ' + _('No issues found');
+          : /safe bypass|аварийного обхода|bypassed|стоковом состоянии|stock (state|internet)/i.test(
+                report,
+              )
+            ? _('Doctor repair') + ' \u2014 Safe Bypass'
+            : _('Doctor repair') + ' \u2014 ' + _('No issues found');
 
       ui.showModal(
         title,

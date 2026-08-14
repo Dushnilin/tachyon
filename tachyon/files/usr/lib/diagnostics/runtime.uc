@@ -913,7 +913,7 @@ function check_nft() {
 
     nolog("Checking " + NFT_TABLE_NAME + " rules...");
     if (!command_success_from_args([ "nft", "list", "table", "inet", NFT_TABLE_NAME ])) {
-        nolog("тЭМ " + NFT_TABLE_NAME + " not found");
+        nolog("❌ " + NFT_TABLE_NAME + " not found");
         return 1;
     }
 
@@ -1917,37 +1917,37 @@ function global_check(arg1, arg2) {
     if (as_string(arg1) == "raw" || as_string(arg1) == "masked")
         visibility = as_string(arg1);
 
-    print_global("ЁЯУб Global check run!");
-    print_global("тФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБ");
-    print_global("ЁЯЫая╕П System info");
+    print_global("═══ Global check run!");
+    print_global("━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    print_global("═══ System info");
 
     let system_info_json = sprintf("%J", build_system_info());
-    render_or_fail([ "global-system-info" ], system_info_json, "тЭМ Failed to parse system info", [ 0 ]);
+    render_or_fail([ "global-system-info" ], system_info_json, "❌ Failed to parse system info", [ 0 ]);
 
-    print_global("тФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБ");
-    print_global("тЮбя╕П DNS status");
+    print_global("━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    print_global("═══ DNS status");
 
     let dns_check_capture = command_capture(command_from_args(module_args(LIB_DIR + "/diagnostics/runtime.uc", [ "check-dns-available" ])));
     if (dns_check_capture.output != "") {
         let dns_render = render_or_fail(
             [ "global-dns-check", bool_option(settings(), "dont_touch_dhcp", false) ? "1" : "0" ],
             dns_check_capture.output,
-            "тЭМ Failed to parse DNS info",
+            "❌ Failed to parse DNS info",
             [ 0, 10 ]
         );
         if (dns_render == 10)
             print(status_output([ "dhcp-dnsmasq-config", "/etc/config/dhcp" ], null));
     }
     else
-        print_global("тЭМ Failed to get DNS info");
+        print_global("❌ Failed to get DNS info");
 
-    print_global("тФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБ");
+    print_global("━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     print_global("ЁЯУж Sing-box status");
     let singbox_check_json = command_capture(command_from_args(module_args(LIB_DIR + "/diagnostics/runtime.uc", [ "check-sing-box" ]))).output;
     if (singbox_check_json != "")
-        render_or_fail([ "global-sing-box-check" ], singbox_check_json, "тЭМ Failed to parse sing-box info", [ 0 ]);
+        render_or_fail([ "global-sing-box-check" ], singbox_check_json, "❌ Failed to parse sing-box info", [ 0 ]);
     else
-        print_global("тЭМ Failed to get sing-box info");
+        print_global("❌ Failed to get sing-box info");
 
     print_global("---------------------------");
     print_global("Inbounds checks");
@@ -1957,24 +1957,24 @@ function global_check(arg1, arg2) {
     else
         print_global("[FAIL] Failed to get inbounds info");
 
-    print_global("тФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБ");
-    print_global("ЁЯз▒ NFT rules status");
+    print_global("━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    print_global("═══ NFT rules status");
     let nft_check_json = command_capture(command_from_args(module_args(LIB_DIR + "/diagnostics/runtime.uc", [ "check-nft-rules" ]))).output;
     if (nft_check_json != "") {
-        let nft_render = render_or_fail([ "global-nft-check" ], nft_check_json, "тЭМ Failed to parse NFT rules info", [ 0 ]);
+        let nft_render = render_or_fail([ "global-nft-check" ], nft_check_json, "❌ Failed to parse NFT rules info", [ 0 ]);
         if (nft_render == 0 && status_success([ "global-nft-other-mark-exists" ], nft_check_json))
             print(status_output([ "nft-ruleset-other-mark-lines", NFT_TABLE_NAME ],
                 command_output_from_args([ "sh", "-c", "nft list ruleset | grep -E '^table|mark set|meta mark'; exit 0" ])));
     }
     else
-        print_global("тЭМ Failed to get NFT rules info");
+        print_global("❌ Failed to get NFT rules info");
 
-    print_global("тФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБ");
-    print_global("ЁЯУД Tachyon config");
+    print_global("━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    print_global("═══ Tachyon config");
     show_config(visibility);
 
-    print_global("тФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБ");
-    print_global("ЁЯУД WAN config");
+    print_global("━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    print_global("═══ WAN config");
     if (uci_show("network.wan")) {
         if (visibility == "raw")
             print(as_string(fs.readfile("/etc/config/network")));
@@ -1982,7 +1982,7 @@ function global_check(arg1, arg2) {
             print(status_output([ "wan-config-masked", "/etc/config/network" ], null));
     }
     else
-        print_global("тЭМ WAN configuration not found");
+        print_global("❌ WAN configuration not found");
 
     let network_show = network_show_data();
     for (let line in split(status_output([ "network-endpoint-host-warnings", CLOUDFLARE_OCTETS ], network_show), "\n")) {
@@ -1992,10 +1992,10 @@ function global_check(arg1, arg2) {
         if (length(fields) < 2)
             continue;
         if (fields[0] == "engage")
-            print_global("тЪая╕П WARP detected: " + fields[1]);
+            print_global("⚠️ WARP detected: " + fields[1]);
         else if (fields[0] == "prefix") {
-            print_global("тФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБ");
-            print_global("тЪая╕П WARP detected: " + fields[1]);
+            print_global("━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+            print_global("⚠️ WARP detected: " + fields[1]);
         }
     }
 
@@ -2005,36 +2005,36 @@ function global_check(arg1, arg2) {
             continue;
         let default_routes = allowed_ips_default_routes(uci_get(peer_section + ".allowed_ips"));
         if (length(default_routes) > 0) {
-            print_global("тФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБ");
-            print_global("тЪая╕П WG Route allowed IP enabled with " + join(", ", default_routes));
+            print_global("━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+            print_global("⚠️ WG Route allowed IP enabled with " + join(", ", default_routes));
         }
     }
 
     if (file_executable("/etc/init.d/zapret") && command_success_from_args([ "/etc/init.d/zapret", "status" ])) {
-        print_global("тФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБ");
-        print_global("тЪая╕П Standalone zapret service is active. Tachyon uses separate queues, but packet-level policy overlap is possible.");
+        print_global("━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        print_global("⚠️ Standalone zapret service is active. Tachyon uses separate queues, but packet-level policy overlap is possible.");
     }
     else if (file_executable("/etc/init.d/zapret") && command_success_from_args([ "/etc/init.d/zapret", "enabled" ])) {
-        print_global("тФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБ");
-        print_global("тЪая╕П Standalone zapret autostart is enabled. Tachyon will not modify /etc/config/zapret.");
+        print_global("━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        print_global("⚠️ Standalone zapret autostart is enabled. Tachyon will not modify /etc/config/zapret.");
     }
 
     if (file_executable("/etc/init.d/zapret2") && command_success_from_args([ "/etc/init.d/zapret2", "status" ])) {
-        print_global("тФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБ");
-        print_global("тЪая╕П Standalone zapret2 service is active. Tachyon uses separate queues, but packet-level policy overlap is possible.");
+        print_global("━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        print_global("⚠️ Standalone zapret2 service is active. Tachyon uses separate queues, but packet-level policy overlap is possible.");
     }
     else if (file_executable("/etc/init.d/zapret2") && command_success_from_args([ "/etc/init.d/zapret2", "enabled" ])) {
-        print_global("тФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБ");
-        print_global("тЪая╕П Standalone zapret2 autostart is enabled. Tachyon will not modify /etc/config/zapret2.");
+        print_global("━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        print_global("⚠️ Standalone zapret2 autostart is enabled. Tachyon will not modify /etc/config/zapret2.");
     }
 
-    print_global("тФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБтФБ");
-    print_global("ЁЯе╕ FakeIP status");
+    print_global("━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    print_global("═══ FakeIP status");
     let fakeip_check_json = command_capture(command_from_args(module_args(LIB_DIR + "/diagnostics/runtime.uc", [ "check-fakeip" ]))).output;
     if (fakeip_check_json != "")
-        render_or_fail([ "global-fakeip-check" ], fakeip_check_json, "тЭМ Failed to parse FakeIP info", [ 0 ]);
+        render_or_fail([ "global-fakeip-check" ], fakeip_check_json, "❌ Failed to parse FakeIP info", [ 0 ]);
     else
-        print_global("тЭМ Failed to get FakeIP info");
+        print_global("❌ Failed to get FakeIP info");
 
     return 0;
 }
@@ -3169,6 +3169,34 @@ function compress_log_snippet(raw_snippet) {
     return join("\n", compressed);
 }
 
+// A fix that has been applied several times without changing the picture is
+// not going to work on the next attempt either — recommending it again is how
+// the doctor ends up proposing the same repairs forever (issue #31). Every
+// successful application is recorded, and a code that was applied 3+ times in
+// the last hour is withheld from the recommendations.
+const DOCTOR_FIXES_FILE = "/tmp/tachyon_doctor_fixes.json";
+
+function doctor_fix_record(code) {
+    let data = object_or_empty(read_json_file(DOCTOR_FIXES_FILE));
+    let rec = data[code] || { count: 0, last: 0 };
+    rec.count = int(rec.count) + 1;
+    rec.last = time();
+    data[code] = rec;
+    let f = fs.open(DOCTOR_FIXES_FILE, "w");
+    if (f) {
+        f.write(sprintf("%J\n", data));
+        f.close();
+    }
+}
+
+function doctor_fix_overused(code) {
+    let data = object_or_empty(read_json_file(DOCTOR_FIXES_FILE));
+    let rec = data[code];
+    if (!rec) return false;
+    if (time() - int(rec.last) > 3600) return false;
+    return int(rec.count) >= 3;
+}
+
 function apply_quick_fix(codes_str) {
     if (!codes_str || codes_str == "") {
         print(sprintf("%J\n", { success: false, error: "No fix code provided" }));
@@ -3258,6 +3286,9 @@ function apply_quick_fix(codes_str) {
         }
 
         push(results, { code: c, success: status, message: msg });
+        if (status) {
+            doctor_fix_record(c);
+        }
     }
 
     print(sprintf("%J\n", {
@@ -3385,6 +3416,7 @@ function local_rule_doctor() {
     let fix_set = {};
 
     function add_fix(code) {
+        if (doctor_fix_overused(code)) return;
         if (!fix_set[code]) {
             fix_set[code] = true;
             push(quick_fixes, code);
@@ -3409,7 +3441,9 @@ function local_rule_doctor() {
                 fix: "clear_dns_cache"
             });
             add_fix("clear_dns_cache");
-            add_fix("switch_to_doh");
+            if (cfg.dns_type != "doh") {
+                add_fix("switch_to_doh");
+            }
         } else if ((c.name == "WAN interface" || c.name == "Default gateway") && !wan_cause_added) {
             wan_cause_added = true;
             push(causes, {
@@ -3483,7 +3517,9 @@ function local_rule_doctor() {
                 fix: "clear_dns_cache"
             });
             add_fix("clear_dns_cache");
-            add_fix("switch_to_doh");
+            if (cfg.dns_type != "doh") {
+                add_fix("switch_to_doh");
+            }
         } else if (index(c.name, "Clash API") >= 0 || index(c.name, "sing-box") >= 0) {
             push(causes, {
                 probability: 88,
@@ -3513,7 +3549,9 @@ function local_rule_doctor() {
                     cause: lang == "en" ? "DNS fail streak (ISP plaintext DNS tampering)" : "Серия сбоев DNS (подмена DNS оператором)",
                     fix: "switch_to_doh"
                 });
-                add_fix("switch_to_doh");
+                if (cfg.dns_type != "doh") {
+                    add_fix("switch_to_doh");
+                }
             }
         }
     }

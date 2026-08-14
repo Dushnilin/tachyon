@@ -53,4 +53,20 @@ grep -Fq 'let verify = verify_system();' "$TACHYON_LIB/diagnostics/runtime.uc" |
 grep -Fq 'wan_fail_streak: int(st.wan_fail_streak || 0)' "$TACHYON_LIB/service/watchdog.uc" ||
   fail "watchdog status export no longer reports probe streaks to AI Doctor"
 
+# 5. Fix usage tracker: applying the same fix must be recorded, and fixes
+#    applied 3+ times within the hour must be withheld from recommendations
+#    (issue #31: doctor proposing the same repairs forever).
+rm -f /tmp/tachyon_doctor_fixes.json
+for i in 1 2 3; do
+  ucode -L "$TACHYON_LIB" "$TACHYON_LIB/diagnostics/runtime.uc" apply-quick-fix "clear_dns_cache" >/dev/null 2>&1 || true
+done
+grep -Fq '"clear_dns_cache"' /tmp/tachyon_doctor_fixes.json ||
+  fail "apply_quick_fix must record applied fixes in the doctor usage tracker"
+grep -Eq '"count": ?3' /tmp/tachyon_doctor_fixes.json ||
+  fail "doctor usage tracker must count repeated applications"
+grep -Fq 'function doctor_fix_overused(' "$TACHYON_LIB/diagnostics/runtime.uc" ||
+  fail "runtime.uc must define doctor_fix_overused()"
+grep -Fq 'if (doctor_fix_overused(code)) return;' "$TACHYON_LIB/diagnostics/runtime.uc" ||
+  fail "add_fix must withhold overused fixes"
+
 printf 'local AI Doctor checks passed\n'

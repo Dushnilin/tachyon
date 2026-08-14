@@ -12115,7 +12115,9 @@ async function handleRunDoctor() {
       const report = data ? String(data.report ?? "") : String(rawData ?? "");
       const issues = data ? Number(data.issues ?? 0) : 0;
       const fixed = data ? Number(data.fixed ?? 0) : 0;
-      const title = issues > 0 ? _("Doctor repair") + " \u2014 " + _("Issues") + ": " + issues + ", " + _("Fixed") + ": " + fixed : _("Doctor repair") + " \u2014 " + _("No issues found");
+      const title = issues > 0 ? _("Doctor repair") + " \u2014 " + _("Issues") + ": " + issues + ", " + _("Fixed") + ": " + fixed : /safe bypass|аварийного обхода|bypassed|стоковом состоянии|stock (state|internet)/i.test(
+        report
+      ) ? _("Doctor repair") + " \u2014 Safe Bypass" : _("Doctor repair") + " \u2014 " + _("No issues found");
       ui.showModal(
         title,
         renderModal(report, "doctor_repair", {
