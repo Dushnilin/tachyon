@@ -11,7 +11,7 @@ set -eo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
 UPDATES_UC="$TACHYON_LIB/components/updates.uc"
-WORK_DIR="$(mktemp -d)"
+WORK_DIR="$(mktemp -d /tmp/tachyon-stale-pid-test.XXXXXX)"
 
 cleanup() {
   rm -rf "$WORK_DIR"
@@ -87,6 +87,7 @@ DRIVER
 }
 
 run_stale_check() {
+  mkdir -p "$WORK_DIR"
   if [ ! -f "$STALE_UC" ] || [ ! -s "$STALE_UC" ]; then
     printf 'WARN: stale.uc vanished (parallel /tmp race); rebuilding before ucode\n' >&2
     build_stale_uc
@@ -103,6 +104,7 @@ run_stale_check() {
 build_stale_uc
 
 # A live worker is not stale.
+mkdir -p "$WORK_DIR"
 ln -s /bin/sleep "$WORK_DIR/component-action-worker"
 "$WORK_DIR/component-action-worker" 30 &
 worker_pid=$!
