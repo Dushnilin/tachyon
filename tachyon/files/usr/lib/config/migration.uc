@@ -1486,6 +1486,13 @@ function ensure_runtime_dirs() {
     ensure_dir(TACHYON_SECTION_CACHE_DIR);
 }
 
+function write_cache_format_file(path, format) {
+    let tmp = path + ".tmp";
+    if (fs.writefile(tmp, format + "\n") == null)
+        return null;
+    return fs.rename(tmp, path) ? path : null;
+}
+
 function ensure_runtime_cache_format() {
     ensure_dir(TACHYON_RUNTIME_STATE_DIR);
 
@@ -1506,13 +1513,6 @@ function ensure_runtime_cache_format() {
             warn("Failed to write persistent cache format file\n");
         run("chmod 600 " + shell_quote(TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE) + " >/dev/null 2>&1");
     }
-}
-
-function write_cache_format_file(path, format) {
-    let tmp = path + ".tmp";
-    if (fs.writefile(tmp, format + "\n") == null)
-        return null;
-    return fs.rename(tmp, path) ? path : null;
 }
 
 function remove_legacy_server_country_cache() {
