@@ -5,6 +5,7 @@ let constants = require("core.constants");
 let core_ip = require("core.ip");
 let uci_core = require("core.uci");
 let runtime_dns = require("singbox.dns");
+let common = require("core.common");
 
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || constants.TACHYON_CONFIG_NAME || "tachyon";
 const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
@@ -3076,6 +3077,43 @@ function doctor(format) {
 // ─── AI Agent: structured JSON diagnostics ────────────────────────────────────
 // Same checks as run_doctor_checks() but output is machine-readable JSON for
 // LLM agents. Each problem has: id, severity, description, suggested_fix.
+function compress_log_snippet(raw_snippet) {
+    if (!raw_snippet || raw_snippet == "") return "No recent system errors logged.";
+    let lines = split(raw_snippet, "\n");
+    let compressed = [];
+    let prev_line = "";
+    let repeat_cnt = 1;
+
+    for (let i = 0; i < length(lines); i++) {
+        let line = trim(as_string(lines[i]));
+        if (line == "") continue;
+        let normalized = replace(line, /^[A-Z][a-z]{2}\s+\d+\s+\d+:\d+:\d+\s+[^\s]+\s+/, "");
+        normalized = replace(normalized, /^\d{4}-\d{2}-\d{2}\s+\d+:\d+:\d+\s+/, "");
+
+        if (normalized == prev_line) {
+            repeat_cnt++;
+        } else {
+            if (prev_line != "") {
+                if (repeat_cnt > 1) {
+                    push(compressed, sprintf("%s [repeated %dx]", lines[i-1], repeat_cnt));
+                } else {
+                    push(compressed, lines[i-1]);
+                }
+            }
+            prev_line = normalized;
+            repeat_cnt = 1;
+        }
+    }
+    if (prev_line != "" && length(lines) > 0) {
+        if (repeat_cnt > 1) {
+            push(compressed, sprintf("%s [repeated %dx]", lines[length(lines)-1], repeat_cnt));
+        } else {
+            push(compressed, lines[length(lines)-1]);
+        }
+    }
+    return join("\n", compressed);
+}
+
 function diagnose_json() {
     let res = run_doctor_checks();
     let problems = [];
@@ -3141,43 +3179,6 @@ function diagnose_json() {
         watchdog_status:  ai_status_data
     }));
     return 0;
-}
-
-function compress_log_snippet(raw_snippet) {
-    if (!raw_snippet || raw_snippet == "") return "No recent system errors logged.";
-    let lines = split(raw_snippet, "\n");
-    let compressed = [];
-    let prev_line = "";
-    let repeat_cnt = 1;
-
-    for (let i = 0; i < length(lines); i++) {
-        let line = trim(as_string(lines[i]));
-        if (line == "") continue;
-        let normalized = replace(line, /^[A-Z][a-z]{2}\s+\d+\s+\d+:\d+:\d+\s+[^\s]+\s+/, "");
-        normalized = replace(normalized, /^\d{4}-\d{2}-\d{2}\s+\d+:\d+:\d+\s+/, "");
-
-        if (normalized == prev_line) {
-            repeat_cnt++;
-        } else {
-            if (prev_line != "") {
-                if (repeat_cnt > 1) {
-                    push(compressed, sprintf("%s [repeated %dx]", lines[i-1], repeat_cnt));
-                } else {
-                    push(compressed, lines[i-1]);
-                }
-            }
-            prev_line = normalized;
-            repeat_cnt = 1;
-        }
-    }
-    if (prev_line != "" && length(lines) > 0) {
-        if (repeat_cnt > 1) {
-            push(compressed, sprintf("%s [repeated %dx]", lines[length(lines)-1], repeat_cnt));
-        } else {
-            push(compressed, lines[length(lines)-1]);
-        }
-    }
-    return join("\n", compressed);
 }
 
 // A fix that has been applied several times without changing the picture is
