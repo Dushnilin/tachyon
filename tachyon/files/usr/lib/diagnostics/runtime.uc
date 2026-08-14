@@ -3052,7 +3052,18 @@ function query_llm(provider, api_key, custom_url, prompt_text, model_override) {
 }
 
 function doctor(format) {
-    let res = run_doctor_checks();
+    let res;
+    try {
+        res = run_doctor_checks();
+    } catch (e) {
+        print(sprintf("%J\n", {
+            success: false,
+            issues: 0,
+            fixed: 0,
+            report: sprintf("Doctor failed: %s", as_string(e))
+        }));
+        return 1;
+    }
     print(sprintf("%J\n", {
         success: true,
         issues: res.issues,
@@ -3646,7 +3657,18 @@ function local_rule_doctor() {
 
 function ai_doctor() {
     let cfg = uci_settings();
-    let local_res = local_rule_doctor();
+    let local_res;
+    try {
+        local_res = local_rule_doctor();
+    } catch (e) {
+        local_res = {
+            report: sprintf("Local diagnosis failed: %s", as_string(e)),
+            causes: [],
+            quick_fixes: [],
+            summary: sprintf("Local diagnosis failed: %s", as_string(e)),
+            provider: "local_heuristic"
+        };
+    }
 
     let prov = lc(trim(as_string(cfg.ai_doctor_provider || "openai")));
     let has_key = (cfg.ai_doctor_api_key && cfg.ai_doctor_api_key != "");

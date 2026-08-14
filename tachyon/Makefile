@@ -158,6 +158,10 @@ define Package/tachyon/install
 	$(INSTALL_DIR) $(1)/usr/lib/cgi-bin
 	$(INSTALL_BIN) ./files/usr/lib/cgi-bin/tachyon-agent $(1)/usr/lib/cgi-bin/tachyon-agent
 
+	# Service Check profiles (community-defined service probe targets)
+	$(INSTALL_DIR) $(1)/usr/share/tachyon
+	$(INSTALL_DATA) ./files/usr/share/tachyon/servicecheck_profiles.json $(1)/usr/share/tachyon/servicecheck_profiles.json
+
 	sed -i -e 's/__COMPILED_VERSION_VARIABLE__/$(TACHYON_COMPILED_VERSION)/g' \
 		-e 's/__COMPILED_COMMIT_SHA__/$(shell git -C $(TOPDIR)/../ rev-parse --short HEAD 2>/dev/null || echo unknown)/g' \
 		$(1)/usr/lib/tachyon/core/constants.uc
