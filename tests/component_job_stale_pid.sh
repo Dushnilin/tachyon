@@ -37,7 +37,9 @@ grep -q 'pid_is_component_worker(pid)' "$UPDATES_UC" \
 
 # ── behavior: extract the stale-detection block verbatim and drive it ────────
 STALE_UC="$WORK_DIR/stale.uc"
-cat > "$STALE_UC" <<'PRELUDE'
+
+build_stale_uc() {
+  cat > "$STALE_UC" <<'PRELUDE'
 let fs = require("fs");
 function now_seconds() { return int(time()); }
 function as_string(v) { return v == null ? "" : "" + v; }
@@ -81,13 +83,30 @@ write_state(state_path, pid, started_at);
 refresh_component_running_job_state(state_path);
 print((length(stale_calls) > 0 ? "stale" : "running") + "\n");
 DRIVER
+  assert_stale_uc_ready
+}
+
+run_stale_check() {
+  if [ ! -f "$STALE_UC" ] || [ ! -s "$STALE_UC" ]; then
+    printf 'WARN: stale.uc vanished (parallel /tmp race); rebuilding before ucode\n' >&2
+    build_stale_uc
+  fi
+  local err="$WORK_DIR/ucode.err"
+  local out
+  if ! out="$(ucode -L "$TACHYON_LIB" "$STALE_UC" "$@" 2>"$err")"; then
+    cat "$err" >&2 || true
+    fail "ucode failed: ucode -L \"$TACHYON_LIB\" \"$STALE_UC\" $*"
+  fi
+  printf '%s' "$out"
+}
+
+build_stale_uc
 
 # A live worker is not stale.
-assert_stale_uc_ready
 ln -s /bin/sleep "$WORK_DIR/component-action-worker"
 "$WORK_DIR/component-action-worker" 30 &
 worker_pid=$!
-actual="$(ucode -L "$TACHYON_LIB" "$STALE_UC" "$WORK_DIR/job.json" "$worker_pid")"
+actual="$(run_stale_check "$WORK_DIR/job.json" "$worker_pid")"
 [ "$actual" = "running" ] || fail "a live component-action worker was marked stale (pid $worker_pid): '$actual'"
 kill "$worker_pid" 2>/dev/null || true
 
@@ -95,7 +114,7 @@ kill "$worker_pid" 2>/dev/null || true
 # must be marked stale, not kept "running" forever.
 sleep 30 &
 alien_pid=$!
-actual="$(ucode -L "$TACHYON_LIB" "$STALE_UC" "$WORK_DIR/job.json" "$alien_pid")"
+actual="$(run_stale_check "$WORK_DIR/job.json" "$alien_pid")"
 [ "$actual" = "stale" ] || fail "a dead job whose pid was recycled is never marked stale (alien pid $alien_pid): '$actual'"
 kill "$alien_pid" 2>/dev/null || true
 
@@ -104,7 +123,7 @@ sleep 30 &
 dead_pid=$!
 kill "$dead_pid" 2>/dev/null || true
 wait "$dead_pid" 2>/dev/null || true
-actual="$(ucode -L "$TACHYON_LIB" "$STALE_UC" "$WORK_DIR/job.json" "$dead_pid")"
+actual="$(run_stale_check "$WORK_DIR/job.json" "$dead_pid")"
 [ "$actual" = "stale" ] || fail "a dead worker pid is not marked stale (pid $dead_pid): '$actual'"
 
 # Grace still protects a fresh job: an alien pid inside the grace window is
@@ -112,7 +131,7 @@ actual="$(ucode -L "$TACHYON_LIB" "$STALE_UC" "$WORK_DIR/job.json" "$dead_pid")"
 sleep 30 &
 fresh_pid=$!
 fresh_start="$(($(date +%s) - 5))"
-actual="$(ucode -L "$TACHYON_LIB" "$STALE_UC" "$WORK_DIR/job.json" "$fresh_pid" "$fresh_start")"
+actual="$(run_stale_check "$WORK_DIR/job.json" "$fresh_pid" "$fresh_start")"
 [ "$actual" = "running" ] || fail "a fresh job was marked stale inside the grace window (pid $fresh_pid): '$actual'"
 kill "$fresh_pid" 2>/dev/null || true
 

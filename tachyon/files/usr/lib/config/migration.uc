@@ -1494,18 +1494,25 @@ function ensure_runtime_cache_format() {
             subscription_share_link.populate_subscription_dir(TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR);
         clear_subscription_runtime_cache();
         ensure_runtime_dirs();
-            if (fs.writefile(TACHYON_RUNTIME_CACHE_FORMAT_FILE, TACHYON_RUNTIME_CACHE_FORMAT + "\n") == null)
-                warn("Failed to write runtime cache format file\n");
+        if (write_cache_format_file(TACHYON_RUNTIME_CACHE_FORMAT_FILE, TACHYON_RUNTIME_CACHE_FORMAT) == null)
+            warn("Failed to write runtime cache format file\n");
     }
 
     if (first_line(TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE) != TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT) {
         run("rm -rf " + shell_quote(TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR));
         ensure_dir(TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR);
         run("chmod 700 " + shell_quote(TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR) + " >/dev/null 2>&1");
-        if (fs.writefile(TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE, TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT + "\n") == null)
+        if (write_cache_format_file(TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE, TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT) == null)
             warn("Failed to write persistent cache format file\n");
         run("chmod 600 " + shell_quote(TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE) + " >/dev/null 2>&1");
     }
+}
+
+function write_cache_format_file(path, format) {
+    let tmp = path + ".tmp";
+    if (fs.writefile(tmp, format + "\n") == null)
+        return null;
+    return fs.rename(tmp, path) ? path : null;
 }
 
 function remove_legacy_server_country_cache() {
