@@ -80,11 +80,11 @@ run_uc() {
 # ---- snapshot-save: creates a tar.gz with the Telegram backup member layout
 
 run_uc snapshot-save good >"$WORK_DIR/result.json"
-grep -Fq '"success":true' "$WORK_DIR/result.json" ||
+grep -Fq '"success": true' "$WORK_DIR/result.json" ||
   fail "snapshot-save must report success"
-SAVED_FILE="$(sed -n 's/.*"file":"\([^"]*\)".*/\1/p' "$WORK_DIR/result.json")"
+SAVED_FILE="$(sed -n 's/.*"file": "\([^"]*\)".*/\1/p' "$WORK_DIR/result.json")"
 [ -n "$SAVED_FILE" ] || fail "snapshot-save must report the created file"
-[[ "$SAVED_FILE" =~ ^[A-Za-z0-9_\-]+-[0-9]{14}\.tar\.gz$ ]] ||
+[[ "$SAVED_FILE" =~ ^[A-Za-z0-9_\-]+-[0-9]{8}-[0-9]{6}\.tar\.gz$ ]] ||
   fail "snapshot file name must be <name>-<stamp>.tar.gz: $SAVED_FILE"
 [ -f "$WORK_DIR/snapshots/$SAVED_FILE" ] ||
   fail "snapshot archive must exist on disk"
@@ -99,9 +99,9 @@ grep -Fxq 'tachyon/data' <(tar -tzf "$WORK_DIR/snapshots/$SAVED_FILE") ||
 
 run_uc snapshot-save good >/dev/null
 run_uc snapshot-list >"$WORK_DIR/result.json"
-grep -Fq '"success":true' "$WORK_DIR/result.json" ||
+grep -Fq '"success": true' "$WORK_DIR/result.json" ||
   fail "snapshot-list must report success"
-grep -Fq '"size":' "$WORK_DIR/result.json" ||
+grep -Fq '"size": ' "$WORK_DIR/result.json" ||
   fail "snapshot-list must include the archive size"
 grep -Fq 'good-' "$WORK_DIR/result.json" ||
   fail "snapshot-list must include saved snapshot names"
@@ -109,7 +109,9 @@ grep -Fq 'good-' "$WORK_DIR/result.json" ||
 # ---- rotation: only SNAPSHOT_LIMIT archives are kept
 
 SNAPSHOT_LIMIT=2 run_uc snapshot-save a >/dev/null
+sleep 1
 SNAPSHOT_LIMIT=2 run_uc snapshot-save b >/dev/null
+sleep 1
 SNAPSHOT_LIMIT=2 run_uc snapshot-save c >/dev/null
 run_uc snapshot-list >"$WORK_DIR/result.json"
 grep -Fq 'c-' "$WORK_DIR/result.json" || fail "rotation must keep the newest snapshot"
@@ -121,14 +123,14 @@ fi
 # ---- snapshot-restore: replaces config and data, chmod 600, restarts the service
 
 run_uc snapshot-save good >"$WORK_DIR/result.json"
-SAVED_FILE="$(sed -n 's/.*"file":"\([^"]*\)".*/\1/p' "$WORK_DIR/result.json")"
+SAVED_FILE="$(sed -n 's/.*"file": "\([^"]*\)".*/\1/p' "$WORK_DIR/result.json")"
 printf '%s\n' \
   "config settings 'settings'" \
   "        option dns_type 'udp'" \
   "        option dns '1.1.1.1'" >"$WORK_DIR/config/tachyon"
 printf '%s\n' 'changed-data' >"$WORK_DIR/tachyon/data"
 run_uc snapshot-restore "$SAVED_FILE" >"$WORK_DIR/result.json"
-grep -Fq '"success":true' "$WORK_DIR/result.json" ||
+grep -Fq '"success": true' "$WORK_DIR/result.json" ||
   fail "snapshot-restore must report success"
 grep -Fxq 'restart' "$WORK_DIR/bin.log" ||
   fail "snapshot-restore must restart the service through the backend entrypoint"
@@ -147,7 +149,7 @@ printf '%s\n' \
   "        option dns '9.9.9.9'" >"$WORK_DIR/config/tachyon"
 VALIDATE_BIN="$WORK_DIR/fake-validate-fail" run_uc snapshot-restore "$SAVED_FILE" >"$WORK_DIR/result.json" &&
   fail "snapshot-restore must fail when validation fails"
-grep -Fq '"success":false' "$WORK_DIR/result.json" ||
+grep -Fq '"success": false' "$WORK_DIR/result.json" ||
   fail "failed restore must report failure"
 grep -Fq 'rolled back' "$WORK_DIR/result.json" ||
   fail "failed restore must report the rollback"
@@ -160,10 +162,10 @@ grep -Fq "option dns '9.9.9.9'" "$WORK_DIR/config/tachyon" ||
 
 mkdir -p "$WORK_DIR/evil"
 printf '%s\n' 'x' >"$WORK_DIR/evil/x"
-tar -czf "$WORK_DIR/snapshots/evil-20240101010101.tar.gz" -C "$WORK_DIR" evil/x
-run_uc snapshot-restore "evil-20240101010101.tar.gz" >"$WORK_DIR/result.json" &&
+tar -czf "$WORK_DIR/snapshots/evil-20240101-010101.tar.gz" -C "$WORK_DIR" evil/x
+run_uc snapshot-restore "evil-20240101-010101.tar.gz" >"$WORK_DIR/result.json" &&
   fail "snapshot-restore must reject archives with unexpected members"
-grep -Fq '"success":false' "$WORK_DIR/result.json" || fail "unsafe archive must fail"
+grep -Fq '"success": false' "$WORK_DIR/result.json" || fail "unsafe archive must fail"
 grep -Fq 'unsafe archive' "$WORK_DIR/result.json" ||
   fail "unsafe archive failure must name the reason"
 
@@ -172,11 +174,11 @@ grep -Fq 'unsafe archive' "$WORK_DIR/result.json" ||
 mv "$WORK_DIR/tachyon" "$WORK_DIR/tachyon.hold"
 mkdir -p "$WORK_DIR/tachyon"
 printf '%s\n' 'only-data' >"$WORK_DIR/tachyon/only"
-tar -czf "$WORK_DIR/snapshots/only-20240101010101.tar.gz" -C "$WORK_DIR" tachyon
+tar -czf "$WORK_DIR/snapshots/only-20240101-010101.tar.gz" -C "$WORK_DIR" tachyon
 rm -rf "$WORK_DIR/tachyon"
 mv "$WORK_DIR/tachyon.hold" "$WORK_DIR/tachyon"
-run_uc snapshot-restore "only-20240101010101.tar.gz" >"$WORK_DIR/result.json"
-grep -Fq '"success":true' "$WORK_DIR/result.json" ||
+run_uc snapshot-restore "only-20240101-010101.tar.gz" >"$WORK_DIR/result.json"
+grep -Fq '"success": true' "$WORK_DIR/result.json" ||
   fail "data-only snapshot restore must report success"
 [ "$(cat "$WORK_DIR/tachyon/only")" = 'only-data' ] ||
   fail "data-only snapshot must restore the persistent data"
@@ -185,12 +187,12 @@ grep -Fq "option dns '9.9.9.9'" "$WORK_DIR/config/tachyon" ||
 
 # ---- snapshot-delete
 
-run_uc snapshot-delete "only-20240101010101.tar.gz" >"$WORK_DIR/result.json"
-grep -Fq '"success":true' "$WORK_DIR/result.json" ||
+run_uc snapshot-delete "only-20240101-010101.tar.gz" >"$WORK_DIR/result.json"
+grep -Fq '"success": true' "$WORK_DIR/result.json" ||
   fail "snapshot-delete must report success"
-[ ! -e "$WORK_DIR/snapshots/only-20240101010101.tar.gz" ] ||
+[ ! -e "$WORK_DIR/snapshots/only-20240101-010101.tar.gz" ] ||
   fail "snapshot-delete must remove the archive"
-run_uc snapshot-delete "only-20240101010101.tar.gz" >"$WORK_DIR/result.json" &&
+run_uc snapshot-delete "only-20240101-010101.tar.gz" >"$WORK_DIR/result.json" &&
   fail "snapshot-delete must fail for a missing snapshot"
 grep -Fq 'snapshot not found' "$WORK_DIR/result.json" ||
   fail "missing snapshot delete must say snapshot not found"

@@ -64,6 +64,11 @@ function log_message(message) {
     system(command_from_args([ "logger", "-t", CONFIG_NAME, "[info] " + message ]) + " >/dev/null 2>&1");
 }
 
+function path_basename(path) {
+    let parts = split(as_string(path), "/");
+    return length(parts) > 0 ? as_string(parts[length(parts) - 1]) : "";
+}
+
 function fail(message) {
     print(sprintf("%J\n", { success: false, message: message }));
     return 1;
@@ -96,14 +101,16 @@ function snapshot_name_safe(name) {
 }
 
 function snapshot_file_valid(file) {
-    return match(as_string(file), /^[A-Za-z0-9_\-]+-[0-9]{14}\.tar\.gz$/) != null;
+    return match(as_string(file), /^[A-Za-z0-9_\-]+-[0-9]{8}-[0-9]{6}\.tar\.gz$/) != null;
 }
 
 function backup_archive_safe(members) {
+    let config_member = "config/" + CONFIG_NAME;
+    let data_prefix = CONFIG_NAME + "/";
     for (let m in members) {
         if (substr(m, 0, 1) == "/") return { ok: false, reason: "absolute path: " + m };
         if (match(m, /\.\./)) return { ok: false, reason: "path traversal: " + m };
-        if (m != "config/" + CONFIG_NAME && !match(m, "^" + CONFIG_NAME + "/"))
+        if (m != config_member && substr(m, 0, length(data_prefix)) != data_prefix)
             return { ok: false, reason: "unexpected member: " + m };
     }
     return { ok: true };
@@ -154,7 +161,7 @@ function snapshot_save(name) {
     prune_snapshots();
 
     log_message("Config snapshot saved: " + safe);
-    print(sprintf("%J\n", { success: true, file: basename(file) }));
+    print(sprintf("%J\n", { success: true, file: path_basename(file) }));
     return 0;
 }
 
@@ -172,9 +179,10 @@ function snapshot_list() {
             continue;
         let size = int(command_output_from_args([ "stat", "-c", "%s", full ]));
         let base = substr(line, 0, length(line) - length(".tar.gz"));
-        let dash = index(base, "-");
-        let name = dash >= 0 ? substr(base, 0, dash) : base;
-        let stamp = dash >= 0 ? substr(base, dash + 1) : "";
+        let last_dash = rindex(base, "-");
+        let mid_dash = last_dash >= 0 ? rindex(substr(base, 0, last_dash), "-") : -1;
+        let name = mid_dash >= 0 ? substr(base, 0, mid_dash) : base;
+        let stamp = mid_dash >= 0 ? substr(base, mid_dash + 1) : "";
         push(entries, { file: line, name: name, stamp: stamp, size: size });
     }
     return entries;
