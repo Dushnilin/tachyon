@@ -1122,7 +1122,25 @@ const dictionary = {
   "URLs of remote hosts files to download and apply. Supports standard hosts format: <code>IP domain</code>.": "URL удалённых файлов hosts для загрузки и применения. Поддерживается стандартный формат hosts: <code>IP domain</code>.",
   "You can select Output Network Interface, by default autodetect": "Вы можете выбрать выходной сетевой интерфейс, по умолчанию автоопределение",
   "Zapret hostlist templates are not supported here because Tachyon does not expand them for per-rule NFQWS strategies.": "Шаблоны hostlist Zapret не поддерживаются здесь, потому что Tachyon не расширяет их для стратегий NFQWS по правилам.",
-  "Zapret2 hostlist templates are not supported here because Tachyon does not expand them for per-rule NFQWS2 strategies.": "Шаблоны hostlist Zapret2 не поддерживаются здесь, потому что Tachyon не расширяет их для стратегий NFQWS2 по правилам."
+  "Zapret2 hostlist templates are not supported here because Tachyon does not expand them for per-rule NFQWS2 strategies.": "Шаблоны hostlist Zapret2 не поддерживаются здесь, потому что Tachyon не расширяет их для стратегий NFQWS2 по правилам.",
+
+  // Config snapshots
+  "Save Snapshot": "Сохранить снапшот",
+  "Snapshot name": "Имя снапшота",
+  "Config Snapshots": "Снапшоты конфигурации",
+  "Save a snapshot of the working config and restore it later if something breaks.": "Сохранить снапшот рабочей конфигурации, чтобы восстановить её позже, если что-то сломается.",
+  "Give the snapshot a name. It is saved with the current date and can be restored from this list later.": "Дайте снапшоту имя. Он сохраняется с текущей датой, и его можно будет восстановить из этого списка позже.",
+  "No snapshots yet": "Снапшотов пока нет",
+  "Failed to load snapshots": "Не удалось загрузить снапшоты",
+  "Failed to save snapshot": "Не удалось сохранить снапшот",
+  "Failed to delete snapshot": "Не удалось удалить снапшот",
+  "Failed to restore snapshot": "Не удалось восстановить снапшот",
+  "Restore Snapshot": "Восстановить снапшот",
+  "Delete Snapshot": "Удалить снапшот",
+  "This will replace the current Tachyon settings with the snapshot": "Это заменит текущие настройки Tachyon на снапшот",
+  "Delete the snapshot": "Удалить снапшот",
+  "Up to 10 snapshots are kept; the oldest ones are removed automatically.": "Хранится до 10 снапшотов; самые старые удаляются автоматически.",
+  "Snapshot restored. The service restarts and the page will reload.": "Снапшот восстановлен. Сервис перезапускается, страница будет перезагружена."
 };
 
 function escapePoString(str) {

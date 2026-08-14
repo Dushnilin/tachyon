@@ -8036,5 +8036,118 @@
     "places": [
       "src/tachyon/tabs/diagnostic/checks/runZapret2Check.ts:107"
     ]
+  },
+  {
+    "call": "Save Snapshot",
+    "key": "Save Snapshot",
+    "places": [
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:465",
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:644"
+    ]
+  },
+  {
+    "call": "Snapshot name",
+    "key": "Snapshot name",
+    "places": [
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:642"
+    ]
+  },
+  {
+    "call": "Config Snapshots",
+    "key": "Config Snapshots",
+    "places": [
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:1592"
+    ]
+  },
+  {
+    "call": "Save a snapshot of the working config and restore it later if something breaks.",
+    "key": "Save a snapshot of the working config and restore it later if something breaks.",
+    "places": [
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:1593"
+    ]
+  },
+  {
+    "call": "Give the snapshot a name. It is saved with the current date and can be restored from this list later.",
+    "key": "Give the snapshot a name. It is saved with the current date and can be restored from this list later.",
+    "places": [
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:646"
+    ]
+  },
+  {
+    "call": "No snapshots yet",
+    "key": "No snapshots yet",
+    "places": [
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:545"
+    ]
+  },
+  {
+    "call": "Failed to load snapshots",
+    "key": "Failed to load snapshots",
+    "places": [
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:630"
+    ]
+  },
+  {
+    "call": "Failed to save snapshot",
+    "key": "Failed to save snapshot",
+    "places": [
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:669"
+    ]
+  },
+  {
+    "call": "Failed to delete snapshot",
+    "key": "Failed to delete snapshot",
+    "places": [
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:527"
+    ]
+  },
+  {
+    "call": "Failed to restore snapshot",
+    "key": "Failed to restore snapshot",
+    "places": [
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:516"
+    ]
+  },
+  {
+    "call": "Restore Snapshot",
+    "key": "Restore Snapshot",
+    "places": [
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:565"
+    ]
+  },
+  {
+    "call": "Delete Snapshot",
+    "key": "Delete Snapshot",
+    "places": [
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:597"
+    ]
+  },
+  {
+    "call": "This will replace the current Tachyon settings with the snapshot",
+    "key": "This will replace the current Tachyon settings with the snapshot",
+    "places": [
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:567"
+    ]
+  },
+  {
+    "call": "Delete the snapshot",
+    "key": "Delete the snapshot",
+    "places": [
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:599"
+    ]
+  },
+  {
+    "call": "Up to 10 snapshots are kept; the oldest ones are removed automatically.",
+    "key": "Up to 10 snapshots are kept; the oldest ones are removed automatically.",
+    "places": [
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:684"
+    ]
+  },
+  {
+    "call": "Snapshot restored. The service restarts and the page will reload.",
+    "key": "Snapshot restored. The service restarts and the page will reload.",
+    "places": [
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:508"
+    ]
   }
 ]

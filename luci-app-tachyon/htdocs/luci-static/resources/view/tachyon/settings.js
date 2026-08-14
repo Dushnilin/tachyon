@@ -452,6 +452,244 @@ function createResetSettingsWidget() {
   return wrapper;
 }
 
+function createSnapshotsWidget() {
+  const wrapper = E("div", {
+    id: "tachyon-snapshots-widget",
+    style: "display:flex;flex-direction:column;gap:8px;padding:4px 0;",
+  });
+
+  const btnSave = E("button", {
+    class: "btn cbi-button cbi-button-positive",
+    type: "button",
+  });
+  btnSave.textContent = _("Save Snapshot");
+
+  const listEl = E("div", {
+    style: "display:flex;flex-direction:column;gap:6px;",
+  });
+
+  function formatStamp(stamp) {
+    if (!stamp)
+      return "";
+    return stamp.replace(
+      /^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})$/,
+      "$1-$2-$3 $4:$5",
+    );
+  }
+
+  function formatSize(size) {
+    if (size == null)
+      return "";
+    if (size >= 1048576)
+      return (size / 1048576).toFixed(1) + " MB";
+    if (size >= 1024)
+      return Math.round(size / 1024) + " KB";
+    return size + " B";
+  }
+
+  function execSnapshot(args) {
+    return fs.exec("/usr/bin/tachyon", args).then(function (res) {
+      let ok = false;
+      try {
+        ok = JSON.parse((res && res.stdout) || "").success !== false;
+      } catch (e) {
+        ok = false;
+      }
+      if (!ok)
+        throw new Error("command failed");
+    });
+  }
+
+  function performRestore(file) {
+    execSnapshot(["snapshot_restore", file])
+      .then(function () {
+        ui.addNotification(
+          null,
+          E("p", {}, _("Snapshot restored. The service restarts and the page will reload.")),
+          "info",
+        );
+        setTimeout(function () {
+          location.reload();
+        }, 2500);
+      })
+      .catch(function () {
+        ui.addNotification(null, E("p", {}, _("Failed to restore snapshot")), "error");
+        loadSnapshots();
+      });
+  }
+
+  function performDelete(file) {
+    execSnapshot(["snapshot_delete", file])
+      .then(function () {
+        loadSnapshots();
+      })
+      .catch(function () {
+        ui.addNotification(null, E("p", {}, _("Failed to delete snapshot")), "error");
+      });
+  }
+
+  function loadSnapshots() {
+    listEl.innerHTML = "";
+    fs.exec("/usr/bin/tachyon", ["snapshot_list"])
+      .then(function (res) {
+        let snapshots = [];
+        try {
+          snapshots = (JSON.parse((res && res.stdout) || "").snapshots || []).slice(0, 10);
+        } catch (e) {
+          snapshots = [];
+        }
+        if (snapshots.length === 0) {
+          listEl.appendChild(
+            E("span", {
+              style: "font-size:12px;color:var(--text-color-medium,#888);",
+            }, _("No snapshots yet")),
+          );
+          return;
+        }
+        snapshots.forEach(function (snap) {
+          const row = E("div", {
+            style: "display:flex;align-items:center;gap:10px;padding:2px 0;flex-wrap:wrap;",
+          });
+          row.appendChild(E("span", { style: "font-weight:bold;" }, snap.name || ""));
+          row.appendChild(
+            E("span", {
+              style: "font-size:12px;color:var(--text-color-medium,#888);",
+            }, formatStamp(snap.stamp) + (snap.size != null ? " \u00b7 " + formatSize(snap.size) : "")),
+          );
+          row.appendChild(
+            E("button", {
+              class: "btn cbi-button cbi-button-action",
+              type: "button",
+              click: function () {
+                ui.showModal(
+                  _("Restore Snapshot"),
+                  [
+                    E("p", {}, _("This will replace the current Tachyon settings with the snapshot") + ": \u201c" + (snap.name || "") + "\u201d. The service will restart."),
+                    E("div", { class: "button-row" }, [
+                      E("button", {
+                        class: "btn cbi-button cbi-button-neutral",
+                        type: "button",
+                        click: function () {
+                          ui.hideModal();
+                        },
+                      }, _("Cancel")),
+                      E("button", {
+                        class: "btn cbi-button cbi-button-negative",
+                        type: "button",
+                        click: function () {
+                          ui.hideModal();
+                          performRestore(snap.file);
+                        },
+                      }, _("Restore")),
+                    ]),
+                  ],
+                  "cbi-modal",
+                );
+              },
+            }, _("Restore")),
+          );
+          row.appendChild(
+            E("button", {
+              class: "btn cbi-button cbi-button-negative",
+              type: "button",
+              click: function () {
+                ui.showModal(
+                  _("Delete Snapshot"),
+                  [
+                    E("p", {}, _("Delete the snapshot") + ": \u201c" + (snap.name || "") + "\u201d?"),
+                    E("div", { class: "button-row" }, [
+                      E("button", {
+                        class: "btn cbi-button cbi-button-neutral",
+                        type: "button",
+                        click: function () {
+                          ui.hideModal();
+                        },
+                      }, _("Cancel")),
+                      E("button", {
+                        class: "btn cbi-button cbi-button-negative",
+                        type: "button",
+                        click: function () {
+                          ui.hideModal();
+                          performDelete(snap.file);
+                        },
+                      }, _("Delete")),
+                    ]),
+                  ],
+                  "cbi-modal",
+                );
+              },
+            }, _("Delete")),
+          );
+          listEl.appendChild(row);
+        });
+      })
+      .catch(function () {
+        listEl.appendChild(
+          E("span", {
+            style: "font-size:12px;color:var(--text-color-medium,#888);",
+          }, _("Failed to load snapshots")),
+        );
+      });
+  }
+
+  btnSave.addEventListener("click", function () {
+    const input = E("input", {
+      type: "text",
+      class: "cbi-input-text",
+      style: "width:100%;",
+      maxlength: 64,
+    });
+    input.placeholder = _("Snapshot name");
+    ui.showModal(
+      _("Save Snapshot"),
+      [
+        E("p", {}, _("Give the snapshot a name. It is saved with the current date and can be restored from this list later.")),
+        input,
+        E("div", { class: "button-row" }, [
+          E("button", {
+            class: "btn cbi-button cbi-button-neutral",
+            type: "button",
+            click: function () {
+              ui.hideModal();
+            },
+          }, _("Cancel")),
+          E("button", {
+            class: "btn cbi-button cbi-button-positive",
+            type: "button",
+            click: function () {
+              const name = (input.value || "").trim();
+              if (!name)
+                return;
+              ui.hideModal();
+              execSnapshot(["snapshot_save", name])
+                .then(function () {
+                  loadSnapshots();
+                })
+                .catch(function () {
+                  ui.addNotification(null, E("p", {}, _("Failed to save snapshot")), "error");
+                });
+            },
+          }, _("Save")),
+        ]),
+      ],
+      "cbi-modal",
+    );
+  });
+
+  wrapper.appendChild(
+    E("div", {
+      style: "display:flex;align-items:center;gap:12px;flex-wrap:wrap;",
+    }, btnSave, E("span", {
+      style: "font-size:12px;color:var(--text-color-medium,#888);",
+    }, _("Up to 10 snapshots are kept; the oldest ones are removed automatically."))),
+  );
+  wrapper.appendChild(listEl);
+
+  loadSnapshots();
+
+  return wrapper;
+}
+
 function createSmartDetectSectionsWidget(section_id) {
   const TESTABLE_ACTIONS = ["connection", "proxy", "outbound", "vpn", "zapret", "zapret2", "byedpi"];
   const allSections = (uci.sections(UCI_PACKAGE, "section") || [])
@@ -1345,6 +1583,18 @@ function createSettingsContent(section, capabilities) {
   resetOpt.rawhtml = true;
   resetOpt.cfgvalue = function () {
     return createResetSettingsWidget();
+  };
+
+  const snapshotsOpt = section.taboption(
+    "advanced",
+    form.DummyValue,
+    "_snapshots",
+    _("Config Snapshots"),
+    _("Save a snapshot of the working config and restore it later if something breaks."),
+  );
+  snapshotsOpt.rawhtml = true;
+  snapshotsOpt.cfgvalue = function () {
+    return createSnapshotsWidget();
   };
 
   o = section.taboption(

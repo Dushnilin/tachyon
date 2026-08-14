@@ -3712,3 +3712,51 @@ msgstr "Не удалось сохранить сервер"
 
 msgid "QR code is too large"
 msgstr "QR-код слишком большой"
+
+msgid "Save Snapshot"
+msgstr "Сохранить снапшот"
+
+msgid "Snapshot name"
+msgstr "Имя снапшота"
+
+msgid "Config Snapshots"
+msgstr "Снапшоты конфигурации"
+
+msgid "Save a snapshot of the working config and restore it later if something breaks."
+msgstr "Сохранить снапшот рабочей конфигурации, чтобы восстановить её позже, если что-то сломается."
+
+msgid "Give the snapshot a name. It is saved with the current date and can be restored from this list later."
+msgstr "Дайте снапшоту имя. Он сохраняется с текущей датой, и его можно будет восстановить из этого списка позже."
+
+msgid "No snapshots yet"
+msgstr "Снапшотов пока нет"
+
+msgid "Failed to load snapshots"
+msgstr "Не удалось загрузить снапшоты"
+
+msgid "Failed to save snapshot"
+msgstr "Не удалось сохранить снапшот"
+
+msgid "Failed to delete snapshot"
+msgstr "Не удалось удалить снапшот"
+
+msgid "Failed to restore snapshot"
+msgstr "Не удалось восстановить снапшот"
+
+msgid "Restore Snapshot"
+msgstr "Восстановить снапшот"
+
+msgid "Delete Snapshot"
+msgstr "Удалить снапшот"
+
+msgid "This will replace the current Tachyon settings with the snapshot"
+msgstr "Это заменит текущие настройки Tachyon на снапшот"
+
+msgid "Delete the snapshot"
+msgstr "Удалить снапшот"
+
+msgid "Up to 10 snapshots are kept; the oldest ones are removed automatically."
+msgstr "Хранится до 10 снапшотов; самые старые удаляются автоматически."
+
+msgid "Snapshot restored. The service restarts and the page will reload."
+msgstr "Снапшот восстановлен. Сервис перезапускается, страница будет перезагружена."
