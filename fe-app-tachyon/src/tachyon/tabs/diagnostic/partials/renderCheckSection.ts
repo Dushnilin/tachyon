@@ -19,43 +19,176 @@ function renderCheckSummary(items: IRenderCheckSectionProps['items']) {
 
   const renderedItems = items.map((item) => {
     function getIcon() {
-      if (item.state === 'success') return renderCheckIcon24();
-      if (item.state === 'warning') return renderTriangleAlertIcon24();
-      if (item.state === 'error') return renderXIcon24();
-      return E('span', {}, '');
+      const iconWrap = E('span', {
+        class: 'tachyon_diagnostic_alert__summary__item__icon',
+      });
+
+      if (item.state === 'success') {
+        iconWrap.appendChild(renderCheckIcon24());
+      }
+
+      if (item.state === 'warning') {
+        iconWrap.appendChild(renderTriangleAlertIcon24());
+      }
+
+      if (item.state === 'error') {
+        iconWrap.appendChild(renderXIcon24());
+      }
+
+      return iconWrap;
     }
 
     return E(
       'div',
-      { class: `tachyon_check-row__summary__item tachyon_check-row__summary__item--${item.state}` },
-      [E('span', {}, getIcon()), E('b', {}, item.key), E('span', {}, item.value)],
+      {
+        class: `tachyon_diagnostic_alert__summary__item tachyon_diagnostic_alert__summary__item--${item.state}`,
+      },
+      [getIcon(), E('b', {}, item.key), E('div', {}, item.value)],
     );
   });
 
-  return E('div', { class: 'tachyon_check-row__summary' }, renderedItems);
+  return E(
+    'div',
+    { class: 'tachyon_diagnostic_alert__summary' },
+    renderedItems,
+  );
 }
 
-function renderIcon(state: string) {
-  const wrap = E('span', { class: 'tachyon_check-row__icon' });
-  if (state === 'loading') wrap.appendChild(renderLoaderCircleIcon24());
-  else if (state === 'warning') wrap.appendChild(renderCircleAlertIcon24());
-  else if (state === 'error') wrap.appendChild(renderCircleXIcon24());
-  else if (state === 'success') wrap.appendChild(renderCircleCheckIcon24());
-  else if (state === 'skipped') wrap.appendChild(renderCircleSlashIcon24());
-  return wrap;
+function renderLoadingState(props: IRenderCheckSectionProps) {
+  const iconWrap = E('span', { class: 'tachyon_diagnostic_alert__icon' });
+  iconWrap.appendChild(renderLoaderCircleIcon24());
+
+  return E(
+    'div',
+    { class: 'tachyon_diagnostic_alert tachyon_diagnostic_alert--loading' },
+    [
+      iconWrap,
+      E('div', { class: 'tachyon_diagnostic_alert__content' }, [
+        E('b', { class: 'tachyon_diagnostic_alert__title' }, props.title),
+        E(
+          'div',
+          { class: 'tachyon_diagnostic_alert__description' },
+          props.description,
+        ),
+      ]),
+      E('div', {}, ''),
+      renderCheckSummary(props.items),
+    ],
+  );
+}
+
+function renderWarningState(props: IRenderCheckSectionProps) {
+  const iconWrap = E('span', { class: 'tachyon_diagnostic_alert__icon' });
+  iconWrap.appendChild(renderCircleAlertIcon24());
+
+  return E(
+    'div',
+    { class: 'tachyon_diagnostic_alert tachyon_diagnostic_alert--warning' },
+    [
+      iconWrap,
+      E('div', { class: 'tachyon_diagnostic_alert__content' }, [
+        E('b', { class: 'tachyon_diagnostic_alert__title' }, props.title),
+        E(
+          'div',
+          { class: 'tachyon_diagnostic_alert__description' },
+          props.description,
+        ),
+      ]),
+      E('div', {}, ''),
+      renderCheckSummary(props.items),
+    ],
+  );
+}
+
+function renderErrorState(props: IRenderCheckSectionProps) {
+  const iconWrap = E('span', { class: 'tachyon_diagnostic_alert__icon' });
+  iconWrap.appendChild(renderCircleXIcon24());
+
+  return E(
+    'div',
+    { class: 'tachyon_diagnostic_alert tachyon_diagnostic_alert--error' },
+    [
+      iconWrap,
+      E('div', { class: 'tachyon_diagnostic_alert__content' }, [
+        E('b', { class: 'tachyon_diagnostic_alert__title' }, props.title),
+        E(
+          'div',
+          { class: 'tachyon_diagnostic_alert__description' },
+          props.description,
+        ),
+      ]),
+      E('div', {}, ''),
+      renderCheckSummary(props.items),
+    ],
+  );
+}
+
+function renderSuccessState(props: IRenderCheckSectionProps) {
+  const iconWrap = E('span', { class: 'tachyon_diagnostic_alert__icon' });
+  iconWrap.appendChild(renderCircleCheckIcon24());
+
+  return E(
+    'div',
+    { class: 'tachyon_diagnostic_alert tachyon_diagnostic_alert--success' },
+    [
+      iconWrap,
+      E('div', { class: 'tachyon_diagnostic_alert__content' }, [
+        E('b', { class: 'tachyon_diagnostic_alert__title' }, props.title),
+        E(
+          'div',
+          { class: 'tachyon_diagnostic_alert__description' },
+          props.description,
+        ),
+      ]),
+      E('div', {}, ''),
+      renderCheckSummary(props.items),
+    ],
+  );
+}
+
+function renderSkippedState(props: IRenderCheckSectionProps) {
+  const iconWrap = E('span', { class: 'tachyon_diagnostic_alert__icon' });
+  iconWrap.appendChild(renderCircleSlashIcon24());
+
+  return E(
+    'div',
+    { class: 'tachyon_diagnostic_alert tachyon_diagnostic_alert--skipped' },
+    [
+      iconWrap,
+      E('div', { class: 'tachyon_diagnostic_alert__content' }, [
+        E('b', { class: 'tachyon_diagnostic_alert__title' }, props.title),
+        E(
+          'div',
+          { class: 'tachyon_diagnostic_alert__description' },
+          props.description,
+        ),
+      ]),
+      E('div', {}, ''),
+      renderCheckSummary(props.items),
+    ],
+  );
 }
 
 export function renderCheckSection(props: IRenderCheckSectionProps) {
-  return E(
-    'div',
-    { class: `tachyon_check-row tachyon_check-row--${props.state}` },
-    [
-      renderIcon(props.state),
-      E('div', { class: 'tachyon_check-row__body' }, [
-        E('b', { class: 'tachyon_check-row__title' }, props.title),
-        E('span', { class: 'tachyon_check-row__detail' }, props.description),
-        renderCheckSummary(props.items),
-      ]),
-    ],
-  );
+  if (props.state === 'loading') {
+    return renderLoadingState(props);
+  }
+
+  if (props.state === 'warning') {
+    return renderWarningState(props);
+  }
+
+  if (props.state === 'error') {
+    return renderErrorState(props);
+  }
+
+  if (props.state === 'success') {
+    return renderSuccessState(props);
+  }
+
+  if (props.state === 'skipped') {
+    return renderSkippedState(props);
+  }
+
+  return E('div', {}, _('Not implement yet'));
 }

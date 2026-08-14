@@ -8525,21 +8525,17 @@ function render2() {
     "div",
     { id: "diagnostic-status", class: "tachyon_diagnostic-page" },
     [
-      E("div", { class: "tachyon_diagnostic-page__top-bar" }, [
-        E("div", { id: "tachyon_diagnostic-page-run-check" })
+      E("div", { class: "tachyon_diagnostic-page__left-bar" }, [
+        E("div", { id: "tachyon_diagnostic-page-run-check" }),
+        E("div", {
+          class: "tachyon_diagnostic-page__checks",
+          id: "tachyon_diagnostic-page-checks"
+        })
       ]),
-      E("div", { class: "tachyon_diagnostic-page__main" }, [
-        E("div", { class: "tachyon_diagnostic-page__left" }, [
-          E("div", {
-            class: "cbi-section cbi-section-table",
-            id: "tachyon_diagnostic-page-checks"
-          })
-        ]),
-        E("div", { class: "tachyon_diagnostic-page__right" }, [
-          E("div", { id: "tachyon_diagnostic-page-wiki" }),
-          E("div", { class: "cbi-section", id: "tachyon_diagnostic-page-actions" }),
-          E("div", { class: "cbi-section", id: "tachyon_diagnostic-page-system-info" })
-        ])
+      E("div", { class: "tachyon_diagnostic-page__right-bar" }, [
+        E("div", { id: "tachyon_diagnostic-page-wiki" }),
+        E("div", { id: "tachyon_diagnostic-page-actions" }),
+        E("div", { id: "tachyon_diagnostic-page-system-info" })
       ])
     ]
   );
@@ -9831,10 +9827,11 @@ function renderAvailableActions({
   generateBugReport,
   checkServices
 }) {
-  const actions = [
+  return E("div", { class: "tachyon_diagnostic-page__right-bar__actions" }, [
+    E("b", {}, _("Available actions")),
     ...insertIf(restart.visible, [
       renderButton({
-        classNames: ["cbi-button cbi-button-apply"],
+        classNames: ["cbi-button-apply"],
         onClick: restart.onClick,
         icon: renderRotateCcwIcon24,
         text: _("Restart Tachyon"),
@@ -9844,7 +9841,7 @@ function renderAvailableActions({
     ]),
     ...insertIf(stop.visible, [
       renderButton({
-        classNames: ["cbi-button cbi-button-remove"],
+        classNames: ["cbi-button-remove"],
         onClick: stop.onClick,
         icon: renderCircleStopIcon24,
         text: _("Stop Tachyon"),
@@ -9854,7 +9851,7 @@ function renderAvailableActions({
     ]),
     ...insertIf(start.visible, [
       renderButton({
-        classNames: ["cbi-button cbi-button-save"],
+        classNames: ["cbi-button-save"],
         onClick: start.onClick,
         icon: renderCirclePlayIcon24,
         text: _("Start Tachyon"),
@@ -9864,7 +9861,7 @@ function renderAvailableActions({
     ]),
     ...insertIf(disable.visible, [
       renderButton({
-        classNames: ["cbi-button cbi-button-remove"],
+        classNames: ["cbi-button-remove"],
         onClick: disable.onClick,
         icon: renderPauseIcon24,
         text: _("Disable autostart"),
@@ -9874,7 +9871,7 @@ function renderAvailableActions({
     ]),
     ...insertIf(enable.visible, [
       renderButton({
-        classNames: ["cbi-button cbi-button-save"],
+        classNames: ["cbi-button-save"],
         onClick: enable.onClick,
         icon: renderPlayIcon24,
         text: _("Enable autostart"),
@@ -9884,7 +9881,6 @@ function renderAvailableActions({
     ]),
     ...insertIf(globalCheck.visible, [
       renderButton({
-        classNames: ["cbi-button"],
         onClick: globalCheck.onClick,
         icon: renderCircleCheckBigIcon24,
         text: _("Get global check"),
@@ -9894,7 +9890,6 @@ function renderAvailableActions({
     ]),
     ...insertIf(doctor.visible, [
       renderButton({
-        classNames: ["cbi-button"],
         onClick: doctor.onClick,
         icon: renderRotateCcwIcon24,
         text: _("Run doctor repair"),
@@ -9904,7 +9899,7 @@ function renderAvailableActions({
     ]),
     ...insertIf(aiDoctor.visible, [
       renderButton({
-        classNames: ["cbi-button cbi-button-action"],
+        classNames: ["cbi-button-action"],
         onClick: aiDoctor.onClick,
         icon: renderRotateCcwIcon24,
         text: _("Run AI Doctor"),
@@ -9914,7 +9909,7 @@ function renderAvailableActions({
     ]),
     ...insertIf(!!aiChat?.visible, [
       renderButton({
-        classNames: ["cbi-button cbi-button-action"],
+        classNames: ["cbi-button-action"],
         onClick: aiChat.onClick,
         icon: renderCircleCheckBigIcon24,
         text: _("AI Chat Assistant"),
@@ -9924,7 +9919,7 @@ function renderAvailableActions({
     ]),
     ...insertIf(checkServices.visible, [
       renderButton({
-        classNames: ["cbi-button cbi-button-action"],
+        classNames: ["cbi-button-action"],
         onClick: checkServices.onClick,
         icon: renderSquareChartGanttIcon24,
         text: _("Check Services"),
@@ -9934,7 +9929,6 @@ function renderAvailableActions({
     ]),
     ...insertIf(viewLogs.visible, [
       renderButton({
-        classNames: ["cbi-button"],
         onClick: viewLogs.onClick,
         icon: renderSquareChartGanttIcon24,
         text: _("View logs"),
@@ -9944,7 +9938,6 @@ function renderAvailableActions({
     ]),
     ...insertIf(showSingBoxConfig.visible, [
       renderButton({
-        classNames: ["cbi-button"],
         onClick: showSingBoxConfig.onClick,
         icon: renderCogIcon24,
         text: _("Show sing-box config"),
@@ -9954,7 +9947,6 @@ function renderAvailableActions({
     ]),
     ...insertIf(generateBugReport.visible, [
       renderButton({
-        classNames: ["cbi-button"],
         onClick: generateBugReport.onClick,
         icon: renderDownloadIcon24,
         text: _("Generate bug report"),
@@ -9962,15 +9954,7 @@ function renderAvailableActions({
         disabled: generateBugReport.disabled
       })
     ])
-  ];
-  return E(
-    "div",
-    { class: "tachyon_diagnostic-page__actions-list" },
-    [
-      E("h3", { style: "margin: 0 0 8px 0; font-size: 14px;" }, _("Available actions")),
-      ...actions
-    ]
-  );
+  ]);
 }
 
 // src/tachyon/tabs/diagnostic/partials/renderCheckSection.ts
@@ -9980,41 +9964,156 @@ function renderCheckSummary(items) {
   }
   const renderedItems = items.map((item) => {
     function getIcon() {
-      if (item.state === "success") return renderCheckIcon24();
-      if (item.state === "warning") return renderTriangleAlertIcon24();
-      if (item.state === "error") return renderXIcon24();
-      return E("span", {}, "");
+      const iconWrap = E("span", {
+        class: "tachyon_diagnostic_alert__summary__item__icon"
+      });
+      if (item.state === "success") {
+        iconWrap.appendChild(renderCheckIcon24());
+      }
+      if (item.state === "warning") {
+        iconWrap.appendChild(renderTriangleAlertIcon24());
+      }
+      if (item.state === "error") {
+        iconWrap.appendChild(renderXIcon24());
+      }
+      return iconWrap;
     }
     return E(
       "div",
-      { class: `tachyon_check-row__summary__item tachyon_check-row__summary__item--${item.state}` },
-      [E("span", {}, getIcon()), E("b", {}, item.key), E("span", {}, item.value)]
+      {
+        class: `tachyon_diagnostic_alert__summary__item tachyon_diagnostic_alert__summary__item--${item.state}`
+      },
+      [getIcon(), E("b", {}, item.key), E("div", {}, item.value)]
     );
   });
-  return E("div", { class: "tachyon_check-row__summary" }, renderedItems);
-}
-function renderIcon(state) {
-  const wrap = E("span", { class: "tachyon_check-row__icon" });
-  if (state === "loading") wrap.appendChild(renderLoaderCircleIcon24());
-  else if (state === "warning") wrap.appendChild(renderCircleAlertIcon24());
-  else if (state === "error") wrap.appendChild(renderCircleXIcon24());
-  else if (state === "success") wrap.appendChild(renderCircleCheckIcon24());
-  else if (state === "skipped") wrap.appendChild(renderCircleSlashIcon24());
-  return wrap;
-}
-function renderCheckSection(props) {
   return E(
     "div",
-    { class: `tachyon_check-row tachyon_check-row--${props.state}` },
+    { class: "tachyon_diagnostic_alert__summary" },
+    renderedItems
+  );
+}
+function renderLoadingState3(props) {
+  const iconWrap = E("span", { class: "tachyon_diagnostic_alert__icon" });
+  iconWrap.appendChild(renderLoaderCircleIcon24());
+  return E(
+    "div",
+    { class: "tachyon_diagnostic_alert tachyon_diagnostic_alert--loading" },
     [
-      renderIcon(props.state),
-      E("div", { class: "tachyon_check-row__body" }, [
-        E("b", { class: "tachyon_check-row__title" }, props.title),
-        E("span", { class: "tachyon_check-row__detail" }, props.description),
-        renderCheckSummary(props.items)
-      ])
+      iconWrap,
+      E("div", { class: "tachyon_diagnostic_alert__content" }, [
+        E("b", { class: "tachyon_diagnostic_alert__title" }, props.title),
+        E(
+          "div",
+          { class: "tachyon_diagnostic_alert__description" },
+          props.description
+        )
+      ]),
+      E("div", {}, ""),
+      renderCheckSummary(props.items)
     ]
   );
+}
+function renderWarningState(props) {
+  const iconWrap = E("span", { class: "tachyon_diagnostic_alert__icon" });
+  iconWrap.appendChild(renderCircleAlertIcon24());
+  return E(
+    "div",
+    { class: "tachyon_diagnostic_alert tachyon_diagnostic_alert--warning" },
+    [
+      iconWrap,
+      E("div", { class: "tachyon_diagnostic_alert__content" }, [
+        E("b", { class: "tachyon_diagnostic_alert__title" }, props.title),
+        E(
+          "div",
+          { class: "tachyon_diagnostic_alert__description" },
+          props.description
+        )
+      ]),
+      E("div", {}, ""),
+      renderCheckSummary(props.items)
+    ]
+  );
+}
+function renderErrorState(props) {
+  const iconWrap = E("span", { class: "tachyon_diagnostic_alert__icon" });
+  iconWrap.appendChild(renderCircleXIcon24());
+  return E(
+    "div",
+    { class: "tachyon_diagnostic_alert tachyon_diagnostic_alert--error" },
+    [
+      iconWrap,
+      E("div", { class: "tachyon_diagnostic_alert__content" }, [
+        E("b", { class: "tachyon_diagnostic_alert__title" }, props.title),
+        E(
+          "div",
+          { class: "tachyon_diagnostic_alert__description" },
+          props.description
+        )
+      ]),
+      E("div", {}, ""),
+      renderCheckSummary(props.items)
+    ]
+  );
+}
+function renderSuccessState(props) {
+  const iconWrap = E("span", { class: "tachyon_diagnostic_alert__icon" });
+  iconWrap.appendChild(renderCircleCheckIcon24());
+  return E(
+    "div",
+    { class: "tachyon_diagnostic_alert tachyon_diagnostic_alert--success" },
+    [
+      iconWrap,
+      E("div", { class: "tachyon_diagnostic_alert__content" }, [
+        E("b", { class: "tachyon_diagnostic_alert__title" }, props.title),
+        E(
+          "div",
+          { class: "tachyon_diagnostic_alert__description" },
+          props.description
+        )
+      ]),
+      E("div", {}, ""),
+      renderCheckSummary(props.items)
+    ]
+  );
+}
+function renderSkippedState(props) {
+  const iconWrap = E("span", { class: "tachyon_diagnostic_alert__icon" });
+  iconWrap.appendChild(renderCircleSlashIcon24());
+  return E(
+    "div",
+    { class: "tachyon_diagnostic_alert tachyon_diagnostic_alert--skipped" },
+    [
+      iconWrap,
+      E("div", { class: "tachyon_diagnostic_alert__content" }, [
+        E("b", { class: "tachyon_diagnostic_alert__title" }, props.title),
+        E(
+          "div",
+          { class: "tachyon_diagnostic_alert__description" },
+          props.description
+        )
+      ]),
+      E("div", {}, ""),
+      renderCheckSummary(props.items)
+    ]
+  );
+}
+function renderCheckSection(props) {
+  if (props.state === "loading") {
+    return renderLoadingState3(props);
+  }
+  if (props.state === "warning") {
+    return renderWarningState(props);
+  }
+  if (props.state === "error") {
+    return renderErrorState(props);
+  }
+  if (props.state === "success") {
+    return renderSuccessState(props);
+  }
+  if (props.state === "skipped") {
+    return renderSkippedState(props);
+  }
+  return E("div", {}, _("Not implement yet"));
 }
 
 // src/tachyon/tabs/diagnostic/partials/renderRunAction.ts
@@ -10023,32 +10122,54 @@ function renderRunAction({
   disabled,
   click
 }) {
-  return renderButton({
-    text: _("Run Diagnostic"),
-    onClick: click,
-    icon: renderSearchIcon24,
-    loading: loading2,
-    disabled,
-    classNames: ["cbi-button cbi-button-apply"]
-  });
+  return E("div", { class: "tachyon_diagnostic-page__run_check_wrapper" }, [
+    renderButton({
+      text: _("Run Diagnostic"),
+      onClick: click,
+      icon: renderSearchIcon24,
+      loading: loading2,
+      disabled,
+      classNames: ["cbi-button-apply"]
+    })
+  ]);
 }
 
 // src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts
 function formatRouteType(routeType) {
-  if (!routeType) return _("Direct");
+  if (!routeType) return "\u041F\u0440\u044F\u043C\u043E\u0435";
   const clean = routeType.trim();
-  if (clean === "connection" || clean === "proxy" || clean === "outbound") return _("Proxy");
-  if (clean === "direct") return _("Direct");
-  if (clean === "auto") return _("Auto");
-  if (clean.startsWith("zapret2")) return clean.replace(/^zapret2/, "Zapret 2");
-  if (clean.startsWith("zapret")) return clean.replace(/^zapret/, "Zapret");
-  if (clean.startsWith("byedpi")) return clean.replace(/^byedpi/, "ByeDPI");
+  if (clean === "connection" || clean === "proxy" || clean === "outbound") {
+    return "\u041F\u0440\u043E\u043A\u0441\u0438";
+  }
+  if (clean === "direct") {
+    return "\u041F\u0440\u044F\u043C\u043E\u0435";
+  }
+  if (clean === "auto") {
+    return "\u0410\u0432\u0442\u043E";
+  }
+  if (clean.startsWith("zapret2")) {
+    return clean.replace(/^zapret2/, "Zapret 2");
+  }
+  if (clean.startsWith("zapret")) {
+    return clean.replace(/^zapret/, "Zapret");
+  }
+  if (clean.startsWith("byedpi")) {
+    return clean.replace(/^byedpi/, "ByeDPI");
+  }
   return clean;
 }
 function formatSectionName(name) {
   if (!name) return "";
+  const clean = name.trim();
   const sectionMap = {
-    Custom: _("Custom"),
+    "\u0411\u0430\u0437\u043E\u0432\u0430\u044F \u0441\u0432\u044F\u0437\u043D\u043E\u0441\u0442\u044C": "\u0411\u0430\u0437\u043E\u0432\u0430\u044F \u0441\u0432\u044F\u0437\u043D\u043E\u0441\u0442\u044C",
+    "\u0417\u0430\u0431\u043B\u043E\u043A\u0438\u0440\u043E\u0432\u0430\u043D\u043D\u044B\u0435 \u0432 \u0420\u0424": "\u0417\u0430\u0431\u043B\u043E\u043A\u0438\u0440\u043E\u0432\u0430\u043D\u043D\u044B\u0435 \u0440\u0435\u0441\u0443\u0440\u0441\u044B",
+    "\u0421\u0432\u043E\u0438 \u0434\u043E\u043C\u0435\u043D\u044B": "\u0421\u043E\u0431\u0441\u0442\u0432\u0435\u043D\u043D\u044B\u0435 \u0434\u043E\u043C\u0435\u043D\u044B",
+    Custom: "\u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C\u0441\u043A\u0438\u0439",
+    "ChatGPT / OpenAI": "ChatGPT / OpenAI",
+    "Gemini / Google AI": "Gemini / Google AI",
+    "X (Twitter)": "Twitter (X)",
+    "UDP / QUIC": "UDP / QUIC \u043F\u0440\u043E\u0442\u043E\u043A\u043E\u043B\u044B",
     Telegram: "Telegram",
     Instagram: "Instagram",
     YouTube: "YouTube",
@@ -10062,164 +10183,444 @@ function formatSectionName(name) {
     Steam: "Steam",
     GitHub: "GitHub"
   };
-  return sectionMap[name.trim()] || name.trim();
+  return sectionMap[clean] || clean;
 }
 function renderStatusBadge(statusClass, isTesting = false, isPending = false) {
   if (isPending) {
-    return E("span", { class: "badge cbi-button-neutral", style: "opacity: 0.6; font-size: 11px; padding: 2px 8px;" }, _("Pending..."));
+    return E(
+      "span",
+      {
+        class: "badge cbi-value-title",
+        style: "opacity: 0.6; font-size: 11px; padding: 2px 8px;"
+      },
+      "\u041E\u0436\u0438\u0434\u0430\u043D\u0438\u0435..."
+    );
   }
   if (isTesting) {
-    return E("span", { class: "badge cbi-button-action", style: "font-size: 11px; padding: 2px 8px;" }, _("Testing..."));
+    return E(
+      "span",
+      {
+        class: "badge cbi-button-action",
+        style: "font-size: 11px; padding: 2px 8px;"
+      },
+      "\u041F\u0440\u043E\u0432\u0435\u0440\u043A\u0430..."
+    );
   }
-  const isOk = (statusClass || "").toUpperCase().includes("OK") || statusClass === "200" || statusClass === "OK";
+  const cleanStatus = statusClass || "";
+  const isOk = cleanStatus.toUpperCase().includes("OK") || cleanStatus === "200" || cleanStatus === "OK";
   if (isOk) {
-    return E("span", { class: "badge cbi-button-save", style: "font-weight: bold; font-size: 11px; padding: 2px 8px;" }, _("Available"));
+    return E(
+      "span",
+      {
+        class: "badge cbi-button-save",
+        style: "font-weight: bold; font-size: 11px; padding: 2px 8px;"
+      },
+      "\u0414\u043E\u0441\u0442\u0443\u043F\u0435\u043D"
+    );
   }
-  return E("span", { class: "badge cbi-button-reset", style: "font-weight: bold; font-size: 11px; padding: 2px 8px;" }, statusClass || _("Unavailable"));
+  return E(
+    "span",
+    {
+      class: "badge cbi-button-reset",
+      style: "font-weight: bold; font-size: 11px; padding: 2px 8px;"
+    },
+    cleanStatus || "\u041D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u0435\u043D"
+  );
 }
 function renderServiceCheckModal() {
-  const container = E("div", { class: "tachyon-service-check-modal-wrapper" }, [
-    E("p", { style: "text-align: center; margin-top: 20px;" }, _("Loading service list...")),
-    E("div", { class: "spinning", style: "text-align: center; font-size: 24px;" }, "")
-  ]);
-  const modalContent = E("div", { style: "width: 100%;" }, [
-    container,
-    E("div", { id: "tachyon-service-check-footer", class: "tachyon_service_check__footer" }, [
-      renderButton({ text: _("Close"), onClick: () => ui.hideModal() })
-    ])
-  ]);
-  ui.showModal(_("Service Availability Check"), modalContent);
+  const container = E(
+    "div",
+    {
+      class: "tachyon-service-check-modal-wrapper",
+      style: "width: 100%; box-sizing: border-box;"
+    },
+    [
+      E(
+        "p",
+        { style: "text-align: center; margin-top: 20px;" },
+        "\u041F\u043E\u043B\u0443\u0447\u0435\u043D\u0438\u0435 \u0441\u043F\u0438\u0441\u043A\u0430 \u0441\u0435\u0440\u0432\u0438\u0441\u043E\u0432..."
+      ),
+      E(
+        "div",
+        {
+          class: "spinning",
+          style: "text-align: center; font-size: 24px; color: var(--border-color, #007bff);"
+        },
+        "\u26A1"
+      )
+    ]
+  );
+  const modalContent = E(
+    "div",
+    { style: "width: 100%; box-sizing: border-box;" },
+    [
+      container,
+      E(
+        "div",
+        {
+          id: "tachyon-service-check-footer",
+          style: "margin-top: 15px; display: flex; justify-content: space-between; align-items: center; gap: 10px; border-top: 1px solid var(--border-color, rgba(128,128,128,0.2)); padding-top: 12px; flex-wrap: wrap;"
+        },
+        [
+          renderButton({
+            text: "\u0417\u0430\u043A\u0440\u044B\u0442\u044C",
+            onClick: () => ui.hideModal()
+          })
+        ]
+      )
+    ]
+  );
+  ui.showModal("\u041F\u0440\u043E\u0432\u0435\u0440\u043A\u0430 \u0434\u043E\u0441\u0442\u0443\u043F\u043D\u043E\u0441\u0442\u0438 \u0441\u0435\u0440\u0432\u0438\u0441\u043E\u0432", modalContent);
   const loadTargets = (targetMode) => {
     container.innerHTML = "";
-    container.appendChild(E("p", { style: "text-align: center; margin-top: 20px;" }, _("Loading service list...")));
+    container.appendChild(
+      E(
+        "p",
+        { style: "text-align: center; margin-top: 20px;" },
+        "\u041F\u043E\u043B\u0443\u0447\u0435\u043D\u0438\u0435 \u0441\u043F\u0438\u0441\u043A\u0430 \u0441\u0435\u0440\u0432\u0438\u0441\u043E\u0432..."
+      )
+    );
     const args = targetMode === "all" ? ["get-targets", "all"] : ["get-targets"];
     callBaseMethod(Tachyon.AvailableMethods.SERVICE_HEALTH_CHECK, args).then((res) => {
       const response = res;
       container.innerHTML = "";
       if (!response || !response.success) {
-        container.appendChild(E("p", { style: "color: var(--error-color, #dc3545);" }, _("Failed to launch service check.")));
+        container.appendChild(
+          E(
+            "p",
+            { style: "color: var(--color-danger, #dc3545);" },
+            "\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u0437\u0430\u043F\u0443\u0441\u0442\u0438\u0442\u044C \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0443 \u0441\u0435\u0440\u0432\u0438\u0441\u043E\u0432."
+          )
+        );
         return;
       }
       let targets = [];
       try {
-        if (typeof response.data === "string") targets = JSON.parse(response.data);
-        else if (Array.isArray(response.data)) targets = response.data;
+        if (typeof response.data === "string") {
+          targets = JSON.parse(response.data);
+        } else if (Array.isArray(response.data)) {
+          targets = response.data;
+        }
       } catch (_e) {
-        container.appendChild(E("p", { style: "color: var(--error-color, #dc3545);" }, _("Failed to parse target list.")));
+        container.appendChild(
+          E(
+            "p",
+            { style: "color: var(--color-danger, #dc3545);" },
+            "\u041E\u0448\u0438\u0431\u043A\u0430 \u0440\u0430\u0437\u0431\u043E\u0440\u0430 \u0441\u043F\u0438\u0441\u043A\u0430 \u0446\u0435\u043B\u0435\u0439."
+          )
+        );
         return;
       }
       if (targets.length === 0) {
-        container.appendChild(E("p", {}, _("No targets found in configuration.")));
+        container.appendChild(
+          E("p", {}, "\u0426\u0435\u043B\u0438 \u0434\u043B\u044F \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0438 \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D\u044B \u0432 \u043A\u043E\u043D\u0444\u0438\u0433\u0443\u0440\u0430\u0446\u0438\u0438.")
+        );
         return;
       }
-      const activeBtn = renderButton({
-        text: _("Active routes"),
-        classNames: [targetMode === "active" ? "cbi-button cbi-button-action" : "cbi-button cbi-button-neutral"],
+      const activeSectionsBtn = renderButton({
+        text: "\u0410\u043A\u0442\u0438\u0432\u043D\u044B\u0435 \u043C\u0430\u0440\u0448\u0440\u0443\u0442\u044B",
+        classNames: [
+          targetMode === "active" ? "cbi-button-action" : "cbi-button-neutral"
+        ],
         onClick: () => loadTargets("active")
       });
-      const allBtn = renderButton({
-        text: _("All services"),
-        classNames: [targetMode === "all" ? "cbi-button cbi-button-action" : "cbi-button cbi-button-neutral"],
+      activeSectionsBtn.style.fontSize = "12px";
+      activeSectionsBtn.style.padding = "4px 12px";
+      const allProfilesBtn = renderButton({
+        text: "\u0412\u0441\u0435 \u0441\u0435\u0440\u0432\u0438\u0441\u044B",
+        classNames: [
+          targetMode === "all" ? "cbi-button-action" : "cbi-button-neutral"
+        ],
         onClick: () => loadTargets("all")
       });
-      const modeBar = E("div", { class: "tachyon_service_check__mode-bar" }, [
-        E("span", { style: "font-weight: 600; font-size: 13px;" }, _("Check mode:")),
-        activeBtn,
-        allBtn
-      ]);
+      allProfilesBtn.style.fontSize = "12px";
+      allProfilesBtn.style.padding = "4px 12px";
+      const modeSwitcherBar = E(
+        "div",
+        {
+          style: "display: flex; gap: 10px; align-items: center; margin-bottom: 14px; border-bottom: 1px solid var(--border-color, rgba(128,128,128,0.2)); padding-bottom: 10px;"
+        },
+        [
+          E(
+            "span",
+            { style: "font-weight: 600; font-size: 13px; opacity: 0.9;" },
+            "\u0420\u0435\u0436\u0438\u043C \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0438:"
+          ),
+          activeSectionsBtn,
+          allProfilesBtn
+        ]
+      );
       const sectionNames = Array.from(new Set(targets.map((t) => t.section)));
       let activeFilter = "ALL";
       let searchQuery2 = "";
-      const totalStatEl = E("b", {}, `${targets.length}`);
-      const passedStatEl = E("b", { style: "color: var(--success-color, #28a745);" }, "0");
-      const failedStatEl = E("b", { style: "color: var(--error-color, #dc3545);" }, "0");
-      const latencyStatEl = E("b", { style: "color: var(--primary-color, #007bff);" }, "-");
-      const statsBar = E("div", { class: "tachyon_service_check__stats" }, [
-        E("div", { class: "tachyon_service_check__stat" }, [E("small", {}, _("Total")), totalStatEl]),
-        E("div", { class: "tachyon_service_check__stat" }, [E("small", {}, _("Available")), passedStatEl]),
-        E("div", { class: "tachyon_service_check__stat" }, [E("small", {}, _("Unavailable")), failedStatEl]),
-        E("div", { class: "tachyon_service_check__stat" }, [E("small", {}, _("Avg latency")), latencyStatEl])
-      ]);
-      const progressBarInner = E("div", { style: "width: 0%; height: 100%; background: var(--success-color, #28a745); transition: width 0.2s ease;" });
-      const progressBarContainer = E("div", {
-        style: "width: 100%; height: 6px; background: var(--border-color-light, #eee); border-radius: 3px; overflow: hidden; margin-bottom: 12px; display: none;"
-      }, [progressBarInner]);
-      const sectionSelect = E("select", {
-        class: "cbi-input-select",
-        style: "max-width: 240px;"
-      }, [
-        E("option", { value: "ALL" }, `${_("All services")} (${targets.length})`),
-        ...sectionNames.map((sec) => {
-          const count = targets.filter((t) => t.section === sec).length;
-          return E("option", { value: sec }, `${formatSectionName(sec)} (${count})`);
-        })
-      ]);
+      const totalStatEl = E(
+        "b",
+        {
+          style: "font-size: 18px; display: block; margin-top: 2px;"
+        },
+        `${targets.length}`
+      );
+      const passedStatEl = E(
+        "b",
+        {
+          style: "font-size: 18px; color: var(--color-success, #28a745); display: block; margin-top: 2px;"
+        },
+        "0"
+      );
+      const failedStatEl = E(
+        "b",
+        {
+          style: "font-size: 18px; color: var(--color-danger, #dc3545); display: block; margin-top: 2px;"
+        },
+        "0"
+      );
+      const latencyStatEl = E(
+        "b",
+        {
+          style: "font-size: 18px; color: var(--color-info, #17a2b8); display: block; margin-top: 2px;"
+        },
+        "-"
+      );
+      const createStatCard = (title, valueEl) => {
+        return E(
+          "div",
+          {
+            class: "cbi-value",
+            style: "flex: 1 1 110px; min-width: 100px; padding: 8px 10px; border: 1px solid var(--border-color, rgba(128,128,128,0.25)); border-radius: 6px; text-align: center; background: var(--background-color-secondary, rgba(128,128,128,0.05)); margin: 0; box-sizing: border-box;"
+          },
+          [
+            E(
+              "small",
+              { style: "display: block; opacity: 0.75; font-size: 11px;" },
+              title
+            ),
+            valueEl
+          ]
+        );
+      };
+      const statsBar = E(
+        "div",
+        {
+          style: "display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; width: 100%; box-sizing: border-box;"
+        },
+        [
+          createStatCard("\u0412\u0441\u0435\u0433\u043E \u0446\u0435\u043B\u0435\u0439", totalStatEl),
+          createStatCard("\u0414\u043E\u0441\u0442\u0443\u043F\u043D\u043E", passedStatEl),
+          createStatCard("\u041D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u043D\u043E", failedStatEl),
+          createStatCard("\u0421\u0440. \u0437\u0430\u0434\u0435\u0440\u0436\u043A\u0430", latencyStatEl)
+        ]
+      );
+      const progressBarInner = E("div", {
+        style: "width: 0%; height: 100%; background: var(--color-success, #28a745); transition: width 0.2s ease;"
+      });
+      const progressBarContainer = E(
+        "div",
+        {
+          style: "width: 100%; height: 6px; background: var(--border-color, rgba(128,128,128,0.2)); border-radius: 3px; overflow: hidden; margin-bottom: 14px; display: none;"
+        },
+        [progressBarInner]
+      );
+      const sectionSelect = E(
+        "select",
+        {
+          class: "cbi-input-select",
+          style: "padding: 4px 8px; font-size: 12px; border-radius: 4px; max-width: 240px;"
+        },
+        [
+          E("option", { value: "ALL" }, `\u0412\u0441\u0435 \u0441\u0435\u0440\u0432\u0438\u0441\u044B (${targets.length})`),
+          ...sectionNames.map((sec) => {
+            const count = targets.filter((t) => t.section === sec).length;
+            return E(
+              "option",
+              { value: sec },
+              `${formatSectionName(sec)} (${count})`
+            );
+          })
+        ]
+      );
       sectionSelect.onchange = () => {
         activeFilter = sectionSelect.value;
         applyTableFilter();
       };
       const searchInput = E("input", {
         type: "text",
-        placeholder: _("Search domain or service..."),
+        placeholder: "\u041F\u043E\u0438\u0441\u043A \u0434\u043E\u043C\u0435\u043D\u0430 \u0438\u043B\u0438 \u0441\u0435\u0440\u0432\u0438\u0441\u0430...",
         class: "cbi-input-text",
-        style: "width: 200px;"
+        style: "width: 200px; padding: 4px 10px; font-size: 12px; border-radius: 4px;"
       });
       searchInput.oninput = (e) => {
-        searchQuery2 = (e.target?.value || "").toLowerCase().trim();
+        const targetInput = e.target;
+        searchQuery2 = (targetInput?.value || "").toLowerCase().trim();
         applyTableFilter();
       };
-      const toolbar = E("div", { style: "display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; gap: 8px; flex-wrap: wrap;" }, [
-        E("div", { style: "display: flex; gap: 6px; align-items: center;" }, [
-          E("span", { style: "font-size: 12px;" }, _("Filter:")),
-          sectionSelect
-        ]),
-        searchInput
-      ]);
+      const toolbar = E(
+        "div",
+        {
+          style: "display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; gap: 10px; flex-wrap: wrap;"
+        },
+        [
+          E(
+            "div",
+            {
+              style: "display: flex; gap: 8px; align-items: center; flex-wrap: wrap;"
+            },
+            [
+              E(
+                "span",
+                { style: "font-size: 12px; opacity: 0.8;" },
+                "\u0424\u0438\u043B\u044C\u0442\u0440 \u043F\u043E \u0441\u0435\u0440\u0432\u0438\u0441\u0443:"
+              ),
+              sectionSelect
+            ]
+          ),
+          searchInput
+        ]
+      );
       const tableHead = E("tr", { class: "tr cbi-section-table-titles" }, [
-        E("th", { class: "th", style: "width: 28%;" }, _("Service / Target")),
-        E("th", { class: "th", style: "width: 17%;" }, _("Route")),
-        E("th", { class: "th", style: "width: 20%;" }, _("IP / DNS")),
-        E("th", { class: "th", style: "text-align: right; width: 7%;" }, "TCP"),
-        E("th", { class: "th", style: "text-align: right; width: 7%;" }, "TLS"),
-        E("th", { class: "th", style: "text-align: right; width: 7%;" }, "HTTP"),
-        E("th", { class: "th", style: "text-align: center; width: 14%;" }, _("Status"))
+        E(
+          "th",
+          { class: "th", style: "width: 28%; padding: 8px;" },
+          "\u0421\u0435\u0440\u0432\u0438\u0441 / \u0426\u0435\u043B\u044C"
+        ),
+        E(
+          "th",
+          { class: "th", style: "width: 17%; padding: 8px;" },
+          "\u041C\u0430\u0440\u0448\u0440\u0443\u0442"
+        ),
+        E(
+          "th",
+          { class: "th", style: "width: 20%; padding: 8px;" },
+          "IP / DNS"
+        ),
+        E(
+          "th",
+          {
+            class: "th",
+            style: "text-align: right; width: 7%; padding: 8px 4px;"
+          },
+          "TCP"
+        ),
+        E(
+          "th",
+          {
+            class: "th",
+            style: "text-align: right; width: 7%; padding: 8px 4px;"
+          },
+          "TLS"
+        ),
+        E(
+          "th",
+          {
+            class: "th",
+            style: "text-align: right; width: 7%; padding: 8px 4px;"
+          },
+          "HTTP"
+        ),
+        E(
+          "th",
+          {
+            class: "th",
+            style: "text-align: center; width: 14%; padding: 8px 6px;"
+          },
+          "\u0421\u0442\u0430\u0442\u0443\u0441"
+        )
       ]);
       const tableBody = E("tbody", {});
-      const table = E("table", { class: "table cbi-section-table" }, [
-        E("thead", {}, [tableHead]),
-        tableBody
-      ]);
-      const tableScrollWrapper = E("div", { class: "tachyon_service_check__table-scroll" }, [table]);
+      const table = E(
+        "table",
+        {
+          class: "table cbi-section-table",
+          style: "width: 100%; margin: 0; table-layout: fixed; box-sizing: border-box;"
+        },
+        [
+          E(
+            "thead",
+            {
+              style: "position: sticky; top: 0; background: var(--background-color-primary, #ffffff); z-index: 2;"
+            },
+            [tableHead]
+          ),
+          tableBody
+        ]
+      );
+      const tableScrollWrapper = E(
+        "div",
+        {
+          style: "max-height: 380px; overflow-y: auto; overflow-x: hidden; border: 1px solid var(--border-color, rgba(128,128,128,0.25)); border-radius: 6px; width: 100%; box-sizing: border-box;"
+        },
+        [table]
+      );
       const rowMap = [];
       targets.forEach((item, index) => {
         const rowClass = index % 2 === 0 ? "cbi-rowstyle-1" : "cbi-rowstyle-2";
+        const badge = renderStatusBadge("", false, true);
         const tr = E("tr", { class: `tr ${rowClass}` }, [
-          E("td", { class: "td" }, [
-            E("span", { style: "font-weight: 600; font-size: 12px;" }, formatSectionName(item.section)),
-            E("br"),
-            E("small", { style: "opacity: 0.8;" }, item.domain)
+          E(
+            "td",
+            { class: "td", style: "word-break: break-all; padding: 8px;" },
+            [
+              E(
+                "span",
+                { style: "font-weight: 600; font-size: 12px;" },
+                formatSectionName(item.section)
+              ),
+              E("br"),
+              E("small", { style: "opacity: 0.8;" }, item.domain)
+            ]
+          ),
+          E("td", { class: "td", style: "font-size: 12px; padding: 8px;" }, [
+            E(
+              "span",
+              {
+                class: "badge cbi-value-title",
+                style: "font-size: 11px; padding: 2px 6px;"
+              },
+              formatRouteType(item.route_type)
+            )
           ]),
-          E("td", { class: "td", style: "font-size: 12px;" }, [
-            E("span", { class: "badge cbi-value-title", style: "font-size: 11px; padding: 2px 6px;" }, formatRouteType(item.route_type))
-          ]),
-          E("td", { class: "td", style: "font-size: 12px;" }, [
+          E("td", { class: "td", style: "font-size: 12px; padding: 8px;" }, [
             E("span", {}, "?"),
             E("br"),
-            E("small", { style: "opacity: 0.6;" }, "-")
+            E("small", { style: "opacity: 0.6;" }, `-`)
           ]),
-          E("td", { class: "td", style: "text-align: right; font-size: 12px;" }, "-"),
-          E("td", { class: "td", style: "text-align: right; font-size: 12px;" }, "-"),
-          E("td", { class: "td", style: "text-align: right; font-size: 12px;" }, "-"),
-          E("td", { class: "td", style: "text-align: center;" }, renderStatusBadge("", false, true))
+          E(
+            "td",
+            {
+              class: "td",
+              style: "text-align: right; font-size: 12px; padding: 8px 4px;"
+            },
+            "-"
+          ),
+          E(
+            "td",
+            {
+              class: "td",
+              style: "text-align: right; font-size: 12px; padding: 8px 4px;"
+            },
+            "-"
+          ),
+          E(
+            "td",
+            {
+              class: "td",
+              style: "text-align: right; font-size: 12px; padding: 8px 4px;"
+            },
+            "-"
+          ),
+          E(
+            "td",
+            { class: "td", style: "text-align: center; padding: 8px 6px;" },
+            badge
+          )
         ]);
         rowMap.push({ target: item, tr });
         tableBody.appendChild(tr);
       });
       const applyTableFilter = () => {
         rowMap.forEach(({ target, tr }) => {
-          const matchSection = activeFilter === "ALL" || target.section === activeFilter;
-          const matchSearch = !searchQuery2 || target.domain.toLowerCase().includes(searchQuery2) || target.section.toLowerCase().includes(searchQuery2) || formatSectionName(target.section).toLowerCase().includes(searchQuery2);
-          tr.style.display = matchSection && matchSearch ? "" : "none";
+          const matchesSection = activeFilter === "ALL" || target.section === activeFilter;
+          const matchesSearch = !searchQuery2 || target.domain.toLowerCase().includes(searchQuery2) || target.section.toLowerCase().includes(searchQuery2) || formatSectionName(target.section).toLowerCase().includes(searchQuery2);
+          tr.style.display = matchesSection && matchesSearch ? "" : "none";
         });
       };
       const updateSummaryStats = () => {
@@ -10242,7 +10643,7 @@ function renderServiceCheckModal() {
         failedStatEl.textContent = `${failed2}`;
         latencyStatEl.textContent = countLat > 0 ? `${Math.round(totalLat / countLat)} ms` : "-";
       };
-      container.appendChild(modeBar);
+      container.appendChild(modeSwitcherBar);
       container.appendChild(statsBar);
       container.appendChild(progressBarContainer);
       container.appendChild(toolbar);
@@ -10252,34 +10653,118 @@ function renderServiceCheckModal() {
         footer.innerHTML = "";
         const customDomainInput = E("input", {
           type: "text",
-          placeholder: _("Check domain or IP (e.g. example.com)..."),
+          id: "custom-domain-input",
+          placeholder: "\u041F\u0440\u043E\u0432\u0435\u0440\u0438\u0442\u044C \u0434\u043E\u043C\u0435\u043D \u0438\u043B\u0438 IP (\u043D\u0430\u043F\u0440. example.com)...",
           class: "cbi-input-text",
-          style: "width: 250px;"
+          style: "width: 270px; font-size: 12px;"
         });
         const customBtn = renderButton({
-          text: _("Check domain"),
-          classNames: ["cbi-button cbi-button-neutral"],
+          text: "\u041F\u0440\u043E\u0432\u0435\u0440\u0438\u0442\u044C \u0434\u043E\u043C\u0435\u043D",
+          classNames: ["cbi-button-neutral"],
           onClick: async () => {
             const domain = customDomainInput.value.trim();
             if (!domain) return;
             customBtn.disabled = true;
+            customBtn.textContent = "...";
             try {
-              const cRes = await callBaseMethod(Tachyon.AvailableMethods.SERVICE_HEALTH_CHECK, ["check-custom", domain]);
+              const cRes = await callBaseMethod(
+                Tachyon.AvailableMethods.SERVICE_HEALTH_CHECK,
+                ["check-custom", domain]
+              );
               if (cRes && cRes.success) {
                 const cResults = typeof cRes.data === "string" ? JSON.parse(cRes.data) : cRes.data || [];
                 if (cResults && cResults.length > 0) {
                   const cItem = cResults[0];
+                  const cBadge = renderStatusBadge(cItem.status_class);
                   const customTr = E("tr", { class: "tr cbi-rowstyle-1" }, [
-                    E("td", { class: "td" }, [E("span", { style: "font-weight: 600;" }, formatSectionName(cItem.section)), E("br"), E("small", {}, cItem.domain)]),
-                    E("td", { class: "td", style: "font-size: 12px;" }, [E("span", { class: "badge cbi-value-title", style: "font-size: 11px; padding: 2px 6px;" }, formatRouteType(cItem.route_type))]),
-                    E("td", { class: "td", style: "font-size: 12px;" }, [cItem.ip || "?", E("br"), E("small", {}, `${cItem.dns_ms}ms`)]),
-                    E("td", { class: "td", style: "text-align: right;" }, cItem.tcp_ms > 0 ? `${cItem.tcp_ms}` : "-"),
-                    E("td", { class: "td", style: "text-align: right;" }, cItem.tls_ms > 0 ? `${cItem.tls_ms}` : "-"),
-                    E("td", { class: "td", style: "text-align: right;" }, cItem.http_ms > 0 ? `${cItem.http_ms}` : "-"),
-                    E("td", { class: "td", style: "text-align: center;" }, renderStatusBadge(cItem.status_class))
+                    E(
+                      "td",
+                      {
+                        class: "td",
+                        style: "word-break: break-all; padding: 8px;"
+                      },
+                      [
+                        E(
+                          "span",
+                          { style: "font-weight: 600;" },
+                          formatSectionName(cItem.section)
+                        ),
+                        E("br"),
+                        E("small", {}, cItem.domain)
+                      ]
+                    ),
+                    E(
+                      "td",
+                      {
+                        class: "td",
+                        style: "font-size: 12px; padding: 8px;"
+                      },
+                      [
+                        E(
+                          "span",
+                          {
+                            class: "badge cbi-value-title",
+                            style: "font-size: 11px; padding: 2px 6px;"
+                          },
+                          formatRouteType(cItem.route_type)
+                        )
+                      ]
+                    ),
+                    E(
+                      "td",
+                      {
+                        class: "td",
+                        style: "font-size: 12px; padding: 8px;"
+                      },
+                      [
+                        cItem.ip || "?",
+                        E("br"),
+                        E("small", {}, `${cItem.dns_ms}ms`)
+                      ]
+                    ),
+                    E(
+                      "td",
+                      {
+                        class: "td",
+                        style: "text-align: right; padding: 8px 4px;"
+                      },
+                      cItem.tcp_ms > 0 ? `${cItem.tcp_ms}` : "-"
+                    ),
+                    E(
+                      "td",
+                      {
+                        class: "td",
+                        style: "text-align: right; padding: 8px 4px;"
+                      },
+                      cItem.tls_ms > 0 ? `${cItem.tls_ms}` : "-"
+                    ),
+                    E(
+                      "td",
+                      {
+                        class: "td",
+                        style: "text-align: right; padding: 8px 4px;"
+                      },
+                      cItem.http_ms > 0 ? `${cItem.http_ms}` : "-"
+                    ),
+                    E(
+                      "td",
+                      {
+                        class: "td",
+                        style: "text-align: center; padding: 8px 6px;"
+                      },
+                      cBadge
+                    )
                   ]);
                   tableBody.insertBefore(customTr, tableBody.firstChild);
-                  rowMap.unshift({ target: { section: "Custom", route_type: "auto", domain: cItem.domain }, tr: customTr, result: cItem });
+                  rowMap.unshift({
+                    target: {
+                      section: "Custom",
+                      route_type: "auto",
+                      domain: cItem.domain
+                    },
+                    tr: customTr,
+                    result: cItem
+                  });
                   updateSummaryStats();
                   customDomainInput.value = "";
                 }
@@ -10287,38 +10772,60 @@ function renderServiceCheckModal() {
             } catch (_e) {
             } finally {
               customBtn.disabled = false;
+              customBtn.textContent = "\u041F\u0440\u043E\u0432\u0435\u0440\u0438\u0442\u044C \u0434\u043E\u043C\u0435\u043D";
             }
           }
         });
+        const leftWrap = E(
+          "div",
+          {
+            style: "display: flex; gap: 8px; align-items: center; flex-wrap: wrap;"
+          },
+          [customDomainInput, customBtn]
+        );
         const checkAllBtn = renderButton({
-          text: _("Check all"),
-          classNames: ["cbi-button cbi-button-action"],
+          text: "\u041F\u0440\u043E\u0432\u0435\u0440\u0438\u0442\u044C \u0432\u0441\u0435",
+          classNames: ["cbi-button-action"],
           onClick: async () => {
             checkAllBtn.disabled = true;
+            checkAllBtn.textContent = "\u041F\u0440\u043E\u0432\u0435\u0440\u043A\u0430...";
             progressBarContainer.style.display = "block";
             progressBarInner.style.width = "0%";
             for (let i = 0; i < rowMap.length; i++) {
               const itemObj = rowMap[i];
+              const { target, tr } = itemObj;
               progressBarInner.style.width = `${Math.round((i + 1) / rowMap.length * 100)}%`;
-              const badgeCell = itemObj.tr.childNodes[6];
+              const badgeCell = tr.childNodes[6];
               badgeCell.innerHTML = "";
               badgeCell.appendChild(renderStatusBadge("", true));
               try {
-                const cRes = await callBaseMethod(Tachyon.AvailableMethods.SERVICE_HEALTH_CHECK, ["check-domain", JSON.stringify(itemObj.target)]);
+                const cRes = await callBaseMethod(
+                  Tachyon.AvailableMethods.SERVICE_HEALTH_CHECK,
+                  ["check-domain", JSON.stringify(target)]
+                );
                 if (cRes && cRes.success) {
                   const cResults = typeof cRes.data === "string" ? JSON.parse(cRes.data) : cRes.data || [];
                   if (cResults && cResults.length > 0) {
                     const cItem = cResults[0];
                     itemObj.result = cItem;
-                    itemObj.tr.childNodes[2].innerHTML = "";
-                    itemObj.tr.childNodes[2].appendChild(document.createTextNode(cItem.ip || "?"));
-                    itemObj.tr.childNodes[2].appendChild(E("br"));
-                    itemObj.tr.childNodes[2].appendChild(E("small", { style: "opacity: 0.6;" }, `${cItem.dns_ms}ms`));
-                    itemObj.tr.childNodes[3].textContent = cItem.tcp_ms > 0 ? `${cItem.tcp_ms}` : "-";
-                    itemObj.tr.childNodes[4].textContent = cItem.tls_ms > 0 ? `${cItem.tls_ms}` : "-";
-                    itemObj.tr.childNodes[5].textContent = cItem.http_ms > 0 ? `${cItem.http_ms}` : "-";
+                    const cBadge = renderStatusBadge(cItem.status_class);
+                    tr.childNodes[2].innerHTML = "";
+                    tr.childNodes[2].appendChild(
+                      document.createTextNode(cItem.ip || "?")
+                    );
+                    tr.childNodes[2].appendChild(E("br"));
+                    tr.childNodes[2].appendChild(
+                      E(
+                        "small",
+                        { style: "opacity: 0.6;" },
+                        `${cItem.dns_ms}ms`
+                      )
+                    );
+                    tr.childNodes[3].textContent = cItem.tcp_ms > 0 ? `${cItem.tcp_ms}` : "-";
+                    tr.childNodes[4].textContent = cItem.tls_ms > 0 ? `${cItem.tls_ms}` : "-";
+                    tr.childNodes[5].textContent = cItem.http_ms > 0 ? `${cItem.http_ms}` : "-";
                     badgeCell.innerHTML = "";
-                    badgeCell.appendChild(renderStatusBadge(cItem.status_class));
+                    badgeCell.appendChild(cBadge);
                   }
                 }
               } catch (_e) {
@@ -10327,17 +10834,30 @@ function renderServiceCheckModal() {
               }
               updateSummaryStats();
             }
-            checkAllBtn.textContent = _("Check again");
+            checkAllBtn.textContent = "\u041F\u0440\u043E\u0432\u0435\u0440\u0438\u0442\u044C \u0441\u043D\u043E\u0432\u0430";
             checkAllBtn.disabled = false;
           }
         });
-        const closeBtn = renderButton({ text: _("Close"), onClick: () => ui.hideModal() });
-        footer.appendChild(E("div", { style: "display: flex; gap: 6px; align-items: center; flex-wrap: wrap;" }, [customDomainInput, customBtn]));
-        footer.appendChild(E("div", { style: "display: flex; gap: 6px;" }, [checkAllBtn, closeBtn]));
+        const closeBtn = renderButton({
+          text: "\u0417\u0430\u043A\u0440\u044B\u0442\u044C",
+          onClick: () => ui.hideModal()
+        });
+        const rightWrap = E("div", { style: "display: flex; gap: 8px;" }, [
+          checkAllBtn,
+          closeBtn
+        ]);
+        footer.appendChild(leftWrap);
+        footer.appendChild(rightWrap);
       }
     }).catch(() => {
       container.innerHTML = "";
-      container.appendChild(E("p", { style: "color: var(--error-color, #dc3545);" }, _("Failed to launch service check.")));
+      container.appendChild(
+        E(
+          "p",
+          { style: "color: var(--color-danger, #dc3545);" },
+          "\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u0437\u0430\u043F\u0443\u0441\u0442\u0438\u0442\u044C \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0443 \u0441\u0435\u0440\u0432\u0438\u0441\u043E\u0432."
+        )
+      );
     });
   };
   loadTargets("active");
@@ -10358,7 +10878,7 @@ var chatHistory = [
 ];
 function renderAiChatModal() {
   const messageListContainer = E("div", {
-    class: "tachyon_ai_chat__messages"
+    style: "height: 360px; overflow-y: auto; padding: 12px; background: var(--background-color-secondary, rgba(0,0,0,0.2)); border: 1px solid var(--border-color, rgba(255,255,255,0.15)); border-radius: 8px; display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; width: 100%; box-sizing: border-box;"
   });
   const renderMessages = () => {
     messageListContainer.innerHTML = "";
@@ -10367,11 +10887,17 @@ function renderAiChatModal() {
       const bubble = E(
         "div",
         {
-          class: `tachyon_ai_chat__bubble ${isUser ? "tachyon_ai_chat__bubble--user" : ""}`
+          style: `max-width: 82%; align-self: ${isUser ? "flex-end" : "flex-start"}; background: ${isUser ? "#007bff" : "var(--background-color-primary, #2a2a2a)"}; color: #fff; padding: 8px 12px; border-radius: 12px; font-size: 13px; border: 1px solid ${isUser ? "#0056b3" : "var(--border-color, rgba(255,255,255,0.15))"}; line-height: 1.4; word-break: break-word;`
         },
         [
           E("div", {}, msg.text),
-          E("small", {}, msg.timestamp)
+          E(
+            "small",
+            {
+              style: "display: block; opacity: 0.65; text-align: right; font-size: 10px; margin-top: 4px;"
+            },
+            msg.timestamp
+          )
         ]
       );
       messageListContainer.appendChild(bubble);
@@ -10382,11 +10908,12 @@ function renderAiChatModal() {
   const chatInput = E("input", {
     type: "text",
     placeholder: _("Ask Tachyon AI Assistant a question..."),
-    class: "cbi-input-text"
+    class: "cbi-input-text",
+    style: "flex: 1 1 auto; min-width: 0; font-size: 13px; padding: 6px 10px; border-radius: 6px; box-sizing: border-box;"
   });
   const sendBtn = renderButton({
     text: _("Send"),
-    classNames: ["cbi-button cbi-button-action"],
+    classNames: ["cbi-button-action"],
     onClick: () => handleSend()
   });
   const handleSend = async (queryText) => {
@@ -10405,7 +10932,7 @@ function renderAiChatModal() {
     renderMessages();
     const typingMsg = {
       sender: "assistant",
-      text: _("Thinking..."),
+      text: "\u{1F916} " + _("Thinking..."),
       timestamp: (/* @__PURE__ */ new Date()).toLocaleTimeString([], {
         hour: "2-digit",
         minute: "2-digit"
@@ -10444,7 +10971,7 @@ function renderAiChatModal() {
       const errMsg = e instanceof Error ? e.message : _("Server unavailable");
       chatHistory.push({
         sender: "assistant",
-        text: _("AI service error") + ": " + errMsg,
+        text: "\u274C " + _("AI service error") + ": " + errMsg,
         timestamp: (/* @__PURE__ */ new Date()).toLocaleTimeString([], {
           hour: "2-digit",
           minute: "2-digit"
@@ -10457,20 +10984,25 @@ function renderAiChatModal() {
     if (e.key === "Enter") handleSend();
   };
   const quickPrompts = [
-    { label: _("Check YouTube"), query: "Check YouTube availability" },
-    { label: _("Why Discord fails?"), query: "Why Discord fails?" },
-    { label: _("Full System Diagnostic"), query: "Run full system diagnostic" }
+    { label: "\u{1FA7A} " + _("Check YouTube"), query: "Check YouTube availability" },
+    { label: "\u{1F50D} " + _("Why Discord fails?"), query: "Why Discord fails?" },
+    {
+      label: "\u{1F6E0}\uFE0F " + _("Full System Diagnostic"),
+      query: "Run full system diagnostic"
+    }
   ];
   const quickPromptsBar = E(
     "div",
-    { class: "tachyon_ai_chat__toolbar" },
+    {
+      style: "display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; width: 100%; box-sizing: border-box;"
+    },
     quickPrompts.map((qp) => {
       const btn = E(
         "button",
         {
           type: "button",
           class: "cbi-button cbi-button-neutral",
-          style: "font-size: 12px; padding: 2px 8px;"
+          style: "font-size: 11px; padding: 2px 8px; border-radius: 10px;"
         },
         qp.label
       );
@@ -10480,19 +11012,26 @@ function renderAiChatModal() {
   );
   const inputToolbar = E(
     "div",
-    { class: "tachyon_ai_chat__input-row" },
+    {
+      style: "display: flex; gap: 8px; align-items: center; width: 100%; box-sizing: border-box;"
+    },
     [chatInput, sendBtn]
+  );
+  const modalWrapper = E(
+    "div",
+    { style: "width: 100%; max-width: 680px; box-sizing: border-box;" },
+    [quickPromptsBar, messageListContainer, inputToolbar]
   );
   const modalContent = E(
     "div",
-    { style: "width: 100%; max-width: 680px;" },
+    { style: "width: 100%; max-width: 680px; box-sizing: border-box;" },
     [
-      quickPromptsBar,
-      messageListContainer,
-      inputToolbar,
+      modalWrapper,
       E(
         "div",
-        { class: "tachyon_service_check__footer" },
+        {
+          style: "margin-top: 12px; display: flex; justify-content: flex-end; border-top: 1px solid var(--border-color, rgba(255,255,255,0.15)); padding-top: 10px;"
+        },
         [
           renderButton({
             text: _("Close"),
@@ -10507,28 +11046,42 @@ function renderAiChatModal() {
 
 // src/tachyon/tabs/diagnostic/partials/renderSystemInfo.ts
 function renderSystemInfo({ items }) {
-  const TAG_CLASS = {
-    neutral: "cbi-button-neutral",
-    warning: "cbi-button-reset",
-    success: "cbi-button-save"
-  };
-  return E("div", { class: "tachyon_diagnostic-page__system-info" }, [
-    E("h3", { style: "margin: 0 0 6px 0; font-size: 14px;" }, _("System information")),
-    ...items.map((item) => {
-      const tagBadge = item.tag ? E(
-        "span",
-        {
-          class: `badge ${TAG_CLASS[item.tag.kind] || "cbi-button-neutral"}`,
-          style: "font-size: 11px; padding: 1px 6px; margin-left: 6px;"
-        },
-        item.tag.label
-      ) : null;
-      return E("div", { class: "tachyon_diagnostic-page__system-info__row" }, [
-        E("b", {}, item.key),
-        E("span", {}, tagBadge ? [item.value, tagBadge] : item.value)
-      ]);
-    })
-  ]);
+  return E(
+    "div",
+    { class: "tachyon_diagnostic-page__right-bar__system-info" },
+    [
+      E(
+        "b",
+        { class: "tachyon_diagnostic-page__right-bar__system-info__title" },
+        _("System information")
+      ),
+      ...items.map((item) => {
+        const tagClass = [
+          "tachyon_diagnostic-page__right-bar__system-info__row__tag",
+          ...insertIf(item.tag?.kind === "neutral", [
+            "tachyon_diagnostic-page__right-bar__system-info__row__tag--neutral"
+          ]),
+          ...insertIf(item.tag?.kind === "warning", [
+            "tachyon_diagnostic-page__right-bar__system-info__row__tag--warning"
+          ]),
+          ...insertIf(item.tag?.kind === "success", [
+            "tachyon_diagnostic-page__right-bar__system-info__row__tag--success"
+          ])
+        ].filter(Boolean).join(" ");
+        return E(
+          "div",
+          { class: "tachyon_diagnostic-page__right-bar__system-info__row" },
+          [
+            E("b", {}, item.key),
+            E("div", {}, [
+              E("span", {}, item.value),
+              E("span", { class: tagClass }, item?.tag?.label)
+            ])
+          ]
+        );
+      })
+    ]
+  );
 }
 
 // src/helpers/normalizeCompiledVersion.ts
@@ -10547,21 +11100,29 @@ function normalizeCompiledVersion(version, commitSha) {
 
 // src/tachyon/tabs/diagnostic/partials/renderWikiDisclaimer.ts
 function renderWikiDisclaimer(kind) {
+  const iconWrap = E("span", {
+    class: "tachyon_diagnostic-page__right-bar__wiki__icon"
+  });
+  iconWrap.appendChild(renderBookOpenTextIcon24());
   const className = [
-    "tachyon_wiki-box",
-    ...insertIf(kind === "error", ["tachyon_wiki-box--error"]),
-    ...insertIf(kind === "warning", ["tachyon_wiki-box--warning"])
+    "tachyon_diagnostic-page__right-bar__wiki",
+    ...insertIf(kind === "error", [
+      "tachyon_diagnostic-page__right-bar__wiki--error"
+    ]),
+    ...insertIf(kind === "warning", [
+      "tachyon_diagnostic-page__right-bar__wiki--warning"
+    ])
   ].join(" ");
   return E("div", { class: className }, [
-    E("div", { class: "tachyon_wiki-box__content" }, [
-      E("span", {}, renderBookOpenTextIcon24()),
-      E("div", {}, [
+    E("div", { class: "tachyon_diagnostic-page__right-bar__wiki__content" }, [
+      iconWrap,
+      E("div", { class: "tachyon_diagnostic-page__right-bar__wiki__texts" }, [
         E("b", {}, _("Troubleshooting")),
-        E("div", { style: "font-size: 13px; margin-top: 4px;" }, _("Do not panic, everything can be fixed, just..."))
+        E("div", {}, _("Do not panic, everything can be fixed, just..."))
       ])
     ]),
     renderButton({
-      classNames: ["cbi-button cbi-button-save"],
+      classNames: ["cbi-button-save"],
       text: _("Open Project Page"),
       onClick: () => window.open(
         "https://github.com/Dushnilin/tachyon#readme",
@@ -12416,6 +12977,7 @@ async function initController2() {
 
 // src/tachyon/tabs/diagnostic/styles.ts
 var styles4 = `
+
 #cbi-${TACHYON_UCI_PACKAGE}-diagnostic-_mount_node > div {
     width: 100%;
 }
@@ -12425,319 +12987,193 @@ var styles4 = `
 }
 
 .tachyon_diagnostic-page {
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-}
-
-.tachyon_diagnostic-page__top-bar {
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-}
-
-.tachyon_diagnostic-page__top-bar button {
-    min-width: 0;
-}
-
-.tachyon_diagnostic-page__main {
     display: grid;
     grid-template-columns: 2fr 1fr;
-    gap: 16px;
+    grid-column-gap: 10px;
     align-items: start;
 }
 
 @media (max-width: 800px) {
-    .tachyon_diagnostic-page__main {
+    .tachyon_diagnostic-page {
         grid-template-columns: 1fr;
     }
 }
 
-.tachyon_diagnostic-page__left {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
+.tachyon_diagnostic-page__right-bar {
+    display: grid;
+    grid-template-columns: 1fr;
+    grid-row-gap: 10px;
 }
 
-.tachyon_diagnostic-page__right {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-}
-
-.tachyon_diagnostic-page__right > .cbi-section {
-    margin: 0;
+.tachyon_diagnostic-page__right-bar__wiki {
+    border: 2px var(--background-color-low, lightgray) solid;
+    border-radius: 4px;
     padding: 10px;
+
+    display: grid;
+    grid-template-columns: auto;
+    grid-row-gap: 10px;
 }
 
-.tachyon_diagnostic-page__right > .cbi-section > h3 {
-    margin: 0 0 8px 0;
-    padding: 0 0 4px 0;
-    border-bottom: 1px solid var(--border-color-medium, #ccc);
-    font-size: 14px;
+.tachyon_diagnostic-page__right-bar__wiki--warning {
+    border: 2px var(--warn-color-medium, orange) solid;
+}
+.tachyon_diagnostic-page__right-bar__wiki--error {
+    border: 2px var(--error-color-medium, red) solid;
 }
 
-.tachyon_diagnostic-page__actions-list {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
+.tachyon_diagnostic-page__right-bar__wiki__content {
+    display: grid;
+    grid-template-columns: 1fr 5fr;
+    grid-column-gap: 10px;
 }
 
-.tachyon_diagnostic-page__actions-list .cbi-button {
+.tachyon_diagnostic-page__right-bar__wiki__texts {}
+
+.tachyon_diagnostic-page__right-bar__actions {
+    border: 2px var(--background-color-low, lightgray) solid;
+    border-radius: 4px;
+    padding: 10px;
+
+    display: grid;
+    grid-template-columns: auto;
+    grid-row-gap: 10px;
+
+}
+
+.tachyon_diagnostic-page__right-bar__actions > .tachyon-partial-button {
     width: 100%;
     min-width: 0;
     margin-left: 0;
-    text-align: left;
 }
 
-.tachyon_diagnostic-page__system-info {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-}
-
-.tachyon_diagnostic-page__system-info__row {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    gap: 8px;
-    font-size: 13px;
-    padding: 2px 0;
-    border-bottom: 1px dotted var(--border-color-light, #eee);
-}
-
-.tachyon_diagnostic-page__system-info__row:last-child {
-    border-bottom: none;
-}
-
-.tachyon_diagnostic-page__system-info__row b {
-    flex-shrink: 0;
-}
-
-.tachyon_diagnostic-page__system-info__row span {
-    text-align: right;
-    word-break: break-all;
-}
-
-.tachyon_check-row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 8px 12px;
-    border: 1px solid var(--border-color-medium, #ccc);
-    border-radius: 4px;
-    background: var(--background-color-primary, #fff);
-    transition: border-color 0.2s;
-}
-
-.tachyon_check-row--loading {
-    border-color: var(--primary-color, #007bff);
-    opacity: 0.85;
-}
-
-.tachyon_check-row--success {
-    border-color: var(--success-color, #28a745);
-}
-
-.tachyon_check-row--warning {
-    border-color: var(--warn-color, #ffc107);
-}
-
-.tachyon_check-row--error {
-    border-color: var(--error-color, #dc3545);
-}
-
-.tachyon_check-row--skipped {
-    opacity: 0.5;
-}
-
-.tachyon_check-row__icon {
-    flex-shrink: 0;
-    width: 24px;
-    height: 24px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.tachyon_check-row__body {
-    flex: 1;
-    min-width: 0;
-}
-
-.tachyon_check-row__title {
-    font-weight: bold;
-    font-size: 13px;
-    display: block;
-}
-
-.tachyon_check-row__detail {
-    font-size: 12px;
-    opacity: 0.8;
-    display: block;
-}
-
-.tachyon_check-row__summary {
-    margin-top: 6px;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-}
-
-.tachyon_check-row__summary__item {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 12px;
-}
-
-.tachyon_check-row__summary__item--error { color: var(--error-color, #dc3545); }
-.tachyon_check-row__summary__item--warning { color: var(--warn-color, #ffc107); }
-.tachyon_check-row__summary__item--success { color: var(--success-color, #28a745); }
-
-.tachyon_check-row__summary__item b {
-    flex-shrink: 0;
-}
-
-.tachyon_wiki-box {
-    border: 1px solid var(--border-color-medium, #ccc);
+.tachyon_diagnostic-page__right-bar__system-info {
+    border: 2px var(--background-color-low, lightgray) solid;
     border-radius: 4px;
     padding: 10px;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
+
+    display: grid;
+    grid-template-columns: auto;
+    grid-row-gap: 10px;
 }
 
-.tachyon_wiki-box--warning {
-    border-color: var(--warn-color, #ffc107);
+.tachyon_diagnostic-page__right-bar__system-info__title {
+
 }
 
-.tachyon_wiki-box--error {
-    border-color: var(--error-color, #dc3545);
+.tachyon_diagnostic-page__right-bar__system-info__row {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    grid-column-gap: 5px;
 }
 
-.tachyon_wiki-box__content {
-    display: flex;
-    gap: 10px;
-    align-items: flex-start;
-}
-
-.tachyon_wiki-box__content > span {
-    flex-shrink: 0;
-    margin-top: 2px;
-}
-
-.tachyon_ai_chat__messages {
-    height: 360px;
-    overflow-y: auto;
-    padding: 8px;
-    background: var(--background-color-secondary, rgba(0,0,0,0.05));
-    border: 1px solid var(--border-color-medium, #ccc);
+.tachyon_diagnostic-page__right-bar__system-info__row__tag {
+    padding: 2px 4px;
+    border: 1px transparent solid;
     border-radius: 4px;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    margin-bottom: 10px;
+    margin-left: 5px;
 }
 
-.tachyon_ai_chat__bubble {
-    max-width: 82%;
-    padding: 6px 10px;
-    border-radius: 8px;
-    font-size: 13px;
-    line-height: 1.4;
-    word-break: break-word;
-    border: 1px solid var(--border-color-medium, #ccc);
-    background: var(--background-color-primary, #fff);
+.tachyon_diagnostic-page__right-bar__system-info__row__tag--neutral {
+    border: 1px var(--background-color-high, gray) solid;
+    color: var(--text-color-medium, gray);
 }
 
-.tachyon_ai_chat__bubble--user {
-    align-self: flex-end;
-    background: var(--primary-color, #007bff);
-    color: #fff;
-    border-color: var(--primary-color-dark, #0056b3);
+.tachyon_diagnostic-page__right-bar__system-info__row__tag--warning {
+    border: 1px var(--warn-color-medium, orange) solid;
+    color: var(--warn-color-medium, orange);
 }
 
-.tachyon_ai_chat__bubble small {
-    display: block;
-    opacity: 0.6;
-    text-align: right;
-    font-size: 10px;
-    margin-top: 2px;
+.tachyon_diagnostic-page__right-bar__system-info__row__tag--success {
+    border: 1px var(--success-color-medium, green) solid;
+    color: var(--success-color-medium, green);
 }
 
-.tachyon_ai_chat__toolbar {
-    display: flex;
-    gap: 6px;
-    flex-wrap: wrap;
-    margin-bottom: 8px;
+.tachyon_diagnostic-page__left-bar {
+    display: grid;
+    grid-template-columns: 1fr;
+    grid-row-gap: 10px;
 }
 
-.tachyon_ai_chat__input-row {
-    display: flex;
-    gap: 8px;
-    align-items: center;
+.tachyon_diagnostic-page__run_check_wrapper {}
+
+.tachyon_diagnostic-page__run_check_wrapper button {
+    width: 100%;
 }
 
-.tachyon_ai_chat__input-row input {
-    flex: 1 1 auto;
-    min-width: 0;
+.tachyon_diagnostic-page__checks {
+    display: grid;
+    grid-template-columns: 1fr;
+    grid-row-gap: 10px;
 }
 
-.tachyon_service_check__mode-bar {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-    margin-bottom: 12px;
-    padding-bottom: 8px;
-    border-bottom: 1px solid var(--border-color-light, #eee);
-}
-
-.tachyon_service_check__stats {
-    display: flex;
-    gap: 10px;
-    flex-wrap: wrap;
-    margin-bottom: 12px;
-}
-
-.tachyon_service_check__stat {
-    flex: 1 1 100px;
-    min-width: 80px;
-    padding: 6px 8px;
-    border: 1px solid var(--border-color-medium, #ccc);
+.tachyon_diagnostic_alert {
+    border: 2px var(--background-color-low, lightgray) solid;
     border-radius: 4px;
-    text-align: center;
-    background: var(--background-color-secondary, rgba(0,0,0,0.03));
-}
 
-.tachyon_service_check__stat small {
-    display: block;
-    opacity: 0.7;
-    font-size: 11px;
-}
-
-.tachyon_service_check__stat b {
-    display: block;
-    margin-top: 2px;
-    font-size: 16px;
-}
-
-.tachyon_service_check__table-scroll {
-    max-height: 380px;
-    overflow-y: auto;
-    border: 1px solid var(--border-color-medium, #ccc);
-    border-radius: 4px;
-}
-
-.tachyon_service_check__footer {
-    margin-top: 12px;
-    display: flex;
-    justify-content: space-between;
+    display: grid;
+    grid-template-columns: 24px 1fr;
+    grid-column-gap: 10px;
     align-items: center;
-    gap: 8px;
-    border-top: 1px solid var(--border-color-light, #eee);
-    padding-top: 10px;
-    flex-wrap: wrap;
+    padding: 10px;
+}
+
+.tachyon_diagnostic_alert--loading {
+    border: 2px var(--primary-color-high, dodgerblue) solid;
+}
+
+.tachyon_diagnostic_alert--warning {
+    border: 2px var(--warn-color-medium, orange) solid;
+    color: var(--warn-color-medium, orange);
+}
+
+.tachyon_diagnostic_alert--error {
+    border: 2px var(--error-color-medium, red) solid;
+    color: var(--error-color-medium, red);
+}
+
+.tachyon_diagnostic_alert--success {
+    border: 2px var(--success-color-medium, green) solid;
+    color: var(--success-color-medium, green);
+}
+
+.tachyon_diagnostic_alert--skipped {}
+
+.tachyon_diagnostic_alert__icon {}
+
+.tachyon_diagnostic_alert__content {}
+
+.tachyon_diagnostic_alert__title {
+    display: block;
+}
+
+.tachyon_diagnostic_alert__description {}
+
+.tachyon_diagnostic_alert__summary {
+    margin-top: 10px;
+}
+
+.tachyon_diagnostic_alert__summary__item {
+    display: grid;
+    grid-template-columns: 16px auto 1fr;
+    grid-column-gap: 10px;
+}
+
+.tachyon_diagnostic_alert__summary__item--error {
+    color: var(--error-color-medium, red);
+}
+
+.tachyon_diagnostic_alert__summary__item--warning {
+    color: var(--warn-color-medium, orange);
+}
+
+.tachyon_diagnostic_alert__summary__item--success {
+    color: var(--success-color-medium, green);
+}
+
+.tachyon_diagnostic_alert__summary__item__icon {
+    width: 16px;
+    height: 16px;
 }
 `;
 

@@ -50,10 +50,11 @@ export function renderAvailableActions({
   generateBugReport,
   checkServices,
 }: IRenderAvailableActionsProps) {
-  const actions = [
+  return E('div', { class: 'tachyon_diagnostic-page__right-bar__actions' }, [
+    E('b', {}, _('Available actions')),
     ...insertIf(restart.visible, [
       renderButton({
-        classNames: ['cbi-button cbi-button-apply'],
+        classNames: ['cbi-button-apply'],
         onClick: restart.onClick,
         icon: renderRotateCcwIcon24,
         text: _('Restart Tachyon'),
@@ -63,7 +64,7 @@ export function renderAvailableActions({
     ]),
     ...insertIf(stop.visible, [
       renderButton({
-        classNames: ['cbi-button cbi-button-remove'],
+        classNames: ['cbi-button-remove'],
         onClick: stop.onClick,
         icon: renderCircleStopIcon24,
         text: _('Stop Tachyon'),
@@ -73,7 +74,7 @@ export function renderAvailableActions({
     ]),
     ...insertIf(start.visible, [
       renderButton({
-        classNames: ['cbi-button cbi-button-save'],
+        classNames: ['cbi-button-save'],
         onClick: start.onClick,
         icon: renderCirclePlayIcon24,
         text: _('Start Tachyon'),
@@ -83,7 +84,7 @@ export function renderAvailableActions({
     ]),
     ...insertIf(disable.visible, [
       renderButton({
-        classNames: ['cbi-button cbi-button-remove'],
+        classNames: ['cbi-button-remove'],
         onClick: disable.onClick,
         icon: renderPauseIcon24,
         text: _('Disable autostart'),
@@ -93,7 +94,7 @@ export function renderAvailableActions({
     ]),
     ...insertIf(enable.visible, [
       renderButton({
-        classNames: ['cbi-button cbi-button-save'],
+        classNames: ['cbi-button-save'],
         onClick: enable.onClick,
         icon: renderPlayIcon24,
         text: _('Enable autostart'),
@@ -103,7 +104,6 @@ export function renderAvailableActions({
     ]),
     ...insertIf(globalCheck.visible, [
       renderButton({
-        classNames: ['cbi-button'],
         onClick: globalCheck.onClick,
         icon: renderCircleCheckBigIcon24,
         text: _('Get global check'),
@@ -113,7 +113,6 @@ export function renderAvailableActions({
     ]),
     ...insertIf(doctor.visible, [
       renderButton({
-        classNames: ['cbi-button'],
         onClick: doctor.onClick,
         icon: renderRotateCcwIcon24,
         text: _('Run doctor repair'),
@@ -123,7 +122,7 @@ export function renderAvailableActions({
     ]),
     ...insertIf(aiDoctor.visible, [
       renderButton({
-        classNames: ['cbi-button cbi-button-action'],
+        classNames: ['cbi-button-action'],
         onClick: aiDoctor.onClick,
         icon: renderRotateCcwIcon24,
         text: _('Run AI Doctor'),
@@ -133,7 +132,7 @@ export function renderAvailableActions({
     ]),
     ...insertIf(!!aiChat?.visible, [
       renderButton({
-        classNames: ['cbi-button cbi-button-action'],
+        classNames: ['cbi-button-action'],
         onClick: aiChat!.onClick,
         icon: renderCircleCheckBigIcon24,
         text: _('AI Chat Assistant'),
@@ -143,7 +142,7 @@ export function renderAvailableActions({
     ]),
     ...insertIf(checkServices.visible, [
       renderButton({
-        classNames: ['cbi-button cbi-button-action'],
+        classNames: ['cbi-button-action'],
         onClick: checkServices.onClick,
         icon: renderSquareChartGanttIcon24,
         text: _('Check Services'),
@@ -153,7 +152,6 @@ export function renderAvailableActions({
     ]),
     ...insertIf(viewLogs.visible, [
       renderButton({
-        classNames: ['cbi-button'],
         onClick: viewLogs.onClick,
         icon: renderSquareChartGanttIcon24,
         text: _('View logs'),
@@ -163,7 +161,6 @@ export function renderAvailableActions({
     ]),
     ...insertIf(showSingBoxConfig.visible, [
       renderButton({
-        classNames: ['cbi-button'],
         onClick: showSingBoxConfig.onClick,
         icon: renderCogIcon24,
         text: _('Show sing-box config'),
@@ -173,7 +170,6 @@ export function renderAvailableActions({
     ]),
     ...insertIf(generateBugReport.visible, [
       renderButton({
-        classNames: ['cbi-button'],
         onClick: generateBugReport.onClick,
         icon: renderDownloadIcon24,
         text: _('Generate bug report'),
@@ -181,14 +177,5 @@ export function renderAvailableActions({
         disabled: generateBugReport.disabled,
       }),
     ]),
-  ];
-
-  return E(
-    'div',
-    { class: 'tachyon_diagnostic-page__actions-list' },
-    [
-      E('h3', { style: 'margin: 0 0 8px 0; font-size: 14px;' }, _('Available actions')),
-      ...actions,
-    ],
-  );
+  ]);
 }

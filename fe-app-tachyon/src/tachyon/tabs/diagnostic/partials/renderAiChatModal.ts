@@ -23,7 +23,8 @@ const chatHistory: ChatMessage[] = [
 
 export function renderAiChatModal() {
   const messageListContainer = E('div', {
-    class: 'tachyon_ai_chat__messages',
+    style:
+      'height: 360px; overflow-y: auto; padding: 12px; background: var(--background-color-secondary, rgba(0,0,0,0.2)); border: 1px solid var(--border-color, rgba(255,255,255,0.15)); border-radius: 8px; display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; width: 100%; box-sizing: border-box;',
   });
 
   const renderMessages = () => {
@@ -33,11 +34,18 @@ export function renderAiChatModal() {
       const bubble = E(
         'div',
         {
-          class: `tachyon_ai_chat__bubble ${isUser ? 'tachyon_ai_chat__bubble--user' : ''}`,
+          style: `max-width: 82%; align-self: ${isUser ? 'flex-end' : 'flex-start'}; background: ${isUser ? '#007bff' : 'var(--background-color-primary, #2a2a2a)'}; color: #fff; padding: 8px 12px; border-radius: 12px; font-size: 13px; border: 1px solid ${isUser ? '#0056b3' : 'var(--border-color, rgba(255,255,255,0.15))'}; line-height: 1.4; word-break: break-word;`,
         },
         [
           E('div', {}, msg.text),
-          E('small', {}, msg.timestamp),
+          E(
+            'small',
+            {
+              style:
+                'display: block; opacity: 0.65; text-align: right; font-size: 10px; margin-top: 4px;',
+            },
+            msg.timestamp,
+          ),
         ],
       );
       messageListContainer.appendChild(bubble);
@@ -51,11 +59,13 @@ export function renderAiChatModal() {
     type: 'text',
     placeholder: _('Ask Tachyon AI Assistant a question...'),
     class: 'cbi-input-text',
+    style:
+      'flex: 1 1 auto; min-width: 0; font-size: 13px; padding: 6px 10px; border-radius: 6px; box-sizing: border-box;',
   });
 
   const sendBtn = renderButton({
     text: _('Send'),
-    classNames: ['cbi-button cbi-button-action'],
+    classNames: ['cbi-button-action'],
     onClick: () => handleSend(),
   });
 
@@ -75,9 +85,10 @@ export function renderAiChatModal() {
     chatInput.value = '';
     renderMessages();
 
+    // Typing indicator
     const typingMsg: ChatMessage = {
       sender: 'assistant',
-      text: _('Thinking...'),
+      text: '🤖 ' + _('Thinking...'),
       timestamp: new Date().toLocaleTimeString([], {
         hour: '2-digit',
         minute: '2-digit',
@@ -90,7 +101,7 @@ export function renderAiChatModal() {
       const res = (await callBaseMethod(
         Tachyon.AvailableMethods.AI_DOCTOR,
       )) as { success?: boolean; data?: unknown };
-      chatHistory.pop();
+      chatHistory.pop(); // Remove typing indicator
 
       let answerText = _('Failed to receive response from AI service.');
       if (res && res.success) {
@@ -124,7 +135,7 @@ export function renderAiChatModal() {
       const errMsg = e instanceof Error ? e.message : _('Server unavailable');
       chatHistory.push({
         sender: 'assistant',
-        text: _('AI service error') + ': ' + errMsg,
+        text: '❌ ' + _('AI service error') + ': ' + errMsg,
         timestamp: new Date().toLocaleTimeString([], {
           hour: '2-digit',
           minute: '2-digit',
@@ -139,22 +150,29 @@ export function renderAiChatModal() {
     if (e.key === 'Enter') handleSend();
   };
 
+  // Quick prompt buttons
   const quickPrompts = [
-    { label: _('Check YouTube'), query: 'Check YouTube availability' },
-    { label: _('Why Discord fails?'), query: 'Why Discord fails?' },
-    { label: _('Full System Diagnostic'), query: 'Run full system diagnostic' },
+    { label: '🩺 ' + _('Check YouTube'), query: 'Check YouTube availability' },
+    { label: '🔍 ' + _('Why Discord fails?'), query: 'Why Discord fails?' },
+    {
+      label: '🛠️ ' + _('Full System Diagnostic'),
+      query: 'Run full system diagnostic',
+    },
   ];
 
   const quickPromptsBar = E(
     'div',
-    { class: 'tachyon_ai_chat__toolbar' },
+    {
+      style:
+        'display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; width: 100%; box-sizing: border-box;',
+    },
     quickPrompts.map((qp) => {
       const btn = E(
         'button',
         {
           type: 'button',
           class: 'cbi-button cbi-button-neutral',
-          style: 'font-size: 12px; padding: 2px 8px;',
+          style: 'font-size: 11px; padding: 2px 8px; border-radius: 10px;',
         },
         qp.label,
       );
@@ -165,20 +183,30 @@ export function renderAiChatModal() {
 
   const inputToolbar = E(
     'div',
-    { class: 'tachyon_ai_chat__input-row' },
+    {
+      style:
+        'display: flex; gap: 8px; align-items: center; width: 100%; box-sizing: border-box;',
+    },
     [chatInput, sendBtn],
+  );
+
+  const modalWrapper = E(
+    'div',
+    { style: 'width: 100%; max-width: 680px; box-sizing: border-box;' },
+    [quickPromptsBar, messageListContainer, inputToolbar],
   );
 
   const modalContent = E(
     'div',
-    { style: 'width: 100%; max-width: 680px;' },
+    { style: 'width: 100%; max-width: 680px; box-sizing: border-box;' },
     [
-      quickPromptsBar,
-      messageListContainer,
-      inputToolbar,
+      modalWrapper,
       E(
         'div',
-        { class: 'tachyon_service_check__footer' },
+        {
+          style:
+            'margin-top: 12px; display: flex; justify-content: flex-end; border-top: 1px solid var(--border-color, rgba(255,255,255,0.15)); padding-top: 10px;',
+        },
         [
           renderButton({
             text: _('Close'),

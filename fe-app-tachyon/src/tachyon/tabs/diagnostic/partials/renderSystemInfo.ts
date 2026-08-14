@@ -14,30 +14,43 @@ interface IRenderSystemInfoProps {
 }
 
 export function renderSystemInfo({ items }: IRenderSystemInfoProps) {
-  const TAG_CLASS: Record<string, string> = {
-    neutral: 'cbi-button-neutral',
-    warning: 'cbi-button-reset',
-    success: 'cbi-button-save',
-  };
+  return E(
+    'div',
+    { class: 'tachyon_diagnostic-page__right-bar__system-info' },
+    [
+      E(
+        'b',
+        { class: 'tachyon_diagnostic-page__right-bar__system-info__title' },
+        _('System information'),
+      ),
+      ...items.map((item) => {
+        const tagClass = [
+          'tachyon_diagnostic-page__right-bar__system-info__row__tag',
+          ...insertIf(item.tag?.kind === 'neutral', [
+            'tachyon_diagnostic-page__right-bar__system-info__row__tag--neutral',
+          ]),
+          ...insertIf(item.tag?.kind === 'warning', [
+            'tachyon_diagnostic-page__right-bar__system-info__row__tag--warning',
+          ]),
+          ...insertIf(item.tag?.kind === 'success', [
+            'tachyon_diagnostic-page__right-bar__system-info__row__tag--success',
+          ]),
+        ]
+          .filter(Boolean)
+          .join(' ');
 
-  return E('div', { class: 'tachyon_diagnostic-page__system-info' }, [
-    E('h3', { style: 'margin: 0 0 6px 0; font-size: 14px;' }, _('System information')),
-    ...items.map((item) => {
-      const tagBadge = item.tag
-        ? E(
-            'span',
-            {
-              class: `badge ${TAG_CLASS[item.tag.kind] || 'cbi-button-neutral'}`,
-              style: 'font-size: 11px; padding: 1px 6px; margin-left: 6px;',
-            },
-            item.tag.label,
-          )
-        : null;
-
-      return E('div', { class: 'tachyon_diagnostic-page__system-info__row' }, [
-        E('b', {}, item.key),
-        E('span', {}, tagBadge ? [item.value, tagBadge] : item.value),
-      ]);
-    }),
-  ]);
+        return E(
+          'div',
+          { class: 'tachyon_diagnostic-page__right-bar__system-info__row' },
+          [
+            E('b', {}, item.key),
+            E('div', {}, [
+              E('span', {}, item.value),
+              E('span', { class: tagClass }, item?.tag?.label),
+            ]),
+          ],
+        );
+      }),
+    ],
+  );
 }

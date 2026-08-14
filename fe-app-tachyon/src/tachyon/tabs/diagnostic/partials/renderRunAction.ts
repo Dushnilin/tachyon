@@ -12,12 +12,14 @@ export function renderRunAction({
   disabled,
   click,
 }: IRenderDiagnosticRunActionProps) {
-  return renderButton({
-    text: _('Run Diagnostic'),
-    onClick: click,
-    icon: renderSearchIcon24,
-    loading,
-    disabled,
-    classNames: ['cbi-button cbi-button-apply'],
-  });
+  return E('div', { class: 'tachyon_diagnostic-page__run_check_wrapper' }, [
+    renderButton({
+      text: _('Run Diagnostic'),
+      onClick: click,
+      icon: renderSearchIcon24,
+      loading,
+      disabled,
+      classNames: ['cbi-button-apply'],
+    }),
+  ]);
 }
