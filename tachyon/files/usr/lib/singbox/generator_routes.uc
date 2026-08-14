@@ -904,6 +904,12 @@ function combined_domain_source_values(section) {
     for (let value in list_option(section, "domain_suffix"))
         if (as_string(value) != "")
             push(values, as_string(value));
+    for (let value in list_option(section, "user_domains"))
+        if (as_string(value) != "")
+            push(values, as_string(value));
+    for (let value in rule_config.text_list_values(option(section, "user_domains_text", ""), "comma-space"))
+        if (as_string(value) != "")
+            push(values, as_string(value));
     return values;
 }
 

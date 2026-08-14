@@ -191,12 +191,15 @@ tachyon.uci_proxy.enabled=1
 tachyon.uci_proxy.action=connection
 tachyon.uci_proxy.outbound_jsons={"type":"direct"}
 tachyon.uci_proxy.domain_suffix=example.org
+tachyon.uci_proxy.user_domains=smart.example
 EOF_UCI
 TACHYON_UCI_STATE_FILE="$WORK_DIR/generator-uci.state" \
   TACHYON_SECTION_CACHE_DIR="$WORK_DIR/generated-from-uci.section-cache" \
   ucode -L "$TACHYON_LIB" "$SINGBOX_GENERATOR_UC" generate-config "$WORK_DIR/generated-from-uci.json" "127.0.0.1" "0"
 grep -Fq '"example.org"' "$WORK_DIR/generated-from-uci.json" ||
   fail "singbox/generator.uc must read section matchers from core.uci"
+grep -Fq '"smart.example"' "$WORK_DIR/generated-from-uci.json" ||
+  fail "singbox/generator.uc must route smart-detect user_domains from core.uci"
 grep -Fq '"uci_proxy-out"' "$WORK_DIR/generated-from-uci.json" ||
   fail "singbox/generator.uc must read section names from core.uci"
 
