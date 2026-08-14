@@ -125,6 +125,8 @@ function show_help() {
     print("    component_action        Manage Tachyon, sing-box, zapret, zapret2, and ByeDPI components\n");
     print("    component_action_async  Start a component action in the background\n");
     print("    component_action_status Get background component action status\n");
+    print("    component_action_log [job_id] [offset]\n");
+    print("                            Get background component action log from offset\n");
     print("    component_updates_if_due Check installed components for updates when due\n");
     print("    component_update_check_cache Get cached component update check results\n");
     print("    hosts_list_update [url] Update custom hosts lists (all or specific URL)\n");
@@ -218,6 +220,7 @@ function command_spec(command) {
         component_action: [ "components/action.uc", "component-action", 2 ],
         component_action_async: [ "components/updates.uc", "component-action-async", 2 ],
         component_action_status: [ "components/updates.uc", "component-action-status", 1 ],
+        component_action_log: [ "components/updates.uc", "component-action-log", 2 ],
         component_updates_if_due: [ "components/updates.uc", "component-updates-if-due", 0 ],
         component_update_check_cache: [ "components/updates.uc", "component-update-check-cache", 0 ],
         hosts_list_update: [ "components/hosts.uc", "list-update", 1 ],

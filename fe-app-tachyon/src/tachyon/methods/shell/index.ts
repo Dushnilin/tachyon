@@ -604,6 +604,34 @@ export const TachyonShellMethods = {
       data: parsedResponse,
     } as Tachyon.MethodSuccessResponse<Tachyon.ComponentActionResult>;
   },
+  componentActionLog: async (jobId: string, offset = 0) => {
+    const response = await executeShellCommand({
+      command: '/usr/bin/tachyon',
+      args: [
+        Tachyon.AvailableMethods.COMPONENT_ACTION_LOG,
+        jobId,
+        String(Math.max(0, Math.floor(offset))),
+      ],
+      timeout: COMPONENT_ACTION_RPC_TIMEOUT_MS,
+    });
+    const parsedResponse =
+      parseJsonObjectOutput<Tachyon.ComponentActionLogResult>(response.stdout);
+
+    if ((response.code ?? 0) !== 0 || !parsedResponse) {
+      return {
+        success: false,
+        error:
+          parsedResponse?.success === false
+            ? _('Operation log is not available')
+            : response.stderr || _('Failed to read operation log'),
+      } as Tachyon.MethodFailureResponse;
+    }
+
+    return {
+      success: true,
+      data: parsedResponse,
+    } as Tachyon.MethodSuccessResponse<Tachyon.ComponentActionLogResult>;
+  },
   componentUpdateCheckCache: async () =>
     callBaseMethod<Tachyon.ComponentUpdateCheckCache>(
       Tachyon.AvailableMethods.COMPONENT_UPDATE_CHECK_CACHE,

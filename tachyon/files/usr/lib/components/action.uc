@@ -172,8 +172,26 @@ function log_message(message, level) {
     command_success_from_args([ "logger", "-t", "tachyon", "[" + level + "] " + as_string(message) ]);
 }
 
+function job_log_time() {
+    let seconds = int(clock()[0]);
+    return sprintf("%02d:%02d:%02d", int(seconds / 3600) % 24, int(seconds / 60) % 60, seconds % 60);
+}
+
+function job_log_append(message, level) {
+    let path = getenv("UPDATES_JOB_LOG");
+    if (path == "")
+        return;
+    let file = fs.open(path, "a");
+    if (!file)
+        return;
+    file.write(sprintf("[%s] [%s] %s\n", job_log_time(), as_string(level), as_string(message)));
+    file.close();
+}
+
 function updates_log(message, level) {
-    log_message("Updates: " + as_string(message), level || "info");
+    level = as_string(level || "info");
+    log_message("Updates: " + as_string(message), level);
+    job_log_append(message, level);
 }
 
 function module_command(args) {

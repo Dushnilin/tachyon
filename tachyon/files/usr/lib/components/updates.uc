@@ -1587,6 +1587,10 @@ function component_job_output_path(job_id) {
     return COMPONENT_JOB_DIR + "/" + as_string(job_id) + ".out";
 }
 
+function component_job_log_path(job_id) {
+    return COMPONENT_JOB_DIR + "/" + as_string(job_id) + ".log";
+}
+
 function component_job_output_path_from_state(path) {
     path = as_string(path);
     if (length(path) >= 5 && substr(path, length(path) - 5) == ".json")
@@ -1689,6 +1693,14 @@ function component_cleanup_jobs() {
         COMPONENT_JOB_DIR,
         "-type", "f",
         "-name", "*.out.stderr",
+        "-mmin", "+" + as_string(COMPONENT_JOB_ORPHAN_OUTPUT_TTL_MINUTES),
+        "-delete"
+    ]);
+    command_success_from_args([
+        "find",
+        COMPONENT_JOB_DIR,
+        "-type", "f",
+        "-name", "*.log",
         "-mmin", "+" + as_string(COMPONENT_JOB_ORPHAN_OUTPUT_TTL_MINUTES),
         "-delete"
     ]);
@@ -1849,7 +1861,9 @@ function component_action_worker(state_file, output_file, component, action) {
     // the JSON result - the whole-file parse then failed, the line scan found no
     // object, and a successful action was reported to the UI as "Failed to
     // execute" with the tail of a log as its message.
-    let command = command_env(component_worker_env()) + " " +
+    let worker_env = component_worker_env();
+    worker_env.UPDATES_JOB_LOG = output_file + ".log";
+    let command = command_env(worker_env) + " " +
         command_from_args([
             "ucode",
             "-L", LIB_DIR,
@@ -1879,7 +1893,9 @@ function component_action_async(component, action) {
         exit(1);
     }
 
-    if (!write_state_file(state_file, component_running_job_state_value(component, action, now_seconds()))) {
+    let running_state = component_running_job_state_value(component, action, now_seconds());
+    running_state.log_path = component_job_log_path(job_id);
+    if (!write_state_file(state_file, running_state)) {
         component_job_json_response(false, "", "Failed to write component action state");
         exit(1);
     }
@@ -1916,6 +1932,24 @@ function component_action_status(job_id) {
 
     refresh_component_running_job_state(state_file);
     print(as_string(fs.readfile(state_file)));
+}
+
+function component_action_log(job_id, offset) {
+    let log_path = component_job_log_path(job_id);
+    let data = fs.readfile(log_path);
+    if (data == null) {
+        write_json({ success: false, log: "", offset: 0 });
+        exit(1);
+    }
+
+    let start = int(offset || 0);
+    if (start < 0)
+        start = 0;
+    data = as_string(data);
+    if (start > length(data))
+        start = length(data);
+
+    write_json({ success: true, log: substr(data, start), offset: length(data) });
 }
 
 function automatic_component_check_names() {
@@ -3300,6 +3334,8 @@ else if (mode == "component-action-async")
     component_action_async(ARGV[1], ARGV[2]);
 else if (mode == "component-action-status")
     component_action_status(ARGV[1]);
+else if (mode == "component-action-log")
+    component_action_log(ARGV[1], ARGV[2]);
 else if (mode == "component-updates-if-due")
     component_updates_if_due();
 else if (mode == "component-update-check-cache")

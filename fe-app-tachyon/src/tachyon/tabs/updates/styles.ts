@@ -363,4 +363,39 @@ export const styles = `
     border-top: 1px solid var(--border-color, rgba(255,255,255,0.12));
     padding-top: 10px;
 }
+
+.tachyon-update-modal__log-panel {
+    margin-top: 10px;
+    border-top: 1px solid var(--border-color, rgba(255,255,255,0.12));
+    padding-top: 10px;
+}
+
+.tachyon-update-modal__log-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+
+.tachyon-update-modal__log-copy {
+    padding: 2px 8px;
+    font-size: 12px;
+}
+
+.tachyon-update-modal__log {
+    margin: 0;
+    max-height: 200px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+    font-family: monospace;
+    font-size: 11px;
+    line-height: 1.5;
+    color: var(--text-color, #ddd);
+    background: rgba(0, 0, 0, 0.35);
+    border: 1px solid var(--border-color, rgba(255,255,255,0.12));
+    border-radius: 4px;
+    padding: 8px;
+}
 `;

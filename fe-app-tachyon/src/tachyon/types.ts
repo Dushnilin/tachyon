@@ -90,6 +90,7 @@ export namespace Tachyon {
     UI_ACTION_ACK = 'ui_action_ack',
     COMPONENT_ACTION_ASYNC = 'component_action_async',
     COMPONENT_ACTION_STATUS = 'component_action_status',
+    COMPONENT_ACTION_LOG = 'component_action_log',
     COMPONENT_UPDATE_CHECK_CACHE = 'component_update_check_cache',
     SUBSCRIPTION_UPDATE_ASYNC = 'subscription_update_async',
     SUBSCRIPTION_UPDATE_STATUS = 'subscription_update_status',
@@ -646,6 +647,12 @@ export namespace Tachyon {
   export interface ComponentUpdateCheckCache {
     enabled: boolean;
     results: ComponentActionResult[];
+  }
+
+  export interface ComponentActionLogResult {
+    success: boolean;
+    log: string;
+    offset: number;
   }
 
   export type ComponentActionStartResult = UiActionStartResult;

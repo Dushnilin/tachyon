@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 class MockMutationObserver {
   observe() {}
@@ -72,6 +72,11 @@ const mockUi = {
 (globalThis as any)._ = (str: string) => str;
 
 describe('renderUpdateProgressModal', () => {
+  beforeEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
   it('renders install button and does not auto-close when onInstall is provided', async () => {
     vi.useFakeTimers();
     mockUi.showModal.mockReset();
@@ -126,6 +131,90 @@ describe('renderUpdateProgressModal', () => {
     vi.advanceTimersByTime(1500);
     expect(mockUi.hideModal).toHaveBeenCalled();
 
+    vi.useRealTimers();
+  });
+
+  it('polls the operation log while the job runs and stops after completion', async () => {
+    vi.useFakeTimers();
+    mockUi.showModal.mockReset();
+    mockUi.hideModal.mockReset();
+
+    const { TachyonShellMethods } = await import('../../../methods');
+    const { showUpdateProgressModal } = await import(
+      '../partials/renderUpdateProgressModal'
+    );
+
+    let nextOffset = 0;
+    const logSpy = vi
+      .spyOn(TachyonShellMethods, 'componentActionLog')
+      .mockImplementation(async (_jobId: string, offset: number = 0) => {
+        nextOffset = offset + 5;
+        return {
+          success: true,
+          data: { success: true, log: 'chunk', offset: nextOffset },
+        } as never;
+      });
+
+    const controller = showUpdateProgressModal({
+      component: 'sing_box',
+      action: 'install',
+      componentTitle: 'sing-box',
+    });
+
+    // The first poll runs immediately, the following ones on the 1500ms timer.
+    controller.startLogTracking('job-123');
+    await vi.advanceTimersByTimeAsync(1500);
+    await vi.advanceTimersByTimeAsync(1500);
+
+    expect(logSpy).toHaveBeenCalledWith('job-123', 0);
+    expect(logSpy).toHaveBeenCalledWith('job-123', 5);
+    expect(logSpy).toHaveBeenCalledWith('job-123', 10);
+    expect(controller.getLogText()).toBe('chunkchunkchunk');
+
+    controller.completeSuccess('done');
+    await vi.advanceTimersByTimeAsync(0);
+
+    // A final read drains the remaining log, then polling stops.
+    expect(logSpy).toHaveBeenCalledWith('job-123', 15);
+    expect(controller.getLogText()).toBe('chunkchunkchunkchunk');
+
+    const callsAfterCompletion = logSpy.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(logSpy.mock.calls.length).toBe(callsAfterCompletion);
+
+    controller.close();
+    vi.useRealTimers();
+  });
+
+  it('does not poll the log when no job id was provided', async () => {
+    vi.useFakeTimers();
+    mockUi.showModal.mockReset();
+    mockUi.hideModal.mockReset();
+
+    const { TachyonShellMethods } = await import('../../../methods');
+    const { showUpdateProgressModal } = await import(
+      '../partials/renderUpdateProgressModal'
+    );
+
+    const logSpy = vi
+      .spyOn(TachyonShellMethods, 'componentActionLog')
+      .mockResolvedValue({
+        success: true,
+        data: { success: true, log: 'x', offset: 1 },
+      } as never);
+
+    const controller = showUpdateProgressModal({
+      component: 'sing_box',
+      action: 'install',
+      componentTitle: 'sing-box',
+    });
+
+    controller.startLogTracking('');
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(logSpy).not.toHaveBeenCalled();
+    expect(controller.getLogText()).toBe('');
+
+    controller.close();
     vi.useRealTimers();
   });
 });

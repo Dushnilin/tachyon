@@ -76,6 +76,10 @@ const dictionary = {
   "Reloading page in": "Перезагрузка страницы через",
   "Please wait, operation is running...": "Пожалуйста, подождите, выполняется операция...",
   "Operation failed": "Операция не выполнена",
+  "Operation log": "Лог операции",
+  "Copy log": "Копировать лог",
+  "Operation log is not available": "Лог операции недоступен",
+  "Failed to read operation log": "Не удалось прочитать лог операции",
   "Direct": "Напрямую",
 
   // === Новые UI-строки (settings.js, section.js) ===

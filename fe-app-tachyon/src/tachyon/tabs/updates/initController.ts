@@ -668,6 +668,7 @@ async function followComponentActionState(
         targetVersion: state.latest_version,
       });
     }
+    getActiveProgressModalController()?.startLogTracking(jobId);
   }
 
   try {
@@ -860,6 +861,7 @@ async function handleComponentAction(button: ComponentActionButton) {
     jobId = startResponse.data.job_id;
     setActiveProgressModalJobId(jobId);
     markUiActionOwned('component', jobId);
+    modalController.startLogTracking(jobId);
     if (followedComponentJobs.has(jobId)) {
       return;
     }

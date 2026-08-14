@@ -3053,6 +3053,7 @@ var Tachyon;
     AvailableMethods2["UI_ACTION_ACK"] = "ui_action_ack";
     AvailableMethods2["COMPONENT_ACTION_ASYNC"] = "component_action_async";
     AvailableMethods2["COMPONENT_ACTION_STATUS"] = "component_action_status";
+    AvailableMethods2["COMPONENT_ACTION_LOG"] = "component_action_log";
     AvailableMethods2["COMPONENT_UPDATE_CHECK_CACHE"] = "component_update_check_cache";
     AvailableMethods2["SUBSCRIPTION_UPDATE_ASYNC"] = "subscription_update_async";
     AvailableMethods2["SUBSCRIPTION_UPDATE_STATUS"] = "subscription_update_status";
@@ -3542,6 +3543,28 @@ var TachyonShellMethods = {
     const parsedResponse = parseComponentActionResult(response);
     if ((response.code ?? 0) !== 0 || !parsedResponse) {
       return componentActionFailure(response, parsedResponse);
+    }
+    return {
+      success: true,
+      data: parsedResponse
+    };
+  },
+  componentActionLog: async (jobId, offset = 0) => {
+    const response = await executeShellCommand({
+      command: "/usr/bin/tachyon",
+      args: [
+        Tachyon.AvailableMethods.COMPONENT_ACTION_LOG,
+        jobId,
+        String(Math.max(0, Math.floor(offset)))
+      ],
+      timeout: COMPONENT_ACTION_RPC_TIMEOUT_MS
+    });
+    const parsedResponse = parseJsonObjectOutput(response.stdout);
+    if ((response.code ?? 0) !== 0 || !parsedResponse) {
+      return {
+        success: false,
+        error: parsedResponse?.success === false ? _("Operation log is not available") : response.stderr || _("Failed to read operation log")
+      };
     }
     return {
       success: true,
@@ -15383,6 +15406,27 @@ function showUpdateProgressModal(options) {
     { class: "tachyon-update-modal__status-msg" },
     steps[0] || _("Please wait, operation is running...")
   );
+  const logPreEl = E("pre", {
+    class: "tachyon-update-modal__log"
+  });
+  const logPanelEl = E(
+    "div",
+    {
+      class: "tachyon-update-modal__log-panel",
+      style: "display: none;"
+    },
+    [
+      E("div", { class: "tachyon-update-modal__log-header" }, [
+        E("b", {}, _("Operation log")),
+        renderButton({
+          classNames: ["cbi-button-action", "tachyon-update-modal__log-copy"],
+          text: _("Copy log"),
+          onClick: copyLog
+        })
+      ]),
+      logPreEl
+    ]
+  );
   const actionButtonContainer = E(
     "div",
     { class: "tachyon-update-modal__actions" },
@@ -15401,6 +15445,7 @@ function showUpdateProgressModal(options) {
     progressBarTrackEl,
     stepListEl,
     statusMsgEl,
+    logPanelEl,
     actionButtonContainer
   ]);
   const updateTimerDisplay = () => {
@@ -15481,6 +15526,80 @@ function showUpdateProgressModal(options) {
       autoAdvanceTimer = null;
     }
   }
+  let logTrackingJobId = null;
+  let logTrackingOffset = 0;
+  let logFullText = "";
+  let logPollTimer = null;
+  let logPollStopped = true;
+  function appendLogText(text) {
+    if (!text) {
+      return;
+    }
+    logFullText += text;
+    logPreEl.textContent = logFullText;
+    logPreEl.scrollTop = logPreEl.scrollHeight;
+  }
+  async function pollLog() {
+    if (logPollStopped || !logTrackingJobId) {
+      return;
+    }
+    const jobId = logTrackingJobId;
+    const offset = logTrackingOffset;
+    try {
+      const response = await TachyonShellMethods.componentActionLog(
+        jobId,
+        offset
+      );
+      if (logPollStopped || logTrackingJobId !== jobId) {
+        return;
+      }
+      if (response.success && response.data) {
+        logTrackingOffset = response.data.offset;
+        appendLogText(response.data.log);
+      }
+    } catch (_error) {
+    } finally {
+      if (!logPollStopped && logTrackingJobId === jobId) {
+        logPollTimer = setTimeout(pollLog, 1500);
+      }
+    }
+  }
+  function stopLogTracking() {
+    logPollStopped = true;
+    if (logPollTimer) {
+      clearTimeout(logPollTimer);
+      logPollTimer = null;
+    }
+    logTrackingJobId = null;
+  }
+  function finishLogTracking() {
+    if (logPollStopped || !logTrackingJobId) {
+      stopLogTracking();
+      return;
+    }
+    const jobId = logTrackingJobId;
+    const offset = logTrackingOffset;
+    logPollStopped = true;
+    if (logPollTimer) {
+      clearTimeout(logPollTimer);
+      logPollTimer = null;
+    }
+    void TachyonShellMethods.componentActionLog(jobId, offset).then((response) => {
+      if (response.success && response.data) {
+        logTrackingOffset = response.data.offset;
+        appendLogText(response.data.log);
+      }
+    }).catch(() => {
+    }).finally(() => {
+      logTrackingJobId = null;
+    });
+  }
+  function copyLog() {
+    if (!logFullText) {
+      return;
+    }
+    copyToClipboard(logFullText);
+  }
   const controller = {
     updateStep: (stepIndex, statusText) => {
       setStep(stepIndex, statusText);
@@ -15498,6 +15617,7 @@ function showUpdateProgressModal(options) {
     completeSuccess: (message, opts) => {
       isCompleted = true;
       cleanupTimers();
+      finishLogTracking();
       progressBarFillEl.style.width = "100%";
       progressBarFillEl.classList.add(
         "tachyon-update-modal__progress-fill--success"
@@ -15571,6 +15691,7 @@ function showUpdateProgressModal(options) {
     completeError: (errorMessage) => {
       isCompleted = true;
       cleanupTimers();
+      finishLogTracking();
       progressBarFillEl.style.width = "100%";
       progressBarFillEl.classList.add(
         "tachyon-update-modal__progress-fill--error"
@@ -15590,8 +15711,27 @@ function showUpdateProgressModal(options) {
       });
       actionButtonContainer.replaceChildren(closeBtn);
     },
+    startLogTracking: (jobId) => {
+      if (!jobId || logTrackingJobId === jobId) {
+        return;
+      }
+      logTrackingJobId = jobId;
+      logTrackingOffset = 0;
+      logPollStopped = false;
+      logPanelEl.style.display = "";
+      if (logPollTimer) {
+        clearTimeout(logPollTimer);
+        logPollTimer = null;
+      }
+      void pollLog();
+    },
+    stopLogTracking: () => {
+      stopLogTracking();
+    },
+    getLogText: () => logFullText,
     close: () => {
       cleanupTimers();
+      stopLogTracking();
       if (activeModalController === controller) {
         activeModalController = null;
         activeModalJobId = null;
@@ -16040,6 +16180,7 @@ async function followComponentActionState(state) {
         targetVersion: state.latest_version
       });
     }
+    getActiveProgressModalController()?.startLogTracking(jobId);
   }
   try {
     const response = state.running ? await TachyonShellMethods.waitComponentActionJob(
@@ -16195,6 +16336,7 @@ async function handleComponentAction(button) {
     jobId = startResponse.data.job_id;
     setActiveProgressModalJobId(jobId);
     markUiActionOwned("component", jobId);
+    modalController.startLogTracking(jobId);
     if (followedComponentJobs.has(jobId)) {
       return;
     }
@@ -17145,6 +17287,41 @@ var styles6 = `
     margin-top: 6px;
     border-top: 1px solid var(--border-color, rgba(255,255,255,0.12));
     padding-top: 10px;
+}
+
+.tachyon-update-modal__log-panel {
+    margin-top: 10px;
+    border-top: 1px solid var(--border-color, rgba(255,255,255,0.12));
+    padding-top: 10px;
+}
+
+.tachyon-update-modal__log-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+
+.tachyon-update-modal__log-copy {
+    padding: 2px 8px;
+    font-size: 12px;
+}
+
+.tachyon-update-modal__log {
+    margin: 0;
+    max-height: 200px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+    font-family: monospace;
+    font-size: 11px;
+    line-height: 1.5;
+    color: var(--text-color, #ddd);
+    background: rgba(0, 0, 0, 0.35);
+    border: 1px solid var(--border-color, rgba(255,255,255,0.12));
+    border-radius: 4px;
+    padding: 8px;
 }
 `;
 

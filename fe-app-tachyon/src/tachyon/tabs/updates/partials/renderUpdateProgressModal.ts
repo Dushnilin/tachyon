@@ -1,5 +1,7 @@
 import { renderCheckIcon24, renderXIcon24 } from '../../../../icons';
 import { renderButton } from '../../../../partials';
+import { copyToClipboard } from '../../../../helpers/copyToClipboard';
+import { TachyonShellMethods } from '../../../methods';
 import { Tachyon } from '../../../types';
 
 export interface UpdateProgressModalOptions {
@@ -30,6 +32,9 @@ export interface UpdateProgressModalController {
   }) => void;
   completeSuccess: (message?: string, options?: CompleteSuccessOptions) => void;
   completeError: (errorMessage: string) => void;
+  startLogTracking: (jobId: string) => void;
+  stopLogTracking: () => void;
+  getLogText: () => string;
   close: () => void;
 }
 
@@ -212,6 +217,29 @@ export function showUpdateProgressModal(
     steps[0] || _('Please wait, operation is running...'),
   );
 
+  const logPreEl = E('pre', {
+    class: 'tachyon-update-modal__log',
+  }) as HTMLPreElement;
+
+  const logPanelEl = E(
+    'div',
+    {
+      class: 'tachyon-update-modal__log-panel',
+      style: 'display: none;',
+    },
+    [
+      E('div', { class: 'tachyon-update-modal__log-header' }, [
+        E('b', {}, _('Operation log')),
+        renderButton({
+          classNames: ['cbi-button-action', 'tachyon-update-modal__log-copy'],
+          text: _('Copy log'),
+          onClick: copyLog,
+        }),
+      ]),
+      logPreEl,
+    ],
+  );
+
   const actionButtonContainer = E(
     'div',
     { class: 'tachyon-update-modal__actions' },
@@ -230,6 +258,7 @@ export function showUpdateProgressModal(
     progressBarTrackEl,
     stepListEl,
     statusMsgEl,
+    logPanelEl,
     actionButtonContainer,
   ]) as HTMLElement;
 
@@ -322,6 +351,94 @@ export function showUpdateProgressModal(
     }
   }
 
+  let logTrackingJobId: string | null = null;
+  let logTrackingOffset = 0;
+  let logFullText = '';
+  let logPollTimer: ReturnType<typeof setTimeout> | null = null;
+  let logPollStopped = true;
+
+  function appendLogText(text: string) {
+    if (!text) {
+      return;
+    }
+    logFullText += text;
+    logPreEl.textContent = logFullText;
+    logPreEl.scrollTop = logPreEl.scrollHeight;
+  }
+
+  async function pollLog() {
+    if (logPollStopped || !logTrackingJobId) {
+      return;
+    }
+
+    const jobId = logTrackingJobId;
+    const offset = logTrackingOffset;
+
+    try {
+      const response = await TachyonShellMethods.componentActionLog(
+        jobId,
+        offset,
+      );
+      if (logPollStopped || logTrackingJobId !== jobId) {
+        return;
+      }
+      if (response.success && response.data) {
+        logTrackingOffset = response.data.offset;
+        appendLogText(response.data.log);
+      }
+    } catch (_error) {
+      // A transient RPC failure must not stop the polling; the next tick retries.
+    } finally {
+      if (!logPollStopped && logTrackingJobId === jobId) {
+        logPollTimer = setTimeout(pollLog, 1500);
+      }
+    }
+  }
+
+  function stopLogTracking() {
+    logPollStopped = true;
+    if (logPollTimer) {
+      clearTimeout(logPollTimer);
+      logPollTimer = null;
+    }
+    logTrackingJobId = null;
+  }
+
+  function finishLogTracking() {
+    if (logPollStopped || !logTrackingJobId) {
+      stopLogTracking();
+      return;
+    }
+
+    const jobId = logTrackingJobId;
+    const offset = logTrackingOffset;
+    logPollStopped = true;
+    if (logPollTimer) {
+      clearTimeout(logPollTimer);
+      logPollTimer = null;
+    }
+
+    void TachyonShellMethods.componentActionLog(jobId, offset)
+      .then((response) => {
+        if (response.success && response.data) {
+          logTrackingOffset = response.data.offset;
+          appendLogText(response.data.log);
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        logTrackingJobId = null;
+      });
+  }
+
+  function copyLog() {
+    if (!logFullText) {
+      return;
+    }
+
+    copyToClipboard(logFullText);
+  }
+
   const controller: UpdateProgressModalController = {
     updateStep: (stepIndex: number, statusText?: string) => {
       setStep(stepIndex, statusText);
@@ -344,6 +461,7 @@ export function showUpdateProgressModal(
     completeSuccess: (message?: string, opts?: CompleteSuccessOptions) => {
       isCompleted = true;
       cleanupTimers();
+      finishLogTracking();
 
       progressBarFillEl.style.width = '100%';
       progressBarFillEl.classList.add(
@@ -443,6 +561,7 @@ export function showUpdateProgressModal(
     completeError: (errorMessage: string) => {
       isCompleted = true;
       cleanupTimers();
+      finishLogTracking();
 
       progressBarFillEl.style.width = '100%';
       progressBarFillEl.classList.add(
@@ -466,8 +585,29 @@ export function showUpdateProgressModal(
 
       actionButtonContainer.replaceChildren(closeBtn);
     },
+    startLogTracking: (jobId: string) => {
+      if (!jobId || logTrackingJobId === jobId) {
+        return;
+      }
+
+      logTrackingJobId = jobId;
+      logTrackingOffset = 0;
+      logPollStopped = false;
+      logPanelEl.style.display = '';
+
+      if (logPollTimer) {
+        clearTimeout(logPollTimer);
+        logPollTimer = null;
+      }
+      void pollLog();
+    },
+    stopLogTracking: () => {
+      stopLogTracking();
+    },
+    getLogText: () => logFullText,
     close: () => {
       cleanupTimers();
+      stopLogTracking();
       if (activeModalController === controller) {
         activeModalController = null;
         activeModalJobId = null;
