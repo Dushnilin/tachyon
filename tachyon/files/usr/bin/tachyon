@@ -142,6 +142,7 @@ function show_help() {
     print("    agent <path> <method> [body_json] [bearer]\n");
     print("                            AI Agent API: call a /tachyon/agent/v1/* endpoint\n");
     print("    agent_cgi               AI Agent API: CGI handler (called by uhttpd)\n");
+    print("    mcp                     MCP server: JSON-RPC 2.0 over stdio (Model Context Protocol)\n");
     print("    watchdog                Manage watchdog daemon (start-runtime|stop-runtime|status)\n");
     print("    telegram_status         Get Telegram bot running status\n");
     print("    telegram_start          Start Telegram bot\n");
@@ -235,6 +236,7 @@ function command_spec(command) {
         apply_quick_fix: [ "diagnostics/runtime.uc", "apply-quick-fix", 1 ],
         diagnose_json: [ "diagnostics/runtime.uc", "diagnose-json", 0 ],
         agent_cgi: [ "service/agent_api.uc", "__cgi", 0 ],
+        mcp: [ "service/agent_mcp.uc", "", 0 ],
         watchdog: [ "service/watchdog.uc", "", 1 ],
         watchdog_start: [ "service/watchdog.uc", "start-runtime", 0 ],
         watchdog_stop: [ "service/watchdog.uc", "stop-runtime", 0 ],
