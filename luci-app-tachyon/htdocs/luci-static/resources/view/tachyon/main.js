@@ -15313,35 +15313,16 @@ function showUpdateProgressModal(options) {
     activeModalController.close();
   }
   const isCheckAction = options.action === "check_update";
-  const isRemoveAction = options.action === "remove";
-  const isInstallOrUpdate = !isCheckAction && !isRemoveAction;
   let modalTitleText = _("Operation in progress...");
   if (isCheckAction) {
     modalTitleText = `${_("Checking for updates...")}: ${options.componentTitle}`;
-  } else if (isRemoveAction) {
+  } else if (options.action === "remove") {
     modalTitleText = `${_("Removing")} ${options.componentTitle}...`;
   } else {
     modalTitleText = `${_("Updating")} ${options.componentTitle}...`;
   }
-  const steps = isCheckAction ? [
-    _("Connecting to update server..."),
-    _("Fetching release & commit metadata..."),
-    _("Comparing versions & fingerprint check...")
-  ] : isRemoveAction ? [
-    _("Stopping active services..."),
-    _("Removing binaries & package files..."),
-    _("Cleaning configuration & reloading...")
-  ] : [
-    _("Environment preparation & dependency check..."),
-    _("Downloading package from repository..."),
-    _("Unpacking & installing binaries..."),
-    _("Updating configuration & access permissions..."),
-    _("Applying changes & reloading services...")
-  ];
-  let currentStepIndex = 0;
   let elapsedSeconds = 0;
   let timerInterval = null;
-  let autoAdvanceTimer = null;
   let isCompleted = false;
   let currentModalVersions = { ...options };
   const timerBadgeEl = E(
@@ -15365,56 +15346,12 @@ function showUpdateProgressModal(options) {
     ]),
     timerBadgeEl
   ]);
-  const progressBarFillEl = E("div", {
-    class: "tachyon-update-modal__progress-fill",
-    style: "width: 15%;"
-  });
-  const progressBarTrackEl = E(
-    "div",
-    { class: "tachyon-update-modal__progress-track" },
-    [progressBarFillEl]
-  );
-  const stepItemEls = steps.map((stepText, index) => {
-    const iconEl = E(
-      "span",
-      { class: "tachyon-update-modal__step-icon" },
-      index === 0 ? "\u26A1" : "\u25CB"
-    );
-    const labelEl = E(
-      "span",
-      { class: "tachyon-update-modal__step-label" },
-      stepText
-    );
-    return E(
-      "div",
-      {
-        class: [
-          "tachyon-update-modal__step-item",
-          index === 0 ? "tachyon-update-modal__step-item--active" : ""
-        ].filter(Boolean).join(" ")
-      },
-      [iconEl, labelEl]
-    );
-  });
-  const stepListEl = E(
-    "div",
-    { class: "tachyon-update-modal__step-list" },
-    stepItemEls
-  );
-  const statusMsgEl = E(
-    "div",
-    { class: "tachyon-update-modal__status-msg" },
-    steps[0] || _("Please wait, operation is running...")
-  );
   const logPreEl = E("pre", {
     class: "tachyon-update-modal__log"
   });
   const logPanelEl = E(
     "div",
-    {
-      class: "tachyon-update-modal__log-panel",
-      style: "display: none;"
-    },
+    { class: "tachyon-update-modal__log-panel" },
     [
       E("div", { class: "tachyon-update-modal__log-header" }, [
         E("b", {}, _("Operation log")),
@@ -15442,9 +15379,6 @@ function showUpdateProgressModal(options) {
   );
   const modalBodyEl = E("div", { class: "tachyon-update-modal__body" }, [
     headerEl,
-    progressBarTrackEl,
-    stepListEl,
-    statusMsgEl,
     logPanelEl,
     actionButtonContainer
   ]);
@@ -15457,73 +15391,10 @@ function showUpdateProgressModal(options) {
     elapsedSeconds += 1;
     updateTimerDisplay();
   }, 1e3);
-  if (isInstallOrUpdate) {
-    autoAdvanceTimer = setInterval(() => {
-      if (isCompleted) return;
-      if (elapsedSeconds >= 2 && currentStepIndex === 0) {
-        setStep(1);
-      } else if (elapsedSeconds >= 5 && currentStepIndex === 1) {
-        setStep(2);
-      } else if (elapsedSeconds >= 9 && currentStepIndex === 2) {
-        setStep(3);
-      } else if (elapsedSeconds >= 14 && currentStepIndex === 3) {
-        setStep(4);
-      }
-    }, 500);
-  } else if (isCheckAction) {
-    autoAdvanceTimer = setInterval(() => {
-      if (isCompleted) return;
-      if (elapsedSeconds >= 1 && currentStepIndex === 0) {
-        setStep(1);
-      } else if (elapsedSeconds >= 2 && currentStepIndex === 1) {
-        setStep(2);
-      }
-    }, 500);
-  } else if (isRemoveAction) {
-    autoAdvanceTimer = setInterval(() => {
-      if (isCompleted) return;
-      if (elapsedSeconds >= 1 && currentStepIndex === 0) {
-        setStep(1);
-      } else if (elapsedSeconds >= 3 && currentStepIndex === 1) {
-        setStep(2);
-      }
-    }, 500);
-  }
-  function setStep(stepIndex, customStatus) {
-    if (stepIndex < 0 || stepIndex >= steps.length) return;
-    currentStepIndex = stepIndex;
-    const percent = Math.round((stepIndex + 1) / (steps.length + 0.5) * 100);
-    progressBarFillEl.style.width = `${Math.min(percent, 92)}%`;
-    stepItemEls.forEach((item, idx) => {
-      const iconEl = item.querySelector(".tachyon-update-modal__step-icon");
-      item.classList.remove(
-        "tachyon-update-modal__step-item--active",
-        "tachyon-update-modal__step-item--done"
-      );
-      if (idx < stepIndex) {
-        item.classList.add("tachyon-update-modal__step-item--done");
-        if (iconEl) iconEl.textContent = "\u2713";
-      } else if (idx === stepIndex) {
-        item.classList.add("tachyon-update-modal__step-item--active");
-        if (iconEl) iconEl.textContent = "\u26A1";
-      } else {
-        if (iconEl) iconEl.textContent = "\u25CB";
-      }
-    });
-    if (customStatus) {
-      statusMsgEl.textContent = customStatus;
-    } else if (steps[stepIndex]) {
-      statusMsgEl.textContent = steps[stepIndex];
-    }
-  }
   function cleanupTimers() {
     if (timerInterval) {
       clearInterval(timerInterval);
       timerInterval = null;
-    }
-    if (autoAdvanceTimer) {
-      clearInterval(autoAdvanceTimer);
-      autoAdvanceTimer = null;
     }
   }
   let logTrackingJobId = null;
@@ -15601,11 +15472,9 @@ function showUpdateProgressModal(options) {
     copyToClipboard(logFullText);
   }
   const controller = {
-    updateStep: (stepIndex, statusText) => {
-      setStep(stepIndex, statusText);
+    updateStep: (_stepIndex, _statusText) => {
     },
-    updateStatus: (statusText) => {
-      statusMsgEl.textContent = statusText;
+    updateStatus: (_statusText) => {
     },
     updateVersions: (opts) => {
       currentModalVersions = {
@@ -15618,18 +15487,8 @@ function showUpdateProgressModal(options) {
       isCompleted = true;
       cleanupTimers();
       finishLogTracking();
-      progressBarFillEl.style.width = "100%";
-      progressBarFillEl.classList.add(
-        "tachyon-update-modal__progress-fill--success"
-      );
-      stepItemEls.forEach((item) => {
-        item.classList.remove("tachyon-update-modal__step-item--active");
-        item.classList.add("tachyon-update-modal__step-item--done");
-        const iconEl = item.querySelector(".tachyon-update-modal__step-icon");
-        if (iconEl) iconEl.textContent = "\u2713";
-      });
-      const successMsg = message || (isCheckAction ? _("Check completed!") : isRemoveAction ? _("Removal completed successfully!") : _("Update completed successfully!"));
-      statusMsgEl.replaceChildren(
+      const successMsg = message || (isCheckAction ? _("Check completed!") : options.action === "remove" ? _("Removal completed successfully!") : _("Update completed successfully!"));
+      actionButtonContainer.replaceChildren(
         E("div", { class: "tachyon-update-modal__success-banner" }, [
           renderCheckIcon24(),
           E("span", {}, successMsg)
@@ -15692,11 +15551,7 @@ function showUpdateProgressModal(options) {
       isCompleted = true;
       cleanupTimers();
       finishLogTracking();
-      progressBarFillEl.style.width = "100%";
-      progressBarFillEl.classList.add(
-        "tachyon-update-modal__progress-fill--error"
-      );
-      statusMsgEl.replaceChildren(
+      actionButtonContainer.replaceChildren(
         E("div", { class: "tachyon-update-modal__error-banner" }, [
           renderXIcon24(),
           E("span", {}, errorMessage || _("Operation failed"))
@@ -15709,7 +15564,7 @@ function showUpdateProgressModal(options) {
           controller.close();
         }
       });
-      actionButtonContainer.replaceChildren(closeBtn);
+      actionButtonContainer.appendChild(closeBtn);
     },
     startLogTracking: (jobId) => {
       if (!jobId || logTrackingJobId === jobId) {
@@ -15718,7 +15573,6 @@ function showUpdateProgressModal(options) {
       logTrackingJobId = jobId;
       logTrackingOffset = 0;
       logPollStopped = false;
-      logPanelEl.style.display = "";
       if (logPollTimer) {
         clearTimeout(logPollTimer);
         logPollTimer = null;
@@ -17116,9 +16970,9 @@ var styles6 = `
 .tachyon-update-modal__body {
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    gap: 10px;
     width: 100%;
-    max-width: 520px;
+    max-width: 640px;
     box-sizing: border-box;
     padding: 6px 0;
 }
@@ -17160,109 +17014,6 @@ var styles6 = `
     color: var(--text-color-medium, #888);
 }
 
-.tachyon-update-modal__progress-track {
-    width: 100%;
-    height: 12px;
-    background: var(--background-color-low, rgba(0,0,0,0.15));
-    border-radius: 6px;
-    overflow: hidden;
-    position: relative;
-    border: 1px solid var(--border-color, rgba(255,255,255,0.1));
-}
-
-.tachyon-update-modal__progress-fill {
-    height: 100%;
-    background: linear-gradient(90deg, #3498db, #2ecc71);
-    background-size: 300% 100%;
-    border-radius: 6px;
-    transition: width 0.4s ease-out;
-    animation: tachyon-progress-stripes 2s linear infinite;
-}
-
-.tachyon-update-modal__progress-fill--success {
-    background: #2ecc71 !important;
-    animation: none;
-}
-
-.tachyon-update-modal__progress-fill--error {
-    background: #e74c3c !important;
-    animation: none;
-}
-
-@keyframes tachyon-progress-stripes {
-    0% { background-position: 0% 50%; }
-    50% { background-position: 100% 50%; }
-    100% { background-position: 0% 50%; }
-}
-
-.tachyon-update-modal__step-list {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    background: var(--background-color-low, rgba(0,0,0,0.05));
-    padding: 10px 12px;
-    border-radius: 6px;
-    border: 1px solid var(--border-color, rgba(255,255,255,0.08));
-}
-
-.tachyon-update-modal__step-item {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    font-size: 13px;
-    color: var(--text-color-medium, #888);
-    opacity: 0.6;
-    transition: opacity 0.2s, color 0.2s;
-}
-
-.tachyon-update-modal__step-item--active {
-    opacity: 1;
-    color: var(--text-color-high, #fff);
-    font-weight: 500;
-}
-
-.tachyon-update-modal__step-item--done {
-    opacity: 0.9;
-    color: var(--text-color-high, #fff);
-}
-
-.tachyon-update-modal__step-icon {
-    width: 20px;
-    height: 20px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 12px;
-    font-weight: bold;
-    border-radius: 50%;
-    background: var(--background-color-high, rgba(255,255,255,0.08));
-    flex-shrink: 0;
-}
-
-.tachyon-update-modal__step-item--active .tachyon-update-modal__step-icon {
-    background: var(--link-color, #3498db);
-    color: #fff;
-    animation: tachyon-step-pulse 1.2s infinite alternate;
-}
-
-.tachyon-update-modal__step-item--done .tachyon-update-modal__step-icon {
-    background: #2ecc71;
-    color: #fff;
-}
-
-@keyframes tachyon-step-pulse {
-    0% { transform: scale(0.95); opacity: 0.8; }
-    100% { transform: scale(1.1); opacity: 1; }
-}
-
-.tachyon-update-modal__status-msg {
-    font-size: 13px;
-    color: var(--text-color-high);
-    min-height: 28px;
-    display: flex;
-    align-items: center;
-}
-
 .tachyon-update-modal__success-banner {
     display: flex;
     align-items: center;
@@ -17290,9 +17041,11 @@ var styles6 = `
 }
 
 .tachyon-update-modal__log-panel {
-    margin-top: 10px;
-    border-top: 1px solid var(--border-color, rgba(255,255,255,0.12));
-    padding-top: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex: 1 1 auto;
+    min-height: 0;
 }
 
 .tachyon-update-modal__log-header {
@@ -17300,7 +17053,6 @@ var styles6 = `
     justify-content: space-between;
     align-items: center;
     gap: 8px;
-    margin-bottom: 6px;
 }
 
 .tachyon-update-modal__log-copy {
@@ -17310,7 +17062,8 @@ var styles6 = `
 
 .tachyon-update-modal__log {
     margin: 0;
-    max-height: 200px;
+    height: 350px;
+    min-height: 200px;
     overflow-y: auto;
     white-space: pre-wrap;
     word-break: break-all;
@@ -17322,6 +17075,8 @@ var styles6 = `
     border: 1px solid var(--border-color, rgba(255,255,255,0.12));
     border-radius: 4px;
     padding: 8px;
+    flex: 1 1 auto;
+    min-height: 0;
 }
 `;
 

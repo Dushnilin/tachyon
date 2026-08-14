@@ -101,20 +101,31 @@ async function generatePo() {
 
     const calls = JSON.parse(callsRaw);
     const oldTranslations = parsePo(oldPoRaw);
-    const body = calls
-        .map(({ key }) => {
-            const msgid = key;
-            const msgstr = oldTranslations.get(msgid) || '';
-            return [
-                `msgid "${escapePoString(msgid)}"`,
-                `msgstr "${escapePoString(msgstr)}"`,
-                ''
-            ].join('\n');
-        })
-        .join('\n');
+
+    const callKeys = new Set(calls.map(({ key }) => key));
+
+    const bodyParts = [];
+
+    // First: all keys from calls.json (source-of-truth for what's used in code)
+    for (const { key } of calls) {
+        const msgid = key;
+        const msgstr = oldTranslations.get(msgid) || '';
+        bodyParts.push(
+            `msgid "${escapePoString(msgid)}"\nmsgstr "${escapePoString(msgstr)}"`
+        );
+    }
+
+    // Second: preserve existing entries NOT in calls.json (manual additions, legacy strings)
+    for (const [msgid, msgstr] of oldTranslations) {
+        if (!callKeys.has(msgid) && msgid !== '') {
+            bodyParts.push(
+                `msgid "${escapePoString(msgid)}"\nmsgstr "${escapePoString(msgstr)}"`
+            );
+        }
+    }
 
     const header = getHeader(lang);
-    const finalPo = header.join('\n') + '\n' + body;
+    const finalPo = header.join('\n') + '\n' + bodyParts.join('\n\n') + '\n';
 
     await fs.writeFile(poPath, finalPo, 'utf8');
     const translated = [...oldTranslations.values()].filter(v => v !== '').length;

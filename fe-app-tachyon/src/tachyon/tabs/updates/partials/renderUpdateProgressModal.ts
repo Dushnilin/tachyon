@@ -106,42 +106,18 @@ export function showUpdateProgressModal(
   }
 
   const isCheckAction = options.action === 'check_update';
-  const isRemoveAction = options.action === 'remove';
-  const isInstallOrUpdate = !isCheckAction && !isRemoveAction;
 
   let modalTitleText = _('Operation in progress...');
   if (isCheckAction) {
     modalTitleText = `${_('Checking for updates...')}: ${options.componentTitle}`;
-  } else if (isRemoveAction) {
+  } else if (options.action === 'remove') {
     modalTitleText = `${_('Removing')} ${options.componentTitle}...`;
   } else {
     modalTitleText = `${_('Updating')} ${options.componentTitle}...`;
   }
 
-  const steps = isCheckAction
-    ? [
-        _('Connecting to update server...'),
-        _('Fetching release & commit metadata...'),
-        _('Comparing versions & fingerprint check...'),
-      ]
-    : isRemoveAction
-      ? [
-          _('Stopping active services...'),
-          _('Removing binaries & package files...'),
-          _('Cleaning configuration & reloading...'),
-        ]
-      : [
-          _('Environment preparation & dependency check...'),
-          _('Downloading package from repository...'),
-          _('Unpacking & installing binaries...'),
-          _('Updating configuration & access permissions...'),
-          _('Applying changes & reloading services...'),
-        ];
-
-  let currentStepIndex = 0;
   let elapsedSeconds = 0;
   let timerInterval: ReturnType<typeof setInterval> | null = null;
-  let autoAdvanceTimer: ReturnType<typeof setInterval> | null = null;
   let isCompleted = false;
   let currentModalVersions = { ...options };
 
@@ -169,64 +145,13 @@ export function showUpdateProgressModal(
     timerBadgeEl,
   ]);
 
-  const progressBarFillEl = E('div', {
-    class: 'tachyon-update-modal__progress-fill',
-    style: 'width: 15%;',
-  });
-
-  const progressBarTrackEl = E(
-    'div',
-    { class: 'tachyon-update-modal__progress-track' },
-    [progressBarFillEl],
-  );
-
-  const stepItemEls: HTMLElement[] = steps.map((stepText, index) => {
-    const iconEl = E(
-      'span',
-      { class: 'tachyon-update-modal__step-icon' },
-      index === 0 ? '⚡' : '○',
-    );
-    const labelEl = E(
-      'span',
-      { class: 'tachyon-update-modal__step-label' },
-      stepText,
-    );
-    return E(
-      'div',
-      {
-        class: [
-          'tachyon-update-modal__step-item',
-          index === 0 ? 'tachyon-update-modal__step-item--active' : '',
-        ]
-          .filter(Boolean)
-          .join(' '),
-      },
-      [iconEl, labelEl],
-    ) as HTMLElement;
-  });
-
-  const stepListEl = E(
-    'div',
-    { class: 'tachyon-update-modal__step-list' },
-    stepItemEls,
-  );
-
-  const statusMsgEl = E(
-    'div',
-    { class: 'tachyon-update-modal__status-msg' },
-    steps[0] || _('Please wait, operation is running...'),
-  );
-
   const logPreEl = E('pre', {
     class: 'tachyon-update-modal__log',
   }) as HTMLPreElement;
 
   const logPanelEl = E(
     'div',
-    {
-      class: 'tachyon-update-modal__log-panel',
-      style: 'display: none;',
-    },
+    { class: 'tachyon-update-modal__log-panel' },
     [
       E('div', { class: 'tachyon-update-modal__log-header' }, [
         E('b', {}, _('Operation log')),
@@ -255,9 +180,6 @@ export function showUpdateProgressModal(
 
   const modalBodyEl = E('div', { class: 'tachyon-update-modal__body' }, [
     headerEl,
-    progressBarTrackEl,
-    stepListEl,
-    statusMsgEl,
     logPanelEl,
     actionButtonContainer,
   ]) as HTMLElement;
@@ -275,79 +197,10 @@ export function showUpdateProgressModal(
     updateTimerDisplay();
   }, 1000);
 
-  if (isInstallOrUpdate) {
-    autoAdvanceTimer = setInterval(() => {
-      if (isCompleted) return;
-      if (elapsedSeconds >= 2 && currentStepIndex === 0) {
-        setStep(1);
-      } else if (elapsedSeconds >= 5 && currentStepIndex === 1) {
-        setStep(2);
-      } else if (elapsedSeconds >= 9 && currentStepIndex === 2) {
-        setStep(3);
-      } else if (elapsedSeconds >= 14 && currentStepIndex === 3) {
-        setStep(4);
-      }
-    }, 500);
-  } else if (isCheckAction) {
-    autoAdvanceTimer = setInterval(() => {
-      if (isCompleted) return;
-      if (elapsedSeconds >= 1 && currentStepIndex === 0) {
-        setStep(1);
-      } else if (elapsedSeconds >= 2 && currentStepIndex === 1) {
-        setStep(2);
-      }
-    }, 500);
-  } else if (isRemoveAction) {
-    autoAdvanceTimer = setInterval(() => {
-      if (isCompleted) return;
-      if (elapsedSeconds >= 1 && currentStepIndex === 0) {
-        setStep(1);
-      } else if (elapsedSeconds >= 3 && currentStepIndex === 1) {
-        setStep(2);
-      }
-    }, 500);
-  }
-
-  function setStep(stepIndex: number, customStatus?: string) {
-    if (stepIndex < 0 || stepIndex >= steps.length) return;
-    currentStepIndex = stepIndex;
-
-    const percent = Math.round(((stepIndex + 1) / (steps.length + 0.5)) * 100);
-    progressBarFillEl.style.width = `${Math.min(percent, 92)}%`;
-
-    stepItemEls.forEach((item, idx) => {
-      const iconEl = item.querySelector('.tachyon-update-modal__step-icon');
-      item.classList.remove(
-        'tachyon-update-modal__step-item--active',
-        'tachyon-update-modal__step-item--done',
-      );
-
-      if (idx < stepIndex) {
-        item.classList.add('tachyon-update-modal__step-item--done');
-        if (iconEl) iconEl.textContent = '✓';
-      } else if (idx === stepIndex) {
-        item.classList.add('tachyon-update-modal__step-item--active');
-        if (iconEl) iconEl.textContent = '⚡';
-      } else {
-        if (iconEl) iconEl.textContent = '○';
-      }
-    });
-
-    if (customStatus) {
-      statusMsgEl.textContent = customStatus;
-    } else if (steps[stepIndex]) {
-      statusMsgEl.textContent = steps[stepIndex];
-    }
-  }
-
   function cleanupTimers() {
     if (timerInterval) {
       clearInterval(timerInterval);
       timerInterval = null;
-    }
-    if (autoAdvanceTimer) {
-      clearInterval(autoAdvanceTimer);
-      autoAdvanceTimer = null;
     }
   }
 
@@ -440,11 +293,11 @@ export function showUpdateProgressModal(
   }
 
   const controller: UpdateProgressModalController = {
-    updateStep: (stepIndex: number, statusText?: string) => {
-      setStep(stepIndex, statusText);
+    updateStep: (_stepIndex: number, _statusText?: string) => {
+      // noop — step UI removed, log is the primary content
     },
-    updateStatus: (statusText: string) => {
-      statusMsgEl.textContent = statusText;
+    updateStatus: (_statusText: string) => {
+      // noop — status merged into log
     },
     updateVersions: (opts: {
       currentVersion?: string;
@@ -463,27 +316,15 @@ export function showUpdateProgressModal(
       cleanupTimers();
       finishLogTracking();
 
-      progressBarFillEl.style.width = '100%';
-      progressBarFillEl.classList.add(
-        'tachyon-update-modal__progress-fill--success',
-      );
-
-      stepItemEls.forEach((item) => {
-        item.classList.remove('tachyon-update-modal__step-item--active');
-        item.classList.add('tachyon-update-modal__step-item--done');
-        const iconEl = item.querySelector('.tachyon-update-modal__step-icon');
-        if (iconEl) iconEl.textContent = '✓';
-      });
-
       const successMsg =
         message ||
         (isCheckAction
           ? _('Check completed!')
-          : isRemoveAction
+          : options.action === 'remove'
             ? _('Removal completed successfully!')
             : _('Update completed successfully!'));
 
-      statusMsgEl.replaceChildren(
+      actionButtonContainer.replaceChildren(
         E('div', { class: 'tachyon-update-modal__success-banner' }, [
           renderCheckIcon24(),
           E('span', {}, successMsg),
@@ -563,12 +404,7 @@ export function showUpdateProgressModal(
       cleanupTimers();
       finishLogTracking();
 
-      progressBarFillEl.style.width = '100%';
-      progressBarFillEl.classList.add(
-        'tachyon-update-modal__progress-fill--error',
-      );
-
-      statusMsgEl.replaceChildren(
+      actionButtonContainer.replaceChildren(
         E('div', { class: 'tachyon-update-modal__error-banner' }, [
           renderXIcon24(),
           E('span', {}, errorMessage || _('Operation failed')),
@@ -583,7 +419,7 @@ export function showUpdateProgressModal(
         },
       });
 
-      actionButtonContainer.replaceChildren(closeBtn);
+      actionButtonContainer.appendChild(closeBtn);
     },
     startLogTracking: (jobId: string) => {
       if (!jobId || logTrackingJobId === jobId) {
@@ -593,7 +429,6 @@ export function showUpdateProgressModal(
       logTrackingJobId = jobId;
       logTrackingOffset = 0;
       logPollStopped = false;
-      logPanelEl.style.display = '';
 
       if (logPollTimer) {
         clearTimeout(logPollTimer);

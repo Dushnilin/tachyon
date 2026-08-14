@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-08-14 13:16+0300\n"
-"PO-Revision-Date: 2026-08-14 13:16+0300\n"
+"POT-Creation-Date: 2026-08-14 14:42+0300\n"
+"PO-Revision-Date: 2026-08-14 14:42+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -870,7 +870,7 @@ msgid "e.g. SHA256 — leave empty for default"
 msgstr "напр. SHA256 — оставьте пустым для значения по умолчанию"
 
 msgid "Each entry must be \"proto\", \"proto:port\" or \"proto:port-port\" (tcp/udp), e.g. tcp:6881,udp:6881-6889"
-msgstr ""
+msgstr "Каждая запись — \"proto\", \"proto:port\" или \"proto:port-port\" (tcp/udp), напр. tcp:6881,udp:6881-6889"
 
 msgid "Enable"
 msgstr "Включить"
@@ -2181,13 +2181,13 @@ msgid "Port range start must be less than or equal to end"
 msgstr "Начало диапазона портов должно быть меньше или равно концу"
 
 msgid "Port range start must not exceed its end"
-msgstr ""
+msgstr "Начало диапазона портов не должно превышать его конец"
 
 msgid "Ports"
 msgstr "Порты"
 
 msgid "Ports must be between 1 and 65535"
-msgstr ""
+msgstr "Порты должны быть от 1 до 65535"
 
 msgid "Pre-download all preset lists"
 msgstr "Предзагрузить все предустановленные списки"
@@ -2367,7 +2367,7 @@ msgid "Restarts"
 msgstr "Перезапуски"
 
 msgid "Restore"
-msgstr ""
+msgstr "Восстановить"
 
 msgid "Restore Snapshot"
 msgstr "Восстановить снапшот"
@@ -2889,7 +2889,7 @@ msgid "Tachyon service is stopped. Start the service to display the dashboard."
 msgstr "Служба Tachyon остановлена. Запустите сервис для отображения дашборда."
 
 msgid "Tachyon update did not complete within the timeout"
-msgstr ""
+msgstr "Обновление Tachyon не завершилось в течение таймаута"
 
 msgid "Tachyon will not modify your DHCP configuration"
 msgstr "Tachyon не будет изменять вашу конфигурацию DHCP"
@@ -3388,3 +3388,402 @@ msgstr "sing-box outbound для Zapret2 настроен"
 
 msgid "Zapret2 sing-box outbound is not configured"
 msgstr "sing-box outbound для Zapret2 не настроен"
+
+msgid "Service Health Check"
+msgstr "Проверка доступности сервисов"
+
+msgid "Total Targets"
+msgstr "Всего целей"
+
+msgid "Passed"
+msgstr "Успешно"
+
+msgid "Failed"
+msgstr "Ошибки"
+
+msgid "Avg Latency"
+msgstr "Ср. задержка"
+
+msgid "Search domain..."
+msgstr "Поиск домена..."
+
+msgid "Section / Target"
+msgstr "Секция / Цель"
+
+msgid "Outbound Route"
+msgstr "Маршрут"
+
+msgid "Resolved IP / DNS"
+msgstr "IP / DNS"
+
+msgid "Verdict"
+msgstr "Статус"
+
+msgid "Check domain or IP (e.g. example.com)..."
+msgstr "Проверить домен или IP (напр. example.com)..."
+
+msgid "Check Custom"
+msgstr "Проверить свой"
+
+msgid "Check All"
+msgstr "Проверить все"
+
+msgid "Check Again"
+msgstr "Проверить снова"
+
+msgid "Testing..."
+msgstr "Тестирование..."
+
+msgid "Fetching service targets..."
+msgstr "Получение списка сервисов..."
+
+msgid "Failed to run service check."
+msgstr "Не удалось выполнить проверку сервисов."
+
+msgid "Failed to parse target list."
+msgstr "Ошибка обработки списка целей."
+
+msgid "No targets found in section configs."
+msgstr "Цели в конфигурациях секций не найдены."
+
+msgid "Check YouTube availability"
+msgstr "Проверить доступность YouTube"
+
+msgid "Check Mode:"
+msgstr "Режим проверки:"
+
+msgid "Active Sections"
+msgstr "Активные секции"
+
+msgid "All Profiles"
+msgstr "Все сервисы и профили"
+
+msgid "Sections"
+msgstr "Секции"
+
+msgid "Servers"
+msgstr "Серверы"
+
+msgid "Monitoring"
+msgstr "Мониторинг"
+
+msgid "Components"
+msgstr "Компоненты"
+
+msgid "Drag rows to change priority. The rule at the top is checked first."
+msgstr "Перетащите строки для изменения приоритета. Правило вверху проверяется первым."
+
+msgid "Rules"
+msgstr "Правила"
+
+msgid "Edit"
+msgstr "Редактировать"
+
+msgid "Connection"
+msgstr "Соединение"
+
+msgid "Add a section"
+msgstr "Добавить секцию"
+
+msgid "Add a server inbound"
+msgstr "Добавить серверный инбаунд"
+
+msgid "Accept external proxy connections and route them with sing-box."
+msgstr "Принимать внешние прокси-подключения и маршрутизировать их через sing-box."
+
+msgid "Section"
+msgstr "Секция"
+
+msgid "Server"
+msgstr "Сервер"
+
+msgid "Installing"
+msgstr "Установка"
+
+msgid "Initializing operation..."
+msgstr "Инициализация операции..."
+
+msgid "Installing package & updating configurations..."
+msgstr "Установка пакета и обновление настроек..."
+
+msgid "Installation completed successfully!"
+msgstr "Установка успешно завершена!"
+
+msgid "Direct"
+msgstr "Напрямую"
+
+msgid "Tachyon Settings"
+msgstr "Настройки Tachyon"
+
+msgid "All Services"
+msgstr "Все сервисы"
+
+msgid "Service Availability Check"
+msgstr "Проверка доступности сервисов"
+
+msgid "Filter by service:"
+msgstr "Фильтр по сервису:"
+
+msgid "Search domain or service..."
+msgstr "Поиск домена или сервиса..."
+
+msgid "Service / Target"
+msgstr "Сервис / Цель"
+
+msgid "Route Type"
+msgstr "Тип маршрута"
+
+msgid "Active Routes"
+msgstr "Активные маршруты"
+
+msgid "Custom Domains"
+msgstr "Свои домены"
+
+msgid "Unavailable"
+msgstr "Недоступно"
+
+msgid "Available"
+msgstr "Доступно"
+
+msgid "Auto"
+msgstr "Авто"
+
+msgid "Proxy"
+msgstr "Прокси"
+
+msgid "TCP"
+msgstr "TCP"
+
+msgid "TLS"
+msgstr "TLS"
+
+msgid "Method"
+msgstr "Метод"
+
+msgid "ALPN"
+msgstr "ALPN"
+
+msgid "VLESS flow"
+msgstr "VLESS flow"
+
+msgid "FakeTLS host"
+msgstr "FakeTLS host"
+
+msgid "Concurrency"
+msgstr "Параллелизм"
+
+msgid "Information"
+msgstr "Информация"
+
+msgid "Saving..."
+msgstr "Сохранение..."
+
+msgid "Generating..."
+msgstr "Генерация..."
+
+msgid "Starting..."
+msgstr "Запуск..."
+
+msgid "Stopping..."
+msgstr "Остановка..."
+
+msgid "None"
+msgstr "Нет"
+
+msgid "Enabled"
+msgstr "Включено"
+
+msgid "Disabled"
+msgstr "Отключено"
+
+msgid "Configuration for Tachyon service"
+msgstr "Конфигурация сервиса Tachyon"
+
+msgid "Only the specified servers"
+msgstr "Только указанные серверы"
+
+msgid "Select all"
+msgstr "Выбрать все"
+
+msgid "Routing mode"
+msgstr "Режим маршрутизации"
+
+msgid "Routing section"
+msgstr "Секция маршрутизации"
+
+msgid "Keeps FakeIP cache persistent across reboots and pre-resolves popular blocked domains on startup so first-visit latency is 0 ms."
+msgstr "Сохраняет кэш FakeIP между перезагрузками и предварительно разрешает популярные заблокированные домены при запуске, чтобы задержка первого обращения была 0 мс."
+
+msgid "Configure User-Agent в the item settings"
+msgstr "Настройте User-Agent в параметрах элемента"
+
+msgid "Client link"
+msgstr "Клиентская ссылка"
+
+msgid "Client link QR code"
+msgstr "QR-код клиентской ссылки"
+
+msgid "Client link is not available yet"
+msgstr "Клиентская ссылка пока недоступна"
+
+msgid "Loading client link..."
+msgstr "Загрузка клиентской ссылки..."
+
+msgid "Secret"
+msgstr "Секрет"
+
+msgid "Public Key"
+msgstr "Публичный ключ"
+
+msgid "Certificate path"
+msgstr "Путь к сертификату"
+
+msgid "Key path"
+msgstr "Путь к ключу"
+
+msgid "Specify a file path"
+msgstr "Укажите путь к файлу"
+
+msgid "Specify different files"
+msgstr "Укажите разные файлы"
+
+msgid "Selected section"
+msgstr "Выбранная секция"
+
+msgid "Inbound JSON"
+msgstr "Inbound JSON"
+
+msgid "Inbound JSON cannot be empty"
+msgstr "Inbound JSON не может быть пустым"
+
+msgid "Inbound JSON must be an object with a type field"
+msgstr "Inbound JSON должен быть объектом с полем type"
+
+msgid "Server information"
+msgstr "Информация о сервере"
+
+msgid "Server name"
+msgstr "Имя сервера"
+
+msgid "Server name / SNI"
+msgstr "Имя сервера / SNI"
+
+msgid "Reality fake site"
+msgstr "Фейковый сайт Reality"
+
+msgid "Reality fake site port"
+msgstr "Порт фейкового сайта Reality"
+
+msgid "Reality max time difference"
+msgstr "Макс. разница времени Reality"
+
+msgid "Reality private key"
+msgstr "Приватный ключ Reality"
+
+msgid "Reality public key"
+msgstr "Публичный ключ Reality"
+
+msgid "Reality short ID"
+msgstr "Короткий ID Reality"
+
+msgid "Reality short ID must contain 1-8 hex digits"
+msgstr "Короткий ID Reality должен содержать 1-8 шестнадцатеричных цифр"
+
+msgid "Fronting IP"
+msgstr "Fronting IP"
+
+msgid "Fronting port"
+msgstr "Fronting порт"
+
+msgid "Fronting proxy protocol"
+msgstr "Протокол Fronting прокси"
+
+msgid "gRPC service"
+msgstr "Сервис gRPC"
+
+msgid "Transport host"
+msgstr "Хост транспорта"
+
+msgid "Transport path"
+msgstr "Путь транспорта"
+
+msgid "Transport path must start with /"
+msgstr "Путь транспорта должен начинаться с /"
+
+msgid "HTTP hosts"
+msgstr "HTTP хосты"
+
+msgid "XHTTP mode"
+msgstr "Режим XHTTP"
+
+msgid "Fallback on unknown DC"
+msgstr "Fallback при неизвестном DC"
+
+msgid "Padding"
+msgstr "Padding"
+
+msgid "Handshake timeout"
+msgstr "Таймаут рукопожатия"
+
+msgid "Time skew tolerance"
+msgstr "Допуск отклонения времени"
+
+msgid "Invalid NFQWS strategy"
+msgstr "Неверная стратегия NFQWS"
+
+msgid "Invalid NFQWS2 strategy"
+msgstr "Неверная стратегия NFQWS2"
+
+msgid "Installed build \\u2192 Available build"
+msgstr "Установленная сборка \\u2192 Доступная сборка"
+
+msgid "Prevent multiple reload_firewall calls within 120 seconds to avoid connection drops."
+msgstr "Предотвращать множественные вызовы reload_firewall в течение 120 секунд для избежания разрыва соединений."
+
+msgid "Obfuscation"
+msgstr "Обфускация"
+
+msgid "Obfuscation password"
+msgstr "Пароль обфускации"
+
+msgid "Auto update"
+msgstr "Автообновление"
+
+msgid "Use CIDR prefixes like 192.168.1.0/24 or 2001:db8::/32"
+msgstr "Используйте CIDR-префиксы, например 192.168.1.0/24 или 2001:db8::/32"
+
+msgid "Use an IP address"
+msgstr "Используйте IP-адрес"
+
+msgid "Use an IP listen address"
+msgstr "Используйте IP-адрес прослушивания"
+
+msgid "Use a domain name or IP address"
+msgstr "Используйте имя домена или IP-адрес"
+
+msgid "Use an HTTP or HTTPS URL"
+msgstr "Используйте HTTP или HTTPS URL"
+
+msgid "Use letters, digits, dots, underscores, or hyphens"
+msgstr "Используйте буквы, цифры, точки, подчёркивания или дефисы"
+
+msgid "Use a non-negative integer"
+msgstr "Используйте неотрицательное целое число"
+
+msgid "Use a non-zero secret"
+msgstr "Используйте ненулевой секрет"
+
+msgid "Use 32 hex characters"
+msgstr "Используйте 32 шестнадцатеричных символа"
+
+msgid "Use a duration like 30s, 5m, or 1h30m"
+msgstr "Используйте длительность, например 30s, 5m или 1h30m"
+
+msgid "Expecting: %s"
+msgstr "Ожидалось: %s"
+
+msgid "Cannot save server"
+msgstr "Не удалось сохранить сервер"
+
+msgid "QR code is too large"
+msgstr "QR-код слишком большой"
