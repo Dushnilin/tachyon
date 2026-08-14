@@ -2045,6 +2045,12 @@ msgstr "Перезаписать существующие записи (если
 msgid "P2P Leak Protection"
 msgstr "Защита от утечек P2P"
 
+msgid "P2P Client Ports"
+msgstr "Порты P2P-клиента"
+
+msgid "Pin P2P isolation to the torrent client's own ports, comma separated. Each entry is \"proto\", \"proto:port\" or \"proto:port-port\" (tcp/udp). Without a port the whole protocol is routed direct."
+msgstr "Закрепить изоляцию P2P за портами торрент-клиента, через запятую. Каждая запись — \"протокол\", \"протокол:порт\" или \"протокол:порт-порт\" (tcp/udp). Без порта весь протокол уходит напрямую."
+
 msgid "Parsed records:"
 msgstr "Обработанные записи:"
 

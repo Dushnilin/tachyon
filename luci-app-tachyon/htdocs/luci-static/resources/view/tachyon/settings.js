@@ -1002,6 +1002,46 @@ function createSettingsContent(section, capabilities) {
 
   o = section.taboption(
     "services",
+    form.Value,
+    "p2p_ports",
+    _("P2P Client Ports"),
+    _(
+      "Pin P2P isolation to the torrent client's own ports, comma separated. Each entry is \"proto\", \"proto:port\" or \"proto:port-port\" (tcp/udp). Without a port the whole protocol is routed direct.",
+    ),
+  );
+  o.depends("isolate_p2p", "1");
+  o.placeholder = "tcp:6881,udp:6881-6889";
+  o.validate = function (_section_id, value) {
+    if (!value || !value.trim()) {
+      return true;
+    }
+
+    const entries = value.split(",");
+    for (const entry of entries) {
+      if (!/^(tcp|udp)(:[0-9]{1,5}(-[0-9]{1,5})?)?$/.test(entry.trim())) {
+        return _("Each entry must be \"proto\", \"proto:port\" or \"proto:port-port\" (tcp/udp), e.g. tcp:6881,udp:6881-6889");
+      }
+
+      const portSpec = entry.split(":")[1];
+      if (!portSpec) {
+        continue;
+      }
+
+      const bounds = portSpec.split("-").map(Number);
+      if (bounds.some((port) => !Number.isInteger(port) || port < 1 || port > 65535)) {
+        return _("Ports must be between 1 and 65535");
+      }
+
+      if (bounds.length === 2 && bounds[0] > bounds[1]) {
+        return _("Port range start must not exceed its end");
+      }
+    }
+
+    return true;
+  };
+
+  o = section.taboption(
+    "services",
     form.Flag,
     "game_console_optimizer",
     _("Game Console Optimizer (NAT Type 1)"),

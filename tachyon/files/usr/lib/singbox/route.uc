@@ -15,6 +15,58 @@ function bool_value(value) {
     return value === true || value == "1" || value == "true" || value == "yes" || value == "on";
 }
 
+function normalize_port_entry(value) {
+    value = trim(as_string(value));
+    if (value == "" || match(value, /^[0-9]+$/) == null)
+        return null;
+    let number = int(value);
+    return number >= 1 && number <= 65535 ? number : null;
+}
+
+// P2P leak protection can be pinned down to the torrent client's own ports so
+// nothing sneaks past the protocol sniffer. Each entry is "proto" or
+// "proto:port" or "proto:port-port" (tcp/udp, comma separated). Without a
+// port the whole protocol is routed direct.
+function p2p_direct_rules(settings) {
+    let rules = [];
+    for (let entry in split(option(settings, "p2p_ports", ""), ",")) {
+        entry = trim(entry);
+        if (entry == "")
+            continue;
+        let proto = "tcp";
+        let port_spec = "";
+        let colon = index(entry, ":");
+        if (colon >= 0) {
+            proto = trim(substr(entry, 0, colon));
+            port_spec = trim(substr(entry, colon + 1));
+        } else {
+            proto = entry;
+        }
+        if (proto != "tcp" && proto != "udp")
+            continue;
+        let rule = { protocol: [ proto ], action: "route", outbound: runtime_constants.DIRECT_OUTBOUND_TAG };
+        if (port_spec != "") {
+            let dash = index(port_spec, "-");
+            if (dash >= 0) {
+                let start = normalize_port_entry(substr(port_spec, 0, dash));
+                let end = normalize_port_entry(substr(port_spec, dash + 1));
+                if (start != null && end != null && start <= end)
+                    rule.source_port_range = [ sprintf("%d:%d", start, end) ];
+                else
+                    continue;
+            } else {
+                let port = normalize_port_entry(port_spec);
+                if (port != null)
+                    rule.source_port = port;
+                else
+                    continue;
+            }
+        }
+        push(rules, rule);
+    }
+    return rules;
+}
+
 function config(settings, runtime) {
     let output_network_interface = option(settings, "output_network_interface", "");
     let mwan3_active = type(runtime) == "object" && bool_value(runtime.mwan3_active);
@@ -41,8 +93,11 @@ function config(settings, runtime) {
         result.default_interface = output_network_interface;
     if (bool_option(settings, "disable_quic", false))
         push(result.rules, { action: "reject", inbound: runtime_constants.TPROXY_INBOUND_TAG, protocol: "quic" });
-    if (bool_option(settings, "isolate_p2p", false))
+    if (bool_option(settings, "isolate_p2p", false)) {
         push(result.rules, { protocol: "bittorrent", action: "route", outbound: runtime_constants.DIRECT_OUTBOUND_TAG });
+        for (let rule in p2p_direct_rules(settings))
+            push(result.rules, rule);
+    }
 
     return result;
 }

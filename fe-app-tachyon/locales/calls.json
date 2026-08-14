@@ -4950,6 +4950,20 @@
     ]
   },
   {
+    "call": "P2P Client Ports",
+    "key": "P2P Client Ports",
+    "places": [
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:996"
+    ]
+  },
+  {
+    "call": "Pin P2P isolation to the torrent client's own ports, comma separated. Each entry is \"proto\", \"proto:port\" or \"proto:port-port\" (tcp/udp). Without a port the whole protocol is routed direct.",
+    "key": "Pin P2P isolation to the torrent client's own ports, comma separated. Each entry is \"proto\", \"proto:port\" or \"proto:port-port\" (tcp/udp). Without a port the whole protocol is routed direct.",
+    "places": [
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:997"
+    ]
+  },
+  {
     "call": "Parsed records:",
     "key": "Parsed records:",
     "places": [

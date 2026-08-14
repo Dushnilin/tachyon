@@ -633,6 +633,30 @@ cat >"$WORK_DIR/mwan3-pinned-fixture.json" <<'JSON'
 }
 JSON
 
+cat >"$WORK_DIR/p2p-isolate-fixture.json" <<'JSON'
+{
+  "settings": {
+    ".name": "settings",
+    ".type": "settings",
+    "config_path": "/tmp/sing-box/config.json",
+    "dns_server": "1.1.1.1",
+    "service_listen_address": "127.0.0.1",
+    "isolate_p2p": "1",
+    "p2p_ports": "tcp:6881,udp:6881-6889,udp"
+  },
+  "section": [
+    {
+      ".name": "proxy",
+      ".type": "section",
+      "enabled": "1",
+      "action": "outbound",
+      "outbound_json": "{\"type\":\"direct\"}",
+      "domain_suffix": [ "example.org" ]
+    }
+  ]
+}
+JSON
+
 cat >"$WORK_DIR/domain-ip.lst" <<'EOF_LIST'
 example.net
 203.0.113.0/24
@@ -1027,6 +1051,7 @@ generate_config "$WORK_DIR/download-via-proxy-fixture.json" "$WORK_DIR/download.
 generate_config "$WORK_DIR/fully-routed-fixture.json" "$WORK_DIR/fully-routed.json"
 generate_config "$WORK_DIR/mwan3-auto-fixture.json" "$WORK_DIR/mwan3-auto.json" 1
 generate_config "$WORK_DIR/mwan3-pinned-fixture.json" "$WORK_DIR/mwan3-pinned.json" 1
+generate_config "$WORK_DIR/p2p-isolate-fixture.json" "$WORK_DIR/p2p-isolate.json"
 generate_config "$WORK_DIR/domain-ip-rulesets-fixture.json" "$WORK_DIR/domain-ip-rulesets.json"
 generate_config_with_subscription_cache "$WORK_DIR/subscription-metadata-fixture.json" "$WORK_DIR/subscription-metadata.json"
 generate_config_with_subscription_cache "$WORK_DIR/subscription-group-fixture.json" "$WORK_DIR/subscription-group.json"
@@ -1295,6 +1320,12 @@ assert(mwan3_auto.route.default_interface == null, "mwan3 without pinned interfa
 let mwan3_pinned = cfg("mwan3-pinned");
 assert(mwan3_pinned.route.auto_detect_interface === false, "mwan3 pinned interface disables auto_detect_interface");
 assert(mwan3_pinned.route.default_interface == "wan2", "mwan3 pinned interface is preserved");
+
+let p2p_isolate = cfg("p2p-isolate");
+assert(route_rule(p2p_isolate, r => contains(r.protocol, "bittorrent") && r.outbound == "direct-out") != null, "p2p isolation sniffer rule");
+assert(route_rule(p2p_isolate, r => contains(r.protocol, "tcp") && r.source_port == 6881 && r.outbound == "direct-out") != null, "p2p client tcp port rule");
+assert(route_rule(p2p_isolate, r => contains(r.protocol, "udp") && contains(r.source_port_range, "6881:6889") && r.outbound == "direct-out") != null, "p2p client udp port range rule");
+assert(route_rule(p2p_isolate, r => contains(r.protocol, "udp") && r.source_port == null && r.source_port_range == null && r.outbound == "direct-out") != null, "p2p protocol-wide direct rule");
 
 let lists = cfg("domain-ip-rulesets");
 assert(no_internal_fields(lists), "internal runtime fields stripped from generated config");
