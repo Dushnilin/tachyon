@@ -646,7 +646,7 @@ function server_effective_security_value(section, protocol) {
     if (security == "")
         security = default_security_value(protocol);
 
-    if (protocol == "shadowsocks" || protocol == "socks" || protocol == "mtproto" || protocol == "tailscale" || protocol == "json_inbound")
+    if (protocol == "shadowsocks" || protocol == "socks" || protocol == "mtproto" || protocol == "tailscale" || protocol == "json_inbound" || protocol == "awg")
         security = "none";
     else if (protocol == "hysteria2")
         security = "tls";
@@ -899,7 +899,7 @@ function prepare_server_defaults(section) {
     let protocol = config_get(section, "protocol", "vless");
     if (!(protocol == "shadowsocks" || protocol == "socks" || protocol == "vmess" || protocol == "vless" ||
         protocol == "trojan" || protocol == "hysteria2" || protocol == "mtproto" || protocol == "tailscale" ||
-        protocol == "json_inbound"))
+        protocol == "json_inbound" || protocol == "awg"))
         fatal("Server '" + section + "' has unsupported protocol '" + protocol + "'. Aborted.");
 
     server_default_set_option(section, "protocol", protocol);
@@ -965,6 +965,38 @@ function prepare_server_defaults(section) {
         server_default_set_option(section, "vmess_alter_id", "0");
     if (protocol == "shadowsocks")
         server_default_set_option(section, "shadowsocks_method", "aes-128-gcm");
+    if (protocol == "awg") {
+        server_default_set_option(section, "listen_port", "51820");
+        server_default_set_option(section, "awg_mtu", "1280");
+        server_default_set_option(section, "awg_local_address", "10.0.0.1/24");
+        server_default_set_option(section, "awg_jc", "4");
+        server_default_set_option(section, "awg_jmin", "40");
+        server_default_set_option(section, "awg_jmax", "70");
+        server_default_set_option(section, "awg_s1", "0");
+        server_default_set_option(section, "awg_s2", "0");
+        server_default_set_option(section, "awg_s3", "0");
+        server_default_set_option(section, "awg_s4", "0");
+        server_default_set_option(section, "awg_h1", "1");
+        server_default_set_option(section, "awg_h2", "2");
+        server_default_set_option(section, "awg_h3", "3");
+        server_default_set_option(section, "awg_h4", "4");
+        server_default_set_option(section, "awg_keepalive", "25");
+        if (uci_get(config_path(section, "awg_private_key")) == "") {
+            let data = output("sing-box generate wg-keypair 2>/dev/null");
+            let priv = "";
+            let pub = "";
+            for (let line in split(data, "\n")) {
+                let m_priv = match(line, /^PrivateKey:\s*(.+)$/);
+                if (m_priv) priv = trim(m_priv[1]);
+                let m_pub = match(line, /^PublicKey:\s*(.+)$/);
+                if (m_pub) pub = trim(m_pub[1]);
+            }
+            if (priv != "" && pub != "") {
+                server_set_option(section, "awg_private_key", priv);
+                server_set_option(section, "awg_peer_public_key", pub);
+            }
+        }
+    }
     if (protocol == "tailscale") {
         let safe_name = safe_filename_string(section);
         server_default_set_option(section, "tailscale_control_url", "https://controlplane.tailscale.com");

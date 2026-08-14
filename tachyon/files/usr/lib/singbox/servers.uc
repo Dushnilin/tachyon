@@ -86,7 +86,7 @@ function effective_security(section, protocol) {
     }
 
     if (protocol == "shadowsocks" || protocol == "socks" || protocol == "mtproto" ||
-        protocol == "tailscale" || protocol == "json_inbound")
+        protocol == "tailscale" || protocol == "json_inbound" || protocol == "awg")
         return "none";
     if (protocol == "hysteria2")
         return "tls";
@@ -235,6 +235,66 @@ function add_standard_inbound(config, section, protocol, tag_name) {
         maybe_string(inbound, "tolerate_time_skewness", option(section, "mtproto_tolerate_time_skewness", "3s"));
         maybe_string(inbound, "idle_timeout", option(section, "mtproto_idle_timeout", "5m"));
         maybe_string(inbound, "handshake_timeout", option(section, "mtproto_handshake_timeout", "10s"));
+    }
+    else if (protocol == "awg") {
+        inbound.type = "wireguard";
+        inbound.address = list_option(section, "awg_local_address");
+        inbound.private_key = option(section, "awg_private_key", "");
+        inbound.mtu = int_option(section, "awg_mtu", "1280");
+
+        let server_address = option(section, "awg_server_address", "");
+        let server_port = int_option(section, "awg_server_port", "51820");
+        let peer_public_key = option(section, "awg_peer_public_key", "");
+
+        inbound.peers = [{
+            address: server_address,
+            port: server_port,
+            public_key: peer_public_key,
+            allowed_ips: option(section, "awg_allowed_ips", "0.0.0.0/0,::/0")
+        }];
+
+        let preshared_key = option(section, "awg_preshared_key", "");
+        if (preshared_key != "")
+            inbound.peers[0].pre_shared_key = preshared_key;
+
+        let keepalive = int_option(section, "awg_keepalive", "0");
+        if (keepalive > 0)
+            inbound.peers[0].persistent_keepalive_interval = keepalive;
+
+        let jc = int_option(section, "awg_jc", "4");
+        let jmin = int_option(section, "awg_jmin", "40");
+        let jmax = int_option(section, "awg_jmax", "70");
+        let is_lx = trim(fs.readfile("/etc/tachyon/sing-box-variant") || "") == "lx";
+
+        let amnezia = {
+            jc: jc,
+            jmin: jmin,
+            jmax: jmax,
+            s1: int_option(section, "awg_s1", "0"),
+            s2: int_option(section, "awg_s2", "0"),
+            h1: int_option(section, "awg_h1", "1"),
+            h2: int_option(section, "awg_h2", "2"),
+            h3: int_option(section, "awg_h3", "3"),
+            h4: int_option(section, "awg_h4", "4"),
+            s3: int_option(section, "awg_s3", "0"),
+            s4: int_option(section, "awg_s4", "0")
+        };
+
+        if (is_lx) {
+            inbound.jc = amnezia.jc;
+            inbound.jmin = amnezia.jmin;
+            inbound.jmax = amnezia.jmax;
+            inbound.s1 = amnezia.s1;
+            inbound.s2 = amnezia.s2;
+            inbound.h1 = amnezia.h1;
+            inbound.h2 = amnezia.h2;
+            inbound.h3 = amnezia.h3;
+            inbound.h4 = amnezia.h4;
+            inbound.s3 = amnezia.s3;
+            inbound.s4 = amnezia.s4;
+        } else {
+            inbound.amnezia = amnezia;
+        }
     }
     else {
         inbound.users = users(section, protocol);

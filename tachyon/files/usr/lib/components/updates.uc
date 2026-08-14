@@ -1592,7 +1592,7 @@ function component_job_log_path(job_id) {
 }
 
 function component_job_output_path_from_state(path) {
-    path = as_string(path);
+    let output_path = as_string(path);
     if (length(path) >= 5 && substr(path, length(path) - 5) == ".json")
         return substr(path, 0, length(path) - 5) + ".out";
     return path + ".out";
@@ -1862,7 +1862,7 @@ function component_action_worker(state_file, output_file, component, action) {
     // object, and a successful action was reported to the UI as "Failed to
     // execute" with the tail of a log as its message.
     let worker_env = component_worker_env();
-    worker_env.UPDATES_JOB_LOG = output_file + ".log";
+    worker_env.UPDATES_JOB_LOG = substr(output_file, 0, length(output_file) - 4) + ".log";
     let command = command_env(worker_env) + " " +
         command_from_args([
             "ucode",
