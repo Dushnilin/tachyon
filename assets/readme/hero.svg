@@ -1,151 +1,286 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 420" width="100%" height="100%">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 450" width="100%" height="100%">
   <defs>
-    <!-- Background Gradients -->
-    <radialGradient id="bg-glow" cx="50%" cy="30%" r="70%">
-      <stop offset="0%" stop-color="#1E1B4B" stop-opacity="0.8"/>
-      <stop offset="50%" stop-color="#0F172A" stop-opacity="0.95"/>
-      <stop offset="100%" stop-color="#020617" stop-opacity="1"/>
+    <!-- Background Space Gradients -->
+    <radialGradient id="bg-space" cx="50%" cy="30%" r="80%">
+      <stop offset="0%" stop-color="#111827" stop-opacity="0.95"/>
+      <stop offset="45%" stop-color="#090D16" stop-opacity="0.98"/>
+      <stop offset="100%" stop-color="#030712" stop-opacity="1"/>
     </radialGradient>
     
-    <radialGradient id="accent-cyan" cx="20%" cy="20%" r="50%">
-      <stop offset="0%" stop-color="#38BDF8" stop-opacity="0.25"/>
-      <stop offset="100%" stop-color="#020617" stop-opacity="0"/>
-    </radialGradient>
-    
-    <radialGradient id="accent-violet" cx="80%" cy="80%" r="50%">
-      <stop offset="0%" stop-color="#818CF8" stop-opacity="0.2"/>
-      <stop offset="100%" stop-color="#020617" stop-opacity="0"/>
+    <radialGradient id="cyan-glow" cx="80%" cy="40%" r="50%">
+      <stop offset="0%" stop-color="#00F0FF" stop-opacity="0.18"/>
+      <stop offset="60%" stop-color="#00F0FF" stop-opacity="0.03"/>
+      <stop offset="100%" stop-color="#00F0FF" stop-opacity="0"/>
     </radialGradient>
 
-    <!-- Linear Gradients -->
-    <linearGradient id="brand-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#38BDF8"/>
-      <stop offset="50%" stop-color="#818CF8"/>
+    <radialGradient id="purple-glow" cx="25%" cy="80%" r="60%">
+      <stop offset="0%" stop-color="#8B5CF6" stop-opacity="0.15"/>
+      <stop offset="70%" stop-color="#8B5CF6" stop-opacity="0.02"/>
+      <stop offset="100%" stop-color="#8B5CF6" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Holographic Title Gradient -->
+    <linearGradient id="holo-title" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#00F0FF"/>
+      <stop offset="35%" stop-color="#38BDF8"/>
+      <stop offset="70%" stop-color="#818CF8"/>
       <stop offset="100%" stop-color="#C084FC"/>
     </linearGradient>
 
-    <linearGradient id="card-border" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#334155" stop-opacity="0.8"/>
-      <stop offset="100%" stop-color="#1E293B" stroke-opacity="0.3"/>
+    <linearGradient id="cyber-line-cyan" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#00F0FF" stop-opacity="0"/>
+      <stop offset="50%" stop-color="#00F0FF" stop-opacity="0.8"/>
+      <stop offset="100%" stop-color="#00F0FF" stop-opacity="0"/>
     </linearGradient>
 
-    <linearGradient id="card-bg" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="#1E293B" stop-opacity="0.7"/>
-      <stop offset="100%" stop-color="#0F172A" stop-opacity="0.8"/>
+    <linearGradient id="card-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1E293B" stop-opacity="0.75"/>
+      <stop offset="100%" stop-color="#0F172A" stop-opacity="0.85"/>
     </linearGradient>
-    
-    <!-- Glow Filter -->
-    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
-      <feGaussianBlur stdDeviation="8" result="blur" />
+
+    <!-- Glow & Shadow Filters -->
+    <filter id="neon-glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="6" result="blur1" />
+      <feGaussianBlur stdDeviation="15" result="blur2" />
+      <feMerge>
+        <feMergeNode in="blur2" />
+        <feMergeNode in="blur1" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+
+    <filter id="core-glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="12" result="blur" />
       <feComposite in="SourceGraphic" in2="blur" operator="over" />
     </filter>
   </defs>
 
   <style>
-    .title { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, sans-serif; font-weight: 800; font-size: 64px; fill: url(#brand-grad); letter-spacing: -1px; }
-    .subtitle { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, sans-serif; font-weight: 500; font-size: 20px; fill: #94A3B8; }
-    .badge-text { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, sans-serif; font-weight: 600; font-size: 13px; fill: #F8FAFC; }
-    .card-title { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, sans-serif; font-weight: 700; font-size: 15px; fill: #F1F5F9; }
-    .card-desc { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, sans-serif; font-weight: 400; font-size: 13px; fill: #94A3B8; }
-    .tech-pill { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 12px; fill: #38BDF8; font-weight: 600; }
+    /* CSS Animations for GitHub SVG Rendering */
+    @keyframes rotateClockwise {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+    @keyframes rotateCounter {
+      from { transform: rotate(360deg); }
+      to { transform: rotate(0deg); }
+    }
+    @keyframes flowPacket {
+      0% { stroke-dashoffset: 240; opacity: 0.2; }
+      50% { opacity: 1; }
+      100% { stroke-dashoffset: 0; opacity: 0.2; }
+    }
+    @keyframes pulseCore {
+      0%, 100% { transform: scale(1); opacity: 0.85; }
+      50% { transform: scale(1.08); opacity: 1; filter: drop-shadow(0 0 20px #00F0FF); }
+    }
+    @keyframes beaconBlink {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(0.85); }
+    }
+    @keyframes signalWave {
+      0% { r: 10; opacity: 0.9; }
+      100% { r: 48; opacity: 0; }
+    }
+    @keyframes hudCardPulse {
+      0%, 100% { stroke: rgba(56, 189, 248, 0.25); }
+      50% { stroke: rgba(0, 240, 255, 0.7); }
+    }
+
+    .core-ring-1 { transform-origin: 970px 190px; animation: rotateClockwise 22s linear infinite; }
+    .core-ring-2 { transform-origin: 970px 190px; animation: rotateCounter 15s linear infinite; }
+    .core-ring-3 { transform-origin: 970px 190px; animation: rotateClockwise 30s linear infinite; }
+    .pulse-hub { transform-origin: 970px 190px; animation: pulseCore 3.5s ease-in-out infinite; }
+    .beacon-dot { animation: beaconBlink 2s ease-in-out infinite; }
+    .radar-wave { transform-origin: 970px 190px; animation: signalWave 3s cubic-bezier(0.1, 0.8, 0.3, 1) infinite; }
+    .radar-wave-delayed { transform-origin: 970px 190px; animation: signalWave 3s cubic-bezier(0.1, 0.8, 0.3, 1) 1.5s infinite; }
+    
+    .stream-fast { stroke-dasharray: 20 80; animation: flowPacket 3.2s linear infinite; }
+    .stream-slow { stroke-dasharray: 30 120; animation: flowPacket 4.8s linear infinite; }
+    .hud-card { animation: hudCardPulse 4s ease-in-out infinite; }
+
+    .title-main { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-weight: 900; font-size: 64px; fill: url(#holo-title); letter-spacing: 2px; }
+    .subtitle-text { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-weight: 600; font-size: 19px; fill: #E2E8F0; letter-spacing: -0.2px; }
+    .desc-text { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-weight: 400; font-size: 14px; fill: #94A3B8; }
+    .hud-label { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 11px; fill: #64748B; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+    .hud-value { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 12px; fill: #00F0FF; font-weight: 700; }
+    .card-h { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-weight: 700; font-size: 14px; fill: #F8FAFC; }
+    .card-p { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-weight: 400; font-size: 12px; fill: #94A3B8; }
   </style>
 
-  <!-- Base Canvas -->
-  <rect width="1200" height="420" rx="16" fill="url(#bg-glow)"/>
-  <rect width="1200" height="420" rx="16" fill="url(#accent-cyan)"/>
-  <rect width="1200" height="420" rx="16" fill="url(#accent-violet)"/>
+  <!-- Canvas Surface -->
+  <rect width="1200" height="450" rx="18" fill="url(#bg-space)"/>
+  <rect width="1200" height="450" rx="18" fill="url(#cyan-glow)"/>
+  <rect width="1200" height="450" rx="18" fill="url(#purple-glow)"/>
 
-  <!-- Subtle Tech Grid Pattern -->
-  <g opacity="0.08" stroke="#FFFFFF" stroke-width="1">
-    <path d="M 0,60 L 1200,60 M 0,120 L 1200,120 M 0,180 L 1200,180 M 0,240 L 1200,240 M 0,300 L 1200,300 M 0,360 L 1200,360" />
-    <path d="M 150,0 L 150,420 M 300,0 L 300,420 M 450,0 L 450,420 M 600,0 L 600,420 M 750,0 L 750,420 M 900,0 L 900,420 M 1050,0 L 1050,420" />
+  <!-- High-Tech Matrix Grid -->
+  <g opacity="0.06" stroke="#FFFFFF" stroke-width="1">
+    <path d="M 0,75 L 1200,75 M 0,150 L 1200,150 M 0,225 L 1200,225 M 0,300 L 1200,300 M 0,375 L 1200,375" />
+    <path d="M 120,0 L 120,450 M 240,0 L 240,450 M 360,0 L 360,450 M 480,0 L 480,450 M 600,0 L 600,450 M 720,0 L 720,450 M 840,0 L 840,450 M 960,0 L 960,450 M 1080,0 L 1080,450" />
   </g>
 
-  <!-- Decorative Orbit Vector -->
-  <g transform="translate(980, 190)" opacity="0.35">
-    <circle r="140" fill="none" stroke="url(#brand-grad)" stroke-width="1.5" stroke-dasharray="8 6"/>
-    <circle r="100" fill="none" stroke="#38BDF8" stroke-width="1" stroke-dasharray="4 4"/>
-    <circle r="60" fill="none" stroke="#818CF8" stroke-width="2"/>
-    <circle cx="60" cy="0" r="6" fill="#38BDF8" filter="url(#glow)"/>
-    <circle cx="-42" cy="42" r="4" fill="#C084FC" />
+  <!-- Interactive Data Circuit Tracks (Animated Streams) -->
+  <g fill="none" stroke-linecap="round">
+    <!-- Outer Track Top -->
+    <path d="M 60,70 L 680,70 Q 730,70 760,100 L 840,180" stroke="#1E293B" stroke-width="2"/>
+    <path d="M 60,70 L 680,70 Q 730,70 760,100 L 840,180" stroke="#00F0FF" stroke-width="2" class="stream-fast" filter="url(#core-glow)"/>
+
+    <!-- Track Middle -->
+    <path d="M 520,190 L 830,190" stroke="#1E293B" stroke-width="2"/>
+    <path d="M 520,190 L 830,190" stroke="#818CF8" stroke-width="2" class="stream-slow"/>
+
+    <!-- Track Bottom -->
+    <path d="M 60,305 L 700,305 Q 750,305 780,275 L 850,205" stroke="#1E293B" stroke-width="2"/>
+    <path d="M 60,305 L 700,305 Q 750,305 780,275 L 850,205" stroke="#10B981" stroke-width="2" class="stream-fast"/>
   </g>
 
-  <!-- Header Section -->
-  <g transform="translate(60, 65)">
-    <!-- Version & OS Tag -->
-    <rect x="0" y="0" width="280" height="28" rx="14" fill="#1E293B" stroke="#38BDF8" stroke-opacity="0.4" stroke-width="1"/>
-    <circle cx="16" cy="14" r="4" fill="#10B981"/>
-    <text x="28" y="19" class="badge-text" fill="#38BDF8">STABLE RELEASE | OpenWrt 23-25.x</text>
+  <!-- ================================================================= -->
+  <!-- RIGHT SIDE: ANIMATED TACHYON REACTOR CORE & TELEMETRY HUD -->
+  <!-- ================================================================= -->
+  <g id="tachyon-core-system">
+    <!-- Pulsing Radar Radar Waves -->
+    <circle cx="970" cy="190" r="10" fill="none" stroke="#00F0FF" stroke-width="1.5" class="radar-wave"/>
+    <circle cx="970" cy="190" r="10" fill="none" stroke="#818CF8" stroke-width="1.5" class="radar-wave-delayed"/>
 
-    <!-- Main Title -->
-    <text x="0" y="82" class="title">TACHYON</text>
-    <text x="0" y="118" class="subtitle">Next-Gen High-Performance Routing &amp; DPI Bypass Engine for OpenWrt</text>
-    <text x="0" y="142" class="card-desc" fill="#64748B">Полнофункциональный мультипротокольный комбайн маршрутизации и обхода блокировок</text>
+    <!-- Orbit Ring 3 (Outer Data Nodes) -->
+    <g class="core-ring-3">
+      <circle cx="970" cy="190" r="145" fill="none" stroke="#334155" stroke-width="1.2" stroke-dasharray="10 14"/>
+      <circle cx="1115" cy="190" r="5" fill="#38BDF8" filter="url(#core-glow)"/>
+      <circle cx="825" cy="190" r="4" fill="#C084FC"/>
+      <circle cx="970" cy="45" r="4" fill="#10B981"/>
+    </g>
 
-    <!-- Tech Badges -->
-    <g transform="translate(0, 168)">
-      <!-- Badge 1: ucode Core -->
-      <rect x="0" y="0" width="125" height="26" rx="6" fill="#0F172A" stroke="#334155" stroke-width="1"/>
-      <text x="10" y="17" class="tech-pill">⚡ ucode Core</text>
+    <!-- Orbit Ring 2 (Segmented Gyro) -->
+    <g class="core-ring-2">
+      <circle cx="970" cy="190" r="110" fill="none" stroke="#00F0FF" stroke-opacity="0.4" stroke-width="2" stroke-dasharray="70 20 30 15"/>
+      <rect x="965" y="78" width="10" height="4" rx="2" fill="#00F0FF"/>
+      <rect x="965" y="298" width="10" height="4" rx="2" fill="#818CF8"/>
+    </g>
 
-      <!-- Badge 2: sing-box -->
-      <rect x="135" y="0" width="115" height="26" rx="6" fill="#0F172A" stroke="#334155" stroke-width="1"/>
-      <text x="145" y="17" class="tech-pill">🛡 sing-box</text>
+    <!-- Orbit Ring 1 (Inner High-Speed Track) -->
+    <g class="core-ring-1">
+      <circle cx="970" cy="190" r="75" fill="none" stroke="#818CF8" stroke-width="2.5" stroke-dasharray="45 15"/>
+      <circle cx="1045" cy="190" r="6" fill="#00F0FF" filter="url(#core-glow)"/>
+      <circle cx="895" cy="190" r="5" fill="#10B981"/>
+    </g>
 
-      <!-- Badge 3: Zapret v1 / v2 -->
-      <rect x="260" y="0" width="155" height="26" rx="6" fill="#0F172A" stroke="#334155" stroke-width="1"/>
-      <text x="270" y="17" class="tech-pill">🚀 Zapret v1 / v2</text>
+    <!-- Central Fusion Hub -->
+    <g class="pulse-hub">
+      <circle cx="970" cy="190" r="42" fill="#0F172A" stroke="#00F0FF" stroke-width="2.5"/>
+      <circle cx="970" cy="190" r="32" fill="#1E1B4B" stroke="#818CF8" stroke-width="1.5"/>
+      <!-- Tachyon Icon / Lightning Symbol in Core -->
+      <path d="M 972,168 L 958,190 L 968,190 L 966,212 L 984,186 L 974,186 Z" fill="url(#holo-title)" filter="url(#core-glow)"/>
+    </g>
 
-      <!-- Badge 4: ByeDPI -->
-      <rect x="425" y="0" width="105" height="26" rx="6" fill="#0F172A" stroke="#334155" stroke-width="1"/>
-      <text x="435" y="17" class="tech-pill">🌐 ByeDPI</text>
+    <!-- Real-Time HUD Telemetry Badges (Floating around core) -->
+    <g transform="translate(850, 48)">
+      <rect width="115" height="32" rx="6" fill="#0B132B" stroke="#00F0FF" stroke-opacity="0.4" stroke-width="1"/>
+      <text x="10" y="14" class="hud-label">DPI DESYNC</text>
+      <text x="10" y="26" class="hud-value">ACTIVE (v2)</text>
+      <circle cx="98" cy="16" r="4" fill="#10B981" class="beacon-dot"/>
+    </g>
 
-      <!-- Badge 5: Telegram Bot -->
-      <rect x="540" y="0" width="145" height="26" rx="6" fill="#0F172A" stroke="#334155" stroke-width="1"/>
-      <text x="550" y="17" class="tech-pill">🤖 Telegram Bot</text>
+    <g transform="translate(1015, 75)">
+      <rect width="110" height="32" rx="6" fill="#0B132B" stroke="#818CF8" stroke-opacity="0.4" stroke-width="1"/>
+      <text x="10" y="14" class="hud-label">CORE RAM</text>
+      <text x="10" y="26" class="hud-value">14.2 MB</text>
+      <circle cx="95" cy="16" r="4" fill="#38BDF8"/>
+    </g>
+
+    <g transform="translate(1005, 290)">
+      <rect width="125" height="32" rx="6" fill="#0B132B" stroke="#10B981" stroke-opacity="0.4" stroke-width="1"/>
+      <text x="10" y="14" class="hud-label">PROXY LATENCY</text>
+      <text x="10" y="26" class="hud-value" fill="#10B981">18 ms RTT</text>
+      <circle cx="108" cy="16" r="4" fill="#10B981" class="beacon-dot"/>
     </g>
   </g>
 
-  <!-- Feature Cards Grid (Bottom) -->
-  <g transform="translate(60, 275)">
-    <!-- Card 1: Multi-Protocol -->
+  <!-- ================================================================= -->
+  <!-- LEFT SIDE: TITLE, TAGS & CORE MISSION -->
+  <!-- ================================================================= -->
+  <g transform="translate(60, 55)">
+    <!-- Top System Live Badge -->
     <g transform="translate(0, 0)">
-      <rect width="250" height="105" rx="12" fill="url(#card-bg)" stroke="url(#card-border)" stroke-width="1"/>
-      <circle cx="28" cy="30" r="14" fill="#38BDF8" fill-opacity="0.15"/>
-      <path d="M 22 30 L 27 35 L 35 24" fill="none" stroke="#38BDF8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-      <text x="52" y="34" class="card-title">Мульти-Протоколы</text>
-      <text x="16" y="62" class="card-desc">VLESS, VMess, Shadowsocks,</text>
-      <text x="16" y="80" class="card-desc">Trojan, Zapret v1/v2 &amp; ByeDPI</text>
+      <rect width="320" height="28" rx="14" fill="#0F172A" stroke="#38BDF8" stroke-opacity="0.5" stroke-width="1"/>
+      <circle cx="16" cy="14" r="5" fill="#10B981" class="beacon-dot"/>
+      <text x="30" y="18" class="hud-value" fill="#38BDF8">OPENWRT 23.05 - 25.X &amp; SNAPSHOT</text>
     </g>
 
-    <!-- Card 2: Telegram Control -->
-    <g transform="translate(270, 0)">
-      <rect width="250" height="105" rx="12" fill="url(#card-bg)" stroke="url(#card-border)" stroke-width="1"/>
-      <circle cx="28" cy="30" r="14" fill="#818CF8" fill-opacity="0.15"/>
-      <path d="M 22 30 L 34 24 L 29 36 L 26 31 Z" fill="none" stroke="#818CF8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-      <text x="52" y="34" class="card-title">Telegram Управление</text>
-      <text x="16" y="62" class="card-desc">Списки правил, переключение</text>
-      <text x="16" y="80" class="card-desc">серверов &amp; блокировка MAC</text>
+    <!-- Main Title with Glowing Shadow -->
+    <text x="0" y="86" class="title-main" filter="url(#neon-glow)">TACHYON</text>
+    <text x="0" y="86" class="title-main">TACHYON</text>
+
+    <!-- Subtitles -->
+    <text x="0" y="122" class="subtitle-text">Next-Gen Network Orchestration &amp; Anti-Censorship Core</text>
+    <text x="0" y="146" class="desc-text">Ультимативный комбайн проксирования, локального десинка DPI и ИИ-диагностики</text>
+
+    <!-- Feature Quick Pills -->
+    <g transform="translate(0, 175)">
+      <!-- Pill 1 -->
+      <g transform="translate(0, 0)">
+        <rect width="135" height="26" rx="6" fill="#0F172A" stroke="#1E293B" stroke-width="1"/>
+        <text x="10" y="17" class="hud-value" fill="#38BDF8">⚡ ucode Native</text>
+      </g>
+      <!-- Pill 2 -->
+      <g transform="translate(145, 0)">
+        <rect width="125" height="26" rx="6" fill="#0F172A" stroke="#1E293B" stroke-width="1"/>
+        <text x="10" y="17" class="hud-value" fill="#818CF8">🛡️ sing-box v1.11</text>
+      </g>
+      <!-- Pill 3 -->
+      <g transform="translate(280, 0)">
+        <rect width="160" height="26" rx="6" fill="#0F172A" stroke="#1E293B" stroke-width="1"/>
+        <text x="10" y="17" class="hud-value" fill="#C084FC">🚀 Zapret v2 (nfqws2)</text>
+      </g>
+      <!-- Pill 4 -->
+      <g transform="translate(450, 0)">
+        <rect width="135" height="26" rx="6" fill="#0F172A" stroke="#1E293B" stroke-width="1"/>
+        <text x="10" y="17" class="hud-value" fill="#10B981">🤖 AI Doctor v2.5</text>
+      </g>
+    </g>
+  </g>
+
+  <!-- ================================================================= -->
+  <!-- BOTTOM ROW: 4 COPIED ARCHITECTURAL PILLARS (Glassmorphism Cards) -->
+  <!-- ================================================================= -->
+  <g transform="translate(60, 325)">
+    <!-- Card 1: sing-box -->
+    <g transform="translate(0, 0)">
+      <rect width="255" height="95" rx="10" fill="url(#card-grad)" stroke="#38BDF8" stroke-opacity="0.25" stroke-width="1" class="hud-card"/>
+      <circle cx="28" cy="28" r="14" fill="#0284C7" fill-opacity="0.2"/>
+      <text x="21" y="34" font-size="16">🛡️</text>
+      <text x="50" y="32" class="card-h">sing-box Core</text>
+      <text x="16" y="58" class="card-p">VLESS Reality, Hysteria2, WireGuard,</text>
+      <text x="16" y="76" class="card-p">Shadowsocks &amp; Smart Policy Routing</text>
     </g>
 
-    <!-- Card 3: Tachyon Doctor -->
-    <g transform="translate(540, 0)">
-      <rect width="250" height="105" rx="12" fill="url(#card-bg)" stroke="url(#card-border)" stroke-width="1"/>
-      <circle cx="28" cy="30" r="14" fill="#10B981" fill-opacity="0.15"/>
-      <path d="M 28 22 L 28 38 M 20 30 L 36 30" fill="none" stroke="#10B981" stroke-width="2" stroke-linecap="round"/>
-      <text x="52" y="34" class="card-title">Tachyon Doctor</text>
-      <text x="16" y="62" class="card-desc">Авторемонт служб, DNS,</text>
-      <text x="16" y="80" class="card-desc">nftables &amp; проверка сети</text>
+    <!-- Card 2: Zapret2 / ByeDPI -->
+    <g transform="translate(275, 0)">
+      <rect width="255" height="95" rx="10" fill="url(#card-grad)" stroke="#818CF8" stroke-opacity="0.25" stroke-width="1" class="hud-card"/>
+      <circle cx="28" cy="28" r="14" fill="#6366F1" fill-opacity="0.2"/>
+      <text x="21" y="34" font-size="16">🚀</text>
+      <text x="50" y="32" class="card-h">DPI Desync Engine</text>
+      <text x="16" y="58" class="card-p">Zapret v1, v2 (nfqws2) &amp; ByeDPI</text>
+      <text x="16" y="76" class="card-p">Обход замедлений без VPS</text>
     </g>
 
-    <!-- Card 4: Hot-reload & Watchdog -->
-    <g transform="translate(810, 0)">
-      <rect width="270" height="105" rx="12" fill="url(#card-bg)" stroke="url(#card-border)" stroke-width="1"/>
-      <circle cx="28" cy="30" r="14" fill="#C084FC" fill-opacity="0.15"/>
-      <path d="M 22 26 L 34 26 L 34 38 M 34 34 L 22 34" fill="none" stroke="#C084FC" stroke-width="2" stroke-linecap="round"/>
-      <text x="52" y="34" class="card-title">Hot-Reload &amp; OpenWrt 25+</text>
-      <text x="16" y="62" class="card-desc">Совместимость 23.05–25.x,</text>
-      <text x="16" y="80" class="card-desc">защита памяти &amp; MSS Clamping</text>
+    <!-- Card 3: AI Doctor -->
+    <g transform="translate(550, 0)">
+      <rect width="255" height="95" rx="10" fill="url(#card-grad)" stroke="#C084FC" stroke-opacity="0.25" stroke-width="1" class="hud-card"/>
+      <circle cx="28" cy="28" r="14" fill="#9333EA" fill-opacity="0.2"/>
+      <text x="21" y="34" font-size="16">🤖</text>
+      <text x="50" y="32" class="card-h">AI Doctor &amp; Agent API</text>
+      <text x="16" y="58" class="card-p">Автономное самолечение, Quick Fix,</text>
+      <text x="16" y="76" class="card-p">OpenAPI 3.0 &amp; REST Agent API</text>
+    </g>
+
+    <!-- Card 4: Telegram & LuCI UI -->
+    <g transform="translate(825, 0)">
+      <rect width="255" height="95" rx="10" fill="url(#card-grad)" stroke="#10B981" stroke-opacity="0.25" stroke-width="1" class="hud-card"/>
+      <circle cx="28" cy="28" r="14" fill="#059669" fill-opacity="0.2"/>
+      <text x="21" y="34" font-size="16">📱</text>
+      <text x="50" y="32" class="card-h">Telegram &amp; LuCI</text>
+      <text x="16" y="58" class="card-p">Управление из чата, переключение</text>
+      <text x="16" y="76" class="card-p">серверов, TypeScript Web UI</text>
     </g>
   </g>
 </svg>

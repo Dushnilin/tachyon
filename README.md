@@ -2,7 +2,7 @@
 
 ![Tachyon Banner](assets/readme/hero.svg)
 
-[![Stars](https://img.shields.io/github/stars/Dushnilin/tachyon?style=for-the-badge&color=38BDF8)](https://github.com/Dushnilin/tachyon/stargazers)
+[![Stars](https://img.shields.io/github/stars/Dushnilin/tachyon?style=for-the-badge&color=00F0FF)](https://github.com/Dushnilin/tachyon/stargazers)
 [![Releases](https://img.shields.io/github/v/release/Dushnilin/tachyon?style=for-the-badge&color=818CF8)](https://github.com/Dushnilin/tachyon/releases)
 [![OpenWrt](https://img.shields.io/badge/OpenWrt-23.05%20%7C%2024.10%20%7C%2025.x%20%7C%20SNAPSHOT-10B981?style=for-the-badge&logo=openwrt)](https://openwrt.org/)
 [![License](https://img.shields.io/github/license/Dushnilin/tachyon?style=for-the-badge&color=C084FC)](LICENSE)
@@ -15,25 +15,40 @@
 
 ## ⚡ О проекте
 
-**Tachyon** — это продвинутое, автономное и современное решение для оркестрации сетевого трафика, проксирования и обхода цензуры на роутерах под управлением **OpenWrt** (полная поддержка всех версий **OpenWrt 23.05, 24.10, 25.x и SNAPSHOT**). Прямой форк проекта **[Forkop от @ushan0v](https://github.com/ushan0v/forkop)** (ранее **Podkop Plus**).
+**Tachyon** — это высокопроизводительное, автономное и современное решение для оркестрации сетевого трафика, проксирования и обхода цензуры на роутерах под управлением **OpenWrt** (полная совместимость с **OpenWrt 23.05, 24.10, 25.x и SNAPSHOT**). Прямой форк проекта **[Forkop от @ushan0v](https://github.com/ushan0v/forkop)** (ранее **Podkop Plus**).
 
-Проект объединяет в себе мощь **sing-box**, локальные средства обхода DPI (**Zapret v1 / Zapret v2 / ByeDPI**), интерактивного **Telegram-бота**, а также инновационный **AI Stack** (автономный **AI Doctor** и **HTTP REST Agent API / OpenAPI 3.0**).
+Tachyon объединяет ядро **sing-box**, средства локального аппаратного обхода DPI (**Zapret v1 / Zapret v2 / ByeDPI**), интерактивного **Telegram-бота**, а также инновационный **AI Stack** (автономный **AI Doctor v2.5** с офлайн-диагностикой и **HTTP REST Agent API / OpenAPI 3.0**).
 
-Вся бэкенд-логика написана на скриптовом языке **ucode** — нативном движке OpenWrt, что гарантирует мгновенный отклик и минимальное потребление RAM (от 128 МБ ОЗУ).
+Вся внутренняя логика реализована на скриптовом движке **ucode** — нативном C-интерпретаторе OpenWrt, обеспечивающем ультранизкое потребление RAM (от 128 МБ ОЗУ) и мгновенный отклик.
 
 ---
 
-## 🔥 Главные возможности и архитектура
+## 🌐 Архитектура и конвейер трафика
+
+<div align="center">
+
+![Tachyon Traffic Pipeline](assets/readme/architecture.svg)
+
+</div>
+
+Tachyon перехватывает сетевой стек через ядро **nftables** и распределяет запросы без лишних задержек:
+1. **Прямой трафик (Direct WAN)**: Отечественные сервисы, банки, Госуслуги и доверенные ресурсы идут без прокси с нулевой задержкой (`0 ms overhead`).
+2. **Локальный DPI Desync (Zapret v2 / ByeDPI)**: YouTube 4K, Discord и сайты из списков десинхронизируются прямо на роутере без необходимости аренды VPS.
+3. **Зашифрованный прокси-туннель (sing-box)**: Заблокированные ресурсы и приватный трафик направляются через защищённые протоколы (VLESS Reality, Hysteria2, WireGuard).
+
+---
+
+## 🔥 Главные возможности и подсистемы
 
 ### 🛡️ 1. Мультипротокольное проксирование и локальный обход DPI
-* **Ядро sing-box Engine**: Нативная поддержка современных защищённых протоколов — **VLESS (Reality / gRPC / WS)**, **VMess**, **Shadowsocks**, **Trojan**, **WireGuard**.
+* **Ядро sing-box Engine (v1.11+)**: Нативная поддержка современных защищённых протоколов — **VLESS (Reality / gRPC / WS)**, **VMess**, **Shadowsocks**, **Trojan**, **Hysteria2**, **WireGuard / AmneziaWG**.
 * **Локальный обход DPI без внешних VPS**: 
-  * Встроенная интеграция с движками **Zapret v1 (`nfqws`)**, **Zapret v2 (`nfqws2`)** и **ByeDPI (`ciadpi`)** для локальной десинхронизации пакетов на роутере.
+  * Встроенная интеграция с движками **Zapret v1 (`nfqws`)**, **Zapret v2 (`nfqws2`)** и **ByeDPI (`ciadpi`)** для аппаратной десинхронизации TCP-сегментов (`fake`, `disorder`, `split2`, `multisplit`, `seqovl`, `wsize`).
 * **Многомерная селективная маршрутизация**: 
   * **По доменам и IP-сетям**: Направляйте через прокси или десинк только целевой трафик.
   * **По клиентским устройствам (MAC / IP)**: Раздельные правила для Smart TV, смартфонов, ПК и консолей.
   * **По GeoIP и странам**: Гибкие списки включения/исключения по странам назначения.
-* **Автоматические подписки**: Фоновая загрузка, распарсинг и обновление прокси-нод по подписочным URL.
+* **Автоматические подписки**: Фоновая загрузка, распарсинг и обновление прокси-нод по подписочным URL с авто-тестированием RTT задержки.
 
 #### 🌐 Секции Hosts и Списки DNS-блокировок (Hosts Engine)
 * **Статический DNS-Overriding (`dns_hosts`)**: Прямое переопределение IP-адресов для доменов в DNS-модуле sing-box и dnsmasq без необходимости подмены `/etc/hosts`.
@@ -44,14 +59,18 @@
 
 ---
 
-### 🤖 2. ИИ-Доктор и HTTP REST Agent API (AI Stack)
-* **Tachyon AI Doctor (v2)**: Умная диагностика роутера с использованием LLM (**OpenAI**, **Anthropic Claude**, **DeepSeek** или локальных моделей через OpenRouter / Ollama).
+### 🤖 2. ИИ-Доктор и HTTP REST Agent API (AI Stack v2.5)
+* **Tachyon AI Doctor (v2.5)**: Глубокая диагностика роутера с использованием LLM (**OpenAI**, **Anthropic Claude**, **DeepSeek** или локальных моделей через OpenRouter / Ollama).
   * **Глубокий контекст**: Передаёт в модель не только текущие проверки, но и метрики Watchdog (OOM, серии сбоев) и последние сжатые логи роутера.
   * **Многокомпонентные цепочки фиксов (Multi-Fix)**: Возвращает цепочку автоматических исправлений с кнопками для каждого фикса и кнопкой «Исправить всё».
+* **🩺 Офлайн-диагностика Local Rule Doctor**:
   * **13 встроенных Quick Fix кодов**: Авто-ремонт sing-box, nftables, dnsmasq, resolv.conf, очистка кэша DNS, обновление подписок и перезапуск сетевого стека.
-  * **Языковые режимы**: Выбор языка вердикта (`ru` / `en`).
-* **🤖 Вызов из Telegram-бота (`/ai_doctor` & `/fix`)**:
-  * Запуск ИИ-диагностики прямо из мессенджера одной командой `/ai_doctor` с выведением кнопок моментального исправления.
+  * **Синхронизация времени NTP (`fix_system_time`)**: Автоматическое обнаружение и исправление сбоя системных часов.
+  * **Сброс conntrack (`flush_conntrack`)**: Ликвидация переполнения таблицы трансляции соединений при сетевых штормах.
+  * **DNS Dead-lock Repair (`fix_bootstrap_dns`)**: Предотвращение циклических блокировок первичных DNS sing-box.
+  * **Оптимизация MTU туннелей (`optimize_mtu`)**: Расчёт оптимального размера пакета для AWG/WireGuard.
+* **🚨 Аварийное восстановление интернета (Native Internet Fallback)**:
+  * Мгновенный возврат обычного интернета одной кнопкой в UI или командой `tachyon restore_native_internet`. Полная чистая остановка прокси и сброс nftables/ip rule без перезагрузки роутера.
 * **🌐 HTTP REST Agent API & OpenAPI 3.0 (Swagger)**:
   * Безопасный REST API по адресу `/cgi-bin/tachyon-agent/` с авторизацией Bearer-токеном (`agent_api_token`).
   * Спецификация **OpenAPI 3.0.3** (`GET /cgi-bin/tachyon-agent/openapi.json`) для мгновенного подключения к **ChatGPT Custom GPTs**, N8N, Dify, Flowise и автономным ИИ-агентам (Cursor, AutoGPT, Claude Code).
@@ -64,7 +83,7 @@
 * **Мгновенный контроль секций**: Включение и отключение маршрутов одной кнопкой.
 * **Переключение серверов**: Выбор активных прокси-нод с автоматическим замером задержки (RTT ping).
 * **Управление устройствами LAN**: Просмотр активных клиентов и блокировка/разблокировка доступа по MAC-адресам.
-* **Диагностика и Команды**: `/doctor`, `/ai_doctor`, `/fix <код>`, `/restart`, `/backup`.
+* **Диагностика и Команды**: `/doctor`, `/ai_doctor`, `/fix <код>`, `/restart`, `/backup`, `/status`.
 
 ---
 
@@ -81,6 +100,7 @@ Watchdog — сердце стабильности Tachyon. Работает к�
 ### 🖥️ 5. Современный Web-интерфейс LuCI (TypeScript)
 * Полная интеграция в штатный Web-интерфейс OpenWrt.
 * **Интерактивный дашборд**: Графика задержек, управление подписками, правилами и компонентами в несколько кликов.
+* **Потоковый терминал установки**: Живой вывод логов процессов установки и обновлений компонентов без зависаний.
 * **Динамические ссылки на репозитории**: Карточки компонентов ведут прямо на GitHub установленного варианта (extended, lx, stable).
 * **Commit-level отслеживание обновлений**: Оповещения о свежих коммитах в рамках текущего релиза.
 
@@ -89,12 +109,15 @@ Watchdog — сердце стабильности Tachyon. Работает к�
 ## 🛠️ Справочник консоли (CLI & API Quick Reference)
 
 ```bash
-# === Системная диагностика ===
+# === Системная и офлайн-диагностика ===
 tachyon doctor                            # Запуск локальной диагностики без LLM
 tachyon ai_doctor                         # Запуск анализа AI Doctor (с LLM)
 tachyon ai_doctor_last                    # Просмотр последнего сохранённого отчёта ИИ
 tachyon apply_quick_fix clear_dns_cache   # Применение выбранного кода исправления
 tachyon diagnose_json                     # Вывод полного снимка в формате JSON
+
+# === Аварийное восстановление интернета ===
+tachyon restore_native_internet           # Мгновенная остановка прокси и возврат чистого WAN
 
 # === Управление службами и Watchdog ===
 tachyon ai_heal                           # Принудительный цикл самовосстановления
