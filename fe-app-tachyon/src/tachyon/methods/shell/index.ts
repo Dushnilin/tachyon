@@ -659,6 +659,12 @@ export const TachyonShellMethods = {
       COMPONENT_ACTION_TRANSIENT_RPC_GRACE_MS,
     );
 
+    const versionsMatch = (a: string, b: string) => {
+      const cleanA = a.replace(/^v/i, '').trim();
+      const cleanB = b.replace(/^v/i, '').trim();
+      return cleanA === cleanB;
+    };
+
     // A self-update restarts the service mid-worker: the worker can die
     // before writing its result, the state file can stay "running" forever
     // (recycled pid), and RPC can go away during the swap. The installed
@@ -673,10 +679,14 @@ export const TachyonShellMethods = {
       }
       const version = await readTachyonVersion();
       if (!version) return '';
-      if (targetVersion && version === targetVersion) {
+      if (targetVersion && versionsMatch(version, targetVersion)) {
         return version;
       }
-      if (!targetVersion && baselineVersion && version !== baselineVersion) {
+      if (
+        !targetVersion &&
+        baselineVersion &&
+        !versionsMatch(version, baselineVersion)
+      ) {
         return version;
       }
       return '';
@@ -691,8 +701,8 @@ export const TachyonShellMethods = {
       }
       const version = await readTachyonVersion();
       if (
-        version === baselineVersion &&
-        (!targetVersion || version === targetVersion)
+        versionsMatch(version, baselineVersion) &&
+        (!targetVersion || versionsMatch(version, targetVersion))
       ) {
         return version;
       }

@@ -15,3 +15,4 @@ scratch/
 tmp_*/
 tmp_test*.uc
 test_out.txt
+uc.out

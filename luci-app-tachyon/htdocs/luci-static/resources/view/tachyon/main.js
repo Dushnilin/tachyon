@@ -3587,6 +3587,11 @@ var TachyonShellMethods = {
     const transientRpc = createTransientRpcGraceTracker(
       COMPONENT_ACTION_TRANSIENT_RPC_GRACE_MS
     );
+    const versionsMatch = (a, b) => {
+      const cleanA = a.replace(/^v/i, "").trim();
+      const cleanB = b.replace(/^v/i, "").trim();
+      return cleanA === cleanB;
+    };
     const confirmedByVersion = async () => {
       if (!isSelfUpdate) return "";
       if (Date.now() - jobStartedAt < COMPONENT_ACTION_MIN_ELAPSED_FOR_SELF_UPDATE_MS) {
@@ -3594,10 +3599,10 @@ var TachyonShellMethods = {
       }
       const version = await readTachyonVersion();
       if (!version) return "";
-      if (targetVersion && version === targetVersion) {
+      if (targetVersion && versionsMatch(version, targetVersion)) {
         return version;
       }
-      if (!targetVersion && baselineVersion && version !== baselineVersion) {
+      if (!targetVersion && baselineVersion && !versionsMatch(version, baselineVersion)) {
         return version;
       }
       return "";
@@ -3607,7 +3612,7 @@ var TachyonShellMethods = {
         return "";
       }
       const version = await readTachyonVersion();
-      if (version === baselineVersion && (!targetVersion || version === targetVersion)) {
+      if (versionsMatch(version, baselineVersion) && (!targetVersion || versionsMatch(version, targetVersion))) {
         return version;
       }
       return "";
@@ -6459,8 +6464,6 @@ var dashboardDataUpdatesStarted = false;
 var dashboardDataUpdatesId = 0;
 var connectionsRefreshTimer = null;
 var currentConnections = [];
-var connectionsLoading = true;
-var connectionsFailed = false;
 var pageUnloading = false;
 var followedSubscriptionJobs = /* @__PURE__ */ new Set();
 var followedLatencyJobs = /* @__PURE__ */ new Set();
@@ -7625,13 +7628,8 @@ async function fetchConnections() {
       currentConnections = Array.from(map.values()).sort(
         (a, b) => b.download + b.upload - (a.download + a.upload)
       );
-      connectionsLoading = false;
-      connectionsFailed = false;
-    } else {
-      connectionsFailed = true;
     }
-  } catch (e) {
-    connectionsFailed = true;
+  } catch (_e) {
   }
   renderConnectionsWidget();
 }
@@ -12167,7 +12165,7 @@ function getAiDoctorHistory() {
   try {
     const raw = localStorage.getItem("tachyon_ai_doctor_history");
     return raw ? JSON.parse(raw) : [];
-  } catch (e) {
+  } catch (_e) {
     return [];
   }
 }
@@ -12176,7 +12174,7 @@ function saveAiDoctorHistory(entry) {
     const current = getAiDoctorHistory();
     const updated = [entry, ...current].slice(0, 5);
     localStorage.setItem("tachyon_ai_doctor_history", JSON.stringify(updated));
-  } catch (e) {
+  } catch (_e) {
   }
 }
 async function handleViewLogs() {
@@ -15323,7 +15321,6 @@ function showUpdateProgressModal(options) {
   }
   let elapsedSeconds = 0;
   let timerInterval = null;
-  let isCompleted = false;
   let currentModalVersions = { ...options };
   const timerBadgeEl = E(
     "div",
@@ -15349,21 +15346,17 @@ function showUpdateProgressModal(options) {
   const logPreEl = E("pre", {
     class: "tachyon-update-modal__log"
   });
-  const logPanelEl = E(
-    "div",
-    { class: "tachyon-update-modal__log-panel" },
-    [
-      E("div", { class: "tachyon-update-modal__log-header" }, [
-        E("b", {}, _("Operation log")),
-        renderButton({
-          classNames: ["cbi-button-action", "tachyon-update-modal__log-copy"],
-          text: _("Copy log"),
-          onClick: copyLog
-        })
-      ]),
-      logPreEl
-    ]
-  );
+  const logPanelEl = E("div", { class: "tachyon-update-modal__log-panel" }, [
+    E("div", { class: "tachyon-update-modal__log-header" }, [
+      E("b", {}, _("Operation log")),
+      renderButton({
+        classNames: ["cbi-button-action", "tachyon-update-modal__log-copy"],
+        text: _("Copy log"),
+        onClick: copyLog
+      })
+    ]),
+    logPreEl
+  ]);
   const actionButtonContainer = E(
     "div",
     { class: "tachyon-update-modal__actions" },
@@ -15484,7 +15477,6 @@ function showUpdateProgressModal(options) {
       titleBadgeEl.textContent = renderVersionBadgeText(currentModalVersions);
     },
     completeSuccess: (message, opts) => {
-      isCompleted = true;
       cleanupTimers();
       finishLogTracking();
       const successMsg = message || (isCheckAction ? _("Check completed!") : options.action === "remove" ? _("Removal completed successfully!") : _("Update completed successfully!"));
@@ -15548,7 +15540,6 @@ function showUpdateProgressModal(options) {
       }
     },
     completeError: (errorMessage) => {
-      isCompleted = true;
       cleanupTimers();
       finishLogTracking();
       actionButtonContainer.replaceChildren(
@@ -16015,10 +16006,7 @@ async function completeComponentActionJob(key, jobId, response) {
 async function followComponentActionState(state) {
   const jobId = state.job_id;
   const key = getComponentActionKey(state.component, state.action);
-  if (!jobId || !key || followedComponentJobs.has(jobId)) {
-    return;
-  }
-  if (!state.running && handledComponentJobs.has(jobId)) {
+  if (!jobId || !key || followedComponentJobs.has(jobId) || handledComponentJobs.has(jobId)) {
     return;
   }
   followedComponentJobs.add(jobId);
@@ -16067,11 +16055,11 @@ async function followAlreadyRunningComponentAction(button) {
     return false;
   }
   let state = uiState.actions.component.find(
-    (item) => item.running && item.component === button.component && item.action === button.action
+    (item) => item.running && item.component === button.component && item.action === button.action && (!item.job_id || !handledComponentJobs.has(item.job_id))
   );
   if (!state) {
     state = uiState.actions.component.find(
-      (item) => item.running && item.component === button.component
+      (item) => item.running && item.component === button.component && (!item.job_id || !handledComponentJobs.has(item.job_id))
     );
   }
   if (!state) {

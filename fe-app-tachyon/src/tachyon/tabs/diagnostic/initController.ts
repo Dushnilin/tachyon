@@ -42,7 +42,6 @@ import {
 import { TachyonShellMethods } from '../../methods';
 import { fetchServicesInfo } from '../../fetchers/fetchServicesInfo';
 import { normalizeCompiledVersion } from '../../../helpers/normalizeCompiledVersion';
-import { copyToClipboard } from '../../../helpers/copyToClipboard';
 import { renderModal, renderButton } from '../../../partials';
 import { TACHYON_LUCI_APP_VERSION } from '../../../constants';
 import { renderWikiDisclaimer } from './partials/renderWikiDisclaimer';
@@ -785,7 +784,7 @@ function getAiDoctorHistory(): AiDoctorHistoryEntry[] {
   try {
     const raw = localStorage.getItem('tachyon_ai_doctor_history');
     return raw ? (JSON.parse(raw) as AiDoctorHistoryEntry[]) : [];
-  } catch (e) {
+  } catch (_e) {
     return [];
   }
 }
@@ -795,7 +794,7 @@ function saveAiDoctorHistory(entry: AiDoctorHistoryEntry) {
     const current = getAiDoctorHistory();
     const updated = [entry, ...current].slice(0, 5);
     localStorage.setItem('tachyon_ai_doctor_history', JSON.stringify(updated));
-  } catch (e) {
+  } catch (_e) {
     // Ignore storage errors
   }
 }

@@ -1,6 +1,5 @@
 import { TachyonShellMethods } from '../../../methods';
 import { showToast } from '../../../../helpers/showToast';
-import { Tachyon } from '../../../types';
 import { getConfigSections } from '../../../methods/custom/getConfigSections';
 import { TACHYON_UCI_PACKAGE } from '../../../../constants';
 

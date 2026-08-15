@@ -723,16 +723,12 @@ function refresh_pid_job_state(path, stale_message) {
         return;
 
     let now = now_seconds();
-    let updated_at = arg_number(value.updated_at || value.started_at);
     let pid = as_string(value.pid || "");
 
     if (job_pid_valid(pid) && pid_running(pid))
         return;
 
-    if (updated_at > 0 && (now - updated_at) < 180)
-        return;
-
-    let within_grace = job_started_at_within_grace(value.started_at, now, 600);
+    let within_grace = job_started_at_within_grace(value.started_at, now, int(ACTION_STALE_GRACE_SECONDS));
     if (!within_grace)
         write_stale_action_state(path, stale_message);
 }
@@ -812,6 +808,7 @@ function action_state_from_dir(dir) {
 }
 
 function action_state_from_dirs() {
+    refresh_action_dirs();
     return {
         service: action_state_from_dir(SERVICE_ACTION_DIR),
         latency: action_state_from_dir(LATENCY_ACTION_DIR),

@@ -118,7 +118,6 @@ export function showUpdateProgressModal(
 
   let elapsedSeconds = 0;
   let timerInterval: ReturnType<typeof setInterval> | null = null;
-  let isCompleted = false;
   let currentModalVersions = { ...options };
 
   const timerBadgeEl = E(
@@ -149,21 +148,17 @@ export function showUpdateProgressModal(
     class: 'tachyon-update-modal__log',
   }) as HTMLPreElement;
 
-  const logPanelEl = E(
-    'div',
-    { class: 'tachyon-update-modal__log-panel' },
-    [
-      E('div', { class: 'tachyon-update-modal__log-header' }, [
-        E('b', {}, _('Operation log')),
-        renderButton({
-          classNames: ['cbi-button-action', 'tachyon-update-modal__log-copy'],
-          text: _('Copy log'),
-          onClick: copyLog,
-        }),
-      ]),
-      logPreEl,
-    ],
-  );
+  const logPanelEl = E('div', { class: 'tachyon-update-modal__log-panel' }, [
+    E('div', { class: 'tachyon-update-modal__log-header' }, [
+      E('b', {}, _('Operation log')),
+      renderButton({
+        classNames: ['cbi-button-action', 'tachyon-update-modal__log-copy'],
+        text: _('Copy log'),
+        onClick: copyLog,
+      }),
+    ]),
+    logPreEl,
+  ]);
 
   const actionButtonContainer = E(
     'div',
@@ -312,7 +307,6 @@ export function showUpdateProgressModal(
       titleBadgeEl.textContent = renderVersionBadgeText(currentModalVersions);
     },
     completeSuccess: (message?: string, opts?: CompleteSuccessOptions) => {
-      isCompleted = true;
       cleanupTimers();
       finishLogTracking();
 
@@ -400,7 +394,6 @@ export function showUpdateProgressModal(
       }
     },
     completeError: (errorMessage: string) => {
-      isCompleted = true;
       cleanupTimers();
       finishLogTracking();
 

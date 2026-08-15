@@ -75,8 +75,6 @@ let dashboardDataUpdatesStarted = false;
 let dashboardDataUpdatesId = 0;
 let connectionsRefreshTimer: ReturnType<typeof setInterval> | null = null;
 let currentConnections: IConnection[] = [];
-let connectionsLoading = true;
-let connectionsFailed = false;
 let pageUnloading = false;
 const followedSubscriptionJobs = new Set<string>();
 const followedLatencyJobs = new Set<string>();
@@ -1596,13 +1594,9 @@ async function fetchConnections() {
       currentConnections = Array.from(map.values()).sort(
         (a, b) => b.download + b.upload - (a.download + a.upload),
       );
-      connectionsLoading = false;
-      connectionsFailed = false;
-    } else {
-      connectionsFailed = true;
     }
-  } catch (e) {
-    connectionsFailed = true;
+  } catch (_e) {
+    // Ignore connections fetch errors
   }
   renderConnectionsWidget();
 }

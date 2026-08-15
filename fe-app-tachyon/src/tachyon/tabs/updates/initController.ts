@@ -647,11 +647,12 @@ async function followComponentActionState(
   const jobId = state.job_id;
   const key = getComponentActionKey(state.component, state.action);
 
-  if (!jobId || !key || followedComponentJobs.has(jobId)) {
-    return;
-  }
-
-  if (!state.running && handledComponentJobs.has(jobId)) {
+  if (
+    !jobId ||
+    !key ||
+    followedComponentJobs.has(jobId) ||
+    handledComponentJobs.has(jobId)
+  ) {
     return;
   }
 
@@ -714,12 +715,16 @@ async function followAlreadyRunningComponentAction(
     (item) =>
       item.running &&
       item.component === button.component &&
-      item.action === button.action,
+      item.action === button.action &&
+      (!item.job_id || !handledComponentJobs.has(item.job_id)),
   );
 
   if (!state) {
     state = uiState.actions.component.find(
-      (item) => item.running && item.component === button.component,
+      (item) =>
+        item.running &&
+        item.component === button.component &&
+        (!item.job_id || !handledComponentJobs.has(item.job_id)),
     );
   }
 

@@ -732,12 +732,30 @@ function controller(bus, opts) {
         }
         if (setting("recovery_bypass", "0") == "1") return;
 
-        let proto = uci_core.get("network", "wan", "proto") || "pppoe";
-        let device = trim(uci_core.get("network", "wan", "device") || "eth0");
+        let proto = uci_core.get("network", "wan", "proto") || "dhcp";
+        let device = trim(setting("output_network_interface", "") ||
+                          uci_core.get("network", "wan", "device") ||
+                          uci_core.get("network", "wan", "ifname") || "");
+        if (device == "") {
+            let def_route = command_capture("ip -4 route show default 2>/dev/null").output;
+            let m_dev = match(def_route, /dev\s+([^\s]+)/);
+            if (m_dev) device = m_dev[1];
+        }
+        if (device == "") device = "eth0";
         let iface = (proto == "pppoe") ? "pppoe-wan" : device;
 
         let addr_out = command_capture("ip addr show " + shell_quote(iface) + " 2>/dev/null").output;
         let no_address = index(addr_out, "inet ") < 0;
+
+        if (no_address) {
+            let ubus_data = command_output_from_args([ "ubus", "-S", "call", "network.interface.wan", "status" ]);
+            try {
+                let ubus_obj = json(ubus_data);
+                if (type(ubus_obj) == "object" && ubus_obj.up && length(common.array_or_empty(ubus_obj["ipv4-address"])) > 0) {
+                    no_address = false;
+                }
+            } catch (e) {}
+        }
 
         let route_out = command_capture("ip route 2>/dev/null").output;
         let no_gateway = index(route_out, "default") < 0;
