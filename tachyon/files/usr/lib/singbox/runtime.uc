@@ -454,7 +454,7 @@ function managed_service_text() {
         "start_service() {\n" +
         "    config_load \"sing-box\"\n" +
         "    local enabled config_file working_directory\n" +
-        "    local log_stderr\n\n" +
+        "    local log_stderr mem_total_kb mem_limit_mb\n\n" +
         "    config_get_bool enabled \"main\" \"enabled\" \"0\"\n" +
         "    [ \"$enabled\" -eq \"1\" ] || return 0\n\n" +
         "    config_get config_file \"main\" \"conffile\" \"/etc/sing-box/config.json\"\n" +
@@ -466,6 +466,12 @@ function managed_service_text() {
         "    procd_set_param stderr \"$log_stderr\"\n" +
         "    procd_set_param limits core=\"unlimited\"\n" +
         "    procd_set_param limits nofile=\"1000000 1000000\"\n" +
+        "    mem_total_kb=\"$(awk '/MemTotal/ {print $2}' /proc/meminfo 2>/dev/null || echo 0)\"\n" +
+        "    if [ \"$mem_total_kb\" -gt 0 ] && [ \"$mem_total_kb\" -lt 262144 ]; then\n" +
+        "        mem_limit_mb=$(( mem_total_kb / 1024 * 35 / 100 ))\n" +
+        "        [ \"$mem_limit_mb\" -lt 24 ] && mem_limit_mb=24\n" +
+        "        procd_set_param env GOMEMLIMIT=\"${mem_limit_mb}MiB\"\n" +
+        "    fi\n" +
         "    procd_set_param term_timeout 15\n" +
         "    procd_set_param respawn\n" +
         "    procd_close_instance\n" +

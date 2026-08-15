@@ -719,6 +719,25 @@ function controller(bus, opts) {
             bus.emit(EV.RPCD_FD_LEAK, { fd_count: fd_count, threshold: RPCD_FD_THRESHOLD });
     }
 
+    function get_default_route_dev() {
+        let data = fs.readfile("/proc/net/route");
+        if (data == null || data == "")
+            return null;
+        let lines = split(data, "\n");
+        for (let i = 1; i < length(lines); i++) {
+            let line = trim(lines[i]);
+            if (line == "") continue;
+            let fields = split(line, /[ \t]+/);
+            if (length(fields) >= 4 && fields[1] == "00000000") {
+                let flags = int("0x" + fields[3]);
+                if ((flags & 1) != 0) { // RTF_UP
+                    return fields[0];
+                }
+            }
+        }
+        return null;
+    }
+
     // ── Probe: WAN address and default route ──────────────────────────────────
     // WAN_DOWN is published only after WAN_FAIL_THRESHOLD consecutive misses,
     // mirroring the streak logic of the other probes. A reload restarts the
@@ -732,10 +751,13 @@ function controller(bus, opts) {
         }
         if (setting("recovery_bypass", "0") == "1") return;
 
+        let def_dev = get_default_route_dev();
         let proto = uci_core.get("network", "wan", "proto") || "dhcp";
         let device = trim(setting("output_network_interface", "") ||
                           uci_core.get("network", "wan", "device") ||
                           uci_core.get("network", "wan", "ifname") || "");
+        if (device == "" && def_dev != null)
+            device = def_dev;
         if (device == "") {
             let def_route = command_capture("ip -4 route show default 2>/dev/null").output;
             let m_dev = match(def_route, /dev\s+([^\s]+)/);
@@ -757,8 +779,11 @@ function controller(bus, opts) {
             } catch (e) {}
         }
 
-        let route_out = command_capture("ip route 2>/dev/null").output;
-        let no_gateway = index(route_out, "default") < 0;
+        let no_gateway = def_dev == null;
+        if (no_gateway) {
+            let route_out = command_capture("ip route 2>/dev/null").output;
+            no_gateway = index(route_out, "default") < 0;
+        }
 
         if (!no_address && !no_gateway) {
             state.wan_fail_streak = 0;

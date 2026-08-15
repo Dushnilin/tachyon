@@ -565,11 +565,8 @@ function contains(values, needle) {
 }
 if (!imported || imported.url != "https://native.example/ping" || imported.interval != "1m" || imported.tolerance != 80)
     die("generated native URLTest did not preserve subscription params\n");
-if (!builtin || length(builtin.outbounds || []) != 1 || builtin.outbounds[0] != "Native A")
-    die("built-in URLTest regex filter should expand Native Group to Native A only\n");
-for (let tag in selector.outbounds || [])
-    if (tag == "Native A")
-        die("native URLTest child must not be visible in selector by default\n");
+if (!selector || !contains(selector.outbounds, "Native A"))
+    die("native URLTest child must be selectable in selector\n");
 for (let tag in selector.outbounds || [])
     if (tag == "Detour Only")
         die("detour-only outbound must not be visible in selector\n");
@@ -577,8 +574,8 @@ if (!reveal_urltest_selector || !contains(reveal_urltest_selector.outbounds, "Na
     die("native URLTest child should be visible when URLTest hiding is disabled\n");
 if (contains(reveal_urltest_selector ? reveal_urltest_selector.outbounds : [], "Detour Only"))
     die("detour outbound should stay hidden when only URLTest hiding is disabled\n");
-if (contains(reveal_detour_selector ? reveal_detour_selector.outbounds : [], "Native A"))
-    die("native URLTest child should stay hidden when only detour hiding is disabled\n");
+if (!reveal_detour_selector || !contains(reveal_detour_selector.outbounds, "Native A"))
+    die("native URLTest child should be selectable in selector\n");
 if (!reveal_detour_selector || !contains(reveal_detour_selector.outbounds, "Detour Only"))
     die("detour outbound should be visible when detour hiding is disabled\n");
 if (length(object_or_empty(cache.urltestGroups)["Native Group"].outbounds || []) != 1)

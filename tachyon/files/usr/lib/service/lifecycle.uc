@@ -599,9 +599,13 @@ function discover_awg_mtu() {
         }
     }
     if (changed) {
+        mark_internal_config_guard();
         if (!command_success_from_args(["uci", "commit", "tachyon"]))
             log_message("AWG MTU: uci commit tachyon failed", "warn");
+        else
+            mark_internal_config_guard();
     }
+    return 0;
 }
 
 function validate_start_config() {
@@ -749,8 +753,6 @@ function start_main() {
 
     log_message("Starting Tachyon", "info");
 
-    discover_awg_mtu();
-
     status = validate_start_config();
     if (status != 0)
         return status;
@@ -830,6 +832,7 @@ function start_main() {
 
     module_background(UPDATES_UC, [ "list-update" ]);
     module_background(DNS_PREFETCH_UC, [ "prefetch" ]);
+    module_background(LIB_DIR + "/service/lifecycle.uc", [ "discover-awg-mtu" ]);
     return 0;
 }
 
@@ -1557,6 +1560,8 @@ else if (mode == "selector-restore-pairs-fixture") {
 }
 else if (mode == "dnsmasq-restore" || mode == "restore-dnsmasq")
     status = dnsmasq_restore_fail_safe();
+else if (mode == "discover-awg-mtu")
+    status = discover_awg_mtu();
 else if (mode == "uninstall")
     status = uninstall();
 else {
