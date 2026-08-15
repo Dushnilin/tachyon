@@ -76,6 +76,8 @@ export namespace Tachyon {
     AI_DOCTOR = 'ai_doctor',
     AI_DOCTOR_LAST = 'ai_doctor_last',
     APPLY_QUICK_FIX = 'apply_quick_fix',
+    LAN_CLIENTS = 'lan_clients',
+    TOGGLE_CLIENT_BYPASS = 'toggle_client_bypass',
     SHOW_SING_BOX_CONFIG = 'show_sing_box_config',
     CHECK_LOGS = 'check_logs',
     CHECK_SING_BOX_LOGS = 'check_sing_box_logs',
@@ -200,6 +202,14 @@ export namespace Tachyon {
     completed: number;
     total: number;
     failed?: number;
+  }
+
+  export interface LanClient {
+    ip: string;
+    mac: string;
+    hostname: string;
+    is_online: boolean;
+    mode: 'proxied' | 'direct';
   }
 
   interface SubscriptionTraffic {

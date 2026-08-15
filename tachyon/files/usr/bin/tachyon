@@ -234,6 +234,8 @@ function command_spec(command) {
         ai_doctor: [ "diagnostics/runtime.uc", "ai-doctor", 0 ],
         ai_doctor_last: [ "diagnostics/runtime.uc", "ai-doctor-last", 0 ],
         apply_quick_fix: [ "diagnostics/runtime.uc", "apply-quick-fix", 1 ],
+        lan_clients: [ "diagnostics/runtime.uc", "lan-clients", 0 ],
+        toggle_client_bypass: [ "diagnostics/runtime.uc", "toggle-client-bypass", 1 ],
         diagnose_json: [ "diagnostics/runtime.uc", "diagnose-json", 0 ],
         agent_cgi: [ "service/agent_api.uc", "__cgi", 0 ],
         mcp: [ "service/agent_mcp.uc", "", 0 ],

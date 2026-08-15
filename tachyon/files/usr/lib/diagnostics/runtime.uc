@@ -3851,6 +3851,125 @@ function ai_doctor() {
     return 0;
 }
 
+function lan_clients() {
+    let clients = [];
+    let seen = {};
+
+    let excluded = {};
+    let cfg = uci_settings();
+    let exc_list = cfg.excluded_clients || cfg.excluded_ips || [];
+    if (type(exc_list) == "string") {
+        exc_list = words(exc_list);
+    }
+    if (type(exc_list) == "array") {
+        for (let item in exc_list) {
+            excluded[trim(as_string(item))] = true;
+        }
+    }
+
+    let lease_files = [ "/tmp/dhcp.leases", "/var/lib/misc/dnsmasq.leases", "/tmp/hosts/dhcp" ];
+    for (let lpath in lease_files) {
+        let data = fs.readfile(lpath);
+        if (!data) continue;
+        for (let line in split(as_string(data), "\n")) {
+            line = trim(line);
+            if (line == "" || index(line, "#") == 0) continue;
+            let fields = split(line, /[ \t]+/);
+            if (length(fields) >= 4) {
+                let mac = lc(fields[1]);
+                let ip = fields[2];
+                let hostname = fields[3] != "*" ? fields[3] : "";
+                if (index(mac, ":") > 0 && index(ip, ".") > 0) {
+                    if (!seen[ip]) {
+                        seen[ip] = true;
+                        push(clients, {
+                            ip: ip,
+                            mac: mac,
+                            hostname: hostname != "" ? hostname : "Device-" + replace(substr(mac, length(mac) - 5), /:/g, ""),
+                            is_online: true,
+                            mode: (excluded[ip] || excluded[mac]) ? "direct" : "proxied"
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    let arp_data = fs.readfile("/proc/net/arp");
+    if (arp_data) {
+        for (let line in split(as_string(arp_data), "\n")) {
+            line = trim(line);
+            if (line == "" || index(line, "IP address") == 0) continue;
+            let fields = split(line, /[ \t]+/);
+            if (length(fields) >= 4) {
+                let ip = fields[0];
+                let mac = lc(fields[3]);
+                if (mac != "00:00:00:00:00:00" && index(mac, ":") > 0 && index(ip, ".") > 0) {
+                    if (!seen[ip]) {
+                        seen[ip] = true;
+                        push(clients, {
+                            ip: ip,
+                            mac: mac,
+                            hostname: "Device-" + replace(substr(mac, length(mac) - 5), /:/g, ""),
+                            is_online: true,
+                            mode: (excluded[ip] || excluded[mac]) ? "direct" : "proxied"
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    print(sprintf("%J\n", {
+        success: true,
+        clients: clients,
+        total: length(clients)
+    }));
+    return 0;
+}
+
+function toggle_client_bypass(target_ip) {
+    target_ip = trim(as_string(target_ip));
+    if (target_ip == "") {
+        print(sprintf("%J\n", { success: false, error: "IP address is required" }));
+        return 1;
+    }
+
+    let cfg = uci_settings();
+    let exc_list = cfg.excluded_clients || cfg.excluded_ips || [];
+    if (type(exc_list) == "string") {
+        exc_list = words(exc_list);
+    }
+    let new_list = [];
+    let found = false;
+    if (type(exc_list) == "array") {
+        for (let item in exc_list) {
+            let str = trim(as_string(item));
+            if (str == target_ip) {
+                found = true;
+            } else if (str != "") {
+                push(new_list, str);
+            }
+        }
+    }
+
+    if (!found) {
+        push(new_list, target_ip);
+    }
+
+    uci_core.set("tachyon", "settings", "excluded_clients", new_list);
+    uci_core.commit("tachyon");
+    command_status("/etc/init.d/tachyon reload >/dev/null 2>&1");
+
+    print(sprintf("%J\n", {
+        success: true,
+        ip: target_ip,
+        mode: found ? "proxied" : "direct",
+        message: found ? "Client restored to proxy routing" : "Client added to Direct WAN bypass"
+    }));
+    return 0;
+}
+
 function extract_ruleset(tag) {
     if (tag == "") {
         warn("tag is required\n");
@@ -4036,6 +4155,10 @@ else if (mode == "ai-doctor-last")
     exit(ai_doctor_last());
 else if (mode == "apply-quick-fix")
     exit(apply_quick_fix(ARGV[1] || ""));
+else if (mode == "lan-clients")
+    exit(lan_clients());
+else if (mode == "toggle-client-bypass")
+    exit(toggle_client_bypass(ARGV[1]));
 else if (mode == "service-health-check") {
     let args = [];
     for (let i = 1; i < length(ARGV); i++) {

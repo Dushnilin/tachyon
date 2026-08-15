@@ -3039,6 +3039,8 @@ var Tachyon;
     AvailableMethods2["AI_DOCTOR"] = "ai_doctor";
     AvailableMethods2["AI_DOCTOR_LAST"] = "ai_doctor_last";
     AvailableMethods2["APPLY_QUICK_FIX"] = "apply_quick_fix";
+    AvailableMethods2["LAN_CLIENTS"] = "lan_clients";
+    AvailableMethods2["TOGGLE_CLIENT_BYPASS"] = "toggle_client_bypass";
     AvailableMethods2["SHOW_SING_BOX_CONFIG"] = "show_sing_box_config";
     AvailableMethods2["CHECK_LOGS"] = "check_logs";
     AvailableMethods2["CHECK_SING_BOX_LOGS"] = "check_sing_box_logs";
@@ -3356,6 +3358,15 @@ var TachyonShellMethods = {
     [fixCode],
     "/usr/bin/tachyon",
     { timeout: 3e4 }
+  ),
+  getLanClients: async () => callBaseMethod(Tachyon.AvailableMethods.LAN_CLIENTS, [], "/usr/bin/tachyon", {
+    timeout: 1e4
+  }),
+  toggleClientBypass: async (ip) => callBaseMethod(
+    Tachyon.AvailableMethods.TOGGLE_CLIENT_BYPASS,
+    [ip],
+    "/usr/bin/tachyon",
+    { timeout: 15e3 }
   ),
   showSingBoxConfig: async (masked = true) => callBaseMethod(Tachyon.AvailableMethods.SHOW_SING_BOX_CONFIG, [
     masked ? "masked" : "raw"
@@ -12225,6 +12236,77 @@ async function handleRunAiDoctor() {
       saveAiDoctorHistory({ timestamp: nowStr, report, quickFixes });
       let historyEntries = getAiDoctorHistory();
       let activeTab2 = "diagnosis";
+      let lanClients = [];
+      let loadingClients = false;
+      const loadLanClients = async () => {
+        if (loadingClients) return;
+        loadingClients = true;
+        renderModalLayout();
+        try {
+          const res = await TachyonShellMethods.getLanClients();
+          if (res && res.success && res.data && Array.isArray(res.data.clients)) {
+            lanClients = res.data.clients;
+          }
+        } catch (e) {
+          logger.error(
+            "[DIAGNOSTIC]",
+            "getLanClients error",
+            e instanceof Error ? e.message : String(e)
+          );
+        } finally {
+          loadingClients = false;
+          renderModalLayout();
+        }
+      };
+      const copySupportReport = async () => {
+        const nodeSummary = nodes.map((n) => `${n.name}: ${n.status}`).join(" | ");
+        const fixesSummary = quickFixes.length > 0 ? quickFixes.map((f) => FIX_LABELS[f] || f).join(", ") : "None";
+        const clientsSummary = lanClients.length > 0 ? lanClients.map(
+          (c) => `- ${c.hostname} (IP: ${c.ip}, MAC: ${c.mac.slice(0, 8)}**): ${c.mode.toUpperCase()}`
+        ).join("\n") : "N/A";
+        const text = [
+          "# Tachyon AI Doctor Diagnostic Report",
+          `Generated: ${(/* @__PURE__ */ new Date()).toISOString()}`,
+          `Pillars: ${nodeSummary}`,
+          `Recommended Fixes: ${fixesSummary}`,
+          "",
+          "## Diagnosis:",
+          report,
+          "",
+          "## LAN Devices Routing:",
+          clientsSummary
+        ].join("\n");
+        try {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(text);
+          } else {
+            const ta = document.createElement("textarea");
+            ta.value = text;
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand("copy");
+            document.body.removeChild(ta);
+          }
+          showToast(
+            _("Anonymized support report copied to clipboard"),
+            "success"
+          );
+        } catch {
+          showToast(_("Failed to copy report to clipboard"), "error");
+        }
+      };
+      const getDeviceIcon = (hostname) => {
+        const h = hostname.toLowerCase();
+        if (h.includes("tv") || h.includes("samsung") || h.includes("lg") || h.includes("bravia") || h.includes("roku") || h.includes("appletv"))
+          return "\u{1F4FA}";
+        if (h.includes("phone") || h.includes("iphone") || h.includes("android") || h.includes("pixel") || h.includes("xiaomi") || h.includes("galaxy"))
+          return "\u{1F4F1}";
+        if (h.includes("mac") || h.includes("pc") || h.includes("laptop") || h.includes("desktop") || h.includes("thinkpad"))
+          return "\u{1F4BB}";
+        if (h.includes("playstation") || h.includes("ps4") || h.includes("ps5") || h.includes("xbox") || h.includes("switch") || h.includes("nintendo"))
+          return "\u{1F3AE}";
+        return "\u{1F4DF}";
+      };
       const repLower = report.toLowerCase();
       const backendNodes = Array.isArray(data?.nodes) && data.nodes.length === 4 ? data.nodes : null;
       const nodes = backendNodes ?? [
@@ -12367,6 +12449,136 @@ async function handleRunAiDoctor() {
           )
         ]);
       };
+      const renderDevicesTabContent = () => {
+        if (loadingClients) {
+          return E(
+            "div",
+            {
+              class: "cbi-section-node",
+              style: "padding: 20px; text-align: center; font-size: 13px;"
+            },
+            "\u23F3 " + _("Loading connected LAN devices...")
+          );
+        }
+        if (lanClients.length === 0) {
+          return E("div", { class: "cbi-section-node" }, [
+            E(
+              "div",
+              {
+                class: "alert-message info",
+                style: "margin: 0 0 10px 0; padding: 12px;"
+              },
+              _("No active DHCP clients found on local network.")
+            ),
+            renderButton({
+              classNames: ["cbi-button-action"],
+              text: "\u{1F504} " + _("Refresh Device List"),
+              onClick: loadLanClients
+            })
+          ]);
+        }
+        return E("div", { class: "cbi-section-node" }, [
+          E(
+            "div",
+            {
+              style: "display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;"
+            },
+            [
+              E(
+                "span",
+                { style: "font-weight: bold; font-size: 12px;" },
+                `\u{1F4F1} ${_("Connected Devices")}: ${lanClients.length}`
+              ),
+              renderButton({
+                classNames: ["cbi-button-neutral"],
+                text: "\u{1F504} " + _("Refresh"),
+                onClick: loadLanClients
+              })
+            ]
+          ),
+          E(
+            "div",
+            {
+              style: "display: flex; flex-direction: column; gap: 8px; max-height: 340px; overflow-y: auto;"
+            },
+            lanClients.map((client) => {
+              const icon = getDeviceIcon(client.hostname);
+              const isDirect = client.mode === "direct";
+              return E(
+                "div",
+                {
+                  class: "cbi-section-node",
+                  style: "display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border-color, rgba(0,0,0,0.1)); background: var(--background-color-high, rgba(0,0,0,0.02)); flex-wrap: wrap;"
+                },
+                [
+                  E(
+                    "div",
+                    {
+                      style: "display: flex; align-items: center; gap: 8px;"
+                    },
+                    [
+                      E("span", { style: "font-size: 18px;" }, icon),
+                      E("div", {}, [
+                        E(
+                          "div",
+                          { style: "font-weight: bold; font-size: 12px;" },
+                          client.hostname
+                        ),
+                        E(
+                          "div",
+                          { style: "font-size: 11px; opacity: 0.75;" },
+                          `${client.ip} (${client.mac})`
+                        )
+                      ])
+                    ]
+                  ),
+                  E(
+                    "div",
+                    {
+                      style: "display: flex; align-items: center; gap: 8px;"
+                    },
+                    [
+                      E(
+                        "span",
+                        {
+                          class: `label ${isDirect ? "label-warning" : "label-success"}`,
+                          style: "font-size: 11px; padding: 3px 8px; border-radius: 4px;"
+                        },
+                        isDirect ? "\u{1F310} " + _("Direct WAN") : "\u{1F6E1}\uFE0F " + _("Proxy / DPI")
+                      ),
+                      renderButton({
+                        classNames: [
+                          isDirect ? "cbi-button-action" : "cbi-button-apply"
+                        ],
+                        text: isDirect ? "\u{1F6E1}\uFE0F " + _("Route via Proxy") : "\u26A1 " + _("Direct Bypass"),
+                        onClick: async () => {
+                          showToast(
+                            _("Updating device routing mode..."),
+                            "success"
+                          );
+                          const res = await TachyonShellMethods.toggleClientBypass(
+                            client.ip
+                          );
+                          if (res && res.success && res.data) {
+                            client.mode = res.data.mode;
+                            showToast(
+                              _("Device updated") + ": " + client.hostname,
+                              "success"
+                            );
+                            renderModalLayout();
+                          } else {
+                            showToast(_("Failed to update device"), "error");
+                          }
+                        }
+                      })
+                    ]
+                  )
+                ]
+              );
+            })
+          )
+        ]);
+      };
       const renderHistoryTabContent = () => {
         if (historyEntries.length === 0) {
           return E(
@@ -12425,14 +12637,14 @@ async function handleRunAiDoctor() {
             E(
               "div",
               {
-                style: "display: flex; gap: 10px; margin-bottom: 14px; border-bottom: 1px solid var(--border-color, #eee); padding-bottom: 8px;"
+                style: "display: flex; gap: 8px; margin-bottom: 12px; border-bottom: 1px solid var(--border-color, rgba(0,0,0,0.1)); padding-bottom: 8px; flex-wrap: wrap;"
               },
               [
                 renderButton({
                   classNames: [
                     activeTab2 === "diagnosis" ? "cbi-button-action" : "cbi-button-neutral"
                   ],
-                  text: _("Current Diagnosis"),
+                  text: "\u{1F50D} " + _("Current Diagnosis"),
                   onClick: () => {
                     activeTab2 = "diagnosis";
                     renderModalLayout();
@@ -12440,9 +12652,23 @@ async function handleRunAiDoctor() {
                 }),
                 renderButton({
                   classNames: [
+                    activeTab2 === "devices" ? "cbi-button-action" : "cbi-button-neutral"
+                  ],
+                  text: `\u{1F4F1} ${_("LAN Devices")} ${lanClients.length > 0 ? `(${lanClients.length})` : ""}`,
+                  onClick: () => {
+                    activeTab2 = "devices";
+                    if (lanClients.length === 0) {
+                      loadLanClients();
+                    } else {
+                      renderModalLayout();
+                    }
+                  }
+                }),
+                renderButton({
+                  classNames: [
                     activeTab2 === "history" ? "cbi-button-action" : "cbi-button-neutral"
                   ],
-                  text: `${_("History")} (${historyEntries.length})`,
+                  text: `\u{1F552} ${_("History")} (${historyEntries.length})`,
                   onClick: () => {
                     historyEntries = getAiDoctorHistory();
                     activeTab2 = "history";
@@ -12451,14 +12677,19 @@ async function handleRunAiDoctor() {
                 })
               ]
             ),
-            activeTab2 === "diagnosis" ? renderDiagnosisTabContent() : renderHistoryTabContent(),
+            activeTab2 === "diagnosis" ? renderDiagnosisTabContent() : activeTab2 === "devices" ? renderDevicesTabContent() : renderHistoryTabContent(),
             E(
               "div",
               {
                 class: "tachyon-partial-modal__footer",
-                style: "margin-top: 15px; display: flex; justify-content: flex-end; gap: 8px;"
+                style: "margin-top: 15px; display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;"
               },
               [
+                renderButton({
+                  classNames: ["cbi-button-action"],
+                  text: "\u{1F4CB} " + _("Copy Support Report"),
+                  onClick: copySupportReport
+                }),
                 renderButton({
                   classNames: ["cbi-button-neutral"],
                   text: _("Close"),

@@ -356,6 +356,26 @@ export const TachyonShellMethods = {
       '/usr/bin/tachyon',
       { timeout: 30000 },
     ),
+  getLanClients: async () =>
+    callBaseMethod<{
+      success: boolean;
+      clients: Tachyon.LanClient[];
+      total: number;
+    }>(Tachyon.AvailableMethods.LAN_CLIENTS, [], '/usr/bin/tachyon', {
+      timeout: 10000,
+    }),
+  toggleClientBypass: async (ip: string) =>
+    callBaseMethod<{
+      success: boolean;
+      ip: string;
+      mode: 'proxied' | 'direct';
+      message: string;
+    }>(
+      Tachyon.AvailableMethods.TOGGLE_CLIENT_BYPASS,
+      [ip],
+      '/usr/bin/tachyon',
+      { timeout: 15000 },
+    ),
   showSingBoxConfig: async (masked = true) =>
     callBaseMethod<unknown>(Tachyon.AvailableMethods.SHOW_SING_BOX_CONFIG, [
       masked ? 'masked' : 'raw',

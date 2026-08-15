@@ -871,7 +871,126 @@ async function handleRunAiDoctor() {
       const nowStr = new Date().toLocaleTimeString();
       saveAiDoctorHistory({ timestamp: nowStr, report, quickFixes });
       let historyEntries = getAiDoctorHistory();
-      let activeTab: 'diagnosis' | 'history' = 'diagnosis';
+      let activeTab: 'diagnosis' | 'devices' | 'history' = 'diagnosis';
+      let lanClients: Tachyon.LanClient[] = [];
+      let loadingClients = false;
+
+      const loadLanClients = async () => {
+        if (loadingClients) return;
+        loadingClients = true;
+        renderModalLayout();
+        try {
+          const res = await TachyonShellMethods.getLanClients();
+          if (
+            res &&
+            res.success &&
+            res.data &&
+            Array.isArray(res.data.clients)
+          ) {
+            lanClients = res.data.clients;
+          }
+        } catch (e) {
+          logger.error(
+            '[DIAGNOSTIC]',
+            'getLanClients error',
+            e instanceof Error ? e.message : String(e),
+          );
+        } finally {
+          loadingClients = false;
+          renderModalLayout();
+        }
+      };
+
+      const copySupportReport = async () => {
+        const nodeSummary = nodes
+          .map((n) => `${n.name}: ${n.status}`)
+          .join(' | ');
+        const fixesSummary =
+          quickFixes.length > 0
+            ? quickFixes.map((f) => FIX_LABELS[f] || f).join(', ')
+            : 'None';
+        const clientsSummary =
+          lanClients.length > 0
+            ? lanClients
+                .map(
+                  (c) =>
+                    `- ${c.hostname} (IP: ${c.ip}, MAC: ${c.mac.slice(0, 8)}**): ${c.mode.toUpperCase()}`,
+                )
+                .join('\n')
+            : 'N/A';
+
+        const text = [
+          '# Tachyon AI Doctor Diagnostic Report',
+          `Generated: ${new Date().toISOString()}`,
+          `Pillars: ${nodeSummary}`,
+          `Recommended Fixes: ${fixesSummary}`,
+          '',
+          '## Diagnosis:',
+          report,
+          '',
+          '## LAN Devices Routing:',
+          clientsSummary,
+        ].join('\n');
+
+        try {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(text);
+          } else {
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+          }
+          showToast(
+            _('Anonymized support report copied to clipboard'),
+            'success',
+          );
+        } catch {
+          showToast(_('Failed to copy report to clipboard'), 'error');
+        }
+      };
+
+      const getDeviceIcon = (hostname: string): string => {
+        const h = hostname.toLowerCase();
+        if (
+          h.includes('tv') ||
+          h.includes('samsung') ||
+          h.includes('lg') ||
+          h.includes('bravia') ||
+          h.includes('roku') ||
+          h.includes('appletv')
+        )
+          return '📺';
+        if (
+          h.includes('phone') ||
+          h.includes('iphone') ||
+          h.includes('android') ||
+          h.includes('pixel') ||
+          h.includes('xiaomi') ||
+          h.includes('galaxy')
+        )
+          return '📱';
+        if (
+          h.includes('mac') ||
+          h.includes('pc') ||
+          h.includes('laptop') ||
+          h.includes('desktop') ||
+          h.includes('thinkpad')
+        )
+          return '💻';
+        if (
+          h.includes('playstation') ||
+          h.includes('ps4') ||
+          h.includes('ps5') ||
+          h.includes('xbox') ||
+          h.includes('switch') ||
+          h.includes('nintendo')
+        )
+          return '🎮';
+        return '📟';
+      };
 
       // Root Cause Analysis from Backend / Report
       const repLower = report.toLowerCase();
@@ -1075,6 +1194,148 @@ async function handleRunAiDoctor() {
         ]);
       };
 
+      const renderDevicesTabContent = () => {
+        if (loadingClients) {
+          return E(
+            'div',
+            {
+              class: 'cbi-section-node',
+              style: 'padding: 20px; text-align: center; font-size: 13px;',
+            },
+            '⏳ ' + _('Loading connected LAN devices...'),
+          );
+        }
+
+        if (lanClients.length === 0) {
+          return E('div', { class: 'cbi-section-node' }, [
+            E(
+              'div',
+              {
+                class: 'alert-message info',
+                style: 'margin: 0 0 10px 0; padding: 12px;',
+              },
+              _('No active DHCP clients found on local network.'),
+            ),
+            renderButton({
+              classNames: ['cbi-button-action'],
+              text: '🔄 ' + _('Refresh Device List'),
+              onClick: loadLanClients,
+            }),
+          ]);
+        }
+
+        return E('div', { class: 'cbi-section-node' }, [
+          E(
+            'div',
+            {
+              style:
+                'display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;',
+            },
+            [
+              E(
+                'span',
+                { style: 'font-weight: bold; font-size: 12px;' },
+                `📱 ${_('Connected Devices')}: ${lanClients.length}`,
+              ),
+              renderButton({
+                classNames: ['cbi-button-neutral'],
+                text: '🔄 ' + _('Refresh'),
+                onClick: loadLanClients,
+              }),
+            ],
+          ),
+          E(
+            'div',
+            {
+              style:
+                'display: flex; flex-direction: column; gap: 8px; max-height: 340px; overflow-y: auto;',
+            },
+            lanClients.map((client) => {
+              const icon = getDeviceIcon(client.hostname);
+              const isDirect = client.mode === 'direct';
+              return E(
+                'div',
+                {
+                  class: 'cbi-section-node',
+                  style:
+                    'display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border-color, rgba(0,0,0,0.1)); background: var(--background-color-high, rgba(0,0,0,0.02)); flex-wrap: wrap;',
+                },
+                [
+                  E(
+                    'div',
+                    {
+                      style: 'display: flex; align-items: center; gap: 8px;',
+                    },
+                    [
+                      E('span', { style: 'font-size: 18px;' }, icon),
+                      E('div', {}, [
+                        E(
+                          'div',
+                          { style: 'font-weight: bold; font-size: 12px;' },
+                          client.hostname,
+                        ),
+                        E(
+                          'div',
+                          { style: 'font-size: 11px; opacity: 0.75;' },
+                          `${client.ip} (${client.mac})`,
+                        ),
+                      ]),
+                    ],
+                  ),
+                  E(
+                    'div',
+                    {
+                      style: 'display: flex; align-items: center; gap: 8px;',
+                    },
+                    [
+                      E(
+                        'span',
+                        {
+                          class: `label ${isDirect ? 'label-warning' : 'label-success'}`,
+                          style:
+                            'font-size: 11px; padding: 3px 8px; border-radius: 4px;',
+                        },
+                        isDirect
+                          ? '🌐 ' + _('Direct WAN')
+                          : '🛡️ ' + _('Proxy / DPI'),
+                      ),
+                      renderButton({
+                        classNames: [
+                          isDirect ? 'cbi-button-action' : 'cbi-button-apply',
+                        ],
+                        text: isDirect
+                          ? '🛡️ ' + _('Route via Proxy')
+                          : '⚡ ' + _('Direct Bypass'),
+                        onClick: async () => {
+                          showToast(
+                            _('Updating device routing mode...'),
+                            'success',
+                          );
+                          const res =
+                            await TachyonShellMethods.toggleClientBypass(
+                              client.ip,
+                            );
+                          if (res && res.success && res.data) {
+                            client.mode = res.data.mode;
+                            showToast(
+                              _('Device updated') + ': ' + client.hostname,
+                              'success',
+                            );
+                            renderModalLayout();
+                          } else {
+                            showToast(_('Failed to update device'), 'error');
+                          }
+                        },
+                      }),
+                    ],
+                  ),
+                ],
+              );
+            }),
+          ),
+        ]);
+      };
+
       const renderHistoryTabContent = () => {
         if (historyEntries.length === 0) {
           return E(
@@ -1141,7 +1402,7 @@ async function handleRunAiDoctor() {
               'div',
               {
                 style:
-                  'display: flex; gap: 10px; margin-bottom: 14px; border-bottom: 1px solid var(--border-color, #eee); padding-bottom: 8px;',
+                  'display: flex; gap: 8px; margin-bottom: 12px; border-bottom: 1px solid var(--border-color, rgba(0,0,0,0.1)); padding-bottom: 8px; flex-wrap: wrap;',
               },
               [
                 renderButton({
@@ -1150,10 +1411,26 @@ async function handleRunAiDoctor() {
                       ? 'cbi-button-action'
                       : 'cbi-button-neutral',
                   ],
-                  text: _('Current Diagnosis'),
+                  text: '🔍 ' + _('Current Diagnosis'),
                   onClick: () => {
                     activeTab = 'diagnosis';
                     renderModalLayout();
+                  },
+                }),
+                renderButton({
+                  classNames: [
+                    activeTab === 'devices'
+                      ? 'cbi-button-action'
+                      : 'cbi-button-neutral',
+                  ],
+                  text: `📱 ${_('LAN Devices')} ${lanClients.length > 0 ? `(${lanClients.length})` : ''}`,
+                  onClick: () => {
+                    activeTab = 'devices';
+                    if (lanClients.length === 0) {
+                      loadLanClients();
+                    } else {
+                      renderModalLayout();
+                    }
                   },
                 }),
                 renderButton({
@@ -1162,7 +1439,7 @@ async function handleRunAiDoctor() {
                       ? 'cbi-button-action'
                       : 'cbi-button-neutral',
                   ],
-                  text: `${_('History')} (${historyEntries.length})`,
+                  text: `🕒 ${_('History')} (${historyEntries.length})`,
                   onClick: () => {
                     historyEntries = getAiDoctorHistory();
                     activeTab = 'history';
@@ -1173,15 +1450,22 @@ async function handleRunAiDoctor() {
             ),
             activeTab === 'diagnosis'
               ? renderDiagnosisTabContent()
-              : renderHistoryTabContent(),
+              : activeTab === 'devices'
+                ? renderDevicesTabContent()
+                : renderHistoryTabContent(),
             E(
               'div',
               {
                 class: 'tachyon-partial-modal__footer',
                 style:
-                  'margin-top: 15px; display: flex; justify-content: flex-end; gap: 8px;',
+                  'margin-top: 15px; display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;',
               },
               [
+                renderButton({
+                  classNames: ['cbi-button-action'],
+                  text: '📋 ' + _('Copy Support Report'),
+                  onClick: copySupportReport,
+                }),
                 renderButton({
                   classNames: ['cbi-button-neutral'],
                   text: _('Close'),
