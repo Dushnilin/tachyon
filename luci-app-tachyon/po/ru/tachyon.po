@@ -3926,3 +3926,22 @@ msgstr "Сбросить Bootstrap DNS"
 msgid "Optimize AWG MTU"
 msgstr "Оптимизировать MTU AWG"
 
+msgid "Restore Native Internet"
+msgstr "Вернуть обычный интернет"
+
+msgid "Restoring native direct internet (stopping Tachyon)..."
+msgstr "Восстановление прямого интернета (остановка Tachyon)..."
+
+msgid "Restoring native direct internet..."
+msgstr "Восстановление прямого интернета..."
+
+msgid "Native internet restored. Tachyon stopped."
+msgstr "Обычный интернет восстановлен. Tachyon остановлен."
+
+msgid "Failed to restore native internet"
+msgstr "Не удалось восстановить прямой интернет"
+
+msgid "This action will stop Tachyon, restore standard dnsmasq/DNS, remove all proxy/anti-censorship firewall rules and restore direct Internet connection through your ISP."
+msgstr "Это действие остановит Tachyon, восстановит стандартный dnsmasq/DNS, удалит все правила файрвола и вернет прямое подключение к интернету через вашего провайдера."
+
+

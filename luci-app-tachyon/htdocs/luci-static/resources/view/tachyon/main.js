@@ -10099,6 +10099,7 @@ function renderAvailableActions({
   doctor,
   aiDoctor,
   aiChat,
+  restoreNativeInternet,
   viewLogs,
   showSingBoxConfig,
   generateBugReport,
@@ -10182,6 +10183,16 @@ function renderAvailableActions({
         text: _("Run AI Doctor"),
         loading: aiDoctor.loading,
         disabled: aiDoctor.disabled
+      })
+    ]),
+    ...insertIf(!!restoreNativeInternet?.visible, [
+      renderButton({
+        classNames: ["cbi-button-reset"],
+        onClick: restoreNativeInternet.onClick,
+        icon: renderCircleStopIcon24,
+        text: _("Restore Native Internet"),
+        loading: restoreNativeInternet.loading,
+        disabled: restoreNativeInternet.disabled
       })
     ]),
     ...insertIf(!!aiChat?.visible, [
@@ -12976,11 +12987,50 @@ async function handleRunAiDoctor() {
                 style: "margin-top: 15px; display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;"
               },
               [
-                renderButton({
-                  classNames: ["cbi-button-action"],
-                  text: "\u{1F4CB} " + _("Copy Support Report"),
-                  onClick: copySupportReport
-                }),
+                E(
+                  "div",
+                  {
+                    style: "display: flex; gap: 8px; flex-wrap: wrap; align-items: center;"
+                  },
+                  [
+                    renderButton({
+                      classNames: ["cbi-button-action"],
+                      text: "\u{1F4CB} " + _("Copy Support Report"),
+                      onClick: copySupportReport
+                    }),
+                    renderButton({
+                      classNames: ["cbi-button-reset"],
+                      text: "\u{1F6A8} " + _("Restore Native Internet (Stop Tachyon)"),
+                      onClick: async () => {
+                        showToast(
+                          _(
+                            "Restoring native direct internet (stopping Tachyon)..."
+                          ),
+                          "success"
+                        );
+                        const fixRes = await TachyonShellMethods.applyQuickFix(
+                          "restore_native_internet"
+                        );
+                        if (fixRes && typeof fixRes === "object" && fixRes.success) {
+                          showToast(
+                            _("Native internet restored. Tachyon stopped."),
+                            "success"
+                          );
+                          ui.hideModal();
+                          await refreshDiagnosticServicesInfo({
+                            force: true,
+                            allowInactive: true
+                          });
+                        } else {
+                          showToast(
+                            _("Failed to restore native internet"),
+                            "error"
+                          );
+                        }
+                      }
+                    })
+                  ]
+                ),
                 renderButton({
                   classNames: ["cbi-button-neutral"],
                   text: _("Close"),
@@ -13010,6 +13060,60 @@ async function handleRunAiDoctor() {
 }
 function handleOpenAiChat() {
   renderAiChatModal();
+}
+function handleRestoreNativeInternet() {
+  ui.showModal(
+    _("Restore Native Internet"),
+    E("div", {}, [
+      E(
+        "p",
+        {},
+        _(
+          "This action will stop Tachyon, restore standard dnsmasq/DNS, remove all proxy/anti-censorship firewall rules and restore direct Internet connection through your ISP."
+        )
+      ),
+      E(
+        "div",
+        {
+          class: "right",
+          style: "display: flex; justify-content: flex-end; gap: 8px; margin-top: 15px;"
+        },
+        [
+          renderButton({
+            classNames: ["cbi-button-neutral"],
+            text: _("Cancel"),
+            onClick: () => ui.hideModal()
+          }),
+          renderButton({
+            classNames: ["cbi-button-reset"],
+            text: "\u{1F6A8} " + _("Restore Native Internet"),
+            onClick: async () => {
+              ui.hideModal();
+              showToast(
+                _("Restoring native direct internet (stopping Tachyon)..."),
+                "success"
+              );
+              const res = await TachyonShellMethods.applyQuickFix(
+                "restore_native_internet"
+              );
+              if (res && typeof res === "object" && res.success) {
+                showToast(
+                  _("Native internet restored. Tachyon stopped."),
+                  "success"
+                );
+                await refreshDiagnosticServicesInfo({
+                  force: true,
+                  allowInactive: true
+                });
+              } else {
+                showToast(_("Failed to restore native internet"), "error");
+              }
+            }
+          })
+        ]
+      )
+    ])
+  );
 }
 async function handleShowSingBoxConfig() {
   setDiagnosticActionLoading("showSingBoxConfig", true);
@@ -13187,6 +13291,12 @@ function renderDiagnosticAvailableActionsWidget() {
       visible: true,
       onClick: handleRunAiDoctor,
       disabled: diagnosticsActions.aiDoctor.loading
+    },
+    restoreNativeInternet: {
+      loading: false,
+      visible: true,
+      onClick: handleRestoreNativeInternet,
+      disabled: false
     },
     aiChat: {
       loading: false,

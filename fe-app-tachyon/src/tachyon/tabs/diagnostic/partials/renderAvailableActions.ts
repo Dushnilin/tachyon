@@ -29,6 +29,7 @@ interface IRenderAvailableActionsProps {
   doctor: ActionProps;
   aiDoctor: ActionProps;
   aiChat?: ActionProps;
+  restoreNativeInternet?: ActionProps;
   viewLogs: ActionProps;
   showSingBoxConfig: ActionProps;
   generateBugReport: ActionProps;
@@ -45,6 +46,7 @@ export function renderAvailableActions({
   doctor,
   aiDoctor,
   aiChat,
+  restoreNativeInternet,
   viewLogs,
   showSingBoxConfig,
   generateBugReport,
@@ -128,6 +130,16 @@ export function renderAvailableActions({
         text: _('Run AI Doctor'),
         loading: aiDoctor.loading,
         disabled: aiDoctor.disabled,
+      }),
+    ]),
+    ...insertIf(!!restoreNativeInternet?.visible, [
+      renderButton({
+        classNames: ['cbi-button-reset'],
+        onClick: restoreNativeInternet!.onClick,
+        icon: renderCircleStopIcon24,
+        text: _('Restore Native Internet'),
+        loading: restoreNativeInternet!.loading,
+        disabled: restoreNativeInternet!.disabled,
       }),
     ]),
     ...insertIf(!!aiChat?.visible, [
