@@ -199,6 +199,19 @@ sh <(wget -O - https://raw.githubusercontent.com/Dushnilin/tachyon/main/install.
 > [!NOTE]
 > **Автоматическая миграция:** Конфигурации от **Forkop**, **Podkop Plus** и оригинального **Podkop** полностью совместимы. Инсталлятор автоматически перенесет ваши правила в `/etc/config/tachyon` без потери данных.
 
+### 🗑️ Удаление (Clean Uninstall & Backup)
+
+Для полного и чистого удаления Tachyon с возвратом штатного DNS, очисткой правил nftables и сохранением вашей конфигурации в `/etc/config/tachyon.backup-<timestamp>`:
+
+```bash
+sh <(wget -O - https://raw.githubusercontent.com/Dushnilin/tachyon/main/uninstall.sh)
+```
+
+**Опции и флаги:**
+* `-y`, `--yes` — автоматическое выполнение без интерактивного подтверждения.
+* `-p`, `--purge` — полное удаление всех файлов вместе с конфигурациями и бэкапами.
+* `--keep-binaries` — сохранить бинарники sing-box / zapret / byedpi.
+
 <p align="center">
   <img src="assets/readme/divider_stream.svg" width="100%" alt="divider" />
 </p>
