@@ -338,11 +338,12 @@ nft_ucode nft-add-section-priority-rules-fixture "$WORK_DIR/priority-rules.json"
 assert_contains "$NFT_LOG" $'nft\tadd\tset\tinet\tTachyonTable\ttachyon_rule_bypass_first_subnets\t{ type ipv4_addr; flags interval; auto-merge; }' "bypass priority subnet set"
 assert_contains "$NFT_LOG" $'nft\tadd\tset\tinet\tTachyonTable\ttachyon_rule_wide_proxy_subnets\t{ type ipv4_addr; flags interval; auto-merge; }' "proxy priority subnet set"
 assert_contains "$NFT_LOG" $'nft\tadd\trule\tinet\tTachyonTable\tpriority_rules\tiifname\t@tachyon_interfaces\tip\tdaddr\t!=\t@localv4\tip\tdaddr\t@tachyon_rule_bypass_first_subnets\tcounter\taccept' "bypass priority accept rule"
-assert_contains "$NFT_LOG" $'nft\tadd\trule\tinet\tTachyonTable\tpriority_rules\tiifname\t@tachyon_interfaces\tip\tdaddr\t!=\t@localv4\tip\tdaddr\t@tachyon_rule_wide_proxy_subnets\tmeta\tmark\tset\t0x00100000\tcounter\taccept' "proxy priority capture rule"
+assert_contains "$NFT_LOG" $'nft\tadd\trule\tinet\tTachyonTable\tpriority_rules\tiifname\t@tachyon_interfaces\tip\tdaddr\t!=\t@localv4\tip\tdaddr\t@tachyon_rule_wide_proxy_subnets\tmeta\tl4proto\ttcp\tmeta\tmark\tset\t0x00100000\tcounter\taccept' "proxy priority capture tcp rule"
+assert_contains "$NFT_LOG" $'nft\tadd\trule\tinet\tTachyonTable\tpriority_rules\tiifname\t@tachyon_interfaces\tip\tdaddr\t!=\t@localv4\tip\tdaddr\t@tachyon_rule_wide_proxy_subnets\tmeta\tl4proto\tudp\tmeta\tmark\tset\t0x00100000\tcounter\taccept' "proxy priority capture udp rule"
 assert_contains "$NFT_LOG" $'nft\tadd\trule\tinet\tTachyonTable\tpriority_rules\tiifname\t@tachyon_interfaces\tip\tdaddr\t!=\t@localv4\ttcp\tdport\t@tachyon_rule_port_bypass_ports\tcounter\taccept' "port-only bypass priority rule"
 assert_line_before "$NFT_LOG" \
   $'nft\tadd\trule\tinet\tTachyonTable\tpriority_rules\tiifname\t@tachyon_interfaces\tip\tdaddr\t!=\t@localv4\tip\tdaddr\t@tachyon_rule_bypass_first_subnets\tcounter\taccept' \
-  $'nft\tadd\trule\tinet\tTachyonTable\tpriority_rules\tiifname\t@tachyon_interfaces\tip\tdaddr\t!=\t@localv4\tip\tdaddr\t@tachyon_rule_wide_proxy_subnets\tmeta\tmark\tset\t0x00100000\tcounter\taccept' \
+  $'nft\tadd\trule\tinet\tTachyonTable\tpriority_rules\tiifname\t@tachyon_interfaces\tip\tdaddr\t!=\t@localv4\tip\tdaddr\t@tachyon_rule_wide_proxy_subnets\tmeta\tl4proto\ttcp\tmeta\tmark\tset\t0x00100000\tcounter\taccept' \
   "bypass priority order"
 
 : > "$IP_LOG"

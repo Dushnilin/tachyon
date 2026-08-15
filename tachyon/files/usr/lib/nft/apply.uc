@@ -775,8 +775,13 @@ function nft_add_section_priority_rules(table, section, interface_set, localv4_s
     let needs_plain_ip_rules = section_priority_needs_plain_ip_rules(section);
     let needs_ip_port_rules = section_priority_needs_ip_port_rules(section);
     let has_port_only_matchers = section_has_nft_port_only_matchers(section);
+    let is_bypass = (section_priority_action(section) == "bypass");
     let match_ip4 = [ "ip", "daddr", "@" + as_string(sets.subnets) ];
     let match_ip6 = [ "ip6", "daddr", "@" + as_string(sets.subnets6) ];
+    let match_ip4_tcp = [ "ip", "daddr", "@" + as_string(sets.subnets), "meta", "l4proto", "tcp" ];
+    let match_ip4_udp = [ "ip", "daddr", "@" + as_string(sets.subnets), "meta", "l4proto", "udp" ];
+    let match_ip6_tcp = [ "ip6", "daddr", "@" + as_string(sets.subnets6), "meta", "l4proto", "tcp" ];
+    let match_ip6_udp = [ "ip6", "daddr", "@" + as_string(sets.subnets6), "meta", "l4proto", "udp" ];
     let match_ip_port4_tcp = [ "ip", "daddr", ".", "tcp", "dport", "@" + as_string(sets.ip_ports) ];
     let match_ip_port4_udp = [ "ip", "daddr", ".", "udp", "dport", "@" + as_string(sets.ip_ports) ];
     let match_ip_port6_tcp = [ "ip6", "daddr", ".", "tcp", "dport", "@" + as_string(sets.ip6_ports) ];
@@ -786,10 +791,19 @@ function nft_add_section_priority_rules(table, section, interface_set, localv4_s
     let match_port6_tcp = [ "tcp", "dport", "@" + as_string(sets.ports) ];
     let match_port6_udp = [ "udp", "dport", "@" + as_string(sets.ports) ];
 
-    if (needs_plain_ip_rules &&
-        (!nft_add_priority_rule_pair(table, "priority_rules", section, interface_set, localv4_set, localv6_set, match_ip4, match_ip6, mark) ||
-            !nft_add_priority_rule_pair(table, "priority_output_rules", section, interface_set, localv4_set, localv6_set, match_ip4, match_ip6, mark)))
-        return false;
+    if (needs_plain_ip_rules) {
+        if (is_bypass) {
+            if (!nft_add_priority_rule_pair(table, "priority_rules", section, interface_set, localv4_set, localv6_set, match_ip4, match_ip6, mark) ||
+                !nft_add_priority_rule_pair(table, "priority_output_rules", section, interface_set, localv4_set, localv6_set, match_ip4, match_ip6, mark))
+                return false;
+        } else {
+            if (!nft_add_priority_rule_pair(table, "priority_rules", section, interface_set, localv4_set, localv6_set, match_ip4_tcp, match_ip6_tcp, mark) ||
+                !nft_add_priority_rule_pair(table, "priority_rules", section, interface_set, localv4_set, localv6_set, match_ip4_udp, match_ip6_udp, mark) ||
+                !nft_add_priority_rule_pair(table, "priority_output_rules", section, interface_set, localv4_set, localv6_set, match_ip4_tcp, match_ip6_tcp, mark) ||
+                !nft_add_priority_rule_pair(table, "priority_output_rules", section, interface_set, localv4_set, localv6_set, match_ip4_udp, match_ip6_udp, mark))
+                return false;
+        }
+    }
 
     if (needs_ip_port_rules &&
         (!nft_add_priority_rule_pair(table, "priority_rules", section, interface_set, localv4_set, localv6_set, match_ip_port4_tcp, match_ip_port6_tcp, mark) ||
