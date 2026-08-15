@@ -88,15 +88,19 @@ Tachyon перехватывает сетевой стек через ядро *
   * **Оптимизация MTU туннелей (`optimize_mtu`)**: Расчёт оптимального размера пакета для AWG/WireGuard.
 * **🚨 Аварийное восстановление интернета (Native Internet Fallback)**:
   * Мгновенный возврат обычного интернета одной кнопкой в UI или командой `tachyon restore_native_internet`. Полная чистая остановка прокси и сброс nftables/ip rule без перезагрузки роутера.
-* **🌐 HTTP REST Agent API & OpenAPI 3.0 (Swagger)**:
-  * Безопасный REST API по адресу `/cgi-bin/tachyon-agent/` с авторизацией Bearer-токеном (`agent_api_token`).
-  * Спецификация **OpenAPI 3.0.3** (`GET /cgi-bin/tachyon-agent/openapi.json`) для мгновенного подключения к **ChatGPT Custom GPTs**, N8N, Dify, Flowise и автономным ИИ-агентам (Cursor, AutoGPT, Claude Code).
 
 <p align="center">
   <img src="assets/readme/divider_stream.svg" width="100%" alt="divider" />
 </p>
 
 ### 📱 3. Интерактивный Telegram-бот управления
+
+<div align="center">
+
+![Telegram Bot Showcase](assets/readme/telegram_bot_showcase.svg)
+
+</div>
+
 Полноценный пульт управления роутером из мессенджера:
 * **Управление правилами «на лету»**: Просмотр списков обхода и добавление новых доменов или IP-сетей.
 * **Мгновенный контроль секций**: Включение и отключение маршрутов одной кнопкой.
@@ -109,6 +113,13 @@ Tachyon перехватывает сетевой стек через ядро *
 </p>
 
 ### 🛡️ 4. Watchdog — Защита и Самовосстановление
+
+<div align="center">
+
+![Watchdog Showcase](assets/readme/watchdog_showcase.svg)
+
+</div>
+
 Watchdog — сердце стабильности Tachyon. Работает каждые 5–15 секунд без внешних зависимостей:
 * **Атомарные записи и UCI-бэкапы**: Запись конфигураций через `tmp` + `mv` предотвращает повреждение файлов при аварийном выключении питания.
 * **Защита от зацикливания перезапусков (Restart-Loop Prevention)**: Лимит не более 3 перезапусков за 10 минут (`safe_proxy_restart()`), мьютекс `PROXY_RESTART_LOCK` и кулдаун DNS-петель.
@@ -121,6 +132,13 @@ Watchdog — сердце стабильности Tachyon. Работает к�
 </p>
 
 ### 🖥️ 5. Современный Web-интерфейс LuCI (TypeScript)
+
+<div align="center">
+
+![LuCI Web UI Showcase](assets/readme/luci_web_showcase.svg)
+
+</div>
+
 * Полная интеграция в штатный Web-интерфейс OpenWrt.
 * **Интерактивный дашборд**: Графика задержек, управление подписками, правилами и компонентами в несколько кликов.
 * **Потоковый терминал установки**: Живой вывод логов процессов установки и обновлений компонентов без зависаний.
@@ -131,7 +149,13 @@ Watchdog — сердце стабильности Tachyon. Работает к�
   <img src="assets/readme/divider_stream.svg" width="100%" alt="divider" />
 </p>
 
-## 🛠️ Справочник консоли (CLI & API Quick Reference)
+## 🛠️ Справочник консоли (CLI & REST Agent API)
+
+<div align="center">
+
+![CLI & API Showcase](assets/readme/cli_showcase.svg)
+
+</div>
 
 ```bash
 # === Системная и офлайн-диагностика ===
@@ -206,6 +230,6 @@ Tachyon опирается на фундаментальные разработ�
 
 <div align="center">
 
-Made with ❤️ for OpenWrt Community
+![Tachyon Community Footer](assets/readme/footer_tachyon.svg)
 
 </div>

@@ -1,0 +1,94 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 150" width="100%" height="100%">
+  <defs>
+    <radialGradient id="cli-bg" cx="50%" cy="50%" r="75%">
+      <stop offset="0%" stop-color="#1E1B4B" stop-opacity="0.3"/>
+      <stop offset="60%" stop-color="#0F172A" stop-opacity="0.95"/>
+      <stop offset="100%" stop-color="#020617" stop-opacity="0.98"/>
+    </radialGradient>
+
+    <linearGradient id="cli-border" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#10B981" stop-opacity="0.3"/>
+      <stop offset="50%" stop-color="#00F0FF" stop-opacity="0.7"/>
+      <stop offset="100%" stop-color="#8B5CF6" stop-opacity="0.3"/>
+    </linearGradient>
+
+    <filter id="cli-glow" filterUnits="userSpaceOnUse" x="0" y="0" width="1200" height="150">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <style>
+    @keyframes pulseCliDot {
+      0%, 100% { transform: scale(1); opacity: 0.9; }
+      50% { transform: scale(1.3); opacity: 0.3; }
+    }
+    @keyframes cliStreamFlow {
+      0% { stroke-dashoffset: 120; }
+      100% { stroke-dashoffset: 0; }
+    }
+
+    .cli-dot { animation: pulseCliDot 2s ease-in-out infinite; }
+    .cli-stream { stroke-dasharray: 12 24; animation: cliStreamFlow 2.5s linear infinite; }
+
+    .cli-title { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-weight: 800; font-size: 15px; fill: #FFFFFF; }
+    .cli-desc { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-weight: 500; font-size: 12px; fill: #94A3B8; }
+    .cli-tag { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 11px; font-weight: 700; fill: #34D399; }
+    .cli-subtag { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 10px; font-weight: 600; fill: #94A3B8; }
+  </style>
+
+  <!-- Container Box -->
+  <rect width="1200" height="150" rx="14" fill="url(#cli-bg)" stroke="url(#cli-border)" stroke-width="1.5"/>
+
+  <!-- Left Header with Terminal Icon -->
+  <g transform="translate(35, 25)">
+    <rect width="44" height="44" rx="10" fill="#065F46" fill-opacity="0.25" stroke="#10B981" stroke-width="1.2"/>
+    <text x="11" y="29" font-size="22">🛠️</text>
+    <text x="56" y="20" class="cli-title">CLI Terminal Control &amp; HTTP REST Agent API (OpenAPI 3.0)</text>
+    <text x="56" y="38" class="cli-desc">Полнофункциональный консольный интерфейс и REST API для интеграции с LLM-агентами (GPTs, N8N, Dify)</text>
+  </g>
+
+  <!-- Animated Connection Stream -->
+  <g transform="translate(35, 80)">
+    <line x1="0" y1="28" x2="1130" y2="28" stroke="#1E293B" stroke-width="1.5"/>
+    <line x1="0" y1="28" x2="1130" y2="28" stroke="#10B981" stroke-width="2" class="cli-stream" filter="url(#cli-glow)"/>
+  </g>
+
+  <!-- 4 Feature Badges -->
+  <g transform="translate(35, 95)">
+    <!-- Badge 1: OpenAPI Spec -->
+    <g transform="translate(0, 0)">
+      <rect width="180" height="34" rx="6" fill="#0B132B" stroke="#10B981" stroke-opacity="0.5" stroke-width="1"/>
+      <circle cx="12" cy="17" r="3" fill="#10B981" class="cli-dot"/>
+      <text x="24" y="16" class="cli-tag">OPENAPI 3.0.3</text>
+      <text x="24" y="28" class="cli-subtag">/openapi.json Schema</text>
+    </g>
+
+    <!-- Badge 2: Bearer Token Auth -->
+    <g transform="translate(195, 0)">
+      <rect width="180" height="34" rx="6" fill="#0B132B" stroke="#00F0FF" stroke-opacity="0.5" stroke-width="1"/>
+      <circle cx="12" cy="17" r="3" fill="#00F0FF" class="cli-dot"/>
+      <text x="24" y="16" class="cli-tag" fill="#00F0FF">BEARER AUTH TOKEN</text>
+      <text x="24" y="28" class="cli-subtag">Granular READ / WRITE</text>
+    </g>
+
+    <!-- Badge 3: LLM Agent Ready -->
+    <g transform="translate(390, 0)">
+      <rect width="180" height="34" rx="6" fill="#0B132B" stroke="#C084FC" stroke-opacity="0.5" stroke-width="1"/>
+      <circle cx="12" cy="17" r="3" fill="#C084FC" class="cli-dot"/>
+      <text x="24" y="16" class="cli-tag" fill="#C084FC">LLM AGENT READY</text>
+      <text x="24" y="28" class="cli-subtag">ChatGPT, N8N, Dify</text>
+    </g>
+
+    <!-- Badge 4: Native Internet Fallback -->
+    <g transform="translate(585, 0)">
+      <rect width="190" height="34" rx="6" fill="#0B132B" stroke="#F59E0B" stroke-opacity="0.5" stroke-width="1"/>
+      <circle cx="12" cy="17" r="3" fill="#F59E0B" class="cli-dot"/>
+      <text x="24" y="16" class="cli-tag" fill="#FBBF24">RESTORE INTERNET</text>
+      <text x="24" y="28" class="cli-subtag">1-Click Native Fallback</text>
+    </g>
+  </g>
+</svg>

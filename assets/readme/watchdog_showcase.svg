@@ -1,0 +1,111 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 150" width="100%" height="100%">
+  <defs>
+    <radialGradient id="wd-bg" cx="50%" cy="50%" r="75%">
+      <stop offset="0%" stop-color="#1E1B4B" stop-opacity="0.35"/>
+      <stop offset="60%" stop-color="#0F172A" stop-opacity="0.9"/>
+      <stop offset="100%" stop-color="#030712" stop-opacity="0.98"/>
+    </radialGradient>
+
+    <linearGradient id="wd-border" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#10B981" stop-opacity="0.3"/>
+      <stop offset="50%" stop-color="#34D399" stop-opacity="0.8"/>
+      <stop offset="100%" stop-color="#00F0FF" stop-opacity="0.3"/>
+    </linearGradient>
+
+    <filter id="wd-glow" filterUnits="userSpaceOnUse" x="0" y="0" width="1200" height="150">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <style>
+    @keyframes rotateRadar {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+    @keyframes pulseWdDot {
+      0%, 100% { transform: scale(1); opacity: 0.9; }
+      50% { transform: scale(1.3); opacity: 0.3; }
+    }
+    @keyframes wdStreamFlow {
+      0% { stroke-dashoffset: 120; }
+      100% { stroke-dashoffset: 0; }
+    }
+
+    .radar-sweep { transform-origin: 1110px 75px; animation: rotateRadar 6s linear infinite; }
+    .wd-dot { animation: pulseWdDot 1.8s ease-in-out infinite; }
+    .wd-stream { stroke-dasharray: 12 24; animation: wdStreamFlow 2.5s linear infinite; }
+
+    .wd-title { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-weight: 800; font-size: 15px; fill: #FFFFFF; }
+    .wd-desc { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-weight: 500; font-size: 12px; fill: #94A3B8; }
+    .wd-tag { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 11px; font-weight: 700; fill: #10B981; }
+    .wd-subtag { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 10px; font-weight: 600; fill: #94A3B8; }
+  </style>
+
+  <!-- Container Box -->
+  <rect width="1200" height="150" rx="14" fill="url(#wd-bg)" stroke="url(#wd-border)" stroke-width="1.5"/>
+
+  <!-- Left Header with Shield Icon -->
+  <g transform="translate(35, 25)">
+    <rect width="44" height="44" rx="10" fill="#047857" fill-opacity="0.25" stroke="#10B981" stroke-width="1.2"/>
+    <text x="11" y="29" font-size="22">🛡️</text>
+    <text x="56" y="20" class="wd-title">Autonomous Watchdog &amp; Resilience Subsystem</text>
+    <text x="56" y="38" class="wd-desc">Непрерывный мониторинг каждые 5-15 секунд: защита от утечек памяти, DNS-петель и сбоев питания</text>
+  </g>
+
+  <!-- Animated Connection Stream -->
+  <g transform="translate(35, 80)">
+    <line x1="0" y1="28" x2="1000" y2="28" stroke="#1E293B" stroke-width="1.5"/>
+    <line x1="0" y1="28" x2="1000" y2="28" stroke="#10B981" stroke-width="2" class="wd-stream" filter="url(#wd-glow)"/>
+  </g>
+
+  <!-- 4 Architectural Protection Badges -->
+  <g transform="translate(35, 95)">
+    <!-- Badge 1: Atomic tmp+mv -->
+    <g transform="translate(0, 0)">
+      <rect width="165" height="34" rx="6" fill="#0B132B" stroke="#10B981" stroke-opacity="0.5" stroke-width="1"/>
+      <circle cx="12" cy="17" r="3" fill="#10B981" class="wd-dot"/>
+      <text x="24" y="16" class="wd-tag">ATOMIC WRITE</text>
+      <text x="24" y="28" class="wd-subtag">tmp + mv Safe Configs</text>
+    </g>
+
+    <!-- Badge 2: Loop Guard -->
+    <g transform="translate(180, 0)">
+      <rect width="175" height="34" rx="6" fill="#0B132B" stroke="#38BDF8" stroke-opacity="0.5" stroke-width="1"/>
+      <circle cx="12" cy="17" r="3" fill="#38BDF8" class="wd-dot"/>
+      <text x="24" y="16" class="wd-tag" fill="#38BDF8">LOOP PREVENTION</text>
+      <text x="24" y="28" class="wd-subtag">Max 3 restarts / 10 min</text>
+    </g>
+
+    <!-- Badge 3: GOMEMLIMIT OOM -->
+    <g transform="translate(370, 0)">
+      <rect width="180" height="34" rx="6" fill="#0B132B" stroke="#C084FC" stroke-opacity="0.5" stroke-width="1"/>
+      <circle cx="12" cy="17" r="3" fill="#C084FC" class="wd-dot"/>
+      <text x="24" y="16" class="wd-tag" fill="#C084FC">OOM WATCHDOG</text>
+      <text x="24" y="28" class="wd-subtag">Dynamic GOMEMLIMIT</text>
+    </g>
+
+    <!-- Badge 4: Hot Reload -->
+    <g transform="translate(565, 0)">
+      <rect width="165" height="34" rx="6" fill="#0B132B" stroke="#F59E0B" stroke-opacity="0.5" stroke-width="1"/>
+      <circle cx="12" cy="17" r="3" fill="#F59E0B" class="wd-dot"/>
+      <text x="24" y="16" class="wd-tag" fill="#FBBF24">HOT-RELOAD</text>
+      <text x="24" y="28" class="wd-subtag">Zero TCP Dropped</text>
+    </g>
+  </g>
+
+  <!-- Right Radar Scanner Scope -->
+  <g transform="translate(1110, 75)">
+    <circle r="36" fill="#090E1A" stroke="#10B981" stroke-opacity="0.4" stroke-width="1.5"/>
+    <circle r="24" fill="none" stroke="#10B981" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="4 4"/>
+    <circle r="12" fill="none" stroke="#10B981" stroke-opacity="0.4" stroke-width="1"/>
+    <line x1="-36" y1="0" x2="36" y2="0" stroke="#1E293B" stroke-width="1"/>
+    <line x1="0" y1="-36" x2="0" y2="36" stroke="#1E293B" stroke-width="1"/>
+    <!-- Radar Line Beam -->
+    <line x1="0" y1="0" x2="36" y2="0" stroke="#10B981" stroke-width="2" class="radar-sweep" filter="url(#wd-glow)"/>
+    <circle cx="0" cy="0" r="3" fill="#34D399"/>
+  </g>
+</svg>

@@ -1,0 +1,94 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 150" width="100%" height="100%">
+  <defs>
+    <radialGradient id="luci-bg" cx="50%" cy="50%" r="75%">
+      <stop offset="0%" stop-color="#0F172A" stop-opacity="0.95"/>
+      <stop offset="60%" stop-color="#090D16" stop-opacity="0.98"/>
+      <stop offset="100%" stop-color="#020617" stop-opacity="1"/>
+    </radialGradient>
+
+    <linearGradient id="luci-border" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#38BDF8" stop-opacity="0.3"/>
+      <stop offset="50%" stop-color="#00F0FF" stop-opacity="0.8"/>
+      <stop offset="100%" stop-color="#818CF8" stop-opacity="0.3"/>
+    </linearGradient>
+
+    <filter id="luci-glow" filterUnits="userSpaceOnUse" x="0" y="0" width="1200" height="150">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <style>
+    @keyframes pulseWebDot {
+      0%, 100% { transform: scale(1); opacity: 0.9; }
+      50% { transform: scale(1.3); opacity: 0.3; }
+    }
+    @keyframes luciStreamFlow {
+      0% { stroke-dashoffset: 120; }
+      100% { stroke-dashoffset: 0; }
+    }
+
+    .luci-dot { animation: pulseWebDot 2s ease-in-out infinite; }
+    .luci-stream { stroke-dasharray: 12 24; animation: luciStreamFlow 2.5s linear infinite; }
+
+    .luci-title { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-weight: 800; font-size: 15px; fill: #FFFFFF; }
+    .luci-desc { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-weight: 500; font-size: 12px; fill: #94A3B8; }
+    .luci-tag { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 11px; font-weight: 700; fill: #00F0FF; }
+    .luci-subtag { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 10px; font-weight: 600; fill: #94A3B8; }
+  </style>
+
+  <!-- Container Box -->
+  <rect width="1200" height="150" rx="14" fill="url(#luci-bg)" stroke="url(#luci-border)" stroke-width="1.5"/>
+
+  <!-- Left Header with Monitor Icon -->
+  <g transform="translate(35, 25)">
+    <rect width="44" height="44" rx="10" fill="#0369A1" fill-opacity="0.25" stroke="#38BDF8" stroke-width="1.2"/>
+    <text x="11" y="29" font-size="22">🖥️</text>
+    <text x="56" y="20" class="luci-title">Modern LuCI Web UI (TypeScript &amp; Reactive State)</text>
+    <text x="56" y="38" class="luci-desc">Интерактивный дашборд OpenWrt: замер задержек RTT, потоковый терминал установки и управление правилами</text>
+  </g>
+
+  <!-- Animated Connection Stream -->
+  <g transform="translate(35, 80)">
+    <line x1="0" y1="28" x2="1130" y2="28" stroke="#1E293B" stroke-width="1.5"/>
+    <line x1="0" y1="28" x2="1130" y2="28" stroke="#00F0FF" stroke-width="2" class="luci-stream" filter="url(#luci-glow)"/>
+  </g>
+
+  <!-- 4 Feature Badges -->
+  <g transform="translate(35, 95)">
+    <!-- Badge 1: TypeScript Engine -->
+    <g transform="translate(0, 0)">
+      <rect width="175" height="34" rx="6" fill="#0B132B" stroke="#00F0FF" stroke-opacity="0.5" stroke-width="1"/>
+      <circle cx="12" cy="17" r="3" fill="#00F0FF" class="luci-dot"/>
+      <text x="24" y="16" class="luci-tag">TYPESCRIPT CORE</text>
+      <text x="24" y="28" class="luci-subtag">Strict Type-Safe Build</text>
+    </g>
+
+    <!-- Badge 2: RTT Matrix -->
+    <g transform="translate(190, 0)">
+      <rect width="180" height="34" rx="6" fill="#0B132B" stroke="#10B981" stroke-opacity="0.5" stroke-width="1"/>
+      <circle cx="12" cy="17" r="3" fill="#10B981" class="luci-dot"/>
+      <text x="24" y="16" class="luci-tag" fill="#34D399">RTT LATENCY MATRIX</text>
+      <text x="24" y="28" class="luci-subtag">Real-Time Ping Heatmap</text>
+    </g>
+
+    <!-- Badge 3: Streaming Log Terminal -->
+    <g transform="translate(385, 0)">
+      <rect width="185" height="34" rx="6" fill="#0B132B" stroke="#C084FC" stroke-opacity="0.5" stroke-width="1"/>
+      <circle cx="12" cy="17" r="3" fill="#C084FC" class="luci-dot"/>
+      <text x="24" y="16" class="luci-tag" fill="#C084FC">STREAMING LOGS</text>
+      <text x="24" y="28" class="luci-subtag">Live RPC Output Stream</text>
+    </g>
+
+    <!-- Badge 4: Commit Tracking -->
+    <g transform="translate(585, 0)">
+      <rect width="190" height="34" rx="6" fill="#0B132B" stroke="#F59E0B" stroke-opacity="0.5" stroke-width="1"/>
+      <circle cx="12" cy="17" r="3" fill="#F59E0B" class="luci-dot"/>
+      <text x="24" y="16" class="luci-tag" fill="#FBBF24">COMMIT-LEVEL TRACK</text>
+      <text x="24" y="28" class="luci-subtag">Same-Release SHA Check</text>
+    </g>
+  </g>
+</svg>

@@ -88,15 +88,19 @@ Tachyon intercepts network flows via kernel **nftables** and dispatches requests
   * **Tunnel MTU Optimization (`optimize_mtu`)**: Automatic MTU tuning for WireGuard / AmneziaWG tunnels.
 * **🚨 Emergency Native Internet Fallback**:
   * Instant 1-click restore of clean WAN internet via UI or `tachyon restore_native_internet` CLI command without rebooting the router.
-* **🌐 HTTP REST Agent API & OpenAPI 3.0 (Swagger)**:
-  * Full-featured API at `/cgi-bin/tachyon-agent/` with granular Bearer token security (`agent_api_token`).
-  * Native **OpenAPI 3.0.3** spec (`GET /cgi-bin/tachyon-agent/openapi.json`) for seamless integration with **ChatGPT Custom GPTs**, N8N, Dify, Flowise, and autonomous LLM agents (Cursor, AutoGPT, Claude Code).
 
 <p align="center">
   <img src="assets/readme/divider_stream.svg" width="100%" alt="divider" />
 </p>
 
 ### 📱 3. Interactive Telegram Control Bot
+
+<div align="center">
+
+![Telegram Bot Showcase](assets/readme/telegram_bot_showcase.svg)
+
+</div>
+
 A feature-rich control center right inside your messenger:
 * **Live Rule Management**: View active routing lists and instantly add new domains or IP subnets on the fly.
 * **Instant Toggle**: Enable or disable routing sections with a single button.
@@ -109,6 +113,13 @@ A feature-rich control center right inside your messenger:
 </p>
 
 ### 🛡️ 4. Watchdog — Protection & Self-Healing System
+
+<div align="center">
+
+![Watchdog Showcase](assets/readme/watchdog_showcase.svg)
+
+</div>
+
 Watchdog is the heart of Tachyon's stability, running every 5–15 seconds without external dependencies:
 * **Atomic Operations & UCI Backups**: Configuration writes via `tmp` + `mv` prevent file corruption during sudden power losses.
 * **Restart-Loop Protection**: Maximum 3 restarts per 10 minutes (`safe_proxy_restart()`), `PROXY_RESTART_LOCK` mutex, and DNS query loop cooldowns.
@@ -121,6 +132,13 @@ Watchdog is the heart of Tachyon's stability, running every 5–15 seconds witho
 </p>
 
 ### 🖥️ 5. Modern Web Interface (LuCI - TypeScript)
+
+<div align="center">
+
+![LuCI Web UI Showcase](assets/readme/luci_web_showcase.svg)
+
+</div>
+
 * Native integration into OpenWrt's LuCI dashboard.
 * **Interactive Dashboard**: Real-time latency tracking, subscription manager, rule editor, and service controls in a few clicks.
 * **Streaming Terminal Modal**: Real-time console logs for component installations and updates without UI freezes.
@@ -131,7 +149,13 @@ Watchdog is the heart of Tachyon's stability, running every 5–15 seconds witho
   <img src="assets/readme/divider_stream.svg" width="100%" alt="divider" />
 </p>
 
-## 🛠️ CLI & API Quick Reference
+## 🛠️ CLI & REST Agent API Reference
+
+<div align="center">
+
+![CLI & API Showcase](assets/readme/cli_showcase.svg)
+
+</div>
 
 ```bash
 # === System & Offline Diagnostics ===
@@ -206,6 +230,6 @@ If Tachyon powers your daily networking and keeps your connection fast and secur
 
 <div align="center">
 
-Made with ❤️ for OpenWrt Community
+![Tachyon Community Footer](assets/readme/footer_tachyon.svg)
 
 </div>
