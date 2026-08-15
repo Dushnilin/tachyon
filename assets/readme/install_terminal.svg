@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 130" width="100%" height="100%">
+  <defs>
+    <linearGradient id="term-bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0F172A" stop-opacity="0.95"/>
+      <stop offset="100%" stop-color="#020617" stop-opacity="0.98"/>
+    </linearGradient>
+
+    <linearGradient id="term-border" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#00F0FF" stop-opacity="0.3"/>
+      <stop offset="50%" stop-color="#38BDF8" stop-opacity="0.7"/>
+      <stop offset="100%" stop-color="#818CF8" stop-opacity="0.3"/>
+    </linearGradient>
+
+    <filter id="cursor-glow" filterUnits="userSpaceOnUse" x="0" y="0" width="1200" height="130">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <style>
+    @keyframes blinkCursor {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0; }
+    }
+    @keyframes streamInstall {
+      0% { stroke-dashoffset: 120; }
+      100% { stroke-dashoffset: 0; }
+    }
+
+    .term-cursor { animation: blinkCursor 1s step-start infinite; }
+    .term-stream { stroke-dasharray: 10 20; animation: streamInstall 2s linear infinite; }
+
+    .term-title { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 11px; fill: #64748B; font-weight: 600; }
+    .term-prompt { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 14px; font-weight: 700; fill: #10B981; }
+    .term-cmd { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 14px; font-weight: 600; fill: #F8FAFC; }
+    .term-badge { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 11px; font-weight: 700; fill: #00F0FF; }
+  </style>
+
+  <!-- Terminal Window Base -->
+  <rect width="1200" height="130" rx="12" fill="url(#term-bg)" stroke="url(#term-border)" stroke-width="1.5"/>
+
+  <!-- Terminal Window Controls Header -->
+  <g transform="translate(20, 16)">
+    <circle cx="8" cy="8" r="5" fill="#EF4444"/>
+    <circle cx="24" cy="8" r="5" fill="#F59E0B"/>
+    <circle cx="40" cy="8" r="5" fill="#10B981"/>
+    <text x="60" y="12" class="term-title">router@openwrt:~# one-liner installation &amp; auto-migration</text>
+  </g>
+
+  <!-- Separator Line -->
+  <line x1="0" y1="36" x2="1200" y2="36" stroke="#1E293B" stroke-width="1"/>
+
+  <!-- Command Line Display -->
+  <g transform="translate(30, 75)">
+    <text x="0" y="0" class="term-prompt">root@router:~#</text>
+    <text x="140" y="0" class="term-cmd">sh &lt;(wget -O - https://raw.githubusercontent.com/Dushnilin/tachyon/main/install.sh)</text>
+    <!-- Blinking Cursor Box -->
+    <rect x="915" y="-14" width="8" height="16" fill="#00F0FF" class="term-cursor" filter="url(#cursor-glow)"/>
+  </g>
+
+  <!-- Bottom Fast-Deploy Info -->
+  <g transform="translate(30, 108)">
+    <text x="0" y="0" class="term-title">⚡ Instant ucode compilation | Auto-migrates from Forkop / Podkop | Zero-reboot activation</text>
+  </g>
+
+  <!-- Right Status Tag -->
+  <g transform="translate(1010, 58)">
+    <rect width="160" height="32" rx="6" fill="#0369A1" fill-opacity="0.2" stroke="#00F0FF" stroke-width="1"/>
+    <text x="14" y="20" class="term-badge">ONE-CLICK DEPLOY</text>
+  </g>
+</svg>

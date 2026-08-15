@@ -11,7 +11,9 @@
 
 </div>
 
----
+<p align="center">
+  <img src="assets/readme/divider_stream.svg" width="100%" alt="divider" />
+</p>
 
 ## ⚡ About Tachyon
 
@@ -21,7 +23,9 @@ Tachyon combines the power of **sing-box**, local hardware DPI bypass engines (*
 
 The entire backend logic is written in **ucode** — OpenWrt's native, high-performance C scripting language — delivering instant response times with minimal RAM footprint (starting from 128 MB RAM devices).
 
----
+<p align="center">
+  <img src="assets/readme/divider_stream.svg" width="100%" alt="divider" />
+</p>
 
 ## 🌐 Architecture & Traffic Pipeline
 
@@ -33,17 +37,21 @@ The entire backend logic is written in **ucode** — OpenWrt's native, high-perf
 
 Tachyon intercepts network flows via kernel **nftables** and dispatches requests without unnecessary latency:
 1. **Direct WAN**: Local services, national banks, and trusted destinations proceed without proxy overhead (`0 ms overhead`).
-2. **Local DPI Desync (Zapret v2 / ByeDPI)**: YouTube 4K, Discord, and target websites are desynchronized directly on the router without requiring a VPS.
-3. **Encrypted Proxy Tunnel (sing-box)**: Censored endpoints and private traffic are routed through modern protocols (VLESS Reality, Hysteria2, WireGuard).
+2. **Zapret v1 (`nfqws`)**: Basic TCP/UDP packet desynchronization (`fake`, `disorder`, `split2`) directly on router without VPS.
+3. **Zapret v2 (`nfqws2`)**: Advanced multi-vector DPI evasion (`multisplit`, `seqovl`, `wsize`) for YouTube 4K and Discord.
+4. **ByeDPI (`ciadpi`)**: Local SOCKS5 desync engine with HTTP/TLS SNI payload fragmentation.
+5. **Encrypted Proxy Tunnel (sing-box)**: Censored endpoints and private traffic are routed through modern protocols (VLESS Reality, Hysteria2, WireGuard).
 
----
+<p align="center">
+  <img src="assets/readme/divider_stream.svg" width="100%" alt="divider" />
+</p>
 
 ## 🔥 Core Features & Subsystems
 
 ### 🛡️ 1. Multi-Protocol Proxying & Local DPI Bypass
 * **sing-box Engine (v1.11+)**: Native support for modern proxy protocols — **VLESS (Reality / gRPC / WS)**, **VMess**, **Shadowsocks**, **Trojan**, **Hysteria2**, and **WireGuard / AmneziaWG**.
 * **Local DPI Bypass Without External VPS**: 
-  * Full built-in integration with **Zapret v1 (`nfqws`)**, **Zapret v2 (`nfqws2`)**, and **ByeDPI (`ciadpi`)** desync engines for hardware TCP segment manipulation (`fake`, `disorder`, `split2`, `multisplit`, `seqovl`, `wsize`).
+  * Full built-in integration with **Zapret v1 (`nfqws`)**, **Zapret v2 (`nfqws2`)**, and **ByeDPI (`ciadpi`)** desync engines for hardware TCP segment manipulation.
 * **Multi-Dimensional Selective Routing**: 
   * **By Domains & IP Subnets**: Route only target traffic through proxies or desync engines.
   * **By Client Devices (MAC / IP)**: Per-device routing rules for Smart TVs, smartphones, PCs, and gaming consoles.
@@ -57,9 +65,18 @@ Tachyon intercepts network flows via kernel **nftables** and dispatches requests
 * **GitHub Mirror Failover**: Resilient downloads that automatically retry via mirrors (`gh-proxy.com`, `ghproxy.net`) if direct access to github.com is blocked or throttled.
 * **Hosts-Only Action Sections (`action = hosts`)**: Dedicated routing sections operating purely as DNS override engines without requiring an outbound proxy association.
 
----
+<p align="center">
+  <img src="assets/readme/divider_stream.svg" width="100%" alt="divider" />
+</p>
 
 ### 🤖 2. AI Doctor & HTTP REST Agent API (AI Stack v2.5)
+
+<div align="center">
+
+![AI Doctor Monitor](assets/readme/ai_doctor_showcase.svg)
+
+</div>
+
 * **Tachyon AI Doctor (v2.5)**: Deep AI diagnostic engine supporting modern LLMs (**OpenAI**, **Anthropic Claude**, **DeepSeek**, or local models via OpenRouter / Ollama).
   * **Deep Contextual Intelligence**: Feeds real-time service health, Watchdog failure history (OOM events, error streaks), and compressed system logs into the LLM prompt.
   * **Multi-Fix Execution Chains**: Generates multi-action repair sequences with dedicated UI buttons per fix or a single "Fix All" action.
@@ -75,7 +92,9 @@ Tachyon intercepts network flows via kernel **nftables** and dispatches requests
   * Full-featured API at `/cgi-bin/tachyon-agent/` with granular Bearer token security (`agent_api_token`).
   * Native **OpenAPI 3.0.3** spec (`GET /cgi-bin/tachyon-agent/openapi.json`) for seamless integration with **ChatGPT Custom GPTs**, N8N, Dify, Flowise, and autonomous LLM agents (Cursor, AutoGPT, Claude Code).
 
----
+<p align="center">
+  <img src="assets/readme/divider_stream.svg" width="100%" alt="divider" />
+</p>
 
 ### 📱 3. Interactive Telegram Control Bot
 A feature-rich control center right inside your messenger:
@@ -85,7 +104,9 @@ A feature-rich control center right inside your messenger:
 * **Device Access Control**: View active DHCP clients and block/unblock internet access by MAC address.
 * **Diagnostics & Commands**: `/doctor`, `/ai_doctor`, `/fix <code_name>`, `/restart`, `/backup`, `/status`.
 
----
+<p align="center">
+  <img src="assets/readme/divider_stream.svg" width="100%" alt="divider" />
+</p>
 
 ### 🛡️ 4. Watchdog — Protection & Self-Healing System
 Watchdog is the heart of Tachyon's stability, running every 5–15 seconds without external dependencies:
@@ -95,7 +116,9 @@ Watchdog is the heart of Tachyon's stability, running every 5–15 seconds witho
 * **Seamless Hot-Reload**: Rule updates and server switches apply softly without dropping active TCP connections (Discord calls, gaming, and downloads remain uninterrupted).
 * **WAN & Gateway Recovery**: Active interface monitoring and automated route recovery during ISP outages.
 
----
+<p align="center">
+  <img src="assets/readme/divider_stream.svg" width="100%" alt="divider" />
+</p>
 
 ### 🖥️ 5. Modern Web Interface (LuCI - TypeScript)
 * Native integration into OpenWrt's LuCI dashboard.
@@ -104,7 +127,9 @@ Watchdog is the heart of Tachyon's stability, running every 5–15 seconds witho
 * **Dynamic Repository Links**: Component cards link directly to the installed variant's GitHub repository (extended, lx, stable).
 * **Commit-Level Update Tracking**: Alerts for newer commits within the same release tag.
 
----
+<p align="center">
+  <img src="assets/readme/divider_stream.svg" width="100%" alt="divider" />
+</p>
 
 ## 🛠️ CLI & API Quick Reference
 
@@ -129,9 +154,17 @@ curl http://192.168.1.1/cgi-bin/tachyon-agent/health
 curl http://192.168.1.1/cgi-bin/tachyon-agent/openapi.json
 ```
 
----
+<p align="center">
+  <img src="assets/readme/divider_stream.svg" width="100%" alt="divider" />
+</p>
 
 ## 💻 Installation
+
+<div align="center">
+
+![Installation Terminal](assets/readme/install_terminal.svg)
+
+</div>
 
 Run the following single command in your router's SSH terminal:
 
@@ -142,7 +175,9 @@ sh <(wget -O - https://raw.githubusercontent.com/Dushnilin/tachyon/main/install.
 > [!NOTE]
 > **Automatic Migration:** Existing configurations from **Forkop**, **Podkop Plus**, or original **Podkop** are fully compatible. The installer will automatically migrate your settings to `/etc/config/tachyon` without data loss.
 
----
+<p align="center">
+  <img src="assets/readme/divider_stream.svg" width="100%" alt="divider" />
+</p>
 
 ## 🤝 Upstream Projects & Credits
 
@@ -154,7 +189,9 @@ Tachyon stands on the shoulders of incredible open-source projects:
 * 🚀 **[zapret (bol-van)](https://github.com/bol-van/zapret2)** — DPI desync framework (`nfqws` / `nfqws2`).
 * 🌐 **[ByeDPI](https://github.com/hrbrmstr/byedpi)** — Local SOCKS desync proxy.
 
----
+<p align="center">
+  <img src="assets/readme/divider_stream.svg" width="100%" alt="divider" />
+</p>
 
 ## 💖 Support & Donations
 
@@ -163,7 +200,9 @@ If Tachyon powers your daily networking and keeps your connection fast and secur
 💳 **Credit Cards / SBP / Tinkoff Pay:**  
 👉 [**Support the project via CloudTips**](https://pay.cloudtips.ru/p/48c57581)
 
----
+<p align="center">
+  <img src="assets/readme/divider_stream.svg" width="100%" alt="divider" />
+</p>
 
 <div align="center">
 
