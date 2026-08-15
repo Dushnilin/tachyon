@@ -12226,24 +12226,47 @@ async function handleRunAiDoctor() {
       let historyEntries = getAiDoctorHistory();
       let activeTab2 = "diagnosis";
       const repLower = report.toLowerCase();
-      const nodes = [
+      const backendNodes = Array.isArray(data?.nodes) && data.nodes.length === 4 ? data.nodes : null;
+      const nodes = backendNodes ?? [
         {
           name: "WAN",
-          status: repLower.includes("wan interface down") ? "FAIL" : "OK"
+          status: repLower.includes("wan interface down") || repLower.includes(
+            "\u0448\u043B\u044E\u0437 \u043F\u043E \u0443\u043C\u043E\u043B\u0447\u0430\u043D\u0438\u044E \u0438\u043B\u0438 \u0432\u043D\u0435\u0448\u043D\u0438\u0439 \u0438\u043D\u0442\u0435\u0440\u043D\u0435\u0442 \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u0435\u043D"
+          ) || repLower.includes("wan interface is unreachable") ? "FAIL" : "OK"
         },
         {
           name: "DNS",
-          status: repLower.includes("dnsmasq") || repLower.includes("dns") ? repLower.includes("dns failed") || repLower.includes("dnsmasq failed") ? "FAIL" : "OK" : "OK"
+          status: repLower.includes("\u0441\u0431\u043E\u0439 \u0440\u0430\u0437\u0440\u0435\u0448\u0435\u043D\u0438\u044F dns") || repLower.includes("dns resolution failed") || repLower.includes("dns failed") || repLower.includes("dnsmasq failed") ? "FAIL" : "OK"
         },
         {
           name: "sing-box",
-          status: repLower.includes("sing-box") && (repLower.includes("stopped") || repLower.includes("error")) ? "FAIL" : "OK"
+          status: (repLower.includes("sing-box") || repLower.includes("proxy")) && (repLower.includes("\u043E\u0441\u0442\u0430\u043D\u043E\u0432\u043B\u0435\u043D") || repLower.includes("stopped") || repLower.includes("\u043D\u0435 \u0444\u0443\u043D\u043A\u0446\u0438\u043E\u043D\u0438\u0440\u0443\u0435\u0442") || repLower.includes("error") || repLower.includes("crash")) ? "FAIL" : "OK"
         },
         {
           name: "nftables",
-          status: repLower.includes("nftables") || repLower.includes("rules") ? repLower.includes("damaged") || repLower.includes("corrupted") ? "WARN" : "OK" : "OK"
+          status: (repLower.includes("nftables") || repLower.includes("\u043F\u0440\u0430\u0432\u0438\u043B\u0430 \u0444\u0430\u0439\u0440\u0432\u043E\u043B\u0430") || repLower.includes("firewall rules")) && (repLower.includes("\u043D\u0430\u0440\u0443\u0448\u0435\u043D\u044B") || repLower.includes("damaged") || repLower.includes("corrupted") || repLower.includes("compromised")) ? "WARN" : "OK"
         }
       ];
+      const FIX_LABELS = {
+        start_singbox: _("Start sing-box"),
+        rebuild_rules: _("Rebuild firewall rules"),
+        fix_dnsmasq: _("Restart dnsmasq"),
+        fix_resolv_symlink: _("Fix resolv.conf"),
+        start_watchdog: _("Start watchdog"),
+        restart_singbox_dns: _("Restart sing-box DNS"),
+        fix_uci_config: _("Restore config backup"),
+        fix_wan_interface: _("Reconnect WAN"),
+        fix_gateway: _("Resolve gateway"),
+        clear_dns_cache: _("Clear DNS cache"),
+        update_subscriptions: _("Update subscriptions"),
+        reset_firewall: _("Restart firewall"),
+        restart_network: _("Restart network"),
+        restart_zapret: _("Restart Zapret/ByeDPI"),
+        optimize_memory: _("Optimize RAM memory"),
+        switch_to_doh: _("Switch DNS to DoH"),
+        heal_network_stack: _("Auto-Heal Network Stack"),
+        enable_safe_bypass: _("Enable Direct WAN Bypass")
+      };
       const renderRootCauseBanner = () => {
         return E(
           "div",
@@ -12298,28 +12321,29 @@ async function handleRunAiDoctor() {
                 },
                 quickFixes.map((code) => {
                   let applied = false;
+                  const friendlyLabel = FIX_LABELS[code] ? `${FIX_LABELS[code]} (${code})` : code;
                   const btn = renderButton({
                     classNames: ["cbi-button-apply"],
-                    text: `\u26A1 ${code}`,
+                    text: `\u26A1 ${friendlyLabel}`,
                     onClick: async () => {
                       if (applied) return;
                       showToast(
-                        _("Applying fix") + ": " + code + "...",
+                        _("Applying fix") + ": " + friendlyLabel + "...",
                         "success"
                       );
                       const fixRes = await TachyonShellMethods.applyQuickFix(code);
                       if (fixRes && typeof fixRes === "object" && fixRes.success) {
                         applied = true;
-                        btn.textContent = `\u2713 ${code} (${_("Fixed")})`;
+                        btn.textContent = `\u2713 ${friendlyLabel} (${_("Fixed")})`;
                         btn.classList.remove("cbi-button-apply");
                         btn.classList.add("cbi-button-neutral");
                         showToast(
-                          _("Fix applied") + ": " + code,
+                          _("Fix applied") + ": " + friendlyLabel,
                           "success"
                         );
                       } else {
                         showToast(
-                          _("Failed to apply fix") + ": " + code,
+                          _("Failed to apply fix") + ": " + friendlyLabel,
                           "error"
                         );
                       }

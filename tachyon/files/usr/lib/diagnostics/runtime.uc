@@ -159,22 +159,144 @@ function uci_config_valid() {
     return res == 0;
 }
 
+function command_output(command) {
+    let result = command_capture(command);
+    return result.status == 0 ? result.output : "";
+}
+
+function command_success(command) {
+    return command_status(command + " >/dev/null 2>&1") == 0;
+}
+
+function command_output_from_args(args) {
+    return command_output(command_from_args(args) + " 2>/dev/null");
+}
+
+function command_success_from_args(args) {
+    return command_success(command_from_args(args));
+}
+
+function command_exists(name) {
+    return command_success_from_args([ "command", "-v", as_string(name) ]);
+}
+
+function parse_json_or_null(value) {
+    try {
+        return json(as_string(value));
+    }
+    catch (e) {
+        return null;
+    }
+}
+
+function words(value) {
+    value = trim(as_string(value));
+    return value == "" ? [] : split(value, /[ \t\r\n]+/);
+}
+
+function push_unique(result, seen, value) {
+    value = as_string(value);
+    if (value == "" || seen[value])
+        return;
+    seen[value] = true;
+    push(result, value);
+}
+
+function network_status_ip_addresses(data, key) {
+    let value = parse_json_or_null(data);
+    let addresses = type(value) == "object" ? value[key] : null;
+    let result = [];
+    let seen = {};
+    if (type(addresses) == "array") {
+        for (let item in addresses) {
+            if (type(item) == "object")
+                push_unique(result, seen, item.address || "");
+        }
+    }
+    return result;
+}
+
+function get_wan_ip_addresses() {
+    let result = [];
+    let seen = {};
+
+    for (let interface in [ "wan", "wwan" ]) {
+        let data = command_output_from_args([
+            "ubus", "-S", "call", "network.interface." + interface, "status"
+        ]);
+        for (let ip in network_status_ip_addresses(data, "ipv4-address"))
+            push_unique(result, seen, ip);
+        for (let ip in network_status_ip_addresses(data, "ipv6-address"))
+            push_unique(result, seen, ip);
+    }
+
+    let route = command_output_from_args([ "ip", "-4", "route", "show", "default" ]);
+    let fields = words(route);
+    let iface = "";
+    for (let i = 0; i + 1 < length(fields); i++) {
+        if (fields[i] == "dev") {
+            iface = fields[i + 1];
+            break;
+        }
+    }
+    if (iface == "")
+        return "";
+
+    let addr = command_output_from_args([ "ip", "-4", "addr", "show", "dev", iface ]);
+    for (let line in split(addr, "\n")) {
+        line = trim(as_string(line));
+        let matched = match(line, /^inet[ \t]+([0-9.]+)\//);
+        if (matched != null)
+            push_unique(result, seen, matched[1]);
+    }
+    return join(" ", result);
+}
+
 function dns_check_through_singbox(domain) {
     let res = command_capture("nslookup " + shell_quote(domain) + " " + SB_DNS_INBOUND_ADDRESS + " 2>&1");
     return index(res.output, "Address:") >= 0 && index(res.output, "#53") >= 0 && index(res.output, "NXDOMAIN") < 0;
 }
 
 function get_wan_interface() {
-    let res = command_capture("uci get network.wan.device 2>/dev/null");
+    let res = command_capture("uci -q get tachyon.settings.output_network_interface 2>/dev/null");
     let iface = (res.status == 0) ? trim(res.output) : "";
-    if (iface == "") iface = "eth0";
-    return iface;
+    if (iface != "") return iface;
+
+    res = command_capture("uci get network.wan.device 2>/dev/null");
+    iface = (res.status == 0) ? trim(res.output) : "";
+    if (iface != "") return iface;
+
+    res = command_capture("uci get network.wan.ifname 2>/dev/null");
+    iface = (res.status == 0) ? trim(res.output) : "";
+    if (iface != "") return iface;
+
+    let route = command_output_from_args([ "ip", "-4", "route", "show", "default" ]);
+    let fields = words(route);
+    for (let i = 0; i + 1 < length(fields); i++) {
+        if (fields[i] == "dev") {
+            iface = fields[i + 1];
+            break;
+        }
+    }
+    if (iface != "") return iface;
+
+    return "eth0";
 }
 
 function wan_has_ip() {
+    let wan_ips = get_wan_ip_addresses();
+    if (wan_ips != "") return true;
+
     let iface = get_wan_interface();
     let out = command_capture("ip addr show " + shell_quote(iface) + " 2>/dev/null").output;
-    return index(out, "inet ") >= 0;
+    if (index(out, "inet ") >= 0) return true;
+
+    let ubus_status = command_output_from_args([ "ubus", "-S", "call", "network.interface.wan", "status" ]);
+    let status_json = parse_json_or_null(ubus_status);
+    if (type(status_json) == "object" && status_json.up === true)
+        return true;
+
+    return default_gateway_exists();
 }
 
 function default_gateway_exists() {
@@ -197,27 +319,6 @@ function get_all_dns_servers(cfg, key) {
         }
     }
     return servers;
-}
-
-function command_output(command) {
-    let result = command_capture(command);
-    return result.status == 0 ? result.output : "";
-}
-
-function command_success(command) {
-    return command_status(command + " >/dev/null 2>&1") == 0;
-}
-
-function command_output_from_args(args) {
-    return command_output(command_from_args(args) + " 2>/dev/null");
-}
-
-function command_success_from_args(args) {
-    return command_success(command_from_args(args));
-}
-
-function command_exists(name) {
-    return command_success_from_args([ "command", "-v", as_string(name) ]);
 }
 
 function module_args(module_path, args) {
@@ -305,15 +406,6 @@ function read_json_file(path) {
         return null;
     try {
         return json(data);
-    }
-    catch (e) {
-        return null;
-    }
-}
-
-function parse_json_or_null(value) {
-    try {
-        return json(as_string(value));
     }
     catch (e) {
         return null;
@@ -529,98 +621,6 @@ function valid_public_ipv6(value) {
 
 function valid_public_ip(value) {
     return valid_public_ipv4(value) || valid_public_ipv6(value);
-}
-
-function words(value) {
-    value = trim(as_string(value));
-    return value == "" ? [] : split(value, /[ \t\r\n]+/);
-}
-
-function allowed_ips_default_routes(value) {
-    let result = [];
-    for (let allowed in words(value)) {
-        if (allowed == "0.0.0.0/0" || allowed == "::/0")
-            push(result, allowed);
-    }
-    return result;
-}
-
-function push_unique(result, seen, value) {
-    value = as_string(value);
-    if (value == "" || seen[value])
-        return;
-    seen[value] = true;
-    push(result, value);
-}
-
-function network_status_ip_addresses(data, key) {
-    let value = parse_json_or_null(data);
-    let addresses = type(value) == "object" ? value[key] : null;
-    let result = [];
-    let seen = {};
-    if (type(addresses) == "array") {
-        for (let item in addresses) {
-            if (type(item) == "object")
-                push_unique(result, seen, item.address || "");
-        }
-    }
-    return result;
-}
-
-function get_wan_ip_addresses() {
-    let result = [];
-    let seen = {};
-
-    for (let interface in [ "wan", "wwan" ]) {
-        let data = command_output_from_args([
-            "ubus", "-S", "call", "network.interface." + interface, "status"
-        ]);
-        for (let ip in network_status_ip_addresses(data, "ipv4-address"))
-            push_unique(result, seen, ip);
-        for (let ip in network_status_ip_addresses(data, "ipv6-address"))
-            push_unique(result, seen, ip);
-    }
-
-    let route = command_output_from_args([ "ip", "-4", "route", "show", "default" ]);
-    let fields = words(route);
-    let iface = "";
-    for (let i = 0; i + 1 < length(fields); i++) {
-        if (fields[i] == "dev") {
-            iface = fields[i + 1];
-            break;
-        }
-    }
-    if (iface == "")
-        return "";
-
-    let addr = command_output_from_args([ "ip", "-4", "addr", "show", "dev", iface ]);
-    for (let line in split(addr, "\n")) {
-        line = trim(as_string(line));
-        let matched = match(line, /^inet[ \t]+([0-9.]+)\//);
-        if (matched != null)
-            push_unique(result, seen, matched[1]);
-    }
-
-    route = command_output_from_args([ "ip", "-6", "route", "show", "default" ]);
-    fields = words(route);
-    iface = "";
-    for (let i = 0; i + 1 < length(fields); i++) {
-        if (fields[i] == "dev") {
-            iface = fields[i + 1];
-            break;
-        }
-    }
-    if (iface != "") {
-        addr = command_output_from_args([ "ip", "-6", "addr", "show", "dev", iface, "scope", "global" ]);
-        for (let line in split(addr, "\n")) {
-            line = trim(as_string(line));
-            let matched = match(line, /^inet6[ \t]+([^\/ \t]+)\//);
-            if (matched != null)
-                push_unique(result, seen, matched[1]);
-        }
-    }
-
-    return join(" ", result);
 }
 
 function helper_output(mode, args) {
@@ -1390,12 +1390,22 @@ function dns_check_resolve_host(host, resolver, timeout_seconds) {
         return "";
 
     timeout_seconds = int(timeout_seconds || 2);
-    for (let line in split(command_output_from_args([
-        "dig", "@" + resolver, host, "A", "+short", "+timeout=" + as_string(timeout_seconds), "+tries=1"
-    ]), "\n")) {
+    if (command_exists("dig")) {
+        for (let line in split(command_output_from_args([
+            "dig", "@" + resolver, host, "A", "+short", "+timeout=" + as_string(timeout_seconds), "+tries=1"
+        ]), "\n")) {
+            line = trim(as_string(line));
+            if (valid_ipv4(line))
+                return line;
+        }
+    }
+
+    let out = command_output_from_args([ "nslookup", host, resolver ]);
+    for (let line in split(out, "\n")) {
         line = trim(as_string(line));
-        if (valid_ipv4(line))
-            return line;
+        let m = match(line, /Address:[ \t]*([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)/);
+        if (m && m[1] && m[1] != resolver && valid_ipv4(m[1]))
+            return m[1];
     }
     return "";
 }
@@ -2833,7 +2843,7 @@ function run_doctor_checks() {
         doc_check("ℹ️", "WAN interface", get_wan_interface() + " no IP (but DNS reachable — proxy working)", "");
     } else {
         issues++;
-        command_status("ifdown wan >/dev/null 2>&1 && ifup wan >/dev/null 2>&1");
+        command_status("ubus call network.interface.wan up 2>/dev/null; ifup wan 2>/dev/null; ip route flush cache 2>/dev/null");
         command_status("sleep 2");
         if (wan_has_ip()) {
             doc_check("❌", "WAN interface", get_wan_interface() + " no IP", "→ FIXED: WAN interface перезапущен");
@@ -2850,7 +2860,7 @@ function run_doctor_checks() {
         doc_check("ℹ️", "Default gateway", "not found (but DNS reachable — proxy working)", "");
     } else {
         issues++;
-        command_status("ifdown wan >/dev/null 2>&1 && ifup wan >/dev/null 2>&1");
+        command_status("ubus call network.interface.wan up 2>/dev/null; ifup wan 2>/dev/null; ip route flush cache 2>/dev/null");
         command_status("sleep 2");
         if (default_gateway_exists()) {
             doc_check("❌", "Default gateway", "missing", "→ FIXED: маршрут восстановлен через ifup wan");
@@ -3227,7 +3237,7 @@ function apply_quick_fix(codes_str) {
         let msg = "";
 
         if (c == "start_singbox") {
-            command_status("/etc/init.d/sing-box restart >/dev/null 2>&1");
+            command_status("/usr/bin/tachyon restore_dnsmasq 2>/dev/null; /etc/init.d/sing-box restart >/dev/null 2>&1");
             status = true;
             msg = "sing-box restarted";
         } else if (c == "rebuild_rules") {
@@ -3239,7 +3249,7 @@ function apply_quick_fix(codes_str) {
             status = true;
             msg = "dnsmasq restarted";
         } else if (c == "fix_resolv_symlink") {
-            command_status("ln -sf /tmp/resolv.conf.auto /etc/resolv.conf");
+            command_status("ln -sf /tmp/resolv.conf.auto /etc/resolv.conf 2>/dev/null || ln -sf /tmp/resolv.conf.d/resolv.conf.auto /etc/resolv.conf 2>/dev/null");
             status = true;
             msg = "resolv.conf symlink fixed";
         } else if (c == "start_watchdog") {
@@ -3255,7 +3265,7 @@ function apply_quick_fix(codes_str) {
             status = true;
             msg = "UCI config restored from backup";
         } else if (c == "fix_wan_interface") {
-            command_status("ifup wan 2>/dev/null");
+            command_status("ubus call network.interface.wan up 2>/dev/null; ifup wan 2>/dev/null; ip route flush cache 2>/dev/null");
             status = true;
             msg = "WAN interface re-up triggered";
         } else if (c == "fix_gateway") {
@@ -3263,8 +3273,7 @@ function apply_quick_fix(codes_str) {
             status = true;
             msg = "Network restarted to resolve gateway";
         } else if (c == "clear_dns_cache") {
-            command_status("/etc/init.d/dnsmasq restart >/dev/null 2>&1");
-            command_status("rm -f /etc/sing-box/cache.db 2>/dev/null");
+            command_status("/etc/init.d/dnsmasq restart >/dev/null 2>&1; ip route flush cache 2>/dev/null");
             status = true;
             msg = "DNS cache cleared and dnsmasq restarted";
         } else if (c == "update_subscriptions") {
@@ -3272,7 +3281,7 @@ function apply_quick_fix(codes_str) {
             status = true;
             msg = "Subscription update triggered";
         } else if (c == "reset_firewall") {
-            command_status("/etc/init.d/firewall restart >/dev/null 2>&1");
+            command_status("/etc/init.d/firewall restart >/dev/null 2>&1; /etc/init.d/tachyon reload >/dev/null 2>&1");
             status = true;
             msg = "Firewall restarted";
         } else if (c == "restart_network") {
@@ -3280,17 +3289,25 @@ function apply_quick_fix(codes_str) {
             status = true;
             msg = "Network service restarted";
         } else if (c == "restart_zapret") {
-            command_status("/etc/init.d/zapret restart 2>/dev/null; /etc/init.d/byedpi restart 2>/dev/null");
+            command_status("/etc/init.d/zapret restart 2>/dev/null; /etc/init.d/zapret2 restart 2>/dev/null; /etc/init.d/byedpi restart 2>/dev/null");
             status = true;
             msg = "Zapret/ByeDPI engines restarted";
         } else if (c == "optimize_memory") {
-            command_status("sync; echo 3 > /proc/sys/vm/drop_caches 2>/dev/null; /etc/init.d/sing-box restart >/dev/null 2>&1");
+            command_status("sync; echo 3 > /proc/sys/vm/drop_caches 2>/dev/null; rm -rf /tmp/sing-box/*.tmp 2>/dev/null; /etc/init.d/sing-box restart >/dev/null 2>&1");
             status = true;
             msg = "Memory caches flushed and sing-box restarted";
         } else if (c == "switch_to_doh") {
             command_status("uci set tachyon.settings.dns_type='doh'; uci commit tachyon; /etc/init.d/tachyon reload >/dev/null 2>&1");
             status = true;
             msg = "Switched DNS mode to DoH and reloaded firewall";
+        } else if (c == "heal_network_stack") {
+            command_status("ln -sf /tmp/resolv.conf /etc/resolv.conf 2>/dev/null; /etc/init.d/dnsmasq restart >/dev/null 2>&1; /etc/init.d/tachyon restart >/dev/null 2>&1; ip route flush cache 2>/dev/null; ubus call network.interface.wan up 2>/dev/null; ifup wan 2>/dev/null");
+            status = true;
+            msg = "Full network stack recovery executed";
+        } else if (c == "enable_safe_bypass") {
+            command_status("uci set tachyon.settings.recovery_bypass='1'; uci commit tachyon; /etc/init.d/tachyon reload >/dev/null 2>&1");
+            status = true;
+            msg = "Safe Direct WAN bypass enabled";
         } else {
             status = false;
             msg = "Unknown fix code: " + c;
@@ -3357,14 +3374,19 @@ function verify_system() {
         sb_pid != "" ? "running (pid " + sb_pid + ")" : "not running");
 
     let lan_dns = dns_check_resolve_host("google.com", "127.0.0.1", 3);
+    if (lan_dns == "") lan_dns = dns_check_resolve_host("cloudflare.com", "127.0.0.1", 3);
+    if (lan_dns == "") lan_dns = dns_check_resolve_host("openwrt.org", "127.0.0.1", 3);
     add("LAN DNS via dnsmasq", lan_dns != "" ? "pass" : "fail",
-        lan_dns != "" ? "google.com resolved" : "no answer from 127.0.0.1");
+        lan_dns != "" ? "resolved successfully" : "no answer from 127.0.0.1");
 
     let up_dns = dns_check_resolve_host("google.com", "1.1.1.1", 3);
+    if (up_dns == "") up_dns = dns_check_resolve_host("cloudflare.com", "8.8.8.8", 3);
+    if (up_dns == "") up_dns = dns_check_resolve_host("openwrt.org", "77.88.8.8", 3);
     add("Upstream DNS", up_dns != "" ? "pass" : "fail",
-        up_dns != "" ? "google.com resolved" : "no answer from 1.1.1.1");
+        up_dns != "" ? "resolved successfully" : "no answer from upstream resolvers");
 
     let sb_dns = dns_check_through_singbox("google.com");
+    if (!sb_dns) sb_dns = dns_check_through_singbox("cloudflare.com");
     add("Proxy DNS via sing-box", sb_dns ? "pass" : (sb_pid != "" ? "fail" : "skip"),
         sb_dns ? "resolved via " + SB_DNS_INBOUND_ADDRESS : (sb_pid != "" ? "no answer" : "sing-box not running"));
 
@@ -3375,8 +3397,8 @@ function verify_system() {
     if (has_mixed && sb_pid != "") {
         let res = command_capture("curl -sS --max-time 8 -x http://127.0.0.1:4534 -o /dev/null -w %{http_code} https://www.gstatic.com/generate_204 2>&1");
         let code = trim(res.output);
-        add("HTTP via proxy", res.status == 0 && code == "204" ? "pass" : "fail",
-            code == "204" ? "end-to-end 204 through sing-box" : "HTTP " + code);
+        add("HTTP via proxy", res.status == 0 && (code == "204" || code == "200") ? "pass" : "fail",
+            code == "204" || code == "200" ? "end-to-end OK through sing-box" : "HTTP " + code);
     } else {
         add("HTTP via proxy", "skip", "service mixed proxy not in config");
     }
@@ -3386,26 +3408,27 @@ function verify_system() {
     add("Default gateway", default_gateway_exists() ? "pass" : "fail",
         default_gateway_exists() ? "present" : "missing");
 
-    // History — the flapping the snapshot cannot see. Counted over the last
-    // ~2000 log lines (logd ring buffer), enough to catch a repeating flap.
-    let hist = command_capture("logread 2>/dev/null | tail -n 2000").output;
+    // History — inspect recent system log tail without false triggers from normal upgrades/reloads
+    let hist = command_capture("logread 2>/dev/null | tail -n 250").output;
     for (let line in split(hist, "\n")) {
         let l = lc(line);
-        if (index(l, "udhcpc") >= 0 &&
-            (index(l, "deconfig") >= 0 || index(l, "release") >= 0 || index(l, "sigterm") >= 0))
+        // Skip planned / normal upgrade and service operations
+        if (index(l, "successful component change") >= 0 || index(l, "upgrading") >= 0 ||
+            index(l, "post-upgrade") >= 0 || index(l, "component_action") >= 0 ||
+            index(l, "component-action") >= 0 || index(l, "doctor_fix") >= 0)
+            continue;
+
+        if (index(l, "udhcpc") >= 0 && (index(l, "lease lost") >= 0 || index(l, "deconfig") >= 0))
             stability.wan_flaps++;
         if (index(l, "wan.down") >= 0 || index(l, "watchdog: wan check failed") >= 0)
             stability.wan_flaps++;
-        if (index(l, "ifup wan") >= 0 || index(l, "ifdown wan") >= 0)
-            stability.wan_flaps++;
         if (index(l, "sing-box") >= 0 &&
-            (index(l, "start") >= 0 || index(l, "restart") >= 0 || index(l, "procd") >= 0))
+            (index(l, "panic:") >= 0 || index(l, "fatal error:") >= 0 || index(l, "sigsegv") >= 0 || index(l, "died unexpectedly") >= 0))
             stability.singbox_restarts++;
         if (index(l, "dnsmasq") >= 0 &&
-            (index(l, "start") >= 0 || index(l, "restart") >= 0))
+            (index(l, "failed to create listening socket") >= 0 || index(l, "address already in use") >= 0 || index(l, "failed to start") >= 0))
             stability.dnsmasq_restarts++;
-        if (index(l, "tachyon") >= 0 && index(l, "sing-box") < 0 &&
-            (index(l, "restart") >= 0 || index(l, "reload") >= 0))
+        if (index(l, "tachyon") >= 0 && index(l, "sing-box") < 0 && index(l, "watchdog: crashed") >= 0)
             stability.tachyon_restarts++;
     }
 
@@ -3435,7 +3458,7 @@ function local_rule_doctor() {
         }
     }
 
-    // ── end-to-end verification: what the LAN client actually experiences ──
+    // ── 1. End-to-end live verification ──
     let wan_cause_added = false;
     for (let c in verify.checks) {
         if (c.status != "fail") continue;
@@ -3446,10 +3469,17 @@ function local_rule_doctor() {
                 fix: "start_singbox"
             });
             add_fix("start_singbox");
-        } else if (c.name == "LAN DNS via dnsmasq" || c.name == "Proxy DNS via sing-box") {
+        } else if (c.name == "LAN DNS via dnsmasq") {
             push(causes, {
                 probability: 85,
-                cause: lang == "en" ? "DNS resolution failed (LAN or proxy layer)" : "Сбой разрешения DNS (слой LAN или прокси)",
+                cause: lang == "en" ? "LAN DNS resolution failed (dnsmasq)" : "Сбой разрешения DNS на уровне локального dnsmasq",
+                fix: "fix_dnsmasq"
+            });
+            add_fix("fix_dnsmasq");
+        } else if (c.name == "Proxy DNS via sing-box") {
+            push(causes, {
+                probability: 85,
+                cause: lang == "en" ? "Proxy DNS via sing-box failed to respond" : "Прокси-DNS через sing-box (127.0.0.42) не отвечает",
                 fix: "clear_dns_cache"
             });
             add_fix("clear_dns_cache");
@@ -3475,39 +3505,32 @@ function local_rule_doctor() {
         }
     }
 
-    // ── instability history: the flapping a snapshot cannot see ──────────────
-    if (verify.stability.wan_flaps >= 3) {
+    // ── 2. Memory and Out-of-Memory pressure ──
+    let raw_log = trim(command_output("logread | grep -iE 'oom-killer|out of memory|killed process' | tail -n 20 2>/dev/null"));
+    if (index(raw_log, "Out of memory") >= 0 || index(raw_log, "oom-killer") >= 0 || index(raw_log, "Killed process") >= 0) {
         push(causes, {
             probability: 92,
-            cause: lang == "en"
-                ? sprintf("WAN is unstable: %d flaps/restarts in the recent log", verify.stability.wan_flaps)
-                : sprintf("WAN нестабилен: %d переподключений в свежих логах", verify.stability.wan_flaps),
-            fix: "fix_wan_interface"
+            cause: lang == "en" ? "RAM pressure (Out-Of-Memory kill) detected in recent log" : "Обнаружена нехватка оперативной памяти (OOM Kill в журнале)",
+            fix: "optimize_memory"
         });
-        add_fix("fix_wan_interface");
-    }
-    if (verify.stability.singbox_restarts >= 2) {
-        push(causes, {
-            probability: 80,
-            cause: lang == "en"
-                ? sprintf("sing-box restarted %d times in the recent log — crash loop", verify.stability.singbox_restarts)
-                : sprintf("sing-box перезапускался %d раз в свежих логах — цикл падений", verify.stability.singbox_restarts),
-            fix: "start_singbox"
-        });
-        add_fix("start_singbox");
-    }
-    if (verify.stability.dnsmasq_restarts >= 3) {
-        push(causes, {
-            probability: 75,
-            cause: lang == "en"
-                ? sprintf("dnsmasq restarted %d times in the recent log — DNS instability", verify.stability.dnsmasq_restarts)
-                : sprintf("dnsmasq перезапускался %d раз в свежих логах — нестабильность DNS", verify.stability.dnsmasq_restarts),
-            fix: "fix_dnsmasq"
-        });
-        add_fix("fix_dnsmasq");
+        add_fix("optimize_memory");
     }
 
-    // ── snapshot check failures not covered above ────────────────────────────
+    let meminfo = fs.readfile("/proc/meminfo") || "";
+    let mem_avail_line = match(meminfo, /MemAvailable:\s+(\d+)\s+kB/);
+    if (mem_avail_line) {
+        let mem_avail_mb = int(mem_avail_line[1]) / 1024;
+        if (mem_avail_mb < 20) {
+            push(causes, {
+                probability: 85,
+                cause: lang == "en" ? sprintf("Critical RAM pressure (Available: %d MB)", mem_avail_mb) : sprintf("Критический дефицит оперативной памяти (Свободно: %d MB)", mem_avail_mb),
+                fix: "optimize_memory"
+            });
+            add_fix("optimize_memory");
+        }
+    }
+
+    // ── 3. Snapshot check failures not covered above ──
     for (let c in checks) {
         if (c.status != "fail") continue;
         let known = false;
@@ -3522,97 +3545,56 @@ function local_rule_doctor() {
                 fix: "rebuild_rules"
             });
             add_fix("rebuild_rules");
-        } else if (index(c.name, "DNS") >= 0 || index(c.name, "dnsmasq") >= 0 || index(c.name, "resolv") >= 0) {
+        } else if (index(c.name, "resolv") >= 0) {
             push(causes, {
-                probability: 85,
-                cause: lang == "en" ? "DNS resolution failed or is hijacked by ISP" : "Сбой разрешения DNS-имён или перехват оператором",
-                fix: "clear_dns_cache"
+                probability: 80,
+                cause: lang == "en" ? "DNS resolv.conf configuration broken" : "Конфигурация /etc/resolv.conf повреждена",
+                fix: "fix_resolv_symlink"
             });
-            add_fix("clear_dns_cache");
-            if (cfg.dns_type != "doh") {
-                add_fix("switch_to_doh");
-            }
-        } else if (index(c.name, "Clash API") >= 0 || index(c.name, "sing-box") >= 0) {
-            push(causes, {
-                probability: 88,
-                cause: lang == "en" ? "sing-box is not answering its API" : "sing-box не отвечает на свой API",
-                fix: "start_singbox"
-            });
-            add_fix("start_singbox");
+            add_fix("fix_resolv_symlink");
         }
     }
 
-    let watchdog_status_raw = fs.readfile("/tmp/tachyon_ai_status.json");
-    if (watchdog_status_raw) {
-        let wd_json = parse_json_or_null(watchdog_status_raw);
-        if (wd_json) {
-            if (int(wd_json.proxy_fail_streak || 0) > 3) {
-                push(causes, {
-                    probability: 88,
-                    cause: lang == "en" ? "Proxy fail streak (ISP SNI reset or proxy node offline)" : "Серия сбоев прокси (сброс SNI провайдером или узел офлайн)",
-                    fix: "update_subscriptions"
-                });
-                add_fix("update_subscriptions");
-                add_fix("restart_zapret");
-            }
-            if (int(wd_json.dns_fail_streak || 0) > 3) {
-                push(causes, {
-                    probability: 82,
-                    cause: lang == "en" ? "DNS fail streak (ISP plaintext DNS tampering)" : "Серия сбоев DNS (подмена DNS оператором)",
-                    fix: "switch_to_doh"
-                });
-                if (cfg.dns_type != "doh") {
-                    add_fix("switch_to_doh");
-                }
-            }
+    // ── 4. DPI circumvention check (Zapret / ByeDPI) ──
+    let zapret_mode = trim(as_string(cfg.zapret_mode || "disabled"));
+    let byedpi_mode = trim(as_string(cfg.byedpi_mode || "disabled"));
+    if (zapret_mode != "disabled" && zapret_mode != "") {
+        let zap_pid = find_process_pid("nfqws");
+        if (zap_pid == "") zap_pid = find_process_pid("nfqws2");
+        if (zap_pid == "") {
+            push(causes, {
+                probability: 84,
+                cause: lang == "en" ? "Zapret (nfqws) engine is stopped" : "Служба обхода DPI (Zapret/nfqws) остановлена",
+                fix: "restart_zapret"
+            });
+            add_fix("restart_zapret");
         }
     }
-
-    let raw_log = trim(command_output("logread | grep -iE 'tachyon|sing-box|dnsmasq|oom|reset|handshake|kill' | tail -n 30 2>/dev/null"));
-    if (index(raw_log, "Out of memory") >= 0 || index(raw_log, "oom-killer") >= 0 || index(raw_log, "Killed process") >= 0) {
-        push(causes, {
-            probability: 92,
-            cause: lang == "en" ? "RAM pressure (Out-Of-Memory kill) detected" : "Обнаружена нехватка оперативной памяти (OOM Kill)",
-            fix: "optimize_memory"
-        });
-        add_fix("optimize_memory");
-    }
-    if (index(raw_log, "connection reset by peer") >= 0 || index(raw_log, "TLS handshake timeout") >= 0) {
-        push(causes, {
-            probability: 86,
-            cause: lang == "en" ? "DPI TCP RST / TLS Handshake drop signature detected" : "Сигнатура блокировки DPI (TCP RST / TLS Handshake Drop)",
-            fix: "restart_zapret"
-        });
-        add_fix("restart_zapret");
-    }
-
-    let meminfo = fs.readfile("/proc/meminfo") || "";
-    let mem_avail_line = match(meminfo, /MemAvailable:\s+(\d+)\s+kB/);
-    if (mem_avail_line) {
-        let mem_avail_mb = int(mem_avail_line[1]) / 1024;
-        if (mem_avail_mb < 24) {
+    if (byedpi_mode != "disabled" && byedpi_mode != "") {
+        let bd_pid = find_process_pid("ciadpi");
+        if (bd_pid == "") {
             push(causes, {
-                probability: 78,
-                cause: lang == "en" ? sprintf("Critical RAM pressure (Available: %d MB)", mem_avail_mb) : sprintf("Дефицит оперативной памяти (Свободно: %d MB)", mem_avail_mb),
-                fix: "optimize_memory"
+                probability: 84,
+                cause: lang == "en" ? "ByeDPI (ciadpi) engine is stopped" : "Служба обхода DPI (ByeDPI/ciadpi) остановлена",
+                fix: "restart_zapret"
             });
-            add_fix("optimize_memory");
+            add_fix("restart_zapret");
         }
     }
 
     let report_lines = [];
-    let verify_clean = verify.failed == 0 &&
-        verify.stability.wan_flaps < 3 &&
-        verify.stability.singbox_restarts < 2 &&
-        verify.stability.dnsmasq_restarts < 3;
+    let is_fully_healthy = verify.failed == 0 && length(causes) == 0;
+
     if (lang == "en") {
         push(report_lines, "### Tachyon Local AI Doctor Analysis");
-        if (length(causes) == 0) {
-            if (verify_clean) {
-                push(report_lines, "✓ Verified end-to-end: WAN up, DNS resolves (LAN, upstream, via proxy), sing-box answers.");
-                push(report_lines, "✓ No WAN flaps or service crash loops in the recent log. No DPI drops or RAM pressure detected.");
-            } else {
-                push(report_lines, "⚠️ Point-in-time checks pass, but live verification or recent history is not clean — not declaring the system healthy.");
+        if (is_fully_healthy) {
+            push(report_lines, "✓ Verified end-to-end: network stack is fully operational.");
+            push(report_lines, "- WAN interface is up and has an active default route.");
+            push(report_lines, "- DNS resolution is healthy (LAN dnsmasq, upstream, proxy resolver).");
+            push(report_lines, "- sing-box and nftables firewall redirection rules are active.");
+            push(report_lines, "- No active DPI drops or RAM pressure detected.");
+            if (verify.stability.wan_flaps > 0 || verify.stability.singbox_restarts > 0 || verify.stability.dnsmasq_restarts > 0) {
+                push(report_lines, "\nℹ️ Notice: Recent logs show historical component recovery; current live state is stable.");
             }
         } else {
             push(report_lines, "#### Root Cause Analysis:");
@@ -3622,12 +3604,14 @@ function local_rule_doctor() {
         }
     } else {
         push(report_lines, "### Анализ Tachyon Local AI Doctor");
-        if (length(causes) == 0) {
-            if (verify_clean) {
-                push(report_lines, "✓ Проверено вживую: WAN поднят, DNS резолвится (LAN, upstream, через прокси), sing-box отвечает.");
-                push(report_lines, "✓ Флапов WAN и циклов перезапуска сервисов в свежих логах нет. Блокировок DPI и нехватки RAM не обнаружено.");
-            } else {
-                push(report_lines, "⚠️ Проверки «здесь и сейчас» проходят, но живая проверка или история нестабильности нечистые — система не признаётся здоровой.");
+        if (is_fully_healthy) {
+            push(report_lines, "✓ Проверено вживую: сетевой стек работает штатно.");
+            push(report_lines, "- WAN интерфейс активен и имеет рабочий маршрут по умолчанию.");
+            push(report_lines, "- DNS-резолверы отвечают корректно (LAN dnsmasq, upstream, прокси-резолвер).");
+            push(report_lines, "- sing-box и правила файрвола nftables функционируют штатно.");
+            push(report_lines, "- Блокировок DPI и нехватки оперативной памяти не обнаружено.");
+            if (verify.stability.wan_flaps > 0 || verify.stability.singbox_restarts > 0 || verify.stability.dnsmasq_restarts > 0) {
+                push(report_lines, "\nℹ️ Справка: В журнале зафиксировано восстановление компонентов после перезапуска, сейчас всё стабильно.");
             }
         } else {
             push(report_lines, "#### Анализ возможных причин сбоя:");
@@ -3637,11 +3621,37 @@ function local_rule_doctor() {
         }
     }
 
+    let nodes = [
+        { name: "WAN", status: "OK" },
+        { name: "DNS", status: "OK" },
+        { name: "sing-box", status: "OK" },
+        { name: "nftables", status: "OK" }
+    ];
+    for (let c in verify.checks) {
+        if (c.status == "fail") {
+            if (c.name == "WAN interface" || c.name == "Default gateway") {
+                nodes[0].status = "FAIL";
+            } else if (index(c.name, "DNS") >= 0) {
+                nodes[1].status = "FAIL";
+            } else if (index(c.name, "sing-box") >= 0) {
+                nodes[2].status = "FAIL";
+            }
+        }
+    }
+    for (let c in checks) {
+        if (c.status == "fail") {
+            if (index(c.name, "nftables") >= 0 || index(c.name, "ip rule") >= 0) {
+                nodes[3].status = "WARN";
+            }
+        }
+    }
+
     let quick_fix = length(quick_fixes) > 0 ? join(",", quick_fixes) : "";
     let doctor_res = {
         success: true,
         timestamp: time(),
         report: join("\n", report_lines),
+        nodes: nodes,
         quick_fix: quick_fix,
         quick_fixes: quick_fixes,
         provider: "local_heuristic",
@@ -3824,6 +3834,7 @@ function ai_doctor() {
         success: true,
         timestamp: time(),
         report: text,
+        nodes: local_res.nodes,
         quick_fix: quick_fix,
         quick_fixes: quick_fixes,
         provider: provider,

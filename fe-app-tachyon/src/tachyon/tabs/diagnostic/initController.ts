@@ -873,41 +873,85 @@ async function handleRunAiDoctor() {
       let historyEntries = getAiDoctorHistory();
       let activeTab: 'diagnosis' | 'history' = 'diagnosis';
 
-      // Root Cause Analysis from Report
+      // Root Cause Analysis from Backend / Report
       const repLower = report.toLowerCase();
-      const nodes = [
+      const backendNodes =
+        Array.isArray(data?.nodes) && (data!.nodes as unknown[]).length === 4
+          ? (data!.nodes as Array<{
+              name: string;
+              status: 'OK' | 'WARN' | 'FAIL';
+            }>)
+          : null;
+
+      const nodes = backendNodes ?? [
         {
           name: 'WAN',
-          status: repLower.includes('wan interface down') ? 'FAIL' : 'OK',
+          status:
+            repLower.includes('wan interface down') ||
+            repLower.includes(
+              'шлюз по умолчанию или внешний интернет недоступен',
+            ) ||
+            repLower.includes('wan interface is unreachable')
+              ? 'FAIL'
+              : 'OK',
         },
         {
           name: 'DNS',
           status:
-            repLower.includes('dnsmasq') || repLower.includes('dns')
-              ? repLower.includes('dns failed') ||
-                repLower.includes('dnsmasq failed')
-                ? 'FAIL'
-                : 'OK'
+            repLower.includes('сбой разрешения dns') ||
+            repLower.includes('dns resolution failed') ||
+            repLower.includes('dns failed') ||
+            repLower.includes('dnsmasq failed')
+              ? 'FAIL'
               : 'OK',
         },
         {
           name: 'sing-box',
           status:
-            repLower.includes('sing-box') &&
-            (repLower.includes('stopped') || repLower.includes('error'))
+            (repLower.includes('sing-box') || repLower.includes('proxy')) &&
+            (repLower.includes('остановлен') ||
+              repLower.includes('stopped') ||
+              repLower.includes('не функционирует') ||
+              repLower.includes('error') ||
+              repLower.includes('crash'))
               ? 'FAIL'
               : 'OK',
         },
         {
           name: 'nftables',
           status:
-            repLower.includes('nftables') || repLower.includes('rules')
-              ? repLower.includes('damaged') || repLower.includes('corrupted')
-                ? 'WARN'
-                : 'OK'
+            (repLower.includes('nftables') ||
+              repLower.includes('правила файрвола') ||
+              repLower.includes('firewall rules')) &&
+            (repLower.includes('нарушены') ||
+              repLower.includes('damaged') ||
+              repLower.includes('corrupted') ||
+              repLower.includes('compromised'))
+              ? 'WARN'
               : 'OK',
         },
       ];
+
+      const FIX_LABELS: Record<string, string> = {
+        start_singbox: _('Start sing-box'),
+        rebuild_rules: _('Rebuild firewall rules'),
+        fix_dnsmasq: _('Restart dnsmasq'),
+        fix_resolv_symlink: _('Fix resolv.conf'),
+        start_watchdog: _('Start watchdog'),
+        restart_singbox_dns: _('Restart sing-box DNS'),
+        fix_uci_config: _('Restore config backup'),
+        fix_wan_interface: _('Reconnect WAN'),
+        fix_gateway: _('Resolve gateway'),
+        clear_dns_cache: _('Clear DNS cache'),
+        update_subscriptions: _('Update subscriptions'),
+        reset_firewall: _('Restart firewall'),
+        restart_network: _('Restart network'),
+        restart_zapret: _('Restart Zapret/ByeDPI'),
+        optimize_memory: _('Optimize RAM memory'),
+        switch_to_doh: _('Switch DNS to DoH'),
+        heal_network_stack: _('Auto-Heal Network Stack'),
+        enable_safe_bypass: _('Enable Direct WAN Bypass'),
+      };
 
       const renderRootCauseBanner = () => {
         return E(
@@ -989,13 +1033,16 @@ async function handleRunAiDoctor() {
                     },
                     quickFixes.map((code) => {
                       let applied = false;
+                      const friendlyLabel = FIX_LABELS[code]
+                        ? `${FIX_LABELS[code]} (${code})`
+                        : code;
                       const btn = renderButton({
                         classNames: ['cbi-button-apply'],
-                        text: `⚡ ${code}`,
+                        text: `⚡ ${friendlyLabel}`,
                         onClick: async () => {
                           if (applied) return;
                           showToast(
-                            _('Applying fix') + ': ' + code + '...',
+                            _('Applying fix') + ': ' + friendlyLabel + '...',
                             'success',
                           );
                           const fixRes =
@@ -1006,16 +1053,16 @@ async function handleRunAiDoctor() {
                             (fixRes as { success?: boolean }).success
                           ) {
                             applied = true;
-                            btn.textContent = `✓ ${code} (${_('Fixed')})`;
+                            btn.textContent = `✓ ${friendlyLabel} (${_('Fixed')})`;
                             btn.classList.remove('cbi-button-apply');
                             btn.classList.add('cbi-button-neutral');
                             showToast(
-                              _('Fix applied') + ': ' + code,
+                              _('Fix applied') + ': ' + friendlyLabel,
                               'success',
                             );
                           } else {
                             showToast(
-                              _('Failed to apply fix') + ': ' + code,
+                              _('Failed to apply fix') + ': ' + friendlyLabel,
                               'error',
                             );
                           }
