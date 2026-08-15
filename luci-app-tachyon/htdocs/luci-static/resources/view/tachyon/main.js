@@ -7320,7 +7320,7 @@ function renderCommonDetailsModal(info, fields, renderMemberName, isPriority, se
                         _("Active")
                       ]
                     )
-                  ] : [
+                  ] : isPriority || section.outbounds.some((o) => o.code === member.code) ? [
                     E(
                       "button",
                       {
@@ -7332,9 +7332,10 @@ function renderCommonDetailsModal(info, fields, renderMemberName, isPriority, se
                           if (btn) {
                             btn.disabled = true;
                           }
+                          const targetSelector = isPriority ? outbound?.code || section.code : section.code;
                           await handleChooseOutbound(
                             section.sectionName,
-                            section.code,
+                            targetSelector,
                             member.code
                           );
                           const updatedSection = store.get().sectionsWidget.data.find(
@@ -7362,7 +7363,7 @@ function renderCommonDetailsModal(info, fields, renderMemberName, isPriority, se
                       },
                       _("Select")
                     )
-                  ] : [],
+                  ] : [] : [],
                   member.canCopyLink ? renderUrlTestCopyButton(
                     _("Copy proxy link"),
                     (event) => {

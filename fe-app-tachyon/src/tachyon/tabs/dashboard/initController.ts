@@ -1122,7 +1122,8 @@ function renderCommonDetailsModal(
                                 ],
                               ),
                             ]
-                          : [
+                          : (isPriority || section.outbounds.some((o) => o.code === member.code))
+                          ? [
                               E(
                                 'button',
                                 {
@@ -1135,9 +1136,12 @@ function renderCommonDetailsModal(
                                     if (btn) {
                                       btn.disabled = true;
                                     }
+                                    const targetSelector = isPriority
+                                      ? (outbound?.code || section.code)
+                                      : section.code;
                                     await handleChooseOutbound(
                                       section.sectionName,
-                                      section.code,
+                                      targetSelector,
                                       member.code,
                                     );
                                     const updatedSection = store
@@ -1170,6 +1174,7 @@ function renderCommonDetailsModal(
                                 _('Select'),
                               ),
                             ]
+                          : []
                         : []),
                       member.canCopyLink
                         ? renderUrlTestCopyButton(
