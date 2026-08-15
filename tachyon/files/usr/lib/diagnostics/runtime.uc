@@ -258,16 +258,13 @@ function dns_check_through_singbox(domain) {
 }
 
 function get_wan_interface() {
-    let res = command_capture("uci -q get tachyon.settings.output_network_interface 2>/dev/null");
-    let iface = (res.status == 0) ? trim(res.output) : "";
+    let iface = trim(as_string(uci_core.get(CONFIG_NAME + ".settings.output_network_interface")));
     if (iface != "") return iface;
 
-    res = command_capture("uci get network.wan.device 2>/dev/null");
-    iface = (res.status == 0) ? trim(res.output) : "";
+    iface = trim(as_string(uci_core.get("network.wan.device")));
     if (iface != "") return iface;
 
-    res = command_capture("uci get network.wan.ifname 2>/dev/null");
-    iface = (res.status == 0) ? trim(res.output) : "";
+    iface = trim(as_string(uci_core.get("network.wan.ifname")));
     if (iface != "") return iface;
 
     let route = command_output_from_args([ "ip", "-4", "route", "show", "default" ]);
