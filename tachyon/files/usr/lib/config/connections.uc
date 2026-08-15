@@ -698,8 +698,8 @@ function subscription_include_urltest_groups(section, value) {
 function subscription_hide_urltest_group_outbounds(section, value) {
     let child = child_item_by_value(section, "subscription_url", "url", value);
     if (child != null)
-        return child_bool(child, "hide_urltest_group_outbounds", true);
-    return item_bool(section, "subscription_url_settings", value, "hide_urltest_group_outbounds", true);
+        return child_bool(child, "hide_urltest_group_outbounds", false);
+    return item_bool(section, "subscription_url_settings", value, "hide_urltest_group_outbounds", false);
 }
 
 function subscription_hide_detour_outbounds(section, value) {

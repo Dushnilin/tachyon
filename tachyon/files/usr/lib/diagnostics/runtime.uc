@@ -275,6 +275,11 @@ function get_wan_interface() {
     return "eth0";
 }
 
+function default_gateway_exists() {
+    let out = command_capture("ip route 2>/dev/null").output;
+    return index(out, "default") >= 0;
+}
+
 function wan_has_ip() {
     let wan_ips = get_wan_ip_addresses();
     if (wan_ips != "") return true;
@@ -289,11 +294,6 @@ function wan_has_ip() {
         return true;
 
     return default_gateway_exists();
-}
-
-function default_gateway_exists() {
-    let out = command_capture("ip route 2>/dev/null").output;
-    return index(out, "default") >= 0;
 }
 
 function get_all_dns_servers(cfg, key) {
@@ -3873,18 +3873,7 @@ function local_rule_doctor() {
 
 function ai_doctor() {
     let cfg = uci_settings();
-    let local_res;
-    try {
-        local_res = local_rule_doctor();
-    } catch (e) {
-        local_res = {
-            report: sprintf("Local diagnosis failed: %s (error: %J)", as_string(e), e),
-            causes: [],
-            quick_fixes: [],
-            summary: sprintf("Local diagnosis failed: %s", as_string(e)),
-            provider: "local_heuristic"
-        };
-    }
+    let local_res = local_rule_doctor();
 
     let prov = lc(trim(as_string(cfg.ai_doctor_provider || "openai")));
     let has_key = (cfg.ai_doctor_api_key && cfg.ai_doctor_api_key != "");
