@@ -12,35 +12,50 @@
       <stop offset="100%" stop-color="#0B132B" stop-opacity="0.95"/>
     </linearGradient>
 
-    <!-- Glowing Filters -->
-    <filter id="neon-green" x="-30%" y="-30%" width="160%" height="160%">
+    <!-- Robust Glowing Filters with userSpaceOnUse (avoids zero-height bounding box clipping) -->
+    <filter id="neon-green" filterUnits="userSpaceOnUse" x="0" y="0" width="1200" height="620">
       <feGaussianBlur stdDeviation="4" result="blur" />
-      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
     </filter>
 
-    <filter id="neon-amber" x="-30%" y="-30%" width="160%" height="160%">
+    <filter id="neon-amber" filterUnits="userSpaceOnUse" x="0" y="0" width="1200" height="620">
       <feGaussianBlur stdDeviation="4" result="blur" />
-      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
     </filter>
 
-    <filter id="neon-purple" x="-30%" y="-30%" width="160%" height="160%">
+    <filter id="neon-purple" filterUnits="userSpaceOnUse" x="0" y="0" width="1200" height="620">
       <feGaussianBlur stdDeviation="4" result="blur" />
-      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
     </filter>
 
-    <filter id="neon-pink" x="-30%" y="-30%" width="160%" height="160%">
+    <filter id="neon-pink" filterUnits="userSpaceOnUse" x="0" y="0" width="1200" height="620">
       <feGaussianBlur stdDeviation="4" result="blur" />
-      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
     </filter>
 
-    <filter id="neon-cyan" x="-30%" y="-30%" width="160%" height="160%">
+    <filter id="neon-cyan" filterUnits="userSpaceOnUse" x="0" y="0" width="1200" height="620">
       <feGaussianBlur stdDeviation="4" result="blur" />
-      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
     </filter>
   </defs>
 
   <style>
-    /* CSS Seamless Keyframe Loops (Period = Sum of Dash + Gap) */
+    /* CSS Seamless Keyframe Loops (Period = Sum of Dash + Gap = 42) */
     @keyframes flowGreen {
       from { stroke-dashoffset: 168; }
       to { stroke-dashoffset: 0; }
@@ -72,11 +87,6 @@
       50% { opacity: 0.3; transform: scale(0.85); }
     }
 
-    @keyframes packetSplitPulse {
-      0%, 100% { opacity: 0.4; transform: translateX(0px); }
-      50% { opacity: 1; transform: translateX(8px); }
-    }
-
     .stream-lan { stroke-dasharray: 14 28; animation: flowCyan 2.2s linear infinite; }
     .stream-direct { stroke-dasharray: 14 28; animation: flowGreen 1.8s linear infinite; }
     .stream-zapret1 { stroke-dasharray: 14 28; animation: flowAmber 2.0s linear infinite; }
@@ -91,7 +101,6 @@
     .card-pulse-cyan { animation: pulseCardBorder 2.0s ease-in-out infinite; }
 
     .led-dot { animation: blinkLed 1.8s ease-in-out infinite; }
-    .desync-anim { animation: packetSplitPulse 2s ease-in-out infinite; }
 
     .title-h1 { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-weight: 900; font-size: 21px; fill: #FFFFFF; letter-spacing: 0.5px; }
     .title-sub { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-weight: 500; font-size: 13px; fill: #94A3B8; }
@@ -115,27 +124,27 @@
   <g fill="none" stroke-linecap="round">
     <!-- LAN Inbound: Clients -> Router Core -->
     <path d="M 225,325 L 350,325" stroke="#1E293B" stroke-width="4"/>
-    <path d="M 225,325 L 350,325" stroke="#00F0FF" stroke-width="3" class="stream-lan" filter="url(#neon-cyan)"/>
+    <path d="M 225,325 L 350,325" stroke="#00F0FF" stroke-width="3.5" class="stream-lan" filter="url(#neon-cyan)"/>
 
     <!-- Path 1: Direct WAN (Green) -->
     <path d="M 590,260 C 660,260 700,120 780,120 L 890,120" stroke="#1E293B" stroke-width="4"/>
-    <path d="M 590,260 C 660,260 700,120 780,120 L 890,120" stroke="#10B981" stroke-width="3" class="stream-direct" filter="url(#neon-green)"/>
+    <path d="M 590,260 C 660,260 700,120 780,120 L 890,120" stroke="#10B981" stroke-width="3.5" class="stream-direct" filter="url(#neon-green)"/>
 
     <!-- Path 2: Zapret v1 / nfqws (Amber/Gold) -->
     <path d="M 590,290 C 660,290 710,215 780,215 L 890,215" stroke="#1E293B" stroke-width="4"/>
-    <path d="M 590,290 C 660,290 710,215 780,215 L 890,215" stroke="#F59E0B" stroke-width="3" class="stream-zapret1" filter="url(#neon-amber)"/>
+    <path d="M 590,290 C 660,290 710,215 780,215 L 890,215" stroke="#F59E0B" stroke-width="3.5" class="stream-zapret1" filter="url(#neon-amber)"/>
 
     <!-- Path 3: Zapret v2 / nfqws2 (Neon Purple) -->
     <path d="M 590,325 L 890,325" stroke="#1E293B" stroke-width="4"/>
-    <path d="M 590,325 L 890,325" stroke="#A855F7" stroke-width="3" class="stream-zapret2" filter="url(#neon-purple)"/>
+    <path d="M 590,325 L 890,325" stroke="#C084FC" stroke-width="3.5" class="stream-zapret2" filter="url(#neon-purple)"/>
 
     <!-- Path 4: ByeDPI / ciadpi (Pink/Magenta) -->
     <path d="M 590,360 C 660,360 710,435 780,435 L 890,435" stroke="#1E293B" stroke-width="4"/>
-    <path d="M 590,360 C 660,360 710,435 780,435 L 890,435" stroke="#EC4899" stroke-width="3" class="stream-byedpi" filter="url(#neon-pink)"/>
+    <path d="M 590,360 C 660,360 710,435 780,435 L 890,435" stroke="#EC4899" stroke-width="3.5" class="stream-byedpi" filter="url(#neon-pink)"/>
 
     <!-- Path 5: sing-box Core / VLESS (Cyan) -->
     <path d="M 590,390 C 660,390 700,530 780,530 L 890,530" stroke="#1E293B" stroke-width="4"/>
-    <path d="M 590,390 C 660,390 700,530 780,530 L 890,530" stroke="#00F0FF" stroke-width="3" class="stream-proxy" filter="url(#neon-cyan)"/>
+    <path d="M 590,390 C 660,390 700,530 780,530 L 890,530" stroke="#00F0FF" stroke-width="3.5" class="stream-proxy" filter="url(#neon-cyan)"/>
   </g>
 
   <!-- ================================================================= -->
@@ -262,12 +271,12 @@
 
   <!-- DESTINATION 3: ZAPRET V2 / nfqws2 (PURPLE) -->
   <g transform="translate(890, 275)">
-    <rect width="265" height="95" rx="10" fill="url(#card-glass)" stroke="#A855F7" stroke-width="2" class="card-pulse-purple"/>
+    <rect width="265" height="95" rx="10" fill="url(#card-glass)" stroke="#C084FC" stroke-width="2" class="card-pulse-purple"/>
     <g transform="translate(14, 14)">
       <circle cx="16" cy="16" r="14" fill="#A855F7" fill-opacity="0.2"/>
       <text x="8" y="22" font-size="16">🚀</text>
       <text x="38" y="16" class="node-title" fill="#C084FC">Zapret v2 (nfqws2)</text>
-      <text x="38" y="28" class="tag-mono" fill="#A855F7">MULTISPLIT / SEQOVL / WSIZE</text>
+      <text x="38" y="28" class="tag-mono" fill="#C084FC">MULTISPLIT / SEQOVL / WSIZE</text>
     </g>
     <text x="16" y="62" class="node-sub" fill="#E2E8F0">YouTube 4K, Discord Voice/Web</text>
     <text x="16" y="78" class="node-sub">Многовекторный адаптивный обход ТСПУ</text>
