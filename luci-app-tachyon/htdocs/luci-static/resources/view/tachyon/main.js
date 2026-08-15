@@ -6971,15 +6971,21 @@ async function handleChooseOutbound(sectionName, selector, tag) {
   const section = sectionsWidget.data.find(
     (item) => item.sectionName === sectionName
   );
-  if (!section?.withTagSelect || sectionsWidget.selectorSwitchingSections[sectionName] || section.outbounds.some(
-    (outbound) => outbound.code === tag && outbound.selected
-  )) {
+  if (!section?.withTagSelect || sectionsWidget.selectorSwitchingSections[sectionName]) {
     return;
   }
   setSelectorSwitching(sectionName, tag);
   try {
-    await TachyonShellMethods.setClashApiGroupProxy(selector, tag);
+    const res = await TachyonShellMethods.setClashApiGroupProxy(selector, tag);
+    if (res && !res.success && res.error) {
+      showToast(
+        res.message || res.error || _("Failed to switch proxy"),
+        "error"
+      );
+    }
     await fetchDashboardSections({ force: true });
+  } catch (error) {
+    showToast(error?.message || _("Failed to switch proxy"), "error");
   } finally {
     setSelectorSwitching(sectionName);
   }
@@ -7270,83 +7276,104 @@ function renderCommonDetailsModal(info, fields, renderMemberName, isPriority, se
               E(
                 "div",
                 {
-                  class: "tachyon_dashboard-page__urltest-details__row-meta"
+                  class: "tachyon_dashboard-page__urltest-details__row-actions"
                 },
                 [
                   E(
-                    "span",
-                    { class: getUrlTestLatencyClass(member.latency) },
-                    formatUrlTestLatency(member.latency)
-                  )
-                ]
-              ),
-              section && section.withTagSelect ? isMemberActive ? E(
-                "span",
-                {
-                  class: "badge badge-success",
-                  style: "padding: 2px 8px; font-size: 11px; color: #4caf50; background: rgba(76, 175, 80, 0.15); border-radius: 3px; white-space: nowrap; display: inline-flex; align-items: center; gap: 4px;"
-                },
-                [
-                  svgEl(
-                    "svg",
+                    "div",
                     {
-                      width: "12",
-                      height: "12",
-                      viewBox: "0 0 24 24",
-                      fill: "none",
-                      stroke: "currentColor",
-                      "stroke-width": "2",
-                      "stroke-linecap": "round",
-                      "stroke-linejoin": "round"
+                      class: "tachyon_dashboard-page__urltest-details__row-meta"
                     },
-                    [svgEl("polyline", { points: "20 6 9 17 4 12" })]
+                    [
+                      E(
+                        "span",
+                        { class: getUrlTestLatencyClass(member.latency) },
+                        formatUrlTestLatency(member.latency)
+                      )
+                    ]
                   ),
-                  _("Active")
-                ]
-              ) : E(
-                "button",
-                {
-                  type: "button",
-                  class: "btn cbi-button cbi-button-action",
-                  style: "padding: 2px 8px; font-size: 11px; height: 26px; line-height: 20px; white-space: nowrap;",
-                  click: async (event) => {
-                    event.preventDefault();
-                    await handleChooseOutbound(
-                      section.sectionName,
-                      section.code,
-                      member.code
-                    );
-                    const updatedSection = store.get().sectionsWidget.data.find(
-                      (s) => s.sectionName === section.sectionName
-                    );
-                    const updatedOutbound = updatedSection?.outbounds.find(
-                      (o) => o.code === outbound?.code
-                    );
-                    if (updatedSection && updatedOutbound) {
-                      if (isPriority) {
-                        handleShowPriorityInfo(
-                          updatedSection,
-                          updatedOutbound
-                        );
-                      } else {
-                        handleShowUrlTestInfo(
-                          updatedSection,
-                          updatedOutbound
-                        );
-                      }
-                    } else {
-                      ui.hideModal();
+                  ...section && section.withTagSelect ? isMemberActive ? [
+                    E(
+                      "span",
+                      {
+                        class: "badge badge-success tachyon_dashboard-page__urltest-details__active-badge"
+                      },
+                      [
+                        svgEl(
+                          "svg",
+                          {
+                            width: "12",
+                            height: "12",
+                            viewBox: "0 0 24 24",
+                            fill: "none",
+                            stroke: "currentColor",
+                            "stroke-width": "2",
+                            "stroke-linecap": "round",
+                            "stroke-linejoin": "round"
+                          },
+                          [
+                            svgEl("polyline", {
+                              points: "20 6 9 17 4 12"
+                            })
+                          ]
+                        ),
+                        _("Active")
+                      ]
+                    )
+                  ] : [
+                    E(
+                      "button",
+                      {
+                        type: "button",
+                        class: "btn cbi-button cbi-button-action tachyon_dashboard-page__urltest-details__select-btn",
+                        click: async (event) => {
+                          event.preventDefault();
+                          const btn = event.currentTarget;
+                          if (btn) {
+                            btn.disabled = true;
+                          }
+                          await handleChooseOutbound(
+                            section.sectionName,
+                            section.code,
+                            member.code
+                          );
+                          const updatedSection = store.get().sectionsWidget.data.find(
+                            (s) => s.sectionName === section.sectionName
+                          );
+                          const updatedOutbound = updatedSection?.outbounds.find(
+                            (o) => o.code === outbound?.code
+                          );
+                          if (updatedSection && updatedOutbound) {
+                            if (isPriority) {
+                              handleShowPriorityInfo(
+                                updatedSection,
+                                updatedOutbound
+                              );
+                            } else {
+                              handleShowUrlTestInfo(
+                                updatedSection,
+                                updatedOutbound
+                              );
+                            }
+                          } else {
+                            ui.hideModal();
+                          }
+                        }
+                      },
+                      _("Select")
+                    )
+                  ] : [],
+                  member.canCopyLink ? renderUrlTestCopyButton(
+                    _("Copy proxy link"),
+                    (event) => {
+                      event.preventDefault();
+                      void handleCopyOutbound(member);
                     }
-                  }
-                },
-                _("Select")
-              ) : "",
-              member.canCopyLink ? renderUrlTestCopyButton(_("Copy proxy link"), (event) => {
-                event.preventDefault();
-                void handleCopyOutbound(member);
-              }) : E("span", {
-                class: "tachyon_dashboard-page__urltest-details__copy-placeholder"
-              })
+                  ) : E("span", {
+                    class: "tachyon_dashboard-page__urltest-details__copy-placeholder"
+                  })
+                ]
+              )
             ]
           );
         }) : [
@@ -7359,38 +7386,43 @@ function renderCommonDetailsModal(info, fields, renderMemberName, isPriority, se
       )
     ]),
     E("div", { class: "tachyon_dashboard-page__urltest-details__footer" }, [
-      section && outbound && isManual ? E(
-        "button",
-        {
-          type: "button",
-          class: "btn cbi-button cbi-button-apply",
-          style: "margin-right: auto;",
-          click: async (event) => {
-            event.preventDefault();
-            await handleChooseOutbound(
-              section.sectionName,
-              section.code,
-              outbound.code
-            );
-            const updatedSection = store.get().sectionsWidget.data.find(
-              (s) => s.sectionName === section.sectionName
-            );
-            const updatedOutbound = updatedSection?.outbounds.find(
-              (o) => o.code === outbound.code
-            );
-            if (updatedSection && updatedOutbound) {
-              if (isPriority) {
-                handleShowPriorityInfo(updatedSection, updatedOutbound);
-              } else {
-                handleShowUrlTestInfo(updatedSection, updatedOutbound);
+      ...section && outbound && isManual ? [
+        E(
+          "button",
+          {
+            type: "button",
+            class: "btn cbi-button cbi-button-apply",
+            click: async (event) => {
+              event.preventDefault();
+              const btn = event.currentTarget;
+              if (btn) {
+                btn.disabled = true;
               }
-            } else {
-              ui.hideModal();
+              await handleChooseOutbound(
+                section.sectionName,
+                section.code,
+                outbound.code
+              );
+              const updatedSection = store.get().sectionsWidget.data.find(
+                (s) => s.sectionName === section.sectionName
+              );
+              const updatedOutbound = updatedSection?.outbounds.find(
+                (o) => o.code === outbound.code
+              );
+              if (updatedSection && updatedOutbound) {
+                if (isPriority) {
+                  handleShowPriorityInfo(updatedSection, updatedOutbound);
+                } else {
+                  handleShowUrlTestInfo(updatedSection, updatedOutbound);
+                }
+              } else {
+                ui.hideModal();
+              }
             }
-          }
-        },
-        _("Switch to auto-selection")
-      ) : "",
+          },
+          _("Switch to auto-selection")
+        )
+      ] : [],
       E(
         "button",
         {
@@ -8530,90 +8562,97 @@ var styles = `
 }
 
 .tachyon_dashboard-page__urltest-details__table {
-    display: grid;
+    display: flex;
+    flex-direction: column;
     gap: 6px;
-    width: calc(100% + 14px);
+    width: 100%;
     box-sizing: border-box;
-    max-height: min(46vh, 460px);
+    max-height: min(48vh, 480px);
     overflow-x: hidden;
     overflow-y: auto;
-    padding-right: 14px;
-    scrollbar-gutter: auto;
+    padding-right: 4px;
 }
 
 .tachyon_dashboard-page__urltest-details__row {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(54px, max-content) 20px;
+    display: flex;
     align-items: center;
-    gap: 8px;
+    justify-content: space-between;
+    gap: 10px;
     width: 100%;
     min-width: 0;
-    padding: 7px 8px;
+    padding: 8px 10px;
     box-sizing: border-box;
-    border: 1px solid transparent;
-    border-bottom: 1px solid var(--border-color-low, #eee);
-    border-radius: 4px;
+    border: 1px solid var(--border-color-low, rgba(128, 128, 128, 0.15));
+    border-radius: 6px;
+    background: var(--background-color-card, rgba(128, 128, 128, 0.04));
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.tachyon_dashboard-page__urltest-details__row:hover {
+    background: rgba(128, 128, 128, 0.08);
 }
 
 .tachyon_dashboard-page__urltest-details__row--active {
-    border-color: var(--success-color-low, #2d7d46);
-    background: transparent;
-}
-
-.tachyon_dashboard-page__urltest-details__row-name,
-.tachyon_dashboard-page__urltest-details__row-meta {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    min-width: 0;
-    line-height: 1.3;
+    border-color: #4caf50;
+    background: rgba(76, 175, 80, 0.08);
 }
 
 .tachyon_dashboard-page__urltest-details__row-name {
-    flex-wrap: wrap;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    flex: 1 1 auto;
+    overflow: hidden;
 }
 
 .tachyon_dashboard-page__urltest-details__row-name b {
     min-width: 0;
-    overflow-wrap: anywhere;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 13px;
     line-height: 1.3;
 }
 
 .tachyon_dashboard-page__urltest-details__priority-name {
     display: inline-flex;
     align-items: center;
-    flex-wrap: wrap;
-    gap: 2px 0;
+    gap: 6px;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .tachyon_dashboard-page__urltest-details__priority-number {
-    margin-right: 6px;
+    margin-right: 4px;
     color: var(--text-color-medium, #aaa);
     font-family: monospace;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 600;
 }
 
 .tachyon_dashboard-page__urltest-details__priority-level {
-    margin-right: 8px;
-    padding: 2px 6px;
+    padding: 1px 6px;
     border-radius: 4px;
     color: var(--text-color-medium, #aaa);
     background: rgba(128, 128, 128, 0.15);
     font-size: 11px;
     font-weight: 400;
+    white-space: nowrap;
 }
 
 .tachyon_dashboard-page__urltest-details__country-badge {
     display: inline-flex;
     align-items: center;
     user-select: none;
-    margin-right: 6px;
     padding: 2px 4px;
     border: 1px solid rgba(128, 128, 128, 0.25);
     border-radius: 4px;
     background: rgba(128, 128, 128, 0.15);
     line-height: 1;
+    flex-shrink: 0;
 }
 
 .tachyon_dashboard-page__flag-emoji,
@@ -8628,42 +8667,85 @@ var styles = `
     font-weight: 600;
 }
 
-.tachyon_dashboard-page__urltest-details__row-type,
-.tachyon_dashboard-page__urltest-details__row-meta {
-    color: var(--text-color-medium, #666);
-}
-
 .tachyon_dashboard-page__urltest-details__row-type {
+    font-size: 11px;
+    color: var(--text-color-medium, #888);
+    background: rgba(128, 128, 128, 0.12);
+    padding: 1px 6px;
+    border-radius: 4px;
     white-space: nowrap;
-    line-height: 1.3;
+    flex-shrink: 0;
+}
+
+.tachyon_dashboard-page__urltest-details__row-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
 }
 
 .tachyon_dashboard-page__urltest-details__row-meta {
-    justify-content: flex-end;
+    display: flex;
+    align-items: center;
     white-space: nowrap;
+    min-width: 48px;
+    justify-content: flex-end;
+    font-weight: 500;
+    font-size: 12px;
+}
+
+.tachyon_dashboard-page__urltest-details__select-btn {
+    padding: 2px 10px !important;
+    font-size: 12px !important;
+    height: 26px !important;
+    line-height: 20px !important;
+    white-space: nowrap !important;
+    border-radius: 4px !important;
+    cursor: pointer;
+}
+
+.tachyon_dashboard-page__urltest-details__active-badge {
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 4px !important;
+    padding: 3px 8px !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    color: #4caf50 !important;
+    background: rgba(76, 175, 80, 0.15) !important;
+    border: 1px solid rgba(76, 175, 80, 0.3) !important;
+    border-radius: 4px !important;
+    white-space: nowrap !important;
 }
 
 .tachyon_dashboard-page__urltest-details__copy-button {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    flex: 0 0 20px;
-    width: 20px;
-    min-width: 20px;
-    height: 20px;
+    flex: 0 0 24px;
+    width: 24px;
+    min-width: 24px;
+    height: 24px;
     padding: 0;
     box-sizing: border-box;
+    border-radius: 4px;
+    opacity: 0.7;
+    transition: opacity 0.15s ease;
+}
+
+.tachyon_dashboard-page__urltest-details__copy-button:hover {
+    opacity: 1;
 }
 
 .tachyon_dashboard-page__urltest-details__copy-button svg {
-    width: 12px;
-    height: 12px;
+    width: 14px;
+    height: 14px;
 }
 
 .tachyon_dashboard-page__urltest-details__copy-placeholder {
     display: block;
-    width: 20px;
-    min-width: 20px;
+    width: 24px;
+    min-width: 24px;
     height: 1px;
 }
 
@@ -8680,8 +8762,12 @@ var styles = `
 
 .tachyon_dashboard-page__urltest-details__footer {
     display: flex;
-    justify-content: flex-end;
-    margin-top: 14px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-color-low, rgba(128, 128, 128, 0.2));
 }
 
 @media (max-width: 560px) {
@@ -8690,12 +8776,13 @@ var styles = `
     }
 
     .tachyon_dashboard-page__urltest-details__row {
-        grid-template-columns: minmax(0, 1fr) 20px;
+        flex-wrap: wrap;
+        gap: 6px;
     }
 
-    .tachyon_dashboard-page__urltest-details__row-meta {
-        grid-column: 1 / -1;
-        justify-content: flex-start;
+    .tachyon_dashboard-page__urltest-details__row-actions {
+        width: 100%;
+        justify-content: flex-end;
     }
 }
 

@@ -680,10 +680,7 @@ async function handleChooseOutbound(
 
   if (
     !section?.withTagSelect ||
-    sectionsWidget.selectorSwitchingSections[sectionName] ||
-    section.outbounds.some(
-      (outbound) => outbound.code === tag && outbound.selected,
-    )
+    sectionsWidget.selectorSwitchingSections[sectionName]
   ) {
     return;
   }
@@ -691,8 +688,16 @@ async function handleChooseOutbound(
   setSelectorSwitching(sectionName, tag);
 
   try {
-    await TachyonShellMethods.setClashApiGroupProxy(selector, tag);
+    const res = await TachyonShellMethods.setClashApiGroupProxy(selector, tag);
+    if (res && !(res as any).success && (res as any).error) {
+      showToast(
+        (res as any).message || (res as any).error || _('Failed to switch proxy'),
+        'error',
+      );
+    }
     await fetchDashboardSections({ force: true });
+  } catch (error: any) {
+    showToast(error?.message || _('Failed to switch proxy'), 'error');
   } finally {
     setSelectorSwitching(sectionName);
   }
@@ -1068,95 +1073,118 @@ function renderCommonDetailsModal(
                     'div',
                     {
                       class:
-                        'tachyon_dashboard-page__urltest-details__row-meta',
+                        'tachyon_dashboard-page__urltest-details__row-actions',
                     },
                     [
                       E(
-                        'span',
-                        { class: getUrlTestLatencyClass(member.latency) },
-                        formatUrlTestLatency(member.latency),
+                        'div',
+                        {
+                          class:
+                            'tachyon_dashboard-page__urltest-details__row-meta',
+                        },
+                        [
+                          E(
+                            'span',
+                            { class: getUrlTestLatencyClass(member.latency) },
+                            formatUrlTestLatency(member.latency),
+                          ),
+                        ],
                       ),
+                      ...(section && section.withTagSelect
+                        ? isMemberActive
+                          ? [
+                              E(
+                                'span',
+                                {
+                                  class:
+                                    'badge badge-success tachyon_dashboard-page__urltest-details__active-badge',
+                                },
+                                [
+                                  svgEl(
+                                    'svg',
+                                    {
+                                      width: '12',
+                                      height: '12',
+                                      viewBox: '0 0 24 24',
+                                      fill: 'none',
+                                      stroke: 'currentColor',
+                                      'stroke-width': '2',
+                                      'stroke-linecap': 'round',
+                                      'stroke-linejoin': 'round',
+                                    },
+                                    [
+                                      svgEl('polyline', {
+                                        points: '20 6 9 17 4 12',
+                                      }),
+                                    ],
+                                  ),
+                                  _('Active'),
+                                ],
+                              ),
+                            ]
+                          : [
+                              E(
+                                'button',
+                                {
+                                  type: 'button',
+                                  class:
+                                    'btn cbi-button cbi-button-action tachyon_dashboard-page__urltest-details__select-btn',
+                                  click: async (event: MouseEvent) => {
+                                    event.preventDefault();
+                                    const btn = event.currentTarget as HTMLButtonElement | null;
+                                    if (btn) {
+                                      btn.disabled = true;
+                                    }
+                                    await handleChooseOutbound(
+                                      section.sectionName,
+                                      section.code,
+                                      member.code,
+                                    );
+                                    const updatedSection = store
+                                      .get()
+                                      .sectionsWidget.data.find(
+                                        (s) =>
+                                          s.sectionName === section.sectionName,
+                                      );
+                                    const updatedOutbound =
+                                      updatedSection?.outbounds.find(
+                                        (o) => o.code === outbound?.code,
+                                      );
+                                    if (updatedSection && updatedOutbound) {
+                                      if (isPriority) {
+                                        handleShowPriorityInfo(
+                                          updatedSection,
+                                          updatedOutbound,
+                                        );
+                                      } else {
+                                        handleShowUrlTestInfo(
+                                          updatedSection,
+                                          updatedOutbound,
+                                        );
+                                      }
+                                    } else {
+                                      ui.hideModal();
+                                    }
+                                  },
+                                },
+                                _('Select'),
+                              ),
+                            ]
+                        : []),
+                      member.canCopyLink
+                        ? renderUrlTestCopyButton(
+                            _('Copy proxy link'),
+                            (event) => {
+                              event.preventDefault();
+                              void handleCopyOutbound(member);
+                            },
+                          )
+                        : E('span', {
+                            class:
+                              'tachyon_dashboard-page__urltest-details__copy-placeholder',
+                          }),
                     ],
                   ),
-                  section && section.withTagSelect
-                    ? isMemberActive
-                      ? E(
-                          'span',
-                          {
-                            class: 'badge badge-success',
-                            style:
-                              'padding: 2px 8px; font-size: 11px; color: #4caf50; background: rgba(76, 175, 80, 0.15); border-radius: 3px; white-space: nowrap; display: inline-flex; align-items: center; gap: 4px;',
-                          },
-                          [
-                            svgEl(
-                              'svg',
-                              {
-                                width: '12',
-                                height: '12',
-                                viewBox: '0 0 24 24',
-                                fill: 'none',
-                                stroke: 'currentColor',
-                                'stroke-width': '2',
-                                'stroke-linecap': 'round',
-                                'stroke-linejoin': 'round',
-                              },
-                              [svgEl('polyline', { points: '20 6 9 17 4 12' })],
-                            ),
-                            _('Active'),
-                          ],
-                        )
-                      : E(
-                          'button',
-                          {
-                            type: 'button',
-                            class: 'btn cbi-button cbi-button-action',
-                            style:
-                              'padding: 2px 8px; font-size: 11px; height: 26px; line-height: 20px; white-space: nowrap;',
-                            click: async (event: MouseEvent) => {
-                              event.preventDefault();
-                              await handleChooseOutbound(
-                                section.sectionName,
-                                section.code,
-                                member.code,
-                              );
-                              const updatedSection = store
-                                .get()
-                                .sectionsWidget.data.find(
-                                  (s) => s.sectionName === section.sectionName,
-                                );
-                              const updatedOutbound =
-                                updatedSection?.outbounds.find(
-                                  (o) => o.code === outbound?.code,
-                                );
-                              if (updatedSection && updatedOutbound) {
-                                if (isPriority) {
-                                  handleShowPriorityInfo(
-                                    updatedSection,
-                                    updatedOutbound,
-                                  );
-                                } else {
-                                  handleShowUrlTestInfo(
-                                    updatedSection,
-                                    updatedOutbound,
-                                  );
-                                }
-                              } else {
-                                ui.hideModal();
-                              }
-                            },
-                          },
-                          _('Select'),
-                        )
-                    : '',
-                  member.canCopyLink
-                    ? renderUrlTestCopyButton(_('Copy proxy link'), (event) => {
-                        event.preventDefault();
-                        void handleCopyOutbound(member);
-                      })
-                    : E('span', {
-                        class:
-                          'tachyon_dashboard-page__urltest-details__copy-placeholder',
-                      }),
                 ],
               );
             })
@@ -1170,42 +1198,47 @@ function renderCommonDetailsModal(
       ),
     ]),
     E('div', { class: 'tachyon_dashboard-page__urltest-details__footer' }, [
-      section && outbound && isManual
-        ? E(
-            'button',
-            {
-              type: 'button',
-              class: 'btn cbi-button cbi-button-apply',
-              style: 'margin-right: auto;',
-              click: async (event: MouseEvent) => {
-                event.preventDefault();
-                await handleChooseOutbound(
-                  section.sectionName,
-                  section.code,
-                  outbound.code,
-                );
-                const updatedSection = store
-                  .get()
-                  .sectionsWidget.data.find(
-                    (s) => s.sectionName === section.sectionName,
-                  );
-                const updatedOutbound = updatedSection?.outbounds.find(
-                  (o) => o.code === outbound.code,
-                );
-                if (updatedSection && updatedOutbound) {
-                  if (isPriority) {
-                    handleShowPriorityInfo(updatedSection, updatedOutbound);
-                  } else {
-                    handleShowUrlTestInfo(updatedSection, updatedOutbound);
+      ...(section && outbound && isManual
+        ? [
+            E(
+              'button',
+              {
+                type: 'button',
+                class: 'btn cbi-button cbi-button-apply',
+                click: async (event: MouseEvent) => {
+                  event.preventDefault();
+                  const btn = event.currentTarget as HTMLButtonElement | null;
+                  if (btn) {
+                    btn.disabled = true;
                   }
-                } else {
-                  ui.hideModal();
-                }
+                  await handleChooseOutbound(
+                    section.sectionName,
+                    section.code,
+                    outbound.code,
+                  );
+                  const updatedSection = store
+                    .get()
+                    .sectionsWidget.data.find(
+                      (s) => s.sectionName === section.sectionName,
+                    );
+                  const updatedOutbound = updatedSection?.outbounds.find(
+                    (o) => o.code === outbound.code,
+                  );
+                  if (updatedSection && updatedOutbound) {
+                    if (isPriority) {
+                      handleShowPriorityInfo(updatedSection, updatedOutbound);
+                    } else {
+                      handleShowUrlTestInfo(updatedSection, updatedOutbound);
+                    }
+                  } else {
+                    ui.hideModal();
+                  }
+                },
               },
-            },
-            _('Switch to auto-selection'),
-          )
-        : '',
+              _('Switch to auto-selection'),
+            ),
+          ]
+        : []),
       E(
         'button',
         {
