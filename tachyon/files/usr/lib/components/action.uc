@@ -391,6 +391,11 @@ function run_logged(description, command) {
 }
 
 function is_apk() {
+    let forced = getenv("TACHYON_FORCE_PKG_MANAGER");
+    if (forced == "apk")
+        return true;
+    if (forced == "opkg")
+        return false;
     return command_exists("apk");
 }
 

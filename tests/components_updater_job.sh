@@ -267,6 +267,7 @@ chmod +x "$package_runtime_bin/opkg" "$package_runtime_bin/logger"
 set +e
 PATH="$package_runtime_bin:$PATH" \
 TACHYON_LIB="$package_runtime_lib" \
+TACHYON_FORCE_PKG_MANAGER="opkg" \
 TACHYON_RUNTIME_STATE_DIR="$WORK_DIR/package-runtime" \
 TACHYON_BIN="$WORK_DIR/missing-tachyon" \
 TACHYON_SERVICE_INIT="$WORK_DIR/missing-init" \

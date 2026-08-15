@@ -105,8 +105,7 @@ build_stale_uc
 
 # A live worker is not stale.
 mkdir -p "$WORK_DIR"
-ln -s /bin/sleep "$WORK_DIR/component-action-worker"
-"$WORK_DIR/component-action-worker" 30 &
+bash -c 'while true; do sleep 1; done' component-action-worker &
 worker_pid=$!
 actual="$(run_stale_check "$WORK_DIR/job.json" "$worker_pid")"
 [ "$actual" = "running" ] || fail "a live component-action worker was marked stale (pid $worker_pid): '$actual'"

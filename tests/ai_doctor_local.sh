@@ -3,6 +3,7 @@ set -eo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
+export TACHYON_LIB="$TACHYON_LIB"
 WORK_DIR="$(mktemp -d)"
 
 cleanup() {

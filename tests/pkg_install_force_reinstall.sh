@@ -33,7 +33,11 @@ install_command() {
   local force="$2"
   shift 2
 
-  PATH="$WORK_DIR/$pm_dir:$PATH" command ucode -L "$TACHYON_LIB" "$ACTION_UC" \
+  local force_pm=""
+  [ "$pm_dir" = "opkg-bin" ] && force_pm="opkg"
+  [ "$pm_dir" = "apk-bin" ] && force_pm="apk"
+
+  TACHYON_FORCE_PKG_MANAGER="$force_pm" PATH="$WORK_DIR/$pm_dir:$PATH" command ucode -L "$TACHYON_LIB" "$ACTION_UC" \
     pkg-install-files-command "$force" "$@"
 }
 
