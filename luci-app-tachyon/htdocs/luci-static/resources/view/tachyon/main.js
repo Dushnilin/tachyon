@@ -16008,7 +16008,7 @@ function showUpdateProgressModal(options) {
   ]);
   const logPreEl = E("pre", {
     class: "tachyon-update-modal__log"
-  });
+  }, _("Operation started. Waiting for log output..."));
   const logPanelEl = E("div", { class: "tachyon-update-modal__log-panel" }, [
     E("div", { class: "tachyon-update-modal__log-header" }, [
       E("b", {}, _("Operation log")),
@@ -16058,7 +16058,6 @@ function showUpdateProgressModal(options) {
   let logFullText = "";
   let logPollTimer = null;
   let logPollStopped = true;
-  let autoCompletedFromLog = false;
   function appendLogText(text) {
     if (!text) {
       return;
@@ -16066,18 +16065,6 @@ function showUpdateProgressModal(options) {
     logFullText += text;
     logPreEl.textContent = logFullText;
     logPreEl.scrollTop = logPreEl.scrollHeight;
-    if (!autoCompletedFromLog && options.component === "tachyon" && (options.action === "install" || options.action === "reinstall")) {
-      if (logFullText.includes("Tachyon updated to") || logFullText.includes("Start Tachyon")) {
-        autoCompletedFromLog = true;
-        window.setTimeout(() => {
-          if (activeModalController === controller) {
-            controller.completeSuccess(_("Tachyon updated successfully!"), {
-              reloadPage: true
-            });
-          }
-        }, 1e3);
-      }
-    }
   }
   async function pollLog() {
     if (logPollStopped || !logTrackingJobId) {
@@ -16155,31 +16142,36 @@ function showUpdateProgressModal(options) {
     completeSuccess: (message, opts) => {
       cleanupTimers();
       finishLogTracking();
-      const successMsg = message || (isCheckAction ? _("Check completed!") : options.action === "remove" ? _("Removal completed successfully!") : _("Update completed successfully!"));
-      actionButtonContainer.replaceChildren(
-        E("div", { class: "tachyon-update-modal__success-banner" }, [
-          renderCheckIcon24(),
-          E("span", {}, successMsg)
-        ])
-      );
+      const successMsg = message || (isCheckAction ? _("Check completed!") : options.action === "remove" ? _("Removal completed successfully!") : _("Operation completed successfully!"));
+      const bannerEl = E("div", { class: "tachyon-update-modal__success-banner" }, [
+        renderCheckIcon24(),
+        E("span", {}, successMsg)
+      ]);
       if (opts?.reloadPage) {
         let secondsLeft = 3;
         const reloadBtnText = () => `${_("Reloading page in")} ${secondsLeft}s...`;
-        const closeBtn = renderButton({
+        const reloadBtn = renderButton({
           classNames: ["cbi-button-save"],
           text: reloadBtnText(),
           onClick: () => {
             window.location.reload();
           }
         });
-        actionButtonContainer.replaceChildren(closeBtn);
+        actionButtonContainer.replaceChildren(
+          bannerEl,
+          E(
+            "div",
+            { class: "tachyon-update-modal__action-buttons" },
+            [reloadBtn]
+          )
+        );
         const reloadTimer = setInterval(() => {
           secondsLeft -= 1;
           if (secondsLeft <= 0) {
             clearInterval(reloadTimer);
             window.location.reload();
           } else {
-            closeBtn.textContent = reloadBtnText();
+            reloadBtn.textContent = reloadBtnText();
           }
         }, 1e3);
       } else {
@@ -16203,8 +16195,15 @@ function showUpdateProgressModal(options) {
           }
         });
         actionButtons.push(closeBtn);
-        actionButtonContainer.replaceChildren(...actionButtons);
-        const defaultAutoCloseMs = opts?.onInstall ? 0 : isCheckAction ? 1200 : 1200;
+        actionButtonContainer.replaceChildren(
+          bannerEl,
+          E(
+            "div",
+            { class: "tachyon-update-modal__action-buttons" },
+            actionButtons
+          )
+        );
+        const defaultAutoCloseMs = opts?.onInstall ? 0 : isCheckAction ? 1200 : 0;
         const autoCloseMs = opts?.autoCloseMs ?? defaultAutoCloseMs;
         if (autoCloseMs > 0) {
           setTimeout(() => {
@@ -16218,12 +16217,10 @@ function showUpdateProgressModal(options) {
     completeError: (errorMessage) => {
       cleanupTimers();
       finishLogTracking();
-      actionButtonContainer.replaceChildren(
-        E("div", { class: "tachyon-update-modal__error-banner" }, [
-          renderXIcon24(),
-          E("span", {}, errorMessage || _("Operation failed"))
-        ])
-      );
+      const bannerEl = E("div", { class: "tachyon-update-modal__error-banner" }, [
+        renderXIcon24(),
+        E("span", {}, errorMessage || _("Operation failed"))
+      ]);
       const closeBtn = renderButton({
         classNames: ["cbi-button-remove"],
         text: _("Close"),
@@ -16231,7 +16228,14 @@ function showUpdateProgressModal(options) {
           controller.close();
         }
       });
-      actionButtonContainer.appendChild(closeBtn);
+      actionButtonContainer.replaceChildren(
+        bannerEl,
+        E(
+          "div",
+          { class: "tachyon-update-modal__action-buttons" },
+          [closeBtn]
+        )
+      );
     },
     startLogTracking: (jobId) => {
       if (!jobId || logTrackingJobId === jobId) {
@@ -16630,8 +16634,11 @@ async function applyCompletedComponentAction({
       showToast(result.message, "success", 1200);
     }
     if (notify) {
-      modalController?.completeSuccess(result.message, { reloadPage: true });
-      reloadPageAfterTachyonUpdate();
+      if (modalController) {
+        modalController.completeSuccess(result.message, { reloadPage: true });
+      } else {
+        reloadPageAfterTachyonUpdate();
+      }
     } else {
       modalController?.completeSuccess(result.message);
     }
@@ -17696,12 +17703,20 @@ var styles6 = `
 
 .tachyon-update-modal__actions {
     display: flex;
-    justify-content: flex-end;
+    justify-content: space-between;
     align-items: center;
     gap: 8px;
     margin-top: 6px;
     border-top: 1px solid var(--border-color, rgba(255,255,255,0.12));
     padding-top: 10px;
+    flex-wrap: wrap;
+}
+
+.tachyon-update-modal__action-buttons {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
 }
 
 .tachyon-update-modal__log-panel {

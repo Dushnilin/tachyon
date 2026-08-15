@@ -253,12 +253,20 @@ export const styles = `
 
 .tachyon-update-modal__actions {
     display: flex;
-    justify-content: flex-end;
+    justify-content: space-between;
     align-items: center;
     gap: 8px;
     margin-top: 6px;
     border-top: 1px solid var(--border-color, rgba(255,255,255,0.12));
     padding-top: 10px;
+    flex-wrap: wrap;
+}
+
+.tachyon-update-modal__action-buttons {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
 }
 
 .tachyon-update-modal__log-panel {

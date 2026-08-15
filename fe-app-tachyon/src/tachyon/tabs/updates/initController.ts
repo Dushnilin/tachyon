@@ -575,8 +575,11 @@ async function applyCompletedComponentAction({
     }
 
     if (notify) {
-      modalController?.completeSuccess(result.message, { reloadPage: true });
-      reloadPageAfterTachyonUpdate();
+      if (modalController) {
+        modalController.completeSuccess(result.message, { reloadPage: true });
+      } else {
+        reloadPageAfterTachyonUpdate();
+      }
     } else {
       modalController?.completeSuccess(result.message);
     }

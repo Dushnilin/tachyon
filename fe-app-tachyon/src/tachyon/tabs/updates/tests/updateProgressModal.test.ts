@@ -107,10 +107,11 @@ describe('renderUpdateProgressModal', () => {
     vi.advanceTimersByTime(5000);
     expect(mockUi.hideModal).not.toHaveBeenCalled();
 
+    controller.close();
     vi.useRealTimers();
   });
 
-  it('auto-closes after completed installation without hanging', async () => {
+  it('keeps completed installation open until user closes or autoCloseMs is explicit', async () => {
     vi.useFakeTimers();
     mockUi.showModal.mockReset();
     mockUi.hideModal.mockReset();
@@ -127,8 +128,12 @@ describe('renderUpdateProgressModal', () => {
 
     controller.completeSuccess('Update completed successfully!');
 
-    // Advance timer past autoCloseMs (1200ms)
-    vi.advanceTimersByTime(1500);
+    // Modal stays open so user can inspect log
+    vi.advanceTimersByTime(5000);
+    expect(mockUi.hideModal).not.toHaveBeenCalled();
+
+    // Explicit close works
+    controller.close();
     expect(mockUi.hideModal).toHaveBeenCalled();
 
     vi.useRealTimers();
