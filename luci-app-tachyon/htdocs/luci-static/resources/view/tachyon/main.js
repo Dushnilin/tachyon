@@ -12271,62 +12271,65 @@ async function handleRunAiDoctor() {
         return E(
           "div",
           {
-            style: "display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; padding: 10px 14px; background: rgba(255,255,255,0.03); border-radius: 8px; margin-bottom: 14px; border: 1px solid var(--border-color, rgba(255,255,255,0.1)); font-size: 12px; font-weight: 500; width: 100%; box-sizing: border-box;"
+            class: "cbi-section-node",
+            style: "display: flex; align-items: center; justify-content: space-around; gap: 8px; flex-wrap: wrap; padding: 8px 12px; margin-bottom: 12px; border-radius: 6px; background: var(--background-color-high, rgba(0,0,0,0.03)); border: 1px solid var(--border-color, rgba(0,0,0,0.1));"
           },
-          nodes.flatMap((node, idx) => {
-            const badgeBg = node.status === "OK" ? "rgba(40, 167, 69, 0.18)" : node.status === "WARN" ? "rgba(255, 193, 7, 0.18)" : "rgba(220, 53, 69, 0.18)";
-            const badgeBorder = node.status === "OK" ? "rgba(40, 167, 69, 0.4)" : node.status === "WARN" ? "rgba(255, 193, 7, 0.4)" : "rgba(220, 53, 69, 0.4)";
-            const badgeFg = node.status === "OK" ? "#28a745" : node.status === "WARN" ? "#ffc107" : "#dc3545";
-            const badgeIcon = node.status === "OK" ? "\u2713" : node.status === "WARN" ? "\u26A0\uFE0F" : "\u274C";
-            const itemEl = E(
+          nodes.map((node) => {
+            const labelClass = node.status === "OK" ? "label-success" : node.status === "WARN" ? "label-warning" : "label-danger";
+            const icon = node.status === "OK" ? "\u2713" : node.status === "WARN" ? "\u26A0" : "\u2715";
+            return E(
               "span",
               {
-                style: `padding: 4px 10px; border-radius: 12px; background: ${badgeBg}; border: 1px solid ${badgeBorder}; color: ${badgeFg}; display: inline-flex; align-items: center; gap: 4px; font-weight: 600;`
+                class: `label ${labelClass}`,
+                style: "font-size: 11px; padding: 4px 10px; border-radius: 4px; display: inline-flex; align-items: center; gap: 4px; font-weight: bold;"
               },
-              `${node.name} [${badgeIcon} ${node.status}]`
+              [
+                E("span", {}, node.name),
+                E("span", {}, `${icon} ${node.status}`)
+              ]
             );
-            return idx < nodes.length - 1 ? [
-              itemEl,
-              E("span", { style: "opacity: 0.5; font-weight: bold;" }, "\u2794")
-            ] : [itemEl];
           })
         );
       };
       const renderDiagnosisTabContent = () => {
-        return E("div", { style: "width: 100%; box-sizing: border-box;" }, [
+        return E("div", { class: "cbi-section-node" }, [
           renderRootCauseBanner(),
           E(
             "pre",
             {
-              class: "tachyon-partial-modal__content",
-              style: "white-space: pre-wrap; font-family: inherit; font-size: 13px; line-height: 1.5; max-height: 360px; overflow-y: auto; overflow-x: hidden; background: rgba(0, 0, 0, 0.25); padding: 12px; border-radius: 8px; border: 1px solid var(--border-color, rgba(255, 255, 255, 0.15)); color: inherit; width: 100%; box-sizing: border-box;"
+              class: "tachyon-partial-modal__content alert-message notice",
+              style: "white-space: pre-wrap; font-family: inherit; font-size: 12px; line-height: 1.5; max-height: 320px; overflow-y: auto; margin: 0; padding: 12px; border-radius: 6px; border: 1px solid var(--border-color, rgba(0,0,0,0.1));"
             },
-            E("code", {}, report)
+            report
           ),
           quickFixes.length > 0 ? E(
             "div",
             {
-              style: "margin-top: 14px; padding: 12px; background: rgba(40, 167, 69, 0.08); border-radius: 8px; border: 1px solid rgba(40, 167, 69, 0.3); width: 100%; box-sizing: border-box;"
+              class: "alert-message success",
+              style: "margin-top: 12px; padding: 10px 12px; border-radius: 6px;"
             },
             [
               E(
-                "b",
-                { style: "font-size: 13px; color: #28a745;" },
+                "div",
+                {
+                  style: "font-weight: bold; margin-bottom: 8px; font-size: 12px;"
+                },
                 "\u{1F6E0}\uFE0F " + _("Recommended Quick Fixes:")
               ),
               E(
                 "div",
                 {
-                  style: "display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px;"
+                  style: "display: flex; gap: 6px; flex-wrap: wrap;"
                 },
                 quickFixes.map((code) => {
                   let applied = false;
-                  const friendlyLabel = FIX_LABELS[code] ? `${FIX_LABELS[code]} (${code})` : code;
+                  const friendlyLabel = FIX_LABELS[code] || code;
                   const btn = renderButton({
                     classNames: ["cbi-button-apply"],
                     text: `\u26A1 ${friendlyLabel}`,
                     onClick: async () => {
                       if (applied) return;
+                      btn.textContent = "\u23F3 " + _("Applying...") + " " + friendlyLabel;
                       showToast(
                         _("Applying fix") + ": " + friendlyLabel + "...",
                         "success"
@@ -12342,6 +12345,7 @@ async function handleRunAiDoctor() {
                           "success"
                         );
                       } else {
+                        btn.textContent = `\u26A1 ${friendlyLabel}`;
                         showToast(
                           _("Failed to apply fix") + ": " + friendlyLabel,
                           "error"
@@ -12356,9 +12360,10 @@ async function handleRunAiDoctor() {
           ) : E(
             "div",
             {
-              style: "margin-top: 12px; color: #28a745; font-weight: 500; font-size: 13px;"
+              class: "alert-message success",
+              style: "margin-top: 12px; padding: 8px 12px; font-size: 12px; border-radius: 6px;"
             },
-            "\u2705 " + _("No quick fix required")
+            "\u2713 " + _("No issues detected. System is running normally.")
           )
         ]);
       };
@@ -12366,36 +12371,38 @@ async function handleRunAiDoctor() {
         if (historyEntries.length === 0) {
           return E(
             "div",
-            { style: "padding: 20px; text-align: center; opacity: 0.6;" },
+            { class: "alert-message info", style: "margin: 0; padding: 12px;" },
             _("No diagnostic history available yet.")
           );
         }
         return E(
           "div",
           {
-            style: "display: flex; flex-direction: column; gap: 10px; max-height: 400px; overflow-y: auto; width: 100%; box-sizing: border-box;"
+            style: "display: flex; flex-direction: column; gap: 8px; max-height: 360px; overflow-y: auto;"
           },
           historyEntries.map(
             (h, i) => E(
               "div",
               {
-                style: "padding: 12px; background: rgba(255, 255, 255, 0.04); border: 1px solid var(--border-color, rgba(255, 255, 255, 0.12)); border-radius: 8px; width: 100%; box-sizing: border-box;"
+                class: "cbi-section-node",
+                style: "padding: 10px; border-radius: 6px; border: 1px solid var(--border-color, rgba(0,0,0,0.1)); background: var(--background-color-high, rgba(0,0,0,0.02));"
               },
               [
                 E(
                   "div",
                   {
-                    style: "display: flex; justify-content: space-between; font-weight: 600; font-size: 12px; margin-bottom: 8px;"
+                    style: "display: flex; justify-content: space-between; font-weight: bold; font-size: 11px; margin-bottom: 6px; opacity: 0.8;"
                   },
                   [
                     E("span", {}, `#${historyEntries.length - i}`),
-                    E("span", { style: "opacity: 0.65;" }, h.timestamp)
+                    E("span", {}, h.timestamp)
                   ]
                 ),
                 E(
                   "pre",
                   {
-                    style: "margin: 0; white-space: pre-wrap; font-size: 12px; max-height: 140px; overflow-y: auto; overflow-x: hidden; background: rgba(0, 0, 0, 0.25); padding: 10px; border-radius: 6px; border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1)); color: inherit; width: 100%; box-sizing: border-box;"
+                    class: "tachyon-partial-modal__content",
+                    style: "margin: 0; white-space: pre-wrap; font-size: 11px; max-height: 120px; overflow-y: auto; padding: 8px; border-radius: 4px; background: rgba(0,0,0,0.05);"
                   },
                   h.report
                 )
