@@ -678,26 +678,10 @@ function add_proxy_selector(config, section, selector_tags, urltest_candidate_ta
     if (length(selector_outbounds) == 0)
         ctx.runtime_generate_unsupported("dashboard server filtering produced no usable outbounds");
 
-    let excluded_groups = object_keys_set(connections.dashboard_exclude_groups(section));
-    let included_groups = connections.dashboard_include_groups(section);
-    let included_groups_set = length(included_groups) > 0 ? object_keys_set(included_groups) : null;
-
-    let selectable_members = [];
-    for (let tag in selector_outbounds)
-        push(selectable_members, tag);
-    for (let group_name in group_outbounds) {
-        if (excluded_groups[group_name])
-            continue;
-        if (included_groups_set && !included_groups_set[group_name])
-            continue;
-        for (let member_tag in group_outbounds[group_name])
-            push(selectable_members, member_tag);
-    }
-
     push(config.outbounds, {
         type: "selector",
         tag: selector_tag,
-        outbounds: unique_string_array(selectable_members),
+        outbounds: selector_outbounds,
         default: selector_default,
         interrupt_exist_connections: true
     });

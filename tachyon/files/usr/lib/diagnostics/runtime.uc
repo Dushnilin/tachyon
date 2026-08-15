@@ -3476,7 +3476,7 @@ function prioritize_quick_fixes(fixes) {
     return fixes;
 }
 
-function diagnose_dpi_and_censorship(cfg, lang, causes, add_fix) {
+function diagnose_dpi_and_censorship(cfg, lang, causes, fn_add_fix) {
     if (!wan_has_ip()) return;
 
     let local_ip = dns_check_resolve_host("rutracker.org", "127.0.0.1", 2);
@@ -3491,7 +3491,7 @@ function diagnose_dpi_and_censorship(cfg, lang, causes, add_fix) {
                                 : "Обнаружена подмена DNS (DNS Spoofing): локальный резолвер возвращает адрес-заглушку",
             fix: "switch_to_doh"
         });
-        add_fix("switch_to_doh");
+        fn_add_fix("switch_to_doh");
     }
 
     let zap_mode = trim(as_string(cfg.zapret_mode || "disabled"));
@@ -3506,12 +3506,12 @@ function diagnose_dpi_and_censorship(cfg, lang, causes, add_fix) {
                                     : "Обнаружена блокировка TLS ClientHello со стороны ТСПУ/DPI провайдера (сброс соединения по SNI)",
                 fix: "restart_zapret"
             });
-            add_fix("restart_zapret");
+            fn_add_fix("restart_zapret");
         }
     }
 }
 
-function diagnose_proxies_health(cfg, lang, causes, add_fix) {
+function diagnose_proxies_health(cfg, lang, causes, fn_add_fix) {
     let clash_addr = clash_api_url();
     let curl_res = command_capture("curl -s --max-time 2 http://" + clash_addr + "/proxies 2>/dev/null");
     if (curl_res.status == 0 && curl_res.output != "") {
@@ -3542,7 +3542,7 @@ function diagnose_proxies_health(cfg, lang, causes, add_fix) {
                                         : sprintf("Все прокси-серверы недоступны (100%% таймаут на %d узлах; проверьте баланс подписки или блокировку протокола)", total_nodes),
                     fix: "update_subscriptions"
                 });
-                add_fix("update_subscriptions");
+                fn_add_fix("update_subscriptions");
             }
         }
     }
@@ -3558,14 +3558,14 @@ function diagnose_proxies_health(cfg, lang, causes, add_fix) {
                                         : "Обновление подписки отклонено сервером (HTTP 401/403: подписка истекла или не оплачена)",
                     fix: "update_subscriptions"
                 });
-                add_fix("update_subscriptions");
+                fn_add_fix("update_subscriptions");
                 break;
             }
         }
     }
 }
 
-function diagnose_system_conflicts(cfg, lang, causes, add_fix) {
+function diagnose_system_conflicts(cfg, lang, causes, fn_add_fix) {
     let competing_dns = [ "adguardhome", "smartdns", "stubby", "unbound", "nextdns" ];
     for (let svc in competing_dns) {
         let pid = find_process_pid(svc);
@@ -3576,7 +3576,7 @@ function diagnose_system_conflicts(cfg, lang, causes, add_fix) {
                                     : sprintf("Обнаружен сторонний DNS-сервис: %s (PID %s), возможен конфликт перехвата DNS-трафика", svc, pid),
                 fix: "fix_dnsmasq"
             });
-            add_fix("fix_dnsmasq");
+            fn_add_fix("fix_dnsmasq");
             break;
         }
     }
@@ -3591,7 +3591,7 @@ function diagnose_system_conflicts(cfg, lang, causes, add_fix) {
                                     : sprintf("Обнаружен конфликтующий пакет обхода: %s (PID %s), вызывающий конфликт правил файрвола", pkg, pid),
                 fix: "rebuild_rules"
             });
-            add_fix("rebuild_rules");
+            fn_add_fix("rebuild_rules");
             break;
         }
     }
@@ -3608,7 +3608,7 @@ function diagnose_system_conflicts(cfg, lang, causes, add_fix) {
                                         : sprintf("Синтаксическая ошибка в списке доменов: '%s' содержит протокол или пробелы (требуется только домен)", line),
                     fix: "rebuild_rules"
                 });
-                add_fix("rebuild_rules");
+                fn_add_fix("rebuild_rules");
                 break;
             }
         }
@@ -3625,7 +3625,7 @@ function diagnose_system_conflicts(cfg, lang, causes, add_fix) {
                                         : sprintf("Повреждён бинарный файл правил: %s имеет размер 0 байт", rs_file),
                     fix: "rebuild_rules"
                 });
-                add_fix("rebuild_rules");
+                fn_add_fix("rebuild_rules");
                 break;
             }
         }
