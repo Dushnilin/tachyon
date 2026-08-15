@@ -3223,6 +3223,97 @@ function doctor_fix_overused(code) {
     return int(rec.count) >= 3;
 }
 
+// ─── End-to-end verification: is everything actually working ──────────────────
+// The snapshot checks pass even when the network has been silently flapping for
+// hours: at the moment of the check the WAN is up, so the doctor concludes "all
+// OK". This routine verifies what the LAN client actually experiences — DNS
+// through each layer, HTTP through the proxy — and inspects the recent log
+// history for instability (WAN flaps, service restarts) before anyone is
+// allowed to declare the system healthy.
+function verify_system() {
+    let checks = [];
+    let stability = {
+        wan_flaps: 0,
+        singbox_restarts: 0,
+        dnsmasq_restarts: 0,
+        tachyon_restarts: 0
+    };
+
+    function add(name, status, detail, evidence) {
+        push(checks, { name, status, detail, evidence: evidence || "" });
+    }
+
+    // Live checks — what a client on the LAN experiences right now.
+    let sb_pid = find_process_pid("sing-box");
+    add("sing-box process", sb_pid != "" ? "pass" : "fail",
+        sb_pid != "" ? "running (pid " + sb_pid + ")" : "not running");
+
+    let lan_dns = dns_check_resolve_host("google.com", "127.0.0.1", 3);
+    if (lan_dns == "") lan_dns = dns_check_resolve_host("cloudflare.com", "127.0.0.1", 3);
+    if (lan_dns == "") lan_dns = dns_check_resolve_host("openwrt.org", "127.0.0.1", 3);
+    add("LAN DNS via dnsmasq", lan_dns != "" ? "pass" : "fail",
+        lan_dns != "" ? "resolved successfully" : "no answer from 127.0.0.1");
+
+    let up_dns = dns_check_resolve_host("google.com", "1.1.1.1", 3);
+    if (up_dns == "") up_dns = dns_check_resolve_host("cloudflare.com", "8.8.8.8", 3);
+    if (up_dns == "") up_dns = dns_check_resolve_host("openwrt.org", "77.88.8.8", 3);
+    add("Upstream DNS", up_dns != "" ? "pass" : "fail",
+        up_dns != "" ? "resolved successfully" : "no answer from upstream resolvers");
+
+    let sb_dns = dns_check_through_singbox("google.com");
+    if (!sb_dns) sb_dns = dns_check_through_singbox("cloudflare.com");
+    add("Proxy DNS via sing-box", sb_dns ? "pass" : (sb_pid != "" ? "fail" : "skip"),
+        sb_dns ? "resolved via " + SB_DNS_INBOUND_ADDRESS : (sb_pid != "" ? "no answer" : "sing-box not running"));
+
+    // HTTP through the service mixed proxy — only present when download_via_proxy
+    // is enabled; otherwise the tproxy/tun path is covered by the checks above.
+    let sb_cfg = fs.readfile("/etc/sing-box/config.json") || "";
+    let has_mixed = index(sb_cfg, "4534") >= 0;
+    if (has_mixed && sb_pid != "") {
+        let res = command_capture("curl -sS --max-time 8 -x http://127.0.0.1:4534 -o /dev/null -w %{http_code} https://www.gstatic.com/generate_204 2>&1");
+        let code = trim(res.output);
+        add("HTTP via proxy", res.status == 0 && (code == "204" || code == "200") ? "pass" : "fail",
+            code == "204" || code == "200" ? "end-to-end OK through sing-box" : "HTTP " + code);
+    } else {
+        add("HTTP via proxy", "skip", "service mixed proxy not in config");
+    }
+
+    add("WAN interface", wan_has_ip() ? "pass" : "fail",
+        wan_has_ip() ? get_wan_interface() + " up" : "no IP");
+    add("Default gateway", default_gateway_exists() ? "pass" : "fail",
+        default_gateway_exists() ? "present" : "missing");
+
+    // History — inspect recent system log tail without false triggers from normal upgrades/reloads
+    let hist = command_capture("logread 2>/dev/null | tail -n 250").output;
+    for (let line in split(hist, "\n")) {
+        let l = lc(line);
+        // Skip planned / normal upgrade and service operations
+        if (index(l, "successful component change") >= 0 || index(l, "upgrading") >= 0 ||
+            index(l, "post-upgrade") >= 0 || index(l, "component_action") >= 0 ||
+            index(l, "component-action") >= 0 || index(l, "doctor_fix") >= 0)
+            continue;
+
+        if (index(l, "udhcpc") >= 0 && (index(l, "lease lost") >= 0 || index(l, "deconfig") >= 0))
+            stability.wan_flaps++;
+        if (index(l, "wan.down") >= 0 || index(l, "watchdog: wan check failed") >= 0)
+            stability.wan_flaps++;
+        if (index(l, "sing-box") >= 0 &&
+            (index(l, "panic:") >= 0 || index(l, "fatal error:") >= 0 || index(l, "sigsegv") >= 0 || index(l, "died unexpectedly") >= 0))
+            stability.singbox_restarts++;
+        if (index(l, "dnsmasq") >= 0 &&
+            (index(l, "failed to create listening socket") >= 0 || index(l, "address already in use") >= 0 || index(l, "failed to start") >= 0))
+            stability.dnsmasq_restarts++;
+        if (index(l, "tachyon") >= 0 && index(l, "sing-box") < 0 && index(l, "watchdog: crashed") >= 0)
+            stability.tachyon_restarts++;
+    }
+
+    let failed = 0;
+    for (let c in checks) {
+        if (c.status == "fail") failed++;
+    }
+    return { checks, stability, failed };
+}
+
 function apply_quick_fix(codes_str) {
     if (!codes_str || codes_str == "") {
         print(sprintf("%J\n", { success: false, error: "No fix code provided" }));
@@ -3324,8 +3415,12 @@ function apply_quick_fix(codes_str) {
         }
     }
 
+    let post_verify = verify_system();
+
     print(sprintf("%J\n", {
         success: all_ok,
+        verified: post_verify.failed == 0,
+        remaining_failures: post_verify.failed,
         results: results
     }));
     return all_ok ? 0 : 1;
@@ -3352,95 +3447,189 @@ function ai_doctor_last() {
     return 0;
 }
 
-// ─── End-to-end verification: is everything actually working ──────────────────
-// The snapshot checks pass even when the network has been silently flapping for
-// hours: at the moment of the check the WAN is up, so the doctor concludes "all
-// OK". This routine verifies what the LAN client actually experiences — DNS
-// through each layer, HTTP through the proxy — and inspects the recent log
-// history for instability (WAN flaps, service restarts) before anyone is
-// allowed to declare the system healthy.
-function verify_system() {
-    let checks = [];
-    let stability = {
-        wan_flaps: 0,
-        singbox_restarts: 0,
-        dnsmasq_restarts: 0,
-        tachyon_restarts: 0
-    };
+const DOCTOR_FIX_PRIORITIES = {
+    "fix_wan_interface": 10,
+    "restart_network": 15,
+    "fix_gateway": 20,
+    "fix_resolv_symlink": 30,
+    "fix_dnsmasq": 35,
+    "switch_to_doh": 40,
+    "clear_dns_cache": 45,
+    "start_singbox": 50,
+    "restart_zapret": 60,
+    "rebuild_rules": 70,
+    "update_subscriptions": 80,
+    "optimize_memory": 90,
+    "enable_safe_bypass": 95,
+    "heal_network_stack": 100
+};
 
-    function add(name, status, detail, evidence) {
-        push(checks, { name, status, detail, evidence: evidence || "" });
+function doctor_fix_sort(a, b) {
+    let pa = DOCTOR_FIX_PRIORITIES[a] || 55;
+    let pb = DOCTOR_FIX_PRIORITIES[b] || 55;
+    return pa < pb ? -1 : (pa > pb ? 1 : 0);
+}
+
+function prioritize_quick_fixes(fixes) {
+    if (!fixes || length(fixes) <= 1) return fixes;
+    sort(fixes, doctor_fix_sort);
+    return fixes;
+}
+
+function diagnose_dpi_and_censorship(cfg, lang, causes, add_fix) {
+    if (!wan_has_ip()) return;
+
+    let local_ip = dns_check_resolve_host("rutracker.org", "127.0.0.1", 2);
+    let upstream_ip = dns_check_resolve_host("rutracker.org", "77.88.8.8", 2);
+    if (upstream_ip == "") upstream_ip = dns_check_resolve_host("rutracker.org", "1.1.1.1", 2);
+
+    if (local_ip != "" && (local_ip == "127.0.0.1" || local_ip == "0.0.0.0" ||
+        index(local_ip, "192.168.") == 0 || index(local_ip, "10.") == 0)) {
+        push(causes, {
+            probability: 92,
+            cause: lang == "en" ? "DNS spoofing/poisoning detected (local resolver returns bogus or blockpage IP)"
+                                : "Обнаружена подмена DNS (DNS Spoofing): локальный резолвер возвращает адрес-заглушку",
+            fix: "switch_to_doh"
+        });
+        add_fix("switch_to_doh");
     }
 
-    // Live checks — what a client on the LAN experiences right now.
-    let sb_pid = find_process_pid("sing-box");
-    add("sing-box process", sb_pid != "" ? "pass" : "fail",
-        sb_pid != "" ? "running (pid " + sb_pid + ")" : "not running");
+    let zap_mode = trim(as_string(cfg.zapret_mode || "disabled"));
+    let bd_mode = trim(as_string(cfg.byedpi_mode || "disabled"));
+    if (zap_mode == "disabled" && bd_mode == "disabled" && upstream_ip != "") {
+        let tls_check = command_capture("curl -k -sS --connect-timeout 2 -m 3 https://rutracker.org -o /dev/null -w %{http_code} 2>&1");
+        let tls_out = tls_check.output || "";
+        if (tls_check.status != 0 && (index(tls_out, "Connection reset") >= 0 || index(tls_out, "SSL_ERROR") >= 0 || index(tls_out, "OpenSSL SSL_connect") >= 0)) {
+            push(causes, {
+                probability: 88,
+                cause: lang == "en" ? "ISP DPI/TSPU is blocking TLS ClientHello (Connection Reset / SNI filtering)"
+                                    : "Обнаружена блокировка TLS ClientHello со стороны ТСПУ/DPI провайдера (сброс соединения по SNI)",
+                fix: "restart_zapret"
+            });
+            add_fix("restart_zapret");
+        }
+    }
+}
 
-    let lan_dns = dns_check_resolve_host("google.com", "127.0.0.1", 3);
-    if (lan_dns == "") lan_dns = dns_check_resolve_host("cloudflare.com", "127.0.0.1", 3);
-    if (lan_dns == "") lan_dns = dns_check_resolve_host("openwrt.org", "127.0.0.1", 3);
-    add("LAN DNS via dnsmasq", lan_dns != "" ? "pass" : "fail",
-        lan_dns != "" ? "resolved successfully" : "no answer from 127.0.0.1");
-
-    let up_dns = dns_check_resolve_host("google.com", "1.1.1.1", 3);
-    if (up_dns == "") up_dns = dns_check_resolve_host("cloudflare.com", "8.8.8.8", 3);
-    if (up_dns == "") up_dns = dns_check_resolve_host("openwrt.org", "77.88.8.8", 3);
-    add("Upstream DNS", up_dns != "" ? "pass" : "fail",
-        up_dns != "" ? "resolved successfully" : "no answer from upstream resolvers");
-
-    let sb_dns = dns_check_through_singbox("google.com");
-    if (!sb_dns) sb_dns = dns_check_through_singbox("cloudflare.com");
-    add("Proxy DNS via sing-box", sb_dns ? "pass" : (sb_pid != "" ? "fail" : "skip"),
-        sb_dns ? "resolved via " + SB_DNS_INBOUND_ADDRESS : (sb_pid != "" ? "no answer" : "sing-box not running"));
-
-    // HTTP through the service mixed proxy — only present when download_via_proxy
-    // is enabled; otherwise the tproxy/tun path is covered by the checks above.
-    let sb_cfg = fs.readfile("/etc/sing-box/config.json") || "";
-    let has_mixed = index(sb_cfg, "4534") >= 0;
-    if (has_mixed && sb_pid != "") {
-        let res = command_capture("curl -sS --max-time 8 -x http://127.0.0.1:4534 -o /dev/null -w %{http_code} https://www.gstatic.com/generate_204 2>&1");
-        let code = trim(res.output);
-        add("HTTP via proxy", res.status == 0 && (code == "204" || code == "200") ? "pass" : "fail",
-            code == "204" || code == "200" ? "end-to-end OK through sing-box" : "HTTP " + code);
-    } else {
-        add("HTTP via proxy", "skip", "service mixed proxy not in config");
+function diagnose_proxies_health(cfg, lang, causes, add_fix) {
+    let clash_addr = clash_api_url();
+    let curl_res = command_capture("curl -s --max-time 2 http://" + clash_addr + "/proxies 2>/dev/null");
+    if (curl_res.status == 0 && curl_res.output != "") {
+        let p_obj = parse_json_or_null(curl_res.output);
+        if (p_obj && p_obj.proxies) {
+            let total_nodes = 0;
+            let dead_nodes = 0;
+            for (let name in p_obj.proxies) {
+                let p = p_obj.proxies[name];
+                if (!p) continue;
+                let p_type = lc(as_string(p.type || ""));
+                if (p_type == "selector" || p_type == "urltest" || p_type == "direct" || p_type == "reject" || p_type == "compatible")
+                    continue;
+                total_nodes++;
+                let history = type(p.history) == "array" ? p.history : [];
+                if (length(history) > 0) {
+                    let last = history[length(history) - 1];
+                    if (last && int(last.delay || 0) == 0)
+                        dead_nodes++;
+                } else if (p.alive == false) {
+                    dead_nodes++;
+                }
+            }
+            if (total_nodes > 0 && dead_nodes == total_nodes) {
+                push(causes, {
+                    probability: 94,
+                    cause: lang == "en" ? sprintf("All outbound proxy servers are unreachable (100%% timeout on %d nodes; check subscription balance or protocol block)", total_nodes)
+                                        : sprintf("Все прокси-серверы недоступны (100%% таймаут на %d узлах; проверьте баланс подписки или блокировку протокола)", total_nodes),
+                    fix: "update_subscriptions"
+                });
+                add_fix("update_subscriptions");
+            }
+        }
     }
 
-    add("WAN interface", wan_has_ip() ? "pass" : "fail",
-        wan_has_ip() ? get_wan_interface() + " up" : "no IP");
-    add("Default gateway", default_gateway_exists() ? "pass" : "fail",
-        default_gateway_exists() ? "present" : "missing");
+    let sub_files = fs.glob("/tmp/tachyon_subscription_cache/*.error");
+    if (sub_files) {
+        for (let sub_file in sub_files) {
+            let err_text = trim(fs.readfile(sub_file) || "");
+            if (index(err_text, "401") >= 0 || index(err_text, "403") >= 0) {
+                push(causes, {
+                    probability: 96,
+                    cause: lang == "en" ? "Subscription update rejected by server (HTTP 401/403: expired token or unpaid account)"
+                                        : "Обновление подписки отклонено сервером (HTTP 401/403: подписка истекла или не оплачена)",
+                    fix: "update_subscriptions"
+                });
+                add_fix("update_subscriptions");
+                break;
+            }
+        }
+    }
+}
 
-    // History — inspect recent system log tail without false triggers from normal upgrades/reloads
-    let hist = command_capture("logread 2>/dev/null | tail -n 250").output;
-    for (let line in split(hist, "\n")) {
-        let l = lc(line);
-        // Skip planned / normal upgrade and service operations
-        if (index(l, "successful component change") >= 0 || index(l, "upgrading") >= 0 ||
-            index(l, "post-upgrade") >= 0 || index(l, "component_action") >= 0 ||
-            index(l, "component-action") >= 0 || index(l, "doctor_fix") >= 0)
-            continue;
-
-        if (index(l, "udhcpc") >= 0 && (index(l, "lease lost") >= 0 || index(l, "deconfig") >= 0))
-            stability.wan_flaps++;
-        if (index(l, "wan.down") >= 0 || index(l, "watchdog: wan check failed") >= 0)
-            stability.wan_flaps++;
-        if (index(l, "sing-box") >= 0 &&
-            (index(l, "panic:") >= 0 || index(l, "fatal error:") >= 0 || index(l, "sigsegv") >= 0 || index(l, "died unexpectedly") >= 0))
-            stability.singbox_restarts++;
-        if (index(l, "dnsmasq") >= 0 &&
-            (index(l, "failed to create listening socket") >= 0 || index(l, "address already in use") >= 0 || index(l, "failed to start") >= 0))
-            stability.dnsmasq_restarts++;
-        if (index(l, "tachyon") >= 0 && index(l, "sing-box") < 0 && index(l, "watchdog: crashed") >= 0)
-            stability.tachyon_restarts++;
+function diagnose_system_conflicts(cfg, lang, causes, add_fix) {
+    let competing_dns = [ "adguardhome", "smartdns", "stubby", "unbound", "nextdns" ];
+    for (let svc in competing_dns) {
+        let pid = find_process_pid(svc);
+        if (pid != "") {
+            push(causes, {
+                probability: 82,
+                cause: lang == "en" ? sprintf("Conflicting DNS service running: %s (PID %s) may interfere with Tachyon DNS routing", svc, pid)
+                                    : sprintf("Обнаружен сторонний DNS-сервис: %s (PID %s), возможен конфликт перехвата DNS-трафика", svc, pid),
+                fix: "fix_dnsmasq"
+            });
+            add_fix("fix_dnsmasq");
+            break;
+        }
     }
 
-    let failed = 0;
-    for (let c in checks) {
-        if (c.status == "fail") failed++;
+    let competing_pkgs = [ "passwall", "openclash", "vssr", "shadowsocksr" ];
+    for (let pkg in competing_pkgs) {
+        let pid = find_process_pid(pkg);
+        if (pid != "") {
+            push(causes, {
+                probability: 88,
+                cause: lang == "en" ? sprintf("Conflicting proxy framework running: %s (PID %s) causes routing/nftables rule clashes", pkg, pid)
+                                    : sprintf("Обнаружен конфликтующий пакет обхода: %s (PID %s), вызывающий конфликт правил файрвола", pkg, pid),
+                fix: "rebuild_rules"
+            });
+            add_fix("rebuild_rules");
+            break;
+        }
     }
-    return { checks, stability, failed };
+
+    let user_domains_text = cfg.user_domains_text || "";
+    if (user_domains_text != "") {
+        for (let line in split(user_domains_text, "\n")) {
+            line = trim(line);
+            if (line == "" || index(line, "#") == 0) continue;
+            if (index(line, "http://") >= 0 || index(line, "https://") >= 0 || index(line, " ") >= 0) {
+                push(causes, {
+                    probability: 78,
+                    cause: lang == "en" ? sprintf("Syntax error in custom domain list: '%s' contains URL scheme or space (should be domain only)", line)
+                                        : sprintf("Синтаксическая ошибка в списке доменов: '%s' содержит протокол или пробелы (требуется только домен)", line),
+                    fix: "rebuild_rules"
+                });
+                add_fix("rebuild_rules");
+                break;
+            }
+        }
+    }
+
+    let rs_files = fs.glob("/tmp/sing-box/rulesets/*.srs");
+    if (rs_files) {
+        for (let rs_file in rs_files) {
+            let st = fs.stat(rs_file);
+            if (st && st.size == 0) {
+                push(causes, {
+                    probability: 86,
+                    cause: lang == "en" ? sprintf("Corrupted binary ruleset file: %s is 0 bytes", rs_file)
+                                        : sprintf("Повреждён бинарный файл правил: %s имеет размер 0 байт", rs_file),
+                    fix: "rebuild_rules"
+                });
+                add_fix("rebuild_rules");
+                break;
+            }
+        }
+    }
 }
 
 function local_rule_doctor() {
@@ -3586,6 +3775,18 @@ function local_rule_doctor() {
         }
     }
 
+    // ── 5. Advanced DPI & Censorship Checks ──
+    try { diagnose_dpi_and_censorship(cfg, lang, causes, add_fix); } catch(e) { warn("DPI diag error: " + as_string(e) + "\n"); }
+
+    // ── 6. Proxy Nodes & Subscriptions Health ──
+    try { diagnose_proxies_health(cfg, lang, causes, add_fix); } catch(e) { warn("Proxy diag error: " + as_string(e) + "\n"); }
+
+    // ── 7. OpenWrt Service & Port Conflicts ──
+    try { diagnose_system_conflicts(cfg, lang, causes, add_fix); } catch(e) { warn("Conflict diag error: " + as_string(e) + "\n"); }
+
+    // Sort fixes by priority order
+    try { quick_fixes = prioritize_quick_fixes(quick_fixes); } catch(e) { warn("Prioritize error: " + as_string(e) + "\n"); }
+
     let report_lines = [];
     let is_fully_healthy = verify.failed == 0 && length(causes) == 0;
 
@@ -3677,7 +3878,7 @@ function ai_doctor() {
         local_res = local_rule_doctor();
     } catch (e) {
         local_res = {
-            report: sprintf("Local diagnosis failed: %s", as_string(e)),
+            report: sprintf("Local diagnosis failed: %s (error: %J)", as_string(e), e),
             causes: [],
             quick_fixes: [],
             summary: sprintf("Local diagnosis failed: %s", as_string(e)),
