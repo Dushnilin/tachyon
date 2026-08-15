@@ -3901,3 +3901,12 @@ msgstr "Не удалось сохранить сервер"
 
 msgid "QR code is too large"
 msgstr "QR-код слишком большой"
+
+msgid "Manual"
+msgstr "Вручную"
+
+msgid "Select"
+msgstr "Выбрать"
+
+msgid "Switch to auto-selection"
+msgstr "Вернуть автовыбор"

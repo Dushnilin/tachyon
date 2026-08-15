@@ -2250,6 +2250,10 @@ function renderDefaultState({
         ]
       );
     }
+    const isManualUrlTest = Boolean(outbound.urlTestInfo?.isManualSelection);
+    const isManualPriority = Boolean(outbound.priorityInfo?.isManualSelection);
+    const activeServerName = outbound.urlTestInfo?.selectedName || outbound.priorityInfo?.selectedName || "";
+    const typeLabel = isManualUrlTest || isManualPriority ? `${outbound.type} (${_("Manual")})` : outbound.urlTestInfo || outbound.priorityInfo ? `${outbound.type} (${_("Auto")})` : outbound.type;
     return E(
       "div",
       {
@@ -2306,7 +2310,7 @@ function renderDefaultState({
                   "aria-label": _("URLTest details"),
                   click: (event) => {
                     event.stopPropagation();
-                    onShowUrlTestInfo(outbound);
+                    onShowUrlTestInfo(section, outbound);
                   }
                 },
                 renderInfoIcon24()
@@ -2322,7 +2326,7 @@ function renderDefaultState({
                   "aria-label": _("Priority details"),
                   click: (event) => {
                     event.stopPropagation();
-                    onShowPriorityInfo(outbound);
+                    onShowPriorityInfo(section, outbound);
                   }
                 },
                 renderInfoIcon24()
@@ -2330,6 +2334,17 @@ function renderDefaultState({
             ] : []
           ]
         ),
+        ...activeServerName ? [
+          E(
+            "div",
+            {
+              class: "tachyon_dashboard-page__outbound-grid__item__active-server",
+              style: "font-size: 13px; font-weight: 500; opacity: 0.95; margin: 4px 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: flex; align-items: center; gap: 4px;",
+              title: activeServerName
+            },
+            renderFlagEmojis(activeServerName)
+          )
+        ] : [],
         E(
           "div",
           { class: "tachyon_dashboard-page__outbound-grid__item__footer" },
@@ -2337,7 +2352,7 @@ function renderDefaultState({
             E(
               "div",
               { class: "tachyon_dashboard-page__outbound-grid__item__type" },
-              [outbound.type].filter(Boolean)
+              typeLabel
             ),
             E(
               "div",
@@ -4387,12 +4402,18 @@ function buildUrlTestInfo({
   manualLinkByCode,
   cachedProxyLinks,
   outboundMetadata,
-  showDetectedCountries
+  showDetectedCountries,
+  selectorNow,
+  selectorCodes = []
 }) {
   const childCodes = uniqueCodes(
     groupCache?.outbounds?.length ? groupCache.outbounds : entry?.value.all || []
   );
-  const selectedCode = entry?.value.now || "";
+  const isChildSelectedInSelector = Boolean(
+    selectorNow && selectorNow !== code && childCodes.includes(selectorNow) && !selectorCodes.includes(selectorNow)
+  );
+  const selectedCode = isChildSelectedInSelector ? selectorNow : entry?.value.now || "";
+  const isManualSelection = isChildSelectedInSelector;
   const outbounds = sortUrlTestMembers(
     childCodes.flatMap((childCode) => {
       const childEntry = proxyByCode.get(childCode);
@@ -4424,6 +4445,7 @@ function buildUrlTestInfo({
     displayName: groupCache?.displayName || displayName,
     selectedCode: selectedCode || void 0,
     selectedName: selectedName || void 0,
+    isManualSelection,
     url: groupCache?.url,
     interval: groupCache?.interval,
     tolerance: groupCache?.tolerance,
@@ -4440,9 +4462,10 @@ function buildPriorityInfo({
   manualLinkByCode,
   cachedProxyLinks,
   outboundMetadata,
-  showDetectedCountries
+  showDetectedCountries,
+  selectorNow,
+  selectorCodes = []
 }) {
-  const selectedCode = entry?.value.now || "";
   const cacheLevels = Array.isArray(groupCache?.levels) ? groupCache.levels : [];
   const configLevelById = new Map(
     config.levels.map((level) => [level.id, level])
@@ -4471,6 +4494,12 @@ function buildPriorityInfo({
   }))).sort(
     (left, right) => left.order === right.order ? left.id.localeCompare(right.id) : left.order - right.order
   );
+  const allChildCodes = levels.flatMap((l) => l.outbounds);
+  const isChildSelectedInSelector = Boolean(
+    selectorNow && selectorNow !== config.code && allChildCodes.includes(selectorNow) && !selectorCodes.includes(selectorNow)
+  );
+  const selectedCode = isChildSelectedInSelector ? selectorNow : entry?.value.now || "";
+  const isManualSelection = isChildSelectedInSelector;
   const outbounds = levels.flatMap((level, levelIndex) => {
     const members = uniqueCodes(level.outbounds || []).map((childCode) => {
       const childEntry = proxyByCode.get(childCode);
@@ -4510,6 +4539,7 @@ function buildPriorityInfo({
     displayName: groupCache?.displayName || config.displayName,
     selectedCode: selectedCode || void 0,
     selectedName: selectedName || void 0,
+    isManualSelection,
     healthUrl: groupCache?.health_url || config.healthUrl,
     activeCheckInterval: groupCache?.active_check_interval || config.activeCheckInterval,
     checkTimeout: groupCache?.check_timeout || config.checkTimeout,
@@ -4559,6 +4589,7 @@ function buildProxyGroupOutbounds(section, proxies, outboundMetadata, urltestGro
     ...urlTestCodes,
     ...priorityCodes
   ]);
+  const selectorNow = selector?.value?.now;
   const outbounds = uniqueCodes(groupCodes).flatMap((code) => {
     const item = proxyByCode.get(code);
     const urlTestConfig = urlTestConfigByCode.get(code);
@@ -4576,38 +4607,57 @@ function buildProxyGroupOutbounds(section, proxies, outboundMetadata, urltestGro
       cachedProxyLinks.has(code)
     );
     const isRuntimeUrlTest = isUrlTestProxyEntry(item);
+    const urlTestInfo = urlTestConfig || isRuntimeUrlTest ? buildUrlTestInfo({
+      code,
+      displayName,
+      entry: item,
+      groupCache: urltestGroups[code],
+      proxyByCode,
+      manualLinkByCode,
+      cachedProxyLinks,
+      outboundMetadata,
+      showDetectedCountries: urlTestConfig?.showDetectedCountries || showDetectedCountries,
+      selectorNow,
+      selectorCodes
+    }) : void 0;
+    const priorityInfo = priorityConfig ? buildPriorityInfo({
+      config: priorityConfig,
+      entry: item,
+      groupCache: priorityGroups[code],
+      proxyByCode,
+      manualLinkByCode,
+      cachedProxyLinks,
+      outboundMetadata,
+      showDetectedCountries: priorityConfig.showDetectedCountries,
+      selectorNow,
+      selectorCodes
+    }) : void 0;
+    const isUrlTestChildSelected = Boolean(
+      urlTestInfo?.isManualSelection && urlTestInfo?.selectedCode && urlTestInfo.outbounds.some((m) => m.code === selectorNow)
+    );
+    const isPriorityChildSelected = Boolean(
+      priorityInfo?.isManualSelection && priorityInfo?.selectedCode && priorityInfo.outbounds.some((m) => m.code === selectorNow)
+    );
+    const isSelected = selectorNow === code || isUrlTestChildSelected || isPriorityChildSelected;
+    const activeMemberLatency = isUrlTestChildSelected && urlTestInfo?.outbounds.find((m) => m.code === selectorNow)?.latency || isPriorityChildSelected && priorityInfo?.outbounds.find((m) => m.code === selectorNow)?.latency || urlTestInfo?.outbounds.find(
+      (m) => m.selected || m.code === urlTestInfo.selectedCode
+    )?.latency || priorityInfo?.outbounds.find(
+      (m) => m.selected || m.code === priorityInfo.selectedCode
+    )?.latency || 0;
+    const latency = item?.value.history?.[0]?.delay || activeMemberLatency || 0;
     return [
       {
         code,
         displayName,
-        latency: item?.value.history?.[0]?.delay || 0,
+        latency,
         type: priorityConfig ? "Priority" : item?.value.type || "URLTest",
-        selected: selector?.value?.now === code,
+        selected: isSelected,
         link,
         canCopyLink,
         country: showDetectedCountries ? outboundMetadata?.countries?.[code] : void 0,
         runtimeAvailable: item ? void 0 : false,
-        urlTestInfo: urlTestConfig || isRuntimeUrlTest ? buildUrlTestInfo({
-          code,
-          displayName,
-          entry: item,
-          groupCache: urltestGroups[code],
-          proxyByCode,
-          manualLinkByCode,
-          cachedProxyLinks,
-          outboundMetadata,
-          showDetectedCountries: urlTestConfig?.showDetectedCountries || showDetectedCountries
-        }) : void 0,
-        priorityInfo: priorityConfig ? buildPriorityInfo({
-          config: priorityConfig,
-          entry: item,
-          groupCache: priorityGroups[code],
-          proxyByCode,
-          manualLinkByCode,
-          cachedProxyLinks,
-          outboundMetadata,
-          showDetectedCountries: priorityConfig.showDetectedCountries
-        }) : void 0
+        urlTestInfo,
+        priorityInfo
       }
     ];
   });
@@ -7088,6 +7138,21 @@ function renderUrlTestSelectedValue(info) {
   if (name === _("No")) {
     return E("span", {}, name);
   }
+  const modeBadge = info.isManualSelection ? E(
+    "span",
+    {
+      class: "badge badge-warning",
+      style: "margin-left: 8px; padding: 2px 6px; font-size: 11px; background: rgba(255, 152, 0, 0.2); color: #ff9800; border-radius: 3px;"
+    },
+    _("Manual")
+  ) : E(
+    "span",
+    {
+      class: "badge badge-info",
+      style: "margin-left: 8px; padding: 2px 6px; font-size: 11px; background: rgba(33, 150, 243, 0.2); color: #2196f3; border-radius: 3px;"
+    },
+    _("Auto")
+  );
   return E(
     "span",
     { class: "tachyon_dashboard-page__urltest-details__selected-value" },
@@ -7112,7 +7177,8 @@ function renderUrlTestSelectedValue(info) {
           { class: getUrlTestLatencyClass(selectedMember.latency) },
           formatUrlTestLatency(selectedMember.latency)
         )
-      ] : []
+      ] : [],
+      modeBadge
     ]
   );
 }
@@ -7129,7 +7195,8 @@ function renderUrlTestCopyButton(title, onClick) {
     renderCopyIcon24()
   );
 }
-function renderCommonDetailsModal(info, fields, renderMemberName, isPriority) {
+function renderCommonDetailsModal(info, fields, renderMemberName, isPriority, section, outbound) {
+  const isManual = Boolean(info.isManualSelection);
   return E("div", { class: "tachyon_dashboard-page__urltest-details" }, [
     E(
       "dl",
@@ -7154,13 +7221,14 @@ function renderCommonDetailsModal(info, fields, renderMemberName, isPriority) {
       E(
         "div",
         { class: "tachyon_dashboard-page__urltest-details__table" },
-        info.outbounds.length ? info.outbounds.map(
-          (member) => E(
+        info.outbounds.length ? info.outbounds.map((member) => {
+          const isMemberActive = member.selected || member.code === info.selectedCode;
+          return E(
             "div",
             {
               class: [
                 "tachyon_dashboard-page__urltest-details__row",
-                member.selected ? "tachyon_dashboard-page__urltest-details__row--active" : ""
+                isMemberActive ? "tachyon_dashboard-page__urltest-details__row--active" : ""
               ].filter(Boolean).join(" ")
             },
             [
@@ -7212,6 +7280,67 @@ function renderCommonDetailsModal(info, fields, renderMemberName, isPriority) {
                   )
                 ]
               ),
+              section && section.withTagSelect ? isMemberActive ? E(
+                "span",
+                {
+                  class: "badge badge-success",
+                  style: "padding: 2px 8px; font-size: 11px; color: #4caf50; background: rgba(76, 175, 80, 0.15); border-radius: 3px; white-space: nowrap; display: inline-flex; align-items: center; gap: 4px;"
+                },
+                [
+                  svgEl(
+                    "svg",
+                    {
+                      width: "12",
+                      height: "12",
+                      viewBox: "0 0 24 24",
+                      fill: "none",
+                      stroke: "currentColor",
+                      "stroke-width": "2",
+                      "stroke-linecap": "round",
+                      "stroke-linejoin": "round"
+                    },
+                    [svgEl("polyline", { points: "20 6 9 17 4 12" })]
+                  ),
+                  _("Active")
+                ]
+              ) : E(
+                "button",
+                {
+                  type: "button",
+                  class: "btn cbi-button cbi-button-action",
+                  style: "padding: 2px 8px; font-size: 11px; height: 26px; line-height: 20px; white-space: nowrap;",
+                  click: async (event) => {
+                    event.preventDefault();
+                    await handleChooseOutbound(
+                      section.sectionName,
+                      section.code,
+                      member.code
+                    );
+                    const updatedSection = store.get().sectionsWidget.data.find(
+                      (s) => s.sectionName === section.sectionName
+                    );
+                    const updatedOutbound = updatedSection?.outbounds.find(
+                      (o) => o.code === outbound?.code
+                    );
+                    if (updatedSection && updatedOutbound) {
+                      if (isPriority) {
+                        handleShowPriorityInfo(
+                          updatedSection,
+                          updatedOutbound
+                        );
+                      } else {
+                        handleShowUrlTestInfo(
+                          updatedSection,
+                          updatedOutbound
+                        );
+                      }
+                    } else {
+                      ui.hideModal();
+                    }
+                  }
+                },
+                _("Select")
+              ) : "",
               member.canCopyLink ? renderUrlTestCopyButton(_("Copy proxy link"), (event) => {
                 event.preventDefault();
                 void handleCopyOutbound(member);
@@ -7219,8 +7348,8 @@ function renderCommonDetailsModal(info, fields, renderMemberName, isPriority) {
                 class: "tachyon_dashboard-page__urltest-details__copy-placeholder"
               })
             ]
-          )
-        ) : [
+          );
+        }) : [
           E(
             "div",
             { class: "tachyon_dashboard-page__urltest-details__empty" },
@@ -7230,6 +7359,38 @@ function renderCommonDetailsModal(info, fields, renderMemberName, isPriority) {
       )
     ]),
     E("div", { class: "tachyon_dashboard-page__urltest-details__footer" }, [
+      section && outbound && isManual ? E(
+        "button",
+        {
+          type: "button",
+          class: "btn cbi-button cbi-button-apply",
+          style: "margin-right: auto;",
+          click: async (event) => {
+            event.preventDefault();
+            await handleChooseOutbound(
+              section.sectionName,
+              section.code,
+              outbound.code
+            );
+            const updatedSection = store.get().sectionsWidget.data.find(
+              (s) => s.sectionName === section.sectionName
+            );
+            const updatedOutbound = updatedSection?.outbounds.find(
+              (o) => o.code === outbound.code
+            );
+            if (updatedSection && updatedOutbound) {
+              if (isPriority) {
+                handleShowPriorityInfo(updatedSection, updatedOutbound);
+              } else {
+                handleShowUrlTestInfo(updatedSection, updatedOutbound);
+              }
+            } else {
+              ui.hideModal();
+            }
+          }
+        },
+        _("Switch to auto-selection")
+      ) : "",
       E(
         "button",
         {
@@ -7244,7 +7405,7 @@ function renderCommonDetailsModal(info, fields, renderMemberName, isPriority) {
     ])
   ]);
 }
-function renderUrlTestInfoModal(outbound) {
+function renderUrlTestInfoModal(outbound, section) {
   const info = outbound.urlTestInfo;
   if (!info) {
     return E("div", {}, _("URLTest details are unavailable"));
@@ -7267,16 +7428,18 @@ function renderUrlTestInfoModal(outbound) {
     info,
     fields,
     (member) => renderDetailsMemberName(member),
-    false
+    false,
+    section,
+    outbound
   );
 }
-function handleShowUrlTestInfo(outbound) {
+function handleShowUrlTestInfo(section, outbound) {
   if (!outbound.urlTestInfo) {
     return;
   }
   ui.showModal(
     `${_("URLTest details")}: ${outbound.urlTestInfo.displayName || outbound.displayName}`,
-    renderUrlTestInfoModal(outbound)
+    renderUrlTestInfoModal(outbound, section)
   );
 }
 function renderPrioritySelectedValue(info) {
@@ -7286,6 +7449,21 @@ function renderPrioritySelectedValue(info) {
   if (name === _("No")) {
     return E("span", {}, name);
   }
+  const modeBadge = info.isManualSelection ? E(
+    "span",
+    {
+      class: "badge badge-warning",
+      style: "margin-left: 8px; padding: 2px 6px; font-size: 11px; background: rgba(255, 152, 0, 0.2); color: #ff9800; border-radius: 3px;"
+    },
+    _("Manual")
+  ) : E(
+    "span",
+    {
+      class: "badge badge-info",
+      style: "margin-left: 8px; padding: 2px 6px; font-size: 11px; background: rgba(33, 150, 243, 0.2); color: #2196f3; border-radius: 3px;"
+    },
+    _("Auto")
+  );
   return E(
     "span",
     { class: "tachyon_dashboard-page__urltest-details__selected-value" },
@@ -7315,31 +7493,31 @@ function renderPrioritySelectedValue(info) {
           { class: getUrlTestLatencyClass(selectedMember.latency) },
           formatUrlTestLatency(selectedMember.latency)
         )
-      ] : []
+      ] : [],
+      modeBadge
     ]
   );
 }
 function renderPriorityMemberName(member) {
-  const levelName = member.levelName || _("Level");
-  return [
+  const countryFlag = getDetectedCountryFlag(member.country);
+  const flagElements = countryFlag ? [
     E(
       "span",
-      { class: "tachyon_dashboard-page__urltest-details__priority-number" },
-      `#${member.levelIndex + 1}`
-    ),
+      { class: "tachyon_dashboard-page__urltest-details__country-badge" },
+      countryFlag
+    )
+  ] : [];
+  return [
+    ...flagElements,
     E(
       "span",
       { class: "tachyon_dashboard-page__urltest-details__priority-level" },
-      levelName
+      `[${member.levelName}]`
     ),
-    E(
-      "span",
-      { class: "tachyon_dashboard-page__urltest-details__priority-node" },
-      renderDetailsMemberName(member)
-    )
+    ...renderFlagEmojis(member.displayName)
   ];
 }
-function renderPriorityInfoModal(outbound) {
+function renderPriorityInfoModal(outbound, section) {
   const info = outbound.priorityInfo;
   if (!info) {
     return E("div", {}, _("Priority details are unavailable"));
@@ -7382,16 +7560,18 @@ function renderPriorityInfoModal(outbound) {
     info,
     fields,
     (member) => renderPriorityMemberName(member),
-    true
+    true,
+    section,
+    outbound
   );
 }
-function handleShowPriorityInfo(outbound) {
+function handleShowPriorityInfo(section, outbound) {
   if (!outbound.priorityInfo) {
     return;
   }
   ui.showModal(
     `${_("Priority details")}: ${outbound.priorityInfo.displayName || outbound.displayName}`,
-    renderPriorityInfoModal(outbound)
+    renderPriorityInfoModal(outbound, section)
   );
 }
 async function handleUpdateSubscription(section) {
@@ -7575,11 +7755,11 @@ async function renderSectionsWidget() {
       onCopyOutbound: (_section, outbound) => {
         handleCopyOutbound(outbound);
       },
-      onShowUrlTestInfo: (outbound) => {
-        handleShowUrlTestInfo(outbound);
+      onShowUrlTestInfo: (section2, outbound) => {
+        handleShowUrlTestInfo(section2, outbound);
       },
-      onShowPriorityInfo: (outbound) => {
-        handleShowPriorityInfo(outbound);
+      onShowPriorityInfo: (section2, outbound) => {
+        handleShowPriorityInfo(section2, outbound);
       },
       onUpdateSubscription: (section2) => {
         void handleUpdateSubscription(section2);

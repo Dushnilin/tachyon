@@ -4,6 +4,7 @@ import {
   isCopyableProxyLink,
   onMount,
   preserveScrollForPage,
+  svgEl,
 } from '../../../helpers';
 import { copyToClipboard } from '../../../helpers/copyToClipboard';
 import { showToast } from '../../../helpers/showToast';
@@ -891,6 +892,26 @@ function renderUrlTestSelectedValue(info: Tachyon.UrlTestInfo) {
     return E('span', {}, name);
   }
 
+  const modeBadge = info.isManualSelection
+    ? E(
+        'span',
+        {
+          class: 'badge badge-warning',
+          style:
+            'margin-left: 8px; padding: 2px 6px; font-size: 11px; background: rgba(255, 152, 0, 0.2); color: #ff9800; border-radius: 3px;',
+        },
+        _('Manual'),
+      )
+    : E(
+        'span',
+        {
+          class: 'badge badge-info',
+          style:
+            'margin-left: 8px; padding: 2px 6px; font-size: 11px; background: rgba(33, 150, 243, 0.2); color: #2196f3; border-radius: 3px;',
+        },
+        _('Auto'),
+      );
+
   return E(
     'span',
     { class: 'tachyon_dashboard-page__urltest-details__selected-value' },
@@ -920,6 +941,7 @@ function renderUrlTestSelectedValue(info: Tachyon.UrlTestInfo) {
             ),
           ]
         : []),
+      modeBadge,
     ],
   );
 }
@@ -950,7 +972,11 @@ function renderCommonDetailsModal(
   }>,
   renderMemberName: (member: any) => any,
   isPriority: boolean,
+  section?: Tachyon.OutboundGroup,
+  outbound?: Tachyon.Outbound,
 ) {
+  const isManual = Boolean(info.isManualSelection);
+
   return E('div', { class: 'tachyon_dashboard-page__urltest-details' }, [
     E(
       'dl',
@@ -976,13 +1002,16 @@ function renderCommonDetailsModal(
         'div',
         { class: 'tachyon_dashboard-page__urltest-details__table' },
         info.outbounds.length
-          ? info.outbounds.map((member: any) =>
-              E(
+          ? info.outbounds.map((member: any) => {
+              const isMemberActive =
+                member.selected || member.code === info.selectedCode;
+
+              return E(
                 'div',
                 {
                   class: [
                     'tachyon_dashboard-page__urltest-details__row',
-                    member.selected
+                    isMemberActive
                       ? 'tachyon_dashboard-page__urltest-details__row--active'
                       : '',
                   ]
@@ -1049,6 +1078,76 @@ function renderCommonDetailsModal(
                       ),
                     ],
                   ),
+                  section && section.withTagSelect
+                    ? isMemberActive
+                      ? E(
+                          'span',
+                          {
+                            class: 'badge badge-success',
+                            style:
+                              'padding: 2px 8px; font-size: 11px; color: #4caf50; background: rgba(76, 175, 80, 0.15); border-radius: 3px; white-space: nowrap; display: inline-flex; align-items: center; gap: 4px;',
+                          },
+                          [
+                            svgEl(
+                              'svg',
+                              {
+                                width: '12',
+                                height: '12',
+                                viewBox: '0 0 24 24',
+                                fill: 'none',
+                                stroke: 'currentColor',
+                                'stroke-width': '2',
+                                'stroke-linecap': 'round',
+                                'stroke-linejoin': 'round',
+                              },
+                              [svgEl('polyline', { points: '20 6 9 17 4 12' })],
+                            ),
+                            _('Active'),
+                          ],
+                        )
+                      : E(
+                          'button',
+                          {
+                            type: 'button',
+                            class: 'btn cbi-button cbi-button-action',
+                            style:
+                              'padding: 2px 8px; font-size: 11px; height: 26px; line-height: 20px; white-space: nowrap;',
+                            click: async (event: MouseEvent) => {
+                              event.preventDefault();
+                              await handleChooseOutbound(
+                                section.sectionName,
+                                section.code,
+                                member.code,
+                              );
+                              const updatedSection = store
+                                .get()
+                                .sectionsWidget.data.find(
+                                  (s) => s.sectionName === section.sectionName,
+                                );
+                              const updatedOutbound =
+                                updatedSection?.outbounds.find(
+                                  (o) => o.code === outbound?.code,
+                                );
+                              if (updatedSection && updatedOutbound) {
+                                if (isPriority) {
+                                  handleShowPriorityInfo(
+                                    updatedSection,
+                                    updatedOutbound,
+                                  );
+                                } else {
+                                  handleShowUrlTestInfo(
+                                    updatedSection,
+                                    updatedOutbound,
+                                  );
+                                }
+                              } else {
+                                ui.hideModal();
+                              }
+                            },
+                          },
+                          _('Select'),
+                        )
+                    : '',
                   member.canCopyLink
                     ? renderUrlTestCopyButton(_('Copy proxy link'), (event) => {
                         event.preventDefault();
@@ -1059,8 +1158,8 @@ function renderCommonDetailsModal(
                           'tachyon_dashboard-page__urltest-details__copy-placeholder',
                       }),
                 ],
-              ),
-            )
+              );
+            })
           : [
               E(
                 'div',
@@ -1071,6 +1170,42 @@ function renderCommonDetailsModal(
       ),
     ]),
     E('div', { class: 'tachyon_dashboard-page__urltest-details__footer' }, [
+      section && outbound && isManual
+        ? E(
+            'button',
+            {
+              type: 'button',
+              class: 'btn cbi-button cbi-button-apply',
+              style: 'margin-right: auto;',
+              click: async (event: MouseEvent) => {
+                event.preventDefault();
+                await handleChooseOutbound(
+                  section.sectionName,
+                  section.code,
+                  outbound.code,
+                );
+                const updatedSection = store
+                  .get()
+                  .sectionsWidget.data.find(
+                    (s) => s.sectionName === section.sectionName,
+                  );
+                const updatedOutbound = updatedSection?.outbounds.find(
+                  (o) => o.code === outbound.code,
+                );
+                if (updatedSection && updatedOutbound) {
+                  if (isPriority) {
+                    handleShowPriorityInfo(updatedSection, updatedOutbound);
+                  } else {
+                    handleShowUrlTestInfo(updatedSection, updatedOutbound);
+                  }
+                } else {
+                  ui.hideModal();
+                }
+              },
+            },
+            _('Switch to auto-selection'),
+          )
+        : '',
       E(
         'button',
         {
@@ -1086,7 +1221,10 @@ function renderCommonDetailsModal(
   ]);
 }
 
-function renderUrlTestInfoModal(outbound: Tachyon.Outbound) {
+function renderUrlTestInfoModal(
+  outbound: Tachyon.Outbound,
+  section?: Tachyon.OutboundGroup,
+) {
   const info = outbound.urlTestInfo;
 
   if (!info) {
@@ -1117,10 +1255,15 @@ function renderUrlTestInfoModal(outbound: Tachyon.Outbound) {
     fields,
     (member) => renderDetailsMemberName(member),
     false,
+    section,
+    outbound,
   );
 }
 
-function handleShowUrlTestInfo(outbound: Tachyon.Outbound) {
+function handleShowUrlTestInfo(
+  section: Tachyon.OutboundGroup,
+  outbound: Tachyon.Outbound,
+) {
   if (!outbound.urlTestInfo) {
     return;
   }
@@ -1129,7 +1272,7 @@ function handleShowUrlTestInfo(outbound: Tachyon.Outbound) {
     `${_('URLTest details')}: ${
       outbound.urlTestInfo.displayName || outbound.displayName
     }`,
-    renderUrlTestInfoModal(outbound),
+    renderUrlTestInfoModal(outbound, section),
   );
 }
 
@@ -1142,6 +1285,26 @@ function renderPrioritySelectedValue(info: Tachyon.PriorityInfo) {
   if (name === _('No')) {
     return E('span', {}, name);
   }
+
+  const modeBadge = info.isManualSelection
+    ? E(
+        'span',
+        {
+          class: 'badge badge-warning',
+          style:
+            'margin-left: 8px; padding: 2px 6px; font-size: 11px; background: rgba(255, 152, 0, 0.2); color: #ff9800; border-radius: 3px;',
+        },
+        _('Manual'),
+      )
+    : E(
+        'span',
+        {
+          class: 'badge badge-info',
+          style:
+            'margin-left: 8px; padding: 2px 6px; font-size: 11px; background: rgba(33, 150, 243, 0.2); color: #2196f3; border-radius: 3px;',
+        },
+        _('Auto'),
+      );
 
   return E(
     'span',
@@ -1181,33 +1344,38 @@ function renderPrioritySelectedValue(info: Tachyon.PriorityInfo) {
             ),
           ]
         : []),
+      modeBadge,
     ],
   );
 }
 
 function renderPriorityMemberName(member: Tachyon.PriorityMember) {
-  const levelName = member.levelName || _('Level');
+  const countryFlag = getDetectedCountryFlag(member.country);
+  const flagElements = countryFlag
+    ? [
+        E(
+          'span',
+          { class: 'tachyon_dashboard-page__urltest-details__country-badge' },
+          countryFlag,
+        ),
+      ]
+    : [];
 
   return [
-    E(
-      'span',
-      { class: 'tachyon_dashboard-page__urltest-details__priority-number' },
-      `#${member.levelIndex + 1}`,
-    ),
+    ...flagElements,
     E(
       'span',
       { class: 'tachyon_dashboard-page__urltest-details__priority-level' },
-      levelName,
+      `[${member.levelName}]`,
     ),
-    E(
-      'span',
-      { class: 'tachyon_dashboard-page__urltest-details__priority-node' },
-      renderDetailsMemberName(member),
-    ),
+    ...renderFlagEmojis(member.displayName),
   ];
 }
 
-function renderPriorityInfoModal(outbound: Tachyon.Outbound) {
+function renderPriorityInfoModal(
+  outbound: Tachyon.Outbound,
+  section?: Tachyon.OutboundGroup,
+) {
   const info = outbound.priorityInfo;
 
   if (!info) {
@@ -1260,10 +1428,15 @@ function renderPriorityInfoModal(outbound: Tachyon.Outbound) {
     fields,
     (member) => renderPriorityMemberName(member),
     true,
+    section,
+    outbound,
   );
 }
 
-function handleShowPriorityInfo(outbound: Tachyon.Outbound) {
+function handleShowPriorityInfo(
+  section: Tachyon.OutboundGroup,
+  outbound: Tachyon.Outbound,
+) {
   if (!outbound.priorityInfo) {
     return;
   }
@@ -1272,7 +1445,7 @@ function handleShowPriorityInfo(outbound: Tachyon.Outbound) {
     `${_('Priority details')}: ${
       outbound.priorityInfo.displayName || outbound.displayName
     }`,
-    renderPriorityInfoModal(outbound),
+    renderPriorityInfoModal(outbound, section),
   );
 }
 
@@ -1506,11 +1679,11 @@ async function renderSectionsWidget() {
       onCopyOutbound: (_section, outbound) => {
         handleCopyOutbound(outbound);
       },
-      onShowUrlTestInfo: (outbound) => {
-        handleShowUrlTestInfo(outbound);
+      onShowUrlTestInfo: (section, outbound) => {
+        handleShowUrlTestInfo(section, outbound);
       },
-      onShowPriorityInfo: (outbound) => {
-        handleShowPriorityInfo(outbound);
+      onShowPriorityInfo: (section, outbound) => {
+        handleShowPriorityInfo(section, outbound);
       },
       onUpdateSubscription: (section) => {
         void handleUpdateSubscription(section);

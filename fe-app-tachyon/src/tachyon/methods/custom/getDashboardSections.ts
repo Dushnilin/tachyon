@@ -861,6 +861,8 @@ function buildUrlTestInfo({
   cachedProxyLinks,
   outboundMetadata,
   showDetectedCountries,
+  selectorNow,
+  selectorCodes = [],
 }: {
   code: string;
   displayName: string;
@@ -871,13 +873,25 @@ function buildUrlTestInfo({
   cachedProxyLinks: Map<string, string>;
   outboundMetadata?: Tachyon.GetOutboundMetadata;
   showDetectedCountries: boolean;
+  selectorNow?: string;
+  selectorCodes?: string[];
 }): Tachyon.UrlTestInfo {
   const childCodes = uniqueCodes(
     groupCache?.outbounds?.length
       ? groupCache.outbounds
       : entry?.value.all || [],
   );
-  const selectedCode = entry?.value.now || '';
+  const isChildSelectedInSelector = Boolean(
+    selectorNow &&
+      selectorNow !== code &&
+      childCodes.includes(selectorNow) &&
+      !selectorCodes.includes(selectorNow),
+  );
+  const selectedCode = isChildSelectedInSelector
+    ? selectorNow!
+    : entry?.value.now || '';
+  const isManualSelection = isChildSelectedInSelector;
+
   const outbounds = sortUrlTestMembers(
     childCodes.flatMap((childCode) => {
       const childEntry = proxyByCode.get(childCode);
@@ -918,6 +932,7 @@ function buildUrlTestInfo({
     displayName: groupCache?.displayName || displayName,
     selectedCode: selectedCode || undefined,
     selectedName: selectedName || undefined,
+    isManualSelection,
     url: groupCache?.url,
     interval: groupCache?.interval,
     tolerance: groupCache?.tolerance,
@@ -936,6 +951,8 @@ function buildPriorityInfo({
   cachedProxyLinks,
   outboundMetadata,
   showDetectedCountries,
+  selectorNow,
+  selectorCodes = [],
 }: {
   config: PriorityConfig;
   entry?: ClashProxyEntry;
@@ -945,8 +962,9 @@ function buildPriorityInfo({
   cachedProxyLinks: Map<string, string>;
   outboundMetadata?: Tachyon.GetOutboundMetadata;
   showDetectedCountries: boolean;
+  selectorNow?: string;
+  selectorCodes?: string[];
 }): Tachyon.PriorityInfo {
-  const selectedCode = entry?.value.now || '';
   const cacheLevels = Array.isArray(groupCache?.levels)
     ? groupCache.levels
     : [];
@@ -992,6 +1010,18 @@ function buildPriorityInfo({
       ? left.id.localeCompare(right.id)
       : left.order - right.order,
   );
+  const allChildCodes = levels.flatMap((l) => l.outbounds);
+  const isChildSelectedInSelector = Boolean(
+    selectorNow &&
+      selectorNow !== config.code &&
+      allChildCodes.includes(selectorNow) &&
+      !selectorCodes.includes(selectorNow),
+  );
+  const selectedCode = isChildSelectedInSelector
+    ? selectorNow!
+    : entry?.value.now || '';
+  const isManualSelection = isChildSelectedInSelector;
+
   const outbounds = levels.flatMap((level, levelIndex) => {
     const members = uniqueCodes(level.outbounds || []).map((childCode) => {
       const childEntry = proxyByCode.get(childCode);
@@ -1048,6 +1078,7 @@ function buildPriorityInfo({
     displayName: groupCache?.displayName || config.displayName,
     selectedCode: selectedCode || undefined,
     selectedName: selectedName || undefined,
+    isManualSelection,
     healthUrl: groupCache?.health_url || config.healthUrl,
     activeCheckInterval:
       groupCache?.active_check_interval || config.activeCheckInterval,
@@ -1115,6 +1146,8 @@ function buildProxyGroupOutbounds(
     ...priorityCodes,
   ]);
 
+  const selectorNow = selector?.value?.now;
+
   const outbounds = uniqueCodes(groupCodes).flatMap((code) => {
     const item = proxyByCode.get(code);
     const urlTestConfig = urlTestConfigByCode.get(code);
@@ -1138,46 +1171,83 @@ function buildProxyGroupOutbounds(
       );
     const isRuntimeUrlTest = isUrlTestProxyEntry(item);
 
+    const urlTestInfo =
+      urlTestConfig || isRuntimeUrlTest
+        ? buildUrlTestInfo({
+            code,
+            displayName,
+            entry: item,
+            groupCache: urltestGroups[code],
+            proxyByCode,
+            manualLinkByCode,
+            cachedProxyLinks,
+            outboundMetadata,
+            showDetectedCountries:
+              urlTestConfig?.showDetectedCountries || showDetectedCountries,
+            selectorNow,
+            selectorCodes,
+          })
+        : undefined;
+
+    const priorityInfo = priorityConfig
+      ? buildPriorityInfo({
+          config: priorityConfig,
+          entry: item,
+          groupCache: priorityGroups[code],
+          proxyByCode,
+          manualLinkByCode,
+          cachedProxyLinks,
+          outboundMetadata,
+          showDetectedCountries: priorityConfig.showDetectedCountries,
+          selectorNow,
+          selectorCodes,
+        })
+      : undefined;
+
+    const isUrlTestChildSelected = Boolean(
+      urlTestInfo?.isManualSelection &&
+        urlTestInfo?.selectedCode &&
+        urlTestInfo.outbounds.some((m) => m.code === selectorNow),
+    );
+    const isPriorityChildSelected = Boolean(
+      priorityInfo?.isManualSelection &&
+        priorityInfo?.selectedCode &&
+        priorityInfo.outbounds.some((m) => m.code === selectorNow),
+    );
+
+    const isSelected =
+      selectorNow === code || isUrlTestChildSelected || isPriorityChildSelected;
+
+    const activeMemberLatency =
+      (isUrlTestChildSelected &&
+        urlTestInfo?.outbounds.find((m) => m.code === selectorNow)?.latency) ||
+      (isPriorityChildSelected &&
+        priorityInfo?.outbounds.find((m) => m.code === selectorNow)?.latency) ||
+      urlTestInfo?.outbounds.find(
+        (m) => m.selected || m.code === urlTestInfo.selectedCode,
+      )?.latency ||
+      priorityInfo?.outbounds.find(
+        (m) => m.selected || m.code === priorityInfo.selectedCode,
+      )?.latency ||
+      0;
+
+    const latency = item?.value.history?.[0]?.delay || activeMemberLatency || 0;
+
     return [
       {
         code,
         displayName,
-        latency: item?.value.history?.[0]?.delay || 0,
+        latency,
         type: priorityConfig ? 'Priority' : item?.value.type || 'URLTest',
-        selected: selector?.value?.now === code,
+        selected: isSelected,
         link,
         canCopyLink,
         country: showDetectedCountries
           ? outboundMetadata?.countries?.[code]
           : undefined,
         runtimeAvailable: item ? undefined : false,
-        urlTestInfo:
-          urlTestConfig || isRuntimeUrlTest
-            ? buildUrlTestInfo({
-                code,
-                displayName,
-                entry: item,
-                groupCache: urltestGroups[code],
-                proxyByCode,
-                manualLinkByCode,
-                cachedProxyLinks,
-                outboundMetadata,
-                showDetectedCountries:
-                  urlTestConfig?.showDetectedCountries || showDetectedCountries,
-              })
-            : undefined,
-        priorityInfo: priorityConfig
-          ? buildPriorityInfo({
-              config: priorityConfig,
-              entry: item,
-              groupCache: priorityGroups[code],
-              proxyByCode,
-              manualLinkByCode,
-              cachedProxyLinks,
-              outboundMetadata,
-              showDetectedCountries: priorityConfig.showDetectedCountries,
-            })
-          : undefined,
+        urlTestInfo,
+        priorityInfo,
       },
     ];
   });

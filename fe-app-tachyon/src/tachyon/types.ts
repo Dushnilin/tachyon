@@ -140,6 +140,7 @@ export namespace Tachyon {
     displayName: string;
     selectedCode?: string;
     selectedName?: string;
+    isManualSelection?: boolean;
     url?: string;
     interval?: string;
     tolerance?: string | number;
@@ -159,6 +160,7 @@ export namespace Tachyon {
     displayName: string;
     selectedCode?: string;
     selectedName?: string;
+    isManualSelection?: boolean;
     healthUrl?: string;
     activeCheckInterval?: string;
     checkTimeout?: string;

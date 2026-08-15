@@ -1,4 +1,4 @@
-﻿import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   getConfigSections: vi.fn(),
@@ -244,6 +244,59 @@ describe('getDashboardSections', () => {
       latency: 100,
       selected: false,
     });
+  });
+
+  it('marks URLTest group as manually selected when a hidden child is active in the selector', async () => {
+    mocks.getConfigSections.mockResolvedValue([proxySection()]);
+    mocks.getClashApiProxies.mockResolvedValue({
+      success: true,
+      data: {
+        proxies: {
+          'main-out': proxy('Selector', {
+            name: 'main-out',
+            now: 'main-3-out',
+            all: ['main-urltest-out'],
+          }),
+          'main-urltest-out': proxy('URLTest', {
+            name: 'main-urltest-out',
+            now: 'main-1-out',
+            history: [{ time: '2026-05-27T00:00:00Z', delay: 100 }],
+            all: ['main-1-out', 'main-3-out'],
+          }),
+          'main-1-out': clashProxies['main-1-out'],
+          'main-3-out': clashProxies['main-3-out'],
+        },
+      },
+    });
+    mocks.fsRead.mockResolvedValue(
+      JSON.stringify({
+        outboundMetadata: {
+          names: {
+            'main-1-out': 'First server',
+            'main-3-out': 'Third server',
+          },
+          countries: {},
+        },
+        urltestGroups: {
+          'main-urltest-out': {
+            displayName: 'Fastest',
+            outbounds: ['main-1-out', 'main-3-out'],
+          },
+        },
+      }),
+    );
+
+    const result = await getDashboardSections();
+    const [section] = result.data;
+    const urltest = section.outbounds.find(
+      (item) => item.code === 'main-urltest-out',
+    );
+
+    expect(result.success).toBe(true);
+    expect(urltest?.selected).toBe(true);
+    expect(urltest?.urlTestInfo?.isManualSelection).toBe(true);
+    expect(urltest?.urlTestInfo?.selectedCode).toBe('main-3-out');
+    expect(urltest?.urlTestInfo?.selectedName).toBe('Third server');
   });
 
   it('keeps an empty configured URLTest visible when sing-box skipped the group', async () => {

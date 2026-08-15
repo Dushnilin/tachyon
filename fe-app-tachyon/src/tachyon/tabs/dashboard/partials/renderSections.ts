@@ -25,8 +25,14 @@ interface IRenderSectionsProps {
     section: Tachyon.OutboundGroup,
     outbound: Tachyon.Outbound,
   ) => void;
-  onShowUrlTestInfo: (outbound: Tachyon.Outbound) => void;
-  onShowPriorityInfo: (outbound: Tachyon.Outbound) => void;
+  onShowUrlTestInfo: (
+    section: Tachyon.OutboundGroup,
+    outbound: Tachyon.Outbound,
+  ) => void;
+  onShowPriorityInfo: (
+    section: Tachyon.OutboundGroup,
+    outbound: Tachyon.Outbound,
+  ) => void;
   onUpdateSubscription: (section: Tachyon.OutboundGroup) => void;
   latencyFetching: boolean;
   latencyProgress?: Tachyon.LatencyActionProgress;
@@ -430,6 +436,20 @@ function renderDefaultState({
       );
     }
 
+    const isManualUrlTest = Boolean(outbound.urlTestInfo?.isManualSelection);
+    const isManualPriority = Boolean(outbound.priorityInfo?.isManualSelection);
+    const activeServerName =
+      outbound.urlTestInfo?.selectedName ||
+      outbound.priorityInfo?.selectedName ||
+      '';
+
+    const typeLabel =
+      isManualUrlTest || isManualPriority
+        ? `${outbound.type} (${_('Manual')})`
+        : outbound.urlTestInfo || outbound.priorityInfo
+          ? `${outbound.type} (${_('Auto')})`
+          : outbound.type;
+
     return E(
       'div',
       {
@@ -496,7 +516,7 @@ function renderDefaultState({
                       'aria-label': _('URLTest details'),
                       click: (event: MouseEvent) => {
                         event.stopPropagation();
-                        onShowUrlTestInfo(outbound);
+                        onShowUrlTestInfo(section, outbound);
                       },
                     },
                     renderInfoIcon24(),
@@ -515,7 +535,7 @@ function renderDefaultState({
                       'aria-label': _('Priority details'),
                       click: (event: MouseEvent) => {
                         event.stopPropagation();
-                        onShowPriorityInfo(outbound);
+                        onShowPriorityInfo(section, outbound);
                       },
                     },
                     renderInfoIcon24(),
@@ -524,6 +544,21 @@ function renderDefaultState({
               : []),
           ],
         ),
+        ...(activeServerName
+          ? [
+              E(
+                'div',
+                {
+                  class:
+                    'tachyon_dashboard-page__outbound-grid__item__active-server',
+                  style:
+                    'font-size: 13px; font-weight: 500; opacity: 0.95; margin: 4px 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: flex; align-items: center; gap: 4px;',
+                  title: activeServerName,
+                },
+                renderFlagEmojis(activeServerName),
+              ),
+            ]
+          : []),
         E(
           'div',
           { class: 'tachyon_dashboard-page__outbound-grid__item__footer' },
@@ -531,7 +566,7 @@ function renderDefaultState({
             E(
               'div',
               { class: 'tachyon_dashboard-page__outbound-grid__item__type' },
-              [outbound.type].filter(Boolean),
+              typeLabel,
             ),
             E(
               'div',
