@@ -253,8 +253,15 @@ function get_wan_ip_addresses() {
 }
 
 function dns_check_through_singbox(domain) {
+    let resolved = dns_check_resolve_host(domain, SB_DNS_INBOUND_ADDRESS, 3);
+    if (resolved != "")
+        return true;
+
     let res = command_capture("nslookup " + shell_quote(domain) + " " + SB_DNS_INBOUND_ADDRESS + " 2>&1");
-    return index(res.output, "Address:") >= 0 && index(res.output, "#53") >= 0 && index(res.output, "NXDOMAIN") < 0;
+    return (index(res.output, "Address") >= 0 || index(res.output, "name =") >= 0) &&
+           index(res.output, "NXDOMAIN") < 0 &&
+           index(res.output, "can't resolve") < 0 &&
+           index(res.output, "timed out") < 0;
 }
 
 function get_wan_interface() {

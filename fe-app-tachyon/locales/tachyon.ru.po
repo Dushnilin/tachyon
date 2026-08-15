@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-08-15 11:59+0300\n"
-"PO-Revision-Date: 2026-08-15 11:59+0300\n"
+"POT-Creation-Date: 2026-08-15 12:12+0300\n"
+"PO-Revision-Date: 2026-08-15 12:12+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -1928,6 +1928,9 @@ msgstr "Конфликт не обнаружен"
 msgid "No Custom Rules Matched"
 msgstr "Нет совпадений с пользовательскими правилами"
 
+msgid "No DHCP clients detected"
+msgstr ""
+
 msgid "No diagnostic history available yet."
 msgstr "История проверок пока пуста."
 
@@ -1969,6 +1972,9 @@ msgstr "Список узлов пуст"
 
 msgid "Nodes"
 msgstr "Узлы"
+
+msgid "None"
+msgstr "Нет"
 
 msgid "Not configured"
 msgstr "Не настроено"
@@ -3697,9 +3703,6 @@ msgstr "Запуск..."
 
 msgid "Stopping..."
 msgstr "Остановка..."
-
-msgid "None"
-msgstr "Нет"
 
 msgid "Enabled"
 msgstr "Включено"

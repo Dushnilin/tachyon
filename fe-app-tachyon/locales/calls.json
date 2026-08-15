@@ -331,7 +331,7 @@
     "call": "AI Doctor Diagnosis",
     "key": "AI Doctor Diagnosis",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:1491"
+      "src/tachyon/tabs/diagnostic/initController.ts:1502"
     ]
   },
   {
@@ -339,8 +339,8 @@
     "key": "AI Doctor failed",
     "places": [
       "src/tachyon/tabs/diagnostic/initController.ts:846",
-      "src/tachyon/tabs/diagnostic/initController.ts:1497",
-      "src/tachyon/tabs/diagnostic/initController.ts:1505"
+      "src/tachyon/tabs/diagnostic/initController.ts:1508",
+      "src/tachyon/tabs/diagnostic/initController.ts:1516"
     ]
   },
   {
@@ -499,7 +499,7 @@
     "call": "Anonymized support report copied to clipboard",
     "key": "Anonymized support report copied to clipboard",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:947"
+      "src/tachyon/tabs/diagnostic/initController.ts:958"
     ]
   },
   {
@@ -534,14 +534,14 @@
     "call": "Applying fix",
     "key": "Applying fix",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:1153"
+      "src/tachyon/tabs/diagnostic/initController.ts:1164"
     ]
   },
   {
     "call": "Applying...",
     "key": "Applying...",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:1151"
+      "src/tachyon/tabs/diagnostic/initController.ts:1162"
     ]
   },
   {
@@ -619,7 +619,7 @@
     "call": "Auto-Heal Network Stack",
     "key": "Auto-Heal Network Stack",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:1071"
+      "src/tachyon/tabs/diagnostic/initController.ts:1082"
     ]
   },
   {
@@ -771,7 +771,7 @@
     "call": "Bug report downloaded",
     "key": "Bug report downloaded",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:1595"
+      "src/tachyon/tabs/diagnostic/initController.ts:1606"
     ]
   },
   {
@@ -1029,7 +1029,7 @@
     "call": "Checking, please wait",
     "key": "Checking, please wait",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:1889",
+      "src/tachyon/tabs/diagnostic/initController.ts:1900",
       "src/tachyon/tabs/diagnostic/checks/runByedpiCheck.ts:14",
       "src/tachyon/tabs/diagnostic/checks/runDnsCheck.ts:15",
       "src/tachyon/tabs/diagnostic/checks/runFakeIPCheck.ts:15",
@@ -1070,17 +1070,17 @@
     "call": "Checks failed",
     "key": "Checks failed",
     "places": [
-      "src/tachyon/tabs/diagnostic/checks/getCheckItemsMeta.ts:10",
-      "src/tachyon/tabs/diagnostic/helpers/getMeta.ts:26"
+      "src/tachyon/tabs/diagnostic/helpers/getMeta.ts:26",
+      "src/tachyon/tabs/diagnostic/checks/getCheckItemsMeta.ts:10"
     ]
   },
   {
     "call": "Checks passed",
     "key": "Checks passed",
     "places": [
+      "src/tachyon/tabs/diagnostic/helpers/getMeta.ts:13",
       "src/tachyon/tabs/diagnostic/checks/getCheckItemsMeta.ts:23",
-      "src/tachyon/tabs/diagnostic/checks/runFakeIPCheck.ts:43",
-      "src/tachyon/tabs/diagnostic/helpers/getMeta.ts:13"
+      "src/tachyon/tabs/diagnostic/checks/runFakeIPCheck.ts:43"
     ]
   },
   {
@@ -1143,7 +1143,7 @@
     "call": "Clear DNS cache",
     "key": "Clear DNS cache",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:1064"
+      "src/tachyon/tabs/diagnostic/initController.ts:1075"
     ]
   },
   {
@@ -1168,9 +1168,9 @@
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:10221",
       "src/partials/modal/renderModal.ts:263",
       "src/tachyon/tabs/dashboard/initController.ts:1083",
-      "src/tachyon/tabs/diagnostic/initController.ts:1481",
       "src/tachyon/tabs/monitoring/initController.ts:884",
       "src/tachyon/tabs/monitoring/initController.ts:934",
+      "src/tachyon/tabs/diagnostic/initController.ts:1492",
       "src/tachyon/tabs/diagnostic/partials/renderAiChatModal.ts:212",
       "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:391",
       "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:431"
@@ -1325,7 +1325,7 @@
     "call": "Connected Devices",
     "key": "Connected Devices",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:1248"
+      "src/tachyon/tabs/diagnostic/initController.ts:1259"
     ]
   },
   {
@@ -1383,7 +1383,7 @@
     "call": "Copy Support Report",
     "key": "Copy Support Report",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:1476"
+      "src/tachyon/tabs/diagnostic/initController.ts:1487"
     ]
   },
   {
@@ -1404,7 +1404,7 @@
     "call": "Current Diagnosis",
     "key": "Current Diagnosis",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:1424"
+      "src/tachyon/tabs/diagnostic/initController.ts:1435"
     ]
   },
   {
@@ -1583,7 +1583,7 @@
     "call": "Device updated",
     "key": "Device updated",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:1331"
+      "src/tachyon/tabs/diagnostic/initController.ts:1342"
     ]
   },
   {
@@ -1618,7 +1618,7 @@
     "call": "Direct Bypass",
     "key": "Direct Bypass",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:1318"
+      "src/tachyon/tabs/diagnostic/initController.ts:1329"
     ]
   },
   {
@@ -1632,7 +1632,7 @@
     "call": "Direct WAN",
     "key": "Direct WAN",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:1309"
+      "src/tachyon/tabs/diagnostic/initController.ts:1320"
     ]
   },
   {
@@ -2197,7 +2197,7 @@
     "call": "Enable Direct WAN Bypass",
     "key": "Enable Direct WAN Bypass",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:1072"
+      "src/tachyon/tabs/diagnostic/initController.ts:1083"
     ]
   },
   {
@@ -2542,7 +2542,7 @@
     "call": "Failed to apply fix",
     "key": "Failed to apply fix",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:1174"
+      "src/tachyon/tabs/diagnostic/initController.ts:1185"
     ]
   },
   {
@@ -2565,7 +2565,7 @@
     "call": "Failed to copy report to clipboard",
     "key": "Failed to copy report to clipboard",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:951"
+      "src/tachyon/tabs/diagnostic/initController.ts:962"
     ]
   },
   {
@@ -2598,7 +2598,7 @@
     "call": "Failed to generate bug report",
     "key": "Failed to generate bug report",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:1598"
+      "src/tachyon/tabs/diagnostic/initController.ts:1609"
     ]
   },
   {
@@ -2725,7 +2725,7 @@
     "call": "Failed to update device",
     "key": "Failed to update device",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:1336"
+      "src/tachyon/tabs/diagnostic/initController.ts:1347"
     ]
   },
   {
@@ -2809,14 +2809,14 @@
     "call": "Fix applied",
     "key": "Fix applied",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:1168"
+      "src/tachyon/tabs/diagnostic/initController.ts:1179"
     ]
   },
   {
     "call": "Fix resolv.conf",
     "key": "Fix resolv.conf",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:1058"
+      "src/tachyon/tabs/diagnostic/initController.ts:1069"
     ]
   },
   {
@@ -2831,7 +2831,7 @@
     "key": "Fixed",
     "places": [
       "src/tachyon/tabs/diagnostic/initController.ts:742",
-      "src/tachyon/tabs/diagnostic/initController.ts:1164"
+      "src/tachyon/tabs/diagnostic/initController.ts:1175"
     ]
   },
   {
@@ -3115,7 +3115,7 @@
     "call": "History",
     "key": "History",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:1452"
+      "src/tachyon/tabs/diagnostic/initController.ts:1463"
     ]
   },
   {
@@ -3995,15 +3995,15 @@
     "call": "Issues detected",
     "key": "Issues detected",
     "places": [
-      "src/tachyon/tabs/diagnostic/checks/getCheckItemsMeta.ts:17",
-      "src/tachyon/tabs/diagnostic/helpers/getMeta.ts:20"
+      "src/tachyon/tabs/diagnostic/helpers/getMeta.ts:20",
+      "src/tachyon/tabs/diagnostic/checks/getCheckItemsMeta.ts:17"
     ]
   },
   {
     "call": "Issues detected. Review the diagnosis above.",
     "key": "Issues detected. Review the diagnosis above.",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:1193"
+      "src/tachyon/tabs/diagnostic/initController.ts:1204"
     ]
   },
   {
@@ -4126,7 +4126,7 @@
     "call": "LAN Devices",
     "key": "LAN Devices",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:1436"
+      "src/tachyon/tabs/diagnostic/initController.ts:1447"
     ]
   },
   {
@@ -4263,7 +4263,7 @@
     "call": "Loading connected LAN devices...",
     "key": "Loading connected LAN devices...",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:1215"
+      "src/tachyon/tabs/diagnostic/initController.ts:1226"
     ]
   },
   {
@@ -4626,7 +4626,7 @@
     "call": "No active DHCP clients found on local network.",
     "key": "No active DHCP clients found on local network.",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:1227"
+      "src/tachyon/tabs/diagnostic/initController.ts:1238"
     ]
   },
   {
@@ -4659,10 +4659,17 @@
     ]
   },
   {
+    "call": "No DHCP clients detected",
+    "key": "No DHCP clients detected",
+    "places": [
+      "src/tachyon/tabs/diagnostic/initController.ts:931"
+    ]
+  },
+  {
     "call": "No diagnostic history available yet.",
     "key": "No diagnostic history available yet.",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:1354"
+      "src/tachyon/tabs/diagnostic/initController.ts:1365"
     ]
   },
   {
@@ -4690,7 +4697,7 @@
     "call": "No issues detected. System is running normally.",
     "key": "No issues detected. System is running normally.",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:1202"
+      "src/tachyon/tabs/diagnostic/initController.ts:1213"
     ]
   },
   {
@@ -4754,6 +4761,13 @@
     "key": "Nodes",
     "places": [
       "src/tachyon/tabs/dashboard/initController.ts:973"
+    ]
+  },
+  {
+    "call": "None",
+    "key": "None",
+    "places": [
+      "src/tachyon/tabs/diagnostic/initController.ts:922"
     ]
   },
   {
@@ -5048,7 +5062,7 @@
     "call": "Optimize RAM memory",
     "key": "Optimize RAM memory",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:1069"
+      "src/tachyon/tabs/diagnostic/initController.ts:1080"
     ]
   },
   {
@@ -5490,7 +5504,7 @@
     "call": "Proxy / DPI",
     "key": "Proxy / DPI",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:1310"
+      "src/tachyon/tabs/diagnostic/initController.ts:1321"
     ]
   },
   {
@@ -5576,7 +5590,7 @@
     "call": "Rebuild firewall rules",
     "key": "Rebuild firewall rules",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:1056"
+      "src/tachyon/tabs/diagnostic/initController.ts:1067"
     ]
   },
   {
@@ -5590,7 +5604,7 @@
     "call": "Recommended Quick Fixes:",
     "key": "Recommended Quick Fixes:",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:1135"
+      "src/tachyon/tabs/diagnostic/initController.ts:1146"
     ]
   },
   {
@@ -5604,7 +5618,7 @@
     "call": "Reconnect WAN",
     "key": "Reconnect WAN",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:1062"
+      "src/tachyon/tabs/diagnostic/initController.ts:1073"
     ]
   },
   {
@@ -5632,14 +5646,14 @@
     "call": "Refresh",
     "key": "Refresh",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:1252"
+      "src/tachyon/tabs/diagnostic/initController.ts:1263"
     ]
   },
   {
     "call": "Refresh Device List",
     "key": "Refresh Device List",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:1231"
+      "src/tachyon/tabs/diagnostic/initController.ts:1242"
     ]
   },
   {
@@ -5761,7 +5775,7 @@
     "call": "Resolve gateway",
     "key": "Resolve gateway",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:1063"
+      "src/tachyon/tabs/diagnostic/initController.ts:1074"
     ]
   },
   {
@@ -5817,28 +5831,28 @@
     "call": "Restart dnsmasq",
     "key": "Restart dnsmasq",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:1057"
+      "src/tachyon/tabs/diagnostic/initController.ts:1068"
     ]
   },
   {
     "call": "Restart firewall",
     "key": "Restart firewall",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:1066"
+      "src/tachyon/tabs/diagnostic/initController.ts:1077"
     ]
   },
   {
     "call": "Restart network",
     "key": "Restart network",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:1067"
+      "src/tachyon/tabs/diagnostic/initController.ts:1078"
     ]
   },
   {
     "call": "Restart sing-box DNS",
     "key": "Restart sing-box DNS",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:1060"
+      "src/tachyon/tabs/diagnostic/initController.ts:1071"
     ]
   },
   {
@@ -5852,7 +5866,7 @@
     "call": "Restart Zapret/ByeDPI",
     "key": "Restart Zapret/ByeDPI",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:1068"
+      "src/tachyon/tabs/diagnostic/initController.ts:1079"
     ]
   },
   {
@@ -5874,7 +5888,7 @@
     "call": "Restore config backup",
     "key": "Restore config backup",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:1061"
+      "src/tachyon/tabs/diagnostic/initController.ts:1072"
     ]
   },
   {
@@ -5931,7 +5945,7 @@
     "call": "Route via Proxy",
     "key": "Route via Proxy",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:1317"
+      "src/tachyon/tabs/diagnostic/initController.ts:1328"
     ]
   },
   {
@@ -6606,7 +6620,7 @@
     "call": "Show sing-box config",
     "key": "Show sing-box config",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:1531",
+      "src/tachyon/tabs/diagnostic/initController.ts:1542",
       "src/tachyon/tabs/diagnostic/partials/renderAvailableActions.ts:166"
     ]
   },
@@ -6890,7 +6904,7 @@
     "call": "Start sing-box",
     "key": "Start sing-box",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:1055"
+      "src/tachyon/tabs/diagnostic/initController.ts:1066"
     ]
   },
   {
@@ -6904,7 +6918,7 @@
     "call": "Start watchdog",
     "key": "Start watchdog",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:1059"
+      "src/tachyon/tabs/diagnostic/initController.ts:1070"
     ]
   },
   {
@@ -7081,7 +7095,7 @@
     "call": "Switch DNS to DoH",
     "key": "Switch DNS to DoH",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:1070"
+      "src/tachyon/tabs/diagnostic/initController.ts:1081"
     ]
   },
   {
@@ -7817,7 +7831,7 @@
       "src/tachyon/tabs/diagnostic/initController.ts:720",
       "src/tachyon/tabs/diagnostic/initController.ts:761",
       "src/tachyon/tabs/diagnostic/initController.ts:846",
-      "src/tachyon/tabs/diagnostic/initController.ts:1496"
+      "src/tachyon/tabs/diagnostic/initController.ts:1507"
     ]
   },
   {
@@ -7894,7 +7908,7 @@
     "call": "Update subscriptions",
     "key": "Update subscriptions",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:1065",
+      "src/tachyon/tabs/diagnostic/initController.ts:1076",
       "src/tachyon/tabs/dashboard/partials/renderSections.ts:218",
       "src/tachyon/tabs/dashboard/partials/renderSections.ts:231",
       "src/tachyon/tabs/dashboard/partials/renderSections.ts:232"
@@ -7932,7 +7946,7 @@
     "call": "Updating device routing mode...",
     "key": "Updating device routing mode...",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:1321"
+      "src/tachyon/tabs/diagnostic/initController.ts:1332"
     ]
   },
   {

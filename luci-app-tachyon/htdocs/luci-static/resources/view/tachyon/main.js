@@ -12259,11 +12259,22 @@ async function handleRunAiDoctor() {
         }
       };
       const copySupportReport = async () => {
+        let currentClients = lanClients;
+        if (currentClients.length === 0) {
+          try {
+            const res = await TachyonShellMethods.getLanClients();
+            if (res && res.success && res.data?.clients) {
+              lanClients = res.data.clients;
+              currentClients = lanClients;
+            }
+          } catch (_e) {
+          }
+        }
         const nodeSummary = nodes.map((n) => `${n.name}: ${n.status}`).join(" | ");
-        const fixesSummary = quickFixes.length > 0 ? quickFixes.map((f) => FIX_LABELS[f] || f).join(", ") : "None";
-        const clientsSummary = lanClients.length > 0 ? lanClients.map(
+        const fixesSummary = quickFixes.length > 0 ? quickFixes.map((f) => FIX_LABELS[f] || f).join(", ") : _("None");
+        const clientsSummary = currentClients.length > 0 ? currentClients.map(
           (c) => `- ${c.hostname} (IP: ${c.ip}, MAC: ${c.mac.slice(0, 8)}**): ${c.mode.toUpperCase()}`
-        ).join("\n") : "N/A";
+        ).join("\n") : _("No DHCP clients detected");
         const text = [
           "# Tachyon AI Doctor Diagnostic Report",
           `Generated: ${(/* @__PURE__ */ new Date()).toISOString()}`,

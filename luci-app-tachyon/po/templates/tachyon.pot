@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-08-15 08:59+0300\n"
-"PO-Revision-Date: 2026-08-15 08:59+0300\n"
+"POT-Creation-Date: 2026-08-15 09:12+0300\n"
+"PO-Revision-Date: 2026-08-15 09:12+0300\n"
 "Last-Translator: Dushnilin <dushnilin@gmail.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -212,13 +212,13 @@ msgstr ""
 msgid "AI Doctor (ChatGPT / DeepSeek API)"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1491
+#: src/tachyon/tabs/diagnostic/initController.ts:1502
 msgid "AI Doctor Diagnosis"
 msgstr ""
 
 #: src/tachyon/tabs/diagnostic/initController.ts:846
-#: src/tachyon/tabs/diagnostic/initController.ts:1497
-#: src/tachyon/tabs/diagnostic/initController.ts:1505
+#: src/tachyon/tabs/diagnostic/initController.ts:1508
+#: src/tachyon/tabs/diagnostic/initController.ts:1516
 msgid "AI Doctor failed"
 msgstr ""
 
@@ -311,7 +311,7 @@ msgstr ""
 msgid "AmneziaWG Generator"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:947
+#: src/tachyon/tabs/diagnostic/initController.ts:958
 msgid "Anonymized support report copied to clipboard"
 msgstr ""
 
@@ -331,11 +331,11 @@ msgstr ""
 msgid "Apply section rules only to the specified local IP addresses"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1153
+#: src/tachyon/tabs/diagnostic/initController.ts:1164
 msgid "Applying fix"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1151
+#: src/tachyon/tabs/diagnostic/initController.ts:1162
 msgid "Applying..."
 msgstr ""
 
@@ -380,7 +380,7 @@ msgstr ""
 msgid "Auto-generate HWID"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1071
+#: src/tachyon/tabs/diagnostic/initController.ts:1082
 msgid "Auto-Heal Network Stack"
 msgstr ""
 
@@ -469,7 +469,7 @@ msgstr ""
 msgid "Browser is using FakeIP correctly"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1595
+#: src/tachyon/tabs/diagnostic/initController.ts:1606
 msgid "Bug report downloaded"
 msgstr ""
 
@@ -625,7 +625,7 @@ msgstr ""
 msgid "Checking for updates..."
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1889
+#: src/tachyon/tabs/diagnostic/initController.ts:1900
 #: src/tachyon/tabs/diagnostic/checks/runByedpiCheck.ts:14
 #: src/tachyon/tabs/diagnostic/checks/runDnsCheck.ts:15
 #: src/tachyon/tabs/diagnostic/checks/runFakeIPCheck.ts:15
@@ -654,14 +654,14 @@ msgstr ""
 msgid "checks"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/checks/getCheckItemsMeta.ts:10
 #: src/tachyon/tabs/diagnostic/helpers/getMeta.ts:26
+#: src/tachyon/tabs/diagnostic/checks/getCheckItemsMeta.ts:10
 msgid "Checks failed"
 msgstr ""
 
+#: src/tachyon/tabs/diagnostic/helpers/getMeta.ts:13
 #: src/tachyon/tabs/diagnostic/checks/getCheckItemsMeta.ts:23
 #: src/tachyon/tabs/diagnostic/checks/runFakeIPCheck.ts:43
-#: src/tachyon/tabs/diagnostic/helpers/getMeta.ts:13
 msgid "Checks passed"
 msgstr ""
 
@@ -697,7 +697,7 @@ msgstr ""
 msgid "Clear"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1064
+#: src/tachyon/tabs/diagnostic/initController.ts:1075
 msgid "Clear DNS cache"
 msgstr ""
 
@@ -713,9 +713,9 @@ msgstr ""
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:10221
 #: src/partials/modal/renderModal.ts:263
 #: src/tachyon/tabs/dashboard/initController.ts:1083
-#: src/tachyon/tabs/diagnostic/initController.ts:1481
 #: src/tachyon/tabs/monitoring/initController.ts:884
 #: src/tachyon/tabs/monitoring/initController.ts:934
+#: src/tachyon/tabs/diagnostic/initController.ts:1492
 #: src/tachyon/tabs/diagnostic/partials/renderAiChatModal.ts:212
 #: src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:391
 #: src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:431
@@ -807,7 +807,7 @@ msgstr ""
 msgid "Connected"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1248
+#: src/tachyon/tabs/diagnostic/initController.ts:1259
 msgid "Connected Devices"
 msgstr ""
 
@@ -841,7 +841,7 @@ msgstr ""
 msgid "Copy proxy link"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1476
+#: src/tachyon/tabs/diagnostic/initController.ts:1487
 msgid "Copy Support Report"
 msgstr ""
 
@@ -853,7 +853,7 @@ msgstr ""
 msgid "Country code (e.g. ru, us, de)"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1424
+#: src/tachyon/tabs/diagnostic/initController.ts:1435
 msgid "Current Diagnosis"
 msgstr ""
 
@@ -957,7 +957,7 @@ msgstr ""
 msgid "Device or IP"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1331
+#: src/tachyon/tabs/diagnostic/initController.ts:1342
 msgid "Device updated"
 msgstr ""
 
@@ -977,7 +977,7 @@ msgstr ""
 msgid "Direct (Default)"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1318
+#: src/tachyon/tabs/diagnostic/initController.ts:1329
 msgid "Direct Bypass"
 msgstr ""
 
@@ -985,7 +985,7 @@ msgstr ""
 msgid "Direct connection"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1309
+#: src/tachyon/tabs/diagnostic/initController.ts:1320
 msgid "Direct WAN"
 msgstr ""
 
@@ -1316,7 +1316,7 @@ msgstr ""
 msgid "Enable Config Validation"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1072
+#: src/tachyon/tabs/diagnostic/initController.ts:1083
 msgid "Enable Direct WAN Bypass"
 msgstr ""
 
@@ -1523,7 +1523,7 @@ msgstr ""
 msgid "External nfqws2 config files bypass Tachyon queue management and explicit validation."
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1174
+#: src/tachyon/tabs/diagnostic/initController.ts:1185
 msgid "Failed to apply fix"
 msgstr ""
 
@@ -1537,7 +1537,7 @@ msgstr ""
 msgid "Failed to close connections"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:951
+#: src/tachyon/tabs/diagnostic/initController.ts:962
 msgid "Failed to copy report to clipboard"
 msgstr ""
 
@@ -1558,7 +1558,7 @@ msgstr ""
 msgid "Failed to execute"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1598
+#: src/tachyon/tabs/diagnostic/initController.ts:1609
 msgid "Failed to generate bug report"
 msgstr ""
 
@@ -1631,7 +1631,7 @@ msgstr ""
 msgid "Failed to stop watchdog"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1336
+#: src/tachyon/tabs/diagnostic/initController.ts:1347
 msgid "Failed to update device"
 msgstr ""
 
@@ -1682,11 +1682,11 @@ msgstr ""
 msgid "Firewall WAN port"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1168
+#: src/tachyon/tabs/diagnostic/initController.ts:1179
 msgid "Fix applied"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1058
+#: src/tachyon/tabs/diagnostic/initController.ts:1069
 msgid "Fix resolv.conf"
 msgstr ""
 
@@ -1695,7 +1695,7 @@ msgid "Fix the highlighted fields and save again."
 msgstr ""
 
 #: src/tachyon/tabs/diagnostic/initController.ts:742
-#: src/tachyon/tabs/diagnostic/initController.ts:1164
+#: src/tachyon/tabs/diagnostic/initController.ts:1175
 msgid "Fixed"
 msgstr ""
 
@@ -1859,7 +1859,7 @@ msgstr ""
 msgid "Higher-priority DNS Check"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1452
+#: src/tachyon/tabs/diagnostic/initController.ts:1463
 msgid "History"
 msgstr ""
 
@@ -2373,12 +2373,12 @@ msgstr ""
 msgid "Issues"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/checks/getCheckItemsMeta.ts:17
 #: src/tachyon/tabs/diagnostic/helpers/getMeta.ts:20
+#: src/tachyon/tabs/diagnostic/checks/getCheckItemsMeta.ts:17
 msgid "Issues detected"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1193
+#: src/tachyon/tabs/diagnostic/initController.ts:1204
 msgid "Issues detected. Review the diagnosis above."
 msgstr ""
 
@@ -2450,7 +2450,7 @@ msgstr ""
 msgid "Keyword must not contain spaces or commas"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1436
+#: src/tachyon/tabs/diagnostic/initController.ts:1447
 msgid "LAN Devices"
 msgstr ""
 
@@ -2530,7 +2530,7 @@ msgstr ""
 msgid "Loaded!"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1215
+#: src/tachyon/tabs/diagnostic/initController.ts:1226
 msgid "Loading connected LAN devices..."
 msgstr ""
 
@@ -2743,7 +2743,7 @@ msgstr ""
 msgid "No active connections"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1227
+#: src/tachyon/tabs/diagnostic/initController.ts:1238
 msgid "No active DHCP clients found on local network."
 msgstr ""
 
@@ -2764,7 +2764,11 @@ msgstr ""
 msgid "No Custom Rules Matched"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1354
+#: src/tachyon/tabs/diagnostic/initController.ts:931
+msgid "No DHCP clients detected"
+msgstr ""
+
+#: src/tachyon/tabs/diagnostic/initController.ts:1365
 msgid "No diagnostic history available yet."
 msgstr ""
 
@@ -2780,7 +2784,7 @@ msgstr ""
 msgid "No file selected"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1202
+#: src/tachyon/tabs/diagnostic/initController.ts:1213
 msgid "No issues detected. System is running normally."
 msgstr ""
 
@@ -2818,6 +2822,10 @@ msgstr ""
 
 #: src/tachyon/tabs/dashboard/initController.ts:973
 msgid "Nodes"
+msgstr ""
+
+#: src/tachyon/tabs/diagnostic/initController.ts:922
+msgid "None"
 msgstr ""
 
 #: src/tachyon/methods/custom/getDashboardSections.ts:1572
@@ -2994,7 +3002,7 @@ msgstr ""
 msgid "Optimization"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1069
+#: src/tachyon/tabs/diagnostic/initController.ts:1080
 msgid "Optimize RAM memory"
 msgstr ""
 
@@ -3253,7 +3261,7 @@ msgstr ""
 msgid "Protocol"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1310
+#: src/tachyon/tabs/diagnostic/initController.ts:1321
 msgid "Proxy / DPI"
 msgstr ""
 
@@ -3303,7 +3311,7 @@ msgstr ""
 msgid "Read error"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1056
+#: src/tachyon/tabs/diagnostic/initController.ts:1067
 msgid "Rebuild firewall rules"
 msgstr ""
 
@@ -3311,7 +3319,7 @@ msgstr ""
 msgid "Rebuilt release"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1135
+#: src/tachyon/tabs/diagnostic/initController.ts:1146
 msgid "Recommended Quick Fixes:"
 msgstr ""
 
@@ -3319,7 +3327,7 @@ msgstr ""
 msgid "Reconnect Threshold"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1062
+#: src/tachyon/tabs/diagnostic/initController.ts:1073
 msgid "Reconnect WAN"
 msgstr ""
 
@@ -3335,11 +3343,11 @@ msgstr ""
 msgid "Refill"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1252
+#: src/tachyon/tabs/diagnostic/initController.ts:1263
 msgid "Refresh"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1231
+#: src/tachyon/tabs/diagnostic/initController.ts:1242
 msgid "Refresh Device List"
 msgstr ""
 
@@ -3410,7 +3418,7 @@ msgstr ""
 msgid "Resolve domain names before routing so sing-box can use real destination IPs."
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1063
+#: src/tachyon/tabs/diagnostic/initController.ts:1074
 msgid "Resolve gateway"
 msgstr ""
 
@@ -3442,19 +3450,19 @@ msgstr ""
 msgid "Response Packet Magic Header (S4)"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1057
+#: src/tachyon/tabs/diagnostic/initController.ts:1068
 msgid "Restart dnsmasq"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1066
+#: src/tachyon/tabs/diagnostic/initController.ts:1077
 msgid "Restart firewall"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1067
+#: src/tachyon/tabs/diagnostic/initController.ts:1078
 msgid "Restart network"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1060
+#: src/tachyon/tabs/diagnostic/initController.ts:1071
 msgid "Restart sing-box DNS"
 msgstr ""
 
@@ -3462,7 +3470,7 @@ msgstr ""
 msgid "Restart Tachyon"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1068
+#: src/tachyon/tabs/diagnostic/initController.ts:1079
 msgid "Restart Zapret/ByeDPI"
 msgstr ""
 
@@ -3475,7 +3483,7 @@ msgstr ""
 msgid "Restore"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1061
+#: src/tachyon/tabs/diagnostic/initController.ts:1072
 msgid "Restore config backup"
 msgstr ""
 
@@ -3508,7 +3516,7 @@ msgstr ""
 msgid "Route requests to this DNS server through another section."
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1317
+#: src/tachyon/tabs/diagnostic/initController.ts:1328
 msgid "Route via Proxy"
 msgstr ""
 
@@ -3907,7 +3915,7 @@ msgstr ""
 msgid "Show servers whose names match the expression."
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1531
+#: src/tachyon/tabs/diagnostic/initController.ts:1542
 #: src/tachyon/tabs/diagnostic/partials/renderAvailableActions.ts:166
 msgid "Show sing-box config"
 msgstr ""
@@ -4071,7 +4079,7 @@ msgstr ""
 msgid "Start bot"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1055
+#: src/tachyon/tabs/diagnostic/initController.ts:1066
 msgid "Start sing-box"
 msgstr ""
 
@@ -4079,7 +4087,7 @@ msgstr ""
 msgid "Start Tachyon"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1059
+#: src/tachyon/tabs/diagnostic/initController.ts:1070
 msgid "Start watchdog"
 msgstr ""
 
@@ -4184,7 +4192,7 @@ msgstr ""
 msgid "Sweden (se)"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1070
+#: src/tachyon/tabs/diagnostic/initController.ts:1081
 msgid "Switch DNS to DoH"
 msgstr ""
 
@@ -4620,7 +4628,7 @@ msgstr ""
 #: src/tachyon/tabs/diagnostic/initController.ts:720
 #: src/tachyon/tabs/diagnostic/initController.ts:761
 #: src/tachyon/tabs/diagnostic/initController.ts:846
-#: src/tachyon/tabs/diagnostic/initController.ts:1496
+#: src/tachyon/tabs/diagnostic/initController.ts:1507
 msgid "Unknown error"
 msgstr ""
 
@@ -4664,7 +4672,7 @@ msgstr ""
 msgid "Update is available:"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1065
+#: src/tachyon/tabs/diagnostic/initController.ts:1076
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:218
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:231
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:232
@@ -4687,7 +4695,7 @@ msgstr ""
 msgid "Updating"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/initController.ts:1321
+#: src/tachyon/tabs/diagnostic/initController.ts:1332
 msgid "Updating device routing mode..."
 msgstr ""
 
