@@ -12387,7 +12387,7 @@ async function handleRunAiDoctor() {
           quickFixes.length > 0 ? E(
             "div",
             {
-              class: "alert-message success",
+              class: "alert-message warning",
               style: "margin-top: 12px; padding: 10px 12px; border-radius: 6px;"
             },
             [
@@ -12439,6 +12439,13 @@ async function handleRunAiDoctor() {
                 })
               )
             ]
+          ) : nodes.some((n) => n.status === "FAIL" || n.status === "WARN") ? E(
+            "div",
+            {
+              class: "alert-message warning",
+              style: "margin-top: 12px; padding: 8px 12px; font-size: 12px; border-radius: 6px;"
+            },
+            "\u26A0\uFE0F " + _("Issues detected. Review the diagnosis above.")
           ) : E(
             "div",
             {

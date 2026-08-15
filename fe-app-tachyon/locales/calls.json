@@ -60,21 +60,21 @@
     "call": "⏹ Stop",
     "key": "⏹ Stop",
     "places": [
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:467"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:466"
     ]
   },
   {
     "call": "▶ Start",
     "key": "▶ Start",
     "places": [
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:467"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:466"
     ]
   },
   {
     "call": "⚙ Advanced Settings",
     "key": "⚙ Advanced Settings",
     "places": [
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1196"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1195"
     ]
   },
   {
@@ -95,25 +95,25 @@
     "call": "✔ Running",
     "key": "✔ Running",
     "places": [
-      "src/tachyon/tabs/dashboard/initController.ts:1670",
-      "src/tachyon/tabs/dashboard/initController.ts:1679",
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:457"
+      "src/tachyon/tabs/dashboard/initController.ts:1664",
+      "src/tachyon/tabs/dashboard/initController.ts:1673",
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:456"
     ]
   },
   {
     "call": "✘ Stopped",
     "key": "✘ Stopped",
     "places": [
-      "src/tachyon/tabs/dashboard/initController.ts:1670",
-      "src/tachyon/tabs/dashboard/initController.ts:1679",
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:457"
+      "src/tachyon/tabs/dashboard/initController.ts:1664",
+      "src/tachyon/tabs/dashboard/initController.ts:1673",
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:456"
     ]
   },
   {
     "call": "🔑 Generate",
     "key": "🔑 Generate",
     "places": [
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:722"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:721"
     ]
   },
   {
@@ -151,7 +151,7 @@
     "call": "Active Connections",
     "key": "Active Connections",
     "places": [
-      "src/tachyon/tabs/dashboard/initController.ts:1655"
+      "src/tachyon/tabs/dashboard/initController.ts:1649"
     ]
   },
   {
@@ -260,7 +260,7 @@
     "call": "Advanced self-healing features. Requires Watchdog to be enabled.",
     "key": "Advanced self-healing features. Requires Watchdog to be enabled.",
     "places": [
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:579"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:578"
     ]
   },
   {
@@ -288,7 +288,7 @@
     "call": "AI Agent REST API (12 Endpoints)",
     "key": "AI Agent REST API (12 Endpoints)",
     "places": [
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:684"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:683"
     ]
   },
   {
@@ -303,7 +303,7 @@
     "key": "AI API Key",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:1684",
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:893"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:892"
     ]
   },
   {
@@ -324,23 +324,23 @@
     "call": "AI Doctor (ChatGPT / DeepSeek API)",
     "key": "AI Doctor (ChatGPT / DeepSeek API)",
     "places": [
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:740"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:739"
     ]
   },
   {
     "call": "AI Doctor Diagnosis",
     "key": "AI Doctor Diagnosis",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:1158"
+      "src/tachyon/tabs/diagnostic/initController.ts:1491"
     ]
   },
   {
     "call": "AI Doctor failed",
     "key": "AI Doctor failed",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:847",
-      "src/tachyon/tabs/diagnostic/initController.ts:1164",
-      "src/tachyon/tabs/diagnostic/initController.ts:1172"
+      "src/tachyon/tabs/diagnostic/initController.ts:846",
+      "src/tachyon/tabs/diagnostic/initController.ts:1497",
+      "src/tachyon/tabs/diagnostic/initController.ts:1505"
     ]
   },
   {
@@ -348,7 +348,7 @@
     "key": "AI Doctor Language",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:1671",
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:860"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:859"
     ]
   },
   {
@@ -356,7 +356,7 @@
     "key": "AI Model",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:1658",
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:836"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:835"
     ]
   },
   {
@@ -364,7 +364,7 @@
     "key": "AI Provider",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:1642",
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:766"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:765"
     ]
   },
   {
@@ -378,14 +378,14 @@
     "call": "AI Watchdog",
     "key": "AI Watchdog",
     "places": [
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:574"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:573"
     ]
   },
   {
     "call": "AI Watchdog settings saved. Restart watchdog to apply.",
     "key": "AI Watchdog settings saved. Restart watchdog to apply.",
     "places": [
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:401"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:400"
     ]
   },
   {
@@ -496,10 +496,17 @@
     ]
   },
   {
+    "call": "Anonymized support report copied to clipboard",
+    "key": "Anonymized support report copied to clipboard",
+    "places": [
+      "src/tachyon/tabs/diagnostic/initController.ts:947"
+    ]
+  },
+  {
     "call": "Another component action is already running",
     "key": "Another component action is already running",
     "places": [
-      "src/tachyon/tabs/updates/initController.ts:836"
+      "src/tachyon/tabs/updates/initController.ts:841"
     ]
   },
   {
@@ -524,17 +531,17 @@
     ]
   },
   {
-    "call": "Applying changes & reloading services...",
-    "key": "Applying changes & reloading services...",
-    "places": [
-      "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:138"
-    ]
-  },
-  {
     "call": "Applying fix",
     "key": "Applying fix",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:999"
+      "src/tachyon/tabs/diagnostic/initController.ts:1153"
+    ]
+  },
+  {
+    "call": "Applying...",
+    "key": "Applying...",
+    "places": [
+      "src/tachyon/tabs/diagnostic/initController.ts:1151"
     ]
   },
   {
@@ -598,7 +605,7 @@
     "key": "Auto-detects blocked domains from logs and adds them to the first section where they work via proxy.",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:1834",
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1053"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1052"
     ]
   },
   {
@@ -606,6 +613,13 @@
     "key": "Auto-generate HWID",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:2455"
+    ]
+  },
+  {
+    "call": "Auto-Heal Network Stack",
+    "key": "Auto-Heal Network Stack",
+    "places": [
+      "src/tachyon/tabs/diagnostic/initController.ts:1071"
     ]
   },
   {
@@ -662,7 +676,7 @@
     "key": "Automatically select the fastest node in the current level",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:3148",
-      "src/tachyon/tabs/dashboard/initController.ts:1243"
+      "src/tachyon/tabs/dashboard/initController.ts:1241"
     ]
   },
   {
@@ -692,7 +706,7 @@
     "call": "Bearer Auth Token",
     "key": "Bearer Auth Token",
     "places": [
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:694"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:693"
     ]
   },
   {
@@ -757,7 +771,7 @@
     "call": "Bug report downloaded",
     "key": "Bug report downloaded",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:1262"
+      "src/tachyon/tabs/diagnostic/initController.ts:1595"
     ]
   },
   {
@@ -940,7 +954,7 @@
     "key": "Check completed!",
     "places": [
       "src/tachyon/tabs/updates/initController.ts:498",
-      "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:481"
+      "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:338"
     ]
   },
   {
@@ -957,7 +971,7 @@
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:2636",
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:3099",
-      "src/tachyon/tabs/dashboard/initController.ts:1230"
+      "src/tachyon/tabs/dashboard/initController.ts:1228"
     ]
   },
   {
@@ -978,7 +992,7 @@
     "call": "Check update",
     "key": "Check update",
     "places": [
-      "src/tachyon/tabs/updates/initController.ts:905"
+      "src/tachyon/tabs/updates/initController.ts:910"
     ]
   },
   {
@@ -987,7 +1001,7 @@
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:2662",
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:3086",
-      "src/tachyon/tabs/dashboard/initController.ts:1228"
+      "src/tachyon/tabs/dashboard/initController.ts:1226"
     ]
   },
   {
@@ -1001,21 +1015,21 @@
     "call": "Checking Connection...",
     "key": "Checking Connection...",
     "places": [
-      "src/tachyon/tabs/dashboard/initController.ts:1404"
+      "src/tachyon/tabs/dashboard/initController.ts:1402"
     ]
   },
   {
     "call": "Checking for updates...",
     "key": "Checking for updates...",
     "places": [
-      "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:114"
+      "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:112"
     ]
   },
   {
     "call": "Checking, please wait",
     "key": "Checking, please wait",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:1556",
+      "src/tachyon/tabs/diagnostic/initController.ts:1889",
       "src/tachyon/tabs/diagnostic/checks/runByedpiCheck.ts:14",
       "src/tachyon/tabs/diagnostic/checks/runDnsCheck.ts:15",
       "src/tachyon/tabs/diagnostic/checks/runFakeIPCheck.ts:15",
@@ -1119,17 +1133,17 @@
     ]
   },
   {
-    "call": "Cleaning configuration & reloading...",
-    "key": "Cleaning configuration & reloading...",
-    "places": [
-      "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:131"
-    ]
-  },
-  {
     "call": "Clear",
     "key": "Clear",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:10013"
+    ]
+  },
+  {
+    "call": "Clear DNS cache",
+    "key": "Clear DNS cache",
+    "places": [
+      "src/tachyon/tabs/diagnostic/initController.ts:1064"
     ]
   },
   {
@@ -1153,13 +1167,13 @@
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:3651",
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:10221",
       "src/partials/modal/renderModal.ts:263",
-      "src/tachyon/tabs/dashboard/initController.ts:1085",
-      "src/tachyon/tabs/diagnostic/initController.ts:1148",
+      "src/tachyon/tabs/dashboard/initController.ts:1083",
+      "src/tachyon/tabs/diagnostic/initController.ts:1481",
       "src/tachyon/tabs/monitoring/initController.ts:884",
       "src/tachyon/tabs/monitoring/initController.ts:934",
       "src/tachyon/tabs/diagnostic/partials/renderAiChatModal.ts:212",
-      "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:534",
-      "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:580"
+      "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:391",
+      "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:431"
     ]
   },
   {
@@ -1229,13 +1243,6 @@
     ]
   },
   {
-    "call": "Comparing versions & fingerprint check...",
-    "key": "Comparing versions & fingerprint check...",
-    "places": [
-      "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:125"
-    ]
-  },
-  {
     "call": "Component update available",
     "key": "Component update available",
     "places": [
@@ -1297,7 +1304,7 @@
     "call": "Connect ChatGPT, DeepSeek or local LLM to get automated diagnostic reports and intelligent root-cause analysis.",
     "key": "Connect ChatGPT, DeepSeek or local LLM to get automated diagnostic reports and intelligent root-cause analysis.",
     "places": [
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:745"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:744"
     ]
   },
   {
@@ -1315,10 +1322,10 @@
     ]
   },
   {
-    "call": "Connecting to update server...",
-    "key": "Connecting to update server...",
+    "call": "Connected Devices",
+    "key": "Connected Devices",
     "places": [
-      "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:123"
+      "src/tachyon/tabs/diagnostic/initController.ts:1248"
     ]
   },
   {
@@ -1360,16 +1367,23 @@
     "call": "Copy log",
     "key": "Copy log",
     "places": [
-      "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:235"
+      "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:156"
     ]
   },
   {
     "call": "Copy proxy link",
     "key": "Copy proxy link",
     "places": [
-      "src/tachyon/tabs/dashboard/initController.ts:1055",
+      "src/tachyon/tabs/dashboard/initController.ts:1053",
       "src/tachyon/tabs/dashboard/partials/renderSections.ts:476",
       "src/tachyon/tabs/dashboard/partials/renderSections.ts:477"
+    ]
+  },
+  {
+    "call": "Copy Support Report",
+    "key": "Copy Support Report",
+    "places": [
+      "src/tachyon/tabs/diagnostic/initController.ts:1476"
     ]
   },
   {
@@ -1390,7 +1404,7 @@
     "call": "Current Diagnosis",
     "key": "Current Diagnosis",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:1114"
+      "src/tachyon/tabs/diagnostic/initController.ts:1424"
     ]
   },
   {
@@ -1419,7 +1433,7 @@
     "key": "Custom API Endpoint URL",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:1695",
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:915"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:914"
     ]
   },
   {
@@ -1548,14 +1562,14 @@
     "call": "Device IPs (one per line):",
     "key": "Device IPs (one per line):",
     "places": [
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1126"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1125"
     ]
   },
   {
     "call": "Device IPs saved",
     "key": "Device IPs saved",
     "places": [
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:265"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:264"
     ]
   },
   {
@@ -1566,10 +1580,17 @@
     ]
   },
   {
+    "call": "Device updated",
+    "key": "Device updated",
+    "places": [
+      "src/tachyon/tabs/diagnostic/initController.ts:1331"
+    ]
+  },
+  {
     "call": "Devices listed here are always routed through the assigned section, regardless of global rules.",
     "key": "Devices listed here are always routed through the assigned section, regardless of global rules.",
     "places": [
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1164"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1163"
     ]
   },
   {
@@ -1594,10 +1615,24 @@
     ]
   },
   {
+    "call": "Direct Bypass",
+    "key": "Direct Bypass",
+    "places": [
+      "src/tachyon/tabs/diagnostic/initController.ts:1318"
+    ]
+  },
+  {
     "call": "Direct connection",
     "key": "Direct connection",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:2904"
+    ]
+  },
+  {
+    "call": "Direct WAN",
+    "key": "Direct WAN",
+    "places": [
+      "src/tachyon/tabs/diagnostic/initController.ts:1309"
     ]
   },
   {
@@ -1811,14 +1846,14 @@
     "key": "DNS Turbo Cache",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:994",
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:479"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:478"
     ]
   },
   {
     "call": "DNS Turbo Cache saved",
     "key": "DNS Turbo Cache saved",
     "places": [
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:289"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:288"
     ]
   },
   {
@@ -1881,18 +1916,18 @@
     "call": "Doctor failed",
     "key": "Doctor failed",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:721",
-      "src/tachyon/tabs/diagnostic/initController.ts:763",
-      "src/tachyon/tabs/diagnostic/initController.ts:771"
+      "src/tachyon/tabs/diagnostic/initController.ts:720",
+      "src/tachyon/tabs/diagnostic/initController.ts:762",
+      "src/tachyon/tabs/diagnostic/initController.ts:770"
     ]
   },
   {
     "call": "Doctor repair",
     "key": "Doctor repair",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:737",
-      "src/tachyon/tabs/diagnostic/initController.ts:749",
-      "src/tachyon/tabs/diagnostic/initController.ts:750"
+      "src/tachyon/tabs/diagnostic/initController.ts:736",
+      "src/tachyon/tabs/diagnostic/initController.ts:748",
+      "src/tachyon/tabs/diagnostic/initController.ts:749"
     ]
   },
   {
@@ -1963,8 +1998,8 @@
     "call": "Downlink",
     "key": "Downlink",
     "places": [
-      "src/tachyon/tabs/dashboard/initController.ts:1630",
-      "src/tachyon/tabs/dashboard/initController.ts:1643"
+      "src/tachyon/tabs/dashboard/initController.ts:1624",
+      "src/tachyon/tabs/dashboard/initController.ts:1637"
     ]
   },
   {
@@ -2046,13 +2081,6 @@
     ]
   },
   {
-    "call": "Downloading package from repository...",
-    "key": "Downloading package from repository...",
-    "places": [
-      "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:135"
-    ]
-  },
-  {
     "call": "DSCP marks (QoS)",
     "key": "DSCP marks (QoS)",
     "places": [
@@ -2127,7 +2155,7 @@
     "call": "Enable AI Doctor (LLM Integration)",
     "key": "Enable AI Doctor (LLM Integration)",
     "places": [
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:760"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:759"
     ]
   },
   {
@@ -2166,6 +2194,13 @@
     ]
   },
   {
+    "call": "Enable Direct WAN Bypass",
+    "key": "Enable Direct WAN Bypass",
+    "places": [
+      "src/tachyon/tabs/diagnostic/initController.ts:1072"
+    ]
+  },
+  {
     "call": "Enable DNS Continuous Check",
     "key": "Enable DNS Continuous Check",
     "places": [
@@ -2176,7 +2211,7 @@
     "call": "Enable DNS Turbo Cache",
     "key": "Enable DNS Turbo Cache",
     "places": [
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:498"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:497"
     ]
   },
   {
@@ -2247,7 +2282,7 @@
     "key": "Enable Smart Detect",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:1833",
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1070"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1069"
     ]
   },
   {
@@ -2357,13 +2392,6 @@
     "key": "Enter the subscription URL",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8771"
-    ]
-  },
-  {
-    "call": "Environment preparation & dependency check...",
-    "key": "Environment preparation & dependency check...",
-    "places": [
-      "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:134"
     ]
   },
   {
@@ -2514,7 +2542,7 @@
     "call": "Failed to apply fix",
     "key": "Failed to apply fix",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:1019"
+      "src/tachyon/tabs/diagnostic/initController.ts:1174"
     ]
   },
   {
@@ -2531,6 +2559,13 @@
     "places": [
       "src/tachyon/tabs/monitoring/initController.ts:1299",
       "src/tachyon/tabs/monitoring/initController.ts:1312"
+    ]
+  },
+  {
+    "call": "Failed to copy report to clipboard",
+    "key": "Failed to copy report to clipboard",
+    "places": [
+      "src/tachyon/tabs/diagnostic/initController.ts:951"
     ]
   },
   {
@@ -2555,15 +2590,15 @@
       "src/tachyon/methods/shell/index.ts:179",
       "src/tachyon/tabs/updates/initController.ts:616",
       "src/tachyon/tabs/updates/initController.ts:617",
-      "src/tachyon/tabs/updates/initController.ts:691",
-      "src/tachyon/tabs/updates/initController.ts:883"
+      "src/tachyon/tabs/updates/initController.ts:692",
+      "src/tachyon/tabs/updates/initController.ts:888"
     ]
   },
   {
     "call": "Failed to generate bug report",
     "key": "Failed to generate bug report",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:1265"
+      "src/tachyon/tabs/diagnostic/initController.ts:1598"
     ]
   },
   {
@@ -2599,7 +2634,7 @@
     "call": "Failed to read operation log",
     "key": "Failed to read operation log",
     "places": [
-      "src/tachyon/methods/shell/index.ts:626"
+      "src/tachyon/methods/shell/index.ts:646"
     ]
   },
   {
@@ -2627,28 +2662,28 @@
     "call": "Failed to save AI Watchdog settings",
     "key": "Failed to save AI Watchdog settings",
     "places": [
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:405"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:404"
     ]
   },
   {
     "call": "Failed to save device IPs",
     "key": "Failed to save device IPs",
     "places": [
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:273"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:272"
     ]
   },
   {
     "call": "Failed to save DNS Turbo Cache",
     "key": "Failed to save DNS Turbo Cache",
     "places": [
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:291"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:290"
     ]
   },
   {
     "call": "Failed to save Smart Detect settings",
     "key": "Failed to save Smart Detect settings",
     "places": [
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:239"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:238"
     ]
   },
   {
@@ -2687,16 +2722,23 @@
     ]
   },
   {
+    "call": "Failed to update device",
+    "key": "Failed to update device",
+    "places": [
+      "src/tachyon/tabs/diagnostic/initController.ts:1336"
+    ]
+  },
+  {
     "call": "Failed to update subscriptions",
     "key": "Failed to update subscriptions",
     "places": [
-      "src/tachyon/tabs/dashboard/initController.ts:309",
-      "src/tachyon/tabs/dashboard/initController.ts:310",
-      "src/tachyon/tabs/dashboard/initController.ts:329",
-      "src/tachyon/tabs/dashboard/initController.ts:375",
-      "src/tachyon/tabs/dashboard/initController.ts:379",
-      "src/tachyon/tabs/dashboard/initController.ts:1317",
-      "src/tachyon/tabs/dashboard/initController.ts:1321"
+      "src/tachyon/tabs/dashboard/initController.ts:307",
+      "src/tachyon/tabs/dashboard/initController.ts:308",
+      "src/tachyon/tabs/dashboard/initController.ts:327",
+      "src/tachyon/tabs/dashboard/initController.ts:373",
+      "src/tachyon/tabs/dashboard/initController.ts:377",
+      "src/tachyon/tabs/dashboard/initController.ts:1315",
+      "src/tachyon/tabs/dashboard/initController.ts:1319"
     ]
   },
   {
@@ -2732,7 +2774,7 @@
     "key": "Faster server search interval",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:3159",
-      "src/tachyon/tabs/dashboard/initController.ts:1249"
+      "src/tachyon/tabs/dashboard/initController.ts:1247"
     ]
   },
   {
@@ -2740,13 +2782,6 @@
     "key": "Fastest",
     "places": [
       "src/tachyon/methods/custom/getDashboardSections.ts:654"
-    ]
-  },
-  {
-    "call": "Fetching release & commit metadata...",
-    "key": "Fetching release & commit metadata...",
-    "places": [
-      "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:124"
     ]
   },
   {
@@ -2774,7 +2809,14 @@
     "call": "Fix applied",
     "key": "Fix applied",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:1014"
+      "src/tachyon/tabs/diagnostic/initController.ts:1168"
+    ]
+  },
+  {
+    "call": "Fix resolv.conf",
+    "key": "Fix resolv.conf",
+    "places": [
+      "src/tachyon/tabs/diagnostic/initController.ts:1058"
     ]
   },
   {
@@ -2788,8 +2830,8 @@
     "call": "Fixed",
     "key": "Fixed",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:743",
-      "src/tachyon/tabs/diagnostic/initController.ts:1010"
+      "src/tachyon/tabs/diagnostic/initController.ts:742",
+      "src/tachyon/tabs/diagnostic/initController.ts:1164"
     ]
   },
   {
@@ -2932,7 +2974,7 @@
     "call": "GET endpoints are open on LAN. POST endpoints require Authorization: Bearer <token>.",
     "key": "GET endpoints are open on LAN. POST endpoints require Authorization: Bearer <token>.",
     "places": [
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:729"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:728"
     ]
   },
   {
@@ -2953,14 +2995,14 @@
     "call": "Global check",
     "key": "Global check",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:697"
+      "src/tachyon/tabs/diagnostic/initController.ts:696"
     ]
   },
   {
     "call": "Health Checks",
     "key": "Health Checks",
     "places": [
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:584"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:583"
     ]
   },
   {
@@ -3059,7 +3101,7 @@
     "key": "Higher-level check interval",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:3123",
-      "src/tachyon/tabs/dashboard/initController.ts:1235"
+      "src/tachyon/tabs/dashboard/initController.ts:1233"
     ]
   },
   {
@@ -3073,7 +3115,7 @@
     "call": "History",
     "key": "History",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:1126"
+      "src/tachyon/tabs/diagnostic/initController.ts:1452"
     ]
   },
   {
@@ -3173,7 +3215,7 @@
     "call": "HTTP REST API for external AI agents (Claude, GPT, Open-WebUI) served at /cgi-bin/tachyon-agent/",
     "key": "HTTP REST API for external AI agents (Claude, GPT, Open-WebUI) served at /cgi-bin/tachyon-agent/",
     "places": [
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:689"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:688"
     ]
   },
   {
@@ -3188,7 +3230,7 @@
     "key": "Idle timeout",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:2675",
-      "src/tachyon/tabs/dashboard/initController.ts:1110"
+      "src/tachyon/tabs/dashboard/initController.ts:1108"
     ]
   },
   {
@@ -3346,22 +3388,22 @@
     "call": "Install",
     "key": "Install",
     "places": [
-      "src/tachyon/tabs/updates/initController.ts:919",
-      "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:523"
+      "src/tachyon/tabs/updates/initController.ts:924",
+      "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:380"
     ]
   },
   {
     "call": "Install another build:",
     "key": "Install another build:",
     "places": [
-      "src/tachyon/tabs/updates/initController.ts:1413"
+      "src/tachyon/tabs/updates/initController.ts:1418"
     ]
   },
   {
     "call": "Installed build → Available build",
     "key": "Installed build → Available build",
     "places": [
-      "src/tachyon/tabs/updates/initController.ts:1271"
+      "src/tachyon/tabs/updates/initController.ts:1276"
     ]
   },
   {
@@ -3369,7 +3411,7 @@
     "key": "Installed version is newer than release",
     "places": [
       "src/tachyon/tabs/updates/initController.ts:341",
-      "src/tachyon/tabs/updates/initController.ts:1279"
+      "src/tachyon/tabs/updates/initController.ts:1284"
     ]
   },
   {
@@ -3399,8 +3441,8 @@
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:2689",
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:3175",
-      "src/tachyon/tabs/dashboard/initController.ts:1112",
-      "src/tachyon/tabs/dashboard/initController.ts:1255"
+      "src/tachyon/tabs/dashboard/initController.ts:1110",
+      "src/tachyon/tabs/dashboard/initController.ts:1253"
     ]
   },
   {
@@ -3421,7 +3463,7 @@
     "call": "Interval",
     "key": "Interval",
     "places": [
-      "src/tachyon/tabs/dashboard/initController.ts:1108"
+      "src/tachyon/tabs/dashboard/initController.ts:1106"
     ]
   },
   {
@@ -3946,7 +3988,7 @@
     "call": "Issues",
     "key": "Issues",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:739"
+      "src/tachyon/tabs/diagnostic/initController.ts:738"
     ]
   },
   {
@@ -3955,6 +3997,13 @@
     "places": [
       "src/tachyon/tabs/diagnostic/checks/getCheckItemsMeta.ts:17",
       "src/tachyon/tabs/diagnostic/helpers/getMeta.ts:20"
+    ]
+  },
+  {
+    "call": "Issues detected. Review the diagnosis above.",
+    "key": "Issues detected. Review the diagnosis above.",
+    "places": [
+      "src/tachyon/tabs/diagnostic/initController.ts:1193"
     ]
   },
   {
@@ -4056,7 +4105,7 @@
     "key": "Keeps FakeIP cache persistent across reboots and pre-resolves popular blocked domains on startup so first-visit latency is 0 ms.",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:995",
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:484"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:483"
     ]
   },
   {
@@ -4074,6 +4123,13 @@
     ]
   },
   {
+    "call": "LAN Devices",
+    "key": "LAN Devices",
+    "places": [
+      "src/tachyon/tabs/diagnostic/initController.ts:1436"
+    ]
+  },
+  {
     "call": "Language for AI Doctor diagnosis responses",
     "key": "Language for AI Doctor diagnosis responses",
     "places": [
@@ -4084,8 +4140,8 @@
     "call": "Latency test failed",
     "key": "Latency test failed",
     "places": [
-      "src/tachyon/methods/shell/index.ts:481",
-      "src/tachyon/methods/shell/index.ts:502"
+      "src/tachyon/methods/shell/index.ts:501",
+      "src/tachyon/methods/shell/index.ts:522"
     ]
   },
   {
@@ -4100,14 +4156,14 @@
     "key": "Latest version is installed",
     "places": [
       "src/tachyon/tabs/updates/initController.ts:344",
-      "src/tachyon/tabs/updates/initController.ts:1277"
+      "src/tachyon/tabs/updates/initController.ts:1282"
     ]
   },
   {
     "call": "Latest version:",
     "key": "Latest version:",
     "places": [
-      "src/tachyon/tabs/updates/initController.ts:1279"
+      "src/tachyon/tabs/updates/initController.ts:1284"
     ]
   },
   {
@@ -4121,7 +4177,7 @@
     "call": "Level",
     "key": "Level",
     "places": [
-      "src/tachyon/tabs/dashboard/initController.ts:1191"
+      "src/tachyon/tabs/dashboard/initController.ts:1189"
     ]
   },
   {
@@ -4164,7 +4220,7 @@
     "key": "LM Studio (Local PC / Server)",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:1650",
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:821"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:820"
     ]
   },
   {
@@ -4204,6 +4260,13 @@
     ]
   },
   {
+    "call": "Loading connected LAN devices...",
+    "key": "Loading connected LAN devices...",
+    "places": [
+      "src/tachyon/tabs/diagnostic/initController.ts:1215"
+    ]
+  },
+  {
     "call": "Loading connections",
     "key": "Loading connections",
     "places": [
@@ -4215,18 +4278,18 @@
     "call": "Loading...",
     "key": "Loading...",
     "places": [
-      "src/tachyon/tabs/updates/initController.ts:1121",
-      "src/tachyon/tabs/updates/initController.ts:1136",
-      "src/tachyon/tabs/updates/initController.ts:1154",
-      "src/tachyon/tabs/updates/initController.ts:1168",
-      "src/tachyon/tabs/updates/initController.ts:1182"
+      "src/tachyon/tabs/updates/initController.ts:1126",
+      "src/tachyon/tabs/updates/initController.ts:1141",
+      "src/tachyon/tabs/updates/initController.ts:1159",
+      "src/tachyon/tabs/updates/initController.ts:1173",
+      "src/tachyon/tabs/updates/initController.ts:1187"
     ]
   },
   {
     "call": "Loading…",
     "key": "Loading…",
     "places": [
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1174"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1173"
     ]
   },
   {
@@ -4331,7 +4394,7 @@
     "call": "Memory Usage",
     "key": "Memory Usage",
     "places": [
-      "src/tachyon/tabs/dashboard/initController.ts:1656"
+      "src/tachyon/tabs/dashboard/initController.ts:1650"
     ]
   },
   {
@@ -4387,7 +4450,7 @@
     "call": "Monitoring & Analytics",
     "key": "Monitoring & Analytics",
     "places": [
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:633"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:632"
     ]
   },
   {
@@ -4401,14 +4464,14 @@
     "call": "Move down",
     "key": "Move down",
     "places": [
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1004"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1003"
     ]
   },
   {
     "call": "Move up",
     "key": "Move up",
     "places": [
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:993"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:992"
     ]
   },
   {
@@ -4539,10 +4602,10 @@
     "call": "No",
     "key": "No",
     "places": [
-      "src/tachyon/tabs/dashboard/initController.ts:812",
-      "src/tachyon/tabs/dashboard/initController.ts:816",
-      "src/tachyon/tabs/dashboard/initController.ts:892",
-      "src/tachyon/tabs/dashboard/initController.ts:1144"
+      "src/tachyon/tabs/dashboard/initController.ts:810",
+      "src/tachyon/tabs/dashboard/initController.ts:814",
+      "src/tachyon/tabs/dashboard/initController.ts:890",
+      "src/tachyon/tabs/dashboard/initController.ts:1142"
     ]
   },
   {
@@ -4560,11 +4623,18 @@
     ]
   },
   {
+    "call": "No active DHCP clients found on local network.",
+    "key": "No active DHCP clients found on local network.",
+    "places": [
+      "src/tachyon/tabs/diagnostic/initController.ts:1227"
+    ]
+  },
+  {
     "call": "No active routing sections found.",
     "key": "No active routing sections found.",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:703",
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1112"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1111"
     ]
   },
   {
@@ -4592,7 +4662,7 @@
     "call": "No diagnostic history available yet.",
     "key": "No diagnostic history available yet.",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:1046"
+      "src/tachyon/tabs/diagnostic/initController.ts:1354"
     ]
   },
   {
@@ -4617,10 +4687,17 @@
     ]
   },
   {
+    "call": "No issues detected. System is running normally.",
+    "key": "No issues detected. System is running normally.",
+    "places": [
+      "src/tachyon/tabs/diagnostic/initController.ts:1202"
+    ]
+  },
+  {
     "call": "No issues found",
     "key": "No issues found",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:750"
+      "src/tachyon/tabs/diagnostic/initController.ts:749"
     ]
   },
   {
@@ -4635,13 +4712,6 @@
     "key": "No public firewall port required",
     "places": [
       "src/tachyon/tabs/diagnostic/checks/runInboundsCheck.ts:99"
-    ]
-  },
-  {
-    "call": "No quick fix required",
-    "key": "No quick fix required",
-    "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:1036"
     ]
   },
   {
@@ -4676,14 +4746,14 @@
     "call": "Node list is empty",
     "key": "Node list is empty",
     "places": [
-      "src/tachyon/tabs/dashboard/initController.ts:1070"
+      "src/tachyon/tabs/dashboard/initController.ts:1068"
     ]
   },
   {
     "call": "Nodes",
     "key": "Nodes",
     "places": [
-      "src/tachyon/tabs/dashboard/initController.ts:975"
+      "src/tachyon/tabs/dashboard/initController.ts:973"
     ]
   },
   {
@@ -4724,9 +4794,9 @@
     "places": [
       "src/tachyon/helpers/singBoxVariant.ts:38",
       "src/tachyon/helpers/singBoxVariant.ts:46",
-      "src/tachyon/tabs/updates/initController.ts:1157",
-      "src/tachyon/tabs/updates/initController.ts:1171",
-      "src/tachyon/tabs/updates/initController.ts:1185"
+      "src/tachyon/tabs/updates/initController.ts:1162",
+      "src/tachyon/tabs/updates/initController.ts:1176",
+      "src/tachyon/tabs/updates/initController.ts:1190"
     ]
   },
   {
@@ -4758,10 +4828,10 @@
     "key": "Not running",
     "places": [
       "src/tachyon/tabs/diagnostic/diagnostic.store.ts:140",
-      "src/tachyon/tabs/diagnostic/initController.ts:124",
-      "src/tachyon/tabs/diagnostic/initController.ts:354",
-      "src/tachyon/tabs/diagnostic/initController.ts:412",
-      "src/tachyon/tabs/diagnostic/initController.ts:498"
+      "src/tachyon/tabs/diagnostic/initController.ts:123",
+      "src/tachyon/tabs/diagnostic/initController.ts:353",
+      "src/tachyon/tabs/diagnostic/initController.ts:411",
+      "src/tachyon/tabs/diagnostic/initController.ts:497"
     ]
   },
   {
@@ -4839,7 +4909,7 @@
     "key": "Ollama (Local PC / Server)",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:1649",
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:813"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:812"
     ]
   },
   {
@@ -4911,8 +4981,8 @@
     "call": "Open",
     "key": "Open",
     "places": [
-      "src/tachyon/tabs/updates/initController.ts:1253",
-      "src/tachyon/tabs/updates/initController.ts:1292"
+      "src/tachyon/tabs/updates/initController.ts:1258",
+      "src/tachyon/tabs/updates/initController.ts:1297"
     ]
   },
   {
@@ -4933,29 +5003,29 @@
     "call": "Operation failed",
     "key": "Operation failed",
     "places": [
-      "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:574"
+      "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:425"
     ]
   },
   {
     "call": "Operation in progress...",
     "key": "Operation in progress...",
     "places": [
-      "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:112",
-      "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:248"
+      "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:110",
+      "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:168"
     ]
   },
   {
     "call": "Operation log",
     "key": "Operation log",
     "places": [
-      "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:232"
+      "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:153"
     ]
   },
   {
     "call": "Operation log is not available",
     "key": "Operation log is not available",
     "places": [
-      "src/tachyon/methods/shell/index.ts:625"
+      "src/tachyon/methods/shell/index.ts:645"
     ]
   },
   {
@@ -4963,15 +5033,22 @@
     "key": "Operation timed out",
     "places": [
       "src/helpers/withTimeout.ts:7",
-      "src/tachyon/methods/shell/index.ts:451",
-      "src/tachyon/methods/shell/index.ts:539"
+      "src/tachyon/methods/shell/index.ts:471",
+      "src/tachyon/methods/shell/index.ts:559"
     ]
   },
   {
     "call": "Optimization",
     "key": "Optimization",
     "places": [
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:664"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:663"
+    ]
+  },
+  {
+    "call": "Optimize RAM memory",
+    "key": "Optimize RAM memory",
+    "places": [
+      "src/tachyon/tabs/diagnostic/initController.ts:1069"
     ]
   },
   {
@@ -4993,7 +5070,7 @@
     "call": "Optional for local LLM",
     "key": "Optional for local LLM",
     "places": [
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:901"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:900"
     ]
   },
   {
@@ -5172,8 +5249,8 @@
     "call": "Per-Device Routing",
     "key": "Per-Device Routing",
     "places": [
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1106",
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1159"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1105",
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1158"
     ]
   },
   {
@@ -5217,13 +5294,6 @@
     "key": "Pin P2P isolation to the torrent client's own ports, comma separated. Each entry is \"proto\", \"proto:port\" or \"proto:port-port\" (tcp/udp). Without a port the whole protocol is routed direct.",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:1246"
-    ]
-  },
-  {
-    "call": "Please wait, operation is running...",
-    "key": "Please wait, operation is running...",
-    "places": [
-      "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:217"
     ]
   },
   {
@@ -5358,7 +5428,7 @@
     "call": "Priority details",
     "key": "Priority details",
     "places": [
-      "src/tachyon/tabs/dashboard/initController.ts:1274",
+      "src/tachyon/tabs/dashboard/initController.ts:1272",
       "src/tachyon/tabs/dashboard/partials/renderSections.ts:514",
       "src/tachyon/tabs/dashboard/partials/renderSections.ts:515"
     ]
@@ -5367,7 +5437,7 @@
     "call": "Priority details are unavailable",
     "key": "Priority details are unavailable",
     "places": [
-      "src/tachyon/tabs/dashboard/initController.ts:1216"
+      "src/tachyon/tabs/dashboard/initController.ts:1214"
     ]
   },
   {
@@ -5405,7 +5475,7 @@
     "call": "Protection",
     "key": "Protection",
     "places": [
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:613"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:612"
     ]
   },
   {
@@ -5414,6 +5484,13 @@
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:2030",
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8663"
+    ]
+  },
+  {
+    "call": "Proxy / DPI",
+    "key": "Proxy / DPI",
+    "places": [
+      "src/tachyon/tabs/diagnostic/initController.ts:1310"
     ]
   },
   {
@@ -5441,7 +5518,7 @@
     "call": "Proxy link is unavailable",
     "key": "Proxy link is unavailable",
     "places": [
-      "src/tachyon/tabs/dashboard/initController.ts:807"
+      "src/tachyon/tabs/dashboard/initController.ts:805"
     ]
   },
   {
@@ -5496,17 +5573,24 @@
     ]
   },
   {
+    "call": "Rebuild firewall rules",
+    "key": "Rebuild firewall rules",
+    "places": [
+      "src/tachyon/tabs/diagnostic/initController.ts:1056"
+    ]
+  },
+  {
     "call": "Rebuilt release",
     "key": "Rebuilt release",
     "places": [
-      "src/tachyon/tabs/updates/initController.ts:1273"
+      "src/tachyon/tabs/updates/initController.ts:1278"
     ]
   },
   {
     "call": "Recommended Quick Fixes:",
     "key": "Recommended Quick Fixes:",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:983"
+      "src/tachyon/tabs/diagnostic/initController.ts:1135"
     ]
   },
   {
@@ -5514,6 +5598,13 @@
     "key": "Reconnect Threshold",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:1820"
+    ]
+  },
+  {
+    "call": "Reconnect WAN",
+    "key": "Reconnect WAN",
+    "places": [
+      "src/tachyon/tabs/diagnostic/initController.ts:1062"
     ]
   },
   {
@@ -5538,6 +5629,20 @@
     ]
   },
   {
+    "call": "Refresh",
+    "key": "Refresh",
+    "places": [
+      "src/tachyon/tabs/diagnostic/initController.ts:1252"
+    ]
+  },
+  {
+    "call": "Refresh Device List",
+    "key": "Refresh Device List",
+    "places": [
+      "src/tachyon/tabs/diagnostic/initController.ts:1231"
+    ]
+  },
+  {
     "call": "Registration Detour",
     "key": "Registration Detour",
     "places": [
@@ -5555,14 +5660,14 @@
     "call": "Reinstall",
     "key": "Reinstall",
     "places": [
-      "src/tachyon/tabs/updates/initController.ts:1033"
+      "src/tachyon/tabs/updates/initController.ts:1038"
     ]
   },
   {
     "call": "Reloading page in",
     "key": "Reloading page in",
     "places": [
-      "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:496"
+      "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:353"
     ]
   },
   {
@@ -5576,7 +5681,7 @@
     "call": "Removal completed successfully!",
     "key": "Removal completed successfully!",
     "places": [
-      "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:483"
+      "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:340"
     ]
   },
   {
@@ -5584,7 +5689,7 @@
     "key": "Remove",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:7918",
-      "src/tachyon/tabs/updates/initController.ts:989"
+      "src/tachyon/tabs/updates/initController.ts:994"
     ]
   },
   {
@@ -5612,14 +5717,7 @@
     "call": "Removing",
     "key": "Removing",
     "places": [
-      "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:116"
-    ]
-  },
-  {
-    "call": "Removing binaries & package files...",
-    "key": "Removing binaries & package files...",
-    "places": [
-      "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:130"
+      "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:114"
     ]
   },
   {
@@ -5657,6 +5755,13 @@
     "key": "Resolve domain names before routing so sing-box can use real destination IPs.",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:9189"
+    ]
+  },
+  {
+    "call": "Resolve gateway",
+    "key": "Resolve gateway",
+    "places": [
+      "src/tachyon/tabs/diagnostic/initController.ts:1063"
     ]
   },
   {
@@ -5709,10 +5814,45 @@
     ]
   },
   {
+    "call": "Restart dnsmasq",
+    "key": "Restart dnsmasq",
+    "places": [
+      "src/tachyon/tabs/diagnostic/initController.ts:1057"
+    ]
+  },
+  {
+    "call": "Restart firewall",
+    "key": "Restart firewall",
+    "places": [
+      "src/tachyon/tabs/diagnostic/initController.ts:1066"
+    ]
+  },
+  {
+    "call": "Restart network",
+    "key": "Restart network",
+    "places": [
+      "src/tachyon/tabs/diagnostic/initController.ts:1067"
+    ]
+  },
+  {
+    "call": "Restart sing-box DNS",
+    "key": "Restart sing-box DNS",
+    "places": [
+      "src/tachyon/tabs/diagnostic/initController.ts:1060"
+    ]
+  },
+  {
     "call": "Restart Tachyon",
     "key": "Restart Tachyon",
     "places": [
       "src/tachyon/tabs/diagnostic/partials/renderAvailableActions.ts:60"
+    ]
+  },
+  {
+    "call": "Restart Zapret/ByeDPI",
+    "key": "Restart Zapret/ByeDPI",
+    "places": [
+      "src/tachyon/tabs/diagnostic/initController.ts:1068"
     ]
   },
   {
@@ -5728,6 +5868,13 @@
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:583",
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:589"
+    ]
+  },
+  {
+    "call": "Restore config backup",
+    "key": "Restore config backup",
+    "places": [
+      "src/tachyon/tabs/diagnostic/initController.ts:1061"
     ]
   },
   {
@@ -5778,6 +5925,13 @@
     "key": "Route requests to this DNS server through another section.",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:7346"
+    ]
+  },
+  {
+    "call": "Route via Proxy",
+    "key": "Route via Proxy",
+    "places": [
+      "src/tachyon/tabs/diagnostic/initController.ts:1317"
     ]
   },
   {
@@ -5920,7 +6074,7 @@
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:672",
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:3660",
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1151"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1150"
     ]
   },
   {
@@ -5934,14 +6088,14 @@
     "call": "Save AI Watchdog Settings",
     "key": "Save AI Watchdog Settings",
     "places": [
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:953"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:952"
     ]
   },
   {
     "call": "Save Smart Detect Settings",
     "key": "Save Smart Detect Settings",
     "places": [
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1091"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1090"
     ]
   },
   {
@@ -5956,10 +6110,10 @@
     "call": "Saving…",
     "key": "Saving…",
     "places": [
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:502",
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:951",
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1091",
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1151"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:501",
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:950",
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1090",
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1150"
     ]
   },
   {
@@ -5987,7 +6141,7 @@
     "call": "Secret token for WRITE requests",
     "key": "Secret token for WRITE requests",
     "places": [
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:700"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:699"
     ]
   },
   {
@@ -6015,7 +6169,7 @@
     "call": "Section test order (checked = active, drag rows with △▽):",
     "key": "Section test order (checked = active, drag rows with △▽):",
     "places": [
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1078"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1077"
     ]
   },
   {
@@ -6164,7 +6318,7 @@
     "key": "Select the fastest node",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:3137",
-      "src/tachyon/tabs/dashboard/initController.ts:1239"
+      "src/tachyon/tabs/dashboard/initController.ts:1237"
     ]
   },
   {
@@ -6199,8 +6353,8 @@
     "call": "Selected",
     "key": "Selected",
     "places": [
-      "src/tachyon/tabs/dashboard/initController.ts:1104",
-      "src/tachyon/tabs/dashboard/initController.ts:1225"
+      "src/tachyon/tabs/dashboard/initController.ts:1102",
+      "src/tachyon/tabs/dashboard/initController.ts:1223"
     ]
   },
   {
@@ -6351,9 +6505,9 @@
     "call": "Service action failed",
     "key": "Service action failed",
     "places": [
-      "src/tachyon/methods/shell/index.ts:402",
-      "src/tachyon/methods/shell/index.ts:423",
-      "src/tachyon/tabs/diagnostic/initController.ts:605"
+      "src/tachyon/methods/shell/index.ts:422",
+      "src/tachyon/methods/shell/index.ts:443",
+      "src/tachyon/tabs/diagnostic/initController.ts:604"
     ]
   },
   {
@@ -6374,7 +6528,7 @@
     "call": "Services info",
     "key": "Services info",
     "places": [
-      "src/tachyon/tabs/dashboard/initController.ts:1666"
+      "src/tachyon/tabs/dashboard/initController.ts:1660"
     ]
   },
   {
@@ -6452,7 +6606,7 @@
     "call": "Show sing-box config",
     "key": "Show sing-box config",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:1198",
+      "src/tachyon/tabs/diagnostic/initController.ts:1531",
       "src/tachyon/tabs/diagnostic/partials/renderAvailableActions.ts:166"
     ]
   },
@@ -6558,14 +6712,14 @@
     "call": "Smart Detect",
     "key": "Smart Detect",
     "places": [
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1048"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:1047"
     ]
   },
   {
     "call": "Smart Detect settings saved",
     "key": "Smart Detect settings saved",
     "places": [
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:237"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:236"
     ]
   },
   {
@@ -6733,6 +6887,13 @@
     ]
   },
   {
+    "call": "Start sing-box",
+    "key": "Start sing-box",
+    "places": [
+      "src/tachyon/tabs/diagnostic/initController.ts:1055"
+    ]
+  },
+  {
     "call": "Start Tachyon",
     "key": "Start Tachyon",
     "places": [
@@ -6740,10 +6901,17 @@
     ]
   },
   {
+    "call": "Start watchdog",
+    "key": "Start watchdog",
+    "places": [
+      "src/tachyon/tabs/diagnostic/initController.ts:1059"
+    ]
+  },
+  {
     "call": "Start Watchdog first",
     "key": "Start Watchdog first",
     "places": [
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:954"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:953"
     ]
   },
   {
@@ -6758,7 +6926,7 @@
     "call": "Status",
     "key": "Status",
     "places": [
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:449",
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:448",
       "src/tachyon/tabs/dashboard/partials/renderSections.ts:633"
     ]
   },
@@ -6799,13 +6967,6 @@
       "src/tachyon/methods/custom/getDashboardSections.ts:1571",
       "src/tachyon/tabs/dashboard/partials/renderSections.ts:585",
       "src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:147"
-    ]
-  },
-  {
-    "call": "Stopping active services...",
-    "key": "Stopping active services...",
-    "places": [
-      "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:129"
     ]
   },
   {
@@ -6863,8 +7024,8 @@
     "call": "Subscription update failed",
     "key": "Subscription update failed",
     "places": [
-      "src/tachyon/methods/shell/index.ts:900",
-      "src/tachyon/methods/shell/index.ts:920"
+      "src/tachyon/methods/shell/index.ts:930",
+      "src/tachyon/methods/shell/index.ts:950"
     ]
   },
   {
@@ -6892,7 +7053,7 @@
     "call": "Subscriptions updated",
     "key": "Subscriptions updated",
     "places": [
-      "src/tachyon/tabs/dashboard/initController.ts:335"
+      "src/tachyon/tabs/dashboard/initController.ts:333"
     ]
   },
   {
@@ -6917,10 +7078,17 @@
     ]
   },
   {
+    "call": "Switch DNS to DoH",
+    "key": "Switch DNS to DoH",
+    "places": [
+      "src/tachyon/tabs/diagnostic/initController.ts:1070"
+    ]
+  },
+  {
     "call": "System info",
     "key": "System info",
     "places": [
-      "src/tachyon/tabs/dashboard/initController.ts:1653"
+      "src/tachyon/tabs/dashboard/initController.ts:1647"
     ]
   },
   {
@@ -6990,7 +7158,14 @@
     "call": "Tachyon update did not complete within the timeout",
     "key": "Tachyon update did not complete within the timeout",
     "places": [
-      "src/tachyon/methods/shell/index.ts:770"
+      "src/tachyon/methods/shell/index.ts:800"
+    ]
+  },
+  {
+    "call": "Tachyon updated successfully!",
+    "key": "Tachyon updated successfully!",
+    "places": [
+      "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:230"
     ]
   },
   {
@@ -7139,7 +7314,7 @@
     "call": "Testing URL",
     "key": "Testing URL",
     "places": [
-      "src/tachyon/tabs/dashboard/initController.ts:1107"
+      "src/tachyon/tabs/dashboard/initController.ts:1105"
     ]
   },
   {
@@ -7321,7 +7496,7 @@
     "key": "Tolerance",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:2648",
-      "src/tachyon/tabs/dashboard/initController.ts:1109"
+      "src/tachyon/tabs/dashboard/initController.ts:1107"
     ]
   },
   {
@@ -7356,7 +7531,7 @@
     "call": "Traffic",
     "key": "Traffic",
     "places": [
-      "src/tachyon/tabs/dashboard/initController.ts:1627",
+      "src/tachyon/tabs/dashboard/initController.ts:1621",
       "src/tachyon/tabs/dashboard/partials/renderSections.ts:127"
     ]
   },
@@ -7385,7 +7560,7 @@
     "call": "Traffic Total",
     "key": "Traffic Total",
     "places": [
-      "src/tachyon/tabs/dashboard/initController.ts:1640"
+      "src/tachyon/tabs/dashboard/initController.ts:1634"
     ]
   },
   {
@@ -7406,7 +7581,7 @@
     "call": "Transient connection error",
     "key": "Transient connection error",
     "places": [
-      "src/tachyon/tabs/updates/initController.ts:852"
+      "src/tachyon/tabs/updates/initController.ts:857"
     ]
   },
   {
@@ -7509,7 +7684,7 @@
     "key": "Unavailability timeout",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:3111",
-      "src/tachyon/tabs/dashboard/initController.ts:1233"
+      "src/tachyon/tabs/dashboard/initController.ts:1231"
     ]
   },
   {
@@ -7639,10 +7814,10 @@
     "key": "Unknown error",
     "places": [
       "src/tachyon/api.ts:40",
-      "src/tachyon/tabs/diagnostic/initController.ts:721",
-      "src/tachyon/tabs/diagnostic/initController.ts:762",
-      "src/tachyon/tabs/diagnostic/initController.ts:847",
-      "src/tachyon/tabs/diagnostic/initController.ts:1163"
+      "src/tachyon/tabs/diagnostic/initController.ts:720",
+      "src/tachyon/tabs/diagnostic/initController.ts:761",
+      "src/tachyon/tabs/diagnostic/initController.ts:846",
+      "src/tachyon/tabs/diagnostic/initController.ts:1496"
     ]
   },
   {
@@ -7657,13 +7832,6 @@
     "key": "Unknown NFQWS2 flag.",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:6288"
-    ]
-  },
-  {
-    "call": "Unpacking & installing binaries...",
-    "key": "Unpacking & installing binaries...",
-    "places": [
-      "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:136"
     ]
   },
   {
@@ -7691,14 +7859,14 @@
     "call": "Update",
     "key": "Update",
     "places": [
-      "src/tachyon/tabs/updates/initController.ts:919"
+      "src/tachyon/tabs/updates/initController.ts:924"
     ]
   },
   {
     "call": "Update completed successfully!",
     "key": "Update completed successfully!",
     "places": [
-      "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:484"
+      "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:341"
     ]
   },
   {
@@ -7712,20 +7880,21 @@
     "call": "Update is available for current release",
     "key": "Update is available for current release",
     "places": [
-      "src/tachyon/tabs/updates/initController.ts:1260"
+      "src/tachyon/tabs/updates/initController.ts:1265"
     ]
   },
   {
     "call": "Update is available:",
     "key": "Update is available:",
     "places": [
-      "src/tachyon/tabs/updates/initController.ts:1239"
+      "src/tachyon/tabs/updates/initController.ts:1244"
     ]
   },
   {
     "call": "Update subscriptions",
     "key": "Update subscriptions",
     "places": [
+      "src/tachyon/tabs/diagnostic/initController.ts:1065",
       "src/tachyon/tabs/dashboard/partials/renderSections.ts:218",
       "src/tachyon/tabs/dashboard/partials/renderSections.ts:231",
       "src/tachyon/tabs/dashboard/partials/renderSections.ts:232"
@@ -7756,22 +7925,22 @@
     "call": "Updating",
     "key": "Updating",
     "places": [
-      "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:118"
+      "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:116"
     ]
   },
   {
-    "call": "Updating configuration & access permissions...",
-    "key": "Updating configuration & access permissions...",
+    "call": "Updating device routing mode...",
+    "key": "Updating device routing mode...",
     "places": [
-      "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:137"
+      "src/tachyon/tabs/diagnostic/initController.ts:1321"
     ]
   },
   {
     "call": "Uplink",
     "key": "Uplink",
     "places": [
-      "src/tachyon/tabs/dashboard/initController.ts:1629",
-      "src/tachyon/tabs/dashboard/initController.ts:1642"
+      "src/tachyon/tabs/dashboard/initController.ts:1623",
+      "src/tachyon/tabs/dashboard/initController.ts:1636"
     ]
   },
   {
@@ -7835,7 +8004,7 @@
     "call": "URLTest details",
     "key": "URLTest details",
     "places": [
-      "src/tachyon/tabs/dashboard/initController.ts:1131",
+      "src/tachyon/tabs/dashboard/initController.ts:1129",
       "src/tachyon/tabs/dashboard/partials/renderSections.ts:495",
       "src/tachyon/tabs/dashboard/partials/renderSections.ts:496"
     ]
@@ -7844,7 +8013,7 @@
     "call": "URLTest details are unavailable",
     "key": "URLTest details are unavailable",
     "places": [
-      "src/tachyon/tabs/dashboard/initController.ts:1095"
+      "src/tachyon/tabs/dashboard/initController.ts:1093"
     ]
   },
   {
@@ -7992,7 +8161,7 @@
     "call": "View logs",
     "key": "View logs",
     "places": [
-      "src/tachyon/tabs/diagnostic/initController.ts:821",
+      "src/tachyon/tabs/diagnostic/initController.ts:820",
       "src/tachyon/tabs/diagnostic/partials/renderAvailableActions.ts:157"
     ]
   },
@@ -8056,7 +8225,7 @@
     "call": "Watchdog",
     "key": "Watchdog",
     "places": [
-      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:446"
+      "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:445"
     ]
   },
   {
@@ -8119,7 +8288,7 @@
     "call": "Yes",
     "key": "Yes",
     "places": [
-      "src/tachyon/tabs/dashboard/initController.ts:812"
+      "src/tachyon/tabs/dashboard/initController.ts:810"
     ]
   },
   {

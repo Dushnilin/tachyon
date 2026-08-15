@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-08-14 14:42+0300\n"
-"PO-Revision-Date: 2026-08-14 14:42+0300\n"
+"POT-Creation-Date: 2026-08-15 11:59+0300\n"
+"PO-Revision-Date: 2026-08-15 11:59+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -218,6 +218,9 @@ msgstr "Конфигурация AmneziaWG успешно загружена!"
 msgid "AmneziaWG Generator"
 msgstr "Генератор AmneziaWG"
 
+msgid "Anonymized support report copied to clipboard"
+msgstr "Анонимизированный отчет скопирован в буфер обмена"
+
 msgid "Another component action is already running"
 msgstr "Другое действие уже выполняется"
 
@@ -230,11 +233,11 @@ msgstr "Применять правила этой секции только к 
 msgid "Apply section rules only to the specified local IP addresses"
 msgstr "Применять правила секции только к указанным локальным IP-адресам"
 
-msgid "Applying changes & reloading services..."
-msgstr "Применение изменений и перезапуск служб..."
-
 msgid "Applying fix"
 msgstr "Применение исправления"
+
+msgid "Applying..."
+msgstr "Применение..."
 
 msgid "Ask Tachyon AI Assistant a question..."
 msgstr "Задайте вопрос ИИ-ассистенту..."
@@ -265,6 +268,9 @@ msgstr "Автоматически определяет заблокирован
 
 msgid "Auto-generate HWID"
 msgstr "Авто-генерация HWID"
+
+msgid "Auto-Heal Network Stack"
+msgstr "Автолечение сетевого стека"
 
 msgid "Auto-update Hosts Lists"
 msgstr "Автообновление списков Hosts"
@@ -467,11 +473,11 @@ msgstr "Шифр"
 msgid "Clean Comments"
 msgstr "Очистить комментарии"
 
-msgid "Cleaning configuration & reloading..."
-msgstr "Очистка конфигураций и перезапуск..."
-
 msgid "Clear"
 msgstr "Очистить"
+
+msgid "Clear DNS cache"
+msgstr "Очистить кэш DNS"
 
 msgid "Client Certificate"
 msgstr "Клиентский сертификат"
@@ -509,9 +515,6 @@ msgstr "Список Telegram user ID через запятую, авториз�
 msgid "Community Lists"
 msgstr "Community-списки"
 
-msgid "Comparing versions & fingerprint check..."
-msgstr "Сравнение версий и проверка целостности..."
-
 msgid "Component update available"
 msgstr "Доступно обновление компонента"
 
@@ -545,8 +548,8 @@ msgstr "Подключаться через"
 msgid "Connected"
 msgstr "Подключено"
 
-msgid "Connecting to update server..."
-msgstr "Подключение к серверу обновлений..."
+msgid "Connected Devices"
+msgstr "Подключенные устройства"
 
 msgid "Connection URL"
 msgstr "URL подключения"
@@ -568,6 +571,9 @@ msgstr "Копировать лог"
 
 msgid "Copy proxy link"
 msgstr "Скопировать ссылку прокси"
+
+msgid "Copy Support Report"
+msgstr "Скопировать отчет для поддержки"
 
 msgid "Could not compare FakeIP and control public IPs"
 msgstr "Не удалось сравнить публичные IP FakeIP и контрольной проверки"
@@ -650,6 +656,9 @@ msgstr "IP устройств сохранены"
 msgid "Device or IP"
 msgstr "Устройство или IP"
 
+msgid "Device updated"
+msgstr "Режим устройства обновлен"
+
 msgid "Devices listed here are always routed through the assigned section, regardless of global rules."
 msgstr "Устройства из этого списка всегда маршрутизируются через назначенную секцию, независимо от глобальных правил."
 
@@ -662,8 +671,14 @@ msgstr "DHCP управляется вручную"
 msgid "Direct (Default)"
 msgstr "Прямое (по умолчанию)"
 
+msgid "Direct Bypass"
+msgstr "Прямой WAN"
+
 msgid "Direct connection"
 msgstr "Прямое подключение"
+
+msgid "Direct WAN"
+msgstr "Прямой WAN"
 
 msgid "Disable autostart"
 msgstr "Отключить автостарт"
@@ -848,9 +863,6 @@ msgstr "Загружать через"
 msgid "Downloaded"
 msgstr "Загружено"
 
-msgid "Downloading package from repository..."
-msgstr "Загрузка пакета из репозитория..."
-
 msgid "DSCP marks (QoS)"
 msgstr "DSCP-метки (QoS)"
 
@@ -898,6 +910,9 @@ msgstr "Включить встроенный DNS-резолвер для дом
 
 msgid "Enable Config Validation"
 msgstr "Включить проверку конфигурации"
+
+msgid "Enable Direct WAN Bypass"
+msgstr "Включить прямой обход WAN"
 
 msgid "Enable DNS Continuous Check"
 msgstr "Непрерывная проверка DNS"
@@ -980,9 +995,6 @@ msgstr "Введите HWID, отправляемый с запросами по
 msgid "Enter the subscription URL"
 msgstr "Введите URL подписки"
 
-msgid "Environment preparation & dependency check..."
-msgstr "Подготовка окружения и проверка зависимостей..."
-
 msgid "Error"
 msgstr "Ошибка"
 
@@ -1045,6 +1057,9 @@ msgstr "Не удалось закрыть подключение"
 
 msgid "Failed to close connections"
 msgstr "Не удалось закрыть подключения"
+
+msgid "Failed to copy report to clipboard"
+msgstr "Не удалось скопировать отчет в буфер обмена"
 
 msgid "Failed to copy!"
 msgstr "Не удалось скопировать!"
@@ -1109,6 +1124,9 @@ msgstr "Не удалось остановить бота"
 msgid "Failed to stop watchdog"
 msgstr "Не удалось остановить watchdog"
 
+msgid "Failed to update device"
+msgstr "Не удалось обновить устройство"
+
 msgid "Failed to update subscriptions"
 msgstr "Не удалось обновить подписки"
 
@@ -1130,9 +1148,6 @@ msgstr "Интервал поиска более быстрого сервера
 msgid "Fastest"
 msgstr "Самый быстрый"
 
-msgid "Fetching release & commit metadata..."
-msgstr "Запрос метаданных релизов и коммитов..."
-
 msgid "Filter the servers that will be displayed on the dashboard."
 msgstr "Фильтровать серверы, отображаемые на дашборде."
 
@@ -1144,6 +1159,9 @@ msgstr "Порт в firewall для WAN"
 
 msgid "Fix applied"
 msgstr "Исправление применено"
+
+msgid "Fix resolv.conf"
+msgstr "Исправить resolv.conf"
 
 msgid "Fix the highlighted fields and save again."
 msgstr "Исправьте выделенные поля и сохраните снова."
@@ -1637,6 +1655,9 @@ msgstr "Проблемы"
 msgid "Issues detected"
 msgstr "Обнаружены проблемы"
 
+msgid "Issues detected. Review the diagnosis above."
+msgstr "Обнаружены неполадки. Ознакомьтесь с анализом выше."
+
 msgid "Japan (jp)"
 msgstr "Япония (jp)"
 
@@ -1684,6 +1705,9 @@ msgstr "Ключ"
 
 msgid "Keyword must not contain spaces or commas"
 msgstr "Ключевое слово не должно содержать пробелов или запятых"
+
+msgid "LAN Devices"
+msgstr "Устройства LAN"
 
 msgid "Language for AI Doctor diagnosis responses"
 msgstr "Язык ответов диагностики ИИ-доктора"
@@ -1738,6 +1762,9 @@ msgstr "Загружено %d текущих записей"
 
 msgid "Loaded!"
 msgstr "Загружено!"
+
+msgid "Loading connected LAN devices..."
+msgstr "Загрузка списка устройств LAN..."
 
 msgid "Loading connections"
 msgstr "Загрузка подключений"
@@ -1886,6 +1913,9 @@ msgstr "Нет активных клиентов"
 msgid "No active connections"
 msgstr "Нет активных подключений"
 
+msgid "No active DHCP clients found on local network."
+msgstr "Активные устройства в локальной сети не найдены."
+
 msgid "No active routing sections found."
 msgstr "Активные секции маршрутизации не найдены."
 
@@ -1910,6 +1940,9 @@ msgstr "Включённые серверные inbounds не настроены
 msgid "No file selected"
 msgstr "Файл не выбран"
 
+msgid "No issues detected. System is running normally."
+msgstr "Проблем не обнаружено. Система работает штатно."
+
 msgid "No issues found"
 msgstr "Проблем не обнаружено"
 
@@ -1918,9 +1951,6 @@ msgstr "Другие правила маркировки не найдены"
 
 msgid "No public firewall port required"
 msgstr "Публичный порт в firewall не требуется"
-
-msgid "No quick fix required"
-msgstr "Быстрая починка не требуется"
 
 msgid "No rules use ByeDPI"
 msgstr "Нет правил, использующих ByeDPI"
@@ -2054,6 +2084,9 @@ msgstr "Время ожидания истекло"
 msgid "Optimization"
 msgstr "Оптимизация"
 
+msgid "Optimize RAM memory"
+msgstr "Оптимизировать память (RAM)"
+
 msgid "Option \"%s\" contains an invalid input value."
 msgstr "Параметр \"%s\" содержит недопустимое значение."
 
@@ -2156,9 +2189,6 @@ msgstr "Закрепить на дашборде"
 msgid "Pin P2P isolation to the torrent client's own ports, comma separated. Each entry is \"proto\", \"proto:port\" or \"proto:port-port\" (tcp/udp). Without a port the whole protocol is routed direct."
 msgstr "Закрепить изоляцию P2P за портами торрент-клиента, через запятую. Каждая запись — \"протокол\", \"протокол:порт\" или \"протокол:порт-порт\" (tcp/udp). Без порта весь протокол уходит напрямую."
 
-msgid "Please wait, operation is running..."
-msgstr "Пожалуйста, подождите, выполняется операция..."
-
 msgid "Polling Interval (seconds)"
 msgstr "Интервал опроса (секунды)"
 
@@ -2237,6 +2267,9 @@ msgstr "Защита"
 msgid "Protocol"
 msgstr "Протокол"
 
+msgid "Proxy / DPI"
+msgstr "Прокси / DPI"
+
 msgid "Proxy Fail Threshold"
 msgstr "Порог ошибок прокси"
 
@@ -2270,6 +2303,9 @@ msgstr "RDP"
 msgid "Read error"
 msgstr "Ошибка чтения"
 
+msgid "Rebuild firewall rules"
+msgstr "Пересобрать правила firewall"
+
 msgid "Rebuilt release"
 msgstr "Пересобранный релиз"
 
@@ -2279,6 +2315,9 @@ msgstr "Рекомендуемые исправления:"
 msgid "Reconnect Threshold"
 msgstr "Порог переподключений"
 
+msgid "Reconnect WAN"
+msgstr "Переподключить WAN"
+
 msgid "Records proxy/DNS latency and health status in hourly buckets for analysis."
 msgstr "Записывает задержку прокси/DNS и состояние здоровья в почасовые блоки для анализа."
 
@@ -2287,6 +2326,12 @@ msgstr "Записей: %d"
 
 msgid "Refill"
 msgstr "Сброс"
+
+msgid "Refresh"
+msgstr "Обновить"
+
+msgid "Refresh Device List"
+msgstr "Обновить список устройств"
 
 msgid "Registration Detour"
 msgstr "Маршрут регистрации"
@@ -2321,9 +2366,6 @@ msgstr "Удалить указанные серверы с этого уров�
 msgid "Removing"
 msgstr "Удаление"
 
-msgid "Removing binaries & package files..."
-msgstr "Удаление бинарных файлов и пакетов..."
-
 msgid "Require a username and password for the local mixed proxy"
 msgstr "Требовать имя пользователя и пароль для локального смешанного прокси"
 
@@ -2338,6 +2380,9 @@ msgstr "Сброс…"
 
 msgid "Resolve domain names before routing so sing-box can use real destination IPs."
 msgstr "Разрешать имена доменов перед маршрутизацией, чтобы sing-box мог использовать реальные IP назначения."
+
+msgid "Resolve gateway"
+msgstr "Определить шлюз"
 
 msgid "Resolve real IP for routing"
 msgstr "Разрешать реальный IP для маршрутизации"
@@ -2360,14 +2405,32 @@ msgstr "Magic-заголовок ответного пакета (S2)"
 msgid "Response Packet Magic Header (S4)"
 msgstr "Magic-заголовок ответного пакета (S4)"
 
+msgid "Restart dnsmasq"
+msgstr "Перезапустить dnsmasq"
+
+msgid "Restart firewall"
+msgstr "Перезапустить firewall"
+
+msgid "Restart network"
+msgstr "Перезапустить сеть"
+
+msgid "Restart sing-box DNS"
+msgstr "Перезапустить DNS sing-box"
+
 msgid "Restart Tachyon"
 msgstr "Перезапустить Tachyon"
+
+msgid "Restart Zapret/ByeDPI"
+msgstr "Перезапустить Zapret/ByeDPI"
 
 msgid "Restarts"
 msgstr "Перезапуски"
 
 msgid "Restore"
 msgstr "Восстановить"
+
+msgid "Restore config backup"
+msgstr "Восстановить конфигурацию"
 
 msgid "Restore Snapshot"
 msgstr "Восстановить снапшот"
@@ -2389,6 +2452,9 @@ msgstr "Маршрутизировать основные DNS-запросы ч�
 
 msgid "Route requests to this DNS server through another section."
 msgstr "Маршрутизировать запросы к этому DNS-серверу через другую секцию."
+
+msgid "Route via Proxy"
+msgstr "Через прокси"
 
 msgid "Routing Rule Tracer"
 msgstr "Трассировщик правил маршрутизации"
@@ -2783,8 +2849,14 @@ msgstr "Старт"
 msgid "Start bot"
 msgstr "Запустить бота"
 
+msgid "Start sing-box"
+msgstr "Запустить sing-box"
+
 msgid "Start Tachyon"
 msgstr "Запустить Tachyon"
+
+msgid "Start watchdog"
+msgstr "Запустить watchdog"
 
 msgid "Start Watchdog first"
 msgstr "Сначала запустите Watchdog"
@@ -2809,9 +2881,6 @@ msgstr "Остановить Tachyon"
 
 msgid "Stopped"
 msgstr "Остановлен"
-
-msgid "Stopping active services..."
-msgstr "Остановка активных служб..."
 
 msgid "Stopping…"
 msgstr "Остановка…"
@@ -2858,6 +2927,9 @@ msgstr "Успешно импортировано %d DNS-записей"
 msgid "Sweden (se)"
 msgstr "Швеция (se)"
 
+msgid "Switch DNS to DoH"
+msgstr "Переключить DNS на DoH"
+
 msgid "System info"
 msgstr "Системная информация"
 
@@ -2890,6 +2962,9 @@ msgstr "Служба Tachyon остановлена. Запустите серв
 
 msgid "Tachyon update did not complete within the timeout"
 msgstr "Обновление Tachyon не завершилось в течение таймаута"
+
+msgid "Tachyon updated successfully!"
+msgstr "Tachyon успешно обновлен!"
 
 msgid "Tachyon will not modify your DHCP configuration"
 msgstr "Tachyon не будет изменять вашу конфигурацию DHCP"
@@ -3161,9 +3236,6 @@ msgstr "Неизвестный флаг NFQWS."
 msgid "Unknown NFQWS2 flag."
 msgstr "Неизвестный флаг NFQWS2."
 
-msgid "Unpacking & installing binaries..."
-msgstr "Распаковка и установка компонентов..."
-
 msgid "Unspecified IP address is not allowed"
 msgstr "Неуказанный IP-адрес не разрешён"
 
@@ -3203,8 +3275,8 @@ msgstr "Обновления и загрузки"
 msgid "Updating"
 msgstr "Обновление"
 
-msgid "Updating configuration & access permissions..."
-msgstr "Обновление конфигураций и прав доступа..."
+msgid "Updating device routing mode..."
+msgstr "Обновление режима маршрутизации устройства..."
 
 msgid "Uplink"
 msgstr "Исходящий"
@@ -3388,6 +3460,45 @@ msgstr "sing-box outbound для Zapret2 настроен"
 
 msgid "Zapret2 sing-box outbound is not configured"
 msgstr "sing-box outbound для Zapret2 не настроен"
+
+msgid "Applying changes & reloading services..."
+msgstr "Применение изменений и перезапуск служб..."
+
+msgid "Cleaning configuration & reloading..."
+msgstr "Очистка конфигураций и перезапуск..."
+
+msgid "Comparing versions & fingerprint check..."
+msgstr "Сравнение версий и проверка целостности..."
+
+msgid "Connecting to update server..."
+msgstr "Подключение к серверу обновлений..."
+
+msgid "Downloading package from repository..."
+msgstr "Загрузка пакета из репозитория..."
+
+msgid "Environment preparation & dependency check..."
+msgstr "Подготовка окружения и проверка зависимостей..."
+
+msgid "Fetching release & commit metadata..."
+msgstr "Запрос метаданных релизов и коммитов..."
+
+msgid "No quick fix required"
+msgstr "Быстрая починка не требуется"
+
+msgid "Please wait, operation is running..."
+msgstr "Пожалуйста, подождите, выполняется операция..."
+
+msgid "Removing binaries & package files..."
+msgstr "Удаление бинарных файлов и пакетов..."
+
+msgid "Stopping active services..."
+msgstr "Остановка активных служб..."
+
+msgid "Unpacking & installing binaries..."
+msgstr "Распаковка и установка компонентов..."
+
+msgid "Updating configuration & access permissions..."
+msgstr "Обновление конфигураций и прав доступа..."
 
 msgid "Service Health Check"
 msgstr "Проверка доступности сервисов"
