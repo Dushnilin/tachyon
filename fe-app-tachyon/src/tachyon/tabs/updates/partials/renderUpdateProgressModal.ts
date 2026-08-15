@@ -205,6 +205,8 @@ export function showUpdateProgressModal(
   let logPollTimer: ReturnType<typeof setTimeout> | null = null;
   let logPollStopped = true;
 
+  let autoCompletedFromLog = false;
+
   function appendLogText(text: string) {
     if (!text) {
       return;
@@ -212,6 +214,26 @@ export function showUpdateProgressModal(
     logFullText += text;
     logPreEl.textContent = logFullText;
     logPreEl.scrollTop = logPreEl.scrollHeight;
+
+    if (
+      !autoCompletedFromLog &&
+      options.component === 'tachyon' &&
+      (options.action === 'install' || options.action === 'reinstall')
+    ) {
+      if (
+        logFullText.includes('Tachyon updated to') ||
+        logFullText.includes('Start Tachyon')
+      ) {
+        autoCompletedFromLog = true;
+        window.setTimeout(() => {
+          if (activeModalController === controller) {
+            controller.completeSuccess(_('Tachyon updated successfully!'), {
+              reloadPage: true,
+            });
+          }
+        }, 1000);
+      }
+    }
   }
 
   async function pollLog() {
