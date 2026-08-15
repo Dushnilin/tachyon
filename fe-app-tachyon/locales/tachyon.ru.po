@@ -3910,3 +3910,19 @@ msgstr "Выбрать"
 
 msgid "Switch to auto-selection"
 msgstr "Вернуть автовыбор"
+
+msgid "Restore Native Internet (Stop Tachyon)"
+msgstr "Вернуть обычный интернет (остановить Tachyon)"
+
+msgid "Sync System Time (NTP)"
+msgstr "Синхронизировать время (NTP)"
+
+msgid "Flush Conntrack Table"
+msgstr "Очистить таблицу соед. (conntrack)"
+
+msgid "Reset Bootstrap DNS"
+msgstr "Сбросить Bootstrap DNS"
+
+msgid "Optimize AWG MTU"
+msgstr "Оптимизировать MTU AWG"
+

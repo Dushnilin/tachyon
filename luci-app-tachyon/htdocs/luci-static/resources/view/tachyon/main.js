@@ -12626,7 +12626,12 @@ async function handleRunAiDoctor() {
         optimize_memory: _("Optimize RAM memory"),
         switch_to_doh: _("Switch DNS to DoH"),
         heal_network_stack: _("Auto-Heal Network Stack"),
-        enable_safe_bypass: _("Enable Direct WAN Bypass")
+        enable_safe_bypass: _("Enable Direct WAN Bypass"),
+        restore_native_internet: _("Restore Native Internet (Stop Tachyon)"),
+        fix_system_time: _("Sync System Time (NTP)"),
+        flush_conntrack: _("Flush Conntrack Table"),
+        fix_bootstrap_dns: _("Reset Bootstrap DNS"),
+        optimize_mtu: _("Optimize AWG MTU")
       };
       const renderRootCauseBanner = () => {
         return E(

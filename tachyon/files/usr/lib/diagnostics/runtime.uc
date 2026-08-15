@@ -3403,6 +3403,26 @@ function apply_quick_fix(codes_str) {
             command_status("uci set tachyon.settings.recovery_bypass='1'; uci commit tachyon; /etc/init.d/tachyon reload >/dev/null 2>&1");
             status = true;
             msg = "Safe Direct WAN bypass enabled";
+        } else if (c == "restore_native_internet") {
+            command_status("/usr/bin/tachyon restore_dnsmasq 2>/dev/null; /etc/init.d/tachyon stop >/dev/null 2>&1; nft delete table inet TachyonTable 2>/dev/null; ip -4 rule del fwmark 0x04000000/0x04000000 table tachyon 2>/dev/null; ip -6 rule del fwmark 0x04000000/0x04000000 table tachyon 2>/dev/null; ip route flush table tachyon 2>/dev/null; /etc/init.d/dnsmasq restart >/dev/null 2>&1; ip route flush cache 2>/dev/null");
+            status = true;
+            msg = "Tachyon stopped, stock dnsmasq and native direct internet routing restored";
+        } else if (c == "fix_system_time") {
+            command_status("ntpd -q -p pool.ntp.org 2>/dev/null || rdate -s time.cloudflare.com 2>/dev/null; /etc/init.d/sysntpd restart 2>/dev/null");
+            status = true;
+            msg = "System time synchronized with NTP";
+        } else if (c == "flush_conntrack") {
+            command_status("sysctl -w net.netfilter.nf_conntrack_max=65536 2>/dev/null; echo 1 > /proc/sys/net/netfilter/nf_conntrack_max 2>/dev/null || true; conntrack -F 2>/dev/null || true");
+            status = true;
+            msg = "Conntrack table limits expanded and flushed";
+        } else if (c == "fix_bootstrap_dns") {
+            command_status("uci set tachyon.settings.bootstrap_dns_server='77.88.8.8'; uci commit tachyon; /etc/init.d/tachyon reload >/dev/null 2>&1");
+            status = true;
+            msg = "Bootstrap DNS reset to reliable public resolver (77.88.8.8) and reloaded";
+        } else if (c == "optimize_mtu") {
+            command_status("/usr/bin/tachyon discover-awg-mtu 2>/dev/null; /etc/init.d/tachyon reload >/dev/null 2>&1");
+            status = true;
+            msg = "AWG MTU discovery executed and tunnels reloaded";
         } else {
             status = false;
             msg = "Unknown fix code: " + c;
@@ -3448,20 +3468,25 @@ function ai_doctor_last() {
 }
 
 const DOCTOR_FIX_PRIORITIES = {
+    "fix_system_time": 5,
     "fix_wan_interface": 10,
     "restart_network": 15,
     "fix_gateway": 20,
     "fix_resolv_symlink": 30,
     "fix_dnsmasq": 35,
+    "fix_bootstrap_dns": 38,
     "switch_to_doh": 40,
     "clear_dns_cache": 45,
     "start_singbox": 50,
     "restart_zapret": 60,
+    "optimize_mtu": 65,
     "rebuild_rules": 70,
     "update_subscriptions": 80,
+    "flush_conntrack": 85,
     "optimize_memory": 90,
     "enable_safe_bypass": 95,
-    "heal_network_stack": 100
+    "heal_network_stack": 100,
+    "restore_native_internet": 110
 };
 
 function doctor_fix_sort(a, b) {
@@ -3632,6 +3657,51 @@ function diagnose_system_conflicts(cfg, lang, causes, fn_add_fix) {
     }
 }
 
+function diagnose_system_clock_and_conntrack(cfg, lang, causes, fn_add_fix) {
+    let current_t = time();
+    if (current_t < 1735689600) {
+        push(causes, {
+            probability: 98,
+            cause: lang == "en" ? "System clock is not synchronized (year < 2025 causes TLS/x509 certificate validation failures)"
+                                : "Системное время роутера не синхронизировано (дата в прошлом ломает валидацию TLS/SSL сертификатов узлов)",
+            fix: "fix_system_time"
+        });
+        fn_add_fix("fix_system_time");
+    }
+
+    let count_raw = trim(fs.readfile("/proc/sys/net/netfilter/nf_conntrack_count") || "");
+    let max_raw = trim(fs.readfile("/proc/sys/net/netfilter/nf_conntrack_max") || "");
+    if (count_raw != "" && max_raw != "") {
+        let ct_count = int(count_raw);
+        let ct_max = int(max_raw);
+        if (ct_max > 0 && (ct_count * 100 / ct_max) >= 88) {
+            push(causes, {
+                probability: 89,
+                cause: lang == "en" ? sprintf("NAT/Firewall connection tracking table nearly full (%d/%d sessions)", ct_count, ct_max)
+                                    : sprintf("Таблица отслеживания соединений файрвола (conntrack) почти переполнена (%d/%d сессий)", ct_count, ct_max),
+                fix: "flush_conntrack"
+            });
+            fn_add_fix("flush_conntrack");
+        }
+    }
+}
+
+function diagnose_dns_deadlock_and_mtu(cfg, lang, causes, fn_add_fix) {
+    let raw_sb_log = trim(command_output("logread | grep -iE 'lookup.*no such host|lookup.*timeout|dns: lookup failed' | tail -n 10 2>/dev/null"));
+    if (raw_sb_log != "" && index(raw_sb_log, "lookup") >= 0) {
+        let b_dns = cfg.bootstrap_dns_server || "";
+        if (b_dns == "127.0.0.1" || b_dns == "127.0.0.42") {
+            push(causes, {
+                probability: 93,
+                cause: lang == "en" ? "DNS Deadlock: Bootstrap DNS resolver points to local loopback (resolver loop)"
+                                    : "DNS Deadlock: Bootstrap-DNS для sing-box указывает на локальный адрес (зацикливание)",
+                fix: "fix_bootstrap_dns"
+            });
+            fn_add_fix("fix_bootstrap_dns");
+        }
+    }
+}
+
 function local_rule_doctor() {
     let cfg = uci_settings();
     let lang = lc(trim(cfg.ai_doctor_lang || "ru"));
@@ -3783,6 +3853,17 @@ function local_rule_doctor() {
 
     // ── 7. OpenWrt Service & Port Conflicts ──
     try { diagnose_system_conflicts(cfg, lang, causes, add_fix); } catch(e) { warn("Conflict diag error: " + as_string(e) + "\n"); }
+
+    // ── 8. System Clock & Connection Tracking ──
+    try { diagnose_system_clock_and_conntrack(cfg, lang, causes, add_fix); } catch(e) { warn("Clock/Conntrack diag error: " + as_string(e) + "\n"); }
+
+    // ── 9. DNS Deadlock & MTU ──
+    try { diagnose_dns_deadlock_and_mtu(cfg, lang, causes, add_fix); } catch(e) { warn("DNS Deadlock/MTU diag error: " + as_string(e) + "\n"); }
+
+    // If multiple critical failures, provide emergency native internet restoration
+    if (verify.failed >= 2) {
+        add_fix("restore_native_internet");
+    }
 
     // Sort fixes by priority order
     try { quick_fixes = prioritize_quick_fixes(quick_fixes); } catch(e) { warn("Prioritize error: " + as_string(e) + "\n"); }

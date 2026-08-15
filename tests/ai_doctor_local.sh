@@ -30,13 +30,28 @@ echo "$output" | grep -Fq '"provider": "local_heuristic"' ||
   fail "ai-doctor in offline mode must report provider local_heuristic"
 
 # 3. Test apply-quick-fix for new codes
-fix_out="$(ucode -L "$TACHYON_LIB" "$TACHYON_LIB/diagnostics/runtime.uc" apply-quick-fix "restart_zapret,optimize_memory" 2>/dev/null || true)"
+fix_out="$(ucode -L "$TACHYON_LIB" "$TACHYON_LIB/diagnostics/runtime.uc" apply-quick-fix "restart_zapret,optimize_memory,restore_native_internet,fix_system_time,flush_conntrack,fix_bootstrap_dns,optimize_mtu" 2>/dev/null || true)"
 
 echo "$fix_out" | grep -Fq '"code": "restart_zapret"' ||
   fail "apply_quick_fix must handle restart_zapret"
 
 echo "$fix_out" | grep -Fq '"code": "optimize_memory"' ||
   fail "apply_quick_fix must handle optimize_memory"
+
+echo "$fix_out" | grep -Fq '"code": "restore_native_internet"' ||
+  fail "apply_quick_fix must handle restore_native_internet"
+
+echo "$fix_out" | grep -Fq '"code": "fix_system_time"' ||
+  fail "apply_quick_fix must handle fix_system_time"
+
+echo "$fix_out" | grep -Fq '"code": "flush_conntrack"' ||
+  fail "apply_quick_fix must handle flush_conntrack"
+
+echo "$fix_out" | grep -Fq '"code": "fix_bootstrap_dns"' ||
+  fail "apply_quick_fix must handle fix_bootstrap_dns"
+
+echo "$fix_out" | grep -Fq '"code": "optimize_mtu"' ||
+  fail "apply_quick_fix must handle optimize_mtu"
 
 # 4. Doctor must work with the service stopped (recovery mode: restore stock
 #    internet, never start Tachyon) and the AI Doctor must verify the system
