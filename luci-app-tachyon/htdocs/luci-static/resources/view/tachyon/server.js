@@ -1901,6 +1901,17 @@ function validatePort(_sectionId, value) {
   return true;
 }
 
+function validatePositiveInteger(_sectionId, value) {
+  if (isEmptyValue(value)) {
+    return _("This field is required");
+  }
+  const n = parseInt(value, 10);
+  if (!/^[0-9]+$/.test(`${value}`) || isNaN(n) || n <= 0) {
+    return _("Value must be a positive integer");
+  }
+  return true;
+}
+
 function isEmptyValue(value) {
   return (
     value == null ||
