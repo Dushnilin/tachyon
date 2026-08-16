@@ -1,5 +1,6 @@
 #!/usr/bin/env ucode
 
+let fs = require("fs");
 let common = require("core.common");
 let runtime_constants = require("singbox.constants");
 
@@ -20,6 +21,17 @@ function string_to_hex(value) {
     for (let i = 0; i < length(value); i++)
         result += sprintf("%02x", ord(value, i));
     return result;
+}
+
+function uci_bin_to_hex(val) {
+    if (val == null || val == "") return "";
+    let s = as_string(val);
+    s = replace(s, /^<b\s*/i, "");
+    s = replace(s, /^0x/i, "");
+    s = replace(s, />$/, "");
+    s = replace(s, /\s+/g, "");
+    if (length(s) % 2 != 0) s = "0" + s;
+    return s;
 }
 
 function mtproto_secret(section) {
@@ -221,12 +233,13 @@ function add_standard_inbound(config, section, protocol, tag_name) {
         let concurrency = option(section, "mtproto_concurrency", "");
         if (concurrency != "")
             inbound.concurrency = int(concurrency, 10);
-        let fronting_port = option(section, "mtproto_domain_fronting_port", "443");
-        if (fronting_port != "")
-            inbound.domain_fronting_port = int(fronting_port, 10);
-        maybe_string(inbound, "domain_fronting_ip", option(section, "mtproto_domain_fronting_ip", ""));
-        if (bool_option(section, "mtproto_domain_fronting_proxy_protocol", false))
-            inbound.domain_fronting_proxy_protocol = true;
+        inbound.type = "shadowsocks";
+        inbound.method = "2022-blake3-aes-128-gcm";
+        inbound.password = option(section, "server_password", "");
+        let server_users = users(section, protocol);
+        if (length(server_users) > 0)
+            inbound.users = server_users;
+        maybe_string(inbound, "network", option(section, "mtproto_network", "tcp"));
         maybe_string(inbound, "prefer_ip", option(section, "mtproto_prefer_ip", "prefer-ipv4"));
         if (bool_option(section, "mtproto_auto_update", false))
             inbound.auto_update = true;
@@ -246,24 +259,39 @@ function add_standard_inbound(config, section, protocol, tag_name) {
         let server_port = int_option(section, "awg_server_port", "51820");
         let peer_public_key = option(section, "awg_peer_public_key", "");
 
-        inbound.peers = [{
-            address: server_address,
-            port: server_port,
+        let allowed_ips = list_option(section, "awg_allowed_ips");
+        if (length(allowed_ips) == 0) {
+            let allowed_str = option(section, "awg_allowed_ips", "");
+            if (allowed_str != "")
+                allowed_ips = split(allowed_str, /[,\s]+/);
+            else
+                allowed_ips = [ "0.0.0.0/0", "::/0" ];
+        }
+
+        let peer = {
             public_key: peer_public_key,
-            allowed_ips: option(section, "awg_allowed_ips", "0.0.0.0/0,::/0")
-        }];
+            allowed_ips: allowed_ips
+        };
+        if (server_address != "")
+            peer.address = server_address;
+        if (server_port > 0)
+            peer.port = server_port;
 
         let preshared_key = option(section, "awg_preshared_key", "");
         if (preshared_key != "")
-            inbound.peers[0].pre_shared_key = preshared_key;
+            peer.pre_shared_key = preshared_key;
 
         let keepalive = int_option(section, "awg_keepalive", "0");
         if (keepalive > 0)
-            inbound.peers[0].persistent_keepalive_interval = keepalive;
+            peer.persistent_keepalive_interval = keepalive;
+
+        inbound.peers = [ peer ];
 
         let jc = int_option(section, "awg_jc", "4");
+        if (jc > 10) jc = 10;
         let jmin = int_option(section, "awg_jmin", "40");
         let jmax = int_option(section, "awg_jmax", "70");
+        if (jmax > 1200) jmax = 1200;
         let is_lx = trim(fs.readfile("/etc/tachyon/sing-box-variant") || "") == "lx";
 
         let amnezia = {
@@ -280,6 +308,16 @@ function add_standard_inbound(config, section, protocol, tag_name) {
             s4: int_option(section, "awg_s4", "0")
         };
 
+        let i1 = uci_bin_to_hex(option(section, "awg_i1", ""));
+        let i2 = uci_bin_to_hex(option(section, "awg_i2", ""));
+        let i3 = uci_bin_to_hex(option(section, "awg_i3", ""));
+        let i4 = uci_bin_to_hex(option(section, "awg_i4", ""));
+        let i5 = uci_bin_to_hex(option(section, "awg_i5", ""));
+        let j1 = uci_bin_to_hex(option(section, "awg_j1", ""));
+        let j2 = uci_bin_to_hex(option(section, "awg_j2", ""));
+        let j3 = uci_bin_to_hex(option(section, "awg_j3", ""));
+        let itime = int_option(section, "awg_itime", "0");
+
         if (is_lx) {
             inbound.jc = amnezia.jc;
             inbound.jmin = amnezia.jmin;
@@ -292,7 +330,25 @@ function add_standard_inbound(config, section, protocol, tag_name) {
             inbound.h4 = amnezia.h4;
             inbound.s3 = amnezia.s3;
             inbound.s4 = amnezia.s4;
+            if (i1 != "") inbound.i1 = i1;
+            if (i2 != "") inbound.i2 = i2;
+            if (i3 != "" && i3 != "0") inbound.i3 = i3;
+            if (i4 != "" && i4 != "0") inbound.i4 = i4;
+            if (i5 != "" && i5 != "0") inbound.i5 = i5;
+            if (j1 != "") inbound.j1 = j1;
+            if (j2 != "") inbound.j2 = j2;
+            if (j3 != "") inbound.j3 = j3;
+            if (itime > 0) inbound.itime = itime;
         } else {
+            if (i1 != "") amnezia.i1 = i1;
+            if (i2 != "") amnezia.i2 = i2;
+            if (i3 != "" && i3 != "0") amnezia.i3 = i3;
+            if (i4 != "" && i4 != "0") amnezia.i4 = i4;
+            if (i5 != "" && i5 != "0") amnezia.i5 = i5;
+            if (j1 != "") amnezia.j1 = j1;
+            if (j2 != "") amnezia.j2 = j2;
+            if (j3 != "") amnezia.j3 = j3;
+            if (itime > 0) amnezia.itime = itime;
             inbound.amnezia = amnezia;
         }
     }

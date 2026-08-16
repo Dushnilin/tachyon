@@ -10,6 +10,7 @@
 
 let fs = require("fs");
 let common = require("core.common");
+let uci_core = require("core.uci");
 
 const LIB_DIR = getenv("TACHYON_SC_LIB") || "/usr/lib/tachyon-servicecheck";
 const ENGINE = LIB_DIR + "/probe.uc";
@@ -1825,12 +1826,9 @@ function gemini_key_status() {
 // ---------------------------------------------------------------------------
 
 function tachyon_get_targets(all_mode) {
-    let uci = require("uci");
-    let cursor = uci.cursor();
-    cursor.load("tachyon");
-    
     let all_profiles_json = fs.readfile(PROFILES_OVERRIDE) || fs.readfile(PROFILES_DEFAULT);
-    let all_profiles = json(all_profiles_json) || { profiles: [] };
+    let all_profiles = object_or_empty(parse_json(all_profiles_json));
+    if (type(all_profiles.profiles) != "array") all_profiles.profiles = [];
     let profiles_map = {};
     for (let i = 0; i < length(all_profiles.profiles); i++) {
         let p = all_profiles.profiles[i];
@@ -1839,6 +1837,8 @@ function tachyon_get_targets(all_mode) {
 
     let targets = [];
     let seen_domains = {};
+
+    let sections = uci_core.section_objects("tachyon", "section");
 
     if (all_mode == "all") {
         // 1. Include ALL Community Profiles
@@ -1865,7 +1865,7 @@ function tachyon_get_targets(all_mode) {
         }
 
         // 2. Include custom user domains from all UCI sections
-        cursor.foreach("tachyon", "section", function(s) {
+        for (let s in sections) {
             let raw_name = as_string(s['.name']);
             let custom_label = as_string(s.label);
             let has_custom_label = custom_label != "" && custom_label != raw_name && match(custom_label, /^section_\d+$/) == null && match(custom_label, /^cfg[0-9a-fA-F]+$/) == null;
@@ -1908,7 +1908,7 @@ function tachyon_get_targets(all_mode) {
                     target_label: cd
                 });
             }
-        });
+        }
 
         write_json(targets);
         return;
@@ -1927,8 +1927,8 @@ function tachyon_get_targets(all_mode) {
         "hodca": "hdrezka"
     };
 
-    cursor.foreach("tachyon", "section", function(s) {
-        if (s.enabled == "0" || s.enabled == "false") return;
+    for (let s in sections) {
+        if (s.enabled == "0" || s.enabled == "false") continue;
         
         let profiles_to_check = [];
         let raw_community = s.community_lists;
@@ -2024,13 +2024,13 @@ function tachyon_get_targets(all_mode) {
                 target_label: cd
             });
         }
-    });
+    }
     
     write_json(targets);
 }
 
 function tachyon_check_target(target_json_str) {
-    let t = json(target_json_str);
+    let t = parse_json(target_json_str);
     if (!t) {
         write_json([{ success: false, status_class: "Error parsing target" }]);
         return;

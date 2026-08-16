@@ -598,8 +598,7 @@ function sing_box_runtime_reload_needed(config_hash_before, config_hash_after, f
 }
 
 function has_active_mtproxy_inbound() {
-    let uci = require("uci");
-    let cursor = uci.cursor();
+    let cursor = uci_core.cursor();
     cursor.load("tachyon");
     let found = false;
     cursor.foreach("tachyon", "server", function(s) {
