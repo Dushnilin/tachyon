@@ -23,6 +23,15 @@ const ROUTING_ACTIONS = [
   "zapret",
   "zapret2",
   "byedpi",
+  "awg",
+  "warp",
+  "anytls",
+  "snell",
+  "mieru",
+  "sudoku",
+  "masque",
+  "openvpn",
+  "hosts",
 ];
 const CONNECTIONS_BLOCKED_INTERFACES = [
   "br-lan",
@@ -81,7 +90,7 @@ function isOutboundDetourTargetSection(section, currentSectionId) {
     sectionName &&
     sectionName !== currentSectionId &&
     section.enabled !== "0" &&
-    ["connection", "proxy", "outbound", "vpn"].includes(action)
+    ["connection", "proxy", "outbound", "vpn", "awg", "warp", "anytls", "snell", "mieru", "sudoku", "masque", "openvpn"].includes(action)
   );
 }
 
@@ -121,7 +130,7 @@ function isDnsDetourTargetSection(section, currentSectionId) {
     return false;
   }
 
-  if (["connection", "proxy", "outbound", "vpn"].includes(action)) {
+  if (["connection", "proxy", "outbound", "vpn", "awg", "warp", "anytls", "snell", "mieru", "sudoku", "masque", "openvpn"].includes(action)) {
     return true;
   }
   if (action === "zapret") {
@@ -1781,7 +1790,7 @@ function isDownloadThroughTargetSection(section, currentSectionId) {
     return false;
   }
 
-  if (["connection", "proxy", "outbound", "vpn"].includes(action)) {
+  if (["connection", "proxy", "outbound", "vpn", "awg", "warp", "anytls", "snell", "mieru", "sudoku", "masque", "openvpn"].includes(action)) {
     return true;
   }
 
@@ -9594,6 +9603,15 @@ const ACTION_COLORS = {
   zapret: "#8e44ad",
   zapret2: "#9b59b6",
   byedpi: "#d35400",
+  awg: "#008080",
+  warp: "#e67e22",
+  anytls: "#16a085",
+  snell: "#2c3e50",
+  mieru: "#34495e",
+  sudoku: "#7f8c8d",
+  masque: "#8e44ad",
+  openvpn: "#e74c3c",
+  hosts: "#2ecc71",
 };
 
 function ip4ToInt(ip) {
