@@ -202,17 +202,107 @@ function number_value(value) {
 }
 
 function temp_path(suffix) {
-    return sprintf("/tmp/.forkop-sc-%d-%d.%s", now_seconds(), int(now_ms() % 1000000), as_string(suffix));
+    return sprintf("/tmp/.tachyon-sc-%d-%d.%s", now_seconds(), int(now_ms() % 1000000), as_string(suffix));
 }
 
 function ensure_state_dir() {
     run_quiet([ "mkdir", "-p", STATE_DIR ]);
 }
 
+function download_profiles_from_repo() {
+    const RAW_URL = "https://raw.githubusercontent.com/Dushnilin/tachyon/main/tachyon/files/usr/share/tachyon/servicecheck_profiles.json";
+    const MIRRORS = [
+        RAW_URL,
+        "https://gh-proxy.com/" + RAW_URL,
+        "https://ghfast.top/" + RAW_URL,
+        "https://ghproxy.net/" + RAW_URL
+    ];
+
+    let proxy_address = trim(as_string(common.command_output("/usr/lib/tachyon/singbox/runtime.uc service-proxy-address components 2>/dev/null") || ""));
+
+    let content = "";
+    for (let mirror in MIRRORS) {
+        // 1. Попытка через локальный прокси
+        if (proxy_address != "") {
+            let proxy_cmd = [ "curl", "-sS", "-x", "http://" + proxy_address, "--connect-timeout", "5", "--max-time", "15", "-L", mirror ];
+            if (!command_exists("curl")) {
+                proxy_cmd = [ "uclient-fetch", "-q", "-O", "-", "--timeout=15", mirror ];
+            }
+            let res = capture_args(proxy_cmd, false);
+            if (res.status == 0 && length(trim(res.output)) > 100 && index(res.output, "profiles") >= 0) {
+                content = res.output;
+                break;
+            }
+        }
+
+        // 2. Прямое скачивание
+        let direct_cmd = [ "curl", "-sS", "--connect-timeout", "5", "--max-time", "15", "-L", mirror ];
+        if (!command_exists("curl")) {
+            direct_cmd = [ "uclient-fetch", "-q", "-O", "-", "--timeout=15", mirror ];
+        }
+        let res = capture_args(direct_cmd, false);
+        if (res.status == 0 && length(trim(res.output)) > 100 && index(res.output, "profiles") >= 0) {
+            content = res.output;
+            break;
+        }
+    }
+
+    if (content == "")
+        return null;
+
+    let parsed = parse_json(content);
+    if (type(parsed) != "object" || type(parsed.profiles) != "array" || length(parsed.profiles) == 0)
+        return null;
+
+    // Сохранение в /usr/share/tachyon или /etc/tachyon
+    let target_file = PROFILES_DEFAULT;
+    let target_dir = "/usr/share/tachyon";
+    run_quiet([ "mkdir", "-p", target_dir ]);
+    let tmp = target_file + ".tmp";
+    if (fs.stat(target_dir) == null || fs.writefile(tmp, content) == null) {
+        target_file = PROFILES_OVERRIDE;
+        target_dir = "/etc/tachyon";
+        run_quiet([ "mkdir", "-p", target_dir ]);
+        tmp = target_file + ".tmp";
+        if (fs.writefile(tmp, content) == null) {
+            return null;
+        }
+    }
+
+    run_quiet([ "mv", "-f", tmp, target_file ]);
+    run_quiet([ "chmod", "0644", target_file ]);
+    return content;
+}
+
+function load_profiles_data() {
+    let override = getenv("TACHYON_SC_PROFILES") || getenv("FORKOP_SC_PROFILES");
+    if (as_string(override) != "") {
+        let data = fs.readfile(as_string(override));
+        if (data != null && length(trim(data)) > 0) return data;
+    }
+
+    if (fs.stat(PROFILES_OVERRIDE) != null) {
+        let data = fs.readfile(PROFILES_OVERRIDE);
+        if (data != null && length(trim(data)) > 0) return data;
+    }
+
+    if (fs.stat(PROFILES_DEFAULT) != null) {
+        let data = fs.readfile(PROFILES_DEFAULT);
+        if (data != null && length(trim(data)) > 0) return data;
+    }
+
+    return download_profiles_from_repo();
+}
+
 function profiles_file() {
-    let override = getenv("FORKOP_SC_PROFILES");
+    let override = getenv("TACHYON_SC_PROFILES") || getenv("FORKOP_SC_PROFILES");
     if (as_string(override) != "")
         return as_string(override);
+    if (fs.stat(PROFILES_OVERRIDE) != null)
+        return PROFILES_OVERRIDE;
+    if (fs.stat(PROFILES_DEFAULT) != null)
+        return PROFILES_DEFAULT;
+    download_profiles_from_repo();
     if (fs.stat(PROFILES_OVERRIDE) != null)
         return PROFILES_OVERRIDE;
     return PROFILES_DEFAULT;
@@ -1826,7 +1916,7 @@ function gemini_key_status() {
 // ---------------------------------------------------------------------------
 
 function tachyon_get_targets(all_mode) {
-    let all_profiles_json = fs.readfile(PROFILES_OVERRIDE) || fs.readfile(PROFILES_DEFAULT);
+    let all_profiles_json = load_profiles_data();
     let all_profiles = object_or_empty(parse_json(all_profiles_json));
     if (type(all_profiles.profiles) != "array") all_profiles.profiles = [];
     let profiles_map = {};
@@ -2074,6 +2164,17 @@ if (mode == "get-targets") {
         expect: [200, 301, 302, 307, 400, 403, 404, 405, 426]
     };
     tachyon_check_target(sprintf("%J", custom_target));
+} else if (mode == "update-profiles" || mode == "download-profiles") {
+    let data = download_profiles_from_repo();
+    let parsed = object_or_empty(parse_json(data));
+    let count = length(array_or_empty(parsed.profiles));
+    write_json({ success: data != null, count: count, message: data != null ? "Профили успешно загружены и обновлены" : "Не удалось загрузить профили" });
+} else if (mode == "get-profiles") {
+    profiles_get();
+} else if (mode == "save-profiles" && ARGV[1]) {
+    profiles_save(ARGV[1]);
+} else if (mode == "reset-profiles") {
+    profiles_reset();
 } else {
     warn("Unknown mode: ", mode, "\n");
     exit(1);

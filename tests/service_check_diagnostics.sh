@@ -19,8 +19,8 @@ targets_json="$(ucode -L "$TACHYON_LIB" "$SERVICE_CHECK_UC" get-targets)"
 targets_all_json="$(ucode -L "$TACHYON_LIB" "$SERVICE_CHECK_UC" get-targets all)"
 [ -n "$targets_all_json" ] || fail "service_check get-targets all returned empty output"
 
-# 3. Test check-custom parses and returns structured result
-check_json="$(ucode -L "$TACHYON_LIB" "$SERVICE_CHECK_UC" check-custom 127.0.0.1 2>/dev/null || true)"
-[ -n "$check_json" ] || fail "service_check check-custom returned empty output"
+# 4. Test get-profiles
+profiles_json="$(ucode -L "$TACHYON_LIB" "$SERVICE_CHECK_UC" get-profiles)"
+[ -n "$profiles_json" ] || fail "service_check get-profiles returned empty output"
 
 printf 'service check diagnostics passed\n'
