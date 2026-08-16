@@ -196,6 +196,16 @@ Run the following single command in your router's SSH terminal:
 sh <(wget -O - https://raw.githubusercontent.com/Dushnilin/tachyon/main/install.sh)
 ```
 
+> [!TIP]
+> **Installation Mirrors (if direct access to GitHub is blocked or throttled):**
+> ```bash
+> # Mirror 1 (gh-proxy.com):
+> sh <(wget -O - https://gh-proxy.com/raw.githubusercontent.com/Dushnilin/tachyon/main/install.sh)
+> 
+> # Mirror 2 (ghfast.top):
+> sh <(wget -O - https://ghfast.top/https://raw.githubusercontent.com/Dushnilin/tachyon/main/install.sh)
+> ```
+
 > [!NOTE]
 > **Automatic Migration:** Existing configurations from **Forkop**, **Podkop Plus**, or original **Podkop** are fully compatible. The installer will automatically migrate your settings to `/etc/config/tachyon` without data loss.
 
@@ -205,6 +215,11 @@ To cleanly remove Tachyon, restore stock DNS, flush nftables rules, and preserve
 
 ```bash
 sh <(wget -O - https://raw.githubusercontent.com/Dushnilin/tachyon/main/uninstall.sh)
+```
+
+*Via mirror gh-proxy.com:*
+```bash
+sh <(wget -O - https://gh-proxy.com/raw.githubusercontent.com/Dushnilin/tachyon/main/uninstall.sh)
 ```
 
 **Options & Flags:**

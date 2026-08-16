@@ -196,6 +196,16 @@ curl http://192.168.1.1/cgi-bin/tachyon-agent/openapi.json
 sh <(wget -O - https://raw.githubusercontent.com/Dushnilin/tachyon/main/install.sh)
 ```
 
+> [!TIP]
+> **Зеркала установки (при блокировке или замедлении GitHub):**
+> ```bash
+> # Зеркало 1 (gh-proxy.com):
+> sh <(wget -O - https://gh-proxy.com/raw.githubusercontent.com/Dushnilin/tachyon/main/install.sh)
+> 
+> # Зеркало 2 (ghfast.top):
+> sh <(wget -O - https://ghfast.top/https://raw.githubusercontent.com/Dushnilin/tachyon/main/install.sh)
+> ```
+
 > [!NOTE]
 > **Автоматическая миграция:** Конфигурации от **Forkop**, **Podkop Plus** и оригинального **Podkop** полностью совместимы. Инсталлятор автоматически перенесет ваши правила в `/etc/config/tachyon` без потери данных.
 
@@ -205,6 +215,11 @@ sh <(wget -O - https://raw.githubusercontent.com/Dushnilin/tachyon/main/install.
 
 ```bash
 sh <(wget -O - https://raw.githubusercontent.com/Dushnilin/tachyon/main/uninstall.sh)
+```
+
+*Через зеркало gh-proxy.com:*
+```bash
+sh <(wget -O - https://gh-proxy.com/raw.githubusercontent.com/Dushnilin/tachyon/main/uninstall.sh)
 ```
 
 **Опции и флаги:**

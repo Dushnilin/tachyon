@@ -15,6 +15,12 @@ Welcome to the comprehensive technical knowledge base for **Tachyon**. This dire
 | [**05. AI Stack & AI Doctor**](05_AI_STACK_AND_AUTONOMOUS_DOCTOR.md) | AI Doctor v2.5, Watchdog & REST Agent API | 13 Quick Fixes, Local Rule Doctor, NTP/MTU tuning, OpenAPI 3.0.3, REST API |
 | [**06. Frontend LuCI Architecture**](06_FRONTEND_LUCI_TYPESCRIPT.md) | TypeScript SPA & LuCI view integration | `baseclass.extend` patch, reactive stores, live log streaming modal |
 | [**07. Build & Testing Pipeline**](07_BUILD_TESTS_AND_DEPLOYMENT.md) | Compilation, testing & release workflows | `build.sh` (ipk/apk), `install.sh`, Docker CI container, vitest tests |
+| [**08. UCI Configuration Schema**](08_UCI_CONFIGURATION_SCHEMA.md) | Complete `/etc/config/tachyon` reference | All UCI sections, options, validators, default values, ready recipes |
+| [**09. Telegram Bot Architecture**](09_TELEGRAM_BOT_ARCHITECTURE.md) | Remote Telegram control daemon protocol | Long-polling model, inline keyboards, callback query routing, security |
+| [**10. Hosts Engine & Blocklists**](10_HOSTS_ENGINE_AND_BLOCKLISTS.md) | Hosts ingestion, parsing & smart caching | `combined.txt`, multi-format parsing, GitHub mirror retry resiliency |
+| [**11. Troubleshooting Manual**](11_TROUBLESHOOTING_AND_FIELD_MANUAL.md) | Field diagnostics & emergency recovery | Symptom resolution matrix, diagnostic commands, log inspection paths |
+| [**12. ucode Programming Patterns**](12_UCODE_PROGRAMMING_PATTERNS.md) | Developer guidelines for OpenWrt ucode | Atomic file writes, shell quoting, libuci bindings, RAM efficiency |
+| [**13. REST API & MCP Specification**](13_REST_API_AND_MCP_SPECIFICATION.md) | REST Agent API & MCP tool definitions | OpenAPI 3.0.3, Bearer Auth, OpenAI Function Calling, MCP JSON schema |
 
 ---
 
