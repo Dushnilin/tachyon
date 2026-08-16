@@ -1416,12 +1416,69 @@ function buildMtprotoLink(sectionId, identity) {
   return `https://t.me/proxy?${query}`;
 }
 
+function buildAwgClientConfig(sectionId) {
+  const host = getPublicHost(sectionId);
+  const port = uci.get(UCI_PACKAGE, sectionId, "listen_port") || "51820";
+  const clientPrivateKey = uci.get(UCI_PACKAGE, sectionId, "awg_client_private_key") || "";
+  const serverPublicKey =
+    uci.get(UCI_PACKAGE, sectionId, "awg_server_public_key") ||
+    uci.get(UCI_PACKAGE, sectionId, "awg_peer_public_key") ||
+    "";
+  const presharedKey = uci.get(UCI_PACKAGE, sectionId, "awg_preshared_key") || "";
+  const clientAddress = uci.get(UCI_PACKAGE, sectionId, "awg_client_address") || "10.0.0.2/32";
+  const mtu = uci.get(UCI_PACKAGE, sectionId, "awg_mtu") || "1280";
+  const keepalive = uci.get(UCI_PACKAGE, sectionId, "awg_keepalive") || "25";
+  const dns = uci.get(UCI_PACKAGE, sectionId, "awg_dns") || "10.0.0.1";
+
+  const jc = uci.get(UCI_PACKAGE, sectionId, "awg_jc") || "4";
+  const jmin = uci.get(UCI_PACKAGE, sectionId, "awg_jmin") || "40";
+  const jmax = uci.get(UCI_PACKAGE, sectionId, "awg_jmax") || "70";
+  const s1 = uci.get(UCI_PACKAGE, sectionId, "awg_s1") || "0";
+  const s2 = uci.get(UCI_PACKAGE, sectionId, "awg_s2") || "0";
+  const s3 = uci.get(UCI_PACKAGE, sectionId, "awg_s3") || "0";
+  const s4 = uci.get(UCI_PACKAGE, sectionId, "awg_s4") || "0";
+  const h1 = uci.get(UCI_PACKAGE, sectionId, "awg_h1") || "1";
+  const h2 = uci.get(UCI_PACKAGE, sectionId, "awg_h2") || "2";
+  const h3 = uci.get(UCI_PACKAGE, sectionId, "awg_h3") || "3";
+  const h4 = uci.get(UCI_PACKAGE, sectionId, "awg_h4") || "4";
+  const i1 = uci.get(UCI_PACKAGE, sectionId, "awg_i1") || "";
+  const i2 = uci.get(UCI_PACKAGE, sectionId, "awg_i2") || "";
+  const i3 = uci.get(UCI_PACKAGE, sectionId, "awg_i3") || "";
+  const i4 = uci.get(UCI_PACKAGE, sectionId, "awg_i4") || "";
+  const i5 = uci.get(UCI_PACKAGE, sectionId, "awg_i5") || "";
+  const j1 = uci.get(UCI_PACKAGE, sectionId, "awg_j1") || "";
+  const j2 = uci.get(UCI_PACKAGE, sectionId, "awg_j2") || "";
+  const j3 = uci.get(UCI_PACKAGE, sectionId, "awg_j3") || "";
+  const itime = uci.get(UCI_PACKAGE, sectionId, "awg_itime") || "";
+
+  let conf = `[Interface]\nAddress = ${clientAddress}\nPrivateKey = ${clientPrivateKey}\nDNS = ${dns}\nMTU = ${mtu}\n`;
+  conf += `Jc = ${jc}\nJmin = ${jmin}\nJmax = ${jmax}\nS1 = ${s1}\nS2 = ${s2}\nS3 = ${s3}\nS4 = ${s4}\nH1 = ${h1}\nH2 = ${h2}\nH3 = ${h3}\nH4 = ${h4}\n`;
+  if (i1) conf += `I1 = ${i1}\n`;
+  if (i2) conf += `I2 = ${i2}\n`;
+  if (i3) conf += `I3 = ${i3}\n`;
+  if (i4) conf += `I4 = ${i4}\n`;
+  if (i5) conf += `I5 = ${i5}\n`;
+  if (j1) conf += `J1 = ${j1}\n`;
+  if (j2) conf += `J2 = ${j2}\n`;
+  if (j3) conf += `J3 = ${j3}\n`;
+  if (itime) conf += `Itime = ${itime}\n`;
+
+  conf += `\n[Peer]\nPublicKey = ${serverPublicKey}\nEndpoint = ${host}:${port}\nAllowedIPs = 0.0.0.0/0, ::/0\nPersistentKeepalive = ${keepalive}\n`;
+  if (presharedKey) conf += `PresharedKey = ${presharedKey}\n`;
+
+  return conf;
+}
+
 function buildClientLink(sectionId, options = {}) {
   const protocol = getProtocol(sectionId);
   const identity = getServerIdentity(sectionId);
 
   if (protocol === "tailscale" || protocol === "json_inbound") {
     return "";
+  }
+
+  if (protocol === "awg") {
+    return buildAwgClientConfig(sectionId);
   }
 
   if (
@@ -1454,6 +1511,8 @@ function buildClientLink(sectionId, options = {}) {
       return buildHysteria2Link(sectionId, identity, options);
     case "mtproto":
       return buildMtprotoLink(sectionId, identity);
+    case "awg":
+      return buildAwgClientConfig(sectionId);
     case "vless":
     default:
       return buildVlessTrojanLink(sectionId, identity);
@@ -1679,19 +1738,46 @@ function renderInfoClientLink(sectionId, linkContext = {}) {
           },
           link,
         ),
-        E(
-          "button",
-          {
-            class:
-              "btn cbi-button cbi-button-neutral fkp-server-info-modal__copy-btn",
-            type: "button",
-            click: (ev) => {
-              ev.preventDefault();
-              copyText(link);
+        E("div", { style: "display:flex;gap:6px;" }, [
+          E(
+            "button",
+            {
+              class:
+                "btn cbi-button cbi-button-neutral fkp-server-info-modal__copy-btn",
+              type: "button",
+              click: (ev) => {
+                ev.preventDefault();
+                copyText(link);
+              },
             },
-          },
-          [iconSvg("copy"), " ", E("span", {}, _("Copy"))],
-        ),
+            [iconSvg("copy"), " ", E("span", {}, _("Copy"))],
+          ),
+          protocol === "awg"
+            ? E(
+                "button",
+                {
+                  class:
+                    "btn cbi-button cbi-button-action fkp-server-info-modal__copy-btn",
+                  type: "button",
+                  click: (ev) => {
+                    ev.preventDefault();
+                    const blob = new Blob([link], {
+                      type: "text/plain;charset=utf-8",
+                    });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = `${name || "amneziawg"}.conf`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                  },
+                },
+                [E("span", {}, _("Download .conf"))],
+              )
+            : "",
+        ]),
       ]),
     ]),
   ]);
@@ -2296,10 +2382,57 @@ function shouldGenerateRealityKeypair(sectionId) {
   );
 }
 
+function generateAwgKeypair(sectionId) {
+  return fs
+    .exec("/usr/bin/tachyon", ["generate_wg_keypair"])
+    .then((response) => {
+      const text = response?.stdout || "";
+      const matchPriv = text.match(/PrivateKey:\s*([^\s]+)/);
+      const matchPub = text.match(/PublicKey:\s*([^\s]+)/);
+      if (matchPriv && matchPub) {
+        return {
+          private_key: matchPriv[1],
+          public_key: matchPub[1],
+        };
+      }
+      return null;
+    })
+    .catch(() => null);
+}
+
+function generateAwgKeypairsIfMissing(sectionId) {
+  const currentServerPriv = uci.get(UCI_PACKAGE, sectionId, "awg_private_key");
+  const currentPeerPub = uci.get(UCI_PACKAGE, sectionId, "awg_peer_public_key");
+  if (currentServerPriv && currentPeerPub) {
+    return Promise.resolve();
+  }
+
+  return Promise.all([generateAwgKeypair(sectionId), generateAwgKeypair(sectionId)]).then(
+    ([srvPair, cliPair]) => {
+      if (srvPair) {
+        uci.set(UCI_PACKAGE, sectionId, "awg_private_key", srvPair.private_key);
+        uci.set(UCI_PACKAGE, sectionId, "awg_server_public_key", srvPair.public_key);
+        setWidgetValue(sectionId, "awg_private_key", srvPair.private_key);
+        setWidgetValue(sectionId, "awg_server_public_key", srvPair.public_key);
+      }
+      if (cliPair) {
+        uci.set(UCI_PACKAGE, sectionId, "awg_client_private_key", cliPair.private_key);
+        uci.set(UCI_PACKAGE, sectionId, "awg_peer_public_key", cliPair.public_key);
+        setWidgetValue(sectionId, "awg_client_private_key", cliPair.private_key);
+        setWidgetValue(sectionId, "awg_peer_public_key", cliPair.public_key);
+      }
+    },
+  );
+}
+
 function prepareServerModal(sectionId) {
-  return shouldGenerateRealityKeypair(sectionId)
-    ? generateRealityKeypairIfMissing(sectionId)
-    : Promise.resolve();
+  if (shouldGenerateRealityKeypair(sectionId)) {
+    return generateRealityKeypairIfMissing(sectionId);
+  }
+  if (getProtocol(sectionId) === "awg") {
+    return generateAwgKeypairsIfMissing(sectionId);
+  }
+  return Promise.resolve();
 }
 
 function addStreamDepends(option) {
@@ -2528,6 +2661,9 @@ function createServerContent(section, options = {}) {
     syncSecurityChoices(sectionId);
     if (value === "vless" && getEffectiveSecurity(sectionId) === "reality") {
       generateRealityKeypairIfMissing(sectionId);
+    }
+    if (value === "awg") {
+      generateAwgKeypairsIfMissing(sectionId);
     }
   };
 
@@ -3134,6 +3270,239 @@ function createServerContent(section, options = {}) {
   o.modalonly = true;
   o.rmempty = true;
   addTailscaleDepends(o, singBoxTailscale);
+
+  // AWG Server Options
+  o = section.option(
+    form.Value,
+    "awg_local_address",
+    _("Server Address"),
+    _("Server VPN IP address and subnet (e.g. 10.0.0.1/24)"),
+  );
+  o.default = "10.0.0.1/24";
+  o.modalonly = true;
+  o.rmempty = false;
+  o.validate = validateRequired;
+  o.depends("protocol", "awg");
+
+  o = section.option(
+    form.Value,
+    "awg_client_address",
+    _("Client Address"),
+    _("Client VPN IP address (e.g. 10.0.0.2/32)"),
+  );
+  o.default = "10.0.0.2/32";
+  o.modalonly = true;
+  o.rmempty = false;
+  o.validate = validateRequired;
+  o.depends("protocol", "awg");
+
+  o = section.option(
+    form.Value,
+    "awg_dns",
+    _("Client DNS"),
+    _("DNS server pushed to the client configuration"),
+  );
+  o.default = "10.0.0.1";
+  o.modalonly = true;
+  o.rmempty = false;
+  o.depends("protocol", "awg");
+
+  o = section.option(form.Value, "awg_mtu", _("MTU"));
+  o.default = "1280";
+  o.modalonly = true;
+  o.rmempty = false;
+  o.validate = validatePositiveInteger;
+  o.depends("protocol", "awg");
+
+  o = section.option(
+    form.Value,
+    "awg_keepalive",
+    _("Persistent Keepalive"),
+  );
+  o.default = "25";
+  o.modalonly = true;
+  o.rmempty = false;
+  o.validate = validatePositiveInteger;
+  o.depends("protocol", "awg");
+
+  o = section.option(
+    form.Value,
+    "awg_private_key",
+    _("Server Private Key"),
+  );
+  o.modalonly = true;
+  o.rmempty = false;
+  o.validate = validateRequired;
+  o.depends("protocol", "awg");
+
+  o = section.option(
+    form.Value,
+    "awg_server_public_key",
+    _("Server Public Key"),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.depends("protocol", "awg");
+
+  o = section.option(
+    form.Value,
+    "awg_client_private_key",
+    _("Client Private Key"),
+  );
+  o.modalonly = true;
+  o.rmempty = false;
+  o.validate = validateRequired;
+  o.depends("protocol", "awg");
+
+  o = section.option(
+    form.Value,
+    "awg_peer_public_key",
+    _("Client Public Key"),
+  );
+  o.modalonly = true;
+  o.rmempty = false;
+  o.validate = validateRequired;
+  o.depends("protocol", "awg");
+
+  o = section.option(
+    form.Value,
+    "awg_preshared_key",
+    _("Pre-shared Key (PSK)"),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.depends("protocol", "awg");
+
+  const awgParams = [
+    {
+      name: "awg_jc",
+      title: _("Junk packet count (Jc)"),
+      desc: _("Number of junk packets before handshake (1-10)"),
+      default: "4",
+    },
+    {
+      name: "awg_jmin",
+      title: _("Junk packet min size (Jmin)"),
+      desc: _("Minimum size of junk packets"),
+      default: "40",
+    },
+    {
+      name: "awg_jmax",
+      title: _("Junk packet max size (Jmax)"),
+      desc: _("Maximum size of junk packets"),
+      default: "70",
+    },
+    {
+      name: "awg_s1",
+      title: _("Init packet junk size (S1)"),
+      desc: _("Junk size for initiation packet"),
+      default: "0",
+    },
+    {
+      name: "awg_s2",
+      title: _("Response packet junk size (S2)"),
+      desc: _("Junk size for response packet"),
+      default: "0",
+    },
+    {
+      name: "awg_s3",
+      title: _("Cookie packet junk size (S3)"),
+      desc: _("Junk size for cookie packet"),
+      default: "0",
+    },
+    {
+      name: "awg_s4",
+      title: _("Transport packet junk size (S4)"),
+      desc: _("Junk size for transport packet"),
+      default: "0",
+    },
+    {
+      name: "awg_h1",
+      title: _("Init packet header (H1)"),
+      desc: _("Custom header for handshake initiation"),
+      default: "1",
+    },
+    {
+      name: "awg_h2",
+      title: _("Response packet header (H2)"),
+      desc: _("Custom header for handshake response"),
+      default: "2",
+    },
+    {
+      name: "awg_h3",
+      title: _("Underload packet header (H3)"),
+      desc: _("Custom header for cookie packet"),
+      default: "3",
+    },
+    {
+      name: "awg_h4",
+      title: _("Transport packet header (H4)"),
+      desc: _("Custom header for data packet"),
+      default: "4",
+    },
+    {
+      name: "awg_i1",
+      title: _("Init payload (I1)"),
+      desc: _("Hex or binary payload for init"),
+      default: "",
+    },
+    {
+      name: "awg_i2",
+      title: _("Response payload (I2)"),
+      desc: _("Hex or binary payload for response"),
+      default: "",
+    },
+    {
+      name: "awg_i3",
+      title: _("Payload (I3)"),
+      desc: _("Hex or binary payload"),
+      default: "",
+    },
+    {
+      name: "awg_i4",
+      title: _("Payload (I4)"),
+      desc: _("Hex or binary payload"),
+      default: "",
+    },
+    {
+      name: "awg_i5",
+      title: _("Payload (I5)"),
+      desc: _("Hex or binary payload"),
+      default: "",
+    },
+    {
+      name: "awg_j1",
+      title: _("Junk payload (J1)"),
+      desc: _("Hex or binary junk payload"),
+      default: "",
+    },
+    {
+      name: "awg_j2",
+      title: _("Junk payload (J2)"),
+      desc: _("Hex or binary junk payload"),
+      default: "",
+    },
+    {
+      name: "awg_j3",
+      title: _("Junk payload (J3)"),
+      desc: _("Hex or binary junk payload"),
+      default: "",
+    },
+    {
+      name: "awg_itime",
+      title: _("Init timeout (Itime)"),
+      desc: _("Init handshake timeout"),
+      default: "",
+    },
+  ];
+
+  awgParams.forEach((param) => {
+    let opt = section.option(form.Value, param.name, param.title, param.desc);
+    opt.modalonly = true;
+    opt.rmempty = true;
+    if (param.default !== "") opt.default = param.default;
+    opt.depends("protocol", "awg");
+  });
 }
 
 return baseclass.extend({

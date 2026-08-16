@@ -674,6 +674,30 @@ function generate_reality_keypair_values() {
     };
 }
 
+function generate_wg_keypair_values() {
+    let data = output("sing-box generate wg-keypair 2>/dev/null");
+    let private_key = first_key_value_line_value(data, "PrivateKey");
+    let public_key = first_key_value_line_value(data, "PublicKey");
+
+    if (private_key == null || public_key == null || private_key == "" || public_key == "")
+        return null;
+
+    return {
+        private_key: private_key,
+        public_key: public_key
+    };
+}
+
+function generate_wg_keypair_cli() {
+    let pair = generate_wg_keypair_values();
+    if (pair == null) {
+        error_response("Failed to generate WireGuard key pair");
+        exit(1);
+    }
+
+    print(sprintf("PrivateKey: %s\nPublicKey: %s\n", pair.private_key, pair.public_key));
+}
+
 function generate_reality_keypair_cli() {
     let pair = generate_reality_keypair_values();
     if (pair == null) {
@@ -969,6 +993,7 @@ function prepare_server_defaults(section) {
         server_default_set_option(section, "listen_port", "51820");
         server_default_set_option(section, "awg_mtu", "1280");
         server_default_set_option(section, "awg_local_address", "10.0.0.1/24");
+        server_default_set_option(section, "awg_client_address", "10.0.0.2/32");
         server_default_set_option(section, "awg_jc", "4");
         server_default_set_option(section, "awg_jmin", "40");
         server_default_set_option(section, "awg_jmax", "70");
@@ -981,19 +1006,19 @@ function prepare_server_defaults(section) {
         server_default_set_option(section, "awg_h3", "3");
         server_default_set_option(section, "awg_h4", "4");
         server_default_set_option(section, "awg_keepalive", "25");
-        if (uci_get(config_path(section, "awg_private_key")) == "") {
-            let data = output("sing-box generate wg-keypair 2>/dev/null");
-            let priv = "";
-            let pub = "";
-            for (let line in split(data, "\n")) {
-                let m_priv = match(line, /^PrivateKey:\s*(.+)$/);
-                if (m_priv) priv = trim(m_priv[1]);
-                let m_pub = match(line, /^PublicKey:\s*(.+)$/);
-                if (m_pub) pub = trim(m_pub[1]);
+        
+        let server_private_key = uci_get(config_path(section, "awg_private_key"));
+        let peer_public_key = uci_get(config_path(section, "awg_peer_public_key"));
+        if (server_private_key == "" || peer_public_key == "") {
+            let srv_pair = generate_wg_keypair_values();
+            let cli_pair = generate_wg_keypair_values();
+            if (srv_pair != null) {
+                server_set_option(section, "awg_private_key", srv_pair.private_key);
+                server_set_option(section, "awg_server_public_key", srv_pair.public_key);
             }
-            if (priv != "" && pub != "") {
-                server_set_option(section, "awg_private_key", priv);
-                server_set_option(section, "awg_peer_public_key", pub);
+            if (cli_pair != null) {
+                server_set_option(section, "awg_client_private_key", cli_pair.private_key);
+                server_set_option(section, "awg_peer_public_key", cli_pair.public_key);
             }
         }
     }
@@ -1127,6 +1152,8 @@ else if (mode == "prepare-all-defaults")
     prepare_all_server_defaults();
 else if (mode == "generate-reality-keypair")
     generate_reality_keypair_cli();
+else if (mode == "generate-wg-keypair")
+    generate_wg_keypair_cli();
 else if (mode == "tls-certificate-sha256")
     get_tls_certificate_sha256_cli(ARGV[1]);
 else if (mode == "reality-keypair-response")
