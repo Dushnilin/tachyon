@@ -96,16 +96,16 @@ for healer in heal_dns_stall heal_proxy_connectivity heal_proxy_health; do
   ' "$WATCHDOG_UC")"
   [ -n "$body" ] || fail "$healer not found"
 
-  printf '%s\n' "$body" | grep -q 'if (!safe_proxy_restart(' \
+  grep -q 'if (!safe_proxy_restart(' <<< "$body" \
     || fail "$healer does not check the safe_proxy_restart() return value; a skipped restart would report as a repair"
-  printf '%s\n' "$body" | grep -q '"skipped");' \
+  grep -q '"skipped");' <<< "$body" \
     || fail "$healer does not report a skipped outcome when the restart never ran"
-  printf '%s\n' "$body" | grep -q 'watch_recovery(' \
+  grep -q 'watch_recovery(' <<< "$body" \
     || fail "$healer restarts without registering a recovery watch; its outcome is unknowable"
 
   # The literal "fixed" is what the old code passed unconditionally. An
   # asynchronous healer cannot know that at call time.
-  if printf '%s\n' "$body" | grep -q '"fixed"'; then
+  if grep -q '"fixed"' <<< "$body"; then
     fail "$healer still claims a fixed outcome for an asynchronous restart"
   fi
 done
@@ -119,7 +119,7 @@ for healer in heal_dns_continuous heal_rpcd; do
     inside && /^}$/ { exit }
   ' "$WATCHDOG_UC")"
   [ -n "$body" ] || fail "$healer not found"
-  printf '%s\n' "$body" | grep -q 'rc == 0 ? "fixed" : "failed"' \
+  grep -q 'rc == 0 ? "fixed" : "failed"' <<< "$body" \
     || fail "$healer reports a fixed outcome without checking the command's exit status"
 done
 
@@ -127,12 +127,12 @@ done
 # diagnostics/status.uc:1178 and telegram.uc:1823 read this file; ai-status must
 # keep answering with the same shape whether or not an incident exists.
 status_json="$(ucode -L "$TACHYON_LIB" "$WATCHDOG_UC" ai-status)"
-printf '%s' "$status_json" | grep -q '"ai_active"' \
+grep -q '"ai_active"' <<< "$status_json" \
   || fail "ai-status no longer reports ai_active: $status_json"
 
 full_json="$(ucode -L "$TACHYON_LIB" "$WATCHDOG_UC" ai-status-full)"
 for key in '"status"' '"ai_active"' '"last_incident"' '"incidents_total"'; do
-  printf '%s' "$full_json" | grep -q "$key" \
+  grep -q "$key" <<< "$full_json" \
     || fail "ai-status-full lost $key from its contract"
 done
 

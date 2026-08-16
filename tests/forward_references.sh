@@ -94,11 +94,11 @@ $out"
 }
 rm -f "$driver"
 
-printf '%s\n' "$out" | grep -q 'singbox.stopped' \
+grep -q 'singbox.stopped' <<< "$out" \
   || fail "handle_ubus_service_stop published nothing (got: $out)"
-printf '%s\n' "$out" | grep -q 'firewall.reloaded' \
+grep -q 'firewall.reloaded' <<< "$out" \
   || fail "handle_ubus_firewall_reload published nothing (got: $out)"
-printf '%s\n' "$out" | grep -q 'honeypot.hit' \
+grep -q 'honeypot.hit' <<< "$out" \
   || fail "handle_honeypot_line published nothing (got: $out)"
 
 printf 'forward reference checks passed\n'

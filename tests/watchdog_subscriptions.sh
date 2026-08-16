@@ -54,7 +54,7 @@ done
 vocabulary="$(ucode -L "$TACHYON_LIB" "$CONTROLLER_UC" event-types \
   | sed 's/=.*//' | sort -u)"
 for ev in $emitted $subscribed; do
-  printf '%s\n' "$vocabulary" | grep -qx "$ev" \
+  grep -qxF "$ev" <<< "$vocabulary" \
     || fail "EV.$ev is used but missing from the exported event vocabulary"
 done
 
@@ -67,7 +67,7 @@ for required in \
   OOM_DETECTED OOM_RECOVERABLE MEMORY_LOW RPCD_FD_LEAK ANOMALY_RECONNECTS \
   SMARTDETECT_CANDIDATE URLTEST_SWITCHED HONEYPOT_HIT
 do
-  printf '%s\n' "$subscribed" | grep -qx "$required" \
+  grep -qxF "$required" <<< "$subscribed" \
     || fail "no subscriber for EV.$required (was repaired on a timer before the refactor)"
 done
 

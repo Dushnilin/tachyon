@@ -117,7 +117,7 @@ for expected in \
   "OOM_DETECTED=oom.detected" \
   "SMARTDETECT_CANDIDATE=smartdetect.candidate"
 do
-  printf '%s\n' "$types" | grep -qx "$expected" || fail "event vocabulary missing $expected"
+  grep -qxF "$expected" <<< "$types" || fail "event vocabulary missing $expected"
 done
 
 # --- publication layer: the OOM replay guard ---
