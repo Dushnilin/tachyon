@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-08-15 12:12+0300\n"
-"PO-Revision-Date: 2026-08-15 12:12+0300\n"
+"POT-Creation-Date: 2026-08-16 15:57+0300\n"
+"PO-Revision-Date: 2026-08-16 15:57+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -253,6 +253,9 @@ msgstr "Должен быть указан как минимум один дей
 
 msgid "Auth Digest"
 msgstr "Auth Digest"
+
+msgid "Auto"
+msgstr "Авто"
 
 msgid "Auto refresh"
 msgstr "Автообновление"
@@ -1094,6 +1097,9 @@ msgstr "Не удалось получить ответ от ИИ-сервиса
 msgid "Failed to reset settings"
 msgstr "Не удалось сбросить настройки"
 
+msgid "Failed to restore native internet"
+msgstr "Не удалось восстановить прямой интернет"
+
 msgid "Failed to restore snapshot"
 msgstr "Не удалось восстановить снапшот"
 
@@ -1123,6 +1129,9 @@ msgstr "Не удалось остановить бота"
 
 msgid "Failed to stop watchdog"
 msgstr "Не удалось остановить watchdog"
+
+msgid "Failed to switch proxy"
+msgstr ""
 
 msgid "Failed to update device"
 msgstr "Не удалось обновить устройство"
@@ -1168,6 +1177,9 @@ msgstr "Исправьте выделенные поля и сохраните �
 
 msgid "Fixed"
 msgstr "Исправлено"
+
+msgid "Flush Conntrack Table"
+msgstr "Очистить таблицу соед. (conntrack)"
 
 msgid "Forced device routing"
 msgstr "Принудительная маршрутизация устройств"
@@ -1727,9 +1739,6 @@ msgstr "Последняя версия:"
 msgid "Leave empty to omit this header"
 msgstr "Оставьте пустым, чтобы пропустить этот заголовок"
 
-msgid "Level"
-msgstr "Уровень"
-
 msgid "Level name"
 msgstr "Имя уровня"
 
@@ -1789,6 +1798,9 @@ msgstr "Основной DNS"
 
 msgid "Main DNS server. If multiple servers are selected, a timeout switches to a backup."
 msgstr "Основной DNS-сервер. Если выбрано несколько серверов, при таймауте происходит переключение на резервный."
+
+msgid "Manual"
+msgstr "Вручную"
 
 msgid "MASQUE Access Token"
 msgstr "Токен доступа MASQUE"
@@ -1867,6 +1879,9 @@ msgstr "Имя, отображаемое на дашборде"
 
 msgid "Name shown in the priority level list"
 msgstr "Имя в списке уровней приоритета"
+
+msgid "Native internet restored. Tachyon stopped."
+msgstr "Обычный интернет восстановлен. Tachyon остановлен."
 
 msgid "Netherlands (nl)"
 msgstr "Нидерланды (nl)"
@@ -2072,6 +2087,9 @@ msgstr "Откройте настройки приоритета и введит
 msgid "Open Project Page"
 msgstr "Открыть страницу проекта"
 
+msgid "Operation completed successfully!"
+msgstr ""
+
 msgid "Operation failed"
 msgstr "Операция не выполнена"
 
@@ -2084,11 +2102,17 @@ msgstr "Лог операции"
 msgid "Operation log is not available"
 msgstr "Лог операции недоступен"
 
+msgid "Operation started. Waiting for log output..."
+msgstr ""
+
 msgid "Operation timed out"
 msgstr "Время ожидания истекло"
 
 msgid "Optimization"
 msgstr "Оптимизация"
+
+msgid "Optimize AWG MTU"
+msgstr "Оптимизировать MTU AWG"
 
 msgid "Optimize RAM memory"
 msgstr "Оптимизировать память (RAM)"
@@ -2378,6 +2402,9 @@ msgstr "Требовать имя пользователя и пароль дл�
 msgid "Reset"
 msgstr "Сбросить"
 
+msgid "Reset Bootstrap DNS"
+msgstr "Сбросить Bootstrap DNS"
+
 msgid "Reset Settings"
 msgstr "Сбросить настройки"
 
@@ -2438,11 +2465,20 @@ msgstr "Восстановить"
 msgid "Restore config backup"
 msgstr "Восстановить конфигурацию"
 
+msgid "Restore Native Internet"
+msgstr "Вернуть обычный интернет"
+
+msgid "Restore Native Internet (Stop Tachyon)"
+msgstr "Вернуть обычный интернет (остановить Tachyon)"
+
 msgid "Restore Snapshot"
 msgstr "Восстановить снапшот"
 
 msgid "Restores the Tachyon factory defaults: all rules, subscriptions, custom DNS servers and other options will be lost."
 msgstr "Восстанавливает заводские настройки Tachyon: все правила, подписки, пользовательские DNS-серверы и другие параметры будут удалены."
+
+msgid "Restoring native direct internet (stopping Tachyon)..."
+msgstr "Восстановление прямого интернета (остановка Tachyon)..."
 
 msgid "Resume updates"
 msgstr "Продолжить обновление"
@@ -2560,6 +2596,9 @@ msgstr "Порядок проверки секций (галочка = акти�
 
 msgid "Security"
 msgstr "Безопасность"
+
+msgid "Select"
+msgstr "Выбрать"
 
 msgid "Select a common client profile or enter a custom User-Agent"
 msgstr "Выберите общий профиль клиента или введите пользовательский User-Agent"
@@ -2936,6 +2975,12 @@ msgstr "Швеция (se)"
 msgid "Switch DNS to DoH"
 msgstr "Переключить DNS на DoH"
 
+msgid "Switch to auto-selection"
+msgstr "Вернуть автовыбор"
+
+msgid "Sync System Time (NTP)"
+msgstr "Синхронизировать время (NTP)"
+
 msgid "System info"
 msgstr "Системная информация"
 
@@ -2968,9 +3013,6 @@ msgstr "Служба Tachyon остановлена. Запустите серв
 
 msgid "Tachyon update did not complete within the timeout"
 msgstr "Обновление Tachyon не завершилось в течение таймаута"
-
-msgid "Tachyon updated successfully!"
-msgstr "Tachyon успешно обновлен!"
 
 msgid "Tachyon will not modify your DHCP configuration"
 msgstr "Tachyon не будет изменять вашу конфигурацию DHCP"
@@ -3055,6 +3097,9 @@ msgstr "Есть правила, использующие Zapret2"
 
 msgid "Thinking..."
 msgstr "Думаю..."
+
+msgid "This action will stop Tachyon, restore standard dnsmasq/DNS, remove all proxy/anti-censorship firewall rules and restore direct Internet connection through your ISP."
+msgstr "Это действие остановит Tachyon, восстановит стандартный dnsmasq/DNS, удалит все правила файрвола и вернет прямое подключение к интернету через вашего провайдера."
 
 msgid "This field is required"
 msgstr "Это поле обязательно"
@@ -3253,9 +3298,6 @@ msgstr "Хранится до 10 снапшотов; самые старые у�
 
 msgid "Update"
 msgstr "Обновить"
-
-msgid "Update completed successfully!"
-msgstr "Обновление успешно завершено!"
 
 msgid "Update is available"
 msgstr "Доступно обновление"
@@ -3467,6 +3509,15 @@ msgstr "sing-box outbound для Zapret2 настроен"
 msgid "Zapret2 sing-box outbound is not configured"
 msgstr "sing-box outbound для Zapret2 не настроен"
 
+msgid "Level"
+msgstr "Уровень"
+
+msgid "Tachyon updated successfully!"
+msgstr "Tachyon успешно обновлен!"
+
+msgid "Update completed successfully!"
+msgstr "Обновление успешно завершено!"
+
 msgid "Applying changes & reloading services..."
 msgstr "Применение изменений и перезапуск служб..."
 
@@ -3661,9 +3712,6 @@ msgstr "Недоступно"
 
 msgid "Available"
 msgstr "Доступно"
-
-msgid "Auto"
-msgstr "Авто"
 
 msgid "Proxy"
 msgstr "Прокси"
@@ -3902,46 +3950,5 @@ msgstr "Не удалось сохранить сервер"
 msgid "QR code is too large"
 msgstr "QR-код слишком большой"
 
-msgid "Manual"
-msgstr "Вручную"
-
-msgid "Select"
-msgstr "Выбрать"
-
-msgid "Switch to auto-selection"
-msgstr "Вернуть автовыбор"
-
-msgid "Restore Native Internet (Stop Tachyon)"
-msgstr "Вернуть обычный интернет (остановить Tachyon)"
-
-msgid "Sync System Time (NTP)"
-msgstr "Синхронизировать время (NTP)"
-
-msgid "Flush Conntrack Table"
-msgstr "Очистить таблицу соед. (conntrack)"
-
-msgid "Reset Bootstrap DNS"
-msgstr "Сбросить Bootstrap DNS"
-
-msgid "Optimize AWG MTU"
-msgstr "Оптимизировать MTU AWG"
-
-msgid "Restore Native Internet"
-msgstr "Вернуть обычный интернет"
-
-msgid "Restoring native direct internet (stopping Tachyon)..."
-msgstr "Восстановление прямого интернета (остановка Tachyon)..."
-
 msgid "Restoring native direct internet..."
 msgstr "Восстановление прямого интернета..."
-
-msgid "Native internet restored. Tachyon stopped."
-msgstr "Обычный интернет восстановлен. Tachyon остановлен."
-
-msgid "Failed to restore native internet"
-msgstr "Не удалось восстановить прямой интернет"
-
-msgid "This action will stop Tachyon, restore standard dnsmasq/DNS, remove all proxy/anti-censorship firewall rules and restore direct Internet connection through your ISP."
-msgstr "Это действие остановит Tachyon, восстановит стандартный dnsmasq/DNS, удалит все правила файрвола и вернет прямое подключение к интернету через вашего провайдера."
-
-

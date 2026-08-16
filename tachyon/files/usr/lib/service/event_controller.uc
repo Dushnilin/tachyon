@@ -758,31 +758,52 @@ function controller(bus, opts) {
                           uci_core.get("network", "wan", "ifname") || "");
         if (device == "" && def_dev != null)
             device = def_dev;
-        if (device == "") {
-            let def_route = command_capture("ip -4 route show default 2>/dev/null").output;
-            let m_dev = match(def_route, /dev\s+([^\s]+)/);
-            if (m_dev) device = m_dev[1];
+
+        let no_address = true;
+        let no_gateway = (def_dev == null);
+
+        // 1. Проверяем статус интерфейса через netifd ubus
+        let ubus_data = command_output_from_args([ "ubus", "-S", "call", "network.interface.wan", "status" ]);
+        let ubus_obj = parse_json(ubus_data);
+        let iface = "";
+        if (type(ubus_obj) == "object" && ubus_obj.up == true) {
+            iface = ubus_obj.l3_device || ubus_obj.device || "";
+            let addrs = common.array_or_empty(ubus_obj["ipv4-address"]);
+            let addrs6 = common.array_or_empty(ubus_obj["ipv6-address"]);
+            if (length(addrs) > 0 || length(addrs6) > 0) {
+                no_address = false;
+            }
+            if (length(common.array_or_empty(ubus_obj.route)) > 0 || (ubus_obj.data && ubus_obj.data.gateway)) {
+                no_gateway = false;
+            }
         }
-        if (device == "") device = "eth0";
-        let iface = (proto == "pppoe") ? "pppoe-wan" : device;
 
-        let addr_out = command_capture("ip addr show " + shell_quote(iface) + " 2>/dev/null").output;
-        let no_address = index(addr_out, "inet ") < 0;
+        if (iface == "") {
+            if (device != "")
+                iface = (proto == "pppoe") ? "pppoe-wan" : device;
+            else
+                iface = (proto == "pppoe") ? "pppoe-wan" : "eth0";
+        }
 
+        // 2. Если адрес еще не подтвержден ubus, проверяем ip addr
         if (no_address) {
-            let ubus_data = command_output_from_args([ "ubus", "-S", "call", "network.interface.wan", "status" ]);
-            try {
-                let ubus_obj = json(ubus_data);
-                if (type(ubus_obj) == "object" && ubus_obj.up && length(common.array_or_empty(ubus_obj["ipv4-address"])) > 0) {
-                    no_address = false;
-                }
-            } catch (e) {}
+            let addr_out = command_capture("ip addr show " + shell_quote(iface) + " 2>/dev/null").output;
+            if (index(addr_out, "inet ") >= 0 || index(addr_out, "inet6 ") >= 0) {
+                no_address = false;
+            }
         }
 
-        let no_gateway = def_dev == null;
+        // 3. Если шлюз еще не подтвержден, проверяем таблицы маршрутизации
         if (no_gateway) {
-            let route_out = command_capture("ip route 2>/dev/null").output;
-            no_gateway = index(route_out, "default") < 0;
+            let route_out = command_capture("ip -4 route show default 2>/dev/null").output;
+            if (index(route_out, "default") >= 0) {
+                no_gateway = false;
+            } else {
+                let route_all = command_capture("ip route 2>/dev/null").output;
+                if (index(route_all, "default") >= 0) {
+                    no_gateway = false;
+                }
+            }
         }
 
         if (!no_address && !no_gateway) {
