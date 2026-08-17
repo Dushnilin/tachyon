@@ -88,28 +88,32 @@ function configureGridSection(sectionRef, type, title, addTitle) {
     return renderSectionAdd(sectionRef, extra_class);
   };
 
-  if (type === "section") {
-    sectionRef.renderRowActions = function (section_id) {
-      const els = form.TableSection.prototype.renderRowActions.call(
-        this,
-        section_id,
-        getRuleEditButtonText(),
+  sectionRef.renderRowActions = function (section_id) {
+    const els = form.TableSection.prototype.renderRowActions.call(
+      this,
+      section_id,
+      getRuleEditButtonText(),
+    );
+
+    if (type === "section") {
+      const btn = E(
+        "button",
+        {
+          type: "button",
+          class: "btn cbi-button cbi-button-action",
+          title: _("Rules"),
+          click: function (ev) {
+            ev.preventDefault();
+            ev.stopPropagation();
+            section.showSectionRulesModal(section_id);
+          },
+        },
+        _("Rules"),
       );
-      
-      const btn = E("button", {
-        type: "button",
-        class: "btn cbi-button cbi-button-action",
-        title: _("Rules"),
-        click: function (ev) {
-          ev.preventDefault();
-          ev.stopPropagation();
-          section.showSectionRulesModal(section_id);
-        }
-      }, _("Rules"));
-      
+
       if (els && els.lastElementChild) {
         const div = els.lastElementChild;
-        const editBtn = div.querySelector('.cbi-button-edit');
+        const editBtn = div.querySelector(".cbi-button-edit");
         if (editBtn) {
           div.insertBefore(btn, editBtn);
           btn.style.marginRight = "5px";
@@ -117,10 +121,10 @@ function configureGridSection(sectionRef, type, title, addTitle) {
           div.appendChild(btn);
         }
       }
+    }
 
-      return els;
-    };
-  }
+    return els;
+  };
 }
 
 const EntryPoint = {

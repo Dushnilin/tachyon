@@ -120,34 +120,40 @@ function createParentalContent(section) {
   o.editable = true;
   o.width = "5rem";
 
-  // Label / Rule name (Grid column + modal)
-  o = section.option(form.Value, "label", _("Rule Name"));
-  o.modalonly = false;
-  o.rmempty = false;
-  o.validate = function (sectionId, value) {
-    return value && `${value}`.trim().length > 0 ? true : _("Rule name is required");
-  };
-  o.placeholder = _("e.g. Kids Phone (Night YouTube)");
-
   // Device column in table
   o = section.option(form.DummyValue, "_device_display", _("Device / IP"));
   o.modalonly = false;
-  o.rawhtml = true;
-  o.cfgvalue = function (sectionId) {
+  o.renderWidget = function (sectionId) {
     const rawIp = uci.get(UCI_PACKAGE, sectionId, "device_ip");
-    const ips = Array.isArray(rawIp) ? rawIp : [rawIp].filter(Boolean);
-    if (ips.length === 0) return `<span style="opacity:0.5;">${_("All devices")}</span>`;
-    return ips.map((ip) => `<span class="badge" style="background:#2a3441;color:#63b3ed;padding:3px 8px;border-radius:6px;font-size:11px;font-family:monospace;margin-right:4px;font-weight:600;">${ip}</span>`).join(" ");
+    const ips = normalizeListValues(rawIp);
+    if (ips.length === 0) {
+      return E("span", { style: "opacity:0.5;" }, _("All devices"));
+    }
+    const badges = ips.map((ip) =>
+      E(
+        "span",
+        {
+          class: "badge",
+          style:
+            "background:#2a3441;color:#63b3ed;padding:3px 8px;border-radius:6px;font-size:11px;font-family:monospace;margin-right:4px;font-weight:600;display:inline-block;margin-bottom:2px;",
+        },
+        ip,
+      ),
+    );
+    return E("div", {}, badges);
   };
 
   // Target column in table
   o = section.option(form.DummyValue, "_target_display", _("Target"));
   o.modalonly = false;
-  o.rawhtml = true;
-  o.cfgvalue = function (sectionId) {
+  o.renderWidget = function (sectionId) {
     const target = uci.get(UCI_PACKAGE, sectionId, "target") || "all";
     if (target === "all") {
-      return `<span style="color:#fc8181;font-weight:600;">🚫 ${_("All Internet")}</span>`;
+      return E(
+        "span",
+        { style: "color:#fc8181;font-weight:600;" },
+        "🚫 " + _("All Internet"),
+      );
     }
     const rawSecs = uci.get(UCI_PACKAGE, sectionId, "sections");
     const secNames = normalizeListValues(rawSecs);
@@ -155,58 +161,118 @@ function createParentalContent(section) {
       secNames.push(target);
     }
     if (secNames.length === 0) {
-      return `<span style="opacity:0.6;">${_("No sections selected")}</span>`;
+      return E("span", { style: "opacity:0.6;" }, _("No sections selected"));
     }
-    return secNames.map((name) => {
+    const badges = secNames.map((name) => {
       const sec = uci.get(UCI_PACKAGE, name);
       const label = (sec && (sec.label || sec[".name"])) || name;
-      return `<span class="badge" style="background:#2d3748;color:#f6ad55;padding:2px 6px;border-radius:4px;font-size:11px;margin-right:4px;border:1px solid rgba(246,173,85,0.3);">🔒 ${label}</span>`;
-    }).join(" ");
+      return E(
+        "span",
+        {
+          class: "badge",
+          style:
+            "background:#2d3748;color:#f6ad55;padding:2px 6px;border-radius:4px;font-size:11px;margin-right:4px;border:1px solid rgba(246,173,85,0.3);display:inline-block;margin-bottom:2px;",
+        },
+        "🔒 " + label,
+      );
+    });
+    return E("div", {}, badges);
   };
 
   // Action column in table
   o = section.option(form.DummyValue, "_action_display", _("Mode"));
   o.modalonly = false;
-  o.rawhtml = true;
-  o.cfgvalue = function (sectionId) {
+  o.renderWidget = function (sectionId) {
     const action = uci.get(UCI_PACKAGE, sectionId, "action") || "block";
     if (action === "allow") {
-      return `<span style="color:#68d391;font-weight:500;">✅ ${_("Allow in interval")}</span>`;
+      return E(
+        "span",
+        { style: "color:#68d391;font-weight:500;" },
+        "✅ " + _("Allow in interval"),
+      );
     }
-    return `<span style="color:#fc8181;font-weight:500;">🚫 ${_("Block in interval")}</span>`;
+    return E(
+      "span",
+      { style: "color:#fc8181;font-weight:500;" },
+      "🚫 " + _("Block in interval"),
+    );
   };
 
   // Schedule column in table
   o = section.option(form.DummyValue, "_schedule_display", _("Schedule"));
   o.modalonly = false;
-  o.rawhtml = true;
-  o.cfgvalue = function (sectionId) {
+  o.renderWidget = function (sectionId) {
     const s = uci.get(UCI_PACKAGE, sectionId, "start_time") || "00:00";
     const e = uci.get(UCI_PACKAGE, sectionId, "end_time") || "23:59";
     const days = formatDaysDisplay(uci.get(UCI_PACKAGE, sectionId, "days"));
-    return `<div style="line-height:1.3;"><strong style="color:var(--text-color, #fff);">${s} — ${e}</strong><br><small style="opacity:0.7;">${days}</small></div>`;
+    return E("div", { style: "line-height:1.3;" }, [
+      E("strong", { style: "color:var(--text-color, #fff);" }, `${s} — ${e}`),
+      E("br"),
+      E("small", { style: "opacity:0.7;" }, days),
+    ]);
   };
 
   // Live status badge in table
   o = section.option(form.DummyValue, "_live_status", _("Status"));
   o.modalonly = false;
-  o.rawhtml = true;
-  o.cfgvalue = function (sectionId) {
+  o.renderWidget = function (sectionId) {
     const enabled = uci.get(UCI_PACKAGE, sectionId, "enabled") !== "0";
     if (!enabled) {
-      return `<span style="display:inline-flex;align-items:center;padding:2px 8px;border-radius:12px;font-size:11px;background:#4a5568;color:#e2e8f0;">⏸ ${_("Disabled")}</span>`;
+      return E(
+        "span",
+        {
+          style:
+            "display:inline-flex;align-items:center;padding:2px 8px;border-radius:12px;font-size:11px;background:#4a5568;color:#e2e8f0;",
+        },
+        "⏸ " + _("Disabled"),
+      );
     }
     const active = isScheduleCurrentlyActive(sectionId);
     const action = uci.get(UCI_PACKAGE, sectionId, "action") || "block";
     if (active) {
       const color = action === "allow" ? "#48bb78" : "#e53e3e";
-      const text = action === "allow" ? _("Active (Allowed)") : _("Active (Blocking)");
-      return `<span style="display:inline-flex;align-items:center;padding:2px 8px;border-radius:12px;font-size:11px;background:rgba(${action === "allow" ? "72,187,120" : "229,62,62"},0.2);color:${color};border:1px solid rgba(${action === "allow" ? "72,187,120" : "229,62,62"},0.4);"><span style="width:6px;height:6px;border-radius:50%;background:${color};margin-right:5px;box-shadow:0 0 6px ${color};"></span>${text}</span>`;
+      const bg =
+        action === "allow" ? "rgba(72,187,120,0.2)" : "rgba(229,62,62,0.2)";
+      const border =
+        action === "allow" ? "rgba(72,187,120,0.4)" : "rgba(229,62,62,0.4)";
+      const text =
+        action === "allow" ? _("Active (Allowed)") : _("Active (Blocking)");
+      return E(
+        "span",
+        {
+          style: `display:inline-flex;align-items:center;padding:2px 8px;border-radius:12px;font-size:11px;background:${bg};color:${color};border:1px solid ${border};`,
+        },
+        [
+          E("span", {
+            style: `width:6px;height:6px;border-radius:50%;background:${color};margin-right:5px;box-shadow:0 0 6px ${color};`,
+          }),
+          text,
+        ],
+      );
     }
-    return `<span style="display:inline-flex;align-items:center;padding:2px 8px;border-radius:12px;font-size:11px;background:rgba(74,85,104,0.3);color:#a0aec0;border:1px solid rgba(74,85,104,0.3);"><span style="width:6px;height:6px;border-radius:50%;background:#718096;margin-right:5px;"></span>${_("Pending")}</span>`;
+    return E(
+      "span",
+      {
+        style:
+          "display:inline-flex;align-items:center;padding:2px 8px;border-radius:12px;font-size:11px;background:rgba(74,85,104,0.3);color:#a0aec0;border:1px solid rgba(74,85,104,0.3);",
+      },
+      [
+        E("span", {
+          style:
+            "width:6px;height:6px;border-radius:50%;background:#718096;margin-right:5px;",
+        }),
+        _("Pending"),
+      ],
+    );
   };
 
   // ─── Modal only configuration options ──────────────────────────────────────
+
+  // Label / Rule name (Modal only)
+  o = section.option(form.Value, "label", _("Rule Name"));
+  o.modalonly = true;
+  o.rmempty = true;
+  o.placeholder = _("e.g. Kids Phone (Night YouTube)");
 
   // Device selector with LAN hostnames integration
   o = section.option(
