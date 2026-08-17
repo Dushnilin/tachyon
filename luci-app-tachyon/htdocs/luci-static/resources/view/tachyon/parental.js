@@ -122,38 +122,37 @@ function createParentalContent(section) {
 
   // Device column in table
   o = section.option(form.DummyValue, "_device_display", _("Device / IP"));
+  o.rawhtml = true;
   o.modalonly = false;
-  o.renderWidget = function (sectionId) {
+  o.cfgvalue = function (sectionId) {
     const rawIp = uci.get(UCI_PACKAGE, sectionId, "device_ip");
     const ips = normalizeListValues(rawIp);
     if (ips.length === 0) {
-      return E("span", { style: "opacity:0.5;" }, _("All devices"));
+      return '<span style="opacity:0.5;">' + _("All devices") + "</span>";
     }
-    const badges = ips.map((ip) =>
-      E(
-        "span",
-        {
-          class: "badge",
-          style:
-            "background:#2a3441;color:#63b3ed;padding:3px 8px;border-radius:6px;font-size:11px;font-family:monospace;margin-right:4px;font-weight:600;display:inline-block;margin-bottom:2px;",
-        },
-        ip,
-      ),
-    );
-    return E("div", {}, badges);
+    const badges = ips
+      .map(
+        (ip) =>
+          '<span class="badge" style="background:#2a3441;color:#63b3ed;padding:3px 8px;border-radius:6px;font-size:11px;font-family:monospace;margin-right:4px;font-weight:600;display:inline-block;margin-bottom:2px;">' +
+          ip +
+          "</span>",
+      )
+      .join("");
+    return "<div>" + badges + "</div>";
+  };
+  o.textvalue = function (sectionId) {
+    const ips = normalizeListValues(uci.get(UCI_PACKAGE, sectionId, "device_ip"));
+    return ips.length === 0 ? _("All devices") : ips.join(", ");
   };
 
   // Target column in table
   o = section.option(form.DummyValue, "_target_display", _("Target"));
+  o.rawhtml = true;
   o.modalonly = false;
-  o.renderWidget = function (sectionId) {
+  o.cfgvalue = function (sectionId) {
     const target = uci.get(UCI_PACKAGE, sectionId, "target") || "all";
     if (target === "all") {
-      return E(
-        "span",
-        { style: "color:#fc8181;font-weight:600;" },
-        "🚫 " + _("All Internet"),
-      );
+      return '<span style="color:#fc8181;font-weight:600;">🚫 ' + _("All Internet") + "</span>";
     }
     const rawSecs = uci.get(UCI_PACKAGE, sectionId, "sections");
     const secNames = normalizeListValues(rawSecs);
@@ -161,109 +160,111 @@ function createParentalContent(section) {
       secNames.push(target);
     }
     if (secNames.length === 0) {
-      return E("span", { style: "opacity:0.6;" }, _("No sections selected"));
+      return '<span style="opacity:0.6;">' + _("No sections selected") + "</span>";
     }
-    const badges = secNames.map((name) => {
-      const sec = uci.get(UCI_PACKAGE, name);
-      const label = (sec && (sec.label || sec[".name"])) || name;
-      return E(
-        "span",
-        {
-          class: "badge",
-          style:
-            "background:#2d3748;color:#f6ad55;padding:2px 6px;border-radius:4px;font-size:11px;margin-right:4px;border:1px solid rgba(246,173,85,0.3);display:inline-block;margin-bottom:2px;",
-        },
-        "🔒 " + label,
-      );
-    });
-    return E("div", {}, badges);
+    const badges = secNames
+      .map((name) => {
+        const sec = uci.get(UCI_PACKAGE, name);
+        const label = (sec && (sec.label || sec[".name"])) || name;
+        return (
+          '<span class="badge" style="background:#2d3748;color:#f6ad55;padding:2px 6px;border-radius:4px;font-size:11px;margin-right:4px;border:1px solid rgba(246,173,85,0.3);display:inline-block;margin-bottom:2px;">🔒 ' +
+          label +
+          "</span>"
+        );
+      })
+      .join("");
+    return "<div>" + badges + "</div>";
+  };
+  o.textvalue = function (sectionId) {
+    const target = uci.get(UCI_PACKAGE, sectionId, "target") || "all";
+    if (target === "all") return _("All Internet");
+    const secNames = normalizeListValues(uci.get(UCI_PACKAGE, sectionId, "sections"));
+    return secNames.length === 0 ? _("No sections selected") : secNames.join(", ");
   };
 
   // Action column in table
   o = section.option(form.DummyValue, "_action_display", _("Mode"));
+  o.rawhtml = true;
   o.modalonly = false;
-  o.renderWidget = function (sectionId) {
+  o.cfgvalue = function (sectionId) {
     const action = uci.get(UCI_PACKAGE, sectionId, "action") || "block";
     if (action === "allow") {
-      return E(
-        "span",
-        { style: "color:#68d391;font-weight:500;" },
-        "✅ " + _("Allow in interval"),
-      );
+      return '<span style="color:#68d391;font-weight:500;">✅ ' + _("Allow in interval") + "</span>";
     }
-    return E(
-      "span",
-      { style: "color:#fc8181;font-weight:500;" },
-      "🚫 " + _("Block in interval"),
-    );
+    return '<span style="color:#fc8181;font-weight:500;">🚫 ' + _("Block in interval") + "</span>";
+  };
+  o.textvalue = function (sectionId) {
+    const action = uci.get(UCI_PACKAGE, sectionId, "action") || "block";
+    return action === "allow" ? _("Allow in interval") : _("Block in interval");
   };
 
   // Schedule column in table
   o = section.option(form.DummyValue, "_schedule_display", _("Schedule"));
+  o.rawhtml = true;
   o.modalonly = false;
-  o.renderWidget = function (sectionId) {
+  o.cfgvalue = function (sectionId) {
     const s = uci.get(UCI_PACKAGE, sectionId, "start_time") || "00:00";
     const e = uci.get(UCI_PACKAGE, sectionId, "end_time") || "23:59";
     const days = formatDaysDisplay(uci.get(UCI_PACKAGE, sectionId, "days"));
-    return E("div", { style: "line-height:1.3;" }, [
-      E("strong", { style: "color:var(--text-color, #fff);" }, `${s} — ${e}`),
-      E("br"),
-      E("small", { style: "opacity:0.7;" }, days),
-    ]);
+    return (
+      '<div style="line-height:1.3;"><strong style="color:var(--text-color, #fff);">' +
+      s +
+      " — " +
+      e +
+      '</strong><br><small style="opacity:0.7;">' +
+      days +
+      "</small></div>"
+    );
+  };
+  o.textvalue = function (sectionId) {
+    const s = uci.get(UCI_PACKAGE, sectionId, "start_time") || "00:00";
+    const e = uci.get(UCI_PACKAGE, sectionId, "end_time") || "23:59";
+    const days = formatDaysDisplay(uci.get(UCI_PACKAGE, sectionId, "days"));
+    return `${s} - ${e}, ${days}`;
   };
 
   // Live status badge in table
   o = section.option(form.DummyValue, "_live_status", _("Status"));
+  o.rawhtml = true;
   o.modalonly = false;
-  o.renderWidget = function (sectionId) {
+  o.cfgvalue = function (sectionId) {
     const enabled = uci.get(UCI_PACKAGE, sectionId, "enabled") !== "0";
     if (!enabled) {
-      return E(
-        "span",
-        {
-          style:
-            "display:inline-flex;align-items:center;padding:2px 8px;border-radius:12px;font-size:11px;background:#4a5568;color:#e2e8f0;",
-        },
-        "⏸ " + _("Disabled"),
+      return (
+        '<span style="display:inline-flex;align-items:center;padding:2px 8px;border-radius:12px;font-size:11px;background:#4a5568;color:#e2e8f0;">' +
+        '<span style="width:6px;height:6px;border-radius:50%;background:#a0aec0;margin-right:5px;display:inline-block;"></span>' +
+        _("Disabled") +
+        "</span>"
       );
     }
     const active = isScheduleCurrentlyActive(sectionId);
     const action = uci.get(UCI_PACKAGE, sectionId, "action") || "block";
     if (active) {
       const color = action === "allow" ? "#48bb78" : "#e53e3e";
-      const bg =
-        action === "allow" ? "rgba(72,187,120,0.2)" : "rgba(229,62,62,0.2)";
-      const border =
-        action === "allow" ? "rgba(72,187,120,0.4)" : "rgba(229,62,62,0.4)";
-      const text =
-        action === "allow" ? _("Active (Allowed)") : _("Active (Blocking)");
-      return E(
-        "span",
-        {
-          style: `display:inline-flex;align-items:center;padding:2px 8px;border-radius:12px;font-size:11px;background:${bg};color:${color};border:1px solid ${border};`,
-        },
-        [
-          E("span", {
-            style: `width:6px;height:6px;border-radius:50%;background:${color};margin-right:5px;box-shadow:0 0 6px ${color};`,
-          }),
-          text,
-        ],
+      const bg = action === "allow" ? "rgba(72,187,120,0.2)" : "rgba(229,62,62,0.2)";
+      const border = action === "allow" ? "rgba(72,187,120,0.4)" : "rgba(229,62,62,0.4)";
+      const text = action === "allow" ? _("Active (Allowed)") : _("Active (Blocking)");
+      return (
+        `<span style="display:inline-flex;align-items:center;padding:2px 8px;border-radius:12px;font-size:11px;background:${bg};color:${color};border:1px solid ${border};">` +
+        `<span style="width:6px;height:6px;border-radius:50%;background:${color};margin-right:5px;box-shadow:0 0 6px ${color};display:inline-block;"></span>` +
+        text +
+        "</span>"
       );
     }
-    return E(
-      "span",
-      {
-        style:
-          "display:inline-flex;align-items:center;padding:2px 8px;border-radius:12px;font-size:11px;background:rgba(74,85,104,0.3);color:#a0aec0;border:1px solid rgba(74,85,104,0.3);",
-      },
-      [
-        E("span", {
-          style:
-            "width:6px;height:6px;border-radius:50%;background:#718096;margin-right:5px;",
-        }),
-        _("Pending"),
-      ],
+    return (
+      '<span style="display:inline-flex;align-items:center;padding:2px 8px;border-radius:12px;font-size:11px;background:rgba(74,85,104,0.3);color:#a0aec0;border:1px solid rgba(74,85,104,0.3);">' +
+      '<span style="width:6px;height:6px;border-radius:50%;background:#718096;margin-right:5px;display:inline-block;"></span>' +
+      _("Pending") +
+      "</span>"
     );
+  };
+  o.textvalue = function (sectionId) {
+    const enabled = uci.get(UCI_PACKAGE, sectionId, "enabled") !== "0";
+    if (!enabled) return _("Disabled");
+    const active = isScheduleCurrentlyActive(sectionId);
+    const action = uci.get(UCI_PACKAGE, sectionId, "action") || "block";
+    if (active) return action === "allow" ? _("Active (Allowed)") : _("Active (Blocking)");
+    return _("Pending");
   };
 
   // ─── Modal only configuration options ──────────────────────────────────────
