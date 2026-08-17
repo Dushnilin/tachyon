@@ -101,6 +101,7 @@ jobs:
           draft: false
           prerelease: false
           make_latest: true
+          allowUpdates: true
 
       - name: Release on workflow dispatch
         if: ${{ github.event_name == 'workflow_dispatch' }}
@@ -116,6 +117,7 @@ jobs:
           draft: false
           prerelease: false
           make_latest: true
+          allowUpdates: true
           body: |
             Commit: ${{ needs.preparation.outputs.commitish }}
             ${{ inputs.release_notes }}
