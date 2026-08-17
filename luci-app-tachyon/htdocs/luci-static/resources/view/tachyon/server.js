@@ -1820,9 +1820,7 @@ function showServerInfoModal(sectionId) {
 }
 
 function getServerEditButtonText() {
-  const label = _("Edit rule action");
-
-  return label === "Edit rule action" ? "Edit" : label;
+  return _("Edit");
 }
 
 function renderServerRowActions(sectionRef, sectionId) {

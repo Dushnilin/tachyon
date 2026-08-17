@@ -1731,9 +1731,57 @@ function validate_runtime_mark_ranges_context(context) {
     }
 }
 
+function validate_time_format(val, label) {
+    val = trim(as_string(val));
+    if (val == "") return;
+    if (!match(val, /^([01][0-9]|2[0-3]):[0-5][0-9]$/))
+        fail_validation("Schedule option '" + label + "' has invalid time format '" + val + "'. Expected HH:MM. Aborted.");
+}
+
+function validate_schedule(schedule, sections) {
+    if (!section_enabled(schedule))
+        return;
+    let name = section_name(schedule);
+    let start_time = option(schedule, "start_time", "");
+    let end_time = option(schedule, "end_time", "");
+    validate_time_format(start_time, "schedule." + name + ".start_time");
+    validate_time_format(end_time, "schedule." + name + ".end_time");
+
+    let raw_ips = list_option(schedule, "device_ip");
+    if (length(raw_ips) == 0) {
+        let single_ip = option(schedule, "device_ip", "");
+        if (single_ip != "") raw_ips = [ single_ip ];
+    }
+    for (let ip in raw_ips) {
+        let clean_ip = trim(as_string(ip));
+        if (clean_ip != "" && !core_ip.is_ip_or_cidr(clean_ip))
+            fail_validation("Schedule '" + name + "' has invalid device IP '" + clean_ip + "'. Aborted.");
+    }
+
+    let target = option(schedule, "target", "all");
+    let sec_names = list_option(schedule, "sections");
+    if (length(sec_names) == 0) {
+        let single_sec = option(schedule, "sections", "");
+        if (single_sec != "") sec_names = [ single_sec ];
+        else if (target != "all" && target != "sections" && target != "") sec_names = [ target ];
+    }
+    for (let sec_name in sec_names) {
+        let found = false;
+        for (let sec in sections) {
+            if (section_name(sec) == sec_name) {
+                found = true;
+                break;
+            }
+        }
+        if (!found)
+            fail_validation("Schedule '" + name + "' references unknown section '" + sec_name + "'. Aborted.");
+    }
+}
+
 function validate_runtime_config(context) {
     let settings = settings_section();
     let sections = sections_by_type("section");
+    let schedules = sections_by_type("schedule");
 
     validate_runtime_mark_ranges_context(context);
     validate_dns_settings(settings, sections, context);
@@ -1765,6 +1813,9 @@ function validate_runtime_config(context) {
 
     for (let section in sections)
         validate_rule(section, sections, context);
+
+    for (let schedule in schedules)
+        validate_schedule(schedule, sections);
 }
 
 function context_from_runtime() {

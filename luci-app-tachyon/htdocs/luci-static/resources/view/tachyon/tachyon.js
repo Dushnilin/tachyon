@@ -15,6 +15,9 @@
 // Server
 "require view.tachyon.server as server";
 
+// Parental Control
+"require view.tachyon.parental as parental";
+
 // Dashboard
 "require view.tachyon.dashboard as dashboard";
 
@@ -65,9 +68,7 @@ function renderSectionAdd(sectionRef, extra_class) {
 }
 
 function getRuleEditButtonText() {
-  const label = _("Edit rule action");
-
-  return label === "Edit rule action" ? "Edit" : label;
+  return _("Edit");
 }
 
 function configureGridSection(sectionRef, type, title, addTitle) {
@@ -454,6 +455,20 @@ const EntryPoint = {
       loadCapabilities: loadUiCapabilities,
     });
     server.createServerContent(serverSection, uiCapabilities);
+
+    const parentalSection = tachyonMap.section(
+      form.GridSection,
+      "schedule",
+      _("Parental Control"),
+      _("Block internet access or specific proxy sections for individual devices based on time and days."),
+    );
+    configureGridSection(
+      parentalSection,
+      "schedule",
+      _("Schedule Rule"),
+      _("Add a schedule rule"),
+    );
+    parental.createParentalContent(parentalSection);
 
     const settingsSection = tachyonMap.section(
       form.TypedSection,

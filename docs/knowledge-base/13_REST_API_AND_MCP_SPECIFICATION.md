@@ -29,7 +29,7 @@ Returns lightweight status of all core daemons.
 ```json
 {
   "status": "healthy",
-  "version": "1.2.85",
+  "version": "1.2.86",
   "uptime_seconds": 18450,
   "singbox_running": true,
   "watchdog_running": true,

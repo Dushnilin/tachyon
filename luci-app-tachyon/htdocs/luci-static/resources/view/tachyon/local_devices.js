@@ -43,22 +43,25 @@ function normalizeOptionValues(value) {
 }
 
 function normalizeLocalDeviceName(name) {
-  return `${name || ""}`.trim().replace(/\.lan$/i, "");
+  const clean = `${name || ""}`.trim().replace(/\.lan$/i, "");
+  return clean === "*" ? "" : clean;
 }
 
-function addLocalDeviceChoice(choices, ip, name) {
+function addLocalDeviceChoice(choices, ip, name, mac) {
   const normalizedIp = `${ip || ""}`.trim();
   const normalizedName = normalizeLocalDeviceName(name);
 
-  if (!normalizedIp || !normalizedName) {
+  if (!normalizedIp || !main.validateIP(normalizedIp).valid) {
     return;
   }
 
-  if (!main.validateIP(normalizedIp).valid) {
-    return;
+  if (normalizedName) {
+    choices[normalizedIp] = `${normalizedName} (${normalizedIp})`;
+  } else if (mac) {
+    choices[normalizedIp] = `${normalizedIp} [${mac.toLowerCase()}]`;
+  } else if (!choices[normalizedIp]) {
+    choices[normalizedIp] = `${normalizedIp}`;
   }
-
-  choices[normalizedIp] = normalizedName;
 }
 
 function addRouterIp(routerIps, ip) {
@@ -110,7 +113,7 @@ function buildLocalDeviceChoices(hostHints, dhcpLeases, networkInterfaces, dhcpH
   const routerIps = buildRouterIpMap(networkInterfaces);
 
   if (hostHints && typeof hostHints === "object") {
-    Object.values(hostHints).forEach((hint) => {
+    Object.entries(hostHints).forEach(([mac, hint]) => {
       if (!hint || typeof hint !== "object") {
         return;
       }
@@ -120,7 +123,7 @@ function buildLocalDeviceChoices(hostHints, dhcpLeases, networkInterfaces, dhcpH
         ...normalizeOptionValues(hint.ipv4),
         ...normalizeOptionValues(hint.ipv6),
       ].forEach((ip) => {
-        addLocalDeviceChoice(choices, ip, hint.name);
+        addLocalDeviceChoice(choices, ip, hint.name, mac);
       });
     });
   }
@@ -131,14 +134,14 @@ function buildLocalDeviceChoices(hostHints, dhcpLeases, networkInterfaces, dhcpH
         return;
       }
 
-      addLocalDeviceChoice(choices, lease.ipaddr, lease.hostname);
+      addLocalDeviceChoice(choices, lease.ipaddr, lease.hostname, lease.mac);
     });
   }
   
   if (Array.isArray(dhcpHosts)) {
     dhcpHosts.forEach((host) => {
       if (host && host.ip && main.validateIP(host.ip).valid) {
-        addLocalDeviceChoice(choices, host.ip, host.name || host.mac);
+        addLocalDeviceChoice(choices, host.ip, host.name, host.mac);
       }
     });
   }

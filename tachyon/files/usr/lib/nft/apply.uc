@@ -52,6 +52,14 @@ function uci_settings() {
     return uci_section("settings");
 }
 
+function section_by_name(sections, section_name) {
+    section_name = as_string(section_name);
+    for (let section in sections)
+        if (as_string(section[".name"]) == section_name)
+            return section;
+    return null;
+}
+
 function write_compact_string_array(values) {
     print("[");
     for (let i = 0; i < length(values); i++) {
@@ -855,6 +863,176 @@ function nft_add_section_priority_rules_from_sections(sections, table, interface
     return true;
 }
 
+function normalize_schedule_day_name(day) {
+    let d = lc(trim(as_string(day)));
+    let map = {
+        "mon": "Monday", "monday": "Monday", "1": "Monday",
+        "tue": "Tuesday", "tuesday": "Tuesday", "2": "Tuesday",
+        "wed": "Wednesday", "wednesday": "Wednesday", "3": "Wednesday",
+        "thu": "Thursday", "thursday": "Thursday", "4": "Thursday",
+        "fri": "Friday", "friday": "Friday", "5": "Friday",
+        "sat": "Saturday", "saturday": "Saturday", "6": "Saturday",
+        "sun": "Sunday", "sunday": "Sunday", "7": "Sunday", "0": "Sunday"
+    };
+    return map[d] || null;
+}
+
+function nft_schedule_days_match_args(schedule) {
+    let raw_days = list_option(schedule, "days");
+    if (length(raw_days) == 0)
+        return [];
+    
+    let days_set = {};
+    for (let day in raw_days) {
+        let norm = normalize_schedule_day_name(day);
+        if (norm) days_set[norm] = true;
+    }
+    let day_names = sort(keys(days_set));
+    if (length(day_names) == 0 || length(day_names) == 7)
+        return [];
+    
+    if (length(day_names) == 1)
+        return [ "meta", "day", day_names[0] ];
+    
+    return [ "meta", "day", "{ " + join(", ", day_names) + " }" ];
+}
+
+function nft_schedule_time_intervals(start_time, end_time) {
+    start_time = trim(as_string(start_time));
+    end_time = trim(as_string(end_time));
+    
+    if (start_time == "" || end_time == "")
+        return [ [ "00:00:00", "23:59:59" ] ];
+    
+    if (length(start_time) == 5) start_time += ":00";
+    if (length(end_time) == 5) end_time += ":00";
+    
+    if (start_time > end_time) {
+        // Crosses midnight, e.g. 22:00:00 to 08:00:00
+        return [
+            [ start_time, "23:59:59" ],
+            [ "00:00:00", end_time ]
+        ];
+    }
+    
+    return [ [ start_time, end_time ] ];
+}
+
+function nft_add_schedule_rules_from_schedules(schedules, sections, table) {
+    for (let schedule in schedules) {
+        schedule = object_or_empty(schedule);
+        if (!bool_option(schedule, "enabled", true))
+            continue;
+        
+        let raw_ips = list_option(schedule, "device_ip");
+        if (length(raw_ips) == 0) {
+            let single_ip = option(schedule, "device_ip", "");
+            if (single_ip != "") raw_ips = [ single_ip ];
+        }
+        if (length(raw_ips) == 0)
+            continue;
+        
+        let start_time = option(schedule, "start_time", "");
+        let end_time = option(schedule, "end_time", "");
+        let intervals = nft_schedule_time_intervals(start_time, end_time);
+        let days_args = nft_schedule_days_match_args(schedule);
+        let target = option(schedule, "target", "all");
+        let action = option(schedule, "action", "block");
+        let verdict = action == "allow" ? "accept" : "drop";
+        
+        let target_sec_names = [];
+        if (target == "sections" || (target != "all" && target != "")) {
+            let raw_secs = list_option(schedule, "sections");
+            if (length(raw_secs) == 0) {
+                let single_sec = option(schedule, "sections", "");
+                if (single_sec != "") raw_secs = [ single_sec ];
+                else if (target != "sections") raw_secs = [ target ];
+            }
+            target_sec_names = raw_secs;
+        }
+
+        for (let raw_ip in raw_ips) {
+            let ip_str = trim(as_string(raw_ip));
+            if (ip_str == "") continue;
+            let family = core_ip.ip_family(ip_str);
+            let saddr_key = family == 6 ? "ip6" : "ip";
+            
+            for (let interval in intervals) {
+                let time_args = [ "meta", "hour", sprintf("\"%s\"-\"%s\"", interval[0], interval[1]) ];
+                let base_match = [ saddr_key, "saddr", ip_str ];
+                append_array(base_match, days_args);
+                append_array(base_match, time_args);
+                
+                if (target == "all" || (length(target_sec_names) == 0 && target != "sections")) {
+                    let fwd_rule = [];
+                    append_array(fwd_rule, base_match);
+                    append_array(fwd_rule, [ "counter", verdict ]);
+                    nft_add_rule(table, "parental_forward", fwd_rule);
+                    
+                    let ctrl_rule = [];
+                    append_array(ctrl_rule, base_match);
+                    append_array(ctrl_rule, [ "counter", verdict ]);
+                    nft_add_rule(table, "parental_control", ctrl_rule);
+                } else {
+                    for (let sec_name in target_sec_names) {
+                        let target_section = section_by_name(sections, sec_name);
+                        if (!target_section) continue;
+                        
+                        let sets = section_priority_sets(target_section);
+                        if (!sets) continue;
+
+                        if (sets.subnets) {
+                            let sub_rule = [];
+                            append_array(sub_rule, base_match);
+                            append_array(sub_rule, [ "ip", "daddr", "@" + as_string(sets.subnets), "counter", verdict ]);
+                            nft_add_rule(table, "parental_control", sub_rule);
+                            nft_add_rule(table, "parental_forward", sub_rule);
+                        }
+                        if (sets.subnets6 && family == 6) {
+                            let sub6_rule = [];
+                            append_array(sub6_rule, base_match);
+                            append_array(sub6_rule, [ "ip6", "daddr", "@" + as_string(sets.subnets6), "counter", verdict ]);
+                            nft_add_rule(table, "parental_control", sub6_rule);
+                            nft_add_rule(table, "parental_forward", sub6_rule);
+                        }
+                        if (sets.ip_ports) {
+                            let ipport_tcp = [];
+                            append_array(ipport_tcp, base_match);
+                            append_array(ipport_tcp, [ "ip", "daddr", ".", "tcp", "dport", "@" + as_string(sets.ip_ports), "counter", verdict ]);
+                            nft_add_rule(table, "parental_control", ipport_tcp);
+                            nft_add_rule(table, "parental_forward", ipport_tcp);
+
+                            let ipport_udp = [];
+                            append_array(ipport_udp, base_match);
+                            append_array(ipport_udp, [ "ip", "daddr", ".", "udp", "dport", "@" + as_string(sets.ip_ports), "counter", verdict ]);
+                            nft_add_rule(table, "parental_control", ipport_udp);
+                            nft_add_rule(table, "parental_forward", ipport_udp);
+                        }
+                        if (sets.ports) {
+                            let port_tcp = [];
+                            append_array(port_tcp, base_match);
+                            append_array(port_tcp, [ "tcp", "dport", "@" + as_string(sets.ports), "counter", verdict ]);
+                            nft_add_rule(table, "parental_control", port_tcp);
+                            nft_add_rule(table, "parental_forward", port_tcp);
+
+                            let port_udp = [];
+                            append_array(port_udp, base_match);
+                            append_array(port_udp, [ "udp", "dport", "@" + as_string(sets.ports), "counter", verdict ]);
+                            nft_add_rule(table, "parental_control", port_udp);
+                            nft_add_rule(table, "parental_forward", port_udp);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return true;
+}
+
+function nft_add_schedule_rules_from_uci(table, sections) {
+    return nft_add_schedule_rules_from_schedules(uci_sections("schedule"), sections, table);
+}
+
 function nft_create_runtime_base(table, localv4_set, common_set, port_set, ip_port_set, interface_set, source_interfaces, fakeip_mark, outbound_mark, fakeip_range, tproxy_port, exclude_ntp, localv6_set, common6_set, ip_port6_set, fakeip6_range, tproxy6_address) {
     localv6_set = default_arg(localv6_set, "localv6");
     common6_set = default_arg(common6_set, "tachyon_subnets6");
@@ -880,12 +1058,22 @@ function nft_create_runtime_base(table, localv4_set, common_set, port_set, ip_po
             return false;
 
     if (!nft_create_chain(table, "mangle", "{ type filter hook prerouting priority -149; policy accept; }") ||
+        !nft_create_chain(table, "dstnat", "{ type nat hook prerouting priority dstnat; policy accept; }") ||
         !nft_create_chain(table, "mangle_output", "{ type route hook output priority -150; policy accept; }") ||
         !nft_create_priority_chains(table) ||
+        !nft_create_chain(table, "parental_control", "{ }") ||
+        !nft_create_chain(table, "parental_forward", "{ }") ||
         !nft_create_chain(table, "proxy", "{ type filter hook prerouting priority -100; policy accept; }"))
         return false;
 
+    if (!nft_add_rule(table, "dstnat", [ "iifname", "@" + as_string(interface_set), "ip", "daddr", "!=", "@" + as_string(localv4_set), "udp", "dport", "53", "redirect", "to", ":53" ]) ||
+        !nft_add_rule(table, "dstnat", [ "iifname", "@" + as_string(interface_set), "ip", "daddr", "!=", "@" + as_string(localv4_set), "tcp", "dport", "53", "redirect", "to", ":53" ]) ||
+        !nft_add_rule(table, "dstnat", [ "iifname", "@" + as_string(interface_set), "ip6", "daddr", "!=", "@" + as_string(localv6_set), "udp", "dport", "53", "redirect", "to", ":53" ]) ||
+        !nft_add_rule(table, "dstnat", [ "iifname", "@" + as_string(interface_set), "ip6", "daddr", "!=", "@" + as_string(localv6_set), "tcp", "dport", "53", "redirect", "to", ":53" ]))
+        return false;
+
     if (!nft_add_rule(table, "mangle", [ "ct", "status", "dnat", "return" ]) ||
+        !nft_add_rule(table, "mangle", [ "jump", "parental_control" ]) ||
         !nft_add_rule(table, "mangle", [ "iifname", "@" + as_string(interface_set), "ip", "daddr", "@" + as_string(localv4_set), "return" ]) ||
         !nft_add_rule(table, "mangle", [ "iifname", "@" + as_string(interface_set), "ip6", "daddr", "@" + as_string(localv6_set), "return" ]))
         return false;
@@ -946,7 +1134,8 @@ function nft_create_runtime_base(table, localv4_set, common_set, port_set, ip_po
         !nft_add_rule(table, "mangle_output", [ "jump", "priority_output_rules" ]))
         return false;
 
-    if (!nft_create_chain(table, "mangle_forward", "{ type filter hook forward priority -150; policy accept; }"))
+    if (!nft_create_chain(table, "mangle_forward", "{ type filter hook forward priority -150; policy accept; }") ||
+        !nft_add_rule(table, "mangle_forward", [ "jump", "parental_forward" ]))
         return false;
 
     let rtmtu_ok = nft_add_rule(table, "mangle_forward", [ "tcp", "flags", "syn", "tcp", "option", "maxseg", "size", "set", "rt", "mtu" ]);
@@ -1633,7 +1822,20 @@ function nft_rule_signature_body(body, section) {
     return body;
 }
 
-function nft_runtime_signature_from_settings_and_sections(settings, sections) {
+function nft_schedule_signature_body(body, schedule) {
+    let name = as_string(schedule[".name"]);
+    body = signature_add_value(body, "schedule." + name + ".enabled", bool_option(schedule, "enabled", true) ? "1" : "0");
+    body = signature_add_value(body, "schedule." + name + ".device_ip", option(schedule, "device_ip", ""));
+    body = signature_add_value(body, "schedule." + name + ".target", option(schedule, "target", "all"));
+    body = signature_add_value(body, "schedule." + name + ".sections", join(",", list_option(schedule, "sections")));
+    body = signature_add_value(body, "schedule." + name + ".action", option(schedule, "action", "block"));
+    body = signature_add_value(body, "schedule." + name + ".start_time", option(schedule, "start_time", ""));
+    body = signature_add_value(body, "schedule." + name + ".end_time", option(schedule, "end_time", ""));
+    body = signature_add_value(body, "schedule." + name + ".days", join(",", list_option(schedule, "days")));
+    return body;
+}
+
+function nft_runtime_signature_from_settings_and_sections(settings, sections, schedules) {
     let body = "";
 
     body = signature_add_value(body, "settings.source_network_interfaces", option(settings, "source_network_interfaces", "br-lan"));
@@ -1644,11 +1846,14 @@ function nft_runtime_signature_from_settings_and_sections(settings, sections) {
     for (let section in sections)
         body = nft_rule_signature_body(body, object_or_empty(section));
 
+    for (let schedule in schedules)
+        body = nft_schedule_signature_body(body, object_or_empty(schedule));
+
     return signature_hash(body);
 }
 
-function print_nft_runtime_signature_from_settings_and_sections(settings, sections) {
-    let hash = nft_runtime_signature_from_settings_and_sections(settings, sections);
+function print_nft_runtime_signature_from_settings_and_sections(settings, sections, schedules) {
+    let hash = nft_runtime_signature_from_settings_and_sections(settings, sections, schedules);
     if (hash == "")
         return false;
 
@@ -1674,14 +1879,6 @@ function fixture_section_list(data, type_name) {
     return type(plural) == "array" ? plural : [];
 }
 
-function section_by_name(sections, section_name) {
-    section_name = as_string(section_name);
-    for (let section in sections)
-        if (as_string(section[".name"]) == section_name)
-            return section;
-    return null;
-}
-
 function nft_create_provider_output_rules_from_uci(table, action, provider_bin, route_mark_base, queue_base, desync_mark, desync_mark_postnat) {
     return nft_create_provider_output_rules_from_sections(
         uci_sections("section"),
@@ -1698,9 +1895,11 @@ function nft_create_provider_output_rules_from_uci(table, action, provider_bin, 
 function nft_create_full_runtime_from_uci(rt_table, table, localv4_set, common_set, port_set, ip_port_set, interface_set, fakeip_mark, outbound_mark, fakeip_range, tproxy_port, zapret_bin, zapret_route_mark_base, zapret_queue_base, zapret_desync_mark, zapret_desync_mark_postnat, zapret2_bin, zapret2_route_mark_base, zapret2_queue_base, zapret2_desync_mark, zapret2_desync_mark_postnat, localv6_set, common6_set, ip_port6_set, fakeip6_range, tproxy6_address) {
     log_debug("Building nftables runtime model");
 
-    return ensure_tproxy_route_rule(rt_table, fakeip_mark) &&
+    return ensure_bridge_netfilter_disabled() &&
+        ensure_tproxy_route_rule(rt_table, fakeip_mark) &&
         nft_create_runtime_base_from_uci(table, localv4_set, common_set, port_set, ip_port_set, interface_set, fakeip_mark, outbound_mark, fakeip_range, tproxy_port, localv6_set, common6_set, ip_port6_set, fakeip6_range, tproxy6_address) &&
         nft_add_section_priority_rules_from_sections(uci_sections("section"), table, interface_set, localv4_set, localv6_set, fakeip_mark) &&
+        nft_add_schedule_rules_from_uci(table, uci_sections("section")) &&
         nft_create_provider_output_rules_from_uci(table, "zapret", zapret_bin, zapret_route_mark_base, zapret_queue_base, zapret_desync_mark, zapret_desync_mark_postnat) &&
         nft_create_provider_output_rules_from_uci(table, "zapret2", zapret2_bin, zapret2_route_mark_base, zapret2_queue_base, zapret2_desync_mark, zapret2_desync_mark_postnat) &&
         nft_create_runtime_output_rules(table, localv4_set, common_set, port_set, ip_port_set, fakeip_mark, fakeip_range, localv6_set, common6_set, ip_port6_set, fakeip6_range);
@@ -1726,7 +1925,8 @@ function nft_rebuild_runtime_from_uci(rt_table, table, localv4_set, common_set, 
 function nft_runtime_signature_from_uci() {
     return print_nft_runtime_signature_from_settings_and_sections(
         uci_settings(),
-        uci_sections("section")
+        uci_sections("section"),
+        uci_sections("schedule")
     );
 }
 
@@ -1743,7 +1943,11 @@ function fixture_settings(data) {
 function nft_runtime_signature_from_fixture(path) {
     let data = object_or_empty(common_read_json_file(path));
     connections.set_item_sections_from_data(data);
-    return print_nft_runtime_signature_from_settings_and_sections(fixture_settings(data), fixture_section_list(data, "section"));
+    return print_nft_runtime_signature_from_settings_and_sections(
+        fixture_settings(data),
+        fixture_section_list(data, "section"),
+        fixture_section_list(data, "schedule")
+    );
 }
 
 function nft_mangle_chain_text(context, table) {
@@ -1980,6 +2184,8 @@ else if (mode == "nft-create-provider-output-rules-fixture")
     exit(nft_create_provider_output_rules_from_sections(fixture_section_list(object_or_empty(common_read_json_file(ARGV[1])), "section"), ARGV[2], ARGV[3], ARGV[4], ARGV[5], ARGV[6], ARGV[7], ARGV[8]) ? 0 : 1);
 else if (mode == "nft-add-section-priority-rules-fixture")
     exit(nft_add_section_priority_rules_from_sections(fixture_section_list(object_or_empty(common_read_json_file(ARGV[1])), "section"), ARGV[2], ARGV[3], ARGV[4], ARGV[5], ARGV[6]) ? 0 : 1);
+else if (mode == "nft-add-schedule-rules-fixture")
+    exit(nft_add_schedule_rules_from_schedules(fixture_section_list(object_or_empty(common_read_json_file(ARGV[1])), "schedule"), fixture_section_list(object_or_empty(common_read_json_file(ARGV[1])), "section"), ARGV[2]) ? 0 : 1);
 else if (mode == "nft-create-full-runtime-from-uci")
     exit(nft_create_full_runtime_from_uci(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5], ARGV[6], ARGV[7], ARGV[8], ARGV[9], ARGV[10], ARGV[11], ARGV[12], ARGV[13], ARGV[14], ARGV[15], ARGV[16], ARGV[17], ARGV[18], ARGV[19], ARGV[20], ARGV[21], ARGV[22], ARGV[23], ARGV[24], ARGV[25], ARGV[26]) ? 0 : 1);
 else if (mode == "nft-rebuild-runtime-from-uci")
