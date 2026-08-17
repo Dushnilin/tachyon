@@ -83,10 +83,6 @@ function restart_dnsmasq() {
 // unconditional stop/start (and the dropped in-flight queries) of a full restart.
 // Older or non-procd dnsmasq init scripts have no usable reload, so fall back.
 function reload_dnsmasq() {
-    if (run("[ -x " + shell_quote(DNSMASQ_INIT) + " ] && " + shell_quote(DNSMASQ_INIT) + " reload"))
-        return true;
-
-    log("dnsmasq reload failed; falling back to a full restart", "warn");
     return restart_dnsmasq();
 }
 
