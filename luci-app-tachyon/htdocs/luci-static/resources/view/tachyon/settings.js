@@ -1646,9 +1646,10 @@ function createSettingsContent(section, capabilities) {
   o.value("openai", "OpenAI (ChatGPT)");
   o.value("anthropic", "Anthropic (Claude API)");
   o.value("deepseek", "DeepSeek API");
+  o.value("openrouter", "OpenRouter (openrouter.ai)");
   o.value("ollama", _("Ollama (Local PC / Server)"));
   o.value("lmstudio", _("LM Studio (Local PC / Server)"));
-  o.value("custom", _("Custom OpenAI-Compatible API (OpenRouter)"));
+  o.value("custom", _("Custom OpenAI-Compatible API"));
   o.default = "openai";
 
   o = section.taboption(

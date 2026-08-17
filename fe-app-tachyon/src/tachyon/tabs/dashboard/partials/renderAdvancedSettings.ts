@@ -806,6 +806,14 @@ function renderAiWatchdogSection(state: AdvancedSettingsState) {
                   E(
                     'option',
                     {
+                      value: 'openrouter',
+                      selected: state.aiDoctorProvider === 'openrouter',
+                    },
+                    'OpenRouter (openrouter.ai)',
+                  ),
+                  E(
+                    'option',
+                    {
                       value: 'ollama',
                       selected: state.aiDoctorProvider === 'ollama',
                     },
@@ -842,6 +850,7 @@ function renderAiWatchdogSection(state: AdvancedSettingsState) {
                     openai: 'gpt-4o-mini',
                     anthropic: 'claude-3-5-haiku-20241022',
                     deepseek: 'deepseek-chat',
+                    openrouter: 'openai/gpt-4o-mini',
                     ollama: 'llama3:latest',
                     lmstudio: 'local-model',
                   }[state.aiDoctorProvider] ?? 'gpt-4o-mini',

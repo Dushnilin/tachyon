@@ -2470,11 +2470,8 @@ function addRealityDepends(option) {
   option.depends({ protocol: "vless", security: "reality" });
 }
 
-function addTailscaleDepends(option, singBoxTailscale) {
-  option.depends(
-    "protocol",
-    singBoxTailscale ? "tailscale" : "__unsupported_tailscale__",
-  );
+function addTailscaleDepends(option) {
+  option.depends("protocol", "tailscale");
 }
 
 function addMtprotoDepends(option) {
@@ -3228,7 +3225,7 @@ function createServerContent(section, options = {}) {
   o.modalonly = true;
   o.rmempty = false;
   o.validate = validateRequired;
-  addTailscaleDepends(o, singBoxTailscale);
+  addTailscaleDepends(o);
 
   o = section.option(
     form.Value,
@@ -3239,7 +3236,7 @@ function createServerContent(section, options = {}) {
   o.modalonly = true;
   o.rmempty = false;
   o.validate = validateHttpUrl;
-  addTailscaleDepends(o, singBoxTailscale);
+  addTailscaleDepends(o);
 
   o = section.option(form.Value, "tailscale_hostname", _("Tailscale hostname"));
   o.modalonly = true;
@@ -3254,7 +3251,7 @@ function createServerContent(section, options = {}) {
     uci.set(UCI_PACKAGE, sectionId, "tailscale_hostname", value);
     return value;
   };
-  addTailscaleDepends(o, singBoxTailscale);
+  addTailscaleDepends(o);
 
   o = section.option(
     form.Flag,
@@ -3264,7 +3261,7 @@ function createServerContent(section, options = {}) {
   o.default = "1";
   o.modalonly = true;
   o.rmempty = false;
-  addTailscaleDepends(o, singBoxTailscale);
+  addTailscaleDepends(o);
 
   o = section.option(
     form.DynamicList,
@@ -3274,13 +3271,13 @@ function createServerContent(section, options = {}) {
   o.modalonly = true;
   o.rmempty = true;
   o.validate = (_sectionId, value) => validateOptionalCidrOrIp(value);
-  addTailscaleDepends(o, singBoxTailscale);
+  addTailscaleDepends(o);
 
   o = section.option(form.Flag, "tailscale_accept_routes", _("Accept routes"));
   o.default = "0";
   o.modalonly = true;
   o.rmempty = true;
-  addTailscaleDepends(o, singBoxTailscale);
+  addTailscaleDepends(o);
 
   // AWG Server Options
   o = section.option(
