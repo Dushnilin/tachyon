@@ -1503,8 +1503,7 @@ async function handleRunAiDoctor() {
                     }),
                     renderButton({
                       classNames: ['cbi-button-reset'],
-                      text:
-                        '🚨 ' + _('Restore Native Internet (Stop Tachyon)'),
+                      text: '🚨 ' + _('Restore Native Internet (Stop Tachyon)'),
                       onClick: async () => {
                         showToast(
                           _(
@@ -1512,10 +1511,9 @@ async function handleRunAiDoctor() {
                           ),
                           'success',
                         );
-                        const fixRes =
-                          await TachyonShellMethods.applyQuickFix(
-                            'restore_native_internet',
-                          );
+                        const fixRes = await TachyonShellMethods.applyQuickFix(
+                          'restore_native_internet',
+                        );
                         if (
                           fixRes &&
                           typeof fixRes === 'object' &&
@@ -1609,10 +1607,9 @@ function handleRestoreNativeInternet() {
                 _('Restoring native direct internet (stopping Tachyon)...'),
                 'success',
               );
-              const res =
-                await TachyonShellMethods.applyQuickFix(
-                  'restore_native_internet',
-                );
+              const res = await TachyonShellMethods.applyQuickFix(
+                'restore_native_internet',
+              );
               if (
                 res &&
                 typeof res === 'object' &&

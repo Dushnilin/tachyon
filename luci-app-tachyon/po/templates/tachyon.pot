@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-08-16 17:35+0300\n"
-"PO-Revision-Date: 2026-08-16 17:35+0300\n"
+"POT-Creation-Date: 2026-08-17 07:26+0300\n"
+"PO-Revision-Date: 2026-08-17 07:26+0300\n"
 "Last-Translator: Dushnilin <dushnilin@gmail.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -316,7 +316,7 @@ msgstr ""
 msgid "Anonymized support report copied to clipboard"
 msgstr ""
 
-#: src/tachyon/tabs/updates/initController.ts:844
+#: src/tachyon/tabs/updates/initController.ts:861
 msgid "Another component action is already running"
 msgstr ""
 
@@ -611,7 +611,7 @@ msgstr ""
 msgid "Check timeout after which the server is considered dead"
 msgstr ""
 
-#: src/tachyon/tabs/updates/initController.ts:913
+#: src/tachyon/tabs/updates/initController.ts:930
 msgid "Check update"
 msgstr ""
 
@@ -662,14 +662,14 @@ msgstr ""
 msgid "checks"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/helpers/getMeta.ts:26
 #: src/tachyon/tabs/diagnostic/checks/getCheckItemsMeta.ts:10
+#: src/tachyon/tabs/diagnostic/helpers/getMeta.ts:26
 msgid "Checks failed"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/helpers/getMeta.ts:13
 #: src/tachyon/tabs/diagnostic/checks/getCheckItemsMeta.ts:23
 #: src/tachyon/tabs/diagnostic/checks/runFakeIPCheck.ts:43
+#: src/tachyon/tabs/diagnostic/helpers/getMeta.ts:13
 msgid "Checks passed"
 msgstr ""
 
@@ -725,8 +725,8 @@ msgstr ""
 #: src/tachyon/tabs/monitoring/initController.ts:884
 #: src/tachyon/tabs/monitoring/initController.ts:934
 #: src/tachyon/tabs/diagnostic/partials/renderAiChatModal.ts:212
-#: src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:374
-#: src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:419
+#: src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:406
+#: src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:451
 msgid "Close"
 msgstr ""
 
@@ -1562,7 +1562,7 @@ msgstr ""
 #: src/tachyon/tabs/updates/initController.ts:619
 #: src/tachyon/tabs/updates/initController.ts:620
 #: src/tachyon/tabs/updates/initController.ts:695
-#: src/tachyon/tabs/updates/initController.ts:891
+#: src/tachyon/tabs/updates/initController.ts:908
 msgid "Failed to execute"
 msgstr ""
 
@@ -2043,21 +2043,21 @@ msgstr ""
 msgid "Init Packet Payload (I5)"
 msgstr ""
 
-#: src/tachyon/tabs/updates/initController.ts:927
-#: src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:363
+#: src/tachyon/tabs/updates/initController.ts:944
+#: src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:395
 msgid "Install"
 msgstr ""
 
-#: src/tachyon/tabs/updates/initController.ts:1421
+#: src/tachyon/tabs/updates/initController.ts:1438
 msgid "Install another build:"
 msgstr ""
 
-#: src/tachyon/tabs/updates/initController.ts:1279
+#: src/tachyon/tabs/updates/initController.ts:1296
 msgid "Installed build → Available build"
 msgstr ""
 
 #: src/tachyon/tabs/updates/initController.ts:341
-#: src/tachyon/tabs/updates/initController.ts:1287
+#: src/tachyon/tabs/updates/initController.ts:1304
 msgid "Installed version is newer than release"
 msgstr ""
 
@@ -2395,8 +2395,8 @@ msgstr ""
 msgid "Issues"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/helpers/getMeta.ts:20
 #: src/tachyon/tabs/diagnostic/checks/getCheckItemsMeta.ts:17
+#: src/tachyon/tabs/diagnostic/helpers/getMeta.ts:20
 msgid "Issues detected"
 msgstr ""
 
@@ -2490,11 +2490,11 @@ msgid "Latency test URL"
 msgstr ""
 
 #: src/tachyon/tabs/updates/initController.ts:344
-#: src/tachyon/tabs/updates/initController.ts:1285
+#: src/tachyon/tabs/updates/initController.ts:1302
 msgid "Latest version is installed"
 msgstr ""
 
-#: src/tachyon/tabs/updates/initController.ts:1287
+#: src/tachyon/tabs/updates/initController.ts:1304
 msgid "Latest version:"
 msgstr ""
 
@@ -2557,11 +2557,11 @@ msgstr ""
 msgid "Loading connections"
 msgstr ""
 
-#: src/tachyon/tabs/updates/initController.ts:1129
-#: src/tachyon/tabs/updates/initController.ts:1144
-#: src/tachyon/tabs/updates/initController.ts:1162
-#: src/tachyon/tabs/updates/initController.ts:1176
-#: src/tachyon/tabs/updates/initController.ts:1190
+#: src/tachyon/tabs/updates/initController.ts:1146
+#: src/tachyon/tabs/updates/initController.ts:1161
+#: src/tachyon/tabs/updates/initController.ts:1179
+#: src/tachyon/tabs/updates/initController.ts:1193
+#: src/tachyon/tabs/updates/initController.ts:1207
 msgid "Loading..."
 msgstr ""
 
@@ -2879,9 +2879,9 @@ msgstr ""
 
 #: src/tachyon/helpers/singBoxVariant.ts:38
 #: src/tachyon/helpers/singBoxVariant.ts:46
-#: src/tachyon/tabs/updates/initController.ts:1165
-#: src/tachyon/tabs/updates/initController.ts:1179
-#: src/tachyon/tabs/updates/initController.ts:1193
+#: src/tachyon/tabs/updates/initController.ts:1182
+#: src/tachyon/tabs/updates/initController.ts:1196
+#: src/tachyon/tabs/updates/initController.ts:1210
 msgid "Not installed"
 msgstr ""
 
@@ -2991,8 +2991,8 @@ msgstr ""
 msgid "Only the specified servers."
 msgstr ""
 
-#: src/tachyon/tabs/updates/initController.ts:1261
-#: src/tachyon/tabs/updates/initController.ts:1300
+#: src/tachyon/tabs/updates/initController.ts:1278
+#: src/tachyon/tabs/updates/initController.ts:1317
 msgid "Open"
 msgstr ""
 
@@ -3008,7 +3008,7 @@ msgstr ""
 msgid "Operation completed successfully!"
 msgstr ""
 
-#: src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:414
+#: src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:446
 msgid "Operation failed"
 msgstr ""
 
@@ -3356,7 +3356,7 @@ msgstr ""
 msgid "Rebuild firewall rules"
 msgstr ""
 
-#: src/tachyon/tabs/updates/initController.ts:1281
+#: src/tachyon/tabs/updates/initController.ts:1298
 msgid "Rebuilt release"
 msgstr ""
 
@@ -3400,12 +3400,16 @@ msgstr ""
 msgid "Regular expression must not contain spaces or commas"
 msgstr ""
 
-#: src/tachyon/tabs/updates/initController.ts:1041
+#: src/tachyon/tabs/updates/initController.ts:1058
 msgid "Reinstall"
 msgstr ""
 
-#: src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:329
-msgid "Reloading page in"
+#: src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:342
+msgid "Reload now"
+msgstr ""
+
+#: src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:371
+msgid "Reloading..."
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:7847
@@ -3417,7 +3421,7 @@ msgid "Removal completed successfully!"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:7927
-#: src/tachyon/tabs/updates/initController.ts:997
+#: src/tachyon/tabs/updates/initController.ts:1014
 msgid "Remove"
 msgstr ""
 
@@ -3935,8 +3939,16 @@ msgstr ""
 msgid "Services & Access"
 msgstr ""
 
+#: src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:370
+msgid "Services are online and ready! Reloading page..."
+msgstr ""
+
 #: src/tachyon/tabs/dashboard/initController.ts:1871
 msgid "Services info"
+msgstr ""
+
+#: src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:384
+msgid "Services restarted. Click to reload page."
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:1152
@@ -4555,7 +4567,7 @@ msgstr ""
 msgid "Traffic will go through the default route (Direct/Default)."
 msgstr ""
 
-#: src/tachyon/tabs/updates/initController.ts:860
+#: src/tachyon/tabs/updates/initController.ts:877
 msgid "Transient connection error"
 msgstr ""
 
@@ -4725,7 +4737,7 @@ msgstr ""
 msgid "Up to 10 snapshots are kept; the oldest ones are removed automatically."
 msgstr ""
 
-#: src/tachyon/tabs/updates/initController.ts:927
+#: src/tachyon/tabs/updates/initController.ts:944
 msgid "Update"
 msgstr ""
 
@@ -4733,11 +4745,11 @@ msgstr ""
 msgid "Update is available"
 msgstr ""
 
-#: src/tachyon/tabs/updates/initController.ts:1268
+#: src/tachyon/tabs/updates/initController.ts:1285
 msgid "Update is available for current release"
 msgstr ""
 
-#: src/tachyon/tabs/updates/initController.ts:1247
+#: src/tachyon/tabs/updates/initController.ts:1264
 msgid "Update is available:"
 msgstr ""
 
@@ -4905,6 +4917,10 @@ msgstr ""
 msgid "Value must not contain control characters"
 msgstr ""
 
+#: src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:365
+msgid "Verifying router and service readiness..."
+msgstr ""
+
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:1986
 msgid "Via country.is"
 msgstr ""
@@ -4920,6 +4936,10 @@ msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8755
 msgid "vless://, vmess://, ss://, trojan://, socks4/5://, hy2/hysteria2:// links"
+msgstr ""
+
+#: src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:337
+msgid "Waiting for router services to restart..."
 msgstr ""
 
 #: src/tachyon/tabs/diagnostic/checks/runInboundsCheck.ts:70

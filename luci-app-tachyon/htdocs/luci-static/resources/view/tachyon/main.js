@@ -7320,7 +7320,9 @@ function renderCommonDetailsModal(info, fields, renderMemberName, isPriority, se
                         _("Active")
                       ]
                     )
-                  ] : isPriority || section.outbounds.some((o) => o.code === member.code) ? [
+                  ] : isPriority || section.outbounds.some(
+                    (o) => o.code === member.code
+                  ) ? [
                     E(
                       "button",
                       {
@@ -16006,9 +16008,13 @@ function showUpdateProgressModal(options) {
     ]),
     timerBadgeEl
   ]);
-  const logPreEl = E("pre", {
-    class: "tachyon-update-modal__log"
-  }, _("Operation started. Waiting for log output..."));
+  const logPreEl = E(
+    "pre",
+    {
+      class: "tachyon-update-modal__log"
+    },
+    _("Operation started. Waiting for log output...")
+  );
   const logPanelEl = E("div", { class: "tachyon-update-modal__log-panel" }, [
     E("div", { class: "tachyon-update-modal__log-header" }, [
       E("b", {}, _("Operation log")),
@@ -16143,37 +16149,65 @@ function showUpdateProgressModal(options) {
       cleanupTimers();
       finishLogTracking();
       const successMsg = message || (isCheckAction ? _("Check completed!") : options.action === "remove" ? _("Removal completed successfully!") : _("Operation completed successfully!"));
-      const bannerEl = E("div", { class: "tachyon-update-modal__success-banner" }, [
-        renderCheckIcon24(),
-        E("span", {}, successMsg)
-      ]);
+      const bannerEl = E(
+        "div",
+        { class: "tachyon-update-modal__success-banner" },
+        [renderCheckIcon24(), E("span", {}, successMsg)]
+      );
       if (opts?.reloadPage) {
-        let secondsLeft = 3;
-        const reloadBtnText = () => `${_("Reloading page in")} ${secondsLeft}s...`;
+        let isProbing = true;
+        let attempt = 0;
+        const maxAttempts = 30;
+        const statusEl = E(
+          "div",
+          {
+            class: "tachyon-update-modal__reload-status",
+            style: "margin: 10px 0; font-size: 0.95em; color: var(--cbi-color-neutral, #666);"
+          },
+          _("Waiting for router services to restart...")
+        );
         const reloadBtn = renderButton({
           classNames: ["cbi-button-save"],
-          text: reloadBtnText(),
+          text: _("Reload now"),
           onClick: () => {
+            isProbing = false;
             window.location.reload();
           }
         });
         actionButtonContainer.replaceChildren(
           bannerEl,
-          E(
-            "div",
-            { class: "tachyon-update-modal__action-buttons" },
-            [reloadBtn]
-          )
+          statusEl,
+          E("div", { class: "tachyon-update-modal__action-buttons" }, [
+            reloadBtn
+          ])
         );
-        const reloadTimer = setInterval(() => {
-          secondsLeft -= 1;
-          if (secondsLeft <= 0) {
-            clearInterval(reloadTimer);
-            window.location.reload();
-          } else {
-            reloadBtn.textContent = reloadBtnText();
+        const probeAndReload = async () => {
+          await new Promise((resolve) => setTimeout(resolve, 2e3));
+          while (isProbing && attempt < maxAttempts) {
+            attempt += 1;
+            statusEl.textContent = `${_("Verifying router and service readiness...")} (${attempt}/${maxAttempts})`;
+            try {
+              const res = await TachyonShellMethods.getSystemInfo();
+              if (res && res.success) {
+                statusEl.textContent = _(
+                  "Services are online and ready! Reloading page..."
+                );
+                reloadBtn.textContent = _("Reloading...");
+                await new Promise((resolve) => setTimeout(resolve, 600));
+                window.location.reload();
+                return;
+              }
+            } catch (_err) {
+            }
+            await new Promise((resolve) => setTimeout(resolve, 1500));
           }
-        }, 1e3);
+          if (isProbing) {
+            statusEl.textContent = _(
+              "Services restarted. Click to reload page."
+            );
+          }
+        };
+        void probeAndReload();
       } else {
         const actionButtons = [];
         if (opts?.onInstall) {
@@ -16217,10 +16251,11 @@ function showUpdateProgressModal(options) {
     completeError: (errorMessage) => {
       cleanupTimers();
       finishLogTracking();
-      const bannerEl = E("div", { class: "tachyon-update-modal__error-banner" }, [
-        renderXIcon24(),
-        E("span", {}, errorMessage || _("Operation failed"))
-      ]);
+      const bannerEl = E(
+        "div",
+        { class: "tachyon-update-modal__error-banner" },
+        [renderXIcon24(), E("span", {}, errorMessage || _("Operation failed"))]
+      );
       const closeBtn = renderButton({
         classNames: ["cbi-button-remove"],
         text: _("Close"),
@@ -16230,11 +16265,7 @@ function showUpdateProgressModal(options) {
       });
       actionButtonContainer.replaceChildren(
         bannerEl,
-        E(
-          "div",
-          { class: "tachyon-update-modal__action-buttons" },
-          [closeBtn]
-        )
+        E("div", { class: "tachyon-update-modal__action-buttons" }, [closeBtn])
       );
     },
     startLogTracking: (jobId) => {
@@ -16761,7 +16792,19 @@ function isComponentActionAlreadyRunningError(message) {
 }
 function handleComponentUiState(uiState) {
   for (const state of uiState.actions.component || []) {
-    void followComponentActionState(state);
+    const jobId = state.job_id;
+    if (!jobId) {
+      continue;
+    }
+    if (handledComponentJobs.has(jobId) || followedComponentJobs.has(jobId)) {
+      continue;
+    }
+    if (state.running) {
+      void followComponentActionState(state);
+    } else {
+      handledComponentJobs.add(jobId);
+      void ackComponentActionJob(jobId);
+    }
   }
 }
 async function refreshComponentActionState() {
@@ -16809,15 +16852,18 @@ async function handleComponentAction(button) {
   const checkResult = getVisibleCheckResult(button.component);
   const currentSha = checkResult?.current_sha;
   const targetSha = checkResult?.latest_sha;
-  const modalController = showUpdateProgressModal({
-    component: button.component,
-    action: button.action,
-    componentTitle: cardTitle,
-    currentVersion,
-    targetVersion,
-    currentSha,
-    targetSha
-  });
+  let modalController = getActiveProgressModalController();
+  if (!modalController) {
+    modalController = showUpdateProgressModal({
+      component: button.component,
+      action: button.action,
+      componentTitle: cardTitle,
+      currentVersion,
+      targetVersion,
+      currentSha,
+      targetSha
+    });
+  }
   let jobId = "";
   let ownsJobFollow = false;
   try {
@@ -16859,14 +16905,14 @@ async function handleComponentAction(button) {
       throw new Error(startResponse.error);
     }
     jobId = startResponse.data.job_id;
-    setActiveProgressModalJobId(jobId);
-    markUiActionOwned("component", jobId);
-    modalController.startLogTracking(jobId);
-    if (followedComponentJobs.has(jobId)) {
+    if (followedComponentJobs.has(jobId) || handledComponentJobs.has(jobId)) {
       return;
     }
     followedComponentJobs.add(jobId);
     ownsJobFollow = true;
+    setActiveProgressModalJobId(jobId);
+    markUiActionOwned("component", jobId);
+    modalController.startLogTracking(jobId);
     const response = await TachyonShellMethods.waitComponentActionJob(
       jobId,
       button.component,

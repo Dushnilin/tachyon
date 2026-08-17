@@ -691,7 +691,9 @@ async function handleChooseOutbound(
     const res = await TachyonShellMethods.setClashApiGroupProxy(selector, tag);
     if (res && !(res as any).success && (res as any).error) {
       showToast(
-        (res as any).message || (res as any).error || _('Failed to switch proxy'),
+        (res as any).message ||
+          (res as any).error ||
+          _('Failed to switch proxy'),
         'error',
       );
     }
@@ -1122,59 +1124,64 @@ function renderCommonDetailsModal(
                                 ],
                               ),
                             ]
-                          : (isPriority || section.outbounds.some((o) => o.code === member.code))
-                          ? [
-                              E(
-                                'button',
-                                {
-                                  type: 'button',
-                                  class:
-                                    'btn cbi-button cbi-button-action tachyon_dashboard-page__urltest-details__select-btn',
-                                  click: async (event: MouseEvent) => {
-                                    event.preventDefault();
-                                    const btn = event.currentTarget as HTMLButtonElement | null;
-                                    if (btn) {
-                                      btn.disabled = true;
-                                    }
-                                    const targetSelector = isPriority
-                                      ? (outbound?.code || section.code)
-                                      : section.code;
-                                    await handleChooseOutbound(
-                                      section.sectionName,
-                                      targetSelector,
-                                      member.code,
-                                    );
-                                    const updatedSection = store
-                                      .get()
-                                      .sectionsWidget.data.find(
-                                        (s) =>
-                                          s.sectionName === section.sectionName,
-                                      );
-                                    const updatedOutbound =
-                                      updatedSection?.outbounds.find(
-                                        (o) => o.code === outbound?.code,
-                                      );
-                                    if (updatedSection && updatedOutbound) {
-                                      if (isPriority) {
-                                        handleShowPriorityInfo(
-                                          updatedSection,
-                                          updatedOutbound,
-                                        );
-                                      } else {
-                                        handleShowUrlTestInfo(
-                                          updatedSection,
-                                          updatedOutbound,
-                                        );
+                          : isPriority ||
+                              section.outbounds.some(
+                                (o) => o.code === member.code,
+                              )
+                            ? [
+                                E(
+                                  'button',
+                                  {
+                                    type: 'button',
+                                    class:
+                                      'btn cbi-button cbi-button-action tachyon_dashboard-page__urltest-details__select-btn',
+                                    click: async (event: MouseEvent) => {
+                                      event.preventDefault();
+                                      const btn =
+                                        event.currentTarget as HTMLButtonElement | null;
+                                      if (btn) {
+                                        btn.disabled = true;
                                       }
-                                    } else {
-                                      ui.hideModal();
-                                    }
+                                      const targetSelector = isPriority
+                                        ? outbound?.code || section.code
+                                        : section.code;
+                                      await handleChooseOutbound(
+                                        section.sectionName,
+                                        targetSelector,
+                                        member.code,
+                                      );
+                                      const updatedSection = store
+                                        .get()
+                                        .sectionsWidget.data.find(
+                                          (s) =>
+                                            s.sectionName ===
+                                            section.sectionName,
+                                        );
+                                      const updatedOutbound =
+                                        updatedSection?.outbounds.find(
+                                          (o) => o.code === outbound?.code,
+                                        );
+                                      if (updatedSection && updatedOutbound) {
+                                        if (isPriority) {
+                                          handleShowPriorityInfo(
+                                            updatedSection,
+                                            updatedOutbound,
+                                          );
+                                        } else {
+                                          handleShowUrlTestInfo(
+                                            updatedSection,
+                                            updatedOutbound,
+                                          );
+                                        }
+                                      } else {
+                                        ui.hideModal();
+                                      }
+                                    },
                                   },
-                                },
-                                _('Select'),
-                              ),
-                            ]
-                          : []
+                                  _('Select'),
+                                ),
+                              ]
+                            : []
                         : []),
                       member.canCopyLink
                         ? renderUrlTestCopyButton(

@@ -144,9 +144,13 @@ export function showUpdateProgressModal(
     timerBadgeEl,
   ]);
 
-  const logPreEl = E('pre', {
-    class: 'tachyon-update-modal__log',
-  }, _('Operation started. Waiting for log output...')) as HTMLPreElement;
+  const logPreEl = E(
+    'pre',
+    {
+      class: 'tachyon-update-modal__log',
+    },
+    _('Operation started. Waiting for log output...'),
+  ) as HTMLPreElement;
 
   const logPanelEl = E('div', { class: 'tachyon-update-modal__log-panel' }, [
     E('div', { class: 'tachyon-update-modal__log-header' }, [
@@ -318,42 +322,78 @@ export function showUpdateProgressModal(
             ? _('Removal completed successfully!')
             : _('Operation completed successfully!'));
 
-      const bannerEl = E('div', { class: 'tachyon-update-modal__success-banner' }, [
-        renderCheckIcon24(),
-        E('span', {}, successMsg),
-      ]);
+      const bannerEl = E(
+        'div',
+        { class: 'tachyon-update-modal__success-banner' },
+        [renderCheckIcon24(), E('span', {}, successMsg)],
+      );
 
       if (opts?.reloadPage) {
-        let secondsLeft = 3;
-        const reloadBtnText = () =>
-          `${_('Reloading page in')} ${secondsLeft}s...`;
+        let isProbing = true;
+        let attempt = 0;
+        const maxAttempts = 30;
+
+        const statusEl = E(
+          'div',
+          {
+            class: 'tachyon-update-modal__reload-status',
+            style:
+              'margin: 10px 0; font-size: 0.95em; color: var(--cbi-color-neutral, #666);',
+          },
+          _('Waiting for router services to restart...'),
+        );
 
         const reloadBtn = renderButton({
           classNames: ['cbi-button-save'],
-          text: reloadBtnText(),
+          text: _('Reload now'),
           onClick: () => {
+            isProbing = false;
             window.location.reload();
           },
         });
 
         actionButtonContainer.replaceChildren(
           bannerEl,
-          E(
-            'div',
-            { class: 'tachyon-update-modal__action-buttons' },
-            [reloadBtn],
-          ),
+          statusEl,
+          E('div', { class: 'tachyon-update-modal__action-buttons' }, [
+            reloadBtn,
+          ]),
         );
 
-        const reloadTimer = setInterval(() => {
-          secondsLeft -= 1;
-          if (secondsLeft <= 0) {
-            clearInterval(reloadTimer);
-            window.location.reload();
-          } else {
-            reloadBtn.textContent = reloadBtnText();
+        const probeAndReload = async () => {
+          // Pause 2 seconds initially to allow init scripts and rpcd reload to commence
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+
+          while (isProbing && attempt < maxAttempts) {
+            attempt += 1;
+            statusEl.textContent = `${_('Verifying router and service readiness...')} (${attempt}/${maxAttempts})`;
+
+            try {
+              const res = await TachyonShellMethods.getSystemInfo();
+              if (res && res.success) {
+                statusEl.textContent = _(
+                  'Services are online and ready! Reloading page...',
+                );
+                reloadBtn.textContent = _('Reloading...');
+                await new Promise((resolve) => setTimeout(resolve, 600));
+                window.location.reload();
+                return;
+              }
+            } catch (_err) {
+              // RPC is unavailable while daemon/rpcd is reloading; keep probing
+            }
+
+            await new Promise((resolve) => setTimeout(resolve, 1500));
           }
-        }, 1000);
+
+          if (isProbing) {
+            statusEl.textContent = _(
+              'Services restarted. Click to reload page.',
+            );
+          }
+        };
+
+        void probeAndReload();
       } else {
         const actionButtons: HTMLElement[] = [];
 
@@ -409,10 +449,11 @@ export function showUpdateProgressModal(
       cleanupTimers();
       finishLogTracking();
 
-      const bannerEl = E('div', { class: 'tachyon-update-modal__error-banner' }, [
-        renderXIcon24(),
-        E('span', {}, errorMessage || _('Operation failed')),
-      ]);
+      const bannerEl = E(
+        'div',
+        { class: 'tachyon-update-modal__error-banner' },
+        [renderXIcon24(), E('span', {}, errorMessage || _('Operation failed'))],
+      );
 
       const closeBtn = renderButton({
         classNames: ['cbi-button-remove'],
@@ -424,11 +465,7 @@ export function showUpdateProgressModal(
 
       actionButtonContainer.replaceChildren(
         bannerEl,
-        E(
-          'div',
-          { class: 'tachyon-update-modal__action-buttons' },
-          [closeBtn],
-        ),
+        E('div', { class: 'tachyon-update-modal__action-buttons' }, [closeBtn]),
       );
     },
     startLogTracking: (jobId: string) => {

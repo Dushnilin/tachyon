@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-08-16 20:35+0300\n"
-"PO-Revision-Date: 2026-08-16 20:35+0300\n"
+"POT-Creation-Date: 2026-08-17 10:26+0300\n"
+"PO-Revision-Date: 2026-08-17 10:26+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -2372,8 +2372,11 @@ msgstr "Регулярное выражение не должно содержа
 msgid "Reinstall"
 msgstr "Переустановить"
 
-msgid "Reloading page in"
-msgstr "Перезагрузка страницы через"
+msgid "Reload now"
+msgstr ""
+
+msgid "Reloading..."
+msgstr ""
 
 msgid "Remote Hosts Lists"
 msgstr "Удалённые списки Hosts"
@@ -2741,8 +2744,14 @@ msgstr "Список сервисов"
 msgid "Services & Access"
 msgstr "Сервисы и доступ"
 
+msgid "Services are online and ready! Reloading page..."
+msgstr ""
+
 msgid "Services info"
 msgstr "Информация о сервисах"
+
+msgid "Services restarted. Click to reload page."
+msgstr ""
 
 msgid "Settings"
 msgstr "Настройки"
@@ -3404,6 +3413,9 @@ msgstr "Значение не может быть пустым"
 msgid "Value must not contain control characters"
 msgstr "Значение не должно содержать символы управления"
 
+msgid "Verifying router and service readiness..."
+msgstr ""
+
 msgid "Via country.is"
 msgstr "Через country.is"
 
@@ -3415,6 +3427,9 @@ msgstr "Видимое имя этой секции"
 
 msgid "vless://, vmess://, ss://, trojan://, socks4/5://, hy2/hysteria2:// links"
 msgstr "Ссылки vless://, vmess://, ss://, trojan://, socks4/5://, hy2/hysteria2://"
+
+msgid "Waiting for router services to restart..."
+msgstr ""
 
 msgid "WAN"
 msgstr "WAN"
@@ -3508,6 +3523,9 @@ msgstr "sing-box outbound для Zapret2 настроен"
 
 msgid "Zapret2 sing-box outbound is not configured"
 msgstr "sing-box outbound для Zapret2 не настроен"
+
+msgid "Reloading page in"
+msgstr "Перезагрузка страницы через"
 
 msgid "Level"
 msgstr "Уровень"

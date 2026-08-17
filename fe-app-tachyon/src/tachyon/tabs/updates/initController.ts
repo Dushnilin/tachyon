@@ -750,7 +750,21 @@ function isComponentActionAlreadyRunningError(message: string | undefined) {
 
 function handleComponentUiState(uiState: Tachyon.UiState) {
   for (const state of uiState.actions.component || []) {
-    void followComponentActionState(state);
+    const jobId = state.job_id;
+    if (!jobId) {
+      continue;
+    }
+
+    if (handledComponentJobs.has(jobId) || followedComponentJobs.has(jobId)) {
+      continue;
+    }
+
+    if (state.running) {
+      void followComponentActionState(state);
+    } else {
+      handledComponentJobs.add(jobId);
+      void ackComponentActionJob(jobId);
+    }
   }
 }
 
@@ -811,15 +825,18 @@ async function handleComponentAction(button: ComponentActionButton) {
   const currentSha = checkResult?.current_sha;
   const targetSha = checkResult?.latest_sha;
 
-  const modalController = showUpdateProgressModal({
-    component: button.component,
-    action: button.action,
-    componentTitle: cardTitle,
-    currentVersion,
-    targetVersion,
-    currentSha,
-    targetSha,
-  });
+  let modalController = getActiveProgressModalController();
+  if (!modalController) {
+    modalController = showUpdateProgressModal({
+      component: button.component,
+      action: button.action,
+      componentTitle: cardTitle,
+      currentVersion,
+      targetVersion,
+      currentSha,
+      targetSha,
+    });
+  }
 
   let jobId = '';
   let ownsJobFollow = false;
@@ -867,15 +884,15 @@ async function handleComponentAction(button: ComponentActionButton) {
     }
 
     jobId = startResponse.data.job_id;
-    setActiveProgressModalJobId(jobId);
-    markUiActionOwned('component', jobId);
-    modalController.startLogTracking(jobId);
-    if (followedComponentJobs.has(jobId)) {
+    if (followedComponentJobs.has(jobId) || handledComponentJobs.has(jobId)) {
       return;
     }
 
     followedComponentJobs.add(jobId);
     ownsJobFollow = true;
+    setActiveProgressModalJobId(jobId);
+    markUiActionOwned('component', jobId);
+    modalController.startLogTracking(jobId);
 
     const response = await TachyonShellMethods.waitComponentActionJob(
       jobId,
