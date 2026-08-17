@@ -764,7 +764,10 @@ function controller(bus, opts) {
 
         // 1. Проверяем статус интерфейса через netifd ubus
         let ubus_data = command_output_from_args([ "ubus", "-S", "call", "network.interface.wan", "status" ]);
-        let ubus_obj = parse_json(ubus_data);
+        let ubus_obj = null;
+        try {
+            ubus_obj = json(ubus_data);
+        } catch (e) {}
         let iface = "";
         if (type(ubus_obj) == "object" && ubus_obj.up == true) {
             iface = ubus_obj.l3_device || ubus_obj.device || "";
