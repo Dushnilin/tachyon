@@ -1754,8 +1754,9 @@ function validate_schedule(schedule, sections) {
     }
     for (let ip in raw_ips) {
         let clean_ip = trim(as_string(ip));
-        if (clean_ip != "" && !core_ip.is_ip_or_cidr(clean_ip))
-            fail_validation("Schedule '" + name + "' has invalid device IP '" + clean_ip + "'. Aborted.");
+        let is_mac = match(clean_ip, /^([0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}$/) != null;
+        if (clean_ip != "" && !core_ip.is_ip_or_cidr(clean_ip) && !is_mac)
+            fail_validation("Schedule '" + name + "' has invalid device IP or MAC address '" + clean_ip + "'. Aborted.");
     }
 
     let target = option(schedule, "target", "all");

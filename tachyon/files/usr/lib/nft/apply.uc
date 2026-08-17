@@ -952,14 +952,17 @@ function nft_add_schedule_rules_from_schedules(schedules, sections, table) {
         }
 
         for (let raw_ip in raw_ips) {
-            let ip_str = trim(as_string(raw_ip));
-            if (ip_str == "") continue;
-            let family = core_ip.ip_family(ip_str);
+            let dev_str = trim(as_string(raw_ip));
+            if (dev_str == "") continue;
+            let is_mac = match(dev_str, /^([0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}$/) != null;
+            let family = is_mac ? 0 : core_ip.ip_family(dev_str);
             let saddr_key = family == 6 ? "ip6" : "ip";
             
             for (let interval in intervals) {
                 let time_args = [ "meta", "hour", sprintf("\"%s\"-\"%s\"", interval[0], interval[1]) ];
-                let base_match = [ saddr_key, "saddr", ip_str ];
+                let base_match = is_mac ?
+                    [ "ether", "saddr", lc(replace(dev_str, "-", ":")) ] :
+                    [ saddr_key, "saddr", dev_str ];
                 append_array(base_match, days_args);
                 append_array(base_match, time_args);
                 
@@ -988,7 +991,7 @@ function nft_add_schedule_rules_from_schedules(schedules, sections, table) {
                             nft_add_rule(table, "parental_control", sub_rule);
                             nft_add_rule(table, "parental_forward", sub_rule);
                         }
-                        if (sets.subnets6 && family == 6) {
+                        if (sets.subnets6 && (family == 6 || is_mac)) {
                             let sub6_rule = [];
                             append_array(sub6_rule, base_match);
                             append_array(sub6_rule, [ "ip6", "daddr", "@" + as_string(sets.subnets6), "counter", verdict ]);

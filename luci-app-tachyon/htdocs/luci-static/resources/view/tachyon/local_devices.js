@@ -49,18 +49,28 @@ function normalizeLocalDeviceName(name) {
 
 function addLocalDeviceChoice(choices, ip, name, mac) {
   const normalizedIp = `${ip || ""}`.trim();
+  const normalizedMac = `${mac || ""}`.trim().toLowerCase();
   const normalizedName = normalizeLocalDeviceName(name);
 
-  if (!normalizedIp || !main.validateIP(normalizedIp).valid) {
-    return;
+  if (normalizedIp && main.validateIP(normalizedIp).valid) {
+    if (normalizedName) {
+      choices[normalizedIp] = `${normalizedName} (${normalizedIp})`;
+    } else if (normalizedMac) {
+      choices[normalizedIp] = `${normalizedIp} [${normalizedMac}]`;
+    } else if (!choices[normalizedIp]) {
+      choices[normalizedIp] = `${normalizedIp}`;
+    }
   }
 
-  if (normalizedName) {
-    choices[normalizedIp] = `${normalizedName} (${normalizedIp})`;
-  } else if (mac) {
-    choices[normalizedIp] = `${normalizedIp} [${mac.toLowerCase()}]`;
-  } else if (!choices[normalizedIp]) {
-    choices[normalizedIp] = `${normalizedIp}`;
+  if (normalizedMac && /^([0-9a-f]{2}[:-]){5}[0-9a-f]{2}$/.test(normalizedMac)) {
+    const formattedMac = normalizedMac.replace(/-/g, ":");
+    if (normalizedName) {
+      choices[formattedMac] = `${normalizedName} [MAC: ${formattedMac}]`;
+    } else if (normalizedIp) {
+      choices[formattedMac] = `${normalizedIp} [MAC: ${formattedMac}]`;
+    } else if (!choices[formattedMac]) {
+      choices[formattedMac] = `${formattedMac}`;
+    }
   }
 }
 
@@ -191,10 +201,16 @@ function sortLocalDeviceChoiceValues(choices) {
   });
 }
 
-function hasSingleIpValue(values) {
-  return normalizeOptionValues(values).some(
-    (value) => main.validateIP(value).valid,
+function isIpOrMac(value) {
+  const val = `${value || ""}`.trim();
+  return (
+    main.validateIP(val).valid ||
+    /^([0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}$/.test(val)
   );
+}
+
+function hasSingleIpValue(values) {
+  return normalizeOptionValues(values).some(isIpOrMac);
 }
 
 function preloadLocalDeviceChoicesForValues(values) {

@@ -112,6 +112,14 @@ function formatDaysDisplay(rawDays) {
   return days.map((d) => DAY_SHORT_LABELS[d] || d).join(", ");
 }
 
+function validateDevice(sectionId, value) {
+  if (!value) return true;
+  const str = `${value}`.trim();
+  if (main.validateIP(str).valid) return true;
+  if (/^([0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}$/.test(str)) return true;
+  return _("Invalid IP or MAC address. Expected e.g. 192.168.1.150 or AA:BB:CC:DD:EE:FF");
+}
+
 function createParentalContent(section) {
   // Enabled switch
   let o = section.option(form.Flag, "enabled", _("Enable"));
@@ -121,28 +129,34 @@ function createParentalContent(section) {
   o.width = "5rem";
 
   // Device column in table
-  o = section.option(form.DummyValue, "_device_display", _("Device / IP"));
+  o = section.option(form.DummyValue, "_device_display", _("Device / IP / MAC"));
   o.rawhtml = true;
   o.modalonly = false;
   o.cfgvalue = function (sectionId) {
     const rawIp = uci.get(UCI_PACKAGE, sectionId, "device_ip");
-    const ips = normalizeListValues(rawIp);
-    if (ips.length === 0) {
+    const devs = normalizeListValues(rawIp);
+    if (devs.length === 0) {
       return '<span style="opacity:0.5;">' + _("All devices") + "</span>";
     }
-    const badges = ips
-      .map(
-        (ip) =>
-          '<span class="badge" style="background:#2a3441;color:#63b3ed;padding:3px 8px;border-radius:6px;font-size:11px;font-family:monospace;margin-right:4px;font-weight:600;display:inline-block;margin-bottom:2px;">' +
-          ip +
-          "</span>",
-      )
+    const badges = devs
+      .map((dev) => {
+        const isMac = /^([0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}$/.test(dev);
+        const bg = isMac ? "#2d3748" : "#2a3441";
+        const color = isMac ? "#b794f4" : "#63b3ed";
+        const icon = isMac ? "🏷 " : "🖥 ";
+        return (
+          `<span class="badge" style="background:${bg};color:${color};padding:3px 8px;border-radius:6px;font-size:11px;font-family:monospace;margin-right:4px;font-weight:600;display:inline-block;margin-bottom:2px;">` +
+          icon +
+          dev +
+          "</span>"
+        );
+      })
       .join("");
     return "<div>" + badges + "</div>";
   };
   o.textvalue = function (sectionId) {
-    const ips = normalizeListValues(uci.get(UCI_PACKAGE, sectionId, "device_ip"));
-    return ips.length === 0 ? _("All devices") : ips.join(", ");
+    const devs = normalizeListValues(uci.get(UCI_PACKAGE, sectionId, "device_ip"));
+    return devs.length === 0 ? _("All devices") : devs.join(", ");
   };
 
   // Target column in table
@@ -279,12 +293,13 @@ function createParentalContent(section) {
   o = section.option(
     form.DynamicList,
     "device_ip",
-    _("Target Devices (IP / Hostname)"),
-    _("Select LAN devices to apply this schedule to, or enter IP addresses manually."),
+    _("Target Devices (IP / MAC)"),
+    _("Select LAN devices to apply this schedule to, or enter IP or MAC addresses manually."),
   );
   o.modalonly = true;
   o.rmempty = false;
-  o.placeholder = "192.168.1.150";
+  o.placeholder = "192.168.1.150 or AA:BB:CC:DD:EE:FF";
+  o.validate = validateDevice;
   o.renderWidget = function (sectionId, optionIndex, cfgvalue) {
     return local_devices.createLocalDeviceDynamicListWidget(
       this,

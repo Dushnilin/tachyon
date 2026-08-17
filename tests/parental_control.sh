@@ -84,6 +84,15 @@ cat >"$WORK_DIR/schedule_fixture.json" <<'JSON'
       "start_time": "21:00",
       "end_time": "07:00",
       "days": [ "sat", "sun" ]
+    },
+    {
+      ".name": "mac_rule",
+      "enabled": "1",
+      "device_ip": "11:22:33:44:55:66",
+      "target": "all",
+      "action": "block",
+      "start_time": "10:00",
+      "end_time": "12:00"
     }
   ]
 }
@@ -96,6 +105,9 @@ nft_ucode nft-add-schedule-rules-fixture "$WORK_DIR/schedule_fixture.json" "tach
 assert_contains "$NFT_LOG" "parental_forward	ip	saddr	192.168.1.150	meta	day	{ Friday, Monday, Thursday, Tuesday, Wednesday }	meta	hour	\"22:00:00\"-\"23:59:59\"	counter	drop" "midnight wrap part 1"
 assert_contains "$NFT_LOG" "parental_forward	ip	saddr	192.168.1.150	meta	day	{ Friday, Monday, Thursday, Tuesday, Wednesday }	meta	hour	\"00:00:00\"-\"08:00:00\"	counter	drop" "midnight wrap part 2"
 assert_contains "$NFT_LOG" "parental_control	ip	saddr	192.168.1.150	meta	day	{ Friday, Monday, Thursday, Tuesday, Wednesday }	meta	hour	\"22:00:00\"-\"23:59:59\"	counter	drop" "parental_control drop"
+
+# Verify MAC address rule in NFT_LOG
+assert_contains "$NFT_LOG" "parental_forward	ether	saddr	11:22:33:44:55:66	meta	hour	\"10:00:00\"-\"12:00:00\"	counter	drop" "mac ether saddr drop"
 
 # Verify per-section blocking
 assert_contains "$NFT_LOG" "ip	saddr	192.168.1.160	meta	day	{ Saturday, Sunday }	meta	hour	\"21:00:00\"-\"23:59:59\"	ip	daddr	@tachyon_rule_sec_youtube_subnets	counter	drop" "section youtube subnet drop"
