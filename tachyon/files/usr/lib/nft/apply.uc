@@ -1058,18 +1058,11 @@ function nft_create_runtime_base(table, localv4_set, common_set, port_set, ip_po
             return false;
 
     if (!nft_create_chain(table, "mangle", "{ type filter hook prerouting priority -149; policy accept; }") ||
-        !nft_create_chain(table, "dstnat", "{ type nat hook prerouting priority dstnat; policy accept; }") ||
         !nft_create_chain(table, "mangle_output", "{ type route hook output priority -150; policy accept; }") ||
         !nft_create_priority_chains(table) ||
         !nft_create_chain(table, "parental_control", "{ }") ||
         !nft_create_chain(table, "parental_forward", "{ }") ||
         !nft_create_chain(table, "proxy", "{ type filter hook prerouting priority -100; policy accept; }"))
-        return false;
-
-    if (!nft_add_rule(table, "dstnat", [ "iifname", "@" + as_string(interface_set), "ip", "daddr", "!=", "@" + as_string(localv4_set), "udp", "dport", "53", "redirect", "to", ":53" ]) ||
-        !nft_add_rule(table, "dstnat", [ "iifname", "@" + as_string(interface_set), "ip", "daddr", "!=", "@" + as_string(localv4_set), "tcp", "dport", "53", "redirect", "to", ":53" ]) ||
-        !nft_add_rule(table, "dstnat", [ "iifname", "@" + as_string(interface_set), "ip6", "daddr", "!=", "@" + as_string(localv6_set), "udp", "dport", "53", "redirect", "to", ":53" ]) ||
-        !nft_add_rule(table, "dstnat", [ "iifname", "@" + as_string(interface_set), "ip6", "daddr", "!=", "@" + as_string(localv6_set), "tcp", "dport", "53", "redirect", "to", ":53" ]))
         return false;
 
     if (!nft_add_rule(table, "mangle", [ "ct", "status", "dnat", "return" ]) ||
@@ -1751,7 +1744,10 @@ function ensure_tproxy_route_rule(table, mark, rt_tables_path) {
         log_debug("IPv6 TPROXY marking rule already exists");
     }
 
-    run_args([ "nft", "insert", "rule", "inet", "fw4", "forward", "meta", "mark", as_string(mark), "return" ]);
+    let fw4_forward_out = command_output_from_args([ "nft", "list", "chain", "inet", "fw4", "forward" ]);
+    if (index(fw4_forward_out, "meta mark " + as_string(mark)) < 0) {
+        run_args([ "nft", "insert", "rule", "inet", "fw4", "forward", "meta", "mark", as_string(mark), "return" ]);
+    }
     return true;
 }
 
