@@ -199,6 +199,7 @@ if command -v nft >/dev/null 2>&1; then
     nft delete table inet tachyon >/dev/null 2>&1 || true
     nft delete table ip tachyon >/dev/null 2>&1 || true
     nft delete table ip6 tachyon >/dev/null 2>&1 || true
+    rm -f /usr/share/nftables.d/chain-pre/input/10-tachyon.nft 2>/dev/null || true
     tui_ok "Таблицы nftables (TachyonTable) успешно удалены"
 fi
 

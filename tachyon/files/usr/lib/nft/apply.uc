@@ -1751,6 +1751,18 @@ function ensure_tproxy_route_rule(table, mark, rt_tables_path) {
     if (index(fw4_forward_out, "meta mark " + as_string(mark)) < 0) {
         run_args([ "nft", "insert", "rule", "inet", "fw4", "forward", "meta", "mark", as_string(mark), "return" ]);
     }
+
+    let fw4_input_out = command_output_from_args([ "nft", "list", "chain", "inet", "fw4", "input" ]);
+    if (index(fw4_input_out, "meta mark & " + as_string(mark)) < 0 && index(fw4_input_out, "meta mark " + as_string(mark)) < 0) {
+        run_args([ "nft", "insert", "rule", "inet", "fw4", "input", "meta", "mark", "&", as_string(mark), "==", as_string(mark), "accept", "comment", "\"Allow Tachyon TPROXY marked traffic\"" ]);
+    }
+
+    let fw4_include_dir = "/usr/share/nftables.d/chain-pre/input";
+    let fw4_include_file = fw4_include_dir + "/10-tachyon.nft";
+    if (fs.stat("/usr/share/nftables.d") != null) {
+        system(sprintf("mkdir -p %s >/dev/null 2>&1", shell_quote(fw4_include_dir)));
+        write_text_file(fw4_include_file, sprintf("meta mark & %s == %s accept comment \"Allow Tachyon TPROXY marked traffic\"\n", as_string(mark), as_string(mark)));
+    }
     return true;
 }
 
