@@ -512,12 +512,14 @@ function base_config(settings, service_address, runtime_context) {
     let dns_servers = [];
     for (let server in dns_config.servers)
         push(dns_servers, server);
-    push(dns_servers, {
+    let fakeip_server = {
         type: "fakeip",
         tag: runtime_constants.FAKEIP_DNS_SERVER_TAG,
-        inet4_range: runtime_constants.FAKEIP_INET4_RANGE,
-        inet6_range: runtime_constants.FAKEIP_INET6_RANGE
-    });
+        inet4_range: runtime_constants.FAKEIP_INET4_RANGE
+    };
+    if (bool_option(settings, "ipv6_enabled", false))
+        fakeip_server.inet6_range = runtime_constants.FAKEIP_INET6_RANGE;
+    push(dns_servers, fakeip_server);
 
     let inbounds = [
         { type: "tproxy", tag: runtime_constants.TPROXY_INBOUND_TAG, listen: runtime_constants.TPROXY_INBOUND_ADDRESS, listen_port: runtime_constants.TPROXY_INBOUND_PORT, tcp_fast_open: true, udp_fragment: true },
