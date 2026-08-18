@@ -1683,7 +1683,7 @@ msgid "Interface Monitoring Delay"
 msgstr "Задержка мониторинга интерфейсов"
 
 msgid "Interface monitoring for Bad WAN"
-msgstr "Мониторинг интерфейсов для坏 WAN"
+msgstr "Мониторинг интерфейсов при нестабильном подключении (Bad WAN)"
 
 msgid "Interrupt connections"
 msgstr "Прерывать соединения"
