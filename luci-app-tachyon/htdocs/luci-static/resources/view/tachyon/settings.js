@@ -1352,6 +1352,32 @@ function createSettingsContent(section, capabilities) {
     return _("Use sing-box duration format like 1d, 12h or 30m");
   };
 
+  const updateListsBtn = section.taboption(
+    "updates",
+    form.Button,
+    "_update_lists_now",
+    _("Manual list update"),
+    _("Force immediate download and refresh of all remote lists and rule sets"),
+  );
+  updateListsBtn.inputtitle = _("Update lists now");
+  updateListsBtn.inputstyle = "action";
+  updateListsBtn.depends("list_update_enabled", "1");
+  updateListsBtn.onclick = function () {
+    ui.showModal(_("Updating lists..."), [
+      E("p", { class: "spinning" }, _("Downloading and applying rule sets and lists...")),
+    ]);
+    return fs.exec("/usr/bin/tachyon", ["list_update"])
+      .then(function (res) {
+        ui.hideModal();
+        const out = (res && (res.stdout || res.stderr)) || "";
+        ui.addNotification(null, E("p", _("Lists and rule sets successfully updated!")), "info");
+      })
+      .catch(function (err) {
+        ui.hideModal();
+        ui.addNotification(null, E("p", _("Error updating lists: ") + (err.message || err)), "error");
+      });
+  };
+
   o = section.taboption(
     "updates",
     form.Flag,

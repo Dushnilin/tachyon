@@ -4348,3 +4348,22 @@ msgstr "Предотвращать множественные вызовы reloa
 
 msgid "Restoring native direct internet..."
 msgstr "Восстановление прямого интернета..."
+
+msgid "Manual list update"
+msgstr "Ручное обновление списков"
+
+msgid "Force immediate download and refresh of all remote lists and rule sets"
+msgstr "Принудительно скачать и обновить все удаленные списки и наборы правил"
+
+msgid "Update lists now"
+msgstr "Обновить списки сейчас"
+
+msgid "Updating lists..."
+msgstr "Обновление списков..."
+
+msgid "Downloading and applying rule sets and lists..."
+msgstr "Загрузка и применение наборов правил и списков..."
+
+msgid "Lists and rule sets successfully updated!"
+msgstr "Списки и наборы правил успешно обновлены!"
+
