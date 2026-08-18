@@ -517,7 +517,8 @@ function base_config(settings, service_address, runtime_context) {
         tag: runtime_constants.FAKEIP_DNS_SERVER_TAG,
         inet4_range: runtime_constants.FAKEIP_INET4_RANGE
     };
-    if (bool_option(settings, "ipv6_enabled", false))
+    let strategy = option(settings, "dns_strategy", "");
+    if (bool_option(settings, "ipv6_enabled", false) || strategy == "prefer_ipv6" || strategy == "ipv6_only")
         fakeip_server.inet6_range = runtime_constants.FAKEIP_INET6_RANGE;
     push(dns_servers, fakeip_server);
 
