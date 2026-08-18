@@ -907,8 +907,27 @@ function init_config(populate_nft, caches_prepared, no_refresh) {
         // field that was added for newer versions (e.g. close_timeout for MTProto
         // hot-reload fix, issue #15), strip it from all inbounds and retry once.
         // This keeps Tachyon functional across a range of sing-box versions.
+        let user_field_m = match(check_result.reason, /inbounds\[\d+\]\.users\[\d+\]\.(\w+): json: unknown field/);
         let field_m = match(check_result.reason, /inbounds\[\d+\]\.(\w+): json: unknown field/);
-        if (field_m) {
+        if (user_field_m) {
+            let unknown_field = user_field_m[1];
+            log_message("Installed sing-box does not support inbound user field '" + unknown_field + "'; retrying without it", "warn");
+            let cfg_text = as_string(fs.readfile(temp_config) || "");
+            let cfg = length(cfg_text) > 0 ? json(cfg_text) : null;
+            if (type(cfg) == "object" && type(cfg.inbounds) == "array") {
+                for (let inb in cfg.inbounds) {
+                    if (type(inb) == "object" && type(inb.users) == "array") {
+                        for (let u in inb.users) {
+                            if (type(u) == "object")
+                                delete u[unknown_field];
+                        }
+                    }
+                }
+                write_file(temp_config, sprintf("%J", cfg));
+                check_result = sing_box_check(temp_config, runtime_log);
+            }
+        }
+        else if (field_m) {
             let unknown_field = field_m[1];
             log_message("Installed sing-box does not support inbound field '" + unknown_field + "'; retrying without it", "warn");
             let cfg_text = as_string(fs.readfile(temp_config) || "");

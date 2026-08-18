@@ -77,8 +77,9 @@ function users(section, protocol) {
             password: option(section, "server_password", "")
         }];
     }
-    if (protocol == "mtproto") {
-        let user = { secret: mtproto_secret(section) };
+    if (protocol == "mtproto" || protocol == "shadowsocks") {
+        let secret = protocol == "mtproto" ? mtproto_secret(section) : option(section, "server_password", "");
+        let user = { password: secret };
         if (name != "")
             user.name = name;
         return [ user ];
