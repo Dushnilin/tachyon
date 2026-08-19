@@ -20,11 +20,7 @@ function as_string(value) {
 }
 
 function ascii_lower(value) {
-    let upper = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-    let lower = "abcdefghijklmnopqrstuvwxyz";
-    return replace(as_string(value), /[A-Z]/g, function(ch) {
-        return substr(lower, index(upper, ch), 1);
-    });
+    return lc(as_string(value));
 }
 
 function read_stdin() {

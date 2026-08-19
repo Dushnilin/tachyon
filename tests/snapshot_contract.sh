@@ -74,7 +74,7 @@ run_uc() {
   TACHYON_SNAPSHOT_LIMIT="${SNAPSHOT_LIMIT:-10}" \
   TACHYON_SNAPSHOT_VALIDATE_BIN="${VALIDATE_BIN:-$WORK_DIR/fake-validate}" \
   TACHYON_SNAPSHOT_BIN_LOG="$WORK_DIR/bin.log" \
-    ucode -L "$WORK_DIR/lib" "$SNAPSHOT_UC" "$mode" "$@"
+    ucode -L "$WORK_DIR/lib" -L "$TACHYON_LIB" "$SNAPSHOT_UC" "$mode" "$@"
 }
 
 # ---- snapshot-save: creates a tar.gz with the Telegram backup member layout

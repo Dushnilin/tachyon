@@ -4,6 +4,14 @@ let fs = require("fs");
 let common = require("core.common");
 let helpers = require("core.helpers");
 let uci_core = require("core.uci");
+let as_string = common.as_string;
+let object_or_empty = common.object_or_empty;
+let array_or_empty = common.array_or_empty;
+let shell_quote = common.shell_quote;
+let command_from_args = common.command_from_args;
+let command_output = common.command_output;
+let command_output_from_args = common.command_output_from_args;
+let command_success_from_args = common.command_success_from_args;
 let connections = require("config.connections");
 let subscription_share_link = require("subscription.share_link");
 
@@ -42,10 +50,6 @@ const SB_VERSION_STATE_FILE = getenv("SB_VERSION_STATE_FILE") || "/etc/tachyon/s
 const ZAPRET_PROVIDER_NFQWS_BIN = getenv("ZAPRET_PROVIDER_NFQWS_BIN") || "/opt/zapret/nfq/nfqws";
 const ZAPRET2_PROVIDER_NFQWS2_BIN = getenv("ZAPRET2_PROVIDER_NFQWS2_BIN") || "/opt/zapret2/nfq2/nfqws2";
 const BYEDPI_BIN = getenv("BYEDPI_BIN") || "/usr/bin/ciadpi";
-
-function as_string(value) {
-    return value == null ? "" : "" + value;
-}
 
 function read_stdin() {
     let data = fs.readfile("/dev/stdin");
@@ -141,10 +145,6 @@ function append_state_list_once(list, value) {
     }
 
     print(list, list != "" ? " " : "", value, "\n");
-}
-
-function object_or_empty(value) {
-    return type(value) == "object" ? value : {};
 }
 
 function option(section, key, fallback) {
@@ -551,19 +551,6 @@ function files_equal(left, right) {
     return left_data != null && right_data != null && left_data == right_data;
 }
 
-function shell_quote(value) {
-    return "'" + replace(as_string(value), /'/g, "'\\''") + "'";
-}
-
-function command_from_args(args) {
-    let parts = [];
-
-    for (let arg in args)
-        push(parts, shell_quote(arg));
-
-    return join(" ", parts);
-}
-
 function command_env(assignments) {
     let parts = [];
 
@@ -582,27 +569,6 @@ function command_args_with(base, extra) {
         push(result, arg);
 
     return result;
-}
-
-function command_output(command) {
-    let pipe = fs.popen(command, "r");
-    if (!pipe)
-        return "";
-
-    let data = pipe.read("all");
-    let status = pipe.close();
-    if (status != 0 || data == null)
-        return "";
-
-    return as_string(data);
-}
-
-function command_output_from_args(args) {
-    return command_output(command_from_args(args));
-}
-
-function command_success_from_args(args) {
-    return system(command_from_args(args) + " >/dev/null 2>&1") == 0;
 }
 
 function command_status_from_args(args) {
@@ -1087,10 +1053,6 @@ function write_empty_outbound_metadata() {
 
 function is_array(value) {
     return type(value) == "array";
-}
-
-function array_or_empty(value) {
-    return type(value) == "array" ? value : [];
 }
 
 function int_or_zero(value) {

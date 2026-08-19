@@ -34,9 +34,9 @@ const API_VERSION  = "1";
 let as_string = common.as_string;
 let shell_quote = common.shell_quote;
 
-function write_json(obj) {
-    print(sprintf("%J\n", obj));
-}
+let write_json = common.write_json;
+
+let command_output = common.command_output;
 
 function ok(data) {
     let result = { success: true };
@@ -59,11 +59,6 @@ function command_capture(command) {
     if (sig != 0) status = 128 + sig;
     else status = (status >> 8) & 255;
     return { status: status, output: data == null ? "" : as_string(data) };
-}
-
-function command_output(command) {
-    let res = command_capture(command);
-    return (res.status == 0) ? trim(res.output) : "";
 }
 
 function module_capture(args) {

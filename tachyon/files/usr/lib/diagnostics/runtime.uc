@@ -59,30 +59,18 @@ const BYEDPI_RUNTIME_UC = LIB_DIR + "/providers/byedpi/runtime.uc";
 const ZAPRET_VALIDATOR_UC = LIB_DIR + "/providers/zapret/validator.uc";
 const ZAPRET2_VALIDATOR_UC = LIB_DIR + "/providers/zapret2/validator.uc";
 
-function as_string(value) {
-    return value == null ? "" : "" + value;
-}
-
-function arg_number(value) {
-    value = as_string(value);
-    return value == "" || match(value, /[^0-9-]/) != null ? 0 : int(value, 10);
-}
-
-function arg_bool(value) {
-    value = lc(as_string(value));
-    return value == "1" || value == "true" || value == "yes" || value == "on";
-}
-
-function shell_quote(value) {
-    return "'" + replace(as_string(value), /'/g, "'\\''") + "'";
-}
-
-function command_from_args(args) {
-    let parts = [];
-    for (let arg in args)
-        push(parts, shell_quote(arg));
-    return join(" ", parts);
-}
+let as_string = common.as_string;
+let shell_quote = common.shell_quote;
+let command_from_args = common.command_from_args;
+let command_status = common.command_status;
+let command_output = common.command_output;
+let command_success = common.command_success;
+let command_output_from_args = common.command_output_from_args;
+let command_success_from_args = common.command_success_from_args;
+let object_or_empty = common.object_or_empty;
+let read_stdin = common.read_stdin;
+let read_json_file = common.read_json_file;
+let write_json = common.write_json;
 
 function normalize_status(status) {
     status = int(status);
@@ -94,8 +82,14 @@ function normalize_status(status) {
     return (status >> 8) & 255;
 }
 
-function command_status(command) {
-    return normalize_status(system(command));
+function arg_number(value) {
+    value = as_string(value);
+    return value == "" || match(value, /[^0-9-]/) != null ? 0 : int(value, 10);
+}
+
+function arg_bool(value) {
+    value = lc(as_string(value));
+    return value == "1" || value == "true" || value == "yes" || value == "on";
 }
 
 const UCI_BACKUP_DIR = "/etc/backup";
@@ -157,23 +151,6 @@ function uci_config_valid() {
     if (data == null || data == "") return false;
     let res = command_status("uci -c /etc/config valid " + CONFIG_NAME + " >/dev/null 2>&1");
     return res == 0;
-}
-
-function command_output(command) {
-    let result = command_capture(command);
-    return result.status == 0 ? result.output : "";
-}
-
-function command_success(command) {
-    return command_status(command + " >/dev/null 2>&1") == 0;
-}
-
-function command_output_from_args(args) {
-    return command_output(command_from_args(args) + " 2>/dev/null");
-}
-
-function command_success_from_args(args) {
-    return command_success(command_from_args(args));
 }
 
 function command_exists(name) {
@@ -377,35 +354,6 @@ function status_output(args, input) {
 
 function status_success(args, input) {
     return status_capture(args, input).status == 0;
-}
-
-function write_json(value) {
-    print(sprintf("%J", value), "\n");
-}
-
-function read_stdin() {
-    let input = fs.open("/dev/stdin", "r");
-    if (!input)
-        return "";
-    let data = input.read("all");
-    input.close();
-    return data == null ? "" : as_string(data);
-}
-
-function read_json_file(path) {
-    let data = fs.readfile(as_string(path));
-    if (data == null)
-        return null;
-    try {
-        return json(data);
-    }
-    catch (e) {
-        return null;
-    }
-}
-
-function object_or_empty(value) {
-    return type(value) == "object" ? value : {};
 }
 
 function option(section, key, fallback) {
@@ -3955,7 +3903,7 @@ function local_rule_doctor() {
     return doctor_res;
 }
 
-function ai_doctor() {
+function ai_doctor(user_query) {
     let cfg = uci_settings();
     let local_res = local_rule_doctor();
 
@@ -4078,6 +4026,11 @@ function ai_doctor() {
             "- optimize_memory (очистить оперативно память)\n" +
             "- switch_to_doh (переключить DNS на DoH)\n\n" +
             "Если авто-исправление не применимо, не пишите тег FIX.", sys_context);
+    }
+
+    user_query = trim(as_string(user_query || ""));
+    if (user_query != "") {
+        prompt += "\n\n---\nПользователь задал вопрос: " + user_query + "\nОтветьте на него, учитывая диагностический контекст выше. Если вопрос не связан с диагностикой/настройкой роутера — ответьте на него как ИИ-ассистент, но кратко упомяните текущее состояние системы.\n";
     }
 
     let provider = cfg.ai_doctor_provider || "openai";
@@ -4428,7 +4381,7 @@ else if (mode == "doctor")
 else if (mode == "diagnose-json")
     exit(diagnose_json());
 else if (mode == "ai-doctor")
-    exit(ai_doctor());
+    exit(ai_doctor(ARGV[1] || ""));
 else if (mode == "ai-doctor-last")
     exit(ai_doctor_last());
 else if (mode == "apply-quick-fix")

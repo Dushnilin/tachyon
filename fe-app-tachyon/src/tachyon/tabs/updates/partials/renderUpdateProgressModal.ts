@@ -208,6 +208,7 @@ export function showUpdateProgressModal(
   let logFullText = '';
   let logPollTimer: ReturnType<typeof setTimeout> | null = null;
   let logPollStopped = true;
+  let reloadProbeActive = false;
 
   function appendLogText(text: string) {
     if (!text) {
@@ -329,7 +330,7 @@ export function showUpdateProgressModal(
       );
 
       if (opts?.reloadPage) {
-        let isProbing = true;
+        reloadProbeActive = true;
         let attempt = 0;
         const maxAttempts = 30;
 
@@ -347,7 +348,7 @@ export function showUpdateProgressModal(
           classNames: ['cbi-button-save'],
           text: _('Reload now'),
           onClick: () => {
-            isProbing = false;
+            reloadProbeActive = false;
             window.location.reload();
           },
         });
@@ -364,7 +365,7 @@ export function showUpdateProgressModal(
           // Pause 2 seconds initially to allow init scripts and rpcd reload to commence
           await new Promise((resolve) => setTimeout(resolve, 2000));
 
-          while (isProbing && attempt < maxAttempts) {
+          while (reloadProbeActive && attempt < maxAttempts) {
             attempt += 1;
             statusEl.textContent = `${_('Verifying router and service readiness...')} (${attempt}/${maxAttempts})`;
 
@@ -372,12 +373,28 @@ export function showUpdateProgressModal(
               const res = await TachyonShellMethods.getSystemInfo();
               if (res && res.success) {
                 statusEl.textContent = _(
-                  'Services are online and ready! Reloading page...',
+                  'Services are online, waiting for full initialization...',
                 );
-                reloadBtn.textContent = _('Reloading...');
-                await new Promise((resolve) => setTimeout(resolve, 600));
-                window.location.reload();
-                return;
+                // Wait for the service to fully stabilize after the first
+                // successful probe; rpcd can come up before tachyon init finishes.
+                await new Promise((resolve) => setTimeout(resolve, 5000));
+                if (!reloadProbeActive) return;
+
+                // Confirm services are still up after the settle window
+                try {
+                  const confirm = await TachyonShellMethods.getSystemInfo();
+                  if (confirm && confirm.success) {
+                    statusEl.textContent = _(
+                      'Services are online and ready! Reloading page...',
+                    );
+                    reloadBtn.textContent = _('Reloading...');
+                    await new Promise((resolve) => setTimeout(resolve, 600));
+                    window.location.reload();
+                    return;
+                  }
+                } catch (_confirmErr) {
+                  // Services went away during settle — keep probing
+                }
               }
             } catch (_err) {
               // RPC is unavailable while daemon/rpcd is reloading; keep probing
@@ -386,7 +403,7 @@ export function showUpdateProgressModal(
             await new Promise((resolve) => setTimeout(resolve, 1500));
           }
 
-          if (isProbing) {
+          if (reloadProbeActive) {
             statusEl.textContent = _(
               'Services restarted. Click to reload page.',
             );
@@ -490,6 +507,8 @@ export function showUpdateProgressModal(
     close: () => {
       cleanupTimers();
       stopLogTracking();
+      // Stop any background probe that may still be running after modal close
+      reloadProbeActive = false;
       if (activeModalController === controller) {
         activeModalController = null;
         activeModalJobId = null;

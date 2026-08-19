@@ -136,11 +136,16 @@ function list_option(section, key) {
     return text == "" ? [] : split(text, /[ \t\r\n]+/);
 }
 
+function bool_value(value) {
+    value = lc(as_string(value));
+    return value == "1" || value == "true" || value == "yes" || value == "on";
+}
+
 function bool_option(section, key, fallback) {
     if (fallback == null)
         fallback = false;
     let value = option(section, key, fallback ? "1" : "0");
-    return value == "1" || value == "true" || value == "yes" || value == "on";
+    return bool_value(value);
 }
 
 function int_option(section, key, fallback) {
@@ -293,6 +298,10 @@ function command_success(command) {
     return command_status("(" + command + ") >/dev/null 2>&1") == 0;
 }
 
+function command_status_from_args(args) {
+    return command_status(command_from_args(args));
+}
+
 function command_success_from_args(args) {
     return command_success(command_from_args(args));
 }
@@ -323,6 +332,38 @@ function command_output_from_args(args) {
     return command_output(command_from_args(args) + " 2>/dev/null");
 }
 
+function ensure_dir(path) {
+    path = as_string(path);
+    if (path == "") return false;
+    let result = system("mkdir -p " + shell_quote(path) + " 2>/dev/null");
+    return result == 0;
+}
+
+function remove_file(path) {
+    path = as_string(path);
+    if (path == "") return true;
+    try { fs.unlink(path); return true; } catch (e) { return true; }
+}
+
+function unlink_file(path) {
+    return remove_file(path);
+}
+
+function write_file(path, value) {
+    return fs.writefile(as_string(path), as_string(value));
+}
+
+function file_exists(path) {
+    let s = fs.stat(as_string(path));
+    return s != null;
+}
+
+function parent_dir(path) {
+    path = as_string(path);
+    let slash = rindex(path, "/");
+    return slash >= 0 ? substr(path, 0, slash) : "";
+}
+
 return {
     as_string,
     read_json_file,
@@ -339,6 +380,7 @@ return {
     option,
     list_option,
     bool_option,
+    bool_value,
     int_option,
     shell_quote,
     command_from_args,
@@ -348,8 +390,15 @@ return {
     background_pipeline_with_pid,
     command_status,
     command_success,
+    command_status_from_args,
     command_success_from_args,
     command_capture,
     command_output,
-    command_output_from_args
+    command_output_from_args,
+    ensure_dir,
+    remove_file,
+    unlink_file,
+    write_file,
+    file_exists,
+    parent_dir
 };

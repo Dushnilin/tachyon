@@ -7,6 +7,7 @@ let connections = require("config.connections");
 let zapret_validator = require("providers.zapret.validator");
 let zapret2_validator = require("providers.zapret2.validator");
 let byedpi_validator = require("providers.byedpi.validator");
+let common = require("core.common");
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
 const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
 const DEFAULT_PENDING_RELOAD_FILE = getenv("TACHYON_PENDING_RELOAD_FILE") || "/var/run/tachyon/reload.pending";
@@ -15,9 +16,7 @@ const ZAPRET_DEFAULT_NFQWS_OPT = getenv("ZAPRET_DEFAULT_NFQWS_OPT") || "";
 const ZAPRET2_DEFAULT_NFQWS2_OPT = getenv("ZAPRET2_DEFAULT_NFQWS2_OPT") || "";
 const BYEDPI_DEFAULT_CMD_OPTS = getenv("BYEDPI_DEFAULT_CMD_OPTS") || "";
 
-function as_string(value) {
-    return value == null ? "" : "" + value;
-}
+let as_string = common.as_string;
 
 function read_stdin() {
     let input = fs.open("/dev/stdin", "r");
@@ -38,18 +37,7 @@ function read_stdin_json() {
     }
 }
 
-function read_json_file(path) {
-    let data = fs.readfile(path);
-    if (data == null)
-        return null;
-
-    try {
-        return json(data);
-    }
-    catch (e) {
-        return null;
-    }
-}
+let read_json_file = common.read_json_file;
 
 function write_text_file(path, text) {
     let result = fs.writefile(path, as_string(text));
@@ -60,29 +48,11 @@ function write_text_file(path, text) {
     return true;
 }
 
-// The empty catch is the point: every caller means "make sure this path is
-// gone", and an absent file already satisfies that. fs.unlink throws on ENOENT,
-// so the alternative is a stat() race with no better outcome.
-function unlink_file(path) {
-    try {
-        fs.unlink(as_string(path));
-    }
-    catch (e) {
-    }
-}
+let unlink_file = common.remove_file;
 
-function shell_quote(value) {
-    return "'" + replace(as_string(value), /'/g, "'\\''") + "'";
-}
+let shell_quote = common.shell_quote;
 
-function command_from_args(args) {
-    let parts = [];
-
-    for (let arg in args)
-        push(parts, shell_quote(arg));
-
-    return join(" ", parts);
-}
+let command_from_args = common.command_from_args;
 
 // Local copy of core/common.uc's background_command(). This module is loaded by
 // the early-boot path and deliberately carries its own helpers rather than
@@ -96,18 +66,7 @@ function background_command(command) {
         as_string(command) + "; } </dev/null >/dev/null 2>&1 &";
 }
 
-function command_output_from_args(args) {
-    let pipe = fs.popen(command_from_args(args), "r");
-    if (!pipe)
-        return "";
-
-    let data = pipe.read("all");
-    let status = pipe.close();
-    if (status != 0 || data == null)
-        return "";
-
-    return as_string(data);
-}
+let command_output_from_args = common.command_output_from_args;
 
 function command_trimmed_output_from_args(args) {
     return replace(command_output_from_args(args), /[\r\n]+$/g, "");
@@ -125,9 +84,7 @@ function uci_exists(path) {
     return uci_core.exists(path);
 }
 
-function object_or_empty(value) {
-    return type(value) == "object" ? value : {};
-}
+let object_or_empty = common.object_or_empty;
 
 function file_first_line(path) {
     let data = fs.readfile(path);
@@ -198,13 +155,7 @@ function reload_state_text(values) {
     return output;
 }
 
-function parent_dir(path) {
-    path = as_string(path);
-    let slash = rindex(path, "/");
-    if (slash < 0)
-        return "";
-    return substr(path, 0, slash);
-}
+let parent_dir = common.parent_dir;
 
 function ensure_parent_dir(path) {
     let dir = parent_dir(path);
@@ -751,7 +702,7 @@ function bool_option(section, key, fallback) {
 }
 
 function bool_value(value) {
-    return arg_bool(value) ? "1" : "0";
+    return common.bool_value(value) ? "1" : "0";
 }
 
 function bool_option_value(section, key, fallback) {

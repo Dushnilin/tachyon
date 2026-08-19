@@ -6,14 +6,8 @@ let runtime_constants = require("singbox.constants");
 
 let option = common.option;
 let bool_option = common.bool_option;
-
-function as_string(value) {
-    return value == null ? "" : "" + value;
-}
-
-function bool_value(value) {
-    return value === true || value == "1" || value == "true" || value == "yes" || value == "on";
-}
+let as_string = common.as_string;
+let bool_value = common.bool_value;
 
 function normalize_port_entry(value) {
     value = trim(as_string(value));

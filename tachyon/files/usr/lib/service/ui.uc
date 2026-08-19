@@ -4,6 +4,17 @@ let fs = require("fs");
 let common = require("core.common");
 let uci_core = require("core.uci");
 
+let as_string = common.as_string;
+
+function read_stdin() {
+    let input = fs.open("/dev/stdin", "r");
+    if (!input)
+        return "";
+    let data = input.read("all");
+    input.close();
+    return data == null ? "" : data;
+}
+
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
 const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
 const BIN_PATH = getenv("TACHYON_BIN") || "/usr/bin/tachyon";
@@ -39,31 +50,7 @@ const ZAPRET_PROVIDER_NFQWS_BIN = getenv("ZAPRET_PROVIDER_NFQWS_BIN") || "/opt/z
 const ZAPRET2_PROVIDER_NFQWS2_BIN = getenv("ZAPRET2_PROVIDER_NFQWS2_BIN") || "/opt/zapret2/nfq2/nfqws2";
 const BYEDPI_BIN = getenv("BYEDPI_BIN") || "/usr/bin/ciadpi";
 
-function as_string(value) {
-    return value == null ? "" : "" + value;
-}
-
-function read_stdin() {
-    let input = fs.open("/dev/stdin", "r");
-    if (!input)
-        return "";
-    let data = input.read("all");
-    input.close();
-    return data == null ? "" : data;
-}
-
-function read_json_file(path) {
-    let data = fs.readfile(path);
-    if (data == null)
-        return null;
-
-    try {
-        return json(data);
-    }
-    catch (e) {
-        return null;
-    }
-}
+let read_json_file = common.read_json_file;
 
 function parse_json_or_null(value) {
     try {
@@ -74,26 +61,15 @@ function parse_json_or_null(value) {
     }
 }
 
-function write_json(value) {
-    print(sprintf("%J", value), "\n");
-}
+let write_json = common.write_json;
 
 function json_text(value) {
     return sprintf("%J", value) + "\n";
 }
 
-function shell_quote(value) {
-    return "'" + replace(as_string(value), /'/g, "'\\''") + "'";
-}
+let shell_quote = common.shell_quote;
 
-function command_from_args(args) {
-    let parts = [];
-
-    for (let arg in args)
-        push(parts, shell_quote(arg));
-
-    return join(" ", parts);
-}
+let command_from_args = common.command_from_args;
 
 function command_env(assignments) {
     let parts = [];
@@ -104,29 +80,10 @@ function command_env(assignments) {
     return join(" ", parts);
 }
 
-function command_output(command) {
-    let pipe = fs.popen(command, "r");
-    if (!pipe)
-        return "";
+let command_output = common.command_output;
+let command_output_from_args = common.command_output_from_args;
 
-    let data = pipe.read("all");
-    pipe.close();
-    return as_string(data);
-}
-
-function command_output_from_args(args) {
-    return command_output(command_from_args(args));
-}
-
-function command_status(command) {
-    let status = int(system(command));
-    if (status == -1)
-        return 255;
-    let signal = status & 127;
-    if (signal != 0)
-        return 128 + signal;
-    return (status >> 8) & 255;
-}
+let command_status = common.command_status;
 
 function command_success(command) {
     return command_status(command + " >/dev/null 2>&1") == 0;
@@ -147,9 +104,7 @@ function now_seconds() {
     return int(clock()[0]);
 }
 
-function ensure_dir(path) {
-    return fs.mkdir(path, 0755) || fs.stat(path) != null;
-}
+let ensure_dir = common.ensure_dir;
 
 function ensure_dirs() {
     for (let dir in [
@@ -163,9 +118,7 @@ function ensure_dirs() {
         ensure_dir(dir);
 }
 
-function write_file(path, value) {
-    return fs.writefile(as_string(path), as_string(value)) != null;
-}
+let write_file = common.write_file;
 
 function write_state_file(path, value) {
     path = as_string(path);
@@ -183,16 +136,7 @@ function write_state_file(path, value) {
     return true;
 }
 
-// The empty catch is the point: every caller means "make sure this path is
-// gone", and an absent file already satisfies that. fs.unlink throws on ENOENT,
-// so the alternative is a stat() race with no better outcome.
-function remove_file(path) {
-    try {
-        fs.unlink(as_string(path));
-    }
-    catch (e) {
-    }
-}
+let remove_file = common.remove_file;
 
 function remove_state_file(path) {
     path = as_string(path);
@@ -228,9 +172,7 @@ function unsigned_number(value) {
     return int(value);
 }
 
-function object_or_empty(value) {
-    return type(value) == "object" ? value : {};
-}
+let object_or_empty = common.object_or_empty;
 
 function path_basename(path) {
     let parts = split(as_string(path), "/");

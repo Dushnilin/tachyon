@@ -6,68 +6,24 @@ let constants = require("core.constants");
 let uci_core = require("core.uci");
 let runtime_constants = require("singbox.constants");
 
+let as_string = common.as_string;
+let bool_value = common.bool_value;
+let write_json = common.write_json;
+let shell_quote = common.shell_quote;
+let command_from_args = common.command_from_args;
+let command_output = common.command_output;
+let command_output_from_args = common.command_output_from_args;
+let command_status = common.command_status;
+let command_success = common.command_success;
+let command_success_from_args = common.command_success_from_args;
+let object_or_empty = common.object_or_empty;
+let array_or_empty = common.array_or_empty;
+let option = common.option;
+
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || constants.TACHYON_CONFIG_NAME || "tachyon";
 const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
 const SB_TPROXY_INBOUND_TAG = getenv("SB_TPROXY_INBOUND_TAG") || constants.SB_TPROXY_INBOUND_TAG || "tproxy-in";
 const NFT_TABLE_NAME = getenv("NFT_TABLE_NAME") || constants.NFT_TABLE_NAME || "TachyonTable";
-
-function as_string(value) {
-    return value == null ? "" : "" + value;
-}
-
-function bool_value(value) {
-    value = lc(as_string(value));
-    return value == "1" || value == "true" || value == "yes" || value == "on";
-}
-
-function write_json(value) {
-    print(sprintf("%J", value), "\n");
-}
-
-function shell_quote(value) {
-    return "'" + replace(as_string(value), /'/g, "'\\''") + "'";
-}
-
-function command_from_args(args) {
-    let parts = [];
-    for (let arg in args)
-        push(parts, shell_quote(arg));
-    return join(" ", parts);
-}
-
-function command_output(command) {
-    let pipe = fs.popen(command, "r");
-    if (!pipe)
-        return "";
-
-    let data = pipe.read("all");
-    let status = pipe.close();
-    if (status != 0 || data == null)
-        return "";
-    return as_string(data);
-}
-
-function command_output_from_args(args) {
-    return command_output(command_from_args(args));
-}
-
-function command_status(command) {
-    let status = int(system(command));
-    if (status == -1)
-        return 255;
-    let signal = status & 127;
-    if (signal != 0)
-        return 128 + signal;
-    return (status >> 8) & 255;
-}
-
-function command_success(command) {
-    return command_status(command + " >/dev/null 2>&1") == 0;
-}
-
-function command_success_from_args(args) {
-    return system(command_from_args(args) + " >/dev/null 2>&1") == 0;
-}
 
 function module_command(args) {
     let command_args = [ "ucode", "-L", LIB_DIR ];
@@ -83,26 +39,6 @@ function module_success(args) {
 function log_message(message, level) {
     level = as_string(level || "info");
     command_success_from_args([ "logger", "-t", "tachyon", "[" + level + "] " + as_string(message) ]);
-}
-
-function object_or_empty(value) {
-    return type(value) == "object" ? value : {};
-}
-
-function array_or_empty(value) {
-    return type(value) == "array" ? value : [];
-}
-
-function option(section, key, fallback) {
-    if (fallback == null)
-        fallback = "";
-
-    let value = object_or_empty(section)[key];
-    if (value == null)
-        return fallback;
-    if (type(value) == "array")
-        return join(" ", value);
-    return as_string(value);
 }
 
 function bool_option(section, key, fallback) {

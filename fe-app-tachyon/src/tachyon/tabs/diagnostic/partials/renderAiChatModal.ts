@@ -100,25 +100,28 @@ export function renderAiChatModal() {
     try {
       const res = (await callBaseMethod(
         Tachyon.AvailableMethods.AI_DOCTOR,
+        [text],
+        '/usr/bin/tachyon',
+        { timeout: 120000 },
       )) as { success?: boolean; data?: unknown };
       chatHistory.pop(); // Remove typing indicator
 
       let answerText = _('Failed to receive response from AI service.');
       if (res && res.success) {
-        if (typeof res.data === 'string') {
+        const d = res.data as Record<string, unknown> | string | null;
+        if (typeof d === 'object' && d !== null) {
+          answerText = String(
+            d.report ?? d.summary ?? d.message ?? d.raw ?? JSON.stringify(d),
+          );
+        } else if (typeof d === 'string') {
           try {
-            const parsed = JSON.parse(res.data);
-            answerText =
-              parsed.summary || parsed.message || parsed.raw || res.data;
+            const parsed = JSON.parse(d) as Record<string, unknown>;
+            answerText = String(
+              parsed.report ?? parsed.summary ?? parsed.message ?? parsed.raw ?? d,
+            );
           } catch (_e) {
-            answerText = res.data;
+            answerText = d;
           }
-        } else if (
-          typeof res.data === 'object' &&
-          res.data !== null &&
-          'message' in res.data
-        ) {
-          answerText = String((res.data as { message: string }).message);
         }
       }
 

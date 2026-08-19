@@ -36,6 +36,9 @@ const ZAPRET2_ROUTE_MARK_BASE = 0x02000000;
 const BYEDPI_LISTEN_ADDRESS = "127.0.0.1";
 const BYEDPI_PORT_BASE = 1080;
 
+let common = require("core.common");
+let as_string = common.as_string;
+
 const RESERVED_TAGS = {
     [DNS_SERVER_TAG]: true,
     [FAKEIP_DNS_SERVER_TAG]: true,
@@ -50,10 +53,6 @@ const RESERVED_TAGS = {
     [DIRECT_OUTBOUND_TAG]: true,
     [BYPASS_OUTBOUND_TAG]: true
 };
-
-function as_string(value) {
-    return value == null ? "" : "" + value;
-}
 
 function tag(base, postfix) {
     let candidate = as_string(base) + "-" + as_string(postfix);

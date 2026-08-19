@@ -1,26 +1,18 @@
 #!/usr/bin/env ucode
 
 let fs = require("fs");
+let common = require("core.common");
 
-function as_string(value) {
-    return value == null ? "" : "" + value;
-}
+let as_string = common.as_string;
 
 function env(name, fallback) {
     let value = getenv(name);
     return value == null ? as_string(fallback) : as_string(value);
 }
 
-function shell_quote(value) {
-    return "'" + replace(as_string(value), /'/g, "'\\''") + "'";
-}
+let shell_quote = common.shell_quote;
 
-function command_from_args(args) {
-    let parts = [];
-    for (let arg in args)
-        push(parts, shell_quote(arg));
-    return join(" ", parts);
-}
+let command_from_args = common.command_from_args;
 
 function normalize_status(status) {
     status = int(status);

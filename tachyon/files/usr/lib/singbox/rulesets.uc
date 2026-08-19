@@ -1,5 +1,7 @@
 #!/usr/bin/env ucode
 
+let common = require("core.common");
+
 const SRS_MAIN_URL = "https://github.com/itdoginfo/allow-domains/releases/latest/download";
 const SRS_ADS_HAGEZI_PRO_URL = "https://github.com/zxc-rv/ad-filter/releases/latest/download/adlist.srs";
 const SRS_SUPERCELL_URL = "https://raw.githubusercontent.com/ushan0v/sing-box-supercell-ruleset/main/supercell.srs";
@@ -43,9 +45,7 @@ const COMMUNITY_SERVICES = {
     geoip_cn: true
 };
 
-function as_string(value) {
-    return value == null ? "" : "" + value;
-}
+let as_string = common.as_string;
 
 function is_community(name) {
     name = as_string(name);

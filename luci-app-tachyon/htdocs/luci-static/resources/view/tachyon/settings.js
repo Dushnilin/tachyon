@@ -1367,9 +1367,8 @@ function createSettingsContent(section, capabilities) {
       E("p", { class: "spinning" }, _("Downloading and applying rule sets and lists...")),
     ]);
     return fs.exec("/usr/bin/tachyon", ["list_update"])
-      .then(function (res) {
+      .then(function () {
         ui.hideModal();
-        const out = (res && (res.stdout || res.stderr)) || "";
         ui.addNotification(null, E("p", _("Lists and rule sets successfully updated!")), "info");
       })
       .catch(function (err) {

@@ -5,6 +5,7 @@ let common = require("core.common");
 
 let as_string = common.as_string;
 let array_or_empty = common.array_or_empty;
+let shell_quote = common.shell_quote;
 
 function starts_with(value, prefix) {
     value = as_string(value);
@@ -392,10 +393,6 @@ function populate_subscription_links(subscription) {
     }
 
     return changed;
-}
-
-function shell_quote(value) {
-    return "'" + replace(as_string(value), /'/g, "'\\''") + "'";
 }
 
 function populate_subscription_file(path) {

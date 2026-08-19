@@ -885,6 +885,12 @@ function view_section_editor(token, chat_id, msg_id, sec_name) {
     let ip_count = length(common.list_option(s, "ip")) + length(common.list_option(s, "ip_cidr"));
     let src_count = length(common.list_option(s, "src_ip")) + length(common.list_option(s, "src_mac")) + length(common.list_option(s, "src_device"));
     let rs_count = length(common.list_option(s, "community_lists"));
+
+    let sub_count = 0;
+    let all = c.get_all(CONFIG_NAME);
+    for (let sname in all) {
+        if (all[sname][".type"] == "subscription_url" && all[sname].section == sec_name) sub_count++;
+    }
                
     let keyboard = [];
     push(keyboard, [
@@ -905,6 +911,8 @@ function view_section_editor(token, chat_id, msg_id, sec_name) {
         { text: "📝 Источники (" + src_count + ")", callback_data: "/sec_list " + sec_name + " src" },
         { text: "📝 Rulesets (" + rs_count + ")", callback_data: "/sec_list " + sec_name + " ruleset" }
     ]);
+
+    push(keyboard, [{ text: "🔗 Подписки (" + sub_count + ")", callback_data: "/sec_subs " + sec_name }]);
     
     push(keyboard, [{ text: "🗑 Удалить секцию", callback_data: "/sec_delete " + sec_name }]);
     push(keyboard, [{ text: "🔙 К списку секций", callback_data: "/sections" }]);
@@ -1621,6 +1629,95 @@ function view_connections(token, chat_id, msg_id, page) {
     else send_message(token, chat_id, text, "HTML", keyboard);
 }
 
+// ─── Section Subscription Commands ──────────────────────────────────────────
+
+function view_sec_subs(token, chat_id, msg_id, sec_name) {
+    let c = uci_core.cursor();
+    c.load(CONFIG_NAME);
+    let all = c.get_all(CONFIG_NAME);
+    let keyboard = [];
+    let count = 0;
+    let idx = 0;
+    for (let sname in all) {
+        let s = all[sname];
+        if (s[".type"] == "subscription_url" && s.section == sec_name) {
+            let url = s.url || "(пусто)";
+            if (length(url) > 35) url = substr(url, 0, 35) + "...";
+            let icon = s.enabled == "0" ? "❌" : "✅";
+            push(keyboard, [{ text: icon + " " + url, callback_data: "/set_cat subscription_url " + sname }]);
+            push(keyboard, [{ text: "   🗑 Удалить", callback_data: "/sec_sub_del " + sec_name + " " + idx }]);
+            count++;
+        }
+        idx++;
+    }
+    push(keyboard, [{ text: "➕ Добавить подписку", callback_data: "/sec_sub_add " + sec_name }]);
+    push(keyboard, [{ text: "🔙 Назад", callback_data: "/sec_view " + sec_name }]);
+    let text = "🔗 <b>Подписки секции " + escape_html(sec_name) + "</b>\n\n";
+    if (count == 0) {
+        text += "Нет подписок. Добавьте URL подписки для скачивания правил.";
+    } else {
+        text += "Найдено подписок: " + count;
+    }
+    if (msg_id) edit_message(token, chat_id, msg_id, text, "HTML", keyboard);
+    else send_message(token, chat_id, text, "HTML", keyboard);
+}
+
+function handle_sec_sub_add(token, chat_id, msg_id, sec_name, url) {
+    if (!sec_name || !url) {
+        set_tg_state(chat_id, { action: "sec_sub_add" });
+        return send_message(token, chat_id, "📝 Введите URL подписки:\n\n<i>Отправьте /cancel для отмены</i>", "HTML");
+    }
+    url = trim(url);
+    if (url == "") {
+        send_message(token, chat_id, "❌ URL не может быть пустым.");
+        return;
+    }
+    let c = uci_core.cursor();
+    c.load(CONFIG_NAME);
+    let max_idx = 0;
+    let all = c.get_all(CONFIG_NAME);
+    for (let sname in all) {
+        if (all[sname][".type"] == "subscription_url") {
+            let m = match(sname, /^sub_(\d+)$/);
+            if (m) {
+                let i = int(m[1]);
+                if (i > max_idx) max_idx = i;
+            }
+        }
+    }
+    let new_sec = "sub_" + (max_idx + 1);
+    c.set(CONFIG_NAME, new_sec, "enabled", "1");
+    c.set(CONFIG_NAME, new_sec, "section", sec_name);
+    c.set(CONFIG_NAME, new_sec, "url", url);
+    c.set(CONFIG_NAME, new_sec, "label", url);
+    c.commit(CONFIG_NAME);
+    set_tg_state(chat_id, null);
+    send_message(token, chat_id, "✅ Подписка добавлена в секцию <code>" + sec_name + "</code>!", "HTML");
+    view_sec_subs(token, chat_id, null, sec_name);
+}
+
+function handle_sec_sub_del(token, chat_id, msg_id, sec_name, idx) {
+    let c = uci_core.cursor();
+    c.load(CONFIG_NAME);
+    let all = c.get_all(CONFIG_NAME);
+    let sub_names = [];
+    for (let sname in all) {
+        if (all[sname][".type"] == "subscription_url" && all[sname].section == sec_name) {
+            push(sub_names, sname);
+        }
+    }
+    if (idx < 0 || idx >= length(sub_names)) {
+        send_message(token, chat_id, "❌ Подписка не найдена.");
+        return view_sec_subs(token, chat_id, null, sec_name);
+    }
+    let target = sub_names[idx];
+    c.delete(CONFIG_NAME, target);
+    c.commit(CONFIG_NAME);
+    set_tg_state(chat_id, null);
+    send_message(token, chat_id, "✅ Подписка удалена из секции <code>" + sec_name + "</code>.", "HTML");
+    view_sec_subs(token, chat_id, null, sec_name);
+}
+
 function view_help(token, chat_id, msg_id) {
     let text = "📖 <b>Справка по командам</b>\n\n" +
         "<b>Основные:</b>\n" +
@@ -2171,6 +2268,28 @@ function dispatch_command(token, chat_id, text, msg_id) {
         return handle_sec_toggle(token, chat_id, msg_id, sec);
     }
 
+    // Section subscription commands
+    if (match(cmd, /^\/sec_subs /)) {
+        let sec = trim(substr(cmd, 11));
+        return view_sec_subs(token, chat_id, msg_id, sec);
+    }
+    if (match(cmd, /^\/sec_sub_add /)) {
+        let parts = split(trim(substr(cmd, 13)), " ");
+        if (length(parts) >= 2) {
+            let sec = parts[0];
+            let url = join(" ", slice(parts, 1));
+            return handle_sec_sub_add(token, chat_id, msg_id, sec, url);
+        }
+    }
+    if (cmd == "/sec_sub_add") {
+        set_tg_state(chat_id, { action: "sec_sub_add" });
+        return send_message(token, chat_id, "📝 Введите имя секции и URL подписки через пробел:\n<code>/sec_sub_add Main https://...</code>\n\n<i>Отправьте /cancel для отмены</i>", "HTML");
+    }
+    if (match(cmd, /^\/sec_sub_del /)) {
+        let parts = split(trim(substr(cmd, 13)), " ");
+        if (length(parts) == 2) return handle_sec_sub_del(token, chat_id, msg_id, parts[0], int(parts[1]));
+    }
+
     
     if (cmd == "/settings") return view_settings_menu(token, chat_id, msg_id);
     if (match(cmd, /^\/set_list /)) {
@@ -2501,6 +2620,20 @@ function process_updates(token, admin_ids) {
                 }
                 else if (state.action == "test_rule") {
                     view_test_rule(token, chat_id, null, trim(msg.text));
+                }
+                else if (state.action == "sub_add") {
+                    handle_sub_add(token, chat_id, msg_id, trim(msg.text));
+                }
+                else if (state.action == "sec_sub_add") {
+                    let parts = split(trim(msg.text), " ");
+                    if (length(parts) >= 2) {
+                        let sec = parts[0];
+                        let url = join(" ", slice(parts, 1));
+                        handle_sec_sub_add(token, chat_id, msg_id, sec, url);
+                    } else {
+                        set_tg_state(chat_id, state);
+                        send_message(token, chat_id, "❌ Формат: <code>секция URL</code>\nНапример: <code>Main https://...</code>", "HTML");
+                    }
                 }
                 else if (state.action == "qh_hour") {
                     let val = trim(msg.text);

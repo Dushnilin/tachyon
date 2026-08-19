@@ -8,6 +8,13 @@ let read_json_file = common.read_json_file;
 let write_json = common.write_json;
 let array_or_empty = common.array_or_empty;
 let object_or_empty = common.object_or_empty;
+let shell_quote = common.shell_quote;
+let command_from_args = common.command_from_args;
+let command_output = common.command_output;
+let command_output_from_args = common.command_output_from_args;
+let command_status = common.command_status;
+let command_success_from_args = common.command_success_from_args;
+let remove_file = common.remove_file;
 
 const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
 const RUNTIME_STATE_DIR = getenv("TACHYON_RUNTIME_STATE_DIR") || "/var/run/tachyon";
@@ -16,60 +23,8 @@ const PRIORITY_PID_FILE = getenv("TACHYON_PRIORITY_PID_FILE") || RUNTIME_STATE_D
 const PRIORITY_UC = getenv("TACHYON_PRIORITY_UC") || LIB_DIR + "/singbox/priority.uc";
 const DIAGNOSTICS_UC = getenv("TACHYON_DIAGNOSTICS_UC") || LIB_DIR + "/diagnostics/runtime.uc";
 
-function shell_quote(value) {
-    return "'" + replace(as_string(value), /'/g, "'\\''") + "'";
-}
-
-function command_from_args(args) {
-    let parts = [];
-    for (let arg in args)
-        push(parts, shell_quote(arg));
-    return join(" ", parts);
-}
-
-function command_output(command) {
-    let pipe = fs.popen(command, "r");
-    if (!pipe)
-        return "";
-
-    let data = pipe.read("all");
-    let status = pipe.close();
-    if (status != 0 || data == null)
-        return "";
-    return as_string(data);
-}
-
-function command_output_from_args(args) {
-    return command_output(command_from_args(args));
-}
-
-function command_status(command) {
-    let status = int(system(command));
-    if (status == -1)
-        return 255;
-    let signal = status & 127;
-    if (signal != 0)
-        return 128 + signal;
-    return (status >> 8) & 255;
-}
-
-function command_success_from_args(args) {
-    return command_status(command_from_args(args) + " >/dev/null 2>&1") == 0;
-}
-
 function ensure_dir(path) {
     return command_success_from_args([ "mkdir", "-p", path ]);
-}
-
-// The empty catch is the point: every caller means "make sure this path is
-// gone", and an absent file already satisfies that. fs.unlink throws on ENOENT,
-// so the alternative is a stat() race with no better outcome.
-function remove_file(path) {
-    try {
-        fs.unlink(as_string(path));
-    }
-    catch (e) {
-    }
 }
 
 function file_first_line(path) {

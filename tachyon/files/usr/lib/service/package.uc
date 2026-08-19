@@ -2,10 +2,9 @@
 
 let fs = require("fs");
 let uci_core = require("core.uci");
+let common = require("core.common");
 
-function as_string(value) {
-    return value == null ? "" : "" + value;
-}
+let as_string = common.as_string;
 
 function env(name, fallback) {
     let value = getenv(name);
@@ -39,16 +38,9 @@ const HOOK_COMMAND_TIMEOUT = env("TACHYON_HOOK_COMMAND_TIMEOUT", "20");
 // its own, larger budget. Still bounded: postinst must end.
 const HOOK_START_TIMEOUT = env("TACHYON_HOOK_START_TIMEOUT", "60");
 
-function shell_quote(value) {
-    return "'" + replace(as_string(value), /'/g, "'\\''") + "'";
-}
+let shell_quote = common.shell_quote;
 
-function command_from_args(args) {
-    let parts = [];
-    for (let arg in args)
-        push(parts, shell_quote(arg));
-    return join(" ", parts);
-}
+let command_from_args = common.command_from_args;
 
 function normalize_status(status) {
     status = int(status);

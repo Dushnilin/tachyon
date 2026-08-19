@@ -367,9 +367,12 @@ function notifyActionProvidersAvailabilityChanged(
 }
 
 function reloadPageAfterTachyonUpdate() {
+  // Give the backend time to restart services before reloading; the default
+  // 1200ms was too short and caused the page to reload before tachyon init
+  // finished, making the updates tab hang on stale component action state.
   window.setTimeout(() => {
     window.location.reload();
-  }, 1200);
+  }, 8000);
 }
 
 function patchSystemInfoAfterMutation(result: Tachyon.ComponentActionResult) {

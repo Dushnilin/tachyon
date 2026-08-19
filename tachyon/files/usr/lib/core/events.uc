@@ -20,9 +20,8 @@ function now_ms() {
     return c[0] * 1000 + int(c[1] / 1000000);
 }
 
-function as_string(value) {
-    return value == null ? "" : "" + value;
-}
+let common = require("core.common");
+let as_string = common.as_string;
 
 // Creates an isolated bus. Each instance owns its subscriber table, dedup
 // state and counters, so tests can build a fresh bus per assertion.

@@ -1,40 +1,23 @@
 #!/usr/bin/env ucode
 
 let fs = require("fs");
+let common = require("core.common");
+let as_string = common.as_string;
+let shell_quote = common.shell_quote;
+let command_from_args = common.command_from_args;
+let command_output = common.command_output;
+let command_status = common.command_status;
 
-function as_string(value) {
-    return value == null ? "" : "" + value;
-}
-
-function shell_quote(value) {
-    return "'" + replace(as_string(value), /'/g, "'\\''") + "'";
-}
-
-function command_from_args(args) {
-    let parts = [];
-    for (let arg in args)
-        push(parts, shell_quote(arg));
-    return join(" ", parts);
+function command_output_args(args) {
+    return command_output(command_from_args(args));
 }
 
 function command_success(args) {
-    return system(command_from_args(args) + " >/dev/null 2>&1") == 0;
-}
-
-function command_output(args) {
-    let pipe = fs.popen(command_from_args(args), "r");
-    if (!pipe)
-        return "";
-
-    let data = pipe.read("all");
-    let status = pipe.close();
-    if (status != 0 || data == null)
-        return "";
-    return as_string(data);
+    return command_status(command_from_args(args) + " >/dev/null 2>&1") == 0;
 }
 
 function command_exists(name) {
-    return command_success([ "command", "-v", name ]);
+    return system(command_from_args([ "command", "-v", name ]) + " >/dev/null 2>&1") == 0;
 }
 
 function apk_installed(package_name) {
@@ -47,7 +30,7 @@ function opkg_installed(package_name) {
         return false;
 
     let prefix = package_name + " - ";
-    for (let line in split(command_output([ "opkg", "list-installed" ]), "\n")) {
+    for (let line in split(command_output_args([ "opkg", "list-installed" ]), "\n")) {
         line = trim(as_string(line));
         if (substr(line, 0, length(prefix)) == prefix)
             return true;
@@ -135,19 +118,19 @@ function apk_version(package_name) {
     if (!apk_installed(package_name))
         return "";
 
-    let version = apk_list_version(package_name, command_output([ "apk", "list", "--installed", package_name ]));
+    let version = apk_list_version(package_name, command_output_args([ "apk", "list", "--installed", package_name ]));
     if (version != "")
         return version;
 
-    version = apk_info_version(package_name, command_output([ "apk", "info", "-v", package_name ]));
+    version = apk_info_version(package_name, command_output_args([ "apk", "info", "-v", package_name ]));
     if (version != "")
         return version;
 
-    version = apk_manifest_version(package_name, command_output([ "apk", "list", "--installed", "--manifest", package_name ]));
+    version = apk_manifest_version(package_name, command_output_args([ "apk", "list", "--installed", "--manifest", package_name ]));
     if (version != "")
         return version;
 
-    return apk_manifest_version(package_name, command_output([ "apk", "list", "--installed", "--manifest" ]));
+    return apk_manifest_version(package_name, command_output_args([ "apk", "list", "--installed", "--manifest" ]));
 }
 
 function apk_available_version(package_name) {
@@ -156,7 +139,7 @@ function apk_available_version(package_name) {
         return "";
     return apk_query_version(
         package_name,
-        command_output([ "apk", "query", "--from", "repositories", "--available", "--format", "json", "--fields", "name,version", package_name ])
+        command_output_args([ "apk", "query", "--from", "repositories", "--available", "--format", "json", "--fields", "name,version", package_name ])
     );
 }
 
@@ -166,7 +149,7 @@ function opkg_version(package_name) {
         return "";
 
     let prefix = package_name + " - ";
-    for (let line in split(command_output([ "opkg", "list-installed" ]), "\n")) {
+    for (let line in split(command_output_args([ "opkg", "list-installed" ]), "\n")) {
         line = trim(as_string(line));
         if (substr(line, 0, length(prefix)) == prefix)
             return substr(line, length(prefix));

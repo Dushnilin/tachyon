@@ -93,26 +93,26 @@ function singbox_rulesets_module() {
     return singbox_rulesets_module_value;
 }
 
-function as_string(value) {
-    return value == null ? "" : "" + value;
-}
+let as_string = common.as_string;
+let shell_quote = common.shell_quote;
+let command_from_args = common.command_from_args;
+let command_output = common.command_output;
+let command_output_from_args = common.command_output_from_args;
+let command_status = common.command_status;
+let command_success = common.command_success;
+let command_success_from_args = common.command_success_from_args;
+let read_json_file = common.read_json_file;
+let write_json = common.write_json;
+let write_file = common.write_file;
+let remove_file = common.remove_file;
+let object_or_empty = common.object_or_empty;
+let array_or_empty = common.array_or_empty;
+let option = common.option;
+let bool_option = common.bool_option;
 
 function read_stdin() {
     let data = fs.readfile("/dev/stdin");
     return data == null ? "" : data;
-}
-
-function shell_quote(value) {
-    return "'" + replace(as_string(value), /'/g, "'\\''") + "'";
-}
-
-function command_from_args(args) {
-    let parts = [];
-
-    for (let arg in args)
-        push(parts, shell_quote(arg));
-
-    return join(" ", parts);
 }
 
 function command_env(assignments) {
@@ -124,19 +124,6 @@ function command_env(assignments) {
     return join(" ", parts);
 }
 
-function command_output(command) {
-    let pipe = fs.popen(command, "r");
-    if (!pipe)
-        return "";
-
-    let data = pipe.read("all");
-    let status = pipe.close();
-    if (status != 0 || data == null)
-        return "";
-
-    return as_string(data);
-}
-
 function file_md5(path) {
     path = as_string(path);
     if (path == "" || fs.stat(path) == null)
@@ -144,28 +131,6 @@ function file_md5(path) {
 
     let fields = split(trim(command_output(command_from_args([ "md5sum", path ]))), /[ \t\r\n]+/);
     return length(fields) > 0 ? as_string(fields[0]) : "";
-}
-
-function command_output_from_args(args) {
-    return command_output(command_from_args(args));
-}
-
-function command_status(command) {
-    let status = int(system(command));
-    if (status == -1)
-        return 255;
-    let signal = status & 127;
-    if (signal != 0)
-        return 128 + signal;
-    return (status >> 8) & 255;
-}
-
-function command_success(command) {
-    return command_status(command + " >/dev/null 2>&1") == 0;
-}
-
-function command_success_from_args(args) {
-    return system(command_from_args(args) + " >/dev/null 2>&1") == 0;
 }
 
 function command_exists(name) {
@@ -204,29 +169,8 @@ function log_message(message, level) {
     command_success_from_args([ "logger", "-t", "tachyon", "[" + level + "] " + as_string(message) ]);
 }
 
-function read_json_file(path) {
-    let data = fs.readfile(path);
-    if (data == null)
-        return null;
-
-    try {
-        return json(data);
-    }
-    catch (e) {
-        return null;
-    }
-}
-
-function write_json(value) {
-    print(sprintf("%J", value), "\n");
-}
-
 function json_text(value) {
     return sprintf("%J", value) + "\n";
-}
-
-function write_file(path, value) {
-    return fs.writefile(as_string(path), as_string(value)) != null;
 }
 
 function write_state_file(path, value) {
@@ -243,17 +187,6 @@ function write_state_file(path, value) {
         return false;
     }
     return true;
-}
-
-// The empty catch is the point: every caller means "make sure this path is
-// gone", and an absent file already satisfies that. fs.unlink throws on ENOENT,
-// so the alternative is a stat() race with no better outcome.
-function remove_file(path) {
-    try {
-        fs.unlink(as_string(path));
-    }
-    catch (e) {
-    }
 }
 
 function file_first_line(path) {
@@ -286,10 +219,6 @@ function arg_number(value) {
     return int(value);
 }
 
-function object_or_empty(value) {
-    return type(value) == "object" ? value : {};
-}
-
 function text_first_chars(value, max_chars) {
     value = as_string(value);
     max_chars = int(max_chars || "0", 10) || 0;
@@ -310,27 +239,6 @@ function file_last_nonblank_line_value(path, fallback, max_chars) {
         result = as_string(fallback);
 
     return text_first_chars(result, max_chars);
-}
-
-function array_or_empty(value) {
-    return type(value) == "array" ? value : [];
-}
-
-function option(section, key, fallback) {
-    if (fallback == null)
-        fallback = "";
-
-    let value = object_or_empty(section)[key];
-    if (value == null)
-        return fallback;
-    if (type(value) == "array")
-        return join(" ", value);
-    return as_string(value);
-}
-
-function bool_option(section, key, fallback) {
-    let value = object_or_empty(section)[key];
-    return value == null ? !!fallback : arg_bool(value);
 }
 
 function section_name(section) {

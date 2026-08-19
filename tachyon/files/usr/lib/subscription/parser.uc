@@ -1,10 +1,11 @@
 #!/usr/bin/env ucode
 
 let fs = require("fs");
-
-function as_string(value) {
-    return value == null ? "" : "" + value;
-}
+let common = require("core.common");
+let as_string = common.as_string;
+let object_or_empty = common.object_or_empty;
+let array_or_empty = common.array_or_empty;
+let write_json = common.write_json;
 
 function first_non_ws_char(value) {
     let m = match(as_string(value), /^[ \t\r\n]*([^ \t\r\n])/);
@@ -287,10 +288,6 @@ function write_json_file(path, value) {
     return fs.writefile(path, sprintf("%J", value) + "\n");
 }
 
-function write_json(value) {
-    print(sprintf("%J", value), "\n");
-}
-
 function canonical_runtime_value(value) {
     if (type(value) == "array") {
         let result = [];
@@ -334,14 +331,6 @@ function runtime_outbounds_equal(left_path, right_path) {
         return false;
 
     return sprintf("%J", left) == sprintf("%J", right);
-}
-
-function array_or_empty(value) {
-    return type(value) == "array" ? value : [];
-}
-
-function object_or_empty(value) {
-    return type(value) == "object" ? value : {};
 }
 
 function base64_decode(value) {

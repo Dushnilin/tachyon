@@ -4,12 +4,14 @@ let fs = require("fs");
 let core_ip = require("core.ip");
 let core_url = require("core.url");
 let uci = require("core.uci");
+let common = require("core.common");
+let as_string = common.as_string;
+let shell_quote = common.shell_quote;
+let read_json_file = common.read_json_file;
+let read_stdin = common.read_stdin;
+let read_stdin_json = common.read_stdin_json;
 
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
-
-function as_string(value) {
-    return value == null ? "" : "" + value;
-}
 
 function ascii_lower(value) {
     let upper = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -17,14 +19,6 @@ function ascii_lower(value) {
     return replace(as_string(value), /[A-Z]/g, function(ch) {
         return substr(lower, index(upper, ch), 1);
     });
-}
-
-function write_json(value) {
-    print(sprintf("%J", value), "\n");
-}
-
-function shell_quote(value) {
-    return "'" + replace(as_string(value), /'/g, "'\\''") + "'";
 }
 
 function run(command) {
@@ -104,37 +98,6 @@ function server_set_option(section, option, value) {
         return;
     if (uci_set(config_path(section, option), value))
         SERVER_DEFAULTS_CHANGED = true;
-}
-
-function read_json_file(path) {
-    let data = fs.readfile(path);
-    if (data == null)
-        return null;
-
-    try {
-        return json(data);
-    }
-    catch (e) {
-        return null;
-    }
-}
-
-function read_stdin() {
-    let input = fs.open("/dev/stdin", "r");
-    if (!input)
-        return "";
-    let data = input.read("all");
-    input.close();
-    return data == null ? "" : data;
-}
-
-function read_stdin_json() {
-    try {
-        return json(read_stdin());
-    }
-    catch (e) {
-        return null;
-    }
 }
 
 function stdin_first_nonempty_line() {

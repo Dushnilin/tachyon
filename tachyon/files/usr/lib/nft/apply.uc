@@ -14,30 +14,18 @@ const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
 let common_read_json_file = common.read_json_file;
 let list_option = common.list_option;
 let bool_option = common.bool_option;
-
-function as_string(value) {
-    return value == null ? "" : "" + value;
-}
+let as_string = common.as_string;
+let object_or_empty = common.object_or_empty;
+let option = common.option;
+let write_compact_string_array = common.write_compact_string_array;
+let unlink_file = common.unlink_file;
+let shell_quote = common.shell_quote;
+let command_from_args = common.command_from_args;
+let command_output_from_args = common.command_output_from_args;
 
 function arg_bool(value) {
     value = lc(as_string(value));
     return value == "1" || value == "true" || value == "yes";
-}
-
-function object_or_empty(value) {
-    return type(value) == "object" ? value : {};
-}
-
-function option(section, key, fallback) {
-    if (fallback == null)
-        fallback = "";
-
-    let value = object_or_empty(section)[key];
-    if (value == null)
-        return fallback;
-    if (type(value) == "array")
-        return join(" ", value);
-    return as_string(value);
 }
 
 function uci_section(section_name) {
@@ -60,16 +48,6 @@ function section_by_name(sections, section_name) {
     return null;
 }
 
-function write_compact_string_array(values) {
-    print("[");
-    for (let i = 0; i < length(values); i++) {
-        if (i > 0)
-            print(",");
-        print(sprintf("%J", as_string(values[i])));
-    }
-    print("]\n");
-}
-
 function write_text_file(path, text) {
     let result = fs.writefile(path, as_string(text));
     if (result == null)
@@ -87,49 +65,12 @@ function file_executable(path) {
     return (int(stat.mode) & 73) != 0;
 }
 
-// The empty catch is the point: every caller means "make sure this path is
-// gone", and an absent file already satisfies that. fs.unlink throws on ENOENT,
-// so the alternative is a stat() race with no better outcome.
-function unlink_file(path) {
-    try {
-        fs.unlink(as_string(path));
-    }
-    catch (e) {
-    }
-}
-
-function shell_quote(value) {
-    return "'" + replace(as_string(value), /'/g, "'\\''") + "'";
-}
-
-function command_from_args(args) {
-    let parts = [];
-
-    for (let arg in args)
-        push(parts, shell_quote(arg));
-
-    return join(" ", parts);
-}
-
 function run_args(args) {
     return system(command_from_args(args)) == 0;
 }
 
 function run_args_quiet(args) {
     return system(command_from_args(args) + " >/dev/null 2>&1") == 0;
-}
-
-function command_output_from_args(args) {
-    let pipe = fs.popen(command_from_args(args), "r");
-    if (!pipe)
-        return "";
-
-    let data = pipe.read("all");
-    let status = pipe.close();
-    if (status != 0 || data == null)
-        return "";
-
-    return as_string(data);
 }
 
 function command_output_quiet_from_args(args) {
@@ -1760,7 +1701,8 @@ function ensure_tproxy_route_rule(table, mark, rt_tables_path) {
     let fw4_include_dir = "/usr/share/nftables.d/chain-pre/input";
     let fw4_include_file = fw4_include_dir + "/10-tachyon.nft";
     if (fs.stat("/usr/share/nftables.d") != null) {
-        system(sprintf("mkdir -p %s >/dev/null 2>&1", shell_quote(fw4_include_dir)));
+        fs.mkdir("/usr/share/nftables.d/chain-pre");
+        fs.mkdir(fw4_include_dir);
         write_text_file(fw4_include_file, sprintf("meta mark & %s == %s accept comment \"Allow Tachyon TPROXY marked traffic\"\n", as_string(mark), as_string(mark)));
     }
     return true;

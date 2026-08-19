@@ -5,9 +5,7 @@ let constants = require("core.constants");
 let uci_core = require("core.uci");
 let common = require("core.common");
 
-function as_string(value) {
-    return value == null ? "" : "" + value;
-}
+let as_string = common.as_string;
 
 function constant_value(name, fallback) {
     let value = constants[name];
@@ -134,16 +132,9 @@ let nft_populate_enabled = NFT_POPULATE_ENABLED_DEFAULT;
 let rule_condition_cache_enabled = 0;
 let startup_config_fingerprint = "";
 
-function shell_quote(value) {
-    return "'" + replace(as_string(value), /'/g, "'\\''") + "'";
-}
+let shell_quote = common.shell_quote;
 
-function command_from_args(args) {
-    let parts = [];
-    for (let arg in args)
-        push(parts, shell_quote(arg));
-    return join(" ", parts);
-}
+let command_from_args = common.command_from_args;
 
 function normalize_status(status) {
     status = int(status);
@@ -155,9 +146,7 @@ function normalize_status(status) {
     return (status >> 8) & 255;
 }
 
-function command_status(command) {
-    return normalize_status(system(command));
-}
+let command_status = common.command_status;
 
 function command_capture(command) {
     let pipe = fs.popen(command, "r");
@@ -169,43 +158,21 @@ function command_capture(command) {
     return { status, output: data == null ? "" : as_string(data) };
 }
 
-function command_output(command) {
-    let result = command_capture(command);
-    return result.status == 0 ? result.output : "";
-}
+let command_output = common.command_output;
 
-function read_json_file(path) {
-    let data = fs.readfile(as_string(path));
-    if (data == null)
-        return null;
+let read_json_file = common.read_json_file;
 
-    try {
-        return json(data);
-    }
-    catch (e) {
-        return null;
-    }
-}
-
-function write_json(value) {
-    print(sprintf("%J", value), "\n");
-}
+let write_json = common.write_json;
 
 function command_success(command) {
     return command_status(command + " >/dev/null 2>&1") == 0;
 }
 
-function command_status_from_args(args) {
-    return command_status(command_from_args(args));
-}
+let command_status_from_args = common.command_status_from_args;
 
-function command_output_from_args(args) {
-    return command_output(command_from_args(args) + " 2>/dev/null");
-}
+let command_output_from_args = common.command_output_from_args;
 
-function command_success_from_args(args) {
-    return command_status(command_from_args(args) + " >/dev/null 2>&1") == 0;
-}
+let command_success_from_args = common.command_success_from_args;
 
 function external_config_fingerprint() {
     let data = fs.readfile(CONFIG_FILE);
@@ -226,18 +193,11 @@ function owner_pid() {
     return m ? m[1] : "0";
 }
 
-function bool_text(value) {
-    value = lc(as_string(value));
-    return value == "1" || value == "true" || value == "yes" || value == "on";
-}
+let bool_text = common.bool_value;
 
-function object_or_empty(value) {
-    return type(value) == "object" ? value : {};
-}
+let object_or_empty = common.object_or_empty;
 
-function array_or_empty(value) {
-    return type(value) == "array" ? value : [];
-}
+let array_or_empty = common.array_or_empty;
 
 function string_array_contains(values, needle) {
     needle = as_string(needle);
@@ -251,13 +211,9 @@ function string_array_contains(values, needle) {
     return false;
 }
 
-function write_file(path, value) {
-    return fs.writefile(as_string(path), as_string(value));
-}
+let write_file = common.write_file;
 
-function remove_file(path) {
-    return fs.unlink(as_string(path)) || true;
-}
+let remove_file = common.remove_file;
 
 // Invalidate the last-reload hash so a reload right after a stop/start is never
 // skipped: the hash file reflects a reload from a previous run, not this one.
@@ -265,10 +221,7 @@ function invalidate_reload_hash() {
     remove_file(RELOAD_HASH_FILE);
 }
 
-function ensure_dir(path) {
-    path = as_string(path);
-    return path == "" || fs.mkdir(path, 0755) || fs.stat(path) != null;
-}
+let ensure_dir = common.ensure_dir;
 
 function log_message(message, level) {
     level = as_string(level || "info");

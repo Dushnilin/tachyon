@@ -15,43 +15,13 @@ const DNS_FAILOVER_UC = getenv("TACHYON_DNS_FAILOVER_UC") || LIB_DIR + "/singbox
 const SERVICE_BIN = getenv("TACHYON_BIN") || "/usr/bin/tachyon";
 const CHECK_DOMAIN = "example.com";
 
-function as_string(value) {
-    return value == null ? "" : "" + value;
-}
-
-function shell_quote(value) {
-    return "'" + replace(as_string(value), /'/g, "'\\''") + "'";
-}
-
-function command_from_args(args) {
-    let result = [];
-    for (let arg in args)
-        push(result, shell_quote(arg));
-    return join(" ", result);
-}
-
-function command_status(command) {
-    let status = int(system(command));
-    if (status == -1)
-        return 255;
-    let signal = status & 127;
-    if (signal != 0)
-        return 128 + signal;
-    return (status >> 8) & 255;
-}
-
-function command_success_from_args(args) {
-    return command_status(command_from_args(args) + " >/dev/null 2>&1") == 0;
-}
-
-function command_output_from_args(args) {
-    let pipe = fs.popen(command_from_args(args), "r");
-    if (!pipe)
-        return "";
-    let data = pipe.read("all");
-    let status = pipe.close();
-    return status == 0 && data != null ? as_string(data) : "";
-}
+let as_string = common.as_string;
+let shell_quote = common.shell_quote;
+let command_from_args = common.command_from_args;
+let command_status = common.command_status;
+let command_success_from_args = common.command_success_from_args;
+let command_output_from_args = common.command_output_from_args;
+let remove_file = common.remove_file;
 
 function settings() {
     return common.object_or_empty(uci_core.get_all(CONFIG_NAME, "settings"));
@@ -59,17 +29,6 @@ function settings() {
 
 function ensure_dir(path) {
     return command_success_from_args([ "mkdir", "-p", path ]);
-}
-
-// The empty catch is the point: every caller means "make sure this path is
-// gone", and an absent file already satisfies that. fs.unlink throws on ENOENT,
-// so the alternative is a stat() race with no better outcome.
-function remove_file(path) {
-    try {
-        fs.unlink(as_string(path));
-    }
-    catch (e) {
-    }
 }
 
 function write_state(path, value) {

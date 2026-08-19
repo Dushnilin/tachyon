@@ -1222,12 +1222,9 @@ async function onMount(target) {
 }
 
 // src/helpers/getClashApiUrl.ts
-function getWindowLocation() {
-  return typeof window !== "undefined" ? window.location : void 0;
-}
 function canUseDirectClashApi() {
-  const location = getWindowLocation();
-  return typeof location?.hostname === "string" && location.hostname !== "" && location.protocol !== "https:";
+  const loc = typeof window !== "undefined" ? window.location : void 0;
+  return Boolean(loc?.hostname && loc.protocol !== "https:");
 }
 function getClashWsUrl() {
   const { hostname } = window.location;
@@ -11239,20 +11236,28 @@ function renderAiChatModal() {
     renderMessages();
     try {
       const res = await callBaseMethod(
-        Tachyon.AvailableMethods.AI_DOCTOR
+        Tachyon.AvailableMethods.AI_DOCTOR,
+        [text],
+        "/usr/bin/tachyon",
+        { timeout: 12e4 }
       );
       chatHistory.pop();
       let answerText = _("Failed to receive response from AI service.");
       if (res && res.success) {
-        if (typeof res.data === "string") {
+        const d = res.data;
+        if (typeof d === "object" && d !== null) {
+          answerText = String(
+            d.report ?? d.summary ?? d.message ?? d.raw ?? JSON.stringify(d)
+          );
+        } else if (typeof d === "string") {
           try {
-            const parsed = JSON.parse(res.data);
-            answerText = parsed.summary || parsed.message || parsed.raw || res.data;
+            const parsed = JSON.parse(d);
+            answerText = String(
+              parsed.report ?? parsed.summary ?? parsed.message ?? parsed.raw ?? d
+            );
           } catch (_e) {
-            answerText = res.data;
+            answerText = d;
           }
-        } else if (typeof res.data === "object" && res.data !== null && "message" in res.data) {
-          answerText = String(res.data.message);
         }
       }
       chatHistory.push({
@@ -16071,6 +16076,7 @@ function showUpdateProgressModal(options) {
   let logFullText = "";
   let logPollTimer = null;
   let logPollStopped = true;
+  let reloadProbeActive = false;
   function appendLogText(text) {
     if (!text) {
       return;
@@ -16162,7 +16168,7 @@ function showUpdateProgressModal(options) {
         [renderCheckIcon24(), E("span", {}, successMsg)]
       );
       if (opts?.reloadPage) {
-        let isProbing = true;
+        reloadProbeActive = true;
         let attempt = 0;
         const maxAttempts = 30;
         const statusEl = E(
@@ -16177,7 +16183,7 @@ function showUpdateProgressModal(options) {
           classNames: ["cbi-button-save"],
           text: _("Reload now"),
           onClick: () => {
-            isProbing = false;
+            reloadProbeActive = false;
             window.location.reload();
           }
         });
@@ -16190,25 +16196,36 @@ function showUpdateProgressModal(options) {
         );
         const probeAndReload = async () => {
           await new Promise((resolve) => setTimeout(resolve, 2e3));
-          while (isProbing && attempt < maxAttempts) {
+          while (reloadProbeActive && attempt < maxAttempts) {
             attempt += 1;
             statusEl.textContent = `${_("Verifying router and service readiness...")} (${attempt}/${maxAttempts})`;
             try {
               const res = await TachyonShellMethods.getSystemInfo();
               if (res && res.success) {
                 statusEl.textContent = _(
-                  "Services are online and ready! Reloading page..."
+                  "Services are online, waiting for full initialization..."
                 );
-                reloadBtn.textContent = _("Reloading...");
-                await new Promise((resolve) => setTimeout(resolve, 600));
-                window.location.reload();
-                return;
+                await new Promise((resolve) => setTimeout(resolve, 5e3));
+                if (!reloadProbeActive) return;
+                try {
+                  const confirm = await TachyonShellMethods.getSystemInfo();
+                  if (confirm && confirm.success) {
+                    statusEl.textContent = _(
+                      "Services are online and ready! Reloading page..."
+                    );
+                    reloadBtn.textContent = _("Reloading...");
+                    await new Promise((resolve) => setTimeout(resolve, 600));
+                    window.location.reload();
+                    return;
+                  }
+                } catch (_confirmErr) {
+                }
               }
             } catch (_err) {
             }
             await new Promise((resolve) => setTimeout(resolve, 1500));
           }
-          if (isProbing) {
+          if (reloadProbeActive) {
             statusEl.textContent = _(
               "Services restarted. Click to reload page."
             );
@@ -16295,6 +16312,7 @@ function showUpdateProgressModal(options) {
     close: () => {
       cleanupTimers();
       stopLogTracking();
+      reloadProbeActive = false;
       if (activeModalController === controller) {
         activeModalController = null;
         activeModalJobId = null;
@@ -16522,7 +16540,7 @@ function notifyActionProvidersAvailabilityChanged(systemInfo) {
 function reloadPageAfterTachyonUpdate() {
   window.setTimeout(() => {
     window.location.reload();
-  }, 1200);
+  }, 8e3);
 }
 function patchSystemInfoAfterMutation(result) {
   const systemInfo = store.get().diagnosticsSystemInfo;

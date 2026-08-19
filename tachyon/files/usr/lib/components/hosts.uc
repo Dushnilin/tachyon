@@ -4,19 +4,16 @@ let fs = require("fs");
 let uci = require("core.uci");
 let core_ip = require("core.ip");
 
+let common = require("core.common");
+let as_string = common.as_string;
+let shell_quote = common.shell_quote;
+let remove_file = common.remove_file;
+
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
 const HOSTS_CACHE_DIR = getenv("TACHYON_HOSTS_CACHE_DIR") || "/etc/tachyon/hosts-lists";
 const HOSTS_CACHE_FILE = HOSTS_CACHE_DIR + "/combined.txt";
 const HOSTS_TMP_DIR = getenv("TACHYON_HOSTS_TMP_DIR") || "/tmp/tachyon/hosts-lists";
 const CONNECT_TIMEOUT = "30";
-
-function as_string(value) {
-    return value == null ? "" : "" + value;
-}
-
-function shell_quote(value) {
-    return "'" + replace(as_string(value), /'/g, "'\\''") + "'";
-}
 
 function run(command) {
     return system(command) == 0;
@@ -34,10 +31,6 @@ function mkdir_p(path) {
 function file_nonempty(path) {
     let st = fs.stat(path);
     return st != null && int(st.size) > 0;
-}
-
-function remove_file(path) {
-    run("rm -f " + shell_quote(path));
 }
 
 function opt(section, key, default_value) {

@@ -32,9 +32,7 @@ function trim(value) {
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-function write_json(obj) {
-    print(sprintf("%J\n", obj));
-}
+let write_json = common.write_json;
 
 function write_rpc_response(id, result) {
     write_json({ jsonrpc: "2.0", id: id, result: result });
@@ -59,10 +57,7 @@ function command_capture(command) {
     return { status: status, output: data == null ? "" : as_string(data) };
 }
 
-function command_output(command) {
-    let res = command_capture(command);
-    return (res.status == 0) ? trim(res.output) : "";
-}
+let command_output = common.command_output;
 
 function module_capture(args) {
     let parts = ["ucode", "-L", shell_quote(LIB_DIR), shell_quote(RUNTIME_UC)];
@@ -79,11 +74,7 @@ function read_file(path) {
     return data == null ? "" : as_string(data);
 }
 
-function read_json_file(path) {
-    let data = read_file(path);
-    if (data == "") return null;
-    return parse_json_safe(data);
-}
+let read_json_file = common.read_json_file;
 
 // ─── Tool Definitions ───────────────────────────────────────────────────────
 

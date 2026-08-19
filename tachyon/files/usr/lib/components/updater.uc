@@ -1,23 +1,9 @@
 #!/usr/bin/env ucode
 
 let fs = require("fs");
-
-function as_string(value) {
-    return value == null ? "" : "" + value;
-}
-
-function read_json_file(path) {
-    let data = fs.readfile(path);
-    if (data == null)
-        return null;
-
-    try {
-        return json(data);
-    }
-    catch (e) {
-        return null;
-    }
-}
+let common = require("core.common");
+let as_string = common.as_string;
+let read_json_file = common.read_json_file;
 
 function read_stdin() {
     let input = fs.open("/dev/stdin", "r");

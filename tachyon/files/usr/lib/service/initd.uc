@@ -3,10 +3,9 @@
 let fs = require("fs");
 let constants = require("core.constants");
 let uci_core = require("core.uci");
+let common = require("core.common");
 
-function as_string(value) {
-    return value == null ? "" : "" + value;
-}
+let as_string = common.as_string;
 
 function constant_value(name, fallback) {
     let value = constants[name];
@@ -32,20 +31,13 @@ const CONFIG_CHANGE_REASON = getenv("TACHYON_CONFIG_CHANGE_REASON") || "on_confi
 const DNS_APPLY_UC = LIB_DIR + "/dns/apply.uc";
 const UI_UC = LIB_DIR + "/service/ui.uc";
 
-function shell_quote(value) {
-    return "'" + replace(as_string(value), /'/g, "'\\''") + "'";
-}
+let shell_quote = common.shell_quote;
 
 function shell_assignment(name, value) {
     print(as_string(name), "=", shell_quote(value), "\n");
 }
 
-function command_from_args(args) {
-    let parts = [];
-    for (let arg in args)
-        push(parts, shell_quote(arg));
-    return join(" ", parts);
-}
+let command_from_args = common.command_from_args;
 
 // Local copy of core/common.uc's background_command(). This module runs on the
 // early-boot path and deliberately carries its own helpers rather than pulling
@@ -69,9 +61,7 @@ function normalize_status(status) {
     return (status >> 8) & 255;
 }
 
-function command_status(command) {
-    return normalize_status(system(command));
-}
+let command_status = common.command_status;
 
 function command_capture(command) {
     let pipe = fs.popen(command, "r");
@@ -83,22 +73,10 @@ function command_capture(command) {
     return { status, output: data == null ? "" : as_string(data) };
 }
 
-function command_output(command) {
-    let result = command_capture(command);
-    return result.status == 0 ? result.output : "";
-}
-
-function command_output_from_args(args) {
-    return command_output(command_from_args(args) + " 2>/dev/null");
-}
-
-function command_success_from_args(args) {
-    return command_status(command_from_args(args) + " >/dev/null 2>&1") == 0;
-}
-
-function command_status_from_args(args) {
-    return command_status(command_from_args(args));
-}
+let command_output = common.command_output;
+let command_output_from_args = common.command_output_from_args;
+let command_success_from_args = common.command_success_from_args;
+let command_status_from_args = common.command_status_from_args;
 
 function module_args(module_path, args) {
     let result = [ "ucode", "-L", LIB_DIR, module_path ];
@@ -132,10 +110,7 @@ function current_epoch() {
     return as_string(int(clock()[0]));
 }
 
-function bool_text(value) {
-    value = lc(as_string(value));
-    return value == "1" || value == "true" || value == "yes" || value == "on";
-}
+let bool_text = common.bool_value;
 
 function object_or_empty(value) {
     return type(value) == "object" ? value : {};
@@ -152,17 +127,13 @@ function option(section, key, fallback) {
     return as_string(value);
 }
 
-function file_exists(path) {
-    return fs.stat(as_string(path)) != null;
-}
+let file_exists = common.file_exists;
 
 function file_executable(path) {
     return command_success_from_args([ "test", "-x", as_string(path) ]);
 }
 
-function unlink_file(path) {
-    fs.unlink(as_string(path));
-}
+let unlink_file = common.remove_file;
 
 function ensure_parent_dir(path) {
     let dir = replace(as_string(path), /\/[^\/]*$/, "");

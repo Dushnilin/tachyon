@@ -1,18 +1,15 @@
 #!/usr/bin/env ucode
 
 let fs = require("fs");
+let common = require("core.common");
 
-function as_string(value) {
-    return value == null ? "" : "" + value;
-}
+let as_string = common.as_string;
 
 function trim(str) {
     return replace(as_string(str), /^[ \t\r\n]+|[ \t\r\n]+$/g, "");
 }
 
-function write_json(value) {
-    print(sprintf("%J", value), "\n");
-}
+let write_json = common.write_json;
 
 // Convert <b 0x...> ucode binary literals to plain hex string
 function to_hex(s) {

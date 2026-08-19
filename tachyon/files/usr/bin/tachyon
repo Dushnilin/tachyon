@@ -231,7 +231,7 @@ function command_spec(command) {
         global_check: [ "diagnostics/runtime.uc", "global-check", 2 ],
         service_health_check: [ "diagnostics/runtime.uc", "service-health-check", 2 ],
         doctor: [ "diagnostics/runtime.uc", "doctor", 1 ],
-        ai_doctor: [ "diagnostics/runtime.uc", "ai-doctor", 0 ],
+        ai_doctor: [ "diagnostics/runtime.uc", "ai-doctor", 1 ],
         ai_doctor_last: [ "diagnostics/runtime.uc", "ai-doctor-last", 0 ],
         apply_quick_fix: [ "diagnostics/runtime.uc", "apply-quick-fix", 1 ],
         lan_clients: [ "diagnostics/runtime.uc", "lan-clients", 0 ],

@@ -5,10 +5,8 @@
 // and safely removes Tachyon packages without breaking router configuration.
 
 let fs = require("fs");
-
-function as_string(value) {
-    return value == null ? "" : "" + value;
-}
+let common = require("core.common");
+let as_string = common.as_string;
 
 function run_cmd(args) {
     let parts = [];

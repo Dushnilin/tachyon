@@ -5,6 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
 RESET_UC="$TACHYON_LIB/service/reset.uc"
 TACHYON_BIN="$ROOT_DIR/tachyon/files/usr/bin/tachyon"
+REAL_LIB="$ROOT_DIR/tachyon/files/usr/lib"
 INSTALLER="$ROOT_DIR/install.sh"
 WORK_DIR="$(mktemp -d)"
 
@@ -73,7 +74,7 @@ TACHYON_SING_BOX_TMP_DIR="$WORK_DIR/sing-box-tmp" \
 TACHYON_SING_BOX_CONFIG_PATH="$WORK_DIR/sing-box-config" \
 TACHYON_RESET_BIN_LOG="$WORK_DIR/bin.log" \
 TACHYON_RESET_INIT_LOG="$WORK_DIR/init.log" \
-  ucode -L "$WORK_DIR/lib" "$RESET_UC" reset-settings no-start >"$WORK_DIR/result.json"
+  ucode -L "$WORK_DIR/lib" -L "$REAL_LIB" "$RESET_UC" reset-settings no-start >"$WORK_DIR/result.json"
 grep -Fq '"success":true' "$WORK_DIR/result.json" ||
   fail "reset-settings must report success"
 
@@ -113,7 +114,7 @@ TACHYON_SING_BOX_TMP_DIR="$WORK_DIR/sing-box-tmp" \
 TACHYON_SING_BOX_CONFIG_PATH="$WORK_DIR/sing-box-config" \
 TACHYON_RESET_BIN_LOG="$WORK_DIR/bin.log" \
 TACHYON_RESET_INIT_LOG="$WORK_DIR/init.log" \
-  ucode -L "$WORK_DIR/lib" "$RESET_UC" reset-settings >"$WORK_DIR/result.json"
+  ucode -L "$WORK_DIR/lib" -L "$REAL_LIB" "$RESET_UC" reset-settings >"$WORK_DIR/result.json"
 grep -Fxq 'start' "$WORK_DIR/init.log" ||
   fail "reset without no-start must start the service"
 
@@ -127,7 +128,7 @@ TACHYON_SING_BOX_TMP_DIR="$WORK_DIR/sing-box-tmp" \
 TACHYON_SING_BOX_CONFIG_PATH="$WORK_DIR/sing-box-config" \
 TACHYON_RESET_BIN_LOG="$WORK_DIR/bin.log" \
 TACHYON_RESET_INIT_LOG="$WORK_DIR/init.log" \
-  ucode -L "$WORK_DIR/lib" "$RESET_UC" bogus-mode 2>"$WORK_DIR/usage.err" &&
+  ucode -L "$WORK_DIR/lib" -L "$REAL_LIB" "$RESET_UC" bogus-mode 2>"$WORK_DIR/usage.err" &&
   fail "reset module must reject unknown modes"
 grep -Fq 'Usage' "$WORK_DIR/usage.err" ||
   fail "reset module must print usage for unknown modes"

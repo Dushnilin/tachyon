@@ -5,6 +5,13 @@ let uci_core = require("core.uci");
 
 let as_string = common.as_string;
 let object_or_empty = common.object_or_empty;
+let bool_value_common = common.bool_value;
+
+function bool_value(value, fallback) {
+    if (value == null || value == "")
+        return !!fallback;
+    return bool_value_common(value);
+}
 
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
 const ITEM_TYPES = [
@@ -25,16 +32,11 @@ function option(section, key, fallback) {
     return common.option(section, key, fallback);
 }
 
-function bool_value(value, fallback) {
-    if (value == null || value == "")
-        return !!fallback;
-
-    value = as_string(value);
-    return value == "1" || value == "true" || value == "yes" || value == "on";
-}
-
 function bool_option(section, key, fallback) {
-    return bool_value(raw_option(section, key), fallback);
+    let val = raw_option(section, key);
+    if (val == null)
+        return !!fallback;
+    return bool_value(val);
 }
 
 function list_value(section, key) {

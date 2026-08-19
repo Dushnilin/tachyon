@@ -2,10 +2,11 @@
 
 let fs = require("fs");
 let core_ip = require("core.ip");
-
-function as_string(value) {
-    return value == null ? "" : "" + value;
-}
+let common = require("core.common");
+let as_string = common.as_string;
+let read_stdin = common.read_stdin;
+let read_stdin_json = common.read_stdin_json;
+let read_json_file = common.read_json_file;
 
 function url_encode(value) {
     value = as_string(value);
@@ -23,44 +24,9 @@ function url_encode(value) {
     print("\n");
 }
 
-function read_stdin() {
-    let input = fs.open("/dev/stdin", "r");
-    if (!input)
-        return "";
-    let data = input.read("all");
-    input.close();
-    return data == null ? "" : data;
-}
-
-function read_stdin_json() {
-    try {
-        return json(read_stdin());
-    }
-    catch (e) {
-        return null;
-    }
-}
-
 function proxy_response_is_retryable_error() {
     let response = read_stdin();
     return index(response, "<html") == 0 || index(response, "403 Forbidden") >= 0;
-}
-
-function read_json_file(path) {
-    let data = fs.readfile(path);
-    if (data == null)
-        return null;
-
-    try {
-        return json(data);
-    }
-    catch (e) {
-        return null;
-    }
-}
-
-function write_json_file(path, value) {
-    return fs.writefile(path, sprintf("%J", value) + "\n");
 }
 
 function parse_json_object(value) {

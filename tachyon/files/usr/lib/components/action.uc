@@ -4,6 +4,7 @@ let fs = require("fs");
 let helpers = require("core.helpers");
 let constants = require("core.constants");
 let uci_core = require("core.uci");
+let common = require("core.common");
 
 const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
 const BIN_PATH = getenv("TACHYON_BIN") || constants.TACHYON_BIN || "/usr/bin/tachyon";
@@ -21,14 +22,21 @@ const TMP_STALE_TTL_MINUTES = getenv("UPDATES_TMP_STALE_TTL_MINUTES") || "30";
 const TMP_FILE_STALE_TTL_MINUTES = getenv("UPDATES_TMP_FILE_STALE_TTL_MINUTES") || "10";
 const SB_MANAGED_SERVICE_MARKER = getenv("SB_MANAGED_SERVICE_MARKER") || constants.SB_MANAGED_SERVICE_MARKER || "Tachyon managed sing-box service for binary variants";
 
+let as_string = common.as_string;
+let shell_quote = common.shell_quote;
+let command_from_args = common.command_from_args;
+let command_status = common.command_status;
+let command_success = common.command_success;
+let command_success_from_args = common.command_success_from_args;
+let command_output = common.command_output;
+let command_output_from_args = common.command_output_from_args;
+let write_json = common.write_json;
+let write_file = common.write_file;
+
 let tmp_dir = "";
 let lock_held = false;
 let tachyon_was_running = false;
 let tachyon_stopped_for_sing_box_change = false;
-
-function as_string(value) {
-    return value == null ? "" : "" + value;
-}
 
 function str_startswith(value, prefix) {
     value = as_string(value);
@@ -38,52 +46,11 @@ function str_startswith(value, prefix) {
     return length(value) >= length(prefix) && substr(value, 0, length(prefix)) == prefix;
 }
 
-function shell_quote(value) {
-    return "'" + replace(as_string(value), /'/g, "'\\''") + "'";
-}
-
-function command_from_args(args) {
-    let parts = [];
-    for (let arg in args)
-        push(parts, shell_quote(arg));
-    return join(" ", parts);
-}
-
 function command_env(assignments) {
     let parts = [];
     for (let name, value in assignments)
         push(parts, name + "=" + shell_quote(value));
     return join(" ", parts);
-}
-
-function command_status(command) {
-    let status = int(system(command));
-    if (status == -1)
-        return 255;
-    let signal = status & 127;
-    if (signal != 0)
-        return 128 + signal;
-    return (status >> 8) & 255;
-}
-
-function command_success(command) {
-    return command_status("(" + command + ") >/dev/null 2>&1") == 0;
-}
-
-function command_success_from_args(args) {
-    return command_success(command_from_args(args));
-}
-
-function command_output(command) {
-    let pipe = fs.popen(command, "r");
-    if (!pipe)
-        return "";
-
-    let data = pipe.read("all");
-    let status = pipe.close();
-    if (status != 0 || data == null)
-        return "";
-    return as_string(data);
 }
 
 // Like command_output but keeps stdout regardless of the exit status. popen()'s
@@ -99,20 +66,8 @@ function command_output_lenient(command) {
     return data != null ? as_string(data) : "";
 }
 
-function command_output_from_args(args) {
-    return command_output(command_from_args(args));
-}
-
 function command_exists(name) {
     return command_success_from_args([ "command", "-v", name ]);
-}
-
-function write_json(value) {
-    print(sprintf("%J", value), "\n");
-}
-
-function write_file(path, value) {
-    return fs.writefile(as_string(path), as_string(value)) != null;
 }
 
 function read_file(path) {

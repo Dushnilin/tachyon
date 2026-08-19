@@ -6,26 +6,18 @@
 // the Telegram backup, so snapshot archives can be restored there too.
 
 let fs = require("fs");
+let common = require("core.common");
 
-function as_string(value) {
-    return value == null ? "" : "" + value;
-}
+let as_string = common.as_string;
 
 function env(name, fallback) {
     let value = getenv(name);
     return value == null ? as_string(fallback) : as_string(value);
 }
 
-function shell_quote(value) {
-    return "'" + replace(as_string(value), /'/g, "'\\''") + "'";
-}
+let shell_quote = common.shell_quote;
 
-function command_from_args(args) {
-    let parts = [];
-    for (let arg in args)
-        push(parts, shell_quote(arg));
-    return join(" ", parts);
-}
+let command_from_args = common.command_from_args;
 
 function normalize_status(status) {
     status = int(status);
@@ -37,28 +29,15 @@ function normalize_status(status) {
     return (status >> 8) & 255;
 }
 
-function command_status(command) {
-    return normalize_status(system(command + " >/dev/null 2>&1"));
-}
+let command_status = common.command_status;
 
 function command_success_from_args(args) {
     return command_status(command_from_args(args)) == 0;
 }
 
-function command_output(command) {
-    let pipe = fs.popen(command, "r");
-    if (!pipe)
-        return "";
-    let data = pipe.read("all");
-    let status = pipe.close();
-    if (status != 0 || data == null)
-        return "";
-    return as_string(data);
-}
+let command_output = common.command_output;
 
-function command_output_from_args(args) {
-    return command_output(command_from_args(args));
-}
+let command_output_from_args = common.command_output_from_args;
 
 function log_message(message) {
     system(command_from_args([ "logger", "-t", CONFIG_NAME, "[info] " + message ]) + " >/dev/null 2>&1");

@@ -14,13 +14,19 @@ let core_ip = require("core.ip");
 let rule_config = require("config.rule");
 let connections = require("config.connections");
 
+let common = require("core.common");
+let as_string = common.as_string;
+let shell_quote = common.shell_quote;
+let command_from_args = common.command_from_args;
+let command_output = common.command_output;
+let command_output_from_args = common.command_output_from_args;
+let read_json_file = common.read_json_file;
+let bool_value = common.bool_value;
+let bool_flag = bool_value;
+
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
 const DEFAULT_LATENCY_TEST_URL = "https://www.gstatic.com/generate_204";
 const TAILSCALE_FWMARK_MASK = 0x00ff0000;
-
-function as_string(value) {
-    return value == null ? "" : "" + value;
-}
 
 function read_stdin() {
     let input = fs.open("/dev/stdin", "r");
@@ -33,19 +39,6 @@ function read_stdin() {
 
 function read_stdin_json() {
     let data = read_stdin();
-    try {
-        return json(data);
-    }
-    catch (e) {
-        return null;
-    }
-}
-
-function read_json_file(path) {
-    let data = fs.readfile(as_string(path));
-    if (data == null)
-        return null;
-
     try {
         return json(data);
     }
@@ -151,42 +144,12 @@ function file_nonempty(path) {
     return helpers.file_is_usable(path, 0);
 }
 
-function shell_quote(value) {
-    return "'" + replace(as_string(value), /'/g, "'\\''") + "'";
-}
-
-function command_from_args(args) {
-    let parts = [];
-
-    for (let arg in args)
-        push(parts, shell_quote(arg));
-
-    return join(" ", parts);
-}
-
 function run_args(args) {
     return system(command_from_args(args)) == 0;
 }
 
 function command_success_from_args(args) {
     return system(command_from_args(args) + " >/dev/null 2>&1") == 0;
-}
-
-function command_output(command) {
-    let pipe = fs.popen(command, "r");
-    if (!pipe)
-        return "";
-
-    let data = pipe.read("all");
-    let status = pipe.close();
-    if (status != 0 || data == null)
-        return "";
-
-    return as_string(data);
-}
-
-function command_output_from_args(args) {
-    return command_output(command_from_args(args));
 }
 
 function command_exists(name) {
@@ -406,11 +369,6 @@ function valid_outbound() {
 function valid_inbound() {
     let value = read_stdin_json();
     return type(value) == "object" && type(value.type) == "string";
-}
-
-function bool_flag(value) {
-    value = as_string(value);
-    return value == "1" || value == "true";
 }
 
 function outbound_detour_source_action(action) {

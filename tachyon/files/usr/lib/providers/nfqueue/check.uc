@@ -2,14 +2,9 @@
 
 let fs = require("fs");
 
-function as_string(value) {
-    return value == null ? "" : "" + value;
-}
-
-function read_stdin() {
-    let data = fs.readfile("/dev/stdin");
-    return data == null ? "" : data;
-}
+let common = require("core.common");
+let as_string = common.as_string;
+let read_stdin = common.read_stdin;
 
 function strip_trailing_cr(line) {
     line = as_string(line);

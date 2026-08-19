@@ -34,28 +34,11 @@ const TOTAL_TIMEOUT = 15;
 const SLOW_THRESHOLD_MS = 5000;
 const JOB_MAX_AGE = 1800;
 
-function as_string(value) {
-    return value == null ? "" : "" + value;
-}
-
-function object_or_empty(value) {
-    return type(value) == "object" ? value : {};
-}
-
-function array_or_empty(value) {
-    return type(value) == "array" ? value : [];
-}
-
-function shell_quote(value) {
-    return "'" + replace(as_string(value), /'/g, "'\\''") + "'";
-}
-
-function command_from_args(args) {
-    let parts = [];
-    for (let arg in args)
-        push(parts, shell_quote(arg));
-    return join(" ", parts);
-}
+let as_string = common.as_string;
+let object_or_empty = common.object_or_empty;
+let array_or_empty = common.array_or_empty;
+let shell_quote = common.shell_quote;
+let command_from_args = common.command_from_args;
 
 function normalize_status(status) {
     status = int(status);

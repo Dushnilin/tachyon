@@ -1,8 +1,7 @@
 #!/usr/bin/env ucode
 
-function as_string(value) {
-    return value == null ? "" : "" + value;
-}
+let common = require("core.common");
+let as_string = common.as_string;
 
 function decimal_text(value, strict) {
     value = as_string(value);
