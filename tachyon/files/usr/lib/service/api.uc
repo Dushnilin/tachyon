@@ -277,8 +277,7 @@ function manage_domain_list_by_section(sec_name, domain, do_delete) {
     let option_path = CONFIG_NAME + "." + sec_name + ".domain";
 
     if (do_delete) {
-        let deleted = uci_core.del_list(option_path, domain);
-        if (deleted) {
+        if (uci_core.del_list(option_path, domain)) {
             uci_core.commit(CONFIG_NAME);
             common.command_status("/usr/bin/tachyon reload");
             return { success: true, message: "Запись <code>" + domain + "</code> удалена." };
@@ -300,8 +299,7 @@ function manage_domain_list_by_section(sec_name, domain, do_delete) {
             return { success: false, error: "Запись <code>" + domain + "</code> уже есть в секции." };
         }
 
-        let added = uci_core.add_list(option_path, domain);
-        if (added) {
+        if (uci_core.add_list(option_path, domain)) {
             uci_core.commit(CONFIG_NAME);
             common.command_status("/usr/bin/tachyon reload");
             return { success: true, message: "Запись <code>" + domain + "</code> добавлена." };

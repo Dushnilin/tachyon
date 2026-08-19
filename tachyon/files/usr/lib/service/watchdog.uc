@@ -538,8 +538,7 @@ let ai_incidents_count = 0;
 let last_ai_incident = null;
 
 function ai_export_status() {
-    let is_healthy = last_ai_incident == null || (time() - last_ai_incident.timestamp >= 300);
-    if (is_healthy) controller.note_healthy();
+    if (last_ai_incident == null || (time() - last_ai_incident.timestamp >= 300)) controller.note_healthy();
     // Streaks live in the controller state (probe counters). They are the
     // evidence AI Doctor reads to see instability that a point-in-time check
     // cannot: without them the status file always reported zero failures.

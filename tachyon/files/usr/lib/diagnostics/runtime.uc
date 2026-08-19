@@ -2502,8 +2502,7 @@ function run_doctor_checks() {
         doc_check("✅", "DNS bootstrap (" + display_bootstrap + ")", "reachable", "");
     } else {
         issues++;
-        let ping_ok = (command_status("ping -c 1 -W 2 1.1.1.1 >/dev/null 2>&1") == 0);
-        if (ping_ok) {
+        if (command_status("ping -c 1 -W 2 1.1.1.1 >/dev/null 2>&1") == 0) {
             fs.unlink("/etc/resolv.conf");
             // If the symlink cannot be created the writefile below still lands on
             // /tmp/resolv.conf and the dnsmasq restart still picks it up; the
@@ -2676,8 +2675,7 @@ function run_doctor_checks() {
     if (watchdog_running) {
         doc_check("✅", "Watchdog", "running", "");
     } else {
-        let enable_watchdog = cfg.enable_watchdog != "0";
-        if (enable_watchdog) {
+        if (cfg.enable_watchdog != "0") {
             issues++;
             let restart_status = command_status("/etc/init.d/tachyon restart >/dev/null 2>&1");
             if (restart_status == 0) {

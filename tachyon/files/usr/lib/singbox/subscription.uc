@@ -161,8 +161,7 @@ function read_section_metadata(section_name, source_section, source_index) {
         metadata = metadata_items_from_value(read_json_file(legacy_metadata_path(source_section)));
 
     let selected = [];
-    let has_source_markers = metadata_items_have_source_markers(metadata);
-    if (has_source_markers) {
+    if (metadata_items_have_source_markers(metadata)) {
         for (let item in metadata) {
             if (metadata_matches_source(item, source_index, source_section, true))
                 push(selected, item);

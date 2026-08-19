@@ -625,7 +625,7 @@ function itemSettingBoolean(
   fallback: boolean,
 ) {
   const value = settings?.[key];
-  if (value === undefined || value === null || value === '') {
+  if (value == null || value === '') {
     return fallback;
   }
 

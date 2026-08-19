@@ -1073,8 +1073,7 @@ function nft_create_runtime_base(table, localv4_set, common_set, port_set, ip_po
         !nft_add_rule(table, "mangle_forward", [ "jump", "parental_forward" ]))
         return false;
 
-    let rtmtu_ok = nft_add_rule(table, "mangle_forward", [ "tcp", "flags", "syn", "tcp", "option", "maxseg", "size", "set", "rt", "mtu" ]);
-    if (rtmtu_ok) {
+    if (nft_add_rule(table, "mangle_forward", [ "tcp", "flags", "syn", "tcp", "option", "maxseg", "size", "set", "rt", "mtu" ])) {
         if (!nft_add_rule(table, "mangle_output", [ "tcp", "flags", "syn", "tcp", "option", "maxseg", "size", "set", "rt", "mtu" ]))
             return false;
     } else {
@@ -1087,8 +1086,7 @@ function nft_create_runtime_base(table, localv4_set, common_set, port_set, ip_po
         return false;
 
     // QoS Low-Latency Gaming & Voice Acceleration Engine
-    let qos_enabled = uci_settings().qos_priority_engine != "0";
-    if (qos_enabled) {
+    if (uci_settings().qos_priority_engine != "0") {
         // Voice & Discord RTC (DSCP EF 0x2e)
         nft_add_rule(table, "mangle_forward", [ "udp", "dport", "{ 5000-5020, 3478, 19302, 50000-65535 }", "ip", "dscp", "set", "0x2e" ]);
         nft_add_rule(table, "mangle_output", [ "udp", "dport", "{ 5000-5020, 3478, 19302, 50000-65535 }", "ip", "dscp", "set", "0x2e" ]);

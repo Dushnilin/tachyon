@@ -131,8 +131,7 @@ function valid_ipv4_octet(value) {
 function valid_ipv4(value) {
     value = as_string(value);
 
-    let trailing_dot = length(value) > 0 && substr(value, length(value) - 1) == ".";
-    if (trailing_dot)
+    if (length(value) > 0 && substr(value, length(value) - 1) == ".")
         value = substr(value, 0, length(value) - 1);
 
     let parts = split(value, ".");

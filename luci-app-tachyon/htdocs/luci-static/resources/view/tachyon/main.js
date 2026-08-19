@@ -4225,7 +4225,7 @@ function itemSettingString(settings, key, fallback = "") {
 }
 function itemSettingBoolean(settings, key, fallback) {
   const value = settings?.[key];
-  if (value === void 0 || value === null || value === "") {
+  if (value == null || value === "") {
     return fallback;
   }
   return value === "1" || value === "true";

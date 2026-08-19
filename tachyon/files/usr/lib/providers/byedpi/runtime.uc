@@ -110,8 +110,7 @@ function package_installed() {
         return false;
 
     for (let line in split(command_output_from_args([ "opkg", "list-installed" ]), "\n")) {
-        let matched = match(trim(as_string(line)), /^byedpi[ \t]+-/);
-        if (matched)
+        if (match(trim(as_string(line)), /^byedpi[ \t]+-/))
             return true;
     }
     return false;

@@ -128,7 +128,7 @@ export async function loadAdvancedSettingsState() {
 
   const wdRes = await TachyonShellMethods.getWatchdogStatus();
   const watchdogRunning: boolean = wdRes.success
-    ? Boolean((wdRes as { data: { running: boolean } }).data.running)
+    ? (wdRes as { data: { running: boolean } }).data.running
     : false;
 
   _state = {
