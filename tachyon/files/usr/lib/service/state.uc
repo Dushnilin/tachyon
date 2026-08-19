@@ -588,7 +588,6 @@ function reload_sing_box_runtime(previous_pid, config_hash_before, config_hash_a
     command_success_from_args([ "logger", "-t", "tachyon", "[info] Hot-reloading sing-box runtime (SIGHUP) PID: " + active_pid ]);
     if (active_pid > 0 && pid_is_sing_box(active_pid)) {
         if (command_success_from_args([ "kill", "-HUP", as_string(active_pid) ])) {
-            // Verify process survived SIGHUP reload
             command_success_from_args([ "sleep", "1" ]);
             let check_pid = sing_box_service_pid_runtime();
             if (check_pid > 0 && pid_is_sing_box(check_pid)) {

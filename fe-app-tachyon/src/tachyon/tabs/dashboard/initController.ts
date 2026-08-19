@@ -303,7 +303,7 @@ async function completeSubscriptionUpdateJob(
   const shouldNotify = jobId
     ? shouldNotifyOwnedUiAction('subscription', jobId)
     : false;
-  const failed = !response.success || response.data.success === false;
+  const failed = !response.success || !response.data.success;
   const message = response.success
     ? response.data.message || _('Failed to update subscriptions')
     : response.error || _('Failed to update subscriptions');
@@ -751,7 +751,6 @@ async function handleTestLatency(
 
   try {
     if (latencyType === 'proxy') {
-      // Test proxy latency immediately
       const parsedTag = tag.startsWith('[') ? JSON.parse(tag)[0] : tag;
       const response = await TachyonShellMethods.getClashApiProxyLatency(
         parsedTag,
@@ -1936,7 +1935,6 @@ async function onStoreUpdate(
 }
 
 async function onPageMount() {
-  // Cleanup before mount
   onPageUnmount();
 
   dashboardMounted = true;
@@ -1956,7 +1954,6 @@ async function onPageMount() {
     }
   }
 
-  // Add new listener
   store.subscribe(onStoreUpdate);
   startActionStateWatcher();
   void renderSectionsWidget();
@@ -1980,9 +1977,7 @@ function onPageUnmount() {
   stopActionStateWatcher();
   sectionsRefreshQueued = false;
   sectionsRefreshPromise = null;
-  // Remove old listener
   store.unsubscribe(onStoreUpdate);
-  // Clear store
   store.reset(['bandwidthWidget', 'trafficTotalWidget', 'systemInfoWidget']);
 }
 

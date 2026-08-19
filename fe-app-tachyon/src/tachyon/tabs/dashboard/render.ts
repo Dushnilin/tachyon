@@ -19,7 +19,6 @@ export function render() {
         ),
       ),
       E('div', { class: 'tachyon_dashboard-page__content' }, [
-        // Widgets section
         E('div', { class: 'tachyon_dashboard-page__widgets-section' }, [
           E(
             'div',
@@ -62,9 +61,7 @@ export function render() {
             }),
           ),
         ]),
-        // Clients section
         E('div', { id: 'dashboard-connections-grid' }, []),
-        // All outbounds
         E(
           'div',
           { id: 'dashboard-sections-grid' },

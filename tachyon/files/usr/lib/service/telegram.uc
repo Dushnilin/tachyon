@@ -1952,7 +1952,7 @@ function view_devices(token, chat_id, msg_id) {
             let ip = fields[2];
             let hostname = fields[3] == "*" ? "Неизвестно" : fields[3];
             
-            let is_blocked = blocked_macs[mac] ? true : false;
+            let is_blocked = blocked_macs[mac];
             let status_icon = is_blocked ? "🚫" : "🟢";
             
             text += status_icon + " <b>" + escape_html(hostname) + "</b>\n";
@@ -2069,7 +2069,7 @@ function valid_updatable_component(name) {
         zapret2: 1,
         byedpi: 1
     };
-    return allowed[name] ? true : false;
+    return allowed[name];
 }
 
 // ─── Dispatcher ──────────────────────────────────────────────────────────────
@@ -2893,7 +2893,6 @@ function send_api(message) {
     let cfg = settings();
     if (cfg.enabled != "1" || !cfg.bot_token || !cfg.admin_ids) return 1;
     
-    // Check if this is a non-critical watchdog message and we are in quiet hours
     let is_critical = (index(message, "Упал") >= 0 || index(message, "Ошибка") >= 0);
     if (!is_critical && in_quiet_hours(cfg)) return 0;
     

@@ -241,7 +241,6 @@ export function renderServiceCheckModal() {
           return;
         }
 
-        // Mode Switcher Toolbar
         const activeSectionsBtn = renderButton({
           text: 'Активные маршруты',
           classNames: [
@@ -281,12 +280,10 @@ export function renderServiceCheckModal() {
           ],
         );
 
-        // Extract unique sections for filter dropdown
         const sectionNames = Array.from(new Set(targets.map((t) => t.section)));
         let activeFilter = 'ALL';
         let searchQuery = '';
 
-        // Summary Stats Elements
         const totalStatEl = E(
           'b',
           {
@@ -352,7 +349,6 @@ export function renderServiceCheckModal() {
           ],
         );
 
-        // Progress Bar Container
         const progressBarInner = E('div', {
           style:
             'width: 0%; height: 100%; background: var(--color-success, #28a745); transition: width 0.2s ease;',
@@ -366,7 +362,6 @@ export function renderServiceCheckModal() {
           [progressBarInner],
         );
 
-        // Section Filter Dropdown (compact select replacing noisy button grid)
         const sectionSelect = E(
           'select',
           {

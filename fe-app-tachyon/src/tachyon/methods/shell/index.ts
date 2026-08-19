@@ -158,7 +158,7 @@ async function isComponentActionStillRunning(
         state.job_id === jobId &&
         state.component === component &&
         state.action === action &&
-        state.running === true,
+        state.running,
     )
   );
 }

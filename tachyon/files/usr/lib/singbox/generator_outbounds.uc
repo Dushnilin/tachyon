@@ -977,7 +977,7 @@ function add_subscription_source_with_state(config, section, source_index, sourc
     let added = 0;
     for (let i = 0; i < length(prepared); i++) {
         let outbound = prepared[i];
-        let is_group = group_flags[i] === true;
+        let is_group = group_flags[i];
         if (is_group && length(array_or_empty(outbound.outbounds)) == 0) {
             warn("skipped empty subscription group for rule '", section_name, "': ", as_string(display_names[i] || outbound.tag || "unknown"), "\n");
             continue;

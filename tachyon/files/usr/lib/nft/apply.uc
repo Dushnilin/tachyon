@@ -665,17 +665,15 @@ function nft_source_match_args(section, family, sets) {
         : [ "ip", "saddr", "@" + as_string(sets.sources) ];
 }
 
-// Build a negative nftables source-IP match for excluded_ips.
 // nft accepts: ip saddr != { addr1, addr2, ... }  as a single argument.
 function nft_excluded_source_match_args(section, family) {
     let excluded = list_option(section, "excluded_ips");
     if (length(excluded) == 0)
         return [];
     let ip_key = family == 6 ? "ip6" : "ip";
-    let want_family = family;
     let addrs = [];
     for (let ip in excluded)
-        if (core_ip.ip_family(as_string(ip)) == want_family)
+        if (core_ip.ip_family(as_string(ip)) == family)
             push(addrs, as_string(ip));
     if (length(addrs) == 0)
         return [];

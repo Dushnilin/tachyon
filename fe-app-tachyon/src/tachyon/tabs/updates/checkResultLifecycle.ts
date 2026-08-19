@@ -30,7 +30,7 @@ export function shouldRefreshComponentStateBeforeRender(
   uiState?: Pick<Tachyon.UiState, 'actions'>,
 ) {
   return Boolean(
-    uiState?.actions.component.some((state) => state.running === true),
+    uiState?.actions.component.some((state) => state.running),
   );
 }
 

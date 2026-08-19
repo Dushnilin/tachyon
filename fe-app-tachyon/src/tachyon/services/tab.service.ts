@@ -32,7 +32,6 @@ class TabService {
       attributeFilter: ['class'],
     });
 
-    // initial check
     this.notify();
   }
 

@@ -23,8 +23,6 @@ function now_ms() {
 let common = require("core.common");
 let as_string = common.as_string;
 
-// Creates an isolated bus. Each instance owns its subscriber table, dedup
-// state and counters, so tests can build a fresh bus per assertion.
 function bus() {
     let handlers = {};        // type -> array of subscriber records
     let last_emit = {};       // dedup key -> monotonic ms of last accepted emit

@@ -3083,7 +3083,6 @@ function diagnose_json() {
     let res = run_doctor_checks();
     let problems = [];
 
-    // Parse the text report lines into structured objects
     for (let line in split(res.report, "\n")) {
         line = trim(as_string(line));
         if (line == "") continue;
@@ -3110,7 +3109,6 @@ function diagnose_json() {
         // "→" is U+2192, encoded as 3 UTF-8 bytes (E2 86 92); skip all 3
         let suggested_fix = arrow_idx >= 0 ? trim(substr(clean, arrow_idx + 3)) : "";
 
-        // Detect if already fixed inline (FIXED: prefix in suggested_fix)
         if (index(suggested_fix, "FIXED:") >= 0) {
             fixed_inline = true;
             severity = "info"; // was critical but already fixed

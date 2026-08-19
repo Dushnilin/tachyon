@@ -790,7 +790,6 @@ function start_main() {
 }
 
 function start_impl() {
-    // Clean up orphaned /tmp/tachyon-* temp files from processes killed mid-operation
     // (e.g. config generator killed during restart). 30-min threshold is safe since
     // all tachyon temp files are created and deleted within seconds under normal operation.
     command_status("find /tmp -maxdepth 1 -name 'tachyon-*' -mmin +30 -delete 2>/dev/null; true");

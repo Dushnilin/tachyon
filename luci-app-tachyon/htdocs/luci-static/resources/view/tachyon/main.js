@@ -2832,7 +2832,6 @@ function render() {
         )
       ),
       E("div", { class: "tachyon_dashboard-page__content" }, [
-        // Widgets section
         E("div", { class: "tachyon_dashboard-page__widgets-section" }, [
           E(
             "div",
@@ -2875,9 +2874,7 @@ function render() {
             })
           )
         ]),
-        // Clients section
         E("div", { id: "dashboard-connections-grid" }, []),
-        // All outbounds
         E(
           "div",
           { id: "dashboard-sections-grid" },
@@ -3221,7 +3218,7 @@ async function isComponentActionStillRunning(jobId, component, action) {
     { timeout: GET_UI_STATE_RPC_TIMEOUT_MS }
   );
   return response.success && response.data.actions.component.some(
-    (state) => state.job_id === jobId && state.component === component && state.action === action && state.running === true
+    (state) => state.job_id === jobId && state.component === component && state.action === action && state.running
   );
 }
 function componentActionFailure(response, parsedResponse) {
@@ -6691,7 +6688,7 @@ async function completeSubscriptionUpdateJob(jobId, sectionName, response) {
     return;
   }
   const shouldNotify = jobId ? shouldNotifyOwnedUiAction("subscription", jobId) : false;
-  const failed2 = !response.success || response.data.success === false;
+  const failed2 = !response.success || !response.data.success;
   const message = response.success ? response.data.message || _("Failed to update subscriptions") : response.error || _("Failed to update subscriptions");
   if (failed2 && isTransientRpcError(message)) {
     void refreshRuntimeUiState({ force: true });
@@ -12331,7 +12328,7 @@ async function handleServiceRuntimeAction({
     if (!result.success) {
       throw new Error(result.error);
     }
-    if (result.data.success === false) {
+    if (!result.data.success) {
       throw new Error(result.data.message || _("Service action failed"));
     }
     await waitForTachyonRunningState(expectedRunning);
@@ -15916,7 +15913,7 @@ function shouldResetCheckResultsOnMount({
 }
 function shouldRefreshComponentStateBeforeRender(uiState) {
   return Boolean(
-    uiState?.actions.component.some((state) => state.running === true)
+    uiState?.actions.component.some((state) => state.running)
   );
 }
 function shouldExposeCheckResults({
@@ -16718,7 +16715,7 @@ async function completeComponentActionJob(key, jobId, response) {
   }
   const shouldNotify = shouldNotifyOwnedUiAction("component", jobId);
   const modalController = getActiveProgressModalController();
-  if (!response.success || response.data.success === false) {
+  if (!response.success || !response.data.success) {
     const message = response.success ? response.data.message || _("Failed to execute") : response.error || _("Failed to execute");
     if (isTransientRpcError(message)) {
       setActionLoading(key, false);

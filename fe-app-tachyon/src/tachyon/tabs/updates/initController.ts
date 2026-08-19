@@ -617,7 +617,7 @@ async function completeComponentActionJob(
   const shouldNotify = shouldNotifyOwnedUiAction('component', jobId);
   const modalController = getActiveProgressModalController();
 
-  if (!response.success || response.data.success === false) {
+  if (!response.success || !response.data.success) {
     const message = response.success
       ? response.data.message || _('Failed to execute')
       : response.error || _('Failed to execute');
@@ -1071,7 +1071,6 @@ function getComponentCards(): ComponentCard[] {
     singBoxInstalled,
   );
 
-  // Add Sing-box variant actions (only show names, no 'Install' prefix)
   if (!singBoxStable) {
     singBoxActions.push({
       key: 'singBoxInstallStable',
@@ -1226,7 +1225,6 @@ function renderComponentCard(card: ComponentCard) {
 
   const checkResult = getVisibleCheckResult(card.component);
 
-  // 1. Header (displays Title, Current Version, no badges)
   const headerChildren: Node[] = [
     E('b', { class: 'tachyon_updates-page__component__title' }, card.title),
     E(
@@ -1256,7 +1254,6 @@ function renderComponentCard(card: ComponentCard) {
     headerChildren,
   );
 
-  // 2. Details (renders status messages for check results)
   const detailsChildren: Node[] = [];
 
   if (checkResult && checkResult.status) {
@@ -1365,7 +1362,6 @@ function renderComponentCard(card: ComponentCard) {
         )
       : null;
 
-  // 3. Actions classification
   const primaryActions: ComponentActionButton[] = [];
   const dangerActions: ComponentActionButton[] = [];
   const variantActions: ComponentActionButton[] = [];
@@ -1382,7 +1378,6 @@ function renderComponentCard(card: ComponentCard) {
 
   const actionElements: Node[] = [];
 
-  // Render primary and danger buttons in a main row
   const primaryButtons = primaryActions.map((action) => {
     const loading = updatesActions[action.key].loading;
     const isUpdateOrInstall =
@@ -1420,7 +1415,6 @@ function renderComponentCard(card: ComponentCard) {
     );
   }
 
-  // Render variant buttons if any
   if (variantActions.length > 0) {
     const variantButtons = variantActions.map((action) => {
       const loading = updatesActions[action.key].loading;

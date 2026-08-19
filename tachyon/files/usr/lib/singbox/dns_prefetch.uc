@@ -126,7 +126,6 @@ function parse_text_domains(text) {
         // Strip inline comments
         line = replace(line, /[ \t]+\/\/.*$/, "");
         line = replace(line, /[ \t]+#.*$/, "");
-        // Split by comma or whitespace for multi-domain lines
         for (let token in split(line, /[,\s]+/)) {
             token = trim(token);
             // Strip leading dots (domain_suffix style) and wildcards

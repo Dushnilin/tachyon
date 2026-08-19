@@ -821,7 +821,6 @@ function ai_heal_subnet_cache() {
         // /tmp file missing or empty, restore from persistent storage
         let content = fs.readfile(etc_path);
         if (content == null || content == "") continue;
-        // Ensure /tmp dir exists
         command_success_from_args(["mkdir", "-p", tmp_dir]);
         if (fs.writefile(tmp_path, content) != null) {
             push(restored, entry);
@@ -1072,15 +1071,13 @@ function ai_heal_dns_loop() {
     let detour_section = common.option(cfg, "dns_detour_section", "");
     if (detour_section == "") return;
 
-    // Check if DNS is working
     if (controller.is_dns_working()) {
         // DNS works — if we were in recovery, try to restore
         let recovery = read_dns_recovery_state();
         if (recovery.phase == "detour_disabled") {
             let reenable_cooldown = recovery.ts ? (now - int(recovery.ts)) : 0;
             if (reenable_cooldown < 300) return;
-            let test_dns = controller.is_dns_working();
-            if (test_dns) {
+            if (controller.is_dns_working()) {
                 log_message("DNS loop recovery: DNS works, re-enabling DNS detour section", "info");
                 system("/sbin/uci set tachyon.settings.dns_detour_enabled='1' >/dev/null 2>&1");
                 system("/sbin/uci commit tachyon >/dev/null 2>&1");
@@ -1108,7 +1105,6 @@ function ai_heal_dns_loop() {
         return;
     }
 
-    // Check if detour section is empty
     let cache_path = "/var/run/tachyon/section-cache/" + detour_section + ".json";
     let cache = common.object_or_empty(common.read_json_file(cache_path));
     let servers = common.array_or_empty(cache.servers);
@@ -1683,7 +1679,6 @@ function worker() {
     ai_heal_subnet_cache();
     run_zero_rtt_prefetching();
 
-    // Ensure /etc/tachyon exists for persistent smart detect
     // Throws when it already exists, which is the expected case on every boot
     // after the first.
     try { fs.mkdir("/etc/tachyon"); } catch(e) {}

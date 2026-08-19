@@ -85,7 +85,6 @@ export function renderAiChatModal() {
     chatInput.value = '';
     renderMessages();
 
-    // Typing indicator
     const typingMsg: ChatMessage = {
       sender: 'assistant',
       text: '🤖 ' + _('Thinking...'),
@@ -104,7 +103,7 @@ export function renderAiChatModal() {
         '/usr/bin/tachyon',
         { timeout: 120000 },
       )) as { success?: boolean; data?: unknown };
-      chatHistory.pop(); // Remove typing indicator
+      chatHistory.pop();
 
       let answerText = _('Failed to receive response from AI service.');
       if (res && res.success) {
@@ -153,7 +152,6 @@ export function renderAiChatModal() {
     if (e.key === 'Enter') handleSend();
   };
 
-  // Quick prompt buttons
   const quickPrompts = [
     { label: '🩺 ' + _('Check YouTube'), query: 'Check YouTube availability' },
     { label: '🔍 ' + _('Why Discord fails?'), query: 'Why Discord fails?' },

@@ -600,7 +600,7 @@ async function handleServiceRuntimeAction({
       throw new Error(result.error);
     }
 
-    if (result.data.success === false) {
+    if (!result.data.success) {
       throw new Error(result.data.message || _('Service action failed'));
     }
 
@@ -867,7 +867,6 @@ async function handleRunAiDoctor() {
             .map((s) => s.trim())
             .filter(Boolean);
 
-      // Save to History
       const nowStr = new Date().toLocaleTimeString();
       saveAiDoctorHistory({ timestamp: nowStr, report, quickFixes });
       let historyEntries = getAiDoctorHistory();
@@ -2151,7 +2150,6 @@ function restorePersistedDiagnosticRun() {
 async function onPageMount() {
   const preserveHiddenResult = diagnosticCompletedWhileHidden;
 
-  // Cleanup before mount
   onPageUnmount({
     preserveCompletedResult: preserveHiddenResult,
     preservePersistedRun: true,
@@ -2187,23 +2185,13 @@ async function onPageMount() {
     resetDiagnosticsChecks();
   }
 
-  // Add new listener
   store.subscribe(onStoreUpdate);
   startServiceActionStateWatcher();
 
-  // Initial checks render
   renderDiagnosticsChecks();
-
-  // Initial run checks action render
   renderDiagnosticRunActionWidget();
-
-  // Initial available actions render
   renderDiagnosticAvailableActionsWidget();
-
-  // Initial system info render
   renderDiagnosticSystemInfoWidget();
-
-  // Initial Wiki disclaimer render
   renderWikiDisclaimerWidget();
 
   if (hasRuntimeSnapshot) {
@@ -2226,7 +2214,6 @@ function onPageUnmount({
   stopServiceActionStateWatcher();
   servicesInfoRefreshPromise = null;
 
-  // Remove old listener
   store.unsubscribe(onStoreUpdate);
 
   if (!preserveCompletedResult && !store.get().diagnosticsRunAction.loading) {

@@ -577,8 +577,6 @@ function renderAiWatchdogSection(state: AdvancedSettingsState) {
       { class: 'tachyon_adv__hint' },
       _('Advanced self-healing features. Requires Watchdog to be enabled.'),
     ),
-
-    // Health Checks group
     E('div', { class: 'tachyon_adv__group' }, [
       E('h4', { class: 'tachyon_adv__group-title' }, _('Health Checks')),
       toggle('proxyHealthEnabled', 'Enable Proxy Health Monitor'),
@@ -606,8 +604,6 @@ function renderAiWatchdogSection(state: AdvancedSettingsState) {
           ])
         : E('span', {}),
     ]),
-
-    // Protection group
     E('div', { class: 'tachyon_adv__group' }, [
       E('h4', { class: 'tachyon_adv__group-title' }, _('Protection')),
       toggle(
@@ -623,8 +619,6 @@ function renderAiWatchdogSection(state: AdvancedSettingsState) {
         'Graceful Degradation (skip failed checks, continue)',
       ),
     ]),
-
-    // Monitoring group
     E('div', { class: 'tachyon_adv__group' }, [
       E(
         'h4',
@@ -657,8 +651,6 @@ function renderAiWatchdogSection(state: AdvancedSettingsState) {
           ])
         : E('span', {}),
     ]),
-
-    // Optimization group
     E('div', { class: 'tachyon_adv__group' }, [
       E('h4', { class: 'tachyon_adv__group-title' }, _('Optimization')),
       toggle(
@@ -674,8 +666,6 @@ function renderAiWatchdogSection(state: AdvancedSettingsState) {
         'Persistent Smart Detect (survive reboots)',
       ),
     ]),
-
-    // AI Agent API group
     E('div', { class: 'tachyon_adv__group' }, [
       E(
         'h4',
@@ -730,8 +720,6 @@ function renderAiWatchdogSection(state: AdvancedSettingsState) {
         ),
       ),
     ]),
-
-    // AI Doctor (ChatGPT / DeepSeek API) group
     E('div', { class: 'tachyon_adv__group' }, [
       E(
         'h4',

@@ -50,7 +50,6 @@ let url_query_params = runtime_url.query_params;
 
 const CONFIG_NAME = "tachyon";
 
-// Convert a UCI value that may be a binary buffer (<b 0x...>) to a plain hex string.
 // UCI stores values written as '<b 0x...>' strings as binary, which when
 // serialized back to JSON appear as '<b 0x...>' — invalid for sing-box.
 function uci_bin_to_hex(val) {
@@ -445,7 +444,6 @@ function base_config(settings, service_address, runtime_context) {
         }
     }
 
-    // Read remote hosts lists cache file
     let hosts_cache_st = fs.stat(HOSTS_CACHE_FILE);
     if (hosts_cache_st != null && int(hosts_cache_st.size) > 0) {
         let fh = null;

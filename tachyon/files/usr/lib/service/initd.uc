@@ -606,7 +606,6 @@ function stop_service(owner_pid) {
     }
 
     let status = command_status_from_args([ BIN_PATH, "stop" ]);
-    // Clean up orphaned logread -f processes left by watchdog instances.
     // These survive tachyon stop because background subprocesses (reload_firewall,
     // restart) inherit the logread pipe read-end, preventing SIGPIPE delivery.
     // Use pkill to target only logread in follow mode, not one-shot logread calls.
