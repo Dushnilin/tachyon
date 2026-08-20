@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-08-20 21:52+0300\n"
-"PO-Revision-Date: 2026-08-20 21:52+0300\n"
+"POT-Creation-Date: 2026-08-20 22:16+0300\n"
+"PO-Revision-Date: 2026-08-20 22:16+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -209,6 +209,9 @@ msgstr "Настройки AI Watchdog сохранены. Перезапуст�
 msgid "All"
 msgstr "Все"
 
+msgid "All checks passed — Telegram bot should work correctly"
+msgstr ""
+
 msgid "All devices"
 msgstr "Все устройства"
 
@@ -280,9 +283,6 @@ msgstr "Другое действие уже выполняется"
 
 msgid "API Key for OpenAI (sk-...) or DeepSeek (optional for Ollama / LM Studio)"
 msgstr "API-ключ для OpenAI (sk-...) или DeepSeek (опционально для Ollama / LM Studio)"
-
-msgid "API returned error — token may be invalid"
-msgstr ""
 
 msgid "Apply rules of this section only to selected protocols."
 msgstr "Применять правила этой секции только к выбранным протоколам."
@@ -398,12 +398,6 @@ msgstr "Bootstrap DNS-серверы"
 msgid "Bot Status"
 msgstr "Статус бота"
 
-msgid "bot_token is empty — set token first"
-msgstr ""
-
-msgid "bot_token is set"
-msgstr ""
-
 msgid "Browser FakeIP check could not be completed"
 msgstr "Не удалось выполнить проверку FakeIP в браузере"
 
@@ -475,18 +469,6 @@ msgstr "Путь к файлу кэша не может быть пустым"
 
 msgid "Cancel"
 msgstr "Отмена"
-
-msgid "Cannot check DNS"
-msgstr ""
-
-msgid "Cannot check port 4534"
-msgstr ""
-
-msgid "Cannot check sing-box status"
-msgstr ""
-
-msgid "Cannot reach Telegram API directly (IPv4 blocked by ISP?)"
-msgstr ""
 
 msgid "Cannot receive checks result"
 msgstr "Не удалось получить результаты проверки"
@@ -851,17 +833,11 @@ msgstr "Напрямую"
 msgid "Direct (Default)"
 msgstr "Прямое (по умолчанию)"
 
-msgid "Direct API connection failed"
-msgstr ""
-
 msgid "Direct Bypass"
 msgstr "Прямой WAN"
 
 msgid "Direct connection"
 msgstr "Прямое подключение"
-
-msgid "Direct IPv4 to Telegram API works"
-msgstr ""
 
 msgid "Direct WAN"
 msgstr "Прямой WAN"
@@ -886,9 +862,6 @@ msgstr "Отображаемое имя"
 
 msgid "DNS"
 msgstr "DNS"
-
-msgid "DNS cannot resolve api.telegram.org — check DNS settings"
-msgstr ""
 
 msgid "DNS Check Interval"
 msgstr "Интервал проверки DNS"
@@ -922,9 +895,6 @@ msgstr "Протокол DNS, используемый резолвером"
 
 msgid "DNS requests through section"
 msgstr "DNS-запросы через секцию"
-
-msgid "DNS resolves api.telegram.org"
-msgstr ""
 
 msgid "DNS Rewrite TTL"
 msgstr "TTL DNS-записей"
@@ -1337,6 +1307,9 @@ msgstr "Не удалось восстановить прямой интерне
 msgid "Failed to restore snapshot"
 msgstr "Не удалось восстановить снапшот"
 
+msgid "Failed to run diagnostics — is the tachyon binary installed?"
+msgstr ""
+
 msgid "Failed to save AI Watchdog settings"
 msgstr "Ошибка сохранения настроек AI Watchdog"
 
@@ -1351,12 +1324,6 @@ msgstr "Ошибка сохранения настроек Smart Detect"
 
 msgid "Failed to save snapshot"
 msgstr "Не удалось сохранить снапшот"
-
-msgid "Failed to send test message"
-msgstr ""
-
-msgid "Failed to send test message — check admin_ids and bot permissions"
-msgstr ""
 
 msgid "Failed to start bot"
 msgstr "Не удалось запустить бота"
@@ -2219,9 +2186,6 @@ msgstr "Пароль смешанного прокси"
 msgid "Mixed Proxy Port"
 msgstr "Порт смешанного прокси"
 
-msgid "Mixed proxy port 4534 is listening"
-msgstr ""
-
 msgid "Mixed Proxy Username"
 msgstr "Имя пользователя смешанного прокси"
 
@@ -2323,9 +2287,6 @@ msgstr "Активные устройства в локальной сети н�
 
 msgid "No active routing sections found."
 msgstr "Активные секции маршрутизации не найдены."
-
-msgid "No admin_ids set — cannot send test message"
-msgstr ""
 
 msgid "No closed connections"
 msgstr "Нет закрытых подключений"
@@ -2645,9 +2606,6 @@ msgstr "Интервал опроса (секунды)"
 msgid "Polling interval must be at least 1 second"
 msgstr "Интервал опроса должен быть не менее 1 секунды"
 
-msgid "Port 4534 not listening — proxy may not be available"
-msgstr ""
-
 msgid "Port cannot be empty"
 msgstr "Порт не может быть пустым"
 
@@ -2732,9 +2690,6 @@ msgstr "Протокол"
 msgid "Proxy / DPI"
 msgstr "Прокси / DPI"
 
-msgid "Proxy API connection failed"
-msgstr ""
-
 msgid "Proxy Fail Threshold"
 msgstr "Порог ошибок прокси"
 
@@ -2746,12 +2701,6 @@ msgstr "URL проверки здоровья прокси"
 
 msgid "Proxy link is unavailable"
 msgstr "Ссылка прокси недоступна"
-
-msgid "Proxy route to Telegram API failed — check proxy outbound config"
-msgstr ""
-
-msgid "Proxy route to Telegram API works"
-msgstr ""
 
 msgid "Proxy Section for Bot"
 msgstr "Секция прокси для бота"
@@ -3359,12 +3308,6 @@ msgstr "FakeIP DNS sing-box работает"
 msgid "Sing-box installed"
 msgstr "Sing-box установлен"
 
-msgid "sing-box is NOT running — bot cannot route through proxy"
-msgstr ""
-
-msgid "sing-box is running"
-msgstr ""
-
 msgid "Sing-box listening ports"
 msgstr "Sing-box слушает порты"
 
@@ -3673,9 +3616,6 @@ msgstr ""
 
 msgid "Test latency"
 msgstr "Тестирование задержки"
-
-msgid "Test message sent to chat"
-msgstr ""
 
 msgid "Test only selected servers."
 msgstr "Тестировать только выбранные серверы."
@@ -4249,6 +4189,72 @@ msgstr "sing-box outbound для Zapret2 настроен"
 
 msgid "Zapret2 sing-box outbound is not configured"
 msgstr "sing-box outbound для Zapret2 не настроен"
+
+msgid "API returned error — token may be invalid"
+msgstr ""
+
+msgid "bot_token is empty — set token first"
+msgstr ""
+
+msgid "bot_token is set"
+msgstr ""
+
+msgid "Cannot check DNS"
+msgstr ""
+
+msgid "Cannot check port 4534"
+msgstr ""
+
+msgid "Cannot check sing-box status"
+msgstr ""
+
+msgid "Cannot reach Telegram API directly (IPv4 blocked by ISP?)"
+msgstr ""
+
+msgid "Direct API connection failed"
+msgstr ""
+
+msgid "Direct IPv4 to Telegram API works"
+msgstr ""
+
+msgid "DNS cannot resolve api.telegram.org — check DNS settings"
+msgstr ""
+
+msgid "DNS resolves api.telegram.org"
+msgstr ""
+
+msgid "Failed to send test message"
+msgstr ""
+
+msgid "Failed to send test message — check admin_ids and bot permissions"
+msgstr ""
+
+msgid "Mixed proxy port 4534 is listening"
+msgstr ""
+
+msgid "No admin_ids set — cannot send test message"
+msgstr ""
+
+msgid "Port 4534 not listening — proxy may not be available"
+msgstr ""
+
+msgid "Proxy API connection failed"
+msgstr ""
+
+msgid "Proxy route to Telegram API failed — check proxy outbound config"
+msgstr ""
+
+msgid "Proxy route to Telegram API works"
+msgstr ""
+
+msgid "sing-box is NOT running — bot cannot route through proxy"
+msgstr ""
+
+msgid "sing-box is running"
+msgstr ""
+
+msgid "Test message sent to chat"
+msgstr ""
 
 msgid "Device / IP"
 msgstr "Устройство / IP"

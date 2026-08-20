@@ -2889,6 +2889,120 @@ function in_quiet_hours(cfg) {
     }
 }
 
+function diagnose() {
+    let cfg = settings();
+    let checks = [];
+    let ok = true;
+
+    // 1. bot_token
+    if (cfg.bot_token) {
+        push(checks, { name: "bot_token", ok: true, message: "bot_token is set" });
+    } else {
+        push(checks, { name: "bot_token", ok: false, message: "bot_token is empty — set token first" });
+        ok = false;
+    }
+
+    // 2. admin_ids
+    if (cfg.admin_ids && trim(cfg.admin_ids) !== "") {
+        push(checks, { name: "admin_ids", ok: true, message: "admin_ids is set: " + cfg.admin_ids });
+    } else {
+        push(checks, { name: "admin_ids", ok: false, message: "admin_ids is empty — cannot send messages" });
+        ok = false;
+    }
+
+    // 3. sing-box running
+    let sb_running = command_success_from_args(["pidof", "sing-box"]);
+    push(checks, {
+        name: "sing_box",
+        ok: sb_running,
+        message: sb_running ? "sing-box is running" : "sing-box is NOT running — bot cannot route through proxy"
+    });
+    if (!sb_running) ok = false;
+
+    // 4. Mixed proxy port 4534
+    let port_check = command_capture("netstat -tlnp 2>/dev/null | grep ':4534 '");
+    let port_ok = port_check && port_check.status === 0 && trim(port_check.output || "") !== "";
+    push(checks, {
+        name: "proxy_port",
+        ok: port_ok,
+        message: port_ok ? "Mixed proxy port 4534 is listening" : "Port 4534 not listening — proxy may not be available"
+    });
+
+    // 5. DNS resolution
+    let dns_check = command_capture("nslookup api.telegram.org 2>/dev/null");
+    let dns_out = (dns_check && dns_check.output) || "";
+    // Accept real IPs (149.154/91.108) or sing-box FakeIP range (198.18.x.x/198.19.x.x)
+    let dns_ok = dns_check && dns_check.status === 0 && index(dns_out, "Address") >= 0
+        && (index(dns_out, "149.154") >= 0 || index(dns_out, "91.108") >= 0
+            || index(dns_out, "198.18.") >= 0 || index(dns_out, "198.19.") >= 0);
+    push(checks, {
+        name: "dns",
+        ok: dns_ok,
+        message: dns_ok ? "DNS resolves api.telegram.org" : "DNS cannot resolve api.telegram.org — check DNS settings"
+    });
+
+    // 6. Direct API test (IPv4)
+    if (cfg.bot_token) {
+        let direct = command_capture(command_from_args([
+            "curl", "-s", "-4", "--connect-timeout", "5", "--max-time", "8",
+            "https://api.telegram.org/bot" + cfg.bot_token + "/getMe"
+        ]));
+        let d_out = (direct && direct.output) || "";
+        let d_ok = direct && direct.status === 0 && index(d_out, '"ok":true') >= 0;
+        let d_msg = d_ok
+            ? "Direct IPv4 to Telegram API works"
+            : (index(d_out, '"ok":false') >= 0
+                ? "API returned error — token may be invalid"
+                : "Cannot reach Telegram API directly (IPv4 may be blocked by ISP)");
+        push(checks, { name: "direct_api", ok: d_ok, message: d_msg });
+        if (!d_ok) ok = false;
+    }
+
+    // 7. Proxy API test
+    if (cfg.bot_token && sb_running) {
+        let proxied = command_capture(command_from_args([
+            "curl", "-s", "-4", "--connect-timeout", "5", "--max-time", "8",
+            "--proxy", "http://127.0.0.1:4534",
+            "https://api.telegram.org/bot" + cfg.bot_token + "/getMe"
+        ]));
+        let p_out = (proxied && proxied.output) || "";
+        let p_ok = proxied && proxied.status === 0 && index(p_out, '"ok":true') >= 0;
+        push(checks, {
+            name: "proxy_api",
+            ok: p_ok,
+            message: p_ok ? "Proxy route to Telegram API works" : "Proxy route failed — check sing-box outbound for Telegram"
+        });
+        if (!p_ok) ok = false;
+    }
+
+    // 8. Send test message
+    if (cfg.bot_token && cfg.admin_ids) {
+        let first_admin = trim(split(cfg.admin_ids, /,/)[0] || "");
+        if (first_admin !== "") {
+            let send_res = command_capture(command_from_args([
+                "curl", "-s", "-m", "10", "--connect-timeout", "5",
+                "--proxy", "http://127.0.0.1:4534",
+                "-X", "POST", "-H", "Content-Type: application/json",
+                "-d", sprintf("%J", { chat_id: int(first_admin), text: "\u2705 Tachyon connection test passed" }),
+                "https://api.telegram.org/bot" + cfg.bot_token + "/sendMessage"
+            ]));
+            let s_out = (send_res && send_res.output) || "";
+            let s_ok = send_res && send_res.status === 0 && index(s_out, '"ok":true') >= 0;
+            push(checks, {
+                name: "send_message",
+                ok: s_ok,
+                message: s_ok
+                    ? "Test message sent to chat " + first_admin
+                    : "Failed to send test message — check admin_ids and bot permissions"
+            });
+            if (!s_ok) ok = false;
+        }
+    }
+
+    print(sprintf("%J", { ok: ok, checks: checks }));
+    return ok ? 0 : 1;
+}
+
 function send_api(message) {
     let cfg = settings();
     if (cfg.enabled != "1" || !cfg.bot_token || !cfg.admin_ids) return 1;
@@ -2915,6 +3029,8 @@ else if (mode == "worker")
     exit(worker());
 else if (mode == "status")
     exit(get_status());
+else if (mode == "diagnose")
+    exit(diagnose());
 else if (mode == "send") {
     // Collect remaining args after "send" as the message text
     let msg_parts = [];
@@ -2925,6 +3041,6 @@ else if (mode == "send") {
     exit(send_api(message));
 }
 else {
-    warn("Usage: service/telegram.uc <start-runtime|stop-runtime|worker|status|send ...> ...\n");
+    warn("Usage: service/telegram.uc <start-runtime|stop-runtime|worker|status|diagnose|send ...> ...\n");
     exit(1);
 }
