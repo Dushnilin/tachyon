@@ -123,6 +123,15 @@ let componentActionStateRefreshPromise: Promise<void> | null = null;
 const followedComponentJobs = new Set<string>();
 const handledComponentJobs = new Set<string>();
 
+try {
+  const savedJob = sessionStorage.getItem('tachyon_post_update_job');
+  if (savedJob) {
+    handledComponentJobs.add(savedJob);
+    followedComponentJobs.add(savedJob);
+    sessionStorage.removeItem('tachyon_post_update_job');
+  }
+} catch (_e) {}
+
 if (typeof window !== 'undefined') {
   window.addEventListener('pagehide', () => {
     pageUnloading = true;

@@ -389,6 +389,14 @@ export function showUpdateProgressModal(
                     );
                     reloadBtn.textContent = _('Reloading...');
                     await new Promise((resolve) => setTimeout(resolve, 600));
+                    if (activeModalJobId) {
+                      try {
+                        sessionStorage.setItem(
+                          'tachyon_post_update_job',
+                          activeModalJobId,
+                        );
+                      } catch (_e) {}
+                    }
                     window.location.reload();
                     return;
                   }
