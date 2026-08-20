@@ -345,7 +345,9 @@ describe('TachyonShellMethods.componentAction', () => {
     });
   });
 
-  it('completes a Tachyon self-update when the backend is stuck reporting the job running (worker pid recycled)', async () => {
+  it('completes a Tachyon self-update when the backend is stuck reporting the job running (worker pid recycled, RPC eventually fails)', async () => {
+    let rpcCalls = 0;
+
     mocks.fsRead.mockResolvedValue(
       JSON.stringify({
         success: true,
@@ -359,17 +361,25 @@ describe('TachyonShellMethods.componentAction', () => {
 
     mocks.executeShellCommand.mockImplementation(({ args }) => {
       if (args[0] === 'component_action_status') {
+        rpcCalls++;
+        if (rpcCalls <= 4) {
+          return Promise.resolve({
+            stdout: JSON.stringify({
+              success: true,
+              running: true,
+              component: 'tachyon',
+              action: 'reinstall',
+              message: 'Component action is running',
+              job_id: 'job-1',
+            }),
+            stderr: '',
+            code: 0,
+          });
+        }
         return Promise.resolve({
-          stdout: JSON.stringify({
-            success: true,
-            running: true,
-            component: 'tachyon',
-            action: 'reinstall',
-            message: 'Component action is running',
-            job_id: 'job-1',
-          }),
-          stderr: '',
-          code: 0,
+          stdout: '',
+          stderr: 'Connection refused',
+          code: 1,
         });
       }
 

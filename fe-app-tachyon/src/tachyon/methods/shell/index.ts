@@ -819,21 +819,6 @@ export const TachyonShellMethods = {
         return jobDoneResult(stateResponse);
       }
 
-      // The backend may be stuck reporting the job as running (worker pid
-      // recycled by the service restart): confirm by version on each tick.
-      if (
-        stateResponse &&
-        stateResponse.running &&
-        isSelfUpdate &&
-        Date.now() - lastStatusRefreshAt >=
-          COMPONENT_ACTION_STATUS_REFRESH_INTERVAL_MS
-      ) {
-        const version = await confirmedByVersion();
-        if (version && (await settleVersion(version))) {
-          return selfUpdateResult(version);
-        }
-      }
-
       lastStatusRefreshAt = Date.now();
       const statusResponse = await executeShellCommand({
         command: '/usr/bin/tachyon',
@@ -843,11 +828,6 @@ export const TachyonShellMethods = {
       const parsedResponse = parseComponentActionResult(statusResponse);
 
       if ((statusResponse.code ?? 0) !== 0 || !parsedResponse) {
-        if (stateResponse?.running) {
-          transientRpc.reset();
-          continue;
-        }
-
         if (isSelfUpdate) {
           const version =
             (await confirmedByVersion()) ||
@@ -861,6 +841,15 @@ export const TachyonShellMethods = {
           // A self-update replaces the package mid-flight: RPC failures are
           // expected during the swap window and must not fail the operation.
           // The version confirmation above is the only exit that matters.
+          if (!stateResponse?.running) {
+            continue;
+          }
+          transientRpc.reset();
+          continue;
+        }
+
+        if (stateResponse?.running) {
+          transientRpc.reset();
           continue;
         }
 
@@ -880,12 +869,6 @@ export const TachyonShellMethods = {
 
       transientRpc.reset();
       if (parsedResponse.running) {
-        if (isSelfUpdate) {
-          const version = await confirmedByVersion();
-          if (version && (await settleVersion(version))) {
-            return selfUpdateResult(version);
-          }
-        }
         continue;
       }
 
