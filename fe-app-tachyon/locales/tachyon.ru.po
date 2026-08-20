@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-08-17 20:24+0300\n"
-"PO-Revision-Date: 2026-08-17 20:24+0300\n"
+"POT-Creation-Date: 2026-08-20 19:44+0300\n"
+"PO-Revision-Date: 2026-08-20 19:44+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -761,6 +761,12 @@ msgstr "Дни недели"
 msgid "Default (auto)"
 msgstr "По умолчанию (авто)"
 
+msgid "default (service mixed proxy)"
+msgstr ""
+
+msgid "Default (service mixed proxy)"
+msgstr "По умолчанию (смешанный прокси)"
+
 msgid "Default address for checking server availability and latency. URLTest uses its own address."
 msgstr "Адрес по умолчанию для проверки доступности и задержки сервера. URLTest использует свой собственный адрес."
 
@@ -788,8 +794,8 @@ msgstr "Обнаруживает и отбрасывает пакеты STUN/TUR
 msgid "detour must be a non-empty string"
 msgstr "detour должен быть непустой строкой"
 
-msgid "Device / IP"
-msgstr "Устройство / IP"
+msgid "Device / IP / MAC"
+msgstr ""
 
 msgid "Device filter"
 msgstr "Фильтр устройств"
@@ -1025,6 +1031,9 @@ msgstr "Загружать через"
 msgid "Downloaded"
 msgstr "Загружено"
 
+msgid "Downloading and applying rule sets and lists..."
+msgstr "Загрузка и применение наборов правил и списков..."
+
 msgid "Drag rows to change priority. The rule at the top is checked first."
 msgstr "Перетащите строки для изменения приоритета. Правило вверху проверяется первым."
 
@@ -1052,8 +1061,8 @@ msgstr "напр. SHA256 — оставьте пустым для значени
 msgid "Each entry must be \"proto\", \"proto:port\" or \"proto:port-port\" (tcp/udp), e.g. tcp:6881,udp:6881-6889"
 msgstr "Каждая запись — \"proto\", \"proto:port\" или \"proto:port-port\" (tcp/udp), напр. tcp:6881,udp:6881-6889"
 
-msgid "Edit rule action"
-msgstr "Редактировать действие правила"
+msgid "Edit"
+msgstr "Изменить"
 
 msgid "Enable"
 msgstr "Включить"
@@ -1117,6 +1126,9 @@ msgstr "Включить выходной сетевой интерфейс"
 
 msgid "Enable Proxy Health Monitor"
 msgstr "Включить мониторинг здоровья прокси"
+
+msgid "Enable RAG (Knowledge Base Retrieval)"
+msgstr "Включить RAG (поиск по базе знаний)"
 
 msgid "Enable Smart Cooldowns"
 msgstr "Включить умные cooldown'ы"
@@ -1186,6 +1198,9 @@ msgstr "Ошибка запуска генератора:"
 
 msgid "Error running trace:"
 msgstr "Ошибка выполнения трассировки:"
+
+msgid "Error updating lists:"
+msgstr ""
 
 msgid "Every day"
 msgstr "Каждый день"
@@ -1372,6 +1387,9 @@ msgstr "Исправлено"
 
 msgid "Flush Conntrack Table"
 msgstr "Очистить таблицу соед. (conntrack)"
+
+msgid "Force immediate download and refresh of all remote lists and rule sets"
+msgstr "Принудительно скачать и обновить все удаленные списки и наборы правил"
 
 msgid "Forced device routing"
 msgstr "Принудительная маршрутизация устройств"
@@ -1760,6 +1778,9 @@ msgstr "Неверный URL Hysteria2: неподдерживаемый тип 
 msgid "Invalid IP address"
 msgstr "Неверный IP-адрес"
 
+msgid "Invalid IP or MAC address. Expected e.g. 192.168.1.150 or AA:BB:CC:DD:EE:FF"
+msgstr ""
+
 msgid "Invalid JSON format"
 msgstr "Неверный формат JSON"
 
@@ -2051,6 +2072,9 @@ msgstr "Порт прослушивания"
 msgid "Listening port"
 msgstr "Слушающий порт"
 
+msgid "Lists and rule sets successfully updated!"
+msgstr "Списки и наборы правил успешно обновлены!"
+
 msgid "LM Studio (Local PC / Server)"
 msgstr "LM Studio (локальный ПК / сервер)"
 
@@ -2101,6 +2125,9 @@ msgstr "Основной DNS-сервер. Если выбрано нескол�
 
 msgid "Manual"
 msgstr "Вручную"
+
+msgid "Manual list update"
+msgstr "Ручное обновление списков"
 
 msgid "MASQUE Access Token"
 msgstr "Токен доступа MASQUE"
@@ -2597,6 +2624,9 @@ msgstr "Порты"
 msgid "Ports must be between 1 and 65535"
 msgstr "Порты должны быть от 1 до 65535"
 
+msgid "Pre-built index of Tachyon documentation chunks. When enabled, AI Doctor searches relevant docs before generating a diagnosis."
+msgstr "Предварительно собранный индекс фрагментов документации Tachyon. При включении AI Doctor ищет релевантные документы перед постановкой диагноза."
+
 msgid "Pre-download all preset lists"
 msgstr "Предзагрузить все предустановленные списки"
 
@@ -2906,9 +2936,6 @@ msgstr "Правило"
 msgid "Rule Name"
 msgstr "Название правила"
 
-msgid "Rule name is required"
-msgstr "Необходимо указать название правила"
-
 msgid "Rule set must be an HTTP(S) URL or a local .srs / .json path"
 msgstr "Набор правил должен быть HTTP(S) URL или локальным путём .srs / .json"
 
@@ -3011,11 +3038,17 @@ msgstr "Действие секции"
 msgid "Section name"
 msgstr "Имя секции"
 
+msgid "Section name for WARP registration proxy. Leave empty to use the default service mixed proxy."
+msgstr ""
+
 msgid "Section Rules Content"
 msgstr "Содержимое правил секции"
 
 msgid "Section test order (checked = active, drag rows with △▽):"
 msgstr "Порядок проверки секций (галочка = активна, перетаскивайте △▽):"
+
+msgid "Section used for Cloudflare WARP API registration. If your ISP blocks Cloudflare API on WAN, select a proxy section that routes through a tunnel (e.g. WireGuard, VPN). Leave empty to use the default service mixed proxy."
+msgstr "Секция для регистрации Cloudflare WARP API. Если провайдер блокирует Cloudflare API по WAN, выберите секцию с туннелем (WireGuard, VPN и т.д.). Оставьте пустым для использования смешанного прокси по умолчанию."
 
 msgid "Sections"
 msgstr "Секции"
@@ -3068,8 +3101,8 @@ msgstr "Выберите и упорядочите секции, через ко
 msgid "Select DNS protocol to use"
 msgstr "Выберите протокол DNS"
 
-msgid "Select LAN devices to apply this schedule to, or enter IP addresses manually."
-msgstr "Выберите LAN-устройства для применения расписания или введите IP-адреса вручную."
+msgid "Select LAN devices to apply this schedule to, or enter IP or MAC addresses manually."
+msgstr ""
 
 msgid "Select network interface for VPN connection"
 msgstr "Выберите интерфейс для VPN-подключения"
@@ -3208,6 +3241,9 @@ msgstr "Сервисы и доступ"
 
 msgid "Services are online and ready! Reloading page..."
 msgstr "Службы запущены и готовы к работе! Перезагрузка страницы..."
+
+msgid "Services are online, waiting for full initialization..."
+msgstr ""
 
 msgid "Services info"
 msgstr "Информация о сервисах"
@@ -3554,8 +3590,8 @@ msgstr "Имя хоста Tailscale"
 msgid "Target"
 msgstr "Цель"
 
-msgid "Target Devices (IP / Hostname)"
-msgstr "Целевые устройства (IP / Имя)"
+msgid "Target Devices (IP / MAC)"
+msgstr ""
 
 msgid "Target Scope"
 msgstr "Область действия"
@@ -3863,6 +3899,9 @@ msgstr "Доступно обновление текущего релиза"
 msgid "Update is available:"
 msgstr "Доступна новая версия:"
 
+msgid "Update lists now"
+msgstr "Обновить списки сейчас"
+
 msgid "Update subscriptions"
 msgstr "Обновить подписки"
 
@@ -3880,6 +3919,9 @@ msgstr "Обновление"
 
 msgid "Updating device routing mode..."
 msgstr "Обновление режима маршрутизации устройства..."
+
+msgid "Updating lists..."
+msgstr "Обновление списков..."
 
 msgid "Uplink"
 msgstr "Исходящий"
@@ -4031,8 +4073,14 @@ msgstr "ID аккаунта WARP"
 msgid "WARP Configuration generated and loaded successfully!"
 msgstr "Конфигурация WARP успешно сгенерирована и загружена!"
 
+msgid "WARP Generator Proxy Section"
+msgstr "Секция прокси для генератора WARP"
+
 msgid "WARP Private Key"
 msgstr "Приватный ключ WARP"
+
+msgid "WARP Proxy Section"
+msgstr ""
 
 msgid "Watchdog"
 msgstr "Сторожевой таймер"
@@ -4123,6 +4171,21 @@ msgstr "sing-box outbound для Zapret2 настроен"
 
 msgid "Zapret2 sing-box outbound is not configured"
 msgstr "sing-box outbound для Zapret2 не настроен"
+
+msgid "Device / IP"
+msgstr "Устройство / IP"
+
+msgid "Edit rule action"
+msgstr "Редактировать действие правила"
+
+msgid "Rule name is required"
+msgstr "Необходимо указать название правила"
+
+msgid "Select LAN devices to apply this schedule to, or enter IP addresses manually."
+msgstr "Выберите LAN-устройства для применения расписания или введите IP-адреса вручную."
+
+msgid "Target Devices (IP / Hostname)"
+msgstr "Целевые устройства (IP / Имя)"
 
 msgid "Custom OpenAI-Compatible API (OpenRouter)"
 msgstr "Пользовательский OpenAI-совместимый API (OpenRouter)"
@@ -4247,9 +4310,6 @@ msgstr "Активные секции"
 msgid "All Profiles"
 msgstr "Все сервисы и профили"
 
-msgid "Edit"
-msgstr "Изменить"
-
 msgid "Connection"
 msgstr "Соединение"
 
@@ -4348,22 +4408,3 @@ msgstr "Предотвращать множественные вызовы reloa
 
 msgid "Restoring native direct internet..."
 msgstr "Восстановление прямого интернета..."
-
-msgid "Manual list update"
-msgstr "Ручное обновление списков"
-
-msgid "Force immediate download and refresh of all remote lists and rule sets"
-msgstr "Принудительно скачать и обновить все удаленные списки и наборы правил"
-
-msgid "Update lists now"
-msgstr "Обновить списки сейчас"
-
-msgid "Updating lists..."
-msgstr "Обновление списков..."
-
-msgid "Downloading and applying rule sets and lists..."
-msgstr "Загрузка и применение наборов правил и списков..."
-
-msgid "Lists and rule sets successfully updated!"
-msgstr "Списки и наборы правил успешно обновлены!"
-

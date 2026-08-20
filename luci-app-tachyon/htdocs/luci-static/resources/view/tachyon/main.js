@@ -3121,7 +3121,6 @@ var LATENCY_TEST_TIMEOUT_MS = 30 * 1e3;
 var LATENCY_TEST_POLL_INTERVAL_MS = 1e3;
 var COMPONENT_ACTION_RPC_TIMEOUT_MS = 1e4;
 var COMPONENT_ACTION_POLL_INTERVAL_MS = 1e3;
-var COMPONENT_ACTION_STATUS_REFRESH_INTERVAL_MS = 2e3;
 var COMPONENT_ACTION_SELF_UPDATE_SETTLE_MS = 2e3;
 var COMPONENT_ACTION_TRANSIENT_RPC_GRACE_MS = 3e4;
 var COMPONENT_ACTION_MIN_ELAPSED_FOR_SELF_UPDATE_MS = 2e3;
@@ -3699,12 +3698,6 @@ var TachyonShellMethods = {
         }
         return jobDoneResult(stateResponse);
       }
-      if (stateResponse && stateResponse.running && isSelfUpdate && Date.now() - lastStatusRefreshAt >= COMPONENT_ACTION_STATUS_REFRESH_INTERVAL_MS) {
-        const version = await confirmedByVersion();
-        if (version && await settleVersion(version)) {
-          return selfUpdateResult(version);
-        }
-      }
       lastStatusRefreshAt = Date.now();
       const statusResponse = await executeShellCommand({
         command: "/usr/bin/tachyon",
@@ -3713,10 +3706,6 @@ var TachyonShellMethods = {
       });
       const parsedResponse = parseComponentActionResult(statusResponse);
       if ((statusResponse.code ?? 0) !== 0 || !parsedResponse) {
-        if (stateResponse?.running) {
-          transientRpc.reset();
-          continue;
-        }
         if (isSelfUpdate) {
           const version = await confirmedByVersion() || await confirmedSameVersionReinstall();
           if (version) {
@@ -3725,6 +3714,14 @@ var TachyonShellMethods = {
             }
             continue;
           }
+          if (!stateResponse?.running) {
+            continue;
+          }
+          transientRpc.reset();
+          continue;
+        }
+        if (stateResponse?.running) {
+          transientRpc.reset();
           continue;
         }
         if (await isComponentActionStillRunning(jobId, component, action)) {
@@ -3739,12 +3736,6 @@ var TachyonShellMethods = {
       }
       transientRpc.reset();
       if (parsedResponse.running) {
-        if (isSelfUpdate) {
-          const version = await confirmedByVersion();
-          if (version && await settleVersion(version)) {
-            return selfUpdateResult(version);
-          }
-        }
         continue;
       }
       if (isSelfUpdate && parsedResponse.success === false) {
