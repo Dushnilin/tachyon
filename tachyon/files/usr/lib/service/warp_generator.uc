@@ -81,7 +81,31 @@ function contains(arr, val) {
 function call_api(method, url, auth_header, body_file) {
     let resolve_ips = [ "162.159.192.1", "162.159.193.1", "188.114.98.1", "188.114.99.1" ];
     let last_res = "";
+    let proxy_url = get_proxy_url();
+    let use_proxy_first = (proxy_port != "4534" || warp_proxy_section != "");
     
+    if (use_proxy_first) {
+        let proxy_check = exec_output("curl -s --connect-timeout 2 --max-time 3 -x " + proxy_url + " https://api.cloudflareclient.com/ >/dev/null 2>&1; echo $?");
+        if (trim(proxy_check) == "0") {
+            for (let ip in resolve_ips) {
+                let auth_str = auth_header != "" ? "-H 'Authorization: Bearer " + auth_header + "' " : "";
+                let data_str = body_file != "" ? "-d @" + body_file + " " : "";
+                let cmd = "curl -s --connect-timeout 3 --max-time 8 -x " + proxy_url + " --resolve api.cloudflareclient.com:443:" + ip + " -X " + method + " -H 'Content-Type: application/json' -H 'User-Agent: okhttp/3.12.1' " + auth_str + data_str + url;
+                let res = exec_output(cmd);
+                if (res != "") {
+                    try {
+                        let parsed = json(res);
+                        if (parsed) return parsed;
+                    }
+                    catch (e) {
+                        last_res = res;
+                    }
+                }
+            }
+            return last_res != "" ? { success: false, message: last_res } : null;
+        }
+    }
+
     for (let ip in resolve_ips) {
         let auth_str = auth_header != "" ? "-H 'Authorization: Bearer " + auth_header + "' " : "";
         let data_str = body_file != "" ? "-d @" + body_file + " " : "";
@@ -90,9 +114,7 @@ function call_api(method, url, auth_header, body_file) {
         if (res != "") {
             try {
                 let parsed = json(res);
-                if (parsed) {
-                    return parsed;
-                }
+                if (parsed) return parsed;
             }
             catch (e) {
                 last_res = res;
@@ -100,23 +122,22 @@ function call_api(method, url, auth_header, body_file) {
         }
     }
 
-    let proxy_url = get_proxy_url();
-    let proxy_check = exec_output("curl -s --connect-timeout 2 --max-time 3 -x " + proxy_url + " https://api.cloudflareclient.com/ >/dev/null 2>&1; echo $?");
-    if (trim(proxy_check) == "0") {
-        for (let ip in resolve_ips) {
-            let auth_str = auth_header != "" ? "-H 'Authorization: Bearer " + auth_header + "' " : "";
-            let data_str = body_file != "" ? "-d @" + body_file + " " : "";
-            let cmd = "curl -s --connect-timeout 3 --max-time 8 -x " + proxy_url + " --resolve api.cloudflareclient.com:443:" + ip + " -X " + method + " -H 'Content-Type: application/json' -H 'User-Agent: okhttp/3.12.1' " + auth_str + data_str + url;
-            let res = exec_output(cmd);
-            if (res != "") {
-                try {
-                    let parsed = json(res);
-                    if (parsed) {
-                        return parsed;
+    if (!use_proxy_first) {
+        let proxy_check = exec_output("curl -s --connect-timeout 2 --max-time 3 -x " + proxy_url + " https://api.cloudflareclient.com/ >/dev/null 2>&1; echo $?");
+        if (trim(proxy_check) == "0") {
+            for (let ip in resolve_ips) {
+                let auth_str = auth_header != "" ? "-H 'Authorization: Bearer " + auth_header + "' " : "";
+                let data_str = body_file != "" ? "-d @" + body_file + " " : "";
+                let cmd = "curl -s --connect-timeout 3 --max-time 8 -x " + proxy_url + " --resolve api.cloudflareclient.com:443:" + ip + " -X " + method + " -H 'Content-Type: application/json' -H 'User-Agent: okhttp/3.12.1' " + auth_str + data_str + url;
+                let res = exec_output(cmd);
+                if (res != "") {
+                    try {
+                        let parsed = json(res);
+                        if (parsed) return parsed;
                     }
-                }
-                catch (e) {
-                    last_res = res;
+                    catch (e) {
+                        last_res = res;
+                    }
                 }
             }
         }
@@ -275,7 +296,10 @@ fs.unlink(tmp_req_file);
 
 if (!response_data) {
     restore_original_server();
-    error_response("Failed to register with Cloudflare WARP API: " + last_error);
+    let hint = "";
+    if (warp_proxy_section == "")
+        hint = " Cloudflare API may be blocked on your WAN. Try setting 'warp_proxy_section' in Advanced Settings to route through a tunnel.";
+    error_response("Failed to register with Cloudflare WARP API: " + last_error + hint);
     exit(1);
 }
 
