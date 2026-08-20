@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-08-20 19:16+0300\n"
-"PO-Revision-Date: 2026-08-20 19:16+0300\n"
+"POT-Creation-Date: 2026-08-20 19:26+0300\n"
+"PO-Revision-Date: 2026-08-20 19:26+0300\n"
 "Last-Translator: Dushnilin <dushnilin@gmail.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -978,8 +978,8 @@ msgstr ""
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:10239
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/server.js:1803
 #: src/partials/modal/renderModal.ts:263
-#: src/tachyon/tabs/diagnostic/initController.ts:1542
 #: src/tachyon/tabs/dashboard/initController.ts:1262
+#: src/tachyon/tabs/diagnostic/initController.ts:1542
 #: src/tachyon/tabs/monitoring/initController.ts:884
 #: src/tachyon/tabs/monitoring/initController.ts:934
 #: src/tachyon/tabs/diagnostic/partials/renderAiChatModal.ts:213
@@ -1079,8 +1079,8 @@ msgstr ""
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:4919
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:11522
 #: src/tachyon/methods/custom/getDashboardSections.ts:1646
-#: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:141
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:616
+#: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:141
 msgid "Conflict"
 msgstr ""
 
@@ -3710,9 +3710,9 @@ msgstr ""
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:9031
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:11533
 #: src/tachyon/methods/custom/getDashboardSections.ts:1649
+#: src/tachyon/tabs/dashboard/partials/renderSections.ts:619
 #: src/tachyon/tabs/diagnostic/checks/runInboundsCheck.ts:46
 #: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:152
-#: src/tachyon/tabs/dashboard/partials/renderSections.ts:619
 msgid "Not configured"
 msgstr ""
 
@@ -4722,8 +4722,8 @@ msgstr ""
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:2027
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:2028
 #: src/tachyon/methods/custom/getDashboardSections.ts:1644
-#: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:135
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:614
+#: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:135
 msgid "Running"
 msgstr ""
 
@@ -5434,8 +5434,8 @@ msgstr ""
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:307
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:2033
 #: src/tachyon/methods/custom/getDashboardSections.ts:1648
-#: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:147
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:618
+#: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:147
 msgid "Stopped"
 msgstr ""
 
@@ -6087,6 +6087,7 @@ msgstr ""
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:9615
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:9616
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:16554
+#: src/tachyon/helpers/singBoxVariant.ts:37
 #: src/tachyon/services/systemInfo.service.ts:10
 #: src/tachyon/services/systemInfo.service.ts:12
 #: src/tachyon/services/systemInfo.service.ts:13
@@ -6096,7 +6097,6 @@ msgstr ""
 #: src/tachyon/services/systemInfo.service.ts:25
 #: src/tachyon/services/systemInfo.service.ts:28
 #: src/tachyon/services/systemInfo.service.ts:29
-#: src/tachyon/helpers/singBoxVariant.ts:37
 #: src/tachyon/tabs/updates/initController.ts:391
 #: src/tachyon/tabs/diagnostic/checks/runInboundsCheck.ts:25
 msgid "unknown"

@@ -16203,6 +16203,15 @@ function showUpdateProgressModal(options) {
                     );
                     reloadBtn.textContent = _("Reloading...");
                     await new Promise((resolve) => setTimeout(resolve, 600));
+                    if (activeModalJobId) {
+                      try {
+                        sessionStorage.setItem(
+                          "tachyon_post_update_job",
+                          activeModalJobId
+                        );
+                      } catch (_e) {
+                      }
+                    }
                     window.location.reload();
                     return;
                   }
@@ -16360,6 +16369,15 @@ var componentActionStateUnsubscribe = null;
 var componentActionStateRefreshPromise = null;
 var followedComponentJobs = /* @__PURE__ */ new Set();
 var handledComponentJobs = /* @__PURE__ */ new Set();
+try {
+  const savedJob = sessionStorage.getItem("tachyon_post_update_job");
+  if (savedJob) {
+    handledComponentJobs.add(savedJob);
+    followedComponentJobs.add(savedJob);
+    sessionStorage.removeItem("tachyon_post_update_job");
+  }
+} catch (_e) {
+}
 if (typeof window !== "undefined") {
   window.addEventListener("pagehide", () => {
     pageUnloading2 = true;
