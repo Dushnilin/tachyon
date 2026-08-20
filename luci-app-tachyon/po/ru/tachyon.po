@@ -4367,3 +4367,18 @@ msgstr "Загрузка и применение наборов правил и 
 msgid "Lists and rule sets successfully updated!"
 msgstr "Списки и наборы правил успешно обновлены!"
 
+msgid "Enable RAG (Knowledge Base Retrieval)"
+msgstr "Включить RAG (поиск по базе знаний)"
+
+msgid "Pre-built index of Tachyon documentation chunks. When enabled, AI Doctor searches relevant docs before generating a diagnosis."
+msgstr "Предварительно собранный индекс фрагментов документации Tachyon. При включении AI Doctor ищет релевантные документы перед постановкой диагноза."
+
+msgid "WARP Generator Proxy Section"
+msgstr "Секция прокси для генератора WARP"
+
+msgid "Section used for Cloudflare WARP API registration. If your ISP blocks Cloudflare API on WAN, select a proxy section that routes through a tunnel (e.g. WireGuard, VPN). Leave empty to use the default service mixed proxy."
+msgstr "Секция для регистрации Cloudflare WARP API. Если провайдер блокирует Cloudflare API по WAN, выберите секцию с туннелем (WireGuard, VPN и т.д.). Оставьте пустым для использования смешанного прокси по умолчанию."
+
+msgid "Default (service mixed proxy)"
+msgstr "По умолчанию (смешанный прокси)"
+

@@ -1596,6 +1596,41 @@ function createSettingsContent(section, capabilities) {
   o.default = "0";
   o.rmempty = false;
 
+  // WARP Generator Proxy Section
+  o = section.taboption(
+    "advanced",
+    form.ListValue,
+    "warp_proxy_section",
+    _("WARP Generator Proxy Section"),
+    _(
+      "Section used for Cloudflare WARP API registration. If your ISP blocks Cloudflare API on WAN, select a proxy section that routes through a tunnel (e.g. WireGuard, VPN). Leave empty to use the default service mixed proxy.",
+    ),
+  );
+  o.value("", _("Default (service mixed proxy)"));
+  o.load = function (section_id) {
+    const sections = this.map?.data?.state?.values?.[UCI_PACKAGE] ?? {};
+    this.keylist = [""];
+    this.vallist = ["", _("Default (service mixed proxy)")];
+    for (const secName in sections) {
+      const sec = sections[secName];
+      if (sec[".type"] === "section" && sec.enabled !== "0") {
+        this.value(secName, sec.label || secName);
+      }
+    }
+    return uci.get(UCI_PACKAGE, "settings", "warp_proxy_section") || "";
+  };
+  o.write = function (section_id, value) {
+    const normalized = value ? `${value}`.trim() : "";
+    if (normalized) {
+      uci.set(UCI_PACKAGE, section_id, "warp_proxy_section", normalized);
+    } else {
+      uci.unset(UCI_PACKAGE, section_id, "warp_proxy_section");
+    }
+  };
+  o.remove = function (section_id) {
+    uci.unset(UCI_PACKAGE, section_id, "warp_proxy_section");
+  };
+
   const resetOpt = section.taboption(
     "advanced",
     form.DummyValue,
@@ -1728,6 +1763,19 @@ function createSettingsContent(section, capabilities) {
   o.depends("ai_doctor_provider", "lmstudio");
   o.rmempty = true;
   o.placeholder = "http://192.168.1.100:11434/v1/chat/completions";
+
+  // RAG (Knowledge Base Retrieval)
+  o = section.taboption(
+    "ai",
+    form.Flag,
+    "enable_rag",
+    _("Enable RAG (Knowledge Base Retrieval)"),
+    _(
+      "Pre-built index of Tachyon documentation chunks. When enabled, AI Doctor searches relevant docs before generating a diagnosis.",
+    ),
+  );
+  o.default = "0";
+  o.rmempty = false;
 
   // Watchdog runtime status & controls
   const wdStatusOpt = section.taboption(
