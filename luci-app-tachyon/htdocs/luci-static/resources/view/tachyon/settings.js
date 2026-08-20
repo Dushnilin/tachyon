@@ -2295,6 +2295,206 @@ function createTelegramContent(section) {
   o.remove = function () {
     uci.unset(UCI_PACKAGE, "telegram", "bot_proxy_section");
   };
+
+  // ── Telegram API Connection Test ──────────────────────────────────────────
+
+  const testOpt = section.option(
+    form.DummyValue,
+    "_test_telegram_connection",
+    _("Test Telegram Connection"),
+  );
+  testOpt.rawhtml = true;
+  testOpt.depends("enabled", "1");
+  testOpt.cfgvalue = function () {
+    const wrapper = E("div", { style: "margin-top: 8px;" });
+    const btn = E(
+      "button",
+      {
+        class: "btn cbi-button cbi-button-action",
+        type: "button",
+        id: "tachyon-telegram-test-btn",
+      },
+      "\uD83D\uDD0C " + _("Test Connection"),
+    );
+    const result = E("div", {
+      id: "tachyon-telegram-test-result",
+      style: "margin-top: 8px; white-space: pre-wrap; font-family: monospace; font-size: 12px; display: none;",
+    });
+    wrapper.appendChild(btn);
+    wrapper.appendChild(result);
+
+    btn.addEventListener("click", function () {
+      btn.disabled = true;
+      btn.textContent = "\u23F3 " + _("Testing…");
+      result.style.display = "block";
+      result.style.color = "";
+      result.textContent = _("Running diagnostics…");
+
+      var token = uci.get(UCI_PACKAGE, "telegram", "bot_token") || "";
+      var checks = [];
+
+      function addCheck(icon, text, ok) {
+        checks.push(icon + " " + text);
+        result.textContent = checks.join("\n");
+      }
+
+      function runSequential(tasks, done) {
+        var i = 0;
+        function next() {
+          if (i >= tasks.length) {
+            done();
+            return;
+          }
+          var fn = tasks[i];
+          i++;
+          fn(next);
+        }
+        next();
+      }
+
+      runSequential([
+        // 1. Token check
+        function (next) {
+          if (!token) {
+            addCheck("\u274C", _("bot_token is empty — set token first"), false);
+            btn.disabled = false;
+            btn.textContent = "\uD83D\uDD0C " + _("Test Connection");
+            return;
+          }
+          addCheck("\u2705", _("bot_token is set"), true);
+          next();
+        },
+        // 2. sing-box running
+        function (next) {
+          fs.exec("/bin/pidof", ["sing-box"])
+            .then(function (res) {
+              if (res.code === 0) {
+                addCheck("\u2705", _("sing-box is running"), true);
+              } else {
+                addCheck("\u274C", _("sing-box is NOT running — bot cannot route through proxy"), false);
+              }
+              next();
+            })
+            .catch(function () {
+              addCheck("\u274C", _("Cannot check sing-box status"), false);
+              next();
+            });
+        },
+        // 3. Mixed proxy port
+        function (next) {
+          fs.exec("/bin/sh", ["-c", "netstat -tlnp 2>/dev/null | grep ':4534 '"])
+            .then(function (res) {
+              if (res.code === 0 && res.stdout && res.stdout.trim()) {
+                addCheck("\u2705", _("Mixed proxy port 4534 is listening"), true);
+              } else {
+                addCheck("\u26A0\uFE0F", _("Port 4534 not listening — proxy may not be available"), false);
+              }
+              next();
+            })
+            .catch(function () {
+              addCheck("\u26A0\uFE0F", _("Cannot check port 4534"), false);
+              next();
+            });
+        },
+        // 4. DNS resolution
+        function (next) {
+          fs.exec("/bin/sh", ["-c", "nslookup api.telegram.org 2>/dev/null | head -5"])
+            .then(function (res) {
+              var out = (res.stdout || "").trim();
+              if (out && out.indexOf("Address") !== -1 && out.indexOf("149.154") !== -1) {
+                addCheck("\u2705", _("DNS resolves api.telegram.org"), true);
+              } else {
+                addCheck("\u274C", _("DNS cannot resolve api.telegram.org — check DNS settings"), false);
+              }
+              next();
+            })
+            .catch(function () {
+              addCheck("\u26A0\uFE0F", _("Cannot check DNS"), false);
+              next();
+            });
+        },
+        // 5. Direct API test (IPv4)
+        function (next) {
+          fs.exec("/usr/bin/curl", [
+            "-s", "-4", "--connect-timeout", "5", "--max-time", "8",
+            "https://api.telegram.org/bot" + token + "/getMe",
+          ])
+            .then(function (res) {
+              var out = (res.stdout || "").trim();
+              if (res.code === 0 && out.indexOf('"ok":true') !== -1) {
+                addCheck("\u2705", _("Direct IPv4 to Telegram API works"), true);
+              } else if (out.indexOf('"ok":false') !== -1) {
+                addCheck("\u274C", _("API returned error — token may be invalid"), false);
+              } else {
+                addCheck("\u274C", _("Cannot reach Telegram API directly (IPv4 blocked by ISP?)"), false);
+              }
+              next();
+            })
+            .catch(function () {
+              addCheck("\u274C", _("Direct API connection failed"), false);
+              next();
+            });
+        },
+        // 6. Proxy API test
+        function (next) {
+          fs.exec("/usr/bin/curl", [
+            "-s", "-4", "--connect-timeout", "5", "--max-time", "8",
+            "--proxy", "http://127.0.0.1:4534",
+            "https://api.telegram.org/bot" + token + "/getMe",
+          ])
+            .then(function (res) {
+              var out = (res.stdout || "").trim();
+              if (res.code === 0 && out.indexOf('"ok":true') !== -1) {
+                addCheck("\u2705", _("Proxy route to Telegram API works"), true);
+              } else {
+                addCheck("\u274C", _("Proxy route to Telegram API failed — check proxy outbound config"), false);
+              }
+              next();
+            })
+            .catch(function () {
+              addCheck("\u274C", _("Proxy API connection failed"), false);
+              next();
+            });
+        },
+        // 7. Send test message
+        function (next) {
+          var adminId = (uci.get(UCI_PACKAGE, "telegram", "admin_ids") || "").split(",")[0] || "";
+          if (!adminId) {
+            addCheck("\u26A0\uFE0F", _("No admin_ids set — cannot send test message"), false);
+            btn.disabled = false;
+            btn.textContent = "\uD83D\uDD0C " + _("Test Connection");
+            return;
+          }
+          fs.exec("/usr/bin/curl", [
+            "-s", "-m", "10", "--connect-timeout", "5",
+            "--proxy", "http://127.0.0.1:4534",
+            "-X", "POST",
+            "-H", "Content-Type: application/json",
+            "-d", '{"chat_id":' + adminId + ',"text":"\u2705 Tachyon connection test passed"}',
+            "https://api.telegram.org/bot" + token + "/sendMessage",
+          ])
+            .then(function (res) {
+              var out = (res.stdout || "").trim();
+              if (res.code === 0 && out.indexOf('"ok":true') !== -1) {
+                addCheck("\u2705", _("Test message sent to chat ") + adminId, true);
+              } else {
+                addCheck("\u274C", _("Failed to send test message — check admin_ids and bot permissions"), false);
+              }
+              next();
+            })
+            .catch(function () {
+              addCheck("\u274C", _("Failed to send test message"), false);
+              next();
+            });
+        },
+      ], function () {
+        btn.disabled = false;
+        btn.textContent = "\uD83D\uDD0C " + _("Test Connection");
+      });
+    });
+
+    return wrapper;
+  };
 }
 
 const EntryPoint = {
