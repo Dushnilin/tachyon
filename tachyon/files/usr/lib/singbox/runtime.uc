@@ -828,13 +828,15 @@ function init_config(populate_nft, caches_prepared, no_refresh) {
     log_file_lines(runtime_log, "warn", "sing-box config generator: ");
 
     let check_result = sing_box_check(temp_config, runtime_log);
-    if (check_result.status != 0) {
+    while (check_result.status != 0) {
         // Graceful degradation: if the installed sing-box does not support an inbound
         // field that was added for newer versions (e.g. close_timeout for MTProto
-        // hot-reload fix, issue #15), strip it from all inbounds and retry once.
-        // This keeps Tachyon functional across a range of sing-box versions.
+        // hot-reload fix, issue #15, prefer_ip, tolerate_time_skewness), strip it
+        // from all inbounds and retry. Loops to handle multiple unknown fields
+        // across retries (e.g. prefer_ip then tolerate_time_skewness).
         let user_field_m = match(check_result.reason, /inbounds\[\d+\]\.users\[\d+\]\.(\w+): json: unknown field/);
         let field_m = match(check_result.reason, /inbounds\[\d+\]\.(\w+): json: unknown field/);
+        let stripped = false;
         if (user_field_m) {
             let unknown_field = user_field_m[1];
             log_message("Installed sing-box does not support inbound user field '" + unknown_field + "'; retrying without it", "warn");
@@ -850,7 +852,7 @@ function init_config(populate_nft, caches_prepared, no_refresh) {
                     }
                 }
                 write_file(temp_config, sprintf("%J", cfg));
-                check_result = sing_box_check(temp_config, runtime_log);
+                stripped = true;
             }
         }
         else if (field_m) {
@@ -864,14 +866,17 @@ function init_config(populate_nft, caches_prepared, no_refresh) {
                         delete inb[unknown_field];
                 }
                 write_file(temp_config, sprintf("%J", cfg));
-                check_result = sing_box_check(temp_config, runtime_log);
+                stripped = true;
             }
         }
-        if (check_result.status != 0) {
-            log_message("Generated sing-box configuration is invalid: " + check_result.reason + ". Aborted.", "fatal");
-            remove_files([ temp_config, runtime_log ]);
-            exit(1);
-        }
+        if (!stripped)
+            break;
+        check_result = sing_box_check(temp_config, runtime_log);
+    }
+    if (check_result.status != 0) {
+        log_message("Generated sing-box configuration is invalid: " + check_result.reason + ". Aborted.", "fatal");
+        remove_files([ temp_config, runtime_log ]);
+        exit(1);
     }
 
     if (populate_nft && !module_success([
