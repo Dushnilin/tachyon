@@ -2,6 +2,7 @@
 
 let fs = require("fs");
 let common = require("core.common");
+let uci_core = require("core.uci");
 
 let as_string = common.as_string;
 
@@ -11,11 +12,48 @@ function trim(str) {
 
 let write_json = common.write_json;
 
+function get_clash_base_url() {
+    let host = "127.0.0.1:9090";
+    let config_data = fs.readfile("/etc/sing-box/config.json");
+    if (config_data) {
+        try {
+            let sb_cfg = json(config_data);
+            let ext = sb_cfg.experimental?.clash_api?.external_controller;
+            if (ext) {
+                let parts = split(ext, ":");
+                let ip = (length(parts) > 1) ? parts[0] : "";
+                let port = (length(parts) > 1) ? parts[length(parts) - 1] : "9090";
+                if (ip == "0.0.0.0" || ip == "")
+                    host = "127.0.0.1:" + port;
+                else
+                    host = ext;
+            }
+        }
+        catch (e) {}
+    }
+    return "http://" + host;
+}
+
 // Convert <b 0x...> ucode binary literals to plain hex string
 function to_hex(s) {
     s = replace(as_string(s), "<b 0x", "");
     s = replace(s, ">", "");
     return s;
+}
+
+let CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
+let uci = uci_core.cursor();
+let warp_proxy_section = trim(uci.get(CONFIG_NAME, "settings", "warp_proxy_section") || "");
+let proxy_port = "4534";
+
+if (warp_proxy_section != "") {
+    let section_port = uci.get(CONFIG_NAME, warp_proxy_section, "mixed_proxy_port") || "";
+    if (section_port != "" && match(section_port, /^[0-9]+$/) != null)
+        proxy_port = section_port;
+}
+
+function get_proxy_url() {
+    return "socks5h://127.0.0.1:" + proxy_port;
 }
 
 function error_response(message) {
@@ -42,14 +80,33 @@ function contains(arr, val) {
 
 function call_api(method, url, auth_header, body_file) {
     let resolve_ips = [ "162.159.192.1", "162.159.193.1", "188.114.98.1", "188.114.99.1" ];
-    let proxy_opts = [ "", "-x socks5h://127.0.0.1:4534" ];
     let last_res = "";
     
-    for (let proxy in proxy_opts) {
+    for (let ip in resolve_ips) {
+        let auth_str = auth_header != "" ? "-H 'Authorization: Bearer " + auth_header + "' " : "";
+        let data_str = body_file != "" ? "-d @" + body_file + " " : "";
+        let cmd = "curl -s --connect-timeout 3 --max-time 8 --resolve api.cloudflareclient.com:443:" + ip + " -X " + method + " -H 'Content-Type: application/json' -H 'User-Agent: okhttp/3.12.1' " + auth_str + data_str + url;
+        let res = exec_output(cmd);
+        if (res != "") {
+            try {
+                let parsed = json(res);
+                if (parsed) {
+                    return parsed;
+                }
+            }
+            catch (e) {
+                last_res = res;
+            }
+        }
+    }
+
+    let proxy_url = get_proxy_url();
+    let proxy_check = exec_output("curl -s --connect-timeout 2 --max-time 3 -x " + proxy_url + " https://api.cloudflareclient.com/ >/dev/null 2>&1; echo $?");
+    if (trim(proxy_check) == "0") {
         for (let ip in resolve_ips) {
             let auth_str = auth_header != "" ? "-H 'Authorization: Bearer " + auth_header + "' " : "";
             let data_str = body_file != "" ? "-d @" + body_file + " " : "";
-            let cmd = "curl -s --connect-timeout 6 --max-time 12 " + proxy + " --resolve api.cloudflareclient.com:443:" + ip + " -X " + method + " -H 'Content-Type: application/json' -H 'User-Agent: okhttp/3.12.1' " + auth_str + data_str + url;
+            let cmd = "curl -s --connect-timeout 3 --max-time 8 -x " + proxy_url + " --resolve api.cloudflareclient.com:443:" + ip + " -X " + method + " -H 'Content-Type: application/json' -H 'User-Agent: okhttp/3.12.1' " + auth_str + data_str + url;
             let res = exec_output(cmd);
             if (res != "") {
                 try {
@@ -59,21 +116,19 @@ function call_api(method, url, auth_header, body_file) {
                     }
                 }
                 catch (e) {
-                    // Not JSON - the API answered with an error page or a rate-limit
-                    // notice. Kept in last_res and returned to the caller as the
-                    // failure message, which is more useful than a parse error.
+                    last_res = res;
                 }
-                last_res = res;
             }
         }
     }
+
     return last_res != "" ? { success: false, message: last_res } : null;
 }
 
 // Query current proxy selection from Clash API for automatic rate limit rotation if proxy is used
 let original_server = "";
 let available_servers = [];
-let clash_data_str = exec_output("curl -s http://192.168.2.1:9090/proxies/MAIN-out");
+let clash_data_str = exec_output("curl -s " + get_clash_base_url() + "/proxies/MAIN-out");
 if (clash_data_str != "") {
     try {
         let parsed = json(clash_data_str);
@@ -94,7 +149,7 @@ function restore_original_server() {
         let body = { name: original_server };
         let tmp_file = "/tmp/restore_clash.json";
         fs.writefile(tmp_file, sprintf("%J", body));
-        exec_output("curl -s -X PUT -H 'Content-Type: application/json' -d @" + tmp_file + " http://192.168.2.1:9090/proxies/MAIN-out");
+        exec_output("curl -s -X PUT -H 'Content-Type: application/json' -d @" + tmp_file + " " + get_clash_base_url() + "/proxies/MAIN-out");
         fs.unlink(tmp_file);
     }
 }
@@ -103,7 +158,7 @@ function switch_server(srv_name) {
     let body = { name: srv_name };
     let tmp_file = "/tmp/switch_clash.json";
     fs.writefile(tmp_file, sprintf("%J", body));
-    exec_output("curl -s -X PUT -H 'Content-Type: application/json' -d @" + tmp_file + " http://192.168.2.1:9090/proxies/MAIN-out");
+    exec_output("curl -s -X PUT -H 'Content-Type: application/json' -d @" + tmp_file + " " + get_clash_base_url() + "/proxies/MAIN-out");
     fs.unlink(tmp_file);
     exec_output("sleep 1.5");
 }

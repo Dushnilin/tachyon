@@ -21,6 +21,7 @@ interface AdvancedSettingsState {
   aiDoctorApiKey: string;
   aiDoctorCustomUrl: string;
   enableRag: boolean;
+  warpProxySection: string;
   aiWatchdog: {
     proxyHealthEnabled: boolean;
     proxyHealthInterval: string;
@@ -59,6 +60,7 @@ let _state: AdvancedSettingsState = {
   aiDoctorApiKey: '',
   aiDoctorCustomUrl: '',
   enableRag: true,
+  warpProxySection: '',
   aiWatchdog: {
     proxyHealthEnabled: true,
     proxyHealthInterval: '30',
@@ -167,6 +169,9 @@ export async function loadAdvancedSettingsState() {
         ?.ai_doctor_custom_url as string) || '',
     enableRag:
       (settingsSec as unknown as Record<string, unknown>)?.enable_rag !== '0',
+    warpProxySection:
+      ((settingsSec as unknown as Record<string, unknown>)
+        ?.warp_proxy_section as string) || '',
     aiWatchdog: {
       proxyHealthEnabled: settingsSec?.ai_proxy_health_enabled !== '0',
       proxyHealthInterval:
@@ -334,6 +339,10 @@ async function saveAiWatchdogSettings() {
       [
         'set',
         `${TACHYON_UCI_PACKAGE}.settings.enable_rag=${_state.enableRag ? '1' : '0'}`,
+      ],
+      [
+        'set',
+        `${TACHYON_UCI_PACKAGE}.settings.warp_proxy_section=${_state.warpProxySection}`,
       ],
       [
         'set',
@@ -769,6 +778,28 @@ function renderAiWatchdogSection(state: AdvancedSettingsState) {
           E('span', {}, _('Enable RAG (Knowledge Base Retrieval)')),
         ]),
       ]),
+      E('div', { class: 'tachyon_adv__row' }, [
+        E('label', { class: 'tachyon_adv__label' }, _('WARP Proxy Section')),
+        E('input', {
+          type: 'text',
+          class: 'cbi-input-text',
+          value: state.warpProxySection,
+          placeholder: _('default (service mixed proxy)'),
+          onchange: (e: Event) => {
+            _state = {
+              ..._state,
+              warpProxySection: (e.target as HTMLInputElement).value,
+            };
+          },
+        }),
+      ]),
+      E(
+        'div',
+        { class: 'tachyon_adv__hint' },
+        _(
+          'Section name for WARP registration proxy. Leave empty to use the default service mixed proxy.',
+        ),
+      ),
       state.enableAiDoctor
         ? E('div', { class: 'tachyon_adv__subrows' }, [
             E('div', { class: 'tachyon_adv__row' }, [

@@ -326,11 +326,9 @@ function renderDefaultState({
 
     const connectionStatusText = latencyFetching
       ? `● ${_('Checking...')}`
-      : outbound.latency === -1 || !outbound.runtimeAvailable
-        ? `● N/A`
-        : outbound.latency && outbound.latency > 0
-          ? `● ${outbound.latency}ms`
-          : `● N/A`;
+      : outbound.runtimeAvailable
+        ? `● ${_('Connected')}`
+        : `● ${_('Not connected')}`;
 
     const canCopyLink =
       Boolean(outbound.canCopyLink) || isCopyableProxyLink(outbound.link);
@@ -808,13 +806,9 @@ function renderDefaultState({
                   if (isConnectionNode) {
                     latencyText = latencyFetching
                       ? _('Checking...')
-                      : selectedOutbound.latency === -1 ||
-                          !selectedOutbound.runtimeAvailable
-                        ? _('Not connected')
-                        : selectedOutbound.latency &&
-                            selectedOutbound.latency > 0
-                          ? `${selectedOutbound.latency}ms`
-                          : _('Connected');
+                      : selectedOutbound.runtimeAvailable
+                        ? _('Connected')
+                        : _('Not connected');
                   } else {
                     latencyText = selectedOutbound.latency
                       ? `${selectedOutbound.latency}ms`

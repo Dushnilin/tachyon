@@ -2165,7 +2165,7 @@ function renderDefaultState({
       }
       return "tachyon_dashboard-page__outbound-grid__item__latency--red";
     }
-    const connectionStatusText = latencyFetching ? `\u25CF ${_("Checking...")}` : outbound.latency === -1 || !outbound.runtimeAvailable ? `\u25CF N/A` : outbound.latency && outbound.latency > 0 ? `\u25CF ${outbound.latency}ms` : `\u25CF N/A`;
+    const connectionStatusText = latencyFetching ? `\u25CF ${_("Checking...")}` : outbound.runtimeAvailable ? `\u25CF ${_("Connected")}` : `\u25CF ${_("Not connected")}`;
     const canCopyLink = Boolean(outbound.canCopyLink) || isCopyableProxyLink(outbound.link);
     const selectorSwitching = Boolean(selectorSwitchingTag);
     const outboundSwitching = selectorSwitchingTag === outbound.code;
@@ -2541,7 +2541,7 @@ function renderDefaultState({
               }
               let latencyText = "";
               if (isConnectionNode2) {
-                latencyText = latencyFetching ? _("Checking...") : selectedOutbound.latency === -1 || !selectedOutbound.runtimeAvailable ? _("Not connected") : selectedOutbound.latency && selectedOutbound.latency > 0 ? `${selectedOutbound.latency}ms` : _("Connected");
+                latencyText = latencyFetching ? _("Checking...") : selectedOutbound.runtimeAvailable ? _("Connected") : _("Not connected");
               } else {
                 latencyText = selectedOutbound.latency ? `${selectedOutbound.latency}ms` : "";
               }

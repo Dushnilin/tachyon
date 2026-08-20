@@ -69,6 +69,7 @@ config settings 'settings'
         option ai_anomaly_detection_enabled '1'
         option ai_anomaly_reconnect_threshold '10'
         option enable_rag '1'
+        #option warp_proxy_section ''
 
 
 #config section 'subscription_example'
