@@ -20,6 +20,7 @@ interface AdvancedSettingsState {
   aiDoctorLang: string;
   aiDoctorApiKey: string;
   aiDoctorCustomUrl: string;
+  enableRag: boolean;
   aiWatchdog: {
     proxyHealthEnabled: boolean;
     proxyHealthInterval: string;
@@ -57,6 +58,7 @@ let _state: AdvancedSettingsState = {
   aiDoctorLang: 'ru',
   aiDoctorApiKey: '',
   aiDoctorCustomUrl: '',
+  enableRag: true,
   aiWatchdog: {
     proxyHealthEnabled: true,
     proxyHealthInterval: '30',
@@ -163,6 +165,8 @@ export async function loadAdvancedSettingsState() {
     aiDoctorCustomUrl:
       ((settingsSec as unknown as Record<string, unknown>)
         ?.ai_doctor_custom_url as string) || '',
+    enableRag:
+      (settingsSec as unknown as Record<string, unknown>)?.enable_rag !== '0',
     aiWatchdog: {
       proxyHealthEnabled: settingsSec?.ai_proxy_health_enabled !== '0',
       proxyHealthInterval:
@@ -326,6 +330,10 @@ async function saveAiWatchdogSettings() {
       [
         'set',
         `${TACHYON_UCI_PACKAGE}.settings.ai_doctor_custom_url=${_state.aiDoctorCustomUrl}`,
+      ],
+      [
+        'set',
+        `${TACHYON_UCI_PACKAGE}.settings.enable_rag=${_state.enableRag ? '1' : '0'}`,
       ],
       [
         'set',
@@ -745,6 +753,20 @@ function renderAiWatchdogSection(state: AdvancedSettingsState) {
             },
           }),
           E('span', {}, _('Enable AI Doctor (LLM Integration)')),
+        ]),
+      ]),
+      E('div', { class: 'tachyon_adv__row' }, [
+        E('label', { class: 'tachyon_adv__toggle' }, [
+          E('input', {
+            type: 'checkbox',
+            checked: state.enableRag,
+            onchange: (e: Event) => {
+              const enabled = (e.target as HTMLInputElement).checked;
+              _state = { ..._state, enableRag: enabled };
+              rerender();
+            },
+          }),
+          E('span', {}, _('Enable RAG (Knowledge Base Retrieval)')),
         ]),
       ]),
       state.enableAiDoctor

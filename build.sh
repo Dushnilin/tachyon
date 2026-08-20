@@ -1070,6 +1070,9 @@ main() {
   [[ -x "$ipkg_build_bin" ]] || { echo "ipkg-build not found at $ipkg_build_bin" >&2; exit 1; }
   [[ -x "$apk_bin" ]] || { echo "apk host tool not found at $apk_bin" >&2; exit 1; }
 
+  echo "Building RAG index..." >&2
+  bash "$ROOT_DIR/tools/rag_build_index.sh" "$ROOT_DIR/docs/knowledge-base" "$ROOT_DIR/tachyon/files/usr/lib/tachyon" || true
+
   build_backend_root "$backend_root"
   build_app_root "$app_root"
   build_i18n_root "$i18n_root" "$po2lmo_bin"

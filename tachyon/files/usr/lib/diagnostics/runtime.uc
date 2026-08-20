@@ -6,6 +6,7 @@ let core_ip = require("core.ip");
 let uci_core = require("core.uci");
 let runtime_dns = require("singbox.dns");
 let common = require("core.common");
+let rag = require("diagnostics.rag");
 
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || constants.TACHYON_CONFIG_NAME || "tachyon";
 const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
@@ -3967,6 +3968,14 @@ function ai_doctor(user_query) {
         report, local_res.report, version, dns_type, singbox_running ? "yes" : "no", uptime_min,
         watchdog_info, verify_info, log_snippet
     );
+
+    let rag_context = "";
+    if (cfg.enable_rag == "1") {
+        let rag_query = user_query || substr(sys_context, 0, 500);
+        rag_context = rag.retrieve(rag_query, prov, cfg.ai_doctor_api_key || "", cfg.ai_doctor_custom_url || "", model_override);
+    }
+    if (rag_context != "")
+        sys_context += "\n\nRelevant Documentation:\n" + rag_context;
 
     let lang = lc(trim(cfg.ai_doctor_lang || "ru"));
     let prompt = "";

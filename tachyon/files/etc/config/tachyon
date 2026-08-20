@@ -68,6 +68,7 @@ config settings 'settings'
         option ai_adaptive_intervals_enabled '1'
         option ai_anomaly_detection_enabled '1'
         option ai_anomaly_reconnect_threshold '10'
+        option enable_rag '1'
 
 
 #config section 'subscription_example'
