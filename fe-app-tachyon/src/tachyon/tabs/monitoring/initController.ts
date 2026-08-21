@@ -867,7 +867,7 @@ function renderConnectionRow(connection: MonitoredConnection) {
         )
       : E('span', {}, '-');
 
-  return E(
+  const row = E(
     'tr',
     {
       class: isClosing ? 'tachyon_monitoring-page__row--closing' : '',
@@ -893,6 +893,11 @@ function renderConnectionRow(connection: MonitoredConnection) {
       renderTableCell(_('Close'), [closeButton]),
     ],
   );
+
+  row.setAttribute('data-connection-id', connection.id);
+  row.setAttribute('data-row-signature', getConnectionRowSignature(connection));
+
+  return row;
 }
 
 function renderStateRow(text: string, className = '') {
@@ -1025,8 +1030,130 @@ function renderConnections(options: { force?: boolean } = {}) {
     return;
   }
 
-  container.replaceChildren(renderConnectionsTable(visibleConnections));
+  patchConnectionRows(visibleConnections);
   container.scrollLeft = previousScrollLeft;
+}
+
+// Structural parts of a row: when only duration/bytes change the row is
+// patched in place instead of being rebuilt, which keeps text selection and
+// avoids re-creating hundreds of nodes on every render tick.
+function getConnectionRowSignature(connection: MonitoredConnection): string {
+  const target = getTargetCellParts(connection);
+  const source = getSourceCellParts(connection);
+
+  return [
+    target.primary,
+    getNetwork(connection),
+    getRoute(connection),
+    source.primary,
+    source.ip,
+    closingConnectionIds.has(connection.id) ? 'closing' : 'open',
+  ].join('|');
+}
+
+function patchConnectionRows(visibleConnections: MonitoredConnection[]) {
+  const currentTbody = container_queryConnectionsTbody();
+  // A tbody showing a state message ("loading", "stopped", ...) contains no
+  // keyed rows - replace the whole table shell instead of patching into it.
+  const hasKeyedRows =
+    currentTbody &&
+    currentTbody.querySelector('tr[data-connection-id]') != null;
+
+  if (!currentTbody || !hasKeyedRows) {
+    document
+      .getElementById('monitoring-connections')
+      ?.replaceChildren(renderConnectionsTable(visibleConnections));
+    return;
+  }
+
+  const tbody: HTMLElement = currentTbody;
+
+  const existingRows = new Map<string, HTMLTableRowElement>();
+  for (const row of Array.from(tbody.children) as HTMLTableRowElement[]) {
+    const id = row.getAttribute('data-connection-id');
+    if (id) {
+      existingRows.set(id, row);
+    }
+  }
+
+  const seenIds = new Set<string>();
+  for (const connection of visibleConnections) {
+    seenIds.add(connection.id);
+    const signature = getConnectionRowSignature(connection);
+    const existing = existingRows.get(connection.id);
+
+    if (!existing) {
+      tbody.appendChild(renderConnectionRow(connection));
+      continue;
+    }
+
+    if (existing.getAttribute('data-row-signature') !== signature) {
+      tbody.replaceChild(renderConnectionRow(connection), existing);
+      continue;
+    }
+
+    // Patch volatile cells in place: Time, Downloaded, Uploaded.
+    patchVolatileCells(existing, connection);
+    tbody.appendChild(existing);
+  }
+
+  for (const [id, row] of existingRows) {
+    if (!seenIds.has(id)) {
+      row.remove();
+    }
+  }
+}
+
+function container_queryConnectionsTbody(): HTMLElement | null {
+  return (
+    document
+      .getElementById('monitoring-connections')
+      ?.querySelector('tbody') ?? null
+  );
+}
+
+function patchVolatileCells(
+  row: HTMLTableRowElement,
+  connection: MonitoredConnection,
+) {
+  const cells = row.children;
+  if (cells.length < 7) {
+    return;
+  }
+
+  const volatileByIndex: Array<[number, () => HTMLElement]> = [
+    [
+      3,
+      () =>
+        renderTableCell(_('Time'), [
+          renderValue(formatConnectionDuration(connection)),
+        ]),
+    ],
+    [
+      4,
+      () =>
+        renderTableCell(_('Downloaded'), [
+          renderValue(formatBytes(connection.download)),
+        ]),
+    ],
+    [
+      5,
+      () =>
+        renderTableCell(_('Uploaded'), [
+          renderValue(formatBytes(connection.upload)),
+        ]),
+    ],
+  ];
+
+  for (const [index, makeCell] of volatileByIndex) {
+    const current = cells[index];
+    const next = makeCell();
+    if (current) {
+      row.replaceChild(next, current);
+    } else {
+      row.appendChild(next);
+    }
+  }
 }
 
 function flushRenderAfterSelection() {

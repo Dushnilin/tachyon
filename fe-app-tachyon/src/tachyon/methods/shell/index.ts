@@ -13,7 +13,6 @@ const LATENCY_TEST_TIMEOUT_MS = 30 * 1000;
 const LATENCY_TEST_POLL_INTERVAL_MS = 1000;
 const COMPONENT_ACTION_RPC_TIMEOUT_MS = 10000;
 const COMPONENT_ACTION_POLL_INTERVAL_MS = 1000;
-const COMPONENT_ACTION_STATUS_REFRESH_INTERVAL_MS = 2000;
 const COMPONENT_ACTION_SELF_UPDATE_SETTLE_MS = 2000;
 const COMPONENT_ACTION_TRANSIENT_RPC_GRACE_MS = 30000;
 const COMPONENT_ACTION_MIN_ELAPSED_FOR_SELF_UPDATE_MS = 2000;
@@ -674,7 +673,6 @@ export const TachyonShellMethods = {
       baselineVersion = await readTachyonVersion();
     }
     let selfUpdateVersionMatchedAt = 0;
-    let lastStatusRefreshAt = 0;
     const transientRpc = createTransientRpcGraceTracker(
       COMPONENT_ACTION_TRANSIENT_RPC_GRACE_MS,
     );
@@ -819,7 +817,6 @@ export const TachyonShellMethods = {
         return jobDoneResult(stateResponse);
       }
 
-      lastStatusRefreshAt = Date.now();
       const statusResponse = await executeShellCommand({
         command: '/usr/bin/tachyon',
         args: [Tachyon.AvailableMethods.COMPONENT_ACTION_STATUS, jobId],

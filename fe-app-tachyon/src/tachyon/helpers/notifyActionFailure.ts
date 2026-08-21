@@ -1,13 +1,6 @@
 import { logger } from '../services/logger.service';
 import { showToast } from '../../helpers/showToast';
 
-type FailureLike = {
-  message?: string;
-  error?: string;
-  stderr?: string;
-  data?: { error?: unknown } | unknown;
-};
-
 function extractMessage(response: unknown): string | null {
   if (!response || typeof response !== 'object') {
     return null;

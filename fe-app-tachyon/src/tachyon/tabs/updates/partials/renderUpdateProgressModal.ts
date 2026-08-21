@@ -395,7 +395,10 @@ export function showUpdateProgressModal(
                           'tachyon_post_update_job',
                           activeModalJobId,
                         );
-                      } catch (_e) {}
+                      } catch (_e) {
+                        // sessionStorage may be unavailable; cleanup is
+                        // best-effort.
+                      }
                     }
                     window.location.reload();
                     return;

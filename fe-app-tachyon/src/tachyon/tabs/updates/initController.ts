@@ -130,7 +130,10 @@ try {
     followedComponentJobs.add(savedJob);
     sessionStorage.removeItem('tachyon_post_update_job');
   }
-} catch (_e) {}
+} catch (_e) {
+  // sessionStorage may be unavailable (private mode); the saved job id is
+  // best-effort and its absence is fine.
+}
 
 if (typeof window !== 'undefined') {
   window.addEventListener('pagehide', () => {
