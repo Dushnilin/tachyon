@@ -3109,6 +3109,105 @@ function run_doctor_checks_impl(repair) {
         }
     }
 
+    // 17. Disk Space Check — a full /tmp breaks cache writes, subscription
+    // downloads and job state files; a full overlay breaks config commits.
+    {
+        let df_out = command_capture("df -k /tmp /overlay / 2>/dev/null").output;
+        let disk_warned = {};
+        for (let line in split(df_out, "\n")) {
+            let fields = split(trim(as_string(line)), /[ \t]+/);
+            if (length(fields) < 5 || fields[0] == "Filesystem")
+                continue;
+            let mount = fields[length(fields) - 1];
+            let use_pct = int(replace(fields[length(fields) - 2], "%", ""));
+            if (use_pct >= 90 && !disk_warned[mount]) {
+                disk_warned[mount] = true;
+                issues++;
+                doc_check("⚠️", "Disk space", sprintf("%s %d%% full", mount, use_pct),
+                    "→ очистите место: переполнение ломает кэш и запись конфигов");
+            }
+        }
+        if (length(keys(disk_warned)) == 0)
+            doc_check("✅", "Disk space", "OK", "");
+    }
+
+    // 18. System Clock Check — a wrong year silently breaks every TLS
+    // connection (DoH, subscriptions, LLM APIs) and is easy to miss after a
+    // cold boot without NTP.
+    {
+        let year = int(command_output_from_args(["date", "+%Y"]));
+        if (year >= 2024 && year <= 2100) {
+            doc_check("✅", "System clock", sprintf("OK (%d)", year), "");
+        } else {
+            issues++;
+            doc_check("⚠️", "System clock", sprintf("suspicious year %d", year),
+                "→ проверьте NTP/дату: неверное время ломает TLS (DoH, подписки)");
+        }
+    }
+
+    // 19. CA Bundle Check — curl HTTPS fails with SSL errors when the
+    // ca-bundle package is missing; the code blames it in TLS verdicts but
+    // never verified it before.
+    if (fs.stat("/etc/ssl/certs/ca-bundle.crt") != null) {
+        doc_check("✅", "CA certificates", "ca-bundle present", "");
+    } else {
+        issues++;
+        doc_check("⚠️", "CA certificates", "/etc/ssl/certs/ca-bundle.crt missing",
+            "→ установите пакет ca-bundle: без него HTTPS-проверки падают");
+    }
+
+    // 20. Port 53 Conflicts — another DNS daemon on port 53 competes with
+    // dnsmasq and produces intermittent resolution failures.
+    {
+        let dns53_owners = [];
+        for (let line in split(netstat_out, "\n")) {
+            if (index(line, ":53 ") < 0 || index(line, "LISTEN") < 0)
+                continue;
+            let fields = split(trim(line), /[ \t]+/);
+            if (length(fields) < 7)
+                continue;
+            let pid_info = as_string(fields[6]);
+            let owner = index(pid_info, "/") >= 0 ? substr(pid_info, index(pid_info, "/") + 1) : pid_info;
+            if (owner == "" || owner == "dnsmasq" || owner == "sing-box")
+                continue;
+            let already = false;
+            for (let o in dns53_owners) {
+                if (o == owner) { already = true; break; }
+            }
+            if (!already)
+                push(dns53_owners, owner);
+        }
+        if (length(dns53_owners) == 0) {
+            doc_check("✅", "Port 53 conflicts", "none", "");
+        } else {
+            issues++;
+            doc_check("⚠️", "Port 53 conflicts", "bound by " + join(", ", dns53_owners),
+                "→ конкурирующий DNS-демон на :53 даёт плавающие сбои резолвинга");
+        }
+    }
+
+    // 21. Subscription Cache Age — sing-box can route through days-old node
+    // lists while the subscription URL itself is reachable.
+    if (has_sections && cfg.subscription_url) {
+        let newest_mtime = 0;
+        let cache_files = fs.glob(constants.TMP_SUBSCRIPTION_FOLDER + "/*.json") || [];
+        for (let cf in cache_files) {
+            let st = fs.stat(cf);
+            if (st && st.mtime > newest_mtime)
+                newest_mtime = st.mtime;
+        }
+        if (newest_mtime > 0) {
+            let age_days = int((time() - newest_mtime) / 86400);
+            if (age_days <= 2) {
+                doc_check("✅", "Subscription cache", sprintf("fresh (%d d)", age_days), "");
+            } else {
+                issues++;
+                doc_check("⚠️", "Subscription cache", sprintf("stale (%d days old)", age_days),
+                    "→ узлы могли устареть: обновите подписку в LuCI");
+            }
+        }
+    }
+
     push(report, "");
     if (issues == 0) {
         push(report, "✅ Всё в порядке — проблем не обнаружено");
@@ -3127,6 +3226,7 @@ function run_doctor_checks_impl(repair) {
 // Declared after run_doctor_checks_impl(): ucode does not hoist function
 // declarations, so the wrapper must follow its callee.
 const DOCTOR_LOCK_DIR = "/var/run/tachyon.doctor.lock";
+const DOCTOR_HISTORY_FILE = "/tmp/tachyon_doctor_history.json";
 
 function doctor_lock_try() {
     if (command_status("mkdir " + shell_quote(DOCTOR_LOCK_DIR) + " 2>/dev/null") == 0)
@@ -3144,6 +3244,56 @@ function doctor_lock_release() {
     command_status("rm -rf " + shell_quote(DOCTOR_LOCK_DIR) + " 2>/dev/null");
 }
 
+// Outcome journal: lets the report say "this is the Nth failing run today"
+// instead of treating every incident as unique. Capped and written
+// atomically like every other doctor state file.
+function doctor_history_load() {
+    let raw = read_json_file(DOCTOR_HISTORY_FILE);
+    let data = object_or_empty(raw);
+    if (type(data.entries) != "array")
+        data.entries = [];
+    return data;
+}
+
+function doctor_history_record(result) {
+    let data = doctor_history_load();
+    let first_fail = "";
+    for (let c in (result.checks || [])) {
+        if (c.status == "fail") { first_fail = as_string(c.name); break; }
+    }
+    push(data.entries, {
+        ts: time(),
+        issues: int(result.issues || 0),
+        fixed: int(result.fixed || 0),
+        planned: length(result.planned_fixes || []),
+        first_fail: first_fail
+    });
+    while (length(data.entries) > 50)
+        splice(data.entries, 0, 1);
+    let tmp_path = DOCTOR_HISTORY_FILE + ".tmp." + int(clock()[0]);
+    let f = fs.open(tmp_path, "w");
+    if (f) {
+        f.write(sprintf("%J\n", data));
+        f.close();
+        fs.rename(tmp_path, DOCTOR_HISTORY_FILE);
+    }
+}
+
+function doctor_history_trend(result) {
+    if (int(result.issues || 0) <= 0)
+        return "";
+    let data = doctor_history_load();
+    let day_ago = time() - 86400;
+    let recent_failures = 0;
+    for (let e in data.entries) {
+        if (int(e.ts || 0) >= day_ago && int(e.issues || 0) > 0)
+            recent_failures++;
+    }
+    if (recent_failures < 2)
+        return "";
+    return sprintf("⚠️ Это %d-й диагностики-запуск с проблемами за последние 24 часа — сбой повторяющийся, проверьте историю.", recent_failures);
+}
+
 function run_doctor_checks(repair) {
     if (!doctor_lock_try()) {
         return {
@@ -3159,6 +3309,12 @@ function run_doctor_checks(repair) {
     // steals it after 15 minutes of silence.
     let result = run_doctor_checks_impl(repair);
     doctor_lock_release();
+    if (!result.busy) {
+        doctor_history_record(result);
+        let trend = doctor_history_trend(result);
+        if (trend != "")
+            result.report = result.report + trend + "\n";
+    }
     return result;
 }
 
