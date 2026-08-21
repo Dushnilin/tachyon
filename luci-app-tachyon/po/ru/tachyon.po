@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-08-21 07:51+0300\n"
-"PO-Revision-Date: 2026-08-21 07:51+0300\n"
+"POT-Creation-Date: 2026-08-21 13:00+0300\n"
+"PO-Revision-Date: 2026-08-21 13:00+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -800,11 +800,11 @@ msgstr "Дни недели"
 msgid "Default (auto)"
 msgstr "По умолчанию (авто)"
 
-msgid "default (service mixed proxy)"
-msgstr ""
+msgid "Default (Direct WAN / Default mixed proxy)"
+msgstr "По умолчанию (WAN / стандартный смешанный прокси)"
 
-msgid "Default (service mixed proxy)"
-msgstr "По умолчанию (смешанный прокси)"
+msgid "default (service mixed proxy)"
+msgstr "по умолчанию (сервисный смешанный прокси)"
 
 msgid "Default address for checking server availability and latency. URLTest uses its own address."
 msgstr "Адрес по умолчанию для проверки доступности и задержки сервера. URLTest использует свой собственный адрес."
@@ -1242,7 +1242,7 @@ msgid "Error running trace:"
 msgstr "Ошибка выполнения трассировки:"
 
 msgid "Error updating lists:"
-msgstr ""
+msgstr "Ошибка обновления списков:"
 
 msgid "Every day"
 msgstr "Каждый день"
@@ -3102,7 +3102,7 @@ msgid "Section name"
 msgstr "Имя секции"
 
 msgid "Section name for WARP registration proxy. Leave empty to use the default service mixed proxy."
-msgstr ""
+msgstr "Секция для прокси регистрации WARP. Оставьте пустым для использования сервисного смешанного прокси по умолчанию."
 
 msgid "Section Rules Content"
 msgstr "Содержимое правил секции"
@@ -3110,8 +3110,8 @@ msgstr "Содержимое правил секции"
 msgid "Section test order (checked = active, drag rows with △▽):"
 msgstr "Порядок проверки секций (галочка = активна, перетаскивайте △▽):"
 
-msgid "Section used for Cloudflare WARP API registration. If your ISP blocks Cloudflare API on WAN, select a proxy section that routes through a tunnel (e.g. WireGuard, VPN). Leave empty to use the default service mixed proxy."
-msgstr "Секция для регистрации Cloudflare WARP API. Если провайдер блокирует Cloudflare API по WAN, выберите секцию с туннелем (WireGuard, VPN и т.д.). Оставьте пустым для использования смешанного прокси по умолчанию."
+msgid "Section used for Cloudflare WARP API registration. If your ISP blocks Cloudflare API on WAN, select a proxy section (with Mixed proxy enabled) or a tunnel interface section (WireGuard / AmneziaWG / VPN). Leave empty to use direct WAN / default mixed proxy."
+msgstr "Секция для регистрации Cloudflare WARP API. Если провайдер блокирует API Cloudflare на WAN, выберите секцию с прокси (с включённым смешанным прокси) или туннельный интерфейс (WireGuard / AmneziaWG / VPN). Оставьте пустым для прямого WAN / стандартного смешанного прокси."
 
 msgid "Sections"
 msgstr "Секции"
@@ -3309,7 +3309,7 @@ msgid "Services are online and ready! Reloading page..."
 msgstr "Службы запущены и готовы к работе! Перезагрузка страницы..."
 
 msgid "Services are online, waiting for full initialization..."
-msgstr ""
+msgstr "Сервисы запущены, ожидание полной инициализации..."
 
 msgid "Services info"
 msgstr "Информация о сервисах"
@@ -3675,7 +3675,7 @@ msgid "Telegram Bot Token"
 msgstr "Токен Telegram-бота"
 
 msgid "Test Connection"
-msgstr ""
+msgstr "Проверить подключение"
 
 msgid "Test latency"
 msgstr "Тестирование задержки"
@@ -3699,7 +3699,7 @@ msgid "Test servers whose names match the expression."
 msgstr "Тестировать серверы, чьи имена соответствуют выражению."
 
 msgid "Test Telegram Connection"
-msgstr ""
+msgstr "Проверить подключение к Telegram"
 
 msgid "Testing URL"
 msgstr "URL проверки"
@@ -4164,7 +4164,7 @@ msgid "WARP Private Key"
 msgstr "Приватный ключ WARP"
 
 msgid "WARP Proxy Section"
-msgstr ""
+msgstr "Секция прокси WARP"
 
 msgid "Watchdog"
 msgstr "Сторожевой таймер"
@@ -4256,6 +4256,12 @@ msgstr "sing-box outbound для Zapret2 настроен"
 msgid "Zapret2 sing-box outbound is not configured"
 msgstr "sing-box outbound для Zapret2 не настроен"
 
+msgid "Default (service mixed proxy)"
+msgstr "По умолчанию (смешанный прокси)"
+
+msgid "Section used for Cloudflare WARP API registration. If your ISP blocks Cloudflare API on WAN, select a proxy section that routes through a tunnel (e.g. WireGuard, VPN). Leave empty to use the default service mixed proxy."
+msgstr "Секция для регистрации Cloudflare WARP API. Если провайдер блокирует Cloudflare API по WAN, выберите секцию с туннелем (WireGuard, VPN и т.д.). Оставьте пустым для использования смешанного прокси по умолчанию."
+
 msgid "Select LAN devices to apply this schedule to, or enter IP or MAC addresses manually."
 msgstr "Выберите устройства из локальной сети для применения расписания, либо укажите IP или MAC-адреса вручную."
 
@@ -4266,40 +4272,40 @@ msgid "bot_token is empty — set token first"
 msgstr "bot_token пуст — сначала укажите токен"
 
 msgid "bot_token is set"
-msgstr ""
+msgstr "bot_token задан"
 
 msgid "Cannot check DNS"
-msgstr ""
+msgstr "Не удалось проверить DNS"
 
 msgid "Cannot check port 4534"
-msgstr ""
+msgstr "Не удалось проверить порт 4534"
 
 msgid "Cannot check sing-box status"
-msgstr ""
+msgstr "Не удалось проверить статус sing-box"
 
 msgid "Cannot reach Telegram API directly (IPv4 blocked by ISP?)"
-msgstr ""
+msgstr "Нет прямого доступа к Telegram API (IPv4 заблокирован провайдером?)"
 
 msgid "Direct API connection failed"
-msgstr ""
+msgstr "Прямое подключение к API не удалось"
 
 msgid "Direct IPv4 to Telegram API works"
-msgstr ""
+msgstr "Прямой доступ IPv4 к Telegram API работает"
 
 msgid "DNS cannot resolve api.telegram.org — check DNS settings"
 msgstr "DNS не может разрешить api.telegram.org — проверьте настройки DNS"
 
 msgid "DNS resolves api.telegram.org"
-msgstr ""
+msgstr "DNS разрешает api.telegram.org"
 
 msgid "Failed to send test message"
-msgstr ""
+msgstr "Не удалось отправить тестовое сообщение"
 
 msgid "Failed to send test message — check admin_ids and bot permissions"
 msgstr "Не удалось отправить тестовое сообщение — проверьте admin_ids и права бота"
 
 msgid "Mixed proxy port 4534 is listening"
-msgstr ""
+msgstr "Смешанный прокси на порту 4534 слушает"
 
 msgid "No admin_ids set — cannot send test message"
 msgstr "admin_ids не заданы — невозможно отправить тестовое сообщение"
@@ -4308,22 +4314,22 @@ msgid "Port 4534 not listening — proxy may not be available"
 msgstr "Порт 4534 не слушает — прокси может быть недоступен"
 
 msgid "Proxy API connection failed"
-msgstr ""
+msgstr "Подключение к API через прокси не удалось"
 
 msgid "Proxy route to Telegram API failed — check proxy outbound config"
 msgstr "Маршрут через прокси к Telegram API не сработал — проверьте конфигурацию outbound прокси"
 
 msgid "Proxy route to Telegram API works"
-msgstr ""
+msgstr "Маршрут через прокси к Telegram API работает"
 
 msgid "sing-box is NOT running — bot cannot route through proxy"
 msgstr "sing-box не запущен — бот не может маршрутизировать через прокси"
 
 msgid "sing-box is running"
-msgstr ""
+msgstr "sing-box запущен"
 
 msgid "Test message sent to chat"
-msgstr ""
+msgstr "Тестовое сообщение отправлено в чат"
 
 msgid "Device / IP"
 msgstr "Устройство / IP"

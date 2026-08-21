@@ -1144,7 +1144,35 @@ const dictionary = {
   "This will replace the current Tachyon settings with the snapshot": "Это заменит текущие настройки Tachyon на снапшот",
   "Delete the snapshot": "Удалить снапшот",
   "Up to 10 snapshots are kept; the oldest ones are removed automatically.": "Хранится до 10 снапшотов; самые старые удаляются автоматически.",
-  "Snapshot restored. The service restarts and the page will reload.": "Снапшот восстановлен. Сервис перезапускается, страница будет перезагружена."
+  "Snapshot restored. The service restarts and the page will reload.": "Снапшот восстановлен. Сервис перезапускается, страница будет перезагружена.",
+  // WARP Generator Proxy Section
+  "Default (Direct WAN / Default mixed proxy)": "По умолчанию (WAN / стандартный смешанный прокси)",
+  "default (service mixed proxy)": "по умолчанию (сервисный смешанный прокси)",
+  "Section name for WARP registration proxy. Leave empty to use the default service mixed proxy.": "Секция для прокси регистрации WARP. Оставьте пустым для использования сервисного смешанного прокси по умолчанию.",
+  "Section used for Cloudflare WARP API registration. If your ISP blocks Cloudflare API on WAN, select a proxy section (with Mixed proxy enabled) or a tunnel interface section (WireGuard / AmneziaWG / VPN). Leave empty to use direct WAN / default mixed proxy.": "Секция для регистрации Cloudflare WARP API. Если провайдер блокирует API Cloudflare на WAN, выберите секцию с прокси (с включённым смешанным прокси) или туннельный интерфейс (WireGuard / AmneziaWG / VPN). Оставьте пустым для прямого WAN / стандартного смешанного прокси.",
+  "WARP Proxy Section": "Секция прокси WARP",
+  // Lists
+  "Error updating lists:": "Ошибка обновления списков:",
+  // Services
+  "Services are online, waiting for full initialization...": "Сервисы запущены, ожидание полной инициализации...",
+  // Connection test (dashboard)
+  "Test Connection": "Проверить подключение",
+  // Telegram diagnostics
+  "Test Telegram Connection": "Проверить подключение к Telegram",
+  "bot_token is set": "bot_token задан",
+  "Cannot check DNS": "Не удалось проверить DNS",
+  "Cannot check port 4534": "Не удалось проверить порт 4534",
+  "Cannot check sing-box status": "Не удалось проверить статус sing-box",
+  "Cannot reach Telegram API directly (IPv4 blocked by ISP?)": "Нет прямого доступа к Telegram API (IPv4 заблокирован провайдером?)",
+  "Direct API connection failed": "Прямое подключение к API не удалось",
+  "Direct IPv4 to Telegram API works": "Прямой доступ IPv4 к Telegram API работает",
+  "DNS resolves api.telegram.org": "DNS разрешает api.telegram.org",
+  "Failed to send test message": "Не удалось отправить тестовое сообщение",
+  "Mixed proxy port 4534 is listening": "Смешанный прокси на порту 4534 слушает",
+  "Proxy API connection failed": "Подключение к API через прокси не удалось",
+  "Proxy route to Telegram API works": "Маршрут через прокси к Telegram API работает",
+  "sing-box is running": "sing-box запущен",
+  "Test message sent to chat": "Тестовое сообщение отправлено в чат",
 };
 
 function escapePoString(str) {
