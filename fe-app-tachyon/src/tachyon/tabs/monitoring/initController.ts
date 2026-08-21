@@ -324,7 +324,16 @@ function getServerDisplayNameByInboundTag(tag: string): string {
 }
 
 function getDeviceName(ip: string): string {
-  return normalizeString(localDeviceChoices[ip]);
+  const raw = normalizeString(localDeviceChoices[ip]);
+  if (!raw) return '';
+  const match = raw.match(/^(?:IP|MAC):\s*[^\s—]+\s*—\s*(.+)$/i);
+  if (match && match[1]) {
+    return match[1].trim();
+  }
+  if (!raw.startsWith('IP:') && !raw.startsWith('MAC:') && raw !== ip) {
+    return raw;
+  }
+  return '';
 }
 
 function getServerSourceNameByIp(ip: string): string {
@@ -361,7 +370,7 @@ function getDeviceFilterLabel(ip: string): string {
   }
 
   const deviceName = getDeviceName(ip);
-  return deviceName || ip;
+  return deviceName ? `${deviceName} (${ip})` : ip;
 }
 
 function getSourceCellParts(connection: MonitoredConnection) {
@@ -383,8 +392,8 @@ function getSourceCellParts(connection: MonitoredConnection) {
   if (deviceName) {
     return {
       primary: deviceName,
-      ip: '',
-      copyValue: deviceName,
+      ip: ip,
+      copyValue: `${deviceName} (${ip})`,
       searchValue: `${deviceName} ${ip}`,
     };
   }

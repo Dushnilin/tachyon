@@ -14152,7 +14152,16 @@ function getServerDisplayNameByInboundTag(tag) {
   return normalizeString(serverDisplayNames[tag]);
 }
 function getDeviceName(ip) {
-  return normalizeString(localDeviceChoices[ip]);
+  const raw = normalizeString(localDeviceChoices[ip]);
+  if (!raw) return "";
+  const match = raw.match(/^(?:IP|MAC):\s*[^\s—]+\s*—\s*(.+)$/i);
+  if (match && match[1]) {
+    return match[1].trim();
+  }
+  if (!raw.startsWith("IP:") && !raw.startsWith("MAC:") && raw !== ip) {
+    return raw;
+  }
+  return "";
 }
 function getServerSourceNameByIp(ip) {
   if (!ip) {
@@ -14181,7 +14190,7 @@ function getDeviceFilterLabel(ip) {
     return serverName;
   }
   const deviceName = getDeviceName(ip);
-  return deviceName || ip;
+  return deviceName ? `${deviceName} (${ip})` : ip;
 }
 function getSourceCellParts(connection) {
   const ip = getConnectionSourceIp(connection);
@@ -14199,8 +14208,8 @@ function getSourceCellParts(connection) {
   if (deviceName) {
     return {
       primary: deviceName,
-      ip: "",
-      copyValue: deviceName,
+      ip,
+      copyValue: `${deviceName} (${ip})`,
       searchValue: `${deviceName} ${ip}`
     };
   }
@@ -15544,35 +15553,35 @@ var styles5 = `
 }
 
 .tachyon_monitoring-page__table th:nth-child(1) {
-    width: 36%;
+    width: 25%;
 }
 
 .tachyon_monitoring-page__table th:nth-child(2) {
-    width: 6%;
+    width: 5%;
 }
 
 .tachyon_monitoring-page__table th:nth-child(3) {
-    width: 10%;
+    width: 9%;
 }
 
 .tachyon_monitoring-page__table th:nth-child(4) {
-    width: 8%;
+    width: 7%;
 }
 
 .tachyon_monitoring-page__table th:nth-child(5) {
-    width: 9.5%;
+    width: 9%;
 }
 
 .tachyon_monitoring-page__table th:nth-child(6) {
-    width: 8.5%;
+    width: 8%;
 }
 
 .tachyon_monitoring-page__table th:nth-child(7) {
-    width: 17%;
+    width: 33%;
 }
 
 .tachyon_monitoring-page__table th:nth-child(8) {
-    width: 5%;
+    width: 4%;
 }
 
 .tachyon_monitoring-page__table tbody tr:last-child td {
