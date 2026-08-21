@@ -310,7 +310,7 @@ export const styles = `
 }
 
 .tachyon_monitoring-page__table th:nth-child(1) {
-    width: 28%;
+    width: 36%;
 }
 
 .tachyon_monitoring-page__table th:nth-child(2) {
@@ -318,7 +318,7 @@ export const styles = `
 }
 
 .tachyon_monitoring-page__table th:nth-child(3) {
-    width: 16%;
+    width: 10%;
 }
 
 .tachyon_monitoring-page__table th:nth-child(4) {
@@ -334,11 +334,11 @@ export const styles = `
 }
 
 .tachyon_monitoring-page__table th:nth-child(7) {
-    width: 16%;
+    width: 17%;
 }
 
 .tachyon_monitoring-page__table th:nth-child(8) {
-    width: 8%;
+    width: 5%;
 }
 
 .tachyon_monitoring-page__table tbody tr:last-child td {

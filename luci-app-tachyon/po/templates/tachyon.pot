@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-08-21 09:59+0300\n"
-"PO-Revision-Date: 2026-08-21 09:59+0300\n"
+"POT-Creation-Date: 2026-08-21 11:59+0300\n"
+"PO-Revision-Date: 2026-08-21 11:59+0300\n"
 "Last-Translator: Dushnilin <dushnilin@gmail.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -2064,12 +2064,12 @@ msgstr ""
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:16733
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:16791
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:16962
-#: src/tachyon/methods/shell/index.ts:172
-#: src/tachyon/methods/shell/index.ts:179
 #: src/tachyon/tabs/updates/initController.ts:631
 #: src/tachyon/tabs/updates/initController.ts:632
 #: src/tachyon/tabs/updates/initController.ts:707
 #: src/tachyon/tabs/updates/initController.ts:920
+#: src/tachyon/methods/shell/index.ts:172
+#: src/tachyon/methods/shell/index.ts:179
 msgid "Failed to execute"
 msgstr ""
 
@@ -5182,9 +5182,9 @@ msgstr ""
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:3415
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:3434
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:12328
+#: src/tachyon/tabs/diagnostic/initController.ts:604
 #: src/tachyon/methods/shell/index.ts:422
 #: src/tachyon/methods/shell/index.ts:443
-#: src/tachyon/tabs/diagnostic/initController.ts:604
 msgid "Service action failed"
 msgstr ""
 
