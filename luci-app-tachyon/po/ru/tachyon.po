@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-08-20 22:26+0300\n"
-"PO-Revision-Date: 2026-08-20 22:26+0300\n"
+"POT-Creation-Date: 2026-08-21 05:02+0300\n"
+"PO-Revision-Date: 2026-08-21 05:02+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -146,6 +146,9 @@ msgstr "Адрес"
 msgid "Administrator Chat IDs"
 msgstr "Chat ID администраторов"
 
+msgid "Adult content"
+msgstr ""
+
 msgid "Advanced self-healing features. Requires Watchdog to be enabled."
 msgstr "Расширенные функции самовосстановления. Требуется включённый Watchdog."
 
@@ -250,6 +253,15 @@ msgstr "Разрешено в интервале"
 
 msgid "Allow Insecure TLS"
 msgstr "Разрешить небезопасный TLS"
+
+msgid "Allow only"
+msgstr ""
+
+msgid "Allow only listed sites (Whitelist)"
+msgstr ""
+
+msgid "Allow only:"
+msgstr ""
 
 msgid "Allowed domain prefixes are full:, keyword:, and regex:"
 msgstr "Допустимые префиксы доменов: full:, keyword:, и regex:"
@@ -380,14 +392,35 @@ msgstr "Беларусь (by)"
 msgid "BitTorrent / P2P"
 msgstr "BitTorrent / P2P"
 
+msgid "Block"
+msgstr ""
+
 msgid "Block / Disable in scheduled hours (Standard)"
 msgstr "Блокировать / Отключать в указанные часы (Стандарт)"
+
+msgid "Block at DNS level"
+msgstr ""
 
 msgid "Block in interval"
 msgstr "Блокируется в интервале"
 
 msgid "Block internet access or specific proxy sections for individual devices based on time and days."
 msgstr "Блокировка доступа в интернет или определенных секций маршрутизации для отдельных устройств по времени и дням недели."
+
+msgid "Block listed sites (Standard)"
+msgstr ""
+
+msgid "Block:"
+msgstr ""
+
+msgid "Block: deny the listed sites. Allow only (whitelist): deny everything except the listed sites. Whitelist mode requires DNS-level blocking and applies to the schedule window."
+msgstr ""
+
+msgid "Blocked Sites"
+msgstr ""
+
+msgid "Blocked Sites (Domains)"
+msgstr ""
 
 msgid "Bootstrap DNS"
 msgstr "Bootstrap DNS"
@@ -685,6 +718,9 @@ msgstr "Подключения недоступны"
 
 msgid "Connectivity probe failed"
 msgstr "Проверка соединения не прошла"
+
+msgid "Content Mode"
+msgstr ""
 
 msgid "Cookie packet junk size (S3)"
 msgstr "Размер мусора в пакете cookie (S3)"
@@ -988,6 +1024,9 @@ msgstr "Домены"
 
 msgid "Domains automatically detected by Smart Detect or added via Telegram bot. You can manually edit or remove them here."
 msgstr "Домены, автоматически определённые Smart Detect или добавленные через Telegram-бота. Вы можете вручную отредактировать или удалить их здесь."
+
+msgid "Domains to block for the selected devices. Leave empty to block all internet. Enter one domain per line, e.g. youtube.com. Use the preset buttons to quickly add common categories."
+msgstr ""
 
 msgid "Done"
 msgstr "Готово"
@@ -1433,6 +1472,9 @@ msgstr "IP игровых консолей"
 msgid "Game Console Optimizer (NAT Type 1)"
 msgstr "Оптимизатор игровых консолей (NAT Type 1)"
 
+msgid "Gaming"
+msgstr ""
+
 msgid "Generate a random 16-character hexadecimal HWID"
 msgstr "Сгенерировать случайный 16-символьный шестнадцатеричный HWID"
 
@@ -1735,6 +1777,9 @@ msgstr "Неверный порт DNS-сервера"
 
 msgid "Invalid domain address"
 msgstr "Неверный домен"
+
+msgid "Invalid domain: empty prefix value"
+msgstr ""
 
 msgid "Invalid format. Use an IP address or CIDR subnet"
 msgstr "Неверный формат. Используйте IP-адрес или подсеть CIDR"
@@ -2168,6 +2213,9 @@ msgstr "Максимальное время ожидания разрешени�
 msgid "Memory Usage"
 msgstr "Использование памяти"
 
+msgid "Messengers"
+msgstr ""
+
 msgid "Method"
 msgstr "Метод"
 
@@ -2377,6 +2425,9 @@ msgstr "Не запущено"
 
 msgid "Not set"
 msgstr "Не задано"
+
+msgid "Notify in Telegram"
+msgstr ""
 
 msgid "Notify on Certificate Warnings"
 msgstr "Уведомлять о предупреждениях сертификатов"
@@ -2909,6 +2960,9 @@ msgstr "Восстановление прямого интернета (оста
 msgid "Resume updates"
 msgstr "Продолжить обновление"
 
+msgid "Return NXDOMAIN for blocked domains (recommended). When enabled, blocked domains are not resolved at all. When disabled, only direct connections are rejected."
+msgstr ""
+
 msgid "Route"
 msgstr "Маршрут"
 
@@ -3176,6 +3230,9 @@ msgstr "Отправлять уведомление в Telegram, если SSL/TL
 msgid "Send a Telegram notification if the Tachyon service is restarted by the watchdog."
 msgstr "Отправлять уведомление в Telegram, если сервис Tachyon перезапущен watchdog."
 
+msgid "Send a Telegram notification to admins when a blocked site is accessed. Requires the Telegram bot to be enabled."
+msgstr ""
+
 msgid "Send a Telegram notification when a URLTest group switches to a new server."
 msgstr "Отправлять уведомление в Telegram при переключении группы URLTest на новый сервер."
 
@@ -3266,6 +3323,9 @@ msgstr "Настройки"
 msgid "Settings have been reset to defaults. The page will reload."
 msgstr "Настройки сброшены к значениям по умолчанию. Страница будет перезагружена."
 
+msgid "Shopping"
+msgstr ""
+
 msgid "Show metadata on dashboard"
 msgstr "Показывать метаданные на дашборде"
 
@@ -3349,6 +3409,9 @@ msgstr "Снапшот восстановлен. Сервис перезапус
 
 msgid "Snell Version"
 msgstr "Версия Snell"
+
+msgid "Social media"
+msgstr ""
 
 msgid "Sort Alphabetically"
 msgstr "Сортировать по алфавиту"
@@ -4060,6 +4123,9 @@ msgstr "Проверка готовности роутера и служб..."
 
 msgid "Via country.is"
 msgstr "Через country.is"
+
+msgid "Video streaming"
+msgstr ""
 
 msgid "View logs"
 msgstr "Посмотреть логи"

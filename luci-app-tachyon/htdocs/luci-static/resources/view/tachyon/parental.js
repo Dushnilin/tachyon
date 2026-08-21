@@ -38,6 +38,68 @@ const DAY_INDEX_MAP = {
   6: "saturday",
 };
 
+const DOMAIN_PRESETS = {
+  social: {
+    label: _("Social media"),
+    icon: "📱",
+    domains: [
+      "facebook.com", "instagram.com", "tiktok.com", "twitter.com", "x.com",
+      "vk.com", "snapchat.com", "reddit.com", "discord.com", "discord.gg",
+      "twitch.tv", "pinterest.com", "telegram.org", "t.me", "whatsapp.com",
+      "signal.org", "wechat.com", "youtube.com", "tumblr.com",
+    ],
+  },
+  video: {
+    label: _("Video streaming"),
+    icon: "🎬",
+    domains: [
+      "youtube.com", "youtu.be", "googlevideo.com", "ytimg.com",
+      "netflix.com", "primevideo.com", "hulu.com", "disneyplus.com",
+      "hbomax.com", "okko.tv", "ivi.ru", "kinopoisk.ru",
+      "twitch.tv", "vimeo.com", "dailymotion.com", "rutube.ru",
+    ],
+  },
+  gaming: {
+    label: _("Gaming"),
+    icon: "🎮",
+    domains: [
+      "steampowered.com", "steamcommunity.com", "epicgames.com",
+      "roblox.com", "fortnite.com", "xbox.com", "playstation.com",
+      "battle.net", "ea.com", "ubisoft.com", "riotgames.com",
+      "minecraft.net", "origin.com", "discord.com", "discord.gg",
+    ],
+  },
+  adult: {
+    label: _("Adult content"),
+    icon: "🔞",
+    domains: [
+      "pornhub.com", "xvideos.com", "xhamster.com", "xnxx.com",
+      "onlyfans.com", "stripchat.com", "chaturbate.com",
+      "youporn.com", "redtube.com", "tubegalore.com",
+      "porntrex.com", "pornhd.com", "nudevista.com",
+      "porn.com", "spankbang.com", "eporner.com",
+    ],
+  },
+  messengers: {
+    label: _("Messengers"),
+    icon: "💬",
+    domains: [
+      "telegram.org", "t.me", "whatsapp.com", "wa.me", "viber.com",
+      "signal.org", "wechat.com", "qq.com", "icq.com", "discord.com",
+      "discord.gg", "skype.com", "zoom.us", "slack.com", "teams.microsoft.com",
+    ],
+  },
+  shopping: {
+    label: _("Shopping"),
+    icon: "🛒",
+    domains: [
+      "amazon.com", "ebay.com", "aliexpress.com", "ozon.ru",
+      "wildberries.ru", "wb.ru", "yandex.market", "market.yandex.ru",
+      "avito.ru", "lamoda.ru", "shein.com", "temu.com", "wish.com",
+    ],
+  },
+};
+
 function validateTime(sectionId, value) {
   if (!value) {
     return _("Time is required (e.g. 22:00)");
@@ -237,6 +299,37 @@ function createParentalContent(section) {
     return `${s} - ${e}, ${days}`;
   };
 
+  // Blocked sites column in table
+  o = section.option(form.DummyValue, "_sites_display", _("Blocked Sites"));
+  o.rawhtml = true;
+  o.modalonly = false;
+  o.cfgvalue = function (sectionId) {
+    const domains = normalizeListValues(uci.get(UCI_PACKAGE, sectionId, "blocked_domains"));
+    const mode = uci.get(UCI_PACKAGE, sectionId, "mode") || "block";
+    if (domains.length === 0) {
+      return '<span style="opacity:0.5;">' + _("None") + "</span>";
+    }
+    const modeBadge =
+      mode === "allow"
+        ? '<span style="color:#68d391;font-weight:600;">🟢 ' + _("Allow only") + "</span>"
+        : '<span style="color:#fc8181;font-weight:600;">🚫 ' + _("Block") + "</span>";
+    const badges = domains
+      .map(
+        (d) =>
+          '<span class="badge" style="background:#2d3748;color:#f687b3;padding:2px 6px;border-radius:4px;font-size:11px;font-family:monospace;margin-right:4px;border:1px solid rgba(246,135,179,0.3);display:inline-block;margin-bottom:2px;">' +
+          d +
+          "</span>",
+      )
+      .join("");
+    return "<div>" + modeBadge + "<br>" + badges + "</div>";
+  };
+  o.textvalue = function (sectionId) {
+    const domains = normalizeListValues(uci.get(UCI_PACKAGE, sectionId, "blocked_domains"));
+    const mode = uci.get(UCI_PACKAGE, sectionId, "mode") || "block";
+    if (domains.length === 0) return _("None");
+    return (mode === "allow" ? _("Allow only: ") : _("Block: ")) + domains.join(", ");
+  };
+
   // Live status badge in table
   o = section.option(form.DummyValue, "_live_status", _("Status"));
   o.rawhtml = true;
@@ -389,6 +482,131 @@ function createParentalContent(section) {
   Object.entries(DAY_LABELS).forEach(([key, label]) => {
     o.value(key, label);
   });
+
+  // ─── Content blocking (domains) ────────────────────────────────────────────
+
+  // Blocked domains with quick presets
+  o = section.option(
+    form.TextValue,
+    "blocked_domains",
+    _("Blocked Sites (Domains)"),
+    _("Domains to block for the selected devices. Leave empty to block all internet. Enter one domain per line, e.g. youtube.com. Use the preset buttons to quickly add common categories."),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.rows = 6;
+  o.wrap = "soft";
+  o.textarea = true;
+  o.placeholder = "youtube.com\ngooglevideo.com";
+  o.validate = function (sectionId, value) {
+    if (!value) return true;
+    const lines = `${value}`.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    for (const line of lines) {
+      const clean = line.replace(/^(full:|keyword:|regex:)/, "");
+      if (/^(full:|keyword:|regex:)/.test(line) && !clean) {
+        return _("Invalid domain: empty prefix value");
+      }
+      if (/^regex:/.test(line)) continue;
+      if (!/^([a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/.test(clean)) {
+        return _("Invalid domain: " + line);
+      }
+    }
+    return true;
+  };
+  o.write = function (sectionId, value) {
+    const lines = `${value || ""}`.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    const existingList = normalizeListValues(uci.get(UCI_PACKAGE, sectionId, "blocked_domains"));
+    for (const d of lines) {
+      if (!existingList.includes(d)) {
+        uci.add_list(UCI_PACKAGE, sectionId, "blocked_domains", d);
+      }
+    }
+    for (const d of existingList) {
+      if (!lines.includes(d)) {
+        uci.remove_list(UCI_PACKAGE, sectionId, "blocked_domains", d);
+      }
+    }
+  };
+  o.load = function (sectionId) {
+    return normalizeListValues(uci.get(UCI_PACKAGE, sectionId, "blocked_domains")).join("\n");
+  };
+  o.remove = function (sectionId) {
+    uci.unset(UCI_PACKAGE, sectionId, "blocked_domains");
+  };
+  o.renderWidget = function (sectionId, optionIndex, cfgvalue) {
+    const container = E("div", { style: "width:100%;" });
+
+    // Preset buttons row
+    const presetRow = E("div", { style: "margin-bottom:6px;display:flex;flex-wrap:wrap;gap:4px;" });
+    Object.entries(DOMAIN_PRESETS).forEach(([key, preset]) => {
+      const btn = E(
+        "button",
+        {
+          class: "cbi-button cbi-button-neutral",
+          type: "button",
+          style: "padding:2px 8px;font-size:11px;",
+          title: preset.domains.join(", "),
+        },
+        preset.icon + " " + preset.label,
+      );
+      btn.addEventListener("click", function () {
+        const textarea = container.querySelector("textarea");
+        if (!textarea) return;
+        const current = textarea.value.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+        const merged = current.slice();
+        for (const d of preset.domains) {
+          if (!merged.includes(d)) merged.push(d);
+        }
+        textarea.value = merged.join("\n");
+      });
+      presetRow.appendChild(btn);
+    });
+    container.appendChild(presetRow);
+
+    const textarea = E("textarea", {
+      id: `cbid.tachyon.${sectionId}.blocked_domains`,
+      class: "cbi-input-textarea",
+      style: "width:100%;min-height:110px;",
+      placeholder: "youtube.com\ngooglevideo.com",
+    });
+    if (cfgvalue) textarea.value = cfgvalue;
+    container.appendChild(textarea);
+    return container;
+  };
+
+  // Content mode: block listed vs allow only listed (whitelist)
+  o = section.option(
+    form.ListValue,
+    "mode",
+    _("Content Mode"),
+    _("Block: deny the listed sites. Allow only (whitelist): deny everything except the listed sites. Whitelist mode requires DNS-level blocking and applies to the schedule window."),
+  );
+  o.modalonly = true;
+  o.default = "block";
+  o.value("block", _("Block listed sites (Standard)"));
+  o.value("allow", _("Allow only listed sites (Whitelist)"));
+
+  // DNS-level blocking
+  o = section.option(
+    form.Flag,
+    "dns_level",
+    _("Block at DNS level"),
+    _("Return NXDOMAIN for blocked domains (recommended). When enabled, blocked domains are not resolved at all. When disabled, only direct connections are rejected."),
+  );
+  o.modalonly = true;
+  o.default = "1";
+  o.rmempty = false;
+
+  // Telegram notification
+  o = section.option(
+    form.Flag,
+    "notify",
+    _("Notify in Telegram"),
+    _("Send a Telegram notification to admins when a blocked site is accessed. Requires the Telegram bot to be enabled."),
+  );
+  o.modalonly = true;
+  o.default = "0";
+  o.rmempty = false;
 }
 
 const EntryPoint = {

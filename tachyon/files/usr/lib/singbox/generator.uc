@@ -686,6 +686,170 @@ function add_service_mixed_proxy(config, settings, sections) {
         runtime_generate_unsupported("download components via proxy section is not set");
 }
 
+// ─── Content blocking (parental control domains) ─────────────────────────────
+// Each enabled `config schedule` with blocked_domains generates:
+//   1. DNS rules (on the dedicated dns-block-in inbound) that reject the
+//      blocked domains for the schedule's devices. IP-addressed devices get
+//      source_ip_cidr scoping; MAC-only devices are covered by the nftables
+//      DNS redirect (the DNS packets only reach dns-block-in when the
+//      nftables redirect rule fires, which already matches by MAC+time).
+//   2. Route rules with action reject as a fallback when DNS cannot be
+//      redirected (always-on schedules only; time-gated schedules rely on
+//      the nftables redirect so their route rules would leak outside the
+//      active window).
+//   mode=allow (whitelist) inverts the DNS match: everything except the
+//   listed domains is rejected for the device.
+
+function schedule_list_value(schedule, key) {
+    let values = list_option(schedule, key);
+    if (length(values) > 0)
+        return values;
+    let single = option(schedule, key, "");
+    return single == "" ? [] : [ single ];
+}
+
+function schedule_has_time_window(schedule) {
+    return trim(option(schedule, "start_time", "")) != "" ||
+        trim(option(schedule, "end_time", "")) != "";
+}
+
+function schedule_source_ip_cidrs(schedule) {
+    let result = [];
+    for (let raw in schedule_list_value(schedule, "device_ip")) {
+        let device = trim(as_string(raw));
+        if (device == "")
+            continue;
+        let is_mac = match(device, /^([0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}$/) != null;
+        if (is_mac)
+            continue;
+        if (core_ip.valid_ip(device))
+            push(result, core_ip.valid_ipv6(device) ? device + "/128" : device + "/32");
+        else if (core_ip.valid_ip_cidr(device))
+            push(result, device);
+    }
+    return result;
+}
+
+function schedule_domain_matcher_rule(rule, schedule) {
+    let raw = schedule_list_value(schedule, "blocked_domains");
+    let plain = [];
+    let keyword = [];
+    let regex = [];
+    let full = [];
+    for (let domain in raw) {
+        let value = trim(as_string(domain));
+        if (value == "")
+            continue;
+        if (substr(value, 0, 6) == "full:")
+            push(full, trim(substr(value, 6)));
+        else if (substr(value, 0, 8) == "keyword:")
+            push(keyword, trim(substr(value, 8)));
+        else if (substr(value, 0, 6) == "regex:")
+            push(regex, trim(substr(value, 6)));
+        else if (substr(value, 0, 1) == "." || index(value, "*") >= 0)
+            push(plain, value);
+        else
+            push(full, value);
+    }
+    if (length(full) > 0)
+        rule.domain = full;
+    if (length(plain) > 0)
+        rule.domain_suffix = plain;
+    if (length(keyword) > 0)
+        rule.domain_keyword = keyword;
+    if (length(regex) > 0)
+        rule.domain_regex = regex;
+    return rule;
+}
+
+function schedule_blocked_domains(schedule) {
+    let result = [];
+    for (let domain in schedule_list_value(schedule, "blocked_domains")) {
+        let value = trim(as_string(domain));
+        if (value != "")
+            push(result, value);
+    }
+    return result;
+}
+
+function enabled_content_block_schedules() {
+    let result = [];
+    ctx.uci_cursor().foreach(CONFIG_NAME, "schedule", function(schedule) {
+        if (section_enabled(schedule) && length(schedule_blocked_domains(schedule)) > 0)
+            push(result, schedule);
+    });
+    return result;
+}
+
+function add_content_block_dns_inbound(config) {
+    push(config.inbounds, {
+        type: "direct",
+        tag: runtime_constants.DNS_BLOCK_INBOUND_TAG,
+        listen: runtime_constants.DNS_BLOCK_INBOUND_ADDRESS,
+        listen_port: runtime_constants.DNS_BLOCK_INBOUND_PORT
+    });
+}
+
+function add_content_block_dns_rules(config, schedules) {
+    let added = false;
+    for (let schedule in schedules) {
+        let mode = option(schedule, "mode", "block");
+        let sources = schedule_source_ip_cidrs(schedule);
+        for (let raw_domain in schedule_blocked_domains(schedule)) {
+            let domain_value = trim(as_string(raw_domain));
+            if (domain_value == "")
+                continue;
+            let rule = {
+                action: "reject",
+                inbound: [ runtime_constants.DNS_BLOCK_INBOUND_TAG ]
+            };
+            let matchers = {};
+            schedule_domain_matcher_rule(matchers, { blocked_domains: [ domain_value ] });
+            for (let key in [ "domain", "domain_suffix", "domain_keyword", "domain_regex" ]) {
+                if (matchers[key] != null)
+                    rule[key] = matchers[key];
+            }
+            if (length(sources) > 0)
+                rule.source_ip_cidr = sources;
+            if (mode == "allow")
+                rule.invert = true;
+            push(config.dns.rules, rule);
+            added = true;
+        }
+    }
+    return added;
+}
+
+function add_content_block_route_rules(config, schedules) {
+    for (let schedule in schedules) {
+        if (schedule_has_time_window(schedule))
+            continue;
+        let mode = option(schedule, "mode", "block");
+        let sources = schedule_source_ip_cidrs(schedule);
+        if (length(sources) == 0)
+            continue;
+        let rule = {
+            action: "reject",
+            inbound: tproxy_inbound_matcher()
+        };
+        schedule_domain_matcher_rule(rule, schedule);
+        rule.source_ip_cidr = sources;
+        if (mode == "allow")
+            rule.invert = true;
+        push(config.route.rules, rule);
+    }
+}
+
+function add_content_blocking(config) {
+    let schedules = enabled_content_block_schedules();
+    if (length(schedules) == 0)
+        return;
+
+    add_content_block_dns_inbound(config);
+    add_content_block_dns_rules(config, schedules);
+    add_content_block_route_rules(config, schedules);
+}
+
 function generate_config(output_path, service_address, mwan3_active, supports_xhttp) {
     ctx.runtime_ruleset_folder = runtime_ruleset_folder;
     runtime_supports_xhttp = supports_xhttp == null || as_string(supports_xhttp) == ""
@@ -727,6 +891,8 @@ function generate_config(output_path, service_address, mwan3_active, supports_xh
     add_service_mixed_proxy(config, settings, sections);
     for (let section in sections)
         add_mixed_proxy_for_section(config, section, service_address);
+
+    add_content_blocking(config);
 
     assert_unique_outbound_tags(config);
     strip_internal_fields(config);

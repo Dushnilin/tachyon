@@ -1735,6 +1735,29 @@ function validate_schedule(schedule, sections) {
         if (!found)
             fail_validation("Schedule '" + name + "' references unknown section '" + sec_name + "'. Aborted.");
     }
+
+    let blocked_domains = list_option(schedule, "blocked_domains");
+    if (length(blocked_domains) == 0) {
+        let single_domain = option(schedule, "blocked_domains", "");
+        if (single_domain != "") blocked_domains = [ single_domain ];
+    }
+    for (let domain in blocked_domains) {
+        let clean_domain = trim(as_string(domain));
+        if (clean_domain != "" && !combined_domain_valid(clean_domain))
+            fail_validation("Schedule '" + name + "' has invalid blocked domain '" + clean_domain + "'. Use plain domains or full:, keyword:, regex: prefixes. Aborted.");
+    }
+
+    let mode = option(schedule, "mode", "block");
+    if (mode != "" && mode != "block" && mode != "allow")
+        fail_validation("Schedule '" + name + "' has invalid mode '" + mode + "'. Expected 'block' or 'allow'. Aborted.");
+
+    let dns_level = option(schedule, "dns_level", "1");
+    if (dns_level != "" && dns_level != "0" && dns_level != "1")
+        fail_validation("Schedule '" + name + "' has invalid dns_level '" + dns_level + "'. Expected 0 or 1. Aborted.");
+
+    let notify = option(schedule, "notify", "0");
+    if (notify != "" && notify != "0" && notify != "1")
+        fail_validation("Schedule '" + name + "' has invalid notify '" + notify + "'. Expected 0 or 1. Aborted.");
 }
 
 function validate_runtime_config(context) {

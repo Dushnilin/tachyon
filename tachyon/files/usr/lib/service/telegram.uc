@@ -2748,6 +2748,87 @@ function check_notified_updates(token, admin_ids) {
     }
 }
 
+// ─── Content blocking notifications ──────────────────────────────────────────
+// Reads the dns_block nftables chain counters and notifies admins when a
+// device tried to reach a blocked domain (parental control content rules).
+// The counters are cumulative; we persist the last-seen total per rule and
+// only report the delta. The per-rule label is written into nft comments
+// by the apply step so the counter line can be matched back to the rule.
+
+const BLOCKED_STATE_FILE = "/var/run/tachyon_blocked_counts.json";
+const BLOCKED_POLL_INTERVAL = 60;
+
+function block_schedules_with_notify() {
+    let result = [];
+    for (let s in uci_core.sections(CONFIG_NAME, "schedule")) {
+        s = object_or_empty(s);
+        if (option(s, "enabled", "1") != "0" &&
+            option(s, "notify", "0") == "1" &&
+            length(common.list_option(s, "blocked_domains")) > 0)
+            push(result, s);
+    }
+    return result;
+}
+
+function load_blocked_counts() {
+    try {
+        let raw = trim(fs.readfile(BLOCKED_STATE_FILE) || "");
+        if (raw == "") return {};
+        return json(raw);
+    } catch (e) {
+        return {};
+    }
+}
+
+function save_blocked_counts(counts) {
+    try {
+        fs.writefile(BLOCKED_STATE_FILE, sprintf("%J", counts));
+    } catch (e) {}
+}
+
+function check_blocked_activity(cfg) {
+    let schedules = block_schedules_with_notify();
+    if (length(schedules) == 0) return;
+
+    let out = command_capture(command_from_args([ "nft", "list", "chain", "inet", "tachyon", "dns_block" ]));
+    if (!out || out.status != 0) return;
+
+    let previous = load_blocked_counts();
+    let current = {};
+    for (let schedule in schedules) {
+        let label = as_string(option(schedule, "label", schedule[".name"]));
+        let needle = "tachyon-block:" + label;
+        let total = 0;
+        let match_count = 0;
+        for (let line in split(out.output || "", "\n")) {
+            if (index(line, needle) < 0)
+                continue;
+            let m = match(line, /packets[= ]+([0-9]+)/);
+            if (!m || !m[1]) continue;
+            total += int(m[1]);
+            match_count++;
+        }
+        if (match_count == 0)
+            continue;
+        current[label] = total;
+        let prev = int(previous[label] || "0");
+        if (total > prev) {
+            let delta = total - prev;
+            let admins = split(cfg.admin_ids || "", /,/);
+            for (let admin in admins) {
+                let cid = trim(admin);
+                if (cid != "")
+                    send_message(cfg.bot_token, cid,
+                        "🚫 <b>Заблокированная активность</b>\n" +
+                        "Правило: <code>" + escape_html(label) + "</code>\n" +
+                        "Попыток доступа к заблокированным сайтам: <code>" + as_string(delta) + "</code>",
+                        "HTML", null);
+            }
+        }
+    }
+    save_blocked_counts(current);
+}
+
 function worker() {
     let cfg = settings();
     if (cfg.enabled != "1" || !cfg.bot_token) return 0;
@@ -2791,6 +2872,7 @@ function worker() {
 
     let last_report_day = -1;
     let last_update_check = 0;
+    let last_blocked_check = 0;
     let consecutive_failures = 0;
 
     while (true) {
@@ -2824,6 +2906,11 @@ function worker() {
             if (now - last_update_check > 3600) {
                 check_notified_updates(cfg.bot_token, cfg.admin_ids);
                 last_update_check = now;
+            }
+
+            if (now - last_blocked_check > BLOCKED_POLL_INTERVAL) {
+                check_blocked_activity(cfg);
+                last_blocked_check = now;
             }
         } catch (e) {
             consecutive_failures++;

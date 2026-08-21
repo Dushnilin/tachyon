@@ -10,6 +10,7 @@ let domain_config = require("config.domain");
 let connections = require("config.connections");
 let routing_rulesets = require("routing.rulesets");
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
+const DNS_BLOCK_TARGET = getenv("SB_DNS_BLOCK_INBOUND_ADDRESS") || "127.0.0.43:1053";
 
 let common_read_json_file = common.read_json_file;
 let list_option = common.list_option;
@@ -975,6 +976,90 @@ function nft_add_schedule_rules_from_uci(table, sections) {
     return nft_add_schedule_rules_from_schedules(uci_sections("schedule"), sections, table);
 }
 
+// ─── Content blocking DNS redirect ───────────────────────────────────────────
+// Schedules with blocked_domains redirect the device's DNS queries (udp/tcp
+// 53) to the dedicated sing-box dns-block-in inbound (127.0.0.43:1053) when
+// the schedule's time window is active. Inside the window the block inbound
+// rejects the blocked domains; outside it the query flows to the normal
+// dns-in inbound as usual. MAC-address devices match via ether saddr, which
+// also covers devices whose IP is DHCP-assigned.
+
+function nft_add_dns_block_rules_from_schedules(schedules, table) {
+    let added = false;
+    for (let schedule in schedules) {
+        schedule = object_or_empty(schedule);
+        if (!bool_option(schedule, "enabled", true))
+            continue;
+        if (length(list_option(schedule, "blocked_domains")) == 0) {
+            let single_domain = option(schedule, "blocked_domains", "");
+            if (single_domain == "") continue;
+        }
+
+        let raw_ips = list_option(schedule, "device_ip");
+        if (length(raw_ips) == 0) {
+            let single_ip = option(schedule, "device_ip", "");
+            if (single_ip != "") raw_ips = [ single_ip ];
+        }
+        if (length(raw_ips) == 0)
+            continue;
+
+        let label = as_string(option(schedule, "label", schedule[".name"]));
+        let comment = "tachyon-block:" + label;
+
+        let start_time = option(schedule, "start_time", "");
+        let end_time = option(schedule, "end_time", "");
+        let intervals = nft_schedule_time_intervals(start_time, end_time);
+        let days_args = nft_schedule_days_match_args(schedule);
+        let always_on = start_time == "" && end_time == "";
+
+        for (let raw_ip in raw_ips) {
+            let dev_str = trim(as_string(raw_ip));
+            if (dev_str == "") continue;
+            let is_mac = match(dev_str, /^([0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}$/) != null;
+            let family = is_mac ? 0 : core_ip.ip_family(dev_str);
+            if (!is_mac && family != 4)
+                continue; // dns-block-in listens on IPv4 only
+
+            for (let interval in intervals) {
+                let match_args = [];
+                if (is_mac) {
+                    append_array(match_args, [ "ether", "saddr", lc(replace(dev_str, "-", ":")) ]);
+                } else {
+                    append_array(match_args, [ "ip", "saddr", dev_str ]);
+                }
+                if (!always_on) {
+                    append_array(match_args, [ "meta", "hour", sprintf("\"%s\"-\"%s\"", interval[0], interval[1]) ]);
+                }
+                append_array(match_args, days_args);
+                append_array(match_args, [ "udp", "dport", "53", "redirect", "to", DNS_BLOCK_TARGET, "counter", "comment", "\"" + comment + "\"" ]);
+                if (!nft_add_rule(table, "dns_block", match_args))
+                    return false;
+                added = true;
+
+                let tcp_args = [];
+                if (is_mac) {
+                    append_array(tcp_args, [ "ether", "saddr", lc(replace(dev_str, "-", ":")) ]);
+                } else {
+                    append_array(tcp_args, [ "ip", "saddr", dev_str ]);
+                }
+                if (!always_on) {
+                    append_array(tcp_args, [ "meta", "hour", sprintf("\"%s\"-\"%s\"", interval[0], interval[1]) ]);
+                }
+                append_array(tcp_args, days_args);
+                append_array(tcp_args, [ "tcp", "dport", "53", "redirect", "to", DNS_BLOCK_TARGET, "counter", "comment", "\"" + comment + "\"" ]);
+                if (!nft_add_rule(table, "dns_block", tcp_args))
+                    return false;
+                added = true;
+            }
+        }
+    }
+    return added;
+}
+
+function nft_add_dns_block_rules_from_uci(table) {
+    return nft_add_dns_block_rules_from_schedules(uci_sections("schedule"), table);
+}
+
 function nft_create_runtime_base(table, localv4_set, common_set, port_set, ip_port_set, interface_set, source_interfaces, fakeip_mark, outbound_mark, fakeip_range, tproxy_port, exclude_ntp, localv6_set, common6_set, ip_port6_set, fakeip6_range, tproxy6_address) {
     localv6_set = default_arg(localv6_set, "localv6");
     common6_set = default_arg(common6_set, "tachyon_subnets6");
@@ -1004,6 +1089,7 @@ function nft_create_runtime_base(table, localv4_set, common_set, port_set, ip_po
         !nft_create_priority_chains(table) ||
         !nft_create_chain(table, "parental_control", "{ }") ||
         !nft_create_chain(table, "parental_forward", "{ }") ||
+        !nft_create_chain(table, "dns_block", "{ type nat hook prerouting priority -101; policy accept; }") ||
         !nft_create_chain(table, "proxy", "{ type filter hook prerouting priority -100; policy accept; }"))
         return false;
 
@@ -1781,6 +1867,8 @@ function nft_schedule_signature_body(body, schedule) {
     body = signature_add_value(body, "schedule." + name + ".start_time", option(schedule, "start_time", ""));
     body = signature_add_value(body, "schedule." + name + ".end_time", option(schedule, "end_time", ""));
     body = signature_add_value(body, "schedule." + name + ".days", join(",", list_option(schedule, "days")));
+    body = signature_add_value(body, "schedule." + name + ".blocked_domains", join(",", list_option(schedule, "blocked_domains")));
+    body = signature_add_value(body, "schedule." + name + ".mode", option(schedule, "mode", "block"));
     return body;
 }
 
@@ -1849,6 +1937,7 @@ function nft_create_full_runtime_from_uci(rt_table, table, localv4_set, common_s
         nft_create_runtime_base_from_uci(table, localv4_set, common_set, port_set, ip_port_set, interface_set, fakeip_mark, outbound_mark, fakeip_range, tproxy_port, localv6_set, common6_set, ip_port6_set, fakeip6_range, tproxy6_address) &&
         nft_add_section_priority_rules_from_sections(uci_sections("section"), table, interface_set, localv4_set, localv6_set, fakeip_mark) &&
         nft_add_schedule_rules_from_uci(table, uci_sections("section")) &&
+        nft_add_dns_block_rules_from_uci(table) &&
         nft_create_provider_output_rules_from_uci(table, "zapret", zapret_bin, zapret_route_mark_base, zapret_queue_base, zapret_desync_mark, zapret_desync_mark_postnat) &&
         nft_create_provider_output_rules_from_uci(table, "zapret2", zapret2_bin, zapret2_route_mark_base, zapret2_queue_base, zapret2_desync_mark, zapret2_desync_mark_postnat) &&
         nft_create_runtime_output_rules(table, localv4_set, common_set, port_set, ip_port_set, fakeip_mark, fakeip_range, localv6_set, common6_set, ip_port6_set, fakeip6_range);
@@ -2135,6 +2224,8 @@ else if (mode == "nft-add-section-priority-rules-fixture")
     exit(nft_add_section_priority_rules_from_sections(fixture_section_list(object_or_empty(common_read_json_file(ARGV[1])), "section"), ARGV[2], ARGV[3], ARGV[4], ARGV[5], ARGV[6]) ? 0 : 1);
 else if (mode == "nft-add-schedule-rules-fixture")
     exit(nft_add_schedule_rules_from_schedules(fixture_section_list(object_or_empty(common_read_json_file(ARGV[1])), "schedule"), fixture_section_list(object_or_empty(common_read_json_file(ARGV[1])), "section"), ARGV[2]) ? 0 : 1);
+else if (mode == "nft-add-dns-block-rules-fixture")
+    exit(nft_add_dns_block_rules_from_schedules(fixture_section_list(object_or_empty(common_read_json_file(ARGV[1])), "schedule"), ARGV[2]) ? 0 : 1);
 else if (mode == "nft-create-full-runtime-from-uci")
     exit(nft_create_full_runtime_from_uci(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5], ARGV[6], ARGV[7], ARGV[8], ARGV[9], ARGV[10], ARGV[11], ARGV[12], ARGV[13], ARGV[14], ARGV[15], ARGV[16], ARGV[17], ARGV[18], ARGV[19], ARGV[20], ARGV[21], ARGV[22], ARGV[23], ARGV[24], ARGV[25], ARGV[26]) ? 0 : 1);
 else if (mode == "nft-rebuild-runtime-from-uci")

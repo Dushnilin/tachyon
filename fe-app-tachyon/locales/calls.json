@@ -146,7 +146,7 @@
     "call": "Action Mode",
     "key": "Action Mode",
     "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:348"
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:441"
     ]
   },
   {
@@ -165,16 +165,16 @@
     "call": "Active (Allowed)",
     "key": "Active (Allowed)",
     "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:260",
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:280"
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:353",
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:373"
     ]
   },
   {
     "call": "Active (Blocking)",
     "key": "Active (Blocking)",
     "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:260",
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:280"
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:353",
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:373"
     ]
   },
   {
@@ -333,6 +333,13 @@
     "key": "Administrator Chat IDs",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:2145"
+    ]
+  },
+  {
+    "call": "Adult content",
+    "key": "Adult content",
+    "places": [
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:73"
     ]
   },
   {
@@ -509,8 +516,8 @@
     "call": "All devices",
     "key": "All devices",
     "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:139",
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:159"
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:201",
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:221"
     ]
   },
   {
@@ -524,15 +531,15 @@
     "call": "All Internet",
     "key": "All Internet",
     "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:169",
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:194"
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:231",
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:256"
     ]
   },
   {
     "call": "All Internet (Complete internet cutoff)",
     "key": "All Internet (Complete internet cutoff)",
     "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:320"
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:413"
     ]
   },
   {
@@ -584,15 +591,15 @@
     "call": "Allow / Enable ONLY in scheduled hours (White period)",
     "key": "Allow / Enable ONLY in scheduled hours (White period)",
     "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:354"
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:447"
     ]
   },
   {
     "call": "Allow in interval",
     "key": "Allow in interval",
     "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:206",
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:212"
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:268",
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:274"
     ]
   },
   {
@@ -600,6 +607,27 @@
     "key": "Allow Insecure TLS",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8514"
+    ]
+  },
+  {
+    "call": "Allow only",
+    "key": "Allow only",
+    "places": [
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:314"
+    ]
+  },
+  {
+    "call": "Allow only listed sites (Whitelist)",
+    "key": "Allow only listed sites (Whitelist)",
+    "places": [
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:587"
+    ]
+  },
+  {
+    "call": "Allow only:",
+    "key": "Allow only:",
+    "places": [
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:330"
     ]
   },
   {
@@ -904,7 +932,7 @@
     "call": "Beginning of the schedule interval (e.g. 22:00)",
     "key": "Beginning of the schedule interval (e.g. 22:00)",
     "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:361"
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:454"
     ]
   },
   {
@@ -923,18 +951,32 @@
     ]
   },
   {
+    "call": "Block",
+    "key": "Block",
+    "places": [
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:315"
+    ]
+  },
+  {
     "call": "Block / Disable in scheduled hours (Standard)",
     "key": "Block / Disable in scheduled hours (Standard)",
     "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:353"
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:446"
+    ]
+  },
+  {
+    "call": "Block at DNS level",
+    "key": "Block at DNS level",
+    "places": [
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:593"
     ]
   },
   {
     "call": "Block in interval",
     "key": "Block in interval",
     "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:208",
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:212"
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:270",
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:274"
     ]
   },
   {
@@ -942,6 +984,41 @@
     "key": "Block internet access or specific proxy sections for individual devices based on time and days.",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/tachyon.js:467"
+    ]
+  },
+  {
+    "call": "Block listed sites (Standard)",
+    "key": "Block listed sites (Standard)",
+    "places": [
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:586"
+    ]
+  },
+  {
+    "call": "Block:",
+    "key": "Block:",
+    "places": [
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:330"
+    ]
+  },
+  {
+    "call": "Block: deny the listed sites. Allow only (whitelist): deny everything except the listed sites. Whitelist mode requires DNS-level blocking and applies to the schedule window.",
+    "key": "Block: deny the listed sites. Allow only (whitelist): deny everything except the listed sites. Whitelist mode requires DNS-level blocking and applies to the schedule window.",
+    "places": [
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:582"
+    ]
+  },
+  {
+    "call": "Blocked Sites",
+    "key": "Blocked Sites",
+    "places": [
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:303"
+    ]
+  },
+  {
+    "call": "Blocked Sites (Domains)",
+    "key": "Blocked Sites (Domains)",
+    "places": [
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:492"
     ]
   },
   {
@@ -1361,8 +1438,8 @@
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:8845",
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:9323",
-      "src/tachyon/tabs/diagnostic/checks/getCheckItemsMeta.ts:10",
-      "src/tachyon/tabs/diagnostic/helpers/getMeta.ts:26"
+      "src/tachyon/tabs/diagnostic/helpers/getMeta.ts:26",
+      "src/tachyon/tabs/diagnostic/checks/getCheckItemsMeta.ts:10"
     ]
   },
   {
@@ -1372,9 +1449,9 @@
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:8834",
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:9280",
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:9334",
+      "src/tachyon/tabs/diagnostic/helpers/getMeta.ts:13",
       "src/tachyon/tabs/diagnostic/checks/getCheckItemsMeta.ts:23",
-      "src/tachyon/tabs/diagnostic/checks/runFakeIPCheck.ts:43",
-      "src/tachyon/tabs/diagnostic/helpers/getMeta.ts:13"
+      "src/tachyon/tabs/diagnostic/checks/runFakeIPCheck.ts:43"
     ]
   },
   {
@@ -1403,7 +1480,7 @@
     "call": "Choose whether to restrict the entire internet or only specific Tachyon routing sections.",
     "key": "Choose whether to restrict the entire internet or only specific Tachyon routing sections.",
     "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:316"
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:409"
     ]
   },
   {
@@ -1417,7 +1494,7 @@
     "call": "Choose which routing sections to apply this schedule to.",
     "key": "Choose which routing sections to apply this schedule to.",
     "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:328"
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:421"
     ]
   },
   {
@@ -1771,6 +1848,13 @@
     ]
   },
   {
+    "call": "Content Mode",
+    "key": "Content Mode",
+    "places": [
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:581"
+    ]
+  },
+  {
     "call": "Cookie packet junk size (S3)",
     "key": "Cookie packet junk size (S3)",
     "places": [
@@ -1958,7 +2042,7 @@
     "call": "Days of Week",
     "key": "Days of Week",
     "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:384"
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:477"
     ]
   },
   {
@@ -2055,7 +2139,7 @@
     "call": "Device / IP / MAC",
     "key": "Device / IP / MAC",
     "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:132"
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:194"
     ]
   },
   {
@@ -2187,8 +2271,8 @@
     "call": "Disabled",
     "key": "Disabled",
     "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:250",
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:277"
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:343",
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:370"
     ]
   },
   {
@@ -2533,6 +2617,13 @@
     ]
   },
   {
+    "call": "Domains to block for the selected devices. Leave empty to block all internet. Enter one domain per line, e.g. youtube.com. Use the preset buttons to quickly add common categories.",
+    "key": "Domains to block for the selected devices. Leave empty to block all internet. Enter one domain per line, e.g. youtube.com. Use the preset buttons to quickly add common categories.",
+    "places": [
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:493"
+    ]
+  },
+  {
     "call": "Done",
     "key": "Done",
     "places": [
@@ -2699,7 +2790,7 @@
     "call": "e.g. Kids Phone (Night YouTube)",
     "key": "e.g. Kids Phone (Night YouTube)",
     "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:290"
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:383"
     ]
   },
   {
@@ -2728,7 +2819,7 @@
     "call": "Enable",
     "key": "Enable",
     "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:125",
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:187",
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:7235",
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/server.js:2618"
     ]
@@ -2958,14 +3049,14 @@
     "call": "End of the schedule interval (e.g. 08:00). Supports spans crossing midnight.",
     "key": "End of the schedule interval (e.g. 08:00). Supports spans crossing midnight.",
     "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:373"
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:466"
     ]
   },
   {
     "call": "End Time (HH:MM)",
     "key": "End Time (HH:MM)",
     "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:372"
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:465"
     ]
   },
   {
@@ -3070,7 +3161,7 @@
     "call": "Every day",
     "key": "Every day",
     "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:98"
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:160"
     ]
   },
   {
@@ -3256,12 +3347,12 @@
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:16728",
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:16786",
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:16957",
-      "src/tachyon/methods/shell/index.ts:172",
-      "src/tachyon/methods/shell/index.ts:179",
       "src/tachyon/tabs/updates/initController.ts:631",
       "src/tachyon/tabs/updates/initController.ts:632",
       "src/tachyon/tabs/updates/initController.ts:707",
-      "src/tachyon/tabs/updates/initController.ts:920"
+      "src/tachyon/tabs/updates/initController.ts:920",
+      "src/tachyon/methods/shell/index.ts:172",
+      "src/tachyon/methods/shell/index.ts:179"
     ]
   },
   {
@@ -3666,6 +3757,13 @@
     "key": "Game Console Optimizer (NAT Type 1)",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:1285"
+    ]
+  },
+  {
+    "call": "Gaming",
+    "key": "Gaming",
+    "places": [
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:63"
     ]
   },
   {
@@ -4432,6 +4530,13 @@
     ]
   },
   {
+    "call": "Invalid domain: empty prefix value",
+    "key": "Invalid domain: empty prefix value",
+    "places": [
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:507"
+    ]
+  },
+  {
     "call": "Invalid format. Use an IP address or CIDR subnet",
     "key": "Invalid format. Use an IP address or CIDR subnet",
     "places": [
@@ -4565,7 +4670,7 @@
     "call": "Invalid IP or MAC address. Expected e.g. 192.168.1.150 or AA:BB:CC:DD:EE:FF",
     "key": "Invalid IP or MAC address. Expected e.g. 192.168.1.150 or AA:BB:CC:DD:EE:FF",
     "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:120"
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:182"
     ]
   },
   {
@@ -4771,7 +4876,7 @@
     "call": "Invalid time format. Expected HH:MM (e.g. 22:00)",
     "key": "Invalid time format. Expected HH:MM (e.g. 22:00)",
     "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:47"
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:109"
     ]
   },
   {
@@ -5005,8 +5110,8 @@
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:8840",
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:9329",
-      "src/tachyon/tabs/diagnostic/checks/getCheckItemsMeta.ts:17",
-      "src/tachyon/tabs/diagnostic/helpers/getMeta.ts:20"
+      "src/tachyon/tabs/diagnostic/helpers/getMeta.ts:20",
+      "src/tachyon/tabs/diagnostic/checks/getCheckItemsMeta.ts:17"
     ]
   },
   {
@@ -5555,6 +5660,13 @@
     ]
   },
   {
+    "call": "Messengers",
+    "key": "Messengers",
+    "places": [
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:84"
+    ]
+  },
+  {
     "call": "Method",
     "key": "Method",
     "places": [
@@ -5607,7 +5719,7 @@
     "call": "Mode",
     "key": "Mode",
     "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:200"
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:262"
     ]
   },
   {
@@ -5980,8 +6092,8 @@
     "call": "No sections selected",
     "key": "No sections selected",
     "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:177",
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:196"
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:239",
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:258"
     ]
   },
   {
@@ -6012,6 +6124,8 @@
     "key": "None",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:12555",
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:310",
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:329",
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/server.js:449",
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/server.js:2741",
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/server.js:3033",
@@ -6128,6 +6242,13 @@
     "key": "Not set",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:10197"
+    ]
+  },
+  {
+    "call": "Notify in Telegram",
+    "key": "Notify in Telegram",
+    "places": [
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:604"
     ]
   },
   {
@@ -6630,8 +6751,8 @@
     "key": "Pending",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:5187",
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:271",
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:281",
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:364",
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:374",
       "src/tachyon/tabs/diagnostic/diagnostic.store.ts:63"
     ]
   },
@@ -7470,6 +7591,13 @@
     ]
   },
   {
+    "call": "Return NXDOMAIN for blocked domains (recommended). When enabled, blocked domains are not resolved at all. When disabled, only direct connections are rejected.",
+    "key": "Return NXDOMAIN for blocked domains (recommended). When enabled, blocked domains are not resolved at all. When disabled, only direct connections are rejected.",
+    "places": [
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:594"
+    ]
+  },
+  {
     "call": "Route",
     "key": "Route",
     "places": [
@@ -7552,7 +7680,7 @@
     "call": "Rule Name",
     "key": "Rule Name",
     "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:287"
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:380"
     ]
   },
   {
@@ -7760,7 +7888,7 @@
     "call": "Schedule",
     "key": "Schedule",
     "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:216"
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:278"
     ]
   },
   {
@@ -7932,7 +8060,7 @@
     "call": "Select active days. If none selected, the rule applies every day.",
     "key": "Select active days. If none selected, the rule applies every day.",
     "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:385"
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:478"
     ]
   },
   {
@@ -7981,7 +8109,7 @@
     "call": "Select LAN devices to apply this schedule to, or enter IP or MAC addresses manually.",
     "key": "Select LAN devices to apply this schedule to, or enter IP or MAC addresses manually.",
     "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:297"
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:390"
     ]
   },
   {
@@ -8030,7 +8158,7 @@
     "call": "Select Sections",
     "key": "Select Sections",
     "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:327"
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:420"
     ]
   },
   {
@@ -8074,7 +8202,7 @@
     "call": "Select whether to disable the target during the schedule or enable it ONLY during the schedule.",
     "key": "Select whether to disable the target during the schedule or enable it ONLY during the schedule.",
     "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:349"
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:442"
     ]
   },
   {
@@ -8136,6 +8264,13 @@
     "key": "Send a Telegram notification if the Tachyon service is restarted by the watchdog.",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:2203"
+    ]
+  },
+  {
+    "call": "Send a Telegram notification to admins when a blocked site is accessed. Requires the Telegram bot to be enabled.",
+    "key": "Send a Telegram notification to admins when a blocked site is accessed. Requires the Telegram bot to be enabled.",
+    "places": [
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:605"
     ]
   },
   {
@@ -8309,9 +8444,9 @@
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:3410",
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:3429",
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:12323",
+      "src/tachyon/tabs/diagnostic/initController.ts:604",
       "src/tachyon/methods/shell/index.ts:422",
-      "src/tachyon/methods/shell/index.ts:443",
-      "src/tachyon/tabs/diagnostic/initController.ts:604"
+      "src/tachyon/methods/shell/index.ts:443"
     ]
   },
   {
@@ -8374,6 +8509,13 @@
     "key": "Settings have been reset to defaults. The page will reload.",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:411"
+    ]
+  },
+  {
+    "call": "Shopping",
+    "key": "Shopping",
+    "places": [
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:93"
     ]
   },
   {
@@ -8584,6 +8726,13 @@
     ]
   },
   {
+    "call": "Social media",
+    "key": "Social media",
+    "places": [
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:43"
+    ]
+  },
+  {
     "call": "Sort Alphabetically",
     "key": "Sort Alphabetically",
     "places": [
@@ -8633,7 +8782,7 @@
     "call": "Specific Sections (Select sections below)",
     "key": "Specific Sections (Select sections below)",
     "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:321"
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:414"
     ]
   },
   {
@@ -8781,7 +8930,7 @@
     "call": "Start Time (HH:MM)",
     "key": "Start Time (HH:MM)",
     "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:360"
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:453"
     ]
   },
   {
@@ -8812,7 +8961,7 @@
     "key": "Status",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:2424",
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:241",
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:334",
       "src/tachyon/tabs/dashboard/partials/renderAdvancedSettings.ts:465",
       "src/tachyon/tabs/dashboard/partials/renderSections.ts:666"
     ]
@@ -9221,21 +9370,21 @@
     "call": "Target",
     "key": "Target",
     "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:163"
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:225"
     ]
   },
   {
     "call": "Target Devices (IP / MAC)",
     "key": "Target Devices (IP / MAC)",
     "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:296"
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:389"
     ]
   },
   {
     "call": "Target Scope",
     "key": "Target Scope",
     "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:315"
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:408"
     ]
   },
   {
@@ -9514,7 +9663,7 @@
     "call": "Time is required (e.g. 22:00)",
     "key": "Time is required (e.g. 22:00)",
     "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:43"
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:105"
     ]
   },
   {
@@ -10474,6 +10623,13 @@
     ]
   },
   {
+    "call": "Video streaming",
+    "key": "Video streaming",
+    "places": [
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:53"
+    ]
+  },
+  {
     "call": "View logs",
     "key": "View logs",
     "places": [
@@ -10609,14 +10765,14 @@
     "call": "Weekdays (Mon-Fri)",
     "key": "Weekdays (Mon-Fri)",
     "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:106"
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:168"
     ]
   },
   {
     "call": "Weekends (Sat-Sun)",
     "key": "Weekends (Sat-Sun)",
     "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:110"
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:172"
     ]
   },
   {

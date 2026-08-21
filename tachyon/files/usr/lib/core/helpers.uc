@@ -11,6 +11,7 @@ const SB_SERVICE_FAKEIP_DNS_RULE_TAG = getenv("SB_SERVICE_FAKEIP_DNS_RULE_TAG") 
 const SB_TPROXY_INBOUND_TAG = getenv("SB_TPROXY_INBOUND_TAG") || "tproxy-in";
 const SB_TPROXY_INBOUND6_TAG = getenv("SB_TPROXY_INBOUND6_TAG") || "tproxy6-in";
 const SB_DNS_INBOUND_TAG = getenv("SB_DNS_INBOUND_TAG") || "dns-in";
+const SB_DNS_BLOCK_INBOUND_TAG = getenv("SB_DNS_BLOCK_INBOUND_TAG") || "dns-block-in";
 const SB_SERVICE_MIXED_INBOUND_TAG = getenv("SB_SERVICE_MIXED_INBOUND_TAG") || "service-mixed-in";
 const SB_DIRECT_OUTBOUND_TAG = getenv("SB_DIRECT_OUTBOUND_TAG") || "direct-out";
 const SB_BYPASS_OUTBOUND_TAG = getenv("SB_BYPASS_OUTBOUND_TAG") || "bypass-out";
@@ -540,6 +541,7 @@ function default_reserved_runtime_tags() {
         SB_TPROXY_INBOUND_TAG,
         SB_TPROXY_INBOUND6_TAG,
         SB_DNS_INBOUND_TAG,
+        SB_DNS_BLOCK_INBOUND_TAG,
         SB_SERVICE_MIXED_INBOUND_TAG,
         SB_DIRECT_OUTBOUND_TAG,
         SB_BYPASS_OUTBOUND_TAG
