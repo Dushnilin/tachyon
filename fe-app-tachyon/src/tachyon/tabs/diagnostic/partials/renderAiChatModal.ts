@@ -69,9 +69,16 @@ export function renderAiChatModal() {
     onClick: () => handleSend(),
   });
 
+  let sendInFlight = false;
+
   const handleSend = async (queryText?: string) => {
     const text = (queryText || chatInput.value).trim();
-    if (!text) return;
+    // A single request in flight: concurrent sends would interleave the
+    // "typing" placeholder removals and corrupt the thread.
+    if (!text || sendInFlight) return;
+    sendInFlight = true;
+    chatInput.disabled = true;
+    (sendBtn as HTMLButtonElement).disabled = true;
 
     const userMsg: ChatMessage = {
       sender: 'user',
@@ -146,6 +153,9 @@ export function renderAiChatModal() {
     }
 
     renderMessages();
+    sendInFlight = false;
+    chatInput.disabled = false;
+    (sendBtn as HTMLButtonElement).disabled = false;
   };
 
   chatInput.onkeydown = (e: KeyboardEvent) => {

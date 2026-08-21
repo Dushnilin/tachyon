@@ -5,6 +5,7 @@ import {
 } from '../../../helpers';
 import { showToast } from '../../../helpers/showToast';
 import { notifyActionFailure } from '../../helpers/notifyActionFailure';
+import { capSetSize } from '../../helpers/capCollectionSize';
 import { runDnsCheck } from './checks/runDnsCheck';
 import { runSingBoxCheck } from './checks/runSingBoxCheck';
 import { runInboundsCheck } from './checks/runInboundsCheck';
@@ -322,6 +323,7 @@ async function followServiceActionState(state: Tachyon.ServiceActionState) {
     logger.error('[DIAGNOSTIC]', 'followServiceActionState failed', error);
   } finally {
     handledServiceActionJobs.add(jobId);
+    capSetSize(handledServiceActionJobs);
     setServiceActionStateLoading(state, false);
     await refreshDiagnosticServicesInfo({ force: true, allowInactive: true });
     void TachyonShellMethods.uiActionAck('service', jobId);
@@ -618,6 +620,8 @@ async function handleServiceRuntimeAction({
       await refreshDiagnosticServicesInfo({ force: true, allowInactive: true });
       if (jobId) {
         handledServiceActionJobs.add(jobId);
+        capSetSize(handledServiceActionJobs);
+    capSetSize(handledServiceActionJobs);
         void TachyonShellMethods.uiActionAck('service', jobId);
       }
       resetDiagnosticsChecks();

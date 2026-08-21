@@ -1,6 +1,7 @@
 import { onMount, preserveScrollForPage } from '../../../helpers';
 import { TACHYON_ACTION_PROVIDERS_AVAILABILITY_EVENT } from '../../../constants';
 import { normalizeCompiledVersion } from '../../../helpers/normalizeCompiledVersion';
+import { capSetSize } from '../../helpers/capCollectionSize';
 import { showToast } from '../../../helpers/showToast';
 import {
   renderDownloadIcon24,
@@ -127,6 +128,7 @@ try {
   const savedJob = sessionStorage.getItem('tachyon_post_update_job');
   if (savedJob) {
     handledComponentJobs.add(savedJob);
+    capSetSize(handledComponentJobs);
     followedComponentJobs.add(savedJob);
     sessionStorage.removeItem('tachyon_post_update_job');
   }
@@ -660,6 +662,7 @@ async function completeComponentActionJob(
     }
 
     handledComponentJobs.add(jobId);
+    capSetSize(handledComponentJobs);
     setActionLoading(key, false);
     if (shouldNotify) {
       showToast(message, 'error');
@@ -670,6 +673,7 @@ async function completeComponentActionJob(
   }
 
   handledComponentJobs.add(jobId);
+  capSetSize(handledComponentJobs);
   await ackComponentActionJob(jobId);
   await applyCompletedComponentAction({
     key,
@@ -797,6 +801,7 @@ function handleComponentUiState(uiState: Tachyon.UiState) {
       void followComponentActionState(state);
     } else {
       handledComponentJobs.add(jobId);
+      capSetSize(handledComponentJobs);
       void ackComponentActionJob(jobId);
     }
   }

@@ -48,6 +48,11 @@ export class StoreService<T extends Record<string, any>> {
     const diff: Partial<T> = {};
 
     for (const key in next) {
+      // Reference equality fast path: most poll ticks pass the same object
+      // identity or genuinely new objects; the sorted stringify below runs
+      // on every key of a multi-hundred-KB payload twice per second
+      // otherwise.
+      if (next[key] === prev[key]) continue;
       if (!jsonEqual(next[key], prev[key])) diff[key] = next[key];
     }
 

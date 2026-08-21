@@ -61,6 +61,7 @@ import { isActiveLuciTab } from '../../helpers/isActiveLuciTab';
 import { isTransientRpcError } from '../../helpers/isTransientRpcError';
 import { shouldShowLoadingForRestoredAction } from '../../helpers/restoredActionLoading';
 import { getServiceAvailability } from '../../helpers/serviceAvailability';
+import { capSetSize, capMapSize } from '../../helpers/capCollectionSize';
 
 const SECTIONS_REFRESH_INTERVAL_MS = 10000;
 const LATENCY_TEST_BUTTON_CLASS = 'dashboard-sections-grid-item-test-latency';
@@ -315,6 +316,7 @@ async function completeSubscriptionUpdateJob(
 
   if (jobId) {
     handledSubscriptionJobs.add(jobId);
+    capSetSize(handledSubscriptionJobs);
   }
 
   setSubscriptionUpdating(sectionName, false);
@@ -396,6 +398,7 @@ async function completeLatencyTestJob(jobId: string, sectionName: string) {
 
   if (jobId) {
     handledLatencyJobs.add(jobId);
+    capSetSize(handledLatencyJobs);
   }
 
   if (jobId) {
@@ -761,6 +764,7 @@ async function handleTestLatency(
       } else {
         customProxyLatencies.set(tag, -1);
       }
+      capMapSize(customProxyLatencies);
       setLatencyFetching(sectionName, false);
       completed = true;
       void fetchDashboardSections({ force: true });
