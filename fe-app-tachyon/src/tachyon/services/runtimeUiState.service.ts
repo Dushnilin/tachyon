@@ -6,6 +6,10 @@ import { applyUiStateToStore } from './uiState.service';
 const RUNTIME_UI_STATE_REFRESH_MIN_INTERVAL_MS = 500;
 const RUNTIME_UI_STATE_IDLE_POLL_INTERVAL_MS = 1000;
 const RUNTIME_UI_STATE_ACTIVE_POLL_INTERVAL_MS = 500;
+// A hidden tab must not keep spawning shell commands on the router every
+// second: back off to one request per 30s while hidden (a force refresh on
+// visibilitychange covers the moment the tab comes back).
+const RUNTIME_UI_STATE_HIDDEN_POLL_INTERVAL_MS = 30_000;
 type RuntimeUiStateListener = (uiState: Tachyon.UiState) => void;
 
 let runtimeUiStateRefreshPromise: Promise<Tachyon.UiState | undefined> | null =
@@ -33,6 +37,9 @@ function hasRunningAction(uiState: Tachyon.UiState) {
 }
 
 function getNextPollDelay() {
+  if (!isDocumentVisible()) {
+    return RUNTIME_UI_STATE_HIDDEN_POLL_INTERVAL_MS;
+  }
   return runtimeStateHasRunningAction
     ? RUNTIME_UI_STATE_ACTIVE_POLL_INTERVAL_MS
     : RUNTIME_UI_STATE_IDLE_POLL_INTERVAL_MS;

@@ -4,6 +4,7 @@ import {
   executeShellCommand,
 } from '../../../helpers';
 import { showToast } from '../../../helpers/showToast';
+import { notifyActionFailure } from '../../helpers/notifyActionFailure';
 import { runDnsCheck } from './checks/runDnsCheck';
 import { runSingBoxCheck } from './checks/runSingBoxCheck';
 import { runInboundsCheck } from './checks/runInboundsCheck';
@@ -701,10 +702,10 @@ async function handleShowGlobalCheck() {
         }),
       );
     } else {
-      logger.error('[DIAGNOSTIC]', 'handleShowGlobalCheck - e', globalCheck);
+      notifyActionFailure('handleShowGlobalCheck', globalCheck, _('Global check failed'));
     }
   } catch (e) {
-    logger.error('[DIAGNOSTIC]', 'handleShowGlobalCheck - e', e);
+    notifyActionFailure('handleShowGlobalCheck', e, _('Global check failed'));
   } finally {
     setDiagnosticActionLoading('globalCheck', false);
   }
@@ -827,10 +828,10 @@ async function handleViewLogs() {
         }),
       );
     } else {
-      logger.error('[DIAGNOSTIC]', 'handleViewLogs - e', viewLogs);
+      notifyActionFailure('handleViewLogs', viewLogs, _('View logs failed'));
     }
   } catch (e) {
-    logger.error('[DIAGNOSTIC]', 'handleViewLogs - e', e);
+    notifyActionFailure('handleViewLogs', e, _('View logs failed'));
   } finally {
     setDiagnosticActionLoading('viewLogs', false);
   }
@@ -1657,14 +1658,14 @@ async function handleShowSingBoxConfig() {
         }),
       );
     } else {
-      logger.error(
-        '[DIAGNOSTIC]',
-        'handleShowSingBoxConfig - e',
+      notifyActionFailure(
+        'handleShowSingBoxConfig',
         showSingBoxConfig,
+        _('Show sing-box config failed'),
       );
     }
   } catch (e) {
-    logger.error('[DIAGNOSTIC]', 'handleShowSingBoxConfig - e', e);
+    notifyActionFailure('handleShowSingBoxConfig', e, _('Show sing-box config failed'));
   } finally {
     setDiagnosticActionLoading('showSingBoxConfig', false);
   }

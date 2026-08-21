@@ -2396,6 +2396,18 @@ msgstr ""
 msgid "Global check"
 msgstr ""
 
+msgid "Global check failed"
+msgstr ""
+
+msgid "View logs failed"
+msgstr ""
+
+msgid "Show sing-box config failed"
+msgstr ""
+
+msgid "Action failed"
+msgstr ""
+
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/server.js:2961
 msgid "gRPC service"
 msgstr ""

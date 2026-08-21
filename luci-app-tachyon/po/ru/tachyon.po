@@ -1523,6 +1523,18 @@ msgstr "Дайте снапшоту имя. Он сохраняется с те�
 msgid "Global check"
 msgstr "Глобальная проверка"
 
+msgid "Global check failed"
+msgstr "Не удалось выполнить глобальную проверку"
+
+msgid "View logs failed"
+msgstr "Не удалось открыть логи"
+
+msgid "Show sing-box config failed"
+msgstr "Не удалось показать конфигурацию sing-box"
+
+msgid "Action failed"
+msgstr "Действие не выполнено"
+
 msgid "gRPC service"
 msgstr "Сервис gRPC"
 
