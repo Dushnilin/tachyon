@@ -25,46 +25,34 @@ jobs:
         uses: actions/setup-node@v5.0.0
         with:
           node-version: '22'
+          cache: npm
+          cache-dependency-path: fe-app-tachyon/package-lock.json
 
-      - name: Enable Corepack
-        run: corepack enable
-
-      - name: Get yarn cache directory path
-        id: yarn-cache-dir-path
-        working-directory: fe-app-tachyon
-        run: echo "dir=$(yarn config get cacheFolder)" >> $GITHUB_OUTPUT
-
-      - name: Cache yarn dependencies
-        uses: actions/cache@v4.3.0
-        with:
-          path: ${{ steps.yarn-cache-dir-path.outputs.dir }}
-          key: ${{ runner.os }}-yarn-${{ hashFiles('fe-app-tachyon/yarn.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-yarn-
-
+      # The project uses npm (package-lock.json); yarn.lock does not exist, so
+      # a yarn install here would resolve fresh versions on every run.
       - name: Install dependencies
-        run: yarn install --frozen-lockfile
+        run: npm ci
 
       - name: Check formatting
         id: format
         run: |
-          yarn format
+          npm run format
           if ! git diff --exit-code; then
-            echo "::error::Code is not formatted. Run 'yarn format' locally."
+            echo "::error::Code is not formatted. Run 'npm run format' locally."
             exit 1
           fi
 
       - name: Run linter
-        run: yarn lint --max-warnings=0
+        run: npm run lint -- --max-warnings=0
 
       - name: Run tests
-        run: yarn test --run
+        run: npm test -- --run
 
       - name: Build project
         id: build
         run: |
-          yarn build
-          if ! git diff --exit-code; then
+          npm run build
+          if ! git diff --exit-code -- ../luci-app-tachyon/htdocs; then
             echo "::error::Build generated changes. Check build output."
             exit 1
           fi

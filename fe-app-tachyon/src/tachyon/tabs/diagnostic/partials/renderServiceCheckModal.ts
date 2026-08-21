@@ -370,7 +370,11 @@ export function renderServiceCheckModal() {
               'padding: 4px 8px; font-size: 12px; border-radius: 4px; max-width: 240px;',
           },
           [
-            E('option', { value: 'ALL' }, `${_('All services')} (${targets.length})`),
+            E(
+              'option',
+              { value: 'ALL' },
+              `${_('All services')} (${targets.length})`,
+            ),
             ...sectionNames.map((sec) => {
               const count = targets.filter((t) => t.section === sec).length;
               return E(
@@ -637,7 +641,9 @@ export function renderServiceCheckModal() {
           const customDomainInput = E('input', {
             type: 'text',
             id: 'custom-domain-input',
-            placeholder: _('Enter a domain or IP to check (e.g. example.com)...'),
+            placeholder: _(
+              'Enter a domain or IP to check (e.g. example.com)...',
+            ),
             class: 'cbi-input-text',
             style: 'width: 270px; font-size: 12px;',
           });

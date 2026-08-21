@@ -621,7 +621,7 @@ async function handleServiceRuntimeAction({
       if (jobId) {
         handledServiceActionJobs.add(jobId);
         capSetSize(handledServiceActionJobs);
-    capSetSize(handledServiceActionJobs);
+        capSetSize(handledServiceActionJobs);
         void TachyonShellMethods.uiActionAck('service', jobId);
       }
       resetDiagnosticsChecks();
@@ -706,7 +706,11 @@ async function handleShowGlobalCheck() {
         }),
       );
     } else {
-      notifyActionFailure('handleShowGlobalCheck', globalCheck, _('Global check failed'));
+      notifyActionFailure(
+        'handleShowGlobalCheck',
+        globalCheck,
+        _('Global check failed'),
+      );
     }
   } catch (e) {
     notifyActionFailure('handleShowGlobalCheck', e, _('Global check failed'));
@@ -1669,7 +1673,11 @@ async function handleShowSingBoxConfig() {
       );
     }
   } catch (e) {
-    notifyActionFailure('handleShowSingBoxConfig', e, _('Show sing-box config failed'));
+    notifyActionFailure(
+      'handleShowSingBoxConfig',
+      e,
+      _('Show sing-box config failed'),
+    );
   } finally {
     setDiagnosticActionLoading('showSingBoxConfig', false);
   }

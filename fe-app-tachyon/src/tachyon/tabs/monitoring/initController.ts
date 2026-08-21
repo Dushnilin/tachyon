@@ -1106,9 +1106,8 @@ function patchConnectionRows(visibleConnections: MonitoredConnection[]) {
 
 function container_queryConnectionsTbody(): HTMLElement | null {
   return (
-    document
-      .getElementById('monitoring-connections')
-      ?.querySelector('tbody') ?? null
+    document.getElementById('monitoring-connections')?.querySelector('tbody') ??
+    null
   );
 }
 

@@ -2530,8 +2530,10 @@ function renderDefaultState({
                   if (selectedOutbound.latency === -1)
                     return "var(--error-color-medium, red)";
                   if (selectedOutbound.latency && selectedOutbound.latency > 0) {
-                    if (selectedOutbound.latency < 800) return "var(--success-color-medium, green)";
-                    if (selectedOutbound.latency < 1500) return "var(--warn-color-medium, orange)";
+                    if (selectedOutbound.latency < 800)
+                      return "var(--success-color-medium, green)";
+                    if (selectedOutbound.latency < 1500)
+                      return "var(--warn-color-medium, orange)";
                     return "var(--error-color-medium, red)";
                   }
                   return selectedOutbound.runtimeAvailable ? "var(--success-color-medium, green)" : "var(--error-color-medium, red)";
@@ -5321,6 +5323,7 @@ var StoreService = class {
     const prev = this.value;
     const diff = {};
     for (const key in next) {
+      if (next[key] === prev[key]) continue;
       if (!jsonEqual(next[key], prev[key])) diff[key] = next[key];
     }
     if (Object.keys(diff).length === 0) {
@@ -6493,6 +6496,27 @@ function getServiceAvailability({
   return running ? "running" : "stopped";
 }
 
+// src/tachyon/helpers/capCollectionSize.ts
+var DEFAULT_MAX_ENTRIES = 500;
+function capSetSize(set, max = DEFAULT_MAX_ENTRIES) {
+  while (set.size > max) {
+    const oldest = set.values().next().value;
+    if (oldest === void 0) {
+      return;
+    }
+    set.delete(oldest);
+  }
+}
+function capMapSize(map, max = DEFAULT_MAX_ENTRIES) {
+  while (map.size > max) {
+    const oldest = map.keys().next().value;
+    if (oldest === void 0) {
+      return;
+    }
+    map.delete(oldest);
+  }
+}
+
 // src/tachyon/tabs/dashboard/initController.ts
 var DASHBOARD_EXPANDED_SECTIONS_KEY = "tachyon_dashboard_expanded_sections";
 var expandedSections = new Set(
@@ -6694,6 +6718,7 @@ async function completeSubscriptionUpdateJob(jobId, sectionName, response) {
   }
   if (jobId) {
     handledSubscriptionJobs.add(jobId);
+    capSetSize(handledSubscriptionJobs);
   }
   setSubscriptionUpdating(sectionName, false);
   if (jobId && response.success) {
@@ -6753,6 +6778,7 @@ async function completeLatencyTestJob(jobId, sectionName) {
   }
   if (jobId) {
     handledLatencyJobs.add(jobId);
+    capSetSize(handledLatencyJobs);
   }
   if (jobId) {
     void TachyonShellMethods.uiActionAck("latency", jobId);
@@ -7031,6 +7057,7 @@ async function handleTestLatency(latencyType, sectionName, tag, timeout) {
       } else {
         customProxyLatencies.set(tag, -1);
       }
+      capMapSize(customProxyLatencies);
       setLatencyFetching(sectionName, false);
       completed = true;
       void fetchDashboardSections({ force: true });
@@ -10746,7 +10773,11 @@ function renderServiceCheckModal() {
           style: "padding: 4px 8px; font-size: 12px; border-radius: 4px; max-width: 240px;"
         },
         [
-          E("option", { value: "ALL" }, `${_("All services")} (${targets.length})`),
+          E(
+            "option",
+            { value: "ALL" },
+            `${_("All services")} (${targets.length})`
+          ),
           ...sectionNames.map((sec) => {
             const count = targets.filter((t) => t.section === sec).length;
             return E(
@@ -10973,7 +11004,9 @@ function renderServiceCheckModal() {
         const customDomainInput = E("input", {
           type: "text",
           id: "custom-domain-input",
-          placeholder: _("Enter a domain or IP to check (e.g. example.com)..."),
+          placeholder: _(
+            "Enter a domain or IP to check (e.g. example.com)..."
+          ),
           class: "cbi-input-text",
           style: "width: 270px; font-size: 12px;"
         });
@@ -11235,9 +11268,13 @@ function renderAiChatModal() {
     classNames: ["cbi-button-action"],
     onClick: () => handleSend()
   });
+  let sendInFlight = false;
   const handleSend = async (queryText) => {
     const text = (queryText || chatInput.value).trim();
-    if (!text) return;
+    if (!text || sendInFlight) return;
+    sendInFlight = true;
+    chatInput.disabled = true;
+    sendBtn.disabled = true;
     const userMsg = {
       sender: "user",
       text,
@@ -11306,6 +11343,9 @@ function renderAiChatModal() {
       });
     }
     renderMessages();
+    sendInFlight = false;
+    chatInput.disabled = false;
+    sendBtn.disabled = false;
   };
   chatInput.onkeydown = (e) => {
     if (e.key === "Enter") handleSend();
@@ -12141,6 +12181,7 @@ async function followServiceActionState(state) {
     logger.error("[DIAGNOSTIC]", "followServiceActionState failed", error);
   } finally {
     handledServiceActionJobs.add(jobId);
+    capSetSize(handledServiceActionJobs);
     setServiceActionStateLoading(state, false);
     await refreshDiagnosticServicesInfo({ force: true, allowInactive: true });
     void TachyonShellMethods.uiActionAck("service", jobId);
@@ -12371,6 +12412,8 @@ async function handleServiceRuntimeAction({
       await refreshDiagnosticServicesInfo({ force: true, allowInactive: true });
       if (jobId) {
         handledServiceActionJobs.add(jobId);
+        capSetSize(handledServiceActionJobs);
+        capSetSize(handledServiceActionJobs);
         void TachyonShellMethods.uiActionAck("service", jobId);
       }
       resetDiagnosticsChecks();
@@ -12443,7 +12486,11 @@ async function handleShowGlobalCheck() {
         })
       );
     } else {
-      notifyActionFailure("handleShowGlobalCheck", globalCheck, _("Global check failed"));
+      notifyActionFailure(
+        "handleShowGlobalCheck",
+        globalCheck,
+        _("Global check failed")
+      );
     }
   } catch (e) {
     notifyActionFailure("handleShowGlobalCheck", e, _("Global check failed"));
@@ -13181,7 +13228,11 @@ async function handleShowSingBoxConfig() {
       );
     }
   } catch (e) {
-    notifyActionFailure("handleShowSingBoxConfig", e, _("Show sing-box config failed"));
+    notifyActionFailure(
+      "handleShowSingBoxConfig",
+      e,
+      _("Show sing-box config failed")
+    );
   } finally {
     setDiagnosticActionLoading("showSingBoxConfig", false);
   }
@@ -16039,9 +16090,7 @@ function shouldResetCheckResultsOnMount({
   return !persistentCacheEnabled && !anyActionLoading && !preserveCheckResultsOnNextMount2;
 }
 function shouldRefreshComponentStateBeforeRender(uiState) {
-  return Boolean(
-    uiState?.actions.component.some((state) => state.running)
-  );
+  return Boolean(uiState?.actions.component.some((state) => state.running));
 }
 function shouldExposeCheckResults({
   mounted,
@@ -16509,6 +16558,7 @@ try {
   const savedJob = sessionStorage.getItem("tachyon_post_update_job");
   if (savedJob) {
     handledComponentJobs.add(savedJob);
+    capSetSize(handledComponentJobs);
     followedComponentJobs.add(savedJob);
     sessionStorage.removeItem("tachyon_post_update_job");
   }
@@ -16691,7 +16741,9 @@ async function waitForTachyonResponsive() {
       }
     } catch {
     }
-    await new Promise((resolve) => setTimeout(resolve, RELOAD_POLL_INTERVAL_MS));
+    await new Promise(
+      (resolve) => setTimeout(resolve, RELOAD_POLL_INTERVAL_MS)
+    );
   }
   return false;
 }
@@ -16884,6 +16936,7 @@ async function completeComponentActionJob(key, jobId, response) {
       return;
     }
     handledComponentJobs.add(jobId);
+    capSetSize(handledComponentJobs);
     setActionLoading(key, false);
     if (shouldNotify) {
       showToast(message, "error");
@@ -16893,6 +16946,7 @@ async function completeComponentActionJob(key, jobId, response) {
     return;
   }
   handledComponentJobs.add(jobId);
+  capSetSize(handledComponentJobs);
   await ackComponentActionJob(jobId);
   await applyCompletedComponentAction({
     key,
@@ -16986,6 +17040,7 @@ function handleComponentUiState(uiState) {
       void followComponentActionState(state);
     } else {
       handledComponentJobs.add(jobId);
+      capSetSize(handledComponentJobs);
       void ackComponentActionJob(jobId);
     }
   }

@@ -792,9 +792,14 @@ function renderDefaultState({
                         return 'var(--warn-color-medium, orange)';
                       if (selectedOutbound!.latency === -1)
                         return 'var(--error-color-medium, red)';
-                      if (selectedOutbound!.latency && selectedOutbound!.latency > 0) {
-                        if (selectedOutbound!.latency < 800) return 'var(--success-color-medium, green)';
-                        if (selectedOutbound!.latency < 1500) return 'var(--warn-color-medium, orange)';
+                      if (
+                        selectedOutbound!.latency &&
+                        selectedOutbound!.latency > 0
+                      ) {
+                        if (selectedOutbound!.latency < 800)
+                          return 'var(--success-color-medium, green)';
+                        if (selectedOutbound!.latency < 1500)
+                          return 'var(--warn-color-medium, orange)';
                         return 'var(--error-color-medium, red)';
                       }
                       return selectedOutbound!.runtimeAvailable
@@ -815,7 +820,7 @@ function renderDefaultState({
                   if (isConnectionNode) {
                     latencyText = latencyFetching
                       ? _('Checking...')
-                      : (selectedOutbound.latency && selectedOutbound.latency > 0)
+                      : selectedOutbound.latency && selectedOutbound.latency > 0
                         ? `${selectedOutbound.latency}ms`
                         : selectedOutbound.latency === -1
                           ? _('Not responding')

@@ -29,9 +29,7 @@ export function shouldResetCheckResultsOnMount({
 export function shouldRefreshComponentStateBeforeRender(
   uiState?: Pick<Tachyon.UiState, 'actions'>,
 ) {
-  return Boolean(
-    uiState?.actions.component.some((state) => state.running),
-  );
+  return Boolean(uiState?.actions.component.some((state) => state.running));
 }
 
 export function shouldExposeCheckResults({

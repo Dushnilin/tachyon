@@ -123,7 +123,11 @@ export function renderAiChatModal() {
           try {
             const parsed = JSON.parse(d) as Record<string, unknown>;
             answerText = String(
-              parsed.report ?? parsed.summary ?? parsed.message ?? parsed.raw ?? d,
+              parsed.report ??
+                parsed.summary ??
+                parsed.message ??
+                parsed.raw ??
+                d,
             );
           } catch (_e) {
             answerText = d;

@@ -394,7 +394,9 @@ async function waitForTachyonResponsive() {
     } catch {
       // Backend is restarting — keep polling until it answers again.
     }
-    await new Promise((resolve) => setTimeout(resolve, RELOAD_POLL_INTERVAL_MS));
+    await new Promise((resolve) =>
+      setTimeout(resolve, RELOAD_POLL_INTERVAL_MS),
+    );
   }
   return false;
 }
