@@ -411,8 +411,7 @@ function sing_box_config_path() {
 }
 
 function lan_interface() {
-    let namespace = backend_id() == "podkop" ? "podkop" : "forkop";
-    let configured = words(uci_get(namespace + ".settings.source_network_interfaces"));
+    let configured = words(uci_get("tachyon.settings.source_network_interfaces"));
     if (length(configured) > 0)
         return configured[0];
     return "br-lan";

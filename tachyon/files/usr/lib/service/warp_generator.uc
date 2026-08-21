@@ -79,6 +79,13 @@ function exec_output(command) {
     return data == null ? "" : trim(data);
 }
 
+function now_ms() {
+    let c = clock();
+    if (type(c) != "array" || length(c) < 2)
+        return 0;
+    return c[0] * 1000 + int(c[1] / 1000000);
+}
+
 function contains(arr, val) {
     for (let x in arr) {
         if (x == val) return true;
@@ -89,6 +96,10 @@ function contains(arr, val) {
 function call_api(method, url, auth_header, body_file) {
     let resolve_ips = [ "162.159.192.1", "162.159.193.1", "188.114.98.1", "188.114.99.1" ];
     let last_res = "";
+    // Hard wall-clock budget: without it the full retry matrix (transports x
+    // resolve IPs x fallbacks) can block for minutes and trip the LuCI XHR
+    // timeout before any answer is produced.
+    let deadline = now_ms() + 40000;
     
     let transport_flags = [];
     if (proxy_interface != "") {
@@ -105,8 +116,10 @@ function call_api(method, url, auth_header, body_file) {
 
     // 1. Try selected tunnel transport(s)
     for (let tr in transport_flags) {
+        if (now_ms() > deadline) break;
         // A. With --resolve to Cloudflare IPs
         for (let ip in resolve_ips) {
+            if (now_ms() > deadline) break;
             let auth_str = auth_header != "" ? "-H 'Authorization: Bearer " + auth_header + "' " : "";
             let data_str = body_file != "" ? "-d @" + body_file + " " : "";
             let cmd = "curl -s --connect-timeout 3 --max-time 7 " + tr + " --resolve api.cloudflareclient.com:443:" + ip + " -X " + method + " -H 'Content-Type: application/json' -H 'User-Agent: okhttp/3.12.1' " + auth_str + data_str + url;
@@ -121,6 +134,7 @@ function call_api(method, url, auth_header, body_file) {
                 }
             }
         }
+        if (now_ms() > deadline) break;
         // B. Directly via DNS on tunnel
         let auth_str = auth_header != "" ? "-H 'Authorization: Bearer " + auth_header + "' " : "";
         let data_str = body_file != "" ? "-d @" + body_file + " " : "";
@@ -137,8 +151,13 @@ function call_api(method, url, auth_header, body_file) {
         }
     }
 
+    if (now_ms() > deadline) {
+        return last_res != "" ? { success: false, message: last_res } : null;
+    }
+
     // 2. Direct WAN fallback if no tunnel transport worked
     for (let ip in resolve_ips) {
+        if (now_ms() > deadline) break;
         let auth_str = auth_header != "" ? "-H 'Authorization: Bearer " + auth_header + "' " : "";
         let data_str = body_file != "" ? "-d @" + body_file + " " : "";
         let cmd = "curl -s --connect-timeout 3 --max-time 6 --resolve api.cloudflareclient.com:443:" + ip + " -X " + method + " -H 'Content-Type: application/json' -H 'User-Agent: okhttp/3.12.1' " + auth_str + data_str + url;
@@ -160,7 +179,7 @@ function call_api(method, url, auth_header, body_file) {
 // Query current proxy selection from Clash API for automatic rate limit rotation if proxy is used
 let original_server = "";
 let available_servers = [];
-let clash_data_str = exec_output("curl -s " + get_clash_base_url() + "/proxies/MAIN-out");
+let clash_data_str = exec_output("curl -s -m 5 " + get_clash_base_url() + "/proxies/MAIN-out");
 if (clash_data_str != "") {
     try {
         let parsed = json(clash_data_str);
@@ -177,7 +196,7 @@ function restore_original_server() {
         let body = { name: original_server };
         let tmp_file = "/tmp/restore_clash.json";
         fs.writefile(tmp_file, sprintf("%J", body));
-        exec_output("curl -s -X PUT -H 'Content-Type: application/json' -d @" + tmp_file + " " + get_clash_base_url() + "/proxies/MAIN-out");
+        exec_output("curl -s -m 5 -X PUT -H 'Content-Type: application/json' -d @" + tmp_file + " " + get_clash_base_url() + "/proxies/MAIN-out");
         fs.unlink(tmp_file);
     }
 }
@@ -186,7 +205,7 @@ function switch_server(srv_name) {
     let body = { name: srv_name };
     let tmp_file = "/tmp/switch_clash.json";
     fs.writefile(tmp_file, sprintf("%J", body));
-    exec_output("curl -s -X PUT -H 'Content-Type: application/json' -d @" + tmp_file + " " + get_clash_base_url() + "/proxies/MAIN-out");
+    exec_output("curl -s -m 5 -X PUT -H 'Content-Type: application/json' -d @" + tmp_file + " " + get_clash_base_url() + "/proxies/MAIN-out");
     fs.unlink(tmp_file);
     exec_output("sleep 1");
 }
@@ -257,8 +276,15 @@ let response_data = null;
 let last_error = "";
 let chosen_prefix = "";
 let server_try_index = 0;
+// Overall budget for the whole registration attempt matrix: each call_api()
+// is bounded, but the prefix list is long enough to multiply into minutes.
+let registration_deadline = now_ms() + 90000;
 
 for (let prefix in api_prefixes) {
+    if (now_ms() > registration_deadline) {
+        last_error = "Registration aborted: overall time budget exceeded";
+        break;
+    }
     let url = "https://api.cloudflareclient.com/" + prefix + "/reg";
     let parsed = call_api("POST", url, "", tmp_req_file);
     

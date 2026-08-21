@@ -15,6 +15,16 @@ function rag_index_path() {
     return INDEX_BUILTIN;
 }
 
+// Fingerprint of the active index file. Cached embeddings are only valid for
+// the exact index they were computed from; without this check a rebuilt index
+// with the same chunk count silently serves stale vectors forever.
+function index_stamp() {
+    let st = fs.stat(rag_index_path());
+    if (!st)
+        return "missing";
+    return sprintf("%d-%d", int(st.st_mtime || 0), int(st.st_size || 0));
+}
+
 function load_raw_index() {
     if (rag_index)
         return rag_index;
@@ -40,6 +50,7 @@ function load_embedding_cache() {
 function save_embedding_cache(embeddings, model) {
     let data = {
         model: model,
+        index_stamp: index_stamp(),
         timestamp: time(),
         embeddings: embeddings
     };
@@ -76,6 +87,7 @@ function get_api_url(provider, api_key, custom_url) {
 
 function get_embedding_model(provider, model_override) {
     provider = lc(trim(as_string(provider)));
+    model_override = trim(as_string(model_override));
     if (model_override != "")
         return model_override;
     if (provider == "openai")
@@ -124,7 +136,7 @@ function call_embedding_api(api_url, api_key, model, texts) {
     if (type(data.data) == "array" && length(data.data) > 0) {
         let embeddings = [];
         for (let i = 0; i < length(data.data); i++)
-            push(data.data[i].embedding, embeddings);
+            push(embeddings, data.data[i].embedding);
         return embeddings;
     }
 
@@ -153,8 +165,10 @@ function cosine_similarity(a, b) {
 function ensure_embeddings(index, provider, api_key, custom_url, model_override) {
     let cached = load_embedding_cache();
     let model = get_embedding_model(provider, model_override);
+    let stamp = index_stamp();
 
-    if (cached && length(cached.embeddings) == length(index.chunks) && cached.model == model) {
+    if (cached && length(cached.embeddings) == length(index.chunks) &&
+        cached.model == model && cached.index_stamp == stamp) {
         for (let i = 0; i < length(index.chunks); i++)
             index.chunks[i].embedding = cached.embeddings[i];
         return true;

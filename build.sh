@@ -247,13 +247,26 @@ build_backend_root() {
   rm -rf "$output_root"
   make_dir "$output_root/etc/init.d"
   make_dir "$output_root/etc/config"
+  make_dir "$output_root/etc/hotplug.d/iface"
   make_dir "$output_root/usr/bin"
   make_dir "$output_root/usr/lib/tachyon"
+  make_dir "$output_root/usr/lib/cgi-bin"
+  make_dir "$output_root/usr/share/tachyon"
 
   install -m 0755 "$ROOT_DIR/tachyon/files/etc/init.d/tachyon" "$output_root/etc/init.d/tachyon"
   install -m 0644 "$ROOT_DIR/tachyon/files/etc/config/tachyon" "$output_root/etc/config/tachyon"
   install -m 0755 "$ROOT_DIR/tachyon/files/usr/bin/tachyon" "$output_root/usr/bin/tachyon"
   cp -a "$ROOT_DIR/tachyon/files/usr/lib/." "$output_root/usr/lib/tachyon/"
+
+  # Mirror Package/tachyon/install from tachyon/Makefile exactly: the release
+  # artifacts are built here, so any file the Makefile ships must ship here too.
+  install -m 0600 "$ROOT_DIR/tachyon/files/etc/config/tachyon" "$output_root/usr/lib/tachyon/defaults/config"
+  install -m 0755 "$ROOT_DIR/tachyon/files/etc/hotplug.d/iface/99-tachyon-wan-monitor" \
+    "$output_root/etc/hotplug.d/iface/99-tachyon-wan-monitor"
+  install -m 0755 "$ROOT_DIR/tachyon/files/usr/lib/cgi-bin/tachyon-agent" \
+    "$output_root/usr/lib/cgi-bin/tachyon-agent"
+  install -m 0644 "$ROOT_DIR/tachyon/files/usr/share/tachyon/servicecheck_profiles.json" \
+    "$output_root/usr/share/tachyon/servicecheck_profiles.json"
 
   local commit_sha="${GIT_COMMIT_SHA:-}"
   if [[ -z "$commit_sha" || "$commit_sha" == "unknown" ]]; then
@@ -265,7 +278,11 @@ build_backend_root() {
     "$output_root/usr/lib/tachyon/core/constants.uc"
 
   normalize_package_root_modes "$output_root"
-  chmod 0755 "$output_root/etc/init.d/tachyon" "$output_root/usr/bin/tachyon"
+  chmod 0755 "$output_root/etc/init.d/tachyon" "$output_root/usr/bin/tachyon" \
+    "$output_root/etc/hotplug.d/iface/99-tachyon-wan-monitor" \
+    "$output_root/usr/lib/cgi-bin/tachyon-agent"
+  # Contains the Telegram bot token placeholder and receives user secrets.
+  chmod 0600 "$output_root/etc/config/tachyon" "$output_root/usr/lib/tachyon/defaults/config"
 }
 
 build_app_root() {

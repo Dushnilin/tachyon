@@ -375,13 +375,32 @@ function notifyActionProvidersAvailabilityChanged(
   );
 }
 
+const RELOAD_POLL_INTERVAL_MS = 1000;
+const RELOAD_POLL_MAX_WAIT_MS = 30000;
+
+async function waitForTachyonResponsive() {
+  const deadline = Date.now() + RELOAD_POLL_MAX_WAIT_MS;
+  while (Date.now() < deadline) {
+    try {
+      const response = await TachyonShellMethods.getUiState();
+      if (response.success) {
+        return true;
+      }
+    } catch {
+      // Backend is restarting — keep polling until it answers again.
+    }
+    await new Promise((resolve) => setTimeout(resolve, RELOAD_POLL_INTERVAL_MS));
+  }
+  return false;
+}
+
 function reloadPageAfterTachyonUpdate() {
-  // Give the backend time to restart services before reloading; the default
-  // 1200ms was too short and caused the page to reload before tachyon init
-  // finished, making the updates tab hang on stale component action state.
-  window.setTimeout(() => {
+  // Reload only after the restarted backend actually answers get_ui_state:
+  // a fixed delay either reloaded too early (tab hung on stale component
+  // action state) or wasted seconds on fast routers.
+  void waitForTachyonResponsive().finally(() => {
     window.location.reload();
-  }, 8000);
+  });
 }
 
 function patchSystemInfoAfterMutation(result: Tachyon.ComponentActionResult) {
