@@ -4,9 +4,9 @@ set -eo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 HELPERS_UC="$ROOT_DIR/tachyon/files/usr/lib/core/helpers.uc"
 TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
-TMP_DIR="$ROOT_DIR/tmp_file_usable_test"
+TMP_DIR="$(mktemp -d)"
+trap 'rm -rf "$TMP_DIR"' EXIT
 
-rm -rf "$TMP_DIR"
 mkdir -p "$TMP_DIR"
 
 ucode() {

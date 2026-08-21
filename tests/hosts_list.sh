@@ -4,11 +4,11 @@ set -eo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 HOSTS_UC="$ROOT_DIR/tachyon/files/usr/lib/components/hosts.uc"
 TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
-TMP_DIR="$ROOT_DIR/tmp_hosts_list_test"
+TMP_DIR="$(mktemp -d)"
 PASS=0
 FAIL=0
+trap 'rm -rf "$TMP_DIR"' EXIT
 
-rm -rf "$TMP_DIR"
 mkdir -p "$TMP_DIR"
 
 ucode() {

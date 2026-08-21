@@ -1,4 +1,4 @@
-﻿#!/bin/sh
+#!/bin/sh
 # Tachyon AI Agent API — CGI handler for uhttpd
 # Install at: /usr/lib/cgi-bin/tachyon-agent
 # then symlink: ln -sf /usr/lib/cgi-bin/tachyon-agent /www/cgi-bin/tachyon-agent

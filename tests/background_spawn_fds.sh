@@ -65,7 +65,9 @@ fi
 
 SPAWN_UC="$(mktemp "${TMPDIR:-/tmp}/tachyon_spawn_fds.XXXXXX")"
 COUNT_OUT="$(mktemp "${TMPDIR:-/tmp}/tachyon_spawn_count.XXXXXX")"
-trap 'rm -f "$SPAWN_UC" "$COUNT_OUT"' EXIT
+SPAWN_CLEANUP_FILES="$SPAWN_UC $COUNT_OUT"
+add_cleanup() { SPAWN_CLEANUP_FILES="$SPAWN_CLEANUP_FILES $1"; }
+trap 'rm -f $SPAWN_CLEANUP_FILES' EXIT
 
 cat > "$SPAWN_UC" <<UCODE
 let fs = require("fs");
@@ -144,7 +146,7 @@ done
 if [ "$closes_high" = yes ]; then
   LOCK_OUT="$(mktemp "${TMPDIR:-/tmp}/tachyon_spawn_lock.XXXXXX")"
   LOCK_FILE="$(mktemp "${TMPDIR:-/tmp}/tachyon_spawn_lockfile.XXXXXX")"
-  trap 'rm -f "$SPAWN_UC" "$COUNT_OUT" "$LOCK_OUT" "$LOCK_FILE"' EXIT
+  add_cleanup "$LOCK_OUT"; add_cleanup "$LOCK_FILE"
 
   cat > "$SPAWN_UC" <<UCODE
 let common = require("core.common");
@@ -165,7 +167,7 @@ fi
 # and the recorded pid belongs to nothing. Checked against a real spawn: the
 # process the pid names must still be alive and must be the command itself.
 PID_OUT="$(mktemp "${TMPDIR:-/tmp}/tachyon_spawn_pid.XXXXXX")"
-trap 'rm -f "$SPAWN_UC" "$COUNT_OUT" "$PID_OUT"' EXIT
+add_cleanup "$PID_OUT"
 
 cat > "$SPAWN_UC" <<UCODE
 let common = require("core.common");
