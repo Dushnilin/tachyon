@@ -208,18 +208,24 @@ ensure_po2lmo() {
 
   (
     cd "$ipk_sdk_dir"
-    if [[ ! -d feeds/luci ]]; then
-      ./scripts/feeds update luci >&2 || true
-      ./scripts/feeds install -p luci luci-base >&2 || ./scripts/feeds install -a >&2 || true
-    fi
     if [[ ! -d feeds/luci/modules/luci-base/src ]]; then
+      # A previous interrupted update can leave a partial feeds/luci behind;
+      # re-clone from scratch rather than compiling against missing sources.
+      rm -rf feeds/luci
       mkdir -p feeds
       git clone --depth 1 https://github.com/openwrt/luci.git feeds/luci >&2 || true
     fi
   )
 
-  if [[ -f "$luci_src_dir/po2lmo.c" && ! -x "$luci_src_dir/po2lmo" ]]; then
-    gcc -O2 -o "$luci_src_dir/po2lmo" "$luci_src_dir/po2lmo.c" "$luci_src_dir/template_lmo.c" >&2 || make -C "$luci_src_dir" po2lmo >&2
+  if [[ ! -f "$luci_src_dir/template_lmo.c" || ! -f "$luci_src_dir/po2lmo.c" ]]; then
+    echo "po2lmo sources unavailable under $luci_src_dir" >&2
+    return 1
+  fi
+
+  if [[ ! -x "$luci_src_dir/po2lmo" ]]; then
+    gcc -O2 -o "$luci_src_dir/po2lmo" "$luci_src_dir/po2lmo.c" "$luci_src_dir/template_lmo.c" >&2 \
+      || make -C "$luci_src_dir" po2lmo >&2 \
+      || true
   fi
 
   if [[ -x "$luci_src_dir/po2lmo" ]]; then
@@ -227,7 +233,10 @@ ensure_po2lmo() {
     return 0
   fi
 
-  printf '%s\n' "$luci_src_dir/po2lmo"
+  # Never print a path to a binary that does not exist: the caller would die
+  # later with a confusing permission/not-found error.
+  echo "po2lmo compilation failed; cannot build LuCI i18n package" >&2
+  return 1
 }
 
 make_dir() {
@@ -250,6 +259,7 @@ build_backend_root() {
   make_dir "$output_root/etc/hotplug.d/iface"
   make_dir "$output_root/usr/bin"
   make_dir "$output_root/usr/lib/tachyon"
+  make_dir "$output_root/usr/lib/tachyon/defaults"
   make_dir "$output_root/usr/lib/cgi-bin"
   make_dir "$output_root/usr/share/tachyon"
 
