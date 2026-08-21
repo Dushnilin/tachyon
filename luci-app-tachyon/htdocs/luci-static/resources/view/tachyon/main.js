@@ -3607,7 +3607,6 @@ var TachyonShellMethods = {
       baselineVersion = await readTachyonVersion();
     }
     let selfUpdateVersionMatchedAt = 0;
-    let lastStatusRefreshAt = 0;
     const transientRpc = createTransientRpcGraceTracker(
       COMPONENT_ACTION_TRANSIENT_RPC_GRACE_MS
     );
@@ -3703,7 +3702,6 @@ var TachyonShellMethods = {
         }
         return jobDoneResult(stateResponse);
       }
-      lastStatusRefreshAt = Date.now();
       const statusResponse = await executeShellCommand({
         command: "/usr/bin/tachyon",
         args: [Tachyon.AvailableMethods.COMPONENT_ACTION_STATUS, jobId],
@@ -5889,6 +5887,7 @@ function applyUiStateToStore(uiState) {
 var RUNTIME_UI_STATE_REFRESH_MIN_INTERVAL_MS = 500;
 var RUNTIME_UI_STATE_IDLE_POLL_INTERVAL_MS = 1e3;
 var RUNTIME_UI_STATE_ACTIVE_POLL_INTERVAL_MS = 500;
+var RUNTIME_UI_STATE_HIDDEN_POLL_INTERVAL_MS = 3e4;
 var runtimeUiStateRefreshPromise = null;
 var lastRuntimeUiStateRefreshAt = 0;
 var lastRuntimeUiState;
@@ -5906,6 +5905,9 @@ function hasRunningAction(uiState) {
   );
 }
 function getNextPollDelay() {
+  if (!isDocumentVisible()) {
+    return RUNTIME_UI_STATE_HIDDEN_POLL_INTERVAL_MS;
+  }
   return runtimeStateHasRunningAction ? RUNTIME_UI_STATE_ACTIVE_POLL_INTERVAL_MS : RUNTIME_UI_STATE_IDLE_POLL_INTERVAL_MS;
 }
 function scheduleRuntimeUiStatePoll(delay = getNextPollDelay()) {
@@ -8817,6 +8819,36 @@ function render2() {
   );
 }
 
+// src/tachyon/helpers/notifyActionFailure.ts
+function extractMessage(response) {
+  if (!response || typeof response !== "object") {
+    return null;
+  }
+  const record = response;
+  for (const key of ["error", "message", "stderr"]) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim() !== "") {
+      return value.trim();
+    }
+  }
+  const data = record.data;
+  if (data && typeof data === "object") {
+    const dataError = data.error;
+    if (typeof dataError === "string" && dataError.trim() !== "") {
+      return dataError.trim();
+    }
+  }
+  return null;
+}
+function notifyActionFailure(context, response, fallbackLabel) {
+  logger.error("[DIAGNOSTIC]", context, response);
+  const detail = extractMessage(response);
+  showToast(
+    (fallbackLabel ?? _("Action failed")) + (detail ? ": " + detail : ""),
+    "error"
+  );
+}
+
 // src/tachyon/tabs/diagnostic/checks/updateCheckStore.ts
 function updateCheckStore(check, minified) {
   const diagnosticsChecks = store.get().diagnosticsChecks;
@@ -10423,16 +10455,16 @@ function renderRunAction({
 
 // src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts
 function formatRouteType(routeType) {
-  if (!routeType) return "\u041F\u0440\u044F\u043C\u043E\u0435";
+  if (!routeType) return _("Direct");
   const clean = routeType.trim();
   if (clean === "connection" || clean === "proxy" || clean === "outbound") {
-    return "\u041F\u0440\u043E\u043A\u0441\u0438";
+    return _("Proxy");
   }
   if (clean === "direct") {
-    return "\u041F\u0440\u044F\u043C\u043E\u0435";
+    return _("Direct");
   }
   if (clean === "auto") {
-    return "\u0410\u0432\u0442\u043E";
+    return _("Auto");
   }
   if (clean.startsWith("zapret2")) {
     return clean.replace(/^zapret2/, "Zapret 2");
@@ -10449,14 +10481,14 @@ function formatSectionName(name) {
   if (!name) return "";
   const clean = name.trim();
   const sectionMap = {
-    "\u0411\u0430\u0437\u043E\u0432\u0430\u044F \u0441\u0432\u044F\u0437\u043D\u043E\u0441\u0442\u044C": "\u0411\u0430\u0437\u043E\u0432\u0430\u044F \u0441\u0432\u044F\u0437\u043D\u043E\u0441\u0442\u044C",
-    "\u0417\u0430\u0431\u043B\u043E\u043A\u0438\u0440\u043E\u0432\u0430\u043D\u043D\u044B\u0435 \u0432 \u0420\u0424": "\u0417\u0430\u0431\u043B\u043E\u043A\u0438\u0440\u043E\u0432\u0430\u043D\u043D\u044B\u0435 \u0440\u0435\u0441\u0443\u0440\u0441\u044B",
-    "\u0421\u0432\u043E\u0438 \u0434\u043E\u043C\u0435\u043D\u044B": "\u0421\u043E\u0431\u0441\u0442\u0432\u0435\u043D\u043D\u044B\u0435 \u0434\u043E\u043C\u0435\u043D\u044B",
-    Custom: "\u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C\u0441\u043A\u0438\u0439",
+    "\u0411\u0430\u0437\u043E\u0432\u0430\u044F \u0441\u0432\u044F\u0437\u043D\u043E\u0441\u0442\u044C": _("Basic connectivity"),
+    "\u0417\u0430\u0431\u043B\u043E\u043A\u0438\u0440\u043E\u0432\u0430\u043D\u043D\u044B\u0435 \u0432 \u0420\u0424": _("Blocked resources"),
+    "\u0421\u0432\u043E\u0438 \u0434\u043E\u043C\u0435\u043D\u044B": _("Custom domains"),
+    Custom: _("Custom"),
     "ChatGPT / OpenAI": "ChatGPT / OpenAI",
     "Gemini / Google AI": "Gemini / Google AI",
     "X (Twitter)": "Twitter (X)",
-    "UDP / QUIC": "UDP / QUIC \u043F\u0440\u043E\u0442\u043E\u043A\u043E\u043B\u044B",
+    "UDP / QUIC": _("UDP / QUIC protocols"),
     Telegram: "Telegram",
     Instagram: "Instagram",
     YouTube: "YouTube",
@@ -10480,7 +10512,7 @@ function renderStatusBadge(statusClass, isTesting = false, isPending = false) {
         class: "badge cbi-value-title",
         style: "opacity: 0.6; font-size: 11px; padding: 2px 8px;"
       },
-      "\u041E\u0436\u0438\u0434\u0430\u043D\u0438\u0435..."
+      _("Pending...")
     );
   }
   if (isTesting) {
@@ -10490,7 +10522,7 @@ function renderStatusBadge(statusClass, isTesting = false, isPending = false) {
         class: "badge cbi-button-action",
         style: "font-size: 11px; padding: 2px 8px;"
       },
-      "\u041F\u0440\u043E\u0432\u0435\u0440\u043A\u0430..."
+      _("Testing...")
     );
   }
   const cleanStatus = statusClass || "";
@@ -10502,7 +10534,7 @@ function renderStatusBadge(statusClass, isTesting = false, isPending = false) {
         class: "badge cbi-button-save",
         style: "font-weight: bold; font-size: 11px; padding: 2px 8px;"
       },
-      "\u0414\u043E\u0441\u0442\u0443\u043F\u0435\u043D"
+      _("Available")
     );
   }
   return E(
@@ -10511,7 +10543,7 @@ function renderStatusBadge(statusClass, isTesting = false, isPending = false) {
       class: "badge cbi-button-reset",
       style: "font-weight: bold; font-size: 11px; padding: 2px 8px;"
     },
-    cleanStatus || "\u041D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u0435\u043D"
+    cleanStatus || _("Unavailable")
   );
 }
 function renderServiceCheckModal() {
@@ -10525,7 +10557,7 @@ function renderServiceCheckModal() {
       E(
         "p",
         { style: "text-align: center; margin-top: 20px;" },
-        "\u041F\u043E\u043B\u0443\u0447\u0435\u043D\u0438\u0435 \u0441\u043F\u0438\u0441\u043A\u0430 \u0441\u0435\u0440\u0432\u0438\u0441\u043E\u0432..."
+        _("Loading service list...")
       ),
       E(
         "div",
@@ -10550,21 +10582,21 @@ function renderServiceCheckModal() {
         },
         [
           renderButton({
-            text: "\u0417\u0430\u043A\u0440\u044B\u0442\u044C",
+            text: _("Close"),
             onClick: () => ui.hideModal()
           })
         ]
       )
     ]
   );
-  ui.showModal("\u041F\u0440\u043E\u0432\u0435\u0440\u043A\u0430 \u0434\u043E\u0441\u0442\u0443\u043F\u043D\u043E\u0441\u0442\u0438 \u0441\u0435\u0440\u0432\u0438\u0441\u043E\u0432", modalContent);
+  ui.showModal(_("Service availability check"), modalContent);
   const loadTargets = (targetMode) => {
     container.innerHTML = "";
     container.appendChild(
       E(
         "p",
         { style: "text-align: center; margin-top: 20px;" },
-        "\u041F\u043E\u043B\u0443\u0447\u0435\u043D\u0438\u0435 \u0441\u043F\u0438\u0441\u043A\u0430 \u0441\u0435\u0440\u0432\u0438\u0441\u043E\u0432..."
+        _("Loading service list...")
       )
     );
     const args = targetMode === "all" ? ["get-targets", "all"] : ["get-targets"];
@@ -10576,7 +10608,7 @@ function renderServiceCheckModal() {
           E(
             "p",
             { style: "color: var(--color-danger, #dc3545);" },
-            "\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u0437\u0430\u043F\u0443\u0441\u0442\u0438\u0442\u044C \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0443 \u0441\u0435\u0440\u0432\u0438\u0441\u043E\u0432."
+            _("Failed to start service check.")
           )
         );
         return;
@@ -10593,19 +10625,19 @@ function renderServiceCheckModal() {
           E(
             "p",
             { style: "color: var(--color-danger, #dc3545);" },
-            "\u041E\u0448\u0438\u0431\u043A\u0430 \u0440\u0430\u0437\u0431\u043E\u0440\u0430 \u0441\u043F\u0438\u0441\u043A\u0430 \u0446\u0435\u043B\u0435\u0439."
+            _("Failed to parse target list.")
           )
         );
         return;
       }
       if (targets.length === 0) {
         container.appendChild(
-          E("p", {}, "\u0426\u0435\u043B\u0438 \u0434\u043B\u044F \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0438 \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D\u044B \u0432 \u043A\u043E\u043D\u0444\u0438\u0433\u0443\u0440\u0430\u0446\u0438\u0438.")
+          E("p", {}, _("No check targets found in the configuration."))
         );
         return;
       }
       const activeSectionsBtn = renderButton({
-        text: "\u0410\u043A\u0442\u0438\u0432\u043D\u044B\u0435 \u043C\u0430\u0440\u0448\u0440\u0443\u0442\u044B",
+        text: _("Active routes"),
         classNames: [
           targetMode === "active" ? "cbi-button-action" : "cbi-button-neutral"
         ],
@@ -10614,7 +10646,7 @@ function renderServiceCheckModal() {
       activeSectionsBtn.style.fontSize = "12px";
       activeSectionsBtn.style.padding = "4px 12px";
       const allProfilesBtn = renderButton({
-        text: "\u0412\u0441\u0435 \u0441\u0435\u0440\u0432\u0438\u0441\u044B",
+        text: _("All services"),
         classNames: [
           targetMode === "all" ? "cbi-button-action" : "cbi-button-neutral"
         ],
@@ -10631,7 +10663,7 @@ function renderServiceCheckModal() {
           E(
             "span",
             { style: "font-weight: 600; font-size: 13px; opacity: 0.9;" },
-            "\u0420\u0435\u0436\u0438\u043C \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0438:"
+            _("Check mode:")
           ),
           activeSectionsBtn,
           allProfilesBtn
@@ -10691,10 +10723,10 @@ function renderServiceCheckModal() {
           style: "display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; width: 100%; box-sizing: border-box;"
         },
         [
-          createStatCard("\u0412\u0441\u0435\u0433\u043E \u0446\u0435\u043B\u0435\u0439", totalStatEl),
-          createStatCard("\u0414\u043E\u0441\u0442\u0443\u043F\u043D\u043E", passedStatEl),
-          createStatCard("\u041D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u043D\u043E", failedStatEl),
-          createStatCard("\u0421\u0440. \u0437\u0430\u0434\u0435\u0440\u0436\u043A\u0430", latencyStatEl)
+          createStatCard(_("Total targets"), totalStatEl),
+          createStatCard(_("Available"), passedStatEl),
+          createStatCard(_("Unavailable"), failedStatEl),
+          createStatCard(_("Avg. latency"), latencyStatEl)
         ]
       );
       const progressBarInner = E("div", {
@@ -10714,7 +10746,7 @@ function renderServiceCheckModal() {
           style: "padding: 4px 8px; font-size: 12px; border-radius: 4px; max-width: 240px;"
         },
         [
-          E("option", { value: "ALL" }, `\u0412\u0441\u0435 \u0441\u0435\u0440\u0432\u0438\u0441\u044B (${targets.length})`),
+          E("option", { value: "ALL" }, `${_("All services")} (${targets.length})`),
           ...sectionNames.map((sec) => {
             const count = targets.filter((t) => t.section === sec).length;
             return E(
@@ -10731,7 +10763,7 @@ function renderServiceCheckModal() {
       };
       const searchInput = E("input", {
         type: "text",
-        placeholder: "\u041F\u043E\u0438\u0441\u043A \u0434\u043E\u043C\u0435\u043D\u0430 \u0438\u043B\u0438 \u0441\u0435\u0440\u0432\u0438\u0441\u0430...",
+        placeholder: _("Search domain or service..."),
         class: "cbi-input-text",
         style: "width: 200px; padding: 4px 10px; font-size: 12px; border-radius: 4px;"
       });
@@ -10755,7 +10787,7 @@ function renderServiceCheckModal() {
               E(
                 "span",
                 { style: "font-size: 12px; opacity: 0.8;" },
-                "\u0424\u0438\u043B\u044C\u0442\u0440 \u043F\u043E \u0441\u0435\u0440\u0432\u0438\u0441\u0443:"
+                _("Filter by service:")
               ),
               sectionSelect
             ]
@@ -10767,12 +10799,12 @@ function renderServiceCheckModal() {
         E(
           "th",
           { class: "th", style: "width: 28%; padding: 8px;" },
-          "\u0421\u0435\u0440\u0432\u0438\u0441 / \u0426\u0435\u043B\u044C"
+          _("Service / Target")
         ),
         E(
           "th",
           { class: "th", style: "width: 17%; padding: 8px;" },
-          "\u041C\u0430\u0440\u0448\u0440\u0443\u0442"
+          _("Route")
         ),
         E(
           "th",
@@ -10809,7 +10841,7 @@ function renderServiceCheckModal() {
             class: "th",
             style: "text-align: center; width: 14%; padding: 8px 6px;"
           },
-          "\u0421\u0442\u0430\u0442\u0443\u0441"
+          _("Status")
         )
       ]);
       const tableBody = E("tbody", {});
@@ -10941,12 +10973,12 @@ function renderServiceCheckModal() {
         const customDomainInput = E("input", {
           type: "text",
           id: "custom-domain-input",
-          placeholder: "\u041F\u0440\u043E\u0432\u0435\u0440\u0438\u0442\u044C \u0434\u043E\u043C\u0435\u043D \u0438\u043B\u0438 IP (\u043D\u0430\u043F\u0440. example.com)...",
+          placeholder: _("Enter a domain or IP to check (e.g. example.com)..."),
           class: "cbi-input-text",
           style: "width: 270px; font-size: 12px;"
         });
         const customBtn = renderButton({
-          text: "\u041F\u0440\u043E\u0432\u0435\u0440\u0438\u0442\u044C \u0434\u043E\u043C\u0435\u043D",
+          text: _("Check domain"),
           classNames: ["cbi-button-neutral"],
           onClick: async () => {
             const domain = customDomainInput.value.trim();
@@ -11059,7 +11091,7 @@ function renderServiceCheckModal() {
             } catch (_e) {
             } finally {
               customBtn.disabled = false;
-              customBtn.textContent = "\u041F\u0440\u043E\u0432\u0435\u0440\u0438\u0442\u044C \u0434\u043E\u043C\u0435\u043D";
+              customBtn.textContent = _("Check domain");
             }
           }
         });
@@ -11071,11 +11103,11 @@ function renderServiceCheckModal() {
           [customDomainInput, customBtn]
         );
         const checkAllBtn = renderButton({
-          text: "\u041F\u0440\u043E\u0432\u0435\u0440\u0438\u0442\u044C \u0432\u0441\u0435",
+          text: _("Check all"),
           classNames: ["cbi-button-action"],
           onClick: async () => {
             checkAllBtn.disabled = true;
-            checkAllBtn.textContent = "\u041F\u0440\u043E\u0432\u0435\u0440\u043A\u0430...";
+            checkAllBtn.textContent = _("Testing...");
             progressBarContainer.style.display = "block";
             progressBarInner.style.width = "0%";
             for (let i = 0; i < rowMap.length; i++) {
@@ -11121,12 +11153,12 @@ function renderServiceCheckModal() {
               }
               updateSummaryStats();
             }
-            checkAllBtn.textContent = "\u041F\u0440\u043E\u0432\u0435\u0440\u0438\u0442\u044C \u0441\u043D\u043E\u0432\u0430";
+            checkAllBtn.textContent = _("Check again");
             checkAllBtn.disabled = false;
           }
         });
         const closeBtn = renderButton({
-          text: "\u0417\u0430\u043A\u0440\u044B\u0442\u044C",
+          text: _("Close"),
           onClick: () => ui.hideModal()
         });
         const rightWrap = E("div", { style: "display: flex; gap: 8px;" }, [
@@ -11142,7 +11174,7 @@ function renderServiceCheckModal() {
         E(
           "p",
           { style: "color: var(--color-danger, #dc3545);" },
-          "\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u0437\u0430\u043F\u0443\u0441\u0442\u0438\u0442\u044C \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0443 \u0441\u0435\u0440\u0432\u0438\u0441\u043E\u0432."
+          _("Failed to start service check.")
         )
       );
     });
@@ -12411,10 +12443,10 @@ async function handleShowGlobalCheck() {
         })
       );
     } else {
-      logger.error("[DIAGNOSTIC]", "handleShowGlobalCheck - e", globalCheck);
+      notifyActionFailure("handleShowGlobalCheck", globalCheck, _("Global check failed"));
     }
   } catch (e) {
-    logger.error("[DIAGNOSTIC]", "handleShowGlobalCheck - e", e);
+    notifyActionFailure("handleShowGlobalCheck", e, _("Global check failed"));
   } finally {
     setDiagnosticActionLoading("globalCheck", false);
   }
@@ -12497,10 +12529,10 @@ async function handleViewLogs() {
         })
       );
     } else {
-      logger.error("[DIAGNOSTIC]", "handleViewLogs - e", viewLogs);
+      notifyActionFailure("handleViewLogs", viewLogs, _("View logs failed"));
     }
   } catch (e) {
-    logger.error("[DIAGNOSTIC]", "handleViewLogs - e", e);
+    notifyActionFailure("handleViewLogs", e, _("View logs failed"));
   } finally {
     setDiagnosticActionLoading("viewLogs", false);
   }
@@ -13142,14 +13174,14 @@ async function handleShowSingBoxConfig() {
         })
       );
     } else {
-      logger.error(
-        "[DIAGNOSTIC]",
-        "handleShowSingBoxConfig - e",
-        showSingBoxConfig
+      notifyActionFailure(
+        "handleShowSingBoxConfig",
+        showSingBoxConfig,
+        _("Show sing-box config failed")
       );
     }
   } catch (e) {
-    logger.error("[DIAGNOSTIC]", "handleShowSingBoxConfig - e", e);
+    notifyActionFailure("handleShowSingBoxConfig", e, _("Show sing-box config failed"));
   } finally {
     setDiagnosticActionLoading("showSingBoxConfig", false);
   }
@@ -14572,7 +14604,7 @@ function renderConnectionRow(connection) {
     },
     [renderXIcon24()]
   ) : E("span", {}, "-");
-  return E(
+  const row = E(
     "tr",
     {
       class: isClosing ? "tachyon_monitoring-page__row--closing" : ""
@@ -14598,6 +14630,9 @@ function renderConnectionRow(connection) {
       renderTableCell(_("Close"), [closeButton])
     ]
   );
+  row.setAttribute("data-connection-id", connection.id);
+  row.setAttribute("data-row-signature", getConnectionRowSignature(connection));
+  return row;
 }
 function renderStateRow(text, className = "") {
   return E("tr", { class: "tachyon_monitoring-page__state-row" }, [
@@ -14702,8 +14737,95 @@ function renderConnections2(options = {}) {
     );
     return;
   }
-  container.replaceChildren(renderConnectionsTable(visibleConnections));
+  patchConnectionRows(visibleConnections);
   container.scrollLeft = previousScrollLeft;
+}
+function getConnectionRowSignature(connection) {
+  const target = getTargetCellParts(connection);
+  const source = getSourceCellParts(connection);
+  return [
+    target.primary,
+    getNetwork(connection),
+    getRoute(connection),
+    source.primary,
+    source.ip,
+    closingConnectionIds.has(connection.id) ? "closing" : "open"
+  ].join("|");
+}
+function patchConnectionRows(visibleConnections) {
+  const currentTbody = container_queryConnectionsTbody();
+  const hasKeyedRows = currentTbody && currentTbody.querySelector("tr[data-connection-id]") != null;
+  if (!currentTbody || !hasKeyedRows) {
+    document.getElementById("monitoring-connections")?.replaceChildren(renderConnectionsTable(visibleConnections));
+    return;
+  }
+  const tbody = currentTbody;
+  const existingRows = /* @__PURE__ */ new Map();
+  for (const row of Array.from(tbody.children)) {
+    const id = row.getAttribute("data-connection-id");
+    if (id) {
+      existingRows.set(id, row);
+    }
+  }
+  const seenIds = /* @__PURE__ */ new Set();
+  for (const connection of visibleConnections) {
+    seenIds.add(connection.id);
+    const signature = getConnectionRowSignature(connection);
+    const existing = existingRows.get(connection.id);
+    if (!existing) {
+      tbody.appendChild(renderConnectionRow(connection));
+      continue;
+    }
+    if (existing.getAttribute("data-row-signature") !== signature) {
+      tbody.replaceChild(renderConnectionRow(connection), existing);
+      continue;
+    }
+    patchVolatileCells(existing, connection);
+    tbody.appendChild(existing);
+  }
+  for (const [id, row] of existingRows) {
+    if (!seenIds.has(id)) {
+      row.remove();
+    }
+  }
+}
+function container_queryConnectionsTbody() {
+  return document.getElementById("monitoring-connections")?.querySelector("tbody") ?? null;
+}
+function patchVolatileCells(row, connection) {
+  const cells = row.children;
+  if (cells.length < 7) {
+    return;
+  }
+  const volatileByIndex = [
+    [
+      3,
+      () => renderTableCell(_("Time"), [
+        renderValue(formatConnectionDuration(connection))
+      ])
+    ],
+    [
+      4,
+      () => renderTableCell(_("Downloaded"), [
+        renderValue(formatBytes2(connection.download))
+      ])
+    ],
+    [
+      5,
+      () => renderTableCell(_("Uploaded"), [
+        renderValue(formatBytes2(connection.upload))
+      ])
+    ]
+  ];
+  for (const [index, makeCell] of volatileByIndex) {
+    const current = cells[index];
+    const next = makeCell();
+    if (current) {
+      row.replaceChild(next, current);
+    } else {
+      row.appendChild(next);
+    }
+  }
 }
 function flushRenderAfterSelection() {
   if (!renderSkippedForSelection || isTextSelectionInsideMonitoring()) {
@@ -16557,10 +16679,26 @@ function notifyActionProvidersAvailabilityChanged(systemInfo) {
     })
   );
 }
+var RELOAD_POLL_INTERVAL_MS = 1e3;
+var RELOAD_POLL_MAX_WAIT_MS = 3e4;
+async function waitForTachyonResponsive() {
+  const deadline = Date.now() + RELOAD_POLL_MAX_WAIT_MS;
+  while (Date.now() < deadline) {
+    try {
+      const response = await TachyonShellMethods.getUiState();
+      if (response.success) {
+        return true;
+      }
+    } catch {
+    }
+    await new Promise((resolve) => setTimeout(resolve, RELOAD_POLL_INTERVAL_MS));
+  }
+  return false;
+}
 function reloadPageAfterTachyonUpdate() {
-  window.setTimeout(() => {
+  void waitForTachyonResponsive().finally(() => {
     window.location.reload();
-  }, 8e3);
+  });
 }
 function patchSystemInfoAfterMutation(result) {
   const systemInfo = store.get().diagnosticsSystemInfo;

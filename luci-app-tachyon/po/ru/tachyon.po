@@ -1535,6 +1535,75 @@ msgstr "Не удалось показать конфигурацию sing-box"
 msgid "Action failed"
 msgstr "Действие не выполнено"
 
+msgid "Active routes"
+msgstr "Активные маршруты"
+
+msgid "All services"
+msgstr "Все сервисы"
+
+msgid "Avg. latency"
+msgstr "Ср. задержка"
+
+msgid "Basic connectivity"
+msgstr "Базовая связность"
+
+msgid "Blocked resources"
+msgstr "Заблокированные ресурсы"
+
+msgid "Check again"
+msgstr "Проверить снова"
+
+msgid "Check all"
+msgstr "Проверить все"
+
+msgid "Check domain"
+msgstr "Проверить домен"
+
+msgid "Check mode:"
+msgstr "Режим проверки:"
+
+msgid "Custom domains"
+msgstr "Собственные домены"
+
+msgid "Enter a domain or IP to check (e.g. example.com)..."
+msgstr "Введите домен или IP для проверки (напр. example.com)..."
+
+msgid "Failed to parse target list."
+msgstr "Ошибка разбора списка целей."
+
+msgid "Failed to start service check."
+msgstr "Не удалось запустить проверку сервисов."
+
+msgid "Filter by service:"
+msgstr "Фильтр по сервису:"
+
+msgid "Loading service list..."
+msgstr "Получение списка сервисов..."
+
+msgid "No check targets found in the configuration."
+msgstr "Цели для проверки не найдены в конфигурации."
+
+msgid "Pending..."
+msgstr "Ожидание..."
+
+msgid "Search domain or service..."
+msgstr "Поиск домена или сервиса..."
+
+msgid "Service / Target"
+msgstr "Сервис / Цель"
+
+msgid "Service availability check"
+msgstr "Проверка доступности сервисов"
+
+msgid "Testing..."
+msgstr "Проверка..."
+
+msgid "Total targets"
+msgstr "Всего целей"
+
+msgid "UDP / QUIC protocols"
+msgstr "UDP / QUIC протоколы"
+
 msgid "gRPC service"
 msgstr "Сервис gRPC"
 

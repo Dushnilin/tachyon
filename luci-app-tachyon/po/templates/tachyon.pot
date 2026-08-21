@@ -2408,6 +2408,75 @@ msgstr ""
 msgid "Action failed"
 msgstr ""
 
+msgid "Active routes"
+msgstr ""
+
+msgid "All services"
+msgstr ""
+
+msgid "Avg. latency"
+msgstr ""
+
+msgid "Basic connectivity"
+msgstr ""
+
+msgid "Blocked resources"
+msgstr ""
+
+msgid "Check again"
+msgstr ""
+
+msgid "Check all"
+msgstr ""
+
+msgid "Check domain"
+msgstr ""
+
+msgid "Check mode:"
+msgstr ""
+
+msgid "Custom domains"
+msgstr ""
+
+msgid "Enter a domain or IP to check (e.g. example.com)..."
+msgstr ""
+
+msgid "Failed to parse target list."
+msgstr ""
+
+msgid "Failed to start service check."
+msgstr ""
+
+msgid "Filter by service:"
+msgstr ""
+
+msgid "Loading service list..."
+msgstr ""
+
+msgid "No check targets found in the configuration."
+msgstr ""
+
+msgid "Pending..."
+msgstr ""
+
+msgid "Search domain or service..."
+msgstr ""
+
+msgid "Service / Target"
+msgstr ""
+
+msgid "Service availability check"
+msgstr ""
+
+msgid "Testing..."
+msgstr ""
+
+msgid "Total targets"
+msgstr ""
+
+msgid "UDP / QUIC protocols"
+msgstr ""
+
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/server.js:2961
 msgid "gRPC service"
 msgstr ""
