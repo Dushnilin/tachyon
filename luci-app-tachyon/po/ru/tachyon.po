@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-08-21 05:02+0300\n"
-"PO-Revision-Date: 2026-08-21 05:02+0300\n"
+"POT-Creation-Date: 2026-08-21 07:11+0300\n"
+"PO-Revision-Date: 2026-08-21 07:11+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -147,7 +147,7 @@ msgid "Administrator Chat IDs"
 msgstr "Chat ID администраторов"
 
 msgid "Adult content"
-msgstr ""
+msgstr "Взрослый контент"
 
 msgid "Advanced self-healing features. Requires Watchdog to be enabled."
 msgstr "Расширенные функции самовосстановления. Требуется включённый Watchdog."
@@ -213,7 +213,7 @@ msgid "All"
 msgstr "Все"
 
 msgid "All checks passed — Telegram bot should work correctly"
-msgstr ""
+msgstr "Все проверки пройдены — бот должен работать корректно"
 
 msgid "All devices"
 msgstr "Все устройства"
@@ -255,13 +255,13 @@ msgid "Allow Insecure TLS"
 msgstr "Разрешить небезопасный TLS"
 
 msgid "Allow only"
-msgstr ""
+msgstr "Только разрешённые"
 
 msgid "Allow only listed sites (Whitelist)"
-msgstr ""
+msgstr "Разрешать только перечисленные сайты (белый список)"
 
 msgid "Allow only:"
-msgstr ""
+msgstr "Только разрешённые:"
 
 msgid "Allowed domain prefixes are full:, keyword:, and regex:"
 msgstr "Допустимые префиксы доменов: full:, keyword:, и regex:"
@@ -393,13 +393,13 @@ msgid "BitTorrent / P2P"
 msgstr "BitTorrent / P2P"
 
 msgid "Block"
-msgstr ""
+msgstr "Блокировать"
 
 msgid "Block / Disable in scheduled hours (Standard)"
 msgstr "Блокировать / Отключать в указанные часы (Стандарт)"
 
 msgid "Block at DNS level"
-msgstr ""
+msgstr "Блокировать на уровне DNS"
 
 msgid "Block in interval"
 msgstr "Блокируется в интервале"
@@ -408,19 +408,19 @@ msgid "Block internet access or specific proxy sections for individual devices b
 msgstr "Блокировка доступа в интернет или определенных секций маршрутизации для отдельных устройств по времени и дням недели."
 
 msgid "Block listed sites (Standard)"
-msgstr ""
+msgstr "Блокировать перечисленные сайты (стандартно)"
 
 msgid "Block:"
-msgstr ""
+msgstr "Блокировать:"
 
 msgid "Block: deny the listed sites. Allow only (whitelist): deny everything except the listed sites. Whitelist mode requires DNS-level blocking and applies to the schedule window."
-msgstr ""
+msgstr "Блокировать: запретить перечисленные сайты. Только разрешённые (белый список): запретить всё, кроме перечисленных сайтов. Режим белого списка требует блокировки на уровне DNS и действует в окне расписания."
 
 msgid "Blocked Sites"
-msgstr ""
+msgstr "Заблокированные сайты"
 
 msgid "Blocked Sites (Domains)"
-msgstr ""
+msgstr "Заблокированные сайты (домены)"
 
 msgid "Bootstrap DNS"
 msgstr "Bootstrap DNS"
@@ -720,7 +720,7 @@ msgid "Connectivity probe failed"
 msgstr "Проверка соединения не прошла"
 
 msgid "Content Mode"
-msgstr ""
+msgstr "Режим контента"
 
 msgid "Cookie packet junk size (S3)"
 msgstr "Размер мусора в пакете cookie (S3)"
@@ -834,7 +834,7 @@ msgid "detour must be a non-empty string"
 msgstr "detour должен быть непустой строкой"
 
 msgid "Device / IP / MAC"
-msgstr ""
+msgstr "Устройство / IP / MAC"
 
 msgid "Device filter"
 msgstr "Фильтр устройств"
@@ -1026,7 +1026,7 @@ msgid "Domains automatically detected by Smart Detect or added via Telegram bot.
 msgstr "Домены, автоматически определённые Smart Detect или добавленные через Telegram-бота. Вы можете вручную отредактировать или удалить их здесь."
 
 msgid "Domains to block for the selected devices. Leave empty to block all internet. Enter one domain per line, e.g. youtube.com. Use the preset buttons to quickly add common categories."
-msgstr ""
+msgstr "Домены для блокировки на выбранных устройствах. Оставьте пустым, чтобы заблокировать весь интернет. По одному домену на строку, например youtube.com. Кнопки пресетов быстро добавляют популярные категории."
 
 msgid "Done"
 msgstr "Готово"
@@ -1347,7 +1347,7 @@ msgid "Failed to restore snapshot"
 msgstr "Не удалось восстановить снапшот"
 
 msgid "Failed to run diagnostics — is the tachyon binary installed?"
-msgstr ""
+msgstr "Не удалось запустить диагностику — установлен ли бинарник tachyon?"
 
 msgid "Failed to save AI Watchdog settings"
 msgstr "Ошибка сохранения настроек AI Watchdog"
@@ -1473,7 +1473,7 @@ msgid "Game Console Optimizer (NAT Type 1)"
 msgstr "Оптимизатор игровых консолей (NAT Type 1)"
 
 msgid "Gaming"
-msgstr ""
+msgstr "Игры"
 
 msgid "Generate a random 16-character hexadecimal HWID"
 msgstr "Сгенерировать случайный 16-символьный шестнадцатеричный HWID"
@@ -1779,7 +1779,7 @@ msgid "Invalid domain address"
 msgstr "Неверный домен"
 
 msgid "Invalid domain: empty prefix value"
-msgstr ""
+msgstr "Недопустимый домен: пустое значение префикса"
 
 msgid "Invalid format. Use an IP address or CIDR subnet"
 msgstr "Неверный формат. Используйте IP-адрес или подсеть CIDR"
@@ -1830,7 +1830,7 @@ msgid "Invalid IP address"
 msgstr "Неверный IP-адрес"
 
 msgid "Invalid IP or MAC address. Expected e.g. 192.168.1.150 or AA:BB:CC:DD:EE:FF"
-msgstr ""
+msgstr "Неверный IP или MAC-адрес. Ожидается, например, 192.168.1.150 или AA:BB:CC:DD:EE:FF"
 
 msgid "Invalid JSON format"
 msgstr "Неверный формат JSON"
@@ -2214,7 +2214,7 @@ msgid "Memory Usage"
 msgstr "Использование памяти"
 
 msgid "Messengers"
-msgstr ""
+msgstr "Мессенджеры"
 
 msgid "Method"
 msgstr "Метод"
@@ -2427,7 +2427,7 @@ msgid "Not set"
 msgstr "Не задано"
 
 msgid "Notify in Telegram"
-msgstr ""
+msgstr "Уведомлять в Telegram"
 
 msgid "Notify on Certificate Warnings"
 msgstr "Уведомлять о предупреждениях сертификатов"
@@ -2961,7 +2961,7 @@ msgid "Resume updates"
 msgstr "Продолжить обновление"
 
 msgid "Return NXDOMAIN for blocked domains (recommended). When enabled, blocked domains are not resolved at all. When disabled, only direct connections are rejected."
-msgstr ""
+msgstr "Возвращать NXDOMAIN для заблокированных доменов (рекомендуется). При включении заблокированные домены вообще не резолвятся. При выключении отклоняются только прямые соединения."
 
 msgid "Route"
 msgstr "Маршрут"
@@ -3042,7 +3042,7 @@ msgid "Running"
 msgstr "Запущен"
 
 msgid "Running diagnostics…"
-msgstr ""
+msgstr "Выполняется диагностика…"
 
 msgid "Russia (ru)"
 msgstr "Россия (ru)"
@@ -3165,7 +3165,7 @@ msgid "Select DNS protocol to use"
 msgstr "Выберите протокол DNS"
 
 msgid "Select LAN devices to apply this schedule to, or enter IP or MAC addresses manually."
-msgstr ""
+msgstr "Выберите устройства из локальной сети для применения расписания, либо укажите IP или MAC-адреса вручную."
 
 msgid "Select network interface for VPN connection"
 msgstr "Выберите интерфейс для VPN-подключения"
@@ -3231,7 +3231,7 @@ msgid "Send a Telegram notification if the Tachyon service is restarted by the w
 msgstr "Отправлять уведомление в Telegram, если сервис Tachyon перезапущен watchdog."
 
 msgid "Send a Telegram notification to admins when a blocked site is accessed. Requires the Telegram bot to be enabled."
-msgstr ""
+msgstr "Отправлять уведомление администраторам в Telegram при попытке доступа к заблокированному сайту. Требуется включённый Telegram-бот."
 
 msgid "Send a Telegram notification when a URLTest group switches to a new server."
 msgstr "Отправлять уведомление в Telegram при переключении группы URLTest на новый сервер."
@@ -3324,7 +3324,7 @@ msgid "Settings have been reset to defaults. The page will reload."
 msgstr "Настройки сброшены к значениям по умолчанию. Страница будет перезагружена."
 
 msgid "Shopping"
-msgstr ""
+msgstr "Магазины"
 
 msgid "Show metadata on dashboard"
 msgstr "Показывать метаданные на дашборде"
@@ -3411,7 +3411,7 @@ msgid "Snell Version"
 msgstr "Версия Snell"
 
 msgid "Social media"
-msgstr ""
+msgstr "Социальные сети"
 
 msgid "Sort Alphabetically"
 msgstr "Сортировать по алфавиту"
@@ -3663,7 +3663,7 @@ msgid "Target"
 msgstr "Цель"
 
 msgid "Target Devices (IP / MAC)"
-msgstr ""
+msgstr "Целевые устройства (IP / MAC)"
 
 msgid "Target Scope"
 msgstr "Область действия"
@@ -3705,7 +3705,7 @@ msgid "Testing URL"
 msgstr "URL проверки"
 
 msgid "Testing…"
-msgstr ""
+msgstr "Проверка…"
 
 msgid "The desync fwmark is managed by Tachyon for loop prevention and must not be overridden here."
 msgstr "fwmark desync управляется Tachyon для предотвращения циклов и не может быть переопределён здесь."
@@ -4125,7 +4125,7 @@ msgid "Via country.is"
 msgstr "Через country.is"
 
 msgid "Video streaming"
-msgstr ""
+msgstr "Видео"
 
 msgid "View logs"
 msgstr "Посмотреть логи"
@@ -4257,10 +4257,10 @@ msgid "Zapret2 sing-box outbound is not configured"
 msgstr "sing-box outbound для Zapret2 не настроен"
 
 msgid "API returned error — token may be invalid"
-msgstr ""
+msgstr "API вернул ошибку — возможно, токен недействителен"
 
 msgid "bot_token is empty — set token first"
-msgstr ""
+msgstr "bot_token пуст — сначала укажите токен"
 
 msgid "bot_token is set"
 msgstr ""
@@ -4284,7 +4284,7 @@ msgid "Direct IPv4 to Telegram API works"
 msgstr ""
 
 msgid "DNS cannot resolve api.telegram.org — check DNS settings"
-msgstr ""
+msgstr "DNS не может разрешить api.telegram.org — проверьте настройки DNS"
 
 msgid "DNS resolves api.telegram.org"
 msgstr ""
@@ -4293,28 +4293,28 @@ msgid "Failed to send test message"
 msgstr ""
 
 msgid "Failed to send test message — check admin_ids and bot permissions"
-msgstr ""
+msgstr "Не удалось отправить тестовое сообщение — проверьте admin_ids и права бота"
 
 msgid "Mixed proxy port 4534 is listening"
 msgstr ""
 
 msgid "No admin_ids set — cannot send test message"
-msgstr ""
+msgstr "admin_ids не заданы — невозможно отправить тестовое сообщение"
 
 msgid "Port 4534 not listening — proxy may not be available"
-msgstr ""
+msgstr "Порт 4534 не слушает — прокси может быть недоступен"
 
 msgid "Proxy API connection failed"
 msgstr ""
 
 msgid "Proxy route to Telegram API failed — check proxy outbound config"
-msgstr ""
+msgstr "Маршрут через прокси к Telegram API не сработал — проверьте конфигурацию outbound прокси"
 
 msgid "Proxy route to Telegram API works"
 msgstr ""
 
 msgid "sing-box is NOT running — bot cannot route through proxy"
-msgstr ""
+msgstr "sing-box не запущен — бот не может маршрутизировать через прокси"
 
 msgid "sing-box is running"
 msgstr ""

@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-08-21 02:02+0300\n"
-"PO-Revision-Date: 2026-08-21 02:02+0300\n"
+"POT-Creation-Date: 2026-08-21 04:11+0300\n"
+"PO-Revision-Date: 2026-08-21 04:11+0300\n"
 "Last-Translator: Dushnilin <dushnilin@gmail.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -905,17 +905,17 @@ msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:8845
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:9323
-#: src/tachyon/tabs/diagnostic/helpers/getMeta.ts:26
 #: src/tachyon/tabs/diagnostic/checks/getCheckItemsMeta.ts:10
+#: src/tachyon/tabs/diagnostic/helpers/getMeta.ts:26
 msgid "Checks failed"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:8834
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:9280
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:9334
-#: src/tachyon/tabs/diagnostic/helpers/getMeta.ts:13
 #: src/tachyon/tabs/diagnostic/checks/getCheckItemsMeta.ts:23
 #: src/tachyon/tabs/diagnostic/checks/runFakeIPCheck.ts:43
+#: src/tachyon/tabs/diagnostic/helpers/getMeta.ts:13
 msgid "Checks passed"
 msgstr ""
 
@@ -2064,12 +2064,12 @@ msgstr ""
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:16728
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:16786
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:16957
+#: src/tachyon/methods/shell/index.ts:172
+#: src/tachyon/methods/shell/index.ts:179
 #: src/tachyon/tabs/updates/initController.ts:631
 #: src/tachyon/tabs/updates/initController.ts:632
 #: src/tachyon/tabs/updates/initController.ts:707
 #: src/tachyon/tabs/updates/initController.ts:920
-#: src/tachyon/methods/shell/index.ts:172
-#: src/tachyon/methods/shell/index.ts:179
 msgid "Failed to execute"
 msgstr ""
 
@@ -3146,8 +3146,8 @@ msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:8840
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:9329
-#: src/tachyon/tabs/diagnostic/helpers/getMeta.ts:20
 #: src/tachyon/tabs/diagnostic/checks/getCheckItemsMeta.ts:17
+#: src/tachyon/tabs/diagnostic/helpers/getMeta.ts:20
 msgid "Issues detected"
 msgstr ""
 
@@ -5178,9 +5178,9 @@ msgstr ""
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:3410
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:3429
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:12323
-#: src/tachyon/tabs/diagnostic/initController.ts:604
 #: src/tachyon/methods/shell/index.ts:422
 #: src/tachyon/methods/shell/index.ts:443
+#: src/tachyon/tabs/diagnostic/initController.ts:604
 msgid "Service action failed"
 msgstr ""
 
