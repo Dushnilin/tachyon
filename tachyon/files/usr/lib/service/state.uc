@@ -270,20 +270,36 @@ function acquire_runtime_dir_lock(lock_dir, owner_pid) {
 
     let lock_stat = fs.stat(lock_dir + "/pid") || fs.stat(lock_dir);
     let lock_age = (lock_stat && lock_stat.mtime) ? (int(clock()[0]) - lock_stat.mtime) : 9999;
+    let recorded_pid = first_line_value(lock_dir + "/pid");
 
-    if (pid_alive(first_line_value(lock_dir + "/pid")) && lock_age < 300)
+    if (pid_alive(recorded_pid) && lock_age < 300)
         return false;
 
-    command_success_from_args([ "rm", "-f", lock_dir + "/pid" ]);
-    if (!command_success_from_args([ "rmdir", lock_dir ]))
-        return false;
-    if (!command_success_from_args([ "mkdir", lock_dir ]))
+    // pid file missing entirely: either another waiter is mid-takeover or a
+    // previous owner crashed before writing it. Only steal once the
+    // directory is old enough that a live holder cannot still be starting.
+    if (recorded_pid == "" && lock_age < 300)
         return false;
 
-    if (lock_dir_write_owner(lock_dir, owner_pid))
-        return true;
+    // Takeover must be atomic: rm+rmdir+mkdir lets two concurrent waiters
+    // each believe they own the lock. Renaming the directory away succeeds
+    // for exactly one contender; the losers re-race on mkdir and either win
+    // a fresh lock or observe the winner's pid file.
+    let stale_dir = lock_dir + ".stale." + owner_pid + "." + int(clock()[0]);
+    if (!command_success_from_args([ "mv", lock_dir, stale_dir ]))
+        return false;
 
-    release_runtime_dir_lock(lock_dir);
+    command_success_from_args([ "rm", "-rf", stale_dir ]);
+
+    if (command_success_from_args([ "mkdir", lock_dir ])) {
+        if (lock_dir_write_owner(lock_dir, owner_pid))
+            return true;
+        release_runtime_dir_lock(lock_dir);
+        return false;
+    }
+
+    // Another contender re-created the lock between our rename and mkdir:
+    // they own it now.
     return false;
 }
 

@@ -90,8 +90,6 @@ jobs:
       - name: Release on tag push
         if: ${{ github.event_name == 'push' }}
         uses: softprops/action-gh-release@v2.4.0
-        env:
-          NODE_TLS_REJECT_UNAUTHORIZED: "0"
         with:
           files: ./filtered-bin/release/*
           tag_name: ${{ github.ref_name }}
@@ -106,8 +104,6 @@ jobs:
       - name: Release on workflow dispatch
         if: ${{ github.event_name == 'workflow_dispatch' }}
         uses: softprops/action-gh-release@v2.4.0
-        env:
-          NODE_TLS_REJECT_UNAUTHORIZED: "0"
         with:
           files: ./filtered-bin/release/*
           tag_name: ${{ needs.preparation.outputs.version }}

@@ -19,17 +19,31 @@ API_PATH="/tachyon/agent/v1${PATH_INFO}"
 METHOD="${REQUEST_METHOD:-GET}"
 AUTH="${HTTP_AUTHORIZATION:-}"
 
+# Reject oversized bodies before reading them: CONTENT_LENGTH is client-
+# controlled and dd would happily buffer an arbitrarily large request.
+MAX_BODY_BYTES=65536
 BODY="{}"
 if [ "$METHOD" = "POST" ] || [ "$METHOD" = "PUT" ]; then
+    if [ -n "$CONTENT_LENGTH" ] && [ "$CONTENT_LENGTH" -gt "$MAX_BODY_BYTES" ] 2>/dev/null; then
+        printf 'Status: 413 Payload Too Large\r\n'
+        printf 'Content-Type: application/json\r\n'
+        printf '\r\n'
+        printf '{"success":false,"error":"Request body too large","code":413}\n'
+        exit 0
+    fi
     if [ -n "$CONTENT_LENGTH" ] && [ "$CONTENT_LENGTH" -gt 0 ] 2>/dev/null; then
         BODY=$(dd bs=1 count="$CONTENT_LENGTH" 2>/dev/null)
     fi
 fi
 
-OUTPUT=$(ucode -L "$TACHYON_LIB" "$AGENT_UC" "$API_PATH" "$METHOD" "$BODY" "$AUTH" 2>/dev/null)
+# Bearer token is passed through the environment: argv entries are visible to
+# every local user via ps, environ is restricted to the owning user and root.
+OUTPUT=$(TACHYON_AGENT_BEARER="$AUTH" ucode -L "$TACHYON_LIB" "$AGENT_UC" "$API_PATH" "$METHOD" "$BODY" 2>/dev/null)
 
+# Deliberately no Access-Control-Allow-Origin: a wildcard would let any
+# website visited from the LAN read router state cross-origin (including via
+# DNS rebinding). Same-origin LuCI calls and non-browser agents need no CORS.
 printf 'Content-Type: application/json\r\n'
-printf 'Access-Control-Allow-Origin: *\r\n'
 printf 'Cache-Control: no-cache\r\n'
 printf '\r\n'
 printf '%s\n' "$OUTPUT"

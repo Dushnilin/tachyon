@@ -81,7 +81,23 @@ function get_agent_token() {
 function check_write_auth(bearer) {
     let token = get_agent_token();
     if (token == "") return false;
-    return ("Bearer " + token) == as_string(bearer);
+    return constant_time_eq("Bearer " + token, bearer);
+}
+
+// Byte-wise comparison without early exit so response timing does not leak
+// how many leading token characters matched.
+function constant_time_eq(a, b) {
+    a = as_string(a);
+    b = as_string(b);
+    let diff = length(a) ^ length(b);
+    let n = length(a) > length(b) ? length(a) : length(b);
+    for (let i = 0; i < n; i++) {
+        let ca = ord(a, i);
+        let cb = ord(b, i);
+        if (ca != cb)
+            diff |= 1;
+    }
+    return diff == 0;
 }
 
 // ─── READ endpoints ───────────────────────────────────────────────────────────
@@ -638,7 +654,9 @@ function handle_ai_doctor_fix(body) {
 let path_arg = as_string(ARGV[0] || "");
 let method   = uc(as_string(ARGV[1] || "GET"));
 let body     = parse_json_safe(ARGV[2] || "{}") || {};
-let bearer   = as_string(ARGV[3] || "");
+// The CGI wrapper hands the Authorization header over via the environment:
+// argv is world-readable through ps, environ is not.
+let bearer   = as_string(getenv("TACHYON_AGENT_BEARER") || "");
 
 let route = replace(path_arg, /^\/tachyon\/agent\/v1/, "");
 if (route == "") route = "/";

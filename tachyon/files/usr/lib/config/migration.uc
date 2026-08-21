@@ -1649,13 +1649,18 @@ function migrate_runtime(source) {
     for (let path in ctx.removed_caches)
         remove_cache_path(path);
 
+    // UCI rewrote the config file; keep the token-bearing mode tight.
+    system("chmod 0600 /etc/config/" + CONFIG_NAME + " 2>/dev/null");
+
     return committed;
 }
 
 function commit_runtime() {
     let cursor = runtime_cursor();
     cursor.load(CONFIG_NAME);
-    return commit_cursor(cursor);
+    let committed = commit_cursor(cursor);
+    system("chmod 0600 /etc/config/" + CONFIG_NAME + " 2>/dev/null");
+    return committed;
 }
 
 function migrate_fixture(path, source) {

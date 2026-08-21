@@ -545,6 +545,18 @@ function del_list(path, value) {
     }
 }
 
+// The tachyon config holds the Telegram bot token and subscription URLs with
+// embedded credentials. UCI rewrites /etc/config/<pkg> on every commit and
+// does not preserve a 0600 mode, so re-harden after each commit.
+function harden_config_mode(package_name) {
+    if (as_string(package_name) != "tachyon")
+        return;
+    let path = "/etc/config/" + as_string(package_name);
+    if (fs.stat(path) == null)
+        return;
+    system("chmod 0600 " + common.shell_quote(path) + " 2>/dev/null");
+}
+
 function commit(package_name) {
     if (fixture_enabled())
         return state_commit(package_name);
@@ -554,7 +566,10 @@ function commit(package_name) {
         return false;
 
     try {
-        return c.commit(package_name) != false;
+        let result = c.commit(package_name) != false;
+        if (result)
+            harden_config_mode(package_name);
+        return result;
     }
     catch (e) {
         return false;
