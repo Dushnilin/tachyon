@@ -17,7 +17,7 @@ fail() {
 }
 
 # 1. Verify runtime.uc owns local_rule_doctor
-grep -Fq 'function local_rule_doctor()' "$TACHYON_LIB/diagnostics/runtime.uc" ||
+grep -Fq 'function local_rule_doctor(' "$TACHYON_LIB/diagnostics/runtime.uc" ||
   fail "runtime.uc must define local_rule_doctor heuristic engine"
 
 # 2. Run ai-doctor without API key (local offline mode)
@@ -64,8 +64,12 @@ grep -Fq 'function run_recovery_checks()' "$TACHYON_LIB/diagnostics/runtime.uc" 
   fail "runtime.uc must define run_recovery_checks()"
 grep -Fq 'function verify_system()' "$TACHYON_LIB/diagnostics/runtime.uc" ||
   fail "runtime.uc must define verify_system()"
-grep -Fq 'let verify = verify_system();' "$TACHYON_LIB/diagnostics/runtime.uc" ||
+grep -Fq 'let verify = (pre_verify != null) ? pre_verify : verify_system();' "$TACHYON_LIB/diagnostics/runtime.uc" ||
   fail "local_rule_doctor no longer feeds live verification into its analysis"
+# ai_doctor must run the suite exactly once and share results with the
+# heuristic engine instead of executing every probe twice.
+grep -Fq 'let local_res = local_rule_doctor(res, verify);' "$TACHYON_LIB/diagnostics/runtime.uc" ||
+  fail "ai_doctor must reuse doctor/verify results instead of re-running the suite"
 grep -Fq 'wan_fail_streak: int(st.wan_fail_streak || 0)' "$TACHYON_LIB/service/watchdog.uc" ||
   fail "watchdog status export no longer reports probe streaks to AI Doctor"
 

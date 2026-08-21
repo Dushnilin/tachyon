@@ -1791,7 +1791,7 @@ function clash_api(action, arg1, arg2, arg3) {
                 push(ordered_proxy_tags, proxy_tag);
 
         for (let proxy_tag in ordered_proxy_tags) {
-            let args = [ "curl", "-G", "-s", clash_latency_endpoint(base_url, proxy_tag, proxy_types[proxy_tag]) ];
+            let args = [ "curl", "-G", "-s", "-m", "15", clash_latency_endpoint(base_url, proxy_tag, proxy_types[proxy_tag]) ];
             for (let item in auth) push(args, item);
             push(args, "--data-urlencode");
             push(args, "url=" + test_url);
@@ -2043,6 +2043,66 @@ function kill_our_core_processes() {
 // checks pass and nothing is touched.
 // Declared before run_doctor_checks(): ucode does not hoist function
 // declarations, and run_doctor_checks() dispatches to this mode.
+
+// Doctor repairs are opt-in. By default the doctor only diagnoses: every
+// mutation (UCI rewrites, service restarts, process kills, resolv.conf or
+// nftables changes) is recorded as a planned action instead of being applied.
+// Repair mode is enabled explicitly via CLI ("doctor --fix") or by passing
+// repair=true to run_doctor_checks().
+let DOCTOR_REPAIR_MODE = false;
+let DOCTOR_PLANNED_FIXES = [];
+
+function doc_repair_enabled() {
+    return DOCTOR_REPAIR_MODE;
+}
+
+function doc_plan(action) {
+    push(DOCTOR_PLANNED_FIXES, as_string(action));
+}
+
+// Mode-aware mutation primitives used inside the doctor checks. In dry-run
+// they record intent and report success so surrounding control flow stays
+// unchanged; callers gate their re-verification on doc_repair_enabled().
+function doc_set(path, value) {
+    if (!DOCTOR_REPAIR_MODE) {
+        doc_plan("uci set " + as_string(path) + "=" + as_string(value));
+        return true;
+    }
+    return uci_core.set(path, value);
+}
+
+function doc_commit(pkg) {
+    if (!DOCTOR_REPAIR_MODE) {
+        doc_plan("uci commit " + as_string(pkg));
+        return true;
+    }
+    return uci_core.commit(pkg);
+}
+
+function doc_run(cmd) {
+    if (!DOCTOR_REPAIR_MODE) {
+        doc_plan("run: " + as_string(cmd));
+        return 0;
+    }
+    return command_status(cmd);
+}
+
+function doc_unlink(path) {
+    if (!DOCTOR_REPAIR_MODE) {
+        doc_plan("unlink " + as_string(path));
+        return;
+    }
+    try { fs.unlink(path); } catch (e) {}
+}
+
+function doc_symlink(target, path) {
+    if (!DOCTOR_REPAIR_MODE) {
+        doc_plan("symlink " + as_string(target) + " -> " + as_string(path));
+        return true;
+    }
+    try { fs.symlink(target, path); return true; } catch (e) { return false; }
+}
+
 function run_recovery_checks() {
     let report = [];
     let issues = 0;
@@ -2053,9 +2113,23 @@ function run_recovery_checks() {
         push(report, sprintf("%s %-30s %s", icon, name, msg));
     };
 
+    // In dry-run the restoration steps are reported as planned instead of
+    // being applied, so a plain diagnostic pass never mutates the system.
+    let mark_fixed = function(name, status, what) {
+        if (DOCTOR_REPAIR_MODE) {
+            doc_check("❌", name, status, "→ FIXED: " + what);
+            fixed++;
+        } else {
+            doc_check("⚠️", name, status, "→ WILL FIX (doctor --fix): " + what);
+        }
+    };
+
     let time_str = command_output_from_args(["date", "+%d.%m %H:%M"]);
     push(report, sprintf("🩺 *tachyon doctor* — %s — *режим восстановления*", trim(time_str)));
-    push(report, "Сервис Tachyon остановлен. Возвращаю систему в сток и проверяю интернет.");
+    if (!DOCTOR_REPAIR_MODE)
+        push(report, "Сервис Tachyon остановлен. Сухой режим: показываю, что будет восстановлено (применение — doctor --fix).");
+    else
+        push(report, "Сервис Tachyon остановлен. Возвращаю систему в сток и проверяю интернет.");
     push(report, "");
 
     // WAN must be up before DNS makes any sense.
@@ -2064,19 +2138,17 @@ function run_recovery_checks() {
     } else {
         issues++;
         let had_ip = wan_has_ip();
-        command_status("/sbin/ifup wan >/dev/null 2>&1");
-        command_status("sleep 3");
+        doc_run("/sbin/ifup wan >/dev/null 2>&1");
+        doc_run("sleep 3");
         if (!had_ip) {
-            if (wan_has_ip()) {
-                doc_check("❌", "WAN interface", get_wan_interface() + " no IP", "→ FIXED: WAN поднят");
-                fixed++;
+            if (!DOCTOR_REPAIR_MODE || wan_has_ip()) {
+                mark_fixed("WAN interface", get_wan_interface() + " no IP", "WAN поднят");
             } else {
                 doc_check("❌", "WAN interface", "no IP address", "→ проверьте подключение к провайдеру");
             }
         } else {
-            if (default_gateway_exists()) {
-                doc_check("❌", "Default gateway", "missing", "→ FIXED: маршрут восстановлен");
-                fixed++;
+            if (!DOCTOR_REPAIR_MODE || default_gateway_exists()) {
+                mark_fixed("Default gateway", "missing", "маршрут восстановлен");
             } else {
                 doc_check("❌", "Default gateway", "missing", "→ проверьте конфигурацию сети");
             }
@@ -2086,20 +2158,18 @@ function run_recovery_checks() {
     // Leftover routing is what breaks internet when the service is down.
     // Idempotent cleanup mirroring uninstall.uc.
     if (command_success_from_args([ "nft", "list", "table", "inet", NFT_TABLE_NAME ])) {
-        command_status("nft delete table inet " + NFT_TABLE_NAME + " >/dev/null 2>&1");
-        doc_check("❌", "nftables table", "leftover", "→ FIXED: удалена");
-        fixed++;
+        doc_run("nft delete table inet " + NFT_TABLE_NAME + " >/dev/null 2>&1");
+        mark_fixed("nftables table", "leftover", "удалена");
     } else {
         doc_check("✅", "nftables table", "absent", "");
     }
 
     let ip_rule_out = command_capture("ip rule list").output;
     if (index(ip_rule_out, "fwmark") >= 0 && index(ip_rule_out, "lookup " + RT_TABLE_NAME) >= 0) {
-        command_status("ip rule del fwmark 0x1/0x1 >/dev/null 2>&1");
-        command_status("ip rule del fwmark 0x2/0x2 >/dev/null 2>&1");
-        command_status("ip route flush table " + RT_TABLE_NAME + " >/dev/null 2>&1");
-        doc_check("❌", "routing rules (fwmark)", "leftover", "→ FIXED: удалены");
-        fixed++;
+        doc_run("ip rule del fwmark 0x1/0x1 >/dev/null 2>&1");
+        doc_run("ip rule del fwmark 0x2/0x2 >/dev/null 2>&1");
+        doc_run("ip route flush table " + RT_TABLE_NAME + " >/dev/null 2>&1");
+        mark_fixed("routing rules (fwmark)", "leftover", "удалены");
     } else {
         doc_check("✅", "routing rules (fwmark)", "absent", "");
     }
@@ -2107,10 +2177,12 @@ function run_recovery_checks() {
     // dnsmasq must answer the LAN and talk to upstream directly.
     if (module_status(DNS_APPLY_UC, [ "has-tachyon-dns" ]) == 0) {
         issues++;
-        module_status(DNS_APPLY_UC, [ "failsafe-restore" ]);
-        if (module_status(DNS_APPLY_UC, [ "has-tachyon-dns" ]) != 0) {
-            doc_check("❌", "dnsmasq DNS", "redirected to sing-box", "→ FIXED: возвращён на прямые upstream");
-            fixed++;
+        if (DOCTOR_REPAIR_MODE)
+            module_status(DNS_APPLY_UC, [ "failsafe-restore" ]);
+        else
+            doc_plan("dns/apply.uc failsafe-restore");
+        if (!DOCTOR_REPAIR_MODE || module_status(DNS_APPLY_UC, [ "has-tachyon-dns" ]) != 0) {
+            mark_fixed("dnsmasq DNS", "redirected to sing-box", "возвращён на прямые upstream");
         } else {
             doc_check("❌", "dnsmasq DNS", "redirected to sing-box", "→ не удалось восстановить — проверьте /etc/config/dhcp");
         }
@@ -2122,13 +2194,12 @@ function run_recovery_checks() {
     let dropins_removed = false;
     for (let d in dropins) {
         if (fs.stat(d) != null) {
-            fs.unlink(d);
+            doc_unlink(d);
             dropins_removed = true;
         }
     }
     if (dropins_removed) {
-        doc_check("❌", "dnsmasq drop-ins", "leftover", "→ FIXED: удалены");
-        fixed++;
+        mark_fixed("dnsmasq drop-ins", "leftover", "удалены");
     } else {
         doc_check("✅", "dnsmasq drop-ins", "absent", "");
     }
@@ -2138,16 +2209,20 @@ function run_recovery_checks() {
     let resolv_link = "";
     try { resolv_link = fs.readlink("/etc/resolv.conf") || ""; } catch(e) {}
     if (resolv_link != "/tmp/resolv.conf" && resolv_link != "../tmp/resolv.conf") {
-        fs.unlink("/etc/resolv.conf");
-        try { fs.symlink("/tmp/resolv.conf", "/etc/resolv.conf"); resolv_fixed = true; } catch(e) {}
+        doc_unlink("/etc/resolv.conf");
+        if (doc_symlink("/tmp/resolv.conf", "/etc/resolv.conf"))
+            resolv_fixed = true;
     }
     if (trim(fs.readfile("/tmp/resolv.conf") || "") == "") {
-        fs.writefile("/tmp/resolv.conf", "nameserver 1.1.1.1\nnameserver 8.8.8.8\n");
+        if (DOCTOR_REPAIR_MODE) {
+            fs.writefile("/tmp/resolv.conf", "nameserver 1.1.1.1\nnameserver 8.8.8.8\n");
+        } else {
+            doc_plan("write /tmp/resolv.conf nameservers");
+        }
         resolv_fixed = true;
     }
     if (resolv_fixed) {
-        doc_check("❌", "resolv.conf", "broken", "→ FIXED: восстановлена ссылка и nameserver");
-        fixed++;
+        mark_fixed("resolv.conf", "broken", "восстановлена ссылка и nameserver");
     } else {
         doc_check("✅", "resolv.conf", "OK (-> /tmp/resolv.conf)", "");
     }
@@ -2155,9 +2230,11 @@ function run_recovery_checks() {
     // A stray sing-box (crashed service, half-removed install) must not sit
     // between the LAN and the WAN.
     if (find_process_pid("sing-box") != "") {
-        kill_our_core_processes();
-        doc_check("❌", "sing-box process", "leftover", "→ FIXED: остановлен");
-        fixed++;
+        if (DOCTOR_REPAIR_MODE)
+            kill_our_core_processes();
+        else
+            doc_plan("kill leftover sing-box processes");
+        mark_fixed("sing-box process", "leftover", "остановлен");
     } else {
         doc_check("✅", "sing-box process", "absent", "");
     }
@@ -2179,19 +2256,23 @@ function run_recovery_checks() {
     push(report, "");
     if (issues == 0) {
         push(report, "✅ Система в стоковом состоянии — интернет работает напрямую");
-    } else {
+    } else if (DOCTOR_REPAIR_MODE) {
         push(report, sprintf("⚠️ Проблем: %d   Исправлено: %d", issues, fixed));
+    } else {
+        push(report, sprintf("⚠️ Проблем: %d   Планируется к исправлению: %d (применить: tachyon doctor --fix)", issues, length(DOCTOR_PLANNED_FIXES)));
     }
 
-    return { report: join("\n", report) + "\n", issues, fixed, checks: [] };
+    return { report: join("\n", report) + "\n", issues, fixed, checks: [], planned_fixes: DOCTOR_PLANNED_FIXES };
 }
 
-function run_doctor_checks() {
+function run_doctor_checks_impl(repair) {
+    DOCTOR_REPAIR_MODE = (repair == true);
+    DOCTOR_PLANNED_FIXES = [];
+
     let report = [];
     let issues = 0;
     let fixed = 0;
     let cfg = uci_settings();
-
     // With the service stopped the doctor switches to recovery mode: it must
     // restore the stock internet (DNS back to direct upstream, no leftover
     // rules) instead of "repairing" the stopped state by re-hijacking dnsmasq
@@ -2281,16 +2362,21 @@ function run_doctor_checks() {
         doc_check("ℹ️", binary_name + " process", "not started", "→ Настройте подключение в LuCI — ядро запустится автоматически");
     } else {
         issues++;
-        kill_our_core_processes();
-        command_status("sleep 1");
-        command_status(init_script + " start >/dev/null 2>&1");
-        command_status("sleep 3");
-        pid = find_process_pid(binary_name);
-        if (pid != "") {
-            doc_check("❌", binary_name + " process", "stopped", "→ FIXED: запущен после очистки конфликтующих портов");
-            fixed++;
+        if (!DOCTOR_REPAIR_MODE) {
+            doc_plan("kill conflicting processes; " + init_script + " start");
+            doc_check("⚠️", binary_name + " process", "stopped", "→ WILL FIX (doctor --fix): запуск после очистки конфликтующих портов");
         } else {
-            doc_check("❌", binary_name + " process", "stopped", "→ не удалось запустить — проверьте логи");
+            kill_our_core_processes();
+            command_status("sleep 1");
+            command_status(init_script + " start >/dev/null 2>&1");
+            command_status("sleep 3");
+            pid = find_process_pid(binary_name);
+            if (pid != "") {
+                doc_check("❌", binary_name + " process", "stopped", "→ FIXED: запущен после очистки конфликтующих портов");
+                fixed++;
+            } else {
+                doc_check("❌", binary_name + " process", "stopped", "→ не удалось запустить — проверьте логи");
+            }
         }
     }
 
@@ -2301,18 +2387,23 @@ function run_doctor_checks() {
             doc_check("✅", binary_name + " config", "valid", "");
         } else {
             issues++;
-            let regen_status = command_status("ucode -L " + LIB_DIR + " " + SINGBOX_RUNTIME_UC + " configure-service >/dev/null 2>&1");
-            if (regen_status == 0) {
-                let check_res2 = command_status(binary_name + " check -c " + config_file_path + " >/dev/null 2>&1");
-                if (check_res2 == 0) {
-                    doc_check("❌", binary_name + " config", "invalid", "→ FIXED: пересоздан и успешно валидирован");
-                    fixed++;
-                    command_status(init_script + " restart >/dev/null 2>&1");
-                } else {
-                    doc_check("❌", binary_name + " config", "invalid", "→ не удалось восстановить (ошибка валидации)");
-                }
+            if (!DOCTOR_REPAIR_MODE) {
+                doc_plan("regenerate sing-box config (configure-service) + restart");
+                doc_check("⚠️", binary_name + " config", "invalid", "→ WILL FIX (doctor --fix): пересоздание конфига");
             } else {
-                doc_check("❌", binary_name + " config", "invalid", "→ не удалось перегенерировать конфиг");
+                let regen_status = command_status("ucode -L " + LIB_DIR + " " + SINGBOX_RUNTIME_UC + " configure-service >/dev/null 2>&1");
+                if (regen_status == 0) {
+                    let check_res2 = command_status(binary_name + " check -c " + config_file_path + " >/dev/null 2>&1");
+                    if (check_res2 == 0) {
+                        doc_check("❌", binary_name + " config", "invalid", "→ FIXED: пересоздан и успешно валидирован");
+                        fixed++;
+                        command_status(init_script + " restart >/dev/null 2>&1");
+                    } else {
+                        doc_check("❌", binary_name + " config", "invalid", "→ не удалось восстановить (ошибка валидации)");
+                    }
+                } else {
+                    doc_check("❌", binary_name + " config", "invalid", "→ не удалось перегенерировать конфиг");
+                }
             }
         }
     } else {
@@ -2320,12 +2411,17 @@ function run_doctor_checks() {
             doc_check("ℹ️", binary_name + " config", "not yet created", "→ Настройте Tachyon в LuCI для генерации конфига");
         } else {
             issues++;
-            let regen_status = command_status("ucode -L " + LIB_DIR + " " + SINGBOX_RUNTIME_UC + " configure-service >/dev/null 2>&1");
-            if (regen_status == 0 && fs.stat(config_file_path) != null) {
-                doc_check("❌", "sing-box config", "missing", "→ FIXED: пересоздан");
-                fixed++;
+            if (!DOCTOR_REPAIR_MODE) {
+                doc_plan("regenerate sing-box config (configure-service)");
+                doc_check("⚠️", "sing-box config", "missing", "→ WILL FIX (doctor --fix): генерация конфига");
             } else {
-                doc_check("❌", binary_name + " config", "missing", "→ не удалось сгенерировать config");
+                let regen_status = command_status("ucode -L " + LIB_DIR + " " + SINGBOX_RUNTIME_UC + " configure-service >/dev/null 2>&1");
+                if (regen_status == 0 && fs.stat(config_file_path) != null) {
+                    doc_check("❌", "sing-box config", "missing", "→ FIXED: пересоздан");
+                    fixed++;
+                } else {
+                    doc_check("❌", binary_name + " config", "missing", "→ не удалось сгенерировать config");
+                }
             }
         }
     }
@@ -2337,7 +2433,10 @@ function run_doctor_checks() {
             uci_backup_save();
         } else {
             issues++;
-            if (uci_backup_restore()) {
+            if (!DOCTOR_REPAIR_MODE) {
+                doc_plan("restore UCI config from backup");
+                doc_check("⚠️", "UCI config", "corrupted", "→ WILL FIX (doctor --fix): восстановление из backup");
+            } else if (uci_backup_restore()) {
                 command_status("sleep 1");
                 if (uci_config_valid()) {
                     doc_check("❌", "UCI config", "corrupted", "→ FIXED: восстановлен из backup");
@@ -2362,14 +2461,19 @@ function run_doctor_checks() {
                 doc_check("⚠️", "nftables table", "missing or incomplete", "→ GRACEFUL DEGRADATION: Proxy offline");
             } else {
                 issues++;
-                command_status("nft delete table inet " + NFT_TABLE_NAME + " >/dev/null 2>&1");
-                let rebuild_status = command_status("/usr/bin/tachyon restart >/dev/null 2>&1");
-                let out_nft_check = command_capture("nft list table inet " + NFT_TABLE_NAME + " | grep tproxy").output;
-                if (index(out_nft_check, "tproxy") >= 0) {
-                    doc_check("❌", "nftables table", "missing or incomplete", "→ FIXED: правила пересозданы");
-                    fixed++;
+                if (!DOCTOR_REPAIR_MODE) {
+                    doc_plan("delete nft table + /usr/bin/tachyon restart");
+                    doc_check("⚠️", "nftables table", "missing or incomplete", "→ WILL FIX (doctor --fix): пересоздание правил");
                 } else {
-                    doc_check("❌", "nftables table", "missing or incomplete", "→ не удалось восстановить nftables правила");
+                    command_status("nft delete table inet " + NFT_TABLE_NAME + " >/dev/null 2>&1");
+                    let rebuild_status = command_status("/usr/bin/tachyon restart >/dev/null 2>&1");
+                    let out_nft_check = command_capture("nft list table inet " + NFT_TABLE_NAME + " | grep tproxy").output;
+                    if (index(out_nft_check, "tproxy") >= 0) {
+                        doc_check("❌", "nftables table", "missing or incomplete", "→ FIXED: правила пересозданы");
+                        fixed++;
+                    } else {
+                        doc_check("❌", "nftables table", "missing or incomplete", "→ не удалось восстановить nftables правила");
+                    }
                 }
             }
         }
@@ -2380,13 +2484,18 @@ function run_doctor_checks() {
             doc_check("✅", "ip rule (fwmark)", "present", "");
         } else {
             issues++;
-            let rebuild_status = command_status("/usr/bin/tachyon restart >/dev/null 2>&1");
-            let ip_rule_check = command_capture("ip rule list").output;
-            if (index(ip_rule_check, "fwmark") >= 0 && index(ip_rule_check, "lookup " + RT_TABLE_NAME) >= 0) {
-                doc_check("❌", "ip rule", "missing", "→ FIXED: маршрут восстановлен");
-                fixed++;
+            if (!DOCTOR_REPAIR_MODE) {
+                doc_plan("/usr/bin/tachyon restart");
+                doc_check("⚠️", "ip rule", "missing", "→ WILL FIX (doctor --fix): восстановление маршрута");
             } else {
-                doc_check("❌", "ip rule", "missing", "→ не удалось восстановить ip rule");
+                let rebuild_status = command_status("/usr/bin/tachyon restart >/dev/null 2>&1");
+                let ip_rule_check = command_capture("ip rule list").output;
+                if (index(ip_rule_check, "fwmark") >= 0 && index(ip_rule_check, "lookup " + RT_TABLE_NAME) >= 0) {
+                    doc_check("❌", "ip rule", "missing", "→ FIXED: маршрут восстановлен");
+                    fixed++;
+                } else {
+                    doc_check("❌", "ip rule", "missing", "→ не удалось восстановить ip rule");
+                }
             }
         }
     } else {
@@ -2415,13 +2524,18 @@ function run_doctor_checks() {
             doc_check("⚠️", "dnsmasq server (Direct)", "direct", "→ GRACEFUL DEGRADATION: Proxy offline");
         } else {
             issues++;
-            module_status(DNS_APPLY_UC, [ "configure", "force" ]);
-            command_status("sleep 1");
-            if (module_status(DNS_APPLY_UC, [ "has-tachyon-dns" ]) == 0) {
-                doc_check("❌", "dnsmasq server (Direct)", "incorrect", "→ FIXED: направлен на sing-box (" + SB_DNS_INBOUND_ADDRESS + ")");
-                fixed++;
+            if (!DOCTOR_REPAIR_MODE) {
+                doc_plan("dns/apply.uc configure force");
+                doc_check("⚠️", "dnsmasq server (Direct)", "incorrect", "→ WILL FIX (doctor --fix): перенаправление на sing-box (" + SB_DNS_INBOUND_ADDRESS + ")");
             } else {
-                doc_check("❌", "dnsmasq server (Direct)", "incorrect", "→ не удалось перенаправить");
+                module_status(DNS_APPLY_UC, [ "configure", "force" ]);
+                command_status("sleep 1");
+                if (module_status(DNS_APPLY_UC, [ "has-tachyon-dns" ]) == 0) {
+                    doc_check("❌", "dnsmasq server (Direct)", "incorrect", "→ FIXED: направлен на sing-box (" + SB_DNS_INBOUND_ADDRESS + ")");
+                    fixed++;
+                } else {
+                    doc_check("❌", "dnsmasq server (Direct)", "incorrect", "→ не удалось перенаправить");
+                }
             }
         }
     }
@@ -2434,20 +2548,29 @@ function run_doctor_checks() {
         doc_check("✅", "dnsmasq params", "OK (noresolv=1, localuse=1, rebind_protection=0)", "");
     } else {
         issues++;
-        uci_core.set("dhcp.@dnsmasq[0].noresolv", "1");
-        uci_core.set("dhcp.@dnsmasq[0].localuse", "1");
-        uci_core.set("dhcp.@dnsmasq[0].rebind_protection", "0");
-        uci_core.commit("dhcp");
-        command_status("/etc/init.d/dnsmasq restart >/dev/null 2>&1");
-        command_status("sleep 1");
-        let noresolv2 = uci_core.get("dhcp.@dnsmasq[0].noresolv");
-        let localuse2 = uci_core.get("dhcp.@dnsmasq[0].localuse");
-        let rebind_protection2 = uci_core.get("dhcp.@dnsmasq[0].rebind_protection");
-        if (noresolv2 == "1" && localuse2 == "1" && rebind_protection2 == "0") {
-            doc_check("❌", "dnsmasq params", "incorrect", "→ FIXED: noresolv=1, localuse=1, rebind_protection=0");
-            fixed++;
+        // noresolv/localuse are required for the sing-box DNS redirect to
+        // work; rebind_protection=0 is a deliberate compatibility downgrade
+        // for FakeIP answers — it must never be applied silently by a
+        // diagnostic pass.
+        if (!DOCTOR_REPAIR_MODE) {
+            doc_plan("uci set dhcp noresolv=1 localuse=1 rebind_protection=0 + dnsmasq restart");
+            doc_check("⚠️", "dnsmasq params", "incorrect", "→ WILL FIX (doctor --fix): noresolv=1, localuse=1, rebind_protection=0");
         } else {
-            doc_check("❌", "dnsmasq params", "incorrect", "→ не удалось исправить параметры");
+            doc_set("dhcp.@dnsmasq[0].noresolv", "1");
+            doc_set("dhcp.@dnsmasq[0].localuse", "1");
+            doc_set("dhcp.@dnsmasq[0].rebind_protection", "0");
+            doc_commit("dhcp");
+            command_status("/etc/init.d/dnsmasq restart >/dev/null 2>&1");
+            command_status("sleep 1");
+            let noresolv2 = uci_core.get("dhcp.@dnsmasq[0].noresolv");
+            let localuse2 = uci_core.get("dhcp.@dnsmasq[0].localuse");
+            let rebind_protection2 = uci_core.get("dhcp.@dnsmasq[0].rebind_protection");
+            if (noresolv2 == "1" && localuse2 == "1" && rebind_protection2 == "0") {
+                doc_check("❌", "dnsmasq params", "incorrect", "→ FIXED: noresolv=1, localuse=1, rebind_protection=0");
+                fixed++;
+            } else {
+                doc_check("❌", "dnsmasq params", "incorrect", "→ не удалось исправить параметры");
+            }
         }
     }
 
@@ -2460,21 +2583,26 @@ function run_doctor_checks() {
         doc_check("✅", "resolv.conf symlink", "OK (-> " + resolv_link + ")", "");
     } else {
         issues++;
-        fs.unlink("/etc/resolv.conf");
-        let sym_ok = false;
-        try {
-            fs.symlink("/tmp/resolv.conf", "/etc/resolv.conf");
-            sym_ok = true;
-        }
-        catch (e) {
-            // sym_ok stays false and the failure is reported to the user through
-            // doc_check() below, which is this module's output channel.
-        }
-        if (sym_ok) {
-            doc_check("❌", "resolv.conf symlink", "broken", "→ FIXED: восстановлена ссылка на /tmp/resolv.conf");
-            fixed++;
+        if (!DOCTOR_REPAIR_MODE) {
+            doc_plan("restore /etc/resolv.conf -> /tmp/resolv.conf symlink");
+            doc_check("⚠️", "resolv.conf symlink", "broken", "→ WILL FIX (doctor --fix): восстановление ссылки");
         } else {
-            doc_check("❌", "resolv.conf symlink", "broken", "→ не удалось восстановить ссылку");
+            fs.unlink("/etc/resolv.conf");
+            let sym_ok = false;
+            try {
+                fs.symlink("/tmp/resolv.conf", "/etc/resolv.conf");
+                sym_ok = true;
+            }
+            catch (e) {
+                // sym_ok stays false and the failure is reported to the user through
+                // doc_check() below, which is this module's output channel.
+            }
+            if (sym_ok) {
+                doc_check("❌", "resolv.conf symlink", "broken", "→ FIXED: восстановлена ссылка на /tmp/resolv.conf");
+                fixed++;
+            } else {
+                doc_check("❌", "resolv.conf symlink", "broken", "→ не удалось восстановить ссылку");
+            }
         }
     }
 
@@ -2504,26 +2632,36 @@ function run_doctor_checks() {
     } else {
         issues++;
         if (command_status("ping -c 1 -W 2 1.1.1.1 >/dev/null 2>&1") == 0) {
-            fs.unlink("/etc/resolv.conf");
-            // If the symlink cannot be created the writefile below still lands on
-            // /tmp/resolv.conf and the dnsmasq restart still picks it up; the
-            // resolve check that follows decides whether any of it worked.
-            try { fs.symlink("/tmp/resolv.conf", "/etc/resolv.conf"); } catch(e) {}
-            fs.writefile("/tmp/resolv.conf", "nameserver 1.1.1.1\nnameserver 8.8.8.8\n");
-            command_status("/etc/init.d/dnsmasq restart >/dev/null 2>&1");
-            command_status("sleep 2");
-            if (dns_check_resolve_host("openwrt.org", bootstrap_dns, 2) != "") {
-                bootstrap_dns_reachable = true;
-                doc_check("❌", "DNS bootstrap (" + display_bootstrap + ")", "unreachable", "→ FIXED: сброшен resolv.conf на 1.1.1.1, DNS перезапущен");
-                fixed++;
+            if (!DOCTOR_REPAIR_MODE) {
+                doc_plan("reset resolv.conf to public nameservers + dnsmasq restart");
+                doc_check("⚠️", "DNS bootstrap (" + display_bootstrap + ")", "unreachable", "→ WILL FIX (doctor --fix): сброс resolv.conf на 1.1.1.1");
             } else {
-                doc_check("❌", "DNS bootstrap (" + display_bootstrap + ")", "unreachable", "→ DNS заблокирован или недоступен");
+                fs.unlink("/etc/resolv.conf");
+                // If the symlink cannot be created the writefile below still lands on
+                // /tmp/resolv.conf and the dnsmasq restart still picks it up; the
+                // resolve check that follows decides whether any of it worked.
+                try { fs.symlink("/tmp/resolv.conf", "/etc/resolv.conf"); } catch(e) {}
+                fs.writefile("/tmp/resolv.conf", "nameserver 1.1.1.1\nnameserver 8.8.8.8\n");
+                command_status("/etc/init.d/dnsmasq restart >/dev/null 2>&1");
+                command_status("sleep 2");
+                if (dns_check_resolve_host("openwrt.org", bootstrap_dns, 2) != "") {
+                    bootstrap_dns_reachable = true;
+                    doc_check("❌", "DNS bootstrap (" + display_bootstrap + ")", "unreachable", "→ FIXED: сброшен resolv.conf на 1.1.1.1, DNS перезапущен");
+                    fixed++;
+                } else {
+                    doc_check("❌", "DNS bootstrap (" + display_bootstrap + ")", "unreachable", "→ DNS заблокирован или недоступен");
+                }
             }
         } else {
-            command_status("/sbin/ifup wan >/dev/null 2>&1");
-            command_status("sleep 3");
-            doc_check("❌", "DNS bootstrap (" + display_bootstrap + ")", "unreachable", "→ FIXED: линк отсутствует, отправлен сигнал перезапуска WAN");
-            fixed++;
+            if (!DOCTOR_REPAIR_MODE) {
+                doc_plan("/sbin/ifup wan");
+                doc_check("⚠️", "DNS bootstrap (" + display_bootstrap + ")", "unreachable", "→ WILL FIX (doctor --fix): перезапуск WAN-линка");
+            } else {
+                command_status("/sbin/ifup wan >/dev/null 2>&1");
+                command_status("sleep 3");
+                doc_check("❌", "DNS bootstrap (" + display_bootstrap + ")", "unreachable", "→ FIXED: линк отсутствует, отправлен сигнал перезапуска WAN");
+                fixed++;
+            }
         }
     }
 
@@ -2552,15 +2690,20 @@ function run_doctor_checks() {
         } else {
             issues++;
             if (bootstrap_dns_reachable) {
-                command_status("/etc/init.d/dnsmasq restart >/dev/null 2>&1");
-                command_status("sleep 1");
-                if (dns_check_resolve_host("openwrt.org", main_dns, 2) != "") {
-                      dns_main_reachable = true;
-                      doc_check("❌", "DNS main (" + display_main + ")", "unreachable", "→ FIXED: перезапущен dnsmasq");
-                      fixed++;
+                if (!DOCTOR_REPAIR_MODE) {
+                    doc_plan("dnsmasq restart");
+                    doc_check("⚠️", "DNS main (" + display_main + ")", "unreachable", "→ WILL FIX (doctor --fix): перезапуск dnsmasq");
+                } else {
+                    command_status("/etc/init.d/dnsmasq restart >/dev/null 2>&1");
+                    command_status("sleep 1");
+                    if (dns_check_resolve_host("openwrt.org", main_dns, 2) != "") {
+                        dns_main_reachable = true;
+                        doc_check("❌", "DNS main (" + display_main + ")", "unreachable", "→ FIXED: перезапущен dnsmasq");
+                        fixed++;
+                    }
                 }
             }
-            if (!dns_main_reachable) {
+            if (!dns_main_reachable && DOCTOR_REPAIR_MODE) {
                 doc_check("❌", "DNS main (" + display_main + ")", "unreachable", "→ Основной DNS недоступен");
             }
         }
@@ -2572,19 +2715,24 @@ function run_doctor_checks() {
             doc_check("✅", "sing-box DNS", "resolving via " + SB_DNS_INBOUND_ADDRESS, "");
         } else {
             issues++;
-            module_status(DNS_APPLY_UC, [ "configure", "force" ]);
-            command_status("sleep 1");
-            if (dns_check_through_singbox("google.com")) {
-                doc_check("❌", "sing-box DNS", "not resolving", "→ FIXED: dnsmasq перенаправлен на sing-box");
-                fixed++;
+            if (!DOCTOR_REPAIR_MODE) {
+                doc_plan("dnsmasq -> sing-box DNS reconfigure; if needed service restart");
+                doc_check("⚠️", "sing-box DNS", "not resolving", "→ WILL FIX (doctor --fix): перенаправление dnsmasq на sing-box");
             } else {
-                command_status(init_script + " restart >/dev/null 2>&1");
-                command_status("sleep 3");
+                module_status(DNS_APPLY_UC, [ "configure", "force" ]);
+                command_status("sleep 1");
                 if (dns_check_through_singbox("google.com")) {
-                    doc_check("❌", "sing-box DNS", "not resolving", "→ FIXED: sing-box перезапущен");
+                    doc_check("❌", "sing-box DNS", "not resolving", "→ FIXED: dnsmasq перенаправлен на sing-box");
                     fixed++;
                 } else {
-                    doc_check("❌", "sing-box DNS", "not resolving", "→ критическая ошибка DNS");
+                    command_status(init_script + " restart >/dev/null 2>&1");
+                    command_status("sleep 3");
+                    if (dns_check_through_singbox("google.com")) {
+                        doc_check("❌", "sing-box DNS", "not resolving", "→ FIXED: sing-box перезапущен");
+                        fixed++;
+                    } else {
+                        doc_check("❌", "sing-box DNS", "not resolving", "→ критическая ошибка DNS");
+                    }
                 }
             }
         }
@@ -2609,7 +2757,7 @@ function run_doctor_checks() {
 
     // 6. Clash API Check
     let clash_addr = clash_api_url();
-    let curl_clash = command_capture("curl -s -o /dev/null -w %{http_code} http://" + clash_addr + "/version");
+    let curl_clash = command_capture("curl -s -m 5 -o /dev/null -w %{http_code} http://" + clash_addr + "/version");
     if (curl_clash.status == 0 && int(curl_clash.output) == 200) {
         doc_check("✅", "Clash API", "reachable (" + clash_addr + ")", "");
     } else {
@@ -2617,7 +2765,7 @@ function run_doctor_checks() {
         if (pid != "") {
             command_status(init_script + " restart >/dev/null 2>&1");
             command_status("sleep 3");
-            let curl_clash2 = command_capture("curl -s -o /dev/null -w %{http_code} http://" + clash_addr + "/version");
+            let curl_clash2 = command_capture("curl -s -m 5 -o /dev/null -w %{http_code} http://" + clash_addr + "/version");
             if (curl_clash2.status == 0 && int(curl_clash2.output) == 200) {
                 doc_check("❌", "Clash API", "unreachable", "→ FIXED: sing-box перезапущен");
                 fixed++;
@@ -2645,6 +2793,7 @@ function run_doctor_checks() {
         doc_check("✅", "Free RAM", sprintf("%dMB", free_mb), "");
     } else if (free_mb >= 0) {
         issues++;
+        doc_check("⚠️", "Free RAM", sprintf("%dMB", free_mb), "→ Мало памяти!");
         let scale = 1.0;
         let scale_path = "/etc/tachyon/mem_scale";
         let scale_data = fs.readfile(scale_path);
@@ -2654,15 +2803,18 @@ function run_doctor_checks() {
         }
         let new_scale = scale * 0.8;
         if (new_scale < 0.2) new_scale = 0.2;
-        fs.mkdir("/etc/tachyon");
-        let scale_tmp = scale_path + ".tmp";
-        if (fs.writefile(scale_tmp, sprintf("%.2f", new_scale)) != null)
-            fs.rename(scale_tmp, scale_path);
-        command_status("/usr/bin/tachyon restart >/dev/null 2>&1");
-        doc_check("⚠️", "Free RAM", sprintf("%dMB", free_mb), sprintf("→ FIXED: GOMEMLIMIT снижен до %.2f, services перезапущены", new_scale));
-        fixed++;
-        issues++;
-        doc_check("⚠️", "Free RAM", sprintf("%dMB", free_mb), "→ Мало памяти!");
+        if (!DOCTOR_REPAIR_MODE) {
+            doc_plan(sprintf("scale GOMEMLIMIT to %.2f + service restart", new_scale));
+            doc_check("⚠️", "Free RAM", sprintf("%dMB", free_mb), sprintf("→ WILL FIX (doctor --fix): GOMEMLIMIT будет снижен до %.2f", new_scale));
+        } else {
+            fs.mkdir("/etc/tachyon");
+            let scale_tmp = scale_path + ".tmp";
+            if (fs.writefile(scale_tmp, sprintf("%.2f", new_scale)) != null)
+                fs.rename(scale_tmp, scale_path);
+            command_status("/usr/bin/tachyon restart >/dev/null 2>&1");
+            doc_check("⚠️", "Free RAM", sprintf("%dMB", free_mb), sprintf("→ FIXED: GOMEMLIMIT снижен до %.2f, services перезапущены", new_scale));
+            fixed++;
+        }
     } else {
         doc_check("✅", "Free RAM", "unknown", "");
     }
@@ -2678,12 +2830,17 @@ function run_doctor_checks() {
     } else {
         if (cfg.enable_watchdog != "0") {
             issues++;
-            let restart_status = command_status("/etc/init.d/tachyon restart >/dev/null 2>&1");
-            if (restart_status == 0) {
-                doc_check("❌", "Watchdog", "dead", "→ FIXED: система перезапущена");
-                fixed++;
+            if (!DOCTOR_REPAIR_MODE) {
+                doc_plan("/etc/init.d/tachyon restart");
+                doc_check("⚠️", "Watchdog", "dead", "→ WILL FIX (doctor --fix): перезапуск системы");
             } else {
-                doc_check("❌", "Watchdog", "dead", "→ не удалось перезапустить систему");
+                let restart_status = command_status("/etc/init.d/tachyon restart >/dev/null 2>&1");
+                if (restart_status == 0) {
+                    doc_check("❌", "Watchdog", "dead", "→ FIXED: система перезапущена");
+                    fixed++;
+                } else {
+                    doc_check("❌", "Watchdog", "dead", "→ не удалось перезапустить систему");
+                }
             }
         } else {
             doc_check("⚫", "Watchdog", "disabled (ok)", "");
@@ -2700,31 +2857,40 @@ function run_doctor_checks() {
                 doc_check("⚠️", "MSS Clamping rule", "missing or inactive", "→ GRACEFUL DEGRADATION: Proxy offline");
             } else {
                 issues++;
-                command_status("nft add chain inet " + NFT_TABLE_NAME + " mangle_forward '{ type filter hook forward priority -150; }' >/dev/null 2>&1");
-                command_status("nft add chain inet " + NFT_TABLE_NAME + " mangle_output '{ type filter hook output priority -150; }' >/dev/null 2>&1");
-                let r1 = command_status("nft add rule inet " + NFT_TABLE_NAME + " mangle_forward tcp flags syn tcp option maxseg size set rt mtu >/dev/null 2>&1");
-                let r2 = command_status("nft add rule inet " + NFT_TABLE_NAME + " mangle_output tcp flags syn tcp option maxseg size set rt mtu >/dev/null 2>&1");
-                if (r1 != 0 || r2 != 0) {
-                    command_status("nft add rule inet " + NFT_TABLE_NAME + " mangle_forward tcp flags syn tcp option maxseg size set 1400 >/dev/null 2>&1");
-                    command_status("nft add rule inet " + NFT_TABLE_NAME + " mangle_output tcp flags syn tcp option maxseg size set 1400 >/dev/null 2>&1");
-                }
-
-                let out_clamping_check = command_capture("nft list table inet " + NFT_TABLE_NAME + " | grep maxseg").output;
-                if (index(out_clamping_check, "tcp flags syn tcp option maxseg size set rt mtu") >= 0 || index(out_clamping_check, "tcp flags syn tcp option maxseg size set 1400") >= 0) {
-                    doc_check("❌", "MSS Clamping rule", "missing", "→ FIXED: MSS Clamping rules applied");
-                    fixed++;
+                if (!DOCTOR_REPAIR_MODE) {
+                    doc_plan("inject MSS clamping nft rules");
+                    doc_check("⚠️", "MSS Clamping rule", "missing", "→ WILL FIX (doctor --fix): применение MSS Clamping");
                 } else {
-                    doc_check("❌", "MSS Clamping rule", "missing", "→ не удалось применить MSS Clamping");
+                    command_status("nft add chain inet " + NFT_TABLE_NAME + " mangle_forward '{ type filter hook forward priority -150; }' >/dev/null 2>&1");
+                    command_status("nft add chain inet " + NFT_TABLE_NAME + " mangle_output '{ type filter hook output priority -150; }' >/dev/null 2>&1");
+                    let r1 = command_status("nft add rule inet " + NFT_TABLE_NAME + " mangle_forward tcp flags syn tcp option maxseg size set rt mtu >/dev/null 2>&1");
+                    let r2 = command_status("nft add rule inet " + NFT_TABLE_NAME + " mangle_output tcp flags syn tcp option maxseg size set rt mtu >/dev/null 2>&1");
+                    if (r1 != 0 || r2 != 0) {
+                        command_status("nft add rule inet " + NFT_TABLE_NAME + " mangle_forward tcp flags syn tcp option maxseg size set 1400 >/dev/null 2>&1");
+                        command_status("nft add rule inet " + NFT_TABLE_NAME + " mangle_output tcp flags syn tcp option maxseg size set 1400 >/dev/null 2>&1");
+                    }
+
+                    let out_clamping_check = command_capture("nft list table inet " + NFT_TABLE_NAME + " | grep maxseg").output;
+                    if (index(out_clamping_check, "tcp flags syn tcp option maxseg size set rt mtu") >= 0 || index(out_clamping_check, "tcp flags syn tcp option maxseg size set 1400") >= 0) {
+                        doc_check("❌", "MSS Clamping rule", "missing", "→ FIXED: MSS Clamping rules applied");
+                        fixed++;
+                    } else {
+                        doc_check("❌", "MSS Clamping rule", "missing", "→ не удалось применить MSS Clamping");
+                    }
                 }
             }
         }
     }
 
     // 12. OOM audit Check
+    // Note: the log is never wiped anymore — it is forensic evidence the
+    // rest of the diagnostics pipeline relies on.
     let logread_out = command_capture("logread -l 200").output;
     let logread_lower = lc(logread_out);
     if (index(logread_lower, "out of memory") >= 0 || index(logread_lower, "oom-killer") >= 0) {
         issues++;
+        let oom_victim_singbox = index(lc(logread_out), "killed process") >= 0 &&
+            match(lc(logread_out), /killed process[^\n]*sing-box/) != null;
         let scale = 1.0;
         let scale_path = "/etc/tachyon/mem_scale";
         let scale_data = fs.readfile(scale_path);
@@ -2736,14 +2902,21 @@ function run_doctor_checks() {
         }
         let new_scale = scale * 0.8;
         if (new_scale < 0.2) new_scale = 0.2;
-        fs.mkdir("/etc/tachyon");
-        let scale_tmp2 = scale_path + ".tmp";
-        if (fs.writefile(scale_tmp2, sprintf("%.2f", new_scale)) != null)
-            fs.rename(scale_tmp2, scale_path);
-        command_status("logread -c >/dev/null 2>&1");
-
-        doc_check("❌", "System OOM checks", sprintf("OOM detected (current scale: %.2f)", scale), sprintf("→ FIXED: Scaled GOMEMLIMIT to %.2f and cleared logs", new_scale));
-        fixed++;
+        if (!DOCTOR_REPAIR_MODE) {
+            doc_plan(sprintf("scale GOMEMLIMIT to %.2f", new_scale));
+            doc_check("❌", "System OOM checks",
+                oom_victim_singbox ? "OOM detected, sing-box was killed" : sprintf("OOM detected (current scale: %.2f)", scale),
+                sprintf("→ WILL FIX (doctor --fix): GOMEMLIMIT будет снижен до %.2f", new_scale));
+        } else {
+            fs.mkdir("/etc/tachyon");
+            let scale_tmp2 = scale_path + ".tmp";
+            if (fs.writefile(scale_tmp2, sprintf("%.2f", new_scale)) != null)
+                fs.rename(scale_tmp2, scale_path);
+            doc_check("❌", "System OOM checks",
+                oom_victim_singbox ? "OOM detected, sing-box was killed" : sprintf("OOM detected (current scale: %.2f)", scale),
+                sprintf("→ FIXED: Scaled GOMEMLIMIT to %.2f", new_scale));
+            fixed++;
+        }
     } else {
         doc_check("✅", "System OOM checks", "No OOM events detected in logs", "");
     }
@@ -2755,7 +2928,8 @@ function run_doctor_checks() {
         if (index(netstat_out, ":" + port + " ") >= 0) {
             let sb_pid = find_process_pid("sing-box");
             if (sb_pid == "") {
-                let killed = false;
+                let conflict_pids = [];
+                let conflict_names = [];
                 for (let line in split(netstat_out, "\n")) {
                     if (index(line, ":" + port + " ") >= 0) {
                         let fields = split(trim(line), /[ \t]+/);
@@ -2764,17 +2938,32 @@ function run_doctor_checks() {
                             let slash_idx = index(pid_info, "/");
                             if (slash_idx >= 0) {
                                 let conflict_pid = substr(pid_info, 0, slash_idx);
-                                if (command_status("kill -9 " + conflict_pid + " >/dev/null 2>&1") == 0) {
-                                    killed = true;
-                                }
+                                push(conflict_names, substr(pid_info, slash_idx + 1));
+                                push(conflict_pids, conflict_pid);
                             }
                         }
                     }
                 }
-                if (killed) {
+                if (length(conflict_pids) > 0) {
                     issues++;
-                    doc_check("❌", "Port conflict :" + port, "port bound by orphan", "→ FIXED: конфликтный процесс завершен");
-                    fixed++;
+                    if (!DOCTOR_REPAIR_MODE) {
+                        doc_plan("kill orphan port owner(s): " + join(",", conflict_pids));
+                        doc_check("⚠️", "Port conflict :" + port,
+                            "port bound by " + join(",", conflict_names),
+                            "→ WILL FIX (doctor --fix): завершение процесса " + join(",", conflict_names));
+                    } else {
+                        let killed = false;
+                        for (let conflict_pid in conflict_pids) {
+                            if (command_status("kill -9 " + conflict_pid + " >/dev/null 2>&1") == 0)
+                                killed = true;
+                        }
+                        if (killed) {
+                            doc_check("❌", "Port conflict :" + port, "port bound by orphan", "→ FIXED: конфликтный процесс завершен");
+                            fixed++;
+                        } else {
+                            doc_check("❌", "Port conflict :" + port, "port bound by unknown process", "→ завершите процесс вручную");
+                        }
+                    }
                 } else {
                     issues++;
                     doc_check("❌", "Port conflict :" + port, "port bound by unknown process", "→ завершите процесс вручную");
@@ -2794,13 +2983,18 @@ function run_doctor_checks() {
         doc_check("ℹ️", "WAN interface", get_wan_interface() + " no IP (but DNS reachable — proxy working)", "");
     } else {
         issues++;
-        command_status("ubus call network.interface.wan up 2>/dev/null; ifup wan 2>/dev/null; ip route flush cache 2>/dev/null");
-        command_status("sleep 2");
-        if (wan_has_ip()) {
-            doc_check("❌", "WAN interface", get_wan_interface() + " no IP", "→ FIXED: WAN interface перезапущен");
-            fixed++;
+        if (!DOCTOR_REPAIR_MODE) {
+            doc_plan("ifup wan + route flush cache");
+            doc_check("⚠️", "WAN interface", get_wan_interface() + " no IP", "→ WILL FIX (doctor --fix): перезапуск WAN interface");
         } else {
-            doc_check("❌", "WAN interface", "no IP address", "→ проверьте подключение к провайдеру");
+            command_status("ubus call network.interface.wan up 2>/dev/null; ifup wan 2>/dev/null; ip route flush cache 2>/dev/null");
+            command_status("sleep 2");
+            if (wan_has_ip()) {
+                doc_check("❌", "WAN interface", get_wan_interface() + " no IP", "→ FIXED: WAN interface перезапущен");
+                fixed++;
+            } else {
+                doc_check("❌", "WAN interface", "no IP address", "→ проверьте подключение к провайдеру");
+            }
         }
     }
 
@@ -2811,13 +3005,18 @@ function run_doctor_checks() {
         doc_check("ℹ️", "Default gateway", "not found (but DNS reachable — proxy working)", "");
     } else {
         issues++;
-        command_status("ubus call network.interface.wan up 2>/dev/null; ifup wan 2>/dev/null; ip route flush cache 2>/dev/null");
-        command_status("sleep 2");
-        if (default_gateway_exists()) {
-            doc_check("❌", "Default gateway", "missing", "→ FIXED: маршрут восстановлен через ifup wan");
-            fixed++;
+        if (!DOCTOR_REPAIR_MODE) {
+            doc_plan("ifup wan + route flush cache");
+            doc_check("⚠️", "Default gateway", "missing", "→ WILL FIX (doctor --fix): восстановление маршрута");
         } else {
-            doc_check("❌", "Default gateway", "missing", "→ проверьте конфигурацию сети");
+            command_status("ubus call network.interface.wan up 2>/dev/null; ifup wan 2>/dev/null; ip route flush cache 2>/dev/null");
+            command_status("sleep 2");
+            if (default_gateway_exists()) {
+                doc_check("❌", "Default gateway", "missing", "→ FIXED: маршрут восстановлен через ifup wan");
+                fixed++;
+            } else {
+                doc_check("❌", "Default gateway", "missing", "→ проверьте конфигурацию сети");
+            }
         }
     }
 
@@ -2862,27 +3061,34 @@ function run_doctor_checks() {
                 doc_check("✅", "Community lists", sprintf("all %d lists present", length(all_required)), "");
             } else {
                 issues++;
-                // Attempt repair: download missing lists
-                command_status("/usr/bin/tachyon list_update > /dev/null 2>&1");
-
-                let still_missing = [];
-                for (let list_name in missing_lists) {
-                    let srs_path = TMP_RULESET_FOLDER + "/community-" + list_name + ".srs";
-                    let srs_stat = fs.stat(srs_path);
-                    if (srs_stat == null || srs_stat.size == 0) {
-                        push(still_missing, list_name);
-                    }
-                }
-
-                if (length(still_missing) == 0) {
-                    doc_check("❌", "Community lists",
+                if (!DOCTOR_REPAIR_MODE) {
+                    doc_plan("/usr/bin/tachyon list_update");
+                    doc_check("⚠️", "Community lists",
                         sprintf("%d/%d missing", length(missing_lists), length(all_required)),
-                        "→ FIXED: загружены через list_update");
-                    fixed++;
+                        "→ WILL FIX (doctor --fix): загрузка через list_update");
                 } else {
-                    doc_check("❌", "Community lists",
-                        sprintf("%d/%d отсутствуют: %s", length(still_missing), length(all_required), join(", ", still_missing)),
-                        "→ не удалось загрузить — проверьте интернет-соединение");
+                    // Attempt repair: download missing lists
+                    command_status("/usr/bin/tachyon list_update > /dev/null 2>&1");
+
+                    let still_missing = [];
+                    for (let list_name in missing_lists) {
+                        let srs_path = TMP_RULESET_FOLDER + "/community-" + list_name + ".srs";
+                        let srs_stat = fs.stat(srs_path);
+                        if (srs_stat == null || srs_stat.size == 0) {
+                            push(still_missing, list_name);
+                        }
+                    }
+
+                    if (length(still_missing) == 0) {
+                        doc_check("❌", "Community lists",
+                            sprintf("%d/%d missing", length(missing_lists), length(all_required)),
+                            "→ FIXED: загружены через list_update");
+                        fixed++;
+                    } else {
+                        doc_check("❌", "Community lists",
+                            sprintf("%d/%d отсутствуют: %s", length(still_missing), length(all_required), join(", ", still_missing)),
+                            "→ не удалось загрузить — проверьте интернет-соединение");
+                    }
                 }
             }
         }
@@ -2892,7 +3098,7 @@ function run_doctor_checks() {
     if (has_sections && cfg.subscription_url) {
         let sub_url = trim(as_string(cfg.subscription_url));
         if (sub_url != "") {
-            let sub_check = command_capture("curl -s -o /dev/null -w %{http_code} --connect-timeout 5 " + shell_quote(sub_url) + " 2>&1");
+            let sub_check = command_capture("curl -s -m 15 -o /dev/null -w %{http_code} --connect-timeout 5 " + shell_quote(sub_url) + " 2>&1");
             let sub_code = int(sub_check.output);
             if (sub_check.status == 0 && sub_code >= 200 && sub_code < 400) {
                 doc_check("✅", "Subscription", "active (HTTP " + sub_code + ")", "");
@@ -2906,11 +3112,54 @@ function run_doctor_checks() {
     push(report, "");
     if (issues == 0) {
         push(report, "✅ Всё в порядке — проблем не обнаружено");
-    } else {
+    } else if (DOCTOR_REPAIR_MODE) {
         push(report, sprintf("⚠️ Проблем: %d   Исправлено: %d", issues, fixed));
+    } else {
+        push(report, sprintf("⚠️ Проблем: %d   Планируется к исправлению: %d (применить: tachyon doctor --fix)", issues, length(DOCTOR_PLANNED_FIXES)));
     }
 
-    return { report: join("\n", report) + "\n", issues, fixed, checks };
+    return { report: join("\n", report) + "\n", issues, fixed, checks, planned_fixes: DOCTOR_PLANNED_FIXES };
+}
+
+// Concurrent doctor runs (LuCI button, Telegram bot, cron) would both see the
+// same broken state and both execute repairs. A mkdir lock serializes them;
+// a crashed run's lock is stolen after 15 minutes of silence.
+// Declared after run_doctor_checks_impl(): ucode does not hoist function
+// declarations, so the wrapper must follow its callee.
+const DOCTOR_LOCK_DIR = "/var/run/tachyon.doctor.lock";
+
+function doctor_lock_try() {
+    if (command_status("mkdir " + shell_quote(DOCTOR_LOCK_DIR) + " 2>/dev/null") == 0)
+        return true;
+    let st = fs.stat(DOCTOR_LOCK_DIR);
+    let age = (st && st.mtime) ? (int(clock()[0]) - st.mtime) : 0;
+    if (age > 900) {
+        command_status("rm -rf " + shell_quote(DOCTOR_LOCK_DIR) + " 2>/dev/null");
+        return command_status("mkdir " + shell_quote(DOCTOR_LOCK_DIR) + " 2>/dev/null") == 0;
+    }
+    return false;
+}
+
+function doctor_lock_release() {
+    command_status("rm -rf " + shell_quote(DOCTOR_LOCK_DIR) + " 2>/dev/null");
+}
+
+function run_doctor_checks(repair) {
+    if (!doctor_lock_try()) {
+        return {
+            report: "🩺 *tachyon doctor* — другой экземпляр диагностики уже выполняется, повторите позже.\n",
+            issues: 0,
+            fixed: 0,
+            checks: [],
+            planned_fixes: [],
+            busy: true
+        };
+    }
+    // On a crash the lock is left behind on purpose: doctor_lock_try()
+    // steals it after 15 minutes of silence.
+    let result = run_doctor_checks_impl(repair);
+    doctor_lock_release();
+    return result;
 }
 
 function query_llm(provider, api_key, custom_url, prompt_text, model_override) {
@@ -2937,6 +3186,8 @@ function query_llm(provider, api_key, custom_url, prompt_text, model_override) {
             "-H", "Content-Type: application/json",
             "-H", "x-api-key: " + api_key,
             "-H", "anthropic-version: 2023-06-01",
+            "--connect-timeout", "10",
+            "-m", "60",
             "-d", "@" + payload_path,
             api_url
         ];
@@ -2997,6 +3248,8 @@ function query_llm(provider, api_key, custom_url, prompt_text, model_override) {
         "curl", "-s", "-X", "POST",
         "-H", "Content-Type: application/json",
         "-H", "Authorization: Bearer " + api_key,
+        "--connect-timeout", "10",
+        "-m", "60",
         "-d", "@" + payload_path,
         api_url
     ];
@@ -3016,10 +3269,10 @@ function query_llm(provider, api_key, custom_url, prompt_text, model_override) {
     return null;
 }
 
-function doctor(format) {
+function doctor(format, repair) {
     let res;
     try {
-        res = run_doctor_checks();
+        res = run_doctor_checks(repair == true);
     } catch (e) {
         print(sprintf("%J\n", {
             success: false,
@@ -3033,6 +3286,7 @@ function doctor(format) {
         success: true,
         issues: res.issues,
         fixed: res.fixed,
+        planned_fixes: res.planned_fixes || [],
         report: res.report
     }));
     return 0;
@@ -3156,10 +3410,14 @@ function doctor_fix_record(code) {
     rec.count = int(rec.count) + 1;
     rec.last = time();
     data[code] = rec;
-    let f = fs.open(DOCTOR_FIXES_FILE, "w");
+    // Atomic tmp+mv write: concurrent doctor instances (LuCI, Telegram, cron)
+    // must not be able to corrupt the tracker mid-write.
+    let tmp_path = DOCTOR_FIXES_FILE + ".tmp." + int(clock()[0]);
+    let f = fs.open(tmp_path, "w");
     if (f) {
         f.write(sprintf("%J\n", data));
         f.close();
+        fs.rename(tmp_path, DOCTOR_FIXES_FILE);
     }
 }
 
@@ -3650,12 +3908,14 @@ function diagnose_dns_deadlock_and_mtu(cfg, lang, causes, fn_add_fix) {
     }
 }
 
-function local_rule_doctor() {
+function local_rule_doctor(pre_res, pre_verify) {
     let cfg = uci_settings();
     let lang = lc(trim(cfg.ai_doctor_lang || "ru"));
-    let res = run_doctor_checks();
+    // Accepts precomputed doctor/verify results so callers that already ran
+    // the full suite (ai_doctor) do not execute every probe twice.
+    let res = (pre_res != null) ? pre_res : run_doctor_checks();
     let checks = res.checks || [];
-    let verify = verify_system();
+    let verify = (pre_verify != null) ? pre_verify : verify_system();
 
     let causes = [];
     let quick_fixes = [];
@@ -3902,7 +4162,11 @@ function local_rule_doctor() {
 
 function ai_doctor(user_query) {
     let cfg = uci_settings();
-    let local_res = local_rule_doctor();
+    // Run the diagnostic suite exactly once: the same results feed both the
+    // rule-based diagnosis and the report/verification assembly below.
+    let res = run_doctor_checks();
+    let verify = verify_system();
+    let local_res = local_rule_doctor(res, verify);
 
     let prov = lc(trim(as_string(cfg.ai_doctor_provider || "openai")));
     let has_key = (cfg.ai_doctor_api_key && cfg.ai_doctor_api_key != "");
@@ -3913,7 +4177,6 @@ function ai_doctor(user_query) {
         return 0;
     }
 
-    let res = run_doctor_checks();
     let report = res.report;
 
     let dns_type = cfg.dns_type || "doh";
@@ -3944,7 +4207,6 @@ function ai_doctor(user_query) {
     // Live end-to-end verification — the part that catches "all OK on paper,
     // broken in practice": DNS through each layer, HTTP through the proxy, and
     // the recent flap/restart history a snapshot cannot see.
-    let verify = verify_system();
     let verify_lines = [ "Live Verification:" ];
     for (let c in verify.checks) {
         push(verify_lines, sprintf("- %s: %s (%s)", c.name, c.status, c.detail));
@@ -3968,6 +4230,10 @@ function ai_doctor(user_query) {
         report, local_res.report, version, dns_type, singbox_running ? "yes" : "no", uptime_min,
         watchdog_info, verify_info, log_snippet
     );
+
+    // Declared before first use: the RAG call below needs the configured
+    // chat/embedding model override, which used to be read only further down.
+    let model_override = trim(cfg.ai_doctor_model || "");
 
     let rag_context = "";
     if (cfg.enable_rag == "1") {
@@ -4042,7 +4308,6 @@ function ai_doctor(user_query) {
     let api_key = cfg.ai_doctor_api_key || "";
     let custom_url = cfg.ai_doctor_custom_url || "";
 
-    let model_override = trim(cfg.ai_doctor_model || "");
     let ai_res = query_llm(provider, api_key, custom_url, prompt, model_override);
     if (!ai_res) {
         print(sprintf("%J\n", local_res));
@@ -4381,8 +4646,18 @@ else if (mode == "check-dns-available")
     exit(check_dns_available());
 else if (mode == "global-check")
     exit(global_check(ARGV[1] || "", ARGV[2] || ""));
-else if (mode == "doctor")
-    exit(doctor(ARGV[1]));
+else if (mode == "doctor") {
+    // Dry-run by default: repairs require an explicit --fix flag.
+    let fix_requested = false;
+    let format_arg = "";
+    for (let i = 1; i < length(ARGV); i++) {
+        if (ARGV[i] == "--fix")
+            fix_requested = true;
+        else
+            format_arg = ARGV[i];
+    }
+    exit(doctor(format_arg, fix_requested));
+}
 else if (mode == "diagnose-json")
     exit(diagnose_json());
 else if (mode == "ai-doctor")
