@@ -44,16 +44,24 @@ function to_hex(s) {
 let CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
 let uci = uci_core.cursor();
 let warp_proxy_section = trim(uci.get(CONFIG_NAME, "settings", "warp_proxy_section") || "");
-let proxy_port = "4534";
+let proxy_port = "";
+let proxy_interface = "";
 
 if (warp_proxy_section != "") {
+    let section_action = uci.get(CONFIG_NAME, warp_proxy_section, "action") || "";
+    let section_iface = uci.get(CONFIG_NAME, warp_proxy_section, "section_interface") || 
+                        uci.get(CONFIG_NAME, warp_proxy_section, "interface") || "";
     let section_port = uci.get(CONFIG_NAME, warp_proxy_section, "mixed_proxy_port") || "";
-    if (section_port != "" && match(section_port, /^[0-9]+$/) != null)
+    
+    if (section_iface != "") {
+        proxy_interface = section_iface;
+    } else if (section_action == "interface") {
+        proxy_interface = warp_proxy_section;
+    }
+    
+    if (section_port != "" && match(section_port, /^[0-9]+$/) != null) {
         proxy_port = section_port;
-}
-
-function get_proxy_url() {
-    return "socks5h://127.0.0.1:" + proxy_port;
+    }
 }
 
 function error_response(message) {
@@ -81,35 +89,42 @@ function contains(arr, val) {
 function call_api(method, url, auth_header, body_file) {
     let resolve_ips = [ "162.159.192.1", "162.159.193.1", "188.114.98.1", "188.114.99.1" ];
     let last_res = "";
-    let proxy_url = get_proxy_url();
-    let use_proxy_first = (proxy_port != "4534" || warp_proxy_section != "");
     
-    if (use_proxy_first) {
-        let proxy_check = exec_output("curl -s --connect-timeout 2 --max-time 3 -x " + proxy_url + " https://api.cloudflareclient.com/ >/dev/null 2>&1; echo $?");
-        if (trim(proxy_check) == "0") {
-            for (let ip in resolve_ips) {
-                let auth_str = auth_header != "" ? "-H 'Authorization: Bearer " + auth_header + "' " : "";
-                let data_str = body_file != "" ? "-d @" + body_file + " " : "";
-                let cmd = "curl -s --connect-timeout 3 --max-time 8 -x " + proxy_url + " --resolve api.cloudflareclient.com:443:" + ip + " -X " + method + " -H 'Content-Type: application/json' -H 'User-Agent: okhttp/3.12.1' " + auth_str + data_str + url;
-                let res = exec_output(cmd);
-                if (res != "") {
-                    try {
-                        let parsed = json(res);
-                        if (parsed) return parsed;
-                    }
-                    catch (e) {
-                        last_res = res;
-                    }
-                }
-            }
-            return last_res != "" ? { success: false, message: last_res } : null;
-        }
+    let transport_flags = [];
+    if (proxy_interface != "") {
+        push(transport_flags, "--interface " + proxy_interface);
+    }
+    if (proxy_port != "") {
+        push(transport_flags, "-x socks5h://127.0.0.1:" + proxy_port);
+    }
+    // Check if default service mixed proxy (4534) is responsive
+    let mixed_4534_check = exec_output("curl -s --connect-timeout 2 --max-time 3 -x socks5h://127.0.0.1:4534 https://api.cloudflareclient.com/ >/dev/null 2>&1; echo $?");
+    if (trim(mixed_4534_check) == "0" && !contains(transport_flags, "-x socks5h://127.0.0.1:4534")) {
+        push(transport_flags, "-x socks5h://127.0.0.1:4534");
     }
 
-    for (let ip in resolve_ips) {
+    // 1. Try selected tunnel transport(s)
+    for (let tr in transport_flags) {
+        // A. With --resolve to Cloudflare IPs
+        for (let ip in resolve_ips) {
+            let auth_str = auth_header != "" ? "-H 'Authorization: Bearer " + auth_header + "' " : "";
+            let data_str = body_file != "" ? "-d @" + body_file + " " : "";
+            let cmd = "curl -s --connect-timeout 3 --max-time 7 " + tr + " --resolve api.cloudflareclient.com:443:" + ip + " -X " + method + " -H 'Content-Type: application/json' -H 'User-Agent: okhttp/3.12.1' " + auth_str + data_str + url;
+            let res = exec_output(cmd);
+            if (res != "") {
+                try {
+                    let parsed = json(res);
+                    if (parsed) return parsed;
+                }
+                catch (e) {
+                    last_res = res;
+                }
+            }
+        }
+        // B. Directly via DNS on tunnel
         let auth_str = auth_header != "" ? "-H 'Authorization: Bearer " + auth_header + "' " : "";
         let data_str = body_file != "" ? "-d @" + body_file + " " : "";
-        let cmd = "curl -s --connect-timeout 3 --max-time 8 --resolve api.cloudflareclient.com:443:" + ip + " -X " + method + " -H 'Content-Type: application/json' -H 'User-Agent: okhttp/3.12.1' " + auth_str + data_str + url;
+        let cmd = "curl -s --connect-timeout 3 --max-time 7 " + tr + " -X " + method + " -H 'Content-Type: application/json' -H 'User-Agent: okhttp/3.12.1' " + auth_str + data_str + url;
         let res = exec_output(cmd);
         if (res != "") {
             try {
@@ -122,23 +137,19 @@ function call_api(method, url, auth_header, body_file) {
         }
     }
 
-    if (!use_proxy_first) {
-        let proxy_check = exec_output("curl -s --connect-timeout 2 --max-time 3 -x " + proxy_url + " https://api.cloudflareclient.com/ >/dev/null 2>&1; echo $?");
-        if (trim(proxy_check) == "0") {
-            for (let ip in resolve_ips) {
-                let auth_str = auth_header != "" ? "-H 'Authorization: Bearer " + auth_header + "' " : "";
-                let data_str = body_file != "" ? "-d @" + body_file + " " : "";
-                let cmd = "curl -s --connect-timeout 3 --max-time 8 -x " + proxy_url + " --resolve api.cloudflareclient.com:443:" + ip + " -X " + method + " -H 'Content-Type: application/json' -H 'User-Agent: okhttp/3.12.1' " + auth_str + data_str + url;
-                let res = exec_output(cmd);
-                if (res != "") {
-                    try {
-                        let parsed = json(res);
-                        if (parsed) return parsed;
-                    }
-                    catch (e) {
-                        last_res = res;
-                    }
-                }
+    // 2. Direct WAN fallback if no tunnel transport worked
+    for (let ip in resolve_ips) {
+        let auth_str = auth_header != "" ? "-H 'Authorization: Bearer " + auth_header + "' " : "";
+        let data_str = body_file != "" ? "-d @" + body_file + " " : "";
+        let cmd = "curl -s --connect-timeout 3 --max-time 6 --resolve api.cloudflareclient.com:443:" + ip + " -X " + method + " -H 'Content-Type: application/json' -H 'User-Agent: okhttp/3.12.1' " + auth_str + data_str + url;
+        let res = exec_output(cmd);
+        if (res != "") {
+            try {
+                let parsed = json(res);
+                if (parsed) return parsed;
+            }
+            catch (e) {
+                last_res = res;
             }
         }
     }
@@ -158,11 +169,7 @@ if (clash_data_str != "") {
             available_servers = parsed.all || [];
         }
     }
-    catch (e) {
-        // No clash API means no proxy rotation: original_server stays empty and
-        // restore_original_server() below becomes a no-op. Generating a WARP
-        // config without rotation is the normal path on a direct connection.
-    }
+    catch (e) {}
 }
 
 function restore_original_server() {
@@ -181,7 +188,7 @@ function switch_server(srv_name) {
     fs.writefile(tmp_file, sprintf("%J", body));
     exec_output("curl -s -X PUT -H 'Content-Type: application/json' -d @" + tmp_file + " " + get_clash_base_url() + "/proxies/MAIN-out");
     fs.unlink(tmp_file);
-    exec_output("sleep 1.5");
+    exec_output("sleep 1");
 }
 
 let keypair_data = exec_output("/usr/bin/sing-box generate wg-keypair 2>/dev/null");
@@ -213,7 +220,7 @@ if (!private_key || !public_key) {
 let install_id = "";
 let fcm_token = "";
 let tos = exec_output("date -u +'%Y-%m-%dT%H:%M:%SZ' 2>/dev/null") || "2026-07-17T20:52:00Z";
-let serial_number = exec_output("head -c 8 /dev/urandom | hexdump -ve '1/1 \"%02x\"' 2>/dev/null") || "abcdef1234567890";
+let serial_number = exec_output('head -c 8 /dev/urandom | hexdump -ve \'1/1 "%02x"\' 2>/dev/null') || "abcdef1234567890";
 
 let reg_request = {
     key: public_key,
@@ -298,8 +305,8 @@ if (!response_data) {
     restore_original_server();
     let hint = "";
     if (warp_proxy_section == "")
-        hint = " Cloudflare API may be blocked on your WAN. Try setting 'warp_proxy_section' in Advanced Settings to route through a tunnel.";
-    error_response("Failed to register with Cloudflare WARP API: " + last_error + hint);
+        hint = " Провайдер может блокировать Cloudflare API на WAN. Выберите секцию с туннелем (WireGuard/AWG/VPN) или включите Mixed-прокси на прокси-секции в 'Расширенных настройках'.";
+    error_response("Ошибка регистрации в Cloudflare WARP API: " + last_error + hint);
     exit(1);
 }
 
@@ -351,7 +358,8 @@ for (let ip in probe_ips) {
     ip = trim(ip);
     if (ip == "") continue;
     
-    let cmd = "curl -w '%{time_connect}' -o /dev/null -s --max-time 1.0 https://" + ip;
+    let iface_flag = proxy_interface != "" ? "--interface " + proxy_interface + " " : "";
+    let cmd = "curl -w '%{time_connect}' -o /dev/null -s --max-time 0.8 " + iface_flag + "https://" + ip;
     let t_str = exec_output(cmd);
     let t = (t_str || "9999.0") * 1.0;
     if (t > 0.0 && t < best_time) {
@@ -376,7 +384,7 @@ let warp_cps_payloads = [
 ];
 
 function generate_random_hex(len) {
-    return exec_output("head -c " + int(len) + " /dev/urandom | hexdump -ve '1/1 \"%02x\"' 2>/dev/null") || "";
+    return exec_output('head -c ' + int(len) + ' /dev/urandom | hexdump -ve \'1/1 "%02x"\' 2>/dev/null') || "";
 }
 
 function generate_extra_cps() {

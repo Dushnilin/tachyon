@@ -30,7 +30,6 @@ function uci_bin_to_hex(val) {
     s = replace(s, /^0x/i, "");
     s = replace(s, />$/, "");
     s = replace(s, /\s+/g, "");
-    if (length(s) % 2 != 0) s = "0" + s;
     return s;
 }
 

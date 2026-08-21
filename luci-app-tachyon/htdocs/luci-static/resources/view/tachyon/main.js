@@ -2165,7 +2165,7 @@ function renderDefaultState({
       }
       return "tachyon_dashboard-page__outbound-grid__item__latency--red";
     }
-    const connectionStatusText = latencyFetching ? `\u25CF ${_("Checking...")}` : outbound.runtimeAvailable ? `\u25CF ${_("Connected")}` : `\u25CF ${_("Not connected")}`;
+    const connectionStatusText = latencyFetching ? `\u25CF ${_("Checking...")}` : outbound.latency && outbound.latency > 0 ? `\u25CF ${outbound.latency} ms` : outbound.latency === -1 ? `\u25CF ${_("Not responding")}` : outbound.runtimeAvailable ? `\u25CF ${_("Connected")}` : `\u25CF ${_("Not connected")}`;
     const canCopyLink = Boolean(outbound.canCopyLink) || isCopyableProxyLink(outbound.link);
     const selectorSwitching = Boolean(selectorSwitchingTag);
     const outboundSwitching = selectorSwitchingTag === outbound.code;
@@ -2529,6 +2529,11 @@ function renderDefaultState({
                     return "var(--warn-color-medium, orange)";
                   if (selectedOutbound.latency === -1)
                     return "var(--error-color-medium, red)";
+                  if (selectedOutbound.latency && selectedOutbound.latency > 0) {
+                    if (selectedOutbound.latency < 800) return "var(--success-color-medium, green)";
+                    if (selectedOutbound.latency < 1500) return "var(--warn-color-medium, orange)";
+                    return "var(--error-color-medium, red)";
+                  }
                   return selectedOutbound.runtimeAvailable ? "var(--success-color-medium, green)" : "var(--error-color-medium, red)";
                 }
                 if (!selectedOutbound.latency)
@@ -2541,7 +2546,7 @@ function renderDefaultState({
               }
               let latencyText = "";
               if (isConnectionNode2) {
-                latencyText = latencyFetching ? _("Checking...") : selectedOutbound.runtimeAvailable ? _("Connected") : _("Not connected");
+                latencyText = latencyFetching ? _("Checking...") : selectedOutbound.latency && selectedOutbound.latency > 0 ? `${selectedOutbound.latency}ms` : selectedOutbound.latency === -1 ? _("Not responding") : selectedOutbound.runtimeAvailable ? _("Connected") : _("Not connected");
               } else {
                 latencyText = selectedOutbound.latency ? `${selectedOutbound.latency}ms` : "";
               }
@@ -4832,7 +4837,7 @@ async function getDashboardSections(options = {}) {
               code: outbound?.code || sectionName,
               displayName: section.interface || outbound?.value?.name || (sectionAction === "awg" ? "AmneziaWG" : sectionAction.toUpperCase()),
               latency: outbound?.value?.history?.length ? outbound.value.history[0].delay > 0 ? outbound.value.history[0].delay : -1 : 0,
-              type: outbound?.value?.type || "",
+              type: sectionAction === "awg" ? "AmneziaWG" : sectionAction === "warp" ? "WARP" : outbound?.value?.type || "",
               selected: true,
               canCopyLink: false,
               runtimeAvailable: Boolean(outbound)

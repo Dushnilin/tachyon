@@ -326,9 +326,13 @@ function renderDefaultState({
 
     const connectionStatusText = latencyFetching
       ? `● ${_('Checking...')}`
-      : outbound.runtimeAvailable
-        ? `● ${_('Connected')}`
-        : `● ${_('Not connected')}`;
+      : outbound.latency && outbound.latency > 0
+        ? `● ${outbound.latency} ms`
+        : outbound.latency === -1
+          ? `● ${_('Not responding')}`
+          : outbound.runtimeAvailable
+            ? `● ${_('Connected')}`
+            : `● ${_('Not connected')}`;
 
     const canCopyLink =
       Boolean(outbound.canCopyLink) || isCopyableProxyLink(outbound.link);
@@ -788,6 +792,11 @@ function renderDefaultState({
                         return 'var(--warn-color-medium, orange)';
                       if (selectedOutbound!.latency === -1)
                         return 'var(--error-color-medium, red)';
+                      if (selectedOutbound!.latency && selectedOutbound!.latency > 0) {
+                        if (selectedOutbound!.latency < 800) return 'var(--success-color-medium, green)';
+                        if (selectedOutbound!.latency < 1500) return 'var(--warn-color-medium, orange)';
+                        return 'var(--error-color-medium, red)';
+                      }
                       return selectedOutbound!.runtimeAvailable
                         ? 'var(--success-color-medium, green)'
                         : 'var(--error-color-medium, red)';
@@ -806,9 +815,13 @@ function renderDefaultState({
                   if (isConnectionNode) {
                     latencyText = latencyFetching
                       ? _('Checking...')
-                      : selectedOutbound.runtimeAvailable
-                        ? _('Connected')
-                        : _('Not connected');
+                      : (selectedOutbound.latency && selectedOutbound.latency > 0)
+                        ? `${selectedOutbound.latency}ms`
+                        : selectedOutbound.latency === -1
+                          ? _('Not responding')
+                          : selectedOutbound.runtimeAvailable
+                            ? _('Connected')
+                            : _('Not connected');
                   } else {
                     latencyText = selectedOutbound.latency
                       ? `${selectedOutbound.latency}ms`

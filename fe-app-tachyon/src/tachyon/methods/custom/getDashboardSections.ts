@@ -1545,7 +1545,12 @@ export async function getDashboardSections(
                     ? outbound.value.history[0].delay
                     : -1
                   : 0,
-                type: outbound?.value?.type || '',
+                type:
+                  sectionAction === 'awg'
+                    ? 'AmneziaWG'
+                    : sectionAction === 'warp'
+                      ? 'WARP'
+                      : outbound?.value?.type || '',
                 selected: true,
                 canCopyLink: false,
                 runtimeAvailable: Boolean(outbound),

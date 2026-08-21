@@ -1603,32 +1603,48 @@ function createSettingsContent(section, capabilities) {
     "warp_proxy_section",
     _("WARP Generator Proxy Section"),
     _(
-      "Section used for Cloudflare WARP API registration. If your ISP blocks Cloudflare API on WAN, select a proxy section that routes through a tunnel (e.g. WireGuard, VPN). Leave empty to use the default service mixed proxy.",
+      "Section used for Cloudflare WARP API registration. If your ISP blocks Cloudflare API on WAN, select a proxy section (with Mixed proxy enabled) or a tunnel interface section (WireGuard / AmneziaWG / VPN). Leave empty to use direct WAN / default mixed proxy.",
     ),
   );
-  o.value("", _("Default (service mixed proxy)"));
+  o.value("", _("Default (Direct WAN / Default mixed proxy)"));
+  o.cfgvalue = function (section_id) {
+    return (
+      uci.get(UCI_PACKAGE, section_id, "warp_proxy_section") ||
+      uci.get(UCI_PACKAGE, "settings", "warp_proxy_section") ||
+      ""
+    );
+  };
   o.load = function (section_id) {
     const sections = this.map?.data?.state?.values?.[UCI_PACKAGE] ?? {};
     this.keylist = [""];
-    this.vallist = ["", _("Default (service mixed proxy)")];
+    this.vallist = ["", _("Default (Direct WAN / Default mixed proxy)")];
     for (const secName in sections) {
       const sec = sections[secName];
       if (sec[".type"] === "section" && sec.enabled !== "0") {
         this.value(secName, sec.label || secName);
       }
     }
-    return uci.get(UCI_PACKAGE, "settings", "warp_proxy_section") || "";
+    return this.cfgvalue(section_id);
   };
   o.write = function (section_id, value) {
     const normalized = value ? `${value}`.trim() : "";
     if (normalized) {
       uci.set(UCI_PACKAGE, section_id, "warp_proxy_section", normalized);
+      if (section_id !== "settings" && uci.get(UCI_PACKAGE, "settings")) {
+        uci.set(UCI_PACKAGE, "settings", "warp_proxy_section", normalized);
+      }
     } else {
       uci.unset(UCI_PACKAGE, section_id, "warp_proxy_section");
+      if (section_id !== "settings" && uci.get(UCI_PACKAGE, "settings")) {
+        uci.unset(UCI_PACKAGE, "settings", "warp_proxy_section");
+      }
     }
   };
   o.remove = function (section_id) {
     uci.unset(UCI_PACKAGE, section_id, "warp_proxy_section");
+    if (section_id !== "settings" && uci.get(UCI_PACKAGE, "settings")) {
+      uci.unset(UCI_PACKAGE, "settings", "warp_proxy_section");
+    }
   };
 
   const resetOpt = section.taboption(

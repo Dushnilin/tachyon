@@ -61,7 +61,6 @@ function uci_bin_to_hex(val) {
     s = replace(s, /\s+/g, "");
 
     if (match(s, /^[0-9a-fA-F]+$/)) {
-        if (length(s) % 2 != 0) s = "0" + s;
         return lc(s);
     }
 
