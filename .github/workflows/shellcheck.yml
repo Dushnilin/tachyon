@@ -10,7 +10,6 @@ on:
       - 'build.sh'
       - 'install.sh'
       - 'tachyon/files/etc/init.d/**'
-      - 'tachyon/files/usr/bin/**'
       - 'tachyon/files/usr/lib/cgi-bin/**'
       - 'tachyon/files/etc/hotplug.d/iface/**'
       - 'luci-app-tachyon/root/etc/uci-defaults/**'
@@ -24,7 +23,6 @@ on:
       - 'build.sh'
       - 'install.sh'
       - 'tachyon/files/etc/init.d/**'
-      - 'tachyon/files/usr/bin/**'
       - 'tachyon/files/usr/lib/cgi-bin/**'
       - 'tachyon/files/etc/hotplug.d/iface/**'
       - 'luci-app-tachyon/root/etc/uci-defaults/**'
@@ -55,7 +53,6 @@ jobs:
             find . -type f \
               \( -name '*.sh' -o -path './build.sh' -o -path './install.sh' \
                  -o -path './tachyon/files/etc/init.d/*' \
-                 -o -path './tachyon/files/usr/bin/*' \
                  -o -path './tachyon/files/usr/lib/cgi-bin/*' \
                  -o -path './tachyon/files/etc/hotplug.d/iface/*' \
                  -o -path './luci-app-tachyon/root/etc/uci-defaults/*' \) \
