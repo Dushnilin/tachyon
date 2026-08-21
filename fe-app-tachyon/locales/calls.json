@@ -1628,9 +1628,9 @@
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/server.js:1803",
       "src/partials/modal/renderModal.ts:263",
       "src/tachyon/tabs/dashboard/initController.ts:1262",
-      "src/tachyon/tabs/diagnostic/initController.ts:1542",
       "src/tachyon/tabs/monitoring/initController.ts:884",
       "src/tachyon/tabs/monitoring/initController.ts:934",
+      "src/tachyon/tabs/diagnostic/initController.ts:1542",
       "src/tachyon/tabs/diagnostic/partials/renderAiChatModal.ts:213",
       "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:439",
       "src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:485"
@@ -8106,8 +8106,8 @@
     ]
   },
   {
-    "call": "Select LAN devices to apply this schedule to, or enter IP or MAC addresses manually.",
-    "key": "Select LAN devices to apply this schedule to, or enter IP or MAC addresses manually.",
+    "call": "Select LAN devices to apply this schedule to, or enter IP or MAC addresses manually. MAC addresses (e.g. AA:BB:CC:DD:EE:FF) work even if the device's IP changes. IP addresses (e.g. 192.168.1.150) are used for DNS-level blocking and require a stable lease.",
+    "key": "Select LAN devices to apply this schedule to, or enter IP or MAC addresses manually. MAC addresses (e.g. AA:BB:CC:DD:EE:FF) work even if the device's IP changes. IP addresses (e.g. 192.168.1.150) are used for DNS-level blocking and require a stable lease.",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/parental.js:390"
     ]

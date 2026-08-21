@@ -132,6 +132,8 @@ function ip_family(value) {
 
 function format_ipv6_tproxy_target(address, port) {
     address = as_string(address);
+    if (index(address, "]:") >= 0)
+        return address;
     if (substr(address, 0, 1) == "[" && substr(address, length(address) - 1, 1) == "]")
         return address + ":" + as_string(port);
     return "[" + address + "]:" + as_string(port);

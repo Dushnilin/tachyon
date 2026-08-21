@@ -708,6 +708,8 @@ function safe_proxy_restart(reason, force_level) {
 
 // ─── Reload dedup: prevent multiple reload_firewall per cycle ─────────────────
 function safe_reload_firewall() {
+    if (fs.stat("/var/run/tachyon/starting") != null || fs.stat("/var/run/tachyon/reloading") != null)
+        return;
     let now = time();
     let min_interval = 120;
     if (now - last_reload_time < min_interval) return;
@@ -810,7 +812,7 @@ function ai_heal_subnet_cache() {
     let restored = [];
     let entry;
     while ((entry = dir.read()) != null) {
-        if (!match(entry, /^community-subnets-.+\.lst$/)) continue;
+        if (!match(entry, /\.(srs|lst|json)$/)) continue;
         let tmp_path = tmp_dir + "/" + entry;
         let etc_path = etc_dir + "/" + entry;
         let tmp_st = fs.stat(tmp_path);

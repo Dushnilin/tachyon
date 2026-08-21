@@ -701,6 +701,31 @@ function prepare_subscription_caches(mode) {
     return result.status;
 }
 
+
+function restore_rulesets_from_cache() {
+    let etc_dir = "/etc/tachyon/rulesets";
+    let tmp_dir = TMP_RULESET_FOLDER;
+
+    command_success_from_args(["mkdir", "-p", tmp_dir]);
+    let dir = fs.opendir(etc_dir);
+    if (!dir) return;
+
+    let entry;
+    while ((entry = dir.read()) != null) {
+        if (!match(entry, /\.(srs|lst|json)$/)) continue;
+        let tmp_path = tmp_dir + "/" + entry;
+        let etc_path = etc_dir + "/" + entry;
+        let tmp_st = fs.stat(tmp_path);
+        let etc_st = fs.stat(etc_path);
+        if (etc_st && etc_st.size > 0 && (!tmp_st || tmp_st.size == 0)) {
+            let content = fs.readfile(etc_path);
+            if (content)
+                fs.writefile(tmp_path, content);
+        }
+    }
+    dir.close();
+}
+
 function start_main() {
     let status;
 
@@ -719,6 +744,7 @@ function start_main() {
     module_success(STATE_UC, [ "sync-time-if-needed" ]);
 
     status = module_status(SUBSCRIPTION_CACHE_UC, [ "ensure-runtime-dirs" ]);
+    restore_rulesets_from_cache();
     if (status != 0)
         return status;
 
@@ -751,7 +777,8 @@ function start_main() {
 
     module_success(BYEDPI_UC, [ "start-runtime" ]);
 
-    if (!command_success_from_args([ "/etc/init.d/sing-box", "start" ])) {
+    let sb_start = command_success_from_args([ "/etc/init.d/sing-box", "start" ]);
+    if (!sb_start) {
         log_message("Failed to start sing-box. Aborted.", "fatal");
         return 1;
     }
@@ -790,6 +817,7 @@ function start_main() {
 }
 
 function start_impl() {
+    fs.writefile("/var/run/tachyon/starting", as_string(time()));
     // (e.g. config generator killed during restart). 30-min threshold is safe since
     // all tachyon temp files are created and deleted within seconds under normal operation.
     command_status("find /tmp -maxdepth 1 -name 'tachyon-*' -mmin +30 -delete 2>/dev/null; true");
@@ -840,6 +868,7 @@ function start_impl() {
 
     module_background(DIAGNOSTICS_UC, [ "get-system-info" ]);
     module_background(TELEGRAM_UC, [ "start-runtime" ]);
+    fs.unlink("/var/run/tachyon/starting");
     return 0;
 }
 
@@ -854,7 +883,7 @@ function stop_main() {
     module_success(SUBSCRIPTION_CACHE_UC, [ "stop-deferred-bootstrap-worker" ]);
     module_success(UPDATES_UC, [ "stop-list-update" ]);
     remove_cron_jobs();
-    command_success_from_args([ "find", TMP_RULESET_FOLDER, "-mindepth", "1", "-maxdepth", "1", "-type", "f", "-delete" ]);
+    // command_success_from_args([ "find", TMP_RULESET_FOLDER, "-mindepth", "1", "-maxdepth", "1", "-type", "f", "-delete" ]);
 
     if (!module_success(ZAPRET_UC, [ "stop-runtime" ]))
         log_message("Zapret stop failed (non-fatal)", "warn");
@@ -887,6 +916,8 @@ function stop_main() {
 }
 
 function cleanup_failed_runtime() {
+    fs.unlink("/var/run/tachyon/starting");
+    fs.unlink("/var/run/tachyon/reloading");
     let status = 0;
 
     log_message("Cleaning up Tachyon runtime after failed start/reload", "info");

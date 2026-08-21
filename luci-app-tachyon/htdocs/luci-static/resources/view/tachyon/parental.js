@@ -200,15 +200,19 @@ function createParentalContent(section) {
     if (devs.length === 0) {
       return '<span style="opacity:0.5;">' + _("All devices") + "</span>";
     }
-    const badges = devs
+    const isMacAddr = (dev) =>
+      /^([0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}$/.test(dev);
+    const macs = devs.filter(isMacAddr);
+    const ips = devs.filter((d) => !isMacAddr(d));
+    const badges = [...macs, ...ips]
       .map((dev) => {
-        const isMac = /^([0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}$/.test(dev);
+        const isMac = isMacAddr(dev);
         const bg = isMac ? "#2d3748" : "#2a3441";
         const color = isMac ? "#b794f4" : "#63b3ed";
-        const icon = isMac ? "🏷 " : "🖥 ";
+        const label = isMac ? "MAC" : "IP";
         return (
-          `<span class="badge" style="background:${bg};color:${color};padding:3px 8px;border-radius:6px;font-size:11px;font-family:monospace;margin-right:4px;font-weight:600;display:inline-block;margin-bottom:2px;">` +
-          icon +
+          `<span class="badge" style="background:${bg};color:${color};padding:3px 8px;border-radius:6px;font-size:11px;font-family:monospace;margin-right:4px;font-weight:600;display:inline-block;margin-bottom:2px;border:1px solid ${color}44;">` +
+          `<span style="opacity:0.75;font-weight:700;margin-right:3px;">${label}:</span>` +
           dev +
           "</span>"
         );
@@ -387,7 +391,7 @@ function createParentalContent(section) {
     form.DynamicList,
     "device_ip",
     _("Target Devices (IP / MAC)"),
-    _("Select LAN devices to apply this schedule to, or enter IP or MAC addresses manually."),
+    _("Select LAN devices to apply this schedule to, or enter IP or MAC addresses manually. MAC addresses (e.g. AA:BB:CC:DD:EE:FF) work even if the device's IP changes. IP addresses (e.g. 192.168.1.150) are used for DNS-level blocking and require a stable lease."),
   );
   o.modalonly = true;
   o.rmempty = false;

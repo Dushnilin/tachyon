@@ -411,11 +411,11 @@ function nft_create_inet_service_set(table, name) {
 }
 
 function nft_create_ipv4_port_set(table, name) {
-    return nft_create_set(table, name, "{ type ipv4_addr . inet_service; flags interval; auto-merge; }");
+    return nft_create_set(table, name, "{ type ipv4_addr . inet_service; flags interval; }");
 }
 
 function nft_create_ipv6_port_set(table, name) {
-    return nft_create_set(table, name, "{ type ipv6_addr . inet_service; flags interval; auto-merge; }");
+    return nft_create_set(table, name, "{ type ipv6_addr . inet_service; flags interval; }");
 }
 
 function nft_create_ifname_set(table, name) {
@@ -1053,7 +1053,7 @@ function nft_add_dns_block_rules_from_schedules(schedules, table) {
             }
         }
     }
-    return added;
+    return true;
 }
 
 function nft_add_dns_block_rules_from_uci(table) {
@@ -2166,7 +2166,22 @@ function nft_populate_runtime_sets_from_uci(populate_enabled, deferred_section_n
 
     if (!nft_table_present(table)) {
         log_warn("nft_populate_runtime_sets_from_uci: Table " + table + " does not exist. Rebuilding firewall rules dynamically.");
-        system(common.background_command("/usr/bin/tachyon reload_firewall"));
+                let rt_table = getenv("RT_TABLE_NAME") || "tachyon";
+        let localv4 = default_arg(localv4_set, "localv4");
+        let common = default_arg(common_set, "tachyon_subnets");
+        let port = default_arg(port_set, "tachyon_ports");
+        let ip_port = default_arg(ip_port_set, "tachyon_ip_ports");
+        let iface = default_arg(interface_set, "tachyon_interfaces");
+        let fmark = default_arg(mark, "0x04000000");
+        let omark = "0x08000000";
+        let frange4 = "198.18.0.0/15";
+        let tport = "1602";
+        let localv6 = default_arg(localv6_set, "localv6");
+        let common6 = default_arg(common6_set, "tachyon_subnets6");
+        let ip_port6 = default_arg(ip_port6_set, "tachyon_ip6_ports");
+        let frange6 = "fc00::/18";
+        let taddr6 = "[::1]:1602";
+        nft_rebuild_runtime_from_uci(rt_table, table, localv4, common, port, ip_port, iface, fmark, omark, frange4, tport, "", "", "", "", "", "/opt/zapret2/bin/nfqws2", "0x02000000", "200", "0x00000002", "0x00000004", localv6, common6, ip_port6, frange6, taddr6);
     }
 
     return nft_populate_runtime_sets_from_sections(uci_sections("section"), populate_enabled, deferred_section_names, table, common_set, port_set, ip_port_set, interface_set, localv4_set, mark, common6_set, ip_port6_set, localv6_set);

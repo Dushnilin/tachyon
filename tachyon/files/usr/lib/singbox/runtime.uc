@@ -771,6 +771,33 @@ function restore_dns_config(backup_path) {
     return command_success_from_args([ "mv", "-f", backup_path, config_path ]);
 }
 
+
+function ensure_local_rulesets_exist(temp_config) {
+    try {
+        let cfg_raw = as_string(fs.readfile(temp_config) || "");
+        let cfg_obj = length(cfg_raw) > 0 ? json(cfg_raw) : null;
+        if (type(cfg_obj) == "object" && type(cfg_obj.route) == "object" && type(cfg_obj.route.rule_set) == "array") {
+            command_success_from_args(["mkdir", "-p", TMP_RULESET_FOLDER]);
+            for (let rs in cfg_obj.route.rule_set) {
+                if (type(rs) == "object" && rs.type == "local" && rs.path) {
+                    let st = fs.stat(rs.path);
+                    if (!st || st.size == 0) {
+                        let bname = replace(rs.path, /^.*\//, "");
+                        let etc_file = "/etc/tachyon/rulesets/" + bname;
+                        let etc_st = fs.stat(etc_file);
+                        if (etc_st && etc_st.size > 0) {
+                            let content = fs.readfile(etc_file);
+                            if (content) fs.writefile(rs.path, content);
+                        } else if (rs.format == "source" || match(rs.path, /\.json$/)) {
+                            fs.writefile(rs.path, sprintf("%J", { version: 3, rules: [] }));
+                        }
+                    }
+                }
+            }
+        }
+    } catch (e) {}
+}
+
 function init_config(populate_nft, caches_prepared, no_refresh) {
     let settings = uci_settings();
     let config_path = option(settings, "config_path", "");
@@ -827,6 +854,7 @@ function init_config(populate_nft, caches_prepared, no_refresh) {
     }
     log_file_lines(runtime_log, "warn", "sing-box config generator: ");
 
+    ensure_local_rulesets_exist(temp_config);
     let check_result = sing_box_check(temp_config, runtime_log);
     while (check_result.status != 0) {
         // Graceful degradation: if the installed sing-box does not support an inbound

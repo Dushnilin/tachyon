@@ -54,22 +54,22 @@ function addLocalDeviceChoice(choices, ip, name, mac) {
 
   if (normalizedIp && main.validateIP(normalizedIp).valid) {
     if (normalizedName) {
-      choices[normalizedIp] = `${normalizedName} (${normalizedIp})`;
+      choices[normalizedIp] = `IP: ${normalizedIp} — ${normalizedName}`;
     } else if (normalizedMac) {
-      choices[normalizedIp] = `${normalizedIp} [${normalizedMac}]`;
+      choices[normalizedIp] = `IP: ${normalizedIp} — ${normalizedMac}`;
     } else if (!choices[normalizedIp]) {
-      choices[normalizedIp] = `${normalizedIp}`;
+      choices[normalizedIp] = `IP: ${normalizedIp}`;
     }
   }
 
   if (normalizedMac && /^([0-9a-f]{2}[:-]){5}[0-9a-f]{2}$/.test(normalizedMac)) {
     const formattedMac = normalizedMac.replace(/-/g, ":");
     if (normalizedName) {
-      choices[formattedMac] = `${normalizedName} [MAC: ${formattedMac}]`;
+      choices[formattedMac] = `MAC: ${formattedMac} — ${normalizedName}`;
     } else if (normalizedIp) {
-      choices[formattedMac] = `${normalizedIp} [MAC: ${formattedMac}]`;
+      choices[formattedMac] = `MAC: ${formattedMac} — ${normalizedIp}`;
     } else if (!choices[formattedMac]) {
-      choices[formattedMac] = `${formattedMac}`;
+      choices[formattedMac] = `MAC: ${formattedMac}`;
     }
   }
 }

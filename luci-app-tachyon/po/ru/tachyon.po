@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-08-21 07:11+0300\n"
-"PO-Revision-Date: 2026-08-21 07:11+0300\n"
+"POT-Creation-Date: 2026-08-21 07:51+0300\n"
+"PO-Revision-Date: 2026-08-21 07:51+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -3164,8 +3164,8 @@ msgstr "Выберите и упорядочите секции, через ко
 msgid "Select DNS protocol to use"
 msgstr "Выберите протокол DNS"
 
-msgid "Select LAN devices to apply this schedule to, or enter IP or MAC addresses manually."
-msgstr "Выберите устройства из локальной сети для применения расписания, либо укажите IP или MAC-адреса вручную."
+msgid "Select LAN devices to apply this schedule to, or enter IP or MAC addresses manually. MAC addresses (e.g. AA:BB:CC:DD:EE:FF) work even if the device's IP changes. IP addresses (e.g. 192.168.1.150) are used for DNS-level blocking and require a stable lease."
+msgstr "Выберите устройства из локальной сети, либо укажите IP или MAC-адреса вручную. MAC-адреса (например AA:BB:CC:DD:EE:FF) работают даже если IP устройства меняется. IP-адреса (например 192.168.1.150) используются для блокировки на уровне DNS и требуют стабильного адреса."
 
 msgid "Select network interface for VPN connection"
 msgstr "Выберите интерфейс для VPN-подключения"
@@ -4255,6 +4255,9 @@ msgstr "sing-box outbound для Zapret2 настроен"
 
 msgid "Zapret2 sing-box outbound is not configured"
 msgstr "sing-box outbound для Zapret2 не настроен"
+
+msgid "Select LAN devices to apply this schedule to, or enter IP or MAC addresses manually."
+msgstr "Выберите устройства из локальной сети для применения расписания, либо укажите IP или MAC-адреса вручную."
 
 msgid "API returned error — token may be invalid"
 msgstr "API вернул ошибку — возможно, токен недействителен"
