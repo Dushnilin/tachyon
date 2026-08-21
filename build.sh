@@ -217,15 +217,16 @@ ensure_po2lmo() {
     fi
   )
 
-  if [[ ! -f "$luci_src_dir/template_lmo.c" || ! -f "$luci_src_dir/po2lmo.c" ]]; then
+  if [[ ! -f "$luci_src_dir/po2lmo.c" ]]; then
     echo "po2lmo sources unavailable under $luci_src_dir" >&2
     return 1
   fi
 
   if [[ ! -x "$luci_src_dir/po2lmo" ]]; then
-    gcc -O2 -o "$luci_src_dir/po2lmo" "$luci_src_dir/po2lmo.c" "$luci_src_dir/template_lmo.c" >&2 \
-      || make -C "$luci_src_dir" po2lmo >&2 \
-      || true
+    # Upstream luci dropped template_lmo.c from the tree: po2lmo now links
+    # against src/lib/lmo and a lemon-generated plural_formula, so only the
+    # in-tree Makefile knows how to build it.
+    make -C "$luci_src_dir" po2lmo >&2 || true
   fi
 
   if [[ -x "$luci_src_dir/po2lmo" ]]; then
