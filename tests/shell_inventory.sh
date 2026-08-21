@@ -46,6 +46,7 @@ expected_shell_scripts="$(
     'luci-app-tachyon/root/etc/uci-defaults/50_luci-tachyon' \
     'tachyon/files/etc/hotplug.d/iface/99-tachyon-wan-monitor' \
     'tachyon/files/etc/init.d/tachyon' \
+    'tachyon/files/usr/lib/cgi-bin/tachyon-agent' \
     'tachyon/files/usr/lib/tachyon/firewall.include' |
     LC_ALL=C sort
 )"
