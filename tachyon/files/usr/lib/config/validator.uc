@@ -2054,6 +2054,13 @@ function has_outbound_section(ctx) {
         if (action == "zapret2" && ctx.zapret2_installed)
             return true;
 
+        // Tunnel-style actions generate real sing-box endpoints/outbounds;
+        // without this check a lone AWG/WARP/VPN section triggered the
+        // misleading "No proxy outbound sections found" warning.
+        if (contains([ "awg", "warp", "vpn", "openvpn", "masque",
+            "anytls", "snell", "mieru", "sudoku" ], as_string(action)))
+            return true;
+
         if (length(connections.connection_urls(section)) > 0 ||
             length(connections.subscription_urls(section)) > 0 ||
             length(connections.outbound_jsons(section)) > 0 ||

@@ -1374,13 +1374,39 @@ function migrate_global_hosts_to_section(ctx) {
     }
 }
 
+function migrate_orphan_section_interfaces(ctx) {
+    // Deleting a routing section used to leave its section_interface child
+    // records behind. A parent-less record never matches any section during
+    // config generation - dead weight that only confuses config readers.
+    let owners = {};
+    for (let section in ctx.model.sections)
+        owners[section_name(section)] = true;
+
+    let kept = [];
+    let changed = false;
+    for (let child in ctx.model.section_interface || []) {
+        let owner = option(child, "section", "");
+        if (owner != "" && !owners[owner]) {
+            record_operation(ctx, { op: "delete_section", section: section_name(child) });
+            changed = true;
+            continue;
+        }
+        push(kept, child);
+    }
+
+    if (changed)
+        ctx.model.section_interface = kept;
+}
 const MIGRATIONS = [
     { id: "interface_sections", run: migrate_interface_sections },
     { id: "enable_component_checks", run: migrate_enable_component_checks },
     { id: "http_connection_urls", run: migrate_http_connection_urls },
     { id: "dns_hosts_to_option", run: migrate_dns_hosts_to_option },
-    { id: "global_hosts_to_section", run: migrate_global_hosts_to_section }
+    { id: "global_hosts_to_section", run: migrate_global_hosts_to_section },
+    { id: "orphan_section_interface_cleanup", run: migrate_orphan_section_interfaces }
 ];
+
+
 
 function apply_migrations(ctx) {
     ctx.source_release = option(ctx.model.settings, CONFIG_VERSION_OPTION, "");
@@ -1551,6 +1577,8 @@ function apply_operations(cursor, operations) {
                 cursor.set(CONFIG_NAME, section_ref(op.section), op.option, op.value);
             else if (op.op == "delete")
                 cursor.delete(CONFIG_NAME, section_ref(op.section), op.option);
+            else if (op.op == "delete_section")
+                cursor.delete(CONFIG_NAME, section_ref(op.section));
             else if (op.op == "add_list")
                 cursor.set(CONFIG_NAME, section_ref(op.section), op.option, op.values);
             else if (op.op == "set_list")

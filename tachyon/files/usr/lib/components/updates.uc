@@ -710,6 +710,36 @@ function cron_refresh_plan(settings, sections, bin, list_marker, subscription_ma
     print_cron_refresh_plan(cron_refresh_plan_rows(settings, sections, bin, list_marker, subscription_marker, component_marker));
 }
 
+// Older releases wrote tachyon cron jobs WITHOUT the marker comment; those
+// lines survive marker-based filtering, stack up across upgrades and make
+// crond run the same job twice per tick. Drop unmarked lines that invoke a
+// tachyon-owned cron command via our binary.
+function strip_unmarked_tachyon_cron_lines(data, bin, markers) {
+    data = as_string(data);
+    if (data == "")
+        return "";
+
+    let escaped_bin = replace(as_string(bin), /([^0-9A-Za-z_])/g, "\\$1");
+    let pattern = "^[^#\\n]*" + escaped_bin + "[ \\t]+(list_update|subscription_update|component_updates_if_due)([ \\t]|$)";
+
+    let lines = split(data, "\n");
+    let has_trailing_newline = substr(data, length(data) - 1) == "\n";
+    let result = "";
+
+    for (let i = 0; i < length(lines); i++) {
+        let line = as_string(lines[i]);
+        if (i == length(lines) - 1 && has_trailing_newline && line == "")
+            continue;
+        if (line_contains_any_marker(line, markers))
+            continue;
+        if (match(line, pattern) != null)
+            continue;
+        result += line + "\n";
+    }
+
+    return result;
+}
+
 function cron_refresh_apply_result(settings, sections, existing_crontab, bin, list_marker, subscription_marker, component_marker) {
     let plan = cron_refresh_plan_rows(settings, sections, bin, list_marker, subscription_marker, component_marker);
     let filtered_crontab = filter_cron_markers_text(existing_crontab, [ list_marker, subscription_marker, component_marker ]);
@@ -754,7 +784,9 @@ function cron_refresh_apply_result(settings, sections, existing_crontab, bin, li
 
     return {
         status: int(plan.status || 0),
-        crontab: filtered_crontab + (int(plan.status || 0) == 0 ? cron_jobs : ""),
+        crontab: strip_unmarked_tachyon_cron_lines(
+            filtered_crontab, bin, [ list_marker, subscription_marker, component_marker ]
+        ) + (int(plan.status || 0) == 0 ? cron_jobs : ""),
         logs
     };
 }
@@ -774,6 +806,11 @@ function write_crontab_text(text) {
     return ok;
 }
 
+// Older releases wrote tachyon cron jobs WITHOUT the marker comment; those
+// lines survive marker-based filtering, stack up across upgrades and make
+// crond run the same job twice per tick. Drop unmarked lines that invoke a
+// tachyon-owned cron command via our binary.
+
 function log_cron_apply_result(result) {
     for (let item in array_or_empty(object_or_empty(result).logs))
         log_message(item.message, item.level);
@@ -781,8 +818,10 @@ function log_cron_apply_result(result) {
 
 function remove_cron_jobs(list_marker, subscription_marker, component_marker) {
     let crontab = command_output_from_args([ "crontab", "-l" ]);
+    let markers = [ list_marker, subscription_marker, component_marker ];
     let result = {
-        crontab: filter_cron_markers_text(crontab, [ list_marker, subscription_marker, component_marker ]),
+        crontab: strip_unmarked_tachyon_cron_lines(
+            filter_cron_markers_text(crontab, markers), BIN_PATH, markers),
         logs: [ { level: "info", message: "The cron job removed" } ]
     };
 
