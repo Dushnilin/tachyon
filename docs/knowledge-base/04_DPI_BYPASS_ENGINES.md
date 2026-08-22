@@ -88,3 +88,35 @@ config provider 'byedpi'
   * Default Zapret v1 queue: `200`
   * Default Zapret v2 queue: `201`
 * If both Zapret v1 and v2 are enabled simultaneously for different rules, Tachyon enforces strict queue isolation and prevents PID collisions.
+
+## 4. AmneziaWG в sing-box-extended: верификация (2026-08)
+
+Проверено против бинарника релиза `v1.13.18-extended-2.6.5` (shtorm-7/sing-box-extended):
+
+- `endpoint.amnezia` полностью реализован: `AmneziaOptions` (`transport/wireguard/endpoint_options.go`)
+  → IPC `jc/jmin/jmax/s1-s4/h1-h4/i1-i5` (`transport/wireguard/endpoint.go`)
+  → wireguard-go форк `shtorm-7/wireguard-go v0.0.4-extended-1.5.3`:
+    I1-I5 шлются отдельными пакетами ПЕРЕД handshake initiation
+    (`device/send.go SendHandshakeInitiation`), формат значения — hex-строка.
+- Парсер конфига строгий: неизвестные поля и мусорные значения в `amnezia.*`
+  дают FATAL при старте, «молчаливого игнорирования» не существует.
+- Генерация Tachyon (`generator_outbounds.uc add_awg_endpoint`) совпадает со
+  схемой форка: peer содержит required `allowed_ips`, `pre_shared_key` и
+  `persistent_keepalive_interval` опциональны, hex i1-i5 проходит
+  `uci_bin_to_hex` без двойного кодирования.
+
+Следствие для диагностики: если AWG/WARP-туннель «TX есть, RX нет» на
+sing-box-extended, конфиг секции применён корректно — причина вне Tachyon
+(сервер, провайдер, UDP-фильтрация). Чек 6c доктора (1.2.91+) сообщает это
+пользователю по свидетельствам из лога ядра.
+
+Кейс «kernel работает, sing-box нет» с идентичным conf остаётся внешним:
+различие в реализации special-handshake между amneziawg-linux kernel-модом
+и userspace-форком может быть критично только для конкретных строгих
+серверов. Шаги диагностики для таких случаев:
+
+1. `tcpdump -i any -X udp port <порт>` — сравнить первые байты I1-пакетов
+   kernel vs sing-box (у special-handshake пакетов префикс `c7`).
+2. Временно убрать i1-i5 из секции: если handshake поднимется — сервер
+   не требует special handshake, а требует его некорректную передачу.
+3. Попробовать вариант ядра sing-box-lx как эксперимент.
