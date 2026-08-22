@@ -1718,11 +1718,110 @@ function worker() {
         safe_call(ai_export_status, "ai_export_status");
     }
 
+// ── Mixed proxy port (4534) self-healing ─────────────────────────────────────
+// sing-box can be running while its mixed inbound failed to bind: every LAN
+// client proxy and the Telegram bot route then silently dead-ends. Two
+// consecutive slow checks (~10 min) with a live core and a dead port trigger
+// one core restart; if the port is still dead afterwards, the admin gets a
+// notification instead of endless restart loops.
+
+let mixed_port_fail_streak = 0;
+let mixed_port_last_notify = 0;
+
+function mixed_proxy_port_listening() {
+    let out = command_output_from_args([ "netstat", "-ltn" ]);
+    for (let line in split(out, "\n")) {
+        if (index(line, ":4534 ") >= 0)
+            return true;
+    }
+    return false;
+}
+
+function check_mixed_proxy_port() {
+    let sb_pid = trim(command_output_from_args(["pidof", "sing-box"]));
+    if (sb_pid == "") {
+        // Core down entirely is the proxy-health loop's domain.
+        if (mixed_port_fail_streak > 0)
+            log_message("Mixed port watch: sing-box stopped, standing down.", "debug");
+        mixed_port_fail_streak = 0;
+        return;
+    }
+
+    if (mixed_proxy_port_listening()) {
+        if (mixed_port_fail_streak >= 2)
+            log_message("Mixed port 4534 recovered after core restart.", "info");
+        mixed_port_fail_streak = 0;
+        return;
+    }
+
+    mixed_port_fail_streak++;
+    log_message(sprintf("sing-box runs but mixed port 4534 is not listening (streak %d).",
+        mixed_port_fail_streak), "warn");
+
+    if (mixed_port_fail_streak == 2) {
+        log_message("Restarting sing-box to restore the mixed inbound.", "warn");
+        command_status("/usr/bin/tachyon restart >/dev/null 2>&1");
+    } else if (mixed_port_fail_streak > 2) {
+        let now = time();
+        if (now - mixed_port_last_notify >= 3600) {
+            mixed_port_last_notify = now;
+            send_telegram_notification("⚠️ Порт 4534 не слушается при работающем sing-box. Рестарт не помог — проверьте конфигурацию ядра (лог sing-box), раздел диагностики покажет детали.");
+        }
+    }
+}
+
+// ── Telegram worker liveness ─────────────────────────────────────────────────
+// The worker owns a pid but can hang silently (stuck long-poll, deadlocked
+// loop). It stamps a heartbeat after every successful poll; a stale
+// heartbeat while the bot is enabled means the pid is zombie - restart it.
+
+const TELEGRAM_PID_FILE = "/var/run/tachyon_telegram.pid";
+const TELEGRAM_HEARTBEAT_FILE = "/var/run/tachyon_telegram.heartbeat";
+let telegram_worker_last_restart = 0;
+
+function telegram_worker_restart() {
+    let now = time();
+    if (now - telegram_worker_last_restart < 3600)
+        return;
+    telegram_worker_last_restart = now;
+    log_message("Telegram worker is enabled but not polling (no heartbeat); restarting it.", "warn");
+    command_status("/usr/bin/tachyon telegram_start >/dev/null 2>&1");
+}
+
+function check_telegram_worker() {
+    let tcfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
+    if (as_string(tcfg.enabled || "0") != "1")
+        return;
+
+    let heartbeat = trim(fs.readfile(TELEGRAM_HEARTBEAT_FILE) || "");
+    if (heartbeat == "") {
+        // No stamp at all: either the worker never got a successful poll or
+        // the file was wiped by a reboot. Only act when the pid is gone too,
+        // otherwise give the worker one poll cycle to succeed.
+        let pid = trim(fs.readfile(TELEGRAM_PID_FILE) || "");
+        if (pid == "" || !process_running(pid, "ucode"))
+            telegram_worker_restart();
+        return;
+    }
+
+    let age = time() - int(heartbeat);
+    if (age <= 900)
+        return;
+
+    let pid = trim(fs.readfile(TELEGRAM_PID_FILE) || "");
+    if (pid != "" && process_running(pid, "ucode")) {
+        log_message(sprintf("Telegram worker pid %s is running but its heartbeat is %d s old; restarting.", pid, age), "warn");
+        command_status("/usr/bin/tachyon telegram_stop >/dev/null 2>&1");
+    }
+    telegram_worker_restart();
+}
+
     function perform_slow_checks() {
         controller.probe_slow();
         safe_call(ai_heal_dns_loop, "ai_heal_dns_loop");
+        safe_call(check_mixed_proxy_port, "check_mixed_proxy_port");
+        safe_call(check_telegram_worker, "check_telegram_worker");
     }
-
     if (uloop) {
         let tick;
         tick = function() {
