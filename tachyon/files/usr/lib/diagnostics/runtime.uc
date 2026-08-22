@@ -2777,6 +2777,25 @@ function run_doctor_checks_impl(repair) {
         }
     }
 
+    // 6c. WireGuard/AWG tunnel health from recent core logs. A userspace
+    // wireguard outbound whose peer never answers produces a steady stream
+    // of "operation timed out" connection errors - the config is applied
+    // correctly, the failure is outside Tachyon (server down, ISP filtering
+    // the UDP endpoint). Surfacing this as its own check stops the classic
+    // "Tachyon broke my AWG" misattribution.
+    if (pid != "") {
+        let wg_log = lc(command_capture("logread -l 400 2>/dev/null | grep -i 'outbound/wireguard' | tail -n 8").output);
+        let wg_failures = index(wg_log, "operation timed out") >= 0 ||
+            (index(wg_log, "handshake") >= 0 && index(wg_log, "timeout") >= 0);
+        if (wg_log != "" && wg_failures) {
+            issues++;
+            doc_check("⚠️", "WireGuard/AWG tunnel", "peer not answering through core",
+                "→ ядро не получает ответов от пира (запросы уходят, ответы нет): проверьте доступность AWG/WARP-сервера и UDP-порта у провайдера. Конфигурация секции применена корректно — проблема вне Tachyon");
+        } else if (wg_log != "") {
+            doc_check("✅", "WireGuard/AWG tunnel", "no recent failures in core log", "");
+        }
+    }
+
     // 7. Free RAM Check
     let free_mb = -1;
     let mem_info = fs.readfile("/proc/meminfo") || "";
