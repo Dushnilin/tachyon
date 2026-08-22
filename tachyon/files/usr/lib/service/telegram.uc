@@ -103,9 +103,52 @@ function settings() {
     return object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
 }
 
+// Liveness cache for the mixed proxy port: probing netstat on every poll
+// tick would spawn a process every few seconds for a fact that rarely
+// changes. A dead port is re-probed on this TTL; a live one too.
+const MIXED_PORT_PROBE_TTL = 30;
+let mixed_port_alive_cached = null;
+let mixed_port_checked_at = 0;
+
+function mixed_port_alive() {
+    let now = time();
+    if (mixed_port_alive_cached != null && (now - mixed_port_checked_at) < MIXED_PORT_PROBE_TTL)
+        return mixed_port_alive_cached;
+
+    let alive = false;
+    let out = command_output_from_args([ "netstat", "-ltn" ]);
+    for (let line in split(out, "\n")) {
+        if (index(line, ":4534 ") >= 0) {
+            alive = true;
+            break;
+        }
+    }
+
+    mixed_port_alive_cached = alive;
+    mixed_port_checked_at = now;
+    return alive;
+}
+
+// Direct-to-Telegram fallback: when the local proxy route is broken the bot
+// used to go permanently silent even though api.telegram.org was reachable
+// straight from the router. Enabled by default, opt-out via UCI
+// telegram.bot_direct_fallback='0'.
+function direct_fallback_enabled() {
+    return trim(as_string(settings().bot_direct_fallback || "1")) != "0";
+}
+
 function get_proxy_args() {
     let cfg = settings();
     if (command_success_from_args(["pidof", "sing-box"])) {
+        // A running sing-box alone proves nothing: the mixed inbound may have
+        // failed to bind while the rest of the core came up. Only route bot
+        // traffic through 4534 when something actually listens there.
+        if (!mixed_port_alive()) {
+            if (direct_fallback_enabled())
+                return [];
+            // Paranoid mode (fallback disabled): keep legacy behavior.
+            return [ "--proxy", "http://127.0.0.1:4534" ];
+        }
         // If a specific section is configured for the bot, force-select it
         // through the Mihomo REST API so the mixed proxy routes bot traffic
         // through the right outbound.
@@ -129,7 +172,58 @@ function get_proxy_args() {
 
 // ─── Telegram API Core ───────────────────────────────────────────────────────
 
-function tg_request(token, method, payload) {
+const HEARTBEAT_FILE = "/var/run/tachyon_telegram.heartbeat";
+const LOG_FILE = "/var/log/tachyon_telegram.log";
+// The worker log lives on tmpfs: without a ceiling a chatty error loop
+// slowly eats router RAM. Rotate when the file exceeds this size.
+const LOG_MAX_BYTES = 524288;
+const LOG_KEEP_BYTES = 102400;
+
+// Liveness stamp for the watchdog: a worker that stopped touching this file
+// while still owning the pid is stuck (hung long-poll, deadlocked loop) and
+// gets restarted by the watchdog's slow checks.
+function write_heartbeat() {
+    write_text_file(HEARTBEAT_FILE, as_string(time()) + "\n");
+}
+
+function rotate_log_if_needed() {
+    let st = fs.stat(LOG_FILE);
+    if (!st || int(st.size || 0) <= LOG_MAX_BYTES)
+        return;
+    let data = fs.readfile(LOG_FILE);
+    if (data == null)
+        return;
+    let tail = substr(data, length(data) - LOG_KEEP_BYTES);
+    // Keep the most recent lines only; leading partial line is harmless.
+    let newline = index(tail, "\n");
+    if (newline >= 0)
+        tail = substr(tail, newline + 1);
+    fs.writefile(LOG_FILE, "--- log truncated (size cap) ---\n" + tail);
+}
+
+function alert_route_failure(attempt, proxy_alive) {
+    // One-shot per failure episode - the caller clears the flag as soon as
+    // polling recovers. Delivery rides on tg_request's own fallback chain:
+    // if the proxy route is what's broken, the message goes out directly.
+    let cfg = settings();
+    let token = trim(as_string(cfg.bot_token || ""));
+    if (token == "") return;
+    let admins = split(trim(as_string(cfg.admin_ids || "")), /,/);
+    let chat_id = trim(as_string(admins[0] || ""));
+    if (chat_id == "") return;
+
+    let hint = proxy_alive
+        ? "прокси-порт 4534 слушается, но запросы через него не проходят"
+        : "прокси-порт 4534 не слушается (mixed-inbound sing-box не поднялся)";
+    let text = "⚠️ <b>Tachyon Telegram бот:</b> " + as_string(attempt) +
+        " неудачных попыток связи с API подряд.\n" +
+        "Причина: " + hint + ".\n" +
+        "Включён прямой доступ к API как запасной путь — команды могут отвечать с задержкой.\n" +
+        "Watchdog попробует восстановить прокси автоматически.";
+    send_message(token, chat_id, text, "HTML", null);
+}
+
+function tg_request_via(token, method, payload, proxy_args) {
     if (!token) return null;
     let url = "https://api.telegram.org/bot" + token + "/" + method;
     // Pass the JSON body directly to curl's -d argument so there is no temp
@@ -140,12 +234,29 @@ function tg_request(token, method, payload) {
     let args = [ "curl", "-s", "-m", "35", "--connect-timeout", "10",
                  "-X", "POST", "-H", "Content-Type: application/json",
                  "-d", body ];
-    let proxy = get_proxy_args();
-    for (let p in proxy) push(args, p);
+    for (let p in proxy_args) push(args, p);
     push(args, url);
     let res = command_capture(command_from_args(args));
     if (!res || res.status != 0 || res.output == "") return null;
     try { return json(res.output); } catch (e) { return null; }
+}
+
+function tg_request(token, method, payload) {
+    if (!token) return null;
+
+    let proxy_args = get_proxy_args();
+    let res = tg_request_via(token, method, payload, proxy_args);
+    if (res != null)
+        return res;
+
+    // Proxy route produced nothing (dead mixed inbound, refused connection,
+    // timeout). When the direct fallback is allowed, retry without proxy
+    // before giving up - api.telegram.org is usually reachable straight from
+    // the router even while the proxy chain is being repaired.
+    if (direct_fallback_enabled() && length(proxy_args) > 0)
+        res = tg_request_via(token, method, payload, []);
+
+    return res;
 }
 
 function send_message(token, chat_id, text, parse_mode, keyboard) {
@@ -384,7 +495,7 @@ function format_bytes(b) {
 
 let setting_schema = {
     settings: {
-        config_version: "Версия конфига",
+        // config_version is an internal migration marker - not shown.
         dns_type: "Тип DNS",
         dns_server: "DNS Серверы",
         bootstrap_dns_server: "Bootstrap DNS",
@@ -1049,9 +1160,43 @@ function handle_sec_clear(token, chat_id, msg_id, sec_name, list_type) {
 }
 
 function exec_doctor(token, chat_id) {
-    send_message(token, chat_id, "⏳ <b>Запуск диагностики и авто-исправления...</b>", "HTML");
+    send_message(token, chat_id, "⏳ <b>Запуск диагностики...</b>", "HTML");
     let res = command_capture(command_from_args([ "/usr/bin/tachyon", "doctor" ]));
     let report = res ? (res.output || "Нет вывода диагностики.") : "Ошибка запуска диагностики.";
+
+    // The CLI prints a JSON envelope; render a readable summary instead of
+    // dumping raw JSON into the chat.
+    let data = null;
+    try { data = json(report); } catch (e) {}
+    if (data != null && type(data) == "object") {
+        let text = trim(as_string(data.report || ""));
+        if (text == "") {
+            report = "Пустой отчёт диагностики.";
+        } else {
+            let header;
+            if (data.busy) {
+                header = "Диагностика уже выполняется другим процессом.";
+            } else if (int(data.issues || 0) > 0) {
+                header = sprintf("Проблем: %s", as_string(data.issues));
+                if (int(data.fixed || 0) > 0)
+                    header += sprintf(", исправлено: %s", as_string(data.fixed));
+                let planned = length(data.planned_fixes || []);
+                if (planned > 0)
+                    header += sprintf(", планируется к исправлению: %d", planned) +
+                        "\n(применение: tachyon doctor --fix или кнопка в LuCI)";
+            } else {
+                header = "Проблем не обнаружено.";
+            }
+            report = "<b>" + escape_html(header) + "</b>\n\n<pre>" + escape_html(text) + "</pre>";
+            // send_message caps at ~3900 chars; keep the tail (summary lines)
+            // visible rather than cutting mid-report without notice.
+            if (length(report) > 3900)
+                report = substr(report, 0, 3900) + "\n... (отчёт сокращён)";
+            send_message(token, chat_id, report, "HTML", [[{text:"⬅️ Назад", callback_data:"/menu"}]]);
+            return;
+        }
+    }
+
     if (length(report) > 3500) report = substr(report, 0, 3500) + "\n... (отчёт сокращён)";
     send_message(token, chat_id, "🩺 <b>Результаты Tachyon Doctor:</b>\n\n<pre>" + escape_html(report) + "</pre>", "HTML", [[{text:"⬅️ Назад", callback_data:"/menu"}]]);
 }
@@ -2874,23 +3019,36 @@ function worker() {
     let last_update_check = 0;
     let last_blocked_check = 0;
     let consecutive_failures = 0;
+    let route_alert_sent = false;
+    let last_log_check = 0;
 
     while (true) {
         try {
             cfg = settings();
             if (cfg.enabled != "1") break;
             let res = process_updates(cfg.bot_token, cfg.admin_ids);
-            
+
             if (res === false) {
                 consecutive_failures++;
                 let backoff = poll_interval * (1 << min(consecutive_failures - 1, 4));
                 if (backoff > 300) backoff = 300;
                 let log_level = consecutive_failures >= 3 ? "[warn]" : "[info]";
                 command_success_from_args(["logger", "-t", "tachyon-telegram", log_level + " API poll retry " + as_string(consecutive_failures) + ", backing off " + as_string(backoff) + "s"]);
+
+                // Tell the admin once per failure episode that the usual
+                // proxy route is down and the direct fallback carries the
+                // bot meanwhile.
+                if (!route_alert_sent && consecutive_failures >= 5) {
+                    route_alert_sent = true;
+                    alert_route_failure(consecutive_failures, mixed_port_alive());
+                }
+
                 sleep(backoff * 1000);
                 continue;
             }
             consecutive_failures = 0;
+            route_alert_sent = false;
+            write_heartbeat();
 
             let now = time();
             // localtime() yields { sec, min, hour, mday, mon, year, ... }.
@@ -2911,6 +3069,11 @@ function worker() {
             if (now - last_blocked_check > BLOCKED_POLL_INTERVAL) {
                 check_blocked_activity(cfg);
                 last_blocked_check = now;
+            }
+
+            if (now - last_log_check > 3600) {
+                rotate_log_if_needed();
+                last_log_check = now;
             }
         } catch (e) {
             consecutive_failures++;
