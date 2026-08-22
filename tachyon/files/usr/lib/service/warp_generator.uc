@@ -99,7 +99,7 @@ function call_api(method, url, auth_header, body_file) {
     // Hard wall-clock budget: without it the full retry matrix (transports x
     // resolve IPs x fallbacks) can block for minutes and trip the LuCI XHR
     // timeout before any answer is produced.
-    let deadline = now_ms() + 40000;
+    let deadline = now_ms() + 20000;
     
     let transport_flags = [];
     if (proxy_interface != "") {
@@ -112,6 +112,26 @@ function call_api(method, url, auth_header, body_file) {
     let mixed_4534_check = exec_output("curl -s --connect-timeout 2 --max-time 3 -x socks5h://127.0.0.1:4534 https://api.cloudflareclient.com/ >/dev/null 2>&1; echo $?");
     if (trim(mixed_4534_check) == "0" && !contains(transport_flags, "-x socks5h://127.0.0.1:4534")) {
         push(transport_flags, "-x socks5h://127.0.0.1:4534");
+    }
+
+    // Pre-flight: when the Cloudflare API is unreachable from this router
+    // (blocked ISP, dead proxy), the registration matrix below would burn its
+    // whole time budget and trip the LuCI XHR timeout before producing a
+    // readable answer. Probe once, fail fast with an actionable message.
+    let probe_cmd = "curl -s --connect-timeout 4 -m 6 -o /dev/null -w '%{http_code}' https://api.cloudflareclient.com/ 2>/dev/null";
+    let probe = trim(exec_output(probe_cmd));
+    if (probe == "" || probe == "000") {
+        let via_proxy = "";
+        for (let tr in transport_flags) {
+            if (index(tr, "socks5h") >= 0 || index(tr, "--interface") >= 0) {
+                via_proxy = exec_output("curl -s --connect-timeout 4 -m 6 -o /dev/null -w '%{http_code}' " + tr + " https://api.cloudflareclient.com/ 2>/dev/null");
+                break;
+            }
+        }
+        if (trim(via_proxy) == "" || trim(via_proxy) == "000") {
+            error_response("Cloudflare API недоступен с этого роутера (ни напрямую, ни через прокси). Генерация WARP невозможна — проверьте интернет или сгенерируйте конфиг через рабочую сеть.");
+            exit(0);
+        }
     }
 
     // 1. Try selected tunnel transport(s)
@@ -233,7 +253,7 @@ if (!private_key || !public_key) {
 if (!private_key || !public_key) {
     restore_original_server();
     error_response("Failed to generate WireGuard keypair");
-    exit(1);
+    exit(0);
 }
 
 let install_id = "";
@@ -255,7 +275,7 @@ let tmp_req_file = exec_output("mktemp 2>/dev/null") || "/tmp/warp_req.json";
 if (fs.writefile(tmp_req_file, sprintf("%J", reg_request)) == null) {
     restore_original_server();
     error_response("Failed to write temporary registration request file");
-    exit(1);
+    exit(0);
 }
 
 let api_prefixes = [
@@ -278,7 +298,7 @@ let chosen_prefix = "";
 let server_try_index = 0;
 // Overall budget for the whole registration attempt matrix: each call_api()
 // is bounded, but the prefix list is long enough to multiply into minutes.
-let registration_deadline = now_ms() + 90000;
+let registration_deadline = now_ms() + 20000;
 
 for (let prefix in api_prefixes) {
     if (now_ms() > registration_deadline) {
@@ -333,7 +353,7 @@ if (!response_data) {
     if (warp_proxy_section == "")
         hint = " Провайдер может блокировать Cloudflare API на WAN. Выберите секцию с туннелем (WireGuard/AWG/VPN) или включите Mixed-прокси на прокси-секции в 'Расширенных настройках'.";
     error_response("Ошибка регистрации в Cloudflare WARP API: " + last_error + hint);
-    exit(1);
+    exit(0);
 }
 
 if (!response_data.warp_enabled) {
