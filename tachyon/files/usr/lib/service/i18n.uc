@@ -1,0 +1,740 @@
+// Telegram bot i18n — string tables for en/ru
+// Usage: let i18n = require("service.i18n"); let t = i18n.bind(lang);
+
+let strings = {
+    en: {
+        // ─── Setting schema labels ───
+        dns_type: "DNS Type",
+        dns_server: "DNS Servers",
+        bootstrap_dns_server: "Bootstrap DNS",
+        dns_strategy: "DNS Strategy",
+        dns_detour_enabled: "DNS Detour",
+        source_network_interfaces: "Inbound Interfaces",
+        enable_output_network_interface: "Bind to WAN",
+        enable_badwan_interface_monitoring: "WAN Monitoring",
+        enable_yacd: "YACD Panel",
+        disable_quic: "Block QUIC",
+        list_update_enabled: "List Updates",
+        component_update_check_enabled: "Core Updates",
+        download_lists_via_proxy: "Lists via Proxy",
+        download_components_via_proxy: "Core via Proxy",
+        dont_touch_dhcp: "Don't Touch DHCP",
+        isolate_p2p: "Isolate P2P",
+        log_level: "Log Level",
+        exclude_ntp: "Exclude NTP",
+        shutdown_correctly: "Clean Shutdown",
+        smart_detect: "Smart Detect",
+        smart_detect_sections: "Smart Detect Sections",
+        enabled: "Bot Enabled",
+        bot_token: "Token",
+        admin_ids: "Admin IDs",
+        poll_interval: "Poll Interval",
+        notify_crash: "Core Crashes",
+        notify_restart: "Restarts",
+        notify_server_switch: "Server Switches",
+        notify_subscription: "Subscription Status",
+        notify_cert: "Certificates",
+        notify_dns_leak: "DNS Leaks",
+        daily_report_enabled: "Daily Report",
+        daily_report_hour: "Report Time (hour)",
+        quiet_hours_enabled: "Quiet Hours",
+        quiet_hours_start: "Quiet Hours Start",
+        quiet_hours_end: "Quiet Hours End",
+        fallback_socks: "Fallback SOCKS5",
+        language: "Language",
+        section: "Section",
+        auto_user_agent: "Auto User-Agent",
+        user_agent: "User-Agent",
+        auto_hwid: "Auto HWID",
+        subscription_update_enabled: "Auto Update",
+        subscription_update_interval: "Update Interval",
+        download_via_proxy_enabled: "Via Proxy",
+        show_dashboard_metadata: "Subscription Metadata",
+        prefix_nodes: "Node Prefix",
+        node_prefix: "Prefix String",
+        include_urltest_groups: "URL-Test Groups",
+        hide_urltest_group_outbounds: "Hide Group Nodes",
+        hide_detour_outbounds: "Hide Detour Nodes",
+        label: "Name",
+        protocol: "Protocol",
+        routing_mode: "Routing Mode",
+
+        // ─── Navigation ───
+        nav_next: "Next ▶️",
+        nav_prev: "◀️ Prev",
+        nav_back: "◀️ Back",
+        nav_menu: "🏠 Menu",
+        nav_settings: "⚙️ Settings",
+
+        // ─── Menu ───
+        menu_all_settings: "⚙️ All Settings",
+        menu_choose_cat: "Select category to edit:",
+        menu_global: "🌍 Global Settings",
+        menu_telegram: "🤖 Telegram Settings",
+        menu_subscriptions: "📋 Subscriptions",
+        menu_servers: "🖥️ Custom Servers",
+        menu_servers_short: "🖥 Custom Servers",
+        menu_dns_presets: "🌐 DNS Servers (Presets)",
+        menu_quiet_hours: "🔕 Quiet Hours",
+        menu_test_rule: "🔍 Test Rule",
+        menu_export_config: "📤 Export Config",
+        menu_help: "📖 Help",
+        menu_status: "📊 System Status",
+        menu_diagnostic: "🩺 Diagnostics",
+        menu_logs: "📝 Logs",
+        menu_connections: "🔌 Connections",
+        menu_outbounds: "🚀 Proxy Servers",
+        menu_sections: "📁 Routing Sections",
+        menu_speed: "⚡ Speed Test",
+        menu_ping: "📡 Ping",
+        menu_restart: "🔄 Restart Tachyon",
+        menu_language: "🌐 Language",
+        menu_extras: "🔧 Extras",
+        menu_info: "ℹ️ System Info",
+        menu_close_conn: "🗑️ Close All Connections",
+        menu_check_updates: "🔄 Check Updates",
+        menu_doctor: "🩺 Doctor",
+        menu_test_rule: "🔍 Test Rule",
+        menu_devices: "💻 Network Devices",
+        menu_instances: "Live Servers",
+        menu_categories: "🔙 Categories",
+        menu_qos: "🎮 Gaming & Voice QoS",
+        menu_heal: "🤖 AI Self-Healing",
+
+        // ─── Status ───
+        status_version: "Version",
+        status_uptime: "Uptime",
+        status_cpu: "Router CPU",
+        status_active_servers: "Active servers:",
+        status_no_server: "No server selected",
+        status_enabled: "Enabled ✅",
+        status_disabled: "Disabled ❌",
+        status_target: "Target",
+        status_running: "🟢 Running",
+        status_stopped: "🔴 Stopped",
+        status_unknown: "Unknown",
+        status_normal: "All systems are operating normally! 🟢",
+        status_pause: "Paused",
+        status_header: "System Status",
+        status_sections: "Sections",
+
+        // ─── Stats ───
+        stat_download: "Downloaded",
+        stat_upload: "Uploaded",
+        stat_memory: "Memory",
+        stat_connections: "Connections",
+
+        // ─── Section management ───
+        section_type: "Type",
+        section_status: "Status",
+        section_choose_group: "Select a group to configure the server:",
+        section_group: "Group",
+        section_server: "Server",
+        section_check_singbox: "Check if sing-box is running and Clash API is accessible.",
+        section_domains: "Domains",
+        section_sources: "Sources",
+        section_section: "Section",
+        section_edit: "Editing",
+        section_create: "➕ Create section",
+        section_action: "Action",
+        section_list: "List",
+        section_empty: "Empty",
+        section_showing_partial: "(Showing not all items for deletion)",
+        btn_rename: "✏️ Rename",
+        btn_delete: "❌ Delete",
+        btn_add: "➕ Add",
+        btn_clear_all: "➖ Clear all",
+        btn_add_items: "➕ Add items",
+        btn_clear_list: "➖ Clear list",
+        btn_back_to_section: "🔙 Back to section",
+
+        // ─── Diagnostics ───
+        diag_running: "Diagnostics already running by another process.",
+        diag_issues: "Issues: %s",
+        diag_issues_count: "Issues: %s",
+        diag_fixed_count: ", fixed: %s",
+        diag_planned_count: ", planned: %d",
+        diag_clean: "No issues detected.",
+        diag_no_output: "No diagnostic output.",
+        diag_error: "Failed to start diagnostics.",
+        diag_empty: "Empty diagnostics report.",
+        diag_all_fixed: "All systems restored to normal! 🟢",
+        diag_starting: "Running diagnostics...",
+        diag_results: "Tachyon Doctor Results:",
+        report_truncated: "report truncated",
+
+        // ─── Logs ───
+        logs_no_records: "No records for this level.\n",
+        logs_read_error: "Failed to read logs.\n",
+
+        // ─── Connections ───
+        conn_none: "No active connections.",
+
+        // ─── Subscriptions ───
+        sub_none: "No subscriptions. Add a subscription URL to download rules.",
+        sub_found: "Found subscriptions: ",
+
+        // ─── Latency ───
+        latency_no_data: "No latency data. Press «Refresh».",
+        latency_none: "No latency data available.",
+
+        // ─── Servers ───
+        servers_none: "No servers found or sing-box is not running.",
+        servers_api_error: "API parsing error: ",
+
+        // ─── QoS ───
+        qos_status: "Status",
+        qos_enabled: "🟢 Enabled",
+        qos_disabled: "❌ Disabled",
+        qos_start: "Start",
+        qos_end: "End",
+        qos_quiet_hint: "During quiet hours, the bot only sends critical notifications.",
+
+        // ─── Errors ───
+        err_invalid_format: "Invalid command format",
+        err_not_allowed: "Command '%s' is not in the allowed list",
+        err_args_mismatch: "Arguments don't match the allowed template",
+        err_wrong_arg_count: "Wrong number of arguments",
+        err_arg_not_allowed: "Argument not allowed: %s",
+        err_subcmd_not_allowed: "Subcommand '%s' is not in the whitelist",
+        err_host_unknown: "Unknown",
+        err_api_parse: "Failed to read info: ",
+        err_status_fetch: "Failed to get status.",
+        err_no_data: "No data.",
+        err_log_read: "Failed to read logs.",
+        err_no_output: "No output",
+
+        // ─── Notifications ───
+        notif_restart_services: "Tachyon services restarted",
+        notif_nft_cleared: "nftables rules table cleared or corrupted",
+        notif_nft_regenerated: "TachyonTable and TPROXY chain rules regenerated",
+        notif_qos_not_found: "Gaming & Voice QoS Accelerator rules not found in nftables",
+        notif_qos_applied: "High-priority DSCP labels applied: EF (0x2e) for Voice/RTC, AF41 (0x22) for Gaming",
+        notif_restart_skipped: "Restart skipped: rate limit or active block",
+        notif_singbox_hung: "Proxy port hang or incomplete response sing-box",
+        notif_singbox_restarted: "sing-box restarted",
+        notif_cache_cleared: "cache.db cleared; restart skipped by rate limit",
+        notif_sets_empty: "Empty nftables sets (community) — data not loaded on reload",
+        notif_sets_restored: "nftables sets restored from persistent cache",
+        notif_fw_reload: "reload_firewall executed to restore TPROXY rules",
+        notif_config_invalid: "Restart cancelled: sing-box config fails validation",
+        notif_restart_rate: "Restart skipped by rate limit",
+        notif_rpcd_restarted: "rpcd restarted to free file descriptors",
+
+        // ─── Route failure ───
+        route_proxy_alive: "proxy port 4534 is listening, but requests through it are failing",
+        route_proxy_down: "proxy port 4534 not listening (sing-box mixed-inbound not up)",
+        route_hint: "Reason: %s.\nDirect API access enabled as fallback — commands may respond with delay.\nRun /test to check connectivity.",
+
+        // ─── Command descriptions (for setMyCommands) ───
+        cmd_menu: "Main menu",
+        cmd_status: "System status",
+        cmd_runtime: "Traffic stats",
+        cmd_outbounds: "Proxy servers",
+        cmd_sections: "Routing sections",
+        cmd_speed: "Speed test",
+        cmd_ping: "Server latency",
+        cmd_test: "Quick diagnostics",
+        cmd_logs: "View logs",
+        cmd_info: "System info",
+        cmd_connections: "Active connections",
+        cmd_test_rule: "Test rule",
+        cmd_help: "Help",
+        cmd_check_updates: "Check for updates",
+        cmd_close_connections: "Close all connections",
+        cmd_doctor: "Diagnostics",
+        cmd_restart: "Restart Tachyon services",
+        cmd_instances: "Live servers",
+        cmd_lang: "Change language",
+
+        // ─── Misc ───
+        exec_done: "<b>Done (code %s):</b>\n<pre>%s</pre>",
+        hour_enter: "⏰ Enter the hour for %s (0-23):",
+        hour_start: "start",
+        hour_end: "end",
+        blocked_activity: "Blocked Activity",
+        blocked_attempts: "Attempts to access blocked sites",
+        daily_digest_title: "🌅 Morning Tachyon Digest",
+        daily_rx: "Current RX",
+        daily_tx: "Current TX",
+        daily_connections: "Connections",
+        daily_memory: "Memory",
+        choose_language: "Select language:",
+        lang_current: "Current language: %s",
+        lang_saved: "Language saved!",
+        ping_enter_host: "Enter a domain or IP to check:",
+        test_rule_prompt: "Enter the rule to test:",
+        rule_label: "Rule",
+
+        // ─── Speed test ───
+        speed_starting: "⚡ <b>Starting Speedtest...</b>\n\nTesting via Cloudflare. Takes up to 30 seconds.",
+        speed_result: "⚡ Speedtest Result",
+        speed_direct: "📥 Direct:",
+        speed_proxy: "📤 Via proxy:",
+        speed_fail_measure: "❌ failed to measure",
+        speed_error: "❌ Failed to run test. Check if sing-box is running.",
+        speed_check_hint: "Check internet access and sing-box.",
+
+        // ─── Ping ───
+        ping_api_error: "❌ Failed to get data from Clash API.",
+
+        // ─── Quick test ───
+        test_title: "Quick Diagnostics",
+        test_direct: "Direct connection",
+        test_proxy: "Proxy connection",
+        test_service: "Tachyon service",
+        test_nft: "nftables rules",
+        test_pause: "Pause:",
+        test_rule: "Rule check:",
+        test_match: "Match",
+        test_no_match: "No matches found. Traffic goes through default route.",
+
+        // ─── Connections ───
+        conn_total_down: "Total downloaded",
+        conn_total_up: "Total uploaded",
+        conn_closed: "All active connections closed.",
+
+        // ─── Devices ───
+        device_block: "🚫 Block device",
+        device_unblock: "🔓 Unblock device",
+        device_blocked: "blocked",
+        device_unblocked: "unblocked",
+
+        // ─── AI Doctor ───
+        ai_doctor_title: "Tachyon AI Doctor",
+        ai_status_collecting: "Collecting full AI Watchdog status...",
+        ai_incident: "⚠️ Incident resolved:",
+        ai_resolution: "🔧 Auto-fix:",
+        ai_all_ok: "All network services, DNS, nftables and memory are working perfectly.",
+        ai_diag_ok: "Diagnostics completed successfully.",
+        ai_diag_done: "Diagnostics completed.",
+
+        // ─── Buttons ───
+        btn_refresh: "🔄 Refresh",
+        btn_retry: "🔄 Retry",
+        btn_again: "🔄 Again",
+        btn_speed_again: "⚡ Again",
+        btn_back_to_groups: "🔙 Groups",
+        btn_back_to_sections: "🔙 Sections",
+        btn_close_all: "❌ Close All",
+        btn_test: "🩺 Test",
+        nav_cancel: "⬅️ Cancel",
+        restart_confirm: "⚠️ <b>Restart Tachyon services?</b>\nCurrent connections will be interrupted during restart.",
+        restart_yes: "✅ Yes, restart",
+        restart_in_progress: "Restarting Tachyon services...",
+        restart_success: "Restart completed successfully!",
+        restart_error: "Restart failed.",
+        conn_closed: "All active connections closed.",
+
+        // ─── Outbounds ───
+        servers_not_found: "Servers not found or sing-box not running.",
+        outbounds_hint: "Press the button to switch servers.",
+
+        // ─── Logs ───
+        logs_level: "level",
+
+        // ─── Info ───
+        info_device: "Device",
+        err_info_read: "Failed to read info:",
+
+        // ─── Updates ───
+        update_new_build: "New release build available!",
+        update_available: "Component update available!",
+        build_label: "Build",
+
+        // ─── Healer ───
+        heal_running: "AI Doctor running diagnostics and self-healing...",
+    },
+
+    ru: {
+        // ─── Setting schema labels ───
+        dns_type: "Тип DNS",
+        dns_server: "DNS Серверы",
+        bootstrap_dns_server: "Bootstrap DNS",
+        dns_strategy: "Стратегия DNS",
+        dns_detour_enabled: "DNS Detour",
+        source_network_interfaces: "Входящие интерфейсы",
+        enable_output_network_interface: "Привязка к WAN",
+        enable_badwan_interface_monitoring: "Мониторинг WAN",
+        enable_yacd: "Панель YACD",
+        disable_quic: "Блокировать QUIC",
+        list_update_enabled: "Обновление списков",
+        component_update_check_enabled: "Обновление ядра",
+        download_lists_via_proxy: "Списки через прокси",
+        download_components_via_proxy: "Ядро через прокси",
+        dont_touch_dhcp: "Не трогать DHCP",
+        isolate_p2p: "Изолировать P2P",
+        log_level: "Уровень логов",
+        exclude_ntp: "Исключить NTP",
+        shutdown_correctly: "Корректное завершение",
+        smart_detect: "Smart Detect",
+        smart_detect_sections: "Секции Smart Detect",
+        enabled: "Бот Включен",
+        bot_token: "Токен",
+        admin_ids: "Admin IDs",
+        poll_interval: "Интервал опроса",
+        notify_crash: "Сбои ядра",
+        notify_restart: "Перезапуски",
+        notify_server_switch: "Переключение серверов",
+        notify_subscription: "Статус подписок",
+        notify_cert: "Сертификаты",
+        notify_dns_leak: "Утечки DNS",
+        daily_report_enabled: "Ежедневный отчет",
+        daily_report_hour: "Время отчета (час)",
+        quiet_hours_enabled: "Тихие часы",
+        quiet_hours_start: "Начало тихих часов",
+        quiet_hours_end: "Конец тихих часов",
+        fallback_socks: "Резервный SOCKS5",
+        language: "Язык",
+        section: "Секция",
+        auto_user_agent: "Auto User-Agent",
+        user_agent: "User-Agent",
+        auto_hwid: "Auto HWID",
+        subscription_update_enabled: "Автообновление",
+        subscription_update_interval: "Интервал обновления",
+        download_via_proxy_enabled: "Через прокси",
+        show_dashboard_metadata: "Метаданные подписки",
+        prefix_nodes: "Префикс узлов",
+        node_prefix: "Строка префикса",
+        include_urltest_groups: "Группы URL-Test",
+        hide_urltest_group_outbounds: "Скрыть узлы групп",
+        hide_detour_outbounds: "Скрыть Detour узлы",
+        label: "Название",
+        enabled: "Включен",
+        protocol: "Протокол",
+        routing_mode: "Режим",
+
+        // ─── Navigation ───
+        nav_next: "След ▶️",
+        nav_prev: "◀️ Пред",
+        nav_back: "◀️ Назад",
+        nav_menu: "🏠 Меню",
+        nav_settings: "⚙️ Настройки",
+
+        // ─── Menu ───
+        menu_all_settings: "⚙️ Все Настройки",
+        menu_choose_cat: "Выберите категорию для редактирования:",
+        menu_global: "🌍 Глобальные настройки",
+        menu_telegram: "🤖 Настройки Telegram",
+        menu_subscriptions: "📋 Подписки",
+        menu_servers: "🖥️ Пользовательские серверы",
+        menu_servers_short: "🖥 Кастомные серверы",
+        menu_dns_presets: "🌐 DNS Серверы (Пресеты)",
+        menu_quiet_hours: "🔕 Тихие часы",
+        menu_test_rule: "🔍 Проверка правила",
+        menu_export_config: "📤 Экспорт конфига",
+        menu_help: "📖 Справка",
+        menu_status: "📊 Статус системы",
+        menu_diagnostic: "🩺 Диагностика",
+        menu_logs: "📝 Логи",
+        menu_connections: "🔌 Подключения",
+        menu_outbounds: "🚀 Прокси серверы",
+        menu_sections: "📁 Секции маршрутизации",
+        menu_speed: "⚡ Тест скорости",
+        menu_ping: "📡 Задержка",
+        menu_restart: "🔄 Перезапуск Tachyon",
+        menu_language: "🌐 Язык",
+        menu_extras: "🔧 Дополнительно",
+        menu_info: "ℹ️ Информация о системе",
+        menu_close_conn: "🗑️ Закрыть все соединения",
+        menu_check_updates: "🔄 Проверить обновления",
+        menu_doctor: "🩺 Диагностика",
+        menu_test_rule: "🔍 Проверка правила",
+        menu_devices: "💻 Устройства в сети",
+        menu_instances: "Live серверы",
+        menu_categories: "🔙 Категории",
+        menu_qos: "🎮 Игровой QoS",
+        menu_heal: "🤖 ИИ-Самолечение",
+        choose_section: "Выберите раздел для управления:",
+
+        // ─── Status ───
+        status_version: "Версия",
+        status_uptime: "Аптайм",
+        status_cpu: "Роутер CPU",
+        status_active_servers: "Активные серверы:",
+        status_no_server: "Активный сервер: <code>Не выбран</code>",
+        status_enabled: "Включена ✅",
+        status_disabled: "Выключена ❌",
+        status_target: "Цель (Target)",
+        status_running: "🟢 Запущен",
+        status_stopped: "🔴 Остановлен",
+        status_unknown: "Неизвестно",
+        status_normal: "Все системы приведены в штатную норму! 🟢",
+        status_pause: "Пауза",
+        status_header: "Статус Системы",
+        status_sections: "Секции",
+
+        // ─── Stats ───
+        stat_download: "Скачано",
+        stat_upload: "Отдано",
+        stat_memory: "Память",
+        stat_connections: "Соединений",
+
+        // ─── Section management ───
+        section_type: "Тип",
+        section_status: "Статус",
+        section_choose_group: "Выберите группу для настройки сервера:\n\n",
+        section_group: "Группа",
+        section_server: "Сервер",
+        section_check_singbox: "Проверьте, запущен ли sing-box и доступен ли Clash API.",
+        section_domains: "Домены",
+        section_sources: "Источники (Source)",
+        section_section: "Секция",
+        section_edit: "Редактирование",
+        section_create: "➕ Создать секцию",
+        section_action: "Действие",
+        section_list: "Список",
+        section_empty: "Пусто",
+        section_showing_partial: "(Показаны не все элементы для удаления)",
+        btn_rename: "✏️ Имя",
+        btn_delete: "❌ Удалить",
+        btn_add: "➕ Добавить",
+        btn_clear_all: "➖ Очистить все",
+        btn_add_items: "➕ Добавить элементы",
+        btn_clear_list: "➖ Очистить список",
+        btn_back_to_section: "🔙 Назад к секции",
+
+        // ─── Diagnostics ───
+        diag_running: "Диагностика уже выполняется другим процессом.",
+        diag_issues: "Проблем: %s",
+        diag_issues_count: "Проблем: %s",
+        diag_fixed_count: ", исправлено: %s",
+        diag_planned_count: ", планируется к исправлению: %d\n(применение: tachyon doctor --fix или кнопка в LuCI)",
+        diag_clean: "Проблем не обнаружено.",
+        diag_no_output: "Нет вывода диагностики.",
+        diag_error: "Ошибка запуска диагностики.",
+        diag_empty: "Пустой отчёт диагностики.",
+        diag_all_fixed: "Все системы приведены в штатную норму! 🟢",
+        diag_starting: "Запуск диагностики...",
+        diag_results: "Результаты Tachyon Doctor:",
+        report_truncated: "отчёт сокращён",
+
+        // ─── Logs ───
+        logs_no_records: "Нет записей для данного уровня.\n",
+        logs_read_error: "Не удалось прочитать логи.\n",
+
+        // ─── Connections ───
+        conn_none: "Нет активных подключений.",
+
+        // ─── Subscriptions ───
+        sub_none: "Нет подписок. Добавьте URL подписки для скачивания правил.",
+        sub_found: "Найдено подписок: ",
+
+        // ─── Latency ───
+        latency_no_data: "Нет данных о задержках. Нажмите «Обновить».",
+        latency_none: "Нет данных о задержках.",
+
+        // ─── Servers ───
+        servers_none: "Серверы не найдены или sing-box не запущен.",
+        servers_api_error: "Ошибка парсинга API: ",
+
+        // ─── QoS ───
+        qos_status: "Статус",
+        qos_enabled: "🟢 Включены",
+        qos_disabled: "❌ Выключены",
+        qos_start: "Начало",
+        qos_end: "Конец",
+        qos_quiet_hint: "В тихие часы бот отправляет только критические уведомления.",
+
+        // ─── Errors ───
+        err_invalid_format: "Неверный формат команды",
+        err_not_allowed: "Команда '%s' не входит в список разрешённых",
+        err_args_mismatch: "Аргументы не совпадают с разрешённым шаблоном",
+        err_wrong_arg_count: "Неверное число аргументов",
+        err_arg_not_allowed: "Аргумент не разрешён: %s",
+        err_subcmd_not_allowed: "Подкоманда '%s' не входит в whitelist",
+        err_host_unknown: "Неизвестно",
+        err_api_parse: "Ошибка чтения информации: ",
+        err_status_fetch: "Ошибка получения статуса.",
+        err_no_data: "Нет данных.",
+        err_log_read: "Не удалось прочитать логи.",
+        err_no_output: "Нет вывода",
+
+        // ─── Notifications ───
+        notif_restart_services: "Выполнен перезапуск служб Tachyon",
+        notif_nft_cleared: "Таблица правил nftables очищена или повреждена",
+        notif_nft_regenerated: "Выполнена быстрая регенерация правил TachyonTable и цепочки TPROXY",
+        notif_qos_not_found: "Правила Игрового & Голосового QoS Ускорителя не найдены в nftables",
+        notif_qos_applied: "Применены высокоприоритетные метки DSCP EF (0x2e) для Voice/RTC и DSCP AF41 (0x22) для Gaming",
+        notif_restart_skipped: "Перезапуск не выполнен: лимит частоты или активная блокировка",
+        notif_singbox_hung: "Зависание или неполный отклик прокси-порту sing-box",
+        notif_singbox_restarted: "Выполнен перезапуск sing-box",
+        notif_cache_cleared: "Очищена база cache.db; перезапуск пропущен по лимиту частоты",
+        notif_sets_empty: "Пустые nftables sets подсетей (community) — данные не были загружены при reload",
+        notif_sets_restored: "Восстановлены nftables sets из persistent кеша",
+        notif_fw_reload: "Выполнен reload_firewall для восстановления TPROXY правил",
+        notif_config_invalid: "Перезапуск отменён: конфигурация sing-box не проходит валидацию",
+        notif_restart_rate: "Перезапуск пропущен по лимиту частоты",
+        notif_rpcd_restarted: "Выполнен перезапуск rpcd для освобождения файловых дескрипторов",
+
+        // ─── Route failure ───
+        route_proxy_alive: "прокси-порт 4534 слушается, но запросы через него не проходят",
+        route_proxy_down: "прокси-порт 4534 не слушается (mixed-inbound sing-box не поднялся)",
+        route_hint: "Причина: %s.\nВключён прямой доступ к API как запасной путь — команды могут отвечать с задержкой.\nВыполните /test для проверки связи.",
+
+        // ─── Command descriptions ───
+        cmd_menu: "Главное меню",
+        cmd_status: "Статус системы",
+        cmd_runtime: "Статистика трафика",
+        cmd_outbounds: "Прокси серверы",
+        cmd_sections: "Секции маршрутизации",
+        cmd_speed: "Тест скорости",
+        cmd_ping: "Задержка до серверов",
+        cmd_test: "Быстрая диагностика",
+        cmd_logs: "Просмотр логов",
+        cmd_info: "Информация о системе",
+        cmd_connections: "Активные подключения",
+        cmd_test_rule: "Проверка правила",
+        cmd_help: "Справка",
+        cmd_check_updates: "Проверить обновления",
+        cmd_close_connections: "Закрыть все соединения",
+        cmd_doctor: "Диагностика",
+        cmd_restart: "Перезапуск служб Tachyon",
+        cmd_instances: "Live серверы",
+        cmd_lang: "Сменить язык",
+
+        // ─── Misc ───
+        exec_done: "<b>Выполнено (код %s):</b>\n<pre>%s</pre>",
+        hour_enter: "⏰ Введите час %s (0-23):",
+        hour_start: "начала",
+        hour_end: "окончания",
+        blocked_activity: "Заблокированная активность",
+        blocked_attempts: "Попыток доступа к заблокированным сайтам",
+        daily_digest_title: "🌅 Утренний дайджест Tachyon",
+        daily_rx: "Текущий RX",
+        daily_tx: "Текущий TX",
+        daily_connections: "Соединений",
+        daily_memory: "Память",
+        choose_language: "Выберите язык:",
+        lang_current: "Текущий язык: %s",
+        lang_saved: "Язык сохранён!",
+        ping_enter_host: "Введите домен или IP для проверки:",
+        test_rule_prompt: "Введите правило для проверки:",
+        rule_label: "Правило",
+
+        // ─── Speed test ───
+        speed_starting: "⚡ <b>Запуск Speedtest...</b>\n\nТестирую скорость через Cloudflare. Это займёт до 30 секунд.",
+        speed_result: "⚡ Результат Speedtest",
+        speed_direct: "📥 Прямое соединение:",
+        speed_proxy: "📤 Через прокси:",
+        speed_fail_measure: "❌ не удалось измерить",
+        speed_error: "❌ Не удалось выполнить тест. Проверьте, запущен ли sing-box.",
+        speed_check_hint: "Проверьте доступ в интернет и работу sing-box.",
+
+        // ─── Ping ───
+        ping_api_error: "❌ Не удалось получить данные из Clash API.",
+
+        // ─── Quick test ───
+        test_title: "Быстрая диагностика",
+        test_direct: "Прямое соединение",
+        test_proxy: "Прокси соединение",
+        test_service: "Tachyon сервис",
+        test_nft: "nftables правила",
+        test_pause: "Пауза:",
+        test_rule: "Проверка правила:",
+        test_match: "Совпадение",
+        test_no_match: "Совпадений не найдено. Трафик пойдёт через default route.",
+
+        // ─── Connections ───
+        conn_total_down: "Всего скачано",
+        conn_total_up: "Всего отдано",
+        conn_closed: "Все активные соединения сброшены.",
+
+        // ─── Devices ───
+        device_block: "🚫 Заблокировать",
+        device_unblock: "🔓 Разблокировать",
+        device_blocked: "заблокировано",
+        device_unblocked: "разблокировано",
+
+        // ─── AI Doctor ───
+        ai_doctor_title: "ИИ-Автомеханик Tachyon",
+        ai_status_collecting: "Сбор полного AI Watchdog статуса...",
+        ai_incident: "⚠️ Устранён инцидент:",
+        ai_resolution: "🔧 Авто-решение:",
+        ai_all_ok: "Все сетевые службы, DNS, nftables и память работают идеально.",
+        ai_diag_ok: "Диагностика завершена успешно.",
+        ai_diag_done: "Диагностика завершена.",
+
+        // ─── Buttons ───
+        btn_refresh: "🔄 Обновить",
+        btn_retry: "🔄 Повторить",
+        btn_again: "🔄 Ещё раз",
+        btn_speed_again: "⚡ Ещё раз",
+        btn_back_to_groups: "🔙 К списку групп",
+        btn_back_to_sections: "🔙 К списку секций",
+        btn_close_all: "❌ Закрыть все",
+        btn_test: "🩺 Тест",
+        nav_cancel: "⬅️ Отмена",
+        restart_confirm: "⚠️ <b>Перезапустить службы Tachyon?</b>\nТекущие соединения будут разорваны на время перезапуска.",
+        restart_yes: "✅ Да, перезапустить",
+        restart_in_progress: "Перезапускаю службы Tachyon...",
+        restart_success: "Перезапуск выполнен успешно!",
+        restart_error: "Ошибка при перезапуске.",
+        conn_closed: "Все активные соединения сброшены.",
+
+        // ─── Outbounds ───
+        servers_not_found: "Серверы не найдены или sing-box не запущен.",
+        outbounds_hint: "Нажмите кнопку, чтобы переключить сервер.",
+
+        // ─── Logs ───
+        logs_level: "уровень",
+
+        // ─── Info ───
+        info_device: "Устройство",
+        err_info_read: "Ошибка чтения информации:",
+
+        // ─── Updates ───
+        update_new_build: "Новая сборка текущего релиза!",
+        update_available: "Доступно обновление компонента!",
+        build_label: "Сборка",
+
+        // ─── Healer ───
+        heal_running: "ИИ-Автомеханик выполняет диагностику и самолечение...",
+    }
+};
+
+// Resolve language: UCI setting → fallback to "en"
+function resolve_lang(cfg_lang) {
+    let lang = cfg_lang || "en";
+    if (type(lang) != "string") lang = "en";
+    // trim whitespace
+    lang = replace(lang, /^\s+|\s+$/g, "");
+    if (lang == "" || (lang != "en" && lang != "ru")) lang = "en";
+    return lang;
+}
+
+// Return a translation function bound to the given language.
+// Usage: let t = i18n.bind(lang); t("key") → translated string.
+// Strings with %s placeholders use sprintf for substitution.
+function bind(lang) {
+    lang = resolve_lang(lang);
+    return function(key) {
+        let table = strings[lang];
+        let val = table ? table[key] : null;
+        if (val == null) val = strings.en[key];
+        if (val == null) return key;
+        // sprintf-style substitution: pass extra args to t("key", arg1, arg2)
+        if (length(arguments) > 1) {
+            let args = [];
+            for (let i = 1; i < length(arguments); i++)
+                push(args, arguments[i]);
+            try { return sprintf(val, ...args); } catch(e) { return val; }
+        }
+        return val;
+    };
+}
+
+// Return available languages as [{code, label, available}]
+function available_languages(cfg_lang) {
+    let current = resolve_lang(cfg_lang);
+    let ru_available = (current == "ru");
+    let langs = [
+        { code: "en", label: "English", available: true },
+        { code: "ru", label: "Русский", available: ru_available }
+    ];
+    return langs;
+}
+
+// Module exports
+if (sourcepath(1) != null && sourcepath(1) != "")
+    return { resolve_lang, bind, available_languages, strings };

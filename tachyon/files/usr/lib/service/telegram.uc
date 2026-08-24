@@ -6,6 +6,7 @@ let common = require("core.common");
 let helpers = require("core.helpers");
 let api = require("service.api");
 let dns_presets = require("singbox.dns_presets"); // Our new API module
+let i18n = require("service.i18n");
 
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
 const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
@@ -22,6 +23,8 @@ let command_from_args = common.command_from_args;
 let command_capture = common.command_capture;
 let command_output_from_args = common.command_output_from_args;
 let write_text_file = helpers.write_text_file;
+
+let t = i18n.bind("en");
 
 // ─── Callback Data Helpers ────────────────────────────────────────────────────
 
@@ -420,7 +423,7 @@ function safe_allowed_commands_text() {
 function safe_execute(exec_text) {
     let parsed = parse_command_words(exec_text);
     if (parsed.error || length(parsed.words) == 0)
-        return { status: 1, output: "Неверный формат команды" };
+        return { status: 1, output: t("err_invalid_format") };
 
     let argv = parsed.words;
     let command_name = argv[0];
@@ -430,25 +433,25 @@ function safe_execute(exec_text) {
 
     let policy = safe_exec_patterns[base];
     if (!policy)
-        return { status: 1, output: "Команда '" + base + "' не входит в список разрешённых" };
+        return { status: 1, output: t("err_not_allowed", base) };
 
     let rest = slice(argv, 1);
 
     if (policy.exact) {
-        if (length(rest) != length(policy.args)) return { status: 1, output: "Аргументы не совпадают с разрешённым шаблоном" };
+        if (length(rest) != length(policy.args)) return { status: 1, output: t("err_args_mismatch") };
         for (let i = 0; i < length(rest); i++)
-            if (rest[i] != policy.args[i]) return { status: 1, output: "Аргументы не совпадают с разрешённым шаблоном" };
+            if (rest[i] != policy.args[i]) return { status: 1, output: t("err_args_mismatch") };
     } else {
-        if (length(rest) < policy.min_args || length(rest) > policy.max_args) return { status: 1, output: "Неверное число аргументов" };
+        if (length(rest) < policy.min_args || length(rest) > policy.max_args) return { status: 1, output: t("err_wrong_arg_count") };
         // Commands that accept optional flags validate each one against extra_pattern
         if (policy.extra_pattern) {
             for (let arg in rest)
-                if (!match(arg, policy.extra_pattern)) return { status: 1, output: "Аргумент не разрешён: " + arg };
+                if (!match(arg, policy.extra_pattern)) return { status: 1, output: t("err_arg_not_allowed", arg) };
         }
         // For tachyon: allow only read-only subcommand verbs
         if (base == "tachyon" && length(rest) == 1) {
             let allowed_sub = { get_status: 1, doctor: 1, show_version: 1, show_sing_box_version: 1, show_config: 1, get_system_info: 1 };
-            if (!allowed_sub[rest[0]]) return { status: 1, output: "Подкоманда '" + rest[0] + "' не входит в whitelist" };
+            if (!allowed_sub[rest[0]]) return { status: 1, output: t("err_subcmd_not_allowed", rest[0]) };
         }
     }
 
@@ -497,75 +500,75 @@ function format_bytes(b) {
 
 let setting_schema = {
     settings: {
-        // config_version is an internal migration marker - not shown.
-        dns_type: "Тип DNS",
-        dns_server: "DNS Серверы",
-        bootstrap_dns_server: "Bootstrap DNS",
-        dns_strategy: "Стратегия DNS",
-        dns_detour_enabled: "DNS Detour",
-        source_network_interfaces: "Входящие интерфейсы",
-        enable_output_network_interface: "Привязка к WAN",
-        enable_badwan_interface_monitoring: "Мониторинг WAN",
-        enable_yacd: "Панель YACD",
-        disable_quic: "Блокировать QUIC",
-        list_update_enabled: "Обновление списков",
-        component_update_check_enabled: "Обновление ядра",
-        download_lists_via_proxy: "Списки через прокси",
-        download_components_via_proxy: "Ядро через прокси",
-        dont_touch_dhcp: "Не трогать DHCP",
-        isolate_p2p: "Изолировать P2P",
-        log_level: "Уровень логов",
-        exclude_ntp: "Исключить NTP",
-        shutdown_correctly: "Корректное завершение",
-        smart_detect: "Smart Detect",
-        smart_detect_sections: "Секции Smart Detect"
+        dns_type: "dns_type",
+        dns_server: "dns_server",
+        bootstrap_dns_server: "bootstrap_dns_server",
+        dns_strategy: "dns_strategy",
+        dns_detour_enabled: "dns_detour_enabled",
+        source_network_interfaces: "source_network_interfaces",
+        enable_output_network_interface: "enable_output_network_interface",
+        enable_badwan_interface_monitoring: "enable_badwan_interface_monitoring",
+        enable_yacd: "enable_yacd",
+        disable_quic: "disable_quic",
+        list_update_enabled: "list_update_enabled",
+        component_update_check_enabled: "component_update_check_enabled",
+        download_lists_via_proxy: "download_lists_via_proxy",
+        download_components_via_proxy: "download_components_via_proxy",
+        dont_touch_dhcp: "dont_touch_dhcp",
+        isolate_p2p: "isolate_p2p",
+        log_level: "log_level",
+        exclude_ntp: "exclude_ntp",
+        shutdown_correctly: "shutdown_correctly",
+        smart_detect: "smart_detect",
+        smart_detect_sections: "smart_detect_sections"
     },
     telegram: {
-        enabled: "Бот Включен",
-        bot_token: "Токен",
-        admin_ids: "Admin IDs",
-        poll_interval: "Интервал опроса",
-        notify_crash: "Сбои ядра",
-        notify_restart: "Перезапуски",
-        notify_server_switch: "Переключение серверов",
-        notify_subscription: "Статус подписок",
-        notify_cert: "Сертификаты",
-        notify_dns_leak: "Утечки DNS",
-        daily_report_enabled: "Ежедневный отчет",
-        daily_report_hour: "Время отчета (час)",
-        quiet_hours_enabled: "Тихие часы",
-        quiet_hours_start: "Начало тихих часов",
-        quiet_hours_end: "Конец тихих часов",
-        fallback_socks: "Резервный SOCKS5",
-        language: "Язык"
+        enabled: "enabled",
+        bot_token: "bot_token",
+        admin_ids: "admin_ids",
+        poll_interval: "poll_interval",
+        notify_crash: "notify_crash",
+        notify_restart: "notify_restart",
+        notify_server_switch: "notify_server_switch",
+        notify_subscription: "notify_subscription",
+        notify_cert: "notify_cert",
+        notify_dns_leak: "notify_dns_leak",
+        daily_report_enabled: "daily_report_enabled",
+        daily_report_hour: "daily_report_hour",
+        quiet_hours_enabled: "quiet_hours_enabled",
+        quiet_hours_start: "quiet_hours_start",
+        quiet_hours_end: "quiet_hours_end",
+        fallback_socks: "fallback_socks",
+        language: "language"
     },
     subscription_url: {
-        section: "Секция",
-        url: "URL",
-        auto_user_agent: "Auto User-Agent",
-        user_agent: "User-Agent",
-        auto_hwid: "Auto HWID",
-        subscription_update_enabled: "Автообновление",
-        subscription_update_interval: "Интервал обновления",
-        download_via_proxy_enabled: "Через прокси",
-        show_dashboard_metadata: "Метаданные подписки",
-        prefix_nodes: "Префикс узлов",
-        node_prefix: "Строка префикса",
-        include_urltest_groups: "Группы URL-Test",
-        hide_urltest_group_outbounds: "Скрыть узлы групп",
-        hide_detour_outbounds: "Скрыть Detour узлы"
+        section: "section",
+        url: "url",
+        auto_user_agent: "auto_user_agent",
+        user_agent: "user_agent",
+        auto_hwid: "auto_hwid",
+        subscription_update_enabled: "subscription_update_enabled",
+        subscription_update_interval: "subscription_update_interval",
+        download_via_proxy_enabled: "download_via_proxy_enabled",
+        show_dashboard_metadata: "show_dashboard_metadata",
+        prefix_nodes: "prefix_nodes",
+        node_prefix: "node_prefix",
+        include_urltest_groups: "include_urltest_groups",
+        hide_urltest_group_outbounds: "hide_urltest_group_outbounds",
+        hide_detour_outbounds: "hide_detour_outbounds"
     },
     server: {
-        label: "Название",
-        enabled: "Включен",
-        protocol: "Протокол",
-        routing_mode: "Режим"
+        label: "label",
+        enabled: "enabled",
+        protocol: "protocol",
+        routing_mode: "routing_mode"
     }
 };
 
 function get_schema_label(stype, key) {
-    if (setting_schema[stype] && setting_schema[stype][key]) return setting_schema[stype][key];
-    return key;
+    if (setting_schema[stype] && setting_schema[stype][key])
+        return t(setting_schema[stype][key]);
+    return t(key);
 }
 
 function is_boolean_key(key) {
@@ -590,17 +593,17 @@ function is_list_key(key) {
 }
 
 function view_settings_menu(token, chat_id, msg_id) {
-    let text = "⚙️ <b>Все Настройки</b>\n\nВыберите категорию для редактирования:";
+    let text = "⚙️ <b>" + t("menu_all_settings") + "</b>\n\n" + t("menu_choose_cat");
     let keyboard = [
-        [{ text: "🌍 Глобальные настройки", callback_data: "/set_cat settings settings" }],
-        [{ text: "🤖 Настройки Telegram", callback_data: "/set_cat telegram telegram" }],
-        [{ text: "🔗 Подписки", callback_data: "/set_list subscription_url" }],
-        [{ text: "🖥 Кастомные серверы", callback_data: "/set_list server" }],
-        [{ text: "🌐 DNS Серверы (Пресеты)", callback_data: "/dns_presets" }],
-        [{ text: "🔕 Тихие часы", callback_data: "/qh" }],
-        [{ text: "🔍 Проверка правила", callback_data: "/test_rule" }],
-        [{ text: "📤 Экспорт конфига", callback_data: "/export_config" }],
-        [{ text: "⬅️ Назад", callback_data: "/menu" }]
+        [{ text: t("menu_global"), callback_data: "/set_cat settings settings" }],
+        [{ text: t("menu_telegram"), callback_data: "/set_cat telegram telegram" }],
+        [{ text: t("menu_subscriptions"), callback_data: "/set_list subscription_url" }],
+        [{ text: t("menu_servers_short"), callback_data: "/set_list server" }],
+        [{ text: t("menu_dns_presets"), callback_data: "/dns_presets" }],
+        [{ text: t("menu_quiet_hours"), callback_data: "/qh" }],
+        [{ text: t("menu_test_rule"), callback_data: "/test_rule" }],
+        [{ text: t("menu_export_config"), callback_data: "/export_config" }],
+        [{ text: t("nav_back"), callback_data: "/menu" }]
     ];
     if (msg_id) edit_message(token, chat_id, msg_id, text, "HTML", keyboard);
     else send_message(token, chat_id, text, "HTML", keyboard);
@@ -619,8 +622,8 @@ function view_set_list(token, chat_id, msg_id, stype) {
             push(keyboard, [{ text: (s.enabled == "0" ? "❌ " : "✅ ") + label, callback_data: "/set_cat " + stype + " " + sname }]);
         }
     }
-    push(keyboard, [{ text: "🔙 Категории", callback_data: "/settings" }]);
-    let text = "⚙️ <b>Категория: " + stype + "</b>\nВыберите объект:";
+    push(keyboard, [{ text: t("menu_categories"), callback_data: "/settings" }]);
+    let text = "⚙️ <b>" + stype + "</b>\n" + t("choose_section");
     if (msg_id) edit_message(token, chat_id, msg_id, text, "HTML", keyboard);
     else send_message(token, chat_id, text, "HTML", keyboard);
 }
@@ -633,7 +636,7 @@ function view_set_cat(token, chat_id, msg_id, stype, sname, page) {
     let s = c.get_all(CONFIG_NAME, sname);
     if (!s) return view_settings_menu(token, chat_id, msg_id);
     
-    let text = "⚙️ <b>Редактирование:</b> <code>" + escape_html(sname) + "</code> (" + stype + ")\n\n";
+    let text = "⚙️ <b>" + t("section_edit") + ":</b> <code>" + escape_html(sname) + "</code> (" + stype + ")\n\n";
     let keyboard = [];
     
     let keys = [];
@@ -674,8 +677,8 @@ function view_set_cat(token, chat_id, msg_id, stype, sname, page) {
     }
     
     let nav = [];
-    if (start > 0) push(nav, { text: "◀️ Пред", callback_data: "/set_cat " + stype + " " + sname + " " + (page - 1) });
-    if (end < total) push(nav, { text: "След ▶️", callback_data: "/set_cat " + stype + " " + sname + " " + (page + 1) });
+    if (start > 0) push(nav, { text: t("nav_prev"), callback_data: "/set_cat " + stype + " " + sname + " " + (page - 1) });
+    if (end < total) push(nav, { text: t("nav_next"), callback_data: "/set_cat " + stype + " " + sname + " " + (page + 1) });
     if (length(nav) > 0) push(keyboard, nav);
     
     if (stype == "settings" || stype == "telegram") {
@@ -735,7 +738,7 @@ function view_menu(token, chat_id, msg_id) {
                
     let keys_servers = keys(sys.active_servers || {});
     if (length(keys_servers) > 0) {
-        text += "Активные серверы:\n";
+        text += t("status_active_servers") + "\n";
         for (let i = 0; i < length(keys_servers); i++) {
             let gname = keys_servers[i];
             let srv = sys.active_servers[gname];
@@ -743,43 +746,43 @@ function view_menu(token, chat_id, msg_id) {
         }
         text += "\n";
     } else {
-         text += "Активный сервер: <code>Не выбран</code>\n\n";
+         text += t("status_no_server") + "\n\n";
     }
 
-    text += "Выберите раздел для управления:";
+    text += t("choose_section");
                
     let keyboard = [
         [
-            { text: "📊 Статус", callback_data: "/status" },
+            { text: t("menu_status"), callback_data: "/status" },
             { text: "🔍 Runtime", callback_data: "/runtime" }
         ],
         [
-            { text: "🌐 Outbounds", callback_data: "/outbounds" },
-            { text: "⚙️ Секции", callback_data: "/sections" }
+            { text: t("menu_outbounds"), callback_data: "/outbounds" },
+            { text: t("menu_sections"), callback_data: "/sections" }
         ],
         [
-            { text: "💻 Устройства", callback_data: "/devices" },
+            { text: t("menu_devices"), callback_data: "/devices" },
             { text: "🐕 Watchdog", callback_data: "/watchdog" }
         ],
         [
-            { text: "⚡ Speedtest", callback_data: "/speed" },
-            { text: "📍 Ping", callback_data: "/ping" }
+            { text: t("menu_speed"), callback_data: "/speed" },
+            { text: t("menu_ping"), callback_data: "/ping" }
         ],
         [
-            { text: "🩺 Диагностика", callback_data: "/test" },
-            { text: "🔗 Подключения", callback_data: "/connections" }
+            { text: t("menu_diagnostic"), callback_data: "/test" },
+            { text: t("menu_connections"), callback_data: "/connections" }
         ],
         [
-            { text: "📋 Логи", callback_data: "/logs" },
-            { text: "ℹ️ Инфо", callback_data: "/info" }
+            { text: t("menu_logs"), callback_data: "/logs" },
+            { text: t("menu_info"), callback_data: "/info" }
         ],
         [
-            { text: "🤖 ИИ-Самолечение", callback_data: "/heal" },
-            { text: "🎮 Игровой QoS", callback_data: "/qos" }
+            { text: t("menu_heal"), callback_data: "/heal" },
+            { text: t("menu_qos"), callback_data: "/qos" }
         ],
         [
-            { text: "⚙️ Все Настройки", callback_data: "/settings" },
-            { text: "📖 Справка", callback_data: "/help" }
+            { text: t("menu_all_settings"), callback_data: "/settings" },
+            { text: t("menu_help"), callback_data: "/help" }
         ]
     ];
     
@@ -790,10 +793,10 @@ function view_menu(token, chat_id, msg_id) {
 function view_status(token, chat_id, msg_id) {
     let sys = api.get_system_status();
     let conn = api.check_connection();
-    let text = "📊 <b>Статус Системы</b>\n\n" +
-               "Версия: <code>" + (sys.tachyon_version || "?") + "</code>\n" +
-               "Аптайм: <code>" + sys.uptime + "</code>\n" +
-               "CPU: <code>" + sys.cpu + "</code>\n" +
+    let text = "📊 <b>" + t("menu_status") + "</b>\n\n" +
+               t("status_version") + ": <code>" + (sys.tachyon_version || "?") + "</code>\n" +
+               t("status_uptime") + ": <code>" + sys.uptime + "</code>\n" +
+               t("status_cpu") + ": <code>" + sys.cpu + "</code>\n" +
                "RAM: <code>" + sys.ram_avail + "MB / " + sys.ram_total + "MB</code>\n\n" +
                "sing-box: <code>" + sys.singbox + "</code>\n" +
                "Watchdog: <code>" + (sys.watchdog_running ? "🟢 running" : "🔴 stopped") + "</code>\n\n" +
@@ -803,12 +806,12 @@ function view_status(token, chat_id, msg_id) {
                "LAN: <code>" + (sys.lan_ip || "?") + "</code>\n";
 
     if (sys.pause_remaining > 0) {
-        text += "\n⏸ Пауза: " + as_string(sys.pause_remaining) + " сек.\n";
+        text += "\n" + t("status_pause") + ": " + as_string(sys.pause_remaining) + " sec.\n";
     }
 
     let keys_servers = keys(sys.active_servers || {});
     if (length(keys_servers) > 0) {
-        text += "\nАктивные серверы:\n";
+        text += "\n" + t("status_active_servers") + "\n";
         for (let i = 0; i < length(keys_servers); i++) {
             let gname = keys_servers[i];
             let srv = sys.active_servers[gname];
@@ -819,14 +822,14 @@ function view_status(token, chat_id, msg_id) {
 
     let keyboard = [
         [
-            { text: "⚡ Speedtest", callback_data: "/speed" },
-            { text: "📍 Ping", callback_data: "/ping" }
+            { text: t("menu_speed"), callback_data: "/speed" },
+            { text: t("menu_ping"), callback_data: "/ping" }
         ],
         [
-            { text: "🔄 Обновить", callback_data: "/status" },
-            { text: "🩺 Тест", callback_data: "/test" }
+            { text: t("btn_refresh"), callback_data: "/status" },
+            { text: t("btn_test"), callback_data: "/test" }
         ],
-        [{ text: "⬅️ Назад", callback_data: "/menu" }]
+        [{ text: t("nav_back"), callback_data: "/menu" }]
     ];
 
     if (msg_id) edit_message(token, chat_id, msg_id, text, "HTML", keyboard);
@@ -837,17 +840,17 @@ function view_runtime(token, chat_id, msg_id) {
     let data = api.get_clash_connections();
     let text = "🔍 <b>Runtime Info</b>\n\n";
     if (!data || data.downloadTotal == null) {
-        text += "❌ Не удалось получить статистику соединений.";
+        text += t("err_conn_stats");
     } else {
-        text += "📥 Скачано: <code>" + format_bytes(data.downloadTotal) + "</code>\n" +
-                "📤 Отдано: <code>" + format_bytes(data.uploadTotal) + "</code>\n" +
-                "🧠 Память: <code>" + format_bytes(data.memory) + "</code>\n" +
-                "🔗 Соединений: <code>" + length(data.connections || []) + "</code>\n";
+        text += t("stat_download") + ": <code>" + format_bytes(data.downloadTotal) + "</code>\n" +
+                t("stat_upload") + ": <code>" + format_bytes(data.uploadTotal) + "</code>\n" +
+                t("stat_memory") + ": <code>" + format_bytes(data.memory) + "</code>\n" +
+                t("stat_connections") + ": <code>" + length(data.connections || []) + "</code>\n";
     }
     
     let keyboard = [
-        [{ text: "🔄 Обновить", callback_data: "/runtime" }],
-        [{ text: "⬅️ Назад", callback_data: "/menu" }]
+        [{ text: t("btn_refresh"), callback_data: "/runtime" }],
+        [{ text: t("nav_back"), callback_data: "/menu" }]
     ];
     
     if (msg_id) edit_message(token, chat_id, msg_id, text, "HTML", keyboard);
@@ -857,9 +860,9 @@ function view_runtime(token, chat_id, msg_id) {
 function view_outbounds(token, chat_id, msg_id, group_name) {
     let data = api.get_clash_proxies_data();
     if (!data || !data.proxies) {
-        let err = "❌ Не удалось получить список серверов.";
-        if (msg_id) edit_message(token, chat_id, msg_id, err, "HTML", [[{text:"⬅️ Назад", callback_data:"/menu"}]]);
-        else send_message(token, chat_id, err, "HTML", [[{text:"⬅️ Назад", callback_data:"/menu"}]]);
+        let err = t("err_servers_list");
+        if (msg_id) edit_message(token, chat_id, msg_id, err, "HTML", [[{text:t("nav_back"), callback_data:"/menu"}]]);
+        else send_message(token, chat_id, err, "HTML", [[{text:t("nav_back"), callback_data:"/menu"}]]);
         return;
     }
     
@@ -882,24 +885,24 @@ function view_outbounds(token, chat_id, msg_id, group_name) {
         group_name = groups[0];
     }
     
-    let text = "🌐 <b>Outbounds (Серверы)</b>\n\n";
+    let text = "🌐 <b>" + t("menu_outbounds") + "</b>\n\n";
     let keyboard = [];
     
     if (!group_name) {
-        text += "Выберите группу для настройки сервера:\n\n";
+        text += t("section_choose_group");
         for (let i = 0; i < length(groups); i++) {
             let gname = groups[i];
             let active = data.proxies[gname].now || "none";
             text += "• <b>" + escape_html(gname) + "</b>: <code>" + escape_html(active) + "</code>\n";
             push(keyboard, [{ text: "🌐 " + gname, callback_data: "/outbounds " + gname }]);
         }
-        push(keyboard, [{ text: "🔄 Обновить", callback_data: "/outbounds" }]);
-        push(keyboard, [{ text: "⬅️ Назад", callback_data: "/menu" }]);
+        push(keyboard, [{ text: t("btn_refresh"), callback_data: "/outbounds" }]);
+        push(keyboard, [{ text: t("nav_back"), callback_data: "/menu" }]);
     } else {
         let group_data = data.proxies[group_name];
         if (!group_data) return view_outbounds(token, chat_id, msg_id);
         
-        text += "Группа: <b>" + escape_html(group_name) + "</b>\n\n";
+        text += t("section_group") + ": <b>" + escape_html(group_name) + "</b>\n\n";
         let active_server = group_data.now || "";
         
         let row = [];
@@ -930,14 +933,14 @@ function view_outbounds(token, chat_id, msg_id, group_name) {
         }
         if (length(row) > 0) push(keyboard, row);
         
-        if (count == 0) text += "<i>Серверы не найдены.</i>\n";
-        else text += "\nℹ️ Нажмите кнопку, чтобы переключить сервер.";
+        if (count == 0) text += "<i>" + t("servers_not_found") + "</i>\n";
+        else text += "\nℹ️ " + t("outbounds_hint");
         
-        push(keyboard, [{ text: "🔄 Обновить", callback_data: "/outbounds " + group_name }]);
+        push(keyboard, [{ text: t("btn_refresh"), callback_data: "/outbounds " + group_name }]);
         if (length(groups) > 1) {
-            push(keyboard, [{ text: "🔙 К списку групп", callback_data: "/outbounds" }]);
+            push(keyboard, [{ text: t("btn_back_to_groups"), callback_data: "/outbounds" }]);
         } else {
-            push(keyboard, [{ text: "⬅️ Назад", callback_data: "/menu" }]);
+            push(keyboard, [{ text: t("nav_back"), callback_data: "/menu" }]);
         }
     }
     
@@ -964,7 +967,7 @@ function handle_switch(token, chat_id, msg_id, group_name, server_name) {
 
 function view_sections(token, chat_id, msg_id) {
     let sections = api.get_sections();
-    let text = "⚙️ <b>Секции Маршрутизации</b>\n\n";
+    let text = "⚙️ <b>" + t("menu_sections") + "</b>\n\n";
     let keyboard = [];
     
     for (let s in sections) {
@@ -973,8 +976,8 @@ function view_sections(token, chat_id, msg_id) {
         push(keyboard, [{ text: status + " " + label, callback_data: "/sec_view " + s[".name"] }]);
     }
     
-    push(keyboard, [{ text: "➕ Создать секцию", callback_data: "/sec_create" }]);
-    push(keyboard, [{ text: "⬅️ Назад", callback_data: "/menu" }]);
+    push(keyboard, [{ text: t("section_create"), callback_data: "/sec_create" }]);
+    push(keyboard, [{ text: t("nav_back"), callback_data: "/menu" }]);
     if (msg_id) edit_message(token, chat_id, msg_id, text, "HTML", keyboard);
     else send_message(token, chat_id, text, "HTML", keyboard);
 }
@@ -985,13 +988,13 @@ function view_section_editor(token, chat_id, msg_id, sec_name) {
     let s = c.get_all(CONFIG_NAME, sec_name);
     if (!s) return view_sections(token, chat_id, msg_id);
     
-    let status = (s.enabled == "1") ? "Включена ✅" : "Выключена ❌";
-    let text = "⚙️ <b>Секция:</b> " + escape_html(s.label || sec_name) + "\n" +
-               "Тип: <code>" + escape_html(s.action || "none") + "</code>\n" +
-               "Статус: <b>" + status + "</b>\n\n";
+    let status = (s.enabled == "1") ? t("status_enabled") : t("status_disabled");
+    let text = "⚙️ <b>" + t("section_section") + ":</b> " + escape_html(s.label || sec_name) + "\n" +
+               t("section_type") + ": <code>" + escape_html(s.action || "none") + "</code>\n" +
+               t("section_status") + ": <b>" + status + "</b>\n\n";
                
     if (s.action == "proxy" || s.action == "route") {
-        text += "Цель (Target): <code>" + escape_html(s.target || "main-out") + "</code>\n";
+        text += t("status_target") + ": <code>" + escape_html(s.target || "main-out") + "</code>\n";
     }
     
     let d_count = length(common.list_option(s, "domain")) + length(common.list_option(s, "domain_suffix")) + length(common.list_option(s, "domain_keyword")) + length(common.list_option(s, "domain_regex"));
@@ -1007,28 +1010,28 @@ function view_section_editor(token, chat_id, msg_id, sec_name) {
                
     let keyboard = [];
     push(keyboard, [
-        { text: (s.enabled == "1" ? "🔴 Выкл" : "🟢 Вкл"), callback_data: "/sec_toggle " + sec_name },
-        { text: "✏️ Имя", callback_data: "/sec_rename " + sec_name }
+        { text: (s.enabled == "1" ? "🔴 " + t("status_disabled") : "🟢 " + t("status_enabled")), callback_data: "/sec_toggle " + sec_name },
+        { text: t("btn_rename"), callback_data: "/sec_rename " + sec_name }
     ]);
     
-    push(keyboard, [{ text: "🔀 Действие: " + (s.action || "none"), callback_data: "/sec_action " + sec_name }]);
+    push(keyboard, [{ text: t("section_action") + ": " + (s.action || "none"), callback_data: "/sec_action " + sec_name }]);
     if (s.action == "proxy" || s.action == "route") {
-        push(keyboard, [{ text: "🌐 Цель: " + (s.target || "main-out"), callback_data: "/sec_target " + sec_name }]);
+        push(keyboard, [{ text: t("status_target") + ": " + (s.target || "main-out"), callback_data: "/sec_target " + sec_name }]);
     }
     
     push(keyboard, [
-        { text: "📝 Домены (" + d_count + ")", callback_data: "/sec_list " + sec_name + " domain" },
+        { text: t("section_domains") + " (" + d_count + ")", callback_data: "/sec_list " + sec_name + " domain" },
         { text: "📝 IP (" + ip_count + ")", callback_data: "/sec_list " + sec_name + " ip" }
     ]);
     push(keyboard, [
-        { text: "📝 Источники (" + src_count + ")", callback_data: "/sec_list " + sec_name + " src" },
+        { text: t("section_sources") + " (" + src_count + ")", callback_data: "/sec_list " + sec_name + " src" },
         { text: "📝 Rulesets (" + rs_count + ")", callback_data: "/sec_list " + sec_name + " ruleset" }
     ]);
 
-    push(keyboard, [{ text: "🔗 Подписки (" + sub_count + ")", callback_data: "/sec_subs " + sec_name }]);
+    push(keyboard, [{ text: t("menu_subscriptions") + " (" + sub_count + ")", callback_data: "/sec_subs " + sec_name }]);
     
-    push(keyboard, [{ text: "🗑 Удалить секцию", callback_data: "/sec_delete " + sec_name }]);
-    push(keyboard, [{ text: "🔙 К списку секций", callback_data: "/sections" }]);
+    push(keyboard, [{ text: t("btn_delete_section"), callback_data: "/sec_delete " + sec_name }]);
+    push(keyboard, [{ text: t("btn_back_to_sections"), callback_data: "/sections" }]);
     
     if (msg_id) edit_message(token, chat_id, msg_id, text, "HTML", keyboard);
     else send_message(token, chat_id, text, "HTML", keyboard);
@@ -1162,52 +1165,47 @@ function handle_sec_clear(token, chat_id, msg_id, sec_name, list_type) {
 }
 
 function exec_doctor(token, chat_id) {
-    send_message(token, chat_id, "⏳ <b>Запуск диагностики...</b>", "HTML");
+    send_message(token, chat_id, "⏳ <b>" + t("diag_starting") + "</b>", "HTML");
     let res = command_capture(command_from_args([ "/usr/bin/tachyon", "doctor" ]));
-    let report = res ? (res.output || "Нет вывода диагностики.") : "Ошибка запуска диагностики.";
+    let report = res ? (res.output || t("diag_no_output")) : t("diag_error");
 
-    // The CLI prints a JSON envelope; render a readable summary instead of
-    // dumping raw JSON into the chat.
     let data = null;
     try { data = json(report); } catch (e) {}
     if (data != null && type(data) == "object") {
         let text = trim(as_string(data.report || ""));
         if (text == "") {
-            report = "Пустой отчёт диагностики.";
+            report = t("diag_empty");
         } else {
             let header;
             if (data.busy) {
-                header = "Диагностика уже выполняется другим процессом.";
+                header = t("diag_running");
             } else if (int(data.issues || 0) > 0) {
-                header = sprintf("Проблем: %s", as_string(data.issues));
+                header = sprintf(t("diag_issues_count"), as_string(data.issues));
                 if (int(data.fixed || 0) > 0)
-                    header += sprintf(", исправлено: %s", as_string(data.fixed));
+                    header += sprintf(t("diag_fixed_count"), as_string(data.fixed));
                 let planned = length(data.planned_fixes || []);
                 if (planned > 0)
-                    header += sprintf(", планируется к исправлению: %d", planned) +
-                        "\n(применение: tachyon doctor --fix или кнопка в LuCI)";
+                    header += sprintf(t("diag_planned_count"), planned);
             } else {
-                header = "Проблем не обнаружено.";
+                header = t("diag_clean");
             }
             report = "<b>" + escape_html(header) + "</b>\n\n<pre>" + escape_html(text) + "</pre>";
-            // send_message caps at ~3900 chars; keep the tail (summary lines)
-            // visible rather than cutting mid-report without notice.
             if (length(report) > 3900)
-                report = substr(report, 0, 3900) + "\n... (отчёт сокращён)";
-            send_message(token, chat_id, report, "HTML", [[{text:"⬅️ Назад", callback_data:"/menu"}]]);
+                report = substr(report, 0, 3900) + "\n... (" + t("report_truncated") + ")";
+            send_message(token, chat_id, report, "HTML", [[{text:t("nav_back"), callback_data:"/menu"}]]);
             return;
         }
     }
 
-    if (length(report) > 3500) report = substr(report, 0, 3500) + "\n... (отчёт сокращён)";
-    send_message(token, chat_id, "🩺 <b>Результаты Tachyon Doctor:</b>\n\n<pre>" + escape_html(report) + "</pre>", "HTML", [[{text:"⬅️ Назад", callback_data:"/menu"}]]);
+    if (length(report) > 3500) report = substr(report, 0, 3500) + "\n... (" + t("report_truncated") + ")";
+    send_message(token, chat_id, "🩺 <b>" + t("diag_results") + "</b>\n\n<pre>" + escape_html(report) + "</pre>", "HTML", [[{text:t("nav_back"), callback_data:"/menu"}]]);
 }
 
 function exec_restart(token, chat_id) {
-    let text = "⚠️ <b>Перезапустить службы Tachyon?</b>\nТекущие соединения будут разорваны на время перезапуска.";
+    let text = t("restart_confirm");
     let keyboard = [
-        [{ text: "✅ Да, перезапустить", callback_data: "/confirm_restart" }],
-        [{ text: "⬅️ Отмена", callback_data: "/menu" }]
+        [{ text: t("restart_yes"), callback_data: "/confirm_restart" }],
+        [{ text: t("nav_cancel"), callback_data: "/menu" }]
     ];
     send_message(token, chat_id, text, "HTML", keyboard);
 }
@@ -1215,8 +1213,8 @@ function exec_restart(token, chat_id) {
 function apply_confirmed_restart(token, chat_id, msg_id) {
     edit_message(token, chat_id, msg_id, "🔄 <b>Перезапускаю службы Tachyon...</b>", "HTML");
     let st = command_status(command_from_args(["/usr/bin/tachyon", "restart"]));
-    let text = (st == 0) ? "✅ <b>Перезапуск выполнен успешно!</b>" : "❌ <b>Ошибка при перезапуске.</b>";
-    send_message(token, chat_id, text, "HTML", [[{text:"⬅️ Меню", callback_data:"/menu"}]]);
+    let text = (st == 0) ? "✅ <b>" + t("restart_success") + "</b>" : "❌ <b>" + t("restart_error") + "</b>";
+    send_message(token, chat_id, text, "HTML", [[{text:t("nav_menu"), callback_data:"/menu"}]]);
 }
 
 // ─── Backup restore: safe extraction, UCI validation, rollback ───────────────
@@ -1514,7 +1512,7 @@ function view_instances(token, chat_id, msg_id) {
                 text += "• <code>" + escape_html(name) + "</code> (" + p.type + "): <b>" + delay + "</b>\n";
                 count++;
             }
-            if (count == 0) text += "Серверы не найдены или sing-box не запущен.";
+            if (count == 0) text += t("servers_none");
         } catch(e) {
             text += "Ошибка парсинга API: " + e;
         }
@@ -1534,42 +1532,41 @@ function view_instances(token, chat_id, msg_id) {
 // ─── Phase 1: Speed, Ping, Improved Status ─────────────────────────────────
 
 function exec_speedtest(token, chat_id, msg_id) {
-    let wait_text = "⚡ <b>Запуск Speedtest...</b>\n\nТестирую скорость через Cloudflare. Это займёт до 30 секунд.";
+    let wait_text = t("speed_starting");
     if (msg_id) edit_message(token, chat_id, msg_id, wait_text, "HTML");
     else send_message(token, chat_id, wait_text, "HTML");
 
     let result = api.run_speedtest();
-    let text = "⚡ <b>Результат Speedtest</b>\n\n";
+    let text = "⚡ <b>" + t("speed_result") + "</b>\n\n";
     if (result) {
-        // A failed transfer yields 0 bytes/s; report that as an error instead of "0.0 Mbps"
-        text += "📥 Прямое соединение: " +
+        text += t("speed_direct") + " " +
             (result.direct_mbps > 0
                 ? "<code>" + sprintf("%.1f", result.direct_mbps) + " Mbps</code>\n"
-                : "❌ не удалось измерить\n");
-        text += "📤 Через прокси: " +
+                : t("speed_fail_measure") + "\n");
+        text += t("speed_proxy") + " " +
             (result.proxy_mbps > 0
                 ? "<code>" + sprintf("%.1f", result.proxy_mbps) + " Mbps</code>\n"
-                : "❌ не удалось измерить\n");
+                : t("speed_fail_measure") + "\n");
         if (result.direct_mbps <= 0 && result.proxy_mbps <= 0)
-            text += "\n<i>Проверьте доступ в интернет и работу sing-box.</i>\n";
+            text += "\n<i>" + t("speed_check_hint") + "</i>\n";
     } else {
-        text += "❌ Не удалось выполнить тест. Проверьте, запущен ли sing-box.\n";
+        text += t("speed_error") + "\n";
     }
 
     let keyboard = [
-        [{ text: "⚡ Ещё раз", callback_data: "/speed" }],
-        [{ text: "⬅️ Назад", callback_data: "/status" }]
+        [{ text: t("btn_speed_again"), callback_data: "/speed" }],
+        [{ text: t("nav_back"), callback_data: "/status" }]
     ];
     if (msg_id) edit_message(token, chat_id, msg_id, text, "HTML", keyboard);
     else send_message(token, chat_id, text, "HTML", keyboard);
 }
 
 function view_ping(token, chat_id, msg_id) {
-    let text = "📍 <b>Задержка до серверов</b>\n\n";
+    let text = "📍 <b>" + t("menu_ping") + "</b>\n\n";
     let data = api.get_clash_proxies_data();
     if (!data || !data.proxies) {
-        text += "❌ Не удалось получить данные из Clash API.";
-        let keyboard = [[{ text: "🔄 Обновить", callback_data: "/ping" }, { text: "⬅️ Назад", callback_data: "/status" }]];
+        text += t("ping_api_error");
+        let keyboard = [[{ text: t("btn_refresh"), callback_data: "/ping" }, { text: t("nav_back"), callback_data: "/status" }]];
         if (msg_id) edit_message(token, chat_id, msg_id, text, "HTML", keyboard);
         else send_message(token, chat_id, text, "HTML", keyboard);
         return;
@@ -1587,7 +1584,7 @@ function view_ping(token, chat_id, msg_id) {
         text += icon + " <code>" + escape_html(name) + "</code>: <code>" + delay + " ms</code>\n";
         shown++;
     }
-    if (shown == 0) text += "Нет данных о задержках. Нажмите «Обновить».";
+    if (shown == 0) text += t("latency_no_data");
 
     let keyboard = [
         [{ text: "🔄 Обновить", callback_data: "/ping" }],
@@ -1600,19 +1597,19 @@ function view_ping(token, chat_id, msg_id) {
 // ─── Phase 2: Quick Test, Logs, System Info ────────────────────────────────
 
 function view_quick_test(token, chat_id, msg_id) {
-    let text = "🩺 <b>Быстрая диагностика</b>\n\n";
+    let text = "🩺 <b>" + t("test_title") + "</b>\n\n";
     let conn = api.check_connection();
     let sys = api.get_system_status();
 
-    text += (conn && conn.direct ? "✅" : "❌") + " Прямое соединение\n";
-    text += (conn && conn.proxy ? "✅" : "❌") + " Прокси соединение\n";
-    text += (sys && sys.singbox_running ? "✅" : "❌") + " sing-box процесс\n";
-    text += (sys && sys.tachyon_running ? "✅" : "❌") + " Tachyon сервис\n";
+    text += (conn && conn.direct ? "✅" : "❌") + " " + t("test_direct") + "\n";
+    text += (conn && conn.proxy ? "✅" : "❌") + " " + t("test_proxy") + "\n";
+    text += (sys && sys.singbox_running ? "✅" : "❌") + " sing-box\n";
+    text += (sys && sys.tachyon_running ? "✅" : "❌") + " " + t("test_service") + "\n";
     text += (sys && sys.watchdog_running ? "✅" : "❌") + " Watchdog\n";
 
     let nft = command_capture(command_from_args(["/usr/sbin/nft", "list", "tables"]));
     text += (nft && nft.status == 0 && match(nft.output || "", /ip tachyon/)) ? "✅" : "❌";
-    text += " nftables правила\n";
+    text += " " + t("test_nft") + "\n";
 
     let dns_ok = false;
     try {
@@ -1620,19 +1617,16 @@ function view_quick_test(token, chat_id, msg_id) {
         dns_ok = dns_res && dns_res.status == 0;
     }
     catch (e) {
-        // dns_ok stays false, which is what the report line below prints. A
-        // failing DNS check and a failing nslookup invocation mean the same
-        // thing to the reader.
     }
-    text += (dns_ok ? "✅" : "❌") + " DNS на роутере\n";
+    text += (dns_ok ? "✅" : "❌") + " DNS\n";
 
     if (sys && sys.pause_remaining > 0) {
-        text += "\n⏸ Пауза активна: " + as_string(sys.pause_remaining) + " сек.";
+        text += "\n⏸ " + t("test_pause") + " " + as_string(sys.pause_remaining) + " sec.";
     }
 
     let keyboard = [
-        [{ text: "🔄 Повторить", callback_data: "/test" }],
-        [{ text: "⬅️ Назад", callback_data: "/menu" }]
+        [{ text: t("btn_retry"), callback_data: "/test" }],
+        [{ text: t("nav_back"), callback_data: "/menu" }]
     ];
     if (msg_id) edit_message(token, chat_id, msg_id, text, "HTML", keyboard);
     else send_message(token, chat_id, text, "HTML", keyboard);
@@ -1661,9 +1655,9 @@ function view_logs(token, chat_id, msg_id, level, count) {
         for (let i = start; i < length(filtered); i++) {
             text += escape_html(filtered[i]) + "\n";
         }
-        if (length(filtered) == 0) text += "Нет записей для данного уровня.\n";
+        if (length(filtered) == 0) text += t("logs_no_records");
     } else {
-        text += "Не удалось прочитать логи.\n";
+        text += t("logs_read_error");
     }
     text += "</pre>";
 
@@ -1722,22 +1716,22 @@ function view_connections(token, chat_id, msg_id, page) {
     page = int(page || 0);
     if (page < 0) page = 0;
     let data = api.get_clash_connections();
-    let text = "🔗 <b>Активные подключения</b>\n\n";
+    let text = "🔗 <b>" + t("menu_connections") + "</b>\n\n";
 
     if (!data || !data.connections || length(data.connections) == 0) {
-        text += "Нет активных подключений.";
+        text += t("conn_none");
         let keyboard = [
-            [{ text: "🔄 Обновить", callback_data: "/connections" }],
-            [{ text: "⬅️ Назад", callback_data: "/menu" }]
+            [{ text: t("btn_refresh"), callback_data: "/connections" }],
+            [{ text: t("nav_back"), callback_data: "/menu" }]
         ];
         if (msg_id) edit_message(token, chat_id, msg_id, text, "HTML", keyboard);
         else send_message(token, chat_id, text, "HTML", keyboard);
         return;
     }
 
-    text += "📥 Всего скачано: <code>" + format_bytes(data.downloadTotal) + "</code>\n";
-    text += "📤 Всего отдано: <code>" + format_bytes(data.uploadTotal) + "</code>\n";
-    text += "🔗 Соединений: <code>" + length(data.connections) + "</code>\n\n";
+    text += t("conn_total_down") + ": <code>" + format_bytes(data.downloadTotal) + "</code>\n";
+    text += t("conn_total_up") + ": <code>" + format_bytes(data.uploadTotal) + "</code>\n";
+    text += t("stat_connections") + ": <code>" + length(data.connections) + "</code>\n\n";
 
     let per_page = 8;
     let total = length(data.connections);
@@ -1768,8 +1762,8 @@ function view_connections(token, chat_id, msg_id, page) {
         if (end < total) push(nav, { text: "▶️ Next", callback_data: "/connections " + as_string(page + 1) });
         push(keyboard, nav);
     }
-    push(keyboard, [{ text: "🔄 Обновить", callback_data: "/connections" }]);
-    push(keyboard, [{ text: "❌ Закрыть все", callback_data: "/close_connections" }]);
+    push(keyboard, [{ text: t("btn_refresh"), callback_data: "/connections" }]);
+    push(keyboard, [{ text: t("btn_close_all"), callback_data: "/close_connections" }]);
     push(keyboard, [{ text: "⬅️ Назад", callback_data: "/menu" }]);
 
     if (msg_id) edit_message(token, chat_id, msg_id, text, "HTML", keyboard);
@@ -1801,7 +1795,7 @@ function view_sec_subs(token, chat_id, msg_id, sec_name) {
     push(keyboard, [{ text: "🔙 Назад", callback_data: "/sec_view " + sec_name }]);
     let text = "🔗 <b>Подписки секции " + escape_html(sec_name) + "</b>\n\n";
     if (count == 0) {
-        text += "Нет подписок. Добавьте URL подписки для скачивания правил.";
+        text += t("sub_none");
     } else {
         text += "Найдено подписок: " + count;
     }
@@ -1897,7 +1891,39 @@ function view_help(token, chat_id, msg_id) {
     else send_message(token, chat_id, text, "HTML", keyboard);
 }
 
-// ─── Phase 4: Quiet Hours, Rule Test, Export ───────────────────────────────
+// ─── Phase 4: Language, Quiet Hours, Rule Test, Export ───────────────────────
+
+function view_language(token, chat_id, msg_id) {
+    let c = uci_core.cursor();
+    c.load(CONFIG_NAME);
+    let current_lang = option(c.get_all(CONFIG_NAME, "telegram"), "language", "en");
+    let langs = i18n.available_languages(current_lang);
+
+    let text = t("choose_language") + "\n\n" + t("lang_current", current_lang);
+    let keyboard = [];
+    let row = [];
+    for (let i = 0; i < length(langs); i++) {
+        let l = langs[i];
+        let marker = (l.code == current_lang) ? " ✅" : "";
+        push(row, { text: l.label + marker, callback_data: "/lang_set " + l.code });
+        if (length(row) == 2) { push(keyboard, row); row = []; }
+    }
+    if (length(row) > 0) push(keyboard, row);
+    push(keyboard, [{ text: t("nav_back"), callback_data: "/settings" }]);
+
+    if (msg_id) edit_message(token, chat_id, msg_id, text, "HTML", keyboard);
+    else send_message(token, chat_id, text, "HTML", keyboard);
+}
+
+function handle_lang_set(token, chat_id, msg_id, lang) {
+    lang = i18n.resolve_lang(lang);
+    let c = uci_core.cursor();
+    c.load(CONFIG_NAME);
+    c.set(CONFIG_NAME, "telegram", "language", lang);
+    c.commit(CONFIG_NAME);
+    return send_message(token, chat_id, t("lang_saved") + " " + t("lang_current", lang), "HTML",
+        [[{ text: t("nav_back"), callback_data: "/settings" }]]);
+}
 
 function view_quiet_hours(token, chat_id, msg_id) {
     let c = uci_core.cursor();
@@ -2150,7 +2176,7 @@ function exec_ai_heal(token, chat_id, msg_id) {
             if (st.last_incident) {
                 text += "⚠️ <b>Устранён инцидент:</b> " + escape_html(st.last_incident.description || "") + "\n";
                 text += "🔧 <b>Авто-решение:</b> " + escape_html(st.last_incident.resolution || "") + "\n\n";
-                text += "Все системы приведены в штатную норму! 🟢";
+                text += t("status_normal");
             } else {
                 text += "🟢 Все сетевые службы, DNS, nftables и память работают идеально.";
             }
@@ -2251,6 +2277,11 @@ function dispatch_command(token, chat_id, text, msg_id) {
     if (cmd == "/test") return view_quick_test(token, chat_id, msg_id);
     if (cmd == "/info") return view_system_info(token, chat_id, msg_id);
     if (cmd == "/help") return view_help(token, chat_id, msg_id);
+    if (cmd == "/lang") return view_language(token, chat_id, msg_id);
+    if (match(cmd, /^\/lang_set /)) {
+        let lang = trim(substr(cmd, 11));
+        return handle_lang_set(token, chat_id, msg_id, lang);
+    }
 
     if (match(cmd, /^\/logs /)) {
         let parts = split(trim(substr(cmd, 6)), " ");
@@ -2981,24 +3012,25 @@ function worker() {
     if (cfg.enabled != "1" || !cfg.bot_token) return 0;
 
     let commands = [
-        { command: "menu",      description: "Главное меню" },
-        { command: "status",    description: "Статус системы" },
-        { command: "runtime",   description: "Статистика трафика" },
-        { command: "outbounds", description: "Прокси серверы" },
-        { command: "sections",  description: "Секции маршрутизации" },
-        { command: "instances", description: "Live серверы" },
-        { command: "speed",     description: "Тест скорости" },
-        { command: "ping",      description: "Задержка до серверов" },
-        { command: "test",      description: "Быстрая диагностика" },
-        { command: "logs",      description: "Просмотр логов" },
-        { command: "info",      description: "Информация о системе" },
-        { command: "connections", description: "Активные подключения" },
-        { command: "test_rule", description: "Проверка правила" },
-        { command: "help",      description: "Справка" },
-        { command: "check_updates", description: "Проверить обновления" },
-        { command: "close_connections", description: "Закрыть все соединения" },
-        { command: "doctor",    description: "Диагностика" },
-        { command: "restart",   description: "Перезапуск служб Tachyon" }
+        { command: "menu",      description: t("cmd_menu") },
+        { command: "status",    description: t("cmd_status") },
+        { command: "runtime",   description: t("cmd_runtime") },
+        { command: "outbounds", description: t("cmd_outbounds") },
+        { command: "sections",  description: t("cmd_sections") },
+        { command: "instances", description: t("cmd_instances") },
+        { command: "speed",     description: t("cmd_speed") },
+        { command: "ping",      description: t("cmd_ping") },
+        { command: "test",      description: t("cmd_test") },
+        { command: "logs",      description: t("cmd_logs") },
+        { command: "info",      description: t("cmd_info") },
+        { command: "connections", description: t("cmd_connections") },
+        { command: "test_rule", description: t("cmd_test_rule") },
+        { command: "help",      description: t("cmd_help") },
+        { command: "check_updates", description: t("cmd_check_updates") },
+        { command: "close_connections", description: t("cmd_close_connections") },
+        { command: "doctor",    description: t("cmd_doctor") },
+        { command: "restart",   description: t("cmd_restart") },
+        { command: "lang",      description: t("cmd_lang") }
     ];
     tg_request(cfg.bot_token, "setMyCommands", { commands: commands });
 
@@ -3028,6 +3060,7 @@ function worker() {
         try {
             cfg = settings();
             if (cfg.enabled != "1") break;
+            t = i18n.bind(cfg.language);
             let res = process_updates(cfg.bot_token, cfg.admin_ids);
 
             if (res === false) {
