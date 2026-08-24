@@ -93,6 +93,32 @@ function xhttp_copy_known_settings(target, source) {
         "sc_min_posts_interval_ms",
         "scStreamUpServerSecs",
         "sc_stream_up_server_secs",
+        "sessionPlacement",
+        "session_placement",
+        "sessionKey",
+        "session_key",
+        "seqPlacement",
+        "seq_placement",
+        "seqKey",
+        "seq_key",
+        "uplinkDataPlacement",
+        "uplink_data_placement",
+        "uplinkDataKey",
+        "uplink_data_key",
+        "uplinkChunkSize",
+        "uplink_chunk_size",
+        "uplinkHttpMethod",
+        "uplink_http_method",
+        "xPaddingObfsMode",
+        "x_padding_obfs_mode",
+        "xPaddingPlacement",
+        "x_padding_placement",
+        "xPaddingKey",
+        "x_padding_key",
+        "xPaddingHeader",
+        "x_padding_header",
+        "xPaddingMethod",
+        "x_padding_method",
         "xmux"
     ]) {
         if (xhttp_value_present(source[key]))
@@ -240,6 +266,45 @@ function xhttp_normalize_xmux(value) {
     xhttp_optional_xmux_integer(result, "h_keep_alive_period", xhttp_object_setting_value(source, "hKeepAlivePeriod", "h_keep_alive_period"));
 
     return length(keys(result)) > 0 ? result : null;
+}
+
+function xhttp_optional_string(object, key, value) {
+    if (!xhttp_value_present(value))
+        return;
+    value = trim(as_string(value));
+    if (value != "")
+        object[key] = value;
+}
+
+function xhttp_optional_enum(object, key, value, allowed) {
+    if (!xhttp_value_present(value))
+        return;
+    let normalized = lc(trim(as_string(value)));
+    for (let candidate in allowed) {
+        if (normalized == lc(as_string(candidate))) {
+            object[key] = as_string(candidate);
+            return;
+        }
+    }
+}
+
+function xhttp_apply_v2_settings(result, primary, extra) {
+    // XHTTP v2 keys (session/seq placement, uplink-data placement, X-Padding
+    // obfuscation). Every field is opt-in per the sing-box-lx contract; the
+    // v1 wire shape stays byte-identical when none are present.
+    xhttp_optional_enum(result, "session_placement", xhttp_setting_value(primary, extra, "sessionPlacement", "session_placement"), [ "path", "query", "header", "cookie" ]);
+    xhttp_optional_string(result, "session_key", xhttp_setting_value(primary, extra, "sessionKey", "session_key"));
+    xhttp_optional_enum(result, "seq_placement", xhttp_setting_value(primary, extra, "seqPlacement", "seq_placement"), [ "path", "query", "header", "cookie" ]);
+    xhttp_optional_string(result, "seq_key", xhttp_setting_value(primary, extra, "seqKey", "seq_key"));
+    xhttp_optional_enum(result, "uplink_data_placement", xhttp_setting_value(primary, extra, "uplinkDataPlacement", "uplink_data_placement"), [ "body", "auto", "header", "cookie" ]);
+    xhttp_optional_string(result, "uplink_data_key", xhttp_setting_value(primary, extra, "uplinkDataKey", "uplink_data_key"));
+    xhttp_optional_positive_range(result, "uplink_chunk_size", xhttp_setting_value(primary, extra, "uplinkChunkSize", "uplink_chunk_size"));
+    xhttp_optional_enum(result, "uplink_http_method", xhttp_setting_value(primary, extra, "uplinkHttpMethod", "uplink_http_method"), [ "POST", "GET" ]);
+    xhttp_optional_bool(result, "x_padding_obfs_mode", xhttp_setting_value(primary, extra, "xPaddingObfsMode", "x_padding_obfs_mode"));
+    xhttp_optional_enum(result, "x_padding_placement", xhttp_setting_value(primary, extra, "xPaddingPlacement", "x_padding_placement"), [ "cookie", "header", "query", "queryInHeader" ]);
+    xhttp_optional_string(result, "x_padding_key", xhttp_setting_value(primary, extra, "xPaddingKey", "x_padding_key"));
+    xhttp_optional_string(result, "x_padding_header", xhttp_setting_value(primary, extra, "xPaddingHeader", "x_padding_header"));
+    xhttp_optional_enum(result, "x_padding_method", xhttp_setting_value(primary, extra, "xPaddingMethod", "x_padding_method"), [ "repeat-x", "tokenish" ]);
 }
 
 function json_decode_text(text) {
@@ -641,6 +706,7 @@ function add_transport(url) {
         let xmux = xhttp_normalize_xmux(xhttp_setting_value(query, extra_settings, "xmux", "xmux"));
         if (xmux)
             result.xmux = xmux;
+        xhttp_apply_v2_settings(result, query, extra_settings);
         return result;
     }
 
@@ -2250,6 +2316,7 @@ function xray_transport_from_stream(stream) {
         let xmux = xhttp_normalize_xmux(settings.xmux);
         if (xmux)
             result.xmux = xmux;
+        xhttp_apply_v2_settings(result, settings, settings);
         return result;
     }
 

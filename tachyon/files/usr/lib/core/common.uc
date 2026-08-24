@@ -155,6 +155,118 @@ function int_option(section, key, fallback) {
     return int(value, 10);
 }
 
+function int_or_range_option(section, key, fallback) {
+    let value = trim(as_string(option(section, key, "")));
+    if (match(value, /^[0-9]+$/))
+        return int(value, 10);
+    if (match(value, /^[0-9]+-[0-9]+$/))
+        return value;
+    return fallback;
+}
+
+// Normalize a custom-signature-packet value (AmneziaWG i1-i5 / j1-j3) into
+// the tag-chain format understood by the userspace WireGuard shipped with
+// sing-box-extended and sing-box-lx ("<b 0x..>", "<r N>", "<rd N>", "<rc N>",
+// "<c>", "<t>"). Existing tag chains pass through verbatim; classic
+// AmneziaWG plain-hex payloads are wrapped into a static-bytes tag, because
+// the userspace parser silently ignores bare hex and the handshake then
+// never completes against servers expecting those packets.
+function awg_tag_chain(value) {
+    value = trim(as_string(value));
+    if (value == "" || value == "0")
+        return "";
+
+    // A well-formed tag chain: keep it verbatim, including inner spacing
+    // ("<b 0x..>" carries a space inside each tag).
+    if (match(value, /^(<[^<>]+>)+$/))
+        return value;
+
+    // Classic AmneziaWG form: plain hex (with optional 0x prefix).
+    let hex = lc(value);
+    hex = replace(hex, /^0x/, "");
+    if (match(hex, /^[0-9a-f]+$/) && length(hex) % 2 == 0)
+        return "<b 0x" + hex + ">";
+
+    // Unsupported shape: emit nothing rather than a value that would be
+    // silently dropped at runtime; validation reports it.
+    return "";
+}
+
+
+// The j1/j2/j3/itime WireGuardAmnezia fields exist only up to
+// sing-box-extended v1.13.16-extended-2.6.0; starting with 2.6.1 (Amnezia 3.0
+// integration) they were removed from the schema and sing-box aborts on
+// unknown JSON fields.
+function extended_awg_schema_has_junk_signatures(version) {
+    let m = match(lc(as_string(version)), /extended-([0-9]+)\.([0-9]+)\.([0-9]+)/);
+    if (m == null)
+        return false;
+
+    let major = int(m[1], 10);
+    let minor = int(m[2], 10);
+    let patch = int(m[3], 10);
+
+    if (major < 2) return true;
+    if (major > 2) return false;
+    if (minor < 6) return true;
+    if (minor > 6) return false;
+    return patch <= 0;
+}
+
+
+function bytes_to_hex(value) {
+    value = as_string(value);
+    let result = "";
+    for (let i = 0; i < length(value); i++)
+        result += sprintf("%02x", ord(value, i));
+    return result;
+}
+
+// Normalize a stored MTProto secret into the canonical serialized hex form
+// ("ee" + 16-byte key + faketls host) that sing-box-extended (mtg-multi)
+// accepts. Users paste the key or full secret in hex or base64; mtg-multi
+// tries hex first and then raw-url base64, so mirror that precedence.
+// Returns null when the value cannot be interpreted as a valid secret.
+function mtproto_secret_canonical(secret, faketls) {
+    secret = trim(as_string(secret));
+    faketls = trim(as_string(faketls == null ? "google.com" : faketls));
+    if (secret == "" || faketls == "")
+        return null;
+
+    let lower = lc(secret);
+
+    // Hex form: a fully serialized "ee..." secret or a bare 16-byte key.
+    if (length(lower) % 2 == 0 && match(lower, /^[0-9a-f]+$/)) {
+        if (substr(lower, 0, 2) == "ee")
+            return lower;
+        return "ee" + lower + bytes_to_hex(faketls);
+    }
+
+    // Base64 form: translate to the standard alphabet and pad.
+    let b64 = replace(replace(secret, /-/g, "+"), /_/g, "/");
+    let remainder = length(b64) % 4;
+    if (remainder == 1)
+        return null;
+    while (length(b64) % 4 > 0)
+        b64 += "=";
+
+    let decoded = b64dec(b64);
+    if (decoded == null || decoded == false)
+        return null;
+
+    // Serialized secret: 0xee marker + key(16) + host(>=1).
+    if (ord(decoded, 0) == 238) {
+        if (length(decoded) < 18)
+            return null;
+        return bytes_to_hex(decoded);
+    }
+
+    // Bare key bytes: wrap them into the serialized form ourselves.
+    if (length(decoded) < 16)
+        return null;
+    return "ee" + substr(bytes_to_hex(decoded), 0, 32) + bytes_to_hex(faketls);
+}
+
 function shell_quote(value) {
     return "'" + replace(as_string(value), /'/g, "'\\''") + "'";
 }
@@ -382,6 +494,11 @@ return {
     bool_option,
     bool_value,
     int_option,
+    int_or_range_option,
+    bytes_to_hex,
+    extended_awg_schema_has_junk_signatures,
+    awg_tag_chain,
+    mtproto_secret_canonical,
     shell_quote,
     command_from_args,
     close_inherited_fds,

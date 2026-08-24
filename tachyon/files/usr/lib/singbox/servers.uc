@@ -9,6 +9,7 @@ let option = common.option;
 let list_option = common.list_option;
 let bool_option = common.bool_option;
 let int_option = common.int_option;
+let int_or_range_option = common.int_or_range_option;
 let array_or_empty = common.array_or_empty;
 
 function safe_filename(value) {
@@ -33,12 +34,21 @@ function uci_bin_to_hex(val) {
     return s;
 }
 
+// AWG CPS decoy values (awg_i1..awg_i5, awg_j1..awg_j3): normalized to the
+// AmneziaWG 2.0 tag-chain format by common.awg_tag_chain — classic plain-hex
+// payloads become "<b 0x..>", existing tag chains pass through verbatim.
+function awg_cps_option(section, key) {
+    return common.awg_tag_chain(option(section, key, ""));
+}
+
 function mtproto_secret(section) {
-    let secret = option(section, "mtproto_secret", "");
-    let faketls = option(section, "mtproto_faketls", "google.com");
-    if (substr(lc(secret), 0, 2) == "ee")
-        return secret;
-    return "ee" + secret + string_to_hex(faketls);
+    let canonical = common.mtproto_secret_canonical(
+        option(section, "mtproto_secret", ""),
+        option(section, "mtproto_faketls", "google.com")
+    );
+    if (canonical == null)
+        return "";
+    return canonical;
 }
 
 function users(section, protocol) {
@@ -300,25 +310,30 @@ function add_standard_inbound(config, section, protocol, tag_name) {
             jmax: jmax,
             s1: int_option(section, "awg_s1", "0"),
             s2: int_option(section, "awg_s2", "0"),
-            h1: int_option(section, "awg_h1", "1"),
-            h2: int_option(section, "awg_h2", "2"),
-            h3: int_option(section, "awg_h3", "3"),
-            h4: int_option(section, "awg_h4", "4"),
+            // H1-H4 use badoption.Range on both sing-box-extended and
+            // sing-box-lx, so a "min-max" string passes through.
+            h1: int_or_range_option(section, "awg_h1", 1),
+            h2: int_or_range_option(section, "awg_h2", 2),
+            h3: int_or_range_option(section, "awg_h3", 3),
+            h4: int_or_range_option(section, "awg_h4", 4),
             s3: int_option(section, "awg_s3", "0"),
             s4: int_option(section, "awg_s4", "0")
         };
 
-        let i1 = uci_bin_to_hex(option(section, "awg_i1", ""));
-        let i2 = uci_bin_to_hex(option(section, "awg_i2", ""));
-        let i3 = uci_bin_to_hex(option(section, "awg_i3", ""));
-        let i4 = uci_bin_to_hex(option(section, "awg_i4", ""));
-        let i5 = uci_bin_to_hex(option(section, "awg_i5", ""));
-        let j1 = uci_bin_to_hex(option(section, "awg_j1", ""));
-        let j2 = uci_bin_to_hex(option(section, "awg_j2", ""));
-        let j3 = uci_bin_to_hex(option(section, "awg_j3", ""));
+        let i1 = awg_cps_option(section, "awg_i1");
+        let i2 = awg_cps_option(section, "awg_i2");
+        let i3 = awg_cps_option(section, "awg_i3");
+        let i4 = awg_cps_option(section, "awg_i4");
+        let i5 = awg_cps_option(section, "awg_i5");
+        let j1 = awg_cps_option(section, "awg_j1");
+        let j2 = awg_cps_option(section, "awg_j2");
+        let j3 = awg_cps_option(section, "awg_j3");
         let itime = int_option(section, "awg_itime", "0");
 
         if (is_lx) {
+            // sing-box-lx expects AWG fields at the inbound root (AWG 2.0 schema);
+            // magic headers accept a single value or an AWG 2.0 "min-max" range.
+            // j1-j3/itime are sing-box-extended-only and are not emitted here.
             inbound.jc = amnezia.jc;
             inbound.jmin = amnezia.jmin;
             inbound.jmax = amnezia.jmax;
@@ -335,20 +350,23 @@ function add_standard_inbound(config, section, protocol, tag_name) {
             if (i3 != "" && i3 != "0") inbound.i3 = i3;
             if (i4 != "" && i4 != "0") inbound.i4 = i4;
             if (i5 != "" && i5 != "0") inbound.i5 = i5;
-            if (j1 != "") inbound.j1 = j1;
-            if (j2 != "") inbound.j2 = j2;
-            if (j3 != "") inbound.j3 = j3;
-            if (itime > 0) inbound.itime = itime;
         } else {
             if (i1 != "") amnezia.i1 = i1;
             if (i2 != "") amnezia.i2 = i2;
             if (i3 != "" && i3 != "0") amnezia.i3 = i3;
             if (i4 != "" && i4 != "0") amnezia.i4 = i4;
             if (i5 != "" && i5 != "0") amnezia.i5 = i5;
-            if (j1 != "") amnezia.j1 = j1;
-            if (j2 != "") amnezia.j2 = j2;
-            if (j3 != "") amnezia.j3 = j3;
-            if (itime > 0) amnezia.itime = itime;
+            // j1-j3/itime were removed from the extended schema in 2.6.1 and
+            // sing-box fatals on unknown fields, so emit them only for builds
+            // whose schema still accepts them.
+            let sb_version_state_file = getenv("SB_VERSION_STATE_FILE") || "/etc/tachyon/sing-box-version";
+            let sb_version = trim(fs.readfile(sb_version_state_file) || "");
+            if (common.extended_awg_schema_has_junk_signatures(sb_version)) {
+                if (j1 != "") amnezia.j1 = j1;
+                if (j2 != "") amnezia.j2 = j2;
+                if (j3 != "") amnezia.j3 = j3;
+                if (itime > 0) amnezia.itime = itime;
+            }
             inbound.amnezia = amnezia;
         }
     }

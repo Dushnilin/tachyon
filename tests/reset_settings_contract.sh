@@ -88,7 +88,8 @@ fi
 
 cmp -s "$WORK_DIR/config" "$WORK_DIR/default-config" ||
   fail "reset must restore the config file to factory defaults"
-[ "$(stat -c %a "$WORK_DIR/config")" = "600" ] ||
+# busybox-based images may lack stat(1); ucode's fs module is always present.
+[ "$(ucode -e "let fs = require('fs'); printf('%o', fs.stat('$WORK_DIR/config').mode & 511);")" = "600" ] ||
   fail "reset config must be chmod 600"
 
 [ ! -e "$WORK_DIR/persistent/subscription-cache" ] ||

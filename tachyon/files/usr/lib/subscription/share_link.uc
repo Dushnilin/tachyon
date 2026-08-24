@@ -83,7 +83,20 @@ function add_xhttp_extra_query(params, transport) {
         ["noGRPCHeader", "no_grpc_header"],
         ["scMaxEachPostBytes", "sc_max_each_post_bytes"],
         ["scMinPostsIntervalMs", "sc_min_posts_interval_ms"],
-        ["scStreamUpServerSecs", "sc_stream_up_server_secs"]
+        ["scStreamUpServerSecs", "sc_stream_up_server_secs"],
+        ["sessionPlacement", "session_placement"],
+        ["sessionKey", "session_key"],
+        ["seqPlacement", "seq_placement"],
+        ["seqKey", "seq_key"],
+        ["uplinkDataPlacement", "uplink_data_placement"],
+        ["uplinkDataKey", "uplink_data_key"],
+        ["uplinkChunkSize", "uplink_chunk_size"],
+        ["uplinkHttpMethod", "uplink_http_method"],
+        ["xPaddingObfsMode", "x_padding_obfs_mode"],
+        ["xPaddingPlacement", "x_padding_placement"],
+        ["xPaddingKey", "x_padding_key"],
+        ["xPaddingHeader", "x_padding_header"],
+        ["xPaddingMethod", "x_padding_method"]
     ]) {
         if (transport[item[1]] != null)
             extra[item[0]] = transport[item[1]];

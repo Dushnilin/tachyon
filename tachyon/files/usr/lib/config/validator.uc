@@ -1624,6 +1624,12 @@ function validate_server_routing_sections(sections) {
         if (!contains([ "rules", "direct", "section" ], mode))
             fail_validation("Server '" + name + "' uses unsupported routing mode '" + mode + "'. Aborted.");
 
+        if (option(server, "protocol", "vless") == "mtproto") {
+            let faketls = option(server, "mtproto_faketls", "google.com");
+            if (common.mtproto_secret_canonical(option(server, "mtproto_secret", ""), faketls) == null)
+                fail_validation("Server '" + name + "' has an invalid MTProto secret. Provide the full 'ee' secret or a 16-byte key in hex or base64 form. Aborted.");
+        }
+
         if (mode != "section")
             continue;
 
@@ -2029,6 +2035,21 @@ function validate_extended_server_features(ctx, sing_box_version, sing_box_versi
         if (transport == "xhttp" && !sing_box_supports_xhttp(ctx, sing_box_version, sing_box_version_output))
             fail_requirement("Server '" + name + "' uses XHTTP transport, but the installed sing-box binary does not support it. Install sing-box-extended or a binary with XHTTP support, or change the transport. Aborted.", "fatal");
     }
+}
+
+// Runs for every variant (unlike validate_extended_server_features, which
+// early-returns on extended-family binaries): section actions emit
+// outbound/endpoint shapes that differ per sing-box build.
+function validate_section_action_variant_support(ctx, sing_box_version) {
+    // Returns true when at least one removed junk-signature field is set.
+    function removed_junk_sig_set(section) {
+        for (let key in [ "awg_j1", "awg_j2", "awg_j3", "awg_itime" ]) {
+            let val = trim(as_string(option(section, key, "")));
+            if (val != "" && val != "0")
+                return true;
+        }
+        return false;
+    }
 
     for (let section in sections_by_type("section")) {
         if (!section_enabled(section))
@@ -2038,6 +2059,46 @@ function validate_extended_server_features(ctx, sing_box_version, sing_box_versi
         let action = rule_action(section);
         if (action == "awg" && !sing_box_is_extended(ctx, sing_box_version) && !sing_box_is_lx(ctx, sing_box_version))
             fail_requirement("Section '" + name + "' uses AmneziaWG, but the installed sing-box binary does not support it. Install sing-box-extended or sing-box-lx, or change the action. Aborted.", "fatal");
+
+        if (action == "awg") {
+            if (removed_junk_sig_set(section) &&
+                !sing_box_is_lx(ctx, sing_box_version) &&
+                !common.extended_awg_schema_has_junk_signatures(sing_box_version))
+                fail_requirement("Section '" + name + "' sets awg_j1/awg_j2/awg_j3/awg_itime, but sing-box-extended removed these fields in 2.6.1 and aborts on unknown fields. Remove them from the section or use sing-box-extended 2.6.0 or older. Aborted.", "fatal");
+        }
+
+        // These actions emit outbound/endpoint shapes that only exist in the
+        // sing-box-extended fork: "warp" and the profiles[]-style "masque"/
+        // "openvpn" endpoints are absent from stock sing-box, and sing-box-lx
+        // uses a different masque schema that our UCI options cannot fill.
+        // Gating here keeps an invalid section from failing the whole config.
+        let extended_only_labels = {
+            warp: "WARP",
+            masque: "MASQUE",
+            openvpn: "OpenVPN",
+            snell: "Snell",
+            mieru: "Mieru",
+            sudoku: "Sudoku"
+        };
+        let extended_only_label = extended_only_labels[as_string(action)];
+        // NB: sing_box_is_extended() also matches sing-box-lx, so exclude it here.
+        if (extended_only_label != null &&
+            !(sing_box_is_extended(ctx, sing_box_version) && !sing_box_is_lx(ctx, sing_box_version)))
+            fail_requirement("Section '" + name + "' uses " + extended_only_label + ", but this feature requires the sing-box-extended binary (not supported by sing-box-lx or stock sing-box). Install sing-box-extended or change the action. Aborted.", "fatal");
+    }
+
+    for (let server in sections_by_type("server")) {
+        if (!server_enabled(server))
+            continue;
+
+        if (as_string(option(server, "protocol", "vless")) != "awg")
+            continue;
+
+        let name = section_name(server);
+        if (removed_junk_sig_set(server) &&
+            !sing_box_is_lx(ctx, sing_box_version) &&
+            !common.extended_awg_schema_has_junk_signatures(sing_box_version))
+            fail_requirement("Server '" + name + "' sets awg_j1/awg_j2/awg_j3/awg_itime, but sing-box-extended removed these fields in 2.6.1 and aborts on unknown fields. Remove them from the server or use sing-box-extended 2.6.0 or older. Aborted.", "fatal");
     }
 }
 
@@ -2167,6 +2228,7 @@ function check_runtime_requirements() {
         fail_requirement("Service 'sing-box' is missing. Install a sing-box package or reinstall the compressed sing-box-extended binary variant. Aborted.", "error");
 
     validate_extended_server_features(ctx, sing_box_version, sing_box_version_output);
+    validate_section_action_variant_support(ctx, sing_box_version);
 
     if (coreutils_base64_version == "")
         fail_requirement("Package 'coreutils-base64' is not installed. Aborted.", "error");

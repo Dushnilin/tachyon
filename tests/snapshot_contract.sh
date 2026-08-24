@@ -88,7 +88,8 @@ SAVED_FILE="$(sed -n 's/.*"file": "\([^"]*\)".*/\1/p' "$WORK_DIR/result.json")"
   fail "snapshot file name must be <name>-<stamp>.tar.gz: $SAVED_FILE"
 [ -f "$WORK_DIR/snapshots/$SAVED_FILE" ] ||
   fail "snapshot archive must exist on disk"
-[ "$(stat -c %a "$WORK_DIR/snapshots/$SAVED_FILE")" = "600" ] ||
+# busybox-based images may lack stat(1); ucode's fs module is always present.
+[ "$(ucode -e "let fs = require('fs'); printf('%o', fs.stat('$WORK_DIR/snapshots/$SAVED_FILE').mode & 511);")" = "600" ] ||
   fail "snapshot archive must be chmod 600"
 grep -Fxq 'config/tachyon' <(tar -tzf "$WORK_DIR/snapshots/$SAVED_FILE") ||
   fail "snapshot must contain config/tachyon member"
@@ -136,7 +137,7 @@ grep -Fxq 'restart' "$WORK_DIR/bin.log" ||
   fail "snapshot-restore must restart the service through the backend entrypoint"
 grep -Fq "option dns '8.8.8.8'" "$WORK_DIR/config/tachyon" ||
   fail "snapshot-restore must replace the config with the snapshot content"
-[ "$(stat -c %a "$WORK_DIR/config/tachyon")" = "600" ] ||
+[ "$(ucode -e "let fs = require('fs'); printf('%o', fs.stat('$WORK_DIR/config/tachyon').mode & 511);")" = "600" ] ||
   fail "restored config must be chmod 600"
 [ "$(cat "$WORK_DIR/tachyon/data")" = 'snap-data' ] ||
   fail "snapshot-restore must restore the persistent data"

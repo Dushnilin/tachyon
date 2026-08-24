@@ -201,7 +201,8 @@ echo "=== Normalizing line endings for test scripts ==="
 
 echo "=== Running unit and integration tests inside OpenWrt container ==="
 for f in tests/*.sh; do
-  if [ "$f" != "tests/docker_e2e_test.sh" ] && [ "$f" != "tests/container_entrypoint.sh" ]; then
+  if [ "$f" != "tests/docker_e2e_test.sh" ] && [ "$f" != "tests/container_entrypoint.sh" ] &&
+    [ "$f" != "tests/run_all.sh" ] && [ "$f" != "tests/ucode_syntax_lint.sh" ]; then
     echo "Running $f inside container..."
     "$DOCKER_BIN" exec -w /work -e SB_REQUIRED_VERSION="1.11.0" "$CONTAINER_NAME" bash "$f"
   fi
