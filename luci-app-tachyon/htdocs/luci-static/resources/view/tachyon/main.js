@@ -3292,16 +3292,28 @@ var TachyonShellMethods = {
     Tachyon.AvailableMethods.CHECK_INBOUNDS
   ),
   getSingBoxStatus: async () => callBaseMethod(
-    Tachyon.AvailableMethods.GET_SING_BOX_STATUS
+    Tachyon.AvailableMethods.GET_SING_BOX_STATUS,
+    [],
+    "/usr/bin/tachyon",
+    { allowNonZeroWithStdout: true }
   ),
   getZapretStatus: async () => callBaseMethod(
-    Tachyon.AvailableMethods.GET_ZAPRET_STATUS
+    Tachyon.AvailableMethods.GET_ZAPRET_STATUS,
+    [],
+    "/usr/bin/tachyon",
+    { allowNonZeroWithStdout: true }
   ),
   getZapret2Status: async () => callBaseMethod(
-    Tachyon.AvailableMethods.GET_ZAPRET2_STATUS
+    Tachyon.AvailableMethods.GET_ZAPRET2_STATUS,
+    [],
+    "/usr/bin/tachyon",
+    { allowNonZeroWithStdout: true }
   ),
   getByedpiStatus: async () => callBaseMethod(
-    Tachyon.AvailableMethods.GET_BYEDPI_STATUS
+    Tachyon.AvailableMethods.GET_BYEDPI_STATUS,
+    [],
+    "/usr/bin/tachyon",
+    { allowNonZeroWithStdout: true }
   ),
   getClashApiProxies: async () => callBaseMethod(Tachyon.AvailableMethods.CLASH_API, [
     Tachyon.AvailableClashAPIMethods.GET_PROXIES
@@ -7735,11 +7747,12 @@ async function renderSectionsWidget() {
   if (!container) {
     return;
   }
+  const SERVICE_TYPES = /* @__PURE__ */ new Set(["SING_BOX", "ZAPRET", "ZAPRET2", "BYEDPI"]);
   const sectionsWithCustomLatencies = sectionsWidget.data.map((section) => ({
     ...section,
     outbounds: section.outbounds.map((outbound) => ({
       ...outbound,
-      latency: customProxyLatencies.has(outbound.code) ? customProxyLatencies.get(outbound.code) : outbound.latency
+      latency: SERVICE_TYPES.has(outbound.type) || !customProxyLatencies.has(outbound.code) ? outbound.latency : customProxyLatencies.get(outbound.code)
     }))
   }));
   if (sectionsWidget.loading || sectionsWidget.failed) {

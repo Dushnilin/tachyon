@@ -1644,13 +1644,16 @@ async function renderSectionsWidget() {
     return;
   }
 
+  const SERVICE_TYPES = new Set(['SING_BOX', 'ZAPRET', 'ZAPRET2', 'BYEDPI']);
+
   const sectionsWithCustomLatencies = sectionsWidget.data.map((section) => ({
     ...section,
     outbounds: section.outbounds.map((outbound) => ({
       ...outbound,
-      latency: customProxyLatencies.has(outbound.code)
-        ? customProxyLatencies.get(outbound.code)!
-        : outbound.latency,
+      latency:
+        SERVICE_TYPES.has(outbound.type) || !customProxyLatencies.has(outbound.code)
+          ? outbound.latency
+          : customProxyLatencies.get(outbound.code)!,
     })),
   }));
 

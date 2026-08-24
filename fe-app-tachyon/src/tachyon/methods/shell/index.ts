@@ -256,18 +256,30 @@ export const TachyonShellMethods = {
   getSingBoxStatus: async () =>
     callBaseMethod<Tachyon.GetSingBoxStatus>(
       Tachyon.AvailableMethods.GET_SING_BOX_STATUS,
+      [],
+      '/usr/bin/tachyon',
+      { allowNonZeroWithStdout: true },
     ),
   getZapretStatus: async () =>
     callBaseMethod<Tachyon.GetZapretStatus>(
       Tachyon.AvailableMethods.GET_ZAPRET_STATUS,
+      [],
+      '/usr/bin/tachyon',
+      { allowNonZeroWithStdout: true },
     ),
   getZapret2Status: async () =>
     callBaseMethod<Tachyon.GetZapret2Status>(
       Tachyon.AvailableMethods.GET_ZAPRET2_STATUS,
+      [],
+      '/usr/bin/tachyon',
+      { allowNonZeroWithStdout: true },
     ),
   getByedpiStatus: async () =>
     callBaseMethod<Tachyon.GetByedpiStatus>(
       Tachyon.AvailableMethods.GET_BYEDPI_STATUS,
+      [],
+      '/usr/bin/tachyon',
+      { allowNonZeroWithStdout: true },
     ),
   getClashApiProxies: async () =>
     callBaseMethod<ClashAPI.Proxies>(Tachyon.AvailableMethods.CLASH_API, [
