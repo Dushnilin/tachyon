@@ -108,6 +108,23 @@ function settings() {
     return object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
 }
 
+function get_mixed_port() {
+    let settings_data = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "settings"));
+    let config_path = trim(as_string(settings_data.config_path || "")) || "/etc/sing-box/config.json";
+    let data = fs.readfile(config_path);
+    if (data == null) return 4534;
+    let parsed;
+    try { parsed = json(data); } catch (e) { return 4534; }
+    if (parsed == null || parsed.inbounds == null) return 4534;
+    for (let inbound in parsed.inbounds) {
+        if (inbound.type == "mixed" && inbound.listen_port != null) {
+            let port = int(inbound.listen_port, 10);
+            if (port > 0) return port;
+        }
+    }
+    return 4534;
+}
+
 // Liveness cache for the mixed proxy port: probing netstat on every poll
 // tick would spawn a process every few seconds for a fact that rarely
 // changes. A dead port is re-probed on this TTL; a live one too.
@@ -3173,23 +3190,6 @@ function in_quiet_hours(cfg) {
     } else {
         return hr >= start || hr < end;
     }
-}
-
-function get_mixed_port() {
-    let settings_data = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "settings"));
-    let config_path = trim(as_string(settings_data.config_path || "")) || "/etc/sing-box/config.json";
-    let data = fs.readfile(config_path);
-    if (data == null) return 4534;
-    let parsed;
-    try { parsed = json(data); } catch (e) { return 4534; }
-    if (parsed == null || parsed.inbounds == null) return 4534;
-    for (let inbound in parsed.inbounds) {
-        if (inbound.type == "mixed" && inbound.listen_port != null) {
-            let port = int(inbound.listen_port, 10);
-            if (port > 0) return port;
-        }
-    }
-    return 4534;
 }
 
 function diagnose() {
