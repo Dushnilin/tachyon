@@ -1729,13 +1729,60 @@ function worker() {
 let mixed_port_fail_streak = 0;
 let mixed_port_last_notify = 0;
 
-function mixed_proxy_port_listening() {
+// Mixed-proxy ports the running config actually declares. Reading the
+// generated sing-box config keeps the watchdog in sync with the generator:
+// when no section enables the mixed proxy there is nothing to guard, and
+// demanding port 4534 anyway caused endless restart loops that rebuilt the
+// nftables ruleset every few minutes.
+function mixed_ports_from_config() {
+    let settings = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "settings"));
+    let config_path = trim(as_string(settings.config_path || "")) || "/etc/sing-box/config.json";
+    let data = fs.readfile(config_path);
+    if (data == null)
+        return [];
+
+    let parsed;
+    try {
+        parsed = json(data);
+    } catch (e) {
+        return [];
+    }
+    if (parsed == null || parsed.inbounds == null)
+        return [];
+
+    let ports = [];
+    for (let inbound in parsed.inbounds) {
+        if (inbound.type != "mixed" || inbound.listen_port == null)
+            continue;
+        let port = int(inbound.listen_port, 10);
+        if (port > 0) {
+            let known = false;
+            for (let p in ports)
+                if (p == port) { known = true; break; }
+            if (!known)
+                push(ports, port);
+        }
+    }
+    return ports;
+}
+
+function port_listening(port) {
     let out = command_output_from_args([ "netstat", "-ltn" ]);
+    let needle = ":" + port + " ";
     for (let line in split(out, "\n")) {
-        if (index(line, ":4534 ") >= 0)
+        if (index(line, needle) >= 0)
             return true;
     }
     return false;
+}
+
+function mixed_proxy_port_listening() {
+    let ports = mixed_ports_from_config();
+    for (let port in ports) {
+        if (!port_listening(port))
+            return false;
+    }
+    return true;
 }
 
 function check_mixed_proxy_port() {
@@ -1748,16 +1795,25 @@ function check_mixed_proxy_port() {
         return;
     }
 
+    let ports = mixed_ports_from_config();
+    if (length(ports) == 0) {
+        // Mixed proxy is not part of the generated config: nothing to watch.
+        if (mixed_port_fail_streak > 0)
+            log_message("Mixed port watch: config declares no mixed inbound, standing down.", "debug");
+        mixed_port_fail_streak = 0;
+        return;
+    }
+
     if (mixed_proxy_port_listening()) {
         if (mixed_port_fail_streak >= 2)
-            log_message("Mixed port 4534 recovered after core restart.", "info");
+            log_message("Mixed port watch: port(s) " + join(", ", ports) + " recovered after core restart.", "info");
         mixed_port_fail_streak = 0;
         return;
     }
 
     mixed_port_fail_streak++;
-    log_message(sprintf("sing-box runs but mixed port 4534 is not listening (streak %d).",
-        mixed_port_fail_streak), "warn");
+    log_message(sprintf("sing-box runs but mixed port(s) %s are not listening (streak %d).",
+        join(", ", ports), mixed_port_fail_streak), "warn");
 
     if (mixed_port_fail_streak == 2) {
         log_message("Restarting sing-box to restore the mixed inbound.", "warn");
@@ -1766,7 +1822,7 @@ function check_mixed_proxy_port() {
         let now = time();
         if (now - mixed_port_last_notify >= 3600) {
             mixed_port_last_notify = now;
-            send_telegram_notification("⚠️ Порт 4534 не слушается при работающем sing-box. Рестарт не помог — проверьте конфигурацию ядра (лог sing-box), раздел диагностики покажет детали.");
+            send_telegram_notification("⚠️ Порт " + join(", ", ports) + " не слушается при работающем sing-box. Рестарт не помог — проверьте конфигурацию ядра (лог sing-box), раздел диагностики покажет детали.");
         }
     }
 }

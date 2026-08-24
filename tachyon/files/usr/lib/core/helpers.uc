@@ -575,6 +575,7 @@ function file_is_usable(path, min_bytes) {
 function module_exports() {
     return {
         write_file_atomic,
+        write_text_file,
         is_process_name_running,
         file_is_usable,
         file_size_value
