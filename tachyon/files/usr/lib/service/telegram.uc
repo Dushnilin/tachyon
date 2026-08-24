@@ -3,6 +3,7 @@
 let fs = require("fs");
 let uci_core = require("core.uci");
 let common = require("core.common");
+let helpers = require("core.helpers");
 let api = require("service.api");
 let dns_presets = require("singbox.dns_presets"); // Our new API module
 
@@ -20,6 +21,7 @@ let command_success_from_args = common.command_success_from_args;
 let command_from_args = common.command_from_args;
 let command_capture = common.command_capture;
 let command_output_from_args = common.command_output_from_args;
+let write_text_file = helpers.write_text_file;
 
 // ─── Callback Data Helpers ────────────────────────────────────────────────────
 

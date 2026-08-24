@@ -28,6 +28,7 @@ let telegram_msg_window = time();
 let command_from_args = common.command_from_args;
 let command_status = common.command_status;
 let command_success_from_args = common.command_success_from_args;
+let command_output_from_args = common.command_output_from_args;
 let is_process_name_running = helpers.is_process_name_running;
 
 function command_capture(command) {
