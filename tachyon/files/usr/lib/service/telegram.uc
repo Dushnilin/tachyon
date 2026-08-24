@@ -121,9 +121,10 @@ function mixed_port_alive() {
         return mixed_port_alive_cached;
 
     let alive = false;
+    let port = get_mixed_port();
     let out = command_output_from_args([ "netstat", "-ltn" ]);
     for (let line in split(out, "\n")) {
-        if (index(line, ":4534 ") >= 0) {
+        if (index(line, ":" + port + " ") >= 0) {
             alive = true;
             break;
         }
@@ -152,7 +153,7 @@ function get_proxy_args() {
             if (direct_fallback_enabled())
                 return [];
             // Paranoid mode (fallback disabled): keep legacy behavior.
-            return [ "--proxy", "http://127.0.0.1:4534" ];
+            return [ "--proxy", "http://127.0.0.1:" + get_mixed_port() ];
         }
         // If a specific section is configured for the bot, force-select it
         // through the Mihomo REST API so the mixed proxy routes bot traffic
@@ -167,7 +168,7 @@ function get_proxy_args() {
                 "http://127.0.0.1:9090/proxies/GLOBAL"
             ]));
         }
-        return [ "--proxy", "http://127.0.0.1:4534" ];
+        return [ "--proxy", "http://127.0.0.1:" + get_mixed_port() ];
     }
     if (cfg.fallback_socks && trim(cfg.fallback_socks) != "") {
         return [ "--proxy", "socks5h://" + trim(cfg.fallback_socks) ];
@@ -218,13 +219,13 @@ function alert_route_failure(attempt, proxy_alive) {
     if (chat_id == "") return;
 
     let hint = proxy_alive
-        ? "прокси-порт 4534 слушается, но запросы через него не проходят"
-        : "прокси-порт 4534 не слушается (mixed-inbound sing-box не поднялся)";
-    let text = "⚠️ <b>Tachyon Telegram бот:</b> " + as_string(attempt) +
-        " неудачных попыток связи с API подряд.\n" +
-        "Причина: " + hint + ".\n" +
-        "Включён прямой доступ к API как запасной путь — команды могут отвечать с задержкой.\n" +
-        "Watchdog попробует восстановить прокси автоматически.";
+        ? t("route_proxy_alive")
+        : t("route_proxy_down");
+    let text = "⚠️ <b>" + t("route_alert_title") + "</b> " + as_string(attempt) +
+        " " + t("route_alert_consecutive") + ".\n" +
+        t("route_reason") + " " + hint + ".\n" +
+        t("route_fallback_hint") + "\n" +
+        t("route_heal_hint");
     send_message(token, chat_id, text, "HTML", null);
 }
 
@@ -1402,7 +1403,7 @@ function exec_support_bundle(token, chat_id) {
 }
 
 function exec_close_connections(token, chat_id) {
-    let out = command_capture(command_from_args(["curl", "-s", "-X", "DELETE", "http://127.0.0.1:4534/connections"]));
+    let out = command_capture(command_from_args(["curl", "-s", "-X", "DELETE", "http://127.0.0.1:" + get_mixed_port() + "/connections"]));
     if (out && out.status == 0)
         send_message(token, chat_id, "✅ <b>Все активные соединения сброшены.</b>\nОни будут переустановлены по новым маршрутам.", "HTML", [[{text:"⬅️ Меню", callback_data:"/menu"}]]);
     else
@@ -1493,7 +1494,7 @@ function exec_check_updates(token, chat_id, msg_id) {
 }
 
 function view_instances(token, chat_id, msg_id) {
-    let res = command_capture(command_from_args(["curl", "-s", "http://127.0.0.1:4534/proxies"]));
+    let res = command_capture(command_from_args(["curl", "-s", "http://127.0.0.1:" + get_mixed_port() + "/proxies"]));
     let text = "🖧 <b>Live Server Instances</b>\n\n";
     if (res && res.status == 0 && res.output) {
         try {
@@ -2849,7 +2850,7 @@ function send_daily_digest(token, admin_ids) {
     let up = m ? m[1] : "неизвестно";
     text += "⏱ Аптайм ОС: " + up + "\n";
     
-    let res = command_capture(command_from_args(["curl", "-s", "http://127.0.0.1:4534/traffic"]));
+    let res = command_capture(command_from_args(["curl", "-s", "http://127.0.0.1:" + get_mixed_port() + "/traffic"]));
     if (res && res.status == 0 && res.output) {
         try {
             let tr = json(res.output);
@@ -3174,6 +3175,23 @@ function in_quiet_hours(cfg) {
     }
 }
 
+function get_mixed_port() {
+    let settings_data = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "settings"));
+    let config_path = trim(as_string(settings_data.config_path || "")) || "/etc/sing-box/config.json";
+    let data = fs.readfile(config_path);
+    if (data == null) return 4534;
+    let parsed;
+    try { parsed = json(data); } catch (e) { return 4534; }
+    if (parsed == null || parsed.inbounds == null) return 4534;
+    for (let inbound in parsed.inbounds) {
+        if (inbound.type == "mixed" && inbound.listen_port != null) {
+            let port = int(inbound.listen_port, 10);
+            if (port > 0) return port;
+        }
+    }
+    return 4534;
+}
+
 function diagnose() {
     let cfg = settings();
     let checks = [];
@@ -3204,13 +3222,14 @@ function diagnose() {
     });
     if (!sb_running) ok = false;
 
-    // 4. Mixed proxy port 4534
-    let port_check = command_capture("netstat -tlnp 2>/dev/null | grep ':4534 '");
+    // 4. Mixed proxy port
+    let mixed_port = get_mixed_port();
+    let port_check = command_capture("netstat -tlnp 2>/dev/null | grep ':" + mixed_port + " '");
     let port_ok = port_check && port_check.status === 0 && trim(port_check.output || "") !== "";
     push(checks, {
         name: "proxy_port",
         ok: port_ok,
-        message: port_ok ? "Mixed proxy port 4534 is listening" : "Port 4534 not listening — proxy may not be available"
+        message: port_ok ? "Mixed proxy port " + mixed_port + " is listening" : "Port " + mixed_port + " not listening — proxy may not be available"
     });
 
     // 5. DNS resolution
@@ -3247,7 +3266,7 @@ function diagnose() {
     if (cfg.bot_token && sb_running) {
         let proxied = command_capture(command_from_args([
             "curl", "-s", "-4", "--connect-timeout", "5", "--max-time", "8",
-            "--proxy", "http://127.0.0.1:4534",
+            "--proxy", "http://127.0.0.1:" + mixed_port,
             "https://api.telegram.org/bot" + cfg.bot_token + "/getMe"
         ]));
         let p_out = (proxied && proxied.output) || "";
@@ -3266,7 +3285,7 @@ function diagnose() {
         if (first_admin !== "") {
             let send_res = command_capture(command_from_args([
                 "curl", "-s", "-m", "10", "--connect-timeout", "5",
-                "--proxy", "http://127.0.0.1:4534",
+                "--proxy", "http://127.0.0.1:" + mixed_port,
                 "-X", "POST", "-H", "Content-Type: application/json",
                 "-d", sprintf("%J", { chat_id: int(first_admin), text: "\u2705 Tachyon connection test passed" }),
                 "https://api.telegram.org/bot" + cfg.bot_token + "/sendMessage"

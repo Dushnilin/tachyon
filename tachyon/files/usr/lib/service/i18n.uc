@@ -222,9 +222,14 @@ let strings = {
         notif_rpcd_restarted: "rpcd restarted to free file descriptors",
 
         // ─── Route failure ───
-        route_proxy_alive: "proxy port 4534 is listening, but requests through it are failing",
-        route_proxy_down: "proxy port 4534 not listening (sing-box mixed-inbound not up)",
+        route_proxy_alive: "proxy port is listening, but requests through it are failing",
+        route_proxy_down: "proxy port not listening (sing-box mixed-inbound not up)",
         route_hint: "Reason: %s.\nDirect API access enabled as fallback — commands may respond with delay.\nRun /test to check connectivity.",
+        route_alert_title: "Tachyon Telegram bot",
+        route_alert_consecutive: "consecutive API poll failures",
+        route_reason: "Reason:",
+        route_fallback_hint: "Direct API access enabled as fallback — commands may respond with delay.",
+        route_heal_hint: "Watchdog will try to restore proxy automatically.",
 
         // ─── Command descriptions (for setMyCommands) ───
         cmd_menu: "Main menu",
@@ -568,9 +573,14 @@ let strings = {
         notif_rpcd_restarted: "Выполнен перезапуск rpcd для освобождения файловых дескрипторов",
 
         // ─── Route failure ───
-        route_proxy_alive: "прокси-порт 4534 слушается, но запросы через него не проходят",
-        route_proxy_down: "прокси-порт 4534 не слушается (mixed-inbound sing-box не поднялся)",
+        route_proxy_alive: "прокси-порт слушается, но запросы через него не проходят",
+        route_proxy_down: "прокси-порт не слушается (mixed-inbound sing-box не поднялся)",
         route_hint: "Причина: %s.\nВключён прямой доступ к API как запасной путь — команды могут отвечать с задержкой.\nВыполните /test для проверки связи.",
+        route_alert_title: "Tachyon Telegram бот",
+        route_alert_consecutive: "неудачных попыток связи с API подряд",
+        route_reason: "Причина:",
+        route_fallback_hint: "Включён прямой доступ к API как запасной путь — команды могут отвечать с задержкой.",
+        route_heal_hint: "Watchdog попробует восстановить прокси автоматически.",
 
         // ─── Command descriptions ───
         cmd_menu: "Главное меню",
