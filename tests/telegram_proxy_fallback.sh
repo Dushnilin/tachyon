@@ -47,7 +47,7 @@ grep -Fq 'function rotate_log_if_needed()' "$TG" ||
   fail "worker must rotate its tmpfs log"
 
 # 5. /doctor renders a readable summary instead of raw JSON.
-grep -Fn 'header = sprintf("Проблем: %s", as_string(data.issues));' "$TG" >/dev/null ||
+grep -Fq 'diag_issues_count' "$TG" >/dev/null ||
   fail "exec_doctor must render issue counts from the doctor JSON envelope"
 
 printf 'telegram proxy fallback checks passed\n'
