@@ -116,7 +116,7 @@ function tcp_port_listening(port) {
 }
 
 function call_api(method, url, auth_header, body_file) {
-    let resolve_ips = [ "162.159.192.1", "162.159.193.1", "188.114.98.1", "188.114.99.1" ];
+    let resolve_ips = [ "162.159.192.1", "162.159.193.1", "162.159.195.1", "162.159.204.1", "188.114.96.1", "188.114.97.1", "188.114.98.1", "188.114.99.1" ];
     let last_res = "";
     // Hard wall-clock budget: without it the full retry matrix (transports x
     // resolve IPs x fallbacks) can block for minutes and trip the LuCI XHR
@@ -145,7 +145,7 @@ function call_api(method, url, auth_header, body_file) {
     // Direct probes MUST use the same --resolve trick as the real calls
     // below: ISP DNS poisoning of api.cloudflareclient.com would otherwise
     // report the API as unreachable while registration itself still works.
-    let resolve_ips_probe = [ "162.159.192.1", "162.159.193.1", "188.114.98.1", "188.114.99.1" ];
+    let resolve_ips_probe = [ "162.159.192.1", "162.159.193.1", "162.159.195.1", "162.159.204.1", "188.114.96.1", "188.114.97.1", "188.114.98.1", "188.114.99.1" ];
     let api_reachable = false;
     for (let ip in resolve_ips_probe) {
         let probe = trim(exec_output("curl -s --connect-timeout 3 -m 5 -o /dev/null -w '%{http_code}' --resolve api.cloudflareclient.com:443:" + ip + " https://api.cloudflareclient.com/ 2>/dev/null"));
@@ -420,6 +420,10 @@ restore_original_server();
 let probe_ips = [
     "162.159.192.1", "162.159.192.6",
     "162.159.193.1", "162.159.193.6",
+    "162.159.195.1", "162.159.195.6",
+    "162.159.204.1", "162.159.204.6",
+    "188.114.96.1", "188.114.96.6",
+    "188.114.97.1", "188.114.97.6",
     "188.114.98.1", "188.114.98.6",
     "188.114.99.1", "188.114.99.6",
     "8.6.112.0"
