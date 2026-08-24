@@ -86,9 +86,15 @@ function users(section, protocol) {
             password: option(section, "server_password", "")
         }];
     }
-    if (protocol == "mtproto" || protocol == "shadowsocks") {
-        let secret = protocol == "mtproto" ? mtproto_secret(section) : option(section, "server_password", "");
-        let user = { password: secret };
+    if (protocol == "mtproto") {
+        // MTProxyUser is { name, secret } in sing-box-extended.
+        let user = { secret: mtproto_secret(section) };
+        if (name != "")
+            user.name = name;
+        return [ user ];
+    }
+    if (protocol == "shadowsocks") {
+        let user = { password: option(section, "server_password", "") };
         if (name != "")
             user.name = name;
         return [ user ];
@@ -238,18 +244,15 @@ function add_standard_inbound(config, section, protocol, tag_name) {
             inbound.obfs = { type: obfs_type, password: obfs_password };
     }
     else if (protocol == "mtproto") {
+        // sing-box-extended registers this inbound as "mtproxy" and expects
+        // MTProxyUser { name, secret }. It must never fall back to a
+        // shadowsocks-2022 shape: SS2022 parses passwords as base64 PSKs and
+        // aborts with "decode psk" on hex secrets (#23).
         inbound.type = "mtproxy";
         inbound.users = users(section, protocol);
         let concurrency = option(section, "mtproto_concurrency", "");
         if (concurrency != "")
             inbound.concurrency = int(concurrency, 10);
-        inbound.type = "shadowsocks";
-        inbound.method = "2022-blake3-aes-128-gcm";
-        inbound.password = option(section, "server_password", "");
-        let server_users = users(section, protocol);
-        if (length(server_users) > 0)
-            inbound.users = server_users;
-        maybe_string(inbound, "network", option(section, "mtproto_network", "tcp"));
         maybe_string(inbound, "prefer_ip", option(section, "mtproto_prefer_ip", "prefer-ipv4"));
         if (bool_option(section, "mtproto_auto_update", false))
             inbound.auto_update = true;

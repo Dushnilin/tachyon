@@ -93,6 +93,28 @@ function contains(arr, val) {
     return false;
 }
 
+// Local TCP listen check via /proc/net/{tcp,tcp6}: busybox nc lacks -z/-w on
+// many OpenWrt builds, and any network round-trip would conflate "port open"
+// with "tunnel exit working".
+function tcp_port_listening(port) {
+    let want = sprintf("%04X", port);
+    for (let table in [ "/proc/net/tcp", "/proc/net/tcp6" ]) {
+        let data = fs.readfile(table);
+        if (data == null)
+            continue;
+        for (let line in split(data, "\n")) {
+            let f = split(trim(line), /[ \t]+/);
+            // sl local_address rem_address st ...
+            if (length(f) < 4)
+                continue;
+            let local = split(f[1], ":");
+            if (length(local) > 1 && local[length(local) - 1] == want && f[3] == "0A")
+                return true;
+        }
+    }
+    return false;
+}
+
 function call_api(method, url, auth_header, body_file) {
     let resolve_ips = [ "162.159.192.1", "162.159.193.1", "188.114.98.1", "188.114.99.1" ];
     let last_res = "";
@@ -108,9 +130,10 @@ function call_api(method, url, auth_header, body_file) {
     if (proxy_port != "") {
         push(transport_flags, "-x socks5h://127.0.0.1:" + proxy_port);
     }
-    // Check if default service mixed proxy (4534) is responsive
-    let mixed_4534_check = exec_output("curl -s --connect-timeout 2 --max-time 3 -x socks5h://127.0.0.1:4534 https://api.cloudflareclient.com/ >/dev/null 2>&1; echo $?");
-    if (trim(mixed_4534_check) == "0" && !contains(transport_flags, "-x socks5h://127.0.0.1:4534")) {
+    // Liveness of the default service mixed proxy (4534): a LOCAL check only.
+    // A full fetch through the tunnel would conflate "proxy dead" with
+    // "slow/blocked exit" and silently drop a working transport.
+    if (tcp_port_listening(4534) && !contains(transport_flags, "-x socks5h://127.0.0.1:4534")) {
         push(transport_flags, "-x socks5h://127.0.0.1:4534");
     }
 
@@ -118,20 +141,34 @@ function call_api(method, url, auth_header, body_file) {
     // (blocked ISP, dead proxy), the registration matrix below would burn its
     // whole time budget and trip the LuCI XHR timeout before producing a
     // readable answer. Probe once, fail fast with an actionable message.
-    let probe_cmd = "curl -s --connect-timeout 4 -m 6 -o /dev/null -w '%{http_code}' https://api.cloudflareclient.com/ 2>/dev/null";
-    let probe = trim(exec_output(probe_cmd));
-    if (probe == "" || probe == "000") {
-        let via_proxy = "";
+    //
+    // Direct probes MUST use the same --resolve trick as the real calls
+    // below: ISP DNS poisoning of api.cloudflareclient.com would otherwise
+    // report the API as unreachable while registration itself still works.
+    let resolve_ips_probe = [ "162.159.192.1", "162.159.193.1", "188.114.98.1", "188.114.99.1" ];
+    let api_reachable = false;
+    for (let ip in resolve_ips_probe) {
+        let probe = trim(exec_output("curl -s --connect-timeout 3 -m 5 -o /dev/null -w '%{http_code}' --resolve api.cloudflareclient.com:443:" + ip + " https://api.cloudflareclient.com/ 2>/dev/null"));
+        if (probe != "" && probe != "000") {
+            api_reachable = true;
+            break;
+        }
+    }
+    if (!api_reachable) {
         for (let tr in transport_flags) {
-            if (index(tr, "socks5h") >= 0 || index(tr, "--interface") >= 0) {
-                via_proxy = exec_output("curl -s --connect-timeout 4 -m 6 -o /dev/null -w '%{http_code}' " + tr + " https://api.cloudflareclient.com/ 2>/dev/null");
+            if (index(tr, "socks5h") < 0 && index(tr, "--interface") < 0)
+                continue;
+            // socks5h resolves on the proxy side, so no --resolve here.
+            let via_proxy = trim(exec_output("curl -s --connect-timeout 4 -m 6 -o /dev/null -w '%{http_code}' " + tr + " https://api.cloudflareclient.com/ 2>/dev/null"));
+            if (via_proxy != "" && via_proxy != "000") {
+                api_reachable = true;
                 break;
             }
         }
-        if (trim(via_proxy) == "" || trim(via_proxy) == "000") {
-            error_response("Cloudflare API недоступен с этого роутера (ни напрямую, ни через прокси). Генерация WARP невозможна — проверьте интернет или сгенерируйте конфиг через рабочую сеть.");
-            exit(0);
-        }
+    }
+    if (!api_reachable) {
+        error_response("Cloudflare API недоступен с этого роутера (ни напрямую, ни через прокси). Генерация WARP невозможна — проверьте интернет или сгенерируйте конфиг через рабочую сеть.");
+        exit(0);
     }
 
     // 1. Try selected tunnel transport(s)

@@ -19,6 +19,20 @@ grep -Fq 'Cloudflare API недоступен с этого роутера' "$WA
 grep -Fq "connect-timeout 4 -m 6" "$WARP" ||
   fail "pre-flight probe must be bounded to a few seconds"
 
+# 1a. Direct pre-flight probes must use --resolve like the real calls:
+#     ISP DNS poisoning of api.cloudflareclient.com would otherwise produce a
+#     false "API unreachable" while registration itself still works.
+grep -Fq -- "--resolve api.cloudflareclient.com:443:" "$WARP" ||
+  fail "direct pre-flight probe must bypass DNS with --resolve"
+
+# 1b. Mixed-proxy (4534) liveness must be a LOCAL check. A full fetch through
+#     the tunnel conflates "proxy dead" with "slow exit" and drops a working
+#     transport; busybox nc also lacks -z on many OpenWrt builds.
+grep -Fq 'tcp_port_listening(4534)' "$WARP" ||
+  fail "mixed-port liveness must be the local /proc/net/tcp check"
+grep -Fq 'function tcp_port_listening' "$WARP" ||
+  fail "tcp_port_listening helper must exist"
+
 # 2. Time budgets must stay under the LuCI XHR timeout (~30 s): per-call 20s,
 #    whole registration 20s, so worst case fits inside one browser request.
 grep -Fq 'let deadline = now_ms() + 20000;' "$WARP" ||

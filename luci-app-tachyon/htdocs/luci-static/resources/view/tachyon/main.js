@@ -11897,6 +11897,8 @@ var TACHYON_MASK_AFTER_TOKEN_SPACE = [
   "option tailscale_exit_node_allow_lan_access",
   "option mixed_proxy_username",
   "option mixed_proxy_password",
+  "option ai_doctor_api_key",
+  "option tuic_password",
   "option ipaddr",
   "option netmask",
   "option gateway",

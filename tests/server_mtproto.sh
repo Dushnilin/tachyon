@@ -57,8 +57,13 @@ generate() {
 }
 
 assert_canonical_user_password() {
-  grep -q '"password": "'"$CANONICAL"'"' "$WORK_DIR/singbox_mtproto.json" ||
-    fail "sing-box config must carry the canonical serialized secret as user password"
+  grep -q '"type": "mtproxy"' "$WORK_DIR/singbox_mtproto.json" ||
+    fail "mtproto server must emit an mtproxy inbound, never a shadowsocks fallback"
+  grep -q '"secret": "'"$CANONICAL"'"' "$WORK_DIR/singbox_mtproto.json" ||
+    fail "sing-box config must carry the canonical serialized secret as MTProxyUser.secret"
+  if grep -q '"method": "2022' "$WORK_DIR/singbox_mtproto.json"; then
+    fail "mtproxy inbound must not carry a shadowsocks-2022 method"
+  fi
 }
 
 # 1. Full ee-secret in hex passes through unchanged.
