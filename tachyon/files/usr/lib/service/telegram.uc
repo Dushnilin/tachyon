@@ -284,7 +284,7 @@ function tg_request(token, method, payload) {
 
 function send_message(token, chat_id, text, parse_mode, keyboard) {
     text = as_string(text);
-    if (length(text) > 3900) text = substr(text, 0, 3900) + "\n... (сообщение сокращено)";
+    if (length(text) > 3900) text = substr(text, 0, 3900) + "\n... " + t("msg_truncated");
     let payload = { chat_id: int(chat_id), text: text };
     if (parse_mode) payload.parse_mode = parse_mode;
     if (keyboard) payload.reply_markup = { inline_keyboard: keyboard };
@@ -293,7 +293,7 @@ function send_message(token, chat_id, text, parse_mode, keyboard) {
 
 function edit_message(token, chat_id, message_id, text, parse_mode, keyboard) {
     text = as_string(text);
-    if (length(text) > 3900) text = substr(text, 0, 3900) + "\n... (сообщение сокращено)";
+    if (length(text) > 3900) text = substr(text, 0, 3900) + "\n... " + t("msg_truncated");
     let payload = { chat_id: int(chat_id), message_id: int(message_id), text: text };
     if (parse_mode) payload.parse_mode = parse_mode;
     if (keyboard) payload.reply_markup = { inline_keyboard: keyboard };
@@ -700,9 +700,9 @@ function view_set_cat(token, chat_id, msg_id, stype, sname, page) {
     if (length(nav) > 0) push(keyboard, nav);
     
     if (stype == "settings" || stype == "telegram") {
-        push(keyboard, [{ text: "🔙 Назад", callback_data: "/settings" }]);
+        push(keyboard, [{ text: "🔙 " + t("nav_back"), callback_data: "/settings" }]);
     } else {
-        push(keyboard, [{ text: "🔙 Назад", callback_data: "/set_list " + stype }]);
+        push(keyboard, [{ text: "🔙 " + t("nav_back"), callback_data: "/set_list " + stype }]);
     }
     
     if (msg_id) edit_message(token, chat_id, msg_id, text, "HTML", keyboard);
@@ -728,7 +728,7 @@ function view_set_arr(token, chat_id, msg_id, stype, sname, key) {
     let items = common.list_option(s, key);
     let label = get_schema_label(stype, key);
     
-    let text = "⚙️ <b>Список:</b> " + escape_html(label) + "\n\n";
+    let text = t("list_header") + " " + escape_html(label) + "\n\n";
     let keyboard = [];
     
     if (length(items) == 0) text += "<i>Пусто</i>\n";
@@ -741,7 +741,7 @@ function view_set_arr(token, chat_id, msg_id, stype, sname, key) {
     
     push(keyboard, [{ text: "➕ Добавить элементы", callback_data: "/set_arr_add " + stype + " " + sname + " " + key }]);
     push(keyboard, [{ text: "➖ Очистить список", callback_data: "/set_arr_clr " + stype + " " + sname + " " + key }]);
-    push(keyboard, [{ text: "🔙 Назад", callback_data: "/set_cat " + stype + " " + sname }]);
+    push(keyboard, [{ text: "🔙 " + t("nav_back"), callback_data: "/set_cat " + stype + " " + sname }]);
     
     if (msg_id) edit_message(token, chat_id, msg_id, text, "HTML", keyboard);
     else send_message(token, chat_id, text, "HTML", keyboard);
@@ -751,8 +751,8 @@ function view_set_arr(token, chat_id, msg_id, stype, sname, key) {
 function view_menu(token, chat_id, msg_id) {
     let sys = api.get_system_status();
     let text = "🏠 <b>Tachyon Control Panel</b>\n\n" +
-               "Версия: <code>" + sys.tachyon_version + "</code>\n" +
-               "Роутер CPU: <code>" + sys.cpu + "</code>\n\n";
+               t("menu_version") + ": <code>" + sys.tachyon_version + "</code>\n" +
+               t("menu_cpu") + ": <code>" + sys.cpu + "</code>\n\n";
                
     let keys_servers = keys(sys.active_servers || {});
     if (length(keys_servers) > 0) {
@@ -893,9 +893,9 @@ function view_outbounds(token, chat_id, msg_id, group_name) {
     }
     
     if (length(groups) == 0) {
-        let err = "❌ Группы прокси не найдены.";
-        if (msg_id) edit_message(token, chat_id, msg_id, err, "HTML", [[{text:"⬅️ Назад", callback_data:"/menu"}]]);
-        else send_message(token, chat_id, err, "HTML", [[{text:"⬅️ Назад", callback_data:"/menu"}]]);
+        let err = "❌ " + t("outbound_groups_not_found");
+        if (msg_id) edit_message(token, chat_id, msg_id, err, "HTML", [[{text:"⬅️ " + t("nav_back"), callback_data:"/menu"}]]);
+        else send_message(token, chat_id, err, "HTML", [[{text:"⬅️ " + t("nav_back"), callback_data:"/menu"}]]);
         return;
     }
     
@@ -974,10 +974,10 @@ function handle_switch(token, chat_id, msg_id, group_name, server_name) {
     let grp = (data && data.proxies) ? data.proxies[group_name] : null;
     if (!grp || grp.now != server_name) {
         send_message(token, chat_id,
-            "⚠️ <b>Не удалось переключить сервер</b>\n" +
-            "Группа: <code>" + escape_html(group_name) + "</code>\n" +
-            "Сервер: <code>" + escape_html(server_name) + "</code>\n\n" +
-            "Проверьте, запущен ли sing-box и доступен ли Clash API.", "HTML");
+"⚠️ <b>" + t("outbound_switch_failed") + "</b>\n" +
+             t("outbound_group") + ": <code>" + escape_html(group_name) + "</code>\n" +
+             t("outbound_server") + ": <code>" + escape_html(server_name) + "</code>\n\n" +
+             t("outbound_check_hint"), "HTML");
     }
     view_outbounds(token, chat_id, msg_id, group_name);
 }
@@ -1084,7 +1084,7 @@ function view_sec_list(token, chat_id, msg_id, sec_name, list_type) {
     let items = [];
     let title = "";
     if (list_type == "domain") {
-        title = "Домены";
+        title = t("section_domains");
         let ds = common.list_option(s, "domain_suffix");
         for (let x in ds) push(items, {type: "domain_suffix", val: x});
         let d = common.list_option(s, "domain");
@@ -1094,13 +1094,13 @@ function view_sec_list(token, chat_id, msg_id, sec_name, list_type) {
         let dr = common.list_option(s, "domain_regex");
         for (let x in dr) push(items, {type: "domain_regex", val: x});
     } else if (list_type == "ip") {
-        title = "IP адреса";
+        title = t("section_ips");
         let ipc = common.list_option(s, "ip_cidr");
         for (let x in ipc) push(items, {type: "ip_cidr", val: x});
         let ip = common.list_option(s, "ip");
         for (let x in ip) push(items, {type: "ip", val: x});
     } else if (list_type == "src") {
-        title = "Источники (Source)";
+        title = t("section_sources");
         let sdev = common.list_option(s, "src_device");
         for (let x in sdev) push(items, {type: "src_device", val: x});
         let sip = common.list_option(s, "src_ip");
@@ -1113,7 +1113,7 @@ function view_sec_list(token, chat_id, msg_id, sec_name, list_type) {
         for (let x in rs) push(items, {type: "community_lists", val: x});
     }
     
-    let text = "⚙️ <b>Секция:</b> " + escape_html(s.label || sec_name) + "\n" +
+    let text = t("section_list_header") + " " + escape_html(s.label || sec_name) + "\n" +
                "📋 <b>" + title + "</b>:\n\n";
                
     let keyboard = [];
@@ -1135,7 +1135,7 @@ function view_sec_list(token, chat_id, msg_id, sec_name, list_type) {
         { text: "➕ Добавить", callback_data: "/sec_add " + sec_name + " " + list_type },
         { text: "➖ Очистить все", callback_data: "/sec_clear " + sec_name + " " + list_type }
     ]);
-    push(keyboard, [{ text: "🔙 Назад к секции", callback_data: "/sec_view " + sec_name }]);
+    push(keyboard, [{ text: "🔙 " + t("btn_back_to_section"), callback_data: "/sec_view " + sec_name }]);
     
     if (msg_id) edit_message(token, chat_id, msg_id, text, "HTML", keyboard);
     else send_message(token, chat_id, text, "HTML", keyboard);
@@ -1229,7 +1229,7 @@ function exec_restart(token, chat_id) {
 }
 
 function apply_confirmed_restart(token, chat_id, msg_id) {
-    edit_message(token, chat_id, msg_id, "🔄 <b>Перезапускаю службы Tachyon...</b>", "HTML");
+    edit_message(token, chat_id, msg_id, "🔄 <b>" + t("restart_in_progress") + "</b>", "HTML");
     let st = command_status(command_from_args(["/usr/bin/tachyon", "restart"]));
     let text = (st == 0) ? "✅ <b>" + t("restart_success") + "</b>" : "❌ <b>" + t("restart_error") + "</b>";
     send_message(token, chat_id, text, "HTML", [[{text:t("nav_menu"), callback_data:"/menu"}]]);
@@ -1288,18 +1288,18 @@ function apply_backup_restore(token, chat_id, dl_path) {
     let members = backup_archive_members(dl_path);
     if (length(members) == 0) {
         fs.unlink(dl_path);
-        send_message(token, chat_id, "❌ <b>Архив пуст или повреждён.</b>", "HTML", [[{text:"⬅️ Меню", callback_data:"/menu"}]]);
+        send_message(token, chat_id, "❌ <b>" + t("backup_archive_empty") + "</b>", "HTML", [[{text:t("nav_menu"), callback_data:"/menu"}]]);
         return;
     }
 
     let safety = backup_archive_safe(members);
     if (!safety.ok) {
         fs.unlink(dl_path);
-        send_message(token, chat_id, "❌ <b>Небезопасный архив:</b> " + escape_html(safety.reason), "HTML", [[{text:"⬅️ Меню", callback_data:"/menu"}]]);
+        send_message(token, chat_id, "❌ <b>" + t("backup_archive_unsafe") + "</b> " + escape_html(safety.reason), "HTML", [[{text:"⬅️ " + t("nav_menu"), callback_data:"/menu"}]]);
         return;
     }
 
-    send_message(token, chat_id, "🔄 <b>Проверяю и восстанавливаю бэкап...</b>", "HTML");
+    send_message(token, chat_id, "🔄 <b>" + t("backup_restoring") + "</b>", "HTML");
 
     let stage = backup_extract_dir();
     command_status(command_from_args([ "rm", "-rf", stage ]));
@@ -1307,7 +1307,7 @@ function apply_backup_restore(token, chat_id, dl_path) {
         command_status(command_from_args([ "tar", "-xzf", dl_path, "-C", stage ])) != 0) {
         command_status(command_from_args([ "rm", "-rf", stage ]));
         fs.unlink(dl_path);
-        send_message(token, chat_id, "❌ <b>Не удалось распаковать архив.</b>", "HTML", [[{text:"⬅️ Меню", callback_data:"/menu"}]]);
+        send_message(token, chat_id, "❌ <b>" + t("backup_extract_failed") + "</b>", "HTML", [[{text:"⬅️ " + t("nav_menu"), callback_data:"/menu"}]]);
         return;
     }
     fs.unlink(dl_path);
@@ -1316,7 +1316,7 @@ function apply_backup_restore(token, chat_id, dl_path) {
     let had_config = fs.stat(staged_config) != null;
     if (had_config && !config_sane_preview(staged_config)) {
         command_status(command_from_args([ "rm", "-rf", stage ]));
-        send_message(token, chat_id, "❌ <b>config/tachyon в архиве не похож на валидный UCI.</b>", "HTML", [[{text:"⬅️ Меню", callback_data:"/menu"}]]);
+        send_message(token, chat_id, "❌ <b>" + t("backup_not_valid_uci") + "</b>", "HTML", [[{text:"⬅️ " + t("nav_menu"), callback_data:"/menu"}]]);
         return;
     }
 
@@ -1324,7 +1324,7 @@ function apply_backup_restore(token, chat_id, dl_path) {
     let had_data = fs.stat(staged_data) != null;
     if (!had_config && !had_data) {
         command_status(command_from_args([ "rm", "-rf", stage ]));
-        send_message(token, chat_id, "❌ <b>В архиве нет ни config/tachyon, ни каталога tachyon/.</b>", "HTML", [[{text:"⬅️ Меню", callback_data:"/menu"}]]);
+        send_message(token, chat_id, "❌ <b>" + t("backup_no_config") + "</b>", "HTML", [[{text:"⬅️ " + t("nav_menu"), callback_data:"/menu"}]]);
         return;
     }
 
@@ -1333,7 +1333,7 @@ function apply_backup_restore(token, chat_id, dl_path) {
     if (fs.stat("/etc/config/tachyon")) {
         if (command_status(command_from_args([ "cp", "-a", "/etc/config/tachyon", cfg_backup ])) != 0) {
             command_status(command_from_args([ "rm", "-rf", stage ]));
-            send_message(token, chat_id, "❌ <b>Не удалось сохранить текущий конфиг.</b>", "HTML", [[{text:"⬅️ Меню", callback_data:"/menu"}]]);
+            send_message(token, chat_id, "❌ <b>" + t("backup_save_config_failed") + "</b>", "HTML", [[{text:"⬅️ " + t("nav_menu"), callback_data:"/menu"}]]);
             return;
         }
     }
@@ -1342,7 +1342,7 @@ function apply_backup_restore(token, chat_id, dl_path) {
         if (command_status(command_from_args([ "cp", "-a", "/etc/tachyon", data_backup ])) != 0) {
             command_status(command_from_args([ "rm", "-f", cfg_backup ]));
             command_status(command_from_args([ "rm", "-rf", stage ]));
-            send_message(token, chat_id, "❌ <b>Не удалось сохранить текущие данные /etc/tachyon.</b>", "HTML", [[{text:"⬅️ Меню", callback_data:"/menu"}]]);
+            send_message(token, chat_id, "❌ <b>" + t("backup_save_data_failed") + "</b>", "HTML", [[{text:"⬅️ " + t("nav_menu"), callback_data:"/menu"}]]);
             return;
         }
     }
@@ -1353,7 +1353,7 @@ function apply_backup_restore(token, chat_id, dl_path) {
             command_status(command_from_args([ "mv", "/etc/config/tachyon.restored", "/etc/config/tachyon" ])) != 0) {
             restore_config_from_backup(cfg_backup);
             command_status(command_from_args([ "rm", "-rf", stage ]));
-            send_message(token, chat_id, "❌ <b>Ошибка записи /etc/config/tachyon.</b>", "HTML", [[{text:"⬅️ Меню", callback_data:"/menu"}]]);
+            send_message(token, chat_id, "❌ <b>" + t("backup_write_config_error") + "</b>", "HTML", [[{text:"⬅️ " + t("nav_menu"), callback_data:"/menu"}]]);
             return;
         }
         command_status(command_from_args([ "chmod", "600", "/etc/config/tachyon" ]));
@@ -1361,7 +1361,7 @@ function apply_backup_restore(token, chat_id, dl_path) {
         if (command_status(command_from_args([ "/sbin/uci", "show", "tachyon" ])) != 0) {
             restore_config_from_backup(cfg_backup);
             command_status(command_from_args([ "rm", "-rf", stage, data_backup, cfg_backup ]));
-            send_message(token, chat_id, "❌ <b>Восстановленный конфиг не прошёл проверку UCI. Выполнен откат.</b>", "HTML", [[{text:"⬅️ Меню", callback_data:"/menu"}]]);
+            send_message(token, chat_id, "❌ <b>" + t("backup_uci_validation_failed") + "</b>", "HTML", [[{text:"⬅️ " + t("nav_menu"), callback_data:"/menu"}]]);
             return;
         }
     }
@@ -1375,7 +1375,7 @@ function apply_backup_restore(token, chat_id, dl_path) {
                 command_status(command_from_args([ "mv", data_backup, "/etc/tachyon" ]));
             restore_config_from_backup(cfg_backup);
             command_status(command_from_args([ "rm", "-rf", stage ]));
-            send_message(token, chat_id, "❌ <b>Ошибка записи /etc/tachyon. Выполнен откат.</b>", "HTML", [[{text:"⬅️ Меню", callback_data:"/menu"}]]);
+            send_message(token, chat_id, "❌ <b>" + t("backup_write_data_error") + "</b>", "HTML", [[{text:"⬅️ " + t("nav_menu"), callback_data:"/menu"}]]);
             return;
         }
     }
@@ -1384,13 +1384,13 @@ function apply_backup_restore(token, chat_id, dl_path) {
     command_status(command_from_args([ "rm", "-f", cfg_backup ]));
     command_status(command_from_args([ "rm", "-rf", data_backup ]));
 
-    send_message(token, chat_id, "✅ <b>Бэкап восстановлен. Перезапускаю Tachyon...</b>", "HTML");
+    send_message(token, chat_id, "✅ <b>" + t("backup_restored") + "</b>", "HTML");
     command_status(command_from_args([ "/usr/bin/tachyon", "restart" ]));
-    send_message(token, chat_id, "✅ <b>Готово!</b>", "HTML", [[{text:"⬅️ Меню", callback_data:"/menu"}]]);
+    send_message(token, chat_id, "✅ <b>" + t("backup_done") + "</b>", "HTML", [[{text:"⬅️ " + t("nav_menu"), callback_data:"/menu"}]]);
 }
 
 function exec_backup(token, chat_id) {
-    send_message(token, chat_id, "⏳ <b>Собираю бэкап...</b>", "HTML");
+    send_message(token, chat_id, "⏳ <b>" + t("backup_collecting") + "</b>", "HTML");
     let file_path = "/etc/.tachyon/backup.tar.gz";
     command_status(command_from_args([ "tar", "-czf", file_path, "-C", "/etc", "config/tachyon", "tachyon" ]) + " 2>/dev/null");
 
@@ -1398,12 +1398,12 @@ function exec_backup(token, chat_id) {
         send_document(token, chat_id, file_path);
         fs.unlink(file_path);
     } else {
-        send_message(token, chat_id, "❌ <b>Ошибка создания бэкапа.</b>", "HTML", [[{text:"⬅️ Меню", callback_data:"/menu"}]]);
+        send_message(token, chat_id, "❌ <b>" + t("backup_create_error") + "</b>", "HTML", [[{text:"⬅️ " + t("nav_menu"), callback_data:"/menu"}]]);
     }
 }
 
 function exec_support_bundle(token, chat_id) {
-    send_message(token, chat_id, "⏳ <b>Формирую Support Bundle...</b>", "HTML");
+    send_message(token, chat_id, "⏳ <b>" + t("support_bundle_collecting") + "</b>", "HTML");
     system(command_from_args([ "ip", "route" ]) + " > /etc/.tachyon/ip_route.txt");
     system(command_from_args([ "logread" ]) + " > /etc/.tachyon/logread.txt");
     let file_path = "/etc/.tachyon/support_bundle.tar.gz";
@@ -1413,7 +1413,7 @@ function exec_support_bundle(token, chat_id) {
         send_document(token, chat_id, file_path);
         fs.unlink(file_path);
     } else {
-        send_message(token, chat_id, "❌ <b>Ошибка генерации Bundle.</b>", "HTML");
+        send_message(token, chat_id, "❌ <b>" + t("support_bundle_error") + "</b>", "HTML");
     }
     // Absent file already satisfies the caller; fs.unlink throws on ENOENT.
     try { fs.unlink("/etc/.tachyon/ip_route.txt"); fs.unlink("/etc/.tachyon/logread.txt"); } catch(e) {}
@@ -1422,9 +1422,9 @@ function exec_support_bundle(token, chat_id) {
 function exec_close_connections(token, chat_id) {
     let out = command_capture(command_from_args(["curl", "-s", "-X", "DELETE", "http://127.0.0.1:" + get_mixed_port() + "/connections"]));
     if (out && out.status == 0)
-        send_message(token, chat_id, "✅ <b>Все активные соединения сброшены.</b>\nОни будут переустановлены по новым маршрутам.", "HTML", [[{text:"⬅️ Меню", callback_data:"/menu"}]]);
+        send_message(token, chat_id, "✅ <b>" + t("conn_closed_msg") + "</b>", "HTML", [[{text:"⬅️ " + t("nav_menu"), callback_data:"/menu"}]]);
     else
-        send_message(token, chat_id, "❌ <b>Ошибка сброса соединений.</b>\nsing-box Clash API недоступен.", "HTML", [[{text:"⬅️ Меню", callback_data:"/menu"}]]);
+        send_message(token, chat_id, "❌ <b>" + t("conn_close_error") + "</b>", "HTML", [[{text:"⬅️ " + t("nav_menu"), callback_data:"/menu"}]]);
 }
 
 // A rebuild published under an existing tag keeps its version, so "1.2.66 ➡️
@@ -1459,7 +1459,7 @@ function build_identity_key(comp) {
 
 function exec_check_updates(token, chat_id, msg_id) {
     let out = command_output_from_args(["/usr/bin/tachyon", "component_update_check_cache"]);
-    let text = "📦 <b>Обновления компонентов</b>\n\n";
+    let text = "📦 <b>" + t("updates_title") + "</b>\n\n";
     let keyboard = [];
     if (out && out != "") {
         try {
@@ -1467,9 +1467,9 @@ function exec_check_updates(token, chat_id, msg_id) {
             let results = data.results || [];
             let has_updates = false;
             if (!data.enabled) {
-                text += "ℹ️ Проверка обновлений отключена в настройках.";
+                text += t("updates_disabled");
             } else if (length(results) == 0) {
-                text += "ℹ️ Кэш пуст. Зайдите позже — проверка обновлений запускается автоматически.";
+                text += t("updates_cache_empty");
             } else {
                 for (let comp in results) {
                     let name = comp.component || "";
@@ -1480,31 +1480,31 @@ function exec_check_updates(token, chat_id, msg_id) {
                         text += "• <b>" + title + "</b>: ❌ Ошибка проверки\n";
                     } else if (comp.status == "outdated_same_release") {
                         let transition = build_transition(comp);
-                        text += "• <b>" + title + "</b>: <code>" + cur + "</code> — новая сборка релиза" +
+                        text += "• <b>" + title + "</b>: <code>" + cur + "</code> — " + t("update_new_release_build") +
                             (transition != "" ? " " + transition : "") + " ⚠️\n";
-                        push(keyboard, [{text: "🔄 Обновить " + title, callback_data: "/update_component " + name}]);
+                        push(keyboard, [{text: t("btn_update_component") + " " + title, callback_data: "/update_component " + name}]);
                         has_updates = true;
                     } else if (comp.status == "outdated") {
                         text += "• <b>" + title + "</b>: <code>" + cur + "</code> ➡️ <code>" + lat + "</code> ⚠️\n";
-                        push(keyboard, [{text: "🔄 Обновить " + title, callback_data: "/update_component " + name}]);
+                        push(keyboard, [{text: t("btn_update_component") + " " + title, callback_data: "/update_component " + name}]);
                         has_updates = true;
                     } else if (comp.status == "dev") {
-                        text += "• <b>" + title + "</b>: <code>" + cur + "</code> 🧪 dev-сборка\n";
+                        text += "• <b>" + title + "</b>: <code>" + cur + "</code> 🧪 " + t("update_dev_build") + "\n";
                     } else {
                         text += "• <b>" + title + "</b>: <code>" + cur + "</code> ✅\n";
                     }
                 }
-                if (!has_updates) text += "\n✅ Все компоненты актуальны.";
+                if (!has_updates) text += "\n✅ " + t("update_all_current");
             }
         } catch(e) {
-            text += "❌ Ошибка парсинга кэша: " + e;
+            text += "❌ " + t("update_cache_parse_error") + " " + e;
         }
     } else {
-        text += "ℹ️ Кэш проверок пуст или недоступен.\nЗайдите позже или включите проверку обновлений в UI.";
+        text += t("update_cache_unavailable");
     }
     
-    push(keyboard, [{ text: "🔄 Обновить кэш", callback_data: "/check_updates" }]);
-    push(keyboard, [{ text: "⬅️ Назад", callback_data: "/menu" }]);
+    push(keyboard, [{ text: t("btn_refresh_cache"), callback_data: "/check_updates" }]);
+    push(keyboard, [{ text: "⬅️ " + t("nav_back"), callback_data: "/menu" }]);
     
     if (msg_id) edit_message(token, chat_id, msg_id, text, "HTML", keyboard);
     else send_message(token, chat_id, text, "HTML", keyboard);
@@ -1532,15 +1532,15 @@ function view_instances(token, chat_id, msg_id) {
             }
             if (count == 0) text += t("servers_none");
         } catch(e) {
-            text += "Ошибка парсинга API: " + e;
+            text += t("api_parse_error") + " " + e;
         }
     } else {
-        text += "❌ Не удалось подключиться к API sing-box.";
+        text += "❌ " + t("api_connect_failed");
     }
     
     let kb = [[
-        {text: "🔄 Обновить", callback_data: "/instances"},
-        {text: "⬅️ Назад", callback_data: "/status"}
+        {text: "🔄 " + t("btn_refresh"), callback_data: "/instances"},
+        {text: "⬅️ " + t("nav_back"), callback_data: "/status"}
     ]];
     
     if (msg_id) edit_message(token, chat_id, msg_id, text, "HTML", kb);
@@ -1605,8 +1605,8 @@ function view_ping(token, chat_id, msg_id) {
     if (shown == 0) text += t("latency_no_data");
 
     let keyboard = [
-        [{ text: "🔄 Обновить", callback_data: "/ping" }],
-        [{ text: "⬅️ Назад", callback_data: "/status" }]
+        [{ text: "🔄 " + t("btn_refresh"), callback_data: "/ping" }],
+        [{ text: "⬅️ " + t("nav_back"), callback_data: "/status" }]
     ];
     if (msg_id) edit_message(token, chat_id, msg_id, text, "HTML", keyboard);
     else send_message(token, chat_id, text, "HTML", keyboard);
@@ -1654,7 +1654,7 @@ function view_logs(token, chat_id, msg_id, level, count) {
     level = level || "all";
     count = int(count || "30");
 
-    let text = "📋 <b>Логи Tachyon</b> (уровень: " + level + ", последние " + count + ")\n\n<pre>";
+    let text = "📋 <b>" + t("logs_header") + "</b> (" + t("logs_level") + ": " + level + ", " + count + ")\n\n<pre>";
 
     let args = ["/sbin/logread"];
     let res = command_capture(command_from_args(args));
@@ -1688,20 +1688,20 @@ function view_logs(token, chat_id, msg_id, level, count) {
             { text: "ℹ️ Info", callback_data: "/logs info 30" },
             { text: "📋 All", callback_data: "/logs all 30" }
         ],
-        [{ text: "🔄 Обновить", callback_data: "/logs " + level + " " + as_string(count) }],
-        [{ text: "⬅️ Назад", callback_data: "/menu" }]
+        [{ text: "🔄 " + t("btn_refresh"), callback_data: "/logs " + level + " " + as_string(count) }],
+        [{ text: "⬅️ " + t("nav_back"), callback_data: "/menu" }]
     ];
     if (msg_id) edit_message(token, chat_id, msg_id, text, "HTML", keyboard);
     else send_message(token, chat_id, text, "HTML", keyboard);
 }
 
 function view_system_info(token, chat_id, msg_id) {
-    let text = "ℹ️ <b>Информация о системе</b>\n\n";
+    let text = "ℹ️ <b>" + t("info_title") + "</b>\n\n";
     let res = command_capture(command_from_args(["/usr/lib/tachyon/diagnostics/runtime.uc", "get-system-info"]));
     if (res && res.status == 0 && res.output) {
         try {
             let info = json(res.output);
-            text += "📱 Устройство: <code>" + as_string(info.device_model || "N/A") + "</code>\n";
+            text += "📱 " + t("info_device_label") + ": <code>" + as_string(info.device_model || "N/A") + "</code>\n";
             text += "💻 OpenWrt: <code>" + as_string(info.openwrt_version || "N/A") + "</code>\n\n";
             text += "🔧 Tachyon: <code>" + as_string(info.tachyon_version || "N/A") + "</code>\n";
             text += "📱 LuCI App: <code>" + as_string(info.luci_app_version || "N/A") + "</code>\n\n";
@@ -1714,15 +1714,15 @@ function view_system_info(token, chat_id, msg_id) {
             if (info.zapret2_installed == "1") text += "🛡 Zapret2: <code>" + as_string(info.zapret2_version || "?") + "</code>\n";
             if (info.byedpi_installed == "1") text += "🛡 ByeDPI: <code>" + as_string(info.byedpi_version || "?") + "</code>\n";
         } catch(e) {
-            text += "Ошибка чтения информации: " + e;
+            text += t("info_read_error") + " " + e;
         }
     } else {
-        text += "❌ Не удалось получить информацию о системе.";
+        text += "❌ " + t("info_fetch_failed");
     }
 
     let keyboard = [
-        [{ text: "🔄 Обновить", callback_data: "/info" }],
-        [{ text: "⬅️ Назад", callback_data: "/menu" }]
+        [{ text: "🔄 " + t("btn_refresh"), callback_data: "/info" }],
+        [{ text: "⬅️ " + t("nav_back"), callback_data: "/menu" }]
     ];
     if (msg_id) edit_message(token, chat_id, msg_id, text, "HTML", keyboard);
     else send_message(token, chat_id, text, "HTML", keyboard);
@@ -1782,7 +1782,7 @@ function view_connections(token, chat_id, msg_id, page) {
     }
     push(keyboard, [{ text: t("btn_refresh"), callback_data: "/connections" }]);
     push(keyboard, [{ text: t("btn_close_all"), callback_data: "/close_connections" }]);
-    push(keyboard, [{ text: "⬅️ Назад", callback_data: "/menu" }]);
+    push(keyboard, [{ text: "⬅️ " + t("nav_back"), callback_data: "/menu" }]);
 
     if (msg_id) edit_message(token, chat_id, msg_id, text, "HTML", keyboard);
     else send_message(token, chat_id, text, "HTML", keyboard);
@@ -1800,7 +1800,7 @@ function view_sec_subs(token, chat_id, msg_id, sec_name) {
     for (let sname in all) {
         let s = all[sname];
         if (s[".type"] == "subscription_url" && s.section == sec_name) {
-            let url = s.url || "(пусто)";
+            let url = s.url || t("sub_empty_url");
             if (length(url) > 35) url = substr(url, 0, 35) + "...";
             let icon = s.enabled == "0" ? "❌" : "✅";
             push(keyboard, [{ text: icon + " " + url, callback_data: "/set_cat subscription_url " + sname }]);
@@ -1810,12 +1810,12 @@ function view_sec_subs(token, chat_id, msg_id, sec_name) {
         idx++;
     }
     push(keyboard, [{ text: "➕ Добавить подписку", callback_data: "/sec_sub_add " + sec_name }]);
-    push(keyboard, [{ text: "🔙 Назад", callback_data: "/sec_view " + sec_name }]);
-    let text = "🔗 <b>Подписки секции " + escape_html(sec_name) + "</b>\n\n";
+    push(keyboard, [{ text: "🔙 " + t("nav_back"), callback_data: "/sec_view " + sec_name }]);
+    let text = "🔗 <b>" + t("sub_section_subs") + " " + escape_html(sec_name) + "</b>\n\n";
     if (count == 0) {
         text += t("sub_none");
     } else {
-        text += "Найдено подписок: " + count;
+        text += t("sub_found_count") + " " + count;
     }
     if (msg_id) edit_message(token, chat_id, msg_id, text, "HTML", keyboard);
     else send_message(token, chat_id, text, "HTML", keyboard);
@@ -1824,11 +1824,11 @@ function view_sec_subs(token, chat_id, msg_id, sec_name) {
 function handle_sec_sub_add(token, chat_id, msg_id, sec_name, url) {
     if (!sec_name || !url) {
         set_tg_state(chat_id, { action: "sec_sub_add" });
-        return send_message(token, chat_id, "📝 Введите URL подписки:\n\n<i>Отправьте /cancel для отмены</i>", "HTML");
+        return send_message(token, chat_id, "📝 " + t("sub_enter_url"), "HTML");
     }
     url = trim(url);
     if (url == "") {
-        send_message(token, chat_id, "❌ URL не может быть пустым.");
+        send_message(token, chat_id, "❌ " + t("sub_url_empty"));
         return;
     }
     let c = uci_core.cursor();
@@ -1851,7 +1851,7 @@ function handle_sec_sub_add(token, chat_id, msg_id, sec_name, url) {
     c.set(CONFIG_NAME, new_sec, "label", url);
     c.commit(CONFIG_NAME);
     set_tg_state(chat_id, null);
-    send_message(token, chat_id, "✅ Подписка добавлена в секцию <code>" + sec_name + "</code>!", "HTML");
+    send_message(token, chat_id, "✅ " + t("sub_added") + " <code>" + sec_name + "</code>!", "HTML");
     view_sec_subs(token, chat_id, null, sec_name);
 }
 
@@ -1866,27 +1866,27 @@ function handle_sec_sub_del(token, chat_id, msg_id, sec_name, idx) {
         }
     }
     if (idx < 0 || idx >= length(sub_names)) {
-        send_message(token, chat_id, "❌ Подписка не найдена.");
+        send_message(token, chat_id, "❌ " + t("sub_not_found"));
         return view_sec_subs(token, chat_id, null, sec_name);
     }
     let target = sub_names[idx];
     c.delete(CONFIG_NAME, target);
     c.commit(CONFIG_NAME);
     set_tg_state(chat_id, null);
-    send_message(token, chat_id, "✅ Подписка удалена из секции <code>" + sec_name + "</code>.", "HTML");
+    send_message(token, chat_id, "✅ " + t("sub_removed") + " <code>" + sec_name + "</code>.", "HTML");
     view_sec_subs(token, chat_id, null, sec_name);
 }
 
 function view_help(token, chat_id, msg_id) {
-    let text = "📖 <b>Справка по командам</b>\n\n" +
-        "<b>Основные:</b>\n" +
+    let text = "📖 <b>" + t("help_title") + "</b>\n\n" +
+        "<b>" + t("help_main_section") + "</b>\n" +
         "/status — Статус системы\n" +
         "/runtime — Статистика трафика\n" +
         "/outbounds — Прокси серверы\n" +
         "/sections — Секции маршрутизации\n" +
         "/devices — Устройства в сети\n" +
         "/instances — Live серверы\n\n" +
-        "<b>Диагностика:</b>\n" +
+        "<b>" + t("help_diag_section") + "</b>\n" +
         "/speed — Тест скорости\n" +
         "/ping — Задержка до серверов\n" +
         "/test — Быстрая диагностика\n" +
@@ -1894,17 +1894,17 @@ function view_help(token, chat_id, msg_id) {
         "/logs — Просмотр логов\n" +
         "/info — Информация о системе\n" +
         "/connections — Активные подключения\n\n" +
-        "<b>Управление:</b>\n" +
+        "<b>" + t("help_manage_section") + "</b>\n" +
         "/restart — Перезапуск служб Tachyon\n" +
         "/backup — Бэкап конфига\n" +
         "/close_connections — Закрыть все соединения\n" +
         "/check_updates — Проверить обновления\n\n" +
-        "<b>Настройка:</b>\n" +
+        "<b>" + t("help_settings_section") + "</b>\n" +
         "/settings — Все настройки\n" +
         "/dns_presets — DNS пресеты\n" +
-        "/help — Эта справка";
+        "/help — " + t("help_this");
 
-    let keyboard = [[{ text: "⬅️ Меню", callback_data: "/menu" }]];
+    let keyboard = [[{ text: "⬅️ " + t("nav_menu"), callback_data: "/menu" }]];
     if (msg_id) edit_message(token, chat_id, msg_id, text, "HTML", keyboard);
     else send_message(token, chat_id, text, "HTML", keyboard);
 }
@@ -1951,17 +1951,17 @@ function view_quiet_hours(token, chat_id, msg_id) {
     let start_hr = option(s, "quiet_hours_start", "23");
     let end_hr = option(s, "quiet_hours_end", "7");
 
-    let text = "🔕 <b>Тихие часы</b>\n\n" +
-        "Статус: " + (enabled ? "🟢 Включены" : "❌ Выключены") + "\n" +
-        "Начало: <code>" + start_hr + ":00</code>\n" +
-        "Конец: <code>" + end_hr + ":00</code>\n\n" +
-        "В тихие часы бот отправляет только критические уведомления.";
+    let text = "🔕 <b>" + t("quiet_hours_title") + "</b>\n\n" +
+        t("quiet_status") + ": " + (enabled ? "🟢 " + t("quiet_enabled_label") : "❌ " + t("quiet_disabled_label")) + "\n" +
+        t("quiet_start_label") + " <code>" + start_hr + ":00</code>\n" +
+        t("quiet_end_label") + " <code>" + end_hr + ":00</code>\n\n" +
+        t("quiet_hint");
 
     let keyboard = [
-        [{ text: (enabled ? "❌ Выключить" : "✅ Включить"), callback_data: "/qh_toggle" }],
+        [{ text: (enabled ? t("btn_disable") : t("btn_enable")), callback_data: "/qh_toggle" }],
         [{ text: "⏰ Начало: " + start_hr, callback_data: "/qh_start" }],
         [{ text: "⏰ Конец: " + end_hr, callback_data: "/qh_end" }],
-        [{ text: "⬅️ Назад", callback_data: "/settings" }]
+        [{ text: "⬅️ " + t("nav_back"), callback_data: "/settings" }]
     ];
     if (msg_id) edit_message(token, chat_id, msg_id, text, "HTML", keyboard);
     else send_message(token, chat_id, text, "HTML", keyboard);
@@ -1983,7 +1983,7 @@ function view_test_rule(token, chat_id, msg_id, target) {
         return send_message(token, chat_id, "🔍 Введите домен или IP для проверки:\n\n<i>Отправьте /cancel для отмены</i>", "HTML");
     }
 
-    let text = "🔍 <b>Проверка правила:</b> <code>" + escape_html(target) + "</code>\n\n";
+    let text = "🔍 <b>" + t("test_rule_header") + "</b> <code>" + escape_html(target) + "</code>\n\n";
     let sections = api.get_sections();
     let matched = false;
 
@@ -2000,39 +2000,39 @@ function view_test_rule(token, chat_id, msg_id, target) {
 
         for (let d in domain_suffix) {
             if (target == d || (length(target) > length(d) + 1 && substr(target, length(target) - length(d) - 1) == "." + d)) {
-                text += "✅ Совпадение: <code>" + escape_html(sec[".name"]) + "</code> (domain_suffix)\n";
-                text += "   Действие: <code>" + as_string(sec.action || "proxy") + "</code>\n\n";
+                text += "✅ " + t("test_match") + " <code>" + escape_html(sec[".name"]) + "</code> (domain_suffix)\n";
+                text += "   " + t("test_action") + " <code>" + as_string(sec.action || "proxy") + "</code>\n\n";
                 matched = true;
             }
         }
         for (let d in domain) {
             if (target == d || target == "full:" + d) {
-                text += "✅ Совпадение: <code>" + escape_html(sec[".name"]) + "</code> (domain)\n";
-                text += "   Действие: <code>" + as_string(sec.action || "proxy") + "</code>\n\n";
+                text += "✅ " + t("test_match") + " <code>" + escape_html(sec[".name"]) + "</code> (domain)\n";
+                text += "   " + t("test_action") + " <code>" + as_string(sec.action || "proxy") + "</code>\n\n";
                 matched = true;
             }
         }
         for (let ip in ip_cidr) {
             if (match(target, /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/) && cidr_match_v4(target, ip)) {
-                text += "✅ Совпадение: <code>" + escape_html(sec[".name"]) + "</code> (ip_cidr)\n";
-                text += "   Действие: <code>" + as_string(sec.action || "proxy") + "</code>\n\n";
+                text += "✅ " + t("test_match") + " <code>" + escape_html(sec[".name"]) + "</code> (ip_cidr)\n";
+                text += "   " + t("test_action") + " <code>" + as_string(sec.action || "proxy") + "</code>\n\n";
                 matched = true;
             }
         }
     }
 
-    if (!matched) text += "❌ Совпадений не найдено. Трафик пойдёт через default route.";
+    if (!matched) text += "❌ " + t("test_no_match");
 
     let keyboard = [
         [{ text: "🔄 Ещё раз", callback_data: "/test_rule" }],
-        [{ text: "⬅️ Назад", callback_data: "/menu" }]
+        [{ text: "⬅️ " + t("nav_back"), callback_data: "/menu" }]
     ];
     if (msg_id) edit_message(token, chat_id, msg_id, text, "HTML", keyboard);
     else send_message(token, chat_id, text, "HTML", keyboard);
 }
 
 function exec_export_config(token, chat_id, msg_id) {
-    let wait_text = "📤 <b>Экспорт конфига...</b>\n";
+    let wait_text = "📤 <b>" + t("export_title") + "</b>\n";
     if (msg_id) edit_message(token, chat_id, msg_id, wait_text, "HTML");
     else send_message(token, chat_id, wait_text, "HTML");
 
@@ -2043,9 +2043,9 @@ function exec_export_config(token, chat_id, msg_id) {
         send_document(token, chat_id, export_path);
         // Absent file already satisfies the caller; fs.unlink throws on ENOENT.
         try { fs.unlink(export_path); } catch(e) {}
-        send_message(token, chat_id, "✅ Конфиг экспортирован.\n\n⚠️ Файл содержит чувствительные данные. Не публикуйте его.", "HTML", [[{ text: "⬅️ Меню", callback_data: "/menu" }]]);
+        send_message(token, chat_id, "✅ " + t("export_done"), "HTML", [[{ text: "⬅️ " + t("nav_menu"), callback_data: "/menu" }]]);
     } else {
-        send_message(token, chat_id, "❌ Не удалось экспортировать конфиг.", "HTML", [[{ text: "⬅️ Меню", callback_data: "/menu" }]]);
+        send_message(token, chat_id, "❌ " + t("export_failed"), "HTML", [[{ text: "⬅️ " + t("nav_menu"), callback_data: "/menu" }]]);
     }
 }
 
@@ -2073,14 +2073,14 @@ function find_mac_block_rules(c, mac) {
 function handle_toggle_mac(token, chat_id, mac_raw) {
     let mac = normalize_mac(mac_raw);
     if (!mac) {
-        send_message(token, chat_id, "❌ Некорректный MAC-адрес.", "HTML");
+        send_message(token, chat_id, "❌ " + t("mac_invalid"), "HTML");
         return view_devices(token, chat_id, null);
     }
 
     let c = uci_core.cursor();
     if (!c) {
-        return send_message(token, chat_id, "❌ Не удалось открыть конфигурацию firewall.", "HTML",
-            [[{ text: "⬅️ Меню", callback_data: "/menu" }]]);
+        return send_message(token, chat_id, "❌ " + t("mac_firewall_open_failed"), "HTML",
+            [[{ text: "⬅️ " + t("nav_menu"), callback_data: "/menu" }]]);
     }
     c.load("firewall");
 
@@ -2093,8 +2093,8 @@ function handle_toggle_mac(token, chat_id, mac_raw) {
     } else {
         let sec = c.add("firewall", "rule");
         if (!sec) {
-            return send_message(token, chat_id, "❌ Не удалось создать правило блокировки.", "HTML",
-                [[{ text: "⬅️ Меню", callback_data: "/menu" }]]);
+            return send_message(token, chat_id, "❌ " + t("mac_block_rule_failed"), "HTML",
+                [[{ text: "⬅️ " + t("nav_menu"), callback_data: "/menu" }]]);
         }
         c.set("firewall", sec, "name", "Tachyon block " + mac);
         c.set("firewall", sec, "src", "lan");
@@ -2128,7 +2128,7 @@ function view_devices(token, chat_id, msg_id) {
         });
     }
     
-    let text = "💻 <b>Устройства в сети:</b>\n\n";
+    let text = "💻 <b>" + t("devices_title") + "</b>\n\n";
     let keyboard = [];
     let count = 0;
     
@@ -2141,7 +2141,7 @@ function view_devices(token, chat_id, msg_id) {
             
             let mac = uc(as_string(fields[1]));
             let ip = fields[2];
-            let hostname = fields[3] == "*" ? "Неизвестно" : fields[3];
+            let hostname = fields[3] == "*" ? t("device_hostname_unknown") : fields[3];
             
             let is_blocked = blocked_macs[mac];
             let status_icon = is_blocked ? "🚫" : "🟢";
@@ -2154,10 +2154,10 @@ function view_devices(token, chat_id, msg_id) {
         }
     }
     
-    if (count == 0) text += "<i>Устройства не найдены.</i>\n";
+    if (count == 0) text += "<i>" + t("devices_not_found") + "</i>\n";
     
-    push(keyboard, [{ text: "🔄 Обновить", callback_data: "/devices" }]);
-    push(keyboard, [{ text: "⬅️ Назад", callback_data: "/menu" }]);
+    push(keyboard, [{ text: "🔄 " + t("btn_refresh"), callback_data: "/devices" }]);
+    push(keyboard, [{ text: "⬅️ " + t("nav_back"), callback_data: "/menu" }]);
     
     if (msg_id) edit_message(token, chat_id, msg_id, text, "HTML", keyboard);
     else send_message(token, chat_id, text, "HTML", keyboard);
@@ -2166,7 +2166,7 @@ function view_devices(token, chat_id, msg_id) {
 function view_watchdog(token, chat_id, msg_id) {
     let running = api.process_running_by_pidfile("/var/run/tachyon_watchdog.pid");
     let text = "🐕 <b>Watchdog Tachyon</b>\n\n" +
-               "Статус: <code>" + (running ? "🟢 Запущен" : "🔴 Остановлен") + "</code>";
+               t("status") + ": <code>" + (running ? t("status_running") : t("status_stopped")) + "</code>";
                
     let keyboard = [];
     if (running) {
@@ -2175,34 +2175,34 @@ function view_watchdog(token, chat_id, msg_id) {
     } else {
         push(keyboard, [{ text: "▶️ Запустить Watchdog", callback_data: "/wd_start" }]);
     }
-    push(keyboard, [{ text: "⬅️ Назад", callback_data: "/menu" }]);
+    push(keyboard, [{ text: "⬅️ " + t("nav_back"), callback_data: "/menu" }]);
     
     if (msg_id) edit_message(token, chat_id, msg_id, text, "HTML", keyboard);
     else send_message(token, chat_id, text, "HTML", keyboard);
 }
 
 function exec_ai_heal(token, chat_id, msg_id) {
-    send_message(token, chat_id, "🤖 <b>ИИ-Автомеханик выполняет диагностику и самолечение...</b>", "HTML");
+    send_message(token, chat_id, "🤖 <b>" + t("heal_running") + "</b>", "HTML");
 
     command_status(command_from_args(["/usr/bin/tachyon", "ai_heal"]));
 
     let status_data = fs.readfile("/tmp/tachyon_ai_status.json");
-    let text = "🤖 <b>[ИИ-Автомеханик Tachyon]</b>\n\n";
+    let text = "🤖 <b>[" + t("ai_doctor_title") + "]</b>\n\n";
     if (status_data) {
         try {
             let st = json(status_data);
             if (st.last_incident) {
-                text += "⚠️ <b>Устранён инцидент:</b> " + escape_html(st.last_incident.description || "") + "\n";
-                text += "🔧 <b>Авто-решение:</b> " + escape_html(st.last_incident.resolution || "") + "\n\n";
+                text += "⚠️ <b>" + t("ai_incident") + "</b> " + escape_html(st.last_incident.description || "") + "\n";
+                text += "🔧 <b>" + t("ai_resolution") + "</b> " + escape_html(st.last_incident.resolution || "") + "\n\n";
                 text += t("status_normal");
             } else {
-                text += "🟢 Все сетевые службы, DNS, nftables и память работают идеально.";
+                text += "🟢 " + t("ai_all_ok");
             }
         } catch(e) {
-            text += "🟢 Диагностика завершена успешно.";
+            text += "🟢 " + t("ai_diag_ok");
         }
     } else {
-        text += "🟢 Диагностика завершена.";
+        text += "🟢 " + t("ai_diag_done");
     }
 
     let keyboard = [[{ text: "⬅️ В меню", callback_data: "/menu" }]];
@@ -2210,12 +2210,12 @@ function exec_ai_heal(token, chat_id, msg_id) {
 }
 
 function exec_ai_status_full(token, chat_id, msg_id) {
-    send_message(token, chat_id, "🔍 <b>Сбор полного AI Watchdog статуса...</b>", "HTML");
+    send_message(token, chat_id, "🔍 <b>" + t("ai_status_collecting") + "</b>", "HTML");
     let res = command_capture(command_from_args([ "/usr/bin/tachyon", "ai_status_full" ]));
-    let data = res ? (res.output || "Нет данных.") : "Ошибка получения статуса.";
-    if (length(data) > 3500) data = substr(data, 0, 3500) + "\n... (данные сокращены)";
-    let text = "🤖 <b>AI Watchdog — Полный статус:</b>\n\n<pre>" + escape_html(data) + "</pre>";
-    let keyboard = [[{ text: "⬅️ Назад", callback_data: "/watchdog" }]];
+    let data = res ? (res.output || t("err_no_data")) : t("ai_status_error");
+    if (length(data) > 3500) data = substr(data, 0, 3500) + "\n... (" + t("ai_data_truncated") + ")";
+    let text = "🤖 <b>" + t("ai_full_status_header") + "</b>\n\n<pre>" + escape_html(data) + "</pre>";
+    let keyboard = [[{ text: "⬅️ " + t("nav_back"), callback_data: "/watchdog" }]];
     if (msg_id) edit_message(token, chat_id, msg_id, text, "HTML", keyboard);
     else send_message(token, chat_id, text, "HTML", keyboard);
 }
@@ -2225,16 +2225,16 @@ function view_qos(token, chat_id, msg_id) {
     let cfg = c.get_all(CONFIG_NAME, "settings") || {};
     let enabled = cfg.qos_priority_engine != "0";
     
-    let text = "🎮 <b>Игровой & Голосовой QoS Ускоритель</b>\n\n" +
-               "Статус: <code>" + (enabled ? "🟢 Включен (DSCP EF + AF41 Priority)" : "⚪ Выключен") + "</code>\n\n" +
-               "<b>Приоритетные правила:</b>\n" +
+    let text = "🎮 <b>" + t("qos_title") + "</b>\n\n" +
+               t("quiet_status") + ": <code>" + (enabled ? "🟢 " + t("qos_enabled_detail") : "⚪ " + t("qos_disabled_detail")) + "</code>\n\n" +
+               "<b>" + t("qos_priority_rules") + "</b>\n" +
                "├ 🎙️ <b>Golos/Discord/RTC:</b> UDP 5000-5020, 3478, 50000-65535 ➔ <code>DSCP EF (0x2e)</code>\n" +
                "├ 🎮 <b>Games (Steam/CS/Dota/Apex/PUBG/Roblox):</b> UDP 27000-27050, 3074 ➔ <code>DSCP AF41 (0x22)</code>\n" +
                "└ ⚡ <b>TCP ACK Acceleration:</b> малые ACK пакеты ➔ <code>High Priority</code>";
 
     let keyboard = [
         [{ text: (enabled ? "⏹️ Отключить QoS" : "⚡ Включить QoS"), callback_data: "/qos_toggle" }],
-        [{ text: "⬅️ Назад", callback_data: "/menu" }]
+        [{ text: "⬅️ " + t("nav_back"), callback_data: "/menu" }]
     ];
     if (msg_id) edit_message(token, chat_id, msg_id, text, "HTML", keyboard);
     else send_message(token, chat_id, text, "HTML", keyboard);
@@ -2274,8 +2274,8 @@ function dispatch_command(token, chat_id, text, msg_id) {
         let full = cb_map_get(cb_tok);
         if (full == null || full == "") {
             return send_message(token, chat_id,
-                "⚠️ Кнопка устарела — откройте список заново.", "HTML",
-                [[{ text: "⬅️ Меню", callback_data: "/menu" }]]);
+                "⚠️ " + t("cb_obsolete"), "HTML",
+                [[{ text: "⬅️ " + t("nav_menu"), callback_data: "/menu" }]]);
         }
         cmd = trim(full);
     }
@@ -2321,7 +2321,7 @@ function dispatch_command(token, chat_id, text, msg_id) {
         let which = (cmd == "/qh_start") ? "start" : "end";
         set_tg_state(chat_id, { action: "qh_hour", which: which });
         return send_message(token, chat_id,
-            "⏰ Введите час " + (which == "start" ? "начала" : "окончания") +
+            "⏰ " + t("quiet_enter_hour") + " " + (which == "start" ? t("quiet_start_word") : t("quiet_end_word")) +
             " тихих часов (0–23):\n\n<i>Отправьте /cancel для отмены</i>", "HTML");
     }
     
@@ -2354,11 +2354,11 @@ function dispatch_command(token, chat_id, text, msg_id) {
     if (match(cmd, /^\/update_component /)) {
         let comp = trim(substr(cmd, 17));
         if (!valid_updatable_component(comp)) {
-            send_message(token, chat_id, "❌ <b>Неизвестный компонент:</b> <code>" + escape_html(comp) + "</code>", "HTML", [[{text:"⬅️ Меню", callback_data:"/menu"}]]);
+            send_message(token, chat_id, "❌ <b>" + t("err_unknown_component") + "</b> <code>" + escape_html(comp) + "</code>", "HTML", [[{text:"⬅️ " + t("nav_menu"), callback_data:"/menu"}]]);
             return;
         }
-        if (msg_id) edit_message(token, chat_id, msg_id, "⏳ <b>Запуск обновления " + escape_html(comp) + "...</b>\nПроцесс запущен в фоне. Зайдите позже.", "HTML", [[{text:"⬅️ Меню", callback_data:"/menu"}]]);
-        else send_message(token, chat_id, "⏳ <b>Запуск обновления " + escape_html(comp) + "...</b>\nПроцесс запущен в фоне. Зайдите позже.", "HTML", [[{text:"⬅️ Меню", callback_data:"/menu"}]]);
+        if (msg_id) edit_message(token, chat_id, msg_id, t("update_component_title") + " " + escape_html(comp) + "...</b>\n" + t("update_bg_hint"), "HTML", [[{text:"⬅️ " + t("nav_menu"), callback_data:"/menu"}]]);
+        else send_message(token, chat_id, t("update_component_title") + " " + escape_html(comp) + "...</b>\n" + t("update_bg_hint"), "HTML", [[{text:"⬅️ " + t("nav_menu"), callback_data:"/menu"}]]);
         command_status(command_from_args(["/usr/bin/tachyon", "component_action_async", comp, "install"]));
         return;
     }
@@ -2366,7 +2366,7 @@ function dispatch_command(token, chat_id, text, msg_id) {
     if (match(cmd, /^\/admin_add /)) {
         let fwd_id = trim(substr(cmd, 11));
         if (!match(fwd_id, /^-?[0-9]+$/)) {
-            send_message(token, chat_id, "❌ Неверный Chat ID.", "HTML");
+            send_message(token, chat_id, "❌ " + t("admin_invalid_chat_id"), "HTML");
             return;
         }
         let c = uci_core.cursor(); c.load(CONFIG_NAME);
@@ -2380,10 +2380,10 @@ function dispatch_command(token, chat_id, text, msg_id) {
             let new_admins = current_admins != "" ? current_admins + "," + fwd_id : fwd_id;
             c.set(CONFIG_NAME, "telegram", "admin_ids", new_admins);
             c.commit(CONFIG_NAME);
-            if (msg_id) edit_message(token, chat_id, msg_id, "✅ Пользователь `" + fwd_id + "` добавлен в список администраторов.", "Markdown", [[{text:"⬅️ Меню", callback_data:"/menu"}]]);
-            else send_message(token, chat_id, "✅ Пользователь `" + fwd_id + "` добавлен в список администраторов.", "Markdown", [[{text:"⬅️ Меню", callback_data:"/menu"}]]);
+            if (msg_id) edit_message(token, chat_id, msg_id, "✅ " + t("admin_user_added") + " `" + fwd_id + "`", "Markdown", [[{text:"⬅️ " + t("nav_menu"), callback_data:"/menu"}]]);
+            else send_message(token, chat_id, "✅ " + t("admin_user_added") + " `" + fwd_id + "`", "Markdown", [[{text:"⬅️ " + t("nav_menu"), callback_data:"/menu"}]]);
         } else {
-            if (msg_id) edit_message(token, chat_id, msg_id, "ℹ️ Пользователь `" + fwd_id + "` уже является администратором.", "Markdown", [[{text:"⬅️ Меню", callback_data:"/menu"}]]);
+            if (msg_id) edit_message(token, chat_id, msg_id, "ℹ️ " + t("admin_user_already") + " `" + fwd_id + "`", "Markdown", [[{text:"⬅️ " + t("nav_menu"), callback_data:"/menu"}]]);
         }
         return;
     }
@@ -2401,17 +2401,17 @@ function dispatch_command(token, chat_id, text, msg_id) {
     
     if (match(cmd, /^\/sec_create/)) {
         set_tg_state(chat_id, { action: "sec_create" });
-        return send_message(token, chat_id, "📝 Введите латинское имя для новой секции (например, <code>my_vpn</code>):\n\n<i>Отправьте /cancel для отмены</i>", "HTML");
+        return send_message(token, chat_id, t("sec_enter_name"), "HTML");
     }
     if (match(cmd, /^\/sec_rename /)) {
         let sec = trim(substr(cmd, 12));
         set_tg_state(chat_id, { action: "sec_rename", sec: sec });
-        return send_message(token, chat_id, "📝 Введите новое понятное имя (Label) для секции <code>" + sec + "</code>:\n\n<i>Отправьте /cancel для отмены</i>", "HTML");
+        return send_message(token, chat_id, t("sec_enter_label") + " <code>" + sec + "</code>:\n\n<i>Отправьте /cancel для отмены</i>", "HTML");
     }
     if (match(cmd, /^\/sec_target /)) {
         let sec = trim(substr(cmd, 12));
         set_tg_state(chat_id, { action: "sec_target", sec: sec });
-        return send_message(token, chat_id, "🌐 Введите имя исходящего интерфейса (target) для секции <code>" + sec + "</code> (например, <code>main-out</code> или <code>direct-out</code>):\n\n<i>Отправьте /cancel для отмены</i>", "HTML");
+        return send_message(token, chat_id, t("sec_enter_target") + " <code>" + sec + "</code> (например, <code>main-out</code> или <code>direct-out</code>):\n\n<i>Отправьте /cancel для отмены</i>", "HTML");
     }
     if (match(cmd, /^\/sec_action /)) {
         let sec = trim(substr(cmd, 12));
@@ -2423,12 +2423,12 @@ function dispatch_command(token, chat_id, text, msg_id) {
         c.load(CONFIG_NAME);
         let s = c.get_all(CONFIG_NAME, sec);
         if (!s) {
-            send_message(token, chat_id, "❌ Секция <code>" + sec + "</code> не найдена.", "HTML");
+            send_message(token, chat_id, "❌ " + t("sec_not_found") + " <code>" + sec + "</code>", "HTML");
             return view_sections(token, chat_id, null);
         }
         c.delete(CONFIG_NAME, sec);
         c.commit(CONFIG_NAME);
-        send_message(token, chat_id, "✅ Секция <code>" + sec + "</code> удалена.", "HTML");
+        send_message(token, chat_id, "✅ " + t("sec_deleted") + " <code>" + sec + "</code>", "HTML");
         return view_sections(token, chat_id, null);
     }
     if (match(cmd, /^\/sec_list /)) {
@@ -2439,7 +2439,7 @@ function dispatch_command(token, chat_id, text, msg_id) {
         let parts = split(trim(substr(cmd, 9)), " ");
         if (length(parts) == 2) {
             set_tg_state(chat_id, { action: "sec_add", sec: parts[0], list: parts[1] });
-            return send_message(token, chat_id, "➕ Отправьте элементы для добавления (по одному в строке или через пробел):\n\n<i>Отправьте /cancel для отмены</i>", "HTML");
+            return send_message(token, chat_id, t("sec_add_items_prompt"), "HTML");
         }
     }
     if (match(cmd, /^\/sec_clear /)) {
@@ -2479,7 +2479,7 @@ function dispatch_command(token, chat_id, text, msg_id) {
     }
     if (cmd == "/sec_sub_add") {
         set_tg_state(chat_id, { action: "sec_sub_add" });
-        return send_message(token, chat_id, "📝 Введите имя секции и URL подписки через пробел:\n<code>/sec_sub_add Main https://...</code>\n\n<i>Отправьте /cancel для отмены</i>", "HTML");
+        return send_message(token, chat_id, t("sec_sub_add_prompt"), "HTML");
     }
     if (match(cmd, /^\/sec_sub_del /)) {
         let parts = split(trim(substr(cmd, 13)), " ");
@@ -2529,14 +2529,14 @@ function dispatch_command(token, chat_id, text, msg_id) {
         let parts = split(trim(substr(cmd, 9)), " ");
         if (length(parts) >= 3) {
             set_tg_state(chat_id, { action: "set_str", stype: parts[0], sname: parts[1], key: parts[2] });
-            return send_message(token, chat_id, "📝 Введите новое значение для <code>" + parts[2] + "</code>:\n\n<i>Отправьте /cancel для отмены</i>", "HTML");
+            return send_message(token, chat_id, t("sec_enter_value") + " <code>" + parts[2] + "</code>:\n\n<i>Отправьте /cancel для отмены</i>", "HTML");
         }
     }
     if (match(cmd, /^\/set_arr_add /)) {
         let parts = split(trim(substr(cmd, 13)), " ");
         if (length(parts) >= 3) {
             set_tg_state(chat_id, { action: "set_arr_add", stype: parts[0], sname: parts[1], key: parts[2] });
-            return send_message(token, chat_id, "➕ Отправьте элементы для добавления в список (через пробел или с новой строки):\n\n<i>Отправьте /cancel для отмены</i>", "HTML");
+            return send_message(token, chat_id, t("sec_add_list_prompt"), "HTML");
         }
     }
 
@@ -2551,8 +2551,8 @@ function dispatch_command(token, chat_id, text, msg_id) {
             let p = presets[i];
             push(keyboard, [{ text: p.country + " " + p.name, callback_data: "/dns_apply " + as_string(i) }]);
         }
-        push(keyboard, [{ text: "📋 Все протоколы", callback_data: "/dns_protocols" }]);
-        push(keyboard, [{ text: "⬅️ Назад", callback_data: "/settings" }]);
+        push(keyboard, [{ text: t("dns_all_protocols"), callback_data: "/dns_protocols" }]);
+        push(keyboard, [{ text: "⬅️ " + t("nav_back"), callback_data: "/settings" }]);
         if (msg_id) edit_message(token, chat_id, msg_id, text, "HTML", keyboard);
         else send_message(token, chat_id, text, "HTML", keyboard);
         return;
@@ -2569,7 +2569,7 @@ function dispatch_command(token, chat_id, text, msg_id) {
             c.delete(CONFIG_NAME, "settings", "dns_server");
             for (let srv in servers) c.add_list(CONFIG_NAME, "settings", "dns_server", srv);
             c.commit(CONFIG_NAME);
-            send_message(token, chat_id, "✅ <b>DNS серверы установлены:</b>\n" + dns_presets.format_preset(preset, idx) + "\n\nТип: <code>" + dns_type + "</code>\n\n⚠️ Выполните перезапуск для применения.", "HTML", [[{text: "🔄 Перезапустить", callback_data: "/confirm_restart"}, {text: "⬅️ Назад", callback_data: "/dns_presets"}]]);
+            send_message(token, chat_id, "✅ <b>" + t("dns_servers_applied") + "</b>\n" + dns_presets.format_preset(preset, idx) + "\n\nТип: <code>" + dns_type + "</code>\n\n⚠️ " + t("dns_restart_hint"), "HTML", [[{text: "🔄 Перезапустить", callback_data: "/confirm_restart"}, {text: "⬅️ " + t("nav_back"), callback_data: "/dns_presets"}]]);
         }
         return;
     }
@@ -2581,7 +2581,7 @@ function dispatch_command(token, chat_id, text, msg_id) {
             let p = presets[i];
             push(keyboard, [{ text: p.country + " " + p.name, callback_data: "/bootstrap_apply " + as_string(i) }]);
         }
-        push(keyboard, [{ text: "⬅️ Назад", callback_data: "/settings" }]);
+        push(keyboard, [{ text: "⬅️ " + t("nav_back"), callback_data: "/settings" }]);
         if (msg_id) edit_message(token, chat_id, msg_id, text, "HTML", keyboard);
         else send_message(token, chat_id, text, "HTML", keyboard);
         return;
@@ -2596,13 +2596,13 @@ function dispatch_command(token, chat_id, text, msg_id) {
             c.delete(CONFIG_NAME, "settings", "bootstrap_dns_server");
             for (let srv in servers) c.add_list(CONFIG_NAME, "settings", "bootstrap_dns_server", srv);
             c.commit(CONFIG_NAME);
-            send_message(token, chat_id, "✅ <b>Bootstrap DNS серверы установлены:</b>\n" + dns_presets.format_preset(preset, idx) + "\n\n⚠️ Выполните перезапуск для применения.", "HTML", [[{text: "🔄 Перезапустить", callback_data: "/confirm_restart"}, {text: "⬅️ Назад", callback_data: "/bootstrap_presets"}]]);
+            send_message(token, chat_id, "✅ <b>" + t("dns_bootstrap_applied") + "</b>\n" + dns_presets.format_preset(preset, idx) + "\n\n⚠️ " + t("dns_restart_hint"), "HTML", [[{text: "🔄 Перезапустить", callback_data: "/confirm_restart"}, {text: "⬅️ " + t("nav_back"), callback_data: "/bootstrap_presets"}]]);
         }
         return;
     }
     if (cmd == "/dns_protocols") {
         let text = dns_presets.format_protocol_info();
-        let keyboard = [[{ text: "⬅️ Назад", callback_data: "/dns_presets" }]];
+        let keyboard = [[{ text: "⬅️ " + t("nav_back"), callback_data: "/dns_presets" }]];
         if (msg_id) edit_message(token, chat_id, msg_id, text, "HTML", keyboard);
         else send_message(token, chat_id, text, "HTML", keyboard);
         return;
@@ -2649,7 +2649,7 @@ function process_updates(token, admin_ids) {
             try {
                 dispatch_command(token, chat_id, cb.data, cb.message ? cb.message.message_id : null);
             } catch (e) {
-                send_message(token, chat_id, "❌ Ошибка выполнения команды: " + escape_html(as_string(e)), "HTML");
+                send_message(token, chat_id, "❌ " + t("exec_cmd_error") + " " + escape_html(as_string(e)), "HTML");
             }
             tg_request(token, "answerCallbackQuery", { callback_query_id: cb.id });
             continue;
@@ -2662,7 +2662,7 @@ function process_updates(token, admin_ids) {
 
             if (!is_admin(chat_id, admin_ids)) {
                 if (msg.text || msg.document) {
-                    send_message(token, chat_id, "❌ Доступ запрещен. Ваш Chat ID: `" + chat_id + "`", "Markdown");
+                    send_message(token, chat_id, "❌ " + t("exec_access_denied") + " `" + chat_id + "`", "Markdown");
                 }
                 continue;
             }
@@ -2670,7 +2670,7 @@ function process_updates(token, admin_ids) {
             if (msg.document) {
                 let doc = msg.document;
                 if (match(doc.file_name || "", /\.tar\.gz$/)) {
-                    send_message(token, chat_id, "⏳ <b>Скачиваю бэкап...</b>", "HTML");
+                    send_message(token, chat_id, "⏳ <b>" + t("backup_downloading") + "</b>", "HTML");
                     let file_url = get_file_url(token, doc.file_id);
                     if (file_url) {
                         let dl_path = "/tmp/restore_" + doc.file_id + ".tar.gz";
@@ -2682,21 +2682,21 @@ function process_updates(token, admin_ids) {
                         if (fs.stat(dl_path)) {
                             apply_backup_restore(token, chat_id, dl_path);
                         } else {
-                            send_message(token, chat_id, "❌ <b>Ошибка загрузки файла.</b>", "HTML");
+                            send_message(token, chat_id, "❌ <b>" + t("backup_download_error") + "</b>", "HTML");
                         }
                     } else {
-                        send_message(token, chat_id, "❌ <b>Ошибка получения URL файла.</b>", "HTML");
+                        send_message(token, chat_id, "❌ <b>" + t("backup_url_error") + "</b>", "HTML");
                     }
                 } else {
-                    send_message(token, chat_id, "ℹ️ Пожалуйста, отправьте бэкап в формате `.tar.gz`.", "Markdown");
+                    send_message(token, chat_id, "ℹ️ " + t("backup_format_hint"), "Markdown");
                 }
                 continue;
             }
 
             if (msg.forward_from) {
                 let fwd_id = msg.forward_from.id;
-                let text = "👤 Вы переслали сообщение от пользователя `" + fwd_id + "`.\nДобавить его в список администраторов бота?";
-                let keyboard = [[{text: "✅ Добавить", callback_data: "/admin_add " + fwd_id}]];
+                let text = "👤 " + t("admin_forward_prompt") + " `" + fwd_id + "`.\nДобавить его в список администраторов бота?";
+                let keyboard = [[{text: t("btn_admin_add"), callback_data: "/admin_add " + fwd_id}]];
                 send_message(token, chat_id, text, "Markdown", keyboard);
                 continue;
             }
@@ -2704,9 +2704,9 @@ function process_updates(token, admin_ids) {
             if (msg.text) {
                 if (match(msg.text, /^> /)) {
                     let exec_cmd = trim(substr(msg.text, 2));
-                    send_message(token, chat_id, "⏳ Выполняю из разрешённого набора (whitelist):\n<code>" + escape_html(exec_cmd) + "</code>", "HTML");
+                    send_message(token, chat_id, "⏳ " + t("exec_whitelist_msg") + "\n<code>" + escape_html(exec_cmd) + "</code>", "HTML");
                     let out = safe_execute(exec_cmd);
-                    let result_text = "<b>Выполнено (код " + out.status + "):</b>\n<pre>" + escape_html(out.output || "Нет вывода") + "</pre>";
+                    let result_text = "<b>Выполнено (код " + out.status + "):</b>\n<pre>" + escape_html(out.output || t("exec_no_output")) + "</pre>";
                     if (length(result_text) > 4000) result_text = substr(result_text, 0, 4000) + "...</pre>";
                     send_message(token, chat_id, result_text, "HTML");
                     continue;
@@ -2714,7 +2714,7 @@ function process_updates(token, admin_ids) {
 
                 if (msg.text == "/cancel") {
                     set_tg_state(chat_id, null);
-                    send_message(token, chat_id, "❌ Действие отменено.", "HTML", [[{text:"⬅️ Меню", callback_data:"/menu"}]]);
+                    send_message(token, chat_id, "❌ " + t("action_cancelled"), "HTML", [[{text:"⬅️ " + t("nav_menu"), callback_data:"/menu"}]]);
                     continue;
                 }
             }
@@ -2728,7 +2728,7 @@ function process_updates(token, admin_ids) {
                 }
 
                 if (!msg.text) {
-                    send_message(token, chat_id, "⚠️ Ожидается текстовое сообщение. Попробуйте ещё раз или /cancel.", "HTML");
+                    send_message(token, chat_id, "⚠️ " + t("err_text_expected"), "HTML");
                     continue;
                 }
 
@@ -2810,7 +2810,7 @@ function process_updates(token, admin_ids) {
                         send_message(token, chat_id, "✅ Добавлено " + length(valid_items) + " элементов.");
                     } else {
                         set_tg_state(chat_id, null);
-                        send_message(token, chat_id, "❌ Ничего не добавлено.");
+                        send_message(token, chat_id, "❌ " + t("exec_nothing_added"));
                     }
                     view_sec_list(token, chat_id, null, state.sec, state.list);
                 }
@@ -2861,18 +2861,18 @@ function process_updates(token, admin_ids) {
 // ─── Entry Point ─────────────────────────────────────────────────────────────
 
 function send_daily_digest(token, admin_ids) {
-    let text = "📊 <b>Утренний дайджест Tachyon</b>\n\n";
+    let text = "📊 <b>" + t("daily_digest_title") + "</b>\n\n";
     let uptime_out = command_output_from_args(["uptime"]);
     let m = match(uptime_out, /up ([^,]+)/);
-    let up = m ? m[1] : "неизвестно";
-    text += "⏱ Аптайм ОС: " + up + "\n";
+    let up = m ? m[1] : t("status_unknown");
+    text += "⏱ " + t("daily_uptime") + ": " + up + "\n";
     
     let res = command_capture(command_from_args(["curl", "-s", "http://127.0.0.1:" + get_mixed_port() + "/traffic"]));
     if (res && res.status == 0 && res.output) {
         try {
             let tr = json(res.output);
-            text += "🔻 Текущий RX: " + format_bytes(tr.down) + "/s\n";
-            text += "🔺 Текущий TX: " + format_bytes(tr.up) + "/s\n";
+            text += "🔻 " + t("daily_rx") + ": " + format_bytes(tr.down) + "/s\n";
+            text += "🔺 " + t("daily_tx") + ": " + format_bytes(tr.up) + "/s\n";
         }
         catch (e) {
             // Traffic counters are decoration on a status message; a clash API
@@ -2918,12 +2918,12 @@ function check_notified_updates(token, admin_ids) {
                     let msg;
                     if (comp.status == "outdated_same_release") {
                         let transition = build_transition(comp);
-                        msg = "📦 <b>Новая сборка текущего релиза!</b>\n" + title + ": <code>" + escape_html(cur) + "</code>" +
-                            (transition != "" ? "\nСборка: " + transition : "");
+                        msg = "📦 <b>" + t("update_new_release_header") + "</b>\n" + title + ": <code>" + escape_html(cur) + "</code>" +
+                            (transition != "" ? "\n" + t("update_build_label") + ": " + transition : "");
                     } else {
-                        msg = "📦 <b>Доступно обновление компонента!</b>\n" + title + ": <code>" + escape_html(cur) + "</code> ➡️ <code>" + escape_html(as_string(latest)) + "</code>";
+                        msg = "📦 <b>" + t("update_available") + "</b>\n" + title + ": <code>" + escape_html(cur) + "</code> ➡️ <code>" + escape_html(as_string(latest)) + "</code>";
                     }
-                    let kb = [[{text: "🔄 Обновить " + title, callback_data: "/update_component " + name}]];
+                    let kb = [[{text: t("btn_update_component") + " " + title, callback_data: "/update_component " + name}]];
 
                     let admins = split(admin_ids, /,/);
                     for (let admin in admins) {
@@ -3015,9 +3015,9 @@ function check_blocked_activity(cfg) {
                 let cid = trim(admin);
                 if (cid != "")
                     send_message(cfg.bot_token, cid,
-                        "🚫 <b>Заблокированная активность</b>\n" +
-                        "Правило: <code>" + escape_html(label) + "</code>\n" +
-                        "Попыток доступа к заблокированным сайтам: <code>" + as_string(delta) + "</code>",
+                        "🚫 <b>" + t("blocked_activity") + "</b>\n" +
+                        t("blocked_rule") + ": <code>" + escape_html(label) + "</code>\n" +
+                        t("blocked_attempts") + ": <code>" + as_string(delta) + "</code>",
                         "HTML", null);
             }
         }
@@ -3311,7 +3311,7 @@ function send_api(message) {
     let cfg = settings();
     if (cfg.enabled != "1" || !cfg.bot_token || !cfg.admin_ids) return 1;
     
-    let is_critical = (index(message, "Упал") >= 0 || index(message, "Ошибка") >= 0);
+    let is_critical = (index(message, t("critical_keyword_fallen")) >= 0 || index(message, t("critical_keyword_error")) >= 0);
     if (!is_critical && in_quiet_hours(cfg)) return 0;
     
     let admins = split(cfg.admin_ids, /,/);
