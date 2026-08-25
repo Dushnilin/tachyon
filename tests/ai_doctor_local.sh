@@ -76,11 +76,12 @@ grep -Fq 'wan_fail_streak: int(st.wan_fail_streak || 0)' "$TACHYON_LIB/service/w
 # 5. Fix usage tracker: applying the same fix must be recorded, and fixes
 #    applied 3+ times within the hour must be withheld from recommendations
 #    (issue #31: doctor proposing the same repairs forever).
+#    Use fix_resolv_symlink (ln -sf works without system services in Docker).
 rm -f /tmp/tachyon_doctor_fixes.json
 for i in 1 2 3; do
-  ucode -L "$TACHYON_LIB" "$TACHYON_LIB/diagnostics/runtime.uc" apply-quick-fix "clear_dns_cache" >/dev/null 2>&1 || true
+  ucode -L "$TACHYON_LIB" "$TACHYON_LIB/diagnostics/runtime.uc" apply-quick-fix "fix_resolv_symlink" >/dev/null 2>&1 || true
 done
-grep -Fq '"clear_dns_cache"' /tmp/tachyon_doctor_fixes.json ||
+grep -Fq '"fix_resolv_symlink"' /tmp/tachyon_doctor_fixes.json ||
   fail "apply_quick_fix must record applied fixes in the doctor usage tracker"
 grep -Eq '"count": ?3' /tmp/tachyon_doctor_fixes.json ||
   fail "doctor usage tracker must count repeated applications"
@@ -88,5 +89,27 @@ grep -Fq 'function doctor_fix_overused(' "$TACHYON_LIB/diagnostics/runtime.uc" |
   fail "runtime.uc must define doctor_fix_overused()"
 grep -Fq 'if (doctor_fix_overused(code)) return;' "$TACHYON_LIB/diagnostics/runtime.uc" ||
   fail "add_fix must withhold overused fixes"
+
+# 6. fix_uci_config must use uci_backup_restore() (correct path)
+grep -Fq 'uci_backup_restore()' "$TACHYON_LIB/diagnostics/runtime.uc" ||
+  fail "fix_uci_config must call uci_backup_restore() for correct backup path"
+
+# 7. apply_quick_fix must capture honest exit codes
+grep -Fq 'let rc = command_status(' "$TACHYON_LIB/diagnostics/runtime.uc" ||
+  fail "apply_quick_fix must capture command exit codes"
+
+# 8. doctor() must propagate busy flag
+grep -Fq 'busy: res.busy == true' "$TACHYON_LIB/diagnostics/runtime.uc" ||
+  fail "doctor() must propagate busy flag in output"
+
+# 9. diagnose_json must use structured checks[] when available
+grep -Fq 'Structured path: build problems directly from checks' "$TACHYON_LIB/diagnostics/runtime.uc" ||
+  fail "diagnose_json must build problems from structured checks[]"
+grep -Fq 'Legacy fallback for recovery mode' "$TACHYON_LIB/diagnostics/runtime.uc" ||
+  fail "diagnose_json must have legacy emoji fallback for recovery mode"
+
+# 10. rag.uc push args must be correct (push array, value)
+grep -Fq 'push(texts, index.chunks[i].text)' "$TACHYON_LIB/diagnostics/rag.uc" ||
+  fail "rag.uc must push with correct argument order: push(array, value)"
 
 printf 'local AI Doctor checks passed\n'

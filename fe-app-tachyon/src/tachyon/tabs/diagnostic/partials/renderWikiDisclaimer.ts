@@ -1,4 +1,4 @@
-import { renderBookOpenTextIcon24 } from '../../../../icons';
+import { renderBookOpenTextIcon24, renderSendIcon24 } from '../../../../icons';
 import { renderButton } from '../../../../partials';
 import { insertIf } from '../../../../helpers';
 
@@ -32,6 +32,17 @@ export function renderWikiDisclaimer(kind: 'default' | 'error' | 'warning') {
       onClick: () =>
         window.open(
           'https://github.com/Dushnilin/tachyon#readme',
+          '_blank',
+          'noopener,noreferrer',
+        ),
+    }),
+    renderButton({
+      classNames: ['cbi-button-save'],
+      icon: renderSendIcon24,
+      text: _('Telegram Channel'),
+      onClick: () =>
+        window.open(
+          'https://t.me/tachyon_proxy',
           '_blank',
           'noopener,noreferrer',
         ),

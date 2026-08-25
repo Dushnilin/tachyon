@@ -2336,7 +2336,7 @@ function run_doctor_checks_impl(repair) {
 
         push(report, "");
         push(report, "ℹ️ Автоматические проверки приостановлены в режиме Safe Bypass.");
-        return { report: join("\n", report) + "\n", issues, fixed };
+        return { report: join("\n", report) + "\n", issues, fixed, checks };
     }
 
     let binary_name = "sing-box";
@@ -3460,6 +3460,7 @@ function doctor(format, repair) {
     }
     print(sprintf("%J\n", {
         success: true,
+        busy: res.busy == true,
         issues: res.issues,
         fixed: res.fixed,
         planned_fixes: res.planned_fixes || [],
@@ -3512,43 +3513,76 @@ function diagnose_json() {
     let res = run_doctor_checks();
     let problems = [];
 
-    for (let line in split(res.report, "\n")) {
-        line = trim(as_string(line));
-        if (line == "") continue;
+    let checks = res.checks || [];
 
-        let severity = null;
-        let fixed_inline = false;
-        if (index(line, "❌") >= 0) {
-            severity = "critical";
-        } else if (index(line, "⚠️") >= 0) {
-            severity = "warning";
-        } else if (index(line, "ℹ️") >= 0) {
-            severity = "info";
+    if (length(checks) > 0) {
+        // Structured path: build problems directly from checks[]
+        for (let chk in checks) {
+            if (chk.status == "pass") continue;
+
+            let severity = (chk.status == "fail") ? "critical" : ((chk.status == "warn") ? "warning" : "info");
+            let raw_fix = trim(as_string(chk.fix || ""));
+            let fixed_inline = index(raw_fix, "FIXED:") >= 0;
+            if (fixed_inline) severity = "info";
+
+            // Strip leading arrow from fix hint
+            let suggested_fix = raw_fix;
+            if (length(suggested_fix) >= 3 && substr(suggested_fix, 0, 3) == "→") {
+                suggested_fix = trim(substr(suggested_fix, 3));
+            }
+
+            let description = as_string(chk.name);
+            if (suggested_fix == "" && chk.status != "info") {
+                description = trim(description + " " + as_string(chk.detail));
+            }
+
+            push(problems, {
+                check:         chk.name,
+                severity:      severity,
+                description:   description,
+                suggested_fix: suggested_fix,
+                evidence:      as_string(chk.detail),
+                fixed:         fixed_inline
+            });
         }
+    } else {
+        // Legacy fallback for recovery mode (no structured checks)
+        for (let line in split(res.report, "\n")) {
+            line = trim(as_string(line));
+            if (line == "") continue;
 
-        if (severity == null) continue;
+            let severity = null;
+            let fixed_inline = false;
+            if (index(line, "❌") >= 0) {
+                severity = "critical";
+            } else if (index(line, "⚠️") >= 0) {
+                severity = "warning";
+            } else if (index(line, "ℹ️") >= 0) {
+                severity = "info";
+            }
 
-        // Extract check name and message (format: icon  name   message)
-        let clean = replace(replace(replace(replace(
-            line, "❌", ""), "⚠️", ""), "ℹ️", ""), "✅", "");
-        clean = trim(clean);
+            if (severity == null) continue;
 
-        let arrow_idx = index(clean, "→");
-        let description = trim(arrow_idx >= 0 ? substr(clean, 0, arrow_idx) : clean);
-        // "→" is U+2192, encoded as 3 UTF-8 bytes (E2 86 92); skip all 3
-        let suggested_fix = arrow_idx >= 0 ? trim(substr(clean, arrow_idx + 3)) : "";
+            let clean = replace(replace(replace(replace(
+                line, "❌", ""), "⚠️", ""), "ℹ️", ""), "✅", "");
+            clean = trim(clean);
 
-        if (index(suggested_fix, "FIXED:") >= 0) {
-            fixed_inline = true;
-            severity = "info"; // was critical but already fixed
+            let arrow_idx = index(clean, "→");
+            let description = trim(arrow_idx >= 0 ? substr(clean, 0, arrow_idx) : clean);
+            let suggested_fix = arrow_idx >= 0 ? trim(substr(clean, arrow_idx + 3)) : "";
+
+            if (index(suggested_fix, "FIXED:") >= 0) {
+                fixed_inline = true;
+                severity = "info";
+            }
+
+            push(problems, {
+                severity:      severity,
+                description:   description,
+                suggested_fix: suggested_fix,
+                fixed:         fixed_inline
+            });
         }
-
-        push(problems, {
-            severity:      severity,
-            description:   description,
-            suggested_fix: suggested_fix,
-            fixed:         fixed_inline
-        });
     }
 
     let ai_status_data = {};
@@ -3572,6 +3606,8 @@ function diagnose_json() {
     }));
     return 0;
 }
+
+
 
 // A fix that has been applied several times without changing the picture is
 // not going to work on the next attempt either — recommending it again is how
@@ -3715,97 +3751,99 @@ function apply_quick_fix(codes_str) {
         let msg = "";
 
         if (c == "start_singbox") {
-            command_status("/usr/bin/tachyon restore_dnsmasq 2>/dev/null; /etc/init.d/sing-box restart >/dev/null 2>&1");
-            status = true;
-            msg = "sing-box restarted";
+            let rc = command_status("/usr/bin/tachyon restore_dnsmasq 2>/dev/null; /etc/init.d/sing-box restart >/dev/null 2>&1");
+            status = (rc == 0);
+            msg = status ? "sing-box restarted" : "sing-box restart failed (exit " + rc + ")";
         } else if (c == "rebuild_rules") {
-            command_status("/etc/init.d/tachyon reload >/dev/null 2>&1");
-            status = true;
-            msg = "Firewall rules rebuilt";
+            let rc = command_status("/etc/init.d/tachyon reload >/dev/null 2>&1");
+            status = (rc == 0);
+            msg = status ? "Firewall rules rebuilt" : "Firewall reload failed (exit " + rc + ")";
         } else if (c == "fix_dnsmasq") {
-            command_status("/etc/init.d/dnsmasq restart >/dev/null 2>&1");
-            status = true;
-            msg = "dnsmasq restarted";
+            let rc = command_status("/etc/init.d/dnsmasq restart >/dev/null 2>&1");
+            status = (rc == 0);
+            msg = status ? "dnsmasq restarted" : "dnsmasq restart failed (exit " + rc + ")";
         } else if (c == "fix_resolv_symlink") {
-            command_status("ln -sf /tmp/resolv.conf.auto /etc/resolv.conf 2>/dev/null || ln -sf /tmp/resolv.conf.d/resolv.conf.auto /etc/resolv.conf 2>/dev/null");
-            status = true;
-            msg = "resolv.conf symlink fixed";
+            let rc = command_status("ln -sf /tmp/resolv.conf.auto /etc/resolv.conf 2>/dev/null || ln -sf /tmp/resolv.conf.d/resolv.conf.auto /etc/resolv.conf 2>/dev/null");
+            status = (rc == 0);
+            msg = status ? "resolv.conf symlink fixed" : "resolv.conf symlink fix failed (exit " + rc + ")";
         } else if (c == "start_watchdog") {
-            command_status("/etc/init.d/tachyon restart >/dev/null 2>&1");
-            status = true;
-            msg = "Watchdog started";
+            let rc = command_status("/etc/init.d/tachyon restart >/dev/null 2>&1");
+            status = (rc == 0);
+            msg = status ? "Watchdog started" : "Watchdog start failed (exit " + rc + ")";
         } else if (c == "restart_singbox_dns") {
-            command_status("/etc/init.d/sing-box restart >/dev/null 2>&1");
-            status = true;
-            msg = "sing-box DNS restarted";
+            let rc = command_status("/etc/init.d/sing-box restart >/dev/null 2>&1");
+            status = (rc == 0);
+            msg = status ? "sing-box DNS restarted" : "sing-box DNS restart failed (exit " + rc + ")";
         } else if (c == "fix_uci_config") {
-            command_status("cp /etc/config/tachyon.bak /etc/config/tachyon 2>/dev/null");
-            status = true;
-            msg = "UCI config restored from backup";
+            status = uci_backup_restore();
+            if (!status) {
+                status = command_status("cp /etc/config/tachyon.bak /etc/config/tachyon 2>/dev/null") == 0;
+            }
+            msg = status ? "UCI config restored from backup" : "UCI config restore failed (no valid backup found)";
         } else if (c == "fix_wan_interface") {
-            command_status("ubus call network.interface.wan up 2>/dev/null; ifup wan 2>/dev/null; ip route flush cache 2>/dev/null");
-            status = true;
-            msg = "WAN interface re-up triggered";
+            let rc = command_status("ubus call network.interface.wan up 2>/dev/null; ifup wan 2>/dev/null; ip route flush cache 2>/dev/null");
+            status = (rc == 0);
+            msg = status ? "WAN interface re-up triggered" : "WAN interface re-up failed (exit " + rc + ")";
         } else if (c == "fix_gateway") {
-            command_status("/etc/init.d/network restart >/dev/null 2>&1");
-            status = true;
-            msg = "Network restarted to resolve gateway";
+            let rc = command_status("/etc/init.d/network restart >/dev/null 2>&1");
+            status = (rc == 0);
+            msg = status ? "Network restarted to resolve gateway" : "Network restart failed (exit " + rc + ")";
         } else if (c == "clear_dns_cache") {
-            command_status("/etc/init.d/dnsmasq restart >/dev/null 2>&1; ip route flush cache 2>/dev/null");
-            status = true;
-            msg = "DNS cache cleared and dnsmasq restarted";
+            let rc = command_status("/etc/init.d/dnsmasq restart >/dev/null 2>&1; ip route flush cache 2>/dev/null");
+            status = (rc == 0);
+            msg = status ? "DNS cache cleared and dnsmasq restarted" : "DNS cache clear failed (exit " + rc + ")";
         } else if (c == "update_subscriptions") {
-            command_status(command_from_args([ "/usr/bin/tachyon", "component_action_async", "update_subscriptions", "update" ]));
-            status = true;
-            msg = "Subscription update triggered";
+            let rc = command_status(command_from_args([ "/usr/bin/tachyon", "component_action_async", "update_subscriptions", "update" ]));
+            status = (rc == 0);
+            msg = status ? "Subscription update triggered" : "Subscription update trigger failed (exit " + rc + ")";
         } else if (c == "reset_firewall") {
-            command_status("/etc/init.d/firewall restart >/dev/null 2>&1; /etc/init.d/tachyon reload >/dev/null 2>&1");
-            status = true;
-            msg = "Firewall restarted";
+            let rc = command_status("/etc/init.d/firewall restart >/dev/null 2>&1; /etc/init.d/tachyon reload >/dev/null 2>&1");
+            status = (rc == 0);
+            msg = status ? "Firewall restarted" : "Firewall restart failed (exit " + rc + ")";
         } else if (c == "restart_network") {
-            command_status("/etc/init.d/network restart >/dev/null 2>&1");
-            status = true;
-            msg = "Network service restarted";
+            let rc = command_status("/etc/init.d/network restart >/dev/null 2>&1");
+            status = (rc == 0);
+            msg = status ? "Network service restarted" : "Network restart failed (exit " + rc + ")";
         } else if (c == "restart_zapret") {
-            command_status("/etc/init.d/zapret restart 2>/dev/null; /etc/init.d/zapret2 restart 2>/dev/null; /etc/init.d/byedpi restart 2>/dev/null");
-            status = true;
-            msg = "Zapret/ByeDPI engines restarted";
+            let rc = command_status("/etc/init.d/zapret restart 2>/dev/null; /etc/init.d/zapret2 restart 2>/dev/null; /etc/init.d/byedpi restart 2>/dev/null");
+            status = (rc == 0);
+            msg = status ? "Zapret/ByeDPI engines restarted" : "Zapret/ByeDPI restart failed (exit " + rc + ")";
         } else if (c == "optimize_memory") {
-            command_status("sync; echo 3 > /proc/sys/vm/drop_caches 2>/dev/null; rm -rf /tmp/sing-box/*.tmp 2>/dev/null; /etc/init.d/sing-box restart >/dev/null 2>&1");
-            status = true;
-            msg = "Memory caches flushed and sing-box restarted";
+            let rc = command_status("sync; echo 3 > /proc/sys/vm/drop_caches 2>/dev/null; rm -rf /tmp/sing-box/*.tmp 2>/dev/null; /etc/init.d/sing-box restart >/dev/null 2>&1");
+            status = (rc == 0);
+            msg = status ? "Memory caches flushed and sing-box restarted" : "Memory optimization failed (exit " + rc + ")";
         } else if (c == "switch_to_doh") {
-            command_status("uci set tachyon.settings.dns_type='doh'; uci commit tachyon; /etc/init.d/tachyon reload >/dev/null 2>&1");
-            status = true;
-            msg = "Switched DNS mode to DoH and reloaded firewall";
+            let rc = command_status("uci set tachyon.settings.dns_type='doh'; uci commit tachyon; /etc/init.d/tachyon reload >/dev/null 2>&1");
+            status = (rc == 0);
+            msg = status ? "Switched DNS mode to DoH and reloaded firewall" : "DoH switch failed (exit " + rc + ")";
         } else if (c == "heal_network_stack") {
-            command_status("ln -sf /tmp/resolv.conf /etc/resolv.conf 2>/dev/null; /etc/init.d/dnsmasq restart >/dev/null 2>&1; /etc/init.d/tachyon restart >/dev/null 2>&1; ip route flush cache 2>/dev/null; ubus call network.interface.wan up 2>/dev/null; ifup wan 2>/dev/null");
-            status = true;
-            msg = "Full network stack recovery executed";
+            let rc = command_status("ln -sf /tmp/resolv.conf /etc/resolv.conf 2>/dev/null; /etc/init.d/dnsmasq restart >/dev/null 2>&1; /etc/init.d/tachyon restart >/dev/null 2>&1; ip route flush cache 2>/dev/null; ubus call network.interface.wan up 2>/dev/null; ifup wan 2>/dev/null");
+            status = (rc == 0);
+            msg = status ? "Full network stack recovery executed" : "Network stack recovery failed (exit " + rc + ")";
         } else if (c == "enable_safe_bypass") {
-            command_status("uci set tachyon.settings.recovery_bypass='1'; uci commit tachyon; /etc/init.d/tachyon reload >/dev/null 2>&1");
-            status = true;
-            msg = "Safe Direct WAN bypass enabled";
+            let rc = command_status("uci set tachyon.settings.recovery_bypass='1'; uci commit tachyon; /etc/init.d/tachyon reload >/dev/null 2>&1");
+            status = (rc == 0);
+            msg = status ? "Safe Direct WAN bypass enabled" : "Safe bypass enable failed (exit " + rc + ")";
         } else if (c == "restore_native_internet") {
-            command_status("/usr/bin/tachyon restore_dnsmasq 2>/dev/null; /etc/init.d/tachyon stop >/dev/null 2>&1; nft delete table inet TachyonTable 2>/dev/null; ip -4 rule del fwmark 0x04000000/0x04000000 table tachyon 2>/dev/null; ip -6 rule del fwmark 0x04000000/0x04000000 table tachyon 2>/dev/null; ip route flush table tachyon 2>/dev/null; /etc/init.d/dnsmasq restart >/dev/null 2>&1; ip route flush cache 2>/dev/null");
-            status = true;
-            msg = "Tachyon stopped, stock dnsmasq and native direct internet routing restored";
+            let rc = command_status("/usr/bin/tachyon restore_dnsmasq 2>/dev/null; /etc/init.d/tachyon stop >/dev/null 2>&1; nft delete table inet TachyonTable 2>/dev/null; ip -4 rule del fwmark 0x04000000/0x04000000 table tachyon 2>/dev/null; ip -6 rule del fwmark 0x04000000/0x04000000 table tachyon 2>/dev/null; ip route flush table tachyon 2>/dev/null; /etc/init.d/dnsmasq restart >/dev/null 2>&1; ip route flush cache 2>/dev/null");
+            status = (rc == 0);
+            msg = status ? "Tachyon stopped, stock dnsmasq and native direct internet routing restored" : "Native internet restore failed (exit " + rc + ")";
         } else if (c == "fix_system_time") {
-            command_status("ntpd -q -p pool.ntp.org 2>/dev/null || rdate -s time.cloudflare.com 2>/dev/null; /etc/init.d/sysntpd restart 2>/dev/null");
-            status = true;
-            msg = "System time synchronized with NTP";
+            let rc = command_status("ntpd -q -p pool.ntp.org 2>/dev/null || rdate -s time.cloudflare.com 2>/dev/null; /etc/init.d/sysntpd restart 2>/dev/null");
+            status = (rc == 0);
+            msg = status ? "System time synchronized with NTP" : "NTP sync failed (exit " + rc + ")";
         } else if (c == "flush_conntrack") {
-            command_status("sysctl -w net.netfilter.nf_conntrack_max=65536 2>/dev/null; echo 1 > /proc/sys/net/netfilter/nf_conntrack_max 2>/dev/null || true; conntrack -F 2>/dev/null || true");
-            status = true;
-            msg = "Conntrack table limits expanded and flushed";
+            let rc = command_status("sysctl -w net.netfilter.nf_conntrack_max=65536 2>/dev/null; echo 1 > /proc/sys/net/netfilter/nf_conntrack_max 2>/dev/null || true; conntrack -F 2>/dev/null || true");
+            status = (rc == 0);
+            msg = status ? "Conntrack table limits expanded and flushed" : "Conntrack flush failed (exit " + rc + ")";
         } else if (c == "fix_bootstrap_dns") {
-            command_status("uci set tachyon.settings.bootstrap_dns_server='77.88.8.8'; uci commit tachyon; /etc/init.d/tachyon reload >/dev/null 2>&1");
-            status = true;
-            msg = "Bootstrap DNS reset to reliable public resolver (77.88.8.8) and reloaded";
+            let rc = command_status("uci set tachyon.settings.bootstrap_dns_server='77.88.8.8'; uci commit tachyon; /etc/init.d/tachyon reload >/dev/null 2>&1");
+            status = (rc == 0);
+            msg = status ? "Bootstrap DNS reset to reliable public resolver (77.88.8.8) and reloaded" : "Bootstrap DNS fix failed (exit " + rc + ")";
         } else if (c == "optimize_mtu") {
-            command_status("/usr/bin/tachyon discover-awg-mtu 2>/dev/null; /etc/init.d/tachyon reload >/dev/null 2>&1");
-            status = true;
-            msg = "AWG MTU discovery executed and tunnels reloaded";
+            let rc = command_status("/usr/bin/tachyon discover-awg-mtu 2>/dev/null; /etc/init.d/tachyon reload >/dev/null 2>&1");
+            status = (rc == 0);
+            msg = status ? "AWG MTU discovery executed and tunnels reloaded" : "MTU optimization failed (exit " + rc + ")";
         } else {
             status = false;
             msg = "Unknown fix code: " + c;
@@ -3813,9 +3851,7 @@ function apply_quick_fix(codes_str) {
         }
 
         push(results, { code: c, success: status, message: msg });
-        if (status) {
-            doctor_fix_record(c);
-        }
+        doctor_fix_record(c);
     }
 
     let post_verify = verify_system();

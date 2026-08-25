@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-08-21 14:59+0300\n"
-"PO-Revision-Date: 2026-08-21 14:59+0300\n"
+"POT-Creation-Date: 2026-08-25 21:32+0300\n"
+"PO-Revision-Date: 2026-08-25 21:32+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -71,6 +71,9 @@ msgstr "Принимать маршруты"
 msgid "Action"
 msgstr "Действие"
 
+msgid "Action failed"
+msgstr "Действие не выполнено"
+
 msgid "Action Mode"
 msgstr "Режим действия"
 
@@ -94,6 +97,9 @@ msgstr "Активные соединения"
 
 msgid "Active Main DNS"
 msgstr "Активный основной DNS"
+
+msgid "Active routes"
+msgstr "Активные маршруты"
 
 msgid "Add a schedule rule"
 msgstr "Добавить правило расписания"
@@ -242,6 +248,9 @@ msgstr "Все маршруты"
 msgid "All servers"
 msgstr "Все серверы"
 
+msgid "All services"
+msgstr "Все сервисы"
+
 msgid "All traffic from these IP addresses will be routed through the section unconditionally, ignoring all other conditions."
 msgstr "Весь трафик от этих IP-адресов будет маршрутизирован через секцию безусловно, игнорируя все остальные условия."
 
@@ -374,11 +383,20 @@ msgstr "Автовыбор самого быстрого узла уровня"
 msgid "Automatically update remote hosts lists on schedule"
 msgstr "Автоматически обновлять удалённые списки Hosts по расписанию"
 
+msgid "Available"
+msgstr "Доступно"
+
 msgid "Available actions"
 msgstr "Доступные действия"
 
+msgid "Avg. latency"
+msgstr "Ср. задержка"
+
 msgid "Backend validation failed: %s"
 msgstr "Ошибка проверки бэкенда: %s"
+
+msgid "Basic connectivity"
+msgstr "Базовая связность"
 
 msgid "Bearer Auth Token"
 msgstr "Токен авторизации (Bearer)"
@@ -415,6 +433,9 @@ msgstr "Блокировать:"
 
 msgid "Block: deny the listed sites. Allow only (whitelist): deny everything except the listed sites. Whitelist mode requires DNS-level blocking and applies to the schedule window."
 msgstr "Блокировать: запретить перечисленные сайты. Только разрешённые (белый список): запретить всё, кроме перечисленных сайтов. Режим белого списка требует блокировки на уровне DNS и действует в окне расписания."
+
+msgid "Blocked resources"
+msgstr "Заблокированные ресурсы"
 
 msgid "Blocked Sites"
 msgstr "Заблокированные сайты"
@@ -521,14 +542,26 @@ msgstr "Путь к сертификату"
 msgid "Certificate pin is unavailable. Apply or restart the server to generate the default certificate, then open this dialog again."
 msgstr "Пин сертификата недоступен. Примените настройки или перезапустите сервер для генерации сертификата, затем откройте это окно снова."
 
+msgid "Check again"
+msgstr "Проверить снова"
+
+msgid "Check all"
+msgstr "Проверить все"
+
 msgid "Check completed!"
 msgstr "Проверка завершена!"
 
 msgid "Check Connection"
 msgstr "Проверить подключение"
 
+msgid "Check domain"
+msgstr "Проверить домен"
+
 msgid "Check interval"
 msgstr "Интервал проверки"
+
+msgid "Check mode:"
+msgstr "Режим проверки:"
 
 msgid "Check Services"
 msgstr "Проверить сервисы"
@@ -758,6 +791,9 @@ msgstr "Текущая секция не может загружать собс�
 msgid "Currently unavailable"
 msgstr "Временно недоступно"
 
+msgid "Custom"
+msgstr ""
+
 msgid "Custom API Endpoint URL"
 msgstr "Пользовательский URL эндпоинта API"
 
@@ -766,6 +802,9 @@ msgstr "Пользовательские заголовки устройства
 
 msgid "Custom DNS Records (Hosts)"
 msgstr "Пользовательские DNS-записи (Hosts)"
+
+msgid "Custom domains"
+msgstr "Собственные домены"
 
 msgid "Custom header for cookie packet"
 msgstr "Пользовательский заголовок для пакета cookie"
@@ -1217,6 +1256,9 @@ msgstr "Введите полный объект outbound sing-box"
 msgid "Enter a display name"
 msgstr "Введите отображаемое имя"
 
+msgid "Enter a domain or IP to check (e.g. example.com)..."
+msgstr "Введите домен или IP для проверки (напр. example.com)..."
+
 msgid "Enter a level name"
 msgstr "Введите имя уровня"
 
@@ -1328,6 +1370,9 @@ msgstr "Не удалось загрузить снапшоты"
 msgid "Failed to parse file:"
 msgstr "Ошибка разбора файла:"
 
+msgid "Failed to parse target list."
+msgstr "Ошибка обработки списка целей."
+
 msgid "Failed to parse WARP config:"
 msgstr "Не удалось разобрать конфигурацию WARP:"
 
@@ -1366,6 +1411,9 @@ msgstr "Не удалось сохранить снапшот"
 
 msgid "Failed to start bot"
 msgstr "Не удалось запустить бота"
+
+msgid "Failed to start service check."
+msgstr "Не удалось запустить проверку сервисов."
 
 msgid "Failed to start watchdog"
 msgstr "Не удалось запустить watchdog"
@@ -1408,6 +1456,9 @@ msgstr "Интервал поиска более быстрого сервера
 
 msgid "Fastest"
 msgstr "Самый быстрый"
+
+msgid "Filter by service:"
+msgstr "Фильтр по сервису:"
 
 msgid "Filter the servers that will be displayed on the dashboard."
 msgstr "Фильтровать серверы, отображаемые на дашборде."
@@ -1525,84 +1576,6 @@ msgstr "Глобальная проверка"
 
 msgid "Global check failed"
 msgstr "Не удалось выполнить глобальную проверку"
-
-msgid "View logs failed"
-msgstr "Не удалось открыть логи"
-
-msgid "Show sing-box config failed"
-msgstr "Не удалось показать конфигурацию sing-box"
-
-msgid "Action failed"
-msgstr "Действие не выполнено"
-
-msgid "Active routes"
-msgstr "Активные маршруты"
-
-msgid "All services"
-msgstr "Все сервисы"
-
-msgid "Avg. latency"
-msgstr "Ср. задержка"
-
-msgid "Basic connectivity"
-msgstr "Базовая связность"
-
-msgid "Blocked resources"
-msgstr "Заблокированные ресурсы"
-
-msgid "Check again"
-msgstr "Проверить снова"
-
-msgid "Check all"
-msgstr "Проверить все"
-
-msgid "Check domain"
-msgstr "Проверить домен"
-
-msgid "Check mode:"
-msgstr "Режим проверки:"
-
-msgid "Custom domains"
-msgstr "Собственные домены"
-
-msgid "Enter a domain or IP to check (e.g. example.com)..."
-msgstr "Введите домен или IP для проверки (напр. example.com)..."
-
-msgid "Failed to parse target list."
-msgstr "Ошибка разбора списка целей."
-
-msgid "Failed to start service check."
-msgstr "Не удалось запустить проверку сервисов."
-
-msgid "Filter by service:"
-msgstr "Фильтр по сервису:"
-
-msgid "Loading service list..."
-msgstr "Получение списка сервисов..."
-
-msgid "No check targets found in the configuration."
-msgstr "Цели для проверки не найдены в конфигурации."
-
-msgid "Pending..."
-msgstr "Ожидание..."
-
-msgid "Search domain or service..."
-msgstr "Поиск домена или сервиса..."
-
-msgid "Service / Target"
-msgstr "Сервис / Цель"
-
-msgid "Service availability check"
-msgstr "Проверка доступности сервисов"
-
-msgid "Testing..."
-msgstr "Проверка..."
-
-msgid "Total targets"
-msgstr "Всего целей"
-
-msgid "UDP / QUIC protocols"
-msgstr "UDP / QUIC протоколы"
 
 msgid "gRPC service"
 msgstr "Сервис gRPC"
@@ -2234,6 +2207,9 @@ msgstr "Загрузка списка устройств LAN..."
 msgid "Loading connections"
 msgstr "Загрузка подключений"
 
+msgid "Loading service list..."
+msgstr "Получение списка сервисов..."
+
 msgid "Loading..."
 msgstr "Загрузка..."
 
@@ -2416,6 +2392,9 @@ msgstr "Активные устройства в локальной сети н�
 
 msgid "No active routing sections found."
 msgstr "Активные секции маршрутизации не найдены."
+
+msgid "No check targets found in the configuration."
+msgstr "Цели для проверки не найдены в конфигурации."
 
 msgid "No closed connections"
 msgstr "Нет закрытых подключений"
@@ -2711,6 +2690,9 @@ msgstr "Приватный ключ клиента в формате PEM"
 msgid "Pending"
 msgstr "Ожидает запуска"
 
+msgid "Pending..."
+msgstr "Ожидание..."
+
 msgid "Per-Device Routing"
 msgstr "Маршрутизация по устройствам"
 
@@ -2818,6 +2800,9 @@ msgstr "Защита"
 
 msgid "Protocol"
 msgstr "Протокол"
+
+msgid "Proxy"
+msgstr "Прокси"
 
 msgid "Proxy / DPI"
 msgstr "Прокси / DPI"
@@ -3161,6 +3146,9 @@ msgstr "Правило расписания"
 msgid "Search"
 msgstr "Поиск"
 
+msgid "Search domain or service..."
+msgstr "Поиск домена или сервиса..."
+
 msgid "Secret"
 msgstr "Секрет"
 
@@ -3377,8 +3365,14 @@ msgstr "Серверы"
 msgid "Servers on dashboard"
 msgstr "Серверы на дашборде"
 
+msgid "Service / Target"
+msgstr "Сервис / Цель"
+
 msgid "Service action failed"
 msgstr "Действие сервиса не выполнено"
+
+msgid "Service availability check"
+msgstr "Проверка доступности сервисов"
 
 msgid "Service list"
 msgstr "Список сервисов"
@@ -3433,6 +3427,9 @@ msgstr "Показывать серверы, чьи имена соответс�
 
 msgid "Show sing-box config"
 msgstr "Показать sing-box конфигурацию"
+
+msgid "Show sing-box config failed"
+msgstr "Не удалось показать конфигурацию sing-box"
 
 msgid "Show subscription metadata for this source on the dashboard"
 msgstr "Показывать метаданные подписки для этого источника на дашборде"
@@ -3755,6 +3752,9 @@ msgstr "Telegram Бот"
 msgid "Telegram Bot Token"
 msgstr "Токен Telegram-бота"
 
+msgid "Telegram Channel"
+msgstr "Telegram канал"
+
 msgid "Test Connection"
 msgstr "Проверить подключение"
 
@@ -3784,6 +3784,9 @@ msgstr "Проверить подключение к Telegram"
 
 msgid "Testing URL"
 msgstr "URL проверки"
+
+msgid "Testing..."
+msgstr "Тестирование..."
 
 msgid "Testing…"
 msgstr "Проверка…"
@@ -3884,6 +3887,9 @@ msgstr "Верхний уровень имеет наивысший приори
 msgid "Total lines:"
 msgstr "Всего строк:"
 
+msgid "Total targets"
+msgstr "Всего целей"
+
 msgid "Trace"
 msgstr "Трассировка"
 
@@ -3962,6 +3968,9 @@ msgstr "Тип"
 msgid "UDP (Unprotected DNS)"
 msgstr "UDP (незащищённый DNS)"
 
+msgid "UDP / QUIC protocols"
+msgstr "UDP / QUIC протоколы"
+
 msgid "Ukraine (ua)"
 msgstr "Украина (ua)"
 
@@ -3976,6 +3985,9 @@ msgstr "Не удалось проверить стратегию NFQWS2 чер�
 
 msgid "Unavailability timeout"
 msgstr "Таймаут недоступности"
+
+msgid "Unavailable"
+msgstr "Недоступно"
 
 msgid "Underload packet header (H3)"
 msgstr "Заголовок пакета под нагрузкой (H3)"
@@ -4210,6 +4222,9 @@ msgstr "Видео"
 
 msgid "View logs"
 msgstr "Посмотреть логи"
+
+msgid "View logs failed"
+msgstr "Не удалось открыть логи"
 
 msgid "Visible name of this section"
 msgstr "Видимое имя этой секции"
@@ -4523,17 +4538,11 @@ msgstr "Проверить все"
 msgid "Check Again"
 msgstr "Проверить снова"
 
-msgid "Testing..."
-msgstr "Тестирование..."
-
 msgid "Fetching service targets..."
 msgstr "Получение списка сервисов..."
 
 msgid "Failed to run service check."
 msgstr "Не удалось выполнить проверку сервисов."
-
-msgid "Failed to parse target list."
-msgstr "Ошибка обработки списка целей."
 
 msgid "No targets found in section configs."
 msgstr "Цели в конфигурациях секций не найдены."
@@ -4571,15 +4580,6 @@ msgstr "Все сервисы"
 msgid "Service Availability Check"
 msgstr "Проверка доступности сервисов"
 
-msgid "Filter by service:"
-msgstr "Фильтр по сервису:"
-
-msgid "Search domain or service..."
-msgstr "Поиск домена или сервиса..."
-
-msgid "Service / Target"
-msgstr "Сервис / Цель"
-
 msgid "Route Type"
 msgstr "Тип маршрута"
 
@@ -4588,15 +4588,6 @@ msgstr "Активные маршруты"
 
 msgid "Custom Domains"
 msgstr "Свои домены"
-
-msgid "Unavailable"
-msgstr "Недоступно"
-
-msgid "Available"
-msgstr "Доступно"
-
-msgid "Proxy"
-msgstr "Прокси"
 
 msgid "TCP"
 msgstr "TCP"

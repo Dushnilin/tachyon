@@ -180,7 +180,7 @@ function ensure_embeddings(index, provider, api_key, custom_url, model_override)
 
     let texts = [];
     for (let i = 0; i < length(index.chunks); i++)
-        push(index.chunks[i].text, texts);
+        push(texts, index.chunks[i].text);
 
     let embeddings = call_embedding_api(api_url, api_key, model, texts);
     if (!embeddings || length(embeddings) != length(texts))

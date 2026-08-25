@@ -1931,6 +1931,33 @@ function renderGlobeIcon24() {
   );
 }
 
+// src/icons/renderSendIcon24.ts
+function renderSendIcon24() {
+  return svgEl(
+    "svg",
+    {
+      xmlns: "http://www.w3.org/2000/svg",
+      width: "24",
+      height: "24",
+      viewBox: "0 0 24 24",
+      fill: "none",
+      stroke: "currentColor",
+      "stroke-width": "2",
+      "stroke-linecap": "round",
+      "stroke-linejoin": "round",
+      class: "lucide lucide-send-icon lucide-send"
+    },
+    [
+      svgEl("path", {
+        d: "M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z"
+      }),
+      svgEl("path", {
+        d: "m21.854 2.147-10.94 10.939"
+      })
+    ]
+  );
+}
+
 // src/helpers/prettyBytes.ts
 function prettyBytes(n) {
   const UNITS = ["B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"];
@@ -11506,6 +11533,16 @@ function renderWikiDisclaimer(kind) {
       text: _("Open Project Page"),
       onClick: () => window.open(
         "https://github.com/Dushnilin/tachyon#readme",
+        "_blank",
+        "noopener,noreferrer"
+      )
+    }),
+    renderButton({
+      classNames: ["cbi-button-save"],
+      icon: renderSendIcon24,
+      text: _("Telegram Channel"),
+      onClick: () => window.open(
+        "https://t.me/tachyon_proxy",
         "_blank",
         "noopener,noreferrer"
       )
