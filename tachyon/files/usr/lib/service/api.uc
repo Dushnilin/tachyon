@@ -213,7 +213,7 @@ function http_probe(use_proxy) {
     // curl exits 0 for any completed HTTP exchange, including 4xx/5xx, so the
     // status code has to be inspected explicitly.
     let cmd = "curl -I -s -o /dev/null -m 8 --connect-timeout 4 -w '%{http_code}' " +
-              (use_proxy ? "--proxy http://127.0.0.1:4534 " : "") +
+              (use_proxy ? "--proxy http://127.0.0.1:" + common.get_mixed_port() + " " : "") +
               "https://www.google.com";
     let res = command_capture(cmd);
     if (!res || res.status != 0) return false;
@@ -232,7 +232,7 @@ function run_speedtest() {
     let direct_mbps = (direct_speed * 8) / 1000000;
 
     // Proxy speedtest
-    let res_proxy = command_capture("curl -s -m 15 --connect-timeout 6 --proxy http://127.0.0.1:4534 -w '%{speed_download}' -o /dev/null https://speed.cloudflare.com/__down?bytes=5242880");
+    let res_proxy = command_capture("curl -s -m 15 --connect-timeout 6 --proxy http://127.0.0.1:" + common.get_mixed_port() + " -w '%{speed_download}' -o /dev/null https://speed.cloudflare.com/__down?bytes=5242880");
     let proxy_speed = (res_proxy && res_proxy.status == 0) ? double(res_proxy.output || 0) : 0;
     let proxy_mbps = (proxy_speed * 8) / 1000000;
 

@@ -130,11 +130,12 @@ function call_api(method, url, auth_header, body_file) {
     if (proxy_port != "") {
         push(transport_flags, "-x socks5h://127.0.0.1:" + proxy_port);
     }
-    // Liveness of the default service mixed proxy (4534): a LOCAL check only.
+    // Liveness of the default service mixed proxy: a LOCAL check only.
     // A full fetch through the tunnel would conflate "proxy dead" with
     // "slow/blocked exit" and silently drop a working transport.
-    if (tcp_port_listening(4534) && !contains(transport_flags, "-x socks5h://127.0.0.1:4534")) {
-        push(transport_flags, "-x socks5h://127.0.0.1:4534");
+    let fallback_port = as_string(common.get_mixed_port());
+    if (tcp_port_listening(int(fallback_port)) && !contains(transport_flags, "-x socks5h://127.0.0.1:" + fallback_port)) {
+        push(transport_flags, "-x socks5h://127.0.0.1:" + fallback_port);
     }
 
     // Pre-flight: when the Cloudflare API is unreachable from this router

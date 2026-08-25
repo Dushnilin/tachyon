@@ -176,7 +176,7 @@ function handle_snapshot() {
     let wd_pid = trim(fs.readfile("/var/run/tachyon_watchdog.pid") || "");
     let wd_ok = wd_pid != "" && fs.stat("/proc/" + wd_pid) != null;
 
-    let proxy_resp = command_capture("curl -s -o /dev/null -m 5 --connect-timeout 3 -w '%{http_code}' --proxy http://127.0.0.1:4534 http://www.google.com 2>/dev/null").output;
+    let proxy_resp = command_capture("curl -s -o /dev/null -m 5 --connect-timeout 3 -w '%{http_code}' --proxy http://127.0.0.1:" + common.get_mixed_port() + " http://www.google.com 2>/dev/null").output;
     let direct_resp = command_capture("curl -s -o /dev/null -m 5 --connect-timeout 3 -w '%{http_code}' http://www.google.com 2>/dev/null").output;
 
     let ai_status = parse_json_safe(fs.readfile("/tmp/tachyon_ai_status.json") || "{}") || {};

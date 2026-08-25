@@ -476,6 +476,23 @@ function parent_dir(path) {
     return slash >= 0 ? substr(path, 0, slash) : "";
 }
 
+// Read the HTTP/mixed inbound port from the generated sing-box config.
+// Falls back to 4534 when the config is missing or unparseable.
+function get_mixed_port() {
+    let data = fs.readfile("/etc/sing-box/config.json");
+    if (data == null) return 4534;
+    let parsed;
+    try { parsed = json(data); } catch (e) { return 4534; }
+    if (parsed == null || parsed.inbounds == null) return 4534;
+    for (let inbound in parsed.inbounds) {
+        if ((inbound.type == "mixed" || inbound.type == "http") && inbound.listen_port != null) {
+            let port = int(inbound.listen_port, 10);
+            if (port > 0) return port;
+        }
+    }
+    return 4534;
+}
+
 return {
     as_string,
     read_json_file,
@@ -517,5 +534,6 @@ return {
     unlink_file,
     write_file,
     file_exists,
-    parent_dir
+    parent_dir,
+    get_mixed_port
 };

@@ -1250,7 +1250,9 @@ function notify_urltest_switch(ev) {
     let tcfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
     if (tcfg.enabled != "1" || tcfg.notify_crash == "0") return;
 
-    let p_res = command_capture(command_from_args(["curl", "-s", "http://127.0.0.1:4534/proxies"]));
+    let ports = mixed_ports_from_config();
+    let p_port = length(ports) > 0 ? as_string(ports[0]) : as_string(common.get_mixed_port());
+    let p_res = command_capture(command_from_args(["curl", "-s", "http://127.0.0.1:" + p_port + "/proxies"]));
     if (p_res && p_res.status == 0 && p_res.output) {
         try {
             let p_data = json(p_res.output);

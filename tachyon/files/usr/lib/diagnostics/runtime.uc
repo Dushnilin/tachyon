@@ -2942,7 +2942,8 @@ function run_doctor_checks_impl(repair) {
 
     // 13. Port conflicts
     let netstat_out = command_capture("netstat -ltnp").output;
-    let ports_to_check = ["4534", "9090"];
+    let mixed_port_str = as_string(common.get_mixed_port());
+    let ports_to_check = [mixed_port_str, "9090"];
     for (let port in ports_to_check) {
         if (index(netstat_out, ":" + port + " ") >= 0) {
             let sb_pid = find_process_pid("sing-box");
@@ -3648,10 +3649,11 @@ function verify_system() {
 
     // HTTP through the service mixed proxy — only present when download_via_proxy
     // is enabled; otherwise the tproxy/tun path is covered by the checks above.
+    let mixed_port_num = common.get_mixed_port();
     let sb_cfg = fs.readfile("/etc/sing-box/config.json") || "";
-    let has_mixed = index(sb_cfg, "4534") >= 0;
+    let has_mixed = index(sb_cfg, '"mixed"') >= 0;
     if (has_mixed && sb_pid != "") {
-        let res = command_capture("curl -sS --max-time 8 -x http://127.0.0.1:4534 -o /dev/null -w %{http_code} https://www.gstatic.com/generate_204 2>&1");
+        let res = command_capture("curl -sS --max-time 8 -x http://127.0.0.1:" + mixed_port_num + " -o /dev/null -w %{http_code} https://www.gstatic.com/generate_204 2>&1");
         let code = trim(res.output);
         add("HTTP via proxy", res.status == 0 && (code == "204" || code == "200") ? "pass" : "fail",
             code == "204" || code == "200" ? "end-to-end OK through sing-box" : "HTTP " + code);
