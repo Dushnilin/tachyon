@@ -7068,8 +7068,8 @@ function addTextConditionField(section, config) {
 }
 
 var DOMAIN_LIST_HINTS = {
-  russia_inside:    "rutracker.org, pikabu.ru, lenta.ru, sports.ru, ...",
-  russia_outside:   "youtube.com, instagram.com, twitter.com, ...",
+  russia_inside:    "youtube.com, instagram.com, twitter.com, ...",
+  russia_outside:   "gosuslugi.ru, ozon.ru, rzd.ru, ...",
   ukraine_inside:   "ukr.net, pravda.com.ua, suspilne.media, ...",
   geoblock:         "Все домены, заблокированные в РФ",
   block:            "Заблокировать совсем (без прокси)",
@@ -7086,7 +7086,7 @@ var DOMAIN_LIST_HINTS = {
   cloudflare:       "все IP/домены Cloudflare (1.1.1.1, etc.)",
   google_ai:        "gemini.google.com, bard.google.com, ...",
   google_play:      "play.google.com, googleplay.com, ...",
-  hodca:            "H.O.D.C.A. (HDRezka, OnlineDisk, etc.)",
+  hodca:            "Домены на CDN: Hetzner, OVH, DigitalOcean, Cloudflare, AWS",
   roblox:           "roblox.com, rbxcdn.com, ...",
   ads_hagezi_pro:   "Блокировка рекламы (Hagezi Pro список)",
   supercell:        "supercell.com, clashofclans.com, ...",
