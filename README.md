@@ -193,17 +193,17 @@ curl http://192.168.1.1/cgi-bin/tachyon-agent/openapi.json
 Для установки Tachyon выполните следующую команду в SSH-консоли вашего роутера:
 
 ```bash
-sh <(wget -O - https://raw.githubusercontent.com/Dushnilin/tachyon/main/install.sh)
+wget -O /tmp/tachyon-setup.sh https://raw.githubusercontent.com/Dushnilin/tachyon/main/install.sh && sh /tmp/tachyon-setup.sh
 ```
 
 > [!TIP]
 > **Зеркала установки (при блокировке или замедлении GitHub):**
 > ```bash
 > # Зеркало 1 (gh-proxy.com):
-> sh <(wget -O - https://gh-proxy.com/raw.githubusercontent.com/Dushnilin/tachyon/main/install.sh)
+> wget -O /tmp/tachyon-setup.sh https://gh-proxy.com/raw.githubusercontent.com/Dushnilin/tachyon/main/install.sh && sh /tmp/tachyon-setup.sh
 > 
 > # Зеркало 2 (ghfast.top):
-> sh <(wget -O - https://ghfast.top/https://raw.githubusercontent.com/Dushnilin/tachyon/main/install.sh)
+> wget -O /tmp/tachyon-setup.sh https://ghfast.top/https://raw.githubusercontent.com/Dushnilin/tachyon/main/install.sh && sh /tmp/tachyon-setup.sh
 > ```
 
 > [!NOTE]
@@ -214,12 +214,12 @@ sh <(wget -O - https://raw.githubusercontent.com/Dushnilin/tachyon/main/install.
 Для полного и чистого удаления Tachyon с возвратом штатного DNS, очисткой правил nftables и сохранением вашей конфигурации в `/etc/config/tachyon.backup-<timestamp>`:
 
 ```bash
-sh <(wget -O - https://raw.githubusercontent.com/Dushnilin/tachyon/main/uninstall.sh)
+wget -O /tmp/tachyon-uninstall.sh https://raw.githubusercontent.com/Dushnilin/tachyon/main/uninstall.sh && sh /tmp/tachyon-uninstall.sh
 ```
 
 *Через зеркало gh-proxy.com:*
 ```bash
-sh <(wget -O - https://gh-proxy.com/raw.githubusercontent.com/Dushnilin/tachyon/main/uninstall.sh)
+wget -O /tmp/tachyon-uninstall.sh https://gh-proxy.com/raw.githubusercontent.com/Dushnilin/tachyon/main/uninstall.sh && sh /tmp/tachyon-uninstall.sh
 ```
 
 **Опции и флаги:**

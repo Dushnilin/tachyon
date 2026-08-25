@@ -193,17 +193,17 @@ curl http://192.168.1.1/cgi-bin/tachyon-agent/openapi.json
 Run the following single command in your router's SSH terminal:
 
 ```bash
-sh <(wget -O - https://raw.githubusercontent.com/Dushnilin/tachyon/main/install.sh)
+wget -O /tmp/tachyon-setup.sh https://raw.githubusercontent.com/Dushnilin/tachyon/main/install.sh && sh /tmp/tachyon-setup.sh
 ```
 
 > [!TIP]
 > **Installation Mirrors (if direct access to GitHub is blocked or throttled):**
 > ```bash
 > # Mirror 1 (gh-proxy.com):
-> sh <(wget -O - https://gh-proxy.com/raw.githubusercontent.com/Dushnilin/tachyon/main/install.sh)
+> wget -O /tmp/tachyon-setup.sh https://gh-proxy.com/raw.githubusercontent.com/Dushnilin/tachyon/main/install.sh && sh /tmp/tachyon-setup.sh
 > 
 > # Mirror 2 (ghfast.top):
-> sh <(wget -O - https://ghfast.top/https://raw.githubusercontent.com/Dushnilin/tachyon/main/install.sh)
+> wget -O /tmp/tachyon-setup.sh https://ghfast.top/https://raw.githubusercontent.com/Dushnilin/tachyon/main/install.sh && sh /tmp/tachyon-setup.sh
 > ```
 
 > [!NOTE]
@@ -214,12 +214,12 @@ sh <(wget -O - https://raw.githubusercontent.com/Dushnilin/tachyon/main/install.
 To cleanly remove Tachyon, restore stock DNS, flush nftables rules, and preserve your configuration in `/etc/config/tachyon.backup-<timestamp>`:
 
 ```bash
-sh <(wget -O - https://raw.githubusercontent.com/Dushnilin/tachyon/main/uninstall.sh)
+wget -O /tmp/tachyon-uninstall.sh https://raw.githubusercontent.com/Dushnilin/tachyon/main/uninstall.sh && sh /tmp/tachyon-uninstall.sh
 ```
 
 *Via mirror gh-proxy.com:*
 ```bash
-sh <(wget -O - https://gh-proxy.com/raw.githubusercontent.com/Dushnilin/tachyon/main/uninstall.sh)
+wget -O /tmp/tachyon-uninstall.sh https://gh-proxy.com/raw.githubusercontent.com/Dushnilin/tachyon/main/uninstall.sh && sh /tmp/tachyon-uninstall.sh
 ```
 
 **Options & Flags:**

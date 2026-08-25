@@ -25,7 +25,7 @@ bash build.sh <x.y.z> [output-dir]
 Tachyon provides an automated one-liner installer:
 
 ```bash
-sh <(wget -O - https://raw.githubusercontent.com/Dushnilin/tachyon/main/install.sh)
+wget -O /tmp/tachyon-setup.sh https://raw.githubusercontent.com/Dushnilin/tachyon/main/install.sh && sh /tmp/tachyon-setup.sh
 ```
 
 ### 2.1. Installer Lifecycle
