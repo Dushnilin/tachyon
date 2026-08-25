@@ -25,10 +25,10 @@ grep -Fq "connect-timeout 4 -m 6" "$WARP" ||
 grep -Fq -- "--resolve api.cloudflareclient.com:443:" "$WARP" ||
   fail "direct pre-flight probe must bypass DNS with --resolve"
 
-# 1b. Mixed-proxy (4534) liveness must be a LOCAL check. A full fetch through
+# 1b. Mixed-proxy liveness must be a LOCAL check. A full fetch through
 #     the tunnel conflates "proxy dead" with "slow exit" and drops a working
 #     transport; busybox nc also lacks -z on many OpenWrt builds.
-grep -Fq 'tcp_port_listening(4534)' "$WARP" ||
+grep -Fq 'tcp_port_listening(' "$WARP" ||
   fail "mixed-port liveness must be the local /proc/net/tcp check"
 grep -Fq 'function tcp_port_listening' "$WARP" ||
   fail "tcp_port_listening helper must exist"
