@@ -21,6 +21,10 @@ Welcome to the comprehensive technical knowledge base for **Tachyon**. This dire
 | [**11. Troubleshooting Manual**](11_TROUBLESHOOTING_AND_FIELD_MANUAL.md) | Field diagnostics & emergency recovery | Symptom resolution matrix, diagnostic commands, log inspection paths |
 | [**12. ucode Programming Patterns**](12_UCODE_PROGRAMMING_PATTERNS.md) | Developer guidelines for OpenWrt ucode | Atomic file writes, shell quoting, libuci bindings, RAM efficiency |
 | [**13. REST API & MCP Specification**](13_REST_API_AND_MCP_SPECIFICATION.md) | REST Agent API & MCP tool definitions | OpenAPI 3.0.3, Bearer Auth, OpenAI Function Calling, MCP JSON schema |
+| [**14. Zapret v2 (nfqws2) Deep Dive**](14_ZAPRET2_DEEP_DIVE_MANUAL.md) | Comprehensive Zapret v2 Lua manual | Lua desync functions, multisplit, seqovl, wsize, fooling, multi-profiles |
+| [**15. Zapret v1 (nfqws) Field Guide**](15_ZAPRET1_NFQWS_FIELD_GUIDE.md) | Complete Zapret v1 CLI specification | NFQUEUE desync modes, split-pos, seqovl, syndata, ipfrag, fooling |
+| [**16. ByeDPI (ciadpi) Reference**](16_BYEDPI_CIADPI_REFERENCE.md) | Complete ByeDPI SOCKS5/TProxy manual | Split, disorder, fake, ttl, auto-mode, oob, tlsrec, ip-frag |
+| [**17. TSPU / DPI Signatures & Counters**](17_TSPU_DPI_SIGNATURES_AND_COUNTERS.md) | TSPU filtering mechanics and counters | GoogleVideo 4K, Discord WebRTC, TLS 1.3 RST, TTL distance calculation |
 
 ---
 

@@ -12,7 +12,10 @@ OUTPUT_FILE="$OUTPUT_DIR/rag_index.json"
 CHUNK_SIZE="${CHUNK_SIZE:-2000}"
 CHUNK_OVERLAP="${CHUNK_OVERLAP:-200}"
 
-mkdir -p "$OUTPUT_DIR"
+if command -v node >/dev/null 2>&1; then
+    node "$SCRIPT_DIR/rag_build_index.js" "$DOCS_DIR" "$OUTPUT_FILE"
+    exit 0
+fi
 
 python3 - "$DOCS_DIR" "$OUTPUT_FILE" "$CHUNK_SIZE" "$CHUNK_OVERLAP" <<'PYTHON_SCRIPT'
 import sys

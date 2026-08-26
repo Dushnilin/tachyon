@@ -103,6 +103,7 @@ export namespace Tachyon {
     FUZZER_STOP = 'fuzzer_stop',
     FUZZER_APPLY = 'fuzzer_apply',
     FUZZER_STRATEGIES = 'fuzzer_strategies',
+    FUZZER_AI_SYNTHESIZE = 'fuzzer_ai_synthesize',
   }
 
   export enum AvailableClashAPIMethods {
@@ -895,6 +896,16 @@ export namespace Tachyon {
     engine: string;
     applied_to: string;
     args: string;
+    error?: string;
+  }
+
+  export interface FuzzerAiSynthesizeResponse {
+    success: boolean;
+    engine?: string;
+    target?: string;
+    target_url?: string;
+    analysis?: string;
+    strategies?: FuzzerStrategyItem[];
     error?: string;
   }
 }

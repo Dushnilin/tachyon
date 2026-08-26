@@ -1187,4 +1187,49 @@ export const TachyonShellMethods = {
       error: response.stderr || _('Failed to get fuzzer strategies'),
     };
   },
+
+  fuzzerAiSynthesize: async (
+    engine: string,
+    target: string,
+    customUrl?: string,
+    userPrompt?: string,
+  ): Promise<Tachyon.MethodResponse<Tachyon.FuzzerAiSynthesizeResponse>> => {
+    const args: string[] = [
+      Tachyon.AvailableMethods.FUZZER_AI_SYNTHESIZE,
+      engine,
+      target,
+    ];
+    if (customUrl) args.push(customUrl);
+    else args.push('');
+    if (userPrompt) args.push(userPrompt);
+
+    const response = await executeShellCommand({
+      command: '/usr/bin/tachyon',
+      args,
+      timeout: 65000,
+    });
+
+    let parsed: Tachyon.FuzzerAiSynthesizeResponse | null = null;
+    try {
+      parsed = JSON.parse(
+        response.stdout?.trim() || '{}',
+      ) as Tachyon.FuzzerAiSynthesizeResponse;
+    } catch {
+      parsed = null;
+    }
+
+    if ((response.code ?? 1) === 0 && parsed && parsed.success) {
+      return {
+        success: true,
+        data: parsed,
+      };
+    }
+    return {
+      success: false,
+      error:
+        parsed?.error ||
+        response.stderr ||
+        _('Failed to synthesize AI strategies'),
+    };
+  },
 };

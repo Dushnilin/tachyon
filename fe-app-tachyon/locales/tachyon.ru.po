@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-08-26 21:45+0300\n"
-"PO-Revision-Date: 2026-08-26 21:45+0300\n"
+"POT-Creation-Date: 2026-08-26 22:38+0300\n"
+"PO-Revision-Date: 2026-08-26 22:38+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -82,6 +82,12 @@ msgstr "🏆 Применить лучшую стратегию"
 
 msgid "🔑 Generate"
 msgstr "🔑 Сгенерировать"
+
+msgid "🧠 Synthesize with AI"
+msgstr "🧠 Сгенерировать через ИИ"
+
+msgid "🧠 Synthesizing..."
+msgstr "🧠 Генерация..."
 
 msgid "🚀 Run Benchmark Again"
 msgstr "🚀 Запустить бенчмарк снова"
@@ -218,6 +224,9 @@ msgstr "ИИ Чат & Ассистент Tachyon"
 msgid "AI Chat Assistant"
 msgstr "ИИ Чат-ассистент"
 
+msgid "AI Diagnostics & Strategy Rationale"
+msgstr "Диагностика ИИ и обоснование стратегий"
+
 msgid "AI Doctor (ChatGPT / DeepSeek API)"
 msgstr "AI Doctor (ChatGPT / DeepSeek API)"
 
@@ -230,6 +239,9 @@ msgstr "Ошибка ИИ-доктора"
 msgid "AI Doctor Language"
 msgstr "Язык ИИ-доктора"
 
+msgid "AI DPI Engineer & Strategy Synthesizer (RAG-Powered)"
+msgstr "ИИ-инженер DPI и генератор стратегий (на базе RAG)"
+
 msgid "AI Model"
 msgstr "Модель ИИ"
 
@@ -238,6 +250,15 @@ msgstr "Провайдер ИИ"
 
 msgid "AI service error"
 msgstr "Ошибка ИИ-сервиса"
+
+msgid "AI successfully synthesized custom strategies!"
+msgstr "ИИ успешно сгенерировал кастомные стратегии!"
+
+msgid "AI Synthesis Error"
+msgstr "Ошибка генерации ИИ"
+
+msgid "AI synthesis failed"
+msgstr "Не удалось сгенерировать стратегии через ИИ"
 
 msgid "AI Watchdog"
 msgstr "ИИ Watchdog"
@@ -811,6 +832,9 @@ msgstr "Подключения недоступны"
 
 msgid "Connectivity probe failed"
 msgstr "Проверка соединения не прошла"
+
+msgid "Consulting DPI Knowledge Base & AI..."
+msgstr "Консультируюсь с базой знаний DPI и ИИ..."
 
 msgid "Content Mode"
 msgstr "Режим контента"
@@ -1430,6 +1454,9 @@ msgstr "Не удалось закрыть подключение"
 msgid "Failed to close connections"
 msgstr "Не удалось закрыть подключения"
 
+msgid "Failed to communicate with AI provider"
+msgstr "Не удалось связаться с провайдером ИИ"
+
 msgid "Failed to copy report to clipboard"
 msgstr "Не удалось скопировать отчет в буфер обмена"
 
@@ -1525,6 +1552,9 @@ msgstr "Не удалось остановить watchdog"
 
 msgid "Failed to switch proxy"
 msgstr "Не удалось переключить прокси"
+
+msgid "Failed to synthesize AI strategies"
+msgstr "Не удалось сгенерировать стратегии через ИИ"
 
 msgid "Failed to update device"
 msgstr "Не удалось обновить устройство"
@@ -2246,6 +2276,9 @@ msgstr "Путь к ключу"
 msgid "Keyword must not contain spaces or commas"
 msgstr "Ключевое слово не должно содержать пробелов или запятых"
 
+msgid "Knowledge Base + Live Probe Context"
+msgstr "База знаний + Контекст сетевого зонда"
+
 msgid "LAN Devices"
 msgstr "Устройства LAN"
 
@@ -2516,6 +2549,9 @@ msgstr "Активные устройства в локальной сети н�
 msgid "No active routing sections found."
 msgstr "Активные секции маршрутизации не найдены."
 
+msgid "No benchmark results yet. Select engine and click \"Start Benchmark\" or \"Synthesize with AI\"."
+msgstr "Нет результатов бенчмарка. Выберите движок и нажмите «Начать бенчмарк» или «Сгенерировать через ИИ»."
+
 msgid "No benchmark results yet. Select engine and click \"Start Benchmark\"."
 msgstr "Нет результатов бенчмарка. Выберите движок и нажмите «Начать бенчмарк»."
 
@@ -2731,6 +2767,9 @@ msgstr "Опционально — оставьте пустым для знач
 
 msgid "Optional for local LLM"
 msgstr "Опционально для локальных LLM"
+
+msgid "Optional notes for AI (e.g. \"Rostelecom, YouTube 4K stream is slow\")..."
+msgstr "Дополнительные заметки для ИИ (напр. «Ростелеком, тормозит 4K на YouTube»)..."
 
 msgid "Optional tls-auth or tls-crypt key"
 msgstr "Опциональный ключ tls-auth или tls-crypt"

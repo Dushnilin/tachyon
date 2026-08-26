@@ -213,6 +213,83 @@ export function renderStrategyFuzzerModal(ruleNames: string[] = []) {
 
   controlsGrid.append(engineGroup, targetGroup, ruleGroup);
 
+  // ── AI Synthesizer Section ────────────────────────────────────────────────
+  const aiPromptInput = E('input', {
+    type: 'text',
+    class: 'cbi-input-text',
+    placeholder: _(
+      'Optional notes for AI (e.g. "Rostelecom, YouTube 4K stream is slow")...',
+    ),
+    style: 'flex: 1 1 auto; font-size: 12px;',
+  });
+
+  const aiSynthesizeBtn = renderButton({
+    text: _('🧠 Synthesize with AI'),
+    classNames: ['cbi-button-action'],
+    onClick: () => handleAiSynthesize(),
+  });
+
+  const aiAnalysisContainer = E(
+    'div',
+    {
+      id: 'tachyon-fuzzer-ai-analysis',
+      style:
+        'display: none; padding: 10px 14px; background: rgba(0, 123, 255, 0.08); border-left: 3px solid #007bff; border-radius: 4px; font-size: 12px; line-height: 1.4;',
+    },
+    [
+      E(
+        'div',
+        {
+          style:
+            'font-weight: bold; margin-bottom: 4px; display: flex; align-items: center; gap: 6px;',
+        },
+        [
+          E('span', {}, '🧠'),
+          E('span', {}, _('AI Diagnostics & Strategy Rationale')),
+        ],
+      ),
+      E(
+        'div',
+        { id: 'tachyon-fuzzer-ai-analysis-text', style: 'opacity: 0.85;' },
+        '',
+      ),
+    ],
+  );
+
+  const aiSynthesizerCard = E(
+    'div',
+    {
+      style:
+        'padding: 10px 14px; background: var(--background-color-secondary, rgba(0,0,0,0.15)); border: 1px dashed var(--border-color, rgba(255,255,255,0.15)); border-radius: 8px; display: flex; flex-direction: column; gap: 8px;',
+    },
+    [
+      E(
+        'div',
+        {
+          style:
+            'font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: space-between;',
+        },
+        [
+          E(
+            'span',
+            {},
+            '🧠 ' + _('AI DPI Engineer & Strategy Synthesizer (RAG-Powered)'),
+          ),
+          E(
+            'span',
+            { style: 'font-size: 10px; opacity: 0.6; font-weight: normal;' },
+            _('Knowledge Base + Live Probe Context'),
+          ),
+        ],
+      ),
+      E('div', { style: 'display: flex; gap: 8px; align-items: center;' }, [
+        aiPromptInput,
+        aiSynthesizeBtn,
+      ]),
+      aiAnalysisContainer,
+    ],
+  );
+
   // ── Progress & Status Bar ─────────────────────────────────────────────────
   const progressContainer = E(
     'div',
@@ -313,7 +390,7 @@ export function renderStrategyFuzzerModal(ruleNames: string[] = []) {
               style: 'padding: 24px; text-align: center; opacity: 0.6;',
             },
             _(
-              'No benchmark results yet. Select engine and click "Start Benchmark".',
+              'No benchmark results yet. Select engine and click "Start Benchmark" or "Synthesize with AI".',
             ),
           ),
         ),
@@ -558,6 +635,64 @@ export function renderStrategyFuzzerModal(ruleNames: string[] = []) {
     }
   };
 
+  const handleAiSynthesize = async () => {
+    const userPrompt = (aiPromptInput as HTMLInputElement).value.trim();
+    (aiSynthesizeBtn as HTMLButtonElement).disabled = true;
+    aiSynthesizeBtn.innerText = _('🧠 Synthesizing...');
+
+    const analysisBox = document.getElementById('tachyon-fuzzer-ai-analysis');
+    const analysisText = document.getElementById(
+      'tachyon-fuzzer-ai-analysis-text',
+    );
+    if (analysisBox) analysisBox.style.display = 'none';
+
+    try {
+      showToast(_('Consulting DPI Knowledge Base & AI...'), 'success');
+      const res = await TachyonShellMethods.fuzzerAiSynthesize(
+        selectedEngine,
+        selectedTarget,
+        customUrl,
+        userPrompt,
+      );
+
+      if (res.success && res.data) {
+        showToast(
+          _('AI successfully synthesized custom strategies!'),
+          'success',
+        );
+
+        if (analysisBox && analysisText && res.data.analysis) {
+          analysisText.innerText = res.data.analysis;
+          analysisBox.style.display = 'block';
+        }
+
+        // Start live fuzzer benchmark immediately on the synthesized strategies
+        (startBtn as HTMLButtonElement).disabled = true;
+        startBtn.innerText = _('🛑 Stop Benchmark');
+
+        const startRes = await TachyonShellMethods.startFuzzer(
+          selectedEngine,
+          selectedTarget,
+          customUrl,
+          selectedRuleSection,
+        );
+
+        if (startRes.success) {
+          isRunning = true;
+          startPolling();
+        }
+      } else {
+        const errMsg = !res.success ? res.error : _('AI synthesis failed');
+        showToast(`${_('AI Synthesis Error')}: ${errMsg}`, 'error');
+      }
+    } catch {
+      showToast(_('Failed to communicate with AI provider'), 'error');
+    } finally {
+      (aiSynthesizeBtn as HTMLButtonElement).disabled = false;
+      aiSynthesizeBtn.innerText = _('🧠 Synthesize with AI');
+    }
+  };
+
   const handleApplySingle = async (item: Tachyon.FuzzerStrategyResult) => {
     const res = await TachyonShellMethods.applyFuzzerStrategy(
       item.engine,
@@ -583,6 +718,7 @@ export function renderStrategyFuzzerModal(ruleNames: string[] = []) {
   modalContainer.append(
     headerEl,
     controlsGrid,
+    aiSynthesizerCard,
     progressContainer,
     resultsContainer,
     footerActions,

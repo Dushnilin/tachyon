@@ -111,4 +111,38 @@ describe('TachyonShellMethods Fuzzer Actions', () => {
       }),
     );
   });
+
+  it('synthesizes AI strategies', async () => {
+    mocks.executeShellCommand.mockResolvedValueOnce({
+      stdout: JSON.stringify({
+        success: true,
+        engine: 'zapret2',
+        target: 'youtube',
+        analysis: 'TSPU blocks SNI on first chunk',
+        strategies: [
+          {
+            id: 'ai_1',
+            name: 'AI Strategy 1',
+            engine: 'zapret2',
+            args: '--lua-desync=multisplit:pos=1,midsld:seqovl=1:fooling=badseq',
+            description: 'AI multisplit',
+          },
+        ],
+      }),
+      stderr: '',
+      code: 0,
+    });
+
+    const res = await TachyonShellMethods.fuzzerAiSynthesize(
+      'zapret2',
+      'youtube',
+      '',
+      'Rostelecom',
+    );
+    expect(res.success).toBe(true);
+    if (res.success) {
+      expect(res.data.analysis).toBe('TSPU blocks SNI on first chunk');
+      expect(res.data.strategies).toHaveLength(1);
+    }
+  });
 });

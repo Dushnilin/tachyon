@@ -68,19 +68,29 @@ function get_api_url(provider, api_key, custom_url) {
     if (provider == "openrouter")
         return "https://openrouter.ai/api/v1/embeddings";
     if (provider == "ollama") {
-        if (custom_url != "")
-            return custom_url + "/api/embeddings";
+        if (custom_url != "") {
+            let base = replace(custom_url, /\/v1\/chat\/completions\/?$/, "");
+            base = replace(base, /\/api\/generate\/?$/, "");
+            if (index(base, "/embeddings") >= 0)
+                return base;
+            return base + "/api/embeddings";
+        }
         return "http://192.168.1.100:11434/api/embeddings";
     }
     if (provider == "lmstudio") {
-        if (custom_url != "")
-            return custom_url + "/v1/embeddings";
+        if (custom_url != "") {
+            let base = replace(custom_url, /\/v1\/chat\/completions\/?$/, "");
+            if (index(base, "/embeddings") >= 0)
+                return base;
+            return base + "/v1/embeddings";
+        }
         return "http://192.168.1.100:1234/v1/embeddings";
     }
     if (provider == "custom" && custom_url != "") {
-        if (index(custom_url, "/embeddings") >= 0)
-            return custom_url;
-        return custom_url + "/v1/embeddings";
+        let base = replace(custom_url, /\/v1\/chat\/completions\/?$/, "");
+        if (index(base, "/embeddings") >= 0)
+            return base;
+        return base + "/v1/embeddings";
     }
     return "https://api.openai.com/v1/embeddings";
 }

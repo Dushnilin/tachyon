@@ -3,6 +3,7 @@
 let fs = require("fs");
 let common = require("core.common");
 let uci_core = require("core.uci");
+let rag = require("diagnostics.rag");
 
 let as_string = common.as_string;
 let read_json_file = common.read_json_file;
@@ -235,6 +236,304 @@ function save_fuzzer_state(state) {
     common.write_json_file(STATE_FILE, state);
 }
 
+function validate_strategy_args(engine, args_val) {
+    args_val = trim(as_string(args_val));
+    if (args_val == "") return false;
+    engine = lc(as_string(engine));
+    try {
+        if (engine == "zapret2") {
+            let val = require("providers.zapret2.validator");
+            let res = val.validate_strategy("nfqws2", args_val, "");
+            return res ? res.valid == true : true;
+        } else if (engine == "zapret") {
+            let val = require("providers.zapret.validator");
+            let res = val.validate_strategy("nfqws", args_val, "");
+            return res ? res.valid == true : true;
+        } else if (engine == "byedpi") {
+            let val = require("providers.byedpi.validator");
+            let res = val.validate_strategy(args_val, "");
+            return res ? res.valid == true : true;
+        }
+    } catch (e) {
+        return true;
+    }
+    return true;
+}
+
+function query_llm(provider, api_key, custom_url, prompt_text, model_override) {
+    provider = lc(trim(as_string(provider || "openai")));
+    model_override = trim(as_string(model_override || ""));
+
+    if (provider == "anthropic" || provider == "claude") {
+        let api_url = "https://api.anthropic.com/v1/messages";
+        let model = model_override != "" ? model_override : "claude-3-5-haiku-20241022";
+        let payload = {
+            model: model,
+            max_tokens: 1500,
+            messages: [{ role: "user", content: prompt_text }]
+        };
+        let payload_path = "/tmp/fuzzer_llm_payload.json";
+        common.write_json_file(payload_path, payload);
+
+        let curl_args = [
+            "curl", "-s", "-X", "POST",
+            "-H", "Content-Type: application/json",
+            "-H", "x-api-key: " + api_key,
+            "-H", "anthropic-version: 2023-06-01",
+            "--connect-timeout", "10",
+            "-m", "60",
+            "-d", "@" + payload_path,
+            api_url
+        ];
+
+        let pipe = fs.popen(command_from_args(curl_args), "r");
+        let output = pipe ? pipe.read("all") : "";
+        if (pipe) pipe.close();
+        common.remove_file(payload_path);
+
+        if (output == "") return null;
+        let response_data = null;
+        try { response_data = json(output); } catch (e) {}
+        if (response_data && type(response_data.content) == "array" && length(response_data.content) > 0) {
+            return response_data.content[0].text;
+        }
+        return null;
+    }
+
+    let api_url = "https://api.openai.com/v1/chat/completions";
+    let model = model_override != "" ? model_override : "gpt-4o-mini";
+
+    if (provider == "deepseek") {
+        api_url = "https://api.deepseek.com/chat/completions";
+        model = model_override != "" ? model_override : "deepseek-chat";
+    } else if (provider == "openrouter") {
+        api_url = "https://openrouter.ai/api/v1/chat/completions";
+        model = model_override != "" ? model_override : "openai/gpt-4o-mini";
+    } else if (provider == "ollama") {
+        if (custom_url != "") {
+            let base = replace(custom_url, /\/v1\/chat\/completions\/?$/, "");
+            api_url = base + "/v1/chat/completions";
+        } else {
+            api_url = "http://192.168.1.100:11434/v1/chat/completions";
+        }
+        model = model_override != "" ? model_override : "llama3:latest";
+    } else if (provider == "lmstudio") {
+        if (custom_url != "") {
+            let base = replace(custom_url, /\/v1\/chat\/completions\/?$/, "");
+            api_url = base + "/v1/chat/completions";
+        } else {
+            api_url = "http://192.168.1.100:1234/v1/chat/completions";
+        }
+        model = model_override != "" ? model_override : "local-model";
+    } else if (provider == "custom" && custom_url != "") {
+        api_url = custom_url;
+        model = model_override != "" ? model_override : "gpt-4o-mini";
+    }
+
+    let payload = {
+        model: model,
+        messages: [{ role: "user", content: prompt_text }],
+        temperature: 0.3
+    };
+
+    let payload_path = "/tmp/fuzzer_llm_payload.json";
+    common.write_json_file(payload_path, payload);
+
+    let curl_args = [
+        "curl", "-s", "-X", "POST",
+        "-H", "Content-Type: application/json",
+        "-H", "Authorization: Bearer " + api_key,
+        "--connect-timeout", "10",
+        "-m", "60",
+        "-d", "@" + payload_path,
+        api_url
+    ];
+
+    let pipe = fs.popen(command_from_args(curl_args), "r");
+    let output = pipe ? pipe.read("all") : "";
+    if (pipe) pipe.close();
+    common.remove_file(payload_path);
+
+    if (output == "") return null;
+    let response_data = null;
+    try { response_data = json(output); } catch (e) {}
+    if (response_data && type(response_data.choices) == "array" && length(response_data.choices) > 0) {
+        return response_data.choices[0].message ? response_data.choices[0].message.content : null;
+    }
+    return null;
+}
+
+function uci_settings() {
+    return uci_core.get_all(CONFIG_NAME, "settings") || uci_core.get_all(CONFIG_NAME, "main") || {};
+}
+
+function synthesize_ai_strategies(engine, target, custom_url, user_prompt) {
+    engine = lc(as_string(engine || "zapret2"));
+    target = lc(as_string(target || "youtube"));
+    custom_url = trim(as_string(custom_url || ""));
+    user_prompt = trim(as_string(user_prompt || ""));
+    
+    let cfg = uci_settings();
+    let provider = lc(trim(as_string(cfg.ai_doctor_provider || "openai")));
+    let api_key = cfg.ai_doctor_api_key || "";
+    let custom_url_llm = cfg.ai_doctor_custom_url || "";
+    let model_override = trim(cfg.ai_doctor_model || "");
+    
+    let has_key = (api_key != "");
+    let is_local_or_custom = (provider == "ollama" || provider == "lmstudio" || (provider == "custom" && custom_url_llm != ""));
+    
+    if (!has_key && !is_local_or_custom) {
+        print(sprintf("%J\n", {
+            success: false,
+            error: "AI Doctor API key is not configured in Tachyon settings (Diagnostics -> AI Doctor)."
+        }));
+        return;
+    }
+    
+    let target_url = resolve_target_url(target, custom_url);
+    
+    // Fast direct probe without desync
+    let probe_cmd = sprintf(
+        "curl -so /dev/null -w '%%{http_code}\\t%%{time_appconnect}\\t%%{time_starttransfer}' --connect-timeout 3 --max-time 4 %s 2>/dev/null",
+        shell_quote(target_url)
+    );
+    let pipe = fs.popen(probe_cmd, "r");
+    let raw_probe = pipe ? pipe.read("all") : "";
+    if (pipe) pipe.close();
+    
+    let probe_status = "Direct connection without desync failed or timed out.";
+    if (raw_probe && raw_probe != "") {
+        let parts = split(trim(raw_probe), "\t");
+        let http_code = int(parts[0]);
+        if (http_code > 0)
+            probe_status = sprintf("Direct HTTP %d, Connect %s sec, TTFB %s sec", http_code, parts[1] || "0", parts[2] || "0");
+    }
+    
+    // Retrieve RAG context
+    let rag_query = sprintf("%s %s DPI bypass desync strategy TSPU %s", engine, target, user_prompt);
+    let rag_context = "";
+    try {
+        rag_context = rag.retrieve(rag_query, provider, api_key, custom_url_llm, model_override, 3);
+    } catch (e) {
+        rag_context = "";
+    }
+    
+    let prompt = sprintf(
+        "You are an expert Anti-Censorship and Deep Packet Inspection (DPI) bypass engineer specializing in OpenWrt, Zapret, Zapret2 (nfqws2), and ByeDPI (ciadpi).\n" +
+        "Synthesize 3 to 5 highly effective, customized bypass strategies for the engine '%s' targeting service '%s' (%s).\n\n" +
+        "Target Service: %s\n" +
+        "Target URL: %s\n" +
+        "Baseline Network Probe: %s\n" +
+        "User Context / Notes: %s\n\n" +
+        (rag_context != "" ? "=== Relevant Technical Documentation (RAG) ===\n" + rag_context + "\n=============================================\n\n" : "") +
+        "Syntax Specifications for '%s':\n" +
+        (engine == "zapret2" ?
+            "- Uses nfqws2 Lua actions: --lua-desync=<func>[:key=val[:key=val]].\n" +
+            "- Valid actions: multisplit (pos=1,midsld:seqovl=1:fooling=badseq, pos=1,sniext+4:seqovl=1:fooling=badseq, pos=1,midsld,sniext+2:seqovl=2:fooling=badseq), fake (ttl=8:fooling=badseq), split2 (pos=1), disorder2 (pos=1).\n" +
+            "- Valid fooling options: badseq, md5sig, badack, datanoack.\n" +
+            "- Window clamp: wsize=1.\n" +
+            "- Multi-profile support: e.g. --filter-tcp=443 --lua-desync=... --new --filter-udp=50000-65535 --lua-desync=fake:ttl=8.\n" :
+        engine == "zapret" ?
+            "- Uses nfqws CLI options: --dpi-desync=<modes> [--dpi-desync-split-pos=<pos>] [--dpi-desync-split-seqovl=<N>] [--dpi-desync-ttl=<N>] [--dpi-desync-fooling=<fooling>].\n" +
+            "- Valid modes: fake, split2, disorder2, multisplit, ipfrag2.\n" +
+            "- Valid fooling: badseq, md5sig, badack.\n" :
+            "- Uses ciadpi CLI options: -s <pos>, -d <pos>, -f <offset>, -t <ttl>, -o <offset>, --auto=t,r,a,s, --split, --disorder, --fake, --ttl.\n") +
+        "\nREQUIREMENT: Respond ONLY with a valid JSON object matching this schema without any markdown formatting or backticks:\n" +
+        "{\n" +
+        "  \"analysis\": \"Concise 2-3 sentence technical diagnosis of the blocking pattern and rationale for these strategies.\",\n" +
+        "  \"strategies\": [\n" +
+        "    {\n" +
+        "      \"id\": \"ai_strat_1\",\n" +
+        "      \"name\": \"Descriptive human-readable strategy name\",\n" +
+        "      \"engine\": \"%s\",\n" +
+        "      \"args\": \"Exact valid CLI argument string\",\n" +
+        "      \"description\": \"What this strategy does\",\n" +
+        "      \"rationale\": \"Why this parameter combination works against this filter\"\n" +
+        "    }\n" +
+        "  ]\n" +
+        "}",
+        engine, target, target_url, target, target_url, probe_status, user_prompt != "" ? user_prompt : "None provided", engine, engine
+    );
+    
+    let raw_ai_res = query_llm(provider, api_key, custom_url_llm, prompt, model_override);
+    if (!raw_ai_res || trim(raw_ai_res) == "") {
+        print(sprintf("%J\n", {
+            success: false,
+            error: "Failed to receive response from LLM provider (" + provider + ")."
+        }));
+        return;
+    }
+    
+    // Clean potential markdown fences
+    let clean_json = trim(raw_ai_res);
+    clean_json = replace(clean_json, /^```json\s*/i, "");
+    clean_json = replace(clean_json, /^```\s*/, "");
+    clean_json = replace(clean_json, /\s*```$/, "");
+    
+    let parsed = null;
+    try {
+        parsed = json(clean_json);
+    } catch (e) {
+        // Try substring extraction
+        let start_idx = index(clean_json, "{");
+        let end_idx = rindex(clean_json, "}");
+        if (start_idx >= 0 && end_idx > start_idx) {
+            try {
+                parsed = json(substr(clean_json, start_idx, end_idx - start_idx + 1));
+            } catch (e2) {}
+        }
+    }
+    
+    if (!parsed || type(parsed.strategies) != "array" || length(parsed.strategies) == 0) {
+        print(sprintf("%J\n", {
+            success: false,
+            error: "LLM produced invalid JSON schema",
+            raw: substr(clean_json, 0, 300)
+        }));
+        return;
+    }
+    
+    let valid_strategies = [];
+    for (let i = 0; i < length(parsed.strategies); i++) {
+        let s = parsed.strategies[i];
+        if (!s || !s.args || trim(as_string(s.args)) == "") continue;
+        let s_engine = s.engine || engine;
+        let is_valid = validate_strategy_args(s_engine, s.args);
+        if (is_valid) {
+            push(valid_strategies, {
+                id: s.id || sprintf("ai_strat_%d", i + 1),
+                name: s.name || sprintf("AI Strategy %d", i + 1),
+                engine: s_engine,
+                args: trim(as_string(s.args)),
+                description: s.description || "",
+                rationale: s.rationale || ""
+            });
+        }
+    }
+    
+    if (length(valid_strategies) == 0) {
+        print(sprintf("%J\n", {
+            success: false,
+            error: "No generated strategies passed syntax validation",
+            raw_strategies: parsed.strategies
+        }));
+        return;
+    }
+    
+    // Save AI strategies to temporary custom file for benchmark execution
+    ensure_state_dir();
+    common.write_json_file("/tmp/fuzzer_ai_strategies.json", valid_strategies);
+    
+    print(sprintf("%J\n", {
+        success: true,
+        engine,
+        target,
+        target_url,
+        analysis: parsed.analysis || "AI strategy synthesis complete.",
+        strategies: valid_strategies
+    }));
+}
+
 function get_fuzzer_state() {
     let state = common.read_json_file(STATE_FILE);
     if (!state || type(state) != "object") {
@@ -399,9 +698,15 @@ function run_probe(engine, args_str, target_url) {
     return result;
 }
 
-function run_fuzzer_worker(engine, target, custom_url, rule_section) {
+function run_fuzzer_worker(engine, target, custom_url, rule_section, custom_file) {
     let target_url = resolve_target_url(target, custom_url);
-    let strategies = get_strategies_for_engine(engine);
+    let strategies = null;
+    if (custom_file && custom_file != "" && fs.stat(custom_file) != null) {
+        strategies = common.read_json_file(custom_file);
+    }
+    if (!strategies || type(strategies) != "array" || length(strategies) == 0) {
+        strategies = get_strategies_for_engine(engine);
+    }
     let total = length(strategies);
     
     let state = {
@@ -411,6 +716,7 @@ function run_fuzzer_worker(engine, target, custom_url, rule_section) {
         target,
         target_url,
         rule_section: as_string(rule_section),
+        custom_file: as_string(custom_file || ""),
         progress_pct: 0,
         current_index: 0,
         total_strategies: total,
@@ -435,14 +741,15 @@ function run_fuzzer_worker(engine, target, custom_url, rule_section) {
             state.progress_pct = int(((i) / double(total)) * 100.0);
             save_fuzzer_state(state);
             
-            let probe = run_probe(strat.engine, strat.args, target_url);
+            let probe = run_probe(strat.engine || engine, strat.args, target_url);
             
             let item_result = {
-                id: strat.id,
-                name: strat.name,
-                engine: strat.engine,
+                id: strat.id || sprintf("strat_%d", i + 1),
+                name: strat.name || sprintf("Strategy %d", i + 1),
+                engine: strat.engine || engine,
                 args: strat.args,
-                description: strat.description,
+                description: strat.description || "",
+                rationale: strat.rationale || "",
                 success: probe.success,
                 http_code: probe.http_code,
                 handshake_ms: probe.handshake_ms,
@@ -496,7 +803,7 @@ function run_fuzzer_worker(engine, target, custom_url, rule_section) {
     cleanup_temp_daemons();
 }
 
-function start_fuzzer(engine, target, custom_url, rule_section) {
+function start_fuzzer(engine, target, custom_url, rule_section, custom_file) {
     let current = get_fuzzer_state();
     if (current.running) {
         print(sprintf("%J\n", { success: false, error: "Fuzzer is already running", job_id: current.job_id }));
@@ -507,11 +814,12 @@ function start_fuzzer(engine, target, custom_url, rule_section) {
     
     let job_id = sprintf("fuzz_%d", clock()[0]);
     let cmd = sprintf(
-        "ucode -L /usr/lib/tachyon /usr/lib/tachyon/diagnostics/fuzzer.uc worker %s %s %s %s",
+        "ucode -L /usr/lib/tachyon /usr/lib/tachyon/diagnostics/fuzzer.uc worker %s %s %s %s %s",
         shell_quote(engine || "zapret2"),
         shell_quote(target || "youtube"),
         shell_quote(custom_url || ""),
-        shell_quote(rule_section || "")
+        shell_quote(rule_section || ""),
+        shell_quote(custom_file || "")
     );
     
     system(common.background_command_with_pid(cmd, ">/dev/null", ">" + shell_quote(PID_FILE)));
@@ -597,15 +905,17 @@ function apply_strategy(engine, args_val, target_rule) {
 let op = ARGV[0] || "status";
 
 if (op == "start") {
-    start_fuzzer(ARGV[1], ARGV[2], ARGV[3], ARGV[4]);
+    start_fuzzer(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5]);
 } else if (op == "worker") {
-    run_fuzzer_worker(ARGV[1], ARGV[2], ARGV[3], ARGV[4]);
+    run_fuzzer_worker(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5]);
 } else if (op == "status") {
     print(sprintf("%J\n", get_fuzzer_state()));
 } else if (op == "stop") {
     stop_fuzzer();
 } else if (op == "apply") {
     apply_strategy(ARGV[1], ARGV[2], ARGV[3]);
+} else if (op == "ai_synthesize" || op == "synthesize") {
+    synthesize_ai_strategies(ARGV[1], ARGV[2], ARGV[3], ARGV[4]);
 } else if (op == "strategies") {
     print(sprintf("%J\n", {
         available_engines: get_available_engines(),
@@ -614,6 +924,6 @@ if (op == "start") {
         byedpi: STRATEGIES_BYEDPI
     }));
 } else {
-    warn("Usage: fuzzer.uc [start|status|stop|apply|strategies|worker] ...\n");
+    warn("Usage: fuzzer.uc [start|status|stop|apply|strategies|ai_synthesize|worker] ...\n");
     exit(1);
 }
