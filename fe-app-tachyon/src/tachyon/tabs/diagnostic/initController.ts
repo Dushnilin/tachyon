@@ -40,8 +40,10 @@ import {
   renderSystemInfo,
   renderServiceCheckModal,
   renderAiChatModal,
+  renderStrategyFuzzerModal,
 } from './partials';
 import { TachyonShellMethods } from '../../methods';
+import { getConfigSections } from '../../methods/custom/getConfigSections';
 import { fetchServicesInfo } from '../../fetchers/fetchServicesInfo';
 import { normalizeCompiledVersion } from '../../../helpers/normalizeCompiledVersion';
 import { renderModal, renderButton } from '../../../partials';
@@ -1582,6 +1584,20 @@ function handleOpenAiChat() {
   renderAiChatModal();
 }
 
+function handleOpenStrategyFuzzer() {
+  getConfigSections()
+    .then((sections) => {
+      const ruleNames = sections
+        .filter((s) => s['.type'] === 'section' || s['.type'] === 'rule')
+        .map((s) => s.name || s['.name'])
+        .filter((n): n is string => Boolean(n));
+      renderStrategyFuzzerModal(ruleNames);
+    })
+    .catch(() => {
+      renderStrategyFuzzerModal([]);
+    });
+}
+
 function handleRestoreNativeInternet() {
   ui.showModal(
     _('Restore Native Internet'),
@@ -1868,6 +1884,12 @@ function renderDiagnosticAvailableActionsWidget() {
       loading: false,
       visible: true,
       onClick: handleOpenAiChat,
+      disabled: false,
+    },
+    strategyFuzzer: {
+      loading: false,
+      visible: true,
+      onClick: handleOpenStrategyFuzzer,
       disabled: false,
     },
     checkServices: {

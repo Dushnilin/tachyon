@@ -7,6 +7,7 @@ let as_string = common.as_string;
 let read_stdin = common.read_stdin;
 let read_stdin_json = common.read_stdin_json;
 let read_json_file = common.read_json_file;
+let write_json_file = common.write_json_file;
 
 function url_encode(value) {
     value = as_string(value);

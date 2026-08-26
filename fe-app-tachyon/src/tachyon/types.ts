@@ -98,6 +98,11 @@ export namespace Tachyon {
     SUBSCRIPTION_UPDATE_ASYNC = 'subscription_update_async',
     SUBSCRIPTION_UPDATE_STATUS = 'subscription_update_status',
     SERVICE_HEALTH_CHECK = 'service_health_check',
+    FUZZER_START = 'fuzzer_start',
+    FUZZER_STATUS = 'fuzzer_status',
+    FUZZER_STOP = 'fuzzer_stop',
+    FUZZER_APPLY = 'fuzzer_apply',
+    FUZZER_STRATEGIES = 'fuzzer_strategies',
   }
 
   export enum AvailableClashAPIMethods {
@@ -822,4 +827,74 @@ export namespace Tachyon {
   }
 
   export type GetClashApiGroupLatency = Record<string, number>;
+
+  export type FuzzerEngine = 'zapret2' | 'zapret' | 'byedpi' | 'all';
+  export type FuzzerTarget =
+    | 'youtube'
+    | 'youtube_web'
+    | 'discord'
+    | 'instagram'
+    | 'rutracker'
+    | 'telegram'
+    | 'custom';
+
+  export interface FuzzerStrategyItem {
+    id: string;
+    name: string;
+    engine: 'zapret2' | 'zapret' | 'byedpi';
+    args: string;
+    description: string;
+  }
+
+  export type FuzzerStrategyDefinition = FuzzerStrategyItem;
+
+  export interface FuzzerStrategyResult {
+    id: string;
+    name: string;
+    engine: 'zapret2' | 'zapret' | 'byedpi';
+    args: string;
+    description: string;
+    success: boolean;
+    http_code: number;
+    handshake_ms: number;
+    ttfb_ms: number;
+    speed_kbps: number;
+    score: number;
+    error?: string;
+    badge?: string;
+  }
+
+  export interface FuzzerState {
+    running: boolean;
+    job_id: string;
+    engine: FuzzerEngine;
+    target: FuzzerTarget;
+    target_url: string;
+    rule_section?: string;
+    progress_pct: number;
+    current_index: number;
+    total_strategies: number;
+    current_strategy?: FuzzerStrategyItem | null;
+    results: FuzzerStrategyResult[];
+    best_strategy?: FuzzerStrategyResult | null;
+    error?: string | null;
+    started_at: number;
+    finished_at: number;
+  }
+
+  export interface FuzzerStartResponse {
+    success: boolean;
+    job_id?: string;
+    engine?: string;
+    target?: string;
+    error?: string;
+  }
+
+  export interface FuzzerApplyResponse {
+    success: boolean;
+    engine: string;
+    applied_to: string;
+    args: string;
+    error?: string;
+  }
 }

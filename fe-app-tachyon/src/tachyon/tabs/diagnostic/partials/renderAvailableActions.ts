@@ -29,6 +29,7 @@ interface IRenderAvailableActionsProps {
   doctor: ActionProps;
   aiDoctor: ActionProps;
   aiChat?: ActionProps;
+  strategyFuzzer?: ActionProps;
   restoreNativeInternet?: ActionProps;
   viewLogs: ActionProps;
   showSingBoxConfig: ActionProps;
@@ -46,6 +47,7 @@ export function renderAvailableActions({
   doctor,
   aiDoctor,
   aiChat,
+  strategyFuzzer,
   restoreNativeInternet,
   viewLogs,
   showSingBoxConfig,
@@ -150,6 +152,16 @@ export function renderAvailableActions({
         text: _('AI Chat Assistant'),
         loading: aiChat!.loading,
         disabled: aiChat!.disabled,
+      }),
+    ]),
+    ...insertIf(!!strategyFuzzer?.visible, [
+      renderButton({
+        classNames: ['cbi-button-action'],
+        onClick: strategyFuzzer!.onClick,
+        icon: renderCirclePlayIcon24,
+        text: _('⚡ DPI Strategy Fuzzer'),
+        loading: strategyFuzzer!.loading,
+        disabled: strategyFuzzer!.disabled,
       }),
     ]),
     ...insertIf(checkServices.visible, [

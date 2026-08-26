@@ -3114,6 +3114,11 @@ var Tachyon;
     AvailableMethods2["SUBSCRIPTION_UPDATE_ASYNC"] = "subscription_update_async";
     AvailableMethods2["SUBSCRIPTION_UPDATE_STATUS"] = "subscription_update_status";
     AvailableMethods2["SERVICE_HEALTH_CHECK"] = "service_health_check";
+    AvailableMethods2["FUZZER_START"] = "fuzzer_start";
+    AvailableMethods2["FUZZER_STATUS"] = "fuzzer_status";
+    AvailableMethods2["FUZZER_STOP"] = "fuzzer_stop";
+    AvailableMethods2["FUZZER_APPLY"] = "fuzzer_apply";
+    AvailableMethods2["FUZZER_STRATEGIES"] = "fuzzer_strategies";
   })(AvailableMethods = Tachyon2.AvailableMethods || (Tachyon2.AvailableMethods = {}));
   let AvailableClashAPIMethods;
   ((AvailableClashAPIMethods2) => {
@@ -3915,6 +3920,125 @@ var TachyonShellMethods = {
     });
     return {
       success: (response.code ?? 1) === 0
+    };
+  },
+  startFuzzer: async (engine = "zapret2", target = "youtube", customUrl, ruleSection) => {
+    const response = await executeShellCommand({
+      command: "/usr/bin/tachyon",
+      args: [
+        Tachyon.AvailableMethods.FUZZER_START,
+        engine,
+        target,
+        customUrl || "",
+        ruleSection || ""
+      ],
+      timeout: 1e4
+    });
+    let parsed = null;
+    try {
+      parsed = JSON.parse(response.stdout?.trim() || "{}");
+    } catch {
+      parsed = null;
+    }
+    if ((response.code ?? 1) === 0 && parsed && parsed.success) {
+      return {
+        success: true,
+        data: parsed
+      };
+    }
+    return {
+      success: false,
+      error: parsed?.error || response.stderr || _("Failed to start fuzzer")
+    };
+  },
+  getFuzzerStatus: async () => {
+    const response = await executeShellCommand({
+      command: "/usr/bin/tachyon",
+      args: [Tachyon.AvailableMethods.FUZZER_STATUS],
+      timeout: 8e3
+    });
+    let parsed = null;
+    try {
+      parsed = JSON.parse(response.stdout?.trim() || "{}");
+    } catch {
+      parsed = null;
+    }
+    if ((response.code ?? 1) === 0 && parsed) {
+      return {
+        success: true,
+        data: parsed
+      };
+    }
+    return {
+      success: false,
+      error: response.stderr || _("Failed to get fuzzer status")
+    };
+  },
+  stopFuzzer: async () => {
+    const response = await executeShellCommand({
+      command: "/usr/bin/tachyon",
+      args: [Tachyon.AvailableMethods.FUZZER_STOP],
+      timeout: 8e3
+    });
+    if ((response.code ?? 1) === 0) {
+      return { success: true, data: void 0 };
+    }
+    return {
+      success: false,
+      error: response.stderr || _("Failed to stop fuzzer")
+    };
+  },
+  applyFuzzerStrategy: async (engine, args, targetRuleOrGlobal) => {
+    const response = await executeShellCommand({
+      command: "/usr/bin/tachyon",
+      args: [
+        Tachyon.AvailableMethods.FUZZER_APPLY,
+        engine,
+        args,
+        targetRuleOrGlobal || "global"
+      ],
+      timeout: 1e4
+    });
+    let parsed = null;
+    try {
+      parsed = JSON.parse(response.stdout?.trim() || "{}");
+    } catch {
+      parsed = null;
+    }
+    if ((response.code ?? 1) === 0 && parsed && parsed.success) {
+      return {
+        success: true,
+        data: parsed
+      };
+    }
+    return {
+      success: false,
+      error: parsed?.error || response.stderr || _("Failed to apply strategy")
+    };
+  },
+  getFuzzerStrategies: async () => {
+    const response = await executeShellCommand({
+      command: "/usr/bin/tachyon",
+      args: [Tachyon.AvailableMethods.FUZZER_STRATEGIES],
+      timeout: 8e3
+    });
+    let parsed = null;
+    try {
+      parsed = JSON.parse(
+        response.stdout?.trim() || "{}"
+      );
+    } catch {
+      parsed = null;
+    }
+    if ((response.code ?? 1) === 0 && parsed) {
+      return {
+        success: true,
+        data: parsed
+      };
+    }
+    return {
+      success: false,
+      error: response.stderr || _("Failed to get fuzzer strategies")
     };
   }
 };
@@ -10309,6 +10433,7 @@ function renderAvailableActions({
   doctor,
   aiDoctor,
   aiChat,
+  strategyFuzzer,
   restoreNativeInternet,
   viewLogs,
   showSingBoxConfig,
@@ -10413,6 +10538,16 @@ function renderAvailableActions({
         text: _("AI Chat Assistant"),
         loading: aiChat.loading,
         disabled: aiChat.disabled
+      })
+    ]),
+    ...insertIf(!!strategyFuzzer?.visible, [
+      renderButton({
+        classNames: ["cbi-button-action"],
+        onClick: strategyFuzzer.onClick,
+        icon: renderCirclePlayIcon24,
+        text: _("\u26A1 DPI Strategy Fuzzer"),
+        loading: strategyFuzzer.loading,
+        disabled: strategyFuzzer.disabled
       })
     ]),
     ...insertIf(checkServices.visible, [
@@ -11561,6 +11696,502 @@ function renderAiChatModal() {
     ]
   );
   ui.showModal(_("AI Chat & Tachyon Assistant"), modalContent);
+}
+
+// src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts
+function renderStrategyFuzzerModal(ruleNames = []) {
+  let pollingInterval = null;
+  let isPolling = false;
+  let selectedEngine = "zapret2";
+  let selectedTarget = "youtube";
+  let customUrl = "";
+  let selectedRuleSection = "";
+  let isRunning = false;
+  let currentState = null;
+  const modalContainer = E("div", {
+    class: "tachyon_fuzzer_modal",
+    style: "display: flex; flex-direction: column; gap: 16px; width: 100%; max-width: 860px; box-sizing: border-box;"
+  });
+  const headerEl = E(
+    "div",
+    {
+      style: "padding: 12px 16px; background: var(--background-color-secondary, rgba(0,0,0,0.25)); border: 1px solid var(--border-color, rgba(255,255,255,0.12)); border-radius: 8px;"
+    },
+    [
+      E(
+        "div",
+        {
+          style: "font-size: 15px; font-weight: bold; margin-bottom: 4px; display: flex; align-items: center; gap: 8px;"
+        },
+        [
+          E("span", {}, "\u26A1"),
+          E("span", {}, _("Automated DPI Strategy Fuzzer & Auto-Tuner"))
+        ]
+      ),
+      E(
+        "div",
+        {
+          style: "font-size: 12px; opacity: 0.75; line-height: 1.4;"
+        },
+        _(
+          "Benchmarks a suite of packet desynchronization strategies in an isolated sandbox without disrupting active traffic, ranking them by latency, TTFB, and throughput."
+        )
+      )
+    ]
+  );
+  const controlsGrid = E("div", {
+    style: "display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; align-items: end;"
+  });
+  const engineSelect = E(
+    "select",
+    { class: "cbi-input-select", style: "width: 100%;" },
+    [
+      E(
+        "option",
+        { value: "zapret2", selected: true },
+        _("Zapret v2 (nfqws2)")
+      ),
+      E("option", { value: "zapret" }, _("Zapret v1 (nfqws)")),
+      E("option", { value: "byedpi" }, _("ByeDPI (ciadpi)")),
+      E("option", { value: "all" }, _("All Engines (Full Matrix)"))
+    ]
+  );
+  engineSelect.addEventListener("change", () => {
+    selectedEngine = engineSelect.value;
+  });
+  const engineGroup = E(
+    "div",
+    { style: "display: flex; flex-direction: column; gap: 4px;" },
+    [
+      E(
+        "label",
+        { style: "font-size: 12px; font-weight: 600;" },
+        _("DPI Engine")
+      ),
+      engineSelect
+    ]
+  );
+  TachyonShellMethods.getFuzzerStrategies().then((res) => {
+    if (res.success && res.data?.available_engines) {
+      const av = res.data.available_engines;
+      const opts = engineSelect.options;
+      for (let i = 0; i < opts.length; i++) {
+        const opt = opts[i];
+        if (opt.value === "zapret2") {
+          opt.text = av.zapret2 ? _("Zapret v2 (nfqws2)") + " \u2014 " + _("Installed") : _("Zapret v2 (nfqws2)") + " \u2014 " + _("Not installed");
+          if (!av.zapret2) opt.disabled = true;
+        } else if (opt.value === "zapret") {
+          opt.text = av.zapret ? _("Zapret v1 (nfqws)") + " \u2014 " + _("Installed") : _("Zapret v1 (nfqws)") + " \u2014 " + _("Not installed");
+          if (!av.zapret) opt.disabled = true;
+        } else if (opt.value === "byedpi") {
+          opt.text = av.byedpi ? _("ByeDPI (ciadpi)") + " \u2014 " + _("Installed") : _("ByeDPI (ciadpi)") + " \u2014 " + _("Not installed");
+          if (!av.byedpi) opt.disabled = true;
+        }
+      }
+      if (av.zapret2) {
+        selectedEngine = "zapret2";
+        engineSelect.value = "zapret2";
+      } else if (av.byedpi) {
+        selectedEngine = "byedpi";
+        engineSelect.value = "byedpi";
+      } else if (av.zapret) {
+        selectedEngine = "zapret";
+        engineSelect.value = "zapret";
+      }
+    }
+  }).catch(() => {
+  });
+  const targetSelect = E(
+    "select",
+    { class: "cbi-input-select", style: "width: 100%;" },
+    [
+      E(
+        "option",
+        { value: "youtube", selected: true },
+        _("YouTube (GoogleVideo 4K stream)")
+      ),
+      E("option", { value: "youtube_web" }, _("YouTube Web (Interface)")),
+      E("option", { value: "discord" }, _("Discord (Gateway / API / Voice)")),
+      E("option", { value: "instagram" }, _("Instagram / Meta (TLS 1.3)")),
+      E("option", { value: "rutracker" }, _("RuTracker (HTTP/HTTPS)")),
+      E("option", { value: "telegram" }, _("Telegram Web")),
+      E("option", { value: "custom" }, _("Custom Target URL..."))
+    ]
+  );
+  const customUrlInput = E("input", {
+    type: "text",
+    class: "cbi-input-text",
+    placeholder: "https://example.com",
+    style: "width: 100%; display: none; margin-top: 4px;"
+  });
+  targetSelect.addEventListener("change", () => {
+    selectedTarget = targetSelect.value;
+    if (selectedTarget === "custom") {
+      customUrlInput.style.display = "block";
+    } else {
+      customUrlInput.style.display = "none";
+    }
+  });
+  customUrlInput.addEventListener("input", () => {
+    customUrl = customUrlInput.value.trim();
+  });
+  const targetGroup = E(
+    "div",
+    { style: "display: flex; flex-direction: column; gap: 4px;" },
+    [
+      E(
+        "label",
+        { style: "font-size: 12px; font-weight: 600;" },
+        _("Target Service")
+      ),
+      targetSelect,
+      customUrlInput
+    ]
+  );
+  const ruleSelectOptions = [
+    E("option", { value: "", selected: true }, _("Provider Global Default")),
+    ...ruleNames.map((r) => E("option", { value: r }, `${_("Rule:")} ${r}`))
+  ];
+  const ruleSelect = E(
+    "select",
+    { class: "cbi-input-select", style: "width: 100%;" },
+    ruleSelectOptions
+  );
+  ruleSelect.addEventListener("change", () => {
+    selectedRuleSection = ruleSelect.value;
+  });
+  const ruleGroup = E(
+    "div",
+    { style: "display: flex; flex-direction: column; gap: 4px;" },
+    [
+      E(
+        "label",
+        { style: "font-size: 12px; font-weight: 600;" },
+        _("Apply Strategy To")
+      ),
+      ruleSelect
+    ]
+  );
+  controlsGrid.append(engineGroup, targetGroup, ruleGroup);
+  const progressContainer = E(
+    "div",
+    {
+      style: "display: none; flex-direction: column; gap: 6px; padding: 12px; background: var(--background-color-secondary, rgba(0,0,0,0.18)); border-radius: 8px; border: 1px solid var(--border-color, rgba(255,255,255,0.1));"
+    },
+    [
+      E(
+        "div",
+        {
+          style: "display: flex; justify-content: space-between; font-size: 12px; font-weight: 600;"
+        },
+        [
+          E(
+            "span",
+            { id: "tachyon-fuzzer-status-text" },
+            _("Benchmarking in progress...")
+          ),
+          E("span", { id: "tachyon-fuzzer-progress-pct" }, "0%")
+        ]
+      ),
+      E(
+        "div",
+        {
+          style: "width: 100%; height: 8px; background: rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden;"
+        },
+        [
+          E("div", {
+            id: "tachyon-fuzzer-progress-bar",
+            style: "height: 100%; width: 0%; background: linear-gradient(90deg, #007bff, #00d2ff); transition: width 0.3s ease;"
+          })
+        ]
+      ),
+      E(
+        "div",
+        {
+          id: "tachyon-fuzzer-current-strategy",
+          style: "font-size: 11px; opacity: 0.7; font-family: monospace;"
+        },
+        ""
+      )
+    ]
+  );
+  const resultsContainer = E("div", {
+    style: "max-height: 380px; overflow-y: auto; border: 1px solid var(--border-color, rgba(255,255,255,0.12)); border-radius: 8px;"
+  });
+  const tableEl = E(
+    "table",
+    {
+      class: "table",
+      style: "width: 100%; margin: 0; font-size: 12px; text-align: left; border-collapse: collapse;"
+    },
+    [
+      E(
+        "thead",
+        {
+          style: "background: var(--background-color-secondary, rgba(0,0,0,0.3)); position: sticky; top: 0; z-index: 2;"
+        },
+        [
+          E("tr", {}, [
+            E("th", { style: "padding: 8px 10px; width: 40px;" }, "#"),
+            E("th", { style: "padding: 8px 10px; width: 80px;" }, _("Engine")),
+            E(
+              "th",
+              { style: "padding: 8px 10px;" },
+              _("Strategy & Parameters")
+            ),
+            E("th", { style: "padding: 8px 10px; width: 70px;" }, _("Status")),
+            E("th", { style: "padding: 8px 10px; width: 65px;" }, _("TTFB")),
+            E("th", { style: "padding: 8px 10px; width: 75px;" }, _("Speed")),
+            E("th", { style: "padding: 8px 10px; width: 90px;" }, _("Score")),
+            E(
+              "th",
+              { style: "padding: 8px 10px; width: 80px; text-align: center;" },
+              _("Action")
+            )
+          ])
+        ]
+      ),
+      E("tbody", { id: "tachyon-fuzzer-results-tbody" }, [
+        E(
+          "tr",
+          {},
+          E(
+            "td",
+            {
+              colSpan: 8,
+              style: "padding: 24px; text-align: center; opacity: 0.6;"
+            },
+            _(
+              'No benchmark results yet. Select engine and click "Start Benchmark".'
+            )
+          )
+        )
+      ])
+    ]
+  );
+  resultsContainer.appendChild(tableEl);
+  const startBtn = renderButton({
+    text: _("\u{1F680} Start Benchmark"),
+    classNames: ["cbi-button-action"],
+    onClick: () => handleToggleRun()
+  });
+  const applyBestBtn = renderButton({
+    text: _("\u{1F3C6} Apply Best Strategy"),
+    classNames: ["cbi-button-save"],
+    disabled: true,
+    onClick: () => handleApplyBest()
+  });
+  const closeBtn = renderButton({
+    text: _("Close"),
+    classNames: ["cbi-button-neutral"],
+    onClick: () => {
+      stopPolling();
+      ui.hideModal();
+    }
+  });
+  const footerActions = E(
+    "div",
+    {
+      style: "display: flex; justify-content: space-between; align-items: center; padding-top: 8px; border-top: 1px solid var(--border-color, rgba(255,255,255,0.1));"
+    },
+    [
+      E("div", { style: "display: flex; gap: 8px;" }, [startBtn]),
+      E("div", { style: "display: flex; gap: 8px;" }, [applyBestBtn, closeBtn])
+    ]
+  );
+  const renderResults = (state) => {
+    const tbody = document.getElementById("tachyon-fuzzer-results-tbody");
+    if (!tbody) return;
+    if (!state.results || state.results.length === 0) {
+      if (state.running) {
+        tbody.innerHTML = `<tr><td colspan="8" style="padding: 20px; text-align: center;">${_(
+          "Running initial strategy probe..."
+        )}</td></tr>`;
+      }
+      return;
+    }
+    tbody.innerHTML = "";
+    state.results.forEach((item, idx) => {
+      const isBest = state.best_strategy && state.best_strategy.id === item.id;
+      const statusBadge = item.success ? `<span class="badge" style="background: #28a745; color: #fff; padding: 2px 6px; border-radius: 4px; font-size: 10px;">${item.http_code || 200} OK</span>` : `<span class="badge" style="background: #dc3545; color: #fff; padding: 2px 6px; border-radius: 4px; font-size: 10px;">${item.error || "Blocked"}</span>`;
+      let badgeHtml = "";
+      if (item.badge) {
+        badgeHtml = `<span style="display: inline-block; font-size: 10px; font-weight: bold; color: #ffc107; margin-left: 6px;">${item.badge}</span>`;
+      }
+      const tr = E(
+        "tr",
+        {
+          style: `border-bottom: 1px solid var(--border-color, rgba(255,255,255,0.06)); ${isBest ? "background: rgba(40, 167, 69, 0.12); font-weight: 500;" : ""}`
+        },
+        [
+          E("td", { style: "padding: 8px 10px;" }, String(idx + 1)),
+          E(
+            "td",
+            {
+              style: "padding: 8px 10px; font-family: monospace; font-size: 11px;"
+            },
+            item.engine
+          ),
+          E("td", { style: "padding: 8px 10px;" }, [
+            E("div", { style: "font-weight: 600;" }, [
+              E("span", {}, item.name),
+              E("span", { innerHTML: badgeHtml })
+            ]),
+            E(
+              "div",
+              {
+                style: "font-size: 10px; opacity: 0.7; font-family: monospace; word-break: break-all; margin-top: 2px;"
+              },
+              item.args
+            )
+          ]),
+          E("td", { style: "padding: 8px 10px;", innerHTML: statusBadge }),
+          E(
+            "td",
+            { style: "padding: 8px 10px;" },
+            item.success ? `${item.ttfb_ms}ms` : "\u2014"
+          ),
+          E(
+            "td",
+            { style: "padding: 8px 10px;" },
+            item.success ? `${(item.speed_kbps / 1024).toFixed(1)}MB/s` : "\u2014"
+          ),
+          E(
+            "td",
+            { style: "padding: 8px 10px; font-weight: bold;" },
+            item.success ? String(item.score) : "0"
+          ),
+          E("td", { style: "padding: 8px 10px; text-align: center;" }, [
+            renderButton({
+              text: _("Apply"),
+              classNames: ["cbi-button-action"],
+              disabled: !item.success,
+              onClick: () => handleApplySingle(item)
+            })
+          ])
+        ]
+      );
+      tbody.appendChild(tr);
+    });
+  };
+  const updateProgressUI = (state) => {
+    const statusText = document.getElementById("tachyon-fuzzer-status-text");
+    const pctText = document.getElementById("tachyon-fuzzer-progress-pct");
+    const progressBar = document.getElementById("tachyon-fuzzer-progress-bar");
+    const currentStratEl = document.getElementById(
+      "tachyon-fuzzer-current-strategy"
+    );
+    if (progressContainer) {
+      progressContainer.style.display = state.running || state.results?.length ? "flex" : "none";
+    }
+    if (pctText) pctText.innerText = `${state.progress_pct}%`;
+    if (progressBar) progressBar.style.width = `${state.progress_pct}%`;
+    if (statusText) {
+      if (state.running) {
+        statusText.innerText = `${_("Testing strategy")} ${state.current_index} / ${state.total_strategies}...`;
+      } else if (state.finished_at > 0) {
+        statusText.innerText = state.best_strategy ? _("\u2705 Benchmark completed! Optimal strategy identified.") : _(
+          "\u26A0\uFE0F Benchmark completed. No working bypass found for this target."
+        );
+      }
+    }
+    if (currentStratEl && state.current_strategy) {
+      currentStratEl.innerText = `Testing: [${state.current_strategy.name}] -> ${state.current_strategy.args}`;
+    } else if (currentStratEl && !state.running) {
+      currentStratEl.innerText = "";
+    }
+    if (state.best_strategy && applyBestBtn) {
+      applyBestBtn.disabled = false;
+    }
+  };
+  const pollStatus = async () => {
+    if (isPolling) return;
+    isPolling = true;
+    try {
+      const res = await TachyonShellMethods.getFuzzerStatus();
+      if (res.success && res.data) {
+        currentState = res.data;
+        isRunning = res.data.running;
+        updateProgressUI(res.data);
+        renderResults(res.data);
+        if (!isRunning) {
+          stopPolling();
+          startBtn.innerText = _("\u{1F680} Run Benchmark Again");
+          startBtn.disabled = false;
+        }
+      }
+    } catch {
+    } finally {
+      isPolling = false;
+    }
+  };
+  const startPolling = () => {
+    stopPolling();
+    pollingInterval = setInterval(pollStatus, 1e3);
+    pollStatus();
+  };
+  const stopPolling = () => {
+    if (pollingInterval) {
+      clearInterval(pollingInterval);
+      pollingInterval = null;
+    }
+  };
+  const handleToggleRun = async () => {
+    if (isRunning) {
+      await TachyonShellMethods.stopFuzzer();
+      showToast(_("Benchmark stopped"), "success");
+      stopPolling();
+      pollStatus();
+      return;
+    }
+    startBtn.disabled = true;
+    startBtn.innerText = _("\u{1F6D1} Stop Benchmark");
+    const res = await TachyonShellMethods.startFuzzer(
+      selectedEngine,
+      selectedTarget,
+      customUrl,
+      selectedRuleSection
+    );
+    if (res.success) {
+      showToast(_("Strategy benchmark started"), "success");
+      startBtn.disabled = false;
+      isRunning = true;
+      startPolling();
+    } else {
+      const errMsg = !res.success ? res.error : _("Unknown error");
+      showToast(`${_("Failed to start benchmark")}: ${errMsg}`, "error");
+      startBtn.disabled = false;
+      startBtn.innerText = _("\u{1F680} Start Benchmark");
+    }
+  };
+  const handleApplySingle = async (item) => {
+    const res = await TachyonShellMethods.applyFuzzerStrategy(
+      item.engine,
+      item.args,
+      selectedRuleSection
+    );
+    if (res.success) {
+      showToast(
+        `${_("Applied")} "${item.name}" -> ${selectedRuleSection || _("Global Default")}`,
+        "success"
+      );
+    } else {
+      showToast(_("Failed to apply strategy"), "error");
+    }
+  };
+  const handleApplyBest = async () => {
+    if (!currentState?.best_strategy) return;
+    await handleApplySingle(currentState.best_strategy);
+  };
+  modalContainer.append(
+    headerEl,
+    controlsGrid,
+    progressContainer,
+    resultsContainer,
+    footerActions
+  );
+  pollStatus();
+  ui.showModal(_("\u26A1 Strategy Fuzzer & Auto-Tuner"), modalContainer);
 }
 
 // src/tachyon/tabs/diagnostic/partials/renderSystemInfo.ts
@@ -13311,6 +13942,14 @@ async function handleRunAiDoctor() {
 function handleOpenAiChat() {
   renderAiChatModal();
 }
+function handleOpenStrategyFuzzer() {
+  getConfigSections().then((sections) => {
+    const ruleNames = sections.filter((s) => s[".type"] === "section" || s[".type"] === "rule").map((s) => s.name || s[".name"]).filter((n) => Boolean(n));
+    renderStrategyFuzzerModal(ruleNames);
+  }).catch(() => {
+    renderStrategyFuzzerModal([]);
+  });
+}
 function handleRestoreNativeInternet() {
   ui.showModal(
     _("Restore Native Internet"),
@@ -13556,6 +14195,12 @@ function renderDiagnosticAvailableActionsWidget() {
       loading: false,
       visible: true,
       onClick: handleOpenAiChat,
+      disabled: false
+    },
+    strategyFuzzer: {
+      loading: false,
+      visible: true,
+      onClick: handleOpenStrategyFuzzer,
       disabled: false
     },
     checkServices: {

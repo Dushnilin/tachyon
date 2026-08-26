@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-08-25 21:32+0300\n"
-"PO-Revision-Date: 2026-08-25 21:32+0300\n"
+"POT-Creation-Date: 2026-08-26 21:45+0300\n"
+"PO-Revision-Date: 2026-08-26 21:45+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -47,20 +47,50 @@ msgstr "▶ Старт"
 msgid "⚙ Advanced Settings"
 msgstr "⚙ Настройки"
 
+msgid "⚠️ Benchmark completed. No working bypass found for this target."
+msgstr "⚠️ Бенчмарк завершен. Не найдено рабочих стратегий для данной цели."
+
 msgid "⚠️ If all Bootstrap DNS fail 3 times, queries will be sent to your ISP's DNS in plaintext. Only use as a last resort to prevent complete internet loss."
 msgstr "⚠️ Если все Bootstrap DNS завершатся с ошибкой 3 раза, запросы будут отправлены в DNS вашего провайдера в открытом виде. Используйте только в крайнем случае для предотвращения полной потери интернета."
 
 msgid "⚠️ If all Main DNS fail 3 times, queries will be sent to your ISP's DNS in plaintext. Only use as a last resort to prevent complete internet loss."
 msgstr "⚠️ Если все основные DNS завершатся с ошибкой 3 раза, запросы будут отправлены в DNS вашего провайдера в открытом виде. Используйте только в крайнем случае для предотвращения полной потери интернета."
 
+msgid "⚡ DPI Strategy Fuzzer"
+msgstr "⚡ DPI Strategy Fuzzer"
+
+msgid "⚡ Strategy Fuzzer & Auto-Tuner"
+msgstr "⚡ Подборщик стратегий и авто-тюнер"
+
+msgid "✅ Benchmark completed! Optimal strategy identified."
+msgstr "✅ Бенчмарк завершен! Оптимальная стратегия определена."
+
+msgid "✔ Online"
+msgstr ""
+
 msgid "✔ Running"
 msgstr "✔ Работает"
+
+msgid "✘ Offline"
+msgstr ""
 
 msgid "✘ Stopped"
 msgstr "✘ Остановлено"
 
+msgid "🏆 Apply Best Strategy"
+msgstr "🏆 Применить лучшую стратегию"
+
 msgid "🔑 Generate"
 msgstr "🔑 Сгенерировать"
+
+msgid "🚀 Run Benchmark Again"
+msgstr "🚀 Запустить бенчмарк снова"
+
+msgid "🚀 Start Benchmark"
+msgstr "🚀 Начать бенчмарк"
+
+msgid "🛑 Stop Benchmark"
+msgstr "🛑 Остановить бенчмарк"
 
 msgid "Accept external proxy connections and route them with sing-box."
 msgstr "Принимать внешние прокси-подключения и маршрутизировать их через sing-box."
@@ -224,6 +254,9 @@ msgstr "Все проверки пройдены — бот должен раб�
 msgid "All devices"
 msgstr "Все устройства"
 
+msgid "All Engines (Full Matrix)"
+msgstr "Все движки (Полная матрица)"
+
 msgid "All except selected"
 msgstr "Все кроме выбранных"
 
@@ -305,11 +338,20 @@ msgstr "Другое действие уже выполняется"
 msgid "API Key for OpenAI (sk-...) or DeepSeek (optional for Ollama / LM Studio)"
 msgstr "API-ключ для OpenAI (sk-...) или DeepSeek (опционально для Ollama / LM Studio)"
 
+msgid "Applied"
+msgstr "Применено"
+
+msgid "Apply"
+msgstr "Применить"
+
 msgid "Apply rules of this section only to selected protocols."
 msgstr "Применять правила этой секции только к выбранным протоколам."
 
 msgid "Apply section rules only to the specified local IP addresses"
 msgstr "Применять правила секции только к указанным локальным IP-адресам"
+
+msgid "Apply Strategy To"
+msgstr "Применить стратегию к"
 
 msgid "Applying fix"
 msgstr "Применение исправления"
@@ -350,6 +392,9 @@ msgstr "Автоопределённые домены"
 msgid "Auto-detects blocked domains from logs and adds them to the first section where they work via proxy."
 msgstr "Автоматически определяет заблокированные домены из логов и добавляет их в первую секцию, где они работают через прокси."
 
+msgid "Auto-failover of proxy sections"
+msgstr "Авто-failover прокси-секций"
+
 msgid "Auto-generate HWID"
 msgstr "Авто-генерация HWID"
 
@@ -358,6 +403,9 @@ msgstr "Автолечение сетевого стека"
 
 msgid "Auto-update Hosts Lists"
 msgstr "Автообновление списков Hosts"
+
+msgid "Automated DPI Strategy Fuzzer & Auto-Tuner"
+msgstr "Автоматический подборщик и оптимизатор стратегий DPI"
 
 msgid "Automatic component update checks"
 msgstr "Автоматическая проверка обновлений компонентов"
@@ -406,6 +454,15 @@ msgstr "Начало интервала расписания (например, 
 
 msgid "Belarus (by)"
 msgstr "Беларусь (by)"
+
+msgid "Benchmark stopped"
+msgstr "Бенчмарк остановлен"
+
+msgid "Benchmarking in progress..."
+msgstr "Выполняется бенчмарк..."
+
+msgid "Benchmarks a suite of packet desynchronization strategies in an isolated sandbox without disrupting active traffic, ranking them by latency, TTFB, and throughput."
+msgstr "Тестирует набор стратегий десинхронизации пакетов в изолированном сэндбоксе без влияния на активный трафик и ранжирует их по задержке, TTFB и скорости."
 
 msgid "BitTorrent / P2P"
 msgstr "BitTorrent / P2P"
@@ -469,6 +526,9 @@ msgstr "Встроенные наборы правил"
 
 msgid "By flag emoji from name"
 msgstr "По эмодзи флага из имени"
+
+msgid "ByeDPI (ciadpi)"
+msgstr "ByeDPI (ciadpi)"
 
 msgid "ByeDPI listen address and port are assigned by Tachyon and must not be set in the strategy."
 msgstr "Адрес и порт прослушивания ByeDPI назначаются Tachyon и не должны задаваться в стратегии."
@@ -827,6 +887,15 @@ msgstr "Пользовательский URL эндпоинта OpenAI-совм�
 msgid "Custom outbound configurations in JSON format"
 msgstr "Пользовательские конфигурации outbound в формате JSON"
 
+msgid "Custom Target URL..."
+msgstr "Свой URL для теста..."
+
+msgid "Daily Quota"
+msgstr "Дневная квота"
+
+msgid "Daily time quota (minutes)"
+msgstr "Дневной лимит времени (минуты)"
+
 msgid "Dashboard"
 msgstr "Панель управления"
 
@@ -835,33 +904,6 @@ msgstr "Дашборд сейчас недоступен"
 
 msgid "Days of Week"
 msgstr "Дни недели"
-
-msgid "Auto-failover of proxy sections"
-msgstr "Авто-failover прокси-секций"
-
-msgid "Watchdog probes every Connection section; when the active one fails several checks in a row, traffic switches to a healthy backup and Telegram is notified. Requires a config reload to take effect."
-msgstr "Watchdog проверяет каждую Connection-секцию; если активная падает несколько проверок подряд, трафик переключается на живую резервную, а Telegram получает уведомление. Нужен reload конфигурации."
-
-msgid "Failover failure threshold"
-msgstr "Порог срабатывания failover"
-
-msgid "Number of consecutive failed probes before switching sections"
-msgstr "Сколько неудачных проверок подряд до переключения секции"
-
-msgid "Daily time quota (minutes)"
-msgstr "Дневной лимит времени (минуты)"
-
-msgid "Limit device network usage per day. When the quota is exhausted, the device is blocked until midnight. 0 disables the limit."
-msgstr "Ограничьте использование сети устройством за день. Когда квота исчерпана, устройство блокируется до полуночи. 0 — без лимита."
-
-msgid "Enter a whole number of minutes between 0 and 1440"
-msgstr "Введите целое число минут от 0 до 1440"
-
-msgid "Daily Quota"
-msgstr "Дневная квота"
-
-msgid "min/day"
-msgstr "мин/день"
 
 msgid "Default (auto)"
 msgstr "По умолчанию (авто)"
@@ -958,6 +1000,9 @@ msgstr "Отключено"
 
 msgid "Disabling interception is incompatible with action=zapret2 because Tachyon sends matched traffic through NFQUEUE."
 msgstr "Отключение перехвата несовместимо с action=zapret2, потому что Tachyon направляет совпавший трафик через NFQUEUE."
+
+msgid "Discord (Gateway / API / Voice)"
+msgstr "Discord (Шлюз / API / Голосовые каналы)"
 
 msgid "Display name"
 msgstr "Отображаемое имя"
@@ -1142,6 +1187,9 @@ msgstr "Загружено"
 msgid "Downloading and applying rule sets and lists..."
 msgstr "Загрузка и применение наборов правил и списков..."
 
+msgid "DPI Engine"
+msgstr "Движок DPI"
+
 msgid "Drag rows to change priority. The rule at the top is checked first."
 msgstr "Перетащите строки для изменения приоритета. Правило вверху проверяется первым."
 
@@ -1274,6 +1322,9 @@ msgstr "Конец интервала расписания (например, 08
 msgid "End Time (HH:MM)"
 msgstr "Время окончания (ЧЧ:ММ)"
 
+msgid "Engine"
+msgstr ""
+
 msgid "Enter a complete sing-box inbound object"
 msgstr "Введите полный JSON объект inbound для sing-box"
 
@@ -1288,6 +1339,9 @@ msgstr "Введите домен или IP для проверки (напр. e
 
 msgid "Enter a level name"
 msgstr "Введите имя уровня"
+
+msgid "Enter a whole number of minutes between 0 and 1440"
+msgstr "Введите целое число минут от 0 до 1440"
 
 msgid "Enter HWID"
 msgstr "Введите HWID"
@@ -1367,6 +1421,9 @@ msgstr "Внешние файлы конфигурации nfqws2 обходят
 msgid "Failed to apply fix"
 msgstr "Не удалось применить исправление"
 
+msgid "Failed to apply strategy"
+msgstr "Не удалось применить стратегию"
+
 msgid "Failed to close connection"
 msgstr "Не удалось закрыть подключение"
 
@@ -1390,6 +1447,12 @@ msgstr "Не удалось создать отчёт об ошибке"
 
 msgid "Failed to generate WARP config:"
 msgstr "Не удалось сгенерировать конфигурацию WARP:"
+
+msgid "Failed to get fuzzer status"
+msgstr ""
+
+msgid "Failed to get fuzzer strategies"
+msgstr ""
 
 msgid "Failed to load snapshots"
 msgstr "Не удалось загрузить снапшоты"
@@ -1436,8 +1499,14 @@ msgstr "Ошибка сохранения настроек Smart Detect"
 msgid "Failed to save snapshot"
 msgstr "Не удалось сохранить снапшот"
 
+msgid "Failed to start benchmark"
+msgstr "Не удалось запустить бенчмарк"
+
 msgid "Failed to start bot"
 msgstr "Не удалось запустить бота"
+
+msgid "Failed to start fuzzer"
+msgstr ""
 
 msgid "Failed to start service check."
 msgstr "Не удалось запустить проверку сервисов."
@@ -1447,6 +1516,9 @@ msgstr "Не удалось запустить watchdog"
 
 msgid "Failed to stop bot"
 msgstr "Не удалось остановить бота"
+
+msgid "Failed to stop fuzzer"
+msgstr ""
 
 msgid "Failed to stop watchdog"
 msgstr "Не удалось остановить watchdog"
@@ -1459,6 +1531,9 @@ msgstr "Не удалось обновить устройство"
 
 msgid "Failed to update subscriptions"
 msgstr "Не удалось обновить подписки"
+
+msgid "Failover failure threshold"
+msgstr "Порог срабатывания failover"
 
 msgid "FakeIP and control checks use different public IPs"
 msgstr "FakeIP и контрольная проверка используют разные публичные IP"
@@ -1603,6 +1678,9 @@ msgstr "Глобальная проверка"
 
 msgid "Global check failed"
 msgstr "Не удалось выполнить глобальную проверку"
+
+msgid "Global Default"
+msgstr ""
 
 msgid "gRPC service"
 msgstr "Сервис gRPC"
@@ -1811,11 +1889,17 @@ msgstr "Полезный груз init (I1)"
 msgid "Init timeout (Itime)"
 msgstr "Таймаут init (Itime)"
 
+msgid "Instagram / Meta (TLS 1.3)"
+msgstr "Instagram / Meta (TLS 1.3)"
+
 msgid "Install"
 msgstr "Установить"
 
 msgid "Install another build:"
 msgstr "Установить другую сборку:"
+
+msgid "Installed"
+msgstr "Установлен"
 
 msgid "Installed build → Available build"
 msgstr "Установленная сборка → Доступная сборка"
@@ -2186,6 +2270,9 @@ msgstr "Оставьте пустым, чтобы пропустить этот 
 msgid "Level name"
 msgstr "Имя уровня"
 
+msgid "Limit device network usage per day. When the quota is exhausted, the device is blocked until midnight. 0 disables the limit."
+msgstr "Ограничьте использование сети устройством за день. Когда квота исчерпана, устройство блокируется до полуночи. 0 — без лимита."
+
 msgid "List must be an HTTP(S) URL or a local .lst path"
 msgstr "Список должен быть HTTP(S) URL или локальным путём .lst"
 
@@ -2273,6 +2360,9 @@ msgstr "ID аккаунта MASQUE"
 msgid "MASQUE Private Key"
 msgstr "Приватный ключ MASQUE"
 
+msgid "Masquerade LAN traffic into tailnet"
+msgstr "Маскарадинг LAN-трафика в тейлнет"
+
 msgid "Match destination IPs or subnets"
 msgstr "Сопоставлять IP-адреса или подсети назначения"
 
@@ -2305,6 +2395,9 @@ msgstr "Метод"
 
 msgid "Metrics Retention (hours)"
 msgstr "Хранение метрик (часы)"
+
+msgid "min/day"
+msgstr "мин/день"
 
 msgid "Minimum latency difference in milliseconds that triggers switching to a faster server."
 msgstr "Минимальная разница задержки в миллисекундах, при которой происходит переключение на более быстрый сервер."
@@ -2369,6 +2462,9 @@ msgstr "Имя в списке уровней приоритета"
 msgid "Native internet restored. Tachyon stopped."
 msgstr "Обычный интернет восстановлен. Tachyon остановлен."
 
+msgid "Native tailscaled (tailnet reachable from LAN without client)"
+msgstr "Нативный tailscaled (тейлнет доступен из LAN без клиента)"
+
 msgid "Netherlands (nl)"
 msgstr "Нидерланды (nl)"
 
@@ -2419,6 +2515,9 @@ msgstr "Активные устройства в локальной сети н�
 
 msgid "No active routing sections found."
 msgstr "Активные секции маршрутизации не найдены."
+
+msgid "No benchmark results yet. Select engine and click \"Start Benchmark\"."
+msgstr "Нет результатов бенчмарка. Выберите движок и нажмите «Начать бенчмарк»."
 
 msgid "No check targets found in the configuration."
 msgstr "Цели для проверки не найдены в конфигурации."
@@ -2537,6 +2636,9 @@ msgstr "Уведомлять об обновлениях подписок"
 msgid "Number of consecutive failed checks required before switching DNS servers."
 msgstr "Количество последовательных неудачных проверок до переключения DNS-серверов."
 
+msgid "Number of consecutive failed probes before switching sections"
+msgstr "Сколько неудачных проверок подряд до переключения секции"
+
 msgid "Number of consecutive failures before restarting (default 3)."
 msgstr "Количество последовательных ошибок до перезапуска (по умолчанию 3)."
 
@@ -2641,6 +2743,9 @@ msgstr "Опциональные значения должны быть прис
 
 msgid "Or paste hosts file content:"
 msgstr "Или вставьте содержимое файла hosts:"
+
+msgid "Other peers"
+msgstr ""
 
 msgid "outbounds must be a non-empty array of strings"
 msgstr "outbounds должен быть непустым массивом строк"
@@ -2827,6 +2932,9 @@ msgstr "Защита"
 
 msgid "Protocol"
 msgstr "Протокол"
+
+msgid "Provider Global Default"
+msgstr "Глобальные настройки провайдера"
 
 msgid "Proxy"
 msgstr "Прокси"
@@ -3059,6 +3167,9 @@ msgstr "Возвращать NXDOMAIN для заблокированных до
 msgid "Route"
 msgstr "Маршрут"
 
+msgid "Route all non-local LAN traffic through the tailnet exit node instead of the proxy engines."
+msgstr "Направлять весь не-локальный LAN-трафик через exit-node тейлнета вместо прокси-движков."
+
 msgid "Route bot API requests through this section. Leave empty to use the default mixed proxy."
 msgstr "Маршрутизировать запросы API бота через эту секцию. Оставьте пустым для использования смешанного прокси по умолчанию."
 
@@ -3101,6 +3212,9 @@ msgstr "Наборы правил"
 msgid "Rule Sets (.srs / .json)"
 msgstr "Наборы правил (.srs / .json)"
 
+msgid "Rule:"
+msgstr "Правило:"
+
 msgid "Rules"
 msgstr "Правила"
 
@@ -3137,8 +3251,14 @@ msgstr "Запущен"
 msgid "Running diagnostics…"
 msgstr "Выполняется диагностика…"
 
+msgid "Running initial strategy probe..."
+msgstr "Запуск первого зонда стратегии..."
+
 msgid "Russia (ru)"
 msgstr "Россия (ru)"
+
+msgid "RuTracker (HTTP/HTTPS)"
+msgstr "RuTracker (HTTP/HTTPS)"
 
 msgid "Sat"
 msgstr "Сб"
@@ -3169,6 +3289,9 @@ msgstr "Расписание"
 
 msgid "Schedule Rule"
 msgstr "Правило расписания"
+
+msgid "Score"
+msgstr "Баллы"
 
 msgid "Search"
 msgstr "Поиск"
@@ -3464,6 +3587,9 @@ msgstr "Показывать метаданные подписки для это
 msgid "Sing-box autostart disabled"
 msgstr "Автостарт sing-box отключен"
 
+msgid "sing-box endpoint (userspace, default)"
+msgstr "Endpoint в sing-box (userspace, по умолчанию)"
+
 msgid "Sing-box FakeIP DNS does not work"
 msgstr "FakeIP DNS sing-box не работает"
 
@@ -3512,6 +3638,9 @@ msgstr "Имя снапшота"
 msgid "Snapshot restored. The service restarts and the page will reload."
 msgstr "Снапшот восстановлен. Сервис перезапускается, страница будет перезагружена."
 
+msgid "SNAT LAN sources when leaving through tailscale0 so peers can answer. Required unless every peer accepts routes."
+msgstr "Подменять LAN-адреса при выходе через tailscale0, чтобы пиры могли отвечать. Нужно, если не все пиры принимают маршруты."
+
 msgid "Snell Version"
 msgstr "Версия Snell"
 
@@ -3544,6 +3673,9 @@ msgstr "Укажите путь к файлу"
 
 msgid "Specify different files"
 msgstr "Укажите разные файлы"
+
+msgid "Speed"
+msgstr "Скорость"
 
 msgid "SSH"
 msgstr "SSH"
@@ -3605,6 +3737,9 @@ msgstr "Сначала запустите Watchdog"
 msgid "Starting…"
 msgstr "Запуск…"
 
+msgid "State"
+msgstr ""
+
 msgid "Status"
 msgstr "Статус"
 
@@ -3628,6 +3763,12 @@ msgstr "Остановка…"
 
 msgid "Store auto-detected domains in /etc instead of /tmp to survive reboots."
 msgstr "Хранить автоопределённые домены в /etc вместо /tmp для сохранения после перезагрузки."
+
+msgid "Strategy & Parameters"
+msgstr "Стратегия и параметры"
+
+msgid "Strategy benchmark started"
+msgstr "Бенчмарк стратегий запущен"
 
 msgid "Strict ECH + DoQ DNS Enforcer"
 msgstr "Строгий ECH + DoQ DNS Enforcer"
@@ -3752,32 +3893,11 @@ msgstr "NFQWS2 Tachyon не запущен"
 msgid "Tachyon-managed nfqws2 runtime is ready"
 msgstr "NFQWS2 Tachyon готов"
 
-msgid "Tailscale auth key"
-msgid "Tailscale mode"
-msgstr "Режим Tailscale"
-
-msgid "sing-box endpoint (userspace, default)"
-msgstr "Endpoint в sing-box (userspace, по умолчанию)"
-
-msgid "Native tailscaled (tailnet reachable from LAN without client)"
-msgstr "Нативный tailscaled (тейлнет доступен из LAN без клиента)"
-
-msgid "Masquerade LAN traffic into tailnet"
-msgstr "Маскарадинг LAN-трафика в тейлнет"
-
-msgid "SNAT LAN sources when leaving through tailscale0 so peers can answer. Required unless every peer accepts routes."
-msgstr "Подменять LAN-адреса при выходе через tailscale0, чтобы пиры могли отвечать. Нужно, если не все пиры принимают маршруты."
-
-msgid "Use tailnet exit node for LAN"
-msgstr "Использовать exit-node тейлнета для LAN"
-
-msgid "Route all non-local LAN traffic through the tailnet exit node instead of the proxy engines."
-msgstr "Направлять весь не-локальный LAN-трафик через exit-node тейлнета вместо прокси-движков."
-
 msgid "Tailscale"
 msgstr "Tailscale"
 
-msgstr "Ключ аутентификации Tailscale"
+msgid "Tailscale auth key"
+msgstr ""
 
 msgid "Tailscale control URL"
 msgstr "Control URL Tailscale"
@@ -3788,6 +3908,9 @@ msgstr "Tailscale endpoint"
 msgid "Tailscale hostname"
 msgstr "Имя хоста Tailscale"
 
+msgid "Tailscale mode"
+msgstr "Режим Tailscale"
+
 msgid "Target"
 msgstr "Цель"
 
@@ -3797,6 +3920,9 @@ msgstr "Целевые устройства (IP / MAC)"
 msgid "Target Scope"
 msgstr "Область действия"
 
+msgid "Target Service"
+msgstr "Целевой сервис"
+
 msgid "Telegram Bot"
 msgstr "Telegram Бот"
 
@@ -3805,6 +3931,9 @@ msgstr "Токен Telegram-бота"
 
 msgid "Telegram Channel"
 msgstr "Telegram канал"
+
+msgid "Telegram Web"
+msgstr "Telegram Web"
 
 msgid "Test Connection"
 msgstr "Проверить подключение"
@@ -3832,6 +3961,9 @@ msgstr "Тестировать серверы, чьи имена соответ�
 
 msgid "Test Telegram Connection"
 msgstr "Проверить подключение к Telegram"
+
+msgid "Testing strategy"
+msgstr "Тестирование стратегии"
 
 msgid "Testing URL"
 msgstr "URL проверки"
@@ -3889,6 +4021,9 @@ msgstr "Этот флаг не принимает значение."
 
 msgid "This option requires a value."
 msgstr "Этот параметр требует значение."
+
+msgid "This router"
+msgstr ""
 
 msgid "This will erase all Tachyon settings and restore the factory defaults. The service will restart. This action cannot be undone."
 msgstr "Все настройки Tachyon будут удалены и восстановлены заводские значения. Сервис будет перезапущен. Это действие нельзя отменить."
@@ -3997,6 +4132,9 @@ msgstr "Устранение неполадок"
 
 msgid "Try compatible User-Agent profiles automatically when downloading this subscription"
 msgstr "Пробовать совместимые профили User-Agent автоматически при загрузке этой подписки"
+
+msgid "TTFB"
+msgstr "TTFB"
 
 msgid "TTL must be a positive number"
 msgstr "TTL должен быть положительным числом"
@@ -4232,6 +4370,9 @@ msgstr "Используйте формат длительности sing-box, �
 msgid "Use sing-box duration format like 1d, 12h or 6h"
 msgstr "Используйте формат длительности sing-box, например 1d, 12h или 6h"
 
+msgid "Use tailnet exit node for LAN"
+msgstr "Использовать exit-node тейлнета для LAN"
+
 msgid "Used by"
 msgstr "Используется"
 
@@ -4316,6 +4457,9 @@ msgstr "Секция прокси WARP"
 msgid "Watchdog"
 msgstr "Сторожевой таймер"
 
+msgid "Watchdog probes every Connection section; when the active one fails several checks in a row, traffic switches to a healthy backup and Telegram is notified. Requires a config reload to take effect."
+msgstr "Watchdog проверяет каждую Connection-секцию; если активная падает несколько проверок подряд, трафик переключается на живую резервную, а Telegram получает уведомление. Нужен reload конфигурации."
+
 msgid "Watchdog Status"
 msgstr "Статус Watchdog"
 
@@ -4361,6 +4505,12 @@ msgstr "Да"
 msgid "You can select Output Network Interface, by default autodetect"
 msgstr "Вы можете выбрать выходной сетевой интерфейс, по умолчанию автоопределение"
 
+msgid "YouTube (GoogleVideo 4K stream)"
+msgstr "YouTube (4K видеопоток GoogleVideo)"
+
+msgid "YouTube Web (Interface)"
+msgstr "YouTube Web (Интерфейс)"
+
 msgid "Zapret hostlist templates are not supported here because Tachyon does not expand them for per-rule NFQWS strategies."
 msgstr "Шаблоны hostlist Zapret не поддерживаются здесь, потому что Tachyon не расширяет их для стратегий NFQWS по правилам."
 
@@ -4381,6 +4531,12 @@ msgstr "sing-box outbound для Zapret настроен"
 
 msgid "Zapret sing-box outbound is not configured"
 msgstr "sing-box outbound для Zapret не настроен"
+
+msgid "Zapret v1 (nfqws)"
+msgstr "Zapret v1 (nfqws)"
+
+msgid "Zapret v2 (nfqws2)"
+msgstr "Zapret v2 (nfqws2)"
 
 msgid "Zapret2 hostlist templates are not supported here because Tachyon does not expand them for per-rule NFQWS2 strategies."
 msgstr "Шаблоны hostlist Zapret2 не поддерживаются здесь, потому что Tachyon не расширяет их для стратегий NFQWS2 по правилам."
@@ -4690,3 +4846,6 @@ msgstr "Предотвращать множественные вызовы reloa
 
 msgid "Restoring native direct internet..."
 msgstr "Восстановление прямого интернета..."
+
+msgid "Find optimal DPI bypass strategies with isolated live probing"
+msgstr "Автоматический подбор оптимальных параметров обхода DPI в изолированном сэндбоксе"

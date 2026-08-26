@@ -1031,4 +1031,160 @@ export const TachyonShellMethods = {
       success: (response.code ?? 1) === 0,
     } as Tachyon.MethodResponse<void>;
   },
+
+  startFuzzer: async (
+    engine: Tachyon.FuzzerEngine = 'zapret2',
+    target: Tachyon.FuzzerTarget = 'youtube',
+    customUrl?: string,
+    ruleSection?: string,
+  ): Promise<Tachyon.MethodResponse<Tachyon.FuzzerStartResponse>> => {
+    const response = await executeShellCommand({
+      command: '/usr/bin/tachyon',
+      args: [
+        Tachyon.AvailableMethods.FUZZER_START,
+        engine,
+        target,
+        customUrl || '',
+        ruleSection || '',
+      ],
+      timeout: 10000,
+    });
+    let parsed: Tachyon.FuzzerStartResponse | null = null;
+    try {
+      parsed = JSON.parse(response.stdout?.trim() || '{}');
+    } catch {
+      parsed = null;
+    }
+    if ((response.code ?? 1) === 0 && parsed && parsed.success) {
+      return {
+        success: true,
+        data: parsed,
+      };
+    }
+    return {
+      success: false,
+      error: parsed?.error || response.stderr || _('Failed to start fuzzer'),
+    };
+  },
+
+  getFuzzerStatus: async (): Promise<
+    Tachyon.MethodResponse<Tachyon.FuzzerState>
+  > => {
+    const response = await executeShellCommand({
+      command: '/usr/bin/tachyon',
+      args: [Tachyon.AvailableMethods.FUZZER_STATUS],
+      timeout: 8000,
+    });
+    let parsed: Tachyon.FuzzerState | null = null;
+    try {
+      parsed = JSON.parse(response.stdout?.trim() || '{}');
+    } catch {
+      parsed = null;
+    }
+    if ((response.code ?? 1) === 0 && parsed) {
+      return {
+        success: true,
+        data: parsed,
+      };
+    }
+    return {
+      success: false,
+      error: response.stderr || _('Failed to get fuzzer status'),
+    };
+  },
+
+  stopFuzzer: async (): Promise<Tachyon.MethodResponse<void>> => {
+    const response = await executeShellCommand({
+      command: '/usr/bin/tachyon',
+      args: [Tachyon.AvailableMethods.FUZZER_STOP],
+      timeout: 8000,
+    });
+    if ((response.code ?? 1) === 0) {
+      return { success: true, data: undefined };
+    }
+    return {
+      success: false,
+      error: response.stderr || _('Failed to stop fuzzer'),
+    };
+  },
+
+  applyFuzzerStrategy: async (
+    engine: string,
+    args: string,
+    targetRuleOrGlobal?: string,
+  ): Promise<Tachyon.MethodResponse<Tachyon.FuzzerApplyResponse>> => {
+    const response = await executeShellCommand({
+      command: '/usr/bin/tachyon',
+      args: [
+        Tachyon.AvailableMethods.FUZZER_APPLY,
+        engine,
+        args,
+        targetRuleOrGlobal || 'global',
+      ],
+      timeout: 10000,
+    });
+    let parsed: Tachyon.FuzzerApplyResponse | null = null;
+    try {
+      parsed = JSON.parse(response.stdout?.trim() || '{}');
+    } catch {
+      parsed = null;
+    }
+    if ((response.code ?? 1) === 0 && parsed && parsed.success) {
+      return {
+        success: true,
+        data: parsed,
+      };
+    }
+    return {
+      success: false,
+      error: parsed?.error || response.stderr || _('Failed to apply strategy'),
+    };
+  },
+
+  getFuzzerStrategies: async (): Promise<
+    Tachyon.MethodResponse<{
+      available_engines?: {
+        zapret2: boolean;
+        zapret: boolean;
+        byedpi: boolean;
+      };
+      zapret2: Tachyon.FuzzerStrategyDefinition[];
+      zapret: Tachyon.FuzzerStrategyDefinition[];
+      byedpi: Tachyon.FuzzerStrategyDefinition[];
+    }>
+  > => {
+    type FuzzerStrategiesData = {
+      available_engines?: {
+        zapret2: boolean;
+        zapret: boolean;
+        byedpi: boolean;
+      };
+      zapret2: Tachyon.FuzzerStrategyDefinition[];
+      zapret: Tachyon.FuzzerStrategyDefinition[];
+      byedpi: Tachyon.FuzzerStrategyDefinition[];
+    };
+    const response = await executeShellCommand({
+      command: '/usr/bin/tachyon',
+      args: [Tachyon.AvailableMethods.FUZZER_STRATEGIES],
+      timeout: 8000,
+    });
+    let parsed: FuzzerStrategiesData | null = null;
+    try {
+      parsed = JSON.parse(
+        response.stdout?.trim() || '{}',
+      ) as FuzzerStrategiesData;
+    } catch {
+      parsed = null;
+    }
+    if ((response.code ?? 1) === 0 && parsed) {
+      return {
+        success: true,
+        data: parsed,
+      };
+    }
+    return {
+      success: false,
+      error: response.stderr || _('Failed to get fuzzer strategies'),
+    };
+  },
 };
