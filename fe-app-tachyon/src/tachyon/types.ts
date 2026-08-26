@@ -66,6 +66,7 @@ export namespace Tachyon {
     CHECK_INBOUNDS = 'check_inbounds',
     GET_SING_BOX_STATUS = 'get_sing_box_status',
     GET_ZAPRET_STATUS = 'get_zapret_status',
+    GET_TAILSCALE_PEERS = 'get_tailscale_peers',
     GET_ZAPRET2_STATUS = 'get_zapret2_status',
     GET_BYEDPI_STATUS = 'get_byedpi_status',
     CLASH_API = 'clash_api',
@@ -692,6 +693,20 @@ export namespace Tachyon {
     started_at?: number;
     exit_code?: number | null;
     updated_at?: number | null;
+  }
+
+  export interface TailscalePeer {
+    name: string;
+    dns_name: string;
+    ips: string[];
+    online: boolean;
+  }
+
+  export interface GetTailscalePeers {
+    configured: boolean;
+    backend_state: string;
+    self: TailscalePeer | null;
+    peers: TailscalePeer[];
   }
 
   export interface GetZapretStatus {

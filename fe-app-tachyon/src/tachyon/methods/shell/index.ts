@@ -260,6 +260,13 @@ export const TachyonShellMethods = {
       '/usr/bin/tachyon',
       { allowNonZeroWithStdout: true },
     ),
+  getTailscalePeers: async () =>
+    callBaseMethod<Tachyon.GetTailscalePeers>(
+      Tachyon.AvailableMethods.GET_TAILSCALE_PEERS,
+      [],
+      '/usr/bin/tachyon',
+      { allowNonZeroWithStdout: true },
+    ),
   getZapretStatus: async () =>
     callBaseMethod<Tachyon.GetZapretStatus>(
       Tachyon.AvailableMethods.GET_ZAPRET_STATUS,

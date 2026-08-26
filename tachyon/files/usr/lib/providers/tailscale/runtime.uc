@@ -18,6 +18,8 @@ let command_output_from_args = common.command_output_from_args;
 let command_status = common.command_status;
 let command_success_from_args = common.command_success_from_args;
 let object_or_empty = common.object_or_empty;
+let object_key_count = common.object_key_count;
+let array_or_empty = common.array_or_empty;
 let option = common.option;
 let parent_dir = common.parent_dir;
 
@@ -461,6 +463,55 @@ function check_json() {
     });
 }
 
+function peer_entry(peer) {
+    peer = object_or_empty(peer);
+    return {
+        name: as_string(peer["HostName"] || ""),
+        dns_name: as_string(peer["DNSName"] || ""),
+        ips: array_or_empty(peer["TailscaleIPs"]),
+        online: peer["Online"] == true
+    };
+}
+
+// Tailnet peers of the first native section, via its per-section socket.
+// All Tachyon-managed sections are separate nodes; the dashboard shows the
+// first one (users run a single native section in practice).
+function peers_json() {
+    let sections = native_tailscale_sections();
+    if (!binary_available() || length(sections) == 0) {
+        write_json({ configured: false, backend_state: "", self: null, peers: [] });
+        return;
+    }
+
+    let args = tailscale_client_args(sections[0]);
+    push(args, "status");
+    push(args, "--json");
+    let out = trim(command_output_from_args(args));
+
+    let backend_state = "";
+    let self_entry = null;
+    let peers = [];
+    if (out != "") {
+        let parsed = object_or_empty(json(out));
+        backend_state = as_string(parsed["BackendState"] || "");
+        let self = object_or_empty(parsed["Self"]);
+        if (object_key_count(self) > 0) {
+            self_entry = peer_entry(self);
+            self_entry.online = true;
+        }
+        let peer_map = object_or_empty(parsed["Peer"]);
+        for (let key, peer in peer_map)
+            push(peers, peer_entry(peer));
+    }
+
+    write_json({
+        configured: true,
+        backend_state,
+        self: self_entry,
+        peers
+    });
+}
+
 function stop_runtime() {
     for (let section in native_tailscale_sections())
         stop_section(section);
@@ -512,6 +563,8 @@ else if (mode == "status")
     status_json();
 else if (mode == "check")
     check_json();
+else if (mode == "peers")
+    peers_json();
 else if (mode == "installed" || mode == "provider-available")
     exit(binary_available() ? 0 : 1);
 else if (mode == "package-installed")

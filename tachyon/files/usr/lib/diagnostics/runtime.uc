@@ -2871,6 +2871,24 @@ function run_doctor_checks_impl(repair) {
         }
     }
 
+    // Tailscale native runtime check (skipped entirely without native sections
+    // so sing-box-mode users never see the node).
+    let ts_status_raw = trim(module_output(TAILSCALE_RUNTIME_UC, [ "status" ]));
+    if (ts_status_raw != "") {
+        let ts = object_or_empty(json(ts_status_raw));
+        if (ts.configured == true) {
+            if (ts.installed != true) {
+                issues++;
+                doc_check("⚠️", "Tailscale", "package missing", "→ install the Tailscale component on the Updates tab");
+            } else if (ts.ready == true) {
+                doc_check("✅", "Tailscale", "running (" + as_string(ts.version || "") + ")", "");
+            } else {
+                issues++;
+                doc_check("❌", "Tailscale", as_string(ts.status_message || "not ready"), "→ run: tachyon tailscale_restart");
+            }
+        }
+    }
+
     // 11. MSS Clamping Check
     if (routing_mode == "nftables") {
         let out_clamping = command_capture("nft list table inet " + NFT_TABLE_NAME + " | grep maxseg").output;
@@ -4856,6 +4874,10 @@ else if (mode == "get-zapret2-status")
     exit(module_passthrough(ZAPRET2_RUNTIME_UC, [ "status" ]));
 else if (mode == "get-byedpi-status")
     exit(module_passthrough(BYEDPI_RUNTIME_UC, [ "status" ]));
+else if (mode == "get-tailscale-status")
+    exit(module_passthrough(TAILSCALE_RUNTIME_UC, [ "status" ]));
+else if (mode == "get-tailscale-peers")
+    exit(module_passthrough(TAILSCALE_RUNTIME_UC, [ "peers" ]));
 else if (mode == "get-system-info")
     exit(get_system_info());
 else if (mode == "get-server-capabilities")

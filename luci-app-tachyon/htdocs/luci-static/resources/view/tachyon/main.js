@@ -2906,6 +2906,16 @@ function render() {
               title: "",
               items: []
             })
+          ),
+          E(
+            "div",
+            { id: "dashboard-widget-tailscale" },
+            renderWidget({
+              loading: true,
+              failed: false,
+              title: "",
+              items: []
+            })
           )
         ]),
         E("div", { id: "dashboard-connections-grid" }, []),
@@ -3072,6 +3082,7 @@ var Tachyon;
     AvailableMethods2["CHECK_INBOUNDS"] = "check_inbounds";
     AvailableMethods2["GET_SING_BOX_STATUS"] = "get_sing_box_status";
     AvailableMethods2["GET_ZAPRET_STATUS"] = "get_zapret_status";
+    AvailableMethods2["GET_TAILSCALE_PEERS"] = "get_tailscale_peers";
     AvailableMethods2["GET_ZAPRET2_STATUS"] = "get_zapret2_status";
     AvailableMethods2["GET_BYEDPI_STATUS"] = "get_byedpi_status";
     AvailableMethods2["CLASH_API"] = "clash_api";
@@ -3320,6 +3331,12 @@ var TachyonShellMethods = {
   ),
   getSingBoxStatus: async () => callBaseMethod(
     Tachyon.AvailableMethods.GET_SING_BOX_STATUS,
+    [],
+    "/usr/bin/tachyon",
+    { allowNonZeroWithStdout: true }
+  ),
+  getTailscalePeers: async () => callBaseMethod(
+    Tachyon.AvailableMethods.GET_TAILSCALE_PEERS,
     [],
     "/usr/bin/tachyon",
     { allowNonZeroWithStdout: true }
@@ -5453,6 +5470,11 @@ var initialStore = {
       watchdogRunning: 0
     }
   },
+  tailscaleWidget: {
+    loading: true,
+    failed: false,
+    data: null
+  },
   sectionsWidget: {
     loading: true,
     failed: false,
@@ -6786,6 +6808,7 @@ async function completeSubscriptionUpdateJob(jobId, sectionName, response) {
   }
   void fetchDashboardSections({ force: true });
   void fetchServicesInfo();
+  void fetchTailscalePeers();
 }
 async function followSubscriptionUpdateState(state) {
   const jobId = state.job_id;
@@ -8008,6 +8031,75 @@ async function renderServicesInfoWidget() {
     "renderServicesInfoWidget"
   );
 }
+var latestTailscalePeersRequestId = 0;
+async function fetchTailscalePeers() {
+  const requestId = ++latestTailscalePeersRequestId;
+  try {
+    const response = await TachyonShellMethods.getTailscalePeers();
+    if (requestId !== latestTailscalePeersRequestId) return;
+    store.set({
+      tailscaleWidget: {
+        loading: false,
+        failed: !response.success,
+        data: response.success ? response.data : null
+      }
+    });
+  } catch {
+    if (requestId !== latestTailscalePeersRequestId) return;
+    store.set({
+      tailscaleWidget: {
+        loading: false,
+        failed: true,
+        data: store.get().tailscaleWidget.data
+      }
+    });
+  }
+}
+function peerRow(name, online) {
+  return {
+    key: name,
+    value: online ? _("\u2714 Online") : _("\u2718 Offline"),
+    attributes: {
+      class: online ? "tachyon_dashboard-page__widgets-section__item__row--success" : "tachyon_dashboard-page__widgets-section__item__row--error"
+    }
+  };
+}
+async function renderTailscaleWidget() {
+  renderStoreWidget(
+    "dashboard-widget-tailscale",
+    "tailscaleWidget",
+    _("Tailscale"),
+    (data) => {
+      if (!data || !data.configured) return [];
+      const items = [
+        {
+          key: _("State"),
+          value: data.backend_state || "\u2014",
+          attributes: {
+            class: data.backend_state === "Running" ? "tachyon_dashboard-page__widgets-section__item__row--success" : "tachyon_dashboard-page__widgets-section__item__row--error"
+          }
+        }
+      ];
+      if (data.self && data.self.ips.length) {
+        items.push({ key: _("This router"), value: data.self.ips[0] });
+      }
+      for (const peer of data.peers.slice(0, 5)) {
+        if (!peer.online && !peer.name) continue;
+        items.push(
+          peerRow(peer.name || peer.dns_name || peer.ips[0], peer.online)
+        );
+      }
+      if (data.peers.length > 5) {
+        items.push({
+          key: _("Other peers"),
+          value: `+${data.peers.length - 5}`
+        });
+      }
+      return items;
+    },
+    "renderTailscaleWidget"
+  );
+}
 async function onStoreUpdate(next, prev, diff) {
   if (diff.sectionsWidget) {
     const inlineUpdated = canUpdateLatencyProgressInline(
@@ -8031,6 +8123,9 @@ async function onStoreUpdate(next, prev, diff) {
     syncDashboardServiceAvailability();
     renderServicesInfoWidget();
   }
+  if (diff.tailscaleWidget) {
+    renderTailscaleWidget();
+  }
 }
 async function onPageMount() {
   onPageUnmount();
@@ -8045,6 +8140,7 @@ async function onPageMount() {
     }
     if (!uiState) {
       void fetchServicesInfo();
+      void fetchTailscalePeers();
     }
   }
   store.subscribe(onStoreUpdate);
@@ -8055,7 +8151,9 @@ async function onPageMount() {
   void renderTrafficTotalWidget();
   void renderSystemInfoWidget();
   void renderServicesInfoWidget();
+  void renderTailscaleWidget();
   syncDashboardServiceAvailability();
+  void fetchTailscalePeers();
   if (hasRuntimeSnapshot) {
     void refreshRuntimeUiState({ force: true });
   }

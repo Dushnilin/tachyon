@@ -24,6 +24,8 @@ let proxy_restart_window_start = time();
 const PROXY_RESTART_LOCK = "/var/run/tachyon_proxy_restart.lock";
 let telegram_msg_count = 0;
 let telegram_msg_window = time();
+let tailscale_fail_streak = 0;
+let tailscale_last_alert = 0;
 
 let command_from_args = common.command_from_args;
 let command_status = common.command_status;
@@ -1875,11 +1877,42 @@ function check_telegram_worker() {
     telegram_worker_restart();
 }
 
+// Native Tailscale sections run tailscaled outside sing-box; nobody else
+// watches that daemon. Two consecutive unhealthy statuses trigger an
+// idempotent provider restart (start-runtime), alerts throttled to 1/hour.
+function check_tailscale_worker() {
+    let raw = trim(command_output_from_args([ "/usr/bin/tachyon", "get_tailscale_status" ]) || "");
+    if (raw == "")
+        return;
+    let st = common.object_or_empty(json(raw));
+    if (st.configured != true)
+        return;
+    if (st.ready == true) {
+        tailscale_fail_streak = 0;
+        return;
+    }
+
+    tailscale_fail_streak++;
+    if (tailscale_fail_streak < 2)
+        return;
+    tailscale_fail_streak = 0;
+
+    log_message("Native Tailscale runtime is unhealthy (" + as_string(st.status_message || "") + "); restarting", "warn");
+    command_status("/usr/bin/tachyon tailscale_restart >/dev/null 2>&1");
+
+    let now = time();
+    if (now - tailscale_last_alert >= 3600) {
+        tailscale_last_alert = now;
+        send_telegram_notification("🛰 *Watchdog:* Native Tailscale was down, restarting the service.");
+    }
+}
+
     function perform_slow_checks() {
         controller.probe_slow();
         safe_call(ai_heal_dns_loop, "ai_heal_dns_loop");
         safe_call(check_mixed_proxy_port, "check_mixed_proxy_port");
         safe_call(check_telegram_worker, "check_telegram_worker");
+        safe_call(check_tailscale_worker, "check_tailscale_worker");
     }
     if (uloop) {
         let tick;

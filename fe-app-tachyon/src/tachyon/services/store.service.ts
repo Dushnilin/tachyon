@@ -169,6 +169,11 @@ export interface StoreType {
       watchdogRunning: number;
     };
   };
+  tailscaleWidget: {
+    loading: boolean;
+    failed: boolean;
+    data: Tachyon.GetTailscalePeers | null;
+  };
   sectionsWidget: {
     loading: boolean;
     failed: boolean;
@@ -289,6 +294,11 @@ const initialStore: StoreType = {
       tachyonStatus: '',
       watchdogRunning: 0,
     },
+  },
+  tailscaleWidget: {
+    loading: true,
+    failed: false,
+    data: null,
   },
   sectionsWidget: {
     loading: true,

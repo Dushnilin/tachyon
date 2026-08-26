@@ -43,9 +43,13 @@ cat >"$STUB_BIN/tailscale" <<EOF
 printf 'cli %s\n' "\$*" >> '$TS_LOG'
 case "\$*" in
   *version*) echo "1.80.3-smoke" ;;
+  *--json*) cat '$WORK_DIR/ts-status.json' ;;
   *) exit 0 ;;
 esac
 EOF
+cat >"$WORK_DIR/ts-status.json" <<'JSON'
+{"BackendState":"Running","Self":{"HostName":"router","DNSName":"router.tailnet.ts.net.","TailscaleIPs":["100.64.0.1"]},"Peer":{"k1":{"HostName":"phone","DNSName":"phone.tailnet.ts.net.","TailscaleIPs":["100.64.0.2"],"Online":true},"k2":{"HostName":"laptop","DNSName":"laptop.tailnet.ts.net.","TailscaleIPs":["100.64.0.3"],"Online":false}}}
+JSON
 chmod +x "$STUB_BIN/tailscaled" "$STUB_BIN/tailscale"
 
 STATE_FILE="$WORK_DIR/uci.state"
@@ -120,6 +124,14 @@ printf '%s' "$STATUS" | grep -Fq '"configured": true' ||
   fail "status must report configured=true, got: $STATUS"
 printf '%s' "$STATUS" | grep -Fq '"ready": true' ||
   fail "status must report ready=true, got: $STATUS"
+
+PEERS="$(run peers)"
+printf '%s' "$PEERS" | grep -Fq '"backend_state": "Running"' ||
+  fail "peers must relay backend state, got: $PEERS"
+printf '%s' "$PEERS" | grep -Fq '"dns_name": "phone.tailnet.ts.net."' ||
+  fail "peers must include tailnet peers, got: $PEERS"
+printf '%s' "$PEERS" | grep -Fq '"online": false' ||
+  fail "peers must report offline flag, got: $PEERS"
 
 # --- idempotent restart -----------------------------------------------------
 run start-runtime || fail "second start-runtime failed"

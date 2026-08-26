@@ -337,6 +337,7 @@ async function completeSubscriptionUpdateJob(
   }
   void fetchDashboardSections({ force: true });
   void fetchServicesInfo();
+  void fetchTailscalePeers();
 }
 
 async function followSubscriptionUpdateState(
@@ -1754,7 +1755,8 @@ function renderStoreWidget(
     | 'bandwidthWidget'
     | 'trafficTotalWidget'
     | 'systemInfoWidget'
-    | 'servicesInfoWidget',
+    | 'servicesInfoWidget'
+    | 'tailscaleWidget',
   title: string,
   getItems: (data: any) => Array<{
     key: string;
@@ -1907,6 +1909,89 @@ async function renderServicesInfoWidget() {
   );
 }
 
+let latestTailscalePeersRequestId = 0;
+
+async function fetchTailscalePeers() {
+  const requestId = ++latestTailscalePeersRequestId;
+  try {
+    const response = await TachyonShellMethods.getTailscalePeers();
+    if (requestId !== latestTailscalePeersRequestId) return;
+    store.set({
+      tailscaleWidget: {
+        loading: false,
+        failed: !response.success,
+        data: response.success ? response.data : null,
+      },
+    });
+  } catch {
+    if (requestId !== latestTailscalePeersRequestId) return;
+    store.set({
+      tailscaleWidget: {
+        loading: false,
+        failed: true,
+        data: store.get().tailscaleWidget.data,
+      },
+    });
+  }
+}
+
+function peerRow(name: string, online: boolean) {
+  return {
+    key: name,
+    value: online ? _('✔ Online') : _('✘ Offline'),
+    attributes: {
+      class: online
+        ? 'tachyon_dashboard-page__widgets-section__item__row--success'
+        : 'tachyon_dashboard-page__widgets-section__item__row--error',
+    },
+  };
+}
+
+async function renderTailscaleWidget() {
+  renderStoreWidget(
+    'dashboard-widget-tailscale',
+    'tailscaleWidget',
+    _('Tailscale'),
+    (data) => {
+      type WidgetItem = {
+        key: string;
+        value: string;
+        attributes?: Record<string, string>;
+      };
+      if (!data || !data.configured) return [] as WidgetItem[];
+      const items: WidgetItem[] = [
+        {
+          key: _('State'),
+          value: data.backend_state || '—',
+          attributes: {
+            class:
+              data.backend_state === 'Running'
+                ? 'tachyon_dashboard-page__widgets-section__item__row--success'
+                : 'tachyon_dashboard-page__widgets-section__item__row--error',
+          },
+        },
+      ];
+      if (data.self && data.self.ips.length) {
+        items.push({ key: _('This router'), value: data.self.ips[0] });
+      }
+      for (const peer of data.peers.slice(0, 5)) {
+        if (!peer.online && !peer.name) continue;
+        items.push(
+          peerRow(peer.name || peer.dns_name || peer.ips[0], peer.online),
+        );
+      }
+      if (data.peers.length > 5) {
+        items.push({
+          key: _('Other peers'),
+          value: `+${data.peers.length - 5}`,
+        });
+      }
+      return items;
+    },
+    'renderTailscaleWidget',
+  );
+}
+
 async function onStoreUpdate(
   next: StoreType,
   prev: StoreType,
@@ -1940,6 +2025,10 @@ async function onStoreUpdate(
     syncDashboardServiceAvailability();
     renderServicesInfoWidget();
   }
+
+  if (diff.tailscaleWidget) {
+    renderTailscaleWidget();
+  }
 }
 
 async function onPageMount() {
@@ -1959,6 +2048,7 @@ async function onPageMount() {
 
     if (!uiState) {
       void fetchServicesInfo();
+      void fetchTailscalePeers();
     }
   }
 
@@ -1970,7 +2060,9 @@ async function onPageMount() {
   void renderTrafficTotalWidget();
   void renderSystemInfoWidget();
   void renderServicesInfoWidget();
+  void renderTailscaleWidget();
   syncDashboardServiceAvailability();
+  void fetchTailscalePeers();
 
   if (hasRuntimeSnapshot) {
     void refreshRuntimeUiState({ force: true });

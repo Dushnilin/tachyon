@@ -60,6 +60,16 @@ export function render() {
               items: [],
             }),
           ),
+          E(
+            'div',
+            { id: 'dashboard-widget-tailscale' },
+            renderWidget({
+              loading: true,
+              failed: false,
+              title: '',
+              items: [],
+            }),
+          ),
         ]),
         E('div', { id: 'dashboard-connections-grid' }, []),
         E(
