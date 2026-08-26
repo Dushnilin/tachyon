@@ -57,6 +57,7 @@ const SINGBOX_RUNTIME_UC = LIB_DIR + "/singbox/runtime.uc";
 const ZAPRET_RUNTIME_UC = LIB_DIR + "/providers/zapret/runtime.uc";
 const ZAPRET2_RUNTIME_UC = LIB_DIR + "/providers/zapret2/runtime.uc";
 const BYEDPI_RUNTIME_UC = LIB_DIR + "/providers/byedpi/runtime.uc";
+const TAILSCALE_RUNTIME_UC = LIB_DIR + "/providers/tailscale/runtime.uc";
 const ZAPRET_VALIDATOR_UC = LIB_DIR + "/providers/zapret/validator.uc";
 const ZAPRET2_VALIDATOR_UC = LIB_DIR + "/providers/zapret2/validator.uc";
 
@@ -1146,6 +1147,8 @@ function build_system_info() {
     let zapret2_version = zapret2_installed ? provider_version(ZAPRET2_RUNTIME_UC) : "not installed";
     let byedpi_installed = provider_installed(BYEDPI_RUNTIME_UC) ? 1 : 0;
     let byedpi_version = byedpi_installed ? provider_version(BYEDPI_RUNTIME_UC) : "not installed";
+    let tailscale_installed = provider_installed(TAILSCALE_RUNTIME_UC) ? 1 : 0;
+    let tailscale_version = tailscale_installed ? provider_version(TAILSCALE_RUNTIME_UC) : "not installed";
     let device_model = first_line_value("/tmp/sysinfo/model", "unknown");
 
     return {
@@ -1166,6 +1169,8 @@ function build_system_info() {
         zapret2_installed,
         byedpi_version,
         byedpi_installed,
+        tailscale_version,
+        tailscale_installed,
         openwrt_version: openwrt_release(),
         device_model,
         generated_at: int(clock()[0])

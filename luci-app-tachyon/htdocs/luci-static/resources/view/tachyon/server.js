@@ -538,11 +538,11 @@ function populateProtocolValues(option, capabilities) {
 
   resetOptionValues(option);
 
-  if (normalized.singBoxTailscale) {
-    Object.entries(TAILSCALE_PROTOCOL_LABELS).forEach(([value, label]) => {
-      addOptionValue(option, value, label);
-    });
-  }
+  // Tailscale is offered unconditionally: the native tailscaled mode does not
+  // depend on the sing-box build, only on the installable Tailscale component.
+  Object.entries(TAILSCALE_PROTOCOL_LABELS).forEach(([value, label]) => {
+    addOptionValue(option, value, label);
+  });
 
   Object.entries(BASE_PROTOCOL_LABELS).forEach(([value, label]) => {
     addOptionValue(option, value, label);
@@ -3276,6 +3276,46 @@ function createServerContent(section, options = {}) {
   o.modalonly = true;
   o.rmempty = true;
   addTailscaleDepends(o);
+
+  o = section.option(form.ListValue, "tailscale_mode", _("Tailscale mode"));
+  o.value(
+    "singbox",
+    _("sing-box endpoint (userspace, default)"),
+  );
+  o.value(
+    "native",
+    _("Native tailscaled (tailnet reachable from LAN without client)"),
+  );
+  o.default = "singbox";
+  o.modalonly = true;
+  o.rmempty = false;
+  addTailscaleDepends(o);
+
+  o = section.option(
+    form.Flag,
+    "tailscale_masquerade",
+    _("Masquerade LAN traffic into tailnet"),
+    _(
+      "SNAT LAN sources when leaving through tailscale0 so peers can answer. Required unless every peer accepts routes.",
+    ),
+  );
+  o.default = "1";
+  o.modalonly = true;
+  o.rmempty = false;
+  o.depends({ protocol: "tailscale", tailscale_mode: "native" });
+
+  o = section.option(
+    form.Flag,
+    "tailscale_use_exit_node",
+    _("Use tailnet exit node for LAN"),
+    _(
+      "Route all non-local LAN traffic through the tailnet exit node instead of the proxy engines.",
+    ),
+  );
+  o.default = "0";
+  o.modalonly = true;
+  o.rmempty = false;
+  o.depends({ protocol: "tailscale", tailscale_mode: "native" });
 
   // AWG Server Options
   o = section.option(

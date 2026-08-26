@@ -1370,7 +1370,7 @@ function normalize_component_name(component) {
 function valid_component_name(component) {
     component = normalize_component_name(component);
     return component == "tachyon" || component == "sing_box" || component == "zapret" ||
-        component == "zapret2" || component == "byedpi";
+        component == "zapret2" || component == "byedpi" || component == "tailscale";
 }
 
 function component_update_check_cache_path(component) {

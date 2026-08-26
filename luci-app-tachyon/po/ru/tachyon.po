@@ -3726,6 +3726,30 @@ msgid "Tachyon-managed nfqws2 runtime is ready"
 msgstr "NFQWS2 Tachyon готов"
 
 msgid "Tailscale auth key"
+msgid "Tailscale mode"
+msgstr "Режим Tailscale"
+
+msgid "sing-box endpoint (userspace, default)"
+msgstr "Endpoint в sing-box (userspace, по умолчанию)"
+
+msgid "Native tailscaled (tailnet reachable from LAN without client)"
+msgstr "Нативный tailscaled (тейлнет доступен из LAN без клиента)"
+
+msgid "Masquerade LAN traffic into tailnet"
+msgstr "Маскарадинг LAN-трафика в тейлнет"
+
+msgid "SNAT LAN sources when leaving through tailscale0 so peers can answer. Required unless every peer accepts routes."
+msgstr "Подменять LAN-адреса при выходе через tailscale0, чтобы пиры могли отвечать. Нужно, если не все пиры принимают маршруты."
+
+msgid "Use tailnet exit node for LAN"
+msgstr "Использовать exit-node тейлнета для LAN"
+
+msgid "Route all non-local LAN traffic through the tailnet exit node instead of the proxy engines."
+msgstr "Направлять весь не-локальный LAN-трафик через exit-node тейлнета вместо прокси-движков."
+
+msgid "Tailscale"
+msgstr "Tailscale"
+
 msgstr "Ключ аутентификации Tailscale"
 
 msgid "Tailscale control URL"

@@ -62,6 +62,8 @@ function getComponentCardTitle(component: Tachyon.ComponentName): string {
       return 'Zapret2';
     case 'byedpi':
       return 'ByeDPI';
+    case 'tailscale':
+      return 'Tailscale';
     default:
       return String(component);
   }
@@ -82,6 +84,8 @@ function getComponentCurrentVersion(
       return sys.zapret2_version;
     case 'byedpi':
       return sys.byedpi_version;
+    case 'tailscale':
+      return sys.tailscale_version;
     default:
       return undefined;
   }
@@ -1003,6 +1007,8 @@ function getComponentInstallKey(
       return 'zapret2Install';
     case 'byedpi':
       return 'byedpiInstall';
+    case 'tailscale':
+      return 'tailscaleInstall';
   }
 }
 
@@ -1038,7 +1044,7 @@ function getOptionalComponentActions({
   installKey,
   removeKey,
 }: {
-  component: 'zapret' | 'zapret2' | 'byedpi';
+  component: 'zapret' | 'zapret2' | 'byedpi' | 'tailscale';
   installed: boolean;
   checkKey: UpdatesActionKey;
   installKey: UpdatesActionKey;
@@ -1066,6 +1072,7 @@ const COMPONENT_REPO_URLS: Record<Tachyon.ComponentName, string> = {
   zapret: 'https://github.com/remittor/zapret-openwrt',
   zapret2: 'https://github.com/Dushnilin/zapret2-openwrt',
   byedpi: 'https://github.com/DPITrickster/ByeDPI-OpenWrt',
+  tailscale: 'https://openwrt.org/packages/pkgdata/tailscale',
 };
 
 function getComponentCards(): ComponentCard[] {
@@ -1076,6 +1083,7 @@ function getComponentCards(): ComponentCard[] {
   const zapretInstalled = Boolean(systemInfo.zapret_installed);
   const zapret2Installed = Boolean(systemInfo.zapret2_installed);
   const byedpiInstalled = Boolean(systemInfo.byedpi_installed);
+  const tailscaleInstalled = Boolean(systemInfo.tailscale_installed);
   const singBoxInstalled = !isNotInstalled(systemInfo.sing_box_version);
   const singBoxStable =
     singBoxInstalled &&
@@ -1176,6 +1184,13 @@ function getComponentCards(): ComponentCard[] {
     installKey: 'byedpiInstall',
     removeKey: 'byedpiRemove',
   });
+  const tailscaleActions = getOptionalComponentActions({
+    component: 'tailscale',
+    installed: tailscaleInstalled,
+    checkKey: 'tailscaleCheck',
+    installKey: 'tailscaleInstall',
+    removeKey: 'tailscaleRemove',
+  });
 
   return [
     {
@@ -1252,6 +1267,20 @@ function getComponentCards(): ComponentCard[] {
       releaseUrl: getGitHubReleaseUrl('byedpi'),
       repoUrl: COMPONENT_REPO_URLS.byedpi,
       actions: byedpiActions,
+    },
+    {
+      component: 'tailscale',
+      column: 1,
+      title: 'Tailscale',
+      version: systemInfoLoading
+        ? _('Loading...')
+        : tailscaleInstalled
+          ? systemInfo.tailscale_version
+          : _('Not installed'),
+      latestVersion: getLatestVersion('tailscale'),
+      releaseUrl: getGitHubReleaseUrl('tailscale'),
+      repoUrl: COMPONENT_REPO_URLS.tailscale,
+      actions: tailscaleActions,
     },
   ];
 }

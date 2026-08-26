@@ -993,6 +993,12 @@ ws
 
 [server.srv1.tailscale_hostname]
 
+[server.srv1.tailscale_mode]
+singbox
+[server.srv1.tailscale_masquerade]
+1
+[server.srv1.tailscale_use_exit_node]
+0
 [server.srv1.tailscale_accept_routes]
 1
 [server.srv1.tailscale_advertise_routes]

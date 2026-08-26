@@ -217,6 +217,8 @@ export interface StoreType {
     zapret2_installed: number;
     byedpi_version: string;
     byedpi_installed: number;
+    tailscale_version: string;
+    tailscale_installed: number;
     server_inbounds_enabled_count: number;
     openwrt_version: string;
     device_model: string;
@@ -241,6 +243,9 @@ export interface StoreType {
     byedpiCheck: { loading: boolean };
     byedpiInstall: { loading: boolean };
     byedpiRemove: { loading: boolean };
+    tailscaleCheck: { loading: boolean };
+    tailscaleInstall: { loading: boolean };
+    tailscaleRemove: { loading: boolean };
   };
   updatesChecks: Record<
     Tachyon.ComponentName,

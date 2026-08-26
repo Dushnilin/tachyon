@@ -41,6 +41,20 @@ function uci_settings() {
     return uci_section("settings");
 }
 
+// True when at least one enabled server section runs Tailscale in native
+// (tailscaled) mode; those need tailnet bypass rules in the mangle chain.
+function native_tailscale_enabled() {
+    for (let section in uci_sections("server")) {
+        if (as_string(section["enabled"]) == "0" || as_string(section["enabled"]) == "false")
+            continue;
+        if (as_string(section["protocol"] || "") != "tailscale")
+            continue;
+        if (as_string(section["tailscale_mode"] || "singbox") == "native")
+            return true;
+    }
+    return false;
+}
+
 function section_by_name(sections, section_name) {
     section_name = as_string(section_name);
     for (let section in sections)
@@ -1094,8 +1108,21 @@ function nft_create_runtime_base(table, localv4_set, common_set, port_set, ip_po
         return false;
 
     if (!nft_add_rule(table, "mangle", [ "ct", "status", "dnat", "return" ]) ||
-        !nft_add_rule(table, "mangle", [ "jump", "parental_control" ]) ||
-        !nft_add_rule(table, "mangle", [ "iifname", "@" + as_string(interface_set), "ip", "daddr", "@" + as_string(localv4_set), "return" ]) ||
+        !nft_add_rule(table, "mangle", [ "jump", "parental_control" ]))
+        return false;
+
+    // Native Tailscale: tailnet-bound traffic and anything already marked by
+    // the Tailscale runtime (mask 0x00ff0000, see config validator) must not
+    // be captured into tproxy — it is routed to tailscale0 instead.
+    if (native_tailscale_enabled()) {
+        if (!nft_add_rule(table, "mangle", [ "meta", "mark", "&", "0x00ff0000", "!=", "0", "return" ]) ||
+            !nft_add_rule(table, "mangle", [ "ip", "daddr", "100.64.0.0/10", "return" ]) ||
+            !nft_add_rule(table, "mangle", [ "ip6", "daddr", "fd7a:115c:a1e0::/48", "return" ]))
+            return false;
+        log_debug("Native Tailscale bypass rules added to mangle chain");
+    }
+
+    if (!nft_add_rule(table, "mangle", [ "iifname", "@" + as_string(interface_set), "ip", "daddr", "@" + as_string(localv4_set), "return" ]) ||
         !nft_add_rule(table, "mangle", [ "iifname", "@" + as_string(interface_set), "ip6", "daddr", "@" + as_string(localv6_set), "return" ]))
         return false;
 

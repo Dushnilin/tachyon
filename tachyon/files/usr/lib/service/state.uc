@@ -1492,6 +1492,9 @@ function append_sing_box_server_signature_body(body, server) {
         [ "tailscale_auth_key", "" ],
         [ "tailscale_control_url", "" ],
         [ "tailscale_hostname", "" ],
+        [ "tailscale_mode", "singbox" ],
+        [ "tailscale_masquerade", "1" ],
+        [ "tailscale_use_exit_node", "0" ],
         [ "tailscale_accept_routes", "" ],
         [ "tailscale_advertise_routes", "" ],
         [ "tailscale_advertise_exit_node", "" ]

@@ -119,6 +119,7 @@ const DIAGNOSTICS_UC = LIB_DIR + "/diagnostics/runtime.uc";
 const ZAPRET_UC = LIB_DIR + "/providers/zapret/runtime.uc";
 const ZAPRET2_UC = LIB_DIR + "/providers/zapret2/runtime.uc";
 const BYEDPI_UC = LIB_DIR + "/providers/byedpi/runtime.uc";
+const TAILSCALE_UC = LIB_DIR + "/providers/tailscale/runtime.uc";
 const PACKAGES_UC = LIB_DIR + "/core/packages.uc";
 const WATCHDOG_UC = LIB_DIR + "/service/watchdog.uc";
 const TELEGRAM_UC = LIB_DIR + "/service/telegram.uc";
@@ -891,6 +892,8 @@ function stop_main() {
         log_message("Zapret2 stop failed (non-fatal)", "warn");
     if (!module_success(BYEDPI_UC, [ "stop-runtime" ]))
         log_message("ByeDPI stop failed (non-fatal)", "warn");
+    if (!module_success(TAILSCALE_UC, [ "stop-runtime" ]))
+        log_message("Tailscale stop failed (non-fatal)", "warn");
 
     if (command_success_from_args([ "nft", "list", "table", "inet", NFT_TABLE_NAME ])) {
         if (!command_success_from_args([ "nft", "delete", "table", "inet", NFT_TABLE_NAME ]))
@@ -1370,7 +1373,10 @@ function reload(reason) {
     if (plan.needs_zapret2_restart == 1)
         module_success(ZAPRET2_UC, [ "start-runtime" ]);
     if (plan.needs_byedpi_restart == 1)
-        module_success(BYEDPI_UC, [ "start-runtime" ]);
+    module_success(BYEDPI_UC, [ "start-runtime" ]);
+    // Native Tailscale must be up before sing-box so tailnet routes win over
+    // policy routing from the very first packet.
+    module_success(TAILSCALE_UC, [ "start-runtime" ]);
 
     if (plan.needs_dnsmasq_configure == 1) {
         status = dnsmasq_configure(true);

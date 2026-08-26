@@ -551,6 +551,8 @@ export namespace Tachyon {
     zapret2_installed: 0 | 1;
     byedpi_version: string;
     byedpi_installed: 0 | 1;
+    tailscale_version: string;
+    tailscale_installed: 0 | 1;
     openwrt_version: string;
     device_model: string;
     generated_at?: number;
@@ -627,7 +629,8 @@ export namespace Tachyon {
     | 'sing_box'
     | 'zapret'
     | 'zapret2'
-    | 'byedpi';
+    | 'byedpi'
+    | 'tailscale';
 
   export type ComponentAction =
     | 'check_update'

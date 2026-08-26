@@ -23,6 +23,9 @@ const componentActionKeyMap: Record<string, UpdatesActionKey> = {
   'byedpi:check_update': 'byedpiCheck',
   'byedpi:install': 'byedpiInstall',
   'byedpi:remove': 'byedpiRemove',
+  'tailscale:check_update': 'tailscaleCheck',
+  'tailscale:install': 'tailscaleInstall',
+  'tailscale:remove': 'tailscaleRemove',
 };
 
 export function getComponentActionKey(

@@ -1772,6 +1772,25 @@ function validate_runtime_config(context) {
     let schedules = sections_by_type("schedule");
 
     validate_runtime_mark_ranges_context(context);
+
+    // Native-mode Tailscale servers need the system tailscaled binary; the
+    // check lives here so every validation entry point (including fixtures)
+    // enforces it.
+    for (let ts_server in sections_by_type("server")) {
+        if (!server_enabled(ts_server))
+            continue;
+        if (option(ts_server, "protocol", "vless") != "tailscale")
+            continue;
+        if (option(ts_server, "tailscale_mode", "singbox") != "native")
+            continue;
+        // Without a key `tailscale up` falls back to interactive login and
+        // would block the runtime forever on a headless router.
+        if (trim(as_string(option(ts_server, "tailscale_auth_key", "") || "")) == "")
+            fail_requirement("Server '" + section_name(ts_server) + "' uses native Tailscale mode without an auth key. Generate one in the Tailscale admin console and fill in 'Tailscale auth key', or switch this server back to sing-box mode. Aborted.", "fatal");
+        if (!command_exists("tailscaled"))
+            fail_requirement("Server '" + section_name(ts_server) + "' uses native Tailscale mode, but tailscaled is not installed. Install the Tailscale component on the Updates tab, or switch this server back to sing-box mode. Aborted.", "fatal");
+    }
+
     validate_dns_settings(settings, sections, context);
     validate_list_update_settings(settings);
     validate_http_url_option(option(settings, "latency_test_url", DEFAULT_LATENCY_TEST_URL) || DEFAULT_LATENCY_TEST_URL, "settings.latency_test_url");
@@ -2029,8 +2048,11 @@ function validate_extended_server_features(ctx, sing_box_version, sing_box_versi
         if (protocol == "mtproto")
             fail_requirement("Server '" + name + "' uses MTProto proxy, but sing-box-extended is not installed. Install sing-box-extended or disable this server. Aborted.", "fatal");
 
-        if (protocol == "tailscale" && !sing_box_supports_tailscale(ctx, sing_box_version, sing_box_version_output))
-            fail_requirement("Server '" + name + "' uses Tailscale, but the installed sing-box binary was built without Tailscale support. Install full sing-box or sing-box-extended, or disable this server. Aborted.", "fatal");
+        // Native-mode Tailscale runs tailscaled outside sing-box and does
+        // not need the with_tailscale build.
+        if (protocol == "tailscale" && option(section, "tailscale_mode", "singbox") != "native" &&
+            !sing_box_supports_tailscale(ctx, sing_box_version, sing_box_version_output))
+            fail_requirement("Server '" + name + "' uses Tailscale, but the installed sing-box binary was built without Tailscale support. Install full sing-box or sing-box-extended, switch this server to native Tailscale mode, or disable this server. Aborted.", "fatal");
 
         if (transport == "xhttp" && !sing_box_supports_xhttp(ctx, sing_box_version, sing_box_version_output))
             fail_requirement("Server '" + name + "' uses XHTTP transport, but the installed sing-box binary does not support it. Install sing-box-extended or a binary with XHTTP support, or change the transport. Aborted.", "fatal");

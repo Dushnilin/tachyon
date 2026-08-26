@@ -1498,6 +1498,9 @@ function section_by_name(sections, name) {
 
 function add_server_routes(config, servers, sections) {
     for (let server in servers) {
+        // Native-mode Tailscale runs outside sing-box: no inbound, no rules.
+        if (runtime_servers.is_native_tailscale(server))
+            continue;
         runtime_servers.add_sniff_rule(config, server);
 
         let inbound = runtime_constants.server_inbound_tag(server[".name"]);

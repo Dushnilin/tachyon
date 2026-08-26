@@ -5253,6 +5253,8 @@ var initialDiagnosticStore = {
     zapret2_installed: 0,
     byedpi_version: "loading",
     byedpi_installed: 0,
+    tailscale_version: "loading",
+    tailscale_installed: 0,
     server_inbounds_enabled_count: -1,
     openwrt_version: "loading",
     device_model: "loading"
@@ -5316,14 +5318,18 @@ var initialDiagnosticStore = {
     zapret2Remove: { loading: false },
     byedpiCheck: { loading: false },
     byedpiInstall: { loading: false },
-    byedpiRemove: { loading: false }
+    byedpiRemove: { loading: false },
+    tailscaleCheck: { loading: false },
+    tailscaleInstall: { loading: false },
+    tailscaleRemove: { loading: false }
   },
   updatesChecks: {
     tachyon: { status: null, latest_version: "", release_url: "" },
     sing_box: { status: null, latest_version: "", release_url: "" },
     zapret: { status: null, latest_version: "", release_url: "" },
     zapret2: { status: null, latest_version: "", release_url: "" },
-    byedpi: { status: null, latest_version: "", release_url: "" }
+    byedpi: { status: null, latest_version: "", release_url: "" },
+    tailscale: { status: null, latest_version: "", release_url: "" }
   }
 };
 
@@ -5680,7 +5686,10 @@ var componentActionKeyMap = {
   "zapret2:remove": "zapret2Remove",
   "byedpi:check_update": "byedpiCheck",
   "byedpi:install": "byedpiInstall",
-  "byedpi:remove": "byedpiRemove"
+  "byedpi:remove": "byedpiRemove",
+  "tailscale:check_update": "tailscaleCheck",
+  "tailscale:install": "tailscaleInstall",
+  "tailscale:remove": "tailscaleRemove"
 };
 function getComponentActionKey(component, action) {
   return componentActionKeyMap[`${component}:${action}`];
@@ -5792,7 +5801,10 @@ function getEmptyUpdatesActions() {
     zapret2Remove: { loading: false },
     byedpiCheck: { loading: false },
     byedpiInstall: { loading: false },
-    byedpiRemove: { loading: false }
+    byedpiRemove: { loading: false },
+    tailscaleCheck: { loading: false },
+    tailscaleInstall: { loading: false },
+    tailscaleRemove: { loading: false }
   };
 }
 function getEmptyDiagnosticsActions() {
@@ -9715,6 +9727,8 @@ var UNKNOWN_SYSTEM_INFO = {
   zapret2_installed: 0,
   byedpi_version: _("unknown"),
   byedpi_installed: 0,
+  tailscale_version: _("unknown"),
+  tailscale_installed: 0,
   server_inbounds_enabled_count: -1,
   openwrt_version: _("unknown"),
   device_model: _("unknown")
@@ -16572,6 +16586,8 @@ function getComponentCardTitle(component) {
       return "Zapret2";
     case "byedpi":
       return "ByeDPI";
+    case "tailscale":
+      return "Tailscale";
     default:
       return String(component);
   }
@@ -16589,6 +16605,8 @@ function getComponentCurrentVersion(component) {
       return sys.zapret2_version;
     case "byedpi":
       return sys.byedpi_version;
+    case "tailscale":
+      return sys.tailscale_version;
     default:
       return void 0;
   }
@@ -17257,6 +17275,8 @@ function getComponentInstallKey(component) {
       return "zapret2Install";
     case "byedpi":
       return "byedpiInstall";
+    case "tailscale":
+      return "tailscaleInstall";
   }
 }
 function getComponentInstallAction(component) {
@@ -17300,7 +17320,8 @@ var COMPONENT_REPO_URLS = {
   sing_box: "https://github.com/SagerNet/sing-box",
   zapret: "https://github.com/remittor/zapret-openwrt",
   zapret2: "https://github.com/Dushnilin/zapret2-openwrt",
-  byedpi: "https://github.com/DPITrickster/ByeDPI-OpenWrt"
+  byedpi: "https://github.com/DPITrickster/ByeDPI-OpenWrt",
+  tailscale: "https://openwrt.org/packages/pkgdata/tailscale"
 };
 function getComponentCards() {
   const systemInfo = normalizeSingBoxVariantFields(
@@ -17310,6 +17331,7 @@ function getComponentCards() {
   const zapretInstalled = Boolean(systemInfo.zapret_installed);
   const zapret2Installed = Boolean(systemInfo.zapret2_installed);
   const byedpiInstalled = Boolean(systemInfo.byedpi_installed);
+  const tailscaleInstalled = Boolean(systemInfo.tailscale_installed);
   const singBoxInstalled = !isNotInstalled(systemInfo.sing_box_version);
   const singBoxStable = singBoxInstalled && !systemInfo.sing_box_extended && !systemInfo.sing_box_tiny;
   const singBoxExtended = Boolean(systemInfo.sing_box_extended) && !systemInfo.sing_box_compressed && !systemInfo.sing_box_lx;
@@ -17398,6 +17420,13 @@ function getComponentCards() {
     installKey: "byedpiInstall",
     removeKey: "byedpiRemove"
   });
+  const tailscaleActions = getOptionalComponentActions({
+    component: "tailscale",
+    installed: tailscaleInstalled,
+    checkKey: "tailscaleCheck",
+    installKey: "tailscaleInstall",
+    removeKey: "tailscaleRemove"
+  });
   return [
     {
       component: "tachyon",
@@ -17451,6 +17480,16 @@ function getComponentCards() {
       releaseUrl: getGitHubReleaseUrl("byedpi"),
       repoUrl: COMPONENT_REPO_URLS.byedpi,
       actions: byedpiActions
+    },
+    {
+      component: "tailscale",
+      column: 1,
+      title: "Tailscale",
+      version: systemInfoLoading ? _("Loading...") : tailscaleInstalled ? systemInfo.tailscale_version : _("Not installed"),
+      latestVersion: getLatestVersion("tailscale"),
+      releaseUrl: getGitHubReleaseUrl("tailscale"),
+      repoUrl: COMPONENT_REPO_URLS.tailscale,
+      actions: tailscaleActions
     }
   ];
 }

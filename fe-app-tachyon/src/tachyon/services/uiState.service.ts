@@ -32,6 +32,9 @@ function getEmptyUpdatesActions(): StoreType['updatesActions'] {
     byedpiCheck: { loading: false },
     byedpiInstall: { loading: false },
     byedpiRemove: { loading: false },
+    tailscaleCheck: { loading: false },
+    tailscaleInstall: { loading: false },
+    tailscaleRemove: { loading: false },
   };
 }
 

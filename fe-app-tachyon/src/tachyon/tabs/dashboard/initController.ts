@@ -1651,7 +1651,8 @@ async function renderSectionsWidget() {
     outbounds: section.outbounds.map((outbound) => ({
       ...outbound,
       latency:
-        SERVICE_TYPES.has(outbound.type) || !customProxyLatencies.has(outbound.code)
+        SERVICE_TYPES.has(outbound.type) ||
+        !customProxyLatencies.has(outbound.code)
           ? outbound.latency
           : customProxyLatencies.get(outbound.code)!,
     })),

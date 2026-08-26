@@ -21,6 +21,7 @@ const COMPONENT_LOCK_DIR = getenv("UPDATES_LOCK_DIR") || RUNTIME_STATE_DIR + "/c
 const TMP_STALE_TTL_MINUTES = getenv("UPDATES_TMP_STALE_TTL_MINUTES") || "30";
 const TMP_FILE_STALE_TTL_MINUTES = getenv("UPDATES_TMP_FILE_STALE_TTL_MINUTES") || "10";
 const SB_MANAGED_SERVICE_MARKER = getenv("SB_MANAGED_SERVICE_MARKER") || constants.SB_MANAGED_SERVICE_MARKER || "Tachyon managed sing-box service for binary variants";
+const TAILSCALE_PACKAGE_URL = getenv("TAILSCALE_PACKAGE_URL") || "https://openwrt.org/packages/pkgdata/tailscale";
 
 let as_string = common.as_string;
 let shell_quote = common.shell_quote;
@@ -1302,6 +1303,35 @@ function install_byedpi(action) {
     action_success("byedpi", action, "ByeDPI package has been installed", current_version, pkg.version, 1, "latest", release.release_url || "");
 }
 
+function install_tailscale(action) {
+    let component = "tailscale";
+    let label = "Tailscale";
+    let runtime_module = LIB_DIR + "/providers/tailscale/runtime.uc";
+    init_tmp_dir() || action_fail(component, action, "Failed to create temporary directory");
+
+    if (action == "check_update") {
+        if (!pkg_is_installed("tailscale")) {
+            run_logged("Refreshing package index", pkg_list_update_command());
+            let available_version = available_package_version("tailscale");
+            action_success(component, action, label + " is not installed", "", available_version, 0, "", TAILSCALE_PACKAGE_URL);
+        }
+        run_logged("Refreshing package index", pkg_list_update_command());
+        check_success(component, installed_package_version("tailscale"), available_package_version("tailscale"), TAILSCALE_PACKAGE_URL);
+    }
+
+    if (!run_logged("Refreshing package index", pkg_list_update_command()))
+        updates_log("Package index refresh failed; trying to install from the cached index", "warn");
+    if (!run_logged("Installing " + label + " package", pkg_install_name_command("tailscale")))
+        action_fail(component, "install", "Failed to install " + label + " package from the feed");
+    disable_standalone_service("tailscale");
+    restart_tachyon_after_successful_change();
+    clear_version_caches();
+    let current_version = provider_package_version(runtime_module);
+    if (current_version == "")
+        current_version = "unknown";
+    action_success(component, "install", label + " package has been installed", current_version, current_version, 1, "latest", TAILSCALE_PACKAGE_URL);
+}
+
 function remove_optional_component(component, package_name, label, runtime_module) {
     if (!pkg_is_installed(package_name)) {
         if (provider_installed(runtime_module))
@@ -2507,6 +2537,10 @@ function component_action(component, action) {
         install_byedpi(action);
     else if (component == "byedpi" && action == "remove")
         remove_optional_component("byedpi", "byedpi", "ByeDPI", LIB_DIR + "/providers/byedpi/runtime.uc");
+    else if (component == "tailscale" && (action == "check_update" || action == "install"))
+        install_tailscale(action);
+    else if (component == "tailscale" && action == "remove")
+        remove_optional_component("tailscale", "tailscale", "Tailscale", LIB_DIR + "/providers/tailscale/runtime.uc");
     else
         action_fail(component != "" ? component : "unknown", action != "" ? action : "unknown", "Unknown component action");
 }

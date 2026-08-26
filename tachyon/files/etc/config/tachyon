@@ -200,11 +200,18 @@ config settings 'settings'
 #        option enabled '1'
 #        option protocol 'tailscale'
 #        option routing_mode 'rules'
+#        # tailscale_mode: singbox (userspace endpoint inside sing-box, default)
+#        # or native (system tailscaled: tailnet reachable from LAN without client,
+#        # requires Tailscale component installed on the Updates tab)
+#        option tailscale_mode 'singbox'
 #        option tailscale_control_url 'https://controlplane.tailscale.com'
 #        option tailscale_hostname 'tachyon-server-tailscale-example'
 #        option tailscale_auth_key 'tskey-auth-...'
 #        option tailscale_accept_routes '0'
 #        option tailscale_advertise_exit_node '1'
+#        # Native mode only:
+#        #option tailscale_masquerade '1'
+#        #option tailscale_use_exit_node '0'
 #        #list tailscale_advertise_routes '192.168.1.0/24'
 
 config telegram 'telegram'

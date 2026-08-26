@@ -416,8 +416,17 @@ function add_tailscale_endpoint(config, section, tag_name) {
     push(config.endpoints, endpoint);
 }
 
+function is_native_tailscale(section) {
+    return option(section, "protocol", "vless") == "tailscale" &&
+        option(section, "tailscale_mode", "singbox") == "native";
+}
+
 function add_dns_bypass(config, section) {
     if (option(section, "protocol", "vless") != "tailscale")
+        return;
+    // Native mode runs tailscaled outside sing-box; MagicDNS is served by
+    // dnsmasq instead of a sing-box DNS server.
+    if (is_native_tailscale(section))
         return;
 
     let section_name = section[".name"];
@@ -443,8 +452,11 @@ function add_server(config, section) {
     let protocol = option(section, "protocol", "vless");
     let tag_name = runtime_constants.server_inbound_tag(section_name);
 
-    if (protocol == "tailscale")
+    if (protocol == "tailscale") {
+        if (is_native_tailscale(section))
+            return;
         add_tailscale_endpoint(config, section, tag_name);
+    }
     else if (protocol == "json_inbound")
         add_json_inbound(config, section, tag_name);
     else
@@ -517,5 +529,6 @@ function clone_rules_for_inbound(config, source_inbound, target_inbound, skip_do
 return {
     add_server,
     add_sniff_rule,
-    clone_rules_for_inbound
+    clone_rules_for_inbound,
+    is_native_tailscale
 };

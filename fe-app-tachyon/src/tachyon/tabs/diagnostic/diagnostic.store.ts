@@ -94,6 +94,8 @@ export const initialDiagnosticStore: Pick<
     zapret2_installed: 0,
     byedpi_version: 'loading',
     byedpi_installed: 0,
+    tailscale_version: 'loading',
+    tailscale_installed: 0,
     server_inbounds_enabled_count: -1,
     openwrt_version: 'loading',
     device_model: 'loading',
@@ -158,6 +160,9 @@ export const initialDiagnosticStore: Pick<
     byedpiCheck: { loading: false },
     byedpiInstall: { loading: false },
     byedpiRemove: { loading: false },
+    tailscaleCheck: { loading: false },
+    tailscaleInstall: { loading: false },
+    tailscaleRemove: { loading: false },
   },
   updatesChecks: {
     tachyon: { status: null, latest_version: '', release_url: '' },
@@ -165,5 +170,6 @@ export const initialDiagnosticStore: Pick<
     zapret: { status: null, latest_version: '', release_url: '' },
     zapret2: { status: null, latest_version: '', release_url: '' },
     byedpi: { status: null, latest_version: '', release_url: '' },
+    tailscale: { status: null, latest_version: '', release_url: '' },
   },
 };
