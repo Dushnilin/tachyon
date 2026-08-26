@@ -836,6 +836,18 @@ msgstr "Дашборд сейчас недоступен"
 msgid "Days of Week"
 msgstr "Дни недели"
 
+msgid "Auto-failover of proxy sections"
+msgstr "Авто-failover прокси-секций"
+
+msgid "Watchdog probes every Connection section; when the active one fails several checks in a row, traffic switches to a healthy backup and Telegram is notified. Requires a config reload to take effect."
+msgstr "Watchdog проверяет каждую Connection-секцию; если активная падает несколько проверок подряд, трафик переключается на живую резервную, а Telegram получает уведомление. Нужен reload конфигурации."
+
+msgid "Failover failure threshold"
+msgstr "Порог срабатывания failover"
+
+msgid "Number of consecutive failed probes before switching sections"
+msgstr "Сколько неудачных проверок подряд до переключения секции"
+
 msgid "Daily time quota (minutes)"
 msgstr "Дневной лимит времени (минуты)"
 

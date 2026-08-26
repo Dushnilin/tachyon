@@ -1437,18 +1437,48 @@ function add_route_for_section(config, section) {
         add_combined_route_for_section(config, section);
 }
 
-function add_service_route_rules(config, sections) {
-    let first = null;
+function failover_candidate(sections) {
+    let result = [];
     for (let section in sections) {
         let action = option(section, "action", "");
         if (connections.is_connections_action(action) ||
             action == "awg" || action == "warp" || action == "byedpi" || action == "zapret" || action == "zapret2" ||
             action == "anytls" || action == "snell" || action == "mieru" || action == "sudoku" ||
             action == "masque" || action == "openvpn") {
-            first = section;
-            break;
+            push(result, section);
         }
     }
+    return result;
+}
+
+function failover_state_file() {
+    return getenv("TACHYON_FAILOVER_STATE_FILE") || "/etc/tachyon/failover_section";
+}
+
+// Persisted user/agent choice survives restarts; ignored when the section
+// disappeared from the candidate list.
+function failover_default_name(candidates) {
+    let raw = "";
+    try {
+        raw = trim(as_string(fs.readfile(failover_state_file())) || "");
+    } catch (e) {
+        raw = "";
+    }
+    if (raw != "") {
+        for (let section in candidates)
+            if (as_string(section[".name"]) == raw)
+                return raw;
+    }
+    return as_string(candidates[0][".name"]);
+}
+
+const FAILOVER_GROUP_TAG = "tachyon-failover";
+
+function add_service_route_rules(config, sections) {
+    let candidates = failover_candidate(sections);
+    let first = length(candidates) > 0 ? candidates[0] : null;
+    let failover_active = bool_option(object_or_empty(ctx.uci_cursor().get_all(CONFIG_NAME, "settings")), "section_failover_enabled", false) &&
+        length(candidates) > 1;
     if (first != null) {
         push(config.route.rules, {
             action: "resolve",
@@ -1456,10 +1486,24 @@ function add_service_route_rules(config, sections) {
             server: runtime_constants.DNS_SERVER_TAG,
             domain: runtime_constants.CHECK_PROXY_IP_DOMAIN
         });
+        let catchall_target = outbound_tag(first[".name"]);
+        if (failover_active) {
+            let member_tags = [];
+            for (let section in candidates)
+                push(member_tags, outbound_tag(section[".name"]));
+            push(config.outbounds, {
+                type: "selector",
+                tag: FAILOVER_GROUP_TAG,
+                outbounds: member_tags,
+                default: outbound_tag(failover_default_name(candidates)),
+                interrupt_exist_connections: true
+            });
+            catchall_target = FAILOVER_GROUP_TAG;
+        }
         push(config.route.rules, {
             action: "route",
             inbound: tproxy_inbound_matcher(),
-            outbound: outbound_tag(first[".name"]),
+            outbound: catchall_target,
             domain: runtime_constants.CHECK_PROXY_IP_DOMAIN
         });
     }

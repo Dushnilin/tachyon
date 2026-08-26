@@ -1907,12 +1907,19 @@ function check_tailscale_worker() {
     }
 }
 
+// Cross-section failover probe; the module self-gates on
+// settings.section_failover_enabled so this is a no-op by default.
+function check_section_failover() {
+    command_status("/usr/bin/tachyon failover_check >/dev/null 2>&1");
+}
+
     function perform_slow_checks() {
         controller.probe_slow();
         safe_call(ai_heal_dns_loop, "ai_heal_dns_loop");
         safe_call(check_mixed_proxy_port, "check_mixed_proxy_port");
         safe_call(check_telegram_worker, "check_telegram_worker");
         safe_call(check_tailscale_worker, "check_tailscale_worker");
+        safe_call(check_section_failover, "check_section_failover");
     }
     if (uloop) {
         let tick;

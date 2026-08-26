@@ -1509,6 +1509,31 @@ function createSettingsContent(section, capabilities) {
 
   o = section.taboption(
     "advanced",
+    form.Flag,
+    "section_failover_enabled",
+    _("Auto-failover of proxy sections"),
+    _(
+      "Watchdog probes every Connection section; when the active one fails several checks in a row, traffic switches to a healthy backup and Telegram is notified. Requires a config reload to take effect.",
+    ),
+  );
+  o.default = "0";
+  o.rmempty = false;
+
+  o = section.taboption(
+    "advanced",
+    form.Value,
+    "section_failover_threshold",
+    _("Failover failure threshold"),
+    _("Number of consecutive failed probes before switching sections"),
+  );
+  o.depends("section_failover_enabled", "1");
+  o.default = "3";
+  o.placeholder = "3";
+  o.rmempty = false;
+  o.datatype = "range(1,30)";
+
+  o = section.taboption(
+    "advanced",
     form.ListValue,
     "config_path",
     _("Config File Path"),

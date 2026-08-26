@@ -212,6 +212,7 @@ function command_spec(command) {
         get_tailscale_peers: [ "diagnostics/runtime.uc", "get-tailscale-peers", 0 ],
         tailscale_restart: [ "providers/tailscale/runtime.uc", "start-runtime", 0 ],
         parental_quota_tick: [ "service/parental_quota.uc", "tick", 0 ],
+        failover_check: [ "service/failover.uc", "check", 0 ],
         get_system_info: [ "diagnostics/runtime.uc", "get-system-info", 0 ],
         get_server_capabilities: [ "diagnostics/runtime.uc", "get-server-capabilities", 0 ],
         get_ui_capabilities: [ "service/ui.uc", "get-ui-capabilities", 0 ],
