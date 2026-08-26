@@ -836,6 +836,21 @@ msgstr "Дашборд сейчас недоступен"
 msgid "Days of Week"
 msgstr "Дни недели"
 
+msgid "Daily time quota (minutes)"
+msgstr "Дневной лимит времени (минуты)"
+
+msgid "Limit device network usage per day. When the quota is exhausted, the device is blocked until midnight. 0 disables the limit."
+msgstr "Ограничьте использование сети устройством за день. Когда квота исчерпана, устройство блокируется до полуночи. 0 — без лимита."
+
+msgid "Enter a whole number of minutes between 0 and 1440"
+msgstr "Введите целое число минут от 0 до 1440"
+
+msgid "Daily Quota"
+msgstr "Дневная квота"
+
+msgid "min/day"
+msgstr "мин/день"
+
 msgid "Default (auto)"
 msgstr "По умолчанию (авто)"
 

@@ -303,6 +303,28 @@ function createParentalContent(section) {
     return `${s} - ${e}, ${days}`;
   };
 
+  // Daily quota column in table
+  o = section.option(form.DummyValue, "_quota_display", _("Daily Quota"));
+  o.rawhtml = true;
+  o.modalonly = false;
+  o.cfgvalue = function (sectionId) {
+    const raw = Number(uci.get(UCI_PACKAGE, sectionId, "daily_quota_minutes")) || 0;
+    if (raw <= 0) {
+      return '<span style="opacity:0.5;">' + _("None") + "</span>";
+    }
+    return (
+      '<span style="color:#63b3ed;font-weight:500;">⏳ ' +
+      raw +
+      " " +
+      _("min/day") +
+      "</span>"
+    );
+  };
+  o.textvalue = function (sectionId) {
+    const raw = Number(uci.get(UCI_PACKAGE, sectionId, "daily_quota_minutes")) || 0;
+    return raw > 0 ? `${raw} ${_("min/day")}` : _("None");
+  };
+
   // Blocked sites column in table
   o = section.option(form.DummyValue, "_sites_display", _("Blocked Sites"));
   o.rawhtml = true;
@@ -486,6 +508,27 @@ function createParentalContent(section) {
   Object.entries(DAY_LABELS).forEach(([key, label]) => {
     o.value(key, label);
   });
+
+  // Daily time quota (minutes per day); 0 disables the limit
+  o = section.option(
+    form.Value,
+    "daily_quota_minutes",
+    _("Daily time quota (minutes)"),
+    _(
+      "Limit device network usage per day. When the quota is exhausted, the device is blocked until midnight. 0 disables the limit.",
+    ),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.default = "0";
+  o.placeholder = "0";
+  o.validate = function (_sectionId, value) {
+    if (value === "" || value === null || value === undefined) return true;
+    const n = Number(value);
+    if (!Number.isInteger(n) || n < 0 || n > 1440)
+      return _("Enter a whole number of minutes between 0 and 1440");
+    return true;
+  };
 
   // ─── Content blocking (domains) ────────────────────────────────────────────
 

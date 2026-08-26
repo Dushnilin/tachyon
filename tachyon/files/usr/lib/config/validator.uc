@@ -1716,6 +1716,15 @@ function validate_schedule(schedule, sections) {
         let single_ip = option(schedule, "device_ip", "");
         if (single_ip != "") raw_ips = [ single_ip ];
     }
+
+    // Daily time quota (minutes per day); 0/empty disables the limit.
+    let quota_raw = trim(as_string(option(schedule, "daily_quota_minutes", "") || ""));
+    if (quota_raw != "") {
+        let quota = int(quota_raw);
+        if (quota < 0 || quota > 1440 || match(quota_raw, /^[0-9]+$/) == null)
+            fail_validation("Schedule '" + name + "' has invalid daily_quota_minutes '" + quota_raw + "'. Use a number of minutes between 0 and 1440. Aborted.");
+    }
+
     for (let ip in raw_ips) {
         let clean_ip = trim(as_string(ip));
         let is_mac = match(clean_ip, /^([0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}$/) != null;

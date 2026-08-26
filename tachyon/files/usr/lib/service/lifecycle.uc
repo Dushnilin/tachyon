@@ -120,6 +120,7 @@ const ZAPRET_UC = LIB_DIR + "/providers/zapret/runtime.uc";
 const ZAPRET2_UC = LIB_DIR + "/providers/zapret2/runtime.uc";
 const BYEDPI_UC = LIB_DIR + "/providers/byedpi/runtime.uc";
 const TAILSCALE_UC = LIB_DIR + "/providers/tailscale/runtime.uc";
+const PARENTAL_QUOTA_UC = LIB_DIR + "/service/parental_quota.uc";
 const PACKAGES_UC = LIB_DIR + "/core/packages.uc";
 const WATCHDOG_UC = LIB_DIR + "/service/watchdog.uc";
 const TELEGRAM_UC = LIB_DIR + "/service/telegram.uc";
@@ -894,6 +895,7 @@ function stop_main() {
         log_message("ByeDPI stop failed (non-fatal)", "warn");
     if (!module_success(TAILSCALE_UC, [ "stop-runtime" ]))
         log_message("Tailscale stop failed (non-fatal)", "warn");
+    module_success(PARENTAL_QUOTA_UC, [ "remove-cron" ]);
 
     if (command_success_from_args([ "nft", "list", "table", "inet", NFT_TABLE_NAME ])) {
         if (!command_success_from_args([ "nft", "delete", "table", "inet", NFT_TABLE_NAME ]))
@@ -1377,6 +1379,8 @@ function reload(reason) {
     // Native Tailscale must be up before sing-box so tailnet routes win over
     // policy routing from the very first packet.
     module_success(TAILSCALE_UC, [ "start-runtime" ]);
+    // Minute-tick cron for parental daily time quotas (idempotent install).
+    module_success(PARENTAL_QUOTA_UC, [ "install-cron" ]);
 
     if (plan.needs_dnsmasq_configure == 1) {
         status = dnsmasq_configure(true);
