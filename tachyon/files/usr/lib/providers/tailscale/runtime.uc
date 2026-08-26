@@ -310,11 +310,45 @@ function install_kernel_routing(section) {
     return true;
 }
 
+// The official package ships its own init script; if it autostarted at boot,
+// its daemon holds UDP 41641 and ours dies instantly. Neutralize it the same
+// way component install does - stop + disable, idempotent.
+function file_executable(path) {
+    let st = fs.stat(path);
+    return st != null && st.mode != null && (int(st.mode) & 73) != 0;
+}
+
+function neutralize_standalone_service() {
+    let init = "/etc/init.d/tailscale";
+    if (!file_executable(init))
+        return;
+    command_status(command_from_args([ init, "stop" ]) + " >/dev/null 2>&1");
+    command_status(command_from_args([ init, "disable" ]) + " >/dev/null 2>&1");
+    log_message("standalone tailscale service stopped and disabled", "info");
+}
+
+function log_file_tail(path) {
+    let data = "";
+    try {
+        data = as_string(fs.readfile(path)) || "";
+    } catch (e) {
+        return "";
+    }
+    let lines = split(trim(data), "\n");
+    let start = length(lines) > 5 ? length(lines) - 5 : 0;
+    let tail = [];
+    for (let i = start; i < length(lines); i++)
+        push(tail, lines[i]);
+    return join(" | ", tail);
+}
+
 function start_daemon(section) {
     if (running_pid(section)) {
         log_message("tailscaled for " + section_name(section) + " already running", "debug");
         return true;
     }
+
+    neutralize_standalone_service();
 
     let runtime_dir = section_runtime_dir(section);
     let socket_path = runtime_dir + "/tailscaled.sock";
@@ -326,10 +360,10 @@ function start_daemon(section) {
         "--tun=tailscale0",
         "--statedir=" + state_dir,
         "--socket=" + socket_path,
-        "--port=" + TAILSCALED_PORT,
-        "--netfilter-mode=on"
+        "--port=" + TAILSCALED_PORT
     ];
 
+    fs.unlink(log_file);
     let cmdline = command_from_args(args) +
         " >" + shell_quote(log_file) + " 2>&1 </dev/null & echo $!";
     let output = trim(command_output(cmdline));
@@ -340,15 +374,24 @@ function start_daemon(section) {
     }
     write_file(section_pid_file(section), as_string(pid));
 
-    // Wait until the client socket answers before running `up`.
+    // Wait until the client socket answers before running `up`. Probe parses
+    // JSON instead of trusting the exit code: an unlogged-in node answers
+    // with BackendState=NeedsLogin and a non-zero exit code, which must still
+    // count as "daemon ready".
     for (let attempt = 0; attempt < 30; attempt++) {
-        if (command_success_from_args([ TAILSCALE_BIN, "--socket", socket_path, "status", "--peers=false" ]))
+        let probe = command_output_from_args([ TAILSCALE_BIN, "--socket", socket_path, "status", "--json", "--peers=false" ]);
+        if (index(as_string(probe), "\"BackendState\"") >= 0)
             return true;
         if (!pid_alive(pid))
             break;
         command_success_from_args([ "sleep", "1" ]);
     }
-    log_message("tailscaled did not become ready for " + section_name(section), "warn");
+
+    let tail = log_file_tail(log_file);
+    if (!pid_alive(pid))
+        log_message("tailscaled for " + section_name(section) + " exited during startup; log tail: " + (tail == "" ? "<empty>" : tail), "warn");
+    else
+        log_message("tailscaled did not become ready for " + section_name(section) + "; log tail: " + (tail == "" ? "<empty>" : tail), "warn");
     return false;
 }
 

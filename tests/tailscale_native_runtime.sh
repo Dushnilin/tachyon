@@ -89,7 +89,19 @@ run() {
 run installed || fail "installed must succeed with stubs present"
 
 # --- start ------------------------------------------------------------------
+# Fake official init script: must be stopped+disabled before our daemon starts.
+INIT_LOG="$WORK_DIR/init.log"
+mkdir -p /etc/init.d
+cat >"/etc/init.d/tailscale" <<EOF
+#!/bin/sh
+printf '%s\n' "\$*" >> '$INIT_LOG'
+exit 0
+EOF
+chmod +x "/etc/init.d/tailscale"
+
 run start-runtime || fail "start-runtime exited non-zero"
+grep -Fq "stop" "$INIT_LOG" || fail "standalone tailscale service was not stopped"
+grep -Fq "disable" "$INIT_LOG" || fail "standalone tailscale service was not disabled"
 
 PID_FILE="$WORK_DIR/run/ts_native/tailscaled.pid"
 [ -f "$PID_FILE" ] || fail "pid file was not written"
