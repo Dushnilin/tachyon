@@ -24,7 +24,7 @@ const PID_FILE = STATE_DIR + "/fuzzer-worker.pid";
 const BYEDPI_PORT = 11089;
 const NFQUEUE_QNUM_ZAPRET = 298;
 const NFQUEUE_QNUM_ZAPRET2 = 299;
-const FUZZER_FWMARK = "0x08000000";
+const FUZZER_FWMARK = "0x40000000";
 
 function resolve_binary(paths) {
     for (let p in paths) {
@@ -86,7 +86,7 @@ function validate_strategy_args(engine, args_val) {
 
 // Target definitions
 const TARGET_URLS = {
-    youtube: "https://rr1---sn-4g5edn6r.googlevideo.com/generate_204",
+    youtube: "https://www.youtube.com",
     youtube_web: "https://www.youtube.com",
     discord: "https://discord.com/api/v9/gateway",
     instagram: "https://www.instagram.com",
@@ -96,6 +96,34 @@ const TARGET_URLS = {
 
 // Strategy Matrices (Expanded Production Suite: 38 strategies across engines)
 const STRATEGIES_ZAPRET2 = [
+    {
+        id: "z2_fake_ttl4_badseq",
+        name: "Fake (TTL=4, BadSeq) + Multisplit",
+        engine: "zapret2",
+        args: "--lua-desync=fake:ttl=4:fooling=badseq --lua-desync=multisplit:pos=1,midsld",
+        description: "Low-TTL fake ClientHello with badseq fooling and multisplit segmentation."
+    },
+    {
+        id: "z2_fake_ttl5_md5sig",
+        name: "Fake (TTL=5, MD5Sig) + Multisplit",
+        engine: "zapret2",
+        args: "--lua-desync=fake:ttl=5:fooling=md5sig --lua-desync=multisplit:pos=1,midsld",
+        description: "MD5Sig TCP option drops packet at DPI while reaching end server."
+    },
+    {
+        id: "z2_fake_ttl4_badack",
+        name: "Fake (TTL=4, BadACK) + Multisplit",
+        engine: "zapret2",
+        args: "--lua-desync=fake:ttl=4:fooling=badack --lua-desync=multisplit:pos=1,sniext+2",
+        description: "BadACK fooling invalidates packet in DPI state tracking."
+    },
+    {
+        id: "z2_fake_ttl3_md5sig",
+        name: "Fake (TTL=3, MD5Sig) + Multisplit",
+        engine: "zapret2",
+        args: "--lua-desync=fake:ttl=3:fooling=md5sig --lua-desync=multisplit:pos=1,midsld",
+        description: "Aggressive low-TTL MD5Sig injection for close TSPU hops."
+    },
     {
         id: "z2_yt_multisplit_midsld",
         name: "YouTube 4K Multisplit + MidSLD",
@@ -114,22 +142,8 @@ const STRATEGIES_ZAPRET2 = [
         id: "z2_fake_badseq_mid",
         name: "Fake Packet (TTL=8) + MidSLD Split",
         engine: "zapret2",
-        args: "--lua-desync=fake:ttl=8 --lua-desync=multisplit:pos=midsld:fooling=badseq",
-        description: "Injects low-TTL fake ClientHello before segmented payload."
-    },
-    {
-        id: "z2_fake_md5sig_ttl6",
-        name: "Fake (TTL=6, MD5Sig) + Multisplit",
-        engine: "zapret2",
-        args: "--lua-desync=fake:ttl=6:fooling=md5sig --lua-desync=multisplit:pos=1,midsld",
-        description: "MD5Sig TCP option drops packet at DPI while reaching end server."
-    },
-    {
-        id: "z2_fake_badack_ttl8",
-        name: "Fake (TTL=8, BadACK) + SNIExt Split",
-        engine: "zapret2",
-        args: "--lua-desync=fake:ttl=8:fooling=badack --lua-desync=multisplit:pos=1,sniext+2",
-        description: "BadACK fooling invalidates packet in DPI state tracking."
+        args: "--lua-desync=fake:ttl=8:fooling=badseq --lua-desync=multisplit:pos=midsld",
+        description: "Injects fake ClientHello before segmented payload."
     },
     {
         id: "z2_wsize_multisplit",
@@ -390,39 +404,30 @@ function generate_combinatorial_zapret2() {
     
     for (let s in STRATEGIES_ZAPRET2) add(s.name, s.args, s.description);
     
-    let positions = ["1", "2", "midsld", "sniext+4", "1,midsld", "1,sniext+2", "1,midsld,sniext+2"];
-    let foolings = ["badseq", "md5sig", "badack", "datanoack"];
-    let seqovls = ["1", "2"];
-    let ttls = [4, 6, 8, 10];
+    let positions = ["1", "midsld", "sniext+4", "1,midsld", "1,sniext+2"];
+    let foolings = ["badseq", "md5sig", "badack"];
+    let ttls = [3, 4, 5, 8];
     
     for (let pos in positions) {
         for (let fooling in foolings) {
             add(sprintf("Multisplit (pos=%s, %s)", pos, fooling),
                 sprintf("--lua-desync=multisplit:pos=%s:fooling=%s", pos, fooling),
-                "Permutation of multisplit position and fooling method");
-            for (let seqovl in seqovls) {
-                add(sprintf("Multisplit + SeqOvl (pos=%s, seqovl=%s, %s)", pos, seqovl, fooling),
-                    sprintf("--lua-desync=multisplit:pos=%s:seqovl=%s:fooling=%s", pos, seqovl, fooling),
-                    "Permutation of multisplit with sequence overlap");
-                add(sprintf("Multisplit + wsize=1 (pos=%s, seqovl=%s, %s)", pos, seqovl, fooling),
-                    sprintf("--lua-desync=multisplit:pos=%s:wsize=1:seqovl=%s:fooling=%s", pos, seqovl, fooling),
-                    "Window size clamp with sequence overlap");
-            }
+                "Multisplit position and fooling method");
+            add(sprintf("Multisplit + SeqOvl (pos=%s, %s)", pos, fooling),
+                sprintf("--lua-desync=multisplit:pos=%s:seqovl=1:fooling=%s", pos, fooling),
+                "Multisplit with sequence overlap");
         }
     }
     
     for (let ttl in ttls) {
-        for (let fooling in foolings) {
-            for (let pos in ["1", "midsld", "sniext+4", "1,midsld"]) {
+        for (let fooling in ["badseq", "md5sig", "badack"]) {
+            for (let pos in ["1", "midsld", "1,midsld"]) {
                 add(sprintf("Fake (TTL=%d, %s) + Multisplit (pos=%s)", ttl, fooling, pos),
                     sprintf("--lua-desync=fake:ttl=%d:fooling=%s --lua-desync=multisplit:pos=%s", ttl, fooling, pos),
                     "Low-TTL fake injection followed by multisplit payload");
                 add(sprintf("Fake (TTL=%d, %s) + Split2 (pos=%s)", ttl, fooling, pos),
                     sprintf("--lua-desync=fake:ttl=%d:fooling=%s --lua-desync=split2:pos=%s", ttl, fooling, pos),
                     "Low-TTL fake injection followed by 2-part split");
-                add(sprintf("Fake (TTL=%d, %s) + Disorder2 (pos=%s)", ttl, fooling, pos),
-                    sprintf("--lua-desync=fake:ttl=%d:fooling=%s --lua-desync=disorder2:pos=%s", ttl, fooling, pos),
-                    "Low-TTL fake injection followed by out-of-order segment");
             }
         }
     }
@@ -451,10 +456,9 @@ function generate_combinatorial_zapret() {
     for (let s in STRATEGIES_ZAPRET) add(s.name, s.args, s.description);
     
     let modes = ["split2", "disorder2", "fake,split2", "fake,disorder2"];
-    let positions = ["1", "2", "midsld", "sniext"];
+    let positions = ["1", "2", "midsld"];
     let foolings = ["badseq", "md5sig", "badack"];
-    let ttls = [4, 6, 8, 10];
-    let seqovls = [1, 2];
+    let ttls = [4, 6, 8];
     
     for (let mode in modes) {
         for (let pos in positions) {
@@ -463,17 +467,15 @@ function generate_combinatorial_zapret() {
                     for (let ttl in ttls) {
                         add(sprintf("%s (pos=%s, TTL=%d, %s)", mode, pos, ttl, fooling),
                             sprintf("--dpi-desync=%s --dpi-desync-split-pos=%s --dpi-desync-ttl=%d --dpi-desync-fooling=%s", mode, pos, ttl, fooling),
-                            "Permutation of fake desync with split pos and fooling");
+                            "Fake desync with split pos and fooling");
                     }
                 } else {
                     add(sprintf("%s (pos=%s, %s)", mode, pos, fooling),
                         sprintf("--dpi-desync=%s --dpi-desync-split-pos=%s --dpi-desync-fooling=%s", mode, pos, fooling),
-                        "Permutation of desync with split pos and fooling");
-                    for (let seqovl in seqovls) {
-                        add(sprintf("%s + SeqOvl=%d (pos=%s, %s)", mode, seqovl, pos, fooling),
-                            sprintf("--dpi-desync=%s --dpi-desync-split-pos=%s --dpi-desync-split-seqovl=%d --dpi-desync-fooling=%s", mode, pos, seqovl, fooling),
-                            "Permutation with sequence overlap");
-                    }
+                        "Desync with split pos and fooling");
+                    add(sprintf("%s + SeqOvl (pos=%s, %s)", mode, pos, fooling),
+                        sprintf("--dpi-desync=%s --dpi-desync-split-pos=%s --dpi-desync-split-seqovl=1 --dpi-desync-fooling=%s", mode, pos, fooling),
+                        "Desync with sequence overlap");
                 }
             }
         }
@@ -504,9 +506,9 @@ function generate_combinatorial_byedpi() {
     
     let splits = ["1", "2", "1+sniext", "midsld"];
     let disorders = ["1", "2"];
-    let ttls = [3, 4, 6, 8, 10];
+    let ttls = [3, 4, 6, 8];
     let oobs = ["1", "2"];
-    let autos = ["t,r,a,s", "r,s", "t,a", "t,r,s"];
+    let autos = ["t,r,a,s", "r,s", "t,a"];
     
     for (let a in autos) {
         for (let o in oobs) {
@@ -540,9 +542,6 @@ function generate_combinatorial_byedpi() {
         add(sprintf("IP-Frag (24) + Split=%s", s),
             sprintf("--ip-frag 24 --split %s", s),
             "IP packet fragmentation");
-        add(sprintf("IP-Frag (32) + Split=%s", s),
-            sprintf("--ip-frag 32 --split %s", s),
-            "IP packet fragmentation on 32-byte boundary");
     }
     
     return list;
@@ -550,47 +549,24 @@ function generate_combinatorial_byedpi() {
 
 function get_strategies_for_engine(engine, mode) {
     engine = lc(as_string(engine));
-    mode = lc(as_string(mode || "presets"));
+    mode = lc(trim(as_string(mode || "presets")));
     
-    if (mode == "combinatorial" || mode == "deep_fuzz" || mode == "full") {
-        if (engine == "zapret2")
-            return generate_combinatorial_zapret2();
-        if (engine == "zapret")
-            return generate_combinatorial_zapret();
-        if (engine == "byedpi")
-            return generate_combinatorial_byedpi();
-        
-        let all = [];
-        for (let s in generate_combinatorial_zapret2()) push(all, s);
-        for (let s in generate_combinatorial_zapret()) push(all, s);
-        for (let s in generate_combinatorial_byedpi()) push(all, s);
-        return all;
+    if (mode == "combinatorial" || mode == "deep_fuzz" || mode == "deep") {
+        if (engine == "zapret2") return generate_combinatorial_zapret2();
+        if (engine == "zapret") return generate_combinatorial_zapret();
+        if (engine == "byedpi") return generate_combinatorial_byedpi();
     }
     
-    if (engine == "zapret2")
-        return STRATEGIES_ZAPRET2;
-    if (engine == "zapret")
-        return STRATEGIES_ZAPRET;
-    if (engine == "byedpi")
-        return STRATEGIES_BYEDPI;
-    
-    // Default or 'all': combine all
-    let all = [];
-    for (let s in STRATEGIES_ZAPRET2) push(all, s);
-    for (let s in STRATEGIES_ZAPRET) push(all, s);
-    for (let s in STRATEGIES_BYEDPI) push(all, s);
-    return all;
+    if (engine == "zapret2") return STRATEGIES_ZAPRET2;
+    if (engine == "zapret") return STRATEGIES_ZAPRET;
+    if (engine == "byedpi") return STRATEGIES_BYEDPI;
+    return [];
 }
 
-function resolve_target_url(target, custom_url) {
-    if (custom_url && trim(as_string(custom_url)) != "")
-        return trim(as_string(custom_url));
-    
-    target = lc(as_string(target));
-    if (TARGET_URLS[target])
-        return TARGET_URLS[target];
-    
-    return TARGET_URLS.youtube;
+function resolve_target_url(target_key, custom_url) {
+    if (custom_url && custom_url != "")
+        return custom_url;
+    return TARGET_URLS[target_key] || TARGET_URLS.youtube;
 }
 
 function ensure_state_dir() {
@@ -609,270 +585,211 @@ function query_llm(provider, api_key, custom_url, prompt_text, model_override) {
     if (provider == "anthropic" || provider == "claude") {
         let api_url = "https://api.anthropic.com/v1/messages";
         let model = model_override != "" ? model_override : "claude-3-5-haiku-20241022";
-        let payload = {
-            model: model,
-            max_tokens: 1500,
+        let body = {
+            model,
+            max_tokens: 1000,
             messages: [{ role: "user", content: prompt_text }]
         };
-        let payload_path = "/tmp/fuzzer_llm_payload.json";
-        common.write_json_file(payload_path, payload);
-
-        let curl_args = [
-            "curl", "-s", "-X", "POST",
-            "-H", "Content-Type: application/json",
-            "-H", "x-api-key: " + api_key,
-            "-H", "anthropic-version: 2023-06-01",
-            "--connect-timeout", "10",
-            "-m", "60",
-            "-d", "@" + payload_path,
-            api_url
-        ];
-
-        let pipe = fs.popen(command_from_args(curl_args), "r");
+        let cmd = sprintf(
+            "curl -s -m 35 --connect-timeout 10 -X POST -H 'x-api-key: %s' -H 'anthropic-version: 2023-06-01' -H 'content-type: application/json' -d %s %s 2>/dev/null",
+            shell_quote(api_key),
+            shell_quote(sprintf("%J", body)),
+            shell_quote(api_url)
+        );
+        let pipe = fs.popen(cmd, "r");
         let output = pipe ? pipe.read("all") : "";
         if (pipe) pipe.close();
-        common.remove_file(payload_path);
-
-        if (output == "") return null;
-        let response_data = null;
-        try { response_data = json(output); } catch (e) {}
-        if (response_data && type(response_data.content) == "array" && length(response_data.content) > 0) {
-            return response_data.content[0].text;
+        let parsed = common.json_parse(output);
+        if (parsed && parsed.content && type(parsed.content) == "array" && length(parsed.content) > 0) {
+            return parsed.content[0].text;
         }
         return null;
     }
 
-    let api_url = "https://api.openai.com/v1/chat/completions";
-    let model = model_override != "" ? model_override : "gpt-4o-mini";
-
+    let base_url = "https://api.openai.com/v1";
+    let default_model = "gpt-4o-mini";
     if (provider == "deepseek") {
-        api_url = "https://api.deepseek.com/chat/completions";
-        model = model_override != "" ? model_override : "deepseek-chat";
+        base_url = "https://api.deepseek.com/v1";
+        default_model = "deepseek-chat";
     } else if (provider == "openrouter") {
-        api_url = "https://openrouter.ai/api/v1/chat/completions";
-        model = model_override != "" ? model_override : "openai/gpt-4o-mini";
+        base_url = "https://openrouter.ai/api/v1";
+        default_model = "deepseek/deepseek-chat";
     } else if (provider == "ollama") {
-        if (custom_url != "") {
-            let base = replace(custom_url, /\/v1\/chat\/completions\/?$/, "");
-            api_url = base + "/v1/chat/completions";
-        } else {
-            api_url = "http://192.168.1.100:11434/v1/chat/completions";
-        }
-        model = model_override != "" ? model_override : "llama3:latest";
-    } else if (provider == "lmstudio") {
-        if (custom_url != "") {
-            let base = replace(custom_url, /\/v1\/chat\/completions\/?$/, "");
-            api_url = base + "/v1/chat/completions";
-        } else {
-            api_url = "http://192.168.1.100:1234/v1/chat/completions";
-        }
-        model = model_override != "" ? model_override : "local-model";
-    } else if (provider == "custom" && custom_url != "") {
-        api_url = custom_url;
-        model = model_override != "" ? model_override : "gpt-4o-mini";
+        base_url = custom_url && custom_url != "" ? custom_url : "http://127.0.0.1:11434/v1";
+        default_model = "llama3.2";
+    } else if (provider == "lmstudio" || provider == "custom") {
+        base_url = custom_url && custom_url != "" ? custom_url : "http://127.0.0.1:1234/v1";
+        default_model = "local-model";
     }
 
-    let payload = {
-        model: model,
-        messages: [{ role: "user", content: prompt_text }],
+    base_url = replace(base_url, /\/+$/, "");
+    let api_url = base_url + "/chat/completions";
+    let model = model_override != "" ? model_override : default_model;
+    let body = {
+        model,
+        messages: [
+            { role: "system", content: "You are a network censorship and DPI bypass expert. Always return responses formatted strictly as requested." },
+            { role: "user", content: prompt_text }
+        ],
         temperature: 0.3
     };
 
-    let payload_path = "/tmp/fuzzer_llm_payload.json";
-    common.write_json_file(payload_path, payload);
-
-    let curl_args = [
-        "curl", "-s", "-X", "POST",
-        "-H", "Content-Type: application/json",
-        "-H", "Authorization: Bearer " + api_key,
-        "--connect-timeout", "10",
-        "-m", "60",
-        "-d", "@" + payload_path,
-        api_url
-    ];
-
-    let pipe = fs.popen(command_from_args(curl_args), "r");
+    let auth_header = api_key != "" ? sprintf("-H 'Authorization: Bearer %s'", api_key) : "";
+    let cmd = sprintf(
+        "curl -s -m 35 --connect-timeout 10 -X POST %s -H 'Content-Type: application/json' -d %s %s 2>/dev/null",
+        auth_header,
+        shell_quote(sprintf("%J", body)),
+        shell_quote(api_url)
+    );
+    let pipe = fs.popen(cmd, "r");
     let output = pipe ? pipe.read("all") : "";
     if (pipe) pipe.close();
-    common.remove_file(payload_path);
-
-    if (output == "") return null;
-    let response_data = null;
-    try { response_data = json(output); } catch (e) {}
-    if (response_data && type(response_data.choices) == "array" && length(response_data.choices) > 0) {
-        return response_data.choices[0].message ? response_data.choices[0].message.content : null;
+    let parsed = common.json_parse(output);
+    if (parsed && parsed.choices && type(parsed.choices) == "array" && length(parsed.choices) > 0) {
+        let msg = parsed.choices[0].message;
+        if (msg && msg.content) {
+            return msg.content;
+        }
     }
     return null;
 }
 
-function uci_settings() {
-    return uci_core.get_all(CONFIG_NAME, "settings") || uci_core.get_all(CONFIG_NAME, "main") || {};
+function parse_llm_json(raw_text) {
+    raw_text = trim(as_string(raw_text));
+    if (raw_text == "") return null;
+    let direct = common.json_parse(raw_text);
+    if (direct && type(direct) == "object") return direct;
+
+    let m = match(raw_text, /```json\s*([\s\S]*?)\s*```/);
+    if (m && m[1]) {
+        let parsed = common.json_parse(m[1]);
+        if (parsed && type(parsed) == "object") return parsed;
+    }
+
+    m = match(raw_text, /\{[\s\S]*\}/);
+    if (m && m[0]) {
+        let parsed = common.json_parse(m[0]);
+        if (parsed && type(parsed) == "object") return parsed;
+    }
+    return null;
 }
 
 function synthesize_ai_strategies(engine, target, custom_url, user_prompt) {
+    let current = get_fuzzer_state();
+    if (current.running) {
+        print(sprintf("%J\n", { success: false, error: "Fuzzer is currently running a benchmark" }));
+        return;
+    }
+
     engine = lc(as_string(engine || "zapret2"));
-    target = lc(as_string(target || "youtube"));
-    custom_url = trim(as_string(custom_url || ""));
+    target = trim(as_string(target || "youtube"));
     user_prompt = trim(as_string(user_prompt || ""));
-    
-    let cfg = uci_settings();
-    let provider = lc(trim(as_string(cfg.ai_doctor_provider || "openai")));
-    let api_key = cfg.ai_doctor_api_key || "";
-    let custom_url_llm = cfg.ai_doctor_custom_url || "";
-    let model_override = trim(cfg.ai_doctor_model || "");
-    
-    let has_key = (api_key != "");
-    let is_local_or_custom = (provider == "ollama" || provider == "lmstudio" || (provider == "custom" && custom_url_llm != ""));
-    
-    if (!has_key && !is_local_or_custom) {
-        print(sprintf("%J\n", {
-            success: false,
-            error: "AI Doctor API key is not configured in Tachyon settings (Diagnostics -> AI Doctor)."
-        }));
-        return;
-    }
-    
     let target_url = resolve_target_url(target, custom_url);
-    
-    // Fast direct probe without desync
-    let probe_cmd = sprintf(
-        "curl -so /dev/null -w '%%{http_code}\\t%%{time_appconnect}\\t%%{time_starttransfer}' --connect-timeout 3 --max-time 4 %s 2>/dev/null",
-        shell_quote(target_url)
-    );
-    let pipe = fs.popen(probe_cmd, "r");
-    let raw_probe = pipe ? pipe.read("all") : "";
-    if (pipe) pipe.close();
-    
-    let probe_status = "Direct connection without desync failed or timed out.";
-    if (raw_probe && raw_probe != "") {
-        let parts = split(trim(raw_probe), "\t");
-        let http_code = int(parts[0]);
-        if (http_code > 0)
-            probe_status = sprintf("Direct HTTP %d, Connect %s sec, TTFB %s sec", http_code, parts[1] || "0", parts[2] || "0");
-    }
-    
-    // Retrieve RAG context
-    let rag_query = sprintf("%s %s DPI bypass desync strategy TSPU %s", engine, target, user_prompt);
-    let rag_context = "";
-    try {
-        rag_context = rag.retrieve(rag_query, provider, api_key, custom_url_llm, model_override, 3);
-    } catch (e) {
-        rag_context = "";
-    }
-    
+
+    let baseline = run_probe(engine, "", target_url);
+
+    let query_text = sprintf("%s %s %s", engine, target, user_prompt);
+    let rag_docs = rag.retrieve(query_text, 4);
+
+    let uci = uci_core.cursor();
+    let ai_sec = uci.get_all(CONFIG_NAME, "ai") || {};
+    let provider = ai_sec.provider || "openai";
+    let api_key = ai_sec.api_key || "";
+    let ai_custom_url = ai_sec.custom_url || "";
+    let model_override = ai_sec.model || "";
+
     let prompt = sprintf(
-        "You are an expert Anti-Censorship and Deep Packet Inspection (DPI) bypass engineer specializing in OpenWrt, Zapret, Zapret2 (nfqws2), and ByeDPI (ciadpi).\n" +
-        "Synthesize 3 to 5 highly effective, customized bypass strategies for the engine '%s' targeting service '%s' (%s).\n\n" +
-        "Target Service: %s\n" +
-        "Target URL: %s\n" +
-        "Baseline Network Probe: %s\n" +
-        "User Context / Notes: %s\n\n" +
-        (rag_context != "" ? "=== Relevant Technical Documentation (RAG) ===\n" + rag_context + "\n=============================================\n\n" : "") +
-        "Syntax Specifications for '%s':\n" +
-        (engine == "zapret2" ?
-            "- Uses nfqws2 Lua actions: --lua-desync=<func>[:key=val[:key=val]].\n" +
-            "- Valid actions: multisplit (pos=1,midsld:seqovl=1:fooling=badseq, pos=1,sniext+4:seqovl=1:fooling=badseq, pos=1,midsld,sniext+2:seqovl=2:fooling=badseq), fake (ttl=8:fooling=badseq), split2 (pos=1), disorder2 (pos=1).\n" +
-            "- Valid fooling options: badseq, md5sig, badack, datanoack.\n" +
-            "- Window clamp: wsize=1.\n" +
-            "- Multi-profile support: e.g. --filter-tcp=443 --lua-desync=... --new --filter-udp=50000-65535 --lua-desync=fake:ttl=8.\n" :
-        engine == "zapret" ?
-            "- Uses nfqws CLI options: --dpi-desync=<modes> [--dpi-desync-split-pos=<pos>] [--dpi-desync-split-seqovl=<N>] [--dpi-desync-ttl=<N>] [--dpi-desync-fooling=<fooling>].\n" +
-            "- Valid modes: fake, split2, disorder2, multisplit, ipfrag2.\n" +
-            "- Valid fooling: badseq, md5sig, badack.\n" :
-            "- Uses ciadpi CLI options: -s <pos>, -d <pos>, -f <offset>, -t <ttl>, -o <offset>, --auto=t,r,a,s, --split, --disorder, --fake, --ttl.\n") +
-        "\nREQUIREMENT: Respond ONLY with a valid JSON object matching this schema without any markdown formatting or backticks:\n" +
+        "You are an expert DPI Bypass Engineer specializing in OpenWrt, Zapret, Zapret2 (nfqws2), and ByeDPI (ciadpi).\n" +
+        "We need to bypass censorship / TSPU blocking for target service '%s' (%s) using engine '%s'.\n\n" +
+        "LIVE PROBE DIAGNOSTICS:\n" +
+        "- Direct HTTP Code: %d\n" +
+        "- Connect Time: %d ms\n" +
+        "- TTFB: %d ms\n" +
+        "- Probe Error: %s\n" +
+        "- User Notes / ISP Context: %s\n\n" +
+        "TECHNICAL KNOWLEDGE BASE FRAGMENTS:\n%s\n\n" +
+        "TASK:\n" +
+        "1. Analyze why this target is blocked or throttled.\n" +
+        "2. Formulate 3 to 5 highly effective, syntactically valid DPI desync strategies for '%s'.\n" +
+        "3. Output MUST be strictly valid JSON matching this schema:\n" +
         "{\n" +
-        "  \"analysis\": \"Concise 2-3 sentence technical diagnosis of the blocking pattern and rationale for these strategies.\",\n" +
-        "  \"strategies\": [\n" +
-        "    {\n" +
-        "      \"id\": \"ai_strat_1\",\n" +
-        "      \"name\": \"Descriptive human-readable strategy name\",\n" +
-        "      \"engine\": \"%s\",\n" +
-        "      \"args\": \"Exact valid CLI argument string\",\n" +
-        "      \"description\": \"What this strategy does\",\n" +
-        "      \"rationale\": \"Why this parameter combination works against this filter\"\n" +
-        "    }\n" +
-        "  ]\n" +
-        "}",
-        engine, target, target_url, target, target_url, probe_status, user_prompt != "" ? user_prompt : "None provided", engine, engine
+        '  "analysis": "Brief 1-2 sentence diagnosis of the blocking pattern",\n' +
+        '  "strategies": [\n' +
+        '    {\n' +
+        '      "id": "ai_strat_1",\n' +
+        '      "name": "Human-readable descriptive strategy name",\n' +
+        '      "args": "Exact command-line arguments string for the engine",\n' +
+        '      "description": "Why this combination should bypass the block"\n' +
+        '    }\n' +
+        '  ]\n' +
+        "}\n\n" +
+        "RULES FOR STRATEGY ARGS:\n" +
+        "- For zapret2: use valid options like '--lua-desync=multisplit:pos=1,midsld:seqovl=1:fooling=badseq' or '--lua-desync=fake:ttl=4:fooling=badseq --lua-desync=multisplit:pos=1,midsld'. DO NOT include binary name.\n" +
+        "- For zapret: use valid options like '--dpi-desync=fake,split2 --dpi-desync-split-pos=1,midsld --dpi-desync-fooling=badseq --dpi-desync-ttl=4'. DO NOT include binary name.\n" +
+        "- For byedpi: use valid options like '-s 1 -d 1 --auto=t,r,s -o 1'. DO NOT include binary name.\n\n" +
+        "JSON OUTPUT:",
+        target, target_url, engine,
+        baseline.http_code, baseline.handshake_ms, baseline.ttfb_ms,
+        baseline.error != "" ? baseline.error : "none",
+        user_prompt != "" ? user_prompt : "None provided",
+        rag_docs,
+        engine
     );
-    
-    let raw_ai_res = query_llm(provider, api_key, custom_url_llm, prompt, model_override);
-    if (!raw_ai_res || trim(raw_ai_res) == "") {
+
+    let raw_reply = query_llm(provider, api_key, ai_custom_url, prompt, model_override);
+    if (!raw_reply) {
         print(sprintf("%J\n", {
             success: false,
-            error: "Failed to receive response from LLM provider (" + provider + ")."
+            error: "Failed to receive response from AI provider. Check API key and network connectivity."
         }));
         return;
     }
-    
-    // Clean potential markdown fences
-    let clean_json = trim(raw_ai_res);
-    clean_json = replace(clean_json, /^```json\s*/i, "");
-    clean_json = replace(clean_json, /^```\s*/, "");
-    clean_json = replace(clean_json, /\s*```$/, "");
-    
-    let parsed = null;
-    try {
-        parsed = json(clean_json);
-    } catch (e) {
-        // Try substring extraction
-        let start_idx = index(clean_json, "{");
-        let end_idx = rindex(clean_json, "}");
-        if (start_idx >= 0 && end_idx > start_idx) {
-            try {
-                parsed = json(substr(clean_json, start_idx, end_idx - start_idx + 1));
-            } catch (e2) {}
-        }
-    }
-    
-    if (!parsed || type(parsed.strategies) != "array" || length(parsed.strategies) == 0) {
+
+    let parsed_json = parse_llm_json(raw_reply);
+    if (!parsed_json || !parsed_json.strategies || type(parsed_json.strategies) != "array" || length(parsed_json.strategies) == 0) {
         print(sprintf("%J\n", {
             success: false,
-            error: "LLM produced invalid JSON schema",
-            raw: substr(clean_json, 0, 300)
+            error: "AI returned non-JSON or invalid format",
+            raw_response: raw_reply
         }));
         return;
     }
-    
+
     let valid_strategies = [];
-    for (let i = 0; i < length(parsed.strategies); i++) {
-        let s = parsed.strategies[i];
-        if (!s || !s.args || trim(as_string(s.args)) == "") continue;
-        let s_engine = s.engine || engine;
-        let is_valid = validate_strategy_args(s_engine, s.args);
-        if (is_valid) {
+    for (let i = 0; i < length(parsed_json.strategies); i++) {
+        let st = parsed_json.strategies[i];
+        if (st && st.args && validate_strategy_args(engine, st.args)) {
             push(valid_strategies, {
-                id: s.id || sprintf("ai_strat_%d", i + 1),
-                name: s.name || sprintf("AI Strategy %d", i + 1),
-                engine: s_engine,
-                args: trim(as_string(s.args)),
-                description: s.description || "",
-                rationale: s.rationale || ""
+                id: st.id || sprintf("ai_strat_%d", i + 1),
+                name: st.name || sprintf("AI Strategy %d", i + 1),
+                engine,
+                args: trim(st.args),
+                description: st.description || ""
             });
         }
     }
-    
+
     if (length(valid_strategies) == 0) {
         print(sprintf("%J\n", {
             success: false,
-            error: "No generated strategies passed syntax validation",
-            raw_strategies: parsed.strategies
+            error: "All AI strategies failed syntax validation for engine " + engine,
+            raw_strategies: parsed_json.strategies
         }));
         return;
     }
-    
-    // Save AI strategies to temporary custom file for benchmark execution
+
+    let custom_file = STATE_DIR + "/fuzzer_ai_strategies.json";
     ensure_state_dir();
-    common.write_json_file("/tmp/fuzzer_ai_strategies.json", valid_strategies);
-    
+    common.write_json_file(custom_file, valid_strategies);
+
     print(sprintf("%J\n", {
         success: true,
         engine,
         target,
         target_url,
-        analysis: parsed.analysis || "AI strategy synthesis complete.",
-        strategies: valid_strategies
+        analysis: parsed_json.analysis || "AI strategy synthesis complete",
+        strategies: valid_strategies,
+        custom_file
     }));
 }
 
@@ -941,9 +858,10 @@ function parse_curl_output(output, result) {
     
     if (http_code >= 200 && http_code < 400) {
         result.success = true;
-        let speed_factor = (result.speed_kbps / 200.0) + 1.0;
-        let ttfb_factor = 1000.0 / (result.ttfb_ms + 1.0);
-        result.score = int(ttfb_factor * speed_factor);
+        let base_score = 100;
+        let latency_score = max(0, 1000 - result.ttfb_ms);
+        let speed_score = int(result.speed_kbps / 10.0);
+        result.score = base_score + latency_score + speed_score;
     } else {
         result.success = false;
         result.score = 0;
@@ -976,12 +894,12 @@ function run_probe(engine, args_str, target_url) {
         }
         
         let pid_path = STATE_DIR + "/fuzzer_byedpi.pid";
-        let spawn_cmd = sprintf("%s -i 127.0.0.1 -p %d %s", bin, BYEDPI_PORT, args_str);
+        let spawn_cmd = sprintf("cd /tmp && %s -i 127.0.0.1 -p %d %s", bin, BYEDPI_PORT, args_str);
         system(common.background_command_with_pid(spawn_cmd, ">/dev/null", ">" + shell_quote(pid_path)));
         system("sleep 0.15");
         
         let curl_cmd = sprintf(
-            "curl -x socks5h://127.0.0.1:%d -so /dev/null -w '%%{http_code}\\t%%{time_appconnect}\\t%%{time_starttransfer}\\t%%{speed_download}' --connect-timeout 4 --max-time 6 %s 2>/dev/null",
+            "curl -x socks5h://127.0.0.1:%d -so /dev/null -w '%%{http_code}\\t%%{time_appconnect}\\t%%{time_starttransfer}\\t%%{speed_download}' -L --connect-timeout 3 --max-time 4 %s 2>/dev/null",
             BYEDPI_PORT,
             shell_quote(target_url)
         );
@@ -1011,19 +929,24 @@ function run_probe(engine, args_str, target_url) {
             lua_init_flags = "--lua-init=@/opt/zapret2/lua/zapret-lib.lua --lua-init=@/opt/zapret2/lua/zapret-antidpi.lua --lua-init=@/opt/zapret2/lua/zapret-auto.lua ";
         }
         
-        let spawn_cmd = sprintf("%s --qnum=%d --fwmark=%s %s%s --pidfile=%s --daemon", bin, qnum, FUZZER_FWMARK, lua_init_flags, args_str, pid_path);
+        let filter_prefix = "";
+        if (is_z2 && index(args_str, "--filter-tcp") < 0 && index(args_str, "--filter-l7") < 0) {
+            filter_prefix = "--filter-tcp=443 --filter-l7=tls --payload=tls_client_hello ";
+        }
+        
+        let spawn_cmd = sprintf("cd /tmp && %s --qnum=%d --fwmark=%s %s%s%s --pidfile=%s --daemon", bin, qnum, FUZZER_FWMARK, lua_init_flags, filter_prefix, args_str, pid_path);
         system(common.background_command(spawn_cmd));
         system("sleep 0.15");
         
-        // Setup temporary isolated nftables queue for probe
+        // Setup temporary isolated nftables queue for probe with high priority (-200)
         system("nft add table inet tachyon_fuzzer 2>/dev/null");
-        system("nft 'add chain inet tachyon_fuzzer output { type filter hook output priority -150 ; }' 2>/dev/null");
+        system("nft 'add chain inet tachyon_fuzzer output { type filter hook output priority -200 ; }' 2>/dev/null");
         system(sprintf("nft add rule inet tachyon_fuzzer output meta mark %s counter return 2>/dev/null", FUZZER_FWMARK));
         system(sprintf("nft 'add rule inet tachyon_fuzzer output meta l4proto tcp tcp dport { 80, 443 } counter queue num %d bypass' 2>/dev/null", qnum));
         
-        // Execute probe with interface-mark if supported, or standard direct curl
+        // Execute probe with direct curl
         let curl_cmd = sprintf(
-            "curl -so /dev/null -w '%%{http_code}\\t%%{time_appconnect}\\t%%{time_starttransfer}\\t%%{speed_download}' --connect-timeout 4 --max-time 6 %s 2>/dev/null",
+            "curl -so /dev/null -w '%%{http_code}\\t%%{time_appconnect}\\t%%{time_starttransfer}\\t%%{speed_download}' -L --connect-timeout 3 --max-time 4 %s 2>/dev/null",
             shell_quote(target_url)
         );
         
