@@ -1695,6 +1695,44 @@ download_file_once() {
     esac
 }
 
+github_to_jsdelivr() {
+    _url="$1"
+    case "$_url" in
+        *github.com*)
+            _path="${_url#*github.com/}"
+            case "$_path" in
+                */releases/download/*)
+                    _repo_owner="$(printf '%s' "$_path" | cut -d'/' -f1)"
+                    _repo_name="$(printf '%s' "$_path" | cut -d'/' -f2)"
+                    _tag="$(printf '%s' "$_path" | cut -d'/' -f4)"
+                    _file="$(printf '%s' "$_path" | cut -d'/' -f5-)"
+                    printf 'https://cdn.jsdelivr.net/gh/%s/%s@%s/%s' "$_repo_owner" "$_repo_name" "$_tag" "$_file"
+                    return 0
+                    ;;
+                */raw/*)
+                    _repo_owner="$(printf '%s' "$_path" | cut -d'/' -f1)"
+                    _repo_name="$(printf '%s' "$_path" | cut -d'/' -f2)"
+                    _branch="$(printf '%s' "$_path" | cut -d'/' -f4)"
+                    _file="$(printf '%s' "$_path" | cut -d'/' -f5-)"
+                    printf 'https://cdn.jsdelivr.net/gh/%s/%s@%s/%s' "$_repo_owner" "$_repo_name" "$_branch" "$_file"
+                    return 0
+                    ;;
+                */*)
+                    _repo_owner="$(printf '%s' "$_path" | cut -d'/' -f1)"
+                    _repo_name="$(printf '%s' "$_path" | cut -d'/' -f2)"
+                    _ref="$(printf '%s' "$_path" | cut -d'/' -f4)"
+                    _file="$(printf '%s' "$_path" | cut -d'/' -f5-)"
+                    [ -n "$_file" ] && {
+                        printf 'https://cdn.jsdelivr.net/gh/%s/%s@%s/%s' "$_repo_owner" "$_repo_name" "$_ref" "$_file"
+                        return 0
+                    }
+                    ;;
+            esac
+            ;;
+    esac
+    printf '%s' "$_url"
+}
+
 download_with_retry() {
     url="$1"
     output_path="$2"
@@ -1702,14 +1740,21 @@ download_with_retry() {
     dl_num="${4:-}"
     dl_total="${5:-}"
     attempt=1
-    max_attempts=3
+    max_attempts=4
+    jsdelivr_url="$(github_to_jsdelivr "$url")"
 
     while [ "$attempt" -le "$max_attempts" ]; do
         current_url="$url"
-        if [ "$attempt" -eq 2 ]; then
+        if [ "$attempt" -eq 2 ] && [ "$jsdelivr_url" != "$url" ]; then
+            warn "Retrying $label via jsdelivr.net CDN..."
+            current_url="$jsdelivr_url"
+        elif [ "$attempt" -eq 2 ] || ([ "$attempt" -eq 3 ] && [ "$jsdelivr_url" = "$url" ]); then
             warn "Retrying $label via gh-proxy.com mirror..."
             current_url="https://gh-proxy.com/$url"
-        elif [ "$attempt" -eq 3 ]; then
+        elif [ "$attempt" -eq 3 ] && [ "$jsdelivr_url" != "$url" ]; then
+            warn "Retrying $label via gh-proxy.com mirror..."
+            current_url="https://gh-proxy.com/$url"
+        elif [ "$attempt" -eq 4 ]; then
             warn "Retrying $label via ghproxy.net mirror..."
             current_url="https://ghproxy.net/$url"
         fi

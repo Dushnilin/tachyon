@@ -63,7 +63,7 @@ Tachyon intercepts network flows via kernel **nftables** and dispatches requests
 * **Static DNS Overriding (`dns_hosts`)**: Direct mapping of domains to static IP addresses in sing-box DNS and dnsmasq without editing `/etc/hosts`.
 * **Remote Hosts Lists Ingestion (`hosts_list_urls`)**: Automatic background downloading and parsing of external host lists and blocklists (AdAway, StevenBlack, custom blocklists).
 * **Unified Cache (`combined.txt`)**: High-performance deduplication, merging, and global caching of multiple remote host sources into a single lightweight cache.
-* **GitHub Mirror Failover**: Resilient downloads that automatically retry via mirrors (`gh-proxy.com`, `ghproxy.net`) if direct access to github.com is blocked or throttled.
+* **GitHub Mirror Failover**: Resilient downloads that automatically retry via mirrors (`cdn.jsdelivr.net`, `gh-proxy.com`, `ghproxy.net`) if direct access to github.com is blocked or throttled.
 * **Hosts-Only Action Sections (`action = hosts`)**: Dedicated routing sections operating purely as DNS override engines without requiring an outbound proxy association.
 
 <p align="center">
@@ -200,10 +200,13 @@ wget -O /tmp/tachyon-setup.sh https://raw.githubusercontent.com/Dushnilin/tachyo
 > [!TIP]
 > **Installation Mirrors (if direct access to GitHub is blocked or throttled):**
 > ```bash
-> # Mirror 1 (gh-proxy.com):
+> # Mirror 1 (jsdelivr.net CDN):
+> wget -O /tmp/tachyon-setup.sh https://cdn.jsdelivr.net/gh/Dushnilin/tachyon@main/install.sh && sh /tmp/tachyon-setup.sh
+> 
+> # Mirror 2 (gh-proxy.com):
 > wget -O /tmp/tachyon-setup.sh https://gh-proxy.com/raw.githubusercontent.com/Dushnilin/tachyon/main/install.sh && sh /tmp/tachyon-setup.sh
 > 
-> # Mirror 2 (ghfast.top):
+> # Mirror 3 (ghfast.top):
 > wget -O /tmp/tachyon-setup.sh https://ghfast.top/https://raw.githubusercontent.com/Dushnilin/tachyon/main/install.sh && sh /tmp/tachyon-setup.sh
 > ```
 
@@ -218,8 +221,12 @@ To cleanly remove Tachyon, restore stock DNS, flush nftables rules, and preserve
 wget -O /tmp/tachyon-uninstall.sh https://raw.githubusercontent.com/Dushnilin/tachyon/main/uninstall.sh && sh /tmp/tachyon-uninstall.sh
 ```
 
-*Via mirror gh-proxy.com:*
+*Via mirrors:*
 ```bash
+# Mirror 1 (jsdelivr.net CDN):
+wget -O /tmp/tachyon-uninstall.sh https://cdn.jsdelivr.net/gh/Dushnilin/tachyon@main/uninstall.sh && sh /tmp/tachyon-uninstall.sh
+
+# Mirror 2 (gh-proxy.com):
 wget -O /tmp/tachyon-uninstall.sh https://gh-proxy.com/raw.githubusercontent.com/Dushnilin/tachyon/main/uninstall.sh && sh /tmp/tachyon-uninstall.sh
 ```
 

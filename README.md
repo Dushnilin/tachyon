@@ -63,7 +63,7 @@ Tachyon перехватывает сетевой стек через ядро *
 * **Статический DNS-Overriding (`dns_hosts`)**: Прямое переопределение IP-адресов для доменов в DNS-модуле sing-box и dnsmasq без необходимости подмены `/etc/hosts`.
 * **Загрузка сторонних списков Hosts (`hosts_list_urls`)**: Автоматическая фоновая загрузка и интеграция внешних реестров и списков блокировок (AdAway, StevenBlack, РКН/Антизапрет списки).
 * **Умный кэш (`combined.txt`)**: Автоматическое слияние, очистка и единое кэширование нескольких источников списков с поддержкой мгновенного переиспользования.
-* **Резервирование через зеркала (GitHub Mirror Retry)**: При сетевых блокировках github.com модули загрузки автоматически переключаются на зеркала (`gh-proxy.com`, `ghproxy.net`).
+* **Резервирование через зеркала (GitHub Mirror Retry)**: При сетевых блокировках github.com модули загрузки автоматически переключаются на зеркала (`cdn.jsdelivr.net`, `gh-proxy.com`, `ghproxy.net`).
 * **Секции чистого Hosts (`action = hosts`)**: Создание изолированных правил перенаправления DNS без обязательной привязки к прокси-нодам.
 
 <p align="center">
@@ -200,10 +200,13 @@ wget -O /tmp/tachyon-setup.sh https://raw.githubusercontent.com/Dushnilin/tachyo
 > [!TIP]
 > **Зеркала установки (при блокировке или замедлении GitHub):**
 > ```bash
-> # Зеркало 1 (gh-proxy.com):
+> # Зеркало 1 (jsdelivr.net CDN):
+> wget -O /tmp/tachyon-setup.sh https://cdn.jsdelivr.net/gh/Dushnilin/tachyon@main/install.sh && sh /tmp/tachyon-setup.sh
+> 
+> # Зеркало 2 (gh-proxy.com):
 > wget -O /tmp/tachyon-setup.sh https://gh-proxy.com/raw.githubusercontent.com/Dushnilin/tachyon/main/install.sh && sh /tmp/tachyon-setup.sh
 > 
-> # Зеркало 2 (ghfast.top):
+> # Зеркало 3 (ghfast.top):
 > wget -O /tmp/tachyon-setup.sh https://ghfast.top/https://raw.githubusercontent.com/Dushnilin/tachyon/main/install.sh && sh /tmp/tachyon-setup.sh
 > ```
 
@@ -218,8 +221,12 @@ wget -O /tmp/tachyon-setup.sh https://raw.githubusercontent.com/Dushnilin/tachyo
 wget -O /tmp/tachyon-uninstall.sh https://raw.githubusercontent.com/Dushnilin/tachyon/main/uninstall.sh && sh /tmp/tachyon-uninstall.sh
 ```
 
-*Через зеркало gh-proxy.com:*
+*Через зеркала:*
 ```bash
+# Зеркало 1 (jsdelivr.net CDN):
+wget -O /tmp/tachyon-uninstall.sh https://cdn.jsdelivr.net/gh/Dushnilin/tachyon@main/uninstall.sh && sh /tmp/tachyon-uninstall.sh
+
+# Зеркало 2 (gh-proxy.com):
 wget -O /tmp/tachyon-uninstall.sh https://gh-proxy.com/raw.githubusercontent.com/Dushnilin/tachyon/main/uninstall.sh && sh /tmp/tachyon-uninstall.sh
 ```
 
