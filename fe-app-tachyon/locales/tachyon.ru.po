@@ -5092,3 +5092,57 @@ msgstr "Восстановление прямого интернета..."
 
 msgid "Find optimal DPI bypass strategies with isolated live probing"
 msgstr "Автоматический подбор оптимальных параметров обхода DPI в изолированном сэндбоксе"
+
+msgid "DPI Detected"
+msgstr "DPI обнаружен"
+
+msgid "confidence"
+msgstr "уверенность"
+
+msgid "Recommended"
+msgstr "Рекомендовано"
+
+msgid "Auto-apply best strategy"
+msgstr "Авто-применение лучшей стратегии"
+
+msgid "Benchmark History"
+msgstr "История бенчмарков"
+
+msgid "Refresh"
+msgstr "Обновить"
+
+msgid "Clear History"
+msgstr "Очистить историю"
+
+msgid "No benchmark history yet. Run a benchmark to see results here."
+msgstr "История бенчмарков пуста. Запустите бенчмарк, чтобы увидеть результаты здесь."
+
+msgid "Failed to load history"
+msgstr "Не удалось загрузить историю"
+
+msgid "Date"
+msgstr "Дата"
+
+msgid "DPI Type"
+msgstr "Тип DPI"
+
+msgid "Best Strategy"
+msgstr "Лучшая стратегия"
+
+msgid "Working"
+msgstr "Рабочих"
+
+msgid "Auto-applied best strategy"
+msgstr "Лучшая стратегия автоматически применена"
+
+msgid "Auto-apply failed"
+msgstr "Авто-применение не удалось"
+
+msgid "Failed to detect DPI type"
+msgstr "Не удалось определить тип DPI"
+
+msgid "Failed to auto-apply strategy"
+msgstr "Не удалось автоматически применить стратегию"
+
+msgid "History cleared"
+msgstr "История очищена"

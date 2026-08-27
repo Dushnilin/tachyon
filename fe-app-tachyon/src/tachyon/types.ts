@@ -107,6 +107,10 @@ export namespace Tachyon {
     FUZZER_GET_PATTERNS = 'fuzzer_get_patterns',
     FUZZER_SAVE_PATTERNS = 'fuzzer_save_patterns',
     FUZZER_RESET_PATTERNS = 'fuzzer_reset_patterns',
+    FUZZER_DETECT_DPI = 'fuzzer_detect_dpi',
+    FUZZER_AUTO_APPLY = 'fuzzer_auto_apply',
+    FUZZER_HISTORY = 'fuzzer_history',
+    FUZZER_CLEAR_HISTORY = 'fuzzer_clear_history',
   }
 
   export enum AvailableClashAPIMethods {
@@ -905,6 +909,7 @@ export namespace Tachyon {
     error?: string | null;
     started_at: number;
     finished_at: number;
+    dpi_detection?: FuzzerDpiDetection | null;
   }
 
   export interface FuzzerStartResponse {
@@ -977,5 +982,66 @@ export namespace Tachyon {
   export interface FuzzerTargetSuite {
     name: string;
     urls: FuzzerTargetSuiteItem[];
+  }
+
+  export interface FuzzerDpiDetection {
+    type: 'rst' | 'throttle' | 'dns_block' | 'unknown' | 'none';
+    confidence: number;
+    details: string;
+    recommended_engines: string[];
+    probe_metrics: {
+      http_code: number;
+      handshake_ms: number;
+      ttfb_ms: number;
+      speed_kbps: number;
+      error: string;
+    };
+  }
+
+  export interface FuzzerHistoryEntry {
+    timestamp: number;
+    engine: string;
+    target: string;
+    mode: string;
+    best_strategy: {
+      id: string;
+      name: string;
+      engine: string;
+      args: string;
+      score: number;
+      ttfb_ms: number;
+      speed_kbps: number;
+    } | null;
+    total_tested: number;
+    working_count: number;
+    dpi_detection: FuzzerDpiDetection | null;
+    duration_sec: number;
+  }
+
+  export interface FuzzerHistoryResult {
+    success: boolean;
+    entries: FuzzerHistoryEntry[];
+  }
+
+  export interface FuzzerDetectDpiResponse {
+    type: 'rst' | 'throttle' | 'dns_block' | 'unknown' | 'none';
+    confidence: number;
+    details: string;
+    recommended_engines: string[];
+    probe_metrics: {
+      http_code: number;
+      handshake_ms: number;
+      ttfb_ms: number;
+      speed_kbps: number;
+      error: string;
+    };
+  }
+
+  export interface FuzzerAutoApplyResponse {
+    success: boolean;
+    engine: string;
+    applied_to: string;
+    args: string;
+    error?: string;
   }
 }

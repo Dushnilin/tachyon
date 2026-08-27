@@ -7614,3 +7614,75 @@ msgstr ""
 #: src/tachyon/tabs/diagnostic/checks/runZapret2Check.ts:107
 msgid "Zapret2 sing-box outbound is not configured"
 msgstr ""
+
+#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts
+msgid "DPI Detected"
+msgstr ""
+
+#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts
+msgid "confidence"
+msgstr ""
+
+#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts
+msgid "Recommended"
+msgstr ""
+
+#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts
+msgid "Auto-apply best strategy"
+msgstr ""
+
+#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts
+msgid "Benchmark History"
+msgstr ""
+
+#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts
+msgid "Refresh"
+msgstr ""
+
+#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts
+msgid "Clear History"
+msgstr ""
+
+#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts
+msgid "No benchmark history yet. Run a benchmark to see results here."
+msgstr ""
+
+#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts
+msgid "Failed to load history"
+msgstr ""
+
+#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts
+msgid "Date"
+msgstr ""
+
+#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts
+msgid "DPI Type"
+msgstr ""
+
+#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts
+msgid "Best Strategy"
+msgstr ""
+
+#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts
+msgid "Working"
+msgstr ""
+
+#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts
+msgid "Auto-applied best strategy"
+msgstr ""
+
+#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts
+msgid "Auto-apply failed"
+msgstr ""
+
+#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts
+msgid "Failed to detect DPI type"
+msgstr ""
+
+#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts
+msgid "Failed to auto-apply strategy"
+msgstr ""
+
+#: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts
+msgid "History cleared"
+msgstr ""

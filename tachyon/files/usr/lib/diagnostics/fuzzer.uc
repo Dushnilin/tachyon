@@ -21,6 +21,7 @@ const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
 const STATE_DIR = getenv("TACHYON_FUZZER_STATE_DIR") || "/var/run/tachyon";
 const STATE_FILE = STATE_DIR + "/fuzzer-state.json";
 const PID_FILE = STATE_DIR + "/fuzzer-worker.pid";
+const HISTORY_FILE = "/etc/tachyon/fuzzer_history.json";
 const BYEDPI_PORT = 11089;
 const NFQUEUE_QNUM_ZAPRET = 298;
 const NFQUEUE_QNUM_ZAPRET2 = 299;
@@ -1078,6 +1079,203 @@ function parse_curl_output(output, result) {
     return result;
 }
 
+// ── DPI Type Detection ──────────────────────────────────────────────────────
+// Probes the target without any bypass to determine how it's being blocked.
+// Returns: { type: "rst"|"throttle"|"dns_block"|"unknown"|"none",
+//            confidence: 0-100, details: string, recommended_engines: string[] }
+function detect_dpi_type(target_key, custom_url) {
+    let urls_list = resolve_target_urls_list(target_key, custom_url);
+    let target_url = urls_list[0] ? urls_list[0].url : "https://www.google.com";
+
+    let result = {
+        type: "unknown",
+        confidence: 0,
+        details: "",
+        recommended_engines: [],
+        probe_metrics: { http_code: 0, handshake_ms: 0, ttfb_ms: 0, speed_kbps: 0, error: "" }
+    };
+
+    // Direct probe without any bypass
+    let curl_cmd = sprintf(
+        "curl -so /dev/null -w '%%{http_code}\\t%%{time_appconnect}\\t%%{time_starttransfer}\\t%%{speed_download}' -L --connect-timeout 3 --max-time 5 %s 2>&1",
+        shell_quote(target_url)
+    );
+    let pipe = fs.popen(curl_cmd, "r");
+    let output = pipe ? pipe.read("all") : "";
+    if (pipe) pipe.close();
+    output = trim(output);
+
+    let metrics = {};
+    parse_curl_output(output, metrics);
+    result.probe_metrics = {
+        http_code: metrics.http_code || 0,
+        handshake_ms: metrics.handshake_ms || 0,
+        ttfb_ms: metrics.ttfb_ms || 0,
+        speed_kbps: metrics.speed_kbps || 0,
+        error: metrics.error || ""
+    };
+
+    // Also check for DNS-level blocking
+    let domain = target_url;
+    let dm = match(domain, /https?:\/\/([^/]+)/);
+    if (dm && dm[1]) domain = dm[1];
+
+    let dns_cmd = sprintf("nslookup %s 2>&1", shell_quote(domain));
+    let dns_pipe = fs.popen(dns_cmd, "r");
+    let dns_out = dns_pipe ? dns_pipe.read("all") : "";
+    if (dns_pipe) dns_pipe.close();
+
+    let dns_blocked = false;
+    if (index(dns_out, "NXDOMAIN") >= 0 || index(dns_out, "can't resolve") >= 0 || index(dns_out, "** server can't find") >= 0) {
+        dns_blocked = true;
+    }
+
+    // Analyze failure patterns
+    let http_code = metrics.http_code || 0;
+    let handshake = metrics.handshake_ms || 0;
+    let ttfb = metrics.ttfb_ms || 0;
+    let error_str = metrics.error || "";
+
+    if (dns_blocked) {
+        result.type = "dns_block";
+        result.confidence = 90;
+        result.details = sprintf("DNS resolution failed for %s — likely DNS-level blocking or hijacking", domain);
+        result.recommended_engines = ["byedpi", "zapret2"];
+    } else if (index(error_str, "Connection reset") >= 0 || index(error_str, "ECONNRESET") >= 0) {
+        result.type = "rst";
+        result.confidence = 85;
+        result.details = sprintf("TCP RST received from DPI — active TCP reset injection detected");
+        result.recommended_engines = ["zapret2", "zapret"];
+    } else if (http_code == 0 || index(error_str, "Connection refused") >= 0 || index(error_str, "ECONNREFUSED") >= 0) {
+        result.type = "rst";
+        result.confidence = 70;
+        result.details = sprintf("Connection refused — likely RST or blackhole by DPI");
+        result.recommended_engines = ["zapret2", "zapret"];
+    } else if (http_code >= 400 && http_code < 500) {
+        result.type = "throttle";
+        result.confidence = 60;
+        result.details = sprintf("HTTP %d returned — DPI may be injecting HTTP errors or throttling", http_code);
+        result.recommended_engines = ["zapret2", "byedpi"];
+    } else if (handshake > 2000) {
+        result.type = "throttle";
+        result.confidence = 75;
+        result.details = sprintf("Very slow TLS handshake (%dms) — likely DPI deep inspection causing delay", handshake);
+        result.recommended_engines = ["zapret2", "zapret"];
+    } else if (ttfb > 3000 && http_code >= 200 && http_code < 400) {
+        result.type = "throttle";
+        result.confidence = 65;
+        result.details = sprintf("High TTFB (%dms) despite successful connection — likely bandwidth throttling", ttfb);
+        result.recommended_engines = ["zapret2", "byedpi"];
+    } else if (http_code >= 200 && http_code < 400) {
+        result.type = "none";
+        result.confidence = 95;
+        result.details = sprintf("Target accessible — no DPI blocking detected (HTTP %d, TTFB %dms)", http_code, ttfb);
+        result.recommended_engines = [];
+    } else {
+        result.type = "unknown";
+        result.confidence = 30;
+        result.details = sprintf("Inconclusive — HTTP %d, error: %s", http_code, error_str != "" ? error_str : "none");
+        result.recommended_engines = ["zapret2", "zapret", "byedpi"];
+    }
+
+    return result;
+}
+
+// ── History Persistence ──────────────────────────────────────────────────────
+function load_history() {
+    let data = read_json_file(HISTORY_FILE);
+    if (data && type(data) == "object" && data.entries && type(data.entries) == "array") {
+        return data;
+    }
+    return { entries: [] };
+}
+
+function save_history(history) {
+    common.ensure_dir("/etc/tachyon");
+    while (length(history.entries) > 50) {
+        shift(history.entries);
+    }
+    write_json_file(HISTORY_FILE, history);
+}
+
+function append_history(entry) {
+    let history = load_history();
+    push(history.entries, {
+        timestamp: entry.timestamp || clock()[0],
+        engine: entry.engine || "unknown",
+        target: entry.target || "unknown",
+        mode: entry.mode || "presets",
+        best_strategy: entry.best_strategy || null,
+        total_tested: entry.total_tested || 0,
+        working_count: entry.working_count || 0,
+        dpi_detection: entry.dpi_detection || null,
+        duration_sec: entry.duration_sec || 0
+    });
+    save_history(history);
+}
+
+function get_history(limit) {
+    let history = load_history();
+    let entries = history.entries || [];
+    let n = int(limit) || 0;
+    if (n > 0 && length(entries) > n) {
+        let start = length(entries) - n;
+        let sliced = [];
+        for (let i = start; i < length(entries); i++) {
+            push(sliced, entries[i]);
+        }
+        entries = sliced;
+    }
+    return entries;
+}
+
+// ── Strategy Priority Reranking (based on DPI type) ─────────────────────────
+function rerank_strategies_by_dpi(strategies, dpi_type) {
+    if (!dpi_type || dpi_type.type == "none" || dpi_type.type == "unknown")
+        return strategies;
+
+    let priority_ids = [];
+    if (dpi_type.type == "rst") {
+        priority_ids = ["badseq", "md5sig", "multisplit", "disorder"];
+    } else if (dpi_type.type == "throttle") {
+        priority_ids = ["multisplit", "seqovl", "wsize", "split2"];
+    } else if (dpi_type.type == "dns_block") {
+        priority_ids = ["fake", "ttl=3", "ttl=4", "sniext"];
+    }
+
+    if (length(priority_ids) == 0)
+        return strategies;
+
+    let scored = [];
+    for (let s in strategies) {
+        let score = 0;
+        let args_lower = lc(as_string(s.args));
+        let name_lower = lc(as_string(s.name));
+        for (let pid in priority_ids) {
+            if (index(args_lower, pid) >= 0 || index(name_lower, pid) >= 0) {
+                score += 10;
+            }
+        }
+        push(scored, { strat: s, score: score });
+    }
+
+    for (let i = 0; i < length(scored) - 1; i++) {
+        for (let j = i + 1; j < length(scored); j++) {
+            if (scored[j].score > scored[i].score) {
+                let tmp = scored[i];
+                scored[i] = scored[j];
+                scored[j] = tmp;
+            }
+        }
+    }
+
+    let result = [];
+    for (let item in scored) {
+        push(result, item.strat);
+    }
+    return result;
+}
+
 function run_probe(engine, args_str, target_key, custom_url) {
     cleanup_temp_daemons();
     
@@ -1256,6 +1454,10 @@ function run_probe(engine, args_str, target_key, custom_url) {
 
 function run_fuzzer_worker(engine, target, custom_url, rule_section, custom_file, mode) {
     let target_url = resolve_target_url(target, custom_url);
+
+    // ── Pre-fuzz DPI detection ────────────────────────────────────────────
+    let dpi_detection = detect_dpi_type(target, custom_url);
+
     let strategies = null;
     if (custom_file && custom_file != "" && fs.stat(custom_file) != null) {
         strategies = common.read_json_file(custom_file);
@@ -1263,6 +1465,10 @@ function run_fuzzer_worker(engine, target, custom_url, rule_section, custom_file
     if (!strategies || type(strategies) != "array" || length(strategies) == 0) {
         strategies = get_strategies_for_engine(engine, mode);
     }
+
+    // Rerank strategies based on detected DPI type
+    strategies = rerank_strategies_by_dpi(strategies, dpi_detection);
+
     let total = length(strategies);
     
     let state = {
@@ -1282,7 +1488,8 @@ function run_fuzzer_worker(engine, target, custom_url, rule_section, custom_file
         best_strategy: null,
         error: null,
         started_at: clock()[0],
-        finished_at: 0
+        finished_at: 0,
+        dpi_detection: dpi_detection
     };
     
     save_fuzzer_state(state);
@@ -1290,6 +1497,7 @@ function run_fuzzer_worker(engine, target, custom_url, rule_section, custom_file
     try {
         let highest_score = -1;
         let best = null;
+        let working_count = 0;
         
         for (let i = 0; i < total; i++) {
             let strat = strategies[i];
@@ -1318,6 +1526,8 @@ function run_fuzzer_worker(engine, target, custom_url, rule_section, custom_file
                 badge: ""
             };
             
+            if (item_result.success) working_count++;
+
             if (item_result.score > highest_score && item_result.success) {
                 highest_score = item_result.score;
                 best = item_result;
@@ -1351,6 +1561,28 @@ function run_fuzzer_worker(engine, target, custom_url, rule_section, custom_file
         state.current_strategy = null;
         state.finished_at = clock()[0];
         save_fuzzer_state(state);
+
+        // ── Persist to history ────────────────────────────────────────────
+        let duration = state.finished_at - state.started_at;
+        append_history({
+            timestamp: state.finished_at,
+            engine: engine,
+            target: target,
+            mode: mode,
+            best_strategy: best ? {
+                id: best.id,
+                name: best.name,
+                engine: best.engine,
+                args: best.args,
+                score: best.score,
+                ttfb_ms: best.ttfb_ms,
+                speed_kbps: best.speed_kbps
+            } : null,
+            total_tested: total,
+            working_count: working_count,
+            dpi_detection: dpi_detection,
+            duration_sec: int(duration)
+        });
     } catch (err) {
         state.running = false;
         state.error = as_string(err);
@@ -1456,6 +1688,21 @@ function apply_strategy(engine, args_val, target_rule) {
     }));
 }
 
+function auto_apply_best(target_rule) {
+    let state = get_fuzzer_state();
+    if (!state.best_strategy || state.best_strategy.score <= 0) {
+        print(sprintf("%J\n", { success: false, error: "No winning strategy found — run a benchmark first" }));
+        return;
+    }
+    let best = state.best_strategy;
+    apply_strategy(best.engine, best.args, target_rule);
+}
+
+function clear_history() {
+    save_history({ entries: [] });
+    print(sprintf("%J\n", { success: true, message: "Fuzzer history cleared" }));
+}
+
 // CLI Dispatcher
 let op = ARGV[0] || "status";
 
@@ -1478,6 +1725,16 @@ if (op == "start") {
     reset_patterns_config();
 } else if (op == "ai_synthesize" || op == "synthesize") {
     synthesize_ai_strategies(ARGV[1], ARGV[2], ARGV[3], ARGV[4]);
+} else if (op == "detect_dpi") {
+    let detection = detect_dpi_type(ARGV[1], ARGV[2]);
+    print(sprintf("%J\n", detection));
+} else if (op == "auto_apply") {
+    auto_apply_best(ARGV[1]);
+} else if (op == "history") {
+    let entries = get_history(ARGV[1]);
+    print(sprintf("%J\n", { success: true, entries: entries }));
+} else if (op == "clear_history") {
+    clear_history();
 } else if (op == "generate" || op == "strategies_generate") {
     print(sprintf("%J\n", get_strategies_for_engine(ARGV[1], ARGV[2] || "combinatorial")));
 } else if (op == "strategies") {
@@ -1491,7 +1748,7 @@ if (op == "start") {
         byedpi: get_strategies_for_engine("byedpi", strat_mode)
     }));
 } else {
-    warn("Usage: fuzzer.uc [start|status|stop|apply|strategies|generate|get_patterns|save_patterns|reset_patterns|ai_synthesize|worker] ...\n");
+    warn("Usage: fuzzer.uc [start|status|stop|apply|strategies|generate|get_patterns|save_patterns|reset_patterns|ai_synthesize|detect_dpi|auto_apply|history|clear_history|worker] ...\n");
     exit(1);
 }
 

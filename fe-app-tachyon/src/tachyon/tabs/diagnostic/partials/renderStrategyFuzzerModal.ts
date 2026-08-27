@@ -8,7 +8,8 @@ export function renderStrategyFuzzerModal(ruleNames: string[] = []) {
   let isPolling = false;
 
   // Modal State
-  let activeTab: 'benchmark' | 'patterns' | 'custom' | 'ai' = 'benchmark';
+  let activeTab: 'benchmark' | 'patterns' | 'custom' | 'ai' | 'history' =
+    'benchmark';
   let selectedEngine: Tachyon.FuzzerEngine = 'zapret2';
   let selectedTarget: Tachyon.FuzzerTarget = 'youtube_suite';
   let customUrl = '';
@@ -17,6 +18,8 @@ export function renderStrategyFuzzerModal(ruleNames: string[] = []) {
   let isRunning = false;
   let currentState: Tachyon.FuzzerState | null = null;
   let resultFilter: 'all' | 'success' | 'fast' = 'all';
+  let autoApplyEnabled = false;
+  let currentDpiDetection: Tachyon.FuzzerDpiDetection | null = null;
 
   // Patterns Config State
   let patternsConfig: Tachyon.FuzzerPatternsConfig = {
@@ -56,7 +59,7 @@ export function renderStrategyFuzzerModal(ruleNames: string[] = []) {
   const tabButtons: Record<string, HTMLElement> = {};
 
   const createTabButton = (
-    id: 'benchmark' | 'patterns' | 'custom' | 'ai',
+    id: 'benchmark' | 'patterns' | 'custom' | 'ai' | 'history',
     icon: string,
     label: string,
   ) => {
@@ -89,6 +92,7 @@ export function renderStrategyFuzzerModal(ruleNames: string[] = []) {
       createTabButton('patterns', '🛠️', _('Pattern Builder')),
       createTabButton('custom', '➕', _('My Strategies')),
       createTabButton('ai', '🧠', _('AI Doctor RAG')),
+      createTabButton('history', '📋', _('History')),
     ],
   );
 
@@ -104,6 +108,9 @@ export function renderStrategyFuzzerModal(ruleNames: string[] = []) {
   const tabContentAi = E('div', {
     style: 'display: none; flex-direction: column; gap: 14px;',
   });
+  const tabContentHistory = E('div', {
+    style: 'display: none; flex-direction: column; gap: 14px;',
+  });
 
   const updateTabVisibility = () => {
     for (const key in tabButtons) {
@@ -116,9 +123,12 @@ export function renderStrategyFuzzerModal(ruleNames: string[] = []) {
       activeTab === 'patterns' ? 'flex' : 'none';
     tabContentCustom.style.display = activeTab === 'custom' ? 'flex' : 'none';
     tabContentAi.style.display = activeTab === 'ai' ? 'flex' : 'none';
+    tabContentHistory.style.display =
+      activeTab === 'history' ? 'flex' : 'none';
 
     if (activeTab === 'patterns') renderPatternsTab();
     if (activeTab === 'custom') renderCustomTab();
+    if (activeTab === 'history') renderHistoryTab();
   };
 
   // ═════════════════════════════════════════════════════════════════════════════
@@ -283,8 +293,42 @@ export function renderStrategyFuzzerModal(ruleNames: string[] = []) {
       ruleSelect,
     ],
   );
-
   controlsGrid.append(engineGroup, targetGroup, modeGroup, ruleGroup);
+
+  // Auto-Apply Toggle
+  const autoApplyCheckbox = E('input', {
+    type: 'checkbox',
+    id: 'tachyon-fuzzer-auto-apply',
+    style: 'margin: 0;',
+  });
+  autoApplyCheckbox.addEventListener('change', () => {
+    autoApplyEnabled = (autoApplyCheckbox as HTMLInputElement).checked;
+  });
+
+  const autoApplyGroup = E(
+    'div',
+    {
+      style:
+        'display: flex; align-items: end; padding: 4px 0; grid-column: 1 / -1;',
+    },
+    [
+      E(
+        'div',
+        {
+          style: 'font-size: 11px; cursor: pointer; display: flex; align-items: center; gap: 4px;',
+        },
+        [autoApplyCheckbox, E('span', {}, _('Auto-apply best strategy'))],
+      ),
+    ],
+  );
+  controlsGrid.append(autoApplyGroup);
+
+  // DPI Detection Banner
+  const dpiDetectionBanner = E('div', {
+    id: 'tachyon-fuzzer-dpi-banner',
+    style:
+      'display: none; padding: 10px 14px; border-radius: 6px; font-size: 12px; line-height: 1.4;',
+  });
 
   // Progress Bar
   const progressContainer = E(
@@ -505,6 +549,7 @@ export function renderStrategyFuzzerModal(ruleNames: string[] = []) {
 
   tabContentBenchmark.append(
     controlsGrid,
+    dpiDetectionBanner,
     progressContainer,
     filterToolbar,
     resultsContainer,
@@ -1044,6 +1089,148 @@ export function renderStrategyFuzzerModal(ruleNames: string[] = []) {
 
   tabContentAi.append(aiSynthesizerCard);
 
+  // ═════════════════════════════════════════════════════════════════════════════
+  // TAB 5: HISTORY
+  // ═════════════════════════════════════════════════════════════════════════════
+
+  const renderHistoryTab = async () => {
+    tabContentHistory.replaceChildren();
+
+    const historyHeader = E(
+      'div',
+      {
+        style:
+          'display: flex; justify-content: space-between; align-items: center;',
+      },
+      [
+        E(
+          'div',
+          { style: 'font-size: 13px; font-weight: bold;' },
+          '📋 ' + _('Benchmark History'),
+        ),
+        E('div', { style: 'display: flex; gap: 8px;' }, [
+          renderButton({
+            text: _('🔄 Refresh'),
+            classNames: ['cbi-button-neutral'],
+            onClick: () => renderHistoryTab(),
+          }),
+          renderButton({
+            text: _('🗑️ Clear History'),
+            classNames: ['cbi-button-reset'],
+            onClick: async () => {
+              await TachyonShellMethods.clearFuzzerHistory();
+              showToast(_('History cleared'), 'success');
+              renderHistoryTab();
+            },
+          }),
+        ]),
+      ],
+    );
+
+    const historyContainer = E('div', {
+      style:
+        'border: 1px solid var(--border-color, rgba(255,255,255,0.1)); border-radius: 6px; overflow: hidden;',
+    });
+
+    try {
+      const res = await TachyonShellMethods.getFuzzerHistory(20);
+      const entries = res.data?.entries || [];
+
+      if (entries.length === 0) {
+        historyContainer.appendChild(
+          E(
+            'div',
+            {
+              style:
+                'padding: 24px; text-align: center; opacity: 0.6; font-size: 12px;',
+            },
+            _('No benchmark history yet. Run a benchmark to see results here.'),
+          ),
+        );
+      } else {
+        const table = E(
+          'table',
+          {
+            class: 'table',
+            style: 'width: 100%; margin: 0; font-size: 12px;',
+          },
+          [
+            E('thead', {}, [
+              E('tr', {}, [
+                E('th', { style: 'padding: 8px;' }, _('Date')),
+                E('th', { style: 'padding: 8px;' }, _('Engine')),
+                E('th', { style: 'padding: 8px;' }, _('Target')),
+                E('th', { style: 'padding: 8px;' }, _('DPI Type')),
+                E('th', { style: 'padding: 8px;' }, _('Best Strategy')),
+                E('th', { style: 'padding: 8px; width: 60px;' }, _('Score')),
+                E('th', { style: 'padding: 8px; width: 70px;' }, _('Working')),
+              ]),
+            ]),
+            E(
+              'tbody',
+              {},
+              entries.reverse().map((entry) => {
+                const date = new Date(entry.timestamp * 1000);
+                const dateStr = `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`;
+                const dpiType = entry.dpi_detection
+                  ? `${entry.dpi_detection.type} (${entry.dpi_detection.confidence}%)`
+                  : '—';
+                const bestName = entry.best_strategy
+                  ? entry.best_strategy.name
+                  : '—';
+                const bestScore = entry.best_strategy
+                  ? String(entry.best_strategy.score)
+                  : '0';
+                const working = `${entry.working_count}/${entry.total_tested}`;
+
+                return E('tr', {}, [
+                  E('td', { style: 'padding: 8px;' }, dateStr),
+                  E(
+                    'td',
+                    {
+                      style: 'padding: 8px; font-family: monospace;',
+                    },
+                    entry.engine,
+                  ),
+                  E('td', { style: 'padding: 8px;' }, entry.target),
+                  E('td', { style: 'padding: 8px;' }, dpiType),
+                  E(
+                    'td',
+                    {
+                      style:
+                        'padding: 8px; font-size: 11px; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;',
+                    },
+                    bestName,
+                  ),
+                  E(
+                    'td',
+                    { style: 'padding: 8px; font-weight: bold;' },
+                    bestScore,
+                  ),
+                  E('td', { style: 'padding: 8px;' }, working),
+                ]);
+              }),
+            ),
+          ],
+        );
+        historyContainer.appendChild(table);
+      }
+    } catch {
+      historyContainer.appendChild(
+        E(
+          'div',
+          {
+            style:
+              'padding: 24px; text-align: center; opacity: 0.6; font-size: 12px;',
+          },
+          _('Failed to load history'),
+        ),
+      );
+    }
+
+    tabContentHistory.append(historyHeader, historyContainer);
+  };
+
   // ── Results Rendering ─────────────────────────────────────────────────────
   const renderResults = (state: Tachyon.FuzzerState) => {
     const tbody = document.getElementById('tachyon-fuzzer-results-tbody');
@@ -1228,6 +1415,29 @@ export function renderStrategyFuzzerModal(ruleNames: string[] = []) {
           stopPolling();
           startBtn.innerText = _('🚀 Start Benchmark');
           (startBtn as HTMLButtonElement).disabled = false;
+
+          // Auto-apply best strategy if enabled
+          if (autoApplyEnabled && currentState?.best_strategy) {
+            try {
+              const applyRes =
+                await TachyonShellMethods.autoApplyFuzzerStrategy(
+                  selectedRuleSection || undefined,
+                );
+              if (applyRes.success) {
+                showToast(
+                  `${_('✅ Auto-applied best strategy')}: ${currentState.best_strategy.name}`,
+                  'success',
+                );
+              } else {
+                showToast(
+                  `${_('Auto-apply failed')}: ${applyRes.error || _('Unknown error')}`,
+                  'error',
+                );
+              }
+            } catch {
+              showToast(_('Auto-apply failed'), 'error');
+            }
+          }
         }
       }
     } catch {
@@ -1248,6 +1458,64 @@ export function renderStrategyFuzzerModal(ruleNames: string[] = []) {
       clearInterval(pollingInterval);
       pollingInterval = null;
     }
+  };
+
+  const updateDpiBanner = (detection: Tachyon.FuzzerDpiDetection | null) => {
+    const banner = document.getElementById('tachyon-fuzzer-dpi-banner');
+    if (!banner) return;
+    if (!detection) {
+      banner.style.display = 'none';
+      return;
+    }
+
+    const typeColors: Record<string, { bg: string; border: string; icon: string }> = {
+      rst: { bg: 'rgba(220, 53, 69, 0.12)', border: '#dc3545', icon: '🔴' },
+      throttle: {
+        bg: 'rgba(255, 193, 7, 0.12)',
+        border: '#ffc107',
+        icon: '🟡',
+      },
+      dns_block: {
+        bg: 'rgba(23, 162, 184, 0.12)',
+        border: '#17a2b8',
+        icon: '🔵',
+      },
+      unknown: {
+        bg: 'rgba(108, 117, 125, 0.12)',
+        border: '#6c757d',
+        icon: '⚪',
+      },
+      none: {
+        bg: 'rgba(40, 167, 69, 0.12)',
+        border: '#28a745',
+        icon: '🟢',
+      },
+    };
+
+    const typeLabels: Record<string, string> = {
+      rst: 'TCP Reset Injection',
+      throttle: 'Throttling / Deep Inspection',
+      dns_block: 'DNS Blocking',
+      unknown: 'Unknown DPI Pattern',
+      none: 'No Blocking Detected',
+    };
+
+    const colors = typeColors[detection.type] || typeColors.unknown;
+    const label = typeLabels[detection.type] || detection.type;
+
+    banner.style.display = 'block';
+    banner.style.background = colors.bg;
+    banner.style.borderLeft = `3px solid ${colors.border}`;
+    banner.innerHTML = `
+      <div style="display: flex; justify-content: space-between; align-items: start;">
+        <div>
+          <span style="font-weight: bold;">${colors.icon} ${_('DPI Detected')}: ${label}</span>
+          <span style="opacity: 0.7; margin-left: 8px;">${detection.confidence}% ${_('confidence')}</span>
+        </div>
+        ${detection.recommended_engines.length > 0 ? `<div style="font-size: 11px; opacity: 0.7;">${_('Recommended')}: ${detection.recommended_engines.join(', ')}</div>` : ''}
+      </div>
+      <div style="margin-top: 4px; opacity: 0.8; font-size: 11px;">${detection.details}</div>
+    `;
   };
 
   const handleToggleRun = async () => {
@@ -1278,6 +1546,20 @@ export function renderStrategyFuzzerModal(ruleNames: string[] = []) {
       currentStratEl.innerText = _(
         'Preparing strategies and isolated nftables queue...',
       );
+
+    // Run DPI detection before starting benchmark
+    try {
+      const dpiRes = await TachyonShellMethods.detectFuzzerDpi(
+        selectedTarget,
+        selectedTarget === 'custom' ? customUrl : undefined,
+      );
+      if (dpiRes.success && dpiRes.data) {
+        currentDpiDetection = dpiRes.data;
+        updateDpiBanner(dpiRes.data);
+      }
+    } catch {
+      // DPI detection is non-critical, continue with benchmark
+    }
 
     const tbody = document.getElementById('tachyon-fuzzer-results-tbody');
     if (tbody) {
@@ -1453,6 +1735,7 @@ export function renderStrategyFuzzerModal(ruleNames: string[] = []) {
     tabContentPatterns,
     tabContentCustom,
     tabContentAi,
+    tabContentHistory,
   );
 
   // Check initial state

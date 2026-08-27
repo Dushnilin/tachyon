@@ -1352,4 +1352,106 @@ export const TachyonShellMethods = {
         _('Failed to reset fuzzer patterns'),
     };
   },
+
+  detectFuzzerDpi: async (target: string, customUrl?: string) => {
+    const response = await executeShellCommand({
+      command: '/usr/bin/tachyon',
+      args: [
+        Tachyon.AvailableMethods.FUZZER_DETECT_DPI,
+        target,
+        ...(customUrl ? [customUrl] : []),
+      ],
+      timeout: COMPONENT_ACTION_RPC_TIMEOUT_MS,
+    });
+    const parsed = parseJsonObjectOutput<Tachyon.FuzzerDetectDpiResponse>(
+      response.stdout,
+    );
+
+    if ((response.code ?? 0) !== 0 || !parsed) {
+      return {
+        success: false,
+        error: response.stderr || _('Failed to detect DPI type'),
+      };
+    }
+    return {
+      success: true,
+      data: parsed,
+    };
+  },
+
+  autoApplyFuzzerStrategy: async (targetRule?: string) => {
+    const response = await executeShellCommand({
+      command: '/usr/bin/tachyon',
+      args: [
+        Tachyon.AvailableMethods.FUZZER_AUTO_APPLY,
+        ...(targetRule ? [targetRule] : []),
+      ],
+      timeout: UI_ACTION_RPC_TIMEOUT_MS,
+    });
+    const parsed = parseJsonObjectOutput<Tachyon.FuzzerAutoApplyResponse>(
+      response.stdout,
+    );
+
+    if ((response.code ?? 0) !== 0 || !parsed?.success) {
+      return {
+        success: false,
+        error:
+          parsed?.error ||
+          response.stderr ||
+          _('Failed to auto-apply strategy'),
+      };
+    }
+    return {
+      success: true,
+      data: parsed,
+    };
+  },
+
+  getFuzzerHistory: async (limit?: number) => {
+    const response = await executeShellCommand({
+      command: '/usr/bin/tachyon',
+      args: [
+        Tachyon.AvailableMethods.FUZZER_HISTORY,
+        String(limit || 20),
+      ],
+      timeout: COMPONENT_ACTION_RPC_TIMEOUT_MS,
+    });
+    const parsed = parseJsonObjectOutput<Tachyon.FuzzerHistoryResult>(
+      response.stdout,
+    );
+
+    if ((response.code ?? 0) !== 0 || !parsed) {
+      return {
+        success: false,
+        error: response.stderr || _('Failed to get fuzzer history'),
+      };
+    }
+    return {
+      success: true,
+      data: parsed,
+    };
+  },
+
+  clearFuzzerHistory: async () => {
+    const response = await executeShellCommand({
+      command: '/usr/bin/tachyon',
+      args: [Tachyon.AvailableMethods.FUZZER_CLEAR_HISTORY],
+      timeout: COMPONENT_ACTION_RPC_TIMEOUT_MS,
+    });
+    const parsed = parseJsonObjectOutput<{
+      success: boolean;
+      error?: string;
+    }>(response.stdout);
+
+    if ((response.code ?? 0) !== 0 || !parsed?.success) {
+      return {
+        success: false,
+        error: response.stderr || _('Failed to clear fuzzer history'),
+      };
+    }
+    return {
+      success: true,
+      data: { message: _('History cleared') },
+    };
+  },
 };
