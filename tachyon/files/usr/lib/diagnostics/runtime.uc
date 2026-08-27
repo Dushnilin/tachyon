@@ -3453,10 +3453,19 @@ function query_llm(provider, api_key, custom_url, prompt_text, model_override) {
         api_url
     ];
 
+    // OpenRouter recommends these headers for identification and rate-limit ranking
+    if (provider == "openrouter") {
+        push(curl_args, "-H");
+        push(curl_args, "HTTP-Referer: https://github.com/Dushnilin/tachyon");
+        push(curl_args, "-H");
+        push(curl_args, "X-Title: Tachyon AI Doctor");
+    }
+
     let result = command_capture(command_from_args(curl_args));
     remove_file(payload_path);
 
     if (result.status != 0 || result.output == "") {
+        warn(sprintf("LLM query failed: provider=%s url=%s status=%d output_len=%d", provider, api_url, result.status, length(result.output || "")));
         return null;
     }
 
@@ -3465,6 +3474,12 @@ function query_llm(provider, api_key, custom_url, prompt_text, model_override) {
         return response_data.choices[0].message.content;
     }
 
+    // Log the raw response for debugging when parsing fails
+    if (!response_data) {
+        warn(sprintf("LLM response parse failed: provider=%s raw_start=%s", provider, substr(trim(result.output), 0, 200)));
+    } else if (!response_data.choices) {
+        warn(sprintf("LLM response missing choices: provider=%s keys=%s", provider, join(",", keys(response_data))));
+    }
     return null;
 }
 
