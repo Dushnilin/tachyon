@@ -196,6 +196,7 @@ function download_profiles_from_repo() {
     const RAW_URL = "https://raw.githubusercontent.com/Dushnilin/tachyon/main/tachyon/files/usr/share/tachyon/servicecheck_profiles.json";
     const MIRRORS = [
         RAW_URL,
+        "https://cdn.jsdelivr.net/gh/Dushnilin/tachyon@main/tachyon/files/usr/share/tachyon/servicecheck_profiles.json",
         "https://gh-proxy.com/" + RAW_URL,
         "https://ghfast.top/" + RAW_URL,
         "https://ghproxy.net/" + RAW_URL

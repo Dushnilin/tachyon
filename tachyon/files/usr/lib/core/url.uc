@@ -180,6 +180,49 @@ function query_params(value) {
     return result;
 }
 
+function github_to_jsdelivr(url) {
+    url = as_string(url);
+    if (index(url, "github.com/") < 0)
+        return "";
+
+    let path = substr(url, index(url, "github.com/") + 11);
+    let slash1 = index(path, "/");
+    if (slash1 < 0) return "";
+    let owner = substr(path, 0, slash1);
+    let rest = substr(path, slash1 + 1);
+    let slash2 = index(rest, "/");
+    if (slash2 < 0) return "";
+    let repo = substr(rest, 0, slash2);
+    let tail = substr(rest, slash2 + 1);
+
+    let slash3 = index(tail, "/");
+    if (slash3 < 0) return "";
+    let segment3 = substr(tail, 0, slash3);
+    let file = substr(tail, slash3 + 1);
+    if (file == "") return "";
+
+    let ref = "";
+    if (segment3 == "releases" && index(tail, "releases/download/") == 0) {
+        let dl_path = substr(tail, 17);
+        let dl_slash = index(dl_path, "/");
+        if (dl_slash < 0) return "";
+        ref = substr(dl_path, 0, dl_slash);
+        file = substr(dl_path, dl_slash + 1);
+    } else if (segment3 == "raw") {
+        ref = substr(tail, slash3 + 1);
+        let raw_slash = index(ref, "/");
+        if (raw_slash < 0) return "";
+        file = substr(ref, raw_slash + 1);
+        ref = substr(ref, 0, raw_slash);
+    } else {
+        ref = segment3;
+    }
+
+    if (ref == "" || file == "")
+        return "";
+    return "https://cdn.jsdelivr.net/gh/" + owner + "/" + repo + "@" + ref + "/" + file;
+}
+
 function download_candidates(value) {
     value = as_string(value);
     if (value == "")
@@ -192,6 +235,10 @@ function download_candidates(value) {
     let is_http = substr(value, 0, 7) == "http://" || substr(value, 0, 8) == "https://";
 
     if (is_github || is_http) {
+        let jsd = github_to_jsdelivr(value);
+        if (jsd != "")
+            push(candidates, jsd);
+
         let mirrors = [
             "https://ghproxy.net/",
             "https://mirror.ghproxy.com/",

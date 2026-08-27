@@ -3,6 +3,7 @@
 let fs = require("fs");
 let uci = require("core.uci");
 let core_ip = require("core.ip");
+let core_url = require("core.url");
 
 let common = require("core.common");
 let as_string = common.as_string;
@@ -76,19 +77,16 @@ function http_get_to_file(url, output_path) {
 }
 
 function download_with_retry(url, output_path, label) {
-    for (let attempt = 1; attempt <= 3; attempt++) {
-        let current_url = url;
-        if (attempt == 2 && index(current_url, "https://github.com/") == 0) {
-            log("Retrying " + as_string(label) + " via gh-proxy.com mirror", "warn");
-            current_url = "https://gh-proxy.com/" + url;
-        } else if (attempt == 3 && index(current_url, "https://github.com/") == 0) {
-            log("Retrying " + as_string(label) + " via ghproxy.net mirror", "warn");
-            current_url = "https://ghproxy.net/" + url;
-        } else if (attempt > 1) {
-            log("Retrying " + as_string(label), "warn");
+    let candidates = core_url.download_candidates(url);
+
+    for (let attempt = 0; attempt < length(candidates); attempt++) {
+        let current_url = candidates[attempt];
+        if (attempt == 0) {
+            log("Downloading " + as_string(label) + " (attempt 1/" + as_string(length(candidates)) + ")");
+        } else {
+            log("Retrying " + as_string(label) + " via mirror (attempt " + as_string(attempt + 1) + "/" + as_string(length(candidates)) + ")", "warn");
         }
 
-        log("Downloading " + as_string(label) + " (attempt " + attempt + "/3)");
         if (http_get_to_file(current_url, output_path) && file_nonempty(output_path))
             return output_path;
         remove_file(output_path);

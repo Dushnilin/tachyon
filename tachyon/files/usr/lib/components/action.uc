@@ -618,18 +618,15 @@ function download_file_once(url, output_path) {
 }
 
 function download_with_retry(url, output_path, label) {
-    for (let attempt = 1; attempt <= 3; attempt++) {
-        let current_url = url;
-        if (attempt == 2 && index(current_url, "https://github.com/") == 0) {
-            updates_log("Retrying " + as_string(label) + " via gh-proxy.com mirror", "warn");
-            current_url = "https://gh-proxy.com/" + url;
-        } else if (attempt == 3 && index(current_url, "https://github.com/") == 0) {
-            updates_log("Retrying " + as_string(label) + " via ghproxy.net mirror", "warn");
-            current_url = "https://ghproxy.net/" + url;
-        } else if (attempt > 1) {
-            updates_log("Retrying " + as_string(label), "warn");
+    let url_mod = core_url_module_or_null();
+    let candidates = url_mod && type(url_mod.download_candidates) == "function" ? url_mod.download_candidates(url) : [ url ];
+
+    for (let attempt = 0; attempt < length(candidates); attempt++) {
+        let current_url = candidates[attempt];
+        if (attempt == 0) {
+            updates_log("Downloading " + as_string(label) + " (attempt 1/" + as_string(length(candidates)) + ")");
         } else {
-            updates_log("Downloading " + as_string(label) + " (" + attempt + "/3)");
+            updates_log("Retrying " + as_string(label) + " via mirror (attempt " + as_string(attempt + 1) + "/" + as_string(length(candidates)) + ")", "warn");
         }
 
         if (download_file_once(current_url, output_path) && file_nonempty(output_path))
