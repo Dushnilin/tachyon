@@ -60,6 +60,30 @@ function get_byedpi_bin() {
     ]);
 }
 
+function validate_strategy_args(engine, args_val) {
+    args_val = trim(as_string(args_val));
+    if (args_val == "") return false;
+    engine = lc(as_string(engine));
+    try {
+        if (engine == "zapret2") {
+            let val = require("providers.zapret2.validator");
+            let res = val.validate_strategy("nfqws2", args_val, "");
+            return res ? res.valid == true : true;
+        } else if (engine == "zapret") {
+            let val = require("providers.zapret.validator");
+            let res = val.validate_strategy("nfqws", args_val, "");
+            return res ? res.valid == true : true;
+        } else if (engine == "byedpi") {
+            let val = require("providers.byedpi.validator");
+            let res = val.validate_strategy(args_val, "");
+            return res ? res.valid == true : true;
+        }
+    } catch (e) {
+        return true;
+    }
+    return true;
+}
+
 // Target definitions
 const TARGET_URLS = {
     youtube: "https://rr1---sn-4g5edn6r.googlevideo.com/generate_204",
@@ -70,7 +94,7 @@ const TARGET_URLS = {
     telegram: "https://web.telegram.org"
 };
 
-// Strategy Matrices
+// Strategy Matrices (Expanded Production Suite: 38 strategies across engines)
 const STRATEGIES_ZAPRET2 = [
     {
         id: "z2_yt_multisplit_midsld",
@@ -88,10 +112,24 @@ const STRATEGIES_ZAPRET2 = [
     },
     {
         id: "z2_fake_badseq_mid",
-        name: "Fake Packet + MidSLD Disorder",
+        name: "Fake Packet (TTL=8) + MidSLD Split",
         engine: "zapret2",
         args: "--lua-desync=fake:ttl=8 --lua-desync=multisplit:pos=midsld:fooling=badseq",
         description: "Injects low-TTL fake ClientHello before segmented payload."
+    },
+    {
+        id: "z2_fake_md5sig_ttl6",
+        name: "Fake (TTL=6, MD5Sig) + Multisplit",
+        engine: "zapret2",
+        args: "--lua-desync=fake:ttl=6:fooling=md5sig --lua-desync=multisplit:pos=1,midsld",
+        description: "MD5Sig TCP option drops packet at DPI while reaching end server."
+    },
+    {
+        id: "z2_fake_badack_ttl8",
+        name: "Fake (TTL=8, BadACK) + SNIExt Split",
+        engine: "zapret2",
+        args: "--lua-desync=fake:ttl=8:fooling=badack --lua-desync=multisplit:pos=1,sniext+2",
+        description: "BadACK fooling invalidates packet in DPI state tracking."
     },
     {
         id: "z2_wsize_multisplit",
@@ -101,8 +139,15 @@ const STRATEGIES_ZAPRET2 = [
         description: "Forces single-byte TCP window segments to evade reassembly."
     },
     {
+        id: "z2_wsize_seqovl_combo",
+        name: "Window Clamp (wsize=1) + SeqOvl",
+        engine: "zapret2",
+        args: "--lua-desync=multisplit:pos=1,midsld:wsize=1:seqovl=1:fooling=badseq",
+        description: "Combines 1-byte window clamp with sequence overlap."
+    },
+    {
         id: "z2_aggressive_combo",
-        name: "Aggressive Triple-Split + SeqOvl",
+        name: "Aggressive Triple-Split + SeqOvl 2",
         engine: "zapret2",
         args: "--lua-desync=multisplit:pos=1,midsld,sniext+2:seqovl=2:fooling=badseq",
         description: "High-entropy triple fragmentation for heavily filtered regions."
@@ -115,11 +160,39 @@ const STRATEGIES_ZAPRET2 = [
         description: "Standard 2-fragment desync for compatibility."
     },
     {
+        id: "z2_disorder2_pos1",
+        name: "Classic Disorder2 (pos=1)",
+        engine: "zapret2",
+        args: "--lua-desync=disorder2:pos=1:fooling=badseq",
+        description: "Sends out-of-order segment with badseq fooling."
+    },
+    {
+        id: "z2_fake_datanoack",
+        name: "Fake (TTL=8, DataNoAck) + Split2",
+        engine: "zapret2",
+        args: "--lua-desync=fake:ttl=8:fooling=datanoack --lua-desync=split2:pos=1",
+        description: "DataNoAck fooling confuses stateful DPI without triggering ACK RST."
+    },
+    {
+        id: "z2_multiprofile_discord",
+        name: "Discord Multi-Profile (TCP + UDP)",
+        engine: "zapret2",
+        args: "--filter-tcp=443 --lua-desync=multisplit:pos=1,midsld:seqovl=1 --new --filter-udp=50000-65535 --lua-desync=fake:ttl=8",
+        description: "Combined profile: multisplit for HTTPS/API and fake UDP for Discord Voice."
+    },
+    {
         id: "z2_discord_udp",
         name: "Discord Voice UDP Desync",
         engine: "zapret2",
         args: "--filter-udp=50000-65535 --lua-desync=fake:ttl=8",
         description: "UDP fake packet desync for Discord RTC and Voice channels."
+    },
+    {
+        id: "z2_quic_http3_udp",
+        name: "QUIC / HTTP3 UDP Fake Desync",
+        engine: "zapret2",
+        args: "--filter-udp=443 --lua-desync=fake:ttl=8",
+        description: "UDP fake desync for QUIC/HTTP3 protocol bypass."
     }
 ];
 
@@ -132,42 +205,98 @@ const STRATEGIES_ZAPRET = [
         description: "Base HTTP/TLS split inside SNI header."
     },
     {
+        id: "z1_split2_pos1",
+        name: "Standard Split2 (pos=1)",
+        engine: "zapret",
+        args: "--dpi-desync=split2 --dpi-desync-split-pos=1",
+        description: "1-byte TLS ClientHello split."
+    },
+    {
         id: "z1_disorder2_badseq",
-        name: "Disorder2 + BadSeq",
+        name: "Disorder2 + BadSeq (pos=1)",
         engine: "zapret",
         args: "--dpi-desync=disorder2 --dpi-desync-split-pos=1 --dpi-desync-fooling=badseq",
         description: "Sends out-of-order packets with invalid TCP sequence fooling."
     },
     {
-        id: "z1_fake_split2_ttl",
+        id: "z1_fake_split2_ttl8",
         name: "Fake SNI + Split2 (TTL=8)",
         engine: "zapret",
         args: "--dpi-desync=fake,split2 --dpi-desync-split-pos=1 --dpi-desync-ttl=8 --dpi-desync-fooling=badseq",
-        description: "Sends low-TTL fake packet followed by segmented ClientHello."
+        description: "Sends TTL=8 fake packet followed by segmented ClientHello."
     },
     {
-        id: "z1_seqovl_split2",
+        id: "z1_fake_split2_ttl6",
+        name: "Fake SNI + Split2 (TTL=6)",
+        engine: "zapret",
+        args: "--dpi-desync=fake,split2 --dpi-desync-split-pos=1 --dpi-desync-ttl=6 --dpi-desync-fooling=badseq",
+        description: "Sends TTL=6 fake packet for closer TSPU hops."
+    },
+    {
+        id: "z1_fake_split2_ttl4",
+        name: "Fake SNI + Split2 (TTL=4)",
+        engine: "zapret",
+        args: "--dpi-desync=fake,split2 --dpi-desync-split-pos=1 --dpi-desync-ttl=4 --dpi-desync-fooling=badseq",
+        description: "Low TTL=4 fake packet for nearest TSPU filters."
+    },
+    {
+        id: "z1_fake_disorder2_ttl8",
+        name: "Fake SNI + Disorder2 (TTL=8)",
+        engine: "zapret",
+        args: "--dpi-desync=fake,disorder2 --dpi-desync-split-pos=1 --dpi-desync-ttl=8 --dpi-desync-fooling=badseq",
+        description: "Sends fake packet and disorders real segments."
+    },
+    {
+        id: "z1_seqovl_split2_1",
         name: "Sequence Overlap (SeqOvl=1)",
         engine: "zapret",
         args: "--dpi-desync=split2 --dpi-desync-split-seqovl=1 --dpi-desync-fooling=badseq",
-        description: "Overlapping TCP payload to confuse stateful DPI."
+        description: "1-byte overlapping TCP payload to confuse stateful DPI."
+    },
+    {
+        id: "z1_seqovl_split2_2",
+        name: "Sequence Overlap (SeqOvl=2)",
+        engine: "zapret",
+        args: "--dpi-desync=split2 --dpi-desync-split-seqovl=2 --dpi-desync-fooling=badseq",
+        description: "2-byte overlapping TCP payload for aggressive DPI desync."
     },
     {
         id: "z1_md5sig_disorder",
-        name: "MD5Sig Fooling + Disorder",
+        name: "MD5Sig Fooling + Disorder (TTL=6)",
         engine: "zapret",
         args: "--dpi-desync=fake,disorder2 --dpi-desync-fooling=md5sig --dpi-desync-ttl=6",
         description: "Injects TCP MD5 signature option to trigger DPI packet drop."
+    },
+    {
+        id: "z1_badack_disorder",
+        name: "BadACK Fooling + Disorder (TTL=8)",
+        engine: "zapret",
+        args: "--dpi-desync=fake,disorder2 --dpi-desync-fooling=badack --dpi-desync-ttl=8",
+        description: "Injects BadACK sequence to break TCP state tracking."
+    },
+    {
+        id: "z1_fake_midsld_split",
+        name: "Fake + MidSLD Split (TTL=8)",
+        engine: "zapret",
+        args: "--dpi-desync=fake,split2 --dpi-desync-split-pos=midsld --dpi-desync-ttl=8 --dpi-desync-fooling=badseq",
+        description: "Splits in middle of domain name with fake injection."
     }
 ];
 
 const STRATEGIES_BYEDPI = [
     {
         id: "bd_auto_tr_d2",
-        name: "ByeDPI Auto (t,r,a,s)",
+        name: "ByeDPI Auto (t,r,a,s) + Disorder",
         engine: "byedpi",
         args: "-o 2 --auto=t,r,a,s -d 2",
-        description: "Standard adaptive ByeDPI auto-mode with disorder."
+        description: "Adaptive ByeDPI auto-mode with disorder and OOB."
+    },
+    {
+        id: "bd_auto_tr_s1",
+        name: "ByeDPI Auto (t,r,a,s) + Split",
+        engine: "byedpi",
+        args: "-o 1 --auto=t,r,a,s -s 1",
+        description: "Adaptive ByeDPI auto-mode with 1-byte split."
     },
     {
         id: "bd_disorder_fake_ttl8",
@@ -177,30 +306,267 @@ const STRATEGIES_BYEDPI = [
         description: "1-byte split with reverse disorder and fake handshake packet."
     },
     {
-        id: "bd_midsld_fake_frag",
+        id: "bd_disorder_fake_ttl6",
+        name: "Disorder + Fake (TTL=6)",
+        engine: "byedpi",
+        args: "--split 1 --disorder 1 --fake -1 --ttl 6",
+        description: "1-byte split with fake TTL=6 for intermediate hops."
+    },
+    {
+        id: "bd_disorder_fake_ttl4",
+        name: "Disorder + Fake (TTL=4)",
+        engine: "byedpi",
+        args: "--split 1 --disorder 1 --fake -1 --ttl 4",
+        description: "1-byte split with low fake TTL=4."
+    },
+    {
+        id: "bd_midsld_fake_frag_t6",
         name: "SNI Extension + Fake (TTL=6)",
         engine: "byedpi",
         args: "-s 1+sniext -f -1 -t 6",
         description: "SNI extension split with low-TTL fake payload."
     },
     {
+        id: "bd_midsld_fake_frag_t8",
+        name: "SNI Extension + Fake (TTL=8)",
+        engine: "byedpi",
+        args: "-s 1+sniext -f -1 -t 8",
+        description: "SNI extension split with fake TTL=8."
+    },
+    {
         id: "bd_tls_sni_split2",
-        name: "TLS SNI Split (pos=2)",
+        name: "TLS SNI Split + Disorder (pos=2)",
         engine: "byedpi",
         args: "--split 2 --disorder 2",
         description: "Direct TLS SNI offset split with out-of-order delivery."
     },
     {
-        id: "bd_low_ttl_aggressive",
-        name: "Aggressive Fake (TTL=4)",
+        id: "bd_tls_sni_split1",
+        name: "TLS SNI Split + Disorder (pos=1)",
         engine: "byedpi",
-        args: "--fake -1 --ttl 4 --disorder 1 --split 1",
-        description: "Low-TTL aggressive fake packet injection."
+        args: "--split 1 --disorder 1",
+        description: "1-byte TLS ClientHello split with disorder."
+    },
+    {
+        id: "bd_tlsrec_sniext",
+        name: "TLS Record Split (1+sniext)",
+        engine: "byedpi",
+        args: "--tlsrec 1+sniext --split 1",
+        description: "Fragments TLS Record header before SNI extension."
+    },
+    {
+        id: "bd_ip_frag_24",
+        name: "IP Fragmentation (24 bytes)",
+        engine: "byedpi",
+        args: "--ip-frag 24 --split 1",
+        description: "Network layer IP fragmentation on 24-byte boundary."
+    },
+    {
+        id: "bd_fake_sniext_disorder",
+        name: "Aggressive Fake (TTL=8) + SNIExt",
+        engine: "byedpi",
+        args: "--fake -1 --ttl 8 --split 1+sniext --disorder 1",
+        description: "Fake handshake with SNI extension split and disorder."
     }
 ];
 
-function get_strategies_for_engine(engine) {
+function generate_combinatorial_zapret2() {
+    let list = [];
+    let seen = {};
+    
+    let add = function(name, args, desc) {
+        args = trim(as_string(args));
+        if (args == "" || seen[args]) return;
+        if (!validate_strategy_args("zapret2", args)) return;
+        seen[args] = true;
+        push(list, {
+            id: sprintf("z2_gen_%d", length(list) + 1),
+            name: name,
+            engine: "zapret2",
+            args: args,
+            description: desc
+        });
+    };
+    
+    for (let s in STRATEGIES_ZAPRET2) add(s.name, s.args, s.description);
+    
+    let positions = ["1", "2", "midsld", "sniext+4", "1,midsld", "1,sniext+2", "1,midsld,sniext+2"];
+    let foolings = ["badseq", "md5sig", "badack", "datanoack"];
+    let seqovls = ["1", "2"];
+    let ttls = [4, 6, 8, 10];
+    
+    for (let pos in positions) {
+        for (let fooling in foolings) {
+            add(sprintf("Multisplit (pos=%s, %s)", pos, fooling),
+                sprintf("--lua-desync=multisplit:pos=%s:fooling=%s", pos, fooling),
+                "Permutation of multisplit position and fooling method");
+            for (let seqovl in seqovls) {
+                add(sprintf("Multisplit + SeqOvl (pos=%s, seqovl=%s, %s)", pos, seqovl, fooling),
+                    sprintf("--lua-desync=multisplit:pos=%s:seqovl=%s:fooling=%s", pos, seqovl, fooling),
+                    "Permutation of multisplit with sequence overlap");
+                add(sprintf("Multisplit + wsize=1 (pos=%s, seqovl=%s, %s)", pos, seqovl, fooling),
+                    sprintf("--lua-desync=multisplit:pos=%s:wsize=1:seqovl=%s:fooling=%s", pos, seqovl, fooling),
+                    "Window size clamp with sequence overlap");
+            }
+        }
+    }
+    
+    for (let ttl in ttls) {
+        for (let fooling in foolings) {
+            for (let pos in ["1", "midsld", "sniext+4", "1,midsld"]) {
+                add(sprintf("Fake (TTL=%d, %s) + Multisplit (pos=%s)", ttl, fooling, pos),
+                    sprintf("--lua-desync=fake:ttl=%d:fooling=%s --lua-desync=multisplit:pos=%s", ttl, fooling, pos),
+                    "Low-TTL fake injection followed by multisplit payload");
+                add(sprintf("Fake (TTL=%d, %s) + Split2 (pos=%s)", ttl, fooling, pos),
+                    sprintf("--lua-desync=fake:ttl=%d:fooling=%s --lua-desync=split2:pos=%s", ttl, fooling, pos),
+                    "Low-TTL fake injection followed by 2-part split");
+                add(sprintf("Fake (TTL=%d, %s) + Disorder2 (pos=%s)", ttl, fooling, pos),
+                    sprintf("--lua-desync=fake:ttl=%d:fooling=%s --lua-desync=disorder2:pos=%s", ttl, fooling, pos),
+                    "Low-TTL fake injection followed by out-of-order segment");
+            }
+        }
+    }
+    
+    return list;
+}
+
+function generate_combinatorial_zapret() {
+    let list = [];
+    let seen = {};
+    
+    let add = function(name, args, desc) {
+        args = trim(as_string(args));
+        if (args == "" || seen[args]) return;
+        if (!validate_strategy_args("zapret", args)) return;
+        seen[args] = true;
+        push(list, {
+            id: sprintf("z1_gen_%d", length(list) + 1),
+            name: name,
+            engine: "zapret",
+            args: args,
+            description: desc
+        });
+    };
+    
+    for (let s in STRATEGIES_ZAPRET) add(s.name, s.args, s.description);
+    
+    let modes = ["split2", "disorder2", "fake,split2", "fake,disorder2"];
+    let positions = ["1", "2", "midsld", "sniext"];
+    let foolings = ["badseq", "md5sig", "badack"];
+    let ttls = [4, 6, 8, 10];
+    let seqovls = [1, 2];
+    
+    for (let mode in modes) {
+        for (let pos in positions) {
+            for (let fooling in foolings) {
+                if (index(mode, "fake") >= 0) {
+                    for (let ttl in ttls) {
+                        add(sprintf("%s (pos=%s, TTL=%d, %s)", mode, pos, ttl, fooling),
+                            sprintf("--dpi-desync=%s --dpi-desync-split-pos=%s --dpi-desync-ttl=%d --dpi-desync-fooling=%s", mode, pos, ttl, fooling),
+                            "Permutation of fake desync with split pos and fooling");
+                    }
+                } else {
+                    add(sprintf("%s (pos=%s, %s)", mode, pos, fooling),
+                        sprintf("--dpi-desync=%s --dpi-desync-split-pos=%s --dpi-desync-fooling=%s", mode, pos, fooling),
+                        "Permutation of desync with split pos and fooling");
+                    for (let seqovl in seqovls) {
+                        add(sprintf("%s + SeqOvl=%d (pos=%s, %s)", mode, seqovl, pos, fooling),
+                            sprintf("--dpi-desync=%s --dpi-desync-split-pos=%s --dpi-desync-split-seqovl=%d --dpi-desync-fooling=%s", mode, pos, seqovl, fooling),
+                            "Permutation with sequence overlap");
+                    }
+                }
+            }
+        }
+    }
+    
+    return list;
+}
+
+function generate_combinatorial_byedpi() {
+    let list = [];
+    let seen = {};
+    
+    let add = function(name, args, desc) {
+        args = trim(as_string(args));
+        if (args == "" || seen[args]) return;
+        if (!validate_strategy_args("byedpi", args)) return;
+        seen[args] = true;
+        push(list, {
+            id: sprintf("bd_gen_%d", length(list) + 1),
+            name: name,
+            engine: "byedpi",
+            args: args,
+            description: desc
+        });
+    };
+    
+    for (let s in STRATEGIES_BYEDPI) add(s.name, s.args, s.description);
+    
+    let splits = ["1", "2", "1+sniext", "midsld"];
+    let disorders = ["1", "2"];
+    let ttls = [3, 4, 6, 8, 10];
+    let oobs = ["1", "2"];
+    let autos = ["t,r,a,s", "r,s", "t,a", "t,r,s"];
+    
+    for (let a in autos) {
+        for (let o in oobs) {
+            for (let d in disorders) {
+                add(sprintf("Auto (%s) + OOB=%s + Disorder=%s", a, o, d),
+                    sprintf("-o %s --auto=%s -d %s", o, a, d),
+                    "Adaptive auto mode with OOB and disorder");
+            }
+            for (let s in splits) {
+                add(sprintf("Auto (%s) + OOB=%s + Split=%s", a, o, s),
+                    sprintf("-o %s --auto=%s -s %s", o, a, s),
+                    "Adaptive auto mode with OOB and split");
+            }
+        }
+    }
+    
+    for (let ttl in ttls) {
+        for (let s in splits) {
+            for (let d in disorders) {
+                add(sprintf("Split=%s + Disorder=%s + Fake (TTL=%d)", s, d, ttl),
+                    sprintf("--split %s --disorder %s --fake -1 --ttl %d", s, d, ttl),
+                    "Fake injection with split and disorder");
+            }
+        }
+    }
+    
+    for (let s in splits) {
+        add(sprintf("TLS-Rec (1+sniext) + Split=%s", s),
+            sprintf("--tlsrec 1+sniext --split %s", s),
+            "TLS record boundary fragmentation");
+        add(sprintf("IP-Frag (24) + Split=%s", s),
+            sprintf("--ip-frag 24 --split %s", s),
+            "IP packet fragmentation");
+        add(sprintf("IP-Frag (32) + Split=%s", s),
+            sprintf("--ip-frag 32 --split %s", s),
+            "IP packet fragmentation on 32-byte boundary");
+    }
+    
+    return list;
+}
+
+function get_strategies_for_engine(engine, mode) {
     engine = lc(as_string(engine));
+    mode = lc(as_string(mode || "presets"));
+    
+    if (mode == "combinatorial" || mode == "deep_fuzz" || mode == "full") {
+        if (engine == "zapret2")
+            return generate_combinatorial_zapret2();
+        if (engine == "zapret")
+            return generate_combinatorial_zapret();
+        if (engine == "byedpi")
+            return generate_combinatorial_byedpi();
+        
+        let all = [];
+        for (let s in generate_combinatorial_zapret2()) push(all, s);
+        for (let s in generate_combinatorial_zapret()) push(all, s);
+        for (let s in generate_combinatorial_byedpi()) push(all, s);
+        return all;
+    }
+    
     if (engine == "zapret2")
         return STRATEGIES_ZAPRET2;
     if (engine == "zapret")
@@ -234,30 +600,6 @@ function ensure_state_dir() {
 function save_fuzzer_state(state) {
     ensure_state_dir();
     common.write_json_file(STATE_FILE, state);
-}
-
-function validate_strategy_args(engine, args_val) {
-    args_val = trim(as_string(args_val));
-    if (args_val == "") return false;
-    engine = lc(as_string(engine));
-    try {
-        if (engine == "zapret2") {
-            let val = require("providers.zapret2.validator");
-            let res = val.validate_strategy("nfqws2", args_val, "");
-            return res ? res.valid == true : true;
-        } else if (engine == "zapret") {
-            let val = require("providers.zapret.validator");
-            let res = val.validate_strategy("nfqws", args_val, "");
-            return res ? res.valid == true : true;
-        } else if (engine == "byedpi") {
-            let val = require("providers.byedpi.validator");
-            let res = val.validate_strategy(args_val, "");
-            return res ? res.valid == true : true;
-        }
-    } catch (e) {
-        return true;
-    }
-    return true;
 }
 
 function query_llm(provider, api_key, custom_url, prompt_text, model_override) {
@@ -698,14 +1040,14 @@ function run_probe(engine, args_str, target_url) {
     return result;
 }
 
-function run_fuzzer_worker(engine, target, custom_url, rule_section, custom_file) {
+function run_fuzzer_worker(engine, target, custom_url, rule_section, custom_file, mode) {
     let target_url = resolve_target_url(target, custom_url);
     let strategies = null;
     if (custom_file && custom_file != "" && fs.stat(custom_file) != null) {
         strategies = common.read_json_file(custom_file);
     }
     if (!strategies || type(strategies) != "array" || length(strategies) == 0) {
-        strategies = get_strategies_for_engine(engine);
+        strategies = get_strategies_for_engine(engine, mode);
     }
     let total = length(strategies);
     
@@ -715,6 +1057,7 @@ function run_fuzzer_worker(engine, target, custom_url, rule_section, custom_file
         engine,
         target,
         target_url,
+        mode: as_string(mode || "presets"),
         rule_section: as_string(rule_section),
         custom_file: as_string(custom_file || ""),
         progress_pct: 0,
@@ -803,7 +1146,7 @@ function run_fuzzer_worker(engine, target, custom_url, rule_section, custom_file
     cleanup_temp_daemons();
 }
 
-function start_fuzzer(engine, target, custom_url, rule_section, custom_file) {
+function start_fuzzer(engine, target, custom_url, rule_section, custom_file, mode) {
     let current = get_fuzzer_state();
     if (current.running) {
         print(sprintf("%J\n", { success: false, error: "Fuzzer is already running", job_id: current.job_id }));
@@ -814,17 +1157,18 @@ function start_fuzzer(engine, target, custom_url, rule_section, custom_file) {
     
     let job_id = sprintf("fuzz_%d", clock()[0]);
     let cmd = sprintf(
-        "ucode -L /usr/lib/tachyon /usr/lib/tachyon/diagnostics/fuzzer.uc worker %s %s %s %s %s",
+        "ucode -L /usr/lib/tachyon /usr/lib/tachyon/diagnostics/fuzzer.uc worker %s %s %s %s %s %s",
         shell_quote(engine || "zapret2"),
         shell_quote(target || "youtube"),
         shell_quote(custom_url || ""),
         shell_quote(rule_section || ""),
-        shell_quote(custom_file || "")
+        shell_quote(custom_file || ""),
+        shell_quote(mode || "presets")
     );
     
     system(common.background_command_with_pid(cmd, ">/dev/null", ">" + shell_quote(PID_FILE)));
     
-    print(sprintf("%J\n", { success: true, job_id, engine: engine || "zapret2", target: target || "youtube" }));
+    print(sprintf("%J\n", { success: true, job_id, engine: engine || "zapret2", target: target || "youtube", mode: mode || "presets" }));
 }
 
 function stop_fuzzer() {
@@ -905,9 +1249,9 @@ function apply_strategy(engine, args_val, target_rule) {
 let op = ARGV[0] || "status";
 
 if (op == "start") {
-    start_fuzzer(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5]);
+    start_fuzzer(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5], ARGV[6]);
 } else if (op == "worker") {
-    run_fuzzer_worker(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5]);
+    run_fuzzer_worker(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5], ARGV[6]);
 } else if (op == "status") {
     print(sprintf("%J\n", get_fuzzer_state()));
 } else if (op == "stop") {
@@ -916,14 +1260,17 @@ if (op == "start") {
     apply_strategy(ARGV[1], ARGV[2], ARGV[3]);
 } else if (op == "ai_synthesize" || op == "synthesize") {
     synthesize_ai_strategies(ARGV[1], ARGV[2], ARGV[3], ARGV[4]);
+} else if (op == "generate" || op == "strategies_generate") {
+    print(sprintf("%J\n", get_strategies_for_engine(ARGV[1], ARGV[2] || "combinatorial")));
 } else if (op == "strategies") {
+    let strat_mode = ARGV[1] || "presets";
     print(sprintf("%J\n", {
         available_engines: get_available_engines(),
-        zapret2: STRATEGIES_ZAPRET2,
-        zapret: STRATEGIES_ZAPRET,
-        byedpi: STRATEGIES_BYEDPI
+        zapret2: get_strategies_for_engine("zapret2", strat_mode),
+        zapret: get_strategies_for_engine("zapret", strat_mode),
+        byedpi: get_strategies_for_engine("byedpi", strat_mode)
     }));
 } else {
-    warn("Usage: fuzzer.uc [start|status|stop|apply|strategies|ai_synthesize|worker] ...\n");
+    warn("Usage: fuzzer.uc [start|status|stop|apply|strategies|generate|ai_synthesize|worker] ...\n");
     exit(1);
 }

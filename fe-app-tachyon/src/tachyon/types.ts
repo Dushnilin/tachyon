@@ -839,6 +839,8 @@ export namespace Tachyon {
     | 'telegram'
     | 'custom';
 
+  export type FuzzerMode = 'presets' | 'combinatorial';
+
   export interface FuzzerStrategyItem {
     id: string;
     name: string;
@@ -871,6 +873,7 @@ export namespace Tachyon {
     engine: FuzzerEngine;
     target: FuzzerTarget;
     target_url: string;
+    mode?: FuzzerMode | string;
     rule_section?: string;
     progress_pct: number;
     current_index: number;

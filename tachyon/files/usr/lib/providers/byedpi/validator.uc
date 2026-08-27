@@ -42,11 +42,11 @@ let long_value_options = [
     "--cache-ttl", "--cache-dump", "--timeout", "--proto", "--hosts", "--ipset", "--pf",
     "--round", "--split", "--disorder", "--oob", "--disoob", "--fake", "--fake-sni",
     "--ttl", "--fake-offset", "--fake-data", "--fake-tls-mod", "--oob-data", "--mod-http",
-    "--tlsrec", "--tlsminor", "--udp-fake"
+    "--tlsrec", "--tlsminor", "--udp-fake", "--ip-frag", "--ipfrag"
 ];
 
 let long_flag_options = [
-    "--md5sig", "--tfo", "--drop-sack", "--no-domain", "--no-udp"
+    "--md5sig", "--tfo", "--drop-sack", "--no-domain", "--no-udp", "--ip-frag", "--ipfrag"
 ];
 
 let short_value_options = [

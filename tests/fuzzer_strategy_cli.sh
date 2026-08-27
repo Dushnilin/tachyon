@@ -120,6 +120,30 @@ grep -q 'fuzzer_status:' "$TACHYON_BIN" || fail "tachyon CLI missing fuzzer_stat
 grep -q 'fuzzer_stop:' "$TACHYON_BIN" || fail "tachyon CLI missing fuzzer_stop"
 grep -q 'fuzzer_apply:' "$TACHYON_BIN" || fail "tachyon CLI missing fuzzer_apply"
 grep -q 'fuzzer_strategies:' "$TACHYON_BIN" || fail "tachyon CLI missing fuzzer_strategies"
+grep -q 'fuzzer_generate:' "$TACHYON_BIN" || fail "tachyon CLI missing fuzzer_generate"
 grep -q 'fuzzer_ai_synthesize:' "$TACHYON_BIN" || fail "tachyon CLI missing fuzzer_ai_synthesize"
+
+# 5. Check combinatorial strategies generation
+combo_tmp="$(mktemp -t fuzzer_combo_XXXXXX.json)"
+trap 'rm -f "$combo_tmp"' EXIT
+ucode -L "$TACHYON_LIB" -- "$FUZZER" strategies combinatorial > "$combo_tmp"
+COMBO_FILE="$combo_tmp" node <<'NODE'
+const fs = require('fs');
+const raw = fs.readFileSync(process.env.COMBO_FILE, 'utf8');
+const val = JSON.parse(raw);
+if (!Array.isArray(val.zapret2) || val.zapret2.length < 30) {
+  console.error("Combinatorial zapret2 should have >= 30 strategies, got:", val.zapret2 ? val.zapret2.length : 0);
+  process.exit(1);
+}
+if (!Array.isArray(val.zapret) || val.zapret.length < 20) {
+  console.error("Combinatorial zapret should have >= 20 strategies, got:", val.zapret ? val.zapret.length : 0);
+  process.exit(1);
+}
+if (!Array.isArray(val.byedpi) || val.byedpi.length < 20) {
+  console.error("Combinatorial byedpi should have >= 20 strategies, got:", val.byedpi ? val.byedpi.length : 0);
+  process.exit(1);
+}
+console.log("Generated matrix: Zapret2=" + val.zapret2.length + ", Zapret=" + val.zapret.length + ", ByeDPI=" + val.byedpi.length);
+NODE
 
 printf 'PASS: fuzzer_strategy_cli\n'

@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-08-26 22:38+0300\n"
-"PO-Revision-Date: 2026-08-26 22:38+0300\n"
+"POT-Creation-Date: 2026-08-27 07:39+0300\n"
+"PO-Revision-Date: 2026-08-27 07:39+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -59,6 +59,9 @@ msgstr "⚠️ Если все основные DNS завершатся с ош
 msgid "⚡ DPI Strategy Fuzzer"
 msgstr "⚡ DPI Strategy Fuzzer"
 
+msgid "⚡ Quick Benchmark (Presets ~12-14)"
+msgstr "⚡ Быстрый бенчмарк (Пресеты ~12-14)"
+
 msgid "⚡ Strategy Fuzzer & Auto-Tuner"
 msgstr "⚡ Подборщик стратегий и авто-тюнер"
 
@@ -79,6 +82,9 @@ msgstr "✘ Остановлено"
 
 msgid "🏆 Apply Best Strategy"
 msgstr "🏆 Применить лучшую стратегию"
+
+msgid "🔍 Combinatorial Deep Fuzzing (~40-60)"
+msgstr "🔍 Комбинаторный глубокий перебор (~40-60)"
 
 msgid "🔑 Generate"
 msgstr "🔑 Сгенерировать"
@@ -2552,9 +2558,6 @@ msgstr "Активные секции маршрутизации не найде
 msgid "No benchmark results yet. Select engine and click \"Start Benchmark\" or \"Synthesize with AI\"."
 msgstr "Нет результатов бенчмарка. Выберите движок и нажмите «Начать бенчмарк» или «Сгенерировать через ИИ»."
 
-msgid "No benchmark results yet. Select engine and click \"Start Benchmark\"."
-msgstr "Нет результатов бенчмарка. Выберите движок и нажмите «Начать бенчмарк»."
-
 msgid "No check targets found in the configuration."
 msgstr "Цели для проверки не найдены в конфигурации."
 
@@ -3337,6 +3340,9 @@ msgstr "Поиск"
 
 msgid "Search domain or service..."
 msgstr "Поиск домена или сервиса..."
+
+msgid "Search Mode"
+msgstr "Режим подбора"
 
 msgid "Secret"
 msgstr "Секрет"
@@ -4597,6 +4603,9 @@ msgstr "sing-box outbound для Zapret2 настроен"
 
 msgid "Zapret2 sing-box outbound is not configured"
 msgstr "sing-box outbound для Zapret2 не настроен"
+
+msgid "No benchmark results yet. Select engine and click \"Start Benchmark\"."
+msgstr "Нет результатов бенчмарка. Выберите движок и нажмите «Начать бенчмарк»."
 
 msgid "Default (service mixed proxy)"
 msgstr "По умолчанию (смешанный прокси)"

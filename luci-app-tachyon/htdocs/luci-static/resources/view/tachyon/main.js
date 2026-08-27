@@ -3923,16 +3923,22 @@ var TachyonShellMethods = {
       success: (response.code ?? 1) === 0
     };
   },
-  startFuzzer: async (engine = "zapret2", target = "youtube", customUrl, ruleSection) => {
+  startFuzzer: async (engine = "zapret2", target = "youtube", customUrl, ruleSection, customFile, mode) => {
+    const args = [
+      Tachyon.AvailableMethods.FUZZER_START,
+      engine,
+      target
+    ];
+    if (customUrl) args.push(customUrl);
+    else args.push("");
+    if (ruleSection) args.push(ruleSection);
+    else args.push("");
+    if (customFile) args.push(customFile);
+    else args.push("");
+    if (mode) args.push(mode);
     const response = await executeShellCommand({
       command: "/usr/bin/tachyon",
-      args: [
-        Tachyon.AvailableMethods.FUZZER_START,
-        engine,
-        target,
-        customUrl || "",
-        ruleSection || ""
-      ],
+      args,
       timeout: 1e4
     });
     let parsed = null;
@@ -4017,10 +4023,12 @@ var TachyonShellMethods = {
       error: parsed?.error || response.stderr || _("Failed to apply strategy")
     };
   },
-  getFuzzerStrategies: async () => {
+  getFuzzerStrategies: async (mode) => {
+    const args = [Tachyon.AvailableMethods.FUZZER_STRATEGIES];
+    if (mode) args.push(mode);
     const response = await executeShellCommand({
       command: "/usr/bin/tachyon",
-      args: [Tachyon.AvailableMethods.FUZZER_STRATEGIES],
+      args,
       timeout: 8e3
     });
     let parsed = null;
@@ -11906,7 +11914,39 @@ function renderStrategyFuzzerModal(ruleNames = []) {
       ruleSelect
     ]
   );
-  controlsGrid.append(engineGroup, targetGroup, ruleGroup);
+  let selectedMode = "presets";
+  const modeSelect = E(
+    "select",
+    { class: "cbi-input-select", style: "width: 100%;" },
+    [
+      E(
+        "option",
+        { value: "presets", selected: true },
+        _("\u26A1 Quick Benchmark (Presets ~12-14)")
+      ),
+      E(
+        "option",
+        { value: "combinatorial" },
+        _("\u{1F50D} Combinatorial Deep Fuzzing (~40-60)")
+      )
+    ]
+  );
+  modeSelect.addEventListener("change", () => {
+    selectedMode = modeSelect.value;
+  });
+  const modeGroup = E(
+    "div",
+    { style: "display: flex; flex-direction: column; gap: 4px;" },
+    [
+      E(
+        "label",
+        { style: "font-size: 12px; font-weight: 600;" },
+        _("Search Mode")
+      ),
+      modeSelect
+    ]
+  );
+  controlsGrid.append(engineGroup, targetGroup, ruleGroup, modeGroup);
   const aiPromptInput = E("input", {
     type: "text",
     class: "cbi-input-text",
@@ -12252,7 +12292,9 @@ function renderStrategyFuzzerModal(ruleNames = []) {
       selectedEngine,
       selectedTarget,
       customUrl,
-      selectedRuleSection
+      selectedRuleSection,
+      "",
+      selectedMode
     );
     if (res.success) {
       showToast(_("Strategy benchmark started"), "success");

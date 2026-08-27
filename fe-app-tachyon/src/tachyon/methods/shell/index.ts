@@ -1037,16 +1037,25 @@ export const TachyonShellMethods = {
     target: Tachyon.FuzzerTarget = 'youtube',
     customUrl?: string,
     ruleSection?: string,
+    customFile?: string,
+    mode?: Tachyon.FuzzerMode | string,
   ): Promise<Tachyon.MethodResponse<Tachyon.FuzzerStartResponse>> => {
+    const args: string[] = [
+      Tachyon.AvailableMethods.FUZZER_START,
+      engine,
+      target,
+    ];
+    if (customUrl) args.push(customUrl);
+    else args.push('');
+    if (ruleSection) args.push(ruleSection);
+    else args.push('');
+    if (customFile) args.push(customFile);
+    else args.push('');
+    if (mode) args.push(mode);
+
     const response = await executeShellCommand({
       command: '/usr/bin/tachyon',
-      args: [
-        Tachyon.AvailableMethods.FUZZER_START,
-        engine,
-        target,
-        customUrl || '',
-        ruleSection || '',
-      ],
+      args,
       timeout: 10000,
     });
     let parsed: Tachyon.FuzzerStartResponse | null = null;
@@ -1141,7 +1150,9 @@ export const TachyonShellMethods = {
     };
   },
 
-  getFuzzerStrategies: async (): Promise<
+  getFuzzerStrategies: async (
+    mode?: Tachyon.FuzzerMode | string,
+  ): Promise<
     Tachyon.MethodResponse<{
       available_engines?: {
         zapret2: boolean;
@@ -1163,9 +1174,12 @@ export const TachyonShellMethods = {
       zapret: Tachyon.FuzzerStrategyDefinition[];
       byedpi: Tachyon.FuzzerStrategyDefinition[];
     };
+    const args: string[] = [Tachyon.AvailableMethods.FUZZER_STRATEGIES];
+    if (mode) args.push(mode);
+
     const response = await executeShellCommand({
       command: '/usr/bin/tachyon',
-      args: [Tachyon.AvailableMethods.FUZZER_STRATEGIES],
+      args,
       timeout: 8000,
     });
     let parsed: FuzzerStrategiesData | null = null;

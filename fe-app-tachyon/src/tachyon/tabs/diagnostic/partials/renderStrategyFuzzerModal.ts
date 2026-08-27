@@ -211,7 +211,43 @@ export function renderStrategyFuzzerModal(ruleNames: string[] = []) {
     ],
   );
 
-  controlsGrid.append(engineGroup, targetGroup, ruleGroup);
+  let selectedMode: Tachyon.FuzzerMode = 'presets';
+
+  const modeSelect = E(
+    'select',
+    { class: 'cbi-input-select', style: 'width: 100%;' },
+    [
+      E(
+        'option',
+        { value: 'presets', selected: true },
+        _('⚡ Quick Benchmark (Presets ~12-14)'),
+      ),
+      E(
+        'option',
+        { value: 'combinatorial' },
+        _('🔍 Combinatorial Deep Fuzzing (~40-60)'),
+      ),
+    ],
+  );
+  modeSelect.addEventListener('change', () => {
+    selectedMode = (modeSelect as HTMLSelectElement)
+      .value as Tachyon.FuzzerMode;
+  });
+
+  const modeGroup = E(
+    'div',
+    { style: 'display: flex; flex-direction: column; gap: 4px;' },
+    [
+      E(
+        'label',
+        { style: 'font-size: 12px; font-weight: 600;' },
+        _('Search Mode'),
+      ),
+      modeSelect,
+    ],
+  );
+
+  controlsGrid.append(engineGroup, targetGroup, ruleGroup, modeGroup);
 
   // ── AI Synthesizer Section ────────────────────────────────────────────────
   const aiPromptInput = E('input', {
@@ -620,6 +656,8 @@ export function renderStrategyFuzzerModal(ruleNames: string[] = []) {
       selectedTarget,
       customUrl,
       selectedRuleSection,
+      '',
+      selectedMode,
     );
 
     if (res.success) {

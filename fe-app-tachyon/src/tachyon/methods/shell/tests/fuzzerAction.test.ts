@@ -38,7 +38,44 @@ describe('TachyonShellMethods Fuzzer Actions', () => {
     }
     expect(mocks.executeShellCommand).toHaveBeenCalledWith(
       expect.objectContaining({
-        args: ['fuzzer_start', 'zapret2', 'youtube', '', ''],
+        args: ['fuzzer_start', 'zapret2', 'youtube', '', '', ''],
+      }),
+    );
+  });
+
+  it('starts fuzzer with combinatorial mode', async () => {
+    mocks.executeShellCommand.mockResolvedValueOnce({
+      stdout: JSON.stringify({
+        success: true,
+        job_id: 'fuzz_combo_1',
+        engine: 'zapret2',
+        target: 'youtube',
+        mode: 'combinatorial',
+      }),
+      stderr: '',
+      code: 0,
+    });
+
+    const res = await TachyonShellMethods.startFuzzer(
+      'zapret2',
+      'youtube',
+      '',
+      '',
+      '',
+      'combinatorial',
+    );
+    expect(res.success).toBe(true);
+    expect(mocks.executeShellCommand).toHaveBeenCalledWith(
+      expect.objectContaining({
+        args: [
+          'fuzzer_start',
+          'zapret2',
+          'youtube',
+          '',
+          '',
+          '',
+          'combinatorial',
+        ],
       }),
     );
   });
