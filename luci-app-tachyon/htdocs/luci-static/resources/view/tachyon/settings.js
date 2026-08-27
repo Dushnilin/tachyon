@@ -1641,12 +1641,16 @@ function createSettingsContent(section, capabilities) {
   };
   o.load = function (section_id) {
     const sections = this.map?.data?.state?.values?.[UCI_PACKAGE] ?? {};
-    this.keylist = [""];
-    this.vallist = ["", _("Default (Direct WAN / Default mixed proxy)")];
+    this.keylist = [];
+    this.vallist = [];
+    this.value("", _("Default (Direct WAN / Default mixed proxy)"));
     for (const secName in sections) {
       const sec = sections[secName];
       if (sec[".type"] === "section" && sec.enabled !== "0") {
-        this.value(secName, sec.label || secName);
+        const action = sec.action || "section";
+        const iface = sec.section_interface || sec.interface || "";
+        const desc = iface ? ` (${action}: ${iface})` : ` (${action})`;
+        this.value(secName, `${sec.label || secName}${desc}`);
       }
     }
     return this.cfgvalue(section_id);

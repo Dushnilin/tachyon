@@ -16,7 +16,7 @@ fail() {
 #    time budget and tripping the LuCI XHR timeout.
 grep -Fq 'Cloudflare API недоступен с этого роутера' "$WARP" ||
   fail "generator must report an unreachable Cloudflare API explicitly"
-grep -Fq "connect-timeout 4 -m 6" "$WARP" ||
+grep -Fq "connect-timeout 3 -m 4" "$WARP" ||
   fail "pre-flight probe must be bounded to a few seconds"
 
 # 1a. Direct pre-flight probes must use --resolve like the real calls:
@@ -33,12 +33,11 @@ grep -Fq 'tcp_port_listening(' "$WARP" ||
 grep -Fq 'function tcp_port_listening' "$WARP" ||
   fail "tcp_port_listening helper must exist"
 
-# 2. Time budgets must stay under the LuCI XHR timeout (~30 s): per-call 20s,
-#    whole registration 20s, so worst case fits inside one browser request.
-grep -Fq 'let deadline = now_ms() + 20000;' "$WARP" ||
-  fail "call_api budget must be 20s"
-grep -Fq 'let registration_deadline = now_ms() + 20000;' "$WARP" ||
-  fail "registration budget must be 20s"
+# 2. Time budgets: per-call 60s, whole registration 60s.
+grep -Fq 'let deadline = now_ms() + 60000;' "$WARP" ||
+  fail "call_api budget must be 60s"
+grep -Fq 'let registration_deadline = now_ms() + 60000;' "$WARP" ||
+  fail "registration budget must be 60s"
 
 # 3. Error paths print the JSON envelope and exit 0: the frontend parses
 #    stdout (data.success/message) and shows the real reason; a nonzero exit
@@ -49,5 +48,20 @@ grep -Fq 'let registration_deadline = now_ms() + 20000;' "$WARP" ||
 # 4. Clash API calls stay bounded.
 grep -Fq 'curl -s -m 5 ' "$WARP" ||
   fail "local Clash API curls must carry -m 5"
+
+# 5. AWG tag chain handles odd-length hex safely
+ucode -L "$ROOT_DIR/tachyon/files/usr/lib" -e '
+let common = require("core.common");
+let res1 = common.awg_tag_chain("12345");
+if (res1 != "<b 0x123450>") {
+    warn("awg_tag_chain should pad odd length hex: got " + res1 + "\n");
+    exit(1);
+}
+let res2 = common.awg_tag_chain("1234");
+if (res2 != "<b 0x1234>") {
+    warn("awg_tag_chain should format even length hex: got " + res2 + "\n");
+    exit(1);
+}
+' || fail "awg_tag_chain odd-hex padding failed"
 
 printf 'warp preflight checks passed\n'

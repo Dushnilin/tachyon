@@ -184,8 +184,11 @@ function awg_tag_chain(value) {
     // Classic AmneziaWG form: plain hex (with optional 0x prefix).
     let hex = lc(value);
     hex = replace(hex, /^0x/, "");
-    if (match(hex, /^[0-9a-f]+$/) && length(hex) % 2 == 0)
+    if (match(hex, /^[0-9a-f]+$/)) {
+        if (length(hex) % 2 != 0)
+            hex += "0";
         return "<b 0x" + hex + ">";
+    }
 
     // Unsupported shape: emit nothing rather than a value that would be
     // silently dropped at runtime; validation reports it.

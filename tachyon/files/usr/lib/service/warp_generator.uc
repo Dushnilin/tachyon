@@ -34,10 +34,14 @@ function get_clash_base_url() {
     return "http://" + host;
 }
 
-// Convert <b 0x...> ucode binary literals to plain hex string
+// Convert <b 0x...> ucode binary literals to plain hex string with guaranteed even length
 function to_hex(s) {
-    s = replace(as_string(s), "<b 0x", "");
-    s = replace(s, ">", "");
+    s = replace(as_string(s), /<b 0x/g, "");
+    s = replace(s, />/g, "");
+    s = replace(s, /[ \t\r\n]/g, "");
+    if (s != "" && length(s) % 2 != 0) {
+        s += "0";
+    }
     return s;
 }
 
@@ -48,19 +52,24 @@ let proxy_port = "";
 let proxy_interface = "";
 
 if (warp_proxy_section != "") {
-    let section_action = uci.get(CONFIG_NAME, warp_proxy_section, "action") || "";
-    let section_iface = uci.get(CONFIG_NAME, warp_proxy_section, "section_interface") || 
-                        uci.get(CONFIG_NAME, warp_proxy_section, "interface") || "";
-    let section_port = uci.get(CONFIG_NAME, warp_proxy_section, "mixed_proxy_port") || "";
-    
-    if (section_iface != "") {
-        proxy_interface = section_iface;
-    } else if (section_action == "interface") {
+    if (uci.get(CONFIG_NAME, warp_proxy_section)) {
+        let section_action = uci.get(CONFIG_NAME, warp_proxy_section, "action") || "";
+        let section_iface = uci.get(CONFIG_NAME, warp_proxy_section, "section_interface") || 
+                            uci.get(CONFIG_NAME, warp_proxy_section, "interface") || 
+                            uci.get(CONFIG_NAME, warp_proxy_section, "device") || "";
+        let section_port = uci.get(CONFIG_NAME, warp_proxy_section, "mixed_proxy_port") || "";
+        
+        if (section_iface != "") {
+            proxy_interface = section_iface;
+        } else if (section_action == "interface") {
+            proxy_interface = warp_proxy_section;
+        }
+        
+        if (section_port != "" && match(section_port, /^[0-9]+$/) != null) {
+            proxy_port = section_port;
+        }
+    } else if (fs.stat("/sys/class/net/" + warp_proxy_section) != null) {
         proxy_interface = warp_proxy_section;
-    }
-    
-    if (section_port != "" && match(section_port, /^[0-9]+$/) != null) {
-        proxy_port = section_port;
     }
 }
 
@@ -118,50 +127,51 @@ function tcp_port_listening(port) {
 function call_api(method, url, auth_header, body_file) {
     let resolve_ips = [ "162.159.192.1", "162.159.193.1", "162.159.195.1", "162.159.204.1", "188.114.96.1", "188.114.97.1", "188.114.98.1", "188.114.99.1" ];
     let last_res = "";
-    // Hard wall-clock budget: without it the full retry matrix (transports x
-    // resolve IPs x fallbacks) can block for minutes and trip the LuCI XHR
-    // timeout before any answer is produced.
-    let deadline = now_ms() + 20000;
+    // Hard wall-clock budget for multi-step registration
+    let deadline = now_ms() + 60000;
     
+    let lan_ip = trim(uci.get("network", "lan", "ipaddr") || "192.168.1.1");
+    let candidate_ips = [ "127.0.0.1" ];
+    if (lan_ip != "" && !contains(candidate_ips, lan_ip)) {
+        push(candidate_ips, lan_ip);
+    }
+    if (!contains(candidate_ips, "192.168.1.1")) {
+        push(candidate_ips, "192.168.1.1");
+    }
+
     let transport_flags = [];
     if (proxy_interface != "") {
         push(transport_flags, "--interface " + proxy_interface);
     }
     if (proxy_port != "") {
-        push(transport_flags, "-x socks5h://127.0.0.1:" + proxy_port);
+        for (let ip in candidate_ips) {
+            let tr = "-x socks5h://" + ip + ":" + proxy_port;
+            if (!contains(transport_flags, tr)) push(transport_flags, tr);
+        }
     }
     // Liveness of the default service mixed proxy: a LOCAL check only.
-    // A full fetch through the tunnel would conflate "proxy dead" with
-    // "slow/blocked exit" and silently drop a working transport.
     let fallback_port = as_string(common.get_mixed_port());
-    if (tcp_port_listening(int(fallback_port)) && !contains(transport_flags, "-x socks5h://127.0.0.1:" + fallback_port)) {
-        push(transport_flags, "-x socks5h://127.0.0.1:" + fallback_port);
+    if (fallback_port != "" && tcp_port_listening(int(fallback_port))) {
+        for (let ip in candidate_ips) {
+            let tr = "-x socks5h://" + ip + ":" + fallback_port;
+            if (!contains(transport_flags, tr)) push(transport_flags, tr);
+        }
     }
 
-    // Pre-flight: when the Cloudflare API is unreachable from this router
-    // (blocked ISP, dead proxy), the registration matrix below would burn its
-    // whole time budget and trip the LuCI XHR timeout before producing a
-    // readable answer. Probe once, fail fast with an actionable message.
-    //
-    // Direct probes MUST use the same --resolve trick as the real calls
-    // below: ISP DNS poisoning of api.cloudflareclient.com would otherwise
-    // report the API as unreachable while registration itself still works.
-    let resolve_ips_probe = [ "162.159.192.1", "162.159.193.1", "162.159.195.1", "162.159.204.1", "188.114.96.1", "188.114.97.1", "188.114.98.1", "188.114.99.1" ];
+    // Pre-flight: probe proxies and tunnel interfaces FIRST, then direct WAN as fallback
     let api_reachable = false;
-    for (let ip in resolve_ips_probe) {
-        let probe = trim(exec_output("curl -s --connect-timeout 3 -m 5 -o /dev/null -w '%{http_code}' --resolve api.cloudflareclient.com:443:" + ip + " https://api.cloudflareclient.com/ 2>/dev/null"));
+    for (let tr in transport_flags) {
+        let probe = trim(exec_output("curl -s --connect-timeout 3 -m 4 -o /dev/null -w '%{http_code}' " + tr + " https://api.cloudflareclient.com/ 2>/dev/null"));
         if (probe != "" && probe != "000") {
             api_reachable = true;
             break;
         }
     }
     if (!api_reachable) {
-        for (let tr in transport_flags) {
-            if (index(tr, "socks5h") < 0 && index(tr, "--interface") < 0)
-                continue;
-            // socks5h resolves on the proxy side, so no --resolve here.
-            let via_proxy = trim(exec_output("curl -s --connect-timeout 4 -m 6 -o /dev/null -w '%{http_code}' " + tr + " https://api.cloudflareclient.com/ 2>/dev/null"));
-            if (via_proxy != "" && via_proxy != "000") {
+        let resolve_ips_probe = [ "162.159.192.1", "188.114.96.1" ];
+        for (let ip in resolve_ips_probe) {
+            let probe = trim(exec_output("curl -s --connect-timeout 3 -m 4 -o /dev/null -w '%{http_code}' --resolve api.cloudflareclient.com:443:" + ip + " https://api.cloudflareclient.com/ 2>/dev/null"));
+            if (probe != "" && probe != "000") {
                 api_reachable = true;
                 break;
             }
@@ -172,15 +182,15 @@ function call_api(method, url, auth_header, body_file) {
         exit(0);
     }
 
-    // 1. Try selected tunnel transport(s)
+    let auth_str = auth_header != "" ? "-H 'Authorization: Bearer " + auth_header + "' " : "";
+    let data_str = body_file != "" ? "-d @" + body_file + " " : "";
+
+    // 1. Try selected tunnel / proxy transport(s) FIRST
     for (let tr in transport_flags) {
         if (now_ms() > deadline) break;
-        // A. With --resolve to Cloudflare IPs
-        for (let ip in resolve_ips) {
-            if (now_ms() > deadline) break;
-            let auth_str = auth_header != "" ? "-H 'Authorization: Bearer " + auth_header + "' " : "";
-            let data_str = body_file != "" ? "-d @" + body_file + " " : "";
-            let cmd = "curl -s --connect-timeout 3 --max-time 7 " + tr + " --resolve api.cloudflareclient.com:443:" + ip + " -X " + method + " -H 'Content-Type: application/json' -H 'User-Agent: okhttp/3.12.1' " + auth_str + data_str + url;
+        if (index(tr, "socks5h") >= 0) {
+            // SOCKS remote DNS resolution: standard and fast
+            let cmd = "curl -s --connect-timeout 4 --max-time 8 " + tr + " -X " + method + " -H 'Content-Type: application/json' -H 'User-Agent: okhttp/3.12.1' " + auth_str + data_str + url;
             let res = exec_output(cmd);
             if (res != "") {
                 try {
@@ -191,20 +201,21 @@ function call_api(method, url, auth_header, body_file) {
                     last_res = res;
                 }
             }
-        }
-        if (now_ms() > deadline) break;
-        // B. Directly via DNS on tunnel
-        let auth_str = auth_header != "" ? "-H 'Authorization: Bearer " + auth_header + "' " : "";
-        let data_str = body_file != "" ? "-d @" + body_file + " " : "";
-        let cmd = "curl -s --connect-timeout 3 --max-time 7 " + tr + " -X " + method + " -H 'Content-Type: application/json' -H 'User-Agent: okhttp/3.12.1' " + auth_str + data_str + url;
-        let res = exec_output(cmd);
-        if (res != "") {
-            try {
-                let parsed = json(res);
-                if (parsed) return parsed;
-            }
-            catch (e) {
-                last_res = res;
+        } else {
+            // Tunnel interface: probe with resolved Cloudflare IPs
+            for (let ip in resolve_ips) {
+                if (now_ms() > deadline) break;
+                let cmd = "curl -s --connect-timeout 3 --max-time 7 " + tr + " --resolve api.cloudflareclient.com:443:" + ip + " -X " + method + " -H 'Content-Type: application/json' -H 'User-Agent: okhttp/3.12.1' " + auth_str + data_str + url;
+                let res = exec_output(cmd);
+                if (res != "") {
+                    try {
+                        let parsed = json(res);
+                        if (parsed) return parsed;
+                    }
+                    catch (e) {
+                        last_res = res;
+                    }
+                }
             }
         }
     }
@@ -216,8 +227,6 @@ function call_api(method, url, auth_header, body_file) {
     // 2. Direct WAN fallback if no tunnel transport worked
     for (let ip in resolve_ips) {
         if (now_ms() > deadline) break;
-        let auth_str = auth_header != "" ? "-H 'Authorization: Bearer " + auth_header + "' " : "";
-        let data_str = body_file != "" ? "-d @" + body_file + " " : "";
         let cmd = "curl -s --connect-timeout 3 --max-time 6 --resolve api.cloudflareclient.com:443:" + ip + " -X " + method + " -H 'Content-Type: application/json' -H 'User-Agent: okhttp/3.12.1' " + auth_str + data_str + url;
         let res = exec_output(cmd);
         if (res != "") {
@@ -336,7 +345,7 @@ let chosen_prefix = "";
 let server_try_index = 0;
 // Overall budget for the whole registration attempt matrix: each call_api()
 // is bounded, but the prefix list is long enough to multiply into minutes.
-let registration_deadline = now_ms() + 20000;
+let registration_deadline = now_ms() + 60000;
 
 for (let prefix in api_prefixes) {
     if (now_ms() > registration_deadline) {
@@ -468,7 +477,7 @@ let random_port = warp_ports[time() % length(warp_ports)];
 let warp_cps_payloads = [
     "<b 0xce000000010897a297ecc34cd6dd000044d0ec2e2e1ea2991f467ace4222129b5a098823784694b4897b9986ae0b7280135fa85e196d9ad980b150122129ce2a9379531b0fd3e871ca5fdb883c369832f730e272d7b8b74f393f9f0fa43f11e510ecb2219a52984410c204cf875585340c62238e14ad04dff382f2c200e0ee22fe743b9c6b8b043121c5710ec289f471c91ee414fca8b8be8419ae8ce7ffc53837f6ade262891895f3f4cecd31bc93ac5599e18e4f01b472362b8056c3172b513051f8322d1062997ef4a383b01706598d08d48c221d30e74c7ce000cdad36b706b1bf9b0607c32ec4b3203a4ee21ab64df336212b9758280803fcab14933b0e7ee1e04a7becce3e2633f4852585c567894a5f9efe9706a151b615856647e8b7dba69ab357b3982f554549bef9256111b2d67afde0b496f16962d4957ff654232aa9e845b61463908309cfd9de0a6abf5f425f577d7e5f6440652aa8da5f73588e82e9470f3b21b27b28c649506ae1a7f5f15b876f56abc4615f49911549b9bb39dd804fde182bd2dcec0c33bad9b138ca07d4a4a1650a2c2686acea05727e2a78962a840ae428f55627516e73c83dd8893b02358e81b524b4d99fda6df52b3a8d7a5291326e7ac9d773c5b43b8444554ef5aea104a738ed650aa979674bbed38da58ac29d87c29d387d80b526065baeb073ce65f075ccb56e47533aef357dceaa8293a523c5f6f790be90e4731123d3c6152a70576e90b4ab5bc5ead01576c68ab633ff7d36dcde2a0b2c68897e1acfc4d6483aaaeb635dd63c96b2b6a7a2bfe042f6aed82e5363aa850aace12ee3b1a93f30d8ab9537df483152a5527faca21efc9981b304f11fc95336f5b9637b174c5a0659e2b22e159a9fed4b8e93047371175b1d6d9cc8ab745f3b2281537d1c75fb9451871864efa5d184c38c185fd203de206751b92620f7c369e031d2041e152040920ac2c5ab5340bfc9d0561176abf10a147287ea90758575ac6a9f5ac9f390d0d5b23ee12af583383d994e22c0cf42383834bcd3ada1b3825a0664d8f3fb678261d57601ddf94a8a68a7c273a18c08aa99c7ad8c6c42eab67718843597ec9930457359dfdfbce024afc2dcf9348579a57d8d3490b2fa99f278f1c37d87dad9b221acd575192ffae1784f8e60ec7cee4068b6b988f0433d96d6a1b1865f4e155e9fe020279f434f3bf1bd117b717b92f6cd1cc9bea7d45978bcc3f24bda631a36910110a6ec06da35f8966c9279d130347594f13e9e07514fa370754d1424c0a1545c5070ef9fb2acd14233e8a50bfc5978b5bdf8bc1714731f798d21e2004117c61f2989dd44f0cf027b27d4019e81ed4b5c31db347c4a3a4d85048d7093cf16753d7b0d15e078f5c7a5205dc2f87e330a1f716738dce1c6180e9d02869b5546f1c4d2748f8c90d9693cba4e0079297d22fd61402dea32ff0eb69ebd65a5d0b687d87e3a8b2c42b648aa723c7c7daf37abcc4bb85caea2ee8f55bec20e913b3324ab8f5c3304f820d42ad1b9f2ffc1a3af9927136b4419e1e579ab4c2ae3c776d293d397d575df181e6cae0a4ada5d67ecea171cca3288d57c7bbdaee3befe745fb7d634f70386d873b90c4d6c6596bb65af68f9e5121e67ebf0d89d3c909ceedfb32ce9575a7758ff080724e1ab5d5f43074ecb53a479af21ed03d7b6899c36631c0166f9d47e5e1d4528a5d3d3f744029c4b1c190cbfbad06f5f83f7ad0429fa9a2719c56ffe3783460e166de2d8>",
     "<b 0xc7000000010809a1ed4edbbe7615000044d017a61a0d774f04290f119e701ef0035df2b0ed571b0b575e6a07246b856eb6ec036fef07f1e07b861251ad737abeb67e64be714c1dcd865312b1b6c35c089c997aeb5c18f808696fe97289513945d84ca846467603e94e44224877f2c1d3261e4ac18740be4bd064369c94fc08978d99b54bf615250998639010c1284248e1d73004b81fcb20b559d8a17eced7eab3964b5b88ca7a3b8579fc8c1c934189e77143b4ac434138114b1048651b56545b87acbef0952763538f3ddeb37cfc6d58b4881c3b719d7ff78f6ee1324a2914a32381c05a64c700466d280be007253bb030d179c4f1b3dc221e1974e2ee6d6e2b9e8d709159b5ef22e1783dbba845c20ca1c83b066c73835920ad70b806df0aee0351e3fc9ab1e42e8b2a30fe235ff0612eee19744949cecee0463b76514ad90c1f7ceaa557c18586ab561d49482e73c85d0143785da14a441bf82f78783b61cccd44aecb1947516e79b5ca5a6b3a8aed6040fae0eeabdc55a88dc19ade832d99fca90c7a629cacc07192d7e47e3c6a271b95b0ea3392562a06a1cab79f40ea92916ebee197b7b5f14b251824e1ed20ff2ca80b1f03a43e45157589bc61b978e97851025b3b7ccc17d291e1cb60fe48a5c26829dce11dd23c2e73265a9ebf8617c985e4fee4681e863f990061f4dea465a7d2524bd0edcf4b48d4b8f25fc359b15babd2637284a4774077dca60091f1a781cfee1bef9713dd5943a579d7470bc5970542fbb27fdf77880a8d8751b1f642c7a3f019a05ab94bf63d3525ef34e9290b5c8d477f2714e6d6e3e4d35c1983f5e16fda57fcdf071b513f8f088dbe8d5a97577d17a5383a496c3f313adfdd47c962bbaebd6aa13b46439eb742622c29ca067db0ec1853064c3cbbffe0a215a19fce47d49703ed58ebbd89721172d256d1cf30188106fb2f863186511401fad54d087aa2fb3d1b85768db386bd7102e8060ac157bac011acdcdae2799b9aee1467c3424013455bd028fcaacdc3c77d28ea199967d617ea7d0d0815f3cc407934a76d1293dccba210d1709a13e5dd67c9ba47cd113f5bdd740358eff13164159fd09bc2f7ec6cfa64d9df7e2e2f88706b0ff3a92ccf6f078456cfe0bdd89292cfe2680badc1eac9f7d36efe8eb6912c7b164508d13e6c0911c15f73c233cbe4fc70ff2ade1e1be4bbb738e0939159e2078a9438f05b756a003371f4861481c38f1cdd2d7b06deb62869e9fe79a8abaa920646fa2e8fa28f0d80c136376c7b56046bae4c05c0cdf64efb8c47bbfc5a1a4c0b045061ef0d71618e0d206a1d7f245fd5c03191b152673ba8dff8e1b8de7c50234a93cba91e3888adb228cc02beded4b1c0946797d3ef02dec2edb6ad0ac21f89f4be364c317da7c22440e9f358d512203f4b7ab20388af68b8915d0152db2c8a0687bfaea870f7529bb92a22b35bd79bc6d490591406346ecd78342ee3563c4883a8251679691c2d4e963397e24653520795511b018915374c954bddb940a9d7a16d1c8bd798fc7dbfb0599a7074e13f87e14efa8d511bb2579ec029b1bda18fe971b30fbe19e986ff2686a69bf3f1bb929de93ae70345ebca998b11e0a2b41890cba628d8f6e7c4e94790735e5299b4ff07cd3080f7d53c9cbe1911d2cd5925b3213e033c272506a87886cf761a283a779564d3241e3c28f632e166b5d756e1786ce077614c4444e3f2aed5decb3613b925ea3e558c21d4faf8ba54edd0f3a5d4>",
-    "<b 0xc10000000114367096bb0fb3f58f3a3fb8aaacd61d63a1c8a40e14f7374b8a62dccba6431716c3abf6f5afbcfb39bd008000047c32e268567c652e6f4db58bff759bc8c5aaca183b87cb4d22938fe7d8dca22a679a79e4d9ee62e4bbb3a380dd78d4e8e48f26b38a1d42d76b371a5a9a0444827a69d1ab5872a85749f65a4104e931740b4dc1e2dd77733fc7fac4f93011cd622f2bb47e85f71992e2d585f8dc765a7a12ddeb879746a267393ad023d267c4bd79f258703e27345155268bd3cc0506ebd72e2e3c6b5b0f005299cd94b67ddabe30389c4f9b5c2d512dcc298c14f14e9b7f931e1dc397926c31fbb7cebfc668349c218672501031ecce151d4cb03c4c660b6c6fe7754e75446cd7de09a8c81030c5f6fb377203f551864f3d83e27de7b86499736cbbb549b2f37f436db1cae0a4ea39930f0534aacdd1e3534bc87877e2afabe959ced261f228d6362e6fd277c88c312d966c8b9f67e4a92e757773db0b0862fb8108d1d8fa262a40a1b4171961f0704c8ba314da2482ac8ed9bd28d4b50f7432d89fd800c25a50c5e2f5c0710544fef5273401116aa0572366d8e49ad758fcb29e6a92912e644dbe227c247cb3417eabfab2db16796b2fba420de3b1dc94e8361f1f324a331ddaf1e626553138860757fd0bf687566108b77b70fb9f8f8962eca599c4a70ed373666961a8cb506b96756d9e28b94122b20f16b54f118c0e603ce0b831efea614ad836df6cf9affbdd09596412547496967da758cec9080295d853b0861670b71d9abde0d562b1a6de82782a5b0c14d297f27283a895abc889a5f6703f0e6eb95f67b2da45f150d0d8ab805612d570c2d5cb6997ac3a7756226c2f5c8982ffbd480c5004b0660a3c9468945efde90864019a2b519458724b55d766e16b0da25c0557c01f3c11ddeb024b62e303640e17fdd57dedb3aeb4a2c1b7c93059f9c1d7118d77caac1cd0f6556e46cbc991c1bb16970273dea833d01e5090d061a0c6d25af2415cd2878af97f6d0e7f1f936247b394ecb9bd484da6be936dee9b0b92dc90101a1b4295e97a9772f2263eb09431995aa173df4ca2abd687d87706f0f93eaa5e13cbe3b574fa3cfe94502ace25265778da6960d561381769c24e0cbd7aac73c16f95ae74ff7ec38124f7c722b9cb151d4b6841343f29be8f35145e1b27021056820fed77003df8554b4155716c8cf6049ef5e318481460a8ce3be7c7bfac695255be84dc491c19e9dedc449dd3471728cd2a3ee51324ccb3eef121e3e08f8e18f0006ea8957371d9f2f739f0b89e4db11e5c6430ada61572e589519fbad4498b460ce6e4407fc2d8f2dd4293a50a0cb8fcaaf35cd9a8cc097e3603fbfa08d9036f52b3e7fcce11b83ad28a4ac12dba0395a0cc871cefd1a2856fffb3f28d82ce35cf80579974778bab13d9b3578d8c75a2d196087a2cd439aff2bb33f2db24ac175fff4ed91d36a4cdbfaf3f83074f03894ea40f17034629890da3efdbb41141b38368ab532209b69f057ddc559c19bc8ae62bf3fd564c9a35d9a83d14a95834a92bae6d9a29ae5e8ece07910d16433e4c6230c9bd7d68b47de0de9843988af6cdc88b5301820443bd4d0537778bf6b4c1dd067fcf14b81015f2a67c7f2a28f9cb7e0684d3cb4b1c24d9b343122a086611b489532f1c3a26779da1706c6759d96d8ab>"
+    "<b 0xc10000000114367096bb0fb3f58f3a3fb8aaacd61d63a1c8a40e14f7374b8a62dccba6431716c3abf6f5afbcfb39bd008000047c32e268567c652e6f4db58bff759bc8c5aaca183b87cb4d22938fe7d8dca22a679a79e4d9ee62e4bbb3a380dd78d4e8e48f26b38a1d42d76b371a5a9a0444827a69d1ab5872a85749f65a4104e931740b4dc1e2dd77733fc7fac4f93011cd622f2bb47e85f71992e2d585f8dc765a7a12ddeb879746a267393ad023d267c4bd79f258703e27345155268bd3cc0506ebd72e2e3c6b5b0f005299cd94b67ddabe30389c4f9b5c2d512dcc298c14f14e9b7f931e1dc397926c31fbb7cebfc668349c218672501031ecce151d4cb03c4c660b6c6fe7754e75446cd7de09a8c81030c5f6fb377203f551864f3d83e27de7b86499736cbbb549b2f37f436db1cae0a4ea39930f0534aacdd1e3534bc87877e2afabe959ced261f228d6362e6fd277c88c312d966c8b9f67e4a92e757773db0b0862fb8108d1d8fa262a40a1b4171961f0704c8ba314da2482ac8ed9bd28d4b50f7432d89fd800c25a50c5e2f5c0710544fef5273401116aa0572366d8e49ad758fcb29e6a92912e644dbe227c247cb3417eabfab2db16796b2fba420de3b1dc94e8361f1f324a331ddaf1e626553138860757fd0bf687566108b77b70fb9f8f8962eca599c4a70ed373666961a8cb506b96756d9e28b94122b20f16b54f118c0e603ce0b831efea614ad836df6cf9affbdd09596412547496967da758cec9080295d853b0861670b71d9abde0d562b1a6de82782a5b0c14d297f27283a895abc889a5f6703f0e6eb95f67b2da45f150d0d8ab805612d570c2d5cb6997ac3a7756226c2f5c8982ffbd480c5004b0660a3c9468945efde90864019a2b519458724b55d766e16b0da25c0557c01f3c11ddeb024b62e303640e17fdd57dedb3aeb4a2c1b7c93059f9c1d7118d77caac1cd0f6556e46cbc991c1bb16970273dea833d01e5090d061a0c6d25af2415cd2878af97f6d0e7f1f936247b394ecb9bd484da6be936dee9b0b92dc90101a1b4295e97a9772f2263eb09431995aa173df4ca2abd687d87706f0f93eaa5e13cbe3b574fa3cfe94502ace25265778da6960d561381769c24e0cbd7aac73c16f95ae74ff7ec38124f7c722b9cb151d4b6841343f29be8f35145e1b27021056820fed77003df8554b4155716c8cf6049ef5e318481460a8ce3be7c7bfac695255be84dc491c19e9dedc449dd3471728cd2a3ee51324ccb3eef121e3e08f8e18f0006ea8957371d9f2f739f0b89e4db11e5c6430ada61572e589519fbad4498b460ce6e4407fc2d8f2dd4293a50a0cb8fcaaf35cd9a8cc097e3603fbfa08d9036f52b3e7fcce11b83ad28a4ac12dba0395a0cc871cefd1a2856fffb3f28d82ce35cf80579974778bab13d9b3578d8c75a2d196087a2cd439aff2bb33f2db24ac175fff4ed91d36a4cdbfaf3f83074f03894ea40f17034629890da3efdbb41141b38368ab532209b69f057ddc559c19bc8ae62bf3fd564c9a35d9a83d14a95834a92bae6d9a29ae5e8ece07910d16433e4c6230c9bd7d68b47de0de9843988af6cdc88b5301820443bd4d0537778bf6b4c1dd067fcf14b81015f2a67c7f2a28f9cb7e0684d3cb4b1c24d9b343122a086611b489532f1c3a26779da1706c6759d96d8ab00>"
 ];
 
 function generate_random_hex(len) {

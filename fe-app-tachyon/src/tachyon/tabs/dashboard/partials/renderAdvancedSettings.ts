@@ -5,12 +5,20 @@ import { TACHYON_UCI_PACKAGE } from '../../../../constants';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
+export interface AdvSectionOption {
+  id: string;
+  label: string;
+  action: string;
+  iface?: string;
+}
+
 interface AdvancedSettingsState {
   watchdogRunning: boolean;
   watchdogLoading: boolean;
   smartDetectEnabled: boolean;
   smartDetectSections: string[];
   allSectionNames: string[];
+  sectionOptions: AdvSectionOption[];
   deviceIpsPerSection: Record<string, string[]>;
   dnsTurboCache: boolean;
   agentApiToken: string;
@@ -50,6 +58,7 @@ let _state: AdvancedSettingsState = {
   smartDetectEnabled: false,
   smartDetectSections: [],
   allSectionNames: [],
+  sectionOptions: [],
   deviceIpsPerSection: {},
   dnsTurboCache: false,
   agentApiToken: '',
@@ -119,6 +128,21 @@ export async function loadAdvancedSettingsState() {
   );
   const allSectionNames = ruleSections.map((s) => s['.name'] as string);
 
+  const sectionOptions: AdvSectionOption[] = sections
+    .filter((s) => s['.type'] === 'section' && s.enabled !== '0')
+    .map((s) => {
+      const rawSec = s as unknown as Record<string, unknown>;
+      return {
+        id: s['.name'] as string,
+        label: (s.label as string) || (s['.name'] as string),
+        action: (s.action as string) || 'section',
+        iface:
+          (rawSec.section_interface as string) ||
+          (rawSec.interface as string) ||
+          undefined,
+      };
+    });
+
   const deviceIpsPerSection: Record<string, string[]> = {};
   for (const s of ruleSections) {
     const name = s['.name'] as string;
@@ -144,6 +168,7 @@ export async function loadAdvancedSettingsState() {
         ? smartDetectSections
         : allSectionNames.slice(0, 1),
     allSectionNames,
+    sectionOptions,
     deviceIpsPerSection,
     dnsTurboCache: settingsSec?.dns_turbo_cache === '1',
     agentApiToken:
@@ -780,24 +805,60 @@ function renderAiWatchdogSection(state: AdvancedSettingsState) {
       ]),
       E('div', { class: 'tachyon_adv__row' }, [
         E('label', { class: 'tachyon_adv__label' }, _('WARP Proxy Section')),
-        E('input', {
-          type: 'text',
-          class: 'cbi-input-text',
-          value: state.warpProxySection,
-          placeholder: _('default (service mixed proxy)'),
-          onchange: (e: Event) => {
-            _state = {
-              ..._state,
-              warpProxySection: (e.target as HTMLInputElement).value,
-            };
+        E(
+          'select',
+          {
+            class: 'cbi-input-select',
+            onchange: (e: Event) => {
+              _state = {
+                ..._state,
+                warpProxySection: (e.target as HTMLSelectElement).value,
+              };
+            },
           },
-        }),
+          [
+            E(
+              'option',
+              {
+                value: '',
+                selected: !state.warpProxySection,
+              },
+              _('Default (Direct WAN / Default mixed proxy)'),
+            ),
+            ...state.sectionOptions.map((sec) => {
+              const desc = sec.iface
+                ? ` (${sec.action}: ${sec.iface})`
+                : ` (${sec.action})`;
+              return E(
+                'option',
+                {
+                  value: sec.id,
+                  selected: state.warpProxySection === sec.id,
+                },
+                `${sec.label}${desc}`,
+              );
+            }),
+            ...(state.warpProxySection &&
+            !state.sectionOptions.some((s) => s.id === state.warpProxySection)
+              ? [
+                  E(
+                    'option',
+                    {
+                      value: state.warpProxySection,
+                      selected: true,
+                    },
+                    `${state.warpProxySection} (${_('Custom interface/section')})`,
+                  ),
+                ]
+              : []),
+          ],
+        ),
       ]),
       E(
         'div',
         { class: 'tachyon_adv__hint' },
         _(
-          'Section name for WARP registration proxy. Leave empty to use the default service mixed proxy.',
+          'Section or tunnel interface used for Cloudflare WARP API registration. Supports Connection, WireGuard, AmneziaWG, and Interface sections. Leave empty to use direct WAN / default mixed proxy.',
         ),
       ),
       state.enableAiDoctor
