@@ -528,22 +528,22 @@ function generate_combinatorial_zapret2() {
             add(sprintf("Multisplit (pos=%s, %s)", pos, fooling),
                 sprintf("--lua-desync=multisplit:pos=%s:fooling=%s", pos, fooling),
                 "Multisplit position and fooling method");
-            for (let sq in seqovls) {
-                add(sprintf("Multisplit + SeqOvl %s (pos=%s, %s)", sq, pos, fooling),
-                    sprintf("--lua-desync=multisplit:pos=%s:seqovl=%s:fooling=%s", pos, sq, fooling),
-                    "Multisplit with sequence overlap");
-            }
-            for (let w in wsizes) {
-                add(sprintf("Multisplit + Window %s (pos=%s, %s)", w, pos, fooling),
-                    sprintf("--lua-desync=multisplit:pos=%s:wsize=%s:fooling=%s", pos, w, fooling),
-                    "Multisplit with TCP window size clamping");
-            }
+        }
+        for (let sq in seqovls) {
+            add(sprintf("Multisplit + SeqOvl %s (pos=%s, badseq)", sq, pos),
+                sprintf("--lua-desync=multisplit:pos=%s:seqovl=%s:fooling=badseq", pos, sq),
+                "Multisplit with sequence overlap");
+        }
+        for (let w in wsizes) {
+            add(sprintf("Multisplit + Window %s (pos=%s, badseq)", w, pos),
+                sprintf("--lua-desync=multisplit:pos=%s:wsize=%s:fooling=badseq", pos, w),
+                "Multisplit with TCP window size clamping");
         }
     }
     
     for (let ttl in ttls) {
-        for (let fooling in foolings) {
-            for (let pos in splits) {
+        for (let fooling in [ "badseq", "md5sig", "badack" ]) {
+            for (let pos in [ "1", "1,midsld", "midsld" ]) {
                 add(sprintf("Fake (TTL=%d, %s) + Multisplit (pos=%s)", ttl, fooling, pos),
                     sprintf("--lua-desync=fake:ttl=%d:fooling=%s --lua-desync=multisplit:pos=%s", ttl, fooling, pos),
                     "Low-TTL fake injection followed by multisplit payload");
@@ -589,14 +589,12 @@ function generate_combinatorial_zapret() {
     
     let modes = p.split_modes || [ "split2", "disorder2", "fake,split2", "fake,disorder2" ];
     let positions = p.splits || [ "1", "2", "midsld" ];
-    let foolings = p.foolings || [ "badseq", "md5sig", "badack", "datanoack" ];
-    let ttls = p.ttls || [ 2, 3, 4, 6, 8 ];
     
     for (let mode in modes) {
         for (let pos in positions) {
-            for (let fooling in foolings) {
+            for (let fooling in [ "badseq", "md5sig", "badack" ]) {
                 if (index(mode, "fake") >= 0) {
-                    for (let ttl in ttls) {
+                    for (let ttl in [ 3, 4, 8 ]) {
                         add(sprintf("%s (pos=%s, TTL=%d, %s)", mode, pos, ttl, fooling),
                             sprintf("--dpi-desync=%s --dpi-desync-split-pos=%s --dpi-desync-ttl=%d --dpi-desync-fooling=%s", mode, pos, ttl, fooling),
                             "Fake desync with split pos and fooling");
@@ -605,9 +603,6 @@ function generate_combinatorial_zapret() {
                     add(sprintf("%s (pos=%s, %s)", mode, pos, fooling),
                         sprintf("--dpi-desync=%s --dpi-desync-split-pos=%s --dpi-desync-fooling=%s", mode, pos, fooling),
                         "Desync with split pos and fooling");
-                    add(sprintf("%s + SeqOvl (pos=%s, %s)", mode, pos, fooling),
-                        sprintf("--dpi-desync=%s --dpi-desync-split-pos=%s --dpi-desync-split-seqovl=1 --dpi-desync-fooling=%s", mode, pos, fooling),
-                        "Desync with sequence overlap");
                 }
             }
         }
@@ -648,11 +643,8 @@ function generate_combinatorial_byedpi() {
     
     let splits = p.splits || [ "1", "2", "1+sniext", "midsld" ];
     let disorders = p.disorders || [ "1", "2" ];
-    let ttls = p.ttls || [ 2, 3, 4, 6, 8 ];
     let oobs = p.oobs || [ "1", "2" ];
     let autos = p.autos || [ "t,r,a,s", "r,s", "t,a" ];
-    let tlsrecs = p.tlsrecs || [ "1+sniext" ];
-    let ipfrags = p.ipfrags || [ "24" ];
     
     for (let a in autos) {
         for (let o in oobs) {
@@ -669,26 +661,13 @@ function generate_combinatorial_byedpi() {
         }
     }
     
-    for (let ttl in ttls) {
-        for (let s in splits) {
-            for (let d in disorders) {
+    for (let ttl in [ 3, 4, 8 ]) {
+        for (let s in [ "1", "1+sniext", "midsld" ]) {
+            for (let d in [ "1", "2" ]) {
                 add(sprintf("Split=%s + Disorder=%s + Fake (TTL=%d)", s, d, ttl),
                     sprintf("--split %s --disorder %s --fake -1 --ttl %d", s, d, ttl),
                     "Fake injection with split and disorder");
             }
-        }
-    }
-    
-    for (let s in splits) {
-        for (let tr in tlsrecs) {
-            add(sprintf("TLS-Rec (%s) + Split=%s", tr, s),
-                sprintf("--tlsrec %s --split %s", tr, s),
-                "TLS record boundary fragmentation");
-        }
-        for (let ipf in ipfrags) {
-            add(sprintf("IP-Frag (%s) + Split=%s", ipf, s),
-                sprintf("--ip-frag %s --split %s", ipf, s),
-                "IP packet fragmentation");
         }
     }
     
@@ -1139,7 +1118,7 @@ function run_probe(engine, args_str, target_key, custom_url) {
         
         for (let target_item in urls_list) {
             let curl_cmd = sprintf(
-                "curl -x socks5h://127.0.0.1:%d -so /dev/null -w '%%{http_code}\\t%%{time_appconnect}\\t%%{time_starttransfer}\\t%%{speed_download}' -L --connect-timeout 3 --max-time 4 %s 2>/dev/null",
+                "curl -x socks5h://127.0.0.1:%d -so /dev/null -w '%%{http_code}\\t%%{time_appconnect}\\t%%{time_starttransfer}\\t%%{speed_download}' -L --connect-timeout 2 --max-time 3 %s 2>/dev/null",
                 BYEDPI_PORT,
                 shell_quote(target_item.url)
             );
@@ -1158,8 +1137,9 @@ function run_probe(engine, args_str, target_key, custom_url) {
                 sum_ttfb += single_res.ttfb_ms;
                 if (single_res.speed_kbps > max_speed) max_speed = single_res.speed_kbps;
                 last_http = single_res.http_code;
-            } else if (last_http == 0) {
-                last_http = single_res.http_code;
+            } else {
+                if (last_http == 0) last_http = single_res.http_code;
+                break;
             }
         }
         
@@ -1227,7 +1207,7 @@ function run_probe(engine, args_str, target_key, custom_url) {
         
         for (let target_item in urls_list) {
             let curl_cmd = sprintf(
-                "curl -so /dev/null -w '%%{http_code}\\t%%{time_appconnect}\\t%%{time_starttransfer}\\t%%{speed_download}' -L --connect-timeout 3 --max-time 4 %s 2>/dev/null",
+                "curl -so /dev/null -w '%%{http_code}\\t%%{time_appconnect}\\t%%{time_starttransfer}\\t%%{speed_download}' -L --connect-timeout 2 --max-time 3 %s 2>/dev/null",
                 shell_quote(target_item.url)
             );
             let pipe = fs.popen(curl_cmd, "r");
@@ -1245,8 +1225,9 @@ function run_probe(engine, args_str, target_key, custom_url) {
                 sum_ttfb += single_res.ttfb_ms;
                 if (single_res.speed_kbps > max_speed) max_speed = single_res.speed_kbps;
                 last_http = single_res.http_code;
-            } else if (last_http == 0) {
-                last_http = single_res.http_code;
+            } else {
+                if (last_http == 0) last_http = single_res.http_code;
+                break;
             }
         }
         

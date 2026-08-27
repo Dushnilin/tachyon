@@ -12884,7 +12884,7 @@ function renderStrategyFuzzerModal(ruleNames = []) {
   };
   const startPolling = () => {
     stopPolling();
-    pollingInterval = setInterval(pollStatus, 1e3);
+    pollingInterval = setInterval(pollStatus, 600);
     pollStatus();
   };
   const stopPolling = () => {
@@ -12903,6 +12903,45 @@ function renderStrategyFuzzerModal(ruleNames = []) {
     }
     startBtn.disabled = true;
     startBtn.innerText = _("\u{1F6D1} Stop Benchmark");
+    progressContainer.style.display = "flex";
+    const statusTextEl = document.getElementById("tachyon-fuzzer-status-text");
+    const progressBarEl = document.getElementById(
+      "tachyon-fuzzer-progress-bar"
+    );
+    const currentStratEl = document.getElementById(
+      "tachyon-fuzzer-current-strategy"
+    );
+    if (statusTextEl)
+      statusTextEl.innerText = _("\u{1F680} Initializing benchmark in sandbox...");
+    if (progressBarEl) progressBarEl.style.width = "3%";
+    if (currentStratEl)
+      currentStratEl.innerText = _(
+        "Preparing strategies and isolated nftables queue..."
+      );
+    const tbody = document.getElementById("tachyon-fuzzer-results-tbody");
+    if (tbody) {
+      tbody.replaceChildren(
+        E(
+          "tr",
+          {},
+          E(
+            "td",
+            {
+              colSpan: 8,
+              style: "padding: 24px; text-align: center; opacity: 0.85;"
+            },
+            [
+              E("span", { style: "margin-right: 8px;" }, "\u23F3"),
+              E(
+                "span",
+                {},
+                _("Testing bypass strategies in isolated sandbox...")
+              )
+            ]
+          )
+        )
+      );
+    }
     const res = await TachyonShellMethods.startFuzzer(
       selectedEngine,
       selectedTarget,
@@ -12921,6 +12960,7 @@ function renderStrategyFuzzerModal(ruleNames = []) {
       showToast(`${_("Failed to start benchmark")}: ${errMsg}`, "error");
       startBtn.disabled = false;
       startBtn.innerText = _("\u{1F680} Start Benchmark");
+      progressContainer.style.display = "none";
     }
   };
   const handleAiSynthesize = async () => {
