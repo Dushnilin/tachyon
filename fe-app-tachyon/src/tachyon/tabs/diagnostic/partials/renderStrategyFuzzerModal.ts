@@ -1399,6 +1399,9 @@ export function renderStrategyFuzzerModal(ruleNames: string[] = []) {
   };
 
   // ── Polling & Execution Logic ─────────────────────────────────────────────
+  let lastRenderedCount = 0;
+  let lastRenderedFinishedAt = 0;
+
   const pollStatus = async () => {
     if (isPolling) return;
     isPolling = true;
@@ -1409,7 +1412,18 @@ export function renderStrategyFuzzerModal(ruleNames: string[] = []) {
         isRunning = res.data.running;
 
         updateProgressUI(res.data);
-        renderResults(res.data);
+
+        // Only re-render results when new results arrive or benchmark finishes
+        const resultCount = res.data.results?.length || 0;
+        const finishedAt = res.data.finished_at || 0;
+        if (
+          resultCount !== lastRenderedCount ||
+          finishedAt !== lastRenderedFinishedAt
+        ) {
+          renderResults(res.data);
+          lastRenderedCount = resultCount;
+          lastRenderedFinishedAt = finishedAt;
+        }
 
         if (!isRunning) {
           stopPolling();
@@ -1599,6 +1613,8 @@ export function renderStrategyFuzzerModal(ruleNames: string[] = []) {
       showToast(_('Strategy benchmark started'), 'success');
       (startBtn as HTMLButtonElement).disabled = false;
       isRunning = true;
+      lastRenderedCount = 0;
+      lastRenderedFinishedAt = 0;
       startPolling();
     } else {
       const errMsg = !res.success ? res.error : _('Unknown error');

@@ -13110,6 +13110,8 @@ function renderStrategyFuzzerModal(ruleNames = []) {
       applyBestBtn2.disabled = false;
     }
   };
+  let lastRenderedCount = 0;
+  let lastRenderedFinishedAt = 0;
   const pollStatus = async () => {
     if (isPolling) return;
     isPolling = true;
@@ -13119,7 +13121,13 @@ function renderStrategyFuzzerModal(ruleNames = []) {
         currentState = res.data;
         isRunning = res.data.running;
         updateProgressUI(res.data);
-        renderResults(res.data);
+        const resultCount = res.data.results?.length || 0;
+        const finishedAt = res.data.finished_at || 0;
+        if (resultCount !== lastRenderedCount || finishedAt !== lastRenderedFinishedAt) {
+          renderResults(res.data);
+          lastRenderedCount = resultCount;
+          lastRenderedFinishedAt = finishedAt;
+        }
         if (!isRunning) {
           stopPolling();
           startBtn.innerText = _("\u{1F680} Start Benchmark");
@@ -13287,6 +13295,8 @@ function renderStrategyFuzzerModal(ruleNames = []) {
       showToast(_("Strategy benchmark started"), "success");
       startBtn.disabled = false;
       isRunning = true;
+      lastRenderedCount = 0;
+      lastRenderedFinishedAt = 0;
       startPolling();
     } else {
       const errMsg = !res.success ? res.error : _("Unknown error");
