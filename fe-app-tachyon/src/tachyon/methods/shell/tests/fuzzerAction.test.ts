@@ -182,4 +182,72 @@ describe('TachyonShellMethods Fuzzer Actions', () => {
       expect(res.data.strategies).toHaveLength(1);
     }
   });
+
+  it('gets fuzzer patterns configuration', async () => {
+    mocks.executeShellCommand.mockResolvedValueOnce({
+      stdout: JSON.stringify({
+        success: true,
+        patterns: {
+          zapret2: { splits: ['1', '2', 'midsld'] },
+          zapret: { splits: ['1', '2'] },
+          byedpi: { splits: ['1'] },
+          custom_strategies: [],
+        },
+      }),
+      stderr: '',
+      code: 0,
+    });
+
+    const res = await TachyonShellMethods.getFuzzerPatterns();
+    expect(res.success).toBe(true);
+    if (res.success) {
+      expect(res.data.patterns.zapret2.splits).toEqual(['1', '2', 'midsld']);
+    }
+  });
+
+  it('saves fuzzer patterns configuration', async () => {
+    mocks.executeShellCommand.mockResolvedValueOnce({
+      stdout: JSON.stringify({
+        success: true,
+        message: 'Patterns saved successfully',
+      }),
+      stderr: '',
+      code: 0,
+    });
+
+    const patternsPayload: any = {
+      zapret2: { splits: ['1', '2', 'midsld'] },
+      zapret: { splits: ['1'] },
+      byedpi: { splits: ['1'] },
+      custom_strategies: [],
+    };
+
+    const res = await TachyonShellMethods.saveFuzzerPatterns(patternsPayload);
+    expect(res.success).toBe(true);
+    expect(mocks.executeShellCommand).toHaveBeenCalledWith(
+      expect.objectContaining({
+        args: ['fuzzer_save_patterns', JSON.stringify(patternsPayload)],
+      }),
+    );
+  });
+
+  it('resets fuzzer patterns configuration', async () => {
+    mocks.executeShellCommand.mockResolvedValueOnce({
+      stdout: JSON.stringify({
+        success: true,
+        message: 'Patterns reset to factory defaults',
+        patterns: {
+          zapret2: { splits: ['1', '2', '3', 'midsld'] },
+        },
+      }),
+      stderr: '',
+      code: 0,
+    });
+
+    const res = await TachyonShellMethods.resetFuzzerPatterns();
+    expect(res.success).toBe(true);
+    if (res.success) {
+      expect(res.data.message).toBe('Patterns reset to factory defaults');
+    }
+  });
 });

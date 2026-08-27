@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-08-27 07:39+0300\n"
-"PO-Revision-Date: 2026-08-27 07:39+0300\n"
+"POT-Creation-Date: 2026-08-27 13:54+0300\n"
+"PO-Revision-Date: 2026-08-27 13:54+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -35,6 +35,9 @@ msgstr "+ Добавить уровень"
 msgid "+ Add priority"
 msgstr "+ Добавить приоритет"
 
+msgid "+ Add Strategy"
+msgstr ""
+
 msgid "+ Add URLTest"
 msgstr "+ Добавить URLTest"
 
@@ -59,6 +62,12 @@ msgstr "⚠️ Если все основные DNS завершатся с ош
 msgid "⚡ DPI Strategy Fuzzer"
 msgstr "⚡ DPI Strategy Fuzzer"
 
+msgid "⚡ Fast (>1MB/s)"
+msgstr ""
+
+msgid "⚡ QUIC / HTTP/3 (UDP 443)"
+msgstr ""
+
 msgid "⚡ Quick Benchmark (Presets ~12-14)"
 msgstr "⚡ Быстрый бенчмарк (Пресеты ~12-14)"
 
@@ -67,6 +76,12 @@ msgstr "⚡ Подборщик стратегий и авто-тюнер"
 
 msgid "✅ Benchmark completed! Optimal strategy identified."
 msgstr "✅ Бенчмарк завершен! Оптимальная стратегия определена."
+
+msgid "✅ Working only"
+msgstr ""
+
+msgid "✈️ Telegram Suite (Web + Bot API)"
+msgstr ""
 
 msgid "✔ Online"
 msgstr ""
@@ -80,11 +95,32 @@ msgstr ""
 msgid "✘ Stopped"
 msgstr "✘ Остановлено"
 
-msgid "🏆 Apply Best Strategy"
-msgstr "🏆 Применить лучшую стратегию"
+msgid "🌐 Custom Target URL..."
+msgstr ""
 
-msgid "🔍 Combinatorial Deep Fuzzing (~40-60)"
-msgstr "🔍 Комбинаторный глубокий перебор (~40-60)"
+msgid "🎬 YouTube Suite (Web + 4K Stream)"
+msgstr ""
+
+msgid "🏆 Apply Best Match"
+msgstr ""
+
+msgid "🏴‍☠️ RuTracker Suite"
+msgstr ""
+
+msgid "💬 Discord Suite (API + WSS + CDN)"
+msgstr ""
+
+msgid "💾 Save Custom Patterns"
+msgstr ""
+
+msgid "📸 Instagram / Meta (Web + CDN)"
+msgstr ""
+
+msgid "🔄 Reset to Factory Defaults"
+msgstr ""
+
+msgid "🔍 Combinatorial Deep Fuzzing (~40-80+)"
+msgstr ""
 
 msgid "🔑 Generate"
 msgstr "🔑 Сгенерировать"
@@ -95,14 +131,14 @@ msgstr "🧠 Сгенерировать через ИИ"
 msgid "🧠 Synthesizing..."
 msgstr "🧠 Генерация..."
 
-msgid "🚀 Run Benchmark Again"
-msgstr "🚀 Запустить бенчмарк снова"
-
 msgid "🚀 Start Benchmark"
 msgstr "🚀 Начать бенчмарк"
 
 msgid "🛑 Stop Benchmark"
 msgstr "🛑 Остановить бенчмарк"
+
+msgid "🛠️ My Custom Strategies Only"
+msgstr ""
 
 msgid "Accept external proxy connections and route them with sing-box."
 msgstr "Принимать внешние прокси-подключения и маршрутизировать их через sing-box."
@@ -118,6 +154,9 @@ msgstr "Действие не выполнено"
 
 msgid "Action Mode"
 msgstr "Режим действия"
+
+msgid "Actions"
+msgstr ""
 
 msgid "Active"
 msgstr "Активные"
@@ -154,6 +193,9 @@ msgstr "Добавить серверный инбаунд"
 
 msgid "Add at least one DNS server"
 msgstr "Добавьте как минимум один DNS-сервер"
+
+msgid "Add Custom DPI Strategy"
+msgstr ""
 
 msgid "Add prefix to nodes"
 msgstr "Добавить префикс к узлам"
@@ -245,8 +287,11 @@ msgstr "Ошибка ИИ-доктора"
 msgid "AI Doctor Language"
 msgstr "Язык ИИ-доктора"
 
-msgid "AI DPI Engineer & Strategy Synthesizer (RAG-Powered)"
-msgstr "ИИ-инженер DPI и генератор стратегий (на базе RAG)"
+msgid "AI Doctor RAG"
+msgstr ""
+
+msgid "AI DPI Engineer & Strategy Synthesizer"
+msgstr ""
 
 msgid "AI Model"
 msgstr "Модель ИИ"
@@ -386,6 +431,9 @@ msgstr "Применение исправления"
 msgid "Applying..."
 msgstr "Применение..."
 
+msgid "Arguments"
+msgstr ""
+
 msgid "Ask Tachyon AI Assistant a question..."
 msgstr "Задайте вопрос ИИ-ассистенту..."
 
@@ -403,6 +451,9 @@ msgstr "Auth Digest"
 
 msgid "Auto"
 msgstr "Авто"
+
+msgid "Auto Modes (--auto)"
+msgstr ""
 
 msgid "Auto refresh"
 msgstr "Автообновление"
@@ -431,9 +482,6 @@ msgstr "Автолечение сетевого стека"
 msgid "Auto-update Hosts Lists"
 msgstr "Автообновление списков Hosts"
 
-msgid "Automated DPI Strategy Fuzzer & Auto-Tuner"
-msgstr "Автоматический подборщик и оптимизатор стратегий DPI"
-
 msgid "Automatic component update checks"
 msgstr "Автоматическая проверка обновлений компонентов"
 
@@ -451,6 +499,9 @@ msgstr "Автоматически создать аккаунт Cloudflare WARP
 
 msgid "Automatically increase check intervals when healthy (to 5 min) and decrease on problems (to 120s)."
 msgstr "Автоматически увеличивать интервалы проверки при нормальном состоянии (до 5 мин) и уменьшать при проблемах (до 120с)."
+
+msgid "Automatically runs a diagnostic probe against the target service, queries the built-in DPI Knowledge Base, and synthesizes 3-5 custom bypass strategies tailored to your ISP."
+msgstr ""
 
 msgid "Automatically select the fastest node in the current level"
 msgstr "Автовыбор самого быстрого узла уровня"
@@ -482,14 +533,14 @@ msgstr "Начало интервала расписания (например, 
 msgid "Belarus (by)"
 msgstr "Беларусь (by)"
 
+msgid "Benchmark & Test"
+msgstr ""
+
 msgid "Benchmark stopped"
 msgstr "Бенчмарк остановлен"
 
 msgid "Benchmarking in progress..."
 msgstr "Выполняется бенчмарк..."
-
-msgid "Benchmarks a suite of packet desynchronization strategies in an isolated sandbox without disrupting active traffic, ranking them by latency, TTFB, and throughput."
-msgstr "Тестирует набор стратегий десинхронизации пакетов в изолированном сэндбоксе без влияния на активный трафик и ранжирует их по задержке, TTFB и скорости."
 
 msgid "BitTorrent / P2P"
 msgstr "BitTorrent / P2P"
@@ -782,6 +833,9 @@ msgstr "Токен доступа Cloudflare WARP API"
 msgid "Comma-separated list of Telegram user IDs authorized to control the bot."
 msgstr "Список Telegram user ID через запятую, авторизованных для управления ботом."
 
+msgid "Command-line arguments string..."
+msgstr ""
+
 msgid "Community Lists"
 msgstr "Community-списки"
 
@@ -908,6 +962,9 @@ msgstr "Пользовательский заголовок для инициа�
 msgid "Custom header for handshake response"
 msgstr "Пользовательский заголовок для ответа рукопожатия"
 
+msgid "Custom interface/section"
+msgstr ""
+
 msgid "Custom OpenAI-Compatible API"
 msgstr "Пользовательский OpenAI-совместимый API"
 
@@ -917,8 +974,8 @@ msgstr "Пользовательский URL эндпоинта OpenAI-совм�
 msgid "Custom outbound configurations in JSON format"
 msgstr "Пользовательские конфигурации outbound в формате JSON"
 
-msgid "Custom Target URL..."
-msgstr "Свой URL для теста..."
+msgid "Custom strategy added!"
+msgstr ""
 
 msgid "Daily Quota"
 msgstr "Дневная квота"
@@ -940,9 +997,6 @@ msgstr "По умолчанию (авто)"
 
 msgid "Default (Direct WAN / Default mixed proxy)"
 msgstr "По умолчанию (WAN / стандартный смешанный прокси)"
-
-msgid "default (service mixed proxy)"
-msgstr "по умолчанию (сервисный смешанный прокси)"
 
 msgid "Default address for checking server availability and latency. URLTest uses its own address."
 msgstr "Адрес по умолчанию для проверки доступности и задержки сервера. URLTest использует свой собственный адрес."
@@ -1031,8 +1085,8 @@ msgstr "Отключено"
 msgid "Disabling interception is incompatible with action=zapret2 because Tachyon sends matched traffic through NFQUEUE."
 msgstr "Отключение перехвата несовместимо с action=zapret2, потому что Tachyon направляет совпавший трафик через NFQUEUE."
 
-msgid "Discord (Gateway / API / Voice)"
-msgstr "Discord (Шлюз / API / Голосовые каналы)"
+msgid "Disorder Values (-d)"
+msgstr ""
 
 msgid "Display name"
 msgstr "Отображаемое имя"
@@ -1481,6 +1535,9 @@ msgstr "Не удалось создать отчёт об ошибке"
 msgid "Failed to generate WARP config:"
 msgstr "Не удалось сгенерировать конфигурацию WARP:"
 
+msgid "Failed to get fuzzer patterns"
+msgstr ""
+
 msgid "Failed to get fuzzer status"
 msgstr ""
 
@@ -1505,6 +1562,9 @@ msgstr "Не удалось прочитать лог операции"
 msgid "Failed to receive response from AI service."
 msgstr "Не удалось получить ответ от ИИ-сервиса."
 
+msgid "Failed to reset fuzzer patterns"
+msgstr ""
+
 msgid "Failed to reset settings"
 msgstr "Не удалось сбросить настройки"
 
@@ -1525,6 +1585,12 @@ msgstr "Ошибка сохранения IP устройств"
 
 msgid "Failed to save DNS Turbo Cache"
 msgstr "Не удалось сохранить DNS Turbo Cache"
+
+msgid "Failed to save fuzzer patterns"
+msgstr ""
+
+msgid "Failed to save patterns"
+msgstr ""
 
 msgid "Failed to save Smart Detect settings"
 msgstr "Ошибка сохранения настроек Smart Detect"
@@ -1601,6 +1667,9 @@ msgstr "Фильтр по сервису:"
 msgid "Filter the servers that will be displayed on the dashboard."
 msgstr "Фильтровать серверы, отображаемые на дашборде."
 
+msgid "Filter:"
+msgstr ""
+
 msgid "Finland (fi)"
 msgstr "Финляндия (fi)"
 
@@ -1621,6 +1690,12 @@ msgstr "Исправлено"
 
 msgid "Flush Conntrack Table"
 msgstr "Очистить таблицу соед. (conntrack)"
+
+msgid "Fooling Methods (dpi-desync-fooling)"
+msgstr ""
+
+msgid "Fooling Methods (fooling)"
+msgstr ""
 
 msgid "Force immediate download and refresh of all remote lists and rule sets"
 msgstr "Принудительно скачать и обновить все удаленные списки и наборы правил"
@@ -1925,9 +2000,6 @@ msgstr "Полезный груз init (I1)"
 msgid "Init timeout (Itime)"
 msgstr "Таймаут init (Itime)"
 
-msgid "Instagram / Meta (TLS 1.3)"
-msgstr "Instagram / Meta (TLS 1.3)"
-
 msgid "Install"
 msgstr "Установить"
 
@@ -2180,6 +2252,9 @@ msgstr "Некорректный VMess URL: ошибка разбора"
 msgid "IP Addresses (IP CIDR)"
 msgstr "IP-адреса (IP CIDR)"
 
+msgid "IP Frag Bounds (--ip-frag)"
+msgstr ""
+
 msgid "IPs"
 msgstr "IP"
 
@@ -2281,9 +2356,6 @@ msgstr "Путь к ключу"
 
 msgid "Keyword must not contain spaces or commas"
 msgstr "Ключевое слово не должно содержать пробелов или запятых"
-
-msgid "Knowledge Base + Live Probe Context"
-msgstr "База знаний + Контекст сетевого зонда"
 
 msgid "LAN Devices"
 msgstr "Устройства LAN"
@@ -2492,6 +2564,12 @@ msgstr "Должен быть список числовых ID через зап
 msgid "Must be a number in the range of 0 - 10000"
 msgstr "Должно быть числом в диапазоне 0 - 10000"
 
+msgid "My Strategies"
+msgstr ""
+
+msgid "Name"
+msgstr ""
+
 msgid "Name displayed on the dashboard"
 msgstr "Имя, отображаемое на дашборде"
 
@@ -2555,8 +2633,8 @@ msgstr "Активные устройства в локальной сети н�
 msgid "No active routing sections found."
 msgstr "Активные секции маршрутизации не найдены."
 
-msgid "No benchmark results yet. Select engine and click \"Start Benchmark\" or \"Synthesize with AI\"."
-msgstr "Нет результатов бенчмарка. Выберите движок и нажмите «Начать бенчмарк» или «Сгенерировать через ИИ»."
+msgid "No benchmark results yet. Configure options and click \"Start Benchmark\"."
+msgstr ""
 
 msgid "No check targets found in the configuration."
 msgstr "Цели для проверки не найдены в конфигурации."
@@ -2569,6 +2647,9 @@ msgstr "Конфликт не обнаружен"
 
 msgid "No Custom Rules Matched"
 msgstr "Нет совпадений с пользовательскими правилами"
+
+msgid "No custom strategies added yet."
+msgstr ""
 
 msgid "No DHCP clients detected"
 msgstr "DHCP-клиенты не обнаружены"
@@ -2611,6 +2692,9 @@ msgstr "Секции не выбраны"
 
 msgid "No snapshots yet"
 msgstr "Снапшотов пока нет"
+
+msgid "No strategies match the active filter."
+msgstr ""
 
 msgid "Node list is empty"
 msgstr "Список узлов пуст"
@@ -2723,6 +2807,9 @@ msgstr "Только серверы с одним из выбранных тра
 msgid "Only the specified servers."
 msgstr "Только указанные серверы."
 
+msgid "OOB Values (-o)"
+msgstr ""
+
 msgid "Open"
 msgstr "Открыть"
 
@@ -2768,11 +2855,11 @@ msgstr "Параметр \"%s\" содержит недопустимое зна
 msgid "Optional — leave empty for default"
 msgstr "Опционально — оставьте пустым для значения по умолчанию"
 
+msgid "Optional context (e.g. \"Rostelecom, YouTube 4K buffering is slow\")..."
+msgstr ""
+
 msgid "Optional for local LLM"
 msgstr "Опционально для локальных LLM"
-
-msgid "Optional notes for AI (e.g. \"Rostelecom, YouTube 4K stream is slow\")..."
-msgstr "Дополнительные заметки для ИИ (напр. «Ростелеком, тормозит 4K на YouTube»)..."
 
 msgid "Optional tls-auth or tls-crypt key"
 msgstr "Опциональный ключ tls-auth или tls-crypt"
@@ -2837,6 +2924,21 @@ msgstr "Путь должен содержать как минимум одну 
 msgid "Path must end with cache.db"
 msgstr "Путь должен заканчиваться на cache.db"
 
+msgid "Pattern Builder"
+msgstr ""
+
+msgid "Patterns reset to defaults!"
+msgstr ""
+
+msgid "Patterns reset to factory defaults"
+msgstr ""
+
+msgid "Patterns saved successfully"
+msgstr ""
+
+msgid "Patterns saved successfully!"
+msgstr ""
+
 msgid "Pause updates"
 msgstr "Приостановить обновление"
 
@@ -2887,6 +2989,9 @@ msgstr "Закрепить на дашборде"
 
 msgid "Pin P2P isolation to the torrent client's own ports, comma separated. Each entry is \"proto\", \"proto:port\" or \"proto:port-port\" (tcp/udp). Without a port the whole protocol is routed direct."
 msgstr "Закрепить изоляцию P2P за портами торрент-клиента, через запятую. Каждая запись — \"протокол\", \"протокол:порт\" или \"протокол:порт-порт\" (tcp/udp). Без порта весь протокол уходит напрямую."
+
+msgid "Please specify strategy name and arguments"
+msgstr ""
 
 msgid "Polling Interval (seconds)"
 msgstr "Интервал опроса (секунды)"
@@ -3013,6 +3118,9 @@ msgstr "QR-код слишком большой"
 
 msgid "QUIC (HTTP/3)"
 msgstr "QUIC (HTTP/3)"
+
+msgid "RAG Knowledge Base + Live ISP Probe Context"
+msgstr ""
 
 msgid "RDP"
 msgstr "RDP"
@@ -3290,17 +3398,14 @@ msgstr "Запустить восстановление"
 msgid "Running"
 msgstr "Запущен"
 
+msgid "Running benchmarks..."
+msgstr ""
+
 msgid "Running diagnostics…"
 msgstr "Выполняется диагностика…"
 
-msgid "Running initial strategy probe..."
-msgstr "Запуск первого зонда стратегии..."
-
 msgid "Russia (ru)"
 msgstr "Россия (ru)"
-
-msgid "RuTracker (HTTP/HTTPS)"
-msgstr "RuTracker (HTTP/HTTPS)"
 
 msgid "Sat"
 msgstr "Сб"
@@ -3365,8 +3470,8 @@ msgstr "Действие секции"
 msgid "Section name"
 msgstr "Имя секции"
 
-msgid "Section name for WARP registration proxy. Leave empty to use the default service mixed proxy."
-msgstr "Секция для прокси регистрации WARP. Оставьте пустым для использования сервисного смешанного прокси по умолчанию."
+msgid "Section or tunnel interface used for Cloudflare WARP API registration. Supports Connection, WireGuard, AmneziaWG, and Interface sections. Leave empty to use direct WAN / default mixed proxy."
+msgstr ""
 
 msgid "Section Rules Content"
 msgstr "Содержимое правил секции"
@@ -3502,6 +3607,9 @@ msgstr "Отправлять уведомление в Telegram при пере�
 
 msgid "Send a Telegram notification when proxy subscriptions are successfully updated."
 msgstr "Отправлять уведомление в Telegram при успешном обновлении подписок прокси."
+
+msgid "Sequence Overlaps (seqovl)"
+msgstr ""
 
 msgid "Server"
 msgstr "Сервер"
@@ -3722,6 +3830,18 @@ msgstr "Укажите разные файлы"
 msgid "Speed"
 msgstr "Скорость"
 
+msgid "Split Modes (dpi-desync)"
+msgstr ""
+
+msgid "Split Positions (dpi-desync-split-pos)"
+msgstr ""
+
+msgid "Split Positions (pos)"
+msgstr ""
+
+msgid "Split Values (-s)"
+msgstr ""
+
 msgid "SSH"
 msgstr "SSH"
 
@@ -3788,6 +3908,9 @@ msgstr ""
 msgid "Status"
 msgstr "Статус"
 
+msgid "Status / Suite"
+msgstr ""
+
 msgid "Stop"
 msgstr "Стоп"
 
@@ -3814,6 +3937,12 @@ msgstr "Стратегия и параметры"
 
 msgid "Strategy benchmark started"
 msgstr "Бенчмарк стратегий запущен"
+
+msgid "Strategy deleted"
+msgstr ""
+
+msgid "Strategy Name"
+msgstr ""
 
 msgid "Strict ECH + DoQ DNS Enforcer"
 msgstr "Строгий ECH + DoQ DNS Enforcer"
@@ -3965,8 +4094,11 @@ msgstr "Целевые устройства (IP / MAC)"
 msgid "Target Scope"
 msgstr "Область действия"
 
-msgid "Target Service"
-msgstr "Целевой сервис"
+msgid "Target Service / Suite"
+msgstr ""
+
+msgid "TCP Window Sizes (wsize)"
+msgstr ""
 
 msgid "Telegram Bot"
 msgstr "Telegram Бот"
@@ -3976,9 +4108,6 @@ msgstr "Токен Telegram-бота"
 
 msgid "Telegram Channel"
 msgstr "Telegram канал"
-
-msgid "Telegram Web"
-msgstr "Telegram Web"
 
 msgid "Test Connection"
 msgstr "Проверить подключение"
@@ -4106,6 +4235,9 @@ msgstr "Ключ TLS Auth/Crypt"
 msgid "TLS SNI"
 msgstr "TLS SNI"
 
+msgid "TLS-Rec Bounds (--tlsrec)"
+msgstr ""
+
 msgid "Token is required when the bot is enabled"
 msgstr "Токен обязателен, когда бот включён"
 
@@ -4186,6 +4318,12 @@ msgstr "TTL должен быть положительным числом"
 
 msgid "TTL value cannot be empty"
 msgstr "Значение TTL не может быть пустым"
+
+msgid "TTL Values (dpi-desync-ttl)"
+msgstr ""
+
+msgid "TTL Values (ttl)"
+msgstr ""
 
 msgid "Tue"
 msgstr "Вт"
@@ -4421,6 +4559,9 @@ msgstr "Использовать exit-node тейлнета для LAN"
 msgid "Used by"
 msgstr "Используется"
 
+msgid "User custom strategy"
+msgstr ""
+
 msgid "User-Agent"
 msgstr "User-Agent"
 
@@ -4550,12 +4691,6 @@ msgstr "Да"
 msgid "You can select Output Network Interface, by default autodetect"
 msgstr "Вы можете выбрать выходной сетевой интерфейс, по умолчанию автоопределение"
 
-msgid "YouTube (GoogleVideo 4K stream)"
-msgstr "YouTube (4K видеопоток GoogleVideo)"
-
-msgid "YouTube Web (Interface)"
-msgstr "YouTube Web (Интерфейс)"
-
 msgid "Zapret hostlist templates are not supported here because Tachyon does not expand them for per-rule NFQWS strategies."
 msgstr "Шаблоны hostlist Zapret не поддерживаются здесь, потому что Tachyon не расширяет их для стратегий NFQWS по правилам."
 
@@ -4603,6 +4738,66 @@ msgstr "sing-box outbound для Zapret2 настроен"
 
 msgid "Zapret2 sing-box outbound is not configured"
 msgstr "sing-box outbound для Zapret2 не настроен"
+
+msgid "🏆 Apply Best Strategy"
+msgstr "🏆 Применить лучшую стратегию"
+
+msgid "🔍 Combinatorial Deep Fuzzing (~40-60)"
+msgstr "🔍 Комбинаторный глубокий перебор (~40-60)"
+
+msgid "🚀 Run Benchmark Again"
+msgstr "🚀 Запустить бенчмарк снова"
+
+msgid "AI DPI Engineer & Strategy Synthesizer (RAG-Powered)"
+msgstr "ИИ-инженер DPI и генератор стратегий (на базе RAG)"
+
+msgid "Automated DPI Strategy Fuzzer & Auto-Tuner"
+msgstr "Автоматический подборщик и оптимизатор стратегий DPI"
+
+msgid "Benchmarks a suite of packet desynchronization strategies in an isolated sandbox without disrupting active traffic, ranking them by latency, TTFB, and throughput."
+msgstr "Тестирует набор стратегий десинхронизации пакетов в изолированном сэндбоксе без влияния на активный трафик и ранжирует их по задержке, TTFB и скорости."
+
+msgid "Custom Target URL..."
+msgstr "Свой URL для теста..."
+
+msgid "default (service mixed proxy)"
+msgstr "по умолчанию (сервисный смешанный прокси)"
+
+msgid "Discord (Gateway / API / Voice)"
+msgstr "Discord (Шлюз / API / Голосовые каналы)"
+
+msgid "Instagram / Meta (TLS 1.3)"
+msgstr "Instagram / Meta (TLS 1.3)"
+
+msgid "Knowledge Base + Live Probe Context"
+msgstr "База знаний + Контекст сетевого зонда"
+
+msgid "No benchmark results yet. Select engine and click \"Start Benchmark\" or \"Synthesize with AI\"."
+msgstr "Нет результатов бенчмарка. Выберите движок и нажмите «Начать бенчмарк» или «Сгенерировать через ИИ»."
+
+msgid "Optional notes for AI (e.g. \"Rostelecom, YouTube 4K stream is slow\")..."
+msgstr "Дополнительные заметки для ИИ (напр. «Ростелеком, тормозит 4K на YouTube»)..."
+
+msgid "Running initial strategy probe..."
+msgstr "Запуск первого зонда стратегии..."
+
+msgid "RuTracker (HTTP/HTTPS)"
+msgstr "RuTracker (HTTP/HTTPS)"
+
+msgid "Section name for WARP registration proxy. Leave empty to use the default service mixed proxy."
+msgstr "Секция для прокси регистрации WARP. Оставьте пустым для использования сервисного смешанного прокси по умолчанию."
+
+msgid "Target Service"
+msgstr "Целевой сервис"
+
+msgid "Telegram Web"
+msgstr "Telegram Web"
+
+msgid "YouTube (GoogleVideo 4K stream)"
+msgstr "YouTube (4K видеопоток GoogleVideo)"
+
+msgid "YouTube Web (Interface)"
+msgstr "YouTube Web (Интерфейс)"
 
 msgid "No benchmark results yet. Select engine and click \"Start Benchmark\"."
 msgstr "Нет результатов бенчмарка. Выберите движок и нажмите «Начать бенчмарк»."

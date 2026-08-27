@@ -3120,6 +3120,9 @@ var Tachyon;
     AvailableMethods2["FUZZER_APPLY"] = "fuzzer_apply";
     AvailableMethods2["FUZZER_STRATEGIES"] = "fuzzer_strategies";
     AvailableMethods2["FUZZER_AI_SYNTHESIZE"] = "fuzzer_ai_synthesize";
+    AvailableMethods2["FUZZER_GET_PATTERNS"] = "fuzzer_get_patterns";
+    AvailableMethods2["FUZZER_SAVE_PATTERNS"] = "fuzzer_save_patterns";
+    AvailableMethods2["FUZZER_RESET_PATTERNS"] = "fuzzer_reset_patterns";
   })(AvailableMethods = Tachyon2.AvailableMethods || (Tachyon2.AvailableMethods = {}));
   let AvailableClashAPIMethods;
   ((AvailableClashAPIMethods2) => {
@@ -4081,6 +4084,81 @@ var TachyonShellMethods = {
     return {
       success: false,
       error: parsed?.error || response.stderr || _("Failed to synthesize AI strategies")
+    };
+  },
+  getFuzzerPatterns: async () => {
+    const response = await executeShellCommand({
+      command: "/usr/bin/tachyon",
+      args: [Tachyon.AvailableMethods.FUZZER_GET_PATTERNS],
+      timeout: 8e3
+    });
+    let parsed = null;
+    try {
+      parsed = JSON.parse(response.stdout?.trim() || "{}");
+    } catch {
+      parsed = null;
+    }
+    if ((response.code ?? 1) === 0 && parsed && parsed.success) {
+      return {
+        success: true,
+        data: parsed
+      };
+    }
+    return {
+      success: false,
+      error: response.stderr || _("Failed to get fuzzer patterns")
+    };
+  },
+  saveFuzzerPatterns: async (patterns) => {
+    const response = await executeShellCommand({
+      command: "/usr/bin/tachyon",
+      args: [
+        Tachyon.AvailableMethods.FUZZER_SAVE_PATTERNS,
+        JSON.stringify(patterns)
+      ],
+      timeout: 1e4
+    });
+    let parsed = null;
+    try {
+      parsed = JSON.parse(response.stdout?.trim() || "{}");
+    } catch {
+      parsed = null;
+    }
+    if ((response.code ?? 1) === 0 && parsed && parsed.success) {
+      return {
+        success: true,
+        data: { message: parsed.message || _("Patterns saved successfully") }
+      };
+    }
+    return {
+      success: false,
+      error: parsed?.error || response.stderr || _("Failed to save fuzzer patterns")
+    };
+  },
+  resetFuzzerPatterns: async () => {
+    const response = await executeShellCommand({
+      command: "/usr/bin/tachyon",
+      args: [Tachyon.AvailableMethods.FUZZER_RESET_PATTERNS],
+      timeout: 8e3
+    });
+    let parsed = null;
+    try {
+      parsed = JSON.parse(response.stdout?.trim() || "{}");
+    } catch {
+      parsed = null;
+    }
+    if ((response.code ?? 1) === 0 && parsed && parsed.success) {
+      return {
+        success: true,
+        data: {
+          message: parsed.message || _("Patterns reset to factory defaults"),
+          patterns: parsed.patterns
+        }
+      };
+    }
+    return {
+      success: false,
+      error: parsed?.error || response.stderr || _("Failed to reset fuzzer patterns")
     };
   }
 };
@@ -11744,55 +11822,106 @@ function renderAiChatModal() {
 function renderStrategyFuzzerModal(ruleNames = []) {
   let pollingInterval = null;
   let isPolling = false;
+  let activeTab2 = "benchmark";
   let selectedEngine = "zapret2";
-  let selectedTarget = "youtube";
+  let selectedTarget = "youtube_suite";
   let customUrl = "";
   let selectedRuleSection = "";
+  let selectedMode = "presets";
   let isRunning = false;
   let currentState = null;
+  let resultFilter = "all";
+  let patternsConfig = {
+    zapret2: {
+      splits: ["1", "2", "3", "midsld", "sniext+4", "1,midsld", "1,sniext+2"],
+      foolings: ["badseq", "md5sig", "badack", "datanoack", "fakeddrop"],
+      ttls: [2, 3, 4, 5, 6, 8],
+      seqovls: ["1", "2"],
+      wsizes: ["1"],
+      payloads: ["tls_client_hello", "http_req", "quic_initial"]
+    },
+    zapret: {
+      splits: ["1", "2", "midsld", "sniext+4", "1,midsld"],
+      foolings: ["badseq", "md5sig", "badack", "datanoack"],
+      ttls: [2, 3, 4, 6, 8],
+      split_modes: ["split2", "disorder2", "fake,split2", "fake,disorder2"]
+    },
+    byedpi: {
+      splits: ["1", "2", "1+sniext", "midsld"],
+      disorders: ["1", "2"],
+      ttls: [2, 3, 4, 6, 8],
+      oobs: ["1", "2"],
+      autos: ["t,r,a,s", "r,s", "t,a"],
+      tlsrecs: ["1+sniext"],
+      ipfrags: ["24"]
+    },
+    custom_strategies: []
+  };
   const modalContainer = E("div", {
     class: "tachyon_fuzzer_modal",
-    style: "display: flex; flex-direction: column; gap: 16px; width: 100%; max-width: 860px; box-sizing: border-box;"
+    style: "display: flex; flex-direction: column; gap: 14px; width: 100%; max-width: 920px; box-sizing: border-box;"
   });
-  const headerEl = E(
+  const tabButtons = {};
+  const createTabButton = (id, icon, label) => {
+    const btn = E(
+      "button",
+      {
+        type: "button",
+        class: `cbi-button ${activeTab2 === id ? "cbi-button-action" : "cbi-button-neutral"}`,
+        style: "display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; font-size: 12px; font-weight: 500; border-radius: 6px; cursor: pointer;"
+      },
+      [E("span", {}, icon), E("span", {}, label)]
+    );
+    btn.addEventListener("click", () => {
+      activeTab2 = id;
+      updateTabVisibility();
+    });
+    tabButtons[id] = btn;
+    return btn;
+  };
+  const tabBar = E(
     "div",
     {
-      style: "padding: 12px 16px; background: var(--background-color-secondary, rgba(0,0,0,0.25)); border: 1px solid var(--border-color, rgba(255,255,255,0.12)); border-radius: 8px;"
+      style: "display: flex; gap: 8px; border-bottom: 1px solid var(--border-color, rgba(255,255,255,0.12)); padding-bottom: 10px; flex-wrap: wrap;"
     },
     [
-      E(
-        "div",
-        {
-          style: "font-size: 15px; font-weight: bold; margin-bottom: 4px; display: flex; align-items: center; gap: 8px;"
-        },
-        [
-          E("span", {}, "\u26A1"),
-          E("span", {}, _("Automated DPI Strategy Fuzzer & Auto-Tuner"))
-        ]
-      ),
-      E(
-        "div",
-        {
-          style: "font-size: 12px; opacity: 0.75; line-height: 1.4;"
-        },
-        _(
-          "Benchmarks a suite of packet desynchronization strategies in an isolated sandbox without disrupting active traffic, ranking them by latency, TTFB, and throughput."
-        )
-      )
+      createTabButton("benchmark", "\u26A1", _("Benchmark & Test")),
+      createTabButton("patterns", "\u{1F6E0}\uFE0F", _("Pattern Builder")),
+      createTabButton("custom", "\u2795", _("My Strategies")),
+      createTabButton("ai", "\u{1F9E0}", _("AI Doctor RAG"))
     ]
   );
+  const tabContentBenchmark = E("div", {
+    style: "display: flex; flex-direction: column; gap: 14px;"
+  });
+  const tabContentPatterns = E("div", {
+    style: "display: none; flex-direction: column; gap: 14px;"
+  });
+  const tabContentCustom = E("div", {
+    style: "display: none; flex-direction: column; gap: 14px;"
+  });
+  const tabContentAi = E("div", {
+    style: "display: none; flex-direction: column; gap: 14px;"
+  });
+  const updateTabVisibility = () => {
+    for (const key in tabButtons) {
+      tabButtons[key].className = `cbi-button ${activeTab2 === key ? "cbi-button-action" : "cbi-button-neutral"}`;
+    }
+    tabContentBenchmark.style.display = activeTab2 === "benchmark" ? "flex" : "none";
+    tabContentPatterns.style.display = activeTab2 === "patterns" ? "flex" : "none";
+    tabContentCustom.style.display = activeTab2 === "custom" ? "flex" : "none";
+    tabContentAi.style.display = activeTab2 === "ai" ? "flex" : "none";
+    if (activeTab2 === "patterns") renderPatternsTab();
+    if (activeTab2 === "custom") renderCustomTab();
+  };
   const controlsGrid = E("div", {
-    style: "display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; align-items: end;"
+    style: "display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; align-items: end;"
   });
   const engineSelect = E(
     "select",
     { class: "cbi-input-select", style: "width: 100%;" },
     [
-      E(
-        "option",
-        { value: "zapret2", selected: true },
-        _("Zapret v2 (nfqws2)")
-      ),
+      E("option", { value: "zapret2" }, _("Zapret v2 (nfqws2)")),
       E("option", { value: "zapret" }, _("Zapret v1 (nfqws)")),
       E("option", { value: "byedpi" }, _("ByeDPI (ciadpi)")),
       E("option", { value: "all" }, _("All Engines (Full Matrix)"))
@@ -11807,57 +11936,39 @@ function renderStrategyFuzzerModal(ruleNames = []) {
     [
       E(
         "label",
-        { style: "font-size: 12px; font-weight: 600;" },
+        { style: "font-size: 11px; font-weight: 600; opacity: 0.85;" },
         _("DPI Engine")
       ),
       engineSelect
     ]
   );
-  TachyonShellMethods.getFuzzerStrategies().then((res) => {
-    if (res.success && res.data?.available_engines) {
-      const av = res.data.available_engines;
-      const opts = engineSelect.options;
-      for (let i = 0; i < opts.length; i++) {
-        const opt = opts[i];
-        if (opt.value === "zapret2") {
-          opt.text = av.zapret2 ? _("Zapret v2 (nfqws2)") + " \u2014 " + _("Installed") : _("Zapret v2 (nfqws2)") + " \u2014 " + _("Not installed");
-          if (!av.zapret2) opt.disabled = true;
-        } else if (opt.value === "zapret") {
-          opt.text = av.zapret ? _("Zapret v1 (nfqws)") + " \u2014 " + _("Installed") : _("Zapret v1 (nfqws)") + " \u2014 " + _("Not installed");
-          if (!av.zapret) opt.disabled = true;
-        } else if (opt.value === "byedpi") {
-          opt.text = av.byedpi ? _("ByeDPI (ciadpi)") + " \u2014 " + _("Installed") : _("ByeDPI (ciadpi)") + " \u2014 " + _("Not installed");
-          if (!av.byedpi) opt.disabled = true;
-        }
-      }
-      if (av.zapret2) {
-        selectedEngine = "zapret2";
-        engineSelect.value = "zapret2";
-      } else if (av.byedpi) {
-        selectedEngine = "byedpi";
-        engineSelect.value = "byedpi";
-      } else if (av.zapret) {
-        selectedEngine = "zapret";
-        engineSelect.value = "zapret";
-      }
-    }
-  }).catch(() => {
-  });
   const targetSelect = E(
     "select",
     { class: "cbi-input-select", style: "width: 100%;" },
     [
       E(
         "option",
-        { value: "youtube", selected: true },
-        _("YouTube (GoogleVideo 4K stream)")
+        { value: "youtube_suite", selected: true },
+        _("\u{1F3AC} YouTube Suite (Web + 4K Stream)")
       ),
-      E("option", { value: "youtube_web" }, _("YouTube Web (Interface)")),
-      E("option", { value: "discord" }, _("Discord (Gateway / API / Voice)")),
-      E("option", { value: "instagram" }, _("Instagram / Meta (TLS 1.3)")),
-      E("option", { value: "rutracker" }, _("RuTracker (HTTP/HTTPS)")),
-      E("option", { value: "telegram" }, _("Telegram Web")),
-      E("option", { value: "custom" }, _("Custom Target URL..."))
+      E(
+        "option",
+        { value: "discord_suite" },
+        _("\u{1F4AC} Discord Suite (API + WSS + CDN)")
+      ),
+      E(
+        "option",
+        { value: "instagram_suite" },
+        _("\u{1F4F8} Instagram / Meta (Web + CDN)")
+      ),
+      E(
+        "option",
+        { value: "telegram_suite" },
+        _("\u2708\uFE0F Telegram Suite (Web + Bot API)")
+      ),
+      E("option", { value: "rutracker_suite" }, _("\u{1F3F4}\u200D\u2620\uFE0F RuTracker Suite")),
+      E("option", { value: "quic_http3" }, _("\u26A1 QUIC / HTTP/3 (UDP 443)")),
+      E("option", { value: "custom" }, _("\u{1F310} Custom Target URL..."))
     ]
   );
   const customUrlInput = E("input", {
@@ -11868,11 +11979,7 @@ function renderStrategyFuzzerModal(ruleNames = []) {
   });
   targetSelect.addEventListener("change", () => {
     selectedTarget = targetSelect.value;
-    if (selectedTarget === "custom") {
-      customUrlInput.style.display = "block";
-    } else {
-      customUrlInput.style.display = "none";
-    }
+    customUrlInput.style.display = selectedTarget === "custom" ? "block" : "none";
   });
   customUrlInput.addEventListener("input", () => {
     customUrl = customUrlInput.value.trim();
@@ -11883,38 +11990,13 @@ function renderStrategyFuzzerModal(ruleNames = []) {
     [
       E(
         "label",
-        { style: "font-size: 12px; font-weight: 600;" },
-        _("Target Service")
+        { style: "font-size: 11px; font-weight: 600; opacity: 0.85;" },
+        _("Target Service / Suite")
       ),
       targetSelect,
       customUrlInput
     ]
   );
-  const ruleSelectOptions = [
-    E("option", { value: "", selected: true }, _("Provider Global Default")),
-    ...ruleNames.map((r) => E("option", { value: r }, `${_("Rule:")} ${r}`))
-  ];
-  const ruleSelect = E(
-    "select",
-    { class: "cbi-input-select", style: "width: 100%;" },
-    ruleSelectOptions
-  );
-  ruleSelect.addEventListener("change", () => {
-    selectedRuleSection = ruleSelect.value;
-  });
-  const ruleGroup = E(
-    "div",
-    { style: "display: flex; flex-direction: column; gap: 4px;" },
-    [
-      E(
-        "label",
-        { style: "font-size: 12px; font-weight: 600;" },
-        _("Apply Strategy To")
-      ),
-      ruleSelect
-    ]
-  );
-  let selectedMode = "presets";
   const modeSelect = E(
     "select",
     { class: "cbi-input-select", style: "width: 100%;" },
@@ -11927,8 +12009,9 @@ function renderStrategyFuzzerModal(ruleNames = []) {
       E(
         "option",
         { value: "combinatorial" },
-        _("\u{1F50D} Combinatorial Deep Fuzzing (~40-60)")
-      )
+        _("\u{1F50D} Combinatorial Deep Fuzzing (~40-80+)")
+      ),
+      E("option", { value: "custom" }, _("\u{1F6E0}\uFE0F My Custom Strategies Only"))
     ]
   );
   modeSelect.addEventListener("change", () => {
@@ -11940,85 +12023,40 @@ function renderStrategyFuzzerModal(ruleNames = []) {
     [
       E(
         "label",
-        { style: "font-size: 12px; font-weight: 600;" },
+        { style: "font-size: 11px; font-weight: 600; opacity: 0.85;" },
         _("Search Mode")
       ),
       modeSelect
     ]
   );
-  controlsGrid.append(engineGroup, targetGroup, ruleGroup, modeGroup);
-  const aiPromptInput = E("input", {
-    type: "text",
-    class: "cbi-input-text",
-    placeholder: _(
-      'Optional notes for AI (e.g. "Rostelecom, YouTube 4K stream is slow")...'
-    ),
-    style: "flex: 1 1 auto; font-size: 12px;"
-  });
-  const aiSynthesizeBtn = renderButton({
-    text: _("\u{1F9E0} Synthesize with AI"),
-    classNames: ["cbi-button-action"],
-    onClick: () => handleAiSynthesize()
-  });
-  const aiAnalysisContainer = E(
-    "div",
-    {
-      id: "tachyon-fuzzer-ai-analysis",
-      style: "display: none; padding: 10px 14px; background: rgba(0, 123, 255, 0.08); border-left: 3px solid #007bff; border-radius: 4px; font-size: 12px; line-height: 1.4;"
-    },
+  const ruleSelect = E(
+    "select",
+    { class: "cbi-input-select", style: "width: 100%;" },
     [
-      E(
-        "div",
-        {
-          style: "font-weight: bold; margin-bottom: 4px; display: flex; align-items: center; gap: 6px;"
-        },
-        [
-          E("span", {}, "\u{1F9E0}"),
-          E("span", {}, _("AI Diagnostics & Strategy Rationale"))
-        ]
-      ),
-      E(
-        "div",
-        { id: "tachyon-fuzzer-ai-analysis-text", style: "opacity: 0.85;" },
-        ""
-      )
+      E("option", { value: "", selected: true }, _("Provider Global Default")),
+      ...ruleNames.map((r) => E("option", { value: r }, `${_("Rule:")} ${r}`))
     ]
   );
-  const aiSynthesizerCard = E(
+  ruleSelect.addEventListener("change", () => {
+    selectedRuleSection = ruleSelect.value;
+  });
+  const ruleGroup = E(
     "div",
-    {
-      style: "padding: 10px 14px; background: var(--background-color-secondary, rgba(0,0,0,0.15)); border: 1px dashed var(--border-color, rgba(255,255,255,0.15)); border-radius: 8px; display: flex; flex-direction: column; gap: 8px;"
-    },
+    { style: "display: flex; flex-direction: column; gap: 4px;" },
     [
       E(
-        "div",
-        {
-          style: "font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: space-between;"
-        },
-        [
-          E(
-            "span",
-            {},
-            "\u{1F9E0} " + _("AI DPI Engineer & Strategy Synthesizer (RAG-Powered)")
-          ),
-          E(
-            "span",
-            { style: "font-size: 10px; opacity: 0.6; font-weight: normal;" },
-            _("Knowledge Base + Live Probe Context")
-          )
-        ]
+        "label",
+        { style: "font-size: 11px; font-weight: 600; opacity: 0.85;" },
+        _("Apply Strategy To")
       ),
-      E("div", { style: "display: flex; gap: 8px; align-items: center;" }, [
-        aiPromptInput,
-        aiSynthesizeBtn
-      ]),
-      aiAnalysisContainer
+      ruleSelect
     ]
   );
+  controlsGrid.append(engineGroup, targetGroup, modeGroup, ruleGroup);
   const progressContainer = E(
     "div",
     {
-      style: "display: none; flex-direction: column; gap: 6px; padding: 12px; background: var(--background-color-secondary, rgba(0,0,0,0.18)); border-radius: 8px; border: 1px solid var(--border-color, rgba(255,255,255,0.1));"
+      style: "display: none; flex-direction: column; gap: 6px; padding: 10px 14px; background: var(--background-color-secondary, rgba(0,0,0,0.18)); border-radius: 6px; border: 1px solid var(--border-color, rgba(255,255,255,0.08));"
     },
     [
       E(
@@ -12038,12 +12076,12 @@ function renderStrategyFuzzerModal(ruleNames = []) {
       E(
         "div",
         {
-          style: "width: 100%; height: 8px; background: rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden;"
+          style: "width: 100%; height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden;"
         },
         [
           E("div", {
             id: "tachyon-fuzzer-progress-bar",
-            style: "height: 100%; width: 0%; background: linear-gradient(90deg, #007bff, #00d2ff); transition: width 0.3s ease;"
+            style: "height: 100%; width: 0%; background: #007bff; transition: width 0.3s ease;"
           })
         ]
       ),
@@ -12051,14 +12089,81 @@ function renderStrategyFuzzerModal(ruleNames = []) {
         "div",
         {
           id: "tachyon-fuzzer-current-strategy",
-          style: "font-size: 11px; opacity: 0.7; font-family: monospace;"
+          style: "font-size: 11px; opacity: 0.75; font-family: monospace;"
         },
         ""
       )
     ]
   );
+  const applyBestBtn = renderButton({
+    text: _("\u{1F3C6} Apply Best Match"),
+    classNames: ["cbi-button-save"],
+    disabled: true,
+    onClick: () => handleApplyBest()
+  });
+  const filterToolbar = E(
+    "div",
+    {
+      style: "display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;"
+    },
+    [
+      E("div", { style: "display: flex; gap: 6px; align-items: center;" }, [
+        E(
+          "span",
+          { style: "font-size: 11px; opacity: 0.7; margin-right: 4px;" },
+          _("Filter:")
+        ),
+        (() => {
+          const bAll = E(
+            "button",
+            {
+              type: "button",
+              class: "cbi-button cbi-button-action",
+              style: "padding: 2px 10px; font-size: 11px;"
+            },
+            _("All")
+          );
+          const bOk = E(
+            "button",
+            {
+              type: "button",
+              class: "cbi-button cbi-button-neutral",
+              style: "padding: 2px 10px; font-size: 11px;"
+            },
+            _("\u2705 Working only")
+          );
+          const bFast = E(
+            "button",
+            {
+              type: "button",
+              class: "cbi-button cbi-button-neutral",
+              style: "padding: 2px 10px; font-size: 11px;"
+            },
+            _("\u26A1 Fast (>1MB/s)")
+          );
+          const setFilter = (f, btn) => {
+            resultFilter = f;
+            [bAll, bOk, bFast].forEach(
+              (b) => b.className = "cbi-button cbi-button-neutral"
+            );
+            btn.className = "cbi-button cbi-button-action";
+            if (currentState) renderResults(currentState);
+          };
+          bAll.addEventListener("click", () => setFilter("all", bAll));
+          bOk.addEventListener("click", () => setFilter("success", bOk));
+          bFast.addEventListener("click", () => setFilter("fast", bFast));
+          return E("div", { style: "display: flex; gap: 4px;" }, [
+            bAll,
+            bOk,
+            bFast
+          ]);
+        })()
+      ]),
+      E("div", { style: "display: flex; gap: 8px;" }, [applyBestBtn])
+    ]
+  );
   const resultsContainer = E("div", {
-    style: "max-height: 380px; overflow-y: auto; border: 1px solid var(--border-color, rgba(255,255,255,0.12)); border-radius: 8px;"
+    style: "max-height: 380px; overflow-y: auto; border: 1px solid var(--border-color, rgba(255,255,255,0.1)); border-radius: 6px;"
   });
   const tableEl = E(
     "table",
@@ -12070,25 +12175,29 @@ function renderStrategyFuzzerModal(ruleNames = []) {
       E(
         "thead",
         {
-          style: "background: var(--background-color-secondary, rgba(0,0,0,0.3)); position: sticky; top: 0; z-index: 2;"
+          style: "background: var(--background-color-secondary, rgba(0,0,0,0.25)); position: sticky; top: 0; z-index: 2;"
         },
         [
           E("tr", {}, [
-            E("th", { style: "padding: 8px 10px; width: 40px;" }, "#"),
-            E("th", { style: "padding: 8px 10px; width: 80px;" }, _("Engine")),
+            E("th", { style: "padding: 8px 10px; width: 35px;" }, "#"),
+            E("th", { style: "padding: 8px 10px; width: 75px;" }, _("Engine")),
             E(
               "th",
               { style: "padding: 8px 10px;" },
               _("Strategy & Parameters")
             ),
-            E("th", { style: "padding: 8px 10px; width: 70px;" }, _("Status")),
-            E("th", { style: "padding: 8px 10px; width: 65px;" }, _("TTFB")),
-            E("th", { style: "padding: 8px 10px; width: 75px;" }, _("Speed")),
-            E("th", { style: "padding: 8px 10px; width: 90px;" }, _("Score")),
             E(
               "th",
-              { style: "padding: 8px 10px; width: 80px; text-align: center;" },
-              _("Action")
+              { style: "padding: 8px 10px; width: 95px;" },
+              _("Status / Suite")
+            ),
+            E("th", { style: "padding: 8px 10px; width: 65px;" }, _("TTFB")),
+            E("th", { style: "padding: 8px 10px; width: 75px;" }, _("Speed")),
+            E("th", { style: "padding: 8px 10px; width: 80px;" }, _("Score")),
+            E(
+              "th",
+              { style: "padding: 8px 10px; width: 85px; text-align: center;" },
+              _("Actions")
             )
           ])
         ]
@@ -12104,7 +12213,7 @@ function renderStrategyFuzzerModal(ruleNames = []) {
               style: "padding: 24px; text-align: center; opacity: 0.6;"
             },
             _(
-              'No benchmark results yet. Select engine and click "Start Benchmark" or "Synthesize with AI".'
+              'No benchmark results yet. Configure options and click "Start Benchmark".'
             )
           )
         )
@@ -12117,53 +12226,544 @@ function renderStrategyFuzzerModal(ruleNames = []) {
     classNames: ["cbi-button-action"],
     onClick: () => handleToggleRun()
   });
-  const applyBestBtn = renderButton({
-    text: _("\u{1F3C6} Apply Best Strategy"),
-    classNames: ["cbi-button-save"],
-    disabled: true,
-    onClick: () => handleApplyBest()
-  });
-  const closeBtn = renderButton({
-    text: _("Close"),
-    classNames: ["cbi-button-neutral"],
-    onClick: () => {
-      stopPolling();
-      ui.hideModal();
-    }
-  });
   const footerActions = E(
     "div",
     {
-      style: "display: flex; justify-content: space-between; align-items: center; padding-top: 8px; border-top: 1px solid var(--border-color, rgba(255,255,255,0.1));"
+      style: "display: flex; justify-content: space-between; align-items: center; padding-top: 6px;"
     },
     [
-      E("div", { style: "display: flex; gap: 8px;" }, [startBtn]),
-      E("div", { style: "display: flex; gap: 8px;" }, [applyBestBtn, closeBtn])
+      startBtn,
+      renderButton({
+        text: _("Close"),
+        classNames: ["cbi-button-neutral"],
+        onClick: () => {
+          stopPolling();
+          ui.hideModal();
+        }
+      })
     ]
   );
+  tabContentBenchmark.append(
+    controlsGrid,
+    progressContainer,
+    filterToolbar,
+    resultsContainer,
+    footerActions
+  );
+  const renderChipGroup = (title, items, onAdd, onRemove) => {
+    const input = E("input", {
+      type: "text",
+      class: "cbi-input-text",
+      placeholder: "+ add",
+      style: "width: 80px; padding: 2px 6px; font-size: 11px;"
+    });
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        const v = input.value.trim();
+        if (v) {
+          onAdd(v);
+          input.value = "";
+          renderPatternsTab();
+        }
+      }
+    });
+    const chips = items.map((item, idx) => {
+      const chip = E(
+        "span",
+        {
+          style: "display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; background: var(--background-color-secondary, rgba(255,255,255,0.08)); border: 1px solid var(--border-color, rgba(255,255,255,0.12)); border-radius: 4px; font-size: 11px; font-family: monospace;"
+        },
+        [
+          E("span", {}, String(item)),
+          (() => {
+            const del = E(
+              "span",
+              {
+                style: "cursor: pointer; opacity: 0.6; font-size: 12px; margin-left: 2px;"
+              },
+              "\xD7"
+            );
+            del.addEventListener("click", () => {
+              onRemove(idx);
+              renderPatternsTab();
+            });
+            return del;
+          })()
+        ]
+      );
+      return chip;
+    });
+    return E(
+      "div",
+      { style: "display: flex; flex-direction: column; gap: 4px;" },
+      [
+        E(
+          "span",
+          { style: "font-size: 11px; font-weight: 600; opacity: 0.8;" },
+          title
+        ),
+        E(
+          "div",
+          {
+            style: "display: flex; flex-wrap: wrap; gap: 6px; align-items: center;"
+          },
+          [...chips, input]
+        )
+      ]
+    );
+  };
+  const renderPatternsTab = () => {
+    tabContentPatterns.replaceChildren();
+    const z2 = patternsConfig.zapret2;
+    const z1 = patternsConfig.zapret;
+    const bd = patternsConfig.byedpi;
+    const z2Card = E(
+      "div",
+      {
+        style: "padding: 12px; background: var(--background-color-secondary, rgba(0,0,0,0.15)); border-radius: 6px; border: 1px solid var(--border-color, rgba(255,255,255,0.1)); display: flex; flex-direction: column; gap: 10px;"
+      },
+      [
+        E(
+          "div",
+          { style: "font-size: 13px; font-weight: bold;" },
+          "\u26A1 Zapret v2 (nfqws2) Matrix Patterns"
+        ),
+        renderChipGroup(
+          _("Split Positions (pos)"),
+          z2.splits,
+          (v) => z2.splits.push(v),
+          (i) => z2.splits.splice(i, 1)
+        ),
+        renderChipGroup(
+          _("Fooling Methods (fooling)"),
+          z2.foolings,
+          (v) => z2.foolings.push(v),
+          (i) => z2.foolings.splice(i, 1)
+        ),
+        renderChipGroup(
+          _("TTL Values (ttl)"),
+          z2.ttls,
+          (v) => z2.ttls.push(Number(v) || 4),
+          (i) => z2.ttls.splice(i, 1)
+        ),
+        renderChipGroup(
+          _("Sequence Overlaps (seqovl)"),
+          z2.seqovls,
+          (v) => z2.seqovls.push(v),
+          (i) => z2.seqovls.splice(i, 1)
+        ),
+        renderChipGroup(
+          _("TCP Window Sizes (wsize)"),
+          z2.wsizes,
+          (v) => z2.wsizes.push(v),
+          (i) => z2.wsizes.splice(i, 1)
+        )
+      ]
+    );
+    const z1Card = E(
+      "div",
+      {
+        style: "padding: 12px; background: var(--background-color-secondary, rgba(0,0,0,0.15)); border-radius: 6px; border: 1px solid var(--border-color, rgba(255,255,255,0.1)); display: flex; flex-direction: column; gap: 10px;"
+      },
+      [
+        E(
+          "div",
+          { style: "font-size: 13px; font-weight: bold;" },
+          "\u26A1 Zapret v1 (nfqws) Matrix Patterns"
+        ),
+        renderChipGroup(
+          _("Split Modes (dpi-desync)"),
+          z1.split_modes,
+          (v) => z1.split_modes.push(v),
+          (i) => z1.split_modes.splice(i, 1)
+        ),
+        renderChipGroup(
+          _("Split Positions (dpi-desync-split-pos)"),
+          z1.splits,
+          (v) => z1.splits.push(v),
+          (i) => z1.splits.splice(i, 1)
+        ),
+        renderChipGroup(
+          _("Fooling Methods (dpi-desync-fooling)"),
+          z1.foolings,
+          (v) => z1.foolings.push(v),
+          (i) => z1.foolings.splice(i, 1)
+        ),
+        renderChipGroup(
+          _("TTL Values (dpi-desync-ttl)"),
+          z1.ttls,
+          (v) => z1.ttls.push(Number(v) || 4),
+          (i) => z1.ttls.splice(i, 1)
+        )
+      ]
+    );
+    const bdCard = E(
+      "div",
+      {
+        style: "padding: 12px; background: var(--background-color-secondary, rgba(0,0,0,0.15)); border-radius: 6px; border: 1px solid var(--border-color, rgba(255,255,255,0.1)); display: flex; flex-direction: column; gap: 10px;"
+      },
+      [
+        E(
+          "div",
+          { style: "font-size: 13px; font-weight: bold;" },
+          "\u26A1 ByeDPI (ciadpi) Matrix Patterns"
+        ),
+        renderChipGroup(
+          _("Split Values (-s)"),
+          bd.splits,
+          (v) => bd.splits.push(v),
+          (i) => bd.splits.splice(i, 1)
+        ),
+        renderChipGroup(
+          _("Disorder Values (-d)"),
+          bd.disorders,
+          (v) => bd.disorders.push(v),
+          (i) => bd.disorders.splice(i, 1)
+        ),
+        renderChipGroup(
+          _("OOB Values (-o)"),
+          bd.oobs,
+          (v) => bd.oobs.push(v),
+          (i) => bd.oobs.splice(i, 1)
+        ),
+        renderChipGroup(
+          _("Auto Modes (--auto)"),
+          bd.autos,
+          (v) => bd.autos.push(v),
+          (i) => bd.autos.splice(i, 1)
+        ),
+        renderChipGroup(
+          _("TLS-Rec Bounds (--tlsrec)"),
+          bd.tlsrecs,
+          (v) => bd.tlsrecs.push(v),
+          (i) => bd.tlsrecs.splice(i, 1)
+        ),
+        renderChipGroup(
+          _("IP Frag Bounds (--ip-frag)"),
+          bd.ipfrags,
+          (v) => bd.ipfrags.push(v),
+          (i) => bd.ipfrags.splice(i, 1)
+        )
+      ]
+    );
+    const patternsFooter = E(
+      "div",
+      {
+        style: "display: flex; justify-content: space-between; align-items: center; padding-top: 6px;"
+      },
+      [
+        renderButton({
+          text: _("\u{1F4BE} Save Custom Patterns"),
+          classNames: ["cbi-button-save"],
+          onClick: async () => {
+            const res = await TachyonShellMethods.saveFuzzerPatterns(patternsConfig);
+            if (res.success) {
+              showToast(_("Patterns saved successfully!"), "success");
+            } else {
+              showToast(_("Failed to save patterns"), "error");
+            }
+          }
+        }),
+        renderButton({
+          text: _("\u{1F504} Reset to Factory Defaults"),
+          classNames: ["cbi-button-neutral"],
+          onClick: async () => {
+            const res = await TachyonShellMethods.resetFuzzerPatterns();
+            if (res.success && res.data?.patterns) {
+              patternsConfig = res.data.patterns;
+              renderPatternsTab();
+              showToast(_("Patterns reset to defaults!"), "success");
+            }
+          }
+        })
+      ]
+    );
+    tabContentPatterns.append(z2Card, z1Card, bdCard, patternsFooter);
+  };
+  const renderCustomTab = () => {
+    tabContentCustom.replaceChildren();
+    const nameInput = E("input", {
+      type: "text",
+      class: "cbi-input-text",
+      placeholder: _("Strategy Name"),
+      style: "flex: 1;"
+    });
+    const engineSel = E(
+      "select",
+      { class: "cbi-input-select", style: "width: 140px;" },
+      [
+        E("option", { value: "zapret2" }, "Zapret v2"),
+        E("option", { value: "zapret" }, "Zapret v1"),
+        E("option", { value: "byedpi" }, "ByeDPI")
+      ]
+    );
+    const argsInput = E("input", {
+      type: "text",
+      class: "cbi-input-text",
+      placeholder: _("Command-line arguments string..."),
+      style: "flex: 2; font-family: monospace;"
+    });
+    const addBtn = renderButton({
+      text: _("+ Add Strategy"),
+      classNames: ["cbi-button-action"],
+      onClick: async () => {
+        const name = nameInput.value.trim();
+        const eng = engineSel.value;
+        const args = argsInput.value.trim();
+        if (!name || !args) {
+          showToast(_("Please specify strategy name and arguments"), "error");
+          return;
+        }
+        patternsConfig.custom_strategies = patternsConfig.custom_strategies || [];
+        patternsConfig.custom_strategies.push({
+          id: `custom_${Date.now()}`,
+          name,
+          engine: eng,
+          args,
+          description: _("User custom strategy")
+        });
+        await TachyonShellMethods.saveFuzzerPatterns(patternsConfig);
+        showToast(_("Custom strategy added!"), "success");
+        nameInput.value = "";
+        argsInput.value = "";
+        renderCustomTab();
+      }
+    });
+    const addCard = E(
+      "div",
+      {
+        style: "padding: 12px; background: var(--background-color-secondary, rgba(0,0,0,0.15)); border-radius: 6px; border: 1px solid var(--border-color, rgba(255,255,255,0.1)); display: flex; flex-direction: column; gap: 8px;"
+      },
+      [
+        E(
+          "div",
+          { style: "font-size: 12px; font-weight: 600;" },
+          _("Add Custom DPI Strategy")
+        ),
+        E(
+          "div",
+          {
+            style: "display: flex; gap: 8px; flex-wrap: wrap; align-items: center;"
+          },
+          [nameInput, engineSel, argsInput, addBtn]
+        )
+      ]
+    );
+    const customList = patternsConfig.custom_strategies || [];
+    const listCard = E(
+      "div",
+      {
+        style: "border: 1px solid var(--border-color, rgba(255,255,255,0.1)); border-radius: 6px; overflow: hidden;"
+      },
+      [
+        E(
+          "table",
+          { class: "table", style: "width: 100%; margin: 0; font-size: 12px;" },
+          [
+            E("thead", {}, [
+              E("tr", {}, [
+                E("th", { style: "padding: 8px;" }, _("Name")),
+                E("th", { style: "padding: 8px; width: 90px;" }, _("Engine")),
+                E("th", { style: "padding: 8px;" }, _("Arguments")),
+                E(
+                  "th",
+                  {
+                    style: "padding: 8px; width: 80px; text-align: center;"
+                  },
+                  _("Actions")
+                )
+              ])
+            ]),
+            E(
+              "tbody",
+              {},
+              customList.length === 0 ? [
+                E(
+                  "tr",
+                  {},
+                  E(
+                    "td",
+                    {
+                      colSpan: 4,
+                      style: "padding: 20px; text-align: center; opacity: 0.6;"
+                    },
+                    _("No custom strategies added yet.")
+                  )
+                )
+              ] : customList.map((cs, idx) => {
+                return E("tr", {}, [
+                  E(
+                    "td",
+                    { style: "padding: 8px; font-weight: 600;" },
+                    cs.name
+                  ),
+                  E(
+                    "td",
+                    {
+                      style: "padding: 8px; font-family: monospace; font-size: 11px;"
+                    },
+                    cs.engine
+                  ),
+                  E(
+                    "td",
+                    {
+                      style: "padding: 8px; font-family: monospace; font-size: 11px; word-break: break-all;"
+                    },
+                    cs.args
+                  ),
+                  E(
+                    "td",
+                    {
+                      style: "padding: 8px; text-align: center;"
+                    },
+                    [
+                      (() => {
+                        const delBtn = E(
+                          "button",
+                          {
+                            type: "button",
+                            class: "cbi-button cbi-button-reset",
+                            style: "padding: 2px 8px; font-size: 11px;"
+                          },
+                          _("Delete")
+                        );
+                        delBtn.addEventListener("click", async () => {
+                          patternsConfig.custom_strategies.splice(idx, 1);
+                          await TachyonShellMethods.saveFuzzerPatterns(
+                            patternsConfig
+                          );
+                          showToast(_("Strategy deleted"), "success");
+                          renderCustomTab();
+                        });
+                        return delBtn;
+                      })()
+                    ]
+                  )
+                ]);
+              })
+            )
+          ]
+        )
+      ]
+    );
+    tabContentCustom.append(addCard, listCard);
+  };
+  const aiPromptInput = E("input", {
+    type: "text",
+    class: "cbi-input-text",
+    placeholder: _(
+      'Optional context (e.g. "Rostelecom, YouTube 4K buffering is slow")...'
+    ),
+    style: "flex: 1; font-size: 12px;"
+  });
+  const aiSynthesizeBtn = renderButton({
+    text: _("\u{1F9E0} Synthesize with AI"),
+    classNames: ["cbi-button-action"],
+    onClick: () => handleAiSynthesize()
+  });
+  const aiAnalysisContainer = E(
+    "div",
+    {
+      id: "tachyon-fuzzer-ai-analysis",
+      style: "display: none; padding: 12px; background: rgba(0, 123, 255, 0.08); border-left: 3px solid #007bff; border-radius: 4px; font-size: 12px; line-height: 1.4;"
+    },
+    [
+      E(
+        "div",
+        {
+          style: "font-weight: bold; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;"
+        },
+        [
+          E("span", {}, "\u{1F9E0}"),
+          E("span", {}, _("AI Diagnostics & Strategy Rationale"))
+        ]
+      ),
+      E(
+        "div",
+        { id: "tachyon-fuzzer-ai-analysis-text", style: "opacity: 0.9;" },
+        ""
+      )
+    ]
+  );
+  const aiSynthesizerCard = E(
+    "div",
+    {
+      style: "padding: 14px; background: var(--background-color-secondary, rgba(0,0,0,0.15)); border-radius: 6px; border: 1px solid var(--border-color, rgba(255,255,255,0.1)); display: flex; flex-direction: column; gap: 12px;"
+    },
+    [
+      E(
+        "div",
+        {
+          style: "font-size: 13px; font-weight: bold; display: flex; align-items: center; justify-content: space-between;"
+        },
+        [
+          E("span", {}, "\u{1F9E0} " + _("AI DPI Engineer & Strategy Synthesizer")),
+          E(
+            "span",
+            { style: "font-size: 11px; opacity: 0.6; font-weight: normal;" },
+            _("RAG Knowledge Base + Live ISP Probe Context")
+          )
+        ]
+      ),
+      E(
+        "div",
+        { style: "font-size: 12px; opacity: 0.8;" },
+        _(
+          "Automatically runs a diagnostic probe against the target service, queries the built-in DPI Knowledge Base, and synthesizes 3-5 custom bypass strategies tailored to your ISP."
+        )
+      ),
+      E("div", { style: "display: flex; gap: 8px; align-items: center;" }, [
+        aiPromptInput,
+        aiSynthesizeBtn
+      ]),
+      aiAnalysisContainer
+    ]
+  );
+  tabContentAi.append(aiSynthesizerCard);
   const renderResults = (state) => {
     const tbody = document.getElementById("tachyon-fuzzer-results-tbody");
     if (!tbody) return;
-    if (!state.results || state.results.length === 0) {
-      if (state.running) {
-        tbody.innerHTML = `<tr><td colspan="8" style="padding: 20px; text-align: center;">${_(
-          "Running initial strategy probe..."
-        )}</td></tr>`;
-      }
+    tbody.replaceChildren();
+    let list = state.results || [];
+    if (resultFilter === "success") {
+      list = list.filter((r) => r.success);
+    } else if (resultFilter === "fast") {
+      list = list.filter((r) => r.success && r.speed_kbps > 1024);
+    }
+    if (list.length === 0) {
+      tbody.appendChild(
+        E(
+          "tr",
+          {},
+          E(
+            "td",
+            {
+              colSpan: 8,
+              style: "padding: 24px; text-align: center; opacity: 0.6;"
+            },
+            state.running ? _("Running benchmarks...") : _("No strategies match the active filter.")
+          )
+        )
+      );
       return;
     }
-    tbody.innerHTML = "";
-    state.results.forEach((item, idx) => {
+    list.forEach((item, idx) => {
       const isBest = state.best_strategy && state.best_strategy.id === item.id;
-      const statusBadge = item.success ? `<span class="badge" style="background: #28a745; color: #fff; padding: 2px 6px; border-radius: 4px; font-size: 10px;">${item.http_code || 200} OK</span>` : `<span class="badge" style="background: #dc3545; color: #fff; padding: 2px 6px; border-radius: 4px; font-size: 10px;">${item.error || "Blocked"}</span>`;
+      let statusBadge = `<span class="label ${item.success ? "badge-success" : "badge-danger"}" style="font-size: 10px; padding: 2px 6px; border-radius: 3px;">${item.success ? `HTTP ${item.http_code}` : "DROP"}</span>`;
+      let subProbesHtml = "";
+      if (item.sub_probes && item.sub_probes.length > 1) {
+        const passedSub = item.sub_probes.filter((p) => p.success).length;
+        const totalSub = item.sub_probes.length;
+        subProbesHtml = `<div style="font-size: 10px; opacity: 0.75; margin-top: 2px;">${passedSub}/${totalSub} endpoints OK</div>`;
+      }
       let badgeHtml = "";
       if (item.badge) {
-        badgeHtml = `<span style="display: inline-block; font-size: 10px; font-weight: bold; color: #ffc107; margin-left: 6px;">${item.badge}</span>`;
+        badgeHtml = `<span style="font-size: 10px; margin-left: 6px; font-weight: bold; color: ${isBest ? "#28a745" : "#17a2b8"};">${item.badge}</span>`;
       }
       const tr = E(
         "tr",
         {
-          style: `border-bottom: 1px solid var(--border-color, rgba(255,255,255,0.06)); ${isBest ? "background: rgba(40, 167, 69, 0.12); font-weight: 500;" : ""}`
+          style: `border-bottom: 1px solid var(--border-color, rgba(255,255,255,0.06)); ${isBest ? "background: rgba(40, 167, 69, 0.08);" : ""}`
         },
         [
           E("td", { style: "padding: 8px 10px;" }, String(idx + 1)),
@@ -12187,7 +12787,11 @@ function renderStrategyFuzzerModal(ruleNames = []) {
               item.args
             )
           ]),
-          E("td", { style: "padding: 8px 10px;", innerHTML: statusBadge }),
+          E(
+            "td",
+            { style: "padding: 8px 10px;" },
+            E("div", { innerHTML: statusBadge + subProbesHtml })
+          ),
           E(
             "td",
             { style: "padding: 8px 10px;" },
@@ -12203,14 +12807,22 @@ function renderStrategyFuzzerModal(ruleNames = []) {
             { style: "padding: 8px 10px; font-weight: bold;" },
             item.success ? String(item.score) : "0"
           ),
-          E("td", { style: "padding: 8px 10px; text-align: center;" }, [
-            renderButton({
-              text: _("Apply"),
-              classNames: ["cbi-button-action"],
-              disabled: !item.success,
-              onClick: () => handleApplySingle(item)
-            })
-          ])
+          E(
+            "td",
+            { style: "padding: 8px 10px; text-align: center;" },
+            E(
+              "div",
+              { style: "display: flex; gap: 4px; justify-content: center;" },
+              [
+                renderButton({
+                  text: _("Apply"),
+                  classNames: ["cbi-button-action"],
+                  disabled: !item.success,
+                  onClick: () => handleApplySingle(item)
+                })
+              ]
+            )
+          )
         ]
       );
       tbody.appendChild(tr);
@@ -12222,6 +12834,9 @@ function renderStrategyFuzzerModal(ruleNames = []) {
     const progressBar = document.getElementById("tachyon-fuzzer-progress-bar");
     const currentStratEl = document.getElementById(
       "tachyon-fuzzer-current-strategy"
+    );
+    const applyBestBtn2 = document.getElementById(
+      "tachyon-fuzzer-apply-best-btn"
     );
     if (progressContainer) {
       progressContainer.style.display = state.running || state.results?.length ? "flex" : "none";
@@ -12242,8 +12857,8 @@ function renderStrategyFuzzerModal(ruleNames = []) {
     } else if (currentStratEl && !state.running) {
       currentStratEl.innerText = "";
     }
-    if (state.best_strategy && applyBestBtn) {
-      applyBestBtn.disabled = false;
+    if (state.best_strategy && applyBestBtn2) {
+      applyBestBtn2.disabled = false;
     }
   };
   const pollStatus = async () => {
@@ -12258,7 +12873,7 @@ function renderStrategyFuzzerModal(ruleNames = []) {
         renderResults(res.data);
         if (!isRunning) {
           stopPolling();
-          startBtn.innerText = _("\u{1F680} Run Benchmark Again");
+          startBtn.innerText = _("\u{1F680} Start Benchmark");
           startBtn.disabled = false;
         }
       }
@@ -12334,6 +12949,8 @@ function renderStrategyFuzzerModal(ruleNames = []) {
           analysisText.innerText = res.data.analysis;
           analysisBox.style.display = "block";
         }
+        activeTab2 = "benchmark";
+        updateTabVisibility();
         startBtn.disabled = true;
         startBtn.innerText = _("\u{1F6D1} Stop Benchmark");
         const startRes = await TachyonShellMethods.startFuzzer(
@@ -12376,13 +12993,38 @@ function renderStrategyFuzzerModal(ruleNames = []) {
     if (!currentState?.best_strategy) return;
     await handleApplySingle(currentState.best_strategy);
   };
+  TachyonShellMethods.getFuzzerStrategies().then((res) => {
+    if (res.success && res.data?.available_engines) {
+      const av = res.data.available_engines;
+      const opts = engineSelect.options;
+      for (let i = 0; i < opts.length; i++) {
+        const opt = opts[i];
+        if (opt.value === "zapret2") {
+          opt.text = av.zapret2 ? _("Zapret v2 (nfqws2)") + " \u2014 " + _("Installed") : _("Zapret v2 (nfqws2)") + " \u2014 " + _("Not installed");
+          if (!av.zapret2) opt.disabled = true;
+        } else if (opt.value === "zapret") {
+          opt.text = av.zapret ? _("Zapret v1 (nfqws)") + " \u2014 " + _("Installed") : _("Zapret v1 (nfqws)") + " \u2014 " + _("Not installed");
+          if (!av.zapret) opt.disabled = true;
+        } else if (opt.value === "byedpi") {
+          opt.text = av.byedpi ? _("ByeDPI (ciadpi)") + " \u2014 " + _("Installed") : _("ByeDPI (ciadpi)") + " \u2014 " + _("Not installed");
+          if (!av.byedpi) opt.disabled = true;
+        }
+      }
+    }
+  }).catch(() => {
+  });
+  TachyonShellMethods.getFuzzerPatterns().then((res) => {
+    if (res.success && res.data?.patterns) {
+      patternsConfig = res.data.patterns;
+    }
+  }).catch(() => {
+  });
   modalContainer.append(
-    headerEl,
-    controlsGrid,
-    aiSynthesizerCard,
-    progressContainer,
-    resultsContainer,
-    footerActions
+    tabBar,
+    tabContentBenchmark,
+    tabContentPatterns,
+    tabContentCustom,
+    tabContentAi
   );
   pollStatus();
   ui.showModal(_("\u26A1 Strategy Fuzzer & Auto-Tuner"), modalContainer);

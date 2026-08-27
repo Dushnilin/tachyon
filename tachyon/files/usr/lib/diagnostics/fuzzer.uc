@@ -84,14 +84,117 @@ function validate_strategy_args(engine, args_val) {
     return true;
 }
 
-// Target definitions
+const PATTERNS_FILE = "/etc/tachyon/fuzzer_patterns.json";
+
+const DEFAULT_PATTERNS = {
+    zapret2: {
+        splits: [ "1", "2", "3", "midsld", "sniext+4", "1,midsld", "1,sniext+2" ],
+        foolings: [ "badseq", "md5sig", "badack", "datanoack", "fakeddrop" ],
+        ttls: [ 2, 3, 4, 5, 6, 8 ],
+        seqovls: [ "1", "2" ],
+        wsizes: [ "1" ],
+        payloads: [ "tls_client_hello", "http_req", "quic_initial" ]
+    },
+    zapret: {
+        splits: [ "1", "2", "midsld", "sniext+4", "1,midsld" ],
+        foolings: [ "badseq", "md5sig", "badack", "datanoack" ],
+        ttls: [ 2, 3, 4, 6, 8 ],
+        split_modes: [ "split2", "disorder2", "fake,split2", "fake,disorder2" ]
+    },
+    byedpi: {
+        splits: [ "1", "2", "1+sniext", "midsld" ],
+        disorders: [ "1", "2" ],
+        ttls: [ 2, 3, 4, 6, 8 ],
+        oobs: [ "1", "2" ],
+        autos: [ "t,r,a,s", "r,s", "t,a" ],
+        tlsrecs: [ "1+sniext" ],
+        ipfrags: [ "24" ]
+    },
+    custom_strategies: []
+};
+
+function get_patterns_config() {
+    let custom = read_json_file(PATTERNS_FILE);
+    if (custom && type(custom) == "object") {
+        return {
+            zapret2: custom.zapret2 || DEFAULT_PATTERNS.zapret2,
+            zapret: custom.zapret || DEFAULT_PATTERNS.zapret,
+            byedpi: custom.byedpi || DEFAULT_PATTERNS.byedpi,
+            custom_strategies: custom.custom_strategies || []
+        };
+    }
+    return DEFAULT_PATTERNS;
+}
+
+function save_patterns_config(cfg_obj) {
+    if (!cfg_obj || type(cfg_obj) != "object") {
+        print(sprintf("%J\n", { success: false, error: "Invalid patterns configuration object" }));
+        return;
+    }
+    common.ensure_dir("/etc/tachyon");
+    write_json_file(PATTERNS_FILE, cfg_obj);
+    print(sprintf("%J\n", { success: true, message: "Patterns configuration saved successfully" }));
+}
+
+function reset_patterns_config() {
+    try { fs.unlink(PATTERNS_FILE); } catch(e) {}
+    print(sprintf("%J\n", { success: true, message: "Patterns configuration reset to factory defaults", patterns: DEFAULT_PATTERNS }));
+}
+
+// Target Suites & Definitions
+const TARGET_SUITES = {
+    youtube_suite: {
+        name: "YouTube Full Suite (Web + Static CDN + 4K Stream)",
+        urls: [
+            { name: "Web Interface", url: "https://www.youtube.com", weight: 30 },
+            { name: "Static Assets (i.ytimg)", url: "https://i.ytimg.com/generate_204", weight: 20 },
+            { name: "GoogleVideo Stream Chunk", url: "https://rr1---sn-4g5ednss.googlevideo.com/generate_204", weight: 50 }
+        ]
+    },
+    discord_suite: {
+        name: "Discord Full Suite (API + WSS Gateway + CDN)",
+        urls: [
+            { name: "API Gateway", url: "https://discord.com/api/v9/gateway", weight: 40 },
+            { name: "Media Attachments CDN", url: "https://media.discordapp.net/", weight: 30 },
+            { name: "Global Assets CDN", url: "https://cdn.discordapp.com/generate_204", weight: 30 }
+        ]
+    },
+    instagram_suite: {
+        name: "Instagram / Meta Suite (Web + Static CDN)",
+        urls: [
+            { name: "Web Interface", url: "https://www.instagram.com", weight: 50 },
+            { name: "CDN Static Assets", url: "https://static.cdninstagram.com/rsrc.php/v3/y4/r/dukNmT7A9dd.webp", weight: 50 }
+        ]
+    },
+    telegram_suite: {
+        name: "Telegram Suite (Web + API)",
+        urls: [
+            { name: "Web App", url: "https://web.telegram.org", weight: 50 },
+            { name: "Bot API", url: "https://api.telegram.org", weight: 50 }
+        ]
+    },
+    rutracker_suite: {
+        name: "RuTracker Suite (HTTP / HTTPS)",
+        urls: [
+            { name: "Main Portal", url: "https://rutracker.org", weight: 60 },
+            { name: "CDN Static Logo", url: "https://static.rutracker.cc/logo/logo-3.png", weight: 40 }
+        ]
+    }
+};
+
 const TARGET_URLS = {
+    youtube_suite: "https://www.youtube.com",
     youtube: "https://www.youtube.com",
     youtube_web: "https://www.youtube.com",
+    discord_suite: "https://discord.com/api/v9/gateway",
     discord: "https://discord.com/api/v9/gateway",
+    instagram_suite: "https://www.instagram.com",
     instagram: "https://www.instagram.com",
+    rutracker_suite: "https://rutracker.org",
     rutracker: "https://rutracker.org",
-    telegram: "https://web.telegram.org"
+    telegram_suite: "https://web.telegram.org",
+    telegram: "https://web.telegram.org",
+    quic_http3: "https://www.google.com"
 };
 
 // Strategy Matrices (Expanded Production Suite: 38 strategies across engines)
@@ -385,6 +488,8 @@ const STRATEGIES_BYEDPI = [
 ];
 
 function generate_combinatorial_zapret2() {
+    let cfg = get_patterns_config();
+    let p = cfg.zapret2 || DEFAULT_PATTERNS.zapret2;
     let list = [];
     let seen = {};
     
@@ -394,7 +499,7 @@ function generate_combinatorial_zapret2() {
         if (!validate_strategy_args("zapret2", args)) return;
         seen[args] = true;
         push(list, {
-            id: sprintf("z2_gen_%d", length(list) + 1),
+            id: sprintf("z2_comb_%d", length(list) + 1),
             name: name,
             engine: "zapret2",
             args: args,
@@ -404,24 +509,41 @@ function generate_combinatorial_zapret2() {
     
     for (let s in STRATEGIES_ZAPRET2) add(s.name, s.args, s.description);
     
-    let positions = ["1", "midsld", "sniext+4", "1,midsld", "1,sniext+2"];
-    let foolings = ["badseq", "md5sig", "badack"];
-    let ttls = [3, 4, 5, 8];
+    if (cfg.custom_strategies && length(cfg.custom_strategies) > 0) {
+        for (let cs in cfg.custom_strategies) {
+            if (cs && cs.engine == "zapret2" && cs.args) {
+                add(cs.name || "Custom Zapret v2", cs.args, cs.description || "User custom strategy");
+            }
+        }
+    }
     
-    for (let pos in positions) {
+    let splits = p.splits || [ "1", "2", "3", "midsld", "sniext+4", "1,midsld", "1,sniext+2" ];
+    let foolings = p.foolings || [ "badseq", "md5sig", "badack", "datanoack", "fakeddrop" ];
+    let ttls = p.ttls || [ 2, 3, 4, 5, 6, 8 ];
+    let seqovls = p.seqovls || [ "1", "2" ];
+    let wsizes = p.wsizes || [ "1" ];
+    
+    for (let pos in splits) {
         for (let fooling in foolings) {
             add(sprintf("Multisplit (pos=%s, %s)", pos, fooling),
                 sprintf("--lua-desync=multisplit:pos=%s:fooling=%s", pos, fooling),
                 "Multisplit position and fooling method");
-            add(sprintf("Multisplit + SeqOvl (pos=%s, %s)", pos, fooling),
-                sprintf("--lua-desync=multisplit:pos=%s:seqovl=1:fooling=%s", pos, fooling),
-                "Multisplit with sequence overlap");
+            for (let sq in seqovls) {
+                add(sprintf("Multisplit + SeqOvl %s (pos=%s, %s)", sq, pos, fooling),
+                    sprintf("--lua-desync=multisplit:pos=%s:seqovl=%s:fooling=%s", pos, sq, fooling),
+                    "Multisplit with sequence overlap");
+            }
+            for (let w in wsizes) {
+                add(sprintf("Multisplit + Window %s (pos=%s, %s)", w, pos, fooling),
+                    sprintf("--lua-desync=multisplit:pos=%s:wsize=%s:fooling=%s", pos, w, fooling),
+                    "Multisplit with TCP window size clamping");
+            }
         }
     }
     
     for (let ttl in ttls) {
-        for (let fooling in ["badseq", "md5sig", "badack"]) {
-            for (let pos in ["1", "midsld", "1,midsld"]) {
+        for (let fooling in foolings) {
+            for (let pos in splits) {
                 add(sprintf("Fake (TTL=%d, %s) + Multisplit (pos=%s)", ttl, fooling, pos),
                     sprintf("--lua-desync=fake:ttl=%d:fooling=%s --lua-desync=multisplit:pos=%s", ttl, fooling, pos),
                     "Low-TTL fake injection followed by multisplit payload");
@@ -436,6 +558,8 @@ function generate_combinatorial_zapret2() {
 }
 
 function generate_combinatorial_zapret() {
+    let cfg = get_patterns_config();
+    let p = cfg.zapret || DEFAULT_PATTERNS.zapret;
     let list = [];
     let seen = {};
     
@@ -455,10 +579,18 @@ function generate_combinatorial_zapret() {
     
     for (let s in STRATEGIES_ZAPRET) add(s.name, s.args, s.description);
     
-    let modes = ["split2", "disorder2", "fake,split2", "fake,disorder2"];
-    let positions = ["1", "2", "midsld"];
-    let foolings = ["badseq", "md5sig", "badack"];
-    let ttls = [4, 6, 8];
+    if (cfg.custom_strategies && length(cfg.custom_strategies) > 0) {
+        for (let cs in cfg.custom_strategies) {
+            if (cs && cs.engine == "zapret" && cs.args) {
+                add(cs.name || "Custom Zapret v1", cs.args, cs.description || "User custom strategy");
+            }
+        }
+    }
+    
+    let modes = p.split_modes || [ "split2", "disorder2", "fake,split2", "fake,disorder2" ];
+    let positions = p.splits || [ "1", "2", "midsld" ];
+    let foolings = p.foolings || [ "badseq", "md5sig", "badack", "datanoack" ];
+    let ttls = p.ttls || [ 2, 3, 4, 6, 8 ];
     
     for (let mode in modes) {
         for (let pos in positions) {
@@ -485,6 +617,8 @@ function generate_combinatorial_zapret() {
 }
 
 function generate_combinatorial_byedpi() {
+    let cfg = get_patterns_config();
+    let p = cfg.byedpi || DEFAULT_PATTERNS.byedpi;
     let list = [];
     let seen = {};
     
@@ -504,11 +638,21 @@ function generate_combinatorial_byedpi() {
     
     for (let s in STRATEGIES_BYEDPI) add(s.name, s.args, s.description);
     
-    let splits = ["1", "2", "1+sniext", "midsld"];
-    let disorders = ["1", "2"];
-    let ttls = [3, 4, 6, 8];
-    let oobs = ["1", "2"];
-    let autos = ["t,r,a,s", "r,s", "t,a"];
+    if (cfg.custom_strategies && length(cfg.custom_strategies) > 0) {
+        for (let cs in cfg.custom_strategies) {
+            if (cs && cs.engine == "byedpi" && cs.args) {
+                add(cs.name || "Custom ByeDPI", cs.args, cs.description || "User custom strategy");
+            }
+        }
+    }
+    
+    let splits = p.splits || [ "1", "2", "1+sniext", "midsld" ];
+    let disorders = p.disorders || [ "1", "2" ];
+    let ttls = p.ttls || [ 2, 3, 4, 6, 8 ];
+    let oobs = p.oobs || [ "1", "2" ];
+    let autos = p.autos || [ "t,r,a,s", "r,s", "t,a" ];
+    let tlsrecs = p.tlsrecs || [ "1+sniext" ];
+    let ipfrags = p.ipfrags || [ "24" ];
     
     for (let a in autos) {
         for (let o in oobs) {
@@ -536,12 +680,16 @@ function generate_combinatorial_byedpi() {
     }
     
     for (let s in splits) {
-        add(sprintf("TLS-Rec (1+sniext) + Split=%s", s),
-            sprintf("--tlsrec 1+sniext --split %s", s),
-            "TLS record boundary fragmentation");
-        add(sprintf("IP-Frag (24) + Split=%s", s),
-            sprintf("--ip-frag 24 --split %s", s),
-            "IP packet fragmentation");
+        for (let tr in tlsrecs) {
+            add(sprintf("TLS-Rec (%s) + Split=%s", tr, s),
+                sprintf("--tlsrec %s --split %s", tr, s),
+                "TLS record boundary fragmentation");
+        }
+        for (let ipf in ipfrags) {
+            add(sprintf("IP-Frag (%s) + Split=%s", ipf, s),
+                sprintf("--ip-frag %s --split %s", ipf, s),
+                "IP packet fragmentation");
+        }
     }
     
     return list;
@@ -550,23 +698,81 @@ function generate_combinatorial_byedpi() {
 function get_strategies_for_engine(engine, mode) {
     engine = lc(as_string(engine));
     mode = lc(trim(as_string(mode || "presets")));
+    let cfg = get_patterns_config();
+    
+    if (mode == "custom" || mode == "user") {
+        let custom_list = [];
+        for (let cs in cfg.custom_strategies) {
+            if (cs && (engine == "all" || cs.engine == engine) && cs.args) {
+                push(custom_list, {
+                    id: cs.id || sprintf("custom_%d", length(custom_list) + 1),
+                    name: cs.name || "Custom Strategy",
+                    engine: cs.engine || engine,
+                    args: cs.args,
+                    description: cs.description || ""
+                });
+            }
+        }
+        return custom_list;
+    }
     
     if (mode == "combinatorial" || mode == "deep_fuzz" || mode == "deep") {
         if (engine == "zapret2") return generate_combinatorial_zapret2();
         if (engine == "zapret") return generate_combinatorial_zapret();
         if (engine == "byedpi") return generate_combinatorial_byedpi();
+        if (engine == "all") {
+            let combined = [];
+            for (let s in generate_combinatorial_zapret2()) push(combined, s);
+            for (let s in generate_combinatorial_zapret()) push(combined, s);
+            for (let s in generate_combinatorial_byedpi()) push(combined, s);
+            return combined;
+        }
     }
     
-    if (engine == "zapret2") return STRATEGIES_ZAPRET2;
-    if (engine == "zapret") return STRATEGIES_ZAPRET;
-    if (engine == "byedpi") return STRATEGIES_BYEDPI;
-    return [];
+    let base = [];
+    if (engine == "zapret2") base = STRATEGIES_ZAPRET2;
+    else if (engine == "zapret") base = STRATEGIES_ZAPRET;
+    else if (engine == "byedpi") base = STRATEGIES_BYEDPI;
+    else if (engine == "all") {
+        for (let s in STRATEGIES_ZAPRET2) push(base, s);
+        for (let s in STRATEGIES_ZAPRET) push(base, s);
+        for (let s in STRATEGIES_BYEDPI) push(base, s);
+    }
+    
+    let result = [];
+    for (let s in base) push(result, s);
+    for (let cs in cfg.custom_strategies) {
+        if (cs && (engine == "all" || cs.engine == engine) && cs.args) {
+            push(result, {
+                id: cs.id || sprintf("custom_%d", length(result) + 1),
+                name: cs.name || "Custom Strategy",
+                engine: cs.engine || engine,
+                args: cs.args,
+                description: cs.description || "User custom strategy"
+            });
+        }
+    }
+    
+    return result;
 }
 
 function resolve_target_url(target_key, custom_url) {
     if (custom_url && custom_url != "")
         return custom_url;
     return TARGET_URLS[target_key] || TARGET_URLS.youtube;
+}
+
+function resolve_target_urls_list(target_key, custom_url) {
+    if (custom_url && custom_url != "") {
+        return [ { name: "Custom Target", url: custom_url, weight: 100 } ];
+    }
+    target_key = as_string(target_key || "youtube_suite");
+    let suite = TARGET_SUITES[target_key];
+    if (suite && suite.urls && length(suite.urls) > 0) {
+        return suite.urls;
+    }
+    let single = TARGET_URLS[target_key] || TARGET_URLS.youtube;
+    return [ { name: target_key, url: single, weight: 100 } ];
 }
 
 function ensure_state_dir() {
@@ -576,6 +782,17 @@ function ensure_state_dir() {
 function save_fuzzer_state(state) {
     ensure_state_dir();
     common.write_json_file(STATE_FILE, state);
+}
+
+function safe_json_parse(str) {
+    if (!str || str == "") return null;
+    let obj = null;
+    try {
+        obj = json(str);
+    } catch (e) {
+        obj = null;
+    }
+    return obj;
 }
 
 function query_llm(provider, api_key, custom_url, prompt_text, model_override) {
@@ -599,7 +816,7 @@ function query_llm(provider, api_key, custom_url, prompt_text, model_override) {
         let pipe = fs.popen(cmd, "r");
         let output = pipe ? pipe.read("all") : "";
         if (pipe) pipe.close();
-        let parsed = common.json_parse(output);
+        let parsed = safe_json_parse(output);
         if (parsed && parsed.content && type(parsed.content) == "array" && length(parsed.content) > 0) {
             return parsed.content[0].text;
         }
@@ -644,7 +861,7 @@ function query_llm(provider, api_key, custom_url, prompt_text, model_override) {
     let pipe = fs.popen(cmd, "r");
     let output = pipe ? pipe.read("all") : "";
     if (pipe) pipe.close();
-    let parsed = common.json_parse(output);
+    let parsed = safe_json_parse(output);
     if (parsed && parsed.choices && type(parsed.choices) == "array" && length(parsed.choices) > 0) {
         let msg = parsed.choices[0].message;
         if (msg && msg.content) {
@@ -657,18 +874,18 @@ function query_llm(provider, api_key, custom_url, prompt_text, model_override) {
 function parse_llm_json(raw_text) {
     raw_text = trim(as_string(raw_text));
     if (raw_text == "") return null;
-    let direct = common.json_parse(raw_text);
+    let direct = safe_json_parse(raw_text);
     if (direct && type(direct) == "object") return direct;
 
     let m = match(raw_text, /```json\s*([\s\S]*?)\s*```/);
     if (m && m[1]) {
-        let parsed = common.json_parse(m[1]);
+        let parsed = safe_json_parse(m[1]);
         if (parsed && type(parsed) == "object") return parsed;
     }
 
     m = match(raw_text, /\{[\s\S]*\}/);
     if (m && m[0]) {
-        let parsed = common.json_parse(m[0]);
+        let parsed = safe_json_parse(m[0]);
         if (parsed && type(parsed) == "object") return parsed;
     }
     return null;
@@ -682,11 +899,11 @@ function synthesize_ai_strategies(engine, target, custom_url, user_prompt) {
     }
 
     engine = lc(as_string(engine || "zapret2"));
-    target = trim(as_string(target || "youtube"));
+    target = trim(as_string(target || "youtube_suite"));
     user_prompt = trim(as_string(user_prompt || ""));
     let target_url = resolve_target_url(target, custom_url);
 
-    let baseline = run_probe(engine, "", target_url);
+    let baseline = run_probe(engine, "", target, custom_url);
 
     let query_text = sprintf("%s %s %s", engine, target, user_prompt);
     let rag_docs = rag.retrieve(query_text, 4);
@@ -800,7 +1017,7 @@ function get_fuzzer_state() {
             running: false,
             job_id: null,
             engine: "zapret2",
-            target: "youtube",
+            target: "youtube_suite",
             progress_pct: 0,
             current_index: 0,
             total_strategies: 0,
@@ -834,14 +1051,24 @@ function cleanup_temp_daemons() {
 }
 
 function parse_curl_output(output, result) {
+    result = result || {};
     output = trim(as_string(output));
     if (output == "") {
+        result.success = false;
+        result.http_code = 0;
+        result.handshake_ms = 0;
+        result.ttfb_ms = 0;
+        result.speed_kbps = 0;
+        result.score = 0;
         result.error = "Probe timeout or connection refused";
         return result;
     }
     
     let parts = split(output, "\t");
     if (length(parts) < 4) {
+        result.success = false;
+        result.http_code = 0;
+        result.score = 0;
         result.error = "Malformed probe metrics output";
         return result;
     }
@@ -862,6 +1089,7 @@ function parse_curl_output(output, result) {
         let latency_score = max(0, 1000 - result.ttfb_ms);
         let speed_score = int(result.speed_kbps / 10.0);
         result.score = base_score + latency_score + speed_score;
+        result.error = "";
     } else {
         result.success = false;
         result.score = 0;
@@ -871,8 +1099,11 @@ function parse_curl_output(output, result) {
     return result;
 }
 
-function run_probe(engine, args_str, target_url) {
+function run_probe(engine, args_str, target_key, custom_url) {
     cleanup_temp_daemons();
+    
+    let urls_list = resolve_target_urls_list(target_key, custom_url);
+    let total_urls = length(urls_list);
     
     let result = {
         success: false,
@@ -881,10 +1112,12 @@ function run_probe(engine, args_str, target_url) {
         ttfb_ms: 0,
         speed_kbps: 0,
         score: 0,
-        error: ""
+        error: "",
+        sub_probes: []
     };
     
     engine = lc(as_string(engine));
+    let is_udp = index(args_str, "--filter-udp") >= 0 || index(args_str, "--dpi-desync-any-protocol") >= 0 || target_key == "quic_http3";
     
     if (engine == "byedpi") {
         let bin = get_byedpi_bin();
@@ -898,19 +1131,55 @@ function run_probe(engine, args_str, target_url) {
         system(common.background_command_with_pid(spawn_cmd, ">/dev/null", ">" + shell_quote(pid_path)));
         system("sleep 0.15");
         
-        let curl_cmd = sprintf(
-            "curl -x socks5h://127.0.0.1:%d -so /dev/null -w '%%{http_code}\\t%%{time_appconnect}\\t%%{time_starttransfer}\\t%%{speed_download}' -L --connect-timeout 3 --max-time 4 %s 2>/dev/null",
-            BYEDPI_PORT,
-            shell_quote(target_url)
-        );
+        let passed_count = 0;
+        let sum_handshake = 0;
+        let sum_ttfb = 0;
+        let max_speed = 0;
+        let last_http = 0;
         
-        let pipe = fs.popen(curl_cmd, "r");
-        let output = pipe ? pipe.read("all") : "";
-        if (pipe) pipe.close();
+        for (let target_item in urls_list) {
+            let curl_cmd = sprintf(
+                "curl -x socks5h://127.0.0.1:%d -so /dev/null -w '%%{http_code}\\t%%{time_appconnect}\\t%%{time_starttransfer}\\t%%{speed_download}' -L --connect-timeout 3 --max-time 4 %s 2>/dev/null",
+                BYEDPI_PORT,
+                shell_quote(target_item.url)
+            );
+            let pipe = fs.popen(curl_cmd, "r");
+            let output = pipe ? pipe.read("all") : "";
+            if (pipe) pipe.close();
+            
+            let single_res = parse_curl_output(output, {});
+            single_res.target_name = target_item.name;
+            single_res.url = target_item.url;
+            push(result.sub_probes, single_res);
+            
+            if (single_res.success) {
+                passed_count++;
+                sum_handshake += single_res.handshake_ms;
+                sum_ttfb += single_res.ttfb_ms;
+                if (single_res.speed_kbps > max_speed) max_speed = single_res.speed_kbps;
+                last_http = single_res.http_code;
+            } else if (last_http == 0) {
+                last_http = single_res.http_code;
+            }
+        }
         
         cleanup_temp_daemons();
         
-        return parse_curl_output(output, result);
+        if (passed_count == total_urls) {
+            result.success = true;
+            result.http_code = last_http > 0 ? last_http : 200;
+            result.handshake_ms = int(sum_handshake / double(total_urls));
+            result.ttfb_ms = int(sum_ttfb / double(total_urls));
+            result.speed_kbps = max_speed;
+            result.score = 100 + max(0, 1000 - result.ttfb_ms) + int(result.speed_kbps / 10.0);
+        } else {
+            result.success = false;
+            result.http_code = last_http;
+            result.score = 0;
+            result.error = sprintf("Failed %d of %d endpoints", total_urls - passed_count, total_urls);
+        }
+        
+        return result;
     }
     
     if (engine == "zapret" || engine == "zapret2") {
@@ -933,30 +1202,71 @@ function run_probe(engine, args_str, target_url) {
         if (is_z2 && index(args_str, "--filter-tcp") < 0 && index(args_str, "--filter-l7") < 0) {
             filter_prefix = "--filter-tcp=443 --filter-l7=tls --payload=tls_client_hello ";
         }
+        if (is_z2 && is_udp && index(args_str, "--filter-udp") < 0) {
+            filter_prefix += "--filter-udp=443 --payload=quic_initial ";
+        }
         
         let spawn_cmd = sprintf("cd /tmp && %s --qnum=%d --fwmark=%s %s%s%s --pidfile=%s --daemon", bin, qnum, FUZZER_FWMARK, lua_init_flags, filter_prefix, args_str, pid_path);
         system(common.background_command(spawn_cmd));
         system("sleep 0.15");
         
-        // Setup temporary isolated nftables queue for probe with high priority (-200)
         system("nft add table inet tachyon_fuzzer 2>/dev/null");
         system("nft 'add chain inet tachyon_fuzzer output { type filter hook output priority -200 ; }' 2>/dev/null");
         system(sprintf("nft add rule inet tachyon_fuzzer output meta mark %s counter return 2>/dev/null", FUZZER_FWMARK));
-        system(sprintf("nft 'add rule inet tachyon_fuzzer output meta l4proto tcp tcp dport { 80, 443 } counter queue num %d bypass' 2>/dev/null", qnum));
+        if (is_udp) {
+            system(sprintf("nft 'add rule inet tachyon_fuzzer output meta l4proto { tcp, udp } th dport { 80, 443, 50000-65535 } counter queue num %d bypass' 2>/dev/null", qnum));
+        } else {
+            system(sprintf("nft 'add rule inet tachyon_fuzzer output meta l4proto tcp tcp dport { 80, 443 } counter queue num %d bypass' 2>/dev/null", qnum));
+        }
         
-        // Execute probe with direct curl
-        let curl_cmd = sprintf(
-            "curl -so /dev/null -w '%%{http_code}\\t%%{time_appconnect}\\t%%{time_starttransfer}\\t%%{speed_download}' -L --connect-timeout 3 --max-time 4 %s 2>/dev/null",
-            shell_quote(target_url)
-        );
+        let passed_count = 0;
+        let sum_handshake = 0;
+        let sum_ttfb = 0;
+        let max_speed = 0;
+        let last_http = 0;
         
-        let pipe = fs.popen(curl_cmd, "r");
-        let output = pipe ? pipe.read("all") : "";
-        if (pipe) pipe.close();
+        for (let target_item in urls_list) {
+            let curl_cmd = sprintf(
+                "curl -so /dev/null -w '%%{http_code}\\t%%{time_appconnect}\\t%%{time_starttransfer}\\t%%{speed_download}' -L --connect-timeout 3 --max-time 4 %s 2>/dev/null",
+                shell_quote(target_item.url)
+            );
+            let pipe = fs.popen(curl_cmd, "r");
+            let output = pipe ? pipe.read("all") : "";
+            if (pipe) pipe.close();
+            
+            let single_res = parse_curl_output(output, {});
+            single_res.target_name = target_item.name;
+            single_res.url = target_item.url;
+            push(result.sub_probes, single_res);
+            
+            if (single_res.success) {
+                passed_count++;
+                sum_handshake += single_res.handshake_ms;
+                sum_ttfb += single_res.ttfb_ms;
+                if (single_res.speed_kbps > max_speed) max_speed = single_res.speed_kbps;
+                last_http = single_res.http_code;
+            } else if (last_http == 0) {
+                last_http = single_res.http_code;
+            }
+        }
         
         cleanup_temp_daemons();
         
-        return parse_curl_output(output, result);
+        if (passed_count == total_urls) {
+            result.success = true;
+            result.http_code = last_http > 0 ? last_http : 200;
+            result.handshake_ms = int(sum_handshake / double(total_urls));
+            result.ttfb_ms = int(sum_ttfb / double(total_urls));
+            result.speed_kbps = max_speed;
+            result.score = 100 + max(0, 1000 - result.ttfb_ms) + int(result.speed_kbps / 10.0);
+        } else {
+            result.success = false;
+            result.http_code = last_http;
+            result.score = 0;
+            result.error = sprintf("Failed %d of %d endpoints", total_urls - passed_count, total_urls);
+        }
+        
+        return result;
     }
     
     result.error = "Unknown engine: " + engine;
@@ -1007,7 +1317,7 @@ function run_fuzzer_worker(engine, target, custom_url, rule_section, custom_file
             state.progress_pct = int(((i) / double(total)) * 100.0);
             save_fuzzer_state(state);
             
-            let probe = run_probe(strat.engine || engine, strat.args, target_url);
+            let probe = run_probe(strat.engine || engine, strat.args, target, custom_url);
             
             let item_result = {
                 id: strat.id || sprintf("strat_%d", i + 1),
@@ -1023,6 +1333,7 @@ function run_fuzzer_worker(engine, target, custom_url, rule_section, custom_file
                 speed_kbps: probe.speed_kbps,
                 score: probe.score,
                 error: probe.error,
+                sub_probes: probe.sub_probes || [],
                 badge: ""
             };
             
@@ -1082,7 +1393,7 @@ function start_fuzzer(engine, target, custom_url, rule_section, custom_file, mod
     let cmd = sprintf(
         "ucode -L /usr/lib/tachyon /usr/lib/tachyon/diagnostics/fuzzer.uc worker %s %s %s %s %s %s",
         shell_quote(engine || "zapret2"),
-        shell_quote(target || "youtube"),
+        shell_quote(target || "youtube_suite"),
         shell_quote(custom_url || ""),
         shell_quote(rule_section || ""),
         shell_quote(custom_file || ""),
@@ -1091,7 +1402,7 @@ function start_fuzzer(engine, target, custom_url, rule_section, custom_file, mod
     
     system(common.background_command_with_pid(cmd, ">/dev/null", ">" + shell_quote(PID_FILE)));
     
-    print(sprintf("%J\n", { success: true, job_id, engine: engine || "zapret2", target: target || "youtube", mode: mode || "presets" }));
+    print(sprintf("%J\n", { success: true, job_id, engine: engine || "zapret2", target: target || "youtube_suite", mode: mode || "presets" }));
 }
 
 function stop_fuzzer() {
@@ -1128,7 +1439,6 @@ function apply_strategy(engine, args_val, target_rule) {
     let uci = uci_core.cursor();
     let applied = false;
     
-    // If target rule section is specified, update that rule
     if (target_rule != "" && target_rule != "global") {
         uci.set(CONFIG_NAME, target_rule, "action", engine);
         if (engine == "zapret2")
@@ -1139,7 +1449,6 @@ function apply_strategy(engine, args_val, target_rule) {
             uci.set(CONFIG_NAME, target_rule, "byedpi_cmd_opts", args_val);
         applied = true;
     } else {
-        // Apply as provider global setting
         let provider_sec = engine;
         let sec_obj = uci.get_all(CONFIG_NAME, provider_sec);
         if (sec_obj == null) {
@@ -1156,8 +1465,6 @@ function apply_strategy(engine, args_val, target_rule) {
     }
     
     uci.commit(CONFIG_NAME);
-    
-    // Mark reload pending
     system(common.background_command("tachyon reload"));
     
     print(sprintf("%J\n", {
@@ -1181,6 +1488,13 @@ if (op == "start") {
     stop_fuzzer();
 } else if (op == "apply") {
     apply_strategy(ARGV[1], ARGV[2], ARGV[3]);
+} else if (op == "get_patterns" || op == "patterns") {
+    print(sprintf("%J\n", { success: true, patterns: get_patterns_config() }));
+} else if (op == "save_patterns") {
+    let cfg = safe_json_parse(ARGV[1]);
+    save_patterns_config(cfg);
+} else if (op == "reset_patterns") {
+    reset_patterns_config();
 } else if (op == "ai_synthesize" || op == "synthesize") {
     synthesize_ai_strategies(ARGV[1], ARGV[2], ARGV[3], ARGV[4]);
 } else if (op == "generate" || op == "strategies_generate") {
@@ -1189,11 +1503,14 @@ if (op == "start") {
     let strat_mode = ARGV[1] || "presets";
     print(sprintf("%J\n", {
         available_engines: get_available_engines(),
+        target_suites: TARGET_SUITES,
+        patterns: get_patterns_config(),
         zapret2: get_strategies_for_engine("zapret2", strat_mode),
         zapret: get_strategies_for_engine("zapret", strat_mode),
         byedpi: get_strategies_for_engine("byedpi", strat_mode)
     }));
 } else {
-    warn("Usage: fuzzer.uc [start|status|stop|apply|strategies|generate|ai_synthesize|worker] ...\n");
+    warn("Usage: fuzzer.uc [start|status|stop|apply|strategies|generate|get_patterns|save_patterns|reset_patterns|ai_synthesize|worker] ...\n");
     exit(1);
 }
+

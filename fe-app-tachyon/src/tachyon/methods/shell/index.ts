@@ -1246,4 +1246,110 @@ export const TachyonShellMethods = {
         _('Failed to synthesize AI strategies'),
     };
   },
+
+  getFuzzerPatterns: async (): Promise<
+    Tachyon.MethodResponse<{ patterns: Tachyon.FuzzerPatternsConfig }>
+  > => {
+    const response = await executeShellCommand({
+      command: '/usr/bin/tachyon',
+      args: [Tachyon.AvailableMethods.FUZZER_GET_PATTERNS],
+      timeout: 8000,
+    });
+
+    let parsed: {
+      success: boolean;
+      patterns: Tachyon.FuzzerPatternsConfig;
+    } | null = null;
+    try {
+      parsed = JSON.parse(response.stdout?.trim() || '{}');
+    } catch {
+      parsed = null;
+    }
+
+    if ((response.code ?? 1) === 0 && parsed && parsed.success) {
+      return {
+        success: true,
+        data: parsed,
+      };
+    }
+    return {
+      success: false,
+      error: response.stderr || _('Failed to get fuzzer patterns'),
+    };
+  },
+
+  saveFuzzerPatterns: async (
+    patterns: Tachyon.FuzzerPatternsConfig,
+  ): Promise<Tachyon.MethodResponse<{ message: string }>> => {
+    const response = await executeShellCommand({
+      command: '/usr/bin/tachyon',
+      args: [
+        Tachyon.AvailableMethods.FUZZER_SAVE_PATTERNS,
+        JSON.stringify(patterns),
+      ],
+      timeout: 10000,
+    });
+
+    let parsed: { success: boolean; message?: string; error?: string } | null =
+      null;
+    try {
+      parsed = JSON.parse(response.stdout?.trim() || '{}');
+    } catch {
+      parsed = null;
+    }
+
+    if ((response.code ?? 1) === 0 && parsed && parsed.success) {
+      return {
+        success: true,
+        data: { message: parsed.message || _('Patterns saved successfully') },
+      };
+    }
+    return {
+      success: false,
+      error:
+        parsed?.error || response.stderr || _('Failed to save fuzzer patterns'),
+    };
+  },
+
+  resetFuzzerPatterns: async (): Promise<
+    Tachyon.MethodResponse<{
+      patterns: Tachyon.FuzzerPatternsConfig;
+      message: string;
+    }>
+  > => {
+    const response = await executeShellCommand({
+      command: '/usr/bin/tachyon',
+      args: [Tachyon.AvailableMethods.FUZZER_RESET_PATTERNS],
+      timeout: 8000,
+    });
+
+    let parsed: {
+      success: boolean;
+      message?: string;
+      patterns?: Tachyon.FuzzerPatternsConfig;
+      error?: string;
+    } | null = null;
+    try {
+      parsed = JSON.parse(response.stdout?.trim() || '{}');
+    } catch {
+      parsed = null;
+    }
+
+    if ((response.code ?? 1) === 0 && parsed && parsed.success) {
+      return {
+        success: true,
+        data: {
+          message: parsed.message || _('Patterns reset to factory defaults'),
+          patterns: parsed.patterns as Tachyon.FuzzerPatternsConfig,
+        },
+      };
+    }
+    return {
+      success: false,
+      error:
+        parsed?.error ||
+        response.stderr ||
+        _('Failed to reset fuzzer patterns'),
+    };
+  },
 };

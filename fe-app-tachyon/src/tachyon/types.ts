@@ -104,6 +104,9 @@ export namespace Tachyon {
     FUZZER_APPLY = 'fuzzer_apply',
     FUZZER_STRATEGIES = 'fuzzer_strategies',
     FUZZER_AI_SYNTHESIZE = 'fuzzer_ai_synthesize',
+    FUZZER_GET_PATTERNS = 'fuzzer_get_patterns',
+    FUZZER_SAVE_PATTERNS = 'fuzzer_save_patterns',
+    FUZZER_RESET_PATTERNS = 'fuzzer_reset_patterns',
   }
 
   export enum AvailableClashAPIMethods {
@@ -831,15 +834,21 @@ export namespace Tachyon {
 
   export type FuzzerEngine = 'zapret2' | 'zapret' | 'byedpi' | 'all';
   export type FuzzerTarget =
+    | 'youtube_suite'
     | 'youtube'
     | 'youtube_web'
+    | 'discord_suite'
     | 'discord'
+    | 'instagram_suite'
     | 'instagram'
+    | 'rutracker_suite'
     | 'rutracker'
+    | 'telegram_suite'
     | 'telegram'
+    | 'quic_http3'
     | 'custom';
 
-  export type FuzzerMode = 'presets' | 'combinatorial';
+  export type FuzzerMode = 'presets' | 'combinatorial' | 'custom';
 
   export interface FuzzerStrategyItem {
     id: string;
@@ -850,6 +859,17 @@ export namespace Tachyon {
   }
 
   export type FuzzerStrategyDefinition = FuzzerStrategyItem;
+
+  export interface FuzzerSubProbeResult {
+    target_name?: string;
+    url?: string;
+    http_code: number;
+    handshake_ms: number;
+    ttfb_ms: number;
+    speed_kbps: number;
+    success: boolean;
+    error?: string;
+  }
 
   export interface FuzzerStrategyResult {
     id: string;
@@ -865,6 +885,7 @@ export namespace Tachyon {
     score: number;
     error?: string;
     badge?: string;
+    sub_probes?: FuzzerSubProbeResult[];
   }
 
   export interface FuzzerState {
@@ -910,5 +931,51 @@ export namespace Tachyon {
     analysis?: string;
     strategies?: FuzzerStrategyItem[];
     error?: string;
+  }
+
+  export interface FuzzerCustomStrategy {
+    id?: string;
+    name: string;
+    engine: 'zapret2' | 'zapret' | 'byedpi';
+    args: string;
+    description?: string;
+  }
+
+  export interface FuzzerPatternsConfig {
+    zapret2: {
+      splits: string[];
+      foolings: string[];
+      ttls: number[];
+      seqovls: string[];
+      wsizes: string[];
+      payloads: string[];
+    };
+    zapret: {
+      splits: string[];
+      foolings: string[];
+      ttls: number[];
+      split_modes: string[];
+    };
+    byedpi: {
+      splits: string[];
+      disorders: string[];
+      ttls: number[];
+      oobs: string[];
+      autos: string[];
+      tlsrecs: string[];
+      ipfrags: string[];
+    };
+    custom_strategies: FuzzerCustomStrategy[];
+  }
+
+  export interface FuzzerTargetSuiteItem {
+    name: string;
+    url: string;
+    weight: number;
+  }
+
+  export interface FuzzerTargetSuite {
+    name: string;
+    urls: FuzzerTargetSuiteItem[];
   }
 }
