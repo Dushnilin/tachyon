@@ -1829,6 +1829,28 @@ function ensure_bridge_netfilter_disabled() {
         run_args([ "sysctl", "-w", "net.bridge.bridge-nf-call-ip6tables=0" ]);
 }
 
+// TCP keepalive: detect dead connections in ~90s instead of kernel default (hours).
+// Conntrack: expire stale TCP entries in 10 min instead of 5 days.
+function apply_connection_tuning() {
+    let sysctls = [
+        [ "net.ipv4.tcp_keepalive_time", "60" ],
+        [ "net.ipv4.tcp_keepalive_intvl", "10" ],
+        [ "net.ipv4.tcp_keepalive_probes", "3" ],
+        [ "net.netfilter.nf_conntrack_tcp_timeout_established", "600" ],
+        [ "net.netfilter.nf_conntrack_tcp_timeout_time_wait", "30" ]
+    ];
+    let ok = true;
+    for (let pair in sysctls) {
+        let current = trim(command_output_from_args([ "sysctl", "-n", pair[0] ]) || "");
+        if (current == pair[1]) continue;
+        if (!run_args_quiet([ "sysctl", "-w", pair[0] + "=" + pair[1] ]))
+            ok = false;
+    }
+    if (ok)
+        log_debug("Connection tuning applied: tcp_keepalive=60/10/3, conntrack_established=600");
+    return ok;
+}
+
 function community_service_has_subnet_list(value) {
     return rule_config.community_service_has_subnet_list(value);
 }
@@ -1960,6 +1982,7 @@ function nft_create_full_runtime_from_uci(rt_table, table, localv4_set, common_s
     log_debug("Building nftables runtime model");
 
     return ensure_bridge_netfilter_disabled() &&
+        apply_connection_tuning() &&
         ensure_tproxy_route_rule(rt_table, fakeip_mark) &&
         nft_create_runtime_base_from_uci(table, localv4_set, common_set, port_set, ip_port_set, interface_set, fakeip_mark, outbound_mark, fakeip_range, tproxy_port, localv6_set, common6_set, ip_port6_set, fakeip6_range, tproxy6_address) &&
         nft_add_section_priority_rules_from_sections(uci_sections("section"), table, interface_set, localv4_set, localv6_set, fakeip_mark) &&

@@ -649,6 +649,10 @@ function note_dns_recovered(ev) {
     settle_recovery("dns", "fixed");
 }
 
+function note_nfqueue_recovered(ev) {
+    settle_recovery("nfqueue", "fixed");
+}
+
 // Guard: skip if a tachyon reload is already in progress (prevents concurrent reload_firewall races)
 function is_reload_in_progress() {
     return fs.stat("/var/run/tachyon.reload.lock") != null
@@ -1020,6 +1024,35 @@ function heal_dns_continuous(ev) {
         "Restoring dnsmasq config and reloading",
         rc == 0 ? "fixed" : "failed"
     );
+}
+
+// ─── AI nfqueue/zapret Runtime Recovery ──────────────────────────────────────
+// When nfqws/nfqws2 processes die (crash, OOM, kill), DPI bypass stops working.
+// The simplest fix is a full tachyon restart which respawns everything.
+function heal_nfqueue_stopped(ev) {
+    if (settings().ai_nfqueue_health_enabled == "0") return;
+    if (suppressed_by_root_cause("heal_nfqueue_stopped")) return;
+
+    let running = int(ev.payload.running) || 0;
+    let expected = int(ev.payload.expected) || 0;
+
+    // Only act when some processes are running but not all — a full crash is
+    // already caught by the sing-box stopped or proxy down healers.
+    if (running > 0 && running >= expected) return;
+
+    let incident = {
+        type: "nfqueue_health",
+        description: sprintf("nfqueue/zapret runtime: %d/%d processes alive (%s)",
+            running, expected, as_string(ev.payload.dir || "")),
+        resolution: "Restarting tachyon to respawn nfqws/nfqws2"
+    };
+
+    if (!safe_proxy_restart("nfqueue_health")) {
+        ai_heal_report(incident.type, incident.description,
+            "Restart skipped due to rate limit", "skipped");
+        return;
+    }
+    watch_recovery("nfqueue", incident, "nfqueue_health");
 }
 
 // ─── AI Empty Sections Recovery ─────────────────────────────────────────────
@@ -1619,6 +1652,10 @@ function register_subscribers() {
     subscribe(EV.DNS_DOWN, heal_dns_continuous,
         { name: "heal_dns_continuous", priority: PRIORITY_DNS + 1 });
 
+    // nfqueue/zapret runtime: respawn crashed nfqws/nfqws2 processes.
+    subscribe(EV.NFQUEUE_DOWN, heal_nfqueue_stopped,
+        { name: "heal_nfqueue_stopped", priority: 45, cooldown: 300 });
+
     // Recovery facts. These were published from the start but had no subscriber,
     // which is why a repair could only ever report its own intent. No cooldown:
     // settle_recovery() is a no-op unless a watch is actually open, and skipping
@@ -1632,6 +1669,8 @@ function register_subscribers() {
     // suppression deadline.
     subscribe(EV.WAN_UP, note_wan_recovered,
         { name: "note_wan_recovered", priority: 5 });
+    subscribe(EV.NFQUEUE_UP, note_nfqueue_recovered,
+        { name: "note_nfqueue_recovered", priority: 5 });
 
     subscribe(EV.SECTIONS_EMPTY, heal_empty_sections,
         { name: "heal_empty_sections", priority: 60, cooldown: 120 });

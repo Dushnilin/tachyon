@@ -70,6 +70,8 @@ const EV = {
     SECTIONS_EMPTY:         "sections.empty",
     ANOMALY_RECONNECTS:     "anomaly.reconnects",
     PAUSE_EXPIRED:          "pause.expired",
+    NFQUEUE_DOWN:           "nfqueue.down",
+    NFQUEUE_UP:             "nfqueue.up",
     TICK:                   "tick"
 };
 
@@ -957,6 +959,46 @@ function controller(bus, opts) {
         bus.emit(EV.OOM_RECOVERABLE, { last_oom: state.last_oom_time, scale: current_scale });
     }
 
+    // ── Probe: nfqueue/zapret runtime health ──────────────────────────────────
+    // Checks if nfqws/nfqws2 supervisor processes are alive by counting PID
+    // files. A mismatch means the DPI bypass engine crashed or was killed.
+    function probe_nfqueue() {
+        if (!bus.has(EV.NFQUEUE_DOWN) && !bus.has(EV.NFQUEUE_UP)) return;
+        if (is_reload_in_progress()) return;
+
+        let pid_dirs = [
+            "/var/run/tachyon/zapret/child-pid",
+            "/var/run/tachyon/zapret2/child-pid"
+        ];
+
+        for (let i = 0; i < length(pid_dirs); i++) {
+            let child_dir = pid_dirs[i];
+            let child_entries = fs.readdir(child_dir);
+            if (child_entries == null) continue;
+            let expected = length(child_entries);
+            if (expected == 0) continue;
+
+            let running = 0;
+            for (let entry in child_entries) {
+                let pid_data = fs.readfile(child_dir + "/" + entry);
+                if (pid_data == null) continue;
+                let pid = trim(as_string(pid_data));
+                if (pid == "") continue;
+                try { system("kill -0 " + pid + " 2>/dev/null"); running++; } catch (e) {}
+            }
+
+            if (running == expected) {
+                bus.emit(EV.NFQUEUE_UP, { running: running, expected: expected });
+            } else {
+                bus.emit(EV.NFQUEUE_DOWN, {
+                    running: running,
+                    expected: expected,
+                    dir: child_dir
+                });
+            }
+        }
+    }
+
     // ── Tier drivers ──────────────────────────────────────────────────────────
     // Each probe is wrapped so one failing observation cannot stop the tier;
     // this mirrors the safe_call() isolation the old per-check loop had.
@@ -1004,6 +1046,7 @@ function controller(bus, opts) {
         run_probe(probe_empty_sections, "empty_sections");
         run_probe(probe_anomalies, "anomalies");
         run_probe(probe_oom_recovery, "oom_recovery");
+        run_probe(probe_nfqueue, "nfqueue");
     };
 
     // Health is graded by how long we go without publishing a fault: after a
