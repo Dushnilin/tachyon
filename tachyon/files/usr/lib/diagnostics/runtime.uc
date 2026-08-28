@@ -3191,12 +3191,16 @@ function run_doctor_checks_impl(repair) {
     // 19. CA Bundle Check — curl HTTPS fails with SSL errors when the
     // ca-bundle package is missing; the code blames it in TLS verdicts but
     // never verified it before.
-    if (fs.stat("/etc/ssl/certs/ca-bundle.crt") != null) {
-        doc_check("✅", "CA certificates", "ca-bundle present", "");
-    } else {
-        issues++;
-        doc_check("⚠️", "CA certificates", "/etc/ssl/certs/ca-bundle.crt missing",
-            "→ установите пакет ca-bundle: без него HTTPS-проверки падают");
+    {
+        let ca_found = fs.stat("/etc/ssl/certs/ca-certificates.crt") != null
+                    || fs.stat("/etc/ssl/certs/ca-bundle.crt") != null;
+        if (ca_found) {
+            doc_check("✅", "CA certificates", "ca-bundle present", "");
+        } else {
+            issues++;
+            doc_check("⚠️", "CA certificates", "/etc/ssl/certs/ missing",
+                "→ установите пакет ca-bundle: без него HTTPS-проверки падают");
+        }
     }
 
     // 20. Port 53 Conflicts — another DNS daemon on port 53 competes with
