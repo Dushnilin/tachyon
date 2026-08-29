@@ -7686,3 +7686,20 @@ msgstr ""
 #: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts
 msgid "History cleared"
 msgstr ""
+
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/server.js
+msgid "Restrict LAN access for specific users"
+msgstr ""
+
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/server.js
+msgid "Blocks access to private/LAN IP addresses (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, etc.) for selected users before applying routing mode."
+msgstr ""
+
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/server.js
+msgid "Restricted users (auth_user)"
+msgstr ""
+
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/server.js
+msgid "User names (e.g. from VLESS/Trojan/SS/JSON inbound users) that are forbidden from reaching LAN subnets. Leave empty to restrict all users on this inbound."
+msgstr ""
+

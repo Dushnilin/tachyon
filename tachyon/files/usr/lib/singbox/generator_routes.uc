@@ -1548,6 +1548,40 @@ function add_server_routes(config, servers, sections) {
         runtime_servers.add_sniff_rule(config, server);
 
         let inbound = runtime_constants.server_inbound_tag(server[".name"]);
+
+        let isolate_lan = bool_option(server, "isolate_lan_for_users", false) || bool_option(server, "block_private_for_users", false);
+        let isolated_users = list_option(server, "isolated_users");
+        if (length(isolated_users) == 0)
+            isolated_users = list_option(server, "blocked_users");
+
+        if (isolate_lan) {
+            let isolate_rule = {
+                action: "reject",
+                inbound: inbound,
+                ip_is_private: true
+            };
+            if (length(isolated_users) > 0)
+                isolate_rule.auth_user = isolated_users;
+            let isolated_subnets = list_option(server, "isolated_subnets");
+            if (length(isolated_subnets) > 0)
+                isolate_rule.ip_cidr = isolated_subnets;
+            push(config.route.rules, isolate_rule);
+        }
+
+        let custom_rules = list_option(server, "custom_route_rules");
+        if (length(custom_rules) == 0)
+            custom_rules = list_option(server, "custom_rules_json");
+        for (let rule_str in custom_rules) {
+            try {
+                let r = json(rule_str);
+                if (type(r) == "object") {
+                    if (!r.inbound)
+                        r.inbound = inbound;
+                    push(config.route.rules, r);
+                }
+            } catch(e) {}
+        }
+
         let routing_mode = option(server, "routing_mode", "rules");
         if (routing_mode == "rules") {
             runtime_servers.clone_rules_for_inbound(

@@ -51,6 +51,12 @@ Defines an individual manual proxy outbound node.
 | `sid` | `string` | Conditional | Short ID for VLESS Reality (hex string). |
 | `fingerprint` | `string` | No | TLS fingerprint: `chrome`, `firefox`, `safari`, `randomized`. |
 | `method` | `string` | Conditional | Cipher method for Shadowsocks (e.g. `2022-blake3-aes-128-gcm`). |
+| `routing_mode` | `string` | No | Routing mode: `rules` (default), `direct`, `section`. |
+| `routing_section` | `string` | No | Bound routing section when `routing_mode = 'section'`. |
+| `isolate_lan_for_users` | `boolean` | No | Restrict access to private/LAN IP addresses (`1` / `0`). |
+| `isolated_users` | `list string` | No | Specific usernames (`auth_user`) restricted from LAN. If empty, restricts all users of the inbound. |
+| `isolated_subnets` | `list string` | No | Optional custom subnets to block for isolated users (defaults to `ip_is_private: true`). |
+| `custom_route_rules` | `list string` | No | Raw JSON sing-box route rule objects injected before general routing rules. |
 
 ---
 

@@ -2721,6 +2721,29 @@ function createServerContent(section, options = {}) {
   };
 
   o = section.option(
+    form.Flag,
+    "isolate_lan_for_users",
+    _("Restrict LAN access for specific users"),
+    _(
+      "Blocks access to private/LAN IP addresses (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, etc.) for selected users before applying routing mode.",
+    ),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+
+  o = section.option(
+    form.DynamicList,
+    "isolated_users",
+    _("Restricted users (auth_user)"),
+    _(
+      "User names (e.g. from VLESS/Trojan/SS/JSON inbound users) that are forbidden from reaching LAN subnets. Leave empty to restrict all users on this inbound.",
+    ),
+  );
+  o.depends("isolate_lan_for_users", "1");
+  o.modalonly = true;
+  o.rmempty = true;
+
+  o = section.option(
     form.TextValue,
     "inbound_json",
     _("Inbound JSON"),

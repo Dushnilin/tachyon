@@ -173,6 +173,10 @@ config settings 'settings'
 #        option reality_short_id '5a'
 #        option reality_max_time_difference '1m'
 #        option transport 'tcp'
+#        # Restrict LAN / private network access for specific guest users:
+#        #option isolate_lan_for_users '1'
+#        #list isolated_users 'friend-1'
+#        #list isolated_users 'friend-2'
 #        # sing-box-extended only:
 #        #option transport 'xhttp'
 #        #option transport_path '/xhttp'
