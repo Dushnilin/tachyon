@@ -5146,3 +5146,16 @@ msgstr "Не удалось автоматически применить стр
 
 msgid "History cleared"
 msgstr "История очищена"
+
+msgid "Restrict LAN access for specific users"
+msgstr "Ограничить доступ к локальной сети для отдельных пользователей"
+
+msgid "Blocks access to private/LAN IP addresses (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, etc.) for selected users before applying routing mode."
+msgstr "Блокирует доступ к приватным/локальным IP-адресам (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 и др.) для указанных пользователей перед применением режима маршрутизации."
+
+msgid "Restricted users (auth_user)"
+msgstr "Изолированные пользователи (auth_user)"
+
+msgid "User names (e.g. from VLESS/Trojan/SS/JSON inbound users) that are forbidden from reaching LAN subnets. Leave empty to restrict all users on this inbound."
+msgstr "Имена пользователей (например, из пользователей VLESS/Trojan/SS/JSON inbound), которым запрещен доступ к подсетям LAN. Оставьте пустым, чтобы ограничить всех пользователей данного inbound."
+
