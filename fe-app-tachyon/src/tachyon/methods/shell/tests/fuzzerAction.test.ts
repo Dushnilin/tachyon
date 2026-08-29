@@ -215,12 +215,12 @@ describe('TachyonShellMethods Fuzzer Actions', () => {
       code: 0,
     });
 
-    const patternsPayload: any = {
+    const patternsPayload = {
       zapret2: { splits: ['1', '2', 'midsld'] },
       zapret: { splits: ['1'] },
       byedpi: { splits: ['1'] },
       custom_strategies: [],
-    };
+    } as unknown as Parameters<typeof TachyonShellMethods.saveFuzzerPatterns>[0];
 
     const res = await TachyonShellMethods.saveFuzzerPatterns(patternsPayload);
     expect(res.success).toBe(true);

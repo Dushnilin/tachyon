@@ -19,6 +19,7 @@ export function renderStrategyFuzzerModal(ruleNames: string[] = []) {
   let currentState: Tachyon.FuzzerState | null = null;
   let resultFilter: 'all' | 'success' | 'fast' = 'all';
   let autoApplyEnabled = false;
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   let currentDpiDetection: Tachyon.FuzzerDpiDetection | null = null;
 
   // Patterns Config State
@@ -1267,7 +1268,7 @@ export function renderStrategyFuzzerModal(ruleNames: string[] = []) {
     list.forEach((item, idx) => {
       const isBest = state.best_strategy && state.best_strategy.id === item.id;
 
-      let statusBadge = `<span class="label ${item.success ? 'badge-success' : 'badge-danger'}" style="font-size: 10px; padding: 2px 6px; border-radius: 3px;">${item.success ? `HTTP ${item.http_code}` : 'DROP'}</span>`;
+      const statusBadge = `<span class="label ${item.success ? 'badge-success' : 'badge-danger'}" style="font-size: 10px; padding: 2px 6px; border-radius: 3px;">${item.success ? `HTTP ${item.http_code}` : 'DROP'}</span>`;
 
       // If suite sub-probes exist, render multi-endpoint summary
       let subProbesHtml = '';

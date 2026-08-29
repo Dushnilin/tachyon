@@ -3686,6 +3686,9 @@ var TachyonShellMethods = {
       const cleanB = b.replace(/^v/i, "").trim();
       return cleanA === cleanB;
     };
+    const isDifferentVersion = Boolean(
+      targetVersion && !versionsMatch(targetVersion, baselineVersion)
+    );
     const confirmedByVersion = async () => {
       if (!isSelfUpdate) return "";
       if (Date.now() - jobStartedAt < COMPONENT_ACTION_MIN_ELAPSED_FOR_SELF_UPDATE_MS) {
@@ -3693,7 +3696,7 @@ var TachyonShellMethods = {
       }
       const version = await readTachyonVersion();
       if (!version) return "";
-      if (targetVersion && versionsMatch(version, targetVersion)) {
+      if (isDifferentVersion && versionsMatch(version, targetVersion)) {
         return version;
       }
       if (!targetVersion && baselineVersion && !versionsMatch(version, baselineVersion)) {
@@ -3702,11 +3705,14 @@ var TachyonShellMethods = {
       return "";
     };
     const confirmedSameVersionReinstall = async () => {
-      if (!isSelfUpdate || action !== "reinstall" || !baselineVersion) {
+      if (!isSelfUpdate || !baselineVersion) {
+        return "";
+      }
+      if (targetVersion && !versionsMatch(targetVersion, baselineVersion)) {
         return "";
       }
       const version = await readTachyonVersion();
-      if (versionsMatch(version, baselineVersion) && (!targetVersion || versionsMatch(version, targetVersion))) {
+      if (versionsMatch(version, baselineVersion)) {
         return version;
       }
       return "";
@@ -3719,11 +3725,14 @@ var TachyonShellMethods = {
       if (Date.now() - selfUpdateVersionMatchedAt < COMPONENT_ACTION_SELF_UPDATE_SETTLE_MS) {
         return false;
       }
-      if (await confirmedByVersion() === version) {
-        return true;
-      }
-      if (version === baselineVersion && await confirmedSameVersionReinstall() === version) {
-        return true;
+      if (isDifferentVersion) {
+        if (await confirmedByVersion() === version) {
+          return true;
+        }
+      } else {
+        if (await confirmedSameVersionReinstall() === version) {
+          return true;
+        }
       }
       selfUpdateVersionMatchedAt = 0;
       return false;
@@ -3781,18 +3790,25 @@ var TachyonShellMethods = {
       const parsedResponse = parseComponentActionResult(statusResponse);
       if ((statusResponse.code ?? 0) !== 0 || !parsedResponse) {
         if (isSelfUpdate) {
-          const version = await confirmedByVersion() || await confirmedSameVersionReinstall();
+          const version = await confirmedByVersion();
           if (version) {
             if (await settleVersion(version)) {
               return selfUpdateResult(version);
             }
             continue;
           }
-          if (!stateResponse?.running) {
+          const failure2 = componentActionFailure(statusResponse, parsedResponse);
+          if (transientRpc.shouldContinue(failure2.error)) {
             continue;
           }
-          transientRpc.reset();
-          continue;
+          const sameVersion = await confirmedSameVersionReinstall();
+          if (sameVersion) {
+            if (await settleVersion(sameVersion)) {
+              return selfUpdateResult(sameVersion);
+            }
+            continue;
+          }
+          return failure2;
         }
         if (stateResponse?.running) {
           transientRpc.reset();
@@ -12998,7 +13014,7 @@ function renderStrategyFuzzerModal(ruleNames = []) {
     }
     list.forEach((item, idx) => {
       const isBest = state.best_strategy && state.best_strategy.id === item.id;
-      let statusBadge = `<span class="label ${item.success ? "badge-success" : "badge-danger"}" style="font-size: 10px; padding: 2px 6px; border-radius: 3px;">${item.success ? `HTTP ${item.http_code}` : "DROP"}</span>`;
+      const statusBadge = `<span class="label ${item.success ? "badge-success" : "badge-danger"}" style="font-size: 10px; padding: 2px 6px; border-radius: 3px;">${item.success ? `HTTP ${item.http_code}` : "DROP"}</span>`;
       let subProbesHtml = "";
       if (item.sub_probes && item.sub_probes.length > 1) {
         const passedSub = item.sub_probes.filter((p) => p.success).length;

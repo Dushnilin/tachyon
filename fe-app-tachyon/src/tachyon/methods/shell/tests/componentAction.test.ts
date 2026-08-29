@@ -405,7 +405,7 @@ describe('TachyonShellMethods.componentAction', () => {
       '1.2.78',
     );
 
-    await vi.advanceTimersByTimeAsync(10000);
+    await vi.advanceTimersByTimeAsync(45000);
 
     await expect(responsePromise).resolves.toEqual({
       success: true,
@@ -729,6 +729,92 @@ describe('TachyonShellMethods.componentAction', () => {
     await expect(responsePromise).resolves.toEqual({
       success: false,
       error: 'Tachyon update did not complete within the timeout',
+    });
+  });
+
+  it('does not prematurely confirm same-release Tachyon update while the background job is still running', async () => {
+    let jobFinished = false;
+
+    mocks.fsRead.mockImplementation(() =>
+      Promise.resolve(
+        JSON.stringify({
+          success: true,
+          running: !jobFinished,
+          component: 'tachyon',
+          action: 'install',
+          message: jobFinished ? 'Tachyon has been installed' : 'Component action is running',
+          current_version: '1.3.4',
+          latest_version: '1.3.4',
+          job_id: 'job-1',
+        }),
+      ),
+    );
+
+    mocks.executeShellCommand.mockImplementation(({ args }) => {
+      if (args[0] === 'component_action_status') {
+        return Promise.resolve({
+          stdout: JSON.stringify({
+            success: true,
+            running: !jobFinished,
+            component: 'tachyon',
+            action: 'install',
+            message: jobFinished ? 'Tachyon has been installed' : 'Component action is running',
+            current_version: '1.3.4',
+            latest_version: '1.3.4',
+            job_id: 'job-1',
+          }),
+          stderr: '',
+          code: 0,
+        });
+      }
+
+      if (args[0] === 'show_version') {
+        return Promise.resolve({
+          stdout: '1.3.4\n',
+          stderr: '',
+          code: 0,
+        });
+      }
+
+      return Promise.resolve({
+        stdout: '',
+        stderr: 'Unexpected command',
+        code: 1,
+      });
+    });
+
+    const responsePromise = TachyonShellMethods.waitComponentActionJob(
+      'job-1',
+      'tachyon',
+      'install',
+      '1.3.4',
+    );
+
+    // After 5 seconds, job is still running: must not resolve yet
+    await vi.advanceTimersByTimeAsync(5000);
+    let resolved = false;
+    responsePromise.then(() => {
+      resolved = true;
+    });
+    await Promise.resolve();
+    expect(resolved).toBe(false);
+
+    // Now job finishes in backend
+    jobFinished = true;
+    await vi.advanceTimersByTimeAsync(3000);
+
+    await expect(responsePromise).resolves.toEqual({
+      success: true,
+      data: {
+        success: true,
+        running: false,
+        component: 'tachyon',
+        action: 'install',
+        message: 'Tachyon has been installed',
+        current_version: '1.3.4',
+        latest_version: '1.3.4',
+        job_id: 'job-1',
+      },
     });
   });
 });
