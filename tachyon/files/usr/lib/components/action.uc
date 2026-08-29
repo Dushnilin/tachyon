@@ -6,6 +6,14 @@ let constants = require("core.constants");
 let uci_core = require("core.uci");
 let common = require("core.common");
 
+function core_url_module_or_null() {
+    try {
+        return require("core.url");
+    } catch (e) {
+        return null;
+    }
+}
+
 const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
 const BIN_PATH = getenv("TACHYON_BIN") || constants.TACHYON_BIN || "/usr/bin/tachyon";
 const SERVICE_INIT = getenv("TACHYON_SERVICE_INIT") || constants.TACHYON_SERVICE_INIT || "/etc/init.d/tachyon";
@@ -663,14 +671,6 @@ function latest_tachyon_release_json() {
     if (length(parts) != 2 || as_string(parts[0]) == "" || as_string(parts[1]) == "")
         return "";
     return fetch_github_release_json(parts[0], parts[1]);
-}
-
-function core_url_module_or_null() {
-    try {
-        return require("core.url");
-    } catch (e) {
-        return null;
-    }
 }
 
 function fetch_github_release_tag_fallback(owner, repo) {

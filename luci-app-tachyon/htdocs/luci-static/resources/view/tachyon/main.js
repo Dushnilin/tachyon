@@ -3705,7 +3705,7 @@ var TachyonShellMethods = {
       return "";
     };
     const confirmedSameVersionReinstall = async () => {
-      if (!isSelfUpdate || !baselineVersion) {
+      if (!isSelfUpdate || action !== "reinstall" || !baselineVersion) {
         return "";
       }
       if (targetVersion && !versionsMatch(targetVersion, baselineVersion)) {
@@ -3729,7 +3729,7 @@ var TachyonShellMethods = {
         if (await confirmedByVersion() === version) {
           return true;
         }
-      } else {
+      } else if (action === "reinstall") {
         if (await confirmedSameVersionReinstall() === version) {
           return true;
         }
@@ -3771,7 +3771,7 @@ var TachyonShellMethods = {
         return selfUpdateResult(version || baselineVersion);
       }
       if (stateResponse && !stateResponse.running) {
-        if (isSelfUpdate && stateResponse.success === false) {
+        if (isSelfUpdate && stateResponse.success === false && (isDifferentVersion || action === "reinstall")) {
           const version = await confirmedByVersion() || await confirmedSameVersionReinstall();
           if (version) {
             if (await settleVersion(version)) {
@@ -3790,25 +3790,15 @@ var TachyonShellMethods = {
       const parsedResponse = parseComponentActionResult(statusResponse);
       if ((statusResponse.code ?? 0) !== 0 || !parsedResponse) {
         if (isSelfUpdate) {
-          const version = await confirmedByVersion();
+          const version = await confirmedByVersion() || await confirmedSameVersionReinstall();
           if (version) {
             if (await settleVersion(version)) {
               return selfUpdateResult(version);
             }
             continue;
           }
-          const failure2 = componentActionFailure(statusResponse, parsedResponse);
-          if (transientRpc.shouldContinue(failure2.error)) {
-            continue;
-          }
-          const sameVersion = await confirmedSameVersionReinstall();
-          if (sameVersion) {
-            if (await settleVersion(sameVersion)) {
-              return selfUpdateResult(sameVersion);
-            }
-            continue;
-          }
-          return failure2;
+          transientRpc.reset();
+          continue;
         }
         if (stateResponse?.running) {
           transientRpc.reset();
@@ -3828,7 +3818,7 @@ var TachyonShellMethods = {
       if (parsedResponse.running) {
         continue;
       }
-      if (isSelfUpdate && parsedResponse.success === false) {
+      if (isSelfUpdate && parsedResponse.success === false && (isDifferentVersion || action === "reinstall")) {
         const version = await confirmedByVersion() || await confirmedSameVersionReinstall();
         if (version) {
           if (await settleVersion(version)) {

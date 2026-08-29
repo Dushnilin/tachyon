@@ -735,9 +735,10 @@ export const TachyonShellMethods = {
 
     // A reinstall of the same version never changes the version string, so
     // version-based confirmation can never match. Equality with the baseline
-    // is the confirmation — but only once the job is no longer running.
+    // is the confirmation — but only once the job is no longer running and only
+    // for explicit reinstall actions.
     const confirmedSameVersionReinstall = async () => {
-      if (!isSelfUpdate || !baselineVersion) {
+      if (!isSelfUpdate || action !== 'reinstall' || !baselineVersion) {
         return '';
       }
       if (targetVersion && !versionsMatch(targetVersion, baselineVersion)) {
@@ -768,7 +769,7 @@ export const TachyonShellMethods = {
         if ((await confirmedByVersion()) === version) {
           return true;
         }
-      } else {
+      } else if (action === 'reinstall') {
         if ((await confirmedSameVersionReinstall()) === version) {
           return true;
         }
@@ -826,7 +827,11 @@ export const TachyonShellMethods = {
 
       // The job is over according to the state file.
       if (stateResponse && !stateResponse.running) {
-        if (isSelfUpdate && stateResponse.success === false) {
+        if (
+          isSelfUpdate &&
+          stateResponse.success === false &&
+          (isDifferentVersion || action === 'reinstall')
+        ) {
           const version =
             (await confirmedByVersion()) ||
             (await confirmedSameVersionReinstall());
@@ -849,7 +854,9 @@ export const TachyonShellMethods = {
 
       if ((statusResponse.code ?? 0) !== 0 || !parsedResponse) {
         if (isSelfUpdate) {
-          const version = await confirmedByVersion();
+          const version =
+            (await confirmedByVersion()) ||
+            (await confirmedSameVersionReinstall());
           if (version) {
             if (await settleVersion(version)) {
               return selfUpdateResult(version);
@@ -857,20 +864,10 @@ export const TachyonShellMethods = {
             continue;
           }
 
-          const failure = componentActionFailure(statusResponse, parsedResponse);
-          if (transientRpc.shouldContinue(failure.error)) {
-            continue;
-          }
-
-          const sameVersion = await confirmedSameVersionReinstall();
-          if (sameVersion) {
-            if (await settleVersion(sameVersion)) {
-              return selfUpdateResult(sameVersion);
-            }
-            continue;
-          }
-
-          return failure;
+          // A self-update replaces the package mid-flight: RPC failures are
+          // expected during the swap window and must not fail the operation.
+          transientRpc.reset();
+          continue;
         }
 
         if (stateResponse?.running) {
@@ -897,7 +894,11 @@ export const TachyonShellMethods = {
         continue;
       }
 
-      if (isSelfUpdate && parsedResponse.success === false) {
+      if (
+        isSelfUpdate &&
+        parsedResponse.success === false &&
+        (isDifferentVersion || action === 'reinstall')
+      ) {
         const version =
           (await confirmedByVersion()) ||
           (await confirmedSameVersionReinstall());

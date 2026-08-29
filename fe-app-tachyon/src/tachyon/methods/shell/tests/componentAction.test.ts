@@ -27,6 +27,7 @@ describe('TachyonShellMethods.componentAction', () => {
   });
 
   it('does not fail Tachyon self-update when status polling disappears after package replacement', async () => {
+    let showVersionCalls = 0;
     mocks.fsRead.mockRejectedValue(new Error('Access denied'));
     mocks.executeShellCommand.mockImplementation(({ args }) => {
       if (args[0] === 'component_action_status') {
@@ -39,7 +40,7 @@ describe('TachyonShellMethods.componentAction', () => {
 
       if (args[0] === 'show_version') {
         return Promise.resolve({
-          stdout: '0.7.17.11\n',
+          stdout: showVersionCalls++ === 0 ? '0.7.17.10\n' : '0.7.17.11\n',
           stderr: '',
           code: 0,
         });
