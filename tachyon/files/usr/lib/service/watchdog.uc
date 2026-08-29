@@ -24,6 +24,7 @@ let proxy_restart_window_start = time();
 const PROXY_RESTART_LOCK = "/var/run/tachyon_proxy_restart.lock";
 let telegram_msg_count = 0;
 let telegram_msg_window = time();
+let telegram_msg_history = {};
 let tailscale_fail_streak = 0;
 let tailscale_last_alert = 0;
 
@@ -136,8 +137,17 @@ function write_state_file(path, value, description) {
     return true;
 }
 
-function send_telegram_notification(message) {
+
+function send_telegram_notification(message, cooldown_key, cooldown_seconds) {
     let now = time();
+    if (cooldown_key != null && cooldown_key != "") {
+        let last_sent = int(telegram_msg_history[cooldown_key] || 0);
+        let cooldown = cooldown_seconds != null ? int(cooldown_seconds) : 900;
+        if (now - last_sent < cooldown) {
+            return;
+        }
+        telegram_msg_history[cooldown_key] = now;
+    }
     if (now - telegram_msg_window > 300) {
         telegram_msg_count = 0;
         telegram_msg_window = now;
@@ -592,15 +602,16 @@ function ai_heal_report(event_type, description, resolution, outcome) {
     // A repair still in flight is not news: notifying on `pending` would send
     // one message on the attempt and a second on the outcome. The settled
     // report carries the whole story, so only that one is sent.
+    // Repairs that were skipped (rate limit, lock, guard) perform no action,
+    // so notifying on `skipped` would flood notifications on every probe tick.
     let tcfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
-    if (status_code != "pending" &&
+    if (status_code != "pending" && status_code != "skipped" &&
         tcfg.enabled == "1" && tcfg.bot_token && tcfg.admin_ids && tcfg.notify_crash != "0") {
         let icon = status_code == "failed" ? "❌" : "🔧";
-        let verdict = status_code == "failed" ? "*Не помогло:*" :
-                      (status_code == "skipped" ? "*Пропущено:*" : "*Авто-решение:*");
+        let verdict = status_code == "failed" ? "*Не помогло:*" : "*Авто-решение:*";
         let tg_msg = sprintf("🤖 *[ИИ-Автомеханик Tachyon]*\n⚠️ *Проблема:* %s\n%s %s %s",
             description, icon, verdict, resolution);
-        send_telegram_notification(tg_msg);
+        send_telegram_notification(tg_msg, "ai_heal_" + as_string(event_type) + "_" + status_code, 900);
     }
 
     ai_export_status();
@@ -877,7 +888,7 @@ function heal_wan_and_gateway(ev) {
     if (settings().recovery_bypass == "1") return;
     let tcfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
     if (tcfg.notify_crash != "0") {
-        send_telegram_notification("⚠️ *Watchdog:* WAN/Gateway проблема. Перезапуск wan...");
+        send_telegram_notification("⚠️ *Watchdog:* WAN/Gateway проблема. Перезапуск wan...", "heal_wan_and_gateway", 600);
     }
     // Claimed before the interface goes down, not after: ifdown itself is what
     // makes the proxy and DNS probes fail, and those facts arrive while ifup is
@@ -908,14 +919,14 @@ function note_wan_recovered(ev) {
 function heal_subscriptions(ev) {
     let tcfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
     if (tcfg.notify_crash != "0") {
-        send_telegram_notification("⚠️ *Watchdog:* Подписка недоступна (HTTP " + int(ev.payload.code) + "). Обновите подписку вручную.");
+        send_telegram_notification("⚠️ *Watchdog:* Подписка недоступна (HTTP " + int(ev.payload.code) + "). Обновите подписку вручную.", "heal_subscriptions", 1800);
     }
 }
 
 function heal_uci_config(ev) {
     let tcfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
     if (tcfg.notify_crash != "0") {
-        send_telegram_notification("⚠️ *Watchdog:* Конфигурация Tachyon повреждена! Восстановление из backup...");
+        send_telegram_notification("⚠️ *Watchdog:* Конфигурация Tachyon повреждена! Восстановление из backup...", "heal_uci_config", 1800);
     }
     let backup = fs.readfile("/etc/backup/tachyon_config");
     if (backup == null || backup == "") return;
@@ -1148,24 +1159,25 @@ function ai_heal_dns_loop() {
     let urls = common.array_or_empty(cache.urls);
     let usable = length(servers) + length(urls);
 
-    if (usable > 0) {
-        // Section has outbounds but DNS is still dead — may be transient
+    let dns_fails = controller.dns_consecutive_fails ? controller.dns_consecutive_fails() : 0;
+    if (usable > 0 && dns_fails < 3) {
+        // Section has outbounds but DNS failure is transient (< 3 consecutive fails)
         return;
     }
 
-    // Detour section empty AND DNS dead — disable DNS detour to recover
-    log_message("DNS loop detected: DNS detour section '" + detour_section + "' is empty, disabling DNS detour to recover", "warn");
+    // Detour section empty OR deadlocked with persistent DNS failure — disable DNS detour to recover
+    log_message("DNS loop detected: DNS detour section '" + detour_section + "' causing DNS failure (usable: " + as_string(usable) + ", dns_fails: " + as_string(dns_fails) + "), disabling DNS detour to recover", "warn");
     system("/sbin/uci set tachyon.settings.dns_detour_enabled='0' >/dev/null 2>&1");
     system("/sbin/uci commit tachyon >/dev/null 2>&1");
     safe_proxy_restart("dns_loop_disable", ESCALATION_HEAVY);
     write_dns_recovery_state({ phase: "detour_disabled", section: detour_section, ts: now });
 
-    // Trigger subscription update for the empty section
+    // Trigger subscription update for the detour section
     bg_system("/usr/bin/tachyon subscription_update_async " + common.shell_quote(detour_section));
 
     ai_heal_report(
         "dns_loop_detected",
-        "DNS loop: detour section '" + detour_section + "' has 0 outbounds, DNS completely dead",
+        "DNS loop: detour section '" + detour_section + "' causing DNS failure (" + as_string(usable) + " outbounds, " + as_string(dns_fails) + " consecutive fails)",
         "Temporarily disabled DNS detour to restore DNS, triggered subscription reload",
         "fixed"
     );

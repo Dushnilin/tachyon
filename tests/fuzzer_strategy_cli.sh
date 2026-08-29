@@ -124,7 +124,7 @@ grep -q 'fuzzer_generate:' "$TACHYON_BIN" || fail "tachyon CLI missing fuzzer_ge
 grep -q 'fuzzer_ai_synthesize:' "$TACHYON_BIN" || fail "tachyon CLI missing fuzzer_ai_synthesize"
 
 # 5. Check combinatorial strategies generation
-combo_tmp="$(mktemp -t fuzzer_combo_XXXXXX.json)"
+combo_tmp="$(mktemp "${TMPDIR:-/tmp}/fuzzer_combo_XXXXXX")"
 trap 'rm -f "$combo_tmp"' EXIT
 ucode -L "$TACHYON_LIB" -- "$FUZZER" strategies combinatorial > "$combo_tmp"
 COMBO_FILE="$combo_tmp" node <<'NODE'

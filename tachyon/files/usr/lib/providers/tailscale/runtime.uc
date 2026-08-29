@@ -559,19 +559,20 @@ function stop_runtime() {
     for (let section in native_tailscale_sections())
         stop_section(section);
     // Also clean leftovers for sections that disappeared from the config.
-    let entries = null;
     try {
-        entries = fs.readdir(RUNTIME_DIR);
-    } catch (e) {
-        entries = null;
-    }
-    if (entries != null) {
-        for (let entry in entries) {
-            let pid_file = RUNTIME_DIR + "/" + as_string(entry) + "/tailscaled.pid";
-            let pid = read_pid(pid_file);
-            if (pid_alive(pid))
-                command_success_from_args([ "kill", as_string(pid) ]);
+        let dir = fs.opendir(RUNTIME_DIR);
+        if (dir) {
+            let entry;
+            while ((entry = dir.read()) != null) {
+                if (entry == "." || entry == "..") continue;
+                let pid_file = RUNTIME_DIR + "/" + as_string(entry) + "/tailscaled.pid";
+                let pid = read_pid(pid_file);
+                if (pid_alive(pid))
+                    command_success_from_args([ "kill", as_string(pid) ]);
+            }
+            dir.close();
         }
+    } catch (e) {
     }
     remove_kernel_routing(false);
     return 0;

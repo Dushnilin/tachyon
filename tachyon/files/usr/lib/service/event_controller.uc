@@ -973,19 +973,26 @@ function controller(bus, opts) {
 
         for (let i = 0; i < length(pid_dirs); i++) {
             let child_dir = pid_dirs[i];
-            let child_entries = fs.readdir(child_dir);
-            if (child_entries == null) continue;
-            let expected = length(child_entries);
-            if (expected == 0) continue;
+            let dir = fs.opendir(child_dir);
+            if (!dir) continue;
 
+            let expected = 0;
             let running = 0;
-            for (let entry in child_entries) {
+            let entry;
+            while ((entry = dir.read()) != null) {
+                if (entry == "." || entry == "..") continue;
+                expected++;
                 let pid_data = fs.readfile(child_dir + "/" + entry);
                 if (pid_data == null) continue;
                 let pid = trim(as_string(pid_data));
-                if (pid == "") continue;
-                try { system("kill -0 " + pid + " 2>/dev/null"); running++; } catch (e) {}
+                if (pid == "" || match(pid, /^[0-9]+$/) == null) continue;
+                if (fs.stat("/proc/" + pid) != null) {
+                    running++;
+                }
             }
+            dir.close();
+
+            if (expected == 0) continue;
 
             if (running == expected) {
                 bus.emit(EV.NFQUEUE_UP, { running: running, expected: expected });

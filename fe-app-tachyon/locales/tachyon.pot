@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-08-29 10:56+0300\n"
-"PO-Revision-Date: 2026-08-29 10:56+0300\n"
+"POT-Creation-Date: 2026-08-29 18:28+0300\n"
+"PO-Revision-Date: 2026-08-29 18:28+0300\n"
 "Last-Translator: Dushnilin <dushnilin@gmail.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -1421,9 +1421,9 @@ msgstr ""
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:10239
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/server.js:1803
 #: src/partials/modal/renderModal.ts:263
+#: src/tachyon/tabs/diagnostic/initController.ts:1553
 #: src/tachyon/tabs/monitoring/initController.ts:893
 #: src/tachyon/tabs/monitoring/initController.ts:948
-#: src/tachyon/tabs/diagnostic/initController.ts:1553
 #: src/tachyon/tabs/dashboard/initController.ts:1267
 #: src/tachyon/tabs/diagnostic/partials/renderAiChatModal.ts:227
 #: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:178

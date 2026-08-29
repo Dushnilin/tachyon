@@ -1019,21 +1019,23 @@ function prepare_server_defaults(section) {
 function cleanup_orphaned_server_certs() {
     let cert_dir = "/etc/tachyon/server-certs";
     try {
-        let entries = fs.readdir(cert_dir);
-        if (entries == null) return;
+        let dir = fs.opendir(cert_dir);
+        if (!dir) return;
         let active_names = {};
         for (let section in uci_sections("server")) {
             let name = safe_filename_string(section);
             active_names[name + ".crt"] = true;
             active_names[name + ".key"] = true;
         }
-        for (let entry in entries) {
+        let entry;
+        while ((entry = dir.read()) != null) {
             if (substr(entry, 0, 1) == ".") continue;
             if (active_names[entry]) continue;
             let path = cert_dir + "/" + entry;
             // Absent file already satisfies the caller; fs.unlink throws on ENOENT.
             try { fs.unlink(path); } catch(e) {}
         }
+        dir.close();
     }
     catch (e) {
         // Best-effort housekeeping: a missing cert directory or an unreadable
