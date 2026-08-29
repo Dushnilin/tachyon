@@ -712,6 +712,25 @@ function schedule_has_time_window(schedule) {
         trim(option(schedule, "end_time", "")) != "";
 }
 
+function profile_source_ip_cidrs(profile) {
+    let result = [];
+    for (let raw in schedule_list_value(profile, "device_ip")) {
+        let device = trim(as_string(raw));
+        if (device == "")
+            continue;
+        let is_mac = match(device, /^([0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}$/) != null;
+        if (is_mac)
+            continue;
+        if (core_ip.valid_ip(device)) {
+            let cidr = core_ip.valid_ipv6(device) ? device + "/128" : device + "/32";
+            if (index(result, cidr) < 0) push(result, cidr);
+        } else if (core_ip.valid_ip_cidr(device)) {
+            if (index(result, device) < 0) push(result, device);
+        }
+    }
+    return result;
+}
+
 function schedule_source_ip_cidrs(schedule) {
     let result = [];
     for (let raw in schedule_list_value(schedule, "device_ip")) {
@@ -721,10 +740,21 @@ function schedule_source_ip_cidrs(schedule) {
         let is_mac = match(device, /^([0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}$/) != null;
         if (is_mac)
             continue;
-        if (core_ip.valid_ip(device))
-            push(result, core_ip.valid_ipv6(device) ? device + "/128" : device + "/32");
-        else if (core_ip.valid_ip_cidr(device))
-            push(result, device);
+        if (core_ip.valid_ip(device)) {
+            let cidr = core_ip.valid_ipv6(device) ? device + "/128" : device + "/32";
+            if (index(result, cidr) < 0) push(result, cidr);
+        } else if (core_ip.valid_ip_cidr(device)) {
+            if (index(result, device) < 0) push(result, device);
+        }
+    }
+    for (let p_name in schedule_list_value(schedule, "profile")) {
+        let prof = ctx.uci_cursor().get_all(CONFIG_NAME, p_name);
+        if (prof != null && section_enabled(prof)) {
+            for (let cidr in profile_source_ip_cidrs(prof)) {
+                if (index(result, cidr) < 0)
+                    push(result, cidr);
+            }
+        }
     }
     return result;
 }
@@ -778,6 +808,73 @@ function enabled_content_block_schedules() {
             push(result, schedule);
     });
     return result;
+}
+
+function enabled_content_block_profiles() {
+    let result = [];
+    ctx.uci_cursor().foreach(CONFIG_NAME, "profile", function(profile) {
+        if (section_enabled(profile) && length(schedule_blocked_domains(profile)) > 0)
+            push(result, profile);
+    });
+    return result;
+}
+
+function enabled_safesearch_profiles() {
+    let result = [];
+    ctx.uci_cursor().foreach(CONFIG_NAME, "profile", function(profile) {
+        if (section_enabled(profile) && bool_option(profile, "safe_search", false))
+            push(result, profile);
+    });
+    return result;
+}
+
+function add_safesearch_dns_rules(config, profiles) {
+    if (length(profiles) == 0)
+        return;
+
+    let all_sources = [];
+    for (let profile in profiles) {
+        for (let cidr in profile_source_ip_cidrs(profile)) {
+            if (index(all_sources, cidr) < 0)
+                push(all_sources, cidr);
+        }
+    }
+
+    let search_engines = [
+        {
+            domains: [ "google.com", "www.google.com", "google.ru", "www.google.ru" ],
+            ip: "216.239.38.120"
+        },
+        {
+            domains: [ "yandex.ru", "www.yandex.ru", "ya.ru", "www.ya.ru", "yandex.com", "www.yandex.com" ],
+            ip: "213.180.193.56"
+        },
+        {
+            domains: [ "bing.com", "www.bing.com" ],
+            ip: "204.79.197.220"
+        },
+        {
+            domains: [ "duckduckgo.com", "www.duckduckgo.com", "safe.duckduckgo.com" ],
+            ip: "52.142.124.215"
+        },
+        {
+            domains: [ "youtube.com", "www.youtube.com", "m.youtube.com", "youtubei.googleapis.com" ],
+            ip: "216.239.38.120"
+        }
+    ];
+
+    for (let engine in search_engines) {
+        for (let domain in engine.domains) {
+            let rule = {
+                action: "predefined",
+                domain: [ domain ],
+                answer: [ domain + ". 60 IN A " + engine.ip ]
+            };
+            if (length(all_sources) > 0)
+                rule.source_ip_cidr = all_sources;
+            push(config.dns.rules, rule);
+        }
+    }
 }
 
 function add_content_block_dns_inbound(config) {
@@ -841,12 +938,18 @@ function add_content_block_route_rules(config, schedules) {
 
 function add_content_blocking(config) {
     let schedules = enabled_content_block_schedules();
-    if (length(schedules) == 0)
+    let profiles = enabled_content_block_profiles();
+    let safesearch_profiles = enabled_safesearch_profiles();
+
+    if (length(schedules) == 0 && length(profiles) == 0 && length(safesearch_profiles) == 0)
         return;
 
     add_content_block_dns_inbound(config);
     add_content_block_dns_rules(config, schedules);
+    add_content_block_dns_rules(config, profiles);
+    add_safesearch_dns_rules(config, safesearch_profiles);
     add_content_block_route_rules(config, schedules);
+    add_content_block_route_rules(config, profiles);
 }
 
 function generate_config(output_path, service_address, mwan3_active, supports_xhttp) {

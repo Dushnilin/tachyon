@@ -220,7 +220,9 @@ describe('TachyonShellMethods Fuzzer Actions', () => {
       zapret: { splits: ['1'] },
       byedpi: { splits: ['1'] },
       custom_strategies: [],
-    } as unknown as Parameters<typeof TachyonShellMethods.saveFuzzerPatterns>[0];
+    } as unknown as Parameters<
+      typeof TachyonShellMethods.saveFuzzerPatterns
+    >[0];
 
     const res = await TachyonShellMethods.saveFuzzerPatterns(patternsPayload);
     expect(res.success).toBe(true);

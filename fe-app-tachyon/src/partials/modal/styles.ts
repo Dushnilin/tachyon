@@ -1,12 +1,19 @@
 // language=CSS
 export const styles = `
 
-.tachyon-partial-modal__body {}
+.tachyon-partial-modal__body {
+    width: 100%;
+    box-sizing: border-box;
+}
 
 .tachyon-partial-modal__content {
-    max-height: 70vh;
-    overflow: scroll;
+    max-height: 75vh;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
     border-radius: 4px;
+    box-sizing: border-box;
+    width: 100%;
 }
 
 .tachyon-partial-modal__footer {
@@ -32,5 +39,24 @@ export const styles = `
 
 .tachyon-partial-modal__checkbox-text {
     line-height: 1.2;
+}
+
+@media (max-width: 640px) {
+    .tachyon-partial-modal__content {
+        max-height: 82vh;
+    }
+    .tachyon-partial-modal__footer {
+        flex-direction: column-reverse;
+        align-items: stretch;
+    }
+    .tachyon-partial-modal__footer button {
+        width: 100%;
+        min-height: 38px;
+    }
+    .tachyon-partial-modal__checkbox {
+        margin-right: 0;
+        margin-bottom: 6px;
+        width: 100%;
+    }
 }
 `;

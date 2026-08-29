@@ -1420,10 +1420,7 @@ export const TachyonShellMethods = {
   getFuzzerHistory: async (limit?: number) => {
     const response = await executeShellCommand({
       command: '/usr/bin/tachyon',
-      args: [
-        Tachyon.AvailableMethods.FUZZER_HISTORY,
-        String(limit || 20),
-      ],
+      args: [Tachyon.AvailableMethods.FUZZER_HISTORY, String(limit || 20)],
       timeout: COMPONENT_ACTION_RPC_TIMEOUT_MS,
     });
     const parsed = parseJsonObjectOutput<Tachyon.FuzzerHistoryResult>(

@@ -116,6 +116,22 @@ function get_mixed_port() {
     let parsed;
     try { parsed = json(data); } catch (e) { return 4534; }
     if (parsed == null || parsed.inbounds == null) return 4534;
+
+    for (let inbound in parsed.inbounds) {
+        if (inbound.tag == "service-mixed-in" && inbound.listen_port != null) {
+            let port = int(inbound.listen_port, 10);
+            if (port > 0) return port;
+        }
+    }
+    for (let inbound in parsed.inbounds) {
+        if ((inbound.type == "mixed" || inbound.type == "http") && inbound.listen_port != null) {
+            let listen = as_string(inbound.listen || "");
+            if (listen == "127.0.0.1" || listen == "0.0.0.0" || listen == "::" || listen == "") {
+                let port = int(inbound.listen_port, 10);
+                if (port > 0) return port;
+            }
+        }
+    }
     for (let inbound in parsed.inbounds) {
         if (inbound.type == "mixed" && inbound.listen_port != null) {
             let port = int(inbound.listen_port, 10);

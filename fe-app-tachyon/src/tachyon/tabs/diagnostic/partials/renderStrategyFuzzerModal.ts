@@ -124,8 +124,7 @@ export function renderStrategyFuzzerModal(ruleNames: string[] = []) {
       activeTab === 'patterns' ? 'flex' : 'none';
     tabContentCustom.style.display = activeTab === 'custom' ? 'flex' : 'none';
     tabContentAi.style.display = activeTab === 'ai' ? 'flex' : 'none';
-    tabContentHistory.style.display =
-      activeTab === 'history' ? 'flex' : 'none';
+    tabContentHistory.style.display = activeTab === 'history' ? 'flex' : 'none';
 
     if (activeTab === 'patterns') renderPatternsTab();
     if (activeTab === 'custom') renderCustomTab();
@@ -316,7 +315,8 @@ export function renderStrategyFuzzerModal(ruleNames: string[] = []) {
       E(
         'div',
         {
-          style: 'font-size: 11px; cursor: pointer; display: flex; align-items: center; gap: 4px;',
+          style:
+            'font-size: 11px; cursor: pointer; display: flex; align-items: center; gap: 4px;',
         },
         [autoApplyCheckbox, E('span', {}, _('Auto-apply best strategy'))],
       ),
@@ -459,7 +459,7 @@ export function renderStrategyFuzzerModal(ruleNames: string[] = []) {
   // Results Table
   const resultsContainer = E('div', {
     style:
-      'max-height: 380px; overflow-y: auto; border: 1px solid var(--border-color, rgba(255,255,255,0.1)); border-radius: 6px;',
+      'max-height: 380px; overflow-y: auto; overflow-x: auto; -webkit-overflow-scrolling: touch; border: 1px solid var(--border-color, rgba(255,255,255,0.1)); border-radius: 6px; width: 100%; box-sizing: border-box;',
   });
 
   const tableEl = E(
@@ -467,7 +467,7 @@ export function renderStrategyFuzzerModal(ruleNames: string[] = []) {
     {
       class: 'table',
       style:
-        'width: 100%; margin: 0; font-size: 12px; text-align: left; border-collapse: collapse;',
+        'width: 100%; min-width: 620px; margin: 0; font-size: 12px; text-align: left; border-collapse: collapse;',
     },
     [
       E(
@@ -826,11 +826,14 @@ export function renderStrategyFuzzerModal(ruleNames: string[] = []) {
       type: 'text',
       class: 'cbi-input-text',
       placeholder: _('Strategy Name'),
-      style: 'flex: 1;',
+      style: 'flex: 1 1 180px; min-width: 140px;',
     });
     const engineSel = E(
       'select',
-      { class: 'cbi-input-select', style: 'width: 140px;' },
+      {
+        class: 'cbi-input-select',
+        style: 'flex: 0 1 140px; min-width: 120px;',
+      },
       [
         E('option', { value: 'zapret2' }, 'Zapret v2'),
         E('option', { value: 'zapret' }, 'Zapret v1'),
@@ -841,7 +844,7 @@ export function renderStrategyFuzzerModal(ruleNames: string[] = []) {
       type: 'text',
       class: 'cbi-input-text',
       placeholder: _('Command-line arguments string...'),
-      style: 'flex: 2; font-family: monospace;',
+      style: 'flex: 2 1 240px; min-width: 180px; font-family: monospace;',
     });
 
     const addBtn = renderButton({
@@ -1015,7 +1018,7 @@ export function renderStrategyFuzzerModal(ruleNames: string[] = []) {
     placeholder: _(
       'Optional context (e.g. "Rostelecom, YouTube 4K buffering is slow")...',
     ),
-    style: 'flex: 1; font-size: 12px;',
+    style: 'flex: 1 1 240px; min-width: 180px; font-size: 12px;',
   });
 
   const aiSynthesizeBtn = renderButton({
@@ -1483,7 +1486,10 @@ export function renderStrategyFuzzerModal(ruleNames: string[] = []) {
       return;
     }
 
-    const typeColors: Record<string, { bg: string; border: string; icon: string }> = {
+    const typeColors: Record<
+      string,
+      { bg: string; border: string; icon: string }
+    > = {
       rst: { bg: 'rgba(220, 53, 69, 0.12)', border: '#dc3545', icon: '🔴' },
       throttle: {
         bg: 'rgba(255, 193, 7, 0.12)',

@@ -743,7 +743,9 @@ describe('TachyonShellMethods.componentAction', () => {
           running: !jobFinished,
           component: 'tachyon',
           action: 'install',
-          message: jobFinished ? 'Tachyon has been installed' : 'Component action is running',
+          message: jobFinished
+            ? 'Tachyon has been installed'
+            : 'Component action is running',
           current_version: '1.3.4',
           latest_version: '1.3.4',
           job_id: 'job-1',
@@ -759,7 +761,9 @@ describe('TachyonShellMethods.componentAction', () => {
             running: !jobFinished,
             component: 'tachyon',
             action: 'install',
-            message: jobFinished ? 'Tachyon has been installed' : 'Component action is running',
+            message: jobFinished
+              ? 'Tachyon has been installed'
+              : 'Component action is running',
             current_version: '1.3.4',
             latest_version: '1.3.4',
             job_id: 'job-1',

@@ -4221,10 +4221,7 @@ var TachyonShellMethods = {
   getFuzzerHistory: async (limit) => {
     const response = await executeShellCommand({
       command: "/usr/bin/tachyon",
-      args: [
-        Tachyon.AvailableMethods.FUZZER_HISTORY,
-        String(limit || 20)
-      ],
+      args: [Tachyon.AvailableMethods.FUZZER_HISTORY, String(limit || 20)],
       timeout: COMPONENT_ACTION_RPC_TIMEOUT_MS
     });
     const parsed = parseJsonObjectOutput(
@@ -10291,12 +10288,19 @@ var styles2 = `
 // src/partials/modal/styles.ts
 var styles3 = `
 
-.tachyon-partial-modal__body {}
+.tachyon-partial-modal__body {
+    width: 100%;
+    box-sizing: border-box;
+}
 
 .tachyon-partial-modal__content {
-    max-height: 70vh;
-    overflow: scroll;
+    max-height: 75vh;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
     border-radius: 4px;
+    box-sizing: border-box;
+    width: 100%;
 }
 
 .tachyon-partial-modal__footer {
@@ -10322,6 +10326,25 @@ var styles3 = `
 
 .tachyon-partial-modal__checkbox-text {
     line-height: 1.2;
+}
+
+@media (max-width: 640px) {
+    .tachyon-partial-modal__content {
+        max-height: 82vh;
+    }
+    .tachyon-partial-modal__footer {
+        flex-direction: column-reverse;
+        align-items: stretch;
+    }
+    .tachyon-partial-modal__footer button {
+        width: 100%;
+        min-height: 38px;
+    }
+    .tachyon-partial-modal__checkbox {
+        margin-right: 0;
+        margin-bottom: 6px;
+        width: 100%;
+    }
 }
 `;
 
@@ -12297,13 +12320,13 @@ function renderStrategyFuzzerModal(ruleNames = []) {
     ]
   );
   const resultsContainer = E("div", {
-    style: "max-height: 380px; overflow-y: auto; border: 1px solid var(--border-color, rgba(255,255,255,0.1)); border-radius: 6px;"
+    style: "max-height: 380px; overflow-y: auto; overflow-x: auto; -webkit-overflow-scrolling: touch; border: 1px solid var(--border-color, rgba(255,255,255,0.1)); border-radius: 6px; width: 100%; box-sizing: border-box;"
   });
   const tableEl = E(
     "table",
     {
       class: "table",
-      style: "width: 100%; margin: 0; font-size: 12px; text-align: left; border-collapse: collapse;"
+      style: "width: 100%; min-width: 620px; margin: 0; font-size: 12px; text-align: left; border-collapse: collapse;"
     },
     [
       E(
@@ -12621,11 +12644,14 @@ function renderStrategyFuzzerModal(ruleNames = []) {
       type: "text",
       class: "cbi-input-text",
       placeholder: _("Strategy Name"),
-      style: "flex: 1;"
+      style: "flex: 1 1 180px; min-width: 140px;"
     });
     const engineSel = E(
       "select",
-      { class: "cbi-input-select", style: "width: 140px;" },
+      {
+        class: "cbi-input-select",
+        style: "flex: 0 1 140px; min-width: 120px;"
+      },
       [
         E("option", { value: "zapret2" }, "Zapret v2"),
         E("option", { value: "zapret" }, "Zapret v1"),
@@ -12636,7 +12662,7 @@ function renderStrategyFuzzerModal(ruleNames = []) {
       type: "text",
       class: "cbi-input-text",
       placeholder: _("Command-line arguments string..."),
-      style: "flex: 2; font-family: monospace;"
+      style: "flex: 2 1 240px; min-width: 180px; font-family: monospace;"
     });
     const addBtn = renderButton({
       text: _("+ Add Strategy"),
@@ -12789,7 +12815,7 @@ function renderStrategyFuzzerModal(ruleNames = []) {
     placeholder: _(
       'Optional context (e.g. "Rostelecom, YouTube 4K buffering is slow")...'
     ),
-    style: "flex: 1; font-size: 12px;"
+    style: "flex: 1 1 240px; min-width: 180px; font-size: 12px;"
   });
   const aiSynthesizeBtn = renderButton({
     text: _("\u{1F9E0} Synthesize with AI"),
@@ -19833,6 +19859,12 @@ var styles6 = `
         width: 100%;
         min-width: 0;
     }
+
+    .tachyon_updates-page__component {
+        width: 100%;
+        min-width: 0;
+        box-sizing: border-box;
+    }
 }
 
 .tachyon_updates-page__component {
@@ -19842,7 +19874,8 @@ var styles6 = `
     display: flex;
     flex-direction: column;
     gap: 10px;
-    min-width: max-content;
+    min-width: 0;
+    box-sizing: border-box;
 }
 
 .tachyon_updates-page__component__header {
@@ -20267,6 +20300,48 @@ ${PartialStyles}
 .toast.visible {
     opacity: 1;
     transform: translateY(0);
+}
+
+/* Global Mobile & Responsive Layout Enhancements */
+@media (max-width: 768px) {
+    .cbi-section-table {
+        display: block;
+        width: 100%;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        border-collapse: collapse;
+    }
+
+    .cbi-section-table-cell {
+        min-width: 0;
+        word-break: break-word;
+        overflow-wrap: anywhere;
+    }
+
+    .cbi-section-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+
+    .cbi-dropdown {
+        max-width: 100%;
+    }
+
+    .cbi-input-textarea,
+    .cbi-input-text,
+    .cbi-input-select {
+        max-width: 100%;
+        box-sizing: border-box;
+    }
+
+    /* Modal responsiveness */
+    .modal,
+    .cbi-modal {
+        max-width: 96vw !important;
+        box-sizing: border-box;
+        margin: 10px auto;
+    }
 }
 `;
 

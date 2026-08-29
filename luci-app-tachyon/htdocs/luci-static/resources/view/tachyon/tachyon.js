@@ -460,11 +460,25 @@ const EntryPoint = {
     });
     server.createServerContent(serverSection, uiCapabilities);
 
+    const profileSection = tachyonMap.section(
+      form.GridSection,
+      "profile",
+      _("Family Profiles"),
+      _("Group devices into family profiles to manage content filtering, SafeSearch, and screen time limits in one place."),
+    );
+    configureGridSection(
+      profileSection,
+      "profile",
+      _("Family Profile"),
+      _("Add a family profile"),
+    );
+    parental.createProfileContent(profileSection);
+
     const parentalSection = tachyonMap.section(
       form.GridSection,
       "schedule",
       _("Parental Control"),
-      _("Block internet access or specific proxy sections for individual devices based on time and days."),
+      _("Block internet access or specific proxy sections for family profiles or individual devices based on time and days."),
     );
     configureGridSection(
       parentalSection,

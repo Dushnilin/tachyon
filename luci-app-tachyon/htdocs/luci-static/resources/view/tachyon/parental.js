@@ -8,6 +8,18 @@
 
 const UCI_PACKAGE = "tachyon";
 
+const AVATAR_PRESETS = {
+  "👶": _("Toddler (👶)"),
+  "🧒": _("Child (🧒)"),
+  "🧑": _("Teen (🧑)"),
+  "🎮": _("Gamer (🎮)"),
+  "📱": _("Phone (📱)"),
+  "💻": _("Laptop / PC (💻)"),
+  "🏠": _("Family (🏠)"),
+  "🔒": _("Strict (🔒)"),
+  "🐾": _("Pets / IoT (🐾)"),
+};
+
 const DAY_LABELS = {
   monday: _("Monday"),
   tuesday: _("Tuesday"),
@@ -182,7 +194,9 @@ function validateDevice(sectionId, value) {
   return _("Invalid IP or MAC address. Expected e.g. 192.168.1.150 or AA:BB:CC:DD:EE:FF");
 }
 
-function createParentalContent(section) {
+// ─── Family Profiles Section ──────────────────────────────────────────────────
+
+function createProfileContent(section) {
   // Enabled switch
   let o = section.option(form.Flag, "enabled", _("Enable"));
   o.default = "1";
@@ -190,15 +204,43 @@ function createParentalContent(section) {
   o.editable = true;
   o.width = "5rem";
 
-  // Device column in table
-  o = section.option(form.DummyValue, "_device_display", _("Device / IP / MAC"));
+  // Profile display (Avatar + Name)
+  o = section.option(form.DummyValue, "_profile_display", _("Profile"));
+  o.rawhtml = true;
+  o.modalonly = false;
+  o.cfgvalue = function (sectionId) {
+    const avatar = uci.get(UCI_PACKAGE, sectionId, "avatar") || "👶";
+    const label = uci.get(UCI_PACKAGE, sectionId, "label") || sectionId;
+    const rawDevs = uci.get(UCI_PACKAGE, sectionId, "device_ip");
+    const devCount = normalizeListValues(rawDevs).length;
+    const devBadge =
+      devCount > 0
+        ? `<span class="badge" style="background:var(--background-color-low, rgba(0,0,0,0.08));color:var(--primary-color-medium, #3182ce);padding:2px 6px;border-radius:4px;font-size:11px;margin-left:6px;font-weight:600;border:1px solid var(--border-color-low, rgba(0,0,0,0.12));">${devCount} ${_("dev.")}</span>`
+        : `<span class="badge" style="background:var(--background-color-low, rgba(0,0,0,0.06));opacity:0.75;padding:2px 6px;border-radius:4px;font-size:11px;margin-left:6px;">${_("no devices")}</span>`;
+
+    return (
+      `<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">` +
+      `<span style="font-size:1.3rem;line-height:1;">${avatar}</span>` +
+      `<strong style="font-size:13px;color:inherit;">${label}</strong>` +
+      devBadge +
+      `</div>`
+    );
+  };
+  o.textvalue = function (sectionId) {
+    const avatar = uci.get(UCI_PACKAGE, sectionId, "avatar") || "👶";
+    const label = uci.get(UCI_PACKAGE, sectionId, "label") || sectionId;
+    return `${avatar} ${label}`;
+  };
+
+  // Assigned Devices column
+  o = section.option(form.DummyValue, "_devices_display", _("Devices (MAC / IP)"));
   o.rawhtml = true;
   o.modalonly = false;
   o.cfgvalue = function (sectionId) {
     const rawIp = uci.get(UCI_PACKAGE, sectionId, "device_ip");
     const devs = normalizeListValues(rawIp);
     if (devs.length === 0) {
-      return '<span style="opacity:0.5;">' + _("All devices") + "</span>";
+      return '<span style="opacity:0.5;">' + _("No devices assigned") + "</span>";
     }
     const isMacAddr = (dev) =>
       /^([0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}$/.test(dev);
@@ -207,22 +249,353 @@ function createParentalContent(section) {
     const badges = [...macs, ...ips]
       .map((dev) => {
         const isMac = isMacAddr(dev);
-        const bg = isMac ? "#2d3748" : "#2a3441";
-        const color = isMac ? "#b794f4" : "#63b3ed";
         const label = isMac ? "MAC" : "IP";
         return (
-          `<span class="badge" style="background:${bg};color:${color};padding:3px 8px;border-radius:6px;font-size:11px;font-family:monospace;margin-right:4px;font-weight:600;display:inline-block;margin-bottom:2px;border:1px solid ${color}44;">` +
+          `<span class="badge" style="background:var(--background-color-low, rgba(0,0,0,0.06));padding:2px 6px;border-radius:4px;font-size:11px;font-family:monospace;margin-right:4px;font-weight:600;display:inline-flex;align-items:center;margin-bottom:2px;border:1px solid var(--border-color-low, rgba(0,0,0,0.12));max-width:100%;word-break:break-all;overflow-wrap:anywhere;">` +
           `<span style="opacity:0.75;font-weight:700;margin-right:3px;">${label}:</span>` +
           dev +
           "</span>"
         );
       })
       .join("");
-    return "<div>" + badges + "</div>";
+    return '<div style="display:flex;flex-wrap:wrap;gap:2px;">' + badges + "</div>";
   };
   o.textvalue = function (sectionId) {
     const devs = normalizeListValues(uci.get(UCI_PACKAGE, sectionId, "device_ip"));
-    return devs.length === 0 ? _("All devices") : devs.join(", ");
+    return devs.length === 0 ? _("No devices assigned") : devs.join(", ");
+  };
+
+  // Daily quota column
+  o = section.option(form.DummyValue, "_quota_display", _("Daily Quota"));
+  o.rawhtml = true;
+  o.modalonly = false;
+  o.cfgvalue = function (sectionId) {
+    const raw = Number(uci.get(UCI_PACKAGE, sectionId, "daily_quota_minutes")) || 0;
+    if (raw <= 0) {
+      return '<span style="opacity:0.5;">' + _("Unlimited") + "</span>";
+    }
+    return (
+      '<span style="color:var(--primary-color-medium, #3182ce);font-weight:600;">⏳ ' +
+      raw +
+      " " +
+      _("min/day") +
+      "</span>"
+    );
+  };
+  o.textvalue = function (sectionId) {
+    const raw = Number(uci.get(UCI_PACKAGE, sectionId, "daily_quota_minutes")) || 0;
+    return raw > 0 ? `${raw} ${_("min/day")}` : _("Unlimited");
+  };
+
+  // Protection / Features column
+  o = section.option(form.DummyValue, "_features_display", _("Protection"));
+  o.rawhtml = true;
+  o.modalonly = false;
+  o.cfgvalue = function (sectionId) {
+    const safeSearch = uci.get(UCI_PACKAGE, sectionId, "safe_search") === "1";
+    const blockDoh = uci.get(UCI_PACKAGE, sectionId, "block_doh") === "1";
+    const rawDomains = uci.get(UCI_PACKAGE, sectionId, "blocked_domains");
+    const domainCount = normalizeListValues(rawDomains).length;
+    const notify = uci.get(UCI_PACKAGE, sectionId, "notify") === "1";
+
+    let badges = [];
+    if (safeSearch) {
+      badges.push('<span class="badge" style="background:rgba(79,209,197,0.15);color:var(--teal-color, #319795);padding:2px 6px;border-radius:4px;font-size:11px;margin-right:4px;border:1px solid rgba(79,209,197,0.3);">🛡️ ' + _("SafeSearch") + "</span>");
+    }
+    if (blockDoh) {
+      badges.push('<span class="badge" style="background:rgba(183,148,244,0.15);color:var(--purple-color, #805ad5);padding:2px 6px;border-radius:4px;font-size:11px;margin-right:4px;border:1px solid rgba(183,148,244,0.3);">🔒 ' + _("Anti-Bypass (DoH)") + "</span>");
+    }
+    if (domainCount > 0) {
+      badges.push('<span class="badge" style="background:rgba(229,62,62,0.15);color:var(--error-color-medium, #e53e3e);padding:2px 6px;border-radius:4px;font-size:11px;margin-right:4px;border:1px solid rgba(229,62,62,0.3);">🚫 ' + domainCount + " " + _("sites") + "</span>");
+    }
+    if (notify) {
+      badges.push('<span class="badge" style="background:rgba(49,130,206,0.15);color:var(--primary-color-medium, #3182ce);padding:2px 6px;border-radius:4px;font-size:11px;margin-right:4px;border:1px solid rgba(49,130,206,0.3);">🔔 ' + _("Telegram") + "</span>");
+    }
+
+    if (badges.length === 0) {
+      return '<span style="opacity:0.5;">' + _("Standard") + "</span>";
+    }
+    return '<div style="display:flex;flex-wrap:wrap;gap:4px;">' + badges.join("") + "</div>";
+  };
+  o.textvalue = function (sectionId) {
+    const safeSearch = uci.get(UCI_PACKAGE, sectionId, "safe_search") === "1";
+    const blockDoh = uci.get(UCI_PACKAGE, sectionId, "block_doh") === "1";
+    const rawDomains = uci.get(UCI_PACKAGE, sectionId, "blocked_domains");
+    const domainCount = normalizeListValues(rawDomains).length;
+    let list = [];
+    if (safeSearch) list.push("SafeSearch");
+    if (blockDoh) list.push("DoH Block");
+    if (domainCount > 0) list.push(`${domainCount} sites`);
+    return list.length === 0 ? _("Standard") : list.join(", ");
+  };
+
+  // Status column
+  o = section.option(form.DummyValue, "_status_display", _("Status"));
+  o.rawhtml = true;
+  o.modalonly = false;
+  o.cfgvalue = function (sectionId) {
+    const enabled = uci.get(UCI_PACKAGE, sectionId, "enabled") !== "0";
+    if (!enabled) {
+      return (
+        '<span style="display:inline-flex;align-items:center;padding:2px 8px;border-radius:12px;font-size:11px;background:var(--background-color-low, rgba(0,0,0,0.08));color:var(--text-color-medium, #888);border:1px solid var(--border-color-low, rgba(0,0,0,0.1));">' +
+        '<span style="width:6px;height:6px;border-radius:50%;background:currentColor;margin-right:5px;display:inline-block;opacity:0.7;"></span>' +
+        _("Disabled") +
+        "</span>"
+      );
+    }
+    return (
+      '<span style="display:inline-flex;align-items:center;padding:2px 8px;border-radius:12px;font-size:11px;background:rgba(72,187,120,0.15);color:var(--success-color-medium, #38a169);border:1px solid rgba(72,187,120,0.3);">' +
+      '<span style="width:6px;height:6px;border-radius:50%;background:#38a169;margin-right:5px;box-shadow:0 0 4px #38a169;display:inline-block;"></span>' +
+      _("Active") +
+      "</span>"
+    );
+  };
+  o.textvalue = function (sectionId) {
+    const enabled = uci.get(UCI_PACKAGE, sectionId, "enabled") !== "0";
+    return enabled ? _("Active") : _("Disabled");
+  };
+
+  // ─── Modal Form Options ───────────────────────────────────────────────────
+
+  // Profile Avatar selector
+  o = section.option(form.ListValue, "avatar", _("Profile Icon / Avatar"), _("Choose a visual icon for this profile"));
+  o.modalonly = true;
+  o.default = "👶";
+  Object.entries(AVATAR_PRESETS).forEach(([icon, label]) => {
+    o.value(icon, label);
+  });
+
+  // Profile Label / Name
+  o = section.option(form.Value, "label", _("Profile Name"), _("e.g. Kids (Alice & Tim), Teenager, School PC, Guests"));
+  o.modalonly = true;
+  o.rmempty = false;
+  o.placeholder = _("e.g. Kids");
+
+  // Device selector with LAN hostnames integration
+  o = section.option(
+    form.DynamicList,
+    "device_ip",
+    _("Assigned Devices (MAC / IP)"),
+    _("Select LAN devices to assign to this profile, or enter IP or MAC addresses manually. MAC addresses (e.g. AA:BB:CC:DD:EE:FF) work even if the device's IP changes via DHCP."),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.placeholder = "192.168.1.150 or AA:BB:CC:DD:EE:FF";
+  o.validate = validateDevice;
+  o.renderWidget = function (sectionId, optionIndex, cfgvalue) {
+    return local_devices.createLocalDeviceDynamicListWidget(
+      this,
+      sectionId,
+      cfgvalue,
+    );
+  };
+
+  // Daily time quota (minutes per day); 0 disables the limit
+  o = section.option(
+    form.Value,
+    "daily_quota_minutes",
+    _("Daily Screen Time Quota (minutes)"),
+    _(
+      "Total allowed network usage per day for devices in this profile. When the quota is reached, access is blocked until midnight. Enter 0 for unlimited.",
+    ),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.default = "0";
+  o.placeholder = "0";
+  o.validate = function (_sectionId, value) {
+    if (value === "" || value === null || value === undefined) return true;
+    const n = Number(value);
+    if (!Number.isInteger(n) || n < 0 || n > 1440)
+      return _("Enter a whole number of minutes between 0 and 1440");
+    return true;
+  };
+
+  // Enforce SafeSearch
+  o = section.option(
+    form.Flag,
+    "safe_search",
+    _("Enforce SafeSearch & YouTube Restricted Mode"),
+    _("Forces SafeSearch on Google, Yandex, Bing, DuckDuckGo and Strict Restricted Mode on YouTube via DNS rewrite for all devices in this profile."),
+  );
+  o.modalonly = true;
+  o.default = "1";
+  o.rmempty = false;
+
+  // Block DoH / DoT (Anti-Bypass)
+  o = section.option(
+    form.Flag,
+    "block_doh",
+    _("Anti-Bypass: Block Private DNS / DoH / DoT"),
+    _("Blocks port 853 (DNS-over-TLS) and prevents bypass via encrypted DNS or Private Relay on smartphones for devices in this profile."),
+  );
+  o.modalonly = true;
+  o.default = "1";
+  o.rmempty = false;
+
+  // Profile-level blocked domains
+  o = section.option(
+    form.TextValue,
+    "blocked_domains",
+    _("Profile Blocked Sites (24/7)"),
+    _("Always block these domains for all devices in this profile. Enter one domain per line or use category preset buttons."),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.rows = 5;
+  o.wrap = "soft";
+  o.textarea = true;
+  o.placeholder = "tiktok.com\nroblox.com";
+  o.validate = function (sectionId, value) {
+    if (!value) return true;
+    const lines = `${value}`.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    for (const line of lines) {
+      const clean = line.replace(/^(full:|keyword:|regex:)/, "");
+      if (/^(full:|keyword:|regex:)/.test(line) && !clean) {
+        return _("Invalid domain: empty prefix value");
+      }
+      if (/^regex:/.test(line)) continue;
+      if (!/^([a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/.test(clean)) {
+        return _("Invalid domain: " + line);
+      }
+    }
+    return true;
+  };
+  o.write = function (sectionId, value) {
+    const lines = `${value || ""}`.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    const existingList = normalizeListValues(uci.get(UCI_PACKAGE, sectionId, "blocked_domains"));
+    for (const d of lines) {
+      if (!existingList.includes(d)) {
+        uci.add_list(UCI_PACKAGE, sectionId, "blocked_domains", d);
+      }
+    }
+    for (const d of existingList) {
+      if (!lines.includes(d)) {
+        uci.remove_list(UCI_PACKAGE, sectionId, "blocked_domains", d);
+      }
+    }
+  };
+  o.load = function (sectionId) {
+    return normalizeListValues(uci.get(UCI_PACKAGE, sectionId, "blocked_domains")).join("\n");
+  };
+  o.remove = function (sectionId) {
+    uci.unset(UCI_PACKAGE, sectionId, "blocked_domains");
+  };
+  o.renderWidget = function (sectionId, optionIndex, cfgvalue) {
+    const container = E("div", { style: "width:100%;box-sizing:border-box;" });
+    const presetRow = E("div", { style: "margin-bottom:6px;display:flex;flex-wrap:wrap;gap:4px;" });
+    Object.entries(DOMAIN_PRESETS).forEach(([key, preset]) => {
+      const btn = E(
+        "button",
+        {
+          class: "cbi-button cbi-button-neutral",
+          type: "button",
+          style: "padding:2px 8px;font-size:11px;",
+          title: preset.domains.join(", "),
+        },
+        preset.icon + " " + preset.label,
+      );
+      btn.addEventListener("click", function () {
+        const textarea = container.querySelector("textarea");
+        if (!textarea) return;
+        const current = textarea.value.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+        const merged = current.slice();
+        for (const d of preset.domains) {
+          if (!merged.includes(d)) merged.push(d);
+        }
+        textarea.value = merged.join("\n");
+      });
+      presetRow.appendChild(btn);
+    });
+    container.appendChild(presetRow);
+
+    const textarea = E("textarea", {
+      id: `cbid.tachyon.${sectionId}.blocked_domains`,
+      class: "cbi-input-textarea",
+      style: "width:100%;min-height:100px;box-sizing:border-box;",
+      placeholder: "tiktok.com\nroblox.com",
+    });
+    if (cfgvalue) textarea.value = cfgvalue;
+    container.appendChild(textarea);
+    return container;
+  };
+
+  // Telegram notifications
+  o = section.option(
+    form.Flag,
+    "notify",
+    _("Telegram Alerts"),
+    _("Send Telegram alerts to parents when daily screen time is exhausted or blocked sites are accessed."),
+  );
+  o.modalonly = true;
+  o.default = "1";
+  o.rmempty = false;
+}
+
+// ─── Schedule Rules Section ───────────────────────────────────────────────────
+
+function createParentalContent(section) {
+  // Enabled switch
+  let o = section.option(form.Flag, "enabled", _("Enable"));
+  o.default = "1";
+  o.rmempty = false;
+  o.editable = true;
+  o.width = "5rem";
+
+  // Device / Target profile column in table
+  o = section.option(form.DummyValue, "_device_display", _("Profile / Devices"));
+  o.rawhtml = true;
+  o.modalonly = false;
+  o.cfgvalue = function (sectionId) {
+    const rawProfiles = uci.get(UCI_PACKAGE, sectionId, "profile");
+    const profiles = normalizeListValues(rawProfiles);
+    const rawIp = uci.get(UCI_PACKAGE, sectionId, "device_ip");
+    const devs = normalizeListValues(rawIp);
+
+    let items = [];
+
+    if (profiles.length > 0) {
+      profiles.forEach((pName) => {
+        const prof = uci.get(UCI_PACKAGE, pName);
+        const avatar = (prof && prof.avatar) || "👶";
+        const label = (prof && prof.label) || pName;
+        const devCount = prof ? normalizeListValues(prof.device_ip).length : 0;
+        items.push(
+          `<span class="badge" style="background:rgba(49,151,149,0.15);color:var(--teal-color, #319795);padding:2px 6px;border-radius:4px;font-size:11px;margin-right:4px;font-weight:600;display:inline-flex;align-items:center;margin-bottom:2px;border:1px solid rgba(49,151,149,0.3);max-width:100%;word-break:break-all;">` +
+          `${avatar} ${label} (${devCount} ${_("dev.")})` +
+          `</span>`
+        );
+      });
+    }
+
+    if (devs.length > 0) {
+      const isMacAddr = (dev) =>
+        /^([0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}$/.test(dev);
+      const macs = devs.filter(isMacAddr);
+      const ips = devs.filter((d) => !isMacAddr(d));
+      [...macs, ...ips].forEach((dev) => {
+        const isMac = isMacAddr(dev);
+        const label = isMac ? "MAC" : "IP";
+        items.push(
+          `<span class="badge" style="background:var(--background-color-low, rgba(0,0,0,0.06));padding:2px 6px;border-radius:4px;font-size:11px;font-family:monospace;margin-right:4px;font-weight:600;display:inline-flex;align-items:center;margin-bottom:2px;border:1px solid var(--border-color-low, rgba(0,0,0,0.12));max-width:100%;word-break:break-all;overflow-wrap:anywhere;">` +
+          `<span style="opacity:0.75;font-weight:700;margin-right:3px;">${label}:</span>` +
+          dev +
+          "</span>"
+        );
+      });
+    }
+
+    if (items.length === 0) {
+      return '<span style="opacity:0.5;">' + _("All devices") + "</span>";
+    }
+
+    return '<div style="display:flex;flex-wrap:wrap;gap:2px;">' + items.join("") + "</div>";
+  };
+  o.textvalue = function (sectionId) {
+    const profiles = normalizeListValues(uci.get(UCI_PACKAGE, sectionId, "profile"));
+    const devs = normalizeListValues(uci.get(UCI_PACKAGE, sectionId, "device_ip"));
+    const list = [...profiles.map((p) => `Profile: ${p}`), ...devs];
+    return list.length === 0 ? _("All devices") : list.join(", ");
   };
 
   // Target column in table
@@ -232,7 +605,7 @@ function createParentalContent(section) {
   o.cfgvalue = function (sectionId) {
     const target = uci.get(UCI_PACKAGE, sectionId, "target") || "all";
     if (target === "all") {
-      return '<span style="color:#fc8181;font-weight:600;">🚫 ' + _("All Internet") + "</span>";
+      return '<span style="color:var(--error-color-medium, #e53e3e);font-weight:600;">🚫 ' + _("All Internet") + "</span>";
     }
     const rawSecs = uci.get(UCI_PACKAGE, sectionId, "sections");
     const secNames = normalizeListValues(rawSecs);
@@ -247,13 +620,13 @@ function createParentalContent(section) {
         const sec = uci.get(UCI_PACKAGE, name);
         const label = (sec && (sec.label || sec[".name"])) || name;
         return (
-          '<span class="badge" style="background:#2d3748;color:#f6ad55;padding:2px 6px;border-radius:4px;font-size:11px;margin-right:4px;border:1px solid rgba(246,173,85,0.3);display:inline-block;margin-bottom:2px;">🔒 ' +
+          '<span class="badge" style="background:var(--background-color-low, rgba(0,0,0,0.06));padding:2px 6px;border-radius:4px;font-size:11px;margin-right:4px;border:1px solid var(--border-color-low, rgba(0,0,0,0.12));display:inline-flex;align-items:center;margin-bottom:2px;max-width:100%;word-break:break-all;">🔒 ' +
           label +
           "</span>"
         );
       })
       .join("");
-    return "<div>" + badges + "</div>";
+    return '<div style="display:flex;flex-wrap:wrap;gap:2px;">' + badges + "</div>";
   };
   o.textvalue = function (sectionId) {
     const target = uci.get(UCI_PACKAGE, sectionId, "target") || "all";
@@ -269,9 +642,9 @@ function createParentalContent(section) {
   o.cfgvalue = function (sectionId) {
     const action = uci.get(UCI_PACKAGE, sectionId, "action") || "block";
     if (action === "allow") {
-      return '<span style="color:#68d391;font-weight:500;">✅ ' + _("Allow in interval") + "</span>";
+      return '<span style="color:var(--success-color-medium, #38a169);font-weight:500;">✅ ' + _("Allow in interval") + "</span>";
     }
-    return '<span style="color:#fc8181;font-weight:500;">🚫 ' + _("Block in interval") + "</span>";
+    return '<span style="color:var(--error-color-medium, #e53e3e);font-weight:500;">🚫 ' + _("Block in interval") + "</span>";
   };
   o.textvalue = function (sectionId) {
     const action = uci.get(UCI_PACKAGE, sectionId, "action") || "block";
@@ -287,11 +660,11 @@ function createParentalContent(section) {
     const e = uci.get(UCI_PACKAGE, sectionId, "end_time") || "23:59";
     const days = formatDaysDisplay(uci.get(UCI_PACKAGE, sectionId, "days"));
     return (
-      '<div style="line-height:1.3;"><strong style="color:var(--text-color, #fff);">' +
+      '<div style="line-height:1.3;"><strong style="color:inherit;">' +
       s +
       " — " +
       e +
-      '</strong><br><small style="opacity:0.7;">' +
+      '</strong><br><small style="opacity:0.75;">' +
       days +
       "</small></div>"
     );
@@ -313,7 +686,7 @@ function createParentalContent(section) {
       return '<span style="opacity:0.5;">' + _("None") + "</span>";
     }
     return (
-      '<span style="color:#63b3ed;font-weight:500;">⏳ ' +
+      '<span style="color:var(--primary-color-medium, #3182ce);font-weight:500;">⏳ ' +
       raw +
       " " +
       _("min/day") +
@@ -337,17 +710,17 @@ function createParentalContent(section) {
     }
     const modeBadge =
       mode === "allow"
-        ? '<span style="color:#68d391;font-weight:600;">🟢 ' + _("Allow only") + "</span>"
-        : '<span style="color:#fc8181;font-weight:600;">🚫 ' + _("Block") + "</span>";
+        ? '<span style="color:var(--success-color-medium, #38a169);font-weight:600;">🟢 ' + _("Allow only") + "</span>"
+        : '<span style="color:var(--error-color-medium, #e53e3e);font-weight:600;">🚫 ' + _("Block") + "</span>";
     const badges = domains
       .map(
         (d) =>
-          '<span class="badge" style="background:#2d3748;color:#f687b3;padding:2px 6px;border-radius:4px;font-size:11px;font-family:monospace;margin-right:4px;border:1px solid rgba(246,135,179,0.3);display:inline-block;margin-bottom:2px;">' +
+          '<span class="badge" style="background:rgba(237,100,166,0.15);color:var(--pink-color, #d53f8c);padding:2px 6px;border-radius:4px;font-size:11px;font-family:monospace;margin-right:4px;border:1px solid rgba(237,100,166,0.3);display:inline-flex;align-items:center;margin-bottom:2px;max-width:100%;word-break:break-all;">' +
           d +
           "</span>",
       )
       .join("");
-    return "<div>" + modeBadge + "<br>" + badges + "</div>";
+    return "<div>" + modeBadge + '<br><div style="display:flex;flex-wrap:wrap;gap:2px;margin-top:2px;">' + badges + "</div></div>";
   };
   o.textvalue = function (sectionId) {
     const domains = normalizeListValues(uci.get(UCI_PACKAGE, sectionId, "blocked_domains"));
@@ -364,8 +737,8 @@ function createParentalContent(section) {
     const enabled = uci.get(UCI_PACKAGE, sectionId, "enabled") !== "0";
     if (!enabled) {
       return (
-        '<span style="display:inline-flex;align-items:center;padding:2px 8px;border-radius:12px;font-size:11px;background:#4a5568;color:#e2e8f0;">' +
-        '<span style="width:6px;height:6px;border-radius:50%;background:#a0aec0;margin-right:5px;display:inline-block;"></span>' +
+        '<span style="display:inline-flex;align-items:center;padding:2px 8px;border-radius:12px;font-size:11px;background:var(--background-color-low, rgba(0,0,0,0.08));color:var(--text-color-medium, #888);border:1px solid var(--border-color-low, rgba(0,0,0,0.1));">' +
+        '<span style="width:6px;height:6px;border-radius:50%;background:currentColor;margin-right:5px;display:inline-block;opacity:0.7;"></span>' +
         _("Disabled") +
         "</span>"
       );
@@ -373,20 +746,20 @@ function createParentalContent(section) {
     const active = isScheduleCurrentlyActive(sectionId);
     const action = uci.get(UCI_PACKAGE, sectionId, "action") || "block";
     if (active) {
-      const color = action === "allow" ? "#48bb78" : "#e53e3e";
-      const bg = action === "allow" ? "rgba(72,187,120,0.2)" : "rgba(229,62,62,0.2)";
-      const border = action === "allow" ? "rgba(72,187,120,0.4)" : "rgba(229,62,62,0.4)";
+      const color = action === "allow" ? "var(--success-color-medium, #38a169)" : "var(--error-color-medium, #e53e3e)";
+      const bg = action === "allow" ? "rgba(72,187,120,0.15)" : "rgba(229,62,62,0.15)";
+      const border = action === "allow" ? "rgba(72,187,120,0.3)" : "rgba(229,62,62,0.3)";
       const text = action === "allow" ? _("Active (Allowed)") : _("Active (Blocking)");
       return (
         `<span style="display:inline-flex;align-items:center;padding:2px 8px;border-radius:12px;font-size:11px;background:${bg};color:${color};border:1px solid ${border};">` +
-        `<span style="width:6px;height:6px;border-radius:50%;background:${color};margin-right:5px;box-shadow:0 0 6px ${color};display:inline-block;"></span>` +
+        `<span style="width:6px;height:6px;border-radius:50%;background:currentColor;margin-right:5px;box-shadow:0 0 4px currentColor;display:inline-block;"></span>` +
         text +
         "</span>"
       );
     }
     return (
-      '<span style="display:inline-flex;align-items:center;padding:2px 8px;border-radius:12px;font-size:11px;background:rgba(74,85,104,0.3);color:#a0aec0;border:1px solid rgba(74,85,104,0.3);">' +
-      '<span style="width:6px;height:6px;border-radius:50%;background:#718096;margin-right:5px;display:inline-block;"></span>' +
+      '<span style="display:inline-flex;align-items:center;padding:2px 8px;border-radius:12px;font-size:11px;background:var(--background-color-low, rgba(0,0,0,0.06));color:var(--text-color-medium, #718096);border:1px solid var(--border-color-low, rgba(0,0,0,0.1));">' +
+      '<span style="width:6px;height:6px;border-radius:50%;background:currentColor;margin-right:5px;display:inline-block;opacity:0.6;"></span>' +
       _("Pending") +
       "</span>"
     );
@@ -408,15 +781,37 @@ function createParentalContent(section) {
   o.rmempty = true;
   o.placeholder = _("e.g. Kids Phone (Night YouTube)");
 
+  // Target Family Profile selector
+  o = section.option(
+    form.DynamicList,
+    "profile",
+    _("Target Family Profiles"),
+    _("Apply this schedule rule to all devices in the selected family profile(s)."),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.load = function (sectionId) {
+    this.keylist = [];
+    this.vallist = [];
+    const profList = uci.sections(UCI_PACKAGE, "profile") || [];
+    profList.forEach((p) => {
+      const pName = p[".name"];
+      const pAvatar = p.avatar || "👶";
+      const pLabel = p.label ? `${pAvatar} ${p.label}` : `${pAvatar} ${pName}`;
+      this.value(pName, pLabel);
+    });
+    return form.DynamicList.prototype.load.apply(this, [sectionId]);
+  };
+
   // Device selector with LAN hostnames integration
   o = section.option(
     form.DynamicList,
     "device_ip",
-    _("Target Devices (IP / MAC)"),
-    _("Select LAN devices to apply this schedule to, or enter IP or MAC addresses manually. MAC addresses (e.g. AA:BB:CC:DD:EE:FF) work even if the device's IP changes. IP addresses (e.g. 192.168.1.150) are used for DNS-level blocking and require a stable lease."),
+    _("Additional Individual Devices (IP / MAC)"),
+    _("Optionally specify individual devices not in a profile. MAC addresses (e.g. AA:BB:CC:DD:EE:FF) work even if the IP changes."),
   );
   o.modalonly = true;
-  o.rmempty = false;
+  o.rmempty = true;
   o.placeholder = "192.168.1.150 or AA:BB:CC:DD:EE:FF";
   o.validate = validateDevice;
   o.renderWidget = function (sectionId, optionIndex, cfgvalue) {
@@ -581,7 +976,7 @@ function createParentalContent(section) {
     uci.unset(UCI_PACKAGE, sectionId, "blocked_domains");
   };
   o.renderWidget = function (sectionId, optionIndex, cfgvalue) {
-    const container = E("div", { style: "width:100%;" });
+    const container = E("div", { style: "width:100%;box-sizing:border-box;" });
 
     // Preset buttons row
     const presetRow = E("div", { style: "margin-bottom:6px;display:flex;flex-wrap:wrap;gap:4px;" });
@@ -613,7 +1008,7 @@ function createParentalContent(section) {
     const textarea = E("textarea", {
       id: `cbid.tachyon.${sectionId}.blocked_domains`,
       class: "cbi-input-textarea",
-      style: "width:100%;min-height:110px;",
+      style: "width:100%;min-height:110px;box-sizing:border-box;",
       placeholder: "youtube.com\ngooglevideo.com",
     });
     if (cfgvalue) textarea.value = cfgvalue;
@@ -657,6 +1052,7 @@ function createParentalContent(section) {
 }
 
 const EntryPoint = {
+  createProfileContent,
   createParentalContent,
 };
 

@@ -480,6 +480,8 @@ function parent_dir(path) {
 }
 
 // Read the HTTP/mixed inbound port from the generated sing-box config.
+// Prefers the dedicated internal service mixed inbound (tag: service-mixed-in)
+// or inbounds listening on 127.0.0.1/0.0.0.0.
 // Falls back to 4534 when the config is missing or unparseable.
 function get_mixed_port() {
     let data = fs.readfile("/etc/sing-box/config.json");
@@ -487,6 +489,25 @@ function get_mixed_port() {
     let parsed;
     try { parsed = json(data); } catch (e) { return 4534; }
     if (parsed == null || parsed.inbounds == null) return 4534;
+
+    // 1. Explicitly check for the internal service mixed inbound
+    for (let inbound in parsed.inbounds) {
+        if (inbound.tag == "service-mixed-in" && inbound.listen_port != null) {
+            let port = int(inbound.listen_port, 10);
+            if (port > 0) return port;
+        }
+    }
+    // 2. Check for any mixed/http inbound listening on 127.0.0.1, 0.0.0.0, or ::
+    for (let inbound in parsed.inbounds) {
+        if ((inbound.type == "mixed" || inbound.type == "http") && inbound.listen_port != null) {
+            let listen = as_string(inbound.listen || "");
+            if (listen == "127.0.0.1" || listen == "0.0.0.0" || listen == "::" || listen == "") {
+                let port = int(inbound.listen_port, 10);
+                if (port > 0) return port;
+            }
+        }
+    }
+    // 3. Fallback to any mixed/http inbound port
     for (let inbound in parsed.inbounds) {
         if ((inbound.type == "mixed" || inbound.type == "http") && inbound.listen_port != null) {
             let port = int(inbound.listen_port, 10);

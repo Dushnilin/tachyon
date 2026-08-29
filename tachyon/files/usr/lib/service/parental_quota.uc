@@ -74,6 +74,31 @@ function list_option(section, key) {
 
 function quota_schedules() {
     let result = [];
+    let profiles_by_name = {};
+    for (let p in uci_core.section_objects(CONFIG_NAME, "profile")) {
+        let p_name = as_string(object_or_empty(p)[".name"]);
+        profiles_by_name[p_name] = p;
+        if (!bool_option(p, "enabled", true))
+            continue;
+        let p_minutes = int_option(p, "daily_quota_minutes", 0);
+        if (p_minutes <= 0)
+            continue;
+        let p_devices = [];
+        for (let dev in list_option(p, "device_ip")) {
+            let is_mac = match(dev, MAC_RE) != null;
+            if (!is_mac && match(dev, /:/) != null)
+                continue;
+            push(p_devices, { ident: lc(dev), is_mac });
+        }
+        if (length(p_devices) == 0)
+            continue;
+        push(result, {
+            label: as_string(object_or_empty(p).label || p_name),
+            minutes: p_minutes,
+            devices: p_devices
+        });
+    }
+
     for (let section in uci_core.section_objects(CONFIG_NAME, "schedule")) {
         if (!bool_option(section, "enabled", true))
             continue;
@@ -81,17 +106,36 @@ function quota_schedules() {
         if (minutes <= 0)
             continue;
         let devices = [];
+        let idents_seen = {};
         for (let dev in list_option(section, "device_ip")) {
             let is_mac = match(dev, MAC_RE) != null;
-            // Skip IPv6 entries: enforcement sets cover MACs and IPv4 only.
             if (!is_mac && match(dev, /:/) != null)
                 continue;
-            push(devices, { ident: lc(dev), is_mac });
+            let ident = lc(dev);
+            if (!idents_seen[ident]) {
+                idents_seen[ident] = true;
+                push(devices, { ident, is_mac });
+            }
+        }
+        for (let prof_ref in list_option(section, "profile")) {
+            let p = profiles_by_name[prof_ref];
+            if (p && bool_option(p, "enabled", true)) {
+                for (let dev in list_option(p, "device_ip")) {
+                    let is_mac = match(dev, MAC_RE) != null;
+                    if (!is_mac && match(dev, /:/) != null)
+                        continue;
+                    let ident = lc(dev);
+                    if (!idents_seen[ident]) {
+                        idents_seen[ident] = true;
+                        push(devices, { ident, is_mac });
+                    }
+                }
+            }
         }
         if (length(devices) == 0)
             continue;
         push(result, {
-            label: as_string(object_or_empty(section)[".name"]),
+            label: as_string(object_or_empty(section).label || object_or_empty(section)[".name"]),
             minutes,
             devices
         });
@@ -277,7 +321,7 @@ function tick() {
                 devices[ident] = { minutes, blocked: minutes >= schedule.minutes };
                 if (minutes >= schedule.minutes) {
                     log_message("device " + ident + " hit daily quota (" + as_string(schedule.minutes) + " min); blocking until midnight", "info");
-                    send_notification("⏳ *Parental control*: устройство `" + ident + "` исчерпало дневную квоту (" + as_string(schedule.minutes) + " мин), доступ заблокирован до полуночи.");
+                    send_notification("⏳ *Parental control*: устройство `" + ident + "` (" + schedule.label + ") исчерпало дневную квоту (" + as_string(schedule.minutes) + " мин), доступ заблокирован до полуночи.");
                 }
             } else {
                 devices[ident] = { minutes, blocked: was_blocked };

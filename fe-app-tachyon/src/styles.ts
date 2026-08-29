@@ -163,4 +163,46 @@ ${PartialStyles}
     opacity: 1;
     transform: translateY(0);
 }
+
+/* Global Mobile & Responsive Layout Enhancements */
+@media (max-width: 768px) {
+    .cbi-section-table {
+        display: block;
+        width: 100%;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        border-collapse: collapse;
+    }
+
+    .cbi-section-table-cell {
+        min-width: 0;
+        word-break: break-word;
+        overflow-wrap: anywhere;
+    }
+
+    .cbi-section-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+
+    .cbi-dropdown {
+        max-width: 100%;
+    }
+
+    .cbi-input-textarea,
+    .cbi-input-text,
+    .cbi-input-select {
+        max-width: 100%;
+        box-sizing: border-box;
+    }
+
+    /* Modal responsiveness */
+    .modal,
+    .cbi-modal {
+        max-width: 96vw !important;
+        box-sizing: border-box;
+        margin: 10px auto;
+    }
+}
 `;

@@ -1279,15 +1279,35 @@ function heal_low_memory(ev) {
     system("echo 3 > /proc/sys/vm/drop_caches");
 }
 
+function get_clash_url(endpoint) {
+    let host = "127.0.0.1:9090";
+    let config_data = fs.readfile("/etc/sing-box/config.json");
+    if (config_data) {
+        try {
+            let sb_cfg = json(config_data);
+            let ext = sb_cfg.experimental?.clash_api?.external_controller;
+            if (ext) {
+                let parts = split(ext, ":");
+                let ip = (length(parts) > 1) ? parts[0] : "";
+                let port = (length(parts) > 1) ? parts[length(parts) - 1] : "9090";
+                if (ip == "0.0.0.0" || ip == "") {
+                    host = "127.0.0.1:" + port;
+                } else {
+                    host = ext;
+                }
+            }
+        } catch (e) {}
+    }
+    return "http://" + host + "/" + endpoint;
+}
+
 // The 5s throttle that used to live here is now the controller's emit_once
 // window on urltest.switched, so a burst of log lines still costs one poll.
 function notify_urltest_switch(ev) {
     let tcfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
     if (tcfg.enabled != "1" || tcfg.notify_crash == "0") return;
 
-    let ports = mixed_ports_from_config();
-    let p_port = length(ports) > 0 ? as_string(ports[0]) : as_string(common.get_mixed_port());
-    let p_res = command_capture(command_from_args(["curl", "-s", "http://127.0.0.1:" + p_port + "/proxies"]));
+    let p_res = command_capture(command_from_args(["curl", "-s", get_clash_url("proxies")]));
     if (p_res && p_res.status == 0 && p_res.output) {
         try {
             let p_data = json(p_res.output);

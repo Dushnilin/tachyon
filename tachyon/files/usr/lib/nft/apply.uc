@@ -872,17 +872,95 @@ function nft_schedule_time_intervals(start_time, end_time) {
     return [ [ start_time, end_time ] ];
 }
 
-function nft_add_schedule_rules_from_schedules(schedules, sections, table) {
+function resolve_schedule_devices(schedule, profiles) {
+    let raw_ips = list_option(schedule, "device_ip");
+    if (length(raw_ips) == 0) {
+        let single_ip = option(schedule, "device_ip", "");
+        if (single_ip != "") raw_ips = [ single_ip ];
+    }
+    let result = [];
+    for (let ip in raw_ips) {
+        let clean = trim(as_string(ip));
+        if (clean != "" && index(result, clean) < 0)
+            push(result, clean);
+    }
+    let prof_names = list_option(schedule, "profile");
+    if (length(prof_names) == 0) {
+        let single_p = option(schedule, "profile", "");
+        if (single_p != "") prof_names = [ single_p ];
+    }
+    if (profiles != null && length(prof_names) > 0) {
+        for (let p_name in prof_names) {
+            for (let profile in profiles) {
+                profile = object_or_empty(profile);
+                if (as_string(profile[".name"]) == p_name && bool_option(profile, "enabled", true)) {
+                    let p_ips = list_option(profile, "device_ip");
+                    if (length(p_ips) == 0) {
+                        let single_p_ip = option(profile, "device_ip", "");
+                        if (single_p_ip != "") p_ips = [ single_p_ip ];
+                    }
+                    for (let p_ip in p_ips) {
+                        let clean_p = trim(as_string(p_ip));
+                        if (clean_p != "" && index(result, clean_p) < 0)
+                            push(result, clean_p);
+                    }
+                }
+            }
+        }
+    }
+    return result;
+}
+
+function nft_add_profile_doh_block_rules(profiles, table) {
+    if (!profiles || length(profiles) == 0)
+        return true;
+
+    for (let profile in profiles) {
+        profile = object_or_empty(profile);
+        if (!bool_option(profile, "enabled", true) || !bool_option(profile, "block_doh", false))
+            continue;
+
+        let raw_ips = list_option(profile, "device_ip");
+        if (length(raw_ips) == 0) {
+            let single_ip = option(profile, "device_ip", "");
+            if (single_ip != "") raw_ips = [ single_ip ];
+        }
+        if (length(raw_ips) == 0)
+            continue;
+
+        let label = as_string(option(profile, "label", profile[".name"]));
+        let comment = "tachyon-doh:" + label;
+
+        for (let raw_ip in raw_ips) {
+            let dev_str = trim(as_string(raw_ip));
+            if (dev_str == "") continue;
+            let is_mac = match(dev_str, /^([0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}$/) != null;
+            let family = is_mac ? 0 : core_ip.ip_family(dev_str);
+            let saddr_key = family == 6 ? "ip6" : "ip";
+
+            let tcp_rule = is_mac ?
+                [ "ether", "saddr", lc(replace(dev_str, "-", ":")), "tcp", "dport", "853", "counter", "drop", "comment", "\"" + comment + "\"" ] :
+                [ saddr_key, "saddr", dev_str, "tcp", "dport", "853", "counter", "drop", "comment", "\"" + comment + "\"" ];
+            let udp_rule = is_mac ?
+                [ "ether", "saddr", lc(replace(dev_str, "-", ":")), "udp", "dport", "853", "counter", "drop", "comment", "\"" + comment + "\"" ] :
+                [ saddr_key, "saddr", dev_str, "udp", "dport", "853", "counter", "drop", "comment", "\"" + comment + "\"" ];
+
+            nft_add_rule(table, "parental_forward", tcp_rule);
+            nft_add_rule(table, "parental_forward", udp_rule);
+            nft_add_rule(table, "parental_control", tcp_rule);
+            nft_add_rule(table, "parental_control", udp_rule);
+        }
+    }
+    return true;
+}
+
+function nft_add_schedule_rules_from_schedules(schedules, sections, table, profiles) {
     for (let schedule in schedules) {
         schedule = object_or_empty(schedule);
         if (!bool_option(schedule, "enabled", true))
             continue;
         
-        let raw_ips = list_option(schedule, "device_ip");
-        if (length(raw_ips) == 0) {
-            let single_ip = option(schedule, "device_ip", "");
-            if (single_ip != "") raw_ips = [ single_ip ];
-        }
+        let raw_ips = resolve_schedule_devices(schedule, profiles);
         if (length(raw_ips) == 0)
             continue;
         
@@ -987,7 +1065,7 @@ function nft_add_schedule_rules_from_schedules(schedules, sections, table) {
 }
 
 function nft_add_schedule_rules_from_uci(table, sections) {
-    return nft_add_schedule_rules_from_schedules(uci_sections("schedule"), sections, table);
+    return nft_add_schedule_rules_from_schedules(uci_sections("schedule"), sections, table, uci_sections("profile"));
 }
 
 // ─── Content blocking DNS redirect ───────────────────────────────────────────
@@ -998,7 +1076,7 @@ function nft_add_schedule_rules_from_uci(table, sections) {
 // dns-in inbound as usual. MAC-address devices match via ether saddr, which
 // also covers devices whose IP is DHCP-assigned.
 
-function nft_add_dns_block_rules_from_schedules(schedules, table) {
+function nft_add_dns_block_rules_from_schedules(schedules, table, profiles) {
     let added = false;
     for (let schedule in schedules) {
         schedule = object_or_empty(schedule);
@@ -1009,11 +1087,7 @@ function nft_add_dns_block_rules_from_schedules(schedules, table) {
             if (single_domain == "") continue;
         }
 
-        let raw_ips = list_option(schedule, "device_ip");
-        if (length(raw_ips) == 0) {
-            let single_ip = option(schedule, "device_ip", "");
-            if (single_ip != "") raw_ips = [ single_ip ];
-        }
+        let raw_ips = resolve_schedule_devices(schedule, profiles);
         if (length(raw_ips) == 0)
             continue;
 
@@ -1067,11 +1141,65 @@ function nft_add_dns_block_rules_from_schedules(schedules, table) {
             }
         }
     }
+
+    // Profiles with blocked_domains or safe_search also redirect DNS to sing-box block inbound
+    if (profiles != null && length(profiles) > 0) {
+        for (let profile in profiles) {
+            profile = object_or_empty(profile);
+            if (!bool_option(profile, "enabled", true))
+                continue;
+            let has_domains = length(list_option(profile, "blocked_domains")) > 0 || option(profile, "blocked_domains", "") != "";
+            let has_safesearch = bool_option(profile, "safe_search", false);
+            if (!has_domains && !has_safesearch)
+                continue;
+
+            let p_ips = list_option(profile, "device_ip");
+            if (length(p_ips) == 0) {
+                let single_p_ip = option(profile, "device_ip", "");
+                if (single_p_ip != "") p_ips = [ single_p_ip ];
+            }
+            if (length(p_ips) == 0)
+                continue;
+
+            let label = as_string(option(profile, "label", profile[".name"]));
+            let comment = "tachyon-profile:" + label;
+
+            for (let raw_ip in p_ips) {
+                let dev_str = trim(as_string(raw_ip));
+                if (dev_str == "") continue;
+                let is_mac = match(dev_str, /^([0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}$/) != null;
+                let family = is_mac ? 0 : core_ip.ip_family(dev_str);
+                if (!is_mac && family != 4)
+                    continue;
+
+                let match_args = [];
+                if (is_mac)
+                    append_array(match_args, [ "ether", "saddr", lc(replace(dev_str, "-", ":")) ]);
+                else
+                    append_array(match_args, [ "ip", "saddr", dev_str ]);
+                append_array(match_args, [ "udp", "dport", "53", "redirect", "to", DNS_BLOCK_TARGET, "counter", "comment", "\"" + comment + "\"" ]);
+                if (!nft_add_rule(table, "dns_block", match_args))
+                    return false;
+                added = true;
+
+                let tcp_args = [];
+                if (is_mac)
+                    append_array(tcp_args, [ "ether", "saddr", lc(replace(dev_str, "-", ":")) ]);
+                else
+                    append_array(tcp_args, [ "ip", "saddr", dev_str ]);
+                append_array(tcp_args, [ "tcp", "dport", "53", "redirect", "to", DNS_BLOCK_TARGET, "counter", "comment", "\"" + comment + "\"" ]);
+                if (!nft_add_rule(table, "dns_block", tcp_args))
+                    return false;
+                added = true;
+            }
+        }
+    }
+
     return true;
 }
 
 function nft_add_dns_block_rules_from_uci(table) {
-    return nft_add_dns_block_rules_from_schedules(uci_sections("schedule"), table);
+    return nft_add_dns_block_rules_from_schedules(uci_sections("schedule"), table, uci_sections("profile"));
 }
 
 function nft_create_runtime_base(table, localv4_set, common_set, port_set, ip_port_set, interface_set, source_interfaces, fakeip_mark, outbound_mark, fakeip_range, tproxy_port, exclude_ntp, localv6_set, common6_set, ip_port6_set, fakeip6_range, tproxy6_address) {
@@ -1910,6 +2038,7 @@ function nft_schedule_signature_body(body, schedule) {
     let name = as_string(schedule[".name"]);
     body = signature_add_value(body, "schedule." + name + ".enabled", bool_option(schedule, "enabled", true) ? "1" : "0");
     body = signature_add_value(body, "schedule." + name + ".device_ip", option(schedule, "device_ip", ""));
+    body = signature_add_value(body, "schedule." + name + ".profile", join(",", list_option(schedule, "profile")));
     body = signature_add_value(body, "schedule." + name + ".target", option(schedule, "target", "all"));
     body = signature_add_value(body, "schedule." + name + ".sections", join(",", list_option(schedule, "sections")));
     body = signature_add_value(body, "schedule." + name + ".action", option(schedule, "action", "block"));
@@ -1921,7 +2050,18 @@ function nft_schedule_signature_body(body, schedule) {
     return body;
 }
 
-function nft_runtime_signature_from_settings_and_sections(settings, sections, schedules) {
+function nft_profile_signature_body(body, profile) {
+    let name = as_string(profile[".name"]);
+    body = signature_add_value(body, "profile." + name + ".enabled", bool_option(profile, "enabled", true) ? "1" : "0");
+    body = signature_add_value(body, "profile." + name + ".device_ip", join(",", list_option(profile, "device_ip")));
+    body = signature_add_value(body, "profile." + name + ".safe_search", option(profile, "safe_search", "0"));
+    body = signature_add_value(body, "profile." + name + ".block_doh", option(profile, "block_doh", "0"));
+    body = signature_add_value(body, "profile." + name + ".blocked_domains", join(",", list_option(profile, "blocked_domains")));
+    body = signature_add_value(body, "profile." + name + ".daily_quota_minutes", option(profile, "daily_quota_minutes", "0"));
+    return body;
+}
+
+function nft_runtime_signature_from_settings_and_sections(settings, sections, schedules, profiles) {
     let body = "";
 
     body = signature_add_value(body, "settings.source_network_interfaces", option(settings, "source_network_interfaces", "br-lan"));
@@ -1932,14 +2072,17 @@ function nft_runtime_signature_from_settings_and_sections(settings, sections, sc
     for (let section in sections)
         body = nft_rule_signature_body(body, object_or_empty(section));
 
+    for (let profile in profiles)
+        body = nft_profile_signature_body(body, object_or_empty(profile));
+
     for (let schedule in schedules)
         body = nft_schedule_signature_body(body, object_or_empty(schedule));
 
     return signature_hash(body);
 }
 
-function print_nft_runtime_signature_from_settings_and_sections(settings, sections, schedules) {
-    let hash = nft_runtime_signature_from_settings_and_sections(settings, sections, schedules);
+function print_nft_runtime_signature_from_settings_and_sections(settings, sections, schedules, profiles) {
+    let hash = nft_runtime_signature_from_settings_and_sections(settings, sections, schedules, profiles);
     if (hash == "")
         return false;
 
@@ -1988,6 +2131,7 @@ function nft_create_full_runtime_from_uci(rt_table, table, localv4_set, common_s
         nft_add_section_priority_rules_from_sections(uci_sections("section"), table, interface_set, localv4_set, localv6_set, fakeip_mark) &&
         nft_add_schedule_rules_from_uci(table, uci_sections("section")) &&
         nft_add_dns_block_rules_from_uci(table) &&
+        nft_add_profile_doh_block_rules(uci_sections("profile"), table) &&
         nft_create_provider_output_rules_from_uci(table, "zapret", zapret_bin, zapret_route_mark_base, zapret_queue_base, zapret_desync_mark, zapret_desync_mark_postnat) &&
         nft_create_provider_output_rules_from_uci(table, "zapret2", zapret2_bin, zapret2_route_mark_base, zapret2_queue_base, zapret2_desync_mark, zapret2_desync_mark_postnat) &&
         nft_create_runtime_output_rules(table, localv4_set, common_set, port_set, ip_port_set, fakeip_mark, fakeip_range, localv6_set, common6_set, ip_port6_set, fakeip6_range);
@@ -2014,7 +2158,8 @@ function nft_runtime_signature_from_uci() {
     return print_nft_runtime_signature_from_settings_and_sections(
         uci_settings(),
         uci_sections("section"),
-        uci_sections("schedule")
+        uci_sections("schedule"),
+        uci_sections("profile")
     );
 }
 
@@ -2034,7 +2179,8 @@ function nft_runtime_signature_from_fixture(path) {
     return print_nft_runtime_signature_from_settings_and_sections(
         fixture_settings(data),
         fixture_section_list(data, "section"),
-        fixture_section_list(data, "schedule")
+        fixture_section_list(data, "schedule"),
+        fixture_section_list(data, "profile")
     );
 }
 
@@ -2288,9 +2434,9 @@ else if (mode == "nft-create-provider-output-rules-fixture")
 else if (mode == "nft-add-section-priority-rules-fixture")
     exit(nft_add_section_priority_rules_from_sections(fixture_section_list(object_or_empty(common_read_json_file(ARGV[1])), "section"), ARGV[2], ARGV[3], ARGV[4], ARGV[5], ARGV[6]) ? 0 : 1);
 else if (mode == "nft-add-schedule-rules-fixture")
-    exit(nft_add_schedule_rules_from_schedules(fixture_section_list(object_or_empty(common_read_json_file(ARGV[1])), "schedule"), fixture_section_list(object_or_empty(common_read_json_file(ARGV[1])), "section"), ARGV[2]) ? 0 : 1);
+    exit(nft_add_schedule_rules_from_schedules(fixture_section_list(object_or_empty(common_read_json_file(ARGV[1])), "schedule"), fixture_section_list(object_or_empty(common_read_json_file(ARGV[1])), "section"), ARGV[2], fixture_section_list(object_or_empty(common_read_json_file(ARGV[1])), "profile")) ? 0 : 1);
 else if (mode == "nft-add-dns-block-rules-fixture")
-    exit(nft_add_dns_block_rules_from_schedules(fixture_section_list(object_or_empty(common_read_json_file(ARGV[1])), "schedule"), ARGV[2]) ? 0 : 1);
+    exit(nft_add_dns_block_rules_from_schedules(fixture_section_list(object_or_empty(common_read_json_file(ARGV[1])), "schedule"), ARGV[2], fixture_section_list(object_or_empty(common_read_json_file(ARGV[1])), "profile")) ? 0 : 1);
 else if (mode == "nft-create-full-runtime-from-uci")
     exit(nft_create_full_runtime_from_uci(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5], ARGV[6], ARGV[7], ARGV[8], ARGV[9], ARGV[10], ARGV[11], ARGV[12], ARGV[13], ARGV[14], ARGV[15], ARGV[16], ARGV[17], ARGV[18], ARGV[19], ARGV[20], ARGV[21], ARGV[22], ARGV[23], ARGV[24], ARGV[25], ARGV[26]) ? 0 : 1);
 else if (mode == "nft-rebuild-runtime-from-uci")

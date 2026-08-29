@@ -233,3 +233,31 @@ config telegram 'telegram'
         # language: auto-detected from LuCI if not set.
         # Values: ru (default), en
 
+#config profile 'profile_kids_example'
+#        option label 'Kids Devices'
+#        option avatar '👶'
+#        option enabled '1'
+#        list device_ip '192.168.1.150'
+#        list device_ip 'AA:BB:CC:DD:EE:FF'
+#        option safe_search '1'
+#        option block_doh '1'
+#        option daily_quota_minutes '120'
+#        list blocked_domains 'tiktok.com'
+#        list blocked_domains 'roblox.com'
+#        option notify '1'
+
+#config schedule 'schedule_bedtime_example'
+#        option label 'Kids Bedtime'
+#        option enabled '1'
+#        list profile 'profile_kids_example'
+#        option target 'all'
+#        option action 'block'
+#        option start_time '22:00'
+#        option end_time '08:00'
+#        list days 'monday'
+#        list days 'tuesday'
+#        list days 'wednesday'
+#        list days 'thursday'
+#        list days 'friday'
+
+

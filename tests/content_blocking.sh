@@ -324,4 +324,50 @@ SIG2="$(nft_ucode nft-runtime-signature-fixture "$WORK_DIR/nft_fixture2.json")"
 
 [ "$SIG1" != "$SIG2" ] || fail "Signature must change when blocked_domains are updated"
 
-printf 'Content blocking checks passed\n'
+# ─── Fixture: Family Profile SafeSearch & DoH Block ──────────────────────────
+cat >"$WORK_DIR/fixture_profile_safesearch.json" <<'JSON'
+{
+  "settings": {
+    ".name": "settings",
+    ".type": "settings",
+    "config_path": "/tmp/sing-box/config.json",
+    "dns_server": "1.1.1.1",
+    "service_listen_address": "127.0.0.1"
+  },
+  "section": [
+    {
+      ".name": "sec_proxy",
+      "enabled": "1",
+      "action": "connection",
+      "label": "Main proxy",
+      "selector_proxy_links": [ "socks5://127.0.0.1:1080#Proxy" ]
+    }
+  ],
+  "profile": [
+    {
+      ".name": "prof_teens",
+      "label": "Teens",
+      "enabled": "1",
+      "device_ip": [ "192.168.1.180" ],
+      "safe_search": "1",
+      "block_doh": "1",
+      "blocked_domains": [ "roblox.com" ]
+    }
+  ]
+}
+JSON
+
+OUT_PROF="$WORK_DIR/profile_safesearch.json"
+generate_config "$WORK_DIR/fixture_profile_safesearch.json" "$OUT_PROF"
+
+# SafeSearch DNS rules must be present
+assert_contains "$OUT_PROF" '"action": "predefined"' "profile: SafeSearch predefined DNS action"
+assert_contains "$OUT_PROF" '216.239.38.120' "profile: SafeSearch google/youtube IP"
+assert_contains "$OUT_PROF" '213.180.193.56' "profile: SafeSearch yandex IP"
+assert_contains "$OUT_PROF" '192.168.1.180/32' "profile: SafeSearch scoped to profile device"
+
+# Profile blocked domains must be present in DNS rules
+assert_contains "$OUT_PROF" 'roblox.com' "profile: roblox.com blocked"
+
+printf 'Content blocking and family profile checks passed\n'
+

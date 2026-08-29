@@ -198,4 +198,77 @@ if ucode -L "$TACHYON_LIB" "$VALIDATOR_RUNTIME" validate-runtime-fixture "$WORK_
   fail "Validator must reject non-existent target section"
 fi
 
-printf 'Parental control and schedule tests passed\n'
+# Verify validator rejects unknown profile reference in schedule
+cat >"$WORK_DIR/invalid_profile_ref.json" <<'JSON'
+{
+  "settings": { ".name": "settings", ".type": "settings", "dns_server": ["77.88.8.8"], "bootstrap_dns_server": ["77.88.8.8"] },
+  "schedule": [
+    {
+      ".name": "bad_profile_ref",
+      "enabled": "1",
+      "profile": [ "non_existent_profile" ]
+    }
+  ]
+}
+JSON
+
+if ucode -L "$TACHYON_LIB" "$VALIDATOR_RUNTIME" validate-runtime-fixture "$WORK_DIR/invalid_profile_ref.json" "{}" >/dev/null 2>&1; then
+  fail "Validator must reject non-existent profile reference"
+fi
+
+# Verify validator rejects invalid profile device IP
+cat >"$WORK_DIR/invalid_profile_ip.json" <<'JSON'
+{
+  "settings": { ".name": "settings", ".type": "settings", "dns_server": ["77.88.8.8"], "bootstrap_dns_server": ["77.88.8.8"] },
+  "profile": [
+    {
+      ".name": "bad_profile",
+      "enabled": "1",
+      "device_ip": [ "invalid-ip-or-mac" ]
+    }
+  ]
+}
+JSON
+
+if ucode -L "$TACHYON_LIB" "$VALIDATOR_RUNTIME" validate-runtime-fixture "$WORK_DIR/invalid_profile_ip.json" "{}" >/dev/null 2>&1; then
+  fail "Validator must reject invalid profile device IP"
+fi
+
+# ─── Family Profile inheritance fixture ──────────────────────────────────────
+cat >"$WORK_DIR/profile_fixture.json" <<'JSON'
+{
+  "profile": [
+    {
+      ".name": "prof_kids",
+      "label": "Kids",
+      "avatar": "👶",
+      "enabled": "1",
+      "device_ip": [ "192.168.1.200", "22:33:44:55:66:77" ],
+      "block_doh": "1",
+      "safe_search": "1",
+      "daily_quota_minutes": "90"
+    }
+  ],
+  "schedule": [
+    {
+      ".name": "kids_schedule",
+      "enabled": "1",
+      "profile": [ "prof_kids" ],
+      "target": "all",
+      "action": "block",
+      "start_time": "23:00",
+      "end_time": "06:00"
+    }
+  ]
+}
+JSON
+
+rm -f "$NFT_LOG"
+nft_ucode nft-add-schedule-rules-fixture "$WORK_DIR/profile_fixture.json" "tachyon"
+
+# Schedule must inherit devices from prof_kids
+assert_contains "$NFT_LOG" "parental_forward	ip	saddr	192.168.1.200	meta	hour	\"23:00:00\"-\"23:59:59\"	counter	drop" "profile IP inherited"
+assert_contains "$NFT_LOG" "parental_forward	ether	saddr	22:33:44:55:66:77	meta	hour	\"23:00:00\"-\"23:59:59\"	counter	drop" "profile MAC inherited"
+
+printf 'Parental control, profiles and schedule tests passed\n'
+

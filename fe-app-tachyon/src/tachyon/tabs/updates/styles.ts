@@ -39,6 +39,12 @@ export const styles = `
         width: 100%;
         min-width: 0;
     }
+
+    .tachyon_updates-page__component {
+        width: 100%;
+        min-width: 0;
+        box-sizing: border-box;
+    }
 }
 
 .tachyon_updates-page__component {
@@ -48,7 +54,8 @@ export const styles = `
     display: flex;
     flex-direction: column;
     gap: 10px;
-    min-width: max-content;
+    min-width: 0;
+    box-sizing: border-box;
 }
 
 .tachyon_updates-page__component__header {

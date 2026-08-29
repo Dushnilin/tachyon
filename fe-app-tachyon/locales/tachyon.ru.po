@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-08-27 13:54+0300\n"
-"PO-Revision-Date: 2026-08-27 13:54+0300\n"
+"POT-Creation-Date: 2026-08-29 13:56+0300\n"
+"PO-Revision-Date: 2026-08-29 13:56+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -36,7 +36,7 @@ msgid "+ Add priority"
 msgstr "+ Добавить приоритет"
 
 msgid "+ Add Strategy"
-msgstr ""
+msgstr "+ Добавить стратегию"
 
 msgid "+ Add URLTest"
 msgstr "+ Добавить URLTest"
@@ -63,10 +63,10 @@ msgid "⚡ DPI Strategy Fuzzer"
 msgstr "⚡ DPI Strategy Fuzzer"
 
 msgid "⚡ Fast (>1MB/s)"
-msgstr ""
+msgstr "⚡ Быстрые (>1 МБ/с)"
 
 msgid "⚡ QUIC / HTTP/3 (UDP 443)"
-msgstr ""
+msgstr "⚡ QUIC / HTTP/3 (UDP 443)"
 
 msgid "⚡ Quick Benchmark (Presets ~12-14)"
 msgstr "⚡ Быстрый бенчмарк (Пресеты ~12-14)"
@@ -74,62 +74,74 @@ msgstr "⚡ Быстрый бенчмарк (Пресеты ~12-14)"
 msgid "⚡ Strategy Fuzzer & Auto-Tuner"
 msgstr "⚡ Подборщик стратегий и авто-тюнер"
 
+msgid "✅ Auto-applied best strategy"
+msgstr "✅ Лучшая стратегия применена автоматически"
+
 msgid "✅ Benchmark completed! Optimal strategy identified."
 msgstr "✅ Бенчмарк завершен! Оптимальная стратегия определена."
 
 msgid "✅ Working only"
-msgstr ""
+msgstr "✅ Только рабочие"
 
 msgid "✈️ Telegram Suite (Web + Bot API)"
-msgstr ""
+msgstr "✈️ Telegram Suite (Web + Bot API)"
 
 msgid "✔ Online"
-msgstr ""
+msgstr "✔ В сети"
 
 msgid "✔ Running"
 msgstr "✔ Работает"
 
 msgid "✘ Offline"
-msgstr ""
+msgstr "✘ Не в сети"
 
 msgid "✘ Stopped"
 msgstr "✘ Остановлено"
 
 msgid "🌐 Custom Target URL..."
-msgstr ""
+msgstr "🌐 Пользовательский URL цели..."
 
 msgid "🎬 YouTube Suite (Web + 4K Stream)"
-msgstr ""
+msgstr "🎬 YouTube Suite (Web + 4K Stream)"
 
 msgid "🏆 Apply Best Match"
-msgstr ""
+msgstr "🏆 Применить наилучшую"
 
 msgid "🏴‍☠️ RuTracker Suite"
-msgstr ""
+msgstr "🏴‍☠️ RuTracker Suite"
 
 msgid "💬 Discord Suite (API + WSS + CDN)"
-msgstr ""
+msgstr "💬 Discord Suite (API + WSS + CDN)"
 
 msgid "💾 Save Custom Patterns"
-msgstr ""
+msgstr "💾 Сохранить пользовательские паттерны"
 
 msgid "📸 Instagram / Meta (Web + CDN)"
-msgstr ""
+msgstr "📸 Instagram / Meta (Web + CDN)"
+
+msgid "🔄 Refresh"
+msgstr "🔄 Обновить"
 
 msgid "🔄 Reset to Factory Defaults"
-msgstr ""
+msgstr "🔄 Сбросить к заводским настройкам"
 
 msgid "🔍 Combinatorial Deep Fuzzing (~40-80+)"
-msgstr ""
+msgstr "🔍 Комбинаторный глубокий фаззинг (~40-80+)"
 
 msgid "🔑 Generate"
 msgstr "🔑 Сгенерировать"
+
+msgid "🗑️ Clear History"
+msgstr "🗑️ Очистить историю"
 
 msgid "🧠 Synthesize with AI"
 msgstr "🧠 Сгенерировать через ИИ"
 
 msgid "🧠 Synthesizing..."
 msgstr "🧠 Генерация..."
+
+msgid "🚀 Initializing benchmark in sandbox..."
+msgstr "🚀 Инициализация бенчмарка в песочнице..."
 
 msgid "🚀 Start Benchmark"
 msgstr "🚀 Начать бенчмарк"
@@ -138,7 +150,7 @@ msgid "🛑 Stop Benchmark"
 msgstr "🛑 Остановить бенчмарк"
 
 msgid "🛠️ My Custom Strategies Only"
-msgstr ""
+msgstr "🛠️ Только мои стратегии"
 
 msgid "Accept external proxy connections and route them with sing-box."
 msgstr "Принимать внешние прокси-подключения и маршрутизировать их через sing-box."
@@ -156,7 +168,7 @@ msgid "Action Mode"
 msgstr "Режим действия"
 
 msgid "Actions"
-msgstr ""
+msgstr "Действия"
 
 msgid "Active"
 msgstr "Активные"
@@ -182,6 +194,9 @@ msgstr "Активный основной DNS"
 msgid "Active routes"
 msgstr "Активные маршруты"
 
+msgid "Add a family profile"
+msgstr "Добавить семейный профиль"
+
 msgid "Add a schedule rule"
 msgstr "Добавить правило расписания"
 
@@ -195,7 +210,7 @@ msgid "Add at least one DNS server"
 msgstr "Добавьте как минимум один DNS-сервер"
 
 msgid "Add Custom DPI Strategy"
-msgstr ""
+msgstr "Добавить стратегию DPI"
 
 msgid "Add prefix to nodes"
 msgstr "Добавить префикс к узлам"
@@ -214,6 +229,9 @@ msgstr "Добавьте URL или локальные пути к списка�
 
 msgid "Add URLTest / Priority group"
 msgstr "Добавить группу URLTest / Приоритет"
+
+msgid "Additional Individual Devices (IP / MAC)"
+msgstr "Дополнительные устройства (IP / MAC)"
 
 msgid "Additional marking rules found"
 msgstr "Найдены дополнительные правила маркировки"
@@ -288,10 +306,10 @@ msgid "AI Doctor Language"
 msgstr "Язык ИИ-доктора"
 
 msgid "AI Doctor RAG"
-msgstr ""
+msgstr "AI Doctor RAG"
 
 msgid "AI DPI Engineer & Strategy Synthesizer"
-msgstr ""
+msgstr "ИИ DPI-инженер и синтезатор стратегий"
 
 msgid "AI Model"
 msgstr "Модель ИИ"
@@ -395,6 +413,9 @@ msgstr "ALPN"
 msgid "Alter ID"
 msgstr "Alter ID"
 
+msgid "Always block these domains for all devices in this profile. Enter one domain per line or use category preset buttons."
+msgstr "Всегда блокировать эти домены для всех устройств в этом профиле. Вводите по одному домену на строку или используйте кнопки категорий."
+
 msgid "AmneziaWG config loaded successfully!"
 msgstr "Конфигурация AmneziaWG успешно загружена!"
 
@@ -406,6 +427,12 @@ msgstr "Анонимизированный отчет скопирован в б
 
 msgid "Another component action is already running"
 msgstr "Другое действие уже выполняется"
+
+msgid "Anti-Bypass (DoH)"
+msgstr "Защита от обхода (DoH)"
+
+msgid "Anti-Bypass: Block Private DNS / DoH / DoT"
+msgstr "Защита от обхода: блокировка Private DNS / DoH / DoT"
 
 msgid "API Key for OpenAI (sk-...) or DeepSeek (optional for Ollama / LM Studio)"
 msgstr "API-ключ для OpenAI (sk-...) или DeepSeek (опционально для Ollama / LM Studio)"
@@ -425,6 +452,9 @@ msgstr "Применять правила секции только к указ�
 msgid "Apply Strategy To"
 msgstr "Применить стратегию к"
 
+msgid "Apply this schedule rule to all devices in the selected family profile(s)."
+msgstr "Применить это правило расписания ко всем устройствам в выбранных семейных профилях."
+
 msgid "Applying fix"
 msgstr "Применение исправления"
 
@@ -432,10 +462,13 @@ msgid "Applying..."
 msgstr "Применение..."
 
 msgid "Arguments"
-msgstr ""
+msgstr "Аргументы"
 
 msgid "Ask Tachyon AI Assistant a question..."
 msgstr "Задайте вопрос ИИ-ассистенту..."
+
+msgid "Assigned Devices (MAC / IP)"
+msgstr "Назначенные устройства (MAC / IP)"
 
 msgid "At least one Admin Chat ID is required"
 msgstr "Требуется как минимум один Chat ID администратора"
@@ -453,13 +486,19 @@ msgid "Auto"
 msgstr "Авто"
 
 msgid "Auto Modes (--auto)"
-msgstr ""
+msgstr "Авто-режимы (--auto)"
 
 msgid "Auto refresh"
 msgstr "Автообновление"
 
 msgid "Auto update"
 msgstr "Автообновление"
+
+msgid "Auto-apply best strategy"
+msgstr "Авто-применение лучшей стратегии"
+
+msgid "Auto-apply failed"
+msgstr "Авто-применение не удалось"
 
 msgid "Auto-detected domains"
 msgstr "Автоопределённые домены"
@@ -501,7 +540,7 @@ msgid "Automatically increase check intervals when healthy (to 5 min) and decrea
 msgstr "Автоматически увеличивать интервалы проверки при нормальном состоянии (до 5 мин) и уменьшать при проблемах (до 120с)."
 
 msgid "Automatically runs a diagnostic probe against the target service, queries the built-in DPI Knowledge Base, and synthesizes 3-5 custom bypass strategies tailored to your ISP."
-msgstr ""
+msgstr "Автоматически выполняет диагностический зонд целевого сервиса, опрашивает встроенную базу знаний DPI и синтезирует 3-5 стратегий обхода, адаптированных под вашего провайдера."
 
 msgid "Automatically select the fastest node in the current level"
 msgstr "Автовыбор самого быстрого узла уровня"
@@ -534,13 +573,19 @@ msgid "Belarus (by)"
 msgstr "Беларусь (by)"
 
 msgid "Benchmark & Test"
-msgstr ""
+msgstr "Бенчмарк и тестирование"
+
+msgid "Benchmark History"
+msgstr "История бенчмарков"
 
 msgid "Benchmark stopped"
 msgstr "Бенчмарк остановлен"
 
 msgid "Benchmarking in progress..."
 msgstr "Выполняется бенчмарк..."
+
+msgid "Best Strategy"
+msgstr "Лучшая стратегия"
 
 msgid "BitTorrent / P2P"
 msgstr "BitTorrent / P2P"
@@ -557,8 +602,8 @@ msgstr "Блокировать на уровне DNS"
 msgid "Block in interval"
 msgstr "Блокируется в интервале"
 
-msgid "Block internet access or specific proxy sections for individual devices based on time and days."
-msgstr "Блокировка доступа в интернет или определенных секций маршрутизации для отдельных устройств по времени и дням недели."
+msgid "Block internet access or specific proxy sections for family profiles or individual devices based on time and days."
+msgstr "Блокировка доступа в интернет или определенных секций прокси для семейных профилей или отдельных устройств по времени и дням недели."
 
 msgid "Block listed sites (Standard)"
 msgstr "Блокировать перечисленные сайты (стандартно)"
@@ -577,6 +622,12 @@ msgstr "Заблокированные сайты"
 
 msgid "Blocked Sites (Domains)"
 msgstr "Заблокированные сайты (домены)"
+
+msgid "Blocks access to private/LAN IP addresses (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, etc.) for selected users before applying routing mode."
+msgstr "Блокирует доступ к приватным/локальным IP-адресам (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 и др.) для указанных пользователей перед применением режима маршрутизации."
+
+msgid "Blocks port 853 (DNS-over-TLS) and prevents bypass via encrypted DNS or Private Relay on smartphones for devices in this profile."
+msgstr "Блокирует порт 853 (DNS-over-TLS) и предотвращает обход через шифрованный DNS или Private Relay на смартфонах для устройств этого профиля."
 
 msgid "Bootstrap DNS"
 msgstr "Bootstrap DNS"
@@ -743,8 +794,14 @@ msgstr "Проверки пройдены"
 msgid "Checks passed with manual DHCP"
 msgstr "Проверки пройдены с ручным DHCP"
 
+msgid "Child (🧒)"
+msgstr "Ребёнок (🧒)"
+
 msgid "China (cn)"
 msgstr "Китай (cn)"
+
+msgid "Choose a visual icon for this profile"
+msgstr "Выберите визуальную иконку для профиля"
 
 msgid "Choose Hosts File..."
 msgstr "Выбрать файл Hosts..."
@@ -834,7 +891,7 @@ msgid "Comma-separated list of Telegram user IDs authorized to control the bot."
 msgstr "Список Telegram user ID через запятую, авторизованных для управления ботом."
 
 msgid "Command-line arguments string..."
-msgstr ""
+msgstr "Строка аргументов командной строки..."
 
 msgid "Community Lists"
 msgstr "Community-списки"
@@ -856,6 +913,9 @@ msgstr "Параллелизм"
 
 msgid "Conditions"
 msgstr "Условия"
+
+msgid "confidence"
+msgstr "уверенность"
 
 msgid "Config File Path"
 msgstr "Путь к файлу конфигурации"
@@ -936,7 +996,7 @@ msgid "Currently unavailable"
 msgstr "Временно недоступно"
 
 msgid "Custom"
-msgstr ""
+msgstr "Пользовательский"
 
 msgid "Custom API Endpoint URL"
 msgstr "Пользовательский URL эндпоинта API"
@@ -963,7 +1023,7 @@ msgid "Custom header for handshake response"
 msgstr "Пользовательский заголовок для ответа рукопожатия"
 
 msgid "Custom interface/section"
-msgstr ""
+msgstr "Пользовательский интерфейс/секция"
 
 msgid "Custom OpenAI-Compatible API"
 msgstr "Пользовательский OpenAI-совместимый API"
@@ -975,10 +1035,13 @@ msgid "Custom outbound configurations in JSON format"
 msgstr "Пользовательские конфигурации outbound в формате JSON"
 
 msgid "Custom strategy added!"
-msgstr ""
+msgstr "Пользовательская стратегия добавлена!"
 
 msgid "Daily Quota"
 msgstr "Дневная квота"
+
+msgid "Daily Screen Time Quota (minutes)"
+msgstr "Дневная квота экранного времени (минуты)"
 
 msgid "Daily time quota (minutes)"
 msgstr "Дневной лимит времени (минуты)"
@@ -988,6 +1051,9 @@ msgstr "Панель управления"
 
 msgid "Dashboard currently unavailable"
 msgstr "Дашборд сейчас недоступен"
+
+msgid "Date"
+msgstr "Дата"
 
 msgid "Days of Week"
 msgstr "Дни недели"
@@ -1025,8 +1091,8 @@ msgstr "Обнаруживает и отбрасывает пакеты STUN/TUR
 msgid "detour must be a non-empty string"
 msgstr "detour должен быть непустой строкой"
 
-msgid "Device / IP / MAC"
-msgstr "Устройство / IP / MAC"
+msgid "dev."
+msgstr "устр."
 
 msgid "Device filter"
 msgstr "Фильтр устройств"
@@ -1042,6 +1108,9 @@ msgstr "Устройство или IP"
 
 msgid "Device updated"
 msgstr "Режим устройства обновлен"
+
+msgid "Devices (MAC / IP)"
+msgstr "Устройства (MAC / IP)"
 
 msgid "Devices listed here are always routed through the assigned section, regardless of global rules."
 msgstr "Устройства из этого списка всегда маршрутизируются через назначенную секцию, независимо от глобальных правил."
@@ -1086,7 +1155,7 @@ msgid "Disabling interception is incompatible with action=zapret2 because Tachyo
 msgstr "Отключение перехвата несовместимо с action=zapret2, потому что Tachyon направляет совпавший трафик через NFQUEUE."
 
 msgid "Disorder Values (-d)"
-msgstr ""
+msgstr "Значения Disorder (-d)"
 
 msgid "Display name"
 msgstr "Отображаемое имя"
@@ -1271,8 +1340,14 @@ msgstr "Загружено"
 msgid "Downloading and applying rule sets and lists..."
 msgstr "Загрузка и применение наборов правил и списков..."
 
+msgid "DPI Detected"
+msgstr "DPI обнаружен"
+
 msgid "DPI Engine"
 msgstr "Движок DPI"
+
+msgid "DPI Type"
+msgstr "Тип DPI"
 
 msgid "Drag rows to change priority. The rule at the top is checked first."
 msgstr "Перетащите строки для изменения приоритета. Правило вверху проверяется первым."
@@ -1291,6 +1366,12 @@ msgstr "напр. AES-256-GCM — оставьте пустым для знач�
 
 msgid "e.g. google.com, 1.1.1.1, 443"
 msgstr "напр. google.com, 1.1.1.1, 443"
+
+msgid "e.g. Kids"
+msgstr "напр. Дети"
+
+msgid "e.g. Kids (Alice & Tim), Teenager, School PC, Guests"
+msgstr "напр. Дети (Алиса и Тимур), Подросток, Школьный ПК, Гости"
 
 msgid "e.g. Kids Phone (Night YouTube)"
 msgstr "например, Телефон ребенка (YouTube на ночь)"
@@ -1406,8 +1487,11 @@ msgstr "Конец интервала расписания (например, 08
 msgid "End Time (HH:MM)"
 msgstr "Время окончания (ЧЧ:ММ)"
 
+msgid "Enforce SafeSearch & YouTube Restricted Mode"
+msgstr "Безопасный поиск (SafeSearch) и строгий режим YouTube"
+
 msgid "Engine"
-msgstr ""
+msgstr "Движок"
 
 msgid "Enter a complete sing-box inbound object"
 msgstr "Введите полный JSON объект inbound для sing-box"
@@ -1508,6 +1592,12 @@ msgstr "Не удалось применить исправление"
 msgid "Failed to apply strategy"
 msgstr "Не удалось применить стратегию"
 
+msgid "Failed to auto-apply strategy"
+msgstr "Не удалось автоматически применить стратегию"
+
+msgid "Failed to clear fuzzer history"
+msgstr "Не удалось очистить историю фаззера"
+
 msgid "Failed to close connection"
 msgstr "Не удалось закрыть подключение"
 
@@ -1526,6 +1616,9 @@ msgstr "Не удалось скопировать!"
 msgid "Failed to delete snapshot"
 msgstr "Не удалось удалить снапшот"
 
+msgid "Failed to detect DPI type"
+msgstr "Не удалось определить тип DPI"
+
 msgid "Failed to execute"
 msgstr "Не удалось выполнить"
 
@@ -1535,14 +1628,20 @@ msgstr "Не удалось создать отчёт об ошибке"
 msgid "Failed to generate WARP config:"
 msgstr "Не удалось сгенерировать конфигурацию WARP:"
 
+msgid "Failed to get fuzzer history"
+msgstr "Не удалось получить историю фаззера"
+
 msgid "Failed to get fuzzer patterns"
-msgstr ""
+msgstr "Не удалось получить паттерны фаззера"
 
 msgid "Failed to get fuzzer status"
-msgstr ""
+msgstr "Не удалось получить статус фаззера"
 
 msgid "Failed to get fuzzer strategies"
-msgstr ""
+msgstr "Не удалось получить стратегии фаззера"
+
+msgid "Failed to load history"
+msgstr "Не удалось загрузить историю"
 
 msgid "Failed to load snapshots"
 msgstr "Не удалось загрузить снапшоты"
@@ -1563,7 +1662,7 @@ msgid "Failed to receive response from AI service."
 msgstr "Не удалось получить ответ от ИИ-сервиса."
 
 msgid "Failed to reset fuzzer patterns"
-msgstr ""
+msgstr "Не удалось сбросить паттерны фаззера"
 
 msgid "Failed to reset settings"
 msgstr "Не удалось сбросить настройки"
@@ -1587,10 +1686,10 @@ msgid "Failed to save DNS Turbo Cache"
 msgstr "Не удалось сохранить DNS Turbo Cache"
 
 msgid "Failed to save fuzzer patterns"
-msgstr ""
+msgstr "Не удалось сохранить паттерны фаззера"
 
 msgid "Failed to save patterns"
-msgstr ""
+msgstr "Не удалось сохранить паттерны"
 
 msgid "Failed to save Smart Detect settings"
 msgstr "Ошибка сохранения настроек Smart Detect"
@@ -1605,7 +1704,7 @@ msgid "Failed to start bot"
 msgstr "Не удалось запустить бота"
 
 msgid "Failed to start fuzzer"
-msgstr ""
+msgstr "Не удалось запустить фаззер"
 
 msgid "Failed to start service check."
 msgstr "Не удалось запустить проверку сервисов."
@@ -1617,7 +1716,7 @@ msgid "Failed to stop bot"
 msgstr "Не удалось остановить бота"
 
 msgid "Failed to stop fuzzer"
-msgstr ""
+msgstr "Не удалось остановить фаззер"
 
 msgid "Failed to stop watchdog"
 msgstr "Не удалось остановить watchdog"
@@ -1652,6 +1751,15 @@ msgstr "FakeTLS host"
 msgid "Fallback on unknown DC"
 msgstr "Fallback при неизвестном DC"
 
+msgid "Family (🏠)"
+msgstr "Семья (🏠)"
+
+msgid "Family Profile"
+msgstr "Семейный профиль"
+
+msgid "Family Profiles"
+msgstr "Семейные профили"
+
 msgid "Faster DNS health monitoring than the default cycle. Switches bootstrap DNS on failure."
 msgstr "Более быстрый мониторинг состояния DNS, чем стандартный цикл. Переключает bootstrap DNS при сбое."
 
@@ -1668,7 +1776,7 @@ msgid "Filter the servers that will be displayed on the dashboard."
 msgstr "Фильтровать серверы, отображаемые на дашборде."
 
 msgid "Filter:"
-msgstr ""
+msgstr "Фильтр:"
 
 msgid "Finland (fi)"
 msgstr "Финляндия (fi)"
@@ -1692,16 +1800,19 @@ msgid "Flush Conntrack Table"
 msgstr "Очистить таблицу соед. (conntrack)"
 
 msgid "Fooling Methods (dpi-desync-fooling)"
-msgstr ""
+msgstr "Методы спуфинга (dpi-desync-fooling)"
 
 msgid "Fooling Methods (fooling)"
-msgstr ""
+msgstr "Методы спуфинга (fooling)"
 
 msgid "Force immediate download and refresh of all remote lists and rule sets"
 msgstr "Принудительно скачать и обновить все удаленные списки и наборы правил"
 
 msgid "Forced device routing"
 msgstr "Принудительная маршрутизация устройств"
+
+msgid "Forces SafeSearch on Google, Yandex, Bing, DuckDuckGo and Strict Restricted Mode on YouTube via DNS rewrite for all devices in this profile."
+msgstr "Принудительно включает безопасный поиск в Google, Яндекс, Bing, DuckDuckGo и строгий ограниченный режим на YouTube через подмену DNS для всех устройств профиля."
 
 msgid "Forces sing-box to tunnel DNS requests via DoQ with Encrypted Client Hello (ECH) for SNI hiding."
 msgstr "Принудительно направлять DNS-запросы через DoQ с Encrypted Client Hello (ECH) для скрытия SNI."
@@ -1735,6 +1846,9 @@ msgstr "IP игровых консолей"
 
 msgid "Game Console Optimizer (NAT Type 1)"
 msgstr "Оптимизатор игровых консолей (NAT Type 1)"
+
+msgid "Gamer (🎮)"
+msgstr "Геймер (🎮)"
 
 msgid "Gaming"
 msgstr "Игры"
@@ -1791,7 +1905,10 @@ msgid "Global check failed"
 msgstr "Не удалось выполнить глобальную проверку"
 
 msgid "Global Default"
-msgstr ""
+msgstr "Глобально по умолчанию"
+
+msgid "Group devices into family profiles to manage content filtering, SafeSearch, and screen time limits in one place."
+msgstr "Группируйте устройства в семейные профили для централизованного управления фильтрацией сайтов, безопасным поиском и лимитами экранного времени."
 
 msgid "gRPC service"
 msgstr "Сервис gRPC"
@@ -1861,6 +1978,9 @@ msgstr "Проверка DNS с более высоким приоритетом
 
 msgid "History"
 msgstr "История"
+
+msgid "History cleared"
+msgstr "История очищена"
 
 msgid "Host"
 msgstr "Хост"
@@ -2253,7 +2373,7 @@ msgid "IP Addresses (IP CIDR)"
 msgstr "IP-адреса (IP CIDR)"
 
 msgid "IP Frag Bounds (--ip-frag)"
-msgstr ""
+msgstr "Границы фрагментации IP (--ip-frag)"
 
 msgid "IPs"
 msgstr "IP"
@@ -2362,6 +2482,9 @@ msgstr "Устройства LAN"
 
 msgid "Language for AI Doctor diagnosis responses"
 msgstr "Язык ответов диагностики ИИ-доктора"
+
+msgid "Laptop / PC (💻)"
+msgstr "Ноутбук / ПК (💻)"
 
 msgid "Latency test failed"
 msgstr "Проверка задержки не удалась"
@@ -2565,10 +2688,10 @@ msgid "Must be a number in the range of 0 - 10000"
 msgstr "Должно быть числом в диапазоне 0 - 10000"
 
 msgid "My Strategies"
-msgstr ""
+msgstr "Мои стратегии"
 
 msgid "Name"
-msgstr ""
+msgstr "Имя"
 
 msgid "Name displayed on the dashboard"
 msgstr "Имя, отображаемое на дашборде"
@@ -2633,8 +2756,11 @@ msgstr "Активные устройства в локальной сети н�
 msgid "No active routing sections found."
 msgstr "Активные секции маршрутизации не найдены."
 
+msgid "No benchmark history yet. Run a benchmark to see results here."
+msgstr "История бенчмарков пуста. Запустите бенчмарк, чтобы увидеть результаты здесь."
+
 msgid "No benchmark results yet. Configure options and click \"Start Benchmark\"."
-msgstr ""
+msgstr "Результатов бенчмарка пока нет. Настройте параметры и нажмите «Запустить бенчмарк»."
 
 msgid "No check targets found in the configuration."
 msgstr "Цели для проверки не найдены в конфигурации."
@@ -2649,7 +2775,13 @@ msgid "No Custom Rules Matched"
 msgstr "Нет совпадений с пользовательскими правилами"
 
 msgid "No custom strategies added yet."
-msgstr ""
+msgstr "Пользовательские стратегии пока не добавлены."
+
+msgid "no devices"
+msgstr "нет устройств"
+
+msgid "No devices assigned"
+msgstr "Устройства не назначены"
 
 msgid "No DHCP clients detected"
 msgstr "DHCP-клиенты не обнаружены"
@@ -2694,7 +2826,7 @@ msgid "No snapshots yet"
 msgstr "Снапшотов пока нет"
 
 msgid "No strategies match the active filter."
-msgstr ""
+msgstr "Нет стратегий, соответствующих выбранному фильтру."
 
 msgid "Node list is empty"
 msgstr "Список узлов пуст"
@@ -2808,7 +2940,7 @@ msgid "Only the specified servers."
 msgstr "Только указанные серверы."
 
 msgid "OOB Values (-o)"
-msgstr ""
+msgstr "Значения OOB (-o)"
 
 msgid "Open"
 msgstr "Открыть"
@@ -2856,7 +2988,7 @@ msgid "Optional — leave empty for default"
 msgstr "Опционально — оставьте пустым для значения по умолчанию"
 
 msgid "Optional context (e.g. \"Rostelecom, YouTube 4K buffering is slow\")..."
-msgstr ""
+msgstr "Дополнительный контекст (напр. «Ростелеком, YouTube 4K долго буферизуется»)..."
 
 msgid "Optional for local LLM"
 msgstr "Опционально для локальных LLM"
@@ -2870,11 +3002,14 @@ msgstr "Опциональные значения должны быть прис
 msgid "Optional values must be attached with '=' here; a separate token would be ignored by nfqws2."
 msgstr "Опциональные значения должны быть присоединены через '=' здесь; отдельный токен будет игнорироваться nfqws2."
 
+msgid "Optionally specify individual devices not in a profile. MAC addresses (e.g. AA:BB:CC:DD:EE:FF) work even if the IP changes."
+msgstr "При необходимости укажите отдельные устройства вне профилей. MAC-адреса (напр. AA:BB:CC:DD:EE:FF) работают даже при смене IP."
+
 msgid "Or paste hosts file content:"
 msgstr "Или вставьте содержимое файла hosts:"
 
 msgid "Other peers"
-msgstr ""
+msgstr "Другие пиры"
 
 msgid "outbounds must be a non-empty array of strings"
 msgstr "outbounds должен быть непустым массивом строк"
@@ -2925,19 +3060,19 @@ msgid "Path must end with cache.db"
 msgstr "Путь должен заканчиваться на cache.db"
 
 msgid "Pattern Builder"
-msgstr ""
+msgstr "Конструктор паттернов"
 
 msgid "Patterns reset to defaults!"
-msgstr ""
+msgstr "Паттерны сброшены к значениям по умолчанию!"
 
 msgid "Patterns reset to factory defaults"
-msgstr ""
+msgstr "Паттерны сброшены к заводским настройкам"
 
 msgid "Patterns saved successfully"
-msgstr ""
+msgstr "Паттерны успешно сохранены"
 
 msgid "Patterns saved successfully!"
-msgstr ""
+msgstr "Паттерны успешно сохранены!"
 
 msgid "Pause updates"
 msgstr "Приостановить обновление"
@@ -2984,6 +3119,12 @@ msgstr "Постоянный Keepalive"
 msgid "Persistent Smart Detect"
 msgstr "Постоянное умное определение"
 
+msgid "Pets / IoT (🐾)"
+msgstr "Питомцы / IoT (🐾)"
+
+msgid "Phone (📱)"
+msgstr "Смартфон (📱)"
+
 msgid "Pin on dashboard"
 msgstr "Закрепить на дашборде"
 
@@ -2991,7 +3132,7 @@ msgid "Pin P2P isolation to the torrent client's own ports, comma separated. Eac
 msgstr "Закрепить изоляцию P2P за портами торрент-клиента, через запятую. Каждая запись — \"протокол\", \"протокол:порт\" или \"протокол:порт-порт\" (tcp/udp). Без порта весь протокол уходит напрямую."
 
 msgid "Please specify strategy name and arguments"
-msgstr ""
+msgstr "Пожалуйста, укажите имя стратегии и аргументы"
 
 msgid "Polling Interval (seconds)"
 msgstr "Интервал опроса (секунды)"
@@ -3047,6 +3188,9 @@ msgstr "Предпочитаемый IP"
 msgid "Prefix text"
 msgstr "Текст префикса"
 
+msgid "Preparing strategies and isolated nftables queue..."
+msgstr "Подготовка стратегий и изолированной очереди nftables..."
+
 msgid "Preshared Key"
 msgstr "Предварительный общий ключ"
 
@@ -3073,6 +3217,21 @@ msgstr "Настройки приоритета"
 
 msgid "Private Key"
 msgstr "Приватный ключ"
+
+msgid "Profile"
+msgstr "Профиль"
+
+msgid "Profile / Devices"
+msgstr "Профиль / Устройства"
+
+msgid "Profile Blocked Sites (24/7)"
+msgstr "Заблокированные сайты профиля (24/7)"
+
+msgid "Profile Icon / Avatar"
+msgstr "Иконка профиля / Аватар"
+
+msgid "Profile Name"
+msgstr "Имя профиля"
 
 msgid "Protection"
 msgstr "Защита"
@@ -3120,7 +3279,7 @@ msgid "QUIC (HTTP/3)"
 msgstr "QUIC (HTTP/3)"
 
 msgid "RAG Knowledge Base + Live ISP Probe Context"
-msgstr ""
+msgstr "База знаний RAG + результаты живого зондирования провайдера"
 
 msgid "RDP"
 msgstr "RDP"
@@ -3154,6 +3313,9 @@ msgstr "Пересобрать правила firewall"
 
 msgid "Rebuilt release"
 msgstr "Пересобранный релиз"
+
+msgid "Recommended"
+msgstr "Рекомендовано"
 
 msgid "Recommended Quick Fixes:"
 msgstr "Рекомендуемые исправления:"
@@ -3308,6 +3470,12 @@ msgstr "Восстанавливает заводские настройки Tac
 msgid "Restoring native direct internet (stopping Tachyon)..."
 msgstr "Восстановление прямого интернета (остановка Tachyon)..."
 
+msgid "Restrict LAN access for specific users"
+msgstr "Ограничить доступ к локальной сети для отдельных пользователей"
+
+msgid "Restricted users (auth_user)"
+msgstr "Изолированные пользователи (auth_user)"
+
 msgid "Resume updates"
 msgstr "Продолжить обновление"
 
@@ -3399,13 +3567,16 @@ msgid "Running"
 msgstr "Запущен"
 
 msgid "Running benchmarks..."
-msgstr ""
+msgstr "Выполняется тестирование..."
 
 msgid "Running diagnostics…"
 msgstr "Выполняется диагностика…"
 
 msgid "Russia (ru)"
 msgstr "Россия (ru)"
+
+msgid "SafeSearch"
+msgstr "SafeSearch"
 
 msgid "Sat"
 msgstr "Сб"
@@ -3471,7 +3642,7 @@ msgid "Section name"
 msgstr "Имя секции"
 
 msgid "Section or tunnel interface used for Cloudflare WARP API registration. Supports Connection, WireGuard, AmneziaWG, and Interface sections. Leave empty to use direct WAN / default mixed proxy."
-msgstr ""
+msgstr "Секция или туннельный интерфейс для регистрации Cloudflare WARP API. Поддерживает секции Connection, WireGuard, AmneziaWG и Interface. Оставьте пустым для прямого WAN / стандартного mixed proxy."
 
 msgid "Section Rules Content"
 msgstr "Содержимое правил секции"
@@ -3533,8 +3704,8 @@ msgstr "Выберите и упорядочите секции, через ко
 msgid "Select DNS protocol to use"
 msgstr "Выберите протокол DNS"
 
-msgid "Select LAN devices to apply this schedule to, or enter IP or MAC addresses manually. MAC addresses (e.g. AA:BB:CC:DD:EE:FF) work even if the device's IP changes. IP addresses (e.g. 192.168.1.150) are used for DNS-level blocking and require a stable lease."
-msgstr "Выберите устройства из локальной сети, либо укажите IP или MAC-адреса вручную. MAC-адреса (например AA:BB:CC:DD:EE:FF) работают даже если IP устройства меняется. IP-адреса (например 192.168.1.150) используются для блокировки на уровне DNS и требуют стабильного адреса."
+msgid "Select LAN devices to assign to this profile, or enter IP or MAC addresses manually. MAC addresses (e.g. AA:BB:CC:DD:EE:FF) work even if the device's IP changes via DHCP."
+msgstr "Выберите устройства из локальной сети или введите IP/MAC-адреса вручную. MAC-адреса (напр. AA:BB:CC:DD:EE:FF) сохраняют привязку при смене IP через DHCP."
 
 msgid "Select network interface for VPN connection"
 msgstr "Выберите интерфейс для VPN-подключения"
@@ -3608,8 +3779,11 @@ msgstr "Отправлять уведомление в Telegram при пере�
 msgid "Send a Telegram notification when proxy subscriptions are successfully updated."
 msgstr "Отправлять уведомление в Telegram при успешном обновлении подписок прокси."
 
+msgid "Send Telegram alerts to parents when daily screen time is exhausted or blocked sites are accessed."
+msgstr "Отправлять уведомления родителям в Telegram при исчерпании экранного времени или попытке открыть заблокированные сайты."
+
 msgid "Sequence Overlaps (seqovl)"
-msgstr ""
+msgstr "Перекрытия последовательностей (seqovl)"
 
 msgid "Server"
 msgstr "Сервер"
@@ -3767,6 +3941,9 @@ msgstr "Версия Sing-box совместима (новее 1.12.4)"
 msgid "Singapore (sg)"
 msgstr "Сингапур (sg)"
 
+msgid "sites"
+msgstr "сайтов"
+
 msgid "Skip loopback & local entries (127.0.0.1, ::1, 0.0.0.0, localhost)"
 msgstr "Пропустить loopback и локальные записи (127.0.0.1, ::1, 0.0.0.0, localhost)"
 
@@ -3831,16 +4008,16 @@ msgid "Speed"
 msgstr "Скорость"
 
 msgid "Split Modes (dpi-desync)"
-msgstr ""
+msgstr "Режимы разделения (dpi-desync)"
 
 msgid "Split Positions (dpi-desync-split-pos)"
-msgstr ""
+msgstr "Позиции разделения (dpi-desync-split-pos)"
 
 msgid "Split Positions (pos)"
-msgstr ""
+msgstr "Позиции разделения (pos)"
 
 msgid "Split Values (-s)"
-msgstr ""
+msgstr "Значения сплита (-s)"
 
 msgid "SSH"
 msgstr "SSH"
@@ -3878,6 +4055,9 @@ msgstr "Отдельная служба Zapret2 активна"
 msgid "Standalone Zapret2 service is inactive"
 msgstr "Отдельная служба Zapret2 неактивна"
 
+msgid "Standard"
+msgstr "Стандартный"
+
 msgid "Start"
 msgstr "Старт"
 
@@ -3903,13 +4083,13 @@ msgid "Starting…"
 msgstr "Запуск…"
 
 msgid "State"
-msgstr ""
+msgstr "Состояние"
 
 msgid "Status"
 msgstr "Статус"
 
 msgid "Status / Suite"
-msgstr ""
+msgstr "Статус / Набор"
 
 msgid "Stop"
 msgstr "Стоп"
@@ -3939,10 +4119,13 @@ msgid "Strategy benchmark started"
 msgstr "Бенчмарк стратегий запущен"
 
 msgid "Strategy deleted"
-msgstr ""
+msgstr "Стратегия удалена"
 
 msgid "Strategy Name"
-msgstr ""
+msgstr "Имя стратегии"
+
+msgid "Strict (🔒)"
+msgstr "Строгий (🔒)"
 
 msgid "Strict ECH + DoQ DNS Enforcer"
 msgstr "Строгий ECH + DoQ DNS Enforcer"
@@ -4071,7 +4254,7 @@ msgid "Tailscale"
 msgstr "Tailscale"
 
 msgid "Tailscale auth key"
-msgstr ""
+msgstr "Ключ авторизации Tailscale"
 
 msgid "Tailscale control URL"
 msgstr "Control URL Tailscale"
@@ -4088,17 +4271,26 @@ msgstr "Режим Tailscale"
 msgid "Target"
 msgstr "Цель"
 
-msgid "Target Devices (IP / MAC)"
-msgstr "Целевые устройства (IP / MAC)"
+msgid "Target Family Profiles"
+msgstr "Семейные профили"
 
 msgid "Target Scope"
 msgstr "Область действия"
 
 msgid "Target Service / Suite"
-msgstr ""
+msgstr "Целевой сервис / Набор"
 
 msgid "TCP Window Sizes (wsize)"
-msgstr ""
+msgstr "Размеры окна TCP (wsize)"
+
+msgid "Teen (🧑)"
+msgstr "Подросток (🧑)"
+
+msgid "Telegram"
+msgstr "Telegram"
+
+msgid "Telegram Alerts"
+msgstr "Оповещения в Telegram"
 
 msgid "Telegram Bot"
 msgstr "Telegram Бот"
@@ -4135,6 +4327,9 @@ msgstr "Тестировать серверы, чьи имена соответ�
 
 msgid "Test Telegram Connection"
 msgstr "Проверить подключение к Telegram"
+
+msgid "Testing bypass strategies in isolated sandbox..."
+msgstr "Тестирование стратегий обхода в изолированной песочнице..."
 
 msgid "Testing strategy"
 msgstr "Тестирование стратегии"
@@ -4197,7 +4392,7 @@ msgid "This option requires a value."
 msgstr "Этот параметр требует значение."
 
 msgid "This router"
-msgstr ""
+msgstr "Этот роутер"
 
 msgid "This will erase all Tachyon settings and restore the factory defaults. The service will restart. This action cannot be undone."
 msgstr "Все настройки Tachyon будут удалены и восстановлены заводские значения. Сервис будет перезапущен. Это действие нельзя отменить."
@@ -4236,7 +4431,10 @@ msgid "TLS SNI"
 msgstr "TLS SNI"
 
 msgid "TLS-Rec Bounds (--tlsrec)"
-msgstr ""
+msgstr "Границы записей TLS (--tlsrec)"
+
+msgid "Toddler (👶)"
+msgstr "Малыш (👶)"
 
 msgid "Token is required when the bot is enabled"
 msgstr "Токен обязателен, когда бот включён"
@@ -4246,6 +4444,9 @@ msgstr "Допуск"
 
 msgid "Top level has the highest priority; lower levels are used as fallback"
 msgstr "Верхний уровень имеет наивысший приоритет; нижние уровни используются как запасные"
+
+msgid "Total allowed network usage per day for devices in this profile. When the quota is reached, access is blocked until midnight. Enter 0 for unlimited."
+msgstr "Суммарное разрешенное время работы в сети в день для устройств этого профиля. По исчерпании лимита доступ блокируется до полуночи. Введите 0 для отсутствия ограничений."
 
 msgid "Total lines:"
 msgstr "Всего строк:"
@@ -4320,10 +4521,10 @@ msgid "TTL value cannot be empty"
 msgstr "Значение TTL не может быть пустым"
 
 msgid "TTL Values (dpi-desync-ttl)"
-msgstr ""
+msgstr "Значения TTL (dpi-desync-ttl)"
 
 msgid "TTL Values (ttl)"
-msgstr ""
+msgstr "Значения TTL (ttl)"
 
 msgid "Tue"
 msgstr "Вт"
@@ -4420,6 +4621,9 @@ msgstr "Неизвестный флаг NFQWS."
 
 msgid "Unknown NFQWS2 flag."
 msgstr "Неизвестный флаг NFQWS2."
+
+msgid "Unlimited"
+msgstr "Без ограничений"
 
 msgid "Unspecified IP address is not allowed"
 msgstr "Неуказанный IP-адрес не разрешён"
@@ -4560,7 +4764,10 @@ msgid "Used by"
 msgstr "Используется"
 
 msgid "User custom strategy"
-msgstr ""
+msgstr "Пользовательская стратегия"
+
+msgid "User names (e.g. from VLESS/Trojan/SS/JSON inbound users) that are forbidden from reaching LAN subnets. Leave empty to restrict all users on this inbound."
+msgstr "Имена пользователей (например, из пользователей VLESS/Trojan/SS/JSON inbound), которым запрещен доступ к подсетям LAN. Оставьте пустым, чтобы ограничить всех пользователей данного inbound."
 
 msgid "User-Agent"
 msgstr "User-Agent"
@@ -4679,6 +4886,9 @@ msgstr "Приватный ключ WireGuard из вашего аккаунта
 msgid "WireGuard private key from your Cloudflare WARP account"
 msgstr "Приватный ключ WireGuard из вашего аккаунта Cloudflare WARP"
 
+msgid "Working"
+msgstr "Рабочих"
+
 msgid "XHTTP mode"
 msgstr "Режим XHTTP"
 
@@ -4738,6 +4948,18 @@ msgstr "sing-box outbound для Zapret2 настроен"
 
 msgid "Zapret2 sing-box outbound is not configured"
 msgstr "sing-box outbound для Zapret2 не настроен"
+
+msgid "Block internet access or specific proxy sections for individual devices based on time and days."
+msgstr "Блокировка доступа в интернет или определенных секций маршрутизации для отдельных устройств по времени и дням недели."
+
+msgid "Device / IP / MAC"
+msgstr "Устройство / IP / MAC"
+
+msgid "Select LAN devices to apply this schedule to, or enter IP or MAC addresses manually. MAC addresses (e.g. AA:BB:CC:DD:EE:FF) work even if the device's IP changes. IP addresses (e.g. 192.168.1.150) are used for DNS-level blocking and require a stable lease."
+msgstr "Выберите устройства из локальной сети, либо укажите IP или MAC-адреса вручную. MAC-адреса (например AA:BB:CC:DD:EE:FF) работают даже если IP устройства меняется. IP-адреса (например 192.168.1.150) используются для блокировки на уровне DNS и требуют стабильного адреса."
+
+msgid "Target Devices (IP / MAC)"
+msgstr "Целевые устройства (IP / MAC)"
 
 msgid "🏆 Apply Best Strategy"
 msgstr "🏆 Применить лучшую стратегию"
@@ -5093,69 +5315,8 @@ msgstr "Восстановление прямого интернета..."
 msgid "Find optimal DPI bypass strategies with isolated live probing"
 msgstr "Автоматический подбор оптимальных параметров обхода DPI в изолированном сэндбоксе"
 
-msgid "DPI Detected"
-msgstr "DPI обнаружен"
-
-msgid "confidence"
-msgstr "уверенность"
-
-msgid "Recommended"
-msgstr "Рекомендовано"
-
-msgid "Auto-apply best strategy"
-msgstr "Авто-применение лучшей стратегии"
-
-msgid "Benchmark History"
-msgstr "История бенчмарков"
-
-msgid "Refresh"
-msgstr "Обновить"
-
 msgid "Clear History"
 msgstr "Очистить историю"
 
-msgid "No benchmark history yet. Run a benchmark to see results here."
-msgstr "История бенчмарков пуста. Запустите бенчмарк, чтобы увидеть результаты здесь."
-
-msgid "Failed to load history"
-msgstr "Не удалось загрузить историю"
-
-msgid "Date"
-msgstr "Дата"
-
-msgid "DPI Type"
-msgstr "Тип DPI"
-
-msgid "Best Strategy"
-msgstr "Лучшая стратегия"
-
-msgid "Working"
-msgstr "Рабочих"
-
 msgid "Auto-applied best strategy"
 msgstr "Лучшая стратегия автоматически применена"
-
-msgid "Auto-apply failed"
-msgstr "Авто-применение не удалось"
-
-msgid "Failed to detect DPI type"
-msgstr "Не удалось определить тип DPI"
-
-msgid "Failed to auto-apply strategy"
-msgstr "Не удалось автоматически применить стратегию"
-
-msgid "History cleared"
-msgstr "История очищена"
-
-msgid "Restrict LAN access for specific users"
-msgstr "Ограничить доступ к локальной сети для отдельных пользователей"
-
-msgid "Blocks access to private/LAN IP addresses (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, etc.) for selected users before applying routing mode."
-msgstr "Блокирует доступ к приватным/локальным IP-адресам (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 и др.) для указанных пользователей перед применением режима маршрутизации."
-
-msgid "Restricted users (auth_user)"
-msgstr "Изолированные пользователи (auth_user)"
-
-msgid "User names (e.g. from VLESS/Trojan/SS/JSON inbound users) that are forbidden from reaching LAN subnets. Leave empty to restrict all users on this inbound."
-msgstr "Имена пользователей (например, из пользователей VLESS/Trojan/SS/JSON inbound), которым запрещен доступ к подсетям LAN. Оставьте пустым, чтобы ограничить всех пользователей данного inbound."
-

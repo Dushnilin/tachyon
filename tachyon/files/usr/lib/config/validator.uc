@@ -1732,6 +1732,23 @@ function validate_schedule(schedule, sections) {
             fail_validation("Schedule '" + name + "' has invalid device IP or MAC address '" + clean_ip + "'. Aborted.");
     }
 
+    let profile_refs = list_option(schedule, "profile");
+    if (length(profile_refs) == 0) {
+        let single_p = option(schedule, "profile", "");
+        if (single_p != "") profile_refs = [ single_p ];
+    }
+    for (let prof_name in profile_refs) {
+        let found = false;
+        for (let p in profiles) {
+            if (section_name(p) == prof_name) {
+                found = true;
+                break;
+            }
+        }
+        if (!found)
+            fail_validation("Schedule '" + name + "' references unknown profile '" + prof_name + "'. Aborted.");
+    }
+
     let target = option(schedule, "target", "all");
     let sec_names = list_option(schedule, "sections");
     if (length(sec_names) == 0) {
@@ -1775,10 +1792,60 @@ function validate_schedule(schedule, sections) {
         fail_validation("Schedule '" + name + "' has invalid notify '" + notify + "'. Expected 0 or 1. Aborted.");
 }
 
+function validate_profile(profile, profiles) {
+    if (!section_enabled(profile))
+        return;
+    let name = section_name(profile);
+
+    let raw_ips = list_option(profile, "device_ip");
+    if (length(raw_ips) == 0) {
+        let single_ip = option(profile, "device_ip", "");
+        if (single_ip != "") raw_ips = [ single_ip ];
+    }
+
+    for (let ip in raw_ips) {
+        let clean_ip = trim(as_string(ip));
+        let is_mac = match(clean_ip, /^([0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}$/) != null;
+        if (clean_ip != "" && !core_ip.valid_ip_or_cidr(clean_ip) && !is_mac)
+            fail_validation("Profile '" + name + "' has invalid device IP or MAC address '" + clean_ip + "'. Aborted.");
+    }
+
+    let quota_raw = trim(as_string(option(profile, "daily_quota_minutes", "") || ""));
+    if (quota_raw != "") {
+        let quota = int(quota_raw);
+        if (quota < 0 || quota > 1440 || match(quota_raw, /^[0-9]+$/) == null)
+            fail_validation("Profile '" + name + "' has invalid daily_quota_minutes '" + quota_raw + "'. Use a number of minutes between 0 and 1440. Aborted.");
+    }
+
+    let safe_search = option(profile, "safe_search", "0");
+    if (safe_search != "" && safe_search != "0" && safe_search != "1")
+        fail_validation("Profile '" + name + "' has invalid safe_search '" + safe_search + "'. Expected 0 or 1. Aborted.");
+
+    let block_doh = option(profile, "block_doh", "0");
+    if (block_doh != "" && block_doh != "0" && block_doh != "1")
+        fail_validation("Profile '" + name + "' has invalid block_doh '" + block_doh + "'. Expected 0 or 1. Aborted.");
+
+    let notify = option(profile, "notify", "0");
+    if (notify != "" && notify != "0" && notify != "1")
+        fail_validation("Profile '" + name + "' has invalid notify '" + notify + "'. Expected 0 or 1. Aborted.");
+
+    let blocked_domains = list_option(profile, "blocked_domains");
+    if (length(blocked_domains) == 0) {
+        let single_domain = option(profile, "blocked_domains", "");
+        if (single_domain != "") blocked_domains = [ single_domain ];
+    }
+    for (let domain in blocked_domains) {
+        let clean_domain = trim(as_string(domain));
+        if (clean_domain != "" && !combined_domain_valid(clean_domain))
+            fail_validation("Profile '" + name + "' has invalid blocked domain '" + clean_domain + "'. Use plain domains or full:, keyword:, regex: prefixes. Aborted.");
+    }
+}
+
 function validate_runtime_config(context) {
     let settings = settings_section();
     let sections = sections_by_type("section");
     let schedules = sections_by_type("schedule");
+    let profiles = sections_by_type("profile");
 
     validate_runtime_mark_ranges_context(context);
 
@@ -1830,8 +1897,11 @@ function validate_runtime_config(context) {
     for (let section in sections)
         validate_rule(section, sections, context);
 
+    for (let profile in profiles)
+        validate_profile(profile, profiles);
+
     for (let schedule in schedules)
-        validate_schedule(schedule, sections);
+        validate_schedule(schedule, sections, profiles);
 }
 
 function context_from_runtime() {
