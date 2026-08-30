@@ -61,6 +61,70 @@ function get_byedpi_bin() {
     ]);
 }
 
+function get_zapret2_lua_flags(args_str) {
+    if (index(args_str, "--lua-init") >= 0)
+        return "";
+
+    let candidate_dirs = [
+        getenv("ZAPRET2_PROVIDER_LUA_DIR"),
+        "/opt/zapret2/lua",
+        "/usr/share/zapret2/lua",
+        "/etc/zapret2/lua",
+        "/opt/zapret/lua",
+        "/usr/share/zapret/lua"
+    ];
+
+    let flags = "";
+    for (let d in candidate_dirs) {
+        if (!d || fs.stat(d) == null)
+            continue;
+        let lib_lua = d + "/zapret-lib.lua";
+        let antidpi_lua = d + "/zapret-antidpi.lua";
+        let auto_lua = d + "/zapret-auto.lua";
+        if (fs.stat(lib_lua) != null) flags += sprintf("--lua-init=@%s ", lib_lua);
+        if (fs.stat(antidpi_lua) != null) flags += sprintf("--lua-init=@%s ", antidpi_lua);
+        if (fs.stat(auto_lua) != null) flags += sprintf("--lua-init=@%s ", auto_lua);
+        if (flags != "")
+            break;
+    }
+    return flags;
+}
+
+let _fuzzer_curl_dns_flags = null;
+function get_fuzzer_curl_dns_flags() {
+    if (_fuzzer_curl_dns_flags !== null)
+        return _fuzzer_curl_dns_flags;
+    if (system("curl --doh-url https://1.1.1.1/dns-query -V >/dev/null 2>&1") == 0) {
+        _fuzzer_curl_dns_flags = "--doh-url https://1.1.1.1/dns-query ";
+        return _fuzzer_curl_dns_flags;
+    }
+    if (system("curl --dns-servers 8.8.8.8 -V >/dev/null 2>&1") == 0) {
+        _fuzzer_curl_dns_flags = "--dns-servers 8.8.8.8,1.1.1.1 ";
+        return _fuzzer_curl_dns_flags;
+    }
+    _fuzzer_curl_dns_flags = "";
+    return _fuzzer_curl_dns_flags;
+}
+
+function setup_fuzzer_direct_nftables(qnum, is_udp) {
+    system("nft add table inet tachyon_fuzzer 2>/dev/null");
+    system("nft 'add chain inet tachyon_fuzzer output { type filter hook output priority -200 ; policy accept; }' 2>/dev/null");
+    system(sprintf("nft add rule inet tachyon_fuzzer output meta mark %s counter return 2>/dev/null", FUZZER_FWMARK));
+    if (is_udp) {
+        system(sprintf("nft 'add rule inet tachyon_fuzzer output meta l4proto { tcp, udp } th dport { 80, 443, 50000-65535 } counter queue num %d bypass' 2>/dev/null", qnum));
+    } else {
+        system(sprintf("nft 'add rule inet tachyon_fuzzer output meta l4proto tcp tcp dport { 80, 443 } counter queue num %d bypass' 2>/dev/null", qnum));
+    }
+    // Route hook with priority -155 (before TachyonTable's -150) marks test traffic with 0x00200000 (direct outbound mark)
+    // This guarantees that TachyonTable's mangle_output immediately returns and test traffic goes DIRECT to WAN without Sing-box TProxy
+    system("nft 'add chain inet tachyon_fuzzer bypass_singbox { type route hook output priority -155 ; policy accept; }' 2>/dev/null");
+    system(sprintf("nft add rule inet tachyon_fuzzer bypass_singbox meta mark %s counter return 2>/dev/null", FUZZER_FWMARK));
+    system("nft 'add rule inet tachyon_fuzzer bypass_singbox meta l4proto tcp tcp dport { 80, 443 } meta mark set meta mark | 0x00200000 counter' 2>/dev/null");
+    if (is_udp) {
+        system("nft 'add rule inet tachyon_fuzzer bypass_singbox meta l4proto udp udp dport { 80, 443, 50000-65535 } meta mark set meta mark | 0x00200000 counter' 2>/dev/null");
+    }
+}
+
 function validate_strategy_args(engine, args_val) {
     args_val = trim(as_string(args_val));
     if (args_val == "") return false;
@@ -145,11 +209,11 @@ function reset_patterns_config() {
 // Target Suites & Definitions
 const TARGET_SUITES = {
     youtube_suite: {
-        name: "YouTube Full Suite (Web + Static CDN + 4K Stream)",
+        name: "YouTube Full Suite (Web + Static CDN + Stream)",
         urls: [
-            { name: "Web Interface", url: "https://www.youtube.com", weight: 30 },
-            { name: "Static Assets (i.ytimg)", url: "https://i.ytimg.com/generate_204", weight: 20 },
-            { name: "GoogleVideo Stream Chunk", url: "https://rr1---sn-4g5ednss.googlevideo.com/generate_204", weight: 50 }
+            { name: "Web Interface", url: "https://www.youtube.com", weight: 40 },
+            { name: "Static Assets (i.ytimg)", url: "https://i.ytimg.com/generate_204", weight: 30 },
+            { name: "GoogleVideo Stream CDN", url: "https://redirector.googlevideo.com/generate_204", weight: 30 }
         ]
     },
     discord_suite: {
@@ -164,7 +228,7 @@ const TARGET_SUITES = {
         name: "Instagram / Meta Suite (Web + Static CDN)",
         urls: [
             { name: "Web Interface", url: "https://www.instagram.com", weight: 50 },
-            { name: "CDN Static Assets", url: "https://static.cdninstagram.com/rsrc.php/v3/y4/r/dukNmT7A9dd.webp", weight: 50 }
+            { name: "CDN Static Assets", url: "https://static.cdninstagram.com/", weight: 50 }
         ]
     },
     telegram_suite: {
@@ -1028,6 +1092,7 @@ function cleanup_temp_daemons() {
     kill_pid_file(STATE_DIR + "/fuzzer_zapret.pid");
     kill_pid_file(STATE_DIR + "/fuzzer_zapret2.pid");
     system("nft delete table inet tachyon_fuzzer 2>/dev/null");
+    try { fs.unlink(STATE_DIR + "/fuzzer_daemon_err.log"); } catch (e) {}
 }
 
 function parse_curl_output(output, result) {
@@ -1086,6 +1151,7 @@ function parse_curl_output(output, result) {
 function detect_dpi_type(target_key, custom_url) {
     let urls_list = resolve_target_urls_list(target_key, custom_url);
     let target_url = urls_list[0] ? urls_list[0].url : "https://www.google.com";
+    let dns_flags = get_fuzzer_curl_dns_flags();
 
     let result = {
         type: "unknown",
@@ -1095,15 +1161,22 @@ function detect_dpi_type(target_key, custom_url) {
         probe_metrics: { http_code: 0, handshake_ms: 0, ttfb_ms: 0, speed_kbps: 0, error: "" }
     };
 
-    // Direct probe without any bypass
+    // Direct probe with bypass of Sing-box TProxy
+    system("nft add table inet tachyon_fuzzer 2>/dev/null");
+    system("nft 'add chain inet tachyon_fuzzer bypass_singbox { type route hook output priority -155 ; policy accept; }' 2>/dev/null");
+    system("nft 'add rule inet tachyon_fuzzer bypass_singbox meta l4proto tcp tcp dport { 80, 443 } meta mark set meta mark | 0x00200000 counter' 2>/dev/null");
+
     let curl_cmd = sprintf(
-        "curl -so /dev/null -w '%%{http_code}\\t%%{time_appconnect}\\t%%{time_starttransfer}\\t%%{speed_download}' -L --connect-timeout 3 --max-time 5 %s 2>&1",
+        "curl %s-so /dev/null -w '%%{http_code}\\t%%{time_appconnect}\\t%%{time_starttransfer}\\t%%{speed_download}' -L --connect-timeout 4 --max-time 6 %s 2>&1",
+        dns_flags,
         shell_quote(target_url)
     );
     let pipe = fs.popen(curl_cmd, "r");
     let output = pipe ? pipe.read("all") : "";
     if (pipe) pipe.close();
     output = trim(output);
+
+    cleanup_temp_daemons();
 
     let metrics = {};
     parse_curl_output(output, metrics);
@@ -1304,9 +1377,37 @@ function run_probe(engine, args_str, target_key, custom_url) {
         }
         
         let pid_path = STATE_DIR + "/fuzzer_byedpi.pid";
-        let spawn_cmd = sprintf("cd /tmp && %s -i 127.0.0.1 -p %d %s", bin, BYEDPI_PORT, args_str);
+        let stderr_log = STATE_DIR + "/fuzzer_daemon_err.log";
+        let spawn_cmd = sprintf("cd /tmp && %s -i 127.0.0.1 -p %d %s 2>%s", bin, BYEDPI_PORT, args_str, shell_quote(stderr_log));
         system(common.background_command_with_pid(spawn_cmd, ">/dev/null", ">" + shell_quote(pid_path)));
-        system("sleep 0.15");
+        system("sleep 0.25");
+        
+        let pid_str = fs.readfile(pid_path);
+        let pid_running = false;
+        if (pid_str) {
+            let pid = trim(as_string(pid_str));
+            if (pid != "" && match(pid, /^[0-9]+$/) != null && system(sprintf("kill -0 %s >/dev/null 2>&1", pid)) == 0) {
+                pid_running = true;
+            }
+        }
+        
+        if (!pid_running) {
+            let err_content = fs.readfile(stderr_log);
+            let err_msg = err_content ? trim(as_string(err_content)) : "";
+            if (err_msg != "") {
+                let first_line = split(err_msg, "\n")[0];
+                result.error = sprintf("Daemon failed to start: %s", first_line);
+            } else {
+                result.error = "ByeDPI daemon failed to start (invalid arguments)";
+            }
+            cleanup_temp_daemons();
+            return result;
+        }
+        
+        // Ensure ciadpi direct outbound connections bypass Sing-Box TProxy
+        system("nft add table inet tachyon_fuzzer 2>/dev/null");
+        system("nft 'add chain inet tachyon_fuzzer bypass_singbox { type route hook output priority -155 ; policy accept; }' 2>/dev/null");
+        system("nft 'add rule inet tachyon_fuzzer bypass_singbox meta l4proto tcp tcp dport { 80, 443 } meta mark set meta mark | 0x00200000 counter' 2>/dev/null");
         
         let passed_count = 0;
         let sum_handshake = 0;
@@ -1316,7 +1417,7 @@ function run_probe(engine, args_str, target_key, custom_url) {
         
         for (let target_item in urls_list) {
             let curl_cmd = sprintf(
-                "curl -x socks5h://127.0.0.1:%d -so /dev/null -w '%%{http_code}\\t%%{time_appconnect}\\t%%{time_starttransfer}\\t%%{speed_download}' -L --connect-timeout 2 --max-time 3 %s 2>/dev/null",
+                "curl -x socks5h://127.0.0.1:%d -so /dev/null -w '%%{http_code}\\t%%{time_appconnect}\\t%%{time_starttransfer}\\t%%{speed_download}' -L --connect-timeout 4 --max-time 6 %s 2>/dev/null",
                 BYEDPI_PORT,
                 shell_quote(target_item.url)
             );
@@ -1337,6 +1438,7 @@ function run_probe(engine, args_str, target_key, custom_url) {
                 last_http = single_res.http_code;
             } else {
                 if (last_http == 0) last_http = single_res.http_code;
+                if (single_res.error && result.error == "") result.error = single_res.error;
                 break;
             }
         }
@@ -1350,11 +1452,14 @@ function run_probe(engine, args_str, target_key, custom_url) {
             result.ttfb_ms = int(sum_ttfb / double(total_urls));
             result.speed_kbps = max_speed;
             result.score = 100 + max(0, 1000 - result.ttfb_ms) + int(result.speed_kbps / 10.0);
+            result.error = "";
         } else {
             result.success = false;
             result.http_code = last_http;
             result.score = 0;
-            result.error = sprintf("Failed %d of %d endpoints", total_urls - passed_count, total_urls);
+            if (result.error == "") {
+                result.error = sprintf("Failed %d of %d endpoints", total_urls - passed_count, total_urls);
+            }
         }
         
         return result;
@@ -1365,6 +1470,7 @@ function run_probe(engine, args_str, target_key, custom_url) {
         let bin = is_z2 ? get_zapret2_bin() : get_zapret_bin();
         let qnum = is_z2 ? NFQUEUE_QNUM_ZAPRET2 : NFQUEUE_QNUM_ZAPRET;
         let pid_path = is_z2 ? (STATE_DIR + "/fuzzer_zapret2.pid") : (STATE_DIR + "/fuzzer_zapret.pid");
+        let stderr_log = STATE_DIR + "/fuzzer_daemon_err.log";
         
         if (!bin) {
             result.error = (is_z2 ? "Zapret v2" : "Zapret v1") + " binary not found";
@@ -1372,8 +1478,8 @@ function run_probe(engine, args_str, target_key, custom_url) {
         }
         
         let lua_init_flags = "";
-        if (is_z2 && fs.stat("/opt/zapret2/lua/zapret-lib.lua") != null && index(args_str, "--lua-init") < 0) {
-            lua_init_flags = "--lua-init=@/opt/zapret2/lua/zapret-lib.lua --lua-init=@/opt/zapret2/lua/zapret-antidpi.lua --lua-init=@/opt/zapret2/lua/zapret-auto.lua ";
+        if (is_z2) {
+            lua_init_flags = get_zapret2_lua_flags(args_str);
         }
         
         let filter_prefix = "";
@@ -1384,28 +1490,45 @@ function run_probe(engine, args_str, target_key, custom_url) {
             filter_prefix += "--filter-udp=443 --payload=quic_initial ";
         }
         
-        let spawn_cmd = sprintf("cd /tmp && %s --qnum=%d --fwmark=%s %s%s%s --pidfile=%s --daemon", bin, qnum, FUZZER_FWMARK, lua_init_flags, filter_prefix, args_str, pid_path);
+        let spawn_cmd = sprintf("cd /tmp && %s --qnum=%d --fwmark=%s %s%s%s --pidfile=%s --daemon 2>%s", bin, qnum, FUZZER_FWMARK, lua_init_flags, filter_prefix, args_str, pid_path, shell_quote(stderr_log));
         system(common.background_command(spawn_cmd));
-        system("sleep 0.15");
+        system("sleep 0.25");
         
-        system("nft add table inet tachyon_fuzzer 2>/dev/null");
-        system("nft 'add chain inet tachyon_fuzzer output { type filter hook output priority -200 ; }' 2>/dev/null");
-        system(sprintf("nft add rule inet tachyon_fuzzer output meta mark %s counter return 2>/dev/null", FUZZER_FWMARK));
-        if (is_udp) {
-            system(sprintf("nft 'add rule inet tachyon_fuzzer output meta l4proto { tcp, udp } th dport { 80, 443, 50000-65535 } counter queue num %d bypass' 2>/dev/null", qnum));
-        } else {
-            system(sprintf("nft 'add rule inet tachyon_fuzzer output meta l4proto tcp tcp dport { 80, 443 } counter queue num %d bypass' 2>/dev/null", qnum));
+        let pid_str = fs.readfile(pid_path);
+        let pid_running = false;
+        if (pid_str) {
+            let pid = trim(as_string(pid_str));
+            if (pid != "" && match(pid, /^[0-9]+$/) != null && system(sprintf("kill -0 %s >/dev/null 2>&1", pid)) == 0) {
+                pid_running = true;
+            }
         }
+        
+        if (!pid_running) {
+            let err_content = fs.readfile(stderr_log);
+            let err_msg = err_content ? trim(as_string(err_content)) : "";
+            if (err_msg != "") {
+                let first_line = split(err_msg, "\n")[0];
+                result.error = sprintf("Daemon failed to start: %s", first_line);
+            } else {
+                result.error = sprintf("Daemon %s failed to start (invalid arguments or missing Lua library)", is_z2 ? "nfqws2" : "nfqws");
+            }
+            cleanup_temp_daemons();
+            return result;
+        }
+        
+        setup_fuzzer_direct_nftables(qnum, is_udp);
         
         let passed_count = 0;
         let sum_handshake = 0;
         let sum_ttfb = 0;
         let max_speed = 0;
         let last_http = 0;
+        let dns_flags = get_fuzzer_curl_dns_flags();
         
         for (let target_item in urls_list) {
             let curl_cmd = sprintf(
-                "curl -so /dev/null -w '%%{http_code}\\t%%{time_appconnect}\\t%%{time_starttransfer}\\t%%{speed_download}' -L --connect-timeout 2 --max-time 3 %s 2>/dev/null",
+                "curl %s-so /dev/null -w '%%{http_code}\\t%%{time_appconnect}\\t%%{time_starttransfer}\\t%%{speed_download}' -L --connect-timeout 4 --max-time 6 %s 2>/dev/null",
+                dns_flags,
                 shell_quote(target_item.url)
             );
             let pipe = fs.popen(curl_cmd, "r");
@@ -1425,6 +1548,7 @@ function run_probe(engine, args_str, target_key, custom_url) {
                 last_http = single_res.http_code;
             } else {
                 if (last_http == 0) last_http = single_res.http_code;
+                if (single_res.error && result.error == "") result.error = single_res.error;
                 break;
             }
         }
@@ -1438,11 +1562,14 @@ function run_probe(engine, args_str, target_key, custom_url) {
             result.ttfb_ms = int(sum_ttfb / double(total_urls));
             result.speed_kbps = max_speed;
             result.score = 100 + max(0, 1000 - result.ttfb_ms) + int(result.speed_kbps / 10.0);
+            result.error = "";
         } else {
             result.success = false;
             result.http_code = last_http;
             result.score = 0;
-            result.error = sprintf("Failed %d of %d endpoints", total_urls - passed_count, total_urls);
+            if (result.error == "") {
+                result.error = sprintf("Failed %d of %d endpoints", total_urls - passed_count, total_urls);
+            }
         }
         
         return result;

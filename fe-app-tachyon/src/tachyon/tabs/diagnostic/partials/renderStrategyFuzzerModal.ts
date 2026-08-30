@@ -1281,6 +1281,11 @@ export function renderStrategyFuzzerModal(ruleNames: string[] = []) {
         subProbesHtml = `<div style="font-size: 10px; opacity: 0.75; margin-top: 2px;">${passedSub}/${totalSub} endpoints OK</div>`;
       }
 
+      let errorHtml = '';
+      if (!item.success && item.error) {
+        errorHtml = `<div style="font-size: 10px; color: #dc3545; opacity: 0.85; margin-top: 2px; max-width: 140px; word-break: break-word;" title="${item.error}">${item.error}</div>`;
+      }
+
       let badgeHtml = '';
       if (item.badge) {
         badgeHtml = `<span style="font-size: 10px; margin-left: 6px; font-weight: bold; color: ${isBest ? '#28a745' : '#17a2b8'};">${item.badge}</span>`;
@@ -1320,7 +1325,7 @@ export function renderStrategyFuzzerModal(ruleNames: string[] = []) {
           E(
             'td',
             { style: 'padding: 8px 10px;' },
-            E('div', { innerHTML: statusBadge + subProbesHtml }),
+            E('div', { innerHTML: statusBadge + subProbesHtml + errorHtml }),
           ),
           E(
             'td',
