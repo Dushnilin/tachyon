@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-08-29 21:28+0300\n"
-"PO-Revision-Date: 2026-08-29 21:28+0300\n"
+"POT-Creation-Date: 2026-08-30 19:56+0300\n"
+"PO-Revision-Date: 2026-08-30 19:56+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -2135,6 +2135,9 @@ msgstr "Установленная сборка → Доступная сбор�
 msgid "Installed version is newer than release"
 msgstr "Установлена версия новее релиза"
 
+msgid "Interface"
+msgstr ""
+
 msgid "Interface Monitoring"
 msgstr "Мониторинг интерфейсов"
 
@@ -2951,6 +2954,9 @@ msgstr "Откройте настройки приоритета и введит
 msgid "Open Project Page"
 msgstr "Открыть страницу проекта"
 
+msgid "OpenWrt Network Interfaces"
+msgstr ""
+
 msgid "Operation completed successfully!"
 msgstr "Операция успешно завершена!"
 
@@ -3641,8 +3647,8 @@ msgstr "Действие секции"
 msgid "Section name"
 msgstr "Имя секции"
 
-msgid "Section or tunnel interface used for Cloudflare WARP API registration. Supports Connection, WireGuard, AmneziaWG, and Interface sections. Leave empty to use direct WAN / default mixed proxy."
-msgstr "Секция или туннельный интерфейс для регистрации Cloudflare WARP API. Поддерживает секции Connection, WireGuard, AmneziaWG и Interface. Оставьте пустым для прямого WAN / стандартного mixed proxy."
+msgid "Section or network interface used for Cloudflare WARP API registration. Supports Tachyon sections (Connection, WireGuard, AmneziaWG, Interface) and OpenWrt system network devices/interfaces (awg0, wg0, tun0, etc.). Leave empty to use direct WAN / default mixed proxy."
+msgstr ""
 
 msgid "Section Rules Content"
 msgstr "Содержимое правил секции"
@@ -4204,6 +4210,9 @@ msgstr "Tachyon управляет жизненным циклом процес�
 
 msgid "Tachyon manages the nfqws2 process lifecycle itself, so daemon mode is not allowed here."
 msgstr "Tachyon управляет жизненным циклом процесса nfqws2 самостоятельно, поэтому режим daemon здесь не допускается."
+
+msgid "Tachyon Sections"
+msgstr ""
 
 msgid "Tachyon service is stopped. Start the service to display connections."
 msgstr "Служба Tachyon остановлена. Запустите сервис для отображения подключений."
@@ -4948,6 +4957,9 @@ msgstr "sing-box outbound для Zapret2 настроен"
 
 msgid "Zapret2 sing-box outbound is not configured"
 msgstr "sing-box outbound для Zapret2 не настроен"
+
+msgid "Section or tunnel interface used for Cloudflare WARP API registration. Supports Connection, WireGuard, AmneziaWG, and Interface sections. Leave empty to use direct WAN / default mixed proxy."
+msgstr "Секция или туннельный интерфейс для регистрации Cloudflare WARP API. Поддерживает секции Connection, WireGuard, AmneziaWG и Interface. Оставьте пустым для прямого WAN / стандартного mixed proxy."
 
 msgid "Block internet access or specific proxy sections for individual devices based on time and days."
 msgstr "Блокировка доступа в интернет или определенных секций маршрутизации для отдельных устройств по времени и дням недели."

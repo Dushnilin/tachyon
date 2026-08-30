@@ -2673,13 +2673,20 @@ function run_doctor_checks_impl(repair) {
     // Check Main DNS
     let dns_main_reachable = false;
     if (main_dns_type == "doh") {
-        let curl_cmd = "curl -sS --max-time 4 -o /dev/null -w %{http_code} https://" + display_main + "/dns-query";
+        let doh_url = display_main;
+        if (!match(doh_url, /^https?:\/\//))
+            doh_url = "https://" + doh_url;
+        if (!match(doh_url, /\/dns-query$/) && !match(doh_url, /\/query$/) && !match(doh_url, /^https?:\/\/[^\/]+\/.+/))
+            doh_url = doh_url + "/dns-query";
+
+        let curl_cmd = "curl -s -m 4 -o /dev/null -w '%{http_code}' " + shell_quote(doh_url) + " 2>/dev/null";
         let curl_res = command_capture(curl_cmd);
         if (curl_res.status == 0 && int(curl_res.output) < 400) {
             dns_main_reachable = true;
             doc_check("✅", "DNS main (" + display_main + ")", "reachable", "");
         } else {
-            let curl_cmd2 = "curl -sS --max-time 4 -o /dev/null -w %{http_code} https://" + display_main;
+            let base_url = replace(doh_url, /\/dns-query$/, "");
+            let curl_cmd2 = "curl -s -m 4 -o /dev/null -w '%{http_code}' " + shell_quote(base_url) + " 2>/dev/null";
             let curl_res2 = command_capture(curl_cmd2);
             if (curl_res2.status == 0 && int(curl_res2.output) < 400) {
                 dns_main_reachable = true;
@@ -3276,6 +3283,7 @@ const DOCTOR_LOCK_DIR = "/var/run/tachyon.doctor.lock";
 const DOCTOR_HISTORY_FILE = "/tmp/tachyon_doctor_history.json";
 
 function doctor_lock_try() {
+    command_status("mkdir -p /var/run /tmp/run 2>/dev/null");
     if (command_status("mkdir " + shell_quote(DOCTOR_LOCK_DIR) + " 2>/dev/null") == 0)
         return true;
     let st = fs.stat(DOCTOR_LOCK_DIR);

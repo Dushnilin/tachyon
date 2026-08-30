@@ -1,6 +1,10 @@
 import { TachyonShellMethods } from '../../../methods';
 import { showToast } from '../../../../helpers/showToast';
 import { getConfigSections } from '../../../methods/custom/getConfigSections';
+import {
+  fetchNetworkInterfaces,
+  AdvNetworkDevice,
+} from '../../../fetchers/fetchNetworkInterfaces';
 import { TACHYON_UCI_PACKAGE } from '../../../../constants';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -19,6 +23,7 @@ interface AdvancedSettingsState {
   smartDetectSections: string[];
   allSectionNames: string[];
   sectionOptions: AdvSectionOption[];
+  networkDevices: AdvNetworkDevice[];
   deviceIpsPerSection: Record<string, string[]>;
   dnsTurboCache: boolean;
   agentApiToken: string;
@@ -59,6 +64,7 @@ let _state: AdvancedSettingsState = {
   smartDetectSections: [],
   allSectionNames: [],
   sectionOptions: [],
+  networkDevices: [],
   deviceIpsPerSection: {},
   dnsTurboCache: false,
   agentApiToken: '',
@@ -106,7 +112,10 @@ function rerender() {
 // ─── Data loading ─────────────────────────────────────────────────────────────
 
 export async function loadAdvancedSettingsState() {
-  const sections = await getConfigSections();
+  const [sections, networkDevices] = await Promise.all([
+    getConfigSections(),
+    fetchNetworkInterfaces(),
+  ]);
 
   const settingsSec = sections.find((s) => s['.type'] === 'settings');
   const smartDetect = settingsSec?.smart_detect === '1';
@@ -169,6 +178,7 @@ export async function loadAdvancedSettingsState() {
         : allSectionNames.slice(0, 1),
     allSectionNames,
     sectionOptions,
+    networkDevices,
     deviceIpsPerSection,
     dnsTurboCache: settingsSec?.dns_turbo_cache === '1',
     agentApiToken:
@@ -825,21 +835,50 @@ function renderAiWatchdogSection(state: AdvancedSettingsState) {
               },
               _('Default (Direct WAN / Default mixed proxy)'),
             ),
-            ...state.sectionOptions.map((sec) => {
-              const desc = sec.iface
-                ? ` (${sec.action}: ${sec.iface})`
-                : ` (${sec.action})`;
-              return E(
-                'option',
-                {
-                  value: sec.id,
-                  selected: state.warpProxySection === sec.id,
-                },
-                `${sec.label}${desc}`,
-              );
-            }),
+            ...(state.sectionOptions.length > 0
+              ? [
+                  E(
+                    'optgroup',
+                    { label: _('Tachyon Sections') },
+                    state.sectionOptions.map((sec) => {
+                      const desc = sec.iface
+                        ? ` (${sec.action}: ${sec.iface})`
+                        : ` (${sec.action})`;
+                      return E(
+                        'option',
+                        {
+                          value: sec.id,
+                          selected: state.warpProxySection === sec.id,
+                        },
+                        `${sec.label}${desc}`,
+                      );
+                    }),
+                  ),
+                ]
+              : []),
+            ...(state.networkDevices.length > 0
+              ? [
+                  E(
+                    'optgroup',
+                    { label: _('OpenWrt Network Interfaces') },
+                    state.networkDevices.map((dev) =>
+                      E(
+                        'option',
+                        {
+                          value: dev.id,
+                          selected: state.warpProxySection === dev.id,
+                        },
+                        dev.label,
+                      ),
+                    ),
+                  ),
+                ]
+              : []),
             ...(state.warpProxySection &&
-            !state.sectionOptions.some((s) => s.id === state.warpProxySection)
+            !state.sectionOptions.some(
+              (s) => s.id === state.warpProxySection,
+            ) &&
+            !state.networkDevices.some((d) => d.id === state.warpProxySection)
               ? [
                   E(
                     'option',
@@ -858,7 +897,7 @@ function renderAiWatchdogSection(state: AdvancedSettingsState) {
         'div',
         { class: 'tachyon_adv__hint' },
         _(
-          'Section or tunnel interface used for Cloudflare WARP API registration. Supports Connection, WireGuard, AmneziaWG, and Interface sections. Leave empty to use direct WAN / default mixed proxy.',
+          'Section or network interface used for Cloudflare WARP API registration. Supports Tachyon sections (Connection, WireGuard, AmneziaWG, Interface) and OpenWrt system network devices/interfaces (awg0, wg0, tun0, etc.). Leave empty to use direct WAN / default mixed proxy.',
         ),
       ),
       state.enableAiDoctor

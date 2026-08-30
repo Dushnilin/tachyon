@@ -70,6 +70,13 @@ if (warp_proxy_section != "") {
         }
     } else if (fs.stat("/sys/class/net/" + warp_proxy_section) != null) {
         proxy_interface = warp_proxy_section;
+    } else if (uci.get("network", warp_proxy_section)) {
+        let net_dev = uci.get("network", warp_proxy_section, "device") || 
+                      uci.get("network", warp_proxy_section, "ifname") || 
+                      warp_proxy_section;
+        if (fs.stat("/sys/class/net/" + net_dev) != null) {
+            proxy_interface = net_dev;
+        }
     }
 }
 

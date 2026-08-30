@@ -3,6 +3,7 @@
 "require uci";
 "require baseclass";
 "require fs";
+"require network";
 "require ui";
 "require tools.widgets as widgets";
 "require view.tachyon.main as main";
@@ -1650,9 +1651,31 @@ function createSettingsContent(section, capabilities) {
         const action = sec.action || "section";
         const iface = sec.section_interface || sec.interface || "";
         const desc = iface ? ` (${action}: ${iface})` : ` (${action})`;
-        this.value(secName, `${sec.label || secName}${desc}`);
+        this.value(secName, `${_("Section")}: ${sec.label || secName}${desc}`);
       }
     }
+
+    if (typeof network !== "undefined" && typeof network.getDevices === "function") {
+      return network.getDevices().then(
+        L.bind(function (devices) {
+          (devices || []).forEach((dev) => {
+            const name = typeof dev.getName === "function" ? dev.getName() : dev.name;
+            if (name && name !== "lo" && !this.keylist.includes(name)) {
+              const type =
+                typeof dev.getTypeI18n === "function"
+                  ? dev.getTypeI18n()
+                  : typeof dev.getType === "function"
+                    ? dev.getType()
+                    : "";
+              const desc = type ? ` (${type})` : "";
+              this.value(name, `${_("Interface")}: ${name}${desc}`);
+            }
+          });
+          return this.cfgvalue(section_id);
+        }, this),
+      );
+    }
+
     return this.cfgvalue(section_id);
   };
   o.write = function (section_id, value) {
