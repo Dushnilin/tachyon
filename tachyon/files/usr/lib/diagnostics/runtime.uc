@@ -3115,7 +3115,7 @@ function run_doctor_checks_impl(repair) {
                     doc_plan("/usr/bin/tachyon list_update");
                     doc_check("⚠️", "Community lists",
                         sprintf("%d/%d missing", length(missing_lists), length(all_required)),
-                        "→ WILL FIX (doctor --fix): загрузка через list_update");
+                        "→ WILL FIX (doctor --fix): загрузка через list_update (с прокси-маршрутизацией при необходимости)");
                 } else {
                     // Attempt repair: download missing lists
                     command_status("/usr/bin/tachyon list_update > /dev/null 2>&1");
@@ -3129,15 +3129,37 @@ function run_doctor_checks_impl(repair) {
                         }
                     }
 
+                    if (length(still_missing) > 0) {
+                        let first_proxy = "";
+                        for (let s in all_sections) {
+                            if (s.enabled != "0" && s.action != "bypass" && s.action != "block" && s.action != "dns" && s.action != "") {
+                                first_proxy = s[".name"];
+                                break;
+                            }
+                        }
+                        if (first_proxy != "") {
+                            command_status("uci set tachyon.settings.download_lists_via_proxy='1'; uci set tachyon.settings.download_lists_via_proxy_section=" + shell_quote(first_proxy) + "; uci commit tachyon >/dev/null 2>&1");
+                            command_status("/usr/bin/tachyon list_update > /dev/null 2>&1");
+                            still_missing = [];
+                            for (let list_name in missing_lists) {
+                                let srs_path = TMP_RULESET_FOLDER + "/community-" + list_name + ".srs";
+                                let srs_stat = fs.stat(srs_path);
+                                if (srs_stat == null || srs_stat.size == 0) {
+                                    push(still_missing, list_name);
+                                }
+                            }
+                        }
+                    }
+
                     if (length(still_missing) == 0) {
                         doc_check("❌", "Community lists",
                             sprintf("%d/%d missing", length(missing_lists), length(all_required)),
-                            "→ FIXED: загружены через list_update");
+                            "→ FIXED: загружены через list_update (маршрут через прокси настроен)");
                         fixed++;
                     } else {
                         doc_check("❌", "Community lists",
                             sprintf("%d/%d отсутствуют: %s", length(still_missing), length(all_required), join(", ", still_missing)),
-                            "→ не удалось загрузить — проверьте интернет-соединение");
+                            "→ не удалось загрузить — проверьте доступность прокси/GitHub");
                     }
                 }
             }

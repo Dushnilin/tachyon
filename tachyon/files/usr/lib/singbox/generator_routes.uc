@@ -790,6 +790,12 @@ function ensure_community_ruleset(config, section_name, community) {
                 update_interval: remote_ruleset_update_interval()
             };
             let detour = ctx.download_detour_tag(ctx.runtime_settings(), "lists");
+            if (detour == "" && section_name != "") {
+                let sec_out = outbound_tag(section_name);
+                if (sec_out != "" && sec_out != runtime_constants.DIRECT_OUTBOUND_TAG && sec_out != runtime_constants.BYPASS_OUTBOUND_TAG) {
+                    detour = sec_out;
+                }
+            }
             if (detour != "")
                 rule_set.download_detour = detour;
             push(config.route.rule_set, rule_set);

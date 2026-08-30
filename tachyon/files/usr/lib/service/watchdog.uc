@@ -761,6 +761,44 @@ function heal_qos(ev) {
     safe_reload_firewall();
 }
 
+function heal_uncached_rulesets_detour() {
+    let cfg = settings();
+    if (common.bool_option(cfg, "download_lists_via_proxy", false))
+        return false;
+
+    let has_rulesets = false;
+    let proxy_section_name = "";
+    
+    uci_core.foreach(CONFIG_NAME, "section", function(s) {
+        if (!common.bool_option(s, "enabled", true)) return;
+        let act = common.option(s, "action", "");
+        if (act != "bypass" && act != "block" && act != "dns" && act != "") {
+            if (proxy_section_name == "")
+                proxy_section_name = s[".name"];
+        }
+        let lists = connections.community_lists(s);
+        let custom_rulesets = connections.rule_sets(s);
+        if (length(lists) > 0 || length(custom_rulesets) > 0)
+            has_rulesets = true;
+    });
+
+    if (has_rulesets && proxy_section_name != "") {
+        log_message("Watchdog: DNS stalled with remote rulesets on direct WAN; auto-enabling download_lists_via_proxy through " + proxy_section_name, "warn");
+        system("/sbin/uci set tachyon.settings.download_lists_via_proxy='1' >/dev/null 2>&1");
+        system("/sbin/uci set tachyon.settings.download_lists_via_proxy_section=" + shell_quote(proxy_section_name) + " >/dev/null 2>&1");
+        system("/sbin/uci commit tachyon >/dev/null 2>&1");
+        bg_system("/usr/bin/tachyon list_update");
+        ai_heal_report(
+            "ruleset_proxy_detour",
+            "DNS stalled during remote ruleset fetch on direct WAN",
+            "Включена загрузка списков через прокси-секцию " + proxy_section_name + " и запущено фоновое обновление",
+            "fixed"
+        );
+        return true;
+    }
+    return false;
+}
+
 // Threshold 3 is the original ai_heal_dns() streak: two isolated failures are
 // noise, three in a row is a stall. The streak reset after acting prevents the
 // in-flight restart from tripping the same threshold on the next tick.
@@ -771,12 +809,13 @@ function heal_dns_stall(ev) {
 
     controller.reset_dns_streak();
 
+    let detour_healed = heal_uncached_rulesets_detour();
     log_message("Watchdog: DNS stalled after 3 attempts, soft-reloading proxy runtime", "warn");
 
     let incident = {
         type: "dns",
-        description: "DNS resolution stalled on sing-box (port 53)",
-        resolution: "Soft-reloaded proxy runtime safely without breaking active TCP/RDP connections"
+        description: detour_healed ? "Зависание DNS из-за блокировки прямой загрузки списков правил" : "DNS resolution stalled on sing-box (port 53)",
+        resolution: detour_healed ? "Включена загрузка списков через прокси и выполнен мягкий перезапуск" : "Soft-reloaded proxy runtime safely without breaking active TCP/RDP connections"
     };
 
     // The restart is asynchronous, so `true` means only that it was launched.

@@ -326,7 +326,18 @@ function download_via_proxy_section(settings, purpose) {
     if (configured != "")
         return configured;
 
-    return option(settings, "download_lists_via_proxy_section", "");
+    let fallback_configured = option(settings, "download_lists_via_proxy_section", "");
+    if (fallback_configured != "")
+        return fallback_configured;
+
+    if (type(enabled_sections) == "function") {
+        for (let s in enabled_sections()) {
+            let act = option(s, "action", "");
+            if (act != "bypass" && act != "block" && act != "dns" && act != "")
+                return s[".name"];
+        }
+    }
+    return "";
 }
 
 function download_via_proxy_enabled(settings, purpose) {

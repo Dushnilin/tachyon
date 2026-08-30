@@ -52,28 +52,32 @@ let proxy_port = "";
 let proxy_interface = "";
 
 if (warp_proxy_section != "") {
-    if (uci.get(CONFIG_NAME, warp_proxy_section)) {
-        let section_action = uci.get(CONFIG_NAME, warp_proxy_section, "action") || "";
-        let section_iface = uci.get(CONFIG_NAME, warp_proxy_section, "section_interface") || 
-                            uci.get(CONFIG_NAME, warp_proxy_section, "interface") || 
-                            uci.get(CONFIG_NAME, warp_proxy_section, "device") || "";
-        let section_port = uci.get(CONFIG_NAME, warp_proxy_section, "mixed_proxy_port") || "";
+    let clean_section = warp_proxy_section;
+    if (match(clean_section, /^netif:/)) {
+        clean_section = substr(clean_section, 6);
+    }
+    if (uci.get(CONFIG_NAME, clean_section)) {
+        let section_action = uci.get(CONFIG_NAME, clean_section, "action") || "";
+        let section_iface = uci.get(CONFIG_NAME, clean_section, "section_interface") || 
+                            uci.get(CONFIG_NAME, clean_section, "interface") || 
+                            uci.get(CONFIG_NAME, clean_section, "device") || "";
+        let section_port = uci.get(CONFIG_NAME, clean_section, "mixed_proxy_port") || "";
         
         if (section_iface != "") {
             proxy_interface = section_iface;
         } else if (section_action == "interface") {
-            proxy_interface = warp_proxy_section;
+            proxy_interface = clean_section;
         }
         
         if (section_port != "" && match(section_port, /^[0-9]+$/) != null) {
             proxy_port = section_port;
         }
-    } else if (fs.stat("/sys/class/net/" + warp_proxy_section) != null) {
-        proxy_interface = warp_proxy_section;
-    } else if (uci.get("network", warp_proxy_section)) {
-        let net_dev = uci.get("network", warp_proxy_section, "device") || 
-                      uci.get("network", warp_proxy_section, "ifname") || 
-                      warp_proxy_section;
+    } else if (fs.stat("/sys/class/net/" + clean_section) != null) {
+        proxy_interface = clean_section;
+    } else if (uci.get("network", clean_section)) {
+        let net_dev = uci.get("network", clean_section, "device") || 
+                      uci.get("network", clean_section, "ifname") || 
+                      clean_section;
         if (fs.stat("/sys/class/net/" + net_dev) != null) {
             proxy_interface = net_dev;
         }
