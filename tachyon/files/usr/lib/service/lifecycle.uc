@@ -778,6 +778,12 @@ function start_main() {
 
     module_success(BYEDPI_UC, [ "start-runtime" ]);
 
+    for (let comp_svc in [ "forkop", "podkop" ]) {
+        if (file_exists("/etc/init.d/" + comp_svc)) {
+            command_status_from_args([ "/etc/init.d/" + comp_svc, "stop" ]);
+        }
+    }
+
     let sb_start = command_success_from_args([ "/etc/init.d/sing-box", "start" ]);
     if (!sb_start) {
         log_message("Failed to start sing-box. Aborted.", "fatal");

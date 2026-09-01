@@ -488,6 +488,16 @@ function configure_service() {
         log_message("Disabling standalone sing-box autostart", "info");
         command_success_from_args([ "/etc/init.d/sing-box", "disable" ]);
     }
+
+    for (let comp_svc in [ "forkop", "podkop" ]) {
+        if (file_exists("/etc/init.d/" + comp_svc)) {
+            command_status_from_args([ "/etc/init.d/" + comp_svc, "stop" ]);
+            command_status_from_args([ "/etc/init.d/" + comp_svc, "disable" ]);
+        }
+        for (let rc_link in (fs.glob("/etc/rc.d/*" + comp_svc) || [])) {
+            remove_file(rc_link);
+        }
+    }
 }
 
 function download_via_proxy_option_for_purpose(purpose) {
