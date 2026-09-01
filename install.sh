@@ -1427,7 +1427,7 @@ function installer_finalize_legacy() {
 }
 
 function installer_post_install() {
-    remove_globs(env("TACHYON_INSTALLER_LUCI_CACHE_GLOBS", "/var/luci-indexcache* /tmp/luci-indexcache*"));
+    remove_globs(env("TACHYON_INSTALLER_LUCI_CACHE_GLOBS", "/var/luci-indexcache* /tmp/luci-indexcache* /var/luci-modulecache* /tmp/luci-modulecache*"));
     for (let path in [
         env("TACHYON_INSTALLER_LATEST_VERSION_CACHE", "/tmp/tachyon.latest-version.cache"),
         env("TACHYON_INSTALLER_SYSTEM_INFO_CACHE", "/var/run/tachyon/system-info.json"),
@@ -1437,8 +1437,10 @@ function installer_post_install() {
     ])
         remove_path(path);
 
-    if (path_executable(INSTALLER_RPCD_INIT))
-        run_args([ "timeout", "10", INSTALLER_RPCD_INIT, "reload" ]);
+    if (path_executable(INSTALLER_RPCD_INIT)) {
+        run_args([ "timeout", "10", INSTALLER_RPCD_INIT, "restart" ]);
+        run_args([ "timeout", "10", "/etc/init.d/uhttpd", "restart" ]);
+    }
 
     if (env("TACHYON_WAS_ENABLED", "0") == "1" && path_executable(INSTALLER_TACHYON_INIT))
         run_args([ "timeout", "10", INSTALLER_TACHYON_INIT, "enable" ]);

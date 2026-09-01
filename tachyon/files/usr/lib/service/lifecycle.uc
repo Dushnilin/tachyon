@@ -779,7 +779,7 @@ function start_main() {
     module_success(BYEDPI_UC, [ "start-runtime" ]);
 
     for (let comp_svc in [ "forkop", "podkop" ]) {
-        if (file_exists("/etc/init.d/" + comp_svc)) {
+        if (fs.stat("/etc/init.d/" + comp_svc) != null) {
             command_status_from_args([ "/etc/init.d/" + comp_svc, "stop" ]);
         }
     }
