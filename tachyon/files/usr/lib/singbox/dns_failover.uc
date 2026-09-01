@@ -229,17 +229,25 @@ function apply_selections(state, selections) {
         let tcfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
         if (tcfg.enabled == "1" && tcfg.bot_token && tcfg.admin_ids) {
             let is_isp = false;
+            let is_explicit_fallback = false;
             let cfg = settings();
-            let conf_key = item.kind == "main" ? "dns_server" : "bootstrap_dns_server";
-            let configured_len = length(common.list_option(cfg, conf_key));
+            let configured_len = length(common.list_option(cfg, "dns_server"));
             if (configured_len == 0) configured_len = 1;
-            
-            if (selected.index >= configured_len) {
-                is_isp = true;
+            let fallback_len = runtime_dns.explicit_fallback_count(cfg);
+
+            if (item.kind == "main") {
+                if (selected.index >= configured_len && selected.index < configured_len + fallback_len) {
+                    is_explicit_fallback = true;
+                } else if (selected.index >= configured_len + fallback_len) {
+                    is_isp = true;
+                }
             }
-            
+
             if (is_isp) {
                 let notice = "⚠️ Все основные " + item.kind + " DNS недоступны. Включен аварийный DNS провайдера (" + values[selected.index] + ")! Запросы теперь видит ваш провайдер.";
+                system(common.background_command(command_from_args([ "/usr/bin/tachyon", "telegram", "send", notice ])));
+            } else if (is_explicit_fallback) {
+                let notice = "⚠️ Основные DNS недоступны. Переключение на резервный DNS: " + values[selected.index] + ". Трафик зашифрован, но адрес указан вручную.";
                 system(common.background_command(command_from_args([ "/usr/bin/tachyon", "telegram", "send", notice ])));
             } else if (selected.reason == "recovery" && selected.index < configured_len) {
                 let notice = "✅ " + item.kind + " DNS восстановлен. Возврат на безопасный сервер: " + values[selected.index];
@@ -258,9 +266,18 @@ function worker() {
     if (!write_state(STATE_FILE, state))
         return 1;
 
-    let active_interval = duration_seconds(common.option(cfg, "dns_check_interval", "10s"), 10);
-    let recovery_interval = duration_seconds(common.option(cfg, "dns_recovery_check_interval", "60s"), 60);
-    let timeout_seconds = probe_timeout(common.option(cfg, "dns_check_timeout", "2s"));
+    let mode = common.option(cfg, "dns_upstream_mode", "sequential");
+    let is_parallel = (mode == "parallel");
+
+    let active_interval = is_parallel
+        ? 3
+        : duration_seconds(common.option(cfg, "dns_check_interval", "10s"), 10);
+    let recovery_interval = is_parallel
+        ? 30
+        : duration_seconds(common.option(cfg, "dns_recovery_check_interval", "60s"), 60);
+    let timeout_seconds = is_parallel
+        ? 2
+        : probe_timeout(common.option(cfg, "dns_check_timeout", "2s"));
     let next_active = now_seconds();
     let next_recovery = now_seconds() + recovery_interval;
     let all_down = { main: false, bootstrap: false };
@@ -272,8 +289,12 @@ function worker() {
         if (!runtime_dns.state_matches(runtime_dns.state_template(current_cfg), state))
             return 0;
 
-        let failure_threshold = int(common.option(current_cfg, "dns_failure_threshold", "3"));
-        let recovery_threshold = int(common.option(current_cfg, "dns_recovery_threshold", "3"));
+        let failure_threshold = is_parallel
+            ? 1
+            : int(common.option(current_cfg, "dns_failure_threshold", "3"));
+        let recovery_threshold = is_parallel
+            ? 2
+            : int(common.option(current_cfg, "dns_recovery_threshold", "3"));
 
         if (now >= next_active) {
             let bootstrap = choose_index("bootstrap", state, int(state.bootstrap_index), timeout_seconds, false, strikes, failure_threshold, recovery_threshold);

@@ -127,15 +127,26 @@ function configureDnsList(option, choices, defaultValue) {
   };
 }
 
-function configureDnsFailoverVisibility(option, dnsOption, bootstrapOption) {
+function configureDnsFailoverVisibility(
+  option,
+  dnsOption,
+  bootstrapOption,
+  fallbackOption,
+) {
   option.depends("dns_server", "__tachyon_multiple_dns__");
   option.depends("bootstrap_dns_server", "__tachyon_multiple_dns__");
   option.retain = true;
   option.checkDepends = function (section_id) {
-    return (
+    if (
       optionListValues(dnsOption, section_id).length > 1 ||
       optionListValues(bootstrapOption, section_id).length > 1
-    );
+    )
+      return true;
+    // Also show when explicit fallback servers are configured
+    if (fallbackOption) {
+      return optionListValues(fallbackOption, section_id).length > 0;
+    }
+    return false;
   };
 }
 
@@ -249,6 +260,7 @@ function configureDnsDuration(
   defaultValue,
   dnsOption,
   bootstrapOption,
+  fallbackOption,
 ) {
   option.default = defaultValue;
   option.rmempty = false;
@@ -259,7 +271,12 @@ function configureDnsDuration(
     }
     return true;
   };
-  configureDnsFailoverVisibility(option, dnsOption, bootstrapOption);
+  configureDnsFailoverVisibility(
+    option,
+    dnsOption,
+    bootstrapOption,
+    fallbackOption,
+  );
 }
 
 function createWatchdogStatusWidget() {
@@ -1328,6 +1345,22 @@ function createSettingsContent(section, capabilities) {
 
   const dnsTypeOption = o;
 
+  o = section.taboption(
+    "dns",
+    form.ListValue,
+    "dns_upstream_mode",
+    _("Upstream Mode"),
+    _(
+      "Sequential: failover to the next server after N failures. Parallel: aggressive failover — switches in seconds (1 failure = switch), best if your ISP blocks DoH/DoT.",
+    ),
+  );
+  o.value("sequential", _("Sequential (one active at a time)"));
+  o.value("parallel", _("Parallel (fast failover, ≤3 s)"));
+  o.default = "sequential";
+  o.rmempty = false;
+
+  const dnsModeOption = o;
+
   const dnsOption = section.taboption(
     "dns",
     form.DynamicList,
@@ -1360,6 +1393,25 @@ function createSettingsContent(section, capabilities) {
     main.BOOTSTRAP_DNS_SERVER_OPTIONS,
     "77.88.8.8",
   );
+
+  const fallbackDnsOption = section.taboption(
+    "dns",
+    form.DynamicList,
+    "dns_fallback_server",
+    _("Fallback DNS Servers"),
+    _(
+      "Plain-UDP DNS servers used as a last resort when all primary DNS fail. These are always unencrypted (no DoH/DoT). Example: 1.1.1.1, 8.8.8.8. Unlike the ISP fallback toggle, these are your own chosen servers.",
+    ),
+  );
+  configureDnsList(fallbackDnsOption, main.BOOTSTRAP_DNS_SERVER_OPTIONS, "");
+  fallbackDnsOption.rmempty = true;
+  fallbackDnsOption.default = [];
+  fallbackDnsOption.validate = function (_section_id, value) {
+    const normalized = `${value || ""}`.trim();
+    if (!normalized) return true; // allow empty list
+    const validation = main.validateDNS(normalized);
+    return validation.valid ? true : validation.message;
+  };
 
   dnsTypeOption.onchange = function (_ev, section_id, value) {
     const newType = value || "udp";
@@ -1408,6 +1460,22 @@ function createSettingsContent(section, capabilities) {
   );
   o.default = o.disabled;
 
+  // Timing controls — hidden in parallel mode (auto-configured) and when only one server
+  function configureTimingVisibility(opt) {
+    opt.retain = true;
+    opt.checkDepends = function (section_id) {
+      // hide when parallel (auto-tuned) unless there are multiple servers
+      const mode =
+        uci.get(UCI_PACKAGE, "settings", "dns_upstream_mode") || "sequential";
+      if (mode === "parallel") return false;
+      return (
+        optionListValues(dnsOption, section_id).length > 1 ||
+        optionListValues(bootstrapOption, section_id).length > 1 ||
+        optionListValues(fallbackDnsOption, section_id).length > 0
+      );
+    };
+  }
+
   o = section.taboption(
     "dns",
     form.Value,
@@ -1415,7 +1483,8 @@ function createSettingsContent(section, capabilities) {
     _("DNS Check Interval"),
     _("How often to check the active DNS servers."),
   );
-  configureDnsDuration(o, "10s", dnsOption, bootstrapOption);
+  configureDnsDuration(o, "10s", dnsOption, bootstrapOption, fallbackDnsOption);
+  configureTimingVisibility(o);
 
   o = section.taboption(
     "dns",
@@ -1424,7 +1493,8 @@ function createSettingsContent(section, capabilities) {
     _("Higher-priority DNS Check"),
     _("How often to check whether a higher-priority DNS server has recovered."),
   );
-  configureDnsDuration(o, "60s", dnsOption, bootstrapOption);
+  configureDnsDuration(o, "60s", dnsOption, bootstrapOption, fallbackDnsOption);
+  configureTimingVisibility(o);
 
   o = section.taboption(
     "dns",
@@ -1435,7 +1505,8 @@ function createSettingsContent(section, capabilities) {
       "Maximum time to wait for example.com to resolve during a DNS health check.",
     ),
   );
-  configureDnsDuration(o, "2s", dnsOption, bootstrapOption);
+  configureDnsDuration(o, "2s", dnsOption, bootstrapOption, fallbackDnsOption);
+  configureTimingVisibility(o);
 
   o = section.taboption(
     "dns",
@@ -1449,7 +1520,13 @@ function createSettingsContent(section, capabilities) {
   o.default = "3";
   o.rmempty = false;
   o.datatype = "range(1, 10)";
-  configureDnsFailoverVisibility(o, dnsOption, bootstrapOption);
+  configureDnsFailoverVisibility(
+    o,
+    dnsOption,
+    bootstrapOption,
+    fallbackDnsOption,
+  );
+  configureTimingVisibility(o);
 
   o = section.taboption(
     "dns",
@@ -1463,7 +1540,13 @@ function createSettingsContent(section, capabilities) {
   o.default = "3";
   o.rmempty = false;
   o.datatype = "range(1, 10)";
-  configureDnsFailoverVisibility(o, dnsOption, bootstrapOption);
+  configureDnsFailoverVisibility(
+    o,
+    dnsOption,
+    bootstrapOption,
+    fallbackDnsOption,
+  );
+  configureTimingVisibility(o);
 
   o = section.taboption(
     "dns",

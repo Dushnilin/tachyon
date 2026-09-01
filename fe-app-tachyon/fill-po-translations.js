@@ -1288,6 +1288,12 @@ const dictionary = {
   "Component versions and update manager": "Версии компонентов и менеджер обновлений",
   "Core configuration and preferences": "Основные настройки и параметры",
   "Remote management Telegram daemon": "Демон Telegram для удаленного управления",
+  "Upstream Mode": "Режим DNS Upstream",
+  "Sequential: failover to the next server after N failures. Parallel: aggressive failover — switches in seconds (1 failure = switch), best if your ISP blocks DoH/DoT.": "Последовательный: переключение на следующий сервер после N сбоев. Параллельный: быстрый failover — переключается за секунды (1 сбой = переключение), оптимально при блокировках DoH/DoT провайдером.",
+  "Sequential (one active at a time)": "Последовательный (один активный)",
+  "Parallel (fast failover, ≤3 s)": "Параллельный (быстрый failover, ≤3 с)",
+  "Fallback DNS Servers": "Резервные DNS серверы",
+  "Plain-UDP DNS servers used as a last resort when all primary DNS fail. These are always unencrypted (no DoH/DoT). Example: 1.1.1.1, 8.8.8.8. Unlike the ISP fallback toggle, these are your own chosen servers.": "Обычные UDP DNS-серверы, используемые как резерв при недоступности всех основных DNS. Всегда работают без шифрования (без DoH/DoT). Пример: 1.1.1.1, 8.8.8.8. В отличие от аварийного DNS провайдера, это выбранные вами серверы.",
 };
 
 function escapePoString(str) {

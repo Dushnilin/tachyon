@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-01 10:48+0300\n"
-"PO-Revision-Date: 2026-09-01 10:48+0300\n"
+"POT-Creation-Date: 2026-09-01 20:47+0300\n"
+"PO-Revision-Date: 2026-09-01 20:47+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -145,6 +145,9 @@ msgstr "Принимать внешние прокси-подключения и
 
 msgid "Accept routes"
 msgstr "Принимать маршруты"
+
+msgid "Access schedule and screen time limits"
+msgstr "Расписание доступа и лимиты времени"
 
 msgid "Action"
 msgstr "Действие"
@@ -391,6 +394,9 @@ msgstr "Alter ID"
 
 msgid "Always block these domains for all devices in this profile. Enter one domain per line or use category preset buttons."
 msgstr "Всегда блокировать эти домены для всех устройств в этом профиле. Вводите по одному домену на строку или используйте кнопки категорий."
+
+msgid "Always visible"
+msgstr "Всегда включено"
 
 msgid "AmneziaWG config loaded successfully!"
 msgstr "Конфигурация AmneziaWG успешно загружена!"
@@ -821,6 +827,12 @@ msgstr "Очистить"
 msgid "Clear DNS cache"
 msgstr "Очистить кэш DNS"
 
+msgid "Click to hide"
+msgstr ""
+
+msgid "Click to show"
+msgstr ""
+
 msgid "Client Address"
 msgstr "Адрес клиента"
 
@@ -892,6 +904,9 @@ msgstr "Доступно обновление компонента"
 
 msgid "Component update check interval"
 msgstr "Интервал проверки обновлений компонентов"
+
+msgid "Component versions and update manager"
+msgstr "Версии компонентов и менеджер обновлений"
 
 msgid "Components"
 msgstr "Компоненты"
@@ -965,6 +980,9 @@ msgstr "Скопировать ссылку прокси"
 msgid "Copy Support Report"
 msgstr "Скопировать отчет для поддержки"
 
+msgid "Core configuration and preferences"
+msgstr "Основные настройки и параметры"
+
 msgid "Could not compare FakeIP and control public IPs"
 msgstr "Не удалось сравнить публичные IP FakeIP и контрольной проверки"
 
@@ -1022,6 +1040,9 @@ msgstr "Пользовательские конфигурации outbound в ф
 msgid "Custom strategy added!"
 msgstr "Пользовательская стратегия добавлена!"
 
+msgid "Customize the order and visibility of tabs in the main navigation menu. Use the arrows to reorder and checkboxes to show or hide tabs."
+msgstr "Настройте порядок и видимость вкладок в главном меню навигации. Используйте стрелки для перемещения и галочки для показа или скрытия."
+
 msgid "Daily Quota"
 msgstr "Дневная квота"
 
@@ -1051,6 +1072,9 @@ msgstr "По умолчанию (WAN / стандартный смешанный
 
 msgid "Default address for checking server availability and latency. URLTest uses its own address."
 msgstr "Адрес по умолчанию для проверки доступности и задержки сервера. URLTest использует свой собственный адрес."
+
+msgid "Default Tab on Startup"
+msgstr "Вкладка по умолчанию при входе"
 
 msgid "Delay in milliseconds before reloading Tachyon after interface UP"
 msgstr "Задержка в миллисекундах перед перезагрузкой Tachyon после поднятия интерфейса"
@@ -1553,6 +1577,9 @@ msgstr "Истекает"
 msgid "Expose this section as a local HTTP+SOCKS proxy"
 msgstr "Предоставить эту секцию как локальный HTTP+SOCKS прокси"
 
+msgid "External inbound proxy servers"
+msgstr "Внешние входящие прокси-серверы"
+
 msgid "External nfqws config files bypass Tachyon queue management and explicit validation."
 msgstr "Внешние файлы конфигурации nfqws обходят управление очередями Tachyon и явную проверку."
 
@@ -1709,6 +1736,9 @@ msgstr "FakeIP работает; сравнение публичных IP не �
 msgid "FakeTLS host"
 msgstr "FakeTLS host"
 
+msgid "Fallback DNS Servers"
+msgstr "Резервные DNS серверы"
+
 msgid "Fallback on unknown DC"
 msgstr "Fallback при неизвестном DC"
 
@@ -1720,6 +1750,9 @@ msgstr "Семейный профиль"
 
 msgid "Family Profiles"
 msgstr "Семейные профили"
+
+msgid "Family profiles and device grouping"
+msgstr "Семейные профили и группировка устройств"
 
 msgid "Faster DNS health monitoring than the default cycle. Switches bootstrap DNS on failure."
 msgstr "Более быстрый мониторинг состояния DNS, чем стандартный цикл. Переключает bootstrap DNS при сбое."
@@ -2420,6 +2453,9 @@ msgstr "Казахстан (kz)"
 msgid "Keep Priority before latency-sorted servers"
 msgstr "Сохранять приоритет перед серверами, отсортированными по задержке"
 
+msgid "Keep the previous working binary/package on the router flash for instant offline rollback if needed. Consumes extra storage."
+msgstr "Сохранять предыдущую рабочую версию компонента в памяти роутера для быстрого локального отката. Занимает дополнительное место на flash."
+
 msgid "Keep URLTest before latency-sorted servers"
 msgstr "Сохранять URLTest перед серверами, отсортированными по задержке"
 
@@ -2537,6 +2573,9 @@ msgstr "Основной DNS"
 msgid "Main DNS server. If multiple servers are selected, a timeout switches to a backup."
 msgstr "Основной DNS-сервер. Если выбрано несколько серверов, при таймауте происходит переключение на резервный."
 
+msgid "Main overview and status widgets"
+msgstr "Главный обзор и виджеты статуса"
+
 msgid "Manual"
 msgstr "Вручную"
 
@@ -2578,6 +2617,9 @@ msgstr "Максимальное время ожидания разрешени�
 
 msgid "Memory Usage"
 msgstr "Использование памяти"
+
+msgid "Menu & Navigation"
+msgstr "Меню и навигация"
 
 msgid "Messengers"
 msgstr "Мессенджеры"
@@ -2626,6 +2668,12 @@ msgstr "Мониторинг"
 
 msgid "Monitors sing-box reconnect frequency. Alerts if too many reconnects per hour."
 msgstr "Отслеживает частоту переподключений sing-box. Оповещает при слишком частых переподключениях."
+
+msgid "Move Down"
+msgstr "Переместить ниже"
+
+msgid "Move Up"
+msgstr "Переместить выше"
 
 msgid "MTU"
 msgstr "MTU"
@@ -2975,6 +3023,9 @@ msgstr "Защита от утечек P2P"
 msgid "Padding"
 msgstr "Padding"
 
+msgid "Parallel (fast failover, ≤3 s)"
+msgstr "Параллельный (быстрый failover, ≤3 с)"
+
 msgid "Parental Control"
 msgstr "Родительский контроль"
 
@@ -3070,6 +3121,9 @@ msgstr "Закрепить на дашборде"
 
 msgid "Pin P2P isolation to the torrent client's own ports, comma separated. Each entry is \"proto\", \"proto:port\" or \"proto:port-port\" (tcp/udp). Without a port the whole protocol is routed direct."
 msgstr "Закрепить изоляцию P2P за портами торрент-клиента, через запятую. Каждая запись — \"протокол\", \"протокол:порт\" или \"протокол:порт-порт\" (tcp/udp). Без порта весь протокол уходит напрямую."
+
+msgid "Plain-UDP DNS servers used as a last resort when all primary DNS fail. These are always unencrypted (no DoH/DoT). Example: 1.1.1.1, 8.8.8.8. Unlike the ISP fallback toggle, these are your own chosen servers."
+msgstr "Обычные UDP DNS-серверы, используемые как резерв при недоступности всех основных DNS. Всегда работают без шифрования (без DoH/DoT). Пример: 1.1.1.1, 8.8.8.8. В отличие от аварийного DNS провайдера, это выбранные вами серверы."
 
 msgid "Please specify strategy name and arguments"
 msgstr "Пожалуйста, укажите имя стратегии и аргументы"
@@ -3299,6 +3353,9 @@ msgstr "Перезагрузка..."
 msgid "Remote Hosts Lists"
 msgstr "Удалённые списки Hosts"
 
+msgid "Remote management Telegram daemon"
+msgstr "Демон Telegram для удаленного управления"
+
 msgid "Removal completed successfully!"
 msgstr "Удаление успешно завершено!"
 
@@ -3422,6 +3479,9 @@ msgstr "Продолжить обновление"
 msgid "Return NXDOMAIN for blocked domains (recommended). When enabled, blocked domains are not resolved at all. When disabled, only direct connections are rejected."
 msgstr "Возвращать NXDOMAIN для заблокированных доменов (рекомендуется). При включении заблокированные домены вообще не резолвятся. При выключении отклоняются только прямые соединения."
 
+msgid "Rollback"
+msgstr "Откатить"
+
 msgid "Route"
 msgstr "Маршрут"
 
@@ -3451,6 +3511,9 @@ msgstr "Правила маршрутизации"
 
 msgid "Routing section"
 msgstr "Секция маршрутизации"
+
+msgid "Routing sections, rules and strategies"
+msgstr "Секции маршрутизации, правила и стратегии"
 
 msgid "Rule"
 msgstr "Правило"
@@ -3529,6 +3592,9 @@ msgstr "Сохранить"
 
 msgid "Save a snapshot of the working config and restore it later if something breaks."
 msgstr "Сохранить снапшот рабочей конфигурации, чтобы восстановить её позже, если что-то сломается."
+
+msgid "Save component backup before update"
+msgstr "Сохранять резервную копию перед обновлением"
 
 msgid "Save Snapshot"
 msgstr "Сохранить снапшот"
@@ -3674,6 +3740,9 @@ msgstr "Выберите, отключать ли цель в период ра�
 msgid "Select which components are permitted to update automatically"
 msgstr "Выберите, какие компоненты разрешено обновлять автоматически"
 
+msgid "Select which tab opens automatically when entering Tachyon."
+msgstr "Выберите, какая вкладка открывается автоматически при входе в Tachyon."
+
 msgid "Selected"
 msgstr "Выбран"
 
@@ -3712,6 +3781,12 @@ msgstr "Отправлять уведомления родителям в Telegr
 
 msgid "Sequence Overlaps (seqovl)"
 msgstr "Перекрытия последовательностей (seqovl)"
+
+msgid "Sequential (one active at a time)"
+msgstr "Последовательный (один активный)"
+
+msgid "Sequential: failover to the next server after N failures. Parallel: aggressive failover — switches in seconds (1 failure = switch), best if your ISP blocks DoH/DoT."
+msgstr "Последовательный: переключение на следующий сервер после N сбоев. Параллельный: быстрый failover — переключается за секунды (1 сбой = переключение), оптимально при блокировках DoH/DoT провайдером."
 
 msgid "Server"
 msgstr "Сервер"
@@ -4103,11 +4178,17 @@ msgstr "Вернуть автовыбор"
 msgid "Sync System Time (NTP)"
 msgstr "Синхронизировать время (NTP)"
 
+msgid "System diagnostics, AI Doctor and logs"
+msgstr "Системная диагностика, ИИ-Доктор и логи"
+
 msgid "System info"
 msgstr "Системная информация"
 
 msgid "System information"
 msgstr "Системная информация"
+
+msgid "Tab Order & Visibility"
+msgstr "Порядок и видимость вкладок"
 
 msgid "Table exist"
 msgstr "Таблица существует"
@@ -4400,6 +4481,9 @@ msgstr "Трафик от этих IP-адресов никогда не буд�
 msgid "Traffic of specified protocols (e.g. BitTorrent, QUIC, STUN) will bypass this section."
 msgstr "Трафик указанных протоколов (например BitTorrent, QUIC, STUN) будет обходить эту секцию."
 
+msgid "Traffic statistics and active connections"
+msgstr "Статистика трафика и активные соединения"
+
 msgid "Traffic Total"
 msgstr "Всего трафика"
 
@@ -4606,6 +4690,9 @@ msgstr "Исходящий"
 
 msgid "Uploaded"
 msgstr "Отдано"
+
+msgid "Upstream Mode"
+msgstr "Режим DNS Upstream"
 
 msgid "URL must start with vless://, vmess://, ss://, trojan://, socks4://, socks4a://, socks5://, hysteria2://, hy2://, or tuic://"
 msgstr "URL должен начинаться с vless://, vmess://, ss://, trojan://, socks4://, socks4a://, socks5://, hysteria2://, hy2:// или tuic://"
@@ -5387,24 +5474,6 @@ msgstr "Очистить историю"
 msgid "Auto-applied best strategy"
 msgstr "Лучшая стратегия автоматически применена"
 
-msgid "Rollback"
-msgstr "Откатить"
-
-msgid "Save component backup before update"
-msgstr "Сохранять резервную копию перед обновлением"
-
-msgid "Keep the previous working binary/package on the router flash for instant offline rollback if needed. Consumes extra storage."
-msgstr "Сохранять предыдущую рабочую версию компонента в памяти роутера для быстрого локального отката. Занимает дополнительное место на flash."
-
-msgid "Menu & Navigation"
-msgstr "Меню и навигация"
-
-msgid "Default Tab on Startup"
-msgstr "Вкладка по умолчанию при входе"
-
-msgid "Select which tab opens automatically when entering Tachyon."
-msgstr "Выберите, какая вкладка открывается автоматически при входе в Tachyon."
-
 msgid "Show 'Dashboard' tab"
 msgstr "Отображать вкладку «Главная»"
 
@@ -5458,48 +5527,3 @@ msgstr "Отображать вкладку «Telegram-бот»"
 
 msgid "Display the Telegram bot settings and controls in the menu."
 msgstr "Отображать настройки и управление Telegram-ботом в меню."
-
-msgid "Tab Order & Visibility"
-msgstr "Порядок и видимость вкладок"
-
-msgid "Customize the order and visibility of tabs in the main navigation menu. Use the arrows to reorder and checkboxes to show or hide tabs."
-msgstr "Настройте порядок и видимость вкладок в главном меню навигации. Используйте стрелки для перемещения и галочки для показа или скрытия."
-
-msgid "Always visible"
-msgstr "Всегда включено"
-
-msgid "Move Up"
-msgstr "Переместить выше"
-
-msgid "Move Down"
-msgstr "Переместить ниже"
-
-msgid "Main overview and status widgets"
-msgstr "Главный обзор и виджеты статуса"
-
-msgid "Routing sections, rules and strategies"
-msgstr "Секции маршрутизации, правила и стратегии"
-
-msgid "External inbound proxy servers"
-msgstr "Внешние входящие прокси-серверы"
-
-msgid "Family profiles and device grouping"
-msgstr "Семейные профили и группировка устройств"
-
-msgid "Access schedule and screen time limits"
-msgstr "Расписание доступа и лимиты времени"
-
-msgid "Traffic statistics and active connections"
-msgstr "Статистика трафика и активные соединения"
-
-msgid "System diagnostics, AI Doctor and logs"
-msgstr "Системная диагностика, ИИ-Доктор и логи"
-
-msgid "Component versions and update manager"
-msgstr "Версии компонентов и менеджер обновлений"
-
-msgid "Core configuration and preferences"
-msgstr "Основные настройки и параметры"
-
-msgid "Remote management Telegram daemon"
-msgstr "Демон Telegram для удаленного управления"

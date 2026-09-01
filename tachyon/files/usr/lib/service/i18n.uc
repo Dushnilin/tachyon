@@ -6,6 +6,8 @@ let strings = {
         // ─── Setting schema labels ───
         dns_type: "DNS Type",
         dns_server: "DNS Servers",
+        dns_upstream_mode: "DNS Upstream Mode",
+        dns_fallback_server: "Fallback DNS Servers",
         bootstrap_dns_server: "Bootstrap DNS",
         dns_strategy: "DNS Strategy",
         dns_detour_enabled: "DNS Detour",
@@ -534,6 +536,8 @@ let strings = {
         // ─── Setting schema labels ───
         dns_type: "Тип DNS",
         dns_server: "DNS Серверы",
+        dns_upstream_mode: "Режим DNS Upstream",
+        dns_fallback_server: "Резервные DNS Серверы",
         bootstrap_dns_server: "Bootstrap DNS",
         dns_strategy: "Стратегия DNS",
         dns_detour_enabled: "DNS Detour",

@@ -41,6 +41,14 @@ function server_list(settings, key, fallback) {
         if (value != "")
             push(result, value);
     }
+    // Explicit fallback servers (plain UDP) between primary and WAN-DNS fallback
+    if (key == "dns_server") {
+        for (let value in list_option(settings, "dns_fallback_server")) {
+            value = trim(as_string(value));
+            if (value != "")
+                push(result, value);
+        }
+    }
     let fallback_key = (key == "dns_server") ? "fallback_wan_main" : "fallback_wan_bootstrap";
     if (bool_option(settings, fallback_key, false)) {
         for (let wan_ip in get_wan_dns_servers()) {
@@ -74,10 +82,22 @@ function configured_server_count(settings, key) {
     return count;
 }
 
+function explicit_fallback_count(settings) {
+    return length(list_option(settings, "dns_fallback_server"));
+}
+
+function is_explicit_fallback_index(settings, index) {
+    let primary = configured_server_count(settings, "dns_server");
+    let fallback = explicit_fallback_count(settings);
+    return int(index) >= primary && int(index) < primary + fallback;
+}
+
 function is_wan_fallback_index(settings, index) {
     if (!bool_option(settings, "fallback_wan_main", false))
         return false;
-    return int(index) >= configured_server_count(settings, "dns_server");
+    let primary = configured_server_count(settings, "dns_server");
+    let fallback = explicit_fallback_count(settings);
+    return int(index) >= primary + fallback;
 }
 
 function state_template(settings) {
@@ -188,9 +208,10 @@ function bootstrap_server(tag_name, value) {
 function server_config(settings, override_state) {
     let active = active_values(settings, override_state);
     let is_wan = is_wan_fallback_index(settings, active.state.main_index);
-    // WAN fallback servers must always use direct UDP — never detour through proxy
-    let dns_type = is_wan ? "udp" : active.state.dns_type;
-    let detour = is_wan ? "" : active.state.dns_detour;
+    let is_fallback = is_explicit_fallback_index(settings, active.state.main_index);
+    // WAN and explicit fallback servers must always use direct UDP — never detour through proxy
+    let dns_type = (is_wan || is_fallback) ? "udp" : active.state.dns_type;
+    let detour = (is_wan || is_fallback) ? "" : active.state.dns_detour;
     let result = server_from_options(
         runtime_constants.DNS_SERVER_TAG,
         dns_type,
@@ -323,10 +344,14 @@ return {
     arrays_equal,
     bootstrap_config,
     config,
+    configured_server_count,
     default_domain_resolver,
     detour_tag,
+    explicit_fallback_count,
     failover_enabled,
     health_port,
+    is_explicit_fallback_index,
+    is_wan_fallback_index,
     normalize_state,
     runtime_state,
     server_config,

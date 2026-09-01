@@ -539,6 +539,8 @@ cat >"$WORK_DIR/sing-box-signature.expected" <<'EOF_SING_BOX_SIG'
 tcp
 [settings.dns_strategy]
 prefer_ipv6
+[settings.dns_upstream_mode]
+sequential
 [settings.dns_server]
 9.9.9.9
 [settings.bootstrap_dns_server]
