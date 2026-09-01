@@ -2588,9 +2588,6 @@ migrate_legacy_configuration() {
 
         msg "$(installer_text migrating_config_detail)"
         local migration_mode="migrate-podkop"
-        if [ "$TACHYON_FORKOP_MIGRATION" -eq 1 ] || [ "$TACHYON_NETSHIFT_MIGRATION" -eq 1 ]; then
-            migration_mode="migrate"
-        fi
 
         if ! TACHYON_CONFIG_NAME="tachyon" \
             TACHYON_LIB="/usr/lib/tachyon" \

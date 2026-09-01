@@ -152,6 +152,7 @@ function show_help() {
     print("    snapshot_save <name>    Save a config snapshot\n");
     print("    snapshot_restore <file> Restore a config snapshot\n");
     print("    snapshot_delete <file>  Delete a config snapshot\n");
+    print("    import_settings [file]  Scan and import legacy settings from Forkop/Podkop or backup\n");
     print("    validate_nfqws_strategy_json\n");
     print("                            Validate an NFQWS strategy and print JSON result\n");
     print("    validate_nfqws2_strategy_json\n");
@@ -280,7 +281,9 @@ function command_spec(command) {
         snapshot_list: [ "service/snapshot.uc", "snapshot-list", 0 ],
         snapshot_save: [ "service/snapshot.uc", "snapshot-save", 1 ],
         snapshot_restore: [ "service/snapshot.uc", "snapshot-restore", 1 ],
-        snapshot_delete: [ "service/snapshot.uc", "snapshot-delete", 1 ]
+        snapshot_delete: [ "service/snapshot.uc", "snapshot-delete", 1 ],
+        import_settings: [ "config/migration.uc", "import-settings", 1 ],
+        "import-settings": [ "config/migration.uc", "import-settings", 1 ]
     };
 
     return commands[as_string(command)];

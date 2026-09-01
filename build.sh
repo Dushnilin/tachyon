@@ -402,19 +402,19 @@ rm -rf /usr/lib/lua/luci/i18n/forkop.* /www/luci-static/resources/i18n/forkop.* 
 
 if [ -f /etc/config/forkop ]; then
 	mv /etc/config/forkop /etc/config/tachyon
+	TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate-podkop
 elif [ -f /etc/config/forkop_plus ]; then
 	mv /etc/config/forkop_plus /etc/config/tachyon
+	TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate-podkop
 elif [ -f /etc/config/podkop ]; then
 	mv /etc/config/podkop /etc/config/tachyon
 	TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate-podkop
-	exit 0
 elif [ -f /etc/config/podkop_plus ]; then
 	mv /etc/config/podkop_plus /etc/config/tachyon
 	TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate-podkop
-	exit 0
+else
+	TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate
 fi
-
-TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate
 EOF
 
   cat > "$control_dir/prerm" <<'EOF'

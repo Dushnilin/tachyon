@@ -101,23 +101,23 @@ rm -rf /usr/lib/lua/luci/i18n/forkop.* /www/luci-static/resources/i18n/forkop.* 
        /usr/share/luci/menu.d/luci-app-forkop.json /usr/share/rpcd/acl.d/luci-app-forkop.json \
        /etc/uci-defaults/50_luci-forkop 2>/dev/null || true
 
-# Migration from Forkop
+# Migration from Forkop or Podkop
 if [ -f /etc/config/forkop ]; then
 	mv /etc/config/forkop /etc/config/tachyon
+	TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate-podkop
 elif [ -f /etc/config/forkop_plus ]; then
 	mv /etc/config/forkop_plus /etc/config/tachyon
-# Migration from Podkop
+	TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate-podkop
 elif [ -f /etc/config/podkop ]; then
 	mv /etc/config/podkop /etc/config/tachyon
 	TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate-podkop
-	exit 0
 elif [ -f /etc/config/podkop_plus ]; then
 	mv /etc/config/podkop_plus /etc/config/tachyon
 	TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate-podkop
-	exit 0
+else
+	TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate
 fi
 
-TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate
 /usr/bin/tachyon package_postinst
 
 # Harden config: telegram bot_token must not be world-readable

@@ -21,6 +21,8 @@ let bool_option = common.bool_option;
 let object_or_empty = common.object_or_empty;
 
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
+const CONFIG_DIR = getenv("TACHYON_CONFIG_DIR") || "/etc/config";
+const TARGET_CONFIG = getenv("TACHYON_CONFIG_FILE") || (CONFIG_DIR + "/" + CONFIG_NAME);
 const TMP_SUBSCRIPTION_FOLDER = getenv("TMP_SUBSCRIPTION_FOLDER") || "/tmp/sing-box/subscriptions";
 const TACHYON_RUNTIME_STATE_DIR = getenv("TACHYON_RUNTIME_STATE_DIR") || "/var/run/tachyon";
 const TACHYON_SUBSCRIPTION_LINKS_DIR = getenv("TACHYON_SUBSCRIPTION_LINKS_DIR") || TACHYON_RUNTIME_STATE_DIR + "/subscription-links";
@@ -1701,6 +1703,196 @@ function migrate_fixture(path, source) {
     });
 }
 
+function detect_config_migration_source(path) {
+    let content = fs.readfile(path);
+    if (content == null || content == "")
+        return "tachyon";
+
+    if (match(content, /config[ \t]+rule[ \t]+/) ||
+        match(content, /option[ \t]+domain_list_urls/) ||
+        match(content, /option[ \t]+routing_excluded_ips/) ||
+        match(content, /option[ \t]+connection_type[ \t]+['"]?proxy/) ||
+        match(content, /option[ \t]+proxy_string/) ||
+        match(content, /option[ \t]+ip_cidr/)) {
+        return "podkop";
+    }
+
+    return "tachyon";
+}
+
+function scan_legacy_config_candidates() {
+    let base_cfg_dir = CONFIG_DIR;
+    let known = [
+        base_cfg_dir + "/forkop",
+        base_cfg_dir + "/forkop_plus",
+        base_cfg_dir + "/podkop",
+        base_cfg_dir + "/podkop_plus",
+        base_cfg_dir + "/netshift",
+        "/tmp/legacy-config.backup",
+        "/etc/.tachyon/.cfg-backup.pre-install"
+    ];
+    let candidates = [];
+    let seen = {};
+
+    // 1. Check if current active config itself contains unconverted legacy rules
+    let current_tachyon = TARGET_CONFIG;
+    if (detect_config_migration_source(current_tachyon) == "podkop") {
+        let st = fs.stat(current_tachyon);
+        if (st != null && (st.size || 0) > 10) {
+            push(candidates, {
+                path: current_tachyon,
+                size: st.size || 0,
+                mtime: st.mtime || 0,
+                in_place_legacy: true
+            });
+            seen[current_tachyon] = true;
+        }
+    }
+
+    for (let path in known) {
+        if (seen[path]) continue;
+        let st = fs.stat(path);
+        if (st != null && (st.type == "file" || st.type == null) && (st.size || 0) > 10) {
+            push(candidates, { path: path, size: st.size || 0, mtime: st.mtime || 0 });
+            seen[path] = true;
+        }
+    }
+
+    let globs = [
+        base_cfg_dir + "/*forkop*",
+        base_cfg_dir + "/*podkop*",
+        base_cfg_dir + "/*netshift*",
+        base_cfg_dir + "/tachyon.backup*",
+        base_cfg_dir + "/tachyon.bak*",
+        base_cfg_dir + "/tachyon.pre-import-*",
+        base_cfg_dir + "/tachyon.pre-install*",
+        "/tmp/legacy-config*",
+        "/tmp/*forkop*",
+        "/tmp/*podkop*",
+        "/tmp/*tachyon*",
+        "/tmp/tmp.*/legacy-config*",
+        "/etc/.tachyon/*",
+        "/root/*forkop*",
+        "/root/*podkop*",
+        "/root/*tachyon*",
+        "/root/*.backup*",
+        "/root/*.bak*"
+    ];
+    for (let g in globs) {
+        let paths = fs.glob(g);
+        if (type(paths) == "array") {
+            for (let path in paths) {
+                if (seen[path])
+                    continue;
+                let st = fs.stat(path);
+                if (st != null && (st.type == "file" || st.type == null) && (st.size || 0) > 10) {
+                    push(candidates, { path: path, size: st.size || 0, mtime: st.mtime || 0 });
+                    seen[path] = true;
+                }
+            }
+        }
+    }
+
+    return candidates;
+}
+
+function import_settings_cli(source_path) {
+    source_path = trim(as_string(source_path));
+    let target_config = TARGET_CONFIG;
+
+    print("=== Tachyon Settings Importer ===\n\n");
+
+    let chosen_path = "";
+    let candidate_list = [];
+
+    if (source_path != "") {
+        let st = fs.stat(source_path);
+        if (st == null || (st.type != "file" && st.type != null)) {
+            warn("Error: Specified configuration file '" + source_path + "' does not exist or is not readable.\n");
+            return false;
+        }
+        chosen_path = source_path;
+        print("[1/3] Using specified configuration file:\n");
+        print("  ✓ " + chosen_path + " (" + sprintf("%.1f KB", (st.size || 0) / 1024.0) + ")\n\n");
+    } else {
+        print("[1/3] Scanning system for legacy or backup configurations...\n");
+        candidate_list = scan_legacy_config_candidates();
+        if (length(candidate_list) == 0) {
+            print("  Notice: No legacy or backup configurations found in standard directories.\n\n");
+            print("To locate any leftover configurations, you can search with:\n");
+            print("  grep -rnE 'vless://|vmess://|ss://|trojan://|config rule' /etc/ /root/ /tmp/ 2>/dev/null\n\n");
+            print("And specify the file path directly:\n");
+            print("  tachyon import_settings /path/to/backup-file\n\n");
+            return false;
+        }
+
+        print("  Found candidates:\n");
+        for (let i = 0; i < length(candidate_list); i++) {
+            let c = candidate_list[i];
+            let note = c.in_place_legacy ? " (unconverted legacy rules in active config)" : "";
+            print("  [" + (i + 1) + "] " + c.path + " (" + sprintf("%.1f KB", c.size / 1024.0) + ")" + note + "\n");
+        }
+        print("\n");
+
+        chosen_path = candidate_list[0].path;
+        print("  ✓ Selected primary candidate: " + chosen_path + "\n\n");
+    }
+
+    print("[2/3] Backing up current Tachyon configuration...\n");
+    let current_st = fs.stat(target_config);
+    if (current_st != null && (current_st.size || 0) > 0) {
+        let date_stamp = trim(command_output("date +%Y%m%d_%H%M%S 2>/dev/null || date +%s"));
+        if (date_stamp == "") date_stamp = "backup";
+        let backup_path = target_config + ".pre-import-" + date_stamp;
+        if (system("cp -a " + shell_quote(target_config) + " " + shell_quote(backup_path)) == 0) {
+            print("  ✓ Current configuration backed up to: " + backup_path + "\n\n");
+        } else {
+            warn("  Warning: Could not create safety backup of current configuration.\n\n");
+        }
+    } else {
+        print("  ✓ No existing configuration to back up.\n\n");
+    }
+
+    print("[3/3] Migrating configuration structure...\n");
+    if (chosen_path != target_config) {
+        let target_dir = "";
+        let idx = rindex(target_config, "/");
+        if (idx > 0) target_dir = substr(target_config, 0, idx);
+        if (target_dir != "" && fs.stat(target_dir) == null) {
+            system("mkdir -p " + shell_quote(target_dir) + " 2>/dev/null");
+        }
+        if (system("cp -a " + shell_quote(chosen_path) + " " + shell_quote(target_config)) != 0) {
+            warn("Error: Failed to copy " + chosen_path + " to " + target_config + "\n");
+            return false;
+        }
+    }
+    system("chmod 0600 " + shell_quote(target_config) + " 2>/dev/null");
+
+    let source_type = detect_config_migration_source(target_config);
+    print("  ✓ Detected format: " + (source_type == "podkop" ? "Legacy Forkop / Podkop" : "Tachyon") + "\n");
+
+    let ok = migrate_runtime(source_type);
+    if (!ok) {
+        warn("Error: Configuration migration failed during UCI commit.\n");
+        return false;
+    }
+
+    system("chmod 0600 " + shell_quote(target_config) + " 2>/dev/null");
+    print("  ✓ Configuration successfully migrated and verified.\n\n");
+
+    if (fs.stat("/etc/init.d/tachyon") != null) {
+        print("Restarting Tachyon service...\n");
+        system("/usr/bin/tachyon restart >/dev/null 2>&1");
+        print("  ✓ Tachyon restarted with imported configuration.\n\n");
+    }
+
+    print("====================================================\n");
+    print("SUCCESS: Settings successfully imported from:\n");
+    print("   " + chosen_path + "\n");
+    print("====================================================\n");
+    return true;
+}
+
 function main(argv) {
     let mode = argv[0] || "";
 
@@ -1708,6 +1900,8 @@ function main(argv) {
         return migrate_runtime("tachyon") ? 0 : 1;
     if (mode == "migrate-podkop")
         return migrate_runtime("podkop") ? 0 : 1;
+    if (mode == "import-settings" || mode == "import_settings")
+        return import_settings_cli(argv[1]) ? 0 : 1;
     if (mode == "commit")
         return commit_runtime() ? 0 : 1;
     if (mode == "migrate-fixture") {
@@ -1717,6 +1911,7 @@ function main(argv) {
 
     warn("Usage: config/migration.uc migrate\n");
     warn("       config/migration.uc migrate-podkop\n");
+    warn("       config/migration.uc import-settings [file]\n");
     warn("       config/migration.uc commit\n");
     warn("       config/migration.uc migrate-fixture <fixture.json> [tachyon|podkop]\n");
     return 1;
@@ -1728,6 +1923,9 @@ function module_exports() {
         migrate_model: migrate_model,
         migrate_tachyon_model: migrate_tachyon_model,
         migrate_podkop_model: migrate_podkop_model,
+        scan_legacy_config_candidates: scan_legacy_config_candidates,
+        detect_config_migration_source: detect_config_migration_source,
+        import_settings_cli: import_settings_cli,
         mark_internal_config_guard: mark_internal_config_guard
     };
 }
