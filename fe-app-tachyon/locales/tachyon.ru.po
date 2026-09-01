@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-01 20:47+0300\n"
-"PO-Revision-Date: 2026-09-01 20:47+0300\n"
+"POT-Creation-Date: 2026-09-01 21:58+0300\n"
+"PO-Revision-Date: 2026-09-01 21:58+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -5527,3 +5527,126 @@ msgstr "Отображать вкладку «Telegram-бот»"
 
 msgid "Display the Telegram bot settings and controls in the menu."
 msgstr "Отображать настройки и управление Telegram-ботом в меню."
+
+msgid "1.0.0.1 (Cloudflare Secondary)"
+msgstr "1.0.0.1 (Cloudflare резервный)"
+
+msgid "1.1.1.2 (Cloudflare Security)"
+msgstr "1.1.1.2 (Cloudflare защита)"
+
+msgid "1.1.1.3 (Cloudflare Family)"
+msgstr "1.1.1.3 (Cloudflare семейный)"
+
+msgid "8.8.4.4 (Google Secondary)"
+msgstr "8.8.4.4 (Google резервный)"
+
+msgid "9.9.9.9 (Quad9 Filtered)"
+msgstr "9.9.9.9 (Quad9 с фильтрацией)"
+
+msgid "149.112.112.112 (Quad9 Secondary)"
+msgstr "149.112.112.112 (Quad9 резервный)"
+
+msgid "9.9.9.10 (Quad9 Unsecured)"
+msgstr "9.9.9.10 (Quad9 без фильтрации)"
+
+msgid "94.140.14.14 (AdGuard Default)"
+msgstr "94.140.14.14 (AdGuard основной)"
+
+msgid "94.140.15.15 (AdGuard Default Secondary)"
+msgstr "94.140.15.15 (AdGuard резервный)"
+
+msgid "94.140.14.140 (AdGuard Non-filtering)"
+msgstr "94.140.14.140 (AdGuard без фильтрации)"
+
+msgid "94.140.14.15 (AdGuard Family)"
+msgstr "94.140.14.15 (AdGuard семейный)"
+
+msgid "76.76.2.0 (Control D Uncensored)"
+msgstr "76.76.2.0 (Control D без цензуры)"
+
+msgid "76.76.2.1 (Control D Malware)"
+msgstr "76.76.2.1 (Control D защита)"
+
+msgid "76.76.2.2 (Control D Adblock)"
+msgstr "76.76.2.2 (Control D блокировка рекламы)"
+
+msgid "194.242.2.2 (Mullvad No-Logs)"
+msgstr "194.242.2.2 (Mullvad без логов)"
+
+msgid "194.242.2.3 (Mullvad Adblock)"
+msgstr "194.242.2.3 (Mullvad блокировка рекламы)"
+
+msgid "194.242.2.4 (Mullvad Extended)"
+msgstr "194.242.2.4 (Mullvad расширенный)"
+
+msgid "193.110.81.0 (DNS0.EU Zero)"
+msgstr "193.110.81.0 (DNS0.EU Zero)"
+
+msgid "193.17.47.1 (CZ.NIC ODVR)"
+msgstr "193.17.47.1 (CZ.NIC ODVR)"
+
+msgid "208.67.222.222 (OpenDNS)"
+msgstr "208.67.222.222 (OpenDNS)"
+
+msgid "223.5.5.5 (AliDNS)"
+msgstr "223.5.5.5 (AliDNS)"
+
+msgid "185.228.168.9 (CleanBrowsing Security)"
+msgstr "185.228.168.9 (CleanBrowsing безопасность)"
+
+msgid "77.88.8.1 (Yandex Secondary)"
+msgstr "77.88.8.1 (Yandex резервный)"
+
+msgid "77.88.8.88 (Yandex Safe)"
+msgstr "77.88.8.88 (Yandex безопасный)"
+
+msgid "Cloudflare Security"
+msgstr "Cloudflare (Защита)"
+
+msgid "Cloudflare Family"
+msgstr "Cloudflare (Семейный)"
+
+msgid "Quad9 (Filtered)"
+msgstr "Quad9 (С фильтрацией)"
+
+msgid "Quad9 (Unfiltered)"
+msgstr "Quad9 (Без фильтрации)"
+
+msgid "AdGuard Default"
+msgstr "AdGuard (Основной)"
+
+msgid "AdGuard Non-filtering"
+msgstr "AdGuard (Без фильтрации)"
+
+msgid "AdGuard Family"
+msgstr "AdGuard (Семейный)"
+
+msgid "Mullvad Base"
+msgstr "Mullvad (Базовый)"
+
+msgid "Mullvad Adblock"
+msgstr "Mullvad (Блокировка рекламы)"
+
+msgid "Mullvad Extended"
+msgstr "Mullvad (Расширенный)"
+
+msgid "Control D Uncensored"
+msgstr "Control D (Без цензуры)"
+
+msgid "Control D Malware"
+msgstr "Control D (Защита)"
+
+msgid "Control D Adblock"
+msgstr "Control D (Блокировка рекламы)"
+
+msgid "DNS0.EU Zero"
+msgstr "DNS0.EU (Zero Logs)"
+
+msgid "CleanBrowsing Security"
+msgstr "CleanBrowsing (Безопасность)"
+
+msgid "CleanBrowsing Family"
+msgstr "CleanBrowsing (Семейный)"
+
+msgid "Yandex Safe"
+msgstr "Yandex (Безопасный)"
