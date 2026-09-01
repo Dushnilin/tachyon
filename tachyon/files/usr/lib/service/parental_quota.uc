@@ -251,17 +251,6 @@ function write_crontab(lines) {
     return ok;
 }
 
-function install_cron() {
-    let line = cron_line();
-    let lines = crontab_lines();
-    for (let existing in lines)
-        if (trim(as_string(existing)) == line)
-            return 0;
-    push(lines, line);
-    log_message("cron job installed", "debug");
-    return write_crontab(lines) ? 0 : 1;
-}
-
 function remove_cron() {
     let line = cron_line();
     let changed = false;
@@ -275,6 +264,23 @@ function remove_cron() {
     }
     if (!changed)
         return 0;
+    return write_crontab(lines) ? 0 : 1;
+}
+
+function install_cron() {
+    // Only install the cron tick if there is at least one schedule with a
+    // daily_quota_minutes limit. Without quotas the job produces nft stderr
+    // which crond logs as cron.err every minute — pure noise.
+    if (length(quota_schedules()) == 0)
+        return remove_cron();
+
+    let line = cron_line();
+    let lines = crontab_lines();
+    for (let existing in lines)
+        if (trim(as_string(existing)) == line)
+            return 0;
+    push(lines, line);
+    log_message("cron job installed", "debug");
     return write_crontab(lines) ? 0 : 1;
 }
 
@@ -298,8 +304,8 @@ function blocked_lists(state) {
 function tick() {
     let schedules = quota_schedules();
     if (length(schedules) == 0) {
-        // Nothing to quota: make sure no stale blocks survive.
-        sync_enforcement([], []);
+        // No quota schedules configured — skip all nft operations so crond
+        // does not produce cron.err noise from chains that don't exist.
         return 0;
     }
 
