@@ -128,6 +128,11 @@ function configureGridSection(sectionRef, type, title, addTitle) {
 }
 
 const EntryPoint = {
+  load() {
+    // Pre-load UCI so that tab_order and show_tab_* are available
+    // synchronously in render() before section factories are registered.
+    return uci.load([UCI_PACKAGE]);
+  },
   async render() {
     main.injectGlobalStyles();
     const uiCapabilities = {
