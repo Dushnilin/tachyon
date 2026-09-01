@@ -2537,6 +2537,8 @@ function check_free_disk_space(target_dir, needed_bytes) {
     return free_kb > (needed_kb * 2) && (free_kb - needed_kb) > 4096;
 }
 
+const SING_BOX_BIN = getenv("TACHYON_SING_BOX_BIN") || "/usr/bin/sing-box";
+
 function create_component_backup(component) {
     component = normalize_component_name(component);
     if (!get_component_backup_enabled())
@@ -2546,9 +2548,9 @@ function create_component_backup(component) {
     let meta_file = component_backup_metadata_file(component);
 
     if (component == "sing_box") {
-        if (!file_exists("/usr/bin/sing-box"))
+        if (!file_exists(SING_BOX_BIN))
             return true;
-        let st = fs.stat("/usr/bin/sing-box");
+        let st = fs.stat(SING_BOX_BIN);
         let size = (st && st.size) ? st.size : 0;
         if (size <= 0)
             return true;
@@ -2561,14 +2563,14 @@ function create_component_backup(component) {
         ensure_dir(bdir);
         let backup_bin = bdir + "/sing-box";
         remove_file(backup_bin);
-        if (!command_success_from_args([ "cp", "-p", "/usr/bin/sing-box", backup_bin ])) {
+        if (!command_success_from_args([ "cp", "-p", SING_BOX_BIN, backup_bin ])) {
             updates_log("Failed to create sing-box backup copy", "warn");
             return false;
         }
 
         let variant = sing_box_runtime_output("variant", []);
         let marker = sing_box_runtime_output("read-variant-marker", []);
-        let version = read_sing_box_binary_version("/usr/bin/sing-box", "/usr/lib");
+        let version = read_sing_box_binary_version(SING_BOX_BIN, "/usr/lib");
         if (version == "")
             version = sing_box_runtime_output("version", []);
 
@@ -2671,9 +2673,9 @@ function rollback_component(component) {
 
         stop_tachyon_before_sing_box_change();
 
-        remove_file("/usr/bin/sing-box");
-        if (!command_success_from_args([ "cp", "-p", backup_bin, "/usr/bin/sing-box" ]) ||
-            !command_success_from_args([ "chmod", "0755", "/usr/bin/sing-box" ])) {
+        remove_file(SING_BOX_BIN);
+        if (!command_success_from_args([ "cp", "-p", backup_bin, SING_BOX_BIN ]) ||
+            !command_success_from_args([ "chmod", "0755", SING_BOX_BIN ])) {
             action_fail("sing_box", "rollback", "Failed to restore sing-box binary from backup");
         }
 

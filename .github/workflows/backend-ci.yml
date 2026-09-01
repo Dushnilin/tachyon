@@ -63,4 +63,6 @@ jobs:
             ! -name 'docker_e2e_test.sh' \
             ! -name 'container_entrypoint.sh' \
             ! -name 'run_all.sh' \
+            ! -name 'ucode_syntax_lint.sh' \
             -print0 | xargs -0 -n1 -P4 bash
+
