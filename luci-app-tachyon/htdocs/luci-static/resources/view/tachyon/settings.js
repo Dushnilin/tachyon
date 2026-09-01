@@ -1085,6 +1085,8 @@ function createMenuTabsOrderWidget(option, section_id) {
 
   function syncToUci() {
     uci.set(UCI_PACKAGE, section_id, "tab_order", ordered);
+    wrapper._order = ordered.slice();
+    wrapper._vis = Object.assign({}, visibility);
     ALL_MENU_TABS.forEach(function (t) {
       if (!t.fixed) {
         let optKey = "show_tab_" + t.id;
@@ -1265,17 +1267,26 @@ function createSettingsContent(section, capabilities) {
 
   const tabsOrderOpt = section.taboption(
     "navigation",
-    form.DummyValue,
+    form.Value,
     "_tabs_order_widget",
     _("Tab Order & Visibility"),
     _(
       "Customize the order and visibility of tabs in the main navigation menu. Use the arrows to reorder and checkboxes to show or hide tabs.",
     ),
   );
-  tabsOrderOpt.rawhtml = true;
-  tabsOrderOpt.cfgvalue = function (section_id) {
+  tabsOrderOpt.renderWidget = function (section_id) {
     return createMenuTabsOrderWidget(this, section_id);
   };
+  tabsOrderOpt.formvalue = function (section_id) {
+    const el = document.getElementById("menu-tabs-order-widget-" + section_id);
+    // Return serialized state so LuCI knows something changed
+    return el ? JSON.stringify({ order: el._order, vis: el._vis }) : "";
+  };
+  tabsOrderOpt.write = function (_section_id) {
+    // UCI is written directly by syncToUci() inside the widget on every interaction.
+    // Nothing extra to do here.
+  };
+  tabsOrderOpt.remove = function () {};
 
   // ── DNS Settings ────────────────────────────────────────────────────────
 
