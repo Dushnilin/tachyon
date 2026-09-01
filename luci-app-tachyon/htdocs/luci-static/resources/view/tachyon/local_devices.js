@@ -62,7 +62,10 @@ function addLocalDeviceChoice(choices, ip, name, mac) {
     }
   }
 
-  if (normalizedMac && /^([0-9a-f]{2}[:-]){5}[0-9a-f]{2}$/.test(normalizedMac)) {
+  if (
+    normalizedMac &&
+    /^([0-9a-f]{2}[:-]){5}[0-9a-f]{2}$/.test(normalizedMac)
+  ) {
     const formattedMac = normalizedMac.replace(/-/g, ":");
     if (normalizedName) {
       choices[formattedMac] = `MAC: ${formattedMac} — ${normalizedName}`;
@@ -118,7 +121,12 @@ function buildRouterIpMap(networkInterfaces) {
   return routerIps;
 }
 
-function buildLocalDeviceChoices(hostHints, dhcpLeases, networkInterfaces, dhcpHosts) {
+function buildLocalDeviceChoices(
+  hostHints,
+  dhcpLeases,
+  networkInterfaces,
+  dhcpHosts,
+) {
   const choices = {};
   const routerIps = buildRouterIpMap(networkInterfaces);
 
@@ -147,7 +155,7 @@ function buildLocalDeviceChoices(hostHints, dhcpLeases, networkInterfaces, dhcpH
       addLocalDeviceChoice(choices, lease.ipaddr, lease.hostname, lease.mac);
     });
   }
-  
+
   if (Array.isArray(dhcpHosts)) {
     dhcpHosts.forEach((host) => {
       if (host && host.ip && main.validateIP(host.ip).valid) {
@@ -176,14 +184,17 @@ function loadLocalDeviceChoices() {
     callHostHints().catch(() => ({})),
     callDHCPLeases().catch(() => ({})),
     callNetworkInterfaceDump().catch(() => []),
-    uci.load("dhcp").then(() => uci.sections("dhcp", "host")).catch(() => []),
+    uci
+      .load("dhcp")
+      .then(() => uci.sections("dhcp", "host"))
+      .catch(() => []),
   ])
     .then(([hostHints, dhcpLeases, networkInterfaces, dhcpHosts]) => {
       localDeviceChoicesCache = buildLocalDeviceChoices(
         hostHints,
         dhcpLeases,
         networkInterfaces,
-        dhcpHosts
+        dhcpHosts,
       );
       return localDeviceChoicesCache;
     })

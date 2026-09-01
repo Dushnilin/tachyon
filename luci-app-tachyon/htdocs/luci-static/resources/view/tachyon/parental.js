@@ -55,59 +55,130 @@ const DOMAIN_PRESETS = {
     label: _("Social media"),
     icon: "📱",
     domains: [
-      "facebook.com", "instagram.com", "tiktok.com", "twitter.com", "x.com",
-      "vk.com", "snapchat.com", "reddit.com", "discord.com", "discord.gg",
-      "twitch.tv", "pinterest.com", "telegram.org", "t.me", "whatsapp.com",
-      "signal.org", "wechat.com", "youtube.com", "tumblr.com",
+      "facebook.com",
+      "instagram.com",
+      "tiktok.com",
+      "twitter.com",
+      "x.com",
+      "vk.com",
+      "snapchat.com",
+      "reddit.com",
+      "discord.com",
+      "discord.gg",
+      "twitch.tv",
+      "pinterest.com",
+      "telegram.org",
+      "t.me",
+      "whatsapp.com",
+      "signal.org",
+      "wechat.com",
+      "youtube.com",
+      "tumblr.com",
     ],
   },
   video: {
     label: _("Video streaming"),
     icon: "🎬",
     domains: [
-      "youtube.com", "youtu.be", "googlevideo.com", "ytimg.com",
-      "netflix.com", "primevideo.com", "hulu.com", "disneyplus.com",
-      "hbomax.com", "okko.tv", "ivi.ru", "kinopoisk.ru",
-      "twitch.tv", "vimeo.com", "dailymotion.com", "rutube.ru",
+      "youtube.com",
+      "youtu.be",
+      "googlevideo.com",
+      "ytimg.com",
+      "netflix.com",
+      "primevideo.com",
+      "hulu.com",
+      "disneyplus.com",
+      "hbomax.com",
+      "okko.tv",
+      "ivi.ru",
+      "kinopoisk.ru",
+      "twitch.tv",
+      "vimeo.com",
+      "dailymotion.com",
+      "rutube.ru",
     ],
   },
   gaming: {
     label: _("Gaming"),
     icon: "🎮",
     domains: [
-      "steampowered.com", "steamcommunity.com", "epicgames.com",
-      "roblox.com", "fortnite.com", "xbox.com", "playstation.com",
-      "battle.net", "ea.com", "ubisoft.com", "riotgames.com",
-      "minecraft.net", "origin.com", "discord.com", "discord.gg",
+      "steampowered.com",
+      "steamcommunity.com",
+      "epicgames.com",
+      "roblox.com",
+      "fortnite.com",
+      "xbox.com",
+      "playstation.com",
+      "battle.net",
+      "ea.com",
+      "ubisoft.com",
+      "riotgames.com",
+      "minecraft.net",
+      "origin.com",
+      "discord.com",
+      "discord.gg",
     ],
   },
   adult: {
     label: _("Adult content"),
     icon: "🔞",
     domains: [
-      "pornhub.com", "xvideos.com", "xhamster.com", "xnxx.com",
-      "onlyfans.com", "stripchat.com", "chaturbate.com",
-      "youporn.com", "redtube.com", "tubegalore.com",
-      "porntrex.com", "pornhd.com", "nudevista.com",
-      "porn.com", "spankbang.com", "eporner.com",
+      "pornhub.com",
+      "xvideos.com",
+      "xhamster.com",
+      "xnxx.com",
+      "onlyfans.com",
+      "stripchat.com",
+      "chaturbate.com",
+      "youporn.com",
+      "redtube.com",
+      "tubegalore.com",
+      "porntrex.com",
+      "pornhd.com",
+      "nudevista.com",
+      "porn.com",
+      "spankbang.com",
+      "eporner.com",
     ],
   },
   messengers: {
     label: _("Messengers"),
     icon: "💬",
     domains: [
-      "telegram.org", "t.me", "whatsapp.com", "wa.me", "viber.com",
-      "signal.org", "wechat.com", "qq.com", "icq.com", "discord.com",
-      "discord.gg", "skype.com", "zoom.us", "slack.com", "teams.microsoft.com",
+      "telegram.org",
+      "t.me",
+      "whatsapp.com",
+      "wa.me",
+      "viber.com",
+      "signal.org",
+      "wechat.com",
+      "qq.com",
+      "icq.com",
+      "discord.com",
+      "discord.gg",
+      "skype.com",
+      "zoom.us",
+      "slack.com",
+      "teams.microsoft.com",
     ],
   },
   shopping: {
     label: _("Shopping"),
     icon: "🛒",
     domains: [
-      "amazon.com", "ebay.com", "aliexpress.com", "ozon.ru",
-      "wildberries.ru", "wb.ru", "yandex.market", "market.yandex.ru",
-      "avito.ru", "lamoda.ru", "shein.com", "temu.com", "wish.com",
+      "amazon.com",
+      "ebay.com",
+      "aliexpress.com",
+      "ozon.ru",
+      "wildberries.ru",
+      "wb.ru",
+      "yandex.market",
+      "market.yandex.ru",
+      "avito.ru",
+      "lamoda.ru",
+      "shein.com",
+      "temu.com",
+      "wish.com",
     ],
   },
 };
@@ -125,14 +196,22 @@ function validateTime(sectionId, value) {
 
 function normalizeDays(raw) {
   if (!raw) return [];
-  if (Array.isArray(raw)) return raw.map((d) => `${d}`.toLowerCase().trim()).filter(Boolean);
-  return `${raw}`.split(/\s+/).map((d) => d.toLowerCase().trim()).filter(Boolean);
+  if (Array.isArray(raw))
+    return raw.map((d) => `${d}`.toLowerCase().trim()).filter(Boolean);
+  return `${raw}`
+    .split(/\s+/)
+    .map((d) => d.toLowerCase().trim())
+    .filter(Boolean);
 }
 
 function normalizeListValues(raw) {
   if (!raw) return [];
-  if (Array.isArray(raw)) return raw.map((item) => `${item}`.trim()).filter(Boolean);
-  return `${raw}`.split(/\s+/).map((item) => item.trim()).filter(Boolean);
+  if (Array.isArray(raw))
+    return raw.map((item) => `${item}`.trim()).filter(Boolean);
+  return `${raw}`
+    .split(/\s+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
 }
 
 function isScheduleCurrentlyActive(sectionId) {
@@ -191,7 +270,9 @@ function validateDevice(sectionId, value) {
   const str = `${value}`.trim();
   if (main.validateIP(str).valid) return true;
   if (/^([0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}$/.test(str)) return true;
-  return _("Invalid IP or MAC address. Expected e.g. 192.168.1.150 or AA:BB:CC:DD:EE:FF");
+  return _(
+    "Invalid IP or MAC address. Expected e.g. 192.168.1.150 or AA:BB:CC:DD:EE:FF",
+  );
 }
 
 // ─── Family Profiles Section ──────────────────────────────────────────────────
@@ -233,14 +314,20 @@ function createProfileContent(section) {
   };
 
   // Assigned Devices column
-  o = section.option(form.DummyValue, "_devices_display", _("Devices (MAC / IP)"));
+  o = section.option(
+    form.DummyValue,
+    "_devices_display",
+    _("Devices (MAC / IP)"),
+  );
   o.rawhtml = true;
   o.modalonly = false;
   o.cfgvalue = function (sectionId) {
     const rawIp = uci.get(UCI_PACKAGE, sectionId, "device_ip");
     const devs = normalizeListValues(rawIp);
     if (devs.length === 0) {
-      return '<span style="opacity:0.5;">' + _("No devices assigned") + "</span>";
+      return (
+        '<span style="opacity:0.5;">' + _("No devices assigned") + "</span>"
+      );
     }
     const isMacAddr = (dev) =>
       /^([0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}$/.test(dev);
@@ -258,10 +345,14 @@ function createProfileContent(section) {
         );
       })
       .join("");
-    return '<div style="display:flex;flex-wrap:wrap;gap:2px;">' + badges + "</div>";
+    return (
+      '<div style="display:flex;flex-wrap:wrap;gap:2px;">' + badges + "</div>"
+    );
   };
   o.textvalue = function (sectionId) {
-    const devs = normalizeListValues(uci.get(UCI_PACKAGE, sectionId, "device_ip"));
+    const devs = normalizeListValues(
+      uci.get(UCI_PACKAGE, sectionId, "device_ip"),
+    );
     return devs.length === 0 ? _("No devices assigned") : devs.join(", ");
   };
 
@@ -270,7 +361,8 @@ function createProfileContent(section) {
   o.rawhtml = true;
   o.modalonly = false;
   o.cfgvalue = function (sectionId) {
-    const raw = Number(uci.get(UCI_PACKAGE, sectionId, "daily_quota_minutes")) || 0;
+    const raw =
+      Number(uci.get(UCI_PACKAGE, sectionId, "daily_quota_minutes")) || 0;
     if (raw <= 0) {
       return '<span style="opacity:0.5;">' + _("Unlimited") + "</span>";
     }
@@ -283,7 +375,8 @@ function createProfileContent(section) {
     );
   };
   o.textvalue = function (sectionId) {
-    const raw = Number(uci.get(UCI_PACKAGE, sectionId, "daily_quota_minutes")) || 0;
+    const raw =
+      Number(uci.get(UCI_PACKAGE, sectionId, "daily_quota_minutes")) || 0;
     return raw > 0 ? `${raw} ${_("min/day")}` : _("Unlimited");
   };
 
@@ -300,22 +393,44 @@ function createProfileContent(section) {
 
     let badges = [];
     if (safeSearch) {
-      badges.push('<span class="badge" style="background:rgba(79,209,197,0.15);color:var(--teal-color, #319795);padding:2px 6px;border-radius:4px;font-size:11px;margin-right:4px;border:1px solid rgba(79,209,197,0.3);">🛡️ ' + _("SafeSearch") + "</span>");
+      badges.push(
+        '<span class="badge" style="background:rgba(79,209,197,0.15);color:var(--teal-color, #319795);padding:2px 6px;border-radius:4px;font-size:11px;margin-right:4px;border:1px solid rgba(79,209,197,0.3);">🛡️ ' +
+          _("SafeSearch") +
+          "</span>",
+      );
     }
     if (blockDoh) {
-      badges.push('<span class="badge" style="background:rgba(183,148,244,0.15);color:var(--purple-color, #805ad5);padding:2px 6px;border-radius:4px;font-size:11px;margin-right:4px;border:1px solid rgba(183,148,244,0.3);">🔒 ' + _("Anti-Bypass (DoH)") + "</span>");
+      badges.push(
+        '<span class="badge" style="background:rgba(183,148,244,0.15);color:var(--purple-color, #805ad5);padding:2px 6px;border-radius:4px;font-size:11px;margin-right:4px;border:1px solid rgba(183,148,244,0.3);">🔒 ' +
+          _("Anti-Bypass (DoH)") +
+          "</span>",
+      );
     }
     if (domainCount > 0) {
-      badges.push('<span class="badge" style="background:rgba(229,62,62,0.15);color:var(--error-color-medium, #e53e3e);padding:2px 6px;border-radius:4px;font-size:11px;margin-right:4px;border:1px solid rgba(229,62,62,0.3);">🚫 ' + domainCount + " " + _("sites") + "</span>");
+      badges.push(
+        '<span class="badge" style="background:rgba(229,62,62,0.15);color:var(--error-color-medium, #e53e3e);padding:2px 6px;border-radius:4px;font-size:11px;margin-right:4px;border:1px solid rgba(229,62,62,0.3);">🚫 ' +
+          domainCount +
+          " " +
+          _("sites") +
+          "</span>",
+      );
     }
     if (notify) {
-      badges.push('<span class="badge" style="background:rgba(49,130,206,0.15);color:var(--primary-color-medium, #3182ce);padding:2px 6px;border-radius:4px;font-size:11px;margin-right:4px;border:1px solid rgba(49,130,206,0.3);">🔔 ' + _("Telegram") + "</span>");
+      badges.push(
+        '<span class="badge" style="background:rgba(49,130,206,0.15);color:var(--primary-color-medium, #3182ce);padding:2px 6px;border-radius:4px;font-size:11px;margin-right:4px;border:1px solid rgba(49,130,206,0.3);">🔔 ' +
+          _("Telegram") +
+          "</span>",
+      );
     }
 
     if (badges.length === 0) {
       return '<span style="opacity:0.5;">' + _("Standard") + "</span>";
     }
-    return '<div style="display:flex;flex-wrap:wrap;gap:4px;">' + badges.join("") + "</div>";
+    return (
+      '<div style="display:flex;flex-wrap:wrap;gap:4px;">' +
+      badges.join("") +
+      "</div>"
+    );
   };
   o.textvalue = function (sectionId) {
     const safeSearch = uci.get(UCI_PACKAGE, sectionId, "safe_search") === "1";
@@ -358,7 +473,12 @@ function createProfileContent(section) {
   // ─── Modal Form Options ───────────────────────────────────────────────────
 
   // Profile Avatar selector
-  o = section.option(form.ListValue, "avatar", _("Profile Icon / Avatar"), _("Choose a visual icon for this profile"));
+  o = section.option(
+    form.ListValue,
+    "avatar",
+    _("Profile Icon / Avatar"),
+    _("Choose a visual icon for this profile"),
+  );
   o.modalonly = true;
   o.default = "👶";
   Object.entries(AVATAR_PRESETS).forEach(([icon, label]) => {
@@ -366,7 +486,12 @@ function createProfileContent(section) {
   });
 
   // Profile Label / Name
-  o = section.option(form.Value, "label", _("Profile Name"), _("e.g. Kids (Alice & Tim), Teenager, School PC, Guests"));
+  o = section.option(
+    form.Value,
+    "label",
+    _("Profile Name"),
+    _("e.g. Kids (Alice & Tim), Teenager, School PC, Guests"),
+  );
   o.modalonly = true;
   o.rmempty = false;
   o.placeholder = _("e.g. Kids");
@@ -376,7 +501,9 @@ function createProfileContent(section) {
     form.DynamicList,
     "device_ip",
     _("Assigned Devices (MAC / IP)"),
-    _("Select LAN devices to assign to this profile, or enter IP or MAC addresses manually. MAC addresses (e.g. AA:BB:CC:DD:EE:FF) work even if the device's IP changes via DHCP."),
+    _(
+      "Select LAN devices to assign to this profile, or enter IP or MAC addresses manually. MAC addresses (e.g. AA:BB:CC:DD:EE:FF) work even if the device's IP changes via DHCP.",
+    ),
   );
   o.modalonly = true;
   o.rmempty = true;
@@ -416,7 +543,9 @@ function createProfileContent(section) {
     form.Flag,
     "safe_search",
     _("Enforce SafeSearch & YouTube Restricted Mode"),
-    _("Forces SafeSearch on Google, Yandex, Bing, DuckDuckGo and Strict Restricted Mode on YouTube via DNS rewrite for all devices in this profile."),
+    _(
+      "Forces SafeSearch on Google, Yandex, Bing, DuckDuckGo and Strict Restricted Mode on YouTube via DNS rewrite for all devices in this profile.",
+    ),
   );
   o.modalonly = true;
   o.default = "1";
@@ -427,7 +556,9 @@ function createProfileContent(section) {
     form.Flag,
     "block_doh",
     _("Anti-Bypass: Block Private DNS / DoH / DoT"),
-    _("Blocks port 853 (DNS-over-TLS) and prevents bypass via encrypted DNS or Private Relay on smartphones for devices in this profile."),
+    _(
+      "Blocks port 853 (DNS-over-TLS) and prevents bypass via encrypted DNS or Private Relay on smartphones for devices in this profile.",
+    ),
   );
   o.modalonly = true;
   o.default = "1";
@@ -438,7 +569,9 @@ function createProfileContent(section) {
     form.TextValue,
     "blocked_domains",
     _("Profile Blocked Sites (24/7)"),
-    _("Always block these domains for all devices in this profile. Enter one domain per line or use category preset buttons."),
+    _(
+      "Always block these domains for all devices in this profile. Enter one domain per line or use category preset buttons.",
+    ),
   );
   o.modalonly = true;
   o.rmempty = true;
@@ -448,22 +581,32 @@ function createProfileContent(section) {
   o.placeholder = "tiktok.com\nroblox.com";
   o.validate = function (sectionId, value) {
     if (!value) return true;
-    const lines = `${value}`.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    const lines = `${value}`
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter(Boolean);
     for (const line of lines) {
       const clean = line.replace(/^(full:|keyword:|regex:)/, "");
       if (/^(full:|keyword:|regex:)/.test(line) && !clean) {
         return _("Invalid domain: empty prefix value");
       }
       if (/^regex:/.test(line)) continue;
-      if (!/^([a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/.test(clean)) {
+      if (
+        !/^([a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/.test(clean)
+      ) {
         return _("Invalid domain: " + line);
       }
     }
     return true;
   };
   o.write = function (sectionId, value) {
-    const lines = `${value || ""}`.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-    const existingList = normalizeListValues(uci.get(UCI_PACKAGE, sectionId, "blocked_domains"));
+    const lines = `${value || ""}`
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter(Boolean);
+    const existingList = normalizeListValues(
+      uci.get(UCI_PACKAGE, sectionId, "blocked_domains"),
+    );
     for (const d of lines) {
       if (!existingList.includes(d)) {
         uci.add_list(UCI_PACKAGE, sectionId, "blocked_domains", d);
@@ -476,14 +619,18 @@ function createProfileContent(section) {
     }
   };
   o.load = function (sectionId) {
-    return normalizeListValues(uci.get(UCI_PACKAGE, sectionId, "blocked_domains")).join("\n");
+    return normalizeListValues(
+      uci.get(UCI_PACKAGE, sectionId, "blocked_domains"),
+    ).join("\n");
   };
   o.remove = function (sectionId) {
     uci.unset(UCI_PACKAGE, sectionId, "blocked_domains");
   };
   o.renderWidget = function (sectionId, optionIndex, cfgvalue) {
     const container = E("div", { style: "width:100%;box-sizing:border-box;" });
-    const presetRow = E("div", { style: "margin-bottom:6px;display:flex;flex-wrap:wrap;gap:4px;" });
+    const presetRow = E("div", {
+      style: "margin-bottom:6px;display:flex;flex-wrap:wrap;gap:4px;",
+    });
     Object.entries(DOMAIN_PRESETS).forEach(([key, preset]) => {
       const btn = E(
         "button",
@@ -498,7 +645,10 @@ function createProfileContent(section) {
       btn.addEventListener("click", function () {
         const textarea = container.querySelector("textarea");
         if (!textarea) return;
-        const current = textarea.value.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+        const current = textarea.value
+          .split(/\r?\n/)
+          .map((l) => l.trim())
+          .filter(Boolean);
         const merged = current.slice();
         for (const d of preset.domains) {
           if (!merged.includes(d)) merged.push(d);
@@ -525,7 +675,9 @@ function createProfileContent(section) {
     form.Flag,
     "notify",
     _("Telegram Alerts"),
-    _("Send Telegram alerts to parents when daily screen time is exhausted or blocked sites are accessed."),
+    _(
+      "Send Telegram alerts to parents when daily screen time is exhausted or blocked sites are accessed.",
+    ),
   );
   o.modalonly = true;
   o.default = "1";
@@ -543,7 +695,11 @@ function createParentalContent(section) {
   o.width = "5rem";
 
   // Device / Target profile column in table
-  o = section.option(form.DummyValue, "_device_display", _("Profile / Devices"));
+  o = section.option(
+    form.DummyValue,
+    "_device_display",
+    _("Profile / Devices"),
+  );
   o.rawhtml = true;
   o.modalonly = false;
   o.cfgvalue = function (sectionId) {
@@ -562,8 +718,8 @@ function createParentalContent(section) {
         const devCount = prof ? normalizeListValues(prof.device_ip).length : 0;
         items.push(
           `<span class="badge" style="background:rgba(49,151,149,0.15);color:var(--teal-color, #319795);padding:2px 6px;border-radius:4px;font-size:11px;margin-right:4px;font-weight:600;display:inline-flex;align-items:center;margin-bottom:2px;border:1px solid rgba(49,151,149,0.3);max-width:100%;word-break:break-all;">` +
-          `${avatar} ${label} (${devCount} ${_("dev.")})` +
-          `</span>`
+            `${avatar} ${label} (${devCount} ${_("dev.")})` +
+            `</span>`,
         );
       });
     }
@@ -578,9 +734,9 @@ function createParentalContent(section) {
         const label = isMac ? "MAC" : "IP";
         items.push(
           `<span class="badge" style="background:var(--background-color-low, rgba(0,0,0,0.06));padding:2px 6px;border-radius:4px;font-size:11px;font-family:monospace;margin-right:4px;font-weight:600;display:inline-flex;align-items:center;margin-bottom:2px;border:1px solid var(--border-color-low, rgba(0,0,0,0.12));max-width:100%;word-break:break-all;overflow-wrap:anywhere;">` +
-          `<span style="opacity:0.75;font-weight:700;margin-right:3px;">${label}:</span>` +
-          dev +
-          "</span>"
+            `<span style="opacity:0.75;font-weight:700;margin-right:3px;">${label}:</span>` +
+            dev +
+            "</span>",
         );
       });
     }
@@ -589,11 +745,19 @@ function createParentalContent(section) {
       return '<span style="opacity:0.5;">' + _("All devices") + "</span>";
     }
 
-    return '<div style="display:flex;flex-wrap:wrap;gap:2px;">' + items.join("") + "</div>";
+    return (
+      '<div style="display:flex;flex-wrap:wrap;gap:2px;">' +
+      items.join("") +
+      "</div>"
+    );
   };
   o.textvalue = function (sectionId) {
-    const profiles = normalizeListValues(uci.get(UCI_PACKAGE, sectionId, "profile"));
-    const devs = normalizeListValues(uci.get(UCI_PACKAGE, sectionId, "device_ip"));
+    const profiles = normalizeListValues(
+      uci.get(UCI_PACKAGE, sectionId, "profile"),
+    );
+    const devs = normalizeListValues(
+      uci.get(UCI_PACKAGE, sectionId, "device_ip"),
+    );
     const list = [...profiles.map((p) => `Profile: ${p}`), ...devs];
     return list.length === 0 ? _("All devices") : list.join(", ");
   };
@@ -605,7 +769,11 @@ function createParentalContent(section) {
   o.cfgvalue = function (sectionId) {
     const target = uci.get(UCI_PACKAGE, sectionId, "target") || "all";
     if (target === "all") {
-      return '<span style="color:var(--error-color-medium, #e53e3e);font-weight:600;">🚫 ' + _("All Internet") + "</span>";
+      return (
+        '<span style="color:var(--error-color-medium, #e53e3e);font-weight:600;">🚫 ' +
+        _("All Internet") +
+        "</span>"
+      );
     }
     const rawSecs = uci.get(UCI_PACKAGE, sectionId, "sections");
     const secNames = normalizeListValues(rawSecs);
@@ -613,7 +781,9 @@ function createParentalContent(section) {
       secNames.push(target);
     }
     if (secNames.length === 0) {
-      return '<span style="opacity:0.6;">' + _("No sections selected") + "</span>";
+      return (
+        '<span style="opacity:0.6;">' + _("No sections selected") + "</span>"
+      );
     }
     const badges = secNames
       .map((name) => {
@@ -626,13 +796,19 @@ function createParentalContent(section) {
         );
       })
       .join("");
-    return '<div style="display:flex;flex-wrap:wrap;gap:2px;">' + badges + "</div>";
+    return (
+      '<div style="display:flex;flex-wrap:wrap;gap:2px;">' + badges + "</div>"
+    );
   };
   o.textvalue = function (sectionId) {
     const target = uci.get(UCI_PACKAGE, sectionId, "target") || "all";
     if (target === "all") return _("All Internet");
-    const secNames = normalizeListValues(uci.get(UCI_PACKAGE, sectionId, "sections"));
-    return secNames.length === 0 ? _("No sections selected") : secNames.join(", ");
+    const secNames = normalizeListValues(
+      uci.get(UCI_PACKAGE, sectionId, "sections"),
+    );
+    return secNames.length === 0
+      ? _("No sections selected")
+      : secNames.join(", ");
   };
 
   // Action column in table
@@ -642,9 +818,17 @@ function createParentalContent(section) {
   o.cfgvalue = function (sectionId) {
     const action = uci.get(UCI_PACKAGE, sectionId, "action") || "block";
     if (action === "allow") {
-      return '<span style="color:var(--success-color-medium, #38a169);font-weight:500;">✅ ' + _("Allow in interval") + "</span>";
+      return (
+        '<span style="color:var(--success-color-medium, #38a169);font-weight:500;">✅ ' +
+        _("Allow in interval") +
+        "</span>"
+      );
     }
-    return '<span style="color:var(--error-color-medium, #e53e3e);font-weight:500;">🚫 ' + _("Block in interval") + "</span>";
+    return (
+      '<span style="color:var(--error-color-medium, #e53e3e);font-weight:500;">🚫 ' +
+      _("Block in interval") +
+      "</span>"
+    );
   };
   o.textvalue = function (sectionId) {
     const action = uci.get(UCI_PACKAGE, sectionId, "action") || "block";
@@ -681,7 +865,8 @@ function createParentalContent(section) {
   o.rawhtml = true;
   o.modalonly = false;
   o.cfgvalue = function (sectionId) {
-    const raw = Number(uci.get(UCI_PACKAGE, sectionId, "daily_quota_minutes")) || 0;
+    const raw =
+      Number(uci.get(UCI_PACKAGE, sectionId, "daily_quota_minutes")) || 0;
     if (raw <= 0) {
       return '<span style="opacity:0.5;">' + _("None") + "</span>";
     }
@@ -694,7 +879,8 @@ function createParentalContent(section) {
     );
   };
   o.textvalue = function (sectionId) {
-    const raw = Number(uci.get(UCI_PACKAGE, sectionId, "daily_quota_minutes")) || 0;
+    const raw =
+      Number(uci.get(UCI_PACKAGE, sectionId, "daily_quota_minutes")) || 0;
     return raw > 0 ? `${raw} ${_("min/day")}` : _("None");
   };
 
@@ -703,15 +889,21 @@ function createParentalContent(section) {
   o.rawhtml = true;
   o.modalonly = false;
   o.cfgvalue = function (sectionId) {
-    const domains = normalizeListValues(uci.get(UCI_PACKAGE, sectionId, "blocked_domains"));
+    const domains = normalizeListValues(
+      uci.get(UCI_PACKAGE, sectionId, "blocked_domains"),
+    );
     const mode = uci.get(UCI_PACKAGE, sectionId, "mode") || "block";
     if (domains.length === 0) {
       return '<span style="opacity:0.5;">' + _("None") + "</span>";
     }
     const modeBadge =
       mode === "allow"
-        ? '<span style="color:var(--success-color-medium, #38a169);font-weight:600;">🟢 ' + _("Allow only") + "</span>"
-        : '<span style="color:var(--error-color-medium, #e53e3e);font-weight:600;">🚫 ' + _("Block") + "</span>";
+        ? '<span style="color:var(--success-color-medium, #38a169);font-weight:600;">🟢 ' +
+          _("Allow only") +
+          "</span>"
+        : '<span style="color:var(--error-color-medium, #e53e3e);font-weight:600;">🚫 ' +
+          _("Block") +
+          "</span>";
     const badges = domains
       .map(
         (d) =>
@@ -720,13 +912,23 @@ function createParentalContent(section) {
           "</span>",
       )
       .join("");
-    return "<div>" + modeBadge + '<br><div style="display:flex;flex-wrap:wrap;gap:2px;margin-top:2px;">' + badges + "</div></div>";
+    return (
+      "<div>" +
+      modeBadge +
+      '<br><div style="display:flex;flex-wrap:wrap;gap:2px;margin-top:2px;">' +
+      badges +
+      "</div></div>"
+    );
   };
   o.textvalue = function (sectionId) {
-    const domains = normalizeListValues(uci.get(UCI_PACKAGE, sectionId, "blocked_domains"));
+    const domains = normalizeListValues(
+      uci.get(UCI_PACKAGE, sectionId, "blocked_domains"),
+    );
     const mode = uci.get(UCI_PACKAGE, sectionId, "mode") || "block";
     if (domains.length === 0) return _("None");
-    return (mode === "allow" ? _("Allow only: ") : _("Block: ")) + domains.join(", ");
+    return (
+      (mode === "allow" ? _("Allow only: ") : _("Block: ")) + domains.join(", ")
+    );
   };
 
   // Live status badge in table
@@ -746,10 +948,16 @@ function createParentalContent(section) {
     const active = isScheduleCurrentlyActive(sectionId);
     const action = uci.get(UCI_PACKAGE, sectionId, "action") || "block";
     if (active) {
-      const color = action === "allow" ? "var(--success-color-medium, #38a169)" : "var(--error-color-medium, #e53e3e)";
-      const bg = action === "allow" ? "rgba(72,187,120,0.15)" : "rgba(229,62,62,0.15)";
-      const border = action === "allow" ? "rgba(72,187,120,0.3)" : "rgba(229,62,62,0.3)";
-      const text = action === "allow" ? _("Active (Allowed)") : _("Active (Blocking)");
+      const color =
+        action === "allow"
+          ? "var(--success-color-medium, #38a169)"
+          : "var(--error-color-medium, #e53e3e)";
+      const bg =
+        action === "allow" ? "rgba(72,187,120,0.15)" : "rgba(229,62,62,0.15)";
+      const border =
+        action === "allow" ? "rgba(72,187,120,0.3)" : "rgba(229,62,62,0.3)";
+      const text =
+        action === "allow" ? _("Active (Allowed)") : _("Active (Blocking)");
       return (
         `<span style="display:inline-flex;align-items:center;padding:2px 8px;border-radius:12px;font-size:11px;background:${bg};color:${color};border:1px solid ${border};">` +
         `<span style="width:6px;height:6px;border-radius:50%;background:currentColor;margin-right:5px;box-shadow:0 0 4px currentColor;display:inline-block;"></span>` +
@@ -769,7 +977,10 @@ function createParentalContent(section) {
     if (!enabled) return _("Disabled");
     const active = isScheduleCurrentlyActive(sectionId);
     const action = uci.get(UCI_PACKAGE, sectionId, "action") || "block";
-    if (active) return action === "allow" ? _("Active (Allowed)") : _("Active (Blocking)");
+    if (active)
+      return action === "allow"
+        ? _("Active (Allowed)")
+        : _("Active (Blocking)");
     return _("Pending");
   };
 
@@ -786,7 +997,9 @@ function createParentalContent(section) {
     form.DynamicList,
     "profile",
     _("Target Family Profiles"),
-    _("Apply this schedule rule to all devices in the selected family profile(s)."),
+    _(
+      "Apply this schedule rule to all devices in the selected family profile(s).",
+    ),
   );
   o.modalonly = true;
   o.rmempty = true;
@@ -808,7 +1021,9 @@ function createParentalContent(section) {
     form.DynamicList,
     "device_ip",
     _("Additional Individual Devices (IP / MAC)"),
-    _("Optionally specify individual devices not in a profile. MAC addresses (e.g. AA:BB:CC:DD:EE:FF) work even if the IP changes."),
+    _(
+      "Optionally specify individual devices not in a profile. MAC addresses (e.g. AA:BB:CC:DD:EE:FF) work even if the IP changes.",
+    ),
   );
   o.modalonly = true;
   o.rmempty = true;
@@ -827,7 +1042,9 @@ function createParentalContent(section) {
     form.ListValue,
     "target",
     _("Target Scope"),
-    _("Choose whether to restrict the entire internet or only specific Tachyon routing sections."),
+    _(
+      "Choose whether to restrict the entire internet or only specific Tachyon routing sections.",
+    ),
   );
   o.modalonly = true;
   o.default = "all";
@@ -860,7 +1077,9 @@ function createParentalContent(section) {
     form.ListValue,
     "action",
     _("Action Mode"),
-    _("Select whether to disable the target during the schedule or enable it ONLY during the schedule."),
+    _(
+      "Select whether to disable the target during the schedule or enable it ONLY during the schedule.",
+    ),
   );
   o.modalonly = true;
   o.default = "block";
@@ -884,7 +1103,9 @@ function createParentalContent(section) {
     form.Value,
     "end_time",
     _("End Time (HH:MM)"),
-    _("End of the schedule interval (e.g. 08:00). Supports spans crossing midnight."),
+    _(
+      "End of the schedule interval (e.g. 08:00). Supports spans crossing midnight.",
+    ),
   );
   o.modalonly = true;
   o.default = "08:00";
@@ -932,7 +1153,9 @@ function createParentalContent(section) {
     form.TextValue,
     "blocked_domains",
     _("Blocked Sites (Domains)"),
-    _("Domains to block for the selected devices. Leave empty to block all internet. Enter one domain per line, e.g. youtube.com. Use the preset buttons to quickly add common categories."),
+    _(
+      "Domains to block for the selected devices. Leave empty to block all internet. Enter one domain per line, e.g. youtube.com. Use the preset buttons to quickly add common categories.",
+    ),
   );
   o.modalonly = true;
   o.rmempty = true;
@@ -942,22 +1165,32 @@ function createParentalContent(section) {
   o.placeholder = "youtube.com\ngooglevideo.com";
   o.validate = function (sectionId, value) {
     if (!value) return true;
-    const lines = `${value}`.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    const lines = `${value}`
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter(Boolean);
     for (const line of lines) {
       const clean = line.replace(/^(full:|keyword:|regex:)/, "");
       if (/^(full:|keyword:|regex:)/.test(line) && !clean) {
         return _("Invalid domain: empty prefix value");
       }
       if (/^regex:/.test(line)) continue;
-      if (!/^([a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/.test(clean)) {
+      if (
+        !/^([a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/.test(clean)
+      ) {
         return _("Invalid domain: " + line);
       }
     }
     return true;
   };
   o.write = function (sectionId, value) {
-    const lines = `${value || ""}`.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-    const existingList = normalizeListValues(uci.get(UCI_PACKAGE, sectionId, "blocked_domains"));
+    const lines = `${value || ""}`
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter(Boolean);
+    const existingList = normalizeListValues(
+      uci.get(UCI_PACKAGE, sectionId, "blocked_domains"),
+    );
     for (const d of lines) {
       if (!existingList.includes(d)) {
         uci.add_list(UCI_PACKAGE, sectionId, "blocked_domains", d);
@@ -970,7 +1203,9 @@ function createParentalContent(section) {
     }
   };
   o.load = function (sectionId) {
-    return normalizeListValues(uci.get(UCI_PACKAGE, sectionId, "blocked_domains")).join("\n");
+    return normalizeListValues(
+      uci.get(UCI_PACKAGE, sectionId, "blocked_domains"),
+    ).join("\n");
   };
   o.remove = function (sectionId) {
     uci.unset(UCI_PACKAGE, sectionId, "blocked_domains");
@@ -979,7 +1214,9 @@ function createParentalContent(section) {
     const container = E("div", { style: "width:100%;box-sizing:border-box;" });
 
     // Preset buttons row
-    const presetRow = E("div", { style: "margin-bottom:6px;display:flex;flex-wrap:wrap;gap:4px;" });
+    const presetRow = E("div", {
+      style: "margin-bottom:6px;display:flex;flex-wrap:wrap;gap:4px;",
+    });
     Object.entries(DOMAIN_PRESETS).forEach(([key, preset]) => {
       const btn = E(
         "button",
@@ -994,7 +1231,10 @@ function createParentalContent(section) {
       btn.addEventListener("click", function () {
         const textarea = container.querySelector("textarea");
         if (!textarea) return;
-        const current = textarea.value.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+        const current = textarea.value
+          .split(/\r?\n/)
+          .map((l) => l.trim())
+          .filter(Boolean);
         const merged = current.slice();
         for (const d of preset.domains) {
           if (!merged.includes(d)) merged.push(d);
@@ -1021,7 +1261,9 @@ function createParentalContent(section) {
     form.ListValue,
     "mode",
     _("Content Mode"),
-    _("Block: deny the listed sites. Allow only (whitelist): deny everything except the listed sites. Whitelist mode requires DNS-level blocking and applies to the schedule window."),
+    _(
+      "Block: deny the listed sites. Allow only (whitelist): deny everything except the listed sites. Whitelist mode requires DNS-level blocking and applies to the schedule window.",
+    ),
   );
   o.modalonly = true;
   o.default = "block";
@@ -1033,7 +1275,9 @@ function createParentalContent(section) {
     form.Flag,
     "dns_level",
     _("Block at DNS level"),
-    _("Return NXDOMAIN for blocked domains (recommended). When enabled, blocked domains are not resolved at all. When disabled, only direct connections are rejected."),
+    _(
+      "Return NXDOMAIN for blocked domains (recommended). When enabled, blocked domains are not resolved at all. When disabled, only direct connections are rejected.",
+    ),
   );
   o.modalonly = true;
   o.default = "1";
@@ -1044,7 +1288,9 @@ function createParentalContent(section) {
     form.Flag,
     "notify",
     _("Notify in Telegram"),
-    _("Send a Telegram notification to admins when a blocked site is accessed. Requires the Telegram bot to be enabled."),
+    _(
+      "Send a Telegram notification to admins when a blocked site is accessed. Requires the Telegram bot to be enabled.",
+    ),
   );
   o.modalonly = true;
   o.default = "0";

@@ -90,7 +90,20 @@ function isOutboundDetourTargetSection(section, currentSectionId) {
     sectionName &&
     sectionName !== currentSectionId &&
     section.enabled !== "0" &&
-    ["connection", "proxy", "outbound", "vpn", "awg", "warp", "anytls", "snell", "mieru", "sudoku", "masque", "openvpn"].includes(action)
+    [
+      "connection",
+      "proxy",
+      "outbound",
+      "vpn",
+      "awg",
+      "warp",
+      "anytls",
+      "snell",
+      "mieru",
+      "sudoku",
+      "masque",
+      "openvpn",
+    ].includes(action)
   );
 }
 
@@ -130,7 +143,22 @@ function isDnsDetourTargetSection(section, currentSectionId) {
     return false;
   }
 
-  if (["connection", "proxy", "outbound", "vpn", "awg", "warp", "anytls", "snell", "mieru", "sudoku", "masque", "openvpn"].includes(action)) {
+  if (
+    [
+      "connection",
+      "proxy",
+      "outbound",
+      "vpn",
+      "awg",
+      "warp",
+      "anytls",
+      "snell",
+      "mieru",
+      "sudoku",
+      "masque",
+      "openvpn",
+    ].includes(action)
+  ) {
     return true;
   }
   if (action === "zapret") {
@@ -175,8 +203,13 @@ function dependsOnRuleConditions(option) {
       option.depends({ action, [condition]: /\S/ }),
     ),
   );
-  ["domain", "community_lists", "_dns_rule_set", "_dns_domain_ip_lists"].forEach(
-    (condition) => option.depends({ action: "dns", [condition]: /\S/ }),
+  [
+    "domain",
+    "community_lists",
+    "_dns_rule_set",
+    "_dns_domain_ip_lists",
+  ].forEach((condition) =>
+    option.depends({ action: "dns", [condition]: /\S/ }),
   );
   return option;
 }
@@ -1534,7 +1567,11 @@ function configureLiveDynamicListChoices(option, getChoices) {
       );
 
       const cboxElem = node.querySelector(".cbi-dropdown");
-      if (cboxElem && typeof dom !== "undefined" && typeof dom.callClassMethod === "function") {
+      if (
+        cboxElem &&
+        typeof dom !== "undefined" &&
+        typeof dom.callClassMethod === "function"
+      ) {
         try {
           dom.callClassMethod(cboxElem, "clearChoices");
           dom.callClassMethod(
@@ -1790,7 +1827,22 @@ function isDownloadThroughTargetSection(section, currentSectionId) {
     return false;
   }
 
-  if (["connection", "proxy", "outbound", "vpn", "awg", "warp", "anytls", "snell", "mieru", "sudoku", "masque", "openvpn"].includes(action)) {
+  if (
+    [
+      "connection",
+      "proxy",
+      "outbound",
+      "vpn",
+      "awg",
+      "warp",
+      "anytls",
+      "snell",
+      "mieru",
+      "sudoku",
+      "masque",
+      "openvpn",
+    ].includes(action)
+  ) {
     return true;
   }
 
@@ -2841,7 +2893,10 @@ function addUrlTestItemOptions(itemSection, options = {}) {
       };
       list.placeholder = _("-- Select --");
       configureLiveDynamicListChoices(list, (itemId, values) =>
-        currentOutboundNameChoices(parentSectionForItem(itemId) || "Main", values),
+        currentOutboundNameChoices(
+          parentSectionForItem(itemId) || "Main",
+          values,
+        ),
       );
     }
     if (validator) {
@@ -3054,7 +3109,10 @@ function addPriorityLevelItemOptions(itemSection, options = {}) {
       };
       list.placeholder = _("-- Select --");
       configureLiveDynamicListChoices(list, (itemId, values) =>
-        currentOutboundNameChoices(parentSectionForItem(itemId) || "Main", values),
+        currentOutboundNameChoices(
+          parentSectionForItem(itemId) || "Main",
+          values,
+        ),
       );
     }
     if (validator) {
@@ -3564,116 +3622,119 @@ function renderStackedJsonSettingsModal(title, map, onSave) {
     return Promise.resolve();
   }
 
-  return map.load().then(() => map.render()).then((nodes) => {
-    const titleNode = E("span", title ? ` » ${title}` : "");
-    const originalButtonClass = buttonRow.getAttribute("class") || "";
-    const originalButtonNodes = Array.from(buttonRow.childNodes);
-    let closed = false;
-    let saveButton;
-    let validationSummary;
+  return map
+    .load()
+    .then(() => map.render())
+    .then((nodes) => {
+      const titleNode = E("span", title ? ` » ${title}` : "");
+      const originalButtonClass = buttonRow.getAttribute("class") || "";
+      const originalButtonNodes = Array.from(buttonRow.childNodes);
+      let closed = false;
+      let saveButton;
+      let validationSummary;
 
-    const clearValidationSummary = () => {
-      if (validationSummary && validationSummary.parentNode) {
-        validationSummary.parentNode.removeChild(validationSummary);
-      }
-      validationSummary = null;
-    };
+      const clearValidationSummary = () => {
+        if (validationSummary && validationSummary.parentNode) {
+          validationSummary.parentNode.removeChild(validationSummary);
+        }
+        validationSummary = null;
+      };
 
-    const showValidationSummary = (error) => {
-      clearValidationSummary();
+      const showValidationSummary = (error) => {
+        clearValidationSummary();
 
-      const message = error?.message || "";
-      validationSummary = E(
-        "div",
-        {
-          class:
-            "alert-message warning fkp-stacked-settings-validation-summary",
-        },
-        [
-          E("strong", {}, _("Cannot save settings")),
-          E("div", {}, _("Fix the highlighted fields and save again.")),
-          message ? E("small", {}, message) : "",
-        ],
-      );
-      buttonRow.parentNode.insertBefore(validationSummary, buttonRow);
+        const message = error?.message || "";
+        validationSummary = E(
+          "div",
+          {
+            class:
+              "alert-message warning fkp-stacked-settings-validation-summary",
+          },
+          [
+            E("strong", {}, _("Cannot save settings")),
+            E("div", {}, _("Fix the highlighted fields and save again.")),
+            message ? E("small", {}, message) : "",
+          ],
+        );
+        buttonRow.parentNode.insertBefore(validationSummary, buttonRow);
 
-      const invalidInput = nodes.querySelector(".cbi-input-invalid");
-      if (invalidInput) {
-        invalidInput.scrollIntoView({ block: "center", behavior: "smooth" });
-        invalidInput.focus({ preventScroll: true });
-      }
-    };
+        const invalidInput = nodes.querySelector(".cbi-input-invalid");
+        if (invalidInput) {
+          invalidInput.scrollIntoView({ block: "center", behavior: "smooth" });
+          invalidInput.focus({ preventScroll: true });
+        }
+      };
 
-    const restoreButtonRow = () => {
+      const restoreButtonRow = () => {
+        buttonRow.textContent = "";
+        originalButtonNodes.forEach((node) => buttonRow.appendChild(node));
+        buttonRow.setAttribute("class", originalButtonClass);
+      };
+
+      const close = () => {
+        if (closed) {
+          return;
+        }
+
+        closed = true;
+        clearValidationSummary();
+
+        if (nodes.parentNode) {
+          nodes.parentNode.removeChild(nodes);
+        }
+        if (titleNode.parentNode) {
+          titleNode.parentNode.removeChild(titleNode);
+        }
+
+        activeMap.classList.remove("hidden");
+        restoreButtonRow();
+      };
+
+      const save = () => {
+        if (saveButton) {
+          saveButton.disabled = true;
+        }
+        clearValidationSummary();
+
+        return map
+          .parse()
+          .then(() => {
+            onSave(cleanFormSectionData(map.data.get(map.config, "settings")));
+            close();
+          })
+          .catch((error) => {
+            if (saveButton) {
+              saveButton.disabled = false;
+            }
+            showValidationSummary(error);
+          });
+      };
+
       buttonRow.textContent = "";
-      originalButtonNodes.forEach((node) => buttonRow.appendChild(node));
-      buttonRow.setAttribute("class", originalButtonClass);
-    };
+      buttonRow.append(
+        E(
+          "button",
+          {
+            class: "btn cbi-button",
+            click: close,
+          },
+          _("Close"),
+        ),
+        " ",
+        (saveButton = E(
+          "button",
+          {
+            class: "btn cbi-button cbi-button-positive important",
+            click: save,
+          },
+          _("Save"),
+        )),
+      );
 
-    const close = () => {
-      if (closed) {
-        return;
-      }
-
-      closed = true;
-      clearValidationSummary();
-
-      if (nodes.parentNode) {
-        nodes.parentNode.removeChild(nodes);
-      }
-      if (titleNode.parentNode) {
-        titleNode.parentNode.removeChild(titleNode);
-      }
-
-      activeMap.classList.remove("hidden");
-      restoreButtonRow();
-    };
-
-    const save = () => {
-      if (saveButton) {
-        saveButton.disabled = true;
-      }
-      clearValidationSummary();
-
-      return map
-        .parse()
-        .then(() => {
-          onSave(cleanFormSectionData(map.data.get(map.config, "settings")));
-          close();
-        })
-        .catch((error) => {
-          if (saveButton) {
-            saveButton.disabled = false;
-          }
-          showValidationSummary(error);
-        });
-    };
-
-    buttonRow.textContent = "";
-    buttonRow.append(
-      E(
-        "button",
-        {
-          class: "btn cbi-button",
-          click: close,
-        },
-        _("Close"),
-      ),
-      " ",
-      (saveButton = E(
-        "button",
-        {
-          class: "btn cbi-button cbi-button-positive important",
-          click: save,
-        },
-        _("Save"),
-      )),
-    );
-
-    heading.appendChild(titleNode);
-    activeMap.classList.add("hidden");
-    activeMap.parentNode.insertBefore(nodes, activeMap.nextElementSibling);
-  });
+      heading.appendChild(titleNode);
+      activeMap.classList.add("hidden");
+      activeMap.parentNode.insertBefore(nodes, activeMap.nextElementSibling);
+    });
 }
 
 function showChildItemSettingsModal(section_id, itemValue, option, settings) {
@@ -3832,7 +3893,6 @@ function showUrlTestSettingsModal(
   });
 }
 
-
 function showPriorityLevelSettingsModal(
   groupId,
   itemValue,
@@ -3879,7 +3939,6 @@ function showPriorityLevelSettingsModal(
     });
   });
 }
-
 
 function createPriorityGroupItem(section_id, groupId, settings) {
   const created = uci.add(UCI_PACKAGE, "priority_group", groupId) || groupId;
@@ -4174,7 +4233,6 @@ function ensureActionProvidersAvailabilityLoaded() {
           ? byedpiResult.value
           : null;
 
-
       actionProvidersAvailabilityState.loaded = true;
       actionProvidersAvailabilityState.zapretInstalled = Boolean(
         zapret && zapret.success && zapret.data && zapret.data.zapret_installed,
@@ -4218,8 +4276,6 @@ function isZapret2InstalledForUi() {
 function isByedpiInstalledForUi() {
   return actionProvidersAvailabilityState.byedpiInstalled;
 }
-
-
 
 function isSingBoxExtendedForUi() {
   return actionProvidersAvailabilityState.singBoxExtended;
@@ -4361,7 +4417,6 @@ function populateActionOptionValues(option) {
     option.value("byedpi", getActionOptionLabel("byedpi"));
   }
   option.value("hosts", getActionOptionLabel("hosts"));
-
 }
 
 function getConfigListValues(section_id, key) {
@@ -7068,33 +7123,33 @@ function addTextConditionField(section, config) {
 }
 
 var DOMAIN_LIST_HINTS = {
-  russia_inside:    "youtube.com, instagram.com, twitter.com, ...",
-  russia_outside:   "gosuslugi.ru, ozon.ru, rzd.ru, ...",
-  ukraine_inside:   "ukr.net, pravda.com.ua, suspilne.media, ...",
-  geoblock:         "Все домены, заблокированные в РФ",
-  block:            "Заблокировать совсем (без прокси)",
-  porn:             "Pornhub, xvideos, xhamster, ...",
-  news:             "meduza.io, bbc.com, pravda.com.ua, ...",
-  anime:            "bato.to, mangadex.org, myanimelist.net, ...",
-  youtube:          "youtube.com, youtu.be, googlevideo.com, ...",
-  discord:          "discord.com, discord.gg, discordapp.com, ...",
-  meta:             "facebook.com, instagram.com, whatsapp.com, ...",
-  twitter:          "twitter.com, x.com, t.co, ...",
-  hdrezka:          "hdrezka.ag, hdrezka.me, ...",
-  tiktok:           "tiktok.com, tiktokcdn.com, ...",
-  telegram:         "telegram.org, t.me, ...",
-  cloudflare:       "все IP/домены Cloudflare (1.1.1.1, etc.)",
-  google_ai:        "gemini.google.com, bard.google.com, ...",
-  google_play:      "play.google.com, googleplay.com, ...",
-  hodca:            "Домены на CDN: Hetzner, OVH, DigitalOcean, Cloudflare, AWS",
-  roblox:           "roblox.com, rbxcdn.com, ...",
-  ads_hagezi_pro:   "Блокировка рекламы (Hagezi Pro список)",
-  supercell:        "supercell.com, clashofclans.com, ...",
-  github:           "github.com, raw.githubusercontent.com, ...",
-  hetzner:          "IP-адреса Hetzner (ASN)",
-  ovh:              "IP-адреса OVH (ASN)",
-  digitalocean:     "IP-адреса DigitalOcean (ASN)",
-  cloudfront:       "IP-адреса CloudFront/Amazon (ASN)",
+  russia_inside: "youtube.com, instagram.com, twitter.com, ...",
+  russia_outside: "gosuslugi.ru, ozon.ru, rzd.ru, ...",
+  ukraine_inside: "ukr.net, pravda.com.ua, suspilne.media, ...",
+  geoblock: "Все домены, заблокированные в РФ",
+  block: "Заблокировать совсем (без прокси)",
+  porn: "Pornhub, xvideos, xhamster, ...",
+  news: "meduza.io, bbc.com, pravda.com.ua, ...",
+  anime: "bato.to, mangadex.org, myanimelist.net, ...",
+  youtube: "youtube.com, youtu.be, googlevideo.com, ...",
+  discord: "discord.com, discord.gg, discordapp.com, ...",
+  meta: "facebook.com, instagram.com, whatsapp.com, ...",
+  twitter: "twitter.com, x.com, t.co, ...",
+  hdrezka: "hdrezka.ag, hdrezka.me, ...",
+  tiktok: "tiktok.com, tiktokcdn.com, ...",
+  telegram: "telegram.org, t.me, ...",
+  cloudflare: "все IP/домены Cloudflare (1.1.1.1, etc.)",
+  google_ai: "gemini.google.com, bard.google.com, ...",
+  google_play: "play.google.com, googleplay.com, ...",
+  hodca: "Домены на CDN: Hetzner, OVH, DigitalOcean, Cloudflare, AWS",
+  roblox: "roblox.com, rbxcdn.com, ...",
+  ads_hagezi_pro: "Блокировка рекламы (Hagezi Pro список)",
+  supercell: "supercell.com, clashofclans.com, ...",
+  github: "github.com, raw.githubusercontent.com, ...",
+  hetzner: "IP-адреса Hetzner (ASN)",
+  ovh: "IP-адреса OVH (ASN)",
+  digitalocean: "IP-адреса DigitalOcean (ASN)",
+  cloudfront: "IP-адреса CloudFront/Amazon (ASN)",
 };
 
 function loadRulesetValues(option) {
@@ -7254,7 +7309,6 @@ function createSectionContent(section) {
   };
   o.width = "7rem";
 
-
   o = section.taboption(
     "settings",
     form.Value,
@@ -7276,11 +7330,12 @@ function createSectionContent(section) {
     _("What Tachyon should do when this section matches"),
   );
   populateActionOptionValues(o);
-  
-  const super_validate = o.validate;
-  o.validate = function(section_id, value) {
 
-    return super_validate ? super_validate.apply(this, [section_id, value]) : true;
+  const super_validate = o.validate;
+  o.validate = function (section_id, value) {
+    return super_validate
+      ? super_validate.apply(this, [section_id, value])
+      : true;
   };
 
   o.default = "connection";
@@ -7321,8 +7376,12 @@ function createSectionContent(section) {
   o.modalonly = true;
   configureLiveDynamicListChoices(o, (section_id) => {
     const dnsType = perRuleDnsTypeState.get(section_id) || "udp";
-    const servers = main.DNS_SERVERS_BY_PROTOCOL[dnsType] || main.DNS_SERVERS_BY_PROTOCOL.udp;
-    return Object.entries(servers).map(([value, label]) => ({ value, label: _(label) }));
+    const servers =
+      main.DNS_SERVERS_BY_PROTOCOL[dnsType] || main.DNS_SERVERS_BY_PROTOCOL.udp;
+    return Object.entries(servers).map(([value, label]) => ({
+      value,
+      label: _(label),
+    }));
   });
   perRuleDnsTypeOption.onchange = function (_ev, section_id, value) {
     const newType = value || "udp";
@@ -7332,9 +7391,13 @@ function createSectionContent(section) {
     if (newType !== oldType) {
       const widget = perRuleDnsWidgets.get(section_id);
       if (widget) {
-        const servers = main.DNS_SERVERS_BY_PROTOCOL[newType] || main.DNS_SERVERS_BY_PROTOCOL.udp;
+        const servers =
+          main.DNS_SERVERS_BY_PROTOCOL[newType] ||
+          main.DNS_SERVERS_BY_PROTOCOL.udp;
         const defaultLabels = {};
-        Object.entries(servers).forEach(([v, l]) => { defaultLabels[v] = _(l); });
+        Object.entries(servers).forEach(([v, l]) => {
+          defaultLabels[v] = _(l);
+        });
         const defaultServers = Object.keys(servers).slice(0, 1);
         widget.choices = defaultLabels;
         widget.setValue(defaultServers);
@@ -7435,8 +7498,6 @@ function createSectionContent(section) {
     return analysis.valid ? true : analysis.message;
   };
 
-
-
   o = section.taboption(
     "settings",
     form.TextValue,
@@ -7475,7 +7536,6 @@ function createSectionContent(section) {
   };
   configureTextareaOption(o, analyzeByedpiStrategy);
 
-
   // ─── Hosts Import Helpers ──────────────────────────────────────────────
 
   function parseHostsFile(text, options) {
@@ -7488,11 +7548,17 @@ function createSectionContent(section) {
     let skippedInvalid = 0;
 
     const loopbackIPs = new Set([
-      "127.0.0.1", "0.0.0.0", "::1",
-      "0:0:0:0:0:0:0:1", "0000:0000:0000:0000:0000:0000:0000:0001",
+      "127.0.0.1",
+      "0.0.0.0",
+      "::1",
+      "0:0:0:0:0:0:0:1",
+      "0000:0000:0000:0000:0000:0000:0000:0001",
     ]);
     const loopbackHosts = new Set([
-      "localhost", "localhost.localdomain", "local", "broadcasthost",
+      "localhost",
+      "localhost.localdomain",
+      "local",
+      "broadcasthost",
     ]);
 
     for (let i = 0; i < lines.length; i++) {
@@ -7501,89 +7567,166 @@ function createSectionContent(section) {
 
       const hashIdx = line.indexOf("#");
       if (hashIdx !== -1) {
-        if (hashIdx === 0) { skippedComments++; continue; }
+        if (hashIdx === 0) {
+          skippedComments++;
+          continue;
+        }
         line = line.substring(0, hashIdx).trim();
-        if (!line) { skippedComments++; continue; }
+        if (!line) {
+          skippedComments++;
+          continue;
+        }
       }
 
       const parts = line.split(/\s+/);
-      if (parts.length < 2) { skippedInvalid++; continue; }
+      if (parts.length < 2) {
+        skippedInvalid++;
+        continue;
+      }
 
       const ip = parts[0].trim();
       const isIPv4 = /^(\d{1,3}\.){3}\d{1,3}$/.test(ip);
       const isIPv6 = ip.indexOf(":") !== -1 && /^[0-9a-fA-F:]+$/.test(ip);
-      if (!isIPv4 && !isIPv6) { skippedInvalid++; continue; }
+      if (!isIPv4 && !isIPv6) {
+        skippedInvalid++;
+        continue;
+      }
 
       const isIpLoopback = loopbackIPs.has(ip);
       for (let j = 1; j < parts.length; j++) {
         const domain = parts[j].toLowerCase().trim();
         if (!domain) continue;
         if (skipLoopback && (isIpLoopback || loopbackHosts.has(domain))) {
-          skippedLoopback++; continue;
+          skippedLoopback++;
+          continue;
         }
         if (domain.length > 253 || /^[^a-z0-9_.-]/i.test(domain)) {
-          skippedInvalid++; continue;
+          skippedInvalid++;
+          continue;
         }
         entries.push({ domain: domain, ip: ip });
       }
     }
 
-    return { entries, skippedComments, skippedLoopback, skippedInvalid, totalLines: lines.length };
+    return {
+      entries,
+      skippedComments,
+      skippedLoopback,
+      skippedInvalid,
+      totalLines: lines.length,
+    };
   }
 
   function showImportHostsModal(section_id, dnsHostsOptRef) {
-    const fileInput = E("input", { type: "file", accept: ".txt,.hosts,hosts,*", style: "display:none" });
+    const fileInput = E("input", {
+      type: "file",
+      accept: ".txt,.hosts,hosts,*",
+      style: "display:none",
+    });
 
-    const fileSelectBtn = E("button", {
-      class: "cbi-button cbi-button-neutral", type: "button",
-      click: function () { fileInput.click(); },
-    }, _("Choose Hosts File..."));
-
-    const loadCurrentBtn = E("button", {
-      class: "cbi-button cbi-button-action", type: "button",
-      click: function () {
-        let existingEntries = [];
-        const uiEl = dnsHostsOptRef ? dnsHostsOptRef.getUIElement(section_id) : null;
-        if (uiEl && typeof uiEl.getValue === "function") {
-          const v = uiEl.getValue();
-          if (typeof v === "string" && v) existingEntries = v.split("\n").map(l => l.trim()).filter(l => l);
-        }
-        if (!existingEntries.length) {
-          const uciVal = uci.get(UCI_PACKAGE, section_id, "dns_hosts");
-          existingEntries = Array.isArray(uciVal) ? uciVal : uciVal ? [uciVal] : [];
-        }
-        textArea.value = existingEntries.join("\n");
-        fileStatus.textContent = _("Loaded %d current record(s)").format(existingEntries.length);
-        updatePreview();
+    const fileSelectBtn = E(
+      "button",
+      {
+        class: "cbi-button cbi-button-neutral",
+        type: "button",
+        click: function () {
+          fileInput.click();
+        },
       },
-    }, _("Load Current Records"));
+      _("Choose Hosts File..."),
+    );
 
-    const fileStatus = E("span", {
-      style: "margin-left:10px;font-size:0.85rem;color:var(--text-color-medium,#888);",
-    }, _("No file selected"));
+    const loadCurrentBtn = E(
+      "button",
+      {
+        class: "cbi-button cbi-button-action",
+        type: "button",
+        click: function () {
+          let existingEntries = [];
+          const uiEl = dnsHostsOptRef
+            ? dnsHostsOptRef.getUIElement(section_id)
+            : null;
+          if (uiEl && typeof uiEl.getValue === "function") {
+            const v = uiEl.getValue();
+            if (typeof v === "string" && v)
+              existingEntries = v
+                .split("\n")
+                .map((l) => l.trim())
+                .filter((l) => l);
+          }
+          if (!existingEntries.length) {
+            const uciVal = uci.get(UCI_PACKAGE, section_id, "dns_hosts");
+            existingEntries = Array.isArray(uciVal)
+              ? uciVal
+              : uciVal
+                ? [uciVal]
+                : [];
+          }
+          textArea.value = existingEntries.join("\n");
+          fileStatus.textContent = _("Loaded %d current record(s)").format(
+            existingEntries.length,
+          );
+          updatePreview();
+        },
+      },
+      _("Load Current Records"),
+    );
+
+    const fileStatus = E(
+      "span",
+      {
+        style:
+          "margin-left:10px;font-size:0.85rem;color:var(--text-color-medium,#888);",
+      },
+      _("No file selected"),
+    );
 
     const textArea = E("textarea", {
-      class: "cbi-input-textarea", rows: 8,
-      style: "width:100%;font-family:monospace;font-size:0.85rem;margin-top:8px;resize:vertical;",
-      placeholder: "127.0.0.1 localhost\n192.168.1.100 server.local\n10.0.0.5 example.com alias.com",
+      class: "cbi-input-textarea",
+      rows: 8,
+      style:
+        "width:100%;font-family:monospace;font-size:0.85rem;margin-top:8px;resize:vertical;",
+      placeholder:
+        "127.0.0.1 localhost\n192.168.1.100 server.local\n10.0.0.5 example.com alias.com",
     });
 
     const skipLoopbackCb = E("input", {
-      type: "checkbox", id: "hosts-skip-loopback", checked: true,
+      type: "checkbox",
+      id: "hosts-skip-loopback",
+      checked: true,
       style: "margin-right:6px;vertical-align:middle;",
     });
     const overwriteCb = E("input", {
-      type: "checkbox", id: "hosts-overwrite", checked: false,
+      type: "checkbox",
+      id: "hosts-overwrite",
+      checked: false,
       style: "margin-right:6px;vertical-align:middle;",
     });
 
-    const previewBox = E("div", {
-      style: "margin-top:12px;padding:10px 14px;background:var(--background-color-secondary,#f8f9fa);border:1px solid var(--border-color-medium,#e0e0e0);border-radius:4px;font-size:0.85rem;line-height:1.5;",
-    }, [E("em", {}, _("Paste content or upload a file to preview imported DNS records."))]);
+    const previewBox = E(
+      "div",
+      {
+        style:
+          "margin-top:12px;padding:10px 14px;background:var(--background-color-secondary,#f8f9fa);border:1px solid var(--border-color-medium,#e0e0e0);border-radius:4px;font-size:0.85rem;line-height:1.5;",
+      },
+      [
+        E(
+          "em",
+          {},
+          _("Paste content or upload a file to preview imported DNS records."),
+        ),
+      ],
+    );
 
-    const importBtn = E("button", {
-      class: "cbi-button cbi-button-action", type: "button", disabled: true,
-    }, _("Import"));
+    const importBtn = E(
+      "button",
+      {
+        class: "cbi-button cbi-button-action",
+        type: "button",
+        disabled: true,
+      },
+      _("Import"),
+    );
 
     let currentParsedResult = null;
 
@@ -7594,7 +7737,15 @@ function createSectionContent(section) {
 
       if (!text.trim()) {
         previewBox.innerHTML = "";
-        previewBox.appendChild(E("em", {}, _("Paste content or upload a file to preview imported DNS records.")));
+        previewBox.appendChild(
+          E(
+            "em",
+            {},
+            _(
+              "Paste content or upload a file to preview imported DNS records.",
+            ),
+          ),
+        );
         importBtn.disabled = true;
         importBtn.textContent = _("Import");
         currentParsedResult = null;
@@ -7605,45 +7756,82 @@ function createSectionContent(section) {
       currentParsedResult = result;
 
       let existingEntries = [];
-      const uiEl = dnsHostsOptRef ? dnsHostsOptRef.getUIElement(section_id) : null;
+      const uiEl = dnsHostsOptRef
+        ? dnsHostsOptRef.getUIElement(section_id)
+        : null;
       if (uiEl && typeof uiEl.getValue === "function") {
         const v = uiEl.getValue();
-        if (typeof v === "string" && v) existingEntries = v.split("\n").map(l => l.trim()).filter(l => l && !l.startsWith("#"));
+        if (typeof v === "string" && v)
+          existingEntries = v
+            .split("\n")
+            .map((l) => l.trim())
+            .filter((l) => l && !l.startsWith("#"));
       }
       if (!existingEntries.length) {
         const uciVal = uci.get(UCI_PACKAGE, section_id, "dns_hosts");
-        existingEntries = Array.isArray(uciVal) ? uciVal : uciVal ? [uciVal] : [];
+        existingEntries = Array.isArray(uciVal)
+          ? uciVal
+          : uciVal
+            ? [uciVal]
+            : [];
       }
 
       const domainMap = new Map();
       if (!overwrite) {
         for (const entry of existingEntries) {
           const parts = `${entry}`.trim().split(/\s+/);
-          if (parts.length >= 2) domainMap.set(parts[0].toLowerCase(), parts[1]);
+          if (parts.length >= 2)
+            domainMap.set(parts[0].toLowerCase(), parts[1]);
         }
       }
 
-      let newCount = 0, updatedCount = 0;
+      let newCount = 0,
+        updatedCount = 0;
       for (const item of result.entries) {
-        if (domainMap.has(item.domain.toLowerCase())) updatedCount++; else newCount++;
+        if (domainMap.has(item.domain.toLowerCase())) updatedCount++;
+        else newCount++;
         domainMap.set(item.domain.toLowerCase(), item.ip);
       }
 
       previewBox.innerHTML = "";
-      previewBox.appendChild(E("div", {
-        style: "display:grid;grid-template-columns:1fr 1fr;gap:6px;row-gap:4px;",
-      }, [
-        E("div", {}, [E("strong", {}, _("Total lines: ")), `${result.totalLines}`]),
-        E("div", {}, [E("strong", {}, _("Parsed records: ")), `${result.entries.length}`]),
-        E("div", {}, [E("strong", {}, _("Skipped loopback: ")), `${result.skippedLoopback}`]),
-        E("div", {}, [E("strong", {}, _("Skipped comments/invalid: ")), `${result.skippedComments + result.skippedInvalid}`]),
-        E("div", {}, [E("strong", {}, _("New domains: ")), `${newCount}`]),
-        E("div", {}, [E("strong", {}, _("Updated/duplicates: ")), `${updatedCount}`]),
-      ]));
+      previewBox.appendChild(
+        E(
+          "div",
+          {
+            style:
+              "display:grid;grid-template-columns:1fr 1fr;gap:6px;row-gap:4px;",
+          },
+          [
+            E("div", {}, [
+              E("strong", {}, _("Total lines: ")),
+              `${result.totalLines}`,
+            ]),
+            E("div", {}, [
+              E("strong", {}, _("Parsed records: ")),
+              `${result.entries.length}`,
+            ]),
+            E("div", {}, [
+              E("strong", {}, _("Skipped loopback: ")),
+              `${result.skippedLoopback}`,
+            ]),
+            E("div", {}, [
+              E("strong", {}, _("Skipped comments/invalid: ")),
+              `${result.skippedComments + result.skippedInvalid}`,
+            ]),
+            E("div", {}, [E("strong", {}, _("New domains: ")), `${newCount}`]),
+            E("div", {}, [
+              E("strong", {}, _("Updated/duplicates: ")),
+              `${updatedCount}`,
+            ]),
+          ],
+        ),
+      );
 
       if (result.entries.length > 0) {
         importBtn.disabled = false;
-        importBtn.textContent = _("Import (%d records)").format(result.entries.length);
+        importBtn.textContent = _("Import (%d records)").format(
+          result.entries.length,
+        );
       } else {
         importBtn.disabled = true;
         importBtn.textContent = _("Import");
@@ -7655,7 +7843,10 @@ function createSectionContent(section) {
       if (!file) return;
       fileStatus.textContent = `${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
       const reader = new FileReader();
-      reader.onload = function (e) { textArea.value = e.target.result || ""; updatePreview(); };
+      reader.onload = function (e) {
+        textArea.value = e.target.result || "";
+        updatePreview();
+      };
       reader.readAsText(file);
     });
 
@@ -7667,67 +7858,132 @@ function createSectionContent(section) {
       if (!currentParsedResult || !currentParsedResult.entries.length) return;
 
       const overwrite = overwriteCb.checked;
-      const uiEl = dnsHostsOptRef ? dnsHostsOptRef.getUIElement(section_id) : null;
+      const uiEl = dnsHostsOptRef
+        ? dnsHostsOptRef.getUIElement(section_id)
+        : null;
       let existingEntries = [];
       if (uiEl && typeof uiEl.getValue === "function") {
         const v = uiEl.getValue();
-        if (typeof v === "string" && v) existingEntries = v.split("\n").map(l => l.trim()).filter(l => l && !l.startsWith("#"));
+        if (typeof v === "string" && v)
+          existingEntries = v
+            .split("\n")
+            .map((l) => l.trim())
+            .filter((l) => l && !l.startsWith("#"));
       }
       if (!existingEntries.length) {
         const uciVal = uci.get(UCI_PACKAGE, section_id, "dns_hosts");
-        existingEntries = Array.isArray(uciVal) ? uciVal : uciVal ? [uciVal] : [];
+        existingEntries = Array.isArray(uciVal)
+          ? uciVal
+          : uciVal
+            ? [uciVal]
+            : [];
       }
 
       const domainMap = new Map();
       if (!overwrite) {
         for (const entry of existingEntries) {
           const parts = `${entry}`.trim().split(/\s+/);
-          if (parts.length >= 2) domainMap.set(parts[0].toLowerCase(), parts[1]);
+          if (parts.length >= 2)
+            domainMap.set(parts[0].toLowerCase(), parts[1]);
         }
       }
-      for (const item of currentParsedResult.entries) domainMap.set(item.domain.toLowerCase(), item.ip);
+      for (const item of currentParsedResult.entries)
+        domainMap.set(item.domain.toLowerCase(), item.ip);
 
       const finalEntries = [];
-      for (const [domain, ip] of domainMap.entries()) finalEntries.push(`${domain} ${ip}`);
+      for (const [domain, ip] of domainMap.entries())
+        finalEntries.push(`${domain} ${ip}`);
 
       uci.set(UCI_PACKAGE, section_id, "dns_hosts", finalEntries.join("\n"));
-      if (uiEl && typeof uiEl.setValue === "function") uiEl.setValue(finalEntries.join("\n"));
+      if (uiEl && typeof uiEl.setValue === "function")
+        uiEl.setValue(finalEntries.join("\n"));
 
       ui.hideModal();
-      ui.addNotification(null, _("Successfully imported %d DNS record(s)").format(finalEntries.length), "info");
+      ui.addNotification(
+        null,
+        _("Successfully imported %d DNS record(s)").format(finalEntries.length),
+        "info",
+      );
     });
 
     ui.showModal(_("Import Hosts File"), [
       E("div", { class: "cbi-map" }, [
-        E("div", { style: "margin-bottom:12px;display:flex;align-items:center;flex-wrap:wrap;gap:8px;" }, [
-          fileInput, fileSelectBtn, loadCurrentBtn, fileStatus,
-        ]),
-        E("label", { style: "display:block;margin-bottom:4px;font-weight:bold;" }, _("Or paste hosts file content:")),
+        E(
+          "div",
+          {
+            style:
+              "margin-bottom:12px;display:flex;align-items:center;flex-wrap:wrap;gap:8px;",
+          },
+          [fileInput, fileSelectBtn, loadCurrentBtn, fileStatus],
+        ),
+        E(
+          "label",
+          { style: "display:block;margin-bottom:4px;font-weight:bold;" },
+          _("Or paste hosts file content:"),
+        ),
         textArea,
         E("div", { style: "margin-top:10px;" }, [
-          E("label", { style: "display:flex;align-items:center;cursor:pointer;margin-bottom:6px;" }, [
-            skipLoopbackCb,
-            E("span", {}, _("Skip loopback & local entries (127.0.0.1, ::1, 0.0.0.0, localhost)")),
-          ]),
-          E("label", { style: "display:flex;align-items:center;cursor:pointer;" }, [
-            overwriteCb,
-            E("span", {}, _("Overwrite existing records (if unchecked, merge with existing records)")),
-          ]),
+          E(
+            "label",
+            {
+              style:
+                "display:flex;align-items:center;cursor:pointer;margin-bottom:6px;",
+            },
+            [
+              skipLoopbackCb,
+              E(
+                "span",
+                {},
+                _(
+                  "Skip loopback & local entries (127.0.0.1, ::1, 0.0.0.0, localhost)",
+                ),
+              ),
+            ],
+          ),
+          E(
+            "label",
+            { style: "display:flex;align-items:center;cursor:pointer;" },
+            [
+              overwriteCb,
+              E(
+                "span",
+                {},
+                _(
+                  "Overwrite existing records (if unchecked, merge with existing records)",
+                ),
+              ),
+            ],
+          ),
         ]),
         previewBox,
       ]),
       E("div", { class: "button-row", style: "margin-top:16px;" }, [
         importBtn,
-        E("button", { class: "btn cbi-button cbi-button-neutral", click: ui.createHandlerFn(this, function () { ui.hideModal(); }) }, _("Cancel")),
+        E(
+          "button",
+          {
+            class: "btn cbi-button cbi-button-neutral",
+            click: ui.createHandlerFn(this, function () {
+              ui.hideModal();
+            }),
+          },
+          _("Cancel"),
+        ),
       ]),
     ]);
   }
 
-
   // ─── Hosts Section Options ──────────────────────────────────────────────
 
-  o = section.taboption("settings", form.TextValue, "dns_hosts", _("Custom DNS Records (Hosts)"),
-    _("One record per line: <code>example.com 192.168.1.100</code> or <code>192.168.1.100 example.com</code>. Lines starting with <code>#</code> are ignored."));
+  o = section.taboption(
+    "settings",
+    form.TextValue,
+    "dns_hosts",
+    _("Custom DNS Records (Hosts)"),
+    _(
+      "One record per line: <code>example.com 192.168.1.100</code> or <code>192.168.1.100 example.com</code>. Lines starting with <code>#</code> are ignored.",
+    ),
+  );
   o.depends("action", "hosts");
   o.rows = 8;
   o.wrap = "soft";
@@ -7740,9 +7996,10 @@ function createSectionContent(section) {
     return String(val || "");
   };
   o.write = function (section_id, value) {
-    const lines = String(value || "").split("\n")
-      .map(l => l.trim())
-      .filter(l => l && !l.startsWith("#"));
+    const lines = String(value || "")
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l && !l.startsWith("#"));
     if (lines.length === 0) {
       uci.unset(UCI_PACKAGE, section_id, "dns_hosts");
     } else {
@@ -7769,8 +8026,14 @@ function createSectionContent(section) {
   };
   const _origDnsHostsRenderWidget = o.renderWidget;
   o.renderWidget = function (section_id, option_index, cfgvalue) {
-    const node = _origDnsHostsRenderWidget.call(this, section_id, option_index, cfgvalue);
-    const ta = node.tagName === "TEXTAREA" ? node : node.querySelector("textarea");
+    const node = _origDnsHostsRenderWidget.call(
+      this,
+      section_id,
+      option_index,
+      cfgvalue,
+    );
+    const ta =
+      node.tagName === "TEXTAREA" ? node : node.querySelector("textarea");
     if (ta) {
       ta.style.fontFamily = "monospace";
       ta.style.fontSize = "0.85rem";
@@ -7779,12 +8042,15 @@ function createSectionContent(section) {
     }
 
     const countBadge = E("span", {
-      style: "font-weight:600;font-size:0.85rem;margin-left:auto;color:var(--text-color-medium,#666);",
+      style:
+        "font-weight:600;font-size:0.85rem;margin-left:auto;color:var(--text-color-medium,#666);",
     });
 
     function updateCount() {
       const text = ta ? ta.value : "";
-      const validLines = text.split("\n").filter(l => l.trim() && !l.trim().startsWith("#"));
+      const validLines = text
+        .split("\n")
+        .filter((l) => l.trim() && !l.trim().startsWith("#"));
       countBadge.textContent = _("Records: %d").format(validLines.length);
     }
 
@@ -7793,59 +8059,81 @@ function createSectionContent(section) {
       setTimeout(updateCount, 50);
     }
 
-    const sortBtn = E("button", {
-      class: "cbi-button cbi-button-neutral",
-      type: "button",
-      style: "margin-left:6px;",
-      click: function () {
-        if (!ta) return;
-        const lines = ta.value.split("\n")
-          .map(l => l.trim())
-          .filter(Boolean);
-        const comments = lines.filter(l => l.startsWith("#"));
-        const records = lines.filter(l => !l.startsWith("#")).sort();
-        ta.value = [...comments, ...records].join("\n");
-        updateCount();
+    const sortBtn = E(
+      "button",
+      {
+        class: "cbi-button cbi-button-neutral",
+        type: "button",
+        style: "margin-left:6px;",
+        click: function () {
+          if (!ta) return;
+          const lines = ta.value
+            .split("\n")
+            .map((l) => l.trim())
+            .filter(Boolean);
+          const comments = lines.filter((l) => l.startsWith("#"));
+          const records = lines.filter((l) => !l.startsWith("#")).sort();
+          ta.value = [...comments, ...records].join("\n");
+          updateCount();
+        },
       },
-    }, _("Sort Alphabetically"));
+      _("Sort Alphabetically"),
+    );
 
-    const cleanBtn = E("button", {
-      class: "cbi-button cbi-button-neutral",
-      type: "button",
-      style: "margin-left:6px;",
-      click: function () {
-        if (!ta) return;
-        const lines = ta.value.split("\n")
-          .map(l => l.trim())
-          .filter(l => l && !l.startsWith("#"));
-        ta.value = lines.join("\n");
-        updateCount();
+    const cleanBtn = E(
+      "button",
+      {
+        class: "cbi-button cbi-button-neutral",
+        type: "button",
+        style: "margin-left:6px;",
+        click: function () {
+          if (!ta) return;
+          const lines = ta.value
+            .split("\n")
+            .map((l) => l.trim())
+            .filter((l) => l && !l.startsWith("#"));
+          ta.value = lines.join("\n");
+          updateCount();
+        },
       },
-    }, _("Clean Comments"));
+      _("Clean Comments"),
+    );
 
-    const importHostsBtn = E("button", {
-      class: "cbi-button cbi-button-action",
-      type: "button",
-      style: "margin-left:6px;",
-      click: function () {
-        showImportHostsModal(section_id, o);
+    const importHostsBtn = E(
+      "button",
+      {
+        class: "cbi-button cbi-button-action",
+        type: "button",
+        style: "margin-left:6px;",
+        click: function () {
+          showImportHostsModal(section_id, o);
+        },
       },
-    }, _("Import Hosts File"));
+      _("Import Hosts File"),
+    );
 
     return E("div", {}, [
       node,
-      E("div", { style: "display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-top:8px;" }, [
-        sortBtn,
-        cleanBtn,
-        importHostsBtn,
-        countBadge,
-      ]),
+      E(
+        "div",
+        {
+          style:
+            "display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-top:8px;",
+        },
+        [sortBtn, cleanBtn, importHostsBtn, countBadge],
+      ),
     ]);
   };
 
-
-  o = section.taboption("settings", form.DynamicList, "hosts_list_urls", _("Remote Hosts Lists"),
-    _("URLs of remote hosts files to download and apply. Supports standard hosts format: <code>IP domain</code>."));
+  o = section.taboption(
+    "settings",
+    form.DynamicList,
+    "hosts_list_urls",
+    _("Remote Hosts Lists"),
+    _(
+      "URLs of remote hosts files to download and apply. Supports standard hosts format: <code>IP domain</code>.",
+    ),
+  );
   o.depends("action", "hosts");
   o.placeholder = "https://raw.githubusercontent.com/.../hosts";
   o.modalonly = true;
@@ -7869,7 +8157,12 @@ function createSectionContent(section) {
     }
 
     function setDisabled(disabled) {
-      uci.set(pkg, section_id, "hosts_list_disabled", disabled.length ? disabled : null);
+      uci.set(
+        pkg,
+        section_id,
+        "hosts_list_disabled",
+        disabled.length ? disabled : null,
+      );
     }
 
     const container = E("div", { class: "cbi-section-node" });
@@ -7879,14 +8172,20 @@ function createSectionContent(section) {
       const urls = getUrls();
       const disabled = getDisabled();
 
-      const table = E("table", { class: "cbi-section-table", style: "width:100%;" });
+      const table = E("table", {
+        class: "cbi-section-table",
+        style: "width:100%;",
+      });
       const tbody = E("tbody");
 
       urls.forEach(function (url, idx) {
         const isOff = disabled.includes(url);
         const tr = E("tr", { class: "cbi-section-table-row" });
 
-        const tdCheck = E("td", { class: "cbi-section-table-cell", style: "width:30px;text-align:center;" });
+        const tdCheck = E("td", {
+          class: "cbi-section-table-cell",
+          style: "width:30px;text-align:center;",
+        });
         const cb = E("input", {
           type: "checkbox",
           class: "cbi-input-checkbox",
@@ -7895,7 +8194,9 @@ function createSectionContent(section) {
             const nowEnabled = this.checked;
             let d = getDisabled();
             if (nowEnabled) {
-              d = d.filter(function (x) { return x !== url; });
+              d = d.filter(function (x) {
+                return x !== url;
+              });
             } else {
               if (!d.includes(url)) d.push(url);
             }
@@ -7908,34 +8209,56 @@ function createSectionContent(section) {
         tr.appendChild(tdCheck);
 
         const tdUrl = E("td", { class: "cbi-section-table-cell" });
-        const urlSpan = E("span", {
-          style: isOff ? "text-decoration:line-through;opacity:0.6;" : "",
-        }, url);
+        const urlSpan = E(
+          "span",
+          {
+            style: isOff ? "text-decoration:line-through;opacity:0.6;" : "",
+          },
+          url,
+        );
         tdUrl.appendChild(urlSpan);
         tr.appendChild(tdUrl);
 
-        const tdStatus = E("td", { class: "cbi-section-table-cell", style: "width:60px;text-align:center;white-space:nowrap;" });
-        tdStatus.appendChild(E("span", {
-          style: isOff ? "color:#e53935;" : "color:#2e7d32;",
-        }, isOff ? "OFF" : "ON"));
+        const tdStatus = E("td", {
+          class: "cbi-section-table-cell",
+          style: "width:60px;text-align:center;white-space:nowrap;",
+        });
+        tdStatus.appendChild(
+          E(
+            "span",
+            {
+              style: isOff ? "color:#e53935;" : "color:#2e7d32;",
+            },
+            isOff ? "OFF" : "ON",
+          ),
+        );
         tr.appendChild(tdStatus);
 
-        const tdDel = E("td", { class: "cbi-section-table-cell", style: "width:40px;text-align:center;" });
-        const delBtn = E("button", {
-          class: "btn cbi-button cbi-button-remove",
-          type: "button",
-          title: _("Remove"),
-          click: function () {
-            let u = getUrls();
-            let d = getDisabled();
-            u.splice(idx, 1);
-            d = d.filter(function (x) { return x !== url; });
-            setUrls(u);
-            setDisabled(d);
-            uci.save();
-            render();
+        const tdDel = E("td", {
+          class: "cbi-section-table-cell",
+          style: "width:40px;text-align:center;",
+        });
+        const delBtn = E(
+          "button",
+          {
+            class: "btn cbi-button cbi-button-remove",
+            type: "button",
+            title: _("Remove"),
+            click: function () {
+              let u = getUrls();
+              let d = getDisabled();
+              u.splice(idx, 1);
+              d = d.filter(function (x) {
+                return x !== url;
+              });
+              setUrls(u);
+              setDisabled(d);
+              uci.save();
+              render();
+            },
           },
-        }, "\u2715");
+          "\u2715",
+        );
         tdDel.appendChild(delBtn);
         tr.appendChild(tdDel);
 
@@ -7945,7 +8268,10 @@ function createSectionContent(section) {
       table.appendChild(tbody);
       container.appendChild(table);
 
-      const addRow = E("div", { class: "cbi-section-create", style: "margin-top:8px;display:flex;gap:4px;align-items:center;" });
+      const addRow = E("div", {
+        class: "cbi-section-create",
+        style: "margin-top:8px;display:flex;gap:4px;align-items:center;",
+      });
 
       const input = E("input", {
         type: "text",
@@ -7954,21 +8280,28 @@ function createSectionContent(section) {
         style: "flex:1;",
       });
 
-      const addBtn = E("button", {
-        class: "btn cbi-button cbi-button-action",
-        type: "button",
-        click: function () {
-          const val = (input.value || "").trim();
-          if (!val) return;
-          let u = getUrls();
-          if (u.includes(val)) { input.value = ""; return; }
-          u.push(val);
-          setUrls(u);
-          uci.save();
-          input.value = "";
-          render();
+      const addBtn = E(
+        "button",
+        {
+          class: "btn cbi-button cbi-button-action",
+          type: "button",
+          click: function () {
+            const val = (input.value || "").trim();
+            if (!val) return;
+            let u = getUrls();
+            if (u.includes(val)) {
+              input.value = "";
+              return;
+            }
+            u.push(val);
+            setUrls(u);
+            uci.save();
+            input.value = "";
+            render();
+          },
         },
-      }, "+");
+        "+",
+      );
 
       input.addEventListener("keydown", function (ev) {
         if (ev.key === "Enter") addBtn.click();
@@ -7983,16 +8316,25 @@ function createSectionContent(section) {
     return container;
   };
 
-
-  o = section.taboption("settings", form.Flag, "hosts_list_auto_update", _("Auto-update Hosts Lists"),
-    _("Automatically update remote hosts lists on schedule"));
+  o = section.taboption(
+    "settings",
+    form.Flag,
+    "hosts_list_auto_update",
+    _("Auto-update Hosts Lists"),
+    _("Automatically update remote hosts lists on schedule"),
+  );
   o.depends("action", "hosts");
   o.default = "0";
   o.rmempty = false;
   o.modalonly = true;
 
-  o = section.taboption("settings", form.Value, "hosts_list_update_interval", _("Hosts Lists Update Interval"),
-    _("Use sing-box duration format like 1d, 12h or 6h"));
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "hosts_list_update_interval",
+    _("Hosts Lists Update Interval"),
+    _("Use sing-box duration format like 1d, 12h or 6h"),
+  );
   o.depends("action", "hosts");
   o.depends({ action: "hosts", hosts_list_auto_update: "1" });
   o.placeholder = "24h";
@@ -8006,20 +8348,21 @@ function createSectionContent(section) {
       : _("Use sing-box duration format like 1d, 12h or 6h");
   };
 
-
   o = section.taboption(
     "settings",
     form.Button,
     "_generate_warp",
     _("AmneziaWG Generator"),
-    _("Automatically generate a Cloudflare WARP account and configure all AmneziaWG settings.")
+    _(
+      "Automatically generate a Cloudflare WARP account and configure all AmneziaWG settings.",
+    ),
   );
   o.modalonly = true;
   o.inputtitle = _("Generate WARP Config");
   o.depends("action", "awg");
 
   // Custom render: beautiful gradient button with loading / success / error states
-  o.renderWidget = function(section_id) {
+  o.renderWidget = function (section_id) {
     if (!document.getElementById("tachyon-warp-btn-css")) {
       const s = document.createElement("style");
       s.id = "tachyon-warp-btn-css";
@@ -8051,47 +8394,64 @@ function createSectionContent(section) {
       document.head.appendChild(s);
     }
 
-    const spinner = E("span", { "class": "twg-spinner" });
-    const icon    = E("span", { "class": "twg-icon" }, ["↺"]);
-    const label   = E("span", { "class": "twg-label" }, [_("Generate WARP Config")]);
-    const btn     = E("button", {
-      "class": "btn cbi-button cbi-button-neutral twg-btn",
-      "type": "button",
-      "style": "display:inline-flex;align-items:center;gap:8px;"
-    }, [spinner, icon, label]);
+    const spinner = E("span", { class: "twg-spinner" });
+    const icon = E("span", { class: "twg-icon" }, ["↺"]);
+    const label = E("span", { class: "twg-label" }, [
+      _("Generate WARP Config"),
+    ]);
+    const btn = E(
+      "button",
+      {
+        class: "btn cbi-button cbi-button-neutral twg-btn",
+        type: "button",
+        style: "display:inline-flex;align-items:center;gap:8px;",
+      },
+      [spinner, icon, label],
+    );
 
-    btn.addEventListener("click", (ev) => this.onclick && this.onclick.call(this, ev, section_id));
+    btn.addEventListener(
+      "click",
+      (ev) => this.onclick && this.onclick.call(this, ev, section_id),
+    );
     return btn;
   };
 
-
-
-  o.onclick = function(ev, section_id) {
-    const btn   = ev.target.closest(".twg-btn");
+  o.onclick = function (ev, section_id) {
+    const btn = ev.target.closest(".twg-btn");
     const label = btn ? btn.querySelector(".twg-label") : null;
     const origText = _("Generate WARP Config");
 
     const setState = (state, text) => {
       if (!btn) return;
-      btn.className = "btn cbi-button cbi-button-neutral twg-btn" + (state ? " twg-" + state : "");
-      btn.disabled  = (state === "loading");
+      btn.className =
+        "btn cbi-button cbi-button-neutral twg-btn" +
+        (state ? " twg-" + state : "");
+      btn.disabled = state === "loading";
       if (label && text) label.textContent = text;
     };
 
     const showStatusModal = (title, msg, isError) =>
-      ui.addNotification(title, E("p", {}, msg), isError ? "danger" : "success");
+      ui.addNotification(
+        title,
+        E("p", {}, msg),
+        isError ? "danger" : "success",
+      );
 
-    const resetAfter = (ms) =>
-      setTimeout(() => setState("", origText), ms);
+    const resetAfter = (ms) => setTimeout(() => setState("", origText), ms);
 
     setState("loading", _("Generating…"));
 
     fs.exec("/usr/bin/tachyon", ["generate_warp"])
-      .then(function(response) {
+      .then(function (response) {
         if (!response || (response.code ?? 0) !== 0 || !response.stdout) {
           setState("error", _("Error"));
           resetAfter(2500);
-          showStatusModal(_("Error"), _("Failed to generate WARP config: ") + (response?.stderr || "Unknown error"), true);
+          showStatusModal(
+            _("Error"),
+            _("Failed to generate WARP config: ") +
+              (response?.stderr || "Unknown error"),
+            true,
+          );
           return;
         }
 
@@ -8100,67 +8460,91 @@ function createSectionContent(section) {
           if (!data.success) {
             setState("error", _("Error"));
             resetAfter(2500);
-            showStatusModal(_("Error"), _("Failed to generate WARP config: ") + (data.message || "Unknown error"), true);
+            showStatusModal(
+              _("Error"),
+              _("Failed to generate WARP config: ") +
+                (data.message || "Unknown error"),
+              true,
+            );
             return;
           }
 
           const getControlWidget = (opt) => {
-            const widget = document.getElementById(`widget.cbid.${UCI_PACKAGE}.${section_id}.${opt}`);
+            const widget = document.getElementById(
+              `widget.cbid.${UCI_PACKAGE}.${section_id}.${opt}`,
+            );
             if (!widget) return null;
             if (/^(INPUT|SELECT|TEXTAREA)$/.test(widget.tagName)) return widget;
-            return widget.querySelector("input:not([type='hidden']), select, textarea");
+            return widget.querySelector(
+              "input:not([type='hidden']), select, textarea",
+            );
           };
 
           const stripUciBinary = (val) => {
             if (typeof val !== "string") return val;
-            return val.replace(/<b 0x/g, "").replace(/>/g, "").replace(/\s/g, "");
+            return val
+              .replace(/<b 0x/g, "")
+              .replace(/>/g, "")
+              .replace(/\s/g, "");
           };
 
           const setWidgetValue = (opt, val) => {
             const widget = getControlWidget(opt);
             if (widget) {
               widget.value = val;
-              widget.dispatchEvent(new Event("input",  { bubbles: true }));
+              widget.dispatchEvent(new Event("input", { bubbles: true }));
               widget.dispatchEvent(new Event("change", { bubbles: true }));
             }
             uci.set(UCI_PACKAGE, section_id, opt, val);
           };
 
-          setWidgetValue("awg_local_address",   data.local_address);
-          setWidgetValue("awg_private_key",     data.private_key);
+          setWidgetValue("awg_local_address", data.local_address);
+          setWidgetValue("awg_private_key", data.private_key);
           setWidgetValue("awg_peer_public_key", data.peer_public_key);
-          setWidgetValue("awg_server_address",  data.server_address);
-          setWidgetValue("awg_server_port",     data.server_port);
-          setWidgetValue("awg_jc",   `${data.awg_jc}`);
+          setWidgetValue("awg_server_address", data.server_address);
+          setWidgetValue("awg_server_port", data.server_port);
+          setWidgetValue("awg_jc", `${data.awg_jc}`);
           setWidgetValue("awg_jmin", `${data.awg_jmin}`);
           setWidgetValue("awg_jmax", `${data.awg_jmax}`);
-          setWidgetValue("awg_s1",   `${data.awg_s1}`);
-          setWidgetValue("awg_s2",   `${data.awg_s2}`);
-          setWidgetValue("awg_h1",   `${data.awg_h1}`);
-          setWidgetValue("awg_h2",   `${data.awg_h2}`);
-          setWidgetValue("awg_h3",   `${data.awg_h3}`);
-          setWidgetValue("awg_h4",   `${data.awg_h4}`);
-          setWidgetValue("awg_s3",   `${data.awg_s3}`);
-          setWidgetValue("awg_s4",   `${data.awg_s4}`);
-          setWidgetValue("awg_i1",   stripUciBinary(data.awg_i1));
-          setWidgetValue("awg_i2",   stripUciBinary(data.awg_i2));
-          setWidgetValue("awg_i3",   stripUciBinary(data.awg_i3));
-          setWidgetValue("awg_i4",   stripUciBinary(data.awg_i4));
-          setWidgetValue("awg_i5",   stripUciBinary(data.awg_i5));
+          setWidgetValue("awg_s1", `${data.awg_s1}`);
+          setWidgetValue("awg_s2", `${data.awg_s2}`);
+          setWidgetValue("awg_h1", `${data.awg_h1}`);
+          setWidgetValue("awg_h2", `${data.awg_h2}`);
+          setWidgetValue("awg_h3", `${data.awg_h3}`);
+          setWidgetValue("awg_h4", `${data.awg_h4}`);
+          setWidgetValue("awg_s3", `${data.awg_s3}`);
+          setWidgetValue("awg_s4", `${data.awg_s4}`);
+          setWidgetValue("awg_i1", stripUciBinary(data.awg_i1));
+          setWidgetValue("awg_i2", stripUciBinary(data.awg_i2));
+          setWidgetValue("awg_i3", stripUciBinary(data.awg_i3));
+          setWidgetValue("awg_i4", stripUciBinary(data.awg_i4));
+          setWidgetValue("awg_i5", stripUciBinary(data.awg_i5));
 
           setState("success", _("Generated!"));
           resetAfter(2500);
-          showStatusModal(_("Success"), _("WARP Configuration generated and loaded successfully!"), false);
+          showStatusModal(
+            _("Success"),
+            _("WARP Configuration generated and loaded successfully!"),
+            false,
+          );
         } catch (err) {
           setState("error", _("Error"));
           resetAfter(2500);
-          showStatusModal(_("Error"), _("Failed to parse WARP config: ") + err.message, true);
+          showStatusModal(
+            _("Error"),
+            _("Failed to parse WARP config: ") + err.message,
+            true,
+          );
         }
       })
-      .catch(function(error) {
+      .catch(function (error) {
         setState("error", _("Error"));
         resetAfter(2500);
-        showStatusModal(_("Error"), _("Error running generator: ") + error.message, true);
+        showStatusModal(
+          _("Error"),
+          _("Error running generator: ") + error.message,
+          true,
+        );
       });
   };
 
@@ -8170,12 +8554,12 @@ function createSectionContent(section) {
     form.Button,
     "_load_awg_conf",
     _("Load .conf config"),
-    _("Import AmneziaWG settings from .conf file")
+    _("Import AmneziaWG settings from .conf file"),
   );
   o.modalonly = true;
   o.depends("action", "awg");
 
-  o.renderWidget = function(section_id) {
+  o.renderWidget = function (section_id) {
     // Parse INI-style .conf into { sectionName: { key: value } }
     const parseConf = (text) => {
       const out = {};
@@ -8184,7 +8568,11 @@ function createSectionContent(section) {
         const line = raw.trim();
         if (!line || line.startsWith("#")) continue;
         const sm = line.match(/^\[(\w+)\]$/);
-        if (sm) { cur = sm[1].toLowerCase(); out[cur] = out[cur] || {}; continue; }
+        if (sm) {
+          cur = sm[1].toLowerCase();
+          out[cur] = out[cur] || {};
+          continue;
+        }
         const kv = line.match(/^(\w+)\s*=\s*(.+)$/);
         if (kv && cur) out[cur][kv[1]] = kv[2].trim();
       }
@@ -8193,43 +8581,67 @@ function createSectionContent(section) {
 
     // Add /32 or /128 prefix if missing; join with space
     const normalizeAddr = (str) =>
-      str.split(",").map(s => s.trim()).filter(Boolean).map(a =>
-        a.includes("/") ? a : (a.includes(":") ? a + "/128" : a + "/32")
-      ).join(" ");
+      str
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .map((a) =>
+          a.includes("/") ? a : a.includes(":") ? a + "/128" : a + "/32",
+        )
+        .join(" ");
 
     // Strip UCI binary literal format: <b 0xHEX> → HEX
     const stripBin = (v) =>
-      typeof v === "string" ? v.replace(/^<b\s+0x/, "").replace(/>$/, "").trim() : "";
+      typeof v === "string"
+        ? v
+            .replace(/^<b\s+0x/, "")
+            .replace(/>$/, "")
+            .trim()
+        : "";
 
     // Write value into a form widget and the UCI cache
     const setVal = (opt, val) => {
       if (val === undefined || val === null) return;
       const str = String(val);
-      const el = document.getElementById(`widget.cbid.${UCI_PACKAGE}.${section_id}.${opt}`);
-      const w = el && (/^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName)
-        ? el
-        : el.querySelector("input:not([type='hidden']),select,textarea"));
+      const el = document.getElementById(
+        `widget.cbid.${UCI_PACKAGE}.${section_id}.${opt}`,
+      );
+      const w =
+        el &&
+        (/^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName)
+          ? el
+          : el.querySelector("input:not([type='hidden']),select,textarea"));
       if (w) {
         w.value = str;
-        w.dispatchEvent(new Event("input",  { bubbles: true }));
+        w.dispatchEvent(new Event("input", { bubbles: true }));
         w.dispatchEvent(new Event("change", { bubbles: true }));
       }
       uci.set(UCI_PACKAGE, section_id, opt, str);
     };
 
     // Hidden file picker
-    const fileInput = E("input", { "type": "file", "accept": ".conf", "style": "display:none" });
+    const fileInput = E("input", {
+      type: "file",
+      accept: ".conf",
+      style: "display:none",
+    });
 
-    const icon  = E("span", {}, ["📂"]);
-    const label = E("span", { "class": "twg-label" }, [_("Load .conf")]);
-    const btn   = E("button", {
-      "class": "btn cbi-button cbi-button-neutral twg-btn",
-      "type": "button",
-      "style": "display:inline-flex;align-items:center;gap:8px;"
-    }, [icon, label]);
+    const icon = E("span", {}, ["📂"]);
+    const label = E("span", { class: "twg-label" }, [_("Load .conf")]);
+    const btn = E(
+      "button",
+      {
+        class: "btn cbi-button cbi-button-neutral twg-btn",
+        type: "button",
+        style: "display:inline-flex;align-items:center;gap:8px;",
+      },
+      [icon, label],
+    );
 
     const setBtn = (state, text) => {
-      btn.className = "btn cbi-button cbi-button-neutral twg-btn" + (state ? " twg-" + state : "");
+      btn.className =
+        "btn cbi-button cbi-button-neutral twg-btn" +
+        (state ? " twg-" + state : "");
       label.textContent = text || _("Load .conf");
     };
 
@@ -8239,7 +8651,11 @@ function createSectionContent(section) {
       if (!file) return;
 
       if (!file.name.endsWith(".conf")) {
-        ui.addNotification(_("Error"), E("p", {}, _("Select a file with .conf extension")), "danger");
+        ui.addNotification(
+          _("Error"),
+          E("p", {}, _("Select a file with .conf extension")),
+          "danger",
+        );
         return;
       }
 
@@ -8252,53 +8668,63 @@ function createSectionContent(section) {
         } catch (err) {
           setBtn("error", _("Error"));
           setTimeout(() => setBtn("", null), 2500);
-          ui.addNotification(_("Error"), E("p", {}, _("Failed to parse file: ") + err.message), "danger");
+          ui.addNotification(
+            _("Error"),
+            E("p", {}, _("Failed to parse file: ") + err.message),
+            "danger",
+          );
           return;
         }
 
         const iface = cfg.interface || {};
-        const peer  = cfg.peer     || {};
+        const peer = cfg.peer || {};
 
         // --- [Interface] ---
-        if (iface.Address)              setVal("awg_local_address",   normalizeAddr(iface.Address));
-        if (iface.PrivateKey)           setVal("awg_private_key",     iface.PrivateKey);
-        if (iface.MTU !== undefined)    setVal("awg_mtu",             iface.MTU);
-        if (peer.PersistentKeepalive)   setVal("awg_keepalive",       peer.PersistentKeepalive);
-        if (iface.Jc   !== undefined)   setVal("awg_jc",   iface.Jc);
-        if (iface.Jmin !== undefined)   setVal("awg_jmin", iface.Jmin);
-        if (iface.Jmax !== undefined)   setVal("awg_jmax", iface.Jmax);
-        if (iface.S1   !== undefined)   setVal("awg_s1",   iface.S1);
-        if (iface.S2   !== undefined)   setVal("awg_s2",   iface.S2);
-        if (iface.S3   !== undefined)   setVal("awg_s3",   iface.S3);
-        if (iface.S4   !== undefined)   setVal("awg_s4",   iface.S4);
-        if (iface.H1   !== undefined)   setVal("awg_h1",   iface.H1);
-        if (iface.H2   !== undefined)   setVal("awg_h2",   iface.H2);
-        if (iface.H3   !== undefined)   setVal("awg_h3",   iface.H3);
-        if (iface.H4   !== undefined)   setVal("awg_h4",   iface.H4);
-        if (iface.I1)                   setVal("awg_i1",   stripBin(iface.I1));
-        if (iface.I2)                   setVal("awg_i2",   stripBin(iface.I2));
-        if (iface.I3)                   setVal("awg_i3",   stripBin(iface.I3));
-        if (iface.I4)                   setVal("awg_i4",   stripBin(iface.I4));
-        if (iface.I5)                   setVal("awg_i5",   stripBin(iface.I5));
-        if (iface.J1)                   setVal("awg_j1",   stripBin(iface.J1));
-        if (iface.J2)                   setVal("awg_j2",   stripBin(iface.J2));
-        if (iface.J3)                   setVal("awg_j3",   stripBin(iface.J3));
-        if (iface.Itime !== undefined)  setVal("awg_itime", iface.Itime);
+        if (iface.Address)
+          setVal("awg_local_address", normalizeAddr(iface.Address));
+        if (iface.PrivateKey) setVal("awg_private_key", iface.PrivateKey);
+        if (iface.MTU !== undefined) setVal("awg_mtu", iface.MTU);
+        if (peer.PersistentKeepalive)
+          setVal("awg_keepalive", peer.PersistentKeepalive);
+        if (iface.Jc !== undefined) setVal("awg_jc", iface.Jc);
+        if (iface.Jmin !== undefined) setVal("awg_jmin", iface.Jmin);
+        if (iface.Jmax !== undefined) setVal("awg_jmax", iface.Jmax);
+        if (iface.S1 !== undefined) setVal("awg_s1", iface.S1);
+        if (iface.S2 !== undefined) setVal("awg_s2", iface.S2);
+        if (iface.S3 !== undefined) setVal("awg_s3", iface.S3);
+        if (iface.S4 !== undefined) setVal("awg_s4", iface.S4);
+        if (iface.H1 !== undefined) setVal("awg_h1", iface.H1);
+        if (iface.H2 !== undefined) setVal("awg_h2", iface.H2);
+        if (iface.H3 !== undefined) setVal("awg_h3", iface.H3);
+        if (iface.H4 !== undefined) setVal("awg_h4", iface.H4);
+        if (iface.I1) setVal("awg_i1", stripBin(iface.I1));
+        if (iface.I2) setVal("awg_i2", stripBin(iface.I2));
+        if (iface.I3) setVal("awg_i3", stripBin(iface.I3));
+        if (iface.I4) setVal("awg_i4", stripBin(iface.I4));
+        if (iface.I5) setVal("awg_i5", stripBin(iface.I5));
+        if (iface.J1) setVal("awg_j1", stripBin(iface.J1));
+        if (iface.J2) setVal("awg_j2", stripBin(iface.J2));
+        if (iface.J3) setVal("awg_j3", stripBin(iface.J3));
+        if (iface.Itime !== undefined) setVal("awg_itime", iface.Itime);
 
         // --- [Peer] ---
-        if (peer.PublicKey)             setVal("awg_peer_public_key", peer.PublicKey);
-        if (peer.PresharedKey)          setVal("awg_preshared_key",   peer.PresharedKey);
+        if (peer.PublicKey) setVal("awg_peer_public_key", peer.PublicKey);
+        if (peer.PresharedKey) setVal("awg_preshared_key", peer.PresharedKey);
         if (peer.Endpoint) {
           const i = peer.Endpoint.lastIndexOf(":");
           if (i > 0) {
             setVal("awg_server_address", peer.Endpoint.slice(0, i));
-            setVal("awg_server_port",    peer.Endpoint.slice(i + 1));
+            setVal("awg_server_port", peer.Endpoint.slice(i + 1));
           }
         }
 
         setBtn("success", _("Loaded!"));
         setTimeout(() => setBtn("", null), 2000);
-        ui.addNotification(_("Done"), E("p", {}, _("AmneziaWG config loaded successfully!")), "success");
+        ui.addNotification(
+          _("Done"),
+          E("p", {}, _("AmneziaWG config loaded successfully!")),
+          "success",
+        );
       };
 
       reader.onerror = () => {
@@ -8311,7 +8737,7 @@ function createSectionContent(section) {
 
     btn.addEventListener("click", () => fileInput.click());
 
-    return E("div", { "style": "display:contents" }, [fileInput, btn]);
+    return E("div", { style: "display:contents" }, [fileInput, btn]);
   };
 
   o = section.taboption(
@@ -8388,7 +8814,12 @@ function createSectionContent(section) {
   o.rmempty = true;
   o.depends("action", "awg");
 
-  o = section.taboption("settings", form.Value, "awg_keepalive", _("Persistent Keepalive"));
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "awg_keepalive",
+    _("Persistent Keepalive"),
+  );
   o.datatype = "uinteger";
   o.placeholder = "25";
   o.modalonly = true;
@@ -8404,22 +8835,22 @@ function createSectionContent(section) {
     return opt;
   };
 
-  addAwgParam("awg_jc",   _("Junk Packet Count (Jc)"),   "", "120");
-  addAwgParam("awg_jmin", _("Junk Min Size (Jmin)"),     "", "23");
-  addAwgParam("awg_jmax", _("Junk Max Size (Jmax)"),     "", "911");
-  addAwgParam("awg_s1",   _("Init Packet Magic Header (S1)"), "", "0");
-  addAwgParam("awg_s2",   _("Response Packet Magic Header (S2)"), "", "0");
-  addAwgParam("awg_s3",   _("Init Packet Magic Header (S3)"), "", "0");
-  addAwgParam("awg_s4",   _("Response Packet Magic Header (S4)"), "", "0");
-  addAwgParam("awg_h1",   _("Underload Packet Magic Header (H1)"), "", "1");
-  addAwgParam("awg_h2",   _("Underload Packet Magic Header (H2)"), "", "2");
-  addAwgParam("awg_h3",   _("Underload Packet Magic Header (H3)"), "", "3");
-  addAwgParam("awg_h4",   _("Underload Packet Magic Header (H4)"), "", "4");
-  addAwgParam("awg_i1",   _("Init Packet Payload (I1)"), "", "0");
-  addAwgParam("awg_i2",   _("Init Packet Payload (I2)"), "", "0");
-  addAwgParam("awg_i3",   _("Init Packet Payload (I3)"), "", "0");
-  addAwgParam("awg_i4",   _("Init Packet Payload (I4)"), "", "0");
-  addAwgParam("awg_i5",   _("Init Packet Payload (I5)"), "", "0");
+  addAwgParam("awg_jc", _("Junk Packet Count (Jc)"), "", "120");
+  addAwgParam("awg_jmin", _("Junk Min Size (Jmin)"), "", "23");
+  addAwgParam("awg_jmax", _("Junk Max Size (Jmax)"), "", "911");
+  addAwgParam("awg_s1", _("Init Packet Magic Header (S1)"), "", "0");
+  addAwgParam("awg_s2", _("Response Packet Magic Header (S2)"), "", "0");
+  addAwgParam("awg_s3", _("Init Packet Magic Header (S3)"), "", "0");
+  addAwgParam("awg_s4", _("Response Packet Magic Header (S4)"), "", "0");
+  addAwgParam("awg_h1", _("Underload Packet Magic Header (H1)"), "", "1");
+  addAwgParam("awg_h2", _("Underload Packet Magic Header (H2)"), "", "2");
+  addAwgParam("awg_h3", _("Underload Packet Magic Header (H3)"), "", "3");
+  addAwgParam("awg_h4", _("Underload Packet Magic Header (H4)"), "", "4");
+  addAwgParam("awg_i1", _("Init Packet Payload (I1)"), "", "0");
+  addAwgParam("awg_i2", _("Init Packet Payload (I2)"), "", "0");
+  addAwgParam("awg_i3", _("Init Packet Payload (I3)"), "", "0");
+  addAwgParam("awg_i4", _("Init Packet Payload (I4)"), "", "0");
+  addAwgParam("awg_i5", _("Init Packet Payload (I5)"), "", "0");
 
   // ── WARP (Cloudflare WARP via sing-box-extended) ──────────────────────────
 
@@ -8477,19 +8908,34 @@ function createSectionContent(section) {
 
   // ── AnyTLS (sing-box-extended) ────────────────────────────────────────────
 
-  o = section.taboption("settings", form.Value, "anytls_server", _("Server Address"));
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "anytls_server",
+    _("Server Address"),
+  );
   o.modalonly = true;
   o.rmempty = false;
   o.depends("action", "anytls");
   o.validate = validateRequiredText;
 
-  o = section.taboption("settings", form.Value, "anytls_server_port", _("Server Port"));
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "anytls_server_port",
+    _("Server Port"),
+  );
   o.modalonly = true;
   o.rmempty = false;
   o.datatype = "port";
   o.depends("action", "anytls");
 
-  o = section.taboption("settings", form.Value, "anytls_password", _("Password"));
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "anytls_password",
+    _("Password"),
+  );
   o.modalonly = true;
   o.rmempty = false;
   o.password = true;
@@ -8520,26 +8966,47 @@ function createSectionContent(section) {
 
   // ── Snell (sing-box-extended) ─────────────────────────────────────────────
 
-  o = section.taboption("settings", form.Value, "snell_server", _("Server Address"));
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "snell_server",
+    _("Server Address"),
+  );
   o.modalonly = true;
   o.rmempty = false;
   o.depends("action", "snell");
   o.validate = validateRequiredText;
 
-  o = section.taboption("settings", form.Value, "snell_server_port", _("Server Port"));
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "snell_server_port",
+    _("Server Port"),
+  );
   o.modalonly = true;
   o.rmempty = false;
   o.datatype = "port";
   o.depends("action", "snell");
 
-  o = section.taboption("settings", form.Value, "snell_psk", _("PSK"), _("Pre-shared key"));
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "snell_psk",
+    _("PSK"),
+    _("Pre-shared key"),
+  );
   o.modalonly = true;
   o.rmempty = false;
   o.password = true;
   o.depends("action", "snell");
   o.validate = validateRequiredText;
 
-  o = section.taboption("settings", form.ListValue, "snell_version", _("Snell Version"));
+  o = section.taboption(
+    "settings",
+    form.ListValue,
+    "snell_version",
+    _("Snell Version"),
+  );
   o.modalonly = true;
   o.rmempty = true;
   o.value("4", "v4");
@@ -8551,19 +9018,34 @@ function createSectionContent(section) {
 
   // ── Mieru (sing-box-extended) ─────────────────────────────────────────────
 
-  o = section.taboption("settings", form.Value, "mieru_server", _("Server Address"));
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "mieru_server",
+    _("Server Address"),
+  );
   o.modalonly = true;
   o.rmempty = false;
   o.depends("action", "mieru");
   o.validate = validateRequiredText;
 
-  o = section.taboption("settings", form.Value, "mieru_server_port", _("Server Port"));
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "mieru_server_port",
+    _("Server Port"),
+  );
   o.modalonly = true;
   o.rmempty = false;
   o.datatype = "port";
   o.depends("action", "mieru");
 
-  o = section.taboption("settings", form.ListValue, "mieru_transport", _("Transport"));
+  o = section.taboption(
+    "settings",
+    form.ListValue,
+    "mieru_transport",
+    _("Transport"),
+  );
   o.modalonly = true;
   o.rmempty = true;
   o.value("TCP", "TCP");
@@ -8571,13 +9053,23 @@ function createSectionContent(section) {
   o.default = "TCP";
   o.depends("action", "mieru");
 
-  o = section.taboption("settings", form.Value, "mieru_username", _("Username"));
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "mieru_username",
+    _("Username"),
+  );
   o.modalonly = true;
   o.rmempty = false;
   o.depends("action", "mieru");
   o.validate = validateRequiredText;
 
-  o = section.taboption("settings", form.Value, "mieru_password", _("Password"));
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "mieru_password",
+    _("Password"),
+  );
   o.modalonly = true;
   o.rmempty = false;
   o.password = true;
@@ -8586,13 +9078,23 @@ function createSectionContent(section) {
 
   // ── Sudoku (sing-box-extended) ────────────────────────────────────────────
 
-  o = section.taboption("settings", form.Value, "sudoku_server", _("Server Address"));
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "sudoku_server",
+    _("Server Address"),
+  );
   o.modalonly = true;
   o.rmempty = false;
   o.depends("action", "sudoku");
   o.validate = validateRequiredText;
 
-  o = section.taboption("settings", form.Value, "sudoku_server_port", _("Server Port"));
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "sudoku_server_port",
+    _("Server Port"),
+  );
   o.modalonly = true;
   o.rmempty = false;
   o.datatype = "port";
@@ -8656,20 +9158,35 @@ function createSectionContent(section) {
 
   // ── OpenVPN (sing-box-extended) ───────────────────────────────────────────
 
-  o = section.taboption("settings", form.Value, "openvpn_server", _("Server Address"));
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "openvpn_server",
+    _("Server Address"),
+  );
   o.modalonly = true;
   o.rmempty = false;
   o.depends("action", "openvpn");
   o.validate = validateRequiredText;
 
-  o = section.taboption("settings", form.Value, "openvpn_server_port", _("Server Port"));
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "openvpn_server_port",
+    _("Server Port"),
+  );
   o.modalonly = true;
   o.rmempty = false;
   o.datatype = "port";
   o.placeholder = "1194";
   o.depends("action", "openvpn");
 
-  o = section.taboption("settings", form.ListValue, "openvpn_proto", _("Protocol"));
+  o = section.taboption(
+    "settings",
+    form.ListValue,
+    "openvpn_proto",
+    _("Protocol"),
+  );
   o.modalonly = true;
   o.rmempty = true;
   o.value("udp", "UDP");
@@ -9230,8 +9747,18 @@ function createSectionContent(section) {
   geoipModeOption.default = "exclude";
   geoipModeOption.modalonly = true;
   [
-    "connection", "awg", "warp", "anytls", "snell", "mieru",
-    "sudoku", "masque", "openvpn", "zapret", "zapret2", "byedpi"
+    "connection",
+    "awg",
+    "warp",
+    "anytls",
+    "snell",
+    "mieru",
+    "sudoku",
+    "masque",
+    "openvpn",
+    "zapret",
+    "zapret2",
+    "byedpi",
   ].forEach((act) => geoipModeOption.depends("action", act));
 
   o = section.taboption(
@@ -9264,13 +9791,27 @@ function createSectionContent(section) {
     let val = uci.get(UCI_PACKAGE, section_id, "geoip_country");
     if (!val || val === "all") return [];
     if (val === "non-ru") return ["ru"];
-    if (Array.isArray(val)) return val.filter((v) => v && v !== "all" && v !== "non-ru");
-    let parts = String(val).trim().split(/\s+/).filter((v) => v && v !== "all" && v !== "non-ru");
+    if (Array.isArray(val))
+      return val.filter((v) => v && v !== "all" && v !== "non-ru");
+    let parts = String(val)
+      .trim()
+      .split(/\s+/)
+      .filter((v) => v && v !== "all" && v !== "non-ru");
     return parts;
   };
   [
-    "connection", "awg", "warp", "anytls", "snell", "mieru",
-    "sudoku", "masque", "openvpn", "zapret", "zapret2", "byedpi"
+    "connection",
+    "awg",
+    "warp",
+    "anytls",
+    "snell",
+    "mieru",
+    "sudoku",
+    "masque",
+    "openvpn",
+    "zapret",
+    "zapret2",
+    "byedpi",
   ].forEach((act) => o.depends("action", act));
 
   const domainConditionOption = addTextConditionField(section, {
@@ -9435,9 +9976,7 @@ function createSectionContent(section) {
     form.DynamicList,
     "domain_ip_lists",
     _("Domain and IP lists"),
-    _(
-      "Add URLs or local paths to .lst lists containing domains and subnets.",
-    ),
+    _("Add URLs or local paths to .lst lists containing domains and subnets."),
   );
   domainIpListsOption.modalonly = true;
   // Both widgets map to domain_ip_lists, so neither inactive view may erase shared storage.
@@ -9521,7 +10060,9 @@ function createSectionContent(section) {
   const dscpOption = addDynamicConditionField(section, {
     key: "dscp",
     label: _("DSCP marks (QoS)"),
-    description: _("Match traffic by packet DSCP mark (assigned in Windows via Policy-Based QoS). Examples: 46 (EF), 0x2e, 34 (AF41)"),
+    description: _(
+      "Match traffic by packet DSCP mark (assigned in Windows via Policy-Based QoS). Examples: 46 (EF), 0x2e, 34 (AF41)",
+    ),
   });
   dependsOnRoutingAction(dscpOption);
 
@@ -9530,7 +10071,9 @@ function createSectionContent(section) {
     form.MultiValue,
     "excluded_protocol",
     _("Exclude traffic types"),
-    _("Traffic of specified protocols (e.g. BitTorrent, QUIC, STUN) will bypass this section."),
+    _(
+      "Traffic of specified protocols (e.g. BitTorrent, QUIC, STUN) will bypass this section.",
+    ),
   );
   excludedProtocolOption.value("bittorrent", _("BitTorrent / P2P"));
   excludedProtocolOption.value("quic", _("QUIC (HTTP/3)"));
@@ -9563,9 +10106,7 @@ function createSectionContent(section) {
   protocolOption.rmempty = true;
   dependsOnRoutingAction(protocolOption);
 
-
   addDashboardServerFilterOptions(section);
-
 }
 
 function loadSectionTableOptions(sectionRef) {
@@ -9615,11 +10156,15 @@ const ACTION_COLORS = {
 };
 
 function ip4ToInt(ip) {
-  return ip.split('.').reduce((int, octet) => (int << 8) + parseInt(octet, 10), 0) >>> 0;
+  return (
+    ip
+      .split(".")
+      .reduce((int, octet) => (int << 8) + parseInt(octet, 10), 0) >>> 0
+  );
 }
 
 function ipMatchesCidr(ip, cidr) {
-  const parts = cidr.split('/');
+  const parts = cidr.split("/");
   const subnet = parts[0];
   const bits = parts[1] ? parseInt(parts[1], 10) : 32;
 
@@ -9737,7 +10282,12 @@ function matchPort(port, portsList) {
       const parts = item.split("-");
       const start = parseInt(parts[0], 10);
       const end = parseInt(parts[1], 10);
-      if (!isNaN(start) && !isNaN(end) && queryPort >= start && queryPort <= end) {
+      if (
+        !isNaN(start) &&
+        !isNaN(end) &&
+        queryPort >= start &&
+        queryPort <= end
+      ) {
         return item;
       }
     } else {
@@ -9751,15 +10301,15 @@ function matchPort(port, portsList) {
 function detectQueryType(query) {
   query = query.trim();
   if (/^\d+$/.test(query)) {
-    return 'port';
+    return "port";
   }
-  if (/^[\d./]+$/.test(query) && query.indexOf('.') !== -1) {
-    return 'ip';
+  if (/^[\d./]+$/.test(query) && query.indexOf(".") !== -1) {
+    return "ip";
   }
-  if (query.indexOf(':') !== -1) {
-    return 'ip';
+  if (query.indexOf(":") !== -1) {
+    return "ip";
   }
-  return 'domain';
+  return "domain";
 }
 
 async function readRulesetFile(path) {
@@ -9794,7 +10344,7 @@ async function findCachedSrsFile(secName, community) {
   if (etcStat && etcStat.type === "file") {
     return etcSrs;
   }
-  
+
   return null;
 }
 
@@ -9809,16 +10359,33 @@ async function matchCommunityList(secName, community, query, type) {
   };
 
   // Try /usr/bin/sing-box first
-  let res = await fs.exec("/usr/bin/sing-box", ["rule-set", "match", srsPath, query, "-f", "binary"]).catch(() => null);
+  let res = await fs
+    .exec("/usr/bin/sing-box", [
+      "rule-set",
+      "match",
+      srsPath,
+      query,
+      "-f",
+      "binary",
+    ])
+    .catch(() => null);
   if (checkMatch(res)) return true;
 
   // Fallback to /usr/sbin/sing-box
-  res = await fs.exec("/usr/sbin/sing-box", ["rule-set", "match", srsPath, query, "-f", "binary"]).catch(() => null);
+  res = await fs
+    .exec("/usr/sbin/sing-box", [
+      "rule-set",
+      "match",
+      srsPath,
+      query,
+      "-f",
+      "binary",
+    ])
+    .catch(() => null);
   if (checkMatch(res)) return true;
 
   return false;
 }
-
 
 async function performTrace(query) {
   query = (query || "").trim();
@@ -9826,7 +10393,10 @@ async function performTrace(query) {
 
   // Strip protocol and port if user pasted a URL or domain:port
   if (query.match(/^https?:\/\//i)) {
-    query = query.replace(/^https?:\/\//i, "").split("/")[0].split(":")[0];
+    query = query
+      .replace(/^https?:\/\//i, "")
+      .split("/")[0]
+      .split(":")[0];
   }
 
   const type = detectQueryType(query);
@@ -9834,8 +10404,8 @@ async function performTrace(query) {
   const totalSections = sections.length;
 
   let queryForMatching = query;
-  if (type === 'ip' && query.indexOf('/') !== -1) {
-    queryForMatching = query.split('/')[0];
+  if (type === "ip" && query.indexOf("/") !== -1) {
+    queryForMatching = query.split("/")[0];
   }
 
   for (let i = 0; i < sections.length; i++) {
@@ -9849,8 +10419,10 @@ async function performTrace(query) {
     const label = uci.get(UCI_PACKAGE, secName, "label") || secName;
     const action = uci.get(UCI_PACKAGE, secName, "action") || "connection";
 
-    if (type === 'port') {
-      const ports = normalizeOptionValues(uci.get(UCI_PACKAGE, secName, "ports"));
+    if (type === "port") {
+      const ports = normalizeOptionValues(
+        uci.get(UCI_PACKAGE, secName, "ports"),
+      );
       const matchedPort = matchPort(queryForMatching, ports);
       if (matchedPort) {
         return {
@@ -9861,13 +10433,15 @@ async function performTrace(query) {
           ruleType: "Ports",
           pattern: matchedPort,
           priority: i + 1,
-          totalSections: totalSections
+          totalSections: totalSections,
         };
       }
     }
 
-    if (type === 'ip') {
-      const ipCidr = normalizeOptionValues(uci.get(UCI_PACKAGE, secName, "ip_cidr"));
+    if (type === "ip") {
+      const ipCidr = normalizeOptionValues(
+        uci.get(UCI_PACKAGE, secName, "ip_cidr"),
+      );
       const matchedCidr = matchIpInCidrs(queryForMatching, ipCidr);
       if (matchedCidr) {
         return {
@@ -9878,14 +10452,18 @@ async function performTrace(query) {
           ruleType: "IPs (UCI)",
           pattern: matchedCidr,
           priority: i + 1,
-          totalSections: totalSections
+          totalSections: totalSections,
         };
       }
 
-      const listsRuleset = await readRulesetFile(`/tmp/sing-box/rulesets/${secName}-lists-ruleset.json`);
+      const listsRuleset = await readRulesetFile(
+        `/tmp/sing-box/rulesets/${secName}-lists-ruleset.json`,
+      );
       const matchedListIp = matchIpInRuleset(queryForMatching, listsRuleset);
       if (matchedListIp) {
-        const domainIpLists = normalizeOptionValues(uci.get(UCI_PACKAGE, secName, "domain_ip_lists"));
+        const domainIpLists = normalizeOptionValues(
+          uci.get(UCI_PACKAGE, secName, "domain_ip_lists"),
+        );
         return {
           matched: true,
           sectionName: secName,
@@ -9895,14 +10473,21 @@ async function performTrace(query) {
           pattern: matchedListIp,
           sourceUrls: domainIpLists,
           priority: i + 1,
-          totalSections: totalSections
+          totalSections: totalSections,
         };
       }
 
-      const remoteSubnetRuleset = await readRulesetFile(`/tmp/sing-box/rulesets/${secName}-remote-subnet-ruleset.json`);
-      const matchedRemoteIp = matchIpInRuleset(queryForMatching, remoteSubnetRuleset);
+      const remoteSubnetRuleset = await readRulesetFile(
+        `/tmp/sing-box/rulesets/${secName}-remote-subnet-ruleset.json`,
+      );
+      const matchedRemoteIp = matchIpInRuleset(
+        queryForMatching,
+        remoteSubnetRuleset,
+      );
       if (matchedRemoteIp) {
-        const domainIpLists = normalizeOptionValues(uci.get(UCI_PACKAGE, secName, "domain_ip_lists"));
+        const domainIpLists = normalizeOptionValues(
+          uci.get(UCI_PACKAGE, secName, "domain_ip_lists"),
+        );
         return {
           matched: true,
           sectionName: secName,
@@ -9912,14 +10497,18 @@ async function performTrace(query) {
           pattern: matchedRemoteIp,
           sourceUrls: domainIpLists,
           priority: i + 1,
-          totalSections: totalSections
+          totalSections: totalSections,
         };
       }
 
       // Check community list rulesets for matching IPs
-      const communityLists = normalizeOptionValues(uci.get(UCI_PACKAGE, secName, "community_lists"));
+      const communityLists = normalizeOptionValues(
+        uci.get(UCI_PACKAGE, secName, "community_lists"),
+      );
       for (const community of communityLists) {
-        if (await matchCommunityList(secName, community, queryForMatching, type)) {
+        if (
+          await matchCommunityList(secName, community, queryForMatching, type)
+        ) {
           return {
             matched: true,
             sectionName: secName,
@@ -9928,21 +10517,40 @@ async function performTrace(query) {
             ruleType: "Community List (" + community + ")",
             pattern: queryForMatching,
             priority: i + 1,
-            totalSections: totalSections
+            totalSections: totalSections,
           };
         }
       }
     }
 
-    if (type === 'domain') {
-      const domainSuffixes = normalizeOptionValues(uci.get(UCI_PACKAGE, secName, "domain_suffix"));
-      const exactDomains = normalizeOptionValues(uci.get(UCI_PACKAGE, secName, "domain")).map(d => `full:${d}`);
-      const domainKeywords = normalizeOptionValues(uci.get(UCI_PACKAGE, secName, "domain_keyword")).map(k => `keyword:${k}`);
-      const domainRegexes = normalizeOptionValues(uci.get(UCI_PACKAGE, secName, "domain_regex")).map(r => `regex:${r}`);
-      const userDomains = normalizeOptionValues(uci.get(UCI_PACKAGE, secName, "user_domains"));
-      const allUciDomains = [...domainSuffixes, ...exactDomains, ...domainKeywords, ...domainRegexes, ...userDomains];
+    if (type === "domain") {
+      const domainSuffixes = normalizeOptionValues(
+        uci.get(UCI_PACKAGE, secName, "domain_suffix"),
+      );
+      const exactDomains = normalizeOptionValues(
+        uci.get(UCI_PACKAGE, secName, "domain"),
+      ).map((d) => `full:${d}`);
+      const domainKeywords = normalizeOptionValues(
+        uci.get(UCI_PACKAGE, secName, "domain_keyword"),
+      ).map((k) => `keyword:${k}`);
+      const domainRegexes = normalizeOptionValues(
+        uci.get(UCI_PACKAGE, secName, "domain_regex"),
+      ).map((r) => `regex:${r}`);
+      const userDomains = normalizeOptionValues(
+        uci.get(UCI_PACKAGE, secName, "user_domains"),
+      );
+      const allUciDomains = [
+        ...domainSuffixes,
+        ...exactDomains,
+        ...domainKeywords,
+        ...domainRegexes,
+        ...userDomains,
+      ];
 
-      const matchedUciDomain = matchDomainInList(queryForMatching, allUciDomains);
+      const matchedUciDomain = matchDomainInList(
+        queryForMatching,
+        allUciDomains,
+      );
       if (matchedUciDomain) {
         return {
           matched: true,
@@ -9952,15 +10560,22 @@ async function performTrace(query) {
           ruleType: "Domains (UCI)",
           pattern: matchedUciDomain,
           priority: i + 1,
-          totalSections: totalSections
+          totalSections: totalSections,
         };
       }
 
-      const listsRuleset = await readRulesetFile(`/tmp/sing-box/rulesets/${secName}-lists-ruleset.json`);
+      const listsRuleset = await readRulesetFile(
+        `/tmp/sing-box/rulesets/${secName}-lists-ruleset.json`,
+      );
       if (listsRuleset) {
-        const matchedListDomain = matchDomainInRuleset(queryForMatching, listsRuleset);
+        const matchedListDomain = matchDomainInRuleset(
+          queryForMatching,
+          listsRuleset,
+        );
         if (matchedListDomain) {
-          const domainIpLists = normalizeOptionValues(uci.get(UCI_PACKAGE, secName, "domain_ip_lists"));
+          const domainIpLists = normalizeOptionValues(
+            uci.get(UCI_PACKAGE, secName, "domain_ip_lists"),
+          );
           return {
             matched: true,
             sectionName: secName,
@@ -9970,16 +10585,23 @@ async function performTrace(query) {
             pattern: matchedListDomain,
             sourceUrls: domainIpLists,
             priority: i + 1,
-            totalSections: totalSections
+            totalSections: totalSections,
           };
         }
       }
 
-      const remoteDomainRuleset = await readRulesetFile(`/tmp/sing-box/rulesets/${secName}-remote-domain-ruleset.json`);
+      const remoteDomainRuleset = await readRulesetFile(
+        `/tmp/sing-box/rulesets/${secName}-remote-domain-ruleset.json`,
+      );
       if (remoteDomainRuleset) {
-        const matchedRemoteDomain = matchDomainInRuleset(queryForMatching, remoteDomainRuleset);
+        const matchedRemoteDomain = matchDomainInRuleset(
+          queryForMatching,
+          remoteDomainRuleset,
+        );
         if (matchedRemoteDomain) {
-          const domainIpLists = normalizeOptionValues(uci.get(UCI_PACKAGE, secName, "domain_ip_lists"));
+          const domainIpLists = normalizeOptionValues(
+            uci.get(UCI_PACKAGE, secName, "domain_ip_lists"),
+          );
           return {
             matched: true,
             sectionName: secName,
@@ -9989,15 +10611,19 @@ async function performTrace(query) {
             pattern: matchedRemoteDomain,
             sourceUrls: domainIpLists,
             priority: i + 1,
-            totalSections: totalSections
+            totalSections: totalSections,
           };
         }
       }
 
       // Check community list rulesets for matching domains
-      const communityLists = normalizeOptionValues(uci.get(UCI_PACKAGE, secName, "community_lists"));
+      const communityLists = normalizeOptionValues(
+        uci.get(UCI_PACKAGE, secName, "community_lists"),
+      );
       for (const community of communityLists) {
-        if (await matchCommunityList(secName, community, queryForMatching, type)) {
+        if (
+          await matchCommunityList(secName, community, queryForMatching, type)
+        ) {
           return {
             matched: true,
             sectionName: secName,
@@ -10006,7 +10632,7 @@ async function performTrace(query) {
             ruleType: "Community List (" + community + ")",
             pattern: queryForMatching,
             priority: i + 1,
-            totalSections: totalSections
+            totalSections: totalSections,
           };
         }
       }
@@ -10059,13 +10685,21 @@ function createTracerSearchWidget(sectionRef) {
     resultsEl.style.display = "block";
     resultsEl.innerHTML = "";
     resultsEl.appendChild(
-      E("div", { style: "color: var(--text-color-medium, #666); display: flex; align-items: center; gap: 0.5rem; font-size: 90%;" }, [
-        E("span", {
-          class: "pdk-spinner",
-          style: "border: 2px solid var(--border-color, #ccc); border-top: 2px solid var(--primary-color, #4a90d9); border-radius: 50%; width: 12px; height: 12px; display: inline-block; animation: spin 1s linear infinite;"
-        }),
-        E("span", {}, _("Tracing routing rules..."))
-      ])
+      E(
+        "div",
+        {
+          style:
+            "color: var(--text-color-medium, #666); display: flex; align-items: center; gap: 0.5rem; font-size: 90%;",
+        },
+        [
+          E("span", {
+            class: "pdk-spinner",
+            style:
+              "border: 2px solid var(--border-color, #ccc); border-top: 2px solid var(--primary-color, #4a90d9); border-radius: 50%; width: 12px; height: 12px; display: inline-block; animation: spin 1s linear infinite;",
+          }),
+          E("span", {}, _("Tracing routing rules...")),
+        ],
+      ),
     );
 
     try {
@@ -10075,73 +10709,120 @@ function createTracerSearchWidget(sectionRef) {
         let actionBadgeColor = ACTION_COLORS[result.action] || "#7f8c8d";
         let actionLabel = String(result.action || "").toUpperCase();
 
-        const matchDiv = E("div", {
-          style: `padding: 0.4rem 0.6rem; border-radius: 4px; background: var(--background-color-low, #f9f9f9); border-left: 3px solid ${actionBadgeColor}; font-size: 90%; line-height: 1.4;`
-        }, [
-          E("div", { style: "display: flex; flex-wrap: wrap; gap: 0.8rem; align-items: center;" }, [
-            E("strong", {}, _("Match Found") + ":"),
-            E("span", {}, [
-              result.label || "",
-              " ",
-              E("span", {
-                style: `background: ${actionBadgeColor}; color: #fff; padding: 1px 4px; border-radius: 3px; font-weight: bold; font-size: 80%; margin-left: 0.1rem;`
-              }, actionLabel)
-            ]),
-            E("span", { style: "color: var(--text-color-medium, #666);" }, "|"),
-            E("span", {}, [
-              E("strong", {}, _("Rule") + ": "),
-              E("code", {}, result.ruleType || ""),
-              ` (${result.pattern || ""})`
-            ]),
-            ...(result.sourceUrls && result.sourceUrls.length > 0 ? [
-              E("span", { style: "color: var(--text-color-medium, #666);" }, "|"),
-              E("span", {}, [
-                E("strong", {}, _("Source") + ": "),
-                ...result.sourceUrls.map((url, idx) => {
-                  let short = url;
-                  try {
-                    const u = new URL(url);
-                    const parts = u.pathname.split("/").filter(Boolean);
-                    short = parts.length > 0 ? parts[parts.length - 1] : u.hostname;
-                  } catch (e) {}
-                  return E("span", {}, [
-                    idx > 0 ? ", " : "",
-                    E("a", {
-                      href: url,
-                      target: "_blank",
-                      rel: "noopener",
-                      style: "font-family: monospace; font-size: 85%; word-break: break-all;"
-                    }, short)
-                  ]);
-                })
-              ])
-            ] : []),
-            E("span", { style: "color: var(--text-color-medium, #666);" }, "|"),
-            E("span", {}, [
-              E("strong", {}, _("Priority") + ": "),
-              `${result.priority}/${result.totalSections}`
-            ])
-          ])
-        ]);
+        const matchDiv = E(
+          "div",
+          {
+            style: `padding: 0.4rem 0.6rem; border-radius: 4px; background: var(--background-color-low, #f9f9f9); border-left: 3px solid ${actionBadgeColor}; font-size: 90%; line-height: 1.4;`,
+          },
+          [
+            E(
+              "div",
+              {
+                style:
+                  "display: flex; flex-wrap: wrap; gap: 0.8rem; align-items: center;",
+              },
+              [
+                E("strong", {}, _("Match Found") + ":"),
+                E("span", {}, [
+                  result.label || "",
+                  " ",
+                  E(
+                    "span",
+                    {
+                      style: `background: ${actionBadgeColor}; color: #fff; padding: 1px 4px; border-radius: 3px; font-weight: bold; font-size: 80%; margin-left: 0.1rem;`,
+                    },
+                    actionLabel,
+                  ),
+                ]),
+                E(
+                  "span",
+                  { style: "color: var(--text-color-medium, #666);" },
+                  "|",
+                ),
+                E("span", {}, [
+                  E("strong", {}, _("Rule") + ": "),
+                  E("code", {}, result.ruleType || ""),
+                  ` (${result.pattern || ""})`,
+                ]),
+                ...(result.sourceUrls && result.sourceUrls.length > 0
+                  ? [
+                      E(
+                        "span",
+                        { style: "color: var(--text-color-medium, #666);" },
+                        "|",
+                      ),
+                      E("span", {}, [
+                        E("strong", {}, _("Source") + ": "),
+                        ...result.sourceUrls.map((url, idx) => {
+                          let short = url;
+                          try {
+                            const u = new URL(url);
+                            const parts = u.pathname.split("/").filter(Boolean);
+                            short =
+                              parts.length > 0
+                                ? parts[parts.length - 1]
+                                : u.hostname;
+                          } catch (e) {}
+                          return E("span", {}, [
+                            idx > 0 ? ", " : "",
+                            E(
+                              "a",
+                              {
+                                href: url,
+                                target: "_blank",
+                                rel: "noopener",
+                                style:
+                                  "font-family: monospace; font-size: 85%; word-break: break-all;",
+                              },
+                              short,
+                            ),
+                          ]);
+                        }),
+                      ]),
+                    ]
+                  : []),
+                E(
+                  "span",
+                  { style: "color: var(--text-color-medium, #666);" },
+                  "|",
+                ),
+                E("span", {}, [
+                  E("strong", {}, _("Priority") + ": "),
+                  `${result.priority}/${result.totalSections}`,
+                ]),
+              ],
+            ),
+          ],
+        );
         resultsEl.appendChild(matchDiv);
       } else {
-        const noMatchDiv = E("div", {
-          style: "padding: 0.4rem 0.6rem; border-radius: 4px; background: var(--background-color-low, #f9f9f9); border-left: 3px solid var(--warning-color, #f1c40f); font-size: 90%; color: var(--text-color-high, #333);"
-        }, [
-          E("strong", {}, _("No Custom Rules Matched") + ": "),
-          _("Traffic will go through the default route (Direct/Default).")
-        ]);
+        const noMatchDiv = E(
+          "div",
+          {
+            style:
+              "padding: 0.4rem 0.6rem; border-radius: 4px; background: var(--background-color-low, #f9f9f9); border-left: 3px solid var(--warning-color, #f1c40f); font-size: 90%; color: var(--text-color-high, #333);",
+          },
+          [
+            E("strong", {}, _("No Custom Rules Matched") + ": "),
+            _("Traffic will go through the default route (Direct/Default)."),
+          ],
+        );
         resultsEl.appendChild(noMatchDiv);
       }
     } catch (e) {
       console.error(e);
       resultsEl.innerHTML = "";
-      const errorDiv = E("div", {
-        style: "padding: 0.6rem 0.8rem; border-radius: 4px; background: var(--background-color-low, #f9f9f9); border-left: 3px solid var(--error-color, #e74c3c); color: var(--error-color, #e74c3c); font-size: 90%;"
-      }, [
-        E("strong", {}, _("Error running trace:")),
-        " " + (e?.message || String(e))
-      ]);
+      const errorDiv = E(
+        "div",
+        {
+          style:
+            "padding: 0.6rem 0.8rem; border-radius: 4px; background: var(--background-color-low, #f9f9f9); border-left: 3px solid var(--error-color, #e74c3c); color: var(--error-color, #e74c3c); font-size: 90%;",
+        },
+        [
+          E("strong", {}, _("Error running trace:")),
+          " " + (e?.message || String(e)),
+        ],
+      );
       resultsEl.appendChild(errorDiv);
     }
   }
@@ -10172,7 +10853,7 @@ function createTracerSearchWidget(sectionRef) {
 
 function showSectionRulesModal(section_id) {
   const sectionLabel = uci.get(UCI_PACKAGE, section_id, "label") || section_id;
-  
+
   const getCleanList = (key) => {
     let val = uci.get(UCI_PACKAGE, section_id, key);
     if (!val) return [];
@@ -10196,50 +10877,96 @@ function showSectionRulesModal(section_id) {
     if (!items || items.length === 0) {
       contentNode = E("em", {}, _("Not set"));
     } else {
-      contentNode = E("div", { style: "display: flex; flex-wrap: wrap; gap: 4px; max-height: 180px; overflow-y: auto;" },
-        items.map((item) => E("span", {
-          style: "padding: 2px 6px; border: 1px solid var(--border-color, #ccc); background: var(--background-color-low, #f9f9f9); border-radius: 3px; word-break: break-all; font-size: 90%;"
-        }, item))
+      contentNode = E(
+        "div",
+        {
+          style:
+            "display: flex; flex-wrap: wrap; gap: 4px; max-height: 180px; overflow-y: auto;",
+        },
+        items.map((item) =>
+          E(
+            "span",
+            {
+              style:
+                "padding: 2px 6px; border: 1px solid var(--border-color, #ccc); background: var(--background-color-low, #f9f9f9); border-radius: 3px; word-break: break-all; font-size: 90%;",
+            },
+            item,
+          ),
+        ),
       );
     }
 
     return E("div", { class: "cbi-value" }, [
-      E("label", { class: "cbi-value-title", style: "padding-top: 0;" }, `${title} (${items ? items.length : 0})`),
-      E("div", { class: "cbi-value-field" }, [
-        contentNode
-      ])
+      E(
+        "label",
+        { class: "cbi-value-title", style: "padding-top: 0;" },
+        `${title} (${items ? items.length : 0})`,
+      ),
+      E("div", { class: "cbi-value-field" }, [contentNode]),
     ]);
   };
 
-  const modalBody = E("div", { class: "cbi-section-node", style: "min-width: 320px; max-width: 650px;" }, [
-    E("div", { class: "cbi-value" }, [
-      E("label", { class: "cbi-value-title", style: "padding-top: 0; font-weight: bold;" }, _("Section action")),
-      E("div", { class: "cbi-value-field", style: "font-weight: bold; color: var(--text-color-high, #2980b9);" }, getRuleActionDisplayValue(section_id))
-    ]),
-    createCard(_("Community Lists"), community),
-    createCard(_("Domains"), domains),
-    createCard(_("IP Addresses (IP CIDR)"), ips),
-    createCard(_("Rule Sets (.srs / .json)"), ruleSets),
-    createCard(_(".lst Lists"), domainIpLists),
-    (geosite.length || geoip.length) ? createCard(_("GeoSite / GeoIP"), [...geosite, ...geoip]) : null,
-    sourceIp.length ? createCard(_("Source Devices"), sourceIp) : null,
-    ports.length ? createCard(_("Ports"), ports) : null,
-    dscp.length ? createCard(_("DSCP marks (QoS)"), dscp) : null,
-  ].filter(Boolean));
+  const modalBody = E(
+    "div",
+    { class: "cbi-section-node", style: "min-width: 320px; max-width: 650px;" },
+    [
+      E("div", { class: "cbi-value" }, [
+        E(
+          "label",
+          {
+            class: "cbi-value-title",
+            style: "padding-top: 0; font-weight: bold;",
+          },
+          _("Section action"),
+        ),
+        E(
+          "div",
+          {
+            class: "cbi-value-field",
+            style: "font-weight: bold; color: var(--text-color-high, #2980b9);",
+          },
+          getRuleActionDisplayValue(section_id),
+        ),
+      ]),
+      createCard(_("Community Lists"), community),
+      createCard(_("Domains"), domains),
+      createCard(_("IP Addresses (IP CIDR)"), ips),
+      createCard(_("Rule Sets (.srs / .json)"), ruleSets),
+      createCard(_(".lst Lists"), domainIpLists),
+      geosite.length || geoip.length
+        ? createCard(_("GeoSite / GeoIP"), [...geosite, ...geoip])
+        : null,
+      sourceIp.length ? createCard(_("Source Devices"), sourceIp) : null,
+      ports.length ? createCard(_("Ports"), ports) : null,
+      dscp.length ? createCard(_("DSCP marks (QoS)"), dscp) : null,
+    ].filter(Boolean),
+  );
 
   ui.showModal(
     _("Section Rules Content") + `: ${sectionLabel}`,
     [
       modalBody,
-      E("div", { class: "button-row", style: "display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px;" }, [
-        E("button", {
-          class: "btn cbi-button cbi-button-action",
-          type: "button",
-          click: () => ui.hideModal()
-        }, _("Close"))
-      ])
+      E(
+        "div",
+        {
+          class: "button-row",
+          style:
+            "display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px;",
+        },
+        [
+          E(
+            "button",
+            {
+              class: "btn cbi-button cbi-button-action",
+              type: "button",
+              click: () => ui.hideModal(),
+            },
+            _("Close"),
+          ),
+        ],
+      ),
     ],
-    "cbi-modal"
+    "cbi-modal",
   );
 }
 

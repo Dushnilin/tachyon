@@ -152,8 +152,12 @@ function refreshOptionChoices(option, choices) {
 }
 
 function getDnsServerChoices(dnsType) {
-  const servers = main.DNS_SERVERS_BY_PROTOCOL[dnsType] || main.DNS_SERVERS_BY_PROTOCOL.udp;
-  return Object.entries(servers).map(([value, label]) => ({ value, label: _(label) }));
+  const servers =
+    main.DNS_SERVERS_BY_PROTOCOL[dnsType] || main.DNS_SERVERS_BY_PROTOCOL.udp;
+  return Object.entries(servers).map(([value, label]) => ({
+    value,
+    label: _(label),
+  }));
 }
 
 function configureDnsDynamicList(option, getChoices, defaultValue) {
@@ -234,7 +238,8 @@ const settingsDnsDynamicState = {
 };
 
 function getDefaultDnsServers(dnsType) {
-  const servers = main.DNS_SERVERS_BY_PROTOCOL[dnsType] || main.DNS_SERVERS_BY_PROTOCOL.udp;
+  const servers =
+    main.DNS_SERVERS_BY_PROTOCOL[dnsType] || main.DNS_SERVERS_BY_PROTOCOL.udp;
   const keys = Object.keys(servers);
   return keys.length > 0 ? [keys[0]] : ["77.88.8.8"];
 }
@@ -260,7 +265,8 @@ function configureDnsDuration(
 function createWatchdogStatusWidget() {
   const wrapper = E("div", {
     id: "tachyon-watchdog-status-widget",
-    style: "display:flex;align-items:center;gap:12px;padding:4px 0;flex-wrap:wrap;",
+    style:
+      "display:flex;align-items:center;gap:12px;padding:4px 0;flex-wrap:wrap;",
   });
 
   const indicator = E("span", {
@@ -269,7 +275,8 @@ function createWatchdogStatusWidget() {
 
   const dot = E("span", {
     id: "tachyon-watchdog-status-dot",
-    style: "display:inline-block;width:10px;height:10px;border-radius:50%;background:#aaa;flex-shrink:0;",
+    style:
+      "display:inline-block;width:10px;height:10px;border-radius:50%;background:#aaa;flex-shrink:0;",
   });
 
   const statusText = E("span", { id: "tachyon-watchdog-status-text" });
@@ -380,7 +387,8 @@ function createWatchdogStatusWidget() {
 function createResetSettingsWidget() {
   const wrapper = E("div", {
     id: "tachyon-reset-settings-widget",
-    style: "display:flex;align-items:center;gap:12px;padding:4px 0;flex-wrap:wrap;",
+    style:
+      "display:flex;align-items:center;gap:12px;padding:4px 0;flex-wrap:wrap;",
   });
 
   const btnReset = E("button", {
@@ -394,8 +402,7 @@ function createResetSettingsWidget() {
   });
 
   function performReset() {
-    if (btnReset.disabled)
-      return;
+    if (btnReset.disabled) return;
     btnReset.disabled = true;
     msgEl.textContent = _("Resetting\u2026");
     fs.exec("/usr/bin/tachyon", ["reset_settings"])
@@ -406,10 +413,17 @@ function createResetSettingsWidget() {
         } catch (e) {
           success = false;
         }
-        if (!success)
-          throw new Error("reset failed");
+        if (!success) throw new Error("reset failed");
         msgEl.textContent = "";
-        ui.addNotification(null, E("p", {}, _("Settings have been reset to defaults. The page will reload.")), "info");
+        ui.addNotification(
+          null,
+          E(
+            "p",
+            {},
+            _("Settings have been reset to defaults. The page will reload."),
+          ),
+          "info",
+        );
         setTimeout(function () {
           location.reload();
         }, 1500);
@@ -424,23 +438,37 @@ function createResetSettingsWidget() {
     ui.showModal(
       _("Reset Settings"),
       [
-        E("p", {}, _("This will erase all Tachyon settings and restore the factory defaults. The service will restart. This action cannot be undone.")),
+        E(
+          "p",
+          {},
+          _(
+            "This will erase all Tachyon settings and restore the factory defaults. The service will restart. This action cannot be undone.",
+          ),
+        ),
         E("div", { class: "button-row" }, [
-          E("button", {
-            class: "btn cbi-button cbi-button-neutral",
-            type: "button",
-            click: function () {
-              ui.hideModal();
+          E(
+            "button",
+            {
+              class: "btn cbi-button cbi-button-neutral",
+              type: "button",
+              click: function () {
+                ui.hideModal();
+              },
             },
-          }, _("Cancel")),
-          E("button", {
-            class: "btn cbi-button cbi-button-negative",
-            type: "button",
-            click: function () {
-              ui.hideModal();
-              performReset();
+            _("Cancel"),
+          ),
+          E(
+            "button",
+            {
+              class: "btn cbi-button cbi-button-negative",
+              type: "button",
+              click: function () {
+                ui.hideModal();
+                performReset();
+              },
             },
-          }, _("Reset")),
+            _("Reset"),
+          ),
         ]),
       ],
       "cbi-modal",
@@ -470,8 +498,7 @@ function createSnapshotsWidget() {
   });
 
   function formatStamp(stamp) {
-    if (!stamp)
-      return "";
+    if (!stamp) return "";
     return stamp.replace(
       /^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})$/,
       "$1-$2-$3 $4:$5",
@@ -479,12 +506,9 @@ function createSnapshotsWidget() {
   }
 
   function formatSize(size) {
-    if (size == null)
-      return "";
-    if (size >= 1048576)
-      return (size / 1048576).toFixed(1) + " MB";
-    if (size >= 1024)
-      return Math.round(size / 1024) + " KB";
+    if (size == null) return "";
+    if (size >= 1048576) return (size / 1048576).toFixed(1) + " MB";
+    if (size >= 1024) return Math.round(size / 1024) + " KB";
     return size + " B";
   }
 
@@ -496,8 +520,7 @@ function createSnapshotsWidget() {
       } catch (e) {
         ok = false;
       }
-      if (!ok)
-        throw new Error("command failed");
+      if (!ok) throw new Error("command failed");
     });
   }
 
@@ -506,7 +529,13 @@ function createSnapshotsWidget() {
       .then(function () {
         ui.addNotification(
           null,
-          E("p", {}, _("Snapshot restored. The service restarts and the page will reload.")),
+          E(
+            "p",
+            {},
+            _(
+              "Snapshot restored. The service restarts and the page will reload.",
+            ),
+          ),
           "info",
         );
         setTimeout(function () {
@@ -514,7 +543,11 @@ function createSnapshotsWidget() {
         }, 2500);
       })
       .catch(function () {
-        ui.addNotification(null, E("p", {}, _("Failed to restore snapshot")), "error");
+        ui.addNotification(
+          null,
+          E("p", {}, _("Failed to restore snapshot")),
+          "error",
+        );
         loadSnapshots();
       });
   }
@@ -525,7 +558,11 @@ function createSnapshotsWidget() {
         loadSnapshots();
       })
       .catch(function () {
-        ui.addNotification(null, E("p", {}, _("Failed to delete snapshot")), "error");
+        ui.addNotification(
+          null,
+          E("p", {}, _("Failed to delete snapshot")),
+          "error",
+        );
       });
   }
 
@@ -535,100 +572,158 @@ function createSnapshotsWidget() {
       .then(function (res) {
         let snapshots = [];
         try {
-          snapshots = (JSON.parse((res && res.stdout) || "").snapshots || []).slice(0, 10);
+          snapshots = (
+            JSON.parse((res && res.stdout) || "").snapshots || []
+          ).slice(0, 10);
         } catch (e) {
           snapshots = [];
         }
         if (snapshots.length === 0) {
           listEl.appendChild(
-            E("span", {
-              style: "font-size:12px;color:var(--text-color-medium,#888);",
-            }, _("No snapshots yet")),
+            E(
+              "span",
+              {
+                style: "font-size:12px;color:var(--text-color-medium,#888);",
+              },
+              _("No snapshots yet"),
+            ),
           );
           return;
         }
         snapshots.forEach(function (snap) {
           const row = E("div", {
-            style: "display:flex;align-items:center;gap:10px;padding:2px 0;flex-wrap:wrap;",
+            style:
+              "display:flex;align-items:center;gap:10px;padding:2px 0;flex-wrap:wrap;",
           });
-          row.appendChild(E("span", { style: "font-weight:bold;" }, snap.name || ""));
           row.appendChild(
-            E("span", {
-              style: "font-size:12px;color:var(--text-color-medium,#888);",
-            }, formatStamp(snap.stamp) + (snap.size != null ? " \u00b7 " + formatSize(snap.size) : "")),
+            E("span", { style: "font-weight:bold;" }, snap.name || ""),
           );
           row.appendChild(
-            E("button", {
-              class: "btn cbi-button cbi-button-action",
-              type: "button",
-              click: function () {
-                ui.showModal(
-                  _("Restore Snapshot"),
-                  [
-                    E("p", {}, _("This will replace the current Tachyon settings with the snapshot") + ": \u201c" + (snap.name || "") + "\u201d. The service will restart."),
-                    E("div", { class: "button-row" }, [
-                      E("button", {
-                        class: "btn cbi-button cbi-button-neutral",
-                        type: "button",
-                        click: function () {
-                          ui.hideModal();
-                        },
-                      }, _("Cancel")),
-                      E("button", {
-                        class: "btn cbi-button cbi-button-negative",
-                        type: "button",
-                        click: function () {
-                          ui.hideModal();
-                          performRestore(snap.file);
-                        },
-                      }, _("Restore")),
-                    ]),
-                  ],
-                  "cbi-modal",
-                );
+            E(
+              "span",
+              {
+                style: "font-size:12px;color:var(--text-color-medium,#888);",
               },
-            }, _("Restore")),
+              formatStamp(snap.stamp) +
+                (snap.size != null ? " \u00b7 " + formatSize(snap.size) : ""),
+            ),
           );
           row.appendChild(
-            E("button", {
-              class: "btn cbi-button cbi-button-negative",
-              type: "button",
-              click: function () {
-                ui.showModal(
-                  _("Delete Snapshot"),
-                  [
-                    E("p", {}, _("Delete the snapshot") + ": \u201c" + (snap.name || "") + "\u201d?"),
-                    E("div", { class: "button-row" }, [
-                      E("button", {
-                        class: "btn cbi-button cbi-button-neutral",
-                        type: "button",
-                        click: function () {
-                          ui.hideModal();
-                        },
-                      }, _("Cancel")),
-                      E("button", {
-                        class: "btn cbi-button cbi-button-negative",
-                        type: "button",
-                        click: function () {
-                          ui.hideModal();
-                          performDelete(snap.file);
-                        },
-                      }, _("Delete")),
-                    ]),
-                  ],
-                  "cbi-modal",
-                );
+            E(
+              "button",
+              {
+                class: "btn cbi-button cbi-button-action",
+                type: "button",
+                click: function () {
+                  ui.showModal(
+                    _("Restore Snapshot"),
+                    [
+                      E(
+                        "p",
+                        {},
+                        _(
+                          "This will replace the current Tachyon settings with the snapshot",
+                        ) +
+                          ": \u201c" +
+                          (snap.name || "") +
+                          "\u201d. The service will restart.",
+                      ),
+                      E("div", { class: "button-row" }, [
+                        E(
+                          "button",
+                          {
+                            class: "btn cbi-button cbi-button-neutral",
+                            type: "button",
+                            click: function () {
+                              ui.hideModal();
+                            },
+                          },
+                          _("Cancel"),
+                        ),
+                        E(
+                          "button",
+                          {
+                            class: "btn cbi-button cbi-button-negative",
+                            type: "button",
+                            click: function () {
+                              ui.hideModal();
+                              performRestore(snap.file);
+                            },
+                          },
+                          _("Restore"),
+                        ),
+                      ]),
+                    ],
+                    "cbi-modal",
+                  );
+                },
               },
-            }, _("Delete")),
+              _("Restore"),
+            ),
+          );
+          row.appendChild(
+            E(
+              "button",
+              {
+                class: "btn cbi-button cbi-button-negative",
+                type: "button",
+                click: function () {
+                  ui.showModal(
+                    _("Delete Snapshot"),
+                    [
+                      E(
+                        "p",
+                        {},
+                        _("Delete the snapshot") +
+                          ": \u201c" +
+                          (snap.name || "") +
+                          "\u201d?",
+                      ),
+                      E("div", { class: "button-row" }, [
+                        E(
+                          "button",
+                          {
+                            class: "btn cbi-button cbi-button-neutral",
+                            type: "button",
+                            click: function () {
+                              ui.hideModal();
+                            },
+                          },
+                          _("Cancel"),
+                        ),
+                        E(
+                          "button",
+                          {
+                            class: "btn cbi-button cbi-button-negative",
+                            type: "button",
+                            click: function () {
+                              ui.hideModal();
+                              performDelete(snap.file);
+                            },
+                          },
+                          _("Delete"),
+                        ),
+                      ]),
+                    ],
+                    "cbi-modal",
+                  );
+                },
+              },
+              _("Delete"),
+            ),
           );
           listEl.appendChild(row);
         });
       })
       .catch(function () {
         listEl.appendChild(
-          E("span", {
-            style: "font-size:12px;color:var(--text-color-medium,#888);",
-          }, _("Failed to load snapshots")),
+          E(
+            "span",
+            {
+              style: "font-size:12px;color:var(--text-color-medium,#888);",
+            },
+            _("Failed to load snapshots"),
+          ),
         );
       });
   }
@@ -644,33 +739,50 @@ function createSnapshotsWidget() {
     ui.showModal(
       _("Save Snapshot"),
       [
-        E("p", {}, _("Give the snapshot a name. It is saved with the current date and can be restored from this list later.")),
+        E(
+          "p",
+          {},
+          _(
+            "Give the snapshot a name. It is saved with the current date and can be restored from this list later.",
+          ),
+        ),
         input,
         E("div", { class: "button-row" }, [
-          E("button", {
-            class: "btn cbi-button cbi-button-neutral",
-            type: "button",
-            click: function () {
-              ui.hideModal();
+          E(
+            "button",
+            {
+              class: "btn cbi-button cbi-button-neutral",
+              type: "button",
+              click: function () {
+                ui.hideModal();
+              },
             },
-          }, _("Cancel")),
-          E("button", {
-            class: "btn cbi-button cbi-button-positive",
-            type: "button",
-            click: function () {
-              const name = (input.value || "").trim();
-              if (!name)
-                return;
-              ui.hideModal();
-              execSnapshot(["snapshot_save", name])
-                .then(function () {
-                  loadSnapshots();
-                })
-                .catch(function () {
-                  ui.addNotification(null, E("p", {}, _("Failed to save snapshot")), "error");
-                });
+            _("Cancel"),
+          ),
+          E(
+            "button",
+            {
+              class: "btn cbi-button cbi-button-positive",
+              type: "button",
+              click: function () {
+                const name = (input.value || "").trim();
+                if (!name) return;
+                ui.hideModal();
+                execSnapshot(["snapshot_save", name])
+                  .then(function () {
+                    loadSnapshots();
+                  })
+                  .catch(function () {
+                    ui.addNotification(
+                      null,
+                      E("p", {}, _("Failed to save snapshot")),
+                      "error",
+                    );
+                  });
+              },
             },
-          }, _("Save")),
+            _("Save"),
+          ),
         ]),
       ],
       "cbi-modal",
@@ -678,11 +790,22 @@ function createSnapshotsWidget() {
   });
 
   wrapper.appendChild(
-    E("div", {
-      style: "display:flex;align-items:center;gap:12px;flex-wrap:wrap;",
-    }, btnSave, E("span", {
-      style: "font-size:12px;color:var(--text-color-medium,#888);",
-    }, _("Up to 10 snapshots are kept; the oldest ones are removed automatically."))),
+    E(
+      "div",
+      {
+        style: "display:flex;align-items:center;gap:12px;flex-wrap:wrap;",
+      },
+      btnSave,
+      E(
+        "span",
+        {
+          style: "font-size:12px;color:var(--text-color-medium,#888);",
+        },
+        _(
+          "Up to 10 snapshots are kept; the oldest ones are removed automatically.",
+        ),
+      ),
+    ),
   );
   wrapper.appendChild(listEl);
 
@@ -692,15 +815,27 @@ function createSnapshotsWidget() {
 }
 
 function createSmartDetectSectionsWidget(section_id) {
-  const TESTABLE_ACTIONS = ["connection", "proxy", "outbound", "vpn", "zapret", "zapret2", "byedpi"];
+  const TESTABLE_ACTIONS = [
+    "connection",
+    "proxy",
+    "outbound",
+    "vpn",
+    "zapret",
+    "zapret2",
+    "byedpi",
+  ];
   const allSections = (uci.sections(UCI_PACKAGE, "section") || [])
     .filter(function (s) {
       return s.enabled !== "0" && TESTABLE_ACTIONS.indexOf(s.action) >= 0;
     })
-    .map(function (s) { return s[".name"]; });
+    .map(function (s) {
+      return s[".name"];
+    });
 
   if (allSections.length === 0) {
-    const empty = E("em", { style: "color:var(--text-color-medium,#888);font-size:0.9rem;" });
+    const empty = E("em", {
+      style: "color:var(--text-color-medium,#888);font-size:0.9rem;",
+    });
     empty.textContent = _("No active routing sections found.");
     return empty;
   }
@@ -722,14 +857,19 @@ function createSmartDetectSectionsWidget(section_id) {
   // enabledSet: which sections are checked
   const enabledSet = {};
   if (savedSections.length > 0) {
-    savedSections.forEach(function (name) { enabledSet[name] = true; });
+    savedSections.forEach(function (name) {
+      enabledSet[name] = true;
+    });
   } else if (ordered.length > 0) {
     enabledSet[ordered[0]] = true;
   }
 
-  const wrapper = E("div", { id: "smart-detect-sections-widget-" + section_id });
+  const wrapper = E("div", {
+    id: "smart-detect-sections-widget-" + section_id,
+  });
   const listEl = E("div", {
-    style: "border:1px solid var(--border-color,#dee2e6);border-radius:4px;overflow:hidden;margin-bottom:8px;max-width:480px;",
+    style:
+      "border:1px solid var(--border-color,#dee2e6);border-radius:4px;overflow:hidden;margin-bottom:8px;max-width:480px;",
   });
 
   function updateValue() {
@@ -743,7 +883,9 @@ function createSmartDetectSectionsWidget(section_id) {
     const row = E("div", {
       style: [
         "display:flex;align-items:center;gap:10px;padding:7px 10px;",
-        idx < totalLen - 1 ? "border-bottom:1px solid var(--border-color,#dee2e6);" : "",
+        idx < totalLen - 1
+          ? "border-bottom:1px solid var(--border-color,#dee2e6);"
+          : "",
         isEnabled ? "" : "opacity:0.5;",
       ].join(""),
     });
@@ -756,15 +898,18 @@ function createSmartDetectSectionsWidget(section_id) {
       renderSdList();
     });
 
-    const label = E("span", { style: "flex:1;font-family:monospace;font-size:0.9rem;user-select:none;" });
+    const label = E("span", {
+      style: "flex:1;font-family:monospace;font-size:0.9rem;user-select:none;",
+    });
     label.textContent = name;
 
     const upBtn = E("button", {
       class: "btn",
       type: "button",
-      style: "padding:1px 8px;font-size:0.75rem;line-height:1.4;border:1px solid var(--border-color,#ccc);border-radius:3px;background:transparent;cursor:pointer;",
+      style:
+        "padding:1px 8px;font-size:0.75rem;line-height:1.4;border:1px solid var(--border-color,#ccc);border-radius:3px;background:transparent;cursor:pointer;",
     });
-    upBtn.disabled = (idx === 0);
+    upBtn.disabled = idx === 0;
     upBtn.textContent = "\u25b3";
     upBtn.addEventListener("click", function () {
       if (idx > 0) {
@@ -779,9 +924,10 @@ function createSmartDetectSectionsWidget(section_id) {
     const downBtn = E("button", {
       class: "btn",
       type: "button",
-      style: "padding:1px 8px;font-size:0.75rem;line-height:1.4;border:1px solid var(--border-color,#ccc);border-radius:3px;background:transparent;cursor:pointer;",
+      style:
+        "padding:1px 8px;font-size:0.75rem;line-height:1.4;border:1px solid var(--border-color,#ccc);border-radius:3px;background:transparent;cursor:pointer;",
     });
-    downBtn.disabled = (idx === totalLen - 1);
+    downBtn.disabled = idx === totalLen - 1;
     downBtn.textContent = "\u25bd";
     downBtn.addEventListener("click", function () {
       if (idx < ordered.length - 1) {
@@ -814,7 +960,280 @@ function createSmartDetectSectionsWidget(section_id) {
   return wrapper;
 }
 
+function createMenuTabsOrderWidget(option, section_id) {
+  const ALL_MENU_TABS = [
+    {
+      id: "dashboard",
+      label: _("Dashboard"),
+      desc: _("Main overview and status widgets"),
+      defaultVisible: true,
+      fixed: false,
+    },
+    {
+      id: "section",
+      label: _("Sections"),
+      desc: _("Routing sections, rules and strategies"),
+      defaultVisible: true,
+      fixed: false,
+    },
+    {
+      id: "server",
+      label: _("Servers"),
+      desc: _("External inbound proxy servers"),
+      defaultVisible: false,
+      fixed: false,
+    },
+    {
+      id: "profile",
+      label: _("Family Profiles"),
+      desc: _("Family profiles and device grouping"),
+      defaultVisible: false,
+      fixed: false,
+    },
+    {
+      id: "schedule",
+      label: _("Parental Control"),
+      desc: _("Access schedule and screen time limits"),
+      defaultVisible: false,
+      fixed: false,
+    },
+    {
+      id: "monitoring",
+      label: _("Monitoring"),
+      desc: _("Traffic statistics and active connections"),
+      defaultVisible: true,
+      fixed: false,
+    },
+    {
+      id: "diagnostic",
+      label: _("Diagnostics"),
+      desc: _("System diagnostics, AI Doctor and logs"),
+      defaultVisible: true,
+      fixed: false,
+    },
+    {
+      id: "updates",
+      label: _("Components"),
+      desc: _("Component versions and update manager"),
+      defaultVisible: true,
+      fixed: false,
+    },
+    {
+      id: "settings",
+      label: _("Settings"),
+      desc: _("Core configuration and preferences"),
+      defaultVisible: true,
+      fixed: true,
+    },
+    {
+      id: "telegram",
+      label: _("Telegram Bot"),
+      desc: _("Remote management Telegram daemon"),
+      defaultVisible: true,
+      fixed: false,
+    },
+  ];
+
+  const rawTabOrder = uci.get(UCI_PACKAGE, section_id, "tab_order");
+  const savedOrder = Array.isArray(rawTabOrder)
+    ? rawTabOrder
+    : typeof rawTabOrder === "string" && rawTabOrder.trim()
+      ? rawTabOrder.trim().split(/\s+/)
+      : [];
+
+  const tabMap = {};
+  ALL_MENU_TABS.forEach(function (t) {
+    tabMap[t.id] = t;
+  });
+
+  const ordered = [];
+  savedOrder.forEach(function (id) {
+    if (tabMap[id] && ordered.indexOf(id) < 0) {
+      ordered.push(id);
+    }
+  });
+  ALL_MENU_TABS.forEach(function (t) {
+    if (ordered.indexOf(t.id) < 0) {
+      ordered.push(t.id);
+    }
+  });
+
+  const visibility = {};
+  ALL_MENU_TABS.forEach(function (t) {
+    if (t.fixed) {
+      visibility[t.id] = true;
+    } else {
+      let optKey = "show_tab_" + t.id;
+      if (t.id === "server") optKey = "show_tab_servers";
+      else if (t.id === "profile") optKey = "show_tab_profiles";
+      else if (t.id === "schedule") optKey = "show_tab_parental";
+
+      const val = uci.get(UCI_PACKAGE, section_id, optKey);
+      if (val === undefined || val === null || val === "") {
+        visibility[t.id] = t.defaultVisible;
+      } else {
+        visibility[t.id] = val === "1" || val === true;
+      }
+    }
+  });
+
+  const wrapper = E("div", { id: "menu-tabs-order-widget-" + section_id });
+  const listEl = E("div", {
+    style:
+      "border:1px solid var(--border-color,#dee2e6);border-radius:6px;overflow:hidden;margin-bottom:8px;max-width:560px;background:var(--card-bg,transparent);",
+  });
+
+  function syncToUci() {
+    uci.set(UCI_PACKAGE, section_id, "tab_order", ordered);
+    ALL_MENU_TABS.forEach(function (t) {
+      if (!t.fixed) {
+        let optKey = "show_tab_" + t.id;
+        if (t.id === "server") optKey = "show_tab_servers";
+        else if (t.id === "profile") optKey = "show_tab_profiles";
+        else if (t.id === "schedule") optKey = "show_tab_parental";
+        uci.set(UCI_PACKAGE, section_id, optKey, visibility[t.id] ? "1" : "0");
+      }
+    });
+  }
+
+  function renderTabRow(id, idx, totalLen) {
+    const tabMeta = tabMap[id] || { id: id, label: id, desc: "", fixed: false };
+    const isVisible = Boolean(visibility[id]);
+
+    const row = E("div", {
+      style: [
+        "display:flex;align-items:center;gap:12px;padding:8px 12px;",
+        idx < totalLen - 1
+          ? "border-bottom:1px solid var(--border-color,#dee2e6);"
+          : "",
+        isVisible ? "" : "opacity:0.5;background:rgba(0,0,0,0.02);",
+      ].join(""),
+    });
+
+    const badge = E(
+      "span",
+      {
+        style:
+          "font-size:0.75rem;font-weight:bold;color:var(--text-color-medium,#888);min-width:18px;text-align:center;",
+      },
+      String(idx + 1),
+    );
+
+    const cb = E("input", {
+      type: "checkbox",
+      id: "cb-tab-" + id,
+      disabled: Boolean(tabMeta.fixed),
+    });
+    cb.checked = isVisible;
+    cb.addEventListener("change", function (ev) {
+      visibility[id] = ev.target.checked;
+      syncToUci();
+      renderList();
+    });
+
+    const textWrapper = E(
+      "label",
+      {
+        for: "cb-tab-" + id,
+        style:
+          "flex:1;cursor:pointer;margin:0;display:flex;flex-direction:column;",
+      },
+      [
+        E("span", { style: "font-weight:600;font-size:0.95rem;" }, [
+          tabMeta.label,
+          tabMeta.fixed
+            ? E(
+                "em",
+                {
+                  style:
+                    "font-size:0.75rem;font-weight:normal;margin-left:6px;color:var(--text-color-medium,#888);",
+                },
+                " (" + _("Always visible") + ")",
+              )
+            : "",
+        ]),
+        tabMeta.desc
+          ? E(
+              "span",
+              {
+                style: "font-size:0.75rem;color:var(--text-color-medium,#888);",
+              },
+              tabMeta.desc,
+            )
+          : "",
+      ],
+    );
+
+    const upBtn = E(
+      "button",
+      {
+        class: "btn cbi-button",
+        type: "button",
+        title: _("Move Up"),
+        style:
+          "padding:2px 8px;font-size:0.8rem;line-height:1.2;cursor:pointer;",
+      },
+      "▲",
+    );
+    upBtn.disabled = idx === 0;
+    upBtn.addEventListener("click", function (ev) {
+      ev.preventDefault();
+      if (idx > 0) {
+        const tmp = ordered[idx - 1];
+        ordered[idx - 1] = ordered[idx];
+        ordered[idx] = tmp;
+        syncToUci();
+        renderList();
+      }
+    });
+
+    const downBtn = E(
+      "button",
+      {
+        class: "btn cbi-button",
+        type: "button",
+        title: _("Move Down"),
+        style:
+          "padding:2px 8px;font-size:0.8rem;line-height:1.2;cursor:pointer;",
+      },
+      "▼",
+    );
+    downBtn.disabled = idx === totalLen - 1;
+    downBtn.addEventListener("click", function (ev) {
+      ev.preventDefault();
+      if (idx < ordered.length - 1) {
+        const tmp = ordered[idx + 1];
+        ordered[idx + 1] = ordered[idx];
+        ordered[idx] = tmp;
+        syncToUci();
+        renderList();
+      }
+    });
+
+    row.appendChild(badge);
+    row.appendChild(cb);
+    row.appendChild(textWrapper);
+    row.appendChild(upBtn);
+    row.appendChild(downBtn);
+    return row;
+  }
+
+  function renderList() {
+    while (listEl.firstChild) listEl.removeChild(listEl.firstChild);
+    ordered.forEach(function (id, idx) {
+      listEl.appendChild(renderTabRow(id, idx, ordered.length));
+    });
+  }
+
+  renderList();
+  syncToUci();
+
+  wrapper.appendChild(listEl);
+  return wrapper;
+}
+
 function createSettingsContent(section, capabilities) {
+  section.tab("navigation", _("Menu & Navigation"));
   section.tab("dns", _("DNS Settings"));
   section.tab("network", _("Network & Interfaces"));
   section.tab("services", _("Services & Access"));
@@ -822,9 +1241,48 @@ function createSettingsContent(section, capabilities) {
   section.tab("ai", _("AI & Watchdog"));
   section.tab("advanced", _("Advanced System"));
 
-  settingsDnsDynamicState.dnsType = uci.get(UCI_PACKAGE, "settings", "dns_type") || "udp";
+  // ── Navigation & Menu Settings ──────────────────────────────────────────
 
   let o = section.taboption(
+    "navigation",
+    form.ListValue,
+    "default_tab",
+    _("Default Tab on Startup"),
+    _("Select which tab opens automatically when entering Tachyon."),
+  );
+  o.value("dashboard", _("Dashboard"));
+  o.value("section", _("Sections"));
+  o.value("server", _("Servers"));
+  o.value("profile", _("Family Profiles"));
+  o.value("schedule", _("Parental Control"));
+  o.value("monitoring", _("Monitoring"));
+  o.value("diagnostic", _("Diagnostics"));
+  o.value("updates", _("Components"));
+  o.value("settings", _("Settings"));
+  o.value("telegram", _("Telegram Bot"));
+  o.default = "dashboard";
+  o.rmempty = false;
+
+  const tabsOrderOpt = section.taboption(
+    "navigation",
+    form.DummyValue,
+    "_tabs_order_widget",
+    _("Tab Order & Visibility"),
+    _(
+      "Customize the order and visibility of tabs in the main navigation menu. Use the arrows to reorder and checkboxes to show or hide tabs.",
+    ),
+  );
+  tabsOrderOpt.rawhtml = true;
+  tabsOrderOpt.cfgvalue = function (section_id) {
+    return createMenuTabsOrderWidget(this, section_id);
+  };
+
+  // ── DNS Settings ────────────────────────────────────────────────────────
+
+  settingsDnsDynamicState.dnsType =
+    uci.get(UCI_PACKAGE, "settings", "dns_type") || "udp";
+
+  o = section.taboption(
     "dns",
     form.ListValue,
     "dns_type",
@@ -849,10 +1307,14 @@ function createSettingsContent(section, capabilities) {
       "Main DNS server. If multiple servers are selected, a timeout switches to a backup.",
     ),
   );
-  configureDnsDynamicList(dnsOption, (_section_id) => {
-    const dnsType = settingsDnsDynamicState.dnsType || "udp";
-    return getDnsServerChoices(dnsType);
-  }, "77.88.8.8");
+  configureDnsDynamicList(
+    dnsOption,
+    (_section_id) => {
+      const dnsType = settingsDnsDynamicState.dnsType || "udp";
+      return getDnsServerChoices(dnsType);
+    },
+    "77.88.8.8",
+  );
 
   const bootstrapOption = section.taboption(
     "dns",
@@ -876,9 +1338,13 @@ function createSettingsContent(section, capabilities) {
 
     const widget = settingsDnsDynamicState.widget;
     if (widget) {
-      const servers = main.DNS_SERVERS_BY_PROTOCOL[newType] || main.DNS_SERVERS_BY_PROTOCOL.udp;
+      const servers =
+        main.DNS_SERVERS_BY_PROTOCOL[newType] ||
+        main.DNS_SERVERS_BY_PROTOCOL.udp;
       const defaultLabels = {};
-      Object.entries(servers).forEach(([v, l]) => { defaultLabels[v] = _(l); });
+      Object.entries(servers).forEach(([v, l]) => {
+        defaultLabels[v] = _(l);
+      });
       const defaultServers = getDefaultDnsServers(newType);
       widget.choices = defaultLabels;
       widget.setValue(defaultServers);
@@ -895,7 +1361,9 @@ function createSettingsContent(section, capabilities) {
     form.Flag,
     "fallback_wan_main",
     _("Enable WAN DNS Fallback for Main DNS"),
-    _("⚠️ If all Main DNS fail 3 times, queries will be sent to your ISP's DNS in plaintext. Only use as a last resort to prevent complete internet loss."),
+    _(
+      "⚠️ If all Main DNS fail 3 times, queries will be sent to your ISP's DNS in plaintext. Only use as a last resort to prevent complete internet loss.",
+    ),
   );
   o.default = o.disabled;
 
@@ -904,10 +1372,11 @@ function createSettingsContent(section, capabilities) {
     form.Flag,
     "fallback_wan_bootstrap",
     _("Enable WAN DNS Fallback for Bootstrap DNS"),
-    _("⚠️ If all Bootstrap DNS fail 3 times, queries will be sent to your ISP's DNS in plaintext. Only use as a last resort to prevent complete internet loss."),
+    _(
+      "⚠️ If all Bootstrap DNS fail 3 times, queries will be sent to your ISP's DNS in plaintext. Only use as a last resort to prevent complete internet loss.",
+    ),
   );
   o.default = o.disabled;
-
 
   o = section.taboption(
     "dns",
@@ -1002,7 +1471,12 @@ function createSettingsContent(section, capabilities) {
 
   // ─── DNS Strategy ────────────────────────────────────────────────────────
 
-  o = section.taboption("dns", form.ListValue, "dns_strategy", _("DNS Strategy"));
+  o = section.taboption(
+    "dns",
+    form.ListValue,
+    "dns_strategy",
+    _("DNS Strategy"),
+  );
   o.value("prefer_ipv4", _("Prefer IPv4"));
   o.value("ipv4_only", _("IPv4 only"));
   o.value("prefer_ipv6", _("Prefer IPv6"));
@@ -1232,9 +1706,7 @@ function createSettingsContent(section, capabilities) {
     form.Flag,
     "isolate_p2p",
     _("P2P Leak Protection"),
-    _(
-      "Isolate BitTorrent traffic and force it direct to prevent VPN bans",
-    ),
+    _("Isolate BitTorrent traffic and force it direct to prevent VPN bans"),
   );
   o.default = "0";
   o.rmempty = false;
@@ -1245,7 +1717,7 @@ function createSettingsContent(section, capabilities) {
     "p2p_ports",
     _("P2P Client Ports"),
     _(
-      "Pin P2P isolation to the torrent client's own ports, comma separated. Each entry is \"proto\", \"proto:port\" or \"proto:port-port\" (tcp/udp). Without a port the whole protocol is routed direct.",
+      'Pin P2P isolation to the torrent client\'s own ports, comma separated. Each entry is "proto", "proto:port" or "proto:port-port" (tcp/udp). Without a port the whole protocol is routed direct.',
     ),
   );
   o.depends("isolate_p2p", "1");
@@ -1258,7 +1730,9 @@ function createSettingsContent(section, capabilities) {
     const entries = value.split(",");
     for (const entry of entries) {
       if (!/^(tcp|udp)(:[0-9]{1,5}(-[0-9]{1,5})?)?$/.test(entry.trim())) {
-        return _("Each entry must be \"proto\", \"proto:port\" or \"proto:port-port\" (tcp/udp), e.g. tcp:6881,udp:6881-6889");
+        return _(
+          'Each entry must be "proto", "proto:port" or "proto:port-port" (tcp/udp), e.g. tcp:6881,udp:6881-6889',
+        );
       }
 
       const portSpec = entry.split(":")[1];
@@ -1267,7 +1741,11 @@ function createSettingsContent(section, capabilities) {
       }
 
       const bounds = portSpec.split("-").map(Number);
-      if (bounds.some((port) => !Number.isInteger(port) || port < 1 || port > 65535)) {
+      if (
+        bounds.some(
+          (port) => !Number.isInteger(port) || port < 1 || port > 65535,
+        )
+      ) {
         return _("Ports must be between 1 and 65535");
       }
 
@@ -1284,7 +1762,9 @@ function createSettingsContent(section, capabilities) {
     form.Flag,
     "game_console_optimizer",
     _("Game Console Optimizer (NAT Type 1)"),
-    _("Bypasses UDP traffic for selected game consoles (PS5/Xbox) to achieve NAT Type 1 / 2 (Full Cone NAT) for P2P matchmaking, while keeping TCP (PSN/Auth) routed through the proxy."),
+    _(
+      "Bypasses UDP traffic for selected game consoles (PS5/Xbox) to achieve NAT Type 1 / 2 (Full Cone NAT) for P2P matchmaking, while keeping TCP (PSN/Auth) routed through the proxy.",
+    ),
   );
   o.default = "0";
   o.rmempty = false;
@@ -1298,7 +1778,11 @@ function createSettingsContent(section, capabilities) {
   );
   gameConsoleIpsOpt.depends("game_console_optimizer", "1");
   gameConsoleIpsOpt.datatype = "ipaddr";
-  gameConsoleIpsOpt.renderWidget = function (section_id, option_index, cfgvalue) {
+  gameConsoleIpsOpt.renderWidget = function (
+    section_id,
+    option_index,
+    cfgvalue,
+  ) {
     return local_devices.createLocalDeviceDynamicListWidget(
       this,
       section_id,
@@ -1365,16 +1849,29 @@ function createSettingsContent(section, capabilities) {
   updateListsBtn.depends("list_update_enabled", "1");
   updateListsBtn.onclick = function () {
     ui.showModal(_("Updating lists..."), [
-      E("p", { class: "spinning" }, _("Downloading and applying rule sets and lists...")),
+      E(
+        "p",
+        { class: "spinning" },
+        _("Downloading and applying rule sets and lists..."),
+      ),
     ]);
-    return fs.exec("/usr/bin/tachyon", ["list_update"])
+    return fs
+      .exec("/usr/bin/tachyon", ["list_update"])
       .then(function () {
         ui.hideModal();
-        ui.addNotification(null, E("p", _("Lists and rule sets successfully updated!")), "info");
+        ui.addNotification(
+          null,
+          E("p", _("Lists and rule sets successfully updated!")),
+          "info",
+        );
       })
       .catch(function (err) {
         ui.hideModal();
-        ui.addNotification(null, E("p", _("Error updating lists: ") + (err.message || err)), "error");
+        ui.addNotification(
+          null,
+          E("p", _("Error updating lists: ") + (err.message || err)),
+          "error",
+        );
       });
   };
 
@@ -1688,7 +2185,9 @@ function createSettingsContent(section, capabilities) {
     form.Flag,
     "webrtc_leak_protect",
     _("WebRTC Leak Protection"),
-    _("Detects and drops STUN/TURN packets in nftables to prevent real IP leaks via WebRTC.")
+    _(
+      "Detects and drops STUN/TURN packets in nftables to prevent real IP leaks via WebRTC.",
+    ),
   );
   o.default = "0";
   o.rmempty = false;
@@ -1698,7 +2197,9 @@ function createSettingsContent(section, capabilities) {
     form.Flag,
     "dns_doq_ech",
     _("Strict ECH + DoQ DNS Enforcer"),
-    _("Forces sing-box to tunnel DNS requests via DoQ with Encrypted Client Hello (ECH) for SNI hiding.")
+    _(
+      "Forces sing-box to tunnel DNS requests via DoQ with Encrypted Client Hello (ECH) for SNI hiding.",
+    ),
   );
   o.default = "0";
   o.rmempty = false;
@@ -1736,11 +2237,15 @@ function createSettingsContent(section, capabilities) {
       }
     }
 
-    if (typeof network !== "undefined" && typeof network.getDevices === "function") {
+    if (
+      typeof network !== "undefined" &&
+      typeof network.getDevices === "function"
+    ) {
       return network.getDevices().then(
         L.bind(function (devices) {
           (devices || []).forEach((dev) => {
-            const name = typeof dev.getName === "function" ? dev.getName() : dev.name;
+            const name =
+              typeof dev.getName === "function" ? dev.getName() : dev.name;
             if (name && name !== "lo" && !this.keylist.includes(name)) {
               const type =
                 typeof dev.getTypeI18n === "function"
@@ -1799,7 +2304,9 @@ function createSettingsContent(section, capabilities) {
     form.DummyValue,
     "_snapshots",
     _("Config Snapshots"),
-    _("Save a snapshot of the working config and restore it later if something breaks."),
+    _(
+      "Save a snapshot of the working config and restore it later if something breaks.",
+    ),
   );
   snapshotsOpt.rawhtml = true;
   snapshotsOpt.cfgvalue = function () {
@@ -1886,13 +2393,14 @@ function createSettingsContent(section, capabilities) {
   o.value("en", "English");
   o.default = "ru";
 
-
   o = section.taboption(
     "ai",
     form.Value,
     "ai_doctor_api_key",
     _("AI API Key"),
-    _("API Key for OpenAI (sk-...) or DeepSeek (optional for Ollama / LM Studio)"),
+    _(
+      "API Key for OpenAI (sk-...) or DeepSeek (optional for Ollama / LM Studio)",
+    ),
   );
   o.depends("enable_ai_doctor", "1");
   o.password = true;
@@ -1942,106 +2450,206 @@ function createSettingsContent(section, capabilities) {
   // ─── AI Watchdog Settings ──────────────────────────────────────────────────
 
   // Proxy Health Monitor
-  o = section.taboption("ai", form.Flag, "ai_proxy_health_enabled", _("Enable Proxy Health Monitor"),
-    _("Periodically checks if the proxy is responding. Restarts Tachyon after consecutive failures."));
+  o = section.taboption(
+    "ai",
+    form.Flag,
+    "ai_proxy_health_enabled",
+    _("Enable Proxy Health Monitor"),
+    _(
+      "Periodically checks if the proxy is responding. Restarts Tachyon after consecutive failures.",
+    ),
+  );
   o.default = "1";
   o.rmempty = false;
   o.depends("enable_watchdog", "1");
 
-  o = section.taboption("ai", form.Value, "ai_proxy_health_interval", _("Proxy Health Check Interval (s)"),
-    _("How often to check proxy health in seconds (fast tier, default 30)."));
+  o = section.taboption(
+    "ai",
+    form.Value,
+    "ai_proxy_health_interval",
+    _("Proxy Health Check Interval (s)"),
+    _("How often to check proxy health in seconds (fast tier, default 30)."),
+  );
   o.default = "30";
   o.datatype = "min(15)";
   o.depends("ai_proxy_health_enabled", "1");
 
-  o = section.taboption("ai", form.Value, "ai_proxy_health_fail_threshold", _("Proxy Fail Threshold"),
-    _("Number of consecutive failures before restarting (default 3)."));
+  o = section.taboption(
+    "ai",
+    form.Value,
+    "ai_proxy_health_fail_threshold",
+    _("Proxy Fail Threshold"),
+    _("Number of consecutive failures before restarting (default 3)."),
+  );
   o.default = "3";
   o.datatype = "min(1)";
   o.depends("ai_proxy_health_enabled", "1");
 
-  o = section.taboption("ai", form.Value, "ai_proxy_health_url", _("Proxy Health Check URL"),
-    _("URL to test through the proxy (default: Cloudflare 204)."));
+  o = section.taboption(
+    "ai",
+    form.Value,
+    "ai_proxy_health_url",
+    _("Proxy Health Check URL"),
+    _("URL to test through the proxy (default: Cloudflare 204)."),
+  );
   o.default = "https://cp.cloudflare.com/generate_204";
   o.depends("ai_proxy_health_enabled", "1");
 
   // DNS Continuous Check
-  o = section.taboption("ai", form.Flag, "ai_dns_continuous_enabled", _("Enable DNS Continuous Check"),
-    _("Faster DNS health monitoring than the default cycle. Switches bootstrap DNS on failure."));
+  o = section.taboption(
+    "ai",
+    form.Flag,
+    "ai_dns_continuous_enabled",
+    _("Enable DNS Continuous Check"),
+    _(
+      "Faster DNS health monitoring than the default cycle. Switches bootstrap DNS on failure.",
+    ),
+  );
   o.default = "1";
   o.rmempty = false;
   o.depends("enable_watchdog", "1");
 
-  o = section.taboption("ai", form.Value, "ai_dns_interval", _("DNS Check Interval (s)"),
-    _("How often to check DNS health in seconds (default 60)."));
+  o = section.taboption(
+    "ai",
+    form.Value,
+    "ai_dns_interval",
+    _("DNS Check Interval (s)"),
+    _("How often to check DNS health in seconds (default 60)."),
+  );
   o.default = "60";
   o.datatype = "min(30)";
   o.depends("ai_dns_continuous_enabled", "1");
 
   // Reload Dedup
-  o = section.taboption("ai", form.Flag, "ai_reload_dedup_enabled", _("Enable Firewall Reload Dedup"),
-    _("Prevents multiple reload_firewall calls within 120 seconds to avoid connection drops."));
+  o = section.taboption(
+    "ai",
+    form.Flag,
+    "ai_reload_dedup_enabled",
+    _("Enable Firewall Reload Dedup"),
+    _(
+      "Prevents multiple reload_firewall calls within 120 seconds to avoid connection drops.",
+    ),
+  );
   o.default = "1";
   o.rmempty = false;
   o.depends("enable_watchdog", "1");
 
   // Metrics
-  o = section.taboption("ai", form.Flag, "ai_metrics_enabled", _("Enable Health Metrics"),
-    _("Records proxy/DNS latency and health status in hourly buckets for analysis."));
+  o = section.taboption(
+    "ai",
+    form.Flag,
+    "ai_metrics_enabled",
+    _("Enable Health Metrics"),
+    _(
+      "Records proxy/DNS latency and health status in hourly buckets for analysis.",
+    ),
+  );
   o.default = "1";
   o.rmempty = false;
   o.depends("enable_watchdog", "1");
 
-  o = section.taboption("ai", form.Value, "ai_metrics_retention_hours", _("Metrics Retention (hours)"),
-    _("How many hours of metrics to keep (default 24)."));
+  o = section.taboption(
+    "ai",
+    form.Value,
+    "ai_metrics_retention_hours",
+    _("Metrics Retention (hours)"),
+    _("How many hours of metrics to keep (default 24)."),
+  );
   o.default = "24";
   o.datatype = "min(1)";
   o.depends("ai_metrics_enabled", "1");
 
   // Smart Cooldowns
-  o = section.taboption("ai", form.Flag, "ai_smart_cooldowns_enabled", _("Enable Smart Cooldowns"),
-    _("Use 3-tier check intervals: fast (15s), normal (120s), slow (300s) instead of a single interval."));
+  o = section.taboption(
+    "ai",
+    form.Flag,
+    "ai_smart_cooldowns_enabled",
+    _("Enable Smart Cooldowns"),
+    _(
+      "Use 3-tier check intervals: fast (15s), normal (120s), slow (300s) instead of a single interval.",
+    ),
+  );
   o.default = "1";
   o.rmempty = false;
   o.depends("enable_watchdog", "1");
 
   // Config Validation
-  o = section.taboption("ai", form.Flag, "ai_config_validation_enabled", _("Enable Config Validation"),
-    _("Validates sing-box config before restart to prevent boot loops on broken configs."));
+  o = section.taboption(
+    "ai",
+    form.Flag,
+    "ai_config_validation_enabled",
+    _("Enable Config Validation"),
+    _(
+      "Validates sing-box config before restart to prevent boot loops on broken configs.",
+    ),
+  );
   o.default = "1";
   o.rmempty = false;
   o.depends("enable_watchdog", "1");
 
   // Graceful Degradation
-  o = section.taboption("ai", form.Flag, "ai_graceful_degradation_enabled", _("Enable Graceful Degradation"),
-    _("If one health check fails with an error, continue running other checks instead of stopping."));
+  o = section.taboption(
+    "ai",
+    form.Flag,
+    "ai_graceful_degradation_enabled",
+    _("Enable Graceful Degradation"),
+    _(
+      "If one health check fails with an error, continue running other checks instead of stopping.",
+    ),
+  );
   o.default = "1";
   o.rmempty = false;
   o.depends("enable_watchdog", "1");
 
   // Persistent Smart Detect
-  o = section.taboption("ai", form.Flag, "ai_persistent_smart_detect", _("Persistent Smart Detect"),
-    _("Store auto-detected domains in /etc instead of /tmp to survive reboots."));
+  o = section.taboption(
+    "ai",
+    form.Flag,
+    "ai_persistent_smart_detect",
+    _("Persistent Smart Detect"),
+    _(
+      "Store auto-detected domains in /etc instead of /tmp to survive reboots.",
+    ),
+  );
   o.default = "1";
   o.rmempty = false;
   o.depends("enable_watchdog", "1");
 
   // Adaptive Intervals
-  o = section.taboption("ai", form.Flag, "ai_adaptive_intervals_enabled", _("Enable Adaptive Intervals"),
-    _("Automatically increase check intervals when healthy (to 5 min) and decrease on problems (to 120s)."));
+  o = section.taboption(
+    "ai",
+    form.Flag,
+    "ai_adaptive_intervals_enabled",
+    _("Enable Adaptive Intervals"),
+    _(
+      "Automatically increase check intervals when healthy (to 5 min) and decrease on problems (to 120s).",
+    ),
+  );
   o.default = "1";
   o.rmempty = false;
   o.depends("enable_watchdog", "1");
 
   // Anomaly Detection
-  o = section.taboption("ai", form.Flag, "ai_anomaly_detection_enabled", _("Enable Anomaly Detection"),
-    _("Monitors sing-box reconnect frequency. Alerts if too many reconnects per hour."));
+  o = section.taboption(
+    "ai",
+    form.Flag,
+    "ai_anomaly_detection_enabled",
+    _("Enable Anomaly Detection"),
+    _(
+      "Monitors sing-box reconnect frequency. Alerts if too many reconnects per hour.",
+    ),
+  );
   o.default = "1";
   o.rmempty = false;
   o.depends("enable_watchdog", "1");
 
-  o = section.taboption("ai", form.Value, "ai_anomaly_reconnect_threshold", _("Reconnect Threshold"),
-    _("Max reconnects per hour before alert (default 10)."));
+  o = section.taboption(
+    "ai",
+    form.Value,
+    "ai_anomaly_reconnect_threshold",
+    _("Reconnect Threshold"),
+    _("Max reconnects per hour before alert (default 10)."),
+  );
   o.default = "10";
   o.datatype = "min(1)";
   o.depends("ai_anomaly_detection_enabled", "1");
@@ -2077,7 +2685,9 @@ function createSettingsContent(section, capabilities) {
     return createSmartDetectSectionsWidget(section_id);
   };
   sdSectionsOpt.formvalue = function (section_id) {
-    const el = document.getElementById("smart-detect-sections-widget-" + section_id);
+    const el = document.getElementById(
+      "smart-detect-sections-widget-" + section_id,
+    );
     return el ? el.value : [];
   };
   sdSectionsOpt.write = function (section_id, formvalue) {
@@ -2095,7 +2705,9 @@ function createSettingsContent(section, capabilities) {
     form.DummyValue,
     "_smart_detect_domains",
     _("Auto-detected domains"),
-    _("List of domains automatically detected and the section they were added to. To edit or remove them, open the routing rules of the respective section.")
+    _(
+      "List of domains automatically detected and the section they were added to. To edit or remove them, open the routing rules of the respective section.",
+    ),
   );
   sdDomainsOpt.depends("smart_detect", "1");
   sdDomainsOpt.rawhtml = true;
@@ -2113,10 +2725,20 @@ function createSettingsContent(section, capabilities) {
       return "<em>" + _("No domains detected yet") + "</em>";
     }
 
-    function esc(s) { return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
-    let html = "<ul style=\"margin:0;padding-left:1.5rem;\">";
+    function esc(s) {
+      return String(s || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+    }
+    let html = '<ul style="margin:0;padding-left:1.5rem;">';
     allDomains.forEach(function (item) {
-      html += "<li><code>" + esc(item.domain) + "</code> &rarr; <b>" + esc(item.section) + "</b></li>";
+      html +=
+        "<li><code>" +
+        esc(item.domain) +
+        "</code> &rarr; <b>" +
+        esc(item.section) +
+        "</b></li>";
     });
     html += "</ul>";
     return html;
@@ -2412,7 +3034,9 @@ function createTelegramContent(section) {
     form.ListValue,
     "bot_proxy_section",
     _("Proxy Section for Bot"),
-    _("Route bot API requests through this section. Leave empty to use the default mixed proxy."),
+    _(
+      "Route bot API requests through this section. Leave empty to use the default mixed proxy.",
+    ),
   );
   o.depends("enabled", "1");
   o.retain = true;
@@ -2467,7 +3091,8 @@ function createTelegramContent(section) {
     );
     const result = E("div", {
       id: "tachyon-telegram-test-result",
-      style: "margin-top: 8px; white-space: pre-wrap; font-family: monospace; font-size: 12px; display: none;",
+      style:
+        "margin-top: 8px; white-space: pre-wrap; font-family: monospace; font-size: 12px; display: none;",
     });
     wrapper.appendChild(btn);
     wrapper.appendChild(result);
@@ -2490,7 +3115,8 @@ function createTelegramContent(section) {
 
           if (!data || !data.checks) {
             result.textContent =
-              "\u274C " + _("Failed to run diagnostics — is the tachyon binary installed?");
+              "\u274C " +
+              _("Failed to run diagnostics — is the tachyon binary installed?");
             btn.disabled = false;
             btn.textContent = "\uD83D\uDD0C " + _("Test Connection");
             return;
@@ -2503,7 +3129,10 @@ function createTelegramContent(section) {
           }
           if (data.ok) {
             lines.push("");
-            lines.push("\u2705 " + _("All checks passed — Telegram bot should work correctly"));
+            lines.push(
+              "\u2705 " +
+                _("All checks passed — Telegram bot should work correctly"),
+            );
           }
           result.textContent = lines.join("\n");
           result.style.color = data.ok ? "" : "#e53935";
@@ -2512,7 +3141,8 @@ function createTelegramContent(section) {
         })
         .catch(function () {
           result.textContent =
-            "\u274C " + _("Failed to run diagnostics — is the tachyon binary installed?");
+            "\u274C " +
+            _("Failed to run diagnostics — is the tachyon binary installed?");
           btn.disabled = false;
           btn.textContent = "\uD83D\uDD0C " + _("Test Connection");
         });

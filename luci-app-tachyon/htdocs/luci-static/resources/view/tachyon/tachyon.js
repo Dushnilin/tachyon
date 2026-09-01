@@ -425,139 +425,232 @@ const EntryPoint = {
         });
     };
 
-    const rulesSection = tachyonMap.section(
-      form.GridSection,
-      "section",
-      _("Sections"),
-      _("Drag rows to change priority. The rule at the top is checked first."),
-    );
-    configureGridSection(
-      rulesSection,
-      "section",
-      _("Section"),
-      _("Add a section"),
-    );
-    section.configureSectionSection(rulesSection, {
-      loadActionProvidersAvailability: loadUiCapabilities,
-    });
-    section.createSectionContent(rulesSection);
+    const rawTabOrder = uci.get(UCI_PACKAGE, "settings", "tab_order");
+    const savedOrder = Array.isArray(rawTabOrder)
+      ? rawTabOrder
+      : typeof rawTabOrder === "string" && rawTabOrder.trim()
+        ? rawTabOrder.trim().split(/\s+/)
+        : [];
 
-    const serverSection = tachyonMap.section(
-      form.GridSection,
-      "server",
-      _("Servers"),
-      _("Accept external proxy connections and route them with sing-box."),
-    );
-    configureGridSection(
-      serverSection,
-      "server",
-      _("Server"),
-      _("Add a server inbound"),
-    );
-    serverSectionRef = serverSection;
-    server.configureServerSection(serverSection, {
-      loadCapabilities: loadUiCapabilities,
-    });
-    server.createServerContent(serverSection, uiCapabilities);
-
-    const profileSection = tachyonMap.section(
-      form.GridSection,
-      "profile",
-      _("Family Profiles"),
-      _("Group devices into family profiles to manage content filtering, SafeSearch, and screen time limits in one place."),
-    );
-    configureGridSection(
-      profileSection,
-      "profile",
-      _("Family Profile"),
-      _("Add a family profile"),
-    );
-    parental.createProfileContent(profileSection);
-
-    const parentalSection = tachyonMap.section(
-      form.GridSection,
-      "schedule",
-      _("Parental Control"),
-      _("Block internet access or specific proxy sections for family profiles or individual devices based on time and days."),
-    );
-    configureGridSection(
-      parentalSection,
-      "schedule",
-      _("Schedule Rule"),
-      _("Add a schedule rule"),
-    );
-    parental.createParentalContent(parentalSection);
-
-    const settingsSection = tachyonMap.section(
-      form.TypedSection,
-      "settings",
-      _("Settings"),
-    );
-    settingsSection.anonymous = true;
-    settingsSection.addremove = false;
-    settingsSection.cfgsections = function () {
-      return ["settings"];
-    };
-    settings.createSettingsContent(settingsSection, uiCapabilities);
-
-    const telegramSection = tachyonMap.section(
-      form.TypedSection,
-      "telegram",
-      _("Telegram Bot"),
-    );
-    telegramSection.anonymous = true;
-    telegramSection.addremove = false;
-    telegramSection.cfgsections = function () {
-      return ["telegram"];
-    };
-    settings.createTelegramContent(telegramSection);
-    const diagnosticSection = tachyonMap.section(
-      form.TypedSection,
-      "diagnostic",
-      _("Diagnostics"),
-    );
-    diagnosticSection.anonymous = true;
-    diagnosticSection.addremove = false;
-    diagnosticSection.cfgsections = function () {
-      return ["diagnostic"];
-    };
-    diagnostic.createDiagnosticContent(diagnosticSection);
-
-    const dashboardSection = tachyonMap.section(
-      form.TypedSection,
+    const defaultTabOrder = [
       "dashboard",
-      _("Dashboard"),
-    );
-    dashboardSection.anonymous = true;
-    dashboardSection.addremove = false;
-    dashboardSection.cfgsections = function () {
-      return ["dashboard"];
-    };
-    dashboard.createDashboardContent(dashboardSection);
-
-    const monitoringSection = tachyonMap.section(
-      form.TypedSection,
+      "section",
+      "server",
+      "profile",
+      "schedule",
       "monitoring",
-      _("Monitoring"),
-    );
-    monitoringSection.anonymous = true;
-    monitoringSection.addremove = false;
-    monitoringSection.cfgsections = function () {
-      return ["monitoring"];
-    };
-    monitoring.createMonitoringContent(monitoringSection);
-
-    const updatesSection = tachyonMap.section(
-      form.TypedSection,
+      "diagnostic",
       "updates",
-      _("Components"),
-    );
-    updatesSection.anonymous = true;
-    updatesSection.addremove = false;
-    updatesSection.cfgsections = function () {
-      return ["updates"];
+      "settings",
+      "telegram",
+    ];
+
+    const tabOrder = [];
+    savedOrder.forEach((id) => {
+      if (defaultTabOrder.indexOf(id) >= 0 && tabOrder.indexOf(id) < 0) {
+        tabOrder.push(id);
+      }
+    });
+    defaultTabOrder.forEach((id) => {
+      if (tabOrder.indexOf(id) < 0) {
+        tabOrder.push(id);
+      }
+    });
+
+    const defaultTab =
+      uci.get(UCI_PACKAGE, "settings", "default_tab") || "dashboard";
+
+    const isTabVisible = (id) => {
+      if (id === "settings") return true;
+      if (id === "server") {
+        return (
+          uci.get(UCI_PACKAGE, "settings", "show_tab_servers") === "1" ||
+          uci.get(UCI_PACKAGE, "settings", "show_tab_server") === "1"
+        );
+      }
+      if (id === "profile") {
+        return (
+          uci.get(UCI_PACKAGE, "settings", "show_tab_profiles") === "1" ||
+          uci.get(UCI_PACKAGE, "settings", "show_tab_profile") === "1"
+        );
+      }
+      if (id === "schedule") {
+        return (
+          uci.get(UCI_PACKAGE, "settings", "show_tab_parental") === "1" ||
+          uci.get(UCI_PACKAGE, "settings", "show_tab_schedule") === "1"
+        );
+      }
+      return uci.get(UCI_PACKAGE, "settings", "show_tab_" + id) !== "0";
     };
-    updates.createUpdatesContent(updatesSection);
+
+    const sectionFactories = {
+      dashboard: () => {
+        const s = tachyonMap.section(
+          form.TypedSection,
+          "dashboard",
+          _("Dashboard"),
+        );
+        s.anonymous = true;
+        s.addremove = false;
+        s.cfgsections = function () {
+          return ["dashboard"];
+        };
+        dashboard.createDashboardContent(s);
+        return s;
+      },
+      section: () => {
+        const s = tachyonMap.section(
+          form.GridSection,
+          "section",
+          _("Sections"),
+          _(
+            "Drag rows to change priority. The rule at the top is checked first.",
+          ),
+        );
+        configureGridSection(s, "section", _("Section"), _("Add a section"));
+        section.configureSectionSection(s, {
+          loadActionProvidersAvailability: loadUiCapabilities,
+        });
+        section.createSectionContent(s);
+        return s;
+      },
+      server: () => {
+        const s = tachyonMap.section(
+          form.GridSection,
+          "server",
+          _("Servers"),
+          _("Accept external proxy connections and route them with sing-box."),
+        );
+        configureGridSection(
+          s,
+          "server",
+          _("Server"),
+          _("Add a server inbound"),
+        );
+        serverSectionRef = s;
+        server.configureServerSection(s, {
+          loadCapabilities: loadUiCapabilities,
+        });
+        server.createServerContent(s, uiCapabilities);
+        return s;
+      },
+      profile: () => {
+        const s = tachyonMap.section(
+          form.GridSection,
+          "profile",
+          _("Family Profiles"),
+          _(
+            "Group devices into family profiles to manage content filtering, SafeSearch, and screen time limits in one place.",
+          ),
+        );
+        configureGridSection(
+          s,
+          "profile",
+          _("Family Profile"),
+          _("Add a family profile"),
+        );
+        parental.createProfileContent(s);
+        return s;
+      },
+      schedule: () => {
+        const s = tachyonMap.section(
+          form.GridSection,
+          "schedule",
+          _("Parental Control"),
+          _(
+            "Block internet access or specific proxy sections for family profiles or individual devices based on time and days.",
+          ),
+        );
+        configureGridSection(
+          s,
+          "schedule",
+          _("Schedule Rule"),
+          _("Add a schedule rule"),
+        );
+        parental.createParentalContent(s);
+        return s;
+      },
+      monitoring: () => {
+        const s = tachyonMap.section(
+          form.TypedSection,
+          "monitoring",
+          _("Monitoring"),
+        );
+        s.anonymous = true;
+        s.addremove = false;
+        s.cfgsections = function () {
+          return ["monitoring"];
+        };
+        monitoring.createMonitoringContent(s);
+        return s;
+      },
+      diagnostic: () => {
+        const s = tachyonMap.section(
+          form.TypedSection,
+          "diagnostic",
+          _("Diagnostics"),
+        );
+        s.anonymous = true;
+        s.addremove = false;
+        s.cfgsections = function () {
+          return ["diagnostic"];
+        };
+        diagnostic.createDiagnosticContent(s);
+        return s;
+      },
+      updates: () => {
+        const s = tachyonMap.section(
+          form.TypedSection,
+          "updates",
+          _("Components"),
+        );
+        s.anonymous = true;
+        s.addremove = false;
+        s.cfgsections = function () {
+          return ["updates"];
+        };
+        updates.createUpdatesContent(s);
+        return s;
+      },
+      settings: () => {
+        const s = tachyonMap.section(
+          form.TypedSection,
+          "settings",
+          _("Settings"),
+        );
+        s.anonymous = true;
+        s.addremove = false;
+        s.cfgsections = function () {
+          return ["settings"];
+        };
+        settings.createSettingsContent(s, uiCapabilities);
+        return s;
+      },
+      telegram: () => {
+        const s = tachyonMap.section(
+          form.TypedSection,
+          "telegram",
+          _("Telegram Bot"),
+        );
+        s.anonymous = true;
+        s.addremove = false;
+        s.cfgsections = function () {
+          return ["telegram"];
+        };
+        settings.createTelegramContent(s);
+        return s;
+      },
+    };
+
+    // Instantiate enabled sections in configured tab order
+    for (const tabId of tabOrder) {
+      if (
+        isTabVisible(tabId) &&
+        typeof sectionFactories[tabId] === "function"
+      ) {
+        sectionFactories[tabId]();
+      }
+    }
 
     await loadUiCapabilities().catch(() => null);
 
@@ -566,6 +659,23 @@ const EntryPoint = {
       waitForLogWatcherStart: loadUiCapabilities,
       logWatcherStartDelayMs: 5000,
     });
+
+    if (!window.location.hash || window.location.hash === "#") {
+      const targetTabKey = defaultTab;
+      window.requestAnimationFrame(() => {
+        const tabLink = document.querySelector(
+          `.cbi-tab[data-tab="cbi-tachyon-${targetTabKey}"] a, ` +
+            `.cbi-tab[data-tab="${targetTabKey}"] a, ` +
+            `[data-tab="cbi-tachyon-${targetTabKey}"] > a, ` +
+            `[data-tab="${targetTabKey}"] > a, ` +
+            `li[data-tab="cbi-tachyon-${targetTabKey}"] a, ` +
+            `li[data-tab="${targetTabKey}"] a`,
+        );
+        if (tabLink) {
+          tabLink.click();
+        }
+      });
+    }
 
     return rendered;
   },

@@ -39,5 +39,8 @@
   "overrides": {
     "postcss": "8.5.23",
     "js-yaml": "^5.2.1"
+  },
+  "dependencies": {
+    "@esbuild/win32-x64": "^0.28.2"
   }
 }

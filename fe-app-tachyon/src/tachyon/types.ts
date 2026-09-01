@@ -428,6 +428,28 @@ export namespace Tachyon {
     ai_metrics_retention_hours?: string;
     ai_smart_cooldowns_enabled?: '0' | '1';
     ai_config_validation_enabled?: '0' | '1';
+    // Navigation & Menu settings
+    default_tab?:
+      | 'dashboard'
+      | 'section'
+      | 'server'
+      | 'profile'
+      | 'schedule'
+      | 'monitoring'
+      | 'diagnostic'
+      | 'updates'
+      | 'settings'
+      | 'telegram';
+    tab_order?: string[];
+    show_tab_dashboard?: '0' | '1';
+    show_tab_sections?: '0' | '1';
+    show_tab_servers?: '0' | '1';
+    show_tab_profiles?: '0' | '1';
+    show_tab_parental?: '0' | '1';
+    show_tab_monitoring?: '0' | '1';
+    show_tab_diagnostic?: '0' | '1';
+    show_tab_updates?: '0' | '1';
+    show_tab_telegram?: '0' | '1';
     ai_graceful_degradation_enabled?: '0' | '1';
     ai_persistent_smart_detect?: '0' | '1';
     ai_adaptive_intervals_enabled?: '0' | '1';

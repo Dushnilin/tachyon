@@ -5395,3 +5395,111 @@ msgstr "Сохранять резервную копию перед обновл
 
 msgid "Keep the previous working binary/package on the router flash for instant offline rollback if needed. Consumes extra storage."
 msgstr "Сохранять предыдущую рабочую версию компонента в памяти роутера для быстрого локального отката. Занимает дополнительное место на flash."
+
+msgid "Menu & Navigation"
+msgstr "Меню и навигация"
+
+msgid "Default Tab on Startup"
+msgstr "Вкладка по умолчанию при входе"
+
+msgid "Select which tab opens automatically when entering Tachyon."
+msgstr "Выберите, какая вкладка открывается автоматически при входе в Tachyon."
+
+msgid "Show 'Dashboard' tab"
+msgstr "Отображать вкладку «Главная»"
+
+msgid "Display the main overview and status dashboard in the menu."
+msgstr "Отображать главный обзор и статус-дашборд в меню."
+
+msgid "Show 'Sections' tab"
+msgstr "Отображать вкладку «Маршрутизация»"
+
+msgid "Display proxy sections and routing rules in the menu."
+msgstr "Отображать секции прокси и правила маршрутизации в меню."
+
+msgid "Show 'Servers' tab"
+msgstr "Отображать вкладку «Серверы»"
+
+msgid "Display external proxy servers (inbounds) in the menu."
+msgstr "Отображать внешние прокси-серверы (inbounds) в меню."
+
+msgid "Show 'Family Profiles' tab"
+msgstr "Отображать вкладку «Семейные профили»"
+
+msgid "Display family profile groups and device assignment in the menu."
+msgstr "Отображать группы семейных профилей и привязку устройств в меню."
+
+msgid "Show 'Parental Control' tab"
+msgstr "Отображать вкладку «Родительский контроль»"
+
+msgid "Display parental control and schedule rules in the menu."
+msgstr "Отображать расписания и правила родительского контроля в меню."
+
+msgid "Show 'Monitoring' tab"
+msgstr "Отображать вкладку «Мониторинг»"
+
+msgid "Display live traffic statistics and client activity in the menu."
+msgstr "Отображать статистику трафика и активность клиентов в меню."
+
+msgid "Show 'Diagnostics' tab"
+msgstr "Отображать вкладку «Диагностика»"
+
+msgid "Display network health checks and AI Doctor in the menu."
+msgstr "Отображать сетевую диагностику и ИИ-Доктора в меню."
+
+msgid "Show 'Components' tab"
+msgstr "Отображать вкладку «Компоненты»"
+
+msgid "Display component updates and version manager in the menu."
+msgstr "Отображать обновления компонентов и управление версиями в меню."
+
+msgid "Show 'Telegram Bot' tab"
+msgstr "Отображать вкладку «Telegram-бот»"
+
+msgid "Display the Telegram bot settings and controls in the menu."
+msgstr "Отображать настройки и управление Telegram-ботом в меню."
+
+msgid "Tab Order & Visibility"
+msgstr "Порядок и видимость вкладок"
+
+msgid "Customize the order and visibility of tabs in the main navigation menu. Use the arrows to reorder and checkboxes to show or hide tabs."
+msgstr "Настройте порядок и видимость вкладок в главном меню навигации. Используйте стрелки для перемещения и галочки для показа или скрытия."
+
+msgid "Always visible"
+msgstr "Всегда включено"
+
+msgid "Move Up"
+msgstr "Переместить выше"
+
+msgid "Move Down"
+msgstr "Переместить ниже"
+
+msgid "Main overview and status widgets"
+msgstr "Главный обзор и виджеты статуса"
+
+msgid "Routing sections, rules and strategies"
+msgstr "Секции маршрутизации, правила и стратегии"
+
+msgid "External inbound proxy servers"
+msgstr "Внешние входящие прокси-серверы"
+
+msgid "Family profiles and device grouping"
+msgstr "Семейные профили и группировка устройств"
+
+msgid "Access schedule and screen time limits"
+msgstr "Расписание доступа и лимиты времени"
+
+msgid "Traffic statistics and active connections"
+msgstr "Статистика трафика и активные соединения"
+
+msgid "System diagnostics, AI Doctor and logs"
+msgstr "Системная диагностика, ИИ-Доктор и логи"
+
+msgid "Component versions and update manager"
+msgstr "Версии компонентов и менеджер обновлений"
+
+msgid "Core configuration and preferences"
+msgstr "Основные настройки и параметры"
+
+msgid "Remote management Telegram daemon"
+msgstr "Демон Telegram для удаленного управления"

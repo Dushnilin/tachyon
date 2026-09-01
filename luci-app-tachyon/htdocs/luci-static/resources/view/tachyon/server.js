@@ -1419,13 +1419,16 @@ function buildMtprotoLink(sectionId, identity) {
 function buildAwgClientConfig(sectionId) {
   const host = getPublicHost(sectionId);
   const port = uci.get(UCI_PACKAGE, sectionId, "listen_port") || "51820";
-  const clientPrivateKey = uci.get(UCI_PACKAGE, sectionId, "awg_client_private_key") || "";
+  const clientPrivateKey =
+    uci.get(UCI_PACKAGE, sectionId, "awg_client_private_key") || "";
   const serverPublicKey =
     uci.get(UCI_PACKAGE, sectionId, "awg_server_public_key") ||
     uci.get(UCI_PACKAGE, sectionId, "awg_peer_public_key") ||
     "";
-  const presharedKey = uci.get(UCI_PACKAGE, sectionId, "awg_preshared_key") || "";
-  const clientAddress = uci.get(UCI_PACKAGE, sectionId, "awg_client_address") || "10.0.0.2/32";
+  const presharedKey =
+    uci.get(UCI_PACKAGE, sectionId, "awg_preshared_key") || "";
+  const clientAddress =
+    uci.get(UCI_PACKAGE, sectionId, "awg_client_address") || "10.0.0.2/32";
   const mtu = uci.get(UCI_PACKAGE, sectionId, "awg_mtu") || "1280";
   const keepalive = uci.get(UCI_PACKAGE, sectionId, "awg_keepalive") || "25";
   const dns = uci.get(UCI_PACKAGE, sectionId, "awg_dns") || "10.0.0.1";
@@ -2416,22 +2419,38 @@ function generateAwgKeypairsIfMissing(sectionId) {
     return Promise.resolve();
   }
 
-  return Promise.all([generateAwgKeypair(sectionId), generateAwgKeypair(sectionId)]).then(
-    ([srvPair, cliPair]) => {
-      if (srvPair) {
-        uci.set(UCI_PACKAGE, sectionId, "awg_private_key", srvPair.private_key);
-        uci.set(UCI_PACKAGE, sectionId, "awg_server_public_key", srvPair.public_key);
-        setWidgetValue(sectionId, "awg_private_key", srvPair.private_key);
-        setWidgetValue(sectionId, "awg_server_public_key", srvPair.public_key);
-      }
-      if (cliPair) {
-        uci.set(UCI_PACKAGE, sectionId, "awg_client_private_key", cliPair.private_key);
-        uci.set(UCI_PACKAGE, sectionId, "awg_peer_public_key", cliPair.public_key);
-        setWidgetValue(sectionId, "awg_client_private_key", cliPair.private_key);
-        setWidgetValue(sectionId, "awg_peer_public_key", cliPair.public_key);
-      }
-    },
-  );
+  return Promise.all([
+    generateAwgKeypair(sectionId),
+    generateAwgKeypair(sectionId),
+  ]).then(([srvPair, cliPair]) => {
+    if (srvPair) {
+      uci.set(UCI_PACKAGE, sectionId, "awg_private_key", srvPair.private_key);
+      uci.set(
+        UCI_PACKAGE,
+        sectionId,
+        "awg_server_public_key",
+        srvPair.public_key,
+      );
+      setWidgetValue(sectionId, "awg_private_key", srvPair.private_key);
+      setWidgetValue(sectionId, "awg_server_public_key", srvPair.public_key);
+    }
+    if (cliPair) {
+      uci.set(
+        UCI_PACKAGE,
+        sectionId,
+        "awg_client_private_key",
+        cliPair.private_key,
+      );
+      uci.set(
+        UCI_PACKAGE,
+        sectionId,
+        "awg_peer_public_key",
+        cliPair.public_key,
+      );
+      setWidgetValue(sectionId, "awg_client_private_key", cliPair.private_key);
+      setWidgetValue(sectionId, "awg_peer_public_key", cliPair.public_key);
+    }
+  });
 }
 
 function prepareServerModal(sectionId) {
@@ -3301,10 +3320,7 @@ function createServerContent(section, options = {}) {
   addTailscaleDepends(o);
 
   o = section.option(form.ListValue, "tailscale_mode", _("Tailscale mode"));
-  o.value(
-    "singbox",
-    _("sing-box endpoint (userspace, default)"),
-  );
+  o.value("singbox", _("sing-box endpoint (userspace, default)"));
   o.value(
     "native",
     _("Native tailscaled (tailnet reachable from LAN without client)"),
@@ -3383,22 +3399,14 @@ function createServerContent(section, options = {}) {
   o.validate = validatePositiveInteger;
   o.depends("protocol", "awg");
 
-  o = section.option(
-    form.Value,
-    "awg_keepalive",
-    _("Persistent Keepalive"),
-  );
+  o = section.option(form.Value, "awg_keepalive", _("Persistent Keepalive"));
   o.default = "25";
   o.modalonly = true;
   o.rmempty = false;
   o.validate = validatePositiveInteger;
   o.depends("protocol", "awg");
 
-  o = section.option(
-    form.Value,
-    "awg_private_key",
-    _("Server Private Key"),
-  );
+  o = section.option(form.Value, "awg_private_key", _("Server Private Key"));
   o.modalonly = true;
   o.rmempty = false;
   o.validate = validateRequired;
@@ -3423,11 +3431,7 @@ function createServerContent(section, options = {}) {
   o.validate = validateRequired;
   o.depends("protocol", "awg");
 
-  o = section.option(
-    form.Value,
-    "awg_peer_public_key",
-    _("Client Public Key"),
-  );
+  o = section.option(form.Value, "awg_peer_public_key", _("Client Public Key"));
   o.modalonly = true;
   o.rmempty = false;
   o.validate = validateRequired;
