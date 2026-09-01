@@ -8,15 +8,11 @@ type SingBoxVariantFields = {
   sing_box_repo_url?: string;
 };
 
-export function isExtendedSingBoxVersion(version?: string) {
+function isExtendedSingBoxVersion(version?: string) {
   return (
     String(version || '').includes('extended') ||
     String(version || '').includes('-lx')
   );
-}
-
-export function isLxSingBoxVersion(version?: string) {
-  return String(version || '').includes('-lx');
 }
 
 function isVersionPlaceholder(version?: string) {

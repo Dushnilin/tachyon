@@ -35,41 +35,42 @@ let t = i18n.bind("en");
 // the full payload in a small on-disk map and send a short opaque token.
 const CB_MAP_FILE = "/tmp/tg_cb_map.json";
 const CB_MAP_MAX = 300;
+let cb_map_cache = null;
 
 function cb_map_load() {
+    if (cb_map_cache != null)
+        return cb_map_cache;
     let data = fs.readfile(CB_MAP_FILE);
     if (data) {
         try {
             let obj = json(data);
-            if (type(obj) == "object") return obj;
+            if (type(obj) == "object") {
+                cb_map_cache = obj;
+                return cb_map_cache;
+            }
         }
         catch (e) {
-            // A truncated map is recoverable: the tokens in it are short-lived
-            // and the next store rewrites the file. Starting from empty costs
-            // the user a "кнопка устарела" on old keyboards, which is what the
-            // caller reports anyway when a token is missing.
             command_success_from_args([ "logger", "-t", "tachyon-telegram",
                 "[warn] callback map is unparseable, starting from empty: " + as_string(e) ]);
         }
     }
-    return {};
+    cb_map_cache = {};
+    return cb_map_cache;
 }
 
 function cb_map_store(token, value) {
     let map = cb_map_load();
+    if (map[token] == value)
+        return;
     let ks = keys(map);
     if (length(ks) >= CB_MAP_MAX) {
-        // Drop the oldest half so long-lived keyboards keep working for a while
         let pruned = {};
         for (let i = int(length(ks) / 2); i < length(ks); i++)
             pruned[ks[i]] = map[ks[i]];
         map = pruned;
+        cb_map_cache = map;
     }
     map[token] = value;
-    // The token has already been embedded in the keyboard by the time this runs,
-    // so a failed write hands the user a button that will answer "кнопка
-    // устарела" the moment they press it. Silently swallowing that made the
-    // keyboard look intermittently broken with nothing in the log.
     let stored = false;
     try {
         stored = fs.writefile(CB_MAP_FILE, sprintf("%J", map)) != null;

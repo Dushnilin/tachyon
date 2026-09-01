@@ -124,7 +124,6 @@ const PARENTAL_QUOTA_UC = LIB_DIR + "/service/parental_quota.uc";
 const PACKAGES_UC = LIB_DIR + "/core/packages.uc";
 const WATCHDOG_UC = LIB_DIR + "/service/watchdog.uc";
 const TELEGRAM_UC = LIB_DIR + "/service/telegram.uc";
-const DNS_PREFETCH_UC = LIB_DIR + "/singbox/dns_prefetch.uc";
 
 let start_subscription_update_lock_held = false;
 let subscription_caches_prepared = getenv("TACHYON_SUBSCRIPTION_CACHES_PREPARED") || "0";
@@ -813,7 +812,6 @@ function start_main() {
     module_success(ZAPRET2_UC, [ "start-runtime" ]);
 
     module_background(UPDATES_UC, [ "list-update" ]);
-    module_background(DNS_PREFETCH_UC, [ "prefetch" ]);
     module_background(LIB_DIR + "/service/lifecycle.uc", [ "discover-awg-mtu" ]);
     return 0;
 }

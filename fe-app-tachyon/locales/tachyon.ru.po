@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-08-30 19:56+0300\n"
-"PO-Revision-Date: 2026-08-30 19:56+0300\n"
+"POT-Creation-Date: 2026-09-01 08:41+0300\n"
+"PO-Revision-Date: 2026-09-01 08:41+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -40,15 +40,6 @@ msgstr "+ Добавить стратегию"
 
 msgid "+ Add URLTest"
 msgstr "+ Добавить URLTest"
-
-msgid "⏹ Stop"
-msgstr "⏹ Стоп"
-
-msgid "▶ Start"
-msgstr "▶ Старт"
-
-msgid "⚙ Advanced Settings"
-msgstr "⚙ Настройки"
 
 msgid "⚠️ Benchmark completed. No working bypass found for this target."
 msgstr "⚠️ Бенчмарк завершен. Не найдено рабочих стратегий для данной цели."
@@ -127,9 +118,6 @@ msgstr "🔄 Сбросить к заводским настройкам"
 
 msgid "🔍 Combinatorial Deep Fuzzing (~40-80+)"
 msgstr "🔍 Комбинаторный глубокий фаззинг (~40-80+)"
-
-msgid "🔑 Generate"
-msgstr "🔑 Сгенерировать"
 
 msgid "🗑️ Clear History"
 msgstr "🗑️ Очистить историю"
@@ -257,9 +245,6 @@ msgstr "Chat ID администраторов"
 msgid "Adult content"
 msgstr "Взрослый контент"
 
-msgid "Advanced self-healing features. Requires Watchdog to be enabled."
-msgstr "Расширенные функции самовосстановления. Требуется включённый Watchdog."
-
 msgid "Advanced System"
 msgstr "Расширенные настройки"
 
@@ -275,9 +260,6 @@ msgstr "Метод AEAD"
 msgid "AI & Watchdog"
 msgstr "ИИ и Watchdog"
 
-msgid "AI Agent REST API (12 Endpoints)"
-msgstr "HTTP REST API ИИ-агента (12 эндпоинтов)"
-
 msgid "AI Agent REST API Bearer Token"
 msgstr "Токен Bearer для REST API ИИ-агента"
 
@@ -292,9 +274,6 @@ msgstr "ИИ Чат-ассистент"
 
 msgid "AI Diagnostics & Strategy Rationale"
 msgstr "Диагностика ИИ и обоснование стратегий"
-
-msgid "AI Doctor (ChatGPT / DeepSeek API)"
-msgstr "AI Doctor (ChatGPT / DeepSeek API)"
 
 msgid "AI Doctor Diagnosis"
 msgstr "Диагностика ИИ-доктора"
@@ -328,12 +307,6 @@ msgstr "Ошибка генерации ИИ"
 
 msgid "AI synthesis failed"
 msgstr "Не удалось сгенерировать стратегии через ИИ"
-
-msgid "AI Watchdog"
-msgstr "ИИ Watchdog"
-
-msgid "AI Watchdog settings saved. Restart watchdog to apply."
-msgstr "Настройки AI Watchdog сохранены. Перезапустите watchdog для применения."
 
 msgid "All"
 msgstr "Все"
@@ -562,9 +535,6 @@ msgstr "Ошибка проверки бэкенда: %s"
 
 msgid "Basic connectivity"
 msgstr "Базовая связность"
-
-msgid "Bearer Auth Token"
-msgstr "Токен авторизации (Bearer)"
 
 msgid "Beginning of the schedule interval (e.g. 22:00)"
 msgstr "Начало интервала расписания (например, 22:00)"
@@ -932,9 +902,6 @@ msgstr "Настройте User-Agent в параметрах элемента"
 msgid "Conflict"
 msgstr "Конфликт"
 
-msgid "Connect ChatGPT, DeepSeek or local LLM to get automated diagnostic reports and intelligent root-cause analysis."
-msgstr "Подключите ChatGPT, DeepSeek или локальную модель LLM для получения автоматических диагностических отчётов и умного анализа сетевых проблем."
-
 msgid "Connect through"
 msgstr "Подключаться через"
 
@@ -1022,9 +989,6 @@ msgstr "Пользовательский заголовок для инициа�
 msgid "Custom header for handshake response"
 msgstr "Пользовательский заголовок для ответа рукопожатия"
 
-msgid "Custom interface/section"
-msgstr "Пользовательский интерфейс/секция"
-
 msgid "Custom OpenAI-Compatible API"
 msgstr "Пользовательский OpenAI-совместимый API"
 
@@ -1097,12 +1061,6 @@ msgstr "устр."
 msgid "Device filter"
 msgstr "Фильтр устройств"
 
-msgid "Device IPs (one per line):"
-msgstr "IP устройств (по одному на строку):"
-
-msgid "Device IPs saved"
-msgstr "IP устройств сохранены"
-
 msgid "Device or IP"
 msgstr "Устройство или IP"
 
@@ -1111,9 +1069,6 @@ msgstr "Режим устройства обновлен"
 
 msgid "Devices (MAC / IP)"
 msgstr "Устройства (MAC / IP)"
-
-msgid "Devices listed here are always routed through the assigned section, regardless of global rules."
-msgstr "Устройства из этого списка всегда маршрутизируются через назначенную секцию, независимо от глобальных правил."
 
 msgid "DHCP has DNS server"
 msgstr "DHCP содержит DNS сервер"
@@ -1234,9 +1189,6 @@ msgstr "DNS через секцию"
 
 msgid "DNS Turbo Cache"
 msgstr "Быстрый DNS-кэш"
-
-msgid "DNS Turbo Cache saved"
-msgstr "DNS Turbo Cache сохранён"
 
 msgid "DNS Unavailability Timeout"
 msgstr "Таймаут недоступности DNS"
@@ -1394,9 +1346,6 @@ msgstr "Включить адаптивные интервалы"
 msgid "Enable AI Doctor (ChatGPT / LLM Analysis)"
 msgstr "Включить ИИ-доктора (анализ ChatGPT / LLM)"
 
-msgid "Enable AI Doctor (LLM Integration)"
-msgstr "Включить AI Doctor (интеграция с LLM)"
-
 msgid "Enable Anomaly Detection"
 msgstr "Включить обнаружение аномалий"
 
@@ -1420,9 +1369,6 @@ msgstr "Включить прямой обход WAN"
 
 msgid "Enable DNS Continuous Check"
 msgstr "Непрерывная проверка DNS"
-
-msgid "Enable DNS Turbo Cache"
-msgstr "Включить быстрый DNS-кэш"
 
 msgid "Enable Firewall Reload Dedup"
 msgstr "Включить дедупликацию перезагрузки файрвола"
@@ -1676,23 +1622,11 @@ msgstr "Не удалось восстановить снапшот"
 msgid "Failed to run diagnostics — is the tachyon binary installed?"
 msgstr "Не удалось запустить диагностику — установлен ли бинарник tachyon?"
 
-msgid "Failed to save AI Watchdog settings"
-msgstr "Ошибка сохранения настроек AI Watchdog"
-
-msgid "Failed to save device IPs"
-msgstr "Ошибка сохранения IP устройств"
-
-msgid "Failed to save DNS Turbo Cache"
-msgstr "Не удалось сохранить DNS Turbo Cache"
-
 msgid "Failed to save fuzzer patterns"
 msgstr "Не удалось сохранить паттерны фаззера"
 
 msgid "Failed to save patterns"
 msgstr "Не удалось сохранить паттерны"
-
-msgid "Failed to save Smart Detect settings"
-msgstr "Ошибка сохранения настроек Smart Detect"
 
 msgid "Failed to save snapshot"
 msgstr "Не удалось сохранить снапшот"
@@ -1889,9 +1823,6 @@ msgstr "GeoSite / GeoIP"
 msgid "Germany (de)"
 msgstr "Германия (de)"
 
-msgid "GET endpoints are open on LAN. POST endpoints require Authorization: Bearer <token>."
-msgstr "GET-эндпоинты открыты в локальной сети. POST-эндпоинты требуют Authorization: Bearer <token>."
-
 msgid "Get global check"
 msgstr "Получить глобальную проверку"
 
@@ -1915,9 +1846,6 @@ msgstr "Сервис gRPC"
 
 msgid "Handshake timeout"
 msgstr "Таймаут рукопожатия"
-
-msgid "Health Checks"
-msgstr "Проверки здоровья"
 
 msgid "Hello! I am Tachyon AI Assistant. How can I help you today? Ask me about domain blocks, diagnostics, or router settings."
 msgstr "Привет! Я ИИ-ассистент Tachyon. Чем могу помочь? Задайте вопрос о блокировках, диагностике или настройках роутера."
@@ -2023,9 +1951,6 @@ msgstr "Ошибка HTTP"
 
 msgid "HTTP hosts"
 msgstr "HTTP хосты"
-
-msgid "HTTP REST API for external AI agents (Claude, GPT, Open-WebUI) served at /cgi-bin/tachyon-agent/"
-msgstr "HTTP REST API для внешних ИИ-агентов (Claude, GPT, Open-WebUI), доступен по адресу /cgi-bin/tachyon-agent/"
 
 msgid "HWID"
 msgstr "HWID"
@@ -2564,9 +2489,6 @@ msgstr "Получение списка сервисов..."
 msgid "Loading..."
 msgstr "Загрузка..."
 
-msgid "Loading…"
-msgstr "Загрузка…"
-
 msgid "Local Address"
 msgstr "Локальный адрес"
 
@@ -2669,17 +2591,8 @@ msgstr "Отслеживаемые интерфейсы"
 msgid "Monitoring"
 msgstr "Мониторинг"
 
-msgid "Monitoring & Analytics"
-msgstr "Мониторинг и аналитика"
-
 msgid "Monitors sing-box reconnect frequency. Alerts if too many reconnects per hour."
 msgstr "Отслеживает частоту переподключений sing-box. Оповещает при слишком частых переподключениях."
-
-msgid "Move down"
-msgstr "Вниз"
-
-msgid "Move up"
-msgstr "Вверх"
 
 msgid "MTU"
 msgstr "MTU"
@@ -2954,9 +2867,6 @@ msgstr "Откройте настройки приоритета и введит
 msgid "Open Project Page"
 msgstr "Открыть страницу проекта"
 
-msgid "OpenWrt Network Interfaces"
-msgstr ""
-
 msgid "Operation completed successfully!"
 msgstr "Операция успешно завершена!"
 
@@ -2978,9 +2888,6 @@ msgstr "Операция запущена. Ожидание вывода лог�
 msgid "Operation timed out"
 msgstr "Время ожидания истекло"
 
-msgid "Optimization"
-msgstr "Оптимизация"
-
 msgid "Optimize AWG MTU"
 msgstr "Оптимизировать MTU AWG"
 
@@ -2995,9 +2902,6 @@ msgstr "Опционально — оставьте пустым для знач
 
 msgid "Optional context (e.g. \"Rostelecom, YouTube 4K buffering is slow\")..."
 msgstr "Дополнительный контекст (напр. «Ростелеком, YouTube 4K долго буферизуется»)..."
-
-msgid "Optional for local LLM"
-msgstr "Опционально для локальных LLM"
 
 msgid "Optional tls-auth or tls-crypt key"
 msgstr "Опциональный ключ tls-auth или tls-crypt"
@@ -3109,9 +3013,6 @@ msgstr "Ожидает запуска"
 
 msgid "Pending..."
 msgstr "Ожидание..."
-
-msgid "Per-Device Routing"
-msgstr "Маршрутизация по устройствам"
 
 msgid "Periodically check the current level and switch to a faster server even when the current one works."
 msgstr "Периодически проверять текущий уровень и переключаться на более быстрый сервер, даже если текущий работает."
@@ -3596,17 +3497,8 @@ msgstr "Сохранить"
 msgid "Save a snapshot of the working config and restore it later if something breaks."
 msgstr "Сохранить снапшот рабочей конфигурации, чтобы восстановить её позже, если что-то сломается."
 
-msgid "Save AI Watchdog Settings"
-msgstr "Сохранить настройки AI Watchdog"
-
-msgid "Save Smart Detect Settings"
-msgstr "Сохранить настройки Smart Detect"
-
 msgid "Save Snapshot"
 msgstr "Сохранить снапшот"
-
-msgid "Saving…"
-msgstr "Сохранение…"
 
 msgid "Schedule"
 msgstr "Расписание"
@@ -3635,9 +3527,6 @@ msgstr "Секретный ключ для аутентификации удал
 msgid "Secret token for authorizing WRITE operations (POST/PUT) on /cgi-bin/tachyon-agent/. Leave empty if auth is not required."
 msgstr "Секретный токен для авторизации операций записи (POST/PUT) на /cgi-bin/tachyon-agent/. Оставьте пустым, если аутентификация не требуется."
 
-msgid "Secret token for WRITE requests"
-msgstr "Секретный токен для POST/PUT запросов"
-
 msgid "Section"
 msgstr "Секция"
 
@@ -3647,14 +3536,8 @@ msgstr "Действие секции"
 msgid "Section name"
 msgstr "Имя секции"
 
-msgid "Section or network interface used for Cloudflare WARP API registration. Supports Tachyon sections (Connection, WireGuard, AmneziaWG, Interface) and OpenWrt system network devices/interfaces (awg0, wg0, tun0, etc.). Leave empty to use direct WAN / default mixed proxy."
-msgstr ""
-
 msgid "Section Rules Content"
 msgstr "Содержимое правил секции"
-
-msgid "Section test order (checked = active, drag rows with △▽):"
-msgstr "Порядок проверки секций (галочка = активна, перетаскивайте △▽):"
 
 msgid "Section used for Cloudflare WARP API registration. If your ISP blocks Cloudflare API on WAN, select a proxy section (with Mixed proxy enabled) or a tunnel interface section (WireGuard / AmneziaWG / VPN). Leave empty to use direct WAN / default mixed proxy."
 msgstr "Секция для регистрации Cloudflare WARP API. Если провайдер блокирует API Cloudflare на WAN, выберите секцию с прокси (с включённым смешанным прокси) или туннельный интерфейс (WireGuard / AmneziaWG / VPN). Оставьте пустым для прямого WAN / стандартного смешанного прокси."
@@ -3962,12 +3845,6 @@ msgstr "Пропущены комментарии/невалидные:"
 msgid "Skipped loopback:"
 msgstr "Пропущены loopback:"
 
-msgid "Smart Detect"
-msgstr "Smart Detect"
-
-msgid "Smart Detect settings saved"
-msgstr "Настройки Smart Detect сохранены"
-
 msgid "Snapshot name"
 msgstr "Имя снапшота"
 
@@ -4081,9 +3958,6 @@ msgstr "Время начала (ЧЧ:ММ)"
 
 msgid "Start watchdog"
 msgstr "Запустить watchdog"
-
-msgid "Start Watchdog first"
-msgstr "Сначала запустите Watchdog"
 
 msgid "Starting…"
 msgstr "Запуск…"
@@ -4210,9 +4084,6 @@ msgstr "Tachyon управляет жизненным циклом процес�
 
 msgid "Tachyon manages the nfqws2 process lifecycle itself, so daemon mode is not allowed here."
 msgstr "Tachyon управляет жизненным циклом процесса nfqws2 самостоятельно, поэтому режим daemon здесь не допускается."
-
-msgid "Tachyon Sections"
-msgstr ""
 
 msgid "Tachyon service is stopped. Start the service to display connections."
 msgstr "Служба Tachyon остановлена. Запустите сервис для отображения подключений."
@@ -4853,12 +4724,6 @@ msgstr "Секция прокси для генератора WARP"
 msgid "WARP Private Key"
 msgstr "Приватный ключ WARP"
 
-msgid "WARP Proxy Section"
-msgstr "Секция прокси WARP"
-
-msgid "Watchdog"
-msgstr "Сторожевой таймер"
-
 msgid "Watchdog probes every Connection section; when the active one fails several checks in a row, traffic switches to a healthy backup and Telegram is notified. Requires a config reload to take effect."
 msgstr "Watchdog проверяет каждую Connection-секцию; если активная падает несколько проверок подряд, трафик переключается на живую резервную, а Telegram получает уведомление. Нужен reload конфигурации."
 
@@ -4957,6 +4822,141 @@ msgstr "sing-box outbound для Zapret2 настроен"
 
 msgid "Zapret2 sing-box outbound is not configured"
 msgstr "sing-box outbound для Zapret2 не настроен"
+
+msgid "⏹ Stop"
+msgstr "⏹ Стоп"
+
+msgid "▶ Start"
+msgstr "▶ Старт"
+
+msgid "⚙ Advanced Settings"
+msgstr "⚙ Настройки"
+
+msgid "🔑 Generate"
+msgstr "🔑 Сгенерировать"
+
+msgid "Advanced self-healing features. Requires Watchdog to be enabled."
+msgstr "Расширенные функции самовосстановления. Требуется включённый Watchdog."
+
+msgid "AI Agent REST API (12 Endpoints)"
+msgstr "HTTP REST API ИИ-агента (12 эндпоинтов)"
+
+msgid "AI Doctor (ChatGPT / DeepSeek API)"
+msgstr "AI Doctor (ChatGPT / DeepSeek API)"
+
+msgid "AI Watchdog"
+msgstr "ИИ Watchdog"
+
+msgid "AI Watchdog settings saved. Restart watchdog to apply."
+msgstr "Настройки AI Watchdog сохранены. Перезапустите watchdog для применения."
+
+msgid "Bearer Auth Token"
+msgstr "Токен авторизации (Bearer)"
+
+msgid "Connect ChatGPT, DeepSeek or local LLM to get automated diagnostic reports and intelligent root-cause analysis."
+msgstr "Подключите ChatGPT, DeepSeek или локальную модель LLM для получения автоматических диагностических отчётов и умного анализа сетевых проблем."
+
+msgid "Custom interface/section"
+msgstr "Пользовательский интерфейс/секция"
+
+msgid "Device IPs (one per line):"
+msgstr "IP устройств (по одному на строку):"
+
+msgid "Device IPs saved"
+msgstr "IP устройств сохранены"
+
+msgid "Devices listed here are always routed through the assigned section, regardless of global rules."
+msgstr "Устройства из этого списка всегда маршрутизируются через назначенную секцию, независимо от глобальных правил."
+
+msgid "DNS Turbo Cache saved"
+msgstr "DNS Turbo Cache сохранён"
+
+msgid "Enable AI Doctor (LLM Integration)"
+msgstr "Включить AI Doctor (интеграция с LLM)"
+
+msgid "Enable DNS Turbo Cache"
+msgstr "Включить быстрый DNS-кэш"
+
+msgid "Failed to save AI Watchdog settings"
+msgstr "Ошибка сохранения настроек AI Watchdog"
+
+msgid "Failed to save device IPs"
+msgstr "Ошибка сохранения IP устройств"
+
+msgid "Failed to save DNS Turbo Cache"
+msgstr "Не удалось сохранить DNS Turbo Cache"
+
+msgid "Failed to save Smart Detect settings"
+msgstr "Ошибка сохранения настроек Smart Detect"
+
+msgid "GET endpoints are open on LAN. POST endpoints require Authorization: Bearer <token>."
+msgstr "GET-эндпоинты открыты в локальной сети. POST-эндпоинты требуют Authorization: Bearer <token>."
+
+msgid "Health Checks"
+msgstr "Проверки здоровья"
+
+msgid "HTTP REST API for external AI agents (Claude, GPT, Open-WebUI) served at /cgi-bin/tachyon-agent/"
+msgstr "HTTP REST API для внешних ИИ-агентов (Claude, GPT, Open-WebUI), доступен по адресу /cgi-bin/tachyon-agent/"
+
+msgid "Loading…"
+msgstr "Загрузка…"
+
+msgid "Monitoring & Analytics"
+msgstr "Мониторинг и аналитика"
+
+msgid "Move down"
+msgstr "Вниз"
+
+msgid "Move up"
+msgstr "Вверх"
+
+msgid "OpenWrt Network Interfaces"
+msgstr ""
+
+msgid "Optimization"
+msgstr "Оптимизация"
+
+msgid "Optional for local LLM"
+msgstr "Опционально для локальных LLM"
+
+msgid "Per-Device Routing"
+msgstr "Маршрутизация по устройствам"
+
+msgid "Save AI Watchdog Settings"
+msgstr "Сохранить настройки AI Watchdog"
+
+msgid "Save Smart Detect Settings"
+msgstr "Сохранить настройки Smart Detect"
+
+msgid "Saving…"
+msgstr "Сохранение…"
+
+msgid "Secret token for WRITE requests"
+msgstr "Секретный токен для POST/PUT запросов"
+
+msgid "Section or network interface used for Cloudflare WARP API registration. Supports Tachyon sections (Connection, WireGuard, AmneziaWG, Interface) and OpenWrt system network devices/interfaces (awg0, wg0, tun0, etc.). Leave empty to use direct WAN / default mixed proxy."
+msgstr ""
+
+msgid "Section test order (checked = active, drag rows with △▽):"
+msgstr "Порядок проверки секций (галочка = активна, перетаскивайте △▽):"
+
+msgid "Smart Detect"
+msgstr "Smart Detect"
+
+msgid "Smart Detect settings saved"
+msgstr "Настройки Smart Detect сохранены"
+
+msgid "Start Watchdog first"
+msgstr "Сначала запустите Watchdog"
+
+msgid "Tachyon Sections"
+msgstr ""
+
+msgid "WARP Proxy Section"
+msgstr "Секция прокси WARP"
+
+msgid "Watchdog"
+msgstr "Сторожевой таймер"
 
 msgid "Section or tunnel interface used for Cloudflare WARP API registration. Supports Connection, WireGuard, AmneziaWG, and Interface sections. Leave empty to use direct WAN / default mixed proxy."
 msgstr "Секция или туннельный интерфейс для регистрации Cloudflare WARP API. Поддерживает секции Connection, WireGuard, AmneziaWG и Interface. Оставьте пустым для прямого WAN / стандартного mixed proxy."

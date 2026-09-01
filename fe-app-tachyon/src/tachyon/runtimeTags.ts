@@ -13,7 +13,7 @@ const RESERVED_RUNTIME_TAGS = new Set([
   'bypass-out',
 ]);
 
-export function allocateRuntimeTag(base: string, postfix: string): string {
+function allocateRuntimeTag(base: string, postfix: string): string {
   let suffix = 1;
   let candidate = `${base}-${postfix}`;
 

@@ -22,8 +22,6 @@ const DEFAULT_SING_BOX_CONFIG = "/etc/sing-box/config.json";
 const NETNS_NAME = "fkpsc";
 const NETNS_VETH_HOST = "fkpsc0";
 const NETNS_VETH_PEER = "fkpsc1";
-const XHTTP_PATCH = "";
-const ICMP_TPROXY_PATCH = "";
 const CONFIG_DIR = "/etc/tachyon/servicecheck";
 const GEMINI_API_KEY_FILE = CONFIG_DIR + "/gemini_api_key";
 
@@ -92,64 +90,6 @@ function write_json(value) {
     print(sprintf("%J", value), "\n");
 }
 
-function xhttp_patch() {
-    if (fs.stat(XHTTP_PATCH) == null) {
-        write_json({ success: false, message: "xHTTP-патч не установлен в пакет" });
-        return 1;
-    }
-    let result = capture_args([ "sh", XHTTP_PATCH ], true);
-    write_json({ success: result.status == 0, code: result.status, output: trim(as_string(result.output)) });
-    return result.status;
-}
-
-function icmp_tproxy_patch() {
-    if (fs.stat(ICMP_TPROXY_PATCH) == null) {
-        write_json({ success: false, message: "ICMP/TProxy-патч не установлен в пакет" });
-        return 1;
-    }
-    let result = capture_args([ "sh", ICMP_TPROXY_PATCH ], true);
-    write_json({ success: result.status == 0, code: result.status, output: trim(as_string(result.output)) });
-    return result.status;
-}
-
-function available_fixes() {
-    if (fs.stat(TACHYON_BIN) == null)
-        return [];
-
-    return [
-        {
-            id: "xhttp_import",
-            title: "Фикс xHTTP импорта подписок",
-            description: "Исправляет импорт дополнительных полей xHTTP из подписок в parser.uc Tachyon.",
-            risk: "Создаётся резервная копия parser.uc; патч проверяется через ucode до замены."
-        },
-        {
-            id: "icmp_tproxy",
-            title: "Фикс ping/ICMP для правил подсетей",
-            description: "Ограничивает метку TProxy в priority_rules протоколами TCP и UDP, чтобы ICMP не уходил в локальный TProxy-сокет.",
-            risk: "Создаётся резервная копия nft/apply.uc; патч проверяется через ucode. Работающий Tachyon перезапускается, live-правила проверяются, а при ошибке выполняется откат."
-        }
-    ];
-}
-
-function list_fixes() {
-    write_json({ success: true, fixes: available_fixes() });
-    return 0;
-}
-
-function run_fix(id) {
-    if (fs.stat(TACHYON_BIN) == null) {
-        write_json({ success: false, message: "фиксы доступны только при установленном Tachyon" });
-        return 1;
-    }
-
-    if (as_string(id) == "xhttp_import")
-        return xhttp_patch();
-    if (as_string(id) == "icmp_tproxy")
-        return icmp_tproxy_patch();
-    write_json({ success: false, message: "неизвестный фикс Forkop" });
-    return 1;
-}
 
 function parse_json(value) {
     try {
