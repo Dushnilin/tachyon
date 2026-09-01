@@ -40,8 +40,8 @@ grep -Fq 'function strip_unmarked_tachyon_cron_lines(' "$UPD" ||
 grep -Fq 'strip_unmarked_tachyon_cron_lines(' "$UPD" || true
 [ "$(grep -c 'strip_unmarked_tachyon_cron_lines(' "$UPD")" -ge 3 ] ||
   fail "unmarked cron line stripping must be applied to remove and refresh paths"
-grep -Fq '(list_update|subscription_update|component_updates_if_due)' "$UPD" ||
-  fail "legacy cron pattern must cover all three tachyon jobs"
+grep -Fq '(list_update|subscription_update|component_updates_if_due|component_auto_update_apply)' "$UPD" ||
+  fail "legacy cron pattern must cover all tachyon jobs"
 
 # 4. Tunnel-style sections count as outbound configuration: a lone AWG/WARP
 #    section must not trigger "No proxy outbound sections found".

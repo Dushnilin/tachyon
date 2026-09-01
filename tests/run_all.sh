@@ -50,14 +50,16 @@ fi
 
 echo "=== Running ${#test_files[@]} Tests (-P $PARALLEL) ==="
 
-results_dir="$(mktemp -d)"
+results_dir="$(mktemp -d /tmp/tachyon-run-all-XXXXXX 2>/dev/null || mktemp -d)"
 cleanup() { rm -rf "$results_dir"; }
 trap cleanup EXIT
 
 run_one() {
-  f="$1"
-  log="$2"
+  local f="$1"
+  local results_dir="$2"
+  local name
   name="$(basename "$f")"
+  local log="$results_dir/${name%.sh}.log"
   echo "--- START $name ---"
   if bash "$f" >"$log" 2>&1; then
     echo "--- PASS  $name ---"
@@ -65,9 +67,20 @@ run_one() {
     echo "--- FAIL  $name ---"
   fi
 }
-export -f run_one
 
-printf '%s\0' "${test_files[@]}" | xargs -0 -n1 -I'{}' bash -c 'run_one "$1" "$2/$(basename "${1%.sh}").log"' _ '{}' "$results_dir" | tee "$results_dir/progress.log"
+progress_log="$results_dir/progress.log"
+touch "$progress_log"
+
+running=0
+for f in "${test_files[@]}"; do
+  ( run_one "$f" "$results_dir" | tee -a "$progress_log" ) &
+  running=$((running + 1))
+  if [ "$running" -ge "$PARALLEL" ]; then
+    wait -n 2>/dev/null || wait
+    running=$((running - 1))
+  fi
+done
+wait
 
 pass_count=0
 fail_count=0

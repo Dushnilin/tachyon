@@ -109,6 +109,7 @@ let object_or_empty = common.object_or_empty;
 let array_or_empty = common.array_or_empty;
 let option = common.option;
 let bool_option = common.bool_option;
+let list_option = common.list_option;
 
 function read_stdin() {
     let data = fs.readfile("/dev/stdin");
@@ -568,6 +569,56 @@ function settings_component_update_check_interval(settings) {
     return value != "" ? value : "1d";
 }
 
+function normalize_component_name(component) {
+    component = as_string(component);
+    if (component == "sing-box" || component == "singbox")
+        return "sing_box";
+    if (component == "tachyon")
+        return "tachyon";
+    return component;
+}
+
+function valid_component_name(component) {
+    component = normalize_component_name(component);
+    return component == "tachyon" || component == "sing_box" || component == "zapret" ||
+        component == "zapret2" || component == "byedpi" || component == "tailscale";
+}
+
+function settings_component_auto_update_enabled(settings) {
+    settings = object_or_empty(settings);
+    return bool_option(settings, "component_auto_update_enabled", false);
+}
+
+function settings_component_auto_update_mode(settings) {
+    settings = object_or_empty(settings);
+    let mode = option(settings, "component_auto_update_mode", "immediate");
+    return (mode == "schedule" || mode == "scheduled") ? "schedule" : "immediate";
+}
+
+function settings_component_auto_update_time(settings) {
+    settings = object_or_empty(settings);
+    let time = trim(as_string(option(settings, "component_auto_update_time", "04:00")));
+    return match(time, /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/) != null ? time : "04:00";
+}
+
+function settings_component_auto_update_targets(settings) {
+    settings = object_or_empty(settings);
+    let raw = list_option(settings, "component_auto_update_targets");
+    if (length(raw) == 0 || (length(raw) == 1 && raw[0] == "all"))
+        return [ "all" ];
+    return raw;
+}
+
+function component_is_auto_update_target(settings, component) {
+    let targets = settings_component_auto_update_targets(settings);
+    component = normalize_component_name(component);
+    for (let target in targets) {
+        if (target == "all" || normalize_component_name(target) == component)
+            return true;
+    }
+    return false;
+}
+
 function section_subscription_update_interval(section) {
     let result = "";
     let result_seconds = 0;
@@ -693,6 +744,16 @@ function cron_refresh_plan_rows(settings, sections, bin, list_marker, subscripti
         }
     }
 
+    if (settings_component_auto_update_enabled(settings) &&
+        settings_component_auto_update_mode(settings) == "schedule") {
+        let time_str = settings_component_auto_update_time(settings);
+        let parts = split(time_str, ":");
+        let hour = int(parts[0] || "4");
+        let minute = int(parts[1] || "0");
+        let cron_time = sprintf("%d %d * * *", minute, hour);
+        push(rows, "component-auto-update\t" + cron_time + " " + as_string(bin) + " component_auto_update_apply " + as_string(component_marker));
+    }
+
     return {
         status,
         rows
@@ -720,7 +781,7 @@ function strip_unmarked_tachyon_cron_lines(data, bin, markers) {
         return "";
 
     let escaped_bin = replace(as_string(bin), /([^0-9A-Za-z_])/g, "\\$1");
-    let pattern = "^[^#\\n]*" + escaped_bin + "[ \\t]+(list_update|subscription_update|component_updates_if_due)([ \\t]|$)";
+    let pattern = "^[^#\\n]*" + escaped_bin + "[ \\t]+(list_update|subscription_update|component_updates_if_due|component_auto_update_apply)([ \\t]|$)";
 
     let lines = split(data, "\n");
     let has_trailing_newline = substr(data, length(data) - 1) == "\n";
@@ -776,6 +837,10 @@ function cron_refresh_apply_result(settings, sections, existing_crontab, bin, li
         else if (type == "component") {
             cron_jobs += rest + "\n";
             push(logs, { level: "info", message: "The component update check cron job has been created: " + rest });
+        }
+        else if (type == "component-auto-update") {
+            cron_jobs += rest + "\n";
+            push(logs, { level: "info", message: "The component auto-update cron job has been created: " + rest });
         }
         else if (type == "component-error") {
             push(logs, { level: "error", message: "Invalid component_update_check_interval value: " + rest });
@@ -1358,21 +1423,6 @@ function component_running_job_state_value(component, action, started_at) {
     };
 }
 
-function normalize_component_name(component) {
-    component = as_string(component);
-    if (component == "sing-box" || component == "singbox")
-        return "sing_box";
-    if (component == "tachyon")
-        return "tachyon";
-    return component;
-}
-
-function valid_component_name(component) {
-    component = normalize_component_name(component);
-    return component == "tachyon" || component == "sing_box" || component == "zapret" ||
-        component == "zapret2" || component == "byedpi" || component == "tailscale";
-}
-
 function component_update_check_cache_path(component) {
     component = normalize_component_name(component);
     if (!valid_component_name(component))
@@ -1824,28 +1874,22 @@ function component_action_worker(state_file, output_file, component, action) {
     finish_component_job(state_file, component, action, status, output_file);
 }
 
-function component_action_async(component, action) {
+function component_action_async_job(component, action) {
     component = normalize_component_name(component);
-    if (!ensure_component_runtime_dirs()) {
-        component_job_json_response(false, "", "Failed to create component action state directory");
-        exit(1);
-    }
+    if (!ensure_component_runtime_dirs())
+        return { success: false, job_id: "", message: "Failed to create component action state directory" };
 
     component_cleanup_jobs();
 
     let job_id = component_job_id();
     let state_file = component_job_state_path_value(job_id);
-    if (state_file == "") {
-        component_job_json_response(false, "", "Failed to prepare component action job");
-        exit(1);
-    }
+    if (state_file == "")
+        return { success: false, job_id: "", message: "Failed to prepare component action job" };
 
     let running_state = component_running_job_state_value(component, action, now_seconds());
     running_state.log_path = component_job_log_path(job_id);
-    if (!write_state_file(state_file, running_state)) {
-        component_job_json_response(false, "", "Failed to write component action state");
-        exit(1);
-    }
+    if (!write_state_file(state_file, running_state))
+        return { success: false, job_id: "", message: "Failed to write component action state" };
 
     let output_file = component_job_output_path(job_id);
     let pid = launch_component_worker([
@@ -1859,11 +1903,29 @@ function component_action_async(component, action) {
     if (pid == "" || !set_component_running_job_pid(state_file, pid)) {
         if (pid != "")
             command_success_from_args([ "kill", pid ]);
-        component_job_json_response(false, "", "Failed to write component action worker pid");
-        exit(1);
+        return { success: false, job_id: "", message: "Failed to write component action worker pid" };
     }
 
-    component_job_json_response(true, job_id, "Component action started");
+    return { success: true, job_id, message: "Component action started" };
+}
+
+function component_action_async(component, action) {
+    let res = component_action_async_job(component, action);
+    component_job_json_response(res.success, res.job_id, res.message);
+    if (!res.success)
+        exit(1);
+}
+
+function component_has_running_job() {
+    if (!ensure_component_runtime_dirs())
+        return false;
+    component_cleanup_jobs();
+    for (let path in fs.glob(COMPONENT_JOB_DIR + "/*.json")) {
+        let val = object_or_empty(read_json_file(path));
+        if (val.running === true)
+            return true;
+    }
+    return false;
 }
 
 function component_action_status(job_id) {
@@ -1938,6 +2000,46 @@ function run_automatic_component_update_check(component) {
     return cache_component_update_check_result(value, true);
 }
 
+function trigger_component_auto_update(component, target_version) {
+    component = normalize_component_name(component);
+    if (component_has_running_job()) {
+        log_message("[auto-update] Skipping auto-update for " + component + ": another component update is already running", "warn");
+        return false;
+    }
+
+    log_message("[auto-update] Initiating automatic update for " + component + (target_version != "" ? " to version " + target_version : ""), "info");
+    let res = component_action_async_job(component, "update");
+    if (!res.success) {
+        log_message("[auto-update] Failed to start auto-update for " + component + ": " + res.message, "error");
+        return false;
+    }
+    return true;
+}
+
+function component_auto_update_apply() {
+    let settings = uci_settings();
+    if (!settings_component_auto_update_enabled(settings)) {
+        log_message("[auto-update] Automatic component updates are disabled", "info");
+        exit(0);
+    }
+
+    let checked_components = automatic_component_check_names();
+    for (let component in checked_components) {
+        if (!component_is_auto_update_target(settings, component))
+            continue;
+
+        run_automatic_component_update_check(component);
+        let cached = object_or_empty(read_json_file(component_update_check_cache_path(component)));
+        if (cached.status == "outdated" || cached.status == "outdated_same_release") {
+            if (trigger_component_auto_update(component, cached.latest_version)) {
+                break;
+            }
+        }
+    }
+
+    exit(0);
+}
+
 function component_updates_if_due() {
     let interval = settings_component_update_check_interval(uci_settings());
     if (interval == "")
@@ -1975,6 +2077,22 @@ function component_updates_if_due() {
     ensure_dir(COMPONENT_UPDATE_CHECK_CACHE_DIR);
     for (let component in automatic_component_check_names())
         run_automatic_component_update_check(component);
+
+    let settings = uci_settings();
+    if (settings_component_auto_update_enabled(settings) &&
+        settings_component_auto_update_mode(settings) == "immediate") {
+        for (let component in automatic_component_check_names()) {
+            if (!component_is_auto_update_target(settings, component))
+                continue;
+
+            let cached = object_or_empty(read_json_file(component_update_check_cache_path(component)));
+            if (cached.status == "outdated" || cached.status == "outdated_same_release") {
+                if (trigger_component_auto_update(component, cached.latest_version)) {
+                    break;
+                }
+            }
+        }
+    }
 
     if (!write_file(COMPONENT_UPDATE_CHECK_STATE_FILE, as_string(now_seconds()) + "\n")) {
         release_runtime_lock(COMPONENT_UPDATE_CHECK_LOCK_DIR);
@@ -3285,6 +3403,8 @@ else if (mode == "component-action-log")
     component_action_log(ARGV[1], ARGV[2]);
 else if (mode == "component-updates-if-due")
     component_updates_if_due();
+else if (mode == "component-auto-update-apply")
+    component_auto_update_apply();
 else if (mode == "component-update-check-cache")
     component_update_check_cache();
 else {

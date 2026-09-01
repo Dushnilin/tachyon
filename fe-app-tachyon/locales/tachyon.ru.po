@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-01 08:41+0300\n"
-"PO-Revision-Date: 2026-09-01 08:41+0300\n"
+"POT-Creation-Date: 2026-09-01 10:48+0300\n"
+"PO-Revision-Date: 2026-09-01 10:48+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -314,6 +314,9 @@ msgstr "Все"
 msgid "All checks passed — Telegram bot should work correctly"
 msgstr "Все проверки пройдены — бот должен работать корректно"
 
+msgid "All components"
+msgstr "Все компоненты"
+
 msgid "All devices"
 msgstr "Все устройства"
 
@@ -494,8 +497,14 @@ msgstr "Автолечение сетевого стека"
 msgid "Auto-update Hosts Lists"
 msgstr "Автообновление списков Hosts"
 
+msgid "Auto-update mode"
+msgstr "Режим автообновления"
+
 msgid "Automatic component update checks"
 msgstr "Автоматическая проверка обновлений компонентов"
+
+msgid "Automatic component updates"
+msgstr "Автоматическое обновление компонентов"
 
 msgid "Automatic User-Agent selection"
 msgstr "Автоматический выбор User-Agent"
@@ -505,6 +514,9 @@ msgstr "Автоматически добавлять текст к имени �
 
 msgid "Automatically check installed components for new versions"
 msgstr "Автоматически проверять установленные компоненты на наличие новых версий"
+
+msgid "Automatically download and install new versions of components"
+msgstr "Автоматически загружать и устанавливать новые версии компонентов"
 
 msgid "Automatically generate a Cloudflare WARP account and configure all AmneziaWG settings."
 msgstr "Автоматически создать аккаунт Cloudflare WARP и настроить все параметры AmneziaWG."
@@ -625,6 +637,12 @@ msgstr "Встроенные наборы правил"
 
 msgid "By flag emoji from name"
 msgstr "По эмодзи флага из имени"
+
+msgid "By schedule"
+msgstr "По расписанию"
+
+msgid "ByeDPI"
+msgstr ""
 
 msgid "ByeDPI (ciadpi)"
 msgstr "ByeDPI (ciadpi)"
@@ -775,6 +793,9 @@ msgstr "Выберите визуальную иконку для профиля
 
 msgid "Choose Hosts File..."
 msgstr "Выбрать файл Hosts..."
+
+msgid "Choose whether to install updates immediately when detected or at a scheduled time (e.g. maintenance window)"
+msgstr "Выберите, устанавливать ли обновления сразу при обнаружении или по расписанию (например, в ночное окно обслуживания)"
 
 msgid "Choose whether to restrict the entire internet or only specific Tachyon routing sections."
 msgstr "Выберите, блокировать ли весь доступ в интернет или только определенные секции Tachyon."
@@ -1337,6 +1358,9 @@ msgstr "Каждая запись — \"proto\", \"proto:port\" или \"proto:p
 msgid "Edit"
 msgstr "Изменить"
 
+msgid "Eligible components for auto-update"
+msgstr "Разрешенные компоненты для автообновления"
+
 msgid "Enable"
 msgstr "Включить"
 
@@ -1453,6 +1477,9 @@ msgstr "Введите домен или IP для проверки (напр. e
 
 msgid "Enter a level name"
 msgstr "Введите имя уровня"
+
+msgid "Enter a valid time in HH:MM format (00:00 to 23:59)"
+msgstr "Введите корректное время в формате ЧЧ:ММ (от 00:00 до 23:59)"
 
 msgid "Enter a whole number of minutes between 0 and 1440"
 msgstr "Введите целое число минут от 0 до 1440"
@@ -1960,6 +1987,9 @@ msgstr "Таймаут простоя"
 
 msgid "If one health check fails with an error, continue running other checks instead of stopping."
 msgstr "Если одна проверка завершается ошибкой, продолжать другие проверки, а не останавливаться."
+
+msgid "Immediately upon release"
+msgstr "Сразу при выходе новой версии"
 
 msgid "Import"
 msgstr "Импорт"
@@ -2494,6 +2524,9 @@ msgstr "Локальный адрес"
 
 msgid "Log Level"
 msgstr "Уровень логирования"
+
+msgid "LuCI Web UI"
+msgstr "Веб-интерфейс LuCI"
 
 msgid "lx"
 msgstr "lx"
@@ -3506,6 +3539,9 @@ msgstr "Расписание"
 msgid "Schedule Rule"
 msgstr "Правило расписания"
 
+msgid "Scheduled auto-update time"
+msgstr "Время обновления по расписанию"
+
 msgid "Score"
 msgstr "Баллы"
 
@@ -3634,6 +3670,9 @@ msgstr "Выберите WAN-интерфейсы для отслеживани�
 
 msgid "Select whether to disable the target during the schedule or enable it ONLY during the schedule."
 msgstr "Выберите, отключать ли цель в период расписания или включать ТОЛЬКО в период расписания."
+
+msgid "Select which components are permitted to update automatically"
+msgstr "Выберите, какие компоненты разрешено обновлять автоматически"
 
 msgid "Selected"
 msgstr "Выбран"
@@ -3799,6 +3838,9 @@ msgstr "Не удалось показать конфигурацию sing-box"
 
 msgid "Show subscription metadata for this source on the dashboard"
 msgstr "Показывать метаданные подписки для этого источника на дашборде"
+
+msgid "sing-box"
+msgstr ""
 
 msgid "Sing-box autostart disabled"
 msgstr "Автостарт sing-box отключен"
@@ -4070,6 +4112,9 @@ msgstr "Системная информация"
 msgid "Table exist"
 msgstr "Таблица существует"
 
+msgid "Tachyon Core"
+msgstr "Ядро Tachyon"
+
 msgid "Tachyon Error"
 msgstr "Ошибка Tachyon"
 
@@ -4294,6 +4339,9 @@ msgstr "Время кэширования DNS-записей в секундах
 
 msgid "Time is required (e.g. 22:00)"
 msgstr "Укажите время (например, 22:00)"
+
+msgid "Time of day to run scheduled component updates in HH:MM (24h) format, e.g. 04:00"
+msgstr "Время суток для запуска планового обновления компонентов в формате ЧЧ:ММ (24ч), например 04:00"
 
 msgid "Time skew tolerance"
 msgstr "Допуск отклонения времени"
@@ -4775,6 +4823,9 @@ msgstr "Да"
 msgid "You can select Output Network Interface, by default autodetect"
 msgstr "Вы можете выбрать выходной сетевой интерфейс, по умолчанию автоопределение"
 
+msgid "Zapret"
+msgstr ""
+
 msgid "Zapret hostlist templates are not supported here because Tachyon does not expand them for per-rule NFQWS strategies."
 msgstr "Шаблоны hostlist Zapret не поддерживаются здесь, потому что Tachyon не расширяет их для стратегий NFQWS по правилам."
 
@@ -4801,6 +4852,9 @@ msgstr "Zapret v1 (nfqws)"
 
 msgid "Zapret v2 (nfqws2)"
 msgstr "Zapret v2 (nfqws2)"
+
+msgid "Zapret2"
+msgstr ""
 
 msgid "Zapret2 hostlist templates are not supported here because Tachyon does not expand them for per-rule NFQWS2 strategies."
 msgstr "Шаблоны hostlist Zapret2 не поддерживаются здесь, потому что Tachyon не расширяет их для стратегий NFQWS2 по правилам."

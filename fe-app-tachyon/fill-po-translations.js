@@ -1233,6 +1233,22 @@ const dictionary = {
   "Proxy route to Telegram API works": "Маршрут через прокси к Telegram API работает",
   "sing-box is running": "sing-box запущен",
   "Test message sent to chat": "Тестовое сообщение отправлено в чат",
+
+  // Component Auto-Update
+  "Automatic component updates": "Автоматическое обновление компонентов",
+  "Automatically download and install new versions of components": "Автоматически загружать и устанавливать новые версии компонентов",
+  "Auto-update mode": "Режим автообновления",
+  "Choose whether to install updates immediately when detected or at a scheduled time (e.g. maintenance window)": "Выберите, устанавливать ли обновления сразу при обнаружении или по расписанию (например, в ночное окно обслуживания)",
+  "Immediately upon release": "Сразу при выходе новой версии",
+  "By schedule": "По расписанию",
+  "Scheduled auto-update time": "Время обновления по расписанию",
+  "Time of day to run scheduled component updates in HH:MM (24h) format, e.g. 04:00": "Время суток для запуска планового обновления компонентов в формате ЧЧ:ММ (24ч), например 04:00",
+  "Enter a valid time in HH:MM format (00:00 to 23:59)": "Введите корректное время в формате ЧЧ:ММ (от 00:00 до 23:59)",
+  "Eligible components for auto-update": "Разрешенные компоненты для автообновления",
+  "Select which components are permitted to update automatically": "Выберите, какие компоненты разрешено обновлять автоматически",
+  "All components": "Все компоненты",
+  "Tachyon Core": "Ядро Tachyon",
+  "LuCI Web UI": "Веб-интерфейс LuCI",
 };
 
 function escapePoString(str) {

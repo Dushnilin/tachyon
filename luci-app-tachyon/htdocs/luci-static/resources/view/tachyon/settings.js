@@ -1439,6 +1439,75 @@ function createSettingsContent(section, capabilities) {
 
   o = section.taboption(
     "updates",
+    form.Flag,
+    "component_auto_update_enabled",
+    _("Automatic component updates"),
+    _("Automatically download and install new versions of components"),
+  );
+  o.depends("component_update_check_enabled", "1");
+  o.default = "0";
+  o.rmempty = false;
+
+  o = section.taboption(
+    "updates",
+    form.ListValue,
+    "component_auto_update_mode",
+    _("Auto-update mode"),
+    _(
+      "Choose whether to install updates immediately when detected or at a scheduled time (e.g. maintenance window)",
+    ),
+  );
+  o.depends("component_auto_update_enabled", "1");
+  o.value("immediate", _("Immediately upon release"));
+  o.value("schedule", _("By schedule"));
+  o.default = "immediate";
+  o.rmempty = false;
+
+  o = section.taboption(
+    "updates",
+    form.Value,
+    "component_auto_update_time",
+    _("Scheduled auto-update time"),
+    _(
+      "Time of day to run scheduled component updates in HH:MM (24h) format, e.g. 04:00",
+    ),
+  );
+  o.depends({
+    component_auto_update_enabled: "1",
+    component_auto_update_mode: "schedule",
+  });
+  o.placeholder = "04:00";
+  o.default = "04:00";
+  o.rmempty = false;
+  o.validate = function (_section_id, value) {
+    const normalized = value ? `${value}`.trim() : "";
+    if (/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/.test(normalized)) {
+      return true;
+    }
+    return _("Enter a valid time in HH:MM format (00:00 to 23:59)");
+  };
+
+  o = section.taboption(
+    "updates",
+    form.MultiValue,
+    "component_auto_update_targets",
+    _("Eligible components for auto-update"),
+    _("Select which components are permitted to update automatically"),
+  );
+  o.depends("component_auto_update_enabled", "1");
+  o.value("all", _("All components"));
+  o.value("tachyon", _("Tachyon Core"));
+  o.value("luci_app_tachyon", _("LuCI Web UI"));
+  o.value("sing_box", _("sing-box"));
+  o.value("zapret", _("Zapret"));
+  o.value("zapret2", _("Zapret2"));
+  o.value("byedpi", _("ByeDPI"));
+  o.value("tailscale", _("Tailscale"));
+  o.default = ["all"];
+  o.rmempty = false;
+
+  o = section.taboption(
+    "updates",
     form.Value,
     "latency_test_url",
     _("Latency test URL"),

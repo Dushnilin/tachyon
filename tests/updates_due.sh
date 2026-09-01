@@ -199,6 +199,24 @@ assert_eq "list-disabled" \
   "$(updates_ucode cron-refresh-plan-fixture "$WORK_DIR/cron-plan-list-disabled.json" /usr/bin/tachyon '# list' '# subscription' '# component')" \
   "disabled list cron plan"
 
+cat >"$WORK_DIR/cron-plan-auto-update.json" <<'JSON'
+{
+  "settings": {
+    "list_update_enabled": "0",
+    "component_update_check_enabled": "1",
+    "component_update_check_interval": "1d",
+    "component_auto_update_enabled": "1",
+    "component_auto_update_mode": "schedule",
+    "component_auto_update_time": "03:30"
+  },
+  "section": []
+}
+JSON
+
+assert_eq $'component\t0 0 * * * /usr/bin/tachyon component_updates_if_due # component\ncomponent-auto-update\t30 3 * * * /usr/bin/tachyon component_auto_update_apply # component' \
+  "$(updates_ucode cron-refresh-plan-fixture "$WORK_DIR/cron-plan-auto-update.json" /usr/bin/tachyon '# list' '# subscription' '# component')" \
+  "component auto-update cron plan"
+
 cat >"$WORK_DIR/cron-plan-invalid-list.json" <<'JSON'
 {
   "settings": {
