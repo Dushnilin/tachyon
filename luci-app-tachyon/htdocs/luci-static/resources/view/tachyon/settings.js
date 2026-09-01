@@ -1101,6 +1101,7 @@ function createMenuTabsOrderWidget(option, section_id) {
   function renderTabRow(id, idx, totalLen) {
     const tabMeta = tabMap[id] || { id: id, label: id, desc: "", fixed: false };
     const isVisible = Boolean(visibility[id]);
+    const isFixed = Boolean(tabMeta.fixed);
 
     const row = E("div", {
       style: [
@@ -1121,29 +1122,47 @@ function createMenuTabsOrderWidget(option, section_id) {
       String(idx + 1),
     );
 
-    const cb = E("input", {
-      type: "checkbox",
-      id: "cb-tab-" + id,
-      disabled: Boolean(tabMeta.fixed),
+    // Use a <button> toggle instead of <input type="checkbox"> to avoid LuCI
+    // theme pointer-events overrides that swallow checkbox click events.
+    const toggleBtn = E("button", {
+      type: "button",
+      title: isFixed
+        ? _("Always visible")
+        : isVisible
+          ? _("Click to hide")
+          : _("Click to show"),
+      style: [
+        "width:20px;height:20px;padding:0;border-radius:3px;border:2px solid;",
+        "display:flex;align-items:center;justify-content:center;",
+        "font-size:13px;font-weight:bold;line-height:1;cursor:",
+        isFixed ? "default;" : "pointer;",
+        "flex-shrink:0;",
+        isFixed || isVisible
+          ? "border-color:var(--primary-color,#2196f3);background:var(--primary-color,#2196f3);color:#fff;"
+          : "border-color:var(--border-color,#aaa);background:transparent;color:transparent;",
+      ].join(""),
     });
-    cb.checked = isVisible;
-    cb.addEventListener("change", function (ev) {
-      visibility[id] = ev.target.checked;
-      syncToUci();
-      renderList();
-    });
+    toggleBtn.textContent = "✓";
+    if (isFixed) toggleBtn.disabled = true;
 
-    const textWrapper = E(
-      "label",
+    if (!isFixed) {
+      toggleBtn.addEventListener("click", function (ev) {
+        ev.preventDefault();
+        visibility[id] = !visibility[id];
+        syncToUci();
+        renderList();
+      });
+    }
+
+    const textCol = E(
+      "div",
       {
-        for: "cb-tab-" + id,
-        style:
-          "flex:1;cursor:pointer;margin:0;display:flex;flex-direction:column;",
+        style: "flex:1;display:flex;flex-direction:column;",
       },
       [
         E("span", { style: "font-weight:600;font-size:0.95rem;" }, [
           tabMeta.label,
-          tabMeta.fixed
+          isFixed
             ? E(
                 "em",
                 {
@@ -1213,8 +1232,8 @@ function createMenuTabsOrderWidget(option, section_id) {
     });
 
     row.appendChild(badge);
-    row.appendChild(cb);
-    row.appendChild(textWrapper);
+    row.appendChild(toggleBtn);
+    row.appendChild(textCol);
     row.appendChild(upBtn);
     row.appendChild(downBtn);
     return row;
