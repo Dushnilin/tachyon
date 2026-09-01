@@ -1508,6 +1508,18 @@ function createSettingsContent(section, capabilities) {
 
   o = section.taboption(
     "updates",
+    form.Flag,
+    "component_backup_enabled",
+    _("Save component backup before update"),
+    _(
+      "Keep the previous working binary/package on the router flash for instant offline rollback if needed. Consumes extra storage.",
+    ),
+  );
+  o.default = "0";
+  o.rmempty = false;
+
+  o = section.taboption(
+    "updates",
     form.Value,
     "latency_test_url",
     _("Latency test URL"),

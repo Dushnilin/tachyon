@@ -5386,3 +5386,12 @@ msgstr "Очистить историю"
 
 msgid "Auto-applied best strategy"
 msgstr "Лучшая стратегия автоматически применена"
+
+msgid "Rollback"
+msgstr "Откатить"
+
+msgid "Save component backup before update"
+msgstr "Сохранять резервную копию перед обновлением"
+
+msgid "Keep the previous working binary/package on the router flash for instant offline rollback if needed. Consumes extra storage."
+msgstr "Сохранять предыдущую рабочую версию компонента в памяти роутера для быстрого локального отката. Занимает дополнительное место на flash."

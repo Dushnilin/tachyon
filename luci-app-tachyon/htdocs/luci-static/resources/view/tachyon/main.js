@@ -5603,14 +5603,24 @@ var initialDiagnosticStore = {
     sing_box_lx: 0,
     sing_box_tailscale: 1,
     sing_box_repo_url: "",
+    sing_box_backup_version: "",
+    sing_box_backup_time: 0,
     zapret_version: "loading",
     zapret_installed: 0,
+    zapret_backup_version: "",
+    zapret_backup_time: 0,
     zapret2_version: "loading",
     zapret2_installed: 0,
+    zapret2_backup_version: "",
+    zapret2_backup_time: 0,
     byedpi_version: "loading",
     byedpi_installed: 0,
+    byedpi_backup_version: "",
+    byedpi_backup_time: 0,
     tailscale_version: "loading",
     tailscale_installed: 0,
+    tailscale_backup_version: "",
+    tailscale_backup_time: 0,
     server_inbounds_enabled_count: -1,
     openwrt_version: "loading",
     device_model: "loading"
@@ -5659,8 +5669,10 @@ var initialDiagnosticStore = {
     tachyonCheck: { loading: false },
     tachyonInstall: { loading: false },
     tachyonReinstall: { loading: false },
+    tachyonRollback: { loading: false },
     singBoxCheck: { loading: false },
     singBoxInstall: { loading: false },
+    singBoxRollback: { loading: false },
     singBoxInstallExtended: { loading: false },
     singBoxInstallExtendedCompressed: { loading: false },
     singBoxInstallLx: { loading: false },
@@ -5669,15 +5681,19 @@ var initialDiagnosticStore = {
     zapretCheck: { loading: false },
     zapretInstall: { loading: false },
     zapretRemove: { loading: false },
+    zapretRollback: { loading: false },
     zapret2Check: { loading: false },
     zapret2Install: { loading: false },
     zapret2Remove: { loading: false },
+    zapret2Rollback: { loading: false },
     byedpiCheck: { loading: false },
     byedpiInstall: { loading: false },
     byedpiRemove: { loading: false },
+    byedpiRollback: { loading: false },
     tailscaleCheck: { loading: false },
     tailscaleInstall: { loading: false },
-    tailscaleRemove: { loading: false }
+    tailscaleRemove: { loading: false },
+    tailscaleRollback: { loading: false }
   },
   updatesChecks: {
     tachyon: { status: null, latest_version: "", release_url: "" },
@@ -6032,8 +6048,10 @@ var componentActionKeyMap = {
   "tachyon:check_update": "tachyonCheck",
   "tachyon:install": "tachyonInstall",
   "tachyon:reinstall": "tachyonReinstall",
+  "tachyon:rollback": "tachyonRollback",
   "sing_box:check_update": "singBoxCheck",
   "sing_box:install": "singBoxInstall",
+  "sing_box:rollback": "singBoxRollback",
   "sing_box:install_extended": "singBoxInstallExtended",
   "sing_box:install_extended_compressed": "singBoxInstallExtendedCompressed",
   "sing_box:install_lx": "singBoxInstallLx",
@@ -6042,15 +6060,19 @@ var componentActionKeyMap = {
   "zapret:check_update": "zapretCheck",
   "zapret:install": "zapretInstall",
   "zapret:remove": "zapretRemove",
+  "zapret:rollback": "zapretRollback",
   "zapret2:check_update": "zapret2Check",
   "zapret2:install": "zapret2Install",
   "zapret2:remove": "zapret2Remove",
+  "zapret2:rollback": "zapret2Rollback",
   "byedpi:check_update": "byedpiCheck",
   "byedpi:install": "byedpiInstall",
   "byedpi:remove": "byedpiRemove",
+  "byedpi:rollback": "byedpiRollback",
   "tailscale:check_update": "tailscaleCheck",
   "tailscale:install": "tailscaleInstall",
-  "tailscale:remove": "tailscaleRemove"
+  "tailscale:remove": "tailscaleRemove",
+  "tailscale:rollback": "tailscaleRollback"
 };
 function getComponentActionKey(component, action) {
   return componentActionKeyMap[`${component}:${action}`];
@@ -6147,8 +6169,10 @@ function getEmptyUpdatesActions() {
     tachyonCheck: { loading: false },
     tachyonInstall: { loading: false },
     tachyonReinstall: { loading: false },
+    tachyonRollback: { loading: false },
     singBoxCheck: { loading: false },
     singBoxInstall: { loading: false },
+    singBoxRollback: { loading: false },
     singBoxInstallExtended: { loading: false },
     singBoxInstallExtendedCompressed: { loading: false },
     singBoxInstallLx: { loading: false },
@@ -6157,15 +6181,19 @@ function getEmptyUpdatesActions() {
     zapretCheck: { loading: false },
     zapretInstall: { loading: false },
     zapretRemove: { loading: false },
+    zapretRollback: { loading: false },
     zapret2Check: { loading: false },
     zapret2Install: { loading: false },
     zapret2Remove: { loading: false },
+    zapret2Rollback: { loading: false },
     byedpiCheck: { loading: false },
     byedpiInstall: { loading: false },
     byedpiRemove: { loading: false },
+    byedpiRollback: { loading: false },
     tailscaleCheck: { loading: false },
     tailscaleInstall: { loading: false },
-    tailscaleRemove: { loading: false }
+    tailscaleRemove: { loading: false },
+    tailscaleRollback: { loading: false }
   };
 }
 function getEmptyDiagnosticsActions() {
@@ -19293,17 +19321,44 @@ function getInstalledUpdateActions(component, checkKey, installKey, installed = 
   }
   return actions;
 }
+function getComponentBackupVersion(component) {
+  const sys = store.get().diagnosticsSystemInfo;
+  switch (component) {
+    case "sing_box":
+      return sys.sing_box_backup_version || "";
+    case "zapret":
+      return sys.zapret_backup_version || "";
+    case "zapret2":
+      return sys.zapret2_backup_version || "";
+    case "byedpi":
+      return sys.byedpi_backup_version || "";
+    case "tailscale":
+      return sys.tailscale_backup_version || "";
+    default:
+      return "";
+  }
+}
+function getRollbackAction(component, key, backupVersion) {
+  return {
+    key,
+    text: backupVersion ? `${_("Rollback")} (${backupVersion})` : _("Rollback"),
+    icon: renderRotateCcwIcon24,
+    component,
+    action: "rollback"
+  };
+}
 function getOptionalComponentActions({
   component,
   installed,
   checkKey,
   installKey,
-  removeKey
+  removeKey,
+  rollbackKey
 }) {
   if (!installed) {
     return [getInstallAction(component, installKey, false)];
   }
-  return [
+  const actions = [
     ...getInstalledUpdateActions(component, checkKey, installKey),
     {
       key: removeKey,
@@ -19313,6 +19368,11 @@ function getOptionalComponentActions({
       action: "remove"
     }
   ];
+  const backupVersion = getComponentBackupVersion(component);
+  if (backupVersion) {
+    actions.push(getRollbackAction(component, rollbackKey, backupVersion));
+  }
+  return actions;
 }
 var COMPONENT_REPO_URLS = {
   tachyon: "https://github.com/Dushnilin/tachyon",
@@ -19353,6 +19413,12 @@ function getComponentCards() {
     "singBoxInstall",
     singBoxInstalled
   );
+  const singBoxBackup = getComponentBackupVersion("sing_box");
+  if (singBoxBackup && singBoxInstalled) {
+    singBoxActions.push(
+      getRollbackAction("sing_box", "singBoxRollback", singBoxBackup)
+    );
+  }
   if (!singBoxStable) {
     singBoxActions.push({
       key: "singBoxInstallStable",
@@ -19403,28 +19469,32 @@ function getComponentCards() {
     installed: zapretInstalled,
     checkKey: "zapretCheck",
     installKey: "zapretInstall",
-    removeKey: "zapretRemove"
+    removeKey: "zapretRemove",
+    rollbackKey: "zapretRollback"
   });
   const zapret2Actions = getOptionalComponentActions({
     component: "zapret2",
     installed: zapret2Installed,
     checkKey: "zapret2Check",
     installKey: "zapret2Install",
-    removeKey: "zapret2Remove"
+    removeKey: "zapret2Remove",
+    rollbackKey: "zapret2Rollback"
   });
   const byedpiActions = getOptionalComponentActions({
     component: "byedpi",
     installed: byedpiInstalled,
     checkKey: "byedpiCheck",
     installKey: "byedpiInstall",
-    removeKey: "byedpiRemove"
+    removeKey: "byedpiRemove",
+    rollbackKey: "byedpiRollback"
   });
   const tailscaleActions = getOptionalComponentActions({
     component: "tailscale",
     installed: tailscaleInstalled,
     checkKey: "tailscaleCheck",
     installKey: "tailscaleInstall",
-    removeKey: "tailscaleRemove"
+    removeKey: "tailscaleRemove",
+    rollbackKey: "tailscaleRollback"
   });
   return [
     {

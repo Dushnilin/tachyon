@@ -651,6 +651,7 @@ export namespace Tachyon {
     | 'install'
     | 'reinstall'
     | 'remove'
+    | 'rollback'
     | 'install_extended'
     | 'install_extended_compressed'
     | 'install_lx'

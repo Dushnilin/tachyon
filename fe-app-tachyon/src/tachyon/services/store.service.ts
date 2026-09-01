@@ -216,14 +216,24 @@ export interface StoreType {
     sing_box_lx: number;
     sing_box_tailscale: number;
     sing_box_repo_url?: string;
+    sing_box_backup_version?: string;
+    sing_box_backup_time?: number;
     zapret_version: string;
     zapret_installed: number;
+    zapret_backup_version?: string;
+    zapret_backup_time?: number;
     zapret2_version: string;
     zapret2_installed: number;
+    zapret2_backup_version?: string;
+    zapret2_backup_time?: number;
     byedpi_version: string;
     byedpi_installed: number;
+    byedpi_backup_version?: string;
+    byedpi_backup_time?: number;
     tailscale_version: string;
     tailscale_installed: number;
+    tailscale_backup_version?: string;
+    tailscale_backup_time?: number;
     server_inbounds_enabled_count: number;
     openwrt_version: string;
     device_model: string;
@@ -232,8 +242,10 @@ export interface StoreType {
     tachyonCheck: { loading: boolean };
     tachyonInstall: { loading: boolean };
     tachyonReinstall: { loading: boolean };
+    tachyonRollback: { loading: boolean };
     singBoxCheck: { loading: boolean };
     singBoxInstall: { loading: boolean };
+    singBoxRollback: { loading: boolean };
     singBoxInstallExtended: { loading: boolean };
     singBoxInstallExtendedCompressed: { loading: boolean };
     singBoxInstallLx: { loading: boolean };
@@ -242,15 +254,19 @@ export interface StoreType {
     zapretCheck: { loading: boolean };
     zapretInstall: { loading: boolean };
     zapretRemove: { loading: boolean };
+    zapretRollback: { loading: boolean };
     zapret2Check: { loading: boolean };
     zapret2Install: { loading: boolean };
     zapret2Remove: { loading: boolean };
+    zapret2Rollback: { loading: boolean };
     byedpiCheck: { loading: boolean };
     byedpiInstall: { loading: boolean };
     byedpiRemove: { loading: boolean };
+    byedpiRollback: { loading: boolean };
     tailscaleCheck: { loading: boolean };
     tailscaleInstall: { loading: boolean };
     tailscaleRemove: { loading: boolean };
+    tailscaleRollback: { loading: boolean };
   };
   updatesChecks: Record<
     Tachyon.ComponentName,

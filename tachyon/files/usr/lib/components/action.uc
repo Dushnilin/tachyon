@@ -2495,6 +2495,259 @@ function normalize_component_name(component) {
     return component;
 }
 
+const COMPONENT_BACKUP_BASE_DIR = getenv("TACHYON_COMPONENT_BACKUPS_DIR") || "/etc/tachyon/component-backups";
+
+function get_component_backup_enabled() {
+    let uci_core = require("core.uci");
+    let settings = (uci_core && uci_core.get_all) ? (uci_core.get_all("tachyon", "settings") || {}) : {};
+    let val = as_string(settings.component_backup_enabled || "");
+    return val == "1" || val == "true" || val == "yes" || val == "on";
+}
+
+function component_backup_dir(component) {
+    component = normalize_component_name(component);
+    return COMPONENT_BACKUP_BASE_DIR + "/" + component;
+}
+
+function component_backup_metadata_file(component) {
+    return component_backup_dir(component) + "/metadata.json";
+}
+
+function read_component_backup_metadata(component) {
+    let file = component_backup_metadata_file(component);
+    if (!file_exists(file))
+        return null;
+    let data = read_file(file);
+    if (data == "")
+        return null;
+    try {
+        let parsed = json(data);
+        if (type(parsed) == "object" && parsed.version)
+            return parsed;
+    } catch (e) {}
+    return null;
+}
+
+function check_free_disk_space(target_dir, needed_bytes) {
+    let out = trim(command_output("df -k " + shell_quote(target_dir) + " 2>/dev/null | tail -n 1 | awk '{print $4}'"));
+    let free_kb = int(out);
+    if (free_kb <= 0)
+        return true;
+    let needed_kb = int((needed_bytes || 0) / 1024) + 1024;
+    return free_kb > (needed_kb * 2) && (free_kb - needed_kb) > 4096;
+}
+
+function create_component_backup(component) {
+    component = normalize_component_name(component);
+    if (!get_component_backup_enabled())
+        return true;
+
+    let bdir = component_backup_dir(component);
+    let meta_file = component_backup_metadata_file(component);
+
+    if (component == "sing_box") {
+        if (!file_exists("/usr/bin/sing-box"))
+            return true;
+        let st = fs.stat("/usr/bin/sing-box");
+        let size = (st && st.size) ? st.size : 0;
+        if (size <= 0)
+            return true;
+
+        if (!check_free_disk_space("/etc", size)) {
+            updates_log("Skipping sing-box backup before update: insufficient disk space on /etc", "warn");
+            return false;
+        }
+
+        ensure_dir(bdir);
+        let backup_bin = bdir + "/sing-box";
+        remove_file(backup_bin);
+        if (!command_success_from_args([ "cp", "-p", "/usr/bin/sing-box", backup_bin ])) {
+            updates_log("Failed to create sing-box backup copy", "warn");
+            return false;
+        }
+
+        let variant = sing_box_runtime_output("variant", []);
+        let marker = sing_box_runtime_output("read-variant-marker", []);
+        let version = read_sing_box_binary_version("/usr/bin/sing-box", "/usr/lib");
+        if (version == "")
+            version = sing_box_runtime_output("version", []);
+
+        if (file_exists("/etc/init.d/sing-box")) {
+            command_success_from_args([ "cp", "-p", "/etc/init.d/sing-box", bdir + "/sing-box.init" ]);
+        }
+        if (file_exists("/usr/lib/libcronet.so")) {
+            command_success_from_args([ "cp", "-p", "/usr/lib/libcronet.so", bdir + "/libcronet.so" ]);
+        }
+
+        let meta = {
+            component: "sing_box",
+            version: version,
+            variant: variant,
+            marker: marker,
+            size: size,
+            timestamp: now_seconds()
+        };
+        write_file(meta_file, sprintf("%J\n", meta));
+        updates_log("Created local backup of sing-box v" + version + " (" + variant + ")", "info");
+        return true;
+    }
+    else if (component == "byedpi") {
+        if (!file_exists("/usr/bin/ciadpi"))
+            return true;
+        let st = fs.stat("/usr/bin/ciadpi");
+        let size = (st && st.size) ? st.size : 0;
+        if (!check_free_disk_space("/etc", size)) return false;
+        ensure_dir(bdir);
+        command_success_from_args([ "cp", "-p", "/usr/bin/ciadpi", bdir + "/ciadpi" ]);
+        let version = trim(command_output("/usr/bin/ciadpi --version 2>&1 || true"));
+        let meta = {
+            component: "byedpi",
+            version: version,
+            timestamp: now_seconds()
+        };
+        write_file(meta_file, sprintf("%J\n", meta));
+        return true;
+    }
+    else if (component == "zapret") {
+        let nfqws = "/opt/zapret/nfq/nfqws";
+        if (!file_exists(nfqws)) nfqws = "/usr/bin/nfqws";
+        if (!file_exists(nfqws)) return true;
+        ensure_dir(bdir);
+        command_success_from_args([ "cp", "-p", nfqws, bdir + "/nfqws" ]);
+        let meta = {
+            component: "zapret",
+            version: provider_package_version(LIB_DIR + "/providers/zapret/runtime.uc"),
+            timestamp: now_seconds()
+        };
+        write_file(meta_file, sprintf("%J\n", meta));
+        return true;
+    }
+    else if (component == "zapret2") {
+        let nfqws2 = "/opt/zapret2/nfq/nfqws2";
+        if (!file_exists(nfqws2)) nfqws2 = "/usr/bin/nfqws2";
+        if (!file_exists(nfqws2)) return true;
+        ensure_dir(bdir);
+        command_success_from_args([ "cp", "-p", nfqws2, bdir + "/nfqws2" ]);
+        let meta = {
+            component: "zapret2",
+            version: provider_package_version(LIB_DIR + "/providers/zapret2/runtime.uc"),
+            timestamp: now_seconds()
+        };
+        write_file(meta_file, sprintf("%J\n", meta));
+        return true;
+    }
+    else if (component == "tailscale") {
+        if (!file_exists("/usr/sbin/tailscale")) return true;
+        ensure_dir(bdir);
+        command_success_from_args([ "cp", "-p", "/usr/sbin/tailscale", bdir + "/tailscale" ]);
+        let meta = {
+            component: "tailscale",
+            version: provider_package_version(LIB_DIR + "/providers/tailscale/runtime.uc"),
+            timestamp: now_seconds()
+        };
+        write_file(meta_file, sprintf("%J\n", meta));
+        return true;
+    }
+
+    return true;
+}
+
+function rollback_component(component) {
+    component = normalize_component_name(component);
+    let bdir = component_backup_dir(component);
+    let meta = read_component_backup_metadata(component);
+    if (meta == null) {
+        action_fail(component, "rollback", "No local backup found for " + component);
+    }
+
+    let backup_version = as_string(meta.version || "previous");
+    updates_log("Starting rollback of " + component + " to backup version " + backup_version, "info");
+
+    if (component == "sing_box") {
+        let backup_bin = bdir + "/sing-box";
+        if (!file_exists(backup_bin) || !file_nonempty(backup_bin)) {
+            action_fail("sing_box", "rollback", "Sing-box backup binary is missing or empty");
+        }
+
+        stop_tachyon_before_sing_box_change();
+
+        remove_file("/usr/bin/sing-box");
+        if (!command_success_from_args([ "cp", "-p", backup_bin, "/usr/bin/sing-box" ]) ||
+            !command_success_from_args([ "chmod", "0755", "/usr/bin/sing-box" ])) {
+            action_fail("sing_box", "rollback", "Failed to restore sing-box binary from backup");
+        }
+
+        if (file_exists(bdir + "/libcronet.so")) {
+            remove_file("/usr/lib/libcronet.so");
+            command_success_from_args([ "cp", "-p", bdir + "/libcronet.so", "/usr/lib/libcronet.so" ]);
+            command_success_from_args([ "chmod", "0644", "/usr/lib/libcronet.so" ]);
+        }
+
+        if (file_exists(bdir + "/sing-box.init")) {
+            command_success_from_args([ "cp", "-p", bdir + "/sing-box.init", "/etc/init.d/sing-box" ]);
+            command_success_from_args([ "chmod", "0755", "/etc/init.d/sing-box" ]);
+        }
+
+        if (meta.marker) {
+            write_sing_box_variant_state(meta.marker, backup_version);
+        }
+
+        clear_version_caches();
+        restart_tachyon_after_successful_change();
+        action_success("sing_box", "rollback", "Sing-box rolled back to " + backup_version, backup_version, "", 1);
+    }
+    else if (component == "byedpi") {
+        let backup_bin = bdir + "/ciadpi";
+        if (!file_exists(backup_bin)) action_fail("byedpi", "rollback", "ByeDPI backup binary is missing");
+        remove_file("/usr/bin/ciadpi");
+        command_success_from_args([ "cp", "-p", backup_bin, "/usr/bin/ciadpi" ]);
+        command_success_from_args([ "chmod", "0755", "/usr/bin/ciadpi" ]);
+        clear_version_caches();
+        restart_tachyon_after_successful_change();
+        action_success("byedpi", "rollback", "ByeDPI rolled back to " + backup_version, backup_version, "", 1);
+    }
+    else if (component == "zapret") {
+        let backup_bin = bdir + "/nfqws";
+        if (!file_exists(backup_bin)) action_fail("zapret", "rollback", "Zapret backup binary is missing");
+        if (file_exists("/opt/zapret/nfq/nfqws")) {
+            command_success_from_args([ "cp", "-p", backup_bin, "/opt/zapret/nfq/nfqws" ]);
+            command_success_from_args([ "chmod", "0755", "/opt/zapret/nfq/nfqws" ]);
+        } else {
+            command_success_from_args([ "cp", "-p", backup_bin, "/usr/bin/nfqws" ]);
+            command_success_from_args([ "chmod", "0755", "/usr/bin/nfqws" ]);
+        }
+        clear_version_caches();
+        restart_tachyon_after_successful_change();
+        action_success("zapret", "rollback", "Zapret rolled back to " + backup_version, backup_version, "", 1);
+    }
+    else if (component == "zapret2") {
+        let backup_bin = bdir + "/nfqws2";
+        if (!file_exists(backup_bin)) action_fail("zapret2", "rollback", "Zapret2 backup binary is missing");
+        if (file_exists("/opt/zapret2/nfq/nfqws2")) {
+            command_success_from_args([ "cp", "-p", backup_bin, "/opt/zapret2/nfq/nfqws2" ]);
+            command_success_from_args([ "chmod", "0755", "/opt/zapret2/nfq/nfqws2" ]);
+        } else {
+            command_success_from_args([ "cp", "-p", backup_bin, "/usr/bin/nfqws2" ]);
+            command_success_from_args([ "chmod", "0755", "/usr/bin/nfqws2" ]);
+        }
+        clear_version_caches();
+        restart_tachyon_after_successful_change();
+        action_success("zapret2", "rollback", "Zapret2 rolled back to " + backup_version, backup_version, "", 1);
+    }
+    else if (component == "tailscale") {
+        let backup_bin = bdir + "/tailscale";
+        if (!file_exists(backup_bin)) action_fail("tailscale", "rollback", "Tailscale backup binary is missing");
+        command_success_from_args([ "cp", "-p", backup_bin, "/usr/sbin/tailscale" ]);
+        command_success_from_args([ "chmod", "0755", "/usr/sbin/tailscale" ]);
+        clear_version_caches();
+        restart_tachyon_after_successful_change();
+        action_success("tailscale", "rollback", "Tailscale rolled back to " + backup_version, backup_version, "", 1);
+    }
+    else {
+        action_fail(component, "rollback", "Rollback not supported for component " + component);
+    }
+}
+
 function component_action(component, action) {
     component = normalize_component_name(component);
     action = as_string(action);
@@ -2510,6 +2763,15 @@ function component_action(component, action) {
     if (!init_tmp_dir())
         action_fail(component != "" ? component : "unknown", action != "" ? action : "unknown", "Failed to create temporary directory");
     capture_tachyon_running_state();
+
+    if (action == "rollback") {
+        rollback_component(component);
+        return;
+    }
+
+    if (action != "check_update" && action != "remove") {
+        create_component_backup(component);
+    }
 
     if (component == "tachyon" && action == "check_update")
         check_tachyon();

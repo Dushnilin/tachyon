@@ -1249,6 +1249,9 @@ const dictionary = {
   "All components": "Все компоненты",
   "Tachyon Core": "Ядро Tachyon",
   "LuCI Web UI": "Веб-интерфейс LuCI",
+  "Rollback": "Откатить",
+  "Save component backup before update": "Сохранять резервную копию перед обновлением",
+  "Keep the previous working binary/package on the router flash for instant offline rollback if needed. Consumes extra storage.": "Сохранять предыдущую рабочую версию компонента в памяти роутера для быстрого локального отката. Занимает дополнительное место на flash.",
 };
 
 function escapePoString(str) {

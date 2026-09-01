@@ -1037,24 +1037,58 @@ function getInstalledUpdateActions(
   return actions;
 }
 
+function getComponentBackupVersion(component: Tachyon.ComponentName): string {
+  const sys = store.get().diagnosticsSystemInfo;
+  switch (component) {
+    case 'sing_box':
+      return sys.sing_box_backup_version || '';
+    case 'zapret':
+      return sys.zapret_backup_version || '';
+    case 'zapret2':
+      return sys.zapret2_backup_version || '';
+    case 'byedpi':
+      return sys.byedpi_backup_version || '';
+    case 'tailscale':
+      return sys.tailscale_backup_version || '';
+    default:
+      return '';
+  }
+}
+
+function getRollbackAction(
+  component: Tachyon.ComponentName,
+  key: UpdatesActionKey,
+  backupVersion: string,
+): ComponentActionButton {
+  return {
+    key,
+    text: backupVersion ? `${_('Rollback')} (${backupVersion})` : _('Rollback'),
+    icon: renderRotateCcwIcon24,
+    component,
+    action: 'rollback',
+  };
+}
+
 function getOptionalComponentActions({
   component,
   installed,
   checkKey,
   installKey,
   removeKey,
+  rollbackKey,
 }: {
   component: 'zapret' | 'zapret2' | 'byedpi' | 'tailscale';
   installed: boolean;
   checkKey: UpdatesActionKey;
   installKey: UpdatesActionKey;
   removeKey: UpdatesActionKey;
+  rollbackKey: UpdatesActionKey;
 }) {
   if (!installed) {
     return [getInstallAction(component, installKey, false)];
   }
 
-  return [
+  const actions = [
     ...getInstalledUpdateActions(component, checkKey, installKey),
     {
       key: removeKey,
@@ -1064,6 +1098,13 @@ function getOptionalComponentActions({
       action: 'remove' as const,
     },
   ];
+
+  const backupVersion = getComponentBackupVersion(component);
+  if (backupVersion) {
+    actions.push(getRollbackAction(component, rollbackKey, backupVersion));
+  }
+
+  return actions;
 }
 
 const COMPONENT_REPO_URLS: Record<Tachyon.ComponentName, string> = {
@@ -1117,6 +1158,13 @@ function getComponentCards(): ComponentCard[] {
     singBoxInstalled,
   );
 
+  const singBoxBackup = getComponentBackupVersion('sing_box');
+  if (singBoxBackup && singBoxInstalled) {
+    singBoxActions.push(
+      getRollbackAction('sing_box', 'singBoxRollback', singBoxBackup),
+    );
+  }
+
   if (!singBoxStable) {
     singBoxActions.push({
       key: 'singBoxInstallStable',
@@ -1169,6 +1217,7 @@ function getComponentCards(): ComponentCard[] {
     checkKey: 'zapretCheck',
     installKey: 'zapretInstall',
     removeKey: 'zapretRemove',
+    rollbackKey: 'zapretRollback',
   });
   const zapret2Actions = getOptionalComponentActions({
     component: 'zapret2',
@@ -1176,6 +1225,7 @@ function getComponentCards(): ComponentCard[] {
     checkKey: 'zapret2Check',
     installKey: 'zapret2Install',
     removeKey: 'zapret2Remove',
+    rollbackKey: 'zapret2Rollback',
   });
   const byedpiActions = getOptionalComponentActions({
     component: 'byedpi',
@@ -1183,6 +1233,7 @@ function getComponentCards(): ComponentCard[] {
     checkKey: 'byedpiCheck',
     installKey: 'byedpiInstall',
     removeKey: 'byedpiRemove',
+    rollbackKey: 'byedpiRollback',
   });
   const tailscaleActions = getOptionalComponentActions({
     component: 'tailscale',
@@ -1190,6 +1241,7 @@ function getComponentCards(): ComponentCard[] {
     checkKey: 'tailscaleCheck',
     installKey: 'tailscaleInstall',
     removeKey: 'tailscaleRemove',
+    rollbackKey: 'tailscaleRollback',
   });
 
   return [

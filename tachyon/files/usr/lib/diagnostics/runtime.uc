@@ -1151,6 +1151,25 @@ function build_system_info() {
     let tailscale_version = tailscale_installed ? provider_version(TAILSCALE_RUNTIME_UC) : "not installed";
     let device_model = first_line_value("/tmp/sysinfo/model", "unknown");
 
+    let base_bdir = getenv("TACHYON_COMPONENT_BACKUPS_DIR") || "/etc/tachyon/component-backups";
+    let read_backup_meta = function(comp) {
+        let path = base_bdir + "/" + comp + "/metadata.json";
+        let st = fs.stat(path);
+        if (!st) return null;
+        let data = as_string(fs.readfile(path));
+        if (data == "") return null;
+        try {
+            let p = json(data);
+            if (type(p) == "object" && p.version) return p;
+        } catch (e) {}
+        return null;
+    };
+    let sb_meta = read_backup_meta("sing_box");
+    let zapret_meta = read_backup_meta("zapret");
+    let zapret2_meta = read_backup_meta("zapret2");
+    let byedpi_meta = read_backup_meta("byedpi");
+    let tailscale_meta = read_backup_meta("tailscale");
+
     return {
         tachyon_version: TACHYON_VERSION,
         tachyon_commit_sha: constants.TACHYON_COMMIT_SHA && !match(constants.TACHYON_COMMIT_SHA, /COMPILED/) ? constants.TACHYON_COMMIT_SHA : "",
@@ -1163,14 +1182,24 @@ function build_system_info() {
         sing_box_lx,
         sing_box_tailscale: flags.tailscale,
         sing_box_repo_url,
+        sing_box_backup_version: sb_meta ? as_string(sb_meta.version) : "",
+        sing_box_backup_time: sb_meta ? int(sb_meta.timestamp || 0) : 0,
         zapret_version,
         zapret_installed,
+        zapret_backup_version: zapret_meta ? as_string(zapret_meta.version) : "",
+        zapret_backup_time: zapret_meta ? int(zapret_meta.timestamp || 0) : 0,
         zapret2_version,
         zapret2_installed,
+        zapret2_backup_version: zapret2_meta ? as_string(zapret2_meta.version) : "",
+        zapret2_backup_time: zapret2_meta ? int(zapret2_meta.timestamp || 0) : 0,
         byedpi_version,
         byedpi_installed,
+        byedpi_backup_version: byedpi_meta ? as_string(byedpi_meta.version) : "",
+        byedpi_backup_time: byedpi_meta ? int(byedpi_meta.timestamp || 0) : 0,
         tailscale_version,
         tailscale_installed,
+        tailscale_backup_version: tailscale_meta ? as_string(tailscale_meta.version) : "",
+        tailscale_backup_time: tailscale_meta ? int(tailscale_meta.timestamp || 0) : 0,
         openwrt_version: openwrt_release(),
         device_model,
         generated_at: int(clock()[0])
