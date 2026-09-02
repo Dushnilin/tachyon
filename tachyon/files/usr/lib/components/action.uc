@@ -2625,7 +2625,8 @@ function create_component_backup(component) {
         return true;
     }
     else if (component == "zapret2") {
-        let nfqws2 = "/opt/zapret2/nfq/nfqws2";
+        let nfqws2 = "/opt/zapret2/nfq2/nfqws2";
+        if (!file_exists(nfqws2)) nfqws2 = "/opt/zapret2/nfq/nfqws2";
         if (!file_exists(nfqws2)) nfqws2 = "/usr/bin/nfqws2";
         if (!file_exists(nfqws2)) return true;
         ensure_dir(bdir);
@@ -2725,13 +2726,11 @@ function rollback_component(component) {
     else if (component == "zapret2") {
         let backup_bin = bdir + "/nfqws2";
         if (!file_exists(backup_bin)) action_fail("zapret2", "rollback", "Zapret2 backup binary is missing");
-        if (file_exists("/opt/zapret2/nfq/nfqws2")) {
-            command_success_from_args([ "cp", "-p", backup_bin, "/opt/zapret2/nfq/nfqws2" ]);
-            command_success_from_args([ "chmod", "0755", "/opt/zapret2/nfq/nfqws2" ]);
-        } else {
-            command_success_from_args([ "cp", "-p", backup_bin, "/usr/bin/nfqws2" ]);
-            command_success_from_args([ "chmod", "0755", "/usr/bin/nfqws2" ]);
-        }
+        let dest = "/opt/zapret2/nfq2/nfqws2";
+        if (!file_exists(dest) && file_exists("/opt/zapret2/nfq/nfqws2")) dest = "/opt/zapret2/nfq/nfqws2";
+        else if (!file_exists(dest) && file_exists("/usr/bin/nfqws2")) dest = "/usr/bin/nfqws2";
+        command_success_from_args([ "cp", "-p", backup_bin, dest ]);
+        command_success_from_args([ "chmod", "0755", dest ]);
         clear_version_caches();
         restart_tachyon_after_successful_change();
         action_success("zapret2", "rollback", "Zapret2 rolled back to " + backup_version, backup_version, "", 1);

@@ -39,6 +39,7 @@ function get_zapret2_bin() {
     return resolve_binary([
         getenv("ZAPRET2_NFQWS2_BIN"),
         "/opt/zapret2/nfq2/nfqws2",
+        "/opt/zapret2/nfq/nfqws2",
         "/opt/zapret2/nfqws2",
         "/usr/bin/nfqws2"
     ]);
@@ -81,11 +82,14 @@ function get_zapret2_lua_flags(args_str) {
         let lib_lua = d + "/zapret-lib.lua";
         let antidpi_lua = d + "/zapret-antidpi.lua";
         let auto_lua = d + "/zapret-auto.lua";
-        if (fs.stat(lib_lua) != null) flags += sprintf("--lua-init=@%s ", lib_lua);
-        if (fs.stat(antidpi_lua) != null) flags += sprintf("--lua-init=@%s ", antidpi_lua);
-        if (fs.stat(auto_lua) != null) flags += sprintf("--lua-init=@%s ", auto_lua);
+        if (fs.stat(lib_lua) != null || fs.stat(lib_lua + ".gz") != null) flags += sprintf("--lua-init=@%s ", lib_lua);
+        if (fs.stat(antidpi_lua) != null || fs.stat(antidpi_lua + ".gz") != null) flags += sprintf("--lua-init=@%s ", antidpi_lua);
+        if (fs.stat(auto_lua) != null || fs.stat(auto_lua + ".gz") != null) flags += sprintf("--lua-init=@%s ", auto_lua);
         if (flags != "")
             break;
+    }
+    if (flags == "" && fs.stat("/opt/zapret2/lua") != null) {
+        flags = "--lua-init=@/opt/zapret2/lua/zapret-lib.lua --lua-init=@/opt/zapret2/lua/zapret-antidpi.lua --lua-init=@/opt/zapret2/lua/zapret-auto.lua ";
     }
     return flags;
 }
@@ -335,24 +339,24 @@ const STRATEGIES_ZAPRET2 = [
         description: "High-entropy triple fragmentation for heavily filtered regions."
     },
     {
-        id: "z2_split2_pos1",
-        name: "Classic Split2 (pos=1)",
+        id: "z2_split_pos1",
+        name: "Classic Multisplit (pos=1)",
         engine: "zapret2",
-        args: "--lua-desync=split2:pos=1:fooling=badseq",
-        description: "Standard 2-fragment desync for compatibility."
+        args: "--lua-desync=multisplit:pos=1:fooling=badseq",
+        description: "Standard 2-fragment multisplit desync for compatibility."
     },
     {
-        id: "z2_disorder2_pos1",
-        name: "Classic Disorder2 (pos=1)",
+        id: "z2_disorder_pos1",
+        name: "Classic Multidisorder (pos=1)",
         engine: "zapret2",
-        args: "--lua-desync=disorder2:pos=1:fooling=badseq",
+        args: "--lua-desync=multidisorder:pos=1:fooling=badseq",
         description: "Sends out-of-order segment with badseq fooling."
     },
     {
         id: "z2_fake_datanoack",
-        name: "Fake (TTL=8, DataNoAck) + Split2",
+        name: "Fake (TTL=8, DataNoAck) + Multisplit",
         engine: "zapret2",
-        args: "--lua-desync=fake:ttl=8:fooling=datanoack --lua-desync=split2:pos=1",
+        args: "--lua-desync=fake:ttl=8:fooling=datanoack --lua-desync=multisplit:pos=1",
         description: "DataNoAck fooling confuses stateful DPI without triggering ACK RST."
     },
     {
@@ -612,9 +616,9 @@ function generate_combinatorial_zapret2() {
                 add(sprintf("Fake (TTL=%d, %s) + Multisplit (pos=%s)", ttl, fooling, pos),
                     sprintf("--lua-desync=fake:ttl=%d:fooling=%s --lua-desync=multisplit:pos=%s", ttl, fooling, pos),
                     "Low-TTL fake injection followed by multisplit payload");
-                add(sprintf("Fake (TTL=%d, %s) + Split2 (pos=%s)", ttl, fooling, pos),
-                    sprintf("--lua-desync=fake:ttl=%d:fooling=%s --lua-desync=split2:pos=%s", ttl, fooling, pos),
-                    "Low-TTL fake injection followed by 2-part split");
+                add(sprintf("Fake (TTL=%d, %s) + Multidisorder (pos=%s)", ttl, fooling, pos),
+                    sprintf("--lua-desync=fake:ttl=%d:fooling=%s --lua-desync=multidisorder:pos=%s", ttl, fooling, pos),
+                    "Low-TTL fake injection followed by multidisorder payload");
             }
         }
     }
