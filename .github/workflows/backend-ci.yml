@@ -10,6 +10,8 @@ on:
       - 'tachyon/Makefile'
       - 'build.sh'
       - 'tests/**'
+      - 'luci-app-tachyon/**'
+      - 'fe-app-tachyon/locales/**'
       - '.github/workflows/build.yml'
       - '.github/workflows/backend-ci.yml'
   push:
@@ -20,6 +22,8 @@ on:
       - 'tachyon/Makefile'
       - 'build.sh'
       - 'tests/**'
+      - 'luci-app-tachyon/**'
+      - 'fe-app-tachyon/locales/**'
       - '.github/workflows/build.yml'
       - '.github/workflows/backend-ci.yml'
 
