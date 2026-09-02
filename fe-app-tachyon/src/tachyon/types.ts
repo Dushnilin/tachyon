@@ -111,6 +111,10 @@ export namespace Tachyon {
     FUZZER_AUTO_APPLY = 'fuzzer_auto_apply',
     FUZZER_HISTORY = 'fuzzer_history',
     FUZZER_CLEAR_HISTORY = 'fuzzer_clear_history',
+    DNS_BENCHMARK_START = 'dns_benchmark_async',
+    DNS_BENCHMARK_STATUS = 'dns_benchmark_status',
+    DNS_BENCHMARK_STOP = 'dns_benchmark_stop',
+    DNS_BENCHMARK_APPLY = 'dns_benchmark_apply',
   }
 
   export enum AvailableClashAPIMethods {
@@ -1066,5 +1070,39 @@ export namespace Tachyon {
     applied_to: string;
     args: string;
     error?: string;
+  }
+
+  export interface DnsBenchmarkServerResult {
+    id: string;
+    provider: string;
+    type: 'udp' | 'doh' | 'dot' | 'doq';
+    address: string;
+    ip?: string;
+    tag?: string;
+    latency: number;
+    lossPct: number;
+    status: 'excellent' | 'good' | 'fair' | 'slow' | 'failed';
+    score?: number;
+    error?: string;
+  }
+
+  export interface DnsBenchmarkRecommendation {
+    dns_type: string;
+    dns_server: string[];
+    bootstrap_dns_server: string[];
+    dns_fallback_server: string[];
+    dns_upstream_mode: string;
+    reason?: string;
+  }
+
+  export interface DnsBenchmarkState {
+    running: boolean;
+    progress: number;
+    current_server: string;
+    results: DnsBenchmarkServerResult[];
+    recommendation: DnsBenchmarkRecommendation | null;
+    error: string | null;
+    started_at: number;
+    finished_at: number | null;
   }
 }

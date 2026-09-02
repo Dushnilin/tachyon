@@ -1461,4 +1461,109 @@ export const TachyonShellMethods = {
       data: { message: _('History cleared') },
     };
   },
+
+  startDnsBenchmark: async (): Promise<
+    Tachyon.MethodResponse<{ message: string; running: boolean }>
+  > => {
+    const response = await executeShellCommand({
+      command: '/usr/bin/tachyon',
+      args: [Tachyon.AvailableMethods.DNS_BENCHMARK_START],
+      timeout: 10000,
+    });
+    const parsed = parseJsonObjectOutput<{
+      success: boolean;
+      message: string;
+      running: boolean;
+      error?: string;
+    }>(response.stdout);
+
+    if ((response.code ?? 0) !== 0 || !parsed?.success) {
+      return {
+        success: false,
+        error:
+          parsed?.error ||
+          response.stderr ||
+          _('Failed to start DNS benchmark'),
+      };
+    }
+    return {
+      success: true,
+      data: { message: parsed.message, running: parsed.running },
+    };
+  },
+
+  getDnsBenchmarkStatus: async (): Promise<
+    Tachyon.MethodResponse<Tachyon.DnsBenchmarkState>
+  > => {
+    const response = await executeShellCommand({
+      command: '/usr/bin/tachyon',
+      args: [Tachyon.AvailableMethods.DNS_BENCHMARK_STATUS],
+      timeout: 8000,
+    });
+    const parsed = parseJsonObjectOutput<Tachyon.DnsBenchmarkState>(
+      response.stdout,
+    );
+
+    if ((response.code ?? 0) !== 0 || !parsed) {
+      return {
+        success: false,
+        error: response.stderr || _('Failed to get DNS benchmark status'),
+      };
+    }
+    return {
+      success: true,
+      data: parsed,
+    };
+  },
+
+  stopDnsBenchmark: async (): Promise<Tachyon.MethodResponse<void>> => {
+    const response = await executeShellCommand({
+      command: '/usr/bin/tachyon',
+      args: [Tachyon.AvailableMethods.DNS_BENCHMARK_STOP],
+      timeout: 8000,
+    });
+    if ((response.code ?? 0) === 0) {
+      return { success: true, data: undefined };
+    }
+    return {
+      success: false,
+      error: response.stderr || _('Failed to stop DNS benchmark'),
+    };
+  },
+
+  applyDnsBenchmark: async (): Promise<
+    Tachyon.MethodResponse<{
+      message: string;
+      recommendation?: Tachyon.DnsBenchmarkRecommendation;
+    }>
+  > => {
+    const response = await executeShellCommand({
+      command: '/usr/bin/tachyon',
+      args: [Tachyon.AvailableMethods.DNS_BENCHMARK_APPLY],
+      timeout: 15000,
+    });
+    const parsed = parseJsonObjectOutput<{
+      success: boolean;
+      message?: string;
+      error?: string;
+      recommendation?: Tachyon.DnsBenchmarkRecommendation;
+    }>(response.stdout);
+
+    if ((response.code ?? 0) !== 0 || !parsed?.success) {
+      return {
+        success: false,
+        error:
+          parsed?.error ||
+          response.stderr ||
+          _('Failed to apply DNS configuration'),
+      };
+    }
+    return {
+      success: true,
+      data: {
+        message: parsed.message || _('Configuration applied'),
+        recommendation: parsed.recommendation,
+      },
+    };
+  },
 };

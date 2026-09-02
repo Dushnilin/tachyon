@@ -1748,6 +1748,75 @@ msgstr "Резервные DNS серверы должны быть обычны
 msgid "Fallback on unknown DC"
 msgstr "Fallback при неизвестном DC"
 
+msgid "DNS Auto-Tuner & Benchmark"
+msgstr "Автоподбор и бенчмарк DNS"
+
+msgid "Auto-Tune & Benchmark DNS"
+msgstr "Подобрать и протестировать DNS"
+
+msgid "Automatically benchmark latency, packet loss, and anti-censorship reliability of major DNS servers (UDP/DoH) from this router to find and apply the optimal configuration."
+msgstr "Автоматически замерить задержку, потери пакетов и защиту от цензуры основных DNS серверов (UDP/DoH) прямо с роутера, чтобы найти и применить оптимальную конфигурацию."
+
+msgid "Tachyon DNS Benchmark & Auto-Tuning"
+msgstr "Tachyon: Бенчмарк и автоподбор DNS"
+
+msgid "Ready to benchmark DNS providers"
+msgstr "Готов к тестированию DNS провайдеров"
+
+msgid "Benchmark measures actual latency and resolution reliability of major DNS servers (UDP 53 and encrypted DoH) directly from your router to find the fastest, unblocked upstream for your ISP."
+msgstr "Бенчмарк замеряет реальную задержку и надёжность резолва основных DNS серверов (UDP 53 и шифрованный DoH) напрямую с роутера, чтобы найти самый быстрый и незаблокированный апстрим у вашего провайдера."
+
+msgid "Start Benchmark"
+msgstr "Начать тест"
+
+msgid "Starting DNS benchmark..."
+msgstr "Запуск бенчмарка DNS..."
+
+msgid "Benchmark completed successfully"
+msgstr "Бенчмарк успешно завершён"
+
+msgid "Apply Recommended DNS"
+msgstr "Применить рекомендованный DNS"
+
+msgid "Recommended DNS Configuration"
+msgstr "Рекомендованная конфигурация DNS"
+
+msgid "Recommended DNS settings applied successfully and service restarted!"
+msgstr "Рекомендованные настройки DNS успешно применены, сервис перезапущен!"
+
+msgid "Failed to start benchmark"
+msgstr "Не удалось запустить бенчмарк"
+
+msgid "Failed to apply DNS settings"
+msgstr "Не удалось применить настройки DNS"
+
+msgid "No benchmark data yet. Click \"Start Benchmark\" to begin."
+msgstr "Нет данных бенчмарка. Нажмите «Начать тест», чтобы запустить проверку."
+
+msgid "EXCELLENT"
+msgstr "ОТЛИЧНО"
+
+msgid "GOOD"
+msgstr "ХОРОШО"
+
+msgid "FAIR"
+msgstr "СРЕДНЕ"
+
+msgid "SLOW"
+msgstr "МЕДЛЕННО"
+
+msgid "FAILED"
+msgstr "СБОЙ"
+
+msgid "Protocol"
+msgstr "Протокол"
+
+msgid "Rating"
+msgstr "Оценка"
+
+msgid "Loss"
+msgstr "Потери"
+
 msgid "Family (🏠)"
 msgstr "Семья (🏠)"
 

@@ -5,3 +5,4 @@ export * from './renderServiceCheckModal';
 export * from './renderAiChatModal';
 export * from './renderStrategyFuzzerModal';
 export * from './renderSystemInfo';
+export * from './renderDnsBenchmarkModal';

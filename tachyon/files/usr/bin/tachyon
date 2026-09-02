@@ -153,6 +153,8 @@ function show_help() {
     print("    snapshot_restore <file> Restore a config snapshot\n");
     print("    snapshot_delete <file>  Delete a config snapshot\n");
     print("    import_settings [file]  Scan and import legacy settings from Forkop/Podkop or backup\n");
+    print("    dns_benchmark [--json]  Benchmark major DNS servers (UDP/DoH) and display speed ratings\n");
+    print("    dns_autotune [--apply]  Auto-tune and recommend/apply the optimal DNS configuration\n");
     print("    validate_nfqws_strategy_json\n");
     print("                            Validate an NFQWS strategy and print JSON result\n");
     print("    validate_nfqws2_strategy_json\n");
@@ -282,6 +284,12 @@ function command_spec(command) {
         snapshot_save: [ "service/snapshot.uc", "snapshot-save", 1 ],
         snapshot_restore: [ "service/snapshot.uc", "snapshot-restore", 1 ],
         snapshot_delete: [ "service/snapshot.uc", "snapshot-delete", 1 ],
+        dns_benchmark: [ "dns/benchmark.uc", "benchmark", 1 ],
+        dns_autotune: [ "dns/benchmark.uc", "autotune", 1 ],
+        dns_benchmark_async: [ "dns/benchmark.uc", "benchmark_async", 0 ],
+        dns_benchmark_status: [ "dns/benchmark.uc", "benchmark_status", 0 ],
+        dns_benchmark_stop: [ "dns/benchmark.uc", "benchmark_stop", 0 ],
+        dns_benchmark_apply: [ "dns/benchmark.uc", "benchmark_apply", 0 ],
         import_settings: [ "config/migration.uc", "import-settings", 1 ],
         "import-settings": [ "config/migration.uc", "import-settings", 1 ]
     };

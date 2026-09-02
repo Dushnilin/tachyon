@@ -1326,6 +1326,23 @@ function createSettingsContent(section, capabilities) {
 
   // ── DNS Settings ────────────────────────────────────────────────────────
 
+  const dnsBenchmarkBtn = section.taboption(
+    "dns",
+    form.Button,
+    "_dns_benchmark_btn",
+    _("DNS Auto-Tuner & Benchmark"),
+    _(
+      "Automatically benchmark latency, packet loss, and anti-censorship reliability of major DNS servers (UDP/DoH) from this router to find and apply the optimal configuration.",
+    ),
+  );
+  dnsBenchmarkBtn.inputtitle = "⚡ " + _("Auto-Tune & Benchmark DNS");
+  dnsBenchmarkBtn.inputstyle = "action important";
+  dnsBenchmarkBtn.onclick = function () {
+    if (main && typeof main.renderDnsBenchmarkModal === "function") {
+      main.renderDnsBenchmarkModal();
+    }
+  };
+
   settingsDnsDynamicState.dnsType =
     uci.get(UCI_PACKAGE, "settings", "dns_type") || "udp";
 

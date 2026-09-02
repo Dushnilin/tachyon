@@ -1,0 +1,562 @@
+#!/usr/bin/env ucode
+
+let fs = require("fs");
+let common = require("core.common");
+let uci_core = require("core.uci");
+
+let as_string = common.as_string;
+let read_json_file = common.read_json_file;
+let write_json_file = common.write_json_file;
+let command_output_from_args = common.command_output_from_args;
+let command_status_from_args = common.command_status_from_args;
+let command_success_from_args = common.command_success_from_args;
+let shell_quote = common.shell_quote;
+let object_or_empty = common.object_or_empty;
+let array_or_empty = common.array_or_empty;
+let option = common.option;
+let list_option = common.list_option;
+
+const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
+const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
+const STATE_DIR = getenv("TACHYON_UI_STATE_DIR") || "/var/run/tachyon";
+const BENCHMARK_STATE_FILE = STATE_DIR + "/dns-benchmark-state.json";
+const BENCHMARK_PID_FILE = STATE_DIR + "/dns-benchmark.pid";
+const SERVICE_INIT = getenv("TACHYON_SERVICE_INIT") || "/etc/init.d/tachyon";
+
+const CANDIDATE_SERVERS = [
+    // --- Yandex DNS ---
+    { id: "yandex_udp", provider: "Yandex", type: "udp", address: "77.88.8.8", ip: "77.88.8.8", tag: "Primary" },
+    { id: "yandex_udp2", provider: "Yandex", type: "udp", address: "77.88.8.1", ip: "77.88.8.1", tag: "Secondary" },
+    { id: "yandex_doh", provider: "Yandex", type: "doh", address: "https://common.dot.dns.yandex.net/dns-query", ip: "77.88.8.8", tag: "DoH Encrypted" },
+
+    // --- Cloudflare DNS ---
+    { id: "cloudflare_udp", provider: "Cloudflare", type: "udp", address: "1.1.1.1", ip: "1.1.1.1", tag: "Primary" },
+    { id: "cloudflare_udp2", provider: "Cloudflare", type: "udp", address: "1.0.0.1", ip: "1.0.0.1", tag: "Secondary" },
+    { id: "cloudflare_doh", provider: "Cloudflare", type: "doh", address: "https://cloudflare-dns.com/dns-query", ip: "1.1.1.1", tag: "DoH Encrypted" },
+
+    // --- Google Public DNS ---
+    { id: "google_udp", provider: "Google", type: "udp", address: "8.8.8.8", ip: "8.8.8.8", tag: "Primary" },
+    { id: "google_udp2", provider: "Google", type: "udp", address: "8.8.4.4", ip: "8.8.4.4", tag: "Secondary" },
+    { id: "google_doh", provider: "Google", type: "doh", address: "https://dns.google/dns-query", ip: "8.8.8.8", tag: "DoH Encrypted" },
+
+    // --- Quad9 ---
+    { id: "quad9_udp", provider: "Quad9", type: "udp", address: "9.9.9.9", ip: "9.9.9.9", tag: "Primary" },
+    { id: "quad9_doh", provider: "Quad9", type: "doh", address: "https://dns.quad9.net/dns-query", ip: "9.9.9.9", tag: "DoH Encrypted" },
+
+    // --- AdGuard DNS ---
+    { id: "adguard_udp", provider: "AdGuard", type: "udp", address: "94.140.14.14", ip: "94.140.14.14", tag: "Default" },
+    { id: "adguard_doh", provider: "AdGuard", type: "doh", address: "https://dns.adguard-dns.com/dns-query", ip: "94.140.14.14", tag: "DoH Encrypted" },
+
+    // --- Comss.one DNS ---
+    { id: "comss_udp", provider: "Comss.one", type: "udp", address: "92.223.109.31", ip: "92.223.109.31", tag: "Anti-Censorship" },
+
+    // --- Mullvad DNS ---
+    { id: "mullvad_udp", provider: "Mullvad", type: "udp", address: "194.242.2.2", ip: "194.242.2.2", tag: "Privacy" },
+    { id: "mullvad_doh", provider: "Mullvad", type: "doh", address: "https://dns.mullvad.net/dns-query", ip: "194.242.2.2", tag: "DoH Encrypted" },
+
+    // --- Control D ---
+    { id: "controld_udp", provider: "Control D", type: "udp", address: "76.76.2.0", ip: "76.76.2.0", tag: "Unfiltered" }
+];
+
+const TEST_DOMAINS = [
+    "google.com",
+    "yandex.ru",
+    "cloudflare.com",
+    "wikipedia.org"
+];
+
+function now_seconds() {
+    let stamp = clock();
+    return stamp ? stamp[0] : 0;
+}
+
+function has_tool(name) {
+    let out = command_output_from_args([ "which", as_string(name) ]);
+    return length(out) > 0;
+}
+
+// Probes a UDP DNS server with `dig` (primary) or `nslookup` (fallback).
+// Returns latency in milliseconds, or -1 on failure.
+function probe_udp(server_ip, domain) {
+    server_ip = as_string(server_ip);
+    domain = as_string(domain);
+
+    if (has_tool("dig")) {
+        let output = command_output_from_args([
+            "dig", "@" + server_ip, domain, "A", "+time=2", "+tries=1", "+stats"
+        ]);
+        if (length(output) > 0) {
+            // Check for valid response status
+            if (index(output, "status: NOERROR") >= 0 || index(output, "status: NXDOMAIN") >= 0) {
+                let m = match(output, /;; Query time:[ \t]+([0-9]+)[ \t]+msec/);
+                if (m && m[1] != null) {
+                    let ms = int(m[1]);
+                    return ms >= 0 ? ms : 0;
+                }
+            }
+        }
+    }
+
+    // Fallback using nslookup & timestamp
+    let t0 = clock();
+    let status = command_status_from_args([ "nslookup", domain, server_ip ]);
+    let t1 = clock();
+    if (status == 0 && t0 && t1) {
+        let elapsed_ms = (t1[0] - t0[0]) * 1000 + int((t1[1] - t0[1]) / 1000000);
+        return elapsed_ms >= 0 ? elapsed_ms : 0;
+    }
+
+    return -1;
+}
+
+// Probes a DoH DNS server using `curl` with application/dns-json.
+// Returns latency in milliseconds, or -1 on failure.
+function probe_doh(doh_url, domain) {
+    doh_url = as_string(doh_url);
+    domain = as_string(domain);
+
+    let query_url = doh_url + (index(doh_url, "?") >= 0 ? "&" : "?") + "name=" + domain + "&type=A";
+    let output = command_output_from_args([
+        "curl", "-s", "-m", "3", "-w", "\n%{http_code} %{time_total}",
+        "-H", "accept: application/dns-json", query_url
+    ]);
+
+    if (length(output) > 0) {
+        let lines = split(output, "\n");
+        let last_line = length(lines) > 0 ? lines[length(lines) - 1] : "";
+        if (last_line == "" && length(lines) > 1)
+            last_line = lines[length(lines) - 2];
+
+        let m = match(last_line, /^([0-9]{3})[ \t]+([0-9.]+)/);
+        if (m && m[1] == "200" && m[2] != null) {
+            let total_sec = double(m[2]);
+            let ms = int(total_sec * 1000);
+            return ms >= 0 ? ms : 0;
+        }
+    }
+
+    return -1;
+}
+
+function probe_server(server, domain) {
+    if (server.type == "doh")
+        return probe_doh(server.address, domain);
+    return probe_udp(server.ip || server.address, domain);
+}
+
+function test_candidate(server, domains) {
+    domains = array_or_empty(domains);
+    let total_ms = 0;
+    let success_count = 0;
+    let total_rounds = length(domains);
+
+    for (let domain in domains) {
+        let ms = probe_server(server, domain);
+        if (ms >= 0) {
+            total_ms += ms;
+            success_count++;
+        }
+    }
+
+    let result = {
+        id: server.id,
+        provider: server.provider,
+        type: server.type,
+        address: server.address,
+        ip: server.ip,
+        tag: server.tag,
+        latency: -1,
+        lossPct: 100,
+        status: "failed",
+        score: 99999
+    };
+
+    if (success_count > 0) {
+        let avg_latency = int(total_ms / success_count);
+        let loss_pct = int(((total_rounds - success_count) * 100) / total_rounds);
+        let score = avg_latency + (loss_pct * 5);
+
+        result.latency = avg_latency;
+        result.lossPct = loss_pct;
+        result.score = score;
+
+        if (avg_latency < 35 && loss_pct == 0)
+            result.status = "excellent";
+        else if (avg_latency < 75 && loss_pct <= 25)
+            result.status = "good";
+        else if (avg_latency < 150 && loss_pct <= 50)
+            result.status = "fair";
+        else if (loss_pct < 100)
+            result.status = "slow";
+        else
+            result.status = "failed";
+    }
+
+    return result;
+}
+
+function compute_recommendation(results) {
+    results = array_or_empty(results);
+    let working = [];
+    for (let r in results) {
+        if (r.latency >= 0 && r.status != "failed")
+            push(working, r);
+    }
+
+    // Default failsafe recommendation
+    if (length(working) == 0) {
+        return {
+            dns_type: "udp",
+            dns_server: [ "77.88.8.8" ],
+            bootstrap_dns_server: [ "77.88.8.8" ],
+            dns_fallback_server: [ "1.1.1.1" ],
+            dns_upstream_mode: "sequential",
+            reason: "All probed DNS servers timed out or failed. Applied safe Yandex & Cloudflare defaults."
+        };
+    }
+
+    // Find fastest UDP and fastest DoH
+    let fastest_udp = null;
+    let second_udp = null;
+    let fastest_doh = null;
+
+    for (let r in working) {
+        if (r.type == "udp") {
+            if (fastest_udp == null)
+                fastest_udp = r;
+            else if (second_udp == null && r.provider != fastest_udp.provider)
+                second_udp = r;
+        } else if (r.type == "doh") {
+            if (fastest_doh == null)
+                fastest_doh = r;
+        }
+    }
+
+    if (fastest_udp == null && length(working) > 0)
+        fastest_udp = working[0];
+    if (second_udp == null) {
+        for (let r in working) {
+            if (r.type == "udp" && r.id != fastest_udp.id) {
+                second_udp = r;
+                break;
+            }
+        }
+    }
+    if (second_udp == null)
+        second_udp = { address: "1.1.1.1", ip: "1.1.1.1", provider: "Cloudflare" };
+
+    // Choose Primary DNS:
+    // Prefer DoH if latency is good (< 85ms and <= 1.6x of fastest UDP) for security & anti-hijacking
+    let selected_type = "udp";
+    let selected_dns_server = [ fastest_udp.address ];
+    let reason = "Selected fastest UDP server (" + fastest_udp.provider + " " + fastest_udp.latency + "ms)";
+
+    if (fastest_doh != null && fastest_doh.latency <= 85) {
+        let udp_lat = fastest_udp ? fastest_udp.latency : 100;
+        if (fastest_doh.latency <= (udp_lat * 1.6) + 15) {
+            selected_type = "doh";
+            selected_dns_server = [ fastest_doh.address ];
+            reason = "Selected fast encrypted DoH (" + fastest_doh.provider + " " + fastest_doh.latency + "ms) for maximum privacy and anti-censorship";
+        }
+    }
+
+    let bootstrap_ip = fastest_udp.ip || fastest_udp.address || "77.88.8.8";
+    let fallback_ip = second_udp.ip || second_udp.address || "1.1.1.1";
+
+    let upstream_mode = "sequential";
+    if (fastest_udp.latency < 50 && second_udp.latency < 60)
+        upstream_mode = "parallel";
+
+    return {
+        dns_type: selected_type,
+        dns_server: selected_dns_server,
+        bootstrap_dns_server: [ bootstrap_ip ],
+        dns_fallback_server: [ fallback_ip ],
+        dns_upstream_mode: upstream_mode,
+        reason: reason
+    };
+}
+
+function run_benchmark(on_progress) {
+    let results = [];
+    let total = length(CANDIDATE_SERVERS);
+
+    for (let i = 0; i < total; i++) {
+        let server = CANDIDATE_SERVERS[i];
+        if (on_progress)
+            on_progress(i, total, server.provider + " (" + server.type + ")", null);
+
+        let res = test_candidate(server, TEST_DOMAINS);
+        push(results, res);
+
+        if (on_progress)
+            on_progress(i + 1, total, server.provider + " (" + server.type + ")", res);
+    }
+
+    // Sort by score ascending (lowest score is best)
+    results = sort(results, function(a, b) {
+        return a.score - b.score;
+    });
+
+    let recommendation = compute_recommendation(results);
+    return {
+        results: results,
+        recommendation: recommendation
+    };
+}
+
+function apply_recommendation(rec) {
+    if (!rec || type(rec) != "object")
+        return false;
+
+    let cursor = uci_core.cursor();
+    if (!cursor)
+        return false;
+
+    if (rec.dns_type)
+        cursor.set(CONFIG_NAME, "settings", "dns_type", as_string(rec.dns_type));
+    if (rec.dns_server)
+        cursor.set(CONFIG_NAME, "settings", "dns_server", rec.dns_server);
+    if (rec.bootstrap_dns_server)
+        cursor.set(CONFIG_NAME, "settings", "bootstrap_dns_server", rec.bootstrap_dns_server);
+    if (rec.dns_fallback_server)
+        cursor.set(CONFIG_NAME, "settings", "dns_fallback_server", rec.dns_fallback_server);
+    if (rec.dns_upstream_mode)
+        cursor.set(CONFIG_NAME, "settings", "dns_upstream_mode", as_string(rec.dns_upstream_mode));
+
+    cursor.commit(CONFIG_NAME);
+
+    // Restart tachyon service to apply immediately
+    command_success_from_args([ SERVICE_INIT, "restart" ]);
+    return true;
+}
+
+// --- CLI Output Helpers ---
+
+function print_cli_table(benchmark_data) {
+    let results = benchmark_data.results;
+    let rec = benchmark_data.recommendation;
+
+    print("\n========================================================================================\n");
+    print("                              TACHYON DNS BENCHMARK RESULTS                             \n");
+    print("========================================================================================\n");
+    printf("%-14s | %-6s | %-42s | %-8s | %-6s | %-10s\n", "Provider", "Type", "Address", "Latency", "Loss", "Rating");
+    print("----------------------------------------------------------------------------------------\n");
+
+    for (let r in results) {
+        let lat_str = r.latency >= 0 ? sprintf("%d ms", r.latency) : "TIMEOUT";
+        let loss_str = sprintf("%d%%", r.lossPct);
+        let rating = r.status == "excellent" ? "EXCELLENT" :
+                     r.status == "good"      ? "GOOD" :
+                     r.status == "fair"      ? "FAIR" :
+                     r.status == "slow"      ? "SLOW" : "FAILED";
+
+        printf("%-14s | %-6s | %-42s | %-8s | %-6s | %-10s\n",
+            substr(r.provider, 0, 14),
+            r.type,
+            substr(r.address, 0, 42),
+            lat_str,
+            loss_str,
+            rating
+        );
+    }
+    print("========================================================================================\n\n");
+
+    print("⚡ RECOMMENDED TACHYON DNS CONFIGURATION:\n");
+    print("  • DNS Type:              ", rec.dns_type, "\n");
+    print("  • Primary DNS:           ", join(", ", rec.dns_server), "\n");
+    print("  • Bootstrap DNS:         ", join(", ", rec.bootstrap_dns_server), "\n");
+    print("  • Fallback DNS:          ", join(", ", rec.dns_fallback_server), "\n");
+    print("  • Upstream Mode:         ", rec.dns_upstream_mode, "\n");
+    print("  • Analysis:              ", rec.reason, "\n\n");
+}
+
+// --- Background / UI Async Engine ---
+
+function write_state(state) {
+    command_success_from_args([ "mkdir", "-p", STATE_DIR ]);
+    return write_json_file(BENCHMARK_STATE_FILE, state);
+}
+
+function read_state() {
+    let data = read_json_file(BENCHMARK_STATE_FILE);
+    return type(data) == "object" ? data : null;
+}
+
+function start_async() {
+    let existing = read_state();
+    if (existing && existing.running === true) {
+        let age = now_seconds() - (existing.started_at || 0);
+        if (age < 90) {
+            print(sprintf("%J\n", { success: true, message: "DNS benchmark is already running", state: existing }));
+            return 0;
+        }
+    }
+
+    let initial_state = {
+        running: true,
+        progress: 0,
+        current_server: "Starting benchmark...",
+        results: [],
+        recommendation: null,
+        error: null,
+        started_at: now_seconds(),
+        finished_at: null
+    };
+    write_state(initial_state);
+
+    // Fork async background worker
+    let worker_cmd = sprintf("TACHYON_LIB=%s ucode -L %s %s/dns/benchmark.uc worker >/dev/null 2>&1 & echo $!",
+        shell_quote(LIB_DIR), shell_quote(LIB_DIR), LIB_DIR);
+
+    let pipe = fs.popen(worker_cmd, "r");
+    if (pipe) {
+        let pid = trim(as_string(pipe.read("all")));
+        pipe.close();
+        if (pid != "")
+            fs.writefile(BENCHMARK_PID_FILE, pid);
+    }
+
+    print(sprintf("%J\n", { success: true, message: "DNS benchmark started", running: true }));
+    return 0;
+}
+
+function run_worker() {
+    let state = {
+        running: true,
+        progress: 0,
+        current_server: "Initializing...",
+        results: [],
+        recommendation: null,
+        error: null,
+        started_at: now_seconds(),
+        finished_at: null
+    };
+    write_state(state);
+
+    let benchmark_data = run_benchmark(function(completed, total, current_name, latest_result) {
+        state.progress = int((completed * 100) / total);
+        state.current_server = current_name;
+        if (latest_result)
+            push(state.results, latest_result);
+        write_state(state);
+    });
+
+    state.running = false;
+    state.progress = 100;
+    state.current_server = "Completed";
+    state.results = benchmark_data.results;
+    state.recommendation = benchmark_data.recommendation;
+    state.finished_at = now_seconds();
+    write_state(state);
+
+    try { fs.unlink(BENCHMARK_PID_FILE); } catch(e) {}
+    return 0;
+}
+
+function stop_benchmark() {
+    let pid_str = fs.readfile(BENCHMARK_PID_FILE);
+    if (pid_str) {
+        let pid = int(trim(as_string(pid_str)));
+        if (pid > 0)
+            command_status_from_args([ "kill", "-9", as_string(pid) ]);
+        try { fs.unlink(BENCHMARK_PID_FILE); } catch(e) {}
+    }
+
+    let state = read_state() || {};
+    state.running = false;
+    state.error = "Benchmark stopped by user";
+    state.finished_at = now_seconds();
+    write_state(state);
+
+    print(sprintf("%J\n", { success: true, message: "Benchmark stopped" }));
+    return 0;
+}
+
+function get_status() {
+    let state = read_state();
+    if (!state) {
+        state = {
+            running: false,
+            progress: 0,
+            current_server: "",
+            results: [],
+            recommendation: null,
+            error: null,
+            started_at: 0,
+            finished_at: null
+        };
+    }
+    print(sprintf("%J\n", state));
+    return 0;
+}
+
+function apply_from_state() {
+    let state = read_state();
+    if (!state || !state.recommendation) {
+        print(sprintf("%J\n", { success: false, error: "No benchmark recommendation available to apply" }));
+        return 1;
+    }
+
+    let ok = apply_recommendation(state.recommendation);
+    if (ok)
+        print(sprintf("%J\n", { success: true, message: "Recommended DNS configuration applied and service restarted", recommendation: state.recommendation }));
+    else
+        print(sprintf("%J\n", { success: false, error: "Failed to apply DNS configuration to UCI" }));
+    return ok ? 0 : 1;
+}
+
+// --- CLI Dispatcher ---
+
+let mode = ARGV[0] || "";
+
+if (mode == "benchmark") {
+    let json_mode = (ARGV[1] == "--json");
+    let data = run_benchmark(null);
+    if (json_mode)
+        print(sprintf("%J\n", data));
+    else
+        print_cli_table(data);
+    exit(0);
+}
+else if (mode == "autotune") {
+    let apply_flag = (ARGV[1] == "--apply" || ARGV[1] == "-a");
+    let data = run_benchmark(null);
+    print_cli_table(data);
+    if (apply_flag) {
+        print("Applying recommended DNS configuration...\n");
+        if (apply_recommendation(data.recommendation))
+            print("✓ Settings saved to /etc/config/tachyon and service restarted successfully.\n");
+        else
+            print("✗ Failed to apply settings.\n");
+    } else {
+        print("Tip: Run `tachyon dns_autotune --apply` to automatically save and activate these settings.\n");
+    }
+    exit(0);
+}
+else if (mode == "benchmark_async" || mode == "benchmark-async") {
+    exit(start_async());
+}
+else if (mode == "worker") {
+    exit(run_worker());
+}
+else if (mode == "benchmark_status" || mode == "benchmark-status") {
+    exit(get_status());
+}
+else if (mode == "benchmark_stop" || mode == "benchmark-stop") {
+    exit(stop_benchmark());
+}
+else if (mode == "benchmark_apply" || mode == "benchmark-apply") {
+    exit(apply_from_state());
+}
+
+return {
+    CANDIDATE_SERVERS,
+    TEST_DOMAINS,
+    probe_udp,
+    probe_doh,
+    test_candidate,
+    compute_recommendation,
+    run_benchmark,
+    apply_recommendation
+};
