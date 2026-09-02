@@ -330,6 +330,51 @@ function test_candidate(server, domains, bootstrap_ips) {
     return result;
 }
 
+function select_diverse_servers(candidates, max_count, max_latency, max_loss) {
+    max_count = int(max_count || 2);
+    max_latency = int(max_latency || 400);
+    max_loss = int(max_loss || 25);
+
+    let selected = [];
+    let seen_providers = {};
+
+    for (let c in candidates) {
+        if (c.latency < 0 || c.status == "failed" || c.lossPct > max_loss || c.latency > max_latency)
+            continue;
+
+        let prov = as_string(c.provider);
+        if (!seen_providers[prov]) {
+            seen_providers[prov] = true;
+            push(selected, c);
+            if (length(selected) >= max_count)
+                break;
+        }
+    }
+
+    if (length(selected) < max_count) {
+        for (let c in candidates) {
+            if (c.latency < 0 || c.status == "failed" || c.lossPct > max_loss || c.latency > max_latency)
+                continue;
+
+            let addr = as_string(c.address || c.ip);
+            let already = false;
+            for (let s in selected) {
+                if ((s.address || s.ip) == addr) {
+                    already = true;
+                    break;
+                }
+            }
+            if (!already) {
+                push(selected, c);
+                if (length(selected) >= max_count)
+                    break;
+            }
+        }
+    }
+
+    return selected;
+}
+
 function compute_recommendation(results) {
     results = array_or_empty(results);
     let working = [];
@@ -342,10 +387,10 @@ function compute_recommendation(results) {
     if (length(working) == 0) {
         return {
             dns_type: "udp",
-            dns_server: [ "77.88.8.8" ],
-            bootstrap_dns_server: [ "77.88.8.8" ],
-            dns_fallback_server: [ "1.1.1.1" ],
-            dns_upstream_mode: "sequential",
+            dns_server: [ "77.88.8.8", "1.1.1.1" ],
+            bootstrap_dns_server: [ "77.88.8.8", "1.1.1.1" ],
+            dns_fallback_server: [ "1.0.0.1", "77.88.8.1" ],
+            dns_upstream_mode: "parallel",
             reason: "All probed DNS servers timed out or failed. Applied safe Yandex & Cloudflare defaults."
         };
     }
@@ -363,52 +408,65 @@ function compute_recommendation(results) {
     working_udp = sort(working_udp, function(a, b) { return a.score - b.score; });
     working_doh = sort(working_doh, function(a, b) { return a.score - b.score; });
 
-    let fastest_udp = length(working_udp) > 0 ? working_udp[0] : working[0];
-    let second_udp = null;
-    if (length(working_udp) > 1) {
-        for (let u in working_udp) {
-            if (u.provider != fastest_udp.provider) {
-                second_udp = u;
+    // Select top 2 bootstrap UDP servers from distinct providers
+    let top_bootstrap = select_diverse_servers(working_udp, 2, 250, 25);
+    if (length(top_bootstrap) == 0) {
+        top_bootstrap = [ { address: "77.88.8.8", ip: "77.88.8.8", provider: "Yandex", latency: 15 } ];
+    }
+    let bootstrap_ips = [];
+    for (let b in top_bootstrap)
+        push(bootstrap_ips, b.ip || b.address);
+
+    // Select top 2 fallback UDP servers (prefer servers not in bootstrap or distinct)
+    let remaining_udp = [];
+    for (let u in working_udp) {
+        let in_boot = false;
+        for (let b in top_bootstrap) {
+            if (b.address == u.address || b.ip == u.ip) {
+                in_boot = true;
                 break;
             }
         }
-        if (second_udp == null)
-            second_udp = working_udp[1];
+        if (!in_boot)
+            push(remaining_udp, u);
     }
-    if (second_udp == null)
-        second_udp = { address: "1.1.1.1", ip: "1.1.1.1", provider: "Cloudflare", latency: 50 };
-
-    let bootstrap_ip = fastest_udp.ip || fastest_udp.address || "77.88.8.8";
-    let fallback_ip = second_udp.ip || second_udp.address || "1.1.1.1";
+    let top_fallback = select_diverse_servers(remaining_udp, 2, 350, 25);
+    if (length(top_fallback) == 0) {
+        top_fallback = select_diverse_servers(working_udp, 2, 350, 50);
+    }
+    let fallback_ips = [];
+    for (let f in top_fallback)
+        push(fallback_ips, f.ip || f.address);
+    if (length(fallback_ips) == 0)
+        fallback_ips = [ "1.0.0.1", "77.88.8.1" ];
 
     let selected_type = "udp";
-    let selected_dns_server = [ fastest_udp.address ];
-    let reason = "Selected fastest UDP server (" + fastest_udp.provider + " " + fastest_udp.latency + "ms) as fallback because encrypted DoH is unavailable";
+    let selected_dns_server = [];
+    let top_udp_primary = select_diverse_servers(working_udp, 2, 200, 25);
+    for (let u in top_udp_primary)
+        push(selected_dns_server, u.address || u.ip);
+    let reason = "Selected fast UDP servers (" + join(", ", selected_dns_server) + ") as fallback because encrypted DoH is unavailable";
 
     // ALWAYS PRIORITIZE ENCRYPTED DoH AS PRIMARY DNS
     // Encrypted DNS prevents ISP interception, DNS hijacking, poisoning, and MITM.
-    // Bootstrap DNS resolves the DoH hostname, while DoH handles all encrypted user traffic.
-    if (length(working_doh) > 0) {
-        let best_doh = working_doh[0];
-        if (best_doh.lossPct <= 25 && best_doh.latency < 350) {
-            selected_type = "doh";
-            selected_dns_server = [ best_doh.address ];
-            reason = "Selected encrypted DoH (" + best_doh.provider + " " + best_doh.latency + "ms) for maximum privacy and anti-censorship, with " + fastest_udp.provider + " (" + bootstrap_ip + ") bootstrap DNS";
+    let top_doh = select_diverse_servers(working_doh, 2, 350, 25);
+    if (length(top_doh) > 0) {
+        selected_type = "doh";
+        selected_dns_server = [];
+        let doh_names = [];
+        for (let d in top_doh) {
+            push(selected_dns_server, d.address);
+            push(doh_names, sprintf("%s (%dms)", d.provider, d.latency));
         }
+        reason = "Selected multiple encrypted DoH servers [" + join(", ", doh_names) + "] for maximum privacy and redundancy, with [" + join(", ", bootstrap_ips) + "] bootstrap DNS";
     }
-
-    let upstream_mode = "sequential";
-    if (length(working_doh) > 1 && working_doh[0].latency < 70 && working_doh[1].latency < 90)
-        upstream_mode = "parallel";
-    else if (fastest_udp.latency < 40 && second_udp.latency < 50)
-        upstream_mode = "parallel";
 
     return {
         dns_type: selected_type,
         dns_server: selected_dns_server,
-        bootstrap_dns_server: [ bootstrap_ip ],
-        dns_fallback_server: [ fallback_ip ],
-        dns_upstream_mode: upstream_mode,
+        bootstrap_dns_server: bootstrap_ips,
+        dns_fallback_server: fallback_ips,
+        dns_upstream_mode: "parallel",
         reason: reason
     };
 }

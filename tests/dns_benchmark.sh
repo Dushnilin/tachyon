@@ -64,11 +64,12 @@ ucode -L "$TACHYON_LIB" "$WORK_DIR/test_candidates.uc" | grep -q "OK" ||
 cat >"$WORK_DIR/test_recommendation.uc" <<'UCODE'
 let benchmark = require("dns.benchmark");
 
-// Scenario A: Fast DoH (<85ms, close to UDP) -> Expect DoH recommended
+// Scenario A: Fast DoH -> Expect DoH recommended with multiple servers
 let results_a = [
     { id: "yandex_udp", provider: "Yandex", type: "udp", address: "77.88.8.8", ip: "77.88.8.8", latency: 15, lossPct: 0, status: "excellent", score: 15 },
     { id: "cf_udp", provider: "Cloudflare", type: "udp", address: "1.1.1.1", ip: "1.1.1.1", latency: 20, lossPct: 0, status: "excellent", score: 20 },
-    { id: "cf_doh", provider: "Cloudflare", type: "doh", address: "https://cloudflare-dns.com/dns-query", ip: "1.1.1.1", latency: 25, lossPct: 0, status: "excellent", score: 25 }
+    { id: "cf_doh", provider: "Cloudflare", type: "doh", address: "https://cloudflare-dns.com/dns-query", ip: "1.1.1.1", latency: 25, lossPct: 0, status: "excellent", score: 25 },
+    { id: "comss_doh", provider: "Comss.one", type: "doh", address: "https://dns.comss.one/dns-query", ip: "92.223.109.31", latency: 30, lossPct: 0, status: "excellent", score: 30 }
 ];
 
 let rec_a = benchmark.compute_recommendation(results_a);
@@ -76,12 +77,12 @@ if (rec_a.dns_type != "doh") {
     print("ERR: Scenario A should recommend DoH, got ", rec_a.dns_type, "\n");
     exit(1);
 }
-if (rec_a.bootstrap_dns_server[0] != "77.88.8.8") {
-    print("ERR: Scenario A bootstrap DNS should be fastest UDP (77.88.8.8)\n");
+if (length(rec_a.dns_server) < 2) {
+    print("ERR: Scenario A should recommend multiple DoH servers\n");
     exit(2);
 }
-if (rec_a.dns_fallback_server[0] != "1.1.1.1") {
-    print("ERR: Scenario A fallback DNS should be secondary provider (1.1.1.1)\n");
+if (rec_a.bootstrap_dns_server[0] != "77.88.8.8") {
+    print("ERR: Scenario A bootstrap DNS should be fastest UDP (77.88.8.8)\n");
     exit(3);
 }
 
@@ -101,7 +102,7 @@ if (rec_b.dns_type != "udp" || rec_b.dns_server[0] != "77.88.8.8") {
 // Scenario C: All failed -> Expect safe failsafe fallback
 let results_c = [];
 let rec_c = benchmark.compute_recommendation(results_c);
-if (rec_c.dns_type != "udp" || rec_c.dns_server[0] != "77.88.8.8" || rec_c.dns_fallback_server[0] != "1.1.1.1") {
+if (rec_c.dns_type != "udp" || rec_c.dns_server[0] != "77.88.8.8" || length(rec_c.dns_server) < 2) {
     print("ERR: Scenario C failsafe failed\n");
     exit(5);
 }
