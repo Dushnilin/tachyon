@@ -892,6 +892,17 @@ function validate_dns_settings(settings, sections, context) {
         }
     }
 
+    // dns_fallback_server must be plain UDP (IP or IP:port, bare hostname or hostname:port).
+    // DoH/DoT/DoQ URLs (containing "://") are not valid here because the failover daemon
+    // treats fallback servers as plain UDP upstreams only.
+    let fallback_servers = dns_setting_values(settings, "dns_fallback_server");
+    for (let value in fallback_servers) {
+        if (index(value, "://") >= 0)
+            fail_validation("Fallback DNS server '" + value + "' looks like a URL. Fallback servers must be plain UDP (IP or IP:port). Aborted.");
+        if (!dns_server_value_valid(value))
+            fail_validation("Invalid fallback DNS server '" + value + "'. Aborted.");
+    }
+
     if (!bool_option(settings, "dns_detour_enabled", false))
         return;
 

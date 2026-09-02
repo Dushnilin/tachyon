@@ -259,6 +259,20 @@ cat >"$WORK_DIR/bad-dns-rule-protocol.json" <<'JSON'
 JSON
 assert_rejects "bad DNS rule protocol" "$WORK_DIR/bad-dns-rule-protocol.json" "unsupported protocol 'tcp'"
 
+cat >"$WORK_DIR/url-in-fallback-dns.json" <<'JSON'
+{
+  "settings": {
+    ".name": "settings",
+    ".type": "settings",
+    "dns_server": [ "1.1.1.1" ],
+    "bootstrap_dns_server": [ "77.88.8.8" ],
+    "dns_fallback_server": [ "https://cloudflare-dns.com/dns-query" ]
+  },
+  "section": []
+}
+JSON
+assert_rejects "URL in dns_fallback_server" "$WORK_DIR/url-in-fallback-dns.json" "Fallback DNS server"
+
 cat >"$WORK_DIR/bad-dns-rule-matchers.json" <<'JSON'
 {
   "settings": { ".name": "settings", ".type": "settings" },
