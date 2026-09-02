@@ -76,6 +76,10 @@ grep -Fq "list applied_migrations 'dns_hosts_to_option'" "$TACHYON_CONFIG" ||
   fail "new installations must mark the dns_hosts to option migration as applied"
 grep -Fq "list applied_migrations 'global_hosts_to_section'" "$TACHYON_CONFIG" ||
   fail "new installations must mark the global hosts to section migration as applied"
+grep -Fq "list applied_migrations 'orphan_section_interface_cleanup'" "$TACHYON_CONFIG" ||
+  fail "new installations must mark the orphan section interface cleanup migration as applied"
+grep -Fq "list applied_migrations 'ensure_dns_server_defaults'" "$TACHYON_CONFIG" ||
+  fail "new installations must mark the DNS server defaults migration as applied"
 grep -Fq '/usr/lib/tachyon/config/migration.uc migrate' "$TACHYON_MAKEFILE" ||
   fail "OpenWrt package postinst must run configuration migrations"
 [ "$(grep -Fc '/usr/lib/tachyon/config/migration.uc migrate' "$BUILD_SCRIPT")" -ge 3 ] ||

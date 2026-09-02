@@ -142,6 +142,18 @@ sleep 5
 echo "=== Installing Tachyon IPK ==="
 "$DOCKER_BIN" exec "$CONTAINER_NAME" opkg install --force-reinstall /work/build-out/tachyon_1.0.0.ipk
 
+echo "=== Installing LuCI app IPK ==="
+"$DOCKER_BIN" exec "$CONTAINER_NAME" opkg install --force-reinstall /work/build-out/luci-app-tachyon_1.0.0.ipk
+
+echo "=== Verifying LuCI menu and ACL registration ==="
+"$DOCKER_BIN" exec "$CONTAINER_NAME" test -f /usr/share/luci/menu.d/luci-app-tachyon.json \
+  || { echo "FAIL: menu.d/luci-app-tachyon.json missing after install"; exit 1; }
+"$DOCKER_BIN" exec "$CONTAINER_NAME" test -f /usr/share/rpcd/acl.d/luci-app-tachyon.json \
+  || { echo "FAIL: acl.d/luci-app-tachyon.json missing after install"; exit 1; }
+"$DOCKER_BIN" exec "$CONTAINER_NAME" grep -q '"tachyon/tachyon"' /usr/share/luci/menu.d/luci-app-tachyon.json \
+  || { echo "FAIL: menu.d entry does not reference correct view path"; exit 1; }
+echo "OK: LuCI app registration files in place"
+
 echo "=== Configuring Tachyon ==="
 "$DOCKER_BIN" exec "$CONTAINER_NAME" uci set tachyon.settings.enabled='1'
 "$DOCKER_BIN" exec "$CONTAINER_NAME" uci set tachyon.settings.log_level='debug'

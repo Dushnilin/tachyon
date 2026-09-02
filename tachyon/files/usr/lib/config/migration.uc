@@ -1292,6 +1292,35 @@ function migrate_http_connection_urls(ctx) {
     }
 }
 
+// Ensure both main and bootstrap DNS server lists have at least one entry.
+// forkop/podkop did not require bootstrap_dns_server, so it is often absent after
+// migration. The validator refuses to start Tachyon when either list is empty.
+// The default "77.88.8.8" matches the runtime fallback in singbox/dns.uc.
+function migrate_ensure_dns_server_defaults(ctx) {
+    let settings = ctx.model.settings;
+    let dns_server = list_option(settings, "dns_server");
+    let has_dns = false;
+    for (let v in dns_server) {
+        if (as_string(v) != "") {
+            has_dns = true;
+            break;
+        }
+    }
+    if (!has_dns)
+        set_list_option(ctx, settings, "dns_server", [ "77.88.8.8" ]);
+
+    let bootstrap = list_option(settings, "bootstrap_dns_server");
+    let has_bootstrap = false;
+    for (let v in bootstrap) {
+        if (as_string(v) != "") {
+            has_bootstrap = true;
+            break;
+        }
+    }
+    if (!has_bootstrap)
+        set_list_option(ctx, settings, "bootstrap_dns_server", [ "77.88.8.8" ]);
+}
+
 function migrate_dns_hosts_to_option(ctx) {
     let raw = object_or_empty(ctx.model.settings)["dns_hosts"];
     if (raw == null)
@@ -1405,7 +1434,8 @@ const MIGRATIONS = [
     { id: "http_connection_urls", run: migrate_http_connection_urls },
     { id: "dns_hosts_to_option", run: migrate_dns_hosts_to_option },
     { id: "global_hosts_to_section", run: migrate_global_hosts_to_section },
-    { id: "orphan_section_interface_cleanup", run: migrate_orphan_section_interfaces }
+    { id: "orphan_section_interface_cleanup", run: migrate_orphan_section_interfaces },
+    { id: "ensure_dns_server_defaults", run: migrate_ensure_dns_server_defaults }
 ];
 
 

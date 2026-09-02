@@ -36,6 +36,8 @@ grep -Fq '{ id: "enable_component_checks", run: migrate_enable_component_checks 
   fail "component check migration must have a stable named marker"
 grep -Fq '{ id: "http_connection_urls", run: migrate_http_connection_urls }' "$MIGRATION" ||
   fail "HTTP connection URL migration must have a stable named marker"
+grep -Fq '{ id: "ensure_dns_server_defaults", run: migrate_ensure_dns_server_defaults }' "$MIGRATION" ||
+  fail "DNS server defaults migration must have a stable named marker"
 grep -Fq 'release_at_most(ctx, "1.0.1")' "$MIGRATION" ||
   fail "release-specific migrations must use the source release only as a condition"
 grep -Fq 'release_at_most(ctx, "1.0.4")' "$MIGRATION" ||
@@ -175,7 +177,7 @@ assert(JSON.stringify(config.settings.dns_server) === JSON.stringify(['9.9.9.9']
 assert(JSON.stringify(config.settings.bootstrap_dns_server) === JSON.stringify(['1.1.1.1']), 'legacy Bootstrap DNS scalar migrated to ordered list');
 assert(config.settings.config_version === '1.0.5', 'legacy config should be marked at the current schema version');
 assert(config.settings.component_update_check_enabled === '1', 'component update checks should be enabled during migration');
-assert(JSON.stringify(config.settings.applied_migrations) === JSON.stringify(['interface_sections', 'enable_component_checks', 'http_connection_urls', 'dns_hosts_to_option', 'global_hosts_to_section', 'orphan_section_interface_cleanup']), 'legacy config should record named migrations');
+assert(JSON.stringify(config.settings.applied_migrations) === JSON.stringify(['interface_sections', 'enable_component_checks', 'http_connection_urls', 'dns_hosts_to_option', 'global_hosts_to_section', 'orphan_section_interface_cleanup', 'ensure_dns_server_defaults']), 'legacy config should record named migrations');
 
 function assert(condition, message) {
   if (!condition) {
@@ -711,5 +713,40 @@ ucode -L "$TACHYON_LIB" "$MIGRATION" commit
 
 grep -Fxq 'commit tachyon' "$WORK_DIR/uci-commit.log" ||
   fail "commit mode must commit tachyon through core.uci"
+
+
+# Regression: forkop configs often lack bootstrap_dns_server.
+# The ensure_dns_server_defaults migration must inject a default so the validator
+# does not abort Tachyon startup with "At least one Bootstrap DNS server is required".
+cat >"$WORK_DIR/no_bootstrap.state" <<'EOF_UCI'
+tachyon.settings=settings
+tachyon.settings.dns_server=8.8.8.8
+EOF_UCI
+: >"$WORK_DIR/no_bootstrap.log"
+TACHYON_UCI_STATE_FILE="$WORK_DIR/no_bootstrap.state" \
+TACHYON_UCI_LOG_FILE="$WORK_DIR/no_bootstrap.log" \
+TACHYON_CONFIG_NAME="tachyon" \
+TACHYON_INTERNAL_CONFIG_TRIGGER_GUARD="$WORK_DIR/internal-config-change" \
+ucode -L "$TACHYON_LIB" "$MIGRATION" migrate
+
+grep -Fq 'tachyon.settings.bootstrap_dns_server=77.88.8.8' "$WORK_DIR/no_bootstrap.state" ||
+  fail "ensure_dns_server_defaults must inject 77.88.8.8 when bootstrap_dns_server is missing"
+
+# Regression: forkop configs with neither dns_server nor bootstrap_dns_server must
+# get both defaults injected.
+cat >"$WORK_DIR/no_dns.state" <<'EOF_UCI'
+tachyon.settings=settings
+EOF_UCI
+: >"$WORK_DIR/no_dns.log"
+TACHYON_UCI_STATE_FILE="$WORK_DIR/no_dns.state" \
+TACHYON_UCI_LOG_FILE="$WORK_DIR/no_dns.log" \
+TACHYON_CONFIG_NAME="tachyon" \
+TACHYON_INTERNAL_CONFIG_TRIGGER_GUARD="$WORK_DIR/internal-config-change" \
+ucode -L "$TACHYON_LIB" "$MIGRATION" migrate
+
+grep -Fq 'tachyon.settings.dns_server=77.88.8.8' "$WORK_DIR/no_dns.state" ||
+  fail "ensure_dns_server_defaults must inject 77.88.8.8 for missing dns_server"
+grep -Fq 'tachyon.settings.bootstrap_dns_server=77.88.8.8' "$WORK_DIR/no_dns.state" ||
+  fail "ensure_dns_server_defaults must inject 77.88.8.8 for missing bootstrap_dns_server"
 
 printf 'installer config migration checks passed\n'
