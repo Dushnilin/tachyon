@@ -152,6 +152,43 @@ function active_values(settings, override_state) {
     };
 }
 
+const KNOWN_DNS_SERVER_NAMES = {
+    "8.8.8.8": "dns.google",
+    "8.8.4.4": "dns.google",
+    "1.1.1.1": "cloudflare-dns.com",
+    "1.0.0.1": "cloudflare-dns.com",
+    "77.88.8.8": "common.dot.dns.yandex.net",
+    "77.88.8.1": "common.dot.dns.yandex.net",
+    "77.88.8.88": "safe.dot.dns.yandex.net",
+    "77.88.8.2": "safe.dot.dns.yandex.net",
+    "77.88.8.7": "family.dot.dns.yandex.net",
+    "77.88.8.3": "family.dot.dns.yandex.net",
+    "9.9.9.9": "dns.quad9.net",
+    "149.112.112.112": "dns.quad9.net",
+    "9.9.9.10": "dns10.quad9.net",
+    "149.112.112.10": "dns10.quad9.net",
+    "94.140.14.14": "dns.adguard-dns.com",
+    "94.140.15.15": "dns.adguard-dns.com",
+    "94.140.14.140": "unfiltered.adguard-dns.com",
+    "94.140.14.141": "unfiltered.adguard-dns.com",
+    "94.140.14.15": "family.adguard-dns.com",
+    "94.140.15.16": "family.adguard-dns.com",
+    "194.242.2.2": "dns.mullvad.net",
+    "194.242.2.3": "dns.mullvad.net",
+    "194.242.2.4": "dns.mullvad.net",
+    "194.242.2.5": "dns.mullvad.net",
+    "76.76.2.0": "freedns.controld.com",
+    "76.76.10.0": "freedns.controld.com",
+    "223.5.5.5": "dns.alidns.com",
+    "223.6.6.6": "dns.alidns.com",
+    "208.67.222.222": "doh.opendns.com",
+    "208.67.220.220": "doh.opendns.com",
+    "185.222.222.222": "doh.dns.sb",
+    "45.11.45.11": "doh.dns.sb",
+    "185.228.168.9": "doh.cleanbrowsing.org",
+    "185.228.169.9": "doh.cleanbrowsing.org"
+};
+
 function server_from_options(tag_name, dns_type, dns_server, detour) {
     let server = runtime_url.host(dns_server);
     let port = runtime_url.port(dns_server);
@@ -169,18 +206,31 @@ function server_from_options(tag_name, dns_type, dns_server, detour) {
     else if (dns_type == "dot") {
         result.type = "tls";
         result.server_port = port != "" ? int(port) : 853;
+        result.tls = { enabled: true };
+        if (core_ip.valid_ip(server) && KNOWN_DNS_SERVER_NAMES[server])
+            result.tls.server_name = KNOWN_DNS_SERVER_NAMES[server];
+        else if (!core_ip.valid_ip(server))
+            result.tls.server_name = server;
     }
     else if (dns_type == "doh") {
         result.type = "https";
         result.server_port = port != "" ? int(port) : 443;
         let path = runtime_url.path(dns_server);
-        if (path != "")
-            result.path = path;
+        result.path = (path != "" && path != "/") ? path : "/dns-query";
+        result.tls = { enabled: true };
+        if (core_ip.valid_ip(server) && KNOWN_DNS_SERVER_NAMES[server])
+            result.tls.server_name = KNOWN_DNS_SERVER_NAMES[server];
+        else if (!core_ip.valid_ip(server))
+            result.tls.server_name = server;
     }
     else if (dns_type == "doq") {
         result.type = "quic";
         result.server_port = port != "" ? int(port) : 784;
         result.tls = { enabled: true };
+        if (core_ip.valid_ip(server) && KNOWN_DNS_SERVER_NAMES[server])
+            result.tls.server_name = KNOWN_DNS_SERVER_NAMES[server];
+        else if (!core_ip.valid_ip(server))
+            result.tls.server_name = server;
     }
     else {
         return { unsupported: "unsupported dns_type " + dns_type };

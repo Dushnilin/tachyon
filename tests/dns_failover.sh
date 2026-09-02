@@ -160,4 +160,49 @@ verification="$(ucode -L "$TACHYON_LIB" "$FAILOVER" verification-plan-fixture "$
 printf '%s' "$verification" | grep -Eq '"main"[[:space:]]*:[[:space:]]*false' || fail "bootstrap-only switch must not require a dead main DNS to recover"
 printf '%s' "$verification" | grep -Eq '"bootstrap"[[:space:]]*:[[:space:]]*true' || fail "bootstrap-only switch must verify the selected bootstrap DNS"
 
+# ─── DoH / DoT IP and domain server generation tests ──────────────────────────
+cat >"$WORK_DIR/test_doh_generation.uc" <<'UCODE'
+let dns = require("singbox.dns");
+
+function assert(cond, msg) {
+    if (!cond) {
+        warn("FAIL: ", msg, "\n");
+        exit(1);
+    }
+}
+
+// 1. Plain IP 8.8.8.8 with DoH -> must produce path /dns-query and SNI dns.google
+let g_doh = dns.server_from_options("test-google", "doh", "8.8.8.8", "");
+assert(g_doh.type == "https", "google doh type is https");
+assert(g_doh.server == "8.8.8.8", "google doh server is 8.8.8.8");
+assert(g_doh.server_port == 443, "google doh port is 443");
+assert(g_doh.path == "/dns-query", "google doh path defaults to /dns-query");
+assert(g_doh.tls.enabled === true, "google doh tls enabled");
+assert(g_doh.tls.server_name == "dns.google", "google doh SNI is dns.google");
+
+// 2. Plain IP 77.88.8.8 with DoH -> must produce SNI common.dot.dns.yandex.net
+let y_doh = dns.server_from_options("test-yandex", "doh", "77.88.8.8", "");
+assert(y_doh.path == "/dns-query", "yandex doh path is /dns-query");
+assert(y_doh.tls.server_name == "common.dot.dns.yandex.net", "yandex doh SNI is common.dot.dns.yandex.net");
+
+// 3. Plain IP 1.1.1.1 with DoT -> must produce type tls and SNI cloudflare-dns.com
+let cf_dot = dns.server_from_options("test-cf", "dot", "1.1.1.1", "");
+assert(cf_dot.type == "tls", "cf dot type is tls");
+assert(cf_dot.server_port == 853, "cf dot port is 853");
+assert(cf_dot.tls.server_name == "cloudflare-dns.com", "cf dot SNI is cloudflare-dns.com");
+
+// 4. Domain with custom path
+let custom_doh = dns.server_from_options("test-custom", "doh", "https://dns.example.com/custom-query", "proxy-out");
+assert(custom_doh.server == "dns.example.com", "custom doh server is dns.example.com");
+assert(custom_doh.path == "/custom-query", "custom doh path preserved");
+assert(custom_doh.detour == "proxy-out", "custom doh detour preserved");
+
+print("OK\n");
+exit(0);
+UCODE
+
+ucode -L "$TACHYON_LIB" "$WORK_DIR/test_doh_generation.uc" | grep -q "OK" ||
+  fail "DoH server generation unit tests failed"
+
 printf 'DNS failover checks passed\n'
+
