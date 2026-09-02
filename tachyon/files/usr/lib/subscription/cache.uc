@@ -331,25 +331,6 @@ function cache_keep_sets(sections) {
     return keep;
 }
 
-function section_cache_has_outbounds(section_cache_path) {
-    let data = read_json(section_cache_path);
-    if (type(data) != "object")
-        return false;
-    let names = object_or_empty(object_or_empty(data.outboundMetadata).names);
-    return object_key_count(names) > 0;
-}
-
-function section_has_source_cache(name, section) {
-    let count = subscription_source_count(section);
-    for (let i = 1; i <= count; i++) {
-        let source = source_id(name, i);
-        let json_path = source_json_path(TMP_SUBSCRIPTION_FOLDER, source);
-        if (subscription_cache_is_usable(json_path))
-            return true;
-    }
-    return false;
-}
-
 function runtime_cache_missing(sections, section_cache_dir) {
     section_cache_dir = as_string(section_cache_dir);
 
@@ -365,9 +346,21 @@ function runtime_cache_missing(sections, section_cache_dir) {
             return true;
         // Section-cache exists but has no outbounds — this happens when a new
         // subscription section was generated before its source data was downloaded.
-        // If source data is now available, rebuild so servers appear in the UI.
-        if (!section_cache_has_outbounds(cache_path) && section_has_source_cache(name, section))
-            return true;
+        // If source data is now available on disk, trigger a rebuild so servers appear.
+        let cached = read_json(cache_path);
+        if (type(cached) == "object") {
+            let names = object_or_empty(object_or_empty(cached.outboundMetadata).names);
+            let has_outbounds = false;
+            for (let k in names) { has_outbounds = true; break; }
+            if (!has_outbounds) {
+                let count = subscription_source_count(section);
+                for (let i = 1; i <= count; i++) {
+                    let src_path = TMP_SUBSCRIPTION_FOLDER + "/" + source_id(name, i) + ".json";
+                    if (fs.stat(src_path) != null)
+                        return true;
+                }
+            }
+        }
     }
 
     return false;
