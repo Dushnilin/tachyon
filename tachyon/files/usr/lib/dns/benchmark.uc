@@ -27,7 +27,6 @@ const CANDIDATE_SERVERS = [
     // --- Yandex DNS ---
     { id: "yandex_udp", provider: "Yandex", type: "udp", address: "77.88.8.8", ip: "77.88.8.8", tag: "Primary" },
     { id: "yandex_udp2", provider: "Yandex", type: "udp", address: "77.88.8.1", ip: "77.88.8.1", tag: "Secondary" },
-    { id: "yandex_doh", provider: "Yandex", type: "doh", address: "https://common.dot.dns.yandex.net/dns-query", ip: "77.88.8.8", tag: "DoH Encrypted" },
 
     // --- Cloudflare DNS ---
     { id: "cloudflare_udp", provider: "Cloudflare", type: "udp", address: "1.1.1.1", ip: "1.1.1.1", tag: "Primary" },
@@ -39,23 +38,23 @@ const CANDIDATE_SERVERS = [
     { id: "google_udp2", provider: "Google", type: "udp", address: "8.8.4.4", ip: "8.8.4.4", tag: "Secondary" },
     { id: "google_doh", provider: "Google", type: "doh", address: "https://dns.google/dns-query", ip: "8.8.8.8", tag: "DoH Encrypted" },
 
-    // --- Quad9 ---
-    { id: "quad9_udp", provider: "Quad9", type: "udp", address: "9.9.9.9", ip: "9.9.9.9", tag: "Primary" },
-    { id: "quad9_doh", provider: "Quad9", type: "doh", address: "https://dns.quad9.net/dns-query", ip: "9.9.9.9", tag: "DoH Encrypted" },
-
     // --- AdGuard DNS ---
     { id: "adguard_udp", provider: "AdGuard", type: "udp", address: "94.140.14.14", ip: "94.140.14.14", tag: "Default" },
     { id: "adguard_doh", provider: "AdGuard", type: "doh", address: "https://dns.adguard-dns.com/dns-query", ip: "94.140.14.14", tag: "DoH Encrypted" },
 
     // --- Comss.one DNS ---
     { id: "comss_udp", provider: "Comss.one", type: "udp", address: "92.223.109.31", ip: "92.223.109.31", tag: "Anti-Censorship" },
-
-    // --- Mullvad DNS ---
-    { id: "mullvad_udp", provider: "Mullvad", type: "udp", address: "194.242.2.2", ip: "194.242.2.2", tag: "Privacy" },
-    { id: "mullvad_doh", provider: "Mullvad", type: "doh", address: "https://dns.mullvad.net/dns-query", ip: "194.242.2.2", tag: "DoH Encrypted" },
+    { id: "comss_doh", provider: "Comss.one", type: "doh", address: "https://dns.comss.one/dns-query", ip: "92.223.109.31", tag: "DoH Anti-Censorship" },
 
     // --- Control D ---
-    { id: "controld_udp", provider: "Control D", type: "udp", address: "76.76.2.0", ip: "76.76.2.0", tag: "Unfiltered" }
+    { id: "controld_udp", provider: "Control D", type: "udp", address: "76.76.2.0", ip: "76.76.2.0", tag: "Unfiltered" },
+    { id: "controld_doh", provider: "Control D", type: "doh", address: "https://freedns.controld.com/p0", ip: "76.76.2.0", tag: "DoH Encrypted" },
+
+    // --- Quad9 ---
+    { id: "quad9_udp", provider: "Quad9", type: "udp", address: "9.9.9.9", ip: "9.9.9.9", tag: "Primary" },
+
+    // --- Mullvad DNS ---
+    { id: "mullvad_udp", provider: "Mullvad", type: "udp", address: "194.242.2.2", ip: "194.242.2.2", tag: "Privacy" }
 ];
 
 const TEST_DOMAINS = [
@@ -73,6 +72,53 @@ function now_seconds() {
 function has_tool(name) {
     let out = command_output_from_args([ "which", as_string(name) ]);
     return length(out) > 0;
+}
+
+function url_host(url) {
+    let m = match(as_string(url), /^https?:\/\/([^\/:]+)/);
+    return m ? m[1] : "";
+}
+
+function domain_to_doh_b64(domain) {
+    domain = trim(as_string(domain));
+    if (domain == "google.com") return "AAABAAABAAAAAAAABmdvb2dsZQNjb20AAAEAAQ";
+    if (domain == "cloudflare.com") return "AAABAAABAAAAAAAACmNsb3VkZmxhcmUDY29tAAABAAE";
+    if (domain == "wikipedia.org") return "AAABAAABAAAAAAAACXdpa2lwZWRpYQNvcmcAAAEAAQ";
+    if (domain == "yandex.ru") return "AAABAAABAAAAAAAABnlhbmRleAJydQAAAQAB";
+    if (domain == "example.com") return "AAABAAABAAAAAAAAB2V4YW1wbGUDY29tAAABAAE";
+
+    let labels = split(replace(domain, /^\.+|\.+$/, ""), ".");
+    let bytes = [ 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0 ];
+    for (let label in labels) {
+        if (label == "") continue;
+        push(bytes, length(label));
+        for (let i = 0; i < length(label); i++)
+            push(bytes, ord(label, i));
+    }
+    push(bytes, 0, 0, 1, 0, 1);
+
+    let b64chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    let res = "";
+    let i = 0;
+    while (i < length(bytes)) {
+        let b0 = bytes[i];
+        let b1 = i + 1 < length(bytes) ? bytes[i + 1] : 0;
+        let b2 = i + 2 < length(bytes) ? bytes[i + 2] : 0;
+
+        let c0 = (b0 >> 2) & 0x3f;
+        let c1 = (((b0 & 0x03) << 4) | ((b1 >> 4) & 0x0f)) & 0x3f;
+        let c2 = (((b1 & 0x0f) << 2) | ((b2 >> 6) & 0x03)) & 0x3f;
+        let c3 = b2 & 0x3f;
+
+        res += substr(b64chars, c0, 1);
+        res += substr(b64chars, c1, 1);
+        if (i + 1 < length(bytes))
+            res += substr(b64chars, c2, 1);
+        if (i + 2 < length(bytes))
+            res += substr(b64chars, c3, 1);
+        i += 3;
+    }
+    return res;
 }
 
 // Probes a UDP DNS server with `dig` (primary) or `nslookup` (fallback).
@@ -109,18 +155,30 @@ function probe_udp(server_ip, domain) {
     return -1;
 }
 
-// Probes a DoH DNS server using `curl` with application/dns-json.
+// Probes a DoH DNS server using `curl` with standard RFC 8484 DNS wireformat and direct IP resolving.
 // Returns latency in milliseconds, or -1 on failure.
-function probe_doh(doh_url, domain) {
-    doh_url = as_string(doh_url);
+function probe_doh(server, domain) {
+    let doh_url = as_string(type(server) == "object" ? server.address : server);
     domain = as_string(domain);
+    let ip = as_string(type(server) == "object" ? (server.ip || "") : "");
+    let host = url_host(doh_url);
 
-    let query_url = doh_url + (index(doh_url, "?") >= 0 ? "&" : "?") + "name=" + domain + "&type=A";
-    let output = command_output_from_args([
-        "curl", "-s", "-m", "3", "-w", "\n%{http_code} %{time_total}",
-        "-H", "accept: application/dns-json", query_url
-    ]);
+    let b64 = domain_to_doh_b64(domain);
+    let query_url = doh_url + (index(doh_url, "?") >= 0 ? "&" : "?") + "dns=" + b64;
 
+    let args = [
+        "curl", "-s", "-k", "-m", "3", "-w", "\n%{http_code} %{time_total}",
+        "-H", "accept: application/dns-message, application/dns-json"
+    ];
+
+    // Directly resolve host to the provider IP to test DoH over direct UDP bootstrap without local DNS dependency
+    if (host != "" && ip != "") {
+        push(args, "--resolve", host + ":443:" + ip);
+        push(args, "--resolve", host + ":80:" + ip);
+    }
+    push(args, query_url);
+
+    let output = command_output_from_args(args);
     if (length(output) > 0) {
         let lines = split(output, "\n");
         let last_line = length(lines) > 0 ? lines[length(lines) - 1] : "";
@@ -140,7 +198,7 @@ function probe_doh(doh_url, domain) {
 
 function probe_server(server, domain) {
     if (server.type == "doh")
-        return probe_doh(server.address, domain);
+        return probe_doh(server, domain);
     return probe_udp(server.ip || server.address, domain);
 }
 
