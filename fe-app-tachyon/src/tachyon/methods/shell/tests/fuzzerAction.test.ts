@@ -252,4 +252,23 @@ describe('TachyonShellMethods Fuzzer Actions', () => {
       expect(res.data.message).toBe('Patterns reset to factory defaults');
     }
   });
+
+  it('stops running fuzzer', async () => {
+    mocks.executeShellCommand.mockResolvedValueOnce({
+      stdout: JSON.stringify({
+        success: true,
+        message: 'Fuzzer stopped',
+      }),
+      stderr: '',
+      code: 0,
+    });
+
+    const res = await TachyonShellMethods.stopFuzzer();
+    expect(res.success).toBe(true);
+    expect(mocks.executeShellCommand).toHaveBeenCalledWith(
+      expect.objectContaining({
+        args: ['fuzzer_stop'],
+      }),
+    );
+  });
 });

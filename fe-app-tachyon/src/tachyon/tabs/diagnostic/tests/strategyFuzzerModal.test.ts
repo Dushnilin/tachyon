@@ -109,18 +109,17 @@ vi.mock('../../../../helpers', async (importOriginal) => ({
 }));
 
 import { renderStrategyFuzzerModal } from '../partials/renderStrategyFuzzerModal';
+import { TachyonShellMethods } from '../../../methods/shell';
 
 describe('renderStrategyFuzzerModal', () => {
   beforeEach(() => {
     mocks.showModal.mockReset();
-    mocks.executeShellCommand.mockReset();
-    mocks.executeShellCommand.mockResolvedValue({
-      stdout: JSON.stringify({
+    vi.spyOn(TachyonShellMethods, 'getFuzzerStatus').mockResolvedValue({
+      success: true,
+      data: {
         running: false,
         results: [],
-      }),
-      stderr: '',
-      code: 0,
+      } as any,
     });
   });
 
@@ -132,5 +131,42 @@ describe('renderStrategyFuzzerModal', () => {
       '⚡ Strategy Fuzzer & Auto-Tuner',
       expect.anything(),
     );
+  });
+
+  it('handles fuzzer status with successful probe results and best badge', async () => {
+    vi.spyOn(TachyonShellMethods, 'getFuzzerStatus').mockResolvedValue({
+      success: true,
+      data: {
+        running: false,
+        progress_pct: 100,
+        results: [
+          {
+            id: 'z2_fake_repeats8_multisplit',
+            name: 'Burst Fake + Multisplit',
+            engine: 'zapret2',
+            args: '--lua-desync=fake:repeats=8',
+            description: 'PAWS spoofing',
+            success: true,
+            http_code: 204,
+            handshake_ms: 225,
+            ttfb_ms: 271,
+            speed_kbps: 2005,
+            score: 1029,
+            error: '',
+            badge: '🏆 Best Match',
+          },
+        ],
+        best_strategy: {
+          id: 'z2_fake_repeats8_multisplit',
+          score: 1029,
+        },
+      } as any,
+    });
+
+    renderStrategyFuzzerModal(['youtube_rule']);
+
+    expect(mocks.showModal).toHaveBeenCalledTimes(1);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(TachyonShellMethods.getFuzzerStatus).toHaveBeenCalled();
   });
 });

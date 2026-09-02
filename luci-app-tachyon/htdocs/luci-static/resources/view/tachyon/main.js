@@ -13217,20 +13217,52 @@ function renderStrategyFuzzerModal(ruleNames = []) {
     }
     list.forEach((item, idx) => {
       const isBest = state.best_strategy && state.best_strategy.id === item.id;
-      const statusBadge = `<span class="label ${item.success ? "badge-success" : "badge-danger"}" style="font-size: 10px; padding: 2px 6px; border-radius: 3px;">${item.success ? `HTTP ${item.http_code}` : "DROP"}</span>`;
-      let subProbesHtml = "";
+      const nameChildren = [
+        E("span", {}, item.name)
+      ];
+      if (item.badge) {
+        nameChildren.push(
+          E(
+            "span",
+            {
+              style: `font-size: 10px; margin-left: 6px; font-weight: bold; color: ${isBest ? "#28a745" : "#17a2b8"};`
+            },
+            item.badge
+          )
+        );
+      }
+      const statusChildren = [
+        E(
+          "span",
+          {
+            class: `label ${item.success ? "badge-success" : "badge-danger"}`,
+            style: "font-size: 10px; padding: 2px 6px; border-radius: 3px; display: inline-block;"
+          },
+          item.success ? `HTTP ${item.http_code}` : "DROP"
+        )
+      ];
       if (item.sub_probes && item.sub_probes.length > 1) {
         const passedSub = item.sub_probes.filter((p) => p.success).length;
         const totalSub = item.sub_probes.length;
-        subProbesHtml = `<div style="font-size: 10px; opacity: 0.75; margin-top: 2px;">${passedSub}/${totalSub} endpoints OK</div>`;
+        statusChildren.push(
+          E(
+            "div",
+            { style: "font-size: 10px; opacity: 0.75; margin-top: 2px;" },
+            `${passedSub}/${totalSub} endpoints OK`
+          )
+        );
       }
-      let errorHtml = "";
       if (!item.success && item.error) {
-        errorHtml = `<div style="font-size: 10px; color: #dc3545; opacity: 0.85; margin-top: 2px; max-width: 140px; word-break: break-word;" title="${item.error}">${item.error}</div>`;
-      }
-      let badgeHtml = "";
-      if (item.badge) {
-        badgeHtml = `<span style="font-size: 10px; margin-left: 6px; font-weight: bold; color: ${isBest ? "#28a745" : "#17a2b8"};">${item.badge}</span>`;
+        statusChildren.push(
+          E(
+            "div",
+            {
+              style: "font-size: 10px; color: #dc3545; opacity: 0.85; margin-top: 2px; max-width: 140px; word-break: break-word;",
+              title: item.error
+            },
+            item.error
+          )
+        );
       }
       const tr = E(
         "tr",
@@ -13247,10 +13279,7 @@ function renderStrategyFuzzerModal(ruleNames = []) {
             item.engine
           ),
           E("td", { style: "padding: 8px 10px;" }, [
-            E("div", { style: "font-weight: 600;" }, [
-              E("span", {}, item.name),
-              E("span", { innerHTML: badgeHtml })
-            ]),
+            E("div", { style: "font-weight: 600;" }, nameChildren),
             E(
               "div",
               {
@@ -13262,7 +13291,7 @@ function renderStrategyFuzzerModal(ruleNames = []) {
           E(
             "td",
             { style: "padding: 8px 10px;" },
-            E("div", { innerHTML: statusBadge + subProbesHtml + errorHtml })
+            E("div", {}, statusChildren)
           ),
           E(
             "td",
@@ -13315,22 +13344,36 @@ function renderStrategyFuzzerModal(ruleNames = []) {
     }
     if (pctText) pctText.innerText = `${state.progress_pct}%`;
     if (progressBar) progressBar.style.width = `${state.progress_pct}%`;
+    const workingResults = state.results?.filter((r) => r.success) || [];
+    const bestStrategy = state.best_strategy || workingResults[0] || null;
     if (statusText) {
       if (state.running) {
         statusText.innerText = `${_("Testing strategy")} ${state.current_index} / ${state.total_strategies}...`;
-      } else if (state.finished_at > 0) {
-        statusText.innerText = state.best_strategy ? _("\u2705 Benchmark completed! Optimal strategy identified.") : _(
-          "\u26A0\uFE0F Benchmark completed. No working bypass found for this target."
-        );
+      } else if (state.finished_at > 0 || state.results?.length) {
+        if (bestStrategy || workingResults.length > 0) {
+          if (state.error) {
+            statusText.innerText = `${_("\u{1F6D1} Benchmark stopped")}. ${_("Found")} ${workingResults.length} ${_("working strategies")}.`;
+          } else {
+            statusText.innerText = _(
+              "\u2705 Benchmark completed! Optimal strategy identified."
+            );
+          }
+        } else {
+          statusText.innerText = state.error ? `${_("\u26A0\uFE0F Benchmark stopped")}: ${state.error}` : _(
+            "\u26A0\uFE0F Benchmark completed. No working bypass found for this target."
+          );
+        }
       }
     }
-    if (currentStratEl && state.current_strategy) {
-      currentStratEl.innerText = `Testing: [${state.current_strategy.name}] -> ${state.current_strategy.args}`;
-    } else if (currentStratEl && !state.running) {
-      currentStratEl.innerText = "";
+    if (currentStratEl) {
+      if (state.running && state.current_strategy) {
+        currentStratEl.innerText = `Testing: [${state.current_strategy.name}] -> ${state.current_strategy.args}`;
+      } else {
+        currentStratEl.innerText = "";
+      }
     }
-    if (state.best_strategy && applyBestBtn2) {
-      applyBestBtn2.disabled = false;
+    if (applyBestBtn2) {
+      applyBestBtn2.disabled = !bestStrategy;
     }
   };
   let lastRenderedCount = 0;
@@ -13343,6 +13386,15 @@ function renderStrategyFuzzerModal(ruleNames = []) {
       if (res.success && res.data) {
         currentState = res.data;
         isRunning = res.data.running;
+        if (isRunning) {
+          startBtn.innerText = _("\u{1F6D1} Stop Benchmark");
+          startBtn.disabled = false;
+          startPolling();
+        } else {
+          stopPolling();
+          startBtn.innerText = _("\u{1F680} Start Benchmark");
+          startBtn.disabled = false;
+        }
         updateProgressUI(res.data);
         const resultCount = res.data.results?.length || 0;
         const finishedAt = res.data.finished_at || 0;
@@ -13352,9 +13404,6 @@ function renderStrategyFuzzerModal(ruleNames = []) {
           lastRenderedFinishedAt = finishedAt;
         }
         if (!isRunning) {
-          stopPolling();
-          startBtn.innerText = _("\u{1F680} Start Benchmark");
-          startBtn.disabled = false;
           if (autoApplyEnabled && currentState?.best_strategy) {
             try {
               const applyRes = await TachyonShellMethods.autoApplyFuzzerStrategy(
@@ -13448,10 +13497,13 @@ function renderStrategyFuzzerModal(ruleNames = []) {
   };
   const handleToggleRun = async () => {
     if (isRunning) {
+      startBtn.disabled = true;
+      startBtn.innerText = _("\u23F3 Stopping...");
       await TachyonShellMethods.stopFuzzer();
       showToast(_("Benchmark stopped"), "success");
+      isRunning = false;
       stopPolling();
-      pollStatus();
+      await pollStatus();
       return;
     }
     startBtn.disabled = true;
@@ -13596,8 +13648,12 @@ function renderStrategyFuzzerModal(ruleNames = []) {
     }
   };
   const handleApplyBest = async () => {
-    if (!currentState?.best_strategy) return;
-    await handleApplySingle(currentState.best_strategy);
+    const best = currentState?.best_strategy || currentState?.results?.find((r) => r.success);
+    if (!best) {
+      showToast(_("No working strategy to apply"), "error");
+      return;
+    }
+    await handleApplySingle(best);
   };
   TachyonShellMethods.getFuzzerStrategies().then((res) => {
     if (res.success && res.data?.available_engines) {

@@ -1406,8 +1406,12 @@ function kill_pid_file(path) {
     let pid_str = fs.readfile(path);
     if (pid_str) {
         let pid = trim(as_string(pid_str));
-        if (pid != "") {
+        if (pid != "" && match(pid, /^[0-9]+$/) != null) {
             system(sprintf("kill %s >/dev/null 2>&1 || kill -9 %s >/dev/null 2>&1", pid, pid));
+            for (let k = 0; k < 3; k++) {
+                if (system(sprintf("kill -0 %s >/dev/null 2>&1", pid)) != 0) break;
+                system("sleep 0.1");
+            }
         }
         try { fs.unlink(path); } catch (e) {}
     }
@@ -1417,7 +1421,50 @@ function cleanup_temp_daemons() {
     kill_pid_file(STATE_DIR + "/fuzzer_byedpi.pid");
     kill_pid_file(STATE_DIR + "/fuzzer_zapret.pid");
     kill_pid_file(STATE_DIR + "/fuzzer_zapret2.pid");
-    system("nft delete table inet tachyon_fuzzer 2>/dev/null");
+
+    // Directly parse /proc/net/netfilter/nfnetlink_queue to terminate any process bound to fuzzer queues
+    for (let w = 0; w < 5; w++) {
+        let nfq = fs.readfile("/proc/net/netfilter/nfnetlink_queue");
+        let found = false;
+        if (nfq) {
+            let lines = split(trim(nfq), "\n");
+            for (let line in lines) {
+                let cols = split(trim(line), /[ \t]+/);
+                if (length(cols) >= 2) {
+                    let q = int(cols[0]);
+                    let p = int(cols[1]);
+                    if ((q == NFQUEUE_QNUM_ZAPRET || q == NFQUEUE_QNUM_ZAPRET2) && p > 0) {
+                        found = true;
+                        system(sprintf("kill -9 %d >/dev/null 2>&1", p));
+                    }
+                }
+            }
+        }
+        if (!found) break;
+        system("sleep 0.1");
+    }
+
+    // Terminate any stray nfqws / nfqws2 / ciadpi fuzzer daemons
+    let self_pid = fs.readlink("/proc/self");
+    let procs = fs.glob("/proc/[0-9]*");
+    if (procs) {
+        for (let p_dir in procs) {
+            let p_id = replace(p_dir, "/proc/", "");
+            if (p_id != self_pid) {
+                let cmdline = fs.readfile(p_dir + "/cmdline");
+                if (cmdline && (index(cmdline, "nfqws") >= 0 || index(cmdline, "ciadpi") >= 0)) {
+                    if (index(cmdline, "qnum=298") >= 0 || index(cmdline, "qnum=299") >= 0 || index(cmdline, "11089") >= 0) {
+                        system(sprintf("kill -9 %s >/dev/null 2>&1", p_id));
+                    }
+                }
+            }
+        }
+    }
+
+    // Ensure ByeDPI port is released
+    system(sprintf("fuser -k %d/tcp >/dev/null 2>&1", BYEDPI_PORT));
+
+    system("nft delete table inet tachyon_fuzzer >/dev/null 2>&1");
     try { fs.unlink(STATE_DIR + "/fuzzer_daemon_err.log"); } catch (e) {}
 }
 
@@ -1706,16 +1753,26 @@ function run_probe(engine, args_str, target_key, custom_url) {
         
         let pid_path = STATE_DIR + "/fuzzer_byedpi.pid";
         let stderr_log = STATE_DIR + "/fuzzer_daemon_err.log";
+        try { fs.unlink(pid_path); } catch (e) {}
+        try { fs.unlink(stderr_log); } catch (e) {}
+        
         let spawn_cmd = sprintf("cd /tmp && %s -i 127.0.0.1 -p %d %s 2>%s", bin, BYEDPI_PORT, args_str, shell_quote(stderr_log));
         system(common.background_command_with_pid(spawn_cmd, ">/dev/null", ">" + shell_quote(pid_path)));
-        system("sleep 0.25");
         
-        let pid_str = fs.readfile(pid_path);
         let pid_running = false;
-        if (pid_str) {
-            let pid = trim(as_string(pid_str));
-            if (pid != "" && match(pid, /^[0-9]+$/) != null && system(sprintf("kill -0 %s >/dev/null 2>&1", pid)) == 0) {
-                pid_running = true;
+        for (let wait_i = 0; wait_i < 10; wait_i++) {
+            system("sleep 0.1");
+            let pid_str = fs.readfile(pid_path);
+            if (pid_str) {
+                let pid = trim(as_string(pid_str));
+                if (pid != "" && match(pid, /^[0-9]+$/) != null && system(sprintf("kill -0 %s >/dev/null 2>&1", pid)) == 0) {
+                    pid_running = true;
+                    break;
+                }
+            }
+            let err_content = fs.readfile(stderr_log);
+            if (err_content && trim(as_string(err_content)) != "") {
+                break;
             }
         }
         
@@ -1794,11 +1851,14 @@ function run_probe(engine, args_str, target_key, custom_url) {
     }
     
     if (engine == "zapret" || engine == "zapret2") {
+        cleanup_temp_daemons();
         let is_z2 = engine == "zapret2";
         let bin = is_z2 ? get_zapret2_bin() : get_zapret_bin();
         let qnum = is_z2 ? NFQUEUE_QNUM_ZAPRET2 : NFQUEUE_QNUM_ZAPRET;
         let pid_path = is_z2 ? (STATE_DIR + "/fuzzer_zapret2.pid") : (STATE_DIR + "/fuzzer_zapret.pid");
         let stderr_log = STATE_DIR + "/fuzzer_daemon_err.log";
+        try { fs.unlink(pid_path); } catch (e) {}
+        try { fs.unlink(stderr_log); } catch (e) {}
         
         if (!bin) {
             result.error = (is_z2 ? "Zapret v2" : "Zapret v1") + " binary not found";
@@ -1822,14 +1882,21 @@ function run_probe(engine, args_str, target_key, custom_url) {
         
         let spawn_cmd = sprintf("cd /tmp && %s --qnum=%d --fwmark=%s %s%s%s%s --pidfile=%s --daemon 2>%s", bin, qnum, FUZZER_FWMARK, lua_init_flags, blob_flags, filter_prefix, args_str, pid_path, shell_quote(stderr_log));
         system(common.background_command(spawn_cmd));
-        system("sleep 0.25");
         
-        let pid_str = fs.readfile(pid_path);
         let pid_running = false;
-        if (pid_str) {
-            let pid = trim(as_string(pid_str));
-            if (pid != "" && match(pid, /^[0-9]+$/) != null && system(sprintf("kill -0 %s >/dev/null 2>&1", pid)) == 0) {
-                pid_running = true;
+        for (let wait_i = 0; wait_i < 10; wait_i++) {
+            system("sleep 0.1");
+            let pid_str = fs.readfile(pid_path);
+            if (pid_str) {
+                let pid = trim(as_string(pid_str));
+                if (pid != "" && match(pid, /^[0-9]+$/) != null && system(sprintf("kill -0 %s >/dev/null 2>&1", pid)) == 0) {
+                    pid_running = true;
+                    break;
+                }
+            }
+            let err_content = fs.readfile(stderr_log);
+            if (err_content && trim(as_string(err_content)) != "") {
+                break;
             }
         }
         
@@ -1909,11 +1976,38 @@ function run_probe(engine, args_str, target_key, custom_url) {
     return result;
 }
 
-function run_fuzzer_worker(engine, target, custom_url, rule_section, custom_file, mode) {
+function run_fuzzer_worker(engine, target, custom_url, rule_section, custom_file, mode, job_id) {
     let target_url = resolve_target_url(target, custom_url);
+
+    let state = get_fuzzer_state();
+    if (!state.running || (job_id && state.job_id != job_id)) {
+        state = {
+            running: true,
+            job_id: job_id || sprintf("fuzz_%d", clock()[0]),
+            engine,
+            target,
+            target_url,
+            mode: as_string(mode || "presets"),
+            rule_section: as_string(rule_section),
+            custom_file: as_string(custom_file || ""),
+            progress_pct: 0,
+            current_index: 0,
+            total_strategies: 0,
+            current_strategy: { name: "Initializing DPI detection...", args: "" },
+            results: [],
+            best_strategy: null,
+            error: null,
+            started_at: clock()[0],
+            finished_at: 0,
+            dpi_detection: null
+        };
+        save_fuzzer_state(state);
+    }
 
     // ── Pre-fuzz DPI detection ────────────────────────────────────────────
     let dpi_detection = detect_dpi_type(target, custom_url);
+    state.dpi_detection = dpi_detection;
+    save_fuzzer_state(state);
 
     let strategies = null;
     if (custom_file && custom_file != "" && fs.stat(custom_file) != null) {
@@ -1927,28 +2021,7 @@ function run_fuzzer_worker(engine, target, custom_url, rule_section, custom_file
     strategies = rerank_strategies_by_dpi(strategies, dpi_detection);
 
     let total = length(strategies);
-    
-    let state = {
-        running: true,
-        job_id: sprintf("fuzz_%d", clock()[0]),
-        engine,
-        target,
-        target_url,
-        mode: as_string(mode || "presets"),
-        rule_section: as_string(rule_section),
-        custom_file: as_string(custom_file || ""),
-        progress_pct: 0,
-        current_index: 0,
-        total_strategies: total,
-        current_strategy: null,
-        results: [],
-        best_strategy: null,
-        error: null,
-        started_at: clock()[0],
-        finished_at: 0,
-        dpi_detection: dpi_detection
-    };
-    
+    state.total_strategies = total;
     save_fuzzer_state(state);
     
     try {
@@ -1988,6 +2061,8 @@ function run_fuzzer_worker(engine, target, custom_url, rule_section, custom_file
             if (item_result.score > highest_score && item_result.success) {
                 highest_score = item_result.score;
                 best = item_result;
+                item_result.badge = "🏆 Best Match";
+                state.best_strategy = item_result;
             }
             
             push(state.results, item_result);
@@ -2042,37 +2117,27 @@ function run_fuzzer_worker(engine, target, custom_url, rule_section, custom_file
         });
     } catch (err) {
         state.running = false;
+        state.current_strategy = null;
         state.error = as_string(err);
         state.finished_at = clock()[0];
+        if (!state.best_strategy && state.results) {
+            let max_score = -1;
+            let best_item = null;
+            for (let r in state.results) {
+                if (r.success && r.score > max_score) {
+                    max_score = r.score;
+                    best_item = r;
+                }
+            }
+            if (best_item) {
+                best_item.badge = "🏆 Best Match";
+                state.best_strategy = best_item;
+            }
+        }
         save_fuzzer_state(state);
     }
     
     cleanup_temp_daemons();
-}
-
-function start_fuzzer(engine, target, custom_url, rule_section, custom_file, mode) {
-    let current = get_fuzzer_state();
-    if (current.running) {
-        print(sprintf("%J\n", { success: false, error: "Fuzzer is already running", job_id: current.job_id }));
-        return;
-    }
-    
-    ensure_state_dir();
-    
-    let job_id = sprintf("fuzz_%d", clock()[0]);
-    let cmd = sprintf(
-        "ucode -L /usr/lib/tachyon /usr/lib/tachyon/diagnostics/fuzzer.uc worker %s %s %s %s %s %s",
-        shell_quote(engine || "zapret2"),
-        shell_quote(target || "youtube_suite"),
-        shell_quote(custom_url || ""),
-        shell_quote(rule_section || ""),
-        shell_quote(custom_file || ""),
-        shell_quote(mode || "presets")
-    );
-    
-    system(common.background_command_with_pid(cmd, ">/dev/null", ">" + shell_quote(PID_FILE)));
-    
-    print(sprintf("%J\n", { success: true, job_id, engine: engine || "zapret2", target: target || "youtube_suite", mode: mode || "presets" }));
 }
 
 function stop_fuzzer() {
@@ -2081,11 +2146,77 @@ function stop_fuzzer() {
     
     let state = get_fuzzer_state();
     state.running = false;
+    state.current_strategy = null;
     state.error = "Stopped by user";
     state.finished_at = clock()[0];
+    if (!state.best_strategy && state.results) {
+        let max_score = -1;
+        let best_item = null;
+        for (let r in state.results) {
+            if (r.success && r.score > max_score) {
+                max_score = r.score;
+                best_item = r;
+            }
+        }
+        if (best_item) {
+            best_item.badge = "🏆 Best Match";
+            state.best_strategy = best_item;
+        }
+    }
     save_fuzzer_state(state);
     
     print(sprintf("%J\n", { success: true, message: "Fuzzer stopped" }));
+}
+
+function start_fuzzer(engine, target, custom_url, rule_section, custom_file, mode) {
+    let current = get_fuzzer_state();
+    if (current.running) {
+        stop_fuzzer();
+        system("sleep 0.25");
+    }
+    
+    ensure_state_dir();
+    cleanup_temp_daemons();
+    
+    let job_id = sprintf("fuzz_%d", clock()[0]);
+
+    // Immediately write starting state to prevent race conditions during frontend polling
+    let state = {
+        running: true,
+        job_id: job_id,
+        engine: engine || "zapret2",
+        target: target || "youtube_suite",
+        target_url: resolve_target_url(target, custom_url),
+        mode: as_string(mode || "presets"),
+        rule_section: as_string(rule_section),
+        custom_file: as_string(custom_file || ""),
+        progress_pct: 0,
+        current_index: 0,
+        total_strategies: 0,
+        current_strategy: { name: "Initializing DPI detection...", args: "" },
+        results: [],
+        best_strategy: null,
+        error: null,
+        started_at: clock()[0],
+        finished_at: 0,
+        dpi_detection: null
+    };
+    save_fuzzer_state(state);
+    
+    let cmd = sprintf(
+        "ucode -L /usr/lib/tachyon /usr/lib/tachyon/diagnostics/fuzzer.uc worker %s %s %s %s %s %s %s",
+        shell_quote(engine || "zapret2"),
+        shell_quote(target || "youtube_suite"),
+        shell_quote(custom_url || ""),
+        shell_quote(rule_section || ""),
+        shell_quote(custom_file || ""),
+        shell_quote(mode || "presets"),
+        shell_quote(job_id)
+    );
+    
+    system(common.background_command_with_pid(cmd, ">/dev/null", ">" + shell_quote(PID_FILE)));
+    
+    print(sprintf("%J\n", { success: true, job_id, engine: engine || "zapret2", target: target || "youtube_suite", mode: mode || "presets" }));
 }
 
 function get_available_engines() {
@@ -2179,7 +2310,7 @@ let op = ARGV[0] || "status";
 if (op == "start") {
     start_fuzzer(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5], ARGV[6]);
 } else if (op == "worker") {
-    run_fuzzer_worker(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5], ARGV[6]);
+    run_fuzzer_worker(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5], ARGV[6], ARGV[7]);
 } else if (op == "status") {
     print(sprintf("%J\n", get_fuzzer_state()));
 } else if (op == "stop") {
