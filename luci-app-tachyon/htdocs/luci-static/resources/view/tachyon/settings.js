@@ -1409,6 +1409,13 @@ function createSettingsContent(section, capabilities) {
   fallbackDnsOption.validate = function (_section_id, value) {
     const normalized = `${value || ""}`.trim();
     if (!normalized) return true; // allow empty list
+    // Fallback servers are plain-UDP only — reject DoH/DoT/DoQ URLs and
+    // path-style DoH (e.g. "cloudflare-dns.com/dns-query"). This mirrors
+    // the backend validator.uc check so the user gets immediate feedback.
+    if (normalized.includes("://"))
+      return _("Fallback DNS servers must be plain UDP (IP or hostname). DoH/DoT URLs are not allowed here.");
+    if (normalized.includes("/"))
+      return _("Fallback DNS servers must be plain UDP (IP or hostname). Path-style DoH (e.g. domain/path) is not allowed here.");
     const validation = main.validateDNS(normalized);
     return validation.valid ? true : validation.message;
   };

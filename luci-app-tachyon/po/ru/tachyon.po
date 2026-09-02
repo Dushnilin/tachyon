@@ -1739,6 +1739,12 @@ msgstr "FakeTLS host"
 msgid "Fallback DNS Servers"
 msgstr "Резервные DNS серверы"
 
+msgid "Fallback DNS servers must be plain UDP (IP or hostname). DoH/DoT URLs are not allowed here."
+msgstr "Резервные DNS серверы должны быть обычными UDP (IP или hostname). Ссылки DoH/DoT здесь недопустимы."
+
+msgid "Fallback DNS servers must be plain UDP (IP or hostname). Path-style DoH (e.g. domain/path) is not allowed here."
+msgstr "Резервные DNS серверы должны быть обычными UDP (IP или hostname). Формат DoH с путём (например, domain/path) здесь недопустим."
+
 msgid "Fallback on unknown DC"
 msgstr "Fallback при неизвестном DC"
 
