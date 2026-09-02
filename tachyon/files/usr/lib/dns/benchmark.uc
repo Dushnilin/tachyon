@@ -10,11 +10,13 @@ let write_json_file = common.write_json_file;
 let command_output_from_args = common.command_output_from_args;
 let command_status_from_args = common.command_status_from_args;
 let command_success_from_args = common.command_success_from_args;
+let command_from_args = common.command_from_args;
 let shell_quote = common.shell_quote;
 let object_or_empty = common.object_or_empty;
 let array_or_empty = common.array_or_empty;
 let option = common.option;
 let list_option = common.list_option;
+let normalize_status = common.normalize_status;
 
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
 const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
@@ -27,7 +29,6 @@ const CANDIDATE_SERVERS = [
     // --- Yandex DNS ---
     { id: "yandex_udp", provider: "Yandex", type: "udp", address: "77.88.8.8", ip: "77.88.8.8", tag: "Primary" },
     { id: "yandex_udp2", provider: "Yandex", type: "udp", address: "77.88.8.1", ip: "77.88.8.1", tag: "Secondary" },
-    { id: "yandex_doh", provider: "Yandex", type: "doh", address: "https://common.dot.yandex.net/dns-query", ip: "77.88.8.8", tag: "DoH Basic" },
 
     // --- Cloudflare DNS ---
     { id: "cloudflare_udp", provider: "Cloudflare", type: "udp", address: "1.1.1.1", ip: "1.1.1.1", tag: "Primary" },
@@ -66,9 +67,7 @@ const CANDIDATE_SERVERS = [
 
 const TEST_DOMAINS = [
     "google.com",
-    "yandex.ru",
-    "cloudflare.com",
-    "wikipedia.org"
+    "yandex.ru"
 ];
 
 function now_seconds() {
@@ -128,39 +127,59 @@ function domain_to_doh_b64(domain) {
     return res;
 }
 
-// Resolves a hostname via a specific bootstrap UDP server.
-function resolve_host_via_bootstrap(host, bootstrap_ip) {
+let resolved_hosts_cache = {};
+
+// Resolves a hostname via a specific bootstrap UDP server with cache and fast fallback.
+function resolve_host_via_bootstrap(host, bootstrap_ip, fallback_ip) {
     host = as_string(host);
     bootstrap_ip = as_string(bootstrap_ip);
+    fallback_ip = as_string(fallback_ip);
 
     if (match(host, /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/))
         return host;
 
+    let cache_key = host + "@" + bootstrap_ip;
+    if (resolved_hosts_cache[cache_key])
+        return resolved_hosts_cache[cache_key];
+
     if (has_tool("dig")) {
         let output = command_output_from_args([
-            "dig", "@" + bootstrap_ip, host, "A", "+short", "+time=2", "+tries=1"
+            "dig", "@" + bootstrap_ip, host, "A", "+short", "+time=1", "+tries=1"
         ]);
         if (length(output) > 0) {
             let lines = split(output, "\n");
             for (let line in lines) {
                 line = trim(line);
-                if (match(line, /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/))
+                if (match(line, /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/)) {
+                    resolved_hosts_cache[cache_key] = line;
                     return line;
+                }
             }
         }
     }
 
-    let output = command_output_from_args([ "nslookup", host, bootstrap_ip ]);
-    if (length(output) > 0) {
-        let lines = split(output, "\n");
-        for (let line in lines) {
-            let m = match(line, /Address(?:es)?:[ \t]+([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)/);
-            if (m && m[1] != null && m[1] != bootstrap_ip)
-                return m[1];
+    if (has_tool("nslookup")) {
+        let output = command_output_from_args([ "nslookup", host, bootstrap_ip ]);
+        if (length(output) > 0) {
+            let lines = split(output, "\n");
+            for (let line in lines) {
+                let m = match(line, /Address(?:es)?(?:[ \t]+[0-9]+)?:[ \t]+([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)/);
+                if (m && m[1] != null && m[1] != bootstrap_ip) {
+                    resolved_hosts_cache[cache_key] = m[1];
+                    return m[1];
+                }
+            }
+            let m2 = match(output, /Name:[ \t]+[^\n]+\nAddress(?:[ \t]+[0-9]+)?:[ \t]+([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)/);
+            if (m2 && m2[1] != null && m2[1] != bootstrap_ip) {
+                resolved_hosts_cache[cache_key] = m2[1];
+                return m2[1];
+            }
         }
-        let m2 = match(output, /Name:[ \t]+[^\n]+\nAddress:[ \t]+([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)/);
-        if (m2 && m2[1] != null)
-            return m2[1];
+    }
+
+    if (fallback_ip != "") {
+        resolved_hosts_cache[cache_key] = fallback_ip;
+        return fallback_ip;
     }
 
     return null;
@@ -174,10 +193,9 @@ function probe_udp(server_ip, domain) {
 
     if (has_tool("dig")) {
         let output = command_output_from_args([
-            "dig", "@" + server_ip, domain, "A", "+time=2", "+tries=1", "+stats"
+            "dig", "@" + server_ip, domain, "A", "+time=1", "+tries=1", "+stats"
         ]);
         if (length(output) > 0) {
-            // Check for valid response status
             if (index(output, "status: NOERROR") >= 0 || index(output, "status: NXDOMAIN") >= 0) {
                 let m = match(output, /;; Query time:[ \t]+([0-9]+)[ \t]+msec/);
                 if (m && m[1] != null) {
@@ -200,33 +218,19 @@ function probe_udp(server_ip, domain) {
     return -1;
 }
 
-// Probes a DoH DNS server using `curl` with standard RFC 8484 DNS wireformat and bootstrap IP resolving.
+// Probes a DoH DNS server using `curl` with standard RFC 8484 DNS wireformat.
 // Returns latency in milliseconds, or -1 on failure.
-function probe_doh(server, domain, bootstrap_ips) {
+function probe_doh(server, domain, resolved_ip) {
     let doh_url = as_string(type(server) == "object" ? server.address : server);
     domain = as_string(domain);
-    let fallback_ip = as_string(type(server) == "object" ? (server.ip || "") : "");
     let host = url_host(doh_url);
-
-    // Resolve DoH host using verified bootstrap DNS servers (cascade)
-    let resolved_ip = null;
-    bootstrap_ips = array_or_empty(bootstrap_ips);
-    for (let b_ip in bootstrap_ips) {
-        b_ip = as_string(b_ip);
-        if (b_ip != "") {
-            resolved_ip = resolve_host_via_bootstrap(host, b_ip);
-            if (resolved_ip != null)
-                break;
-        }
-    }
-    if (resolved_ip == null)
-        resolved_ip = fallback_ip;
+    resolved_ip = as_string(resolved_ip);
 
     let b64 = domain_to_doh_b64(domain);
     let query_url = doh_url + (index(doh_url, "?") >= 0 ? "&" : "?") + "dns=" + b64;
 
     let args = [
-        "curl", "-s", "-k", "-m", "3", "-w", "\n%{http_code} %{time_total}",
+        "curl", "-s", "-k", "-m", "2", "--connect-timeout", "2", "-w", "\n%{http_code} %{time_total}",
         "-H", "accept: application/dns-message, application/dns-json"
     ];
 
@@ -254,20 +258,35 @@ function probe_doh(server, domain, bootstrap_ips) {
     return -1;
 }
 
-function probe_server(server, domain, bootstrap_ips) {
-    if (server.type == "doh")
-        return probe_doh(server, domain, bootstrap_ips);
-    return probe_udp(server.ip || server.address, domain);
-}
-
 function test_candidate(server, domains, bootstrap_ips) {
     domains = array_or_empty(domains);
     let total_ms = 0;
     let success_count = 0;
     let total_rounds = length(domains);
 
+    let resolved_ip = "";
+    if (server.type == "doh") {
+        let host = url_host(server.address);
+        bootstrap_ips = array_or_empty(bootstrap_ips);
+        for (let b_ip in bootstrap_ips) {
+            b_ip = as_string(b_ip);
+            if (b_ip != "") {
+                resolved_ip = resolve_host_via_bootstrap(host, b_ip, server.ip || "");
+                if (resolved_ip != null && resolved_ip != "")
+                    break;
+            }
+        }
+        if (resolved_ip == "" || resolved_ip == null)
+            resolved_ip = as_string(server.ip || "");
+    }
+
     for (let domain in domains) {
-        let ms = probe_server(server, domain, bootstrap_ips);
+        let ms = -1;
+        if (server.type == "doh")
+            ms = probe_doh(server, domain, resolved_ip);
+        else
+            ms = probe_udp(server.ip || server.address, domain);
+
         if (ms >= 0) {
             total_ms += ms;
             success_count++;
