@@ -331,6 +331,27 @@ function cache_keep_sets(sections) {
     return keep;
 }
 
+function section_cache_has_outbounds(section_cache_path) {
+    let data = read_json_file(section_cache_path);
+    if (type(data) != "object")
+        return false;
+    let names = object_or_empty(object_or_empty(data.outboundMetadata).names);
+    for (let k in names)
+        return true;
+    return false;
+}
+
+function section_has_source_cache(name, section) {
+    let count = subscription_source_count(section);
+    for (let i = 1; i <= count; i++) {
+        let source = source_id(name, i);
+        let json_path = source_json_path(TMP_SUBSCRIPTION_FOLDER, source);
+        if (subscription_cache_is_usable(json_path))
+            return true;
+    }
+    return false;
+}
+
 function runtime_cache_missing(sections, section_cache_dir) {
     section_cache_dir = as_string(section_cache_dir);
 
@@ -341,7 +362,13 @@ function runtime_cache_missing(sections, section_cache_dir) {
             continue;
         if (!cache_section_is_safe(name))
             continue;
-        if (fs.stat(section_cache_dir + "/" + name + ".json") == null)
+        let cache_path = section_cache_dir + "/" + name + ".json";
+        if (fs.stat(cache_path) == null)
+            return true;
+        // Section-cache exists but has no outbounds — this happens when a new
+        // subscription section was generated before its source data was downloaded.
+        // If source data is now available, rebuild so servers appear in the UI.
+        if (!section_cache_has_outbounds(cache_path) && section_has_source_cache(name, section))
             return true;
     }
 
