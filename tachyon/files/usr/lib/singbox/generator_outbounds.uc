@@ -1206,12 +1206,8 @@ function add_connections_outbound(config, section, taken) {
     add_connection_interfaces(config, state, section, taken, selector_tags, urltest_candidate_tags);
     add_connection_json_outbounds(config, state, section, taken, selector_tags, urltest_candidate_tags);
 
-    if (length(selector_tags) == 0) {
-        push(selector_tags, runtime_constants.DIRECT_OUTBOUND_TAG);
-        push(urltest_candidate_tags, runtime_constants.DIRECT_OUTBOUND_TAG);
-        state.outboundMetadata.names[runtime_constants.DIRECT_OUTBOUND_TAG] = "Direct";
-        warn("Connection section " + section_name + " has no cached servers yet; using direct fallback while subscription is downloading\n");
-    }
+    if (length(selector_tags) == 0)
+        ctx.runtime_generate_unsupported("connection section has no usable outbounds");
 
     if (ctx.routes.section_needs_country_is(section)) {
         let previous_state = read_json_file(runtime_subscription.section_cache_path(section_name));
