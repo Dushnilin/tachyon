@@ -177,13 +177,24 @@ export function renderStrategyFuzzerModal(ruleNames: string[] = []) {
       E(
         'option',
         { value: 'youtube_suite', selected: true },
-        _('🎬 YouTube Suite (Web + 4K Stream)'),
+        _('🎬 YouTube Full Suite (Web + 4K Stream + CDN)'),
       ),
       E(
         'option',
         { value: 'discord_suite' },
-        _('💬 Discord Suite (API + WSS + CDN)'),
+        _('💬 Discord Suite (Gateway + Voice + CDN)'),
       ),
+      E(
+        'option',
+        { value: 'twitch_suite' },
+        _('🟣 Twitch Suite (Live Stream + HLS CDN)'),
+      ),
+      E(
+        'option',
+        { value: 'twitter_suite' },
+        _('🐦 X / Twitter Suite (API + Media CDN)'),
+      ),
+      E('option', { value: 'chatgpt_suite' }, _('🤖 ChatGPT / OpenAI Suite')),
       E(
         'option',
         { value: 'instagram_suite' },
@@ -240,12 +251,12 @@ export function renderStrategyFuzzerModal(ruleNames: string[] = []) {
       E(
         'option',
         { value: 'presets', selected: true },
-        _('⚡ Quick Benchmark (Presets ~12-14)'),
+        _('⚡ Quick Benchmark (Presets ~30+)'),
       ),
       E(
         'option',
         { value: 'combinatorial' },
-        _('🔍 Combinatorial Deep Fuzzing (~40-80+)'),
+        _('🔍 Combinatorial Deep Fuzzing (~150-300+)'),
       ),
       E('option', { value: 'custom' }, _('🛠️ My Custom Strategies Only')),
     ],

@@ -870,6 +870,9 @@ export namespace Tachyon {
     | 'youtube_web'
     | 'discord_suite'
     | 'discord'
+    | 'twitch_suite'
+    | 'twitter_suite'
+    | 'chatgpt_suite'
     | 'instagram_suite'
     | 'instagram'
     | 'rutracker_suite'
@@ -887,6 +890,7 @@ export namespace Tachyon {
     engine: 'zapret2' | 'zapret' | 'byedpi';
     args: string;
     description: string;
+    rationale?: string;
   }
 
   export type FuzzerStrategyDefinition = FuzzerStrategyItem;
@@ -908,6 +912,7 @@ export namespace Tachyon {
     engine: 'zapret2' | 'zapret' | 'byedpi';
     args: string;
     description: string;
+    rationale?: string;
     success: boolean;
     http_code: number;
     handshake_ms: number;
@@ -916,17 +921,28 @@ export namespace Tachyon {
     score: number;
     error?: string;
     badge?: string;
-    sub_probes?: FuzzerSubProbeResult[];
+    sub_probes?: Array<{
+      target_name: string;
+      url: string;
+      http_code: number;
+      handshake_ms: number;
+      ttfb_ms: number;
+      speed_kbps: number;
+      score: number;
+      success: boolean;
+      error?: string;
+    }>;
   }
 
   export interface FuzzerState {
     running: boolean;
-    job_id: string;
-    engine: FuzzerEngine;
-    target: FuzzerTarget;
+    job_id?: string | null;
+    engine: string;
+    target: string;
     target_url: string;
-    mode?: FuzzerMode | string;
-    rule_section?: string;
+    mode: string;
+    rule_section: string;
+    custom_file?: string;
     progress_pct: number;
     current_index: number;
     total_strategies: number;
@@ -981,6 +997,9 @@ export namespace Tachyon {
       seqovls: string[];
       wsizes: string[];
       payloads: string[];
+      blobs?: string[];
+      syndata?: boolean;
+      repeats?: number[];
     };
     zapret: {
       splits: string[];
