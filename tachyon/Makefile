@@ -96,6 +96,17 @@ define Package/tachyon/postinst
 
 [ -n "$${IPKG_INSTROOT}" ] && exit 0
 
+# Stop and disable legacy forkop / podkop services to prevent boot conflicts
+for legacy_svc in podkop forkop podkop_plus forkop_plus; do
+	if [ -f "/etc/init.d/$${legacy_svc}" ]; then
+		"/etc/init.d/$${legacy_svc}" stop >/dev/null 2>&1 || true
+		"/etc/init.d/$${legacy_svc}" disable >/dev/null 2>&1 || true
+	fi
+done
+rm -f /etc/rc.d/*podkop* /etc/rc.d/*forkop* 2>/dev/null || true
+nft delete table inet podkop >/dev/null 2>&1 || true
+nft delete table inet forkop >/dev/null 2>&1 || true
+
 # Clean up legacy forkop package files
 rm -rf /usr/lib/lua/luci/i18n/forkop.* /www/luci-static/resources/i18n/forkop.* \
        /usr/share/luci/menu.d/luci-app-forkop.json /usr/share/rpcd/acl.d/luci-app-forkop.json \
@@ -117,6 +128,9 @@ elif [ -f /etc/config/podkop_plus ]; then
 else
 	TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate
 fi
+
+# Ensure autostart is enabled
+/etc/init.d/tachyon enable >/dev/null 2>&1 || true
 
 /usr/bin/tachyon package_postinst
 

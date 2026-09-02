@@ -635,6 +635,18 @@ function add_priority_group_outbound(config, section, group_id, urltest_candidat
     };
 }
 
+function is_valid_detour(config, tag) {
+    if (tag == null || tag == "")
+        return false;
+    if (tag == runtime_constants.DIRECT_OUTBOUND_TAG || tag == runtime_constants.BYPASS_OUTBOUND_TAG)
+        return true;
+    for (let out in array_or_empty(config.outbounds)) {
+        if (type(out) == "object" && out.tag == tag)
+            return true;
+    }
+    return false;
+}
+
 function add_proxy_selector(config, section, selector_tags, urltest_candidate_tags, state) {
     let section_name = section[".name"];
     let selector_tag = outbound_tag(section_name);
@@ -680,8 +692,18 @@ function add_proxy_selector(config, section, selector_tags, urltest_candidate_ta
         selector_default = length(urltest_tags) > 0 ? urltest_tags[0] : priority_tags[0];
     }
 
-    if (length(selector_outbounds) == 0)
-        ctx.runtime_generate_unsupported("dashboard server filtering produced no usable outbounds");
+    if (length(selector_outbounds) == 0) {
+        if (length(selector_tags) > 0) {
+            selector_outbounds = selector_tags;
+            selector_default = selector_outbounds[0];
+            warn("Section " + section_name + ": server filtering produced no matches, falling back to all available subscription servers\n");
+        }
+        else {
+            selector_outbounds = [ runtime_constants.DIRECT_OUTBOUND_TAG ];
+            selector_default = runtime_constants.DIRECT_OUTBOUND_TAG;
+            warn("Section " + section_name + ": subscription has no loaded servers yet, using direct fallback until cache is populated\n");
+        }
+    }
 
     push(config.outbounds, {
         type: "selector",
@@ -707,7 +729,7 @@ function ensure_custom_ruleset(config, reference) {
                 url: runtime_rulesets.community_url(reference)
             };
             let detour = ctx.download_detour_tag(ctx.runtime_settings());
-            if (detour != "")
+            if (is_valid_detour(config, detour))
                 rule_set.download_detour = detour;
             rule_set.update_interval = remote_ruleset_update_interval();
             push(config.route.rule_set, rule_set);
@@ -743,7 +765,7 @@ function ensure_custom_ruleset(config, reference) {
             url: reference
         };
         let detour = ctx.download_detour_tag(ctx.runtime_settings());
-        if (detour != "")
+        if (is_valid_detour(config, detour))
             rule_set.download_detour = detour;
         rule_set.update_interval = remote_ruleset_update_interval();
         push(config.route.rule_set, rule_set);
@@ -796,7 +818,7 @@ function ensure_community_ruleset(config, section_name, community) {
                     detour = sec_out;
                 }
             }
-            if (detour != "")
+            if (is_valid_detour(config, detour))
                 rule_set.download_detour = detour;
             push(config.route.rule_set, rule_set);
         }

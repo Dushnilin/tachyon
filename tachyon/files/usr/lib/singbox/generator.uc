@@ -321,21 +321,26 @@ function download_via_proxy_section(settings, purpose) {
     if (enabled_option == "" || !bool_option(settings, enabled_option, false))
         return "";
 
+    let all_enabled = type(enabled_sections) == "function" ? enabled_sections() : [];
+    let valid_proxy_sections = {};
+    for (let s in all_enabled) {
+        let act = option(s, "action", "");
+        if (act != "bypass" && act != "block" && act != "dns" && act != "hosts" && act != "")
+            valid_proxy_sections[s[".name"]] = true;
+    }
+
     let section_option = download_via_proxy_section_option_for_purpose(purpose);
     let configured = section_option != "" ? option(settings, section_option, "") : "";
-    if (configured != "")
+    if (configured != "" && valid_proxy_sections[configured])
         return configured;
 
     let fallback_configured = option(settings, "download_lists_via_proxy_section", "");
-    if (fallback_configured != "")
+    if (fallback_configured != "" && valid_proxy_sections[fallback_configured])
         return fallback_configured;
 
-    if (type(enabled_sections) == "function") {
-        for (let s in enabled_sections()) {
-            let act = option(s, "action", "");
-            if (act != "bypass" && act != "block" && act != "dns" && act != "")
-                return s[".name"];
-        }
+    for (let s in all_enabled) {
+        if (valid_proxy_sections[s[".name"]])
+            return s[".name"];
     }
     return "";
 }
