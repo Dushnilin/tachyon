@@ -332,13 +332,11 @@ function cache_keep_sets(sections) {
 }
 
 function section_cache_has_outbounds(section_cache_path) {
-    let data = read_json_file(section_cache_path);
+    let data = read_json(section_cache_path);
     if (type(data) != "object")
         return false;
     let names = object_or_empty(object_or_empty(data.outboundMetadata).names);
-    for (let k in names)
-        return true;
-    return false;
+    return object_key_count(names) > 0;
 }
 
 function section_has_source_cache(name, section) {
