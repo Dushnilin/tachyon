@@ -27,6 +27,7 @@ const CANDIDATE_SERVERS = [
     // --- Yandex DNS ---
     { id: "yandex_udp", provider: "Yandex", type: "udp", address: "77.88.8.8", ip: "77.88.8.8", tag: "Primary" },
     { id: "yandex_udp2", provider: "Yandex", type: "udp", address: "77.88.8.1", ip: "77.88.8.1", tag: "Secondary" },
+    { id: "yandex_doh", provider: "Yandex", type: "doh", address: "https://common.dot.yandex.net/dns-query", ip: "77.88.8.8", tag: "DoH Basic" },
 
     // --- Cloudflare DNS ---
     { id: "cloudflare_udp", provider: "Cloudflare", type: "udp", address: "1.1.1.1", ip: "1.1.1.1", tag: "Primary" },
@@ -40,7 +41,7 @@ const CANDIDATE_SERVERS = [
 
     // --- AdGuard DNS ---
     { id: "adguard_udp", provider: "AdGuard", type: "udp", address: "94.140.14.14", ip: "94.140.14.14", tag: "Default" },
-    { id: "adguard_doh", provider: "AdGuard", type: "doh", address: "https://dns.adguard-dns.com/dns-query", ip: "94.140.14.14", tag: "DoH Encrypted" },
+    { id: "adguard_doh", provider: "AdGuard", type: "doh", address: "https://dns.adguard-dns.com/dns-query", ip: "94.140.14.14", tag: "DoH AdBlock" },
 
     // --- Comss.one DNS ---
     { id: "comss_udp", provider: "Comss.one", type: "udp", address: "92.223.109.31", ip: "92.223.109.31", tag: "Anti-Censorship" },
@@ -52,9 +53,15 @@ const CANDIDATE_SERVERS = [
 
     // --- Quad9 ---
     { id: "quad9_udp", provider: "Quad9", type: "udp", address: "9.9.9.9", ip: "9.9.9.9", tag: "Primary" },
+    { id: "quad9_doh", provider: "Quad9", type: "doh", address: "https://dns.quad9.net/dns-query", ip: "9.9.9.9", tag: "DoH Secure" },
 
     // --- Mullvad DNS ---
-    { id: "mullvad_udp", provider: "Mullvad", type: "udp", address: "194.242.2.2", ip: "194.242.2.2", tag: "Privacy" }
+    { id: "mullvad_udp", provider: "Mullvad", type: "udp", address: "194.242.2.2", ip: "194.242.2.2", tag: "Privacy" },
+    { id: "mullvad_doh", provider: "Mullvad", type: "doh", address: "https://dns.mullvad.net/dns-query", ip: "194.242.2.2", tag: "DoH Privacy" },
+
+    // --- OpenDNS ---
+    { id: "opendns_udp", provider: "OpenDNS", type: "udp", address: "208.67.222.222", ip: "208.67.222.222", tag: "Standard" },
+    { id: "opendns_doh", provider: "OpenDNS", type: "doh", address: "https://doh.opendns.com/dns-query", ip: "208.67.222.222", tag: "DoH Encrypted" }
 ];
 
 const TEST_DOMAINS = [
@@ -324,56 +331,57 @@ function compute_recommendation(results) {
         };
     }
 
-    // Find fastest UDP and fastest DoH
-    let fastest_udp = null;
-    let second_udp = null;
-    let fastest_doh = null;
+    let working_udp = [];
+    let working_doh = [];
 
     for (let r in working) {
-        if (r.type == "udp") {
-            if (fastest_udp == null)
-                fastest_udp = r;
-            else if (second_udp == null && r.provider != fastest_udp.provider)
-                second_udp = r;
-        } else if (r.type == "doh") {
-            if (fastest_doh == null)
-                fastest_doh = r;
-        }
+        if (r.type == "udp")
+            push(working_udp, r);
+        else if (r.type == "doh")
+            push(working_doh, r);
     }
 
-    if (fastest_udp == null && length(working) > 0)
-        fastest_udp = working[0];
-    if (second_udp == null) {
-        for (let r in working) {
-            if (r.type == "udp" && r.id != fastest_udp.id) {
-                second_udp = r;
+    working_udp = sort(working_udp, function(a, b) { return a.score - b.score; });
+    working_doh = sort(working_doh, function(a, b) { return a.score - b.score; });
+
+    let fastest_udp = length(working_udp) > 0 ? working_udp[0] : working[0];
+    let second_udp = null;
+    if (length(working_udp) > 1) {
+        for (let u in working_udp) {
+            if (u.provider != fastest_udp.provider) {
+                second_udp = u;
                 break;
             }
         }
+        if (second_udp == null)
+            second_udp = working_udp[1];
     }
     if (second_udp == null)
-        second_udp = { address: "1.1.1.1", ip: "1.1.1.1", provider: "Cloudflare" };
-
-    // Choose Primary DNS:
-    // Prefer DoH if latency is good (< 85ms and <= 1.6x of fastest UDP) for security & anti-hijacking
-    let selected_type = "udp";
-    let selected_dns_server = [ fastest_udp.address ];
-    let reason = "Selected fastest UDP server (" + fastest_udp.provider + " " + fastest_udp.latency + "ms)";
-
-    if (fastest_doh != null && fastest_doh.latency <= 85) {
-        let udp_lat = fastest_udp ? fastest_udp.latency : 100;
-        if (fastest_doh.latency <= (udp_lat * 1.6) + 15) {
-            selected_type = "doh";
-            selected_dns_server = [ fastest_doh.address ];
-            reason = "Selected fast encrypted DoH (" + fastest_doh.provider + " " + fastest_doh.latency + "ms) for maximum privacy and anti-censorship";
-        }
-    }
+        second_udp = { address: "1.1.1.1", ip: "1.1.1.1", provider: "Cloudflare", latency: 50 };
 
     let bootstrap_ip = fastest_udp.ip || fastest_udp.address || "77.88.8.8";
     let fallback_ip = second_udp.ip || second_udp.address || "1.1.1.1";
 
+    let selected_type = "udp";
+    let selected_dns_server = [ fastest_udp.address ];
+    let reason = "Selected fastest UDP server (" + fastest_udp.provider + " " + fastest_udp.latency + "ms) as fallback because encrypted DoH is unavailable";
+
+    // ALWAYS PRIORITIZE ENCRYPTED DoH AS PRIMARY DNS
+    // Encrypted DNS prevents ISP interception, DNS hijacking, poisoning, and MITM.
+    // Bootstrap DNS resolves the DoH hostname, while DoH handles all encrypted user traffic.
+    if (length(working_doh) > 0) {
+        let best_doh = working_doh[0];
+        if (best_doh.lossPct <= 25 && best_doh.latency < 350) {
+            selected_type = "doh";
+            selected_dns_server = [ best_doh.address ];
+            reason = "Selected encrypted DoH (" + best_doh.provider + " " + best_doh.latency + "ms) for maximum privacy and anti-censorship, with " + fastest_udp.provider + " (" + bootstrap_ip + ") bootstrap DNS";
+        }
+    }
+
     let upstream_mode = "sequential";
-    if (fastest_udp.latency < 50 && second_udp.latency < 60)
+    if (length(working_doh) > 1 && working_doh[0].latency < 70 && working_doh[1].latency < 90)
+        upstream_mode = "parallel";
+    else if (fastest_udp.latency < 40 && second_udp.latency < 50)
         upstream_mode = "parallel";
 
     return {

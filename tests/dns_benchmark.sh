@@ -106,6 +106,18 @@ if (rec_c.dns_type != "udp" || rec_c.dns_server[0] != "77.88.8.8" || rec_c.dns_f
     exit(5);
 }
 
+// Scenario D: DoH latency higher than UDP, but working -> DoH must STILL be chosen as primary for encryption
+let results_d = [
+    { id: "yandex_udp", provider: "Yandex", type: "udp", address: "77.88.8.8", ip: "77.88.8.8", latency: 15, lossPct: 0, status: "excellent", score: 15 },
+    { id: "cf_udp", provider: "Cloudflare", type: "udp", address: "1.1.1.1", ip: "1.1.1.1", latency: 20, lossPct: 0, status: "excellent", score: 20 },
+    { id: "cf_doh", provider: "Cloudflare", type: "doh", address: "https://cloudflare-dns.com/dns-query", ip: "1.1.1.1", latency: 95, lossPct: 0, status: "good", score: 95 }
+];
+let rec_d = benchmark.compute_recommendation(results_d);
+if (rec_d.dns_type != "doh" || rec_d.dns_server[0] != "https://cloudflare-dns.com/dns-query" || rec_d.bootstrap_dns_server[0] != "77.88.8.8") {
+    print("ERR: Scenario D failed to prioritize encrypted DoH over UDP\n");
+    exit(6);
+}
+
 print("OK\n");
 exit(0);
 UCODE
