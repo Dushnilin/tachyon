@@ -569,6 +569,41 @@ function device_ipv4_address_value(device) {
     return ip_addr_first_inet4(command_output_from_args([ "ip", "-4", "addr", "show", "dev", as_string(device) ]));
 }
 
+// Returns true for RFC-1918 private IPv4 addresses (10/8, 172.16/12, 192.168/16).
+// Used to filter out WAN/public addresses when enumerating interfaces.
+function is_private_ipv4(addr) {
+    addr = as_string(addr);
+    return match(addr, /^10\./) != null ||
+           match(addr, /^172\.(1[6-9]|2[0-9]|3[01])\./) != null ||
+           match(addr, /^192\.168\./) != null;
+}
+
+// Last-resort fallback for non-standard setups (e.g. x86/64 where the LAN
+// interface is named "eth1", "enp2s0", etc. — not "lan" or "br-lan").
+// Calls `ubus call network.interface dump` to get all UCI interfaces, then
+// returns the first private IPv4 found on a non-loopback, non-WAN interface.
+function network_interface_dump_first_private_ipv4() {
+    let data = command_output_from_args([ "ubus", "call", "network.interface", "dump" ]);
+    try {
+        let value = json(data);
+        let interfaces = array_or_empty(object_or_empty(value)["interface"]);
+        for (let iface in interfaces) {
+            iface = object_or_empty(iface);
+            let name = as_string(iface["interface"] || "");
+            // Skip obviously non-LAN interfaces.
+            if (name == "wan" || name == "wan6" || name == "loopback" || name == "")
+                continue;
+            for (let addr_obj in array_or_empty(iface["ipv4-address"])) {
+                let addr = as_string(object_or_empty(addr_obj).address);
+                if (addr != "" && is_private_ipv4(addr))
+                    return addr;
+            }
+        }
+    }
+    catch (e) {}
+    return "";
+}
+
 function service_listen_address_value(settings) {
     let configured = option(settings, "service_listen_address", "");
     if (configured != "") {
@@ -587,6 +622,15 @@ function service_listen_address_value(settings) {
         address = device_ipv4_address_value(iface);
         if (address != "")
             return address;
+    }
+
+    // Third-tier fallback: enumerate all UCI interfaces via ubus dump.
+    // Handles x86/64 and other non-standard setups where LAN is not named
+    // "lan"/"br-lan". Skips wan, wan6, loopback and any public addresses.
+    address = network_interface_dump_first_private_ipv4();
+    if (address != "") {
+        log_message("listen-address auto-detected via interface dump: " + address + ". Set service_listen_address in UCI to pin it.", "warn");
+        return address;
     }
 
     log_message("Failed to determine the listening IP address. Please open an issue to report this problem: https://github.com/Dushnilin/tachyon/issues", "error");
