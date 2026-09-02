@@ -121,6 +121,44 @@ function domain_to_doh_b64(domain) {
     return res;
 }
 
+// Resolves a hostname via a specific bootstrap UDP server.
+function resolve_host_via_bootstrap(host, bootstrap_ip) {
+    host = as_string(host);
+    bootstrap_ip = as_string(bootstrap_ip);
+
+    if (match(host, /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/))
+        return host;
+
+    if (has_tool("dig")) {
+        let output = command_output_from_args([
+            "dig", "@" + bootstrap_ip, host, "A", "+short", "+time=2", "+tries=1"
+        ]);
+        if (length(output) > 0) {
+            let lines = split(output, "\n");
+            for (let line in lines) {
+                line = trim(line);
+                if (match(line, /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/))
+                    return line;
+            }
+        }
+    }
+
+    let output = command_output_from_args([ "nslookup", host, bootstrap_ip ]);
+    if (length(output) > 0) {
+        let lines = split(output, "\n");
+        for (let line in lines) {
+            let m = match(line, /Address(?:es)?:[ \t]+([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)/);
+            if (m && m[1] != null && m[1] != bootstrap_ip)
+                return m[1];
+        }
+        let m2 = match(output, /Name:[ \t]+[^\n]+\nAddress:[ \t]+([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)/);
+        if (m2 && m2[1] != null)
+            return m2[1];
+    }
+
+    return null;
+}
+
 // Probes a UDP DNS server with `dig` (primary) or `nslookup` (fallback).
 // Returns latency in milliseconds, or -1 on failure.
 function probe_udp(server_ip, domain) {
@@ -155,13 +193,27 @@ function probe_udp(server_ip, domain) {
     return -1;
 }
 
-// Probes a DoH DNS server using `curl` with standard RFC 8484 DNS wireformat and direct IP resolving.
+// Probes a DoH DNS server using `curl` with standard RFC 8484 DNS wireformat and bootstrap IP resolving.
 // Returns latency in milliseconds, or -1 on failure.
-function probe_doh(server, domain) {
+function probe_doh(server, domain, bootstrap_ips) {
     let doh_url = as_string(type(server) == "object" ? server.address : server);
     domain = as_string(domain);
-    let ip = as_string(type(server) == "object" ? (server.ip || "") : "");
+    let fallback_ip = as_string(type(server) == "object" ? (server.ip || "") : "");
     let host = url_host(doh_url);
+
+    // Resolve DoH host using verified bootstrap DNS servers (cascade)
+    let resolved_ip = null;
+    bootstrap_ips = array_or_empty(bootstrap_ips);
+    for (let b_ip in bootstrap_ips) {
+        b_ip = as_string(b_ip);
+        if (b_ip != "") {
+            resolved_ip = resolve_host_via_bootstrap(host, b_ip);
+            if (resolved_ip != null)
+                break;
+        }
+    }
+    if (resolved_ip == null)
+        resolved_ip = fallback_ip;
 
     let b64 = domain_to_doh_b64(domain);
     let query_url = doh_url + (index(doh_url, "?") >= 0 ? "&" : "?") + "dns=" + b64;
@@ -171,10 +223,9 @@ function probe_doh(server, domain) {
         "-H", "accept: application/dns-message, application/dns-json"
     ];
 
-    // Directly resolve host to the provider IP to test DoH over direct UDP bootstrap without local DNS dependency
-    if (host != "" && ip != "") {
-        push(args, "--resolve", host + ":443:" + ip);
-        push(args, "--resolve", host + ":80:" + ip);
+    if (host != "" && resolved_ip != "") {
+        push(args, "--resolve", host + ":443:" + resolved_ip);
+        push(args, "--resolve", host + ":80:" + resolved_ip);
     }
     push(args, query_url);
 
@@ -196,20 +247,20 @@ function probe_doh(server, domain) {
     return -1;
 }
 
-function probe_server(server, domain) {
+function probe_server(server, domain, bootstrap_ips) {
     if (server.type == "doh")
-        return probe_doh(server, domain);
+        return probe_doh(server, domain, bootstrap_ips);
     return probe_udp(server.ip || server.address, domain);
 }
 
-function test_candidate(server, domains) {
+function test_candidate(server, domains, bootstrap_ips) {
     domains = array_or_empty(domains);
     let total_ms = 0;
     let success_count = 0;
     let total_rounds = length(domains);
 
     for (let domain in domains) {
-        let ms = probe_server(server, domain);
+        let ms = probe_server(server, domain, bootstrap_ips);
         if (ms >= 0) {
             total_ms += ms;
             success_count++;
@@ -336,19 +387,69 @@ function compute_recommendation(results) {
 }
 
 function run_benchmark(on_progress) {
+    let udp_candidates = [];
+    let doh_candidates = [];
+    for (let s in CANDIDATE_SERVERS) {
+        if (s.type == "udp")
+            push(udp_candidates, s);
+        else if (s.type == "doh")
+            push(doh_candidates, s);
+    }
+
+    let total = length(udp_candidates) + length(doh_candidates);
+    let current_index = 0;
     let results = [];
-    let total = length(CANDIDATE_SERVERS);
 
-    for (let i = 0; i < total; i++) {
-        let server = CANDIDATE_SERVERS[i];
+    // --- Phase 1: Benchmark UDP Bootstrap Candidates ---
+    let udp_results = [];
+    for (let i = 0; i < length(udp_candidates); i++) {
+        let server = udp_candidates[i];
         if (on_progress)
-            on_progress(i, total, server.provider + " (" + server.type + ")", null);
+            on_progress(current_index, total, server.provider + " (UDP)", null);
 
-        let res = test_candidate(server, TEST_DOMAINS);
+        let res = test_candidate(server, TEST_DOMAINS, []);
+        push(udp_results, res);
         push(results, res);
+        current_index++;
 
         if (on_progress)
-            on_progress(i + 1, total, server.provider + " (" + server.type + ")", res);
+            on_progress(current_index, total, server.provider + " (UDP)", res);
+    }
+
+    // Find best and secondary working UDP bootstrap servers for Phase 2
+    let working_udp = [];
+    for (let r in udp_results) {
+        if (r.latency >= 0 && r.status != "failed")
+            push(working_udp, r);
+    }
+    working_udp = sort(working_udp, function(a, b) { return a.score - b.score; });
+
+    let primary_bootstrap_ip = "77.88.8.8";
+    let secondary_bootstrap_ip = "1.1.1.1";
+    if (length(working_udp) > 0)
+        primary_bootstrap_ip = working_udp[0].ip || working_udp[0].address;
+    if (length(working_udp) > 1) {
+        for (let u in working_udp) {
+            if (u.provider != working_udp[0].provider) {
+                secondary_bootstrap_ip = u.ip || u.address;
+                break;
+            }
+        }
+    }
+    let bootstrap_ips = [ primary_bootstrap_ip, secondary_bootstrap_ip ];
+
+    // --- Phase 2: Benchmark Encrypted DoH Servers via Verified Bootstrap DNS ---
+    for (let i = 0; i < length(doh_candidates); i++) {
+        let server = doh_candidates[i];
+        if (on_progress)
+            on_progress(current_index, total, server.provider + " (DoH)", null);
+
+        let res = test_candidate(server, TEST_DOMAINS, bootstrap_ips);
+        push(results, res);
+        current_index++;
+
+        if (on_progress)
+            on_progress(current_index, total, server.provider + " (DoH)", res);
     }
 
     // Sort by score ascending (lowest score is best)
