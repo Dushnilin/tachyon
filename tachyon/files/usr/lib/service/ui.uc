@@ -1470,7 +1470,16 @@ function action_ack(kind, job_id_value) {
         return;
     }
 
+    refresh_pid_job_state(path, "UI action worker exited unexpectedly");
     let value = read_json_file(path);
+    if (type(value) == "object" && value.running === true) {
+        let pid = as_string(value.pid || "");
+        if (!job_pid_valid(pid) || !pid_running(pid)) {
+            write_stale_action_state(path, "UI action worker is no longer running");
+            value = read_json_file(path);
+        }
+    }
+
     if (type(value) == "object" && value.running === true) {
         action_start_response(false, job_id_value, "UI action is still running");
         exit(1);

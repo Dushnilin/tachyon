@@ -3,6 +3,11 @@ import { renderButton } from '../../../../partials';
 import { copyToClipboard } from '../../../../helpers/copyToClipboard';
 import { TachyonShellMethods } from '../../../methods';
 import { Tachyon } from '../../../types';
+import {
+  isReloadInProgress,
+  safeReloadPage,
+  saveHandledJobToSession,
+} from '../sessionJobs';
 
 export interface UpdateProgressModalOptions {
   component: Tachyon.ComponentName;
@@ -349,7 +354,10 @@ export function showUpdateProgressModal(
           text: _('Reload now'),
           onClick: () => {
             reloadProbeActive = false;
-            window.location.reload();
+            if (activeModalJobId) {
+              saveHandledJobToSession(activeModalJobId);
+            }
+            safeReloadPage();
           },
         });
 
@@ -362,10 +370,14 @@ export function showUpdateProgressModal(
         );
 
         const probeAndReload = async () => {
-          // Pause 2 seconds initially to allow init scripts and rpcd reload to commence
-          await new Promise((resolve) => setTimeout(resolve, 2000));
+          // Pause 1.5s initially to allow init scripts and rpcd reload to commence
+          await new Promise((resolve) => setTimeout(resolve, 1500));
 
-          while (reloadProbeActive && attempt < maxAttempts) {
+          while (
+            reloadProbeActive &&
+            attempt < maxAttempts &&
+            !isReloadInProgress()
+          ) {
             attempt += 1;
             statusEl.textContent = `${_('Verifying router and service readiness...')} (${attempt}/${maxAttempts})`;
 
@@ -373,39 +385,15 @@ export function showUpdateProgressModal(
               const res = await TachyonShellMethods.getSystemInfo();
               if (res && res.success) {
                 statusEl.textContent = _(
-                  'Services are online, waiting for full initialization...',
+                  'Services are online and ready! Reloading page...',
                 );
-                // Wait for the service to fully stabilize after the first
-                // successful probe; rpcd can come up before tachyon init finishes.
-                await new Promise((resolve) => setTimeout(resolve, 5000));
-                if (!reloadProbeActive) return;
-
-                // Confirm services are still up after the settle window
-                try {
-                  const confirm = await TachyonShellMethods.getSystemInfo();
-                  if (confirm && confirm.success) {
-                    statusEl.textContent = _(
-                      'Services are online and ready! Reloading page...',
-                    );
-                    reloadBtn.textContent = _('Reloading...');
-                    await new Promise((resolve) => setTimeout(resolve, 600));
-                    if (activeModalJobId) {
-                      try {
-                        sessionStorage.setItem(
-                          'tachyon_post_update_job',
-                          activeModalJobId,
-                        );
-                      } catch (_e) {
-                        // sessionStorage may be unavailable; cleanup is
-                        // best-effort.
-                      }
-                    }
-                    window.location.reload();
-                    return;
-                  }
-                } catch (_confirmErr) {
-                  // Services went away during settle — keep probing
+                reloadBtn.textContent = _('Reloading...');
+                if (activeModalJobId) {
+                  saveHandledJobToSession(activeModalJobId);
                 }
+                await new Promise((resolve) => setTimeout(resolve, 800));
+                safeReloadPage();
+                return;
               }
             } catch (_err) {
               // RPC is unavailable while daemon/rpcd is reloading; keep probing
@@ -414,7 +402,7 @@ export function showUpdateProgressModal(
             await new Promise((resolve) => setTimeout(resolve, 1500));
           }
 
-          if (reloadProbeActive) {
+          if (reloadProbeActive && !isReloadInProgress()) {
             statusEl.textContent = _(
               'Services restarted. Click to reload page.',
             );

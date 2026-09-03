@@ -49,6 +49,11 @@ import {
   setActiveProgressModalJobId,
   showUpdateProgressModal,
 } from './partials/renderUpdateProgressModal';
+import {
+  loadHandledJobsFromSession,
+  safeReloadPage,
+  saveHandledJobToSession,
+} from './sessionJobs';
 
 function getComponentCardTitle(component: Tachyon.ComponentName): string {
   switch (component) {
@@ -128,18 +133,11 @@ let componentActionStateRefreshPromise: Promise<void> | null = null;
 const followedComponentJobs = new Set<string>();
 const handledComponentJobs = new Set<string>();
 
-try {
-  const savedJob = sessionStorage.getItem('tachyon_post_update_job');
-  if (savedJob) {
-    handledComponentJobs.add(savedJob);
-    capSetSize(handledComponentJobs);
-    followedComponentJobs.add(savedJob);
-    sessionStorage.removeItem('tachyon_post_update_job');
-  }
-} catch (_e) {
-  // sessionStorage may be unavailable (private mode); the saved job id is
-  // best-effort and its absence is fine.
+for (const savedJob of loadHandledJobsFromSession()) {
+  handledComponentJobs.add(savedJob);
+  followedComponentJobs.add(savedJob);
 }
+capSetSize(handledComponentJobs);
 
 if (typeof window !== 'undefined') {
   window.addEventListener('pagehide', () => {
@@ -405,12 +403,15 @@ async function waitForTachyonResponsive() {
   return false;
 }
 
-function reloadPageAfterTachyonUpdate() {
+function reloadPageAfterTachyonUpdate(jobId?: string) {
+  if (jobId) {
+    saveHandledJobToSession(jobId);
+  }
   // Reload only after the restarted backend actually answers get_ui_state:
   // a fixed delay either reloaded too early (tab hung on stale component
   // action state) or wasted seconds on fast routers.
   void waitForTachyonResponsive().finally(() => {
-    window.location.reload();
+    safeReloadPage();
   });
 }
 
@@ -620,7 +621,7 @@ async function applyCompletedComponentAction({
       if (modalController) {
         modalController.completeSuccess(result.message, { reloadPage: true });
       } else {
-        reloadPageAfterTachyonUpdate();
+        reloadPageAfterTachyonUpdate(result.job_id);
       }
     } else {
       modalController?.completeSuccess(result.message);
@@ -669,6 +670,7 @@ async function completeComponentActionJob(
 
     handledComponentJobs.add(jobId);
     capSetSize(handledComponentJobs);
+    saveHandledJobToSession(jobId);
     setActionLoading(key, false);
     if (shouldNotify) {
       showToast(message, 'error');
@@ -680,6 +682,7 @@ async function completeComponentActionJob(
 
   handledComponentJobs.add(jobId);
   capSetSize(handledComponentJobs);
+  saveHandledJobToSession(jobId);
   await ackComponentActionJob(jobId);
   await applyCompletedComponentAction({
     key,
@@ -808,6 +811,7 @@ function handleComponentUiState(uiState: Tachyon.UiState) {
     } else {
       handledComponentJobs.add(jobId);
       capSetSize(handledComponentJobs);
+      saveHandledJobToSession(jobId);
       void ackComponentActionJob(jobId);
     }
   }

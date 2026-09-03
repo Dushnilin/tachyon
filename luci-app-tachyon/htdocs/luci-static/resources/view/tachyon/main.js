@@ -3258,6 +3258,7 @@ var COMPONENT_ACTION_SELF_UPDATE_SETTLE_MS = 2e3;
 var COMPONENT_ACTION_TRANSIENT_RPC_GRACE_MS = 3e4;
 var COMPONENT_ACTION_MIN_ELAPSED_FOR_SELF_UPDATE_MS = 2e3;
 var COMPONENT_ACTION_SELF_UPDATE_HARD_TIMEOUT_MS = 12e4;
+var COMPONENT_ACTION_GENERAL_HARD_TIMEOUT_MS = 15 * 60 * 1e3;
 var COMPONENT_ACTION_STATE_DIR = "/var/run/tachyon/component-actions";
 var GET_UI_STATE_RPC_TIMEOUT_MS = 3e3;
 function sleep(ms) {
@@ -3780,14 +3781,14 @@ var TachyonShellMethods = {
       return "";
     };
     const confirmedSameVersionReinstall = async () => {
-      if (!isSelfUpdate || action !== "reinstall" || !baselineVersion) {
+      if (!isSelfUpdate || !baselineVersion) {
         return "";
       }
       if (targetVersion && !versionsMatch(targetVersion, baselineVersion)) {
         return "";
       }
       const version = await readTachyonVersion();
-      if (versionsMatch(version, baselineVersion)) {
+      if (version && versionsMatch(version, baselineVersion)) {
         return version;
       }
       return "";
@@ -3804,7 +3805,7 @@ var TachyonShellMethods = {
         if (await confirmedByVersion() === version) {
           return true;
         }
-      } else if (action === "reinstall") {
+      } else {
         if (await confirmedSameVersionReinstall() === version) {
           return true;
         }
@@ -3845,8 +3846,17 @@ var TachyonShellMethods = {
         }
         return selfUpdateResult(version || baselineVersion);
       }
+      if (!isSelfUpdate && Date.now() - jobStartedAt >= COMPONENT_ACTION_GENERAL_HARD_TIMEOUT_MS) {
+        if (stateResponse && !stateResponse.running) {
+          return jobDoneResult(stateResponse);
+        }
+        return {
+          success: false,
+          error: _("Component action timed out")
+        };
+      }
       if (stateResponse && !stateResponse.running) {
-        if (isSelfUpdate && stateResponse.success === false && (isDifferentVersion || action === "reinstall")) {
+        if (isSelfUpdate && stateResponse.success === false) {
           const version = await confirmedByVersion() || await confirmedSameVersionReinstall();
           if (version) {
             if (await settleVersion(version)) {
@@ -3893,7 +3903,7 @@ var TachyonShellMethods = {
       if (parsedResponse.running) {
         continue;
       }
-      if (isSelfUpdate && parsedResponse.success === false && (isDifferentVersion || action === "reinstall")) {
+      if (isSelfUpdate && parsedResponse.success === false) {
         const version = await confirmedByVersion() || await confirmedSameVersionReinstall();
         if (version) {
           if (await settleVersion(version)) {
@@ -18778,6 +18788,66 @@ function describeSameReleaseBuild({
   return { kind: "fallback", text: "" };
 }
 
+// src/tachyon/tabs/updates/sessionJobs.ts
+var HANDLED_JOBS_STORAGE_KEY = "tachyon_handled_component_jobs";
+var LEGACY_JOB_STORAGE_KEY = "tachyon_post_update_job";
+var isPageReloading = false;
+function safeReloadPage() {
+  if (isPageReloading) {
+    return;
+  }
+  isPageReloading = true;
+  if (typeof window !== "undefined" && window.location) {
+    window.location.reload();
+  }
+}
+function isReloadInProgress() {
+  return isPageReloading;
+}
+function saveHandledJobToSession(jobId) {
+  if (!jobId || typeof sessionStorage === "undefined") {
+    return;
+  }
+  try {
+    const raw = sessionStorage.getItem(HANDLED_JOBS_STORAGE_KEY);
+    const list = raw ? JSON.parse(raw) : [];
+    if (!list.includes(jobId)) {
+      list.push(jobId);
+      if (list.length > 30) {
+        list.shift();
+      }
+      sessionStorage.setItem(HANDLED_JOBS_STORAGE_KEY, JSON.stringify(list));
+    }
+    sessionStorage.setItem(LEGACY_JOB_STORAGE_KEY, jobId);
+  } catch (_e) {
+  }
+}
+function loadHandledJobsFromSession() {
+  if (typeof sessionStorage === "undefined") {
+    return [];
+  }
+  const result = /* @__PURE__ */ new Set();
+  try {
+    const raw = sessionStorage.getItem(HANDLED_JOBS_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        for (const id of parsed) {
+          if (typeof id === "string" && id) {
+            result.add(id);
+          }
+        }
+      }
+    }
+    const legacy = sessionStorage.getItem(LEGACY_JOB_STORAGE_KEY);
+    if (legacy) {
+      result.add(legacy);
+    }
+  } catch (_e) {
+  }
+  return Array.from(result);
+}
+
 // src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts
 function formatSha(sha) {
   if (!sha) return "";
@@ -19020,7 +19090,10 @@ function showUpdateProgressModal(options) {
           text: _("Reload now"),
           onClick: () => {
             reloadProbeActive = false;
-            window.location.reload();
+            if (activeModalJobId) {
+              saveHandledJobToSession(activeModalJobId);
+            }
+            safeReloadPage();
           }
         });
         actionButtonContainer.replaceChildren(
@@ -19031,46 +19104,29 @@ function showUpdateProgressModal(options) {
           ])
         );
         const probeAndReload = async () => {
-          await new Promise((resolve) => setTimeout(resolve, 2e3));
-          while (reloadProbeActive && attempt < maxAttempts) {
+          await new Promise((resolve) => setTimeout(resolve, 1500));
+          while (reloadProbeActive && attempt < maxAttempts && !isReloadInProgress()) {
             attempt += 1;
             statusEl.textContent = `${_("Verifying router and service readiness...")} (${attempt}/${maxAttempts})`;
             try {
               const res = await TachyonShellMethods.getSystemInfo();
               if (res && res.success) {
                 statusEl.textContent = _(
-                  "Services are online, waiting for full initialization..."
+                  "Services are online and ready! Reloading page..."
                 );
-                await new Promise((resolve) => setTimeout(resolve, 5e3));
-                if (!reloadProbeActive) return;
-                try {
-                  const confirm = await TachyonShellMethods.getSystemInfo();
-                  if (confirm && confirm.success) {
-                    statusEl.textContent = _(
-                      "Services are online and ready! Reloading page..."
-                    );
-                    reloadBtn.textContent = _("Reloading...");
-                    await new Promise((resolve) => setTimeout(resolve, 600));
-                    if (activeModalJobId) {
-                      try {
-                        sessionStorage.setItem(
-                          "tachyon_post_update_job",
-                          activeModalJobId
-                        );
-                      } catch (_e) {
-                      }
-                    }
-                    window.location.reload();
-                    return;
-                  }
-                } catch (_confirmErr) {
+                reloadBtn.textContent = _("Reloading...");
+                if (activeModalJobId) {
+                  saveHandledJobToSession(activeModalJobId);
                 }
+                await new Promise((resolve) => setTimeout(resolve, 800));
+                safeReloadPage();
+                return;
               }
             } catch (_err) {
             }
             await new Promise((resolve) => setTimeout(resolve, 1500));
           }
-          if (reloadProbeActive) {
+          if (reloadProbeActive && !isReloadInProgress()) {
             statusEl.textContent = _(
               "Services restarted. Click to reload page."
             );
@@ -19221,16 +19277,11 @@ var componentActionStateUnsubscribe = null;
 var componentActionStateRefreshPromise = null;
 var followedComponentJobs = /* @__PURE__ */ new Set();
 var handledComponentJobs = /* @__PURE__ */ new Set();
-try {
-  const savedJob = sessionStorage.getItem("tachyon_post_update_job");
-  if (savedJob) {
-    handledComponentJobs.add(savedJob);
-    capSetSize(handledComponentJobs);
-    followedComponentJobs.add(savedJob);
-    sessionStorage.removeItem("tachyon_post_update_job");
-  }
-} catch (_e) {
+for (const savedJob of loadHandledJobsFromSession()) {
+  handledComponentJobs.add(savedJob);
+  followedComponentJobs.add(savedJob);
 }
+capSetSize(handledComponentJobs);
 if (typeof window !== "undefined") {
   window.addEventListener("pagehide", () => {
     pageUnloading2 = true;
@@ -19414,9 +19465,12 @@ async function waitForTachyonResponsive() {
   }
   return false;
 }
-function reloadPageAfterTachyonUpdate() {
+function reloadPageAfterTachyonUpdate(jobId) {
+  if (jobId) {
+    saveHandledJobToSession(jobId);
+  }
   void waitForTachyonResponsive().finally(() => {
-    window.location.reload();
+    safeReloadPage();
   });
 }
 function patchSystemInfoAfterMutation(result) {
@@ -19570,7 +19624,7 @@ async function applyCompletedComponentAction({
       if (modalController) {
         modalController.completeSuccess(result.message, { reloadPage: true });
       } else {
-        reloadPageAfterTachyonUpdate();
+        reloadPageAfterTachyonUpdate(result.job_id);
       }
     } else {
       modalController?.completeSuccess(result.message);
@@ -19604,6 +19658,7 @@ async function completeComponentActionJob(key, jobId, response) {
     }
     handledComponentJobs.add(jobId);
     capSetSize(handledComponentJobs);
+    saveHandledJobToSession(jobId);
     setActionLoading(key, false);
     if (shouldNotify) {
       showToast(message, "error");
@@ -19614,6 +19669,7 @@ async function completeComponentActionJob(key, jobId, response) {
   }
   handledComponentJobs.add(jobId);
   capSetSize(handledComponentJobs);
+  saveHandledJobToSession(jobId);
   await ackComponentActionJob(jobId);
   await applyCompletedComponentAction({
     key,
@@ -19708,6 +19764,7 @@ function handleComponentUiState(uiState) {
     } else {
       handledComponentJobs.add(jobId);
       capSetSize(handledComponentJobs);
+      saveHandledJobToSession(jobId);
       void ackComponentActionJob(jobId);
     }
   }

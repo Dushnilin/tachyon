@@ -17,6 +17,7 @@ const COMPONENT_ACTION_SELF_UPDATE_SETTLE_MS = 2000;
 const COMPONENT_ACTION_TRANSIENT_RPC_GRACE_MS = 30000;
 const COMPONENT_ACTION_MIN_ELAPSED_FOR_SELF_UPDATE_MS = 2000;
 const COMPONENT_ACTION_SELF_UPDATE_HARD_TIMEOUT_MS = 120000;
+const COMPONENT_ACTION_GENERAL_HARD_TIMEOUT_MS = 15 * 60 * 1000;
 const COMPONENT_ACTION_STATE_DIR = '/var/run/tachyon/component-actions';
 const GET_UI_STATE_RPC_TIMEOUT_MS = 3000;
 
@@ -736,16 +737,16 @@ export const TachyonShellMethods = {
     // A reinstall of the same version never changes the version string, so
     // version-based confirmation can never match. Equality with the baseline
     // is the confirmation — but only once the job is no longer running and only
-    // for explicit reinstall actions.
+    // when target version matches baseline (or is unspecified).
     const confirmedSameVersionReinstall = async () => {
-      if (!isSelfUpdate || action !== 'reinstall' || !baselineVersion) {
+      if (!isSelfUpdate || !baselineVersion) {
         return '';
       }
       if (targetVersion && !versionsMatch(targetVersion, baselineVersion)) {
         return '';
       }
       const version = await readTachyonVersion();
-      if (versionsMatch(version, baselineVersion)) {
+      if (version && versionsMatch(version, baselineVersion)) {
         return version;
       }
       return '';
@@ -769,7 +770,7 @@ export const TachyonShellMethods = {
         if ((await confirmedByVersion()) === version) {
           return true;
         }
-      } else if (action === 'reinstall') {
+      } else {
         if ((await confirmedSameVersionReinstall()) === version) {
           return true;
         }
@@ -825,13 +826,22 @@ export const TachyonShellMethods = {
         return selfUpdateResult(version || baselineVersion);
       }
 
+      if (
+        !isSelfUpdate &&
+        Date.now() - jobStartedAt >= COMPONENT_ACTION_GENERAL_HARD_TIMEOUT_MS
+      ) {
+        if (stateResponse && !stateResponse.running) {
+          return jobDoneResult(stateResponse);
+        }
+        return {
+          success: false,
+          error: _('Component action timed out'),
+        } as Tachyon.MethodFailureResponse;
+      }
+
       // The job is over according to the state file.
       if (stateResponse && !stateResponse.running) {
-        if (
-          isSelfUpdate &&
-          stateResponse.success === false &&
-          (isDifferentVersion || action === 'reinstall')
-        ) {
+        if (isSelfUpdate && stateResponse.success === false) {
           const version =
             (await confirmedByVersion()) ||
             (await confirmedSameVersionReinstall());
@@ -894,11 +904,7 @@ export const TachyonShellMethods = {
         continue;
       }
 
-      if (
-        isSelfUpdate &&
-        parsedResponse.success === false &&
-        (isDifferentVersion || action === 'reinstall')
-      ) {
+      if (isSelfUpdate && parsedResponse.success === false) {
         const version =
           (await confirmedByVersion()) ||
           (await confirmedSameVersionReinstall());

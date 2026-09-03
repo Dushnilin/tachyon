@@ -41,6 +41,8 @@ let command_output = common.command_output;
 let command_output_from_args = common.command_output_from_args;
 let write_json = common.write_json;
 let write_file = common.write_file;
+let bounded_command = common.bounded_command;
+let kill_matching_command = common.kill_matching_command;
 
 let tmp_dir = "";
 let lock_held = false;
@@ -337,14 +339,15 @@ function action_fail(component, action, message, current_version, latest_version
     exit(1);
 }
 
-function run_logged(description, command) {
+function run_logged(description, command, timeout_seconds) {
     init_tmp_dir();
     let output_file = make_tmp_file("command");
     if (output_file == "")
         output_file = "/tmp/tachyon-updates-command." + owner_pid();
 
     updates_log(description);
-    let status = command_status(as_string(command) + " >" + shell_quote(output_file) + " 2>&1");
+    let run_cmd = timeout_seconds ? bounded_command(command, timeout_seconds) : as_string(command);
+    let status = command_status(run_cmd + " >" + shell_quote(output_file) + " 2>&1");
     for (let line in split(read_file(output_file), "\n"))
         if (trim(as_string(line)) != "")
             updates_log(line);
@@ -939,12 +942,11 @@ function restart_tachyon_after_successful_change() {
         prepare_sing_box_service_disabled();
         return;
     }
+    // Clear any stuck flock holders or pending rc.common waits
+    system(kill_matching_command("-E '99-tachyon-wan|flock 1000|init[.]d/tachyon'"));
     // Kill orphaned logread -f processes before restart to prevent FD cascade.
-    // action.uc runs as a child of the old watchdog and inherits its logread pipe FD.
-    // Without this, the old logread process may keep the pipe alive across the restart,
-    // causing the new watchdog's config generator to inherit stale FDs and hit the 1024 limit.
     command_success_from_args([ "killall", "logread" ]);
-    run_logged("Restarting Tachyon after successful component change", command_from_args([ SERVICE_INIT, "restart" ]));
+    run_logged("Restarting Tachyon after successful component change", command_from_args([ SERVICE_INIT, "restart" ]), 25);
 }
 
 function stop_tachyon_before_sing_box_change() {

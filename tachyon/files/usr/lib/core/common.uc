@@ -447,6 +447,42 @@ function command_output_from_args(args) {
     return command_output(command_from_args(args) + " 2>/dev/null");
 }
 
+let timeout_prefix_cache = null;
+
+function timeout_prefix() {
+    if (timeout_prefix_cache != null)
+        return timeout_prefix_cache;
+
+    if (command_status("timeout 1 /bin/true >/dev/null 2>&1") == 0)
+        timeout_prefix_cache = [ "timeout" ];
+    else if (command_status("timeout -t 1 /bin/true >/dev/null 2>&1") == 0)
+        timeout_prefix_cache = [ "timeout", "-t" ];
+    else
+        timeout_prefix_cache = [];
+
+    return timeout_prefix_cache;
+}
+
+function bounded_command(command, seconds) {
+    seconds = as_string(seconds || "30");
+    let prefix = timeout_prefix();
+    if (length(prefix) == 0)
+        return as_string(command);
+
+    return join(" ", prefix) + " " + seconds + " " + as_string(command);
+}
+
+function kill_matching_command(grep_args) {
+    return "__anc=\" \"; __p=$$; " +
+        "while [ -n \"$__p\" ] && [ \"$__p\" -gt 1 ] 2>/dev/null; do " +
+        "__anc=\"$__anc$__p \"; " +
+        "__p=$(awk '{ sub(/.*\\) /, \"\"); print $2 }' \"/proc/$__p/stat\" 2>/dev/null); " +
+        "done; " +
+        "ps 2>/dev/null | grep " + grep_args + " | grep -v grep | grep -v -E 'action[.]uc|updates[.]uc' | awk '{print $1}' | " +
+        "while read _pid; do case \"$__anc\" in *\" $_pid \"*) continue;; esac; " +
+        "kill -9 \"$_pid\" 2>/dev/null; done; true";
+}
+
 function ensure_dir(path) {
     path = as_string(path);
     if (path == "") return false;
@@ -559,5 +595,8 @@ return {
     write_file,
     file_exists,
     parent_dir,
-    get_mixed_port
+    get_mixed_port,
+    timeout_prefix,
+    bounded_command,
+    kill_matching_command
 };
