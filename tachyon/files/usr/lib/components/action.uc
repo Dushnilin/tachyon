@@ -1413,8 +1413,7 @@ function restore_sing_box_backup(backup_binary) {
             return false;
         return command_success_from_args([ "chmod", "0755", "/usr/bin/sing-box" ]);
     }
-    remove_file("/usr/bin/sing-box");
-    return true;
+    return false;
 }
 
 function restore_file_backup(target_path, backup_path) {
@@ -1650,6 +1649,13 @@ function sing_box_variant_is_package_managed(variant) {
 }
 
 function restore_sing_box_install_backup(previous_variant, backup_binary) {
+    if (as_string(backup_binary) != "" && file_nonempty(backup_binary)) {
+        if (restore_sing_box_backup(backup_binary)) {
+            updates_log("Restored the previous sing-box binary backup from " + backup_binary, "info");
+            return true;
+        }
+    }
+
     if (sing_box_variant_is_package_managed(previous_variant)) {
         if (restore_sing_box_package_variant(previous_variant))
             return true;

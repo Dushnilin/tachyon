@@ -226,7 +226,8 @@ function prerm_cleanup(action) {
         // Kill any remaining tachyon processes, minus this hook's own ancestors.
         system(kill_matching_command("-F '" + BIN_PATH + "'"));
         restore_dnsmasq_if_needed();
-        remove_managed_sing_box();
+        if (action == "remove")
+            remove_managed_sing_box();
     }
     remove_rt_tables_entry(); // best-effort
     return true;
