@@ -910,11 +910,48 @@ function normalize_status(status) {
     return status > 255 ? int(status / 256) : status;
 }
 
+let timeout_prefix_cache = null;
+function timeout_prefix() {
+    if (timeout_prefix_cache != null)
+        return timeout_prefix_cache;
+
+    if (normalize_status(system("timeout 1 /bin/true >/dev/null 2>&1")) == 0)
+        timeout_prefix_cache = [ "timeout" ];
+    else if (normalize_status(system("timeout -t 1 /bin/true >/dev/null 2>&1")) == 0)
+        timeout_prefix_cache = [ "timeout", "-t" ];
+    else
+        timeout_prefix_cache = [];
+
+    return timeout_prefix_cache;
+}
+
+function normalize_timeout_args(args) {
+    if (length(args) > 1 && args[0] == "timeout") {
+        let prefix = timeout_prefix();
+        let secs = args[1];
+        let rest = [];
+        for (let i = 2; i < length(args); i++)
+            push(rest, args[i]);
+        if (length(prefix) == 0)
+            return rest;
+        let result = [];
+        for (let p in prefix)
+            push(result, p);
+        push(result, secs);
+        for (let r in rest)
+            push(result, r);
+        return result;
+    }
+    return args;
+}
+
 function run_args(args) {
+    args = normalize_timeout_args(args);
     return normalize_status(system(command_from_args(args) + " >/dev/null 2>&1")) == 0;
 }
 
 function command_output(args) {
+    args = normalize_timeout_args(args);
     let pipe = fs.popen(command_from_args(args) + " 2>/dev/null", "r");
     if (!pipe)
         return "";
@@ -1441,6 +1478,8 @@ function installer_post_install() {
         run_args([ "timeout", "10", INSTALLER_RPCD_INIT, "restart" ]);
         run_args([ "timeout", "10", "/etc/init.d/uhttpd", "restart" ]);
     }
+    if (path_executable(INSTALLER_TACHYON_BIN))
+        run_args([ "timeout", "15", INSTALLER_TACHYON_BIN, "luci_postinst" ]);
 
     if (env("TACHYON_WAS_ENABLED", "0") == "1" && path_executable(INSTALLER_TACHYON_INIT))
         run_args([ "timeout", "10", INSTALLER_TACHYON_INIT, "enable" ]);
@@ -2068,7 +2107,7 @@ installer_text() {
             summary_release) printf '%s\n' "Релиз" ;;
             summary_legacy_removed) printf '%s\n' "Предыдущая версия перенесена и удалена." ;;
             summary_log) printf '%s\n' "Лог" ;;
-            summary_luci_notice) printf '%s\n' "Откройте LuCI и проверьте правила перед включением Tachyon" ;;
+            summary_luci_notice) printf '%s\n' "Откройте LuCI и проверьте правила перед включением Tachyon. Если меню не появилось сразу, обновите страницу (Ctrl+F5) или перезайдите в LuCI." ;;
             *) printf '%s\n' "$key" ;;
         esac
         return 0
@@ -2115,7 +2154,7 @@ installer_text() {
         summary_release) printf '%s\n' "Release" ;;
         summary_legacy_removed) printf '%s\n' "Legacy installation migrated and removed." ;;
         summary_log) printf '%s\n' "Log" ;;
-        summary_luci_notice) printf '%s\n' "Open LuCI and review your rules before enabling Tachyon" ;;
+        summary_luci_notice) printf '%s\n' "Open LuCI and review your rules before enabling Tachyon. If the menu doesn't appear immediately, hard-refresh the page (Ctrl+F5) or re-login." ;;
         *) printf '%s\n' "$key" ;;
     esac
 }
@@ -2607,11 +2646,15 @@ migrate_legacy_configuration() {
 
 install_ui_packages() {
     if ! pkg_install_files "$TACHYON_APP_FILE"; then
-        if pkg_is_installed "luci-app-tachyon"; then
-            warn "Package manager reported errors during luci-app-tachyon installation, but the package is installed — continuing"
+        if pkg_is_installed "luci-app-tachyon" && [ -f "/usr/share/luci/menu.d/luci-app-tachyon.json" ]; then
+            warn "Package manager reported non-critical errors during luci-app-tachyon installation, but files are verified"
         else
             fail "luci-app-tachyon installation failed"
         fi
+    fi
+
+    if [ ! -f "/usr/share/luci/menu.d/luci-app-tachyon.json" ]; then
+        fail "luci-app-tachyon installation failed: menu.d/luci-app-tachyon.json missing"
     fi
 
     if [ -n "$TACHYON_I18N_FILE" ]; then
@@ -2635,6 +2678,14 @@ post_install() {
         TACHYON_WAS_INSTALLED="$TACHYON_WAS_INSTALLED" TACHYON_LEGACY_DETECTED="$TACHYON_LEGACY_DETECTED" \
         install_json_ucode installer-post-install ||
         fail "Failed to complete Tachyon post-install actions"
+
+    rm -f /var/luci-indexcache* /tmp/luci-indexcache* /var/luci-modulecache* /tmp/luci-modulecache* 2>/dev/null || true
+    if [ -x "/etc/init.d/rpcd" ]; then
+        /etc/init.d/rpcd restart >/dev/null 2>&1 || true
+    fi
+    if [ -x "/etc/init.d/uhttpd" ]; then
+        /etc/init.d/uhttpd restart >/dev/null 2>&1 || true
+    fi
 }
 
 TOTAL_STEPS=10

@@ -7,8 +7,7 @@
       "path": "tachyon/tachyon"
     },
     "depends": {
-			"acl": [ "luci-app-tachyon" ],
-			"uci": { "tachyon": true }
-		}
+      "acl": [ "luci-app-tachyon" ]
+    }
   }
 }

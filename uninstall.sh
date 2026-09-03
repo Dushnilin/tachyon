@@ -240,10 +240,24 @@ CURRENT_STEP=$((CURRENT_STEP + 1))
 tui_step "$CURRENT_STEP" "$TOTAL_STEPS" "Удаление установленных пакетов Tachyon..."
 
 if command -v apk >/dev/null 2>&1 && [ -d "/lib/apk/db" ]; then
-    apk del luci-app-tachyon tachyon luci-i18n-tachyon-ru luci-i18n-tachyon-en >/dev/null 2>&1 || true
+    for _pkg in luci-i18n-tachyon-ru luci-app-tachyon tachyon; do
+        if apk info -e "$_pkg" >/dev/null 2>&1; then
+            apk del "$_pkg" >/dev/null 2>&1 || true
+        fi
+    done
     tui_ok "Пакеты удалены через apk-tools"
 elif command -v opkg >/dev/null 2>&1; then
-    opkg remove --force-depends luci-app-tachyon tachyon luci-i18n-tachyon-ru luci-i18n-tachyon-en >/dev/null 2>&1 || true
+    _wait=0
+    while [ -f /var/lock/opkg.lock ] || [ -f /var/run/opkg.lock ]; do
+        _wait=$((_wait + 1))
+        [ "$_wait" -ge 10 ] && break
+        sleep 1
+    done
+    for _pkg in luci-i18n-tachyon-ru luci-app-tachyon tachyon; do
+        if opkg list-installed "$_pkg" 2>/dev/null | grep -q "^$_pkg "; then
+            opkg remove --force-depends --force-remove "$_pkg" >/dev/null 2>&1 || true
+        fi
+    done
     tui_ok "Пакеты удалены через opkg"
 fi
 
@@ -282,9 +296,12 @@ if [ "$OPT_PURGE" -eq 1 ]; then
     tui_ok "Все конфигурации Tachyon удалены (--purge)"
 fi
 
-# Reload rpcd to update LuCI menu
+# Restart rpcd and uhttpd to update LuCI menu
 if [ -f "/etc/init.d/rpcd" ]; then
-    /etc/init.d/rpcd reload >/dev/null 2>&1 || true
+    /etc/init.d/rpcd restart >/dev/null 2>&1 || true
+fi
+if [ -f "/etc/init.d/uhttpd" ]; then
+    /etc/init.d/uhttpd restart >/dev/null 2>&1 || true
 fi
 
 # Check if parent Forkop / Podkop services exist and restore them

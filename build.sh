@@ -466,6 +466,7 @@ EOF
 [ -s ${IPKG_INSTROOT}/lib/functions.sh ] || exit 0
 . ${IPKG_INSTROOT}/lib/functions.sh
 default_postinst $0 $@
+[ -n "${IPKG_INSTROOT}" ] || /usr/bin/tachyon luci_postinst >/dev/null 2>&1 || true
 EOF
 
   cat > "$control_dir/postinst-pkg" <<'EOF'
