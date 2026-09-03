@@ -849,6 +849,8 @@ function restore_dns_config(backup_path) {
 }
 
 
+const EMPTY_SRS_BINARY = hexdec("5352530278da6200040000ffff00010001");
+
 function ensure_local_rulesets_exist(temp_config) {
     try {
         let cfg_raw = as_string(fs.readfile(temp_config) || "");
@@ -858,15 +860,17 @@ function ensure_local_rulesets_exist(temp_config) {
             for (let rs in cfg_obj.route.rule_set) {
                 if (type(rs) == "object" && rs.type == "local" && rs.path) {
                     let st = fs.stat(rs.path);
-                    if (!st || st.size == 0) {
+                    if (!st || st.size < 17) {
                         let bname = replace(rs.path, /^.*\//, "");
                         let etc_file = "/etc/tachyon/rulesets/" + bname;
                         let etc_st = fs.stat(etc_file);
-                        if (etc_st && etc_st.size > 0) {
+                        if (etc_st && etc_st.size >= 17) {
                             let content = fs.readfile(etc_file);
                             if (content) fs.writefile(rs.path, content);
                         } else if (rs.format == "source" || match(rs.path, /\.json$/)) {
                             fs.writefile(rs.path, sprintf("%J", { version: 3, rules: [] }));
+                        } else {
+                            fs.writefile(rs.path, EMPTY_SRS_BINARY);
                         }
                     }
                 }

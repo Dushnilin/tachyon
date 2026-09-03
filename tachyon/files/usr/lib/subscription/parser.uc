@@ -50,6 +50,16 @@ function tls_alpn_for_transport(alpn, transport) {
     return alpn;
 }
 
+function is_dummy_server(server, port) {
+    server = trim(lc(as_string(server)));
+    if (server == "" || server == "0.0.0.0" || server == "::" ||
+        substr(server, 0, 8) == "0.0.0.0:")
+        return true;
+    if (port != null && int(port) == 0)
+        return true;
+    return false;
+}
+
 function is_true(value) {
     if (value == null || value == "")
         return false;
@@ -771,7 +781,7 @@ function normalize_vless_encryption(value) {
 }
 
 function process_vless(raw, url) {
-    if (url.host == "" || !valid_port(url.port) || url.userinfo == "")
+    if (url.host == "" || is_dummy_server(url.host, url.port) || !valid_port(url.port) || url.userinfo == "")
         return null;
 
     let flow = url.query.flow || "";
@@ -811,7 +821,7 @@ function process_vless(raw, url) {
 }
 
 function process_trojan(raw, url) {
-    if (url.host == "" || !valid_port(url.port) || url.userinfo == "")
+    if (url.host == "" || is_dummy_server(url.host, url.port) || !valid_port(url.port) || url.userinfo == "")
         return null;
 
     let outbound = {
@@ -836,7 +846,7 @@ function process_trojan(raw, url) {
 }
 
 function process_socks(raw, url) {
-    if (url.host == "" || !valid_port(url.port))
+    if (url.host == "" || is_dummy_server(url.host, url.port) || !valid_port(url.port))
         return null;
 
     let username = "", password = "";
@@ -931,7 +941,7 @@ function process_shadowsocks(raw) {
         return null;
     let method = substr(userinfo, 0, cred_colon);
     let password = substr(userinfo, cred_colon + 1);
-    if (method == "" || method == "ss" || password == "" || host_port[0] == "" || !valid_port(host_port[1]))
+    if (method == "" || method == "ss" || password == "" || host_port[0] == "" || is_dummy_server(host_port[0], host_port[1]) || !valid_port(host_port[1]))
         return null;
 
     let params = parse_query(query);
@@ -966,7 +976,7 @@ function process_hysteria2(raw, url) {
     let port_value = mport != "" ? mport : url.port;
     let server_ports = parse_hysteria2_server_ports(port_value);
     let server_port = normalize_port_number(as_string(port_value));
-    if (url.host == "" || (server_ports == null && server_port == "") || url.userinfo == "")
+    if (url.host == "" || is_dummy_server(url.host, port_value) || (server_ports == null && server_port == "") || url.userinfo == "")
         return null;
 
     let password = url.userinfo;
@@ -1010,7 +1020,7 @@ function process_hysteria2(raw, url) {
 
 function process_tuic(raw, url) {
     let userinfo = as_string(url.userinfo || "");
-    if (userinfo == "" || url.host == "" || url.port == "")
+    if (userinfo == "" || url.host == "" || is_dummy_server(url.host, url.port) || url.port == "")
         return null;
 
     let uuid = "";
@@ -1079,7 +1089,7 @@ function process_vmess_json(raw, decoded) {
     let server = string_value(vmess.add);
     let port = int(vmess.port || 0);
     let uuid = string_value(vmess.id);
-    if (server == "" || !valid_port(port) || uuid == "")
+    if (server == "" || is_dummy_server(server, port) || !valid_port(port) || uuid == "")
         return null;
 
     let outbound = {
@@ -1478,7 +1488,7 @@ function parse_clash_record(record) {
     let port = int(record.port || 0);
     if (name == "")
         name = server + ":" + as_string(record.port);
-    if (proxy_type == "" || server == "" || !valid_port(port))
+    if (proxy_type == "" || server == "" || is_dummy_server(server, port) || !valid_port(port))
         return null;
 
     let options = {
@@ -2372,7 +2382,7 @@ function convert_xray_vless(outbound, tag) {
     let server = as_string(vnext.address || "");
     let port = xray_valid_port_value(vnext.port);
     let uuid = as_string(user.id || "");
-    if (server == "" || port == null || uuid == "")
+    if (server == "" || is_dummy_server(server, port) || port == null || uuid == "")
         return null;
 
     let result = {
@@ -2405,7 +2415,7 @@ function convert_xray_socks(outbound, tag) {
     let server_config = xray_first_array_object(object_or_empty(outbound.settings).servers);
     let server = as_string(server_config.address || "");
     let port = xray_valid_port_value(server_config.port);
-    if (server == "" || port == null)
+    if (server == "" || is_dummy_server(server, port) || port == null)
         return null;
 
     let result = {
@@ -2436,7 +2446,7 @@ function convert_xray_hysteria2(outbound, tag) {
     let server = as_string(settings.address || settings.server || "");
     let port = xray_valid_port_value(settings.port);
     let password = as_string(hysteria_settings.auth || settings.auth || settings.password || "");
-    if (server == "" || port == null || password == "")
+    if (server == "" || is_dummy_server(server, port) || port == null || password == "")
         return null;
 
     let result = {

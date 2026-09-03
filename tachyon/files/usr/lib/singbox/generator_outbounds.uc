@@ -143,6 +143,16 @@ function subscription_hidden_outbound(outbound, refs, hide_urltest_group_outboun
     return internal_flag(outbound.__tachyon_hidden) && !hidden_by_urltest && !hidden_by_detour;
 }
 
+function is_dummy_outbound_server(server, port) {
+    server = trim(lc(as_string(server)));
+    if (server == "" || server == "0.0.0.0" || server == "::" ||
+        substr(server, 0, 8) == "0.0.0.0:")
+        return true;
+    if (port != null && int(port) == 0)
+        return true;
+    return false;
+}
+
 function supported_subscription_outbound(outbound) {
     if (type(outbound) != "object")
         return false;
@@ -151,8 +161,13 @@ function supported_subscription_outbound(outbound) {
         return true;
     if (t == "direct" || t == "selector" || t == "urltest" || t == "dns" || t == "block")
         return false;
-    return t == "vless" || t == "vmess" || t == "trojan" || t == "shadowsocks" ||
-        t == "socks" || t == "hysteria2" || t == "tuic";
+    let is_proto = (t == "vless" || t == "vmess" || t == "trojan" || t == "shadowsocks" ||
+        t == "socks" || t == "hysteria2" || t == "tuic");
+    if (!is_proto)
+        return false;
+    if (is_dummy_outbound_server(outbound.server, outbound.server_port))
+        return false;
+    return true;
 }
 
 function outbound_uses_xhttp(outbound) {
@@ -336,7 +351,11 @@ function urltest_leaf_candidate_outbound(outbound) {
         return false;
 
     let t = lc(as_string(outbound.type || ""));
-    return t != "selector" && t != "urltest" && t != "dns" && t != "block";
+    if (t == "selector" || t == "urltest" || t == "dns" || t == "block")
+        return false;
+    if (is_dummy_outbound_server(outbound.server, outbound.server_port))
+        return false;
+    return true;
 }
 
 function unique_tag(base, taken) {
