@@ -432,8 +432,8 @@ function pkg_install_files_command(files, force_reinstall) {
     return command_from_args(args) + " </dev/null";
 }
 
-function pkg_install_files(files) {
-    return command_success(pkg_install_files_command(files));
+function pkg_install_files(files, force_reinstall) {
+    return command_success(pkg_install_files_command(files, force_reinstall));
 }
 
 // Like run_logged but retries up to 10 times on APK database lock (exit code 227)
@@ -1352,21 +1352,48 @@ function remove_optional_component(component, package_name, label, runtime_modul
     action_success(component, "remove", label + " package has been removed", current_version, "", 1);
 }
 
+function extract_sing_box_version_from_output(output) {
+    output = as_string(output);
+    for (let line in split(output, "\n")) {
+        line = trim(line);
+        let m = match(line, /^(?:sing-box\s+)?version\s+([^\s]+)/i);
+        if (m && m[1])
+            return m[1];
+        let fields = split(line, /[ \t\r\n]+/);
+        if (length(fields) >= 3 && lc(fields[0]) == "sing-box" && lc(fields[1]) == "version")
+            return fields[2];
+    }
+    return "";
+}
+
 function read_sing_box_binary_version(binary, library_dir) {
     binary = as_string(binary);
-    if (binary == "" || !file_exists(binary))
+    if (binary == "" || !file_exists(binary)) {
+        updates_log("sing-box binary not found at " + binary, "warn");
         return "";
+    }
 
-    // stderr is dropped but stdout is kept whatever the exit status: sing-box
-    // prints "sing-box version X" and can still exit non-zero (or be signalled by
-    // the service stop that precedes the install). Judging the binary by its exit
-    // code made every install report "failed validation" and roll a working
-    // sing-box back - the version string itself is the only reliable signal.
+    command_success_from_args([ "chmod", "0755", binary ]);
+
     let command = command_from_args([ binary, "version" ]);
-    if (as_string(library_dir || "") != "")
-        command = command_env({ LD_LIBRARY_PATH: as_string(library_dir) }) + " " + command;
+    let lib_path = as_string(library_dir || "");
+    if (lib_path != "") {
+        if (lib_path == "/usr/lib")
+            lib_path = "/usr/lib:/lib";
+        else
+            lib_path = lib_path + ":/usr/lib:/lib";
+        command = command_env({ LD_LIBRARY_PATH: lib_path }) + " " + command;
+    }
 
-    return trim(helper_output_input(command_output_lenient("(" + command + ") 2>/dev/null"), "stdin-first-line-last-field", []));
+    let raw_output = command_output_lenient("(" + command + ") 2>&1");
+    let version = extract_sing_box_version_from_output(raw_output);
+    if (version == "")
+        version = trim(helper_output_input(raw_output, "stdin-first-line-last-field", []));
+    if (version == "") {
+        let trimmed_raw = trim(raw_output);
+        updates_log("Failed to parse sing-box version from binary " + binary + (trimmed_raw != "" ? "; output: " + trimmed_raw : "; binary produced no output"), "warn");
+    }
+    return version;
 }
 
 function validate_sing_box_extended_binary(binary, library_dir) {
@@ -1603,7 +1630,7 @@ function restore_sing_box_extended_package_variant() {
     prepare_sing_box_package_service_install();
     pkg_remove_sing_box_conflict("sing-box-tiny");
     pkg_remove_sing_box_conflict("sing-box");
-    if (!pkg_install_files([ package_file ])) {
+    if (!pkg_install_files([ package_file ], true)) {
         remove_file(package_file);
         return false;
     }
@@ -1812,11 +1839,12 @@ function install_sing_box_extended_package(action) {
         }
     }
 
-    if (!run_logged("Installing sing-box-extended package " + release.asset_name, pkg_install_files_command([ package_file ]))) {
+    if (!run_logged("Installing sing-box-extended package " + release.asset_name, pkg_install_files_command([ package_file ], true))) {
         restore_sing_box_after_failed_extended_package_install(current_variant, backup_binary, backup_cronet, previous_marker, previous_version_state, package_file, cronet_touched);
         action_fail("sing_box", action, "Failed to install sing-box-extended package", current_version, latest_version);
     }
     remove_file(package_file);
+    command_success_from_args([ "chmod", "0755", "/usr/bin/sing-box" ]);
 
     let new_version = validate_sing_box_extended_binary("/usr/bin/sing-box", "/usr/lib");
     if (new_version == "") {
