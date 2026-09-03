@@ -271,7 +271,10 @@ function tg_request_via(token, method, payload, proxy_args) {
     // whenever the process was killed mid-request (e.g. during the 20-second
     // getUpdates long-poll on reboot or watchdog restart).
     let body = sprintf("%J", payload);
-    let args = [ "curl", "-s", "-m", "35", "--connect-timeout", "10",
+    let is_poll = (method == "getUpdates");
+    let max_time = is_poll ? "35" : "12";
+    let conn_timeout = is_poll ? "10" : "5";
+    let args = [ "curl", "-s", "-m", max_time, "--connect-timeout", conn_timeout,
                  "-X", "POST", "-H", "Content-Type: application/json",
                  "-d", body ];
     for (let p in proxy_args) push(args, p);
@@ -301,20 +304,48 @@ function tg_request(token, method, payload) {
 
 function send_message(token, chat_id, text, parse_mode, keyboard) {
     text = as_string(text);
-    if (length(text) > 3900) text = substr(text, 0, 3900) + "\n... " + t("msg_truncated");
+    if (length(text) > 3900) {
+        text = substr(text, 0, 3900) + "\n... " + t("msg_truncated");
+        if (parse_mode == "HTML") {
+            if (index(text, "<pre>") >= 0 && index(text, "</pre>") < 0) text += "</pre>";
+            if (index(text, "<code>") >= 0 && index(text, "</code>") < 0) text += "</code>";
+            if (index(text, "<b>") >= 0 && index(text, "</b>") < 0) text += "</b>";
+            if (index(text, "<i>") >= 0 && index(text, "</i>") < 0) text += "</i>";
+        }
+    }
     let payload = { chat_id: int(chat_id), text: text };
     if (parse_mode) payload.parse_mode = parse_mode;
     if (keyboard) payload.reply_markup = { inline_keyboard: keyboard };
-    return tg_request(token, "sendMessage", payload);
+    let res = tg_request(token, "sendMessage", payload);
+    if ((!res || !res.ok) && parse_mode) {
+        delete payload.parse_mode;
+        payload.text = replace(text, /<[^>]+>/g, "");
+        res = tg_request(token, "sendMessage", payload);
+    }
+    return res;
 }
 
 function edit_message(token, chat_id, message_id, text, parse_mode, keyboard) {
     text = as_string(text);
-    if (length(text) > 3900) text = substr(text, 0, 3900) + "\n... " + t("msg_truncated");
+    if (length(text) > 3900) {
+        text = substr(text, 0, 3900) + "\n... " + t("msg_truncated");
+        if (parse_mode == "HTML") {
+            if (index(text, "<pre>") >= 0 && index(text, "</pre>") < 0) text += "</pre>";
+            if (index(text, "<code>") >= 0 && index(text, "</code>") < 0) text += "</code>";
+            if (index(text, "<b>") >= 0 && index(text, "</b>") < 0) text += "</b>";
+            if (index(text, "<i>") >= 0 && index(text, "</i>") < 0) text += "</i>";
+        }
+    }
     let payload = { chat_id: int(chat_id), message_id: int(message_id), text: text };
     if (parse_mode) payload.parse_mode = parse_mode;
     if (keyboard) payload.reply_markup = { inline_keyboard: keyboard };
-    return tg_request(token, "editMessageText", payload);
+    let res = tg_request(token, "editMessageText", payload);
+    if ((!res || !res.ok) && parse_mode) {
+        delete payload.parse_mode;
+        payload.text = replace(text, /<[^>]+>/g, "");
+        res = tg_request(token, "editMessageText", payload);
+    }
+    return res;
 }
 
 function send_document(token, chat_id, file_path) {
@@ -958,7 +989,7 @@ function view_outbounds(token, chat_id, msg_id, group_name) {
             text += marker + " <code>" + escape_html(name) + "</code>: <code>" + delay + "</code>\n";
 
             if (count < 18) {
-                push(row, { text: (name == active_server ? "🔵 " : "") + name, callback_data: "/sw " + group_name + " " + name });
+                push(row, { text: (name == active_server ? "🔵 " : "") + name, callback_data: cb_data([ "/sw", group_name, name ]) });
                 if (length(row) == 2) {
                     push(keyboard, row);
                     row = [];
@@ -1643,7 +1674,7 @@ function view_quick_test(token, chat_id, msg_id) {
     text += (sys && sys.watchdog_running ? "✅" : "❌") + " Watchdog\n";
 
     let nft = command_capture(command_from_args(["/usr/sbin/nft", "list", "tables"]));
-    text += (nft && nft.status == 0 && match(nft.output || "", /ip tachyon/)) ? "✅" : "❌";
+    text += (nft && nft.status == 0 && match(nft.output || "", /TachyonTable/)) ? "✅" : "❌";
     text += " " + t("test_nft") + "\n";
 
     let dns_ok = false;
@@ -1788,7 +1819,7 @@ function view_connections(token, chat_id, msg_id, page) {
         text += "  ↳ " + escape_html(chain) + "  📥" + dl + " 📤" + ul + "\n";
     }
 
-    let total_pages = (total + per_page - 1) / per_page;
+    let total_pages = int((total + per_page - 1) / per_page);
     let keyboard = [];
     if (total_pages > 1) {
         let nav = [];
@@ -2303,7 +2334,7 @@ function dispatch_command(token, chat_id, text, msg_id) {
     if (cmd == "/start" || cmd == "/menu") return view_menu(token, chat_id, msg_id);
     if (cmd == "/status") return view_status(token, chat_id, msg_id);
     if (cmd == "/runtime") return view_runtime(token, chat_id, msg_id);
-    if (cmd == "/heal" || cmd == "/ai_heal") return exec_ai_heal(token, chat_id, msg_id);
+    if (cmd == "/heal" || cmd == "/ai_heal" || cmd == "/ai_doctor") return exec_ai_heal(token, chat_id, msg_id);
     if (cmd == "/qos") return view_qos(token, chat_id, msg_id);
     if (cmd == "/qos_toggle") return handle_qos_toggle(token, chat_id, msg_id);
 
@@ -2342,13 +2373,14 @@ function dispatch_command(token, chat_id, text, msg_id) {
             " тихих часов (0–23):\n\n<i>Отправьте /cancel для отмены</i>", "HTML");
     }
     
-    if (cmd == "/outbounds") return view_outbounds(token, chat_id, msg_id);
-    if (match(cmd, /^\/outbounds /)) {
-        let grp = trim(substr(cmd, 11));
+    if (cmd == "/outbounds" || cmd == "/server" || cmd == "/servers") return view_outbounds(token, chat_id, msg_id);
+    if (match(cmd, /^\/(?:outbounds|server|servers) /)) {
+        let parts = split(cmd, " ");
+        let grp = trim(join(" ", slice(parts, 1)));
         return view_outbounds(token, chat_id, msg_id, grp);
     }
     
-    if (cmd == "/sections") return view_sections(token, chat_id, msg_id);
+    if (cmd == "/sections" || cmd == "/rules") return view_sections(token, chat_id, msg_id);
     if (cmd == "/devices") return view_devices(token, chat_id, msg_id);
     if (match(cmd, /^\/toggle_mac /)) {
         let mac = trim(substr(cmd, 12));

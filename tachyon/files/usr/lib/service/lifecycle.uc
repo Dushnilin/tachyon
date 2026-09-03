@@ -900,6 +900,7 @@ function stop_main() {
     if (!module_success(TAILSCALE_UC, [ "stop-runtime" ]))
         log_message("Tailscale stop failed (non-fatal)", "warn");
     module_success(PARENTAL_QUOTA_UC, [ "remove-cron" ]);
+    module_success(TELEGRAM_UC, [ "stop-runtime" ]);
 
     if (command_success_from_args([ "nft", "list", "table", "inet", NFT_TABLE_NAME ])) {
         if (!command_success_from_args([ "nft", "delete", "table", "inet", NFT_TABLE_NAME ]))
@@ -1407,6 +1408,8 @@ function reload(reason) {
 
     if (plan.needs_list_update == 1)
         module_background(UPDATES_UC, [ "list-update" ]);
+
+    module_background(TELEGRAM_UC, [ "start-runtime" ]);
 
     return finish_reload_status(module_status(STATE_UC, [
         "write-captured-reload-state",

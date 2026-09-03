@@ -1952,7 +1952,7 @@ let telegram_worker_last_restart = 0;
 
 function telegram_worker_restart() {
     let now = time();
-    if (now - telegram_worker_last_restart < 3600)
+    if (now - telegram_worker_last_restart < 120)
         return;
     telegram_worker_last_restart = now;
     log_message("Telegram worker is enabled but not polling (no heartbeat); restarting it.", "warn");
