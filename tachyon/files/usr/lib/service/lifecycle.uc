@@ -835,6 +835,11 @@ function start_impl() {
     if (wd_status != 0)
         log_message("Watchdog start-runtime failed (status " + as_string(wd_status) + ")", "warn");
 
+    if (time() < 1704067200) {
+        log_message("System clock is in the past (RTC desync); performing quick NTP synchronization...", "warn");
+        command_status("ntpd -q -p 194.190.168.1 -p 216.239.35.0 -p 162.159.200.1 >/dev/null 2>&1 || true");
+    }
+
     let status = start_main();
     if (status != 0)
         return status;

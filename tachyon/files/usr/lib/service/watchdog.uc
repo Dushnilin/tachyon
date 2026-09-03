@@ -349,7 +349,7 @@ function run_zero_rtt_prefetching() {
             // that followed it attached to a null command in this shell instead
             // of to the backgrounded loop. Backgrounding is now the wrapper's
             // job, so the loop gets the redirections it was always meant to have.
-            let batch_cmd = "for d in " + join(" ", batch) + "; do dig @127.0.0.1 \"$d\" A >/dev/null 2>&1; done";
+            let batch_cmd = "for d in " + join(" ", batch) + "; do dig @127.0.0.1 \"$d\" A >/dev/null 2>&1 || nslookup \"$d\" 127.0.0.1 >/dev/null 2>&1; done";
             system(common.background_command(batch_cmd));
             batch = [];
         }
@@ -1976,7 +1976,7 @@ function check_telegram_worker() {
     }
 
     let age = time() - int(heartbeat);
-    if (age <= 900)
+    if (age <= 300)
         return;
 
     let pid = trim(fs.readfile(TELEGRAM_PID_FILE) || "");

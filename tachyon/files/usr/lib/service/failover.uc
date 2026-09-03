@@ -121,6 +121,7 @@ function switch_group(section_name, outbound_name) {
         log_message("runtime switch failed: " + out, "warn");
         return false;
     }
+    command_status("conntrack -F >/dev/null 2>&1 || true");
     return true;
 }
 

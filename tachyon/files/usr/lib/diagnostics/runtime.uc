@@ -1864,6 +1864,8 @@ function clash_api(action, arg1, arg2, arg3) {
         push(args, "--data-raw");
         push(args, payload);
         let result = status_capture([ "clash-set-group-proxy-result", arg1, arg2 ], command_output(command_from_args(args)));
+        if (result.status == 0)
+            command_status("conntrack -F >/dev/null 2>&1 || true");
         if (result.output != "")
             print(result.output);
         return result.status;
@@ -3930,7 +3932,7 @@ function apply_quick_fix(codes_str) {
             status = (rc == 0);
             msg = status ? "Tachyon stopped, stock dnsmasq and native direct internet routing restored" : "Native internet restore failed (exit " + rc + ")";
         } else if (c == "fix_system_time") {
-            let rc = command_status("ntpd -q -p pool.ntp.org 2>/dev/null || rdate -s time.cloudflare.com 2>/dev/null; /etc/init.d/sysntpd restart 2>/dev/null");
+            let rc = command_status("ntpd -q -p 194.190.168.1 -p 216.239.35.0 -p 162.159.200.1 2>/dev/null || ntpd -q -p pool.ntp.org 2>/dev/null || rdate -s time.cloudflare.com 2>/dev/null; /etc/init.d/sysntpd restart 2>/dev/null");
             status = (rc == 0);
             msg = status ? "System time synchronized with NTP" : "NTP sync failed (exit " + rc + ")";
         } else if (c == "flush_conntrack") {

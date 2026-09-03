@@ -642,6 +642,8 @@ function controller(bus, opts) {
 
     // ── Probe: nftables table and QoS marks ───────────────────────────────────
     function probe_nftables() {
+        if (setting("recovery_bypass", "0") == "1") return;
+        if (fs.stat("/var/run/tachyon/native_internet_restored") != null) return;
         if (is_list_update_running()) return;
         if (is_reload_in_progress()) return;
 
@@ -666,6 +668,7 @@ function controller(bus, opts) {
     // ── Probe: TPROXY port liveness ───────────────────────────────────────────
     function probe_tproxy() {
         if (setting("recovery_bypass", "0") == "1") return;
+        if (fs.stat("/var/run/tachyon/native_internet_restored") != null) return;
         if (is_reload_in_progress()) return;
 
         let pid = get_sing_box_pid();
