@@ -171,13 +171,13 @@ function resolve_host_via_bootstrap(host, bootstrap_ip, fallback_ip) {
         if (length(output) > 0) {
             let lines = split(output, "\n");
             for (let line in lines) {
-                let m = match(line, /Address(?:es)?(?:[ \t]+[0-9]+)?:[ \t]+([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)/);
+                let m = match(line, /Address.*:[ \t]+([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)/);
                 if (m && m[1] != null && m[1] != bootstrap_ip) {
                     resolved_hosts_cache[cache_key] = m[1];
                     return m[1];
                 }
             }
-            let m2 = match(output, /Name:[ \t]+[^\n]+\nAddress(?:[ \t]+[0-9]+)?:[ \t]+([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)/);
+            let m2 = match(output, /Name:[ \t]+[^\n]+\nAddress.*:[ \t]+([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)/);
             if (m2 && m2[1] != null && m2[1] != bootstrap_ip) {
                 resolved_hosts_cache[cache_key] = m2[1];
                 return m2[1];
