@@ -305,7 +305,8 @@ function add_standard_inbound(config, section, protocol, tag_name) {
         let jmin = int_option(section, "awg_jmin", "40");
         let jmax = int_option(section, "awg_jmax", "70");
         if (jmax > 1200) jmax = 1200;
-        let is_lx = trim(fs.readfile("/etc/tachyon/sing-box-variant") || "") == "lx";
+        let is_lx = trim(fs.readfile("/etc/tachyon/sing-box-variant") || "") == "lx" ||
+                    index(trim(fs.readfile("/etc/tachyon/sing-box-version") || ""), "-lx") >= 0;
 
         let amnezia = {
             jc: jc,

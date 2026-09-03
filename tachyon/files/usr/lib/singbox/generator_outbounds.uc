@@ -1303,7 +1303,8 @@ function add_awg_endpoint(config, section) {
     let j2 = awg_cps_option(section, "awg_j2");
     let j3 = awg_cps_option(section, "awg_j3");
     let itime = int_option(section, "awg_itime", "0");
-    let is_lx = trim(fs.readfile("/etc/tachyon/sing-box-variant") || "") == "lx";
+    let is_lx = trim(fs.readfile("/etc/tachyon/sing-box-variant") || "") == "lx" ||
+                index(trim(fs.readfile("/etc/tachyon/sing-box-version") || ""), "-lx") >= 0;
 
     if (is_lx) {
         // sing-box-lx expects AWG fields at the endpoint root (AWG 2.0 schema).

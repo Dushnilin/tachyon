@@ -2374,7 +2374,7 @@ function dispatch_command(token, chat_id, text, msg_id) {
     }
     
     if (cmd == "/outbounds" || cmd == "/server" || cmd == "/servers") return view_outbounds(token, chat_id, msg_id);
-    if (match(cmd, /^\/(?:outbounds|server|servers) /)) {
+    if (match(cmd, /^\/(outbounds|server|servers) /)) {
         let parts = split(cmd, " ");
         let grp = trim(join(" ", slice(parts, 1)));
         return view_outbounds(token, chat_id, msg_id, grp);

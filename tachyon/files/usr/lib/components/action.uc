@@ -1356,12 +1356,11 @@ function extract_sing_box_version_from_output(output) {
     output = as_string(output);
     for (let line in split(output, "\n")) {
         line = trim(line);
-        let m = match(line, /^(?:sing-box\s+)?version\s+([^\s]+)/i);
-        if (m && m[1])
-            return m[1];
         let fields = split(line, /[ \t\r\n]+/);
         if (length(fields) >= 3 && lc(fields[0]) == "sing-box" && lc(fields[1]) == "version")
             return fields[2];
+        if (length(fields) >= 2 && lc(fields[0]) == "version")
+            return fields[1];
     }
     return "";
 }

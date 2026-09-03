@@ -978,6 +978,45 @@ function init_config(populate_nft, caches_prepared, no_refresh) {
                 stripped = true;
             }
         }
+        else {
+            let ep_field_m = match(check_result.reason, /endpoints\[\d+\]\.(\w+): json: unknown field/);
+            let out_field_m = match(check_result.reason, /outbounds\[\d+\]\.(\w+): json: unknown field/);
+            if (ep_field_m) {
+                let unknown_field = ep_field_m[1];
+                log_message("Installed sing-box does not support endpoint field '" + unknown_field + "'; adjusting configuration", "warn");
+                let cfg_text = as_string(fs.readfile(temp_config) || "");
+                let cfg = length(cfg_text) > 0 ? json(cfg_text) : null;
+                if (type(cfg) == "object" && type(cfg.endpoints) == "array") {
+                    for (let ep in cfg.endpoints) {
+                        if (type(ep) == "object") {
+                            if (unknown_field == "amnezia" && type(ep.amnezia) == "object") {
+                                for (let k, v in ep.amnezia) {
+                                    if (ep[k] == null)
+                                        ep[k] = v;
+                                }
+                            }
+                            delete ep[unknown_field];
+                        }
+                    }
+                    write_file(temp_config, sprintf("%J", cfg));
+                    stripped = true;
+                }
+            }
+            else if (out_field_m) {
+                let unknown_field = out_field_m[1];
+                log_message("Installed sing-box does not support outbound field '" + unknown_field + "'; retrying without it", "warn");
+                let cfg_text = as_string(fs.readfile(temp_config) || "");
+                let cfg = length(cfg_text) > 0 ? json(cfg_text) : null;
+                if (type(cfg) == "object" && type(cfg.outbounds) == "array") {
+                    for (let outb in cfg.outbounds) {
+                        if (type(outb) == "object")
+                            delete outb[unknown_field];
+                    }
+                    write_file(temp_config, sprintf("%J", cfg));
+                    stripped = true;
+                }
+            }
+        }
         if (!stripped)
             break;
         check_result = sing_box_check(temp_config, runtime_log);
