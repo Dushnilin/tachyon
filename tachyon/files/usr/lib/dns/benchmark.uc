@@ -75,9 +75,15 @@ function now_seconds() {
     return stamp ? stamp[0] : 0;
 }
 
+let tool_cache = {};
 function has_tool(name) {
-    let out = command_output_from_args([ "which", as_string(name) ]);
-    return length(out) > 0;
+    name = as_string(name);
+    if (tool_cache[name] != null)
+        return tool_cache[name];
+    let out = command_output_from_args([ "which", name ]);
+    let exists = length(out) > 0;
+    tool_cache[name] = exists;
+    return exists;
 }
 
 function url_host(url) {
@@ -159,7 +165,9 @@ function resolve_host_via_bootstrap(host, bootstrap_ip, fallback_ip) {
     }
 
     if (has_tool("nslookup")) {
-        let output = command_output_from_args([ "nslookup", host, bootstrap_ip ]);
+        let output = command_output_from_args([ "nslookup", "-timeout=2", "-type=a", host, bootstrap_ip ]);
+        if (length(output) == 0 || index(output, "timed out") >= 0)
+            output = command_output_from_args([ "nslookup", host, bootstrap_ip ]);
         if (length(output) > 0) {
             let lines = split(output, "\n");
             for (let line in lines) {
@@ -206,13 +214,38 @@ function probe_udp(server_ip, domain) {
         }
     }
 
-    // Fallback using nslookup & timestamp
-    let t0 = clock();
-    let status = command_status_from_args([ "nslookup", domain, server_ip ]);
-    let t1 = clock();
-    if (status == 0 && t0 && t1) {
-        let elapsed_ms = (t1[0] - t0[0]) * 1000 + int((t1[1] - t0[1]) / 1000000);
-        return elapsed_ms >= 0 ? elapsed_ms : 0;
+    if (has_tool("nslookup")) {
+        // Fast path: BusyBox / BIND nslookup with -timeout=2 -type=a to query ONLY IPv4 A record
+        // and avoid the 2.5s AAAA retransmit timeout bug on dual-stack/IPv4 networks.
+        let t0 = clock();
+        let output = command_output_from_args([ "nslookup", "-timeout=2", "-type=a", domain, server_ip ]);
+        let t1 = clock();
+
+        // If the query explicitly timed out or failed to reach the server, do not re-run
+        if (index(output, "timed out") >= 0 || index(output, "no servers could be reached") >= 0 || index(output, "can't find") >= 0)
+            return -1;
+
+        if (length(output) > 0) {
+            let m_time = match(output, /Query #[0-9]+ completed in ([0-9]+)ms/);
+            if (m_time && m_time[1] != null)
+                return int(m_time[1]);
+
+            if (index(output, "Name:") >= 0) {
+                if (t0 && t1) {
+                    let elapsed_ms = (t1[0] - t0[0]) * 1000 + int((t1[1] - t0[1]) / 1000000);
+                    return elapsed_ms >= 0 ? elapsed_ms : 0;
+                }
+            }
+        }
+
+        // Fallback for minimal legacy BusyBox without -timeout or -type options (if output was empty)
+        t0 = clock();
+        let status = command_status_from_args([ "nslookup", domain, server_ip ]);
+        t1 = clock();
+        if (status == 0 && t0 && t1) {
+            let elapsed_ms = (t1[0] - t0[0]) * 1000 + int((t1[1] - t0[1]) / 1000000);
+            return elapsed_ms >= 0 ? elapsed_ms : 0;
+        }
     }
 
     return -1;

@@ -628,7 +628,9 @@ function probe_dns(ctx, host) {
         }
     }
     else if (ctx.tools.nslookup) {
-        let result = capture_args(prefixed_args(ctx, [ "nslookup", as_string(host), ctx.resolver ]), true);
+        let result = capture_args(prefixed_args(ctx, [ "nslookup", "-type=a", as_string(host), ctx.resolver ]), true);
+        if (result.status != 0 && index(result.output, "Address") < 0)
+            result = capture_args(prefixed_args(ctx, [ "nslookup", as_string(host), ctx.resolver ]), true);
         // busybox печатает "Address 1: 1.2.3.4 host.example", хвост после адреса игнорируем.
         for (let line in split(result.output, "\n")) {
             let matched = match(trim(as_string(line)), /^Address[ \t0-9]*:[ \t]+([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)/);
@@ -1028,7 +1030,9 @@ function udp_dns_probe(ctx, target) {
 
     let query = as_string(target.query || "example.com");
     let started = now_ms();
-    let result = capture_args(prefixed_args(ctx, [ "nslookup", query, as_string(target.host) ]), true);
+    let result = capture_args(prefixed_args(ctx, [ "nslookup", "-type=a", query, as_string(target.host) ]), true);
+    if (result.status != 0 && index(lc(as_string(result.output)), "address") < 0)
+        result = capture_args(prefixed_args(ctx, [ "nslookup", query, as_string(target.host) ]), true);
     let elapsed = now_ms() - started;
     let output = lc(as_string(result.output));
     let ok = result.status == 0 && index(output, "address") >= 0;
