@@ -1282,9 +1282,7 @@ export function renderStrategyFuzzerModal(ruleNames: string[] = []) {
     list.forEach((item, idx) => {
       const isBest = state.best_strategy && state.best_strategy.id === item.id;
 
-      const nameChildren: (HTMLElement | string)[] = [
-        E('span', {}, item.name),
-      ];
+      const nameChildren: (HTMLElement | string)[] = [E('span', {}, item.name)];
       if (item.badge) {
         nameChildren.push(
           E(

@@ -13217,9 +13217,7 @@ function renderStrategyFuzzerModal(ruleNames = []) {
     }
     list.forEach((item, idx) => {
       const isBest = state.best_strategy && state.best_strategy.id === item.id;
-      const nameChildren = [
-        E("span", {}, item.name)
-      ];
+      const nameChildren = [E("span", {}, item.name)];
       if (item.badge) {
         nameChildren.push(
           E(
