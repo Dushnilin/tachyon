@@ -864,7 +864,8 @@ function view_status(token, chat_id, msg_id) {
                t("status_uptime") + ": <code>" + sys.uptime + "</code>\n" +
                t("status_cpu") + ": <code>" + sys.cpu + "</code>\n" +
                "RAM: <code>" + sys.ram_avail + "MB / " + sys.ram_total + "MB</code>\n\n" +
-               "sing-box: <code>" + sys.singbox + "</code>\n" +
+               "sing-box: <code>" + sys.singbox + (sys.singbox_variant ? " [" + sys.singbox_variant + "]" : "") + "</code>\n" +
+               (sys.zapret2_installed ? "zapret2: <code>" + sys.zapret2 + "</code>\n" : "") +
                "Watchdog: <code>" + (sys.watchdog_running ? "🟢 running" : "🔴 stopped") + "</code>\n\n" +
                "WAN: <code>" + (sys.wan_ip || "?") + "</code> " +
                (conn && conn.direct ? "✅" : "❌") + "\n" +
@@ -1754,9 +1755,12 @@ function view_system_info(token, chat_id, msg_id) {
             text += "🔧 Tachyon: <code>" + as_string(info.tachyon_version || "N/A") + "</code>\n";
             text += "📱 LuCI App: <code>" + as_string(info.luci_app_version || "N/A") + "</code>\n\n";
             text += "📦 sing-box: <code>" + as_string(info.sing_box_version || "N/A") + "</code>\n";
-            if (info.sing_box_extended) text += "   Extended: ✅\n";
-            if (info.sing_box_tiny) text += "   Tiny: ✅\n";
-            if (info.sing_box_tailscale) text += "   Tailscale: ✅\n";
+            if (info.sing_box_lx == 1) text += "   Fork: Leadaxe (lx) 🟢\n";
+            else if (info.sing_box_compressed == 1) text += "   Fork: Extended (compressed) 🔵\n";
+            else if (info.sing_box_extended == 1) text += "   Fork: Extended (shtorm-7) 🔵\n";
+            else if (info.sing_box_tiny == 1) text += "   Variant: Tiny 🟡\n";
+            else text += "   Variant: Official / Stock ⚪\n";
+            if (info.sing_box_tailscale == 1) text += "   Tailscale: ✅\n";
             text += "\n";
             if (info.zapret_installed == "1") text += "🛡 Zapret: <code>" + as_string(info.zapret_version || "?") + "</code>\n";
             if (info.zapret2_installed == "1") text += "🛡 Zapret2: <code>" + as_string(info.zapret2_version || "?") + "</code>\n";

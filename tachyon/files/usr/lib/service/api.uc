@@ -103,6 +103,19 @@ function get_system_status() {
     let sb_running = command_success_from_args(["pidof", "sing-box"]);
     status_obj.singbox_running = sb_running;
     status_obj.singbox = sb_running ? "🟢 running" : "🔴 stopped";
+    let sb_variant = trim(as_string(fs.readfile("/etc/tachyon/sing-box-variant") || ""));
+    if (sb_variant != "")
+        status_obj.singbox_variant = sb_variant;
+
+    // zapret2 status
+    let z2_installed = fs.stat("/opt/zapret2/nfq2/nfqws2") != null;
+    status_obj.zapret2_installed = z2_installed;
+    if (z2_installed) {
+        let z2_running = command_success_from_args(["pidof", "nfqws2"]);
+        status_obj.zapret2_running = z2_running;
+        status_obj.zapret2 = z2_running ? "🟢 running" : "🔴 stopped";
+    }
+
     status_obj.tachyon_running = command_success_from_args(["/etc/init.d/tachyon", "status"]);
 
     // Active servers for all Selector groups

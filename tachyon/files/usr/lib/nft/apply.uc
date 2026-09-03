@@ -1959,11 +1959,13 @@ function ensure_bridge_netfilter_disabled() {
 
 // TCP keepalive: detect dead connections in ~90s instead of kernel default (hours).
 // Conntrack: expire stale TCP entries in 10 min instead of 5 days.
+// Buffers & TCP fastopen: accelerate QUIC/Hysteria2 and reduce TLS handshake RTT.
 function apply_connection_tuning() {
     let sysctls = [
         [ "net.ipv4.tcp_keepalive_time", "60" ],
         [ "net.ipv4.tcp_keepalive_intvl", "10" ],
         [ "net.ipv4.tcp_keepalive_probes", "3" ],
+        [ "net.ipv4.tcp_fastopen", "3" ],
         [ "net.netfilter.nf_conntrack_tcp_timeout_established", "600" ],
         [ "net.netfilter.nf_conntrack_tcp_timeout_time_wait", "30" ]
     ];
@@ -1974,8 +1976,21 @@ function apply_connection_tuning() {
         if (!run_args_quiet([ "sysctl", "-w", pair[0] + "=" + pair[1] ]))
             ok = false;
     }
+
+    let ct_max = int(trim(command_output_from_args([ "sysctl", "-n", "net.netfilter.nf_conntrack_max" ]) || "0"));
+    if (ct_max > 0 && ct_max < 65536)
+        run_args_quiet([ "sysctl", "-w", "net.netfilter.nf_conntrack_max=65536" ]);
+
+    let rmem_max = int(trim(command_output_from_args([ "sysctl", "-n", "net.core.rmem_max" ]) || "0"));
+    if (rmem_max > 0 && rmem_max < 2621440)
+        run_args_quiet([ "sysctl", "-w", "net.core.rmem_max=2621440" ]);
+
+    let wmem_max = int(trim(command_output_from_args([ "sysctl", "-n", "net.core.wmem_max" ]) || "0"));
+    if (wmem_max > 0 && wmem_max < 2621440)
+        run_args_quiet([ "sysctl", "-w", "net.core.wmem_max=2621440" ]);
+
     if (ok)
-        log_debug("Connection tuning applied: tcp_keepalive=60/10/3, conntrack_established=600");
+        log_debug("Connection tuning applied: tcp_keepalive=60/10/3, tcp_fastopen=3, conntrack_established=600");
     return ok;
 }
 

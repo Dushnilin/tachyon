@@ -1044,6 +1044,24 @@ function ui_capabilities_json() {
     write_json(capability_flags());
 }
 
+function process_memory_rss_mb(process_name) {
+    let output = common.command_output_from_args([ "pidof", process_name ]);
+    let pids = split(trim(as_string(output)), /[ \t\r\n]+/);
+    let total_kb = 0;
+    for (let p in pids) {
+        let pid = trim(as_string(p));
+        if (!pid || match(pid, /^[0-9]+$/) == null)
+            continue;
+        let status = fs.readfile("/proc/" + pid + "/status");
+        if (!status)
+            continue;
+        let m = match(status, /VmRSS:[ \t]+([0-9]+)/);
+        if (m)
+            total_kb += int(m[1]);
+    }
+    return total_kb > 0 ? int(total_kb / 1024) : 0;
+}
+
 function current_ui_state_json() {
     refresh_action_dirs();
 
@@ -1065,6 +1083,9 @@ function current_ui_state_json() {
     else if (active_action == "reload")
         tachyon_status = "reloading";
 
+    let sing_box_rss = sing_box_is_running ? process_memory_rss_mb("sing-box") : 0;
+    let zapret2_rss = file_executable(ZAPRET2_PROVIDER_NFQWS2_BIN) ? process_memory_rss_mb("nfqws2") : 0;
+
     write_json({
         service: {
             tachyon: {
@@ -1076,7 +1097,12 @@ function current_ui_state_json() {
             sing_box: {
                 running: sing_box_is_running,
                 enabled: sing_box_is_enabled,
-                status: sing_box_status
+                status: sing_box_status,
+                memory_rss_mb: sing_box_rss
+            },
+            zapret2: {
+                running: zapret2_rss > 0 ? 1 : 0,
+                memory_rss_mb: zapret2_rss
             }
         },
         capabilities,

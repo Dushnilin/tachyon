@@ -571,6 +571,7 @@ export namespace Tachyon {
     running: number;
     enabled: number;
     status: string;
+    memory_rss_mb?: number;
   }
 
   export interface GetSystemInfo {
@@ -654,6 +655,10 @@ export namespace Tachyon {
     service: {
       tachyon: GetStatus;
       sing_box: GetSingBoxStatus;
+      zapret2?: {
+        running: number;
+        memory_rss_mb?: number;
+      };
     };
     capabilities: GetUiCapabilities;
     actions: {

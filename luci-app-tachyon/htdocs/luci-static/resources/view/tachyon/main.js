@@ -6261,22 +6261,71 @@ function formatSingBoxVersion(value) {
     variant = _("compressed");
   } else if (normalizedValue.sing_box_extended && normalizedValue.sing_box_lx) {
     variant = _("lx");
+  } else if (normalizedValue.sing_box_extended) {
+    variant = _("extended");
   } else if (normalizedValue.sing_box_tiny) {
     variant = _("tiny");
   }
   return variant ? `${version} (${variant})` : version;
 }
 function normalizeSingBoxVariantFields(value) {
-  const versionExtended = isExtendedSingBoxVersion(value.sing_box_version);
+  const version = String(value.sing_box_version || "");
+  const versionExtended = isExtendedSingBoxVersion(version);
+  const versionLx = version.includes("-lx");
   const singBoxExtended = Boolean(value.sing_box_extended) || versionExtended;
+  const singBoxLx = singBoxExtended && (Boolean(value.sing_box_lx) || versionLx);
   return {
     ...value,
     sing_box_extended: singBoxExtended ? 1 : 0,
     sing_box_tiny: singBoxExtended ? 0 : value.sing_box_tiny ? 1 : 0,
     sing_box_compressed: singBoxExtended && value.sing_box_compressed ? 1 : 0,
-    sing_box_lx: singBoxExtended && value.sing_box_lx ? 1 : 0,
+    sing_box_lx: singBoxLx ? 1 : 0,
     sing_box_tailscale: singBoxExtended || value.sing_box_tailscale ? 1 : 0
   };
+}
+function renderSingBoxVariantBadge(value) {
+  const version = String(value.sing_box_version || "");
+  if (!version || isVersionPlaceholder(version)) {
+    return null;
+  }
+  const normalized = normalizeSingBoxVariantFields(value);
+  const badge = document.createElement("span");
+  badge.className = "tachyon-badge";
+  badge.style.display = "inline-block";
+  badge.style.marginLeft = "8px";
+  badge.style.padding = "2px 8px";
+  badge.style.borderRadius = "9999px";
+  badge.style.fontSize = "11px";
+  badge.style.fontWeight = "600";
+  badge.style.lineHeight = "16px";
+  badge.style.verticalAlign = "middle";
+  if (normalized.sing_box_lx) {
+    badge.textContent = "Leadaxe (lx)";
+    badge.style.backgroundColor = "rgba(16, 185, 129, 0.15)";
+    badge.style.color = "#10b981";
+    badge.style.border = "1px solid rgba(16, 185, 129, 0.35)";
+  } else if (normalized.sing_box_compressed) {
+    badge.textContent = "Extended (compressed)";
+    badge.style.backgroundColor = "rgba(59, 130, 246, 0.15)";
+    badge.style.color = "#3b82f6";
+    badge.style.border = "1px solid rgba(59, 130, 246, 0.35)";
+  } else if (normalized.sing_box_extended) {
+    badge.textContent = "Extended (shtorm-7)";
+    badge.style.backgroundColor = "rgba(59, 130, 246, 0.15)";
+    badge.style.color = "#3b82f6";
+    badge.style.border = "1px solid rgba(59, 130, 246, 0.35)";
+  } else if (normalized.sing_box_tiny) {
+    badge.textContent = "Tiny";
+    badge.style.backgroundColor = "rgba(245, 158, 11, 0.15)";
+    badge.style.color = "#f59e0b";
+    badge.style.border = "1px solid rgba(245, 158, 11, 0.35)";
+  } else {
+    badge.textContent = "Official";
+    badge.style.backgroundColor = "rgba(107, 114, 128, 0.15)";
+    badge.style.color = "#6b7280";
+    badge.style.border = "1px solid rgba(107, 114, 128, 0.35)";
+  }
+  return badge;
 }
 
 // src/tachyon/services/localActionOverlay.service.ts
@@ -6398,10 +6447,13 @@ function applyServiceState(uiState) {
       failed: false,
       data: {
         singbox: uiState.service.sing_box.running,
+        singboxMemoryMb: uiState.service.sing_box.memory_rss_mb,
         tachyonRunning: uiState.service.tachyon.running,
         tachyonEnabled: uiState.service.tachyon.enabled,
         tachyonStatus: uiState.service.tachyon.status,
-        watchdogRunning: store.get().servicesInfoWidget.data.watchdogRunning
+        watchdogRunning: store.get().servicesInfoWidget.data.watchdogRunning,
+        zapret2Running: uiState.service.zapret2 ? uiState.service.zapret2.running : void 0,
+        zapret2MemoryMb: uiState.service.zapret2 ? uiState.service.zapret2.memory_rss_mb : void 0
       }
     },
     diagnosticsSystemInfo: normalizeSingBoxVariantFields(nextSystemInfo)
@@ -7024,10 +7076,13 @@ async function fetchServicesInfo() {
       failed: !tachyon.success || !singbox.success,
       data: {
         singbox: singbox.success ? singbox.data.running : previousData.singbox,
+        singboxMemoryMb: singbox.success ? singbox.data.memory_rss_mb : previousData.singboxMemoryMb,
         tachyonRunning: tachyon.success ? tachyon.data.running : previousData.tachyonRunning,
         tachyonEnabled: tachyon.success ? tachyon.data.enabled : previousData.tachyonEnabled,
         tachyonStatus: tachyon.success ? tachyon.data.status : previousData.tachyonStatus,
-        watchdogRunning: watchdog.success ? Number(watchdog.data.running) : previousData.watchdogRunning
+        watchdogRunning: watchdog.success ? Number(watchdog.data.running) : previousData.watchdogRunning,
+        zapret2Running: previousData.zapret2Running,
+        zapret2MemoryMb: previousData.zapret2MemoryMb
       }
     }
   });
@@ -8537,22 +8592,34 @@ async function renderServicesInfoWidget() {
     "dashboard-widget-service-info",
     "servicesInfoWidget",
     _("Services info"),
-    (data) => [
-      {
-        key: "Tachyon",
-        value: data.tachyonRunning ? _("\u2714 Running") : _("\u2718 Stopped"),
-        attributes: {
-          class: data.tachyonRunning ? "tachyon_dashboard-page__widgets-section__item__row--success" : "tachyon_dashboard-page__widgets-section__item__row--error"
+    (data) => {
+      const items = [
+        {
+          key: "Tachyon",
+          value: data.tachyonRunning ? _("\u2714 Running") : _("\u2718 Stopped"),
+          attributes: {
+            class: data.tachyonRunning ? "tachyon_dashboard-page__widgets-section__item__row--success" : "tachyon_dashboard-page__widgets-section__item__row--error"
+          }
+        },
+        {
+          key: "Sing-box",
+          value: data.singbox ? data.singboxMemoryMb ? `${_("\u2714 Running")} (${data.singboxMemoryMb} MB)` : _("\u2714 Running") : _("\u2718 Stopped"),
+          attributes: {
+            class: data.singbox ? "tachyon_dashboard-page__widgets-section__item__row--success" : "tachyon_dashboard-page__widgets-section__item__row--error"
+          }
         }
-      },
-      {
-        key: "Sing-box",
-        value: data.singbox ? _("\u2714 Running") : _("\u2718 Stopped"),
-        attributes: {
-          class: data.singbox ? "tachyon_dashboard-page__widgets-section__item__row--success" : "tachyon_dashboard-page__widgets-section__item__row--error"
-        }
+      ];
+      if (data.zapret2Running) {
+        items.push({
+          key: "Zapret2",
+          value: data.zapret2MemoryMb ? `${_("\u2714 Running")} (${data.zapret2MemoryMb} MB)` : _("\u2714 Running"),
+          attributes: {
+            class: "tachyon_dashboard-page__widgets-section__item__row--success"
+          }
+        });
       }
-    ],
+      return items;
+    },
     "renderServicesInfoWidget"
   );
 }
@@ -20142,6 +20209,7 @@ function getComponentCards() {
       column: 0,
       title: "Sing-box",
       version: systemInfoLoading ? _("Loading...") : formatSingBoxVersion(systemInfo),
+      badgeNode: systemInfoLoading ? null : renderSingBoxVariantBadge(systemInfo),
       latestVersion: getLatestVersion("sing_box"),
       releaseUrl: getGitHubReleaseUrl("sing_box"),
       repoUrl: systemInfo.sing_box_repo_url || (singBoxLx ? "https://github.com/Leadaxe/sing-box-lx" : singBoxExtended || singBoxExtendedCompressed ? "https://github.com/shtorm-7/sing-box-extended" : COMPONENT_REPO_URLS.sing_box),
@@ -20195,13 +20263,18 @@ function renderComponentCard(card) {
   const systemInfoLoading = isSystemInfoLoading();
   const checkResult = getVisibleCheckResult(card.component);
   const headerChildren = [
-    E("b", { class: "tachyon_updates-page__component__title" }, card.title),
+    E("b", { class: "tachyon_updates-page__component__title" }, card.title)
+  ];
+  if (card.badgeNode) {
+    headerChildren.push(card.badgeNode);
+  }
+  headerChildren.push(
     E(
       "span",
       { class: "tachyon_updates-page__component__header-version" },
       card.version
     )
-  ];
+  );
   if (card.repoUrl) {
     headerChildren.push(
       E(

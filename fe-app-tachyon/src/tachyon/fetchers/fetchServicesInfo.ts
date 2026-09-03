@@ -59,6 +59,9 @@ export async function fetchServicesInfo() {
       failed: !tachyon.success || !singbox.success,
       data: {
         singbox: singbox.success ? singbox.data.running : previousData.singbox,
+        singboxMemoryMb: singbox.success
+          ? singbox.data.memory_rss_mb
+          : previousData.singboxMemoryMb,
         tachyonRunning: tachyon.success
           ? tachyon.data.running
           : previousData.tachyonRunning,
@@ -71,6 +74,8 @@ export async function fetchServicesInfo() {
         watchdogRunning: watchdog.success
           ? Number((watchdog.data as { running: boolean }).running)
           : previousData.watchdogRunning,
+        zapret2Running: previousData.zapret2Running,
+        zapret2MemoryMb: previousData.zapret2MemoryMb,
       },
     },
   });

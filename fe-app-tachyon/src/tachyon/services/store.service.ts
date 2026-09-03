@@ -167,6 +167,9 @@ export interface StoreType {
       tachyonEnabled: number;
       tachyonStatus: string;
       watchdogRunning: number;
+      singboxMemoryMb?: number;
+      zapret2Running?: number;
+      zapret2MemoryMb?: number;
     };
   };
   tailscaleWidget: {

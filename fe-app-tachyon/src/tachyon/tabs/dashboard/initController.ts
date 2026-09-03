@@ -1885,26 +1885,47 @@ async function renderServicesInfoWidget() {
     'dashboard-widget-service-info',
     'servicesInfoWidget',
     _('Services info'),
-    (data) => [
-      {
-        key: 'Tachyon',
-        value: data.tachyonRunning ? _('✔ Running') : _('✘ Stopped'),
-        attributes: {
-          class: data.tachyonRunning
-            ? 'tachyon_dashboard-page__widgets-section__item__row--success'
-            : 'tachyon_dashboard-page__widgets-section__item__row--error',
+    (data) => {
+      const items = [
+        {
+          key: 'Tachyon',
+          value: data.tachyonRunning ? _('✔ Running') : _('✘ Stopped'),
+          attributes: {
+            class: data.tachyonRunning
+              ? 'tachyon_dashboard-page__widgets-section__item__row--success'
+              : 'tachyon_dashboard-page__widgets-section__item__row--error',
+          },
         },
-      },
-      {
-        key: 'Sing-box',
-        value: data.singbox ? _('✔ Running') : _('✘ Stopped'),
-        attributes: {
-          class: data.singbox
-            ? 'tachyon_dashboard-page__widgets-section__item__row--success'
-            : 'tachyon_dashboard-page__widgets-section__item__row--error',
+        {
+          key: 'Sing-box',
+          value: data.singbox
+            ? data.singboxMemoryMb
+              ? `${_('✔ Running')} (${data.singboxMemoryMb} MB)`
+              : _('✔ Running')
+            : _('✘ Stopped'),
+          attributes: {
+            class: data.singbox
+              ? 'tachyon_dashboard-page__widgets-section__item__row--success'
+              : 'tachyon_dashboard-page__widgets-section__item__row--error',
+          },
         },
-      },
-    ],
+      ];
+
+      if (data.zapret2Running) {
+        items.push({
+          key: 'Zapret2',
+          value: data.zapret2MemoryMb
+            ? `${_('✔ Running')} (${data.zapret2MemoryMb} MB)`
+            : _('✔ Running'),
+          attributes: {
+            class:
+              'tachyon_dashboard-page__widgets-section__item__row--success',
+          },
+        });
+      }
+
+      return items;
+    },
     'renderServicesInfoWidget',
   );
 }

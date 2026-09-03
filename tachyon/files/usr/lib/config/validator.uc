@@ -2082,7 +2082,7 @@ function managed_sing_box_service_script(marker) {
         "start_service() {\n" +
         "    config_load \"sing-box\"\n" +
         "    local enabled config_file working_directory\n" +
-        "    local log_stderr\n" +
+        "    local log_stderr mem_total_kb mem_limit_mb gogc scale scale_pct\n" +
         "\n" +
         "    config_get_bool enabled \"main\" \"enabled\" \"0\"\n" +
         "    [ \"$enabled\" -eq \"1\" ] || return 0\n" +
@@ -2097,6 +2097,34 @@ function managed_sing_box_service_script(marker) {
         "    procd_set_param stderr \"$log_stderr\"\n" +
         "    procd_set_param limits core=\"unlimited\"\n" +
         "    procd_set_param limits nofile=\"1000000 1000000\"\n" +
+        "    mem_total_kb=\"$(awk '/MemTotal/ {print $2}' /proc/meminfo 2>/dev/null || echo 0)\"\n" +
+        "    if [ \"$mem_total_kb\" -gt 0 ]; then\n" +
+        "        if [ \"$mem_total_kb\" -lt 131072 ]; then\n" +
+        "            mem_limit_mb=$(( mem_total_kb / 1024 * 30 / 100 ))\n" +
+        "            [ \"$mem_limit_mb\" -lt 16 ] && mem_limit_mb=16\n" +
+        "            gogc=20\n" +
+        "        elif [ \"$mem_total_kb\" -lt 262144 ]; then\n" +
+        "            mem_limit_mb=$(( mem_total_kb / 1024 * 35 / 100 ))\n" +
+        "            [ \"$mem_limit_mb\" -lt 24 ] && mem_limit_mb=24\n" +
+        "            gogc=25\n" +
+        "        elif [ \"$mem_total_kb\" -lt 524288 ]; then\n" +
+        "            mem_limit_mb=$(( mem_total_kb / 1024 * 40 / 100 ))\n" +
+        "            gogc=30\n" +
+        "        else\n" +
+        "            mem_limit_mb=$(( mem_total_kb / 1024 * 30 / 100 ))\n" +
+        "            [ \"$mem_limit_mb\" -gt 256 ] && mem_limit_mb=256\n" +
+        "            gogc=40\n" +
+        "        fi\n" +
+        "        if [ -r \"/etc/tachyon/mem_scale\" ]; then\n" +
+        "            scale=\"$(cat /etc/tachyon/mem_scale 2>/dev/null)\"\n" +
+        "            scale_pct=\"$(awk -v s=\"$scale\" 'BEGIN { pct=int(s*100); if (pct < 20) pct=20; if (pct > 100) pct=100; print pct }')\"\n" +
+        "            if [ -n \"$scale_pct\" ] && [ \"$scale_pct\" -lt 100 ]; then\n" +
+        "                mem_limit_mb=$(( mem_limit_mb * scale_pct / 100 ))\n" +
+        "                [ \"$mem_limit_mb\" -lt 12 ] && mem_limit_mb=12\n" +
+        "            fi\n" +
+        "        fi\n" +
+        "        procd_set_param env GOMEMLIMIT=\"${mem_limit_mb}MiB\" GOGC=\"$gogc\"\n" +
+        "    fi\n" +
         "    procd_set_param term_timeout 15\n" +
         "    procd_set_param respawn\n" +
         "    procd_close_instance\n" +

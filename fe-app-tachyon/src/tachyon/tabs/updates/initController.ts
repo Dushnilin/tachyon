@@ -19,6 +19,7 @@ import { shouldShowLoadingForRestoredAction } from '../../helpers/restoredAction
 import {
   formatSingBoxVersion,
   normalizeSingBoxVariantFields,
+  renderSingBoxVariantBadge,
 } from '../../helpers/singBoxVariant';
 import { shouldApplyCompletedComponentActionResult } from './componentActionCompletion';
 import {
@@ -115,6 +116,7 @@ interface ComponentCard {
   releaseUrl?: string;
   repoUrl?: string;
   actions: ComponentActionButton[];
+  badgeNode?: Node | null;
 }
 
 let updatesLifecycleRegistered = false;
@@ -1271,6 +1273,9 @@ function getComponentCards(): ComponentCard[] {
       version: systemInfoLoading
         ? _('Loading...')
         : formatSingBoxVersion(systemInfo),
+      badgeNode: systemInfoLoading
+        ? null
+        : renderSingBoxVariantBadge(systemInfo),
       latestVersion: getLatestVersion('sing_box'),
       releaseUrl: getGitHubReleaseUrl('sing_box'),
       repoUrl:
@@ -1350,12 +1355,17 @@ function renderComponentCard(card: ComponentCard) {
 
   const headerChildren: Node[] = [
     E('b', { class: 'tachyon_updates-page__component__title' }, card.title),
+  ];
+  if (card.badgeNode) {
+    headerChildren.push(card.badgeNode);
+  }
+  headerChildren.push(
     E(
       'span',
       { class: 'tachyon_updates-page__component__header-version' },
       card.version,
     ),
-  ];
+  );
   if (card.repoUrl) {
     headerChildren.push(
       E(

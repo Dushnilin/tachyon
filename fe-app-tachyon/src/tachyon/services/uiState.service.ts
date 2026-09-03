@@ -100,10 +100,17 @@ function applyServiceState(uiState: Tachyon.UiState) {
       failed: false,
       data: {
         singbox: uiState.service.sing_box.running,
+        singboxMemoryMb: uiState.service.sing_box.memory_rss_mb,
         tachyonRunning: uiState.service.tachyon.running,
         tachyonEnabled: uiState.service.tachyon.enabled,
         tachyonStatus: uiState.service.tachyon.status,
         watchdogRunning: store.get().servicesInfoWidget.data.watchdogRunning,
+        zapret2Running: uiState.service.zapret2
+          ? uiState.service.zapret2.running
+          : undefined,
+        zapret2MemoryMb: uiState.service.zapret2
+          ? uiState.service.zapret2.memory_rss_mb
+          : undefined,
       },
     },
     diagnosticsSystemInfo: normalizeSingBoxVariantFields(nextSystemInfo),
