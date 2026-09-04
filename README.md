@@ -340,6 +340,12 @@ Tachyon опирается на фундаментальные разработ�
 💳 **Карты РФ / СБП / Tinkoff Pay:**  
 👉 [**Поддержать проект на CloudTips**](https://pay.cloudtips.ru/p/48c57581)
 
+🪙 **Криптовалюта:**
+* **Bitcoin (BTC):** `bc1q9ehdv7y9g948jejyflkq7xmau3tytgunxgh35h`
+* **Ethereum (ETH / ERC-20):** `0x6CB7a4547eD62EF64990D5C6B5D9fdA58EB223E6`
+* **TON:** `UQDPhLRjMz5KltDLACAT3YXXHDVEtIDOHky2i33ZIOtsMEoR`
+* **Solana (SOL):** `3csTGaNeU9KjhCKHEKAU3XLS5UfVjEeBVhXihpsETZwh`
+
 <p align="center">
   <img src="assets/readme/divider_stream.svg" width="100%" alt="divider" />
 </p>
