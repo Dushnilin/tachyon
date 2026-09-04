@@ -2110,9 +2110,13 @@ function managed_sing_box_service_script(marker) {
         "        elif [ \"$mem_total_kb\" -lt 524288 ]; then\n" +
         "            mem_limit_mb=$(( mem_total_kb / 1024 * 40 / 100 ))\n" +
         "            gogc=30\n" +
+        "        elif [ \"$mem_total_kb\" -lt 1048576 ]; then\n" +
+        "            mem_limit_mb=$(( mem_total_kb / 1024 * 35 / 100 ))\n" +
+        "            [ \"$mem_limit_mb\" -gt 384 ] && mem_limit_mb=384\n" +
+        "            gogc=40\n" +
         "        else\n" +
-        "            mem_limit_mb=$(( mem_total_kb / 1024 * 30 / 100 ))\n" +
-        "            [ \"$mem_limit_mb\" -gt 256 ] && mem_limit_mb=256\n" +
+        "            mem_limit_mb=$(( mem_total_kb / 1024 * 40 / 100 ))\n" +
+        "            [ \"$mem_limit_mb\" -gt 768 ] && mem_limit_mb=768\n" +
         "            gogc=40\n" +
         "        fi\n" +
         "        if [ -r \"/etc/tachyon/mem_scale\" ]; then\n" +
@@ -2123,7 +2127,7 @@ function managed_sing_box_service_script(marker) {
         "                [ \"$mem_limit_mb\" -lt 12 ] && mem_limit_mb=12\n" +
         "            fi\n" +
         "        fi\n" +
-        "        procd_set_param env GOMEMLIMIT=\"${mem_limit_mb}MiB\" GOGC=\"$gogc\"\n" +
+        "        procd_set_param env GOMEMLIMIT=\"${mem_limit_mb}MiB\" GOGC=\"$gogc\" GODEBUG=\"madvdontneed=1\"\n" +
         "    fi\n" +
         "    procd_set_param term_timeout 15\n" +
         "    procd_set_param respawn\n" +

@@ -974,26 +974,44 @@ function controller(bus, opts) {
             "/var/run/tachyon/zapret2/child-pid"
         ];
 
-        for (let i = 0; i < length(pid_dirs); i++) {
-            let child_dir = pid_dirs[i];
-            let dir = fs.opendir(child_dir);
-            if (!dir) continue;
-
-            let expected = 0;
-            let running = 0;
-            let entry;
-            while ((entry = dir.read()) != null) {
-                if (entry == "." || entry == "..") continue;
-                expected++;
-                let pid_data = fs.readfile(child_dir + "/" + entry);
-                if (pid_data == null) continue;
-                let pid = trim(as_string(pid_data));
-                if (pid == "" || match(pid, /^[0-9]+$/) == null) continue;
-                if (fs.stat("/proc/" + pid) != null) {
-                    running++;
+        let configured_nfqueue = { zapret: 0, zapret2: 0 };
+        let sections = uci_core.get_all(CONFIG_NAME);
+        if (type(sections) == "object") {
+            for (let sname, sec in sections) {
+                if (type(sec) == "object" && sec.enabled == "1") {
+                    if (sec.action == "zapret")
+                        configured_nfqueue.zapret++;
+                    else if (sec.action == "zapret2")
+                        configured_nfqueue.zapret2++;
                 }
             }
-            dir.close();
+        }
+
+        for (let i = 0; i < length(pid_dirs); i++) {
+            let child_dir = pid_dirs[i];
+            let kind = index(child_dir, "zapret2") >= 0 ? "zapret2" : "zapret";
+            let cfg_count = configured_nfqueue[kind];
+            let expected = 0;
+            let running = 0;
+            let dir = fs.opendir(child_dir);
+            if (dir) {
+                let entry;
+                while ((entry = dir.read()) != null) {
+                    if (entry == "." || entry == "..") continue;
+                    expected++;
+                    let pid_data = fs.readfile(child_dir + "/" + entry);
+                    if (pid_data == null) continue;
+                    let pid = trim(as_string(pid_data));
+                    if (pid == "" || match(pid, /^[0-9]+$/) == null) continue;
+                    if (fs.stat("/proc/" + pid) != null) {
+                        running++;
+                    }
+                }
+                dir.close();
+            }
+
+            if (expected == 0 && cfg_count > 0)
+                expected = cfg_count;
 
             if (expected == 0) continue;
 

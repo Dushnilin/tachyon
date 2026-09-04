@@ -270,7 +270,7 @@ function worker() {
     let is_parallel = (mode == "parallel");
 
     let active_interval = is_parallel
-        ? 3
+        ? duration_seconds(common.option(cfg, "dns_check_interval", "15s"), 15)
         : duration_seconds(common.option(cfg, "dns_check_interval", "10s"), 10);
     let recovery_interval = is_parallel
         ? 30
@@ -278,7 +278,7 @@ function worker() {
     let timeout_seconds = is_parallel
         ? 2
         : probe_timeout(common.option(cfg, "dns_check_timeout", "2s"));
-    let next_active = now_seconds();
+    let next_active = now_seconds() + active_interval;
     let next_recovery = now_seconds() + recovery_interval;
     let all_down = { main: false, bootstrap: false };
     let strikes = { main: {}, bootstrap: {}, recovery_successes: { main: {}, bootstrap: {} } };
@@ -290,7 +290,7 @@ function worker() {
             return 0;
 
         let failure_threshold = is_parallel
-            ? 1
+            ? 2
             : int(common.option(current_cfg, "dns_failure_threshold", "3"));
         let recovery_threshold = is_parallel
             ? 2

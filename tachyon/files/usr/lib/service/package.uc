@@ -36,7 +36,7 @@ const HOOK_COMMAND_TIMEOUT = env("TACHYON_HOOK_COMMAND_TIMEOUT", "20");
 // Starting the service legitimately takes longer than probing or stopping it —
 // sing-box comes up, nft rules load, subscriptions may be re-read — so it gets
 // its own, larger budget. Still bounded: postinst must end.
-const HOOK_START_TIMEOUT = env("TACHYON_HOOK_START_TIMEOUT", "60");
+const HOOK_START_TIMEOUT = env("TACHYON_HOOK_START_TIMEOUT", "180");
 
 let shell_quote = common.shell_quote;
 

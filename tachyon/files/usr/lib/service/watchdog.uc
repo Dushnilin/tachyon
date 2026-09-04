@@ -990,7 +990,16 @@ function heal_uci_config(ev) {
 // ─── Config validation: sing-box check ────────────────────────────────────────
 function validate_singbox_config() {
     if (settings().ai_config_validation_enabled == "0") return true;
-    return command_success_from_args(["sing-box", "check", "-c", "/etc/sing-box/config.json"]);
+    let st = fs.stat("/etc/sing-box/config.json");
+    if (!st || st.size == 0) return false;
+    let content = fs.readfile("/etc/sing-box/config.json");
+    if (!content) return false;
+    try {
+        let obj = json(content);
+        return type(obj) == "object" && type(obj.outbounds) == "array";
+    } catch (e) {
+        return false;
+    }
 }
 
 // ─── Proxy Health Monitor ─────────────────────────────────────────────────────
@@ -1086,14 +1095,30 @@ function heal_nfqueue_stopped(ev) {
     let running = int(ev.payload.running) || 0;
     let expected = int(ev.payload.expected) || 0;
 
-    // Only act when some processes are running but not all — a full crash is
-    // already caught by the sing-box stopped or proxy down healers.
-    if (running > 0 && running >= expected) return;
+    if (running >= expected) return;
+
+    let dir = as_string(ev.payload.dir || "");
+    let zapret2_uc = LIB_DIR + "/providers/zapret2/runtime.uc";
+    let zapret_uc = LIB_DIR + "/providers/zapret/runtime.uc";
+    let revived = false;
+
+    if (index(dir, "zapret2") >= 0 && fs.stat(zapret2_uc) != null) {
+        log_message("Auto-healing zapret2 workers via start-runtime", "warn");
+        revived = (command_status(sprintf("ucode -L %s %s start-runtime >/dev/null 2>&1", shell_quote(LIB_DIR), shell_quote(zapret2_uc))) == 0);
+    } else if (fs.stat(zapret_uc) != null) {
+        log_message("Auto-healing zapret workers via start-runtime", "warn");
+        revived = (command_status(sprintf("ucode -L %s %s start-runtime >/dev/null 2>&1", shell_quote(LIB_DIR), shell_quote(zapret_uc))) == 0);
+    }
+
+    if (revived) {
+        ai_heal_report("nfqueue_health", sprintf("Respawned workers for %s (%d/%d alive)", dir, running, expected), "Workers respawned directly", "fixed");
+        return;
+    }
 
     let incident = {
         type: "nfqueue_health",
         description: sprintf("nfqueue/zapret runtime: %d/%d processes alive (%s)",
-            running, expected, as_string(ev.payload.dir || "")),
+            running, expected, dir),
         resolution: "Restarting tachyon to respawn nfqws/nfqws2"
     };
 

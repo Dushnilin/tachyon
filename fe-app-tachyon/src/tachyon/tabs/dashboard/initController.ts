@@ -1969,6 +1969,21 @@ function peerRow(name: string, online: boolean) {
 }
 
 async function renderTailscaleWidget() {
+  const widgetState = store.get().tailscaleWidget;
+  const container = document.getElementById('dashboard-widget-tailscale');
+  if (!container) return;
+
+  if (
+    !widgetState.loading &&
+    !widgetState.failed &&
+    (!widgetState.data || !widgetState.data.configured)
+  ) {
+    container.style.display = 'none';
+    container.replaceChildren();
+    return;
+  }
+  container.style.display = '';
+
   renderStoreWidget(
     'dashboard-widget-tailscale',
     'tailscaleWidget',
