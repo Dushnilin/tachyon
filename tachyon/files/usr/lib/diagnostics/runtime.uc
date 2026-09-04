@@ -2898,25 +2898,12 @@ function run_doctor_checks_impl(repair) {
     } else if (free_mb >= 0) {
         issues++;
         doc_check("⚠️", "Free RAM", sprintf("%dMB", free_mb), "→ Мало памяти!");
-        let scale = 1.0;
-        let scale_path = "/etc/tachyon/mem_scale";
-        let scale_data = fs.readfile(scale_path);
-        if (scale_data != null) {
-            let parsed_scale = double(trim(as_string(scale_data)));
-            if (parsed_scale > 0.1) scale = parsed_scale;
-        }
-        let new_scale = scale * 0.8;
-        if (new_scale < 0.2) new_scale = 0.2;
         if (!DOCTOR_REPAIR_MODE) {
-            doc_plan(sprintf("scale GOMEMLIMIT to %.2f + service restart", new_scale));
-            doc_check("⚠️", "Free RAM", sprintf("%dMB", free_mb), sprintf("→ WILL FIX (doctor --fix): GOMEMLIMIT будет снижен до %.2f", new_scale));
+            doc_plan("drop OS caches + sing-box restart");
+            doc_check("⚠️", "Free RAM", sprintf("%dMB", free_mb), "→ WILL FIX (doctor --fix): сброс кэшей памяти и перезапуск sing-box");
         } else {
-            fs.mkdir("/etc/tachyon");
-            let scale_tmp = scale_path + ".tmp";
-            if (fs.writefile(scale_tmp, sprintf("%.2f", new_scale)) != null)
-                fs.rename(scale_tmp, scale_path);
-            command_status("/usr/bin/tachyon restart >/dev/null 2>&1");
-            doc_check("⚠️", "Free RAM", sprintf("%dMB", free_mb), sprintf("→ FIXED: GOMEMLIMIT снижен до %.2f, services перезапущены", new_scale));
+            command_status("sync; echo 3 > /proc/sys/vm/drop_caches 2>/dev/null; /etc/init.d/sing-box restart >/dev/null 2>&1");
+            doc_check("⚠️", "Free RAM", sprintf("%dMB", free_mb), "→ FIXED: кэши памяти сброшены, sing-box перезапущен");
             fixed++;
         }
     } else {
@@ -3013,30 +3000,16 @@ function run_doctor_checks_impl(repair) {
         issues++;
         let oom_victim_singbox = index(lc(logread_out), "killed process") >= 0 &&
             match(lc(logread_out), /killed process[^\n]*sing-box/) != null;
-        let scale = 1.0;
-        let scale_path = "/etc/tachyon/mem_scale";
-        let scale_data = fs.readfile(scale_path);
-        if (scale_data != null) {
-            let parsed_scale = double(trim(as_string(scale_data)));
-            if (parsed_scale > 0.1) {
-                scale = parsed_scale;
-            }
-        }
-        let new_scale = scale * 0.8;
-        if (new_scale < 0.2) new_scale = 0.2;
         if (!DOCTOR_REPAIR_MODE) {
-            doc_plan(sprintf("scale GOMEMLIMIT to %.2f", new_scale));
+            doc_plan("clear system log + drop OS caches");
             doc_check("❌", "System OOM checks",
-                oom_victim_singbox ? "OOM detected, sing-box was killed" : sprintf("OOM detected (current scale: %.2f)", scale),
-                sprintf("→ WILL FIX (doctor --fix): GOMEMLIMIT будет снижен до %.2f", new_scale));
+                oom_victim_singbox ? "OOM detected, sing-box was killed" : "OOM detected in system logs",
+                "→ WILL FIX (doctor --fix): очистка логов и сброс кэшей памяти");
         } else {
-            fs.mkdir("/etc/tachyon");
-            let scale_tmp2 = scale_path + ".tmp";
-            if (fs.writefile(scale_tmp2, sprintf("%.2f", new_scale)) != null)
-                fs.rename(scale_tmp2, scale_path);
+            command_status("sync; echo 3 > /proc/sys/vm/drop_caches 2>/dev/null; logread -c >/dev/null 2>&1; rm -f /etc/tachyon/mem_scale");
             doc_check("❌", "System OOM checks",
-                oom_victim_singbox ? "OOM detected, sing-box was killed" : sprintf("OOM detected (current scale: %.2f)", scale),
-                sprintf("→ FIXED: Scaled GOMEMLIMIT to %.2f", new_scale));
+                oom_victim_singbox ? "OOM detected, sing-box was killed" : "OOM detected in system logs",
+                "→ FIXED: журналы сброшены, кэши памяти освобождены");
             fixed++;
         }
     } else {

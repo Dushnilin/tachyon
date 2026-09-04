@@ -6629,7 +6629,7 @@ function applyUiStateToStore(uiState) {
 
 // src/tachyon/services/runtimeUiState.service.ts
 var RUNTIME_UI_STATE_REFRESH_MIN_INTERVAL_MS = 500;
-var RUNTIME_UI_STATE_IDLE_POLL_INTERVAL_MS = 1e3;
+var RUNTIME_UI_STATE_IDLE_POLL_INTERVAL_MS = 3e3;
 var RUNTIME_UI_STATE_ACTIVE_POLL_INTERVAL_MS = 500;
 var RUNTIME_UI_STATE_HIDDEN_POLL_INTERVAL_MS = 3e4;
 var runtimeUiStateRefreshPromise = null;

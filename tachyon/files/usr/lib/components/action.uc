@@ -857,7 +857,7 @@ function clear_version_caches() {
 
 function managed_sing_box_service_installed() {
     let data = fs.readfile("/etc/init.d/sing-box");
-    return data != null && index(as_string(data), SB_MANAGED_SERVICE_MARKER) >= 0 && index(as_string(data), "GOGC") >= 0;
+    return data != null && index(as_string(data), SB_MANAGED_SERVICE_MARKER) >= 0 && index(as_string(data), "GOGC=\"50\"") >= 0;
 }
 
 function managed_sing_box_service_text() {
@@ -869,7 +869,7 @@ function managed_sing_box_service_text() {
         "start_service() {\n" +
         "    config_load \"sing-box\"\n" +
         "    local enabled config_file working_directory\n" +
-        "    local log_stderr mem_total_kb mem_limit_mb gogc scale scale_pct\n\n" +
+        "    local log_stderr\n\n" +
         "    config_get_bool enabled \"main\" \"enabled\" \"0\"\n" +
         "    [ \"$enabled\" -eq \"1\" ] || return 0\n\n" +
         "    config_get config_file \"main\" \"conffile\" \"/etc/sing-box/config.json\"\n" +
@@ -881,7 +881,7 @@ function managed_sing_box_service_text() {
         "    procd_set_param stderr \"$log_stderr\"\n" +
         "    procd_set_param limits core=\"unlimited\"\n" +
         "    procd_set_param limits nofile=\"1000000 1000000\"\n" +
-        "    procd_set_param env GODEBUG=\"madvdontneed=1\"\n" +
+        "    procd_set_param env GODEBUG=\"madvdontneed=1\" GOGC=\"50\"\n" +
         "    procd_set_param term_timeout 15\n" +
         "    procd_set_param respawn\n" +
         "    procd_close_instance\n" +
