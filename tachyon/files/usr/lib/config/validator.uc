@@ -2098,21 +2098,6 @@ function managed_sing_box_service_script(marker) {
         "    procd_set_param limits core=\"unlimited\"\n" +
         "    procd_set_param limits nofile=\"1000000 1000000\"\n" +
         "    procd_set_param env GODEBUG=\"madvdontneed=1\"\n" +
-        "    mem_total_kb=\"$(awk '/MemTotal/ {print $2}' /proc/meminfo 2>/dev/null || echo 0)\"\n" +
-        "    if [ \"$mem_total_kb\" -gt 0 ]; then\n" +
-        "        mem_limit_mb=$(( mem_total_kb / 1024 * 35 / 100 ))\n" +
-        "        [ \"$mem_limit_mb\" -lt 24 ] && mem_limit_mb=24\n" +
-        "        [ \"$mem_limit_mb\" -gt 512 ] && mem_limit_mb=512\n" +
-        "        if [ -r \"/etc/tachyon/mem_scale\" ]; then\n" +
-        "            scale=\"$(cat /etc/tachyon/mem_scale 2>/dev/null)\"\n" +
-        "            scale_pct=\"$(awk -v s=\"$scale\" 'BEGIN { pct=int(s*100); if (pct < 20) pct=20; if (pct > 100) pct=100; print pct }')\"\n" +
-        "            if [ -n \"$scale_pct\" ] && [ \"$scale_pct\" -lt 100 ]; then\n" +
-        "                mem_limit_mb=$(( mem_limit_mb * scale_pct / 100 ))\n" +
-        "                [ \"$mem_limit_mb\" -lt 12 ] && mem_limit_mb=12\n" +
-        "            fi\n" +
-        "        fi\n" +
-        "        procd_set_param env GOMEMLIMIT=\"${mem_limit_mb}MiB\" GODEBUG=\"madvdontneed=1\"\n" +
-        "    fi\n" +
         "    procd_set_param term_timeout 15\n" +
         "    procd_set_param respawn\n" +
         "    procd_close_instance\n" +
