@@ -283,6 +283,9 @@ function worker() {
     let all_down = { main: false, bootstrap: false };
     let strikes = { main: {}, bootstrap: {}, recovery_successes: { main: {}, bootstrap: {} } };
 
+    let sleep_interval = active_interval < recovery_interval ? active_interval : recovery_interval;
+    if (sleep_interval < 2) sleep_interval = 2;
+
     while (true) {
         let now = now_seconds();
         let current_cfg = settings();
@@ -331,7 +334,7 @@ function worker() {
             next_recovery = completed + recovery_interval;
         }
 
-        command_success_from_args([ "sleep", "1" ]);
+        command_success_from_args([ "sleep", as_string(sleep_interval) ]);
     }
 }
 

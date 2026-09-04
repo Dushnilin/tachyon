@@ -382,13 +382,19 @@ function worker() {
         return 0;
 
     let states = {};
-    for (let group in groups)
+    let min_interval = 5;
+    for (let group in groups) {
         states[group.tag] = init_group_state(group);
+        let interval = duration_to_seconds(group.active_check_interval, 5);
+        if (interval < min_interval)
+            min_interval = interval;
+    }
+    if (min_interval < 1) min_interval = 1;
 
     while (true) {
         for (let group in groups)
             tick_group(states[group.tag], group);
-        system("sleep 1");
+        command_success_from_args([ "sleep", as_string(min_interval) ]);
     }
 }
 

@@ -167,9 +167,10 @@ function sing_box_in_proc() {
 }
 
 function is_dns_working() {
-    return command_success_from_args([ "nslookup", "-timeout=2", "yandex.ru", "127.0.0.1" ]) ||
-           command_success_from_args([ "nslookup", "-timeout=2", "connectivitycheck.gstatic.com", "127.0.0.1" ]) ||
-           command_success_from_args([ "nslookup", "-timeout=2", "google.com", "127.0.0.1" ]);
+    return command_success_from_args([ "sh", "-c",
+        "nslookup -timeout=2 yandex.ru 127.0.0.1 >/dev/null 2>&1 || " +
+        "nslookup -timeout=2 connectivitycheck.gstatic.com 127.0.0.1 >/dev/null 2>&1 || " +
+        "nslookup -timeout=2 google.com 127.0.0.1 >/dev/null 2>&1" ]);
 }
 
 function check_tachyon_cli_running() {

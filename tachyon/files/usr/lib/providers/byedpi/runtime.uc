@@ -241,16 +241,31 @@ function supervisor_command(port, raw_opt, child_pidfile) {
 }
 
 function supervisor(section, port, raw_opt, child_pidfile) {
+    let crash_count = 0;
+    let base_delay = int(BYEDPI_RESPAWN_DELAY);
+    if (base_delay < 1) base_delay = 5;
+
     while (true) {
         if (!provider_available()) {
-            print(command_output_from_args([ "date", "+%Y-%m-%d %H:%M:%S" ]), " Provider ", BYEDPI_BIN, " is not executable; retrying in ", BYEDPI_RESPAWN_DELAY, " seconds\n");
-            command_success_from_args([ "sleep", BYEDPI_RESPAWN_DELAY ]);
+            print(command_output_from_args([ "date", "+%Y-%m-%d %H:%M:%S" ]), " Provider ", BYEDPI_BIN, " is not executable; retrying in ", base_delay, " seconds\n");
+            command_success_from_args([ "sleep", as_string(base_delay) ]);
             continue;
         }
 
+        let start_time = clock()[0];
         let rc = command_status("sh -c " + shell_quote(supervisor_command(port, raw_opt, child_pidfile)));
-        print(command_output_from_args([ "date", "+%Y-%m-%d %H:%M:%S" ]), " ciadpi for rule ", as_string(section), " exited with code ", rc, "; respawning in ", BYEDPI_RESPAWN_DELAY, " seconds\n");
-        command_success_from_args([ "sleep", BYEDPI_RESPAWN_DELAY ]);
+        let elapsed = clock()[0] - start_time;
+
+        if (elapsed < 10) {
+            crash_count++;
+            if (crash_count > 5) crash_count = 5;
+        } else {
+            crash_count = 0;
+        }
+
+        let delay = base_delay * (1 + crash_count);
+        print(command_output_from_args([ "date", "+%Y-%m-%d %H:%M:%S" ]), " ciadpi for rule ", as_string(section), " exited with code ", rc, "; respawning in ", delay, " seconds\n");
+        command_success_from_args([ "sleep", as_string(delay) ]);
     }
 }
 

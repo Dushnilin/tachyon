@@ -388,6 +388,8 @@ let last_restart_time = 0;
 let last_reload_time = 0;
 let pending_smart_domains = {};
 let smart_detect_last_run = 0;
+const PENDING_SMART_DOMAINS_MAX = 500;
+const PENDING_SMART_DOMAINS_TTL = 300;
 let last_fast_check = 0;
 let last_normal_check = 0;
 let last_slow_check = 0;
@@ -1417,6 +1419,12 @@ function smart_detect_process_pending() {
     let now = time();
     if (now - smart_detect_last_run < 30) return;
 
+    let stale_cutoff = now - PENDING_SMART_DOMAINS_TTL;
+    for (let dom in keys(pending_smart_domains)) {
+        if (pending_smart_domains[dom] < stale_cutoff)
+            delete pending_smart_domains[dom];
+    }
+
     let domain_list = keys(pending_smart_domains);
     if (length(domain_list) == 0) return;
     smart_detect_last_run = now;
@@ -1546,6 +1554,7 @@ function heal_oom(ev) {
 // smart_detect_process_pending(): probing inside the log handler would block
 // the event loop on curl for every failing connection.
 function collect_smart_detect_candidate(ev) {
+    if (length(pending_smart_domains) >= PENDING_SMART_DOMAINS_MAX) return;
     pending_smart_domains[ev.payload.domain] = time();
 }
 
