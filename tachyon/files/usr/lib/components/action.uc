@@ -2840,10 +2840,201 @@ function component_action(component, action) {
         action_fail(component != "" ? component : "unknown", action != "" ? action : "unknown", "Unknown component action");
 }
 
+function list_component_releases(component, count) {
+    component = normalize_component_name(component);
+    count = int(count || 3);
+    if (count < 1) count = 1;
+    if (count > 10) count = 10;
+
+    let owner = "";
+    let repo = "";
+    let per_page = as_string(count);
+
+    if (component == "tachyon") {
+        let parts = split(TACHYON_RELEASE_REPO, "/");
+        if (length(parts) != 2) { print("[]"); return; }
+        owner = parts[0]; repo = parts[1];
+    } else if (component == "sing_box") {
+        let variant = sing_box_runtime_output("variant", []);
+        if (variant == "lx") { owner = "Leadaxe"; repo = "sing-box-lx"; }
+        else if (variant == "extended" || variant == "extended-compressed") { owner = "shtorm-7"; repo = "sing-box-extended"; }
+        else { owner = "SagerNet"; repo = "sing-box"; }
+    } else if (component == "zapret") {
+        owner = "remittor"; repo = "zapret-openwrt";
+    } else if (component == "zapret2") {
+        owner = "Dushnilin"; repo = "zapret2-openwrt";
+    } else if (component == "byedpi") {
+        owner = "DPITrickster"; repo = "ByeDPI-OpenWrt";
+    } else {
+        print("[]"); return;
+    }
+
+    let releases_json = fetch_github_releases_json(owner, repo, per_page);
+    if (releases_json == "") { print("[]"); return; }
+
+    let releases = [];
+    try {
+        let parsed = json(releases_json);
+        if (type(parsed) == "array") {
+            for (let r in parsed) {
+                let tag = trim(as_string(r.tag_name || ""));
+                let name = trim(as_string(r.name || tag));
+                let published = trim(as_string(r.published_at || r.created_at || ""));
+                let html_url = trim(as_string(r.html_url || ""));
+                if (tag == "") continue;
+                let prerelease = !!r.prerelease;
+                push(releases, { tag, name, published, prerelease, release_url: html_url });
+            }
+        }
+    } catch (e) {}
+
+    write_json(releases);
+}
+
+function resolve_component_release(component, tag) {
+    component = normalize_component_name(component);
+    tag = trim(as_string(tag));
+    if (tag == "") return null;
+
+    if (component == "tachyon") {
+        let parts = split(TACHYON_RELEASE_REPO, "/");
+        if (length(parts) != 2) return null;
+        let base_dl = "https://github.com/" + parts[0] + "/" + parts[1] + "/releases/download/" + tag + "/";
+        let ext = is_apk() ? "apk" : "ipk";
+        let tag_clean = replace(tag, /^v/, "");
+        return {
+            tag,
+            packages: [
+                base_dl + "tachyon_" + tag_clean + "." + ext,
+                base_dl + "luci-app-tachyon_" + tag_clean + "." + ext,
+                base_dl + "luci-i18n-tachyon-ru_" + tag_clean + "." + ext
+            ]
+        };
+    }
+
+    if (component == "sing_box") {
+        let variant = sing_box_runtime_output("variant", []);
+        let tag_clean = replace(tag, /^v/, "");
+        let base_dl = "";
+
+        if (variant == "lx") {
+            let arch_suffix = resolve_sing_box_extended_arch_suffix();
+            if (arch_suffix == "") return null;
+            base_dl = "https://github.com/Leadaxe/sing-box-lx/releases/download/" + tag + "/";
+            let asset_name = "sing-box-lx_" + tag_clean + "_linux-" + arch_suffix + ".tar.gz";
+            return { tag, packages: [ base_dl + asset_name ] };
+        } else if (variant == "extended" || variant == "extended-compressed") {
+            let compressed = (variant == "extended-compressed");
+            base_dl = "https://github.com/shtorm-7/sing-box-extended/releases/download/" + tag + "/";
+            if (compressed) {
+                let arch_suffix = resolve_sing_box_extended_arch_suffix();
+                if (arch_suffix == "") return null;
+                return { tag, packages: [ base_dl + "sing-box-extended_" + tag_clean + "_linux-" + arch_suffix + "-compressed.tar.gz" ] };
+            } else {
+                let distrib_arch = read_openwrt_release_value("DISTRIB_ARCH");
+                if (distrib_arch == "") return null;
+                let asset_ext = is_apk() ? "apk" : "ipk";
+                return { tag, packages: [ base_dl + "sing-box-extended_" + tag_clean + "_openwrt_" + distrib_arch + "." + asset_ext ] };
+            }
+        } else {
+            let distrib_arch = read_openwrt_release_value("DISTRIB_ARCH");
+            if (distrib_arch == "") return null;
+            let asset_ext = is_apk() ? "apk" : "ipk";
+            base_dl = "https://github.com/SagerNet/sing-box/releases/download/" + tag + "/";
+            return { tag, packages: [ base_dl + "sing-box_" + tag_clean + "_openwrt_" + distrib_arch + "." + asset_ext ] };
+        }
+    }
+
+    if (component == "zapret") {
+        let arch = resolve_arch_candidates();
+        if (arch == null) return null;
+        let base_dl = "https://github.com/remittor/zapret-openwrt/releases/download/" + tag + "/";
+        let tag_clean = replace(tag, /^v/, "");
+        return { tag, packages: [ base_dl + "zapret_" + tag_clean + "_openwrt_" + arch.candidates + ".zip" ] };
+    }
+
+    if (component == "zapret2") {
+        let arch = resolve_arch_candidates();
+        if (arch == null) return null;
+        let base_dl = "https://github.com/Dushnilin/zapret2-openwrt/releases/download/" + tag + "/";
+        let tag_clean = replace(tag, /^v/, "");
+        let ext = is_apk() ? "apk" : "ipk";
+        return { tag, packages: [ base_dl + "zapret2_" + tag_clean + "_openwrt_" + arch.candidates + "." + ext ] };
+    }
+
+    if (component == "byedpi") {
+        let distrib_arch = read_openwrt_release_value("DISTRIB_ARCH");
+        if (distrib_arch == "") return null;
+        let tag_clean = replace(tag, /^v/, "");
+        let base_dl = "https://github.com/DPITrickster/ByeDPI-OpenWrt/releases/download/" + tag + "/";
+        let ext = is_apk() ? "apk" : "ipk";
+        return { tag, packages: [ base_dl + "byedpi_" + tag_clean + "_openwrt_" + distrib_arch + "." + ext ] };
+    }
+
+    return null;
+}
+
+function install_component_version(component, tag) {
+    component = normalize_component_name(component);
+    tag = trim(as_string(tag));
+    if (tag == "" || component == "") {
+        updates_response(false, component, "install_version", "Invalid component or tag", "", "", 0, "", "", null);
+        cleanup_action();
+        return;
+    }
+
+    let plan = resolve_component_release(component, tag);
+    if (plan == null || plan.packages == null || length(plan.packages) == 0) {
+        updates_response(false, component, "install_version", "Failed to resolve release assets for " + component + " " + tag, "", "", 0, "", "", null);
+        cleanup_action();
+        return;
+    }
+
+    let installed = 0;
+    let failed = 0;
+    for (let url in plan.packages) {
+        let fname = path_basename(url);
+        let args = [ "curl", "-sL", "--connect-timeout", "10", "-m", "120", "-o", fname ];
+        let proxy_addr = service_proxy_address();
+        if (proxy_addr != "") {
+            push(args, "-x");
+            push(args, "http://" + proxy_addr);
+        }
+        push(args, url);
+        let dl_ok = run_logged("Downloading " + fname, command_from_args(args));
+        if (!dl_ok || !file_exists(fname)) {
+            failed++;
+            continue;
+        }
+        let inst_ok = run_logged("Installing " + fname, pkg_install_files_command([ fname ], false));
+        if (inst_ok) installed++;
+        else failed++;
+        remove_file(fname);
+    }
+
+    if (component == "sing_box") {
+        write_file("/etc/tachyon/sing-box-version", tag + "\n");
+        let variant = sing_box_runtime_output("variant", []);
+        write_file("/etc/tachyon/sing-box-variant", variant + "\n");
+    }
+
+    let success = installed > 0 && failed == 0;
+    let msg = installed + " packages installed";
+    if (failed > 0) msg += ", " + failed + " failed";
+
+    updates_response(success, component, "install_version", msg, "", tag, success ? 1 : 0, success ? "latest" : "", "", null);
+    if (success) restart_tachyon_after_successful_change();
+    cleanup_action();
+}
+
 let mode = ARGV[0] || "";
 
 if (mode == "component-action")
     component_action(ARGV[1], ARGV[2]);
+else if (mode == "list-component-releases")
+    list_component_releases(ARGV[1], ARGV[2]);
+else if (mode == "install-component-version")
+    install_component_version(ARGV[1], ARGV[2]);
 else if (mode == "latest-tachyon-release-json")
     print(latest_tachyon_release_json());
 else if (mode == "latest-tachyon-version")
@@ -2853,6 +3044,6 @@ else if (mode == "tachyon-release-metadata")
 else if (mode == "pkg-install-files-command")
     print(pkg_install_files_command(slice(ARGV, 2), ARGV[1] == "1"), "\n");
 else {
-    warn("Usage: components/action.uc <component-action|latest-tachyon-version|tachyon-release-metadata> ...\n");
+    warn("Usage: components/action.uc <component-action|list-component-releases|install-component-version|latest-tachyon-version|tachyon-release-metadata> ...\n");
     exit(1);
 }

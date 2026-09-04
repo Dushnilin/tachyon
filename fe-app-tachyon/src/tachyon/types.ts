@@ -95,6 +95,8 @@ export namespace Tachyon {
     COMPONENT_ACTION_STATUS = 'component_action_status',
     COMPONENT_ACTION_LOG = 'component_action_log',
     COMPONENT_UPDATE_CHECK_CACHE = 'component_update_check_cache',
+    COMPONENT_LIST_RELEASES = 'component_list_releases',
+    COMPONENT_INSTALL_VERSION = 'component_install_version',
     SUBSCRIPTION_UPDATE_ASYNC = 'subscription_update_async',
     SUBSCRIPTION_UPDATE_STATUS = 'subscription_update_status',
     SERVICE_HEALTH_CHECK = 'service_health_check',
@@ -721,6 +723,14 @@ export namespace Tachyon {
     success: boolean;
     log: string;
     offset: number;
+  }
+
+  export interface ComponentRelease {
+    tag: string;
+    name: string;
+    published: string;
+    prerelease: boolean;
+    release_url: string;
   }
 
   export type ComponentActionStartResult = UiActionStartResult;

@@ -127,6 +127,10 @@ function show_help() {
     print("    component_action_status Get background component action status\n");
     print("    component_action_log [job_id] [offset]\n");
     print("                            Get background component action log from offset\n");
+    print("    component_list_releases <component> [count]\n");
+    print("                            List last N releases for a component (default 3)\n");
+    print("    component_install_version <component> <tag>\n");
+    print("                            Install a specific component release version\n");
     print("    component_updates_if_due Check installed components for updates when due\n");
     print("    component_update_check_cache Get cached component update check results\n");
     print("    hosts_list_update [url] Update custom hosts lists (all or specific URL)\n");
@@ -231,6 +235,8 @@ function command_spec(command) {
         component_action_async: [ "components/updates.uc", "component-action-async", 2 ],
         component_action_status: [ "components/updates.uc", "component-action-status", 1 ],
         component_action_log: [ "components/updates.uc", "component-action-log", 2 ],
+        component_list_releases: [ "components/action.uc", "list-component-releases", 2 ],
+        component_install_version: [ "components/action.uc", "install-component-version", 2 ],
         component_updates_if_due: [ "components/updates.uc", "component-updates-if-due", 0 ],
         component_auto_update_apply: [ "components/updates.uc", "component-auto-update-apply", 0 ],
         component_update_check_cache: [ "components/updates.uc", "component-update-check-cache", 0 ],

@@ -65,7 +65,7 @@ class Logger {
 
   download(filename = 'logs.txt'): void {
     if (typeof document === 'undefined') {
-      console.warn('Logger.download() доступен только в браузере');
+      console.warn('Logger.download() available only in browser');
       return;
     }
     downloadAsTxt(this.getLogs(), filename);

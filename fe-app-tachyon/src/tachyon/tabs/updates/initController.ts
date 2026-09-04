@@ -117,6 +117,7 @@ interface ComponentCard {
   repoUrl?: string;
   actions: ComponentActionButton[];
   badgeNode?: Node | null;
+  supportsVersions?: boolean;
 }
 
 let updatesLifecycleRegistered = false;
@@ -1265,6 +1266,7 @@ function getComponentCards(): ComponentCard[] {
       releaseUrl: getGitHubReleaseUrl('tachyon'),
       repoUrl: COMPONENT_REPO_URLS.tachyon,
       actions: tachyonActions,
+      supportsVersions: true,
     },
     {
       component: 'sing_box',
@@ -1286,6 +1288,7 @@ function getComponentCards(): ComponentCard[] {
             ? 'https://github.com/shtorm-7/sing-box-extended'
             : COMPONENT_REPO_URLS.sing_box),
       actions: singBoxActions,
+      supportsVersions: true,
     },
     {
       component: 'zapret',
@@ -1300,6 +1303,7 @@ function getComponentCards(): ComponentCard[] {
       releaseUrl: getGitHubReleaseUrl('zapret'),
       repoUrl: COMPONENT_REPO_URLS.zapret,
       actions: zapretActions,
+      supportsVersions: true,
     },
     {
       component: 'zapret2',
@@ -1314,6 +1318,7 @@ function getComponentCards(): ComponentCard[] {
       releaseUrl: getGitHubReleaseUrl('zapret2'),
       repoUrl: COMPONENT_REPO_URLS.zapret2,
       actions: zapret2Actions,
+      supportsVersions: true,
     },
     {
       component: 'byedpi',
@@ -1344,6 +1349,156 @@ function getComponentCards(): ComponentCard[] {
       actions: tailscaleActions,
     },
   ];
+}
+
+async function showVersionPicker(component: Tachyon.ComponentName) {
+  const container = document.getElementById('tachyon_updates-components');
+  if (!container) return;
+
+  let dropdown = container.querySelector(
+    '.tachyon-version-picker',
+  ) as HTMLElement | null;
+  if (dropdown) {
+    dropdown.remove();
+    return;
+  }
+
+  dropdown = E('div', { class: 'tachyon-version-picker' }, [
+    E(
+      'div',
+      { class: 'tachyon-version-picker__loading' },
+      _('Loading versions...'),
+    ),
+  ]);
+
+  const componentCards = container.querySelectorAll(
+    `.tachyon_updates-page__component`,
+  );
+  const card = Array.from(componentCards).find((el) => {
+    const title = el.querySelector('.tachyon_updates-page__component__title');
+    return title?.textContent === getComponentCardTitle(component);
+  });
+
+  if (card) {
+    const actionsEl = card.querySelector(
+      '.tachyon_updates-page__component__actions',
+    );
+    actionsEl?.appendChild(dropdown);
+  }
+
+  try {
+    const response = await TachyonShellMethods.componentListReleases(
+      component,
+      3,
+    );
+
+    if (!response.success) {
+      dropdown.innerHTML = '';
+      dropdown.appendChild(
+        E(
+          'div',
+          { class: 'tachyon-version-picker__error' },
+          response.error || _('No versions found'),
+        ),
+      );
+      return;
+    }
+
+    if (!response.data || response.data.length === 0) {
+      dropdown.innerHTML = '';
+      dropdown.appendChild(
+        E(
+          'div',
+          { class: 'tachyon-version-picker__error' },
+          _('No versions found'),
+        ),
+      );
+      return;
+    }
+
+    dropdown.innerHTML = '';
+    const list = E('div', { class: 'tachyon-version-picker__list' });
+
+    for (const release of response.data) {
+      const children: Node[] = [
+        E('span', { class: 'tachyon-version-picker__tag' }, release.tag),
+        E('span', { class: 'tachyon-version-picker__date' }, release.published),
+      ];
+      if (release.prerelease) {
+        children.push(
+          E(
+            'span',
+            { class: 'tachyon-version-picker__prerelease' },
+            _('pre-release'),
+          ),
+        );
+      }
+      children.push(
+        renderButton({
+          text: _('Install'),
+          loading: false,
+          disabled: false,
+          onClick: () => void installVersion(component, release.tag, dropdown!),
+        }),
+      );
+      const item = E(
+        'div',
+        { class: 'tachyon-version-picker__item' },
+        children,
+      );
+      list.appendChild(item);
+    }
+
+    dropdown.appendChild(list);
+    dropdown.appendChild(
+      E(
+        'button',
+        {
+          class: 'cbi-button tachyon-version-picker__close',
+          click: () => dropdown?.remove(),
+        },
+        _('Close'),
+      ),
+    );
+  } catch (_error) {
+    dropdown.innerHTML = '';
+    dropdown.appendChild(
+      E(
+        'div',
+        { class: 'tachyon-version-picker__error' },
+        _('Failed to load versions'),
+      ),
+    );
+  }
+}
+
+async function installVersion(
+  component: Tachyon.ComponentName,
+  tag: string,
+  dropdown: HTMLElement,
+) {
+  const loadingEl = dropdown.querySelector(
+    '.tachyon-version-picker__loading',
+  ) as HTMLElement | null;
+  if (loadingEl) {
+    loadingEl.textContent = _('Installing ') + tag + '...';
+  }
+
+  try {
+    const response = await TachyonShellMethods.componentInstallVersion(
+      component,
+      tag,
+    );
+    if (response?.success) {
+      showToast(_('Installed ') + tag, 'success');
+      dropdown.remove();
+      window.location.reload();
+    } else {
+      showToast(_('Installation failed: ') + (response?.error || ''), 'error');
+    }
+  } catch (_error) {
+    showToast(_('Installation failed'), 'error');
+  }
 }
 
 function renderComponentCard(card: ComponentCard) {
@@ -1572,6 +1727,20 @@ function renderComponentCard(card: ComponentCard) {
           { class: 'tachyon_updates-page__component__variants-buttons' },
           variantButtons,
         ),
+      ]),
+    );
+  }
+
+  if (card.supportsVersions) {
+    const versionsButton = renderButton({
+      text: _('Versions'),
+      loading: false,
+      disabled: systemInfoLoading || anyActionLoading,
+      onClick: () => void showVersionPicker(card.component),
+    });
+    actionElements.push(
+      E('div', { class: 'tachyon_updates-page__component__versions' }, [
+        versionsButton,
       ]),
     );
   }

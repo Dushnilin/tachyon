@@ -51,6 +51,33 @@ function parseJsonObjectOutput<T>(output: string): T | null {
   }
 }
 
+function parseJsonArrayOutput<T>(output: string): T[] | null {
+  if (!output) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(output);
+    if (Array.isArray(parsed)) {
+      return parsed as T[];
+    }
+    return null;
+  } catch (_error) {
+    const jsonMatch = output.match(/(\[[\s\S]*\])\s*$/);
+
+    if (!jsonMatch) {
+      return null;
+    }
+
+    try {
+      const parsed = JSON.parse(jsonMatch[1]);
+      return Array.isArray(parsed) ? (parsed as T[]) : null;
+    } catch (_jsonError) {
+      return null;
+    }
+  }
+}
+
 function parseComponentActionOutput(output: string) {
   return parseJsonObjectOutput<Tachyon.ComponentActionResult>(output);
 }
@@ -675,6 +702,64 @@ export const TachyonShellMethods = {
     callBaseMethod<Tachyon.ComponentUpdateCheckCache>(
       Tachyon.AvailableMethods.COMPONENT_UPDATE_CHECK_CACHE,
     ),
+  componentListReleases: async (
+    component: Tachyon.ComponentName,
+    count = 3,
+  ) => {
+    const response = await executeShellCommand({
+      command: '/usr/bin/tachyon',
+      args: [
+        Tachyon.AvailableMethods.COMPONENT_LIST_RELEASES,
+        component,
+        String(count),
+      ],
+      timeout: COMPONENT_ACTION_RPC_TIMEOUT_MS,
+    });
+    const parsed = parseJsonArrayOutput<Tachyon.ComponentRelease>(
+      response.stdout,
+    );
+
+    if ((response.code ?? 0) !== 0 || !parsed) {
+      return {
+        success: false,
+        error: response.stderr || _('Failed to fetch releases'),
+      } as Tachyon.MethodFailureResponse;
+    }
+
+    return {
+      success: true,
+      data: parsed,
+    } as Tachyon.MethodSuccessResponse<Tachyon.ComponentRelease[]>;
+  },
+  componentInstallVersion: async (
+    component: Tachyon.ComponentName,
+    tag: string,
+  ) => {
+    const response = await executeShellCommand({
+      command: '/usr/bin/tachyon',
+      args: [
+        Tachyon.AvailableMethods.COMPONENT_INSTALL_VERSION,
+        component,
+        tag,
+      ],
+      timeout: COMPONENT_ACTION_RPC_TIMEOUT_MS,
+    });
+    const parsed = parseJsonObjectOutput<Tachyon.ComponentActionResult>(
+      response.stdout,
+    );
+
+    if ((response.code ?? 0) !== 0 || !parsed) {
+      return {
+        success: false,
+        error: response.stderr || _('Failed to install version'),
+      } as Tachyon.MethodFailureResponse;
+    }
+
+    return {
+      success: true,
+      data: parsed,
+    } as Tachyon.MethodSuccessResponse<Tachyon.ComponentActionResult>;
+  },
   waitComponentActionJob: async (
     jobId: string,
     component: Tachyon.ComponentName,

@@ -1054,7 +1054,7 @@ var Logger = class {
   }
   download(filename = "logs.txt") {
     if (typeof document === "undefined") {
-      console.warn("Logger.download() \u0434\u043E\u0441\u0442\u0443\u043F\u0435\u043D \u0442\u043E\u043B\u044C\u043A\u043E \u0432 \u0431\u0440\u0430\u0443\u0437\u0435\u0440\u0435");
+      console.warn("Logger.download() available only in browser");
       return;
     }
     downloadAsTxt(this.getLogs(), filename);
@@ -1095,8 +1095,8 @@ var DOMAIN_LIST_OPTIONS = {
   russia_inside: "Russia inside",
   russia_outside: "Russia outside",
   ukraine_inside: "Ukraine",
-  geoblock: "Geo Block (\u0441\u043D\u0430\u0440\u0443\u0436\u0438 \u0420\u0424)",
-  block: "Block (\u0420\u041A\u041D / \u0432\u043D\u0443\u0442\u0440\u0438 \u0420\u0424)",
+  geoblock: "Geo Block",
+  block: "Block (RKN)",
   porn: "Porn",
   news: "News",
   anime: "Anime",
@@ -3182,6 +3182,8 @@ var Tachyon;
     AvailableMethods2["COMPONENT_ACTION_STATUS"] = "component_action_status";
     AvailableMethods2["COMPONENT_ACTION_LOG"] = "component_action_log";
     AvailableMethods2["COMPONENT_UPDATE_CHECK_CACHE"] = "component_update_check_cache";
+    AvailableMethods2["COMPONENT_LIST_RELEASES"] = "component_list_releases";
+    AvailableMethods2["COMPONENT_INSTALL_VERSION"] = "component_install_version";
     AvailableMethods2["SUBSCRIPTION_UPDATE_ASYNC"] = "subscription_update_async";
     AvailableMethods2["SUBSCRIPTION_UPDATE_STATUS"] = "subscription_update_status";
     AvailableMethods2["SERVICE_HEALTH_CHECK"] = "service_health_check";
@@ -3280,6 +3282,29 @@ function parseJsonObjectOutput(output) {
     }
     try {
       return JSON.parse(jsonMatch[1]);
+    } catch (_jsonError) {
+      return null;
+    }
+  }
+}
+function parseJsonArrayOutput(output) {
+  if (!output) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(output);
+    if (Array.isArray(parsed)) {
+      return parsed;
+    }
+    return null;
+  } catch (_error) {
+    const jsonMatch = output.match(/(\[[\s\S]*\])\s*$/);
+    if (!jsonMatch) {
+      return null;
+    }
+    try {
+      const parsed = JSON.parse(jsonMatch[1]);
+      return Array.isArray(parsed) ? parsed : null;
     } catch (_jsonError) {
       return null;
     }
@@ -3745,6 +3770,54 @@ var TachyonShellMethods = {
   componentUpdateCheckCache: async () => callBaseMethod(
     Tachyon.AvailableMethods.COMPONENT_UPDATE_CHECK_CACHE
   ),
+  componentListReleases: async (component, count = 3) => {
+    const response = await executeShellCommand({
+      command: "/usr/bin/tachyon",
+      args: [
+        Tachyon.AvailableMethods.COMPONENT_LIST_RELEASES,
+        component,
+        String(count)
+      ],
+      timeout: COMPONENT_ACTION_RPC_TIMEOUT_MS
+    });
+    const parsed = parseJsonArrayOutput(
+      response.stdout
+    );
+    if ((response.code ?? 0) !== 0 || !parsed) {
+      return {
+        success: false,
+        error: response.stderr || _("Failed to fetch releases")
+      };
+    }
+    return {
+      success: true,
+      data: parsed
+    };
+  },
+  componentInstallVersion: async (component, tag) => {
+    const response = await executeShellCommand({
+      command: "/usr/bin/tachyon",
+      args: [
+        Tachyon.AvailableMethods.COMPONENT_INSTALL_VERSION,
+        component,
+        tag
+      ],
+      timeout: COMPONENT_ACTION_RPC_TIMEOUT_MS
+    });
+    const parsed = parseJsonObjectOutput(
+      response.stdout
+    );
+    if ((response.code ?? 0) !== 0 || !parsed) {
+      return {
+        success: false,
+        error: response.stderr || _("Failed to install version")
+      };
+    }
+    return {
+      success: true,
+      data: parsed
+    };
+  },
   waitComponentActionJob: async (jobId, component, action, expectedLatestVersion) => {
     const jobStartedAt = Date.now();
     const isSelfUpdate = component === "tachyon" && (action === "install" || action === "reinstall");
@@ -20211,7 +20284,8 @@ function getComponentCards() {
       latestVersion: getLatestVersion("tachyon"),
       releaseUrl: getGitHubReleaseUrl("tachyon"),
       repoUrl: COMPONENT_REPO_URLS.tachyon,
-      actions: tachyonActions
+      actions: tachyonActions,
+      supportsVersions: true
     },
     {
       component: "sing_box",
@@ -20222,7 +20296,8 @@ function getComponentCards() {
       latestVersion: getLatestVersion("sing_box"),
       releaseUrl: getGitHubReleaseUrl("sing_box"),
       repoUrl: systemInfo.sing_box_repo_url || (singBoxLx ? "https://github.com/Leadaxe/sing-box-lx" : singBoxExtended || singBoxExtendedCompressed ? "https://github.com/shtorm-7/sing-box-extended" : COMPONENT_REPO_URLS.sing_box),
-      actions: singBoxActions
+      actions: singBoxActions,
+      supportsVersions: true
     },
     {
       component: "zapret",
@@ -20232,7 +20307,8 @@ function getComponentCards() {
       latestVersion: getLatestVersion("zapret"),
       releaseUrl: getGitHubReleaseUrl("zapret"),
       repoUrl: COMPONENT_REPO_URLS.zapret,
-      actions: zapretActions
+      actions: zapretActions,
+      supportsVersions: true
     },
     {
       component: "zapret2",
@@ -20242,7 +20318,8 @@ function getComponentCards() {
       latestVersion: getLatestVersion("zapret2"),
       releaseUrl: getGitHubReleaseUrl("zapret2"),
       repoUrl: COMPONENT_REPO_URLS.zapret2,
-      actions: zapret2Actions
+      actions: zapret2Actions,
+      supportsVersions: true
     },
     {
       component: "byedpi",
@@ -20265,6 +20342,139 @@ function getComponentCards() {
       actions: tailscaleActions
     }
   ];
+}
+async function showVersionPicker(component) {
+  const container = document.getElementById("tachyon_updates-components");
+  if (!container) return;
+  let dropdown = container.querySelector(
+    ".tachyon-version-picker"
+  );
+  if (dropdown) {
+    dropdown.remove();
+    return;
+  }
+  dropdown = E("div", { class: "tachyon-version-picker" }, [
+    E(
+      "div",
+      { class: "tachyon-version-picker__loading" },
+      _("Loading versions...")
+    )
+  ]);
+  const componentCards = container.querySelectorAll(
+    `.tachyon_updates-page__component`
+  );
+  const card = Array.from(componentCards).find((el) => {
+    const title = el.querySelector(".tachyon_updates-page__component__title");
+    return title?.textContent === getComponentCardTitle(component);
+  });
+  if (card) {
+    const actionsEl = card.querySelector(
+      ".tachyon_updates-page__component__actions"
+    );
+    actionsEl?.appendChild(dropdown);
+  }
+  try {
+    const response = await TachyonShellMethods.componentListReleases(
+      component,
+      3
+    );
+    if (!response.success) {
+      dropdown.innerHTML = "";
+      dropdown.appendChild(
+        E(
+          "div",
+          { class: "tachyon-version-picker__error" },
+          response.error || _("No versions found")
+        )
+      );
+      return;
+    }
+    if (!response.data || response.data.length === 0) {
+      dropdown.innerHTML = "";
+      dropdown.appendChild(
+        E(
+          "div",
+          { class: "tachyon-version-picker__error" },
+          _("No versions found")
+        )
+      );
+      return;
+    }
+    dropdown.innerHTML = "";
+    const list = E("div", { class: "tachyon-version-picker__list" });
+    for (const release of response.data) {
+      const children = [
+        E("span", { class: "tachyon-version-picker__tag" }, release.tag),
+        E("span", { class: "tachyon-version-picker__date" }, release.published)
+      ];
+      if (release.prerelease) {
+        children.push(
+          E(
+            "span",
+            { class: "tachyon-version-picker__prerelease" },
+            _("pre-release")
+          )
+        );
+      }
+      children.push(
+        renderButton({
+          text: _("Install"),
+          loading: false,
+          disabled: false,
+          onClick: () => void installVersion(component, release.tag, dropdown)
+        })
+      );
+      const item = E(
+        "div",
+        { class: "tachyon-version-picker__item" },
+        children
+      );
+      list.appendChild(item);
+    }
+    dropdown.appendChild(list);
+    dropdown.appendChild(
+      E(
+        "button",
+        {
+          class: "cbi-button tachyon-version-picker__close",
+          click: () => dropdown?.remove()
+        },
+        _("Close")
+      )
+    );
+  } catch (_error) {
+    dropdown.innerHTML = "";
+    dropdown.appendChild(
+      E(
+        "div",
+        { class: "tachyon-version-picker__error" },
+        _("Failed to load versions")
+      )
+    );
+  }
+}
+async function installVersion(component, tag, dropdown) {
+  const loadingEl = dropdown.querySelector(
+    ".tachyon-version-picker__loading"
+  );
+  if (loadingEl) {
+    loadingEl.textContent = _("Installing ") + tag + "...";
+  }
+  try {
+    const response = await TachyonShellMethods.componentInstallVersion(
+      component,
+      tag
+    );
+    if (response?.success) {
+      showToast(_("Installed ") + tag, "success");
+      dropdown.remove();
+      window.location.reload();
+    } else {
+      showToast(_("Installation failed: ") + (response?.error || ""), "error");
+    }
+  } catch (_error) {
+    showToast(_("Installation failed"), "error");
+  }
 }
 function renderComponentCard(card) {
   const updatesActions = store.get().updatesActions;
@@ -20465,6 +20675,19 @@ function renderComponentCard(card) {
           { class: "tachyon_updates-page__component__variants-buttons" },
           variantButtons
         )
+      ])
+    );
+  }
+  if (card.supportsVersions) {
+    const versionsButton = renderButton({
+      text: _("Versions"),
+      loading: false,
+      disabled: systemInfoLoading || anyActionLoading,
+      onClick: () => void showVersionPicker(card.component)
+    });
+    actionElements.push(
+      E("div", { class: "tachyon_updates-page__component__versions" }, [
+        versionsButton
       ])
     );
   }
@@ -20916,6 +21139,67 @@ var styles6 = `
     padding: 8px;
     flex: 1 1 auto;
     min-height: 0;
+}
+
+.tachyon-version-picker {
+    margin-top: 8px;
+    padding: 8px;
+    border: 1px solid var(--border-color, rgba(255,255,255,0.12));
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.2);
+}
+
+.tachyon-version-picker__loading,
+.tachyon-version-picker__error {
+    padding: 6px 0;
+    font-size: 12px;
+    color: var(--text-color, #aaa);
+}
+
+.tachyon-version-picker__error {
+    color: var(--error-color, #e74c3c);
+}
+
+.tachyon-version-picker__list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.tachyon-version-picker__item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+    border-bottom: 1px solid var(--border-color, rgba(255,255,255,0.06));
+}
+
+.tachyon-version-picker__item:last-child {
+    border-bottom: none;
+}
+
+.tachyon-version-picker__tag {
+    font-weight: bold;
+    font-size: 13px;
+    color: var(--text-color, #ddd);
+}
+
+.tachyon-version-picker__date {
+    font-size: 11px;
+    color: var(--text-color, #aaa);
+}
+
+.tachyon-version-picker__prerelease {
+    font-size: 10px;
+    color: var(--warn-color, #f39c12);
+    border: 1px solid var(--warn-color, #f39c12);
+    border-radius: 3px;
+    padding: 1px 4px;
+}
+
+.tachyon-version-picker__close {
+    margin-top: 8px;
+    width: 100%;
 }
 `;
 

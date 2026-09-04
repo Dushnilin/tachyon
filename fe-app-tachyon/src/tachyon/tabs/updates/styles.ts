@@ -314,4 +314,65 @@ export const styles = `
     flex: 1 1 auto;
     min-height: 0;
 }
+
+.tachyon-version-picker {
+    margin-top: 8px;
+    padding: 8px;
+    border: 1px solid var(--border-color, rgba(255,255,255,0.12));
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.2);
+}
+
+.tachyon-version-picker__loading,
+.tachyon-version-picker__error {
+    padding: 6px 0;
+    font-size: 12px;
+    color: var(--text-color, #aaa);
+}
+
+.tachyon-version-picker__error {
+    color: var(--error-color, #e74c3c);
+}
+
+.tachyon-version-picker__list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.tachyon-version-picker__item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+    border-bottom: 1px solid var(--border-color, rgba(255,255,255,0.06));
+}
+
+.tachyon-version-picker__item:last-child {
+    border-bottom: none;
+}
+
+.tachyon-version-picker__tag {
+    font-weight: bold;
+    font-size: 13px;
+    color: var(--text-color, #ddd);
+}
+
+.tachyon-version-picker__date {
+    font-size: 11px;
+    color: var(--text-color, #aaa);
+}
+
+.tachyon-version-picker__prerelease {
+    font-size: 10px;
+    color: var(--warn-color, #f39c12);
+    border: 1px solid var(--warn-color, #f39c12);
+    border-radius: 3px;
+    padding: 1px 4px;
+}
+
+.tachyon-version-picker__close {
+    margin-top: 8px;
+    width: 100%;
+}
 `;
