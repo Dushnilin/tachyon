@@ -7970,3 +7970,30 @@ msgstr ""
 #: src/tachyon/tabs/diagnostic/checks/runZapret2Check.ts:107
 msgid "Zapret2 sing-box outbound is not configured"
 msgstr ""
+
+msgid "Versions"
+msgstr ""
+
+msgid "Loading versions..."
+msgstr ""
+
+msgid "No versions found"
+msgstr ""
+
+msgid "Failed to load versions"
+msgstr ""
+
+msgid "Installing "
+msgstr ""
+
+msgid "Installation failed"
+msgstr ""
+
+msgid "Installation failed: "
+msgstr ""
+
+msgid "Installed "
+msgstr ""
+
+msgid "pre-release"
+msgstr ""

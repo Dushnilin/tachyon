@@ -5725,3 +5725,30 @@ msgstr "CleanBrowsing (Семейный)"
 
 msgid "Yandex Safe"
 msgstr "Yandex (Безопасный)"
+
+msgid "Versions"
+msgstr "Версии"
+
+msgid "Loading versions..."
+msgstr "Загрузка версий..."
+
+msgid "No versions found"
+msgstr "Версии не найдены"
+
+msgid "Failed to load versions"
+msgstr "Не удалось загрузить версии"
+
+msgid "Installing "
+msgstr "Установка "
+
+msgid "Installation failed"
+msgstr "Ошибка установки"
+
+msgid "Installation failed: "
+msgstr "Ошибка установки: "
+
+msgid "Installed "
+msgstr "Установлено "
+
+msgid "pre-release"
+msgstr "пре-релиз"
