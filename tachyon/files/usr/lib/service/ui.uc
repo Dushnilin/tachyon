@@ -1052,6 +1052,9 @@ function process_memory_rss_mb(process_name) {
         let pid = trim(as_string(p));
         if (!pid || match(pid, /^[0-9]+$/) == null)
             continue;
+        let cmd = fs.readfile("/proc/" + pid + "/cmdline");
+        if (cmd && index(cmd, "check") >= 0)
+            continue;
         let status = fs.readfile("/proc/" + pid + "/status");
         if (!status)
             continue;
