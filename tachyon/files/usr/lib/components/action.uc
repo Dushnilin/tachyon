@@ -975,7 +975,7 @@ function restart_tachyon_after_successful_change() {
     system(kill_matching_command("-E '99-tachyon-wan|flock 1000|init[.]d/tachyon'"));
     // Kill orphaned logread -f processes before restart to prevent FD cascade.
     command_success_from_args([ "killall", "logread" ]);
-    run_logged("Restarting Tachyon after successful component change", command_from_args([ SERVICE_INIT, "restart" ]), 25);
+    run_logged("Restarting Tachyon after successful component change", command_from_args([ SERVICE_INIT, "restart" ]), 120);
 }
 
 function stop_tachyon_before_sing_box_change() {
@@ -2453,11 +2453,13 @@ function reinstall_tachyon() {
     remove_file("/var/luci-indexcache");
     command_success("rm -f /var/luci-indexcache* /tmp/luci-indexcache* 2>/dev/null");
     command_success("rm -rf /tmp/luci-modulecache/ 2>/dev/null");
-    if (file_exists("/etc/init.d/rpcd") && !command_success_from_args([ "/etc/init.d/rpcd", "reload" ]))
-        command_success_from_args([ "/etc/init.d/rpcd", "restart" ]);
-    command_success_from_args([ "killall", "-HUP", "rpcd" ]);
+    if (file_exists("/etc/init.d/rpcd"))
+        command_success_from_args([ "/etc/init.d/rpcd", "reload" ]);
 
-    restart_tachyon_after_successful_change();
+    if (!tachyon_status_running_with_timeout())
+        restart_tachyon_after_successful_change();
+    else
+        updates_log("Tachyon is already running after package installation");
     clear_version_caches();
     let new_version = installed_package_version("tachyon");
     if (new_version == "")
@@ -2501,11 +2503,13 @@ function install_tachyon() {
     remove_file("/var/luci-indexcache");
     command_success("rm -f /var/luci-indexcache* /tmp/luci-indexcache* 2>/dev/null");
     command_success("rm -rf /tmp/luci-modulecache/ 2>/dev/null");
-    if (file_exists("/etc/init.d/rpcd") && !command_success_from_args([ "/etc/init.d/rpcd", "reload" ]))
-        command_success_from_args([ "/etc/init.d/rpcd", "restart" ]);
-    command_success_from_args([ "killall", "-HUP", "rpcd" ]);
+    if (file_exists("/etc/init.d/rpcd"))
+        command_success_from_args([ "/etc/init.d/rpcd", "reload" ]);
 
-    restart_tachyon_after_successful_change();
+    if (!tachyon_status_running_with_timeout())
+        restart_tachyon_after_successful_change();
+    else
+        updates_log("Tachyon is already running after package installation");
     clear_version_caches();
     let new_version = installed_package_version("tachyon");
     if (new_version == "")

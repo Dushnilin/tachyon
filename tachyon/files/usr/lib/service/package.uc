@@ -298,9 +298,7 @@ function luci_postinst() {
     remove_component_update_cache();
     if (!PACKAGE_TEST_MODE) {
         if (path_exists("/etc/init.d/rpcd"))
-            command_success_from_args([ "/etc/init.d/rpcd", "restart" ]);
-        if (path_exists("/etc/init.d/uhttpd"))
-            command_success_from_args([ "/etc/init.d/uhttpd", "restart" ]);
+            command_success_from_args([ "/etc/init.d/rpcd", "reload" ]);
         command_success_from_args([ "logger", "-t", "tachyon", "[info] Package defaults applied" ]);
     }
     return true;
