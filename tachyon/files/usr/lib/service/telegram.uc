@@ -3,6 +3,7 @@
 let fs = require("fs");
 let uci_core = require("core.uci");
 let common = require("core.common");
+let connections = require("config.connections");
 let helpers = require("core.helpers");
 let api = require("service.api");
 let dns_presets = require("singbox.dns_presets"); // Our new API module
@@ -2479,6 +2480,7 @@ function dispatch_command(token, chat_id, text, msg_id) {
             send_message(token, chat_id, "❌ " + t("sec_not_found") + " <code>" + sec + "</code>", "HTML");
             return view_sections(token, chat_id, null);
         }
+        connections.cascade_delete_section(c, CONFIG_NAME, sec);
         c.delete(CONFIG_NAME, sec);
         c.commit(CONFIG_NAME);
         send_message(token, chat_id, "✅ " + t("sec_deleted") + " <code>" + sec + "</code>", "HTML");

@@ -1196,11 +1196,32 @@ function subscription_download_target_port(sections, target, base_port) {
     return 0;
 }
 
+// Cascade-delete all child sections (subscription_url, urltest, etc.) that
+// belong to the given parent section.  Returns the number of children removed.
+function cascade_delete_section(cursor, config_name, parent_name) {
+    let removed = 0;
+    for (let type_name in ITEM_TYPES) {
+        try {
+            let to_delete = [];
+            cursor.foreach(config_name, type_name, function(section) {
+                if (option(section, "section", "") == parent_name)
+                    push(to_delete, section_name(section));
+            });
+            for (let name in to_delete) {
+                cursor.delete(config_name, name);
+                removed++;
+            }
+        } catch (e) {}
+    }
+    return removed;
+}
+
 return {
     option,
     bool_option,
     list_value,
     whitespace_list_value,
+    cascade_delete_section,
     set_item_sections,
     set_item_sections_from_cursor,
     set_item_sections_from_data,

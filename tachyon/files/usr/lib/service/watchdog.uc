@@ -184,6 +184,11 @@ function stop_runtime() {
     }
     remove_file(PID_FILE);
 
+    // Kill orphaned logread -f processes. These accumulate when watchdog is
+    // killed without proper cleanup (e.g. SIGTERM from procd during restart).
+    // The pkill pattern matches 'logread -f' in the command line.
+    system("pkill -f 'logread -f' 2>/dev/null; true");
+
     // Stop Honeypot listener
     let hp_pid = trim(fs.readfile("/var/run/tachyon_honeypot_listener.pid") || "");
     if (process_running(hp_pid)) {
@@ -2091,6 +2096,8 @@ function check_section_failover() {
         uloop.timer(10000, tick);
 
         log_message("Watchdog running in event-driven uloop mode (fast: 15s, normal: adaptive, slow: 300s).", "info");
+        signal("SIGTERM", function(sig) { log_message("SIGTERM received, shutting down", "info"); stop_runtime(); exit(0); });
+        signal("SIGINT", function(sig) { log_message("SIGINT received, shutting down", "info"); stop_runtime(); exit(0); });
         uloop.run();
     } else {
         log_message("uloop not available. Running Watchdog in legacy fallback loop mode.", "warn");

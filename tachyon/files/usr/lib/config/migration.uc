@@ -1406,27 +1406,30 @@ function migrate_global_hosts_to_section(ctx) {
 }
 
 function migrate_orphan_section_interfaces(ctx) {
-    // Deleting a routing section used to leave its section_interface child
-    // records behind. A parent-less record never matches any section during
+    // Deleting a routing section used to leave its child records
+    // (subscription_url, section_interface, urltest, priority_group, priority_level)
+    // behind. A parent-less record never matches any section during
     // config generation - dead weight that only confuses config readers.
     let owners = {};
     for (let section in ctx.model.sections)
         owners[section_name(section)] = true;
 
-    let kept = [];
-    let changed = false;
-    for (let child in ctx.model.section_interface || []) {
-        let owner = option(child, "section", "");
-        if (owner != "" && !owners[owner]) {
-            record_operation(ctx, { op: "delete_section", section: section_name(child) });
-            changed = true;
-            continue;
+    let child_types = [ "subscription_url", "section_interface", "urltest", "priority_group", "priority_level" ];
+    for (let type_name in child_types) {
+        let kept = [];
+        let changed = false;
+        for (let child in ctx.model[type_name] || []) {
+            let owner = option(child, "section", "");
+            if (owner != "" && !owners[owner]) {
+                record_operation(ctx, { op: "delete_section", section: section_name(child) });
+                changed = true;
+                continue;
+            }
+            push(kept, child);
         }
-        push(kept, child);
+        if (changed)
+            ctx.model[type_name] = kept;
     }
-
-    if (changed)
-        ctx.model.section_interface = kept;
 }
 const MIGRATIONS = [
     { id: "interface_sections", run: migrate_interface_sections },
