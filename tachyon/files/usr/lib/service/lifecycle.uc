@@ -61,7 +61,7 @@ const SING_BOX_START_STABLE_MIN_AGE = int(getenv("TACHYON_SING_BOX_START_STABLE_
 // is still unstable at 15s is failing for a reason more time will not fix. Cold
 // boot is the exception: the WAN may still be coming up, so the init script raises
 // this via TACHYON_SING_BOX_START_VERIFY_TIMEOUT for boot and WAN-retry starts.
-const SING_BOX_START_VERIFY_TIMEOUT = int(getenv("TACHYON_SING_BOX_START_VERIFY_TIMEOUT") || "15");
+const SING_BOX_START_VERIFY_TIMEOUT = int(getenv("TACHYON_SING_BOX_START_VERIFY_TIMEOUT") || "60");
 const NFT_POPULATE_ENABLED_DEFAULT = int(getenv("TACHYON_NFT_POPULATE_ENABLED") || "1");
 
 const TMP_SING_BOX_FOLDER = getenv("TMP_SING_BOX_FOLDER") || constant_value("TMP_SING_BOX_FOLDER", "/tmp/sing-box");

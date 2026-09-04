@@ -631,7 +631,7 @@ function tachyon_stably_running(rt_table, nft_table, mark, min_age) {
 }
 
 function wait_tachyon_stable_start(rt_table, nft_table, mark, min_age, timeout) {
-    timeout = int(timeout || 8);
+    timeout = int(timeout || 30);
     while (timeout > 0) {
         if (tachyon_stably_running(rt_table, nft_table, mark, min_age))
             return true;
@@ -644,7 +644,7 @@ function wait_tachyon_stable_start(rt_table, nft_table, mark, min_age, timeout) 
 }
 
 function wait_sing_box_service_stable(min_age, timeout) {
-    timeout = int(timeout || 8);
+    timeout = int(timeout || 30);
     while (timeout > 0) {
         if (sing_box_service_stable(min_age))
             return true;
