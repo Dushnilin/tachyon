@@ -67,12 +67,33 @@ function enabled_hosts_sections() {
     return result;
 }
 
+function command_exists(name) {
+    return system("command -v " + shell_quote(name) + " >/dev/null 2>&1") == 0;
+}
+
+function hash12(str) {
+    str = as_string(str);
+    let h1 = 5381;
+    let h2 = 52711;
+    for (let i = 0; i < length(str); i++) {
+        let code = ord(str, i);
+        h1 = ((h1 * 33) + code) % 2147483647;
+        h2 = ((h2 * 31) + code) % 2147483647;
+    }
+    return sprintf("%08x%04x", h1, h2 % 65536);
+}
+
 function http_get_to_file(url, output_path) {
-    run("mkdir -p " + shell_quote(HOSTS_TMP_DIR));
-    let cmd = "wget -q -O " + shell_quote(output_path) + " --timeout=" + CONNECT_TIMEOUT + " " + shell_quote(url) + " 2>&1";
+    mkdir_p(HOSTS_TMP_DIR);
+    let cmd;
+    if (command_exists("curl")) {
+        cmd = "curl -fsSL --connect-timeout 10 -m " + CONNECT_TIMEOUT + " -o " + shell_quote(output_path) + " " + shell_quote(url) + " 2>&1";
+    } else {
+        cmd = "wget -q -O " + shell_quote(output_path) + " --timeout=" + CONNECT_TIMEOUT + " " + shell_quote(url) + " 2>&1";
+    }
     log("Running: " + cmd);
     let result = run(cmd);
-    log("wget exit: " + as_string(result) + " file_exists: " + as_string(fs.stat(output_path) != null));
+    log("download exit: " + as_string(result) + " file_exists: " + as_string(fs.stat(output_path) != null));
     return result;
 }
 
@@ -139,7 +160,8 @@ function parse_hosts_file(path) {
 function write_hosts_cache(entries, source_urls) {
     mkdir_p(HOSTS_CACHE_DIR);
 
-    let tmp_path = HOSTS_CACHE_FILE + ".tmp." + as_string(getpid());
+    let pid = fs.readlink("/proc/self") || "0";
+    let tmp_path = HOSTS_CACHE_FILE + ".tmp." + pid;
     let fh = fs.open(tmp_path, "w");
     if (fh == null) {
         log("Failed to open " + tmp_path + " for writing", "error");
@@ -217,7 +239,10 @@ function hosts_list_update(target_url) {
 
     for (let url in urls) {
         let label = "hosts list from " + url;
-        let safe_name = replace(replace(url, /:/g, "_"), /[^a-zA-Z0-9_]/g, "_");
+        let clean = replace(replace(url, /:/g, "_"), /[^a-zA-Z0-9_]/g, "_");
+        if (length(clean) > 40)
+            clean = substr(clean, 0, 40);
+        let safe_name = clean + "_" + hash12(url);
         let tmp_file = HOSTS_TMP_DIR + "/list-" + safe_name + ".txt";
 
         if (download_with_retry(url, tmp_file, label) != null) {

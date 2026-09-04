@@ -2,7 +2,7 @@
 set -eo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
+TACHYON_LIB="${TACHYON_LIB:-$ROOT_DIR/tachyon/files/usr/lib}"
 WORK_DIR="$(mktemp -d)"
 
 cleanup() {
@@ -66,6 +66,14 @@ function assert(val, msg) {
 let index = connections.item_index_from_cursor(cursor, "tachyon");
 assert(index.subscription_url.by_name.sub1.url == "https://example.com/sub.txt", "parse subscription URL");
 assert(index.urltest.by_name.group1.ports[0] == "80", "parse urltest group ports");
+
+// geoip_country_list and geoip_country_mode tests
+let geo_res = connections.geoip_country_list({ geoip_country: [ "ru", "de", "ru" ] });
+assert(geo_res[0] == "ru" && geo_res[1] == "de" && length(geo_res) == 2, "geoip list de-duplicate");
+assert(connections.geoip_country_list({ geoip_country: "non-ru" })[0] == "ru", "geoip non-ru alias");
+assert(connections.geoip_country_mode({ geoip_country: "non-ru" }) == "exclude", "geoip mode for non-ru");
+assert(connections.geoip_country_mode({ geoip_mode: "exclude" }) == "exclude", "geoip mode exclude");
+assert(connections.geoip_country_mode({ geoip_mode: "include" }) == "include", "geoip mode include");
 '
 
 printf 'config/connections checks passed\n'

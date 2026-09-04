@@ -549,6 +549,14 @@ function dscp_value(section) {
     return list_option_value_from_array(dscp_list(section));
 }
 
+function contains(arr, val) {
+    if (type(arr) != "array") return false;
+    for (let item in arr) {
+        if (item == val) return true;
+    }
+    return false;
+}
+
 function geoip_country_list(section) {
     let raw = whitespace_list_value(section, "geoip_country");
     let result = [];

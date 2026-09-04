@@ -180,42 +180,99 @@ function query_params(value) {
     return result;
 }
 
-function github_to_jsdelivr(url) {
+function normalize_github_raw(url) {
     url = as_string(url);
-    if (index(url, "github.com/") < 0)
-        return "";
+    let marker = "github.com/";
+    let marker_idx = index(url, marker);
+    if (marker_idx < 0)
+        return url;
 
-    let path = substr(url, index(url, "github.com/") + 11);
-    let slash1 = index(path, "/");
-    if (slash1 < 0) return "";
-    let owner = substr(path, 0, slash1);
-    let rest = substr(path, slash1 + 1);
+    let path_part = substr(url, marker_idx + length(marker));
+    let slash1 = index(path_part, "/");
+    if (slash1 < 0) return url;
+    let owner = substr(path_part, 0, slash1);
+    let rest = substr(path_part, slash1 + 1);
     let slash2 = index(rest, "/");
-    if (slash2 < 0) return "";
+    if (slash2 < 0) return url;
     let repo = substr(rest, 0, slash2);
     let tail = substr(rest, slash2 + 1);
 
-    let slash3 = index(tail, "/");
-    if (slash3 < 0) return "";
-    let segment3 = substr(tail, 0, slash3);
-    let file = substr(tail, slash3 + 1);
-    if (file == "") return "";
+    let clean_tail = tail;
+    let q = index(clean_tail, "?");
+    if (q >= 0) clean_tail = substr(clean_tail, 0, q);
+    let h = index(clean_tail, "#");
+    if (h >= 0) clean_tail = substr(clean_tail, 0, h);
 
-    let ref = "";
-    if (segment3 == "releases" && index(tail, "releases/download/") == 0) {
-        let dl_path = substr(tail, 17);
-        let dl_slash = index(dl_path, "/");
-        if (dl_slash < 0) return "";
-        ref = substr(dl_path, 0, dl_slash);
-        file = substr(dl_path, dl_slash + 1);
-    } else if (segment3 == "raw") {
-        ref = substr(tail, slash3 + 1);
-        let raw_slash = index(ref, "/");
-        if (raw_slash < 0) return "";
-        file = substr(ref, raw_slash + 1);
-        ref = substr(ref, 0, raw_slash);
+    if (index(clean_tail, "blob/") == 0) {
+        let subpath = substr(clean_tail, 5);
+        return "https://raw.githubusercontent.com/" + owner + "/" + repo + "/" + subpath;
+    }
+    if (index(clean_tail, "raw/") == 0) {
+        let subpath = substr(clean_tail, 4);
+        return "https://raw.githubusercontent.com/" + owner + "/" + repo + "/" + subpath;
+    }
+
+    return url;
+}
+
+function github_to_jsdelivr(url) {
+    url = as_string(url);
+    let marker_gh = "github.com/";
+    let marker_raw = "raw.githubusercontent.com/";
+    let idx_gh = index(url, marker_gh);
+    let idx_raw = index(url, marker_raw);
+
+    if (idx_gh < 0 && idx_raw < 0)
+        return "";
+
+    let owner = "", repo = "", ref = "", file = "";
+
+    if (idx_raw >= 0) {
+        let path_part = substr(url, idx_raw + length(marker_raw));
+        let slash1 = index(path_part, "/");
+        if (slash1 < 0) return "";
+        owner = substr(path_part, 0, slash1);
+        let rest = substr(path_part, slash1 + 1);
+        let slash2 = index(rest, "/");
+        if (slash2 < 0) return "";
+        repo = substr(rest, 0, slash2);
+        let tail = substr(rest, slash2 + 1);
+        let slash3 = index(tail, "/");
+        if (slash3 < 0) return "";
+        ref = substr(tail, 0, slash3);
+        file = substr(tail, slash3 + 1);
     } else {
-        ref = segment3;
+        let path_part = substr(url, idx_gh + length(marker_gh));
+        let slash1 = index(path_part, "/");
+        if (slash1 < 0) return "";
+        owner = substr(path_part, 0, slash1);
+        let rest = substr(path_part, slash1 + 1);
+        let slash2 = index(rest, "/");
+        if (slash2 < 0) return "";
+        repo = substr(rest, 0, slash2);
+        let tail = substr(rest, slash2 + 1);
+
+        let slash3 = index(tail, "/");
+        if (slash3 < 0) return "";
+        let segment3 = substr(tail, 0, slash3);
+        let remainder = substr(tail, slash3 + 1);
+        if (remainder == "") return "";
+
+        if (segment3 == "releases" && index(tail, "releases/download/") == 0) {
+            let dl_path = substr(tail, 17);
+            let dl_slash = index(dl_path, "/");
+            if (dl_slash < 0) return "";
+            ref = substr(dl_path, 0, dl_slash);
+            file = substr(dl_path, dl_slash + 1);
+        } else if (segment3 == "raw" || segment3 == "blob") {
+            let raw_slash = index(remainder, "/");
+            if (raw_slash < 0) return "";
+            ref = substr(remainder, 0, raw_slash);
+            file = substr(remainder, raw_slash + 1);
+        } else {
+            ref = segment3;
+            file = remainder;
+        }
     }
 
     if (ref == "" || file == "")
@@ -227,6 +284,8 @@ function download_candidates(value) {
     value = as_string(value);
     if (value == "")
         return [];
+
+    value = normalize_github_raw(value);
 
     let candidates = [ value ];
     let is_github = index(value, "github.com") >= 0 ||
@@ -264,5 +323,7 @@ return {
     userinfo,
     path,
     query_params,
+    normalize_github_raw,
+    github_to_jsdelivr,
     download_candidates
 };

@@ -8214,13 +8214,21 @@ function createSectionContent(section) {
         tdCheck.appendChild(cb);
         tr.appendChild(tdCheck);
 
-        const tdUrl = E("td", { class: "cbi-section-table-cell" });
+        const tdUrl = E("td", {
+          class: "cbi-section-table-cell",
+          style: "word-break:break-all;overflow-wrap:anywhere;font-size:12px;line-height:1.3;max-width:320px;",
+        });
+        let displayUrl = url;
+        try {
+          displayUrl = decodeURIComponent(url);
+        } catch(e) {}
         const urlSpan = E(
           "span",
           {
             style: isOff ? "text-decoration:line-through;opacity:0.6;" : "",
+            title: url,
           },
-          url,
+          displayUrl,
         );
         tdUrl.appendChild(urlSpan);
         tr.appendChild(tdUrl);
@@ -8292,8 +8300,10 @@ function createSectionContent(section) {
           class: "btn cbi-button cbi-button-action",
           type: "button",
           click: function () {
-            const val = (input.value || "").trim();
+            let val = (input.value || "").trim();
             if (!val) return;
+            val = val.replace(/^https?:\/\/github\.com\/([^/]+)\/([^/]+)\/blob\/(.+)$/, "https://raw.githubusercontent.com/$1/$2/$3");
+            val = val.replace(/^https?:\/\/github\.com\/([^/]+)\/([^/]+)\/raw\/(.+)$/, "https://raw.githubusercontent.com/$1/$2/$3");
             let u = getUrls();
             if (u.includes(val)) {
               input.value = "";
@@ -8316,6 +8326,54 @@ function createSectionContent(section) {
       addRow.appendChild(input);
       addRow.appendChild(addBtn);
       container.appendChild(addRow);
+
+      if (urls.length > 0) {
+        const updateRow = E("div", {
+          style: "margin-top:8px;display:flex;justify-content:flex-end;",
+        });
+        const updateBtn = E(
+          "button",
+          {
+            class: "cbi-button cbi-button-action",
+            type: "button",
+            click: function () {
+              updateBtn.disabled = true;
+              updateBtn.textContent = _("Updating…");
+              fs.exec("/usr/bin/tachyon", ["hosts_list_update"])
+                .then(function (res) {
+                  updateBtn.disabled = false;
+                  updateBtn.textContent = _("Update Lists Now");
+                  let ok = false;
+                  let msg = "";
+                  try {
+                    const data = JSON.parse(res.stdout || "{}");
+                    if (data.success) {
+                      ok = true;
+                      msg = _("Successfully updated %d hosts entries").format(data.entries);
+                    } else {
+                      msg = _("Update failed: ") + (data.error || res.stderr || "");
+                    }
+                  } catch (e) {
+                    msg = res.stdout || res.stderr || _("Finished with code ") + res.code;
+                  }
+                  ui.addNotification(
+                    null,
+                    E("p", {}, msg),
+                    ok ? "info" : "danger"
+                  );
+                })
+                .catch(function (err) {
+                  updateBtn.disabled = false;
+                  updateBtn.textContent = _("Update Lists Now");
+                  ui.addNotification(null, E("p", {}, err.message || err), "danger");
+                });
+            },
+          },
+          _("Update Lists Now"),
+        );
+        updateRow.appendChild(updateBtn);
+        container.appendChild(updateRow);
+      }
     }
 
     render();
