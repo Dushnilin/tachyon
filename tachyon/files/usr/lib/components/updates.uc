@@ -1851,7 +1851,7 @@ function launch_component_worker(args) {
     return trim(command_output("sh -c " + shell_quote(command)));
 }
 
-function component_action_worker(state_file, output_file, component, action) {
+function component_action_worker(state_file, output_file, component, action, extra) {
     component = normalize_component_name(component);
     // stderr gets its own file instead of being merged into the result channel.
     // Merging put apk/opkg warnings and init-script chatter into the same file as

@@ -718,7 +718,7 @@ export const TachyonShellMethods = {
         component,
         String(count),
       ],
-      timeout: COMPONENT_ACTION_RPC_TIMEOUT_MS,
+      timeout: 25_000,
     });
     const parsed = parseJsonArrayOutput<Tachyon.ComponentRelease>(
       response.stdout,

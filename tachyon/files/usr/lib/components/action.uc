@@ -571,7 +571,7 @@ function http_get_once(url, output_path, proxy_address, timeout) {
     timeout = as_string(timeout || "30");
 
     if (command_exists("curl")) {
-        let args = [ "curl", "--connect-timeout", "5", "-m", timeout, "-fsSL" ];
+        let args = [ "curl", "--connect-timeout", "4", "-m", timeout, "-fsSL", "-H", "User-Agent: Tachyon-OpenWrt" ];
         if (proxy_address != "") {
             push(args, "-x");
             push(args, "http://" + proxy_address);
@@ -583,7 +583,7 @@ function http_get_once(url, output_path, proxy_address, timeout) {
     }
 
     if (command_exists("wget")) {
-        let command = command_from_args([ "wget", "-T", timeout, "-q", "-O", output_path, url ]);
+        let command = command_from_args([ "wget", "-T", timeout, "-q", "-O", output_path, "--header=User-Agent: Tachyon-OpenWrt", url ]);
         if (proxy_address != "")
             command = command_env({ http_proxy: "http://" + proxy_address, https_proxy: "http://" + proxy_address }) + " " + command;
         return command_success(command);
@@ -592,15 +592,16 @@ function http_get_once(url, output_path, proxy_address, timeout) {
     return false;
 }
 
-function http_get(url) {
+function http_get(url, timeout) {
     init_tmp_dir();
     let output_path = make_tmp_file("http");
     if (output_path == "")
         return "";
 
+    let t = as_string(timeout || "12");
     let proxy_address = service_proxy_address();
     if (proxy_address != "") {
-        if (http_get_once(url, output_path, proxy_address, "30")) {
+        if (http_get_once(url, output_path, proxy_address, t)) {
             let data = read_file(output_path);
             remove_file(output_path);
             return data;
@@ -609,7 +610,7 @@ function http_get(url) {
         updates_log("HTTP request via service proxy failed for " + as_string(url) + "; retrying directly", "warn");
     }
 
-    if (http_get_once(url, output_path, "", "30")) {
+    if (http_get_once(url, output_path, "", t)) {
         let data = read_file(output_path);
         remove_file(output_path);
         return data;
@@ -675,10 +676,10 @@ function fetch_github_release_by_tag_json(owner, repo, tag) {
 }
 
 function fetch_github_releases_json(owner, repo, per_page) {
-    let url = "https://api.github.com/repos/" + as_string(owner) + "/" + as_string(repo) + "/releases?per_page=" + as_string(per_page || "30");
-    let response = http_get(url);
+    let url = "https://api.github.com/repos/" + as_string(owner) + "/" + as_string(repo) + "/releases?per_page=" + as_string(per_page || "10");
+    let response = http_get(url, "8");
     if (response == "" || !helper_success_input(response, "github-response-ok", [])) {
-        response = http_get("https://gh-proxy.com/" + url);
+        response = http_get("https://gh-proxy.com/" + url, "8");
         if (response == "" || !helper_success_input(response, "github-response-ok", []))
             return "";
     }
@@ -2933,6 +2934,98 @@ function rollback_component(component) {
     }
 }
 
+function list_component_releases(component, count) {
+    component = normalize_component_name(component);
+    count = int(count || 3);
+    if (count < 1) count = 1;
+    if (count > 10) count = 10;
+
+    let cache_file = "/tmp/tachyon-releases-" + component + ".json";
+    let cached_stat = fs.stat(cache_file);
+    if (cached_stat != null && (time() - cached_stat.mtime) < 600) {
+        let cached_data = read_file(cache_file);
+        if (cached_data != null && cached_data != "" && cached_data != "[]\n" && cached_data != "[]") {
+            print(cached_data);
+            return;
+        }
+    }
+
+    let owner = "";
+    let repo = "";
+    let per_page = as_string(count);
+
+    if (component == "tachyon") {
+        let parts = split(TACHYON_RELEASE_REPO, "/");
+        if (length(parts) != 2) { print("[]\n"); return; }
+        owner = parts[0]; repo = parts[1];
+    } else if (component == "sing_box") {
+        let variant = sing_box_runtime_output("variant", []);
+        if (variant == "lx") { owner = "Leadaxe"; repo = "sing-box-lx"; }
+        else if (variant == "extended" || variant == "extended-compressed") { owner = "shtorm-7"; repo = "sing-box-extended"; }
+        else { owner = "SagerNet"; repo = "sing-box"; }
+    } else if (component == "zapret") {
+        owner = "remittor"; repo = "zapret-openwrt";
+    } else if (component == "zapret2") {
+        owner = "Dushnilin"; repo = "zapret2-openwrt";
+    } else if (component == "byedpi") {
+        owner = "DPITrickster"; repo = "ByeDPI-OpenWrt";
+    } else {
+        print("[]\n"); return;
+    }
+
+    let releases_json = fetch_github_releases_json(owner, repo, per_page);
+    if (releases_json == "") { print("[]\n"); return; }
+
+    let releases = [];
+    try {
+        let parsed = json(releases_json);
+        if (type(parsed) == "array") {
+            for (let r in parsed) {
+                let tag = trim(as_string(r.tag_name || ""));
+                let name = trim(as_string(r.name || tag));
+                let published = trim(as_string(r.published_at || r.created_at || ""));
+                let html_url = trim(as_string(r.html_url || ""));
+                if (tag == "") continue;
+                let prerelease = !!r.prerelease;
+                push(releases, { tag, name, published, prerelease, release_url: html_url });
+            }
+        }
+    } catch (e) {}
+
+    if (length(releases) > 0) {
+        let f = fs.open(cache_file, "w");
+        if (f) {
+            f.write(sprintf("%J\n", releases));
+            f.close();
+        }
+    }
+    write_json(releases);
+}
+
+function install_component_version(component, tag) {
+    component = normalize_component_name(component);
+    tag = trim(as_string(tag));
+    if (tag == "" || component == "") {
+        action_fail(component != "" ? component : "unknown", "install_version", "Invalid component or version tag specified");
+    }
+
+    create_component_backup(component);
+
+    if (component == "tachyon") {
+        install_tachyon_version(tag);
+    } else if (component == "sing_box") {
+        dispatch_sing_box("install", tag);
+    } else if (component == "zapret") {
+        install_zapret("install", tag);
+    } else if (component == "zapret2") {
+        install_zapret2("install", tag);
+    } else if (component == "byedpi") {
+        install_byedpi("install", tag);
+    } else {
+        action_fail(component, "install_version", "Component " + component + " does not support version installation");
+    }
+}
+
 function component_action(component, action, extra) {
     component = normalize_component_name(component);
     action = as_string(action);
@@ -2992,81 +3085,6 @@ function component_action(component, action, extra) {
         remove_optional_component("tailscale", "tailscale", "Tailscale", LIB_DIR + "/providers/tailscale/runtime.uc");
     else
         action_fail(component != "" ? component : "unknown", action != "" ? action : "unknown", "Unknown component action");
-}
-
-function list_component_releases(component, count) {
-    component = normalize_component_name(component);
-    count = int(count || 3);
-    if (count < 1) count = 1;
-    if (count > 10) count = 10;
-
-    let owner = "";
-    let repo = "";
-    let per_page = as_string(count);
-
-    if (component == "tachyon") {
-        let parts = split(TACHYON_RELEASE_REPO, "/");
-        if (length(parts) != 2) { print("[]"); return; }
-        owner = parts[0]; repo = parts[1];
-    } else if (component == "sing_box") {
-        let variant = sing_box_runtime_output("variant", []);
-        if (variant == "lx") { owner = "Leadaxe"; repo = "sing-box-lx"; }
-        else if (variant == "extended" || variant == "extended-compressed") { owner = "shtorm-7"; repo = "sing-box-extended"; }
-        else { owner = "SagerNet"; repo = "sing-box"; }
-    } else if (component == "zapret") {
-        owner = "remittor"; repo = "zapret-openwrt";
-    } else if (component == "zapret2") {
-        owner = "Dushnilin"; repo = "zapret2-openwrt";
-    } else if (component == "byedpi") {
-        owner = "DPITrickster"; repo = "ByeDPI-OpenWrt";
-    } else {
-        print("[]"); return;
-    }
-
-    let releases_json = fetch_github_releases_json(owner, repo, per_page);
-    if (releases_json == "") { print("[]"); return; }
-
-    let releases = [];
-    try {
-        let parsed = json(releases_json);
-        if (type(parsed) == "array") {
-            for (let r in parsed) {
-                let tag = trim(as_string(r.tag_name || ""));
-                let name = trim(as_string(r.name || tag));
-                let published = trim(as_string(r.published_at || r.created_at || ""));
-                let html_url = trim(as_string(r.html_url || ""));
-                if (tag == "") continue;
-                let prerelease = !!r.prerelease;
-                push(releases, { tag, name, published, prerelease, release_url: html_url });
-            }
-        }
-    } catch (e) {}
-
-    write_json(releases);
-}
-
-function install_component_version(component, tag) {
-    component = normalize_component_name(component);
-    tag = trim(as_string(tag));
-    if (tag == "" || component == "") {
-        action_fail(component != "" ? component : "unknown", "install_version", "Invalid component or version tag specified");
-    }
-
-    create_component_backup(component);
-
-    if (component == "tachyon") {
-        install_tachyon_version(tag);
-    } else if (component == "sing_box") {
-        dispatch_sing_box("install", tag);
-    } else if (component == "zapret") {
-        install_zapret("install", tag);
-    } else if (component == "zapret2") {
-        install_zapret2("install", tag);
-    } else if (component == "byedpi") {
-        install_byedpi("install", tag);
-    } else {
-        action_fail(component, "install_version", "Component " + component + " does not support version installation");
-    }
 }
 
 let mode = ARGV[0] || "";

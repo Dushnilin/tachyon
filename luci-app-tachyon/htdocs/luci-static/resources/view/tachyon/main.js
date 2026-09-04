@@ -3782,7 +3782,7 @@ var TachyonShellMethods = {
         component,
         String(count)
       ],
-      timeout: COMPONENT_ACTION_RPC_TIMEOUT_MS
+      timeout: 25e3
     });
     const parsed = parseJsonArrayOutput(
       response.stdout
