@@ -127,7 +127,13 @@ type ChildType =
   | 'priority_level';
 
 const DASHBOARD_SECTION_CACHE_DIR = '/var/run/tachyon/section-cache';
-const CLASH_API_FETCH_TIMEOUT_MS = 5000;
+const CLASH_API_FETCH_TIMEOUT_MS = 1200;
+let directClashApiFailedAt = 0;
+const DIRECT_CLASH_API_COOLDOWN_MS = 60_000;
+
+export function resetDirectClashApiState() {
+  directClashApiFailedAt = 0;
+}
 
 function getDisplayName(section: Tachyon.ConfigSection) {
   return section.label || section['.name'];
@@ -142,6 +148,9 @@ function getClashApiSecret(configSections: Tachyon.ConfigSection[]) {
 }
 
 function canFetchClashApiDirectly() {
+  if (Date.now() - directClashApiFailedAt < DIRECT_CLASH_API_COOLDOWN_MS) {
+    return false;
+  }
   return canUseDirectClashApi() && typeof fetch === 'function';
 }
 
@@ -163,12 +172,15 @@ async function getClashApiProxies(
       });
 
       if (response.ok) {
+        directClashApiFailedAt = 0;
         return {
           success: true,
           data: (await response.json()) as ClashAPI.Proxies,
         };
       }
+      directClashApiFailedAt = Date.now();
     } catch (_error) {
+      directClashApiFailedAt = Date.now();
       // Fall back to rpcd below for controllers unavailable from the browser.
     } finally {
       clearTimeout(timeoutId);

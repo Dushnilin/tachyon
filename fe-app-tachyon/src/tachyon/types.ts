@@ -682,6 +682,7 @@ export namespace Tachyon {
   export type ComponentAction =
     | 'check_update'
     | 'install'
+    | 'install_version'
     | 'reinstall'
     | 'remove'
     | 'rollback'

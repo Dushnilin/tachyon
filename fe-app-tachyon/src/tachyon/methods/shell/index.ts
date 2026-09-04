@@ -628,14 +628,19 @@ export const TachyonShellMethods = {
   componentActionStart: async (
     component: Tachyon.ComponentName,
     action: Tachyon.ComponentAction,
+    targetVersion?: string,
   ) => {
+    const args: string[] = [
+      Tachyon.AvailableMethods.COMPONENT_ACTION_ASYNC,
+      component,
+      action,
+    ];
+    if (targetVersion) {
+      args.push(targetVersion);
+    }
     const response = await executeShellCommand({
       command: '/usr/bin/tachyon',
-      args: [
-        Tachyon.AvailableMethods.COMPONENT_ACTION_ASYNC,
-        component,
-        action,
-      ],
+      args,
       timeout: COMPONENT_ACTION_RPC_TIMEOUT_MS,
     });
     const parsedResponse = parseComponentActionStartResult(response);

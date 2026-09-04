@@ -259,6 +259,8 @@ function cleanup_tmp_dir() {
 }
 
 function acquire_component_lock() {
+    if (lock_held)
+        return true;
     ensure_dir(RUNTIME_STATE_DIR);
     if (command_success_from_args([ "mkdir", COMPONENT_LOCK_DIR ])) {
         write_file(COMPONENT_LOCK_DIR + "/pid", owner_pid() + "\n");
@@ -658,6 +660,20 @@ function fetch_github_release_json(owner, repo) {
     return response;
 }
 
+function fetch_github_release_by_tag_json(owner, repo, tag) {
+    tag = trim(as_string(tag));
+    if (tag == "")
+        return "";
+    let url = "https://api.github.com/repos/" + as_string(owner) + "/" + as_string(repo) + "/releases/tags/" + tag;
+    let response = http_get(url);
+    if (response == "" || !helper_success_input(response, "github-response-ok", [])) {
+        response = http_get("https://gh-proxy.com/" + url);
+        if (response == "" || !helper_success_input(response, "github-response-ok", []))
+            return "";
+    }
+    return response;
+}
+
 function fetch_github_releases_json(owner, repo, per_page) {
     let url = "https://api.github.com/repos/" + as_string(owner) + "/" + as_string(repo) + "/releases?per_page=" + as_string(per_page || "30");
     let response = http_get(url);
@@ -1045,24 +1061,38 @@ function normalize_sing_box_version(value) {
     return trim(helper_output("updates-normalize-sing-box-version", [ value ]));
 }
 
-function resolve_zapret_release(arch) {
-    let release_json = fetch_github_release_json("remittor", "zapret-openwrt");
-    if (release_json == "")
-        return { fetch_failed: true };
-    let resolved = trim(helper_output_input(release_json, "release-select-arch-suffix-asset", [ "zip", arch.candidates ]));
-    let fields = split(resolved, "\t");
-    if (length(fields) < 4)
-        return null;
-    let version = extract_zapret_bundle_version(fields[1]);
-    if (version == "")
-        version = trim(helper_output("string-remove-suffix", [ fields[1], ".zip" ]));
-    return {
-        arch: fields[0],
-        bundle_name: fields[1],
-        bundle_url: fields[2],
-        release_url: fields[3],
-        version
-    };
+function resolve_zapret_release(arch, tag) {
+    let release_json = (tag != null && tag != "") ?
+        fetch_github_release_by_tag_json("remittor", "zapret-openwrt", tag) :
+        fetch_github_release_json("remittor", "zapret-openwrt");
+    if (release_json != "") {
+        let resolved = trim(helper_output_input(release_json, "release-select-arch-suffix-asset", [ "zip", arch.candidates ]));
+        let fields = split(resolved, "\t");
+        if (length(fields) >= 4) {
+            let version = extract_zapret_bundle_version(fields[1]);
+            if (version == "")
+                version = trim(helper_output("string-remove-suffix", [ fields[1], ".zip" ]));
+            return {
+                arch: fields[0],
+                bundle_name: fields[1],
+                bundle_url: fields[2],
+                release_url: fields[3],
+                version
+            };
+        }
+    }
+    if (tag != null && tag != "") {
+        let tag_clean = replace(tag, /^v/, "");
+        let bundle_name = "zapret_" + tag_clean + "_openwrt_" + arch.candidates + ".zip";
+        return {
+            arch: arch.candidates,
+            bundle_name: bundle_name,
+            bundle_url: "https://github.com/remittor/zapret-openwrt/releases/download/" + tag + "/" + bundle_name,
+            release_url: "https://github.com/remittor/zapret-openwrt/releases/tag/" + tag,
+            version: tag
+        };
+    }
+    return { fetch_failed: true };
 }
 
 function resolve_zapret2_release(arch) {
@@ -1124,23 +1154,38 @@ function download_and_extract_zip_package(release, component) {
     };
 }
 
-function resolve_byedpi_release(arch) {
+function resolve_byedpi_release(arch, tag) {
     let asset_ext = is_apk() ? "apk" : "ipk";
     let release_series = trim(helper_output("openwrt-release-series", [ "/etc/openwrt_release" ]));
-    let releases_json = fetch_github_releases_json("DPITrickster", "ByeDPI-OpenWrt", "30");
-    if (releases_json == "")
-        return null;
-    let resolved = trim(helper_output_input(releases_json, "byedpi-select-asset", [ release_series, asset_ext, arch.candidates ]));
-    let fields = split(resolved, "\t");
-    if (length(fields) < 4)
-        return null;
-    return {
-        arch: fields[0],
-        package_name: fields[1],
-        package_url: fields[2],
-        release_url: fields[3],
-        version: extract_arch_package_version(fields[1], fields[0])
-    };
+    let releases_json = (tag != null && tag != "") ?
+        fetch_github_release_by_tag_json("DPITrickster", "ByeDPI-OpenWrt", tag) :
+        fetch_github_releases_json("DPITrickster", "ByeDPI-OpenWrt", "30");
+    if (releases_json != "") {
+        let resolved = trim(helper_output_input(releases_json, "byedpi-select-asset", [ release_series, asset_ext, arch.candidates ]));
+        let fields = split(resolved, "\t");
+        if (length(fields) >= 4) {
+            return {
+                arch: fields[0],
+                package_name: fields[1],
+                package_url: fields[2],
+                release_url: fields[3],
+                version: extract_arch_package_version(fields[1], fields[0])
+            };
+        }
+    }
+    if (tag != null && tag != "") {
+        let distrib_arch = read_openwrt_release_value("DISTRIB_ARCH");
+        let tag_clean = replace(tag, /^v/, "");
+        let pkg_name = "byedpi_" + tag_clean + "_openwrt_" + distrib_arch + "." + asset_ext;
+        return {
+            arch: distrib_arch,
+            package_name: pkg_name,
+            package_url: "https://github.com/DPITrickster/ByeDPI-OpenWrt/releases/download/" + tag + "/" + pkg_name,
+            release_url: "https://github.com/DPITrickster/ByeDPI-OpenWrt/releases/tag/" + tag,
+            version: tag
+        };
+    }
+    return null;
 }
 
 function download_direct_package(release) {
@@ -1216,11 +1261,12 @@ function install_zapret_like(component, action, runtime_module, resolve_fn, labe
     action_success(component, action, label + " package has been installed", current_version, pkg.version, 1, "latest", release.release_url || "");
 }
 
-function install_zapret(action) {
-    install_zapret_like("zapret", action, LIB_DIR + "/providers/zapret/runtime.uc", resolve_zapret_release, "zapret");
+function install_zapret(action, target_tag) {
+    let resolver = function(arch) { return resolve_zapret_release(arch, target_tag); };
+    install_zapret_like("zapret", action, LIB_DIR + "/providers/zapret/runtime.uc", resolver, "zapret");
 }
 
-function install_zapret2(action) {
+function install_zapret2(action, target_tag) {
     let component = "zapret2";
     let label = "zapret2";
     let runtime_module = LIB_DIR + "/providers/zapret2/runtime.uc";
@@ -1232,7 +1278,7 @@ function install_zapret2(action) {
     
     let release = null;
     retry_resolve("Resolving " + label + " package", function() {
-        release = resolve_zapret2_release(arch);
+        release = resolve_zapret2_release(arch, target_tag);
         if (type(release) == "object" && release.fetch_failed)
             return false;
         return release != null;
@@ -1267,14 +1313,14 @@ function install_zapret2(action) {
     action_success(component, action, label + " package has been installed", current_version, pkg.version, 1, "latest", release.release_url || "");
 }
 
-function install_byedpi(action) {
+function install_byedpi(action, target_tag) {
     init_tmp_dir() || action_fail("byedpi", action, "Failed to create temporary directory");
     let arch = resolve_arch_candidates();
     if (arch == null)
         action_fail("byedpi", action, "Failed to detect package architecture");
     let release = null;
     retry_resolve("Resolving ByeDPI package", function() {
-        release = resolve_byedpi_release(arch);
+        release = resolve_byedpi_release(arch, target_tag);
         return release != null;
     });
     if (release == null)
@@ -1472,11 +1518,11 @@ function sing_box_extended_tag_is_stable(tag) {
     return tag != "" && index(tag, "alpha") < 0 && index(tag, "beta") < 0 && index(tag, "rc") < 0;
 }
 
-function set_sing_box_extended_release_from_json(release_json, compressed) {
+function set_sing_box_extended_release_from_json(release_json, compressed, allow_prerelease) {
     if (as_string(release_json) == "")
         return null;
     let tag = trim(helper_output_input(release_json, "object-get-default", [ "tag_name", "" ]));
-    if (!sing_box_extended_tag_is_stable(tag))
+    if (!allow_prerelease && !sing_box_extended_tag_is_stable(tag))
         return null;
 
     let asset_url = "";
@@ -1505,9 +1551,44 @@ function set_sing_box_extended_release_from_json(release_json, compressed) {
     };
 }
 
-function resolve_sing_box_extended_release(compressed) {
+function resolve_sing_box_extended_release(compressed, target_tag) {
+    if (target_tag != null && target_tag != "") {
+        let release_json = fetch_github_release_by_tag_json("shtorm-7", "sing-box-extended", target_tag);
+        let resolved = set_sing_box_extended_release_from_json(release_json, compressed, true);
+        if (resolved != null)
+            return resolved;
+
+        let tag_clean = replace(target_tag, /^v/, "");
+        let base_dl = "https://github.com/shtorm-7/sing-box-extended/releases/download/" + target_tag + "/";
+        let asset_name = "";
+        let asset_url = "";
+
+        if (compressed) {
+            let arch_suffix = resolve_sing_box_extended_arch_suffix();
+            if (arch_suffix == "")
+                return null;
+            asset_name = "sing-box-extended_" + tag_clean + "_linux-" + arch_suffix + "-compressed.tar.gz";
+            asset_url = base_dl + asset_name;
+        }
+        else {
+            let distrib_arch = read_openwrt_release_value("DISTRIB_ARCH");
+            if (distrib_arch == "")
+                return null;
+            let asset_ext = is_apk() ? "apk" : "ipk";
+            asset_name = "sing-box-extended_" + tag_clean + "_openwrt_" + distrib_arch + "." + asset_ext;
+            asset_url = base_dl + asset_name;
+        }
+
+        return {
+            tag: target_tag,
+            release_url: "https://github.com/shtorm-7/sing-box-extended/releases/tag/" + target_tag,
+            asset_url: asset_url,
+            asset_name: asset_name
+        };
+    }
+
     let release_json = fetch_github_release_json("shtorm-7", "sing-box-extended");
-    let resolved = set_sing_box_extended_release_from_json(release_json, compressed);
+    let resolved = set_sing_box_extended_release_from_json(release_json, compressed, false);
     if (resolved != null)
         return resolved;
 
@@ -1516,7 +1597,7 @@ function resolve_sing_box_extended_release(compressed) {
         let tag = trim(helper_output_input(releases_json, "sing-box-extended-release-tag", []));
         if (tag != "") {
             release_json = helper_output_input(releases_json, "release-by-tag", [ tag ]);
-            resolved = set_sing_box_extended_release_from_json(release_json, compressed);
+            resolved = set_sing_box_extended_release_from_json(release_json, compressed, false);
             if (resolved != null)
                 return resolved;
         }
@@ -1555,12 +1636,12 @@ function resolve_sing_box_extended_release(compressed) {
     };
 }
 
-function set_sing_box_lx_release_from_json(release_json) {
+function set_sing_box_lx_release_from_json(release_json, allow_prerelease) {
     if (as_string(release_json) == "")
         return null;
     let tag = trim(helper_output_input(release_json, "object-get-default", [ "tag_name", "" ]));
     let lowered = lc(tag);
-    if (tag == "" || index(lowered, "alpha") >= 0 || index(lowered, "beta") >= 0 || index(lowered, "rc") >= 0)
+    if (!allow_prerelease && (tag == "" || index(lowered, "alpha") >= 0 || index(lowered, "beta") >= 0 || index(lowered, "rc") >= 0))
         return null;
 
     let arch_suffix = resolve_sing_box_extended_arch_suffix();
@@ -1578,9 +1659,29 @@ function set_sing_box_lx_release_from_json(release_json) {
     };
 }
 
-function resolve_sing_box_lx_release() {
+function resolve_sing_box_lx_release(target_tag) {
+    if (target_tag != null && target_tag != "") {
+        let release_json = fetch_github_release_by_tag_json("Leadaxe", "sing-box-lx", target_tag);
+        let resolved = set_sing_box_lx_release_from_json(release_json, true);
+        if (resolved != null)
+            return resolved;
+
+        let tag_clean = replace(target_tag, /^v/, "");
+        let arch_suffix = resolve_sing_box_extended_arch_suffix();
+        if (arch_suffix == "")
+            return null;
+        let base_dl = "https://github.com/Leadaxe/sing-box-lx/releases/download/" + target_tag + "/";
+        let asset_name = "sing-box-lx_" + tag_clean + "_linux-" + arch_suffix + ".tar.gz";
+        return {
+            tag: target_tag,
+            release_url: "https://github.com/Leadaxe/sing-box-lx/releases/tag/" + target_tag,
+            asset_url: base_dl + asset_name,
+            asset_name: asset_name
+        };
+    }
+
     let release_json = fetch_github_release_json("Leadaxe", "sing-box-lx");
-    let resolved = set_sing_box_lx_release_from_json(release_json);
+    let resolved = set_sing_box_lx_release_from_json(release_json, false);
     if (resolved != null)
         return resolved;
 
@@ -1591,7 +1692,7 @@ function resolve_sing_box_lx_release() {
     if (tag == "")
         return null;
     release_json = helper_output_input(releases_json, "release-by-tag", [ tag ]);
-    return set_sing_box_lx_release_from_json(release_json);
+    return set_sing_box_lx_release_from_json(release_json, false);
 }
 
 function sing_box_runtime_output(mode, args) {
@@ -1769,13 +1870,13 @@ function fail_package_sing_box_install(action, tiny, reason, current_version, la
     action_fail("sing_box", action, prefix + " " + reason + " and previous sing-box variant could not be restored", current_version, latest_version);
 }
 
-function install_sing_box_extended_package(action) {
+function install_sing_box_extended_package(action, target_tag) {
     init_tmp_dir() || action_fail("sing_box", action, "Failed to create temporary directory");
     let current_version = sing_box_runtime_output("version", []);
     let current_variant = sing_box_runtime_output("variant", []);
     let previous_marker = sing_box_runtime_output("read-variant-marker", []);
     let previous_version_state = sing_box_runtime_output("read-version-state", []);
-    let release = resolve_sing_box_extended_release(false);
+    let release = resolve_sing_box_extended_release(false, target_tag);
     if (release == null)
         action_fail("sing_box", action, "Failed to resolve sing-box-extended package release", current_version);
     let latest_version = normalize_sing_box_version(release.tag);
@@ -1855,6 +1956,8 @@ function install_sing_box_extended_package(action) {
     }
 
     write_sing_box_variant_state("extended", new_version);
+    if (target_tag != null && target_tag != "")
+        write_file("/etc/tachyon/sing-box-version", target_tag + "\n");
     restart_tachyon_after_successful_change();
     if (!wait_tachyon_running_after_sing_box_change()) {
         updates_log("sing-box-extended package did not start cleanly; restoring previous sing-box variant", "error");
@@ -1875,9 +1978,9 @@ function install_sing_box_extended_package(action) {
     action_success("sing_box", action, "sing-box-extended has been installed", new_version, latest_version, new_version == current_version ? 0 : 1, "latest", release.release_url);
 }
 
-function install_sing_box_extended(action, compressed) {
+function install_sing_box_extended(action, compressed, target_tag) {
     if (!compressed) {
-        install_sing_box_extended_package(action);
+        install_sing_box_extended_package(action, target_tag);
         return;
     }
 
@@ -1887,7 +1990,7 @@ function install_sing_box_extended(action, compressed) {
     let current_variant = sing_box_runtime_output("variant", []);
     let previous_marker = sing_box_runtime_output("read-variant-marker", []);
     let previous_version_state = sing_box_runtime_output("read-version-state", []);
-    let release = resolve_sing_box_extended_release(true);
+    let release = resolve_sing_box_extended_release(true, target_tag);
     if (release == null)
         action_fail("sing_box", action, "Failed to resolve " + label + " release", current_version);
     let latest_version = normalize_sing_box_version(release.tag);
@@ -2019,6 +2122,8 @@ function install_sing_box_extended(action, compressed) {
     }
 
     write_sing_box_variant_state("extended-compressed", new_version);
+    if (target_tag != null && target_tag != "")
+        write_file("/etc/tachyon/sing-box-version", target_tag + "\n");
     restart_tachyon_after_successful_change();
     if (!wait_tachyon_running_after_sing_box_change()) {
         updates_log(label + " did not start cleanly; restoring previous sing-box binary", "error");
@@ -2039,14 +2144,14 @@ function install_sing_box_extended(action, compressed) {
     action_success("sing_box", action, label + " has been installed", new_version, latest_version, 1, "latest", release.release_url);
 }
 
-function install_sing_box_lx(action) {
+function install_sing_box_lx(action, target_tag) {
     init_tmp_dir() || action_fail("sing_box", action, "Failed to create temporary directory");
     let label = "sing-box-lx";
     let current_version = sing_box_runtime_output("version", []);
     let current_variant = sing_box_runtime_output("variant", []);
     let previous_marker = sing_box_runtime_output("read-variant-marker", []);
     let previous_version_state = sing_box_runtime_output("read-version-state", []);
-    let release = resolve_sing_box_lx_release();
+    let release = resolve_sing_box_lx_release(target_tag);
     if (release == null)
         action_fail("sing_box", action, "Failed to resolve " + label + " release", current_version);
     let latest_version = normalize_sing_box_version(release.tag);
@@ -2178,6 +2283,8 @@ function install_sing_box_lx(action) {
     }
 
     write_sing_box_variant_state("lx", new_version);
+    if (target_tag != null && target_tag != "")
+        write_file("/etc/tachyon/sing-box-version", target_tag + "\n");
     restart_tachyon_after_successful_change();
     if (!wait_tachyon_running_after_sing_box_change()) {
         updates_log(label + " did not start cleanly; restoring previous sing-box binary", "error");
@@ -2486,17 +2593,59 @@ function install_tachyon() {
     action_success("tachyon", "install", "Tachyon has been installed", new_version, latest_version, 1, "latest", release.release_url, build_extra);
 }
 
-function dispatch_sing_box(action) {
+function install_tachyon_version(target_tag) {
+    target_tag = trim(as_string(target_tag));
+    if (target_tag == "")
+        action_fail("tachyon", "install_version", "Target version tag cannot be empty", TACHYON_VERSION, "");
+
+    init_tmp_dir() || action_fail("tachyon", "install_version", "Failed to create temporary directory", TACHYON_VERSION, target_tag);
+    updates_log("Resolving Tachyon release " + target_tag + " packages");
+    let release = resolve_tachyon_release(target_tag);
+    if (release == null)
+        action_fail("tachyon", "install_version", "Failed to resolve Tachyon release packages for " + target_tag, TACHYON_VERSION, target_tag);
+
+    let backend_file = tmp_dir + "/" + release.backend_name;
+    let app_file = tmp_dir + "/" + release.app_name;
+    let i18n_file = release.i18n_url != "" ? tmp_dir + "/" + release.i18n_name : "";
+    if (!download_with_retry(release.backend_url, backend_file, release.backend_name) ||
+        !download_with_retry(release.app_url, app_file, release.app_name) ||
+        (release.i18n_url != "" && !download_with_retry(release.i18n_url, i18n_file, release.i18n_name)))
+        action_fail("tachyon", "install_version", "Failed to download Tachyon release packages", TACHYON_VERSION, target_tag);
+
+    let install_files = [ app_file, backend_file ];
+    if (i18n_file != "")
+        push(install_files, i18n_file);
+
+    if (!run_logged_retrying("Installing Tachyon packages", pkg_install_files_command(install_files, true)))
+        action_fail("tachyon", "install_version", "Failed to install Tachyon packages", TACHYON_VERSION, target_tag);
+
+    remove_file("/var/luci-indexcache");
+    command_success("rm -f /var/luci-indexcache* /tmp/luci-indexcache* 2>/dev/null");
+    command_success("rm -rf /tmp/luci-modulecache/ 2>/dev/null");
+    if (file_exists("/etc/init.d/rpcd"))
+        command_success_from_args([ "/etc/init.d/rpcd", "reload" ]);
+
+    restart_tachyon_after_successful_change();
+    clear_version_caches();
+    let new_version = installed_package_version("tachyon");
+    if (new_version == "")
+        new_version = target_tag;
+    updates_log("Tachyon updated to " + new_version);
+    let build_extra = record_tachyon_installed_build(new_version);
+    action_success("tachyon", "install_version", "Tachyon has been installed", new_version, target_tag, 1, "latest", release.release_url, build_extra);
+}
+
+function dispatch_sing_box(action, target_tag) {
     if (action == "install_extended") {
-        install_sing_box_extended(action, false);
+        install_sing_box_extended(action, false, target_tag);
         return;
     }
     if (action == "install_extended_compressed") {
-        install_sing_box_extended(action, true);
+        install_sing_box_extended(action, true, target_tag);
         return;
     }
     if (action == "install_lx") {
-        install_sing_box_lx(action);
+        install_sing_box_lx(action, target_tag);
         return;
     }
     if (action == "install_tiny") {
@@ -2510,11 +2659,11 @@ function dispatch_sing_box(action) {
 
     let variant = sing_box_runtime_output("variant", []);
     if (variant == "lx")
-        install_sing_box_lx(action);
+        install_sing_box_lx(action, target_tag);
     else if (variant == "extended-compressed")
-        install_sing_box_extended(action, true);
+        install_sing_box_extended(action, true, target_tag);
     else if (variant == "extended")
-        install_sing_box_extended(action, false);
+        install_sing_box_extended(action, false, target_tag);
     else if (variant == "tiny")
         install_package_sing_box(action, true);
     else
@@ -2784,7 +2933,7 @@ function rollback_component(component) {
     }
 }
 
-function component_action(component, action) {
+function component_action(component, action, extra) {
     component = normalize_component_name(component);
     action = as_string(action);
     if (!acquire_component_lock()) {
@@ -2802,6 +2951,11 @@ function component_action(component, action) {
 
     if (action == "rollback") {
         rollback_component(component);
+        return;
+    }
+
+    if (action == "install_version") {
+        install_component_version(component, extra);
         return;
     }
 
@@ -2891,150 +3045,38 @@ function list_component_releases(component, count) {
     write_json(releases);
 }
 
-function resolve_component_release(component, tag) {
-    component = normalize_component_name(component);
-    tag = trim(as_string(tag));
-    if (tag == "") return null;
-
-    if (component == "tachyon") {
-        let parts = split(TACHYON_RELEASE_REPO, "/");
-        if (length(parts) != 2) return null;
-        let base_dl = "https://github.com/" + parts[0] + "/" + parts[1] + "/releases/download/" + tag + "/";
-        let ext = is_apk() ? "apk" : "ipk";
-        let tag_clean = replace(tag, /^v/, "");
-        return {
-            tag,
-            packages: [
-                base_dl + "tachyon_" + tag_clean + "." + ext,
-                base_dl + "luci-app-tachyon_" + tag_clean + "." + ext,
-                base_dl + "luci-i18n-tachyon-ru_" + tag_clean + "." + ext
-            ]
-        };
-    }
-
-    if (component == "sing_box") {
-        let variant = sing_box_runtime_output("variant", []);
-        let tag_clean = replace(tag, /^v/, "");
-        let base_dl = "";
-
-        if (variant == "lx") {
-            let arch_suffix = resolve_sing_box_extended_arch_suffix();
-            if (arch_suffix == "") return null;
-            base_dl = "https://github.com/Leadaxe/sing-box-lx/releases/download/" + tag + "/";
-            let asset_name = "sing-box-lx_" + tag_clean + "_linux-" + arch_suffix + ".tar.gz";
-            return { tag, packages: [ base_dl + asset_name ] };
-        } else if (variant == "extended" || variant == "extended-compressed") {
-            let compressed = (variant == "extended-compressed");
-            base_dl = "https://github.com/shtorm-7/sing-box-extended/releases/download/" + tag + "/";
-            if (compressed) {
-                let arch_suffix = resolve_sing_box_extended_arch_suffix();
-                if (arch_suffix == "") return null;
-                return { tag, packages: [ base_dl + "sing-box-extended_" + tag_clean + "_linux-" + arch_suffix + "-compressed.tar.gz" ] };
-            } else {
-                let distrib_arch = read_openwrt_release_value("DISTRIB_ARCH");
-                if (distrib_arch == "") return null;
-                let asset_ext = is_apk() ? "apk" : "ipk";
-                return { tag, packages: [ base_dl + "sing-box-extended_" + tag_clean + "_openwrt_" + distrib_arch + "." + asset_ext ] };
-            }
-        } else {
-            let distrib_arch = read_openwrt_release_value("DISTRIB_ARCH");
-            if (distrib_arch == "") return null;
-            let asset_ext = is_apk() ? "apk" : "ipk";
-            base_dl = "https://github.com/SagerNet/sing-box/releases/download/" + tag + "/";
-            return { tag, packages: [ base_dl + "sing-box_" + tag_clean + "_openwrt_" + distrib_arch + "." + asset_ext ] };
-        }
-    }
-
-    if (component == "zapret") {
-        let arch = resolve_arch_candidates();
-        if (arch == null) return null;
-        let base_dl = "https://github.com/remittor/zapret-openwrt/releases/download/" + tag + "/";
-        let tag_clean = replace(tag, /^v/, "");
-        return { tag, packages: [ base_dl + "zapret_" + tag_clean + "_openwrt_" + arch.candidates + ".zip" ] };
-    }
-
-    if (component == "zapret2") {
-        let arch = resolve_arch_candidates();
-        if (arch == null) return null;
-        let base_dl = "https://github.com/Dushnilin/zapret2-openwrt/releases/download/" + tag + "/";
-        let tag_clean = replace(tag, /^v/, "");
-        let ext = is_apk() ? "apk" : "ipk";
-        return { tag, packages: [ base_dl + "zapret2_" + tag_clean + "_openwrt_" + arch.candidates + "." + ext ] };
-    }
-
-    if (component == "byedpi") {
-        let distrib_arch = read_openwrt_release_value("DISTRIB_ARCH");
-        if (distrib_arch == "") return null;
-        let tag_clean = replace(tag, /^v/, "");
-        let base_dl = "https://github.com/DPITrickster/ByeDPI-OpenWrt/releases/download/" + tag + "/";
-        let ext = is_apk() ? "apk" : "ipk";
-        return { tag, packages: [ base_dl + "byedpi_" + tag_clean + "_openwrt_" + distrib_arch + "." + ext ] };
-    }
-
-    return null;
-}
-
 function install_component_version(component, tag) {
     component = normalize_component_name(component);
     tag = trim(as_string(tag));
     if (tag == "" || component == "") {
-        updates_response(false, component, "install_version", "Invalid component or tag", "", "", 0, "", "", null);
-        cleanup_action();
-        return;
+        action_fail(component != "" ? component : "unknown", "install_version", "Invalid component or version tag specified");
     }
 
-    let plan = resolve_component_release(component, tag);
-    if (plan == null || plan.packages == null || length(plan.packages) == 0) {
-        updates_response(false, component, "install_version", "Failed to resolve release assets for " + component + " " + tag, "", "", 0, "", "", null);
-        cleanup_action();
-        return;
+    create_component_backup(component);
+
+    if (component == "tachyon") {
+        install_tachyon_version(tag);
+    } else if (component == "sing_box") {
+        dispatch_sing_box("install", tag);
+    } else if (component == "zapret") {
+        install_zapret("install", tag);
+    } else if (component == "zapret2") {
+        install_zapret2("install", tag);
+    } else if (component == "byedpi") {
+        install_byedpi("install", tag);
+    } else {
+        action_fail(component, "install_version", "Component " + component + " does not support version installation");
     }
-
-    let installed = 0;
-    let failed = 0;
-    for (let url in plan.packages) {
-        let fname = path_basename(url);
-        let args = [ "curl", "-sL", "--connect-timeout", "10", "-m", "120", "-o", fname ];
-        let proxy_addr = service_proxy_address();
-        if (proxy_addr != "") {
-            push(args, "-x");
-            push(args, "http://" + proxy_addr);
-        }
-        push(args, url);
-        let dl_ok = run_logged("Downloading " + fname, command_from_args(args));
-        if (!dl_ok || !file_exists(fname)) {
-            failed++;
-            continue;
-        }
-        let inst_ok = run_logged("Installing " + fname, pkg_install_files_command([ fname ], false));
-        if (inst_ok) installed++;
-        else failed++;
-        remove_file(fname);
-    }
-
-    if (component == "sing_box") {
-        write_file("/etc/tachyon/sing-box-version", tag + "\n");
-        let variant = sing_box_runtime_output("variant", []);
-        write_file("/etc/tachyon/sing-box-variant", variant + "\n");
-    }
-
-    let success = installed > 0 && failed == 0;
-    let msg = installed + " packages installed";
-    if (failed > 0) msg += ", " + failed + " failed";
-
-    updates_response(success, component, "install_version", msg, "", tag, success ? 1 : 0, success ? "latest" : "", "", null);
-    if (success) restart_tachyon_after_successful_change();
-    cleanup_action();
 }
 
 let mode = ARGV[0] || "";
 
 if (mode == "component-action")
-    component_action(ARGV[1], ARGV[2]);
+    component_action(ARGV[1], ARGV[2], ARGV[3]);
 else if (mode == "list-component-releases")
     list_component_releases(ARGV[1], ARGV[2]);
 else if (mode == "install-component-version")
-    install_component_version(ARGV[1], ARGV[2]);
+    component_action(ARGV[1], "install_version", ARGV[2]);
 else if (mode == "latest-tachyon-release-json")
     print(latest_tachyon_release_json());
 else if (mode == "latest-tachyon-version")

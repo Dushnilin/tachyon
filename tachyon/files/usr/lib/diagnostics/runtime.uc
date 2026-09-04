@@ -1701,7 +1701,11 @@ function check_fakeip() {
 }
 
 function clash_json_output(args) {
-    print(status_output([ "stdin-json" ], command_output(command_from_args(args))));
+    let out = command_output(command_from_args(args));
+    if (out != null && out != "")
+        print(out);
+    else
+        print("{}\n");
     return 0;
 }
 

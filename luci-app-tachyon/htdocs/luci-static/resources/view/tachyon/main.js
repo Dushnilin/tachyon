@@ -3711,14 +3711,18 @@ var TachyonShellMethods = {
       data: parsedResponse
     };
   },
-  componentActionStart: async (component, action) => {
+  componentActionStart: async (component, action, targetVersion) => {
+    const args = [
+      Tachyon.AvailableMethods.COMPONENT_ACTION_ASYNC,
+      component,
+      action
+    ];
+    if (targetVersion) {
+      args.push(targetVersion);
+    }
     const response = await executeShellCommand({
       command: "/usr/bin/tachyon",
-      args: [
-        Tachyon.AvailableMethods.COMPONENT_ACTION_ASYNC,
-        component,
-        action
-      ],
+      args,
       timeout: COMPONENT_ACTION_RPC_TIMEOUT_MS
     });
     const parsedResponse = parseComponentActionStartResult(response);
@@ -4491,7 +4495,9 @@ var TachyonShellMethods = {
 
 // src/tachyon/methods/custom/getDashboardSections.ts
 var DASHBOARD_SECTION_CACHE_DIR = "/var/run/tachyon/section-cache";
-var CLASH_API_FETCH_TIMEOUT_MS = 5e3;
+var CLASH_API_FETCH_TIMEOUT_MS = 1200;
+var directClashApiFailedAt = 0;
+var DIRECT_CLASH_API_COOLDOWN_MS = 6e4;
 function getDisplayName(section) {
   return section.label || section[".name"];
 }
@@ -4502,6 +4508,9 @@ function getClashApiSecret(configSections) {
   return getSettingsSection(configSections)?.yacd_secret_key || "";
 }
 function canFetchClashApiDirectly() {
+  if (Date.now() - directClashApiFailedAt < DIRECT_CLASH_API_COOLDOWN_MS) {
+    return false;
+  }
   return canUseDirectClashApi() && typeof fetch === "function";
 }
 async function getClashApiProxies(configSections) {
@@ -4518,12 +4527,15 @@ async function getClashApiProxies(configSections) {
         signal: controller.signal
       });
       if (response.ok) {
+        directClashApiFailedAt = 0;
         return {
           success: true,
           data: await response.json()
         };
       }
+      directClashApiFailedAt = Date.now();
     } catch (_error) {
+      directClashApiFailedAt = Date.now();
     } finally {
       clearTimeout(timeoutId);
     }
@@ -6278,10 +6290,12 @@ var LogNotificationDeduper = class {
 var componentActionKeyMap = {
   "tachyon:check_update": "tachyonCheck",
   "tachyon:install": "tachyonInstall",
+  "tachyon:install_version": "tachyonInstall",
   "tachyon:reinstall": "tachyonReinstall",
   "tachyon:rollback": "tachyonRollback",
   "sing_box:check_update": "singBoxCheck",
   "sing_box:install": "singBoxInstall",
+  "sing_box:install_version": "singBoxInstall",
   "sing_box:rollback": "singBoxRollback",
   "sing_box:install_extended": "singBoxInstallExtended",
   "sing_box:install_extended_compressed": "singBoxInstallExtendedCompressed",
@@ -6290,18 +6304,22 @@ var componentActionKeyMap = {
   "sing_box:install_stable": "singBoxInstallStable",
   "zapret:check_update": "zapretCheck",
   "zapret:install": "zapretInstall",
+  "zapret:install_version": "zapretInstall",
   "zapret:remove": "zapretRemove",
   "zapret:rollback": "zapretRollback",
   "zapret2:check_update": "zapret2Check",
   "zapret2:install": "zapret2Install",
+  "zapret2:install_version": "zapret2Install",
   "zapret2:remove": "zapret2Remove",
   "zapret2:rollback": "zapret2Rollback",
   "byedpi:check_update": "byedpiCheck",
   "byedpi:install": "byedpiInstall",
+  "byedpi:install_version": "byedpiInstall",
   "byedpi:remove": "byedpiRemove",
   "byedpi:rollback": "byedpiRollback",
   "tailscale:check_update": "tailscaleCheck",
   "tailscale:install": "tailscaleInstall",
+  "tailscale:install_version": "tailscaleInstall",
   "tailscale:remove": "tailscaleRemove",
   "tailscale:rollback": "tailscaleRollback"
 };
@@ -7253,6 +7271,9 @@ function toggleSectionExpanded(sectionCode) {
     expandedSections.delete(sectionCode);
   } else {
     expandedSections.add(sectionCode);
+    if (sectionCode === "active_clients") {
+      void fetchConnections();
+    }
   }
   localStorage.setItem(
     DASHBOARD_EXPANDED_SECTIONS_KEY,
@@ -8582,6 +8603,9 @@ function renderStoreWidget(containerId, storeKey, title, getItems, debugName) {
   container.replaceChildren(renderedWidget);
 }
 async function fetchConnections() {
+  if (!expandedSections.has("active_clients")) {
+    return;
+  }
   try {
     const [res, hostnames] = await Promise.all([
       TachyonShellMethods.getClashApiConnections(),
@@ -19426,6 +19450,11 @@ var componentActionStateUnsubscribe = null;
 var componentActionStateRefreshPromise = null;
 var followedComponentJobs = /* @__PURE__ */ new Set();
 var handledComponentJobs = /* @__PURE__ */ new Set();
+var activeVersionPickerComponent = null;
+var versionPickerLoading = false;
+var versionPickerError = null;
+var versionPickerReleases = [];
+var versionPickerReleasesCache = {};
 for (const savedJob of loadHandledJobsFromSession()) {
   handledComponentJobs.add(savedJob);
   followedComponentJobs.add(savedJob);
@@ -19565,6 +19594,9 @@ async function ackComponentActionJob(jobId) {
   }
 }
 function getExpectedLatestVersionForAction(button) {
+  if (button.targetVersion) {
+    return button.targetVersion;
+  }
   if (button.component !== "tachyon" || button.action !== "install" && button.action !== "reinstall") {
     return void 0;
   }
@@ -19765,7 +19797,7 @@ async function applyCompletedComponentAction({
   }
   patchSystemInfoAfterMutation(result);
   setActionLoading(key, false);
-  if (result.component === "tachyon" && (result.action === "install" || result.action === "reinstall")) {
+  if (result.component === "tachyon" && (result.action === "install" || result.action === "reinstall" || result.action === "install_version")) {
     if (notify && result.message) {
       showToast(result.message, "success", 1200);
     }
@@ -19980,7 +20012,8 @@ async function handleComponentAction(button) {
   try {
     const startResponse = await TachyonShellMethods.componentActionStart(
       button.component,
-      button.action
+      button.action,
+      button.targetVersion
     );
     if (!startResponse.success) {
       if (isComponentActionAlreadyRunningError(startResponse.error)) {
@@ -20343,138 +20376,148 @@ function getComponentCards() {
     }
   ];
 }
-async function showVersionPicker(component) {
-  const container = document.getElementById("tachyon_updates-components");
-  if (!container) return;
-  let dropdown = container.querySelector(
-    ".tachyon-version-picker"
-  );
-  if (dropdown) {
-    dropdown.remove();
+async function toggleVersionPicker(component) {
+  if (activeVersionPickerComponent === component) {
+    activeVersionPickerComponent = null;
+    versionPickerLoading = false;
+    versionPickerError = null;
+    renderUpdatesComponents();
     return;
   }
-  dropdown = E("div", { class: "tachyon-version-picker" }, [
-    E(
-      "div",
-      { class: "tachyon-version-picker__loading" },
-      _("Loading versions...")
-    )
-  ]);
-  const componentCards = container.querySelectorAll(
-    `.tachyon_updates-page__component`
-  );
-  const card = Array.from(componentCards).find((el) => {
-    const title = el.querySelector(".tachyon_updates-page__component__title");
-    return title?.textContent === getComponentCardTitle(component);
-  });
-  if (card) {
-    const actionsEl = card.querySelector(
-      ".tachyon_updates-page__component__actions"
-    );
-    actionsEl?.appendChild(dropdown);
+  activeVersionPickerComponent = component;
+  versionPickerError = null;
+  if (versionPickerReleasesCache[component]) {
+    versionPickerReleases = versionPickerReleasesCache[component];
+    versionPickerLoading = false;
+    renderUpdatesComponents();
+    return;
   }
+  versionPickerLoading = true;
+  versionPickerReleases = [];
+  renderUpdatesComponents();
   try {
     const response = await TachyonShellMethods.componentListReleases(
       component,
-      3
+      5
     );
+    if (activeVersionPickerComponent !== component) {
+      return;
+    }
     if (!response.success) {
-      dropdown.innerHTML = "";
-      dropdown.appendChild(
-        E(
-          "div",
-          { class: "tachyon-version-picker__error" },
-          response.error || _("No versions found")
-        )
-      );
+      versionPickerError = response.error || _("No versions found");
+      versionPickerReleases = [];
+    } else if (!response.data || response.data.length === 0) {
+      versionPickerError = _("No versions found");
+      versionPickerReleases = [];
+    } else {
+      versionPickerReleases = response.data;
+      versionPickerReleasesCache[component] = response.data;
+      versionPickerError = null;
+    }
+  } catch (_error) {
+    if (activeVersionPickerComponent !== component) {
       return;
     }
-    if (!response.data || response.data.length === 0) {
-      dropdown.innerHTML = "";
-      dropdown.appendChild(
-        E(
-          "div",
-          { class: "tachyon-version-picker__error" },
-          _("No versions found")
-        )
-      );
-      return;
+    versionPickerError = _("Failed to load versions");
+    versionPickerReleases = [];
+  } finally {
+    if (activeVersionPickerComponent === component) {
+      versionPickerLoading = false;
+      renderUpdatesComponents();
     }
-    dropdown.innerHTML = "";
-    const list = E("div", { class: "tachyon-version-picker__list" });
-    for (const release of response.data) {
-      const children = [
-        E("span", { class: "tachyon-version-picker__tag" }, release.tag),
-        E("span", { class: "tachyon-version-picker__date" }, release.published)
-      ];
-      if (release.prerelease) {
-        children.push(
-          E(
-            "span",
-            { class: "tachyon-version-picker__prerelease" },
-            _("pre-release")
-          )
-        );
-      }
-      children.push(
-        renderButton({
-          text: _("Install"),
-          loading: false,
-          disabled: false,
-          onClick: () => void installVersion(component, release.tag, dropdown)
-        })
-      );
-      const item = E(
+  }
+}
+async function handleInstallVersion(component, tag) {
+  activeVersionPickerComponent = null;
+  renderUpdatesComponents();
+  const key = getComponentInstallKey(component);
+  const button = {
+    key,
+    text: _("Install"),
+    icon: renderDownloadIcon24,
+    component,
+    action: "install_version",
+    targetVersion: tag
+  };
+  await handleComponentAction(button);
+}
+function renderVersionPickerDropdown(component) {
+  const container = E("div", { class: "tachyon-version-picker" });
+  if (versionPickerLoading) {
+    container.appendChild(
+      E(
         "div",
-        { class: "tachyon-version-picker__item" },
-        children
-      );
-      list.appendChild(item);
-    }
-    dropdown.appendChild(list);
-    dropdown.appendChild(
+        { class: "tachyon-version-picker__loading" },
+        _("Loading versions...")
+      )
+    );
+    return container;
+  }
+  if (versionPickerError) {
+    container.appendChild(
+      E("div", { class: "tachyon-version-picker__error" }, versionPickerError)
+    );
+    container.appendChild(
       E(
         "button",
         {
           class: "cbi-button tachyon-version-picker__close",
-          click: () => dropdown?.remove()
+          click: () => {
+            activeVersionPickerComponent = null;
+            renderUpdatesComponents();
+          }
         },
         _("Close")
       )
     );
-  } catch (_error) {
-    dropdown.innerHTML = "";
-    dropdown.appendChild(
-      E(
-        "div",
-        { class: "tachyon-version-picker__error" },
-        _("Failed to load versions")
-      )
-    );
+    return container;
   }
-}
-async function installVersion(component, tag, dropdown) {
-  const loadingEl = dropdown.querySelector(
-    ".tachyon-version-picker__loading"
-  );
-  if (loadingEl) {
-    loadingEl.textContent = _("Installing ") + tag + "...";
-  }
-  try {
-    const response = await TachyonShellMethods.componentInstallVersion(
-      component,
-      tag
-    );
-    if (response?.success) {
-      showToast(_("Installed ") + tag, "success");
-      dropdown.remove();
-      window.location.reload();
-    } else {
-      showToast(_("Installation failed: ") + (response?.error || ""), "error");
+  const list = E("div", { class: "tachyon-version-picker__list" });
+  for (const release of versionPickerReleases) {
+    const children = [
+      E("span", { class: "tachyon-version-picker__tag" }, release.tag)
+    ];
+    if (release.published) {
+      children.push(
+        E("span", { class: "tachyon-version-picker__date" }, release.published)
+      );
     }
-  } catch (_error) {
-    showToast(_("Installation failed"), "error");
+    if (release.prerelease) {
+      children.push(
+        E(
+          "span",
+          { class: "tachyon-version-picker__prerelease" },
+          _("pre-release")
+        )
+      );
+    }
+    children.push(
+      renderButton({
+        text: _("Install"),
+        loading: false,
+        disabled: isAnyActionLoading(),
+        onClick: () => void handleInstallVersion(component, release.tag)
+      })
+    );
+    list.appendChild(
+      E("div", { class: "tachyon-version-picker__item" }, children)
+    );
   }
+  container.appendChild(list);
+  container.appendChild(
+    E(
+      "button",
+      {
+        class: "cbi-button tachyon-version-picker__close",
+        click: () => {
+          activeVersionPickerComponent = null;
+          renderUpdatesComponents();
+        }
+      },
+      _("Close")
+    )
+  );
+  return container;
 }
 function renderComponentCard(card) {
   const updatesActions = store.get().updatesActions;
@@ -20679,17 +20722,21 @@ function renderComponentCard(card) {
     );
   }
   if (card.supportsVersions) {
+    const isPickerOpen = activeVersionPickerComponent === card.component;
     const versionsButton = renderButton({
-      text: _("Versions"),
-      loading: false,
+      text: isPickerOpen ? _("Hide versions") : _("Versions"),
+      loading: isPickerOpen && versionPickerLoading,
       disabled: systemInfoLoading || anyActionLoading,
-      onClick: () => void showVersionPicker(card.component)
+      onClick: () => void toggleVersionPicker(card.component)
     });
     actionElements.push(
       E("div", { class: "tachyon_updates-page__component__versions" }, [
         versionsButton
       ])
     );
+    if (isPickerOpen) {
+      actionElements.push(renderVersionPickerDropdown(card.component));
+    }
   }
   const actionsContainer = E(
     "div",
@@ -20791,6 +20838,7 @@ async function onPageMount4() {
 function onPageUnmount4() {
   updatesMounted = false;
   updatesMountId += 1;
+  activeVersionPickerComponent = null;
   stopComponentActionStateWatcher();
   store.unsubscribe(onStoreUpdate3);
 }

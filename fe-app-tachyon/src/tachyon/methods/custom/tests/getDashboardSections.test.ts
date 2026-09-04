@@ -25,7 +25,10 @@ vi.mock('../../../../helpers', () => ({
   isCopyableProxyLink: (link?: string) => Boolean(link),
 }));
 
-import { getDashboardSections } from '../getDashboardSections';
+import {
+  getDashboardSections,
+  resetDirectClashApiState,
+} from '../getDashboardSections';
 import { ClashAPI, Tachyon } from '../../../types';
 
 function proxy(
@@ -134,6 +137,7 @@ const clashProxies: Record<string, ClashAPI.ProxyBase> = {
 
 describe('getDashboardSections', () => {
   beforeEach(() => {
+    resetDirectClashApiState();
     mocks.getConfigSections.mockReset();
     mocks.getClashApiProxies.mockReset();
     mocks.canUseDirectClashApi.mockReset();

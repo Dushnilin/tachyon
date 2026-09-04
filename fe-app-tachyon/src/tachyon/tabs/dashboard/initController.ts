@@ -42,6 +42,9 @@ function toggleSectionExpanded(sectionCode: string) {
     expandedSections.delete(sectionCode);
   } else {
     expandedSections.add(sectionCode);
+    if (sectionCode === 'active_clients') {
+      void fetchConnections();
+    }
   }
   localStorage.setItem(
     DASHBOARD_EXPANDED_SECTIONS_KEY,
@@ -1790,6 +1793,10 @@ function renderStoreWidget(
 }
 
 async function fetchConnections() {
+  if (!expandedSections.has('active_clients')) {
+    return;
+  }
+
   try {
     const [res, hostnames] = await Promise.all([
       TachyonShellMethods.getClashApiConnections(),

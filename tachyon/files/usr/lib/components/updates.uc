@@ -1860,21 +1860,24 @@ function component_action_worker(state_file, output_file, component, action) {
     // execute" with the tail of a log as its message.
     let worker_env = component_worker_env();
     worker_env.UPDATES_JOB_LOG = substr(output_file, 0, length(output_file) - 4) + ".log";
+    let action_args = [
+        "ucode",
+        "-L", LIB_DIR,
+        LIB_DIR + "/components/action.uc",
+        "component-action",
+        as_string(component),
+        as_string(action)
+    ];
+    if (as_string(extra || "") != "")
+        push(action_args, as_string(extra));
     let command = command_env(worker_env) + " " +
-        command_from_args([
-            "ucode",
-            "-L", LIB_DIR,
-            LIB_DIR + "/components/action.uc",
-            "component-action",
-            as_string(component),
-            as_string(action)
-        ]) + " >" + shell_quote(output_file) + " 2>" + shell_quote(output_file + ".stderr");
+        command_from_args(action_args) + " >" + shell_quote(output_file) + " 2>" + shell_quote(output_file + ".stderr");
     let status = command_status(command);
 
     finish_component_job(state_file, component, action, status, output_file);
 }
 
-function component_action_async_job(component, action) {
+function component_action_async_job(component, action, extra) {
     component = normalize_component_name(component);
     if (!ensure_component_runtime_dirs())
         return { success: false, job_id: "", message: "Failed to create component action state directory" };
@@ -1888,17 +1891,22 @@ function component_action_async_job(component, action) {
 
     let running_state = component_running_job_state_value(component, action, now_seconds());
     running_state.log_path = component_job_log_path(job_id);
+    if (as_string(extra || "") != "")
+        running_state.target_version = as_string(extra);
     if (!write_state_file(state_file, running_state))
         return { success: false, job_id: "", message: "Failed to write component action state" };
 
     let output_file = component_job_output_path(job_id);
-    let pid = launch_component_worker([
+    let worker_args = [
         "component-action-worker",
         state_file,
         output_file,
         as_string(component),
         as_string(action)
-    ]);
+    ];
+    if (as_string(extra || "") != "")
+        push(worker_args, as_string(extra));
+    let pid = launch_component_worker(worker_args);
 
     if (pid == "" || !set_component_running_job_pid(state_file, pid)) {
         if (pid != "")
@@ -1909,8 +1917,8 @@ function component_action_async_job(component, action) {
     return { success: true, job_id, message: "Component action started" };
 }
 
-function component_action_async(component, action) {
-    let res = component_action_async_job(component, action);
+function component_action_async(component, action, extra) {
+    let res = component_action_async_job(component, action, extra);
     component_job_json_response(res.success, res.job_id, res.message);
     if (!res.success)
         exit(1);
@@ -3394,9 +3402,9 @@ else if (mode == "subscription-update-async")
 else if (mode == "subscription-update-status")
     subscription_update_status(ARGV[1]);
 else if (mode == "component-action-worker")
-    component_action_worker(ARGV[1], ARGV[2], ARGV[3], ARGV[4]);
+    component_action_worker(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5]);
 else if (mode == "component-action-async")
-    component_action_async(ARGV[1], ARGV[2]);
+    component_action_async(ARGV[1], ARGV[2], ARGV[3]);
 else if (mode == "component-action-status")
     component_action_status(ARGV[1]);
 else if (mode == "component-action-log")

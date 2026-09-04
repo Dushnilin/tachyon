@@ -232,7 +232,7 @@ function command_spec(command) {
         generate_reality_keypair: [ "server/service.uc", "generate-reality-keypair", 0 ],
         get_tls_certificate_sha256: [ "server/service.uc", "tls-certificate-sha256", 1 ],
         component_action: [ "components/action.uc", "component-action", 2 ],
-        component_action_async: [ "components/updates.uc", "component-action-async", 2 ],
+        component_action_async: [ "components/updates.uc", "component-action-async", 3 ],
         component_action_status: [ "components/updates.uc", "component-action-status", 1 ],
         component_action_log: [ "components/updates.uc", "component-action-log", 2 ],
         component_list_releases: [ "components/action.uc", "list-component-releases", 2 ],
