@@ -880,11 +880,11 @@ function managed_sing_box_service_text() {
         "        elif [ \"$mem_total_kb\" -lt 1048576 ]; then\n" +
         "            mem_limit_mb=$(( mem_total_kb / 1024 * 35 / 100 ))\n" +
         "            [ \"$mem_limit_mb\" -gt 384 ] && mem_limit_mb=384\n" +
-        "            gogc=40\n" +
+        "            gogc=20\n" +
         "        else\n" +
-        "            mem_limit_mb=$(( mem_total_kb / 1024 * 40 / 100 ))\n" +
-        "            [ \"$mem_limit_mb\" -gt 768 ] && mem_limit_mb=768\n" +
-        "            gogc=40\n" +
+        "            mem_limit_mb=$(( mem_total_kb / 1024 * 35 / 100 ))\n" +
+        "            [ \"$mem_limit_mb\" -gt 512 ] && mem_limit_mb=512\n" +
+        "            gogc=20\n" +
         "        fi\n" +
         "        if [ -r \"/etc/tachyon/mem_scale\" ]; then\n" +
         "            scale=\"$(cat /etc/tachyon/mem_scale 2>/dev/null)\"\n" +
