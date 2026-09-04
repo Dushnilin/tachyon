@@ -114,6 +114,9 @@ function emit_reload_plan(previous, current, context) {
         else if (context.dnsmasq_managed_state)
             needs.dnsmasq_restore = true;
     }
+    else if (!current.dont_touch_dhcp && context.dnsmasq_default_complete === false) {
+        needs.dnsmasq_configure = true;
+    }
 
     if (changed.cron)
         needs.cron_refresh = true;
@@ -226,7 +229,8 @@ function reload_plan() {
         dnsmasq_managed_state: arg_bool(ARGV[28]),
         has_list_update_sources: arg_bool(ARGV[29]),
         has_nft_list_update_sources: arg_bool(ARGV[30]),
-        runtime_cache_needs_rebuild: arg_bool(ARGV[31])
+        runtime_cache_needs_rebuild: arg_bool(ARGV[31]),
+        dnsmasq_default_complete: length(ARGV) > 32 ? arg_bool(ARGV[32]) : true
     };
 
     emit_reload_plan(previous, current, context);
@@ -292,7 +296,8 @@ function plan_state_files() {
         dnsmasq_managed_state: arg_bool(ARGV[4]),
         has_list_update_sources: arg_bool(ARGV[5]),
         has_nft_list_update_sources: arg_bool(ARGV[6]),
-        runtime_cache_needs_rebuild: arg_bool(ARGV[7])
+        runtime_cache_needs_rebuild: arg_bool(ARGV[7]),
+        dnsmasq_default_complete: length(ARGV) > 8 ? arg_bool(ARGV[8]) : true
     };
 
     emit_reload_plan(previous, current, context);
@@ -306,6 +311,6 @@ else if (mode == "plan-state-files")
     plan_state_files();
 else {
     warn("Usage: service/reload.uc plan ...\n");
-    warn("       service/reload.uc plan-state-files <previous-state> <current-state> <force-reload> <dnsmasq-managed-state> <list-update-sources> <nft-list-update-sources> <runtime-cache-needs-rebuild>\n");
+    warn("       service/reload.uc plan-state-files <previous-state> <current-state> <force-reload> <dnsmasq-managed-state> <list-update-sources> <nft-list-update-sources> <runtime-cache-needs-rebuild> [dnsmasq-default-complete]\n");
     exit(1);
 }

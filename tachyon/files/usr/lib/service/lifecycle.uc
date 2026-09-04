@@ -1261,6 +1261,7 @@ function reload(reason) {
     }
 
     let dnsmasq_managed_state = dnsmasq_has_tachyon_managed_state() ? 1 : 0;
+    let dnsmasq_default_complete = dns_apply_success([ "default-config-complete" ]) ? 1 : 0;
     let list_update_sources = module_success(STATE_UC, [ "has-list-update-sources" ]) ? 1 : 0;
     let nft_list_update_sources = module_success(STATE_UC, [ "has-nft-list-update-sources" ]) ? 1 : 0;
     let runtime_cache_needs_rebuild = 0;
@@ -1276,7 +1277,8 @@ function reload(reason) {
         as_string(dnsmasq_managed_state),
         as_string(list_update_sources),
         as_string(nft_list_update_sources),
-        as_string(runtime_cache_needs_rebuild)
+        as_string(runtime_cache_needs_rebuild),
+        as_string(dnsmasq_default_complete)
     ]);
     remove_file(current_reload_state_file);
 

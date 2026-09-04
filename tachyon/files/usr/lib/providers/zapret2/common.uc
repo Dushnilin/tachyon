@@ -18,15 +18,23 @@ function config(ctx) {
     let desync_mark = getenv("ZAPRET2_DESYNC_MARK") || runtime_constants.ZAPRET2_DESYNC_MARK;
     let provider_lua_dir = getenv("ZAPRET2_PROVIDER_LUA_DIR") || runtime_constants.ZAPRET2_PROVIDER_LUA_DIR;
 
+    let passwd = fs.readfile("/etc/passwd");
+    let ws_user = (passwd != null && index(passwd, "daemon:") >= 0) ? "daemon" : "root";
     let base_args = [
+        "--user=" + ws_user,
         "--fwmark=" + desync_mark
     ];
     let candidate_dirs = [
         provider_lua_dir,
         "/opt/zapret2/lua",
+        "/opt/zapret/lua",
         "/usr/share/zapret2/lua",
+        "/usr/share/zapret/lua",
         "/etc/zapret2/lua",
-        "/usr/lib/zapret2/lua"
+        "/etc/zapret/lua",
+        "/usr/lib/zapret2/lua",
+        "/usr/lib/zapret/lua",
+        lib_dir + "/providers/zapret2/lua"
     ];
     let lua_scripts = [
         "zapret-lib.lua",
@@ -39,12 +47,8 @@ function config(ctx) {
             if (!dir)
                 continue;
             let p = dir + "/" + script;
-            if (fs.stat(p) != null) {
+            if (fs.stat(p) != null || fs.stat(p + ".gz") != null) {
                 found = p;
-                break;
-            }
-            if (fs.stat(p + ".gz") != null) {
-                found = p + ".gz";
                 break;
             }
         }

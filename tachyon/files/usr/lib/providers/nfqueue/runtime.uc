@@ -235,7 +235,13 @@ function live_pid_count(path) {
 }
 
 function ensure_runtime_dirs(cfg) {
-    return command_success_from_args([ "mkdir", "-p", cfg.state_dir, cfg.pid_dir, cfg.child_pid_dir, cfg.log_dir ]);
+    let ok = command_success_from_args([ "mkdir", "-p", cfg.state_dir, cfg.pid_dir, cfg.child_pid_dir, cfg.log_dir ]);
+    if (ok) {
+        command_status_from_args([ "chmod", "0755", cfg.state_dir, cfg.pid_dir, cfg.child_pid_dir, cfg.log_dir ]);
+        if (cfg.kind == "zapret2" && fs.stat("/opt/zapret2") != null)
+            command_status_from_args([ "chmod", "-R", "a+rX", "/opt/zapret2" ]);
+    }
+    return ok;
 }
 
 function uci_value_contains(value, needle) {
@@ -583,8 +589,25 @@ function status_json(cfg) {
         message = "legacy zapret runtime paths are still present and should be migrated";
     else if (running > expected || supervisors > expected)
         message = "unexpected Tachyon-managed " + cfg.binary_name + " processes are running without matching action=" + cfg.action + " rules";
-    else if (configured && !ready)
+    else if (configured && !ready) {
         message = "action=" + cfg.action + " is configured, but the Tachyon-managed " + cfg.binary_name + " runtime is not ready";
+        if (running < expected) {
+            for (let section in sections) {
+                let name = section_name(section);
+                let log_data = fs.readfile(cfg.log_dir + "/" + name + ".log");
+                if (log_data != null && log_data != "") {
+                    let log_lines = split(trim(log_data), "\n");
+                    if (length(log_lines) > 0) {
+                        let last_line = trim(log_lines[length(log_lines) - 1]);
+                        if (last_line != "") {
+                            message += " (" + name + ": " + last_line + ")";
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
     else if (standalone_conflict)
         message = "standalone " + cfg.status_label + " is active together with Tachyon action=" + cfg.action + "; queues are separate, but packet-level policy overlap is possible";
     else if (!configured && !provider && pkg)
