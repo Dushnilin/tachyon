@@ -865,27 +865,9 @@ function managed_sing_box_service_text() {
         "    procd_set_param limits core=\"unlimited\"\n" +
         "    procd_set_param limits nofile=\"1000000 1000000\"\n" +
         "    mem_total_kb=\"$(awk '/MemTotal/ {print $2}' /proc/meminfo 2>/dev/null || echo 0)\"\n" +
-        "    if [ \"$mem_total_kb\" -gt 0 ]; then\n" +
-        "        if [ \"$mem_total_kb\" -lt 131072 ]; then\n" +
-        "            mem_limit_mb=$(( mem_total_kb / 1024 * 30 / 100 ))\n" +
-        "            [ \"$mem_limit_mb\" -lt 16 ] && mem_limit_mb=16\n" +
-        "            gogc=20\n" +
-        "        elif [ \"$mem_total_kb\" -lt 262144 ]; then\n" +
-        "            mem_limit_mb=$(( mem_total_kb / 1024 * 35 / 100 ))\n" +
-        "            [ \"$mem_limit_mb\" -lt 24 ] && mem_limit_mb=24\n" +
-        "            gogc=25\n" +
-        "        elif [ \"$mem_total_kb\" -lt 524288 ]; then\n" +
-        "            mem_limit_mb=$(( mem_total_kb / 1024 * 40 / 100 ))\n" +
-        "            gogc=30\n" +
-        "        elif [ \"$mem_total_kb\" -lt 1048576 ]; then\n" +
-        "            mem_limit_mb=$(( mem_total_kb / 1024 * 35 / 100 ))\n" +
-        "            [ \"$mem_limit_mb\" -gt 384 ] && mem_limit_mb=384\n" +
-        "            gogc=20\n" +
-        "        else\n" +
-        "            mem_limit_mb=$(( mem_total_kb / 1024 * 35 / 100 ))\n" +
-        "            [ \"$mem_limit_mb\" -gt 512 ] && mem_limit_mb=512\n" +
-        "            gogc=20\n" +
-        "        fi\n" +
+        "    if [ \"$mem_total_kb\" -gt 0 ] && [ \"$mem_total_kb\" -lt 262144 ]; then\n" +
+        "        mem_limit_mb=$(( mem_total_kb / 1024 * 35 / 100 ))\n" +
+        "        [ \"$mem_limit_mb\" -lt 24 ] && mem_limit_mb=24\n" +
         "        if [ -r \"/etc/tachyon/mem_scale\" ]; then\n" +
         "            scale=\"$(cat /etc/tachyon/mem_scale 2>/dev/null)\"\n" +
         "            scale_pct=\"$(awk -v s=\"$scale\" 'BEGIN { pct=int(s*100); if (pct < 20) pct=20; if (pct > 100) pct=100; print pct }')\"\n" +
@@ -894,7 +876,7 @@ function managed_sing_box_service_text() {
         "                [ \"$mem_limit_mb\" -lt 12 ] && mem_limit_mb=12\n" +
         "            fi\n" +
         "        fi\n" +
-        "        procd_set_param env GOMEMLIMIT=\"${mem_limit_mb}MiB\" GOGC=\"$gogc\" GODEBUG=\"madvdontneed=1\"\n" +
+        "        procd_set_param env GOMEMLIMIT=\"${mem_limit_mb}MiB\"\n" +
         "    fi\n" +
         "    procd_set_param term_timeout 15\n" +
         "    procd_set_param respawn\n" +
