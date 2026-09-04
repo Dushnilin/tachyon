@@ -350,7 +350,7 @@ export const TachyonShellMethods = {
   doctor: async () =>
     callBaseMethod<string>(
       Tachyon.AvailableMethods.DOCTOR,
-      [],
+      ['--fix'],
       '/usr/bin/tachyon',
       { timeout: 30000 },
     ),

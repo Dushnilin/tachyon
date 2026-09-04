@@ -411,6 +411,23 @@ function start_rule(cfg, section, index_value) {
     return true;
 }
 
+function neutralize_standalone_service(cfg) {
+    if (fs.stat(cfg.service_init) != null) {
+        if (command_success_from_args([ cfg.service_init, "status" ])) {
+            log_message("Stopping conflicting standalone " + cfg.status_label + " service before starting Tachyon runtime", "info");
+            command_status_from_args([ cfg.service_init, "stop" ]);
+            command_status_from_args([ "sleep", "1" ]);
+        }
+        if (command_success_from_args([ cfg.service_init, "enabled" ])) {
+            log_message("Disabling conflicting standalone " + cfg.status_label + " autostart", "warn");
+            command_status_from_args([ cfg.service_init, "disable" ]);
+        }
+    }
+    if (cfg.kind != "") {
+        command_status_from_args([ "nft", "delete", "table", "inet", cfg.kind ]);
+    }
+}
+
 function start_runtime(cfg) {
     stop_runtime(cfg);
 
@@ -418,6 +435,7 @@ function start_runtime(cfg) {
     if (length(sections) == 0 || !provider_available(cfg))
         return;
 
+    neutralize_standalone_service(cfg);
     cleanup_legacy_runtime(cfg);
     if (!ensure_runtime_dirs(cfg)) {
         log_message("Failed to prepare the Tachyon " + cfg.status_label + " state directory in " + cfg.state_dir + ". Aborted.", "fatal");
@@ -621,6 +639,9 @@ function create_nft_rules(cfg) {
     if (length(sections) == 0 || !provider_available(cfg))
         return;
 
+    if (cfg.kind != "")
+        command_status_from_args([ "nft", "delete", "table", "inet", cfg.kind ]);
+
     command_success_from_args([ "nft", "flush", "chain", "inet", NFT_TABLE_NAME, "mangle_output" ]);
 
     command_success_from_args([ "nft", "add", "rule", "inet", NFT_TABLE_NAME, "mangle_output", "meta", "mark", "&", cfg.desync_mark, "==", cfg.desync_mark, "return" ]);
@@ -648,6 +669,8 @@ function run(provider, argv) {
         start_runtime(cfg);
     else if (mode == "stop-runtime")
         stop_runtime(cfg);
+    else if (mode == "neutralize-standalone")
+        exit(neutralize_standalone_service(cfg) ? 0 : 0);
     else if (mode == "create-nft-rules")
         create_nft_rules(cfg);
     else if (mode == "status")

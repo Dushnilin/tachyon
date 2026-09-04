@@ -7126,8 +7126,8 @@ var DOMAIN_LIST_HINTS = {
   russia_inside: "youtube.com, instagram.com, twitter.com, ...",
   russia_outside: "gosuslugi.ru, ozon.ru, rzd.ru, ...",
   ukraine_inside: "ukr.net, pravda.com.ua, suspilne.media, ...",
-  geoblock: "Все домены, заблокированные в РФ",
-  block: "Заблокировать совсем (без прокси)",
+  geoblock: "Домены, заблокированные снаружи России (геоблокировка зарубежными сервисами)",
+  block: "Домены, заблокированные внутри России (полный реестр блокировок РКН)",
   porn: "Pornhub, xvideos, xhamster, ...",
   news: "meduza.io, bbc.com, pravda.com.ua, ...",
   anime: "bato.to, mangadex.org, myanimelist.net, ...",
@@ -7157,8 +7157,14 @@ function loadRulesetValues(option) {
   delete option.vallist;
 
   Object.entries(main.DOMAIN_LIST_OPTIONS).forEach(([key, label]) => {
+    let displayLabel = _(label);
+    if (key === "block") {
+      displayLabel = "Block (РКН / внутри РФ)";
+    } else if (key === "geoblock") {
+      displayLabel = "Geo Block (снаружи РФ)";
+    }
     const hint = DOMAIN_LIST_HINTS[key];
-    option.value(key, hint ? `${_(label)} — ${hint}` : _(label));
+    option.value(key, hint ? `${displayLabel} — ${hint}` : displayLabel);
   });
 }
 
@@ -9869,7 +9875,8 @@ function createSectionContent(section) {
     form.DynamicList,
     "community_lists",
     _("Built-in rule sets"),
-    _("Select a predefined domain list"),
+    _("Select a predefined domain list") +
+      ' (source: <a href="https://github.com/itdoginfo/allow-domains" target="_blank" rel="noopener noreferrer">itdoginfo/allow-domains</a>)',
   );
   builtInRulesetOption.modalonly = true;
   builtInRulesetOption.placeholder = _("Service list");
@@ -10406,6 +10413,44 @@ async function performTrace(query) {
   let queryForMatching = query;
   if (type === "ip" && query.indexOf("/") !== -1) {
     queryForMatching = query.split("/")[0];
+  }
+
+  // Check DNS Detour from settings if enabled
+  const dnsDetourEnabled = uci.get(UCI_PACKAGE, "settings", "dns_detour_enabled");
+  if (dnsDetourEnabled === "1") {
+    const detourSection = uci.get(UCI_PACKAGE, "settings", "dns_detour_section");
+    if (detourSection) {
+      const dnsServers = normalizeOptionValues(uci.get(UCI_PACKAGE, "settings", "dns_server"));
+      const fallbackServers = normalizeOptionValues(uci.get(UCI_PACKAGE, "settings", "dns_fallback_server"));
+      const allDns = [...dnsServers, ...fallbackServers];
+      const detourIps = [];
+      const detourDomains = [];
+      for (let s of allDns) {
+        if (!s) continue;
+        s = s.split("#")[0].split("/")[0].trim();
+        if (s.match(/^[0-9.]+$|^[0-9a-fA-F:]+$/)) {
+          detourIps.push(s);
+        } else if (s) {
+          detourDomains.push(s);
+        }
+      }
+      const isDnsMatch = (type === "ip" && detourIps.includes(queryForMatching)) ||
+                         (type === "domain" && detourDomains.includes(queryForMatching));
+      if (isDnsMatch) {
+        const label = uci.get(UCI_PACKAGE, detourSection, "label") || detourSection;
+        const action = uci.get(UCI_PACKAGE, detourSection, "action") || "connection";
+        return {
+          matched: true,
+          sectionName: detourSection,
+          label: label,
+          action: action,
+          ruleType: "DNS Detour (Settings)",
+          pattern: queryForMatching,
+          priority: 0,
+          totalSections: totalSections,
+        };
+      }
+    }
   }
 
   for (let i = 0; i < sections.length; i++) {

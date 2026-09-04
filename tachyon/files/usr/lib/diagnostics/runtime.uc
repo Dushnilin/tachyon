@@ -1239,7 +1239,12 @@ function get_server_capabilities() {
 }
 
 function neutralize_zapret_defaults() {
-    log_message("Standalone zapret is not neutralized automatically; Tachyon uses /opt/zapret/nfq/nfqws as an external provider and manages only its own NFQUEUE range.", "info");
+    log_message("Neutralizing standalone zapret/zapret2/byedpi services and tables", "info");
+    command_status("/etc/init.d/zapret stop >/dev/null 2>&1; /etc/init.d/zapret disable >/dev/null 2>&1 || true");
+    command_status("/etc/init.d/zapret2 stop >/dev/null 2>&1; /etc/init.d/zapret2 disable >/dev/null 2>&1 || true");
+    command_status("/etc/init.d/byedpi stop >/dev/null 2>&1; /etc/init.d/byedpi disable >/dev/null 2>&1 || true");
+    command_status("nft delete table inet zapret >/dev/null 2>&1 || true");
+    command_status("nft delete table inet zapret2 >/dev/null 2>&1 || true");
     return 0;
 }
 
@@ -2836,6 +2841,57 @@ function run_doctor_checks_impl(repair) {
                 "→ ядро не получает ответов от пира (запросы уходят, ответы нет): проверьте доступность AWG/WARP-сервера и UDP-порта у провайдера. Конфигурация секции применена корректно — проблема вне Tachyon");
         } else if (wg_log != "") {
             doc_check("✅", "WireGuard/AWG tunnel", "no recent failures in core log", "");
+        }
+    }
+
+    // 6d. DPI bypass providers health (Zapret, Zapret2, ByeDPI)
+    let providers_to_check = [
+        { name: "Zapret", kind: "zapret", runtime: ZAPRET_RUNTIME_UC },
+        { name: "Zapret2", kind: "zapret2", runtime: ZAPRET2_RUNTIME_UC },
+        { name: "ByeDPI", kind: "byedpi", runtime: BYEDPI_RUNTIME_UC }
+    ];
+
+    for (let p in providers_to_check) {
+        let raw_st = trim(command_capture("ucode -L " + LIB_DIR + " " + p.runtime + " status 2>/dev/null").output);
+        if (raw_st == "") continue;
+        let st = null;
+        try { st = json(raw_st); } catch (e) {}
+        if (!st || st.configured != true) continue;
+
+        // Check for standalone service conflict
+        if (st.standalone_conflict == true || st.standalone_service_running == true) {
+            issues++;
+            if (!DOCTOR_REPAIR_MODE) {
+                doc_plan("/etc/init.d/" + p.kind + " stop && /etc/init.d/" + p.kind + " disable && nft delete table inet " + p.kind);
+                doc_check("⚠️", "Standalone " + p.name, "active conflict", "→ WILL FIX: отключение автономной службы и удаление конфликтующей таблицы");
+            } else {
+                command_status("/etc/init.d/" + p.kind + " stop >/dev/null 2>&1; /etc/init.d/" + p.kind + " disable >/dev/null 2>&1; nft delete table inet " + p.kind + " >/dev/null 2>&1 || true");
+                doc_check("❌", "Standalone " + p.name, "active conflict", "→ FIXED: автономная служба отключена, таблица очищена");
+                fixed++;
+            }
+        }
+
+        // Check if Tachyon-managed runtime is ready
+        if (st.ready == true) {
+            doc_check("✅", p.name + " runtime", sprintf("ready (%d/%d workers)", st.running_process_count || 0, st.expected_process_count || 0), "");
+        } else {
+            issues++;
+            if (!DOCTOR_REPAIR_MODE) {
+                doc_plan("ucode -L " + LIB_DIR + " " + p.runtime + " start-runtime");
+                doc_check("⚠️", p.name + " runtime", sprintf("not ready (%d/%d workers)", st.running_process_count || 0, st.expected_process_count || 0), "→ WILL FIX: запуск воркеров Tachyon " + p.name);
+            } else {
+                command_status("ucode -L " + LIB_DIR + " " + p.runtime + " start-runtime >/dev/null 2>&1");
+                command_status("sleep 1");
+                let raw_st2 = trim(command_capture("ucode -L " + LIB_DIR + " " + p.runtime + " status 2>/dev/null").output);
+                let st2 = null;
+                try { st2 = json(raw_st2); } catch (e) {}
+                if (st2 && st2.ready == true) {
+                    doc_check("❌", p.name + " runtime", sprintf("not ready (%d/%d workers)", st.running_process_count || 0, st.expected_process_count || 0), "→ FIXED: воркеры " + p.name + " запущены");
+                    fixed++;
+                } else {
+                    doc_check("❌", p.name + " runtime", "failed to start", "→ не удалось запустить воркеры " + p.name);
+                }
+            }
         }
     }
 

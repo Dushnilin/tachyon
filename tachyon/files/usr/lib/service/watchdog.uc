@@ -27,6 +27,8 @@ let telegram_msg_window = time();
 let telegram_msg_history = {};
 let tailscale_fail_streak = 0;
 let tailscale_last_alert = 0;
+let provider_fail_streaks = {};
+let dnsmasq_redirection_fail_streak = 0;
 
 let command_from_args = common.command_from_args;
 let command_status = common.command_status;
@@ -2023,12 +2025,76 @@ function check_section_failover() {
     command_status("/usr/bin/tachyon failover_check >/dev/null 2>&1");
 }
 
+// ── DPI provider workers (Zapret, Zapret2, ByeDPI) self-healing ───────────────
+function check_provider_workers() {
+    let providers = [
+        { kind: "zapret", runtime: LIB_DIR + "/providers/zapret/runtime.uc" },
+        { kind: "zapret2", runtime: LIB_DIR + "/providers/zapret2/runtime.uc" },
+        { kind: "byedpi", runtime: LIB_DIR + "/providers/byedpi/runtime.uc" }
+    ];
+
+    for (let p in providers) {
+        let raw = trim(command_output_from_args([ "/usr/bin/tachyon", "get_" + p.kind + "_status" ]) || "");
+        if (raw == "")
+            continue;
+        let st = null;
+        try { st = json(raw); } catch (e) {}
+        if (!st || st.configured != true)
+            continue;
+
+        // Auto-neutralize standalone conflict if running or enabled
+        if (st.standalone_conflict == true || st.standalone_service_running == true) {
+            log_message(sprintf("Watchdog: Conflicting standalone %s service detected; neutralizing it.", p.kind), "warn");
+            command_status_from_args([ "/etc/init.d/" + p.kind, "stop" ]);
+            command_status_from_args([ "/etc/init.d/" + p.kind, "disable" ]);
+            command_status_from_args([ "nft", "delete", "table", "inet", p.kind ]);
+        }
+
+        // Auto-heal dead worker processes
+        if (st.ready != true) {
+            let streak = int(provider_fail_streaks[p.kind] || 0) + 1;
+            provider_fail_streaks[p.kind] = streak;
+            log_message(sprintf("Watchdog: %s runtime is unhealthy (%s, streak %d); restarting.",
+                p.kind, as_string(st.status_message || "workers down"), streak), "warn");
+            command_status_from_args([ "ucode", "-L", LIB_DIR, p.runtime, "start-runtime" ]);
+        } else {
+            if (int(provider_fail_streaks[p.kind] || 0) > 0)
+                log_message(sprintf("Watchdog: %s runtime recovered.", p.kind), "info");
+            provider_fail_streaks[p.kind] = 0;
+        }
+    }
+}
+
+// ── Dnsmasq redirection watchdog ─────────────────────────────────────────────
+function check_dnsmasq_redirection() {
+    let cfg = settings();
+    if (as_string(cfg.dont_touch_dhcp || "0") == "1")
+        return;
+    if (!is_process_name_running("sing-box"))
+        return;
+
+    let has_dns = command_status_from_args([ "ucode", "-L", LIB_DIR, LIB_DIR + "/dns/apply.uc", "default-config-complete" ]);
+    if (has_dns == 0) {
+        if (dnsmasq_redirection_fail_streak > 0)
+            log_message("Watchdog: dnsmasq redirection recovered.", "info");
+        dnsmasq_redirection_fail_streak = 0;
+        return;
+    }
+
+    dnsmasq_redirection_fail_streak++;
+    log_message(sprintf("Watchdog: dnsmasq is not redirecting to Tachyon DNS (streak %d); re-applying configuration.",
+        dnsmasq_redirection_fail_streak), "warn");
+    command_status_from_args([ "ucode", "-L", LIB_DIR, LIB_DIR + "/dns/apply.uc", "configure", "force" ]);
+}
+
     function perform_slow_checks() {
         controller.probe_slow();
         safe_call(ai_heal_dns_loop, "ai_heal_dns_loop");
         safe_call(check_mixed_proxy_port, "check_mixed_proxy_port");
         safe_call(check_telegram_worker, "check_telegram_worker");
         safe_call(check_tailscale_worker, "check_tailscale_worker");
+        safe_call(check_provider_workers, "check_provider_workers");
+        safe_call(check_dnsmasq_redirection, "check_dnsmasq_redirection");
         safe_call(check_section_failover, "check_section_failover");
     }
     if (uloop) {

@@ -1,6 +1,7 @@
 #!/usr/bin/env ucode
 
 let constants = require("core.constants");
+let fs = require("fs");
 let validator_module = null;
 
 const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
@@ -16,6 +17,40 @@ function config(ctx) {
     let lib_dir = (ctx && ctx.lib_dir) || LIB_DIR;
     let desync_mark = getenv("ZAPRET2_DESYNC_MARK") || runtime_constants.ZAPRET2_DESYNC_MARK;
     let provider_lua_dir = getenv("ZAPRET2_PROVIDER_LUA_DIR") || runtime_constants.ZAPRET2_PROVIDER_LUA_DIR;
+
+    let base_args = [
+        "--fwmark=" + desync_mark
+    ];
+    let candidate_dirs = [
+        provider_lua_dir,
+        "/opt/zapret2/lua",
+        "/usr/share/zapret2/lua",
+        "/etc/zapret2/lua",
+        "/usr/lib/zapret2/lua"
+    ];
+    let lua_scripts = [
+        "zapret-lib.lua",
+        "zapret-antidpi.lua",
+        "zapret-auto.lua"
+    ];
+    for (let script in lua_scripts) {
+        let found = null;
+        for (let dir in candidate_dirs) {
+            if (!dir)
+                continue;
+            let p = dir + "/" + script;
+            if (fs.stat(p) != null) {
+                found = p;
+                break;
+            }
+            if (fs.stat(p + ".gz") != null) {
+                found = p + ".gz";
+                break;
+            }
+        }
+        if (found != null)
+            push(base_args, "--lua-init=@" + found);
+    }
 
     return {
         kind: "zapret2",
@@ -53,12 +88,7 @@ function config(ctx) {
         hostlist_dir: "",
         status_label: "zapret2",
         check_prefix: "zapret2",
-        base_args: [
-            "--fwmark=" + desync_mark,
-            "--lua-init=@" + provider_lua_dir + "/zapret-lib.lua",
-            "--lua-init=@" + provider_lua_dir + "/zapret-antidpi.lua",
-            "--lua-init=@" + provider_lua_dir + "/zapret-auto.lua"
-        ]
+        base_args
     };
 }
 

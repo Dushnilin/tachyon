@@ -3,6 +3,8 @@
 let fs = require("fs");
 let common = require("core.common");
 let helpers = require("core.helpers");
+let core_ip = require("core.ip");
+let core_url = require("core.url");
 let runtime_constants = require("singbox.constants");
 let runtime_dns = require("singbox.dns");
 let runtime_route = require("singbox.route");
@@ -1503,9 +1505,67 @@ function failover_default_name(candidates) {
 const FAILOVER_GROUP_TAG = "tachyon-failover";
 
 function add_service_route_rules(config, sections) {
+    let settings = object_or_empty(ctx.uci_cursor().get_all(CONFIG_NAME, "settings"));
+    if (bool_option(settings, "dns_detour_enabled", false)) {
+        let detour_section = option(settings, "dns_detour_section", "");
+        if (detour_section != "") {
+            let detour_target = outbound_tag(detour_section);
+            let dns_servers = list_option(settings, "dns_server");
+            if (length(dns_servers) == 0) {
+                let single_dns = option(settings, "dns_server", "");
+                if (single_dns != "")
+                    dns_servers = [single_dns];
+            }
+            let fallback_servers = list_option(settings, "dns_fallback_server");
+            if (length(fallback_servers) == 0) {
+                let single_fb = option(settings, "dns_fallback_server", "");
+                if (single_fb != "")
+                    fallback_servers = [single_fb];
+            }
+            let all_dns = [];
+            for (let s in dns_servers)
+                push(all_dns, s);
+            for (let s in fallback_servers)
+                push(all_dns, s);
+
+            let detour_ips = [];
+            let detour_domains = [];
+            for (let s in all_dns) {
+                s = trim(as_string(s));
+                if (s == "")
+                    continue;
+                s = split(s, "#")[0];
+                let host = core_url.host(s);
+                if (host == "")
+                    host = s;
+                host = split(host, "/")[0];
+                if (core_ip.valid_ipv4(host) || core_ip.valid_ipv6(host))
+                    push(detour_ips, host);
+                else if (host != "")
+                    push(detour_domains, host);
+            }
+            if (length(detour_ips) > 0) {
+                push(config.route.rules, {
+                    action: "route",
+                    inbound: tproxy_inbound_matcher(),
+                    outbound: detour_target,
+                    ip_cidr: single_or_array(detour_ips)
+                });
+            }
+            if (length(detour_domains) > 0) {
+                push(config.route.rules, {
+                    action: "route",
+                    inbound: tproxy_inbound_matcher(),
+                    outbound: detour_target,
+                    domain: single_or_array(detour_domains)
+                });
+            }
+        }
+    }
+
     let candidates = failover_candidate(sections);
     let first = length(candidates) > 0 ? candidates[0] : null;
-    let failover_active = bool_option(object_or_empty(ctx.uci_cursor().get_all(CONFIG_NAME, "settings")), "section_failover_enabled", false) &&
+    let failover_active = bool_option(settings, "section_failover_enabled", false) &&
         length(candidates) > 1;
     if (first != null) {
         push(config.route.rules, {

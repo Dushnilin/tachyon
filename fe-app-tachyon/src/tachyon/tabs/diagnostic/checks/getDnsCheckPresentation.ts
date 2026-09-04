@@ -34,7 +34,9 @@ export function getDnsCheckPresentation(data: Tachyon.DnsCheckResult) {
       : 'error';
   const dhcpItemKey = dhcpManagedManually
     ? _('DHCP is managed manually')
-    : _('DHCP has DNS server');
+    : data.dhcp_config_status
+      ? _('DHCP forwards DNS to Tachyon')
+      : _('DHCP does not forward DNS to Tachyon');
 
   return {
     state,
