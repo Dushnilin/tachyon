@@ -3497,7 +3497,7 @@ var TachyonShellMethods = {
   ]),
   doctor: async () => callBaseMethod(
     Tachyon.AvailableMethods.DOCTOR,
-    ["--fix"],
+    [],
     "/usr/bin/tachyon",
     { timeout: 3e4 }
   ),
@@ -9662,7 +9662,7 @@ function getDnsCheckPresentation(data) {
   const state = dhcpManagedManually && meta.state === "success" ? "warning" : meta.state;
   const description = dhcpManagedManually && meta.state === "success" ? _("Checks passed with manual DHCP") : meta.description;
   const dhcpItemState = dhcpManagedManually ? "warning" : data.dhcp_config_status ? "success" : "error";
-  const dhcpItemKey = dhcpManagedManually ? _("DHCP is managed manually") : data.dhcp_config_status ? _("DHCP forwards DNS to Tachyon") : _("DHCP does not forward DNS to Tachyon");
+  const dhcpItemKey = dhcpManagedManually ? _("DHCP is managed manually") : _("DHCP has DNS server");
   return {
     state,
     description,

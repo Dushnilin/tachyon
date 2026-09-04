@@ -18,12 +18,6 @@ function config(ctx) {
     let desync_mark = getenv("ZAPRET2_DESYNC_MARK") || runtime_constants.ZAPRET2_DESYNC_MARK;
     let provider_lua_dir = getenv("ZAPRET2_PROVIDER_LUA_DIR") || runtime_constants.ZAPRET2_PROVIDER_LUA_DIR;
 
-    let passwd = fs.readfile("/etc/passwd");
-    let ws_user = (passwd != null && index(passwd, "daemon:") >= 0) ? "daemon" : "root";
-    let base_args = [
-        "--user=" + ws_user,
-        "--fwmark=" + desync_mark
-    ];
     let candidate_dirs = [
         provider_lua_dir,
         "/opt/zapret2/lua",
@@ -36,25 +30,20 @@ function config(ctx) {
         "/usr/lib/zapret/lua",
         lib_dir + "/providers/zapret2/lua"
     ];
-    let lua_scripts = [
-        "zapret-lib.lua",
-        "zapret-antidpi.lua",
-        "zapret-auto.lua"
-    ];
-    for (let script in lua_scripts) {
-        let found = null;
-        for (let dir in candidate_dirs) {
-            if (!dir)
-                continue;
-            let p = dir + "/" + script;
-            if (fs.stat(p) != null || fs.stat(p + ".gz") != null) {
-                found = p;
-                break;
-            }
+    let resolved_lua_dir = provider_lua_dir;
+    for (let dir in candidate_dirs) {
+        if (dir && (fs.stat(dir + "/zapret-lib.lua") != null || fs.stat(dir + "/zapret-lib.lua.gz") != null)) {
+            resolved_lua_dir = dir;
+            break;
         }
-        if (found != null)
-            push(base_args, "--lua-init=@" + found);
     }
+
+    let base_args = [
+        "--fwmark=" + desync_mark,
+        "--lua-init=@" + resolved_lua_dir + "/zapret-lib.lua",
+        "--lua-init=@" + resolved_lua_dir + "/zapret-antidpi.lua",
+        "--lua-init=@" + resolved_lua_dir + "/zapret-auto.lua"
+    ];
 
     return {
         kind: "zapret2",

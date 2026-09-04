@@ -112,8 +112,6 @@ function dnsmasq_has_tachyon_managed_state() {
     return uci_get("dhcp.@dnsmasq[0].tachyon_server") != "" ||
         uci_get("dhcp.@dnsmasq[0].tachyon_noresolv") != "" ||
         uci_get("dhcp.@dnsmasq[0].tachyon_cachesize") != "" ||
-        uci_get("dhcp.@dnsmasq[0].tachyon_rebind_protection") != "" ||
-        uci_get("dhcp.@dnsmasq[0].tachyon_localuse") != "" ||
         uci_get("dhcp.@dnsmasq[0].tachyon_notinterface") != "" ||
         dnsmasq_legacy_instance_exists();
 }
@@ -126,8 +124,6 @@ function dnsmasq_default_config_is_complete() {
     return dnsmasq_default_has_tachyon_dns() &&
         uci_get("dhcp.@dnsmasq[0].noresolv") == "1" &&
         uci_get("dhcp.@dnsmasq[0].cachesize") == "0" &&
-        uci_get("dhcp.@dnsmasq[0].rebind_protection") == "0" &&
-        uci_get("dhcp.@dnsmasq[0].localuse") == "1" &&
         !dnsmasq_legacy_instance_exists();
 }
 
@@ -206,8 +202,6 @@ function dnsmasq_configure_default_instance() {
         backup_dnsmasq_config_option("noresolv", "tachyon_noresolv");
         backup_dnsmasq_config_option("cachesize", "tachyon_cachesize");
     }
-    backup_dnsmasq_config_option("rebind_protection", "tachyon_rebind_protection");
-    backup_dnsmasq_config_option("localuse", "tachyon_localuse");
 
     backup_dnsmasq_config_option("addn_hosts", "tachyon_addn_hosts");
     uci_delete("dhcp.@dnsmasq[0].addn_hosts");
@@ -216,8 +210,6 @@ function dnsmasq_configure_default_instance() {
     uci_add_list("dhcp.@dnsmasq[0].server", SB_DNS_INBOUND_ADDRESS);
     uci_set("dhcp.@dnsmasq[0].noresolv", "1");
     uci_set("dhcp.@dnsmasq[0].cachesize", "0");
-    uci_set("dhcp.@dnsmasq[0].rebind_protection", "0");
-    uci_set("dhcp.@dnsmasq[0].localuse", "1");
 }
 
 function dnsmasq_restore_default_instance() {
@@ -250,18 +242,6 @@ function dnsmasq_restore_default_instance() {
         restore_dnsmasq_config_option("cachesize", "tachyon_cachesize", "");
     else if (managed_global_dns)
         uci_set("dhcp.@dnsmasq[0].cachesize", "150");
-
-    let rebind_protection = uci_get("dhcp.@dnsmasq[0].tachyon_rebind_protection");
-    if (rebind_protection != "")
-        restore_dnsmasq_config_option("rebind_protection", "tachyon_rebind_protection", "");
-    else if (managed_global_dns)
-        uci_delete("dhcp.@dnsmasq[0].rebind_protection");
-
-    let localuse = uci_get("dhcp.@dnsmasq[0].tachyon_localuse");
-    if (localuse != "")
-        restore_dnsmasq_config_option("localuse", "tachyon_localuse", "");
-    else if (managed_global_dns)
-        uci_delete("dhcp.@dnsmasq[0].localuse");
 
     restore_dnsmasq_config_option("addn_hosts", "tachyon_addn_hosts", "");
 }

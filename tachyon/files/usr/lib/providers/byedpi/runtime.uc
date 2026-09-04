@@ -304,10 +304,8 @@ function start_runtime() {
     if (length(sections) == 0 || !provider_available())
         return;
 
-    if (standalone_service_enabled()) {
-        log_message("Disabling standalone byedpi autostart to avoid port conflicts", "warn");
-        command_status_from_args([ BYEDPI_SERVICE_INIT, "disable" ]);
-    }
+    if (standalone_service_enabled())
+        log_message("Standalone byedpi service is enabled. Tachyon manages ciadpi itself for action 'byedpi'; disable standalone byedpi autostart to avoid boot-time port conflicts.", "warn");
 
     if (standalone_service_running()) {
         log_message("Stopping standalone byedpi service before starting Tachyon-managed ciadpi runtime", "info");

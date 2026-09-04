@@ -163,13 +163,6 @@ assert_plan_value "$plan" needs_dnsmasq_configure 1
 assert_plan_value "$plan" needs_dnsmasq_restore 0
 
 args=("${base_args[@]}")
-args[31]=0
-plan="$(run_case dnsmasq_repair_incomplete "${args[@]}")"
-assert_plan_value "$plan" changed_dnsmasq 0
-assert_plan_value "$plan" needs_dnsmasq_configure 1
-assert_plan_value "$plan" needs_dnsmasq_restore 0
-
-args=("${base_args[@]}")
 args[14]=dns2
 args[25]=1
 args[27]=1
@@ -210,11 +203,6 @@ write_state "$current_state" service_trigger_signature svc dns sb nft zq zr z2q 
 plan="$(run_state_case state_unchanged "$previous_state" "$current_state" 0 0 0 0 0)"
 assert_plan_value "$plan" has_work 0
 assert_plan_value "$plan" changed_sing_box 0
-
-plan="$(run_state_case state_repair_incomplete "$previous_state" "$current_state" 0 0 0 0 0 0)"
-assert_plan_value "$plan" has_work 1
-assert_plan_value "$plan" changed_dnsmasq 0
-assert_plan_value "$plan" needs_dnsmasq_configure 1
 
 write_state "$current_state" service_trigger_signature svc dns sb nft zq zr z2q z2r br list cron "alpha beta gamma" 0
 plan="$(run_state_case state_urltest_new "$previous_state" "$current_state" 0 0 0 0 0)"

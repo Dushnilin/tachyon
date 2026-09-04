@@ -36,21 +36,7 @@ describe('getDnsCheckPresentation', () => {
       state: 'warning',
       description: 'Issues detected',
       dhcpItemState: 'error',
-      dhcpItemKey: 'DHCP does not forward DNS to Tachyon',
-    });
-  });
-
-  it('shows success when DHCP forwards DNS to Tachyon', () => {
-    expect(
-      getDnsCheckPresentation({
-        ...baseDnsResult,
-        dhcp_config_status: 1,
-      }),
-    ).toMatchObject({
-      state: 'success',
-      description: 'Checks passed',
-      dhcpItemState: 'success',
-      dhcpItemKey: 'DHCP forwards DNS to Tachyon',
+      dhcpItemKey: 'DHCP has DNS server',
     });
   });
 });

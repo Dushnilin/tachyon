@@ -1239,12 +1239,7 @@ function get_server_capabilities() {
 }
 
 function neutralize_zapret_defaults() {
-    log_message("Neutralizing standalone zapret/zapret2/byedpi services and tables", "info");
-    command_status("/etc/init.d/zapret stop >/dev/null 2>&1; /etc/init.d/zapret disable >/dev/null 2>&1 || true");
-    command_status("/etc/init.d/zapret2 stop >/dev/null 2>&1; /etc/init.d/zapret2 disable >/dev/null 2>&1 || true");
-    command_status("/etc/init.d/byedpi stop >/dev/null 2>&1; /etc/init.d/byedpi disable >/dev/null 2>&1 || true");
-    command_status("nft delete table inet zapret >/dev/null 2>&1 || true");
-    command_status("nft delete table inet zapret2 >/dev/null 2>&1 || true");
+    log_message("Standalone zapret is not neutralized automatically; Tachyon uses /opt/zapret/nfq/nfqws as an external provider and manages only its own NFQUEUE range.", "info");
     return 0;
 }
 
@@ -2857,19 +2852,6 @@ function run_doctor_checks_impl(repair) {
         let st = null;
         try { st = json(raw_st); } catch (e) {}
         if (!st || st.configured != true) continue;
-
-        // Check for standalone service conflict
-        if (st.standalone_conflict == true || st.standalone_service_running == true) {
-            issues++;
-            if (!DOCTOR_REPAIR_MODE) {
-                doc_plan("/etc/init.d/" + p.kind + " stop && /etc/init.d/" + p.kind + " disable && nft delete table inet " + p.kind);
-                doc_check("⚠️", "Standalone " + p.name, "active conflict", "→ WILL FIX: отключение автономной службы и удаление конфликтующей таблицы");
-            } else {
-                command_status("/etc/init.d/" + p.kind + " stop >/dev/null 2>&1; /etc/init.d/" + p.kind + " disable >/dev/null 2>&1; nft delete table inet " + p.kind + " >/dev/null 2>&1 || true");
-                doc_check("❌", "Standalone " + p.name, "active conflict", "→ FIXED: автономная служба отключена, таблица очищена");
-                fixed++;
-            }
-        }
 
         // Check if Tachyon-managed runtime is ready
         if (st.ready == true) {

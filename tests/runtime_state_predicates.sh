@@ -294,13 +294,9 @@ cat >"$WORK_DIR/service-dns-state.json" <<'JSON'
     "server": [ "1.1.1.1#53", "8.8.8.8" ],
     "noresolv": "1",
     "cachesize": "0",
-    "rebind_protection": "1",
-    "localuse": "0",
     "tachyon_server": [ "127.0.0.42#53" ],
     "tachyon_noresolv": "0",
-    "tachyon_cachesize": "1500",
-    "tachyon_rebind_protection": "0",
-    "tachyon_localuse": "1"
+    "tachyon_cachesize": "1500"
   },
   "legacy_dnsmasq_present": true
 }
@@ -324,20 +320,12 @@ cat >"$WORK_DIR/dnsmasq-signature.expected" <<'EOF_DNSMASQ_SIG'
 1
 [dhcp.@dnsmasq[0].cachesize]
 0
-[dhcp.@dnsmasq[0].rebind_protection]
-1
-[dhcp.@dnsmasq[0].localuse]
-0
 [dhcp.@dnsmasq[0].tachyon_server]
 127.0.0.42#53
 [dhcp.@dnsmasq[0].tachyon_noresolv]
 0
 [dhcp.@dnsmasq[0].tachyon_cachesize]
 1500
-[dhcp.@dnsmasq[0].tachyon_rebind_protection]
-0
-[dhcp.@dnsmasq[0].tachyon_localuse]
-1
 [dhcp.tachyon.present]
 1
 EOF_DNSMASQ_SIG

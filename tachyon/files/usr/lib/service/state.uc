@@ -895,13 +895,9 @@ function dnsmasq_signature_body(settings, dnsmasq, legacy_dnsmasq_present) {
     body = signature_add_value(body, "dhcp.@dnsmasq[0].server", option(dnsmasq, "server", ""));
     body = signature_add_value(body, "dhcp.@dnsmasq[0].noresolv", option(dnsmasq, "noresolv", ""));
     body = signature_add_value(body, "dhcp.@dnsmasq[0].cachesize", option(dnsmasq, "cachesize", ""));
-    body = signature_add_value(body, "dhcp.@dnsmasq[0].rebind_protection", option(dnsmasq, "rebind_protection", ""));
-    body = signature_add_value(body, "dhcp.@dnsmasq[0].localuse", option(dnsmasq, "localuse", ""));
     body = signature_add_value(body, "dhcp.@dnsmasq[0].tachyon_server", option(dnsmasq, "tachyon_server", ""));
     body = signature_add_value(body, "dhcp.@dnsmasq[0].tachyon_noresolv", option(dnsmasq, "tachyon_noresolv", ""));
     body = signature_add_value(body, "dhcp.@dnsmasq[0].tachyon_cachesize", option(dnsmasq, "tachyon_cachesize", ""));
-    body = signature_add_value(body, "dhcp.@dnsmasq[0].tachyon_rebind_protection", option(dnsmasq, "tachyon_rebind_protection", ""));
-    body = signature_add_value(body, "dhcp.@dnsmasq[0].tachyon_localuse", option(dnsmasq, "tachyon_localuse", ""));
     body = signature_add_value(body, "dhcp.tachyon.present", arg_bool(legacy_dnsmasq_present) ? "1" : "0");
 
     return body;
@@ -1847,13 +1843,9 @@ function uci_dnsmasq() {
         server: uci_get("dhcp.@dnsmasq[0].server"),
         noresolv: uci_get("dhcp.@dnsmasq[0].noresolv"),
         cachesize: uci_get("dhcp.@dnsmasq[0].cachesize"),
-        rebind_protection: uci_get("dhcp.@dnsmasq[0].rebind_protection"),
-        localuse: uci_get("dhcp.@dnsmasq[0].localuse"),
         tachyon_server: uci_get("dhcp.@dnsmasq[0].tachyon_server"),
         tachyon_noresolv: uci_get("dhcp.@dnsmasq[0].tachyon_noresolv"),
-        tachyon_cachesize: uci_get("dhcp.@dnsmasq[0].tachyon_cachesize"),
-        tachyon_rebind_protection: uci_get("dhcp.@dnsmasq[0].tachyon_rebind_protection"),
-        tachyon_localuse: uci_get("dhcp.@dnsmasq[0].tachyon_localuse")
+        tachyon_cachesize: uci_get("dhcp.@dnsmasq[0].tachyon_cachesize")
     };
 }
 
