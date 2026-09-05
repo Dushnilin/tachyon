@@ -176,6 +176,12 @@ function awg_tag_chain(value) {
     if (value == "" || value == "0")
         return "";
 
+    // Heal previously truncated tag chains (e.g. from broken conf import)
+    if (match(value, /^[0-9a-fA-F]+><[^<>]+>/))
+        value = "<b 0x" + value;
+    if (match(value, /<[^<>]+$/))
+        value = value + ">";
+
     // A well-formed tag chain: keep it verbatim, including inner spacing
     // ("<b 0x..>" carries a space inside each tag).
     if (match(value, /^(<[^<>]+>)+$/))

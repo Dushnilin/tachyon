@@ -1340,7 +1340,9 @@ function add_combined_route_for_section(config, section) {
 
     let has_route_matchers = route_rule.domain != null || route_rule.domain_suffix != null ||
         route_rule.domain_keyword != null || route_rule.domain_regex != null ||
-        route_rule.ip_cidr != null || route_rule.port != null || route_rule.port_range != null ||
+        route_rule.ip_cidr != null || route_rule.source_ip_cidr != null ||
+        route_rule.port != null || route_rule.port_range != null ||
+        route_rule.protocol != null || route_rule.dscp != null ||
         route_rule.rule_set != null;
     if (has_route_matchers) {
         let resolve = runtime_route.resolve_rule_for_section(section, route_rule);

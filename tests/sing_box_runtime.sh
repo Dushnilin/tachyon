@@ -344,6 +344,14 @@ cat >"$WORK_DIR/runtime-matchers-fixture.json" <<'JSON'
       "mixed_proxy_auth_enabled": "1",
       "mixed_proxy_username": "user",
       "mixed_proxy_password": "pass"
+    },
+    {
+      ".name": "source_only",
+      ".type": "section",
+      "enabled": "1",
+      "action": "connection",
+      "selector_proxy_links": [ "socks5://127.0.0.1:1080" ],
+      "source_ip_cidr": [ "192.168.1.77/32" ]
     }
   ]
 }
@@ -1242,6 +1250,7 @@ assert(route_rule(matchers, r => r.outbound == "proxy-out" && contains(r.domain_
 assert(route_rule(matchers, r => contains(r.inbound, "tproxy-in") && contains(r.inbound, "tproxy6-in") && r.outbound == "proxy-out") != null, "section route dual tproxy inbound");
 assert(route_rule(matchers, r => r.outbound == "direct-out" && contains(r.source_ip_cidr, "192.168.1.5/32")) == null, "routing excluded source removed");
 assert(route_rule(matchers, r => r.outbound == "proxy-out" && contains(r.source_ip_cidr, "10.0.0.2/32") && contains(r.source_ip_cidr, "2001:db8::2/128")) != null, "source_ip_cidr matcher");
+assert(route_rule(matchers, r => r.outbound == "source_only-out" && contains(r.source_ip_cidr, "192.168.1.77/32")) != null, "source_only route rule generated");
 let commented_ip_rule = route_rule(matchers, r => r.outbound == "proxy-out" && contains(r.ip_cidr, "77.111.247.0/24") && contains(r.ip_cidr, "198.51.100.0/24"));
 assert(commented_ip_rule != null, "comment-aware ip_cidr matcher");
 assert(contains(commented_ip_rule.port, 80) && contains(commented_ip_rule.port, 8080), "comment-aware port matcher");

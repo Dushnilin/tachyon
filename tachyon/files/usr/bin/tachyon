@@ -282,7 +282,7 @@ function command_spec(command) {
         fuzzer_auto_apply: [ "diagnostics/fuzzer.uc", "auto_apply", 1 ],
         fuzzer_history: [ "diagnostics/fuzzer.uc", "history", 1 ],
         fuzzer_clear_history: [ "diagnostics/fuzzer.uc", "clear_history", 0 ],
-        generate_warp: [ "service/warp_generator.uc", "", 1 ],
+        generate_warp: [ "service/warp_generator.uc", "", 2 ],
         package_prerm: [ "service/package.uc", "prerm", 1 ],
         package_postinst: [ "service/package.uc", "postinst", 0 ],
         luci_postinst: [ "service/package.uc", "luci-postinst", 0 ],

@@ -424,7 +424,17 @@ if (!response_data.warp_enabled) {
     fs.unlink(tmp_patch);
 }
 
-let license_key = ARGV[0] || "";
+let target_version = "2.0";
+let license_key = "";
+
+for (let a in ARGV) {
+    if (a == "2.0" || a == "3.1") {
+        target_version = a;
+    } else if (a != null && trim(a) != "") {
+        license_key = trim(a);
+    }
+}
+
 if (license_key != "") {
     let patch_body = { license_key: license_key };
     let tmp_patch = exec_output("mktemp 2>/dev/null") || "/tmp/warp_patch.json";
@@ -511,23 +521,71 @@ let i3 = to_hex(generate_extra_cps());
 let i4 = to_hex(generate_extra_cps());
 let i5 = to_hex(generate_extra_cps());
 
-write_json({
+function generate_base64_key() {
+    let k = exec_output("head -c 32 /dev/urandom | base64 2>/dev/null");
+    if (k != "") {
+        k = replace(trim(k), /[\r\n\t ]/g, "");
+        if (length(k) >= 40) return k;
+    }
+    let pair = exec_output("/usr/bin/sing-box generate wg-keypair 2>/dev/null");
+    for (let l in split(pair, "\n")) {
+        let m = match(l, /^PrivateKey:\s*(.+)$/);
+        if (m) return trim(m[1]);
+    }
+    return "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+}
+
+function random_range(min_bound, max_bound, span_min, span_max) {
+    let span = span_min + (time() * 7 + int(exec_output("head -c 2 /dev/urandom | hexdump -ve '1/2 \"%u\"' 2>/dev/null") || "1000")) % (span_max - span_min + 1);
+    let start = min_bound + (time() * 13 + int(exec_output("head -c 4 /dev/urandom | hexdump -ve '1/4 \"%u\"' 2>/dev/null") || "50000")) % (max_bound - min_bound - span);
+    let end = start + span;
+    return sprintf("%u-%u", start, end);
+}
+
+function random_s() {
+    let r = 20 + (int(exec_output("head -c 2 /dev/urandom | hexdump -ve '1/2 \"%u\"' 2>/dev/null") || "50")) % 130;
+    return r >= 12 ? r : 25;
+}
+
+let req_version = "2.0";
+if (length(ARGV) > 2 && ARGV[2] != "") {
+    req_version = trim(ARGV[2]);
+} else if (length(ARGV) > 1 && (ARGV[1] == "2.0" || ARGV[1] == "3.0" || ARGV[1] == "3.1")) {
+    req_version = trim(ARGV[1]);
+}
+
+// Cloudflare WARP servers ONLY support standard WireGuard / AWG 2.0 headers.
+// They do NOT run AmneziaWG and do not support HeaderProtectionKey or AWG 3.x.
+// Therefore, the WARP generator always outputs a working AWG 2.0 configuration.
+let result = {
     success: true,
     local_address: response_data.config.interface.addresses.v4 + "/32 " + response_data.config.interface.addresses.v6 + "/128",
     private_key: private_key,
     peer_public_key: response_data.config.peers[0].public_key,
     server_address: best_ip,
     server_port: random_port,
-    
-    awg_jc: 4,
+    awg_version: "2.0",
+    awg_jc: 5,
     awg_jmin: 40,
     awg_jmax: 70,
-    awg_s1: 0, awg_s2: 0, awg_s3: 0, awg_s4: 0,
-    awg_h1: 1, awg_h2: 2, awg_h3: 3, awg_h4: 4,
-    
+    awg_s1: 0,
+    awg_s2: 0,
+    awg_s3: 0,
+    awg_s4: 0,
+    awg_h1: 1,
+    awg_h2: 2,
+    awg_h3: 3,
+    awg_h4: 4,
     awg_i1: i1,
     awg_i2: i2,
     awg_i3: i3,
     awg_i4: i4,
     awg_i5: i5
-});
+};
+
+if (req_version != "2.0") {
+    result.message_hint = "warning_warp_needs_awg20";
+}
+
+write_json(result);
+

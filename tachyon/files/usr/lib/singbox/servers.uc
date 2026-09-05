@@ -212,6 +212,10 @@ function apply_transport(inbound, section, protocol) {
 }
 
 function add_standard_inbound(config, section, protocol, tag_name) {
+    let sb_variant_file = getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/sing-box-variant";
+    let sb_version_file = getenv("SB_VERSION_STATE_FILE") || "/etc/tachyon/sing-box-version";
+    let sb_version_val = trim(fs.readfile(sb_version_file) || "");
+    let is_lx = sb_version_val != "" ? (index(sb_version_val, "-lx") >= 0) : (trim(fs.readfile(sb_variant_file) || "") == "lx");
     let inbound = {
         type: protocol,
         tag: tag_name,
@@ -305,8 +309,6 @@ function add_standard_inbound(config, section, protocol, tag_name) {
         let jmin = int_option(section, "awg_jmin", "40");
         let jmax = int_option(section, "awg_jmax", "70");
         if (jmax > 1200) jmax = 1200;
-        let is_lx = trim(fs.readfile("/etc/tachyon/sing-box-variant") || "") == "lx" ||
-                    index(trim(fs.readfile("/etc/tachyon/sing-box-version") || ""), "-lx") >= 0;
 
         let amnezia = {
             jc: jc,
@@ -354,6 +356,52 @@ function add_standard_inbound(config, section, protocol, tag_name) {
             if (i3 != "" && i3 != "0") inbound.i3 = i3;
             if (i4 != "" && i4 != "0") inbound.i4 = i4;
             if (i5 != "" && i5 != "0") inbound.i5 = i5;
+
+            // AmneziaWG version handling: 2.0, 3.0, and 3.1 (sing-box-lx v1.14.0-lx.32+)
+            let awg_ver = option(section, "awg_version", "");
+            if (awg_ver == "") {
+                if (option(section, "awg_rekey_after_time", "") != "" || option(section, "awg_rekey_timeout", "") != "" ||
+                    option(section, "awg_reject_after_time", "") != "" || option(section, "awg_keepalive_timeout", "") != "" ||
+                    option(section, "awg_max_handshake_attempts", "") != "") {
+                    awg_ver = "3.1";
+                } else if (option(section, "awg_header_protection_key", "") != "" || option(section, "awg_content_padding_addition", "") != "") {
+                    awg_ver = "3.0";
+                } else {
+                    awg_ver = "2.0";
+                }
+            }
+
+            if (awg_ver == "3.0" || awg_ver == "3.1") {
+                let hpk = option(section, "awg_header_protection_key", "");
+                if (hpk != "") {
+                    // Ensure S1-S4 are >= 12 if header_protection_key is set (sing-box-lx schema requirement)
+                    if (inbound.s1 < 12) inbound.s1 = 20;
+                    if (inbound.s2 < 12) inbound.s2 = 20;
+                    if (inbound.s3 < 12) inbound.s3 = 20;
+                    if (inbound.s4 < 12) inbound.s4 = 20;
+                    inbound.header_protection_key = hpk;
+                }
+
+                let cpa = option(section, "awg_content_padding_addition", "");
+                if (cpa != "") inbound.content_padding_addition = cpa;
+            }
+
+            if (awg_ver == "3.1") {
+                let rka = option(section, "awg_rekey_after_time", "");
+                if (rka != "") inbound.rekey_after_time = rka;
+
+                let rkt = option(section, "awg_rekey_timeout", "");
+                if (rkt != "") inbound.rekey_timeout = rkt;
+
+                let rja = option(section, "awg_reject_after_time", "");
+                if (rja != "") inbound.reject_after_time = rja;
+
+                let kpt = option(section, "awg_keepalive_timeout", "");
+                if (kpt != "") inbound.keepalive_timeout = kpt;
+
+                let mha = option(section, "awg_max_handshake_attempts", "");
+                if (mha != "") inbound.max_handshake_attempts = mha;
+            }
         } else {
             if (i1 != "") amnezia.i1 = i1;
             if (i2 != "") amnezia.i2 = i2;
@@ -380,7 +428,16 @@ function add_standard_inbound(config, section, protocol, tag_name) {
 
     apply_tls(inbound, section, protocol);
     apply_transport(inbound, section, protocol);
-    push(config.inbounds, inbound);
+    if (protocol == "awg" && is_lx) {
+        let server_port = int_option(section, "awg_server_port", int_option(section, "listen_port", 51820));
+        inbound.listen_port = server_port;
+        delete inbound.listen;
+        if (!config.endpoints)
+            config.endpoints = [];
+        push(config.endpoints, inbound);
+    } else {
+        push(config.inbounds, inbound);
+    }
 }
 
 function add_json_inbound(config, section, tag_name) {

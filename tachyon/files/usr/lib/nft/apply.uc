@@ -641,7 +641,7 @@ function section_has_dscp_matchers(section) {
 
 function section_needs_priority_sets(section) {
     return section_priority_action(section) != "" &&
-        (section_has_nft_ip_matchers(section) || section_has_nft_port_only_matchers(section) || section_has_dscp_matchers(section));
+        (section_has_nft_ip_matchers(section) || section_has_nft_port_only_matchers(section) || section_has_dscp_matchers(section) || section_has_source_ip_matchers(section));
 }
 
 function nft_create_priority_chains(table) {
@@ -789,6 +789,28 @@ function nft_add_section_priority_rules(table, section, interface_set, localv4_s
         if (!nft_add_priority_rule_pair(table, "priority_rules", section, interface_set, localv4_set, localv6_set, match_dscp4, match_dscp6, mark) ||
             !nft_add_priority_rule_pair(table, "priority_output_rules", section, interface_set, localv4_set, localv6_set, match_dscp4, match_dscp6, mark))
             return false;
+    }
+
+    let has_source_only_matchers = section_has_source_ip_matchers(section) &&
+        !needs_plain_ip_rules &&
+        !needs_ip_port_rules &&
+        !has_port_only_matchers &&
+        !section_has_dscp_matchers(section);
+
+    if (has_source_only_matchers) {
+        if (is_bypass) {
+            if (!nft_add_priority_rule_pair(table, "priority_rules", section, interface_set, localv4_set, localv6_set, [], [], mark) ||
+                !nft_add_priority_rule_pair(table, "priority_output_rules", section, interface_set, localv4_set, localv6_set, [], [], mark))
+                return false;
+        } else {
+            let match_tcp = [ "meta", "l4proto", "tcp" ];
+            let match_udp = [ "meta", "l4proto", "udp" ];
+            if (!nft_add_priority_rule_pair(table, "priority_rules", section, interface_set, localv4_set, localv6_set, match_tcp, match_tcp, mark) ||
+                !nft_add_priority_rule_pair(table, "priority_rules", section, interface_set, localv4_set, localv6_set, match_udp, match_udp, mark) ||
+                !nft_add_priority_rule_pair(table, "priority_output_rules", section, interface_set, localv4_set, localv6_set, match_tcp, match_tcp, mark) ||
+                !nft_add_priority_rule_pair(table, "priority_output_rules", section, interface_set, localv4_set, localv6_set, match_udp, match_udp, mark))
+                return false;
+        }
     }
 
     return true;

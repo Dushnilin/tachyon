@@ -343,6 +343,7 @@ ASSUME_YES=0
 DRY_RUN=0
 VERBOSE=0
 QUIET=0
+SKIP_SING_BOX=0
 
 TACHYON_RELEASE_JSON=""
 TACHYON_RELEASE_TAG=""
@@ -508,6 +509,7 @@ Options:
                       download, install, remove, or modify anything on disk
   -v, --verbose       Print extra diagnostic detail while installing
   -q, --quiet         Suppress informational output (errors/warnings still show)
+      --skip-sing-box Skip sing-box installation
       --version       Print the installer version and exit
   -h, --help          Show this help text and exit
 
@@ -537,6 +539,9 @@ parse_args() {
                 ;;
             -q|--quiet)
                 QUIET=1
+                ;;
+            --skip-sing-box|--no-sing-box)
+                SKIP_SING_BOX=1
                 ;;
             *)
                 fail "Unknown installer option: $1 (see --help)"
@@ -2083,6 +2088,7 @@ installer_text() {
             sing_box_extended_compressed) printf '%s\n' "singbox extended (сжатая UPX версия)" ;;
             sing_box_tiny) printf '%s\n' "singbox tiny (минимум функций)" ;;
             sing_box_lx) printf '%s\n' "singbox Leadaxe (lx)" ;;
+            sing_box_skip) printf '%s\n' "Не устанавливать sing-box (пропустить)" ;;
             sing_box_skip_msg) printf '%s\n' "Пропускаю установку sing-box." ;;
             installing_singbox_backend) printf '%s\n' "Установка выбранного варианта sing-box..." ;;
             install_start) printf '%s\n' "=== Начало установки Tachyon ===" ;;
@@ -2130,6 +2136,7 @@ installer_text() {
         sing_box_extended_compressed) printf '%s\n' "singbox extended (UPX compressed)" ;;
         sing_box_tiny) printf '%s\n' "singbox tiny (minimal features)" ;;
         sing_box_lx) printf '%s\n' "singbox Leadaxe (lx)" ;;
+        sing_box_skip) printf '%s\n' "Do not install sing-box (skip)" ;;
         sing_box_skip_msg) printf '%s\n' "Skipping sing-box installation." ;;
         installing_singbox_backend) printf '%s\n' "Installing selected sing-box variant..." ;;
         install_start) printf '%s\n' "=== Starting Tachyon Installation ===" ;;
@@ -2324,6 +2331,11 @@ select_sing_box_installation() {
         return 0
     fi
 
+    if [ "$SKIP_SING_BOX" -eq 1 ]; then
+        SING_BOX_INSTALL_VARIANT=""
+        return 0
+    fi
+
     if [ "$ASSUME_YES" -eq 1 ] || [ ! -t 0 ]; then
         SING_BOX_INSTALL_VARIANT="stable"
         msg "$(installer_text sing_box_prompt): $default_choice ($(installer_text sing_box_stable), non-interactive)"
@@ -2337,6 +2349,7 @@ select_sing_box_installation() {
         printf '  3) %s\n' "$(installer_text sing_box_extended_compressed)"
         printf '  4) %s\n' "$(installer_text sing_box_lx)"
         printf '  5) %s\n' "$(installer_text sing_box_tiny)"
+        printf '  6) %s\n' "$(installer_text sing_box_skip)"
         printf '%s [%s]: ' "$(installer_text select)" "$default_choice"
         read -r answer || return 1
         [ -n "$answer" ] || answer="$default_choice"
@@ -2359,6 +2372,10 @@ select_sing_box_installation() {
         fi
         if [ "$answer" = "5" ]; then
             SING_BOX_INSTALL_VARIANT="tiny"
+            return 0
+        fi
+        if [ "$answer" = "6" ]; then
+            SING_BOX_INSTALL_VARIANT=""
             return 0
         fi
 

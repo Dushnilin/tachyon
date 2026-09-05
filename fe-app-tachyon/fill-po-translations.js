@@ -593,6 +593,15 @@ const dictionary = {
 
   // WARP / AmneziaWG
   "AmneziaWG Generator": "Генератор AmneziaWG",
+  "AmneziaWG Version": "Версия AmneziaWG",
+  "AmneziaWG 2.0": "AmneziaWG 2.0",
+  "AmneziaWG 3.0": "AmneziaWG 3.0",
+  "AmneziaWG 3.1": "AmneziaWG 3.1",
+  "Protocol version: 2.0 (standard headers, WARP compatible), 3.0 (header protection key, padding ranges), or 3.1 (header protection key, padding ranges, advanced timers)": "Версия протокола: 2.0 (стандартные заголовки, совместимо с WARP), 3.0 (ключ защиты заголовков, диапазоны паддинга), или 3.1 (ключ защиты заголовков, диапазоны паддинга, расширенные таймеры)",
+  "AmneziaWG %s configuration generated and loaded successfully!": "Конфигурация AmneziaWG %s успешно сгенерирована и загружена!",
+  "Notice: Cloudflare WARP edge servers only support AmneziaWG 2.0 (standard headers). For Cloudflare WARP, select version 2.0. Versions 3.0 and 3.1 are intended for dedicated AmneziaWG servers.": "Обратите внимание: серверы Cloudflare WARP поддерживают только AmneziaWG 2.0 (стандартные заголовки). Для Cloudflare WARP выберите версию 2.0. Версии 3.0 и 3.1 предназначены для выделенных серверов AmneziaWG.",
+  "AmneziaWG 3.0 / 3.1 header protection key": "Ключ защиты заголовков AmneziaWG 3.0 / 3.1",
+  "AmneziaWG 3.0 / 3.1 content padding range, e.g. 38-104": "Диапазон дополнительного паддинга контента AmneziaWG 3.0 / 3.1, например 38-104",
   "Import AmneziaWG settings from .conf file": "Импортировать настройки AmneziaWG из файла .conf",
   "Load .conf": "Загрузить .conf",
   "Load .conf config": "Загрузить конфигурацию .conf",
@@ -1335,6 +1344,7 @@ const dictionary = {
   "CleanBrowsing Security": "CleanBrowsing (Безопасность)",
   "CleanBrowsing Family": "CleanBrowsing (Семейный)",
   "Yandex Safe": "Yandex (Безопасный)",
+  "Hide versions": "Скрыть версии",
 };
 
 function escapePoString(str) {

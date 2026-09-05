@@ -989,6 +989,27 @@ function init_config(populate_nft, caches_prepared, no_refresh) {
                     stripped = true;
                 }
             }
+            else if (match(check_result.reason, /header_protection_key/)) {
+                log_message("Installed sing-box rejected header_protection_key: " + check_result.reason + "; stripping and retrying", "warn");
+                let cfg_text = as_string(fs.readfile(temp_config) || "");
+                let cfg = length(cfg_text) > 0 ? json(cfg_text) : null;
+                if (type(cfg) == "object") {
+                    if (type(cfg.endpoints) == "array") {
+                        for (let ep in cfg.endpoints) {
+                            if (type(ep) == "object" && ep.header_protection_key != null)
+                                delete ep.header_protection_key;
+                        }
+                    }
+                    if (type(cfg.inbounds) == "array") {
+                        for (let inb in cfg.inbounds) {
+                            if (type(inb) == "object" && inb.header_protection_key != null)
+                                delete inb.header_protection_key;
+                        }
+                    }
+                    write_file(temp_config, sprintf("%J", cfg));
+                    stripped = true;
+                }
+            }
         }
         if (!stripped)
             break;

@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-01 21:58+0300\n"
-"PO-Revision-Date: 2026-09-01 21:58+0300\n"
+"POT-Creation-Date: 2026-09-05 10:59+0300\n"
+"PO-Revision-Date: 2026-09-05 10:59+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -41,8 +41,14 @@ msgstr "+ Добавить стратегию"
 msgid "+ Add URLTest"
 msgstr "+ Добавить URLTest"
 
+msgid "⏳ Stopping..."
+msgstr ""
+
 msgid "⚠️ Benchmark completed. No working bypass found for this target."
 msgstr "⚠️ Бенчмарк завершен. Не найдено рабочих стратегий для данной цели."
+
+msgid "⚠️ Benchmark stopped"
+msgstr ""
 
 msgid "⚠️ If all Bootstrap DNS fail 3 times, queries will be sent to your ISP's DNS in plaintext. Only use as a last resort to prevent complete internet loss."
 msgstr "⚠️ Если все Bootstrap DNS завершатся с ошибкой 3 раза, запросы будут отправлены в DNS вашего провайдера в открытом виде. Используйте только в крайнем случае для предотвращения полной потери интернета."
@@ -59,8 +65,8 @@ msgstr "⚡ Быстрые (>1 МБ/с)"
 msgid "⚡ QUIC / HTTP/3 (UDP 443)"
 msgstr "⚡ QUIC / HTTP/3 (UDP 443)"
 
-msgid "⚡ Quick Benchmark (Presets ~12-14)"
-msgstr "⚡ Быстрый бенчмарк (Пресеты ~12-14)"
+msgid "⚡ Quick Benchmark (Presets ~30+)"
+msgstr ""
 
 msgid "⚡ Strategy Fuzzer & Auto-Tuner"
 msgstr "⚡ Подборщик стратегий и авто-тюнер"
@@ -92,8 +98,8 @@ msgstr "✘ Остановлено"
 msgid "🌐 Custom Target URL..."
 msgstr "🌐 Пользовательский URL цели..."
 
-msgid "🎬 YouTube Suite (Web + 4K Stream)"
-msgstr "🎬 YouTube Suite (Web + 4K Stream)"
+msgid "🎬 YouTube Full Suite (Web + 4K Stream + CDN)"
+msgstr ""
 
 msgid "🏆 Apply Best Match"
 msgstr "🏆 Применить наилучшую"
@@ -101,8 +107,11 @@ msgstr "🏆 Применить наилучшую"
 msgid "🏴‍☠️ RuTracker Suite"
 msgstr "🏴‍☠️ RuTracker Suite"
 
-msgid "💬 Discord Suite (API + WSS + CDN)"
-msgstr "💬 Discord Suite (API + WSS + CDN)"
+msgid "🐦 X / Twitter Suite (API + Media CDN)"
+msgstr ""
+
+msgid "💬 Discord Suite (Gateway + Voice + CDN)"
+msgstr ""
 
 msgid "💾 Save Custom Patterns"
 msgstr "💾 Сохранить пользовательские паттерны"
@@ -116,11 +125,14 @@ msgstr "🔄 Обновить"
 msgid "🔄 Reset to Factory Defaults"
 msgstr "🔄 Сбросить к заводским настройкам"
 
-msgid "🔍 Combinatorial Deep Fuzzing (~40-80+)"
-msgstr "🔍 Комбинаторный глубокий фаззинг (~40-80+)"
+msgid "🔍 Combinatorial Deep Fuzzing (~150-300+)"
+msgstr ""
 
 msgid "🗑️ Clear History"
 msgstr "🗑️ Очистить историю"
+
+msgid "🤖 ChatGPT / OpenAI Suite"
+msgstr ""
 
 msgid "🧠 Synthesize with AI"
 msgstr "🧠 Сгенерировать через ИИ"
@@ -134,11 +146,17 @@ msgstr "🚀 Инициализация бенчмарка в песочнице
 msgid "🚀 Start Benchmark"
 msgstr "🚀 Начать бенчмарк"
 
+msgid "🛑 Benchmark stopped"
+msgstr ""
+
 msgid "🛑 Stop Benchmark"
 msgstr "🛑 Остановить бенчмарк"
 
 msgid "🛠️ My Custom Strategies Only"
 msgstr "🛠️ Только мои стратегии"
+
+msgid "🟣 Twitch Suite (Live Stream + HLS CDN)"
+msgstr ""
 
 msgid "Accept external proxy connections and route them with sing-box."
 msgstr "Принимать внешние прокси-подключения и маршрутизировать их через sing-box."
@@ -398,11 +416,35 @@ msgstr "Всегда блокировать эти домены для всех 
 msgid "Always visible"
 msgstr "Всегда включено"
 
+msgid "AmneziaWG 3.1 content padding range, e.g. 38-104"
+msgstr ""
+
+msgid "AmneziaWG 3.1 header protection key"
+msgstr ""
+
+msgid "AmneziaWG 3.1 keepalive timeout"
+msgstr ""
+
+msgid "AmneziaWG 3.1 max handshake attempts"
+msgstr ""
+
+msgid "AmneziaWG 3.1 reject after time"
+msgstr ""
+
+msgid "AmneziaWG 3.1 rekey after time"
+msgstr ""
+
+msgid "AmneziaWG 3.1 rekey timeout"
+msgstr ""
+
 msgid "AmneziaWG config loaded successfully!"
 msgstr "Конфигурация AmneziaWG успешно загружена!"
 
 msgid "AmneziaWG Generator"
 msgstr "Генератор AmneziaWG"
+
+msgid "AmneziaWG Version"
+msgstr "Версия AmneziaWG"
 
 msgid "Anonymized support report copied to clipboard"
 msgstr "Анонимизированный отчет скопирован в буфер обмена"
@@ -424,6 +466,9 @@ msgstr "Применено"
 
 msgid "Apply"
 msgstr "Применить"
+
+msgid "Apply Recommended DNS"
+msgstr "Применить рекомендованный DNS"
 
 msgid "Apply rules of this section only to selected protocols."
 msgstr "Применять правила этой секции только к выбранным протоколам."
@@ -500,6 +545,9 @@ msgstr "Авто-генерация HWID"
 msgid "Auto-Heal Network Stack"
 msgstr "Автолечение сетевого стека"
 
+msgid "Auto-Tune & Benchmark DNS"
+msgstr "Подобрать и протестировать DNS"
+
 msgid "Auto-update Hosts Lists"
 msgstr "Автообновление списков Hosts"
 
@@ -517,6 +565,9 @@ msgstr "Автоматический выбор User-Agent"
 
 msgid "Automatically add text to the name of each server from this subscription for convenient filtering."
 msgstr "Автоматически добавлять текст к имени каждого сервера из этой подписки для удобной фильтрации."
+
+msgid "Automatically benchmark latency, packet loss, and anti-censorship reliability of major DNS servers (UDP/DoH) from this router to find and apply the optimal configuration."
+msgstr "Автоматически замерить задержку, потери пакетов и защиту от цензуры основных DNS серверов (UDP/DoH) прямо с роутера, чтобы найти и применить оптимальную конфигурацию."
 
 msgid "Automatically check installed components for new versions"
 msgstr "Автоматически проверять установленные компоненты на наличие новых версий"
@@ -563,8 +614,14 @@ msgstr "Беларусь (by)"
 msgid "Benchmark & Test"
 msgstr "Бенчмарк и тестирование"
 
+msgid "Benchmark completed successfully"
+msgstr "Бенчмарк успешно завершён"
+
 msgid "Benchmark History"
 msgstr "История бенчмарков"
+
+msgid "Benchmark measures actual latency and resolution reliability of major DNS servers (UDP 53 and encrypted DoH) directly from your router to find the fastest, unblocked upstream for your ISP."
+msgstr "Бенчмарк замеряет реальную задержку и надёжность резолва основных DNS серверов (UDP 53 и шифрованный DoH) напрямую с роутера, чтобы найти самый быстрый и незаблокированный апстрим у вашего провайдера."
 
 msgid "Benchmark stopped"
 msgstr "Бенчмарк остановлен"
@@ -899,6 +956,9 @@ msgstr "Строка аргументов командной строки..."
 msgid "Community Lists"
 msgstr "Community-списки"
 
+msgid "Component action timed out"
+msgstr ""
+
 msgid "Component update available"
 msgstr "Доступно обновление компонента"
 
@@ -928,6 +988,9 @@ msgstr "Путь к файлу конфигурации"
 
 msgid "Config Snapshots"
 msgstr "Снапшоты конфигурации"
+
+msgid "Configuration applied"
+msgstr ""
 
 msgid "Configuration for Tachyon service"
 msgstr "Конфигурация сервиса Tachyon"
@@ -961,6 +1024,9 @@ msgstr "Консультируюсь с базой знаний DPI и ИИ..."
 
 msgid "Content Mode"
 msgstr "Режим контента"
+
+msgid "Content Padding Addition"
+msgstr ""
 
 msgid "Cookie packet junk size (S3)"
 msgstr "Размер мусора в пакете cookie (S3)"
@@ -1163,6 +1229,9 @@ msgstr "Отображаемое имя"
 msgid "DNS"
 msgstr "DNS"
 
+msgid "DNS Auto-Tuner & Benchmark"
+msgstr "Автоподбор и бенчмарк DNS"
+
 msgid "DNS Check Interval"
 msgstr "Интервал проверки DNS"
 
@@ -1186,6 +1255,9 @@ msgstr "DNS через TLS (DoT)"
 
 msgid "DNS protocol"
 msgstr "Протокол DNS"
+
+msgid "DNS Protocol"
+msgstr ""
 
 msgid "DNS Protocol Type"
 msgstr "Тип протокола DNS"
@@ -1535,6 +1607,9 @@ msgstr "Ошибка обновления списков:"
 msgid "Every day"
 msgstr "Каждый день"
 
+msgid "EXCELLENT"
+msgstr "ОТЛИЧНО"
+
 msgid "Exclude by proxy parameters"
 msgstr "Исключить по параметрам прокси"
 
@@ -1577,6 +1652,9 @@ msgstr "Истекает"
 msgid "Expose this section as a local HTTP+SOCKS proxy"
 msgstr "Предоставить эту секцию как локальный HTTP+SOCKS прокси"
 
+msgid "extended"
+msgstr ""
+
 msgid "External inbound proxy servers"
 msgstr "Внешние входящие прокси-серверы"
 
@@ -1585,6 +1663,15 @@ msgstr "Внешние файлы конфигурации nfqws обходят 
 
 msgid "External nfqws2 config files bypass Tachyon queue management and explicit validation."
 msgstr "Внешние файлы конфигурации nfqws2 обходят управление очередями Tachyon и явную проверку."
+
+msgid "FAILED"
+msgstr "СБОЙ"
+
+msgid "Failed to apply DNS configuration"
+msgstr ""
+
+msgid "Failed to apply DNS settings"
+msgstr "Не удалось применить настройки DNS"
 
 msgid "Failed to apply fix"
 msgstr "Не удалось применить исправление"
@@ -1622,11 +1709,17 @@ msgstr "Не удалось определить тип DPI"
 msgid "Failed to execute"
 msgstr "Не удалось выполнить"
 
+msgid "Failed to fetch releases"
+msgstr ""
+
 msgid "Failed to generate bug report"
 msgstr "Не удалось создать отчёт об ошибке"
 
 msgid "Failed to generate WARP config:"
 msgstr "Не удалось сгенерировать конфигурацию WARP:"
+
+msgid "Failed to get DNS benchmark status"
+msgstr ""
 
 msgid "Failed to get fuzzer history"
 msgstr "Не удалось получить историю фаззера"
@@ -1640,11 +1733,17 @@ msgstr "Не удалось получить статус фаззера"
 msgid "Failed to get fuzzer strategies"
 msgstr "Не удалось получить стратегии фаззера"
 
+msgid "Failed to install version"
+msgstr ""
+
 msgid "Failed to load history"
 msgstr "Не удалось загрузить историю"
 
 msgid "Failed to load snapshots"
 msgstr "Не удалось загрузить снапшоты"
+
+msgid "Failed to load versions"
+msgstr "Не удалось загрузить версии"
 
 msgid "Failed to parse file:"
 msgstr "Ошибка разбора файла:"
@@ -1691,6 +1790,9 @@ msgstr "Не удалось запустить бенчмарк"
 msgid "Failed to start bot"
 msgstr "Не удалось запустить бота"
 
+msgid "Failed to start DNS benchmark"
+msgstr ""
+
 msgid "Failed to start fuzzer"
 msgstr "Не удалось запустить фаззер"
 
@@ -1702,6 +1804,9 @@ msgstr "Не удалось запустить watchdog"
 
 msgid "Failed to stop bot"
 msgstr "Не удалось остановить бота"
+
+msgid "Failed to stop DNS benchmark"
+msgstr ""
 
 msgid "Failed to stop fuzzer"
 msgstr "Не удалось остановить фаззер"
@@ -1724,6 +1829,9 @@ msgstr "Не удалось обновить подписки"
 msgid "Failover failure threshold"
 msgstr "Порог срабатывания failover"
 
+msgid "FAIR"
+msgstr "СРЕДНЕ"
+
 msgid "FakeIP and control checks use different public IPs"
 msgstr "FakeIP и контрольная проверка используют разные публичные IP"
 
@@ -1736,6 +1844,9 @@ msgstr "FakeIP работает; сравнение публичных IP не �
 msgid "FakeTLS host"
 msgstr "FakeTLS host"
 
+msgid "Fallback DNS"
+msgstr ""
+
 msgid "Fallback DNS Servers"
 msgstr "Резервные DNS серверы"
 
@@ -1747,75 +1858,6 @@ msgstr "Резервные DNS серверы должны быть обычны
 
 msgid "Fallback on unknown DC"
 msgstr "Fallback при неизвестном DC"
-
-msgid "DNS Auto-Tuner & Benchmark"
-msgstr "Автоподбор и бенчмарк DNS"
-
-msgid "Auto-Tune & Benchmark DNS"
-msgstr "Подобрать и протестировать DNS"
-
-msgid "Automatically benchmark latency, packet loss, and anti-censorship reliability of major DNS servers (UDP/DoH) from this router to find and apply the optimal configuration."
-msgstr "Автоматически замерить задержку, потери пакетов и защиту от цензуры основных DNS серверов (UDP/DoH) прямо с роутера, чтобы найти и применить оптимальную конфигурацию."
-
-msgid "Tachyon DNS Benchmark & Auto-Tuning"
-msgstr "Tachyon: Бенчмарк и автоподбор DNS"
-
-msgid "Ready to benchmark DNS providers"
-msgstr "Готов к тестированию DNS провайдеров"
-
-msgid "Benchmark measures actual latency and resolution reliability of major DNS servers (UDP 53 and encrypted DoH) directly from your router to find the fastest, unblocked upstream for your ISP."
-msgstr "Бенчмарк замеряет реальную задержку и надёжность резолва основных DNS серверов (UDP 53 и шифрованный DoH) напрямую с роутера, чтобы найти самый быстрый и незаблокированный апстрим у вашего провайдера."
-
-msgid "Start Benchmark"
-msgstr "Начать тест"
-
-msgid "Starting DNS benchmark..."
-msgstr "Запуск бенчмарка DNS..."
-
-msgid "Benchmark completed successfully"
-msgstr "Бенчмарк успешно завершён"
-
-msgid "Apply Recommended DNS"
-msgstr "Применить рекомендованный DNS"
-
-msgid "Recommended DNS Configuration"
-msgstr "Рекомендованная конфигурация DNS"
-
-msgid "Recommended DNS settings applied successfully and service restarted!"
-msgstr "Рекомендованные настройки DNS успешно применены, сервис перезапущен!"
-
-msgid "Failed to start benchmark"
-msgstr "Не удалось запустить бенчмарк"
-
-msgid "Failed to apply DNS settings"
-msgstr "Не удалось применить настройки DNS"
-
-msgid "No benchmark data yet. Click \"Start Benchmark\" to begin."
-msgstr "Нет данных бенчмарка. Нажмите «Начать тест», чтобы запустить проверку."
-
-msgid "EXCELLENT"
-msgstr "ОТЛИЧНО"
-
-msgid "GOOD"
-msgstr "ХОРОШО"
-
-msgid "FAIR"
-msgstr "СРЕДНЕ"
-
-msgid "SLOW"
-msgstr "МЕДЛЕННО"
-
-msgid "FAILED"
-msgstr "СБОЙ"
-
-msgid "Protocol"
-msgstr "Протокол"
-
-msgid "Rating"
-msgstr "Оценка"
-
-msgid "Loss"
-msgstr "Потери"
 
 msgid "Family (🏠)"
 msgstr "Семья (🏠)"
@@ -1846,6 +1888,9 @@ msgstr "Фильтровать серверы, отображаемые на д�
 
 msgid "Filter:"
 msgstr "Фильтр:"
+
+msgid "Finished with code"
+msgstr ""
 
 msgid "Finland (fi)"
 msgstr "Финляндия (fi)"
@@ -1885,6 +1930,9 @@ msgstr "Принудительно включает безопасный пои�
 
 msgid "Forces sing-box to tunnel DNS requests via DoQ with Encrypted Client Hello (ECH) for SNI hiding."
 msgstr "Принудительно направлять DNS-запросы через DoQ с Encrypted Client Hello (ECH) для скрытия SNI."
+
+msgid "Found"
+msgstr ""
 
 msgid "France (fr)"
 msgstr "Франция (fr)"
@@ -1973,6 +2021,9 @@ msgstr "Не удалось выполнить глобальную провер
 msgid "Global Default"
 msgstr "Глобально по умолчанию"
 
+msgid "GOOD"
+msgstr "ХОРОШО"
+
 msgid "Group devices into family profiles to manage content filtering, SafeSearch, and screen time limits in one place."
 msgstr "Группируйте устройства в семейные профили для централизованного управления фильтрацией сайтов, безопасным поиском и лимитами экранного времени."
 
@@ -1981,6 +2032,9 @@ msgstr "Сервис gRPC"
 
 msgid "Handshake timeout"
 msgstr "Таймаут рукопожатия"
+
+msgid "Header Protection Key"
+msgstr ""
 
 msgid "Hello! I am Tachyon AI Assistant. How can I help you today? Ask me about domain blocks, diagnostics, or router settings."
 msgstr "Привет! Я ИИ-ассистент Tachyon. Чем могу помочь? Задайте вопрос о блокировках, диагностике или настройках роутера."
@@ -2032,6 +2086,9 @@ msgstr "Скрыть узлы групп URLTest"
 
 msgid "Hide values"
 msgstr "Скрывать значения"
+
+msgid "Hide versions"
+msgstr "Скрыть версии"
 
 msgid "Higher-level check interval"
 msgstr "Интервал проверки высших уровней"
@@ -2534,6 +2591,9 @@ msgstr "Сохранять предыдущую рабочую версию ко
 msgid "Keep URLTest before latency-sorted servers"
 msgstr "Сохранять URLTest перед серверами, отсортированными по задержке"
 
+msgid "Keepalive Timeout"
+msgstr ""
+
 msgid "Keeps FakeIP cache persistent across reboots and pre-resolves popular blocked domains on startup so first-visit latency is 0 ms."
 msgstr "Сохраняет FakeIP-кэш между перезагрузками и заранее резолвит популярные заблокированные домены при старте — задержка при первом визите 0 мс."
 
@@ -2554,6 +2614,9 @@ msgstr "Язык ответов диагностики ИИ-доктора"
 
 msgid "Laptop / PC (💻)"
 msgstr "Ноутбук / ПК (💻)"
+
+msgid "Latency"
+msgstr ""
 
 msgid "Latency test failed"
 msgstr "Проверка задержки не удалась"
@@ -2627,6 +2690,9 @@ msgstr "Загрузка подключений"
 msgid "Loading service list..."
 msgstr "Получение списка сервисов..."
 
+msgid "Loading versions..."
+msgstr "Загрузка версий..."
+
 msgid "Loading..."
 msgstr "Загрузка..."
 
@@ -2635,6 +2701,9 @@ msgstr "Локальный адрес"
 
 msgid "Log Level"
 msgstr "Уровень логирования"
+
+msgid "Loss"
+msgstr "Потери"
 
 msgid "LuCI Web UI"
 msgstr "Веб-интерфейс LuCI"
@@ -2680,6 +2749,9 @@ msgstr "Совпадение найдено"
 
 msgid "Match traffic by packet DSCP mark (assigned in Windows via Policy-Based QoS). Examples: 46 (EF), 0x2e, 34 (AF41)"
 msgstr "Сопоставлять трафик по DSCP-метке пакета (назначается в Windows через Policy-Based QoS). Примеры: 46 (EF), 0x2e, 34 (AF41)"
+
+msgid "Max Handshake Attempts"
+msgstr ""
 
 msgid "Max reconnects per hour before alert (default 10)."
 msgstr "Макс. переподключений в час до оповещения (по умолчанию 10)."
@@ -2828,6 +2900,9 @@ msgstr "Активные устройства в локальной сети н�
 msgid "No active routing sections found."
 msgstr "Активные секции маршрутизации не найдены."
 
+msgid "No benchmark data yet. Click \"Start Benchmark\" to begin."
+msgstr "Нет данных бенчмарка. Нажмите «Начать тест», чтобы запустить проверку."
+
 msgid "No benchmark history yet. Run a benchmark to see results here."
 msgstr "История бенчмарков пуста. Запустите бенчмарк, чтобы увидеть результаты здесь."
 
@@ -2899,6 +2974,12 @@ msgstr "Снапшотов пока нет"
 
 msgid "No strategies match the active filter."
 msgstr "Нет стратегий, соответствующих выбранному фильтру."
+
+msgid "No versions found"
+msgstr "Версии не найдены"
+
+msgid "No working strategy to apply"
+msgstr ""
 
 msgid "Node list is empty"
 msgstr "Список узлов пуст"
@@ -3239,6 +3320,9 @@ msgstr "Предварительно собранный индекс фрагм�
 msgid "Pre-download all preset lists"
 msgstr "Предзагрузить все предустановленные списки"
 
+msgid "pre-release"
+msgstr "пре-релиз"
+
 msgid "Pre-shared key"
 msgstr "Предварительный общий ключ"
 
@@ -3265,6 +3349,9 @@ msgstr "Предварительный общий ключ"
 
 msgid "Prevents multiple reload_firewall calls within 120 seconds to avoid connection drops."
 msgstr "Предотвращает множественные вызовы reload_firewall в течение 120 секунд для избежания разрыва соединений."
+
+msgid "Primary DNS"
+msgstr ""
 
 msgid "Priority"
 msgstr "Приоритет"
@@ -3308,6 +3395,12 @@ msgstr "Защита"
 msgid "Protocol"
 msgstr "Протокол"
 
+msgid "Protocol version: 2.0 (standard integer headers) or 3.1 (header protection key, padding ranges, advanced timers)"
+msgstr ""
+
+msgid "Provider"
+msgstr ""
+
 msgid "Provider Global Default"
 msgstr "Глобальные настройки провайдера"
 
@@ -3350,11 +3443,17 @@ msgstr "QUIC (HTTP/3)"
 msgid "RAG Knowledge Base + Live ISP Probe Context"
 msgstr "База знаний RAG + результаты живого зондирования провайдера"
 
+msgid "Rating"
+msgstr "Оценка"
+
 msgid "RDP"
 msgstr "RDP"
 
 msgid "Read error"
 msgstr "Ошибка чтения"
+
+msgid "Ready to benchmark DNS providers"
+msgstr "Готов к тестированию DNS провайдеров"
 
 msgid "Reality fake site"
 msgstr "Фейковый сайт Reality"
@@ -3385,6 +3484,12 @@ msgstr "Пересобранный релиз"
 
 msgid "Recommended"
 msgstr "Рекомендовано"
+
+msgid "Recommended DNS Configuration"
+msgstr "Рекомендованная конфигурация DNS"
+
+msgid "Recommended DNS settings applied successfully and service restarted!"
+msgstr "Рекомендованные настройки DNS успешно применены, сервис перезапущен!"
 
 msgid "Recommended Quick Fixes:"
 msgstr "Рекомендуемые исправления:"
@@ -3418,6 +3523,15 @@ msgstr "Регулярное выражение не должно содержа
 
 msgid "Reinstall"
 msgstr "Переустановить"
+
+msgid "Reject After Time"
+msgstr ""
+
+msgid "Rekey After Time"
+msgstr ""
+
+msgid "Rekey Timeout"
+msgstr ""
 
 msgid "Reload now"
 msgstr "Перезагрузить сейчас"
@@ -3938,9 +4052,6 @@ msgstr "Сервисы и доступ"
 msgid "Services are online and ready! Reloading page..."
 msgstr "Службы запущены и готовы к работе! Перезагрузка страницы..."
 
-msgid "Services are online, waiting for full initialization..."
-msgstr "Сервисы запущены, ожидание полной инициализации..."
-
 msgid "Services info"
 msgstr "Информация о сервисах"
 
@@ -4036,6 +4147,9 @@ msgstr "Пропущены комментарии/невалидные:"
 
 msgid "Skipped loopback:"
 msgstr "Пропущены loopback:"
+
+msgid "SLOW"
+msgstr "МЕДЛЕННО"
 
 msgid "Snapshot name"
 msgstr "Имя снапшота"
@@ -4136,6 +4250,9 @@ msgstr "Стандартный"
 msgid "Start"
 msgstr "Старт"
 
+msgid "Start Benchmark"
+msgstr "Начать тест"
+
 msgid "Start bot"
 msgstr "Запустить бота"
 
@@ -4150,6 +4267,9 @@ msgstr "Время начала (ЧЧ:ММ)"
 
 msgid "Start watchdog"
 msgstr "Запустить watchdog"
+
+msgid "Starting DNS benchmark..."
+msgstr "Запуск бенчмарка DNS..."
 
 msgid "Starting…"
 msgstr "Запуск…"
@@ -4235,6 +4355,9 @@ msgstr "Успех"
 msgid "Successfully imported %d DNS record(s)"
 msgstr "Успешно импортировано %d DNS-записей"
 
+msgid "Successfully updated %d hosts entries"
+msgstr ""
+
 msgid "Sun"
 msgstr "Вс"
 
@@ -4268,8 +4391,14 @@ msgstr "Порядок и видимость вкладок"
 msgid "Table exist"
 msgstr "Таблица существует"
 
+msgid "Tachyon"
+msgstr ""
+
 msgid "Tachyon Core"
 msgstr "Ядро Tachyon"
+
+msgid "Tachyon DNS Benchmark & Auto-Tuning"
+msgstr "Tachyon: Бенчмарк и автоподбор DNS"
 
 msgid "Tachyon Error"
 msgstr "Ошибка Tachyon"
@@ -4409,6 +4538,9 @@ msgstr "Тестировать серверы, чьи имена соответ�
 msgid "Test Telegram Connection"
 msgstr "Проверить подключение к Telegram"
 
+msgid "Testing"
+msgstr ""
+
 msgid "Testing bypass strategies in isolated sandbox..."
 msgstr "Тестирование стратегий обхода в изолированной песочнице..."
 
@@ -4501,6 +4633,9 @@ msgstr "Время суток для запуска планового обно�
 
 msgid "Time skew tolerance"
 msgstr "Допуск отклонения времени"
+
+msgid "Timeout"
+msgstr ""
 
 msgid "tiny"
 msgstr "tiny"
@@ -4727,6 +4862,9 @@ msgstr "Хранится до 10 снапшотов; самые старые у�
 msgid "Update"
 msgstr "Обновить"
 
+msgid "Update failed:"
+msgstr ""
+
 msgid "Update is available"
 msgstr "Доступно обновление"
 
@@ -4738,6 +4876,9 @@ msgstr "Доступна новая версия:"
 
 msgid "Update lists now"
 msgstr "Обновить списки сейчас"
+
+msgid "Update Lists Now"
+msgstr ""
 
 msgid "Update subscriptions"
 msgstr "Обновить подписки"
@@ -4759,6 +4900,9 @@ msgstr "Обновление режима маршрутизации устро�
 
 msgid "Updating lists..."
 msgstr "Обновление списков..."
+
+msgid "Updating…"
+msgstr ""
 
 msgid "Uplink"
 msgstr "Исходящий"
@@ -4889,6 +5033,9 @@ msgstr "Значение не должно содержать символы у�
 msgid "Verifying router and service readiness..."
 msgstr "Проверка готовности роутера и служб..."
 
+msgid "Versions"
+msgstr "Версии"
+
 msgid "Via country.is"
 msgstr "Через country.is"
 
@@ -4924,9 +5071,6 @@ msgstr "Токен доступа WARP"
 
 msgid "WARP Account ID"
 msgstr "ID аккаунта WARP"
-
-msgid "WARP Configuration generated and loaded successfully!"
-msgstr "Конфигурация WARP успешно сгенерирована и загружена!"
 
 msgid "WARP Generator Proxy Section"
 msgstr "Секция прокси для генератора WARP"
@@ -4972,6 +5116,9 @@ msgstr "Приватный ключ WireGuard из вашего аккаунта
 
 msgid "Working"
 msgstr "Рабочих"
+
+msgid "working strategies"
+msgstr ""
 
 msgid "XHTTP mode"
 msgstr "Режим XHTTP"
@@ -5038,6 +5185,24 @@ msgstr "sing-box outbound для Zapret2 настроен"
 
 msgid "Zapret2 sing-box outbound is not configured"
 msgstr "sing-box outbound для Zapret2 не настроен"
+
+msgid "⚡ Quick Benchmark (Presets ~12-14)"
+msgstr "⚡ Быстрый бенчмарк (Пресеты ~12-14)"
+
+msgid "🎬 YouTube Suite (Web + 4K Stream)"
+msgstr "🎬 YouTube Suite (Web + 4K Stream)"
+
+msgid "💬 Discord Suite (API + WSS + CDN)"
+msgstr "💬 Discord Suite (API + WSS + CDN)"
+
+msgid "🔍 Combinatorial Deep Fuzzing (~40-80+)"
+msgstr "🔍 Комбинаторный глубокий фаззинг (~40-80+)"
+
+msgid "Services are online, waiting for full initialization..."
+msgstr "Сервисы запущены, ожидание полной инициализации..."
+
+msgid "WARP Configuration generated and loaded successfully!"
+msgstr "Конфигурация WARP успешно сгенерирована и загружена!"
 
 msgid "⏹ Stop"
 msgstr "⏹ Стоп"
@@ -5726,18 +5891,6 @@ msgstr "CleanBrowsing (Семейный)"
 msgid "Yandex Safe"
 msgstr "Yandex (Безопасный)"
 
-msgid "Versions"
-msgstr "Версии"
-
-msgid "Loading versions..."
-msgstr "Загрузка версий..."
-
-msgid "No versions found"
-msgstr "Версии не найдены"
-
-msgid "Failed to load versions"
-msgstr "Не удалось загрузить версии"
-
 msgid "Installing "
 msgstr "Установка "
 
@@ -5750,5 +5903,26 @@ msgstr "Ошибка установки: "
 msgid "Installed "
 msgstr "Установлено "
 
-msgid "pre-release"
-msgstr "пре-релиз"
+msgid "AmneziaWG 2.0"
+msgstr "AmneziaWG 2.0"
+
+msgid "AmneziaWG 3.0"
+msgstr "AmneziaWG 3.0"
+
+msgid "AmneziaWG 3.1"
+msgstr "AmneziaWG 3.1"
+
+msgid "Protocol version: 2.0 (standard headers, WARP compatible), 3.0 (header protection key, padding ranges), or 3.1 (header protection key, padding ranges, advanced timers)"
+msgstr "Версия протокола: 2.0 (стандартные заголовки, совместимо с WARP), 3.0 (ключ защиты заголовков, диапазоны паддинга), или 3.1 (ключ защиты заголовков, диапазоны паддинга, расширенные таймеры)"
+
+msgid "AmneziaWG %s configuration generated and loaded successfully!"
+msgstr "Конфигурация AmneziaWG %s успешно сгенерирована и загружена!"
+
+msgid "Notice: Cloudflare WARP edge servers only support AmneziaWG 2.0 (standard headers). For Cloudflare WARP, select version 2.0. Versions 3.0 and 3.1 are intended for dedicated AmneziaWG servers."
+msgstr "Обратите внимание: серверы Cloudflare WARP поддерживают только AmneziaWG 2.0 (стандартные заголовки). Для Cloudflare WARP выберите версию 2.0. Версии 3.0 и 3.1 предназначены для выделенных серверов AmneziaWG."
+
+msgid "AmneziaWG 3.0 / 3.1 header protection key"
+msgstr "Ключ защиты заголовков AmneziaWG 3.0 / 3.1"
+
+msgid "AmneziaWG 3.0 / 3.1 content padding range, e.g. 38-104"
+msgstr "Диапазон дополнительного паддинга контента AmneziaWG 3.0 / 3.1, например 38-104"

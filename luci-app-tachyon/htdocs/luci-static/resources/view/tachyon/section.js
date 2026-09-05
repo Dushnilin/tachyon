@@ -8412,6 +8412,25 @@ function createSectionContent(section) {
       : _("Use sing-box duration format like 1d, 12h or 6h");
   };
 
+  // Keep tag chains (<b 0x..>, <t>, <r..>, etc.) and plain hex intact
+  // Normalizes plain hex to <b 0xHEX> and auto-heals previously truncated tags
+  const cleanAwgPayload = (v) => {
+    if (typeof v !== "string") return "";
+    let s = v.trim();
+    if (!s || s === "0") return s;
+    // Heal previously truncated opening binary tag if missing (e.g. 729cd...><t>...)
+    if (/^[0-9a-fA-F]+><[^<>]+>/.test(s)) s = "<b 0x" + s;
+    // Heal previously truncated closing bracket if missing (e.g. ...<rd 5)
+    if (/<[^<>]+$/.test(s)) s += ">";
+    // If plain hex (classic AWG payload or stripped <b 0x..>), normalize to <b 0xHEX>
+    const plainHex = s.replace(/^0x/i, "");
+    if (/^[0-9a-fA-F]+$/.test(plainHex) && plainHex.length >= 2) {
+      const padded = plainHex.length % 2 !== 0 ? plainHex + "0" : plainHex;
+      return "<b 0x" + padded.toLowerCase() + ">";
+    }
+    return s;
+  };
+
   o = section.taboption(
     "settings",
     form.Button,
@@ -8503,9 +8522,26 @@ function createSectionContent(section) {
 
     const resetAfter = (ms) => setTimeout(() => setState("", origText), ms);
 
+    const getControlWidget = (opt) => {
+      const widget = document.getElementById(
+        `widget.cbid.${UCI_PACKAGE}.${section_id}.${opt}`,
+      );
+      if (!widget) return null;
+      if (/^(INPUT|SELECT|TEXTAREA)$/.test(widget.tagName)) return widget;
+      return widget.querySelector(
+        "input:not([type='hidden']), select, textarea",
+      );
+    };
+
+    const verWidget = getControlWidget("awg_version");
+    const currentVersion =
+      (verWidget ? verWidget.value : null) ||
+      uci.get(UCI_PACKAGE, section_id, "awg_version") ||
+      "2.0";
+
     setState("loading", _("Generating…"));
 
-    fs.exec("/usr/bin/tachyon", ["generate_warp"])
+    fs.exec("/usr/bin/tachyon", ["generate_warp", "", "2.0"])
       .then(function (response) {
         if (!response || (response.code ?? 0) !== 0 || !response.stdout) {
           setState("error", _("Error"));
@@ -8533,25 +8569,6 @@ function createSectionContent(section) {
             return;
           }
 
-          const getControlWidget = (opt) => {
-            const widget = document.getElementById(
-              `widget.cbid.${UCI_PACKAGE}.${section_id}.${opt}`,
-            );
-            if (!widget) return null;
-            if (/^(INPUT|SELECT|TEXTAREA)$/.test(widget.tagName)) return widget;
-            return widget.querySelector(
-              "input:not([type='hidden']), select, textarea",
-            );
-          };
-
-          const stripUciBinary = (val) => {
-            if (typeof val !== "string") return val;
-            return val
-              .replace(/<b 0x/g, "")
-              .replace(/>/g, "")
-              .replace(/\s/g, "");
-          };
-
           const setWidgetValue = (opt, val) => {
             const widget = getControlWidget(opt);
             if (widget) {
@@ -8561,6 +8578,8 @@ function createSectionContent(section) {
             }
             uci.set(UCI_PACKAGE, section_id, opt, val);
           };
+
+          const genVer = data.awg_version || "2.0";
 
           setWidgetValue("awg_local_address", data.local_address);
           setWidgetValue("awg_private_key", data.private_key);
@@ -8578,17 +8597,39 @@ function createSectionContent(section) {
           setWidgetValue("awg_h4", `${data.awg_h4}`);
           setWidgetValue("awg_s3", `${data.awg_s3}`);
           setWidgetValue("awg_s4", `${data.awg_s4}`);
-          setWidgetValue("awg_i1", stripUciBinary(data.awg_i1));
-          setWidgetValue("awg_i2", stripUciBinary(data.awg_i2));
-          setWidgetValue("awg_i3", stripUciBinary(data.awg_i3));
-          setWidgetValue("awg_i4", stripUciBinary(data.awg_i4));
-          setWidgetValue("awg_i5", stripUciBinary(data.awg_i5));
+          setWidgetValue("awg_i1", cleanAwgPayload(data.awg_i1));
+          setWidgetValue("awg_i2", cleanAwgPayload(data.awg_i2));
+          setWidgetValue("awg_i3", cleanAwgPayload(data.awg_i3));
+          setWidgetValue("awg_i4", cleanAwgPayload(data.awg_i4));
+          setWidgetValue("awg_i5", cleanAwgPayload(data.awg_i5));
+
+          setWidgetValue("awg_version", genVer);
+
+          // Clear 3.x specific options when generating WARP (Cloudflare only supports AWG 2.0)
+          setWidgetValue("awg_header_protection_key", "");
+          setWidgetValue("awg_content_padding_addition", "");
+          setWidgetValue("awg_rekey_after_time", "");
+          setWidgetValue("awg_rekey_timeout", "");
+          setWidgetValue("awg_reject_after_time", "");
+          setWidgetValue("awg_keepalive_timeout", "");
+          setWidgetValue("awg_max_handshake_attempts", "");
+          uci.unset(UCI_PACKAGE, section_id, "awg_header_protection_key");
+          uci.unset(UCI_PACKAGE, section_id, "awg_content_padding_addition");
+          uci.unset(UCI_PACKAGE, section_id, "awg_rekey_after_time");
+          uci.unset(UCI_PACKAGE, section_id, "awg_rekey_timeout");
+          uci.unset(UCI_PACKAGE, section_id, "awg_reject_after_time");
+          uci.unset(UCI_PACKAGE, section_id, "awg_keepalive_timeout");
+          uci.unset(UCI_PACKAGE, section_id, "awg_max_handshake_attempts");
 
           setState("success", _("Generated!"));
           resetAfter(2500);
+          let successMsg = _("AmneziaWG (Cloudflare WARP) configuration generated and loaded successfully!");
+          if (currentVersion !== "2.0") {
+            successMsg += "\n\n" + _("Notice: Cloudflare WARP edge servers only support AmneziaWG 2.0 (WireGuard). The profile has been automatically set to 2.0 so the connection works properly. Versions 3.0 and 3.1 require an AmneziaWG server via 'Import .conf'.");
+          }
           showStatusModal(
             _("Success"),
-            _("WARP Configuration generated and loaded successfully!"),
+            successMsg,
             false,
           );
         } catch (err) {
@@ -8630,15 +8671,24 @@ function createSectionContent(section) {
       let cur = null;
       for (const raw of text.split(/\r?\n/)) {
         const line = raw.trim();
-        if (!line || line.startsWith("#")) continue;
-        const sm = line.match(/^\[(\w+)\]$/);
+        if (!line || line.startsWith("#") || line.startsWith(";")) continue;
+        const sm = line.match(/^\[([^\]]+)\]$/);
         if (sm) {
-          cur = sm[1].toLowerCase();
+          cur = sm[1].trim().toLowerCase();
           out[cur] = out[cur] || {};
           continue;
         }
-        const kv = line.match(/^(\w+)\s*=\s*(.+)$/);
-        if (kv && cur) out[cur][kv[1]] = kv[2].trim();
+        const kv = line.match(/^([^=]+)\s*=\s*(.+)$/);
+        if (kv && cur) {
+          const key = kv[1].trim();
+          let val = kv[2].trim();
+          // Strip inline comments if not inside payload tags
+          if (!val.startsWith("<")) {
+            const commentIdx = val.search(/[#;]/);
+            if (commentIdx >= 0) val = val.slice(0, commentIdx).trim();
+          }
+          out[cur][key] = val;
+        }
       }
       return out;
     };
@@ -8654,22 +8704,16 @@ function createSectionContent(section) {
         )
         .join(" ");
 
-    // Strip UCI binary literal format: <b 0xHEX> → HEX
-    const stripBin = (v) =>
-      typeof v === "string"
-        ? v
-            .replace(/^<b\s+0x/, "")
-            .replace(/>$/, "")
-            .trim()
-        : "";
+    // Use shared payload cleaner for tag chains and hex normalization
+    const cleanPayload = cleanAwgPayload;
 
     // Write value into a form widget and the UCI cache
     const setVal = (opt, val) => {
       if (val === undefined || val === null) return;
       const str = String(val);
-      const el = document.getElementById(
-        `widget.cbid.${UCI_PACKAGE}.${section_id}.${opt}`,
-      );
+      const el =
+        document.getElementById(`widget.cbid.${UCI_PACKAGE}.${section_id}.${opt}`) ||
+        document.getElementById(`cbid.${UCI_PACKAGE}.${section_id}.${opt}`);
       const w =
         el &&
         (/^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName)
@@ -8743,42 +8787,148 @@ function createSectionContent(section) {
         const iface = cfg.interface || {};
         const peer = cfg.peer || {};
 
-        // --- [Interface] ---
-        if (iface.Address)
-          setVal("awg_local_address", normalizeAddr(iface.Address));
-        if (iface.PrivateKey) setVal("awg_private_key", iface.PrivateKey);
-        if (iface.MTU !== undefined) setVal("awg_mtu", iface.MTU);
-        if (peer.PersistentKeepalive)
-          setVal("awg_keepalive", peer.PersistentKeepalive);
-        if (iface.Jc !== undefined) setVal("awg_jc", iface.Jc);
-        if (iface.Jmin !== undefined) setVal("awg_jmin", iface.Jmin);
-        if (iface.Jmax !== undefined) setVal("awg_jmax", iface.Jmax);
-        if (iface.S1 !== undefined) setVal("awg_s1", iface.S1);
-        if (iface.S2 !== undefined) setVal("awg_s2", iface.S2);
-        if (iface.S3 !== undefined) setVal("awg_s3", iface.S3);
-        if (iface.S4 !== undefined) setVal("awg_s4", iface.S4);
-        if (iface.H1 !== undefined) setVal("awg_h1", iface.H1);
-        if (iface.H2 !== undefined) setVal("awg_h2", iface.H2);
-        if (iface.H3 !== undefined) setVal("awg_h3", iface.H3);
-        if (iface.H4 !== undefined) setVal("awg_h4", iface.H4);
-        if (iface.I1) setVal("awg_i1", stripBin(iface.I1));
-        if (iface.I2) setVal("awg_i2", stripBin(iface.I2));
-        if (iface.I3) setVal("awg_i3", stripBin(iface.I3));
-        if (iface.I4) setVal("awg_i4", stripBin(iface.I4));
-        if (iface.I5) setVal("awg_i5", stripBin(iface.I5));
-        if (iface.J1) setVal("awg_j1", stripBin(iface.J1));
-        if (iface.J2) setVal("awg_j2", stripBin(iface.J2));
-        if (iface.J3) setVal("awg_j3", stripBin(iface.J3));
-        if (iface.Itime !== undefined) setVal("awg_itime", iface.Itime);
+        // Case-insensitive lookup across [Interface] and [Peer]
+        const getConfVal = (k) => {
+          const lk = k.toLowerCase();
+          for (const s of [iface, peer]) {
+            if (!s) continue;
+            for (const key in s) {
+              if (key.toLowerCase() === lk) return s[key];
+            }
+          }
+          return undefined;
+        };
+
+        // --- [Interface] / [Peer] ---
+        const addr = getConfVal("Address") || getConfVal("awg_local_address");
+        if (addr) setVal("awg_local_address", normalizeAddr(addr));
+
+        const priv = getConfVal("PrivateKey") || getConfVal("awg_private_key");
+        if (priv) setVal("awg_private_key", priv);
+
+        const mtu = getConfVal("MTU");
+        if (mtu !== undefined) setVal("awg_mtu", mtu);
+
+        const keepalive = getConfVal("PersistentKeepalive") || getConfVal("Keepalive");
+        if (keepalive !== undefined) setVal("awg_keepalive", keepalive);
+
+        const jc = getConfVal("Jc");
+        if (jc !== undefined) setVal("awg_jc", jc);
+
+        const jmin = getConfVal("Jmin");
+        if (jmin !== undefined) setVal("awg_jmin", jmin);
+
+        const jmax = getConfVal("Jmax");
+        if (jmax !== undefined) setVal("awg_jmax", jmax);
+
+        const s1 = getConfVal("S1");
+        if (s1 !== undefined) setVal("awg_s1", s1);
+
+        const s2 = getConfVal("S2");
+        if (s2 !== undefined) setVal("awg_s2", s2);
+
+        const s3 = getConfVal("S3");
+        if (s3 !== undefined) setVal("awg_s3", s3);
+
+        const s4 = getConfVal("S4");
+        if (s4 !== undefined) setVal("awg_s4", s4);
+
+        const h1 = getConfVal("H1");
+        if (h1 !== undefined) setVal("awg_h1", h1);
+
+        const h2 = getConfVal("H2");
+        if (h2 !== undefined) setVal("awg_h2", h2);
+
+        const h3 = getConfVal("H3");
+        if (h3 !== undefined) setVal("awg_h3", h3);
+
+        const h4 = getConfVal("H4");
+        if (h4 !== undefined) setVal("awg_h4", h4);
+
+        const i1 = getConfVal("I1");
+        if (i1) setVal("awg_i1", cleanPayload(i1));
+
+        const i2 = getConfVal("I2");
+        if (i2) setVal("awg_i2", cleanPayload(i2));
+
+        const i3 = getConfVal("I3");
+        if (i3) setVal("awg_i3", cleanPayload(i3));
+
+        const i4 = getConfVal("I4");
+        if (i4) setVal("awg_i4", cleanPayload(i4));
+
+        const i5 = getConfVal("I5");
+        if (i5) setVal("awg_i5", cleanPayload(i5));
+
+        const j1 = getConfVal("J1");
+        if (j1) setVal("awg_j1", cleanPayload(j1));
+
+        const j2 = getConfVal("J2");
+        if (j2) setVal("awg_j2", cleanPayload(j2));
+
+        const j3 = getConfVal("J3");
+        if (j3) setVal("awg_j3", cleanPayload(j3));
+
+        const itime = getConfVal("Itime");
+        if (itime !== undefined) setVal("awg_itime", itime);
+
+        // --- AmneziaWG version detection and parameters ---
+        const hpk = getConfVal("HeaderProtectionKey") || "";
+        const cpa = getConfVal("ContentPaddingAddition") || "";
+        const rka = getConfVal("RekeyAfterTime") || "";
+        const rkt = getConfVal("RekeyTimeout") || "";
+        const rja = getConfVal("RejectAfterTime") || "";
+        const kpt = getConfVal("KeepaliveTimeout") || "";
+        const mha = getConfVal("MaxHandshakeAttempts") || "";
+
+        const isV31 = !!(rka || rkt || rja || kpt || mha);
+        const isV30 = !isV31 && !!(hpk || cpa);
+        const detectedVersion = isV31 ? "3.1" : (isV30 ? "3.0" : "2.0");
+
+        setVal("awg_version", detectedVersion);
+
+        if (isV31 || isV30) {
+          setVal("awg_header_protection_key", hpk);
+          setVal("awg_content_padding_addition", cpa);
+        } else {
+          setVal("awg_header_protection_key", "");
+          setVal("awg_content_padding_addition", "");
+          uci.unset(UCI_PACKAGE, section_id, "awg_header_protection_key");
+          uci.unset(UCI_PACKAGE, section_id, "awg_content_padding_addition");
+        }
+
+        if (isV31) {
+          setVal("awg_rekey_after_time", rka);
+          setVal("awg_rekey_timeout", rkt);
+          setVal("awg_reject_after_time", rja);
+          setVal("awg_keepalive_timeout", kpt);
+          setVal("awg_max_handshake_attempts", mha);
+        } else {
+          setVal("awg_rekey_after_time", "");
+          setVal("awg_rekey_timeout", "");
+          setVal("awg_reject_after_time", "");
+          setVal("awg_keepalive_timeout", "");
+          setVal("awg_max_handshake_attempts", "");
+          uci.unset(UCI_PACKAGE, section_id, "awg_rekey_after_time");
+          uci.unset(UCI_PACKAGE, section_id, "awg_rekey_timeout");
+          uci.unset(UCI_PACKAGE, section_id, "awg_reject_after_time");
+          uci.unset(UCI_PACKAGE, section_id, "awg_keepalive_timeout");
+          uci.unset(UCI_PACKAGE, section_id, "awg_max_handshake_attempts");
+        }
 
         // --- [Peer] ---
-        if (peer.PublicKey) setVal("awg_peer_public_key", peer.PublicKey);
-        if (peer.PresharedKey) setVal("awg_preshared_key", peer.PresharedKey);
-        if (peer.Endpoint) {
-          const i = peer.Endpoint.lastIndexOf(":");
+        const pub = getConfVal("PublicKey") || getConfVal("awg_peer_public_key");
+        if (pub) setVal("awg_peer_public_key", pub);
+
+        const psk = getConfVal("PresharedKey") || getConfVal("awg_preshared_key");
+        if (psk) setVal("awg_preshared_key", psk);
+
+        const ep = getConfVal("Endpoint");
+        if (ep) {
+          const i = ep.lastIndexOf(":");
           if (i > 0) {
-            setVal("awg_server_address", peer.Endpoint.slice(0, i));
-            setVal("awg_server_port", peer.Endpoint.slice(i + 1));
+            setVal("awg_server_address", ep.slice(0, i));
+            setVal("awg_server_port", ep.slice(i + 1));
           }
         }
 
@@ -8889,6 +9039,40 @@ function createSectionContent(section) {
   o.modalonly = true;
   o.rmempty = true;
   o.depends("action", "awg");
+
+  o = section.taboption(
+    "settings",
+    form.ListValue,
+    "awg_version",
+    _("AmneziaWG Version"),
+    _("Protocol version: 2.0 (standard headers, WARP compatible), 3.0 (header protection key, padding ranges), or 3.1 (header protection key, padding ranges, advanced timers)"),
+  );
+  o.modalonly = true;
+  o.rmempty = false;
+  o.default = "2.0";
+  o.value("2.0", "AmneziaWG 2.0");
+  o.value("3.0", "AmneziaWG 3.0");
+  o.value("3.1", "AmneziaWG 3.1");
+  o.depends("action", "awg");
+  o.write = function (section_id, formvalue) {
+    if (formvalue === "2.0") {
+      uci.unset(UCI_PACKAGE, section_id, "awg_header_protection_key");
+      uci.unset(UCI_PACKAGE, section_id, "awg_content_padding_addition");
+      uci.unset(UCI_PACKAGE, section_id, "awg_rekey_after_time");
+      uci.unset(UCI_PACKAGE, section_id, "awg_rekey_timeout");
+      uci.unset(UCI_PACKAGE, section_id, "awg_reject_after_time");
+      uci.unset(UCI_PACKAGE, section_id, "awg_keepalive_timeout");
+      uci.unset(UCI_PACKAGE, section_id, "awg_max_handshake_attempts");
+    } else if (formvalue === "3.0") {
+      uci.unset(UCI_PACKAGE, section_id, "awg_rekey_after_time");
+      uci.unset(UCI_PACKAGE, section_id, "awg_rekey_timeout");
+      uci.unset(UCI_PACKAGE, section_id, "awg_reject_after_time");
+      uci.unset(UCI_PACKAGE, section_id, "awg_keepalive_timeout");
+      uci.unset(UCI_PACKAGE, section_id, "awg_max_handshake_attempts");
+    }
+    return uci.set(UCI_PACKAGE, section_id, "awg_version", formvalue);
+  };
+
   // ── AmneziaWG obfuscation parameters (NATIVE LUCI CBI STYLE) ──────────────
   const addAwgParam = (name, title, desc, def) => {
     let opt = section.taboption("settings", form.Value, name, title, desc);
@@ -8910,11 +9094,55 @@ function createSectionContent(section) {
   addAwgParam("awg_h2", _("Underload Packet Magic Header (H2)"), "", "2");
   addAwgParam("awg_h3", _("Underload Packet Magic Header (H3)"), "", "3");
   addAwgParam("awg_h4", _("Underload Packet Magic Header (H4)"), "", "4");
-  addAwgParam("awg_i1", _("Init Packet Payload (I1)"), "", "0");
-  addAwgParam("awg_i2", _("Init Packet Payload (I2)"), "", "0");
-  addAwgParam("awg_i3", _("Init Packet Payload (I3)"), "", "0");
-  addAwgParam("awg_i4", _("Init Packet Payload (I4)"), "", "0");
-  addAwgParam("awg_i5", _("Init Packet Payload (I5)"), "", "0");
+  const addAwgPayloadParam = (name, title, desc, def) => {
+    let opt = section.taboption("settings", form.Value, name, title, desc);
+    opt.modalonly = true;
+    opt.rmempty = false;
+    opt.default = def;
+    opt.depends("action", "awg");
+    opt.cfgvalue = function (section_id) {
+      let val = uci.get(UCI_PACKAGE, section_id, name);
+      if (val === undefined || val === null || val === "") return def;
+      return cleanAwgPayload(String(val));
+    };
+    opt.write = function (section_id, formvalue) {
+      return uci.set(UCI_PACKAGE, section_id, name, cleanAwgPayload(formvalue));
+    };
+    return opt;
+  };
+
+  addAwgPayloadParam("awg_i1", _("Init Packet Payload (I1)"), "", "0");
+  addAwgPayloadParam("awg_i2", _("Init Packet Payload (I2)"), "", "0");
+  addAwgPayloadParam("awg_i3", _("Init Packet Payload (I3)"), "", "0");
+  addAwgPayloadParam("awg_i4", _("Init Packet Payload (I4)"), "", "0");
+  addAwgPayloadParam("awg_i5", _("Init Packet Payload (I5)"), "", "0");
+
+  // ── AmneziaWG 3.0 & 3.1 Advanced Parameters ───────────────────────────────
+  const addAwgV3Param = (name, title, desc) => {
+    let opt = section.taboption("settings", form.Value, name, title, desc);
+    opt.modalonly = true;
+    opt.rmempty = true;
+    opt.depends({ action: "awg", awg_version: "3.0" });
+    opt.depends({ action: "awg", awg_version: "3.1" });
+    return opt;
+  };
+
+  const addAwgV31Param = (name, title, desc) => {
+    let opt = section.taboption("settings", form.Value, name, title, desc);
+    opt.modalonly = true;
+    opt.rmempty = true;
+    opt.depends({ action: "awg", awg_version: "3.1" });
+    return opt;
+  };
+
+  addAwgV3Param("awg_header_protection_key", _("Header Protection Key"), _("AmneziaWG 3.0 / 3.1 header protection key"));
+  addAwgV3Param("awg_content_padding_addition", _("Content Padding Addition"), _("AmneziaWG 3.0 / 3.1 content padding range, e.g. 38-104"));
+  addAwgV31Param("awg_rekey_after_time", _("Rekey After Time"), _("AmneziaWG 3.1 rekey after time"));
+  addAwgV31Param("awg_rekey_timeout", _("Rekey Timeout"), _("AmneziaWG 3.1 rekey timeout"));
+  addAwgV31Param("awg_reject_after_time", _("Reject After Time"), _("AmneziaWG 3.1 reject after time"));
+  addAwgV31Param("awg_keepalive_timeout", _("Keepalive Timeout"), _("AmneziaWG 3.1 keepalive timeout"));
+  addAwgV31Param("awg_max_handshake_attempts", _("Max Handshake Attempts"), _("AmneziaWG 3.1 max handshake attempts"));
+
 
   // ── WARP (Cloudflare WARP via sing-box-extended) ──────────────────────────
 

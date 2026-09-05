@@ -13931,7 +13931,7 @@ function renderDnsBenchmarkModal() {
   const statusLabel = E(
     "div",
     {
-      style: "font-size: 13px; font-weight: 500; margin-bottom: 10px; color: var(--text-color, #ccc);"
+      style: "font-size: 13px; font-weight: 500; margin-bottom: 10px; color: var(--text-color-medium, #6c757d);"
     },
     _("Ready to benchmark DNS providers")
   );
@@ -20457,19 +20457,6 @@ function renderVersionPickerDropdown(component) {
     container.appendChild(
       E("div", { class: "tachyon-version-picker__error" }, versionPickerError)
     );
-    container.appendChild(
-      E(
-        "button",
-        {
-          class: "cbi-button tachyon-version-picker__close",
-          click: () => {
-            activeVersionPickerComponent = null;
-            renderUpdatesComponents();
-          }
-        },
-        _("Close")
-      )
-    );
     return container;
   }
   const list = E("div", { class: "tachyon-version-picker__list" });
@@ -20504,19 +20491,6 @@ function renderVersionPickerDropdown(component) {
     );
   }
   container.appendChild(list);
-  container.appendChild(
-    E(
-      "button",
-      {
-        class: "cbi-button tachyon-version-picker__close",
-        click: () => {
-          activeVersionPickerComponent = null;
-          renderUpdatesComponents();
-        }
-      },
-      _("Close")
-    )
-  );
   return container;
 }
 function renderComponentCard(card) {
@@ -21084,7 +21058,7 @@ var styles6 = `
     justify-content: space-between;
     align-items: center;
     gap: 10px;
-    border-bottom: 1px solid var(--border-color, rgba(255,255,255,0.12));
+    border-bottom: 1px solid var(--border-color-low, #dee2e6);
     padding-bottom: 10px;
 }
 
@@ -21097,7 +21071,8 @@ var styles6 = `
 
 .tachyon-update-modal__component-name {
     font-size: 16px;
-    color: var(--text-color-high, #fff);
+    font-weight: bold;
+    color: var(--text-color-high, inherit);
 }
 
 .tachyon-update-modal__version-badge {
@@ -21105,22 +21080,22 @@ var styles6 = `
     font-family: monospace;
     padding: 2px 6px;
     border-radius: 4px;
-    background: var(--background-color-low, rgba(0,0,0,0.1));
-    color: var(--text-color-medium, #aaa);
-    border: 1px solid var(--border-color, rgba(255,255,255,0.1));
+    background: var(--background-color-low, rgba(0, 0, 0, 0.05));
+    color: var(--text-color-high, inherit);
+    border: 1px solid var(--border-color-low, #dee2e6);
 }
 
 .tachyon-update-modal__timer-badge {
     font-size: 13px;
     font-family: monospace;
-    color: var(--text-color-medium, #888);
+    color: var(--text-color-medium, #6c757d);
 }
 
 .tachyon-update-modal__success-banner {
     display: flex;
     align-items: center;
     gap: 8px;
-    color: #2ecc71;
+    color: var(--color-green-base, #2ecc71);
     font-weight: bold;
 }
 
@@ -21128,7 +21103,7 @@ var styles6 = `
     display: flex;
     align-items: center;
     gap: 8px;
-    color: #e74c3c;
+    color: var(--color-red-base, #e74c3c);
     font-weight: bold;
 }
 
@@ -21138,7 +21113,7 @@ var styles6 = `
     align-items: center;
     gap: 8px;
     margin-top: 6px;
-    border-top: 1px solid var(--border-color, rgba(255,255,255,0.12));
+    border-top: 1px solid var(--border-color-low, #dee2e6);
     padding-top: 10px;
     flex-wrap: wrap;
 }
@@ -21163,6 +21138,7 @@ var styles6 = `
     justify-content: space-between;
     align-items: center;
     gap: 8px;
+    color: var(--text-color-high, inherit);
 }
 
 .tachyon-update-modal__log-copy {
@@ -21180,9 +21156,9 @@ var styles6 = `
     font-family: monospace;
     font-size: 11px;
     line-height: 1.5;
-    color: var(--text-color, #ddd);
-    background: rgba(0, 0, 0, 0.35);
-    border: 1px solid var(--border-color, rgba(255,255,255,0.12));
+    color: var(--text-color-high, #212529);
+    background: var(--background-color-low, #f8f9fa);
+    border: 1px solid var(--border-color-low, #dee2e6);
     border-radius: 4px;
     padding: 8px;
     flex: 1 1 auto;
@@ -21192,20 +21168,20 @@ var styles6 = `
 .tachyon-version-picker {
     margin-top: 8px;
     padding: 8px;
-    border: 1px solid var(--border-color, rgba(255,255,255,0.12));
+    border: 1px solid var(--border-color-low, #dee2e6);
     border-radius: 4px;
-    background: rgba(0, 0, 0, 0.2);
+    background: var(--background-color-low, #f8f9fa);
 }
 
 .tachyon-version-picker__loading,
 .tachyon-version-picker__error {
     padding: 6px 0;
     font-size: 12px;
-    color: var(--text-color, #aaa);
+    color: var(--text-color-medium, #6c757d);
 }
 
 .tachyon-version-picker__error {
-    color: var(--error-color, #e74c3c);
+    color: var(--color-red-base, #e74c3c);
 }
 
 .tachyon-version-picker__list {
@@ -21219,7 +21195,7 @@ var styles6 = `
     align-items: center;
     gap: 8px;
     padding: 4px 0;
-    border-bottom: 1px solid var(--border-color, rgba(255,255,255,0.06));
+    border-bottom: 1px solid var(--border-color-low, #e9ecef);
 }
 
 .tachyon-version-picker__item:last-child {
@@ -21229,25 +21205,20 @@ var styles6 = `
 .tachyon-version-picker__tag {
     font-weight: bold;
     font-size: 13px;
-    color: var(--text-color, #ddd);
+    color: var(--text-color-high, inherit);
 }
 
 .tachyon-version-picker__date {
     font-size: 11px;
-    color: var(--text-color, #aaa);
+    color: var(--text-color-medium, #6c757d);
 }
 
 .tachyon-version-picker__prerelease {
     font-size: 10px;
-    color: var(--warn-color, #f39c12);
-    border: 1px solid var(--warn-color, #f39c12);
+    color: var(--color-yellow-base, #f39c12);
+    border: 1px solid var(--color-yellow-base, #f39c12);
     border-radius: 3px;
     padding: 1px 4px;
-}
-
-.tachyon-version-picker__close {
-    margin-top: 8px;
-    width: 100%;
 }
 `;
 

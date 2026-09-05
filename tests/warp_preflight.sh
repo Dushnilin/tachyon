@@ -57,9 +57,19 @@ if (res1 != "<b 0x123450>") {
     warn("awg_tag_chain should pad odd length hex: got " + res1 + "\n");
     exit(1);
 }
-let res2 = common.awg_tag_chain("1234");
-if (res2 != "<b 0x1234>") {
-    warn("awg_tag_chain should format even length hex: got " + res2 + "\n");
+let res3 = common.awg_tag_chain("<t><r 10><b 0x69d107975bdca8994ea71d><rc 12><rd 7>");
+if (res3 != "<t><r 10><b 0x69d107975bdca8994ea71d><rc 12><rd 7>") {
+    warn("awg_tag_chain should preserve tag chain: got " + res3 + "\n");
+    exit(1);
+}
+let res4 = common.awg_tag_chain("<t><r 10><b 0x69d107975bdca8994ea71d><rc 12><rd 7");
+if (res4 != "<t><r 10><b 0x69d107975bdca8994ea71d><rc 12><rd 7>") {
+    warn("awg_tag_chain should heal unclosed tag: got " + res4 + "\n");
+    exit(1);
+}
+let res5 = common.awg_tag_chain("729cd37af1ee1d><t><rc 4><r 24><rd 5");
+if (res5 != "<b 0x729cd37af1ee1d><t><rc 4><r 24><rd 5>") {
+    warn("awg_tag_chain should heal stripped opening and closing tags: got " + res5 + "\n");
     exit(1);
 }
 ' || fail "awg_tag_chain odd-hex padding failed"

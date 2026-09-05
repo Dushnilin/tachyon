@@ -1303,8 +1303,10 @@ function add_awg_endpoint(config, section) {
     let j2 = awg_cps_option(section, "awg_j2");
     let j3 = awg_cps_option(section, "awg_j3");
     let itime = int_option(section, "awg_itime", "0");
-    let is_lx = trim(fs.readfile("/etc/tachyon/sing-box-variant") || "") == "lx" ||
-                index(trim(fs.readfile("/etc/tachyon/sing-box-version") || ""), "-lx") >= 0;
+    let sb_variant_file = getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/sing-box-variant";
+    let sb_version_file = getenv("SB_VERSION_STATE_FILE") || "/etc/tachyon/sing-box-version";
+    let sb_version_val = trim(fs.readfile(sb_version_file) || "");
+    let is_lx = sb_version_val != "" ? (index(sb_version_val, "-lx") >= 0) : (trim(fs.readfile(sb_variant_file) || "") == "lx");
 
     if (is_lx) {
         // sing-box-lx expects AWG fields at the endpoint root (AWG 2.0 schema).
@@ -1326,6 +1328,52 @@ function add_awg_endpoint(config, section) {
         if (i3 != "" && i3 != "0") endpoint.i3 = i3;
         if (i4 != "" && i4 != "0") endpoint.i4 = i4;
         if (i5 != "" && i5 != "0") endpoint.i5 = i5;
+
+        // AmneziaWG version handling: 2.0, 3.0, and 3.1 (sing-box-lx v1.14.0-lx.32+)
+        let awg_ver = option(section, "awg_version", "");
+        if (awg_ver == "") {
+            if (option(section, "awg_rekey_after_time", "") != "" || option(section, "awg_rekey_timeout", "") != "" ||
+                option(section, "awg_reject_after_time", "") != "" || option(section, "awg_keepalive_timeout", "") != "" ||
+                option(section, "awg_max_handshake_attempts", "") != "") {
+                awg_ver = "3.1";
+            } else if (option(section, "awg_header_protection_key", "") != "" || option(section, "awg_content_padding_addition", "") != "") {
+                awg_ver = "3.0";
+            } else {
+                awg_ver = "2.0";
+            }
+        }
+
+        if (awg_ver == "3.0" || awg_ver == "3.1") {
+            let hpk = option(section, "awg_header_protection_key", "");
+            if (hpk != "") {
+                // Ensure S1-S4 are >= 12 if header_protection_key is set (sing-box-lx schema requirement)
+                if (endpoint.s1 < 12) endpoint.s1 = 20;
+                if (endpoint.s2 < 12) endpoint.s2 = 20;
+                if (endpoint.s3 < 12) endpoint.s3 = 20;
+                if (endpoint.s4 < 12) endpoint.s4 = 20;
+                endpoint.header_protection_key = hpk;
+            }
+
+            let cpa = option(section, "awg_content_padding_addition", "");
+            if (cpa != "") endpoint.content_padding_addition = cpa;
+        }
+
+        if (awg_ver == "3.1") {
+            let rka = option(section, "awg_rekey_after_time", "");
+            if (rka != "") endpoint.rekey_after_time = rka;
+
+            let rkt = option(section, "awg_rekey_timeout", "");
+            if (rkt != "") endpoint.rekey_timeout = rkt;
+
+            let rja = option(section, "awg_reject_after_time", "");
+            if (rja != "") endpoint.reject_after_time = rja;
+
+            let kpt = option(section, "awg_keepalive_timeout", "");
+            if (kpt != "") endpoint.keepalive_timeout = kpt;
+
+            let mha = option(section, "awg_max_handshake_attempts", "");
+            if (mha != "") endpoint.max_handshake_attempts = mha;
+        }
         // j1-j3/itime are sing-box-extended-only fields and are not part of
         // the lx AWG 2.0 schema, so they are intentionally not emitted here.
     } else {

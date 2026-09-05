@@ -24,7 +24,7 @@ export function renderDnsBenchmarkModal() {
     'div',
     {
       style:
-        'font-size: 13px; font-weight: 500; margin-bottom: 10px; color: var(--text-color, #ccc);',
+        'font-size: 13px; font-weight: 500; margin-bottom: 10px; color: var(--text-color-medium, #6c757d);',
     },
     _('Ready to benchmark DNS providers'),
   );

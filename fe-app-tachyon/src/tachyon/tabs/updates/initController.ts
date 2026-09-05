@@ -1463,19 +1463,6 @@ function renderVersionPickerDropdown(
     container.appendChild(
       E('div', { class: 'tachyon-version-picker__error' }, versionPickerError),
     );
-    container.appendChild(
-      E(
-        'button',
-        {
-          class: 'cbi-button tachyon-version-picker__close',
-          click: () => {
-            activeVersionPickerComponent = null;
-            renderUpdatesComponents();
-          },
-        },
-        _('Close'),
-      ),
-    );
     return container;
   }
 
@@ -1512,20 +1499,6 @@ function renderVersionPickerDropdown(
   }
 
   container.appendChild(list);
-  container.appendChild(
-    E(
-      'button',
-      {
-        class: 'cbi-button tachyon-version-picker__close',
-        click: () => {
-          activeVersionPickerComponent = null;
-          renderUpdatesComponents();
-        },
-      },
-      _('Close'),
-    ),
-  );
-
   return container;
 }
 

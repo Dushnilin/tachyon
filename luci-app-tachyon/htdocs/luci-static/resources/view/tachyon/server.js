@@ -1466,6 +1466,26 @@ function buildAwgClientConfig(sectionId) {
   if (j3) conf += `J3 = ${j3}\n`;
   if (itime) conf += `Itime = ${itime}\n`;
 
+  const awgVer = uci.get(UCI_PACKAGE, sectionId, "awg_version") || "2.0";
+  if (awgVer === "3.0" || awgVer === "3.1") {
+    const hpk = uci.get(UCI_PACKAGE, sectionId, "awg_header_protection_key") || "";
+    const cpa = uci.get(UCI_PACKAGE, sectionId, "awg_content_padding_addition") || "";
+    if (hpk) conf += `HeaderProtectionKey = ${hpk}\n`;
+    if (cpa) conf += `ContentPaddingAddition = ${cpa}\n`;
+  }
+  if (awgVer === "3.1") {
+    const rka = uci.get(UCI_PACKAGE, sectionId, "awg_rekey_after_time") || "";
+    const rkt = uci.get(UCI_PACKAGE, sectionId, "awg_rekey_timeout") || "";
+    const rja = uci.get(UCI_PACKAGE, sectionId, "awg_reject_after_time") || "";
+    const kpt = uci.get(UCI_PACKAGE, sectionId, "awg_keepalive_timeout") || "";
+    const mha = uci.get(UCI_PACKAGE, sectionId, "awg_max_handshake_attempts") || "";
+    if (rka) conf += `RekeyAfterTime = ${rka}\n`;
+    if (rkt) conf += `RekeyTimeout = ${rkt}\n`;
+    if (rja) conf += `RejectAfterTime = ${rja}\n`;
+    if (kpt) conf += `KeepaliveTimeout = ${kpt}\n`;
+    if (mha) conf += `MaxHandshakeAttempts = ${mha}\n`;
+  }
+
   conf += `\n[Peer]\nPublicKey = ${serverPublicKey}\nEndpoint = ${host}:${port}\nAllowedIPs = 0.0.0.0/0, ::/0\nPersistentKeepalive = ${keepalive}\n`;
   if (presharedKey) conf += `PresharedKey = ${presharedKey}\n`;
 
@@ -3446,6 +3466,51 @@ function createServerContent(section, options = {}) {
   o.rmempty = true;
   o.depends("protocol", "awg");
 
+  o = section.option(
+    form.ListValue,
+    "awg_version",
+    _("AmneziaWG Version"),
+    _("Protocol version: 2.0 (standard integer headers) or 3.1 (header protection key, padding ranges, advanced timers)"),
+  );
+  o.modalonly = true;
+  o.rmempty = false;
+  o.default = "2.0";
+  o.value("2.0", "AmneziaWG 2.0");
+  o.value("3.0", "AmneziaWG 3.0");
+  o.value("3.1", "AmneziaWG 3.1");
+  o.depends("protocol", "awg");
+  o.write = function (section_id, formvalue) {
+    if (formvalue === "2.0") {
+      uci.unset(UCI_PACKAGE, section_id, "awg_header_protection_key");
+      uci.unset(UCI_PACKAGE, section_id, "awg_content_padding_addition");
+      uci.unset(UCI_PACKAGE, section_id, "awg_rekey_after_time");
+      uci.unset(UCI_PACKAGE, section_id, "awg_rekey_timeout");
+      uci.unset(UCI_PACKAGE, section_id, "awg_reject_after_time");
+      uci.unset(UCI_PACKAGE, section_id, "awg_keepalive_timeout");
+      uci.unset(UCI_PACKAGE, section_id, "awg_max_handshake_attempts");
+    } else if (formvalue === "3.0") {
+      uci.unset(UCI_PACKAGE, section_id, "awg_rekey_after_time");
+      uci.unset(UCI_PACKAGE, section_id, "awg_rekey_timeout");
+      uci.unset(UCI_PACKAGE, section_id, "awg_reject_after_time");
+      uci.unset(UCI_PACKAGE, section_id, "awg_keepalive_timeout");
+      uci.unset(UCI_PACKAGE, section_id, "awg_max_handshake_attempts");
+    }
+    return uci.set(UCI_PACKAGE, section_id, "awg_version", formvalue);
+  };
+
+  const awgV3ParamNames = [
+    "awg_header_protection_key",
+    "awg_content_padding_addition",
+  ];
+
+  const awgV31TimerNames = [
+    "awg_rekey_after_time",
+    "awg_rekey_timeout",
+    "awg_reject_after_time",
+    "awg_keepalive_timeout",
+    "awg_max_handshake_attempts",
+  ];
+
   const awgParams = [
     {
       name: "awg_jc",
@@ -3567,6 +3632,48 @@ function createServerContent(section, options = {}) {
       desc: _("Init handshake timeout"),
       default: "",
     },
+    {
+      name: "awg_header_protection_key",
+      title: _("Header Protection Key"),
+      desc: _("AmneziaWG 3.1 header protection key"),
+      default: "",
+    },
+    {
+      name: "awg_content_padding_addition",
+      title: _("Content Padding Addition"),
+      desc: _("AmneziaWG 3.1 content padding range, e.g. 38-104"),
+      default: "",
+    },
+    {
+      name: "awg_rekey_after_time",
+      title: _("Rekey After Time"),
+      desc: _("AmneziaWG 3.1 rekey after time"),
+      default: "",
+    },
+    {
+      name: "awg_rekey_timeout",
+      title: _("Rekey Timeout"),
+      desc: _("AmneziaWG 3.1 rekey timeout"),
+      default: "",
+    },
+    {
+      name: "awg_reject_after_time",
+      title: _("Reject After Time"),
+      desc: _("AmneziaWG 3.1 reject after time"),
+      default: "",
+    },
+    {
+      name: "awg_keepalive_timeout",
+      title: _("Keepalive Timeout"),
+      desc: _("AmneziaWG 3.1 keepalive timeout"),
+      default: "",
+    },
+    {
+      name: "awg_max_handshake_attempts",
+      title: _("Max Handshake Attempts"),
+      desc: _("AmneziaWG 3.1 max handshake attempts"),
+      default: "",
+    },
   ];
 
   awgParams.forEach((param) => {
@@ -3574,7 +3681,14 @@ function createServerContent(section, options = {}) {
     opt.modalonly = true;
     opt.rmempty = true;
     if (param.default !== "") opt.default = param.default;
-    opt.depends("protocol", "awg");
+    if (awgV31TimerNames.includes(param.name)) {
+      opt.depends({ protocol: "awg", awg_version: "3.1" });
+    } else if (awgV3ParamNames.includes(param.name)) {
+      opt.depends({ protocol: "awg", awg_version: "3.0" });
+      opt.depends({ protocol: "awg", awg_version: "3.1" });
+    } else {
+      opt.depends("protocol", "awg");
+    }
   });
 }
 
