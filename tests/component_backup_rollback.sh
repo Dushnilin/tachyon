@@ -49,6 +49,8 @@ export TACHYON_CONFIG_DIR="$MOCK_CONFIG_DIR"
 export TACHYON_RUNTIME_STATE_DIR="$MOCK_VAR_DIR"
 export TACHYON_UCI_STATE_FILE="$WORK_DIR/uci.state"
 export TACHYON_UCI_LOG_FILE="$WORK_DIR/uci.log"
+export SB_VERSION_STATE_FILE="$WORK_DIR/sing-box-version"
+export SB_VARIANT_STATE_FILE="$WORK_DIR/sing-box-variant"
 export PATH="$MOCK_BIN_DIR:$PATH"
 
 # Test 1: Triggering rollback when no backup exists should fail cleanly
