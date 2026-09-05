@@ -758,60 +758,95 @@ function controller(bus, opts) {
         if (setting("recovery_bypass", "0") == "1") return;
 
         let def_dev = get_default_route_dev();
-        let proto = uci_core.get("network", "wan", "proto") || "dhcp";
-        let device = trim(setting("output_network_interface", "") ||
-                          uci_core.get("network", "wan", "device") ||
-                          uci_core.get("network", "wan", "ifname") || "");
-        if (device == "" && def_dev != null)
-            device = def_dev;
+
+        // If Tachyon has an explicit output interface, use it as the real WAN.
+        // This supports modemmanager/wwan, USB modems, and non-standard uplinks
+        // where network.interface.wan may be unused or disconnected.
+        let configured_device = trim(setting("output_network_interface", ""));
+        let device = configured_device != "" ? configured_device : (def_dev || "");
 
         let no_address = true;
-        let no_gateway = (def_dev == null);
+        let no_gateway = true;
+        let iface = device;
 
-        // 1. Проверяем статус интерфейса через netifd ubus
-        let ubus_data = command_output_from_args([ "ubus", "-S", "call", "network.interface.wan", "status" ]);
-        let ubus_obj = null;
-        try {
-            ubus_obj = json(ubus_data);
-        } catch (e) {}
-        let iface = "";
-        if (type(ubus_obj) == "object" && ubus_obj.up == true) {
-            iface = ubus_obj.l3_device || ubus_obj.device || "";
-            let addrs = common.array_or_empty(ubus_obj["ipv4-address"]);
-            let addrs6 = common.array_or_empty(ubus_obj["ipv6-address"]);
-            if (length(addrs) > 0 || length(addrs6) > 0) {
-                no_address = false;
+        // 1. If explicit output interface is configured, check it directly
+        if (configured_device != "") {
+            // First check if ubus knows it as a logical interface (e.g. wan2, wwan, modem)
+            let ubus_data = command_output_from_args([
+                "ubus", "-S", "call", "network.interface." + configured_device, "status"
+            ]);
+            let ubus_obj = null;
+            try {
+                ubus_obj = json(ubus_data);
+            } catch (e) {}
+
+            if (type(ubus_obj) == "object" && ubus_obj.up == true) {
+                iface = ubus_obj.l3_device || ubus_obj.device || iface;
+                let addrs = common.array_or_empty(ubus_obj["ipv4-address"]);
+                let addrs6 = common.array_or_empty(ubus_obj["ipv6-address"]);
+                if (length(addrs) > 0 || length(addrs6) > 0)
+                    no_address = false;
+                if (length(common.array_or_empty(ubus_obj.route)) > 0 || (ubus_obj.data && ubus_obj.data.gateway))
+                    no_gateway = false;
             }
-            if (length(common.array_or_empty(ubus_obj.route)) > 0 || (ubus_obj.data && ubus_obj.data.gateway)) {
+
+            // Verify L3 device directly if address not confirmed yet
+            if (no_address && iface != "") {
+                let addr_out = command_capture("ip addr show " + shell_quote(iface) + " 2>/dev/null").output;
+                if (index(addr_out, "inet ") >= 0 || index(addr_out, "inet6 ") >= 0)
+                    no_address = false;
+            }
+
+            if (def_dev != null && (def_dev == device || def_dev == iface))
                 no_gateway = false;
+        }
+
+        // 2. If no explicit output interface is configured, preserve standard WAN ubus check
+        if (configured_device == "") {
+            let ubus_data = command_output_from_args([ "ubus", "-S", "call", "network.interface.wan", "status" ]);
+            let ubus_obj = null;
+            try {
+                ubus_obj = json(ubus_data);
+            } catch (e) {}
+
+            if (type(ubus_obj) == "object" && ubus_obj.up == true) {
+                iface = ubus_obj.l3_device || ubus_obj.device || iface;
+                let addrs = common.array_or_empty(ubus_obj["ipv4-address"]);
+                let addrs6 = common.array_or_empty(ubus_obj["ipv6-address"]);
+                if (length(addrs) > 0 || length(addrs6) > 0)
+                    no_address = false;
+                if (length(common.array_or_empty(ubus_obj.route)) > 0 || (ubus_obj.data && ubus_obj.data.gateway))
+                    no_gateway = false;
             }
-        }
 
-        if (iface == "") {
-            if (device != "")
-                iface = (proto == "pppoe") ? "pppoe-wan" : device;
-            else
-                iface = (proto == "pppoe") ? "pppoe-wan" : "eth0";
-        }
-
-        // 2. Если адрес еще не подтвержден ubus, проверяем ip addr
-        if (no_address) {
-            let addr_out = command_capture("ip addr show " + shell_quote(iface) + " 2>/dev/null").output;
-            if (index(addr_out, "inet ") >= 0 || index(addr_out, "inet6 ") >= 0) {
-                no_address = false;
+            if (iface == "") {
+                let proto = uci_core.get("network", "wan", "proto") || "dhcp";
+                let wan_dev = uci_core.get("network", "wan", "device") || uci_core.get("network", "wan", "ifname");
+                if (wan_dev)
+                    iface = (proto == "pppoe") ? "pppoe-wan" : wan_dev;
+                else
+                    iface = (proto == "pppoe") ? "pppoe-wan" : (def_dev || "eth0");
             }
+
+            if (no_address && iface != "") {
+                let addr_out = command_capture("ip addr show " + shell_quote(iface) + " 2>/dev/null").output;
+                if (index(addr_out, "inet ") >= 0 || index(addr_out, "inet6 ") >= 0)
+                    no_address = false;
+            }
+
+            if (def_dev != null)
+                no_gateway = false;
         }
 
-        // 3. Если шлюз еще не подтвержден, проверяем таблицы маршрутизации
+        // 3. Final fallback: verify that a default route exists in routing table
         if (no_gateway) {
             let route_out = command_capture("ip -4 route show default 2>/dev/null").output;
             if (index(route_out, "default") >= 0) {
                 no_gateway = false;
             } else {
                 let route_all = command_capture("ip route 2>/dev/null").output;
-                if (index(route_all, "default") >= 0) {
+                if (index(route_all, "default") >= 0)
                     no_gateway = false;
-                }
             }
         }
 
