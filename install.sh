@@ -2418,6 +2418,11 @@ install_selected_sing_box() {
     fi
 
     [ -x /usr/bin/tachyon ] || fail "tachyon backend must be installed before sing-box component action"
+    for kmod in inet_diag netlink_diag tun nft_tproxy; do
+        modprobe "$kmod" 2>/dev/null || true
+    done
+    [ -d /dev/net ] || mkdir -p /dev/net
+    [ -c /dev/net/tun ] || mknod /dev/net/tun c 10 200 2>/dev/null || true
     msg "$(installer_text installing_singbox_backend)"
     if ! run_logged "sing-box" /usr/bin/tachyon component_action sing_box "$action"; then
         fail "Failed to install selected sing-box variant"
@@ -2572,6 +2577,12 @@ install_backend_package() {
             pkg_install_name "$kmod" || warn "Could not install $kmod (this is normal if built-in or using custom firmware)"
         fi
     done
+
+    for kmod in inet_diag netlink_diag tun nft_tproxy nft_nat; do
+        modprobe "$kmod" 2>/dev/null || true
+    done
+    [ -d /dev/net ] || mkdir -p /dev/net
+    [ -c /dev/net/tun ] || mknod /dev/net/tun c 10 200 2>/dev/null || true
 
     # Protect user configuration from being overwritten by apk.
     # apk add --allow-untrusted may not respect conffiles_static on all

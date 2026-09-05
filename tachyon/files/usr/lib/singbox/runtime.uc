@@ -379,6 +379,10 @@ function managed_service_text() {
         "START=99\n" +
         "PROG=\"/usr/bin/sing-box\"\n\n" +
         "start_service() {\n" +
+        "    [ -d /dev/net ] || mkdir -p /dev/net\n" +
+        "    [ -c /dev/net/tun ] || mknod /dev/net/tun c 10 200 2>/dev/null || true\n" +
+        "    modprobe tun 2>/dev/null || true\n" +
+        "    modprobe inet_diag 2>/dev/null || true\n\n" +
         "    config_load \"sing-box\"\n" +
         "    local enabled config_file working_directory\n" +
         "    local log_stderr\n\n" +

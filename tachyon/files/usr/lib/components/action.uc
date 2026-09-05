@@ -849,6 +849,40 @@ function ensure_package_tool(tool_name, package_name, component, action) {
     return run_logged("Installing bootstrap package " + as_string(package_name), pkg_install_name_command(package_name));
 }
 
+function ensure_sing_box_dependencies() {
+    let kmods = [ "kmod-inet-diag", "kmod-netlink-diag", "kmod-tun", "kmod-nft-tproxy", "kmod-nft-nat", "ca-bundle" ];
+    let missing = [];
+    for (let kmod in kmods) {
+        if (!pkg_is_installed(kmod)) {
+            if (kmod == "kmod-tun" && file_exists("/dev/net/tun"))
+                continue;
+            push(missing, kmod);
+        }
+    }
+
+    if (length(missing) > 0) {
+        updates_log("Installing missing dependencies for sing-box: " + join(", ", missing));
+        run_logged("Updating package lists for sing-box dependencies", pkg_list_update_command());
+
+        for (let kmod in missing) {
+            if (!run_logged("Installing dependency " + kmod, pkg_install_name_command(kmod))) {
+                if (kmod == "kmod-tun" && file_exists("/dev/net/tun"))
+                    continue;
+                updates_log("Could not install " + kmod + " (may be built-in or custom firmware)", "warn");
+            }
+        }
+    }
+
+    command_success_from_args([ "modprobe", "tun" ]);
+    command_success_from_args([ "modprobe", "inet_diag" ]);
+    if (!file_exists("/dev/net/tun")) {
+        command_success_from_args([ "mkdir", "-p", "/dev/net" ]);
+        command_success_from_args([ "mknod", "/dev/net/tun", "c", "10", "200" ]);
+        command_success_from_args([ "chmod", "0666", "/dev/net/tun" ]);
+    }
+    return true;
+}
+
 function clear_version_caches() {
     remove_file("/tmp/tachyon.latest-version.cache");
     remove_file(SYSTEM_INFO_CACHE_FILE);
@@ -867,6 +901,10 @@ function managed_sing_box_service_text() {
         "START=99\n" +
         "PROG=\"/usr/bin/sing-box\"\n\n" +
         "start_service() {\n" +
+        "    [ -d /dev/net ] || mkdir -p /dev/net\n" +
+        "    [ -c /dev/net/tun ] || mknod /dev/net/tun c 10 200 2>/dev/null || true\n" +
+        "    modprobe tun 2>/dev/null || true\n" +
+        "    modprobe inet_diag 2>/dev/null || true\n\n" +
         "    config_load \"sing-box\"\n" +
         "    local enabled config_file working_directory\n" +
         "    local log_stderr\n\n" +
@@ -1888,6 +1926,8 @@ function install_sing_box_extended_package(action, target_tag) {
         check_success("sing_box", normalize_sing_box_version(current_version), normalize_sing_box_version(latest_version), release.release_url);
     }
 
+    ensure_sing_box_dependencies();
+
     let package_file = tmp_dir + "/" + release.asset_name;
     if (!download_with_retry(release.asset_url, package_file, release.asset_name))
         action_fail("sing_box", action, "Failed to download sing-box-extended package", current_version, latest_version);
@@ -2003,6 +2043,8 @@ function install_sing_box_extended(action, compressed, target_tag) {
             action_fail("sing_box", action, "sing-box-extended compressed is not installed", current_version, latest_version);
         check_success("sing_box", normalize_sing_box_version(current_version), normalize_sing_box_version(latest_version), release.release_url);
     }
+
+    ensure_sing_box_dependencies();
 
     let archive_file = tmp_dir + "/" + release.asset_name;
     if (!download_with_retry(release.asset_url, archive_file, release.asset_name))
@@ -2164,6 +2206,8 @@ function install_sing_box_lx(action, target_tag) {
             action_fail("sing_box", action, "sing-box-lx is not installed", current_version, latest_version);
         check_success("sing_box", normalize_sing_box_version(current_version), normalize_sing_box_version(latest_version), release.release_url);
     }
+
+    ensure_sing_box_dependencies();
 
     let archive_file = tmp_dir + "/" + release.asset_name;
     if (!download_with_retry(release.asset_url, archive_file, release.asset_name))
@@ -2328,6 +2372,8 @@ function install_package_sing_box(action, tiny) {
             action_fail("sing_box", action, "sing-box-tiny is not installed", current_version, latest_version);
         check_success("sing_box", current_version, latest_version, "");
     }
+
+    ensure_sing_box_dependencies();
 
     if (!run_logged("Updating package lists before " + package_name + " installation", pkg_list_update_command()))
         action_fail("sing_box", action, "Failed to update package lists", current_version, latest_version);

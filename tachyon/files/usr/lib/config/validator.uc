@@ -1999,7 +1999,7 @@ function get_sing_box_version(ctx) {
     if (!command_exists("sing-box"))
         return "";
 
-    if (sing_box_compressed_marker_set(ctx))
+    if (sing_box_compressed_marker_set(ctx) || sing_box_lx_marker_set(ctx))
         return sing_box_version_state(ctx);
 
     return first_line_last_field(command_output_from_args([ "sing-box", "version" ]));
@@ -2042,7 +2042,7 @@ function sing_box_output_has_build_tag(output, tag) {
 }
 
 function sing_box_supports_tailscale(ctx, version, version_output) {
-    if (command_exists("sing-box") && sing_box_compressed_marker_set(ctx))
+    if (command_exists("sing-box") && (sing_box_compressed_marker_set(ctx) || sing_box_lx_marker_set(ctx)))
         return true;
 
     if (sing_box_is_extended(ctx, version))
@@ -2080,6 +2080,11 @@ function managed_sing_box_service_script(marker) {
         "PROG=\"/usr/bin/sing-box\"\n" +
         "\n" +
         "start_service() {\n" +
+        "    [ -d /dev/net ] || mkdir -p /dev/net\n" +
+        "    [ -c /dev/net/tun ] || mknod /dev/net/tun c 10 200 2>/dev/null || true\n" +
+        "    modprobe tun 2>/dev/null || true\n" +
+        "    modprobe inet_diag 2>/dev/null || true\n" +
+        "\n" +
         "    config_load \"sing-box\"\n" +
         "    local enabled config_file working_directory\n" +
         "    local log_stderr\n" +
@@ -2337,11 +2342,11 @@ function check_runtime_requirements() {
         fail_requirement("Package 'sing-box' version (" + sing_box_version + ") is lower than the required minimum (" + ctx.sing_box_required_version + "). Update sing-box: opkg update && opkg remove sing-box && opkg install sing-box. Aborted.", "error");
     }
 
-    if (!service_exists("sing-box") && sing_box_compressed_marker_set(ctx))
+    if (!service_exists("sing-box") && (sing_box_compressed_marker_set(ctx) || sing_box_lx_marker_set(ctx)))
         install_managed_sing_box_service_script(ctx);
 
     if (!service_exists("sing-box"))
-        fail_requirement("Service 'sing-box' is missing. Install a sing-box package or reinstall the compressed sing-box-extended binary variant. Aborted.", "error");
+        fail_requirement("Service 'sing-box' is missing. Install a sing-box package or reinstall sing-box-lx / sing-box-extended binary variant. Aborted.", "error");
 
     validate_extended_server_features(ctx, sing_box_version, sing_box_version_output);
     validate_section_action_variant_support(ctx, sing_box_version);
