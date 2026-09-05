@@ -506,9 +506,25 @@ function base_config(settings, service_address, runtime_context) {
         servers: dns_servers,
         rules: dns_rules,
         final: runtime_constants.DNS_SERVER_TAG,
-        strategy: option(settings, "dns_strategy", "prefer_ipv4"),
-        independent_cache: true
+        strategy: option(settings, "dns_strategy", "prefer_ipv4")
     };
+
+    let sb_version_file = getenv("SB_VERSION_STATE_FILE") || "/etc/tachyon/sing-box-version";
+    let sb_version_val = trim(fs.readfile(sb_version_file) || "");
+    if (sb_version_val == "") {
+        let sb_ui_cache = getenv("TACHYON_UI_SING_BOX_VERSION_CACHE_FILE") || "/var/run/tachyon/ui-state/sing-box-version";
+        sb_version_val = trim(fs.readfile(sb_ui_cache) || "");
+    }
+    let use_legacy_rdrc = match(sb_version_val, /^v?1\.1[0-3]\./) != null;
+    let cache_file_section = {
+        enabled: true,
+        path: cache_path,
+        store_fakeip: true
+    };
+    if (use_legacy_rdrc)
+        cache_file_section.store_rdrc = true;
+    else
+        cache_file_section.store_dns = true;
 
     return {
         log: {
@@ -525,12 +541,7 @@ function base_config(settings, service_address, runtime_context) {
         route: runtime_route.config(settings, runtime_context),
         services: [],
         experimental: {
-            cache_file: {
-                enabled: true,
-                path: cache_path,
-                store_fakeip: true,
-                store_rdrc: true
-            },
+            cache_file: cache_file_section,
             clash_api: clash_api_config(settings, service_address)
         },
         __dns_hosts_predefined: dns_hosts_predefined

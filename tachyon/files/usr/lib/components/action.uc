@@ -1903,13 +1903,13 @@ function install_sing_box_extended_package(action, target_tag) {
     let cronet_touched = false;
     if (current_variant == "extended" || current_variant == "extended-compressed") {
         if (file_exists("/usr/bin/sing-box")) {
-            backup_binary = "/usr/bin/sing-box.tachyon-backup." + owner_pid();
+            backup_binary = tmp_dir + "/sing-box.tachyon-backup";
             if (!move_file_to_backup("/usr/bin/sing-box", backup_binary))
                 action_fail("sing_box", action, "Failed to backup current sing-box binary", current_version, latest_version);
         }
         if (file_exists("/usr/lib/libcronet.so")) {
             cronet_touched = true;
-            backup_cronet = "/usr/lib/libcronet.so.tachyon-backup." + owner_pid();
+            backup_cronet = tmp_dir + "/libcronet.so.tachyon-backup";
             if (!move_file_to_backup("/usr/lib/libcronet.so", backup_cronet)) {
                 restore_sing_box_after_failed_extended_package_install(current_variant, backup_binary, backup_cronet, previous_marker, previous_version_state, package_file, cronet_touched);
                 action_fail("sing_box", action, "Failed to backup current libcronet.so", current_version, latest_version);
@@ -1927,7 +1927,7 @@ function install_sing_box_extended_package(action, target_tag) {
     }
 
     if (backup_binary == "" && file_exists("/usr/bin/sing-box")) {
-        backup_binary = "/usr/bin/sing-box.tachyon-backup." + owner_pid();
+        backup_binary = tmp_dir + "/sing-box.tachyon-backup";
         if (!move_file_to_backup("/usr/bin/sing-box", backup_binary)) {
             restore_sing_box_after_failed_extended_package_install(current_variant, backup_binary, backup_cronet, previous_marker, previous_version_state, package_file, cronet_touched);
             action_fail("sing_box", action, "Failed to backup existing sing-box binary", current_version, latest_version);
@@ -1935,7 +1935,7 @@ function install_sing_box_extended_package(action, target_tag) {
     }
     if (!cronet_touched && file_exists("/usr/lib/libcronet.so")) {
         cronet_touched = true;
-        backup_cronet = "/usr/lib/libcronet.so.tachyon-backup." + owner_pid();
+        backup_cronet = tmp_dir + "/libcronet.so.tachyon-backup";
         if (!move_file_to_backup("/usr/lib/libcronet.so", backup_cronet)) {
             restore_sing_box_after_failed_extended_package_install(current_variant, backup_binary, backup_cronet, previous_marker, previous_version_state, package_file, cronet_touched);
             action_fail("sing_box", action, "Failed to backup current libcronet.so", current_version, latest_version);
@@ -2056,7 +2056,7 @@ function install_sing_box_extended(action, compressed, target_tag) {
     let backup_cronet = "";
     let cronet_touched = false;
     if (file_exists("/usr/bin/sing-box")) {
-        backup_binary = "/usr/bin/sing-box.tachyon-backup." + owner_pid();
+        backup_binary = tmp_dir + "/sing-box.tachyon-backup";
         if (!move_file_to_backup("/usr/bin/sing-box", backup_binary)) {
             remove_file(backup_binary);
             remove_file(tmp_binary);
@@ -2068,7 +2068,7 @@ function install_sing_box_extended(action, compressed, target_tag) {
     if (cronet_path != "") {
         cronet_touched = true;
         if (file_exists("/usr/lib/libcronet.so")) {
-            backup_cronet = "/usr/lib/libcronet.so.tachyon-backup." + owner_pid();
+            backup_cronet = tmp_dir + "/libcronet.so.tachyon-backup";
             if (!move_file_to_backup("/usr/lib/libcronet.so", backup_cronet)) {
                 restore_sing_box_after_failed_extended_install(current_variant, backup_binary, backup_cronet, previous_marker, previous_version_state, archive_file, cronet_touched);
                 remove_file(tmp_binary);
@@ -2217,7 +2217,7 @@ function install_sing_box_lx(action, target_tag) {
     let backup_cronet = "";
     let cronet_touched = false;
     if (file_exists("/usr/bin/sing-box")) {
-        backup_binary = "/usr/bin/sing-box.tachyon-backup." + owner_pid();
+        backup_binary = tmp_dir + "/sing-box.tachyon-backup";
         if (!move_file_to_backup("/usr/bin/sing-box", backup_binary)) {
             remove_file(backup_binary);
             remove_file(tmp_binary);
@@ -2229,7 +2229,7 @@ function install_sing_box_lx(action, target_tag) {
     if (cronet_path != "") {
         cronet_touched = true;
         if (file_exists("/usr/lib/libcronet.so")) {
-            backup_cronet = "/usr/lib/libcronet.so.tachyon-backup." + owner_pid();
+            backup_cronet = tmp_dir + "/libcronet.so.tachyon-backup";
             if (!move_file_to_backup("/usr/lib/libcronet.so", backup_cronet)) {
                 restore_sing_box_after_failed_extended_install(current_variant, backup_binary, backup_cronet, previous_marker, previous_version_state, archive_file, cronet_touched);
                 remove_file(tmp_binary);
@@ -2348,14 +2348,14 @@ function install_package_sing_box(action, tiny) {
     let backup_on_tmpfs = previous_variant == "extended-compressed";
     if (file_exists("/usr/bin/sing-box")) {
         backup_binary = backup_on_tmpfs ? tmp_dir + "/sing-box.tachyon-backup" :
-            "/usr/bin/sing-box.tachyon-backup." + owner_pid();
+            tmp_dir + "/sing-box.tachyon-backup";
         if (!move_file_to_backup("/usr/bin/sing-box", backup_binary))
             action_fail("sing_box", action, "Failed to backup current sing-box binary", current_version, latest_version);
     }
     if (file_exists("/usr/lib/libcronet.so")) {
         cronet_touched = true;
         backup_cronet = backup_on_tmpfs ? tmp_dir + "/libcronet.so.tachyon-backup" :
-            "/usr/lib/libcronet.so.tachyon-backup." + owner_pid();
+            tmp_dir + "/libcronet.so.tachyon-backup";
         if (!move_file_to_backup("/usr/lib/libcronet.so", backup_cronet)) {
             restore_sing_box_backup(backup_binary);
             action_fail("sing_box", action, "Failed to backup current libcronet.so", current_version, latest_version);
