@@ -336,7 +336,28 @@ function add_standard_inbound(config, section, protocol, tag_name) {
         let j3 = awg_cps_option(section, "awg_j3");
         let itime = int_option(section, "awg_itime", "0");
 
-        if (is_lx) {
+        let sb_variant_file = getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/sing-box-variant";
+        let sb_version_file = getenv("SB_VERSION_STATE_FILE") || "/etc/tachyon/sing-box-version";
+        let sb_version_val = trim(fs.readfile(sb_version_file) || "");
+        let is_lx = sb_version_val != "" ? (index(sb_version_val, "-lx") >= 0) : (trim(fs.readfile(sb_variant_file) || "") == "lx");
+
+        // AmneziaWG version handling: 2.0, 3.0, and 3.1 (sing-box-lx v1.14.0-lx.32+)
+        let awg_ver = option(section, "awg_version", "");
+        if (awg_ver == "") {
+            if (option(section, "awg_rekey_after_time", "") != "" || option(section, "awg_rekey_timeout", "") != "" ||
+                option(section, "awg_reject_after_time", "") != "" || option(section, "awg_keepalive_timeout", "") != "" ||
+                option(section, "awg_max_handshake_attempts", "") != "") {
+                awg_ver = "3.1";
+            } else if (option(section, "awg_header_protection_key", "") != "" || option(section, "awg_content_padding_addition", "") != "") {
+                awg_ver = "3.0";
+            } else {
+                awg_ver = "2.0";
+            }
+        }
+
+        let is_lx_schema = is_lx;
+
+        if (is_lx_schema) {
             // sing-box-lx expects AWG fields at the inbound root (AWG 2.0 schema);
             // magic headers accept a single value or an AWG 2.0 "min-max" range.
             // j1-j3/itime are sing-box-extended-only and are not emitted here.
@@ -356,20 +377,6 @@ function add_standard_inbound(config, section, protocol, tag_name) {
             if (i3 != "" && i3 != "0") inbound.i3 = i3;
             if (i4 != "" && i4 != "0") inbound.i4 = i4;
             if (i5 != "" && i5 != "0") inbound.i5 = i5;
-
-            // AmneziaWG version handling: 2.0, 3.0, and 3.1 (sing-box-lx v1.14.0-lx.32+)
-            let awg_ver = option(section, "awg_version", "");
-            if (awg_ver == "") {
-                if (option(section, "awg_rekey_after_time", "") != "" || option(section, "awg_rekey_timeout", "") != "" ||
-                    option(section, "awg_reject_after_time", "") != "" || option(section, "awg_keepalive_timeout", "") != "" ||
-                    option(section, "awg_max_handshake_attempts", "") != "") {
-                    awg_ver = "3.1";
-                } else if (option(section, "awg_header_protection_key", "") != "" || option(section, "awg_content_padding_addition", "") != "") {
-                    awg_ver = "3.0";
-                } else {
-                    awg_ver = "2.0";
-                }
-            }
 
             if (awg_ver == "3.0" || awg_ver == "3.1") {
                 let hpk = option(section, "awg_header_protection_key", "");
@@ -419,6 +426,39 @@ function add_standard_inbound(config, section, protocol, tag_name) {
                 if (j3 != "") amnezia.j3 = j3;
                 if (itime > 0) amnezia.itime = itime;
             }
+
+            // sing-box-extended 2.7.0+ supports AWG 3.0 / 3.1 inside the amnezia object
+            if (awg_ver == "3.0" || awg_ver == "3.1") {
+                let hpk = option(section, "awg_header_protection_key", "");
+                if (hpk != "") {
+                    if (amnezia.s1 < 12) amnezia.s1 = 20;
+                    if (amnezia.s2 < 12) amnezia.s2 = 20;
+                    if (amnezia.s3 < 12) amnezia.s3 = 20;
+                    if (amnezia.s4 < 12) amnezia.s4 = 20;
+                    amnezia.header_protection_key = hpk;
+                }
+
+                let cpa = option(section, "awg_content_padding_addition", "");
+                if (cpa != "") amnezia.content_padding_addition = cpa;
+            }
+
+            if (awg_ver == "3.1") {
+                let rka = option(section, "awg_rekey_after_time", "");
+                if (rka != "") amnezia.rekey_after_time = rka;
+
+                let rkt = option(section, "awg_rekey_timeout", "");
+                if (rkt != "") amnezia.rekey_timeout = rkt;
+
+                let rja = option(section, "awg_reject_after_time", "");
+                if (rja != "") amnezia.reject_after_time = rja;
+
+                let kpt = option(section, "awg_keepalive_timeout", "");
+                if (kpt != "") amnezia.keepalive_timeout = kpt;
+
+                let mha = option(section, "awg_max_handshake_attempts", "");
+                if (mha != "") amnezia.max_handshake_attempts = mha;
+            }
+
             inbound.amnezia = amnezia;
         }
     }
@@ -428,7 +468,7 @@ function add_standard_inbound(config, section, protocol, tag_name) {
 
     apply_tls(inbound, section, protocol);
     apply_transport(inbound, section, protocol);
-    if (protocol == "awg" && is_lx) {
+    if (protocol == "awg" && is_lx_schema) {
         let server_port = int_option(section, "awg_server_port", int_option(section, "listen_port", 51820));
         inbound.listen_port = server_port;
         delete inbound.listen;

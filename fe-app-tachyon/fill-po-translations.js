@@ -1,6 +1,8 @@
 import fs from 'fs/promises';
 
 const dictionary = {
+  "AmneziaWG (Cloudflare WARP) configuration generated and loaded successfully!": "Конфигурация AmneziaWG (Cloudflare WARP) успешно сгенерирована и загружена!",
+  "Notice: Cloudflare WARP edge servers only support AmneziaWG 2.0 (WireGuard). The profile has been automatically set to 2.0 so the connection works properly. Versions 3.0 and 3.1 require an AmneziaWG server via 'Import .conf'.": "Примечание: серверы Cloudflare WARP поддерживают только AmneziaWG 2.0 (WireGuard). Профиль автоматически переключен на версию 2.0 для корректной работы. Для версий 3.0 и 3.1 используйте свой сервер AmneziaWG через кнопку «Импорт .conf».",
   "Service Health Check": "Проверка доступности сервисов",
   "Automated DPI Strategy Fuzzer & Auto-Tuner": "Автоматический подборщик и оптимизатор стратегий DPI",
   "Benchmarks a suite of packet desynchronization strategies in an isolated sandbox without disrupting active traffic, ranking them by latency, TTFB, and throughput.": "Тестирует набор стратегий десинхронизации пакетов в изолированном сэндбоксе без влияния на активный трафик и ранжирует их по задержке, TTFB и скорости.",

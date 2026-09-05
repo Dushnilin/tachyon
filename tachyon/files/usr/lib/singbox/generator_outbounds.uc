@@ -1328,54 +1328,6 @@ function add_awg_endpoint(config, section) {
         if (i3 != "" && i3 != "0") endpoint.i3 = i3;
         if (i4 != "" && i4 != "0") endpoint.i4 = i4;
         if (i5 != "" && i5 != "0") endpoint.i5 = i5;
-
-        // AmneziaWG version handling: 2.0, 3.0, and 3.1 (sing-box-lx v1.14.0-lx.32+)
-        let awg_ver = option(section, "awg_version", "");
-        if (awg_ver == "") {
-            if (option(section, "awg_rekey_after_time", "") != "" || option(section, "awg_rekey_timeout", "") != "" ||
-                option(section, "awg_reject_after_time", "") != "" || option(section, "awg_keepalive_timeout", "") != "" ||
-                option(section, "awg_max_handshake_attempts", "") != "") {
-                awg_ver = "3.1";
-            } else if (option(section, "awg_header_protection_key", "") != "" || option(section, "awg_content_padding_addition", "") != "") {
-                awg_ver = "3.0";
-            } else {
-                awg_ver = "2.0";
-            }
-        }
-
-        if (awg_ver == "3.0" || awg_ver == "3.1") {
-            let hpk = option(section, "awg_header_protection_key", "");
-            if (hpk != "") {
-                // Ensure S1-S4 are >= 12 if header_protection_key is set (sing-box-lx schema requirement)
-                if (endpoint.s1 < 12) endpoint.s1 = 20;
-                if (endpoint.s2 < 12) endpoint.s2 = 20;
-                if (endpoint.s3 < 12) endpoint.s3 = 20;
-                if (endpoint.s4 < 12) endpoint.s4 = 20;
-                endpoint.header_protection_key = hpk;
-            }
-
-            let cpa = option(section, "awg_content_padding_addition", "");
-            if (cpa != "") endpoint.content_padding_addition = cpa;
-        }
-
-        if (awg_ver == "3.1") {
-            let rka = option(section, "awg_rekey_after_time", "");
-            if (rka != "") endpoint.rekey_after_time = rka;
-
-            let rkt = option(section, "awg_rekey_timeout", "");
-            if (rkt != "") endpoint.rekey_timeout = rkt;
-
-            let rja = option(section, "awg_reject_after_time", "");
-            if (rja != "") endpoint.reject_after_time = rja;
-
-            let kpt = option(section, "awg_keepalive_timeout", "");
-            if (kpt != "") endpoint.keepalive_timeout = kpt;
-
-            let mha = option(section, "awg_max_handshake_attempts", "");
-            if (mha != "") endpoint.max_handshake_attempts = mha;
-        }
-        // j1-j3/itime are sing-box-extended-only fields and are not part of
-        // the lx AWG 2.0 schema, so they are intentionally not emitted here.
     } else {
         if (i1 != "") amnezia.i1 = i1;
         if (i2 != "") amnezia.i2 = i2;
@@ -1393,7 +1345,79 @@ function add_awg_endpoint(config, section) {
             if (j3 != "") amnezia.j3 = j3;
             if (itime > 0) amnezia.itime = itime;
         }
+
         endpoint.amnezia = amnezia;
+    }
+
+    // AmneziaWG version handling: 2.0, 3.0, and 3.1 (sing-box-lx & sing-box-extended 2.7.0+)
+    let awg_ver = option(section, "awg_version", "");
+    if (awg_ver == "") {
+        if (option(section, "awg_rekey_after_time", "") != "" || option(section, "awg_rekey_timeout", "") != "" ||
+            option(section, "awg_reject_after_time", "") != "" || option(section, "awg_keepalive_timeout", "") != "" ||
+            option(section, "awg_max_handshake_attempts", "") != "") {
+            awg_ver = "3.1";
+        } else if (option(section, "awg_header_protection_key", "") != "" || option(section, "awg_content_padding_addition", "") != "") {
+            awg_ver = "3.0";
+        } else {
+            awg_ver = "2.0";
+        }
+    }
+
+    if (awg_ver == "3.0" || awg_ver == "3.1") {
+        let hpk = option(section, "awg_header_protection_key", "");
+        if (hpk != "") {
+            if (is_lx) {
+                if (endpoint.s1 < 12) endpoint.s1 = 20;
+                if (endpoint.s2 < 12) endpoint.s2 = 20;
+                if (endpoint.s3 < 12) endpoint.s3 = 20;
+                if (endpoint.s4 < 12) endpoint.s4 = 20;
+                endpoint.header_protection_key = hpk;
+            } else {
+                if (endpoint.amnezia.s1 < 12) endpoint.amnezia.s1 = 20;
+                if (endpoint.amnezia.s2 < 12) endpoint.amnezia.s2 = 20;
+                if (endpoint.amnezia.s3 < 12) endpoint.amnezia.s3 = 20;
+                if (endpoint.amnezia.s4 < 12) endpoint.amnezia.s4 = 20;
+                endpoint.amnezia.header_protection_key = hpk;
+            }
+        }
+
+        let cpa = option(section, "awg_content_padding_addition", "");
+        if (cpa != "") {
+            if (is_lx) endpoint.content_padding_addition = cpa;
+            else endpoint.amnezia.content_padding_addition = cpa;
+        }
+    }
+
+    if (awg_ver == "3.1") {
+        let rka = option(section, "awg_rekey_after_time", "");
+        if (rka != "") {
+            if (is_lx) endpoint.rekey_after_time = rka;
+            else endpoint.amnezia.rekey_after_time = rka;
+        }
+
+        let rkt = option(section, "awg_rekey_timeout", "");
+        if (rkt != "") {
+            if (is_lx) endpoint.rekey_timeout = rkt;
+            else endpoint.amnezia.rekey_timeout = rkt;
+        }
+
+        let rja = option(section, "awg_reject_after_time", "");
+        if (rja != "") {
+            if (is_lx) endpoint.reject_after_time = rja;
+            else endpoint.amnezia.reject_after_time = rja;
+        }
+
+        let kpt = option(section, "awg_keepalive_timeout", "");
+        if (kpt != "") {
+            if (is_lx) endpoint.keepalive_timeout = kpt;
+            else endpoint.amnezia.keepalive_timeout = kpt;
+        }
+
+        let mha = option(section, "awg_max_handshake_attempts", "");
+        if (mha != "") {
+            if (is_lx) endpoint.max_handshake_attempts = mha;
+            else endpoint.amnezia.max_handshake_attempts = mha;
+        }
     }
 
     let detour = option(section, "awg_detour", "");

@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-05 10:59+0300\n"
-"PO-Revision-Date: 2026-09-05 10:59+0300\n"
+"POT-Creation-Date: 2026-09-05 12:07+0300\n"
+"PO-Revision-Date: 2026-09-05 12:07+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -415,6 +415,15 @@ msgstr "Всегда блокировать эти домены для всех 
 
 msgid "Always visible"
 msgstr "Всегда включено"
+
+msgid "AmneziaWG (Cloudflare WARP) configuration generated and loaded successfully!"
+msgstr "Конфигурация AmneziaWG (Cloudflare WARP) успешно сгенерирована и загружена!"
+
+msgid "AmneziaWG 3.0 / 3.1 content padding range, e.g. 38-104"
+msgstr "Диапазон дополнительного паддинга контента AmneziaWG 3.0 / 3.1, например 38-104"
+
+msgid "AmneziaWG 3.0 / 3.1 header protection key"
+msgstr "Ключ защиты заголовков AmneziaWG 3.0 / 3.1"
 
 msgid "AmneziaWG 3.1 content padding range, e.g. 38-104"
 msgstr ""
@@ -3020,6 +3029,9 @@ msgstr "Не запущено"
 msgid "Not set"
 msgstr "Не задано"
 
+msgid "Notice: Cloudflare WARP edge servers only support AmneziaWG 2.0 (WireGuard). The profile has been automatically set to 2.0 so the connection works properly. Versions 3.0 and 3.1 require an AmneziaWG server via 'Import .conf'."
+msgstr "Примечание: серверы Cloudflare WARP поддерживают только AmneziaWG 2.0 (WireGuard). Профиль автоматически переключен на версию 2.0 для корректной работы. Для версий 3.0 и 3.1 используйте свой сервер AmneziaWG через кнопку «Импорт .conf»."
+
 msgid "Notify in Telegram"
 msgstr "Уведомлять в Telegram"
 
@@ -3394,6 +3406,9 @@ msgstr "Защита"
 
 msgid "Protocol"
 msgstr "Протокол"
+
+msgid "Protocol version: 2.0 (standard headers, WARP compatible), 3.0 (header protection key, padding ranges), or 3.1 (header protection key, padding ranges, advanced timers)"
+msgstr "Версия протокола: 2.0 (стандартные заголовки, совместимо с WARP), 3.0 (ключ защиты заголовков, диапазоны паддинга), или 3.1 (ключ защиты заголовков, диапазоны паддинга, расширенные таймеры)"
 
 msgid "Protocol version: 2.0 (standard integer headers) or 3.1 (header protection key, padding ranges, advanced timers)"
 msgstr ""
@@ -5912,17 +5927,8 @@ msgstr "AmneziaWG 3.0"
 msgid "AmneziaWG 3.1"
 msgstr "AmneziaWG 3.1"
 
-msgid "Protocol version: 2.0 (standard headers, WARP compatible), 3.0 (header protection key, padding ranges), or 3.1 (header protection key, padding ranges, advanced timers)"
-msgstr "Версия протокола: 2.0 (стандартные заголовки, совместимо с WARP), 3.0 (ключ защиты заголовков, диапазоны паддинга), или 3.1 (ключ защиты заголовков, диапазоны паддинга, расширенные таймеры)"
-
 msgid "AmneziaWG %s configuration generated and loaded successfully!"
 msgstr "Конфигурация AmneziaWG %s успешно сгенерирована и загружена!"
 
 msgid "Notice: Cloudflare WARP edge servers only support AmneziaWG 2.0 (standard headers). For Cloudflare WARP, select version 2.0. Versions 3.0 and 3.1 are intended for dedicated AmneziaWG servers."
 msgstr "Обратите внимание: серверы Cloudflare WARP поддерживают только AmneziaWG 2.0 (стандартные заголовки). Для Cloudflare WARP выберите версию 2.0. Версии 3.0 и 3.1 предназначены для выделенных серверов AmneziaWG."
-
-msgid "AmneziaWG 3.0 / 3.1 header protection key"
-msgstr "Ключ защиты заголовков AmneziaWG 3.0 / 3.1"
-
-msgid "AmneziaWG 3.0 / 3.1 content padding range, e.g. 38-104"
-msgstr "Диапазон дополнительного паддинга контента AmneziaWG 3.0 / 3.1, например 38-104"
