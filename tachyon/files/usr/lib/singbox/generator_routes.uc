@@ -652,6 +652,48 @@ function is_valid_detour(config, tag) {
     return false;
 }
 
+function section_excluded_candidate_tags(section, candidate_tags, state) {
+    let mode = connections.dashboard_filter_mode(section);
+    if (mode != "exclude" && mode != "mixed")
+        return [];
+
+    let exclude_names = connections.dashboard_exclude_outbounds(section);
+    let exclude_regex = connections.dashboard_exclude_regex(section);
+    let exclude_countries = connections.dashboard_exclude_countries(section);
+    let exclude_proxy_parameters = connections.dashboard_exclude_proxy_parameters(section);
+    let exclude_protocols = connections.dashboard_exclude_protocols(section);
+    let exclude_transports = connections.dashboard_exclude_transports(section);
+    let exclude_securities = connections.dashboard_exclude_securities(section);
+
+    let has_exclude_criteria = length(exclude_names) > 0 ||
+        length(exclude_regex) > 0 ||
+        length(exclude_countries) > 0 ||
+        (exclude_proxy_parameters && (
+            length(exclude_protocols) > 0 ||
+            length(exclude_transports) > 0 ||
+            length(exclude_securities) > 0
+        ));
+
+    if (!has_exclude_criteria)
+        return [];
+
+    return urltest_matching_candidate_outbounds(
+        candidate_tags,
+        object_or_empty(object_or_empty(state.outboundMetadata).names),
+        dashboard_country_metadata(section, state),
+        exclude_names,
+        exclude_regex,
+        exclude_countries,
+        object_or_empty(state.outboundMetadata),
+        exclude_proxy_parameters,
+        "or",
+        exclude_protocols,
+        exclude_transports,
+        exclude_securities,
+        []
+    );
+}
+
 function add_proxy_selector(config, section, selector_tags, urltest_candidate_tags, state) {
     let section_name = section[".name"];
     let selector_tag = outbound_tag(section_name);
@@ -661,8 +703,13 @@ function add_proxy_selector(config, section, selector_tags, urltest_candidate_ta
     let priority_tags = [];
     let group_outbounds = {};
 
+    let section_excluded = section_excluded_candidate_tags(section, urltest_candidate_tags, state);
+    let group_candidate_tags = length(section_excluded) > 0
+        ? urltest_exclude_outbounds(urltest_candidate_tags, section_excluded)
+        : urltest_candidate_tags;
+
     for (let urltest_id in connections.urltests(section)) {
-        let urltest = add_urltest_outbound(config, section, urltest_id, urltest_candidate_tags, state);
+        let urltest = add_urltest_outbound(config, section, urltest_id, group_candidate_tags, state);
         remember_dashboard_group_outbounds(
             group_outbounds,
             connections.urltest_display_name(section, urltest_id),
@@ -675,7 +722,7 @@ function add_proxy_selector(config, section, selector_tags, urltest_candidate_ta
     }
 
     for (let group_id in connections.priority_groups(section)) {
-        let priority = add_priority_group_outbound(config, section, group_id, urltest_candidate_tags, state);
+        let priority = add_priority_group_outbound(config, section, group_id, group_candidate_tags, state);
         remember_dashboard_group_outbounds(
             group_outbounds,
             connections.priority_group_display_name(section, group_id),

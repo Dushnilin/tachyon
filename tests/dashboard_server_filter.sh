@@ -186,4 +186,96 @@ if (mixed.default != "proxy-urltest-ut_main-out")
   "$WORK_DIR/exclude-config.json" "$WORK_DIR/mixed-config.json" ||
   fail "dashboard server filter regression"
 
+# ─── Issue #89: Section server exclusion cascades to URLTest & Priority groups ─
+cat >"$WORK_DIR/issue89.json" <<'JSON'
+{
+  "settings": {
+    ".name": "settings",
+    ".type": "settings",
+    "dns_server": [ "77.88.8.8" ],
+    "bootstrap_dns_server": [ "77.88.8.8" ]
+  },
+  "section": [
+    {
+      ".name": "proxy",
+      ".type": "section",
+      "enabled": "1",
+      "action": "connection",
+      "outbound_jsons": [
+        "{\"type\":\"vless\",\"tag\":\"🇳🇱 Amsterdam\",\"server\":\"nl.example\",\"server_port\":443,\"uuid\":\"00000000-0000-4000-8000-000000000001\"}",
+        "{\"type\":\"vless\",\"tag\":\"🇷🇺 Moscow\",\"server\":\"ru.example\",\"server_port\":443,\"uuid\":\"00000000-0000-4000-8000-000000000002\"}",
+        "{\"type\":\"vless\",\"tag\":\"🇩🇪 Berlin\",\"server\":\"de.example\",\"server_port\":443,\"uuid\":\"00000000-0000-4000-8000-000000000003\"}"
+      ],
+      "dashboard_filter_mode": "exclude",
+      "dashboard_detect_server_country": "flag_emoji",
+      "dashboard_exclude_countries": [ "RU" ]
+    }
+  ],
+  "urltest": [
+    {
+      ".name": "ut_auto",
+      ".type": "urltest",
+      "section": "proxy",
+      "name": "Auto Main",
+      "filter_mode": "disabled"
+    }
+  ],
+  "priority_group": [
+    {
+      ".name": "pg_auto",
+      ".type": "priority_group",
+      "section": "proxy",
+      "name": "Priority Main"
+    }
+  ],
+  "priority_level": [
+    {
+      ".name": "pl_auto",
+      ".type": "priority_level",
+      "group": "pg_auto",
+      "name": "Level 1",
+      "order": "0",
+      "filter_mode": "disabled"
+    }
+  ]
+}
+JSON
+
+validate_fixture "$WORK_DIR/issue89.json" >/dev/null || fail "issue89 fixture validation"
+generate_config "$WORK_DIR/issue89.json" "$WORK_DIR/issue89-config.json"
+
+ucode -e '
+let fs = require("fs");
+function fail(message) { die(message + "\n"); }
+function outbound_by_tag(config, tag) {
+    for (let outbound in config.outbounds || [])
+        if (outbound && outbound.tag == tag)
+            return outbound;
+    return null;
+}
+function assert_array(value, expected, label) {
+    value = value || [];
+    if (length(value) != length(expected))
+        fail(label + " length mismatch: " + sprintf("%J", value));
+    for (let i = 0; i < length(expected); i++)
+        if (value[i] != expected[i])
+            fail(label + " mismatch: " + sprintf("%J", value));
+}
+let cfg = json(fs.readfile(ARGV[0]));
+let selector = outbound_by_tag(cfg, "proxy-out");
+let urltest = outbound_by_tag(cfg, "proxy-urltest-ut_auto-out");
+let priority = outbound_by_tag(cfg, "proxy-priority-pg_auto-out");
+
+if (!selector) fail("missing proxy-out selector");
+if (!urltest) fail("missing proxy-urltest-ut_auto-out outbound");
+if (!priority) fail("missing proxy-priority-pg_auto-out outbound");
+
+assert_array(urltest.outbounds, [ "🇳🇱 Amsterdam", "🇩🇪 Berlin" ], "URLTest outbounds must not include section-excluded RU server");
+assert_array(priority.outbounds, [ "🇳🇱 Amsterdam", "🇩🇪 Berlin" ], "Priority outbounds must not include section-excluded RU server");
+assert_array(selector.outbounds, [ "🇳🇱 Amsterdam", "🇩🇪 Berlin", "proxy-urltest-ut_auto-out", "proxy-priority-pg_auto-out" ], "Selector outbounds must not include section-excluded RU server");
+
+if (selector.default != "proxy-urltest-ut_auto-out")
+    fail("selector default must be the urltest group");
+' "$WORK_DIR/issue89-config.json" || fail "issue89 cascade exclusion regression"
+
 printf 'dashboard server filter checks passed\n'
