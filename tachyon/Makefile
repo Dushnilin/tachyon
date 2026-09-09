@@ -96,24 +96,34 @@ define Package/tachyon/postinst
 
 [ -n "$${IPKG_INSTROOT}" ] && exit 0
 
-# Stop and disable legacy forkop / podkop services to prevent boot conflicts
-for legacy_svc in podkop forkop podkop_plus forkop_plus; do
+# Stop and disable legacy forkop / podkop / netshift services to prevent boot conflicts
+for legacy_svc in podkop forkop netshift podkop_plus forkop_plus; do
 	if [ -f "/etc/init.d/$${legacy_svc}" ]; then
 		"/etc/init.d/$${legacy_svc}" stop >/dev/null 2>&1 || true
 		"/etc/init.d/$${legacy_svc}" disable >/dev/null 2>&1 || true
 	fi
 done
-rm -f /etc/rc.d/*podkop* /etc/rc.d/*forkop* 2>/dev/null || true
+rm -f /etc/rc.d/*podkop* /etc/rc.d/*forkop* /etc/rc.d/*netshift* 2>/dev/null || true
 nft delete table inet podkop >/dev/null 2>&1 || true
+nft delete table inet PodkopTable >/dev/null 2>&1 || true
 nft delete table inet forkop >/dev/null 2>&1 || true
+nft delete table inet ForkopTable >/dev/null 2>&1 || true
+nft delete table inet netshift >/dev/null 2>&1 || true
+nft delete table inet NetShiftTable >/dev/null 2>&1 || true
 
-# Clean up legacy forkop package files
+# Clean up legacy package files
 rm -rf /usr/lib/lua/luci/i18n/forkop.* /www/luci-static/resources/i18n/forkop.* \
        /usr/share/luci/menu.d/luci-app-forkop.json /usr/share/rpcd/acl.d/luci-app-forkop.json \
-       /etc/uci-defaults/50_luci-forkop 2>/dev/null || true
+       /etc/uci-defaults/50_luci-forkop \
+       /usr/lib/lua/luci/i18n/netshift.* /www/luci-static/resources/i18n/netshift.* \
+       /usr/share/luci/menu.d/luci-app-netshift.json /usr/share/rpcd/acl.d/luci-app-netshift.json \
+       /etc/uci-defaults/50_luci-netshift 2>/dev/null || true
 
-# Migration from Forkop or Podkop
-if [ -f /etc/config/forkop ]; then
+# Migration from NetShift, Forkop or Podkop
+if [ -f /etc/config/netshift ]; then
+	mv /etc/config/netshift /etc/config/tachyon
+	TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate-podkop
+elif [ -f /etc/config/forkop ]; then
 	mv /etc/config/forkop /etc/config/tachyon
 	TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate-podkop
 elif [ -f /etc/config/forkop_plus ]; then

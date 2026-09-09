@@ -864,7 +864,7 @@ function start_main() {
 
     module_success(BYEDPI_UC, [ "start-runtime" ]);
 
-    for (let comp_svc in [ "forkop", "podkop" ]) {
+    for (let comp_svc in [ "forkop", "podkop", "netshift" ]) {
         if (fs.stat("/etc/init.d/" + comp_svc) != null) {
             command_status_from_args([ "/etc/init.d/" + comp_svc, "stop" ]);
         }

@@ -1375,6 +1375,11 @@ function installer_cleanup_legacy() {
         installer_release_init_lock();
     }
 
+    for (let legacy_tbl in [ "podkop", "PodkopTable", "forkop", "ForkopTable", "netshift", "NetShiftTable" ]) {
+        run_args([ "nft", "delete", "table", "inet", legacy_tbl ]);
+    }
+    system("rm -f /etc/rc.d/*podkop* /etc/rc.d/*forkop* /etc/rc.d/*netshift* 2>/dev/null || true");
+
     let packages_removed = true;
     for (let package_name in [ "luci-app-https-dns-proxy", "https-dns-proxy" ])
         if (!installer_remove_package(package_name))
@@ -1490,7 +1495,8 @@ function installer_finalize_legacy() {
 
     for (let legacy_ts_dir in [
         INSTALLER_LEGACY_PERSISTENT_DIR + "/tailscale",
-        "/etc/forkop/tailscale"
+        "/etc/forkop/tailscale",
+        "/etc/netshift/tailscale"
     ]) {
         if (path_exists(legacy_ts_dir)) {
             let entries = fs.lsdir(legacy_ts_dir);

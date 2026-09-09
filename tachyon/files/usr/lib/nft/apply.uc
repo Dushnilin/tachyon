@@ -2412,6 +2412,11 @@ function nft_delete_table(table) {
 function nft_rebuild_runtime_from_uci(rt_table, table, localv4_set, common_set, port_set, ip_port_set, interface_set, fakeip_mark, outbound_mark, fakeip_range, tproxy_port, zapret_bin, zapret_route_mark_base, zapret_queue_base, zapret_desync_mark, zapret_desync_mark_postnat, zapret2_bin, zapret2_route_mark_base, zapret2_queue_base, zapret2_desync_mark, zapret2_desync_mark_postnat, localv6_set, common6_set, ip_port6_set, fakeip6_range, tproxy6_address) {
     log_debug("Applying nftables runtime rules");
 
+    for (let legacy_table in [ "NetShiftTable", "PodkopTable", "ForkopTable", "podkop", "forkop", "netshift" ]) {
+        if (legacy_table != table && nft_table_present(legacy_table))
+            nft_delete_table(legacy_table);
+    }
+
     if (nft_table_present(table) && !nft_delete_table(table))
         return false;
 

@@ -489,7 +489,7 @@ function configure_service() {
         command_success_from_args([ "/etc/init.d/sing-box", "disable" ]);
     }
 
-    for (let comp_svc in [ "forkop", "podkop" ]) {
+    for (let comp_svc in [ "forkop", "podkop", "netshift" ]) {
         if (file_exists("/etc/init.d/" + comp_svc)) {
             command_status_from_args([ "/etc/init.d/" + comp_svc, "stop" ]);
             command_status_from_args([ "/etc/init.d/" + comp_svc, "disable" ]);

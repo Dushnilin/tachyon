@@ -399,11 +399,32 @@ EOF
 #!/bin/sh
 [ -n "${IPKG_INSTROOT}" ] && exit 0
 
+# Stop and disable legacy forkop / podkop / netshift services to prevent boot conflicts
+for legacy_svc in podkop forkop netshift podkop_plus forkop_plus; do
+	if [ -f "/etc/init.d/${legacy_svc}" ]; then
+		"/etc/init.d/${legacy_svc}" stop >/dev/null 2>&1 || true
+		"/etc/init.d/${legacy_svc}" disable >/dev/null 2>&1 || true
+	fi
+done
+rm -f /etc/rc.d/*podkop* /etc/rc.d/*forkop* /etc/rc.d/*netshift* 2>/dev/null || true
+nft delete table inet podkop >/dev/null 2>&1 || true
+nft delete table inet PodkopTable >/dev/null 2>&1 || true
+nft delete table inet forkop >/dev/null 2>&1 || true
+nft delete table inet ForkopTable >/dev/null 2>&1 || true
+nft delete table inet netshift >/dev/null 2>&1 || true
+nft delete table inet NetShiftTable >/dev/null 2>&1 || true
+
 rm -rf /usr/lib/lua/luci/i18n/forkop.* /www/luci-static/resources/i18n/forkop.* \
        /usr/share/luci/menu.d/luci-app-forkop.json /usr/share/rpcd/acl.d/luci-app-forkop.json \
-       /etc/uci-defaults/50_luci-forkop 2>/dev/null || true
+       /etc/uci-defaults/50_luci-forkop \
+       /usr/lib/lua/luci/i18n/netshift.* /www/luci-static/resources/i18n/netshift.* \
+       /usr/share/luci/menu.d/luci-app-netshift.json /usr/share/rpcd/acl.d/luci-app-netshift.json \
+       /etc/uci-defaults/50_luci-netshift 2>/dev/null || true
 
-if [ -f /etc/config/forkop ]; then
+if [ -f /etc/config/netshift ]; then
+	mv /etc/config/netshift /etc/config/tachyon
+	TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate-podkop
+elif [ -f /etc/config/forkop ]; then
 	mv /etc/config/forkop /etc/config/tachyon
 	TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate-podkop
 elif [ -f /etc/config/forkop_plus ]; then
@@ -677,14 +698,22 @@ function restore_cfg_from_backup() {
     fs.unlink(backup);
 }
 if (getenv("IPKG_INSTROOT") == null || getenv("IPKG_INSTROOT") == "") {
-    system("rm -rf /usr/lib/lua/luci/i18n/forkop.* /www/luci-static/resources/i18n/forkop.* /usr/share/luci/menu.d/luci-app-forkop.json /usr/share/rpcd/acl.d/luci-app-forkop.json /etc/uci-defaults/50_luci-forkop 2>/dev/null || true");
-    let is_legacy_migration = false;
-    if (system("test -f /etc/config/forkop") == 0) {
+    system("for svc in podkop forkop netshift podkop_plus forkop_plus; do [ -f /etc/init.d/$svc ] && /etc/init.d/$svc stop >/dev/null 2>&1 && /etc/init.d/$svc disable >/dev/null 2>&1; done || true");
+    system("rm -f /etc/rc.d/*podkop* /etc/rc.d/*forkop* /etc/rc.d/*netshift* 2>/dev/null || true");
+    system("for tbl in podkop PodkopTable forkop ForkopTable netshift NetShiftTable; do nft delete table inet $tbl >/dev/null 2>&1 || true; done");
+    system("rm -rf /usr/lib/lua/luci/i18n/forkop.* /www/luci-static/resources/i18n/forkop.* /usr/share/luci/menu.d/luci-app-forkop.json /usr/share/rpcd/acl.d/luci-app-forkop.json /etc/uci-defaults/50_luci-forkop /usr/lib/lua/luci/i18n/netshift.* /www/luci-static/resources/i18n/netshift.* /usr/share/luci/menu.d/luci-app-netshift.json /usr/share/rpcd/acl.d/luci-app-netshift.json /etc/uci-defaults/50_luci-netshift 2>/dev/null || true");
+    if (system("test -f /etc/config/netshift") == 0) {
+        system("mv /etc/config/netshift /etc/config/tachyon");
+        system("TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate-podkop");
+        exit(system("/usr/bin/tachyon package_postinst"));
+    } else if (system("test -f /etc/config/forkop") == 0) {
         system("mv /etc/config/forkop /etc/config/tachyon");
-        is_legacy_migration = true;
+        system("TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate-podkop");
+        exit(system("/usr/bin/tachyon package_postinst"));
     } else if (system("test -f /etc/config/forkop_plus") == 0) {
         system("mv /etc/config/forkop_plus /etc/config/tachyon");
-        is_legacy_migration = true;
+        system("TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate-podkop");
+        exit(system("/usr/bin/tachyon package_postinst"));
     } else if (system("test -f /etc/config/podkop") == 0) {
         system("mv /etc/config/podkop /etc/config/tachyon");
         system("TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate-podkop");
@@ -694,8 +723,7 @@ if (getenv("IPKG_INSTROOT") == null || getenv("IPKG_INSTROOT") == "") {
         system("TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate-podkop");
         exit(system("/usr/bin/tachyon package_postinst"));
     }
-    if (!is_legacy_migration)
-        restore_cfg_from_backup();
+    restore_cfg_from_backup();
     exit(system("TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate && /usr/bin/tachyon package_postinst"));
 }
 exit(0);
@@ -780,14 +808,22 @@ function restore_cfg_from_backup() {
     fs.unlink(backup);
 }
 if (getenv("IPKG_INSTROOT") == null || getenv("IPKG_INSTROOT") == "") {
-    system("rm -rf /usr/lib/lua/luci/i18n/forkop.* /www/luci-static/resources/i18n/forkop.* /usr/share/luci/menu.d/luci-app-forkop.json /usr/share/rpcd/acl.d/luci-app-forkop.json /etc/uci-defaults/50_luci-forkop 2>/dev/null || true");
-    let is_legacy_migration = false;
-    if (system("test -f /etc/config/forkop") == 0) {
+    system("for svc in podkop forkop netshift podkop_plus forkop_plus; do [ -f /etc/init.d/$svc ] && /etc/init.d/$svc stop >/dev/null 2>&1 && /etc/init.d/$svc disable >/dev/null 2>&1; done || true");
+    system("rm -f /etc/rc.d/*podkop* /etc/rc.d/*forkop* /etc/rc.d/*netshift* 2>/dev/null || true");
+    system("for tbl in podkop PodkopTable forkop ForkopTable netshift NetShiftTable; do nft delete table inet $tbl >/dev/null 2>&1 || true; done");
+    system("rm -rf /usr/lib/lua/luci/i18n/forkop.* /www/luci-static/resources/i18n/forkop.* /usr/share/luci/menu.d/luci-app-forkop.json /usr/share/rpcd/acl.d/luci-app-forkop.json /etc/uci-defaults/50_luci-forkop /usr/lib/lua/luci/i18n/netshift.* /www/luci-static/resources/i18n/netshift.* /usr/share/luci/menu.d/luci-app-netshift.json /usr/share/rpcd/acl.d/luci-app-netshift.json /etc/uci-defaults/50_luci-netshift 2>/dev/null || true");
+    if (system("test -f /etc/config/netshift") == 0) {
+        system("mv /etc/config/netshift /etc/config/tachyon");
+        system("TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate-podkop");
+        exit(system("/usr/bin/tachyon package_postinst"));
+    } else if (system("test -f /etc/config/forkop") == 0) {
         system("mv /etc/config/forkop /etc/config/tachyon");
-        is_legacy_migration = true;
+        system("TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate-podkop");
+        exit(system("/usr/bin/tachyon package_postinst"));
     } else if (system("test -f /etc/config/forkop_plus") == 0) {
         system("mv /etc/config/forkop_plus /etc/config/tachyon");
-        is_legacy_migration = true;
+        system("TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate-podkop");
+        exit(system("/usr/bin/tachyon package_postinst"));
     } else if (system("test -f /etc/config/podkop") == 0) {
         system("mv /etc/config/podkop /etc/config/tachyon");
         system("TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate-podkop");
@@ -797,8 +833,7 @@ if (getenv("IPKG_INSTROOT") == null || getenv("IPKG_INSTROOT") == "") {
         system("TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate-podkop");
         exit(system("/usr/bin/tachyon package_postinst"));
     }
-    if (!is_legacy_migration)
-        restore_cfg_from_backup();
+    restore_cfg_from_backup();
     exit(system("TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate && /usr/bin/tachyon package_postinst"));
 }
 exit(0);

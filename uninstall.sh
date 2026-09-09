@@ -418,7 +418,7 @@ if [ -f "/etc/init.d/uhttpd" ]; then
     /etc/init.d/uhttpd restart >/dev/null 2>&1 || true
 fi
 
-# Check if parent Forkop / Podkop services exist and restore them
+# Check if parent Forkop / Podkop / NetShift services exist and restore them
 if [ -f "/etc/init.d/forkop" ]; then
     /etc/init.d/forkop enable >/dev/null 2>&1 || true
     /etc/init.d/forkop restart >/dev/null 2>&1 || true
@@ -427,6 +427,10 @@ elif [ -f "/etc/init.d/podkop" ]; then
     /etc/init.d/podkop enable >/dev/null 2>&1 || true
     /etc/init.d/podkop restart >/dev/null 2>&1 || true
     tui_ok "Обнаружен родительский сервис Podkop — восстановлен и запущен"
+elif [ -f "/etc/init.d/netshift" ]; then
+    /etc/init.d/netshift enable >/dev/null 2>&1 || true
+    /etc/init.d/netshift restart >/dev/null 2>&1 || true
+    tui_ok "Обнаружен родительский сервис NetShift — восстановлен и запущен"
 fi
 
 tui_ok "Кэш LuCI очищен, файлы и остаточные фрагменты полностью удалены"

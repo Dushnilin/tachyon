@@ -412,7 +412,13 @@ const LEGACY_URLTEST_OPTIONS = [
     "urltest_include_regex",
     "urltest_exclude_countries",
     "urltest_exclude_outbounds",
-    "urltest_exclude_regex"
+    "urltest_exclude_regex",
+    "urltest_idle_timeout",
+    "urltest_interrupt_exist_connections",
+    "urltest_interval",
+    "urltest_url",
+    "urltest_proxy_links_text",
+    "selector_proxy_links_text"
 ];
 
 function delete_legacy_urltest_options(ctx, section) {
@@ -510,29 +516,51 @@ function delete_subscription_cache(ctx, section) {
         push(ctx.removed_caches, path);
 }
 
+function migrate_text_proxy_links(ctx, section, option_name) {
+    let text = option(section, option_name, "");
+    if (text == "")
+        return false;
+
+    let migrated = false;
+    for (let link in trim_lines(text)) {
+        if (substr(link, 0, 2) == "//" || substr(link, 0, 1) == "#")
+            continue;
+        add_list_unique(ctx, section, "selector_proxy_links", link);
+        migrated = true;
+    }
+
+    delete_option(ctx, section, option_name);
+    return migrated;
+}
+
 function migrate_subscription_url(ctx, section) {
-    let subscription_url = option(section, "subscription_url", "");
-    if (subscription_url == "")
+    let urls = option_list_values(section, "subscription_url");
+    if (length(urls) == 0)
         return;
 
     let subscription_user_agent = option(section, "subscription_user_agent", "");
-    let entry = subscription_user_agent != ""
-        ? subscription_url + " | " + subscription_user_agent
-        : subscription_url;
-    add_list_unique(ctx, section, "subscription_urls", entry);
+    for (let u in urls) {
+        u = trim(as_string(u));
+        if (u == "")
+            continue;
+        let entry = subscription_user_agent != ""
+            ? u + " | " + subscription_user_agent
+            : u;
+        add_list_unique(ctx, section, "subscription_urls", entry);
+    }
     delete_option(ctx, section, "subscription_url");
     delete_option(ctx, section, "subscription_user_agent");
     delete_subscription_cache(ctx, section_name(section));
 }
 
 function migrate_interval_flags(ctx, section, proxy_config_type) {
-    if (proxy_config_type == "urltest" || proxy_config_type == "subscription") {
+    if (proxy_config_type == "urltest" || proxy_config_type == "subscription" || proxy_config_type == "urltest_text") {
         if (option(section, "urltest_check_interval_disabled", "") == "1")
             set_option(ctx, section, "urltest_enabled", "0");
         else
             set_option_if_missing(ctx, section, "urltest_enabled", "1");
     }
-    else if (proxy_config_type == "url" || proxy_config_type == "selector") {
+    else if (proxy_config_type == "url" || proxy_config_type == "selector" || proxy_config_type == "selector_text") {
         set_option_if_missing(ctx, section, "urltest_enabled", "0");
     }
 
@@ -559,6 +587,18 @@ function migrate_proxy_rule(ctx, section, proxy_config_type) {
         migrate_subscription_url(ctx, section);
         delete_subscription_cache(ctx, section_name(section));
     }
+    else if (proxy_config_type == "selector_text") {
+        migrate_text_proxy_links(ctx, section, "selector_proxy_links_text");
+    }
+    else if (proxy_config_type == "urltest_text") {
+        migrate_text_proxy_links(ctx, section, "urltest_proxy_links_text");
+        set_option_if_missing(ctx, section, "urltest_enabled", "1");
+    }
+
+    // Always migrate text links if present on section regardless of proxy_config_type
+    migrate_text_proxy_links(ctx, section, "selector_proxy_links_text");
+    if (migrate_text_proxy_links(ctx, section, "urltest_proxy_links_text"))
+        set_option_if_missing(ctx, section, "urltest_enabled", "1");
 
     migrate_interval_flags(ctx, section, proxy_config_type);
     delete_option(ctx, section, "proxy_config_type");
@@ -718,17 +758,30 @@ function migrate_urltest_item_settings(ctx, section, constants) {
     if (legacy_enabled) {
         let child = create_child_for_section(ctx, section, "urltest");
         set_option(ctx, child, "name", "Fastest");
-        set_option(ctx, child, "check_interval", option(section, "urltest_check_interval", "3m") || "3m");
+        let check_interval = option(section, "urltest_check_interval", "");
+        if (check_interval == "")
+            check_interval = option(section, "urltest_interval", "3m");
+        set_option(ctx, child, "check_interval", check_interval || "3m");
+
         set_option(ctx, child, "tolerance", option(section, "urltest_tolerance", "50") || "50");
-        set_option(ctx, child, "testing_url", option(section, "urltest_testing_url", "https://www.gstatic.com/generate_204") || "https://www.gstatic.com/generate_204");
+
+        let testing_url = option(section, "urltest_testing_url", "");
+        if (testing_url == "")
+            testing_url = option(section, "urltest_url", "https://www.gstatic.com/generate_204");
+        set_option(ctx, child, "testing_url", testing_url || "https://www.gstatic.com/generate_204");
         set_option(ctx, child, "filter_mode", option(section, "urltest_filter_mode", "disabled") || "disabled");
         set_option(ctx, child, "detect_server_country", normalize_detect_server_country_method(option(section, "detect_server_country", SERVER_COUNTRY_METHOD_FLAG_EMOJI)));
         set_option(ctx, child, "interrupt_exist_connections", "1");
         set_option(ctx, child, "pin_dashboard", "1");
 
-        let idle_timeout = legacy_urltest_idle_timeout(section, constants);
+        let idle_timeout = option(section, "urltest_idle_timeout", "");
+        if (idle_timeout == "")
+            idle_timeout = legacy_urltest_idle_timeout(section, constants);
         if (idle_timeout != "")
             set_option(ctx, child, "idle_timeout", idle_timeout);
+
+        if (option(section, "urltest_interrupt_exist_connections", "") != "")
+            set_option(ctx, child, "interrupt_exist_connections", option(section, "urltest_interrupt_exist_connections", "1"));
 
         set_list_option_if_not_empty(ctx, child, "include_countries", option_list_values(section, "urltest_include_countries"));
         set_list_option_if_not_empty(ctx, child, "include_outbounds", option_list_values(section, "urltest_include_outbounds"));
@@ -1036,6 +1089,38 @@ function migrate_rule(ctx, section, converted_from_rule, constants) {
     delete_option(ctx, section, "subscription_group_by_countries");
     delete_option(ctx, section, "group_by_countries");
     delete_option(ctx, section, "subscription_detect_server_countries");
+    delete_option(ctx, section, "subscription_insecure");
+    delete_option(ctx, section, "subscription_format_preference");
+    delete_option(ctx, section, "subscription_group_mode");
+    delete_option(ctx, section, "subscription_group_prefix_len");
+    delete_option(ctx, section, "subscription_filter_include_keywords");
+    delete_option(ctx, section, "subscription_filter_exclude_keywords");
+    delete_option(ctx, section, "global_proxy");
+
+    // Migrate legacy domain_list_urls and subnet_list_urls (early Podkop)
+    if (option_exists(section, "domain_list_urls")) {
+        for (let entry in option_list_values(section, "domain_list_urls")) {
+            entry = trim(as_string(entry));
+            if (entry == "") continue;
+            if (match(entry, /\.srs$/i))
+                add_list_unique(ctx, section, "rule_set", entry);
+            else
+                add_list_unique(ctx, section, "remote_domain_lists", entry);
+        }
+        delete_option(ctx, section, "domain_list_urls");
+    }
+
+    if (option_exists(section, "subnet_list_urls")) {
+        for (let entry in option_list_values(section, "subnet_list_urls")) {
+            entry = trim(as_string(entry));
+            if (entry == "") continue;
+            if (match(entry, /\.srs$/i) || match(entry, /\.json$/i))
+                add_list_unique(ctx, section, "rule_set_with_subnets", entry);
+            else
+                add_list_unique(ctx, section, "remote_subnet_lists", entry);
+        }
+        delete_option(ctx, section, "subnet_list_urls");
+    }
 
     if (action == "connection") {
         migrate_urltest_filter_mode(ctx, section);
@@ -1102,11 +1187,31 @@ function migrate_list_update_enabled(ctx) {
 
 function normalize_existing_list_option(ctx, section, key) {
     let current = object_or_empty(section)[key];
-    if (current == null || type(current) == "array")
+    if (current == null)
         return;
 
-    let value = trim(as_string(current));
-    let values = value == "" ? [] : [ value ];
+    let values = [];
+    if (type(current) == "array") {
+        for (let item in current) {
+            item = trim(as_string(item));
+            if (item != "")
+                push(values, item);
+        }
+    }
+    else {
+        let text = trim(as_string(current));
+        if (text != "") {
+            for (let item in split(text, /[ \t\r\n,]+/)) {
+                item = trim(item);
+                if (item != "")
+                    push(values, item);
+            }
+        }
+    }
+
+    if (type(current) == "array" && length(values) == length(current))
+        return;
+
     section[key] = values;
     record_operation(ctx, { op: "set_list", section: section_name(section), option: key, values });
 }
@@ -1522,6 +1627,19 @@ function migrate_podkop_model(model, constants) {
     constants = object_or_empty(constants);
 
     delete_option(ctx, model.settings, "routing_excluded_ips");
+
+    // NetShift: dns_via_outbound and dns_outbound_section
+    if (bool_option(model.settings, "dns_via_outbound", false)) {
+        set_option_if_missing(ctx, model.settings, "dns_detour_enabled", "1");
+        let detour_sec = option(model.settings, "dns_outbound_section", "");
+        if (detour_sec != "")
+            set_option_if_missing(ctx, model.settings, "dns_detour_section", detour_sec);
+    }
+    delete_option(ctx, model.settings, "dns_via_outbound");
+    delete_option(ctx, model.settings, "dns_outbound_section");
+    delete_option(ctx, model.settings, "block_doh");
+    delete_option(ctx, model.settings, "enable_ipv6");
+
     migrate_dns_server_lists(ctx);
     migrate_list_update_enabled(ctx);
 
@@ -1781,9 +1899,18 @@ function detect_config_migration_source(path) {
 
     if (match(content, /config[ \t]+rule[ \t]+/) ||
         match(content, /option[ \t]+domain_list_urls/) ||
+        match(content, /option[ \t]+subnet_list_urls/) ||
         match(content, /option[ \t]+routing_excluded_ips/) ||
-        match(content, /option[ \t]+connection_type[ \t]+['"]?proxy/) ||
+        match(content, /option[ \t]+connection_type/) ||
+        match(content, /option[ \t]+proxy_config_type/) ||
         match(content, /option[ \t]+proxy_string/) ||
+        match(content, /option[ \t]+selector_proxy_links_text/) ||
+        match(content, /option[ \t]+urltest_proxy_links_text/) ||
+        match(content, /option[ \t]+subscription_url/) ||
+        match(content, /list[ \t]+subscription_url/) ||
+        match(content, /option[ \t]+dns_via_outbound/) ||
+        match(content, /option[ \t]+block_doh/) ||
+        match(content, /option[ \t]+global_proxy/) ||
         match(content, /option[ \t]+ip_cidr/)) {
         return "podkop";
     }
@@ -1840,11 +1967,13 @@ function scan_legacy_config_candidates() {
         "/tmp/legacy-config*",
         "/tmp/*forkop*",
         "/tmp/*podkop*",
+        "/tmp/*netshift*",
         "/tmp/*tachyon*",
         "/tmp/tmp.*/legacy-config*",
         "/etc/.tachyon/*",
         "/root/*forkop*",
         "/root/*podkop*",
+        "/root/*netshift*",
         "/root/*tachyon*",
         "/root/*.backup*",
         "/root/*.bak*"
@@ -1940,7 +2069,7 @@ function import_settings_cli(source_path) {
     system("chmod 0600 " + shell_quote(target_config) + " 2>/dev/null");
 
     let source_type = detect_config_migration_source(target_config);
-    print("  ✓ Detected format: " + (source_type == "podkop" ? "Legacy Forkop / Podkop" : "Tachyon") + "\n");
+    print("  ✓ Detected format: " + (source_type == "podkop" ? "Legacy Forkop / Podkop / NetShift" : "Tachyon") + "\n");
 
     let ok = migrate_runtime(source_type);
     if (!ok) {
@@ -1967,8 +2096,10 @@ function import_settings_cli(source_path) {
 function main(argv) {
     let mode = argv[0] || "";
 
-    if (mode == "migrate")
-        return migrate_runtime("tachyon") ? 0 : 1;
+    if (mode == "migrate") {
+        let source = detect_config_migration_source(TARGET_CONFIG);
+        return migrate_runtime(source) ? 0 : 1;
+    }
     if (mode == "migrate-podkop")
         return migrate_runtime("podkop") ? 0 : 1;
     if (mode == "import-settings" || mode == "import_settings")

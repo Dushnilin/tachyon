@@ -248,7 +248,7 @@ function uninstall_tachyon(purge_config, keep_binaries) {
     if (fs.stat("/etc/init.d/uhttpd") != null)
         run_cmd(["/etc/init.d/uhttpd", "restart"]);
 
-    // Restore parent Forkop / Podkop services if present
+    // Restore parent Forkop / Podkop / NetShift services if present
     if (fs.stat("/etc/init.d/forkop") != null) {
         log_step("Forkop detected! Restoring Forkop service...");
         run_cmd(["/etc/init.d/forkop", "enable"]);
@@ -257,6 +257,10 @@ function uninstall_tachyon(purge_config, keep_binaries) {
         log_step("Podkop detected! Restoring Podkop service...");
         run_cmd(["/etc/init.d/podkop", "enable"]);
         run_cmd(["/etc/init.d/podkop", "restart"]);
+    } else if (fs.stat("/etc/init.d/netshift") != null) {
+        log_step("NetShift detected! Restoring NetShift service...");
+        run_cmd(["/etc/init.d/netshift", "enable"]);
+        run_cmd(["/etc/init.d/netshift", "restart"]);
     }
 
     log_step("Tachyon has been successfully uninstalled.");
