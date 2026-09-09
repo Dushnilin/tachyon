@@ -522,4 +522,29 @@ fi
 printf '%s\n' "$output" | grep -Fq "ByeDPI listen address and port are assigned" ||
   fail "executable byedpi provider: unexpected message '$output'"
 
+# ─── Domain condition validation resilience ─────────────────────────────────
+cat >"$WORK_DIR/domain_resilience.json" <<'JSON'
+{
+  "settings": {
+    ".name": "settings",
+    ".type": "settings",
+    "dns_server": [ "77.88.8.8" ],
+    "bootstrap_dns_server": [ "77.88.8.8" ]
+  },
+  "section": [
+    {
+      ".name": "resilient_rule",
+      ".type": "section",
+      "enabled": "1",
+      "action": "bypass",
+      "domain": "valid.example.com\nfull://\nfull:=====\nfull:(не\nanother.example.org"
+    }
+  ]
+}
+JSON
+
+if ! TACHYON_LIB="$TACHYON_LIB" ucode -L "$TACHYON_LIB" "$VALIDATOR" validate-runtime-fixture "$WORK_DIR/domain_resilience.json" "{}" >/dev/null 2>&1; then
+  fail "Validator must not abort startup on invalid domain conditions in rules"
+fi
+
 printf 'config validator runtime checks passed\n'

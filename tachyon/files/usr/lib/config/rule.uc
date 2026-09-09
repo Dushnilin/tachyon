@@ -7,7 +7,9 @@ let common = require("core.common");
 let as_string = common.as_string;
 
 function strip_list_comment(line) {
-    line = replace(as_string(line), /[[:space:]]*\/\/.*$/, "");
+    line = replace(as_string(line), /^(full|keyword|regex):[[:space:]]*\/\/.*$/, "");
+    line = replace(line, /^(full|keyword|regex):[[:space:]]*#.*$/, "");
+    line = replace(line, /[[:space:]]*\/\/.*$/, "");
     return replace(line, /[[:space:]]*#.*$/, "");
 }
 
@@ -72,7 +74,7 @@ function prefixed_domain_kind_value(value) {
     if (prefix != "")
         body = strip_repeated_domain_prefix(prefix, body);
 
-    if (body == "")
+    if (body == "" || substr(body, 0, 2) == "//" || substr(body, 0, 1) == "#")
         return null;
 
     if (prefix == "") {

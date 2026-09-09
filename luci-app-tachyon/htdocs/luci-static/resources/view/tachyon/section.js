@@ -5521,8 +5521,9 @@ function parseCommentAwareListTokens(value) {
   let offset = 0;
 
   lines.forEach((line, index) => {
-    const hashIndex = line.indexOf("#");
-    const slashIndex = line.indexOf("//");
+    const cleanLine = line.replace(/^(full|keyword|regex):[ \t]*(\/\/|#).*$/, "");
+    const hashIndex = cleanLine.indexOf("#");
+    const slashIndex = cleanLine.indexOf("//");
     let commentIndex = -1;
 
     if (hashIndex >= 0 && slashIndex >= 0) {
@@ -5533,7 +5534,7 @@ function parseCommentAwareListTokens(value) {
       commentIndex = slashIndex;
     }
 
-    const source = commentIndex >= 0 ? line.slice(0, commentIndex) : line;
+    const source = commentIndex >= 0 ? cleanLine.slice(0, commentIndex) : cleanLine;
     const matcher = /[^,\s]+/g;
     let match;
 

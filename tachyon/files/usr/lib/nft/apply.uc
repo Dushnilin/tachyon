@@ -140,7 +140,9 @@ function log_fatal(message) {
 }
 
 function strip_list_comment(line) {
-    line = replace(as_string(line), /[[:space:]]*\/\/.*$/, "");
+    line = replace(as_string(line), /^(full|keyword|regex):[[:space:]]*\/\/.*$/, "");
+    line = replace(line, /^(full|keyword|regex):[[:space:]]*#.*$/, "");
+    line = replace(line, /[[:space:]]*\/\/.*$/, "");
     return replace(line, /[[:space:]]*#.*$/, "");
 }
 

@@ -1203,14 +1203,17 @@ function validate_combined_domain_value(value, section) {
     if (as_string(value) == "" || combined_domain_valid(value))
         return;
 
-    fail_validation("Invalid domain condition '" + value + "' in rule '" + section + "'. Use plain domains or full:, keyword:, regex: prefixes. Aborted.");
+    log_message("Ignoring invalid domain condition '" + value + "' in rule '" + section + "'. Use plain domains or full:, keyword:, regex: prefixes.", "warn");
 }
 
 function validate_combined_domain_text_value(value, section) {
-    if (as_string(value) == "" || combined_domain_text_valid(value))
+    if (as_string(value) == "")
         return;
 
-    fail_validation("Invalid domain conditions in rule '" + section + "'. Use plain domains or full:, keyword:, regex: prefixes. Aborted.");
+    for (let item in rule_config.text_list_values(value, "comma-space")) {
+        if (!combined_domain_valid(item))
+            log_message("Ignoring invalid domain condition '" + item + "' in rule '" + section + "'. Use plain domains or full:, keyword:, regex: prefixes.", "warn");
+    }
 }
 
 function validate_service_value(service, context) {

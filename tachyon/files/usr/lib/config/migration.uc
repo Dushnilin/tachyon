@@ -10,6 +10,7 @@ let core_url = require("core.url");
 let constants_module = require("core.constants");
 let singbox_constants_module = require("singbox.constants");
 let domain_config = require("config.domain");
+let rule_config = require("config.rule");
 let subscription_share_link = require("subscription.share_link");
 
 let as_string = common.as_string;
@@ -925,7 +926,9 @@ function migrate_connection_section(ctx, section, constants, legacy_connection_k
 }
 
 function strip_list_comment(line) {
-    line = replace(as_string(line), /[[:space:]]*\/\/.*$/, "");
+    line = replace(as_string(line), /^(full|keyword|regex):[[:space:]]*\/\/.*$/, "");
+    line = replace(line, /^(full|keyword|regex):[[:space:]]*#.*$/, "");
+    line = replace(line, /[[:space:]]*\/\/.*$/, "");
     return replace(line, /[[:space:]]*#.*$/, "");
 }
 
@@ -1004,7 +1007,11 @@ function has_domain_condition_prefix(value) {
 function add_values_with_prefix(result, seen, values, prefix) {
     for (let value in values) {
         value = trim(as_string(value));
-        add_unique_value(result, seen, has_domain_condition_prefix(value) ? value : prefix + value);
+        if (value == "")
+            continue;
+        let candidate = has_domain_condition_prefix(value) ? value : prefix + value;
+        if (rule_config.prefixed_domain_kind_value(candidate) != null)
+            add_unique_value(result, seen, candidate);
     }
 }
 
@@ -1038,10 +1045,14 @@ function migrate_combined_domain_conditions(ctx, section) {
     let values = [];
     let seen = {};
 
-    for (let value in list_option(section, "domain_suffix"))
-        add_unique_value(values, seen, value);
-    for (let value in raw_text_condition_values(section, "domain_suffix_text"))
-        add_unique_value(values, seen, value);
+    for (let value in list_option(section, "domain_suffix")) {
+        if (rule_config.prefixed_domain_kind_value(value) != null)
+            add_unique_value(values, seen, value);
+    }
+    for (let value in raw_text_condition_values(section, "domain_suffix_text")) {
+        if (rule_config.prefixed_domain_kind_value(value) != null)
+            add_unique_value(values, seen, value);
+    }
 
     add_domain_values_with_prefix(values, seen, section, "domain", "full:", "domains");
     add_domain_values_with_prefix(values, seen, section, "domain_keyword", "keyword:", "generic");

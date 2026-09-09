@@ -2245,7 +2245,16 @@ function run_probe(engine, args_str, target_key, custom_url) {
             filter_prefix += "--filter-udp=443 --payload=quic_initial ";
         }
         
-        let spawn_cmd = sprintf("cd /tmp && %s --qnum=%d --fwmark=%s %s%s%s%s --pidfile=%s --daemon 2>%s", bin, qnum, FUZZER_FWMARK, lua_init_flags, blob_flags, filter_prefix, args_str, pid_path, shell_quote(stderr_log));
+        let fwmark_flag = "";
+        if (is_z2) {
+            if (index(args_str, "--fwmark") < 0)
+                fwmark_flag = sprintf("--fwmark=%s ", FUZZER_FWMARK);
+        } else {
+            if (index(args_str, "--dpi-desync-fwmark") < 0)
+                fwmark_flag = sprintf("--dpi-desync-fwmark=%s ", FUZZER_FWMARK);
+        }
+        
+        let spawn_cmd = sprintf("cd /tmp && %s --qnum=%d %s%s%s%s%s --pidfile=%s --daemon 2>%s", bin, qnum, fwmark_flag, lua_init_flags, blob_flags, filter_prefix, args_str, pid_path, shell_quote(stderr_log));
         system(common.background_command(spawn_cmd));
         
         let pid_running = false;
