@@ -1626,9 +1626,17 @@ function updateLatencyProgressInline(
       return false;
     }
 
-    const isConnectionNode = ['vpn', 'awg', 'warp'].includes(
-      section.action || '',
-    );
+    const isConnectionNode = [
+      'vpn',
+      'awg',
+      'warp',
+      'anytls',
+      'snell',
+      'mieru',
+      'sudoku',
+      'masque',
+      'openvpn',
+    ].includes(section.action || '');
 
     const text = isConnectionNode
       ? _('Checking Connection...')

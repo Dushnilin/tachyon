@@ -11,7 +11,8 @@ let connections = require("config.connections");
 let routing_rulesets = require("routing.rulesets");
 let runtime_constants = require("singbox.constants");
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
-const DNS_BLOCK_TARGET = getenv("SB_DNS_BLOCK_INBOUND_ADDRESS") || "127.0.0.43:1053";
+const DNS_BLOCK_PORT = int(getenv("SB_DNS_BLOCK_INBOUND_PORT") || runtime_constants.DNS_BLOCK_INBOUND_PORT);
+const DNS_BLOCK_TARGET = ":" + DNS_BLOCK_PORT;
 const DNS_SOURCE_SET = runtime_constants.DNS_SOURCE_SET;
 const DNS_SOURCE6_SET = runtime_constants.DNS_SOURCE6_SET;
 
@@ -1135,13 +1136,15 @@ function nft_add_dns_block_rules_from_schedules(schedules, table, profiles) {
             if (dev_str == "") continue;
             let is_mac = match(dev_str, /^([0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}$/) != null;
             let family = is_mac ? 0 : core_ip.ip_family(dev_str);
-            if (!is_mac && family != 4)
-                continue; // dns-block-in listens on IPv4 only
+            if (!is_mac && family != 4 && family != 6)
+                continue;
 
             for (let interval in intervals) {
                 let match_args = [];
                 if (is_mac) {
                     append_array(match_args, [ "ether", "saddr", lc(replace(dev_str, "-", ":")) ]);
+                } else if (family == 6) {
+                    append_array(match_args, [ "ip6", "saddr", dev_str ]);
                 } else {
                     append_array(match_args, [ "ip", "saddr", dev_str ]);
                 }
@@ -1157,6 +1160,8 @@ function nft_add_dns_block_rules_from_schedules(schedules, table, profiles) {
                 let tcp_args = [];
                 if (is_mac) {
                     append_array(tcp_args, [ "ether", "saddr", lc(replace(dev_str, "-", ":")) ]);
+                } else if (family == 6) {
+                    append_array(tcp_args, [ "ip6", "saddr", dev_str ]);
                 } else {
                     append_array(tcp_args, [ "ip", "saddr", dev_str ]);
                 }
@@ -1199,12 +1204,14 @@ function nft_add_dns_block_rules_from_schedules(schedules, table, profiles) {
                 if (dev_str == "") continue;
                 let is_mac = match(dev_str, /^([0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}$/) != null;
                 let family = is_mac ? 0 : core_ip.ip_family(dev_str);
-                if (!is_mac && family != 4)
+                if (!is_mac && family != 4 && family != 6)
                     continue;
 
                 let match_args = [];
                 if (is_mac)
                     append_array(match_args, [ "ether", "saddr", lc(replace(dev_str, "-", ":")) ]);
+                else if (family == 6)
+                    append_array(match_args, [ "ip6", "saddr", dev_str ]);
                 else
                     append_array(match_args, [ "ip", "saddr", dev_str ]);
                 append_array(match_args, [ "udp", "dport", "53", "redirect", "to", DNS_BLOCK_TARGET, "counter", "comment", "\"" + comment + "\"" ]);
@@ -1215,6 +1222,8 @@ function nft_add_dns_block_rules_from_schedules(schedules, table, profiles) {
                 let tcp_args = [];
                 if (is_mac)
                     append_array(tcp_args, [ "ether", "saddr", lc(replace(dev_str, "-", ":")) ]);
+                else if (family == 6)
+                    append_array(tcp_args, [ "ip6", "saddr", dev_str ]);
                 else
                     append_array(tcp_args, [ "ip", "saddr", dev_str ]);
                 append_array(tcp_args, [ "tcp", "dport", "53", "redirect", "to", DNS_BLOCK_TARGET, "counter", "comment", "\"" + comment + "\"" ]);

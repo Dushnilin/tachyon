@@ -836,10 +836,12 @@ function schedule_domain_matcher_rule(rule, schedule) {
             push(keyword, trim(substr(value, 8)));
         else if (substr(value, 0, 6) == "regex:")
             push(regex, trim(substr(value, 6)));
-        else if (substr(value, 0, 1) == "." || index(value, "*") >= 0)
-            push(plain, value);
+        else if (substr(value, 0, 1) == ".")
+            push(plain, substr(value, 1));
+        else if (index(value, "*") >= 0)
+            push(plain, replace(value, "*.", ""));
         else
-            push(full, value);
+            push(plain, value);
     }
     if (length(full) > 0)
         rule.domain = full;
@@ -850,6 +852,22 @@ function schedule_domain_matcher_rule(rule, schedule) {
     if (length(regex) > 0)
         rule.domain_regex = regex;
     return rule;
+}
+
+function schedule_has_mac_devices(schedule) {
+    for (let raw in schedule_list_value(schedule, "device_ip")) {
+        let device = trim(as_string(raw));
+        if (match(device, /^([0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}$/) != null)
+            return true;
+    }
+    for (let p_name in schedule_list_value(schedule, "profile")) {
+        let prof = ctx.uci_cursor().get_all(CONFIG_NAME, p_name);
+        if (prof != null && section_enabled(prof)) {
+            if (schedule_has_mac_devices(prof))
+                return true;
+        }
+    }
+    return false;
 }
 
 function schedule_blocked_domains(schedule) {
@@ -942,7 +960,7 @@ function add_content_block_dns_inbound(config) {
     push(config.inbounds, {
         type: "direct",
         tag: runtime_constants.DNS_BLOCK_INBOUND_TAG,
-        listen: runtime_constants.DNS_BLOCK_INBOUND_ADDRESS,
+        listen: core_ip.ipv6_supported() ? runtime_constants.DNS_BLOCK_INBOUND_ADDRESS : "0.0.0.0",
         listen_port: runtime_constants.DNS_BLOCK_INBOUND_PORT
     });
 }
@@ -952,6 +970,7 @@ function add_content_block_dns_rules(config, schedules) {
     for (let schedule in schedules) {
         let mode = option(schedule, "mode", "block");
         let sources = schedule_source_ip_cidrs(schedule);
+        let has_mac = schedule_has_mac_devices(schedule);
         for (let raw_domain in schedule_blocked_domains(schedule)) {
             let domain_value = trim(as_string(raw_domain));
             if (domain_value == "")
@@ -966,7 +985,7 @@ function add_content_block_dns_rules(config, schedules) {
                 if (matchers[key] != null)
                     rule[key] = matchers[key];
             }
-            if (length(sources) > 0)
+            if (length(sources) > 0 && !has_mac)
                 rule.source_ip_cidr = sources;
             if (mode == "allow")
                 rule.invert = true;
@@ -1006,6 +1025,10 @@ function add_content_blocking(config) {
         return;
 
     add_content_block_dns_inbound(config);
+    unshift(config.route.rules, {
+        action: "hijack-dns",
+        inbound: [ runtime_constants.DNS_BLOCK_INBOUND_TAG ]
+    });
     add_content_block_dns_rules(config, schedules);
     add_content_block_dns_rules(config, profiles);
     add_safesearch_dns_rules(config, safesearch_profiles);

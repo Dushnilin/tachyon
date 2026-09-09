@@ -297,4 +297,44 @@ describe('renderSections', () => {
     );
     expect(latencyButtons).toHaveLength(0);
   });
+
+  it('renders latency test button and connection node item for Mieru section', () => {
+    const section: any = {
+      code: 'mieru-out',
+      sectionName: 'mieru',
+      displayName: 'My Mieru',
+      action: 'mieru',
+      withTagSelect: false,
+      outbounds: [
+        {
+          code: 'mieru-out',
+          displayName: 'My Mieru',
+          latency: 65,
+          type: 'Mieru',
+          selected: true,
+          runtimeAvailable: true,
+        },
+      ],
+    };
+
+    const el = renderSections({
+      loading: false,
+      failed: false,
+      section,
+      onTestLatency: vi.fn(),
+      onChooseOutbound: vi.fn(),
+      onCopyOutbound: vi.fn(),
+      onShowUrlTestInfo: vi.fn(),
+      onShowPriorityInfo: vi.fn(),
+      onUpdateSubscription: vi.fn(),
+      latencyFetching: false,
+      subscriptionUpdating: false,
+    });
+
+    const latencyButtons = el.querySelectorAll(
+      '.dashboard-sections-grid-item-test-latency',
+    );
+    expect(latencyButtons).toHaveLength(1);
+    expect(latencyButtons[0].tagName).toBe('BUTTON');
+  });
 });

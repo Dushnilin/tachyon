@@ -2447,9 +2447,17 @@ function renderDefaultState({
   isCollapsed,
   onToggleCollapse
 }) {
-  const isConnectionNode = ["vpn", "awg", "warp"].includes(
-    section.action || ""
-  );
+  const isConnectionNode = [
+    "vpn",
+    "awg",
+    "warp",
+    "anytls",
+    "snell",
+    "mieru",
+    "sudoku",
+    "masque",
+    "openvpn"
+  ].includes(section.action || "");
   const isServiceNode = ["zapret", "zapret2", "byedpi"].includes(section.action || "") || Boolean(section.serviceStatus);
   if (isServiceNode) {
     const ss = section.serviceStatus;
@@ -2845,9 +2853,17 @@ function renderDefaultState({
                 (o) => o.selected
               );
               if (!selectedOutbound) return "";
-              const isConnectionNode2 = ["vpn", "awg", "warp"].includes(
-                section.action || ""
-              );
+              const isConnectionNode2 = [
+                "vpn",
+                "awg",
+                "warp",
+                "anytls",
+                "snell",
+                "mieru",
+                "sudoku",
+                "masque",
+                "openvpn"
+              ].includes(section.action || "");
               function getLatencyColor() {
                 if (isConnectionNode2) {
                   if (latencyFetching)
@@ -4950,11 +4966,30 @@ function getJsonOutbounds(section) {
   const values = getListValues(section.outbound_jsons);
   return values.length ? values : getListValues(section.outbound_json);
 }
+var SINGLE_ENDPOINT_ACTIONS = /* @__PURE__ */ new Set([
+  "vpn",
+  "awg",
+  "warp",
+  "anytls",
+  "snell",
+  "mieru",
+  "sudoku",
+  "masque",
+  "openvpn"
+]);
+var ACTION_DISPLAY_NAMES = {
+  awg: "AmneziaWG",
+  warp: "WARP",
+  anytls: "AnyTLS",
+  snell: "Snell",
+  mieru: "Mieru",
+  sudoku: "Sudoku",
+  masque: "MASQUE",
+  openvpn: "OpenVPN"
+};
 function isConnectionAction(action) {
   return Boolean(
-    action && ["connection", "proxy", "outbound", "vpn", "awg", "warp"].includes(
-      action
-    )
+    action && (SINGLE_ENDPOINT_ACTIONS.has(action) || ["connection", "proxy", "outbound"].includes(action))
   );
 }
 function isServiceAction(action) {
@@ -5791,9 +5826,11 @@ async function getDashboardSections(options = {}) {
           outbounds
         };
       }
-      if (sectionAction === "vpn" || sectionAction === "awg" || sectionAction === "warp") {
+      if (SINGLE_ENDPOINT_ACTIONS.has(sectionAction || "")) {
         const outboundTag = getOutboundTagBySection(sectionName);
         const outbound = proxies.find((proxy) => proxy.code === outboundTag);
+        const defaultLabel = ACTION_DISPLAY_NAMES[sectionAction || ""] || (sectionAction || "").toUpperCase();
+        const customName = outbound?.value?.name && outbound.value.name !== outboundTag ? outbound.value.name : "";
         return {
           withTagSelect: false,
           code: outbound?.code || sectionName,
@@ -5803,9 +5840,9 @@ async function getDashboardSections(options = {}) {
           outbounds: [
             {
               code: outbound?.code || sectionName,
-              displayName: section.interface || outbound?.value?.name || (sectionAction === "awg" ? "AmneziaWG" : sectionAction.toUpperCase()),
+              displayName: section.label || section.interface || customName || defaultLabel,
               latency: outbound?.value?.history?.length ? outbound.value.history[0].delay > 0 ? outbound.value.history[0].delay : -1 : 0,
-              type: sectionAction === "awg" ? "AmneziaWG" : sectionAction === "warp" ? "WARP" : outbound?.value?.type || "",
+              type: ACTION_DISPLAY_NAMES[sectionAction || ""] || outbound?.value?.type || (sectionAction || "").toUpperCase(),
               selected: true,
               canCopyLink: false,
               runtimeAvailable: Boolean(outbound)
@@ -8769,9 +8806,17 @@ function updateLatencyProgressInline(sectionsWidget) {
     if (!label) {
       return false;
     }
-    const isConnectionNode = ["vpn", "awg", "warp"].includes(
-      section.action || ""
-    );
+    const isConnectionNode = [
+      "vpn",
+      "awg",
+      "warp",
+      "anytls",
+      "snell",
+      "mieru",
+      "sudoku",
+      "masque",
+      "openvpn"
+    ].includes(section.action || "");
     const text = isConnectionNode ? _("Checking Connection...") : getLatencyTestLabel(
       sectionsWidget.latencyProgressSections[section.sectionName]
     );

@@ -586,7 +586,7 @@ function createProfileContent(section) {
       .map((l) => l.trim())
       .filter(Boolean);
     for (const line of lines) {
-      const clean = line.replace(/^(full:|keyword:|regex:)/, "");
+      const clean = line.replace(/^(full:|keyword:|regex:)/, "").replace(/^\*?\./, "");
       if (/^(full:|keyword:|regex:)/.test(line) && !clean) {
         return _("Invalid domain: empty prefix value");
       }
@@ -599,29 +599,29 @@ function createProfileContent(section) {
     }
     return true;
   };
-  o.write = function (sectionId, value) {
-    const lines = `${value || ""}`
-      .split(/\r?\n/)
-      .map((l) => l.trim())
-      .filter(Boolean);
-    const existingList = normalizeListValues(
-      uci.get(UCI_PACKAGE, sectionId, "blocked_domains"),
-    );
-    for (const d of lines) {
-      if (!existingList.includes(d)) {
-        uci.add_list(UCI_PACKAGE, sectionId, "blocked_domains", d);
-      }
-    }
-    for (const d of existingList) {
-      if (!lines.includes(d)) {
-        uci.remove_list(UCI_PACKAGE, sectionId, "blocked_domains", d);
-      }
-    }
-  };
-  o.load = function (sectionId) {
+  o.cfgvalue = function (sectionId) {
     return normalizeListValues(
       uci.get(UCI_PACKAGE, sectionId, "blocked_domains"),
     ).join("\n");
+  };
+  o.load = o.cfgvalue;
+  o.formvalue = function (sectionId) {
+    const node = document.getElementById(this.cbid(sectionId));
+    return node ? node.value : null;
+  };
+  o.write = function (sectionId, value) {
+    const lines = [];
+    for (const raw of `${value || ""}`.split(/\r?\n/)) {
+      const l = raw.trim();
+      if (l && !lines.includes(l)) {
+        lines.push(l);
+      }
+    }
+    if (lines.length === 0) {
+      uci.unset(UCI_PACKAGE, sectionId, "blocked_domains");
+    } else {
+      uci.set(UCI_PACKAGE, sectionId, "blocked_domains", lines);
+    }
   };
   o.remove = function (sectionId) {
     uci.unset(UCI_PACKAGE, sectionId, "blocked_domains");
@@ -654,18 +654,23 @@ function createProfileContent(section) {
           if (!merged.includes(d)) merged.push(d);
         }
         textarea.value = merged.join("\n");
+        textarea.dispatchEvent(new Event("input", { bubbles: true }));
+        textarea.dispatchEvent(new Event("change", { bubbles: true }));
       });
       presetRow.appendChild(btn);
     });
     container.appendChild(presetRow);
 
+    const cbid = this.cbid(sectionId);
     const textarea = E("textarea", {
-      id: `cbid.tachyon.${sectionId}.blocked_domains`,
+      id: cbid,
+      name: cbid,
       class: "cbi-input-textarea",
       style: "width:100%;min-height:100px;box-sizing:border-box;",
       placeholder: "tiktok.com\nroblox.com",
     });
-    if (cfgvalue) textarea.value = cfgvalue;
+    const strVal = Array.isArray(cfgvalue) ? cfgvalue.join("\n") : (cfgvalue || "");
+    if (strVal) textarea.value = strVal;
     container.appendChild(textarea);
     return container;
   };
@@ -1170,7 +1175,7 @@ function createParentalContent(section) {
       .map((l) => l.trim())
       .filter(Boolean);
     for (const line of lines) {
-      const clean = line.replace(/^(full:|keyword:|regex:)/, "");
+      const clean = line.replace(/^(full:|keyword:|regex:)/, "").replace(/^\*?\./, "");
       if (/^(full:|keyword:|regex:)/.test(line) && !clean) {
         return _("Invalid domain: empty prefix value");
       }
@@ -1183,29 +1188,29 @@ function createParentalContent(section) {
     }
     return true;
   };
-  o.write = function (sectionId, value) {
-    const lines = `${value || ""}`
-      .split(/\r?\n/)
-      .map((l) => l.trim())
-      .filter(Boolean);
-    const existingList = normalizeListValues(
-      uci.get(UCI_PACKAGE, sectionId, "blocked_domains"),
-    );
-    for (const d of lines) {
-      if (!existingList.includes(d)) {
-        uci.add_list(UCI_PACKAGE, sectionId, "blocked_domains", d);
-      }
-    }
-    for (const d of existingList) {
-      if (!lines.includes(d)) {
-        uci.remove_list(UCI_PACKAGE, sectionId, "blocked_domains", d);
-      }
-    }
-  };
-  o.load = function (sectionId) {
+  o.cfgvalue = function (sectionId) {
     return normalizeListValues(
       uci.get(UCI_PACKAGE, sectionId, "blocked_domains"),
     ).join("\n");
+  };
+  o.load = o.cfgvalue;
+  o.formvalue = function (sectionId) {
+    const node = document.getElementById(this.cbid(sectionId));
+    return node ? node.value : null;
+  };
+  o.write = function (sectionId, value) {
+    const lines = [];
+    for (const raw of `${value || ""}`.split(/\r?\n/)) {
+      const l = raw.trim();
+      if (l && !lines.includes(l)) {
+        lines.push(l);
+      }
+    }
+    if (lines.length === 0) {
+      uci.unset(UCI_PACKAGE, sectionId, "blocked_domains");
+    } else {
+      uci.set(UCI_PACKAGE, sectionId, "blocked_domains", lines);
+    }
   };
   o.remove = function (sectionId) {
     uci.unset(UCI_PACKAGE, sectionId, "blocked_domains");
@@ -1240,18 +1245,23 @@ function createParentalContent(section) {
           if (!merged.includes(d)) merged.push(d);
         }
         textarea.value = merged.join("\n");
+        textarea.dispatchEvent(new Event("input", { bubbles: true }));
+        textarea.dispatchEvent(new Event("change", { bubbles: true }));
       });
       presetRow.appendChild(btn);
     });
     container.appendChild(presetRow);
 
+    const cbid = this.cbid(sectionId);
     const textarea = E("textarea", {
-      id: `cbid.tachyon.${sectionId}.blocked_domains`,
+      id: cbid,
+      name: cbid,
       class: "cbi-input-textarea",
       style: "width:100%;min-height:110px;box-sizing:border-box;",
       placeholder: "youtube.com\ngooglevideo.com",
     });
-    if (cfgvalue) textarea.value = cfgvalue;
+    const strVal = Array.isArray(cfgvalue) ? cfgvalue.join("\n") : (cfgvalue || "");
+    if (strVal) textarea.value = strVal;
     container.appendChild(textarea);
     return container;
   };

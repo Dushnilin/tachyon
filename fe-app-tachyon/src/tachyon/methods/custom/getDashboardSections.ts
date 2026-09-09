@@ -383,12 +383,34 @@ function getJsonOutbounds(section: Tachyon.ConfigSection) {
   return values.length ? values : getListValues(section.outbound_json);
 }
 
+const SINGLE_ENDPOINT_ACTIONS = new Set([
+  'vpn',
+  'awg',
+  'warp',
+  'anytls',
+  'snell',
+  'mieru',
+  'sudoku',
+  'masque',
+  'openvpn',
+]);
+
+const ACTION_DISPLAY_NAMES: Record<string, string> = {
+  awg: 'AmneziaWG',
+  warp: 'WARP',
+  anytls: 'AnyTLS',
+  snell: 'Snell',
+  mieru: 'Mieru',
+  sudoku: 'Sudoku',
+  masque: 'MASQUE',
+  openvpn: 'OpenVPN',
+};
+
 function isConnectionAction(action?: string) {
   return Boolean(
     action &&
-      ['connection', 'proxy', 'outbound', 'vpn', 'awg', 'warp'].includes(
-        action,
-      ),
+      (SINGLE_ENDPOINT_ACTIONS.has(action) ||
+        ['connection', 'proxy', 'outbound'].includes(action)),
   );
 }
 
@@ -1616,13 +1638,16 @@ export async function getDashboardSections(
           };
         }
 
-        if (
-          sectionAction === 'vpn' ||
-          sectionAction === 'awg' ||
-          sectionAction === 'warp'
-        ) {
+        if (SINGLE_ENDPOINT_ACTIONS.has(sectionAction || '')) {
           const outboundTag = getOutboundTagBySection(sectionName);
           const outbound = proxies.find((proxy) => proxy.code === outboundTag);
+          const defaultLabel =
+            ACTION_DISPLAY_NAMES[sectionAction || ''] ||
+            (sectionAction || '').toUpperCase();
+          const customName =
+            outbound?.value?.name && outbound.value.name !== outboundTag
+              ? outbound.value.name
+              : '';
 
           return {
             withTagSelect: false,
@@ -1634,22 +1659,19 @@ export async function getDashboardSections(
               {
                 code: outbound?.code || sectionName,
                 displayName:
+                  section.label ||
                   section.interface ||
-                  outbound?.value?.name ||
-                  (sectionAction === 'awg'
-                    ? 'AmneziaWG'
-                    : sectionAction.toUpperCase()),
+                  customName ||
+                  defaultLabel,
                 latency: outbound?.value?.history?.length
                   ? outbound.value.history[0].delay > 0
                     ? outbound.value.history[0].delay
                     : -1
                   : 0,
                 type:
-                  sectionAction === 'awg'
-                    ? 'AmneziaWG'
-                    : sectionAction === 'warp'
-                      ? 'WARP'
-                      : outbound?.value?.type || '',
+                  ACTION_DISPLAY_NAMES[sectionAction || ''] ||
+                  outbound?.value?.type ||
+                  (sectionAction || '').toUpperCase(),
                 selected: true,
                 canCopyLink: false,
                 runtimeAvailable: Boolean(outbound),

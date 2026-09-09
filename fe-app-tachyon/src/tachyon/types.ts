@@ -275,6 +275,12 @@ export namespace Tachyon {
     | 'byedpi'
     | 'awg'
     | 'warp'
+    | 'anytls'
+    | 'snell'
+    | 'mieru'
+    | 'sudoku'
+    | 'masque'
+    | 'openvpn'
     | 'dns'
     | 'hosts';
   type LegacyConnectionType = 'proxy' | 'vpn' | 'block' | 'exclusion';

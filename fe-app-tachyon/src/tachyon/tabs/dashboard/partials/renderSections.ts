@@ -278,9 +278,17 @@ function renderDefaultState({
   isCollapsed,
   onToggleCollapse,
 }: IRenderSectionsProps) {
-  const isConnectionNode = ['vpn', 'awg', 'warp'].includes(
-    section.action || '',
-  );
+  const isConnectionNode = [
+    'vpn',
+    'awg',
+    'warp',
+    'anytls',
+    'snell',
+    'mieru',
+    'sudoku',
+    'masque',
+    'openvpn',
+  ].includes(section.action || '');
   const isServiceNode =
     ['zapret', 'zapret2', 'byedpi'].includes(section.action || '') ||
     Boolean(section.serviceStatus);
@@ -805,9 +813,17 @@ function renderDefaultState({
                   );
                   if (!selectedOutbound) return '';
 
-                  const isConnectionNode = ['vpn', 'awg', 'warp'].includes(
-                    section.action || '',
-                  );
+                  const isConnectionNode = [
+                    'vpn',
+                    'awg',
+                    'warp',
+                    'anytls',
+                    'snell',
+                    'mieru',
+                    'sudoku',
+                    'masque',
+                    'openvpn',
+                  ].includes(section.action || '');
 
                   function getLatencyColor() {
                     if (isConnectionNode) {

@@ -1087,6 +1087,104 @@ describe('getDashboardSections', () => {
     ]);
   });
 
+  it('exposes single-endpoint protocol sections (Mieru, Sudoku, AnyTLS, Snell, MASQUE, OpenVPN) on the dashboard', async () => {
+    mocks.getConfigSections.mockResolvedValue([
+      {
+        '.name': 'mieru_sec',
+        '.type': 'section',
+        enabled: '1',
+        action: 'mieru',
+      },
+      {
+        '.name': 'sudoku_sec',
+        '.type': 'section',
+        enabled: '1',
+        action: 'sudoku',
+      },
+      {
+        '.name': 'anytls_sec',
+        '.type': 'section',
+        enabled: '1',
+        action: 'anytls',
+      },
+      {
+        '.name': 'snell_sec',
+        '.type': 'section',
+        enabled: '1',
+        action: 'snell',
+      },
+      {
+        '.name': 'masque_sec',
+        '.type': 'section',
+        enabled: '1',
+        action: 'masque',
+      },
+      {
+        '.name': 'openvpn_sec',
+        '.type': 'section',
+        enabled: '1',
+        action: 'openvpn',
+      },
+    ]);
+    mocks.getClashApiProxies.mockResolvedValue({
+      success: true,
+      data: {
+        proxies: {
+          'mieru_sec-out': proxy('Mieru', {
+            name: 'mieru_sec-out',
+            history: [{ time: '2026-09-09T00:00:00Z', delay: 42 }],
+          }),
+          'sudoku_sec-out': proxy('Sudoku', {
+            name: 'sudoku_sec-out',
+            history: [{ time: '2026-09-09T00:00:00Z', delay: 55 }],
+          }),
+          'anytls_sec-out': proxy('AnyTLS', {
+            name: 'anytls_sec-out',
+            history: [{ time: '2026-09-09T00:00:00Z', delay: 60 }],
+          }),
+          'snell_sec-out': proxy('Snell', {
+            name: 'snell_sec-out',
+            history: [{ time: '2026-09-09T00:00:00Z', delay: 70 }],
+          }),
+          'masque_sec-out': proxy('MASQUE', {
+            name: 'masque_sec-out',
+            history: [{ time: '2026-09-09T00:00:00Z', delay: 80 }],
+          }),
+          'openvpn_sec-out': proxy('OpenVPN', {
+            name: 'openvpn_sec-out',
+            history: [{ time: '2026-09-09T00:00:00Z', delay: 90 }],
+          }),
+        },
+      },
+    });
+
+    const result = await getDashboardSections();
+
+    expect(result.success).toBe(true);
+    expect(result.data.map((s) => s.sectionName)).toEqual([
+      'mieru_sec',
+      'sudoku_sec',
+      'anytls_sec',
+      'snell_sec',
+      'masque_sec',
+      'openvpn_sec',
+    ]);
+    expect(result.data[0].outbounds[0]).toMatchObject({
+      code: 'mieru_sec-out',
+      displayName: 'Mieru',
+      type: 'Mieru',
+      latency: 42,
+      runtimeAvailable: true,
+    });
+    expect(result.data[1].outbounds[0]).toMatchObject({
+      code: 'sudoku_sec-out',
+      displayName: 'Sudoku',
+      type: 'Sudoku',
+      latency: 55,
+      runtimeAvailable: true,
+    });
+  });
+
   it('fetches Clash API proxies directly in the browser to avoid rpcd output limits', async () => {
     mocks.getConfigSections.mockResolvedValue([
       { '.name': 'settings', '.type': 'settings', yacd_secret_key: 'secret' },
