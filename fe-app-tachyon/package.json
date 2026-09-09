@@ -24,6 +24,7 @@
     "@babel/traverse": "7.28.4",
     "@babel/types": "7.28.4",
     "@eslint/js": "9.36.0",
+    "@vitest/mocker": "^5.0.0",
     "chokidar": "4.0.3",
     "dotenv": "17.2.3",
     "eslint": "9.36.0",
