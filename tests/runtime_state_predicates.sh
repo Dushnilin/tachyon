@@ -1598,4 +1598,43 @@ if state_ucode has-remote-sing-box-ruleset-sources-fixture "$WORK_DIR/disabled-o
   fail "disabled rule should not require remote sing-box ruleset refresh"
 fi
 
+cat >"$WORK_DIR/hosts-source.json" <<'JSON'
+{
+  "section": [
+    {
+      ".name": "my_hosts",
+      ".type": "section",
+      "action": "hosts",
+      "enabled": "1",
+      "hosts_list_urls": [ "https://example.com/hosts.txt" ]
+    }
+  ]
+}
+JSON
+
+state_ucode has-hosts-list-update-sources-fixture "$WORK_DIR/hosts-source.json" >/dev/null ||
+  fail "enabled hosts section with URL should require hosts list update"
+
+cat >"$WORK_DIR/hosts-no-url.json" <<'JSON'
+{
+  "section": [
+    {
+      ".name": "my_hosts",
+      ".type": "section",
+      "action": "hosts",
+      "enabled": "1",
+      "dns_hosts": "127.0.0.1 example.com"
+    }
+  ]
+}
+JSON
+
+if state_ucode has-hosts-list-update-sources-fixture "$WORK_DIR/hosts-no-url.json" >/dev/null 2>&1; then
+  fail "hosts section without remote URLs should not require hosts list update"
+fi
+
+if state_ucode has-hosts-list-update-sources-fixture "$WORK_DIR/general-only-source.json" >/dev/null 2>&1; then
+  fail "proxy sections without hosts should not require hosts list update"
+fi
+
 printf 'runtime state predicate checks passed\n'

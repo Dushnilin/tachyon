@@ -35,6 +35,7 @@ interface IRenderAvailableActionsProps {
   showSingBoxConfig: ActionProps;
   generateBugReport: ActionProps;
   checkServices: ActionProps;
+  testLeaks?: ActionProps;
 }
 
 export function renderAvailableActions({
@@ -53,6 +54,7 @@ export function renderAvailableActions({
   showSingBoxConfig,
   generateBugReport,
   checkServices,
+  testLeaks,
 }: IRenderAvailableActionsProps) {
   return E('div', { class: 'tachyon_diagnostic-page__right-bar__actions' }, [
     E('b', {}, _('Available actions')),
@@ -172,6 +174,16 @@ export function renderAvailableActions({
         text: _('Check Services'),
         loading: checkServices.loading,
         disabled: checkServices.disabled,
+      }),
+    ]),
+    ...insertIf(!!testLeaks?.visible, [
+      renderButton({
+        classNames: ['cbi-button-action'],
+        onClick: testLeaks!.onClick,
+        icon: renderCircleCheckBigIcon24,
+        text: _('🛡️ IP & DNS Leak Test'),
+        loading: testLeaks!.loading,
+        disabled: testLeaks!.disabled,
       }),
     ]),
     ...insertIf(viewLogs.visible, [

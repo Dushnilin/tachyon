@@ -1787,6 +1787,27 @@ function has_subscription_update_sources_from_sections(sections) {
     return false;
 }
 
+function has_hosts_list_update_sources_from_sections(sections) {
+    for (let section in sections) {
+        section = object_or_empty(section);
+        if (option(section, "action", "") != "hosts")
+            continue;
+        if (!bool_option(section, "enabled", true))
+            continue;
+        let urls = option(section, "hosts_list_urls", "");
+        if (type(urls) == "array") {
+            for (let u in urls) {
+                if (trim(as_string(u)) != "")
+                    return true;
+            }
+        } else if (trim(as_string(urls)) != "") {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 function fixture_sections(path) {
     let data = object_or_empty(read_json_file(path));
     connections.set_item_sections_from_data(data);
@@ -2143,6 +2164,10 @@ else if (mode == "has-nft-list-update-sources")
     exit(has_nft_list_update_sources_from_sections(uci_sections("section")) ? 0 : 1);
 else if (mode == "has-nft-list-update-sources-fixture")
     exit(has_nft_list_update_sources_from_sections(fixture_sections(ARGV[1])) ? 0 : 1);
+else if (mode == "has-hosts-list-update-sources")
+    exit(has_hosts_list_update_sources_from_sections(uci_sections("section")) ? 0 : 1);
+else if (mode == "has-hosts-list-update-sources-fixture")
+    exit(has_hosts_list_update_sources_from_sections(fixture_sections(ARGV[1])) ? 0 : 1);
 else {
     warn("Usage: service/state.uc <operation> ...\n");
     exit(1);

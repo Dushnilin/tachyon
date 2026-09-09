@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-08 09:57+0300\n"
-"PO-Revision-Date: 2026-09-08 09:57+0300\n"
+"POT-Creation-Date: 2026-09-09 17:09+0300\n"
+"PO-Revision-Date: 2026-09-09 17:09+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -49,6 +49,12 @@ msgstr "⚠️ Бенчмарк завершен. Не найдено рабоч
 
 msgid "⚠️ Benchmark stopped"
 msgstr "⚠️ Бенчмарк остановлен"
+
+msgid "⚠️ CRITICAL IP LEAK: Your real public IP is exposed through the proxy outbound!"
+msgstr "⚠️ КРИТИЧЕСКАЯ УТЕЧКА IP: Ваш реальный публичный IP раскрыт через исходящий прокси!"
+
+msgid "⚠️ DNS LEAK DETECTED: DNS queries are leaking to your local Internet Service Provider!"
+msgstr "⚠️ ОБНАРУЖЕНА УТЕЧКА DNS: DNS-запросы утекают к вашему местному интернет-провайдеру!"
 
 msgid "⚠️ If all Bootstrap DNS fail 3 times, queries will be sent to your ISP's DNS in plaintext. Only use as a last resort to prevent complete internet loss."
 msgstr "⚠️ Если все Bootstrap DNS завершатся с ошибкой 3 раза, запросы будут отправлены в DNS вашего провайдера в открытом виде. Используйте только в крайнем случае для предотвращения полной потери интернета."
@@ -155,8 +161,20 @@ msgstr "🛑 Остановить бенчмарк"
 msgid "🛠️ My Custom Strategies Only"
 msgstr "🛠️ Только мои стратегии"
 
+msgid "🛡️ IP & DNS Leak Test"
+msgstr "🛡️ Проверка утечек IP и DNS"
+
+msgid "🛡️ SECURE: No DNS leaks detected. All queries resolve through non-ISP upstream resolvers."
+msgstr "🛡️ ЗАЩИЩЕНО: Утечек DNS не обнаружено. Все запросы обрабатываются независимыми резолверами."
+
+msgid "🛡️ SECURE: No IP leak detected. Real WAN IP is concealed behind proxy outbound."
+msgstr "🛡️ ЗАЩИЩЕНО: Утечек IP не обнаружено. Реальный WAN IP скрыт за исходящим прокси."
+
 msgid "🟣 Twitch Suite (Live Stream + HLS CDN)"
 msgstr "🟣 Twitch Набор (Прямой эфир + HLS CDN)"
+
+msgid "127.0.0.1:4534 (sing-box mixed)"
+msgstr "127.0.0.1:4534 (смешанный sing-box)"
 
 msgid "Блокировка по IP (Таймаут TCP SYN)"
 msgstr "Блокировка по IP (Таймаут TCP SYN)"
@@ -485,6 +503,9 @@ msgstr "Генератор AmneziaWG"
 msgid "AmneziaWG Version"
 msgstr "Версия AmneziaWG"
 
+msgid "An unexpected error occurred during test"
+msgstr "Произошла непредвиденная ошибка во время проверки"
+
 msgid "Anonymized support report copied to clipboard"
 msgstr "Анонимизированный отчет скопирован в буфер обмена"
 
@@ -641,6 +662,9 @@ msgstr "Ср. задержка"
 msgid "Backend validation failed: %s"
 msgstr "Ошибка проверки бэкенда: %s"
 
+msgid "Baseline"
+msgstr "Базовый уровень"
+
 msgid "Basic connectivity"
 msgstr "Базовая связность"
 
@@ -790,6 +814,9 @@ msgstr "Стратегия ByeDPI"
 
 msgid "ByeDPI strategy cannot be empty"
 msgstr "Стратегия ByeDPI не может быть пустой"
+
+msgid "Bypasses proxy (SO_MARK 0x08000000)"
+msgstr "В обход прокси (SO_MARK 0x08000000)"
 
 msgid "Bypasses UDP traffic for selected game consoles (PS5/Xbox) to achieve NAT Type 1 / 2 (Full Cone NAT) for P2P matchmaking, while keeping TCP (PSN/Auth) routed through the proxy."
 msgstr "Обходит UDP-трафик для выбранных игровых консолей (PS5/Xbox) для достижения NAT Type 1 / 2 (Full Cone NAT) для P2P-матчмейкинга, сохраняя TCP (PSN/Auth) через прокси."
@@ -1055,6 +1082,9 @@ msgstr "Подключено"
 msgid "Connected Devices"
 msgstr "Подключенные устройства"
 
+msgid "Connection Path"
+msgstr "Маршрут соединения"
+
 msgid "Connection URL"
 msgstr "URL подключения"
 
@@ -1099,6 +1129,12 @@ msgstr "Основные настройки и параметры"
 
 msgid "Could not compare FakeIP and control public IPs"
 msgstr "Не удалось сравнить публичные IP FakeIP и контрольной проверки"
+
+msgid "Could not contact leak test endpoints. Please ensure router has internet access."
+msgstr "Не удалось связаться с серверами проверки утечек. Убедитесь, что у роутера есть доступ в интернет."
+
+msgid "Country"
+msgstr "Страна"
 
 msgid "Country code (e.g. ru, us, de)"
 msgstr "Код страны (напр. ru, us, de)"
@@ -1271,6 +1307,9 @@ msgstr "Прямой прокси"
 msgid "Direct WAN"
 msgstr "Прямой WAN"
 
+msgid "Direct WAN (ISP)"
+msgstr "Напрямую в WAN (провайдер)"
+
 msgid "Disable"
 msgstr "Отключить"
 
@@ -1381,6 +1420,9 @@ msgstr "Быстрый DNS-кэш"
 
 msgid "DNS Unavailability Timeout"
 msgstr "Таймаут недоступности DNS"
+
+msgid "DNS Upstream Resolver Analysis (bash.ws protocol)"
+msgstr "Анализ восходящих DNS-резолверов (протокол bash.ws)"
 
 msgid "Do not panic, everything can be fixed, just..."
 msgstr "Не паникуйте, всё можно исправить, просто..."
@@ -1524,7 +1566,7 @@ msgid "e.g. SHA256 — leave empty for default"
 msgstr "напр. SHA256 — оставьте пустым для значения по умолчанию"
 
 msgid "Each entry must be \"proto\", \"proto:port\" or \"proto:port-port\" (tcp/udp), e.g. tcp:6881,udp:6881-6889"
-msgstr "Каждая запись — \"proto\", \"proto:port\" или \"proto:port-port\" (tcp/udp), напр. tcp:6881,udp:6881-6889"
+msgstr "Каждая запись должна быть \"proto\", \"proto:port\" или \"proto:port-port\" (tcp/udp), например: tcp:6881,udp:6881-6889"
 
 msgid "Edit"
 msgstr "Изменить"
@@ -1801,6 +1843,9 @@ msgstr "Не удалось определить тип DPI"
 
 msgid "Failed to execute"
 msgstr "Не удалось выполнить"
+
+msgid "Failed to execute IP and DNS leak check"
+msgstr "Не удалось выполнить проверку утечек IP и DNS"
 
 msgid "Failed to fetch releases"
 msgstr "Не удалось получить список релизов"
@@ -2348,6 +2393,9 @@ msgstr "Полезный груз init (I1)"
 msgid "Init timeout (Itime)"
 msgstr "Таймаут init (Itime)"
 
+msgid "Initializing router-level IP & DNS leak test..."
+msgstr "Инициализация проверки утечек IP и DNS с роутера..."
+
 msgid "Install"
 msgstr "Установить"
 
@@ -2517,7 +2565,7 @@ msgid "Invalid Shadowsocks URL: missing credentials"
 msgstr "Неверный URL Shadowsocks: отсутствуют учетные данные"
 
 msgid "Invalid Shadowsocks URL: missing method and password separator \":\""
-msgstr "Неверный Shadowsocks URL: отсутствует разделитель метода и пароля \":\""
+msgstr "Неверный URL Shadowsocks: отсутствует разделитель метода и пароля \":\""
 
 msgid "Invalid Shadowsocks URL: missing port"
 msgstr "Неверный URL Shadowsocks: отсутствует порт"
@@ -2660,6 +2708,12 @@ msgstr "Изолировать трафик BitTorrent и направить е�
 msgid "Isolate Local LAN"
 msgstr "Изолировать локальную сеть"
 
+msgid "ISP / Organization"
+msgstr "Провайдер / Организация"
+
+msgid "ISP DNS LEAK"
+msgstr "УТЕЧКА DNS К ПРОВАЙДЕРУ"
+
 msgid "Issues"
 msgstr "Проблемы"
 
@@ -2780,6 +2834,15 @@ msgstr "Установлена последняя версия"
 msgid "Latest version:"
 msgstr "Последняя версия:"
 
+msgid "Leak detection completed"
+msgstr "Проверка утечек завершена"
+
+msgid "Leak detection failed to complete"
+msgstr "Не удалось завершить проверку утечек"
+
+msgid "LEAKED"
+msgstr "УТЕЧКА"
+
 msgid "Leave empty to omit this header"
 msgstr "Оставьте пустым, чтобы пропустить этот заголовок"
 
@@ -2857,6 +2920,9 @@ msgstr "Загрузка..."
 
 msgid "Local Address"
 msgstr "Локальный адрес"
+
+msgid "Location"
+msgstr "Местоположение"
 
 msgid "Log Level"
 msgstr "Уровень логирования"
@@ -3078,13 +3144,13 @@ msgid "No active routing sections found."
 msgstr "Активные секции маршрутизации не найдены."
 
 msgid "No benchmark data yet. Click \"Start Benchmark\" to begin."
-msgstr "Нет данных бенчмарка. Нажмите «Начать тест», чтобы запустить проверку."
+msgstr "Данные тестирования отсутствуют. Нажмите \"Запустить тест\" для начала."
 
 msgid "No benchmark history yet. Run a benchmark to see results here."
 msgstr "История бенчмарков пуста. Запустите бенчмарк, чтобы увидеть результаты здесь."
 
 msgid "No benchmark results yet. Configure options and click \"Start Benchmark\"."
-msgstr "Результатов бенчмарка пока нет. Настройте параметры и нажмите «Запустить бенчмарк»."
+msgstr "Результаты тестирования пока отсутствуют. Настройте параметры и нажмите \"Запустить тест\"."
 
 msgid "No check targets found in the configuration."
 msgstr "Цели для проверки не найдены в конфигурации."
@@ -3112,6 +3178,12 @@ msgstr "DHCP-клиенты не обнаружены"
 
 msgid "No diagnostic history available yet."
 msgstr "История проверок пока пуста."
+
+msgid "No DNS resolvers captured via proxy test. Proxy may be offline or blocking test subdomains."
+msgstr "В тесте через прокси резолверы не зафиксированы. Возможно, прокси не работает или блокирует тестовые поддомены."
+
+msgid "No DNS resolvers recorded"
+msgstr "DNS-резолверы не зафиксированы"
 
 msgid "No domains detected yet"
 msgstr "Домены пока не обнаружены"
@@ -3242,6 +3314,12 @@ msgstr "Обфускация"
 msgid "Obfuscation password"
 msgstr "Пароль обфускации"
 
+msgid "Observed Public IP"
+msgstr "Внешний публичный IP"
+
+msgid "OFFLINE"
+msgstr "ОФЛАЙН"
+
 msgid "Ollama (Local PC / Server)"
 msgstr "Ollama (локальный ПК / сервер)"
 
@@ -3312,13 +3390,13 @@ msgid "Optimize RAM memory"
 msgstr "Оптимизировать память (RAM)"
 
 msgid "Option \"%s\" contains an invalid input value."
-msgstr "Параметр \"%s\" содержит недопустимое значение."
+msgstr "Опция \"%s\" содержит недопустимое значение."
 
 msgid "Optional — leave empty for default"
 msgstr "Опционально — оставьте пустым для значения по умолчанию"
 
 msgid "Optional context (e.g. \"Rostelecom, YouTube 4K buffering is slow\")..."
-msgstr "Дополнительный контекст (напр. «Ростелеком, YouTube 4K долго буферизуется»)..."
+msgstr "Дополнительный контекст (напр. \"Ростелеком, долго грузится YouTube 4K\")..."
 
 msgid "Optional tls-auth or tls-crypt key"
 msgstr "Опциональный ключ tls-auth или tls-crypt"
@@ -3440,6 +3518,9 @@ msgstr "Ожидает запуска"
 msgid "Pending..."
 msgstr "Ожидание..."
 
+msgid "Performs simultaneous outbound checks via direct WAN (bypassing Sing-box redirect) and via proxy (127.0.0.1:4534) to verify that your real IP and DNS queries are not leaking to your ISP."
+msgstr "Выполняет одновременные исходящие запросы напрямую в WAN (в обход правил Sing-box) и через прокси (127.0.0.1:4534), проверяя, что ваш реальный IP и DNS-запросы не утекают провайдеру."
+
 msgid "Periodically check the current level and switch to a faster server even when the current one works."
 msgstr "Периодически проверять текущий уровень и переключаться на более быстрый сервер, даже если текущий работает."
 
@@ -3462,7 +3543,7 @@ msgid "Pin on dashboard"
 msgstr "Закрепить на дашборде"
 
 msgid "Pin P2P isolation to the torrent client's own ports, comma separated. Each entry is \"proto\", \"proto:port\" or \"proto:port-port\" (tcp/udp). Without a port the whole protocol is routed direct."
-msgstr "Закрепить изоляцию P2P за портами торрент-клиента, через запятую. Каждая запись — \"протокол\", \"протокол:порт\" или \"протокол:порт-порт\" (tcp/udp). Без порта весь протокол уходит напрямую."
+msgstr "Привязка изоляции P2P к портам торрент-клиента через запятую. Каждая запись: \"proto\", \"proto:port\" или \"proto:port-port\" (tcp/udp). Без указания порта весь протокол направляется напрямую."
 
 msgid "Plain-UDP DNS servers used as a last resort when all primary DNS fail. These are always unencrypted (no DoH/DoT). Example: 1.1.1.1, 8.8.8.8. Unlike the ISP fallback toggle, these are your own chosen servers."
 msgstr "Обычные UDP DNS-серверы, используемые как резерв при недоступности всех основных DNS. Всегда работают без шифрования (без DoH/DoT). Пример: 1.1.1.1, 8.8.8.8. В отличие от аварийного DNS провайдера, это выбранные вами серверы."
@@ -3620,8 +3701,14 @@ msgstr "Интервал проверки здоровья прокси (с)"
 msgid "Proxy Health Check URL"
 msgstr "URL проверки здоровья прокси"
 
+msgid "Proxy is offline or unreachable on 127.0.0.1:4534."
+msgstr "Прокси выключен или недоступен на 127.0.0.1:4534."
+
 msgid "Proxy link is unavailable"
 msgstr "Ссылка прокси недоступна"
+
+msgid "Proxy Outbound"
+msgstr "Исходящий прокси (туннель)"
 
 msgid "Proxy Section for Bot"
 msgstr "Секция прокси для бота"
@@ -3635,8 +3722,14 @@ msgstr "PSK"
 msgid "Public host"
 msgstr "Публичный хост"
 
+msgid "Public IP Address Isolation"
+msgstr "Изоляция публичного IP-адреса"
+
 msgid "QR code is too large"
 msgstr "QR-код слишком большой"
+
+msgid "Querying WAN direct socket and proxy outbound on 127.0.0.1:4534..."
+msgstr "Опрос прямого WAN-сокета и исходящего прокси на 127.0.0.1:4534..."
 
 msgid "QUIC (HTTP/3)"
 msgstr "QUIC (HTTP/3)"
@@ -3652,6 +3745,9 @@ msgstr "Оценка"
 
 msgid "RDP"
 msgstr "RDP"
+
+msgid "Re-run Leak Test"
+msgstr "Повторить проверку утечек"
 
 msgid "Read error"
 msgstr "Ошибка чтения"
@@ -3791,6 +3887,9 @@ msgstr "Определить шлюз"
 msgid "Resolve real IP for routing"
 msgstr "Разрешать реальный IP для маршрутизации"
 
+msgid "Resolver IP"
+msgstr "IP резолвера"
+
 msgid "Resource selection by hostname inside nfqws is not supported here; sing-box selects resources before NFQUEUE."
 msgstr "Выбор ресурсов по имени хоста внутри nfqws не поддерживается здесь; sing-box выбирает ресурсы до NFQUEUE."
 
@@ -3884,6 +3983,12 @@ msgstr "Направлять весь не-локальный LAN-трафик �
 msgid "Route bot API requests through this section. Leave empty to use the default mixed proxy."
 msgstr "Маршрутизировать запросы API бота через эту секцию. Оставьте пустым для использования смешанного прокси по умолчанию."
 
+msgid "Route community list subnets (IP/CIDR)"
+msgstr "Маршрутизировать подсети списков сообщества (IP/CIDR)"
+
+msgid "Route IP subnets associated with built-in community lists (e.g. Discord voice/media). Disable this if community subnets overlap with CDN/Anycast networks (such as Cloudflare/Google Cloud) and interfere with unrelated services (e.g. game launchers)."
+msgstr "Маршрутизировать IP-подсети из списков сообщества (например, голос/медиа Discord). Отключите, если подсети сообщества пересекаются с CDN/Anycast сетями (Cloudflare/Google Cloud) и мешают другим сервисам."
+
 msgid "Route main DNS requests through the selected section."
 msgstr "Маршрутизировать основные DNS-запросы через выбранную секцию."
 
@@ -3971,6 +4076,9 @@ msgstr "Выполняется диагностика…"
 msgid "Russia (ru)"
 msgstr "Россия (ru)"
 
+msgid "SAFE"
+msgstr "БЕЗОПАСНО"
+
 msgid "SafeSearch"
 msgstr "SafeSearch"
 
@@ -4039,6 +4147,9 @@ msgstr "Секция для регистрации Cloudflare WARP API. Если
 
 msgid "Sections"
 msgstr "Секции"
+
+msgid "SECURE"
+msgstr "ЗАЩИЩЕНО"
 
 msgid "Security"
 msgstr "Безопасность"
@@ -4625,6 +4736,9 @@ msgstr "Tachyon: Бенчмарк и автоподбор DNS"
 msgid "Tachyon Error"
 msgstr "Ошибка Tachyon"
 
+msgid "Tachyon IP & DNS Leak Detection"
+msgstr "Проверка утечек IP и DNS Tachyon"
+
 msgid "Tachyon manages ciadpi pid files itself, so pidfile options are not allowed here."
 msgstr "Tachyon управляет файлами pid ciadpi самостоятельно, поэтому параметры pidfile здесь не допускаются."
 
@@ -4768,6 +4882,9 @@ msgstr "Тестирование"
 
 msgid "Testing bypass strategies in isolated sandbox..."
 msgstr "Тестирование стратегий обхода в изолированной песочнице..."
+
+msgid "Testing DNS leak upstream resolvers with bash.ws protocol..."
+msgstr "Тестирование восходящих DNS-резолверов по протоколу bash.ws..."
 
 msgid "Testing strategy"
 msgstr "Тестирование стратегии"
@@ -5156,6 +5273,9 @@ msgstr "Отдано"
 msgid "Upstream Mode"
 msgstr "Режим DNS Upstream"
 
+msgid "Upstream Provider / ASN"
+msgstr "Восходящий провайдер / ASN"
+
 msgid "URL must start with vless://, vmess://, ss://, trojan://, socks4://, socks4a://, socks5://, http://, https://, hysteria2://, hy2://, or tuic://"
 msgstr "URL должен начинаться с vless://, vmess://, ss://, trojan://, socks4://, socks4a://, socks5://, http://, https://, hysteria2://, hy2:// или tuic://"
 
@@ -5272,6 +5392,9 @@ msgstr "Значение должно быть положительным цел
 
 msgid "Value must not contain control characters"
 msgstr "Значение не должно содержать символы управления"
+
+msgid "Verdict"
+msgstr "Статус"
 
 msgid "Verifying router and service readiness..."
 msgstr "Проверка готовности роутера и служб..."
@@ -5836,9 +5959,6 @@ msgstr "Маршрут"
 
 msgid "Resolved IP / DNS"
 msgstr "IP / DNS"
-
-msgid "Verdict"
-msgstr "Статус"
 
 msgid "Check domain or IP (e.g. example.com)..."
 msgstr "Проверить домен или IP (напр. example.com)..."

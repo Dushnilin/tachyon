@@ -227,9 +227,13 @@ function get_hosts_urls() {
 function hosts_list_update(target_url) {
     let urls = target_url != null && target_url != "" ? [target_url] : get_hosts_urls();
     if (length(urls) == 0) {
-        log("No hosts list URLs configured", "warn");
-        print('{"success":false,"error":"no_urls","entries":0}');
-        return false;
+        if (target_url != null && target_url != "") {
+            log("Specified hosts list URL is empty", "warn");
+            print('{"success":false,"error":"no_urls","entries":0}');
+            return false;
+        }
+        print('{"success":true,"entries":0,"sources":0}');
+        return true;
     }
 
     mkdir_p(HOSTS_TMP_DIR);

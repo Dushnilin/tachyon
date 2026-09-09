@@ -74,6 +74,11 @@ echo "=== Test: hosts_list_status with no URLs ==="
 output=$(ucode "$HOSTS_UC" list-status 2>/dev/null || true)
 assert_eq "false" "$(echo "$output" | grep -o '"cache_exists":[a-z]*' | cut -d: -f2)" "cache_exists should be false initially"
 
+# Run hosts_list_update with no URLs (should succeed cleanly with success: true and exit 0)
+echo "=== Test: hosts_list_update with no URLs ==="
+update_output=$(ucode "$HOSTS_UC" list-update 2>/dev/null || true)
+assert_eq "true" "$(echo "$update_output" | grep -o '"success":[a-z]*' | cut -d: -f2)" "list-update should succeed when no URLs configured"
+
 # --- Test 5: Safe name length for long percent-encoded URLs ---
 echo "=== Test: safe_name length for long URLs ==="
 long_url_safe_len=$(ucode -e '

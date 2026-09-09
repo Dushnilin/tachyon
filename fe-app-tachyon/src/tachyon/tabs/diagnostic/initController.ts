@@ -41,6 +41,7 @@ import {
   renderServiceCheckModal,
   renderAiChatModal,
   renderStrategyFuzzerModal,
+  renderLeakCheckModal,
 } from './partials';
 import { TachyonShellMethods } from '../../methods';
 import { getConfigSections } from '../../methods/custom/getConfigSections';
@@ -1584,6 +1585,10 @@ function handleOpenAiChat() {
   renderAiChatModal();
 }
 
+function handleOpenLeakCheck() {
+  renderLeakCheckModal();
+}
+
 function handleOpenStrategyFuzzer() {
   getConfigSections()
     .then((sections) => {
@@ -1918,6 +1923,12 @@ function renderDiagnosticAvailableActionsWidget() {
       loading: diagnosticsActions.checkServices.loading,
       disabled: utilityActionsDisabled,
       onClick: handleCheckServicesAction,
+    },
+    testLeaks: {
+      visible: true,
+      loading: false,
+      disabled: false,
+      onClick: handleOpenLeakCheck,
     },
     viewLogs: {
       loading: diagnosticsActions.viewLogs.loading,

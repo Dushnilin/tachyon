@@ -117,6 +117,9 @@ export namespace Tachyon {
     DNS_BENCHMARK_STATUS = 'dns_benchmark_status',
     DNS_BENCHMARK_STOP = 'dns_benchmark_stop',
     DNS_BENCHMARK_APPLY = 'dns_benchmark_apply',
+    LEAK_CHECK = 'leak_check',
+    CHECK_IP_LEAK = 'check_ip_leak',
+    CHECK_DNS_LEAK = 'check_dns_leak',
   }
 
   export enum AvailableClashAPIMethods {
@@ -1165,5 +1168,42 @@ export namespace Tachyon {
     error: string | null;
     started_at: number;
     finished_at: number | null;
+  }
+
+  export interface IPLeakResult {
+    leaked: boolean;
+    direct_ip: string;
+    direct_country?: string;
+    direct_country_code?: string;
+    direct_city?: string;
+    direct_isp?: string;
+    proxy_ip: string;
+    proxy_country?: string;
+    proxy_country_code?: string;
+    proxy_city?: string;
+    proxy_org?: string;
+    proxy_online: boolean;
+  }
+
+  export interface DNSResolverInfo {
+    ip: string;
+    country: string;
+    isp: string;
+    is_isp: boolean;
+  }
+
+  export interface DNSLeakResult {
+    dns_leaked: boolean;
+    direct_ip: string;
+    proxy_ip: string;
+    dns_servers: DNSResolverInfo[];
+    direct_dns_servers: DNSResolverInfo[];
+    proxy_online: boolean;
+  }
+
+  export interface LeakCheckResult {
+    ip_leak: IPLeakResult;
+    dns_leak: DNSLeakResult;
+    timestamp?: number;
   }
 }

@@ -1664,4 +1664,28 @@ export const TachyonShellMethods = {
       },
     };
   },
+
+  leakCheck: async (): Promise<
+    Tachyon.MethodResponse<Tachyon.LeakCheckResult>
+  > => {
+    const response = await executeShellCommand({
+      command: '/usr/bin/tachyon',
+      args: [Tachyon.AvailableMethods.LEAK_CHECK],
+      timeout: 25000,
+    });
+    const parsed = parseJsonObjectOutput<Tachyon.LeakCheckResult>(
+      response.stdout,
+    );
+
+    if ((response.code ?? 0) !== 0 || !parsed) {
+      return {
+        success: false,
+        error: response.stderr || _('Failed to execute IP and DNS leak check'),
+      };
+    }
+    return {
+      success: true,
+      data: parsed,
+    };
+  },
 };

@@ -257,6 +257,24 @@ function run_speedtest() {
     };
 }
 
+function run_leak_check() {
+    let leak_mod = require("diagnostics.leak_check");
+    if (!leak_mod) return null;
+    return leak_mod.run_leak_check(null, null);
+}
+
+function run_ip_leak_check() {
+    let leak_mod = require("diagnostics.leak_check");
+    if (!leak_mod) return null;
+    return leak_mod.check_ip_leak(null, null);
+}
+
+function run_dns_leak_check() {
+    let leak_mod = require("diagnostics.leak_check");
+    if (!leak_mod) return null;
+    return leak_mod.check_dns_leak(null, null, null, null);
+}
+
 function manage_domain_list(action_type, domain, do_delete) {
     let c = uci_core.cursor();
     if (!c) return { success: false, error: "Не удалось инициализировать UCI" };
@@ -372,6 +390,9 @@ return {
     get_clash_connections,
     check_connection,
     run_speedtest,
+    run_leak_check,
+    run_ip_leak_check,
+    run_dns_leak_check,
     manage_domain_list,
     manage_domain_list_by_section,
     get_sections,

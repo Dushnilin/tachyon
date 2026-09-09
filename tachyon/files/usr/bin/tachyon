@@ -168,6 +168,9 @@ function show_help() {
     print("                            Validate an NFQWS2 strategy and print JSON result\n");
     print("    validate_byedpi_strategy_json\n");
     print("                            Validate a ByeDPI ciadpi strategy and print JSON result\n");
+    print("    leak_check [--pretty]   Test for IP and DNS leaks (direct vs proxy outbound)\n");
+    print("    check_ip_leak           Check IP leak status (JSON)\n");
+    print("    check_dns_leak          Check DNS leak status via bash.ws (JSON)\n");
 }
 
 function command_spec(command) {
@@ -275,6 +278,9 @@ function command_spec(command) {
         validate_nfqws_strategy_json: [ "diagnostics/runtime.uc", "validate-nfqws-strategy-json", 1 ],
         validate_nfqws2_strategy_json: [ "diagnostics/runtime.uc", "validate-nfqws2-strategy-json", 1 ],
         validate_byedpi_strategy_json: [ "diagnostics/runtime.uc", "validate-byedpi-strategy-json", 1 ],
+        leak_check: [ "diagnostics/leak_check.uc", "leak-check", 2 ],
+        check_ip_leak: [ "diagnostics/leak_check.uc", "ip-leak", 0 ],
+        check_dns_leak: [ "diagnostics/leak_check.uc", "dns-leak", 0 ],
         fuzzer_start: [ "diagnostics/fuzzer.uc", "start", 6 ],
         fuzzer_status: [ "diagnostics/fuzzer.uc", "status", 0 ],
         fuzzer_stop: [ "diagnostics/fuzzer.uc", "stop", 0 ],

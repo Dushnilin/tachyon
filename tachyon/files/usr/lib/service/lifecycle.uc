@@ -847,7 +847,8 @@ function start_main() {
     if (status != 0)
         return status;
 
-    module_background(HOSTS_UC, [ "list-update" ]);
+    if (module_success(STATE_UC, [ "has-hosts-list-update-sources" ]))
+        module_background(HOSTS_UC, [ "list-update" ]);
 
     status = module_status(SINGBOX_UC, [ "configure-service" ]);
     if (status != 0)
@@ -1402,7 +1403,7 @@ function reload(reason) {
     if (plan.needs_byedpi_restart == 1)
         module_success(BYEDPI_UC, [ "stop-runtime" ]);
 
-    if (plan.needs_hosts_update == 1)
+    if (plan.needs_hosts_update == 1 && module_success(STATE_UC, [ "has-hosts-list-update-sources" ]))
         module_success(HOSTS_UC, [ "list-update" ]);
 
     if (plan.needs_nft_rebuild == 1) {

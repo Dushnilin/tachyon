@@ -3433,6 +3433,9 @@ var Tachyon;
     AvailableMethods2["DNS_BENCHMARK_STATUS"] = "dns_benchmark_status";
     AvailableMethods2["DNS_BENCHMARK_STOP"] = "dns_benchmark_stop";
     AvailableMethods2["DNS_BENCHMARK_APPLY"] = "dns_benchmark_apply";
+    AvailableMethods2["LEAK_CHECK"] = "leak_check";
+    AvailableMethods2["CHECK_IP_LEAK"] = "check_ip_leak";
+    AvailableMethods2["CHECK_DNS_LEAK"] = "check_dns_leak";
   })(AvailableMethods = Tachyon2.AvailableMethods || (Tachyon2.AvailableMethods = {}));
   let AvailableClashAPIMethods;
   ((AvailableClashAPIMethods2) => {
@@ -4723,6 +4726,26 @@ var TachyonShellMethods = {
         message: parsed.message || _("Configuration applied"),
         recommendation: parsed.recommendation
       }
+    };
+  },
+  leakCheck: async () => {
+    const response = await executeShellCommand({
+      command: "/usr/bin/tachyon",
+      args: [Tachyon.AvailableMethods.LEAK_CHECK],
+      timeout: 25e3
+    });
+    const parsed = parseJsonObjectOutput(
+      response.stdout
+    );
+    if ((response.code ?? 0) !== 0 || !parsed) {
+      return {
+        success: false,
+        error: response.stderr || _("Failed to execute IP and DNS leak check")
+      };
+    }
+    return {
+      success: true,
+      data: parsed
     };
   }
 };
@@ -11320,7 +11343,8 @@ function renderAvailableActions({
   viewLogs,
   showSingBoxConfig,
   generateBugReport,
-  checkServices
+  checkServices,
+  testLeaks
 }) {
   return E("div", { class: "tachyon_diagnostic-page__right-bar__actions" }, [
     E("b", {}, _("Available actions")),
@@ -11440,6 +11464,16 @@ function renderAvailableActions({
         text: _("Check Services"),
         loading: checkServices.loading,
         disabled: checkServices.disabled
+      })
+    ]),
+    ...insertIf(!!testLeaks?.visible, [
+      renderButton({
+        classNames: ["cbi-button-action"],
+        onClick: testLeaks.onClick,
+        icon: renderCircleCheckBigIcon24,
+        text: _("\u{1F6E1}\uFE0F IP & DNS Leak Test"),
+        loading: testLeaks.loading,
+        disabled: testLeaks.disabled
       })
     ]),
     ...insertIf(viewLogs.visible, [
@@ -14709,6 +14743,336 @@ function renderDnsBenchmarkModal() {
   startBenchmark();
 }
 
+// src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts
+function renderLeakCheckModal() {
+  let isRunning = false;
+  const progressBar = E("div", {
+    style: "width: 0%; height: 6px; background: linear-gradient(90deg, #007bff, #28a745); border-radius: 3px; transition: width 0.4s ease;"
+  });
+  const progressContainer = E(
+    "div",
+    {
+      style: "width: 100%; height: 6px; background: rgba(128,128,128,0.2); border-radius: 3px; overflow: hidden; margin-bottom: 14px;"
+    },
+    [progressBar]
+  );
+  const statusLabel = E(
+    "div",
+    {
+      style: "font-size: 13px; font-weight: 500; margin-bottom: 12px; color: var(--text-color-medium, #6c757d);"
+    },
+    _("Initializing router-level IP & DNS leak test...")
+  );
+  const resultsContainer = E("div", {
+    style: "display: none; margin-bottom: 16px;"
+  });
+  const startTest = async () => {
+    if (isRunning) return;
+    isRunning = true;
+    resultsContainer.style.display = "none";
+    progressContainer.style.display = "block";
+    progressBar.style.width = "30%";
+    statusLabel.textContent = _(
+      "Querying WAN direct socket and proxy outbound on 127.0.0.1:4534..."
+    );
+    if (retryBtn) retryBtn.disabled = true;
+    const timer = setTimeout(() => {
+      progressBar.style.width = "70%";
+      statusLabel.textContent = _(
+        "Testing DNS leak upstream resolvers with bash.ws protocol..."
+      );
+    }, 1500);
+    try {
+      const response = await TachyonShellMethods.leakCheck();
+      clearTimeout(timer);
+      progressBar.style.width = "100%";
+      if (response.success && response.data) {
+        statusLabel.textContent = _("Leak detection completed");
+        setTimeout(() => {
+          progressContainer.style.display = "none";
+          progressBar.style.width = "0%";
+        }, 400);
+        renderResults(response.data);
+      } else {
+        const err = !response.success && response.error ? response.error : _("Leak detection failed to complete");
+        progressContainer.style.display = "none";
+        statusLabel.textContent = err;
+        resultsContainer.innerHTML = "";
+        resultsContainer.appendChild(
+          E(
+            "div",
+            { class: "alert-message warning" },
+            err || _(
+              "Could not contact leak test endpoints. Please ensure router has internet access."
+            )
+          )
+        );
+        resultsContainer.style.display = "block";
+      }
+    } catch (e) {
+      clearTimeout(timer);
+      progressContainer.style.display = "none";
+      statusLabel.textContent = _("An unexpected error occurred during test");
+      resultsContainer.innerHTML = "";
+      resultsContainer.appendChild(
+        E(
+          "div",
+          { class: "alert-message warning" },
+          e instanceof Error ? e.message : String(e)
+        )
+      );
+      resultsContainer.style.display = "block";
+    } finally {
+      isRunning = false;
+      if (retryBtn) retryBtn.disabled = false;
+    }
+  };
+  const renderResults = (data) => {
+    resultsContainer.innerHTML = "";
+    const { ip_leak, dns_leak } = data;
+    const ipAlertClass = !ip_leak.proxy_online ? "alert-message warning" : ip_leak.leaked ? "alert-message danger" : "alert-message success";
+    const ipAlertText = !ip_leak.proxy_online ? _("Proxy is offline or unreachable on 127.0.0.1:4534.") : ip_leak.leaked ? _(
+      "\u26A0\uFE0F CRITICAL IP LEAK: Your real public IP is exposed through the proxy outbound!"
+    ) : _(
+      "\u{1F6E1}\uFE0F SECURE: No IP leak detected. Real WAN IP is concealed behind proxy outbound."
+    );
+    const ipTable = E(
+      "table",
+      {
+        class: "table cbi-section-table",
+        style: "width: 100%; margin-bottom: 12px; font-size: 12px;"
+      },
+      [
+        E("thead", {}, [
+          E("tr", { class: "tr cbi-section-table-titles" }, [
+            E("th", { class: "th" }, _("Connection Path")),
+            E("th", { class: "th" }, _("Observed Public IP")),
+            E("th", { class: "th" }, _("Location")),
+            E("th", { class: "th" }, _("ISP / Organization")),
+            E("th", { class: "th", style: "text-align: center;" }, _("Status"))
+          ])
+        ]),
+        E("tbody", {}, [
+          E("tr", { class: "tr cbi-section-table-row" }, [
+            E("td", { class: "td" }, [
+              E("b", {}, _("Direct WAN (ISP)")),
+              E(
+                "div",
+                {
+                  style: "font-size: 11px; color: var(--text-color-medium, #6c757d);"
+                },
+                _("Bypasses proxy (SO_MARK 0x08000000)")
+              )
+            ]),
+            E("td", { class: "td" }, [E("code", {}, ip_leak.direct_ip || "\u2014")]),
+            E(
+              "td",
+              { class: "td" },
+              [ip_leak.direct_country, ip_leak.direct_city].filter(Boolean).join(", ") || "\u2014"
+            ),
+            E("td", { class: "td" }, ip_leak.direct_isp || "\u2014"),
+            E("td", { class: "td", style: "text-align: center;" }, [
+              E(
+                "span",
+                {
+                  class: "badge",
+                  style: "background: var(--text-color-medium, #6c757d); color: #fff; padding: 2px 6px; border-radius: 4px; font-size: 11px;"
+                },
+                _("Baseline")
+              )
+            ])
+          ]),
+          E("tr", { class: "tr cbi-section-table-row" }, [
+            E("td", { class: "td" }, [
+              E("b", {}, _("Proxy Outbound")),
+              E(
+                "div",
+                {
+                  style: "font-size: 11px; color: var(--text-color-medium, #6c757d);"
+                },
+                _("127.0.0.1:4534 (sing-box mixed)")
+              )
+            ]),
+            E("td", { class: "td" }, [E("code", {}, ip_leak.proxy_ip || "\u2014")]),
+            E(
+              "td",
+              { class: "td" },
+              [ip_leak.proxy_country, ip_leak.proxy_city].filter(Boolean).join(", ") || "\u2014"
+            ),
+            E("td", { class: "td" }, ip_leak.proxy_org || "\u2014"),
+            E("td", { class: "td", style: "text-align: center;" }, [
+              !ip_leak.proxy_online ? E(
+                "span",
+                {
+                  class: "badge",
+                  style: "background: #fd7e14; color: #fff; padding: 2px 6px; border-radius: 4px; font-size: 11px;"
+                },
+                _("OFFLINE")
+              ) : ip_leak.leaked ? E(
+                "span",
+                {
+                  class: "badge",
+                  style: "background: #dc3545; color: #fff; padding: 2px 6px; border-radius: 4px; font-size: 11px;"
+                },
+                _("LEAKED")
+              ) : E(
+                "span",
+                {
+                  class: "badge",
+                  style: "background: #28a745; color: #fff; padding: 2px 6px; border-radius: 4px; font-size: 11px;"
+                },
+                _("SECURE")
+              )
+            ])
+          ])
+        ])
+      ]
+    );
+    const ipSection = E(
+      "div",
+      {
+        class: "cbi-section",
+        style: "margin-bottom: 20px; border: 1px solid var(--border-color, rgba(128,128,128,0.2)); border-radius: 6px; padding: 12px;"
+      },
+      [
+        E("h4", { style: "margin-top: 0; margin-bottom: 8px;" }, [
+          "\u{1F310} ",
+          _("Public IP Address Isolation")
+        ]),
+        E("div", { class: ipAlertClass, style: "margin-bottom: 12px;" }, [
+          ipAlertText
+        ]),
+        ipTable
+      ]
+    );
+    const dnsAlertClass = dns_leak.dns_leaked ? "alert-message danger" : dns_leak.dns_servers.length > 0 ? "alert-message success" : "alert-message info";
+    const dnsAlertText = dns_leak.dns_leaked ? _(
+      "\u26A0\uFE0F DNS LEAK DETECTED: DNS queries are leaking to your local Internet Service Provider!"
+    ) : dns_leak.dns_servers.length > 0 ? _(
+      "\u{1F6E1}\uFE0F SECURE: No DNS leaks detected. All queries resolve through non-ISP upstream resolvers."
+    ) : _(
+      "No DNS resolvers captured via proxy test. Proxy may be offline or blocking test subdomains."
+    );
+    const dnsTableRows = (dns_leak.dns_servers || []).map(
+      (s) => E("tr", { class: "tr cbi-section-table-row" }, [
+        E("td", { class: "td" }, [E("code", {}, s.ip)]),
+        E("td", { class: "td" }, s.country || "\u2014"),
+        E("td", { class: "td" }, s.isp || "\u2014"),
+        E("td", { class: "td", style: "text-align: center;" }, [
+          s.is_isp ? E(
+            "span",
+            {
+              class: "badge",
+              style: "background: #dc3545; color: #fff; padding: 2px 6px; border-radius: 4px; font-size: 11px;"
+            },
+            _("ISP DNS LEAK")
+          ) : E(
+            "span",
+            {
+              class: "badge",
+              style: "background: #28a745; color: #fff; padding: 2px 6px; border-radius: 4px; font-size: 11px;"
+            },
+            _("SAFE")
+          )
+        ])
+      ])
+    );
+    const dnsTable = E(
+      "table",
+      {
+        class: "table cbi-section-table",
+        style: "width: 100%; font-size: 12px; margin-bottom: 12px;"
+      },
+      [
+        E("thead", {}, [
+          E("tr", { class: "tr cbi-section-table-titles" }, [
+            E("th", { class: "th" }, _("Resolver IP")),
+            E("th", { class: "th" }, _("Country")),
+            E("th", { class: "th" }, _("Upstream Provider / ASN")),
+            E(
+              "th",
+              { class: "th", style: "text-align: center;" },
+              _("Verdict")
+            )
+          ])
+        ]),
+        E(
+          "tbody",
+          {},
+          dnsTableRows.length > 0 ? dnsTableRows : [
+            E("tr", { class: "tr" }, [
+              E(
+                "td",
+                {
+                  class: "td",
+                  colSpan: 4,
+                  style: "text-align: center; opacity: 0.7;"
+                },
+                _("No DNS resolvers recorded")
+              )
+            ])
+          ]
+        )
+      ]
+    );
+    const dnsSection = E(
+      "div",
+      {
+        class: "cbi-section",
+        style: "border: 1px solid var(--border-color, rgba(128,128,128,0.2)); border-radius: 6px; padding: 12px;"
+      },
+      [
+        E("h4", { style: "margin-top: 0; margin-bottom: 8px;" }, [
+          "\u{1F50D} ",
+          _("DNS Upstream Resolver Analysis (bash.ws protocol)")
+        ]),
+        E("div", { class: dnsAlertClass, style: "margin-bottom: 12px;" }, [
+          dnsAlertText
+        ]),
+        dnsTable
+      ]
+    );
+    resultsContainer.appendChild(ipSection);
+    resultsContainer.appendChild(dnsSection);
+    resultsContainer.style.display = "block";
+  };
+  const retryBtn = renderButton({
+    classNames: ["cbi-button-action"],
+    onClick: startTest,
+    text: `\u{1F504} ${_("Re-run Leak Test")}`
+  });
+  const closeBtn = renderButton({
+    classNames: ["cbi-button"],
+    onClick: () => {
+      if (ui.hideModal) ui.hideModal();
+    },
+    text: _("Close")
+  });
+  const modalContent = E("div", { style: "padding: 8px;" }, [
+    E(
+      "p",
+      {
+        style: "font-size: 13px; color: var(--text-color-medium, #6c757d); margin-bottom: 14px;"
+      },
+      _(
+        "Performs simultaneous outbound checks via direct WAN (bypassing Sing-box redirect) and via proxy (127.0.0.1:4534) to verify that your real IP and DNS queries are not leaking to your ISP."
+      )
+    ),
+    statusLabel,
+    progressContainer,
+    resultsContainer,
+    E(
+      "div",
+      {
+        style: "display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; border-top: 1px solid var(--border-color, rgba(128,128,128,0.2)); padding-top: 12px;"
+      },
+      [retryBtn, closeBtn]
+    )
+  ]);
+  ui.showModal(`\u{1F6E1}\uFE0F ${_("Tachyon IP & DNS Leak Detection")}`, modalContent);
+  startTest();
+}
+
 // src/helpers/normalizeCompiledVersion.ts
 function normalizeCompiledVersion(version, commitSha) {
   if (!version || version.includes("COMPILED")) {
@@ -16424,6 +16788,9 @@ async function handleRunAiDoctor() {
 function handleOpenAiChat() {
   renderAiChatModal();
 }
+function handleOpenLeakCheck() {
+  renderLeakCheckModal();
+}
 function handleOpenStrategyFuzzer() {
   getConfigSections().then((sections) => {
     const ruleNames = sections.filter((s) => s[".type"] === "section" || s[".type"] === "rule").map((s) => s.name || s[".name"]).filter((n) => Boolean(n));
@@ -16710,6 +17077,12 @@ function renderDiagnosticAvailableActionsWidget() {
       loading: diagnosticsActions.checkServices.loading,
       disabled: utilityActionsDisabled,
       onClick: handleCheckServicesAction
+    },
+    testLeaks: {
+      visible: true,
+      loading: false,
+      disabled: false,
+      onClick: handleOpenLeakCheck
     },
     viewLogs: {
       loading: diagnosticsActions.viewLogs.loading,
