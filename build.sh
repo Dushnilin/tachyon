@@ -133,12 +133,14 @@ ensure_host_deps() {
 
   echo "Installing missing host dependencies: ${APT_PACKAGES[*]}" >&2
   if [[ "$(id -u)" -eq 0 ]]; then
+    rm -f /etc/apt/sources.list.d/google-chrome.list 2>/dev/null || true
     apt-get update
     DEBIAN_FRONTEND=noninteractive apt-get install -y "${APT_PACKAGES[@]}"
     return 0
   fi
 
   if command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
+    sudo rm -f /etc/apt/sources.list.d/google-chrome.list 2>/dev/null || true
     sudo apt-get update
     sudo DEBIAN_FRONTEND=noninteractive apt-get install -y "${APT_PACKAGES[@]}"
     return 0

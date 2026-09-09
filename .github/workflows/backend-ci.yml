@@ -41,6 +41,7 @@ jobs:
       - name: Build ucode
         shell: bash
         run: |
+          sudo rm -f /etc/apt/sources.list.d/google-chrome.list
           sudo apt-get update
           sudo apt-get install -y build-essential cmake git libjson-c-dev pkg-config nodejs curl
           git clone --depth 1 --branch v0.0.20250529 https://github.com/jow-/ucode.git /tmp/ucode

@@ -6295,3 +6295,21 @@ msgstr "Скачивание и обработка списков"
 
 msgid "Applying rules and subnet lists"
 msgstr "Применение правил и списков подсетей"
+
+msgid "Always Active (24/7)"
+msgstr "Всегда активно (24/7)"
+
+msgid "Active Hours Mode"
+msgstr "Режим часов активности"
+
+msgid "Choose whether this schedule rule is permanently active (24/7) or restricted to specific hours."
+msgstr "Выберите, действует ли расписание круглосуточно (24/7) или только в заданные часы."
+
+msgid "Scheduled Hours (Time window)"
+msgstr "По расписанию (интервал времени)"
+
+msgid "Allow always"
+msgstr "Разрешено всегда"
+
+msgid "Block always"
+msgstr "Заблокировано всегда"

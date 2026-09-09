@@ -773,6 +773,10 @@ function schedule_has_time_window(schedule) {
         trim(option(schedule, "end_time", "")) != "";
 }
 
+function resolve_mac_to_ips(mac) {
+    return core_ip.resolve_mac_to_ips(mac);
+}
+
 function profile_source_ip_cidrs(profile) {
     let result = [];
     for (let raw in schedule_list_value(profile, "device_ip")) {
@@ -780,8 +784,14 @@ function profile_source_ip_cidrs(profile) {
         if (device == "")
             continue;
         let is_mac = match(device, /^([0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}$/) != null;
-        if (is_mac)
+        if (is_mac) {
+            for (let ip in resolve_mac_to_ips(device)) {
+                let cidr = core_ip.valid_ipv6(ip) ? ip + "/128" : ip + "/32";
+                if (index(result, cidr) < 0)
+                    push(result, cidr);
+            }
             continue;
+        }
         if (core_ip.valid_ip(device)) {
             let cidr = core_ip.valid_ipv6(device) ? device + "/128" : device + "/32";
             if (index(result, cidr) < 0) push(result, cidr);
@@ -799,8 +809,14 @@ function schedule_source_ip_cidrs(schedule) {
         if (device == "")
             continue;
         let is_mac = match(device, /^([0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}$/) != null;
-        if (is_mac)
+        if (is_mac) {
+            for (let ip in resolve_mac_to_ips(device)) {
+                let cidr = core_ip.valid_ipv6(ip) ? ip + "/128" : ip + "/32";
+                if (index(result, cidr) < 0)
+                    push(result, cidr);
+            }
             continue;
+        }
         if (core_ip.valid_ip(device)) {
             let cidr = core_ip.valid_ipv6(device) ? device + "/128" : device + "/32";
             if (index(result, cidr) < 0) push(result, cidr);
@@ -907,9 +923,13 @@ function enabled_safesearch_profiles() {
     return result;
 }
 
-function add_safesearch_dns_rules(config, profiles) {
+function add_safesearch_dns_rules(target, profiles) {
     if (length(profiles) == 0)
         return;
+
+    let rules_arr = (type(target) == "object" && type(target.dns) == "object" && type(target.dns.rules) == "array")
+        ? target.dns.rules
+        : target;
 
     let all_sources = [];
     for (let profile in profiles) {
@@ -951,7 +971,7 @@ function add_safesearch_dns_rules(config, profiles) {
             };
             if (length(all_sources) > 0)
                 rule.source_ip_cidr = all_sources;
-            push(config.dns.rules, rule);
+            push(rules_arr, rule);
         }
     }
 }
@@ -965,7 +985,10 @@ function add_content_block_dns_inbound(config) {
     });
 }
 
-function add_content_block_dns_rules(config, schedules) {
+function add_content_block_dns_rules(target, schedules) {
+    let rules_arr = (type(target) == "object" && type(target.dns) == "object" && type(target.dns.rules) == "array")
+        ? target.dns.rules
+        : target;
     let added = false;
     for (let schedule in schedules) {
         let mode = option(schedule, "mode", "block");
@@ -989,14 +1012,17 @@ function add_content_block_dns_rules(config, schedules) {
                 rule.source_ip_cidr = sources;
             if (mode == "allow")
                 rule.invert = true;
-            push(config.dns.rules, rule);
+            push(rules_arr, rule);
             added = true;
         }
     }
     return added;
 }
 
-function add_content_block_route_rules(config, schedules) {
+function add_content_block_route_rules(target, schedules) {
+    let rules_arr = (type(target) == "object" && type(target.route) == "object" && type(target.route.rules) == "array")
+        ? target.route.rules
+        : target;
     for (let schedule in schedules) {
         if (schedule_has_time_window(schedule))
             continue;
@@ -1012,7 +1038,7 @@ function add_content_block_route_rules(config, schedules) {
         rule.source_ip_cidr = sources;
         if (mode == "allow")
             rule.invert = true;
-        push(config.route.rules, rule);
+        push(rules_arr, rule);
     }
 }
 
@@ -1029,11 +1055,25 @@ function add_content_blocking(config) {
         action: "hijack-dns",
         inbound: [ runtime_constants.DNS_BLOCK_INBOUND_TAG ]
     });
-    add_content_block_dns_rules(config, schedules);
-    add_content_block_dns_rules(config, profiles);
-    add_safesearch_dns_rules(config, safesearch_profiles);
-    add_content_block_route_rules(config, schedules);
-    add_content_block_route_rules(config, profiles);
+
+    let new_dns_rules = [];
+    add_content_block_dns_rules(new_dns_rules, schedules);
+    add_content_block_dns_rules(new_dns_rules, profiles);
+    add_safesearch_dns_rules(new_dns_rules, safesearch_profiles);
+
+    // Place content blocking DNS rules at the front of config.dns.rules so
+    // queries on dns-block-in are rejected before any section FakeIP rule matches!
+    for (let i = length(new_dns_rules) - 1; i >= 0; i--)
+        unshift(config.dns.rules, new_dns_rules[i]);
+
+    let new_route_rules = [];
+    add_content_block_route_rules(new_route_rules, schedules);
+    add_content_block_route_rules(new_route_rules, profiles);
+
+    // Insert content blocking route rules right after hijack-dns (index 1)
+    // so sniffed domains from blocked clients are rejected before any section proxy route matches!
+    for (let i = length(new_route_rules) - 1; i >= 0; i--)
+        splice(config.route.rules, 1, 0, new_route_rules[i]);
 }
 
 function single_or_array(values) {
@@ -1044,7 +1084,48 @@ function single_or_array(values) {
     return values;
 }
 
-function source_aware_dns_sources(sections) {
+function get_excluded_client_cidrs(settings) {
+    let result = [];
+    let seen = {};
+    let add_cidr = function(ip) {
+        ip = trim(as_string(ip));
+        if (ip == "") return;
+        let is_mac = match(ip, /^([0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}$/) != null;
+        if (is_mac) {
+            for (let res_ip in resolve_mac_to_ips(ip)) {
+                let cidr = core_ip.valid_ipv6(res_ip) ? res_ip + "/128" : res_ip + "/32";
+                if (!seen[cidr]) {
+                    seen[cidr] = true;
+                    push(result, cidr);
+                }
+            }
+            return;
+        }
+        if (core_ip.valid_ip(ip)) {
+            let cidr = core_ip.valid_ipv6(ip) ? ip + "/128" : ip + "/32";
+            if (!seen[cidr]) {
+                seen[cidr] = true;
+                push(result, cidr);
+            }
+        } else if (core_ip.valid_ip_cidr(ip)) {
+            if (!seen[ip]) {
+                seen[ip] = true;
+                push(result, ip);
+            }
+        }
+    };
+
+    if (settings) {
+        for (let item in list_option(settings, "excluded_clients"))
+            add_cidr(item);
+        for (let item in list_option(settings, "excluded_ips"))
+            add_cidr(item);
+    }
+
+    return result;
+}
+
+function source_aware_dns_sources(sections, settings) {
     let sources = [];
     let seen = {};
     let add_source = function(value) {
@@ -1054,6 +1135,11 @@ function source_aware_dns_sources(sections) {
         seen[value] = true;
         push(sources, value);
     };
+
+    if (settings) {
+        for (let cidr in get_excluded_client_cidrs(settings))
+            add_source(cidr);
+    }
 
     for (let section in sections) {
         let action = option(section, "action", "");
@@ -1066,6 +1152,8 @@ function source_aware_dns_sources(sections) {
 
         if (action == "bypass") {
             for (let ip in list_option(section, "fully_routed_ips"))
+                add_source(ip);
+            for (let ip in list_option(section, "source_ip_cidr"))
                 add_source(ip);
         }
 
@@ -1099,12 +1187,25 @@ function add_source_aware_dns_fallback(config, source_aware_dns) {
     let settings = runtime_settings_cache || {};
     let rewrite_ttl = int_option(settings, "dns_rewrite_ttl", "60");
 
-    push(config.dns.rules, {
+    let rule = {
         action: "route",
         server: runtime_constants.DNSMASQ_DNS_SERVER_TAG,
         inbound: [ runtime_constants.SOURCE_DNS_INBOUND_TAG ],
         source_ip_cidr: single_or_array(source_aware_dns),
         rewrite_ttl
+    };
+    unshift(config.dns.rules, rule);
+}
+
+function add_excluded_clients_route_rule(config, settings) {
+    let excluded_cidrs = get_excluded_client_cidrs(settings);
+    if (length(excluded_cidrs) == 0)
+        return;
+
+    splice(config.route.rules, 1, 0, {
+        action: "route",
+        outbound: runtime_constants.BYPASS_OUTBOUND_TAG,
+        source_ip_cidr: single_or_array(excluded_cidrs)
     });
 }
 
@@ -1124,7 +1225,7 @@ function generate_config(output_path, service_address, mwan3_active, supports_xh
     if (length(sections) == 0 && length(servers) == 0)
         runtime_generate_unsupported("no enabled sections");
 
-    let source_aware_dns = source_aware_dns_sources(sections);
+    let source_aware_dns = source_aware_dns_sources(sections, settings);
     let config = base_config(settings, service_address, {
         mwan3_active: cli_bool(mwan3_active),
         source_aware_dns: length(source_aware_dns) > 0
@@ -1137,10 +1238,22 @@ function generate_config(output_path, service_address, mwan3_active, supports_xh
     for (let section in sections)
         add_outbound_for_section(config, section, taken, sections);
     add_service_route_rules(config, sections);
-    for (let section in sections)
-        add_route_for_section(config, section);
+
+    // Add block and bypass sections before proxy sections so exceptions take precedence
+    for (let section in sections) {
+        let act = option(section, "action", "");
+        if (act == "block" || act == "bypass")
+            add_route_for_section(config, section);
+    }
+    for (let section in sections) {
+        let act = option(section, "action", "");
+        if (act != "block" && act != "bypass")
+            add_route_for_section(config, section);
+    }
+
     add_server_routes(config, servers, sections);
     add_source_aware_dns_fallback(config, source_aware_dns);
+    add_excluded_clients_route_rule(config, settings);
 
     // Append dns_hosts predefined rules AFTER section DNS rules so that
     // FakeIP/section-level DNS routing takes precedence over hardcoded IPs

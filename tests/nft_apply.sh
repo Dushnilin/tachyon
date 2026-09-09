@@ -676,6 +676,10 @@ br-lan tun0
 0
 [settings.game_console_ips]
 
+[settings.excluded_clients]
+
+[settings.excluded_ips]
+
 [rule.text_rule.action]
 bypass
 [rule.text_rule.ip_cidr]
@@ -766,6 +770,10 @@ br-lan tun0
 0
 [settings.game_console_ips]
 
+[settings.excluded_clients]
+
+[settings.excluded_ips]
+
 [rule.enabled.action]
 bypass
 [rule.enabled.ip_cidr]
@@ -812,11 +820,27 @@ br-lan
 0
 [settings.game_console_ips]
 
+[settings.excluded_clients]
+
+[settings.excluded_ips]
+
 EOF_EXPECTED
 expected_signature="$(md5sum "$WORK_DIR/signature-defaults-expected.txt" | awk '{print $1}')"
 assert_eq "$expected_signature" \
   "$(nft_ucode nft-runtime-signature-fixture "$WORK_DIR/signature-defaults-fixture.json")" \
   "nft runtime signature defaults"
+
+cat >"$WORK_DIR/signature-excluded-clients-fixture.json" <<'JSON'
+{
+  "settings": {
+    "excluded_clients": "192.168.1.50 00:11:22:33:44:55"
+  }
+}
+JSON
+sig_with_excluded="$(nft_ucode nft-runtime-signature-fixture "$WORK_DIR/signature-excluded-clients-fixture.json")"
+if [ "$sig_with_excluded" = "$expected_signature" ]; then
+  fail "nft runtime signature must change when excluded_clients is set"
+fi
 
 : > "$NFT_LOG"
 nft_ucode nft-populate-runtime-sets-fixture "$WORK_DIR/populate-fixture.json" 0 "" TachyonTable tachyon_subnets tachyon_ports tachyon_ip_ports tachyon_interfaces localv4 0x00100000

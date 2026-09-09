@@ -185,7 +185,7 @@ const DOMAIN_PRESETS = {
 
 function validateTime(sectionId, value) {
   if (!value) {
-    return _("Time is required (e.g. 22:00)");
+    return true;
   }
   const str = `${value}`.trim();
   if (!/^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(str)) {
@@ -218,8 +218,8 @@ function isScheduleCurrentlyActive(sectionId) {
   const enabled = uci.get(UCI_PACKAGE, sectionId, "enabled") !== "0";
   if (!enabled) return false;
 
-  const startTime = uci.get(UCI_PACKAGE, sectionId, "start_time") || "00:00";
-  const endTime = uci.get(UCI_PACKAGE, sectionId, "end_time") || "23:59";
+  const startTime = uci.get(UCI_PACKAGE, sectionId, "start_time");
+  const endTime = uci.get(UCI_PACKAGE, sectionId, "end_time");
   const rawDays = uci.get(UCI_PACKAGE, sectionId, "days");
   const days = normalizeDays(rawDays);
 
@@ -230,10 +230,14 @@ function isScheduleCurrentlyActive(sectionId) {
     return false;
   }
 
+  if (!startTime && !endTime) {
+    return true;
+  }
+
   const currentMinutes = now.getHours() * 60 + now.getMinutes();
 
-  const [sH, sM] = startTime.split(":").map(Number);
-  const [eH, eM] = endTime.split(":").map(Number);
+  const [sH, sM] = (startTime || "00:00").split(":").map(Number);
+  const [eH, eM] = (endTime || "23:59").split(":").map(Number);
   const startMinutes = (sH || 0) * 60 + (sM || 0);
   const endMinutes = (eH || 0) * 60 + (eM || 0);
 
@@ -822,22 +826,31 @@ function createParentalContent(section) {
   o.modalonly = false;
   o.cfgvalue = function (sectionId) {
     const action = uci.get(UCI_PACKAGE, sectionId, "action") || "block";
+    const s = uci.get(UCI_PACKAGE, sectionId, "start_time");
+    const e = uci.get(UCI_PACKAGE, sectionId, "end_time");
+    const is247 = !s && !e;
     if (action === "allow") {
       return (
         '<span style="color:var(--success-color-medium, #38a169);font-weight:500;">✅ ' +
-        _("Allow in interval") +
+        (is247 ? _("Allow always") : _("Allow in interval")) +
         "</span>"
       );
     }
     return (
       '<span style="color:var(--error-color-medium, #e53e3e);font-weight:500;">🚫 ' +
-      _("Block in interval") +
+      (is247 ? _("Block always") : _("Block in interval")) +
       "</span>"
     );
   };
   o.textvalue = function (sectionId) {
     const action = uci.get(UCI_PACKAGE, sectionId, "action") || "block";
-    return action === "allow" ? _("Allow in interval") : _("Block in interval");
+    const s = uci.get(UCI_PACKAGE, sectionId, "start_time");
+    const e = uci.get(UCI_PACKAGE, sectionId, "end_time");
+    const is247 = !s && !e;
+    if (action === "allow") {
+      return is247 ? _("Allow always") : _("Allow in interval");
+    }
+    return is247 ? _("Block always") : _("Block in interval");
   };
 
   // Schedule column in table
@@ -845,24 +858,36 @@ function createParentalContent(section) {
   o.rawhtml = true;
   o.modalonly = false;
   o.cfgvalue = function (sectionId) {
-    const s = uci.get(UCI_PACKAGE, sectionId, "start_time") || "00:00";
-    const e = uci.get(UCI_PACKAGE, sectionId, "end_time") || "23:59";
+    const s = uci.get(UCI_PACKAGE, sectionId, "start_time");
+    const e = uci.get(UCI_PACKAGE, sectionId, "end_time");
     const days = formatDaysDisplay(uci.get(UCI_PACKAGE, sectionId, "days"));
+    if (!s && !e) {
+      return (
+        '<div style="line-height:1.3;"><strong style="color:var(--success-color, #38a169);">⚡ ' +
+        _("Always Active (24/7)") +
+        '</strong><br><small style="opacity:0.75;">' +
+        days +
+        "</small></div>"
+      );
+    }
     return (
       '<div style="line-height:1.3;"><strong style="color:inherit;">' +
-      s +
+      (s || "00:00") +
       " — " +
-      e +
+      (e || "23:59") +
       '</strong><br><small style="opacity:0.75;">' +
       days +
       "</small></div>"
     );
   };
   o.textvalue = function (sectionId) {
-    const s = uci.get(UCI_PACKAGE, sectionId, "start_time") || "00:00";
-    const e = uci.get(UCI_PACKAGE, sectionId, "end_time") || "23:59";
+    const s = uci.get(UCI_PACKAGE, sectionId, "start_time");
+    const e = uci.get(UCI_PACKAGE, sectionId, "end_time");
     const days = formatDaysDisplay(uci.get(UCI_PACKAGE, sectionId, "days"));
-    return `${s} - ${e}, ${days}`;
+    if (!s && !e) {
+      return `${_("Always Active (24/7)")}, ${days}`;
+    }
+    return `${s || "00:00"} - ${e || "23:59"}, ${days}`;
   };
 
   // Daily quota column in table
@@ -1091,6 +1116,31 @@ function createParentalContent(section) {
   o.value("block", _("Block / Disable in scheduled hours (Standard)"));
   o.value("allow", _("Allow / Enable ONLY in scheduled hours (White period)"));
 
+  // Schedule Active Hours Mode (24/7 vs Specific Time Window)
+  o = section.option(
+    form.ListValue,
+    "_time_mode",
+    _("Active Hours Mode"),
+    _(
+      "Choose whether this schedule rule is permanently active (24/7) or restricted to specific hours.",
+    ),
+  );
+  o.modalonly = true;
+  o.default = "always";
+  o.value("always", _("Always Active (24/7)"));
+  o.value("interval", _("Scheduled Hours (Time window)"));
+  o.cfgvalue = function (sectionId) {
+    const s = uci.get(UCI_PACKAGE, sectionId, "start_time");
+    const e = uci.get(UCI_PACKAGE, sectionId, "end_time");
+    return s || e ? "interval" : "always";
+  };
+  o.write = function (sectionId, value) {
+    if (value === "always") {
+      uci.unset(UCI_PACKAGE, sectionId, "start_time");
+      uci.unset(UCI_PACKAGE, sectionId, "end_time");
+    }
+  };
+
   // Start Time
   o = section.option(
     form.Value,
@@ -1099,8 +1149,10 @@ function createParentalContent(section) {
     _("Beginning of the schedule interval (e.g. 22:00)"),
   );
   o.modalonly = true;
+  o.depends("_time_mode", "interval");
   o.default = "22:00";
   o.placeholder = "22:00";
+  o.rmempty = true;
   o.validate = validateTime;
 
   // End Time
@@ -1113,8 +1165,10 @@ function createParentalContent(section) {
     ),
   );
   o.modalonly = true;
+  o.depends("_time_mode", "interval");
   o.default = "08:00";
   o.placeholder = "08:00";
+  o.rmempty = true;
   o.validate = validateTime;
 
   // Days of week

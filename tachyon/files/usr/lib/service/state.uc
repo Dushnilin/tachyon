@@ -935,6 +935,8 @@ function nft_runtime_signature_body(settings, sections) {
     body = signature_add_value(body, "settings.exclude_ntp", bool_option(settings, "exclude_ntp", false) ? "1" : "0");
     body = signature_add_value(body, "settings.game_console_optimizer", option(settings, "game_console_optimizer", "0"));
     body = signature_add_value(body, "settings.game_console_ips", option(settings, "game_console_ips", ""));
+    body = signature_add_value(body, "settings.excluded_clients", option(settings, "excluded_clients", ""));
+    body = signature_add_value(body, "settings.excluded_ips", option(settings, "excluded_ips", ""));
 
     for (let section in sections) {
         section = object_or_empty(section);

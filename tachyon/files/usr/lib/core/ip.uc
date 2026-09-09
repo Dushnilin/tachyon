@@ -1,5 +1,6 @@
 #!/usr/bin/env ucode
 
+let fs = require("fs");
 let common = require("core.common");
 let as_string = common.as_string;
 
@@ -143,6 +144,77 @@ function ipv6_supported() {
     return common.ipv6_supported();
 }
 
+function resolve_mac_to_ips(mac) {
+    mac = lc(replace(trim(as_string(mac)), "-", ":"));
+    if (mac == "")
+        return [];
+    let matched = [];
+    let seen = {};
+
+    let lease_files = [ "/tmp/dhcp.leases", "/var/lib/misc/dnsmasq.leases", "/tmp/hosts/dhcp" ];
+    for (let lpath in lease_files) {
+        let data = fs.readfile(lpath);
+        if (!data)
+            continue;
+        for (let line in split(as_string(data), "\n")) {
+            line = trim(line);
+            if (line == "" || index(line, "#") == 0)
+                continue;
+            let fields = split(line, /[ \t]+/);
+            if (length(fields) >= 3) {
+                let m = lc(replace(fields[1], "-", ":"));
+                let ip = fields[2];
+                if (m == mac && valid_ip(ip) && !seen[ip]) {
+                    seen[ip] = true;
+                    push(matched, ip);
+                }
+            }
+        }
+    }
+
+    let arp_data = fs.readfile("/proc/net/arp");
+    if (arp_data) {
+        for (let line in split(as_string(arp_data), "\n")) {
+            line = trim(line);
+            if (line == "" || index(line, "IP address") == 0)
+                continue;
+            let fields = split(line, /[ \t]+/);
+            if (length(fields) >= 4) {
+                let ip = fields[0];
+                let m = lc(replace(fields[3], "-", ":"));
+                if (m == mac && valid_ip(ip) && !seen[ip]) {
+                    seen[ip] = true;
+                    push(matched, ip);
+                }
+            }
+        }
+    }
+
+    try {
+        let uci_core = require("core.uci");
+        let cursor = uci_core ? uci_core.cursor() : null;
+        if (cursor) {
+            cursor.load("dhcp");
+            cursor.foreach("dhcp", "host", function(host) {
+                let m_list = host.mac;
+                if (type(m_list) != "array")
+                    m_list = [ m_list ];
+                for (let m in m_list) {
+                    if (lc(replace(trim(as_string(m)), "-", ":")) == mac) {
+                        let ip = host.ip;
+                        if (ip && valid_ip(ip) && !seen[ip]) {
+                            seen[ip] = true;
+                            push(matched, ip);
+                        }
+                    }
+                }
+            });
+        }
+    } catch (e) {}
+
+    return matched;
+}
+
 return {
     valid_ipv4,
     valid_ipv4_cidr,
@@ -154,5 +226,6 @@ return {
     nft_ip_or_cidr,
     ip_family,
     format_ipv6_tproxy_target,
-    ipv6_supported
+    ipv6_supported,
+    resolve_mac_to_ips
 };
