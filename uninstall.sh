@@ -403,6 +403,12 @@ rm -rf /var/run/tachyon* /var/log/tachyon* /tmp/sing-box /tmp/tachyon* /tmp/ai_d
 # Clear LuCI index and module caches
 rm -f /var/luci-indexcache* /tmp/luci-indexcache* /tmp/luci-modulecache/* 2>/dev/null || true
 
+# Clean ucitrack entry
+if [ -f "/etc/config/ucitrack" ]; then
+    uci -q delete ucitrack.@tachyon[0] 2>/dev/null || true
+    uci -q commit ucitrack 2>/dev/null || true
+fi
+
 # Purge configs and persistent state if requested
 if [ "$OPT_PURGE" -eq 1 ]; then
     rm -f /etc/config/tachyon* 2>/dev/null || true

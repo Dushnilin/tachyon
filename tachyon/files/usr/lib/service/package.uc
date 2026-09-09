@@ -309,11 +309,39 @@ function ensure_guest_mode_section() {
     }
 }
 
+const UCITRACK_FILE = env("TACHYON_UCITRACK_FILE", "/etc/config/ucitrack");
+
+function ensure_ucitrack_entry() {
+    if (!path_exists(UCITRACK_FILE))
+        return false;
+
+    let cursor = uci_core.cursor();
+    if (!cursor)
+        return false;
+
+    let has_entry = false;
+    cursor.load("ucitrack");
+    cursor.foreach("ucitrack", "tachyon", function(s) {
+        has_entry = true;
+        return false;
+    });
+
+    if (!has_entry) {
+        let sid = cursor.add("ucitrack", "tachyon");
+        if (sid) {
+            cursor.set("ucitrack", sid, "init", "tachyon");
+            cursor.commit("ucitrack");
+        }
+    }
+    return true;
+}
+
 function luci_postinst() {
     remove_luci_index_cache();
     remove_component_update_cache();
     if (!PACKAGE_TEST_MODE) {
         ensure_guest_mode_section();
+        ensure_ucitrack_entry();
         if (path_exists("/etc/init.d/rpcd"))
             command_success_from_args([ "/etc/init.d/rpcd", "reload" ]);
         command_success_from_args([ "logger", "-t", "tachyon", "[info] Package defaults applied" ]);

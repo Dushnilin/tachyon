@@ -463,7 +463,15 @@ const EntryPoint = {
 
       return Promise.resolve(originalHandleSaveApply.call(this, ev, mode))
         .then((result) => {
-          window.setTimeout(refreshUiState, 250);
+          if (
+            main.TachyonShellMethods &&
+            typeof main.TachyonShellMethods.serviceActionStart === "function"
+          ) {
+            main.TachyonShellMethods.serviceActionStart("reload").catch(
+              () => null,
+            );
+          }
+          window.setTimeout(refreshUiState, 500);
 
           return result;
         })

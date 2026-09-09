@@ -243,6 +243,9 @@ function uninstall_tachyon(purge_config, keep_binaries) {
 
     // Clear LuCI cache and restart rpcd/uhttpd
     run_shell("rm -f /var/luci-indexcache* /tmp/luci-indexcache* /tmp/luci-modulecache/* 2>/dev/null || true");
+    if (fs.stat("/etc/config/ucitrack") != null) {
+        run_shell("uci -q delete ucitrack.@tachyon[0] >/dev/null 2>&1; uci -q commit ucitrack >/dev/null 2>&1 || true");
+    }
     if (fs.stat("/etc/init.d/rpcd") != null)
         run_cmd(["/etc/init.d/rpcd", "restart"]);
     if (fs.stat("/etc/init.d/uhttpd") != null)
