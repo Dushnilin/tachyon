@@ -315,7 +315,29 @@ function action(section) {
 }
 
 function connection_urls(section) {
-    return whitespace_list_value(section, "selector_proxy_links");
+    let links = whitespace_list_value(section, "selector_proxy_links");
+    let text = option(section, "selector_proxy_links_text", "");
+    if (text != "") {
+        for (let line in split(text, /[\r\n]+/)) {
+            line = trim(line);
+            if (line != "" && match(line, /^[^#\s]/))
+                push(links, line);
+        }
+    }
+    return links;
+}
+
+function urltest_text_links(section) {
+    let text = option(section, "urltest_proxy_links_text", "");
+    if (text == "")
+        return [];
+    let links = [];
+    for (let line in split(text, /[\r\n]+/)) {
+        line = trim(line);
+        if (line != "" && match(line, /^[^#\s]/))
+            push(links, line);
+    }
+    return links;
 }
 
 function subscription_urls(section) {
@@ -887,6 +909,17 @@ function subscription_download_section(section, value) {
     return item_option(section, "subscription_url_settings", value, "download_via_proxy_section", "");
 }
 
+function subscription_insecure(section, value) {
+    if (section != null && section.subscription_insecure != null)
+        return bool_option(section, "subscription_insecure", false) ? "1" : "0";
+
+    let child = child_item_by_value(section, "subscription_url", "url", value);
+    if (child != null)
+        return bool_option(child, "subscription_insecure", false) ? "1" : "0";
+
+    return item_bool(section, "subscription_url_settings", value, "subscription_insecure", false) ? "1" : "0";
+}
+
 function urltest_check_interval(section, value) {
     let child = urltest_child(section, value);
     if (child != null)
@@ -1448,6 +1481,8 @@ return {
     device_headers_signature,
     subscription_device_headers_signature,
     subscription_download_section,
+    subscription_insecure,
+    urltest_text_links,
     interface_domain_resolver_enabled,
     interface_domain_resolver_dns_type,
     interface_domain_resolver_dns_server,

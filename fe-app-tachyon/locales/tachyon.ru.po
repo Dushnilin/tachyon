@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-09 21:05+0300\n"
-"PO-Revision-Date: 2026-09-09 21:05+0300\n"
+"POT-Creation-Date: 2026-09-09 22:23+0300\n"
+"PO-Revision-Date: 2026-09-09 22:23+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -254,6 +254,12 @@ msgstr "Добавьте как минимум один DNS-сервер"
 msgid "Add Custom DPI Strategy"
 msgstr "Добавить стратегию DPI"
 
+msgid "Add exclude keyword"
+msgstr "Добавить слово для исключения"
+
+msgid "Add include keyword"
+msgstr "Добавить ключевое слово"
+
 msgid "Add prefix to nodes"
 msgstr "Добавить префикс к узлам"
 
@@ -418,6 +424,9 @@ msgstr "Разрешено всегда"
 
 msgid "Allow in interval"
 msgstr "Разрешено в интервале"
+
+msgid "Allow insecure TLS"
+msgstr "Разрешить небезопасный TLS"
 
 msgid "Allow Insecure TLS"
 msgstr "Разрешить небезопасный TLS"
@@ -719,6 +728,9 @@ msgstr "Заблокировано всегда"
 msgid "Block at DNS level"
 msgstr "Блокировать на уровне DNS"
 
+msgid "Block DoH"
+msgstr "Блокировать DoH"
+
 msgid "Block in interval"
 msgstr "Блокируется в интервале"
 
@@ -730,6 +742,9 @@ msgstr "Блокировать перечисленные сайты (станд
 
 msgid "Block Router Administration"
 msgstr "Блокировать доступ к управлению роутером"
+
+msgid "Block well-known DNS-over-HTTPS resolver IPs so LAN clients cannot bypass the router DNS"
+msgstr "Блокировать IP-адреса известных DoH-резолверов, чтобы клиенты локальной сети не обходили DNS роутера"
 
 msgid "Block:"
 msgstr "Блокировать:"
@@ -1096,6 +1111,9 @@ msgstr "Подключено"
 
 msgid "Connected Devices"
 msgstr "Подключенные устройства"
+
+msgid "Connection links (text)"
+msgstr "Ссылки на подключения (текст)"
 
 msgid "Connection Path"
 msgstr "Маршрут соединения"
@@ -1529,6 +1547,9 @@ msgstr "Загружать подписку через секцию"
 msgid "Download subscriptions via the selected section"
 msgstr "Загружать подписки через выбранную секцию"
 
+msgid "Download this subscription without TLS certificate verification (for panels with self-signed or mismatched certificates)"
+msgstr "Скачивать эту подписку без проверки сертификата TLS (для панелей с самоподписанными или несовпадающими сертификатами)"
+
 msgid "Download through"
 msgstr "Загружать через"
 
@@ -1552,6 +1573,9 @@ msgstr "Тип DPI"
 
 msgid "Drag rows to change priority. The rule at the top is checked first."
 msgstr "Перетащите строки для изменения приоритета. Правило вверху проверяется первым."
+
+msgid "Drop subscription nodes whose name contains any of these keywords. Case-insensitive, emoji supported."
+msgstr "Исключать узлы подписки, имя которых содержит любое из этих ключевых слов. Без учёта регистра, поддерживаются эмодзи."
 
 msgid "DSCP marks (QoS)"
 msgstr "DSCP-метки (QoS)"
@@ -2801,6 +2825,9 @@ msgstr "Размер мусора для транспортного пакета
 msgid "Kazakhstan (kz)"
 msgstr "Казахстан (kz)"
 
+msgid "Keep only subscription nodes whose name contains any of these keywords (empty keeps all). Case-insensitive, emoji supported."
+msgstr "Оставлять только узлы подписки, имя которых содержит любое из этих ключевых слов (пусто — оставить все). Без учёта регистра, поддерживаются эмодзи."
+
 msgid "Keep Priority before latency-sorted servers"
 msgstr "Сохранять приоритет перед серверами, отсортированными по задержке"
 
@@ -3475,6 +3502,12 @@ msgstr "Пароль не может быть пустым"
 
 msgid "Paste content or upload a file to preview imported DNS records."
 msgstr "Вставьте содержимое или загрузите файл для предварительного просмотра импортируемых DNS-записей."
+
+msgid "Paste proxy links one per line; they are added to the connection list"
+msgstr "Вставьте ссылки на прокси по одной в строке; они будут добавлены в список подключений"
+
+msgid "Paste proxy links one per line; they form a URLTest group with automatic fastest selection"
+msgstr "Вставьте ссылки на прокси по одной в строке; они образуют группу URLTest с автоматическим выбором самого быстрого"
 
 msgid "Path cannot be empty"
 msgstr "Путь не может быть пустым"
@@ -4682,6 +4715,12 @@ msgstr "Подсети из списка будут извлечены и доб
 msgid "Subscription auto update"
 msgstr "Автообновление подписки"
 
+msgid "Subscription exclude keywords"
+msgstr "Ключевые слова исключения подписки"
+
+msgid "Subscription include keywords"
+msgstr "Ключевые слова включения подписки"
+
 msgid "Subscription info:"
 msgstr "Информация о подписке:"
 
@@ -5317,6 +5356,9 @@ msgstr "Детали URLTest"
 
 msgid "URLTest details are unavailable"
 msgstr "Детали URLTest недоступны"
+
+msgid "URLTest links (text)"
+msgstr "Ссылки URLTest (текст)"
 
 msgid "URLTest settings"
 msgstr "Настройки URLTest"

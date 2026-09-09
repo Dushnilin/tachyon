@@ -1468,8 +1468,10 @@ function buildAwgClientConfig(sectionId) {
 
   const awgVer = uci.get(UCI_PACKAGE, sectionId, "awg_version") || "2.0";
   if (awgVer === "3.0" || awgVer === "3.1") {
-    const hpk = uci.get(UCI_PACKAGE, sectionId, "awg_header_protection_key") || "";
-    const cpa = uci.get(UCI_PACKAGE, sectionId, "awg_content_padding_addition") || "";
+    const hpk =
+      uci.get(UCI_PACKAGE, sectionId, "awg_header_protection_key") || "";
+    const cpa =
+      uci.get(UCI_PACKAGE, sectionId, "awg_content_padding_addition") || "";
     if (hpk) conf += `HeaderProtectionKey = ${hpk}\n`;
     if (cpa) conf += `ContentPaddingAddition = ${cpa}\n`;
   }
@@ -1478,7 +1480,8 @@ function buildAwgClientConfig(sectionId) {
     const rkt = uci.get(UCI_PACKAGE, sectionId, "awg_rekey_timeout") || "";
     const rja = uci.get(UCI_PACKAGE, sectionId, "awg_reject_after_time") || "";
     const kpt = uci.get(UCI_PACKAGE, sectionId, "awg_keepalive_timeout") || "";
-    const mha = uci.get(UCI_PACKAGE, sectionId, "awg_max_handshake_attempts") || "";
+    const mha =
+      uci.get(UCI_PACKAGE, sectionId, "awg_max_handshake_attempts") || "";
     if (rka) conf += `RekeyAfterTime = ${rka}\n`;
     if (rkt) conf += `RekeyTimeout = ${rkt}\n`;
     if (rja) conf += `RejectAfterTime = ${rja}\n`;
@@ -3470,7 +3473,9 @@ function createServerContent(section, options = {}) {
     form.ListValue,
     "awg_version",
     _("AmneziaWG Version"),
-    _("Protocol version: 2.0 (standard integer headers) or 3.1 (header protection key, padding ranges, advanced timers)"),
+    _(
+      "Protocol version: 2.0 (standard integer headers) or 3.1 (header protection key, padding ranges, advanced timers)",
+    ),
   );
   o.modalonly = true;
   o.rmempty = false;

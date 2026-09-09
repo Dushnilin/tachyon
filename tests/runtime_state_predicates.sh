@@ -563,6 +563,8 @@ sequential
 wan
 [settings.disable_quic]
 1
+[settings.block_doh]
+0
 [settings.update_interval]
 2h
 [settings.cache_path]

@@ -48,6 +48,25 @@ const ZAPRET2_ROUTE_MARK_BASE = 0x02000000;
 const BYEDPI_LISTEN_ADDRESS = "127.0.0.1";
 const BYEDPI_PORT_BASE = 1080;
 
+const DOH_BLOCK_IPV4_CIDRS = [
+    "1.1.1.1/32", "1.0.0.1/32",
+    "8.8.8.8/32", "8.8.4.4/32",
+    "9.9.9.9/32", "9.9.9.11/32",
+    "149.112.112.112/32",
+    "208.67.222.222/32", "208.67.220.220/32",
+    "94.140.14.14/32", "94.140.15.15/32",
+    "77.88.8.8/32", "77.88.8.1/32"
+];
+
+const DOH_BLOCK_IPV6_CIDRS = [
+    "2606:4700:4700::1111/128", "2606:4700:4700::1001/128",
+    "2001:4860:4860::8888/128", "2001:4860:4860::8844/128",
+    "2620:fe::fe/128", "2620:fe::9/128",
+    "2620:119:35::35/128", "2620:119:53::53/128",
+    "2a10:50c0::ad1:ff/128", "2a10:50c0::ad2:ff/128",
+    "2a02:6b8::feed:0ff/128", "2a02:6b8:0:1::feed:0ff/128"
+];
+
 let common = require("core.common");
 let as_string = common.as_string;
 
@@ -141,6 +160,8 @@ return {
     ZAPRET2_ROUTE_MARK_BASE,
     BYEDPI_LISTEN_ADDRESS,
     BYEDPI_PORT_BASE,
+    DOH_BLOCK_IPV4_CIDRS,
+    DOH_BLOCK_IPV6_CIDRS,
     RESERVED_TAGS,
     tag,
     inbound_tag,

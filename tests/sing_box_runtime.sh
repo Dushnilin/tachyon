@@ -1043,6 +1043,81 @@ JSON
 printf '%s' 'https://example.com/only-xhttp.json' >"$WORK_DIR/subscriptions/only_xhttp-subscription-1.url"
 printf '%s' 'Happ' >"$WORK_DIR/subscriptions/only_xhttp-subscription-1.user_agent"
 
+cat >"$WORK_DIR/block-doh-fixture.json" <<'JSON'
+{
+  "settings": {
+    "config_path": "/tmp/sing-box/config.json",
+    "dns_server": "1.1.1.1",
+    "service_listen_address": "127.0.0.1",
+    "block_doh": "1"
+  },
+  "section": [
+    {
+      ".name": "doh_test",
+      ".type": "section",
+      "enabled": "1",
+      "action": "proxy",
+      "selector_proxy_links": [ "vless://00000000-0000-0000-0000-000000000001@127.0.0.1:443?encryption=none#dummy" ]
+    }
+  ]
+}
+JSON
+
+cat >"$WORK_DIR/bulk-proxy-links-fixture.json" <<'JSON'
+{
+  "settings": {
+    "config_path": "/tmp/sing-box/config.json",
+    "dns_server": "1.1.1.1",
+    "service_listen_address": "127.0.0.1"
+  },
+  "section": [
+    {
+      ".name": "sec_test",
+      ".type": "section",
+      "enabled": "1",
+      "action": "proxy",
+      "selector_proxy_links_text": "vless://11111111-1111-4111-8111-111111111111@127.0.0.1:443?encryption=none#BulkOne\n# comment\nvless://22222222-2222-4222-8222-222222222222@127.0.0.1:444?encryption=none#BulkTwo",
+      "urltest_proxy_links_text": "vless://33333333-3333-4333-8333-333333333333@127.0.0.1:445?encryption=none#BulkUT"
+    }
+  ]
+}
+JSON
+
+cat >"$WORK_DIR/subscription-filter-fixture.json" <<'JSON'
+{
+  "settings": {
+    "config_path": "/tmp/sing-box/config.json",
+    "dns_server": "1.1.1.1",
+    "service_listen_address": "127.0.0.1"
+  },
+  "section": [
+    {
+      ".name": "sub_test",
+      ".type": "section",
+      "enabled": "1",
+      "action": "proxy",
+      "subscription_urls": [ "https://example.com/filter-sub.json" ],
+      "subscription_filter_include_keywords": [ "нидерланды", "германия" ],
+      "subscription_filter_exclude_keywords": [ "ads" ]
+    }
+  ]
+}
+JSON
+cat >"$WORK_DIR/subscriptions/sub_test-subscription-1.json" <<'JSON'
+{
+  "outbounds": [
+    { "type": "socks", "tag": "nl-fast", "remark": "Нидерланды Fast", "server": "127.0.0.1", "server_port": 1080 },
+    { "type": "socks", "tag": "nl-ads", "remark": "Нидерланды Ads Server", "server": "127.0.0.2", "server_port": 1080 },
+    { "type": "socks", "tag": "de-highspeed", "remark": "ГЕРМАНИЯ Premium", "server": "127.0.0.3", "server_port": 1080 },
+    { "type": "socks", "tag": "us-proxy", "remark": "США Server", "server": "127.0.0.4", "server_port": 1080 }
+  ]
+}
+JSON
+printf '%s' 'https://example.com/filter-sub.json' >"$WORK_DIR/subscriptions/sub_test-subscription-1.url"
+
+generate_config "$WORK_DIR/block-doh-fixture.json" "$WORK_DIR/block-doh.json"
+generate_config "$WORK_DIR/bulk-proxy-links-fixture.json" "$WORK_DIR/bulk-proxy-links.json"
+generate_config_with_subscription_cache "$WORK_DIR/subscription-filter-fixture.json" "$WORK_DIR/subscription-filter.json"
 generate_config "$WORK_DIR/disabled-updates-fixture.json" "$WORK_DIR/disabled.json"
 generate_config "$WORK_DIR/default-updates-fixture.json" "$WORK_DIR/default.json"
 generate_config "$WORK_DIR/server-inbound-fixture.json" "$WORK_DIR/server.json"
@@ -1428,6 +1503,22 @@ assert(proxy_metadata[0].sourceSection == "proxy-subscription-1" && proxy_metada
 assert(proxy_metadata[1].sourceSection == "proxy-subscription-2" && proxy_metadata[1].title == "WolfPN", "proxy source 2 metadata marker");
 assert(length(test_metadata) == 1, "same subscription URL metadata kept for second section");
 assert(test_metadata[0].sourceSection == "test-subscription-1" && test_metadata[0].title == "WolfPN", "test source metadata marker");
+
+let doh_cfg = cfg("block-doh");
+assert(route_rule(doh_cfg, r => r.action == "reject" && contains(r.inbound, "tproxy-in") && contains(r.ip_cidr, "1.1.1.1/32")) != null, "block_doh IPv4 reject rule present");
+assert(route_rule(doh_cfg, r => r.action == "reject" && contains(r.inbound, "tproxy-in") && contains(r.ip_cidr, "2606:4700:4700::1111/128")) != null, "block_doh IPv6 reject rule present");
+
+let bulk_cfg = cfg("bulk-proxy-links");
+assert(outbound(bulk_cfg, "sec_test-1-out") != null, "bulk selector proxy link 1 created");
+assert(outbound(bulk_cfg, "sec_test-2-out") != null, "bulk selector proxy link 2 created");
+assert(outbound(bulk_cfg, "sec_test-3-out") != null, "bulk urltest proxy link created");
+assert(outbound(bulk_cfg, "sec_test-urltest-out") != null, "bulk urltest group created");
+
+let filter_cfg = cfg("subscription-filter");
+assert(outbound(filter_cfg, "nl-fast") != null, "include keyword match preserves node");
+assert(outbound(filter_cfg, "de-highspeed") != null, "case-insensitive Cyrillic include keyword match preserves node");
+assert(outbound(filter_cfg, "nl-ads") == null, "exclude keyword drops node even if included");
+assert(outbound(filter_cfg, "us-proxy") == null, "unmatched include keyword drops node");
 ' "$WORK_DIR"
 
 printf 'sing-box runtime checks passed\n'

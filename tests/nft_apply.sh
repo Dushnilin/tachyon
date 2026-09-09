@@ -259,6 +259,11 @@ assert_contains "$NFT_LOG" $'nft\tadd\telement\tinet\tTachyonTable\ttachyon_inte
 assert_contains "$NFT_LOG" $'nft\tinsert\trule\tinet\tTachyonTable\tmangle\tudp\tdport\t123\treturn' "runtime base from UCI ntp exclusion"
 
 : > "$NFT_LOG"
+nft_ucode nft-create-runtime-base TachyonTable localv4 tachyon_subnets tachyon_ports tachyon_ip_ports tachyon_interfaces "br-lan" 0x00100000 0x00200000 198.18.0.0/15 1602 0 "" "" "" "" "" 1
+assert_contains "$NFT_LOG" $'nft\tadd\trule\tinet\tTachyonTable\tmangle\tiifname\t@tachyon_interfaces\tip\tdaddr\t1.1.1.1/32\tmeta\tmark\tset\t0x00100000\tcounter' "runtime doh block marking rule"
+assert_contains "$NFT_LOG" $'nft\tadd\trule\tinet\tTachyonTable\tmangle\tiifname\t@tachyon_interfaces\tip6\tdaddr\t2606:4700:4700::1111/128\tmeta\tmark\tset\t0x00100000\tcounter' "runtime doh6 block marking rule"
+
+: > "$NFT_LOG"
 nft_ucode nft-create-runtime-output-rules TachyonTable localv4 tachyon_subnets tachyon_ports tachyon_ip_ports 0x00100000 198.18.0.0/15
 assert_contains "$NFT_LOG" $'nft\tadd\trule\tinet\tTachyonTable\tmangle_output\tip\tdaddr\t@tachyon_subnets\tmeta\tl4proto\ttcp\tmeta\tmark\tset\t0x00100000\tcounter' "runtime output common tcp"
 assert_contains "$NFT_LOG" $'nft\tadd\trule\tinet\tTachyonTable\tmangle_output\tip6\tdaddr\t@tachyon_subnets6\tmeta\tl4proto\ttcp\tmeta\tmark\tset\t0x00100000\tcounter' "runtime output common6 tcp"
@@ -672,6 +677,8 @@ cat >"$WORK_DIR/signature-expected.txt" <<'EOF_EXPECTED'
 br-lan tun0
 [settings.exclude_ntp]
 1
+[settings.block_doh]
+0
 [settings.game_console_optimizer]
 0
 [settings.game_console_ips]
@@ -766,6 +773,8 @@ cat >"$WORK_DIR/signature-uci-expected.txt" <<'EOF_EXPECTED'
 br-lan tun0
 [settings.exclude_ntp]
 1
+[settings.block_doh]
+0
 [settings.game_console_optimizer]
 0
 [settings.game_console_ips]
@@ -815,6 +824,8 @@ cat >"$WORK_DIR/signature-defaults-expected.txt" <<'EOF_EXPECTED'
 [settings.source_network_interfaces]
 br-lan
 [settings.exclude_ntp]
+0
+[settings.block_doh]
 0
 [settings.game_console_optimizer]
 0

@@ -1104,8 +1104,6 @@ function migrate_rule(ctx, section, converted_from_rule, constants) {
     delete_option(ctx, section, "subscription_format_preference");
     delete_option(ctx, section, "subscription_group_mode");
     delete_option(ctx, section, "subscription_group_prefix_len");
-    delete_option(ctx, section, "subscription_filter_include_keywords");
-    delete_option(ctx, section, "subscription_filter_exclude_keywords");
     delete_option(ctx, section, "global_proxy");
 
     // Migrate legacy domain_list_urls and subnet_list_urls (early Podkop)

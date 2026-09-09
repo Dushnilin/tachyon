@@ -959,6 +959,133 @@ function add_connection_manual_links(config, state, section, taken, selector_tag
     }
 }
 
+function add_connection_text_urltest(config, state, section, taken, selector_tags, urltest_candidate_tags, index_offset) {
+    let section_name = section[".name"];
+    if (index(connections.urltests(section), "urltest") >= 0)
+        return "";
+
+    let text_links = connections.urltest_text_links(section);
+    if (length(text_links) == 0)
+        return "";
+
+    let text_tags = [];
+    for (let i = 0; i < length(text_links); i++)
+        add_manual_proxy_link(
+            config,
+            state,
+            section_name,
+            int(index_offset || 0) + i + 1,
+            text_links[i],
+            taken,
+            selector_tags,
+            text_tags
+        );
+
+    if (length(text_tags) == 0)
+        return "";
+
+    let urltest_tag = ctx.routes.urltest_outbound_tag(section_name, "urltest");
+    let url = connections.urltest_testing_url(section, "urltest");
+    let interval = connections.urltest_check_interval(section, "urltest");
+    let tolerance = int(connections.urltest_tolerance(section, "urltest"), 10);
+    let interrupt = connections.urltest_interrupt_exist_connections(section, "urltest");
+    let outbound = {
+        type: "urltest",
+        tag: urltest_tag,
+        outbounds: text_tags,
+        url,
+        interval,
+        tolerance,
+        interrupt_exist_connections: interrupt
+    };
+    runtime_subscription.remember_outbound_metadata(state, urltest_tag, "Fastest", outbound);
+    runtime_subscription.remember_urltest_group_config(state, urltest_tag, {
+        displayName: "Fastest",
+        outbounds: text_tags,
+        url,
+        interval,
+        tolerance,
+        idle_timeout: "",
+        interrupt_exist_connections: interrupt
+    });
+    push(config.outbounds, outbound);
+    return urltest_tag;
+}
+
+function subscription_keyword_fold(value) {
+    value = as_string(value);
+    let bytes = [];
+    let i = 0;
+    while (i < length(value)) {
+        let b = ord(substr(value, i, 1));
+        if (b >= 65 && b <= 90) {
+            push(bytes, b + 32);
+            i += 1;
+        }
+        else if (b == 0xD0 && i + 1 < length(value)) {
+            let b2 = ord(substr(value, i + 1, 1));
+            if (b2 >= 0x90 && b2 <= 0x9F)
+                push(bytes, 0xD0, b2 + 0x20);
+            else if (b2 >= 0xA0 && b2 <= 0xAF)
+                push(bytes, 0xD1, b2 - 0x20);
+            else if (b2 == 0x81)
+                push(bytes, 0xD1, 0x91);
+            else
+                push(bytes, b, b2);
+            i += 2;
+        }
+        else {
+            push(bytes, b);
+            i += 1;
+        }
+    }
+
+    let result = "";
+    for (let byte in bytes)
+        result += chr(byte);
+    return result;
+}
+
+function subscription_keyword_filter(section) {
+    let include = list_option(section, "subscription_filter_include_keywords");
+    let exclude = list_option(section, "subscription_filter_exclude_keywords");
+    if (length(include) == 0 && length(exclude) == 0)
+        return null;
+
+    let folded_include = [];
+    for (let keyword in include) {
+        keyword = as_string(keyword);
+        if (keyword != "")
+            push(folded_include, subscription_keyword_fold(keyword));
+    }
+    let folded_exclude = [];
+    for (let keyword in exclude) {
+        keyword = as_string(keyword);
+        if (keyword != "")
+            push(folded_exclude, subscription_keyword_fold(keyword));
+    }
+    if (length(folded_include) == 0 && length(folded_exclude) == 0)
+        return null;
+
+    return {
+        include: folded_include,
+        exclude: folded_exclude
+    };
+}
+
+function subscription_keyword_name_passes(filter, name) {
+    let folded = subscription_keyword_fold(name);
+    for (let keyword in filter.exclude)
+        if (index(folded, keyword) >= 0)
+            return false;
+    if (length(filter.include) == 0)
+        return true;
+    for (let keyword in filter.include)
+        if (index(folded, keyword) >= 0)
+            return true;
+    return false;
+}
+
 function add_subscription_source_with_state(config, section, source_index, source_entry, taken, selector_tags, urltest_candidate_tags, state, show_metadata, include_urltest_groups, hide_urltest_group_outbounds, hide_detour_outbounds, node_prefix) {
     let section_name = section[".name"];
     let source_section = runtime_subscription.source_id(section_name, source_index);
@@ -991,6 +1118,7 @@ function add_subscription_source_with_state(config, section, source_index, sourc
     if (include_urltest_groups === false)
         hide_urltest_group_outbounds = false;
     node_prefix = trim(as_string(node_prefix));
+    let keyword_filter = subscription_keyword_filter(section);
     let prepared = [];
     let display_names = [];
     let source_links = [];
@@ -1002,6 +1130,8 @@ function add_subscription_source_with_state(config, section, source_index, sourc
         if (include_urltest_groups === false && subscription_urltest_group_outbound(outbound))
             continue;
         let display_name = as_string(outbound.remark || outbound.tag || ("server-" + (i + 1)));
+        if (keyword_filter != null && !subscription_group_outbound(outbound) && !subscription_keyword_name_passes(keyword_filter, display_name))
+            continue;
         let base = as_string(outbound.tag || outbound.remark || ("server-" + (i + 1)));
         if (node_prefix != "") {
             display_name = node_prefix + " " + display_name;
@@ -1023,6 +1153,9 @@ function add_subscription_source_with_state(config, section, source_index, sourc
         push(group_flags, subscription_group_outbound(outbound));
         push(hidden_flags, subscription_hidden_outbound(outbound, visibility_refs, hide_urltest_group_outbounds, hide_detour_outbounds));
     }
+
+    if (keyword_filter != null && length(prepared) == 0)
+        ctx.runtime_generate_unsupported("subscription keyword filter removed all nodes for rule '" + section_name + "'");
 
     if (length(keys(skipped)) > 0)
         warn("skipped unsupported subscription outbounds for rule '", section_name, "': ", subscription_skip_summary(skipped), "\n");
@@ -1242,7 +1375,9 @@ function add_connections_outbound(config, section, taken) {
     let state = runtime_subscription.new_section_state(section_name);
     let cascade_start = length(array_or_empty(config.outbounds));
 
+    let manual_count = length(connections.connection_urls(section));
     add_connection_manual_links(config, state, section, taken, selector_tags, urltest_candidate_tags);
+    let text_urltest_tag = add_connection_text_urltest(config, state, section, taken, selector_tags, urltest_candidate_tags, manual_count);
     add_connection_subscriptions(config, state, section, taken, selector_tags, urltest_candidate_tags);
     
     apply_section_detour_to_connection_outbounds(
@@ -1268,7 +1403,7 @@ function add_connections_outbound(config, section, taken) {
         state.outboundMetadata.names[runtime_constants.DIRECT_OUTBOUND_TAG] = "Direct";
 
     state.urltestCandidateTags = unique_string_array(urltest_candidate_tags);
-    ctx.routes.add_proxy_selector(config, section, selector_tags, urltest_candidate_tags, state);
+    ctx.routes.add_proxy_selector(config, section, selector_tags, urltest_candidate_tags, state, text_urltest_tag);
     if (!ctx.atomic_write_json_file(runtime_subscription.section_cache_path(section_name), state))
         ctx.runtime_generate_unsupported("failed to write section cache for " + section_name);
 }

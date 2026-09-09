@@ -1417,7 +1417,16 @@ function nft_add_guest_mode_rules_from_uci(table, interface_set, localv4_set, lo
     return nft_add_guest_mode_rules(uci_sections("guest_mode"), table, interface_set, localv4_set, localv6_set);
 }
 
-function nft_create_runtime_base(table, localv4_set, common_set, port_set, ip_port_set, interface_set, source_interfaces, fakeip_mark, outbound_mark, fakeip_range, tproxy_port, exclude_ntp, localv6_set, common6_set, ip_port6_set, fakeip6_range, tproxy6_address) {
+function nft_add_doh_block_marking_rules(table, interface_set, fakeip_mark) {
+    let result = true;
+    for (let cidr in runtime_constants.DOH_BLOCK_IPV4_CIDRS)
+        result = nft_add_rule(table, "mangle", [ "iifname", "@" + as_string(interface_set), "ip", "daddr", cidr, "meta", "mark", "set", fakeip_mark, "counter" ]) && result;
+    for (let cidr in runtime_constants.DOH_BLOCK_IPV6_CIDRS)
+        result = nft_add_rule(table, "mangle", [ "iifname", "@" + as_string(interface_set), "ip6", "daddr", cidr, "meta", "mark", "set", fakeip_mark, "counter" ]) && result;
+    return result;
+}
+
+function nft_create_runtime_base(table, localv4_set, common_set, port_set, ip_port_set, interface_set, source_interfaces, fakeip_mark, outbound_mark, fakeip_range, tproxy_port, exclude_ntp, localv6_set, common6_set, ip_port6_set, fakeip6_range, tproxy6_address, block_doh) {
     localv6_set = default_arg(localv6_set, "localv6");
     common6_set = default_arg(common6_set, "tachyon_subnets6");
     ip_port6_set = default_arg(ip_port6_set, "tachyon_ip6_ports");
@@ -1568,6 +1577,7 @@ function nft_create_runtime_base(table, localv4_set, common_set, port_set, ip_po
         !nft_add_rule(table, "mangle", [ "iifname", "@" + as_string(interface_set), "ip", "daddr", fakeip_range, "meta", "l4proto", "udp", "meta", "mark", "set", fakeip_mark, "counter" ]) ||
         !nft_add_rule(table, "mangle", [ "iifname", "@" + as_string(interface_set), "ip6", "daddr", fakeip6_range, "meta", "l4proto", "tcp", "meta", "mark", "set", fakeip_mark, "counter" ]) ||
         !nft_add_rule(table, "mangle", [ "iifname", "@" + as_string(interface_set), "ip6", "daddr", fakeip6_range, "meta", "l4proto", "udp", "meta", "mark", "set", fakeip_mark, "counter" ]) ||
+        (arg_bool(block_doh) && !nft_add_doh_block_marking_rules(table, interface_set, fakeip_mark)) ||
         !nft_add_rule(table, "proxy", [ "meta", "mark", "&", fakeip_mark, "==", fakeip_mark, "meta", "l4proto", "tcp", "tproxy", "ip", "to", ":" + as_string(tproxy_port), "counter" ]) ||
         !nft_add_rule(table, "proxy", [ "meta", "mark", "&", fakeip_mark, "==", fakeip_mark, "meta", "l4proto", "udp", "tproxy", "ip", "to", ":" + as_string(tproxy_port), "counter" ]) ||
         !nft_add_rule(table, "proxy", [ "meta", "mark", "&", fakeip_mark, "==", fakeip_mark, "meta", "l4proto", "tcp", "tproxy", "ip6", "to", core_ip.format_ipv6_tproxy_target(tproxy6_address, tproxy_port), "counter" ]) ||
@@ -1632,7 +1642,8 @@ function nft_create_runtime_base_from_uci(table, localv4_set, common_set, port_s
         common6_set,
         ip_port6_set,
         fakeip6_range,
-        tproxy6_address
+        tproxy6_address,
+        option(settings, "block_doh", "0")
     );
 }
 
@@ -2380,6 +2391,7 @@ function nft_runtime_signature_from_settings_and_sections(settings, sections, sc
 
     body = signature_add_value(body, "settings.source_network_interfaces", option(settings, "source_network_interfaces", "br-lan"));
     body = signature_add_value(body, "settings.exclude_ntp", bool_option(settings, "exclude_ntp", false) ? "1" : "0");
+    body = signature_add_value(body, "settings.block_doh", bool_option(settings, "block_doh", false) ? "1" : "0");
     body = signature_add_value(body, "settings.game_console_optimizer", option(settings, "game_console_optimizer", "0"));
     body = signature_add_value(body, "settings.game_console_ips", option(settings, "game_console_ips", ""));
     body = signature_add_value(body, "settings.excluded_clients", option(settings, "excluded_clients", ""));
@@ -2845,7 +2857,7 @@ else if (mode == "rule-ports-csv")
 else if (mode == "csv-to-lines-file")
     csv_to_lines_file(ARGV[1], ARGV[2]);
 else if (mode == "nft-create-runtime-base")
-    exit(nft_create_runtime_base(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5], ARGV[6], ARGV[7], ARGV[8], ARGV[9], ARGV[10], ARGV[11], ARGV[12], ARGV[13], ARGV[14], ARGV[15], ARGV[16], ARGV[17]) ? 0 : 1);
+    exit(nft_create_runtime_base(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5], ARGV[6], ARGV[7], ARGV[8], ARGV[9], ARGV[10], ARGV[11], ARGV[12], ARGV[13], ARGV[14], ARGV[15], ARGV[16], ARGV[17], ARGV[18] || "") ? 0 : 1);
 else if (mode == "nft-create-runtime-base-from-uci")
     exit(nft_create_runtime_base_from_uci(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5], ARGV[6], ARGV[7], ARGV[8], ARGV[9], ARGV[10], ARGV[11], ARGV[12], ARGV[13], ARGV[14], ARGV[15]) ? 0 : 1);
 else if (mode == "nft-create-runtime-output-rules")

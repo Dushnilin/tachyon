@@ -694,7 +694,7 @@ function section_excluded_candidate_tags(section, candidate_tags, state) {
     );
 }
 
-function add_proxy_selector(config, section, selector_tags, urltest_candidate_tags, state) {
+function add_proxy_selector(config, section, selector_tags, urltest_candidate_tags, state, text_urltest_tag) {
     let section_name = section[".name"];
     let selector_tag = outbound_tag(section_name);
     let selector_outbounds = selector_tags;
@@ -720,6 +720,9 @@ function add_proxy_selector(config, section, selector_tags, urltest_candidate_ta
 
         push(urltest_tags, urltest.tag);
     }
+
+    if (as_string(text_urltest_tag) != "" && index(urltest_tags, as_string(text_urltest_tag)) < 0)
+        push(urltest_tags, text_urltest_tag);
 
     for (let group_id in connections.priority_groups(section)) {
         let priority = add_priority_group_outbound(config, section, group_id, group_candidate_tags, state);

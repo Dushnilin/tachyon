@@ -590,7 +590,9 @@ function createProfileContent(section) {
       .map((l) => l.trim())
       .filter(Boolean);
     for (const line of lines) {
-      const clean = line.replace(/^(full:|keyword:|regex:)/, "").replace(/^\*?\./, "");
+      const clean = line
+        .replace(/^(full:|keyword:|regex:)/, "")
+        .replace(/^\*?\./, "");
       if (/^(full:|keyword:|regex:)/.test(line) && !clean) {
         return _("Invalid domain: empty prefix value");
       }
@@ -673,7 +675,9 @@ function createProfileContent(section) {
       style: "width:100%;min-height:100px;box-sizing:border-box;",
       placeholder: "tiktok.com\nroblox.com",
     });
-    const strVal = Array.isArray(cfgvalue) ? cfgvalue.join("\n") : (cfgvalue || "");
+    const strVal = Array.isArray(cfgvalue)
+      ? cfgvalue.join("\n")
+      : cfgvalue || "";
     if (strVal) textarea.value = strVal;
     container.appendChild(textarea);
     return container;
@@ -1229,7 +1233,9 @@ function createParentalContent(section) {
       .map((l) => l.trim())
       .filter(Boolean);
     for (const line of lines) {
-      const clean = line.replace(/^(full:|keyword:|regex:)/, "").replace(/^\*?\./, "");
+      const clean = line
+        .replace(/^(full:|keyword:|regex:)/, "")
+        .replace(/^\*?\./, "");
       if (/^(full:|keyword:|regex:)/.test(line) && !clean) {
         return _("Invalid domain: empty prefix value");
       }
@@ -1314,7 +1320,9 @@ function createParentalContent(section) {
       style: "width:100%;min-height:110px;box-sizing:border-box;",
       placeholder: "youtube.com\ngooglevideo.com",
     });
-    const strVal = Array.isArray(cfgvalue) ? cfgvalue.join("\n") : (cfgvalue || "");
+    const strVal = Array.isArray(cfgvalue)
+      ? cfgvalue.join("\n")
+      : cfgvalue || "";
     if (strVal) textarea.value = strVal;
     container.appendChild(textarea);
     return container;

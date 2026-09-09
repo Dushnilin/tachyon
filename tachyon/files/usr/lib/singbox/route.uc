@@ -97,6 +97,17 @@ function config(settings, runtime) {
         for (let rule in p2p_direct_rules(settings))
             push(result.rules, rule);
     }
+    if (bool_option(settings, "block_doh", false)) {
+        if (option(settings, "dns_type", "udp") == "doh")
+            warn("block_doh is enabled but upstream DNS type is 'doh'; your own DNS queries would be blocked, switch dns_type to 'udp' or 'dot'\n");
+        let doh_cidrs = [];
+        for (let cidr in runtime_constants.DOH_BLOCK_IPV4_CIDRS)
+            push(doh_cidrs, cidr);
+        for (let cidr in runtime_constants.DOH_BLOCK_IPV6_CIDRS)
+            push(doh_cidrs, cidr);
+        push(result.rules, { action: "reject", inbound: runtime_constants.TPROXY_INBOUND_TAG, ip_cidr: doh_cidrs });
+        push(result.rules, { action: "reject", inbound: runtime_constants.TPROXY_INBOUND6_TAG, ip_cidr: doh_cidrs });
+    }
 
     return result;
 }

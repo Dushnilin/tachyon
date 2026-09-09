@@ -933,6 +933,7 @@ function nft_runtime_signature_body(settings, sections) {
 
     body = signature_add_value(body, "settings.source_network_interfaces", option(settings, "source_network_interfaces", "br-lan"));
     body = signature_add_value(body, "settings.exclude_ntp", bool_option(settings, "exclude_ntp", false) ? "1" : "0");
+    body = signature_add_value(body, "settings.block_doh", bool_option(settings, "block_doh", false) ? "1" : "0");
     body = signature_add_value(body, "settings.game_console_optimizer", option(settings, "game_console_optimizer", "0"));
     body = signature_add_value(body, "settings.game_console_ips", option(settings, "game_console_ips", ""));
     body = signature_add_value(body, "settings.excluded_clients", option(settings, "excluded_clients", ""));
@@ -1520,6 +1521,7 @@ function sing_box_signature_body(settings, sections, servers, mwan3_active) {
     body = signature_add_value(body, "settings.dns_rewrite_ttl", option(settings, "dns_rewrite_ttl", "60"));
     body = signature_add_value(body, "settings.output_network_interface", option(settings, "output_network_interface", ""));
     body = signature_add_value(body, "settings.disable_quic", bool_option_value(settings, "disable_quic", false));
+    body = signature_add_value(body, "settings.block_doh", bool_option_value(settings, "block_doh", false));
     if (sing_box_signature_has_remote_ruleset_sources(sections))
         body = signature_add_value(body, "settings.update_interval", settings_update_interval(settings));
     body = signature_add_value(body, "settings.cache_path", option(settings, "cache_path", "/tmp/sing-box/cache.db"));

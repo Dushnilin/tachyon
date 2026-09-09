@@ -2447,6 +2447,7 @@ function subscriptionUrlSettingsKeys() {
     "include_urltest_groups",
     "hide_urltest_group_outbounds",
     "hide_detour_outbounds",
+    "subscription_insecure",
   ];
 }
 
@@ -2473,6 +2474,7 @@ function defaultSubscriptionUrlSettings() {
     include_urltest_groups: "1",
     hide_urltest_group_outbounds: "1",
     hide_detour_outbounds: "1",
+    subscription_insecure: "0",
   };
 }
 
@@ -2871,6 +2873,17 @@ function addSubscriptionUrlItemOptions(itemSection, options = {}) {
     _("Hide intermediate nodes used as detours by other subscription nodes"),
   );
   o.default = "1";
+  o.rmempty = false;
+
+  o = itemSection.option(
+    form.Flag,
+    "subscription_insecure",
+    _("Allow insecure TLS"),
+    _(
+      "Download this subscription without TLS certificate verification (for panels with self-signed or mismatched certificates)",
+    ),
+  );
+  o.default = "0";
   o.rmempty = false;
 }
 
@@ -5521,7 +5534,10 @@ function parseCommentAwareListTokens(value) {
   let offset = 0;
 
   lines.forEach((line, index) => {
-    const cleanLine = line.replace(/^(full|keyword|regex):[ \t]*(\/\/|#).*$/, "");
+    const cleanLine = line.replace(
+      /^(full|keyword|regex):[ \t]*(\/\/|#).*$/,
+      "",
+    );
     const hashIndex = cleanLine.indexOf("#");
     const slashIndex = cleanLine.indexOf("//");
     let commentIndex = -1;
@@ -5534,7 +5550,8 @@ function parseCommentAwareListTokens(value) {
       commentIndex = slashIndex;
     }
 
-    const source = commentIndex >= 0 ? cleanLine.slice(0, commentIndex) : cleanLine;
+    const source =
+      commentIndex >= 0 ? cleanLine.slice(0, commentIndex) : cleanLine;
     const matcher = /[^,\s]+/g;
     let match;
 
@@ -9946,6 +9963,32 @@ function createSectionContent(section) {
 
   o = section.taboption(
     "settings",
+    form.TextValue,
+    "selector_proxy_links_text",
+    _("Connection links (text)"),
+    _("Paste proxy links one per line; they are added to the connection list"),
+  );
+  o.depends("action", "connection");
+  o.rmempty = true;
+  o.modalonly = true;
+  o.rows = 5;
+
+  o = section.taboption(
+    "settings",
+    form.TextValue,
+    "urltest_proxy_links_text",
+    _("URLTest links (text)"),
+    _(
+      "Paste proxy links one per line; they form a URLTest group with automatic fastest selection",
+    ),
+  );
+  o.depends("action", "connection");
+  o.rmempty = true;
+  o.modalonly = true;
+  o.rows = 5;
+
+  o = section.taboption(
+    "settings",
     SettingsDynamicList,
     "subscription_url",
     _("Subscription URL"),
@@ -9991,6 +10034,34 @@ function createSectionContent(section) {
       childItemInputValue(section_id, value, "subscription_url", "url"),
     );
   };
+
+  o = section.taboption(
+    "settings",
+    form.DynamicList,
+    "subscription_filter_include_keywords",
+    _("Subscription include keywords"),
+    _(
+      "Keep only subscription nodes whose name contains any of these keywords (empty keeps all). Case-insensitive, emoji supported.",
+    ),
+  );
+  o.depends("action", "connection");
+  o.rmempty = true;
+  o.modalonly = true;
+  o.placeholder = _("Add include keyword");
+
+  o = section.taboption(
+    "settings",
+    form.DynamicList,
+    "subscription_filter_exclude_keywords",
+    _("Subscription exclude keywords"),
+    _(
+      "Drop subscription nodes whose name contains any of these keywords. Case-insensitive, emoji supported.",
+    ),
+  );
+  o.depends("action", "connection");
+  o.rmempty = true;
+  o.modalonly = true;
+  o.placeholder = _("Add exclude keyword");
 
   o = section.taboption(
     "settings",

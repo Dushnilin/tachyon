@@ -827,6 +827,7 @@ function subscription_source_profile(section, entry) {
         parsed.user_agent = user_agent;
 
     parsed.hwid = connections.subscription_hwid(section, entry);
+    parsed.insecure = connections.subscription_insecure(section, entry);
     parsed.device_headers = connections.subscription_device_headers(section, entry);
     parsed.device_headers_signature = connections.subscription_device_headers_signature(section, entry);
     parsed.download_section = connections.subscription_download_section(section, entry);
@@ -1546,7 +1547,7 @@ function get_subscription_hwid(custom_hwid) {
     return custom_hwid != "" ? custom_hwid : generate_hwid();
 }
 
-function download_subscription(url, filepath, http_proxy_address, headers_filepath, effective_user_agent, effective_hwid, device_headers) {
+function download_subscription(url, filepath, http_proxy_address, headers_filepath, effective_user_agent, effective_hwid, device_headers, allow_insecure) {
     let retries = 3;
     let wait_seconds = 2;
     let timeout = 15;
@@ -1582,6 +1583,8 @@ function download_subscription(url, filepath, http_proxy_address, headers_filepa
                 // unavailable during startup or when proxy falls back to direct.
                 curl_push_dns_servers(args);
             }
+            if (bool_value(allow_insecure, false))
+                push(args, "-k");
             if (headers_tmpfile != "") {
                 push(args, "-D");
                 push(args, headers_tmpfile);
@@ -1717,7 +1720,7 @@ function get_subscription_download_proxy_address(section_name_value, sections, p
     return address;
 }
 
-function download_subscription_into_cache(section_name_value, subscription_url, subscription_json_path, subscription_url_cache_path, service_proxy_address_value, subscription_user_agent, subscription_hwid, source_index, cache_section, metadata_output_path, sections, subscription_device_headers) {
+function download_subscription_into_cache(section_name_value, subscription_url, subscription_json_path, subscription_url_cache_path, service_proxy_address_value, subscription_user_agent, subscription_hwid, source_index, cache_section, metadata_output_path, sections, subscription_device_headers, allow_insecure) {
     ensure_dir(TMP_SUBSCRIPTION_FOLDER);
     let subscription_user_agent_cache_path = source_user_agent_path(TMP_SUBSCRIPTION_FOLDER, cache_section);
     let subscription_hwid_cache_path = source_hwid_path(TMP_SUBSCRIPTION_FOLDER, cache_section);
@@ -1740,7 +1743,7 @@ function download_subscription_into_cache(section_name_value, subscription_url, 
         unlink_path(metadata_tmpfile);
 
         let effective_hwid = get_subscription_hwid(subscription_hwid);
-        let download_status = download_subscription(subscription_url, raw_tmpfile, service_proxy_address_value, headers_tmpfile, effective_user_agent, effective_hwid, subscription_device_headers);
+        let download_status = download_subscription(subscription_url, raw_tmpfile, service_proxy_address_value, headers_tmpfile, effective_user_agent, effective_hwid, subscription_device_headers, allow_insecure);
         if (download_status != 0) {
             if (metadata_output_path != "")
                 unlink_path(metadata_output_path);
@@ -1940,7 +1943,8 @@ function update_subscription_source(section_name_value, index_value, entry, phas
         source_section,
         as_string(metadata_output_path),
         sections,
-        parsed.device_headers
+        parsed.device_headers,
+        parsed.insecure
     );
 }
 
@@ -2257,7 +2261,8 @@ function ensure_subscription_source_for_prepare(state, section, source_index, en
         source_section,
         metadata_output_path,
         state.sections,
-        parsed.device_headers
+        parsed.device_headers,
+        parsed.insecure
     );
 
     if (update_result == 0 || update_result == 2) {
@@ -2698,6 +2703,9 @@ else if (mode == "section-is-subscription-proxy") {
 }
 else if (mode == "update-source") {
     exit(update_subscription_source(ARGV[1], ARGV[2], ARGV[3], ARGV[4] || "runtime", ARGV[5] || ""));
+}
+else if (mode == "download-subscription") {
+    exit(download_subscription(ARGV[1], ARGV[2], ARGV[3] || "", ARGV[4] || "", ARGV[5] || "", ARGV[6] || "", {}, ARGV[7] == "1") == 0 ? 0 : 1);
 }
 else if (mode == "update-section") {
     exit(subscription_update_section(find_section(uci_sections(), ARGV[1] || ""), as_string(ARGV[2] || "0") == "1"));
