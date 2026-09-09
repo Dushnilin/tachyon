@@ -230,9 +230,9 @@ JSON
 nft_ucode nft-add-dns-block-rules-fixture "$WORK_DIR/nft_fixture.json" "tachyon"
 
 # Time-gated rule: IP device, meta hour window, redirect to block target
-assert_contains "$NFT_LOG" "dns_block	ip	saddr	192.168.1.150	meta	hour	\"22:00:00\"-\"23:59:59\"	udp	dport	53	redirect	to	:1053	counter	comment" "time-gated udp redirect"
-assert_contains "$NFT_LOG" "dns_block	ip	saddr	192.168.1.150	meta	hour	\"00:00:00\"-\"08:00:00\"	udp	dport	53	redirect	to	:1053" "midnight wrap udp redirect"
-assert_contains "$NFT_LOG" "tcp	dport	53	redirect	to	:1053" "tcp dns redirect"
+assert_contains "$NFT_LOG" "dns_block	ip	saddr	192.168.1.150	meta	hour	\"22:00:00\"-\"23:59:59\"	udp	dport	53	counter	redirect	to	:1053	comment" "time-gated udp redirect"
+assert_contains "$NFT_LOG" "dns_block	ip	saddr	192.168.1.150	meta	hour	\"00:00:00\"-\"08:00:00\"	udp	dport	53	counter	redirect	to	:1053" "midnight wrap udp redirect"
+assert_contains "$NFT_LOG" "tcp	dport	53	counter	redirect	to	:1053" "tcp dns redirect"
 
 # MAC device redirect
 assert_contains "$NFT_LOG" "dns_block	ether	saddr	11:22:33:44:55:66	meta	hour" "mac redirect with time"
@@ -241,7 +241,7 @@ assert_contains "$NFT_LOG" "dns_block	ether	saddr	11:22:33:44:55:66	meta	hour" "
 if grep -Fq "192.168.1.160	meta	hour" "$NFT_LOG"; then
   fail "always-on schedule must not carry meta hour matcher"
 fi
-assert_contains "$NFT_LOG" "ip	saddr	192.168.1.160	udp	dport	53	redirect	to	:1053" "always-on redirect"
+assert_contains "$NFT_LOG" "ip	saddr	192.168.1.160	udp	dport	53	counter	redirect	to	:1053" "always-on redirect"
 
 # ─── Validator: invalid blocked domain rejected ──────────────────────────────
 cat >"$WORK_DIR/invalid_domain.json" <<'JSON'

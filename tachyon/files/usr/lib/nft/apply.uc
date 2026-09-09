@@ -1154,7 +1154,7 @@ function nft_add_dns_block_rules_from_schedules(schedules, table, profiles) {
                     append_array(match_args, [ "meta", "hour", sprintf("\"%s\"-\"%s\"", interval[0], interval[1]) ]);
                 }
                 append_array(match_args, days_args);
-                append_array(match_args, [ "udp", "dport", "53", "redirect", "to", DNS_BLOCK_TARGET, "counter", "comment", "\"" + comment + "\"" ]);
+                append_array(match_args, [ "udp", "dport", "53", "counter", "redirect", "to", DNS_BLOCK_TARGET, "comment", "\"" + comment + "\"" ]);
                 if (!nft_add_rule(table, "dns_block", match_args))
                     return false;
                 added = true;
@@ -1171,7 +1171,7 @@ function nft_add_dns_block_rules_from_schedules(schedules, table, profiles) {
                     append_array(tcp_args, [ "meta", "hour", sprintf("\"%s\"-\"%s\"", interval[0], interval[1]) ]);
                 }
                 append_array(tcp_args, days_args);
-                append_array(tcp_args, [ "tcp", "dport", "53", "redirect", "to", DNS_BLOCK_TARGET, "counter", "comment", "\"" + comment + "\"" ]);
+                append_array(tcp_args, [ "tcp", "dport", "53", "counter", "redirect", "to", DNS_BLOCK_TARGET, "comment", "\"" + comment + "\"" ]);
                 if (!nft_add_rule(table, "dns_block", tcp_args))
                     return false;
                 added = true;
@@ -1216,7 +1216,7 @@ function nft_add_dns_block_rules_from_schedules(schedules, table, profiles) {
                     append_array(match_args, [ "ip6", "saddr", dev_str ]);
                 else
                     append_array(match_args, [ "ip", "saddr", dev_str ]);
-                append_array(match_args, [ "udp", "dport", "53", "redirect", "to", DNS_BLOCK_TARGET, "counter", "comment", "\"" + comment + "\"" ]);
+                append_array(match_args, [ "udp", "dport", "53", "counter", "redirect", "to", DNS_BLOCK_TARGET, "comment", "\"" + comment + "\"" ]);
                 if (!nft_add_rule(table, "dns_block", match_args))
                     return false;
                 added = true;
@@ -1228,7 +1228,7 @@ function nft_add_dns_block_rules_from_schedules(schedules, table, profiles) {
                     append_array(tcp_args, [ "ip6", "saddr", dev_str ]);
                 else
                     append_array(tcp_args, [ "ip", "saddr", dev_str ]);
-                append_array(tcp_args, [ "tcp", "dport", "53", "redirect", "to", DNS_BLOCK_TARGET, "counter", "comment", "\"" + comment + "\"" ]);
+                append_array(tcp_args, [ "tcp", "dport", "53", "counter", "redirect", "to", DNS_BLOCK_TARGET, "comment", "\"" + comment + "\"" ]);
                 if (!nft_add_rule(table, "dns_block", tcp_args))
                     return false;
                 added = true;

@@ -11,6 +11,7 @@ let i18n = require("service.i18n");
 
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
 const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
+const NFT_TABLE_NAME = getenv("NFT_TABLE_NAME") || "TachyonTable";
 const PID_FILE = "/var/run/tachyon_telegram.pid";
 const OFFSET_FILE = "/var/run/tachyon_telegram_offset";
 
@@ -3187,7 +3188,7 @@ function check_blocked_activity(cfg) {
     let schedules = block_schedules_with_notify();
     if (length(schedules) == 0) return;
 
-    let out = command_capture(command_from_args([ "nft", "list", "chain", "inet", "tachyon", "dns_block" ]));
+    let out = command_capture(command_from_args([ "nft", "list", "chain", "inet", NFT_TABLE_NAME, "dns_block" ]));
     if (!out || out.status != 0) return;
 
     let previous = load_blocked_counts();
