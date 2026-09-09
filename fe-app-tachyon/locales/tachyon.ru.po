@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-09 19:57+0300\n"
-"PO-Revision-Date: 2026-09-09 19:57+0300\n"
+"POT-Creation-Date: 2026-09-09 21:05+0300\n"
+"PO-Revision-Date: 2026-09-09 21:05+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -227,6 +227,9 @@ msgstr "Активные клиенты"
 msgid "Active Connections"
 msgstr "Активные соединения"
 
+msgid "Active Hours Mode"
+msgstr "Режим часов активности"
+
 msgid "Active Main DNS"
 msgstr "Активный основной DNS"
 
@@ -410,6 +413,9 @@ msgstr "Весь трафик от этих IP-адресов будет мар�
 msgid "Allow / Enable ONLY in scheduled hours (White period)"
 msgstr "Разрешать / Включать ТОЛЬКО в указанные часы (Белый список)"
 
+msgid "Allow always"
+msgstr "Разрешено всегда"
+
 msgid "Allow in interval"
 msgstr "Разрешено в интервале"
 
@@ -451,6 +457,9 @@ msgstr "ALPN"
 
 msgid "Alter ID"
 msgstr "Alter ID"
+
+msgid "Always Active (24/7)"
+msgstr "Всегда активно (24/7)"
 
 msgid "Always block these domains for all devices in this profile. Enter one domain per line or use category preset buttons."
 msgstr "Всегда блокировать эти домены для всех устройств в этом профиле. Вводите по одному домену на строку или используйте кнопки категорий."
@@ -704,6 +713,9 @@ msgstr "Блокировать"
 msgid "Block / Disable in scheduled hours (Standard)"
 msgstr "Блокировать / Отключать в указанные часы (Стандарт)"
 
+msgid "Block always"
+msgstr "Заблокировано всегда"
+
 msgid "Block at DNS level"
 msgstr "Блокировать на уровне DNS"
 
@@ -928,6 +940,9 @@ msgstr "Выберите визуальную иконку для профиля
 
 msgid "Choose Hosts File..."
 msgstr "Выбрать файл Hosts..."
+
+msgid "Choose whether this schedule rule is permanently active (24/7) or restricted to specific hours."
+msgstr "Выберите, действует ли расписание круглосуточно (24/7) или только в заданные часы."
 
 msgid "Choose whether to install updates immediately when detected or at a scheduled time (e.g. maintenance window)"
 msgstr "Выберите, устанавливать ли обновления сразу при обнаружении или по расписанию (например, в ночное окно обслуживания)"
@@ -4109,6 +4124,9 @@ msgstr "Правило расписания"
 msgid "Scheduled auto-update time"
 msgstr "Время обновления по расписанию"
 
+msgid "Scheduled Hours (Time window)"
+msgstr "По расписанию (интервал времени)"
+
 msgid "Score"
 msgstr "Баллы"
 
@@ -4970,9 +4988,6 @@ msgstr "Время"
 msgid "Time in seconds for DNS record caching (default: 60)"
 msgstr "Время кэширования DNS-записей в секундах (по умолчанию: 60)"
 
-msgid "Time is required (e.g. 22:00)"
-msgstr "Укажите время (например, 22:00)"
-
 msgid "Time of day to run scheduled component updates in HH:MM (24h) format, e.g. 04:00"
 msgstr "Время суток для запуска планового обновления компонентов в формате ЧЧ:ММ (24ч), например 04:00"
 
@@ -5554,6 +5569,9 @@ msgstr "sing-box outbound для Zapret2 настроен"
 
 msgid "Zapret2 sing-box outbound is not configured"
 msgstr "sing-box outbound для Zapret2 не настроен"
+
+msgid "Time is required (e.g. 22:00)"
+msgstr "Укажите время (например, 22:00)"
 
 msgid "URL must start with vless://, vmess://, ss://, trojan://, socks4://, socks4a://, socks5://, hysteria2://, hy2://, or tuic://"
 msgstr "URL должен начинаться с vless://, vmess://, ss://, trojan://, socks4://, socks4a://, socks5://, hysteria2://, hy2:// или tuic://"
@@ -6295,21 +6313,3 @@ msgstr "Скачивание и обработка списков"
 
 msgid "Applying rules and subnet lists"
 msgstr "Применение правил и списков подсетей"
-
-msgid "Always Active (24/7)"
-msgstr "Всегда активно (24/7)"
-
-msgid "Active Hours Mode"
-msgstr "Режим часов активности"
-
-msgid "Choose whether this schedule rule is permanently active (24/7) or restricted to specific hours."
-msgstr "Выберите, действует ли расписание круглосуточно (24/7) или только в заданные часы."
-
-msgid "Scheduled Hours (Time window)"
-msgstr "По расписанию (интервал времени)"
-
-msgid "Allow always"
-msgstr "Разрешено всегда"
-
-msgid "Block always"
-msgstr "Заблокировано всегда"
