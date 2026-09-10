@@ -1665,22 +1665,89 @@ export const TachyonShellMethods = {
     };
   },
 
-  leakCheck: async (): Promise<
-    Tachyon.MethodResponse<Tachyon.LeakCheckResult>
-  > => {
-    const response = await executeShellCommand({
+  leakCheck: async (
+    onProgress?: (progress: number, stage: string) => void,
+  ): Promise<Tachyon.MethodResponse<Tachyon.LeakCheckResult>> => {
+    // 1. Attempt asynchronous leak check execution to avoid LuCI RPC / browser XHR timeout
+    const startResponse = await executeShellCommand({
       command: '/usr/bin/tachyon',
-      args: [Tachyon.AvailableMethods.LEAK_CHECK],
-      timeout: 25000,
+      args: [Tachyon.AvailableMethods.LEAK_CHECK_ASYNC],
+      timeout: 5000,
     });
-    const parsed = parseJsonObjectOutput<Tachyon.LeakCheckResult>(
-      response.stdout,
-    );
 
-    if ((response.code ?? 0) !== 0 || !parsed) {
+    const startParsed = parseJsonObjectOutput<{
+      success?: boolean;
+      job_id?: string;
+      error?: string;
+    }>(startResponse.stdout);
+
+    if (
+      (startResponse.code ?? 0) === 0 &&
+      startParsed?.success &&
+      startParsed.job_id
+    ) {
+      const jobId = startParsed.job_id;
+      const startedAt = Date.now();
+      const MAX_WAIT_MS = 35000;
+      const POLL_INTERVAL_MS = 800;
+
+      while (Date.now() - startedAt < MAX_WAIT_MS) {
+        await sleep(POLL_INTERVAL_MS);
+
+        const statusResponse = await executeShellCommand({
+          command: '/usr/bin/tachyon',
+          args: [Tachyon.AvailableMethods.LEAK_CHECK_STATUS, jobId],
+          timeout: 4000,
+        });
+
+        const statusParsed =
+          parseJsonObjectOutput<Tachyon.LeakCheckJobState>(
+            statusResponse.stdout,
+          );
+
+        if (statusParsed) {
+          if (typeof statusParsed.progress === 'number' && onProgress) {
+            onProgress(statusParsed.progress, statusParsed.stage || '');
+          }
+
+          if (!statusParsed.running) {
+            if (statusParsed.success && statusParsed.data) {
+              return {
+                success: true,
+                data: statusParsed.data,
+              };
+            }
+            return {
+              success: false,
+              error:
+                statusParsed.error ||
+                _('Failed to execute IP and DNS leak check'),
+            };
+          }
+        }
+      }
+
       return {
         success: false,
-        error: response.stderr || _('Failed to execute IP and DNS leak check'),
+        error: _('IP and DNS leak check timed out'),
+      };
+    }
+
+    // 2. Fallback to direct synchronous execution if async mode is not supported
+    const syncResponse = await executeShellCommand({
+      command: '/usr/bin/tachyon',
+      args: [Tachyon.AvailableMethods.LEAK_CHECK],
+      timeout: 15000,
+    });
+    const parsed = parseJsonObjectOutput<Tachyon.LeakCheckResult>(
+      syncResponse.stdout,
+    );
+
+    if ((syncResponse.code ?? 0) !== 0 || !parsed) {
+      return {
+        success: false,
+        error:
+          syncResponse.stderr || _('Failed to execute IP and DNS leak check'),
       };
     }
     return {

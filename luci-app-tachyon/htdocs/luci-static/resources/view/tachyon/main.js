@@ -3456,6 +3456,8 @@ var Tachyon;
     AvailableMethods2["DNS_BENCHMARK_STOP"] = "dns_benchmark_stop";
     AvailableMethods2["DNS_BENCHMARK_APPLY"] = "dns_benchmark_apply";
     AvailableMethods2["LEAK_CHECK"] = "leak_check";
+    AvailableMethods2["LEAK_CHECK_ASYNC"] = "leak_check_async";
+    AvailableMethods2["LEAK_CHECK_STATUS"] = "leak_check_status";
     AvailableMethods2["CHECK_IP_LEAK"] = "check_ip_leak";
     AvailableMethods2["CHECK_DNS_LEAK"] = "check_dns_leak";
   })(AvailableMethods = Tachyon2.AvailableMethods || (Tachyon2.AvailableMethods = {}));
@@ -4750,19 +4752,63 @@ var TachyonShellMethods = {
       }
     };
   },
-  leakCheck: async () => {
-    const response = await executeShellCommand({
+  leakCheck: async (onProgress) => {
+    const startResponse = await executeShellCommand({
       command: "/usr/bin/tachyon",
-      args: [Tachyon.AvailableMethods.LEAK_CHECK],
-      timeout: 25e3
+      args: [Tachyon.AvailableMethods.LEAK_CHECK_ASYNC],
+      timeout: 5e3
     });
-    const parsed = parseJsonObjectOutput(
-      response.stdout
-    );
-    if ((response.code ?? 0) !== 0 || !parsed) {
+    const startParsed = parseJsonObjectOutput(startResponse.stdout);
+    if ((startResponse.code ?? 0) === 0 && startParsed?.success && startParsed.job_id) {
+      const jobId = startParsed.job_id;
+      const startedAt = Date.now();
+      const MAX_WAIT_MS = 35e3;
+      const POLL_INTERVAL_MS = 800;
+      while (Date.now() - startedAt < MAX_WAIT_MS) {
+        await sleep(POLL_INTERVAL_MS);
+        const statusResponse = await executeShellCommand({
+          command: "/usr/bin/tachyon",
+          args: [Tachyon.AvailableMethods.LEAK_CHECK_STATUS, jobId],
+          timeout: 4e3
+        });
+        const statusParsed = parseJsonObjectOutput(
+          statusResponse.stdout
+        );
+        if (statusParsed) {
+          if (typeof statusParsed.progress === "number" && onProgress) {
+            onProgress(statusParsed.progress, statusParsed.stage || "");
+          }
+          if (!statusParsed.running) {
+            if (statusParsed.success && statusParsed.data) {
+              return {
+                success: true,
+                data: statusParsed.data
+              };
+            }
+            return {
+              success: false,
+              error: statusParsed.error || _("Failed to execute IP and DNS leak check")
+            };
+          }
+        }
+      }
       return {
         success: false,
-        error: response.stderr || _("Failed to execute IP and DNS leak check")
+        error: _("IP and DNS leak check timed out")
+      };
+    }
+    const syncResponse = await executeShellCommand({
+      command: "/usr/bin/tachyon",
+      args: [Tachyon.AvailableMethods.LEAK_CHECK],
+      timeout: 15e3
+    });
+    const parsed = parseJsonObjectOutput(
+      syncResponse.stdout
+    );
+    if ((syncResponse.code ?? 0) !== 0 || !parsed) {
+      return {
+        success: false,
+        error: syncResponse.stderr || _("Failed to execute IP and DNS leak check")
       };
     }
     return {
@@ -14834,7 +14880,21 @@ function renderLeakCheckModal() {
       );
     }, 1500);
     try {
-      const response = await TachyonShellMethods.leakCheck();
+      const response = await TachyonShellMethods.leakCheck(
+        (progress, stage) => {
+          clearTimeout(timer);
+          progressBar.style.width = `${progress}%`;
+          if (stage === "dns") {
+            statusLabel.textContent = _(
+              "Testing DNS leak upstream resolvers with bash.ws protocol..."
+            );
+          } else if (stage === "ip") {
+            statusLabel.textContent = _(
+              "Querying WAN direct socket and proxy outbound on 127.0.0.1:4534..."
+            );
+          }
+        }
+      );
       clearTimeout(timer);
       progressBar.style.width = "100%";
       if (response.success && response.data) {

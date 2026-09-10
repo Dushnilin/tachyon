@@ -54,7 +54,21 @@ export function renderLeakCheckModal() {
     }, 1500);
 
     try {
-      const response = await TachyonShellMethods.leakCheck();
+      const response = await TachyonShellMethods.leakCheck(
+        (progress, stage) => {
+          clearTimeout(timer);
+          progressBar.style.width = `${progress}%`;
+          if (stage === 'dns') {
+            statusLabel.textContent = _(
+              'Testing DNS leak upstream resolvers with bash.ws protocol...',
+            );
+          } else if (stage === 'ip') {
+            statusLabel.textContent = _(
+              'Querying WAN direct socket and proxy outbound on 127.0.0.1:4534...',
+            );
+          }
+        },
+      );
       clearTimeout(timer);
       progressBar.style.width = '100%';
 

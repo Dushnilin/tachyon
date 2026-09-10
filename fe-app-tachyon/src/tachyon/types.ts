@@ -118,6 +118,8 @@ export namespace Tachyon {
     DNS_BENCHMARK_STOP = 'dns_benchmark_stop',
     DNS_BENCHMARK_APPLY = 'dns_benchmark_apply',
     LEAK_CHECK = 'leak_check',
+    LEAK_CHECK_ASYNC = 'leak_check_async',
+    LEAK_CHECK_STATUS = 'leak_check_status',
     CHECK_IP_LEAK = 'check_ip_leak',
     CHECK_DNS_LEAK = 'check_dns_leak',
   }
@@ -1211,5 +1213,17 @@ export namespace Tachyon {
     ip_leak: IPLeakResult;
     dns_leak: DNSLeakResult;
     timestamp?: number;
+  }
+
+  export interface LeakCheckJobState {
+    running: boolean;
+    success?: boolean;
+    job_id?: string;
+    progress?: number;
+    stage?: string;
+    error?: string;
+    data?: LeakCheckResult;
+    started_at?: number;
+    finished_at?: number;
   }
 }

@@ -34,7 +34,9 @@ if (type(leak_mod) != "object") {
 // Test exports
 if (type(leak_mod.check_ip_leak) != "function" ||
     type(leak_mod.check_dns_leak) != "function" ||
-    type(leak_mod.run_leak_check) != "function") {
+    type(leak_mod.run_leak_check) != "function" ||
+    type(leak_mod.start_leak_check_async) != "function" ||
+    type(leak_mod.get_leak_check_status) != "function") {
     print("ERR: leak_check module missing required functions\n");
     exit(2);
 }
@@ -55,11 +57,15 @@ ucode -L "$TACHYON_LIB" "$WORK_DIR/test_leak_logic.uc" | grep -q "OK" ||
 
 # ─── 3. Test CLI registration in /usr/bin/tachyon ───────────────────────────
 grep -Fq "leak_check" "$BIN" || fail "/usr/bin/tachyon must register leak_check"
+grep -Fq "leak_check_async" "$BIN" || fail "/usr/bin/tachyon must register leak_check_async"
+grep -Fq "leak_check_status" "$BIN" || fail "/usr/bin/tachyon must register leak_check_status"
 grep -Fq "check_ip_leak" "$BIN" || fail "/usr/bin/tachyon must register check_ip_leak"
 grep -Fq "check_dns_leak" "$BIN" || fail "/usr/bin/tachyon must register check_dns_leak"
 
 # ─── 4. Test api.uc integration ─────────────────────────────────────────────
 grep -Fq "run_leak_check" "$API_UC" || fail "api.uc must export run_leak_check"
+grep -Fq "run_leak_check_async" "$API_UC" || fail "api.uc must export run_leak_check_async"
+grep -Fq "run_leak_check_status" "$API_UC" || fail "api.uc must export run_leak_check_status"
 grep -Fq "run_ip_leak_check" "$API_UC" || fail "api.uc must export run_ip_leak_check"
 grep -Fq "run_dns_leak_check" "$API_UC" || fail "api.uc must export run_dns_leak_check"
 

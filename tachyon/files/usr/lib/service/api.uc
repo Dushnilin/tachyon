@@ -275,6 +275,18 @@ function run_dns_leak_check() {
     return leak_mod.check_dns_leak(null, null, null, null);
 }
 
+function run_leak_check_async() {
+    let leak_mod = require("diagnostics.leak_check");
+    if (!leak_mod) return null;
+    return leak_mod.start_leak_check_async();
+}
+
+function run_leak_check_status(job_id) {
+    let leak_mod = require("diagnostics.leak_check");
+    if (!leak_mod) return null;
+    return leak_mod.get_leak_check_status(job_id);
+}
+
 function manage_domain_list(action_type, domain, do_delete) {
     let c = uci_core.cursor();
     if (!c) return { success: false, error: "Не удалось инициализировать UCI" };
@@ -391,6 +403,8 @@ return {
     check_connection,
     run_speedtest,
     run_leak_check,
+    run_leak_check_async,
+    run_leak_check_status,
     run_ip_leak_check,
     run_dns_leak_check,
     manage_domain_list,
