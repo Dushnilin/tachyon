@@ -33,7 +33,17 @@ rows \
   target 1 connection 0 '' |
   ucode -L "$TACHYON_LIB" "$VALIDATOR" validate-outbound-detours
 
-assert_rejects "unsupported source action" "supported only for Connection rules" \
+rows \
+  source 1 awg 1 target \
+  target 1 connection 0 '' |
+  ucode -L "$TACHYON_LIB" "$VALIDATOR" validate-outbound-detours
+
+rows \
+  source 1 connection 1 target \
+  target 1 awg 0 '' |
+  ucode -L "$TACHYON_LIB" "$VALIDATOR" validate-outbound-detours
+
+assert_rejects "unsupported source action" "supported only for Connection and AmneziaWG rules" \
   source 1 zapret 1 target \
   target 1 connection 0 ''
 
@@ -44,7 +54,7 @@ assert_rejects "disabled target" "references disabled rule 'target'" \
   source 1 connection 1 target \
   target 0 connection 0 ''
 
-assert_rejects "wrong target action" "but it is not a Connection rule" \
+assert_rejects "wrong target action" "but it is not a Connection or AmneziaWG rule" \
   source 1 connection 1 target \
   target 1 zapret 0 ''
 
