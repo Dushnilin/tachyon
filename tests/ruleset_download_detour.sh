@@ -115,4 +115,36 @@ grep -q '"http_clients"' "$output_v14" || \
 grep -q '"default_http_client": "ruleset-http"' "$output_v14" || \
   fail "sing-box 1.14+ must configure default_http_client"
 
+# 4. Verify zapret section with community_lists does NOT use zapret-out as download_detour
+cat >"$WORK_DIR/fixture_zapret.json" <<'JSON'
+{
+  "settings": {
+    ".name": "settings",
+    ".type": "settings",
+    "enabled": "1",
+    "dns_type": "udp",
+    "dns_server": "1.1.1.1",
+    "service_listen_address": "127.0.0.1"
+  },
+  "section": [
+    {
+      ".name": "zapret_sec",
+      ".type": "section",
+      "enabled": "1",
+      "action": "zapret",
+      "community_lists": [ "youtube" ]
+    }
+  ]
+}
+JSON
+
+output_zapret="$WORK_DIR/out_zapret.json"
+mkdir -p "$output_zapret.section-cache" "$output_zapret.rulesets"
+ucode -L "$TACHYON_LIB" "$GENERATOR_UC" generate-config-fixture \
+  "$WORK_DIR/fixture_zapret.json" "$output_zapret" "127.0.0.1" "0" "1"
+
+if grep -q '"download_detour": "zapret_sec-out"' "$output_zapret"; then
+  fail "zapret-out must never be selected as download_detour due to routing_mark"
+fi
+
 printf "ruleset download detour checks passed\n"

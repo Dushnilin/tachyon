@@ -122,8 +122,8 @@ grep -Fq '/stat' "$WORK_DIR/lock.uc" ||
 
 # ucode resolves names lexically and does not hoist, so a call placed above the
 # declaration silently becomes null and the lock is never released.
-lock_decl="$(grep -n '^function installer_release_init_lock() {' "$INSTALLER" | head -1 | cut -d: -f1)"
-lock_call="$(grep -n 'installer_release_init_lock();' "$INSTALLER" | head -1 | cut -d: -f1)"
+lock_decl="$(grep -m 1 -n '^function installer_release_init_lock() {' "$INSTALLER" | cut -d: -f1)"
+lock_call="$(grep -m 1 -n 'installer_release_init_lock();' "$INSTALLER" | cut -d: -f1)"
 [ -n "$lock_decl" ] && [ -n "$lock_call" ] ||
   fail "installer_release_init_lock must be both declared and called"
 [ "$lock_decl" -lt "$lock_call" ] ||

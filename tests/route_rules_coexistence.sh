@@ -130,4 +130,55 @@ for (let rs in rulesets) {
 }
 ' || fail "DPI-out must never be set as download_detour"
 
+# 3. Verify zapret section generates resolve action for rulesets and domains
+cat >"$WORK_DIR/fixture_zapret_resolve.json" <<'JSON'
+{
+  "settings": {
+    ".name": "settings",
+    ".type": "settings",
+    "enabled": "1",
+    "dns_type": "udp",
+    "dns_server": "1.1.1.1",
+    "service_listen_address": "127.0.0.1"
+  },
+  "section": [
+    {
+      ".name": "zapret",
+      ".type": "section",
+      "enabled": "1",
+      "action": "zapret",
+      "community_lists": [ "youtube" ]
+    }
+  ]
+}
+JSON
+
+output_zapret_resolve="$WORK_DIR/out_zapret_resolve.json"
+mkdir -p "$output_zapret_resolve.section-cache" "$output_zapret_resolve.rulesets"
+ucode -L "$TACHYON_LIB" "$GENERATOR_UC" generate-config-fixture \
+  "$WORK_DIR/fixture_zapret_resolve.json" "$output_zapret_resolve" "127.0.0.1" "0" "1"
+
+ucode -e '
+let fs = require("fs");
+let raw = fs.readfile("'"$output_zapret_resolve"'");
+let cfg = json(raw);
+let rules = cfg.route.rules || [];
+let found_resolve = false;
+let found_route = false;
+for (let r in rules) {
+    if (r.action == "resolve" && r.rule_set)
+        found_resolve = true;
+    if (r.action == "route" && r.outbound == "zapret-out")
+        found_route = true;
+}
+if (!found_resolve) {
+    print("ERROR: zapret section did not generate action: resolve rule!\n");
+    exit(1);
+}
+if (!found_route) {
+    print("ERROR: zapret section did not generate action: route rule to zapret-out!\n");
+    exit(2);
+}
+' || fail "zapret section must generate resolve rule before route rule"
+
 printf "Route rules coexistence and detour checks passed\n"

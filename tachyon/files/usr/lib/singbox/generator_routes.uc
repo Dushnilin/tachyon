@@ -646,6 +646,8 @@ function is_valid_detour(config, tag) {
         if (type(out) == "object" && out.tag == tag) {
             if (out.tag == "DPI-out" || (out.type == "socks" && (out.server == "127.0.0.1" || out.server == "::1")))
                 return false;
+            if (out.routing_mark != null)
+                return false;
             return true;
         }
     }

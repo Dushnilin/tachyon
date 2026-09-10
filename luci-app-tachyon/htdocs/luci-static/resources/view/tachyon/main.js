@@ -17932,7 +17932,8 @@ function getDisplayName2(section) {
 function buildRouteDisplayNames(sections) {
   const map = {
     "bypass-out": "Bypass",
-    "direct-out": "direct"
+    "direct-out": "direct",
+    "tachyon-failover": "Failover"
   };
   const serverMap = {};
   const routeSectionItems = [];
@@ -17983,11 +17984,10 @@ function getRouteDisplayNameByTag(tag) {
     return routeDisplayNames[tag];
   }
   const manualSection = routeSections.find(({ sectionName }) => {
-    if (!tag.startsWith(`${sectionName}-`) || !tag.endsWith("-out")) {
-      return false;
+    if (tag === sectionName) {
+      return true;
     }
-    const middle = tag.slice(sectionName.length + 1, -4);
-    return /^\d+(?:-\d+)?$/.test(middle);
+    return tag.startsWith(`${sectionName}-`) && tag.endsWith("-out");
   });
   return manualSection?.displayName || "";
 }

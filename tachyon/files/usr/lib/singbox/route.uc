@@ -65,6 +65,8 @@ function config(settings, runtime) {
     let output_network_interface = option(settings, "output_network_interface", "");
     let mwan3_active = type(runtime) == "object" && bool_value(runtime.mwan3_active);
     let sniff_inbounds = [ runtime_constants.TPROXY_INBOUND_TAG, runtime_constants.DNS_INBOUND_TAG ];
+    if (common.ipv6_supported())
+        push(sniff_inbounds, runtime_constants.TPROXY_INBOUND6_TAG);
     if (type(runtime) == "object" && bool_value(runtime.source_aware_dns))
         push(sniff_inbounds, runtime_constants.SOURCE_DNS_INBOUND_TAG);
     if (type(runtime) == "object" && type(runtime.dns_health_inbounds) == "array")
@@ -136,7 +138,7 @@ function has_resolve_matchers(rule) {
 
 function resolve_rule_for_section(section, route_rule) {
     let action = option(section, "action", "");
-    let should_resolve = action == "byedpi" ||
+    let should_resolve = action == "byedpi" || action == "zapret" || action == "zapret2" ||
         (connections.is_connections_action(action) &&
             bool_option(section, "resolve_real_ip_for_routing", false));
 

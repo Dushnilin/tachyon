@@ -55,4 +55,85 @@ describe('monitoring initController', () => {
     const { initController } = await import('../initController');
     expect(typeof initController).toBe('function');
   });
+
+  it('should resolve route display names correctly for built-in and section tags', async () => {
+    const { buildRouteDisplayNames, getRouteDisplayNameByTag, getRoute } =
+      await import('../initController');
+
+    buildRouteDisplayNames([
+      {
+        '.name': 'vpn',
+        '.type': 'section',
+        label: 'My VPN',
+        enabled: '1',
+      } as any,
+      {
+        '.name': 'zapret',
+        '.type': 'section',
+        label: 'Zapret YouTube',
+        enabled: '1',
+      } as any,
+    ]);
+
+    // Built-in tags
+    expect(getRouteDisplayNameByTag('bypass-out')).toBe('Bypass');
+    expect(getRouteDisplayNameByTag('direct-out')).toBe('direct');
+    expect(getRouteDisplayNameByTag('tachyon-failover')).toBe('Failover');
+
+    // Section root tags
+    expect(getRouteDisplayNameByTag('vpn-out')).toBe('My VPN');
+    expect(getRouteDisplayNameByTag('zapret-out')).toBe('Zapret YouTube');
+
+    // Section sub-outbounds (numeric, named, priority, json)
+    expect(getRouteDisplayNameByTag('vpn-1-out')).toBe('My VPN');
+    expect(getRouteDisplayNameByTag('vpn-priority-1-out')).toBe('My VPN');
+    expect(getRouteDisplayNameByTag('vpn-json-1-out')).toBe('My VPN');
+    expect(getRouteDisplayNameByTag('vpn-interface-1-out')).toBe('My VPN');
+    expect(getRouteDisplayNameByTag('zapret-1-out')).toBe('Zapret YouTube');
+
+    // Direct section name matching
+    expect(getRouteDisplayNameByTag('vpn')).toBe('My VPN');
+    expect(getRouteDisplayNameByTag('zapret')).toBe('Zapret YouTube');
+
+    // Unknown tag returns empty string
+    expect(getRouteDisplayNameByTag('unknown-out')).toBe('');
+
+    // getRoute helper with chains and fallback rule
+    expect(
+      getRoute({
+        id: '1',
+        metadata: {},
+        chains: ['tproxy-in', 'vpn-priority-1-out'],
+        lastSeenAt: Date.now(),
+      } as any),
+    ).toBe('My VPN');
+
+    expect(
+      getRoute({
+        id: '2',
+        metadata: {},
+        chains: ['tproxy-in', 'zapret-out'],
+        lastSeenAt: Date.now(),
+      } as any),
+    ).toBe('Zapret YouTube');
+
+    expect(
+      getRoute({
+        id: '3',
+        metadata: {},
+        chains: [],
+        rule: 'rule-1 => route("zapret-out")',
+        lastSeenAt: Date.now(),
+      } as any),
+    ).toBe('Zapret YouTube');
+
+    expect(
+      getRoute({
+        id: '4',
+        metadata: {},
+        chains: ['tachyon-failover'],
+        lastSeenAt: Date.now(),
+      } as any),
+    ).toBe('Failover');
+  });
 });

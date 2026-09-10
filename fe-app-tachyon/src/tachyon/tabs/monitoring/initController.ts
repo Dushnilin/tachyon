@@ -189,6 +189,7 @@ function buildRouteDisplayNames(sections: Tachyon.ConfigSection[]) {
   const map: Record<string, string> = {
     'bypass-out': 'Bypass',
     'direct-out': 'direct',
+    'tachyon-failover': 'Failover',
   };
   const serverMap: Record<string, string> = {};
   const routeSectionItems: Array<{ sectionName: string; displayName: string }> =
@@ -261,12 +262,10 @@ function getRouteDisplayNameByTag(tag: string): string {
   }
 
   const manualSection = routeSections.find(({ sectionName }) => {
-    if (!tag.startsWith(`${sectionName}-`) || !tag.endsWith('-out')) {
-      return false;
+    if (tag === sectionName) {
+      return true;
     }
-
-    const middle = tag.slice(sectionName.length + 1, -4);
-    return /^\d+(?:-\d+)?$/.test(middle);
+    return tag.startsWith(`${sectionName}-`) && tag.endsWith('-out');
   });
 
   return manualSection?.displayName || '';
@@ -1893,3 +1892,5 @@ export async function initController(
     }
   });
 }
+
+export { buildRouteDisplayNames, getRouteDisplayNameByTag, getRoute };
