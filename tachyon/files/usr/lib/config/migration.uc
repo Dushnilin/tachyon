@@ -1001,7 +1001,7 @@ function legacy_condition_values(kind, text_mode, conditions_text_mode, text_val
                 push(result, sub);
         }
         if (length(result) > 0)
-            return kind == "domains" ? filter_domain_values(result) : result;
+            return result;
     }
 
     if (as_string(text_value) != "")
@@ -1084,9 +1084,7 @@ function migrate_combined_domain_conditions(ctx, section) {
         }
     }
 
-    let legacy_rule_domain = section[".type"] == "rule" || option_exists(section, "domain_suffix") || option_exists(section, "domain_suffix_text");
-    let domain_prefix = legacy_rule_domain ? "full:" : "";
-    add_domain_values_with_prefix(values, seen, section, "domain", domain_prefix, "domains");
+    add_domain_values_with_prefix(values, seen, section, "domain", "full:", "domains");
     add_domain_values_with_prefix(values, seen, section, "domain_keyword", "keyword:", "generic");
     add_domain_values_with_prefix(values, seen, section, "domain_regex", "regex:", "generic");
 
