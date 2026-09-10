@@ -1232,7 +1232,7 @@ var DOMAIN_LIST_OPTIONS = {
   russia_outside: "Russia outside",
   ukraine_inside: "Ukraine",
   geoblock: "Geo Block",
-  block: "Block (RKN)",
+  block: "Block",
   porn: "Porn",
   news: "News",
   anime: "Anime",
@@ -20316,10 +20316,16 @@ function showUpdateProgressModal(options) {
     completeError: (errorMessage) => {
       cleanupTimers();
       finishLogTracking();
+      let cleanError = (errorMessage || "").trim();
+      if (cleanError.includes("Near here") || /^[-=~_^]{3,}$/m.test(cleanError)) {
+        cleanError = cleanError.split("\n").filter(
+          (line) => !line.includes("Near here") && !/^[\s\-_^]+$/.test(line) && line.trim() !== ""
+        ).join(" ").trim();
+      }
       const bannerEl = E(
         "div",
         { class: "tachyon-update-modal__error-banner" },
-        [renderXIcon24(), E("span", {}, errorMessage || _("Operation failed"))]
+        [renderXIcon24(), E("span", {}, cleanError || _("Operation failed"))]
       );
       const closeBtn = renderButton({
         classNames: ["cbi-button-remove"],

@@ -7439,12 +7439,7 @@ function loadRulesetValues(option) {
   delete option.vallist;
 
   Object.entries(main.DOMAIN_LIST_OPTIONS).forEach(([key, label]) => {
-    let displayLabel = _(label);
-    if (key === "block") {
-      displayLabel = "Block (РКН / внутри РФ)";
-    } else if (key === "geoblock") {
-      displayLabel = "Geo Block (снаружи РФ)";
-    }
+    const displayLabel = _(label);
     const hint = DOMAIN_LIST_HINTS[key];
     option.value(key, hint ? `${displayLabel} — ${hint}` : displayLabel);
   });

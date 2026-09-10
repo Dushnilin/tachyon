@@ -35,6 +35,7 @@ let as_string = common.as_string;
 let shell_quote = common.shell_quote;
 let command_from_args = common.command_from_args;
 let command_status = common.command_status;
+let command_status_from_args = common.command_status_from_args;
 let command_success = common.command_success;
 let command_success_from_args = common.command_success_from_args;
 let command_output = common.command_output;
@@ -195,6 +196,8 @@ function cleanup_stale_tmp_files() {
 }
 
 function init_tmp_dir() {
+    ensure_dir("/var/lock");
+    ensure_dir("/tmp/run");
     if (tmp_dir != "")
         return true;
 
@@ -452,12 +455,25 @@ function pkg_install_name_downgrade(package_name, package_version) {
 // published under the same tag would silently not be applied. apk always writes
 // the file it is handed, so its argument list stays untouched.
 function pkg_install_files_command(files, force_reinstall) {
-    let args = is_apk() ? [ "apk", "add", "--allow-untrusted" ] : [ "opkg", "install", "--force-overwrite", "--force-downgrade", "--force-depends" ];
-    if (!is_apk() && force_reinstall)
+    if (is_apk()) {
+        let add_args = [ "apk", "add", "--allow-untrusted" ];
+        for (let file in files)
+            push(add_args, file);
+        let extract_args = [ "apk", "extract", "--allow-untrusted", "--destination", "/" ];
+        for (let file in files)
+            push(extract_args, file);
+        return "(" + command_from_args(add_args) + " </dev/null || " + command_from_args(extract_args) + " </dev/null)";
+    }
+    let args = [ "opkg", "install", "--force-overwrite", "--force-downgrade", "--force-depends" ];
+    if (force_reinstall)
         push(args, "--force-reinstall");
     for (let file in files)
         push(args, file);
-    return command_from_args(args) + " </dev/null";
+    let opkg_cmd = command_from_args(args) + " </dev/null";
+    let fallback_cmds = [];
+    for (let file in files)
+        push(fallback_cmds, "(tar -zxOf " + shell_quote(file) + " ./data.tar.gz 2>/dev/null || tar -zxOf " + shell_quote(file) + " data.tar.gz 2>/dev/null) | tar -zx -C /");
+    return "(" + opkg_cmd + " || (" + join(" && ", fallback_cmds) + "))";
 }
 
 function pkg_install_files(files, force_reinstall) {
@@ -607,7 +623,7 @@ function http_get_once(url, output_path, proxy_address, timeout) {
     }
 
     if (command_exists("wget")) {
-        let command = command_from_args([ "wget", "-T", timeout, "-q", "-O", output_path, "--header=User-Agent: Tachyon-OpenWrt", url ]);
+        let command = command_from_args([ "wget", "-T", timeout, "-q", "-O", output_path, "-U", "Tachyon-OpenWrt", url ]);
         if (proxy_address != "")
             command = command_env({ http_proxy: "http://" + proxy_address, https_proxy: "http://" + proxy_address }) + " " + command;
         return command_success(command);
@@ -769,30 +785,40 @@ function fetch_github_release_tag_fallback(owner, repo) {
     let url = "https://github.com/" + as_string(owner) + "/" + as_string(repo) + "/releases/latest";
     let url_mod = core_url_module_or_null();
     let candidates = url_mod && type(url_mod.download_candidates) == "function" ? url_mod.download_candidates(url) : [ url ];
+    let proxy_addr = service_proxy_address();
 
     for (let target_url in candidates) {
-        let args = [ "curl", "-sI", "--connect-timeout", "6", "-m", "12" ];
-        let proxy_addr = service_proxy_address();
-        if (proxy_addr != "") {
-            push(args, "-x");
-            push(args, "http://" + proxy_addr);
-        }
-        push(args, target_url);
-        let output = command_output_from_args(args);
-        if (output != "") {
-            let loc_idx = index(lc(output), "location:");
-            if (loc_idx >= 0) {
-                let line = substr(output, loc_idx);
-                let end_line = index(line, "\r");
-                if (end_line < 0) end_line = index(line, "\n");
-                if (end_line >= 0) line = substr(line, 0, end_line);
-                let tag_idx = rindex(line, "/");
-                if (tag_idx >= 0) {
-                    let tag = trim(substr(line, tag_idx + 1));
-                    if (tag != "")
-                        return tag;
+        if (command_exists("curl")) {
+            let args = [ "curl", "-sI", "--connect-timeout", "6", "-m", "12" ];
+            if (proxy_addr != "") {
+                push(args, "-x");
+                push(args, "http://" + proxy_addr);
+            }
+            push(args, target_url);
+            let output = command_output_from_args(args);
+            if (output != "") {
+                let loc_idx = index(lc(output), "location:");
+                if (loc_idx >= 0) {
+                    let line = substr(output, loc_idx);
+                    let end_line = index(line, "\r");
+                    if (end_line < 0) end_line = index(line, "\n");
+                    if (end_line >= 0) line = substr(line, 0, end_line);
+                    let tag_idx = rindex(line, "/");
+                    if (tag_idx >= 0) {
+                        let tag = trim(substr(line, tag_idx + 1));
+                        if (tag != "")
+                            return tag;
+                    }
                 }
             }
+        } else if (command_exists("wget")) {
+            let cmd = command_from_args([ "wget", "-s", "-T", "6", target_url ]);
+            if (proxy_addr != "")
+                cmd = command_env({ http_proxy: "http://" + proxy_addr, https_proxy: "http://" + proxy_addr }) + " " + cmd;
+            let output = command_output("(" + cmd + ") 2>&1");
+            let m = match(output, /Redirected to [^ \t\r\n]*\/releases\/tag\/([^ \t\r\n]+)/);
+            if (m && m[1])
+                return trim(m[1]);
         }
     }
     return "";
@@ -801,21 +827,29 @@ function fetch_github_release_tag_fallback(owner, repo) {
 function url_exists(url) {
     let url_mod = core_url_module_or_null();
     let candidates = url_mod && type(url_mod.download_candidates) == "function" ? url_mod.download_candidates(url) : [ url ];
+    let proxy_addr = service_proxy_address();
 
     for (let target_url in candidates) {
-        let args = [ "curl", "-sI", "--connect-timeout", "6", "-m", "12" ];
-        let proxy_addr = service_proxy_address();
-        if (proxy_addr != "") {
-            push(args, "-x");
-            push(args, "http://" + proxy_addr);
-        }
-        push(args, as_string(target_url));
-        let output = command_output_from_args(args);
-        if (output != "") {
-            let first_line = split(output, "\n")[0] || "";
-            if (index(first_line, " 200 ") > 0 || index(first_line, " 301 ") > 0 || index(first_line, " 302 ") > 0) {
-                return true;
+        if (command_exists("curl")) {
+            let args = [ "curl", "-sI", "--connect-timeout", "6", "-m", "12" ];
+            if (proxy_addr != "") {
+                push(args, "-x");
+                push(args, "http://" + proxy_addr);
             }
+            push(args, as_string(target_url));
+            let output = command_output_from_args(args);
+            if (output != "") {
+                let first_line = split(output, "\n")[0] || "";
+                if (index(first_line, " 200 ") > 0 || index(first_line, " 301 ") > 0 || index(first_line, " 302 ") > 0) {
+                    return true;
+                }
+            }
+        } else if (command_exists("wget")) {
+            let cmd = command_from_args([ "wget", "-s", "-T", "6", "-q", as_string(target_url) ]);
+            if (proxy_addr != "")
+                cmd = command_env({ http_proxy: "http://" + proxy_addr, https_proxy: "http://" + proxy_addr }) + " " + cmd;
+            if (command_success(cmd))
+                return true;
         }
     }
     return false;
@@ -916,8 +950,7 @@ function retry_resolve(description, fn) {
 function ensure_package_tool(tool_name, package_name, component, action) {
     if (command_exists(tool_name))
         return true;
-    if (!run_logged("Updating package lists before installing " + as_string(package_name), pkg_list_update_command()))
-        return false;
+    run_logged("Updating package lists before installing " + as_string(package_name), pkg_list_update_command());
     return run_logged("Installing bootstrap package " + as_string(package_name), pkg_install_name_command(package_name));
 }
 
@@ -1199,27 +1232,40 @@ function resolve_zapret_release(arch, tag) {
     }
     if (tag != null && tag != "") {
         let tag_clean = replace(tag, /^v/, "");
-        let bundle_name = "zapret_" + tag_clean + "_openwrt_" + arch.candidates + ".zip";
+        let tag_with_v = "v" + tag_clean;
+        let bundle_name = "zapret_" + tag_with_v + "_" + arch.candidates + ".zip";
         return {
             arch: arch.candidates,
             bundle_name: bundle_name,
-            bundle_url: "https://github.com/remittor/zapret-openwrt/releases/download/" + tag + "/" + bundle_name,
-            release_url: "https://github.com/remittor/zapret-openwrt/releases/tag/" + tag,
+            bundle_url: "https://github.com/remittor/zapret-openwrt/releases/download/" + tag_with_v + "/" + bundle_name,
+            release_url: "https://github.com/remittor/zapret-openwrt/releases/tag/" + tag_with_v,
             version: tag
         };
     }
     return { fetch_failed: true };
 }
 
-function resolve_zapret2_release(arch) {
-    let tag = fetch_github_release_tag_fallback("Dushnilin", "zapret2-openwrt");
-    if (tag == "")
+function resolve_zapret2_release(arch, tag) {
+    let resolved_tag = (tag != null && tag != "") ? tag : "";
+    if (resolved_tag == "") {
+        let releases_json = fetch_github_releases_json("Dushnilin", "zapret2-openwrt", "5");
+        if (releases_json != "") {
+            try {
+                let parsed = json(releases_json);
+                if (type(parsed) == "array" && length(parsed) > 0)
+                    resolved_tag = trim(as_string(parsed[0].tag_name || ""));
+            } catch (e) {}
+        }
+    }
+    if (resolved_tag == "")
+        resolved_tag = fetch_github_release_tag_fallback("Dushnilin", "zapret2-openwrt");
+    if (resolved_tag == "")
         return { fetch_failed: true };
     
     let asset_ext = is_apk() ? "apk" : "ipk";
-let base_dl = "https://github.com/Dushnilin/zapret2-openwrt/releases/download/" + tag + "/";
-        let release_url = "https://github.com/Dushnilin/zapret2-openwrt/releases/tag/" + tag;
-    let version = replace(tag, /^v/, "");
+    let base_dl = "https://github.com/Dushnilin/zapret2-openwrt/releases/download/" + resolved_tag + "/";
+    let release_url = "https://github.com/Dushnilin/zapret2-openwrt/releases/tag/" + resolved_tag;
+    let version = replace(resolved_tag, /^v/, "");
 
     let candidate_list = split(arch.candidates, " ");
     for (let candidate in candidate_list) {
@@ -1227,7 +1273,6 @@ let base_dl = "https://github.com/Dushnilin/zapret2-openwrt/releases/download/" 
         let pkg_name = "zapret2_" + candidate + "." + asset_ext;
         let url = base_dl + pkg_name;
         if (url_exists(url)) {
-            warn("EXISTS: " + url + "\n");
             return {
                 arch: candidate,
                 package_name: pkg_name,
@@ -1373,7 +1418,7 @@ function install_zapret_like(component, action, runtime_module, resolve_fn, labe
     clear_version_caches();
     current_version = provider_package_version(runtime_module);
     if (current_version == "")
-        current_version = "unknown";
+        current_version = pkg.version || "unknown";
     action_success(component, action, label + " package has been installed", current_version, pkg.version, 1, "latest", release.release_url || "");
 }
 
@@ -1421,6 +1466,8 @@ function install_zapret2(action, target_tag) {
     if (index(hosts_content, "::1") < 0)
         command_success("printf '\\n::1 localhost ip6-localhost ip6-loopback\\n' >> /etc/hosts");
 
+    run_logged("Updating package lists before " + label + " package installation", pkg_list_update_command());
+
     if (!run_logged("Installing " + label + " package " + pkg.name, pkg_install_files_command([ pkg.file ])))
         action_fail(component, action, "Failed to install " + label + " package", current_version, pkg.version, "", release.release_url || "");
 
@@ -1440,7 +1487,7 @@ function install_zapret2(action, target_tag) {
     clear_version_caches();
     current_version = provider_package_version(runtime_module);
     if (current_version == "")
-        current_version = "unknown";
+        current_version = pkg.version || "unknown";
     action_success(component, action, label + " package has been installed", current_version, pkg.version, 1, "latest", release.release_url || "");
 }
 
@@ -1469,6 +1516,9 @@ function install_byedpi(action, target_tag) {
     let pkg = download_direct_package(release);
     if (pkg == null)
         action_fail("byedpi", action, "Failed to download ByeDPI package");
+
+    run_logged("Updating package lists before ByeDPI package installation", pkg_list_update_command());
+
     if (!run_logged("Installing ByeDPI package " + pkg.name, pkg_install_files_command([ pkg.file ])))
         action_fail("byedpi", action, "Failed to install ByeDPI package", current_version, pkg.version);
 
@@ -1477,7 +1527,7 @@ function install_byedpi(action, target_tag) {
     clear_version_caches();
     current_version = provider_package_version(runtime_module);
     if (current_version == "")
-        current_version = "unknown";
+        current_version = pkg.version || "unknown";
     action_success("byedpi", action, "ByeDPI package has been installed", current_version, pkg.version, 1, "latest", release.release_url || "");
 }
 
@@ -2017,9 +2067,10 @@ function install_sing_box_extended_package(action, target_tag) {
     let latest_version = normalize_sing_box_version(release.tag);
 
     if (action == "check_update") {
-        if (!sing_box_runtime_success("is-extended", [ current_version ]))
-            action_fail("sing_box", action, "sing-box-extended is not installed", current_version, latest_version);
-        check_success("sing_box", normalize_sing_box_version(current_version), normalize_sing_box_version(latest_version), release.release_url);
+        if (current_version == "" || !sing_box_runtime_success("is-extended", [ current_version ]))
+            action_success("sing_box", action, "sing-box-extended is not installed", current_version, latest_version, 0, "", release.release_url);
+        else
+            check_success("sing_box", normalize_sing_box_version(current_version), normalize_sing_box_version(latest_version), release.release_url);
     }
 
     ensure_sing_box_dependencies();
@@ -2028,8 +2079,7 @@ function install_sing_box_extended_package(action, target_tag) {
     if (!download_with_retry(release.asset_url, package_file, release.asset_name))
         action_fail("sing_box", action, "Failed to download sing-box-extended package", current_version, latest_version);
 
-    if (!run_logged("Updating package lists before sing-box-extended package installation", pkg_list_update_command()))
-        action_fail("sing_box", action, "Failed to update package lists", current_version, latest_version);
+    run_logged("Updating package lists before sing-box-extended package installation", pkg_list_update_command());
 
     stop_tachyon_before_sing_box_change();
     prepare_sing_box_package_service_install();
@@ -2133,11 +2183,10 @@ function install_sing_box_extended(action, compressed, target_tag) {
     let latest_version = normalize_sing_box_version(release.tag);
 
     if (action == "check_update") {
-        if (!sing_box_runtime_success("is-extended", [ current_version ]))
-            action_fail("sing_box", action, "sing-box-extended is not installed", current_version, latest_version);
-        if (!sing_box_runtime_success("marker-is", [ "extended-compressed" ]))
-            action_fail("sing_box", action, "sing-box-extended compressed is not installed", current_version, latest_version);
-        check_success("sing_box", normalize_sing_box_version(current_version), normalize_sing_box_version(latest_version), release.release_url);
+        if (current_version == "" || !sing_box_runtime_success("is-extended", [ current_version ]) || !sing_box_runtime_success("marker-is", [ "extended-compressed" ]))
+            action_success("sing_box", action, label + " is not installed", current_version, latest_version, 0, "", release.release_url);
+        else
+            check_success("sing_box", normalize_sing_box_version(current_version), normalize_sing_box_version(latest_version), release.release_url);
     }
 
     ensure_sing_box_dependencies();
@@ -2296,11 +2345,10 @@ function install_sing_box_lx(action, target_tag) {
     let latest_version = normalize_sing_box_version(release.tag);
 
     if (action == "check_update") {
-        if (!sing_box_runtime_success("is-lx", [ current_version ]))
-            action_fail("sing_box", action, "sing-box-lx is not installed", current_version, latest_version);
-        if (!sing_box_runtime_success("marker-is", [ "lx" ]))
-            action_fail("sing_box", action, "sing-box-lx is not installed", current_version, latest_version);
-        check_success("sing_box", normalize_sing_box_version(current_version), normalize_sing_box_version(latest_version), release.release_url);
+        if (current_version == "" || !sing_box_runtime_success("is-lx", [ current_version ]) || !sing_box_runtime_success("marker-is", [ "lx" ]))
+            action_success("sing_box", action, label + " is not installed", current_version, latest_version, 0, "", release.release_url);
+        else
+            check_success("sing_box", normalize_sing_box_version(current_version), normalize_sing_box_version(latest_version), release.release_url);
     }
 
     ensure_sing_box_dependencies();
@@ -2462,17 +2510,24 @@ function install_package_sing_box(action, tiny) {
         latest_version = installed_package_version(package_name);
 
     if (action == "check_update") {
+        if (latest_version == "") {
+            let proxy_address = service_proxy_address();
+            run_logged("Refreshing package index", pkg_list_update_command(proxy_address));
+            latest_version = available_package_version(package_name);
+            if (latest_version == "")
+                latest_version = installed_package_version(package_name);
+        }
         if (latest_version == "")
             action_fail("sing_box", action, "Failed to resolve " + (tiny ? "tiny" : "stable") + " sing-box package version", current_version);
-        if (tiny && !sing_box_runtime_success("is-tiny", [ binary_version ]))
-            action_fail("sing_box", action, "sing-box-tiny is not installed", current_version, latest_version);
-        check_success("sing_box", current_version, latest_version, "");
+        if (current_version == "" || (tiny && !sing_box_runtime_success("is-tiny", [ binary_version ])))
+            action_success("sing_box", action, label + " is not installed", current_version, latest_version, 0, "", "");
+        else
+            check_success("sing_box", current_version, latest_version, "");
     }
 
     ensure_sing_box_dependencies();
 
-    if (!run_logged("Updating package lists before " + package_name + " installation", pkg_list_update_command()))
-        action_fail("sing_box", action, "Failed to update package lists", current_version, latest_version);
+    run_logged("Updating package lists before " + package_name + " installation", pkg_list_update_command());
     latest_version = available_package_version(package_name);
     if (latest_version == "")
         latest_version = installed_package_version(package_name);
@@ -3330,12 +3385,26 @@ function component_action(component, action, extra) {
 
 let mode = ARGV[0] || "";
 
-if (mode == "component-action")
-    component_action(ARGV[1], ARGV[2], ARGV[3]);
+if (mode == "component-action") {
+    try {
+        component_action(ARGV[1], ARGV[2], ARGV[3]);
+    } catch (e) {
+        let err_str = as_string(e);
+        updates_log("Unhandled component action error: " + err_str, "error");
+        action_fail(ARGV[1] || "unknown", ARGV[2] || "unknown", "Unexpected error: " + err_str);
+    }
+}
 else if (mode == "list-component-releases")
     list_component_releases(ARGV[1], ARGV[2]);
-else if (mode == "install-component-version")
-    component_action(ARGV[1], "install_version", ARGV[2]);
+else if (mode == "install-component-version") {
+    try {
+        component_action(ARGV[1], "install_version", ARGV[2]);
+    } catch (e) {
+        let err_str = as_string(e);
+        updates_log("Unhandled install component version error: " + err_str, "error");
+        action_fail(ARGV[1] || "unknown", "install_version", "Unexpected error: " + err_str);
+    }
+}
 else if (mode == "latest-tachyon-release-json")
     print(latest_tachyon_release_json());
 else if (mode == "latest-tachyon-version")

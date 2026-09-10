@@ -6,6 +6,7 @@ let uci_core = require("core.uci");
 let as_string = common.as_string;
 let object_or_empty = common.object_or_empty;
 let bool_value_common = common.bool_value;
+let remove_file = common.remove_file;
 
 function bool_value(value, fallback) {
     if (value == null || value == "")
@@ -1372,12 +1373,10 @@ function cascade_delete_section(cursor, config_name, parent_name) {
 
     // 6. Delete section cache files
     try {
-        command_success_from_args([ "rm", "-f",
-            "/var/run/tachyon/section-cache/" + parent_name + ".json",
-            "/etc/tachyon/subscription-cache/" + parent_name + ".json",
-            "/etc/tachyon/subscription-cache/" + parent_name + ".yaml",
-            "/etc/tachyon/subscription-cache/" + parent_name + ".txt"
-        ]);
+        remove_file("/var/run/tachyon/section-cache/" + parent_name + ".json");
+        remove_file("/etc/tachyon/subscription-cache/" + parent_name + ".json");
+        remove_file("/etc/tachyon/subscription-cache/" + parent_name + ".yaml");
+        remove_file("/etc/tachyon/subscription-cache/" + parent_name + ".txt");
     } catch (e) {}
 
     return removed;

@@ -230,17 +230,65 @@ function text_first_chars(value, max_chars) {
 
 function file_last_nonblank_line_value(path, fallback, max_chars) {
     let data = fs.readfile(path);
-    let result = "";
+    if (data == null || trim(as_string(data)) == "")
+        return text_first_chars(fallback, max_chars);
 
-    if (data != null) {
-        for (let line in split(as_string(data), "\n"))
-            if (match(line, /^[[:space:]]*$/) == null)
-                result = line;
+    let raw_lines = split(as_string(data), /\r?\n/);
+    let lines = [];
+    for (let l in raw_lines) {
+        let t = trim(l);
+        if (t != "")
+            push(lines, t);
     }
 
-    if (result == "")
-        result = as_string(fallback);
+    if (length(lines) == 0)
+        return text_first_chars(fallback, max_chars);
 
+    // 1. Detect ucode runtime/syntax exception
+    let first_line = lines[0];
+    let lower_first = lc(first_line);
+    if (index(lower_first, "type error:") == 0 ||
+        index(lower_first, "syntax error:") == 0 ||
+        index(lower_first, "reference error:") == 0 ||
+        index(lower_first, "runtime error:") == 0 ||
+        index(lower_first, "unhandled exception:") == 0 ||
+        index(lower_first, "error:") == 0) {
+        let loc = "";
+        if (length(lines) > 1 && (index(lines[1], "In ") == 0 || index(lines[1], "in ") == 0)) {
+            let m = match(lines[1], /([a-zA-Z0-9_.-]+),[ \t]*line[ \t]*([0-9]+)/);
+            if (m)
+                loc = " (" + m[1] + ":" + m[2] + ")";
+        }
+        let msg = first_line + loc;
+        return text_first_chars(msg, max_chars);
+    }
+
+    // 2. Discard trailing pointer / caret / delimiter lines
+    while (length(lines) > 0) {
+        let last = lines[length(lines) - 1];
+        if (index(last, "Near here") >= 0 || match(last, /^[ \t\-_^]*$/) || match(last, /^[-=~_]{4,}$/)) {
+            pop(lines);
+        } else {
+            break;
+        }
+    }
+
+    if (length(lines) == 0)
+        return text_first_chars(fallback, max_chars);
+
+    // 3. Check if any line has an explicit error prefix
+    for (let l in lines) {
+        let lower_l = lc(l);
+        if (index(lower_l, "error:") >= 0 ||
+            index(lower_l, "fatal:") >= 0 ||
+            index(lower_l, "failed:") >= 0 ||
+            index(lower_l, "failure:") >= 0) {
+            return text_first_chars(l, max_chars);
+        }
+    }
+
+    // 4. Fallback to the last non-empty line
+    let result = lines[length(lines) - 1];
     return text_first_chars(result, max_chars);
 }
 

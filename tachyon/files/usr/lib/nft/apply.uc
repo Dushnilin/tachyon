@@ -2359,7 +2359,9 @@ function nft_rule_signature_body(body, section) {
 function nft_schedule_signature_body(body, schedule) {
     let name = as_string(schedule[".name"]);
     body = signature_add_value(body, "schedule." + name + ".enabled", bool_option(schedule, "enabled", true) ? "1" : "0");
-    body = signature_add_value(body, "schedule." + name + ".device_ip", option(schedule, "device_ip", ""));
+    let dev_ips = join(",", list_option(schedule, "device_ip"));
+    if (dev_ips == "") dev_ips = option(schedule, "device_ip", "");
+    body = signature_add_value(body, "schedule." + name + ".device_ip", dev_ips);
     body = signature_add_value(body, "schedule." + name + ".profile", join(",", list_option(schedule, "profile")));
     body = signature_add_value(body, "schedule." + name + ".target", option(schedule, "target", "all"));
     body = signature_add_value(body, "schedule." + name + ".sections", join(",", list_option(schedule, "sections")));
@@ -2375,7 +2377,9 @@ function nft_schedule_signature_body(body, schedule) {
 function nft_profile_signature_body(body, profile) {
     let name = as_string(profile[".name"]);
     body = signature_add_value(body, "profile." + name + ".enabled", bool_option(profile, "enabled", true) ? "1" : "0");
-    body = signature_add_value(body, "profile." + name + ".device_ip", join(",", list_option(profile, "device_ip")));
+    let dev_ips = join(",", list_option(profile, "device_ip"));
+    if (dev_ips == "") dev_ips = option(profile, "device_ip", "");
+    body = signature_add_value(body, "profile." + name + ".device_ip", dev_ips);
     body = signature_add_value(body, "profile." + name + ".safe_search", option(profile, "safe_search", "0"));
     body = signature_add_value(body, "profile." + name + ".block_doh", option(profile, "block_doh", "0"));
     body = signature_add_value(body, "profile." + name + ".blocked_domains", join(",", list_option(profile, "blocked_domains")));

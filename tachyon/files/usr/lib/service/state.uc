@@ -928,7 +928,53 @@ function section_rule_condition_csv(section, key, kind) {
     );
 }
 
-function nft_runtime_signature_body(settings, sections) {
+function nft_schedule_signature_body(body, schedule) {
+    let name = as_string(schedule[".name"]);
+    body = signature_add_value(body, "schedule." + name + ".enabled", bool_option(schedule, "enabled", true) ? "1" : "0");
+    let dev_ips = join(",", list_option(schedule, "device_ip"));
+    if (dev_ips == "") dev_ips = option(schedule, "device_ip", "");
+    body = signature_add_value(body, "schedule." + name + ".device_ip", dev_ips);
+    body = signature_add_value(body, "schedule." + name + ".profile", join(",", list_option(schedule, "profile")));
+    body = signature_add_value(body, "schedule." + name + ".target", option(schedule, "target", "all"));
+    body = signature_add_value(body, "schedule." + name + ".sections", join(",", list_option(schedule, "sections")));
+    body = signature_add_value(body, "schedule." + name + ".action", option(schedule, "action", "block"));
+    body = signature_add_value(body, "schedule." + name + ".start_time", option(schedule, "start_time", ""));
+    body = signature_add_value(body, "schedule." + name + ".end_time", option(schedule, "end_time", ""));
+    body = signature_add_value(body, "schedule." + name + ".days", join(",", list_option(schedule, "days")));
+    body = signature_add_value(body, "schedule." + name + ".blocked_domains", join(",", list_option(schedule, "blocked_domains")));
+    body = signature_add_value(body, "schedule." + name + ".mode", option(schedule, "mode", "block"));
+    return body;
+}
+
+function nft_profile_signature_body(body, profile) {
+    let name = as_string(profile[".name"]);
+    body = signature_add_value(body, "profile." + name + ".enabled", bool_option(profile, "enabled", true) ? "1" : "0");
+    let dev_ips = join(",", list_option(profile, "device_ip"));
+    if (dev_ips == "") dev_ips = option(profile, "device_ip", "");
+    body = signature_add_value(body, "profile." + name + ".device_ip", dev_ips);
+    body = signature_add_value(body, "profile." + name + ".safe_search", option(profile, "safe_search", "0"));
+    body = signature_add_value(body, "profile." + name + ".block_doh", option(profile, "block_doh", "0"));
+    body = signature_add_value(body, "profile." + name + ".blocked_domains", join(",", list_option(profile, "blocked_domains")));
+    body = signature_add_value(body, "profile." + name + ".daily_quota_minutes", option(profile, "daily_quota_minutes", "0"));
+    return body;
+}
+
+function nft_guest_mode_signature_body(body, guest_mode) {
+    if (!guest_mode) return body;
+    let name = as_string(guest_mode[".name"] || "guest_mode");
+    body = signature_add_value(body, "guest_mode." + name + ".enabled", bool_option(guest_mode, "enabled", false) ? "1" : "0");
+    body = signature_add_value(body, "guest_mode." + name + ".mode", option(guest_mode, "mode", "selected"));
+    body = signature_add_value(body, "guest_mode." + name + ".guest_devices", join(",", list_option(guest_mode, "guest_devices")));
+    body = signature_add_value(body, "guest_mode." + name + ".trusted_devices", join(",", list_option(guest_mode, "trusted_devices")));
+    body = signature_add_value(body, "guest_mode." + name + ".isolate_lan", bool_option(guest_mode, "isolate_lan", true) ? "1" : "0");
+    body = signature_add_value(body, "guest_mode." + name + ".block_router_admin", bool_option(guest_mode, "block_router_admin", true) ? "1" : "0");
+    body = signature_add_value(body, "guest_mode." + name + ".start_time", option(guest_mode, "start_time", ""));
+    body = signature_add_value(body, "guest_mode." + name + ".end_time", option(guest_mode, "end_time", ""));
+    body = signature_add_value(body, "guest_mode." + name + ".days", join(",", list_option(guest_mode, "days")));
+    return body;
+}
+
+function nft_runtime_signature_body(settings, sections, schedules, profiles, guest_modes) {
     let body = "";
 
     body = signature_add_value(body, "settings.source_network_interfaces", option(settings, "source_network_interfaces", "br-lan"));
@@ -963,12 +1009,24 @@ function nft_runtime_signature_body(settings, sections) {
         body = signature_add_value(body, "rule." + name + ".excluded_ips", option(section, "excluded_ips", ""));
         body = signature_add_value(body, "rule." + name + ".excluded_protocol", option(section, "excluded_protocol", ""));
         body = signature_add_value(body, "rule." + name + ".protocol", option(section, "protocol", ""));
-        body = signature_add_value(body, "rule." + name + ".community_subnet_lists", rule_config.filter_community_subnet_lists_value(connections.community_lists_value(section)));
+        let comm_subnets = bool_option(section, "community_subnets", true) ? rule_config.filter_community_subnet_lists_value(connections.community_lists_value(section)) : "";
+        body = signature_add_value(body, "rule." + name + ".community_subnet_lists", comm_subnets);
 
         body = signature_add_value(body, "rule." + name + ".remote_subnet_lists", option(section, "remote_subnet_lists", ""));
         body = signature_add_value(body, "rule." + name + ".rule_set_with_subnets", connections.rule_sets_with_subnets_value(section));
         body = signature_add_value(body, "rule." + name + ".domain_ip_lists", option(section, "domain_ip_lists", ""));
         body = signature_add_value(body, "rule." + name + ".dscp", connections.dscp_value(section));
+    }
+
+    for (let profile in profiles)
+        body = nft_profile_signature_body(body, object_or_empty(profile));
+
+    for (let schedule in schedules)
+        body = nft_schedule_signature_body(body, object_or_empty(schedule));
+
+    if (guest_modes) {
+        for (let gm in guest_modes)
+            body = nft_guest_mode_signature_body(body, object_or_empty(gm));
     }
 
     return body;
@@ -1501,7 +1559,43 @@ function append_sing_box_server_signature_body(body, server) {
     return body;
 }
 
-function sing_box_signature_body(settings, sections, servers, mwan3_active) {
+function append_sing_box_profile_signature_body(body, profile) {
+    let name = section_name(profile);
+    if (name == "") return body;
+    let prefix = "sing_box.profile." + name;
+    let enabled = bool_option(profile, "enabled", true) ? "1" : "0";
+    body = signature_add_value(body, prefix + ".enabled", enabled);
+    let dev_ips = join(",", list_option(profile, "device_ip"));
+    if (dev_ips == "") dev_ips = option(profile, "device_ip", "");
+    body = signature_add_value(body, prefix + ".device_ip", dev_ips);
+    body = signature_add_value(body, prefix + ".safe_search", option(profile, "safe_search", "0"));
+    body = signature_add_value(body, prefix + ".block_doh", option(profile, "block_doh", "0"));
+    body = signature_add_value(body, prefix + ".blocked_domains", join(",", list_option(profile, "blocked_domains")));
+    return body;
+}
+
+function append_sing_box_schedule_signature_body(body, schedule) {
+    let name = section_name(schedule);
+    if (name == "") return body;
+    let prefix = "sing_box.schedule." + name;
+    let enabled = bool_option(schedule, "enabled", true) ? "1" : "0";
+    body = signature_add_value(body, prefix + ".enabled", enabled);
+    let dev_ips = join(",", list_option(schedule, "device_ip"));
+    if (dev_ips == "") dev_ips = option(schedule, "device_ip", "");
+    body = signature_add_value(body, prefix + ".device_ip", dev_ips);
+    body = signature_add_value(body, prefix + ".profile", join(",", list_option(schedule, "profile")));
+    body = signature_add_value(body, prefix + ".blocked_domains", join(",", list_option(schedule, "blocked_domains")));
+    body = signature_add_value(body, prefix + ".mode", option(schedule, "mode", "block"));
+    body = signature_add_value(body, prefix + ".target", option(schedule, "target", "all"));
+    body = signature_add_value(body, prefix + ".sections", join(",", list_option(schedule, "sections")));
+    body = signature_add_value(body, prefix + ".action", option(schedule, "action", "block"));
+    body = signature_add_value(body, prefix + ".start_time", option(schedule, "start_time", ""));
+    body = signature_add_value(body, prefix + ".end_time", option(schedule, "end_time", ""));
+    body = signature_add_value(body, prefix + ".days", join(",", list_option(schedule, "days")));
+    return body;
+}
+
+function sing_box_signature_body(settings, sections, servers, mwan3_active, schedules, profiles) {
     settings = object_or_empty(settings);
     let body = "";
 
@@ -1556,6 +1650,12 @@ function sing_box_signature_body(settings, sections, servers, mwan3_active) {
 
     for (let server in servers)
         body = append_sing_box_server_signature_body(body, object_or_empty(server));
+
+    for (let profile in profiles)
+        body = append_sing_box_profile_signature_body(body, object_or_empty(profile));
+
+    for (let schedule in schedules)
+        body = append_sing_box_schedule_signature_body(body, object_or_empty(schedule));
 
     return body;
 }
@@ -1681,13 +1781,13 @@ function byedpi_runtime_signature_body(sections) {
     return body;
 }
 
-function reload_state_values_from_sources(format, settings, sections, servers, dnsmasq, legacy_dnsmasq_present, mwan3_active_value) {
+function reload_state_values_from_sources(format, settings, sections, servers, dnsmasq, legacy_dnsmasq_present, mwan3_active_value, schedules, profiles, guest_modes) {
     return {
         format: as_string(format),
         service_trigger_signature: signature_hash(service_trigger_signature_body(settings)),
         dnsmasq_signature: signature_hash(dnsmasq_signature_body(settings, dnsmasq, legacy_dnsmasq_present)),
-        sing_box_signature: signature_hash(sing_box_signature_body(settings, sections, servers, mwan3_active_value)),
-        nft_signature: signature_hash(nft_runtime_signature_body(settings, sections)),
+        sing_box_signature: signature_hash(sing_box_signature_body(settings, sections, servers, mwan3_active_value, schedules, profiles)),
+        nft_signature: signature_hash(nft_runtime_signature_body(settings, sections, schedules, profiles, guest_modes)),
         zapret_queue_signature: signature_hash(action_queue_signature_body(sections, "zapret", "zapret_queue.section")),
         zapret_runtime_signature: signature_hash(zapret_runtime_signature_body(sections)),
         zapret2_queue_signature: signature_hash(action_queue_signature_body(sections, "zapret2", "zapret2_queue.section")),
@@ -1879,7 +1979,10 @@ function current_reload_state_values(format) {
         uci_servers(),
         uci_dnsmasq(),
         uci_exists("dhcp.tachyon"),
-        mwan3_active()
+        mwan3_active(),
+        uci_sections("schedule"),
+        uci_sections("profile"),
+        uci_sections("guest_mode")
     );
 }
 
@@ -1927,7 +2030,10 @@ function fixture_reload_state_values(data, format) {
         fixture_servers(data),
         fixture_dnsmasq(data),
         fixture_legacy_dnsmasq_present(data),
-        fixture_mwan3_active(data)
+        fixture_mwan3_active(data),
+        fixture_section_list(data, "schedule"),
+        fixture_section_list(data, "profile"),
+        fixture_section_list(data, "guest_mode")
     );
 }
 
@@ -2038,20 +2144,20 @@ else if (mode == "dnsmasq-signature-fixture") {
     exit(print_signature_hash(dnsmasq_signature_body(fixture_settings(data), fixture_dnsmasq(data), fixture_legacy_dnsmasq_present(data))) ? 0 : 1);
 }
 else if (mode == "sing-box-signature")
-    exit(print_signature_hash(sing_box_signature_body(uci_settings(), uci_sections("section"), uci_servers(), mwan3_active())) ? 0 : 1);
+    exit(print_signature_hash(sing_box_signature_body(uci_settings(), uci_sections("section"), uci_servers(), mwan3_active(), uci_sections("schedule"), uci_sections("profile"))) ? 0 : 1);
 else if (mode == "sing-box-signature-fixture") {
     let data = fixture_data(ARGV[1]);
-    exit(print_signature_hash(sing_box_signature_body(fixture_settings(data), fixture_section_list(data), fixture_servers(data), fixture_mwan3_active(data))) ? 0 : 1);
+    exit(print_signature_hash(sing_box_signature_body(fixture_settings(data), fixture_section_list(data), fixture_servers(data), fixture_mwan3_active(data), fixture_section_list(data, "schedule"), fixture_section_list(data, "profile"))) ? 0 : 1);
 }
 else if (mode == "sing-box-signature-body-fixture") {
     let data = fixture_data(ARGV[1]);
-    print(sing_box_signature_body(fixture_settings(data), fixture_section_list(data), fixture_servers(data), fixture_mwan3_active(data)));
+    print(sing_box_signature_body(fixture_settings(data), fixture_section_list(data), fixture_servers(data), fixture_mwan3_active(data), fixture_section_list(data, "schedule"), fixture_section_list(data, "profile")));
 }
 else if (mode == "nft-signature")
-    exit(print_signature_hash(nft_runtime_signature_body(uci_settings(), uci_sections("section"))) ? 0 : 1);
+    exit(print_signature_hash(nft_runtime_signature_body(uci_settings(), uci_sections("section"), uci_sections("schedule"), uci_sections("profile"), uci_sections("guest_mode"))) ? 0 : 1);
 else if (mode == "nft-signature-fixture") {
     let data = fixture_data(ARGV[1]);
-    exit(print_signature_hash(nft_runtime_signature_body(fixture_settings(data), fixture_section_list(data))) ? 0 : 1);
+    exit(print_signature_hash(nft_runtime_signature_body(fixture_settings(data), fixture_section_list(data), fixture_section_list(data, "schedule"), fixture_section_list(data, "profile"), fixture_section_list(data, "guest_mode"))) ? 0 : 1);
 }
 else if (mode == "zapret-queue-signature")
     exit(print_signature_hash(action_queue_signature_body(uci_sections("section"), "zapret", "zapret_queue.section")) ? 0 : 1);

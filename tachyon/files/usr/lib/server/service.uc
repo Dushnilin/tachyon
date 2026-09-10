@@ -10,6 +10,7 @@ let shell_quote = common.shell_quote;
 let read_json_file = common.read_json_file;
 let read_stdin = common.read_stdin;
 let read_stdin_json = common.read_stdin_json;
+let write_json = common.write_json;
 
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
 

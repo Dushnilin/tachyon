@@ -131,6 +131,13 @@ function package_version() {
     let output = "";
 
     if (command_exists("apk") && command_success_from_args([ "apk", "info", "-e", "byedpi" ])) {
+        output = command_output_from_args([ "apk", "list", "--installed", "byedpi" ]);
+        for (let line in split(output, "\n")) {
+            let matched = match(trim(as_string(line)), /^byedpi-([^ \t]+)/);
+            if (matched)
+                return matched[1];
+        }
+
         output = command_output_from_args([ "apk", "list", "--installed", "--manifest", "byedpi" ]);
         for (let line in split(output, "\n")) {
             let matched = match(trim(as_string(line)), /^P:byedpi$/);

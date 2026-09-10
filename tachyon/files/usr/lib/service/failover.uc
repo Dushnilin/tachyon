@@ -26,6 +26,7 @@ let command_from_args = common.command_from_args;
 let command_status = common.command_status;
 let command_success_from_args = common.command_success_from_args;
 let command_output_from_args = common.command_output_from_args;
+let write_json = common.write_json;
 
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
 const TACHYON_BIN = getenv("TACHYON_BIN") || "/usr/bin/tachyon";

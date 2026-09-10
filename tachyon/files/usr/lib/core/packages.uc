@@ -20,22 +20,36 @@ function command_exists(name) {
     return system(command_from_args([ "command", "-v", name ]) + " >/dev/null 2>&1") == 0;
 }
 
+function binary_installed(package_name) {
+    if (package_name == "zapret2")
+        return fs.stat("/opt/zapret2/nfq2/nfqws2") != null || fs.stat("/opt/zapret2/nfqws2") != null || fs.stat("/usr/bin/nfqws2") != null;
+    if (package_name == "zapret")
+        return fs.stat("/opt/zapret/nfq/nfqws") != null || fs.stat("/opt/zapret/nfqws") != null;
+    if (package_name == "byedpi")
+        return fs.stat("/usr/bin/ciadpi") != null;
+    if (package_name == "sing-box" || package_name == "sing-box-extended" || package_name == "sing-box-lx")
+        return fs.stat("/usr/bin/sing-box") != null;
+    return false;
+}
+
 function apk_installed(package_name) {
-    return command_exists("apk") && command_success([ "apk", "info", "-e", as_string(package_name) ]);
+    package_name = as_string(package_name);
+    if (command_exists("apk") && command_success([ "apk", "info", "-e", package_name ]))
+        return true;
+    return binary_installed(package_name);
 }
 
 function opkg_installed(package_name) {
     package_name = as_string(package_name);
-    if (!command_exists("opkg"))
-        return false;
-
-    let prefix = package_name + " - ";
-    for (let line in split(command_output_args([ "opkg", "list-installed" ]), "\n")) {
-        line = trim(as_string(line));
-        if (substr(line, 0, length(prefix)) == prefix)
-            return true;
+    if (command_exists("opkg")) {
+        let prefix = package_name + " - ";
+        for (let line in split(command_output_args([ "opkg", "list-installed" ]), "\n")) {
+            line = trim(as_string(line));
+            if (substr(line, 0, length(prefix)) == prefix)
+                return true;
+        }
     }
-    return false;
+    return binary_installed(package_name);
 }
 
 function installed(package_name) {
@@ -113,6 +127,38 @@ function apk_query_version(package_name, output) {
     return "";
 }
 
+function binary_version(package_name) {
+    if (package_name == "zapret2") {
+        for (let p in [ "/opt/zapret2/nfq2/nfqws2", "/opt/zapret2/nfqws2", "/usr/bin/nfqws2" ]) {
+            if (fs.stat(p) != null) {
+                let out = command_output_args([ p, "--version" ]);
+                let m = match(out, /version[ \t]*([0-9a-zA-Z._-]+)/i);
+                if (m) return m[1];
+            }
+        }
+    }
+    if (package_name == "zapret") {
+        for (let p in [ "/opt/zapret/nfq/nfqws", "/opt/zapret/nfqws" ]) {
+            if (fs.stat(p) != null) {
+                let out = command_output_args([ p, "--version" ]);
+                let m = match(out, /version[ \t]*([0-9a-zA-Z._-]+)/i);
+                if (m) return m[1];
+            }
+        }
+    }
+    if (package_name == "byedpi" && fs.stat("/usr/bin/ciadpi") != null) {
+        let out = command_output_args([ "/usr/bin/ciadpi", "--version" ]);
+        let m = match(out, /([0-9a-zA-Z._-]+)/);
+        if (m) return m[1];
+    }
+    if ((package_name == "sing-box" || package_name == "sing-box-extended" || package_name == "sing-box-lx") && fs.stat("/usr/bin/sing-box") != null) {
+        let out = command_output_args([ "/usr/bin/sing-box", "version" ]);
+        let m = match(out, /version[ \t]*([0-9a-zA-Z._-]+)/i);
+        if (m) return m[1];
+    }
+    return "";
+}
+
 function apk_version(package_name) {
     package_name = as_string(package_name);
     if (!apk_installed(package_name))
@@ -130,7 +176,11 @@ function apk_version(package_name) {
     if (version != "")
         return version;
 
-    return apk_manifest_version(package_name, command_output_args([ "apk", "list", "--installed", "--manifest" ]));
+    version = apk_manifest_version(package_name, command_output_args([ "apk", "list", "--installed", "--manifest" ]));
+    if (version != "")
+        return version;
+
+    return binary_version(package_name);
 }
 
 function apk_available_version(package_name) {
@@ -145,16 +195,15 @@ function apk_available_version(package_name) {
 
 function opkg_version(package_name) {
     package_name = as_string(package_name);
-    if (!command_exists("opkg"))
-        return "";
-
-    let prefix = package_name + " - ";
-    for (let line in split(command_output_args([ "opkg", "list-installed" ]), "\n")) {
-        line = trim(as_string(line));
-        if (substr(line, 0, length(prefix)) == prefix)
-            return substr(line, length(prefix));
+    if (command_exists("opkg")) {
+        let prefix = package_name + " - ";
+        for (let line in split(command_output_args([ "opkg", "list-installed" ]), "\n")) {
+            line = trim(as_string(line));
+            if (substr(line, 0, length(prefix)) == prefix)
+                return substr(line, length(prefix));
+        }
     }
-    return "";
+    return binary_version(package_name);
 }
 
 function version(package_name) {

@@ -1969,7 +1969,7 @@ function global_check(arg1, arg2) {
         print_global("❌ Failed to get DNS info");
 
     print_global("━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    print_global("ЁЯУж Sing-box status");
+    print_global("═══ Sing-box status");
     let singbox_check_json = command_capture(command_from_args(module_args(LIB_DIR + "/diagnostics/runtime.uc", [ "check-sing-box" ]))).output;
     if (singbox_check_json != "")
         render_or_fail([ "global-sing-box-check" ], singbox_check_json, "❌ Failed to parse sing-box info", [ 0 ]);

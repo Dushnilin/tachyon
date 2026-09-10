@@ -465,10 +465,27 @@ export function showUpdateProgressModal(
       cleanupTimers();
       finishLogTracking();
 
+      let cleanError = (errorMessage || '').trim();
+      if (
+        cleanError.includes('Near here') ||
+        /^[-=~_^]{3,}$/m.test(cleanError)
+      ) {
+        cleanError = cleanError
+          .split('\n')
+          .filter(
+            (line) =>
+              !line.includes('Near here') &&
+              !/^[\s\-_^]+$/.test(line) &&
+              line.trim() !== '',
+          )
+          .join(' ')
+          .trim();
+      }
+
       const bannerEl = E(
         'div',
         { class: 'tachyon-update-modal__error-banner' },
-        [renderXIcon24(), E('span', {}, errorMessage || _('Operation failed'))],
+        [renderXIcon24(), E('span', {}, cleanError || _('Operation failed'))],
       );
 
       const closeBtn = renderButton({
