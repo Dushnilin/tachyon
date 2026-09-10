@@ -713,6 +713,9 @@ msgstr "BitTorrent / P2P"
 msgid "Block"
 msgstr "Блокировать"
 
+msgid "Block (RKN)"
+msgstr "Реестр РКН"
+
 msgid "Block / Disable in scheduled hours (Standard)"
 msgstr "Блокировать / Отключать в указанные часы (Стандарт)"
 

@@ -147,7 +147,7 @@ if grep -q '"download_detour": "zapret_sec-out"' "$output_zapret"; then
   fail "zapret-out must never be selected as download_detour due to routing_mark"
 fi
 
-# 5. Verify mieru outbound is rejected as download_detour and http_clients dial_detour
+# 5. Verify mieru outbound is rejected as download_detour and http_clients detour
 cat >"$WORK_DIR/fixture_mieru.json" <<'JSON'
 {
   "settings": {
@@ -186,8 +186,8 @@ SB_VERSION_STATE_FILE="$WORK_DIR/sb_v14" \
 ucode -L "$TACHYON_LIB" "$GENERATOR_UC" generate-config-fixture \
   "$WORK_DIR/fixture_mieru.json" "$output_mieru_v14" "127.0.0.1" "0" "1"
 
-if grep -q '"dial_detour": "mieru_sec-out"' "$output_mieru_v14"; then
-  fail "mieru outbound must never be assigned as http_clients dial_detour"
+if grep -q '"detour": "mieru_sec-out"' "$output_mieru_v14"; then
+  fail "mieru outbound must never be assigned as http_clients detour"
 fi
 
 printf "ruleset download detour checks passed\n"

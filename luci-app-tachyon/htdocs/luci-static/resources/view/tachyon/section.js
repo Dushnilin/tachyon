@@ -7410,7 +7410,7 @@ var DOMAIN_LIST_HINTS = {
   geoblock:
     "Домены, заблокированные снаружи России (геоблокировка зарубежными сервисами)",
   block: "Домены, заблокированные внутри России (полный реестр блокировок РКН)",
-  porn: "Pornhub, xvideos, xhamster, ...",
+  porn: "pornhub.com, xvideos.com, xhamster.com, ...",
   news: "meduza.io, bbc.com, pravda.com.ua, ...",
   anime: "bato.to, mangadex.org, myanimelist.net, ...",
   youtube: "youtube.com, youtu.be, googlevideo.com, ...",

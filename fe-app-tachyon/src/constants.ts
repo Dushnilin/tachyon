@@ -17,7 +17,7 @@ export const DOMAIN_LIST_OPTIONS = {
   russia_outside: 'Russia outside',
   ukraine_inside: 'Ukraine',
   geoblock: 'Geo Block',
-  block: 'Block',
+  block: 'Block (RKN)',
   porn: 'Porn',
   news: 'News',
   anime: 'Anime',

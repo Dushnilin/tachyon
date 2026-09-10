@@ -1299,7 +1299,7 @@ function generate_config(output_path, service_address, mwan3_active, supports_xh
     if (type(config.http_clients) == "array" && length(config.http_clients) > 0) {
         let detour = download_detour_tag(settings, "lists");
         if (detour != "" && generator_routes.is_valid_detour(config, detour))
-            config.http_clients[0].dial_detour = detour;
+            config.http_clients[0].detour = detour;
     }
 
     assert_unique_outbound_tags(config);
