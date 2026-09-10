@@ -373,12 +373,12 @@ function valid_inbound() {
 
 function outbound_detour_source_action(action) {
     action = as_string(action);
-    return connections.is_connections_action(action);
+    return connections.is_connections_action(action) || action == "awg";
 }
 
 function outbound_detour_target_action(action) {
     action = as_string(action);
-    return connections.is_connections_action(action);
+    return connections.is_connections_action(action) || action == "awg";
 }
 
 function outbound_detour_rows() {
@@ -459,7 +459,7 @@ function validate_outbound_detours_rows(rows) {
             continue;
 
         if (!outbound_detour_source_action(row.action))
-            fail_outbound_detour("Outbound cascade is supported only for Connection rules, but rule '" +
+            fail_outbound_detour("Outbound cascade is supported only for Connection and AmneziaWG rules, but rule '" +
                 row.section + "' uses action '" + row.action + "'. Aborted.");
 
         if (row.detour_section == "")
@@ -472,15 +472,15 @@ function validate_outbound_detours_rows(rows) {
         let target = parsed.by_section[row.detour_section];
         if (type(target) != "object")
             fail_outbound_detour("Outbound cascade for rule '" + row.section + "' references missing rule '" +
-                row.detour_section + "'. Select an enabled Connection rule or disable cascade connection. Aborted.");
+                row.detour_section + "'. Select an enabled Connection or AmneziaWG rule or disable cascade connection. Aborted.");
 
         if (!target.enabled)
             fail_outbound_detour("Outbound cascade for rule '" + row.section + "' references disabled rule '" +
-                row.detour_section + "'. Select an enabled Connection rule or disable cascade connection. Aborted.");
+                row.detour_section + "'. Select an enabled Connection or AmneziaWG rule or disable cascade connection. Aborted.");
 
         if (!outbound_detour_target_action(target.action))
             fail_outbound_detour("Outbound cascade for rule '" + row.section + "' references rule '" +
-                row.detour_section + "', but it is not a Connection rule. Select an enabled Connection rule or disable cascade connection. Aborted.");
+                row.detour_section + "', but it is not a Connection or AmneziaWG rule. Select an enabled Connection or AmneziaWG rule or disable cascade connection. Aborted.");
 
         if (outbound_detour_chain_reaches_source(parsed.by_section, row.section, row.detour_section))
             fail_outbound_detour("Outbound cascade for rule '" + row.section + "' creates a cycle through '" +

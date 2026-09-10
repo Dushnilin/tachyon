@@ -1602,9 +1602,14 @@ function add_awg_endpoint(config, section) {
         }
     }
 
-    let detour = option(section, "awg_detour", "");
+    let detour = outbound_detour_tag_for_section(section);
+    if (detour == "") {
+        let legacy_detour = option(section, "awg_detour", "");
+        if (legacy_detour != "")
+            detour = outbound_tag(legacy_detour);
+    }
     if (detour != "") {
-        endpoint.detour = outbound_tag(detour);
+        endpoint.detour = detour;
     }
 
     push(config.endpoints, endpoint);

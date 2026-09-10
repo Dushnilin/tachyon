@@ -5738,16 +5738,35 @@ function appendUniqueDomainTextValues(textValue, values) {
   return [base, ...additions].filter(Boolean).join("\n");
 }
 
+function stripDomainFullPrefix(val) {
+  if (!val) return "";
+  const lines = typeof val === "string" ? val.split("\n") : Array.isArray(val) ? val : [String(val)];
+  return lines
+    .map((line) => {
+      const trimmed = String(line || "").trim();
+      if (trimmed.startsWith("full:")) {
+        const body = trimmed.substring(5).trim();
+        if (body && !body.includes("/") && !body.includes(":") && !body.includes(" ") && !body.includes(",")) {
+          return body;
+        }
+      }
+      return trimmed;
+    })
+    .filter(Boolean)
+    .join("\n");
+}
+
 function loadCombinedDomainText(section_id) {
-  const textValue =
+  const rawTextValue =
     uci.get(UCI_PACKAGE, section_id, "domain") ||
     uci.get(UCI_PACKAGE, section_id, "domain_suffix_text");
+  const textValue = stripDomainFullPrefix(rawTextValue);
   const values = [
     ...domainValuesWithPrefix(section_id, "domain_suffix", ""),
     ...domainValuesWithPrefix(section_id, "domain_keyword", "keyword"),
     ...domainValuesWithPrefix(section_id, "domain_regex", "regex"),
     ...domainTextValuesWithPrefix(section_id, "domain_suffix", ""),
-    ...domainTextValuesWithPrefix(section_id, "domain", "full"),
+    ...domainTextValuesWithPrefix(section_id, "domain", ""),
     ...domainTextValuesWithPrefix(section_id, "domain_keyword", "keyword"),
     ...domainTextValuesWithPrefix(section_id, "domain_regex", "regex"),
   ];
@@ -10241,6 +10260,7 @@ function createSectionContent(section) {
   o.default = "0";
   o.rmempty = false;
   o.depends("action", "connection");
+  o.depends("action", "awg");
   o.modalonly = true;
   o.write = function (section_id, value) {
     if (value === "1") {
@@ -10276,6 +10296,7 @@ function createSectionContent(section) {
   );
   o.rmempty = false;
   o.depends({ action: "connection", outbound_detour_enabled: "1" });
+  o.depends({ action: "awg", outbound_detour_enabled: "1" });
   o.modalonly = true;
   o.load = function (section_id) {
     refreshOutboundDetourSectionOptionValues(this, section_id);
@@ -11338,9 +11359,9 @@ async function performTrace(query) {
       const domainSuffixes = normalizeOptionValues(
         uci.get(UCI_PACKAGE, secName, "domain_suffix"),
       );
-      const exactDomains = normalizeOptionValues(
+      const rawDomains = normalizeOptionValues(
         uci.get(UCI_PACKAGE, secName, "domain"),
-      ).map((d) => `full:${d}`);
+      );
       const domainKeywords = normalizeOptionValues(
         uci.get(UCI_PACKAGE, secName, "domain_keyword"),
       ).map((k) => `keyword:${k}`);
@@ -11352,7 +11373,7 @@ async function performTrace(query) {
       );
       const allUciDomains = [
         ...domainSuffixes,
-        ...exactDomains,
+        ...rawDomains,
         ...domainKeywords,
         ...domainRegexes,
         ...userDomains,

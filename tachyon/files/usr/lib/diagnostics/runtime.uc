@@ -2071,6 +2071,19 @@ function find_process_pid(name) {
     return length(pids) > 0 && pids[0] != "" ? pids[0] : "";
 }
 
+function is_adguardhome_primary_dns(cfg) {
+    let agh_pid = find_process_pid("AdGuardHome");
+    if (agh_pid == "")
+        agh_pid = find_process_pid("adguardhome");
+    if (agh_pid == "")
+        return false;
+
+    let dnsmasq_port = uci_core.get("dhcp.@dnsmasq[0].port");
+    let settings = cfg || uci_settings();
+    let dont_touch = bool_option(settings, "dont_touch_dhcp", false);
+    return dnsmasq_port == "0" || dont_touch;
+}
+
 // The main service loop writes its pid file on start (start_runtime in
 // watchdog.uc). With enable_watchdog='0' the loop is not spawned but sing-box
 // keeps running as its own procd service — that state still counts as running:
@@ -2238,7 +2251,8 @@ function run_recovery_checks() {
     }
 
     // dnsmasq must answer the LAN and talk to upstream directly.
-    if (module_status(DNS_APPLY_UC, [ "has-tachyon-dns" ]) == 0) {
+    let agh_primary_rec = is_adguardhome_primary_dns();
+    if (!agh_primary_rec && module_status(DNS_APPLY_UC, [ "has-tachyon-dns" ]) == 0) {
         issues++;
         if (DOCTOR_REPAIR_MODE)
             module_status(DNS_APPLY_UC, [ "failsafe-restore" ]);
@@ -2250,7 +2264,7 @@ function run_recovery_checks() {
             doc_check("❌", "dnsmasq DNS", "redirected to sing-box", "→ не удалось восстановить — проверьте /etc/config/dhcp");
         }
     } else {
-        doc_check("✅", "dnsmasq DNS", "direct (stock)", "");
+        doc_check("✅", "dnsmasq DNS", agh_primary_rec ? "bypassed (AdGuardHome on :53, dnsmasq DHCP-only)" : "direct (stock)", "");
     }
 
     let dropins = [ "/etc/dnsmasq.d/tachyon.conf", "/tmp/dnsmasq.d/tachyon.conf" ];
@@ -2580,7 +2594,10 @@ function run_doctor_checks_impl(repair) {
     }
 
     // 4e. Dnsmasq Redirection Check
-    if (module_status(DNS_APPLY_UC, [ "has-tachyon-dns" ]) == 0) {
+    let agh_primary = is_adguardhome_primary_dns(cfg);
+    if (agh_primary) {
+        doc_check("✅", "dnsmasq server (Direct)", "bypassed (AdGuardHome on :53, dnsmasq DHCP-only)", "");
+    } else if (module_status(DNS_APPLY_UC, [ "has-tachyon-dns" ]) == 0) {
         doc_check("✅", "dnsmasq server (Direct)", SB_DNS_INBOUND_ADDRESS, "");
     } else {
         if (is_degraded_flag) {
@@ -2604,35 +2621,39 @@ function run_doctor_checks_impl(repair) {
     }
 
     // 4b. Dnsmasq Params Check
-    let noresolv = uci_core.get("dhcp.@dnsmasq[0].noresolv");
-    let localuse = uci_core.get("dhcp.@dnsmasq[0].localuse");
-    let rebind_protection = uci_core.get("dhcp.@dnsmasq[0].rebind_protection");
-    if (noresolv == "1" && localuse == "1" && rebind_protection == "0") {
-        doc_check("✅", "dnsmasq params", "OK (noresolv=1, localuse=1, rebind_protection=0)", "");
+    if (agh_primary) {
+        doc_check("✅", "dnsmasq params", "bypassed (DHCP-only mode, port 0)", "");
     } else {
-        issues++;
-        // noresolv/localuse are required for the sing-box DNS redirect to
-        // work; rebind_protection=0 is a deliberate compatibility downgrade
-        // for FakeIP answers — it must never be applied silently by a
-        // diagnostic pass.
-        if (!DOCTOR_REPAIR_MODE) {
-            doc_plan("uci set dhcp noresolv=1 localuse=1 rebind_protection=0 + dnsmasq restart");
-            doc_check("⚠️", "dnsmasq params", "incorrect", "→ WILL FIX (doctor --fix): noresolv=1, localuse=1, rebind_protection=0");
+        let noresolv = uci_core.get("dhcp.@dnsmasq[0].noresolv");
+        let localuse = uci_core.get("dhcp.@dnsmasq[0].localuse");
+        let rebind_protection = uci_core.get("dhcp.@dnsmasq[0].rebind_protection");
+        if (noresolv == "1" && localuse == "1" && rebind_protection == "0") {
+            doc_check("✅", "dnsmasq params", "OK (noresolv=1, localuse=1, rebind_protection=0)", "");
         } else {
-            doc_set("dhcp.@dnsmasq[0].noresolv", "1");
-            doc_set("dhcp.@dnsmasq[0].localuse", "1");
-            doc_set("dhcp.@dnsmasq[0].rebind_protection", "0");
-            doc_commit("dhcp");
-            command_status("/etc/init.d/dnsmasq restart >/dev/null 2>&1");
-            command_status("sleep 1");
-            let noresolv2 = uci_core.get("dhcp.@dnsmasq[0].noresolv");
-            let localuse2 = uci_core.get("dhcp.@dnsmasq[0].localuse");
-            let rebind_protection2 = uci_core.get("dhcp.@dnsmasq[0].rebind_protection");
-            if (noresolv2 == "1" && localuse2 == "1" && rebind_protection2 == "0") {
-                doc_check("❌", "dnsmasq params", "incorrect", "→ FIXED: noresolv=1, localuse=1, rebind_protection=0");
-                fixed++;
+            issues++;
+            // noresolv/localuse are required for the sing-box DNS redirect to
+            // work; rebind_protection=0 is a deliberate compatibility downgrade
+            // for FakeIP answers — it must never be applied silently by a
+            // diagnostic pass.
+            if (!DOCTOR_REPAIR_MODE) {
+                doc_plan("uci set dhcp noresolv=1 localuse=1 rebind_protection=0 + dnsmasq restart");
+                doc_check("⚠️", "dnsmasq params", "incorrect", "→ WILL FIX (doctor --fix): noresolv=1, localuse=1, rebind_protection=0");
             } else {
-                doc_check("❌", "dnsmasq params", "incorrect", "→ не удалось исправить параметры");
+                doc_set("dhcp.@dnsmasq[0].noresolv", "1");
+                doc_set("dhcp.@dnsmasq[0].localuse", "1");
+                doc_set("dhcp.@dnsmasq[0].rebind_protection", "0");
+                doc_commit("dhcp");
+                command_status("/etc/init.d/dnsmasq restart >/dev/null 2>&1");
+                command_status("sleep 1");
+                let noresolv2 = uci_core.get("dhcp.@dnsmasq[0].noresolv");
+                let localuse2 = uci_core.get("dhcp.@dnsmasq[0].localuse");
+                let rebind_protection2 = uci_core.get("dhcp.@dnsmasq[0].rebind_protection");
+                if (noresolv2 == "1" && localuse2 == "1" && rebind_protection2 == "0") {
+                    doc_check("❌", "dnsmasq params", "incorrect", "→ FIXED: noresolv=1, localuse=1, rebind_protection=0");
+                    fixed++;
+                } else {
+                    doc_check("❌", "dnsmasq params", "incorrect", "→ не удалось исправить параметры");
+                }
             }
         }
     }
@@ -2786,13 +2807,15 @@ function run_doctor_checks_impl(repair) {
         } else {
             issues++;
             if (!DOCTOR_REPAIR_MODE) {
-                doc_plan("dnsmasq -> sing-box DNS reconfigure; if needed service restart");
-                doc_check("⚠️", "sing-box DNS", "not resolving", "→ WILL FIX (doctor --fix): перенаправление dnsmasq на sing-box");
+                doc_plan(agh_primary ? "sing-box restart" : "dnsmasq -> sing-box DNS reconfigure; if needed service restart");
+                doc_check("⚠️", "sing-box DNS", "not resolving", "→ WILL FIX (doctor --fix): " + (agh_primary ? "перезапуск sing-box" : "перенаправление dnsmasq на sing-box"));
             } else {
-                module_status(DNS_APPLY_UC, [ "configure", "force" ]);
-                command_status("sleep 1");
+                if (!agh_primary) {
+                    module_status(DNS_APPLY_UC, [ "configure", "force" ]);
+                    command_status("sleep 1");
+                }
                 if (dns_check_through_singbox("google.com")) {
-                    doc_check("❌", "sing-box DNS", "not resolving", "→ FIXED: dnsmasq перенаправлен на sing-box");
+                    doc_check("❌", "sing-box DNS", "not resolving", "→ FIXED: " + (agh_primary ? "sing-box DNS доступен" : "dnsmasq перенаправлен на sing-box"));
                     fixed++;
                 } else {
                     command_status(init_script + " restart >/dev/null 2>&1");
@@ -3313,7 +3336,7 @@ function run_doctor_checks_impl(repair) {
                 continue;
             let pid_info = as_string(fields[6]);
             let owner = index(pid_info, "/") >= 0 ? substr(pid_info, index(pid_info, "/") + 1) : pid_info;
-            if (owner == "" || owner == "dnsmasq" || owner == "sing-box")
+            if (owner == "" || owner == "dnsmasq" || owner == "sing-box" || owner == "AdGuardHome" || lc(owner) == "adguardhome")
                 continue;
             let already = false;
             for (let o in dns53_owners) {
@@ -4154,7 +4177,12 @@ function diagnose_system_conflicts(cfg, lang, causes, fn_add_fix) {
     let competing_dns = [ "adguardhome", "smartdns", "stubby", "unbound", "nextdns" ];
     for (let svc in competing_dns) {
         let pid = find_process_pid(svc);
+        if (pid == "" && svc == "adguardhome")
+            pid = find_process_pid("AdGuardHome");
         if (pid != "") {
+            if ((svc == "adguardhome" || svc == "AdGuardHome") && is_adguardhome_primary_dns(cfg))
+                continue;
+
             push(causes, {
                 probability: 82,
                 cause: lang == "en" ? sprintf("Conflicting DNS service running: %s (PID %s) may interfere with Tachyon DNS routing", svc, pid)

@@ -84,6 +84,18 @@ let serviceStateUnsubscribe: (() => void) | null = null;
 let renderTimer: ReturnType<typeof setInterval> | null = null;
 let connectionsPollTimer: ReturnType<typeof setInterval> | null = null;
 let connectionsSocketUrl = '';
+let directConnectionsSocketFailedAt = 0;
+const DIRECT_SOCKET_COOLDOWN_MS = 60_000;
+
+function canUseConnectionsSocket(): boolean {
+  if (
+    Date.now() - directConnectionsSocketFailedAt <
+    DIRECT_SOCKET_COOLDOWN_MS
+  ) {
+    return false;
+  }
+  return canUseDirectClashApi();
+}
 let connectionsUpdatesId = 0;
 let renderSkippedForSelection = false;
 let pendingConnectionsPayload: ClashConnectionsPayload | null = null;
@@ -1636,6 +1648,8 @@ async function connectToConnectionsSocket(updatesId: number) {
         return;
       }
 
+      directConnectionsSocketFailedAt = 0;
+
       try {
         applyConnectionsPayload(JSON.parse(msg) as ClashConnectionsPayload);
       } catch (error) {
@@ -1652,9 +1666,19 @@ async function connectToConnectionsSocket(updatesId: number) {
         return;
       }
 
-      failed = true;
-      loading = false;
-      renderConnections();
+      directConnectionsSocketFailedAt = Date.now();
+      logger.warn(
+        '[MONITORING]',
+        'direct connections socket failed, falling back to polling',
+        _err,
+      );
+
+      if (connectionsSocketUrl) {
+        socket.disconnect(connectionsSocketUrl);
+        connectionsSocketUrl = '';
+      }
+
+      startConnectionsPolling();
     },
   );
 }
@@ -1664,7 +1688,7 @@ function startConnectionsUpdates() {
     return;
   }
 
-  if (canUseDirectClashApi()) {
+  if (canUseConnectionsSocket()) {
     const updatesId = ++connectionsUpdatesId;
     void connectToConnectionsSocket(updatesId);
     return;

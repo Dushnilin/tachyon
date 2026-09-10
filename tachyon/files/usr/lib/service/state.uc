@@ -1369,7 +1369,11 @@ function append_sing_box_rule_signature_body(body, section, sections) {
         body = signature_add_mixed_proxy_body(body, section, prefix);
         body = signature_add_value(body, prefix + ".resolve_real_ip_for_routing", "1");
     }
-    else if (action == "zapret" || action == "zapret2" || action == "awg") {
+    else if (action == "awg") {
+        body = signature_add_outbound_detour_body(body, section, prefix);
+        body = signature_add_mixed_proxy_body(body, section, prefix);
+    }
+    else if (action == "zapret" || action == "zapret2") {
         body = signature_add_mixed_proxy_body(body, section, prefix);
     }
     else if (action == "dns") {

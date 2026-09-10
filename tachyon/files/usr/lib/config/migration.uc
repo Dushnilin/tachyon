@@ -955,6 +955,21 @@ function text_list_values(value, separator_mode) {
 function filter_domain_values(values) {
     let result = [];
     for (let value in values) {
+        let colon = index(value, ":");
+        if (colon > 0) {
+            let prefix = domain_config.ascii_lower(substr(value, 0, colon));
+            if (prefix == "full" || prefix == "keyword" || prefix == "regex") {
+                let body = substr(value, colon + 1);
+                let norm = (prefix == "keyword")
+                    ? domain_config.keyword_to_ascii(body)
+                    : (prefix == "regex")
+                        ? domain_config.regex_to_ascii(body)
+                        : domain_config.suffix_to_ascii(body);
+                if (norm != null)
+                    push(result, prefix + ":" + norm);
+                continue;
+            }
+        }
         let normalized = domain_config.suffix_to_ascii(value);
         if (normalized != null)
             push(result, normalized);
@@ -972,11 +987,22 @@ function legacy_condition_values(kind, text_mode, conditions_text_mode, text_val
             ? filter_domain_values(text_list_values(text_value, "comma-space"))
             : generic_values_from_text(text_value);
 
-    let result = [];
-    for (let item in list_option({ value: list_value }, "value"))
-        push(result, item);
-    if (length(result) > 0)
-        return result;
+    let raw = [];
+    if (type(list_value) == "array")
+        raw = list_value;
+    else if (list_value != null && as_string(list_value) != "")
+        raw = [ as_string(list_value) ];
+
+    if (length(raw) > 0) {
+        let result = [];
+        let sep_mode = (kind == "domains" || kind == "subnets") ? "comma-space" : "comma";
+        for (let item in raw) {
+            for (let sub in text_list_values(item, sep_mode))
+                push(result, sub);
+        }
+        if (length(result) > 0)
+            return kind == "domains" ? filter_domain_values(result) : result;
+    }
 
     if (as_string(text_value) != "")
         return kind == "domains"
@@ -1046,15 +1072,21 @@ function migrate_combined_domain_conditions(ctx, section) {
     let seen = {};
 
     for (let value in list_option(section, "domain_suffix")) {
-        if (rule_config.prefixed_domain_kind_value(value) != null)
-            add_unique_value(values, seen, value);
+        for (let sub in text_list_values(value, "comma-space")) {
+            if (rule_config.prefixed_domain_kind_value(sub) != null)
+                add_unique_value(values, seen, sub);
+        }
     }
     for (let value in raw_text_condition_values(section, "domain_suffix_text")) {
-        if (rule_config.prefixed_domain_kind_value(value) != null)
-            add_unique_value(values, seen, value);
+        for (let sub in text_list_values(value, "comma-space")) {
+            if (rule_config.prefixed_domain_kind_value(sub) != null)
+                add_unique_value(values, seen, sub);
+        }
     }
 
-    add_domain_values_with_prefix(values, seen, section, "domain", "full:", "domains");
+    let legacy_rule_domain = section[".type"] == "rule" || option_exists(section, "domain_suffix") || option_exists(section, "domain_suffix_text");
+    let domain_prefix = legacy_rule_domain ? "full:" : "";
+    add_domain_values_with_prefix(values, seen, section, "domain", domain_prefix, "domains");
     add_domain_values_with_prefix(values, seen, section, "domain_keyword", "keyword:", "generic");
     add_domain_values_with_prefix(values, seen, section, "domain_regex", "regex:", "generic");
 
@@ -1583,6 +1615,63 @@ function migrate_orphan_section_interfaces(ctx) {
             ctx.model[type_name] = kept;
     }
 }
+function migrate_cleanup_accidental_full_domain_prefixes(ctx) {
+    let targets = [];
+    for (let s in ctx.model.sections) push(targets, s);
+    for (let r in ctx.model.rules) push(targets, r);
+
+    for (let section in targets) {
+        for (let opt_name in [ "domain", "user_domains" ]) {
+            let domain_val = section[opt_name];
+            if (domain_val == null)
+                continue;
+            let was_array = type(domain_val) == "array";
+            let raw_items = was_array ? domain_val : split(as_string(domain_val), "\n");
+            let changed = was_array;
+            let new_lines = [];
+            let seen = {};
+            for (let line in raw_items) {
+                line = trim(as_string(line));
+                if (line == "")
+                    continue;
+                if (index(line, ",") >= 0) {
+                    for (let sub in text_list_values(line, "comma-space")) {
+                        sub = trim(sub);
+                        if (sub == "") continue;
+                        if (substr(sub, 0, 5) == "full:") {
+                            let rest = trim(substr(sub, 5));
+                            if (rest != "" && domain_config.suffix_to_ascii(rest) != null)
+                                sub = rest;
+                        }
+                        if (!seen[sub]) {
+                            seen[sub] = true;
+                            push(new_lines, sub);
+                        }
+                        changed = true;
+                    }
+                    continue;
+                }
+                if (substr(line, 0, 5) == "full:") {
+                    let rest = trim(substr(line, 5));
+                    if (rest != "" && domain_config.suffix_to_ascii(rest) != null) {
+                        line = rest;
+                        changed = true;
+                    }
+                }
+                if (!seen[line]) {
+                    seen[line] = true;
+                    push(new_lines, line);
+                }
+            }
+            if (changed) {
+                if (was_array)
+                    delete_option(ctx, section, opt_name);
+                set_option(ctx, section, opt_name, join("\n", new_lines));
+            }
+        }
+    }
+}
+
 const MIGRATIONS = [
     { id: "interface_sections", run: migrate_interface_sections },
     { id: "enable_component_checks", run: migrate_enable_component_checks },
@@ -1678,6 +1767,7 @@ function migrate_podkop_model(model, constants) {
 
 function migrate_tachyon_model(model) {
     let ctx = migration_context(model);
+    migrate_cleanup_accidental_full_domain_prefixes(ctx);
     apply_migrations(ctx);
     return ctx;
 }
@@ -1906,6 +1996,16 @@ function detect_config_migration_source(path) {
     if (content == null || content == "")
         return "tachyon";
 
+    // If configuration version or applied migrations are present, and there are
+    // no legacy config rule or legacy connection/proxy type options, this is native Tachyon
+    if ((match(content, /option[ \t]+config_version/) || match(content, /list[ \t]+applied_migrations/)) &&
+        !match(content, /config[ \t]+rule[ \t]+/) &&
+        !match(content, /option[ \t]+connection_type/) &&
+        !match(content, /option[ \t]+proxy_config_type/)) {
+        return "tachyon";
+    }
+
+    // True legacy markers for Forkop / Podkop / NetShift
     if (match(content, /config[ \t]+rule[ \t]+/) ||
         match(content, /option[ \t]+domain_list_urls/) ||
         match(content, /option[ \t]+subnet_list_urls/) ||
@@ -1913,14 +2013,10 @@ function detect_config_migration_source(path) {
         match(content, /option[ \t]+connection_type/) ||
         match(content, /option[ \t]+proxy_config_type/) ||
         match(content, /option[ \t]+proxy_string/) ||
-        match(content, /option[ \t]+selector_proxy_links_text/) ||
-        match(content, /option[ \t]+urltest_proxy_links_text/) ||
         match(content, /option[ \t]+subscription_url/) ||
         match(content, /list[ \t]+subscription_url/) ||
         match(content, /option[ \t]+dns_via_outbound/) ||
-        match(content, /option[ \t]+block_doh/) ||
-        match(content, /option[ \t]+global_proxy/) ||
-        match(content, /option[ \t]+ip_cidr/)) {
+        match(content, /option[ \t]+global_proxy/)) {
         return "podkop";
     }
 

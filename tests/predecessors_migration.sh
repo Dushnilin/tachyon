@@ -202,13 +202,28 @@ cat >"$WORK_DIR/mock_tachyon.conf" <<'EOF'
 config settings 'settings'
 	option enabled '1'
 	option config_version '1.0.5'
+	option block_doh '1'
 	list applied_migrations 'interface_sections'
 	list applied_migrations 'ensure_dns_server_defaults'
 
 config section 'my_proxy'
 	option enabled '1'
 	option action 'connection'
+	option ip_cidr '17.0.0.0/8'
+	option selector_proxy_links_text 'vless://example'
 	list selector_proxy_links 'vless://example'
+EOF
+
+cat >"$WORK_DIR/mock_tachyon_minimal.conf" <<'EOF'
+config settings 'settings'
+	option enabled '1'
+	option block_doh '1'
+
+config section 'my_proxy'
+	option enabled '1'
+	option action 'connection'
+	option ip_cidr '192.168.10.0/24'
+	option domain 'chatgpt.com, openai.com, oaistatic.com'
 EOF
 
 cat >"$WORK_DIR/detect_test.uc" <<'UCODE'
@@ -233,6 +248,9 @@ assert(pk_src == "podkop", "Podkop config must be detected as legacy podkop form
 let tc_src = migration.detect_config_migration_source(ARGV[3]);
 assert(tc_src == "tachyon", "Tachyon config must be detected as native tachyon format, got: " + tc_src);
 
+let tc_min_src = migration.detect_config_migration_source(ARGV[4]);
+assert(tc_min_src == "tachyon", "Minimal Tachyon config with ip_cidr must be detected as tachyon format, got: " + tc_min_src);
+
 print("Format detection tests passed successfully.\n");
 UCODE
 
@@ -240,6 +258,7 @@ ucode -L "$TACHYON_LIB" "$WORK_DIR/detect_test.uc" \
   "$WORK_DIR/mock_netshift.conf" \
   "$WORK_DIR/mock_forkop.conf" \
   "$WORK_DIR/mock_podkop.conf" \
-  "$WORK_DIR/mock_tachyon.conf"
+  "$WORK_DIR/mock_tachyon.conf" \
+  "$WORK_DIR/mock_tachyon_minimal.conf"
 
 printf 'ALL predecessor migration tests passed successfully.\n'

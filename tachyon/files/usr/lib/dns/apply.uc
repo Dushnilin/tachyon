@@ -289,6 +289,16 @@ function dnsmasq_configure(force) {
     if (!uci_available())
         return true;
 
+    if (dnsmasq_management_disabled()) {
+        log("dnsmasq configuration skipped: dont_touch_dhcp is enabled", "info");
+        return true;
+    }
+
+    if (uci_get("dhcp.@dnsmasq[0].port") == "0" && (run("pidof AdGuardHome >/dev/null 2>&1") || run("pidof adguardhome >/dev/null 2>&1"))) {
+        log("dnsmasq configuration skipped: AdGuardHome is active and dnsmasq DNS is disabled (port 0)", "info");
+        return true;
+    }
+
     if (as_string(force) != "force" && uci_get(CONFIG_NAME + ".settings.shutdown_correctly") == "0") {
         if (dnsmasq_default_config_is_complete()) {
             log("Previous Tachyon shutdown was unclean; dnsmasq already points to sing-box", "info");
