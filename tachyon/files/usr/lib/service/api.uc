@@ -108,7 +108,10 @@ function get_system_status() {
         status_obj.singbox_variant = sb_variant;
 
     // zapret2 status
-    let z2_installed = fs.stat("/opt/zapret2/nfq2/nfqws2") != null;
+    let z2_installed = fs.stat("/opt/zapret2/nfq2/nfqws2") != null ||
+                       fs.stat("/opt/zapret2/nfq/nfqws2") != null ||
+                       fs.stat("/opt/zapret2/nfqws2") != null ||
+                       fs.stat("/usr/bin/nfqws2") != null;
     status_obj.zapret2_installed = z2_installed;
     if (z2_installed) {
         let z2_running = command_success_from_args(["pidof", "nfqws2"]);

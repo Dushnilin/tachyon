@@ -404,6 +404,32 @@ function tproxy_inbound_matcher() {
     return [ runtime_constants.TPROXY_INBOUND_TAG, runtime_constants.TPROXY_INBOUND6_TAG ];
 }
 
+function is_sb_1_14_plus_detected(sb_version_val) {
+    if (sb_version_val == null || sb_version_val == "") {
+        let sb_version_file = getenv("SB_VERSION_STATE_FILE") || "/etc/tachyon/sing-box-version";
+        sb_version_val = trim(fs.readfile(sb_version_file) || "");
+        if (sb_version_val == "") {
+            let sb_ui_cache = getenv("TACHYON_UI_SING_BOX_VERSION_CACHE_FILE") || "/var/run/tachyon/ui-state/sing-box-version";
+            sb_version_val = trim(fs.readfile(sb_ui_cache) || "");
+        }
+        if (sb_version_val == "") {
+            try {
+                let pipe = fs.popen("sing-box version 2>/dev/null", "r");
+                if (pipe) {
+                    let out = pipe.read("all");
+                    pipe.close();
+                    let m = match(out, /sing-box version ([^\s]+)/);
+                    if (m)
+                        sb_version_val = m[1];
+                }
+            } catch (e) {}
+        }
+    }
+    if (sb_version_val != "")
+        return match(sb_version_val, /^v?1\.(1[4-9]|[2-9][0-9])\./) != null;
+    return false;
+}
+
 function base_config(settings, service_address, runtime_context) {
     runtime_context = object_or_empty(runtime_context);
     let log_level = option(settings, "log_level", "warn");
@@ -547,9 +573,7 @@ function base_config(settings, service_address, runtime_context) {
         ? (match(sb_version_val, /^v?1\.1[0-3]\./) != null)
         : !is_extended_variant;
 
-    let is_sb_1_14_plus = sb_version_val != ""
-        ? (match(sb_version_val, /^v?1\.(1[4-9]|[2-9][0-9])\./) != null)
-        : false;
+    let is_sb_1_14_plus = is_sb_1_14_plus_detected(sb_version_val);
 
     let route_section = runtime_route.config(settings, runtime_context);
     if (is_sb_1_14_plus)
@@ -1272,6 +1296,12 @@ function generate_config(output_path, service_address, mwan3_active, supports_xh
 
     add_content_blocking(config);
 
+    if (type(config.http_clients) == "array" && length(config.http_clients) > 0) {
+        let detour = download_detour_tag(settings, "lists");
+        if (detour != "" && generator_routes.is_valid_detour(config, detour))
+            config.http_clients[0].dial_detour = detour;
+    }
+
     assert_unique_outbound_tags(config);
     strip_internal_fields(config);
     if (!atomic_write_json_file(output_path, config)) {
@@ -1401,6 +1431,7 @@ ctx.runtime_generate_unsupported = runtime_generate_unsupported;
 ctx.uci_bin_to_hex = uci_bin_to_hex;
 ctx.download_detour_tag = download_detour_tag;
 ctx.atomic_write_json_file = atomic_write_json_file;
+ctx.is_sb_1_14_plus = is_sb_1_14_plus_detected;
 
 generator_outbounds.init(ctx);
 generator_routes.init(ctx);

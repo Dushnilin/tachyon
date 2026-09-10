@@ -93,8 +93,10 @@ function emit_reload_plan(previous, current, context) {
         needs.sing_box_reload = true;
     }
 
-    if (changed.zapret_runtime)
+    if (changed.zapret_runtime) {
         needs.zapret_restart = true;
+        needs.nft_rebuild = true;
+    }
 
     if (changed.zapret2_queue) {
         needs.zapret2_restart = true;
@@ -102,8 +104,10 @@ function emit_reload_plan(previous, current, context) {
         needs.sing_box_reload = true;
     }
 
-    if (changed.zapret2_runtime)
+    if (changed.zapret2_runtime) {
         needs.zapret2_restart = true;
+        needs.nft_rebuild = true;
+    }
 
     if (changed.byedpi_runtime)
         needs.byedpi_restart = true;

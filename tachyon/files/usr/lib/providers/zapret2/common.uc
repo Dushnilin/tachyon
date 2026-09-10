@@ -62,11 +62,19 @@ function resolve_blobs(args_str) {
     return result;
 }
 
+function safe_str(val) {
+    if (type(as_string) == "function")
+        return as_string(val);
+    if (val == null)
+        return "";
+    return "" + val;
+}
+
 function prepare_strategy_args(raw_opt) {
-    let raw_str = as_string(raw_opt);
+    let raw_str = safe_str(raw_opt);
     let extra_args = resolve_blobs(raw_str);
     let filter_prefix = [];
-    if (index(raw_str, "--filter-tcp") < 0 && index(raw_str, "--filter-l7") < 0) {
+    if (index(raw_str, "--filter-tcp") < 0 && index(raw_str, "--filter-l7") < 0 && index(raw_str, "--filter-udp") < 0) {
         push(filter_prefix, "--filter-tcp=443");
         push(filter_prefix, "--filter-l7=tls");
         push(filter_prefix, "--payload=tls_client_hello");

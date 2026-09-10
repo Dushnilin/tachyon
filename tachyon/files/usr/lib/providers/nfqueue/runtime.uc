@@ -472,19 +472,18 @@ function start_runtime(cfg) {
     let started_sections = [];
     let index_value = 1;
     for (let section in sections) {
+        let name = section_name(section);
         if (!start_rule(cfg, section, index_value)) {
-            log_message("Rolling back " + as_string(length(started_sections)) + " started " + cfg.binary_name + " rules.", "warn");
-            for (let started in started_sections) {
-                let name = section_name(started);
-                let pidfile = cfg.pid_dir + "/" + name + ".pid";
-                let child_pidfile = cfg.child_pid_dir + "/" + name + ".pid";
-                kill_pidfile_process(pidfile, "9");
-                kill_pidfile_process(child_pidfile, "9");
-            }
-            exit(1);
+            log_message("Failed to start " + cfg.binary_name + " rule '" + name + "'; skipping rule to preserve service availability.", "warn");
+        } else {
+            push(started_sections, section);
         }
-        push(started_sections, section);
         index_value++;
+    }
+
+    if (length(started_sections) == 0 && length(sections) > 0) {
+        log_message("Failed to start any " + cfg.binary_name + " rules out of " + as_string(length(sections)) + " configured. Aborted.", "fatal");
+        exit(1);
     }
 }
 

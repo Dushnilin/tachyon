@@ -597,7 +597,40 @@ function release_start_subscription_update_lock() {
     start_subscription_update_lock_held = false;
 }
 
+function resolve_zapret_bin() {
+    let candidate_bins = [
+        getenv("ZAPRET_NFQWS_BIN"),
+        getenv("ZAPRET_PROVIDER_NFQWS_BIN"),
+        ZAPRET_PROVIDER_NFQWS_BIN,
+        "/opt/zapret/nfq/nfqws",
+        "/opt/zapret/nfqws",
+        "/usr/bin/nfqws"
+    ];
+    for (let b in candidate_bins) {
+        if (b && fs.stat(b) != null) return b;
+    }
+    return ZAPRET_PROVIDER_NFQWS_BIN;
+}
+
+function resolve_zapret2_bin() {
+    let candidate_bins = [
+        getenv("ZAPRET2_NFQWS2_BIN"),
+        getenv("ZAPRET2_PROVIDER_NFQWS2_BIN"),
+        ZAPRET2_PROVIDER_NFQWS2_BIN,
+        "/opt/zapret2/nfq2/nfqws2",
+        "/opt/zapret2/nfq/nfqws2",
+        "/opt/zapret2/nfqws2",
+        "/usr/bin/nfqws2"
+    ];
+    for (let b in candidate_bins) {
+        if (b && fs.stat(b) != null) return b;
+    }
+    return ZAPRET2_PROVIDER_NFQWS2_BIN;
+}
+
 function nft_rebuild_runtime() {
+    let zapret_bin = resolve_zapret_bin();
+    let zapret2_bin = resolve_zapret2_bin();
     return module_status(NFT_UC, [
         "nft-rebuild-runtime-from-uci",
         RT_TABLE_NAME,
@@ -611,12 +644,12 @@ function nft_rebuild_runtime() {
         NFT_OUTBOUND_MARK,
         SB_FAKEIP_INET4_RANGE,
         SB_TPROXY_INBOUND_PORT,
-        ZAPRET_PROVIDER_NFQWS_BIN,
+        zapret_bin,
         ZAPRET_ROUTE_MARK_BASE,
         ZAPRET_QUEUE_BASE,
         ZAPRET_DESYNC_MARK,
         ZAPRET_DESYNC_MARK_POSTNAT,
-        ZAPRET2_PROVIDER_NFQWS2_BIN,
+        zapret2_bin,
         ZAPRET2_ROUTE_MARK_BASE,
         ZAPRET2_QUEUE_BASE,
         ZAPRET2_DESYNC_MARK,

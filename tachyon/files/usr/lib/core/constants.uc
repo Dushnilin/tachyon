@@ -164,7 +164,12 @@ function constants_map() {
     c.COMMUNITY_SERVICES = env("COMMUNITY_SERVICES", "russia_inside russia_outside ukraine_inside geoblock block porn news anime youtube hdrezka tiktok google_ai google_play hodca discord meta twitter cloudflare cloudfront digitalocean hetzner ovh telegram roblox ads_hagezi_pro supercell github");
 
     c.ZAPRET_PROVIDER_BASE_DIR = env("ZAPRET_PROVIDER_BASE_DIR", "/opt/zapret");
-    c.ZAPRET_PROVIDER_NFQWS_BIN = env("ZAPRET_PROVIDER_NFQWS_BIN", c.ZAPRET_PROVIDER_BASE_DIR + "/nfq/nfqws");
+    let default_nfqws_bin = c.ZAPRET_PROVIDER_BASE_DIR + "/nfq/nfqws";
+    if (fs.stat(default_nfqws_bin) == null && fs.stat(c.ZAPRET_PROVIDER_BASE_DIR + "/nfqws") != null)
+        default_nfqws_bin = c.ZAPRET_PROVIDER_BASE_DIR + "/nfqws";
+    else if (fs.stat(default_nfqws_bin) == null && fs.stat("/usr/bin/nfqws") != null)
+        default_nfqws_bin = "/usr/bin/nfqws";
+    c.ZAPRET_PROVIDER_NFQWS_BIN = env("ZAPRET_PROVIDER_NFQWS_BIN", default_nfqws_bin);
     c.ZAPRET_PROVIDER_FILES_DIR = env("ZAPRET_PROVIDER_FILES_DIR", c.ZAPRET_PROVIDER_BASE_DIR + "/files");
     c.ZAPRET_PROVIDER_IPSET_DIR = env("ZAPRET_PROVIDER_IPSET_DIR", c.ZAPRET_PROVIDER_BASE_DIR + "/ipset");
     c.ZAPRET_LEGACY_RUNTIME_BASE_DIR = env("ZAPRET_LEGACY_RUNTIME_BASE_DIR", "/var/run/tachyon/zapret-runtime");
@@ -187,6 +192,8 @@ function constants_map() {
     let default_nfqws2_bin = c.ZAPRET2_PROVIDER_BASE_DIR + "/nfq2/nfqws2";
     if (fs.stat(default_nfqws2_bin) == null && fs.stat(c.ZAPRET2_PROVIDER_BASE_DIR + "/nfq/nfqws2") != null)
         default_nfqws2_bin = c.ZAPRET2_PROVIDER_BASE_DIR + "/nfq/nfqws2";
+    else if (fs.stat(default_nfqws2_bin) == null && fs.stat(c.ZAPRET2_PROVIDER_BASE_DIR + "/nfqws2") != null)
+        default_nfqws2_bin = c.ZAPRET2_PROVIDER_BASE_DIR + "/nfqws2";
     else if (fs.stat(default_nfqws2_bin) == null && fs.stat("/usr/bin/nfqws2") != null)
         default_nfqws2_bin = "/usr/bin/nfqws2";
     c.ZAPRET2_PROVIDER_NFQWS2_BIN = env("ZAPRET2_PROVIDER_NFQWS2_BIN", default_nfqws2_bin);

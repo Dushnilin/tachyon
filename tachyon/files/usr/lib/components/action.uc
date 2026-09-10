@@ -1464,7 +1464,16 @@ function install_zapret2(action, target_tag) {
 
     let hosts_content = read_file("/etc/hosts") || "";
     if (index(hosts_content, "::1") < 0)
-        command_success("printf '\\n::1 localhost ip6-localhost ip6-loopback\\n' >> /etc/hosts");
+        command_success("printf '\n::1 localhost ip6-localhost ip6-loopback\n' >> /etc/hosts");
+
+    if (!file_exists("/etc/config/zapret2"))
+        write_file("/etc/config/zapret2", "config zapret2 'main'\n\toption enabled '0'\n");
+    if (uci_core.available()) {
+        if (!uci_core.exists("zapret2.main"))
+            uci_core.set_section("zapret2.main", "zapret2");
+        uci_core.set("zapret2.main.enabled", "0");
+        uci_core.commit("zapret2");
+    }
 
     run_logged("Updating package lists before " + label + " package installation", pkg_list_update_command());
 

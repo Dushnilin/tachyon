@@ -637,6 +637,25 @@ function add_priority_group_outbound(config, section, group_id, urltest_candidat
     };
 }
 
+function is_mieru_detour(config, tag, depth) {
+    depth = int(depth || 0);
+    if (depth > 5 || tag == null || tag == "")
+        return false;
+    for (let out in array_or_empty(config.outbounds)) {
+        if (type(out) == "object" && out.tag == tag) {
+            if (out.type == "mieru")
+                return true;
+            if ((out.type == "selector" || out.type == "urltest") && type(out.outbounds) == "array") {
+                for (let sub in out.outbounds) {
+                    if (is_mieru_detour(config, sub, depth + 1))
+                        return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
 function is_valid_detour(config, tag) {
     if (tag == null || tag == "")
         return false;
@@ -647,6 +666,8 @@ function is_valid_detour(config, tag) {
             if (out.tag == "DPI-out" || (out.type == "socks" && (out.server == "127.0.0.1" || out.server == "::1")))
                 return false;
             if (out.routing_mark != null)
+                return false;
+            if (out.type == "mieru" || is_mieru_detour(config, tag, 0))
                 return false;
             return true;
         }
@@ -805,7 +826,8 @@ function ensure_custom_ruleset(config, reference) {
                     url: runtime_rulesets.community_url(reference)
                 };
                 let detour = ctx.download_detour_tag(ctx.runtime_settings());
-                if (is_valid_detour(config, detour))
+                let is_1_14 = ctx.is_sb_1_14_plus && ctx.is_sb_1_14_plus();
+                if (!is_1_14 && is_valid_detour(config, detour))
                     rule_set.download_detour = detour;
                 rule_set.update_interval = remote_ruleset_update_interval();
                 push(config.route.rule_set, rule_set);
@@ -842,7 +864,8 @@ function ensure_custom_ruleset(config, reference) {
             url: reference
         };
         let detour = ctx.download_detour_tag(ctx.runtime_settings());
-        if (is_valid_detour(config, detour))
+        let is_1_14 = ctx.is_sb_1_14_plus && ctx.is_sb_1_14_plus();
+        if (!is_1_14 && is_valid_detour(config, detour))
             rule_set.download_detour = detour;
         rule_set.update_interval = remote_ruleset_update_interval();
         push(config.route.rule_set, rule_set);
@@ -895,7 +918,8 @@ function ensure_community_ruleset(config, section_name, community) {
                     detour = sec_out;
                 }
             }
-            if (is_valid_detour(config, detour))
+            let is_1_14 = ctx.is_sb_1_14_plus && ctx.is_sb_1_14_plus();
+            if (!is_1_14 && is_valid_detour(config, detour))
                 rule_set.download_detour = detour;
             push(config.route.rule_set, rule_set);
         }
@@ -1945,5 +1969,6 @@ return {
     section_by_name,
     add_server_routes,
     outbound_supports_udp,
-    push_section_route_rule
+    push_section_route_rule,
+    is_valid_detour
 };

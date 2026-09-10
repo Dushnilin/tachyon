@@ -147,4 +147,48 @@ if grep -q '"download_detour": "zapret_sec-out"' "$output_zapret"; then
   fail "zapret-out must never be selected as download_detour due to routing_mark"
 fi
 
+# 5. Verify mieru outbound is rejected as download_detour and http_clients dial_detour
+cat >"$WORK_DIR/fixture_mieru.json" <<'JSON'
+{
+  "settings": {
+    ".name": "settings",
+    ".type": "settings",
+    "enabled": "1",
+    "dns_type": "udp",
+    "dns_server": "1.1.1.1",
+    "service_listen_address": "127.0.0.1"
+  },
+  "section": [
+    {
+      ".name": "mieru_sec",
+      ".type": "section",
+      "enabled": "1",
+      "action": "connection",
+      "outbound_jsons": [ "{\"type\":\"mieru\",\"server\":\"1.2.3.4\",\"server_port\":443}" ],
+      "community_lists": [ "google_ai" ]
+    }
+  ]
+}
+JSON
+
+output_mieru="$WORK_DIR/out_mieru.json"
+mkdir -p "$output_mieru.section-cache" "$output_mieru.rulesets"
+ucode -L "$TACHYON_LIB" "$GENERATOR_UC" generate-config-fixture \
+  "$WORK_DIR/fixture_mieru.json" "$output_mieru" "127.0.0.1" "0" "1"
+
+if grep -q '"download_detour": "mieru_sec-out"' "$output_mieru"; then
+  fail "mieru outbound must never be assigned to rule_set download_detour (early startup crash)"
+fi
+
+output_mieru_v14="$WORK_DIR/out_mieru_v14.json"
+mkdir -p "$output_mieru_v14.section-cache" "$output_mieru_v14.rulesets"
+SB_VERSION_STATE_FILE="$WORK_DIR/sb_v14" \
+ucode -L "$TACHYON_LIB" "$GENERATOR_UC" generate-config-fixture \
+  "$WORK_DIR/fixture_mieru.json" "$output_mieru_v14" "127.0.0.1" "0" "1"
+
+if grep -q '"dial_detour": "mieru_sec-out"' "$output_mieru_v14"; then
+  fail "mieru outbound must never be assigned as http_clients dial_detour"
+fi
+
 printf "ruleset download detour checks passed\n"
+
