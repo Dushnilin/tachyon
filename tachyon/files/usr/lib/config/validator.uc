@@ -1728,7 +1728,7 @@ function validate_time_format(val, label) {
         fail_validation("Schedule option '" + label + "' has invalid time format '" + val + "'. Expected HH:MM. Aborted.");
 }
 
-function validate_schedule(schedule, sections) {
+function validate_schedule(schedule, sections, profiles) {
     if (!section_enabled(schedule))
         return;
     let name = section_name(schedule);

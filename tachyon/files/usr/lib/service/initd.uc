@@ -625,7 +625,7 @@ function stop_service(owner_pid) {
     // These survive tachyon stop because background subprocesses (reload_firewall,
     // restart) inherit the logread pipe read-end, preventing SIGPIPE delivery.
     // Use pkill to target only logread in follow mode, not one-shot logread calls.
-    system("pkill -f 'logread -f' 2>/dev/null; true");
+    system("pkill -f 'logread -f$' 2>/dev/null; true");
     return stop_finish(job_id, status);
 }
 

@@ -889,7 +889,7 @@ function nft_schedule_time_intervals(start_time, end_time) {
     end_time = trim(as_string(end_time));
     
     if (start_time == "" || end_time == "")
-        return [ [ "00:00:00", "23:59:59" ] ];
+        return [];
     
     if (length(start_time) == 5) start_time += ":00";
     if (length(end_time) == 5) end_time += ":00";
@@ -978,13 +978,24 @@ function nft_add_profile_doh_block_rules(profiles, table) {
                 [ "ether", "saddr", lc(replace(dev_str, "-", ":")), "udp", "dport", "853", "counter", "drop", "comment", "\"" + comment + "\"" ] :
                 [ saddr_key, "saddr", dev_str, "udp", "dport", "853", "counter", "drop", "comment", "\"" + comment + "\"" ];
 
-            nft_add_rule(table, "parental_forward", tcp_rule);
-            nft_add_rule(table, "parental_forward", udp_rule);
-            nft_add_rule(table, "parental_control", tcp_rule);
-            nft_add_rule(table, "parental_control", udp_rule);
+            if (!nft_add_rule(table, "parental_forward", tcp_rule) ||
+                !nft_add_rule(table, "parental_forward", udp_rule) ||
+                !nft_add_rule(table, "parental_control", tcp_rule) ||
+                !nft_add_rule(table, "parental_control", udp_rule))
+                log_debug("nft_add_profile_doh_block_rules: failed to add DoH block rule for " + dev_str);
         }
     }
     return true;
+}
+
+function nft_schedule_rule_base_match(dev_str, is_mac, family, days_args, time_args) {
+    let base_match = is_mac ?
+        [ "ether", "saddr", lc(replace(dev_str, "-", ":")) ] :
+        [ (family == 6 ? "ip6" : "ip"), "saddr", dev_str ];
+    append_array(base_match, days_args);
+    if (time_args != null)
+        append_array(base_match, time_args);
+    return base_match;
 }
 
 function nft_add_schedule_rules_from_schedules(schedules, sections, table, profiles) {
@@ -1004,6 +1015,7 @@ function nft_add_schedule_rules_from_schedules(schedules, sections, table, profi
         let target = option(schedule, "target", "all");
         let action = option(schedule, "action", "block");
         let verdict = action == "allow" ? "accept" : "drop";
+        let always_on = length(intervals) == 0;
         
         let target_sec_names = [];
         if (target == "sections" || (target != "all" && target != "")) {
@@ -1021,26 +1033,25 @@ function nft_add_schedule_rules_from_schedules(schedules, sections, table, profi
             if (dev_str == "") continue;
             let is_mac = match(dev_str, /^([0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}$/) != null;
             let family = is_mac ? 0 : core_ip.ip_family(dev_str);
-            let saddr_key = family == 6 ? "ip6" : "ip";
-            
-            for (let interval in intervals) {
-                let time_args = [ "meta", "hour", sprintf("\"%s\"-\"%s\"", interval[0], interval[1]) ];
-                let base_match = is_mac ?
-                    [ "ether", "saddr", lc(replace(dev_str, "-", ":")) ] :
-                    [ saddr_key, "saddr", dev_str ];
-                append_array(base_match, days_args);
-                append_array(base_match, time_args);
+
+            let rule_sets = always_on ? [null] : intervals;
+            for (let interval in rule_sets) {
+                let time_args = interval != null ?
+                    [ "meta", "hour", sprintf("\"%s\"-\"%s\"", interval[0], interval[1]) ] : null;
+                let base_match = nft_schedule_rule_base_match(dev_str, is_mac, family, days_args, time_args);
                 
                 if (target == "all" || (length(target_sec_names) == 0 && target != "sections")) {
                     let fwd_rule = [];
                     append_array(fwd_rule, base_match);
                     append_array(fwd_rule, [ "counter", verdict ]);
-                    nft_add_rule(table, "parental_forward", fwd_rule);
+                    if (!nft_add_rule(table, "parental_forward", fwd_rule))
+                        log_debug("nft_add_schedule_rules: failed to add parental_forward rule for " + dev_str);
                     
                     let ctrl_rule = [];
                     append_array(ctrl_rule, base_match);
                     append_array(ctrl_rule, [ "counter", verdict ]);
-                    nft_add_rule(table, "parental_control", ctrl_rule);
+                    if (!nft_add_rule(table, "parental_control", ctrl_rule))
+                        log_debug("nft_add_schedule_rules: failed to add parental_control rule for " + dev_str);
                 } else {
                     for (let sec_name in target_sec_names) {
                         let target_section = section_by_name(sections, sec_name);
@@ -1131,7 +1142,7 @@ function nft_add_dns_block_rules_from_schedules(schedules, table, profiles) {
         let end_time = option(schedule, "end_time", "");
         let intervals = nft_schedule_time_intervals(start_time, end_time);
         let days_args = nft_schedule_days_match_args(schedule);
-        let always_on = start_time == "" && end_time == "";
+        let always_on = length(intervals) == 0;
 
         for (let raw_ip in raw_ips) {
             let dev_str = trim(as_string(raw_ip));
@@ -1141,7 +1152,8 @@ function nft_add_dns_block_rules_from_schedules(schedules, table, profiles) {
             if (!is_mac && family != 4 && family != 6)
                 continue;
 
-            for (let interval in intervals) {
+            let rule_sets = always_on ? [null] : intervals;
+            for (let interval in rule_sets) {
                 let match_args = [];
                 if (is_mac) {
                     append_array(match_args, [ "ether", "saddr", lc(replace(dev_str, "-", ":")) ]);
@@ -1150,7 +1162,7 @@ function nft_add_dns_block_rules_from_schedules(schedules, table, profiles) {
                 } else {
                     append_array(match_args, [ "ip", "saddr", dev_str ]);
                 }
-                if (!always_on) {
+                if (!always_on && interval != null) {
                     append_array(match_args, [ "meta", "hour", sprintf("\"%s\"-\"%s\"", interval[0], interval[1]) ]);
                 }
                 append_array(match_args, days_args);
@@ -1167,7 +1179,7 @@ function nft_add_dns_block_rules_from_schedules(schedules, table, profiles) {
                 } else {
                     append_array(tcp_args, [ "ip", "saddr", dev_str ]);
                 }
-                if (!always_on) {
+                if (!always_on && interval != null) {
                     append_array(tcp_args, [ "meta", "hour", sprintf("\"%s\"-\"%s\"", interval[0], interval[1]) ]);
                 }
                 append_array(tcp_args, days_args);

@@ -1077,7 +1077,9 @@ function restart_tachyon_after_successful_change() {
     // Clear any stuck flock holders or pending rc.common waits
     system(kill_matching_command("-E '99-tachyon-wan|flock 1000|init[.]d/tachyon'"));
     // Kill orphaned logread -f processes before restart to prevent FD cascade.
-    command_success_from_args([ "killall", "logread" ]);
+    // Anchor with $ to avoid killing system logremote/logfile processes (which
+    // have extra flags like -r/-F after -f).
+    system("pkill -f 'logread -f$' 2>/dev/null; true");
     run_logged("Restarting Tachyon after successful component change", command_from_args([ SERVICE_INIT, "restart" ]), 120);
 }
 
