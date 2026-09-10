@@ -114,6 +114,27 @@ grep -q '"http_clients"' "$output_v14" || \
   fail "sing-box 1.14+ must include http_clients"
 grep -q '"default_http_client": "ruleset-http"' "$output_v14" || \
   fail "sing-box 1.14+ must configure default_http_client"
+if grep -q '"dial_detour"' "$output_v14"; then
+  fail "sing-box 1.14+ must NEVER contain 'dial_detour' in http_clients (causes fatal unknown field crash)"
+fi
+if command -v sing-box >/dev/null 2>&1; then
+  sing-box check -c "$output_v14" || fail "sing-box 1.14+ config check failed"
+fi
+
+output_detour_v14="$WORK_DIR/out_detour_v14.json"
+mkdir -p "$output_detour_v14.section-cache" "$output_detour_v14.rulesets"
+SB_VERSION_STATE_FILE="$WORK_DIR/sb_v14" \
+ucode -L "$TACHYON_LIB" "$GENERATOR_UC" generate-config-fixture \
+  "$WORK_DIR/fixture-detour-enabled.json" "$output_detour_v14" "127.0.0.1" "0" "1"
+
+if grep -q '"dial_detour"' "$output_detour_v14"; then
+  fail "sing-box 1.14+ must NEVER contain 'dial_detour' with proxy enabled"
+fi
+grep -q '"detour": "first_proxy-out"' "$output_detour_v14" || \
+  fail "sing-box 1.14+ http_clients must configure 'detour' field when download_lists_via_proxy is enabled"
+if command -v sing-box >/dev/null 2>&1; then
+  sing-box check -c "$output_detour_v14" || fail "sing-box 1.14+ detour config check failed"
+fi
 
 # 4. Verify zapret section with community_lists does NOT use zapret-out as download_detour
 cat >"$WORK_DIR/fixture_zapret.json" <<'JSON'
