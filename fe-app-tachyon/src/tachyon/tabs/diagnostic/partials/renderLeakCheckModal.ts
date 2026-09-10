@@ -1,5 +1,6 @@
 import { TachyonShellMethods } from '../../../methods/shell';
 import { renderButton } from '../../../../partials';
+import { renderRotateCcwIcon24 } from '../../../../icons';
 import { Tachyon } from '../../../types';
 
 export function renderLeakCheckModal() {
@@ -382,7 +383,8 @@ export function renderLeakCheckModal() {
   const retryBtn = renderButton({
     classNames: ['cbi-button-action'],
     onClick: startTest,
-    text: `🔄 ${_('Re-run Leak Test')}`,
+    icon: renderRotateCcwIcon24,
+    text: _('Re-run Leak Test'),
   });
 
   const closeBtn = renderButton({

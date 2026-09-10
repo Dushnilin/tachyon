@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-09 22:23+0300\n"
-"PO-Revision-Date: 2026-09-09 22:23+0300\n"
+"POT-Creation-Date: 2026-09-10 10:16+0300\n"
+"PO-Revision-Date: 2026-09-10 10:16+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -61,9 +61,6 @@ msgstr "⚠️ Если все Bootstrap DNS завершатся с ошибк�
 
 msgid "⚠️ If all Main DNS fail 3 times, queries will be sent to your ISP's DNS in plaintext. Only use as a last resort to prevent complete internet loss."
 msgstr "⚠️ Если все основные DNS завершатся с ошибкой 3 раза, запросы будут отправлены в DNS вашего провайдера в открытом виде. Используйте только в крайнем случае для предотвращения полной потери интернета."
-
-msgid "⚡ DPI Strategy Fuzzer"
-msgstr "⚡ DPI Strategy Fuzzer"
 
 msgid "⚡ Fast (>1MB/s)"
 msgstr "⚡ Быстрые (>1 МБ/с)"
@@ -160,9 +157,6 @@ msgstr "🛑 Остановить бенчмарк"
 
 msgid "🛠️ My Custom Strategies Only"
 msgstr "🛠️ Только мои стратегии"
-
-msgid "🛡️ IP & DNS Leak Test"
-msgstr "🛡️ Проверка утечек IP и DNS"
 
 msgid "🛡️ SECURE: No DNS leaks detected. All queries resolve through non-ISP upstream resolvers."
 msgstr "🛡️ ЗАЩИЩЕНО: Утечек DNS не обнаружено. Все запросы обрабатываются независимыми резолверами."
@@ -1565,6 +1559,9 @@ msgstr "DPI обнаружен"
 msgid "DPI Engine"
 msgstr "Движок DPI"
 
+msgid "DPI Strategy Fuzzer"
+msgstr "DPI Strategy Fuzzer"
+
 msgid "DPI throttling: stream cut off after ~16KB payload transfer"
 msgstr "DPI-троттлинг: поток оборван после передачи ~16 КБ данных"
 
@@ -2723,8 +2720,14 @@ msgstr "Неверный URL VLESS: ошибка разбора"
 msgid "Invalid VMess URL: parsing failed"
 msgstr "Некорректный VMess URL: ошибка разбора"
 
+msgid "IP & DNS Leak Test"
+msgstr "Проверка утечек IP и DNS"
+
 msgid "IP Addresses (IP CIDR)"
 msgstr "IP-адреса (IP CIDR)"
+
+msgid "IP and DNS leak check timed out"
+msgstr "Время ожидания проверки утечек IP и DNS истекло"
 
 msgid "IP Frag Bounds (--ip-frag)"
 msgstr "Границы фрагментации IP (--ip-frag)"

@@ -1700,10 +1700,9 @@ export const TachyonShellMethods = {
           timeout: 4000,
         });
 
-        const statusParsed =
-          parseJsonObjectOutput<Tachyon.LeakCheckJobState>(
-            statusResponse.stdout,
-          );
+        const statusParsed = parseJsonObjectOutput<Tachyon.LeakCheckJobState>(
+          statusResponse.stdout,
+        );
 
         if (statusParsed) {
           if (typeof statusParsed.progress === 'number' && onProgress) {

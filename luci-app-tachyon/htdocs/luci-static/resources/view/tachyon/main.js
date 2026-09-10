@@ -11548,7 +11548,7 @@ function renderAvailableActions({
         classNames: ["cbi-button-action"],
         onClick: strategyFuzzer.onClick,
         icon: renderCirclePlayIcon24,
-        text: _("\u26A1 DPI Strategy Fuzzer"),
+        text: _("DPI Strategy Fuzzer"),
         loading: strategyFuzzer.loading,
         disabled: strategyFuzzer.disabled
       })
@@ -11568,7 +11568,7 @@ function renderAvailableActions({
         classNames: ["cbi-button-action"],
         onClick: testLeaks.onClick,
         icon: renderCircleCheckBigIcon24,
-        text: _("\u{1F6E1}\uFE0F IP & DNS Leak Test"),
+        text: _("IP & DNS Leak Test"),
         loading: testLeaks.loading,
         disabled: testLeaks.disabled
       })
@@ -15150,7 +15150,8 @@ function renderLeakCheckModal() {
   const retryBtn = renderButton({
     classNames: ["cbi-button-action"],
     onClick: startTest,
-    text: `\u{1F504} ${_("Re-run Leak Test")}`
+    icon: renderRotateCcwIcon24,
+    text: _("Re-run Leak Test")
   });
   const closeBtn = renderButton({
     classNames: ["cbi-button"],
