@@ -1815,7 +1815,8 @@ async function renderSectionsWidget() {
               type: 'button',
               id: 'dashboard-test-all-sections-button',
               class: 'btn',
-              style: 'padding: 4px 14px; height: 32px; font-size: 13px;',
+              style:
+                'display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; padding: 4px 14px; height: 32px; font-size: 13px;',
               disabled: isTestingAllSections ? true : undefined,
               click: () => {
                 void handleTestAllSections();
@@ -1824,11 +1825,7 @@ async function renderSectionsWidget() {
             isTestingAllSections
               ? [
                   renderLoaderCircleIcon24(),
-                  E(
-                    'span',
-                    { style: 'margin-left: 6px;' },
-                    _('Testing all sections...'),
-                  ),
+                  E('span', {}, _('Testing all sections...')),
                 ]
               : E('span', {}, _('Test all sections')),
           ),

@@ -213,6 +213,8 @@ export const initialDiagnosticStore: Pick<
     zapret: { status: null, latest_version: '', release_url: '' },
     zapret2: { status: null, latest_version: '', release_url: '' },
     byedpi: { status: null, latest_version: '', release_url: '' },
+    wdtt: { status: null, latest_version: '', release_url: '' },
+    olcrtc: { status: null, latest_version: '', release_url: '' },
     tailscale: { status: null, latest_version: '', release_url: '' },
     direct_bypass: { status: null, latest_version: '', release_url: '' },
     torrserver_direct: { status: null, latest_version: '', release_url: '' },

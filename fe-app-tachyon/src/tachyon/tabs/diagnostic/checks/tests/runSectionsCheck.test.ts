@@ -198,4 +198,90 @@ describe('runSectionsCheck', () => {
       }),
     );
   });
+
+  it('extracts minimum delay from group latency map response without delay field', async () => {
+    mocks.getDashboardSections.mockResolvedValue({
+      success: true,
+      data: [
+        {
+          withTagSelect: true,
+          code: 'main-out',
+          sectionName: 'main',
+          displayName: 'Main',
+          outbounds: [
+            {
+              code: 'main-softportal-out',
+              displayName: 'SoftPortal',
+              latency: 0,
+              type: 'URLTest',
+              selected: true,
+            },
+          ],
+        },
+      ],
+    });
+    mocks.getClashApiProxyLatency.mockResolvedValue({
+      success: true,
+      data: { 'node-1': 140, 'node-2': 45 },
+    });
+
+    await expect(runSectionsCheck()).resolves.toBeUndefined();
+
+    expect(mocks.updateCheckStore).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        state: 'success',
+        items: [
+          {
+            state: 'success',
+            key: 'Main',
+            value: '[SoftPortal] 45ms',
+          },
+        ],
+      }),
+    );
+  });
+
+  it('returns Not responding instead of undefinedms when latency response has no valid delay', async () => {
+    mocks.getDashboardSections.mockResolvedValue({
+      success: true,
+      data: [
+        {
+          withTagSelect: true,
+          code: 'main-out',
+          sectionName: 'main',
+          displayName: 'Main',
+          outbounds: [
+            {
+              code: 'main-softportal-out',
+              displayName: 'SoftPortal',
+              latency: 0,
+              type: 'URLTest',
+              selected: true,
+            },
+          ],
+        },
+      ],
+    });
+    mocks.getClashApiProxyLatency.mockResolvedValue({
+      success: true,
+      data: {},
+    });
+
+    await expect(runSectionsCheck()).rejects.toThrow(
+      'Rule outbounds checks failed',
+    );
+
+    expect(mocks.updateCheckStore).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        state: 'error',
+        items: [
+          {
+            state: 'error',
+            key: 'Main',
+            value: '[SoftPortal] Not responding',
+          },
+        ],
+      }),
+    );
+  });
 });

@@ -1489,6 +1489,8 @@ function renderLoaderCircleIcon24() {
     {
       xmlns: NS,
       viewBox: "0 0 24 24",
+      width: "24",
+      height: "24",
       fill: "none",
       stroke: "currentColor",
       "stroke-width": "2",
@@ -6413,6 +6415,8 @@ var initialDiagnosticStore = {
     zapret: { status: null, latest_version: "", release_url: "" },
     zapret2: { status: null, latest_version: "", release_url: "" },
     byedpi: { status: null, latest_version: "", release_url: "" },
+    wdtt: { status: null, latest_version: "", release_url: "" },
+    olcrtc: { status: null, latest_version: "", release_url: "" },
     tailscale: { status: null, latest_version: "", release_url: "" },
     direct_bypass: { status: null, latest_version: "", release_url: "" },
     torrserver_direct: { status: null, latest_version: "", release_url: "" }
@@ -9131,7 +9135,7 @@ async function renderSectionsWidget() {
           type: "button",
           id: "dashboard-test-all-sections-button",
           class: "btn",
-          style: "padding: 4px 14px; height: 32px; font-size: 13px;",
+          style: "display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; padding: 4px 14px; height: 32px; font-size: 13px;",
           disabled: isTestingAllSections ? true : void 0,
           click: () => {
             void handleTestAllSections();
@@ -9139,11 +9143,7 @@ async function renderSectionsWidget() {
         },
         isTestingAllSections ? [
           renderLoaderCircleIcon24(),
-          E(
-            "span",
-            { style: "margin-left: 6px;" },
-            _("Testing all sections...")
-          )
+          E("span", {}, _("Testing all sections..."))
         ] : E("span", {}, _("Test all sections"))
       )
     ]
@@ -9773,6 +9773,27 @@ var styles = `
 }
 
 .tachyon_dashboard-page .btn.dashboard-sections-grid-item-test-latency[disabled] {
+    cursor: not-allowed;
+    opacity: 0.65;
+}
+
+#dashboard-test-all-sections-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    white-space: nowrap;
+    vertical-align: middle;
+}
+
+#dashboard-test-all-sections-button svg {
+    width: 15px;
+    height: 15px;
+    display: block;
+    flex: 0 0 15px;
+}
+
+#dashboard-test-all-sections-button[disabled] {
     cursor: not-allowed;
     opacity: 0.65;
 }
@@ -15605,12 +15626,25 @@ async function runSectionsCheck() {
             selectedOutbound2.code,
             section.latencyTestTimeout
           );
-          const proxySuccess = latencyProxy2.success && !latencyProxy2.data.message;
+          const proxySuccess = latencyProxy2.success && !latencyProxy2.data?.message;
           if (proxySuccess) {
-            return {
-              state: "success",
-              latency: `[${selectedOutbound2.displayName ?? ""}] ${latencyProxy2.data.delay}ms`
-            };
+            const delay = latencyProxy2.data?.delay;
+            if (typeof delay === "number") {
+              return {
+                state: "success",
+                latency: `[${selectedOutbound2.displayName ?? ""}] ${delay}ms`
+              };
+            }
+            const groupDelays = Object.values(latencyProxy2.data || {}).filter(
+              (v) => typeof v === "number" && v > 0
+            );
+            if (groupDelays.length > 0) {
+              const minDelay = Math.min(...groupDelays);
+              return {
+                state: "success",
+                latency: `[${selectedOutbound2.displayName ?? ""}] ${minDelay}ms`
+              };
+            }
           }
           return {
             state: "error",
@@ -15620,12 +15654,12 @@ async function runSectionsCheck() {
         const latencyGroup = await TachyonShellMethods.getClashApiGroupLatency(
           section.code
         );
-        const success2 = latencyGroup.success && !latencyGroup.data.message;
+        const success2 = latencyGroup.success && !latencyGroup.data?.message;
         if (success2) {
           const latencyValues = Object.values(latencyGroup.data);
           const sectionState = isSubscription ? getSubscriptionLatencyState(latencyValues) : "success";
           const selectedProxyDelay = latencyGroup.data?.[selectedOutbound2?.code ?? ""];
-          if (selectedProxyDelay) {
+          if (typeof selectedProxyDelay === "number") {
             return {
               state: sectionState,
               latency: `[${selectedOutbound2?.displayName ?? ""}] ${selectedProxyDelay}ms`
@@ -15678,12 +15712,24 @@ async function runSectionsCheck() {
         section.code,
         section.latencyTestTimeout
       );
-      const success = latencyProxy.success && !latencyProxy.data.message;
+      const success = latencyProxy.success && !latencyProxy.data?.message;
       if (success) {
-        return {
-          state: "success",
-          latency: `${latencyProxy.data.delay} ms`
-        };
+        const delay = latencyProxy.data?.delay;
+        if (typeof delay === "number") {
+          return {
+            state: "success",
+            latency: `${delay} ms`
+          };
+        }
+        const groupDelays = Object.values(latencyProxy.data || {}).filter(
+          (v) => typeof v === "number" && v > 0
+        );
+        if (groupDelays.length > 0) {
+          return {
+            state: "success",
+            latency: `${Math.min(...groupDelays)} ms`
+          };
+        }
       }
       if (section.action === "vpn" && selectedOutbound?.runtimeAvailable) {
         return {
@@ -20697,6 +20743,10 @@ function getComponentCardTitle(component) {
       return "Zapret2";
     case "byedpi":
       return "ByeDPI";
+    case "wdtt":
+      return "WDTT";
+    case "olcrtc":
+      return "OlcRTC";
     case "tailscale":
       return "Tailscale";
     default:
@@ -20716,6 +20766,10 @@ function getComponentCurrentVersion(component) {
       return sys.zapret2_version;
     case "byedpi":
       return sys.byedpi_version;
+    case "wdtt":
+      return sys.wdtt_version;
+    case "olcrtc":
+      return sys.olcrtc_version;
     case "tailscale":
       return sys.tailscale_version;
     default:
@@ -20908,7 +20962,9 @@ function notifyActionProvidersAvailabilityChanged(systemInfo) {
       detail: {
         zapretInstalled: Boolean(systemInfo.zapret_installed),
         zapret2Installed: Boolean(systemInfo.zapret2_installed),
-        byedpiInstalled: Boolean(systemInfo.byedpi_installed)
+        byedpiInstalled: Boolean(systemInfo.byedpi_installed),
+        wdttInstalled: Boolean(systemInfo.wdtt_installed),
+        olcrtcInstalled: Boolean(systemInfo.olcrtc_installed)
       }
     })
   );
@@ -21014,6 +21070,26 @@ function patchSystemInfoAfterMutation(result) {
       nextSystemInfo.byedpi_version = version;
     }
   }
+  if (result.component === "wdtt") {
+    nextSystemInfo.providerInfoLoaded = true;
+    if (result.action === "remove") {
+      nextSystemInfo.wdtt_installed = 0;
+      nextSystemInfo.wdtt_version = "not installed";
+    } else {
+      nextSystemInfo.wdtt_installed = 1;
+      nextSystemInfo.wdtt_version = version;
+    }
+  }
+  if (result.component === "olcrtc") {
+    nextSystemInfo.providerInfoLoaded = true;
+    if (result.action === "remove") {
+      nextSystemInfo.olcrtc_installed = 0;
+      nextSystemInfo.olcrtc_version = "not installed";
+    } else {
+      nextSystemInfo.olcrtc_installed = 1;
+      nextSystemInfo.olcrtc_version = version;
+    }
+  }
   if (result.component === "direct_bypass") {
     nextSystemInfo.direct_bypass_enabled = result.action === "enable" ? 1 : 0;
   }
@@ -21025,7 +21101,7 @@ function patchSystemInfoAfterMutation(result) {
   store.set({
     diagnosticsSystemInfo: normalizedSystemInfo
   });
-  if (result.component === "zapret" || result.component === "zapret2" || result.component === "byedpi") {
+  if (result.component === "zapret" || result.component === "zapret2" || result.component === "byedpi" || result.component === "wdtt" || result.component === "olcrtc") {
     notifyActionProvidersAvailabilityChanged(normalizedSystemInfo);
   }
 }
@@ -21403,6 +21479,10 @@ function getComponentInstallKey(component) {
       return "zapret2Install";
     case "byedpi":
       return "byedpiInstall";
+    case "wdtt":
+      return "wdttInstall";
+    case "olcrtc":
+      return "olcrtcInstall";
     case "tailscale":
       return "tailscaleInstall";
     default:
@@ -21435,6 +21515,10 @@ function getComponentBackupVersion(component) {
       return sys.zapret2_backup_version || "";
     case "byedpi":
       return sys.byedpi_backup_version || "";
+    case "wdtt":
+      return sys.wdtt_backup_version || "";
+    case "olcrtc":
+      return sys.olcrtc_backup_version || "";
     case "tailscale":
       return sys.tailscale_backup_version || "";
     default:
@@ -21483,6 +21567,8 @@ var COMPONENT_REPO_URLS = {
   zapret: "https://github.com/remittor/zapret-openwrt",
   zapret2: "https://github.com/Dushnilin/zapret2-openwrt",
   byedpi: "https://github.com/DPITrickster/ByeDPI-OpenWrt",
+  wdtt: "https://github.com/SpaceNeuroX/qwdtt-openwrt",
+  olcrtc: "https://github.com/alekvol/openwrt-olcrtc",
   tailscale: "https://openwrt.org/packages/pkgdata/tailscale",
   direct_bypass: "",
   torrserver_direct: ""
@@ -21495,6 +21581,8 @@ function getComponentCards() {
   const zapretInstalled = Boolean(systemInfo.zapret_installed);
   const zapret2Installed = Boolean(systemInfo.zapret2_installed);
   const byedpiInstalled = Boolean(systemInfo.byedpi_installed);
+  const wdttInstalled = Boolean(systemInfo.wdtt_installed);
+  const olcrtcInstalled = Boolean(systemInfo.olcrtc_installed);
   const tailscaleInstalled = Boolean(systemInfo.tailscale_installed);
   const singBoxInstalled = !isNotInstalled(systemInfo.sing_box_version);
   const singBoxStable = singBoxInstalled && !systemInfo.sing_box_extended && !systemInfo.sing_box_tiny;
@@ -21592,6 +21680,22 @@ function getComponentCards() {
     installKey: "byedpiInstall",
     removeKey: "byedpiRemove",
     rollbackKey: "byedpiRollback"
+  });
+  const wdttActions = getOptionalComponentActions({
+    component: "wdtt",
+    installed: wdttInstalled,
+    checkKey: "wdttCheck",
+    installKey: "wdttInstall",
+    removeKey: "wdttRemove",
+    rollbackKey: "wdttRollback"
+  });
+  const olcrtcActions = getOptionalComponentActions({
+    component: "olcrtc",
+    installed: olcrtcInstalled,
+    checkKey: "olcrtcCheck",
+    installKey: "olcrtcInstall",
+    removeKey: "olcrtcRemove",
+    rollbackKey: "olcrtcRollback"
   });
   const tailscaleActions = getOptionalComponentActions({
     component: "tailscale",
@@ -21713,6 +21817,28 @@ function getComponentCards() {
       releaseUrl: getGitHubReleaseUrl("byedpi"),
       repoUrl: COMPONENT_REPO_URLS.byedpi,
       actions: byedpiActions
+    },
+    {
+      component: "wdtt",
+      column: 1,
+      title: "WDTT",
+      version: systemInfoLoading ? _("Loading...") : wdttInstalled ? systemInfo.wdtt_version : _("Not installed"),
+      latestVersion: getLatestVersion("wdtt"),
+      releaseUrl: getGitHubReleaseUrl("wdtt"),
+      repoUrl: COMPONENT_REPO_URLS.wdtt,
+      actions: wdttActions,
+      supportsVersions: true
+    },
+    {
+      component: "olcrtc",
+      column: 1,
+      title: "OlcRTC",
+      version: systemInfoLoading ? _("Loading...") : olcrtcInstalled ? systemInfo.olcrtc_version : _("Not installed"),
+      latestVersion: getLatestVersion("olcrtc"),
+      releaseUrl: getGitHubReleaseUrl("olcrtc"),
+      repoUrl: COMPONENT_REPO_URLS.olcrtc,
+      actions: olcrtcActions,
+      supportsVersions: true
     },
     {
       component: "tailscale",

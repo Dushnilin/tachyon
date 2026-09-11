@@ -1353,8 +1353,8 @@ function resolve_wdtt_release(arch, tag) {
     let asset_ext = is_apk() ? "apk" : "ipk";
     let release_series = trim(helper_output("openwrt-release-series", [ "/etc/openwrt_release" ]));
     let releases_json = (tag != null && tag != "") ?
-        fetch_github_release_by_tag_json("ret_dev", "wdtt", tag) :
-        fetch_github_releases_json("ret_dev", "wdtt", "30");
+        fetch_github_release_by_tag_json("SpaceNeuroX", "qwdtt-openwrt", tag) :
+        fetch_github_releases_json("SpaceNeuroX", "qwdtt-openwrt", "30");
     if (releases_json != "") {
         let resolved = trim(helper_output_input(releases_json, "wdtt-select-asset", [ release_series, asset_ext, arch.candidates ]));
         let fields = split(resolved, "\t");
@@ -1375,8 +1375,8 @@ function resolve_wdtt_release(arch, tag) {
         return {
             arch: distrib_arch,
             package_name: pkg_name,
-            package_url: "https://github.com/ret_dev/wdtt/releases/download/" + tag + "/" + pkg_name,
-            release_url: "https://github.com/ret_dev/wdtt/releases/tag/" + tag,
+            package_url: "https://github.com/SpaceNeuroX/qwdtt-openwrt/releases/download/" + tag + "/" + pkg_name,
+            release_url: "https://github.com/SpaceNeuroX/qwdtt-openwrt/releases/tag/" + tag,
             version: tag
         };
     }
@@ -1387,8 +1387,8 @@ function resolve_olcrtc_release(arch, tag) {
     let asset_ext = is_apk() ? "apk" : "ipk";
     let release_series = trim(helper_output("openwrt-release-series", [ "/etc/openwrt_release" ]));
     let releases_json = (tag != null && tag != "") ?
-        fetch_github_release_by_tag_json("ret_dev", "olcrtc", tag) :
-        fetch_github_releases_json("ret_dev", "olcrtc", "30");
+        fetch_github_release_by_tag_json("alekvol", "openwrt-olcrtc", tag) :
+        fetch_github_releases_json("alekvol", "openwrt-olcrtc", "30");
     if (releases_json != "") {
         let resolved = trim(helper_output_input(releases_json, "olcrtc-select-asset", [ release_series, asset_ext, arch.candidates ]));
         let fields = split(resolved, "\t");
@@ -1409,8 +1409,8 @@ function resolve_olcrtc_release(arch, tag) {
         return {
             arch: distrib_arch,
             package_name: pkg_name,
-            package_url: "https://github.com/ret_dev/olcrtc/releases/download/" + tag + "/" + pkg_name,
-            release_url: "https://github.com/ret_dev/olcrtc/releases/tag/" + tag,
+            package_url: "https://github.com/alekvol/openwrt-olcrtc/releases/download/" + tag + "/" + pkg_name,
+            release_url: "https://github.com/alekvol/openwrt-olcrtc/releases/tag/" + tag,
             version: tag
         };
     }
@@ -3358,6 +3358,10 @@ function list_component_releases(component, count) {
         owner = "Dushnilin"; repo = "zapret2-openwrt";
     } else if (component == "byedpi") {
         owner = "DPITrickster"; repo = "ByeDPI-OpenWrt";
+    } else if (component == "wdtt") {
+        owner = "SpaceNeuroX"; repo = "qwdtt-openwrt";
+    } else if (component == "olcrtc") {
+        owner = "alekvol"; repo = "openwrt-olcrtc";
     } else {
         print("[]\n"); return;
     }
@@ -3410,6 +3414,10 @@ function install_component_version(component, tag) {
         install_zapret2("install", tag);
     } else if (component == "byedpi") {
         install_byedpi("install", tag);
+    } else if (component == "wdtt") {
+        install_wdtt("install", tag);
+    } else if (component == "olcrtc") {
+        install_olcrtc("install", tag);
     } else {
         action_fail(component, "install_version", "Component " + component + " does not support version installation");
     }

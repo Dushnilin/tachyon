@@ -70,6 +70,10 @@ function getComponentCardTitle(component: Tachyon.ComponentName): string {
       return 'Zapret2';
     case 'byedpi':
       return 'ByeDPI';
+    case 'wdtt':
+      return 'WDTT';
+    case 'olcrtc':
+      return 'OlcRTC';
     case 'tailscale':
       return 'Tailscale';
     default:
@@ -92,6 +96,10 @@ function getComponentCurrentVersion(
       return sys.zapret2_version;
     case 'byedpi':
       return sys.byedpi_version;
+    case 'wdtt':
+      return sys.wdtt_version;
+    case 'olcrtc':
+      return sys.olcrtc_version;
     case 'tailscale':
       return sys.tailscale_version;
     default:
@@ -396,6 +404,8 @@ function notifyActionProvidersAvailabilityChanged(
         zapretInstalled: Boolean(systemInfo.zapret_installed),
         zapret2Installed: Boolean(systemInfo.zapret2_installed),
         byedpiInstalled: Boolean(systemInfo.byedpi_installed),
+        wdttInstalled: Boolean(systemInfo.wdtt_installed),
+        olcrtcInstalled: Boolean(systemInfo.olcrtc_installed),
       },
     }),
   );
@@ -527,6 +537,30 @@ function patchSystemInfoAfterMutation(result: Tachyon.ComponentActionResult) {
     }
   }
 
+  if (result.component === 'wdtt') {
+    nextSystemInfo.providerInfoLoaded = true;
+
+    if (result.action === 'remove') {
+      nextSystemInfo.wdtt_installed = 0;
+      nextSystemInfo.wdtt_version = 'not installed';
+    } else {
+      nextSystemInfo.wdtt_installed = 1;
+      nextSystemInfo.wdtt_version = version;
+    }
+  }
+
+  if (result.component === 'olcrtc') {
+    nextSystemInfo.providerInfoLoaded = true;
+
+    if (result.action === 'remove') {
+      nextSystemInfo.olcrtc_installed = 0;
+      nextSystemInfo.olcrtc_version = 'not installed';
+    } else {
+      nextSystemInfo.olcrtc_installed = 1;
+      nextSystemInfo.olcrtc_version = version;
+    }
+  }
+
   if (result.component === 'direct_bypass') {
     nextSystemInfo.direct_bypass_enabled = result.action === 'enable' ? 1 : 0;
   }
@@ -546,7 +580,9 @@ function patchSystemInfoAfterMutation(result: Tachyon.ComponentActionResult) {
   if (
     result.component === 'zapret' ||
     result.component === 'zapret2' ||
-    result.component === 'byedpi'
+    result.component === 'byedpi' ||
+    result.component === 'wdtt' ||
+    result.component === 'olcrtc'
   ) {
     notifyActionProvidersAvailabilityChanged(normalizedSystemInfo);
   }
@@ -1043,6 +1079,10 @@ function getComponentInstallKey(
       return 'zapret2Install';
     case 'byedpi':
       return 'byedpiInstall';
+    case 'wdtt':
+      return 'wdttInstall';
+    case 'olcrtc':
+      return 'olcrtcInstall';
     case 'tailscale':
       return 'tailscaleInstall';
     default:
@@ -1086,6 +1126,10 @@ function getComponentBackupVersion(component: Tachyon.ComponentName): string {
       return sys.zapret2_backup_version || '';
     case 'byedpi':
       return sys.byedpi_backup_version || '';
+    case 'wdtt':
+      return sys.wdtt_backup_version || '';
+    case 'olcrtc':
+      return sys.olcrtc_backup_version || '';
     case 'tailscale':
       return sys.tailscale_backup_version || '';
     default:
@@ -1115,7 +1159,7 @@ function getOptionalComponentActions({
   removeKey,
   rollbackKey,
 }: {
-  component: 'zapret' | 'zapret2' | 'byedpi' | 'tailscale';
+  component: 'zapret' | 'zapret2' | 'byedpi' | 'wdtt' | 'olcrtc' | 'tailscale';
   installed: boolean;
   checkKey: UpdatesActionKey;
   installKey: UpdatesActionKey;
@@ -1151,6 +1195,8 @@ const COMPONENT_REPO_URLS: Record<Tachyon.ComponentName, string> = {
   zapret: 'https://github.com/remittor/zapret-openwrt',
   zapret2: 'https://github.com/Dushnilin/zapret2-openwrt',
   byedpi: 'https://github.com/DPITrickster/ByeDPI-OpenWrt',
+  wdtt: 'https://github.com/SpaceNeuroX/qwdtt-openwrt',
+  olcrtc: 'https://github.com/alekvol/openwrt-olcrtc',
   tailscale: 'https://openwrt.org/packages/pkgdata/tailscale',
   direct_bypass: '',
   torrserver_direct: '',
@@ -1164,6 +1210,8 @@ function getComponentCards(): ComponentCard[] {
   const zapretInstalled = Boolean(systemInfo.zapret_installed);
   const zapret2Installed = Boolean(systemInfo.zapret2_installed);
   const byedpiInstalled = Boolean(systemInfo.byedpi_installed);
+  const wdttInstalled = Boolean(systemInfo.wdtt_installed);
+  const olcrtcInstalled = Boolean(systemInfo.olcrtc_installed);
   const tailscaleInstalled = Boolean(systemInfo.tailscale_installed);
   const singBoxInstalled = !isNotInstalled(systemInfo.sing_box_version);
   const singBoxStable =
@@ -1274,6 +1322,22 @@ function getComponentCards(): ComponentCard[] {
     installKey: 'byedpiInstall',
     removeKey: 'byedpiRemove',
     rollbackKey: 'byedpiRollback',
+  });
+  const wdttActions = getOptionalComponentActions({
+    component: 'wdtt',
+    installed: wdttInstalled,
+    checkKey: 'wdttCheck',
+    installKey: 'wdttInstall',
+    removeKey: 'wdttRemove',
+    rollbackKey: 'wdttRollback',
+  });
+  const olcrtcActions = getOptionalComponentActions({
+    component: 'olcrtc',
+    installed: olcrtcInstalled,
+    checkKey: 'olcrtcCheck',
+    installKey: 'olcrtcInstall',
+    removeKey: 'olcrtcRemove',
+    rollbackKey: 'olcrtcRollback',
   });
   const tailscaleActions = getOptionalComponentActions({
     component: 'tailscale',
@@ -1442,6 +1506,36 @@ function getComponentCards(): ComponentCard[] {
       releaseUrl: getGitHubReleaseUrl('byedpi'),
       repoUrl: COMPONENT_REPO_URLS.byedpi,
       actions: byedpiActions,
+    },
+    {
+      component: 'wdtt',
+      column: 1,
+      title: 'WDTT',
+      version: systemInfoLoading
+        ? _('Loading...')
+        : wdttInstalled
+          ? systemInfo.wdtt_version
+          : _('Not installed'),
+      latestVersion: getLatestVersion('wdtt'),
+      releaseUrl: getGitHubReleaseUrl('wdtt'),
+      repoUrl: COMPONENT_REPO_URLS.wdtt,
+      actions: wdttActions,
+      supportsVersions: true,
+    },
+    {
+      component: 'olcrtc',
+      column: 1,
+      title: 'OlcRTC',
+      version: systemInfoLoading
+        ? _('Loading...')
+        : olcrtcInstalled
+          ? systemInfo.olcrtc_version
+          : _('Not installed'),
+      latestVersion: getLatestVersion('olcrtc'),
+      releaseUrl: getGitHubReleaseUrl('olcrtc'),
+      repoUrl: COMPONENT_REPO_URLS.olcrtc,
+      actions: olcrtcActions,
+      supportsVersions: true,
     },
     {
       component: 'tailscale',

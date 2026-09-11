@@ -189,6 +189,27 @@ export const styles = `
     opacity: 0.65;
 }
 
+#dashboard-test-all-sections-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    white-space: nowrap;
+    vertical-align: middle;
+}
+
+#dashboard-test-all-sections-button svg {
+    width: 15px;
+    height: 15px;
+    display: block;
+    flex: 0 0 15px;
+}
+
+#dashboard-test-all-sections-button[disabled] {
+    cursor: not-allowed;
+    opacity: 0.65;
+}
+
 .tachyon_dashboard-page__outbound-grid {
     margin-top: 5px;
     display: grid;

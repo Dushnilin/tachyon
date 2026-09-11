@@ -738,6 +738,8 @@ export namespace Tachyon {
     | 'zapret'
     | 'zapret2'
     | 'byedpi'
+    | 'wdtt'
+    | 'olcrtc'
     | 'tailscale'
     | 'direct_bypass'
     | 'torrserver_direct';

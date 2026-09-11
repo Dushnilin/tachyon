@@ -77,13 +77,27 @@ export async function runSectionsCheck() {
               section.latencyTestTimeout,
             );
           const proxySuccess =
-            latencyProxy.success && !latencyProxy.data.message;
+            latencyProxy.success && !latencyProxy.data?.message;
 
           if (proxySuccess) {
-            return {
-              state: 'success',
-              latency: `[${selectedOutbound.displayName ?? ''}] ${latencyProxy.data.delay}ms`,
-            };
+            const delay = latencyProxy.data?.delay;
+            if (typeof delay === 'number') {
+              return {
+                state: 'success',
+                latency: `[${selectedOutbound.displayName ?? ''}] ${delay}ms`,
+              };
+            }
+
+            const groupDelays = Object.values(latencyProxy.data || {}).filter(
+              (v): v is number => typeof v === 'number' && v > 0,
+            );
+            if (groupDelays.length > 0) {
+              const minDelay = Math.min(...groupDelays);
+              return {
+                state: 'success',
+                latency: `[${selectedOutbound.displayName ?? ''}] ${minDelay}ms`,
+              };
+            }
           }
 
           return {
@@ -95,7 +109,7 @@ export async function runSectionsCheck() {
         const latencyGroup = await TachyonShellMethods.getClashApiGroupLatency(
           section.code,
         );
-        const success = latencyGroup.success && !latencyGroup.data.message;
+        const success = latencyGroup.success && !latencyGroup.data?.message;
 
         if (success) {
           const latencyValues = Object.values(latencyGroup.data);
@@ -106,7 +120,7 @@ export async function runSectionsCheck() {
           const selectedProxyDelay =
             latencyGroup.data?.[selectedOutbound?.code ?? ''];
 
-          if (selectedProxyDelay) {
+          if (typeof selectedProxyDelay === 'number') {
             return {
               state: sectionState,
               latency: `[${selectedOutbound?.displayName ?? ''}] ${selectedProxyDelay}ms`,
@@ -169,13 +183,26 @@ export async function runSectionsCheck() {
         section.latencyTestTimeout,
       );
 
-      const success = latencyProxy.success && !latencyProxy.data.message;
+      const success = latencyProxy.success && !latencyProxy.data?.message;
 
       if (success) {
-        return {
-          state: 'success',
-          latency: `${latencyProxy.data.delay} ms`,
-        };
+        const delay = latencyProxy.data?.delay;
+        if (typeof delay === 'number') {
+          return {
+            state: 'success',
+            latency: `${delay} ms`,
+          };
+        }
+
+        const groupDelays = Object.values(latencyProxy.data || {}).filter(
+          (v): v is number => typeof v === 'number' && v > 0,
+        );
+        if (groupDelays.length > 0) {
+          return {
+            state: 'success',
+            latency: `${Math.min(...groupDelays)} ms`,
+          };
+        }
       }
 
       if (section.action === 'vpn' && selectedOutbound?.runtimeAvailable) {
