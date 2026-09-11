@@ -254,6 +254,24 @@ function normalize_to_cidrs(items) {
     return result;
 }
 
+const CLOUDFLARE_SHARED_CIDRS = [
+    "104.16.0.0/12", "104.24.0.0/14", "172.64.0.0/13", "162.158.0.0/15",
+    "108.162.192.0/18", "190.93.240.0/20", "188.114.96.0/20", "197.234.240.0/22",
+    "198.41.128.0/17", "162.159.0.0/16", "173.245.48.0/20", "103.21.244.0/22",
+    "103.22.200.0/22", "103.31.4.0/22", "141.101.64.0/18",
+    "2606:4700::/32", "2400:cb00::/32", "2405:b500::/32", "2803:f800::/32",
+    "2a06:98c0::/29", "2c0f:f248::/32"
+];
+
+function is_cloudflare_shared_cidr(value) {
+    value = trim(as_string(value));
+    for (let c in CLOUDFLARE_SHARED_CIDRS) {
+        if (value == c)
+            return true;
+    }
+    return false;
+}
+
 return {
     valid_ipv4,
     valid_ipv4_cidr,
@@ -268,5 +286,8 @@ return {
     format_ipv6_tproxy_target,
     ipv6_supported,
     resolve_mac_to_ips,
-    normalize_to_cidrs
+    normalize_to_cidrs,
+    CLOUDFLARE_SHARED_CIDRS,
+    is_cloudflare_shared_cidr
 };
+

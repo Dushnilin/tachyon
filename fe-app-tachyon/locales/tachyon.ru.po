@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-11 18:51+0300\n"
-"PO-Revision-Date: 2026-09-11 18:51+0300\n"
+"POT-Creation-Date: 2026-09-11 22:54+0300\n"
+"PO-Revision-Date: 2026-09-11 22:54+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -25,6 +25,9 @@ msgstr "Списки .lst"
 
 msgid "(provider default)"
 msgstr "(по умолчанию провайдера)"
+
+msgid "+ add"
+msgstr "+ добавить"
 
 msgid "+ Add JSON outbound"
 msgstr "+ Добавить JSON outbound"
@@ -62,6 +65,9 @@ msgstr "⚠️ Если все Bootstrap DNS завершатся с ошибк�
 msgid "⚠️ If all Main DNS fail 3 times, queries will be sent to your ISP's DNS in plaintext. Only use as a last resort to prevent complete internet loss."
 msgstr "⚠️ Если все основные DNS завершатся с ошибкой 3 раза, запросы будут отправлены в DNS вашего провайдера в открытом виде. Используйте только в крайнем случае для предотвращения полной потери интернета."
 
+msgid "⚠️ Server received fakes"
+msgstr "⚠️ Сервер получил фейки"
+
 msgid "⚡ Fast (>1MB/s)"
 msgstr "⚡ Быстрые (>1 МБ/с)"
 
@@ -86,11 +92,17 @@ msgstr "✅ Только рабочие"
 msgid "✈️ Telegram Suite (Web + Bot API)"
 msgstr "✈️ Telegram (Веб + Bot API)"
 
+msgid "✓ 32KB Streamed"
+msgstr "✓ 32KB Прокачано"
+
 msgid "✔ Online"
 msgstr "✔ В сети"
 
 msgid "✔ Running"
 msgstr "✔ Работает"
+
+msgid "✗ Throttled at 16KB"
+msgstr "✗ Задушено на 16KB"
 
 msgid "✘ Offline"
 msgstr "✘ Не в сети"
@@ -169,12 +181,6 @@ msgstr "🟣 Twitch (Прямой эфир + HLS CDN)"
 
 msgid "127.0.0.1:4534 (sing-box mixed)"
 msgstr "127.0.0.1:4534 (смешанный sing-box)"
-
-msgid "Блокировка по IP (Таймаут TCP SYN)"
-msgstr "Блокировка по IP (Таймаут TCP SYN)"
-
-msgid "Обнаружена блокировка по IP! Ресурс блокируется на сетевом уровне (нет ответа на TCP SYN). Методы обхода DPI (Zapret / ByeDPI) бессильны для этого адреса — настройте маршрутизацию через прокси/VPN (Sing-box) для данного домена!"
-msgstr "Обнаружена блокировка по IP! Ресурс блокируется на сетевом уровне (нет ответа на TCP SYN). Методы обхода DPI (Zapret / ByeDPI) бессильны для этого адреса — настройте маршрутизацию через прокси/VPN (Sing-box) для данного домена!"
 
 msgid "Accept external proxy connections and route them with sing-box."
 msgstr "Принимать внешние прокси-подключения и маршрутизировать их через sing-box."
@@ -518,6 +524,9 @@ msgstr "Версия AmneziaWG"
 msgid "An unexpected error occurred during test"
 msgstr "Произошла непредвиденная ошибка во время проверки"
 
+msgid "Analysis inconclusive."
+msgstr "Анализ не дал однозначного результата."
+
 msgid "Anonymized support report copied to clipboard"
 msgstr "Анонимизированный отчет скопирован в буфер обмена"
 
@@ -754,6 +763,9 @@ msgstr "Заблокированные сайты"
 
 msgid "Blocked Sites (Domains)"
 msgstr "Заблокированные сайты (домены)"
+
+msgid "Blocked Sites (Only block domains specified below)"
+msgstr "Заблокированные сайты (Блокировать только указанные домены)"
 
 msgid "Blocks access to private/LAN IP addresses (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, etc.) for selected users before applying routing mode."
 msgstr "Блокирует доступ к приватным/локальным IP-адресам (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 и др.) для указанных пользователей перед применением режима маршрутизации."
@@ -1382,6 +1394,9 @@ msgstr "DNS"
 msgid "DNS Auto-Tuner & Benchmark"
 msgstr "Автоподбор и бенчмарк DNS"
 
+msgid "DNS Blocking"
+msgstr "Блокировка DNS"
+
 msgid "DNS Check Interval"
 msgstr "Интервал проверки DNS"
 
@@ -1417,6 +1432,9 @@ msgstr "Протокол DNS, используемый резолвером"
 
 msgid "DNS requests through section"
 msgstr "DNS-запросы через секцию"
+
+msgid "DNS resolution failed — likely DNS-level blocking or hijacking."
+msgstr "Сбой разрешения DNS — вероятно, блокировка или перехват на уровне DNS."
 
 msgid "DNS Rewrite TTL"
 msgstr "TTL DNS-записей"
@@ -1465,6 +1483,12 @@ msgstr "Таймаут недоступности DNS"
 
 msgid "DNS Upstream Resolver Analysis (bash.ws protocol)"
 msgstr "Анализ восходящих DNS-резолверов (протокол bash.ws)"
+
+msgid "DNS: Resolved %s to %s"
+msgstr "DNS: Разрешено %s в %s"
+
+msgid "DNS: Resolved to %s (no subnet rules matched)"
+msgstr "DNS: Разрешено в %s (нет совпадений по правилам подсетей)"
 
 msgid "Do not panic, everything can be fixed, just..."
 msgstr "Не паникуйте, всё можно исправить, просто..."
@@ -1567,6 +1591,9 @@ msgstr "Загружено"
 
 msgid "Downloading and applying rule sets and lists..."
 msgstr "Загрузка и применение наборов правил и списков..."
+
+msgid "DPI bandwidth throttling or delay detected — connection throttled during data transfer."
+msgstr "Обнаружено замедление DPI — соединение заблокировано или задушено при передаче данных."
 
 msgid "DPI Detected"
 msgstr "DPI обнаружен"
@@ -1729,6 +1756,9 @@ msgstr "Конец интервала расписания (например, 08
 
 msgid "End Time (HH:MM)"
 msgstr "Время окончания (ЧЧ:ММ)"
+
+msgid "endpoints OK"
+msgstr "эндпоинтов доступно"
 
 msgid "Enforce SafeSearch & YouTube Restricted Mode"
 msgstr "Безопасный поиск (SafeSearch) и строгий режим YouTube"
@@ -2747,8 +2777,14 @@ msgstr "IP-адреса (IP CIDR)"
 msgid "IP and DNS leak check timed out"
 msgstr "Время ожидания проверки утечек IP и DNS истекло"
 
+msgid "IP Block (TCP SYN Timeout)"
+msgstr "Блокировка по IP (Таймаут TCP SYN)"
+
 msgid "IP Frag Bounds (--ip-frag)"
 msgstr "Границы фрагментации IP (--ip-frag)"
+
+msgid "IP-level blocking detected! The resource is blocked at the network level (no TCP SYN response). DPI bypass methods (Zapret / ByeDPI) cannot bypass this address — configure proxy/VPN routing (Sing-box) for this domain!"
+msgstr "Обнаружена блокировка по IP! Ресурс блокируется на сетевом уровне (нет ответа на TCP SYN). Методы обхода DPI (Zapret / ByeDPI) бессильны для этого адреса — настройте маршрутизацию через прокси/VPN (Sing-box) для данного домена!"
 
 msgid "IPs"
 msgstr "IP"
@@ -3217,6 +3253,9 @@ msgstr "История бенчмарков пуста. Запустите бе�
 
 msgid "No benchmark results yet. Configure options and click \"Start Benchmark\"."
 msgstr "Результаты тестирования пока отсутствуют. Настройте параметры и нажмите \"Запустить тест\"."
+
+msgid "No Blocking Detected"
+msgstr "Блокировка не обнаружена"
 
 msgid "No check targets found in the configuration."
 msgstr "Цели для проверки не найдены в конфигурации."
@@ -4505,6 +4544,9 @@ msgstr "Настройки"
 msgid "Settings have been reset to defaults. The page will reload."
 msgstr "Настройки сброшены к значениям по умолчанию. Страница будет перезагружена."
 
+msgid "Shared CDN / Anycast Warning"
+msgstr "Предупреждение: общий диапазон CDN / Anycast"
+
 msgid "Shopping"
 msgstr "Магазины"
 
@@ -4772,6 +4814,12 @@ msgstr "Строгий ECH + DoQ DNS Enforcer"
 msgid "STUN (P2P Calls)"
 msgstr "STUN (P2P-звонки)"
 
+msgid "Subnet %s belongs to a shared Anycast/CDN range (%s). Third-party websites hosted on this CDN will also be routed through this section."
+msgstr "Подсеть %s входит в публичный Anycast/CDN-диапазон (%s). Сторонние сайты, размещенные на этом CDN, также будут направляться через эту секцию."
+
+msgid "Subnet %s is a shared Anycast/CDN range (%s). Third-party websites hosted on this CDN will also be routed through this section."
+msgstr "Подсеть %s является публичным Anycast/CDN-диапазоном (%s). Сторонние сайты, размещенные на этом CDN, также будут направляться через эту секцию."
+
 msgid "Subnets from the list will be extracted and added to nftables"
 msgstr "Подсети из списка будут извлечены и добавлены в nftables"
 
@@ -4940,6 +4988,9 @@ msgstr "Пакет Tailscale установлен, но ни одна серве
 msgid "Target"
 msgstr "Цель"
 
+msgid "Target accessible — no DPI blocking detected."
+msgstr "Цель доступна — блокировок DPI не обнаружено."
+
 msgid "Target Family Profiles"
 msgstr "Семейные профили"
 
@@ -4948,6 +4999,15 @@ msgstr "Область действия"
 
 msgid "Target Service / Suite"
 msgstr "Целевой сервис / Набор"
+
+msgid "TCP connect timed out before TLS handshake — host is blocked at the IP layer. DPI bypass cannot unblock this; route via Sing-box VPN/Proxy outbound instead."
+msgstr "Таймаут TCP-подключения до рукопожатия TLS — узел заблокирован на уровне IP. Методы обхода DPI не помогут; настройте маршрутизацию через прокси/VPN Sing-box."
+
+msgid "TCP Reset Injection"
+msgstr "Внедрение пакетов TCP Reset (RST)"
+
+msgid "TCP RST received from DPI — active TCP reset injection detected."
+msgstr "Получен TCP RST от ТСПУ/DPI — зафиксирована активная инъекция сброса соединения."
 
 msgid "TCP Window Sizes (wsize)"
 msgstr "Размеры окна TCP (wsize)"
@@ -5021,6 +5081,9 @@ msgstr "Тестирование стратегии"
 msgid "Testing URL"
 msgstr "URL проверки"
 
+msgid "Testing:"
+msgstr "Тестирование:"
+
 msgid "Testing..."
 msgstr "Тестирование..."
 
@@ -5086,6 +5149,9 @@ msgstr "Все настройки Tachyon будут удалены и восс�
 
 msgid "This will replace the current Tachyon settings with the snapshot"
 msgstr "Это заменит текущие настройки Tachyon на снапшот"
+
+msgid "Throttling / Deep Inspection"
+msgstr "Замедление / Глубокий анализ пакетов"
 
 msgid "Thu"
 msgstr "Чт"
@@ -5317,6 +5383,9 @@ msgstr "Неизвестный параметр ByeDPI: %s"
 
 msgid "Unknown country"
 msgstr "Неизвестная страна"
+
+msgid "Unknown DPI Pattern"
+msgstr "Неизвестный тип DPI"
 
 msgid "Unknown error"
 msgstr "Неизвестная ошибка"
@@ -5708,8 +5777,14 @@ msgstr "sing-box outbound для Zapret настроен"
 msgid "Zapret sing-box outbound is not configured"
 msgstr "sing-box outbound для Zapret не настроен"
 
+msgid "Zapret v1"
+msgstr "Zapret v1"
+
 msgid "Zapret v1 (nfqws)"
 msgstr "Zapret v1 (nfqws)"
+
+msgid "Zapret v2"
+msgstr "Zapret v2"
 
 msgid "Zapret v2 (nfqws2)"
 msgstr "Zapret v2 (nfqws2)"
@@ -5743,6 +5818,12 @@ msgstr "Правила маршрутизации sing-box для Zapret2 нас
 
 msgid "Zapret2 sing-box route rules are not configured"
 msgstr "Правила маршрутизации sing-box для Zapret2 не настроены"
+
+msgid "Блокировка по IP (Таймаут TCP SYN)"
+msgstr "Блокировка по IP (Таймаут TCP SYN)"
+
+msgid "Обнаружена блокировка по IP! Ресурс блокируется на сетевом уровне (нет ответа на TCP SYN). Методы обхода DPI (Zapret / ByeDPI) бессильны для этого адреса — настройте маршрутизацию через прокси/VPN (Sing-box) для данного домена!"
+msgstr "Обнаружена блокировка по IP! Ресурс блокируется на сетевом уровне (нет ответа на TCP SYN). Методы обхода DPI (Zapret / ByeDPI) бессильны для этого адреса — настройте маршрутизацию через прокси/VPN (Sing-box) для данного домена!"
 
 msgid "Block (RKN)"
 msgstr "RKN Block"
@@ -6505,72 +6586,6 @@ msgstr "Скачивание и обработка списков"
 
 msgid "Applying rules and subnet lists"
 msgstr "Применение правил и списков подсетей"
-
-msgid "+ add"
-msgstr "+ добавить"
-
-msgid "⚠️ Server received fakes"
-msgstr "⚠️ Сервер получил фейки"
-
-msgid "✓ 32KB Streamed"
-msgstr "✓ 32KB Прокачано"
-
-msgid "✗ Throttled at 16KB"
-msgstr "✗ Задушено на 16KB"
-
-msgid "Analysis inconclusive."
-msgstr "Анализ не дал однозначного результата."
-
-msgid "Blocked Sites (Only block domains specified below)"
-msgstr "Заблокированные сайты (Блокировать только указанные домены)"
-
-msgid "DNS Blocking"
-msgstr "Блокировка DNS"
-
-msgid "DNS resolution failed — likely DNS-level blocking or hijacking."
-msgstr "Сбой разрешения DNS — вероятно, блокировка или перехват на уровне DNS."
-
-msgid "DPI bandwidth throttling or delay detected — connection throttled during data transfer."
-msgstr "Обнаружено замедление DPI — соединение заблокировано или задушено при передаче данных."
-
-msgid "endpoints OK"
-msgstr "эндпоинтов доступно"
-
-msgid "IP Block (TCP SYN Timeout)"
-msgstr "Блокировка по IP (Таймаут TCP SYN)"
-
-msgid "IP-level blocking detected! The resource is blocked at the network level (no TCP SYN response). DPI bypass methods (Zapret / ByeDPI) cannot bypass this address — configure proxy/VPN routing (Sing-box) for this domain!"
-msgstr "Обнаружена блокировка по IP! Ресурс блокируется на сетевом уровне (нет ответа на TCP SYN). Методы обхода DPI (Zapret / ByeDPI) бессильны для этого адреса — настройте маршрутизацию через прокси/VPN (Sing-box) для данного домена!"
-
-msgid "No Blocking Detected"
-msgstr "Блокировка не обнаружена"
-
-msgid "Target accessible — no DPI blocking detected."
-msgstr "Цель доступна — блокировок DPI не обнаружено."
-
-msgid "TCP connect timed out before TLS handshake — host is blocked at the IP layer. DPI bypass cannot unblock this; route via Sing-box VPN/Proxy outbound instead."
-msgstr "Таймаут TCP-подключения до рукопожатия TLS — узел заблокирован на уровне IP. Методы обхода DPI не помогут; настройте маршрутизацию через прокси/VPN Sing-box."
-
-msgid "TCP Reset Injection"
-msgstr "Внедрение пакетов TCP Reset (RST)"
-
-msgid "TCP RST received from DPI — active TCP reset injection detected."
-msgstr "Получен TCP RST от ТСПУ/DPI — зафиксирована активная инъекция сброса соединения."
-
-msgid "Testing:"
-msgstr "Тестирование:"
-
-msgid "Throttling / Deep Inspection"
-msgstr "Замедление / Глубокий анализ пакетов"
-
-msgid "Unknown DPI Pattern"
-msgstr "Неизвестный тип DPI"
-
-msgid "Zapret v1"
-msgstr "Zapret v1"
-
-msgid "Zapret v2"
-msgstr "Zapret v2"
 
 msgid "Allow only: "
 msgstr "Разрешить только: "

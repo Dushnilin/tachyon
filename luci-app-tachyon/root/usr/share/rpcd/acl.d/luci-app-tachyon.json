@@ -59,6 +59,12 @@
         ],
         "/bin/cat": [
           "exec"
+        ],
+        "/usr/bin/nslookup": [
+          "exec"
+        ],
+        "/bin/busybox": [
+          "exec"
         ]
       },
       "ubus": {

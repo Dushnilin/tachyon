@@ -11238,26 +11238,171 @@ const ACTION_COLORS = {
   hosts: "#2ecc71",
 };
 
+const CLOUDFLARE_SHARED_CIDRS = [
+  "104.16.0.0/12",
+  "104.24.0.0/14",
+  "172.64.0.0/13",
+  "162.158.0.0/15",
+  "108.162.192.0/18",
+  "190.93.240.0/20",
+  "188.114.96.0/20",
+  "197.234.240.0/22",
+  "198.41.128.0/17",
+  "162.159.0.0/16",
+  "173.245.48.0/20",
+  "103.21.244.0/22",
+  "103.22.200.0/22",
+  "103.31.4.0/22",
+  "141.101.64.0/18",
+  "2606:4700::/32",
+  "2400:cb00::/32",
+  "2405:b500::/32",
+  "2803:f800::/32",
+  "2a06:98c0::/29",
+  "2c0f:f248::/32",
+];
+
 function ip4ToInt(ip) {
-  return (
-    ip
-      .split(".")
-      .reduce((int, octet) => (int << 8) + parseInt(octet, 10), 0) >>> 0
-  );
+  const octets = ip.split(".");
+  if (octets.length !== 4) return null;
+  let res = 0;
+  for (let i = 0; i < 4; i++) {
+    const oct = parseInt(octets[i], 10);
+    if (isNaN(oct) || oct < 0 || oct > 255) return null;
+    res = ((res << 8) + oct) >>> 0;
+  }
+  return res;
+}
+
+function ipv6ToBigInt(ip) {
+  try {
+    ip = ip.toLowerCase();
+    if (ip.includes(".")) {
+      const lastColon = ip.lastIndexOf(":");
+      if (lastColon === -1) return null;
+      const v4Part = ip.substring(lastColon + 1);
+      const v4Octets = v4Part.split(".");
+      if (v4Octets.length !== 4) return null;
+      const hexPart1 = (
+        (parseInt(v4Octets[0], 10) << 8) |
+        parseInt(v4Octets[1], 10)
+      ).toString(16);
+      const hexPart2 = (
+        (parseInt(v4Octets[2], 10) << 8) |
+        parseInt(v4Octets[3], 10)
+      ).toString(16);
+      ip = ip.substring(0, lastColon + 1) + hexPart1 + ":" + hexPart2;
+    }
+
+    let parts = ip.split("::");
+    if (parts.length > 2) return null;
+    let head = parts[0] ? parts[0].split(":").filter(Boolean) : [];
+    let tail =
+      parts.length === 2 && parts[1] ? parts[1].split(":").filter(Boolean) : [];
+    if (parts.length === 1 && head.length !== 8) return null;
+    if (parts.length === 2 && head.length + tail.length > 7) return null;
+
+    let middleCount = 8 - (head.length + tail.length);
+    let full = [...head];
+    for (let i = 0; i < middleCount; i++) full.push("0");
+    full = full.concat(tail);
+
+    let res = 0n;
+    for (let i = 0; i < 8; i++) {
+      let val = BigInt(parseInt(full[i], 16));
+      if (val < 0n || val > 0xffffn) return null;
+      res = (res << 16n) | val;
+    }
+    return res;
+  } catch (e) {
+    return null;
+  }
 }
 
 function ipMatchesCidr(ip, cidr) {
-  const parts = cidr.split("/");
-  const subnet = parts[0];
-  const bits = parts[1] ? parseInt(parts[1], 10) : 32;
+  if (!ip || !cidr) return false;
+  const parts = cidr.trim().split("/");
+  const subnet = parts[0].trim();
+  const bitsStr = parts[1];
 
-  if (bits === 0) return true;
+  const isV6 = ip.includes(":") || subnet.includes(":");
+  if (isV6) {
+    const bits = bitsStr !== undefined ? parseInt(bitsStr, 10) : 128;
+    if (isNaN(bits) || bits < 0 || bits > 128) return false;
+    if (bits === 0) return true;
+    const ipBig = ipv6ToBigInt(ip);
+    const subnetBig = ipv6ToBigInt(subnet);
+    if (ipBig === null || subnetBig === null) return false;
+    const shift = 128n - BigInt(bits);
+    return (ipBig >> shift) === (subnetBig >> shift);
+  } else {
+    const bits = bitsStr !== undefined ? parseInt(bitsStr, 10) : 32;
+    if (isNaN(bits) || bits < 0 || bits > 32) return false;
+    if (bits === 0) return true;
+    const ipInt = ip4ToInt(ip);
+    const subnetInt = ip4ToInt(subnet);
+    if (ipInt === null || subnetInt === null) return false;
+    const mask = (0xffffffff << (32 - bits)) >>> 0;
+    return (ipInt & mask) === (subnetInt & mask);
+  }
+}
 
-  const ipInt = ip4ToInt(ip);
-  const subnetInt = ip4ToInt(subnet);
+function getSharedCdnWarning(cidr) {
+  if (!cidr) return null;
+  const normalized = cidr.trim();
+  for (const cfCidr of CLOUDFLARE_SHARED_CIDRS) {
+    if (normalized === cfCidr) {
+      return _(
+        "Subnet %s is a shared Anycast/CDN range (%s). Third-party websites hosted on this CDN will also be routed through this section.",
+      ).format(normalized, "Cloudflare");
+    }
+  }
+  const ipOnly = normalized.split("/")[0];
+  for (const cfCidr of CLOUDFLARE_SHARED_CIDRS) {
+    if (ipMatchesCidr(ipOnly, cfCidr)) {
+      return _(
+        "Subnet %s belongs to a shared Anycast/CDN range (%s). Third-party websites hosted on this CDN will also be routed through this section.",
+      ).format(normalized, `Cloudflare ${cfCidr}`);
+    }
+  }
+  return null;
+}
 
-  const mask = (~0 << (32 - bits)) >>> 0;
-  return (ipInt & mask) === (subnetInt & mask);
+let _subnetListCache = {};
+
+async function readSubnetListFile(service) {
+  if (!service) return [];
+  if (_subnetListCache[service]) return _subnetListCache[service];
+
+  const paths = [
+    `/tmp/sing-box/rulesets/community-subnets-${service}.lst`,
+    `/etc/tachyon/rulesets/community-subnets-${service}.lst`,
+  ];
+
+  for (const p of paths) {
+    try {
+      let content = await fs.read(p).catch(() => null);
+      if (!content) {
+        const res = await fs.exec("/bin/cat", [p]).catch(() => null);
+        if (res && res.code === 0 && res.stdout) {
+          content = res.stdout;
+        }
+      }
+      if (content) {
+        const lines = content
+          .split("\n")
+          .map((l) => l.trim().replace(/\r/g, ""))
+          .filter((l) => l && !l.startsWith("#"));
+        if (lines.length > 0) {
+          _subnetListCache[service] = lines;
+          return lines;
+        }
+      }
+    } catch (e) {}
+  }
+
+  _subnetListCache[service] = [];
+  return [];
 }
 
 function matchIpInCidrs(ip, cidrs) {
@@ -11470,6 +11615,48 @@ async function matchCommunityList(secName, community, query, type) {
   return false;
 }
 
+async function resolveDomainToIps(domain) {
+  domain = (domain || "").trim().toLowerCase();
+  if (!domain) return [];
+
+  // 1. Try Tachyon CLI: /usr/bin/tachyon resolve_domain <domain>
+  try {
+    const res = await fs
+      .exec("/usr/bin/tachyon", ["resolve_domain", domain])
+      .catch(() => null);
+    if (res && res.code === 0 && res.stdout) {
+      const parsed = JSON.parse(res.stdout.trim());
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+    }
+  } catch (e) {}
+
+  // 2. Fallback: nslookup via /usr/bin/nslookup
+  try {
+    const res = await fs
+      .exec("/usr/bin/nslookup", [domain])
+      .catch(() => null);
+    if (res && res.stdout) {
+      const ips = [];
+      const lines = res.stdout.split("\n");
+      for (const line of lines) {
+        const trimmed = line.trim();
+        const m = trimmed.match(/^Address\s*\d*:\s*([0-9a-fA-F:.]+)/);
+        if (m) {
+          const addr = m[1].split("#")[0].trim();
+          if (!addr.startsWith("127.") && addr !== "::1" && addr !== "") {
+            if (!ips.includes(addr)) ips.push(addr);
+          }
+        }
+      }
+      if (ips.length > 0) return ips;
+    }
+  } catch (e) {}
+
+  return [];
+}
+
 async function performTrace(query) {
   query = (query || "").trim();
   if (!query) return { matched: false };
@@ -11645,6 +11832,22 @@ async function performTrace(query) {
           uci.get(UCI_PACKAGE, secName, "community_lists"),
         );
         for (const community of communityLists) {
+          const subnets = await readSubnetListFile(community);
+          const matchedCidr = matchIpInCidrs(queryForMatching, subnets);
+          if (matchedCidr) {
+            return {
+              matched: true,
+              sectionName: secName,
+              label: label,
+              action: action,
+              ruleType: "Community Subnets (" + community + ")",
+              pattern: matchedCidr,
+              matchedIp: queryForMatching,
+              priority: i + 1,
+              totalSections: totalSections,
+              sharedCdnWarning: getSharedCdnWarning(matchedCidr),
+            };
+          }
           if (
             await matchCommunityList(secName, community, queryForMatching, type)
           ) {
@@ -11776,6 +11979,149 @@ async function performTrace(query) {
           };
         }
       }
+    }
+  }
+
+  if (type === "domain") {
+    // No direct domain rule matched. Resolve domain to IP addresses and check IP routing rules
+    const resolvedIps = await resolveDomainToIps(queryForMatching);
+    if (resolvedIps && resolvedIps.length > 0) {
+      for (let i = 0; i < sections.length; i++) {
+        const sec = sections[i];
+        const secName = sec[".name"];
+        if (uci.get(UCI_PACKAGE, secName, "enabled") === "0") continue;
+
+        const label = uci.get(UCI_PACKAGE, secName, "label") || secName;
+        const action = uci.get(UCI_PACKAGE, secName, "action") || "connection";
+
+        const ipCidr = normalizeOptionValues(
+          uci.get(UCI_PACKAGE, secName, "ip_cidr"),
+        );
+        const listsRuleset = await readRulesetFile(
+          `/tmp/sing-box/rulesets/${secName}-lists-ruleset.json`,
+        );
+        const remoteSubnetRuleset = await readRulesetFile(
+          `/tmp/sing-box/rulesets/${secName}-remote-subnet-ruleset.json`,
+        );
+        const communitySubnetsEnabled =
+          uci.get(UCI_PACKAGE, secName, "community_subnets") !== "0";
+        const communityLists = communitySubnetsEnabled
+          ? normalizeOptionValues(
+              uci.get(UCI_PACKAGE, secName, "community_lists"),
+            )
+          : [];
+
+        for (const ip of resolvedIps) {
+          const matchedCidr = matchIpInCidrs(ip, ipCidr);
+          if (matchedCidr) {
+            return {
+              matched: true,
+              sectionName: secName,
+              label: label,
+              action: action,
+              ruleType: "Resolved IP -> IPs (UCI)",
+              pattern: `${matchedCidr} (resolved: ${ip})`,
+              resolvedDomain: queryForMatching,
+              resolvedIps: resolvedIps,
+              matchedIp: ip,
+              priority: i + 1,
+              totalSections: totalSections,
+              sharedCdnWarning: getSharedCdnWarning(matchedCidr),
+            };
+          }
+
+          if (listsRuleset) {
+            const matchedListIp = matchIpInRuleset(ip, listsRuleset);
+            if (matchedListIp) {
+              const domainIpLists = normalizeOptionValues(
+                uci.get(UCI_PACKAGE, secName, "domain_ip_lists"),
+              );
+              return {
+                matched: true,
+                sectionName: secName,
+                label: label,
+                action: action,
+                ruleType: "Resolved IP -> IP/Subnet List (community/plain)",
+                pattern: `${matchedListIp} (resolved: ${ip})`,
+                sourceUrls: domainIpLists,
+                resolvedDomain: queryForMatching,
+                resolvedIps: resolvedIps,
+                matchedIp: ip,
+                priority: i + 1,
+                totalSections: totalSections,
+                sharedCdnWarning: getSharedCdnWarning(matchedListIp),
+              };
+            }
+          }
+
+          if (remoteSubnetRuleset) {
+            const matchedRemoteIp = matchIpInRuleset(ip, remoteSubnetRuleset);
+            if (matchedRemoteIp) {
+              const domainIpLists = normalizeOptionValues(
+                uci.get(UCI_PACKAGE, secName, "domain_ip_lists"),
+              );
+              return {
+                matched: true,
+                sectionName: secName,
+                label: label,
+                action: action,
+                ruleType: "Resolved IP -> Remote Subnet List",
+                pattern: `${matchedRemoteIp} (resolved: ${ip})`,
+                sourceUrls: domainIpLists,
+                resolvedDomain: queryForMatching,
+                resolvedIps: resolvedIps,
+                matchedIp: ip,
+                priority: i + 1,
+                totalSections: totalSections,
+                sharedCdnWarning: getSharedCdnWarning(matchedRemoteIp),
+              };
+            }
+          }
+
+          for (const community of communityLists) {
+            const subnets = await readSubnetListFile(community);
+            const matchedCommunityCidr = matchIpInCidrs(ip, subnets);
+            if (matchedCommunityCidr) {
+              return {
+                matched: true,
+                sectionName: secName,
+                label: label,
+                action: action,
+                ruleType: `Resolved IP -> Community Subnets (${community})`,
+                pattern: `${matchedCommunityCidr} (resolved: ${ip})`,
+                resolvedDomain: queryForMatching,
+                resolvedIps: resolvedIps,
+                matchedIp: ip,
+                priority: i + 1,
+                totalSections: totalSections,
+                sharedCdnWarning: getSharedCdnWarning(matchedCommunityCidr),
+              };
+            }
+            if (await matchCommunityList(secName, community, ip, "ip")) {
+              return {
+                matched: true,
+                sectionName: secName,
+                label: label,
+                action: action,
+                ruleType: `Resolved IP -> Community List (${community})`,
+                pattern: `${ip} (resolved: ${ip})`,
+                resolvedDomain: queryForMatching,
+                resolvedIps: resolvedIps,
+                matchedIp: ip,
+                priority: i + 1,
+                totalSections: totalSections,
+                sharedCdnWarning: getSharedCdnWarning(ip),
+              };
+            }
+          }
+        }
+      }
+
+      return {
+        matched: false,
+        resolvedDomain: queryForMatching,
+        resolvedIps: resolvedIps,
+      };
     }
   }
 
@@ -11932,9 +12278,46 @@ function createTracerSearchWidget(sectionRef) {
                 ]),
               ],
             ),
+            ...(result.resolvedIps && result.resolvedIps.length > 0
+              ? [
+                  E(
+                    "div",
+                    {
+                      style:
+                        "margin-top: 4px; font-size: 85%; color: var(--text-color-medium, #666);",
+                    },
+                    _("DNS: Resolved %s to %s").format(
+                      result.resolvedDomain,
+                      result.resolvedIps.join(", "),
+                    ),
+                  ),
+                ]
+              : []),
           ],
         );
         resultsEl.appendChild(matchDiv);
+
+        if (result.sharedCdnWarning) {
+          const warnDiv = E(
+            "div",
+            {
+              style:
+                "margin-top: 8px; padding: 0.5rem 0.7rem; border-radius: 4px; background: rgba(243, 156, 18, 0.12); border-left: 3px solid var(--warning-color, #e67e22); font-size: 85%; color: var(--text-color-high, #333); line-height: 1.4;",
+            },
+            [
+              E(
+                "strong",
+                {
+                  style:
+                    "color: var(--warning-color, #d35400); display: block; margin-bottom: 2px;",
+                },
+                ["⚠️ ", _("Shared CDN / Anycast Warning")],
+              ),
+              E("span", {}, result.sharedCdnWarning),
+            ],
+          );
+          resultsEl.appendChild(warnDiv);
+        }
       } else {
         const noMatchDiv = E(
           "div",
@@ -11945,6 +12328,20 @@ function createTracerSearchWidget(sectionRef) {
           [
             E("strong", {}, _("No Custom Rules Matched") + ": "),
             _("Traffic will go through the default route (Direct/Default)."),
+            ...(result && result.resolvedIps && result.resolvedIps.length > 0
+              ? [
+                  E(
+                    "div",
+                    {
+                      style:
+                        "margin-top: 4px; font-size: 85%; color: var(--text-color-medium, #666);",
+                    },
+                    _("DNS: Resolved to %s (no subnet rules matched)").format(
+                      result.resolvedIps.join(", "),
+                    ),
+                  ),
+                ]
+              : []),
           ],
         );
         resultsEl.appendChild(noMatchDiv);

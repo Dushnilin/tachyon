@@ -1456,8 +1456,11 @@ function load_community_subnet_cidrs(community) {
             let cidrs = [];
             for (let line in split(as_string(content), "\n")) {
                 line = trim(replace(as_string(line), /\r/g, ""));
-                if (line != "" && substr(line, 0, 1) != "#" && match(line, /^[0-9a-fA-F:.]+(\/[0-9]+)?$/) && !match(line, /\.$/))
+                if (line != "" && substr(line, 0, 1) != "#" && match(line, /^[0-9a-fA-F:.]+(\/[0-9]+)?$/) && !match(line, /\.$/)) {
+                    if (service == "discord" && core_ip.is_cloudflare_shared_cidr(line))
+                        continue;
                     push(cidrs, line);
+                }
             }
             if (length(cidrs) > 0)
                 return cidrs;
@@ -2023,5 +2026,6 @@ return {
     add_server_routes,
     outbound_supports_udp,
     push_section_route_rule,
-    is_valid_detour
+    is_valid_detour,
+    load_community_subnet_cidrs
 };

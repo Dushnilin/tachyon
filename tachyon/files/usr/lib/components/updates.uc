@@ -6,6 +6,14 @@ let helpers = require("core.helpers");
 let uci_core = require("core.uci");
 let connections = require("config.connections");
 
+function core_ip_module_or_null() {
+    try {
+        return require("core.ip");
+    } catch (e) {
+        return null;
+    }
+}
+
 function core_url_module_or_null() {
     try {
         return require("core.url");
@@ -2518,11 +2526,15 @@ function import_all_preset_lists(settings) {
                 }
             }
 
+            let core_ip = core_ip_module_or_null();
             let lines = split(as_string(fs.readfile(tmpfile)), "\n");
             for (let l in lines) {
                 l = trim(replace(as_string(l), /\r/g, ""));
-                if (l != "" && substr(l, 0, 1) != "#")
+                if (l != "" && substr(l, 0, 1) != "#") {
+                    if (as_string(service) == "discord" && core_ip && core_ip.is_cloudflare_shared_cidr(l))
+                        continue;
                     push(combined_lines, l);
+                }
             }
 
             if (downloaded)
@@ -2584,12 +2596,20 @@ function import_builtin_subnets_from_rule(section, settings) {
                 }
             }
 
+            let core_ip = core_ip_module_or_null();
             let lines = split(as_string(fs.readfile(tmpfile)), "\n");
+            let filtered_for_nft = [];
             for (let l in lines) {
                 l = trim(replace(as_string(l), /\r/g, ""));
-                if (l != "" && substr(l, 0, 1) != "#")
+                if (l != "" && substr(l, 0, 1) != "#") {
+                    if (as_string(service) == "discord" && core_ip && core_ip.is_cloudflare_shared_cidr(l))
+                        continue;
                     push(combined_lines, l);
+                    push(filtered_for_nft, l);
+                }
             }
+            if (as_string(service) == "discord")
+                write_file(tmpfile, join("\n", filtered_for_nft) + "\n");
 
             nft_module_success([
                 "nft-add-community-subnet-file-for-uci-section",

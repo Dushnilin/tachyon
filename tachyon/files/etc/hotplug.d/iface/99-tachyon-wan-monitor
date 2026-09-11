@@ -1,5 +1,5 @@
 #!/bin/sh
-# Only process ifup and ifdown events for WAN interfaces
+# Hotplug handler for WAN retry on boot and interface state monitoring
 
 case "$INTERFACE" in
     wan*|wwan*|lte*|modem*)
@@ -11,25 +11,80 @@ case "$INTERFACE" in
         ;;
 esac
 
-# Rate limit Telegram notifications: max 1 notification per 60 seconds
-COOLDOWN_FILE="/tmp/tachyon_wan_monitor_cooldown"
-NOW=$(date +%s)
-if [ -f "$COOLDOWN_FILE" ]; then
-    LAST=$(cat "$COOLDOWN_FILE" 2>/dev/null || echo 0)
-    DIFF=$((NOW - LAST))
-    [ "$DIFF" -lt 60 ] && exit 0
-fi
-echo "$NOW" > "$COOLDOWN_FILE"
-
-case "$INTERFACE" in
-    wan*|wwan*|lte*|modem*)
-        case "$ACTION" in
-            ifup)
-                /usr/bin/tachyon telegram send "🟢 Интерфейс *${INTERFACE}* поднялся!"
-                ;;
-            ifdown)
-                /usr/bin/tachyon telegram send "⚠️ Интерфейс *${INTERFACE}* упал!"
-                ;;
-        esac
-        ;;
+case "$ACTION" in
+    ifup|ifdown) ;;
+    *) exit 0 ;;
 esac
+
+# 1. Check if interface monitoring is enabled in settings
+[ "$(uci -q get tachyon.settings.enable_badwan_interface_monitoring)" = "1" ] || exit 0
+
+# 2. Check if Telegram bot is enabled
+[ "$(uci -q get tachyon.telegram.enabled)" = "1" ] || exit 0
+
+# 3. Check if current interface is in badwan_monitored_interfaces
+MONITORED="$(uci -q get tachyon.settings.badwan_monitored_interfaces)"
+[ -n "$MONITORED" ] || exit 0
+
+MATCHED=0
+for iface in $MONITORED; do
+    if [ "$iface" = "$INTERFACE" ]; then
+        MATCHED=1
+        break
+    fi
+done
+[ "$MATCHED" -eq 1 ] || exit 0
+
+# 4. Handle debounce, state tracking, and notifications in background to avoid blocking hotplug queue
+(
+    STATE_DIR="/var/run/tachyon"
+    mkdir -p "$STATE_DIR" 2>/dev/null
+    LOCK_DIR="${STATE_DIR}/wan_monitor_${INTERFACE}.lock"
+
+    # Acquire per-interface lock with retry (max 5 seconds)
+    acquired=0
+    for _ in 1 2 3 4 5; do
+        if mkdir "$LOCK_DIR" 2>/dev/null; then
+            acquired=1
+            break
+        fi
+        sleep 1
+    done
+    [ "$acquired" -eq 1 ] || exit 0
+
+    trap 'rmdir "$LOCK_DIR" 2>/dev/null' EXIT INT TERM
+
+    # Debounce delay to let interface state settle
+    sleep 2
+
+    # Query actual interface status from ubus
+    STATUS_JSON="$(ubus -S call "network.interface.${INTERFACE}" status 2>/dev/null)"
+    CURRENT_STATE="down"
+    case "$STATUS_JSON" in
+        *'"up": true'*|*'"up":true'*)
+            CURRENT_STATE="up"
+            ;;
+    esac
+
+    STATE_FILE="${STATE_DIR}/wan_state_${INTERFACE}"
+    PREV_STATE=""
+    [ -f "$STATE_FILE" ] && PREV_STATE="$(cat "$STATE_FILE" 2>/dev/null)"
+
+    TACHYON_BIN="/usr/bin/tachyon"
+    [ -x "$TACHYON_BIN" ] || TACHYON_BIN="$(command -v tachyon 2>/dev/null || echo /usr/bin/tachyon)"
+
+    if [ "$CURRENT_STATE" = "up" ]; then
+        if [ "$PREV_STATE" = "down" ]; then
+            echo "up" > "$STATE_FILE"
+            "$TACHYON_BIN" telegram send "🟢 Интерфейс *${INTERFACE}* поднялся!"
+        elif [ -z "$PREV_STATE" ]; then
+            echo "up" > "$STATE_FILE"
+        fi
+    elif [ "$CURRENT_STATE" = "down" ]; then
+        if [ "$PREV_STATE" != "down" ]; then
+            echo "down" > "$STATE_FILE"
+            "$TACHYON_BIN" telegram send "⚠️ Интерфейс *${INTERFACE}* упал!"
+        fi
+    fi
+) >/dev/null 2>&1 &
+

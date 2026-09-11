@@ -5115,6 +5115,58 @@ function extract_ruleset(tag) {
     return 0;
 }
 
+function resolve_domain_cli(domain) {
+    domain = trim(as_string(domain));
+    if (domain == "") {
+        print("[]\n");
+        return 0;
+    }
+
+    let m_dom = match(domain, /^https?:\/\/([^/:]+)/i);
+    if (m_dom && m_dom[1])
+        domain = m_dom[1];
+    else {
+        let parts = split(domain, "/");
+        domain = split(parts[0], ":")[0];
+    }
+    domain = trim(domain);
+
+    let ips = [];
+    let seen = {};
+
+    let add_ip = function(ip) {
+        ip = trim(as_string(ip));
+        if (ip == "" || ip == "127.0.0.1" || ip == "::1" || ip == "0.0.0.0" || seen[ip])
+            return;
+        if (!core_ip.valid_ip(ip))
+            return;
+        seen[ip] = true;
+        push(ips, ip);
+    };
+
+    let cmd_local = command_output_from_args([ "nslookup", domain, "127.0.0.1" ]);
+    let cmd_def = command_output_from_args([ "nslookup", domain ]);
+    let outputs = [ cmd_local, cmd_def ];
+
+    for (let out in outputs) {
+        if (!out) continue;
+        let past_header = false;
+        for (let line in split(out, "\n")) {
+            line = trim(as_string(line));
+            if (match(line, /^(Name:|Non-authoritative answer:)/i))
+                past_header = true;
+            if (past_header) {
+                let m = match(line, /Address(?:[ \t]+[0-9]+)?:[ \t]*([0-9a-fA-F:.]+)/);
+                if (m && m[1] && m[1] != "127.0.0.1" && m[1] != "::1")
+                    add_ip(m[1]);
+            }
+        }
+    }
+
+    print(sprintf("%J\n", ips));
+    return 0;
+}
+
 let mode = ARGV[0] || "";
 
 if (mode == "extract-ruleset")
@@ -5230,6 +5282,8 @@ else if (mode == "validate-nfqws2-strategy-json")
     exit(validate_nfqws2_strategy_json(ARGV[1] || ""));
 else if (mode == "validate-byedpi-strategy-json")
     exit(validate_byedpi_strategy_json(ARGV[1] || ""));
+else if (mode == "resolve-domain")
+    exit(resolve_domain_cli(ARGV[1] || ""));
 else {
     warn("Usage: diagnostics/runtime.uc <operation> ...\n");
     exit(1);

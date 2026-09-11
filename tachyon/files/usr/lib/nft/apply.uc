@@ -2005,6 +2005,39 @@ function nft_add_csv_chunks_to_family_sets(csv, table, ipv4_set, ipv6_set, kind,
         nft_add_csv_chunks_to_set(csv, table, ipv6_set, kind, ports_csv, chunk_size_text, 6);
 }
 
+function nft_community_subnet_lines(path, service) {
+    let data = fs.readfile(path);
+    if (data == null)
+        return [];
+
+    let result = [];
+    for (let line in split(as_string(data), "\n")) {
+        line = trim(replace(as_string(line), /\r/g, ""));
+        if (line == "" || substr(line, 0, 1) == "#")
+            continue;
+        if (as_string(service) == "discord" && core_ip.is_cloudflare_shared_cidr(line))
+            continue;
+        push(result, line);
+    }
+
+    return result;
+}
+
+function nft_add_values_to_family_sets(values, table, ipv4_set, ipv6_set, kind, ports_csv, chunk_size_text) {
+    let prep4 = nft_build_chunks_from_values(values, kind, ports_csv, chunk_size_text, 4);
+    let ok4 = nft_add_chunks_to_set(table, ipv4_set, prep4.chunks, prep4.invalid);
+    let prep6 = nft_build_chunks_from_values(values, kind, ports_csv, chunk_size_text, 6);
+    let ok6 = nft_add_chunks_to_set(table, ipv6_set, prep6.chunks, prep6.invalid);
+    return ok4 && ok6;
+}
+
+function nft_add_community_subnet_file_to_family_sets(path, table, ipv4_set, ipv6_set, service, chunk_size_text) {
+    let lines = nft_community_subnet_lines(path, service);
+    if (length(lines) == 0)
+        return true;
+    return nft_add_values_to_family_sets(lines, table, ipv4_set, ipv6_set, "ips", "", chunk_size_text);
+}
+
 function nft_add_inline_ip_cidr_matchers(csv, ports_csv, table, common_set, ip_port_set, chunk_size_text, common6_set, ip_port6_set) {
     if (as_string(csv) == "")
         return true;
@@ -2658,7 +2691,7 @@ function nft_populate_runtime_set_for_section(section, deferred_sections, table,
                 ];
                 for (let path in cached_paths) {
                     if (helpers.file_is_usable(path, 50)) {
-                        nft_add_file_chunks_to_family_sets(path, table, sets.subnets, sets.subnets6, "ips", "", "5000");
+                        nft_add_community_subnet_file_to_family_sets(path, table, sets.subnets, sets.subnets6, service, "5000");
                         break;
                     }
                 }
@@ -2739,10 +2772,17 @@ function nft_add_community_subnet_file_for_section(section, service, filepath, t
     if (!bool_option(section, "community_subnets", true))
         return true;
 
-    if (section_needs_priority_sets(section))
-        return nft_add_subnet_file_for_section(section, filepath, table, common_set, ip_port_set, chunk_size_text, common6_set, ip_port6_set);
+    let ports = section_rule_ports_csv(section);
+    let sets = section_priority_sets(section);
+    let common_v4 = section_needs_priority_sets(section) ? sets.subnets : common_set;
+    let common_v6 = section_needs_priority_sets(section) ? sets.subnets6 : default_arg(common6_set, "tachyon_subnets6");
 
-    return nft_add_file_chunks_to_family_sets(filepath, table, common_set, default_arg(common6_set, "tachyon_subnets6"), "ips", "", chunk_size_text);
+    if (section_needs_priority_sets(section) && ports != "" && !section_has_destination_matchers(section)) {
+        let lines = nft_community_subnet_lines(filepath, service);
+        return nft_add_values_to_family_sets(lines, table, sets.ip_ports, sets.ip6_ports, "ip-port-from-ip", ports, chunk_size_text);
+    }
+
+    return nft_add_community_subnet_file_to_family_sets(filepath, table, common_v4, common_v6, service, chunk_size_text);
 }
 
 function nft_add_subnet_file_for_uci_section(section_name, filepath, table, common_set, ip_port_set, chunk_size_text, common6_set, ip_port6_set) {

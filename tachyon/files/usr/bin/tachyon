@@ -318,7 +318,9 @@ function command_spec(command) {
         dns_benchmark_stop: [ "dns/benchmark.uc", "benchmark_stop", 0 ],
         dns_benchmark_apply: [ "dns/benchmark.uc", "benchmark_apply", 0 ],
         import_settings: [ "config/migration.uc", "import-settings", 1 ],
-        "import-settings": [ "config/migration.uc", "import-settings", 1 ]
+        "import-settings": [ "config/migration.uc", "import-settings", 1 ],
+        resolve_domain: [ "diagnostics/runtime.uc", "resolve-domain", 1 ],
+        "resolve-domain": [ "diagnostics/runtime.uc", "resolve-domain", 1 ]
     };
 
     return commands[as_string(command)];
