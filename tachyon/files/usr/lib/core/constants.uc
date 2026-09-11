@@ -225,6 +225,25 @@ function constants_map() {
     c.BYEDPI_OPEN_FILES_LIMIT = env("BYEDPI_OPEN_FILES_LIMIT", "4096");
     c.BYEDPI_DEFAULT_CMD_OPTS = env("BYEDPI_DEFAULT_CMD_OPTS", "-o 2 --auto=t,r,a,s -d 2");
 
+    c.WDTT_BIN = env("WDTT_BIN", "/usr/bin/wdtt");
+    c.WDTT_SERVICE_INIT = env("WDTT_SERVICE_INIT", "/etc/init.d/wdtt");
+    c.WDTT_STATE_DIR = env("WDTT_STATE_DIR", "/var/run/tachyon/wdtt");
+    c.WDTT_PID_DIR = env("WDTT_PID_DIR", c.WDTT_STATE_DIR + "/pid");
+    c.WDTT_LOG_DIR = env("WDTT_LOG_DIR", c.WDTT_STATE_DIR + "/log");
+    c.WDTT_LISTEN_ADDRESS = env("WDTT_LISTEN_ADDRESS", "127.0.0.1");
+    c.WDTT_PORT_BASE = env("WDTT_PORT_BASE", "1081");
+    c.WDTT_RESPAWN_DELAY = env("WDTT_RESPAWN_DELAY", "5");
+    c.WDTT_DEFAULT_MODE = env("WDTT_DEFAULT_MODE", "freedom");
+
+    c.OLCRTC_BIN = env("OLCRTC_BIN", "/usr/bin/olcrtc");
+    c.OLCRTC_SERVICE_INIT = env("OLCRTC_SERVICE_INIT", "/etc/init.d/olcrtc");
+    c.OLCRTC_STATE_DIR = env("OLCRTC_STATE_DIR", "/var/run/tachyon/olcrtc");
+    c.OLCRTC_PID_DIR = env("OLCRTC_PID_DIR", c.OLCRTC_STATE_DIR + "/pid");
+    c.OLCRTC_LOG_DIR = env("OLCRTC_LOG_DIR", c.OLCRTC_STATE_DIR + "/log");
+    c.OLCRTC_LISTEN_ADDRESS = env("OLCRTC_LISTEN_ADDRESS", "127.0.0.1");
+    c.OLCRTC_PORT_BASE = env("OLCRTC_PORT_BASE", "1082");
+    c.OLCRTC_RESPAWN_DELAY = env("OLCRTC_RESPAWN_DELAY", "5");
+
     return c;
 }
 

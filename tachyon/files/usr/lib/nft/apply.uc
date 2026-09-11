@@ -584,7 +584,8 @@ function section_action(section) {
 
 function action_captures_traffic(action) {
     return action == "connection" || action == "proxy" || action == "outbound" || action == "vpn" ||
-        action == "awg" || action == "warp" || action == "block" || action == "zapret" || action == "zapret2" || action == "byedpi";
+        action == "awg" || action == "warp" || action == "block" || action == "zapret" || action == "zapret2" ||
+        action == "byedpi" || action == "wdtt" || action == "olcrtc";
 }
 
 function section_priority_action(section) {
@@ -698,9 +699,18 @@ function nft_excluded_source_match_args(section, family) {
         return [];
     let ip_key = family == 6 ? "ip6" : "ip";
     let addrs = [];
-    for (let ip in excluded)
-        if (core_ip.ip_family(as_string(ip)) == family)
-            push(addrs, as_string(ip));
+    for (let item in excluded) {
+        let val = trim(as_string(item));
+        if (val == "") continue;
+        let is_mac = match(val, /^([0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}$/) != null;
+        if (is_mac) {
+            for (let res_ip in core_ip.resolve_mac_to_ips(val))
+                if (core_ip.ip_family(res_ip) == family)
+                    push(addrs, res_ip);
+        } else if (core_ip.ip_family(val) == family) {
+            push(addrs, val);
+        }
+    }
     if (length(addrs) == 0)
         return [];
     return [ ip_key, "saddr", "!=", "{ " + join(", ", addrs) + " }" ];
@@ -2369,6 +2379,9 @@ function nft_rule_signature_body(body, section) {
     body = signature_add_value(body, "rule." + section_name + ".fully_routed_ips", option(section, "fully_routed_ips", ""));
     body = signature_add_value(body, "rule." + section_name + ".excluded_ips", option(section, "excluded_ips", ""));
     body = signature_add_value(body, "rule." + section_name + ".excluded_protocol", option(section, "excluded_protocol", ""));
+    body = signature_add_value(body, "rule." + section_name + ".routed_dns_enabled", bool_option(section, "routed_dns_enabled", false) ? "1" : "0");
+    body = signature_add_value(body, "rule." + section_name + ".routed_dns_type", option(section, "routed_dns_type", ""));
+    body = signature_add_value(body, "rule." + section_name + ".routed_dns_server", option(section, "routed_dns_server", ""));
     body = signature_add_value(body, "rule." + section_name + ".protocol", option(section, "protocol", ""));
     let comm_subnets = bool_option(section, "community_subnets", true) ? filter_community_subnet_lists_value(connections.community_lists_value(section)) : "";
     body = signature_add_value(body, "rule." + section_name + ".community_subnet_lists", comm_subnets);
@@ -2764,6 +2777,15 @@ function source_aware_dns_values(sections, deferred_sections) {
         }
 
         if (action == "dns") {
+            for (let value in nft_csv_values(section_source_ip_values(section))) {
+                if (!seen[value]) {
+                    seen[value] = true;
+                    push(values, value);
+                }
+            }
+        }
+
+        if (connections.routed_dns_enabled(section)) {
             for (let value in nft_csv_values(section_source_ip_values(section))) {
                 if (!seen[value]) {
                     seen[value] = true;

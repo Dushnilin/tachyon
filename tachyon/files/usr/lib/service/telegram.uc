@@ -1801,6 +1801,8 @@ function view_system_info(token, chat_id, msg_id) {
             if (info.zapret_installed == "1") text += "🛡 Zapret: <code>" + as_string(info.zapret_version || "?") + "</code>\n";
             if (info.zapret2_installed == "1") text += "🛡 Zapret2: <code>" + as_string(info.zapret2_version || "?") + "</code>\n";
             if (info.byedpi_installed == "1") text += "🛡 ByeDPI: <code>" + as_string(info.byedpi_version || "?") + "</code>\n";
+            if (info.wdtt_installed == "1") text += "🛡 WDTT: <code>" + as_string(info.wdtt_version || "?") + "</code>\n";
+            if (info.olcrtc_installed == "1") text += "🛡 OlcRTC: <code>" + as_string(info.olcrtc_version || "?") + "</code>\n";
         } catch(e) {
             text += t("info_read_error") + " " + e;
         }

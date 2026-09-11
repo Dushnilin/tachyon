@@ -1802,6 +1802,32 @@ function add_byedpi_outbound(config, section, sections) {
     });
 }
 
+function add_wdtt_outbound(config, section, sections) {
+    let index = enabled_action_index(sections, section, "wdtt");
+    if (index <= 0)
+        ctx.runtime_generate_unsupported("unable to resolve WDTT index for " + section[".name"]);
+    push(config.outbounds, {
+        type: "socks",
+        tag: outbound_tag(section[".name"]),
+        server: runtime_constants.WDTT_LISTEN_ADDRESS,
+        server_port: runtime_constants.WDTT_PORT_BASE + index - 1,
+        version: "5"
+    });
+}
+
+function add_olcrtc_outbound(config, section, sections) {
+    let index = enabled_action_index(sections, section, "olcrtc");
+    if (index <= 0)
+        ctx.runtime_generate_unsupported("unable to resolve OlcRTC index for " + section[".name"]);
+    push(config.outbounds, {
+        type: "socks",
+        tag: outbound_tag(section[".name"]),
+        server: runtime_constants.OLCRTC_LISTEN_ADDRESS,
+        server_port: runtime_constants.OLCRTC_PORT_BASE + index - 1,
+        version: "5"
+    });
+}
+
 return {
     init,
     reserved_runtime_tag_set,
@@ -1836,5 +1862,7 @@ return {
     add_openvpn_endpoint,
     add_zapret_outbound,
     add_zapret2_outbound,
-    add_byedpi_outbound
+    add_byedpi_outbound,
+    add_wdtt_outbound,
+    add_olcrtc_outbound
 };

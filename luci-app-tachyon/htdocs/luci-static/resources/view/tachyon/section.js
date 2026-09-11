@@ -23,6 +23,8 @@ const ROUTING_ACTIONS = [
   "zapret",
   "zapret2",
   "byedpi",
+  "wdtt",
+  "olcrtc",
   "awg",
   "warp",
   "anytls",
@@ -487,6 +489,8 @@ const actionProvidersAvailabilityState = {
   zapretInstalled: false,
   zapret2Installed: false,
   byedpiInstalled: false,
+  wdttInstalled: false,
+  olcrtcInstalled: false,
   torInstalled: false,
   singBoxExtended: false,
 };
@@ -669,6 +673,18 @@ function updateActionProvidersAvailabilityState(nextState) {
     );
   }
 
+  if (typeof nextState.wdttInstalled !== "undefined") {
+    actionProvidersAvailabilityState.wdttInstalled = Boolean(
+      nextState.wdttInstalled,
+    );
+  }
+
+  if (typeof nextState.olcrtcInstalled !== "undefined") {
+    actionProvidersAvailabilityState.olcrtcInstalled = Boolean(
+      nextState.olcrtcInstalled,
+    );
+  }
+
   if (typeof nextState.singBoxExtended !== "undefined") {
     actionProvidersAvailabilityState.singBoxExtended = Boolean(
       nextState.singBoxExtended,
@@ -693,6 +709,8 @@ function updateActionProvidersAvailabilityFromSystemInfo(systemInfo) {
     zapretInstalled: Boolean(systemInfo.zapret_installed),
     zapret2Installed: Boolean(systemInfo.zapret2_installed),
     byedpiInstalled: Boolean(systemInfo.byedpi_installed),
+    wdttInstalled: Boolean(systemInfo.wdtt_installed),
+    olcrtcInstalled: Boolean(systemInfo.olcrtc_installed),
     singBoxExtended: Boolean(systemInfo.sing_box_extended),
     torInstalled: Boolean(systemInfo.tor_installed),
   });
@@ -2100,6 +2118,14 @@ function isDownloadThroughTargetSection(section, currentSectionId) {
 
   if (action === "byedpi") {
     return isByedpiInstalledForUi();
+  }
+
+  if (action === "wdtt") {
+    return isWdttInstalledForUi();
+  }
+
+  if (action === "olcrtc") {
+    return isOlcrtcInstalledForUi();
   }
 
   return false;
@@ -4534,6 +4560,14 @@ function isByedpiInstalledForUi() {
   return actionProvidersAvailabilityState.byedpiInstalled;
 }
 
+function isWdttInstalledForUi() {
+  return actionProvidersAvailabilityState.wdttInstalled;
+}
+
+function isOlcrtcInstalledForUi() {
+  return actionProvidersAvailabilityState.olcrtcInstalled;
+}
+
 function isSingBoxExtendedForUi() {
   return actionProvidersAvailabilityState.singBoxExtended;
 }
@@ -4565,6 +4599,10 @@ function getActionOptionLabel(action) {
       return "Zapret2";
     case "byedpi":
       return "ByeDPI";
+    case "wdtt":
+      return "WDTT";
+    case "olcrtc":
+      return "OlcRTC";
 
     case "awg":
       return "AmneziaWG";
@@ -4605,6 +4643,14 @@ function getRuleActionDisplayValue(section_id) {
 
   if (action === "byedpi") {
     return "ByeDPI";
+  }
+
+  if (action === "wdtt") {
+    return "WDTT";
+  }
+
+  if (action === "olcrtc") {
+    return "OlcRTC";
   }
 
   if (action === "awg") {
@@ -4672,6 +4718,12 @@ function populateActionOptionValues(option) {
   }
   if (isByedpiInstalledForUi()) {
     option.value("byedpi", getActionOptionLabel("byedpi"));
+  }
+  if (isWdttInstalledForUi()) {
+    option.value("wdtt", getActionOptionLabel("wdtt"));
+  }
+  if (isOlcrtcInstalledForUi()) {
+    option.value("olcrtc", getActionOptionLabel("olcrtc"));
   }
   option.value("hosts", getActionOptionLabel("hosts"));
 }
@@ -7819,6 +7871,227 @@ function createSectionContent(section) {
   };
   configureTextareaOption(o, analyzeByedpiStrategy);
 
+  // ─── WDTT Fields ──────────────────────────────────────────────────────
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "warp_flow_uri",
+    _("WDTT URI"),
+    _("WDTT connection URI (wdtt://...)"),
+  );
+  o.depends("action", "wdtt");
+  o.modalonly = true;
+
+  o = section.taboption(
+    "settings",
+    form.ListValue,
+    "warp_flow_mode",
+    _("WDTT Mode"),
+  );
+  o.depends("action", "wdtt");
+  o.value("", _("Default"));
+  o.value("freedom", _("Freedom"));
+  o.value("captive", _("Captive"));
+  o.value("camou", _("Camou"));
+  o.modalonly = true;
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "warp_flow_device_id",
+    _("WDTT Device ID"),
+  );
+  o.depends("action", "wdtt");
+  o.modalonly = true;
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "warp_flow_workers",
+    _("WDTT Workers"),
+  );
+  o.depends("action", "wdtt");
+  o.modalonly = true;
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "warp_flow_max_hashes",
+    _("WDTT Max Hashes"),
+  );
+  o.depends("action", "wdtt");
+  o.modalonly = true;
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "warp_flow_mtu",
+    _("WDTT MTU"),
+  );
+  o.depends("action", "wdtt");
+  o.modalonly = true;
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "warp_flow_refresh",
+    _("WDTT Refresh"),
+  );
+  o.depends("action", "wdtt");
+  o.modalonly = true;
+
+  o = section.taboption(
+    "settings",
+    form.Flag,
+    "warp_flow_auto_update",
+    _("WDTT Auto Update"),
+  );
+  o.default = "1";
+  o.depends("action", "wdtt");
+  o.modalonly = true;
+
+  o = section.taboption(
+    "settings",
+    form.Flag,
+    "warp_flow_block_doh",
+    _("WDTT Block DoH"),
+  );
+  o.default = "0";
+  o.depends("action", "wdtt");
+  o.modalonly = true;
+
+  o = section.taboption(
+    "settings",
+    form.Flag,
+    "warp_flow_block_ipv6",
+    _("WDTT Block IPv6"),
+  );
+  o.default = "0";
+  o.depends("action", "wdtt");
+  o.modalonly = true;
+
+  o = section.taboption(
+    "settings",
+    form.ListValue,
+    "warp_flow_qwdtt_mode",
+    _("WDTT QWDTT Mode"),
+  );
+  o.depends("action", "wdtt");
+  o.value("", _("Default"));
+  o.value("client", _("Client"));
+  o.value("server", _("Server"));
+  o.modalonly = true;
+
+  o = section.taboption(
+    "settings",
+    form.DynamicList,
+    "warp_flow_subscription_links",
+    _("WDTT Subscription Links"),
+  );
+  o.depends("action", "wdtt");
+  o.modalonly = true;
+
+  o = section.taboption(
+    "settings",
+    form.DynamicList,
+    "warp_flow_community_lists",
+    _("WDTT Community Lists"),
+  );
+  o.depends("action", "wdtt");
+  o.modalonly = true;
+
+  o = section.taboption(
+    "settings",
+    form.DynamicList,
+    "warp_flow_remote_domain_list",
+    _("WDTT Remote Domain List"),
+  );
+  o.depends("action", "wdtt");
+  o.modalonly = true;
+
+  // ─── OlcRTC Fields ────────────────────────────────────────────────────
+
+  o = section.taboption(
+    "settings",
+    form.ListValue,
+    "olcrtc_provider",
+    _("OlcRTC Provider"),
+  );
+  o.depends("action", "olcrtc");
+  o.value("jitsi", _("Jitsi"));
+  o.value("wrt", _("WRT"));
+  o.modalonly = true;
+
+  o = section.taboption(
+    "settings",
+    form.ListValue,
+    "olcrtc_transport",
+    _("OlcRTC Transport"),
+  );
+  o.depends("action", "olcrtc");
+  o.value("whep", _("WHEP"));
+  o.value("whip", _("WHIP"));
+  o.modalonly = true;
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "olcrtc_room_id",
+    _("OlcRTC Room ID"),
+  );
+  o.depends("action", "olcrtc");
+  o.modalonly = true;
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "olcrtc_crypto_key",
+    _("OlcRTC Crypto Key"),
+  );
+  o.depends("action", "olcrtc");
+  o.password = true;
+  o.modalonly = true;
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "olcrtc_socks_host",
+    _("OlcRTC SOCKS Host"),
+  );
+  o.depends("action", "olcrtc");
+  o.default = "127.0.0.1";
+  o.modalonly = true;
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "olcrtc_socks_port",
+    _("OlcRTC SOCKS Port"),
+  );
+  o.depends("action", "olcrtc");
+  o.default = "1082";
+  o.modalonly = true;
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "olcrtc_dns_server",
+    _("OlcRTC DNS Server"),
+  );
+  o.depends("action", "olcrtc");
+  o.default = "8.8.8.8:53";
+  o.modalonly = true;
+
+  o = section.taboption(
+    "settings",
+    form.DynamicList,
+    "olcrtc_subscription_links",
+    _("OlcRTC Subscription Links"),
+  );
+  o.depends("action", "olcrtc");
+  o.modalonly = true;
+
   // ─── Hosts Import Helpers ──────────────────────────────────────────────
 
   function parseHostsFile(text, options) {
@@ -10333,6 +10606,8 @@ function createSectionContent(section) {
   o.depends("action", "connection");
   o.depends("action", "awg");
   o.depends("action", "byedpi");
+  o.depends("action", "wdtt");
+  o.depends("action", "olcrtc");
   o.depends("action", "zapret");
   o.depends("action", "zapret2");
   o.modalonly = true;
@@ -10814,10 +11089,46 @@ function createSectionContent(section) {
     key: "excluded_ips",
     label: _("Excluded devices"),
     description: _(
-      "Traffic from these IP addresses will never be routed through this section, even if other conditions match.",
+      "Traffic from these IP addresses, CIDRs, or MAC addresses will never be routed through this section, even if other conditions match.",
     ),
   });
   dependsOnRoutingAction(excludedIpsOption);
+
+  const routedDnsEnabledOption = section.taboption(
+    "conditions",
+    form.Flag,
+    "routed_dns_enabled",
+    _("Routed DNS"),
+    _("Resolve matched domains through an encrypted DNS server of this section instead of FakeIP. DNS queries traverse the same proxy as the section's outbound."),
+  );
+  dependsOnRoutingAction(routedDnsEnabledOption);
+  routedDnsEnabledOption.default = "0";
+  routedDnsEnabledOption.rmempty = false;
+  routedDnsEnabledOption.modalonly = true;
+
+  const routedDnsTypeOption = section.taboption(
+    "conditions",
+    form.ListValue,
+    "routed_dns_type",
+    _("Routed DNS Protocol"),
+    _("Protocol for the routed DNS resolver."),
+  );
+  routedDnsTypeOption.depends({ routed_dns_enabled: "1" });
+  routedDnsTypeOption.rmempty = false;
+  routedDnsTypeOption.modalonly = true;
+  routedDnsTypeOption.value("udp", "UDP");
+  routedDnsTypeOption.value("dot", "DNS over TLS");
+  routedDnsTypeOption.value("doh", "DNS over HTTPS");
+  routedDnsTypeOption.value("doq", "DNS over QUIC");
+
+  const routedDnsServerOption = addDynamicConditionField(section, {
+    key: "routed_dns_server",
+    label: _("Routed DNS Servers"),
+    description: _(
+      "DNS server addresses for domain resolution in this section (e.g. 1.1.1.1, https://cloudflare-dns.com/dns-query).",
+    ),
+  });
+  routedDnsServerOption.depends({ routed_dns_enabled: "1" });
 
   const portsOption = addDynamicConditionField(section, {
     key: "ports",
@@ -10914,6 +11225,8 @@ const ACTION_COLORS = {
   zapret: "#8e44ad",
   zapret2: "#9b59b6",
   byedpi: "#d35400",
+  wdtt: "#27ae60",
+  olcrtc: "#2980b9",
   awg: "#008080",
   warp: "#e67e22",
   anytls: "#16a085",

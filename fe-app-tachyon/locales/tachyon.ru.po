@@ -839,6 +839,81 @@ msgstr "Стратегия ByeDPI"
 msgid "ByeDPI strategy cannot be empty"
 msgstr "Стратегия ByeDPI не может быть пустой"
 
+msgid "WDTT"
+msgstr "WDTT"
+
+msgid "WDTT URI"
+msgstr "URI WDTT"
+
+msgid "WDTT connection URI (wdtt://...)"
+msgstr "URI подключения WDTT (wdtt://...)"
+
+msgid "WDTT Mode"
+msgstr "Режим WDTT"
+
+msgid "WDTT Device ID"
+msgstr "ID устройства WDTT"
+
+msgid "WDTT Workers"
+msgstr "Рабочие процессы WDTT"
+
+msgid "WDTT Max Hashes"
+msgstr "Максимум хешей WDTT"
+
+msgid "WDTT MTU"
+msgstr "MTU WDTT"
+
+msgid "WDTT Refresh"
+msgstr "Обновление WDTT"
+
+msgid "WDTT Auto Update"
+msgstr "Автообновление WDTT"
+
+msgid "WDTT Block DoH"
+msgstr "Блокировка DoH в WDTT"
+
+msgid "WDTT Block IPv6"
+msgstr "Блокировка IPv6 в WDTT"
+
+msgid "WDTT QWDTT Mode"
+msgstr "Режим QWDTT"
+
+msgid "WDTT Subscription Links"
+msgstr "Ссылки подписок WDTT"
+
+msgid "WDTT Community Lists"
+msgstr "Списки сообществ WDTT"
+
+msgid "WDTT Remote Domain List"
+msgstr "Удалённый список доменов WDTT"
+
+msgid "OlcRTC"
+msgstr "OlcRTC"
+
+msgid "OlcRTC Provider"
+msgstr "Провайдер OlcRTC"
+
+msgid "OlcRTC Transport"
+msgstr "Транспорт OlcRTC"
+
+msgid "OlcRTC Room ID"
+msgstr "ID комнаты OlcRTC"
+
+msgid "OlcRTC Crypto Key"
+msgstr "Ключ шифрования OlcRTC"
+
+msgid "OlcRTC SOCKS Host"
+msgstr "Хост SOCKS OlcRTC"
+
+msgid "OlcRTC SOCKS Port"
+msgstr "Порт SOCKS OlcRTC"
+
+msgid "OlcRTC DNS Server"
+msgstr "DNS-сервер OlcRTC"
+
+msgid "OlcRTC Subscription Links"
+msgstr "Ссылки подписок OlcRTC"
+
 msgid "Bypasses proxy (SO_MARK 0x08000000)"
 msgstr "В обход прокси (SO_MARK 0x08000000)"
 
@@ -1444,6 +1519,24 @@ msgstr "DNS через прокси"
 
 msgid "DNS through section"
 msgstr "DNS через секцию"
+
+msgid "Routed DNS"
+msgstr "Маршрутизированный DNS"
+
+msgid "Resolve matched domains through an encrypted DNS server of this section instead of FakeIP. DNS queries traverse the same proxy as the section's outbound."
+msgstr "Резолвить совпавшие домены через зашифрованный DNS-сервер этой секции вместо FakeIP. DNS-запросы проходят через тот же прокси, что и исходящий трафик секции."
+
+msgid "Routed DNS Protocol"
+msgstr "Протокол маршрутизированного DNS"
+
+msgid "Protocol for the routed DNS resolver."
+msgstr "Протокол для DNS-резолвера маршрутизации."
+
+msgid "Routed DNS Servers"
+msgstr "Серверы маршрутизированного DNS"
+
+msgid "DNS server addresses for domain resolution in this section (e.g. 1.1.1.1, https://cloudflare-dns.com/dns-query)."
+msgstr "Адреса DNS-серверов для резолвинга доменов в этой секции (напр. 1.1.1.1, https://cloudflare-dns.com/dns-query)."
 
 msgid "DNS Turbo Cache"
 msgstr "Быстрый DNS-кэш"
@@ -5096,8 +5189,8 @@ msgstr "Трафик"
 msgid "Traffic for this level goes directly."
 msgstr "Трафик этого уровня идёт напрямую."
 
-msgid "Traffic from these IP addresses will never be routed through this section, even if other conditions match."
-msgstr "Трафик от этих IP-адресов никогда не будет маршрутизирован через эту секцию, даже если другие условия совпадают."
+msgid "Traffic from these IP addresses, CIDRs, or MAC addresses will never be routed through this section, even if other conditions match."
+msgstr "Трафик от этих IP-адресов, CIDR или MAC-адресов никогда не будет маршрутизирован через эту секцию, даже если другие условия совпадают."
 
 msgid "Traffic of specified protocols (e.g. BitTorrent, QUIC, STUN) will bypass this section."
 msgstr "Трафик указанных протоколов (например BitTorrent, QUIC, STUN) будет обходить эту секцию."

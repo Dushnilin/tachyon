@@ -8,6 +8,8 @@ let subscription_parser_module = null;
 let zapret_validator_module = null;
 let zapret2_validator_module = null;
 let byedpi_validator_module = null;
+let wdtt_validator_module = null;
+let olcrtc_validator_module = null;
 let constants_module = null;
 let core_url = require("core.url");
 let core_ip = require("core.ip");
@@ -695,6 +697,18 @@ function byedpi_validator() {
     return byedpi_validator_module;
 }
 
+function wdtt_validator() {
+    if (wdtt_validator_module == null)
+        wdtt_validator_module = require("providers.wdtt.validator");
+    return wdtt_validator_module;
+}
+
+function olcrtc_validator() {
+    if (olcrtc_validator_module == null)
+        olcrtc_validator_module = require("providers.olcrtc.validator");
+    return olcrtc_validator_module;
+}
+
 function runtime_constants() {
     if (constants_module == null)
         constants_module = require("core.constants");
@@ -769,13 +783,14 @@ function rule_action(section) {
 function rule_action_supported(action) {
     return contains([ "connection", "proxy", "outbound", "vpn", "awg", "warp",
         "anytls", "snell", "mieru", "sudoku", "masque", "openvpn",
-        "bypass", "block", "dns", "zapret", "zapret2", "byedpi", "hosts" ], as_string(action));
+        "bypass", "block", "dns", "zapret", "zapret2", "byedpi", "hosts",
+        "wdtt", "olcrtc" ], as_string(action));
 }
 
 function server_routing_section_action_supported(action) {
     return contains([ "connection", "proxy", "outbound", "vpn", "awg", "warp",
         "anytls", "snell", "mieru", "sudoku", "masque", "openvpn",
-        "zapret", "zapret2", "byedpi" ], as_string(action));
+        "zapret", "zapret2", "byedpi", "wdtt", "olcrtc" ], as_string(action));
 }
 
 function duration_to_seconds_value(value) {
@@ -1367,6 +1382,53 @@ function validate_provider_strategy(kind, section, context) {
         fail_validation("Invalid ByeDPI strategy for rule '" + name + "': " + result.message);
 }
 
+function validate_wdtt_section(section, context) {
+    let name = section_name(section);
+    let uri = option(section, "warp_flow_uri", "");
+
+    if (uri == "") {
+        fail_validation("WDTT rule '" + name + "' has empty URI. Aborted.");
+        return;
+    }
+
+    let result = wdtt_validator().parse_wdtt_uri(uri);
+    if (!result.valid)
+        fail_validation("Invalid WDTT URI for rule '" + name + "': " + result.message + ". Aborted.");
+
+    let mode = option(section, "warp_flow_mode", "");
+    if (mode != "" && !contains(["freedom", "captive", "camou"], mode))
+        fail_validation("Invalid WDTT mode '" + mode + "' in rule '" + name + "'. Aborted.");
+
+    let device_id = option(section, "warp_flow_device_id", "");
+    if (device_id != "" && !wdtt_validator().validate_device_id(device_id))
+        fail_validation("Invalid WDTT device ID '" + device_id + "' in rule '" + name + "'. Aborted.");
+}
+
+function validate_olcrtc_section(section, context) {
+    let name = section_name(section);
+    let provider = option(section, "olcrtc_provider", "");
+
+    if (provider == "") {
+        fail_validation("OlcRTC rule '" + name + "' has empty provider. Aborted.");
+        return;
+    }
+
+    if (!contains(["livekit", "wrt"], provider))
+        fail_validation("Invalid OlcRTC provider '" + provider + "' in rule '" + name + "'. Aborted.");
+
+    let transport = option(section, "olcrtc_transport", "whep");
+    if (!contains(["whep", "whip"], transport))
+        fail_validation("Invalid OlcRTC transport '" + transport + "' in rule '" + name + "'. Aborted.");
+
+    let room_id = option(section, "olcrtc_room_id", "");
+    if (room_id == "")
+        fail_validation("OlcRTC rule '" + name + "' has empty room ID. Aborted.");
+
+    let crypto_key = option(section, "olcrtc_crypto_key", "");
+    if (crypto_key == "")
+        fail_validation("OlcRTC rule '" + name + "' has empty crypto key. Aborted.");
+}
+
 function dns_action_has_domain_matchers(section) {
     for (let key in [ "domain", "domain_suffix", "domain_keyword", "domain_regex" ])
         if (option(section, key, "") != "" || option(section, key + "_text", "") != "" || length(list_option(section, key)) > 0)
@@ -1467,6 +1529,22 @@ function validate_rule(section, sections, context) {
         validate_provider_strategy("byedpi", section, context);
     }
 
+    if (action == "wdtt") {
+        if (!context.wdtt_installed) {
+            validate_common_rule_references(section, context);
+            return;
+        }
+        validate_wdtt_section(section, context);
+    }
+
+    if (action == "olcrtc") {
+        if (!context.olcrtc_installed) {
+            validate_common_rule_references(section, context);
+            return;
+        }
+        validate_olcrtc_section(section, context);
+    }
+
     if (connections.is_connections_action(action)) {
         validate_dashboard_filter(section);
 
@@ -1536,6 +1614,23 @@ function validate_rule(section, sections, context) {
     for (let value in list_option(section, "domain_suffix"))
         validate_combined_domain_value(value, name);
     validate_combined_domain_text_value(option(section, "domain_suffix_text", ""), name);
+
+    if (connections.routed_dns_enabled(section)) {
+        if (action == "dns" || action == "hosts" || action == "bypass" || action == "block")
+            fail_validation("Rule '" + name + "' has routed DNS enabled but action '" + action + "' does not support routed DNS. Use a proxy action (connection, zapret, etc.). Aborted.");
+        let routed_type = connections.routed_dns_type(section);
+        if (!contains(["udp", "dot", "doh", "doq"], routed_type))
+            fail_validation("Rule '" + name + "' has invalid routed DNS type '" + routed_type + "'. Use udp, dot, doh, or doq. Aborted.");
+        let routed_servers = connections.routed_dns_servers(section);
+        if (length(routed_servers) == 0)
+            fail_validation("Rule '" + name + "' has routed DNS enabled but no DNS server specified. Aborted.");
+        for (let srv in routed_servers)
+            if (!dns_server_value_valid(srv))
+                fail_validation("Rule '" + name + "' has an invalid routed DNS server '" + srv + "'. Aborted.");
+        if (!connections.has_dns_matchers(section) && length(list_option(section, "fully_routed_ips")) == 0)
+            fail_validation("Rule '" + name + "' has routed DNS enabled but no domain conditions or forced devices. Routed DNS requires at least one domain matcher. Aborted.");
+    }
+
     validate_common_rule_references(section, context);
 }
 
@@ -1992,6 +2087,8 @@ function context_from_runtime() {
         byedpi_installed: file_executable(constant_value(constants, "BYEDPI_BIN")),
         zapret_installed: file_executable(constant_value(constants, "ZAPRET_PROVIDER_NFQWS_BIN")),
         zapret2_installed: file_executable(constant_value(constants, "ZAPRET2_PROVIDER_NFQWS2_BIN")),
+        wdtt_installed: file_executable(constant_value(constants, "WDTT_BIN")),
+        olcrtc_installed: file_executable(constant_value(constants, "OLCRTC_BIN")),
         zapret_provider_nfqws_bin: constant_value(constants, "ZAPRET_PROVIDER_NFQWS_BIN"),
         zapret2_provider_nfqws2_bin: constant_value(constants, "ZAPRET2_PROVIDER_NFQWS2_BIN"),
         zapret_route_mark_base: constant_value(constants, "ZAPRET_ROUTE_MARK_BASE"),

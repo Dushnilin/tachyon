@@ -316,6 +316,20 @@ export const TachyonShellMethods = {
       '/usr/bin/tachyon',
       { allowNonZeroWithStdout: true },
     ),
+  getWdttStatus: async () =>
+    callBaseMethod<Tachyon.GetWdttStatus>(
+      Tachyon.AvailableMethods.GET_WDTT_STATUS,
+      [],
+      '/usr/bin/tachyon',
+      { allowNonZeroWithStdout: true },
+    ),
+  getOlcrtcStatus: async () =>
+    callBaseMethod<Tachyon.GetOlcrtcStatus>(
+      Tachyon.AvailableMethods.GET_OLCRTC_STATUS,
+      [],
+      '/usr/bin/tachyon',
+      { allowNonZeroWithStdout: true },
+    ),
   getClashApiProxies: async () =>
     callBaseMethod<ClashAPI.Proxies>(Tachyon.AvailableMethods.CLASH_API, [
       Tachyon.AvailableClashAPIMethods.GET_PROXIES,

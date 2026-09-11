@@ -306,6 +306,34 @@ function is_connections_action(action) {
     return action == "connection" || is_legacy_connection_action(action);
 }
 
+function is_wdtt_action(action) {
+    return as_string(action) == "wdtt";
+}
+
+function is_olcrtc_action(action) {
+    return as_string(action) == "olcrtc";
+}
+
+function wdtt_sections() {
+    let result = [];
+    let sections = uci_core.section_objects(CONFIG_NAME, "section");
+    for (let section in sections) {
+        if (bool_option(section, "enabled", true) && option(section, "action", "") == "wdtt")
+            push(result, section);
+    }
+    return result;
+}
+
+function olcrtc_sections() {
+    let result = [];
+    let sections = uci_core.section_objects(CONFIG_NAME, "section");
+    for (let section in sections) {
+        if (bool_option(section, "enabled", true) && option(section, "action", "") == "olcrtc")
+            push(result, section);
+    }
+    return result;
+}
+
 function normalize_action(action) {
     action = as_string(action);
     return is_connections_action(action) ? "connection" : action;
@@ -615,6 +643,26 @@ function dscp_list(section) {
 
 function dscp_value(section) {
     return list_option_value_from_array(dscp_list(section));
+}
+
+function routed_dns_enabled(section) {
+    return bool_option(section, "routed_dns_enabled", false);
+}
+
+function routed_dns_type(section) {
+    let t = option(section, "routed_dns_type", "udp");
+    if (!contains(["udp", "dot", "doh", "doq"], t))
+        t = "udp";
+    return t;
+}
+
+function routed_dns_servers(section) {
+    let servers = list_option(section, "routed_dns_server");
+    if (length(servers) == 0) {
+        let single = option(section, "routed_dns_server", "");
+        servers = [single];
+    }
+    return servers;
 }
 
 function contains(arr, val) {
@@ -1552,6 +1600,13 @@ return {
     subscription_download_targets,
     subscription_download_target_port,
     has_dns_matchers,
+    routed_dns_enabled,
+    routed_dns_type,
+    routed_dns_servers,
     item_index_from_cursor,
-    cli_delete_section
+    cli_delete_section,
+    wdtt_sections,
+    olcrtc_sections,
+    is_wdtt_action,
+    is_olcrtc_action
 };

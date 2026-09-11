@@ -1329,6 +1329,81 @@ msgstr ""
 msgid "ByeDPI strategy cannot be empty"
 msgstr ""
 
+msgid "WDTT"
+msgstr ""
+
+msgid "WDTT URI"
+msgstr ""
+
+msgid "WDTT connection URI (wdtt://...)"
+msgstr ""
+
+msgid "WDTT Mode"
+msgstr ""
+
+msgid "WDTT Device ID"
+msgstr ""
+
+msgid "WDTT Workers"
+msgstr ""
+
+msgid "WDTT Max Hashes"
+msgstr ""
+
+msgid "WDTT MTU"
+msgstr ""
+
+msgid "WDTT Refresh"
+msgstr ""
+
+msgid "WDTT Auto Update"
+msgstr ""
+
+msgid "WDTT Block DoH"
+msgstr ""
+
+msgid "WDTT Block IPv6"
+msgstr ""
+
+msgid "WDTT QWDTT Mode"
+msgstr ""
+
+msgid "WDTT Subscription Links"
+msgstr ""
+
+msgid "WDTT Community Lists"
+msgstr ""
+
+msgid "WDTT Remote Domain List"
+msgstr ""
+
+msgid "OlcRTC"
+msgstr ""
+
+msgid "OlcRTC Provider"
+msgstr ""
+
+msgid "OlcRTC Transport"
+msgstr ""
+
+msgid "OlcRTC Room ID"
+msgstr ""
+
+msgid "OlcRTC Crypto Key"
+msgstr ""
+
+msgid "OlcRTC SOCKS Host"
+msgstr ""
+
+msgid "OlcRTC SOCKS Port"
+msgstr ""
+
+msgid "OlcRTC DNS Server"
+msgstr ""
+
+msgid "OlcRTC Subscription Links"
+msgstr ""
+
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:14975
 #: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:170
 msgid "Bypasses proxy (SO_MARK 0x08000000)"
@@ -8155,7 +8230,7 @@ msgid "Traffic for this level goes directly."
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:10821
-msgid "Traffic from these IP addresses will never be routed through this section, even if other conditions match."
+msgid "Traffic from these IP addresses, CIDRs, or MAC addresses will never be routed through this section, even if other conditions match."
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:10849

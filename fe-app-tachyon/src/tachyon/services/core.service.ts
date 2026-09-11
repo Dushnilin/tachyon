@@ -28,6 +28,8 @@ function componentDisplayName(component: string) {
     zapret: 'Zapret',
     zapret2: 'Zapret2',
     byedpi: 'ByeDPI',
+    wdtt: 'WDTT',
+    olcrtc: 'OlcRTC',
   };
 
   return names[component] || component;

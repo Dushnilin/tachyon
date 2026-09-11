@@ -3407,6 +3407,8 @@ var Tachyon;
     AvailableMethods2["GET_TAILSCALE_PEERS"] = "get_tailscale_peers";
     AvailableMethods2["GET_ZAPRET2_STATUS"] = "get_zapret2_status";
     AvailableMethods2["GET_BYEDPI_STATUS"] = "get_byedpi_status";
+    AvailableMethods2["GET_WDTT_STATUS"] = "get_wdtt_status";
+    AvailableMethods2["GET_OLCRTC_STATUS"] = "get_olcrtc_status";
     AvailableMethods2["CLASH_API"] = "clash_api";
     AvailableMethods2["ENABLE"] = "enable";
     AvailableMethods2["DISABLE"] = "disable";
@@ -3730,6 +3732,18 @@ var TachyonShellMethods = {
   ),
   getByedpiStatus: async () => callBaseMethod(
     Tachyon.AvailableMethods.GET_BYEDPI_STATUS,
+    [],
+    "/usr/bin/tachyon",
+    { allowNonZeroWithStdout: true }
+  ),
+  getWdttStatus: async () => callBaseMethod(
+    Tachyon.AvailableMethods.GET_WDTT_STATUS,
+    [],
+    "/usr/bin/tachyon",
+    { allowNonZeroWithStdout: true }
+  ),
+  getOlcrtcStatus: async () => callBaseMethod(
+    Tachyon.AvailableMethods.GET_OLCRTC_STATUS,
     [],
     "/usr/bin/tachyon",
     { allowNonZeroWithStdout: true }
@@ -5045,7 +5059,9 @@ function isConnectionAction(action) {
   );
 }
 function isServiceAction(action) {
-  return Boolean(action && ["zapret", "zapret2", "byedpi"].includes(action));
+  return Boolean(
+    action && ["zapret", "zapret2", "byedpi", "wdtt", "olcrtc"].includes(action)
+  );
 }
 function hasSubscriptionSources(section) {
   return getSubscriptionSourceCount(section) > 0;
@@ -5826,6 +5842,38 @@ async function getDashboardSections(options = {}) {
                   statusMessage: s.status_message
                 };
               }
+            } else if (serviceType === "wdtt") {
+              const result = await TachyonShellMethods.getWdttStatus();
+              if (result.success && result.data) {
+                const s = result.data;
+                return {
+                  serviceType: "wdtt",
+                  configured: Boolean(s.configured),
+                  ready: Boolean(s.ready),
+                  conflict: Boolean(s.conflict),
+                  runningProcesses: s.running_process_count,
+                  expectedProcesses: s.expected_process_count,
+                  restartCount: s.restart_count,
+                  unstable: Boolean(s.runtime_unstable),
+                  statusMessage: s.status_message
+                };
+              }
+            } else if (serviceType === "olcrtc") {
+              const result = await TachyonShellMethods.getOlcrtcStatus();
+              if (result.success && result.data) {
+                const s = result.data;
+                return {
+                  serviceType: "olcrtc",
+                  configured: Boolean(s.configured),
+                  ready: Boolean(s.ready),
+                  conflict: Boolean(s.conflict),
+                  runningProcesses: s.running_process_count,
+                  expectedProcesses: s.expected_process_count,
+                  restartCount: s.restart_count,
+                  unstable: Boolean(s.runtime_unstable),
+                  statusMessage: s.status_message
+                };
+              }
             }
           } catch (_error) {
           }
@@ -6227,6 +6275,14 @@ var initialDiagnosticStore = {
     byedpi_installed: 0,
     byedpi_backup_version: "",
     byedpi_backup_time: 0,
+    wdtt_version: "loading",
+    wdtt_installed: 0,
+    wdtt_backup_version: "",
+    wdtt_backup_time: 0,
+    olcrtc_version: "loading",
+    olcrtc_installed: 0,
+    olcrtc_backup_version: "",
+    olcrtc_backup_time: 0,
     tailscale_version: "loading",
     tailscale_installed: 0,
     tailscale_backup_version: "",
@@ -6307,6 +6363,14 @@ var initialDiagnosticStore = {
     byedpiInstall: { loading: false },
     byedpiRemove: { loading: false },
     byedpiRollback: { loading: false },
+    wdttCheck: { loading: false },
+    wdttInstall: { loading: false },
+    wdttRemove: { loading: false },
+    wdttRollback: { loading: false },
+    olcrtcCheck: { loading: false },
+    olcrtcInstall: { loading: false },
+    olcrtcRemove: { loading: false },
+    olcrtcRollback: { loading: false },
     tailscaleCheck: { loading: false },
     tailscaleInstall: { loading: false },
     tailscaleRemove: { loading: false },
@@ -6632,7 +6696,7 @@ function getTachyonLogNotification(line) {
     return { kind: "error", line };
   }
   const update = line.match(
-    /\[component-update\]\s+(tachyon|sing_box|zapret|zapret2|byedpi)\s+(\S+)/i
+    /\[component-update\]\s+(tachyon|sing_box|zapret|zapret2|byedpi|wdtt|olcrtc)\s+(\S+)/i
   );
   if (!update) {
     return null;
@@ -6697,6 +6761,16 @@ var componentActionKeyMap = {
   "byedpi:install_version": "byedpiInstall",
   "byedpi:remove": "byedpiRemove",
   "byedpi:rollback": "byedpiRollback",
+  "wdtt:check_update": "wdttCheck",
+  "wdtt:install": "wdttInstall",
+  "wdtt:install_version": "wdttInstall",
+  "wdtt:remove": "wdttRemove",
+  "wdtt:rollback": "wdttRollback",
+  "olcrtc:check_update": "olcrtcCheck",
+  "olcrtc:install": "olcrtcInstall",
+  "olcrtc:install_version": "olcrtcInstall",
+  "olcrtc:remove": "olcrtcRemove",
+  "olcrtc:rollback": "olcrtcRollback",
   "tailscale:check_update": "tailscaleCheck",
   "tailscale:install": "tailscaleInstall",
   "tailscale:install_version": "tailscaleInstall",
@@ -6872,6 +6946,14 @@ function getEmptyUpdatesActions() {
     byedpiInstall: { loading: false },
     byedpiRemove: { loading: false },
     byedpiRollback: { loading: false },
+    wdttCheck: { loading: false },
+    wdttInstall: { loading: false },
+    wdttRemove: { loading: false },
+    wdttRollback: { loading: false },
+    olcrtcCheck: { loading: false },
+    olcrtcInstall: { loading: false },
+    olcrtcRemove: { loading: false },
+    olcrtcRollback: { loading: false },
     tailscaleCheck: { loading: false },
     tailscaleInstall: { loading: false },
     tailscaleRemove: { loading: false },
@@ -6913,6 +6995,8 @@ function applyServiceState(uiState) {
     zapret_installed: uiState.capabilities.zapret_installed,
     zapret2_installed: uiState.capabilities.zapret2_installed,
     byedpi_installed: uiState.capabilities.byedpi_installed,
+    wdtt_installed: uiState.capabilities.wdtt_installed,
+    olcrtc_installed: uiState.capabilities.olcrtc_installed,
     server_inbounds_enabled_count: uiState.capabilities.server_inbounds_enabled_count
   };
   nextSystemInfo.sing_box_extended = uiState.capabilities.sing_box_extended;
@@ -7146,7 +7230,9 @@ function componentDisplayName(component) {
     sing_box: "sing-box",
     zapret: "Zapret",
     zapret2: "Zapret2",
-    byedpi: "ByeDPI"
+    byedpi: "ByeDPI",
+    wdtt: "WDTT",
+    olcrtc: "OlcRTC"
   };
   return names[component] || component;
 }
@@ -10767,6 +10853,7 @@ async function runZapret2Check() {
   const tachyonRuntimeReady = !hasZapret2Rules || runningProcesses === expectedProcesses && supervisorProcesses === expectedProcesses;
   const unexpectedRuntime = !hasZapret2Rules && (runningProcesses > 0 || supervisorProcesses > 0);
   const outboundsConfigured = Boolean(data.outbounds_configured);
+  const routesConfigured = Boolean(data.routes_configured);
   const standaloneServiceEnabled = Boolean(data.standalone_service_enabled);
   const standaloneServiceRunning = Boolean(data.standalone_service_running);
   const standaloneConflict = hasZapret2Rules && standaloneServiceRunning;
@@ -10800,6 +10887,11 @@ async function runZapret2Check() {
     {
       state: !hasZapret2Rules || outboundsConfigured ? "success" : "error",
       key: outboundsConfigured ? _("Zapret2 sing-box outbound is configured") : _("Zapret2 sing-box outbound is not configured"),
+      value: ""
+    },
+    {
+      state: !hasZapret2Rules || routesConfigured ? "success" : "error",
+      key: routesConfigured ? _("Zapret2 sing-box route rules are configured") : _("Zapret2 sing-box route rules are not configured"),
       value: ""
     },
     {
@@ -10925,6 +11017,10 @@ var UNKNOWN_SYSTEM_INFO = {
   zapret2_installed: 0,
   byedpi_version: _("unknown"),
   byedpi_installed: 0,
+  wdtt_version: _("unknown"),
+  wdtt_installed: 0,
+  olcrtc_version: _("unknown"),
+  olcrtc_installed: 0,
   tailscale_version: _("unknown"),
   tailscale_installed: 0,
   server_inbounds_enabled_count: -1,
@@ -10990,6 +11086,8 @@ async function ensureSystemInfo({
         zapret_installed: latestSystemInfo.zapret_installed,
         zapret2_installed: latestSystemInfo.zapret2_installed,
         byedpi_installed: latestSystemInfo.byedpi_installed,
+        wdtt_installed: latestSystemInfo.wdtt_installed,
+        olcrtc_installed: latestSystemInfo.olcrtc_installed,
         server_inbounds_enabled_count: latestSystemInfo.server_inbounds_enabled_count
       };
       store.set({

@@ -63,6 +63,8 @@ function emit_reload_plan(previous, current, context) {
         zapret2_queue: current.zapret2_queue != previous.zapret2_queue,
         zapret2_runtime: current.zapret2_runtime != previous.zapret2_runtime,
         byedpi_runtime: current.byedpi_runtime != previous.byedpi_runtime,
+        wdtt_runtime: current.wdtt_runtime != previous.wdtt_runtime,
+        olcrtc_runtime: current.olcrtc_runtime != previous.olcrtc_runtime,
         list: current.list != previous.list,
         hosts_list: current.hosts_list != previous.hosts_list,
         cron: current.cron != previous.cron
@@ -74,6 +76,8 @@ function emit_reload_plan(previous, current, context) {
         zapret_restart: false,
         zapret2_restart: false,
         byedpi_restart: false,
+        wdtt_restart: false,
+        olcrtc_restart: false,
         dnsmasq_configure: false,
         dnsmasq_restore: false,
         cron_refresh: false,
@@ -111,6 +115,12 @@ function emit_reload_plan(previous, current, context) {
 
     if (changed.byedpi_runtime)
         needs.byedpi_restart = true;
+
+    if (changed.wdtt_runtime)
+        needs.wdtt_restart = true;
+
+    if (changed.olcrtc_runtime)
+        needs.olcrtc_restart = true;
 
     if (changed.dnsmasq) {
         if (!current.dont_touch_dhcp)
@@ -175,6 +185,8 @@ function emit_reload_plan(previous, current, context) {
     emit_bool("changed_zapret2_queue", changed.zapret2_queue);
     emit_bool("changed_zapret2_runtime", changed.zapret2_runtime);
     emit_bool("changed_byedpi_runtime", changed.byedpi_runtime);
+    emit_bool("changed_wdtt_runtime", changed.wdtt_runtime);
+    emit_bool("changed_olcrtc_runtime", changed.olcrtc_runtime);
     emit_bool("changed_cron", changed.cron);
     emit_bool("changed_list", changed.list);
     emit_bool("changed_hosts_list", changed.hosts_list);
@@ -184,6 +196,8 @@ function emit_reload_plan(previous, current, context) {
     emit_bool("needs_zapret_restart", needs.zapret_restart);
     emit_bool("needs_zapret2_restart", needs.zapret2_restart);
     emit_bool("needs_byedpi_restart", needs.byedpi_restart);
+    emit_bool("needs_wdtt_restart", needs.wdtt_restart);
+    emit_bool("needs_olcrtc_restart", needs.olcrtc_restart);
     emit_bool("needs_dnsmasq_configure", needs.dnsmasq_configure);
     emit_bool("needs_dnsmasq_restore", needs.dnsmasq_restore);
     emit_bool("needs_cron_refresh", needs.cron_refresh);

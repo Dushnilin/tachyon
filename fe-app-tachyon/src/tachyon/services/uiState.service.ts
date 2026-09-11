@@ -37,6 +37,14 @@ function getEmptyUpdatesActions(): StoreType['updatesActions'] {
     byedpiInstall: { loading: false },
     byedpiRemove: { loading: false },
     byedpiRollback: { loading: false },
+    wdttCheck: { loading: false },
+    wdttInstall: { loading: false },
+    wdttRemove: { loading: false },
+    wdttRollback: { loading: false },
+    olcrtcCheck: { loading: false },
+    olcrtcInstall: { loading: false },
+    olcrtcRemove: { loading: false },
+    olcrtcRollback: { loading: false },
     tailscaleCheck: { loading: false },
     tailscaleInstall: { loading: false },
     tailscaleRemove: { loading: false },
@@ -88,6 +96,8 @@ function applyServiceState(uiState: Tachyon.UiState) {
     zapret_installed: uiState.capabilities.zapret_installed,
     zapret2_installed: uiState.capabilities.zapret2_installed,
     byedpi_installed: uiState.capabilities.byedpi_installed,
+    wdtt_installed: uiState.capabilities.wdtt_installed,
+    olcrtc_installed: uiState.capabilities.olcrtc_installed,
     server_inbounds_enabled_count:
       uiState.capabilities.server_inbounds_enabled_count,
   };

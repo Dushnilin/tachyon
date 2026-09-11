@@ -3,6 +3,7 @@
 let fs = require("fs");
 let common = require("core.common");
 let uci_core = require("core.uci");
+let connections = require("config.connections");
 
 let as_string = common.as_string;
 
@@ -1485,6 +1486,65 @@ function action_dir(kind) {
     return "";
 }
 
+function latency_boot_sweep() {
+    let guard_file = "/var/run/tachyon/boot-sweep-done";
+    if (fs.stat(guard_file) != null)
+        return;
+
+    ensure_dirs();
+
+    let sections = uci.sections(CONFIG_NAME, "section");
+    let has_groups = false;
+    for (let section in sections) {
+        if (!bool_option(section, "enabled", true))
+            continue;
+        if (!bool_option(section, "urltest_enabled", false))
+            continue;
+        has_groups = true;
+        break;
+    }
+    if (!has_groups) {
+        fs.writefile(guard_file, as_string(time()));
+        return;
+    }
+
+    let clash_api_check = command_status("curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:9090/ 2>/dev/null | grep -q '200\\|404'") == 0;
+    if (!clash_api_check) {
+        fs.writefile(guard_file, as_string(time()));
+        return;
+    }
+
+    for (let section in sections) {
+        if (!bool_option(section, "enabled", true))
+            continue;
+        if (!bool_option(section, "urltest_enabled", false))
+            continue;
+
+        let section_name = section[".name"];
+        let urltest_id = "";
+        for (let ut in connections.urltests(section)) {
+            urltest_id = ut;
+            break;
+        }
+        if (urltest_id == "")
+            continue;
+
+        let group_tag = section_name + "-urltest-" + urltest_id;
+        let id = "boot-sweep-" + section_name;
+        let path = job_state_path_value(LATENCY_ACTION_DIR, id);
+        if (path == "")
+            continue;
+
+        write_state_file(path, running_latency_action_value("group", section_name, group_tag, now_seconds()));
+        let method_plan = latency_clash_method("group");
+        command_status(command_from_args([ BIN_PATH, "clash_api", "get_group_latency", group_tag, method_plan.timeout, path ]) + " >/dev/null 2>&1");
+        if (fs.stat(path) != null)
+            write_finished_action_state(path, true, "Boot latency sweep completed", 0);
+    }
+
+    fs.writefile(guard_file, as_string(time()));
+}
+
 function action_ack(kind, job_id_value) {
     let dir = action_dir(kind);
     if (dir == "") {
@@ -1594,6 +1654,8 @@ else if (mode == "latency-test-status")
     latency_test_status(ARGV[1]);
 else if (mode == "action-ack")
     action_ack(ARGV[1], ARGV[2]);
+else if (mode == "latency-boot-sweep")
+    latency_boot_sweep();
 else if (mode == "cleanup-action-dir-fixture")
     cleanup_dir(ARGV[1]);
 else {

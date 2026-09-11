@@ -120,6 +120,8 @@ const ZAPRET_UC = LIB_DIR + "/providers/zapret/runtime.uc";
 const ZAPRET2_UC = LIB_DIR + "/providers/zapret2/runtime.uc";
 const BYEDPI_UC = LIB_DIR + "/providers/byedpi/runtime.uc";
 const TAILSCALE_UC = LIB_DIR + "/providers/tailscale/runtime.uc";
+const WDTT_UC = LIB_DIR + "/providers/wdtt/runtime.uc";
+const OLCRTC_UC = LIB_DIR + "/providers/olcrtc/runtime.uc";
 const PARENTAL_QUOTA_UC = LIB_DIR + "/service/parental_quota.uc";
 const PACKAGES_UC = LIB_DIR + "/core/packages.uc";
 const WATCHDOG_UC = LIB_DIR + "/service/watchdog.uc";
@@ -935,7 +937,10 @@ function start_main() {
     release_start_subscription_update_lock();
     module_success(ZAPRET_UC, [ "start-runtime" ]);
     module_success(ZAPRET2_UC, [ "start-runtime" ]);
+    module_success(WDTT_UC, [ "start-runtime" ]);
+    module_success(OLCRTC_UC, [ "start-runtime" ]);
 
+    module_background(UI_UC, [ "latency-boot-sweep" ]);
     module_background(UPDATES_UC, [ "list-update" ]);
     module_background(LIB_DIR + "/service/lifecycle.uc", [ "discover-awg-mtu" ]);
     return 0;
@@ -1021,6 +1026,10 @@ function stop_main() {
         log_message("Zapret2 stop failed (non-fatal)", "warn");
     if (!module_success(BYEDPI_UC, [ "stop-runtime" ]))
         log_message("ByeDPI stop failed (non-fatal)", "warn");
+    if (!module_success(WDTT_UC, [ "stop-runtime" ]))
+        log_message("WDTT stop failed (non-fatal)", "warn");
+    if (!module_success(OLCRTC_UC, [ "stop-runtime" ]))
+        log_message("OlcRTC stop failed (non-fatal)", "warn");
     if (!module_success(TAILSCALE_UC, [ "stop-runtime" ]))
         log_message("Tailscale stop failed (non-fatal)", "warn");
     module_success(PARENTAL_QUOTA_UC, [ "remove-cron" ]);
@@ -1209,6 +1218,8 @@ function parse_reload_plan(output) {
         needs_zapret_restart: 0,
         needs_zapret2_restart: 0,
         needs_byedpi_restart: 0,
+        needs_wdtt_restart: 0,
+        needs_olcrtc_restart: 0,
         needs_dnsmasq_configure: 0,
         needs_dnsmasq_restore: 0,
         needs_cron_refresh: 0,
@@ -1245,6 +1256,8 @@ function reload_actions_summary(plan) {
     actions = append_reload_action(actions, plan.needs_zapret_restart, "Zapret");
     actions = append_reload_action(actions, plan.needs_zapret2_restart, "Zapret2");
     actions = append_reload_action(actions, plan.needs_byedpi_restart, "ByeDPI");
+    actions = append_reload_action(actions, plan.needs_wdtt_restart, "WDTT");
+    actions = append_reload_action(actions, plan.needs_olcrtc_restart, "OlcRTC");
     actions = append_reload_action(actions, plan.needs_dnsmasq_configure || plan.needs_dnsmasq_restore, "dnsmasq");
     actions = append_reload_action(actions, plan.needs_cron_refresh, "scheduled jobs");
     actions = append_reload_action(actions, plan.needs_list_update, "remote lists");
@@ -1435,6 +1448,10 @@ function reload(reason) {
         module_success(ZAPRET2_UC, [ "stop-runtime" ]);
     if (plan.needs_byedpi_restart == 1)
         module_success(BYEDPI_UC, [ "stop-runtime" ]);
+    if (plan.needs_wdtt_restart == 1)
+        module_success(WDTT_UC, [ "stop-runtime" ]);
+    if (plan.needs_olcrtc_restart == 1)
+        module_success(OLCRTC_UC, [ "stop-runtime" ]);
 
     if (plan.needs_hosts_update == 1 && module_success(STATE_UC, [ "has-hosts-list-update-sources" ]))
         module_success(HOSTS_UC, [ "list-update" ]);
@@ -1503,6 +1520,10 @@ function reload(reason) {
         module_success(ZAPRET_UC, [ "start-runtime" ]);
     if (plan.needs_zapret2_restart == 1)
         module_success(ZAPRET2_UC, [ "start-runtime" ]);
+    if (plan.needs_wdtt_restart == 1)
+        module_success(WDTT_UC, [ "start-runtime" ]);
+    if (plan.needs_olcrtc_restart == 1)
+        module_success(OLCRTC_UC, [ "start-runtime" ]);
     if (plan.needs_byedpi_restart == 1)
     module_success(BYEDPI_UC, [ "start-runtime" ]);
     // Native Tailscale must be up before sing-box so tailnet routes win over

@@ -703,6 +703,12 @@ bypass
 
 [rule.text_rule.excluded_protocol]
 
+[rule.text_rule.routed_dns_enabled]
+0
+[rule.text_rule.routed_dns_type]
+
+[rule.text_rule.routed_dns_server]
+
 [rule.text_rule.protocol]
 
 [rule.text_rule.community_subnet_lists]
@@ -730,6 +736,12 @@ proxy
 [rule.default_enabled.excluded_ips]
 
 [rule.default_enabled.excluded_protocol]
+
+[rule.default_enabled.routed_dns_enabled]
+0
+[rule.default_enabled.routed_dns_type]
+
+[rule.default_enabled.routed_dns_server]
 
 [rule.default_enabled.protocol]
 
@@ -798,6 +810,12 @@ bypass
 [rule.enabled.excluded_ips]
 
 [rule.enabled.excluded_protocol]
+
+[rule.enabled.routed_dns_enabled]
+0
+[rule.enabled.routed_dns_type]
+
+[rule.enabled.routed_dns_server]
 
 [rule.enabled.protocol]
 

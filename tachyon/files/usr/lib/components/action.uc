@@ -1349,6 +1349,74 @@ function resolve_byedpi_release(arch, tag) {
     return null;
 }
 
+function resolve_wdtt_release(arch, tag) {
+    let asset_ext = is_apk() ? "apk" : "ipk";
+    let release_series = trim(helper_output("openwrt-release-series", [ "/etc/openwrt_release" ]));
+    let releases_json = (tag != null && tag != "") ?
+        fetch_github_release_by_tag_json("ret_dev", "wdtt", tag) :
+        fetch_github_releases_json("ret_dev", "wdtt", "30");
+    if (releases_json != "") {
+        let resolved = trim(helper_output_input(releases_json, "wdtt-select-asset", [ release_series, asset_ext, arch.candidates ]));
+        let fields = split(resolved, "\t");
+        if (length(fields) >= 4) {
+            return {
+                arch: fields[0],
+                package_name: fields[1],
+                package_url: fields[2],
+                release_url: fields[3],
+                version: extract_arch_package_version(fields[1], fields[0])
+            };
+        }
+    }
+    if (tag != null && tag != "") {
+        let distrib_arch = read_openwrt_release_value("DISTRIB_ARCH");
+        let tag_clean = replace(tag, /^v/, "");
+        let pkg_name = "wdtt_" + tag_clean + "_openwrt_" + distrib_arch + "." + asset_ext;
+        return {
+            arch: distrib_arch,
+            package_name: pkg_name,
+            package_url: "https://github.com/ret_dev/wdtt/releases/download/" + tag + "/" + pkg_name,
+            release_url: "https://github.com/ret_dev/wdtt/releases/tag/" + tag,
+            version: tag
+        };
+    }
+    return null;
+}
+
+function resolve_olcrtc_release(arch, tag) {
+    let asset_ext = is_apk() ? "apk" : "ipk";
+    let release_series = trim(helper_output("openwrt-release-series", [ "/etc/openwrt_release" ]));
+    let releases_json = (tag != null && tag != "") ?
+        fetch_github_release_by_tag_json("ret_dev", "olcrtc", tag) :
+        fetch_github_releases_json("ret_dev", "olcrtc", "30");
+    if (releases_json != "") {
+        let resolved = trim(helper_output_input(releases_json, "olcrtc-select-asset", [ release_series, asset_ext, arch.candidates ]));
+        let fields = split(resolved, "\t");
+        if (length(fields) >= 4) {
+            return {
+                arch: fields[0],
+                package_name: fields[1],
+                package_url: fields[2],
+                release_url: fields[3],
+                version: extract_arch_package_version(fields[1], fields[0])
+            };
+        }
+    }
+    if (tag != null && tag != "") {
+        let distrib_arch = read_openwrt_release_value("DISTRIB_ARCH");
+        let tag_clean = replace(tag, /^v/, "");
+        let pkg_name = "olcrtc_" + tag_clean + "_openwrt_" + distrib_arch + "." + asset_ext;
+        return {
+            arch: distrib_arch,
+            package_name: pkg_name,
+            package_url: "https://github.com/ret_dev/olcrtc/releases/download/" + tag + "/" + pkg_name,
+            release_url: "https://github.com/ret_dev/olcrtc/releases/tag/" + tag,
+            version: tag
+        };
+    }
+    return null;
+}
+
 function download_direct_package(release) {
     let package_file = tmp_dir + "/" + release.package_name;
     if (!download_with_retry(release.package_url, package_file, release.package_name) || !file_nonempty(package_file))
@@ -1538,6 +1606,86 @@ function install_byedpi(action, target_tag) {
     if (current_version == "")
         current_version = pkg.version || "unknown";
     action_success("byedpi", action, "ByeDPI package has been installed", current_version, pkg.version, 1, "latest", release.release_url || "");
+}
+
+function install_wdtt(action, target_tag) {
+    init_tmp_dir() || action_fail("wdtt", action, "Failed to create temporary directory");
+    let arch = resolve_arch_candidates();
+    if (arch == null)
+        action_fail("wdtt", action, "Failed to detect package architecture");
+    let release = null;
+    retry_resolve("Resolving WDTT package", function() {
+        release = resolve_wdtt_release(arch, target_tag);
+        return release != null;
+    });
+    if (release == null)
+        action_fail("wdtt", action, "Failed to resolve WDTT package for this router architecture");
+
+    let runtime_module = LIB_DIR + "/providers/wdtt/runtime.uc";
+    let installed = provider_installed(runtime_module);
+    let current_version = provider_package_version(runtime_module);
+    if (action == "check_update") {
+        if (!installed)
+            action_success("wdtt", action, "WDTT is not installed", current_version, release.version, 0, "", release.release_url || "");
+        check_success("wdtt", current_version, release.version, release.release_url || "");
+    }
+
+    let pkg = download_direct_package(release);
+    if (pkg == null)
+        action_fail("wdtt", action, "Failed to download WDTT package");
+
+    run_logged("Updating package lists before WDTT package installation", pkg_list_update_command());
+
+    if (!run_logged("Installing WDTT package " + pkg.name, pkg_install_files_command([ pkg.file ])))
+        action_fail("wdtt", action, "Failed to install WDTT package", current_version, pkg.version);
+
+    disable_standalone_service("wdtt");
+    restart_tachyon_after_successful_change();
+    clear_version_caches();
+    current_version = provider_package_version(runtime_module);
+    if (current_version == "")
+        current_version = pkg.version || "unknown";
+    action_success("wdtt", action, "WDTT package has been installed", current_version, pkg.version, 1, "latest", release.release_url || "");
+}
+
+function install_olcrtc(action, target_tag) {
+    init_tmp_dir() || action_fail("olcrtc", action, "Failed to create temporary directory");
+    let arch = resolve_arch_candidates();
+    if (arch == null)
+        action_fail("olcrtc", action, "Failed to detect package architecture");
+    let release = null;
+    retry_resolve("Resolving OlcRTC package", function() {
+        release = resolve_olcrtc_release(arch, target_tag);
+        return release != null;
+    });
+    if (release == null)
+        action_fail("olcrtc", action, "Failed to resolve OlcRTC package for this router architecture");
+
+    let runtime_module = LIB_DIR + "/providers/olcrtc/runtime.uc";
+    let installed = provider_installed(runtime_module);
+    let current_version = provider_package_version(runtime_module);
+    if (action == "check_update") {
+        if (!installed)
+            action_success("olcrtc", action, "OlcRTC is not installed", current_version, release.version, 0, "", release.release_url || "");
+        check_success("olcrtc", current_version, release.version, release.release_url || "");
+    }
+
+    let pkg = download_direct_package(release);
+    if (pkg == null)
+        action_fail("olcrtc", action, "Failed to download OlcRTC package");
+
+    run_logged("Updating package lists before OlcRTC package installation", pkg_list_update_command());
+
+    if (!run_logged("Installing OlcRTC package " + pkg.name, pkg_install_files_command([ pkg.file ])))
+        action_fail("olcrtc", action, "Failed to install OlcRTC package", current_version, pkg.version);
+
+    disable_standalone_service("olcrtc");
+    restart_tachyon_after_successful_change();
+    clear_version_caches();
+    current_version = provider_package_version(runtime_module);
+    if (current_version == "")
+        current_version = pkg.version || "unknown";
+    action_success("olcrtc", action, "OlcRTC package has been installed", current_version, pkg.version, 1, "latest", release.release_url || "");
 }
 
 function install_tailscale(action) {
@@ -3115,6 +3263,26 @@ function rollback_component(component) {
         restart_tachyon_after_successful_change();
         action_success("byedpi", "rollback", "ByeDPI rolled back to " + backup_version, backup_version, "", 1);
     }
+    else if (component == "wdtt") {
+        let backup_bin = bdir + "/wdtt";
+        if (!file_exists(backup_bin)) action_fail("wdtt", "rollback", "WDTT backup binary is missing");
+        remove_file("/usr/bin/wdtt");
+        command_success_from_args([ "cp", "-p", backup_bin, "/usr/bin/wdtt" ]);
+        command_success_from_args([ "chmod", "0755", "/usr/bin/wdtt" ]);
+        clear_version_caches();
+        restart_tachyon_after_successful_change();
+        action_success("wdtt", "rollback", "WDTT rolled back to " + backup_version, backup_version, "", 1);
+    }
+    else if (component == "olcrtc") {
+        let backup_bin = bdir + "/olcrtc";
+        if (!file_exists(backup_bin)) action_fail("olcrtc", "rollback", "OlcRTC backup binary is missing");
+        remove_file("/usr/bin/olcrtc");
+        command_success_from_args([ "cp", "-p", backup_bin, "/usr/bin/olcrtc" ]);
+        command_success_from_args([ "chmod", "0755", "/usr/bin/olcrtc" ]);
+        clear_version_caches();
+        restart_tachyon_after_successful_change();
+        action_success("olcrtc", "rollback", "OlcRTC rolled back to " + backup_version, backup_version, "", 1);
+    }
     else if (component == "zapret") {
         let backup_bin = bdir + "/nfqws";
         if (!file_exists(backup_bin)) action_fail("zapret", "rollback", "Zapret backup binary is missing");
@@ -3380,6 +3548,14 @@ function component_action(component, action, extra) {
         install_byedpi(action);
     else if (component == "byedpi" && action == "remove")
         remove_optional_component("byedpi", "byedpi", "ByeDPI", LIB_DIR + "/providers/byedpi/runtime.uc");
+    else if (component == "wdtt" && (action == "check_update" || action == "install"))
+        install_wdtt(action);
+    else if (component == "wdtt" && action == "remove")
+        remove_optional_component("wdtt", "wdtt", "WDTT", LIB_DIR + "/providers/wdtt/runtime.uc");
+    else if (component == "olcrtc" && (action == "check_update" || action == "install"))
+        install_olcrtc(action);
+    else if (component == "olcrtc" && action == "remove")
+        remove_optional_component("olcrtc", "olcrtc", "OlcRTC", LIB_DIR + "/providers/olcrtc/runtime.uc");
     else if (component == "tailscale" && (action == "check_update" || action == "install"))
         install_tailscale(action);
     else if (component == "tailscale" && action == "remove")

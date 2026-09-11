@@ -936,7 +936,14 @@ function domain_ip_list_ruleset_tag(section_name) {
 
 function domain_ip_list_ruleset_path(section_name) {
     let folder = ctx.runtime_ruleset_folder || runtime_ruleset_folder;
-    return folder + "/" + domain_ip_list_ruleset_tag(section_name) + ".json";
+    let tag = domain_ip_list_ruleset_tag(section_name);
+    let tmp_path = folder + "/" + tag + ".json";
+    let etc_path = "/etc/tachyon/rulesets/" + tag + ".json";
+    if (source_rulesets.has_rules(tmp_path))
+        return tmp_path;
+    if (source_rulesets.has_rules(etc_path))
+        return etc_path;
+    return tmp_path;
 }
 
 function reference_is_local(reference) {
@@ -948,7 +955,8 @@ function source_file_exists(path) {
 }
 
 function rebuild_local_domain_ip_list_ruleset(section_name, references, domains_only) {
-    let ruleset_path = domain_ip_list_ruleset_path(section_name);
+    let folder = ctx.runtime_ruleset_folder || runtime_ruleset_folder;
+    let ruleset_path = folder + "/" + domain_ip_list_ruleset_tag(section_name) + ".json";
     let has_local = false;
 
     for (let reference in references) {
@@ -1086,9 +1094,15 @@ function push_dns_matcher_rule(config, rule) {
 }
 
 function section_dns_server(section) {
-    return option(section, "action", "") == "bypass"
-        ? runtime_constants.DNS_SERVER_TAG
-        : runtime_constants.FAKEIP_DNS_SERVER_TAG;
+    if (option(section, "action", "") == "bypass")
+        return runtime_constants.DNS_SERVER_TAG;
+    if (connections.routed_dns_enabled(section))
+        return runtime_constants.tag(section[".name"], "routed-dns-server");
+    return runtime_constants.FAKEIP_DNS_SERVER_TAG;
+}
+
+function routed_dns_server_tag(section_name) {
+    return runtime_constants.tag(section_name, "routed-dns-server");
 }
 
 function single_or_array(values) {
@@ -1141,6 +1155,32 @@ function add_dns_server_for_section(config, section) {
         push(server_tags, tag_name);
     }
     return server_tags;
+}
+
+function add_routed_dns_server_for_section(config, section) {
+    if (!connections.routed_dns_enabled(section))
+        return;
+    let section_name = section[".name"];
+    let servers = connections.routed_dns_servers(section);
+    let dns_type = connections.routed_dns_type(section);
+    let tag_name = routed_dns_server_tag(section_name);
+    let detour = outbound_tag(section_name);
+
+    for (let i = 0; i < length(servers); i++) {
+        let s_val = servers[i];
+        let server_tag = length(servers) <= 1
+            ? tag_name
+            : runtime_constants.tag(section_name, "routed-dns-server-" + (i + 1));
+        let server = runtime_dns.server_from_options(
+            server_tag,
+            dns_type,
+            s_val,
+            detour
+        );
+        if (server.unsupported)
+            ctx.runtime_generate_unsupported(server.unsupported);
+        push(config.dns.servers, server);
+    }
 }
 
 function source_dns_inbound_matcher() {
@@ -1369,11 +1409,26 @@ function add_excluded_ips_rule(config, section) {
     if (length(excluded) == 0)
         return;
 
+    let resolved = [];
+    for (let item in excluded) {
+        let val = trim(as_string(item));
+        if (val == "") continue;
+        let is_mac = match(val, /^([0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}$/) != null;
+        if (is_mac) {
+            for (let res_ip in core_ip.resolve_mac_to_ips(val))
+                push(resolved, res_ip + (index(res_ip, ":") != -1 ? "/128" : "/32"));
+        } else {
+            push(resolved, val);
+        }
+    }
+    if (length(resolved) == 0)
+        return;
+
     let route_rule = {
         action: "route",
         inbound: tproxy_inbound_matcher(),
         outbound: runtime_constants.DIRECT_OUTBOUND_TAG,
-        source_ip_cidr: single_or_array(excluded)
+        source_ip_cidr: single_or_array(resolved)
     };
     push(config.route.rules, route_rule);
 }
@@ -1642,6 +1697,10 @@ function add_outbound_for_section(config, section, taken, sections) {
         ctx.outbounds.add_zapret2_outbound(config, section, sections);
     else if (action == "byedpi")
         ctx.outbounds.add_byedpi_outbound(config, section, sections);
+    else if (action == "wdtt")
+        ctx.outbounds.add_wdtt_outbound(config, section, sections);
+    else if (action == "olcrtc")
+        ctx.outbounds.add_olcrtc_outbound(config, section, sections);
     else if (action == "bypass") {
         /* route-only action */
     }
@@ -1657,6 +1716,9 @@ function add_outbound_for_section(config, section, taken, sections) {
     else {
         ctx.runtime_generate_unsupported("unsupported action " + action);
     }
+
+    if (action != "dns" && action != "hosts" && action != "bypass" && action != "block")
+        add_routed_dns_server_for_section(config, section);
 }
 
 function reserve_section_outbound_tags(sections, taken) {
@@ -1664,6 +1726,7 @@ function reserve_section_outbound_tags(sections, taken) {
         let action = option(section, "action", "");
         if (connections.is_connections_action(action) ||
             action == "awg" || action == "warp" || action == "byedpi" || action == "zapret" || action == "zapret2" ||
+            action == "wdtt" || action == "olcrtc" ||
             action == "anytls" || action == "snell" || action == "mieru" || action == "sudoku" ||
             action == "masque" || action == "openvpn")
             taken[outbound_tag(section[".name"])] = true;
@@ -1695,6 +1758,7 @@ function failover_candidate(sections) {
         let action = option(section, "action", "");
         if (connections.is_connections_action(action) ||
             action == "awg" || action == "warp" || action == "byedpi" || action == "zapret" || action == "zapret2" ||
+            action == "wdtt" || action == "olcrtc" ||
             action == "anytls" || action == "snell" || action == "mieru" || action == "sudoku" ||
             action == "masque" || action == "openvpn") {
             push(result, section);

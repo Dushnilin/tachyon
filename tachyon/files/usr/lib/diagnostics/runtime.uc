@@ -57,6 +57,8 @@ const SINGBOX_RUNTIME_UC = LIB_DIR + "/singbox/runtime.uc";
 const ZAPRET_RUNTIME_UC = LIB_DIR + "/providers/zapret/runtime.uc";
 const ZAPRET2_RUNTIME_UC = LIB_DIR + "/providers/zapret2/runtime.uc";
 const BYEDPI_RUNTIME_UC = LIB_DIR + "/providers/byedpi/runtime.uc";
+const WDTT_RUNTIME_UC = LIB_DIR + "/providers/wdtt/runtime.uc";
+const OLCRTC_RUNTIME_UC = LIB_DIR + "/providers/olcrtc/runtime.uc";
 const TAILSCALE_RUNTIME_UC = LIB_DIR + "/providers/tailscale/runtime.uc";
 const ZAPRET_VALIDATOR_UC = LIB_DIR + "/providers/zapret/validator.uc";
 const ZAPRET2_VALIDATOR_UC = LIB_DIR + "/providers/zapret2/validator.uc";
@@ -2658,6 +2660,37 @@ function run_doctor_checks_impl(repair) {
         }
     }
 
+    // 4b2. Dnsmasq dns_redirect — when dhcp.@dnsmasq[0].dns_redirect='1',
+    // firewall4 creates DNAT rules that redirect external DNS queries to the
+    // router's :53. If Tachyon TProxy has already marked those packets, the
+    // DNAT rewrites destination to 192.168.1.1:53 and sing-box hijack-dns
+    // creates transparent sockets that collide with dnsmasq.
+    if (!agh_primary) {
+        let dns_redirect = uci_core.get("dhcp.@dnsmasq[0].dns_redirect");
+        if (dns_redirect != "1") {
+            doc_check("✅", "dnsmasq dns_redirect", "disabled (OK)", "");
+        } else {
+            issues++;
+            if (!DOCTOR_REPAIR_MODE) {
+                doc_plan("uci set dhcp.@dnsmasq[0].dns_redirect='0' + dnsmasq restart");
+                doc_check("⚠️", "dnsmasq dns_redirect", "enabled (causes DNAT → port 53 collision with sing-box)",
+                    "→ WILL FIX (doctor --fix): отключение dns_redirect");
+            } else {
+                doc_set("dhcp.@dnsmasq[0].dns_redirect", "0");
+                doc_commit("dhcp");
+                command_status("/etc/init.d/dnsmasq restart >/dev/null 2>&1");
+                command_status("sleep 1");
+                let dr2 = uci_core.get("dhcp.@dnsmasq[0].dns_redirect");
+                if (dr2 != "1") {
+                    doc_check("❌", "dnsmasq dns_redirect", "enabled", "→ FIXED: dns_redirect=0");
+                    fixed++;
+                } else {
+                    doc_check("❌", "dnsmasq dns_redirect", "enabled", "→ не удалось отключить dns_redirect");
+                }
+            }
+        }
+    }
+
     // 4c. Resolv.conf symlink
     let resolv_link = "";
     // Throws when /etc/resolv.conf is a regular file rather than a symlink,
@@ -3351,6 +3384,61 @@ function run_doctor_checks_impl(repair) {
             issues++;
             doc_check("⚠️", "Port 53 conflicts", "bound by " + join(", ", dns53_owners),
                 "→ конкурирующий DNS-демон на :53 даёт плавающие сбои резолвинга");
+        }
+    }
+
+    // 20b. Port 53 Socket Collision — sing-box hijack-dns on tproxy-in creates
+    // transparent write-only sockets that collide with dnsmasq on :53 via
+    // SO_REUSEADDR.  Diagnostic: find sing-box UNCONN sockets on :53 with
+    // non-zero Recv-Q (parasitic write-back sockets that steal UDP packets
+    // from dnsmasq).
+    {
+        let ss_output = command_capture("ss -u -a -e -n 'sport = :53' 2>/dev/null").output;
+        let parasitic_count = 0;
+        let collision_detail = "";
+        for (let line in split(ss_output, "\n")) {
+            if (index(line, "UNCONN") < 0)
+                continue;
+            if (index(line, "sing-box") < 0 && index(line, "sing_box") < 0)
+                continue;
+            let fields = split(trim(line), /[ \t]+/);
+            if (length(fields) < 5)
+                continue;
+            let recv_q = int(fields[1]);
+            if (recv_q > 0) {
+                parasitic_count++;
+                if (collision_detail == "")
+                    collision_detail = fields[3] + " Recv-Q=" + as_string(recv_q);
+            }
+        }
+        if (parasitic_count == 0) {
+            doc_check("✅", "Port 53 socket collision", "none", "");
+        } else {
+            issues++;
+            if (!DOCTOR_REPAIR_MODE) {
+                doc_plan("restart sing-box to clear parasitic :53 sockets");
+                doc_check("⚠️", "Port 53 socket collision", as_string(parasitic_count) + " sing-box sockets on :53 (" + collision_detail + ")",
+                    "→ sing-box hijack-dns создаёт прозрачные write-only сокеты, перехватывающие UDP у dnsmasq; WILL FIX: restart sing-box");
+            } else {
+                command_status("/etc/init.d/sing-box restart >/dev/null 2>&1");
+                command_status("sleep 2");
+                let ss_check = command_capture("ss -u -a -e -n 'sport = :53' 2>/dev/null").output;
+                let still_parasitic = 0;
+                for (let line2 in split(ss_check, "\n")) {
+                    if (index(line2, "UNCONN") < 0) continue;
+                    if (index(line2, "sing-box") < 0 && index(line2, "sing_box") < 0) continue;
+                    let f2 = split(trim(line2), /[ \t]+/);
+                    if (length(f2) >= 5 && int(f2[1]) > 0) still_parasitic++;
+                }
+                if (still_parasitic == 0) {
+                    doc_check("❌", "Port 53 socket collision", as_string(parasitic_count) + " sing-box sockets on :53",
+                        "→ FIXED: sing-box перезапущен, паразитные сокеты очищены");
+                    fixed++;
+                } else {
+                    doc_check("❌", "Port 53 socket collision", "persists after restart",
+                        "→ не удалось устранить — проверьте конфигурацию hijack-dns inbound фильтра");
+                }
+            }
         }
     }
 
@@ -5020,6 +5108,10 @@ else if (mode == "get-zapret2-status")
     exit(module_passthrough(ZAPRET2_RUNTIME_UC, [ "status" ]));
 else if (mode == "get-byedpi-status")
     exit(module_passthrough(BYEDPI_RUNTIME_UC, [ "status" ]));
+else if (mode == "get-wdtt-status")
+    exit(module_passthrough(WDTT_RUNTIME_UC, [ "status" ]));
+else if (mode == "get-olcrtc-status")
+    exit(module_passthrough(OLCRTC_RUNTIME_UC, [ "status" ]));
 else if (mode == "get-tailscale-status")
     exit(module_passthrough(TAILSCALE_RUNTIME_UC, [ "status" ]));
 else if (mode == "get-tailscale-peers")

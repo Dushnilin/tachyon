@@ -24,6 +24,10 @@ const UNKNOWN_SYSTEM_INFO: StoreType['diagnosticsSystemInfo'] = {
   zapret2_installed: 0,
   byedpi_version: _('unknown'),
   byedpi_installed: 0,
+  wdtt_version: _('unknown'),
+  wdtt_installed: 0,
+  olcrtc_version: _('unknown'),
+  olcrtc_installed: 0,
   tailscale_version: _('unknown'),
   tailscale_installed: 0,
   server_inbounds_enabled_count: -1,
@@ -108,6 +112,8 @@ export async function ensureSystemInfo({
         zapret_installed: latestSystemInfo.zapret_installed,
         zapret2_installed: latestSystemInfo.zapret2_installed,
         byedpi_installed: latestSystemInfo.byedpi_installed,
+        wdtt_installed: latestSystemInfo.wdtt_installed,
+        olcrtc_installed: latestSystemInfo.olcrtc_installed,
         server_inbounds_enabled_count:
           latestSystemInfo.server_inbounds_enabled_count,
       };

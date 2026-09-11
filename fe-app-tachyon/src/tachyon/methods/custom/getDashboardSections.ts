@@ -415,7 +415,10 @@ function isConnectionAction(action?: string) {
 }
 
 function isServiceAction(action?: string) {
-  return Boolean(action && ['zapret', 'zapret2', 'byedpi'].includes(action));
+  return Boolean(
+    action &&
+      ['zapret', 'zapret2', 'byedpi', 'wdtt', 'olcrtc'].includes(action),
+  );
 }
 
 function hasSubscriptionSources(section: Tachyon.ConfigSection) {
@@ -1517,7 +1520,9 @@ export async function getDashboardSections(
     Promise<Tachyon.ServiceStatus | undefined>
   >();
 
-  const getServiceStatus = (serviceType: 'zapret' | 'zapret2' | 'byedpi') => {
+  const getServiceStatus = (
+    serviceType: 'zapret' | 'zapret2' | 'byedpi' | 'wdtt' | 'olcrtc',
+  ) => {
     if (!serviceStatusCache.has(serviceType)) {
       serviceStatusCache.set(
         serviceType,
@@ -1561,6 +1566,38 @@ export async function getDashboardSections(
                 const s = result.data;
                 return {
                   serviceType: 'byedpi',
+                  configured: Boolean(s.configured),
+                  ready: Boolean(s.ready),
+                  conflict: Boolean(s.conflict),
+                  runningProcesses: s.running_process_count,
+                  expectedProcesses: s.expected_process_count,
+                  restartCount: s.restart_count,
+                  unstable: Boolean(s.runtime_unstable),
+                  statusMessage: s.status_message,
+                };
+              }
+            } else if (serviceType === 'wdtt') {
+              const result = await TachyonShellMethods.getWdttStatus();
+              if (result.success && result.data) {
+                const s = result.data;
+                return {
+                  serviceType: 'wdtt',
+                  configured: Boolean(s.configured),
+                  ready: Boolean(s.ready),
+                  conflict: Boolean(s.conflict),
+                  runningProcesses: s.running_process_count,
+                  expectedProcesses: s.expected_process_count,
+                  restartCount: s.restart_count,
+                  unstable: Boolean(s.runtime_unstable),
+                  statusMessage: s.status_message,
+                };
+              }
+            } else if (serviceType === 'olcrtc') {
+              const result = await TachyonShellMethods.getOlcrtcStatus();
+              if (result.success && result.data) {
+                const s = result.data;
+                return {
+                  serviceType: 'olcrtc',
                   configured: Boolean(s.configured),
                   ready: Boolean(s.ready),
                   conflict: Boolean(s.conflict),

@@ -13214,8 +13214,8 @@
     ]
   },
   {
-    "call": "Traffic from these IP addresses will never be routed through this section, even if other conditions match.",
-    "key": "Traffic from these IP addresses will never be routed through this section, even if other conditions match.",
+    "call": "Traffic from these IP addresses, CIDRs, or MAC addresses will never be routed through this section, even if other conditions match.",
+    "key": "Traffic from these IP addresses, CIDRs, or MAC addresses will never be routed through this section, even if other conditions match.",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:10821"
     ]

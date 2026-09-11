@@ -112,6 +112,8 @@ function show_help() {
     print("    get_zapret_status       Get zapret provider and Tachyon-managed nfqws status\n");
     print("    get_zapret2_status      Get zapret2 provider and Tachyon-managed nfqws2 status\n");
     print("    get_byedpi_status       Get ByeDPI provider and Tachyon-managed ciadpi status\n");
+    print("    get_wdtt_status         Get WDTT provider and Tachyon-managed wdtt status\n");
+    print("    get_olcrtc_status       Get OlcRTC provider and Tachyon-managed olcrtc status\n");
     print("    get_system_info         Get system information in JSON format\n");
     print("    get_server_capabilities Get server UI capabilities in JSON format\n");
     print("    get_ui_capabilities     Get lightweight UI capabilities in JSON format\n");
@@ -226,6 +228,8 @@ function command_spec(command) {
         get_zapret_status: [ "diagnostics/runtime.uc", "get-zapret-status", 0 ],
         get_zapret2_status: [ "diagnostics/runtime.uc", "get-zapret2-status", 0 ],
         get_byedpi_status: [ "diagnostics/runtime.uc", "get-byedpi-status", 0 ],
+        get_wdtt_status: [ "diagnostics/runtime.uc", "get-wdtt-status", 0 ],
+        get_olcrtc_status: [ "diagnostics/runtime.uc", "get-olcrtc-status", 0 ],
         get_tailscale_status: [ "diagnostics/runtime.uc", "get-tailscale-status", 0 ],
         get_tailscale_peers: [ "diagnostics/runtime.uc", "get-tailscale-peers", 0 ],
         tailscale_restart: [ "providers/tailscale/runtime.uc", "start-runtime", 0 ],

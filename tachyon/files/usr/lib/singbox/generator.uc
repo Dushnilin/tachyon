@@ -619,7 +619,8 @@ function base_config(settings, service_address, runtime_context) {
 
 function mixed_proxy_enabled_action(action) {
     return action == "connection" || action == "proxy" || action == "outbound" || action == "vpn" ||
-        action == "awg" || action == "byedpi" || action == "zapret" || action == "zapret2";
+        action == "awg" || action == "byedpi" || action == "zapret" || action == "zapret2" ||
+        action == "wdtt" || action == "olcrtc";
 }
 
 function add_mixed_proxy_for_section(config, section, service_address) {

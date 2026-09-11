@@ -63,6 +63,7 @@ function candidates() {
         let action = option(section, "action", "");
         if (action == "connection" || action == "proxy" || action == "outbound" || action == "vpn" ||
             action == "awg" || action == "warp" || action == "byedpi" || action == "zapret" || action == "zapret2" ||
+            action == "wdtt" || action == "olcrtc" ||
             action == "anytls" || action == "snell" || action == "mieru" || action == "sudoku" ||
             action == "masque" || action == "openvpn")
             push(result, as_string(section[".name"]));

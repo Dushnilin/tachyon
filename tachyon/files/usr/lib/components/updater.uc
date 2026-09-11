@@ -414,7 +414,7 @@ function openwrt_release_series(path) {
 
 function updates_arch_package_version(package_name, package_arch) {
     let version = str_remove_suffix(str_remove_suffix(package_name, ".ipk"), ".apk");
-    let prefixes = ["zapret2_", "zapret2-", "zapret_", "zapret-", "byedpi_", "byedpi-"];
+    let prefixes = ["zapret2_", "zapret2-", "zapret_", "zapret-", "byedpi_", "byedpi-", "wdtt_", "wdtt-", "olcrtc_", "olcrtc-"];
 
     for (let prefix in prefixes) {
         if (str_startswith(version, prefix)) {
@@ -1037,6 +1037,78 @@ function byedpi_select_asset(series, asset_ext, arch_candidates) {
     }
 }
 
+function wdtt_select_asset(series, asset_ext, arch_candidates) {
+    let releases = releases_array_or_wrapped(read_stdin_json());
+
+    for (let pass = 0; pass < 2; pass++) {
+        if (pass == 0 && as_string(series) == "")
+            continue;
+
+        for (let release in releases) {
+            if (type(release) != "object")
+                continue;
+            if (release.draft === true || (length(releases) > 1 && release.prerelease === true))
+                continue;
+            if (pass == 0 && length(releases) > 1) {
+                let tag = as_string(release.tag_name || "");
+                let name = as_string(release.name || "");
+                if (!str_contains(tag, series) && !str_contains(name, series))
+                    continue;
+            }
+            for (let arch in split(as_string(arch_candidates), " ")) {
+                if (arch == "")
+                    continue;
+                for (let asset in array_or_empty(release.assets)) {
+                    if (type(asset) != "object")
+                        continue;
+                    let name = as_string(asset.name || "");
+                    let url = as_string(asset.browser_download_url || "");
+                    if (url != "" && release_asset_matches_arch(name, "wdtt", arch, asset_ext)) {
+                        print(arch, "\t", name, "\t", url, "\t", as_string(release.html_url || ""), "\n");
+                        return;
+                    }
+                }
+            }
+        }
+    }
+}
+
+function olcrtc_select_asset(series, asset_ext, arch_candidates) {
+    let releases = releases_array_or_wrapped(read_stdin_json());
+
+    for (let pass = 0; pass < 2; pass++) {
+        if (pass == 0 && as_string(series) == "")
+            continue;
+
+        for (let release in releases) {
+            if (type(release) != "object")
+                continue;
+            if (release.draft === true || (length(releases) > 1 && release.prerelease === true))
+                continue;
+            if (pass == 0 && length(releases) > 1) {
+                let tag = as_string(release.tag_name || "");
+                let name = as_string(release.name || "");
+                if (!str_contains(tag, series) && !str_contains(name, series))
+                    continue;
+            }
+            for (let arch in split(as_string(arch_candidates), " ")) {
+                if (arch == "")
+                    continue;
+                for (let asset in array_or_empty(release.assets)) {
+                    if (type(asset) != "object")
+                        continue;
+                    let name = as_string(asset.name || "");
+                    let url = as_string(asset.browser_download_url || "");
+                    if (url != "" && release_asset_matches_arch(name, "olcrtc", arch, asset_ext)) {
+                        print(arch, "\t", name, "\t", url, "\t", as_string(release.html_url || ""), "\n");
+                        return;
+                    }
+                }
+            }
+        }
+    }
+}
+
 function sing_box_extended_release_tag() {
     for (let release in releases_array_or_wrapped(read_stdin_json())) {
         if (type(release) != "object")
@@ -1444,6 +1516,10 @@ else if (mode == "release-select-arch-suffix-asset")
     release_select_arch_suffix_asset(ARGV[1], ARGV[2]);
 else if (mode == "byedpi-select-asset")
     byedpi_select_asset(ARGV[1], ARGV[2], ARGV[3]);
+else if (mode == "wdtt-select-asset")
+    wdtt_select_asset(ARGV[1], ARGV[2], ARGV[3]);
+else if (mode == "olcrtc-select-asset")
+    olcrtc_select_asset(ARGV[1], ARGV[2], ARGV[3]);
 else if (mode == "sing-box-extended-release-tag")
     sing_box_extended_release_tag();
 else if (mode == "sing-box-lx-release-tag")

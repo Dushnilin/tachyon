@@ -72,13 +72,16 @@ function config(settings, runtime) {
     if (type(runtime) == "object" && type(runtime.dns_health_inbounds) == "array")
         for (let inbound in runtime.dns_health_inbounds)
             push(sniff_inbounds, inbound);
+    let dns_hijack_inbounds = [ runtime_constants.DNS_INBOUND_TAG ];
+    if (type(runtime) == "object" && bool_value(runtime.source_aware_dns))
+        push(dns_hijack_inbounds, runtime_constants.SOURCE_DNS_INBOUND_TAG);
+    if (type(runtime) == "object" && type(runtime.dns_health_inbounds) == "array")
+        for (let inbound in runtime.dns_health_inbounds)
+            push(dns_hijack_inbounds, inbound);
     let rules = [
         { action: "sniff", inbound: sniff_inbounds },
-        { action: "hijack-dns", port: 53 },
-        { action: "hijack-dns", protocol: "dns" }
+        { action: "hijack-dns", inbound: dns_hijack_inbounds }
     ];
-    if (type(runtime) == "object" && bool_value(runtime.source_aware_dns))
-        push(rules, { action: "hijack-dns", inbound: [ runtime_constants.SOURCE_DNS_INBOUND_TAG ] });
     let result = {
         rules,
         rule_set: [],
@@ -120,7 +123,8 @@ function target(section, outbound_tag_name) {
         action == "awg" || action == "warp" ||
         action == "anytls" || action == "snell" || action == "mieru" || action == "sudoku" ||
         action == "masque" || action == "openvpn" ||
-        action == "byedpi" || action == "zapret" || action == "zapret2")
+        action == "byedpi" || action == "zapret" || action == "zapret2" ||
+        action == "wdtt" || action == "olcrtc")
         return { action: "route", outbound: outbound_tag_name };
     if (action == "bypass")
         return { action: "route", outbound: runtime_constants.BYPASS_OUTBOUND_TAG };
@@ -139,6 +143,7 @@ function has_resolve_matchers(rule) {
 function resolve_rule_for_section(section, route_rule) {
     let action = option(section, "action", "");
     let should_resolve = action == "byedpi" || action == "zapret" || action == "zapret2" ||
+        action == "wdtt" || action == "olcrtc" ||
         (connections.is_connections_action(action) &&
             bool_option(section, "resolve_real_ip_for_routing", false));
 

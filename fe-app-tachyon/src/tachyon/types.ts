@@ -69,6 +69,8 @@ export namespace Tachyon {
     GET_TAILSCALE_PEERS = 'get_tailscale_peers',
     GET_ZAPRET2_STATUS = 'get_zapret2_status',
     GET_BYEDPI_STATUS = 'get_byedpi_status',
+    GET_WDTT_STATUS = 'get_wdtt_status',
+    GET_OLCRTC_STATUS = 'get_olcrtc_status',
     CLASH_API = 'clash_api',
     ENABLE = 'enable',
     DISABLE = 'disable',
@@ -200,7 +202,7 @@ export namespace Tachyon {
   }
 
   export interface ServiceStatus {
-    serviceType: 'zapret' | 'zapret2' | 'byedpi';
+    serviceType: 'zapret' | 'zapret2' | 'byedpi' | 'wdtt' | 'olcrtc';
     configured: boolean;
     ready: boolean;
     conflict: boolean;
@@ -275,6 +277,8 @@ export namespace Tachyon {
     | 'zapret'
     | 'zapret2'
     | 'byedpi'
+    | 'wdtt'
+    | 'olcrtc'
     | 'awg'
     | 'warp'
     | 'anytls'
@@ -321,6 +325,9 @@ export namespace Tachyon {
     ports?: string[];
     protocol?: string[];
     excluded_protocol?: string[];
+    routed_dns_enabled?: '0' | '1';
+    routed_dns_type?: 'udp' | 'dot' | 'doh' | 'doq';
+    routed_dns_server?: string | string[];
     update_interval?: string;
 
     proxy_string?: string;
@@ -328,6 +335,31 @@ export namespace Tachyon {
     nfqws2_opt?: string;
     byedpi_cmd_opts?: string;
     cmd_opts?: string;
+
+    warp_flow_uri?: string;
+    warp_flow_mode?: string;
+    warp_flow_device_id?: string;
+    warp_flow_workers?: string;
+    warp_flow_max_hashes?: string;
+    warp_flow_mtu?: string;
+    warp_flow_refresh?: string;
+    warp_flow_auto_update?: boolean;
+    warp_flow_block_doh?: boolean;
+    warp_flow_block_ipv6?: boolean;
+    warp_flow_subscription_links?: string[];
+    warp_flow_community_lists?: string[];
+    warp_flow_remote_domain_list?: string[];
+    warp_flow_qwdtt_mode?: string;
+
+    olcrtc_provider?: string;
+    olcrtc_transport?: string;
+    olcrtc_room_id?: string;
+    olcrtc_crypto_key?: string;
+    olcrtc_socks_host?: string;
+    olcrtc_socks_port?: string;
+    olcrtc_dns_server?: string;
+    olcrtc_subscription_links?: string[];
+
     selector_proxy_links?: string[];
     subscription_urls?: string[];
     interfaces?: string[];
@@ -610,6 +642,10 @@ export namespace Tachyon {
     zapret2_installed: 0 | 1;
     byedpi_version: string;
     byedpi_installed: 0 | 1;
+    wdtt_version: string;
+    wdtt_installed: 0 | 1;
+    olcrtc_version: string;
+    olcrtc_installed: 0 | 1;
     tailscale_version: string;
     tailscale_installed: 0 | 1;
     direct_bypass_enabled?: 0 | 1;
@@ -639,6 +675,8 @@ export namespace Tachyon {
     zapret_installed: 0 | 1;
     zapret2_installed: 0 | 1;
     byedpi_installed: 0 | 1;
+    wdtt_installed: 0 | 1;
+    olcrtc_installed: 0 | 1;
     server_inbounds_enabled_count: number;
   }
 
@@ -864,6 +902,54 @@ export namespace Tachyon {
   }
 
   export interface GetByedpiStatus {
+    installed: 0 | 1;
+    package_installed: 0 | 1;
+    provider_available: 0 | 1;
+    provider_path: string;
+    version: string;
+    configured: 0 | 1;
+    enabled_rule_count: number;
+    expected_process_count: number;
+    running_process_count: number;
+    supervisor_process_count: number;
+    restart_count: number;
+    runtime_unstable: 0 | 1;
+    standalone_service_enabled: 0 | 1;
+    standalone_service_running: 0 | 1;
+    listen_address: string;
+    port_base: number;
+    outbounds_configured: 0 | 1;
+    routes_configured: 0 | 1;
+    ready: 0 | 1;
+    conflict: 0 | 1;
+    status_message: string;
+  }
+
+  export interface GetWdttStatus {
+    installed: 0 | 1;
+    package_installed: 0 | 1;
+    provider_available: 0 | 1;
+    provider_path: string;
+    version: string;
+    configured: 0 | 1;
+    enabled_rule_count: number;
+    expected_process_count: number;
+    running_process_count: number;
+    supervisor_process_count: number;
+    restart_count: number;
+    runtime_unstable: 0 | 1;
+    standalone_service_enabled: 0 | 1;
+    standalone_service_running: 0 | 1;
+    listen_address: string;
+    port_base: number;
+    outbounds_configured: 0 | 1;
+    routes_configured: 0 | 1;
+    ready: 0 | 1;
+    conflict: 0 | 1;
+    status_message: string;
+  }
+
+  export interface GetOlcrtcStatus {
     installed: 0 | 1;
     package_installed: 0 | 1;
     provider_available: 0 | 1;
