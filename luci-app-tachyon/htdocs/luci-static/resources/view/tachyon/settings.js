@@ -1773,6 +1773,7 @@ function createSettingsContent(section, capabilities) {
   );
   o.depends("enable_badwan_interface_monitoring", "1");
   o.multiple = true;
+  o.default = "wan";
   o.filter = function (section_id, value) {
     // Reject if the value is in the blocked list ['lan', 'loopback']
     if (["lan", "loopback"].includes(value)) {

@@ -264,9 +264,9 @@ const CLOUDFLARE_SHARED_CIDRS = [
 ];
 
 function is_cloudflare_shared_cidr(value) {
-    value = trim(as_string(value));
+    value = lc(trim(as_string(value)));
     for (let c in CLOUDFLARE_SHARED_CIDRS) {
-        if (value == c)
+        if (value == lc(c))
             return true;
     }
     return false;

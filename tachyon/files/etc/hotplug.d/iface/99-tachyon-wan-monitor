@@ -22,9 +22,9 @@ esac
 # 2. Check if Telegram bot is enabled
 [ "$(uci -q get tachyon.telegram.enabled)" = "1" ] || exit 0
 
-# 3. Check if current interface is in badwan_monitored_interfaces
+# 3. Check if current interface is in badwan_monitored_interfaces (defaults to wan)
 MONITORED="$(uci -q get tachyon.settings.badwan_monitored_interfaces)"
-[ -n "$MONITORED" ] || exit 0
+[ -n "$MONITORED" ] || MONITORED="wan"
 
 MATCHED=0
 for iface in $MONITORED; do
@@ -41,21 +41,37 @@ done
     mkdir -p "$STATE_DIR" 2>/dev/null
     LOCK_DIR="${STATE_DIR}/wan_monitor_${INTERFACE}.lock"
 
-    # Acquire per-interface lock with retry (max 5 seconds)
+    # Acquire per-interface lock with stale process check (max 5 seconds)
     acquired=0
     for _ in 1 2 3 4 5; do
         if mkdir "$LOCK_DIR" 2>/dev/null; then
+            echo "$$" > "$LOCK_DIR/pid"
             acquired=1
             break
+        elif [ -f "$LOCK_DIR/pid" ]; then
+            old_pid="$(cat "$LOCK_DIR/pid" 2>/dev/null)"
+            if [ -n "$old_pid" ] && ! kill -0 "$old_pid" 2>/dev/null; then
+                rm -rf "$LOCK_DIR" 2>/dev/null
+                continue
+            fi
         fi
         sleep 1
     done
     [ "$acquired" -eq 1 ] || exit 0
 
-    trap 'rmdir "$LOCK_DIR" 2>/dev/null' EXIT INT TERM
+    trap 'rm -rf "$LOCK_DIR" 2>/dev/null' EXIT INT TERM
 
-    # Debounce delay to let interface state settle
-    sleep 2
+    # Debounce delay to let interface state settle (respects badwan_reload_delay)
+    DELAY_MS="$(uci -q get tachyon.settings.badwan_reload_delay)"
+    DELAY_SEC=2
+    case "$DELAY_MS" in
+        ''|*[!0-9]*) DELAY_SEC=2 ;;
+        *)
+            DELAY_SEC=$((DELAY_MS / 1000))
+            [ "$DELAY_SEC" -ge 1 ] 2>/dev/null || DELAY_SEC=1
+            ;;
+    esac
+    sleep "$DELAY_SEC"
 
     # Query actual interface status from ubus
     STATUS_JSON="$(ubus -S call "network.interface.${INTERFACE}" status 2>/dev/null)"
@@ -81,9 +97,11 @@ done
             echo "up" > "$STATE_FILE"
         fi
     elif [ "$CURRENT_STATE" = "down" ]; then
-        if [ "$PREV_STATE" != "down" ]; then
+        if [ "$PREV_STATE" = "up" ]; then
             echo "down" > "$STATE_FILE"
             "$TACHYON_BIN" telegram send "⚠️ Интерфейс *${INTERFACE}* упал!"
+        elif [ -z "$PREV_STATE" ]; then
+            echo "down" > "$STATE_FILE"
         fi
     fi
 ) >/dev/null 2>&1 &

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -eo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)"
 MONITOR_SCRIPT="$ROOT_DIR/tachyon/files/etc/hotplug.d/iface/99-tachyon-wan-monitor"
 
 fail() {
@@ -38,6 +38,9 @@ case "$cmd" in
           ;;
         tachyon.settings.badwan_monitored_interfaces)
           cat "${TEST_UCI_DIR}/monitored_ifaces" 2>/dev/null || echo ""
+          ;;
+        tachyon.settings.badwan_reload_delay)
+          cat "${TEST_UCI_DIR}/reload_delay" 2>/dev/null || echo "50"
           ;;
         *)
           echo ""
@@ -92,10 +95,12 @@ export TEST_LOG_FILE="$TMP_DIR/logger.log"
 export TEST_TELEGRAM_LOG="$TMP_DIR/telegram.log"
 mkdir -p "$TEST_UCI_DIR"
 
-# Patch monitor script temporarily to use our isolated /var/run/tachyon dir and fast debounce (0.1s instead of 2s)
+# Patch monitor script temporarily to use our isolated /var/run/tachyon dir and fast debounce (0.05s instead of 2s)
 TEST_MONITOR="$TMP_DIR/monitor_under_test.sh"
+# shellcheck disable=SC2016
 sed -e "s|/var/run/tachyon|${VAR_RUN}|g" \
-    -e "s|sleep 2|sleep 0.1|g" \
+    -e 's|sleep "\$DELAY_SEC"|sleep 0.05|g' \
+    -e 's|sleep 2|sleep 0.05|g' \
     "$MONITOR_SCRIPT" > "$TEST_MONITOR"
 chmod +x "$TEST_MONITOR"
 

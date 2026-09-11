@@ -5156,7 +5156,7 @@ function resolve_domain_cli(domain) {
             if (match(line, /^(Name:|Non-authoritative answer:)/i))
                 past_header = true;
             if (past_header) {
-                let m = match(line, /Address(?:[ \t]+[0-9]+)?:[ \t]*([0-9a-fA-F:.]+)/);
+                let m = match(line, /^Address[0-9 \t]*:[ \t]*([0-9a-fA-F:.]+)/);
                 if (m && m[1] && m[1] != "127.0.0.1" && m[1] != "::1")
                     add_ip(m[1]);
             }
