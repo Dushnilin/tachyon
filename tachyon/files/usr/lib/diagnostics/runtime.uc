@@ -2142,11 +2142,25 @@ function find_process_pid(name) {
     return length(pids) > 0 && pids[0] != "" ? pids[0] : "";
 }
 
+function is_container_process(pid) {
+    pid = as_string(pid);
+    if (pid == "")
+        return false;
+    let host_net = fs.readlink("/proc/1/ns/net");
+    let proc_net = fs.readlink("/proc/" + pid + "/ns/net");
+    if (host_net != null && proc_net != null && host_net != proc_net)
+        return true;
+    let cgroup = fs.readfile("/proc/" + pid + "/cgroup") || "";
+    if (index(cgroup, "docker") >= 0 || index(cgroup, "containerd") >= 0)
+        return true;
+    return false;
+}
+
 function is_adguardhome_primary_dns(cfg) {
     let agh_pid = find_process_pid("AdGuardHome");
     if (agh_pid == "")
         agh_pid = find_process_pid("adguardhome");
-    if (agh_pid == "")
+    if (agh_pid == "" || is_container_process(agh_pid))
         return false;
 
     let dnsmasq_port = uci_core.get("dhcp.@dnsmasq[0].port");
@@ -4337,6 +4351,8 @@ function diagnose_system_conflicts(cfg, lang, causes, fn_add_fix) {
         if (pid == "" && svc == "adguardhome")
             pid = find_process_pid("AdGuardHome");
         if (pid != "") {
+            if (is_container_process(pid))
+                continue;
             if ((svc == "adguardhome" || svc == "AdGuardHome") && is_adguardhome_primary_dns(cfg))
                 continue;
 
@@ -4355,6 +4371,8 @@ function diagnose_system_conflicts(cfg, lang, causes, fn_add_fix) {
     for (let pkg in competing_pkgs) {
         let pid = find_process_pid(pkg);
         if (pid != "") {
+            if (is_container_process(pid))
+                continue;
             push(causes, {
                 probability: 88,
                 cause: lang == "en" ? sprintf("Conflicting proxy framework running: %s (PID %s) causes routing/nftables rule clashes", pkg, pid)

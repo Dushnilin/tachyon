@@ -135,12 +135,25 @@ function normalized_resolver(value) {
 
 function resolve_service_host(host, resolver) {
     resolver = normalized_resolver(resolver);
-    if (host == "" || resolver == "")
+    if (host == "")
         return "";
 
-    return first_ipv4_line(command_output_from_args([
-        "dig", "+short", "@" + resolver, host, "A", "+time=2", "+tries=1"
-    ]));
+    let ip = "";
+    if (resolver != "") {
+        ip = first_ipv4_line(command_output_from_args([
+            "dig", "+short", "@" + resolver, host, "A", "+time=2", "+tries=1"
+        ]));
+        if (ip == "")
+            ip = first_nslookup_address(command_output_from_args([ "nslookup", host, resolver ]));
+    }
+    if (ip == "") {
+        ip = first_ipv4_line(command_output_from_args([
+            "dig", "+short", host, "A", "+time=2", "+tries=1"
+        ]));
+        if (ip == "")
+            ip = first_nslookup_address(command_output_from_args([ "nslookup", host ]));
+    }
+    return public_ipv4(ip) ? ip : "";
 }
 
 function resolve_server(value) {
@@ -174,11 +187,6 @@ function lookup_ip_batch(ips, resolver) {
     let endpoint = country_is_endpoint();
     if (endpoint.host != "" && !valid_ipv4(endpoint.host) && !valid_ipv6(endpoint.host)) {
         let service_ip = resolve_service_host(endpoint.host, resolver);
-        if (normalized_resolver(resolver) != "" && !public_ipv4(service_ip)) {
-            remove_file(body_path);
-            warn("Server country service host resolution failed\n");
-            return { countries: {}, stop: true };
-        }
         if (public_ipv4(service_ip)) {
             push(args, "--resolve");
             push(args, endpoint.host + ":" + endpoint.port + ":" + service_ip);

@@ -70,10 +70,15 @@ export async function runSectionsCheck() {
 
         const isSubscription = section.proxyConfigType === 'subscription';
 
-        if (selectedOutbound?.code) {
+        const activeNodeCode =
+          selectedOutbound?.urlTestInfo?.selectedCode ||
+          selectedOutbound?.priorityInfo?.selectedCode ||
+          selectedOutbound?.code;
+
+        if (activeNodeCode) {
           const latencyProxy =
             await TachyonShellMethods.getClashApiProxyLatency(
-              selectedOutbound.code,
+              activeNodeCode,
               section.latencyTestTimeout,
             );
           const proxySuccess =
@@ -81,10 +86,10 @@ export async function runSectionsCheck() {
 
           if (proxySuccess) {
             const delay = latencyProxy.data?.delay;
-            if (typeof delay === 'number') {
+            if (typeof delay === 'number' && delay > 0) {
               return {
                 state: 'success',
-                latency: `[${selectedOutbound.displayName ?? ''}] ${delay}ms`,
+                latency: `[${selectedOutbound?.displayName ?? ''}] ${delay}ms`,
               };
             }
 
@@ -95,14 +100,21 @@ export async function runSectionsCheck() {
               const minDelay = Math.min(...groupDelays);
               return {
                 state: 'success',
-                latency: `[${selectedOutbound.displayName ?? ''}] ${minDelay}ms`,
+                latency: `[${selectedOutbound?.displayName ?? ''}] ${minDelay}ms`,
               };
             }
           }
 
+          if (selectedOutbound?.latency && selectedOutbound.latency > 0) {
+            return {
+              state: 'success',
+              latency: `[${selectedOutbound.displayName ?? ''}] ${selectedOutbound.latency}ms`,
+            };
+          }
+
           return {
             state: 'error',
-            latency: `[${selectedOutbound.displayName ?? ''}] ${_('Not responding')}`,
+            latency: `[${selectedOutbound?.displayName ?? ''}] ${_('Not responding')}`,
           };
         }
 
@@ -209,6 +221,13 @@ export async function runSectionsCheck() {
         return {
           state: 'warning',
           latency: `[${selectedOutbound.displayName || section.code}] ${_('Connectivity probe failed')}`,
+        };
+      }
+
+      if (selectedOutbound?.latency && selectedOutbound.latency > 0) {
+        return {
+          state: 'success',
+          latency: `${selectedOutbound.latency} ms`,
         };
       }
 

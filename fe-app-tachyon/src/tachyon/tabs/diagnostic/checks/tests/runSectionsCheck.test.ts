@@ -284,4 +284,97 @@ describe('runSectionsCheck', () => {
       }),
     );
   });
+
+  it('targets active child node code when outbound has urlTestInfo.selectedCode', async () => {
+    mocks.getDashboardSections.mockResolvedValue({
+      success: true,
+      data: [
+        {
+          withTagSelect: true,
+          code: 'ai-out',
+          sectionName: 'ai',
+          displayName: 'AI',
+          outbounds: [
+            {
+              code: 'ai-urltest',
+              displayName: 'Fastest',
+              latency: 158,
+              type: 'URLTest',
+              selected: true,
+              urlTestInfo: {
+                selectedCode: 'ai-node-fastest',
+                selectedName: 'Fast Node',
+                outbounds: [],
+              },
+            },
+          ],
+        },
+      ],
+    });
+    mocks.getClashApiProxyLatency.mockResolvedValue({
+      success: true,
+      data: { delay: 158 },
+    });
+
+    await expect(runSectionsCheck()).resolves.toBeUndefined();
+
+    expect(mocks.getClashApiProxyLatency).toHaveBeenCalledWith(
+      'ai-node-fastest',
+      undefined,
+    );
+    expect(mocks.updateCheckStore).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        state: 'success',
+        items: [
+          {
+            state: 'success',
+            key: 'AI',
+            value: '[Fastest] 158ms',
+          },
+        ],
+      }),
+    );
+  });
+
+  it('falls back to verified outbound latency when live probe fails', async () => {
+    mocks.getDashboardSections.mockResolvedValue({
+      success: true,
+      data: [
+        {
+          withTagSelect: true,
+          code: 'ai-out',
+          sectionName: 'ai',
+          displayName: 'AI',
+          outbounds: [
+            {
+              code: 'ai-urltest',
+              displayName: 'Fastest',
+              latency: 158,
+              type: 'URLTest',
+              selected: true,
+            },
+          ],
+        },
+      ],
+    });
+    mocks.getClashApiProxyLatency.mockResolvedValue({
+      success: false,
+      error: 'timeout',
+    });
+
+    await expect(runSectionsCheck()).resolves.toBeUndefined();
+
+    expect(mocks.updateCheckStore).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        state: 'success',
+        items: [
+          {
+            state: 'success',
+            key: 'AI',
+            value: '[Fastest] 158ms',
+          },
+        ],
+      }),
+    );
+  });
 });

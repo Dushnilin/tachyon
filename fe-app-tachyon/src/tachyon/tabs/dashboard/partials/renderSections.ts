@@ -467,6 +467,10 @@ function renderDefaultState({
         return 'tachyon_dashboard-page__outbound-grid__item__latency--empty';
       }
 
+      if (outbound.latency === -1 || outbound.latency < 0) {
+        return 'tachyon_dashboard-page__outbound-grid__item__latency--red';
+      }
+
       if (outbound.latency < 800) {
         return 'tachyon_dashboard-page__outbound-grid__item__latency--green';
       }
@@ -763,9 +767,11 @@ function renderDefaultState({
                 ? [renderLoaderCircleIcon24(), E('span', {}, _('Checking...'))]
                 : isConnectionNode
                   ? connectionStatusText
-                  : outbound.latency
+                  : outbound.latency && outbound.latency > 0
                     ? `${outbound.latency}ms`
-                    : 'N/A',
+                    : outbound.latency === -1 || outbound.latency < 0
+                      ? _('Not responding')
+                      : 'N/A',
             ),
           ],
         ),
@@ -886,6 +892,11 @@ function renderDefaultState({
 
                     if (!selectedOutbound!.latency)
                       return 'var(--primary-color-low, lightgray)';
+                    if (
+                      selectedOutbound!.latency === -1 ||
+                      selectedOutbound!.latency < 0
+                    )
+                      return 'var(--error-color-medium, red)';
                     if (selectedOutbound!.latency < 800)
                       return 'var(--success-color-medium, green)';
                     if (selectedOutbound!.latency < 1500)
@@ -899,15 +910,20 @@ function renderDefaultState({
                       ? _('Checking...')
                       : selectedOutbound.latency && selectedOutbound.latency > 0
                         ? `${selectedOutbound.latency}ms`
-                        : selectedOutbound.latency === -1
+                        : selectedOutbound.latency === -1 ||
+                            selectedOutbound.latency < 0
                           ? _('Not responding')
                           : selectedOutbound.runtimeAvailable
                             ? _('Connected')
                             : _('Not connected');
                   } else {
-                    latencyText = selectedOutbound.latency
-                      ? `${selectedOutbound.latency}ms`
-                      : '';
+                    latencyText =
+                      selectedOutbound.latency && selectedOutbound.latency > 0
+                        ? `${selectedOutbound.latency}ms`
+                        : selectedOutbound.latency === -1 ||
+                            selectedOutbound.latency < 0
+                          ? _('Not responding')
+                          : '';
                   }
 
                   return E(

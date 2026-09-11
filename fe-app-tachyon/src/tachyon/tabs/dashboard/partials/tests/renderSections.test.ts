@@ -435,4 +435,57 @@ describe('renderSections', () => {
     expect(testingBadge).not.toBeNull();
     expect(testingBadge?.textContent).toContain('Checking...');
   });
+
+  it('renders -1 latency as red Not responding instead of green -1ms', () => {
+    const section: any = {
+      code: 'proxy',
+      sectionName: 'proxy',
+      displayName: 'Proxy Section',
+      action: 'proxy',
+      withTagSelect: true,
+      outbounds: [
+        {
+          code: 'vless-failed',
+          displayName: 'Failed Node',
+          latency: -1,
+          type: 'VLESS',
+          selected: false,
+        },
+        {
+          code: 'vless-ok',
+          displayName: 'OK Node',
+          latency: 150,
+          type: 'VLESS',
+          selected: true,
+        },
+      ],
+    };
+
+    const el = renderSections({
+      loading: false,
+      failed: false,
+      section,
+      onTestLatency: vi.fn(),
+      onChooseOutbound: vi.fn(),
+      onCopyOutbound: vi.fn(),
+      onShowUrlTestInfo: vi.fn(),
+      onShowPriorityInfo: vi.fn(),
+      onUpdateSubscription: vi.fn(),
+      latencyFetching: false,
+      subscriptionUpdating: false,
+    });
+
+    const redBadge = el.querySelector(
+      '.tachyon_dashboard-page__outbound-grid__item__latency--red',
+    );
+    expect(redBadge).not.toBeNull();
+    expect(redBadge?.textContent).toBe('Not responding');
+    expect(redBadge?.textContent).not.toContain('-1');
+
+    const greenBadge = el.querySelector(
+      '.tachyon_dashboard-page__outbound-grid__item__latency--green',
+    );
+    expect(greenBadge).not.toBeNull();
+    expect(greenBadge?.textContent).toBe('150ms');
+  });
 });

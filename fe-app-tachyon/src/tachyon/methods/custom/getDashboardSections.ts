@@ -1282,7 +1282,11 @@ function buildProxyGroupOutbounds(
       )?.latency ||
       0;
 
-    const latency = item?.value.history?.[0]?.delay || activeMemberLatency || 0;
+    const itemDelay = Number(item?.value.history?.[0]?.delay);
+    const validItemDelay =
+      Number.isFinite(itemDelay) && itemDelay > 0 ? itemDelay : 0;
+    const latency =
+      validItemDelay || (activeMemberLatency > 0 ? activeMemberLatency : 0);
 
     const isGroupType = Boolean(
       priorityConfig || urlTestConfig || isRuntimeUrlTest,

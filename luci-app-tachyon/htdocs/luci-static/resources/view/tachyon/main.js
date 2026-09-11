@@ -2597,6 +2597,9 @@ function renderDefaultState({
       if (!outbound.latency) {
         return "tachyon_dashboard-page__outbound-grid__item__latency--empty";
       }
+      if (outbound.latency === -1 || outbound.latency < 0) {
+        return "tachyon_dashboard-page__outbound-grid__item__latency--red";
+      }
       if (outbound.latency < 800) {
         return "tachyon_dashboard-page__outbound-grid__item__latency--green";
       }
@@ -2815,7 +2818,7 @@ function renderDefaultState({
                   );
                 }
               },
-              isTestingSingle ? [renderLoaderCircleIcon24(), E("span", {}, _("Checking..."))] : isConnectionNode ? connectionStatusText : outbound.latency ? `${outbound.latency}ms` : "N/A"
+              isTestingSingle ? [renderLoaderCircleIcon24(), E("span", {}, _("Checking..."))] : isConnectionNode ? connectionStatusText : outbound.latency && outbound.latency > 0 ? `${outbound.latency}ms` : outbound.latency === -1 || outbound.latency < 0 ? _("Not responding") : "N/A"
             )
           ]
         )
@@ -2916,6 +2919,8 @@ function renderDefaultState({
                 }
                 if (!selectedOutbound.latency)
                   return "var(--primary-color-low, lightgray)";
+                if (selectedOutbound.latency === -1 || selectedOutbound.latency < 0)
+                  return "var(--error-color-medium, red)";
                 if (selectedOutbound.latency < 800)
                   return "var(--success-color-medium, green)";
                 if (selectedOutbound.latency < 1500)
@@ -2924,9 +2929,9 @@ function renderDefaultState({
               }
               let latencyText = "";
               if (isConnectionNode2) {
-                latencyText = latencyFetching ? _("Checking...") : selectedOutbound.latency && selectedOutbound.latency > 0 ? `${selectedOutbound.latency}ms` : selectedOutbound.latency === -1 ? _("Not responding") : selectedOutbound.runtimeAvailable ? _("Connected") : _("Not connected");
+                latencyText = latencyFetching ? _("Checking...") : selectedOutbound.latency && selectedOutbound.latency > 0 ? `${selectedOutbound.latency}ms` : selectedOutbound.latency === -1 || selectedOutbound.latency < 0 ? _("Not responding") : selectedOutbound.runtimeAvailable ? _("Connected") : _("Not connected");
               } else {
-                latencyText = selectedOutbound.latency ? `${selectedOutbound.latency}ms` : "";
+                latencyText = selectedOutbound.latency && selectedOutbound.latency > 0 ? `${selectedOutbound.latency}ms` : selectedOutbound.latency === -1 || selectedOutbound.latency < 0 ? _("Not responding") : "";
               }
               return E(
                 "span",
@@ -5670,7 +5675,9 @@ function buildProxyGroupOutbounds(section, proxies, outboundMetadata, urltestGro
     )?.latency || priorityInfo?.outbounds.find(
       (m) => m.selected || m.code === priorityInfo.selectedCode
     )?.latency || 0;
-    const latency = item?.value.history?.[0]?.delay || activeMemberLatency || 0;
+    const itemDelay = Number(item?.value.history?.[0]?.delay);
+    const validItemDelay = Number.isFinite(itemDelay) && itemDelay > 0 ? itemDelay : 0;
+    const latency = validItemDelay || (activeMemberLatency > 0 ? activeMemberLatency : 0);
     const isGroupType = Boolean(
       priorityConfig || urlTestConfig || isRuntimeUrlTest
     );
@@ -8302,7 +8309,18 @@ async function handleTestLatency(latencyType, sectionName, tag, timeout) {
         timeout
       );
       if (response.success && response.data) {
-        customProxyLatencies.set(tag, response.data.delay || -1);
+        const delay = response.data?.delay;
+        if (typeof delay === "number" && delay > 0) {
+          customProxyLatencies.set(tag, delay);
+        } else {
+          const groupDelays = Object.values(response.data || {}).filter(
+            (v) => typeof v === "number" && v > 0
+          );
+          customProxyLatencies.set(
+            tag,
+            groupDelays.length > 0 ? Math.min(...groupDelays) : -1
+          );
+        }
       } else {
         customProxyLatencies.set(tag, -1);
       }
@@ -8355,7 +8373,18 @@ async function handleTestSingleOutbound(_sectionName, outboundCode) {
       "2000"
     );
     if (response.success && response.data) {
-      customProxyLatencies.set(outboundCode, response.data.delay || -1);
+      const delay = response.data?.delay;
+      if (typeof delay === "number" && delay > 0) {
+        customProxyLatencies.set(outboundCode, delay);
+      } else {
+        const groupDelays = Object.values(response.data || {}).filter(
+          (v) => typeof v === "number" && v > 0
+        );
+        customProxyLatencies.set(
+          outboundCode,
+          groupDelays.length > 0 ? Math.min(...groupDelays) : -1
+        );
+      }
     } else {
       customProxyLatencies.set(outboundCode, -1);
     }
@@ -9079,10 +9108,30 @@ async function renderSectionsWidget() {
   const SERVICE_TYPES = /* @__PURE__ */ new Set(["SING_BOX", "ZAPRET", "ZAPRET2", "BYEDPI"]);
   const sectionsWithCustomLatencies = sectionsWidget.data.map((section) => ({
     ...section,
-    outbounds: section.outbounds.map((outbound) => ({
-      ...outbound,
-      latency: SERVICE_TYPES.has(outbound.type) || !customProxyLatencies.has(outbound.code) ? outbound.latency : customProxyLatencies.get(outbound.code)
-    }))
+    outbounds: section.outbounds.map((outbound) => {
+      const customLatency = customProxyLatencies.get(outbound.code);
+      const latency = SERVICE_TYPES.has(outbound.type) || customLatency == null ? outbound.latency : customLatency;
+      const urlTestInfo = outbound.urlTestInfo ? {
+        ...outbound.urlTestInfo,
+        outbounds: outbound.urlTestInfo.outbounds.map((member) => ({
+          ...member,
+          latency: customProxyLatencies.has(member.code) ? customProxyLatencies.get(member.code) : member.latency
+        }))
+      } : void 0;
+      const priorityInfo = outbound.priorityInfo ? {
+        ...outbound.priorityInfo,
+        outbounds: outbound.priorityInfo.outbounds.map((member) => ({
+          ...member,
+          latency: customProxyLatencies.has(member.code) ? customProxyLatencies.get(member.code) : member.latency
+        }))
+      } : void 0;
+      return {
+        ...outbound,
+        latency,
+        urlTestInfo,
+        priorityInfo
+      };
+    })
   }));
   if (sectionsWidget.loading || sectionsWidget.failed) {
     const renderedWidget = renderSections({
@@ -15646,18 +15695,19 @@ async function runSectionsCheck() {
           (item) => item.type?.toLowerCase() === "urltest"
         ) ?? section.outbounds[0];
         const isSubscription = section.proxyConfigType === "subscription";
-        if (selectedOutbound2?.code) {
+        const activeNodeCode = selectedOutbound2?.urlTestInfo?.selectedCode || selectedOutbound2?.priorityInfo?.selectedCode || selectedOutbound2?.code;
+        if (activeNodeCode) {
           const latencyProxy2 = await TachyonShellMethods.getClashApiProxyLatency(
-            selectedOutbound2.code,
+            activeNodeCode,
             section.latencyTestTimeout
           );
           const proxySuccess = latencyProxy2.success && !latencyProxy2.data?.message;
           if (proxySuccess) {
             const delay = latencyProxy2.data?.delay;
-            if (typeof delay === "number") {
+            if (typeof delay === "number" && delay > 0) {
               return {
                 state: "success",
-                latency: `[${selectedOutbound2.displayName ?? ""}] ${delay}ms`
+                latency: `[${selectedOutbound2?.displayName ?? ""}] ${delay}ms`
               };
             }
             const groupDelays = Object.values(latencyProxy2.data || {}).filter(
@@ -15667,13 +15717,19 @@ async function runSectionsCheck() {
               const minDelay = Math.min(...groupDelays);
               return {
                 state: "success",
-                latency: `[${selectedOutbound2.displayName ?? ""}] ${minDelay}ms`
+                latency: `[${selectedOutbound2?.displayName ?? ""}] ${minDelay}ms`
               };
             }
           }
+          if (selectedOutbound2?.latency && selectedOutbound2.latency > 0) {
+            return {
+              state: "success",
+              latency: `[${selectedOutbound2.displayName ?? ""}] ${selectedOutbound2.latency}ms`
+            };
+          }
           return {
             state: "error",
-            latency: `[${selectedOutbound2.displayName ?? ""}] ${_("Not responding")}`
+            latency: `[${selectedOutbound2?.displayName ?? ""}] ${_("Not responding")}`
           };
         }
         const latencyGroup = await TachyonShellMethods.getClashApiGroupLatency(
@@ -15760,6 +15816,12 @@ async function runSectionsCheck() {
         return {
           state: "warning",
           latency: `[${selectedOutbound.displayName || section.code}] ${_("Connectivity probe failed")}`
+        };
+      }
+      if (selectedOutbound?.latency && selectedOutbound.latency > 0) {
+        return {
+          state: "success",
+          latency: `${selectedOutbound.latency} ms`
         };
       }
       return {

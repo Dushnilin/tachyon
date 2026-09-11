@@ -763,7 +763,18 @@ async function handleTestLatency(
         timeout,
       );
       if (response.success && response.data) {
-        customProxyLatencies.set(tag, response.data.delay || -1);
+        const delay = (response.data as any)?.delay;
+        if (typeof delay === 'number' && delay > 0) {
+          customProxyLatencies.set(tag, delay);
+        } else {
+          const groupDelays = Object.values(response.data || {}).filter(
+            (v): v is number => typeof v === 'number' && v > 0,
+          );
+          customProxyLatencies.set(
+            tag,
+            groupDelays.length > 0 ? Math.min(...groupDelays) : -1,
+          );
+        }
       } else {
         customProxyLatencies.set(tag, -1);
       }
@@ -825,7 +836,18 @@ async function handleTestSingleOutbound(
       '2000',
     );
     if (response.success && response.data) {
-      customProxyLatencies.set(outboundCode, response.data.delay || -1);
+      const delay = (response.data as any)?.delay;
+      if (typeof delay === 'number' && delay > 0) {
+        customProxyLatencies.set(outboundCode, delay);
+      } else {
+        const groupDelays = Object.values(response.data || {}).filter(
+          (v): v is number => typeof v === 'number' && v > 0,
+        );
+        customProxyLatencies.set(
+          outboundCode,
+          groupDelays.length > 0 ? Math.min(...groupDelays) : -1,
+        );
+      }
     } else {
       customProxyLatencies.set(outboundCode, -1);
     }
@@ -1753,14 +1775,44 @@ async function renderSectionsWidget() {
 
   const sectionsWithCustomLatencies = sectionsWidget.data.map((section) => ({
     ...section,
-    outbounds: section.outbounds.map((outbound) => ({
-      ...outbound,
-      latency:
-        SERVICE_TYPES.has(outbound.type) ||
-        !customProxyLatencies.has(outbound.code)
+    outbounds: section.outbounds.map((outbound) => {
+      const customLatency = customProxyLatencies.get(outbound.code);
+      const latency =
+        SERVICE_TYPES.has(outbound.type) || customLatency == null
           ? outbound.latency
-          : customProxyLatencies.get(outbound.code)!,
-    })),
+          : customLatency;
+
+      const urlTestInfo = outbound.urlTestInfo
+        ? {
+            ...outbound.urlTestInfo,
+            outbounds: outbound.urlTestInfo.outbounds.map((member) => ({
+              ...member,
+              latency: customProxyLatencies.has(member.code)
+                ? customProxyLatencies.get(member.code)!
+                : member.latency,
+            })),
+          }
+        : undefined;
+
+      const priorityInfo = outbound.priorityInfo
+        ? {
+            ...outbound.priorityInfo,
+            outbounds: outbound.priorityInfo.outbounds.map((member) => ({
+              ...member,
+              latency: customProxyLatencies.has(member.code)
+                ? customProxyLatencies.get(member.code)!
+                : member.latency,
+            })),
+          }
+        : undefined;
+
+      return {
+        ...outbound,
+        latency,
+        urlTestInfo,
+        priorityInfo,
+      };
+    }),
   }));
 
   if (sectionsWidget.loading || sectionsWidget.failed) {

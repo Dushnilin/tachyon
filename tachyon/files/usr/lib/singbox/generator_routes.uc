@@ -191,11 +191,19 @@ function section_has_direct_priority_level(section) {
 }
 
 function urltest_country_metadata(section, urltest_id, state) {
-    let metadata = object_or_empty(object_or_empty(state.outboundMetadata).countries);
+    let names = object_or_empty(object_or_empty(state.outboundMetadata).names);
+    let from_flags = runtime_urltest.countries_from_flag_names(names);
     let detect_method = connections.urltest_detect_server_country(section, urltest_id);
     if (detect_method == "flag_emoji")
-        return runtime_urltest.countries_from_flag_names(object_or_empty(object_or_empty(state.outboundMetadata).names));
-    return metadata;
+        return from_flags;
+    let metadata = object_or_empty(object_or_empty(state.outboundMetadata).countries);
+    let result = {};
+    for (let tag, c in from_flags)
+        result[tag] = c;
+    for (let tag, c in metadata)
+        if (c != "")
+            result[tag] = c;
+    return result;
 }
 
 function array_contains(values, needle) {
@@ -409,11 +417,19 @@ function urltest_filtered_outbounds(section, urltest_id, urltest_candidate_tags,
 }
 
 function priority_level_country_metadata(group_id, level_id, state) {
-    let metadata = object_or_empty(object_or_empty(state.outboundMetadata).countries);
+    let names = object_or_empty(object_or_empty(state.outboundMetadata).names);
+    let from_flags = runtime_urltest.countries_from_flag_names(names);
     let detect_method = connections.priority_level_detect_server_country(group_id, level_id);
     if (detect_method == "flag_emoji")
-        return runtime_urltest.countries_from_flag_names(object_or_empty(object_or_empty(state.outboundMetadata).names));
-    return metadata;
+        return from_flags;
+    let metadata = object_or_empty(object_or_empty(state.outboundMetadata).countries);
+    let result = {};
+    for (let tag, c in from_flags)
+        result[tag] = c;
+    for (let tag, c in metadata)
+        if (c != "")
+            result[tag] = c;
+    return result;
 }
 
 function priority_level_filtered_outbounds(group_id, level_id, urltest_candidate_tags, state) {
@@ -444,10 +460,18 @@ function priority_level_filtered_outbounds(group_id, level_id, urltest_candidate
 }
 
 function dashboard_country_metadata(section, state) {
-    let metadata = object_or_empty(object_or_empty(state.outboundMetadata).countries);
+    let names = object_or_empty(object_or_empty(state.outboundMetadata).names);
+    let from_flags = runtime_urltest.countries_from_flag_names(names);
     if (connections.dashboard_detect_server_country(section) == "flag_emoji")
-        return runtime_urltest.countries_from_flag_names(object_or_empty(object_or_empty(state.outboundMetadata).names));
-    return metadata;
+        return from_flags;
+    let metadata = object_or_empty(object_or_empty(state.outboundMetadata).countries);
+    let result = {};
+    for (let tag, c in from_flags)
+        result[tag] = c;
+    for (let tag, c in metadata)
+        if (c != "")
+            result[tag] = c;
+    return result;
 }
 
 function selected_group_outbounds(group_names, group_outbounds) {
