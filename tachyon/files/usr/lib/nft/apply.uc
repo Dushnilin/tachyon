@@ -1466,7 +1466,6 @@ function nft_create_runtime_base(table, localv4_set, common_set, port_set, ip_po
 
     if (!nft_create_chain(table, "dns_redirect", "{ type nat hook prerouting priority -100; policy accept; }") ||
         !nft_create_chain(table, "mangle", "{ type filter hook prerouting priority -149; policy accept; }") ||
-        !nft_create_chain(table, "raw_output", "{ type filter hook output priority -300; policy accept; }") ||
         !nft_create_chain(table, "mangle_output", "{ type route hook output priority -150; policy accept; }") ||
         !nft_create_priority_chains(table) ||
         !nft_create_chain(table, "parental_control", "{ }") ||
@@ -1474,11 +1473,6 @@ function nft_create_runtime_base(table, localv4_set, common_set, port_set, ip_po
         !nft_create_chain(table, "guest_forward", "{ }") ||
         !nft_create_chain(table, "dns_block", "{ type nat hook prerouting priority -101; policy accept; }") ||
         !nft_create_chain(table, "proxy", "{ type filter hook prerouting priority -100; policy accept; }"))
-        return false;
-
-    if (!nft_add_rule(table, "raw_output", [ "meta", "mark", "&", "0x40000000", "==", "0x40000000", "notrack" ]) ||
-        !nft_add_rule(table, "raw_output", [ "meta", "mark", "&", "0x20000000", "==", "0x20000000", "notrack" ]) ||
-        !nft_add_rule(table, "raw_output", [ "meta", "skuid", "{ 2147483647, 65534 }", "notrack" ]))
         return false;
 
     if (!nft_add_rule(table, "dns_redirect", [ "iifname", "@" + as_string(interface_set), "ip", "saddr", "@" + DNS_SOURCE_SET, "tcp", "dport", "53", "counter", "redirect", "to", ":" + as_string(runtime_constants.SOURCE_DNS_INBOUND_PORT) ]) ||

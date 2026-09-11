@@ -26,6 +26,7 @@ const BYEDPI_PORT = 11089;
 const NFQUEUE_QNUM_ZAPRET = 298;
 const NFQUEUE_QNUM_ZAPRET2 = 299;
 const FUZZER_FWMARK = "0x40000000";
+const FUZZER_OUTBOUND_MARK = getenv("NFT_OUTBOUND_MARK") || "0x08000000";
 
 function resolve_binary(paths) {
     for (let p in paths) {
@@ -82,14 +83,20 @@ function get_zapret2_lua_flags(args_str) {
         let lib_lua = d + "/zapret-lib.lua";
         let antidpi_lua = d + "/zapret-antidpi.lua";
         let auto_lua = d + "/zapret-auto.lua";
-        if (fs.stat(lib_lua) != null || fs.stat(lib_lua + ".gz") != null) flags += sprintf("--lua-init=@%s ", lib_lua);
-        if (fs.stat(antidpi_lua) != null || fs.stat(antidpi_lua + ".gz") != null) flags += sprintf("--lua-init=@%s ", antidpi_lua);
-        if (fs.stat(auto_lua) != null || fs.stat(auto_lua + ".gz") != null) flags += sprintf("--lua-init=@%s ", auto_lua);
+        let l_actual = fs.stat(lib_lua) != null ? lib_lua : (fs.stat(lib_lua + ".gz") != null ? (lib_lua + ".gz") : null);
+        let a_actual = fs.stat(antidpi_lua) != null ? antidpi_lua : (fs.stat(antidpi_lua + ".gz") != null ? (antidpi_lua + ".gz") : null);
+        let au_actual = fs.stat(auto_lua) != null ? auto_lua : (fs.stat(auto_lua + ".gz") != null ? (auto_lua + ".gz") : null);
+        if (l_actual) flags += sprintf("--lua-init=@%s ", l_actual);
+        if (a_actual) flags += sprintf("--lua-init=@%s ", a_actual);
+        if (au_actual) flags += sprintf("--lua-init=@%s ", au_actual);
         if (flags != "")
             break;
     }
     if (flags == "" && fs.stat("/opt/zapret2/lua") != null) {
-        flags = "--lua-init=@/opt/zapret2/lua/zapret-lib.lua --lua-init=@/opt/zapret2/lua/zapret-antidpi.lua --lua-init=@/opt/zapret2/lua/zapret-auto.lua ";
+        let l_opt = fs.stat("/opt/zapret2/lua/zapret-lib.lua.gz") != null ? "/opt/zapret2/lua/zapret-lib.lua.gz" : "/opt/zapret2/lua/zapret-lib.lua";
+        let a_opt = fs.stat("/opt/zapret2/lua/zapret-antidpi.lua.gz") != null ? "/opt/zapret2/lua/zapret-antidpi.lua.gz" : "/opt/zapret2/lua/zapret-antidpi.lua";
+        let au_opt = fs.stat("/opt/zapret2/lua/zapret-auto.lua.gz") != null ? "/opt/zapret2/lua/zapret-auto.lua.gz" : "/opt/zapret2/lua/zapret-auto.lua";
+        flags = sprintf("--lua-init=@%s --lua-init=@%s --lua-init=@%s ", l_opt, a_opt, au_opt);
     }
     return flags;
 }
@@ -161,18 +168,20 @@ function setup_fuzzer_direct_nftables(qnum, is_udp) {
     system("nft add table inet tachyon_fuzzer 2>/dev/null");
     system("nft 'add chain inet tachyon_fuzzer output { type filter hook output priority -200 ; policy accept; }' 2>/dev/null");
     system(sprintf("nft add rule inet tachyon_fuzzer output meta mark %s counter return 2>/dev/null", FUZZER_FWMARK));
+    system("nft 'add rule inet tachyon_fuzzer output ip daddr { 1.1.1.1, 1.0.0.1, 8.8.8.8, 8.8.4.4, 77.88.8.8 } counter return' 2>/dev/null");
+    system("nft 'add rule inet tachyon_fuzzer output ip6 daddr { 2606:4700:4700::1111, 2606:4700:4700::1001, 2001:4860:4860::8888, 2001:4860:4860::8844 } counter return' 2>/dev/null");
     if (is_udp) {
         system(sprintf("nft 'add rule inet tachyon_fuzzer output meta l4proto { tcp, udp } th dport { 80, 443, 2053, 2083, 2087, 2096, 8443, 19294-19344, 50000-65535 } counter queue num %d bypass' 2>/dev/null", qnum));
     } else {
         system(sprintf("nft 'add rule inet tachyon_fuzzer output meta l4proto tcp tcp dport { 80, 443, 2053, 2083, 2087, 2096, 8443 } counter queue num %d bypass' 2>/dev/null", qnum));
     }
-    // Route hook with priority -155 (before TachyonTable's -150) marks test traffic with 0x00200000 (direct outbound mark)
+    // Route hook with priority -155 (before TachyonTable's -150) marks test traffic with FUZZER_OUTBOUND_MARK (direct outbound mark)
     // This guarantees that TachyonTable's mangle_output immediately returns and test traffic goes DIRECT to WAN without Sing-box TProxy
     system("nft 'add chain inet tachyon_fuzzer bypass_singbox { type route hook output priority -155 ; policy accept; }' 2>/dev/null");
     system(sprintf("nft add rule inet tachyon_fuzzer bypass_singbox meta mark %s counter return 2>/dev/null", FUZZER_FWMARK));
-    system("nft 'add rule inet tachyon_fuzzer bypass_singbox meta l4proto tcp tcp dport { 80, 443, 2053, 2083, 2087, 2096, 8443 } meta mark set meta mark | 0x00200000 counter' 2>/dev/null");
+    system(sprintf("nft 'add rule inet tachyon_fuzzer bypass_singbox meta l4proto tcp tcp dport { 80, 443, 2053, 2083, 2087, 2096, 8443 } meta mark set meta mark | %s counter' 2>/dev/null", FUZZER_OUTBOUND_MARK));
     if (is_udp) {
-        system("nft 'add rule inet tachyon_fuzzer bypass_singbox meta l4proto udp udp dport { 80, 443, 19294-19344, 50000-65535 } meta mark set meta mark | 0x00200000 counter' 2>/dev/null");
+        system(sprintf("nft 'add rule inet tachyon_fuzzer bypass_singbox meta l4proto udp udp dport { 80, 443, 19294-19344, 50000-65535 } meta mark set meta mark | %s counter' 2>/dev/null", FUZZER_OUTBOUND_MARK));
     }
 }
 
@@ -1878,7 +1887,7 @@ function detect_dpi_type(target_key, custom_url) {
     // Direct probe with bypass of Sing-box TProxy
     system("nft add table inet tachyon_fuzzer 2>/dev/null");
     system("nft 'add chain inet tachyon_fuzzer bypass_singbox { type route hook output priority -155 ; policy accept; }' 2>/dev/null");
-    system("nft 'add rule inet tachyon_fuzzer bypass_singbox meta l4proto tcp tcp dport { 80, 443 } meta mark set meta mark | 0x00200000 counter' 2>/dev/null");
+    system(sprintf("nft 'add rule inet tachyon_fuzzer bypass_singbox meta l4proto tcp tcp dport { 80, 443 } meta mark set meta mark | %s counter' 2>/dev/null", FUZZER_OUTBOUND_MARK));
 
     let curl_cmd = sprintf(
         "curl %s-so /dev/null -w '%%{http_code}\\t%%{time_appconnect}\\t%%{time_starttransfer}\\t%%{speed_download}\\t%%{size_download}' -L --connect-timeout 4 --max-time 6 %s 2>&1; printf '\\t%%d\\n' $?",
@@ -2143,7 +2152,7 @@ function run_probe(engine, args_str, target_key, custom_url) {
         // Ensure ciadpi direct outbound connections bypass Sing-Box TProxy
         system("nft add table inet tachyon_fuzzer 2>/dev/null");
         system("nft 'add chain inet tachyon_fuzzer bypass_singbox { type route hook output priority -155 ; policy accept; }' 2>/dev/null");
-        system("nft 'add rule inet tachyon_fuzzer bypass_singbox meta l4proto tcp tcp dport { 80, 443 } meta mark set meta mark | 0x00200000 counter' 2>/dev/null");
+        system(sprintf("nft 'add rule inet tachyon_fuzzer bypass_singbox meta l4proto tcp tcp dport { 80, 443 } meta mark set meta mark | %s counter' 2>/dev/null", FUZZER_OUTBOUND_MARK));
         
         let passed_count = 0;
         let sum_handshake = 0;
