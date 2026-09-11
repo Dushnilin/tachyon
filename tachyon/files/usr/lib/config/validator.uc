@@ -1875,7 +1875,7 @@ function validate_schedule(schedule, sections, profiles) {
     if (length(sec_names) == 0) {
         let single_sec = option(schedule, "sections", "");
         if (single_sec != "") sec_names = [ single_sec ];
-        else if (target != "all" && target != "sections" && target != "") sec_names = [ target ];
+        else if (target != "all" && target != "sections" && target != "domains" && target != "") sec_names = [ target ];
     }
     for (let sec_name in sec_names) {
         let found = false;

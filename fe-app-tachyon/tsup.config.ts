@@ -15,6 +15,7 @@ export default defineConfig({
     },
     esbuildOptions(options) {
         options.legalComments = 'none';
+        options.charset = 'utf8';
     },
     onSuccess: () => {
         const outDir =

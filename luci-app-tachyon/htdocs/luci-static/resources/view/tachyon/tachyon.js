@@ -433,58 +433,7 @@ const EntryPoint = {
         return form.Map.prototype.load.call(self);
       });
     };
-    tachyonMap.handleSaveApply = function (ev, mode) {
-      const refreshUiState = function () {
-        main.TachyonShellMethods.getUiState()
-          .then((response) => {
-            if (
-              response?.success &&
-              typeof main.applyUiStateToStore === "function"
-            ) {
-              main.applyUiStateToStore(response.data);
-            }
-          })
-          .catch(() => null);
-      };
-
-      if (main.store && typeof main.store.set === "function") {
-        const servicesInfoWidget = main.store.get().servicesInfoWidget;
-        main.store.set({
-          servicesInfoWidget: {
-            ...servicesInfoWidget,
-            data: {
-              ...servicesInfoWidget.data,
-              tachyonStatus: "reloading",
-            },
-          },
-        });
-      }
-
-      return this.handleSave(ev)
-        .then(() => ui.changes.apply(mode == "0"))
-        .then((result) => {
-          if (
-            main.TachyonShellMethods &&
-            typeof main.TachyonShellMethods.serviceActionStart === "function"
-          ) {
-            return main.TachyonShellMethods.serviceActionStart("reload")
-              .then(() => {
-                window.setTimeout(refreshUiState, 500);
-                return result;
-              })
-              .catch(() => {
-                window.setTimeout(refreshUiState, 500);
-                return result;
-              });
-          }
-          window.setTimeout(refreshUiState, 500);
-          return result;
-        })
-        .catch((error) => {
-          refreshUiState();
-          throw error;
-        });
-    };
+    tachyonMap.handleSaveApply = EntryPoint.handleSaveApply;
 
     const rawTabOrder = uci.get(UCI_PACKAGE, "settings", "tab_order");
     const savedOrder = Array.isArray(rawTabOrder)
@@ -757,6 +706,66 @@ const EntryPoint = {
     }
 
     return rendered;
+  },
+
+  handleSaveApply: function (ev, mode) {
+    const refreshUiState = function () {
+      if (
+        main.TachyonShellMethods &&
+        typeof main.TachyonShellMethods.getUiState === "function"
+      ) {
+        main.TachyonShellMethods.getUiState()
+          .then((response) => {
+            if (
+              response?.success &&
+              typeof main.applyUiStateToStore === "function"
+            ) {
+              main.applyUiStateToStore(response.data);
+            }
+          })
+          .catch(() => null);
+      }
+    };
+
+    if (main.store && typeof main.store.set === "function") {
+      const servicesInfoWidget = main.store.get()?.servicesInfoWidget;
+      if (servicesInfoWidget) {
+        main.store.set({
+          servicesInfoWidget: {
+            ...servicesInfoWidget,
+            data: {
+              ...servicesInfoWidget.data,
+              tachyonStatus: "reloading",
+            },
+          },
+        });
+      }
+    }
+
+    return this.handleSave(ev)
+      .then(() => ui.changes.apply(mode == "0"))
+      .then((result) => {
+        if (
+          main.TachyonShellMethods &&
+          typeof main.TachyonShellMethods.serviceActionStart === "function"
+        ) {
+          return main.TachyonShellMethods.serviceActionStart("reload")
+            .then(() => {
+              window.setTimeout(refreshUiState, 500);
+              return result;
+            })
+            .catch(() => {
+              window.setTimeout(refreshUiState, 500);
+              return result;
+            });
+        }
+        window.setTimeout(refreshUiState, 500);
+        return result;
+      })
+      .catch((error) => {
+        refreshUiState();
+        throw error;
+      });
   },
 };
 

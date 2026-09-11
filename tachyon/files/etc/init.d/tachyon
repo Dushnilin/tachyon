@@ -34,6 +34,7 @@ start_service() {
     initd_ucode start-service "$1" "$$"
     TACHYON_LAST_START_STATUS="$?"
     trap - INT TERM
+    [ "$TACHYON_LAST_START_STATUS" = "0" ] && sync_service_triggers
     return "$TACHYON_LAST_START_STATUS"
 }
 

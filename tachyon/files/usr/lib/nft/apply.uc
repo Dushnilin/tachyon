@@ -1055,7 +1055,8 @@ function nft_add_schedule_rules_from_schedules(schedules, sections, table, profi
                     [ "meta", "hour", sprintf("\"%s\"-\"%s\"", interval[0], interval[1]) ] : null;
                 let base_match = nft_schedule_rule_base_match(dev_str, is_mac, family, days_args, time_args);
                 
-                if (target == "all" || (length(target_sec_names) == 0 && target != "sections")) {
+                let has_sched_domains = length(list_option(schedule, "blocked_domains")) > 0 || option(schedule, "blocked_domains", "") != "";
+                if ((target == "all" || (length(target_sec_names) == 0 && target != "sections" && target != "domains")) && !has_sched_domains && target != "domains") {
                     let fwd_rule = [];
                     append_array(fwd_rule, base_match);
                     append_array(fwd_rule, [ "counter", verdict ]);
@@ -1067,7 +1068,7 @@ function nft_add_schedule_rules_from_schedules(schedules, sections, table, profi
                     append_array(ctrl_rule, [ "counter", verdict ]);
                     if (!nft_add_rule(table, "parental_control", ctrl_rule))
                         log_debug("nft_add_schedule_rules: failed to add parental_control rule for " + dev_str);
-                } else {
+                } else if (length(target_sec_names) > 0) {
                     for (let sec_name in target_sec_names) {
                         let target_section = section_by_name(sections, sec_name);
                         if (!target_section) continue;

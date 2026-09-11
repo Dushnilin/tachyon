@@ -287,6 +287,40 @@ parental_jump_line="$(grep -n "mangle	jump	parental_control" "$NFT_LOG" | cut -d
 if [ "$local_return_line" -ge "$parental_jump_line" ]; then
   fail "localv4 return (line $local_return_line) must precede jump parental_control (line $parental_jump_line) to protect router panel access"
 fi
+# ─── Domain-based schedule must NOT add global counter drop rules ────────────
+cat >"$WORK_DIR/domain_schedule_fixture.json" <<'JSON'
+{
+  "schedule": [
+    {
+      ".name": "domain_only_sched",
+      "enabled": "1",
+      "device_ip": "192.168.1.180",
+      "target": "all",
+      "blocked_domains": [ "tiktok.com", "roblox.com" ],
+      "action": "block"
+    },
+    {
+      ".name": "target_domains_sched",
+      "enabled": "1",
+      "device_ip": "192.168.1.181",
+      "target": "domains",
+      "action": "block"
+    }
+  ]
+}
+JSON
+
+rm -f "$NFT_LOG"
+touch "$NFT_LOG"
+nft_ucode nft-add-schedule-rules-fixture "$WORK_DIR/domain_schedule_fixture.json" "tachyon"
+
+if grep -Eq "parental_(forward|control).*192\.168\.1\.180.*counter.*drop" "$NFT_LOG"; then
+  fail "Schedule with blocked_domains must NOT add global counter drop in parental_forward/parental_control"
+fi
+
+if grep -Eq "parental_(forward|control).*192\.168\.1\.181.*counter.*drop" "$NFT_LOG"; then
+  fail "Schedule with target=domains must NOT add global counter drop in parental_forward/parental_control"
+fi
 
 printf 'Parental control, profiles and schedule tests passed\n'
 

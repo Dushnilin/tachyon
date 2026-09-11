@@ -623,7 +623,7 @@ export function renderStrategyFuzzerModal(ruleNames: string[] = []) {
     const input = E('input', {
       type: 'text',
       class: 'cbi-input-text',
-      placeholder: '+ add',
+      placeholder: _('+ add'),
       style: 'width: 80px; padding: 2px 6px; font-size: 11px;',
     });
 
@@ -888,9 +888,9 @@ export function renderStrategyFuzzerModal(ruleNames: string[] = []) {
         style: 'flex: 0 1 140px; min-width: 120px;',
       },
       [
-        E('option', { value: 'zapret2' }, 'Zapret v2'),
-        E('option', { value: 'zapret' }, 'Zapret v1'),
-        E('option', { value: 'byedpi' }, 'ByeDPI'),
+        E('option', { value: 'zapret2' }, _('Zapret v2')),
+        E('option', { value: 'zapret' }, _('Zapret v1')),
+        E('option', { value: 'byedpi' }, _('ByeDPI')),
       ],
     );
     const argsInput = E('input', {
@@ -1417,7 +1417,7 @@ export function renderStrategyFuzzerModal(ruleNames: string[] = []) {
                 'Data transfer verified: streamed >= 32KB without throttling or disconnect',
               ),
             },
-            '✓ 32KB Прокачано',
+            _('✓ 32KB Streamed'),
           ),
         );
       } else if (item.dpi_verdict === 'throttled_16k') {
@@ -1432,7 +1432,7 @@ export function renderStrategyFuzzerModal(ruleNames: string[] = []) {
                 'DPI throttling: stream cut off after ~16KB payload transfer',
               ),
             },
-            '✗ Задушено на 16KB',
+            _('✗ Throttled at 16KB'),
           ),
         );
       } else if (item.dpi_verdict === 'server_fakes') {
@@ -1447,7 +1447,7 @@ export function renderStrategyFuzzerModal(ruleNames: string[] = []) {
                 'Fake packets reached remote server (HTTP 400 Bad Request)',
               ),
             },
-            '⚠️ Сервер получил фейки',
+            _('⚠️ Server received fakes'),
           ),
         );
       }
@@ -1459,7 +1459,7 @@ export function renderStrategyFuzzerModal(ruleNames: string[] = []) {
           E(
             'div',
             { style: 'font-size: 10px; opacity: 0.75; margin-top: 2px;' },
-            `${passedSub}/${totalSub} endpoints OK`,
+            `${passedSub}/${totalSub} ` + _('endpoints OK'),
           ),
         );
       }
@@ -1624,7 +1624,7 @@ export function renderStrategyFuzzerModal(ruleNames: string[] = []) {
 
     if (currentStratEl) {
       if (state.running && state.current_strategy) {
-        currentStratEl.innerText = `Testing: [${state.current_strategy.name}] -> ${state.current_strategy.args}`;
+        currentStratEl.innerText = `${_('Testing:')} [${state.current_strategy.name}] -> ${state.current_strategy.args}`;
       } else {
         currentStratEl.innerText = '';
       }
@@ -1740,12 +1740,40 @@ export function renderStrategyFuzzerModal(ruleNames: string[] = []) {
     };
 
     const typeLabels: Record<string, string> = {
-      rst: 'TCP Reset Injection',
-      throttle: 'Throttling / Deep Inspection',
-      dns_block: 'DNS Blocking',
-      ip_block: _('Блокировка по IP (Таймаут TCP SYN)'),
-      unknown: 'Unknown DPI Pattern',
-      none: 'No Blocking Detected',
+      rst: _('TCP Reset Injection'),
+      throttle: _('Throttling / Deep Inspection'),
+      dns_block: _('DNS Blocking'),
+      ip_block: _('IP Block (TCP SYN Timeout)'),
+      unknown: _('Unknown DPI Pattern'),
+      none: _('No Blocking Detected'),
+    };
+
+    const getLocalizedDpiDetails = (
+      det: Tachyon.FuzzerDpiDetection | null | undefined,
+    ) => {
+      if (!det) return '';
+      switch (det.type) {
+        case 'ip_block':
+          return _(
+            'TCP connect timed out before TLS handshake — host is blocked at the IP layer. DPI bypass cannot unblock this; route via Sing-box VPN/Proxy outbound instead.',
+          );
+        case 'rst':
+          return _(
+            'TCP RST received from DPI — active TCP reset injection detected.',
+          );
+        case 'dns_block':
+          return _(
+            'DNS resolution failed — likely DNS-level blocking or hijacking.',
+          );
+        case 'throttle':
+          return _(
+            'DPI bandwidth throttling or delay detected — connection throttled during data transfer.',
+          );
+        case 'none':
+          return _('Target accessible — no DPI blocking detected.');
+        default:
+          return det.details || _('Analysis inconclusive.');
+      }
     };
 
     const meta = typeMeta[detection.type] || typeMeta.unknown;
@@ -1754,7 +1782,7 @@ export function renderStrategyFuzzerModal(ruleNames: string[] = []) {
     const ipBlockNotice =
       detection.type === 'ip_block'
         ? `<div class="alert-message danger" style="margin-top: 8px;">
-             ⚠️ ${_('Обнаружена блокировка по IP! Ресурс блокируется на сетевом уровне (нет ответа на TCP SYN). Методы обхода DPI (Zapret / ByeDPI) бессильны для этого адреса — настройте маршрутизацию через прокси/VPN (Sing-box) для данного домена!')}
+             ⚠️ ${_('IP-level blocking detected! The resource is blocked at the network level (no TCP SYN response). DPI bypass methods (Zapret / ByeDPI) cannot bypass this address — configure proxy/VPN routing (Sing-box) for this domain!')}
            </div>`
         : '';
 
@@ -1768,7 +1796,7 @@ export function renderStrategyFuzzerModal(ruleNames: string[] = []) {
         </div>
         ${detection.recommended_engines.length > 0 ? `<div style="font-size: 11px; opacity: 0.8;">${_('Recommended')}: ${detection.recommended_engines.join(', ')}</div>` : ''}
       </div>
-      <div style="margin-top: 4px; opacity: 0.9; font-size: 11px;">${detection.details}</div>
+      <div style="margin-top: 4px; opacity: 0.9; font-size: 11px;">${getLocalizedDpiDetails(detection)}</div>
       ${ipBlockNotice}
     `;
   };

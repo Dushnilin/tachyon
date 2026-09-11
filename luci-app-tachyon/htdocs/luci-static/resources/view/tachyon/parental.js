@@ -1081,7 +1081,8 @@ function createParentalContent(section) {
     ),
   );
   o.modalonly = true;
-  o.default = "all";
+  o.default = "domains";
+  o.value("domains", _("Blocked Sites (Only block domains specified below)"));
   o.value("all", _("All Internet (Complete internet cutoff)"));
   o.value("sections", _("Specific Sections (Select sections below)"));
 

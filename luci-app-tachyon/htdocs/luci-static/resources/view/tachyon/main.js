@@ -2342,7 +2342,7 @@ function renderSubscriptionMetadata(metadata) {
   const title = metadata.title || metadata.fileName;
   const traffic = metadata.traffic;
   const used = formatBytes(traffic?.used) || "0 B";
-  const total = traffic?.isUnlimited ? "\u221E" : formatBytes(traffic?.total) || "0 B";
+  const total = traffic?.isUnlimited ? "∞" : formatBytes(traffic?.total) || "0 B";
   const expire = formatDate(metadata.expire);
   const refillDate = formatDate(metadata.refillDate);
   const rows = [
@@ -2605,7 +2605,7 @@ function renderDefaultState({
       }
       return "tachyon_dashboard-page__outbound-grid__item__latency--red";
     }
-    const connectionStatusText = latencyFetching ? `\u25CF ${_("Checking...")}` : outbound.latency && outbound.latency > 0 ? `\u25CF ${outbound.latency} ms` : outbound.latency === -1 ? `\u25CF ${_("Not responding")}` : outbound.runtimeAvailable ? `\u25CF ${_("Connected")}` : `\u25CF ${_("Not connected")}`;
+    const connectionStatusText = latencyFetching ? `● ${_("Checking...")}` : outbound.latency && outbound.latency > 0 ? `● ${outbound.latency} ms` : outbound.latency === -1 ? `● ${_("Not responding")}` : outbound.runtimeAvailable ? `● ${_("Connected")}` : `● ${_("Not connected")}`;
     const canCopyLink = Boolean(outbound.canCopyLink) || isCopyableProxyLink(outbound.link);
     const selectorSwitching = Boolean(selectorSwitchingTag);
     const outboundSwitching = selectorSwitchingTag === outbound.code;
@@ -3145,7 +3145,7 @@ function renderConnections(connections, isCollapsed, onToggleCollapse) {
         E(
           "div",
           { style: "font-size: 13px;" },
-          `\u25B2 ${prettyBytes(c.upload)} | \u25BC ${prettyBytes(c.download)}`
+          `▲ ${prettyBytes(c.upload)} | ▼ ${prettyBytes(c.download)}`
         )
       ]
     );
@@ -3522,8 +3522,8 @@ var TRANSIENT_RPC_ERROR_PATTERNS = [
   "ubus error",
   "ipc error",
   "access denied",
-  "\u0434\u043E\u0441\u0442\u0443\u043F \u0437\u0430\u043F\u0440\u0435\u0449\u0451\u043D",
-  "\u0434\u043E\u0441\u0442\u0443\u043F \u0437\u0430\u043F\u0440\u0435\u0449\u0435\u043D",
+  "доступ запрещён",
+  "доступ запрещен",
   "permission denied",
   "unauthorized"
 ];
@@ -6603,13 +6603,13 @@ var TachyonLogWatcher = class _TachyonLogWatcher {
       return;
     }
     if (this.paused) {
-      logger.debug("[TachyonLogWatcher]", "skipped check \u2014 tab not visible");
+      logger.debug("[TachyonLogWatcher]", "skipped check — tab not visible");
       return;
     }
     if (this.checking) {
       logger.debug(
         "[TachyonLogWatcher]",
-        "skipped check \u2014 previous check is running"
+        "skipped check — previous check is running"
       );
       return;
     }
@@ -9363,14 +9363,14 @@ async function renderServicesInfoWidget() {
       const items = [
         {
           key: "Tachyon",
-          value: data.tachyonRunning ? _("\u2714 Running") : _("\u2718 Stopped"),
+          value: data.tachyonRunning ? _("✔ Running") : _("✘ Stopped"),
           attributes: {
             class: data.tachyonRunning ? "tachyon_dashboard-page__widgets-section__item__row--success" : "tachyon_dashboard-page__widgets-section__item__row--error"
           }
         },
         {
           key: "Sing-box",
-          value: data.singbox ? data.singboxMemoryMb ? `${_("\u2714 Running")} (${data.singboxMemoryMb} MB)` : _("\u2714 Running") : _("\u2718 Stopped"),
+          value: data.singbox ? data.singboxMemoryMb ? `${_("✔ Running")} (${data.singboxMemoryMb} MB)` : _("✔ Running") : _("✘ Stopped"),
           attributes: {
             class: data.singbox ? "tachyon_dashboard-page__widgets-section__item__row--success" : "tachyon_dashboard-page__widgets-section__item__row--error"
           }
@@ -9379,7 +9379,7 @@ async function renderServicesInfoWidget() {
       if (data.zapret2Running) {
         items.push({
           key: "Zapret2",
-          value: data.zapret2MemoryMb ? `${_("\u2714 Running")} (${data.zapret2MemoryMb} MB)` : _("\u2714 Running"),
+          value: data.zapret2MemoryMb ? `${_("✔ Running")} (${data.zapret2MemoryMb} MB)` : _("✔ Running"),
           attributes: {
             class: "tachyon_dashboard-page__widgets-section__item__row--success"
           }
@@ -9417,7 +9417,7 @@ async function fetchTailscalePeers() {
 function peerRow(name, online) {
   return {
     key: name,
-    value: online ? _("\u2714 Online") : _("\u2718 Offline"),
+    value: online ? _("✔ Online") : _("✘ Offline"),
     attributes: {
       class: online ? "tachyon_dashboard-page__widgets-section__item__row--success" : "tachyon_dashboard-page__widgets-section__item__row--error"
     }
@@ -9442,7 +9442,7 @@ async function renderTailscaleWidget() {
       const items = [
         {
           key: _("State"),
-          value: data.backend_state || "\u2014",
+          value: data.backend_state || "—",
           attributes: {
             class: data.backend_state === "Running" ? "tachyon_dashboard-page__widgets-section__item__row--success" : "tachyon_dashboard-page__widgets-section__item__row--error"
           }
@@ -12141,9 +12141,9 @@ function formatSectionName(name) {
   if (!name) return "";
   const clean = name.trim();
   const sectionMap = {
-    "\u0411\u0430\u0437\u043E\u0432\u0430\u044F \u0441\u0432\u044F\u0437\u043D\u043E\u0441\u0442\u044C": _("Basic connectivity"),
-    "\u0417\u0430\u0431\u043B\u043E\u043A\u0438\u0440\u043E\u0432\u0430\u043D\u043D\u044B\u0435 \u0432 \u0420\u0424": _("Blocked resources"),
-    "\u0421\u0432\u043E\u0438 \u0434\u043E\u043C\u0435\u043D\u044B": _("Custom domains"),
+    "Базовая связность": _("Basic connectivity"),
+    "Заблокированные в РФ": _("Blocked resources"),
+    "Свои домены": _("Custom domains"),
     Custom: _("Custom"),
     "ChatGPT / OpenAI": "ChatGPT / OpenAI",
     "Gemini / Google AI": "Gemini / Google AI",
@@ -12225,7 +12225,7 @@ function renderServiceCheckModal() {
           class: "spinning",
           style: "text-align: center; font-size: 24px; color: var(--border-color, #007bff);"
         },
-        "\u26A1"
+        "⚡"
       )
     ]
   );
@@ -12921,7 +12921,7 @@ function renderAiChatModal() {
     renderMessages();
     const typingMsg = {
       sender: "assistant",
-      text: "\u{1F916} " + _("Thinking..."),
+      text: "🤖 " + _("Thinking..."),
       timestamp: (/* @__PURE__ */ new Date()).toLocaleTimeString([], {
         hour: "2-digit",
         minute: "2-digit"
@@ -12968,7 +12968,7 @@ function renderAiChatModal() {
       const errMsg = e instanceof Error ? e.message : _("Server unavailable");
       chatHistory.push({
         sender: "assistant",
-        text: "\u274C " + _("AI service error") + ": " + errMsg,
+        text: "❌ " + _("AI service error") + ": " + errMsg,
         timestamp: (/* @__PURE__ */ new Date()).toLocaleTimeString([], {
           hour: "2-digit",
           minute: "2-digit"
@@ -12984,10 +12984,10 @@ function renderAiChatModal() {
     if (e.key === "Enter") handleSend();
   };
   const quickPrompts = [
-    { label: "\u{1FA7A} " + _("Check YouTube"), query: "Check YouTube availability" },
-    { label: "\u{1F50D} " + _("Why Discord fails?"), query: "Why Discord fails?" },
+    { label: "🩺 " + _("Check YouTube"), query: "Check YouTube availability" },
+    { label: "🔍 " + _("Why Discord fails?"), query: "Why Discord fails?" },
     {
-      label: "\u{1F6E0}\uFE0F " + _("Full System Diagnostic"),
+      label: "🛠️ " + _("Full System Diagnostic"),
       query: "Run full system diagnostic"
     }
   ];
@@ -13113,11 +13113,11 @@ function renderStrategyFuzzerModal(ruleNames = []) {
       style: "display: flex; gap: 8px; border-bottom: 1px solid var(--border-color, rgba(255,255,255,0.12)); padding-bottom: 10px; flex-wrap: wrap;"
     },
     [
-      createTabButton("benchmark", "\u26A1", _("Benchmark & Test")),
-      createTabButton("patterns", "\u{1F6E0}\uFE0F", _("Pattern Builder")),
-      createTabButton("custom", "\u2795", _("My Strategies")),
-      createTabButton("ai", "\u{1F9E0}", _("AI Doctor RAG")),
-      createTabButton("history", "\u{1F4CB}", _("History"))
+      createTabButton("benchmark", "⚡", _("Benchmark & Test")),
+      createTabButton("patterns", "🛠️", _("Pattern Builder")),
+      createTabButton("custom", "➕", _("My Strategies")),
+      createTabButton("ai", "🧠", _("AI Doctor RAG")),
+      createTabButton("history", "📋", _("History"))
     ]
   );
   const tabContentBenchmark = E("div", {
@@ -13183,37 +13183,37 @@ function renderStrategyFuzzerModal(ruleNames = []) {
       E(
         "option",
         { value: "youtube_suite", selected: true },
-        _("\u{1F3AC} YouTube Full Suite (Web + 4K Stream + CDN)")
+        _("🎬 YouTube Full Suite (Web + 4K Stream + CDN)")
       ),
       E(
         "option",
         { value: "discord_suite" },
-        _("\u{1F4AC} Discord Suite (Gateway + Voice + CDN)")
+        _("💬 Discord Suite (Gateway + Voice + CDN)")
       ),
       E(
         "option",
         { value: "twitch_suite" },
-        _("\u{1F7E3} Twitch Suite (Live Stream + HLS CDN)")
+        _("🟣 Twitch Suite (Live Stream + HLS CDN)")
       ),
       E(
         "option",
         { value: "twitter_suite" },
-        _("\u{1F426} X / Twitter Suite (API + Media CDN)")
+        _("🐦 X / Twitter Suite (API + Media CDN)")
       ),
-      E("option", { value: "chatgpt_suite" }, _("\u{1F916} ChatGPT / OpenAI Suite")),
+      E("option", { value: "chatgpt_suite" }, _("🤖 ChatGPT / OpenAI Suite")),
       E(
         "option",
         { value: "instagram_suite" },
-        _("\u{1F4F8} Instagram / Meta (Web + CDN)")
+        _("📸 Instagram / Meta (Web + CDN)")
       ),
       E(
         "option",
         { value: "telegram_suite" },
-        _("\u2708\uFE0F Telegram Suite (Web + Bot API)")
+        _("✈️ Telegram Suite (Web + Bot API)")
       ),
-      E("option", { value: "rutracker_suite" }, _("\u{1F3F4}\u200D\u2620\uFE0F RuTracker Suite")),
-      E("option", { value: "quic_http3" }, _("\u26A1 QUIC / HTTP/3 (UDP 443)")),
-      E("option", { value: "custom" }, _("\u{1F310} Custom Target URL..."))
+      E("option", { value: "rutracker_suite" }, _("🏴‍☠️ RuTracker Suite")),
+      E("option", { value: "quic_http3" }, _("⚡ QUIC / HTTP/3 (UDP 443)")),
+      E("option", { value: "custom" }, _("🌐 Custom Target URL..."))
     ]
   );
   const customUrlInput = E("input", {
@@ -13249,14 +13249,14 @@ function renderStrategyFuzzerModal(ruleNames = []) {
       E(
         "option",
         { value: "presets", selected: true },
-        _("\u26A1 Quick Benchmark (Presets ~30+)")
+        _("⚡ Quick Benchmark (Presets ~30+)")
       ),
       E(
         "option",
         { value: "combinatorial" },
-        _("\u{1F50D} Combinatorial Deep Fuzzing (~150-300+)")
+        _("🔍 Combinatorial Deep Fuzzing (~150-300+)")
       ),
-      E("option", { value: "custom" }, _("\u{1F6E0}\uFE0F My Custom Strategies Only"))
+      E("option", { value: "custom" }, _("🛠️ My Custom Strategies Only"))
     ]
   );
   modeSelect.addEventListener("change", () => {
@@ -13369,7 +13369,7 @@ function renderStrategyFuzzerModal(ruleNames = []) {
     ]
   );
   const applyBestBtn = renderButton({
-    text: _("\u{1F3C6} Apply Best Match"),
+    text: _("🏆 Apply Best Match"),
     classNames: ["cbi-button-save"],
     disabled: true,
     onClick: () => handleApplyBest()
@@ -13403,7 +13403,7 @@ function renderStrategyFuzzerModal(ruleNames = []) {
               class: "cbi-button cbi-button-neutral",
               style: "padding: 2px 10px; font-size: 11px;"
             },
-            _("\u2705 Working only")
+            _("✅ Working only")
           );
           const bFast = E(
             "button",
@@ -13412,7 +13412,7 @@ function renderStrategyFuzzerModal(ruleNames = []) {
               class: "cbi-button cbi-button-neutral",
               style: "padding: 2px 10px; font-size: 11px;"
             },
-            _("\u26A1 Fast (>1MB/s)")
+            _("⚡ Fast (>1MB/s)")
           );
           const setFilter = (f, btn) => {
             resultFilter = f;
@@ -13537,7 +13537,7 @@ function renderStrategyFuzzerModal(ruleNames = []) {
   );
   resultsContainer.appendChild(tableEl);
   const startBtn = renderButton({
-    text: _("\u{1F680} Start Benchmark"),
+    text: _("🚀 Start Benchmark"),
     classNames: ["cbi-button-action"],
     onClick: () => handleToggleRun()
   });
@@ -13570,7 +13570,7 @@ function renderStrategyFuzzerModal(ruleNames = []) {
     const input = E("input", {
       type: "text",
       class: "cbi-input-text",
-      placeholder: "+ add",
+      placeholder: _("+ add"),
       style: "width: 80px; padding: 2px 6px; font-size: 11px;"
     });
     input.addEventListener("keydown", (e) => {
@@ -13597,7 +13597,7 @@ function renderStrategyFuzzerModal(ruleNames = []) {
               {
                 style: "cursor: pointer; opacity: 0.6; font-size: 12px; margin-left: 2px;"
               },
-              "\xD7"
+              "×"
             );
             del.addEventListener("click", () => {
               onRemove(idx);
@@ -13642,7 +13642,7 @@ function renderStrategyFuzzerModal(ruleNames = []) {
         E(
           "div",
           { style: "font-size: 13px; font-weight: bold;" },
-          "\u26A1 Zapret v2 (nfqws2) Matrix Patterns"
+          "⚡ Zapret v2 (nfqws2) Matrix Patterns"
         ),
         renderChipGroup(
           _("Split Positions (pos)"),
@@ -13685,7 +13685,7 @@ function renderStrategyFuzzerModal(ruleNames = []) {
         E(
           "div",
           { style: "font-size: 13px; font-weight: bold;" },
-          "\u26A1 Zapret v1 (nfqws) Matrix Patterns"
+          "⚡ Zapret v1 (nfqws) Matrix Patterns"
         ),
         renderChipGroup(
           _("Split Modes (dpi-desync)"),
@@ -13722,7 +13722,7 @@ function renderStrategyFuzzerModal(ruleNames = []) {
         E(
           "div",
           { style: "font-size: 13px; font-weight: bold;" },
-          "\u26A1 ByeDPI (ciadpi) Matrix Patterns"
+          "⚡ ByeDPI (ciadpi) Matrix Patterns"
         ),
         renderChipGroup(
           _("Split Values (-s)"),
@@ -13769,7 +13769,7 @@ function renderStrategyFuzzerModal(ruleNames = []) {
       },
       [
         renderButton({
-          text: _("\u{1F4BE} Save Custom Patterns"),
+          text: _("💾 Save Custom Patterns"),
           classNames: ["cbi-button-save"],
           onClick: async () => {
             const res = await TachyonShellMethods.saveFuzzerPatterns(patternsConfig);
@@ -13781,7 +13781,7 @@ function renderStrategyFuzzerModal(ruleNames = []) {
           }
         }),
         renderButton({
-          text: _("\u{1F504} Reset to Factory Defaults"),
+          text: _("🔄 Reset to Factory Defaults"),
           classNames: ["cbi-button-neutral"],
           onClick: async () => {
             const res = await TachyonShellMethods.resetFuzzerPatterns();
@@ -13811,9 +13811,9 @@ function renderStrategyFuzzerModal(ruleNames = []) {
         style: "flex: 0 1 140px; min-width: 120px;"
       },
       [
-        E("option", { value: "zapret2" }, "Zapret v2"),
-        E("option", { value: "zapret" }, "Zapret v1"),
-        E("option", { value: "byedpi" }, "ByeDPI")
+        E("option", { value: "zapret2" }, _("Zapret v2")),
+        E("option", { value: "zapret" }, _("Zapret v1")),
+        E("option", { value: "byedpi" }, _("ByeDPI"))
       ]
     );
     const argsInput = E("input", {
@@ -13976,7 +13976,7 @@ function renderStrategyFuzzerModal(ruleNames = []) {
     style: "flex: 1 1 240px; min-width: 180px; font-size: 12px;"
   });
   const aiSynthesizeBtn = renderButton({
-    text: _("\u{1F9E0} Synthesize with AI"),
+    text: _("🧠 Synthesize with AI"),
     classNames: ["cbi-button-action"],
     onClick: () => handleAiSynthesize()
   });
@@ -13993,7 +13993,7 @@ function renderStrategyFuzzerModal(ruleNames = []) {
           style: "font-weight: bold; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;"
         },
         [
-          E("span", {}, "\u{1F9E0}"),
+          E("span", {}, "🧠"),
           E("span", {}, _("AI Diagnostics & Strategy Rationale"))
         ]
       ),
@@ -14016,7 +14016,7 @@ function renderStrategyFuzzerModal(ruleNames = []) {
           style: "font-size: 13px; font-weight: bold; display: flex; align-items: center; justify-content: space-between;"
         },
         [
-          E("span", {}, "\u{1F9E0} " + _("AI DPI Engineer & Strategy Synthesizer")),
+          E("span", {}, "🧠 " + _("AI DPI Engineer & Strategy Synthesizer")),
           E(
             "span",
             { style: "font-size: 11px; opacity: 0.6; font-weight: normal;" },
@@ -14050,16 +14050,16 @@ function renderStrategyFuzzerModal(ruleNames = []) {
         E(
           "div",
           { style: "font-size: 13px; font-weight: bold;" },
-          "\u{1F4CB} " + _("Benchmark History")
+          "📋 " + _("Benchmark History")
         ),
         E("div", { style: "display: flex; gap: 8px;" }, [
           renderButton({
-            text: _("\u{1F504} Refresh"),
+            text: _("🔄 Refresh"),
             classNames: ["cbi-button-neutral"],
             onClick: () => renderHistoryTab()
           }),
           renderButton({
-            text: _("\u{1F5D1}\uFE0F Clear History"),
+            text: _("🗑️ Clear History"),
             classNames: ["cbi-button-reset"],
             onClick: async () => {
               await TachyonShellMethods.clearFuzzerHistory();
@@ -14145,8 +14145,8 @@ function renderStrategyFuzzerModal(ruleNames = []) {
               entries.reverse().map((entry) => {
                 const date = new Date(entry.timestamp * 1e3);
                 const dateStr = `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`;
-                const dpiType = entry.dpi_detection ? `${entry.dpi_detection.type} (${entry.dpi_detection.confidence}%)` : "\u2014";
-                const bestName = entry.best_strategy ? entry.best_strategy.name : "\u2014";
+                const dpiType = entry.dpi_detection ? `${entry.dpi_detection.type} (${entry.dpi_detection.confidence}%)` : "—";
+                const bestName = entry.best_strategy ? entry.best_strategy.name : "—";
                 const bestScore = entry.best_strategy ? String(entry.best_strategy.score) : "0";
                 const working = `${entry.working_count}/${entry.total_tested}`;
                 return E("tr", { class: "cbi-section-table-row" }, [
@@ -14276,7 +14276,7 @@ function renderStrategyFuzzerModal(ruleNames = []) {
                 "Data transfer verified: streamed >= 32KB without throttling or disconnect"
               )
             },
-            "\u2713 32KB \u041F\u0440\u043E\u043A\u0430\u0447\u0430\u043D\u043E"
+            _("✓ 32KB Streamed")
           )
         );
       } else if (item.dpi_verdict === "throttled_16k") {
@@ -14290,7 +14290,7 @@ function renderStrategyFuzzerModal(ruleNames = []) {
                 "DPI throttling: stream cut off after ~16KB payload transfer"
               )
             },
-            "\u2717 \u0417\u0430\u0434\u0443\u0448\u0435\u043D\u043E \u043D\u0430 16KB"
+            _("✗ Throttled at 16KB")
           )
         );
       } else if (item.dpi_verdict === "server_fakes") {
@@ -14304,7 +14304,7 @@ function renderStrategyFuzzerModal(ruleNames = []) {
                 "Fake packets reached remote server (HTTP 400 Bad Request)"
               )
             },
-            "\u26A0\uFE0F \u0421\u0435\u0440\u0432\u0435\u0440 \u043F\u043E\u043B\u0443\u0447\u0438\u043B \u0444\u0435\u0439\u043A\u0438"
+            _("⚠️ Server received fakes")
           )
         );
       }
@@ -14315,7 +14315,7 @@ function renderStrategyFuzzerModal(ruleNames = []) {
           E(
             "div",
             { style: "font-size: 10px; opacity: 0.75; margin-top: 2px;" },
-            `${passedSub}/${totalSub} endpoints OK`
+            `${passedSub}/${totalSub} ` + _("endpoints OK")
           )
         );
       }
@@ -14373,7 +14373,7 @@ function renderStrategyFuzzerModal(ruleNames = []) {
           E(
             "td",
             { class: "cbi-section-table-cell", style: "padding: 8px 10px;" },
-            item.success ? `${item.ttfb_ms}ms` : "\u2014"
+            item.success ? `${item.ttfb_ms}ms` : "—"
           ),
           E(
             "td",
@@ -14385,7 +14385,7 @@ function renderStrategyFuzzerModal(ruleNames = []) {
                 { style: "font-size: 10px; opacity: 0.65;" },
                 `${(item.data_bytes / 1024).toFixed(1)} KB`
               ) : ""
-            ] : "\u2014"
+            ] : "—"
           ),
           E(
             "td",
@@ -14442,22 +14442,22 @@ function renderStrategyFuzzerModal(ruleNames = []) {
       } else if (state.finished_at > 0 || state.results?.length) {
         if (bestStrategy || workingResults.length > 0) {
           if (state.error) {
-            statusText.innerText = `${_("\u{1F6D1} Benchmark stopped")}. ${_("Found")} ${workingResults.length} ${_("working strategies")}.`;
+            statusText.innerText = `${_("🛑 Benchmark stopped")}. ${_("Found")} ${workingResults.length} ${_("working strategies")}.`;
           } else {
             statusText.innerText = _(
-              "\u2705 Benchmark completed! Optimal strategy identified."
+              "✅ Benchmark completed! Optimal strategy identified."
             );
           }
         } else {
-          statusText.innerText = state.error ? `${_("\u26A0\uFE0F Benchmark stopped")}: ${state.error}` : _(
-            "\u26A0\uFE0F Benchmark completed. No working bypass found for this target."
+          statusText.innerText = state.error ? `${_("⚠️ Benchmark stopped")}: ${state.error}` : _(
+            "⚠️ Benchmark completed. No working bypass found for this target."
           );
         }
       }
     }
     if (currentStratEl) {
       if (state.running && state.current_strategy) {
-        currentStratEl.innerText = `Testing: [${state.current_strategy.name}] -> ${state.current_strategy.args}`;
+        currentStratEl.innerText = `${_("Testing:")} [${state.current_strategy.name}] -> ${state.current_strategy.args}`;
       } else {
         currentStratEl.innerText = "";
       }
@@ -14477,12 +14477,12 @@ function renderStrategyFuzzerModal(ruleNames = []) {
         currentState = res.data;
         isRunning = res.data.running;
         if (isRunning) {
-          startBtn.innerText = _("\u{1F6D1} Stop Benchmark");
+          startBtn.innerText = _("🛑 Stop Benchmark");
           startBtn.disabled = false;
           startPolling();
         } else {
           stopPolling();
-          startBtn.innerText = _("\u{1F680} Start Benchmark");
+          startBtn.innerText = _("🚀 Start Benchmark");
           startBtn.disabled = false;
         }
         updateProgressUI(res.data);
@@ -14505,7 +14505,7 @@ function renderStrategyFuzzerModal(ruleNames = []) {
               );
               if (applyRes.success) {
                 showToast(
-                  `${_("\u2705 Auto-applied best strategy")}: ${currentState.best_strategy.name}`,
+                  `${_("✅ Auto-applied best strategy")}: ${currentState.best_strategy.name}`,
                   "success"
                 );
               } else {
@@ -14544,25 +14544,50 @@ function renderStrategyFuzzerModal(ruleNames = []) {
       return;
     }
     const typeMeta = {
-      rst: { alertClass: "danger", icon: "\u{1F534}" },
-      throttle: { alertClass: "warning", icon: "\u{1F7E1}" },
-      dns_block: { alertClass: "info", icon: "\u{1F535}" },
-      ip_block: { alertClass: "danger", icon: "\u{1F6AB}" },
-      unknown: { alertClass: "notice", icon: "\u26AA" },
-      none: { alertClass: "success", icon: "\u{1F7E2}" }
+      rst: { alertClass: "danger", icon: "🔴" },
+      throttle: { alertClass: "warning", icon: "🟡" },
+      dns_block: { alertClass: "info", icon: "🔵" },
+      ip_block: { alertClass: "danger", icon: "🚫" },
+      unknown: { alertClass: "notice", icon: "⚪" },
+      none: { alertClass: "success", icon: "🟢" }
     };
     const typeLabels = {
-      rst: "TCP Reset Injection",
-      throttle: "Throttling / Deep Inspection",
-      dns_block: "DNS Blocking",
-      ip_block: _("\u0411\u043B\u043E\u043A\u0438\u0440\u043E\u0432\u043A\u0430 \u043F\u043E IP (\u0422\u0430\u0439\u043C\u0430\u0443\u0442 TCP SYN)"),
-      unknown: "Unknown DPI Pattern",
-      none: "No Blocking Detected"
+      rst: _("TCP Reset Injection"),
+      throttle: _("Throttling / Deep Inspection"),
+      dns_block: _("DNS Blocking"),
+      ip_block: _("IP Block (TCP SYN Timeout)"),
+      unknown: _("Unknown DPI Pattern"),
+      none: _("No Blocking Detected")
+    };
+    const getLocalizedDpiDetails = (det) => {
+      if (!det) return "";
+      switch (det.type) {
+        case "ip_block":
+          return _(
+            "TCP connect timed out before TLS handshake — host is blocked at the IP layer. DPI bypass cannot unblock this; route via Sing-box VPN/Proxy outbound instead."
+          );
+        case "rst":
+          return _(
+            "TCP RST received from DPI — active TCP reset injection detected."
+          );
+        case "dns_block":
+          return _(
+            "DNS resolution failed — likely DNS-level blocking or hijacking."
+          );
+        case "throttle":
+          return _(
+            "DPI bandwidth throttling or delay detected — connection throttled during data transfer."
+          );
+        case "none":
+          return _("Target accessible — no DPI blocking detected.");
+        default:
+          return det.details || _("Analysis inconclusive.");
+      }
     };
     const meta = typeMeta[detection.type] || typeMeta.unknown;
     const label = typeLabels[detection.type] || detection.type;
     const ipBlockNotice = detection.type === "ip_block" ? `<div class="alert-message danger" style="margin-top: 8px;">
-             \u26A0\uFE0F ${_("\u041E\u0431\u043D\u0430\u0440\u0443\u0436\u0435\u043D\u0430 \u0431\u043B\u043E\u043A\u0438\u0440\u043E\u0432\u043A\u0430 \u043F\u043E IP! \u0420\u0435\u0441\u0443\u0440\u0441 \u0431\u043B\u043E\u043A\u0438\u0440\u0443\u0435\u0442\u0441\u044F \u043D\u0430 \u0441\u0435\u0442\u0435\u0432\u043E\u043C \u0443\u0440\u043E\u0432\u043D\u0435 (\u043D\u0435\u0442 \u043E\u0442\u0432\u0435\u0442\u0430 \u043D\u0430 TCP SYN). \u041C\u0435\u0442\u043E\u0434\u044B \u043E\u0431\u0445\u043E\u0434\u0430 DPI (Zapret / ByeDPI) \u0431\u0435\u0441\u0441\u0438\u043B\u044C\u043D\u044B \u0434\u043B\u044F \u044D\u0442\u043E\u0433\u043E \u0430\u0434\u0440\u0435\u0441\u0430 \u2014 \u043D\u0430\u0441\u0442\u0440\u043E\u0439\u0442\u0435 \u043C\u0430\u0440\u0448\u0440\u0443\u0442\u0438\u0437\u0430\u0446\u0438\u044E \u0447\u0435\u0440\u0435\u0437 \u043F\u0440\u043E\u043A\u0441\u0438/VPN (Sing-box) \u0434\u043B\u044F \u0434\u0430\u043D\u043D\u043E\u0433\u043E \u0434\u043E\u043C\u0435\u043D\u0430!")}
+             ⚠️ ${_("IP-level blocking detected! The resource is blocked at the network level (no TCP SYN response). DPI bypass methods (Zapret / ByeDPI) cannot bypass this address — configure proxy/VPN routing (Sing-box) for this domain!")}
            </div>` : "";
     banner.className = `alert-message ${meta.alertClass}`;
     banner.style.display = "block";
@@ -14574,14 +14599,14 @@ function renderStrategyFuzzerModal(ruleNames = []) {
         </div>
         ${detection.recommended_engines.length > 0 ? `<div style="font-size: 11px; opacity: 0.8;">${_("Recommended")}: ${detection.recommended_engines.join(", ")}</div>` : ""}
       </div>
-      <div style="margin-top: 4px; opacity: 0.9; font-size: 11px;">${detection.details}</div>
+      <div style="margin-top: 4px; opacity: 0.9; font-size: 11px;">${getLocalizedDpiDetails(detection)}</div>
       ${ipBlockNotice}
     `;
   };
   const handleToggleRun = async () => {
     if (isRunning) {
       startBtn.disabled = true;
-      startBtn.innerText = _("\u23F3 Stopping...");
+      startBtn.innerText = _("⏳ Stopping...");
       await TachyonShellMethods.stopFuzzer();
       showToast(_("Benchmark stopped"), "success");
       isRunning = false;
@@ -14590,7 +14615,7 @@ function renderStrategyFuzzerModal(ruleNames = []) {
       return;
     }
     startBtn.disabled = true;
-    startBtn.innerText = _("\u{1F6D1} Stop Benchmark");
+    startBtn.innerText = _("🛑 Stop Benchmark");
     progressContainer.style.display = "flex";
     const statusTextEl = document.getElementById("tachyon-fuzzer-status-text");
     const progressBarEl = document.getElementById(
@@ -14600,7 +14625,7 @@ function renderStrategyFuzzerModal(ruleNames = []) {
       "tachyon-fuzzer-current-strategy"
     );
     if (statusTextEl)
-      statusTextEl.innerText = _("\u{1F680} Initializing benchmark in sandbox...");
+      statusTextEl.innerText = _("🚀 Initializing benchmark in sandbox...");
     if (progressBarEl) progressBarEl.style.width = "3%";
     if (currentStratEl)
       currentStratEl.innerText = _(
@@ -14630,7 +14655,7 @@ function renderStrategyFuzzerModal(ruleNames = []) {
               style: "padding: 24px; text-align: center; opacity: 0.85;"
             },
             [
-              E("span", { style: "margin-right: 8px;" }, "\u23F3"),
+              E("span", { style: "margin-right: 8px;" }, "⏳"),
               E(
                 "span",
                 {},
@@ -14660,14 +14685,14 @@ function renderStrategyFuzzerModal(ruleNames = []) {
       const errMsg = !res.success ? res.error : _("Unknown error");
       showToast(`${_("Failed to start benchmark")}: ${errMsg}`, "error");
       startBtn.disabled = false;
-      startBtn.innerText = _("\u{1F680} Start Benchmark");
+      startBtn.innerText = _("🚀 Start Benchmark");
       progressContainer.style.display = "none";
     }
   };
   const handleAiSynthesize = async () => {
     const userPrompt = aiPromptInput.value.trim();
     aiSynthesizeBtn.disabled = true;
-    aiSynthesizeBtn.innerText = _("\u{1F9E0} Synthesizing...");
+    aiSynthesizeBtn.innerText = _("🧠 Synthesizing...");
     const analysisBox = document.getElementById("tachyon-fuzzer-ai-analysis");
     const analysisText = document.getElementById(
       "tachyon-fuzzer-ai-analysis-text"
@@ -14693,7 +14718,7 @@ function renderStrategyFuzzerModal(ruleNames = []) {
         activeTab2 = "benchmark";
         updateTabVisibility();
         startBtn.disabled = true;
-        startBtn.innerText = _("\u{1F6D1} Stop Benchmark");
+        startBtn.innerText = _("🛑 Stop Benchmark");
         const startRes = await TachyonShellMethods.startFuzzer(
           selectedEngine,
           selectedTarget,
@@ -14712,7 +14737,7 @@ function renderStrategyFuzzerModal(ruleNames = []) {
       showToast(_("Failed to communicate with AI provider"), "error");
     } finally {
       aiSynthesizeBtn.disabled = false;
-      aiSynthesizeBtn.innerText = _("\u{1F9E0} Synthesize with AI");
+      aiSynthesizeBtn.innerText = _("🧠 Synthesize with AI");
     }
   };
   const handleApplySingle = async (item) => {
@@ -14745,13 +14770,13 @@ function renderStrategyFuzzerModal(ruleNames = []) {
       for (let i = 0; i < opts.length; i++) {
         const opt = opts[i];
         if (opt.value === "zapret2") {
-          opt.text = av.zapret2 ? _("Zapret v2 (nfqws2)") + " \u2014 " + _("Installed") : _("Zapret v2 (nfqws2)") + " \u2014 " + _("Not installed");
+          opt.text = av.zapret2 ? _("Zapret v2 (nfqws2)") + " — " + _("Installed") : _("Zapret v2 (nfqws2)") + " — " + _("Not installed");
           if (!av.zapret2) opt.disabled = true;
         } else if (opt.value === "zapret") {
-          opt.text = av.zapret ? _("Zapret v1 (nfqws)") + " \u2014 " + _("Installed") : _("Zapret v1 (nfqws)") + " \u2014 " + _("Not installed");
+          opt.text = av.zapret ? _("Zapret v1 (nfqws)") + " — " + _("Installed") : _("Zapret v1 (nfqws)") + " — " + _("Not installed");
           if (!av.zapret) opt.disabled = true;
         } else if (opt.value === "byedpi") {
-          opt.text = av.byedpi ? _("ByeDPI (ciadpi)") + " \u2014 " + _("Installed") : _("ByeDPI (ciadpi)") + " \u2014 " + _("Not installed");
+          opt.text = av.byedpi ? _("ByeDPI (ciadpi)") + " — " + _("Installed") : _("ByeDPI (ciadpi)") + " — " + _("Not installed");
           if (!av.byedpi) opt.disabled = true;
         }
       }
@@ -14773,7 +14798,7 @@ function renderStrategyFuzzerModal(ruleNames = []) {
     tabContentHistory
   );
   pollStatus();
-  ui.showModal(_("\u26A1 Strategy Fuzzer & Auto-Tuner"), modalContainer);
+  ui.showModal(_("⚡ Strategy Fuzzer & Auto-Tuner"), modalContainer);
 }
 
 // src/tachyon/tabs/diagnostic/partials/renderSystemInfo.ts
@@ -14985,7 +15010,7 @@ function renderDnsBenchmarkModal() {
           style: "font-size: 14px; font-weight: 600; color: #28a745; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;"
         },
         [
-          E("span", {}, "\u26A1"),
+          E("span", {}, "⚡"),
           E("span", {}, _("Recommended DNS Configuration"))
         ]
       ),
@@ -15044,7 +15069,7 @@ function renderDnsBenchmarkModal() {
         {
           style: "font-size: 11px; opacity: 0.8; font-style: italic; margin-top: 4px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 4px;"
         },
-        `\u{1F4A1} ${rec.reason}`
+        `💡 ${rec.reason}`
       ) : ""
     ]);
     recommendationContainer.appendChild(recContent);
@@ -15055,7 +15080,7 @@ function renderDnsBenchmarkModal() {
     onClick: () => startBenchmark()
   });
   const applyBtn = renderButton({
-    text: `\u{1F680} ${_("Apply Recommended DNS")}`,
+    text: `🚀 ${_("Apply Recommended DNS")}`,
     classNames: ["cbi-button-positive"],
     disabled: true,
     onClick: () => applyRecommended()
@@ -15077,13 +15102,13 @@ function renderDnsBenchmarkModal() {
     if (data.running) {
       progressContainer.style.display = "block";
       progressBar.style.width = `${data.progress}%`;
-      statusLabel.textContent = `\u23F3 ${data.current_server || _("Testing")} (${data.progress}%)`;
+      statusLabel.textContent = `⏳ ${data.current_server || _("Testing")} (${data.progress}%)`;
       if (startBtn) startBtn.disabled = true;
       if (applyBtn) applyBtn.disabled = true;
     } else {
       progressContainer.style.display = "none";
       if (data.finished_at) {
-        statusLabel.textContent = `\u2713 ${_("Benchmark completed successfully")}`;
+        statusLabel.textContent = `✓ ${_("Benchmark completed successfully")}`;
         if (startBtn) startBtn.disabled = false;
         if (applyBtn)
           applyBtn.disabled = !data.recommendation;
@@ -15101,14 +15126,14 @@ function renderDnsBenchmarkModal() {
     }
   };
   const startBenchmark = async () => {
-    statusLabel.textContent = `\u{1F680} ${_("Starting DNS benchmark...")}`;
+    statusLabel.textContent = `🚀 ${_("Starting DNS benchmark...")}`;
     progressContainer.style.display = "block";
     progressBar.style.width = "0%";
     if (startBtn) startBtn.disabled = true;
     if (applyBtn) applyBtn.disabled = true;
     const res = await TachyonShellMethods.startDnsBenchmark();
     if (!res.success) {
-      statusLabel.textContent = `\u2717 ${res.error || _("Failed to start benchmark")}`;
+      statusLabel.textContent = `✗ ${res.error || _("Failed to start benchmark")}`;
       if (startBtn) startBtn.disabled = false;
       progressContainer.style.display = "none";
       return;
@@ -15120,7 +15145,7 @@ function renderDnsBenchmarkModal() {
   const applyRecommended = async () => {
     if (applyBtn) {
       applyBtn.disabled = true;
-      applyBtn.textContent = `\u23F3 ${_("Applying...")}`;
+      applyBtn.textContent = `⏳ ${_("Applying...")}`;
     }
     const res = await TachyonShellMethods.applyDnsBenchmark();
     if (res.success) {
@@ -15145,7 +15170,7 @@ function renderDnsBenchmarkModal() {
       );
       if (applyBtn) {
         applyBtn.disabled = false;
-        applyBtn.textContent = `\u{1F680} ${_("Apply Recommended DNS")}`;
+        applyBtn.textContent = `🚀 ${_("Apply Recommended DNS")}`;
       }
     }
   };
@@ -15169,7 +15194,7 @@ function renderDnsBenchmarkModal() {
       [startBtn, applyBtn, closeBtn]
     )
   ]);
-  ui.showModal(`\u26A1 ${_("Tachyon DNS Benchmark & Auto-Tuning")}`, modalContent);
+  ui.showModal(`⚡ ${_("Tachyon DNS Benchmark & Auto-Tuning")}`, modalContent);
   startBenchmark();
 }
 
@@ -15276,9 +15301,9 @@ function renderLeakCheckModal() {
     const { ip_leak, dns_leak } = data;
     const ipAlertClass = !ip_leak.proxy_online ? "alert-message warning" : ip_leak.leaked ? "alert-message danger" : "alert-message success";
     const ipAlertText = !ip_leak.proxy_online ? _("Proxy is offline or unreachable on 127.0.0.1:4534.") : ip_leak.leaked ? _(
-      "\u26A0\uFE0F CRITICAL IP LEAK: Your real public IP is exposed through the proxy outbound!"
+      "⚠️ CRITICAL IP LEAK: Your real public IP is exposed through the proxy outbound!"
     ) : _(
-      "\u{1F6E1}\uFE0F SECURE: No IP leak detected. Real WAN IP is concealed behind proxy outbound."
+      "🛡️ SECURE: No IP leak detected. Real WAN IP is concealed behind proxy outbound."
     );
     const ipTable = E(
       "table",
@@ -15308,13 +15333,13 @@ function renderLeakCheckModal() {
                 _("Bypasses proxy (SO_MARK 0x08000000)")
               )
             ]),
-            E("td", { class: "td" }, [E("code", {}, ip_leak.direct_ip || "\u2014")]),
+            E("td", { class: "td" }, [E("code", {}, ip_leak.direct_ip || "—")]),
             E(
               "td",
               { class: "td" },
-              [ip_leak.direct_country, ip_leak.direct_city].filter(Boolean).join(", ") || "\u2014"
+              [ip_leak.direct_country, ip_leak.direct_city].filter(Boolean).join(", ") || "—"
             ),
-            E("td", { class: "td" }, ip_leak.direct_isp || "\u2014"),
+            E("td", { class: "td" }, ip_leak.direct_isp || "—"),
             E("td", { class: "td", style: "text-align: center;" }, [
               E(
                 "span",
@@ -15337,13 +15362,13 @@ function renderLeakCheckModal() {
                 _("127.0.0.1:4534 (sing-box mixed)")
               )
             ]),
-            E("td", { class: "td" }, [E("code", {}, ip_leak.proxy_ip || "\u2014")]),
+            E("td", { class: "td" }, [E("code", {}, ip_leak.proxy_ip || "—")]),
             E(
               "td",
               { class: "td" },
-              [ip_leak.proxy_country, ip_leak.proxy_city].filter(Boolean).join(", ") || "\u2014"
+              [ip_leak.proxy_country, ip_leak.proxy_city].filter(Boolean).join(", ") || "—"
             ),
-            E("td", { class: "td" }, ip_leak.proxy_org || "\u2014"),
+            E("td", { class: "td" }, ip_leak.proxy_org || "—"),
             E("td", { class: "td", style: "text-align: center;" }, [
               !ip_leak.proxy_online ? E(
                 "span",
@@ -15380,7 +15405,7 @@ function renderLeakCheckModal() {
       },
       [
         E("h4", { style: "margin-top: 0; margin-bottom: 8px;" }, [
-          "\u{1F310} ",
+          "🌐 ",
           _("Public IP Address Isolation")
         ]),
         E("div", { class: ipAlertClass, style: "margin-bottom: 12px;" }, [
@@ -15391,17 +15416,17 @@ function renderLeakCheckModal() {
     );
     const dnsAlertClass = dns_leak.dns_leaked ? "alert-message danger" : dns_leak.dns_servers.length > 0 ? "alert-message success" : "alert-message info";
     const dnsAlertText = dns_leak.dns_leaked ? _(
-      "\u26A0\uFE0F DNS LEAK DETECTED: DNS queries are leaking to your local Internet Service Provider!"
+      "⚠️ DNS LEAK DETECTED: DNS queries are leaking to your local Internet Service Provider!"
     ) : dns_leak.dns_servers.length > 0 ? _(
-      "\u{1F6E1}\uFE0F SECURE: No DNS leaks detected. All queries resolve through non-ISP upstream resolvers."
+      "🛡️ SECURE: No DNS leaks detected. All queries resolve through non-ISP upstream resolvers."
     ) : _(
       "No DNS resolvers captured via proxy test. Proxy may be offline or blocking test subdomains."
     );
     const dnsTableRows = (dns_leak.dns_servers || []).map(
       (s) => E("tr", { class: "tr cbi-section-table-row" }, [
         E("td", { class: "td" }, [E("code", {}, s.ip)]),
-        E("td", { class: "td" }, s.country || "\u2014"),
-        E("td", { class: "td" }, s.isp || "\u2014"),
+        E("td", { class: "td" }, s.country || "—"),
+        E("td", { class: "td" }, s.isp || "—"),
         E("td", { class: "td", style: "text-align: center;" }, [
           s.is_isp ? E(
             "span",
@@ -15467,7 +15492,7 @@ function renderLeakCheckModal() {
       },
       [
         E("h4", { style: "margin-top: 0; margin-bottom: 8px;" }, [
-          "\u{1F50D} ",
+          "🔍 ",
           _("DNS Upstream Resolver Analysis (bash.ws protocol)")
         ]),
         E("div", { class: dnsAlertClass, style: "margin-bottom: 12px;" }, [
@@ -15514,7 +15539,7 @@ function renderLeakCheckModal() {
       [retryBtn, closeBtn]
     )
   ]);
-  ui.showModal(`\u{1F6E1}\uFE0F ${_("Tachyon IP & DNS Leak Detection")}`, modalContent);
+  ui.showModal(`🛡️ ${_("Tachyon IP & DNS Leak Detection")}`, modalContent);
   startTest();
 }
 
@@ -16623,9 +16648,9 @@ async function handleRunDoctor() {
       const report = data ? String(data.report ?? "") : String(rawData ?? "");
       const issues = data ? Number(data.issues ?? 0) : 0;
       const fixed = data ? Number(data.fixed ?? 0) : 0;
-      const title = issues > 0 ? _("Doctor repair") + " \u2014 " + _("Issues") + ": " + issues + ", " + _("Fixed") + ": " + fixed : /safe bypass|аварийного обхода|bypassed|стоковом состоянии|stock (state|internet)/i.test(
+      const title = issues > 0 ? _("Doctor repair") + " — " + _("Issues") + ": " + issues + ", " + _("Fixed") + ": " + fixed : /safe bypass|аварийного обхода|bypassed|стоковом состоянии|stock (state|internet)/i.test(
         report
-      ) ? _("Doctor repair") + " \u2014 Safe Bypass" : _("Doctor repair") + " \u2014 " + _("No issues found");
+      ) ? _("Doctor repair") + " — Safe Bypass" : _("Doctor repair") + " — " + _("No issues found");
       ui.showModal(
         title,
         renderModal(report, "doctor_repair", {
@@ -16785,14 +16810,14 @@ async function handleRunAiDoctor() {
       const getDeviceIcon = (hostname) => {
         const h = hostname.toLowerCase();
         if (h.includes("tv") || h.includes("samsung") || h.includes("lg") || h.includes("bravia") || h.includes("roku") || h.includes("appletv"))
-          return "\u{1F4FA}";
+          return "📺";
         if (h.includes("phone") || h.includes("iphone") || h.includes("android") || h.includes("pixel") || h.includes("xiaomi") || h.includes("galaxy"))
-          return "\u{1F4F1}";
+          return "📱";
         if (h.includes("mac") || h.includes("pc") || h.includes("laptop") || h.includes("desktop") || h.includes("thinkpad"))
-          return "\u{1F4BB}";
+          return "💻";
         if (h.includes("playstation") || h.includes("ps4") || h.includes("ps5") || h.includes("xbox") || h.includes("switch") || h.includes("nintendo"))
-          return "\u{1F3AE}";
-        return "\u{1F4DF}";
+          return "🎮";
+        return "📟";
       };
       const repLower = report.toLowerCase();
       const backendNodes = Array.isArray(data?.nodes) && data.nodes.length === 4 ? data.nodes : null;
@@ -16800,20 +16825,20 @@ async function handleRunAiDoctor() {
         {
           name: "WAN",
           status: repLower.includes("wan interface down") || repLower.includes(
-            "\u0448\u043B\u044E\u0437 \u043F\u043E \u0443\u043C\u043E\u043B\u0447\u0430\u043D\u0438\u044E \u0438\u043B\u0438 \u0432\u043D\u0435\u0448\u043D\u0438\u0439 \u0438\u043D\u0442\u0435\u0440\u043D\u0435\u0442 \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u0435\u043D"
+            "шлюз по умолчанию или внешний интернет недоступен"
           ) || repLower.includes("wan interface is unreachable") ? "FAIL" : "OK"
         },
         {
           name: "DNS",
-          status: repLower.includes("\u0441\u0431\u043E\u0439 \u0440\u0430\u0437\u0440\u0435\u0448\u0435\u043D\u0438\u044F dns") || repLower.includes("dns resolution failed") || repLower.includes("dns failed") || repLower.includes("dnsmasq failed") ? "FAIL" : "OK"
+          status: repLower.includes("сбой разрешения dns") || repLower.includes("dns resolution failed") || repLower.includes("dns failed") || repLower.includes("dnsmasq failed") ? "FAIL" : "OK"
         },
         {
           name: "sing-box",
-          status: (repLower.includes("sing-box") || repLower.includes("proxy")) && (repLower.includes("\u043E\u0441\u0442\u0430\u043D\u043E\u0432\u043B\u0435\u043D") || repLower.includes("stopped") || repLower.includes("\u043D\u0435 \u0444\u0443\u043D\u043A\u0446\u0438\u043E\u043D\u0438\u0440\u0443\u0435\u0442") || repLower.includes("error") || repLower.includes("crash")) ? "FAIL" : "OK"
+          status: (repLower.includes("sing-box") || repLower.includes("proxy")) && (repLower.includes("остановлен") || repLower.includes("stopped") || repLower.includes("не функционирует") || repLower.includes("error") || repLower.includes("crash")) ? "FAIL" : "OK"
         },
         {
           name: "nftables",
-          status: (repLower.includes("nftables") || repLower.includes("\u043F\u0440\u0430\u0432\u0438\u043B\u0430 \u0444\u0430\u0439\u0440\u0432\u043E\u043B\u0430") || repLower.includes("firewall rules")) && (repLower.includes("\u043D\u0430\u0440\u0443\u0448\u0435\u043D\u044B") || repLower.includes("damaged") || repLower.includes("corrupted") || repLower.includes("compromised")) ? "WARN" : "OK"
+          status: (repLower.includes("nftables") || repLower.includes("правила файрвола") || repLower.includes("firewall rules")) && (repLower.includes("нарушены") || repLower.includes("damaged") || repLower.includes("corrupted") || repLower.includes("compromised")) ? "WARN" : "OK"
         }
       ];
       const FIX_LABELS = {
@@ -16850,7 +16875,7 @@ async function handleRunAiDoctor() {
           },
           nodes.map((node) => {
             const labelClass = node.status === "OK" ? "label-success" : node.status === "WARN" ? "label-warning" : "label-danger";
-            const icon = node.status === "OK" ? "\u2713" : node.status === "WARN" ? "\u26A0" : "\u2715";
+            const icon = node.status === "OK" ? "✓" : node.status === "WARN" ? "⚠" : "✕";
             return E(
               "span",
               {
@@ -16888,7 +16913,7 @@ async function handleRunAiDoctor() {
                 {
                   style: "font-weight: bold; margin-bottom: 8px; font-size: 12px;"
                 },
-                "\u{1F6E0}\uFE0F " + _("Recommended Quick Fixes:")
+                "🛠️ " + _("Recommended Quick Fixes:")
               ),
               E(
                 "div",
@@ -16900,10 +16925,10 @@ async function handleRunAiDoctor() {
                   const friendlyLabel = FIX_LABELS[code] || code;
                   const btn = renderButton({
                     classNames: ["cbi-button-apply"],
-                    text: `\u26A1 ${friendlyLabel}`,
+                    text: `⚡ ${friendlyLabel}`,
                     onClick: async () => {
                       if (applied) return;
-                      btn.textContent = "\u23F3 " + _("Applying...") + " " + friendlyLabel;
+                      btn.textContent = "⏳ " + _("Applying...") + " " + friendlyLabel;
                       showToast(
                         _("Applying fix") + ": " + friendlyLabel + "...",
                         "success"
@@ -16911,7 +16936,7 @@ async function handleRunAiDoctor() {
                       const fixRes = await TachyonShellMethods.applyQuickFix(code);
                       if (fixRes && typeof fixRes === "object" && fixRes.success) {
                         applied = true;
-                        btn.textContent = `\u2713 ${friendlyLabel} (${_("Fixed")})`;
+                        btn.textContent = `✓ ${friendlyLabel} (${_("Fixed")})`;
                         btn.classList.remove("cbi-button-apply");
                         btn.classList.add("cbi-button-neutral");
                         showToast(
@@ -16919,7 +16944,7 @@ async function handleRunAiDoctor() {
                           "success"
                         );
                       } else {
-                        btn.textContent = `\u26A1 ${friendlyLabel}`;
+                        btn.textContent = `⚡ ${friendlyLabel}`;
                         showToast(
                           _("Failed to apply fix") + ": " + friendlyLabel,
                           "error"
@@ -16937,14 +16962,14 @@ async function handleRunAiDoctor() {
               class: "alert-message warning",
               style: "margin-top: 12px; padding: 8px 12px; font-size: 12px; border-radius: 6px;"
             },
-            "\u26A0\uFE0F " + _("Issues detected. Review the diagnosis above.")
+            "⚠️ " + _("Issues detected. Review the diagnosis above.")
           ) : E(
             "div",
             {
               class: "alert-message success",
               style: "margin-top: 12px; padding: 8px 12px; font-size: 12px; border-radius: 6px;"
             },
-            "\u2713 " + _("No issues detected. System is running normally.")
+            "✓ " + _("No issues detected. System is running normally.")
           )
         ]);
       };
@@ -16956,7 +16981,7 @@ async function handleRunAiDoctor() {
               class: "cbi-section-node",
               style: "padding: 20px; text-align: center; font-size: 13px;"
             },
-            "\u23F3 " + _("Loading connected LAN devices...")
+            "⏳ " + _("Loading connected LAN devices...")
           );
         }
         if (lanClients.length === 0) {
@@ -16971,7 +16996,7 @@ async function handleRunAiDoctor() {
             ),
             renderButton({
               classNames: ["cbi-button-action"],
-              text: "\u{1F504} " + _("Refresh Device List"),
+              text: "🔄 " + _("Refresh Device List"),
               onClick: loadLanClients
             })
           ]);
@@ -16986,11 +17011,11 @@ async function handleRunAiDoctor() {
               E(
                 "span",
                 { style: "font-weight: bold; font-size: 12px;" },
-                `\u{1F4F1} ${_("Connected Devices")}: ${lanClients.length}`
+                `📱 ${_("Connected Devices")}: ${lanClients.length}`
               ),
               renderButton({
                 classNames: ["cbi-button-neutral"],
-                text: "\u{1F504} " + _("Refresh"),
+                text: "🔄 " + _("Refresh"),
                 onClick: loadLanClients
               })
             ]
@@ -17043,13 +17068,13 @@ async function handleRunAiDoctor() {
                           class: `label ${isDirect ? "label-warning" : "label-success"}`,
                           style: "font-size: 11px; padding: 3px 8px; border-radius: 4px;"
                         },
-                        isDirect ? "\u{1F310} " + _("Direct WAN") : "\u{1F6E1}\uFE0F " + _("Proxy / DPI")
+                        isDirect ? "🌐 " + _("Direct WAN") : "🛡️ " + _("Proxy / DPI")
                       ),
                       renderButton({
                         classNames: [
                           isDirect ? "cbi-button-action" : "cbi-button-apply"
                         ],
-                        text: isDirect ? "\u{1F6E1}\uFE0F " + _("Route via Proxy") : "\u26A1 " + _("Direct Bypass"),
+                        text: isDirect ? "🛡️ " + _("Route via Proxy") : "⚡ " + _("Direct Bypass"),
                         onClick: async () => {
                           showToast(
                             _("Updating device routing mode..."),
@@ -17143,7 +17168,7 @@ async function handleRunAiDoctor() {
                   classNames: [
                     activeTab2 === "diagnosis" ? "cbi-button-action" : "cbi-button-neutral"
                   ],
-                  text: "\u{1F50D} " + _("Current Diagnosis"),
+                  text: "🔍 " + _("Current Diagnosis"),
                   onClick: () => {
                     activeTab2 = "diagnosis";
                     renderModalLayout();
@@ -17153,7 +17178,7 @@ async function handleRunAiDoctor() {
                   classNames: [
                     activeTab2 === "devices" ? "cbi-button-action" : "cbi-button-neutral"
                   ],
-                  text: `\u{1F4F1} ${_("LAN Devices")} ${lanClients.length > 0 ? `(${lanClients.length})` : ""}`,
+                  text: `📱 ${_("LAN Devices")} ${lanClients.length > 0 ? `(${lanClients.length})` : ""}`,
                   onClick: () => {
                     activeTab2 = "devices";
                     if (lanClients.length === 0) {
@@ -17167,7 +17192,7 @@ async function handleRunAiDoctor() {
                   classNames: [
                     activeTab2 === "history" ? "cbi-button-action" : "cbi-button-neutral"
                   ],
-                  text: `\u{1F552} ${_("History")} (${historyEntries.length})`,
+                  text: `🕒 ${_("History")} (${historyEntries.length})`,
                   onClick: () => {
                     historyEntries = getAiDoctorHistory();
                     activeTab2 = "history";
@@ -17192,12 +17217,12 @@ async function handleRunAiDoctor() {
                   [
                     renderButton({
                       classNames: ["cbi-button-action"],
-                      text: "\u{1F4CB} " + _("Copy Support Report"),
+                      text: "📋 " + _("Copy Support Report"),
                       onClick: copySupportReport
                     }),
                     renderButton({
                       classNames: ["cbi-button-reset"],
-                      text: "\u{1F6A8} " + _("Restore Native Internet (Stop Tachyon)"),
+                      text: "🚨 " + _("Restore Native Internet (Stop Tachyon)"),
                       onClick: async () => {
                         showToast(
                           _(
@@ -17294,7 +17319,7 @@ function handleRestoreNativeInternet() {
           }),
           renderButton({
             classNames: ["cbi-button-reset"],
-            text: "\u{1F6A8} " + _("Restore Native Internet"),
+            text: "🚨 " + _("Restore Native Internet"),
             onClick: async () => {
               ui.hideModal();
               showToast(
@@ -18880,8 +18905,8 @@ function renderConnectionsTable(connections, state) {
             E("th", {}, _("Type")),
             E("th", {}, _("Route")),
             E("th", {}, _("Time")),
-            E("th", {}, `\u2193 ${_("Downloaded")}`),
-            E("th", {}, `\u2191 ${_("Uploaded")}`),
+            E("th", {}, `↓ ${_("Downloaded")}`),
+            E("th", {}, `↑ ${_("Uploaded")}`),
             E("th", {}, _("Source")),
             E("th", {}, _("Close"))
           ])
@@ -20278,7 +20303,7 @@ function describeSameReleaseBuild({
   const current = (currentSha || "").substring(0, 8);
   const latest = (latestSha || "").substring(0, 8);
   if (current && latest) {
-    return { kind: "sha", text: `${current} \u2192 ${latest}` };
+    return { kind: "sha", text: `${current} → ${latest}` };
   }
   if (current || latest) {
     return { kind: "sha", text: current || latest };
@@ -20360,19 +20385,19 @@ function renderVersionBadgeText(opts) {
   if (tVer) {
     if (cVer === tVer) {
       if (cSha && tSha && cSha !== tSha) {
-        return `${cVer} (${cSha} \u2192 ${tSha})`;
+        return `${cVer} (${cSha} → ${tSha})`;
       }
       if (tSha) {
         return `${cVer} (${tSha})`;
       }
       if (cSha) {
-        return `${cVer} (${cSha} \u2192 ${_("new build")})`;
+        return `${cVer} (${cSha} → ${_("new build")})`;
       }
       return `${cVer} (${_("new build")})`;
     }
     const currentPart = cVer ? cSha ? `${cVer} (${cSha})` : cVer : "";
     const targetPart = tSha ? `${tVer} (${tSha})` : tVer;
-    return currentPart ? `${currentPart} \u2192 ${targetPart}` : targetPart;
+    return currentPart ? `${currentPart} → ${targetPart}` : targetPart;
   }
   if (cVer) {
     return cSha ? `${cSha}` : cVer;
@@ -20406,7 +20431,7 @@ function showUpdateProgressModal(options) {
   const timerBadgeEl = E(
     "div",
     { class: "tachyon-update-modal__timer-badge" },
-    "\u23F1\uFE0F 00:00"
+    "⏱️ 00:00"
   );
   const titleBadgeEl = E(
     "span",
@@ -20463,7 +20488,7 @@ function showUpdateProgressModal(options) {
   const updateTimerDisplay = () => {
     const mins = Math.floor(elapsedSeconds / 60).toString().padStart(2, "0");
     const secs = (elapsedSeconds % 60).toString().padStart(2, "0");
-    timerBadgeEl.textContent = `\u23F1\uFE0F ${mins}:${secs}`;
+    timerBadgeEl.textContent = `⏱️ ${mins}:${secs}`;
   };
   timerInterval = setInterval(() => {
     elapsedSeconds += 1;
@@ -21775,7 +21800,7 @@ function getComponentCards() {
       component: "direct_bypass",
       column: 0,
       title: _("Direct Proxy"),
-      version: directBypassEnabled ? `HTTP/SOCKS5 \xB7 ${directBypassEndpoint || _("Enabled")}` : _("Disabled"),
+      version: directBypassEnabled ? `HTTP/SOCKS5 · ${directBypassEndpoint || _("Enabled")}` : _("Disabled"),
       copyValue: directBypassEnabled && directBypassEndpoint ? directBypassEndpoint : void 0,
       actions: directBypassActions
     },
@@ -22041,7 +22066,7 @@ function renderComponentCard(card) {
           "span",
           {
             class: "tachyon_updates-page__component__sha-info",
-            title: _("Installed build \u2192 Available build")
+            title: _("Installed build → Available build")
           },
           build.kind === "sha" ? build.text : _("Rebuilt release")
         )

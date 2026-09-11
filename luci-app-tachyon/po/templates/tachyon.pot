@@ -9240,3 +9240,75 @@ msgstr ""
 #: src/tachyon/tabs/diagnostic/checks/runZapret2Check.ts:115
 msgid "Zapret2 sing-box route rules are not configured"
 msgstr ""
+
+msgid "+ add"
+msgstr ""
+
+msgid "⚠️ Server received fakes"
+msgstr ""
+
+msgid "✓ 32KB Streamed"
+msgstr ""
+
+msgid "✗ Throttled at 16KB"
+msgstr ""
+
+msgid "Analysis inconclusive."
+msgstr ""
+
+msgid "Blocked Sites (Only block domains specified below)"
+msgstr ""
+
+msgid "DNS Blocking"
+msgstr ""
+
+msgid "DNS resolution failed — likely DNS-level blocking or hijacking."
+msgstr ""
+
+msgid "DPI bandwidth throttling or delay detected — connection throttled during data transfer."
+msgstr ""
+
+msgid "endpoints OK"
+msgstr ""
+
+msgid "IP Block (TCP SYN Timeout)"
+msgstr ""
+
+msgid "IP-level blocking detected! The resource is blocked at the network level (no TCP SYN response). DPI bypass methods (Zapret / ByeDPI) cannot bypass this address — configure proxy/VPN routing (Sing-box) for this domain!"
+msgstr ""
+
+msgid "No Blocking Detected"
+msgstr ""
+
+msgid "Target accessible — no DPI blocking detected."
+msgstr ""
+
+msgid "TCP connect timed out before TLS handshake — host is blocked at the IP layer. DPI bypass cannot unblock this; route via Sing-box VPN/Proxy outbound instead."
+msgstr ""
+
+msgid "TCP Reset Injection"
+msgstr ""
+
+msgid "TCP RST received from DPI — active TCP reset injection detected."
+msgstr ""
+
+msgid "Testing:"
+msgstr ""
+
+msgid "Throttling / Deep Inspection"
+msgstr ""
+
+msgid "Unknown DPI Pattern"
+msgstr ""
+
+msgid "Zapret v1"
+msgstr ""
+
+msgid "Zapret v2"
+msgstr ""
+
+msgid "Allow only: "
+msgstr ""
+
+msgid "Block: "
+msgstr ""

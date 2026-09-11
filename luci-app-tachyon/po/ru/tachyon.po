@@ -855,7 +855,7 @@ msgid "Cache file path cannot be empty"
 msgstr "Путь к файлу кэша не может быть пустым"
 
 msgid "Camou"
-msgstr ""
+msgstr "Camou"
 
 msgid "Cancel"
 msgstr "Отмена"
@@ -870,7 +870,7 @@ msgid "Cannot save settings"
 msgstr "Не удалось сохранить настройки"
 
 msgid "Captive"
-msgstr ""
+msgstr "Captive"
 
 msgid "Cascade connection"
 msgstr "Каскадное подключение"
@@ -993,7 +993,7 @@ msgid "Click to show"
 msgstr "Нажмите, чтобы показать"
 
 msgid "Client"
-msgstr ""
+msgstr "Клиент"
 
 msgid "Client Address"
 msgstr "Адрес клиента"
@@ -1263,7 +1263,7 @@ msgid "Dedicated cgroup unavailable"
 msgstr "Выделенная cgroup недоступна"
 
 msgid "Default"
-msgstr ""
+msgstr "По умолчанию"
 
 msgid "Default (auto)"
 msgstr "По умолчанию (авто)"
@@ -2130,7 +2130,7 @@ msgid "France (fr)"
 msgstr "Франция (fr)"
 
 msgid "Freedom"
-msgstr ""
+msgstr "Freedom"
 
 msgid "Fri"
 msgstr "Пт"
@@ -2787,7 +2787,7 @@ msgid "Japan (jp)"
 msgstr "Япония (jp)"
 
 msgid "Jitsi"
-msgstr ""
+msgstr "Jitsi"
 
 msgid "JSON outbound"
 msgstr "JSON outbound"
@@ -5649,10 +5649,10 @@ msgid "When switching to another level, test every server and select the fastest
 msgstr "При переключении на другой уровень тестировать каждый сервер и выбирать самый быстрый вместо первого рабочего."
 
 msgid "WHEP"
-msgstr ""
+msgstr "WHEP"
 
 msgid "WHIP"
-msgstr ""
+msgstr "WHIP"
 
 msgid "Why Discord fails?"
 msgstr "Почему не работает Discord?"
@@ -5670,7 +5670,7 @@ msgid "working strategies"
 msgstr "рабочих стратегий"
 
 msgid "WRT"
-msgstr ""
+msgstr "WRT"
 
 msgid "XHTTP mode"
 msgstr "Режим XHTTP"
@@ -6505,3 +6505,75 @@ msgstr "Скачивание и обработка списков"
 
 msgid "Applying rules and subnet lists"
 msgstr "Применение правил и списков подсетей"
+
+msgid "+ add"
+msgstr "+ добавить"
+
+msgid "⚠️ Server received fakes"
+msgstr "⚠️ Сервер получил фейки"
+
+msgid "✓ 32KB Streamed"
+msgstr "✓ 32KB Прокачано"
+
+msgid "✗ Throttled at 16KB"
+msgstr "✗ Задушено на 16KB"
+
+msgid "Analysis inconclusive."
+msgstr "Анализ не дал однозначного результата."
+
+msgid "Blocked Sites (Only block domains specified below)"
+msgstr "Заблокированные сайты (Блокировать только указанные домены)"
+
+msgid "DNS Blocking"
+msgstr "Блокировка DNS"
+
+msgid "DNS resolution failed — likely DNS-level blocking or hijacking."
+msgstr "Сбой разрешения DNS — вероятно, блокировка или перехват на уровне DNS."
+
+msgid "DPI bandwidth throttling or delay detected — connection throttled during data transfer."
+msgstr "Обнаружено замедление DPI — соединение заблокировано или задушено при передаче данных."
+
+msgid "endpoints OK"
+msgstr "эндпоинтов доступно"
+
+msgid "IP Block (TCP SYN Timeout)"
+msgstr "Блокировка по IP (Таймаут TCP SYN)"
+
+msgid "IP-level blocking detected! The resource is blocked at the network level (no TCP SYN response). DPI bypass methods (Zapret / ByeDPI) cannot bypass this address — configure proxy/VPN routing (Sing-box) for this domain!"
+msgstr "Обнаружена блокировка по IP! Ресурс блокируется на сетевом уровне (нет ответа на TCP SYN). Методы обхода DPI (Zapret / ByeDPI) бессильны для этого адреса — настройте маршрутизацию через прокси/VPN (Sing-box) для данного домена!"
+
+msgid "No Blocking Detected"
+msgstr "Блокировка не обнаружена"
+
+msgid "Target accessible — no DPI blocking detected."
+msgstr "Цель доступна — блокировок DPI не обнаружено."
+
+msgid "TCP connect timed out before TLS handshake — host is blocked at the IP layer. DPI bypass cannot unblock this; route via Sing-box VPN/Proxy outbound instead."
+msgstr "Таймаут TCP-подключения до рукопожатия TLS — узел заблокирован на уровне IP. Методы обхода DPI не помогут; настройте маршрутизацию через прокси/VPN Sing-box."
+
+msgid "TCP Reset Injection"
+msgstr "Внедрение пакетов TCP Reset (RST)"
+
+msgid "TCP RST received from DPI — active TCP reset injection detected."
+msgstr "Получен TCP RST от ТСПУ/DPI — зафиксирована активная инъекция сброса соединения."
+
+msgid "Testing:"
+msgstr "Тестирование:"
+
+msgid "Throttling / Deep Inspection"
+msgstr "Замедление / Глубокий анализ пакетов"
+
+msgid "Unknown DPI Pattern"
+msgstr "Неизвестный тип DPI"
+
+msgid "Zapret v1"
+msgstr "Zapret v1"
+
+msgid "Zapret v2"
+msgstr "Zapret v2"
+
+msgid "Allow only: "
+msgstr "Разрешить только: "
+
+msgid "Block: "
+msgstr "Блокировать: "
