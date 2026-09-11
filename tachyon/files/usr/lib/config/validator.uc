@@ -1457,12 +1457,12 @@ function validate_dns_action(section, sections, context) {
     if (!dns_action_has_domain_matchers(section) && length(fully_routed_ips) == 0)
         fail_validation("DNS rule '" + name + "' must contain at least one domain condition, domain rule set, or forced device. Aborted.");
     for (let ip in fully_routed_ips) {
-        if (!core_ip.valid_ip_or_cidr(ip))
-            fail_validation("DNS rule '" + name + "' has an invalid forced device IP or subnet '" + ip + "'. Aborted.");
+        if (!core_ip.valid_ip_or_cidr(ip) && !core_ip.valid_mac(ip))
+            fail_validation("DNS rule '" + name + "' has an invalid forced device IP, MAC, or subnet '" + ip + "'. Aborted.");
     }
     for (let ip in list_option(section, "source_ip_cidr")) {
-        if (!core_ip.valid_ip_or_cidr(ip))
-            fail_validation("DNS rule '" + name + "' has an invalid device filter IP or subnet '" + ip + "'. Aborted.");
+        if (!core_ip.valid_ip_or_cidr(ip) && !core_ip.valid_mac(ip))
+            fail_validation("DNS rule '" + name + "' has an invalid device filter IP, MAC, or subnet '" + ip + "'. Aborted.");
     }
     if (!bool_option(section, "dns_detour_enabled", false))
         return;

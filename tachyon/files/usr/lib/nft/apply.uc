@@ -84,6 +84,18 @@ function file_executable(path) {
     return (int(stat.mode) & 73) != 0;
 }
 
+function nft_csv_values(csv) {
+    let result = [];
+
+    for (let item in split(as_string(csv), ",")) {
+        item = trim(replace(as_string(item), /\r/g, ""));
+        if (item != "")
+            push(result, item);
+    }
+
+    return result;
+}
+
 function run_args(args) {
     return system(command_from_args(args)) == 0;
 }
@@ -615,7 +627,11 @@ function section_priority_sets(section) {
 }
 
 function section_source_ip_values(section) {
-    return section_rule_condition_csv(section, "source_ip_cidr", "subnets");
+    let raw = section_rule_condition_csv(section, "source_ip_cidr", "subnets");
+    if (raw == "")
+        return "";
+    let cidrs = core_ip.normalize_to_cidrs(nft_csv_values(raw));
+    return join(",", cidrs);
 }
 
 function section_has_source_ip_matchers(section) {
@@ -1474,12 +1490,17 @@ function nft_create_runtime_base(table, localv4_set, common_set, port_set, ip_po
         !nft_create_chain(table, "proxy", "{ type filter hook prerouting priority -100; policy accept; }"))
         return false;
 
+    if (!nft_add_rule(table, "parental_control", [ "ip", "daddr", "@" + as_string(localv4_set), "return" ]) ||
+        !nft_add_rule(table, "parental_control", [ "ip6", "daddr", "@" + as_string(localv6_set), "return" ]) ||
+        !nft_add_rule(table, "parental_forward", [ "ip", "daddr", "@" + as_string(localv4_set), "return" ]) ||
+        !nft_add_rule(table, "parental_forward", [ "ip6", "daddr", "@" + as_string(localv6_set), "return" ]))
+        return false;
+
     if (!nft_add_rule(table, "dns_redirect", [ "iifname", "@" + as_string(interface_set), "ip", "saddr", "@" + DNS_SOURCE_SET, "tcp", "dport", "53", "counter", "redirect", "to", ":" + as_string(runtime_constants.SOURCE_DNS_INBOUND_PORT) ]) ||
         !nft_add_rule(table, "dns_redirect", [ "iifname", "@" + as_string(interface_set), "ip", "saddr", "@" + DNS_SOURCE_SET, "udp", "dport", "53", "counter", "redirect", "to", ":" + as_string(runtime_constants.SOURCE_DNS_INBOUND_PORT) ]) ||
         !nft_add_rule(table, "dns_redirect", [ "iifname", "@" + as_string(interface_set), "ip6", "saddr", "@" + DNS_SOURCE6_SET, "tcp", "dport", "53", "counter", "redirect", "to", ":" + as_string(runtime_constants.SOURCE_DNS_INBOUND_PORT) ]) ||
         !nft_add_rule(table, "dns_redirect", [ "iifname", "@" + as_string(interface_set), "ip6", "saddr", "@" + DNS_SOURCE6_SET, "udp", "dport", "53", "counter", "redirect", "to", ":" + as_string(runtime_constants.SOURCE_DNS_INBOUND_PORT) ]) ||
-        !nft_add_rule(table, "mangle", [ "ct", "status", "dnat", "return" ]) ||
-        !nft_add_rule(table, "mangle", [ "jump", "parental_control" ]))
+        !nft_add_rule(table, "mangle", [ "ct", "status", "dnat", "return" ]))
         return false;
 
     // Native Tailscale: tailnet-bound traffic and anything already marked by
@@ -1494,7 +1515,8 @@ function nft_create_runtime_base(table, localv4_set, common_set, port_set, ip_po
     }
 
     if (!nft_add_rule(table, "mangle", [ "iifname", "@" + as_string(interface_set), "ip", "daddr", "@" + as_string(localv4_set), "return" ]) ||
-        !nft_add_rule(table, "mangle", [ "iifname", "@" + as_string(interface_set), "ip6", "daddr", "@" + as_string(localv6_set), "return" ]))
+        !nft_add_rule(table, "mangle", [ "iifname", "@" + as_string(interface_set), "ip6", "daddr", "@" + as_string(localv6_set), "return" ]) ||
+        !nft_add_rule(table, "mangle", [ "jump", "parental_control" ]))
         return false;
 
     let console_ips_list = list_option(uci_settings(), "game_console_ips");
@@ -1829,18 +1851,6 @@ function nft_chunk_size(value) {
     return value > 0 ? value : 5000;
 }
 
-function nft_csv_values(csv) {
-    let result = [];
-
-    for (let item in split(as_string(csv), ",")) {
-        item = trim(replace(as_string(item), /\r/g, ""));
-        if (item != "")
-            push(result, item);
-    }
-
-    return result;
-}
-
 function nft_build_chunks_from_values(values, kind, ports_csv, chunk_size_text, family_filter) {
     let chunk_size = nft_chunk_size(chunk_size_text);
     let chunks = [];
@@ -2009,8 +2019,21 @@ function nft_insert_fully_routed_ip_rules(source_ip, table, interface_set, local
     let ip_key = family == 6 ? "ip6" : "ip";
     let local_set = family == 6 ? default_arg(localv6_set, "localv6") : localv4_set;
 
-    if (family == 0)
+    if (family == 0) {
+        if (core_ip.valid_mac(source_ip)) {
+            let mac = lc(replace(source_ip, "-", ":"));
+            let localv4 = as_string(localv4_set);
+            let localv6 = as_string(default_arg(localv6_set, "localv6"));
+            let ok = run_args([ "nft", "insert", "rule", "inet", table, "mangle", "iifname", "@" + as_string(interface_set), "ether", "saddr", mac, "meta", "l4proto", "tcp", "meta", "mark", "set", mark, "counter" ]) &&
+                     run_args([ "nft", "insert", "rule", "inet", table, "mangle", "iifname", "@" + as_string(interface_set), "ether", "saddr", mac, "meta", "l4proto", "udp", "meta", "mark", "set", mark, "counter" ]) &&
+                     run_args([ "nft", "insert", "rule", "inet", table, "mangle", "ether", "saddr", mac, "ip", "daddr", "@" + localv4, "return" ]) &&
+                     run_args([ "nft", "insert", "rule", "inet", table, "mangle", "ether", "saddr", mac, "ip6", "daddr", "@" + localv6, "return" ]);
+            for (let res_ip in core_ip.resolve_mac_to_ips(mac))
+                nft_insert_fully_routed_ip_rules(res_ip, table, interface_set, localv4_set, localv6_set, mark);
+            return ok;
+        }
         return true;
+    }
 
     return (
         run_args([ "nft", "insert", "rule", "inet", table, "mangle", "iifname", "@" + as_string(interface_set), ip_key, "saddr", source_ip, "meta", "l4proto", "tcp", "meta", "mark", "set", mark, "counter" ]) &&
@@ -2044,6 +2067,11 @@ function nft_source_ip_display_value(source_ip) {
 function nft_chain_has_source_ip(chain_text, source_ip) {
     chain_text = as_string(chain_text);
     source_ip = as_string(source_ip);
+
+    if (core_ip.valid_mac(source_ip)) {
+        let mac = lc(replace(source_ip, "-", ":"));
+        return index(chain_text, "ether saddr " + mac) >= 0;
+    }
 
     let ip_key = core_ip.ip_family(source_ip) == 6 ? "ip6" : "ip";
 
@@ -2763,7 +2791,15 @@ function source_aware_dns_values(sections, deferred_sections) {
         if (action == "bypass" || action == "dns") {
             for (let value in list_option(section, "fully_routed_ips")) {
                 value = trim(as_string(value));
-                if (value != "" && !seen[value]) {
+                if (value == "") continue;
+                if (core_ip.valid_mac(value)) {
+                    for (let res_ip in core_ip.resolve_mac_to_ips(value)) {
+                        if (!seen[res_ip]) {
+                            seen[res_ip] = true;
+                            push(values, res_ip);
+                        }
+                    }
+                } else if (!seen[value]) {
                     seen[value] = true;
                     push(values, value);
                 }

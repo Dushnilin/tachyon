@@ -2,7 +2,13 @@ import { ValidationResult } from './types';
 import { isIPv4, isIPv6 } from './validateIp';
 
 export function validateSubnet(value: string): ValidationResult {
-  const [ip, cidr, extra] = value.split('/');
+  const trimmed = value.trim();
+
+  if (/^([0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}$/.test(trimmed)) {
+    return { valid: true, message: _('Valid') };
+  }
+
+  const [ip, cidr, extra] = trimmed.split('/');
 
   if (!ip || extra !== undefined || (!isIPv4(ip) && !isIPv6(ip))) {
     return {

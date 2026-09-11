@@ -380,7 +380,7 @@ function clash_api_config(settings, service_address) {
     if (bool_option(settings, "enable_yacd", false) && bool_option(settings, "enable_yacd_wan_access", false))
         controller = "0.0.0.0";
     else if (controller == "")
-        controller = "127.0.0.1";
+        controller = "0.0.0.0";
 
     let result = {
         external_controller: controller + ":9090"
@@ -1171,21 +1171,21 @@ function source_aware_dns_sources(sections, settings) {
         let has_dns_matchers = connections.has_dns_matchers(section);
 
         if (has_dns_matchers) {
-            for (let ip in list_option(section, "source_ip_cidr"))
+            for (let ip in core_ip.normalize_to_cidrs(list_option(section, "source_ip_cidr")))
                 add_source(ip);
         }
 
         if (action == "bypass") {
-            for (let ip in list_option(section, "fully_routed_ips"))
+            for (let ip in core_ip.normalize_to_cidrs(list_option(section, "fully_routed_ips")))
                 add_source(ip);
-            for (let ip in list_option(section, "source_ip_cidr"))
+            for (let ip in core_ip.normalize_to_cidrs(list_option(section, "source_ip_cidr")))
                 add_source(ip);
         }
 
         if (action == "dns") {
-            for (let ip in list_option(section, "fully_routed_ips"))
+            for (let ip in core_ip.normalize_to_cidrs(list_option(section, "fully_routed_ips")))
                 add_source(ip);
-            for (let ip in list_option(section, "source_ip_cidr"))
+            for (let ip in core_ip.normalize_to_cidrs(list_option(section, "source_ip_cidr")))
                 add_source(ip);
         }
     }

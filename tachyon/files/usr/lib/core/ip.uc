@@ -144,6 +144,11 @@ function ipv6_supported() {
     return common.ipv6_supported();
 }
 
+function valid_mac(value) {
+    value = trim(as_string(value));
+    return match(value, /^([0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}$/) != null;
+}
+
 function resolve_mac_to_ips(mac) {
     mac = lc(replace(trim(as_string(mac)), "-", ":"));
     if (mac == "")
@@ -151,7 +156,7 @@ function resolve_mac_to_ips(mac) {
     let matched = [];
     let seen = {};
 
-    let lease_files = [ "/tmp/dhcp.leases", "/var/lib/misc/dnsmasq.leases", "/tmp/hosts/dhcp" ];
+    let lease_files = [ "/tmp/dhcp.leases", "/var/lib/misc/dnsmasq.leases", "/tmp/hosts/dhcp", "/tmp/hosts/odhcpd", "/var/run/odhcpd.leases" ];
     for (let lpath in lease_files) {
         let data = fs.readfile(lpath);
         if (!data)
@@ -215,6 +220,40 @@ function resolve_mac_to_ips(mac) {
     return matched;
 }
 
+function normalize_to_cidrs(items) {
+    if (type(items) != "array")
+        items = items != null && items != "" ? [ items ] : [];
+    let result = [];
+    let seen = {};
+    for (let raw in items) {
+        let val = trim(as_string(raw));
+        if (val == "") continue;
+        if (valid_mac(val)) {
+            for (let res_ip in resolve_mac_to_ips(val)) {
+                let cidr = valid_ipv6(res_ip) ? res_ip + "/128" : res_ip + "/32";
+                if (!seen[cidr]) {
+                    seen[cidr] = true;
+                    push(result, cidr);
+                }
+            }
+            continue;
+        }
+        if (valid_ip(val)) {
+            let cidr = valid_ipv6(val) ? val + "/128" : val + "/32";
+            if (!seen[cidr]) {
+                seen[cidr] = true;
+                push(result, cidr);
+            }
+        } else if (valid_ip_cidr(val)) {
+            if (!seen[val]) {
+                seen[val] = true;
+                push(result, val);
+            }
+        }
+    }
+    return result;
+}
+
 return {
     valid_ipv4,
     valid_ipv4_cidr,
@@ -223,9 +262,11 @@ return {
     valid_ip,
     valid_ip_cidr,
     valid_ip_or_cidr,
+    valid_mac,
     nft_ip_or_cidr,
     ip_family,
     format_ipv6_tproxy_target,
     ipv6_supported,
-    resolve_mac_to_ips
+    resolve_mac_to_ips,
+    normalize_to_cidrs
 };

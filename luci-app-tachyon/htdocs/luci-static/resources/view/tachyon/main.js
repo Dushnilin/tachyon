@@ -199,7 +199,11 @@ function validatePath(value) {
 
 // src/validators/validateSubnet.ts
 function validateSubnet(value) {
-  const [ip, cidr, extra] = value.split("/");
+  const trimmed = value.trim();
+  if (/^([0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}$/.test(trimmed)) {
+    return { valid: true, message: _("Valid") };
+  }
+  const [ip, cidr, extra] = trimmed.split("/");
   if (!ip || extra !== void 0 || !isIPv4(ip) && !isIPv6(ip)) {
     return {
       valid: false,
@@ -1232,7 +1236,7 @@ var DOMAIN_LIST_OPTIONS = {
   russia_outside: "Russia outside",
   ukraine_inside: "Ukraine",
   geoblock: "Geo Block",
-  block: "Block (RKN)",
+  block: "RKN Block",
   porn: "Porn",
   news: "News",
   anime: "Anime",
@@ -2450,6 +2454,8 @@ function renderDefaultState({
   latencyProgress,
   subscriptionUpdating,
   selectorSwitchingTag,
+  onTestSingleOutbound,
+  testingOutboundCodes,
   isCollapsed,
   onToggleCollapse
 }) {
@@ -2571,6 +2577,9 @@ function renderDefaultState({
     }
   }
   function renderOutbound(outbound) {
+    const isTestingSingle = Boolean(
+      testingOutboundCodes && testingOutboundCodes[outbound.code]
+    );
     function getLatencyClass() {
       if (isConnectionNode) {
         if (latencyFetching) {
@@ -2785,8 +2794,26 @@ function renderDefaultState({
             ),
             E(
               "div",
-              { class: getLatencyClass() },
-              isConnectionNode ? connectionStatusText : outbound.latency ? `${outbound.latency}ms` : "N/A"
+              {
+                class: [
+                  getLatencyClass(),
+                  !isConnectionNode ? "tachyon_dashboard-page__outbound-grid__item__latency--clickable" : "",
+                  isTestingSingle ? "tachyon_dashboard-page__outbound-grid__item__latency--testing" : ""
+                ].filter(Boolean).join(" "),
+                style: isConnectionNode ? void 0 : "cursor: pointer;",
+                title: isConnectionNode ? void 0 : _("Test node latency"),
+                "aria-label": isConnectionNode ? void 0 : _("Test node latency"),
+                click: isConnectionNode ? void 0 : (event) => {
+                  event?.stopPropagation?.();
+                  event?.preventDefault?.();
+                  if (isTestingSingle || latencyFetching) return;
+                  onTestSingleOutbound?.(
+                    section.sectionName,
+                    outbound.code
+                  );
+                }
+              },
+              isTestingSingle ? [renderLoaderCircleIcon24(), E("span", {}, _("Checking..."))] : isConnectionNode ? connectionStatusText : outbound.latency ? `${outbound.latency}ms` : "N/A"
             )
           ]
         )
@@ -7769,12 +7796,18 @@ var dashboardDataUpdatesStarted = false;
 var dashboardDataUpdatesId = 0;
 var connectionsRefreshTimer = null;
 var currentConnections = [];
+var directSocketsFailed = false;
+var lastTrafficPollTime = 0;
+var lastUploadTotal = 0;
+var lastDownloadTotal = 0;
 var pageUnloading = false;
 var followedSubscriptionJobs = /* @__PURE__ */ new Set();
 var followedLatencyJobs = /* @__PURE__ */ new Set();
 var handledSubscriptionJobs = /* @__PURE__ */ new Set();
 var handledLatencyJobs = /* @__PURE__ */ new Set();
 var customProxyLatencies = /* @__PURE__ */ new Map();
+var singleTestingOutboundCodes = {};
+var isTestingAllSections = false;
 if (typeof window !== "undefined") {
   window.addEventListener("pagehide", () => {
     pageUnloading = true;
@@ -8075,12 +8108,21 @@ async function connectToClashSockets(dataUpdatesId) {
   if (!dashboardMounted || mountId !== dashboardMountId || dataUpdatesId !== dashboardDataUpdatesId || getDashboardServiceAvailability() === "stopped") {
     return;
   }
+  if (!canUseDirectClashApi()) {
+    directSocketsFailed = true;
+    logger.info(
+      "[DASHBOARD]",
+      "direct Clash API websocket unavailable, relying on polling fallback"
+    );
+    return;
+  }
   socket.subscribe(
     `${getClashWsUrl()}/traffic?token=${clashApiSecret}`,
     (msg) => {
       if (dataUpdatesId !== dashboardDataUpdatesId || getDashboardServiceAvailability() === "stopped") {
         return;
       }
+      directSocketsFailed = false;
       const parsedMsg = JSON.parse(msg);
       store.set({
         bandwidthWidget: {
@@ -8094,18 +8136,12 @@ async function connectToClashSockets(dataUpdatesId) {
       if (dataUpdatesId !== dashboardDataUpdatesId || getDashboardServiceAvailability() === "stopped") {
         return;
       }
-      logger.error(
+      directSocketsFailed = true;
+      logger.warn(
         "[DASHBOARD]",
-        "connectToClashSockets - traffic: failed to connect to",
+        "connectToClashSockets - traffic: socket failed, using polling fallback",
         getClashWsUrl()
       );
-      store.set({
-        bandwidthWidget: {
-          loading: false,
-          failed: true,
-          data: { up: 0, down: 0 }
-        }
-      });
     }
   );
   socket.subscribe(
@@ -8114,6 +8150,7 @@ async function connectToClashSockets(dataUpdatesId) {
       if (dataUpdatesId !== dashboardDataUpdatesId || getDashboardServiceAvailability() === "stopped") {
         return;
       }
+      directSocketsFailed = false;
       const parsedMsg = JSON.parse(msg);
       store.set({
         trafficTotalWidget: {
@@ -8138,26 +8175,12 @@ async function connectToClashSockets(dataUpdatesId) {
       if (dataUpdatesId !== dashboardDataUpdatesId || getDashboardServiceAvailability() === "stopped") {
         return;
       }
-      logger.error(
+      directSocketsFailed = true;
+      logger.warn(
         "[DASHBOARD]",
-        "connectToClashSockets - connections: failed to connect to",
+        "connectToClashSockets - connections: socket failed, using polling fallback",
         getClashWsUrl()
       );
-      store.set({
-        trafficTotalWidget: {
-          loading: false,
-          failed: true,
-          data: { downloadTotal: 0, uploadTotal: 0 }
-        },
-        systemInfoWidget: {
-          loading: false,
-          failed: true,
-          data: {
-            connections: 0,
-            memory: 0
-          }
-        }
-      });
     }
   );
 }
@@ -8314,6 +8337,84 @@ async function handleTestLatency(latencyType, sectionName, tag, timeout) {
     if (!completed) {
       setLatencyFetching(sectionName, false);
     }
+  }
+}
+async function handleTestSingleOutbound(_sectionName, outboundCode) {
+  if (singleTestingOutboundCodes[outboundCode]) {
+    return;
+  }
+  singleTestingOutboundCodes[outboundCode] = true;
+  void renderSectionsWidget();
+  try {
+    const response = await TachyonShellMethods.getClashApiProxyLatency(
+      outboundCode,
+      "2000"
+    );
+    if (response.success && response.data) {
+      customProxyLatencies.set(outboundCode, response.data.delay || -1);
+    } else {
+      customProxyLatencies.set(outboundCode, -1);
+    }
+    capMapSize(customProxyLatencies);
+  } catch (error) {
+    logger.warn("[DASHBOARD]", "Failed single proxy latency test", error);
+    customProxyLatencies.set(outboundCode, -1);
+  } finally {
+    delete singleTestingOutboundCodes[outboundCode];
+    void renderSectionsWidget();
+  }
+}
+async function handleTestAllSections() {
+  if (isTestingAllSections) {
+    return;
+  }
+  isTestingAllSections = true;
+  void renderSectionsWidget();
+  try {
+    const sectionsWidget = store.get().sectionsWidget;
+    const SERVICE_TYPES = /* @__PURE__ */ new Set(["SING_BOX", "ZAPRET", "ZAPRET2", "BYEDPI"]);
+    for (const section of sectionsWidget.data) {
+      if (!section.outbounds || section.outbounds.length === 0) {
+        continue;
+      }
+      if (sectionsWidget.latencyFetchingSections[section.sectionName]) {
+        continue;
+      }
+      const testable = section.outbounds.filter(
+        (o) => !SERVICE_TYPES.has(o.type)
+      );
+      if (testable.length === 0) {
+        continue;
+      }
+      if (section.withTagSelect) {
+        const tag = section.latencyTestCodes?.length ? section.latencyTestCodes : section.latencyTestCode || section.code;
+        if (Array.isArray(tag)) {
+          await handleTestLatency(
+            "proxy_list",
+            section.sectionName,
+            JSON.stringify(tag),
+            section.latencyTestTimeout
+          );
+        } else {
+          await handleTestLatency(
+            "group",
+            section.sectionName,
+            tag,
+            section.latencyTestTimeout
+          );
+        }
+      } else {
+        await handleTestLatency(
+          "proxy",
+          section.sectionName,
+          testable[0].code,
+          section.latencyTestTimeout
+        );
+      }
+    }
+  } finally {
+    isTestingAllSections = false;
+    void renderSectionsWidget();
   }
 }
 function handleCopyOutbound(outbound) {
@@ -9014,6 +9115,39 @@ async function renderSectionsWidget() {
       container.replaceChildren(renderedWidget);
     });
   }
+  const hasTestableSections = sectionsWithCustomLatencies.some(
+    (s) => s.outbounds && s.outbounds.length > 0 && !SERVICE_TYPES.has(s.outbounds[0]?.type)
+  );
+  const testAllHeader = hasTestableSections ? E(
+    "div",
+    {
+      class: "tachyon_dashboard-page__sections-header",
+      style: "display: flex; justify-content: flex-end; align-items: center; margin-bottom: 12px; gap: 8px;"
+    },
+    [
+      E(
+        "button",
+        {
+          type: "button",
+          id: "dashboard-test-all-sections-button",
+          class: "btn",
+          style: "padding: 4px 14px; height: 32px; font-size: 13px;",
+          disabled: isTestingAllSections ? true : void 0,
+          click: () => {
+            void handleTestAllSections();
+          }
+        },
+        isTestingAllSections ? [
+          renderLoaderCircleIcon24(),
+          E(
+            "span",
+            { style: "margin-left: 6px;" },
+            _("Testing all sections...")
+          )
+        ] : E("span", {}, _("Test all sections"))
+      )
+    ]
+  ) : null;
   const renderedWidgets = sectionsWithCustomLatencies.map(
     (section) => renderSections({
       loading: sectionsWidget.loading,
@@ -9029,6 +9163,10 @@ async function renderSectionsWidget() {
         sectionsWidget.subscriptionUpdatingSections[section.sectionName]
       ),
       selectorSwitchingTag: sectionsWidget.selectorSwitchingSections[section.sectionName],
+      onTestSingleOutbound: (sectionName, outboundCode) => {
+        void handleTestSingleOutbound(sectionName, outboundCode);
+      },
+      testingOutboundCodes: singleTestingOutboundCodes,
       onTestLatency: (tag) => {
         if (section.withTagSelect) {
           if (Array.isArray(tag)) {
@@ -9065,7 +9203,10 @@ async function renderSectionsWidget() {
     })
   );
   return preserveScrollForPage(() => {
-    container.replaceChildren(...renderedWidgets);
+    container.replaceChildren(
+      ...testAllHeader ? [testAllHeader] : [],
+      ...renderedWidgets
+    );
   });
 }
 function renderStoreWidget(containerId, storeKey, title, getItems, debugName) {
@@ -9091,35 +9232,76 @@ function renderStoreWidget(containerId, storeKey, title, getItems, debugName) {
   container.replaceChildren(renderedWidget);
 }
 async function fetchConnections() {
-  if (!expandedSections.has("active_clients")) {
-    return;
-  }
   try {
+    const shouldFetchHostnames = expandedSections.has("active_clients");
     const [res, hostnames] = await Promise.all([
       TachyonShellMethods.getClashApiConnections(),
-      fetchHostnames()
+      shouldFetchHostnames ? fetchHostnames() : Promise.resolve(/* @__PURE__ */ new Map())
     ]);
-    if (res.success && res.data && typeof res.data === "object" && Array.isArray(res.data.connections)) {
-      const connectionsList = res.data.connections;
-      const map = /* @__PURE__ */ new Map();
-      for (const conn of connectionsList) {
-        const ip = conn.metadata?.sourceIP;
-        if (!ip) continue;
-        const up = Number(conn.upload) || 0;
-        const down = Number(conn.download) || 0;
-        if (map.has(ip)) {
-          const existing = map.get(ip);
-          existing.count++;
-          existing.upload += up;
-          existing.download += down;
-        } else {
-          const name = hostnames.get(ip);
-          map.set(ip, { ip, count: 1, upload: up, download: down, name });
+    if (res.success && res.data && typeof res.data === "object") {
+      const payload = res.data;
+      if (directSocketsFailed || !canUseDirectClashApi()) {
+        const downloadTotal = Number(payload.downloadTotal) || 0;
+        const uploadTotal = Number(payload.uploadTotal) || 0;
+        const memory = Number(payload.memory) || 0;
+        const connCount = Array.isArray(payload.connections) ? payload.connections.length : 0;
+        const now = Date.now();
+        if (lastTrafficPollTime > 0) {
+          const dt = Math.max(0.5, (now - lastTrafficPollTime) / 1e3);
+          const up = Math.max(
+            0,
+            Math.round((uploadTotal - lastUploadTotal) / dt)
+          );
+          const down = Math.max(
+            0,
+            Math.round((downloadTotal - lastDownloadTotal) / dt)
+          );
+          store.set({
+            bandwidthWidget: {
+              loading: false,
+              failed: false,
+              data: { up, down }
+            }
+          });
         }
+        lastTrafficPollTime = now;
+        lastUploadTotal = uploadTotal;
+        lastDownloadTotal = downloadTotal;
+        store.set({
+          trafficTotalWidget: {
+            loading: false,
+            failed: false,
+            data: { downloadTotal, uploadTotal }
+          },
+          systemInfoWidget: {
+            loading: false,
+            failed: false,
+            data: { connections: connCount, memory }
+          }
+        });
       }
-      currentConnections = Array.from(map.values()).sort(
-        (a, b) => b.download + b.upload - (a.download + a.upload)
-      );
+      if (shouldFetchHostnames && Array.isArray(payload.connections)) {
+        const connectionsList = payload.connections;
+        const map = /* @__PURE__ */ new Map();
+        for (const conn of connectionsList) {
+          const ip = conn.metadata?.sourceIP;
+          if (!ip) continue;
+          const up = Number(conn.upload) || 0;
+          const down = Number(conn.download) || 0;
+          if (map.has(ip)) {
+            const existing = map.get(ip);
+            existing.count++;
+            existing.upload += up;
+            existing.download += down;
+          } else {
+            const name = hostnames.get(ip);
+            map.set(ip, { ip, count: 1, upload: up, download: down, name });
+          }
+        }
+        currentConnections = Array.from(map.values()).sort(
+          (a, b) => b.download + b.upload - (a.download + a.upload)
+        );
+      }
     }
   } catch (_e) {
   }
@@ -9347,6 +9529,10 @@ async function onPageMount() {
 function onPageUnmount() {
   dashboardMounted = false;
   dashboardMountId += 1;
+  directSocketsFailed = false;
+  lastTrafficPollTime = 0;
+  lastUploadTotal = 0;
+  lastDownloadTotal = 0;
   stopDashboardDataUpdates();
   stopActionStateWatcher();
   sectionsRefreshQueued = false;
@@ -9848,6 +10034,34 @@ var styles = `
 
 .tachyon_dashboard-page__outbound-grid__item__latency--red {
     color: var(--error-color-medium, red);
+}
+
+.tachyon_dashboard-page__outbound-grid__item__latency--clickable {
+    cursor: pointer;
+    user-select: none;
+    transition: opacity 0.15s ease, background-color 0.15s ease;
+    border-radius: 4px;
+    padding: 1px 4px;
+}
+
+.tachyon_dashboard-page__outbound-grid__item__latency--clickable:hover {
+    opacity: 0.8;
+    background: rgba(128, 128, 128, 0.15);
+}
+
+.tachyon_dashboard-page__outbound-grid__item__latency--testing {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    opacity: 0.8;
+}
+
+.tachyon_dashboard-page__outbound-grid__item__latency--testing svg {
+    width: 12px;
+    height: 12px;
+    display: block;
+    flex: 0 0 auto;
 }
 
 .tachyon_dashboard-page__urltest-details {

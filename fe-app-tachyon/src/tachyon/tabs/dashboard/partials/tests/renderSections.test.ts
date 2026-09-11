@@ -18,7 +18,21 @@ function createDummyElement(tag: string) {
     childNodes: children,
     style: {} as Record<string, string>,
     className: '',
-    textContent: '',
+    get textContent(): string {
+      let text = '';
+      for (const c of children) {
+        if (typeof c === 'string' || typeof c === 'number') {
+          text += c;
+        } else if (c && typeof c.textContent === 'string') {
+          text += c.textContent;
+        }
+      }
+      return text;
+    },
+    set textContent(val: string) {
+      children.length = 0;
+      if (val) children.push(val);
+    },
     setAttribute(name: string, val: string) {
       (this as any)[name] = val;
     },
@@ -336,5 +350,89 @@ describe('renderSections', () => {
     );
     expect(latencyButtons).toHaveLength(1);
     expect(latencyButtons[0].tagName).toBe('BUTTON');
+  });
+
+  it('renders clickable latency badge for proxy outbound and calls onTestSingleOutbound when clicked', () => {
+    const onTestSingleOutbound = vi.fn();
+    const section: any = {
+      code: 'proxy',
+      sectionName: 'proxy',
+      displayName: 'Proxy Section',
+      action: 'proxy',
+      withTagSelect: true,
+      outbounds: [
+        {
+          code: 'vless-1',
+          displayName: 'VLESS Server',
+          latency: 120,
+          type: 'VLESS',
+          selected: false,
+        },
+      ],
+    };
+
+    const el = renderSections({
+      loading: false,
+      failed: false,
+      section,
+      onTestLatency: vi.fn(),
+      onChooseOutbound: vi.fn(),
+      onCopyOutbound: vi.fn(),
+      onShowUrlTestInfo: vi.fn(),
+      onShowPriorityInfo: vi.fn(),
+      onUpdateSubscription: vi.fn(),
+      onTestSingleOutbound,
+      latencyFetching: false,
+      subscriptionUpdating: false,
+    });
+
+    const badge = el.querySelector(
+      '.tachyon_dashboard-page__outbound-grid__item__latency--clickable',
+    ) as HTMLElement;
+    expect(badge).not.toBeNull();
+    expect(badge.textContent).toContain('120ms');
+
+    badge.click();
+    expect(onTestSingleOutbound).toHaveBeenCalledWith('proxy', 'vless-1');
+  });
+
+  it('renders testing state when testingOutboundCodes indicates outbound is being tested', () => {
+    const section: any = {
+      code: 'proxy',
+      sectionName: 'proxy',
+      displayName: 'Proxy Section',
+      action: 'proxy',
+      withTagSelect: true,
+      outbounds: [
+        {
+          code: 'vless-1',
+          displayName: 'VLESS Server',
+          latency: 120,
+          type: 'VLESS',
+          selected: false,
+        },
+      ],
+    };
+
+    const el = renderSections({
+      loading: false,
+      failed: false,
+      section,
+      onTestLatency: vi.fn(),
+      onChooseOutbound: vi.fn(),
+      onCopyOutbound: vi.fn(),
+      onShowUrlTestInfo: vi.fn(),
+      onShowPriorityInfo: vi.fn(),
+      onUpdateSubscription: vi.fn(),
+      testingOutboundCodes: { 'vless-1': true },
+      latencyFetching: false,
+      subscriptionUpdating: false,
+    });
+
+    const testingBadge = el.querySelector(
+      '.tachyon_dashboard-page__outbound-grid__item__latency--testing',
+    );
+    expect(testingBadge).not.toBeNull();
+    expect(testingBadge?.textContent).toContain('Checking...');
   });
 });

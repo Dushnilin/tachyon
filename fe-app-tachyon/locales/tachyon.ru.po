@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-10 10:16+0300\n"
-"PO-Revision-Date: 2026-09-10 10:16+0300\n"
+"POT-Creation-Date: 2026-09-11 18:51+0300\n"
+"PO-Revision-Date: 2026-09-11 18:51+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -66,7 +66,7 @@ msgid "⚡ Fast (>1MB/s)"
 msgstr "⚡ Быстрые (>1 МБ/с)"
 
 msgid "⚡ QUIC / HTTP/3 (UDP 443)"
-msgstr "⚡ QUIC / HTTP/3 (UDP 443)"
+msgstr "⚡ QUIC / HTTP/3 (Проверка UDP 443)"
 
 msgid "⚡ Quick Benchmark (Presets ~30+)"
 msgstr "⚡ Быстрый бенчмарк (Пресеты ~30+)"
@@ -84,7 +84,7 @@ msgid "✅ Working only"
 msgstr "✅ Только рабочие"
 
 msgid "✈️ Telegram Suite (Web + Bot API)"
-msgstr "✈️ Telegram Suite (Web + Bot API)"
+msgstr "✈️ Telegram (Веб + Bot API)"
 
 msgid "✔ Online"
 msgstr "✔ В сети"
@@ -102,25 +102,25 @@ msgid "🌐 Custom Target URL..."
 msgstr "🌐 Пользовательский URL цели..."
 
 msgid "🎬 YouTube Full Suite (Web + 4K Stream + CDN)"
-msgstr "🎬 YouTube Полный набор (Веб + 4K поток + CDN)"
+msgstr "🎬 YouTube (Веб + 4K видеопоток + CDN)"
 
 msgid "🏆 Apply Best Match"
 msgstr "🏆 Применить наилучшую"
 
 msgid "🏴‍☠️ RuTracker Suite"
-msgstr "🏴‍☠️ RuTracker Suite"
+msgstr "🏴‍☠️ RuTracker (HTTP + HTTPS)"
 
 msgid "🐦 X / Twitter Suite (API + Media CDN)"
-msgstr "🐦 X / Twitter Набор (API + Медиа CDN)"
+msgstr "🐦 X / Twitter (API + Медиа CDN)"
 
 msgid "💬 Discord Suite (Gateway + Voice + CDN)"
-msgstr "💬 Discord Набор (Шлюз + Голос + CDN)"
+msgstr "💬 Discord (Шлюз + Голос + CDN)"
 
 msgid "💾 Save Custom Patterns"
 msgstr "💾 Сохранить пользовательские паттерны"
 
 msgid "📸 Instagram / Meta (Web + CDN)"
-msgstr "📸 Instagram / Meta (Web + CDN)"
+msgstr "📸 Instagram / Meta (Веб + CDN)"
 
 msgid "🔄 Refresh"
 msgstr "🔄 Обновить"
@@ -135,7 +135,7 @@ msgid "🗑️ Clear History"
 msgstr "🗑️ Очистить историю"
 
 msgid "🤖 ChatGPT / OpenAI Suite"
-msgstr "🤖 ChatGPT / OpenAI Набор"
+msgstr "🤖 ChatGPT / OpenAI (Веб + API)"
 
 msgid "🧠 Synthesize with AI"
 msgstr "🧠 Сгенерировать через ИИ"
@@ -165,7 +165,7 @@ msgid "🛡️ SECURE: No IP leak detected. Real WAN IP is concealed behind prox
 msgstr "🛡️ ЗАЩИЩЕНО: Утечек IP не обнаружено. Реальный WAN IP скрыт за исходящим прокси."
 
 msgid "🟣 Twitch Suite (Live Stream + HLS CDN)"
-msgstr "🟣 Twitch Набор (Прямой эфир + HLS CDN)"
+msgstr "🟣 Twitch (Прямой эфир + HLS CDN)"
 
 msgid "127.0.0.1:4534 (sing-box mixed)"
 msgstr "127.0.0.1:4534 (смешанный sing-box)"
@@ -713,9 +713,6 @@ msgstr "BitTorrent / P2P"
 msgid "Block"
 msgstr "Блокировать"
 
-msgid "Block (RKN)"
-msgstr "Реестр РКН"
-
 msgid "Block / Disable in scheduled hours (Standard)"
 msgstr "Блокировать / Отключать в указанные часы (Стандарт)"
 
@@ -839,81 +836,6 @@ msgstr "Стратегия ByeDPI"
 msgid "ByeDPI strategy cannot be empty"
 msgstr "Стратегия ByeDPI не может быть пустой"
 
-msgid "WDTT"
-msgstr "WDTT"
-
-msgid "WDTT URI"
-msgstr "URI WDTT"
-
-msgid "WDTT connection URI (wdtt://...)"
-msgstr "URI подключения WDTT (wdtt://...)"
-
-msgid "WDTT Mode"
-msgstr "Режим WDTT"
-
-msgid "WDTT Device ID"
-msgstr "ID устройства WDTT"
-
-msgid "WDTT Workers"
-msgstr "Рабочие процессы WDTT"
-
-msgid "WDTT Max Hashes"
-msgstr "Максимум хешей WDTT"
-
-msgid "WDTT MTU"
-msgstr "MTU WDTT"
-
-msgid "WDTT Refresh"
-msgstr "Обновление WDTT"
-
-msgid "WDTT Auto Update"
-msgstr "Автообновление WDTT"
-
-msgid "WDTT Block DoH"
-msgstr "Блокировка DoH в WDTT"
-
-msgid "WDTT Block IPv6"
-msgstr "Блокировка IPv6 в WDTT"
-
-msgid "WDTT QWDTT Mode"
-msgstr "Режим QWDTT"
-
-msgid "WDTT Subscription Links"
-msgstr "Ссылки подписок WDTT"
-
-msgid "WDTT Community Lists"
-msgstr "Списки сообществ WDTT"
-
-msgid "WDTT Remote Domain List"
-msgstr "Удалённый список доменов WDTT"
-
-msgid "OlcRTC"
-msgstr "OlcRTC"
-
-msgid "OlcRTC Provider"
-msgstr "Провайдер OlcRTC"
-
-msgid "OlcRTC Transport"
-msgstr "Транспорт OlcRTC"
-
-msgid "OlcRTC Room ID"
-msgstr "ID комнаты OlcRTC"
-
-msgid "OlcRTC Crypto Key"
-msgstr "Ключ шифрования OlcRTC"
-
-msgid "OlcRTC SOCKS Host"
-msgstr "Хост SOCKS OlcRTC"
-
-msgid "OlcRTC SOCKS Port"
-msgstr "Порт SOCKS OlcRTC"
-
-msgid "OlcRTC DNS Server"
-msgstr "DNS-сервер OlcRTC"
-
-msgid "OlcRTC Subscription Links"
-msgstr "Ссылки подписок OlcRTC"
-
 msgid "Bypasses proxy (SO_MARK 0x08000000)"
 msgstr "В обход прокси (SO_MARK 0x08000000)"
 
@@ -932,6 +854,9 @@ msgstr "Путь к файлу кэша"
 msgid "Cache file path cannot be empty"
 msgstr "Путь к файлу кэша не может быть пустым"
 
+msgid "Camou"
+msgstr ""
+
 msgid "Cancel"
 msgstr "Отмена"
 
@@ -943,6 +868,9 @@ msgstr "Не удалось сохранить сервер"
 
 msgid "Cannot save settings"
 msgstr "Не удалось сохранить настройки"
+
+msgid "Captive"
+msgstr ""
 
 msgid "Cascade connection"
 msgstr "Каскадное подключение"
@@ -1063,6 +991,9 @@ msgstr "Нажмите, чтобы скрыть"
 
 msgid "Click to show"
 msgstr "Нажмите, чтобы показать"
+
+msgid "Client"
+msgstr ""
 
 msgid "Client Address"
 msgstr "Адрес клиента"
@@ -1314,7 +1245,7 @@ msgid "Daily Traffic Limit (MB)"
 msgstr "Дневной лимит трафика (МБ)"
 
 msgid "Dashboard"
-msgstr "Панель управления"
+msgstr "Дашборд"
 
 msgid "Dashboard currently unavailable"
 msgstr "Дашборд сейчас недоступен"
@@ -1330,6 +1261,9 @@ msgstr "Дни недели"
 
 msgid "Dedicated cgroup unavailable"
 msgstr "Выделенная cgroup недоступна"
+
+msgid "Default"
+msgstr ""
 
 msgid "Default (auto)"
 msgstr "По умолчанию (авто)"
@@ -1493,6 +1427,9 @@ msgstr "DNS-сервер"
 msgid "DNS server address cannot be empty"
 msgstr "Адрес DNS-сервера не может быть пустым"
 
+msgid "DNS server addresses for domain resolution in this section (e.g. 1.1.1.1, https://cloudflare-dns.com/dns-query)."
+msgstr "Адреса DNS-серверов для резолвинга доменов в этой секции (напр. 1.1.1.1, https://cloudflare-dns.com/dns-query)."
+
 msgid "DNS server pushed to the client configuration"
 msgstr "DNS-сервер, передаваемый клиенту в конфигурации"
 
@@ -1519,24 +1456,6 @@ msgstr "DNS через прокси"
 
 msgid "DNS through section"
 msgstr "DNS через секцию"
-
-msgid "Routed DNS"
-msgstr "Маршрутизированный DNS"
-
-msgid "Resolve matched domains through an encrypted DNS server of this section instead of FakeIP. DNS queries traverse the same proxy as the section's outbound."
-msgstr "Резолвить совпавшие домены через зашифрованный DNS-сервер этой секции вместо FakeIP. DNS-запросы проходят через тот же прокси, что и исходящий трафик секции."
-
-msgid "Routed DNS Protocol"
-msgstr "Протокол маршрутизированного DNS"
-
-msgid "Protocol for the routed DNS resolver."
-msgstr "Протокол для DNS-резолвера маршрутизации."
-
-msgid "Routed DNS Servers"
-msgstr "Серверы маршрутизированного DNS"
-
-msgid "DNS server addresses for domain resolution in this section (e.g. 1.1.1.1, https://cloudflare-dns.com/dns-query)."
-msgstr "Адреса DNS-серверов для резолвинга доменов в этой секции (напр. 1.1.1.1, https://cloudflare-dns.com/dns-query)."
 
 msgid "DNS Turbo Cache"
 msgstr "Быстрый DNS-кэш"
@@ -2210,6 +2129,9 @@ msgstr "Найдено"
 msgid "France (fr)"
 msgstr "Франция (fr)"
 
+msgid "Freedom"
+msgstr ""
+
 msgid "Fri"
 msgstr "Пт"
 
@@ -2864,6 +2786,9 @@ msgstr "Обнаружены неполадки. Ознакомьтесь с а�
 msgid "Japan (jp)"
 msgstr "Япония (jp)"
 
+msgid "Jitsi"
+msgstr ""
+
 msgid "JSON outbound"
 msgstr "JSON outbound"
 
@@ -3461,6 +3386,30 @@ msgstr "Внешний публичный IP"
 msgid "OFFLINE"
 msgstr "ОФЛАЙН"
 
+msgid "OlcRTC Crypto Key"
+msgstr "Ключ шифрования OlcRTC"
+
+msgid "OlcRTC DNS Server"
+msgstr "DNS-сервер OlcRTC"
+
+msgid "OlcRTC Provider"
+msgstr "Провайдер OlcRTC"
+
+msgid "OlcRTC Room ID"
+msgstr "ID комнаты OlcRTC"
+
+msgid "OlcRTC SOCKS Host"
+msgstr "Хост SOCKS OlcRTC"
+
+msgid "OlcRTC SOCKS Port"
+msgstr "Порт SOCKS OlcRTC"
+
+msgid "OlcRTC Subscription Links"
+msgstr "Ссылки подписок OlcRTC"
+
+msgid "OlcRTC Transport"
+msgstr "Транспорт OlcRTC"
+
 msgid "Ollama (Local PC / Server)"
 msgstr "Ollama (локальный ПК / сервер)"
 
@@ -3818,6 +3767,9 @@ msgstr "Защита"
 msgid "Protocol"
 msgstr "Протокол"
 
+msgid "Protocol for the routed DNS resolver."
+msgstr "Протокол для DNS-резолвера маршрутизации."
+
 msgid "Protocol version: 2.0 (standard headers, WARP compatible), 3.0 (header protection key, padding ranges), or 3.1 (header protection key, padding ranges, advanced timers)"
 msgstr "Версия протокола: 2.0 (стандартные заголовки, совместимо с WARP), 3.0 (ключ защиты заголовков, диапазоны паддинга), или 3.1 (ключ защиты заголовков, диапазоны паддинга, расширенные таймеры)"
 
@@ -4031,6 +3983,9 @@ msgstr "Разрешать имена доменов перед маршрути
 msgid "Resolve gateway"
 msgstr "Определить шлюз"
 
+msgid "Resolve matched domains through an encrypted DNS server of this section instead of FakeIP. DNS queries traverse the same proxy as the section's outbound."
+msgstr "Резолвить совпавшие домены через зашифрованный DNS-сервер этой секции вместо FakeIP. DNS-запросы проходят через тот же прокси, что и исходящий трафик секции."
+
 msgid "Resolve real IP for routing"
 msgstr "Разрешать реальный IP для маршрутизации"
 
@@ -4144,6 +4099,15 @@ msgstr "Маршрутизировать запросы к этому DNS-сер
 
 msgid "Route via Proxy"
 msgstr "Через прокси"
+
+msgid "Routed DNS"
+msgstr "Маршрутизированный DNS"
+
+msgid "Routed DNS Protocol"
+msgstr "Протокол маршрутизированного DNS"
+
+msgid "Routed DNS Servers"
+msgstr "Серверы маршрутизированного DNS"
 
 msgid "Routing mode"
 msgstr "Режим маршрутизации"
@@ -5006,11 +4970,17 @@ msgstr "Токен Telegram-бота"
 msgid "Telegram Channel"
 msgstr "Telegram канал"
 
+msgid "Test all sections"
+msgstr "Проверить все секции"
+
 msgid "Test Connection"
 msgstr "Проверить подключение"
 
 msgid "Test latency"
 msgstr "Тестирование задержки"
+
+msgid "Test node latency"
+msgstr "Проверить задержку ноды"
 
 msgid "Test only selected servers."
 msgstr "Тестировать только выбранные серверы."
@@ -5035,6 +5005,9 @@ msgstr "Проверить подключение к Telegram"
 
 msgid "Testing"
 msgstr "Тестирование"
+
+msgid "Testing all sections..."
+msgstr "Проверка всех секций..."
 
 msgid "Testing bypass strategies in isolated sandbox..."
 msgstr "Тестирование стратегий обхода в изолированной песочнице..."
@@ -5609,6 +5582,51 @@ msgstr "Watchdog проверяет каждую Connection-секцию; есл
 msgid "Watchdog Status"
 msgstr "Статус Watchdog"
 
+msgid "WDTT Auto Update"
+msgstr "Автообновление WDTT"
+
+msgid "WDTT Block DoH"
+msgstr "Блокировка DoH в WDTT"
+
+msgid "WDTT Block IPv6"
+msgstr "Блокировка IPv6 в WDTT"
+
+msgid "WDTT Community Lists"
+msgstr "Списки сообществ WDTT"
+
+msgid "WDTT connection URI (wdtt://...)"
+msgstr "URI подключения WDTT (wdtt://...)"
+
+msgid "WDTT Device ID"
+msgstr "ID устройства WDTT"
+
+msgid "WDTT Max Hashes"
+msgstr "Максимум хешей WDTT"
+
+msgid "WDTT Mode"
+msgstr "Режим WDTT"
+
+msgid "WDTT MTU"
+msgstr "MTU WDTT"
+
+msgid "WDTT QWDTT Mode"
+msgstr "Режим QWDTT"
+
+msgid "WDTT Refresh"
+msgstr "Обновление WDTT"
+
+msgid "WDTT Remote Domain List"
+msgstr "Удалённый список доменов WDTT"
+
+msgid "WDTT Subscription Links"
+msgstr "Ссылки подписок WDTT"
+
+msgid "WDTT URI"
+msgstr "URI WDTT"
+
+msgid "WDTT Workers"
+msgstr "Рабочие процессы WDTT"
+
 msgid "WebRTC Leak Protection"
 msgstr "Защита от утечек WebRTC"
 
@@ -5630,6 +5648,12 @@ msgstr "Что должен делать Tachyon при совпадении э�
 msgid "When switching to another level, test every server and select the fastest instead of the first working one."
 msgstr "При переключении на другой уровень тестировать каждый сервер и выбирать самый быстрый вместо первого рабочего."
 
+msgid "WHEP"
+msgstr ""
+
+msgid "WHIP"
+msgstr ""
+
 msgid "Why Discord fails?"
 msgstr "Почему не работает Discord?"
 
@@ -5644,6 +5668,9 @@ msgstr "Рабочих"
 
 msgid "working strategies"
 msgstr "рабочих стратегий"
+
+msgid "WRT"
+msgstr ""
 
 msgid "XHTTP mode"
 msgstr "Режим XHTTP"
@@ -5710,6 +5737,30 @@ msgstr "sing-box outbound для Zapret2 настроен"
 
 msgid "Zapret2 sing-box outbound is not configured"
 msgstr "sing-box outbound для Zapret2 не настроен"
+
+msgid "Zapret2 sing-box route rules are configured"
+msgstr "Правила маршрутизации sing-box для Zapret2 настроены"
+
+msgid "Zapret2 sing-box route rules are not configured"
+msgstr "Правила маршрутизации sing-box для Zapret2 не настроены"
+
+msgid "Block (RKN)"
+msgstr "RKN Block"
+
+msgid "RKN Block"
+msgstr "RKN Block"
+
+msgid "News"
+msgstr "News"
+
+msgid "Geo Block"
+msgstr "Geo Block"
+
+msgid "WDTT"
+msgstr "WDTT"
+
+msgid "OlcRTC"
+msgstr "OlcRTC"
 
 msgid "Time is required (e.g. 22:00)"
 msgstr "Укажите время (например, 22:00)"

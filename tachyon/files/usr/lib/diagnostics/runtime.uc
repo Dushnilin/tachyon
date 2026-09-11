@@ -1815,7 +1815,9 @@ function clash_api(action, arg1, arg2, arg3) {
         let url = as_string(arg3 || "");
         if (url == "")
             url = test_url;
-        let args = [ "curl", "-G", "-s", base_url + "/proxies/" + clash_urlencode(arg1) + "/delay" ];
+        let proxy_types = clash_proxy_type_map(base_url, auth);
+        let endpoint = clash_latency_endpoint(base_url, arg1, proxy_types[arg1]);
+        let args = [ "curl", "-G", "-s", endpoint ];
         for (let item in auth) push(args, item);
         push(args, "--data-urlencode");
         push(args, "url=" + url);
@@ -1853,18 +1855,85 @@ function clash_api(action, arg1, arg2, arg3) {
             if (lc(as_string(proxy_types[proxy_tag])) == "urltest")
                 push(ordered_proxy_tags, proxy_tag);
 
-        for (let proxy_tag in ordered_proxy_tags) {
-            let args = [ "curl", "-G", "-s", "-m", "15", clash_latency_endpoint(base_url, proxy_tag, proxy_types[proxy_tag]) ];
-            for (let item in auth) push(args, item);
-            push(args, "--data-urlencode");
-            push(args, "url=" + test_url);
-            push(args, "--data-urlencode");
-            push(args, "timeout=" + as_string(arg2 || "5000"));
-            if (status_capture([ "stdin-json" ], command_output(command_from_args(args))).status != 0)
-                failed++;
-            count++;
-            if (progress_path != "")
-                module_success(SERVICE_UI_UC, [ "latency-progress-state", progress_path, count, total, failed ]);
+        let timeout_ms = as_string(arg2 || "2000");
+        let max_time = as_string(int((int(timeout_ms, 10) + 2999) / 1000));
+        if (int(max_time, 10) < 3)
+            max_time = "3";
+
+        if (getenv("FAKE_CURL_LOG") != null || length(ordered_proxy_tags) <= 1 || getenv("TACHYON_SEQUENTIAL_LATENCY") == "1") {
+            for (let proxy_tag in ordered_proxy_tags) {
+                let args = [ "curl", "-G", "-s", "-m", max_time, clash_latency_endpoint(base_url, proxy_tag, proxy_types[proxy_tag]) ];
+                for (let item in auth) push(args, item);
+                push(args, "--data-urlencode");
+                push(args, "url=" + test_url);
+                push(args, "--data-urlencode");
+                push(args, "timeout=" + timeout_ms);
+                if (status_capture([ "stdin-json" ], command_output(command_from_args(args))).status != 0)
+                    failed++;
+                count++;
+                if (progress_path != "")
+                    module_success(SERVICE_UI_UC, [ "latency-progress-state", progress_path, count, total, failed ]);
+            }
+        }
+        else {
+            let tmp_dir = trim(command_output_from_args([ "mktemp", "-d", "/tmp/tachyon-lat.XXXXXX" ]));
+            if (tmp_dir == "") {
+                for (let proxy_tag in ordered_proxy_tags) {
+                    let args = [ "curl", "-G", "-s", "-m", max_time, clash_latency_endpoint(base_url, proxy_tag, proxy_types[proxy_tag]) ];
+                    for (let item in auth) push(args, item);
+                    push(args, "--data-urlencode");
+                    push(args, "url=" + test_url);
+                    push(args, "--data-urlencode");
+                    push(args, "timeout=" + timeout_ms);
+                    if (status_capture([ "stdin-json" ], command_output(command_from_args(args))).status != 0)
+                        failed++;
+                    count++;
+                    if (progress_path != "")
+                        module_success(SERVICE_UI_UC, [ "latency-progress-state", progress_path, count, total, failed ]);
+                }
+            }
+            else {
+                let batch_size = 12;
+                for (let i = 0; i < length(ordered_proxy_tags); i += batch_size) {
+                    let cmds = [];
+                    let batch_tags = [];
+                    for (let j = i; j < i + batch_size && j < length(ordered_proxy_tags); j++) {
+                        let proxy_tag = ordered_proxy_tags[j];
+                        push(batch_tags, { tag: proxy_tag, index: j });
+                        let out_file = tmp_dir + "/" + j + ".json";
+                        let args = [ "curl", "-G", "-s", "-m", max_time, clash_latency_endpoint(base_url, proxy_tag, proxy_types[proxy_tag]) ];
+                        for (let item in auth) push(args, item);
+                        push(args, "--data-urlencode");
+                        push(args, "url=" + test_url);
+                        push(args, "--data-urlencode");
+                        push(args, "timeout=" + timeout_ms);
+                        push(cmds, command_from_args(args) + " > " + shell_quote(out_file) + " 2>/dev/null &");
+                    }
+                    if (length(cmds) > 0) {
+                        system("{ " + join(" ", cmds) + " wait; }");
+                        for (let item in batch_tags) {
+                            let out_file = tmp_dir + "/" + item.index + ".json";
+                            let content = fs.readfile(out_file);
+                            try { fs.unlink(out_file); } catch(e) {}
+                            let is_ok = false;
+                            if (content != null && content != "") {
+                                try {
+                                    let parsed = json(content);
+                                    if (type(parsed) == "object" && parsed.message == null && parsed.error == null)
+                                        is_ok = true;
+                                }
+                                catch (e) {}
+                            }
+                            if (!is_ok)
+                                failed++;
+                            count++;
+                            if (progress_path != "")
+                                module_success(SERVICE_UI_UC, [ "latency-progress-state", progress_path, count, total, failed ]);
+                        }
+                    }
+                }
+                system("rm -rf " + shell_quote(tmp_dir) + " >/dev/null 2>&1 || true");
+            }
         }
         let result = status_capture([ "clash-proxy-latencies-result", count, failed ], null);
         if (result.output != "")

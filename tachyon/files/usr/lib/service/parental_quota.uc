@@ -282,7 +282,7 @@ function nft_create_set(set_name, set_type) {
 function nft_insert_quota_rule(chain, match_type) {
     let set_name = match_type == "ether" ? SET_ETHER : SET_IP;
     let addr_type = match_type == "ether" ? "ether" : "ip";
-    let cmd = "nft insert rule inet " + NFT_TABLE_NAME + " " + chain + " " + addr_type + " saddr @" + set_name + " counter drop comment \"tachyon-quota\"";
+    let cmd = "nft add rule inet " + NFT_TABLE_NAME + " " + chain + " " + addr_type + " saddr @" + set_name + " counter drop comment \"tachyon-quota\"";
     let rc = command_status(cmd + " 2>/dev/null");
     if (rc != 0)
         log_message("failed to insert quota rule in " + chain + " for " + match_type + ": " + as_string(rc), "warn");

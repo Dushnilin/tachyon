@@ -23,6 +23,7 @@ globalThis.document = {
 
 // Define mocks before importing
 vi.mock('../../../helpers', () => ({
+  canUseDirectClashApi: vi.fn().mockReturnValue(true),
   onMount: vi.fn().mockImplementation(() => Promise.resolve()),
   getClashWsUrl: vi.fn(),
   isCopyableProxyLink: vi.fn(),

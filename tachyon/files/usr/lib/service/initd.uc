@@ -732,7 +732,9 @@ function trigger_plan(settings) {
 
     print("delay\t", delay, "\n");
     print("config\tconfig.change\t", CONFIG_NAME, "\t", SERVICE_INIT, "\treload\t", CONFIG_CHANGE_REASON, "\n");
-    print("interface\tinterface.*.up\twan\t", SERVICE_INIT, "\tretry_start_on_wan_up\t\n");
+    let retry_ifaces = [ "wan", "wwan", "lte", "modem" ];
+    for (let iface in retry_ifaces)
+        print("interface\tinterface.*.up\t", iface, "\t", SERVICE_INIT, "\tretry_start_on_wan_up\t\n");
 
     if (badwan_enabled) {
         for (let iface in badwan_interfaces) {

@@ -7460,7 +7460,7 @@ var DOMAIN_LIST_HINTS = {
   russia_outside: "gosuslugi.ru, ozon.ru, rzd.ru, ...",
   ukraine_inside: "ukr.net, pravda.com.ua, suspilne.media, ...",
   geoblock:
-    "Домены, заблокированные снаружи России (геоблокировка зарубежными сервисами)",
+    "Домены, заблокированные снаружи России (гео-блокировка зарубежными сервисами)",
   block: "Домены, заблокированные внутри России (полный реестр блокировок РКН)",
   porn: "pornhub.com, xvideos.com, xhamster.com, ...",
   news: "meduza.io, bbc.com, pravda.com.ua, ...",
@@ -7491,7 +7491,7 @@ function loadRulesetValues(option) {
   delete option.vallist;
 
   Object.entries(main.DOMAIN_LIST_OPTIONS).forEach(([key, label]) => {
-    const displayLabel = _(label);
+    const displayLabel = label;
     const hint = DOMAIN_LIST_HINTS[key];
     option.value(key, hint ? `${displayLabel} — ${hint}` : displayLabel);
   });

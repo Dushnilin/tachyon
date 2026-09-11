@@ -592,7 +592,7 @@ cat >"$WORK_DIR/fully-routed-fixture.json" <<'JSON'
       "enabled": "1",
       "action": "outbound",
       "outbound_json": "{\"type\":\"direct\"}",
-      "fully_routed_ips": [ "192.168.1.20/32", "192.168.1.30/32", "2001:db8::20/128" ],
+      "fully_routed_ips": [ "192.168.1.20/32", "192.168.1.30/32", "2001:db8::20/128", "a8:8c:3e:c9:25:05" ],
       "domain_suffix": [ "example.org" ]
     }
   ]
@@ -1399,6 +1399,7 @@ assert(ruleset_url(download, "https://example.com/rules.srs").download_detour ==
 
 let fully = cfg("fully-routed");
 assert(route_rule(fully, r => contains(r.inbound, "tproxy-in") && contains(r.inbound, "tproxy6-in") && contains(r.source_ip_cidr, "192.168.1.20/32") && contains(r.source_ip_cidr, "192.168.1.30/32") && contains(r.source_ip_cidr, "2001:db8::20/128")) != null, "fully routed IP route");
+assert(route_rule(fully, r => contains(r.source_ip_cidr, "a8:8c:3e:c9:25:05")) == null, "raw MAC address never present in source_ip_cidr");
 
 let mwan3_auto = cfg("mwan3-auto");
 assert(mwan3_auto.route.auto_detect_interface === false, "mwan3 disables auto_detect_interface");

@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import {
+  canUseDirectClashApi,
   formatOutboundType,
   getClashWsUrl,
   isCopyableProxyLink,
@@ -10,7 +11,7 @@ import {
 import { copyToClipboard } from '../../../helpers/copyToClipboard';
 import { showToast } from '../../../helpers/showToast';
 import { prettyBytes } from '../../../helpers/prettyBytes';
-import { renderCopyIcon24 } from '../../../icons';
+import { renderCopyIcon24, renderLoaderCircleIcon24 } from '../../../icons';
 import { CustomTachyonMethods, TachyonShellMethods } from '../../methods';
 import {
   logger,
@@ -81,6 +82,10 @@ let dashboardDataUpdatesStarted = false;
 let dashboardDataUpdatesId = 0;
 let connectionsRefreshTimer: ReturnType<typeof setInterval> | null = null;
 let currentConnections: IConnection[] = [];
+let directSocketsFailed = false;
+let lastTrafficPollTime = 0;
+let lastUploadTotal = 0;
+let lastDownloadTotal = 0;
 let pageUnloading = false;
 const followedSubscriptionJobs = new Set<string>();
 const followedLatencyJobs = new Set<string>();
@@ -88,6 +93,8 @@ const handledSubscriptionJobs = new Set<string>();
 const handledLatencyJobs = new Set<string>();
 
 const customProxyLatencies = new Map<string, number>();
+const singleTestingOutboundCodes: Record<string, boolean> = {};
+let isTestingAllSections = false;
 
 if (typeof window !== 'undefined') {
   window.addEventListener('pagehide', () => {
@@ -500,6 +507,15 @@ async function connectToClashSockets(dataUpdatesId: number) {
     return;
   }
 
+  if (!canUseDirectClashApi()) {
+    directSocketsFailed = true;
+    logger.info(
+      '[DASHBOARD]',
+      'direct Clash API websocket unavailable, relying on polling fallback',
+    );
+    return;
+  }
+
   socket.subscribe(
     `${getClashWsUrl()}/traffic?token=${clashApiSecret}`,
     (msg) => {
@@ -510,6 +526,7 @@ async function connectToClashSockets(dataUpdatesId: number) {
         return;
       }
 
+      directSocketsFailed = false;
       const parsedMsg = JSON.parse(msg);
 
       store.set({
@@ -528,18 +545,12 @@ async function connectToClashSockets(dataUpdatesId: number) {
         return;
       }
 
-      logger.error(
+      directSocketsFailed = true;
+      logger.warn(
         '[DASHBOARD]',
-        'connectToClashSockets - traffic: failed to connect to',
+        'connectToClashSockets - traffic: socket failed, using polling fallback',
         getClashWsUrl(),
       );
-      store.set({
-        bandwidthWidget: {
-          loading: false,
-          failed: true,
-          data: { up: 0, down: 0 },
-        },
-      });
     },
   );
 
@@ -553,6 +564,7 @@ async function connectToClashSockets(dataUpdatesId: number) {
         return;
       }
 
+      directSocketsFailed = false;
       const parsedMsg = JSON.parse(msg);
 
       store.set({
@@ -582,26 +594,12 @@ async function connectToClashSockets(dataUpdatesId: number) {
         return;
       }
 
-      logger.error(
+      directSocketsFailed = true;
+      logger.warn(
         '[DASHBOARD]',
-        'connectToClashSockets - connections: failed to connect to',
+        'connectToClashSockets - connections: socket failed, using polling fallback',
         getClashWsUrl(),
       );
-      store.set({
-        trafficTotalWidget: {
-          loading: false,
-          failed: true,
-          data: { downloadTotal: 0, uploadTotal: 0 },
-        },
-        systemInfoWidget: {
-          loading: false,
-          failed: true,
-          data: {
-            connections: 0,
-            memory: 0,
-          },
-        },
-      });
     },
   );
 }
@@ -808,6 +806,94 @@ async function handleTestLatency(
     if (!completed) {
       setLatencyFetching(sectionName, false);
     }
+  }
+}
+
+async function handleTestSingleOutbound(
+  _sectionName: string,
+  outboundCode: string,
+) {
+  if (singleTestingOutboundCodes[outboundCode]) {
+    return;
+  }
+  singleTestingOutboundCodes[outboundCode] = true;
+  void renderSectionsWidget();
+
+  try {
+    const response = await TachyonShellMethods.getClashApiProxyLatency(
+      outboundCode,
+      '2000',
+    );
+    if (response.success && response.data) {
+      customProxyLatencies.set(outboundCode, response.data.delay || -1);
+    } else {
+      customProxyLatencies.set(outboundCode, -1);
+    }
+    capMapSize(customProxyLatencies);
+  } catch (error) {
+    logger.warn('[DASHBOARD]', 'Failed single proxy latency test', error);
+    customProxyLatencies.set(outboundCode, -1);
+  } finally {
+    delete singleTestingOutboundCodes[outboundCode];
+    void renderSectionsWidget();
+  }
+}
+
+async function handleTestAllSections() {
+  if (isTestingAllSections) {
+    return;
+  }
+  isTestingAllSections = true;
+  void renderSectionsWidget();
+
+  try {
+    const sectionsWidget = store.get().sectionsWidget;
+    const SERVICE_TYPES = new Set(['SING_BOX', 'ZAPRET', 'ZAPRET2', 'BYEDPI']);
+    for (const section of sectionsWidget.data) {
+      if (!section.outbounds || section.outbounds.length === 0) {
+        continue;
+      }
+      if (sectionsWidget.latencyFetchingSections[section.sectionName]) {
+        continue;
+      }
+      const testable = section.outbounds.filter(
+        (o) => !SERVICE_TYPES.has(o.type),
+      );
+      if (testable.length === 0) {
+        continue;
+      }
+
+      if (section.withTagSelect) {
+        const tag = section.latencyTestCodes?.length
+          ? section.latencyTestCodes
+          : section.latencyTestCode || section.code;
+        if (Array.isArray(tag)) {
+          await handleTestLatency(
+            'proxy_list',
+            section.sectionName,
+            JSON.stringify(tag),
+            section.latencyTestTimeout,
+          );
+        } else {
+          await handleTestLatency(
+            'group',
+            section.sectionName,
+            tag,
+            section.latencyTestTimeout,
+          );
+        }
+      } else {
+        await handleTestLatency(
+          'proxy',
+          section.sectionName,
+          testable[0].code,
+          section.latencyTestTimeout,
+        );
+      }
+    }
+  } finally {
+    isTestingAllSections = false;
+    void renderSectionsWidget();
   }
 }
 
@@ -1707,6 +1793,49 @@ async function renderSectionsWidget() {
     });
   }
 
+  const hasTestableSections = sectionsWithCustomLatencies.some(
+    (s) =>
+      s.outbounds &&
+      s.outbounds.length > 0 &&
+      !SERVICE_TYPES.has(s.outbounds[0]?.type),
+  );
+
+  const testAllHeader = hasTestableSections
+    ? E(
+        'div',
+        {
+          class: 'tachyon_dashboard-page__sections-header',
+          style:
+            'display: flex; justify-content: flex-end; align-items: center; margin-bottom: 12px; gap: 8px;',
+        },
+        [
+          E(
+            'button',
+            {
+              type: 'button',
+              id: 'dashboard-test-all-sections-button',
+              class: 'btn',
+              style: 'padding: 4px 14px; height: 32px; font-size: 13px;',
+              disabled: isTestingAllSections ? true : undefined,
+              click: () => {
+                void handleTestAllSections();
+              },
+            },
+            isTestingAllSections
+              ? [
+                  renderLoaderCircleIcon24(),
+                  E(
+                    'span',
+                    { style: 'margin-left: 6px;' },
+                    _('Testing all sections...'),
+                  ),
+                ]
+              : E('span', {}, _('Test all sections')),
+          ),
+        ],
+      )
+    : null;
+
   const renderedWidgets = sectionsWithCustomLatencies.map((section) =>
     renderSections({
       loading: sectionsWidget.loading,
@@ -1724,6 +1853,10 @@ async function renderSectionsWidget() {
       ),
       selectorSwitchingTag:
         sectionsWidget.selectorSwitchingSections[section.sectionName],
+      onTestSingleOutbound: (sectionName, outboundCode) => {
+        void handleTestSingleOutbound(sectionName, outboundCode);
+      },
+      testingOutboundCodes: singleTestingOutboundCodes,
       onTestLatency: (tag) => {
         if (section.withTagSelect) {
           if (Array.isArray(tag)) {
@@ -1763,7 +1896,10 @@ async function renderSectionsWidget() {
   );
 
   return preserveScrollForPage(() => {
-    container.replaceChildren(...renderedWidgets);
+    container.replaceChildren(
+      ...(testAllHeader ? [testAllHeader] : []),
+      ...renderedWidgets,
+    );
   });
 }
 
@@ -1808,41 +1944,84 @@ function renderStoreWidget(
 }
 
 async function fetchConnections() {
-  if (!expandedSections.has('active_clients')) {
-    return;
-  }
-
   try {
+    const shouldFetchHostnames = expandedSections.has('active_clients');
     const [res, hostnames] = await Promise.all([
       TachyonShellMethods.getClashApiConnections(),
-      fetchHostnames(),
+      shouldFetchHostnames
+        ? fetchHostnames()
+        : Promise.resolve(new Map<string, string>()),
     ]);
-    if (
-      res.success &&
-      res.data &&
-      typeof res.data === 'object' &&
-      Array.isArray((res.data as any).connections)
-    ) {
-      const connectionsList = (res.data as any).connections;
-      const map = new Map<string, IConnection>();
-      for (const conn of connectionsList) {
-        const ip = conn.metadata?.sourceIP;
-        if (!ip) continue;
-        const up = Number(conn.upload) || 0;
-        const down = Number(conn.download) || 0;
-        if (map.has(ip)) {
-          const existing = map.get(ip)!;
-          existing.count++;
-          existing.upload += up;
-          existing.download += down;
-        } else {
-          const name = hostnames.get(ip);
-          map.set(ip, { ip, count: 1, upload: up, download: down, name });
+    if (res.success && res.data && typeof res.data === 'object') {
+      const payload = res.data as any;
+
+      if (directSocketsFailed || !canUseDirectClashApi()) {
+        const downloadTotal = Number(payload.downloadTotal) || 0;
+        const uploadTotal = Number(payload.uploadTotal) || 0;
+        const memory = Number(payload.memory) || 0;
+        const connCount = Array.isArray(payload.connections)
+          ? payload.connections.length
+          : 0;
+
+        const now = Date.now();
+        if (lastTrafficPollTime > 0) {
+          const dt = Math.max(0.5, (now - lastTrafficPollTime) / 1000);
+          const up = Math.max(
+            0,
+            Math.round((uploadTotal - lastUploadTotal) / dt),
+          );
+          const down = Math.max(
+            0,
+            Math.round((downloadTotal - lastDownloadTotal) / dt),
+          );
+          store.set({
+            bandwidthWidget: {
+              loading: false,
+              failed: false,
+              data: { up, down },
+            },
+          });
         }
+        lastTrafficPollTime = now;
+        lastUploadTotal = uploadTotal;
+        lastDownloadTotal = downloadTotal;
+
+        store.set({
+          trafficTotalWidget: {
+            loading: false,
+            failed: false,
+            data: { downloadTotal, uploadTotal },
+          },
+          systemInfoWidget: {
+            loading: false,
+            failed: false,
+            data: { connections: connCount, memory },
+          },
+        });
       }
-      currentConnections = Array.from(map.values()).sort(
-        (a, b) => b.download + b.upload - (a.download + a.upload),
-      );
+
+      if (shouldFetchHostnames && Array.isArray(payload.connections)) {
+        const connectionsList = payload.connections;
+        const map = new Map<string, IConnection>();
+        for (const conn of connectionsList) {
+          const ip = conn.metadata?.sourceIP;
+          if (!ip) continue;
+          const up = Number(conn.upload) || 0;
+          const down = Number(conn.download) || 0;
+          if (map.has(ip)) {
+            const existing = map.get(ip)!;
+            existing.count++;
+            existing.upload += up;
+            existing.download += down;
+          } else {
+            const name = hostnames.get(ip);
+            map.set(ip, { ip, count: 1, upload: up, download: down, name });
+          }
+        }
+        currentConnections = Array.from(map.values()).sort(
+          (a, b) => b.download + b.upload - (a.download + a.upload),
+        );
+      }
     }
   } catch (_e) {
     // Ignore connections fetch errors
@@ -2130,6 +2309,11 @@ async function onPageMount() {
 function onPageUnmount() {
   dashboardMounted = false;
   dashboardMountId += 1;
+
+  directSocketsFailed = false;
+  lastTrafficPollTime = 0;
+  lastUploadTotal = 0;
+  lastDownloadTotal = 0;
 
   stopDashboardDataUpdates();
   stopActionStateWatcher();

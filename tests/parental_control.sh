@@ -270,5 +270,23 @@ nft_ucode nft-add-schedule-rules-fixture "$WORK_DIR/profile_fixture.json" "tachy
 assert_contains "$NFT_LOG" "parental_forward	ip	saddr	192.168.1.200	meta	hour	\"23:00:00\"-\"23:59:59\"	counter	drop" "profile IP inherited"
 assert_contains "$NFT_LOG" "parental_forward	ether	saddr	22:33:44:55:66:77	meta	hour	\"23:00:00\"-\"23:59:59\"	counter	drop" "profile MAC inherited"
 
+# ─── Router panel and Intranet bypass rules in Parental chains ───────────────
+rm -f "$NFT_LOG"
+nft_ucode nft-create-runtime-base TachyonTable localv4 tachyon_subnets tachyon_ports tachyon_ip_ports tachyon_interfaces "br-lan" 0x00100000 0x00200000 198.18.0.0/15 1602 0 "" "" "" "" "" 0
+
+assert_contains "$NFT_LOG" "parental_control	ip	daddr	@localv4	return" "parental_control localv4 bypass"
+assert_contains "$NFT_LOG" "parental_control	ip6	daddr	@localv6	return" "parental_control localv6 bypass"
+assert_contains "$NFT_LOG" "parental_forward	ip	daddr	@localv4	return" "parental_forward localv4 bypass"
+assert_contains "$NFT_LOG" "parental_forward	ip6	daddr	@localv6	return" "parental_forward localv6 bypass"
+
+# Ensure in mangle chain that localv4 return comes BEFORE jump parental_control
+local_return_line="$(grep -n "mangle	iifname	@tachyon_interfaces	ip	daddr	@localv4	return" "$NFT_LOG" | cut -d: -f1)"
+parental_jump_line="$(grep -n "mangle	jump	parental_control" "$NFT_LOG" | cut -d: -f1)"
+[ -n "$local_return_line" ] || fail "mangle chain must contain localv4 return rule"
+[ -n "$parental_jump_line" ] || fail "mangle chain must contain jump parental_control rule"
+if [ "$local_return_line" -ge "$parental_jump_line" ]; then
+  fail "localv4 return (line $local_return_line) must precede jump parental_control (line $parental_jump_line) to protect router panel access"
+fi
+
 printf 'Parental control, profiles and schedule tests passed\n'
 

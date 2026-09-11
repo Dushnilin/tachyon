@@ -1,6 +1,17 @@
 #!/bin/sh
 # Only process ifup and ifdown events for WAN interfaces
-# Rate limit: max 1 notification per 60 seconds
+
+case "$INTERFACE" in
+    wan*|wwan*|lte*|modem*)
+        case "$ACTION" in
+            ifup)
+                /etc/init.d/tachyon retry_start_on_wan_up >/dev/null 2>&1 &
+                ;;
+        esac
+        ;;
+esac
+
+# Rate limit Telegram notifications: max 1 notification per 60 seconds
 COOLDOWN_FILE="/tmp/tachyon_wan_monitor_cooldown"
 NOW=$(date +%s)
 if [ -f "$COOLDOWN_FILE" ]; then
@@ -11,7 +22,7 @@ fi
 echo "$NOW" > "$COOLDOWN_FILE"
 
 case "$INTERFACE" in
-    wan*|wwan*|lte*)
+    wan*|wwan*|lte*|modem*)
         case "$ACTION" in
             ifup)
                 /usr/bin/tachyon telegram send "🟢 Интерфейс *${INTERFACE}* поднялся!"

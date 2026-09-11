@@ -1347,7 +1347,7 @@ function reload(reason) {
     // Skip all work when config fingerprint is unchanged since the last reload.
     // Applies to user-triggered reloads as well as on_config_change; saves ~4
     // ucode forks (3 validate + 1 plan) when nothing actually changed.
-    if (current_config_hash() == last_completed_reload_hash()) {
+    if (reason != "force" && current_config_hash() == last_completed_reload_hash()) {
         log_message("Reload skipped: configuration is unchanged", "info");
         return 0;
     }
@@ -1667,11 +1667,17 @@ function uninstall() {
 }
 
 function enable_service() {
-    return command_status_from_args([ SERVICE_INIT, "enable" ]);
+    let res = command_status_from_args([ SERVICE_INIT, "enable" ]);
+    uci_core.set(CONFIG_NAME, "settings", "enabled", "1");
+    uci_core.commit(CONFIG_NAME);
+    return res;
 }
 
 function disable_service() {
-    return command_status_from_args([ SERVICE_INIT, "disable" ]);
+    let res = command_status_from_args([ SERVICE_INIT, "disable" ]);
+    uci_core.set(CONFIG_NAME, "settings", "enabled", "0");
+    uci_core.commit(CONFIG_NAME);
+    return res;
 }
 
 let mode = ARGV[0] || "";

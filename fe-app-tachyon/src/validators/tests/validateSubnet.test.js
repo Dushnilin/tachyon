@@ -13,6 +13,8 @@ export const validSubnets = [
   ['IPv6 CIDR /64', '2001:db8::/64'],
   ['IPv6 default route', '::/0'],
   ['IPv6 host /128', 'fc00::1/128'],
+  ['MAC address colon', 'a8:8c:3e:c9:25:05'],
+  ['MAC address hyphen', 'A8-8C-3E-C9-25-05'],
 ];
 
 export const invalidSubnets = [

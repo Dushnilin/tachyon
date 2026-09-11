@@ -1203,8 +1203,8 @@ function add_dns_action_rules_for_section(config, section) {
     let domain_regex = domains.domain_regex;
     let rule_set_tags = [];
     let section_name = section[".name"];
-    let source_ip_cidr = legacy_condition_values(section, "source_ip_cidr");
-    let fully_routed_ips = list_option(section, "fully_routed_ips");
+    let source_ip_cidr = core_ip.normalize_to_cidrs(legacy_condition_values(section, "source_ip_cidr"));
+    let fully_routed_ips = core_ip.normalize_to_cidrs(list_option(section, "fully_routed_ips"));
 
     for (let community in connections.community_lists(section)) {
         let ensured = ensure_community_ruleset(config, section_name, as_string(community));
@@ -1386,7 +1386,7 @@ function push_section_route_rule(config, rule, target_outbound) {
 }
 
 function add_fully_routed_ips_rule(config, section) {
-    let source_ip_cidr = list_option(section, "fully_routed_ips");
+    let source_ip_cidr = core_ip.normalize_to_cidrs(list_option(section, "fully_routed_ips"));
     if (length(source_ip_cidr) == 0)
         return;
 
@@ -1409,18 +1409,7 @@ function add_excluded_ips_rule(config, section) {
     if (length(excluded) == 0)
         return;
 
-    let resolved = [];
-    for (let item in excluded) {
-        let val = trim(as_string(item));
-        if (val == "") continue;
-        let is_mac = match(val, /^([0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}$/) != null;
-        if (is_mac) {
-            for (let res_ip in core_ip.resolve_mac_to_ips(val))
-                push(resolved, res_ip + (index(res_ip, ":") != -1 ? "/128" : "/32"));
-        } else {
-            push(resolved, val);
-        }
-    }
+    let resolved = core_ip.normalize_to_cidrs(excluded);
     if (length(resolved) == 0)
         return;
 
@@ -1484,7 +1473,7 @@ function add_combined_route_for_section(config, section) {
     let domain_keyword = domains.domain_keyword;
     let domain_regex = domains.domain_regex;
     let ip_cidr = legacy_condition_values(section, "ip_cidr");
-    let source_ip_cidr = legacy_condition_values(section, "source_ip_cidr");
+    let source_ip_cidr = core_ip.normalize_to_cidrs(legacy_condition_values(section, "source_ip_cidr"));
     let rule_set_tags = [];
     let dns_rule_set_tags = [];
     let section_name = section[".name"];
@@ -1547,7 +1536,7 @@ function add_combined_route_for_section(config, section) {
         if (target.outbound)
             r.outbound = target.outbound;
         if (length(source_ip_cidr) > 0)
-            r.source_ip_cidr = source_ip_cidr;
+            r.source_ip_cidr = single_or_array(source_ip_cidr);
         add_port_matchers(r, section);
         add_dscp_matchers(r, section);
         add_protocol_matchers(r, section);

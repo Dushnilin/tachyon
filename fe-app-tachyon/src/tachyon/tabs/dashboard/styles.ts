@@ -448,6 +448,34 @@ export const styles = `
     color: var(--error-color-medium, red);
 }
 
+.tachyon_dashboard-page__outbound-grid__item__latency--clickable {
+    cursor: pointer;
+    user-select: none;
+    transition: opacity 0.15s ease, background-color 0.15s ease;
+    border-radius: 4px;
+    padding: 1px 4px;
+}
+
+.tachyon_dashboard-page__outbound-grid__item__latency--clickable:hover {
+    opacity: 0.8;
+    background: rgba(128, 128, 128, 0.15);
+}
+
+.tachyon_dashboard-page__outbound-grid__item__latency--testing {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    opacity: 0.8;
+}
+
+.tachyon_dashboard-page__outbound-grid__item__latency--testing svg {
+    width: 12px;
+    height: 12px;
+    display: block;
+    flex: 0 0 auto;
+}
+
 .tachyon_dashboard-page__urltest-details {
     box-sizing: border-box;
     width: min(760px, calc(100vw - 56px));

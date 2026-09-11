@@ -433,7 +433,6 @@ const EntryPoint = {
         return form.Map.prototype.load.call(self);
       });
     };
-    const originalHandleSaveApply = tachyonMap.handleSaveApply;
     tachyonMap.handleSaveApply = function (ev, mode) {
       const refreshUiState = function () {
         main.TachyonShellMethods.getUiState()
@@ -461,23 +460,28 @@ const EntryPoint = {
         });
       }
 
-      return Promise.resolve(originalHandleSaveApply.call(this, ev, mode))
+      return this.handleSave(ev)
+        .then(() => ui.changes.apply(mode == "0"))
         .then((result) => {
           if (
             main.TachyonShellMethods &&
             typeof main.TachyonShellMethods.serviceActionStart === "function"
           ) {
-            main.TachyonShellMethods.serviceActionStart("reload").catch(
-              () => null,
-            );
+            return main.TachyonShellMethods.serviceActionStart("reload")
+              .then(() => {
+                window.setTimeout(refreshUiState, 500);
+                return result;
+              })
+              .catch(() => {
+                window.setTimeout(refreshUiState, 500);
+                return result;
+              });
           }
           window.setTimeout(refreshUiState, 500);
-
           return result;
         })
         .catch((error) => {
           refreshUiState();
-
           throw error;
         });
     };

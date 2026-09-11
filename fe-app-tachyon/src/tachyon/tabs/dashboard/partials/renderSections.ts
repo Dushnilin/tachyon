@@ -43,6 +43,8 @@ interface IRenderSectionsProps {
   latencyProgress?: Tachyon.LatencyActionProgress;
   subscriptionUpdating: boolean;
   selectorSwitchingTag?: string;
+  onTestSingleOutbound?: (sectionName: string, outboundCode: string) => void;
+  testingOutboundCodes?: Record<string, boolean>;
 }
 
 function renderFailedState() {
@@ -275,6 +277,8 @@ function renderDefaultState({
   latencyProgress,
   subscriptionUpdating,
   selectorSwitchingTag,
+  onTestSingleOutbound,
+  testingOutboundCodes,
   isCollapsed,
   onToggleCollapse,
 }: IRenderSectionsProps) {
@@ -441,6 +445,10 @@ function renderDefaultState({
   }
 
   function renderOutbound(outbound: Tachyon.Outbound) {
+    const isTestingSingle = Boolean(
+      testingOutboundCodes && testingOutboundCodes[outbound.code],
+    );
+
     function getLatencyClass() {
       if (isConnectionNode) {
         if (latencyFetching) {
@@ -722,12 +730,42 @@ function renderDefaultState({
             ),
             E(
               'div',
-              { class: getLatencyClass() },
-              isConnectionNode
-                ? connectionStatusText
-                : outbound.latency
-                  ? `${outbound.latency}ms`
-                  : 'N/A',
+              {
+                class: [
+                  getLatencyClass(),
+                  !isConnectionNode
+                    ? 'tachyon_dashboard-page__outbound-grid__item__latency--clickable'
+                    : '',
+                  isTestingSingle
+                    ? 'tachyon_dashboard-page__outbound-grid__item__latency--testing'
+                    : '',
+                ]
+                  .filter(Boolean)
+                  .join(' '),
+                style: isConnectionNode ? undefined : 'cursor: pointer;',
+                title: isConnectionNode ? undefined : _('Test node latency'),
+                'aria-label': isConnectionNode
+                  ? undefined
+                  : _('Test node latency'),
+                click: isConnectionNode
+                  ? undefined
+                  : (event?: MouseEvent) => {
+                      event?.stopPropagation?.();
+                      event?.preventDefault?.();
+                      if (isTestingSingle || latencyFetching) return;
+                      onTestSingleOutbound?.(
+                        section.sectionName,
+                        outbound.code,
+                      );
+                    },
+              },
+              isTestingSingle
+                ? [renderLoaderCircleIcon24(), E('span', {}, _('Checking...'))]
+                : isConnectionNode
+                  ? connectionStatusText
+                  : outbound.latency
+                    ? `${outbound.latency}ms`
+                    : 'N/A',
             ),
           ],
         ),
