@@ -1857,29 +1857,62 @@ async function renderSectionsWidget() {
         'div',
         {
           class: 'tachyon_dashboard-page__sections-header',
-          style:
-            'display: flex; justify-content: flex-end; align-items: center; margin-bottom: 12px; gap: 8px;',
         },
         [
           E(
-            'button',
+            'div',
             {
-              type: 'button',
-              id: 'dashboard-test-all-sections-button',
-              class: 'btn',
-              style:
-                'display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; padding: 4px 14px; height: 32px; font-size: 13px;',
-              disabled: isTestingAllSections ? true : undefined,
-              click: () => {
-                void handleTestAllSections();
-              },
+              class: 'tachyon_dashboard-page__sections-header__title',
             },
-            isTestingAllSections
-              ? [
-                  renderLoaderCircleIcon24(),
-                  E('span', {}, _('Testing all sections...')),
-                ]
-              : E('span', {}, _('Test all sections')),
+            [
+              svgEl(
+                'svg',
+                {
+                  width: '16',
+                  height: '16',
+                  viewBox: '0 0 24 24',
+                  fill: 'none',
+                  stroke: 'currentColor',
+                  'stroke-width': '2',
+                  'stroke-linecap': 'round',
+                  'stroke-linejoin': 'round',
+                },
+                [
+                  svgEl('circle', { cx: '6', cy: '19', r: '3' }),
+                  svgEl('path', {
+                    d: 'M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15',
+                  }),
+                  svgEl('circle', { cx: '18', cy: '5', r: '3' }),
+                ],
+              ),
+              E('span', {}, _('Routing sections')),
+            ],
+          ),
+          E(
+            'div',
+            {
+              class: 'tachyon_dashboard-page__sections-header__actions',
+            },
+            [
+              E(
+                'button',
+                {
+                  type: 'button',
+                  id: 'dashboard-test-all-sections-button',
+                  class: 'btn',
+                  disabled: isTestingAllSections ? true : undefined,
+                  click: () => {
+                    void handleTestAllSections();
+                  },
+                },
+                isTestingAllSections
+                  ? [
+                      renderLoaderCircleIcon24(),
+                      E('span', {}, _('Testing all sections...')),
+                    ]
+                  : E('span', {}, _('Test all sections')),
+              ),
+            ],
           ),
         ],
       )

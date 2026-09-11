@@ -6693,6 +6693,9 @@ msgstr ""
 msgid "Routing section"
 msgstr ""
 
+msgid "Routing sections"
+msgstr ""
+
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/settings.js:995
 msgid "Routing sections, rules and strategies"
 msgstr ""

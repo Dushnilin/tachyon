@@ -9174,26 +9174,61 @@ async function renderSectionsWidget() {
   const testAllHeader = hasTestableSections ? E(
     "div",
     {
-      class: "tachyon_dashboard-page__sections-header",
-      style: "display: flex; justify-content: flex-end; align-items: center; margin-bottom: 12px; gap: 8px;"
+      class: "tachyon_dashboard-page__sections-header"
     },
     [
       E(
-        "button",
+        "div",
         {
-          type: "button",
-          id: "dashboard-test-all-sections-button",
-          class: "btn",
-          style: "display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; padding: 4px 14px; height: 32px; font-size: 13px;",
-          disabled: isTestingAllSections ? true : void 0,
-          click: () => {
-            void handleTestAllSections();
-          }
+          class: "tachyon_dashboard-page__sections-header__title"
         },
-        isTestingAllSections ? [
-          renderLoaderCircleIcon24(),
-          E("span", {}, _("Testing all sections..."))
-        ] : E("span", {}, _("Test all sections"))
+        [
+          svgEl(
+            "svg",
+            {
+              width: "16",
+              height: "16",
+              viewBox: "0 0 24 24",
+              fill: "none",
+              stroke: "currentColor",
+              "stroke-width": "2",
+              "stroke-linecap": "round",
+              "stroke-linejoin": "round"
+            },
+            [
+              svgEl("circle", { cx: "6", cy: "19", r: "3" }),
+              svgEl("path", {
+                d: "M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15"
+              }),
+              svgEl("circle", { cx: "18", cy: "5", r: "3" })
+            ]
+          ),
+          E("span", {}, _("Routing sections"))
+        ]
+      ),
+      E(
+        "div",
+        {
+          class: "tachyon_dashboard-page__sections-header__actions"
+        },
+        [
+          E(
+            "button",
+            {
+              type: "button",
+              id: "dashboard-test-all-sections-button",
+              class: "btn",
+              disabled: isTestingAllSections ? true : void 0,
+              click: () => {
+                void handleTestAllSections();
+              }
+            },
+            isTestingAllSections ? [
+              renderLoaderCircleIcon24(),
+              E("span", {}, _("Testing all sections..."))
+            ] : E("span", {}, _("Test all sections"))
+          )
+        ]
       )
     ]
   ) : null;
@@ -9826,13 +9861,53 @@ var styles = `
     opacity: 0.65;
 }
 
-#dashboard-test-all-sections-button {
+.tachyon_dashboard-page__sections-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 16px;
+    margin-bottom: 4px;
+    padding: 0 2px;
+    gap: 12px;
+    min-width: 0;
+}
+
+.tachyon_dashboard-page__sections-header__title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-color-high);
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0.2px;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.tachyon_dashboard-page__sections-header__title svg {
+    flex-shrink: 0;
+    opacity: 0.85;
+}
+
+.tachyon_dashboard-page__sections-header__actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.tachyon_dashboard-page .btn#dashboard-test-all-sections-button {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: 6px;
     white-space: nowrap;
     vertical-align: middle;
+    padding: 4px 14px;
+    height: 30px;
+    min-height: 28px;
+    font-size: 13px;
 }
 
 #dashboard-test-all-sections-button svg {
@@ -9845,6 +9920,13 @@ var styles = `
 #dashboard-test-all-sections-button[disabled] {
     cursor: not-allowed;
     opacity: 0.65;
+}
+
+@media (max-width: 480px) {
+    .tachyon_dashboard-page__sections-header {
+        flex-wrap: wrap;
+        gap: 8px;
+    }
 }
 
 .tachyon_dashboard-page__outbound-grid {

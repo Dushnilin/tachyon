@@ -4160,6 +4160,9 @@ msgstr "Правила маршрутизации"
 msgid "Routing section"
 msgstr "Секция маршрутизации"
 
+msgid "Routing sections"
+msgstr "Секции маршрутизации"
+
 msgid "Routing sections, rules and strategies"
 msgstr "Секции маршрутизации, правила и стратегии"
 
