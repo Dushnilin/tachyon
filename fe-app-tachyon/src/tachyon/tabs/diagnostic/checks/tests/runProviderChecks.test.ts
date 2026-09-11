@@ -111,12 +111,14 @@ describe('provider diagnostics checks', () => {
     );
   });
 
-  it('removes Zapret2 route checks while keeping provider path visible', async () => {
+  it('shows Zapret2 route rules check and keeps provider path visible', async () => {
     mocks.getZapret2Status.mockResolvedValue({
       success: true,
       data: {
         ...zapretOkData,
         provider_path: '/usr/bin/nfqws2',
+        outbounds_configured: true,
+        routes_configured: true,
       },
     });
 
@@ -138,13 +140,45 @@ describe('provider diagnostics checks', () => {
           state: 'success',
           key: 'Zapret2 sing-box outbound is configured',
         }),
+        expect.objectContaining({
+          state: 'success',
+          key: 'Zapret2 sing-box route rules are configured',
+        }),
       ]),
     );
-    expect(
-      result.items.some((item: { key: string }) =>
-        item.key.includes('route rules'),
-      ),
-    ).toBe(false);
+  });
+
+  it('shows Zapret2 route rules failure when routes_configured is false', async () => {
+    mocks.getZapret2Status.mockResolvedValue({
+      success: true,
+      data: {
+        ...zapretOkData,
+        provider_path: '/usr/bin/nfqws2',
+        outbounds_configured: true,
+        routes_configured: false,
+      },
+    });
+
+    await expect(runZapret2Check()).resolves.toBeUndefined();
+
+    const result = mocks.updateCheckStore.mock.calls.slice(-1)[0]?.[0];
+
+    expect(result).toMatchObject({
+      state: 'error',
+      description: 'Checks failed',
+    });
+    expect(result.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          state: 'success',
+          key: 'Zapret2 sing-box outbound is configured',
+        }),
+        expect.objectContaining({
+          state: 'error',
+          key: 'Zapret2 sing-box route rules are not configured',
+        }),
+      ]),
+    );
   });
 
   it('removes ByeDPI route checks from the visible and aggregate status', async () => {

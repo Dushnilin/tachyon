@@ -46,6 +46,7 @@ export async function runZapret2Check() {
   const unexpectedRuntime =
     !hasZapret2Rules && (runningProcesses > 0 || supervisorProcesses > 0);
   const outboundsConfigured = Boolean(data.outbounds_configured);
+  const routesConfigured = Boolean(data.routes_configured);
   const standaloneServiceEnabled = Boolean(data.standalone_service_enabled);
   const standaloneServiceRunning = Boolean(data.standalone_service_running);
   const standaloneConflict = hasZapret2Rules && standaloneServiceRunning;
@@ -105,6 +106,13 @@ export async function runZapret2Check() {
       key: outboundsConfigured
         ? _('Zapret2 sing-box outbound is configured')
         : _('Zapret2 sing-box outbound is not configured'),
+      value: '',
+    },
+    {
+      state: !hasZapret2Rules || routesConfigured ? 'success' : 'error',
+      key: routesConfigured
+        ? _('Zapret2 sing-box route rules are configured')
+        : _('Zapret2 sing-box route rules are not configured'),
       value: '',
     },
     {

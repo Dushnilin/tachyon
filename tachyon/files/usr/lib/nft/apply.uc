@@ -829,22 +829,11 @@ function nft_add_section_priority_rules(table, section, interface_set, localv4_s
 
 function nft_add_section_priority_rules_from_sections(sections, table, interface_set, localv4_set, localv6_set, mark) {
     localv6_set = default_arg(localv6_set, "localv6");
-    let zapret2_idx = 1;
-    let zapret_idx = 1;
     for (let section in sections) {
         section = object_or_empty(section);
         if (!bool_option(section, "enabled", true))
             continue;
-        let sec_mark = mark;
-        let action = option(section, "action", "connection");
-        if (action == "zapret2") {
-            sec_mark = sprintf("0x%08x", 0x02000000 + zapret2_idx);
-            zapret2_idx++;
-        } else if (action == "zapret") {
-            sec_mark = sprintf("0x%08x", 0x01000000 + zapret_idx);
-            zapret_idx++;
-        }
-        if (!nft_add_section_priority_rules(table, section, interface_set, localv4_set, localv6_set, sec_mark))
+        if (!nft_add_section_priority_rules(table, section, interface_set, localv4_set, localv6_set, mark))
             return false;
     }
     return true;
