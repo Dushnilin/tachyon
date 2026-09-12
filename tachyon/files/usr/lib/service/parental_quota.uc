@@ -79,6 +79,13 @@ function list_option(section, key) {
     return result;
 }
 
+function str_option(section, key, fallback) {
+    let value = object_or_empty(section)[key];
+    if (value == null || value == "")
+        return fallback;
+    return as_string(value);
+}
+
 function quota_schedules() {
     let result = [];
     let profiles_by_name = {};
@@ -111,6 +118,10 @@ function quota_schedules() {
             continue;
         let minutes = int_option(section, "daily_quota_minutes", 0);
         if (minutes <= 0)
+            continue;
+        let target = str_option(section, "target", "");
+        let has_blocked_domains = length(list_option(section, "blocked_domains")) > 0 || str_option(section, "blocked_domains", "") != "";
+        if (target != "all" && (target == "domains" || target == "sections" || has_blocked_domains))
             continue;
         let devices = [];
         let idents_seen = {};
@@ -148,13 +159,6 @@ function quota_schedules() {
         });
     }
     return result;
-}
-
-function str_option(section, key, fallback) {
-    let value = object_or_empty(section)[key];
-    if (value == null || value == "")
-        return fallback;
-    return as_string(value);
 }
 
 function guest_mode_config() {
@@ -450,7 +454,27 @@ function tick() {
     let gm_cfg = guest_mode_config();
 
     if (length(schedules) == 0 && gm_cfg == null) {
-        // No quota schedules configured and no guest quotas active
+        // No quota schedules configured and no guest quotas active:
+        // ensure any previously blocked devices are unblocked in nft sets and state!
+        let state = read_state();
+        let had_blocked = false;
+        for (let ident, entry in state.devices) {
+            if (entry && entry.blocked) {
+                entry.blocked = false;
+                had_blocked = true;
+            }
+        }
+        for (let ident, entry in state.guest_devices) {
+            if (entry && entry.blocked) {
+                entry.blocked = false;
+                had_blocked = true;
+            }
+        }
+        if (had_blocked) {
+            write_state(state);
+            sync_enforcement([], []);
+            log_message("all quota rules removed or disabled; unblocked all devices", "info");
+        }
         return 0;
     }
 
@@ -469,16 +493,49 @@ function tick() {
             let minutes = int(entry.minutes || 0);
             let was_blocked = entry.blocked == true;
 
-            if (!was_blocked && device_active(ident)) {
+            if (was_blocked) {
+                if (minutes < schedule.minutes) {
+                    // Quota was increased by administrator: unblock device!
+                    let is_active = device_active(ident);
+                    if (is_active)
+                        minutes++;
+                    let is_blocked = minutes >= schedule.minutes;
+                    devices[ident] = { minutes, blocked: is_blocked };
+                    if (!is_blocked) {
+                        log_message("device " + ident + " unblocked after quota increase (used " + as_string(minutes) + "/" + as_string(schedule.minutes) + " min)", "info");
+                        send_notification("✅ *Parental control*: квота устройства `" + ident + "` (" + schedule.label + ") увеличена до " + as_string(schedule.minutes) + " мин, доступ разблокирован.");
+                    }
+                } else {
+                    devices[ident] = { minutes, blocked: true };
+                }
+            } else if (device_active(ident)) {
                 minutes++;
-                devices[ident] = { minutes, blocked: minutes >= schedule.minutes };
-                if (minutes >= schedule.minutes) {
+                let is_blocked = minutes >= schedule.minutes;
+                devices[ident] = { minutes, blocked: is_blocked };
+                if (is_blocked) {
                     log_message("device " + ident + " hit daily quota (" + as_string(schedule.minutes) + " min); blocking until midnight", "info");
                     send_notification("⏳ *Parental control*: устройство `" + ident + "` (" + schedule.label + ") исчерпало дневную квоту (" + as_string(schedule.minutes) + " мин), доступ заблокирован до полуночи.");
                 }
             } else {
-                devices[ident] = { minutes, blocked: was_blocked };
+                devices[ident] = { minutes, blocked: false };
             }
+        }
+    }
+
+    // Devices in state that are no longer part of any active quota schedule must be unblocked
+    let active_idents = {};
+    for (let schedule in schedules) {
+        for (let device in schedule.devices) {
+            active_idents[device.ident] = true;
+        }
+    }
+    for (let ident, entry in devices) {
+        if (!active_idents[ident]) {
+            entry = object_or_empty(entry);
+            if (entry.blocked == true) {
+                log_message("device " + ident + " unblocked (no longer in active quota schedule)", "info");
+            }
+            devices[ident] = { minutes: int(entry.minutes || 0), blocked: false };
         }
     }
 
@@ -517,7 +574,17 @@ function tick() {
             let bytes = int(traffic_bytes_map[ident] || entry.bytes || 0);
             let was_blocked = entry.blocked == true;
 
-            if (!was_blocked) {
+            if (was_blocked) {
+                let time_exceeded = gm_cfg.time_limit > 0 && minutes >= gm_cfg.time_limit;
+                let traffic_mb = int(bytes / (1024 * 1024));
+                let traffic_exceeded = gm_cfg.traffic_limit > 0 && traffic_mb >= gm_cfg.traffic_limit;
+                if (!time_exceeded && !traffic_exceeded) {
+                    guest_devices[ident] = { minutes, bytes, blocked: false };
+                    log_message("guest device " + ident + " unblocked (limit increased)", "info");
+                } else {
+                    guest_devices[ident] = { minutes, bytes, blocked: true, reason: entry.reason };
+                }
+            } else {
                 if (guest.active)
                     minutes++;
 
@@ -534,9 +601,12 @@ function tick() {
                 } else {
                     guest_devices[ident] = { minutes, bytes, blocked: false };
                 }
-            } else {
-                guest_devices[ident] = { minutes, bytes, blocked: true, reason: entry.reason };
             }
+        }
+    } else {
+        for (let ident, entry in guest_devices) {
+            entry = object_or_empty(entry);
+            guest_devices[ident] = { minutes: int(entry.minutes || 0), bytes: int(entry.bytes || 0), blocked: false };
         }
     }
 

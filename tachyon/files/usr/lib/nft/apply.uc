@@ -1182,9 +1182,6 @@ function nft_add_dns_block_rules_from_schedules(schedules, table, profiles) {
         let intervals = nft_schedule_time_intervals(start_time, end_time);
         let days_args = nft_schedule_days_match_args(schedule);
         let always_on = length(intervals) == 0;
-        let quota_minutes = resolve_schedule_quota_minutes(schedule, profiles);
-        if (always_on && quota_minutes > 0)
-            continue;
 
         for (let raw_ip in raw_ips) {
             let dev_str = trim(as_string(raw_ip));

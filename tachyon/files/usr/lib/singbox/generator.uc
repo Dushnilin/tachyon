@@ -945,26 +945,8 @@ function schedule_blocked_domains(schedule) {
 
 function enabled_content_block_schedules() {
     let result = [];
-    let profiles_by_name = {};
-    ctx.uci_cursor().foreach(CONFIG_NAME, "profile", function(profile) {
-        if (section_enabled(profile))
-            profiles_by_name[profile[".name"]] = profile;
-    });
     ctx.uci_cursor().foreach(CONFIG_NAME, "schedule", function(schedule) {
-        let quota_minutes = int(option(schedule, "daily_quota_minutes", 0));
-        if (quota_minutes <= 0) {
-            for (let prof_ref in list_option(schedule, "profile")) {
-                let p = profiles_by_name[prof_ref];
-                if (p) {
-                    let pq = int(option(p, "daily_quota_minutes", 0));
-                    if (pq > 0) { quota_minutes = pq; break; }
-                }
-            }
-        }
-        let has_interval = trim(option(schedule, "start_time", "")) != "" || trim(option(schedule, "end_time", "")) != "";
         if (section_enabled(schedule) && length(schedule_blocked_domains(schedule)) > 0) {
-            if (!has_interval && quota_minutes > 0)
-                return;
             push(result, schedule);
         }
     });

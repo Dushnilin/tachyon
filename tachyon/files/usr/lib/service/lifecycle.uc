@@ -941,6 +941,8 @@ function start_main() {
     module_success(ZAPRET2_UC, [ "start-runtime" ]);
     module_success(WDTT_UC, [ "start-runtime" ]);
     module_success(OLCRTC_UC, [ "start-runtime" ]);
+    module_success(PARENTAL_QUOTA_UC, [ "install-cron" ]);
+    module_success(PARENTAL_QUOTA_UC, [ "tick" ]);
 
     module_background(UI_UC, [ "latency-boot-sweep" ]);
     module_background(UPDATES_UC, [ "list-update" ]);
@@ -1535,6 +1537,7 @@ function reload(reason) {
     module_success(TAILSCALE_UC, [ "start-runtime" ]);
     // Minute-tick cron for parental daily time quotas (idempotent install).
     module_success(PARENTAL_QUOTA_UC, [ "install-cron" ]);
+    module_success(PARENTAL_QUOTA_UC, [ "tick" ]);
 
     if (plan.needs_dnsmasq_configure == 1) {
         status = dnsmasq_configure(true);

@@ -1214,13 +1214,14 @@ function createParentalContent(section) {
     "daily_quota_minutes",
     _("Daily time quota (minutes)"),
     _(
-      "Limit device network usage per day. When the quota is exhausted, the device is blocked until midnight. 0 disables the limit.",
+      "Limit device network usage per day. When the quota is exhausted, internet access is blocked until midnight. 0 disables the limit.",
     ),
   );
   o.modalonly = true;
   o.rmempty = true;
   o.default = "0";
   o.placeholder = "0";
+  o.depends("target", "all");
   o.validate = function (_sectionId, value) {
     if (value === "" || value === null || value === undefined) return true;
     const n = Number(value);

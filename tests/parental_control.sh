@@ -353,5 +353,136 @@ if grep -Eq "parental_(forward|control).*192\.168\.1\.222.*counter.*drop" "$NFT_
   fail "24/7 Schedule with profile daily_quota_minutes must NOT add static counter drop"
 fi
 
-printf 'Parental control, profiles and schedule tests passed\n'
+# ─── Test: Parental Quota tick unblocks device when quota is increased ────────
+PARENTAL_QUOTA="$TACHYON_LIB/service/parental_quota.uc"
+QUOTA_STATE="$WORK_DIR/parental_quotas.json"
+MOCK_UCI_STATE="$WORK_DIR/uci_quota_state.json"
 
+cat >"$WORK_DIR/bin/logger" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+chmod +x "$WORK_DIR/bin/logger"
+
+cat >"$WORK_DIR/bin/ip" <<'EOF'
+#!/usr/bin/env bash
+if [ "$1" = "neigh" ] && [ "$2" = "show" ]; then
+  echo "192.168.1.249 dev br-lan lladdr 00:11:22:33:44:55 REACHABLE"
+fi
+exit 0
+EOF
+chmod +x "$WORK_DIR/bin/ip"
+
+# 1. State where device was previously blocked at 5 minutes
+cat >"$QUOTA_STATE" <<'JSON'
+{
+  "date": "2026-09-12",
+  "devices": {
+    "192.168.1.249": {
+      "minutes": 5,
+      "blocked": true
+    }
+  },
+  "guest_devices": {}
+}
+JSON
+
+# Quota increased to 60 minutes in schedule (target: all)
+cat >"$MOCK_UCI_STATE" <<'JSON'
+{
+  "schedule": [
+    {
+      ".name": "kids_quota",
+      "enabled": "1",
+      "device_ip": [ "192.168.1.249" ],
+      "target": "all",
+      "daily_quota_minutes": "60"
+    }
+  ]
+}
+JSON
+
+rm -f "$NFT_LOG"
+touch "$NFT_LOG"
+PARENTAL_QUOTA_STATE_FILE="$QUOTA_STATE" TACHYON_UCI_STATE_FILE="$MOCK_UCI_STATE" \
+  ucode -L "$TACHYON_LIB" "$PARENTAL_QUOTA" tick
+
+# Device must now be unblocked in state
+grep -Eq '"192\.168\.1\.249":\s*\{[^}]*"blocked":\s*false' "$QUOTA_STATE" || \
+  fail "Device 192.168.1.249 should be unblocked after daily_quota_minutes increased to 60"
+
+# Verify nftables unblock (set flushed and device not re-added) was executed
+assert_contains "$NFT_LOG" "flush	set	inet	TachyonTable	tachyon_quota_block_ip" "nft flush set for unblocked device"
+if grep -q "add.*tachyon_quota_block_ip.*192\.168\.1\.249" "$NFT_LOG"; then
+  fail "192.168.1.249 should not be in tachyon_quota_block_ip after quota increase"
+fi
+
+# 2. Schedule with target=domains must NOT be treated as a network-wide quota in parental_quota.uc
+cat >"$MOCK_UCI_STATE" <<'JSON'
+{
+  "schedule": [
+    {
+      ".name": "domain_sched",
+      "enabled": "1",
+      "device_ip": [ "192.168.1.249" ],
+      "target": "domains",
+      "blocked_domains": [ "youtube.com" ],
+      "daily_quota_minutes": "5"
+    }
+  ]
+}
+JSON
+
+# Initial clean state with 0 minutes
+cat >"$QUOTA_STATE" <<'JSON'
+{
+  "date": "2026-09-12",
+  "devices": {},
+  "guest_devices": {}
+}
+JSON
+
+PARENTAL_QUOTA_STATE_FILE="$QUOTA_STATE" TACHYON_UCI_STATE_FILE="$MOCK_UCI_STATE" \
+  ucode -L "$TACHYON_LIB" "$PARENTAL_QUOTA" tick
+
+# Schedule with target=domains must not have been added to devices or blocked
+if grep -q '"192\.168\.1\.249"' "$QUOTA_STATE"; then
+  fail "Schedule with target=domains must NOT track device screen-time quota"
+fi
+
+# 3. Disabling all rules must unblock previously blocked devices and flush nft set
+cat >"$QUOTA_STATE" <<'JSON'
+{
+  "date": "2026-09-12",
+  "devices": {
+    "192.168.1.249": {
+      "minutes": 60,
+      "blocked": true
+    }
+  },
+  "guest_devices": {}
+}
+JSON
+
+# Empty/disabled UCI rules
+cat >"$MOCK_UCI_STATE" <<'JSON'
+{
+  "schedule": []
+}
+JSON
+
+rm -f "$NFT_LOG"
+touch "$NFT_LOG"
+PARENTAL_QUOTA_STATE_FILE="$QUOTA_STATE" TACHYON_UCI_STATE_FILE="$MOCK_UCI_STATE" \
+  ucode -L "$TACHYON_LIB" "$PARENTAL_QUOTA" tick
+
+# Device must now be unblocked in state
+grep -Eq '"192\.168\.1\.249":\s*\{[^}]*"blocked":\s*false' "$QUOTA_STATE" || \
+  fail "Device 192.168.1.249 should be unblocked when all rules are disabled/removed"
+
+assert_contains "$NFT_LOG" "flush	set	inet	TachyonTable	tachyon_quota_block_ip" "nft flush set when rule removed"
+if grep -q "add.*tachyon_quota_block_ip.*192\.168\.1\.249" "$NFT_LOG"; then
+  fail "192.168.1.249 should not be added to block set when rules removed"
+fi
+
+printf 'Parental control, profiles and schedule tests passed\n'

@@ -373,5 +373,47 @@ assert_contains "$OUT_PROF" '192.168.1.180/32' "profile: SafeSearch scoped to pr
 # Profile blocked domains must be present in DNS rules
 assert_contains "$OUT_PROF" 'roblox.com' "profile: roblox.com blocked"
 
-printf 'Content blocking and family profile checks passed\n'
+# ─── Schedule with blocked_domains AND daily_quota_minutes must generate DNS block rules ───
+cat >"$WORK_DIR/fixture_quota_domains.json" <<'JSON'
+{
+  "settings": {
+    ".name": "settings",
+    ".type": "settings",
+    "config_path": "/tmp/sing-box/config.json",
+    "dns_server": "1.1.1.1",
+    "service_listen_address": "127.0.0.1"
+  },
+  "section": [
+    {
+      ".name": "sec_proxy",
+      "enabled": "1",
+      "action": "connection",
+      "label": "Main proxy",
+      "selector_proxy_links": [ "socks5://127.0.0.1:1080#Proxy" ]
+    }
+  ],
+  "schedule": [
+    {
+      ".name": "quota_with_domains",
+      "enabled": "1",
+      "device_ip": [ "192.168.1.249" ],
+      "target": "domains",
+      "blocked_domains": [ "tiktok.com" ],
+      "daily_quota_minutes": "5"
+    }
+  ]
+}
+JSON
 
+OUT_QD="$WORK_DIR/out_quota_domains.json"
+generate_config "$WORK_DIR/fixture_quota_domains.json" "$OUT_QD"
+assert_contains "$OUT_QD" '"tag": "dns-block-in"' "quota+domains: dns-block-in inbound"
+assert_contains "$OUT_QD" 'tiktok.com' "quota+domains: tiktok.com must be in DNS block rules"
+assert_contains "$OUT_QD" '192.168.1.249/32' "quota+domains: 192.168.1.249 must be scoped"
+
+rm -f "$NFT_LOG"
+touch "$NFT_LOG"
+nft_ucode nft-add-dns-block-rules-fixture "$WORK_DIR/fixture_quota_domains.json" "tachyon"
+assert_contains "$NFT_LOG" "192.168.1.249" "quota+domains: nftables DNS redirect rule must be generated"
+
+printf 'Content blocking and family profile checks passed\n'
