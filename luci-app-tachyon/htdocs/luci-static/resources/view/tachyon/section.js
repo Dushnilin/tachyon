@@ -1674,6 +1674,12 @@ const SettingsDynamicList = form.DynamicList.extend({
         itemIds,
         this.ownerOption,
       );
+      itemIds.forEach((itemId, index) => {
+        uci.set(UCI_PACKAGE, itemId, "order", `${index}`);
+      });
+      if (typeof uci.reorder === "function") {
+        uci.reorder(UCI_PACKAGE, itemIds);
+      }
       if (typeof this.afterMaterializeChildItems === "function") {
         this.afterMaterializeChildItems(ownerId, itemIds);
       }
@@ -4823,16 +4829,28 @@ function getChildItemIds(section_id, typeName, ownerOption) {
     .sections(UCI_PACKAGE, typeName)
     .filter((item) => item[ownerKey] === section_id);
 
-  if (typeName === "priority_level") {
-    items.sort((a, b) => {
+  items.sort((a, b) => {
+    const hasOrderA = a && a.order != null && a.order !== "";
+    const hasOrderB = b && b.order != null && b.order !== "";
+    if (hasOrderA && hasOrderB) {
       const orderDiff = childItemOrder(a) - childItemOrder(b);
       if (orderDiff !== 0) {
         return orderDiff;
       }
+    } else if (hasOrderA) {
+      return -1;
+    } else if (hasOrderB) {
+      return 1;
+    }
 
+    if (typeName === "priority_level") {
       return `${a[".name"] || ""}`.localeCompare(`${b[".name"] || ""}`);
-    });
-  }
+    }
+
+    const indexA = a && a[".index"] != null ? a[".index"] : 0;
+    const indexB = b && b[".index"] != null ? b[".index"] : 0;
+    return indexA - indexB;
+  });
 
   return items.map((item) => item[".name"]).filter(Boolean);
 }
@@ -10316,6 +10334,11 @@ function createSectionContent(section) {
   };
   o.renderListItemLabel = function (section_id, itemId) {
     return childItemInputValue(section_id, itemId, "subscription_url", "url");
+  };
+  o.afterMaterializeChildItems = function (_section_id, itemIds) {
+    itemIds.forEach((itemId, index) => {
+      uci.set(UCI_PACKAGE, itemId, "order", `${index}`);
+    });
   };
   o.validate = validateSubscriptionUrlEntry;
   o.validate = function (section_id, value) {

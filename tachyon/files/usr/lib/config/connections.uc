@@ -165,11 +165,28 @@ function owned_child_section(parent, type_name, item_id) {
     return option(child, "section", "") == section_name(parent) ? child : null;
 }
 
+function child_item_sort(left, right) {
+    let left_has_order = (raw_option(left, "order") != null && raw_option(left, "order") != "");
+    let right_has_order = (raw_option(right, "order") != null && raw_option(right, "order") != "");
+    if (left_has_order && right_has_order) {
+        let left_order = int(option(left, "order", "0"), 10);
+        let right_order = int(option(right, "order", "0"), 10);
+        if (left_order != right_order)
+            return left_order < right_order ? -1 : 1;
+    } else if (left_has_order) {
+        return -1;
+    } else if (right_has_order) {
+        return 1;
+    }
+    return 0;
+}
+
 function child_items(parent, type_name) {
     let result = [];
     for (let child in object_or_empty(object_or_empty(get_item_sections())[type_name]).list || [])
         if (option(child, "section", "") == section_name(parent))
             push(result, child);
+    sort(result, child_item_sort);
     return result;
 }
 
@@ -179,6 +196,7 @@ function child_items_by_owner(type_name, owner_key, owner_value) {
     for (let child in object_or_empty(object_or_empty(get_item_sections())[type_name]).list || [])
         if (option(child, owner_key, "") == owner_value)
             push(result, child);
+    sort(result, child_item_sort);
     return result;
 }
 
