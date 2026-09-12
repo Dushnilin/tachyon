@@ -19,14 +19,13 @@ initd_ucode() {
 }
 
 sync_service_triggers() {
-    _procd_call sync_service_triggers_payload
+    [ -n "$NAME" ] || return 0
+    _procd_service_type=set _procd_call sync_service_triggers_payload >/dev/null 2>&1 || true
 }
 
 sync_service_triggers_payload() {
-    json_init
     json_add_string name "$NAME"
     service_triggers
-    _procd_ubus_call set >/dev/null 2>&1 || true
 }
 
 start_service() {
@@ -34,7 +33,6 @@ start_service() {
     initd_ucode start-service "$1" "$$"
     TACHYON_LAST_START_STATUS="$?"
     trap - INT TERM
-    [ "$TACHYON_LAST_START_STATUS" = "0" ] && sync_service_triggers
     return "$TACHYON_LAST_START_STATUS"
 }
 

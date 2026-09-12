@@ -677,6 +677,27 @@ function add_mixed_proxy_for_section(config, section, service_address) {
         inbound.users = [{ username, password }];
     }
     push(config.inbounds, inbound);
+    if (type(config.route) == "object" && type(config.route.rules) == "array" &&
+        length(config.route.rules) > 0 && config.route.rules[0].action == "sniff" &&
+        type(config.route.rules[0].inbound) == "array")
+        push(config.route.rules[0].inbound, inbound.tag);
+
+    push(config.route.rules, {
+        action: "hijack-dns",
+        inbound: inbound.tag,
+        port: 53
+    });
+    push(config.route.rules, {
+        action: "hijack-dns",
+        inbound: inbound.tag,
+        protocol: "dns"
+    });
+    push(config.route.rules, {
+        action: "route",
+        inbound: inbound.tag,
+        ip_is_private: true,
+        outbound: runtime_constants.DIRECT_OUTBOUND_TAG
+    });
     let section_outbound = runtime_constants.outbound_tag(section[".name"]);
     generator_routes.push_section_route_rule(config, {
         action: "route",
@@ -706,9 +727,10 @@ function add_direct_bypass_proxy(config, settings, service_address) {
     if (listen_port < 1 || listen_port > 65535)
         runtime_generate_unsupported("direct bypass port is invalid");
 
+    let inbound_tag = runtime_constants.DIRECT_BYPASS_INBOUND_TAG;
     push(config.inbounds, {
         type: "mixed",
-        tag: runtime_constants.DIRECT_BYPASS_INBOUND_TAG,
+        tag: inbound_tag,
         listen,
         listen_port
     });
@@ -717,9 +739,30 @@ function add_direct_bypass_proxy(config, settings, service_address) {
         tag: runtime_constants.DIRECT_BYPASS_OUTBOUND_TAG,
         routing_mark: runtime_constants.OUTBOUND_MARK
     });
+    if (type(config.route) == "object" && type(config.route.rules) == "array" &&
+        length(config.route.rules) > 0 && config.route.rules[0].action == "sniff" &&
+        type(config.route.rules[0].inbound) == "array")
+        push(config.route.rules[0].inbound, inbound_tag);
+
+    push(config.route.rules, {
+        action: "hijack-dns",
+        inbound: inbound_tag,
+        port: 53
+    });
+    push(config.route.rules, {
+        action: "hijack-dns",
+        inbound: inbound_tag,
+        protocol: "dns"
+    });
     push(config.route.rules, {
         action: "route",
-        inbound: runtime_constants.DIRECT_BYPASS_INBOUND_TAG,
+        inbound: inbound_tag,
+        ip_is_private: true,
+        outbound: runtime_constants.DIRECT_OUTBOUND_TAG
+    });
+    push(config.route.rules, {
+        action: "route",
+        inbound: inbound_tag,
         outbound: runtime_constants.DIRECT_BYPASS_OUTBOUND_TAG
     });
 }
@@ -730,6 +773,27 @@ function add_service_mixed_proxy_inbound(config, tag_name, listen_port, outbound
         tag: tag_name,
         listen: runtime_constants.SERVICE_MIXED_INBOUND_ADDRESS,
         listen_port
+    });
+    if (type(config.route) == "object" && type(config.route.rules) == "array" &&
+        length(config.route.rules) > 0 && config.route.rules[0].action == "sniff" &&
+        type(config.route.rules[0].inbound) == "array")
+        push(config.route.rules[0].inbound, tag_name);
+
+    push(config.route.rules, {
+        action: "hijack-dns",
+        inbound: tag_name,
+        port: 53
+    });
+    push(config.route.rules, {
+        action: "hijack-dns",
+        inbound: tag_name,
+        protocol: "dns"
+    });
+    push(config.route.rules, {
+        action: "route",
+        inbound: tag_name,
+        ip_is_private: true,
+        outbound: runtime_constants.DIRECT_OUTBOUND_TAG
     });
     generator_routes.push_section_route_rule(config, {
         action: "route",

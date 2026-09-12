@@ -1301,6 +1301,9 @@ assert(outbound(matchers, "bypass-out").type == "direct", "bypass fallback outbo
 assert(outbound(matchers, "proxy-1-out").detour == "detour-out", "connection URL outbound detour");
 let mixed = inbound(matchers, "proxy-mixed-in");
 assert(mixed && mixed.listen_port == 19090 && mixed.users[0].username == "user", "mixed inbound auth");
+assert(route_rule(matchers, r => r.inbound == "proxy-mixed-in" && r.action == "hijack-dns" && r.port == 53) != null, "mixed inbound hijack-dns port 53");
+assert(route_rule(matchers, r => r.inbound == "proxy-mixed-in" && r.action == "hijack-dns" && r.protocol == "dns") != null, "mixed inbound hijack-dns protocol dns");
+assert(route_rule(matchers, r => r.inbound == "proxy-mixed-in" && r.ip_is_private == true && r.outbound == "direct-out") != null, "mixed inbound private IP bypass");
 assert(route_rule(matchers, r => r.inbound == "proxy-mixed-in" && r.outbound == "proxy-out") != null, "mixed inbound route");
 assert(dns_rule(matchers, r => contains(r.domain_suffix, "example.org")).server == "dns-server", "bypass domain real DNS rule");
 assert(dns_rule(matchers, r => contains(r.domain_suffix, "proxy.example.org")).server == "fakeip-server", "proxy domain FakeIP DNS rule");

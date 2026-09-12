@@ -370,16 +370,17 @@ function restart_qwdtt_service() {
 function start_runtime() {
     let sections = enabled_sections();
     if (length(sections) == 0) {
-        log_message("No enabled WDTT sections found, disabling provider");
         if (qwdtt_installed()) {
-            system("uci set " + MODE + ".wdtt_state.enabled='0'");
-            system("uci commit " + MODE);
-            command_success_from_args([cfg.qwdtt_service_init, "stop"]);
+            system("uci set " + MODE + ".wdtt_state.enabled='0' 2>/dev/null || true");
+            system("uci commit " + MODE + " 2>/dev/null || true");
+            if (fs.stat(cfg.qwdtt_service_init) != null)
+                command_success_from_args([cfg.qwdtt_service_init, "stop"]);
         }
-        else {
-            system("uci set wdtt.settings.enabled='0'");
-            system("uci commit wdtt");
-            command_success_from_args([cfg.service_init, "stop"]);
+        else if (fs.stat(cfg.config_path) != null || fs.stat(cfg.service_init) != null) {
+            system("uci set wdtt.settings.enabled='0' 2>/dev/null || true");
+            system("uci commit wdtt 2>/dev/null || true");
+            if (fs.stat(cfg.service_init) != null)
+                command_success_from_args([cfg.service_init, "stop"]);
         }
         return true;
     }
@@ -431,16 +432,19 @@ function start_runtime() {
 
 function stop_runtime() {
     if (qwdtt_installed()) {
-        system("uci set " + MODE + ".wdtt_state.enabled='0'");
-        system("uci commit " + MODE);
-        command_success_from_args([cfg.qwdtt_service_init, "stop"]);
+        system("uci set " + MODE + ".wdtt_state.enabled='0' 2>/dev/null || true");
+        system("uci commit " + MODE + " 2>/dev/null || true");
+        if (fs.stat(cfg.qwdtt_service_init) != null)
+            command_success_from_args([cfg.qwdtt_service_init, "stop"]);
+        log_message("WDTT provider stopped");
     }
-    else {
-        system("uci set wdtt.settings.enabled='0'");
-        system("uci commit wdtt");
-        command_success_from_args([cfg.service_init, "stop"]);
+    else if (fs.stat(cfg.config_path) != null || fs.stat(cfg.service_init) != null) {
+        system("uci set wdtt.settings.enabled='0' 2>/dev/null || true");
+        system("uci commit wdtt 2>/dev/null || true");
+        if (fs.stat(cfg.service_init) != null)
+            command_success_from_args([cfg.service_init, "stop"]);
+        log_message("WDTT provider stopped");
     }
-    log_message("WDTT provider stopped");
     return true;
 }
 

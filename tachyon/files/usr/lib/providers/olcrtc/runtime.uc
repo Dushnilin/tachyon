@@ -273,8 +273,8 @@ function write_olcrtc_yaml_config(section, connection) {
 function start_runtime() {
     let sections = enabled_sections();
     if (length(sections) == 0) {
-        log_message("No enabled OlcRTC sections found, stopping service");
-        command_success_from_args([cfg.service_init, "stop"]);
+        if (service_init_exists())
+            command_success_from_args([cfg.service_init, "stop"]);
         return true;
     }
 
@@ -323,8 +323,10 @@ function start_runtime() {
 }
 
 function stop_runtime() {
-    command_success_from_args([cfg.service_init, "stop"]);
-    log_message("OlcRTC provider stopped");
+    if (service_init_exists()) {
+        command_success_from_args([cfg.service_init, "stop"]);
+        log_message("OlcRTC provider stopped");
+    }
     return true;
 }
 
