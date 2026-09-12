@@ -239,6 +239,8 @@ function write_state(state) {
 }
 
 function device_active(ident) {
+    if (!ident || trim(as_string(ident)) == "")
+        return false;
     for (let line in split(command_output_from_args([ "ip", "neigh", "show" ]), "\n")) {
         line = as_string(line);
         if (index(lc(line), ident) < 0)
@@ -289,10 +291,18 @@ function nft_insert_quota_rule(chain, match_type) {
     return rc == 0;
 }
 
+function nft_chain_exists(chain) {
+    let rc = command_status(command_from_args([ "nft", "list", "chain", "inet", NFT_TABLE_NAME, chain ]) + " >/dev/null 2>&1");
+    return rc == 0;
+}
+
 function ensure_nft_rules() {
     // The whole table disappears on every Tachyon nft rebuild; recreate our
     // pieces on demand so ticks self-heal without touching apply.uc ordering.
     if (!nft_table_exists())
+        return false;
+
+    if (!nft_chain_exists("parental_control") || !nft_chain_exists("parental_forward"))
         return false;
 
     // Create quota sets if missing
@@ -343,10 +353,13 @@ function cron_line() {
 function write_crontab(lines) {
     let text = "";
     for (let i = 0; i < length(lines); i++) {
-        if (as_string(lines[i]) == "" && i == length(lines) - 1)
+        let l = trim(as_string(lines[i]));
+        if (l == "")
             continue;
-        text += as_string(lines[i]) + "\n";
+        text += l + "\n";
     }
+    if (text == "")
+        text = "\n";
     let tmp = "/tmp/tachyon-parental-cron." + as_string(int(time()));
     if (!fs.writefile(tmp, text))
         return false;
@@ -559,7 +572,11 @@ function reset_quotas() {
     return 0;
 }
 
-let mode = ARGV[0] || "";
+let mode = "";
+for (let a in ARGV) {
+    let t = trim(as_string(a));
+    if (t != "") { mode = t; break; }
+}
 
 if (mode == "tick")
     exit(tick());

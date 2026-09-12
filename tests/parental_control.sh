@@ -322,5 +322,36 @@ if grep -Eq "parental_(forward|control).*192\.168\.1\.181.*counter.*drop" "$NFT_
   fail "Schedule with target=domains must NOT add global counter drop in parental_forward/parental_control"
 fi
 
+# ─── 24/7 Schedule referencing Profile with daily_quota_minutes must NOT drop statically
+cat >"$WORK_DIR/quota_schedule_fixture.json" <<'JSON'
+{
+  "profile": [
+    {
+      ".name": "prof_quota_only",
+      "enabled": "1",
+      "device_ip": [ "192.168.1.222" ],
+      "daily_quota_minutes": "120"
+    }
+  ],
+  "schedule": [
+    {
+      ".name": "quota_24_7_sched",
+      "enabled": "1",
+      "profile": [ "prof_quota_only" ],
+      "target": "all",
+      "action": "block"
+    }
+  ]
+}
+JSON
+
+rm -f "$NFT_LOG"
+touch "$NFT_LOG"
+nft_ucode nft-add-schedule-rules-fixture "$WORK_DIR/quota_schedule_fixture.json" "tachyon"
+
+if grep -Eq "parental_(forward|control).*192\.168\.1\.222.*counter.*drop" "$NFT_LOG"; then
+  fail "24/7 Schedule with profile daily_quota_minutes must NOT add static counter drop"
+fi
+
 printf 'Parental control, profiles and schedule tests passed\n'
 

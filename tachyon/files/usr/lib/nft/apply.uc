@@ -959,6 +959,25 @@ function resolve_schedule_devices(schedule, profiles) {
     return result;
 }
 
+function resolve_schedule_quota_minutes(schedule, profiles) {
+    let q = int(option(schedule, "daily_quota_minutes", 0));
+    if (q > 0) return q;
+    let prof_names = list_option(schedule, "profile");
+    if (length(prof_names) == 0) {
+        let single_p = option(schedule, "profile", "");
+        if (single_p != "") prof_names = [ single_p ];
+    }
+    for (let p_name in prof_names) {
+        for (let p in (profiles || [])) {
+            if (as_string(object_or_empty(p)[".name"]) == p_name && bool_option(p, "enabled", true)) {
+                let pq = int(option(p, "daily_quota_minutes", 0));
+                if (pq > 0) return pq;
+            }
+        }
+    }
+    return 0;
+}
+
 function nft_add_profile_doh_block_rules(profiles, table) {
     if (!profiles || length(profiles) == 0)
         return true;
@@ -1055,7 +1074,7 @@ function nft_add_schedule_rules_from_schedules(schedules, sections, table, profi
                     [ "meta", "hour", sprintf("\"%s\"-\"%s\"", interval[0], interval[1]) ] : null;
                 let base_match = nft_schedule_rule_base_match(dev_str, is_mac, family, days_args, time_args);
                 
-                let quota_minutes = int(option(schedule, "daily_quota_minutes", 0));
+                let quota_minutes = resolve_schedule_quota_minutes(schedule, profiles);
                 let has_sched_domains = length(list_option(schedule, "blocked_domains")) > 0 || option(schedule, "blocked_domains", "") != "";
                 if ((target == "all" || (length(target_sec_names) == 0 && target != "sections" && target != "domains")) && !has_sched_domains && target != "domains") {
                     if (always_on && quota_minutes > 0)
@@ -1163,7 +1182,7 @@ function nft_add_dns_block_rules_from_schedules(schedules, table, profiles) {
         let intervals = nft_schedule_time_intervals(start_time, end_time);
         let days_args = nft_schedule_days_match_args(schedule);
         let always_on = length(intervals) == 0;
-        let quota_minutes = int(option(schedule, "daily_quota_minutes", 0));
+        let quota_minutes = resolve_schedule_quota_minutes(schedule, profiles);
         if (always_on && quota_minutes > 0)
             continue;
 

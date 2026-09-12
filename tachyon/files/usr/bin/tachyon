@@ -363,12 +363,16 @@ function run_agent(user_args) {
 }
 
 function main() {
-    let command = ARGV[0] || "";
+    let start_idx = 0;
+    while (start_idx < length(ARGV) && trim(as_string(ARGV[start_idx])) == "")
+        start_idx++;
+
+    let command = ARGV[start_idx] || "";
 
     // agent command gets all remaining args passed verbatim
     if (command == "agent") {
         let user_args = [];
-        for (let i = 1; i < length(ARGV); i++)
+        for (let i = start_idx + 1; i < length(ARGV); i++)
             push(user_args, ARGV[i]);
         return run_agent(user_args);
     }
@@ -380,7 +384,7 @@ function main() {
     }
 
     let user_args = [];
-    for (let i = 1; i < length(ARGV); i++)
+    for (let i = start_idx + 1; i < length(ARGV); i++)
         push(user_args, ARGV[i]);
 
     return run_spec(command, spec, user_args);
