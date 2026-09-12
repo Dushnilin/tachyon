@@ -6649,3 +6649,33 @@ msgstr "Разрешить только: "
 
 msgid "Block: "
 msgstr "Блокировать: "
+
+msgid "Support Development"
+msgstr "Поддержать разработку"
+
+msgid "If Tachyon powers your daily networking and keeps your connection fast and secure, consider supporting ongoing development! ☕ 🧀 🌭"
+msgstr "Если Tachyon помогает вам и делает работу в сети комфортной, вы можете поддержать проект и автора! ☕ 🧀 🌭"
+
+msgid "Credit Cards / SBP / Tinkoff Pay"
+msgstr "Карты РФ / СБП / Tinkoff Pay"
+
+msgid "Quick donation via Russian bank cards or SBP"
+msgstr "Быстрый перевод картами РФ или через СБП"
+
+msgid "Support on CloudTips"
+msgstr "Поддержать проект на CloudTips"
+
+msgid "Cryptocurrency"
+msgstr "Криптовалюта"
+
+msgid "Copy Address"
+msgstr "Скопировать"
+
+msgid "Copied!"
+msgstr "Скопировано!"
+
+msgid "Address copied to clipboard"
+msgstr "Адрес скопирован в буфер обмена"
+
+msgid "Failed to copy address"
+msgstr "Не удалось скопировать адрес"

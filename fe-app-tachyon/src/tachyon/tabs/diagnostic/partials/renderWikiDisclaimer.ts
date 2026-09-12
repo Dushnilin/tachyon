@@ -1,6 +1,11 @@
-import { renderBookOpenTextIcon24, renderSendIcon24 } from '../../../../icons';
+import {
+  renderBookOpenTextIcon24,
+  renderHeartIcon24,
+  renderSendIcon24,
+} from '../../../../icons';
 import { renderButton } from '../../../../partials';
 import { insertIf } from '../../../../helpers';
+import { renderSupportModal } from './renderSupportModal';
 
 export function renderWikiDisclaimer(kind: 'default' | 'error' | 'warning') {
   const iconWrap = E('span', {
@@ -46,6 +51,12 @@ export function renderWikiDisclaimer(kind: 'default' | 'error' | 'warning') {
           '_blank',
           'noopener,noreferrer',
         ),
+    }),
+    renderButton({
+      classNames: ['cbi-button-save'],
+      icon: renderHeartIcon24,
+      text: _('Support Development'),
+      onClick: () => renderSupportModal(),
     }),
   ]);
 }
