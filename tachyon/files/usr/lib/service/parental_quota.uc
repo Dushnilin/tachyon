@@ -235,7 +235,7 @@ function write_state(state) {
         log_message("failed to write state file", "warn");
         return;
     }
-    command_status(command_from_args([ "mv", "-f", tmp, STATE_FILE ]));
+    command_status(command_from_args([ "mv", "-f", tmp, STATE_FILE ]) + " 2>/dev/null");
 }
 
 function device_active(ident) {
@@ -347,7 +347,7 @@ function crontab_lines() {
 }
 
 function cron_line() {
-    return "* * * * * " + TACHYON_BIN + " parental_quota_tick " + CRON_MARKER;
+    return "* * * * * " + TACHYON_BIN + " parental_quota_tick >/dev/null 2>&1 " + CRON_MARKER;
 }
 
 function write_crontab(lines) {
@@ -363,17 +363,17 @@ function write_crontab(lines) {
     let tmp = "/tmp/tachyon-parental-cron." + as_string(int(time()));
     if (!fs.writefile(tmp, text))
         return false;
-    let ok = command_status(command_from_args([ "crontab", tmp ])) == 0;
+    let ok = command_status(command_from_args([ "crontab", tmp ]) + " 2>/dev/null") == 0;
     fs.unlink(tmp);
     return ok;
 }
 
 function remove_cron() {
-    let line = cron_line();
     let changed = false;
     let lines = [];
     for (let existing in crontab_lines()) {
-        if (trim(as_string(existing)) == line) {
+        let l = trim(as_string(existing));
+        if (index(l, "parental_quota_tick") >= 0 || index(l, CRON_MARKER) >= 0) {
             changed = true;
             continue;
         }
@@ -390,14 +390,33 @@ function install_cron() {
     if (length(quota_schedules()) == 0 && !guest_quota_active())
         return remove_cron();
 
-    let line = cron_line();
+    let target = cron_line();
     let lines = crontab_lines();
-    for (let existing in lines)
-        if (trim(as_string(existing)) == line)
-            return 0;
-    push(lines, line);
+    let updated = false;
+    let found = false;
+    let new_lines = [];
+    for (let existing in lines) {
+        let l = trim(as_string(existing));
+        if (index(l, "parental_quota_tick") >= 0 || index(l, CRON_MARKER) >= 0) {
+            found = true;
+            if (l != target) {
+                push(new_lines, target);
+                updated = true;
+            } else {
+                push(new_lines, existing);
+            }
+            continue;
+        }
+        push(new_lines, existing);
+    }
+    if (!found) {
+        push(new_lines, target);
+        updated = true;
+    }
+    if (!updated)
+        return 0;
     log_message("cron job installed", "debug");
-    return write_crontab(lines) ? 0 : 1;
+    return write_crontab(new_lines) ? 0 : 1;
 }
 
 function blocked_lists(state) {

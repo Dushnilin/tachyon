@@ -1260,7 +1260,22 @@ function add_source_aware_dns_fallback(config, source_aware_dns) {
         source_ip_cidr: single_or_array(source_aware_dns),
         rewrite_ttl
     };
-    unshift(config.dns.rules, rule);
+    push(config.dns.rules, rule);
+}
+
+function add_excluded_clients_dns_rule(config, settings) {
+    let excluded_cidrs = get_excluded_client_cidrs(settings);
+    if (length(excluded_cidrs) == 0)
+        return;
+
+    let rewrite_ttl = int_option(settings, "dns_rewrite_ttl", "60");
+    unshift(config.dns.rules, {
+        action: "route",
+        server: runtime_constants.DNSMASQ_DNS_SERVER_TAG,
+        inbound: [ runtime_constants.SOURCE_DNS_INBOUND_TAG ],
+        source_ip_cidr: single_or_array(excluded_cidrs),
+        rewrite_ttl
+    });
 }
 
 function add_excluded_clients_route_rule(config, settings) {
@@ -1320,6 +1335,7 @@ function generate_config(output_path, service_address, mwan3_active, supports_xh
 
     add_server_routes(config, servers, sections);
     add_source_aware_dns_fallback(config, source_aware_dns);
+    add_excluded_clients_dns_rule(config, settings);
     add_excluded_clients_route_rule(config, settings);
 
     // Append dns_hosts predefined rules AFTER section DNS rules so that

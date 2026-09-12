@@ -73,25 +73,32 @@ function probe_timeout(settings_value) {
 }
 
 function probe_port(kind, index_value, timeout_seconds) {
-    let args = [
-        "dig", "-p", as_string(runtime_dns.health_port(kind, index_value)),
-        "@" + runtime_dns.DNS_HEALTH_ADDRESS,
-        CHECK_DOMAIN, "A", "+short",
-        "+timeout=" + as_string(timeout_seconds), "+tries=1"
-    ];
-    for (let line in split(command_output_from_args(args), "\n"))
+    let port = as_string(runtime_dns.health_port(kind, index_value));
+    let t_sec = int(timeout_seconds || 2);
+    if (t_sec < 1) t_sec = 1;
+    let bound_sec = t_sec + 2;
+    let prefix = common.timeout_prefix();
+    let prefix_str = length(prefix) > 0 ? join(" ", prefix) + " " + as_string(bound_sec) + " " : "";
+    let dig_cmd = prefix_str + "dig -p " + port + " @" + runtime_dns.DNS_HEALTH_ADDRESS +
+        " " + CHECK_DOMAIN + " A +short +time=" + as_string(t_sec) + " +timeout=" + as_string(t_sec) + " +tries=1 </dev/null 2>/dev/null";
+    let output = common.command_output(dig_cmd);
+    for (let line in split(output, "\n"))
         if (core_ip.valid_ipv4(trim(as_string(line))))
             return true;
     return false;
 }
 
 function probe_canonical_main(timeout_seconds) {
-    let args = [
-        "dig", "-p", as_string(runtime_dns.health_port("active", 0)),
-        "@" + runtime_dns.DNS_HEALTH_ADDRESS, CHECK_DOMAIN, "A", "+short",
-        "+timeout=" + as_string(timeout_seconds), "+tries=1"
-    ];
-    for (let line in split(command_output_from_args(args), "\n"))
+    let port = as_string(runtime_dns.health_port("active", 0));
+    let t_sec = int(timeout_seconds || 2);
+    if (t_sec < 1) t_sec = 1;
+    let bound_sec = t_sec + 2;
+    let prefix = common.timeout_prefix();
+    let prefix_str = length(prefix) > 0 ? join(" ", prefix) + " " + as_string(bound_sec) + " " : "";
+    let dig_cmd = prefix_str + "dig -p " + port + " @" + runtime_dns.DNS_HEALTH_ADDRESS +
+        " " + CHECK_DOMAIN + " A +short +time=" + as_string(t_sec) + " +timeout=" + as_string(t_sec) + " +tries=1 </dev/null 2>/dev/null";
+    let output = common.command_output(dig_cmd);
+    for (let line in split(output, "\n"))
         if (core_ip.valid_ipv4(trim(as_string(line))))
             return true;
     return false;
@@ -354,12 +361,14 @@ function stop_runtime() {
     if (process_running(pid))
         command_success_from_args([ "kill", "-9", pid ]);
     remove_file(PID_FILE);
+    system(common.kill_matching_command("dig.*" + runtime_dns.DNS_HEALTH_ADDRESS));
     return 0;
 }
 
 function start_runtime() {
     let cfg = settings();
     stop_runtime();
+    system(common.kill_matching_command("dig.*" + runtime_dns.DNS_HEALTH_ADDRESS));
     if (!runtime_dns.failover_enabled(cfg)) {
         remove_file(STATE_FILE);
         return 0;
