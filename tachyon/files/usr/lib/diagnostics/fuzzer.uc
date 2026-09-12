@@ -101,12 +101,26 @@ function get_zapret2_lua_flags(args_str) {
     return flags;
 }
 
+let _has_timeout = null;
+function get_timeout_prefix(sec) {
+    sec = sec || 8;
+    if (_has_timeout === null) {
+        _has_timeout = (system("command -v timeout >/dev/null 2>&1") == 0);
+    }
+    return _has_timeout ? sprintf("timeout %d ", sec) : "";
+}
+
 let _fuzzer_curl_dns_flags = null;
 function get_fuzzer_curl_dns_flags() {
     if (_fuzzer_curl_dns_flags !== null)
         return _fuzzer_curl_dns_flags;
-    if (system("curl --doh-url https://1.1.1.1/dns-query -V >/dev/null 2>&1") == 0) {
+    let t_pre = get_timeout_prefix(2);
+    if (system(sprintf("%scurl -so /dev/null --doh-url https://1.1.1.1/dns-query --connect-timeout 2 -m 2 https://1.1.1.1/ 2>/dev/null", t_pre)) == 0) {
         _fuzzer_curl_dns_flags = "--doh-url https://1.1.1.1/dns-query ";
+        return _fuzzer_curl_dns_flags;
+    }
+    if (system(sprintf("%scurl -so /dev/null --doh-url https://8.8.8.8/dns-query --connect-timeout 2 -m 2 https://8.8.8.8/ 2>/dev/null", t_pre)) == 0) {
+        _fuzzer_curl_dns_flags = "--doh-url https://8.8.8.8/dns-query ";
         return _fuzzer_curl_dns_flags;
     }
     if (system("curl --dns-servers 8.8.8.8 -V >/dev/null 2>&1") == 0) {
@@ -1761,6 +1775,9 @@ function cleanup_temp_daemons() {
     // Ensure ByeDPI port is released
     system(sprintf("fuser -k %d/tcp >/dev/null 2>&1", BYEDPI_PORT));
 
+    // Terminate any leftover curl probe processes
+    system("killall -9 curl 2>/dev/null || true");
+
     system("nft delete table inet tachyon_fuzzer >/dev/null 2>&1");
     try { fs.unlink(STATE_DIR + "/fuzzer_daemon_err.log"); } catch (e) {}
 }
@@ -1889,8 +1906,10 @@ function detect_dpi_type(target_key, custom_url) {
     system("nft 'add chain inet tachyon_fuzzer bypass_singbox { type route hook output priority -155 ; policy accept; }' 2>/dev/null");
     system(sprintf("nft 'add rule inet tachyon_fuzzer bypass_singbox meta l4proto tcp tcp dport { 80, 443 } meta mark set meta mark | %s counter' 2>/dev/null", FUZZER_OUTBOUND_MARK));
 
+    let t_pre = get_timeout_prefix(8);
     let curl_cmd = sprintf(
-        "curl %s-so /dev/null -w '%%{http_code}\\t%%{time_appconnect}\\t%%{time_starttransfer}\\t%%{speed_download}\\t%%{size_download}' -L --connect-timeout 4 --max-time 6 %s 2>&1; printf '\\t%%d\\n' $?",
+        "%scurl %s-so /dev/null -w '%%{http_code}\\t%%{time_appconnect}\\t%%{time_starttransfer}\\t%%{speed_download}\\t%%{size_download}' -L --connect-timeout 4 --max-time 6 %s 2>&1; printf '\\t%%d\\n' $?",
+        t_pre,
         dns_flags,
         shell_quote(target_url)
     );
@@ -1918,7 +1937,7 @@ function detect_dpi_type(target_key, custom_url) {
     let dm = match(domain, /https?:\/\/([^/]+)/);
     if (dm && dm[1]) domain = dm[1];
 
-    let dns_cmd = sprintf("nslookup %s 2>&1", shell_quote(domain));
+    let dns_cmd = sprintf("%snslookup %s 2>&1", get_timeout_prefix(4), shell_quote(domain));
     let dns_pipe = fs.popen(dns_cmd, "r");
     let dns_out = dns_pipe ? dns_pipe.read("all") : "";
     if (dns_pipe) dns_pipe.close();
@@ -2163,9 +2182,11 @@ function run_probe(engine, args_str, target_key, custom_url) {
         let last_http = 0;
         let last_dpi_verdict = "available";
         
+        let t_pre = get_timeout_prefix(8);
         for (let target_item in urls_list) {
             let curl_cmd = sprintf(
-                "curl -x socks5h://127.0.0.1:%d -so /dev/null -w '%%{http_code}\\t%%{time_appconnect}\\t%%{time_starttransfer}\\t%%{speed_download}\\t%%{size_download}' -L --connect-timeout 4 --max-time 6 %s 2>/dev/null; printf '\\t%%d\\n' $?",
+                "%scurl -x socks5h://127.0.0.1:%d -so /dev/null -w '%%{http_code}\\t%%{time_appconnect}\\t%%{time_starttransfer}\\t%%{speed_download}\\t%%{size_download}' -L --connect-timeout 4 --max-time 6 %s 2>/dev/null; printf '\\t%%d\\n' $?",
+                t_pre,
                 BYEDPI_PORT,
                 shell_quote(target_item.url)
             );
@@ -2308,9 +2329,11 @@ function run_probe(engine, args_str, target_key, custom_url) {
         let last_dpi_verdict = "available";
         let dns_flags = get_fuzzer_curl_dns_flags();
         
+        let t_pre = get_timeout_prefix(8);
         for (let target_item in urls_list) {
             let curl_cmd = sprintf(
-                "curl %s-so /dev/null -w '%%{http_code}\\t%%{time_appconnect}\\t%%{time_starttransfer}\\t%%{speed_download}\\t%%{size_download}' -L --connect-timeout 4 --max-time 6 %s 2>/dev/null; printf '\\t%%d\\n' $?",
+                "%scurl %s-so /dev/null -w '%%{http_code}\\t%%{time_appconnect}\\t%%{time_starttransfer}\\t%%{speed_download}\\t%%{size_download}' -L --connect-timeout 4 --max-time 6 %s 2>/dev/null; printf '\\t%%d\\n' $?",
+                t_pre,
                 dns_flags,
                 shell_quote(target_item.url)
             );
@@ -2337,6 +2360,9 @@ function run_probe(engine, args_str, target_key, custom_url) {
                 if (last_http == 0) last_http = single_res.http_code;
                 if (single_res.error && result.error == "") result.error = single_res.error;
                 last_dpi_verdict = single_res.dpi_verdict || "failed";
+                if (_fuzzer_curl_dns_flags != "") {
+                    _fuzzer_curl_dns_flags = "";
+                }
                 break;
             }
         }
@@ -2432,8 +2458,25 @@ function run_fuzzer_worker(engine, target, custom_url, rule_section, custom_file
             state.current_strategy = strat;
             state.progress_pct = int(((i) / double(total)) * 100.0);
             save_fuzzer_state(state);
-            
-            let probe = run_probe(strat.engine || engine, strat.args, target, custom_url);
+            let probe = null;
+            try {
+                probe = run_probe(strat.engine || engine, strat.args, target, custom_url);
+            } catch (err) {
+                cleanup_temp_daemons();
+                probe = {
+                    success: false,
+                    http_code: 0,
+                    handshake_ms: 0,
+                    ttfb_ms: 0,
+                    speed_kbps: 0,
+                    data_bytes: 0,
+                    data_verified: false,
+                    dpi_verdict: "failed",
+                    score: 0,
+                    error: sprintf("Probe error: %s", err),
+                    sub_probes: []
+                };
+            }
             
             let item_result = {
                 id: strat.id || sprintf("strat_%d", i + 1),
