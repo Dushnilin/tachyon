@@ -10,33 +10,7 @@ let bool_value = common.bool_value;
 
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
 
-function hex_digit_value(value) {
-    let pos = index("0123456789abcdef", lc(as_string(value)));
-    return pos >= 0 ? pos : null;
-}
-
-function parse_number(value) {
-    value = lc(trim(as_string(value)));
-    if (value == "")
-        return null;
-
-    if (substr(value, 0, 2) == "0x") {
-        value = substr(value, 2);
-        if (value == "")
-            return null;
-
-        let result = 0;
-        for (let i = 0; i < length(value); i++) {
-            let digit = hex_digit_value(substr(value, i, 1));
-            if (digit == null)
-                return null;
-            result = result * 16 + digit;
-        }
-        return result;
-    }
-
-    return match(value, /^[0-9]+$/) == null ? null : int(value);
-}
+let parse_number = common.parse_number;
 
 function rule_rows() {
     let rows = [];

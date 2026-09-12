@@ -23,17 +23,8 @@ const PRIORITY_PID_FILE = getenv("TACHYON_PRIORITY_PID_FILE") || RUNTIME_STATE_D
 const PRIORITY_UC = getenv("TACHYON_PRIORITY_UC") || LIB_DIR + "/singbox/priority.uc";
 const DIAGNOSTICS_UC = getenv("TACHYON_DIAGNOSTICS_UC") || LIB_DIR + "/diagnostics/runtime.uc";
 
-function ensure_dir(path) {
-    return command_success_from_args([ "mkdir", "-p", path ]);
-}
-
-function file_first_line(path) {
-    let data = fs.readfile(as_string(path));
-    if (data == null)
-        return "";
-    let newline = index(data, "\n");
-    return trim(newline >= 0 ? substr(data, 0, newline) : data);
-}
+let ensure_dir = common.ensure_dir;
+let file_first_line = common.file_first_line;
 
 function log_message(message, level) {
     level = as_string(level || "info");

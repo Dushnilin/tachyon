@@ -599,8 +599,68 @@ function get_mixed_port() {
     return info ? info.port : 4534;
 }
 
+function hex_digit_value(value) {
+    let pos = index("0123456789abcdef", lc(as_string(value)));
+    return pos >= 0 ? pos : null;
+}
+
+function parse_number(value) {
+    value = lc(trim(as_string(value)));
+    if (value == "")
+        return null;
+
+    if (substr(value, 0, 2) == "0x") {
+        value = substr(value, 2);
+        if (value == "")
+            return null;
+
+        let result = 0;
+        for (let i = 0; i < length(value); i++) {
+            let digit = hex_digit_value(substr(value, i, 1));
+            if (digit == null)
+                return null;
+            result = result * 16 + digit;
+        }
+        return result;
+    }
+
+    return match(value, /^[0-9]+$/) == null ? null : int(value, 10);
+}
+
+function file_first_line(path) {
+    let data = fs.readfile(as_string(path));
+    if (data == null)
+        return "";
+    let newline = index(data, "\n");
+    return trim(newline >= 0 ? substr(data, 0, newline) : data);
+}
+
+function print_file_first_line(path) {
+    let data = fs.readfile(as_string(path));
+    if (data == null)
+        exit(1);
+    let newline = index(data, "\n");
+    print(newline >= 0 ? substr(data, 0, newline) : data, "\n");
+}
+
+function section_name(section) {
+    return as_string(object_or_empty(section)[".name"]);
+}
+
+function log_message(message, level, tag) {
+    level = as_string(level || "info");
+    tag = as_string(tag || "tachyon");
+    command_success_from_args([ "logger", "-t", tag, "[" + level + "] " + as_string(message) ]);
+}
+
 return {
     as_string,
+    hex_digit_value,
+    parse_number,
+    file_first_line,
+    print_file_first_line,
+    section_name,
+    log_message,
     read_json_file,
     read_stdin,
     read_stdin_json,

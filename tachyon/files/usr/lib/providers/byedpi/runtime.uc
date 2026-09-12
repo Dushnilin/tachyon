@@ -38,19 +38,9 @@ function command_exists(name) {
     return command_success_from_args([ "command", "-v", name ]);
 }
 
-function log_message(message, level) {
-    level = as_string(level || "info");
-    command_success_from_args([ "logger", "-t", "tachyon", "[" + level + "] " + as_string(message) ]);
-}
-
-function bool_option(section, key, fallback) {
-    let value = object_or_empty(section)[key];
-    return value == null ? !!fallback : bool_value(value);
-}
-
-function section_name(section) {
-    return as_string(object_or_empty(section)[".name"]);
-}
+let log_message = common.log_message;
+let bool_option = common.bool_option;
+let section_name = common.section_name;
 
 function uci_sections(type_name) {
     return uci_core.section_objects(CONFIG_NAME, as_string(type_name));
@@ -185,13 +175,7 @@ function runtime_pid_running(pid) {
     return match(pid, /^[0-9]+$/) != null && command_success_from_args([ "kill", "-0", pid ]);
 }
 
-function file_first_line(path) {
-    let data = fs.readfile(as_string(path));
-    if (data == null)
-        return "";
-    let newline = index(data, "\n");
-    return trim(newline >= 0 ? substr(data, 0, newline) : data);
-}
+let file_first_line = common.file_first_line;
 
 function kill_pidfile_process(path, signal) {
     let pid = file_first_line(path);

@@ -27,9 +27,7 @@ function settings() {
     return common.object_or_empty(uci_core.get_all(CONFIG_NAME, "settings"));
 }
 
-function ensure_dir(path) {
-    return command_success_from_args([ "mkdir", "-p", path ]);
-}
+let ensure_dir = common.ensure_dir;
 
 function write_state(path, value) {
     if (!ensure_dir(RUNTIME_STATE_DIR))
@@ -345,12 +343,7 @@ function worker() {
     }
 }
 
-function file_first_line(path) {
-    let data = fs.readfile(path);
-    if (data == null)
-        return "";
-    return trim(split(as_string(data), "\n")[0]);
-}
+let file_first_line = common.file_first_line;
 
 function process_running(pid) {
     return match(as_string(pid), /^[0-9]+$/) != null && command_success_from_args([ "kill", "-0", pid ]);

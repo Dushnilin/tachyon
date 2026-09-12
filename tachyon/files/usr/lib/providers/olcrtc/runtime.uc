@@ -22,61 +22,15 @@ function log_message(msg, level) {
     system("logger -t " + MODE + " -p " + (level == "fatal" ? "user.err" : level == "warn" ? "user.warning" : "user.info") + " '" + msg + "'");
 }
 
-function command_from_args(args) {
-    let parts = [];
-    for (let arg in args)
-        push(parts, common.shell_quote(as_string(arg)));
-    return join(" ", parts);
-}
-
-function command_output(cmd) {
-    let output = trim(popen(cmd, "r") || "");
-    return output;
-}
-
-function command_output_from_args(args) {
-    return command_output(command_from_args(args));
-}
-
-function command_success_from_args(args) {
-    return system(command_from_args(args)) == 0;
-}
-
-function option(section, key, fallback) {
-    let val = section[key];
-    if (val == null)
-        return fallback || "";
-    if (type(val) == "array")
-        return join(" ", val);
-    return as_string(val);
-}
-
-function bool_option(section, key, fallback) {
-    let val = section[key];
-    if (val == null)
-        return fallback || false;
-    return bool_value(val);
-}
-
-function list_option(section, key) {
-    let val = section[key];
-    if (val == null)
-        return [];
-    if (type(val) == "array")
-        return val;
-    return split(trim(as_string(val)), " \t\n\r");
-}
-
-function section_name(section) {
-    return as_string(section[".name"] || "");
-}
-
-function read_json_file(path) {
-    let data = fs.readfile(path);
-    if (data == null || data == "")
-        return null;
-    return json(data);
-}
+let command_from_args = common.command_from_args;
+let command_output = common.command_output;
+let command_output_from_args = common.command_output_from_args;
+let command_success_from_args = common.command_success_from_args;
+let option = common.option;
+let bool_option = common.bool_option;
+let list_option = common.list_option;
+let section_name = common.section_name;
+let read_json_file = common.read_json_file;
 
 function yaml_quote(value) {
     value = as_string(value);

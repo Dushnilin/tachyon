@@ -85,13 +85,7 @@ function remove_files(paths) {
             remove_file(path);
 }
 
-function file_first_line(path) {
-    let data = fs.readfile(as_string(path));
-    if (data == null)
-        return "";
-    let newline = index(data, "\n");
-    return trim(newline >= 0 ? substr(data, 0, newline) : data);
-}
+let file_first_line = common.file_first_line;
 
 function arg_bool(value) {
     value = lc(as_string(value));

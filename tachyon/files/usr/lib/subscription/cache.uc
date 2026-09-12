@@ -89,23 +89,8 @@ function write_stdout_json(value) {
     print(sprintf("%J", value), "\n");
 }
 
-function file_first_line(path) {
-    let data = fs.readfile(path);
-    if (data == null)
-        exit(1);
-
-    let newline = index(data, "\n");
-    print(newline >= 0 ? substr(data, 0, newline) : data, "\n");
-}
-
-function file_first_line_value(path) {
-    let data = fs.readfile(path);
-    if (data == null)
-        return "";
-
-    let newline = index(data, "\n");
-    return newline >= 0 ? substr(data, 0, newline) : data;
-}
+let file_first_line = common.print_file_first_line;
+let file_first_line_value = common.file_first_line;
 
 function file_has_exact_line(path, needle) {
     let data = fs.readfile(path);
@@ -249,9 +234,7 @@ function append_word_once(words, value) {
     return words + (words != "" ? " " : "") + value;
 }
 
-function section_name(section) {
-    return as_string(object_or_empty(section)[".name"]);
-}
+let section_name = common.section_name;
 
 function source_id(section, index) {
     return as_string(section) + "-subscription-" + as_string(index);

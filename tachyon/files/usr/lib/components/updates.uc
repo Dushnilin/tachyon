@@ -200,23 +200,8 @@ function write_state_file(path, value) {
     return true;
 }
 
-function file_first_line(path) {
-    let data = fs.readfile(path);
-    if (data == null)
-        exit(1);
-
-    let newline = index(data, "\n");
-    print(newline >= 0 ? substr(data, 0, newline) : data, "\n");
-}
-
-function file_first_line_value(path) {
-    let data = fs.readfile(path);
-    if (data == null)
-        return "";
-
-    let newline = index(data, "\n");
-    return newline >= 0 ? substr(data, 0, newline) : data;
-}
+let file_first_line = common.print_file_first_line;
+let file_first_line_value = common.file_first_line;
 
 function arg_bool(value) {
     value = lc(as_string(value));
@@ -300,9 +285,7 @@ function file_last_nonblank_line_value(path, fallback, max_chars) {
     return text_first_chars(result, max_chars);
 }
 
-function section_name(section) {
-    return as_string(object_or_empty(section)[".name"]);
-}
+let section_name = common.section_name;
 
 function file_exists_value(path) {
     return fs.stat(as_string(path)) != null;

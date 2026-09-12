@@ -1553,19 +1553,10 @@ function render_tachyon_logs() {
 }
 
 function file_first_line(path, fallback) {
-    let data = fs.readfile(path);
-    let result = "";
-
-    if (data != null) {
-        let lines = split(as_string(data), "\n");
-        if (length(lines) > 0)
-            result = str_remove_suffix(as_string(lines[0]), "\r");
-    }
-
-    if (result == "")
-        result = as_string(fallback);
-
-    print_line(result);
+    let line = common.file_first_line(path);
+    if (line == "")
+        line = as_string(fallback);
+    print_line(line);
 }
 
 function js_var_string_value(path, var_name) {

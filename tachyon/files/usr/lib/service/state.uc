@@ -85,15 +85,7 @@ function uci_exists(path) {
 }
 
 let object_or_empty = common.object_or_empty;
-
-function file_first_line(path) {
-    let data = fs.readfile(path);
-    if (data == null)
-        exit(1);
-
-    let newline = index(data, "\n");
-    print(newline >= 0 ? substr(data, 0, newline) : data, "\n");
-}
+let file_first_line = common.print_file_first_line;
 
 function read_state_value(path, needle) {
     let data = fs.readfile(path);
@@ -704,9 +696,7 @@ function bool_option_value(section, key, fallback) {
     return bool_option(section, key, fallback) ? "1" : "0";
 }
 
-function section_name(section) {
-    return as_string(object_or_empty(section)[".name"]);
-}
+let section_name = common.section_name;
 
 function str_startswith(value, prefix) {
     value = as_string(value);

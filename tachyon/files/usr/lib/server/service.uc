@@ -15,11 +15,7 @@ let write_json = common.write_json;
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
 
 function ascii_lower(value) {
-    let upper = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-    let lower = "abcdefghijklmnopqrstuvwxyz";
-    return replace(as_string(value), /[A-Z]/g, function(ch) {
-        return substr(lower, index(upper, ch), 1);
-    });
+    return lc(as_string(value));
 }
 
 function run(command) {
@@ -262,14 +258,7 @@ function mtproto_base_secret_from_value(value) {
     print(result, "\n");
 }
 
-function hex_digit_value(value) {
-    value = ord(lc(as_string(value)));
-    if (value >= 48 && value <= 57)
-        return value - 48;
-    if (value >= 97 && value <= 102)
-        return value - 87;
-    return -1;
-}
+let hex_digit_value = common.hex_digit_value;
 
 function hex_to_string_value(value) {
     value = as_string(value);
@@ -280,7 +269,7 @@ function hex_to_string_value(value) {
     for (let i = 0; i < length(value); i += 2) {
         let high = hex_digit_value(substr(value, i, 1));
         let low = hex_digit_value(substr(value, i + 1, 1));
-        if (high < 0 || low < 0)
+        if (high == null || low == null)
             return null;
         result += chr(high * 16 + low);
     }

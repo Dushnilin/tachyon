@@ -5,28 +5,9 @@ let common = require("core.common");
 let as_string = common.as_string;
 let read_json_file = common.read_json_file;
 
-function read_stdin() {
-    let input = fs.open("/dev/stdin", "r");
-    if (!input)
-        return "";
-    let data = input.read("all");
-    input.close();
-    return data == null ? "" : data;
-}
-
-function read_stdin_json() {
-    let data = read_stdin();
-    try {
-        return json(data);
-    }
-    catch (e) {
-        return null;
-    }
-}
-
-function write_json(value) {
-    print(sprintf("%J", value), "\n");
-}
+let read_stdin = common.read_stdin;
+let read_stdin_json = common.read_stdin_json;
+let write_json = common.write_json;
 
 function stdin_contains_ci(needle) {
     needle = lc(as_string(needle));
@@ -45,14 +26,7 @@ function stdin_first_line_last_field() {
         print(as_string(fields[length(fields) - 1]), "\n");
 }
 
-function file_first_line(path) {
-    let data = fs.readfile(path);
-    if (data == null)
-        exit(1);
-
-    let newline = index(data, "\n");
-    print(newline >= 0 ? substr(data, 0, newline) : data, "\n");
-}
+let file_first_line = common.print_file_first_line;
 
 function json_file_field(path, key, fallback) {
     let value = read_json_file(path);

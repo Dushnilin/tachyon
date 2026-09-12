@@ -62,14 +62,7 @@ function parse_source_entry(entry) {
     };
 }
 
-function file_first_line(path) {
-    let data = fs.readfile(path);
-    if (data == null)
-        return "";
-
-    let newline = index(data, "\n");
-    return newline >= 0 ? substr(data, 0, newline) : data;
-}
+let file_first_line = common.file_first_line;
 
 function valid_metadata_object(value) {
     return type(value) == "object" && object_key_count(value) > 1;

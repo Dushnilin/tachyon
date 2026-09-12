@@ -1742,33 +1742,7 @@ function nft_create_runtime_output_rules(table, localv4_set, common_set, port_se
     );
 }
 
-function hex_digit_value(value) {
-    let pos = index("0123456789abcdef", lc(as_string(value)));
-    return pos >= 0 ? pos : null;
-}
-
-function parse_mark_number(value) {
-    value = lc(trim(as_string(value)));
-    if (value == "")
-        return null;
-
-    if (substr(value, 0, 2) == "0x") {
-        value = substr(value, 2);
-        if (value == "")
-            return null;
-
-        let result = 0;
-        for (let i = 0; i < length(value); i++) {
-            let digit = hex_digit_value(substr(value, i, 1));
-            if (digit == null)
-                return null;
-            result = result * 16 + digit;
-        }
-        return result;
-    }
-
-    return match(value, /^[0-9]+$/) == null ? null : int(value);
-}
+let parse_mark_number = common.parse_number;
 
 function nft_provider_mark_hex(route_mark_base, index) {
     let base = parse_mark_number(route_mark_base);
