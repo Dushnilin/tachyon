@@ -22,6 +22,8 @@ let fixture_uci_data = null;
 let runtime_settings_cache = null;
 let runtime_ruleset_folder = runtime_constants.TMP_RULESET_FOLDER;
 let runtime_supports_xhttp = true;
+const TACHYON_RUNTIME_STATE_DIR = getenv("TACHYON_RUNTIME_STATE_DIR") || "/var/run/tachyon";
+const TACHYON_SUBSCRIPTION_DEFERRED_SECTIONS_FILE = getenv("TACHYON_SUBSCRIPTION_DEFERRED_SECTIONS_FILE") || TACHYON_RUNTIME_STATE_DIR + "/deferred-sections";
 
 let as_string = common.as_string;
 let read_json_file = common.read_json_file;
@@ -48,6 +50,22 @@ let url_path = runtime_url.path;
 let url_query_params = runtime_url.query_params;
 
 const CONFIG_NAME = "tachyon";
+
+function parse_deferred_sections(deferred_sections) {
+    let raw = trim(as_string(deferred_sections || getenv("TACHYON_SUBSCRIPTION_DEFERRED_SECTIONS") || ""));
+    if (raw == "" && fs.stat(TACHYON_SUBSCRIPTION_DEFERRED_SECTIONS_FILE) != null) {
+        raw = trim(as_string(fs.readfile(TACHYON_SUBSCRIPTION_DEFERRED_SECTIONS_FILE)) || "");
+    }
+    let res = {};
+    if (raw != "") {
+        for (let s in split(raw, /[ \t\r\n]+/)) {
+            s = trim(s);
+            if (s != "")
+                res[s] = true;
+        }
+    }
+    return res;
+}
 
 // UCI stores values written as '<b 0x...>' strings as binary, which when
 // serialized back to JSON appear as '<b 0x...>' — invalid for sing-box.
@@ -626,6 +644,8 @@ function mixed_proxy_enabled_action(action) {
 function add_mixed_proxy_for_section(config, section, service_address) {
     if (!bool_option(section, "mixed_proxy_enabled", false))
         return;
+    if (ctx.deferred_sections && ctx.deferred_sections[section[".name"]])
+        return;
 
     let action = option(section, "action", "");
     if (!mixed_proxy_enabled_action(action))
@@ -744,6 +764,8 @@ function add_global_download_service_mixed_proxy(config, settings, purpose) {
 
 function add_subscription_download_service_mixed_proxies(config, sections) {
     for (let target in connections.subscription_download_targets(sections)) {
+        if (ctx.deferred_sections && ctx.deferred_sections[target])
+            continue;
         let port = connections.subscription_download_target_port(sections, target, runtime_constants.SERVICE_MIXED_INBOUND_PORT);
         if (port <= 0)
             runtime_generate_unsupported("subscription download proxy port could not be resolved");
@@ -924,8 +946,13 @@ function schedule_blocked_domains(schedule) {
 function enabled_content_block_schedules() {
     let result = [];
     ctx.uci_cursor().foreach(CONFIG_NAME, "schedule", function(schedule) {
-        if (section_enabled(schedule) && length(schedule_blocked_domains(schedule)) > 0)
+        let quota_minutes = int(option(schedule, "daily_quota_minutes", 0));
+        let has_interval = trim(option(schedule, "start_time", "")) != "" || trim(option(schedule, "end_time", "")) != "";
+        if (section_enabled(schedule) && length(schedule_blocked_domains(schedule)) > 0) {
+            if (!has_interval && quota_minutes > 0)
+                return;
             push(result, schedule);
+        }
     });
     return result;
 }
@@ -1234,7 +1261,8 @@ function add_excluded_clients_route_rule(config, settings) {
     });
 }
 
-function generate_config(output_path, service_address, mwan3_active, supports_xhttp) {
+function generate_config(output_path, service_address, mwan3_active, supports_xhttp, deferred_sections) {
+    ctx.deferred_sections = parse_deferred_sections(deferred_sections);
     ctx.runtime_ruleset_folder = runtime_ruleset_folder;
     runtime_supports_xhttp = supports_xhttp == null || as_string(supports_xhttp) == ""
         ? true
@@ -1311,11 +1339,11 @@ function generate_config(output_path, service_address, mwan3_active, supports_xh
     }
 }
 
-function generate_config_fixture(fixture_path, output_path, service_address, mwan3_active, supports_xhttp) {
+function generate_config_fixture(fixture_path, output_path, service_address, mwan3_active, supports_xhttp, deferred_sections) {
     use_fixture_cursor(fixture_path);
     runtime_subscription.set_section_cache_dir(output_path + ".section-cache");
     runtime_ruleset_folder = output_path + ".rulesets";
-    generate_config(output_path, service_address, mwan3_active, supports_xhttp);
+    generate_config(output_path, service_address, mwan3_active, supports_xhttp, deferred_sections);
 }
 
 function stdin_length() {
@@ -1452,9 +1480,9 @@ ensure_custom_ruleset = generator_routes.ensure_custom_ruleset;
 let mode = ARGV[0] || "";
 
 if (mode == "generate-config")
-    generate_config(ARGV[1], ARGV[2], ARGV[3], ARGV[4]);
+    generate_config(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5]);
 else if (mode == "generate-config-fixture")
-    generate_config_fixture(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5]);
+    generate_config_fixture(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5], ARGV[6]);
 else if (mode == "stdin-length")
     stdin_length();
 else if (mode == "stdin-contains")

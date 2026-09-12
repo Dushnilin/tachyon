@@ -780,7 +780,7 @@ function createParentalContent(section) {
   o.rawhtml = true;
   o.modalonly = false;
   o.cfgvalue = function (sectionId) {
-    const target = uci.get(UCI_PACKAGE, sectionId, "target") || "all";
+    const target = uci.get(UCI_PACKAGE, sectionId, "target") || "domains";
     if (target === "all") {
       return (
         '<span style="color:var(--error-color-medium, #e53e3e);font-weight:600;">🚫 ' +
@@ -788,11 +788,20 @@ function createParentalContent(section) {
         "</span>"
       );
     }
+    if (target === "domains") {
+      const rawDomains = normalizeListValues(
+        uci.get(UCI_PACKAGE, sectionId, "blocked_domains"),
+      );
+      const count = rawDomains.length;
+      return (
+        '<span class="badge" style="background:var(--background-color-low, rgba(0,0,0,0.06));padding:2px 6px;border-radius:4px;font-size:11px;margin-right:4px;border:1px solid var(--border-color-low, rgba(0,0,0,0.12));display:inline-flex;align-items:center;margin-bottom:2px;">🌐 ' +
+        _("Blocked Sites") +
+        (count > 0 ? " (" + count + ")" : "") +
+        "</span>"
+      );
+    }
     const rawSecs = uci.get(UCI_PACKAGE, sectionId, "sections");
     const secNames = normalizeListValues(rawSecs);
-    if (secNames.length === 0 && target !== "sections") {
-      secNames.push(target);
-    }
     if (secNames.length === 0) {
       return (
         '<span style="opacity:0.6;">' + _("No sections selected") + "</span>"
@@ -814,8 +823,17 @@ function createParentalContent(section) {
     );
   };
   o.textvalue = function (sectionId) {
-    const target = uci.get(UCI_PACKAGE, sectionId, "target") || "all";
+    const target = uci.get(UCI_PACKAGE, sectionId, "target") || "domains";
     if (target === "all") return _("All Internet");
+    if (target === "domains") {
+      const rawDomains = normalizeListValues(
+        uci.get(UCI_PACKAGE, sectionId, "blocked_domains"),
+      );
+      return (
+        _("Blocked Sites") +
+        (rawDomains.length > 0 ? " (" + rawDomains.length + ")" : "")
+      );
+    }
     const secNames = normalizeListValues(
       uci.get(UCI_PACKAGE, sectionId, "sections"),
     );
@@ -1081,6 +1099,7 @@ function createParentalContent(section) {
     ),
   );
   o.modalonly = true;
+  o.rmempty = false;
   o.default = "domains";
   o.value("domains", _("Blocked Sites (Only block domains specified below)"));
   o.value("all", _("All Internet (Complete internet cutoff)"));
@@ -1222,6 +1241,7 @@ function createParentalContent(section) {
     ),
   );
   o.modalonly = true;
+  o.depends("target", "domains");
   o.rmempty = true;
   o.rows = 6;
   o.wrap = "soft";

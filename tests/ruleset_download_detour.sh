@@ -118,7 +118,10 @@ if grep -q '"dial_detour"' "$output_v14"; then
   fail "sing-box 1.14+ must NEVER contain 'dial_detour' in http_clients (causes fatal unknown field crash)"
 fi
 if command -v sing-box >/dev/null 2>&1; then
-  sing-box check -c "$output_v14" || fail "sing-box 1.14+ config check failed"
+  INSTALLED_SB_VER="$(sing-box version 2>/dev/null | head -n1 | grep -oE '[0-9]+\.[0-9]+' | head -n1 || echo '0.0')"
+  if [ "$(printf '%s\n1.14\n' "$INSTALLED_SB_VER" | sort -V | head -n1)" = "1.14" ]; then
+    sing-box check -c "$output_v14" || fail "sing-box 1.14+ config check failed"
+  fi
 fi
 
 output_detour_v14="$WORK_DIR/out_detour_v14.json"
@@ -133,7 +136,10 @@ fi
 grep -q '"detour": "first_proxy-out"' "$output_detour_v14" || \
   fail "sing-box 1.14+ http_clients must configure 'detour' field when download_lists_via_proxy is enabled"
 if command -v sing-box >/dev/null 2>&1; then
-  sing-box check -c "$output_detour_v14" || fail "sing-box 1.14+ detour config check failed"
+  INSTALLED_SB_VER="$(sing-box version 2>/dev/null | head -n1 | grep -oE '[0-9]+\.[0-9]+' | head -n1 || echo '0.0')"
+  if [ "$(printf '%s\n1.14\n' "$INSTALLED_SB_VER" | sort -V | head -n1)" = "1.14" ]; then
+    sing-box check -c "$output_detour_v14" || fail "sing-box 1.14+ detour config check failed"
+  fi
 fi
 
 # 4. Verify zapret section with community_lists does NOT use zapret-out as download_detour

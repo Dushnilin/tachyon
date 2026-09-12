@@ -256,9 +256,9 @@ function send_notification(message) {
     system(common.background_command(TACHYON_BIN + " telegram send " + shell_quote(message)));
 }
 
-function nft_chain_has_quota(chain) {
+function nft_chain_has_quota(chain, match_type) {
     let output = command_output_from_args([ "nft", "list", "chain", "inet", NFT_TABLE_NAME, chain ]) || "";
-    return index(output, "tachyon-quota") >= 0;
+    return index(output, "tachyon-quota-" + match_type) >= 0;
 }
 
 function nft_table_exists() {
@@ -282,7 +282,7 @@ function nft_create_set(set_name, set_type) {
 function nft_insert_quota_rule(chain, match_type) {
     let set_name = match_type == "ether" ? SET_ETHER : SET_IP;
     let addr_type = match_type == "ether" ? "ether" : "ip";
-    let cmd = "nft add rule inet " + NFT_TABLE_NAME + " " + chain + " " + addr_type + " saddr @" + set_name + " counter drop comment \"tachyon-quota\"";
+    let cmd = "nft add rule inet " + NFT_TABLE_NAME + " " + chain + " " + addr_type + " saddr @" + set_name + " counter drop comment \"tachyon-quota-" + match_type + "\"";
     let rc = command_status(cmd + " 2>/dev/null");
     if (rc != 0)
         log_message("failed to insert quota rule in " + chain + " for " + match_type + ": " + as_string(rc), "warn");
@@ -302,23 +302,24 @@ function ensure_nft_rules() {
         nft_create_set(SET_IP, "ipv4_addr");
 
     // Insert drop rules into parental chains (idempotent via comment check)
-    if (!nft_chain_has_quota("parental_control"))
+    if (!nft_chain_has_quota("parental_control", "ether"))
         nft_insert_quota_rule("parental_control", "ether");
-    if (!nft_chain_has_quota("parental_control"))
+    if (!nft_chain_has_quota("parental_control", "ip"))
         nft_insert_quota_rule("parental_control", "ip");
-    if (!nft_chain_has_quota("parental_forward"))
+    if (!nft_chain_has_quota("parental_forward", "ether"))
         nft_insert_quota_rule("parental_forward", "ether");
-    if (!nft_chain_has_quota("parental_forward"))
+    if (!nft_chain_has_quota("parental_forward", "ip"))
         nft_insert_quota_rule("parental_forward", "ip");
     return true;
 }
 
 function sync_block_set(set_name, idents) {
-    command_status(command_from_args([ "nft", "flush", "set", "inet", NFT_TABLE_NAME, set_name ]) + " >/dev/null 2>&1");
+    command_status("nft flush set inet " + NFT_TABLE_NAME + " " + set_name + " >/dev/null 2>&1");
     if (length(idents) > 0) {
-        let cmd = command_from_args([ "nft", "add", "element", "inet", NFT_TABLE_NAME, set_name, "{ " + join(", ", idents) + " }" ]);
-        if (!command_success_from_args(cmd))
-            log_message("failed to sync nft set " + set_name + " with " + as_string(length(idents)) + " elements", "warn");
+        let cmd = "nft add element inet " + NFT_TABLE_NAME + " " + set_name + " { " + join(", ", idents) + " }";
+        let rc = command_status(cmd + " 2>/dev/null");
+        if (rc != 0)
+            log_message("failed to sync nft set " + set_name + " with " + as_string(length(idents)) + " elements: " + as_string(rc), "warn");
     }
 }
 
@@ -550,17 +551,27 @@ function status_json() {
     });
 }
 
+function reset_quotas() {
+    let today = today_str();
+    write_state({ day: today, devices: {}, guest_devices: {} });
+    sync_enforcement([], []);
+    log_message("quotas have been manually reset", "info");
+    return 0;
+}
+
 let mode = ARGV[0] || "";
 
 if (mode == "tick")
     exit(tick());
 else if (mode == "status")
     status_json();
+else if (mode == "reset")
+    exit(reset_quotas());
 else if (mode == "install-cron")
     exit(install_cron());
 else if (mode == "remove-cron")
     exit(remove_cron());
 else {
-    warn("Usage: service/parental_quota.uc <tick|status|install-cron|remove-cron>\n");
+    warn("Usage: service/parental_quota.uc <tick|status|reset|install-cron|remove-cron>\n");
     exit(1);
 }

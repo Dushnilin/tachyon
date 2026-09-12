@@ -86,8 +86,8 @@ done
     PREV_STATE=""
     [ -f "$STATE_FILE" ] && PREV_STATE="$(cat "$STATE_FILE" 2>/dev/null)"
 
-    TACHYON_BIN="/usr/bin/tachyon"
-    [ -x "$TACHYON_BIN" ] || TACHYON_BIN="$(command -v tachyon 2>/dev/null || echo /usr/bin/tachyon)"
+    TACHYON_BIN="$(command -v tachyon 2>/dev/null || echo /usr/bin/tachyon)"
+    [ -x "$TACHYON_BIN" ] || TACHYON_BIN="/usr/bin/tachyon"
 
     if [ "$CURRENT_STATE" = "up" ]; then
         if [ "$PREV_STATE" = "down" ]; then

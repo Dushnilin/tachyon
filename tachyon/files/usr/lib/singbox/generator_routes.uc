@@ -1681,8 +1681,10 @@ function unsupported_matcher_key(section) {
 }
 
 function add_outbound_for_section(config, section, taken, sections) {
-    let action = option(section, "action", "");
     let section_name = section[".name"];
+    if (ctx.deferred_sections && ctx.deferred_sections[section_name])
+        return;
+    let action = option(section, "action", "");
     if (!valid_section_name(section_name))
         ctx.runtime_generate_unsupported("section name is not safe for sing-box config generation");
     let unsupported_matcher = unsupported_matcher_key(section);
@@ -1758,6 +1760,8 @@ function reserve_section_outbound_tags(sections, taken) {
 }
 
 function add_route_for_section(config, section) {
+    if (ctx.deferred_sections && ctx.deferred_sections[section[".name"]])
+        return;
     let action = option(section, "action", "");
     if (action == "dns")
         add_dns_action_rules_for_section(config, section);
@@ -1771,6 +1775,8 @@ function add_route_for_section(config, section) {
 function failover_candidate(sections) {
     let result = [];
     for (let section in sections) {
+        if (ctx.deferred_sections && ctx.deferred_sections[section[".name"]])
+            continue;
         let action = option(section, "action", "");
         if (connections.is_connections_action(action) ||
             action == "awg" || action == "warp" || action == "byedpi" || action == "zapret" || action == "zapret2" ||

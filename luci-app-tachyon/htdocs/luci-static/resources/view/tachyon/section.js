@@ -2083,7 +2083,6 @@ function isDownloadThroughTargetSection(section, currentSectionId) {
 
   if (
     !sectionName ||
-    sectionName === currentSectionId ||
     section.enabled === "0"
   ) {
     return false;
@@ -2134,10 +2133,17 @@ function isDownloadThroughTargetSection(section, currentSectionId) {
 function subscriptionDownloadTargetChoices(section_id) {
   return (uci.sections(UCI_PACKAGE, "section") || [])
     .filter((section) => isDownloadThroughTargetSection(section, section_id))
-    .map((section) => ({
-      value: getUciSectionName(section),
-      label: getUciSectionLabel(section),
-    }));
+    .map((section) => {
+      const name = getUciSectionName(section);
+      let label = getUciSectionLabel(section);
+      if (name === section_id) {
+        label += " " + _("(this rule, when active)");
+      }
+      return {
+        value: name,
+        label: label,
+      };
+    });
 }
 
 function dnsTypeChoices() {
@@ -2744,9 +2750,6 @@ function addSubscriptionUrlItemOptions(itemSection, options = {}) {
     }
     if (!value) {
       return _("Select a section for downloading this subscription");
-    }
-    if (value === sectionId) {
-      return _("Current section cannot download its own subscription");
     }
     return true;
   };

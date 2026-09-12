@@ -81,10 +81,19 @@ echo "$@" >> "${TEST_LOG_FILE}"
 EOF
 chmod +x "$BIN_DIR/logger"
 
+# Mock tachyon init.d script
+cat > "$BIN_DIR/initd_tachyon" << 'EOF'
+#!/bin/sh
+exit 0
+EOF
+chmod +x "$BIN_DIR/initd_tachyon"
+
 # Mock tachyon cli (for send_telegram_notification)
 cat > "$BIN_DIR/tachyon" << 'EOF'
 #!/bin/sh
-echo "$@" >> "${TEST_TELEGRAM_LOG}"
+if [ "$1" = "telegram" ]; then
+  echo "$@" >> "${TEST_TELEGRAM_LOG}"
+fi
 exit 0
 EOF
 chmod +x "$BIN_DIR/tachyon"
@@ -95,12 +104,14 @@ export TEST_LOG_FILE="$TMP_DIR/logger.log"
 export TEST_TELEGRAM_LOG="$TMP_DIR/telegram.log"
 mkdir -p "$TEST_UCI_DIR"
 
-# Patch monitor script temporarily to use our isolated /var/run/tachyon dir and fast debounce (0.05s instead of 2s)
+# Patch monitor script temporarily to use our isolated /var/run/tachyon dir and fast debounce (sleep 0 instead of 2s)
 TEST_MONITOR="$TMP_DIR/monitor_under_test.sh"
 # shellcheck disable=SC2016
 sed -e "s|/var/run/tachyon|${VAR_RUN}|g" \
-    -e 's|sleep "\$DELAY_SEC"|sleep 0.05|g' \
-    -e 's|sleep 2|sleep 0.05|g' \
+    -e "s|/usr/bin/tachyon|${BIN_DIR}/tachyon|g" \
+    -e "s|/etc/init.d/tachyon|${BIN_DIR}/initd_tachyon|g" \
+    -e 's|sleep "\$DELAY_SEC"|sleep 0|g' \
+    -e 's|sleep 2|sleep 0|g' \
     "$MONITOR_SCRIPT" > "$TEST_MONITOR"
 chmod +x "$TEST_MONITOR"
 
@@ -111,14 +122,12 @@ echo "wan" > "$TEST_UCI_DIR/monitored_ifaces"
 echo "down" > "$TEST_UCI_DIR/ubus_state_wan"
 
 ACTION="ifdown" INTERFACE="wan" sh "$TEST_MONITOR"
-sleep 0.2
 [ ! -f "$TEST_TELEGRAM_LOG" ] || fail "Test 1 failed: notification sent when enable_badwan=0"
 
 # Test 2: Telegram disabled (telegram_enabled = 0)
 echo "1" > "$TEST_UCI_DIR/enable_badwan"
 echo "0" > "$TEST_UCI_DIR/telegram_enabled"
 ACTION="ifdown" INTERFACE="wan" sh "$TEST_MONITOR"
-sleep 0.2
 [ ! -f "$TEST_TELEGRAM_LOG" ] || fail "Test 2 failed: notification sent when telegram.enabled=0"
 
 # Test 3: Unmonitored interface (wan6 triggered, only wan is monitored)
@@ -127,7 +136,6 @@ echo "1" > "$TEST_UCI_DIR/telegram_enabled"
 echo "wan" > "$TEST_UCI_DIR/monitored_ifaces"
 echo "down" > "$TEST_UCI_DIR/ubus_state_wan6"
 ACTION="ifdown" INTERFACE="wan6" sh "$TEST_MONITOR"
-sleep 0.2
 [ ! -f "$TEST_TELEGRAM_LOG" ] || fail "Test 3 failed: notification sent for unmonitored interface wan6"
 
 # Test 4: Monitored interface drops (wan ifdown, initial up -> down transition)
@@ -139,7 +147,7 @@ echo "down" > "$TEST_UCI_DIR/ubus_state_wan"
 
 ACTION="ifdown" INTERFACE="wan" sh "$TEST_MONITOR"
 # Wait for background verification
-sleep 0.3
+sleep 1
 
 [ -f "$TEST_TELEGRAM_LOG" ] || fail "Test 4 failed: no notification sent on UP -> DOWN transition"
 grep -Fq "Интерфейс *wan* упал!" "$TEST_TELEGRAM_LOG" || fail "Test 4 failed: expected drop message not found in log"
@@ -148,7 +156,7 @@ grep -Fq "Интерфейс *wan* упал!" "$TEST_TELEGRAM_LOG" || fail "Test
 # Test 5: Duplicate hotplug ifdown while state is already down (NO repeated spam)
 rm -f "$TEST_TELEGRAM_LOG"
 ACTION="ifdown" INTERFACE="wan" sh "$TEST_MONITOR"
-sleep 0.3
+sleep 1
 
 [ ! -f "$TEST_TELEGRAM_LOG" ] || fail "Test 5 failed: duplicate notification sent on repeated ifdown without state change"
 
@@ -157,7 +165,7 @@ rm -f "$TEST_TELEGRAM_LOG"
 echo "up" > "$TEST_UCI_DIR/ubus_state_wan"
 
 ACTION="ifup" INTERFACE="wan" sh "$TEST_MONITOR"
-sleep 0.3
+sleep 1
 
 [ -f "$TEST_TELEGRAM_LOG" ] || fail "Test 6 failed: no notification sent on DOWN -> UP recovery"
 grep -Fq "Интерфейс *wan* поднялся!" "$TEST_TELEGRAM_LOG" || fail "Test 6 failed: expected recovery message not found in log"
@@ -166,7 +174,7 @@ grep -Fq "Интерфейс *wan* поднялся!" "$TEST_TELEGRAM_LOG" || fa
 # Test 7: Duplicate hotplug ifup while state is already up (NO duplicate message)
 rm -f "$TEST_TELEGRAM_LOG"
 ACTION="ifup" INTERFACE="wan" sh "$TEST_MONITOR"
-sleep 0.3
+sleep 1
 
 [ ! -f "$TEST_TELEGRAM_LOG" ] || fail "Test 7 failed: duplicate notification sent on repeated ifup without state change"
 

@@ -855,6 +855,10 @@ function heal_dns_stall(ev) {
 // would drop live connections for nothing.
 function heal_proxy_connectivity(ev) {
     if (settings().recovery_bypass == "1") return;
+    // When dedicated proxy health monitoring is enabled, heal_proxy_health owns
+    // the threshold, config validation, and reporting. heal_proxy_connectivity
+    // acts as fallback when ai_proxy_health_enabled is "0".
+    if (settings().ai_proxy_health_enabled != "0") return;
     if (!ev.payload.direct_ok) return;
     // Two consecutive failures before acting: a single brief proxy-node timeout
     // (e.g. URLTest selecting a slow node for 5–10s) must not wipe cache.db and
@@ -877,6 +881,7 @@ function heal_proxy_connectivity(ev) {
             "Очищена база cache.db; перезапуск пропущен по лимиту частоты", "skipped");
         return;
     }
+    controller.reset_proxy_consecutive();
     watch_recovery("proxy", incident, "proxy_connectivity");
 }
 
@@ -1026,6 +1031,11 @@ function validate_singbox_config() {
 // of failures and validates the sing-box config before restarting.
 function heal_proxy_health(ev) {
     if (settings().ai_proxy_health_enabled == "0") return;
+    if (settings().recovery_bypass == "1") return;
+    // Only a proxy that fails while direct access works is worth restarting
+    // over: when direct access is down too, the fault is upstream/WAN and a
+    // restart would drop live connections for nothing.
+    if (!ev.payload.direct_ok) return;
 
     let threshold = int(settings().ai_proxy_health_fail_threshold || "3");
     let fails = int(ev.payload.streak);
@@ -1034,8 +1044,8 @@ function heal_proxy_health(ev) {
 
     let incident = {
         type: "proxy_health",
-        description: sprintf("Proxy health check failed %d times consecutively (port %s)", fails, as_string(ev.payload.port)),
-        resolution: "Restarting Tachyon to restore proxy connectivity"
+        description: sprintf("Прокси не отвечает на запросы проверки доступности (%d сбоя подряд, порт %s)", fails, as_string(ev.payload.port)),
+        resolution: "Выполнен перезапуск sing-box"
     };
 
     // A restart on a config sing-box will refuse to load leaves the proxy down
@@ -1761,7 +1771,7 @@ function register_subscribers() {
     subscribe(EV.PROXY_DOWN, heal_proxy_connectivity,
         { name: "heal_proxy_connectivity", priority: PRIORITY_PROXY, cooldown: 120 });
     subscribe(EV.PROXY_DOWN, heal_proxy_health,
-        { name: "heal_proxy_health", priority: PRIORITY_PROXY + 1 });
+        { name: "heal_proxy_health", priority: PRIORITY_PROXY + 1, cooldown: 120 });
 
     // Same split for DNS: ai_heal_dns_continuous was fast, ai_heal_dns was part
     // of the normal-tier audit. The streak the stall healer thresholds on is

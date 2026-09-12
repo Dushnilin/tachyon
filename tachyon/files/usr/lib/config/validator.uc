@@ -1710,9 +1710,6 @@ function validate_subscription_download_sections(sections, context) {
             if (target == "")
                 continue;
 
-            if (target == name)
-                fail_validation("Subscription source in rule '" + name + "' cannot be downloaded through the same rule. Select another rule or disable download-through-section. Aborted.");
-
             validate_download_section_rows(
                 target,
                 context.byedpi_installed,

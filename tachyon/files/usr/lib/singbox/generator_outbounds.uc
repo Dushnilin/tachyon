@@ -1388,8 +1388,11 @@ function add_connections_outbound(config, section, taken) {
     add_connection_interfaces(config, state, section, taken, selector_tags, urltest_candidate_tags);
     add_connection_json_outbounds(config, state, section, taken, selector_tags, urltest_candidate_tags);
 
-    if (length(selector_tags) == 0)
+    if (length(selector_tags) == 0) {
+        if (ctx.deferred_sections && ctx.deferred_sections[section_name])
+            return;
         ctx.runtime_generate_unsupported("connection section has no usable outbounds");
+    }
 
     if (ctx.routes.section_needs_country_is(section)) {
         let previous_state = read_json_file(runtime_subscription.section_cache_path(section_name));

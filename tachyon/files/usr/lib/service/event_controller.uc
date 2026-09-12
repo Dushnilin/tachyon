@@ -559,11 +559,26 @@ function controller(bus, opts) {
 
         let started = time();
         let ok = command_success_from_args([
-            "curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",
+            "curl", "-s", "-o", "/dev/null",
             "--connect-timeout", "3", "--max-time", "5",
             "--proxy", "http://" + host + ":" + port,
             check_url
         ]);
+
+        // Fallback confirmation: never declare proxy down based on a single URL.
+        // Cloudflare or specific CDN endpoints can encounter rate limits or transient DPI packet loss.
+        let fallback_url = null;
+        if (!ok) {
+            fallback_url = index(check_url, "gstatic.com") >= 0
+                ? "https://detectportal.firefox.com/success.txt"
+                : "https://connectivitycheck.gstatic.com/generate_204";
+            ok = command_success_from_args([
+                "curl", "-s", "-o", "/dev/null",
+                "--connect-timeout", "3", "--max-time", "5",
+                "--proxy", "http://" + host + ":" + port,
+                fallback_url
+            ]);
+        }
         let elapsed = (time() - started) * 1000;
 
         state.proxy_latency_history = push_history(state.proxy_latency_history,
@@ -579,13 +594,18 @@ function controller(bus, opts) {
 
         // Distinguish "proxy is broken" from "the whole uplink is down": only
         // the former is worth restarting sing-box over.
-        // Use the same URL as the proxy check so the two measurements are
-        // comparable: if the user changed ai_proxy_health_url, direct_ok
-        // must probe the same target, not always fall back to Cloudflare.
+        // Check primary URL, and if that fails, check fallback URL directly too
+        // in case the primary URL is blocked directly on the ISP WAN.
         let direct_ok = command_success_from_args([
             "curl", "-s", "-I", "--connect-timeout", "3", "--max-time", "5",
             check_url
         ]);
+        if (!direct_ok && fallback_url != null) {
+            direct_ok = command_success_from_args([
+                "curl", "-s", "-I", "--connect-timeout", "3", "--max-time", "5",
+                fallback_url
+            ]);
+        }
 
         bus.emit(EV.PROXY_DOWN, {
             host: host,

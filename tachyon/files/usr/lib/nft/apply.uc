@@ -1033,7 +1033,7 @@ function nft_add_schedule_rules_from_schedules(schedules, sections, table, profi
         let always_on = length(intervals) == 0;
         
         let target_sec_names = [];
-        if (target == "sections" || (target != "all" && target != "")) {
+        if (target == "sections" || (target != "all" && target != "domains" && target != "")) {
             let raw_secs = list_option(schedule, "sections");
             if (length(raw_secs) == 0) {
                 let single_sec = option(schedule, "sections", "");
@@ -1055,8 +1055,12 @@ function nft_add_schedule_rules_from_schedules(schedules, sections, table, profi
                     [ "meta", "hour", sprintf("\"%s\"-\"%s\"", interval[0], interval[1]) ] : null;
                 let base_match = nft_schedule_rule_base_match(dev_str, is_mac, family, days_args, time_args);
                 
+                let quota_minutes = int(option(schedule, "daily_quota_minutes", 0));
                 let has_sched_domains = length(list_option(schedule, "blocked_domains")) > 0 || option(schedule, "blocked_domains", "") != "";
                 if ((target == "all" || (length(target_sec_names) == 0 && target != "sections" && target != "domains")) && !has_sched_domains && target != "domains") {
+                    if (always_on && quota_minutes > 0)
+                        continue;
+
                     let fwd_rule = [];
                     append_array(fwd_rule, base_match);
                     append_array(fwd_rule, [ "counter", verdict ]);
@@ -1159,6 +1163,9 @@ function nft_add_dns_block_rules_from_schedules(schedules, table, profiles) {
         let intervals = nft_schedule_time_intervals(start_time, end_time);
         let days_args = nft_schedule_days_match_args(schedule);
         let always_on = length(intervals) == 0;
+        let quota_minutes = int(option(schedule, "daily_quota_minutes", 0));
+        if (always_on && quota_minutes > 0)
+            continue;
 
         for (let raw_ip in raw_ips) {
             let dev_str = trim(as_string(raw_ip));
@@ -1473,6 +1480,8 @@ function nft_create_runtime_base(table, localv4_set, common_set, port_set, ip_po
         !nft_create_ipv6_port_set(table, ip_port6_set) ||
         !nft_create_ipv4_set(table, DNS_SOURCE_SET) ||
         !nft_create_ipv6_set(table, DNS_SOURCE6_SET) ||
+        !nft_create_ether_set(table, "tachyon_quota_block") ||
+        !nft_create_ipv4_set(table, "tachyon_quota_block_ip") ||
         !nft_create_ifname_set(table, interface_set))
         return false;
 
@@ -1494,7 +1503,11 @@ function nft_create_runtime_base(table, localv4_set, common_set, port_set, ip_po
     if (!nft_add_rule(table, "parental_control", [ "ip", "daddr", "@" + as_string(localv4_set), "return" ]) ||
         !nft_add_rule(table, "parental_control", [ "ip6", "daddr", "@" + as_string(localv6_set), "return" ]) ||
         !nft_add_rule(table, "parental_forward", [ "ip", "daddr", "@" + as_string(localv4_set), "return" ]) ||
-        !nft_add_rule(table, "parental_forward", [ "ip6", "daddr", "@" + as_string(localv6_set), "return" ]))
+        !nft_add_rule(table, "parental_forward", [ "ip6", "daddr", "@" + as_string(localv6_set), "return" ]) ||
+        !nft_add_rule(table, "parental_control", [ "ether", "saddr", "@tachyon_quota_block", "counter", "drop", "comment", "\"tachyon-quota-ether\"" ]) ||
+        !nft_add_rule(table, "parental_control", [ "ip", "saddr", "@tachyon_quota_block_ip", "counter", "drop", "comment", "\"tachyon-quota-ip\"" ]) ||
+        !nft_add_rule(table, "parental_forward", [ "ether", "saddr", "@tachyon_quota_block", "counter", "drop", "comment", "\"tachyon-quota-ether\"" ]) ||
+        !nft_add_rule(table, "parental_forward", [ "ip", "saddr", "@tachyon_quota_block_ip", "counter", "drop", "comment", "\"tachyon-quota-ip\"" ]))
         return false;
 
     if (!nft_add_rule(table, "dns_redirect", [ "iifname", "@" + as_string(interface_set), "ip", "saddr", "@" + DNS_SOURCE_SET, "tcp", "dport", "53", "counter", "redirect", "to", ":" + as_string(runtime_constants.SOURCE_DNS_INBOUND_PORT) ]) ||

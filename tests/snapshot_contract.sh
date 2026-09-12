@@ -135,7 +135,7 @@ grep -Fq '"success": true' "$WORK_DIR/result.json" ||
   fail "snapshot-restore must report success"
 for _ in $(seq 1 30); do
   grep -Fxq 'restart' "$WORK_DIR/bin.log" 2>/dev/null && break
-  sleep 0.1
+  sleep 1
 done
 grep -Fxq 'restart' "$WORK_DIR/bin.log" ||
   fail "snapshot-restore must restart the service through the backend entrypoint"

@@ -1303,7 +1303,7 @@ function subscription_download_targets(sections) {
 
         for (let source in subscription_urls(section)) {
             let target = subscription_download_section(section, source);
-            if (target != "" && target != name)
+            if (target != "")
                 append_unique(result, seen, target);
         }
     }

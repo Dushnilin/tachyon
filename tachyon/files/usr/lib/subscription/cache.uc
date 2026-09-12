@@ -42,6 +42,7 @@ const TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT = getenv("TACHYON_PERSISTENT_
 const TACHYON_SUBSCRIPTION_BOOTSTRAP_RETRY_PID_FILE = getenv("TACHYON_SUBSCRIPTION_BOOTSTRAP_RETRY_PID_FILE") || TACHYON_RUNTIME_STATE_DIR + "/subscription-bootstrap-retry.pid";
 const TACHYON_SUBSCRIPTION_UPDATE_LOCK_DIR = getenv("TACHYON_SUBSCRIPTION_UPDATE_LOCK_DIR") || TACHYON_RUNTIME_STATE_DIR + "/subscription-update.lock";
 const TACHYON_PENDING_RELOAD_FILE = getenv("TACHYON_PENDING_RELOAD_FILE") || TACHYON_RUNTIME_STATE_DIR + "/reload.pending";
+const TACHYON_SUBSCRIPTION_DEFERRED_SECTIONS_FILE = getenv("TACHYON_SUBSCRIPTION_DEFERRED_SECTIONS_FILE") || TACHYON_RUNTIME_STATE_DIR + "/deferred-sections";
 const TACHYON_SERVICE_INIT = getenv("TACHYON_SERVICE_INIT") || "/etc/init.d/tachyon";
 const SB_SERVICE_MIXED_INBOUND_ADDRESS = getenv("SB_SERVICE_MIXED_INBOUND_ADDRESS") || "127.0.0.1";
 const SB_SERVICE_MIXED_INBOUND_PORT = getenv("SB_SERVICE_MIXED_INBOUND_PORT") || "4534";
@@ -1687,12 +1688,10 @@ function subscription_config_is_current(section_name_value, subscription_url, su
 
 function get_subscription_download_proxy_address(section_name_value, sections, parsed, phase) {
     let download_section = as_string(object_or_empty(parsed).download_section);
-    if (download_section == "" || download_section == as_string(section_name_value))
+    if (download_section == "")
         return "";
 
-    let port = connections.subscription_download_target_port(sections, download_section, int(SB_SERVICE_MIXED_INBOUND_PORT));
-    if (port <= 0)
-        return "";
+    let is_self = (download_section == as_string(section_name_value));
 
     if (!sing_box_service_running()) {
         if (phase == "startup")
@@ -1700,6 +1699,14 @@ function get_subscription_download_proxy_address(section_name_value, sections, p
         else
             log_message("Subscription source for rule '" + section_name_value + "' is configured to download via rule '" + download_section + "', but sing-box service proxy is not running; downloading it directly", "warn");
         return "";
+    }
+
+    let port = connections.subscription_download_target_port(sections, download_section, int(SB_SERVICE_MIXED_INBOUND_PORT));
+    if (port <= 0) {
+        if (is_self)
+            port = int(SB_SERVICE_MIXED_INBOUND_PORT);
+        else
+            return "";
     }
 
     let address = SB_SERVICE_MIXED_INBOUND_ADDRESS + ":" + as_string(port);
@@ -1744,6 +1751,11 @@ function download_subscription_into_cache(section_name_value, subscription_url, 
 
         let effective_hwid = get_subscription_hwid(subscription_hwid);
         let download_status = download_subscription(subscription_url, raw_tmpfile, service_proxy_address_value, headers_tmpfile, effective_user_agent, effective_hwid, subscription_device_headers, allow_insecure);
+        if (download_status != 0 && service_proxy_address_value == "" && sing_box_service_running()) {
+            let fallback_proxy = SB_SERVICE_MIXED_INBOUND_ADDRESS + ":" + SB_SERVICE_MIXED_INBOUND_PORT;
+            log_message("Direct subscription download failed for rule '" + section_name_value + "'; retrying via active service proxy " + fallback_proxy, "info");
+            download_status = download_subscription(subscription_url, raw_tmpfile, fallback_proxy, headers_tmpfile, effective_user_agent, effective_hwid, subscription_device_headers, allow_insecure);
+        }
         if (download_status != 0) {
             if (metadata_output_path != "")
                 unlink_path(metadata_output_path);
@@ -2340,7 +2352,8 @@ function prepare_subscription_caches(phase, already_prepared, no_refresh) {
     let sections = uci_sections();
 
     if (prepared_runtime_cache_should_skip(sections, TACHYON_SECTION_CACHE_DIR, phase, already_prepared)) {
-        print("\n");
+        let saved_deferred = trim(as_string(fs.readfile(TACHYON_SUBSCRIPTION_DEFERRED_SECTIONS_FILE)) || "");
+        print(saved_deferred, "\n");
         return 0;
     }
 
@@ -2363,12 +2376,14 @@ function prepare_subscription_caches(phase, already_prepared, no_refresh) {
         return 1;
 
     if (state.startup_blocked_sections == "") {
+        unlink_path(TACHYON_SUBSCRIPTION_DEFERRED_SECTIONS_FILE);
         print("\n");
         return 0;
     }
 
-    if (phase == "startup" && subscription_bootstrap_download_section_is_ready(sections, state.startup_blocked_sections, get_subscription_user_agent(""))) {
+    if ((phase == "startup" || phase == "runtime") && subscription_bootstrap_download_section_is_ready(sections, state.startup_blocked_sections, get_subscription_user_agent(""))) {
         log_message("Starting temporarily without subscription-only rule(s): " + state.startup_blocked_sections + ". They will be retried through the service proxy after sing-box starts", "warn");
+        write_file(TACHYON_SUBSCRIPTION_DEFERRED_SECTIONS_FILE, state.startup_blocked_sections + "\n");
         print(state.startup_blocked_sections, "\n");
         return 0;
     }
@@ -2435,6 +2450,11 @@ function subscription_bootstrap_retry_result(deferred_sections) {
         result.remaining = append_word_once(result.remaining, section);
         log_message("Deferred subscription rule '" + section + "' is still unavailable; keeping it disabled for this startup", "warn");
     }
+
+    if (result.remaining != "")
+        write_file(TACHYON_SUBSCRIPTION_DEFERRED_SECTIONS_FILE, result.remaining + "\n");
+    else
+        unlink_path(TACHYON_SUBSCRIPTION_DEFERRED_SECTIONS_FILE);
 
     return result;
 }

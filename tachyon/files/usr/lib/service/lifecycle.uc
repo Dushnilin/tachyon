@@ -698,7 +698,9 @@ function singbox_init_config() {
         subscription_runtime_no_refresh
     ]);
     if (result.status == 0) {
-        subscription_deferred_sections = trim(result.output);
+        let out = trim(result.output);
+        if (out != "")
+            subscription_deferred_sections = out;
         subscription_caches_prepared = "1";
     }
     return result.status;
@@ -1118,6 +1120,8 @@ function start() {
         cleanup_failed_runtime();
         return status;
     }
+
+    module_status(STATE_UC, [ "run-pending-reload-if-requested", PENDING_RELOAD_FILE, SERVICE_INIT ]);
 
     return 0;
 }

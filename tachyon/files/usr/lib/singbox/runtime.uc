@@ -900,7 +900,8 @@ function init_config(populate_nft, caches_prepared, no_refresh) {
             temp_config,
             service_listen_address_value(settings),
             mwan3_active ? "1" : "0",
-            sing_box_supports_xhttp(sing_box_version()) ? "1" : "0"
+            sing_box_supports_xhttp(sing_box_version()) ? "1" : "0",
+            deferred_sections
         ]) + " >" + shell_quote(runtime_log) + " 2>&1"
     );
     if (generate_status != 0) {

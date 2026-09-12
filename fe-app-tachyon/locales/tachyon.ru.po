@@ -1586,6 +1586,9 @@ msgstr "Скачивать эту подписку без проверки се�
 msgid "Download through"
 msgstr "Загружать через"
 
+msgid "(this rule, when active)"
+msgstr "(эта же секция, при активном VPN)"
+
 msgid "Downloaded"
 msgstr "Загружено"
 
