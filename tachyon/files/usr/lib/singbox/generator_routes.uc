@@ -1872,9 +1872,15 @@ function add_service_route_rules(config, sections) {
     }
 
     let candidates = failover_candidate(sections);
-    let first = length(candidates) > 0 ? candidates[0] : null;
+    let proxy_candidates = [];
+    for (let section in candidates) {
+        if (connections.is_remote_proxy_action(option(section, "action", "")))
+            push(proxy_candidates, section);
+    }
+    let target_candidates = length(proxy_candidates) > 0 ? proxy_candidates : candidates;
+    let first = length(target_candidates) > 0 ? target_candidates[0] : null;
     let failover_active = bool_option(settings, "section_failover_enabled", false) &&
-        length(candidates) > 1;
+        length(target_candidates) > 1;
     if (first != null) {
         push(config.route.rules, {
             action: "resolve",
@@ -1885,13 +1891,13 @@ function add_service_route_rules(config, sections) {
         let catchall_target = outbound_tag(first[".name"]);
         if (failover_active) {
             let member_tags = [];
-            for (let section in candidates)
+            for (let section in target_candidates)
                 push(member_tags, outbound_tag(section[".name"]));
             push(config.outbounds, {
                 type: "selector",
                 tag: FAILOVER_GROUP_TAG,
                 outbounds: member_tags,
-                default: outbound_tag(failover_default_name(candidates)),
+                default: outbound_tag(failover_default_name(target_candidates)),
                 interrupt_exist_connections: true
             });
             catchall_target = FAILOVER_GROUP_TAG;

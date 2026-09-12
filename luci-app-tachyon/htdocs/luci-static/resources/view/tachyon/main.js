@@ -1528,10 +1528,13 @@ function renderCircleAlertIcon24() {
   );
 }
 function renderCircleCheckBigIcon24() {
-  return createIcon("lucide lucide-circle-check-big-icon lucide-circle-check-big", [
-    svgEl("path", { d: "M21.801 10A10 10 0 1 1 17 3.335" }),
-    svgEl("path", { d: "m9 11 3 3L22 4" })
-  ]);
+  return createIcon(
+    "lucide lucide-circle-check-big-icon lucide-circle-check-big",
+    [
+      svgEl("path", { d: "M21.801 10A10 10 0 1 1 17 3.335" }),
+      svgEl("path", { d: "m9 11 3 3L22 4" })
+    ]
+  );
 }
 function renderCircleCheckIcon24() {
   return createIcon(
@@ -1714,12 +1717,15 @@ function renderSendIcon24() {
   );
 }
 function renderSquareChartGanttIcon24() {
-  return createIcon("lucide lucide-square-chart-gantt-icon lucide-square-chart-gantt", [
-    svgEl("rect", { width: "18", height: "18", x: "3", y: "3", rx: "2" }),
-    svgEl("path", { d: "M9 8h7" }),
-    svgEl("path", { d: "M8 12h6" }),
-    svgEl("path", { d: "M11 16h5" })
-  ]);
+  return createIcon(
+    "lucide lucide-square-chart-gantt-icon lucide-square-chart-gantt",
+    [
+      svgEl("rect", { width: "18", height: "18", x: "3", y: "3", rx: "2" }),
+      svgEl("path", { d: "M9 8h7" }),
+      svgEl("path", { d: "M8 12h6" }),
+      svgEl("path", { d: "M11 16h5" })
+    ]
+  );
 }
 function renderTriangleAlertIcon24() {
   return createIcon("lucide lucide-triangle-alert-icon lucide-triangle-alert", [
@@ -10587,6 +10593,20 @@ async function runNftCheck() {
 }
 
 // src/tachyon/tabs/diagnostic/checks/runFakeIPCheck.ts
+var PROXY_ACTIONS = /* @__PURE__ */ new Set([
+  "connection",
+  "proxy",
+  "outbound",
+  "vpn",
+  "awg",
+  "warp",
+  "anytls",
+  "snell",
+  "mieru",
+  "sudoku",
+  "masque",
+  "openvpn"
+]);
 async function runFakeIPCheck() {
   const { order, title, code } = DIAGNOSTICS_CHECKS_MAP.FAKEIP;
   updateCheckStore({
@@ -10602,6 +10622,18 @@ async function runFakeIPCheck() {
   const checkIPResponse = await RemoteFakeIPMethods.getIpCheck();
   const browserFakeIPCheckUnavailable = !checkFakeIPResponse.success;
   const browserFakeIPCheckMessage = checkFakeIPResponse.success ? "" : checkFakeIPResponse.message;
+  let hasProxySection = true;
+  try {
+    const cachedSections = store.get().sectionsWidget?.data;
+    const sections = cachedSections && cachedSections.length > 0 ? cachedSections : (await getDashboardSections({ includeSubscriptionCopyState: false })).data || [];
+    if (sections.length > 0) {
+      hasProxySection = sections.some(
+        (s) => s.action && PROXY_ACTIONS.has(s.action)
+      );
+    }
+  } catch (_e) {
+    hasProxySection = true;
+  }
   const checks = {
     singBoxFakeIP: routerFakeIPResponse.success && routerFakeIPResponse.data.fakeip,
     browserFakeIP: checkFakeIPResponse.success && checkFakeIPResponse.data.fakeip,
@@ -10609,7 +10641,8 @@ async function runFakeIPCheck() {
     differentIP: checkFakeIPResponse.success && checkIPResponse.success && checkFakeIPResponse.data.IP !== checkIPResponse.data.IP
   };
   const fakeIPWorks = checks.singBoxFakeIP && checks.browserFakeIP;
-  const { state, description } = fakeIPWorks ? checks.differentIP ? { state: "success", description: _("Checks passed") } : {
+  const isDirectOnly = fakeIPWorks && !hasProxySection && !checks.differentIP;
+  const { state, description } = fakeIPWorks ? checks.differentIP || isDirectOnly ? { state: "success", description: _("Checks passed") } : {
     state: "warning",
     description: _("FakeIP works; public IP comparison is inconclusive")
   } : browserFakeIPCheckUnavailable && checks.singBoxFakeIP ? {
@@ -10638,9 +10671,9 @@ async function runFakeIPCheck() {
       },
       ...insertIf(checks.browserFakeIP, [
         {
-          state: checks.differentIP ? "success" : "warning",
+          state: checks.differentIP || isDirectOnly ? "success" : "warning",
           key: !checks.canComparePublicIP ? _("Could not compare FakeIP and control public IPs") : checks.differentIP ? _("FakeIP and control checks use different public IPs") : _("FakeIP and control checks use the same public IP"),
-          value: ""
+          value: isDirectOnly ? _("Direct connection via ISP") : ""
         }
       ])
     ]

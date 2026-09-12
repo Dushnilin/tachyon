@@ -1,9 +1,25 @@
 import { insertIf } from '../../../../helpers';
 import { DIAGNOSTICS_CHECKS_MAP } from './contstants';
 import { TachyonShellMethods, RemoteFakeIPMethods } from '../../../methods';
-import type { IDiagnosticsChecksItem } from '../../../services';
+import { getDashboardSections } from '../../../methods/custom/getDashboardSections';
+import { store, type IDiagnosticsChecksItem } from '../../../services';
 import { updateCheckStore } from './updateCheckStore';
 import { getMeta } from '../helpers/getMeta';
+
+const PROXY_ACTIONS = new Set([
+  'connection',
+  'proxy',
+  'outbound',
+  'vpn',
+  'awg',
+  'warp',
+  'anytls',
+  'snell',
+  'mieru',
+  'sudoku',
+  'masque',
+  'openvpn',
+]);
 
 export async function runFakeIPCheck() {
   const { order, title, code } = DIAGNOSTICS_CHECKS_MAP.FAKEIP;
@@ -25,6 +41,23 @@ export async function runFakeIPCheck() {
     ? ''
     : checkFakeIPResponse.message;
 
+  let hasProxySection = true;
+  try {
+    const cachedSections = store.get().sectionsWidget?.data;
+    const sections =
+      cachedSections && cachedSections.length > 0
+        ? cachedSections
+        : (await getDashboardSections({ includeSubscriptionCopyState: false }))
+            .data || [];
+    if (sections.length > 0) {
+      hasProxySection = sections.some(
+        (s) => s.action && PROXY_ACTIONS.has(s.action),
+      );
+    }
+  } catch (_e) {
+    hasProxySection = true;
+  }
+
   const checks = {
     singBoxFakeIP:
       routerFakeIPResponse.success && routerFakeIPResponse.data.fakeip,
@@ -38,8 +71,9 @@ export async function runFakeIPCheck() {
   };
 
   const fakeIPWorks = checks.singBoxFakeIP && checks.browserFakeIP;
+  const isDirectOnly = fakeIPWorks && !hasProxySection && !checks.differentIP;
   const { state, description } = fakeIPWorks
-    ? checks.differentIP
+    ? checks.differentIP || isDirectOnly
       ? { state: 'success' as const, description: _('Checks passed') }
       : {
           state: 'warning' as const,
@@ -84,13 +118,13 @@ export async function runFakeIPCheck() {
       },
       ...insertIf<IDiagnosticsChecksItem>(checks.browserFakeIP, [
         {
-          state: checks.differentIP ? 'success' : 'warning',
+          state: checks.differentIP || isDirectOnly ? 'success' : 'warning',
           key: !checks.canComparePublicIP
             ? _('Could not compare FakeIP and control public IPs')
             : checks.differentIP
               ? _('FakeIP and control checks use different public IPs')
               : _('FakeIP and control checks use the same public IP'),
-          value: '',
+          value: isDirectOnly ? _('Direct connection via ISP') : '',
         },
       ]),
     ],

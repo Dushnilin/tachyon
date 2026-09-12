@@ -54,10 +54,13 @@ export function renderCircleAlertIcon24() {
 }
 
 export function renderCircleCheckBigIcon24() {
-  return createIcon('lucide lucide-circle-check-big-icon lucide-circle-check-big', [
-    svgEl('path', { d: 'M21.801 10A10 10 0 1 1 17 3.335' }),
-    svgEl('path', { d: 'm9 11 3 3L22 4' }),
-  ]);
+  return createIcon(
+    'lucide lucide-circle-check-big-icon lucide-circle-check-big',
+    [
+      svgEl('path', { d: 'M21.801 10A10 10 0 1 1 17 3.335' }),
+      svgEl('path', { d: 'm9 11 3 3L22 4' }),
+    ],
+  );
 }
 
 export function renderCircleCheckIcon24() {
@@ -258,12 +261,15 @@ export function renderSendIcon24() {
 }
 
 export function renderSquareChartGanttIcon24() {
-  return createIcon('lucide lucide-square-chart-gantt-icon lucide-square-chart-gantt', [
-    svgEl('rect', { width: '18', height: '18', x: '3', y: '3', rx: '2' }),
-    svgEl('path', { d: 'M9 8h7' }),
-    svgEl('path', { d: 'M8 12h6' }),
-    svgEl('path', { d: 'M11 16h5' }),
-  ]);
+  return createIcon(
+    'lucide lucide-square-chart-gantt-icon lucide-square-chart-gantt',
+    [
+      svgEl('rect', { width: '18', height: '18', x: '3', y: '3', rx: '2' }),
+      svgEl('path', { d: 'M9 8h7' }),
+      svgEl('path', { d: 'M8 12h6' }),
+      svgEl('path', { d: 'M11 16h5' }),
+    ],
+  );
 }
 
 export function renderTriangleAlertIcon24() {

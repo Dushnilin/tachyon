@@ -15,6 +15,7 @@
 let fs = require("fs");
 let common = require("core.common");
 let uci_core = require("core.uci");
+let connections = require("config.connections");
 
 let as_string = common.as_string;
 let object_or_empty = common.object_or_empty;
@@ -55,20 +56,23 @@ function threshold() {
 }
 
 // Same ordering semantics as the generator: UCI order of enabled sections.
+// Prioritize remote proxy candidates when present.
 function candidates() {
-    let result = [];
+    let all = [];
+    let proxies = [];
     for (let section in uci_core.section_objects(CONFIG_NAME, "section")) {
         if (!bool_option(section, "enabled", true))
             continue;
         let action = option(section, "action", "");
-        if (action == "connection" || action == "proxy" || action == "outbound" || action == "vpn" ||
-            action == "awg" || action == "warp" || action == "byedpi" || action == "zapret" || action == "zapret2" ||
-            action == "wdtt" || action == "olcrtc" ||
-            action == "anytls" || action == "snell" || action == "mieru" || action == "sudoku" ||
-            action == "masque" || action == "openvpn")
-            push(result, as_string(section[".name"]));
+        if (connections.is_remote_proxy_action(action)) {
+            push(proxies, as_string(section[".name"]));
+            push(all, as_string(section[".name"]));
+        } else if (action == "byedpi" || action == "zapret" || action == "zapret2" ||
+            action == "wdtt" || action == "olcrtc") {
+            push(all, as_string(section[".name"]));
+        }
     }
-    return result;
+    return length(proxies) > 0 ? proxies : all;
 }
 
 function read_active(candidates_list) {
