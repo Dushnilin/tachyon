@@ -1049,9 +1049,32 @@ function ui_capabilities_json() {
     write_json(capability_flags());
 }
 
-function process_memory_rss_mb(process_name) {
+function get_process_pids(process_name) {
+    let pids = [];
+    let d = fs.opendir("/proc");
+    if (d) {
+        let entry;
+        while ((entry = d.read()) != null) {
+            if (match(entry, /^[0-9]+$/) != null) {
+                let comm = fs.readfile("/proc/" + entry + "/comm");
+                if (comm && trim(comm) == process_name)
+                    push(pids, entry);
+            }
+        }
+        d.close();
+        return pids;
+    }
     let output = common.command_output_from_args([ "pidof", process_name ]);
-    let pids = split(trim(as_string(output)), /[ \t\r\n]+/);
+    for (let p in split(trim(as_string(output)), /[ \t\r\n]+/)) {
+        let pid = trim(as_string(p));
+        if (pid && match(pid, /^[0-9]+$/) != null)
+            push(pids, pid);
+    }
+    return pids;
+}
+
+function process_memory_rss_mb(process_name) {
+    let pids = get_process_pids(process_name);
     let total_kb = 0;
     for (let p in pids) {
         let pid = trim(as_string(p));

@@ -68,7 +68,7 @@ import { shouldShowLoadingForRestoredAction } from '../../helpers/restoredAction
 import { getServiceAvailability } from '../../helpers/serviceAvailability';
 import { capSetSize, capMapSize } from '../../helpers/capCollectionSize';
 
-const SECTIONS_REFRESH_INTERVAL_MS = 10000;
+const SECTIONS_REFRESH_INTERVAL_MS = 15000;
 const LATENCY_TEST_BUTTON_CLASS = 'dashboard-sections-grid-item-test-latency';
 const LATENCY_TEST_BUTTON_LABEL_CLASS =
   'dashboard-sections-grid-item-test-latency__label';
@@ -96,12 +96,33 @@ const customProxyLatencies = new Map<string, number>();
 const singleTestingOutboundCodes: Record<string, boolean> = {};
 let isTestingAllSections = false;
 
+let dashboardVisibilityPaused = false;
+
 if (typeof window !== 'undefined') {
   window.addEventListener('pagehide', () => {
     pageUnloading = true;
   });
   window.addEventListener('pageshow', () => {
     pageUnloading = false;
+  });
+}
+
+if (
+  typeof document !== 'undefined' &&
+  typeof document.addEventListener === 'function'
+) {
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      if (dashboardDataUpdatesStarted) {
+        stopDashboardDataUpdates();
+        dashboardVisibilityPaused = true;
+      }
+    } else if (dashboardVisibilityPaused) {
+      dashboardVisibilityPaused = false;
+      if (dashboardMounted && getDashboardServiceAvailability() !== 'stopped') {
+        startDashboardDataUpdates();
+      }
+    }
   });
 }
 
@@ -637,6 +658,11 @@ function startDashboardDataUpdates() {
     !dashboardMounted ||
     getDashboardServiceAvailability() === 'stopped'
   ) {
+    return;
+  }
+
+  if (typeof document !== 'undefined' && document.hidden) {
+    dashboardVisibilityPaused = true;
     return;
   }
 
@@ -2026,8 +2052,12 @@ function renderStoreWidget(
 }
 
 async function fetchConnections() {
+  const shouldFetchHostnames = expandedSections.has('active_clients');
+  const needsFallbackPolling = directSocketsFailed || !canUseDirectClashApi();
+  if (!needsFallbackPolling && !shouldFetchHostnames) {
+    return;
+  }
   try {
-    const shouldFetchHostnames = expandedSections.has('active_clients');
     const [res, hostnames] = await Promise.all([
       TachyonShellMethods.getClashApiConnections(),
       shouldFetchHostnames
@@ -2037,7 +2067,7 @@ async function fetchConnections() {
     if (res.success && res.data && typeof res.data === 'object') {
       const payload = res.data as any;
 
-      if (directSocketsFailed || !canUseDirectClashApi()) {
+      if (needsFallbackPolling) {
         const downloadTotal = Number(payload.downloadTotal) || 0;
         const uploadTotal = Number(payload.uploadTotal) || 0;
         const memory = Number(payload.memory) || 0;
@@ -2391,6 +2421,7 @@ async function onPageMount() {
 function onPageUnmount() {
   dashboardMounted = false;
   dashboardMountId += 1;
+  dashboardVisibilityPaused = false;
 
   directSocketsFailed = false;
   lastTrafficPollTime = 0;

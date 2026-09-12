@@ -71,7 +71,7 @@ function normalizeConnectionsPayload(value: unknown): ClashConnectionsPayload {
 }
 
 const RENDER_INTERVAL_MS = 500;
-const CONNECTIONS_RPC_POLL_INTERVAL_MS = 1500;
+const CONNECTIONS_RPC_POLL_INTERVAL_MS = 3000;
 const CLOSED_CONNECTION_LIMIT = 300;
 const ALL_FILTER_VALUE = 'all';
 
@@ -1826,9 +1826,51 @@ async function onPageMount() {
   }, RENDER_INTERVAL_MS);
 }
 
+let monitoringVisibilityPaused = false;
+
+function pauseMonitoringUpdates() {
+  if (!monitoringMounted || monitoringVisibilityPaused) return;
+  monitoringVisibilityPaused = true;
+  if (renderTimer) {
+    clearInterval(renderTimer);
+    renderTimer = null;
+  }
+  stopConnectionsUpdates();
+}
+
+function resumeMonitoringUpdates() {
+  if (!monitoringMounted || !monitoringVisibilityPaused) return;
+  monitoringVisibilityPaused = false;
+  if (serviceAvailability === 'running') {
+    startConnectionsUpdates();
+  }
+  if (!renderTimer) {
+    renderTimer = setInterval(() => {
+      if (monitoringPaused) {
+        return;
+      }
+      renderConnections();
+    }, RENDER_INTERVAL_MS);
+  }
+}
+
+if (
+  typeof document !== 'undefined' &&
+  typeof document.addEventListener === 'function'
+) {
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      pauseMonitoringUpdates();
+    } else {
+      resumeMonitoringUpdates();
+    }
+  });
+}
+
 function onPageUnmount() {
   monitoringMounted = false;
   monitoringMountId += 1;
+  monitoringVisibilityPaused = false;
 
   if (renderTimer) {
     clearInterval(renderTimer);

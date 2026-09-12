@@ -5721,13 +5721,17 @@ var TabService = class _TabService {
   handleMutations() {
     this.notify();
   }
+  cleanTabId(tab) {
+    if (!tab) return null;
+    return tab.replace(/^(?:cbi-tachyon-|tab-)/, "");
+  }
   getTabsInfo() {
     const tabs = Array.from(
       document.querySelectorAll(".cbi-tab, .cbi-tab-disabled")
     );
     return tabs.map((el) => ({
       el,
-      id: el.dataset.tab || "",
+      id: this.cleanTabId(el.dataset.tab) || "",
       active: el.classList.contains("cbi-tab") && !el.classList.contains("cbi-tab-disabled")
     }));
   }
@@ -5735,7 +5739,7 @@ var TabService = class _TabService {
     const active = document.querySelector(
       ".cbi-tab:not(.cbi-tab-disabled)"
     );
-    return active?.dataset.tab || null;
+    return this.cleanTabId(active?.dataset.tab);
   }
   notify() {
     const tabs = this.getTabsInfo();
@@ -6711,9 +6715,9 @@ function applyUiStateToStore(uiState) {
 
 // src/tachyon/services/runtimeUiState.service.ts
 var RUNTIME_UI_STATE_REFRESH_MIN_INTERVAL_MS = 500;
-var RUNTIME_UI_STATE_IDLE_POLL_INTERVAL_MS = 3e3;
+var RUNTIME_UI_STATE_IDLE_POLL_INTERVAL_MS = 1e4;
 var RUNTIME_UI_STATE_ACTIVE_POLL_INTERVAL_MS = 500;
-var RUNTIME_UI_STATE_HIDDEN_POLL_INTERVAL_MS = 3e4;
+var RUNTIME_UI_STATE_HIDDEN_POLL_INTERVAL_MS = 6e4;
 var runtimeUiStateRefreshPromise = null;
 var lastRuntimeUiStateRefreshAt = 0;
 var lastRuntimeUiState;
@@ -6832,7 +6836,7 @@ function startRuntimeUiStatePolling() {
 }
 
 // src/tachyon/services/core.service.ts
-var LOG_WATCHER_INTERVAL_MS = 1e4;
+var LOG_WATCHER_INTERVAL_MS = 3e4;
 var LOG_WATCHER_START_DELAY_MS = 5e3;
 function componentDisplayName(component) {
   const names = {
@@ -7299,7 +7303,7 @@ function isActiveLuciTab(tabId) {
   }
   return Boolean(
     document.querySelector(
-      `.cbi-tab[data-tab="${tabId}"]:not(.cbi-tab-disabled)`
+      `.cbi-tab[data-tab="${tabId}"]:not(.cbi-tab-disabled), .cbi-tab[data-tab="cbi-tachyon-${tabId}"]:not(.cbi-tab-disabled)`
     )
   );
 }
@@ -7366,7 +7370,7 @@ function toggleSectionExpanded(sectionCode) {
   void renderSectionsWidget();
   void renderConnectionsWidget();
 }
-var SECTIONS_REFRESH_INTERVAL_MS = 1e4;
+var SECTIONS_REFRESH_INTERVAL_MS = 15e3;
 var LATENCY_TEST_BUTTON_CLASS = "dashboard-sections-grid-item-test-latency";
 var LATENCY_TEST_BUTTON_LABEL_CLASS = "dashboard-sections-grid-item-test-latency__label";
 var sectionsRefreshTimer = null;
@@ -7391,12 +7395,28 @@ var handledLatencyJobs = /* @__PURE__ */ new Set();
 var customProxyLatencies = /* @__PURE__ */ new Map();
 var singleTestingOutboundCodes = {};
 var isTestingAllSections = false;
+var dashboardVisibilityPaused = false;
 if (typeof window !== "undefined") {
   window.addEventListener("pagehide", () => {
     pageUnloading = true;
   });
   window.addEventListener("pageshow", () => {
     pageUnloading = false;
+  });
+}
+if (typeof document !== "undefined" && typeof document.addEventListener === "function") {
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      if (dashboardDataUpdatesStarted) {
+        stopDashboardDataUpdates();
+        dashboardVisibilityPaused = true;
+      }
+    } else if (dashboardVisibilityPaused) {
+      dashboardVisibilityPaused = false;
+      if (dashboardMounted && getDashboardServiceAvailability() !== "stopped") {
+        startDashboardDataUpdates();
+      }
+    }
   });
 }
 async function fetchDashboardSectionsOnce(mountId) {
@@ -7791,6 +7811,10 @@ function stopDashboardDataUpdates() {
 }
 function startDashboardDataUpdates() {
   if (dashboardDataUpdatesStarted || !dashboardMounted || getDashboardServiceAvailability() === "stopped") {
+    return;
+  }
+  if (typeof document !== "undefined" && document.hidden) {
+    dashboardVisibilityPaused = true;
     return;
   }
   dashboardDataUpdatesStarted = true;
@@ -8888,15 +8912,19 @@ function renderStoreWidget(containerId, storeKey, title, getItems, debugName) {
   container.replaceChildren(renderedWidget);
 }
 async function fetchConnections() {
+  const shouldFetchHostnames = expandedSections.has("active_clients");
+  const needsFallbackPolling = directSocketsFailed || !canUseDirectClashApi();
+  if (!needsFallbackPolling && !shouldFetchHostnames) {
+    return;
+  }
   try {
-    const shouldFetchHostnames = expandedSections.has("active_clients");
     const [res, hostnames] = await Promise.all([
       TachyonShellMethods.getClashApiConnections(),
       shouldFetchHostnames ? fetchHostnames() : Promise.resolve(/* @__PURE__ */ new Map())
     ]);
     if (res.success && res.data && typeof res.data === "object") {
       const payload = res.data;
-      if (directSocketsFailed || !canUseDirectClashApi()) {
+      if (needsFallbackPolling) {
         const downloadTotal = Number(payload.downloadTotal) || 0;
         const uploadTotal = Number(payload.uploadTotal) || 0;
         const memory = Number(payload.memory) || 0;
@@ -9185,6 +9213,7 @@ async function onPageMount() {
 function onPageUnmount() {
   dashboardMounted = false;
   dashboardMountId += 1;
+  dashboardVisibilityPaused = false;
   directSocketsFailed = false;
   lastTrafficPollTime = 0;
   lastUploadTotal = 0;
@@ -17966,7 +17995,7 @@ function normalizeConnectionsPayload(value) {
   return value;
 }
 var RENDER_INTERVAL_MS = 500;
-var CONNECTIONS_RPC_POLL_INTERVAL_MS = 1500;
+var CONNECTIONS_RPC_POLL_INTERVAL_MS = 3e3;
 var CLOSED_CONNECTION_LIMIT = 300;
 var ALL_FILTER_VALUE = "all";
 var dependencies = {};
@@ -19301,9 +19330,44 @@ async function onPageMount3() {
     renderConnections2();
   }, RENDER_INTERVAL_MS);
 }
+var monitoringVisibilityPaused = false;
+function pauseMonitoringUpdates() {
+  if (!monitoringMounted || monitoringVisibilityPaused) return;
+  monitoringVisibilityPaused = true;
+  if (renderTimer) {
+    clearInterval(renderTimer);
+    renderTimer = null;
+  }
+  stopConnectionsUpdates();
+}
+function resumeMonitoringUpdates() {
+  if (!monitoringMounted || !monitoringVisibilityPaused) return;
+  monitoringVisibilityPaused = false;
+  if (serviceAvailability === "running") {
+    startConnectionsUpdates();
+  }
+  if (!renderTimer) {
+    renderTimer = setInterval(() => {
+      if (monitoringPaused) {
+        return;
+      }
+      renderConnections2();
+    }, RENDER_INTERVAL_MS);
+  }
+}
+if (typeof document !== "undefined" && typeof document.addEventListener === "function") {
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      pauseMonitoringUpdates();
+    } else {
+      resumeMonitoringUpdates();
+    }
+  });
+}
 function onPageUnmount3() {
   monitoringMounted = false;
   monitoringMountId += 1;
+  monitoringVisibilityPaused = false;
   if (renderTimer) {
     clearInterval(renderTimer);
     renderTimer = null;

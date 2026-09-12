@@ -432,10 +432,24 @@ function pid_is_sing_box(pid) {
     if (match(pid, /^[0-9]+$/) == null)
         return false;
 
+    let exe = fs.readlink("/proc/" + pid + "/exe");
+    if (exe != null && exe != "")
+        return path_basename(exe) == "sing-box";
+
+    let comm = fs.readfile("/proc/" + pid + "/comm");
+    if (comm != null)
+        return trim(comm) == "sing-box";
+
     return path_basename(command_trimmed_output_from_args([ "readlink", "/proc/" + pid + "/exe" ])) == "sing-box";
 }
 
 function sing_box_service_pid_runtime() {
+    for (let path in [ "/var/run/sing-box.pid", "/var/run/sing-box/sing-box.pid" ]) {
+        let pid = int(trim(fs.readfile(path) || "0"));
+        if (pid > 0 && pid_is_sing_box(pid))
+            return pid;
+    }
+
     let data = command_output_from_args([ "ubus", "call", "service", "list", "{\"name\":\"sing-box\"}" ]);
     try {
         let pid = sing_box_service_pid_from_value(json(data));
@@ -444,14 +458,7 @@ function sing_box_service_pid_runtime() {
     }
     catch (e) {
         // ubus is unavailable or answered with something that is not the
-        // service list; the pid files below are the fallback that exists for
-        // exactly this case.
-    }
-
-    for (let path in [ "/var/run/sing-box.pid", "/var/run/sing-box/sing-box.pid" ]) {
-        let pid = int(trim(fs.readfile(path) || "0"));
-        if (pid > 0 && pid_is_sing_box(pid))
-            return pid;
+        // service list; the fallback below handles this case.
     }
 
     let pids = split(trim(command_trimmed_output_from_args([ "pidof", "sing-box" ])), /[ \t\r\n]+/);
@@ -611,9 +618,25 @@ function sing_box_service_stable(min_age) {
     return age != null && age >= min_age;
 }
 
+let network_check_cache = {
+    key: "",
+    checked_at: 0,
+    result: false
+};
+
 function tachyon_runtime_network_configured(rt_table, nft_table, mark) {
-    return command_success_from_args([ "nft", "list", "table", "inet", nft_table ]) &&
+    let key = as_string(rt_table) + ":" + as_string(nft_table) + ":" + as_string(mark);
+    let now = int(clock()[0]);
+    if (network_check_cache.key == key && network_check_cache.result && (now - network_check_cache.checked_at) < 5)
+        return true;
+
+    let result = command_success_from_args([ "nft", "list", "table", "inet", nft_table ]) &&
         command_success_from_args([ "ucode", "-L", LIB_DIR, LIB_DIR + "/nft/apply.uc", "tproxy-route-rule-present", rt_table, mark ]);
+
+    network_check_cache.key = key;
+    network_check_cache.checked_at = now;
+    network_check_cache.result = result;
+    return result;
 }
 
 function tachyon_running(rt_table, nft_table, mark) {

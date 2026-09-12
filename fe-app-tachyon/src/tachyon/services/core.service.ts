@@ -18,7 +18,7 @@ type CoreServiceOptions = {
   logWatcherStartDelayMs?: number;
 };
 
-const LOG_WATCHER_INTERVAL_MS = 10000;
+const LOG_WATCHER_INTERVAL_MS = 30000;
 const LOG_WATCHER_START_DELAY_MS = 5000;
 
 function componentDisplayName(component: string) {

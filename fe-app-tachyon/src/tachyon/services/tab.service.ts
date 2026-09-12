@@ -39,13 +39,18 @@ class TabService {
     this.notify();
   }
 
+  private cleanTabId(tab: string | null | undefined): string | null {
+    if (!tab) return null;
+    return tab.replace(/^(?:cbi-tachyon-|tab-)/, '');
+  }
+
   private getTabsInfo(): TabInfo[] {
     const tabs = Array.from(
       document.querySelectorAll<HTMLElement>('.cbi-tab, .cbi-tab-disabled'),
     );
     return tabs.map((el) => ({
       el,
-      id: el.dataset.tab || '',
+      id: this.cleanTabId(el.dataset.tab) || '',
       active:
         el.classList.contains('cbi-tab') &&
         !el.classList.contains('cbi-tab-disabled'),
@@ -56,7 +61,7 @@ class TabService {
     const active = document.querySelector<HTMLElement>(
       '.cbi-tab:not(.cbi-tab-disabled)',
     );
-    return active?.dataset.tab || null;
+    return this.cleanTabId(active?.dataset.tab);
   }
 
   private notify() {

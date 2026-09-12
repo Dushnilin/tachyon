@@ -5,7 +5,7 @@ export function isActiveLuciTab(tabId: string) {
 
   return Boolean(
     document.querySelector(
-      `.cbi-tab[data-tab="${tabId}"]:not(.cbi-tab-disabled)`,
+      `.cbi-tab[data-tab="${tabId}"]:not(.cbi-tab-disabled), .cbi-tab[data-tab="cbi-tachyon-${tabId}"]:not(.cbi-tab-disabled)`,
     ),
   );
 }
