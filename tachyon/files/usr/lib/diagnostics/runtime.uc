@@ -2156,6 +2156,10 @@ function is_container_process(pid) {
     return false;
 }
 
+function uci_settings() {
+    return uci_core.get_all(CONFIG_NAME, "settings") || {};
+}
+
 function is_adguardhome_primary_dns(cfg) {
     let agh_pid = find_process_pid("AdGuardHome");
     if (agh_pid == "")
@@ -2185,10 +2189,6 @@ function tachyon_is_enabled() {
 
 function is_degraded() {
     return fs.stat("/tmp/tachyon/degraded") != null;
-}
-
-function uci_settings() {
-    return uci_core.get_all(CONFIG_NAME, "settings") || {};
 }
 
 function kill_our_core_processes() {

@@ -527,45 +527,6 @@ function watch_recovery(key, incident, reason) {
 }
 
 // The 30s floor is the original restart debounce: procd emits several stop
-// events for one crash, and each would otherwise queue its own restart.
-function heal_singbox_stopped(ev) {
-    let now = time();
-    if (now - last_restart_time < 30) return;
-    last_restart_time = now;
-
-    let cfg = settings();
-    if (cfg.recovery_bypass == "1") return;
-    if (check_auto_resume_pause()) return;
-    if (controller.check_tachyon_cli_running()) return;
-
-    let list_update_pid = trim(fs.readfile("/var/run/tachyon_list_update.pid") || "");
-    if (process_running(list_update_pid, "ucode")) return;
-
-    log_message("sing-box is stopped (" + as_string(ev.payload.reason || "health check") + "). Restarting Tachyon...", "warn");
-    increment_reconnect_count();
-    let tcfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
-    if (tcfg.notify_crash != "0") {
-        send_telegram_notification("⚠️ *Watchdog:* sing-box остановлен. Перезапускаю службы Tachyon...");
-    }
-    // This healer sends its own notification above and deliberately did not file
-    // an incident, so it does not start one now. It does register the watch: a
-    // restart that never brings the proxy back is worth a `failed` report, and
-    // that report is the only thing here that is new.
-    //
-    // Pinned to the light rung: sing-box is not running, so there is nothing to
-    // escalate over. Starting the service is the whole repair, and tearing down
-    // nftables and routing would not make a stopped process start any better.
-    if (safe_proxy_restart("singbox_stopped", ESCALATION_LIGHT)) {
-        // sing-box coming back is what the proxy and DNS probes are measuring,
-        // so their failures during the restart are this repair's own doing.
-        singbox_repair_until = time() + SUPPRESSION_DEADLINE;
-        watch_recovery("proxy", {
-            type: "singbox_stopped",
-            description: "sing-box остановлен (" + as_string(ev.payload.reason || "health check") + ")",
-            resolution: "Выполнен перезапуск служб Tachyon"
-        }, "singbox_stopped");
-    }
-}
 
 
 // ─── AI Watchdog Self-Healing Matrix ──────────────────────────────────────────
@@ -1346,6 +1307,46 @@ function increment_reconnect_count() {
     let count_file = "/tmp/tachyon_reconnect_count";
     let count = int(trim(fs.readfile(count_file) || "0")) + 1;
     fs.writefile(count_file, as_string(count) + "\n");
+}
+
+// events for one crash, and each would otherwise queue its own restart.
+function heal_singbox_stopped(ev) {
+    let now = time();
+    if (now - last_restart_time < 30) return;
+    last_restart_time = now;
+
+    let cfg = settings();
+    if (cfg.recovery_bypass == "1") return;
+    if (check_auto_resume_pause()) return;
+    if (controller.check_tachyon_cli_running()) return;
+
+    let list_update_pid = trim(fs.readfile("/var/run/tachyon_list_update.pid") || "");
+    if (process_running(list_update_pid, "ucode")) return;
+
+    log_message("sing-box is stopped (" + as_string(ev.payload.reason || "health check") + "). Restarting Tachyon...", "warn");
+    increment_reconnect_count();
+    let tcfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
+    if (tcfg.notify_crash != "0") {
+        send_telegram_notification("⚠️ *Watchdog:* sing-box остановлен. Перезапускаю службы Tachyon...");
+    }
+    // This healer sends its own notification above and deliberately did not file
+    // an incident, so it does not start one now. It does register the watch: a
+    // restart that never brings the proxy back is worth a `failed` report, and
+    // that report is the only thing here that is new.
+    //
+    // Pinned to the light rung: sing-box is not running, so there is nothing to
+    // escalate over. Starting the service is the whole repair, and tearing down
+    // nftables and routing would not make a stopped process start any better.
+    if (safe_proxy_restart("singbox_stopped", ESCALATION_LIGHT)) {
+        // sing-box coming back is what the proxy and DNS probes are measuring,
+        // so their failures during the restart are this repair's own doing.
+        singbox_repair_until = time() + SUPPRESSION_DEADLINE;
+        watch_recovery("proxy", {
+            type: "singbox_stopped",
+            description: "sing-box остановлен (" + as_string(ev.payload.reason || "health check") + ")",
+            resolution: "Выполнен перезапуск служб Tachyon"
+        }, "singbox_stopped");
+    }
 }
 
 // ─── Adaptive Intervals ───────────────────────────────────────────────────────

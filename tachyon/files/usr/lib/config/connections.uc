@@ -663,6 +663,14 @@ function dscp_value(section) {
     return list_option_value_from_array(dscp_list(section));
 }
 
+function contains(arr, val) {
+    if (type(arr) != "array") return false;
+    for (let item in arr) {
+        if (item == val) return true;
+    }
+    return false;
+}
+
 function routed_dns_enabled(section) {
     return bool_option(section, "routed_dns_enabled", false);
 }
@@ -681,14 +689,6 @@ function routed_dns_servers(section) {
         servers = [single];
     }
     return servers;
-}
-
-function contains(arr, val) {
-    if (type(arr) != "array") return false;
-    for (let item in arr) {
-        if (item == val) return true;
-    }
-    return false;
 }
 
 function geoip_country_list(section) {

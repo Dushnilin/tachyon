@@ -266,27 +266,6 @@ function rotate_log_if_needed() {
     fs.writefile(LOG_FILE, "--- log truncated (size cap) ---\n" + tail);
 }
 
-function alert_route_failure(attempt, proxy_alive) {
-    // One-shot per failure episode - the caller clears the flag as soon as
-    // polling recovers. Delivery rides on tg_request's own fallback chain:
-    // if the proxy route is what's broken, the message goes out directly.
-    let cfg = settings();
-    let token = trim(as_string(cfg.bot_token || ""));
-    if (token == "") return;
-    let admins = split(trim(as_string(cfg.admin_ids || "")), /,/);
-    let chat_id = trim(as_string(admins[0] || ""));
-    if (chat_id == "") return;
-
-    let hint = proxy_alive
-        ? t("route_proxy_alive")
-        : t("route_proxy_down");
-    let text = "⚠️ <b>" + t("route_alert_title") + "</b> " + as_string(attempt) +
-        " " + t("route_alert_consecutive") + ".\n" +
-        t("route_reason") + " " + hint + ".\n" +
-        t("route_fallback_hint") + "\n" +
-        t("route_heal_hint");
-    send_message(token, chat_id, text, "HTML", null);
-}
 
 function tg_request_via(token, method, payload, proxy_args) {
     if (!token) return null;
@@ -348,6 +327,28 @@ function send_message(token, chat_id, text, parse_mode, keyboard) {
         res = tg_request(token, "sendMessage", payload);
     }
     return res;
+}
+
+function alert_route_failure(attempt, proxy_alive) {
+    // One-shot per failure episode - the caller clears the flag as soon as
+    // polling recovers. Delivery rides on tg_request's own fallback chain:
+    // if the proxy route is what's broken, the message goes out directly.
+    let cfg = settings();
+    let token = trim(as_string(cfg.bot_token || ""));
+    if (token == "") return;
+    let admins = split(trim(as_string(cfg.admin_ids || "")), /,/);
+    let chat_id = trim(as_string(admins[0] || ""));
+    if (chat_id == "") return;
+
+    let hint = proxy_alive
+        ? t("route_proxy_alive")
+        : t("route_proxy_down");
+    let text = "⚠️ <b>" + t("route_alert_title") + "</b> " + as_string(attempt) +
+        " " + t("route_alert_consecutive") + ".\n" +
+        t("route_reason") + " " + hint + ".\n" +
+        t("route_fallback_hint") + "\n" +
+        t("route_heal_hint");
+    send_message(token, chat_id, text, "HTML", null);
 }
 
 function edit_message(token, chat_id, message_id, text, parse_mode, keyboard) {
@@ -2269,50 +2270,6 @@ function find_mac_block_rules(c, mac) {
     return found;
 }
 
-function handle_toggle_mac(token, chat_id, mac_raw) {
-    let mac = normalize_mac(mac_raw);
-    if (!mac) {
-        send_message(token, chat_id, "❌ " + t("mac_invalid"), "HTML");
-        return view_devices(token, chat_id, null);
-    }
-
-    let c = uci_core.cursor();
-    if (!c) {
-        return send_message(token, chat_id, "❌ " + t("mac_firewall_open_failed"), "HTML",
-            [[{ text: "⬅️ " + t("nav_menu"), callback_data: "/menu" }]]);
-    }
-    c.load("firewall");
-
-    let existing = find_mac_block_rules(c, mac);
-    let blocked_now;
-    if (length(existing) > 0) {
-        for (let name in existing)
-            c.delete("firewall", name);
-        blocked_now = false;
-    } else {
-        let sec = c.add("firewall", "rule");
-        if (!sec) {
-            return send_message(token, chat_id, "❌ " + t("mac_block_rule_failed"), "HTML",
-                [[{ text: "⬅️ " + t("nav_menu"), callback_data: "/menu" }]]);
-        }
-        c.set("firewall", sec, "name", "Tachyon block " + mac);
-        c.set("firewall", sec, "src", "lan");
-        c.set("firewall", sec, "dest", "*");
-        c.set("firewall", sec, "proto", "all");
-        c.set("firewall", sec, "src_mac", mac);
-        c.set("firewall", sec, "target", "REJECT");
-        blocked_now = true;
-    }
-    c.commit("firewall");
-    // Reload in the background so the poll loop is not blocked by fw4
-    system(common.background_command("/etc/init.d/firewall reload"));
-
-    send_message(token, chat_id,
-        (blocked_now ? "🚫 Устройство <code>" : "🔓 Устройство <code>") + mac +
-        (blocked_now ? "</code> заблокировано." : "</code> разблокировано.") +
-        "\n\n<i>Правила firewall применяются в фоне (несколько секунд).</i>", "HTML");
-    return view_devices(token, chat_id, null);
-}
 
 function view_devices(token, chat_id, msg_id) {
     let lease_file = "/tmp/dhcp.leases";
@@ -2360,6 +2317,51 @@ function view_devices(token, chat_id, msg_id) {
     
     if (msg_id) edit_message(token, chat_id, msg_id, text, "HTML", keyboard);
     else send_message(token, chat_id, text, "HTML", keyboard);
+}
+
+function handle_toggle_mac(token, chat_id, mac_raw) {
+    let mac = normalize_mac(mac_raw);
+    if (!mac) {
+        send_message(token, chat_id, "❌ " + t("mac_invalid"), "HTML");
+        return view_devices(token, chat_id, null);
+    }
+
+    let c = uci_core.cursor();
+    if (!c) {
+        return send_message(token, chat_id, "❌ " + t("mac_firewall_open_failed"), "HTML",
+            [[{ text: "⬅️ " + t("nav_menu"), callback_data: "/menu" }]]);
+    }
+    c.load("firewall");
+
+    let existing = find_mac_block_rules(c, mac);
+    let blocked_now;
+    if (length(existing) > 0) {
+        for (let name in existing)
+            c.delete("firewall", name);
+        blocked_now = false;
+    } else {
+        let sec = c.add("firewall", "rule");
+        if (!sec) {
+            return send_message(token, chat_id, "❌ " + t("mac_block_rule_failed"), "HTML",
+                [[{ text: "⬅️ " + t("nav_menu"), callback_data: "/menu" }]]);
+        }
+        c.set("firewall", sec, "name", "Tachyon block " + mac);
+        c.set("firewall", sec, "src", "lan");
+        c.set("firewall", sec, "dest", "*");
+        c.set("firewall", sec, "proto", "all");
+        c.set("firewall", sec, "src_mac", mac);
+        c.set("firewall", sec, "target", "REJECT");
+        blocked_now = true;
+    }
+    c.commit("firewall");
+    // Reload in the background so the poll loop is not blocked by fw4
+    system(common.background_command("/etc/init.d/firewall reload"));
+
+    send_message(token, chat_id,
+        (blocked_now ? "🚫 Устройство <code>" : "🔓 Устройство <code>") + mac +
+        (blocked_now ? "</code> заблокировано." : "</code> разблокировано.") +
+        "\n\n<i>Правила firewall применяются в фоне (несколько секунд).</i>", "HTML");
+    return view_devices(token, chat_id, null);
 }
 
 function view_watchdog(token, chat_id, msg_id) {

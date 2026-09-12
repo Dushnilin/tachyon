@@ -290,26 +290,6 @@ function run_leak_check_status(job_id) {
     return leak_mod.get_leak_check_status(job_id);
 }
 
-function manage_domain_list(action_type, domain, do_delete) {
-    let c = uci_core.cursor();
-    if (!c) return { success: false, error: "Не удалось инициализировать UCI" };
-    c.load(CONFIG_NAME);
-
-    let target_section = null;
-    c.foreach(CONFIG_NAME, "section", function(s) {
-        if (s.enabled == "1" && s.action == action_type) {
-            target_section = s[".name"];
-            return false;
-        }
-    });
-
-    if (!target_section) {
-        return { success: false, error: "Не найдено активное правило с действием '" + action_type + "'." };
-    }
-
-    return manage_domain_list_by_section(target_section, domain, do_delete);
-}
-
 function manage_domain_list_by_section(sec_name, domain, do_delete) {
     let c = uci_core.cursor();
     if (!c) return { success: false, error: "Не удалось инициализировать UCI" };
@@ -352,6 +332,26 @@ function manage_domain_list_by_section(sec_name, domain, do_delete) {
         }
         return { success: false, error: "Не удалось добавить запись." };
     }
+}
+
+function manage_domain_list(action_type, domain, do_delete) {
+    let c = uci_core.cursor();
+    if (!c) return { success: false, error: "Не удалось инициализировать UCI" };
+    c.load(CONFIG_NAME);
+
+    let target_section = null;
+    c.foreach(CONFIG_NAME, "section", function(s) {
+        if (s.enabled == "1" && s.action == action_type) {
+            target_section = s[".name"];
+            return false;
+        }
+    });
+
+    if (!target_section) {
+        return { success: false, error: "Не найдено активное правило с действием '" + action_type + "'." };
+    }
+
+    return manage_domain_list_by_section(target_section, domain, do_delete);
 }
 
 function get_sections() {

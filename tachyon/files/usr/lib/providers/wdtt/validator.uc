@@ -150,27 +150,27 @@ function validate_section(section) {
 
     let peer = as_string(section.peer || "");
     if (peer != "" && !valid_peer(peer))
-        errors.push("peer must be in HOST:PORT format");
+        push(errors, "peer must be in HOST:PORT format");
 
     let mode = as_string(section.mode || "");
     if (!valid_mode(mode))
-        errors.push("mode must be one of: " + join(", ", WDTT_MODES));
+        push(errors, "mode must be one of: " + join(", ", WDTT_MODES));
 
     let qwdtt_mode = as_string(section.qwdtt_mode || "");
     if (!valid_qwdtt_mode(qwdtt_mode))
-        errors.push("qwdtt_mode must be one of: " + join(", ", QWDTT_MODES));
+        push(errors, "qwdtt_mode must be one of: " + join(", ", QWDTT_MODES));
 
     let workers = as_string(section.workers || "");
     if (workers != "" && !valid_number(workers, 1, 1024))
-        errors.push("workers must be 1-1024");
+        push(errors, "workers must be 1-1024");
 
     let max_hashes = as_string(section.max_hashes || "");
     if (max_hashes != "" && !valid_number(max_hashes, 1, 64))
-        errors.push("max_hashes must be 1-64");
+        push(errors, "max_hashes must be 1-64");
 
     let mtu = as_string(section.mtu || "");
     if (mtu != "" && !valid_number(mtu, 576, 1500))
-        errors.push("mtu must be 576-1500");
+        push(errors, "mtu must be 576-1500");
 
     let subscription_links = list_values(section.subscription_links);
     for (let link in subscription_links) {
@@ -180,33 +180,22 @@ function validate_section(section) {
         if (substr(link, 0, 7) == "wdtt://") {
             let parsed = parse_wdtt_uri(link);
             if (!parsed.valid)
-                errors.push("invalid wdtt:// URI: " + parsed.reason);
+                push(errors, "invalid wdtt:// URI: " + parsed.reason);
         }
         else if (substr(link, 0, 1) == "/") {
             /* local file — ok */
         }
         else if (!valid_url(link))
-            errors.push("subscription link must be HTTP URL, wdtt:// URI, or local file path: " + link);
+            push(errors, "subscription link must be HTTP URL, wdtt:// URI, or local file path: " + link);
     }
 
     let community_lists = list_values(section.community_lists);
     for (let cl in community_lists) {
         if (!valid_community_list(cl))
-            errors.push("unknown community list: " + cl);
+            push(errors, "unknown community list: " + cl);
     }
 
     return errors;
-}
-
-function validate_section_json() {
-    let input = read_stdin();
-    let data = object_or_empty(json(input));
-    let errors = validate_section(data);
-    if (length(errors) > 0)
-        write_json({ valid: false, message: join("; ", errors) });
-    else
-        write_json({ valid: true, message: "" });
-    return length(errors) == 0;
 }
 
 function read_stdin() {
@@ -220,6 +209,17 @@ function read_stdin() {
 
 function write_json(value) {
     printf("%s\n", sprintf("%J", value));
+}
+
+function validate_section_json() {
+    let input = read_stdin();
+    let data = object_or_empty(json(input));
+    let errors = validate_section(data);
+    if (length(errors) > 0)
+        write_json({ valid: false, message: join("; ", errors) });
+    else
+        write_json({ valid: true, message: "" });
+    return length(errors) == 0;
 }
 
 return {

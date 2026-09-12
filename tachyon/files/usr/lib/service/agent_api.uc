@@ -78,12 +78,6 @@ function get_agent_token() {
     return as_string(c.get(CONFIG_NAME + ".settings.agent_api_token") || "");
 }
 
-function check_write_auth(bearer) {
-    let token = get_agent_token();
-    if (token == "") return false;
-    return constant_time_eq("Bearer " + token, bearer);
-}
-
 // Byte-wise comparison without early exit so response timing does not leak
 // how many leading token characters matched.
 function constant_time_eq(a, b) {
@@ -98,6 +92,12 @@ function constant_time_eq(a, b) {
             diff |= 1;
     }
     return diff == 0;
+}
+
+function check_write_auth(bearer) {
+    let token = get_agent_token();
+    if (token == "") return false;
+    return constant_time_eq("Bearer " + token, bearer);
 }
 
 // ─── READ endpoints ───────────────────────────────────────────────────────────

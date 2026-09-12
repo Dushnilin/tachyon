@@ -134,23 +134,23 @@ function validate_section(section) {
 
     let provider = as_string(section.provider || "");
     if (provider != "" && !array_contains(OLCRTC_PROVIDERS, provider))
-        errors.push("provider must be one of: " + join(", ", OLCRTC_PROVIDERS));
+        push(errors, "provider must be one of: " + join(", ", OLCRTC_PROVIDERS));
 
     let transport = as_string(section.transport || "");
     if (transport != "" && !array_contains(OLCRTC_TRANSPORTS, transport))
-        errors.push("transport must be one of: " + join(", ", OLCRTC_TRANSPORTS));
+        push(errors, "transport must be one of: " + join(", ", OLCRTC_TRANSPORTS));
 
     let crypto_key = as_string(section.crypto_key || "");
     if (crypto_key != "" && !valid_hex_key(crypto_key))
-        errors.push("crypto_key must be 64 hex characters");
+        push(errors, "crypto_key must be 64 hex characters");
 
     let socks_port = as_string(section.socks_port || "");
     if (socks_port != "" && !valid_number(socks_port, 1, 65535))
-        errors.push("socks_port must be 1-65535");
+        push(errors, "socks_port must be 1-65535");
 
     let dns_server = as_string(section.dns_server || "");
     if (dns_server != "" && !valid_host_port(dns_server))
-        errors.push("dns_server must be in HOST:PORT format");
+        push(errors, "dns_server must be in HOST:PORT format");
 
     let subscription_links = list_values(section.subscription_links);
     for (let link in subscription_links) {
@@ -160,24 +160,13 @@ function validate_section(section) {
         if (substr(link, 0, 9) == "olcrtc://") {
             let parsed = parse_uri(link);
             if (!parsed.valid)
-                errors.push("invalid olcrtc:// URI: " + parsed.reason);
+                push(errors, "invalid olcrtc:// URI: " + parsed.reason);
         }
         else if (!valid_url(link))
-            errors.push("subscription link must be olcrtc:// URI or HTTP URL: " + link);
+            push(errors, "subscription link must be olcrtc:// URI or HTTP URL: " + link);
     }
 
     return errors;
-}
-
-function validate_section_json() {
-    let input = read_stdin();
-    let data = object_or_empty(json(input));
-    let errors = validate_section(data);
-    if (length(errors) > 0)
-        write_json({ valid: false, message: join("; ", errors) });
-    else
-        write_json({ valid: true, message: "" });
-    return length(errors) == 0;
 }
 
 function read_stdin() {
@@ -191,6 +180,17 @@ function read_stdin() {
 
 function write_json(value) {
     printf("%s\n", sprintf("%J", value));
+}
+
+function validate_section_json() {
+    let input = read_stdin();
+    let data = object_or_empty(json(input));
+    let errors = validate_section(data);
+    if (length(errors) > 0)
+        write_json({ valid: false, message: join("; ", errors) });
+    else
+        write_json({ valid: true, message: "" });
+    return length(errors) == 0;
 }
 
 return {

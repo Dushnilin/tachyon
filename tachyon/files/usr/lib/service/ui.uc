@@ -764,6 +764,11 @@ function action_state_from_dirs() {
     };
 }
 
+function release_dir_lock(lock_dir) {
+    remove_file(as_string(lock_dir) + "/pid");
+    command_success_from_args([ "rmdir", lock_dir ]);
+}
+
 function acquire_dir_lock(lock_dir) {
     lock_dir = as_string(lock_dir);
     let owner_pid = current_pid();
@@ -797,11 +802,6 @@ function acquire_dir_lock(lock_dir) {
         return true;
     release_dir_lock(lock_dir);
     return false;
-}
-
-function release_dir_lock(lock_dir) {
-    remove_file(as_string(lock_dir) + "/pid");
-    command_success_from_args([ "rmdir", lock_dir ]);
 }
 
 function service_enabled() {

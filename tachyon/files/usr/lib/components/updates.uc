@@ -2329,9 +2329,19 @@ function ensure_ruleset_source(path) {
 }
 
 function cleanup_empty_ruleset(path) {
-    if (routing_rulesets_module().has_rules(path))
+    let slash = rindex(path, "/");
+    let filename = slash >= 0 ? substr(path, slash + 1) : path;
+    let persistent_path = "/etc/tachyon/rulesets/" + filename;
+    if (routing_rulesets_module().has_rules(path)) {
+        if (filename != "") {
+            ensure_dir("/etc/tachyon/rulesets");
+            copy_file(path, persistent_path);
+        }
         return true;
+    }
     remove_file(path);
+    if (filename != "")
+        remove_file(persistent_path);
     return false;
 }
 
@@ -2787,6 +2797,7 @@ function import_domains_from_remote_domain_lists(section, settings) {
         if (!import_domains_from_remote_plain_file(url, section, settings))
             ok = false;
     }
+    cleanup_empty_ruleset(remote_ruleset_path(section, "domains"));
     return ok;
 }
 
@@ -2885,6 +2896,7 @@ function import_subnets_from_remote_subnet_lists(section, settings) {
                 ok = false;
         }
     }
+    cleanup_empty_ruleset(remote_ruleset_path(section, "subnets"));
     return ok;
 }
 
@@ -3001,6 +3013,113 @@ function update_list_status(running, success, progress, message) {
         message: message,
         timestamp: now_seconds()
     });
+}
+
+function subscription_cache_env() {
+    return {
+        TACHYON_CONFIG_NAME: CONFIG_NAME,
+        TACHYON_LIB: LIB_DIR,
+        TMP_SING_BOX_FOLDER,
+        TMP_RULESET_FOLDER,
+        TMP_SUBSCRIPTION_FOLDER,
+        TACHYON_RUNTIME_STATE_DIR: RUNTIME_STATE_DIR,
+        TACHYON_SUBSCRIPTION_UPDATE_STATE_DIR: SUBSCRIPTION_UPDATE_STATE_DIR,
+        TACHYON_SUBSCRIPTION_LINKS_DIR: SUBSCRIPTION_LINKS_DIR,
+        TACHYON_SUBSCRIPTION_METADATA_DIR: SUBSCRIPTION_METADATA_DIR,
+        TACHYON_OUTBOUND_METADATA_DIR: OUTBOUND_METADATA_DIR,
+        TACHYON_SECTION_CACHE_DIR: SECTION_CACHE_DIR,
+        TACHYON_RUNTIME_CACHE_FORMAT_FILE: RUNTIME_CACHE_FORMAT_FILE,
+        TACHYON_RUNTIME_CACHE_FORMAT: RUNTIME_CACHE_FORMAT,
+        TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR: PERSISTENT_SUBSCRIPTION_CACHE_DIR,
+        TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE: PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE,
+        TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT: PERSISTENT_SUBSCRIPTION_CACHE_FORMAT,
+        TACHYON_PENDING_RELOAD_FILE: PENDING_RELOAD_FILE,
+        TACHYON_SERVICE_INIT: SERVICE_INIT,
+        SB_SERVICE_MIXED_INBOUND_ADDRESS,
+        SB_SERVICE_MIXED_INBOUND_PORT,
+        SB_VARIANT_STATE_FILE
+    };
+}
+
+function module_env_capture(env, args) {
+    let output_path = temp_path();
+    if (output_path == "")
+        return { status: 1, output: "" };
+
+    let status = command_status(command_env(env) + " " + module_command(args) + " >" + shell_quote(output_path) + " 2>&1");
+    let output = as_string(fs.readfile(output_path) || "");
+    remove_file(output_path);
+    return { status, output };
+}
+
+function subscription_cache_capture(args) {
+    let command_args = [ LIB_DIR + "/subscription/cache.uc" ];
+    for (let arg in args)
+        push(command_args, arg);
+    return module_env_capture(subscription_cache_env(), command_args);
+}
+
+function subscription_cache_success(args) {
+    let result = subscription_cache_capture(args);
+    if (result.output != "")
+        for (let line in split(result.output, "\n"))
+            if (trim(as_string(line)) != "")
+                log_message("subscription cache: " + line, "debug");
+    return result.status == 0;
+}
+
+function log_file_lines_from_text(text, level, prefix) {
+    for (let line in split(as_string(text), "\n"))
+        if (trim(as_string(line)) != "")
+            log_message(as_string(prefix) + as_string(line), level);
+}
+
+function singbox_runtime_success(args) {
+    let command_args = [ LIB_DIR + "/singbox/runtime.uc" ];
+    for (let arg in args)
+        push(command_args, arg);
+
+    let result = module_env_capture(subscription_cache_env(), command_args);
+    if (result.output != "")
+        log_file_lines_from_text(result.output, "debug", "sing-box runtime: ");
+    return result.status == 0;
+}
+
+function write_current_reload_state_clean() {
+    return service_state_success([
+        "write-current-reload-state-clean",
+        RELOAD_STATE_FILE,
+        RELOAD_STATE_FORMAT,
+        RULE_CONDITION_CACHE_DIR
+    ]);
+}
+
+function reload_singbox_after_list_update() {
+    let sing_box_pid = trim(module_output([ LIB_DIR + "/service/state.uc", "sing-box-service-runtime-pid" ]));
+    if (sing_box_pid == "" || int(sing_box_pid) <= 0)
+        return true;
+    let sing_box_config_path = option(uci_settings(), "config_path", "") || "/etc/sing-box/config.json";
+    let sing_box_config_hash_before = file_md5(sing_box_config_path);
+    if (!singbox_runtime_success([ "init-config", "0", "1", "1" ]))
+        return false;
+    let sing_box_config_hash_after = file_md5(sing_box_config_path);
+    if (sing_box_config_hash_before != sing_box_config_hash_after) {
+        log_message("Rulesets updated on disk; reloading sing-box with new configuration", "info");
+        module_success([ DNS_FAILOVER_UC, "stop-runtime" ]);
+        module_success([ PRIORITY_UC, "stop-runtime" ]);
+        let ok = service_state_success([
+            "reload-sing-box-runtime",
+            sing_box_pid,
+            sing_box_config_hash_before,
+            sing_box_config_hash_after,
+            "1"
+        ]);
+        module_success([ PRIORITY_UC, "start-runtime" ]);
+        module_success([ DNS_FAILOVER_UC, "start-runtime" ]);
+        write_current_reload_state_clean();
+        return ok;
+    }
+    return true;
 }
 
 function list_update() {
@@ -3170,113 +3289,6 @@ function stop_list_update() {
         log_message("Stopped list_update", "info");
     }
     remove_file(LIST_UPDATE_PID_FILE);
-}
-
-function subscription_cache_env() {
-    return {
-        TACHYON_CONFIG_NAME: CONFIG_NAME,
-        TACHYON_LIB: LIB_DIR,
-        TMP_SING_BOX_FOLDER,
-        TMP_RULESET_FOLDER,
-        TMP_SUBSCRIPTION_FOLDER,
-        TACHYON_RUNTIME_STATE_DIR: RUNTIME_STATE_DIR,
-        TACHYON_SUBSCRIPTION_UPDATE_STATE_DIR: SUBSCRIPTION_UPDATE_STATE_DIR,
-        TACHYON_SUBSCRIPTION_LINKS_DIR: SUBSCRIPTION_LINKS_DIR,
-        TACHYON_SUBSCRIPTION_METADATA_DIR: SUBSCRIPTION_METADATA_DIR,
-        TACHYON_OUTBOUND_METADATA_DIR: OUTBOUND_METADATA_DIR,
-        TACHYON_SECTION_CACHE_DIR: SECTION_CACHE_DIR,
-        TACHYON_RUNTIME_CACHE_FORMAT_FILE: RUNTIME_CACHE_FORMAT_FILE,
-        TACHYON_RUNTIME_CACHE_FORMAT: RUNTIME_CACHE_FORMAT,
-        TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR: PERSISTENT_SUBSCRIPTION_CACHE_DIR,
-        TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE: PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE,
-        TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT: PERSISTENT_SUBSCRIPTION_CACHE_FORMAT,
-        TACHYON_PENDING_RELOAD_FILE: PENDING_RELOAD_FILE,
-        TACHYON_SERVICE_INIT: SERVICE_INIT,
-        SB_SERVICE_MIXED_INBOUND_ADDRESS,
-        SB_SERVICE_MIXED_INBOUND_PORT,
-        SB_VARIANT_STATE_FILE
-    };
-}
-
-function module_env_capture(env, args) {
-    let output_path = temp_path();
-    if (output_path == "")
-        return { status: 1, output: "" };
-
-    let status = command_status(command_env(env) + " " + module_command(args) + " >" + shell_quote(output_path) + " 2>&1");
-    let output = as_string(fs.readfile(output_path) || "");
-    remove_file(output_path);
-    return { status, output };
-}
-
-function subscription_cache_capture(args) {
-    let command_args = [ LIB_DIR + "/subscription/cache.uc" ];
-    for (let arg in args)
-        push(command_args, arg);
-    return module_env_capture(subscription_cache_env(), command_args);
-}
-
-function subscription_cache_success(args) {
-    let result = subscription_cache_capture(args);
-    if (result.output != "")
-        for (let line in split(result.output, "\n"))
-            if (trim(as_string(line)) != "")
-                log_message("subscription cache: " + line, "debug");
-    return result.status == 0;
-}
-
-function log_file_lines_from_text(text, level, prefix) {
-    for (let line in split(as_string(text), "\n"))
-        if (trim(as_string(line)) != "")
-            log_message(as_string(prefix) + as_string(line), level);
-}
-
-function singbox_runtime_success(args) {
-    let command_args = [ LIB_DIR + "/singbox/runtime.uc" ];
-    for (let arg in args)
-        push(command_args, arg);
-
-    let result = module_env_capture(subscription_cache_env(), command_args);
-    if (result.output != "")
-        log_file_lines_from_text(result.output, "debug", "sing-box runtime: ");
-    return result.status == 0;
-}
-
-function write_current_reload_state_clean() {
-    return service_state_success([
-        "write-current-reload-state-clean",
-        RELOAD_STATE_FILE,
-        RELOAD_STATE_FORMAT,
-        RULE_CONDITION_CACHE_DIR
-    ]);
-}
-
-function reload_singbox_after_list_update() {
-    let sing_box_pid = trim(module_output([ LIB_DIR + "/service/state.uc", "sing-box-service-runtime-pid" ]));
-    if (sing_box_pid == "" || int(sing_box_pid) <= 0)
-        return true;
-    let sing_box_config_path = option(uci_settings(), "config_path", "") || "/etc/sing-box/config.json";
-    let sing_box_config_hash_before = file_md5(sing_box_config_path);
-    if (!singbox_runtime_success([ "init-config", "0", "1", "1" ]))
-        return false;
-    let sing_box_config_hash_after = file_md5(sing_box_config_path);
-    if (sing_box_config_hash_before != sing_box_config_hash_after) {
-        log_message("Rulesets updated on disk; reloading sing-box with new configuration", "info");
-        module_success([ DNS_FAILOVER_UC, "stop-runtime" ]);
-        module_success([ PRIORITY_UC, "stop-runtime" ]);
-        let ok = service_state_success([
-            "reload-sing-box-runtime",
-            sing_box_pid,
-            sing_box_config_hash_before,
-            sing_box_config_hash_after,
-            "1"
-        ]);
-        module_success([ PRIORITY_UC, "start-runtime" ]);
-        module_success([ DNS_FAILOVER_UC, "start-runtime" ]);
-        write_current_reload_state_clean();
-        return ok;
-    }
-    return true;
 }
 
 function mark_pending_reload(reason) {
