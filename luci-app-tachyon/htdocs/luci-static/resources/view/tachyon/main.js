@@ -15359,14 +15359,12 @@ function renderLeakCheckModal() {
     progressContainer.style.display = "block";
     progressBar.style.width = "30%";
     statusLabel.textContent = _(
-      "Querying WAN direct socket and proxy outbound on 127.0.0.1:4534..."
+      "Querying direct connection and proxy outbound..."
     );
     if (retryBtn) retryBtn.disabled = true;
     const timer = setTimeout(() => {
       progressBar.style.width = "70%";
-      statusLabel.textContent = _(
-        "Testing DNS leak upstream resolvers with bash.ws protocol..."
-      );
+      statusLabel.textContent = _("Testing upstream DNS resolvers...");
     }, 1500);
     try {
       const response = await TachyonShellMethods.leakCheck(
@@ -15374,12 +15372,10 @@ function renderLeakCheckModal() {
           clearTimeout(timer);
           progressBar.style.width = `${progress}%`;
           if (stage === "dns") {
-            statusLabel.textContent = _(
-              "Testing DNS leak upstream resolvers with bash.ws protocol..."
-            );
+            statusLabel.textContent = _("Testing upstream DNS resolvers...");
           } else if (stage === "ip") {
             statusLabel.textContent = _(
-              "Querying WAN direct socket and proxy outbound on 127.0.0.1:4534..."
+              "Querying direct connection and proxy outbound..."
             );
           }
         }
@@ -15387,14 +15383,14 @@ function renderLeakCheckModal() {
       clearTimeout(timer);
       progressBar.style.width = "100%";
       if (response.success && response.data) {
-        statusLabel.textContent = _("Leak detection completed");
+        statusLabel.textContent = _("Diagnostic check completed");
         setTimeout(() => {
           progressContainer.style.display = "none";
           progressBar.style.width = "0%";
         }, 400);
         renderResults(response.data);
       } else {
-        const err = !response.success && response.error ? response.error : _("Leak detection failed to complete");
+        const err = !response.success && response.error ? response.error : _("Diagnostic check failed to complete");
         progressContainer.style.display = "none";
         statusLabel.textContent = err;
         resultsContainer.innerHTML = "";
@@ -15430,12 +15426,11 @@ function renderLeakCheckModal() {
   const renderResults = (data) => {
     resultsContainer.innerHTML = "";
     const { ip_leak, dns_leak } = data;
-    const ipAlertClass = !ip_leak.proxy_online ? "alert-message warning" : ip_leak.leaked ? "alert-message danger" : "alert-message success";
-    const ipAlertText = !ip_leak.proxy_online ? _("Proxy is offline or unreachable on 127.0.0.1:4534.") : ip_leak.leaked ? _(
-      "⚠️ CRITICAL IP LEAK: Your real public IP is exposed through the proxy outbound!"
-    ) : _(
-      "🛡️ SECURE: No IP leak detected. Real WAN IP is concealed behind proxy outbound."
-    );
+    const isDirectRouting = ip_leak.proxy_online && (ip_leak.leaked || ip_leak.direct_ip === ip_leak.proxy_ip);
+    const ipAlertClass = !ip_leak.proxy_online ? "alert-message info" : isDirectRouting ? "alert-message info" : "alert-message success";
+    const ipAlertText = !ip_leak.proxy_online ? _("Proxy outbound is inactive or not configured for local testing.") : isDirectRouting ? _(
+      "ℹ️ Direct connection (WAN): Public IP matches your ISP. Under selective routing (by domains or blocklists), unblocked resources bypass the proxy — this is standard operation."
+    ) : _("🛡️ SECURE: Public IP is concealed behind the proxy outbound.");
     const ipTable = E(
       "table",
       {
@@ -15461,7 +15456,7 @@ function renderLeakCheckModal() {
                 {
                   style: "font-size: 11px; color: var(--text-color-medium, #6c757d);"
                 },
-                _("Bypasses proxy (SO_MARK 0x08000000)")
+                _("Direct connection via ISP")
               )
             ]),
             E("td", { class: "td" }, [E("code", {}, ip_leak.direct_ip || "—")]),
@@ -15478,7 +15473,7 @@ function renderLeakCheckModal() {
                   class: "badge",
                   style: "background: var(--text-color-medium, #6c757d); color: #fff; padding: 2px 6px; border-radius: 4px; font-size: 11px;"
                 },
-                _("Baseline")
+                _("WAN")
               )
             ])
           ]),
@@ -15490,7 +15485,7 @@ function renderLeakCheckModal() {
                 {
                   style: "font-size: 11px; color: var(--text-color-medium, #6c757d);"
                 },
-                _("127.0.0.1:4534 (sing-box mixed)")
+                _("Tachyon proxy routing")
               )
             ]),
             E("td", { class: "td" }, [E("code", {}, ip_leak.proxy_ip || "—")]),
@@ -15505,16 +15500,16 @@ function renderLeakCheckModal() {
                 "span",
                 {
                   class: "badge",
-                  style: "background: #fd7e14; color: #fff; padding: 2px 6px; border-radius: 4px; font-size: 11px;"
+                  style: "background: #6c757d; color: #fff; padding: 2px 6px; border-radius: 4px; font-size: 11px;"
                 },
-                _("OFFLINE")
-              ) : ip_leak.leaked ? E(
+                _("INACTIVE")
+              ) : isDirectRouting ? E(
                 "span",
                 {
                   class: "badge",
-                  style: "background: #dc3545; color: #fff; padding: 2px 6px; border-radius: 4px; font-size: 11px;"
+                  style: "background: #17a2b8; color: #fff; padding: 2px 6px; border-radius: 4px; font-size: 11px;"
                 },
-                _("LEAKED")
+                _("DIRECT")
               ) : E(
                 "span",
                 {
@@ -15545,13 +15540,13 @@ function renderLeakCheckModal() {
         ipTable
       ]
     );
-    const dnsAlertClass = dns_leak.dns_leaked ? "alert-message danger" : dns_leak.dns_servers.length > 0 ? "alert-message success" : "alert-message info";
-    const dnsAlertText = dns_leak.dns_leaked ? _(
-      "⚠️ DNS LEAK DETECTED: DNS queries are leaking to your local Internet Service Provider!"
-    ) : dns_leak.dns_servers.length > 0 ? _(
-      "🛡️ SECURE: No DNS leaks detected. All queries resolve through non-ISP upstream resolvers."
+    const dnsAlertClass = !dns_leak.proxy_online || (dns_leak.dns_servers || []).length === 0 ? "alert-message info" : dns_leak.dns_leaked ? "alert-message warning" : "alert-message success";
+    const dnsAlertText = !dns_leak.proxy_online || (dns_leak.dns_servers || []).length === 0 ? _(
+      "No DNS resolvers captured through proxy (proxy is offline or test domain is not intercepted)."
+    ) : dns_leak.dns_leaked ? _(
+      "ℹ️ ISP DNS detected: DNS queries are handled by your local Internet Service Provider. If you use selective routing, this is standard behavior for direct connections."
     ) : _(
-      "No DNS resolvers captured via proxy test. Proxy may be offline or blocking test subdomains."
+      "🛡️ SECURE: All DNS queries are resolved through independent secure DNS servers."
     );
     const dnsTableRows = (dns_leak.dns_servers || []).map(
       (s) => E("tr", { class: "tr cbi-section-table-row" }, [
@@ -15563,9 +15558,9 @@ function renderLeakCheckModal() {
             "span",
             {
               class: "badge",
-              style: "background: #dc3545; color: #fff; padding: 2px 6px; border-radius: 4px; font-size: 11px;"
+              style: "background: #fd7e14; color: #fff; padding: 2px 6px; border-radius: 4px; font-size: 11px;"
             },
-            _("ISP DNS LEAK")
+            _("ISP DNS")
           ) : E(
             "span",
             {
@@ -15624,7 +15619,7 @@ function renderLeakCheckModal() {
       [
         E("h4", { style: "margin-top: 0; margin-bottom: 8px;" }, [
           "🔍 ",
-          _("DNS Upstream Resolver Analysis (bash.ws protocol)")
+          _("DNS Upstream Resolver Analysis")
         ]),
         E("div", { class: dnsAlertClass, style: "margin-bottom: 12px;" }, [
           dnsAlertText
@@ -15656,7 +15651,7 @@ function renderLeakCheckModal() {
         style: "font-size: 13px; color: var(--text-color-medium, #6c757d); margin-bottom: 14px;"
       },
       _(
-        "Performs simultaneous outbound checks via direct WAN (bypassing Sing-box redirect) and via proxy (127.0.0.1:4534) to verify that your real IP and DNS queries are not leaking to your ISP."
+        "Simultaneous check of your public IP address and upstream DNS resolvers to verify network visibility through direct connection and proxy."
       )
     ),
     statusLabel,

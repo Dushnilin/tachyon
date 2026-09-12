@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-11 22:54+0300\n"
-"PO-Revision-Date: 2026-09-11 22:54+0300\n"
+"POT-Creation-Date: 2026-09-12 17:21+0300\n"
+"PO-Revision-Date: 2026-09-12 17:21+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -25,6 +25,9 @@ msgstr "Списки .lst"
 
 msgid "(provider default)"
 msgstr "(по умолчанию провайдера)"
+
+msgid "(this rule, when active)"
+msgstr "(эта же секция, при активном VPN)"
 
 msgid "+ add"
 msgstr "+ добавить"
@@ -52,12 +55,6 @@ msgstr "⚠️ Бенчмарк завершен. Не найдено рабоч
 
 msgid "⚠️ Benchmark stopped"
 msgstr "⚠️ Бенчмарк остановлен"
-
-msgid "⚠️ CRITICAL IP LEAK: Your real public IP is exposed through the proxy outbound!"
-msgstr "⚠️ КРИТИЧЕСКАЯ УТЕЧКА IP: Ваш реальный публичный IP раскрыт через исходящий прокси!"
-
-msgid "⚠️ DNS LEAK DETECTED: DNS queries are leaking to your local Internet Service Provider!"
-msgstr "⚠️ ОБНАРУЖЕНА УТЕЧКА DNS: DNS-запросы утекают к вашему местному интернет-провайдеру!"
 
 msgid "⚠️ If all Bootstrap DNS fail 3 times, queries will be sent to your ISP's DNS in plaintext. Only use as a last resort to prevent complete internet loss."
 msgstr "⚠️ Если все Bootstrap DNS завершатся с ошибкой 3 раза, запросы будут отправлены в DNS вашего провайдера в открытом виде. Используйте только в крайнем случае для предотвращения полной потери интернета."
@@ -170,17 +167,14 @@ msgstr "🛑 Остановить бенчмарк"
 msgid "🛠️ My Custom Strategies Only"
 msgstr "🛠️ Только мои стратегии"
 
-msgid "🛡️ SECURE: No DNS leaks detected. All queries resolve through non-ISP upstream resolvers."
-msgstr "🛡️ ЗАЩИЩЕНО: Утечек DNS не обнаружено. Все запросы обрабатываются независимыми резолверами."
+msgid "🛡️ SECURE: All DNS queries are resolved through independent secure DNS servers."
+msgstr "🛡️ ЗАЩИЩЕНО: Все DNS-запросы разрешаются через независимые защищённые DNS-серверы."
 
-msgid "🛡️ SECURE: No IP leak detected. Real WAN IP is concealed behind proxy outbound."
-msgstr "🛡️ ЗАЩИЩЕНО: Утечек IP не обнаружено. Реальный WAN IP скрыт за исходящим прокси."
+msgid "🛡️ SECURE: Public IP is concealed behind the proxy outbound."
+msgstr "🛡️ ЗАЩИЩЕНО: Публичный IP-адрес скрыт за исходящим прокси."
 
 msgid "🟣 Twitch Suite (Live Stream + HLS CDN)"
 msgstr "🟣 Twitch (Прямой эфир + HLS CDN)"
-
-msgid "127.0.0.1:4534 (sing-box mixed)"
-msgstr "127.0.0.1:4534 (смешанный sing-box)"
 
 msgid "Accept external proxy connections and route them with sing-box."
 msgstr "Принимать внешние прокси-подключения и маршрутизировать их через sing-box."
@@ -683,9 +677,6 @@ msgstr "Ср. задержка"
 msgid "Backend validation failed: %s"
 msgstr "Ошибка проверки бэкенда: %s"
 
-msgid "Baseline"
-msgstr "Базовый уровень"
-
 msgid "Basic connectivity"
 msgstr "Базовая связность"
 
@@ -847,9 +838,6 @@ msgstr "Стратегия ByeDPI"
 
 msgid "ByeDPI strategy cannot be empty"
 msgstr "Стратегия ByeDPI не может быть пустой"
-
-msgid "Bypasses proxy (SO_MARK 0x08000000)"
-msgstr "В обход прокси (SO_MARK 0x08000000)"
 
 msgid "Bypasses UDP traffic for selected game consoles (PS5/Xbox) to achieve NAT Type 1 / 2 (Full Cone NAT) for P2P matchmaking, while keeping TCP (PSN/Auth) routed through the proxy."
 msgstr "Обходит UDP-трафик для выбранных игровых консолей (PS5/Xbox) для достижения NAT Type 1 / 2 (Full Cone NAT) для P2P-матчмейкинга, сохраняя TCP (PSN/Auth) через прокси."
@@ -1193,9 +1181,6 @@ msgstr "Текущий диагноз"
 msgid "Current section cannot be used as its own transit section"
 msgstr "Текущая секция не может использоваться как собственная транзитная секция"
 
-msgid "Current section cannot download its own subscription"
-msgstr "Текущая секция не может загружать собственную подписку"
-
 msgid "Currently unavailable"
 msgstr "Временно недоступно"
 
@@ -1337,11 +1322,20 @@ msgstr "DHCP содержит DNS сервер"
 msgid "DHCP is managed manually"
 msgstr "DHCP управляется вручную"
 
+msgid "Diagnostic check completed"
+msgstr "Диагностическая проверка завершена"
+
+msgid "Diagnostic check failed to complete"
+msgstr "Не удалось завершить диагностическую проверку"
+
 msgid "Diagnostics"
 msgstr "Диагностика"
 
 msgid "Direct"
 msgstr "Напрямую"
+
+msgid "DIRECT"
+msgstr "ПРЯМОЙ (WAN)"
 
 msgid "Direct (Default)"
 msgstr "Прямое (по умолчанию)"
@@ -1351,6 +1345,9 @@ msgstr "Прямой WAN"
 
 msgid "Direct connection"
 msgstr "Прямое подключение"
+
+msgid "Direct connection via ISP"
+msgstr "Прямое подключение через провайдера"
 
 msgid "Direct Proxy"
 msgstr "Прямой прокси"
@@ -1481,8 +1478,8 @@ msgstr "Быстрый DNS-кэш"
 msgid "DNS Unavailability Timeout"
 msgstr "Таймаут недоступности DNS"
 
-msgid "DNS Upstream Resolver Analysis (bash.ws protocol)"
-msgstr "Анализ восходящих DNS-резолверов (протокол bash.ws)"
+msgid "DNS Upstream Resolver Analysis"
+msgstr "Анализ вышестоящих DNS-резолверов"
 
 msgid "DNS: Resolved %s to %s"
 msgstr "DNS: Разрешено %s в %s"
@@ -1585,9 +1582,6 @@ msgstr "Скачивать эту подписку без проверки се�
 
 msgid "Download through"
 msgstr "Загружать через"
-
-msgid "(this rule, when active)"
-msgstr "(эта же секция, при активном VPN)"
 
 msgid "Downloaded"
 msgstr "Загружено"
@@ -2387,6 +2381,12 @@ msgstr "HTTP хосты"
 msgid "HWID"
 msgstr "HWID"
 
+msgid "ℹ️ Direct connection (WAN): Public IP matches your ISP. Under selective routing (by domains or blocklists), unblocked resources bypass the proxy — this is standard operation."
+msgstr "ℹ️ Прямое подключение (WAN): Публичный IP совпадает с провайдером. При выборочной маршрутизации (по доменам или спискам блокировок) незаблокированные ресурсы идут напрямую — это штатный режим работы."
+
+msgid "ℹ️ ISP DNS detected: DNS queries are handled by your local Internet Service Provider. If you use selective routing, this is standard behavior for direct connections."
+msgstr "ℹ️ Обнаружен DNS провайдера: DNS-запросы обрабатываются вашим интернет-провайдером. При выборочной маршрутизации это стандартное поведение для прямого трафика."
+
 msgid "Idle timeout"
 msgstr "Таймаут простоя"
 
@@ -2413,6 +2413,9 @@ msgstr "Импортировать группы URLTest подписки"
 
 msgid "Import URLTest groups returned by this subscription provider"
 msgstr "Импортировать группы URLTest, возвращённые этим провайдером подписки"
+
+msgid "INACTIVE"
+msgstr "НЕАКТИВЕН"
 
 msgid "Inbound JSON"
 msgstr "Inbound JSON"
@@ -2810,8 +2813,8 @@ msgstr "Изолировать локальную сеть"
 msgid "ISP / Organization"
 msgstr "Провайдер / Организация"
 
-msgid "ISP DNS LEAK"
-msgstr "УТЕЧКА DNS К ПРОВАЙДЕРУ"
+msgid "ISP DNS"
+msgstr "DNS ПРОВАЙДЕРА"
 
 msgid "Issues"
 msgstr "Проблемы"
@@ -2938,15 +2941,6 @@ msgstr "Установлена последняя версия"
 
 msgid "Latest version:"
 msgstr "Последняя версия:"
-
-msgid "Leak detection completed"
-msgstr "Проверка утечек завершена"
-
-msgid "Leak detection failed to complete"
-msgstr "Не удалось завершить проверку утечек"
-
-msgid "LEAKED"
-msgstr "УТЕЧКА"
 
 msgid "Leave empty to omit this header"
 msgstr "Оставьте пустым, чтобы пропустить этот заголовок"
@@ -3287,8 +3281,8 @@ msgstr "DHCP-клиенты не обнаружены"
 msgid "No diagnostic history available yet."
 msgstr "История проверок пока пуста."
 
-msgid "No DNS resolvers captured via proxy test. Proxy may be offline or blocking test subdomains."
-msgstr "В тесте через прокси резолверы не зафиксированы. Возможно, прокси не работает или блокирует тестовые поддомены."
+msgid "No DNS resolvers captured through proxy (proxy is offline or test domain is not intercepted)."
+msgstr "DNS-резолверы через прокси не зафиксированы (прокси выключен либо тестовый домен не перехватывается)."
 
 msgid "No DNS resolvers recorded"
 msgstr "DNS-резолверы не зафиксированы"
@@ -3424,9 +3418,6 @@ msgstr "Пароль обфускации"
 
 msgid "Observed Public IP"
 msgstr "Внешний публичный IP"
-
-msgid "OFFLINE"
-msgstr "ОФЛАЙН"
 
 msgid "OlcRTC Crypto Key"
 msgstr "Ключ шифрования OlcRTC"
@@ -3656,9 +3647,6 @@ msgstr "Ожидает запуска"
 msgid "Pending..."
 msgstr "Ожидание..."
 
-msgid "Performs simultaneous outbound checks via direct WAN (bypassing Sing-box redirect) and via proxy (127.0.0.1:4534) to verify that your real IP and DNS queries are not leaking to your ISP."
-msgstr "Выполняет одновременные исходящие запросы напрямую в WAN (в обход правил Sing-box) и через прокси (127.0.0.1:4534), проверяя, что ваш реальный IP и DNS-запросы не утекают провайдеру."
-
 msgid "Periodically check the current level and switch to a faster server even when the current one works."
 msgstr "Периодически проверять текущий уровень и переключаться на более быстрый сервер, даже если текущий работает."
 
@@ -3842,14 +3830,14 @@ msgstr "Интервал проверки здоровья прокси (с)"
 msgid "Proxy Health Check URL"
 msgstr "URL проверки здоровья прокси"
 
-msgid "Proxy is offline or unreachable on 127.0.0.1:4534."
-msgstr "Прокси выключен или недоступен на 127.0.0.1:4534."
-
 msgid "Proxy link is unavailable"
 msgstr "Ссылка прокси недоступна"
 
 msgid "Proxy Outbound"
 msgstr "Исходящий прокси (туннель)"
+
+msgid "Proxy outbound is inactive or not configured for local testing."
+msgstr "Исходящий прокси неактивен или не настроен для локального тестирования."
 
 msgid "Proxy Section for Bot"
 msgstr "Секция прокси для бота"
@@ -3869,8 +3857,8 @@ msgstr "Изоляция публичного IP-адреса"
 msgid "QR code is too large"
 msgstr "QR-код слишком большой"
 
-msgid "Querying WAN direct socket and proxy outbound on 127.0.0.1:4534..."
-msgstr "Опрос прямого WAN-сокета и исходящего прокси на 127.0.0.1:4534..."
+msgid "Querying direct connection and proxy outbound..."
+msgstr "Опрос прямого подключения и исходящего прокси..."
 
 msgid "QUIC (HTTP/3)"
 msgstr "QUIC (HTTP/3)"
@@ -4589,6 +4577,9 @@ msgstr "Не удалось показать конфигурацию sing-box"
 msgid "Show subscription metadata for this source on the dashboard"
 msgstr "Показывать метаданные подписки для этого источника на дашборде"
 
+msgid "Simultaneous check of your public IP address and upstream DNS resolvers to verify network visibility through direct connection and proxy."
+msgstr "Одновременная проверка внешнего IP-адреса и вышестоящих DNS-резолверов для проверки сетевой видимости через прямое подключение и прокси."
+
 msgid "sing-box"
 msgstr "sing-box"
 
@@ -4925,6 +4916,9 @@ msgstr "Tachyon управляет жизненным циклом процес�
 msgid "Tachyon manages the nfqws2 process lifecycle itself, so daemon mode is not allowed here."
 msgstr "Tachyon управляет жизненным циклом процесса nfqws2 самостоятельно, поэтому режим daemon здесь не допускается."
 
+msgid "Tachyon proxy routing"
+msgstr "Маршрутизация через прокси Tachyon"
+
 msgid "Tachyon service is stopped. Start the service to display connections."
 msgstr "Служба Tachyon остановлена. Запустите сервис для отображения подключений."
 
@@ -5078,11 +5072,11 @@ msgstr "Проверка всех секций..."
 msgid "Testing bypass strategies in isolated sandbox..."
 msgstr "Тестирование стратегий обхода в изолированной песочнице..."
 
-msgid "Testing DNS leak upstream resolvers with bash.ws protocol..."
-msgstr "Тестирование восходящих DNS-резолверов по протоколу bash.ws..."
-
 msgid "Testing strategy"
 msgstr "Тестирование стратегии"
+
+msgid "Testing upstream DNS resolvers..."
+msgstr "Тестирование вышестоящих DNS-резолверов..."
 
 msgid "Testing URL"
 msgstr "URL проверки"
@@ -5824,6 +5818,63 @@ msgstr "Правила маршрутизации sing-box для Zapret2 нас
 
 msgid "Zapret2 sing-box route rules are not configured"
 msgstr "Правила маршрутизации sing-box для Zapret2 не настроены"
+
+msgid "⚠️ CRITICAL IP LEAK: Your real public IP is exposed through the proxy outbound!"
+msgstr "⚠️ КРИТИЧЕСКАЯ УТЕЧКА IP: Ваш реальный публичный IP раскрыт через исходящий прокси!"
+
+msgid "⚠️ DNS LEAK DETECTED: DNS queries are leaking to your local Internet Service Provider!"
+msgstr "⚠️ ОБНАРУЖЕНА УТЕЧКА DNS: DNS-запросы утекают к вашему местному интернет-провайдеру!"
+
+msgid "🛡️ SECURE: No DNS leaks detected. All queries resolve through non-ISP upstream resolvers."
+msgstr "🛡️ ЗАЩИЩЕНО: Утечек DNS не обнаружено. Все запросы обрабатываются независимыми резолверами."
+
+msgid "🛡️ SECURE: No IP leak detected. Real WAN IP is concealed behind proxy outbound."
+msgstr "🛡️ ЗАЩИЩЕНО: Утечек IP не обнаружено. Реальный WAN IP скрыт за исходящим прокси."
+
+msgid "127.0.0.1:4534 (sing-box mixed)"
+msgstr "127.0.0.1:4534 (смешанный sing-box)"
+
+msgid "Baseline"
+msgstr "Базовый уровень"
+
+msgid "Bypasses proxy (SO_MARK 0x08000000)"
+msgstr "В обход прокси (SO_MARK 0x08000000)"
+
+msgid "Current section cannot download its own subscription"
+msgstr "Текущая секция не может загружать собственную подписку"
+
+msgid "DNS Upstream Resolver Analysis (bash.ws protocol)"
+msgstr "Анализ восходящих DNS-резолверов (протокол bash.ws)"
+
+msgid "ISP DNS LEAK"
+msgstr "УТЕЧКА DNS К ПРОВАЙДЕРУ"
+
+msgid "Leak detection completed"
+msgstr "Проверка утечек завершена"
+
+msgid "Leak detection failed to complete"
+msgstr "Не удалось завершить проверку утечек"
+
+msgid "LEAKED"
+msgstr "УТЕЧКА"
+
+msgid "No DNS resolvers captured via proxy test. Proxy may be offline or blocking test subdomains."
+msgstr "В тесте через прокси резолверы не зафиксированы. Возможно, прокси не работает или блокирует тестовые поддомены."
+
+msgid "OFFLINE"
+msgstr "ОФЛАЙН"
+
+msgid "Performs simultaneous outbound checks via direct WAN (bypassing Sing-box redirect) and via proxy (127.0.0.1:4534) to verify that your real IP and DNS queries are not leaking to your ISP."
+msgstr "Выполняет одновременные исходящие запросы напрямую в WAN (в обход правил Sing-box) и через прокси (127.0.0.1:4534), проверяя, что ваш реальный IP и DNS-запросы не утекают провайдеру."
+
+msgid "Proxy is offline or unreachable on 127.0.0.1:4534."
+msgstr "Прокси выключен или недоступен на 127.0.0.1:4534."
+
+msgid "Querying WAN direct socket and proxy outbound on 127.0.0.1:4534..."
+msgstr "Опрос прямого WAN-сокета и исходящего прокси на 127.0.0.1:4534..."
+
+msgid "Testing DNS leak upstream resolvers with bash.ws protocol..."
+msgstr "Тестирование восходящих DNS-резолверов по протоколу bash.ws..."
 
 msgid "Блокировка по IP (Таймаут TCP SYN)"
 msgstr "Блокировка по IP (Таймаут TCP SYN)"

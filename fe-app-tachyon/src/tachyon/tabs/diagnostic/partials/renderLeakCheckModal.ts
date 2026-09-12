@@ -41,7 +41,7 @@ export function renderLeakCheckModal() {
     progressContainer.style.display = 'block';
     progressBar.style.width = '30%';
     statusLabel.textContent = _(
-      'Querying WAN direct socket and proxy outbound on 127.0.0.1:4534...',
+      'Querying direct connection and proxy outbound...',
     );
 
     if (retryBtn) (retryBtn as HTMLButtonElement).disabled = true;
@@ -49,9 +49,7 @@ export function renderLeakCheckModal() {
     // Advance progress smoothly
     const timer = setTimeout(() => {
       progressBar.style.width = '70%';
-      statusLabel.textContent = _(
-        'Testing DNS leak upstream resolvers with bash.ws protocol...',
-      );
+      statusLabel.textContent = _('Testing upstream DNS resolvers...');
     }, 1500);
 
     try {
@@ -60,12 +58,10 @@ export function renderLeakCheckModal() {
           clearTimeout(timer);
           progressBar.style.width = `${progress}%`;
           if (stage === 'dns') {
-            statusLabel.textContent = _(
-              'Testing DNS leak upstream resolvers with bash.ws protocol...',
-            );
+            statusLabel.textContent = _('Testing upstream DNS resolvers...');
           } else if (stage === 'ip') {
             statusLabel.textContent = _(
-              'Querying WAN direct socket and proxy outbound on 127.0.0.1:4534...',
+              'Querying direct connection and proxy outbound...',
             );
           }
         },
@@ -74,7 +70,7 @@ export function renderLeakCheckModal() {
       progressBar.style.width = '100%';
 
       if (response.success && response.data) {
-        statusLabel.textContent = _('Leak detection completed');
+        statusLabel.textContent = _('Diagnostic check completed');
         setTimeout(() => {
           progressContainer.style.display = 'none';
           progressBar.style.width = '0%';
@@ -85,7 +81,7 @@ export function renderLeakCheckModal() {
         const err =
           !response.success && response.error
             ? response.error
-            : _('Leak detection failed to complete');
+            : _('Diagnostic check failed to complete');
         progressContainer.style.display = 'none';
         statusLabel.textContent = err;
         resultsContainer.innerHTML = '';
@@ -125,21 +121,23 @@ export function renderLeakCheckModal() {
     const { ip_leak, dns_leak } = data;
 
     // --- 1. IP Leak Section ---
+    const isDirectRouting =
+      ip_leak.proxy_online &&
+      (ip_leak.leaked || ip_leak.direct_ip === ip_leak.proxy_ip);
+
     const ipAlertClass = !ip_leak.proxy_online
-      ? 'alert-message warning'
-      : ip_leak.leaked
-        ? 'alert-message danger'
+      ? 'alert-message info'
+      : isDirectRouting
+        ? 'alert-message info'
         : 'alert-message success';
 
     const ipAlertText = !ip_leak.proxy_online
-      ? _('Proxy is offline or unreachable on 127.0.0.1:4534.')
-      : ip_leak.leaked
+      ? _('Proxy outbound is inactive or not configured for local testing.')
+      : isDirectRouting
         ? _(
-            '⚠️ CRITICAL IP LEAK: Your real public IP is exposed through the proxy outbound!',
+            'ℹ️ Direct connection (WAN): Public IP matches your ISP. Under selective routing (by domains or blocklists), unblocked resources bypass the proxy — this is standard operation.',
           )
-        : _(
-            '🛡️ SECURE: No IP leak detected. Real WAN IP is concealed behind proxy outbound.',
-          );
+        : _('🛡️ SECURE: Public IP is concealed behind the proxy outbound.');
 
     const ipTable = E(
       'table',
@@ -167,7 +165,7 @@ export function renderLeakCheckModal() {
                   style:
                     'font-size: 11px; color: var(--text-color-medium, #6c757d);',
                 },
-                _('Bypasses proxy (SO_MARK 0x08000000)'),
+                _('Direct connection via ISP'),
               ),
             ]),
             E('td', { class: 'td' }, [E('code', {}, ip_leak.direct_ip || '—')]),
@@ -187,7 +185,7 @@ export function renderLeakCheckModal() {
                   style:
                     'background: var(--text-color-medium, #6c757d); color: #fff; padding: 2px 6px; border-radius: 4px; font-size: 11px;',
                 },
-                _('Baseline'),
+                _('WAN'),
               ),
             ]),
           ]),
@@ -200,7 +198,7 @@ export function renderLeakCheckModal() {
                   style:
                     'font-size: 11px; color: var(--text-color-medium, #6c757d);',
                 },
-                _('127.0.0.1:4534 (sing-box mixed)'),
+                _('Tachyon proxy routing'),
               ),
             ]),
             E('td', { class: 'td' }, [E('code', {}, ip_leak.proxy_ip || '—')]),
@@ -219,19 +217,19 @@ export function renderLeakCheckModal() {
                     {
                       class: 'badge',
                       style:
-                        'background: #fd7e14; color: #fff; padding: 2px 6px; border-radius: 4px; font-size: 11px;',
+                        'background: #6c757d; color: #fff; padding: 2px 6px; border-radius: 4px; font-size: 11px;',
                     },
-                    _('OFFLINE'),
+                    _('INACTIVE'),
                   )
-                : ip_leak.leaked
+                : isDirectRouting
                   ? E(
                       'span',
                       {
                         class: 'badge',
                         style:
-                          'background: #dc3545; color: #fff; padding: 2px 6px; border-radius: 4px; font-size: 11px;',
+                          'background: #17a2b8; color: #fff; padding: 2px 6px; border-radius: 4px; font-size: 11px;',
                       },
-                      _('LEAKED'),
+                      _('DIRECT'),
                     )
                   : E(
                       'span',
@@ -268,23 +266,25 @@ export function renderLeakCheckModal() {
     );
 
     // --- 2. DNS Leak Section ---
-    const dnsAlertClass = dns_leak.dns_leaked
-      ? 'alert-message danger'
-      : dns_leak.dns_servers.length > 0
-        ? 'alert-message success'
-        : 'alert-message info';
+    const dnsAlertClass =
+      !dns_leak.proxy_online || (dns_leak.dns_servers || []).length === 0
+        ? 'alert-message info'
+        : dns_leak.dns_leaked
+          ? 'alert-message warning'
+          : 'alert-message success';
 
-    const dnsAlertText = dns_leak.dns_leaked
-      ? _(
-          '⚠️ DNS LEAK DETECTED: DNS queries are leaking to your local Internet Service Provider!',
-        )
-      : dns_leak.dns_servers.length > 0
+    const dnsAlertText =
+      !dns_leak.proxy_online || (dns_leak.dns_servers || []).length === 0
         ? _(
-            '🛡️ SECURE: No DNS leaks detected. All queries resolve through non-ISP upstream resolvers.',
+            'No DNS resolvers captured through proxy (proxy is offline or test domain is not intercepted).',
           )
-        : _(
-            'No DNS resolvers captured via proxy test. Proxy may be offline or blocking test subdomains.',
-          );
+        : dns_leak.dns_leaked
+          ? _(
+              'ℹ️ ISP DNS detected: DNS queries are handled by your local Internet Service Provider. If you use selective routing, this is standard behavior for direct connections.',
+            )
+          : _(
+              '🛡️ SECURE: All DNS queries are resolved through independent secure DNS servers.',
+            );
 
     const dnsTableRows = (dns_leak.dns_servers || []).map((s) =>
       E('tr', { class: 'tr cbi-section-table-row' }, [
@@ -298,9 +298,9 @@ export function renderLeakCheckModal() {
                 {
                   class: 'badge',
                   style:
-                    'background: #dc3545; color: #fff; padding: 2px 6px; border-radius: 4px; font-size: 11px;',
+                    'background: #fd7e14; color: #fff; padding: 2px 6px; border-radius: 4px; font-size: 11px;',
                 },
-                _('ISP DNS LEAK'),
+                _('ISP DNS'),
               )
             : E(
                 'span',
@@ -366,7 +366,7 @@ export function renderLeakCheckModal() {
       [
         E('h4', { style: 'margin-top: 0; margin-bottom: 8px;' }, [
           '🔍 ',
-          _('DNS Upstream Resolver Analysis (bash.ws protocol)'),
+          _('DNS Upstream Resolver Analysis'),
         ]),
         E('div', { class: dnsAlertClass, style: 'margin-bottom: 12px;' }, [
           dnsAlertText,
@@ -403,7 +403,7 @@ export function renderLeakCheckModal() {
           'font-size: 13px; color: var(--text-color-medium, #6c757d); margin-bottom: 14px;',
       },
       _(
-        'Performs simultaneous outbound checks via direct WAN (bypassing Sing-box redirect) and via proxy (127.0.0.1:4534) to verify that your real IP and DNS queries are not leaking to your ISP.',
+        'Simultaneous check of your public IP address and upstream DNS resolvers to verify network visibility through direct connection and proxy.',
       ),
     ),
     statusLabel,

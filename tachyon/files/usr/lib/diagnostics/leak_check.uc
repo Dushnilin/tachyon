@@ -21,6 +21,47 @@ function curl_supports_so_mark() {
     return _has_so_mark_cached;
 }
 
+function is_tcp_port_listening(port) {
+    if (!port || int(port) <= 0)
+        return false;
+    let hex_port = sprintf(":%04X", int(port));
+    for (let path in [ "/proc/net/tcp", "/proc/net/tcp6" ]) {
+        let content = fs.readfile(path);
+        if (content && index(content, hex_port) >= 0)
+            return true;
+    }
+    return false;
+}
+
+const KNOWN_PUBLIC_DNS_PATTERNS = [
+    "google", "cloudflare", "quad9", "opendns", "cisco", "adguard",
+    "nextdns", "controld", "control d", "yandex", "level 3", "lumen",
+    "centurylink", "dns.sb", "mullvad", "cleanbrowsing", "he.net"
+];
+
+const KNOWN_PUBLIC_DNS_IPS = {
+    "1.1.1.1": true, "1.0.0.1": true, "1.1.1.2": true, "1.0.0.2": true, "1.1.1.3": true, "1.0.0.3": true,
+    "8.8.8.8": true, "8.8.4.4": true,
+    "9.9.9.9": true, "149.112.112.112": true, "9.9.9.10": true, "149.112.112.10": true,
+    "208.67.222.222": true, "208.67.220.220": true,
+    "94.140.14.14": true, "94.140.15.15": true, "94.140.14.140": true, "94.140.14.141": true,
+    "77.88.8.8": true, "77.88.8.1": true, "77.88.8.2": true, "77.88.8.3": true,
+    "4.2.2.1": true, "4.2.2.2": true, "4.2.2.3": true, "4.2.2.4": true,
+    "185.228.168.9": true, "185.228.169.9": true
+};
+
+function is_public_dns_resolver(ip, name, asn) {
+    if (ip && KNOWN_PUBLIC_DNS_IPS[ip])
+        return true;
+    let text = lc(as_string(name || "") + " " + as_string(asn || ""));
+    for (let pat in KNOWN_PUBLIC_DNS_PATTERNS) {
+        if (index(text, pat) >= 0)
+            return true;
+    }
+    return false;
+}
+
+
 /**
  * Detect active WAN network interface/device name.
  * Prioritizes actual routing table default gateway device (e.g. pppoe-wan, eth1, br-wan),
@@ -225,39 +266,42 @@ function check_ip_leak(wan_iface, mixed_port) {
 
     let direct = null;
     let proxy = null;
+    let proxy_listening = is_tcp_port_listening(mixed_port);
 
     if (work_dir != "") {
-        let proxy_flag = "--proxy http://127.0.0.1:" + mixed_port;
         let direct_flags = get_direct_curl_flags(wan_iface);
-
         let cmd_direct = sprintf("( curl -s -m 3 --connect-timeout 2 %s https://api.ip.sb/geoip || curl -s -m 3 --connect-timeout 2 %s https://ipwho.is/ || curl -s -m 2 --connect-timeout 2 %s 'https://api.ipify.org?format=json' || curl -s -m 2 --connect-timeout 2 %s https://cloudflare.com/cdn-cgi/trace ) > %s/direct.out 2>/dev/null", direct_flags, direct_flags, direct_flags, direct_flags, work_dir);
-        let cmd_proxy = sprintf("( curl -s -m 3 --connect-timeout 2 %s https://api.ip.sb/geoip || curl -s -m 3 --connect-timeout 2 %s https://ipwho.is/ || curl -s -m 2 --connect-timeout 2 %s 'https://api.ipify.org?format=json' || curl -s -m 2 --connect-timeout 2 %s https://cloudflare.com/cdn-cgi/trace ) > %s/proxy.out 2>/dev/null", proxy_flag, proxy_flag, proxy_flag, proxy_flag, work_dir);
 
-        system(sprintf("{ %s & %s & wait; } 2>/dev/null", cmd_direct, cmd_proxy));
+        if (proxy_listening) {
+            let proxy_flag = "--proxy http://127.0.0.1:" + mixed_port;
+            let cmd_proxy = sprintf("( curl -s -m 3 --connect-timeout 2 %s https://api.ip.sb/geoip || curl -s -m 3 --connect-timeout 2 %s https://ipwho.is/ || curl -s -m 2 --connect-timeout 2 %s 'https://api.ipify.org?format=json' || curl -s -m 2 --connect-timeout 2 %s https://cloudflare.com/cdn-cgi/trace ) > %s/proxy.out 2>/dev/null", proxy_flag, proxy_flag, proxy_flag, proxy_flag, work_dir);
+            system(sprintf("{ %s & %s & wait; } 2>/dev/null", cmd_direct, cmd_proxy));
+            let proxy_out = fs.readfile(work_dir + "/proxy.out");
+            proxy = parse_ip_response(proxy_out);
+        } else {
+            system(sprintf("{ %s & wait; } 2>/dev/null", cmd_direct));
+            proxy = { ip: "—", country: "", country_code: "", city: "", isp: "", ok: false };
+        }
 
         let direct_out = fs.readfile(work_dir + "/direct.out");
-        let proxy_out = fs.readfile(work_dir + "/proxy.out");
-
         direct = parse_ip_response(direct_out);
-        proxy = parse_ip_response(proxy_out);
 
         system(sprintf("rm -rf %s 2>/dev/null", shell_quote(work_dir)));
     }
 
     if (direct == null)
         direct = fetch_ip_info(false, wan_iface, mixed_port);
-    if (proxy == null)
+    if (proxy == null && proxy_listening)
         proxy = fetch_ip_info(true, wan_iface, mixed_port);
+    else if (proxy == null)
+        proxy = { ip: "—", country: "", country_code: "", city: "", isp: "", ok: false };
 
     let proxy_online = (proxy.ok && proxy.ip != "—");
-    let leaked = false;
-
-    if (proxy_online && direct.ok && direct.ip != "—") {
-        leaked = (proxy.ip == direct.ip);
-    }
+    let is_direct_routing = (proxy_online && direct.ok && direct.ip != "—" && proxy.ip == direct.ip);
 
     return {
-        leaked: leaked,
+        leaked: is_direct_routing,
+        direct_mode: is_direct_routing,
         direct_ip: direct.ip,
         direct_country: direct.country,
         direct_country_code: direct.country_code,
@@ -372,8 +416,11 @@ function check_dns_leak(wan_iface, mixed_port, direct_ip, proxy_ip) {
     for (let pr in proxy_resolvers) {
         if (type(pr) != "object" || !pr.ip) continue;
 
-        let is_direct_leak = (direct_map[pr.ip] == true);
-        if (is_direct_leak) {
+        let is_public = is_public_dns_resolver(pr.ip, pr.name, pr.asn);
+        let is_direct_leak = false;
+
+        if (!is_public && direct_map[pr.ip] == true) {
+            is_direct_leak = true;
             leak_found = true;
         }
 
@@ -381,18 +428,21 @@ function check_dns_leak(wan_iface, mixed_port, direct_ip, proxy_ip) {
             ip: pr.ip,
             country: as_string(pr.country || pr.country_name || ""),
             isp: as_string(pr.name || pr.asn || "Unknown"),
-            is_isp: is_direct_leak
+            is_isp: is_direct_leak,
+            is_public: is_public
         });
     }
 
     let formatted_direct_servers = [];
     for (let dr in direct_resolvers) {
         if (type(dr) != "object" || !dr.ip) continue;
+        let is_public = is_public_dns_resolver(dr.ip, dr.name, dr.asn);
         push(formatted_direct_servers, {
             ip: dr.ip,
             country: as_string(dr.country || dr.country_name || ""),
             isp: as_string(dr.name || dr.asn || "ISP Upstream"),
-            is_isp: true
+            is_isp: !is_public,
+            is_public: is_public
         });
     }
 
@@ -406,13 +456,8 @@ function check_dns_leak(wan_iface, mixed_port, direct_ip, proxy_ip) {
 
     if (proxy_online && length(formatted_proxy_servers) > 0) {
         dns_leaked = leak_found;
-    } else if (proxy_online && length(formatted_proxy_servers) == 0) {
+    } else {
         dns_leaked = false;
-    }
-
-    // If proxy IP equals direct IP, then DNS is definitely not shielded
-    if (proxy_ip != null && direct_ip != null && proxy_ip != "—" && direct_ip != "—" && proxy_ip == direct_ip) {
-        dns_leaked = true;
     }
 
     return {
@@ -558,8 +603,11 @@ function run_leak_check(wan_iface, mixed_port) {
     for (let pr in proxy_resolvers) {
         if (type(pr) != "object" || !pr.ip) continue;
 
-        let is_direct_leak = (direct_map[pr.ip] == true);
-        if (is_direct_leak) {
+        let is_public = is_public_dns_resolver(pr.ip, pr.name, pr.asn);
+        let is_direct_leak = false;
+
+        if (!is_public && direct_map[pr.ip] == true) {
+            is_direct_leak = true;
             leak_found = true;
         }
 
@@ -567,18 +615,21 @@ function run_leak_check(wan_iface, mixed_port) {
             ip: pr.ip,
             country: as_string(pr.country || pr.country_name || ""),
             isp: as_string(pr.name || pr.asn || "Unknown"),
-            is_isp: is_direct_leak
+            is_isp: is_direct_leak,
+            is_public: is_public
         });
     }
 
     let formatted_direct_servers = [];
     for (let dr in direct_resolvers) {
         if (type(dr) != "object" || !dr.ip) continue;
+        let is_public = is_public_dns_resolver(dr.ip, dr.name, dr.asn);
         push(formatted_direct_servers, {
             ip: dr.ip,
             country: as_string(dr.country || dr.country_name || ""),
             isp: as_string(dr.name || dr.asn || "ISP Upstream"),
-            is_isp: true
+            is_isp: !is_public,
+            is_public: is_public
         });
     }
 
@@ -586,17 +637,13 @@ function run_leak_check(wan_iface, mixed_port) {
         formatted_direct_servers = direct_dns_servers;
     }
 
-    let dns_proxy_online = (proxy_id != "" || (ip_res.proxy_ip != null && ip_res.proxy_ip != "" && ip_res.proxy_ip != "—"));
+    let dns_proxy_online = (proxy_id != "" || (proxy_ip_info.ok && proxy_ip_info.ip != "—"));
     let dns_leaked = false;
 
     if (dns_proxy_online && length(formatted_proxy_servers) > 0) {
         dns_leaked = leak_found;
-    } else if (dns_proxy_online && length(formatted_proxy_servers) == 0) {
+    } else {
         dns_leaked = false;
-    }
-
-    if (ip_res.proxy_ip != null && ip_res.direct_ip != null && ip_res.proxy_ip != "—" && ip_res.direct_ip != "—" && ip_res.proxy_ip == ip_res.direct_ip) {
-        dns_leaked = true;
     }
 
     let dns_res = {
@@ -731,29 +778,31 @@ function print_cli_summary(res) {
     print(sprintf("Proxy Outbound: %s (%s, %s)\n", res.ip_leak.proxy_ip, res.ip_leak.proxy_country || "Unknown", res.ip_leak.proxy_org || "Proxy"));
 
     if (res.ip_leak.proxy_online) {
-        if (res.ip_leak.leaked) {
-            print("IP Status     : ❌ LEAK DETECTED (Direct and Proxy IP match!)\n");
+        if (res.ip_leak.proxy_ip == res.ip_leak.direct_ip) {
+            print("IP Status     : ℹ️ DIRECT (WAN IP matches; normal under selective routing)\n");
         } else {
-            print("IP Status     : ✅ SECURE (Real WAN IP is hidden behind proxy)\n");
+            print("IP Status     : ✅ SECURE (Real WAN IP is concealed behind proxy)\n");
         }
     } else {
         print("IP Status     : ⚪ Proxy is offline or unreachable\n");
     }
 
     print("\n--- DNS Resolvers Detected ---\n");
-    if (length(res.dns_leak.dns_servers) > 0) {
+    if (res.dns_leak.proxy_online && length(res.dns_leak.dns_servers) > 0) {
         for (let s in res.dns_leak.dns_servers) {
-            let flag = s.is_isp ? "❌ ISP LEAK" : "✅ SECURE";
+            let flag = s.is_isp ? "⚠️ ISP DNS" : "✅ SECURE";
             print(sprintf("  [%s] %s (%s - %s)\n", flag, s.ip, s.country, s.isp));
         }
     } else {
         print("  (No proxy DNS queries recorded or proxy offline)\n");
     }
 
-    if (res.dns_leak.dns_leaked) {
-        print("\nDNS Status    : ❌ DNS LEAK DETECTED (Queries reach your local ISP!)\n\n");
+    if (!res.dns_leak.proxy_online) {
+        print("\nDNS Status    : ⚪ Proxy offline (DNS check skipped)\n\n");
+    } else if (res.dns_leak.dns_leaked) {
+        print("\nDNS Status    : ℹ️ ISP DNS (Queries handled by ISP; normal under split tunneling)\n\n");
     } else {
-        print("\nDNS Status    : ✅ SECURE (All DNS routed through encrypted/proxy resolvers)\n\n");
+        print("\nDNS Status    : ✅ SECURE (All DNS routed through secure/independent resolvers)\n\n");
     }
 }
 
@@ -762,7 +811,7 @@ let mode = ARGV[0] || "";
 
 if (mode == "leak-check" || mode == "leak_check") {
     let res = run_leak_check(null, null);
-    if (ARGV[1] == "--pretty" || ARGV[1] == "-p") {
+    if (ARGV[1] == "--pretty" || ARGV[1] == "-p" || ARGV[2] == "--pretty" || ARGV[2] == "-p") {
         print_cli_summary(res);
     } else {
         print(sprintf("%J\n", res));
