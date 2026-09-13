@@ -14297,7 +14297,7 @@ function renderStrategyFuzzerModal(ruleNames = []) {
   };
   const startPolling = () => {
     stopPolling();
-    pollingInterval = setInterval(pollStatus, 600);
+    pollingInterval = setInterval(pollStatus, 1200);
     pollStatus();
   };
   const stopPolling = () => {

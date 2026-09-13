@@ -110,6 +110,17 @@ function get_timeout_prefix(sec) {
     return _has_timeout ? sprintf("timeout %d ", sec) : "";
 }
 
+function wrap_cmd_timeout(cmd, sec) {
+    sec = sec || 8;
+    if (_has_timeout === null) {
+        _has_timeout = (system("command -v timeout >/dev/null 2>&1") == 0);
+    }
+    if (_has_timeout) {
+        return sprintf("timeout -s KILL %d %s", sec, cmd);
+    }
+    return sprintf("( %s ) & p=$!; ( sleep %d; kill -9 $p 2>/dev/null ) & w=$!; wait $p 2>/dev/null; r=$?; kill -9 $w 2>/dev/null; wait $w 2>/dev/null; [ $r -ne 0 ] && printf \"\\t%%d\\n\" $r; exit $r", cmd, sec);
+}
+
 let _fuzzer_curl_dns_flags = null;
 function get_fuzzer_curl_dns_flags() {
     if (_fuzzer_curl_dns_flags !== null)
@@ -129,6 +140,82 @@ function get_fuzzer_curl_dns_flags() {
     }
     _fuzzer_curl_dns_flags = "";
     return _fuzzer_curl_dns_flags;
+}
+
+let _fuzzer_host_cache = {};
+function get_resolved_host_flags(url) {
+    let m = match(url, /^https?:\/\/([^\/:]+)/);
+    if (!m || !m[1]) return "";
+    let host = m[1];
+    if (match(host, /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/) || index(host, ":") >= 0) return "";
+    if (exists(_fuzzer_host_cache, host))
+        return _fuzzer_host_cache[host];
+    
+    let ip = null;
+    // 1. Try Cloudflare DoH JSON
+    let p = fs.popen(sprintf("curl -s -m 3 --connect-timeout 2 -H 'accept: application/dns-json' 'https://1.1.1.1/dns-query?name=%s&type=A'", host), "r");
+    let out = p ? p.read("all") : "";
+    if (p) p.close();
+    if (out && out != "") {
+        try {
+            let data = json(out);
+            if (data && data.Answer) {
+                for (let ans in data.Answer) {
+                    if (ans.type == 1 && ans.data && match(ans.data, /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/)) {
+                        ip = ans.data;
+                        break;
+                    }
+                }
+            }
+        } catch (e) {}
+    }
+    // 2. Try Google DoH JSON if Cloudflare failed
+    if (!ip) {
+        let gp = fs.popen(sprintf("curl -s -m 3 --connect-timeout 2 -H 'accept: application/dns-json' 'https://8.8.8.8/dns-query?name=%s&type=A'", host), "r");
+        let gout = gp ? gp.read("all") : "";
+        if (gp) gp.close();
+        if (gout && gout != "") {
+            try {
+                let gdata = json(gout);
+                if (gdata && gdata.Answer) {
+                    for (let ans in gdata.Answer) {
+                        if (ans.type == 1 && ans.data && match(ans.data, /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/)) {
+                            ip = ans.data;
+                            break;
+                        }
+                    }
+                }
+            } catch (e) {}
+        }
+    }
+    // 3. Fallback: nslookup via 1.1.1.1 or system
+    if (!ip) {
+        let np = fs.popen(sprintf("nslookup %s 1.1.1.1 2>/dev/null", host), "r");
+        let nout = np ? np.read("all") : "";
+        if (np) np.close();
+        if (nout && nout != "") {
+            let lines = split(nout, "\n");
+            let name_seen = false;
+            for (let line in lines) {
+                if (index(line, "Name:") >= 0) { name_seen = true; continue; }
+                if (name_seen) {
+                    let nm = match(line, /Address:[ \t]+([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)/);
+                    if (nm && nm[1]) {
+                        ip = nm[1];
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    
+    if (ip) {
+        let flags = sprintf("--resolve %s:443:%s --resolve %s:80:%s ", host, ip, host, ip);
+        _fuzzer_host_cache[host] = flags;
+        return flags;
+    }
+    _fuzzer_host_cache[host] = "";
+    return "";
 }
 
 const KNOWN_BLOB_FILES = {
@@ -550,10 +637,10 @@ const STRATEGIES_ZAPRET2 = [
         description: "Standard 2-fragment multisplit desync for compatibility."
     },
     {
-        id: "z2_disorder_pos1",
-        name: "Classic Multidisorder (pos=1)",
+        id: "z2_disorder_pos2",
+        name: "Classic Multidisorder (pos=2)",
         engine: "zapret2",
-        args: "--lua-desync=multidisorder:pos=1:fooling=badseq",
+        args: "--lua-desync=multidisorder:pos=2:fooling=badseq",
         description: "Sends out-of-order segment with badseq fooling."
     },
 
@@ -1091,7 +1178,7 @@ function generate_combinatorial_zapret2() {
     }
     
     // 2. Multidisorder combinations
-    for (let pos in [ "1", "2", "midsld", "1,midsld" ]) {
+    for (let pos in [ "2", "midsld", "1,midsld" ]) {
         for (let fooling in [ "badseq", "md5sig", "badack" ]) {
             add(sprintf("Multidisorder (pos=%s, %s)", pos, fooling),
                 sprintf("--lua-desync=multidisorder:pos=%s:fooling=%s", pos, fooling),
@@ -1106,8 +1193,9 @@ function generate_combinatorial_zapret2() {
                 add(sprintf("Fake PAWS (%s, rep=%d) + Multisplit (pos=%s)", blob, rep, pos),
                     sprintf("--lua-desync=fake:blob=%s:repeats=%d:tcp_ts=-600000:tcp_ts_up --lua-desync=multisplit:pos=%s", blob, rep, pos),
                     "PAWS ancient TCP timestamp spoofing with authentic ClientHello blob");
-                add(sprintf("Fake PAWS (%s, rep=%d) + Multidisorder (pos=%s)", blob, rep, pos),
-                    sprintf("--lua-desync=fake:blob=%s:repeats=%d:tcp_ts=-600000:tcp_ts_up --lua-desync=multidisorder:pos=%s", blob, rep, pos),
+                let dis_pos = (pos == "1") ? "2" : pos;
+                add(sprintf("Fake PAWS (%s, rep=%d) + Multidisorder (pos=%s)", blob, rep, dis_pos),
+                    sprintf("--lua-desync=fake:blob=%s:repeats=%d:tcp_ts=-600000:tcp_ts_up --lua-desync=multidisorder:pos=%s", blob, rep, dis_pos),
                     "PAWS ancient TCP timestamp spoofing with multidisorder segments");
             }
         }
@@ -1131,8 +1219,9 @@ function generate_combinatorial_zapret2() {
     
     // 5. TCP SYN Data combinations
     for (let pos in [ "1", "1,midsld", "midsld" ]) {
-        add(sprintf("SYN Data + Multidisorder (pos=%s)", pos),
-            sprintf("--lua-desync=syndata --lua-desync=multidisorder:pos=%s", pos),
+        let dis_pos = (pos == "1") ? "2" : pos;
+        add(sprintf("SYN Data + Multidisorder (pos=%s)", dis_pos),
+            sprintf("--lua-desync=syndata --lua-desync=multidisorder:pos=%s", dis_pos),
             "TCP SYN data payload with out-of-order data segments");
         add(sprintf("SYN Data + Multisplit (pos=%s, seqovl=1)", pos),
             sprintf("--lua-desync=syndata --lua-desync=multisplit:pos=%s:seqovl=1:fooling=badseq", pos),
@@ -1149,8 +1238,9 @@ function generate_combinatorial_zapret2() {
                 add(sprintf("Fake (TTL=%d, %s) + Multisplit (pos=%s)", ttl, fooling, pos),
                     sprintf("--lua-desync=fake:ttl=%d:fooling=%s --lua-desync=multisplit:pos=%s", ttl, fooling, pos),
                     "Low-TTL fake injection followed by multisplit payload");
-                add(sprintf("Fake (TTL=%d, %s) + Multidisorder (pos=%s)", ttl, fooling, pos),
-                    sprintf("--lua-desync=fake:ttl=%d:fooling=%s --lua-desync=multidisorder:pos=%s", ttl, fooling, pos),
+                let dis_pos = (pos == "1") ? "2" : pos;
+                add(sprintf("Fake (TTL=%d, %s) + Multidisorder (pos=%s)", ttl, fooling, dis_pos),
+                    sprintf("--lua-desync=fake:ttl=%d:fooling=%s --lua-desync=multidisorder:pos=%s", ttl, fooling, dis_pos),
                     "Low-TTL fake injection followed by multidisorder payload");
             }
         }
@@ -1161,8 +1251,9 @@ function generate_combinatorial_zapret2() {
         add(sprintf("Fakedsplit (pos=%s, badseq)", pos),
             sprintf("--lua-desync=fakedsplit:pos=%s:fooling=badseq", pos),
             "Stream splitting with embedded fake packets");
-        add(sprintf("Fakeddisorder (pos=%s, badseq)", pos),
-            sprintf("--lua-desync=fakeddisorder:pos=%s:fooling=badseq", pos),
+        let dis_pos = (pos == "1") ? "2" : pos;
+        add(sprintf("Fakeddisorder (pos=%s, badseq)", dis_pos),
+            sprintf("--lua-desync=fakeddisorder:pos=%s:fooling=badseq", dis_pos),
             "Out-of-order stream with embedded fake fragments");
         add(sprintf("Hostfakesplit (pos=%s, badseq)", pos),
             sprintf("--lua-desync=hostfakesplit:pos=%s:fooling=badseq", pos),
@@ -1710,6 +1801,26 @@ function get_fuzzer_state() {
             finished_at: 0
         };
     }
+    if (state.running) {
+        let is_alive = false;
+        let pid_str = fs.readfile(PID_FILE);
+        if (pid_str) {
+            let pid = trim(as_string(pid_str));
+            if (pid != "" && match(pid, /^[0-9]+$/) != null) {
+                is_alive = (system(sprintf("kill -0 %s >/dev/null 2>&1", pid)) == 0);
+            }
+        }
+        if (!is_alive) {
+            state.running = false;
+            if (!state.error && state.progress_pct < 100) {
+                state.error = "Worker process exited unexpectedly";
+            }
+            if (state.finished_at == 0) {
+                state.finished_at = clock()[0];
+            }
+            save_fuzzer_state(state);
+        }
+    }
     return state;
 }
 
@@ -1906,12 +2017,16 @@ function detect_dpi_type(target_key, custom_url) {
     system("nft 'add chain inet tachyon_fuzzer bypass_singbox { type route hook output priority -155 ; policy accept; }' 2>/dev/null");
     system(sprintf("nft 'add rule inet tachyon_fuzzer bypass_singbox meta l4proto tcp tcp dport { 80, 443 } meta mark set meta mark | %s counter' 2>/dev/null", FUZZER_OUTBOUND_MARK));
 
-    let t_pre = get_timeout_prefix(8);
-    let curl_cmd = sprintf(
-        "%scurl %s-so /dev/null -w '%%{http_code}\\t%%{time_appconnect}\\t%%{time_starttransfer}\\t%%{speed_download}\\t%%{size_download}' -L --connect-timeout 4 --max-time 6 %s 2>&1; printf '\\t%%d\\n' $?",
-        t_pre,
-        dns_flags,
-        shell_quote(target_url)
+    let target_flags = get_resolved_host_flags(target_url);
+    if (target_flags == "") target_flags = dns_flags;
+
+    let curl_cmd = wrap_cmd_timeout(
+        sprintf(
+            "curl %s-so /dev/null -w '%%{http_code}\\t%%{time_appconnect}\\t%%{time_starttransfer}\\t%%{speed_download}\\t%%{size_download}' -L --connect-timeout 4 --max-time 6 %s 2>&1; printf '\\t%%d\\n' $?",
+            target_flags,
+            shell_quote(target_url)
+        ),
+        8
     );
     let pipe = fs.popen(curl_cmd, "r");
     let output = pipe ? pipe.read("all") : "";
@@ -1937,7 +2052,7 @@ function detect_dpi_type(target_key, custom_url) {
     let dm = match(domain, /https?:\/\/([^/]+)/);
     if (dm && dm[1]) domain = dm[1];
 
-    let dns_cmd = sprintf("%snslookup %s 2>&1", get_timeout_prefix(4), shell_quote(domain));
+    let dns_cmd = wrap_cmd_timeout(sprintf("nslookup %s 2>&1", shell_quote(domain)), 4);
     let dns_pipe = fs.popen(dns_cmd, "r");
     let dns_out = dns_pipe ? dns_pipe.read("all") : "";
     if (dns_pipe) dns_pipe.close();
@@ -2182,13 +2297,14 @@ function run_probe(engine, args_str, target_key, custom_url) {
         let last_http = 0;
         let last_dpi_verdict = "available";
         
-        let t_pre = get_timeout_prefix(8);
         for (let target_item in urls_list) {
-            let curl_cmd = sprintf(
-                "%scurl -x socks5h://127.0.0.1:%d -so /dev/null -w '%%{http_code}\\t%%{time_appconnect}\\t%%{time_starttransfer}\\t%%{speed_download}\\t%%{size_download}' -L --connect-timeout 4 --max-time 6 %s 2>/dev/null; printf '\\t%%d\\n' $?",
-                t_pre,
-                BYEDPI_PORT,
-                shell_quote(target_item.url)
+            let curl_cmd = wrap_cmd_timeout(
+                sprintf(
+                    "curl -x socks5h://127.0.0.1:%d -so /dev/null -w '%%{http_code}\\t%%{time_appconnect}\\t%%{time_starttransfer}\\t%%{speed_download}\\t%%{size_download}' -L --connect-timeout 4 --max-time 6 %s 2>/dev/null; printf '\\t%%d\\n' $?",
+                    BYEDPI_PORT,
+                    shell_quote(target_item.url)
+                ),
+                8
             );
             let pipe = fs.popen(curl_cmd, "r");
             let output = pipe ? pipe.read("all") : "";
@@ -2329,13 +2445,17 @@ function run_probe(engine, args_str, target_key, custom_url) {
         let last_dpi_verdict = "available";
         let dns_flags = get_fuzzer_curl_dns_flags();
         
-        let t_pre = get_timeout_prefix(8);
         for (let target_item in urls_list) {
-            let curl_cmd = sprintf(
-                "%scurl %s-so /dev/null -w '%%{http_code}\\t%%{time_appconnect}\\t%%{time_starttransfer}\\t%%{speed_download}\\t%%{size_download}' -L --connect-timeout 4 --max-time 6 %s 2>/dev/null; printf '\\t%%d\\n' $?",
-                t_pre,
-                dns_flags,
-                shell_quote(target_item.url)
+            let target_flags = get_resolved_host_flags(target_item.url);
+            if (target_flags == "") target_flags = dns_flags;
+
+            let curl_cmd = wrap_cmd_timeout(
+                sprintf(
+                    "curl %s-so /dev/null -w '%%{http_code}\\t%%{time_appconnect}\\t%%{time_starttransfer}\\t%%{speed_download}\\t%%{size_download}' -L --connect-timeout 4 --max-time 6 %s 2>/dev/null; printf '\\t%%d\\n' $?",
+                    target_flags,
+                    shell_quote(target_item.url)
+                ),
+                8
             );
             let pipe = fs.popen(curl_cmd, "r");
             let output = pipe ? pipe.read("all") : "";
@@ -2360,9 +2480,6 @@ function run_probe(engine, args_str, target_key, custom_url) {
                 if (last_http == 0) last_http = single_res.http_code;
                 if (single_res.error && result.error == "") result.error = single_res.error;
                 last_dpi_verdict = single_res.dpi_verdict || "failed";
-                if (_fuzzer_curl_dns_flags != "") {
-                    _fuzzer_curl_dns_flags = "";
-                }
                 break;
             }
         }

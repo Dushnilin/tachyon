@@ -917,10 +917,22 @@ function createParentalContent(section) {
   o.rawhtml = true;
   o.modalonly = false;
   o.cfgvalue = function (sectionId) {
+    const target = uci.get(UCI_PACKAGE, sectionId, "target") || "domains";
     const raw =
       Number(uci.get(UCI_PACKAGE, sectionId, "daily_quota_minutes")) || 0;
     if (raw <= 0) {
       return '<span style="opacity:0.5;">' + _("None") + "</span>";
+    }
+    if (target !== "all") {
+      return (
+        '<span style="color:var(--warning-color-medium, #d69e2e);font-size:11px;" title="' +
+        _("Daily quota applies only when Target Scope is All Internet") +
+        '">⚠️ ' +
+        raw +
+        " " +
+        _("min/day") +
+        "</span>"
+      );
     }
     return (
       '<span style="color:var(--primary-color-medium, #3182ce);font-weight:500;">⏳ ' +
@@ -931,9 +943,13 @@ function createParentalContent(section) {
     );
   };
   o.textvalue = function (sectionId) {
+    const target = uci.get(UCI_PACKAGE, sectionId, "target") || "domains";
     const raw =
       Number(uci.get(UCI_PACKAGE, sectionId, "daily_quota_minutes")) || 0;
-    return raw > 0 ? `${raw} ${_("min/day")}` : _("None");
+    if (raw <= 0) return _("None");
+    return target === "all"
+      ? `${raw} ${_("min/day")}`
+      : `${raw} ${_("min/day")} (target!=all)`;
   };
 
   // Blocked sites column in table
@@ -1095,14 +1111,20 @@ function createParentalContent(section) {
     "target",
     _("Target Scope"),
     _(
-      "Choose whether to restrict the entire internet or only specific Tachyon routing sections.",
+      "Choose whether to restrict the entire internet (with optional daily screen time quota) or only specific sites/domains (by scheduled hours). Screen time quotas can also be set per child directly in Profiles.",
     ),
   );
   o.modalonly = true;
   o.rmempty = false;
   o.default = "domains";
-  o.value("domains", _("Blocked Sites (Only block domains specified below)"));
-  o.value("all", _("All Internet (Complete internet cutoff)"));
+  o.value(
+    "domains",
+    _("Blocked Sites (Block specified domains during scheduled hours)"),
+  );
+  o.value(
+    "all",
+    _("All Internet (Screen time quota or total internet cutoff)"),
+  );
   o.value("sections", _("Specific Sections (Select sections below)"));
 
   // Multi-select for sections
@@ -1212,16 +1234,15 @@ function createParentalContent(section) {
   o = section.option(
     form.Value,
     "daily_quota_minutes",
-    _("Daily time quota (minutes)"),
+    _("Daily Screen Time Quota (minutes)"),
     _(
-      "Limit device network usage per day. When the quota is exhausted, internet access is blocked until midnight. 0 disables the limit.",
+      "Total allowed network usage per day for devices in this rule. When reached, ALL internet access is blocked until midnight (not just specific domains). Enter 0 for unlimited. Note: Applies when Target Scope is 'All Internet' (or configured in Profile).",
     ),
   );
   o.modalonly = true;
   o.rmempty = true;
   o.default = "0";
   o.placeholder = "0";
-  o.depends("target", "all");
   o.validate = function (_sectionId, value) {
     if (value === "" || value === null || value === undefined) return true;
     const n = Number(value);

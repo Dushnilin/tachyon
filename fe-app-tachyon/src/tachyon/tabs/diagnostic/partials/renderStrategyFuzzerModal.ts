@@ -1711,7 +1711,7 @@ export function renderStrategyFuzzerModal(ruleNames: string[] = []) {
 
   const startPolling = () => {
     stopPolling();
-    pollingInterval = setInterval(pollStatus, 600);
+    pollingInterval = setInterval(pollStatus, 1200);
     pollStatus();
   };
 

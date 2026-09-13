@@ -1477,6 +1477,15 @@ function nft_add_doh_block_marking_rules(table, interface_set, fakeip_mark) {
     return result;
 }
 
+function sqm_service_enabled() {
+    let queues = uci_core.section_objects("sqm", "queue");
+    for (let q in queues) {
+        if (q && (q.enabled == "1" || q.enabled == true))
+            return true;
+    }
+    return false;
+}
+
 function nft_create_runtime_base(table, localv4_set, common_set, port_set, ip_port_set, interface_set, source_interfaces, fakeip_mark, outbound_mark, fakeip_range, tproxy_port, exclude_ntp, localv6_set, common6_set, ip_port6_set, fakeip6_range, tproxy6_address, block_doh) {
     localv6_set = default_arg(localv6_set, "localv6");
     common6_set = default_arg(common6_set, "tachyon_subnets6");
@@ -1674,17 +1683,20 @@ function nft_create_runtime_base(table, localv4_set, common_set, port_set, ip_po
         return false;
 
     // QoS Low-Latency Gaming & Voice Acceleration Engine
-    if (uci_settings().qos_priority_engine != "0") {
+    let qos_setting = uci_settings().qos_priority_engine;
+    let qos_enabled = (qos_setting == "1" || (qos_setting != "0" && !sqm_service_enabled()));
+
+    if (qos_enabled) {
         // Voice & Discord RTC (DSCP EF 0x2e)
-        nft_add_rule(table, "mangle_forward", [ "udp", "dport", "{ 5000-5020, 3478, 19302, 50000-65535 }", "ip", "dscp", "set", "0x2e" ]);
-        nft_add_rule(table, "mangle_output", [ "udp", "dport", "{ 5000-5020, 3478, 19302, 50000-65535 }", "ip", "dscp", "set", "0x2e" ]);
+        nft_add_rule(table, "mangle_forward", [ "udp", "dport", "{ 5000-5020, 3478, 19302 }", "ip", "dscp", "set", "0x2e" ]);
+        nft_add_rule(table, "mangle_output", [ "udp", "dport", "{ 5000-5020, 3478, 19302 }", "ip", "dscp", "set", "0x2e" ]);
 
         // Gaming Traffic (Steam, CS, Dota, Valorant, Apex, PUBG, Roblox) (DSCP AF41 0x22)
         nft_add_rule(table, "mangle_forward", [ "udp", "dport", "{ 3074, 7000-9000, 27000-27050, 28960 }", "ip", "dscp", "set", "0x22" ]);
         nft_add_rule(table, "mangle_output", [ "udp", "dport", "{ 3074, 7000-9000, 27000-27050, 28960 }", "ip", "dscp", "set", "0x22" ]);
 
-        // TCP ACK Acceleration (DSCP CS2)
-        nft_add_rule(table, "mangle_forward", [ "tcp", "flags", "&", "(fin|syn|rst|ack)", "==", "ack", "ip", "dscp", "set", "cs2" ]);
+        // Pure TCP ACK Acceleration (DSCP CS2) - only small packets without payload
+        nft_add_rule(table, "mangle_forward", [ "tcp", "flags", "&", "(fin|syn|rst|ack)", "==", "ack", "meta", "length", "<=", "64", "ip", "dscp", "set", "cs2" ]);
     }
 
     return true;

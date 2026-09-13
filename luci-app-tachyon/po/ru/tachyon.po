@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-12 17:21+0300\n"
-"PO-Revision-Date: 2026-09-12 17:21+0300\n"
+"POT-Creation-Date: 2026-09-13 10:03+0300\n"
+"PO-Revision-Date: 2026-09-13 10:03+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -293,6 +293,9 @@ msgstr "Дополнительно показывать серверы по пр
 msgid "Address"
 msgstr "Адрес"
 
+msgid "Address copied to clipboard"
+msgstr "Адрес скопирован в буфер обмена"
+
 msgid "Administrator Chat IDs"
 msgstr "Chat ID администраторов"
 
@@ -386,8 +389,8 @@ msgstr "Все кроме выбранных"
 msgid "All Internet"
 msgstr "Весь интернет"
 
-msgid "All Internet (Complete internet cutoff)"
-msgstr "Весь интернет (Полное отключение)"
+msgid "All Internet (Screen time quota or total internet cutoff)"
+msgstr "Весь интернет (квота экранного времени или полное отключение интернета)"
 
 msgid "All remaining except selected"
 msgstr "Все остальные кроме выбранных"
@@ -587,6 +590,9 @@ msgstr "Auth Digest"
 msgid "Auto"
 msgstr "Авто"
 
+msgid "Auto (yields if SQM is active)"
+msgstr "Авто (уступает, если активен SQM)"
+
 msgid "Auto Modes (--auto)"
 msgstr "Авто-режимы (--auto)"
 
@@ -752,11 +758,11 @@ msgstr "Заблокированные ресурсы"
 msgid "Blocked Sites"
 msgstr "Заблокированные сайты"
 
+msgid "Blocked Sites (Block specified domains during scheduled hours)"
+msgstr "Заблокированные сайты (блокировка указанных доменов в часы по расписанию)"
+
 msgid "Blocked Sites (Domains)"
 msgstr "Заблокированные сайты (домены)"
-
-msgid "Blocked Sites (Only block domains specified below)"
-msgstr "Заблокированные сайты (Блокировать только указанные домены)"
 
 msgid "Blocks access to private/LAN IP addresses (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, etc.) for selected users before applying routing mode."
 msgstr "Блокирует доступ к приватным/локальным IP-адресам (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 и др.) для указанных пользователей перед применением режима маршрутизации."
@@ -962,8 +968,8 @@ msgstr "Выберите, действует ли расписание круг�
 msgid "Choose whether to install updates immediately when detected or at a scheduled time (e.g. maintenance window)"
 msgstr "Выберите, устанавливать ли обновления сразу при обнаружении или по расписанию (например, в ночное окно обслуживания)"
 
-msgid "Choose whether to restrict the entire internet or only specific Tachyon routing sections."
-msgstr "Выберите, блокировать ли весь доступ в интернет или только определенные секции Tachyon."
+msgid "Choose whether to restrict the entire internet (with optional daily screen time quota) or only specific sites/domains (by scheduled hours). Screen time quotas can also be set per child directly in Profiles."
+msgstr "Выберите, ограничивать ли весь интернет (с возможностью суточной квоты экранного времени) или только конкретные сайты/домены (в часы по расписанию). Суточную квоту экранного времени также можно задать для каждого ребенка прямо в Профилях."
 
 msgid "Choose whether to route traffic to all destinations except selected countries (Exclude) or only to selected countries (Include)."
 msgstr "Выберите, маршрутизировать ли трафик ко всем назначениям кроме выбранных стран (Исключить) или только в выбранные страны (Включить)."
@@ -1145,11 +1151,17 @@ msgstr "Размер мусора в пакете cookie (S3)"
 msgid "Copied"
 msgstr "Скопировано"
 
+msgid "Copied!"
+msgstr "Скопировано!"
+
 msgid "Copy"
 msgstr "Копировать"
 
 msgid "Copy address"
 msgstr "Копировать адрес"
+
+msgid "Copy Address"
+msgstr "Скопировать"
 
 msgid "Copy log"
 msgstr "Копировать лог"
@@ -1174,6 +1186,12 @@ msgstr "Страна"
 
 msgid "Country code (e.g. ru, us, de)"
 msgstr "Код страны (напр. ru, us, de)"
+
+msgid "Credit Cards / SBP / Tinkoff Pay"
+msgstr "Карты РФ / СБП / Tinkoff Pay"
+
+msgid "Cryptocurrency"
+msgstr "Криптовалюта"
 
 msgid "Current Diagnosis"
 msgstr "Текущий диагноз"
@@ -1229,13 +1247,13 @@ msgstr "Настройте порядок и видимость вкладок �
 msgid "Daily Quota"
 msgstr "Дневная квота"
 
+msgid "Daily quota applies only when Target Scope is All Internet"
+msgstr "Суточная квота действует только при выборе области «Весь интернет»"
+
 msgid "Daily Screen Time Quota (minutes)"
 msgstr "Дневная квота экранного времени (минуты)"
 
 msgid "Daily Time Limit (minutes)"
-msgstr "Дневной лимит времени (минуты)"
-
-msgid "Daily time quota (minutes)"
 msgstr "Дневной лимит времени (минуты)"
 
 msgid "Daily Traffic Limit (MB)"
@@ -1739,6 +1757,9 @@ msgstr "Включить WAN-доступ к YACD"
 msgid "Enabled"
 msgstr "Включено"
 
+msgid "Enabled (always prioritize)"
+msgstr "Включено (всегда повышать приоритет)"
+
 msgid "Enables the background daemon that polls Telegram for commands and sends notifications."
 msgstr "Включает фоновый демон, который опрашивает Telegram на наличие команд и отправляет уведомления."
 
@@ -1906,6 +1927,9 @@ msgstr "Не удалось закрыть подключения"
 
 msgid "Failed to communicate with AI provider"
 msgstr "Не удалось связаться с провайдером ИИ"
+
+msgid "Failed to copy address"
+msgstr "Не удалось скопировать адрес"
 
 msgid "Failed to copy report to clipboard"
 msgstr "Не удалось скопировать отчет в буфер обмена"
@@ -2392,6 +2416,9 @@ msgstr "Таймаут простоя"
 
 msgid "If one health check fails with an error, continue running other checks instead of stopping."
 msgstr "Если одна проверка завершается ошибкой, продолжать другие проверки, а не останавливаться."
+
+msgid "If Tachyon powers your daily networking and keeps your connection fast and secure, consider supporting ongoing development! ☕ 🧀 🌭"
+msgstr "Если Tachyon помогает вам и делает работу в сети комфортной, вы можете поддержать проект и автора! ☕ 🧀 🌭"
 
 msgid "Immediately upon release"
 msgstr "Сразу при выходе новой версии"
@@ -2950,9 +2977,6 @@ msgstr "Обнаружены устаревшие пути zapret, требуе�
 
 msgid "Level name"
 msgstr "Имя уровня"
-
-msgid "Limit device network usage per day. When the quota is exhausted, the device is blocked until midnight. 0 disables the limit."
-msgstr "Ограничьте использование сети устройством за день. Когда квота исчерпана, устройство блокируется до полуночи. 0 — без лимита."
 
 msgid "List must be an HTTP(S) URL or a local .lst path"
 msgstr "Список должен быть HTTP(S) URL или локальным путём .lst"
@@ -3755,6 +3779,9 @@ msgstr "Предотвращает множественные вызовы reloa
 msgid "Primary DNS"
 msgstr "Основной DNS"
 
+msgid "Prioritizes interactive DNS, VoIP/WebRTC, gaming and TCP ACK packets via DSCP marking in nftables. In Auto mode, automatically yields if OpenWrt SQM (CAKE/FQ_CoDel) is detected to prevent bufferbloat degradation."
+msgstr ""
+
 msgid "Priority"
 msgstr "Приоритет"
 
@@ -3854,6 +3881,9 @@ msgstr "Публичный хост"
 msgid "Public IP Address Isolation"
 msgstr "Изоляция публичного IP-адреса"
 
+msgid "QoS Priority Engine (DSCP)"
+msgstr ""
+
 msgid "QR code is too large"
 msgstr "QR-код слишком большой"
 
@@ -3862,6 +3892,9 @@ msgstr "Опрос прямого подключения и исходящего
 
 msgid "QUIC (HTTP/3)"
 msgstr "QUIC (HTTP/3)"
+
+msgid "Quick donation via Russian bank cards or SBP"
+msgstr "Быстрый перевод картами РФ или через СБП"
 
 msgid "RAG Knowledge Base + Live ISP Probe Context"
 msgstr "База знаний RAG + результаты живого зондирования провайдера"
@@ -4862,6 +4895,12 @@ msgstr "Вс"
 msgid "Sunday"
 msgstr "Воскресенье"
 
+msgid "Support Development"
+msgstr "Поддержать разработку"
+
+msgid "Support on CloudTips"
+msgstr "Поддержать проект на CloudTips"
+
 msgid "Sweden (se)"
 msgstr "Швеция (se)"
 
@@ -5209,6 +5248,9 @@ msgstr "TorrServer не найден"
 
 msgid "Total allowed network usage per day for devices in this profile. When the quota is reached, access is blocked until midnight. Enter 0 for unlimited."
 msgstr "Суммарное разрешенное время работы в сети в день для устройств этого профиля. По исчерпании лимита доступ блокируется до полуночи. Введите 0 для отсутствия ограничений."
+
+msgid "Total allowed network usage per day for devices in this rule. When reached, ALL internet access is blocked until midnight (not just specific domains). Enter 0 for unlimited. Note: Applies when Target Scope is 'All Internet' (or configured in Profile)."
+msgstr "Суммарное разрешенное время работы в сети в день для устройств этого правила. По исчерпании лимита блокируется ВЕСЬ доступ в интернет до полуночи (а не только отдельные домены). Введите 0 для отсутствия ограничений. Примечание: действует при выборе области «Весь интернет» (или при настройке в Профиле)."
 
 msgid "Total lines:"
 msgstr "Всего строк:"
@@ -5818,6 +5860,21 @@ msgstr "Правила маршрутизации sing-box для Zapret2 нас
 
 msgid "Zapret2 sing-box route rules are not configured"
 msgstr "Правила маршрутизации sing-box для Zapret2 не настроены"
+
+msgid "All Internet (Complete internet cutoff)"
+msgstr "Весь интернет (Полное отключение)"
+
+msgid "Blocked Sites (Only block domains specified below)"
+msgstr "Заблокированные сайты (Блокировать только указанные домены)"
+
+msgid "Choose whether to restrict the entire internet or only specific Tachyon routing sections."
+msgstr "Выберите, блокировать ли весь доступ в интернет или только определенные секции Tachyon."
+
+msgid "Daily time quota (minutes)"
+msgstr "Дневной лимит времени (минуты)"
+
+msgid "Limit device network usage per day. When the quota is exhausted, the device is blocked until midnight. 0 disables the limit."
+msgstr "Ограничьте использование сети устройством за день. Когда квота исчерпана, устройство блокируется до полуночи. 0 — без лимита."
 
 msgid "⚠️ CRITICAL IP LEAK: Your real public IP is exposed through the proxy outbound!"
 msgstr "⚠️ КРИТИЧЕСКАЯ УТЕЧКА IP: Ваш реальный публичный IP раскрыт через исходящий прокси!"
@@ -6649,33 +6706,3 @@ msgstr "Разрешить только: "
 
 msgid "Block: "
 msgstr "Блокировать: "
-
-msgid "Support Development"
-msgstr "Поддержать разработку"
-
-msgid "If Tachyon powers your daily networking and keeps your connection fast and secure, consider supporting ongoing development! ☕ 🧀 🌭"
-msgstr "Если Tachyon помогает вам и делает работу в сети комфортной, вы можете поддержать проект и автора! ☕ 🧀 🌭"
-
-msgid "Credit Cards / SBP / Tinkoff Pay"
-msgstr "Карты РФ / СБП / Tinkoff Pay"
-
-msgid "Quick donation via Russian bank cards or SBP"
-msgstr "Быстрый перевод картами РФ или через СБП"
-
-msgid "Support on CloudTips"
-msgstr "Поддержать проект на CloudTips"
-
-msgid "Cryptocurrency"
-msgstr "Криптовалюта"
-
-msgid "Copy Address"
-msgstr "Скопировать"
-
-msgid "Copied!"
-msgstr "Скопировано!"
-
-msgid "Address copied to clipboard"
-msgstr "Адрес скопирован в буфер обмена"
-
-msgid "Failed to copy address"
-msgstr "Не удалось скопировать адрес"

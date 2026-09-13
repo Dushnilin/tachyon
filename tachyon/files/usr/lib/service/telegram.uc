@@ -2429,7 +2429,7 @@ function view_qos(token, chat_id, msg_id) {
     let text = "🎮 <b>" + t("qos_title") + "</b>\n\n" +
                t("quiet_status") + ": <code>" + (enabled ? "🟢 " + t("qos_enabled_detail") : "⚪ " + t("qos_disabled_detail")) + "</code>\n\n" +
                "<b>" + t("qos_priority_rules") + "</b>\n" +
-               "├ 🎙️ <b>Golos/Discord/RTC:</b> UDP 5000-5020, 3478, 50000-65535 ➔ <code>DSCP EF (0x2e)</code>\n" +
+               "├ 🎙️ <b>Golos/Discord/RTC:</b> UDP 5000-5020, 3478, 19302 ➔ <code>DSCP EF (0x2e)</code>\n" +
                "├ 🎮 <b>Games (Steam/CS/Dota/Apex/PUBG/Roblox):</b> UDP 27000-27050, 3074 ➔ <code>DSCP AF41 (0x22)</code>\n" +
                "└ ⚡ <b>TCP ACK Acceleration:</b> малые ACK пакеты ➔ <code>High Priority</code>";
 

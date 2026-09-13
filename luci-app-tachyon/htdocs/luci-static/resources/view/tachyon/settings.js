@@ -2466,6 +2466,21 @@ function createSettingsContent(section, capabilities) {
   o.default = "0";
   o.rmempty = false;
 
+  o = section.taboption(
+    "advanced",
+    form.ListValue,
+    "qos_priority_engine",
+    _("QoS Priority Engine (DSCP)"),
+    _(
+      "Prioritizes interactive DNS, VoIP/WebRTC, gaming and TCP ACK packets via DSCP marking in nftables. In Auto mode, automatically yields if OpenWrt SQM (CAKE/FQ_CoDel) is detected to prevent bufferbloat degradation.",
+    ),
+  );
+  o.value("", _("Auto (yields if SQM is active)"));
+  o.value("1", _("Enabled (always prioritize)"));
+  o.value("0", _("Disabled"));
+  o.default = "";
+  o.rmempty = true;
+
   // WARP Generator Proxy Section
   o = section.taboption(
     "advanced",

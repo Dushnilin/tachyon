@@ -720,7 +720,21 @@ function controller(bus, opts) {
             }
         }
 
-        if (setting("qos_priority_engine", "1") == "0") return;
+        let qos_pref = setting("qos_priority_engine", "");
+        if (qos_pref == "0") return;
+        if (qos_pref != "1") {
+            let queues = uci_core.section_objects("sqm", "queue");
+            let sqm_on = false;
+            if (queues && length(queues) > 0) {
+                for (let q in queues) {
+                    if (q.enabled == "1" || q.enabled == true) {
+                        sqm_on = true;
+                        break;
+                    }
+                }
+            }
+            if (sqm_on) return;
+        }
         if ((index(out_nft, "dscp set 0x2e") < 0 && index(out_nft, "dscp set ef") < 0) ||
             (index(out_nft, "dscp set 0x22") < 0 && index(out_nft, "dscp set af41") < 0))
             bus.emit(EV.QOS_MISSING, { table: nft_table });

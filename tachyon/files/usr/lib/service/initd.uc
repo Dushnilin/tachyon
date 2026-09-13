@@ -475,14 +475,18 @@ function retry_start_on_wan_up_action(runtime_running_value, service_enabled_val
 }
 
 function retry_start_on_wan_up(owner_pid) {
+    let running = runtime_is_running();
+    let enabled = service_is_enabled();
     let action = retry_start_on_wan_up_action(
-        runtime_is_running() ? "1" : "0",
-        service_is_enabled() ? "1" : "0",
+        running ? "1" : "0",
+        enabled ? "1" : "0",
         start_retry_pending(START_RETRY_FILE) ? "1" : "0"
     );
 
     if (action == "skip_running" || action == "skip_disabled") {
         clear_start_retry(START_RETRY_FILE);
+        if (!running && !enabled)
+            restore_dnsmasq_failsafe();
         return 0;
     }
 

@@ -357,6 +357,9 @@ function failsafe_restore() {
         log("Rolling back previous Tachyon dnsmasq changes because dont_touch_dhcp is enabled", "warn");
     }
     else {
+        if (!dnsmasq_has_tachyon_dns() && !dnsmasq_has_tachyon_managed_state())
+            return true;
+
         log("Rolling back Tachyon DNS changes in dnsmasq", "warn");
     }
 

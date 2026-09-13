@@ -1684,6 +1684,7 @@ function disable_service() {
     let res = command_status_from_args([ SERVICE_INIT, "disable" ]);
     uci_core.set(CONFIG_NAME, "settings", "enabled", "0");
     uci_core.commit(CONFIG_NAME);
+    stop();
     return res;
 }
 
