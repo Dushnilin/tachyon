@@ -337,6 +337,18 @@ function remote_reference(value) {
     return string_starts_with(value, "http://") || string_starts_with(value, "https://");
 }
 
+function remote_plain_list_reference(value) {
+    value = lc(as_string(value));
+    let query = index(value, "?");
+    if (query >= 0)
+        value = substr(value, 0, query);
+    let fragment = index(value, "#");
+    if (fragment >= 0)
+        value = substr(value, 0, fragment);
+
+    return string_ends_with(value, ".lst") || string_ends_with(value, ".txt");
+}
+
 function absolute_reference_with_extension(value, first_extension, second_extension) {
     value = as_string(value);
     if (!string_starts_with(value, "/"))
@@ -351,7 +363,7 @@ function ruleset_reference_valid(reference, community_services) {
 
     return reference == "" ||
         community_service_valid(reference, community_services) ||
-        remote_reference(reference) ||
+        (remote_reference(reference) && !remote_plain_list_reference(reference)) ||
         absolute_reference_with_extension(reference, ".srs", ".json");
 }
 
@@ -1211,6 +1223,8 @@ function validate_service_value(service, context) {
 }
 
 function validate_ruleset_reference_value(reference, context) {
+    if (remote_plain_list_reference(reference))
+        fail_validation("Plain .lst/.txt list '" + reference + "' belongs in domain_ip_lists, not rule_set. Aborted.");
     if (ruleset_reference_valid(reference, context.community_services))
         return;
 

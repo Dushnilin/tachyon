@@ -45,6 +45,12 @@ assert_eq binary \
   "$(ucode -L "$TACHYON_LIB" "$RULESETS_UC" remote-format 'https://example.com/rules.unknown')" \
   "unknown remote ruleset format"
 
+ucode -L "$TACHYON_LIB" "$RULESETS_UC" is-plain-list-reference 'https://example.com/list.lst?token=1' ||
+  fail "plain .lst URL should be recognized as a plain list"
+if ucode -L "$TACHYON_LIB" "$RULESETS_UC" is-plain-list-reference 'https://example.com/rules.json'; then
+  fail ".json URL should not be recognized as a plain list"
+fi
+
 ucode -L "$TACHYON_LIB" -e 'let rulesets = require("singbox.rulesets"); if (rulesets.kind_from_reference_hint("geoip") != "subnets") exit(1);'
 ucode -L "$TACHYON_LIB" -e 'let rulesets = require("singbox.rulesets"); if (type(rulesets.COMMUNITY_SERVICES) != "object" || !rulesets.COMMUNITY_SERVICES.discord) exit(1);'
 ucode -L "$TACHYON_LIB" -e 'let rulesets = require("singbox.rulesets"); if (!rulesets.COMMUNITY_SERVICES.twitch) exit(1);'
@@ -53,4 +59,3 @@ assert_eq "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/g
   "twitch community ruleset url"
 
 printf 'singbox rulesets checks passed\n'
-

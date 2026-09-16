@@ -943,6 +943,8 @@ function ensure_custom_ruleset(config, reference) {
         return { tag: tag_name, kind };
 
     let extension = runtime_rulesets.file_extension(reference);
+    if (runtime_rulesets.is_plain_list_reference(reference))
+        ctx.runtime_generate_unsupported("plain .lst/.txt list '" + reference + "' belongs in domain_ip_lists, not rule_set");
     if (substr(reference, 0, 1) == "/") {
         if (extension != "srs" && extension != "json")
             ctx.runtime_generate_unsupported("local rule_set extension is not supported by sing-box config generation");

@@ -7648,6 +7648,12 @@ function validateFileReference(value, extensions, errorMessage, options = {}) {
 }
 
 function validateCustomRulesetReference(value) {
+  if (hasAllowedReferenceExtension(value, [".lst", ".txt"])) {
+    return _(
+      'Plain .lst / .txt lists belong in "Domain and IP lists", not "Rule sets"',
+    );
+  }
+
   return validateFileReference(
     value,
     [".srs", ".json"],

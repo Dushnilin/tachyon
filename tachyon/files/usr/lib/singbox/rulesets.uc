@@ -134,6 +134,11 @@ function remote_format(reference) {
     return file_extension(reference) == "json" ? "source" : "binary";
 }
 
+function is_plain_list_reference(reference) {
+    let extension = file_extension(reference);
+    return extension == "lst" || extension == "txt";
+}
+
 function is_valid_srs_file(path) {
     let p = as_string(path);
     let st = fs.stat(p);
@@ -180,6 +185,7 @@ function module_exports() {
         file_extension,
         kind_from_reference_hint,
         remote_format,
+        is_plain_list_reference,
         is_valid_srs_file,
         ensure_empty_srs_stub
     };
@@ -198,6 +204,8 @@ else if (mode == "kind-from-reference-hint")
     print(kind_from_reference_hint(ARGV[1]), "\n");
 else if (mode == "remote-format")
     print(remote_format(ARGV[1]), "\n");
+else if (mode == "is-plain-list-reference")
+    exit(is_plain_list_reference(ARGV[1]) ? 0 : 1);
 else if (mode == "is-valid-srs-file")
     exit(is_valid_srs_file(ARGV[1]) ? 0 : 1);
 else if (mode == "ensure-empty-srs-stub")
