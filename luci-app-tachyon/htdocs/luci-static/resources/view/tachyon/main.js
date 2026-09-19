@@ -13303,10 +13303,15 @@ function renderStrategyFuzzerModal(ruleNames = []) {
     "select",
     { class: "cbi-input-select", style: "width: 100%;" },
     [
-      E("option", { value: "", selected: true }, _("Provider Global Default")),
-      ...normalizedRules.map(
-        (r) => E("option", { value: r.id }, `${_("Rule:")} ${r.label}`)
-      )
+      E(
+        "option",
+        { value: "", selected: true },
+        _("Provider Default (global fallback)")
+      ),
+      ...normalizedRules.map((r) => {
+        const actionTag = r.action ? ` [${r.action}]` : "";
+        return E("option", { value: r.id }, `${r.label}${actionTag}`);
+      })
     ]
   );
   ruleSelect.addEventListener("change", () => {
@@ -17681,7 +17686,8 @@ function handleOpenStrategyFuzzer() {
   getConfigSections().then((sections) => {
     const ruleSections = sections.filter((s) => s[".type"] === "section" || s[".type"] === "rule").map((s) => ({
       id: s[".name"],
-      label: typeof s.label === "string" && s.label.trim() || typeof s.name === "string" && s.name.trim() || s[".name"]
+      label: typeof s.label === "string" && s.label.trim() || typeof s.name === "string" && s.name.trim() || s[".name"],
+      action: s.action || ""
     })).filter((r) => Boolean(r.id));
     renderStrategyFuzzerModal(ruleSections);
   }).catch(() => {

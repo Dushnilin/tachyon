@@ -3793,7 +3793,6 @@ function apply_strategy(engine, args_val, target_rule) {
     let applied = false;
     
     if (target_rule != "" && target_rule != "global") {
-        uci.set(CONFIG_NAME, target_rule, "action", engine);
         if (engine == "zapret2")
             uci.set(CONFIG_NAME, target_rule, "nfqws2_opt", args_val);
         else if (engine == "zapret")

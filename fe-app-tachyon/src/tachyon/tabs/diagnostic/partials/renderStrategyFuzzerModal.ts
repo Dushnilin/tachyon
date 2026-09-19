@@ -6,6 +6,7 @@ import { Tachyon } from '../../../types';
 export interface FuzzerRuleSection {
   id: string;
   label: string;
+  action?: string;
 }
 
 export function renderStrategyFuzzerModal(
@@ -303,10 +304,15 @@ export function renderStrategyFuzzerModal(
     'select',
     { class: 'cbi-input-select', style: 'width: 100%;' },
     [
-      E('option', { value: '', selected: true }, _('Provider Global Default')),
-      ...normalizedRules.map((r) =>
-        E('option', { value: r.id }, `${_('Rule:')} ${r.label}`),
+      E(
+        'option',
+        { value: '', selected: true },
+        _('Provider Default (global fallback)'),
       ),
+      ...normalizedRules.map((r) => {
+        const actionTag = r.action ? ` [${r.action}]` : '';
+        return E('option', { value: r.id }, `${r.label}${actionTag}`);
+      }),
     ],
   );
   ruleSelect.addEventListener('change', () => {

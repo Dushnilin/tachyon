@@ -1597,6 +1597,7 @@ function handleOpenStrategyFuzzer() {
             (typeof s.label === 'string' && s.label.trim()) ||
             (typeof s.name === 'string' && s.name.trim()) ||
             s['.name'],
+          action: s.action || '',
         }))
         .filter((r) => Boolean(r.id));
       renderStrategyFuzzerModal(ruleSections);

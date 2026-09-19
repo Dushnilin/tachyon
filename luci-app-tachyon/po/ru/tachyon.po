@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-19 20:58+0300\n"
-"PO-Revision-Date: 2026-09-19 20:58+0300\n"
+"POT-Creation-Date: 2026-09-19 21:15+0300\n"
+"PO-Revision-Date: 2026-09-19 21:15+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -3959,8 +3959,8 @@ msgstr "Версия протокола: 2.0 (стандартные целоч�
 msgid "Provider"
 msgstr "Провайдер"
 
-msgid "Provider Global Default"
-msgstr "Глобальные настройки провайдера"
+msgid "Provider Default (global fallback)"
+msgstr ""
 
 msgid "Provider status is normal"
 msgstr "Состояние службы в норме"
@@ -4348,9 +4348,6 @@ msgstr "Наборы правил"
 
 msgid "Rule Sets (.srs / .json)"
 msgstr "Наборы правил (.srs / .json)"
-
-msgid "Rule:"
-msgstr "Правило:"
 
 msgid "Rules"
 msgstr "Правила"
@@ -6058,6 +6055,12 @@ msgstr "Правила маршрутизации sing-box для Zapret2 не �
 
 msgid "Zero config mesh VPN daemon"
 msgstr "Mesh VPN-демон с нулевой конфигурацией"
+
+msgid "Provider Global Default"
+msgstr "Глобальные настройки провайдера"
+
+msgid "Rule:"
+msgstr "Правило:"
 
 msgid "🌐 Custom Target URL..."
 msgstr "🌐 Пользовательский URL цели..."
