@@ -41,6 +41,7 @@ fi
 # the one place the raw form is expected.
 stray="$(grep -rn '2>&1 &"' "$LIB_DIR" \
   | grep -v 'core/common.uc:.*close_inherited_fds()' \
+  | grep -v 'core/exec.uc:.*close_inherited_fds()' \
   | grep -v 'service/initd.uc:.*as_string(command)' \
   | grep -v 'service/state.uc:.*as_string(command)' || true)"
 [ -z "$stray" ] || fail "background spawn bypasses the helpers:

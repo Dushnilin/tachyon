@@ -316,50 +316,14 @@ function command_from_args(args) {
 }
 
 // Shell prologue that closes every descriptor a background spawn would inherit.
-// ucode holds an open descriptor per require()d module for the lifetime of the
-// interpreter and offers no way to close them or mark them close-on-exec, so
-// every spawn inherits the whole set. On the router the watchdog carries ~90 of
-// them and passes them to each child: `logread`, `sh`, and nfqws2 were all found
-// holding descriptors on Tachyon's own .uc files, several already unlinked by a
-// package upgrade — the old inode pinned on disk by a process with no interest
-// in it.
-//
-// The codebase used to write a literal `1000<&-` against this, which closed
-// nothing: no descriptor 1000 is ever opened, and every real one falls in 6..89.
-//
-// Two things make the replacement less obvious than it looks.
-//
-// Counting from 3 to a ceiling does not work. Closing a descriptor at or above
-// 10 is fatal in dash even when the number was never open — dash relocates its
-// own bookkeeping descriptors into that range, so the redirection is a hard
-// error that kills the shell. `2>/dev/null` hides the message, not the death,
-// and `|| true` never runs. Enumerating /proc/self/fd instead touches only
-// descriptors that are actually open, and is cheaper besides.
-//
-// That still leaves the high descriptors themselves: a module set of any size
-// puts them past 10, and under dash closing one kills the spawn outright. So the
-// prologue asks first, in a subshell that absorbs the death, and lowers its own
-// ceiling when the answer is no. busybox ash — what OpenWrt runs, and the shell
-// this has to satisfy — answers yes and closes the whole set; dash closes 3..9
-// and leaves the rest rather than taking the spawn down with it.
-//
-// The glob's own descriptor may appear in the listing and close underneath the
-// loop; `|| true` keeps that from ending it. /proc is always mounted on OpenWrt.
-//
-// The ceiling has to sit above 1000, not below it. procd_lock() in
-// /lib/functions/procd.sh does `exec 1000>/var/lock/procd_<svc>.lock` and then
-// `flock 1000` with no -w, so descriptor 1000 IS the procd serialization lock.
-// A ceiling of 999 skipped exactly that descriptor: every background spawn
-// inherited the held lock, and the lock outlived the init script that took it —
-// watchdog workers, logread -f, the zapret2 supervisors, nfqws2, the telegram
-// worker and stray curls were all found pinning /var/lock/procd_tachyon.lock.
-// With the lock never released, any later /etc/init.d/tachyon call blocks
-// forever in flock, which is how package_prerm hung until apk killed it and
-// rolled the upgrade back. Killing the flock processes cannot help while an
-// inheriting child still holds the descriptor.
-//
-// stdin/stdout/stderr are left alone — callers redirect those themselves.
+// Canonical implementation is in core/exec.uc. This wrapper exists for backward
+// compatibility with the ~100+ call sites that import core.common.
 function close_inherited_fds() {
+    let exec_mod;
+    try { exec_mod = require("core.exec"); } catch(e) {}
+    if (exec_mod && exec_mod.close_inherited_fds)
+        return exec_mod.close_inherited_fds();
+    // Fallback if core.exec is not yet loaded
     return "if ( eval \"exec 10<&-\" ) 2>/dev/null; then __tfd=1048576; else __tfd=9; fi; " +
         "for f in /proc/self/fd/*; do i=${f##*/}; case $i in 0|1|2) continue;; esac; " +
         "[ \"$i\" -le $__tfd ] 2>/dev/null || continue; " +

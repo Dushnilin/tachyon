@@ -36,7 +36,10 @@ ip link set tailscale0 up
 cat >"$STUB_BIN/tailscaled" <<EOF
 #!/bin/sh
 printf 'scaled %s\n' "\$*" >> '$TS_LOG'
-exec sleep 3600
+case "\$*" in
+  *--help*) echo " --flag types: netfilter-mode" ;;
+  *) exec sleep 3600 ;;
+esac
 EOF
 cat >"$STUB_BIN/tailscale" <<EOF
 #!/bin/sh
