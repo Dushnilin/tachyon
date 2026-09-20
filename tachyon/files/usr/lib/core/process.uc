@@ -283,18 +283,21 @@ if (sourcepath(1) != null && sourcepath(1) != "")
 
 let mode = ARGV[0] || "";
 
-if (mode == "selftest") {
-    let pass = 0;
-    let fail = 0;
+let _test_pass = 0;
+let _test_fail = 0;
 
-    let assert = function(cond, msg) {
-        if (cond) { pass++; }
-        else { fail++; print("FAIL: " + msg + "\n"); }
-    };
+function _test_assert(cond, msg) {
+    if (cond) { _test_pass++; }
+    else { _test_fail++; print("FAIL: " + msg + "\n"); }
+}
+
+if (mode == "selftest") {
+    _test_pass = 0;
+    _test_fail = 0;
 
     // Test 1: boot_id is read and non-empty
-    assert(boot_id() != null && boot_id() != "", "boot_id should be non-empty");
-    assert(boot_id() == _cached_boot_id, "boot_id should be cached");
+    _test_assert(boot_id() != null && boot_id() != "", "boot_id should be non-empty");
+    _test_assert(boot_id() == _cached_boot_id, "boot_id should be cached");
 
     // Test 2: process_starttime for current process
     let self_pid = null;
@@ -303,65 +306,65 @@ if (mode == "selftest") {
         self_pid = field;
         break;
     }
-    assert(self_pid != null, "should read own PID");
+    _test_assert(self_pid != null, "should read own PID");
     let st = process_starttime(self_pid);
-    assert(st != null, "starttime for self should be readable");
-    assert(match(st, /^[0-9]+$/) != null, "starttime should be numeric");
+    _test_assert(st != null, "starttime for self should be readable");
+    _test_assert(match(st, /^[0-9]+$/) != null, "starttime should be numeric");
 
     // Test 3: process_starttime for nonexistent PID
-    assert(process_starttime("999999") == null, "nonexistent PID should return null");
-    assert(process_starttime("abc") == null, "non-numeric PID should return null");
-    assert(process_starttime("") == null, "empty PID should return null");
+    _test_assert(process_starttime("999999") == null, "nonexistent PID should return null");
+    _test_assert(process_starttime("abc") == null, "non-numeric PID should return null");
+    _test_assert(process_starttime("") == null, "empty PID should return null");
 
     // Test 4: process_start_ticks from raw stat
     let ticks = process_start_ticks(self_stat);
-    assert(ticks != null, "process_start_ticks should parse /proc/self/stat");
-    assert(typeof(ticks) == "int", "process_start_ticks should return int");
+    _test_assert(ticks != null, "process_start_ticks should parse /proc/self/stat");
+    _test_assert(typeof(ticks) == "int", "process_start_ticks should return int");
 
     // Test 5: process_age_seconds
     let age = process_age_seconds(self_pid);
-    assert(age != null, "age of self should be readable");
-    assert(age >= 0, "age of self should be >= 0");
+    _test_assert(age != null, "age of self should be readable");
+    _test_assert(age >= 0, "age of self should be >= 0");
 
     // Test 6: process_age_seconds_from_ticks
     let age_from_ticks = process_age_seconds_from_ticks(ticks, ticks + 500);
-    assert(age_from_ticks == 5, "500 ticks at 100Hz should be 5 seconds");
-    assert(process_age_seconds_from_ticks(100, 50) == null, "backwards ticks should return null");
+    _test_assert(age_from_ticks == 5, "500 ticks at 100Hz should be 5 seconds");
+    _test_assert(process_age_seconds_from_ticks(100, 50) == null, "backwards ticks should return null");
 
     // Test 7: pid_alive_raw
-    assert(pid_alive_raw(self_pid), "current process should be alive");
-    assert(!pid_alive_raw("999999"), "nonexistent PID should not be alive");
-    assert(!pid_alive_raw("abc"), "non-numeric PID should not be alive");
+    _test_assert(pid_alive_raw(self_pid), "current process should be alive");
+    _test_assert(!pid_alive_raw("999999"), "nonexistent PID should not be alive");
+    _test_assert(!pid_alive_raw("abc"), "non-numeric PID should not be alive");
 
     // Test 8: is_tachyon_process (current ucode process has tachyon in cmdline when run via test)
     // This may or may not match depending on how the test is invoked, so just check it doesn't crash
     let _ = is_tachyon_process(self_pid);
-    assert(is_tachyon_process("999999") == false, "nonexistent PID is not tachyon process");
+    _test_assert(is_tachyon_process("999999") == false, "nonexistent PID is not tachyon process");
 
     // Test 9: make_identity
     let id = make_identity(self_pid, "self-test");
-    assert(id.pid == self_pid, "identity pid should match");
-    assert(id.command == "self-test", "identity command should match");
-    assert(id.boot_id == boot_id(), "identity boot_id should match current");
-    assert(id.starttime == st, "identity starttime should match");
-    assert(id.created_at != null, "identity created_at should be set");
+    _test_assert(id.pid == self_pid, "identity pid should match");
+    _test_assert(id.command == "self-test", "identity command should match");
+    _test_assert(id.boot_id == boot_id(), "identity boot_id should match current");
+    _test_assert(id.starttime == st, "identity starttime should match");
+    _test_assert(id.created_at != null, "identity created_at should be set");
 
     // Test 10: identity_matches
-    assert(identity_matches(id, self_pid), "identity should match self");
-    assert(!identity_matches(id, "999999"), "identity should not match nonexistent PID");
-    assert(!identity_matches(id, "abc"), "identity should not match non-numeric PID");
-    assert(!identity_matches("not_an_object", self_pid), "non-object identity should not match");
+    _test_assert(identity_matches(id, self_pid), "identity should match self");
+    _test_assert(!identity_matches(id, "999999"), "identity should not match nonexistent PID");
+    _test_assert(!identity_matches(id, "abc"), "identity should not match non-numeric PID");
+    _test_assert(!identity_matches("not_an_object", self_pid), "non-object identity should not match");
 
     // Test 11: identity_alive
-    assert(identity_alive(id), "identity should be alive");
+    _test_assert(identity_alive(id), "identity should be alive");
 
     // Test 12: boot_id unchanged across calls
     let bid1 = boot_id();
     let bid2 = boot_id();
-    assert(bid1 == bid2, "boot_id should be stable");
+    _test_assert(bid1 == bid2, "boot_id should be stable");
 
-    print("process.uc selftest: " + pass + " passed, " + fail + " failed\n");
-    exit(fail > 0 ? 1 : 0);
+    print("process.uc selftest: " + _test_pass + " passed, " + _test_fail + " failed\n");
+    exit(_test_fail > 0 ? 1 : 0);
 }
 else if (mode == "boot-id") {
     print(boot_id() + "\n");
