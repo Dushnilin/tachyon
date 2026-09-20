@@ -567,18 +567,27 @@ if (mode == "selftest") {
     let o = run_output({ argv: ["/bin/echo", "test123"], timeout: 5 });
     assert(o == "test123", "run_output should capture stdout");
 
-    // Test 6: is_alive with PID 1 (init, always present)
-    assert(is_alive("1"), "PID 1 should always be alive");
+    // Test 6: is_alive with current process (should always be alive)
+    let self_pid = null;
+    let self_stat = trim(as_string(fs.readfile("/proc/self/stat") || ""));
+    for (let field in split(self_stat, " ")) {
+        self_pid = field;
+        break;
+    }
+    assert(self_pid != null, "should read own PID from /proc/self/stat");
+    assert(is_alive(self_pid), "current process should be alive");
     assert(!is_alive("999999"), "nonexistent PID should not be alive");
 
     // Test 7: make_identity
-    let id = make_identity("1", "init");
-    assert(id.pid == "1", "identity pid should match");
-    assert(id.command == "init", "identity command should match");
+    let self_st = process_starttime(self_pid);
+    let id = make_identity(self_pid, "self-test");
+    assert(id.pid == self_pid, "identity pid should match");
+    assert(id.command == "self-test", "identity command should match");
     assert(id.boot_id == boot_id(), "identity boot_id should match current");
+    assert(id.starttime == self_st, "identity starttime should match");
 
     // Test 8: identity_matches
-    assert(identity_matches(id, "1"), "identity should match PID 1");
+    assert(identity_matches(id, self_pid), "identity should match self");
     assert(!identity_matches(id, "999999"), "identity should not match nonexistent PID");
 
     // Test 9: kill_process on nonexistent is safe
