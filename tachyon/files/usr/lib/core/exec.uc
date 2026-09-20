@@ -17,6 +17,7 @@
 
 let fs = require("fs");
 let common = require("core.common");
+let process_identity = require("core.process");
 
 let as_string = common.as_string;
 let shell_quote = common.shell_quote;
@@ -26,8 +27,6 @@ let shell_quote = common.shell_quote;
 // ---------------------------------------------------------------------------
 
 const PROC_SELF_FD = "/proc/self/fd";
-const PROC_STAT_FORMAT = "/proc/%s/stat";
-const BOOT_ID_PATH = "/proc/sys/kernel/random/boot_id";
 
 // ---------------------------------------------------------------------------
 // FD cleanup prologue (ported from common.uc, kept here as the canonical copy)
@@ -44,87 +43,16 @@ function close_inherited_fds() {
 }
 
 // ---------------------------------------------------------------------------
-// Process identity
+// Process identity (delegated to core/process.uc)
 // ---------------------------------------------------------------------------
 
-// Read the boot_id once per interpreter lifetime. The boot_id changes on every
-// reboot, so it acts as an epoch marker: a PID that survived a reboot is
-// definitively stale even if Linux recycled the number.
-let _cached_boot_id = null;
+// boot_id, process_starttime, make_identity, identity_matches are now provided
+// by core.process. We re-export them here for backward compatibility.
 
-function boot_id() {
-    if (_cached_boot_id != null)
-        return _cached_boot_id;
-    let raw = trim(as_string(fs.readfile(BOOT_ID_PATH) || ""));
-    _cached_boot_id = raw != "" ? raw : "unknown";
-    return _cached_boot_id;
-}
-
-// Read /proc/PID/stat field 22 (starttime, clock ticks since boot). This is
-// stable across PID recycling: two different processes that happen to share a
-// PID will have different start times. Returns null if the process does not
-// exist or the field cannot be read.
-function process_starttime(pid) {
-    pid = as_string(pid);
-    if (match(pid, /^[0-9]+$/) == null)
-        return null;
-    let path = sprintf(PROC_STAT_FORMAT, pid);
-    let data = trim(as_string(fs.readfile(path) || ""));
-    if (data == "")
-        return null;
-    // Field 22 is after the closing paren of the command name. The command
-    // name itself may contain spaces and parens, so we split from the right.
-    let rp = rindex(data, ") ");
-    if (rp < 0)
-        return null;
-    let fields = split(substr(data, rp + 2), " ");
-    // starttime is field 22 overall, which is index 19 after the closing paren
-    // (fields 3-22 in 1-indexed = fields 0-19 in 0-indexed after the split)
-    if (length(fields) < 20)
-        return null;
-    return as_string(fields[19]);
-}
-
-// Build a process identity object. This is the portable handle that replaces
-// bare PIDs throughout the codebase.
-function make_identity(pid, command_name) {
-    return {
-        pid: as_string(pid),
-        starttime: process_starttime(pid),
-        boot_id: boot_id(),
-        command: as_string(command_name || ""),
-        created_at: time()
-    };
-}
-
-// Verify that a PID still belongs to the same process we launched. This guards
-// against PID recycling: Linux may assign the same number to an unrelated
-// process after our worker dies.
-function identity_matches(identity, pid) {
-    if (type(identity) != "object")
-        return false;
-    let current_pid = as_string(pid || identity.pid);
-    if (match(current_pid, /^[0-9]+$/) == null)
-        return false;
-
-    // Fast path: boot_id changed → everything is stale
-    if (identity.boot_id != null && identity.boot_id != boot_id())
-        return false;
-
-    // Check that the PID is alive
-    let ks = int(system("kill -0 " + shell_quote(current_pid) + " 2>/dev/null"));
-    if (ks == -1 || ((ks & 127) == 0 && ((ks >> 8) & 255) != 0))
-        return false;
-
-    // Check starttime matches (guards against PID recycling)
-    if (identity.starttime != null) {
-        let current_starttime = process_starttime(current_pid);
-        if (current_starttime == null || current_starttime != identity.starttime)
-            return false;
-    }
-
-    return true;
-}
+function boot_id() { return process_identity.boot_id(); }
+function process_starttime(pid) { return process_identity.process_starttime(pid); }
+function make_identity(pid, command_name) { return process_identity.make_identity(pid, command_name); }
+function identity_matches(identity, pid) { return process_identity.identity_matches(identity, pid); }
 
 // ---------------------------------------------------------------------------
 // Shell command building
@@ -363,17 +291,10 @@ function run_background(opts) {
 
 // Check if a process is alive. Uses kill -0 which does not signal but checks
 // permission / existence.
-function is_alive(pid) {
-    pid = as_string(pid);
-    if (match(pid, /^[0-9]+$/) == null)
-        return false;
-    return command_success_from_args([ "kill", "-0", pid ]);
-}
+function is_alive(pid) { return process_identity.pid_alive_raw(pid); }
 
 // Check if an identity is still the same live process.
-function identity_alive(identity) {
-    return identity_matches(identity, identity.pid);
-}
+function identity_alive(identity) { return process_identity.identity_alive(identity); }
 
 // Kill a process by PID. Sends SIGTERM first, then SIGKILL after a grace period.
 function kill_process(pid, grace_seconds) {
