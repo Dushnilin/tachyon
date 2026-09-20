@@ -47,7 +47,7 @@ assert_true() {
 # Runtime: detect_pkg_manager
 # ---------------------------------------------------------------------------
 
-printf '--- runtime: detect_pkg_manager ---\n'
+printf '%s\n' '--- runtime: detect_pkg_manager ---'
 RESULT=$($TACHYON_UCODE -L "$TACHYON_LIB" -e '
 let pkg = require("core.packages");
 let mgr = pkg.detect_pkg_manager();
@@ -62,7 +62,7 @@ assert_eq "detect_pkg_manager" "PASS" "${RESULT%%:*}"
 # Runtime: detect_lock
 # ---------------------------------------------------------------------------
 
-printf '--- runtime: detect_lock ---\n'
+printf '%s\n' '--- runtime: detect_lock ---'
 RESULT=$($TACHYON_UCODE -L "$TACHYON_LIB" -e '
 let pkg = require("core.packages");
 let r1 = pkg.detect_lock("", 227);
@@ -80,7 +80,7 @@ assert_eq "detect_lock" "PASS" "$RESULT"
 # Runtime: find_lock_holder (should return null when no lock)
 # ---------------------------------------------------------------------------
 
-printf '--- runtime: find_lock_holder ---\n'
+printf '%s\n' '--- runtime: find_lock_holder ---'
 RESULT=$($TACHYON_UCODE -L "$TACHYON_LIB" -e '
 let pkg = require("core.packages");
 let holder = pkg.find_lock_holder();
@@ -98,7 +98,7 @@ assert_eq "find_lock_holder" "PASS" "${RESULT%%:*}"
 # Runtime: is_stale_lock
 # ---------------------------------------------------------------------------
 
-printf '--- runtime: is_stale_lock ---\n'
+printf '%s\n' '--- runtime: is_stale_lock ---'
 RESULT=$($TACHYON_UCODE -L "$TACHYON_LIB" -e '
 let pkg = require("core.packages");
 let r1 = pkg.is_stale_lock(null);
@@ -116,7 +116,7 @@ assert_eq "is_stale_lock" "PASS" "$RESULT"
 # Runtime: detect_arch
 # ---------------------------------------------------------------------------
 
-printf '--- runtime: detect_arch ---\n'
+printf '%s\n' '--- runtime: detect_arch ---'
 RESULT=$($TACHYON_UCODE -L "$TACHYON_LIB" -e '
 let pkg = require("core.packages");
 let arch = pkg.detect_arch();
@@ -131,7 +131,7 @@ assert_eq "detect_arch" "PASS" "${RESULT%%:*}"
 # Runtime: backward-compatible exports
 # ---------------------------------------------------------------------------
 
-printf '--- runtime: backward-compatible exports ---\n'
+printf '%s\n' '--- runtime: backward-compatible exports ---'
 RESULT=$($TACHYON_UCODE -L "$TACHYON_LIB" -e '
 let pkg = require("core.packages");
 let has_installed = typeof(pkg.installed) == "function";
@@ -150,7 +150,7 @@ assert_eq "backward-compatible exports" "PASS" "$RESULT"
 # Runtime: new exports
 # ---------------------------------------------------------------------------
 
-printf '--- runtime: new exports ---\n'
+printf '%s\n' '--- runtime: new exports ---'
 RESULT=$($TACHYON_UCODE -L "$TACHYON_LIB" -e '
 let pkg = require("core.packages");
 let has_detect = typeof(pkg.detect_pkg_manager) == "function";
@@ -171,7 +171,7 @@ assert_eq "new exports" "PASS" "$RESULT"
 # Runtime: wait_for_lock with no lock (should acquire immediately)
 # ---------------------------------------------------------------------------
 
-printf '--- runtime: wait_for_lock (no contention) ---\n'
+printf '%s\n' '--- runtime: wait_for_lock (no contention) ---'
 RESULT=$($TACHYON_UCODE -L "$TACHYON_LIB" -e '
 let pkg = require("core.packages");
 let result = pkg.wait_for_lock({ timeout: 5 });
@@ -186,7 +186,7 @@ assert_eq "wait_for_lock no contention" "PASS" "$RESULT"
 # Runtime: wait_for_lock timeout returns structured error
 # ---------------------------------------------------------------------------
 
-printf '--- runtime: wait_for_lock timeout error ---\n'
+printf '%s\n' '--- runtime: wait_for_lock timeout error ---'
 RESULT=$($TACHYON_UCODE -L "$TACHYON_LIB" -e '
 let pkg = require("core.packages");
 // Force a lock holder by creating a fake one — test the error path
@@ -204,7 +204,7 @@ assert_eq "wait_for_lock timeout error" "PASS" "$RESULT"
 # Runtime: CLI detect subcommand
 # ---------------------------------------------------------------------------
 
-printf '--- runtime: CLI detect ---\n'
+printf '%s\n' '--- runtime: CLI detect ---'
 RESULT=$($TACHYON_UCODE -L "$TACHYON_LIB" "$TACHYON_LIB/core/packages.uc" detect 2>&1)
 if echo "$RESULT" | grep -q "package_manager"; then
     pass=$((pass + 1))
@@ -216,7 +216,7 @@ fi
 # Runtime: CLI lock-holder subcommand
 # ---------------------------------------------------------------------------
 
-printf '--- runtime: CLI lock-holder ---\n'
+printf '%s\n' '--- runtime: CLI lock-holder ---'
 RESULT=$($TACHYON_UCODE -L "$TACHYON_LIB" "$TACHYON_LIB/core/packages.uc" lock-holder 2>&1)
 # Should return null or JSON
 if echo "$RESULT" | grep -qE 'null|"pid"'; then
@@ -234,9 +234,9 @@ printf 'passed: %d\n' "$pass"
 printf 'failed: %d\n' "$fail"
 
 if [ "$fail" -gt 0 ]; then
-    printf '--- FAIL ---\n'
+    printf '%s\n' '--- FAIL ---'
     exit 1
 fi
 
-printf '--- PASS ---\n'
+printf '%s\n' '--- PASS ---'
 exit 0
