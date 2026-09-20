@@ -29,7 +29,7 @@ assert_eq() {
 }
 
 # ── Selftest passes ──────────────────────────────────────────────────────────
-ucode "$EXEC_UC" selftest >/dev/null 2>&1 || fail "exec.uc selftest failed"
+ucode "$EXEC_UC" selftest || fail "exec.uc selftest failed"
 
 # ── boot_id is readable and stable ───────────────────────────────────────────
 BOOT1=$(ucode "$EXEC_UC" boot-id)
