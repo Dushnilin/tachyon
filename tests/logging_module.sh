@@ -47,7 +47,7 @@ assert_true() {
 # ---------------------------------------------------------------------------
 
 printf '%s\n' '--- logging.uc selftest ---'
-if $TACHYON_UCODE "$TACHYON_LIB/core/logging.uc" selftest; then
+if $TACHYON_UCODE -L "$TACHYON_LIB" "$TACHYON_LIB/core/logging.uc" selftest; then
     pass=$((pass + 1))
 else
     fail_test "logging.uc selftest failed"
@@ -181,7 +181,7 @@ assert_eq "common.log_message delegation" "PASS" "$RESULT"
 # ---------------------------------------------------------------------------
 
 printf '%s\n' '--- runtime: CLI log subcommand ---'
-$TACHYON_UCODE "$TACHYON_LIB/core/logging.uc" log info "CLI test message" test op1
+$TACHYON_UCODE -L "$TACHYON_LIB" "$TACHYON_LIB/core/logging.uc" log info "CLI test message" test op1
 pass=$((pass + 1))
 
 # ---------------------------------------------------------------------------
