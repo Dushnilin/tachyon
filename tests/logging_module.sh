@@ -46,7 +46,7 @@ assert_true() {
 # Run module selftest
 # ---------------------------------------------------------------------------
 
-printf '--- logging.uc selftest ---\n'
+printf '%s\n' '--- logging.uc selftest ---'
 if $TACHYON_UCODE "$TACHYON_LIB/core/logging.uc" selftest; then
     pass=$((pass + 1))
 else
@@ -57,7 +57,7 @@ fi
 # Runtime: backward-compatible log_message
 # ---------------------------------------------------------------------------
 
-printf '--- runtime: log_message backward compatibility ---\n'
+printf '%s\n' '--- runtime: log_message backward compatibility ---'
 RESULT=$($TACHYON_UCODE -L "$TACHYON_LIB" -e '
 let log = require("core.logging");
 let r1 = log.log_message("backward compat test");
@@ -74,7 +74,7 @@ assert_eq "log_message backward compat" "PASS" "$RESULT"
 # Runtime: structured write
 # ---------------------------------------------------------------------------
 
-printf '--- runtime: structured write ---\n'
+printf '%s\n' '--- runtime: structured write ---'
 RESULT=$($TACHYON_UCODE -L "$TACHYON_LIB" -e '
 let log = require("core.logging");
 let r1 = log.write({ level: "info", subsystem: "test", message: "hello" });
@@ -90,7 +90,7 @@ assert_eq "structured write" "PASS" "$RESULT"
 # Runtime: level-specific methods
 # ---------------------------------------------------------------------------
 
-printf '--- runtime: level-specific methods ---\n'
+printf '%s\n' '--- runtime: level-specific methods ---'
 RESULT=$($TACHYON_UCODE -L "$TACHYON_LIB" -e '
 let log = require("core.logging");
 let r1 = log.debug("debug msg");
@@ -109,7 +109,7 @@ assert_eq "level-specific methods" "PASS" "$RESULT"
 # Runtime: job_log_append
 # ---------------------------------------------------------------------------
 
-printf '--- runtime: job_log_append ---\n'
+printf '%s\n' '--- runtime: job_log_append ---'
 RESULT=$($TACHYON_UCODE -L "$TACHYON_LIB" -e '
 let log = require("core.logging");
 let fs = require("fs");
@@ -132,7 +132,7 @@ assert_eq "job_log_append" "PASS" "$RESULT"
 # Runtime: empty/null path returns false
 # ---------------------------------------------------------------------------
 
-printf '--- runtime: job_log_append edge cases ---\n'
+printf '%s\n' '--- runtime: job_log_append edge cases ---'
 RESULT=$($TACHYON_UCODE -L "$TACHYON_LIB" -e '
 let log = require("core.logging");
 let r1 = log.job_log_append("", "msg");
@@ -148,7 +148,7 @@ assert_eq "job_log_append edge cases" "PASS" "$RESULT"
 # Runtime: LEVELS constant
 # ---------------------------------------------------------------------------
 
-printf '--- runtime: LEVELS constant ---\n'
+printf '%s\n' '--- runtime: LEVELS constant ---'
 RESULT=$($TACHYON_UCODE -L "$TACHYON_LIB" -e '
 let log = require("core.logging");
 let ok = log.LEVELS.info == 6 && log.LEVELS.warn == 4 && log.LEVELS.error == 3 && log.LEVELS.debug == 7;
@@ -163,7 +163,7 @@ assert_eq "LEVELS constant" "PASS" "$RESULT"
 # Runtime: common.log_message delegates to logging
 # ---------------------------------------------------------------------------
 
-printf '--- runtime: common.log_message delegation ---\n'
+printf '%s\n' '--- runtime: common.log_message delegation ---'
 RESULT=$($TACHYON_UCODE -L "$TACHYON_LIB" -e '
 let common = require("core.common");
 let r1 = common.log_message("delegated message");
@@ -180,7 +180,7 @@ assert_eq "common.log_message delegation" "PASS" "$RESULT"
 # Runtime: CLI subcommand
 # ---------------------------------------------------------------------------
 
-printf '--- runtime: CLI log subcommand ---\n'
+printf '%s\n' '--- runtime: CLI log subcommand ---'
 $TACHYON_UCODE "$TACHYON_LIB/core/logging.uc" log info "CLI test message" test op1
 pass=$((pass + 1))
 
@@ -188,7 +188,7 @@ pass=$((pass + 1))
 # Verify all modules can import core.logging
 # ---------------------------------------------------------------------------
 
-printf '--- runtime: import chain works ---\n'
+printf '%s\n' '--- runtime: import chain works ---'
 RESULT=$($TACHYON_UCODE -L "$TACHYON_LIB" -e '
 let log = require("core.logging");
 let common = require("core.common");
@@ -211,9 +211,9 @@ printf 'passed: %d\n' "$pass"
 printf 'failed: %d\n' "$fail"
 
 if [ "$fail" -gt 0 ]; then
-    printf '--- FAIL ---\n'
+    printf '%s\n' '--- FAIL ---'
     exit 1
 fi
 
-printf '--- PASS ---\n'
+printf '%s\n' '--- PASS ---'
 exit 0
