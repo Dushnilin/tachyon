@@ -228,53 +228,56 @@ if (sourcepath(1) != null && sourcepath(1) != "")
 
 let mode = ARGV[0] || "";
 
-if (mode == "selftest") {
-    let pass = 0;
-    let fail = 0;
+let _test_pass = 0;
+let _test_fail = 0;
 
-    let assert = function(cond, msg) {
-        if (cond) { pass++; }
-        else { fail++; print("FAIL: " + msg + "\n"); }
-    };
+function _test_assert(cond, msg) {
+    if (cond) { _test_pass++; }
+    else { _test_fail++; print("FAIL: " + msg + "\n"); }
+}
+
+if (mode == "selftest") {
+    _test_pass = 0;
+    _test_fail = 0;
 
     // Test 1: log_message works (writes to syslog)
-    assert(log_message("test message") === true, "log_message should return true");
-    assert(log_message("test warn", "warn") === true, "log_message with level should work");
-    assert(log_message("test tag", "info", "tachyon-test") === true, "log_message with tag should work");
+    _test_assert(log_message("test message") === true, "log_message should return true");
+    _test_assert(log_message("test warn", "warn") === true, "log_message with level should work");
+    _test_assert(log_message("test tag", "info", "tachyon-test") === true, "log_message with tag should work");
 
     // Test 2: structured write
-    assert(write({ level: "info", subsystem: "test", message: "structured test" }) === true, "structured write should work");
-    assert(write({ level: "error", subsystem: "test", operation: "op1", job_id: "j-123", message: "error test" }) === true, "structured write with all fields should work");
+    _test_assert(write({ level: "info", subsystem: "test", message: "structured test" }) === true, "structured write should work");
+    _test_assert(write({ level: "error", subsystem: "test", operation: "op1", job_id: "j-123", message: "error test" }) === true, "structured write with all fields should work");
 
     // Test 3: convenience methods
-    assert(debug("debug msg") === true, "debug should work");
-    assert(info("info msg") === true, "info should work");
-    assert(warn("warn msg") === true, "warn should work");
-    assert(error("error msg") === true, "error should work");
-    assert(fatal("fatal msg") === true, "fatal should work");
+    _test_assert(debug("debug msg") === true, "debug should work");
+    _test_assert(info("info msg") === true, "info should work");
+    _test_assert(warn("warn msg") === true, "warn should work");
+    _test_assert(error("error msg") === true, "error should work");
+    _test_assert(fatal("fatal msg") === true, "fatal should work");
 
     // Test 4: job_log_append to temp file
     let tmp = "/tmp/tachyon-test-log." + getpid();
-    assert(job_log_append(tmp, "job entry 1", "info") === true, "job_log_append should write");
-    assert(job_log_append(tmp, "job entry 2", "error") === true, "job_log_append should append");
+    _test_assert(job_log_append(tmp, "job entry 1", "info") === true, "job_log_append should write");
+    _test_assert(job_log_append(tmp, "job entry 2", "error") === true, "job_log_append should append");
     let content = trim(fs.readfile(tmp) || "");
-    assert(index(content, "job entry 1") >= 0, "job log should contain first entry");
-    assert(index(content, "job entry 2") >= 0, "job log should contain second entry");
-    assert(index(content, "[info]") >= 0, "job log should contain level");
+    _test_assert(index(content, "job entry 1") >= 0, "job log should contain first entry");
+    _test_assert(index(content, "job entry 2") >= 0, "job log should contain second entry");
+    _test_assert(index(content, "[info]") >= 0, "job log should contain level");
     try { fs.unlink(tmp); } catch(e) {}
 
     // Test 5: job_log_append to empty path does not crash
-    assert(job_log_append("", "msg") === false, "empty path should return false");
-    assert(job_log_append(null, "msg") === false, "null path should return false");
+    _test_assert(job_log_append("", "msg") === false, "empty path should return false");
+    _test_assert(job_log_append(null, "msg") === false, "null path should return false");
 
     // Test 6: LEVELS constant
-    assert(LEVELS.info == 6, "info priority should be 6");
-    assert(LEVELS.warn == 4, "warn priority should be 4");
-    assert(LEVELS.error == 3, "error priority should be 3");
-    assert(LEVELS.debug == 7, "debug priority should be 7");
+    _test_assert(LEVELS.info == 6, "info priority should be 6");
+    _test_assert(LEVELS.warn == 4, "warn priority should be 4");
+    _test_assert(LEVELS.error == 3, "error priority should be 3");
+    _test_assert(LEVELS.debug == 7, "debug priority should be 7");
 
-    print("logging.uc selftest: " + pass + " passed, " + fail + " failed\n");
-    exit(fail > 0 ? 1 : 0);
+    print("logging.uc selftest: " + _test_pass + " passed, " + _test_fail + " failed\n");
+    exit(_test_fail > 0 ? 1 : 0);
 }
 else if (mode == "log") {
     // CLI: logging.uc log <level> <message> [subsystem] [operation]
