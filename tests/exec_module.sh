@@ -4,7 +4,12 @@ set -eo pipefail
 # Tests for core/exec.uc — unified process execution layer.
 # Run on the router: bash /tmp/exec_module.sh
 
-TACHYON_LIB="/usr/lib/tachyon"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+if [ -d "$ROOT_DIR/tachyon/files/usr/lib/tachyon" ]; then
+  TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
+else
+  TACHYON_LIB="/usr/lib/tachyon"
+fi
 EXEC_UC="$TACHYON_LIB/core/exec.uc"
 
 ucode() {

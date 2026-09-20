@@ -4,7 +4,12 @@ set -eo pipefail
 # Tests for core/jobs.uc — unified Job Engine.
 # Run on the router: bash /tmp/jobs_module.sh
 
-TACHYON_LIB="/usr/lib/tachyon"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+if [ -d "$ROOT_DIR/tachyon/files/usr/lib/tachyon" ]; then
+  TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
+else
+  TACHYON_LIB="/usr/lib/tachyon"
+fi
 JOBS_UC="$TACHYON_LIB/core/jobs.uc"
 
 export TACHYON_RUNTIME_STATE_DIR=$(mktemp -d /tmp/tachyon-jobs-test.XXXXXX)
