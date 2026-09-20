@@ -5,7 +5,7 @@ set -eo pipefail
 # Run on the router: bash /tmp/exec_module.sh
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-if [ -d "$ROOT_DIR/tachyon/files/usr/lib/tachyon" ]; then
+if [ -d "$ROOT_DIR/tachyon/files/usr/lib/core" ]; then
   TACHYON_LIB="$ROOT_DIR/tachyon/files/usr/lib"
 else
   TACHYON_LIB="/usr/lib/tachyon"
