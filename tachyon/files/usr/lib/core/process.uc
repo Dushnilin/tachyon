@@ -135,9 +135,10 @@ function process_age_seconds(pid) {
     if (start_ticks == null)
         return null;
 
-    // Read current ticks from self
-    let self_stat = trim(as_string(fs.readfile("/proc/self/stat") || ""));
-    let current_ticks = process_start_ticks(self_stat);
+    // Spawn a short-lived process to get "current" ticks — process_start_ticks
+    // reads field 22 (starttime) from /proc/PID/stat, so the cat process's
+    // starttime is approximately "now" in jiffies.
+    let current_ticks = process_start_ticks(common.command_output_from_args([ "cat", "/proc/self/stat" ]));
     if (current_ticks == null)
         return null;
 
