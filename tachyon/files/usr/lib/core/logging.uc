@@ -257,7 +257,7 @@ if (mode == "selftest") {
     _test_assert(fatal("fatal msg") === true, "fatal should work");
 
     // Test 4: job_log_append to temp file
-    let tmp = "/tmp/tachyon-test-log." + getpid();
+    let tmp = "/tmp/tachyon-test-log." + int(clock()[0]);
     _test_assert(job_log_append(tmp, "job entry 1", "info") === true, "job_log_append should write");
     _test_assert(job_log_append(tmp, "job entry 2", "error") === true, "job_log_append should append");
     let content = trim(fs.readfile(tmp) || "");
