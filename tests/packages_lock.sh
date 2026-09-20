@@ -85,12 +85,12 @@ RESULT=$($TACHYON_UCODE -L "$TACHYON_LIB" -e '
 let pkg = require("core.packages");
 let holder = pkg.find_lock_holder();
 // On a system without active package operations, should be null
-if (holder == null || typeof(holder) == "null")
+if (holder == null || type(holder) == "null")
     print("PASS\n");
 else if (type(holder) == "object" && holder.pid != null)
     print("PASS:holder_found\n");
 else
-    print("FAIL:" + typeof(holder) + "\n");
+    print("FAIL:" + type(holder) + "\n");
 ' 2>&1)
 assert_eq "find_lock_holder" "PASS" "${RESULT%%:*}"
 
@@ -134,11 +134,11 @@ assert_eq "detect_arch" "PASS" "${RESULT%%:*}"
 printf '%s\n' '--- runtime: backward-compatible exports ---'
 RESULT=$($TACHYON_UCODE -L "$TACHYON_LIB" -e '
 let pkg = require("core.packages");
-let has_installed = typeof(pkg.installed) == "function";
-let has_version = typeof(pkg.version) == "function";
-let has_apk_version = typeof(pkg.apk_version) == "function";
-let has_opkg_version = typeof(pkg.opkg_version) == "function";
-let has_installed_package_version = typeof(pkg.installed_package_version) == "function";
+let has_installed = type(pkg.installed) == "function";
+let has_version = type(pkg.version) == "function";
+let has_apk_version = type(pkg.apk_version) == "function";
+let has_opkg_version = type(pkg.opkg_version) == "function";
+let has_installed_package_version = type(pkg.installed_package_version) == "function";
 if (has_installed && has_version && has_apk_version && has_opkg_version && has_installed_package_version)
     print("PASS\n");
 else
@@ -153,13 +153,13 @@ assert_eq "backward-compatible exports" "PASS" "$RESULT"
 printf '%s\n' '--- runtime: new exports ---'
 RESULT=$($TACHYON_UCODE -L "$TACHYON_LIB" -e '
 let pkg = require("core.packages");
-let has_detect = typeof(pkg.detect_pkg_manager) == "function";
-let has_is_apk = typeof(pkg.is_apk) == "function";
-let has_arch = typeof(pkg.detect_arch) == "function";
-let has_detect_lock = typeof(pkg.detect_lock) == "function";
-let has_find_holder = typeof(pkg.find_lock_holder) == "function";
-let has_stale = typeof(pkg.is_stale_lock) == "function";
-let has_wait = typeof(pkg.wait_for_lock) == "function";
+let has_detect = type(pkg.detect_pkg_manager) == "function";
+let has_is_apk = type(pkg.is_apk) == "function";
+let has_arch = type(pkg.detect_arch) == "function";
+let has_detect_lock = type(pkg.detect_lock) == "function";
+let has_find_holder = type(pkg.find_lock_holder) == "function";
+let has_stale = type(pkg.is_stale_lock) == "function";
+let has_wait = type(pkg.wait_for_lock) == "function";
 if (has_detect && has_is_apk && has_arch && has_detect_lock && has_find_holder && has_stale && has_wait)
     print("PASS\n");
 else
