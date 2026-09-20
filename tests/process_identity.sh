@@ -70,7 +70,7 @@ assert_match() {
 # Run module selftest
 # ---------------------------------------------------------------------------
 
-printf '--- process.uc selftest ---\n'
+printf '%s\n' '--- process.uc selftest ---'
 if $TACHYON_UCODE "$TACHYON_LIB/core/process.uc" selftest; then
     pass=$((pass + 1))
 else
@@ -81,12 +81,12 @@ fi
 # CLI subcommands
 # ---------------------------------------------------------------------------
 
-printf '--- boot-id ---\n'
+printf '%s\n' '--- boot-id ---'
 BOOT_ID=$($TACHYON_UCODE "$TACHYON_LIB/core/process.uc" boot-id)
 assert_true "boot-id should be non-empty" test -n "$BOOT_ID"
 assert_match "boot-id should look like UUID" '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' "$BOOT_ID"
 
-printf '--- starttime ---\n'
+printf '%s\n' '--- starttime ---'
 SELF_PID=$$
 STARTTIME=$($TACHYON_UCODE "$TACHYON_LIB/core/process.uc" starttime "$SELF_PID")
 assert_true "starttime for self should be readable" test -n "$STARTTIME"
@@ -95,7 +95,7 @@ assert_match "starttime should be numeric" '^[0-9]+$' "$STARTTIME"
 # Nonexistent PID should fail
 assert_false "starttime for nonexistent PID should fail" $TACHYON_UCODE "$TACHYON_LIB/core/process.uc" starttime 999999
 
-printf '--- age ---\n'
+printf '%s\n' '--- age ---'
 AGE=$($TACHYON_UCODE "$TACHYON_LIB/core/process.uc" age "$SELF_PID")
 assert_true "age for self should be readable" test -n "$AGE"
 assert_match "age should be numeric" '^[0-9]+$' "$AGE"
@@ -103,7 +103,7 @@ assert_match "age should be numeric" '^[0-9]+$' "$AGE"
 # Nonexistent PID should fail
 assert_false "age for nonexistent PID should fail" $TACHYON_UCODE "$TACHYON_LIB/core/process.uc" age 999999
 
-printf '--- alive ---\n'
+printf '%s\n' '--- alive ---'
 # Current process should be alive
 $TACHYON_UCODE "$TACHYON_LIB/core/process.uc" alive "$SELF_PID" && pass=$((pass + 1)) || fail_test "self should be alive"
 
@@ -114,7 +114,7 @@ $TACHYON_UCODE "$TACHYON_LIB/core/process.uc" alive 999999 && fail_test "nonexis
 # Runtime tests: PID identity via ucode require
 # ---------------------------------------------------------------------------
 
-printf '--- runtime: make_identity + identity_matches ---\n'
+printf '%s\n' '--- runtime: make_identity + identity_matches ---'
 RESULT=$($TACHYON_UCODE -L "$TACHYON_LIB" -e '
 let proc = require("core.process");
 let self_pid = "" + getpid();
@@ -139,7 +139,7 @@ assert_eq "runtime identity test" "PASS" "$RESULT"
 # Runtime: pid_alive_raw
 # ---------------------------------------------------------------------------
 
-printf '--- runtime: pid_alive_raw ---\n'
+printf '%s\n' '--- runtime: pid_alive_raw ---'
 RESULT=$($TACHYON_UCODE -L "$TACHYON_LIB" -e '
 let proc = require("core.process");
 let self_pid = "" + getpid();
@@ -157,7 +157,7 @@ assert_eq "pid_alive_raw test" "PASS" "$RESULT"
 # Runtime: process_starttime from raw stat
 # ---------------------------------------------------------------------------
 
-printf '--- runtime: process_start_ticks from raw stat ---\n'
+printf '%s\n' '--- runtime: process_start_ticks from raw stat ---'
 RESULT=$($TACHYON_UCODE -L "$TACHYON_LIB" -e '
 let proc = require("core.process");
 let fs = require("fs");
@@ -174,7 +174,7 @@ assert_eq "process_start_ticks from raw stat" "PASS" "$RESULT"
 # Runtime: age calculation
 # ---------------------------------------------------------------------------
 
-printf '--- runtime: process_age_seconds_from_ticks ---\n'
+printf '%s\n' '--- runtime: process_age_seconds_from_ticks ---'
 RESULT=$($TACHYON_UCODE -L "$TACHYON_LIB" -e '
 let proc = require("core.process");
 let age1 = proc.process_age_seconds_from_ticks(100, 600);
@@ -191,7 +191,7 @@ assert_eq "age calculation test" "PASS" "$RESULT"
 # Runtime: is_sing_box
 # ---------------------------------------------------------------------------
 
-printf '--- runtime: is_sing_box ---\n'
+printf '%s\n' '--- runtime: is_sing_box ---'
 RESULT=$($TACHYON_UCODE -L "$TACHYON_LIB" -e '
 let proc = require("core.process");
 // Nonexistent PID should not be sing-box
@@ -209,7 +209,7 @@ assert_eq "is_sing_box test" "PASS" "$RESULT"
 # Runtime: is_tachyon_process
 # ---------------------------------------------------------------------------
 
-printf '--- runtime: is_tachyon_process ---\n'
+printf '%s\n' '--- runtime: is_tachyon_process ---'
 RESULT=$($TACHYON_UCODE -L "$TACHYON_LIB" -e '
 let proc = require("core.process");
 // Nonexistent PID should not be tachyon process
@@ -227,7 +227,7 @@ assert_eq "is_tachyon_process test" "PASS" "$RESULT"
 # Runtime: boot_id consistency across modules
 # ---------------------------------------------------------------------------
 
-printf '--- runtime: boot_id consistency exec <-> process ---\n'
+printf '%s\n' '--- runtime: boot_id consistency exec <-> process ---'
 RESULT=$($TACHYON_UCODE -L "$TACHYON_LIB" -e '
 let exec = require("core.exec");
 let proc = require("core.process");
@@ -244,7 +244,7 @@ assert_eq "boot_id consistency" "PASS" "$RESULT"
 # Runtime: exec.run_background returns identity
 # ---------------------------------------------------------------------------
 
-printf '--- runtime: exec.run_background identity ---\n'
+printf '%s\n' '--- runtime: exec.run_background identity ---'
 RESULT=$($TACHYON_UCODE -L "$TACHYON_LIB" -e '
 let exec = require("core.exec");
 let result = exec.run_background({ command: "sleep 30", name: "test-bg" });
@@ -267,9 +267,9 @@ printf 'passed: %d\n' "$pass"
 printf 'failed: %d\n' "$fail"
 
 if [ "$fail" -gt 0 ]; then
-    printf '--- FAIL ---\n'
+    printf '%s\n' '--- FAIL ---'
     exit 1
 fi
 
-printf '--- PASS ---\n'
+printf '%s\n' '--- PASS ---'
 exit 0
