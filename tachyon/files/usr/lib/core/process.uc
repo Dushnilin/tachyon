@@ -278,7 +278,7 @@ if (sourcepath(1) != null && sourcepath(1) != "")
     return module_exports();
 
 // ---------------------------------------------------------------------------
-// CLI / selftest
+// CLI / selftest — only runs when invoked directly, not via require()
 // ---------------------------------------------------------------------------
 
 let mode = ARGV[0] || "";
