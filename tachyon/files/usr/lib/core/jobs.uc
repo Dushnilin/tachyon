@@ -102,8 +102,11 @@ function generate_id(kind, target, action) {
 // ---------------------------------------------------------------------------
 
 function ensure_dirs() {
-    exec.run({ argv: ["mkdir", "-p", JOBS_DIR], capture: false, timeout: 5 });
-    exec.run({ argv: ["mkdir", "-p", JOB_LOG_DIR], capture: false, timeout: 5 });
+    let state = getenv("TACHYON_RUNTIME_STATE_DIR") || STATE_DIR;
+    let jobs_d = state + "/jobs";
+    let logs_d = state + "/job-logs";
+    exec.run({ argv: ["mkdir", "-p", jobs_d], capture: false, timeout: 5 });
+    exec.run({ argv: ["mkdir", "-p", logs_d], capture: false, timeout: 5 });
 }
 
 function job_state_path(job_id) {
