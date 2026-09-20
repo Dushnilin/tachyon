@@ -292,7 +292,7 @@ function command_spec(command) {
         leak_check_status: [ "diagnostics/leak_check.uc", "leak-check-status", 1 ],
         check_ip_leak: [ "diagnostics/leak_check.uc", "ip-leak", 0 ],
         check_dns_leak: [ "diagnostics/leak_check.uc", "dns-leak", 0 ],
-        fuzzer_start: [ "diagnostics/fuzzer.uc", "start", 6 ],
+        fuzzer_start: [ "diagnostics/fuzzer.uc", "start", 7 ],
         fuzzer_status: [ "diagnostics/fuzzer.uc", "status", 0 ],
         fuzzer_stop: [ "diagnostics/fuzzer.uc", "stop", 0 ],
         fuzzer_apply: [ "diagnostics/fuzzer.uc", "apply", 3 ],

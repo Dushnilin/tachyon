@@ -4027,7 +4027,7 @@ var TachyonShellMethods = {
       success: (response.code ?? 1) === 0
     };
   },
-  startFuzzer: async (engine = "zapret2", target = "youtube", customUrl, ruleSection, customFile, mode) => {
+  startFuzzer: async (engine = "zapret2", target = "youtube", customUrl, ruleSection, customFile, mode, timeoutSeconds) => {
     const args = [
       Tachyon.AvailableMethods.FUZZER_START,
       engine,
@@ -4040,6 +4040,7 @@ var TachyonShellMethods = {
     if (customFile) args.push(customFile);
     else args.push("");
     if (mode) args.push(mode);
+    if (timeoutSeconds) args.push(String(timeoutSeconds));
     const response = await executeShellCommand({
       command: "/usr/bin/tachyon",
       args,
@@ -13072,6 +13073,7 @@ function renderStrategyFuzzerModal(ruleNames = []) {
   let customUrl = "";
   let selectedRuleSection = "";
   let selectedMode = "presets";
+  let selectedTimeout = 2700;
   let isRunning = false;
   let currentState = null;
   let resultFilter = "all";
@@ -13169,11 +13171,14 @@ function renderStrategyFuzzerModal(ruleNames = []) {
     if (activeTab2 === "history") renderHistoryTab();
   };
   const controlsGrid = E("div", {
-    style: "display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr)); gap: 10px; align-items: end; min-height: 80px;"
+    style: "display: grid; grid-template-columns: 1fr 1fr; gap: 12px 16px; align-items: start;"
   });
+  const selectStyle = "width: 100%; height: 36px; font-size: 13px;";
+  const labelStyle = "font-size: 11px; font-weight: 600; color: var(--text-color-secondary, rgba(255,255,255,0.65)); letter-spacing: 0.02em;";
+  const groupStyle = "display: flex; flex-direction: column; gap: 5px;";
   const engineSelect = E(
     "select",
-    { class: "cbi-input-select", style: "width: 100%;" },
+    { class: "cbi-input-select", style: selectStyle },
     [
       E("option", { value: "zapret2" }, _("Zapret v2 (nfqws2)")),
       E("option", { value: "zapret" }, _("Zapret v1 (nfqws)")),
@@ -13186,19 +13191,15 @@ function renderStrategyFuzzerModal(ruleNames = []) {
   });
   const engineGroup = E(
     "div",
-    { style: "display: flex; flex-direction: column; gap: 4px;" },
+    { style: groupStyle },
     [
-      E(
-        "label",
-        { style: "font-size: 11px; font-weight: 600; opacity: 0.85;" },
-        _("DPI Engine")
-      ),
+      E("label", { style: labelStyle }, _("DPI Engine")),
       engineSelect
     ]
   );
   const targetSelect = E(
     "select",
-    { class: "cbi-input-select", style: "width: 100%;" },
+    { class: "cbi-input-select", style: selectStyle },
     [
       E(
         "option",
@@ -13239,8 +13240,8 @@ function renderStrategyFuzzerModal(ruleNames = []) {
   const customUrlInput = E("textarea", {
     class: "cbi-input-text",
     placeholder: "https://youtube.com\nhttps://instagram.com\nhttps://rutracker.org",
-    rows: 2,
-    style: "width: 100%; display: none; margin-top: 4px; resize: vertical; min-height: 42px; font-size: 12px; font-family: monospace;"
+    rows: 3,
+    style: "width: 100%; display: none; margin-top: 2px; resize: vertical; min-height: 64px; padding: 8px 10px; font-size: 12px; font-family: monospace; line-height: 1.5; border-radius: 4px; box-sizing: border-box; background: var(--background-color-secondary, rgba(0,0,0,0.18)); border: 1px solid var(--border-color, rgba(255,255,255,0.12)); color: var(--text-color, #fff);"
   });
   targetSelect.addEventListener("change", () => {
     selectedTarget = targetSelect.value;
@@ -13251,20 +13252,16 @@ function renderStrategyFuzzerModal(ruleNames = []) {
   });
   const targetGroup = E(
     "div",
-    { style: "display: flex; flex-direction: column; gap: 4px;" },
+    { style: groupStyle },
     [
-      E(
-        "label",
-        { style: "font-size: 11px; font-weight: 600; opacity: 0.85;" },
-        _("Target Service / Suite")
-      ),
+      E("label", { style: labelStyle }, _("Target Service / Suite")),
       targetSelect,
       customUrlInput
     ]
   );
   const modeSelect = E(
     "select",
-    { class: "cbi-input-select", style: "width: 100%;" },
+    { class: "cbi-input-select", style: selectStyle },
     [
       E(
         "option",
@@ -13289,19 +13286,52 @@ function renderStrategyFuzzerModal(ruleNames = []) {
   });
   const modeGroup = E(
     "div",
-    { style: "display: flex; flex-direction: column; gap: 4px;" },
+    { style: groupStyle },
+    [
+      E("label", { style: labelStyle }, _("Search Mode")),
+      modeSelect
+    ]
+  );
+  const timeoutSelect = E(
+    "select",
+    { class: "cbi-input-select", style: selectStyle },
     [
       E(
-        "label",
-        { style: "font-size: 11px; font-weight: 600; opacity: 0.85;" },
-        _("Search Mode")
+        "option",
+        { value: "900" },
+        _("15 min — Quick")
       ),
-      modeSelect
+      E(
+        "option",
+        { value: "1800" },
+        _("30 min — Standard")
+      ),
+      E(
+        "option",
+        { value: "2700", selected: true },
+        _("45 min — Deep (Recommended)")
+      ),
+      E(
+        "option",
+        { value: "3600" },
+        _("60 min — Exhaustive")
+      )
+    ]
+  );
+  timeoutSelect.addEventListener("change", () => {
+    selectedTimeout = parseInt(timeoutSelect.value, 10);
+  });
+  const timeoutGroup = E(
+    "div",
+    { style: groupStyle },
+    [
+      E("label", { style: labelStyle }, _("Benchmark Timeout")),
+      timeoutSelect
     ]
   );
   const ruleSelect = E(
     "select",
-    { class: "cbi-input-select", style: "width: 100%;" },
+    { class: "cbi-input-select", style: selectStyle },
     [
       E(
         "option",
@@ -13319,17 +13349,14 @@ function renderStrategyFuzzerModal(ruleNames = []) {
   });
   const ruleGroup = E(
     "div",
-    { style: "display: flex; flex-direction: column; gap: 4px;" },
+    { style: groupStyle },
     [
-      E(
-        "label",
-        { style: "font-size: 11px; font-weight: 600; opacity: 0.85;" },
-        _("Apply Strategy To")
-      ),
+      E("label", { style: labelStyle }, _("Apply Strategy To")),
       ruleSelect
     ]
   );
-  controlsGrid.append(engineGroup, targetGroup, modeGroup, ruleGroup);
+  ruleGroup.style.gridColumn = "1 / -1";
+  controlsGrid.append(engineGroup, targetGroup, modeGroup, timeoutGroup, ruleGroup);
   const autoApplyCheckbox = E("input", {
     type: "checkbox",
     id: "tachyon-fuzzer-auto-apply",
@@ -13341,13 +13368,13 @@ function renderStrategyFuzzerModal(ruleNames = []) {
   const autoApplyGroup = E(
     "div",
     {
-      style: "display: flex; align-items: end; padding: 4px 0; grid-column: 1 / -1;"
+      style: "display: flex; align-items: center; padding: 6px 0 2px 0; grid-column: 1 / -1; gap: 8px;"
     },
     [
       E(
         "div",
         {
-          style: "font-size: 11px; cursor: pointer; display: flex; align-items: center; gap: 4px;"
+          style: "font-size: 12px; cursor: pointer; display: flex; align-items: center; gap: 6px; color: var(--text-color-secondary, rgba(255,255,255,0.7));"
         },
         [autoApplyCheckbox, E("span", {}, _("Auto-apply best strategy"))]
       )
@@ -13481,7 +13508,7 @@ function renderStrategyFuzzerModal(ruleNames = []) {
         "thead",
         {
           class: "cbi-section-table-titles",
-          style: "background: var(--background-color-secondary, rgba(0,0,0,0.25)); position: sticky; top: 0; z-index: 2;"
+          style: "background: var(--background-color-secondary, #1a1a2e); position: sticky; top: 0; z-index: 2;"
         },
         [
           E("tr", { class: "cbi-section-table-titles" }, [
@@ -14758,7 +14785,8 @@ function renderStrategyFuzzerModal(ruleNames = []) {
       customUrl,
       selectedRuleSection,
       "",
-      selectedMode
+      selectedMode,
+      selectedTimeout
     );
     if (res.success) {
       showToast(_("Strategy benchmark started"), "success");
@@ -14812,7 +14840,8 @@ function renderStrategyFuzzerModal(ruleNames = []) {
           customUrl,
           selectedRuleSection,
           res.data.custom_file,
-          "ai_custom"
+          "ai_custom",
+          selectedTimeout
         );
         if (startRes.success) {
           isRunning = true;

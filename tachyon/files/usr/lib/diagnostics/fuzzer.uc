@@ -30,7 +30,12 @@ const NFQUEUE_QNUM_ZAPRET = 298;
 const NFQUEUE_QNUM_ZAPRET2 = 299;
 const FUZZER_FWMARK = "0x40000000";
 const FUZZER_OUTBOUND_MARK = getenv("NFT_OUTBOUND_MARK") || "0x08000000";
-const JOB_HARD_DEADLINE_SECONDS = int(getenv("TACHYON_JOB_HARD_DEADLINE_SECONDS") || "900");
+const JOB_HARD_DEADLINE_SECONDS = int(getenv("TACHYON_JOB_HARD_DEADLINE_SECONDS") || "2700");
+
+function log_fuzzer_message(message, level) {
+    level = as_string(level || "warn");
+    command_success_from_args([ "logger", "-t", "tachyon", "[fuzzer] [" + level + "] " + as_string(message) ]);
+}
 
 function get_job_dir(job_id) {
     if (!job_id || job_id == "") return null;
@@ -401,19 +406,58 @@ function resolve_zapret2_blobs(args_str) {
 }
 
 function setup_fuzzer_direct_nftables(qnum, is_udp) {
-    // Start from a clean slate: a stale or partially-deleted table from a previous
-    // probe makes every "add" below fail silently (2>/dev/null) and test traffic
-    // then bypasses the daemon entirely, so every strategy reports a false failure.
-    run_bounded("nft delete table inet tachyon_fuzzer >/dev/null 2>&1", 5);
-
-    if (system("nft add table inet tachyon_fuzzer >/dev/null 2>&1") != 0) {
-        // Retry once: the first delete may have raced with a dying nfqueue binding
-        run_bounded("nft delete table inet tachyon_fuzzer >/dev/null 2>&1", 5);
-        if (system("nft add table inet tachyon_fuzzer >/dev/null 2>&1") != 0) {
-            return false;
+    // ── Pre-cleanup: kill any orphaned fuzzer processes bound to our queues ──
+    // An orphaned nfqueue binding wedges the kernel nft subsystem; nft delete
+    // blocks forever and the subsequent add silently fails (2>/dev/null), so
+    // every strategy reports a false failure.  Kill the binding first.
+    for (let w = 0; w < 3; w++) {
+        let nfq = fs.readfile("/proc/net/netfilter/nfnetlink_queue");
+        let found = false;
+        if (nfq) {
+            let lines = split(trim(nfq), "\n");
+            for (let line in lines) {
+                let cols = split(trim(line), /[ \t]+/);
+                if (length(cols) >= 2) {
+                    let q = int(cols[0]);
+                    let p = int(cols[1]);
+                    if ((q == NFQUEUE_QNUM_ZAPRET || q == NFQUEUE_QNUM_ZAPRET2) && p > 0) {
+                        found = true;
+                        system(sprintf("kill -9 %d >/dev/null 2>&1", p));
+                    }
+                }
+            }
         }
+        if (!found) break;
+        run_bounded("sleep 0.5", 2);
     }
 
+    // ── Clean slate: delete any stale table ──────────────────────────────────
+    // 10s timeout — on slow ARM routers nft delete can block on orphaned
+    // in-kernel nfqueue bindings; 5s was not enough in some reports.
+    run_bounded("nft delete table inet tachyon_fuzzer >/dev/null 2>&1", 10);
+
+    // ── Create table with retry + backoff ────────────────────────────────────
+    let nft_err_file = STATE_DIR + "/fuzzer_nft_err.log";
+    try { fs.unlink(nft_err_file); } catch (e) {}
+    let table_created = false;
+    for (let attempt = 0; attempt < 3; attempt++) {
+        if (system(sprintf("nft add table inet tachyon_fuzzer 2>%s", shell_quote(nft_err_file))) == 0) {
+            table_created = true;
+            break;
+        }
+        // Backoff: wait for orphaned bindings to release
+        run_bounded("sleep 0.5", 2);
+        run_bounded("nft delete table inet tachyon_fuzzer >/dev/null 2>&1", 10);
+    }
+    if (!table_created) {
+        let nft_err = trim(as_string(fs.readfile(nft_err_file)) || "");
+        log_fuzzer_message(sprintf("nftables table creation failed after 3 attempts (qnum=%d): %s", qnum, nft_err != "" ? nft_err : "unknown error"));
+        try { fs.unlink(nft_err_file); } catch (e) {}
+        return false;
+    }
+    try { fs.unlink(nft_err_file); } catch (e) {}
+
+    // ── Build ruleset ────────────────────────────────────────────────────────
     system("nft 'add chain inet tachyon_fuzzer output { type filter hook output priority -200 ; policy accept; }' 2>/dev/null");
     system(sprintf("nft add rule inet tachyon_fuzzer output meta mark %s counter return 2>/dev/null", FUZZER_FWMARK));
     system("nft 'add rule inet tachyon_fuzzer output ip daddr { 1.1.1.1, 1.0.0.1, 8.8.8.8, 8.8.4.4, 77.88.8.8 } counter return' 2>/dev/null");
@@ -432,8 +476,15 @@ function setup_fuzzer_direct_nftables(qnum, is_udp) {
         system(sprintf("nft 'add rule inet tachyon_fuzzer bypass_singbox meta l4proto udp udp dport { 80, 443, 19294-19344, 50000-65535 } meta mark set meta mark | %s counter' 2>/dev/null", FUZZER_OUTBOUND_MARK));
     }
 
-    // Verify the queue rule actually landed; without it probes silently test a direct connection
-    return command_success(sprintf("nft list table inet tachyon_fuzzer 2>/dev/null | grep -q 'queue num %d'", qnum));
+    // ── Verify the queue rule actually landed ────────────────────────────────
+    // Without it probes silently test a direct connection, defeating the purpose.
+    // nft output format varies by version: "queue num N bypass" (older) vs
+    // "queue flags bypass to N" (newer).  Match any qnum near the keyword.
+    let verified = command_success(sprintf("nft list table inet tachyon_fuzzer 2>/dev/null | grep -q 'queue.*%d'", qnum));
+    if (!verified) {
+        log_fuzzer_message(sprintf("nftables queue rule verification failed for qnum=%d; rules may not have been applied", qnum));
+    }
+    return verified;
 }
 
 function validate_strategy_args(engine, args_val) {
@@ -2451,7 +2502,8 @@ function cleanup_temp_daemons(job_id) {
 
     // nft delete can block in-kernel on an orphaned nfqueue binding left by a killed
     // daemon; without the bound it wedges the ucode interpreter permanently.
-    run_bounded("nft delete table inet tachyon_fuzzer >/dev/null 2>&1", 5);
+    // 10s is generous enough for slow ARM routers to flush orphaned queue bindings.
+    run_bounded("nft delete table inet tachyon_fuzzer >/dev/null 2>&1", 10);
     try { fs.unlink(STATE_DIR + "/fuzzer_daemon_err.log"); } catch (e) {}
 }
 
@@ -2586,7 +2638,9 @@ function detect_dpi_type(target_key, custom_url) {
         probe_metrics: { http_code: 0, handshake_ms: 0, ttfb_ms: 0, speed_kbps: 0, error: "" }
     };
 
-    // Direct probe with bypass of Sing-box TProxy
+    // Direct probe with bypass of Sing-box TProxy.
+    // Pre-clean: delete any stale fuzzer table so chain/rule adds don't conflict.
+    run_bounded("nft delete table inet tachyon_fuzzer >/dev/null 2>&1", 10);
     system("nft add table inet tachyon_fuzzer 2>/dev/null");
     system("nft 'add chain inet tachyon_fuzzer bypass_singbox { type route hook output priority -155 ; policy accept; }' 2>/dev/null");
     system(sprintf("nft 'add rule inet tachyon_fuzzer bypass_singbox meta l4proto tcp tcp dport { 80, 443 } meta mark set meta mark | %s counter' 2>/dev/null", FUZZER_OUTBOUND_MARK));
@@ -3682,7 +3736,7 @@ function stop_fuzzer() {
     print(sprintf("%J\n", { success: true, message: "Fuzzer stopped" }));
 }
 
-function start_fuzzer(engine, target, custom_url, rule_section, custom_file, mode) {
+function start_fuzzer(engine, target, custom_url, rule_section, custom_file, mode, timeout_seconds) {
     let current = get_fuzzer_state();
     if (current.running) {
         stop_fuzzer();
@@ -3734,8 +3788,11 @@ function start_fuzzer(engine, target, custom_url, rule_section, custom_file, mod
     let fuzzer_bin = LIB_DIR + "/diagnostics/fuzzer.uc";
     if (fs.stat(fuzzer_bin) == null) fuzzer_bin = "/usr/lib/tachyon/diagnostics/fuzzer.uc";
 
+    let deadline_override = int(timeout_seconds) || JOB_HARD_DEADLINE_SECONDS;
+    let deadline_env = sprintf("TACHYON_JOB_HARD_DEADLINE_SECONDS=%d", deadline_override);
     let cmd = sprintf(
-        "ucode -L %s %s worker %s %s %s %s %s %s %s",
+        "%s ucode -L %s %s worker %s %s %s %s %s %s %s",
+        deadline_env,
         shell_quote(LIB_DIR),
         shell_quote(fuzzer_bin),
         shell_quote(engine || "zapret2"),
@@ -3925,7 +3982,7 @@ function update_presets() {
 let op = ARGV[0] || "status";
 
 if (op == "start") {
-    start_fuzzer(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5], ARGV[6]);
+    start_fuzzer(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5], ARGV[6], ARGV[7]);
 } else if (op == "worker") {
     run_fuzzer_worker(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5], ARGV[6], ARGV[7]);
 } else if (op == "status") {

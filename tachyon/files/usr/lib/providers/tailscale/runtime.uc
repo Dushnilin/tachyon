@@ -169,6 +169,54 @@ function daemon_version() {
     return split(out, "\n")[0];
 }
 
+// Parse "X.Y.Z" version string into [major, minor, patch] integer triple.
+// Returns [0, 0, 0] on parse failure.
+function parse_version(ver) {
+    ver = trim(as_string(ver));
+    let m = match(ver, /^(\d+)\.(\d+)(?:\.(\d+))?/);
+    if (!m || length(m) < 3)
+        return [0, 0, 0];
+    return [int(m[0]), int(m[1]), int(m[2] || "0")];
+}
+
+// Returns true if the running tailscaled version >= the required version.
+function daemon_version_gte(required) {
+    let cur = parse_version(daemon_version());
+    let req = parse_version(required);
+    if (cur[0] != req[0]) return cur[0] > req[0];
+    if (cur[1] != req[1]) return cur[1] > req[1];
+    return cur[2] >= req[2];
+}
+
+// Check if tailscaled actually supports --netfilter-mode flag.
+// The flag was added in 1.36 and removed in ~1.44+; version checks alone
+// are unreliable because some distro builds strip it at different ranges.
+let _netfilter_mode_supported = null;
+function netfilter_mode_supported() {
+    if (_netfilter_mode_supported === null) {
+        let help = command_output_from_args([ TAILSCALED_BIN, "--help" ]);
+        _netfilter_mode_supported = index(as_string(help), "netfilter-mode") >= 0;
+    }
+    return _netfilter_mode_supported;
+}
+
+// TUN device is required for native (kernel) tailscaled mode.
+function tun_available() {
+    if (fs.stat("/dev/net/tun") != null)
+        return true;
+    // Try loading the kernel module and creating the device node.
+    command_success_from_args([ "modprobe", "tun" ]);
+    if (fs.stat("/dev/net/tun") != null)
+        return true;
+    if (fs.stat("/dev/net") == null)
+        system("mkdir -p /dev/net");
+    if (command_success_from_args([ "mknod", "/dev/net/tun", "c", "10", "200" ])) {
+        system("chmod 0666 /dev/net/tun 2>/dev/null");
+        return fs.stat("/dev/net/tun") != null;
+    }
+    return false;
+}
+
 function ensure_dirs(section) {
     let state_dir = section_state_dir(section);
     let runtime_dir = section_runtime_dir(section);
@@ -335,7 +383,7 @@ function log_file_tail(path) {
         return "";
     }
     let lines = split(trim(data), "\n");
-    let start = length(lines) > 5 ? length(lines) - 5 : 0;
+    let start = length(lines) > 10 ? length(lines) - 10 : 0;
     let tail = [];
     for (let i = start; i < length(lines); i++)
         push(tail, lines[i]);
@@ -362,6 +410,12 @@ function start_daemon(section) {
     neutralize_standalone_service();
     sanitize_resolv_conf();
 
+    // TUN device is required for native kernel-mode tailscaled.
+    if (!tun_available()) {
+        log_message("TUN device /dev/net/tun is not available for " + section_name(section) + "; ensure kmod-tun is installed", "error");
+        return false;
+    }
+
     let runtime_dir = section_runtime_dir(section);
     let socket_path = runtime_dir + "/tailscaled.sock";
     let log_file = runtime_dir + "/tailscaled.log";
@@ -372,9 +426,14 @@ function start_daemon(section) {
         "--tun=tailscale0",
         "--statedir=" + state_dir,
         "--socket=" + socket_path,
-        "--port=" + TAILSCALED_PORT,
-        "--netfilter-mode=off"
+        "--port=" + TAILSCALED_PORT
     ];
+
+    // --netfilter-mode was added in tailscale 1.36 and removed in ~1.44+;
+    // probe the actual help text to avoid passing an unknown flag that makes
+    // tailscaled print usage and exit.
+    if (netfilter_mode_supported())
+        push(args, "--netfilter-mode=off");
 
     fs.unlink(log_file);
     let cmdline = command_from_args(args) +
@@ -401,10 +460,15 @@ function start_daemon(section) {
     }
 
     let tail = log_file_tail(log_file);
-    if (!pid_alive(pid))
-        log_message("tailscaled for " + section_name(section) + " exited during startup; log tail: " + (tail == "" ? "<empty>" : tail), "warn");
-    else
+    let full_log = "";
+    try { full_log = trim(as_string(fs.readfile(log_file)) || ""); } catch (e) {}
+    if (!pid_alive(pid)) {
+        // Log full stderr for diagnostics — the tail alone often hides the root cause.
+        let err_hint = full_log != "" ? ("full log: " + full_log) : "empty log";
+        log_message("tailscaled for " + section_name(section) + " exited during startup; " + err_hint, "warn");
+    } else {
         log_message("tailscaled did not become ready for " + section_name(section) + "; log tail: " + (tail == "" ? "<empty>" : tail), "warn");
+    }
     return false;
 }
 
@@ -433,7 +497,9 @@ function bring_up(section) {
     // DNS stays under dnsmasq/Tachyon control; MagicDNS names are resolved
     // through the dedicated dnsmasq forward instead of resolv.conf takeover.
     push(args, "--accept-dns=false");
-    push(args, "--netfilter-mode=off");
+    // --netfilter-mode=off — probe actual support to avoid unknown-flag crash.
+    if (netfilter_mode_supported())
+        push(args, "--netfilter-mode=off");
     // Never block the runtime on interactive prompts or dead control planes.
     push(args, "--timeout=120s");
 

@@ -1188,6 +1188,7 @@ export const TachyonShellMethods = {
     ruleSection?: string,
     customFile?: string,
     mode?: Tachyon.FuzzerMode | string,
+    timeoutSeconds?: number,
   ): Promise<Tachyon.MethodResponse<Tachyon.FuzzerStartResponse>> => {
     const args: string[] = [
       Tachyon.AvailableMethods.FUZZER_START,
@@ -1201,6 +1202,7 @@ export const TachyonShellMethods = {
     if (customFile) args.push(customFile);
     else args.push('');
     if (mode) args.push(mode);
+    if (timeoutSeconds) args.push(String(timeoutSeconds));
 
     const response = await executeShellCommand({
       command: '/usr/bin/tachyon',

@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-19 21:21+0300\n"
-"PO-Revision-Date: 2026-09-19 21:21+0300\n"
+"POT-Creation-Date: 2026-09-20 06:53+0300\n"
+"PO-Revision-Date: 2026-09-20 06:53+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -178,6 +178,18 @@ msgstr "🛡️ Этап 2: Проверка стабильности"
 
 msgid "🟣 Twitch Suite (Live Stream + HLS CDN)"
 msgstr "🟣 Twitch (Прямой эфир + HLS CDN)"
+
+msgid "15 min — Quick"
+msgstr ""
+
+msgid "30 min — Standard"
+msgstr ""
+
+msgid "45 min — Deep (Recommended)"
+msgstr ""
+
+msgid "60 min — Exhaustive"
+msgstr ""
 
 msgid "Accept external proxy connections and route them with sing-box."
 msgstr "Принимать внешние прокси-подключения и маршрутизировать их через sing-box."
@@ -721,6 +733,9 @@ msgstr "Бенчмарк замеряет реальную задержку и �
 
 msgid "Benchmark stopped"
 msgstr "Бенчмарк остановлен"
+
+msgid "Benchmark Timeout"
+msgstr ""
 
 msgid "Benchmarking in progress..."
 msgstr "Выполняется бенчмарк..."
