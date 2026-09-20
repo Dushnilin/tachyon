@@ -167,10 +167,10 @@ echo "=== Configuring Tachyon ==="
 "$DOCKER_BIN" exec "$CONTAINER_NAME" uci commit tachyon
 
 echo "=== Starting services ==="
-"$DOCKER_BIN" exec "$CONTAINER_NAME" /etc/init.d/sing-box enable
-"$DOCKER_BIN" exec "$CONTAINER_NAME" /etc/init.d/sing-box start
-"$DOCKER_BIN" exec "$CONTAINER_NAME" /etc/init.d/tachyon enable
-"$DOCKER_BIN" exec "$CONTAINER_NAME" /etc/init.d/tachyon start
+timeout 120 "$DOCKER_BIN" exec "$CONTAINER_NAME" /etc/init.d/sing-box enable
+timeout 120 "$DOCKER_BIN" exec "$CONTAINER_NAME" /etc/init.d/sing-box start
+timeout 120 "$DOCKER_BIN" exec "$CONTAINER_NAME" /etc/init.d/tachyon enable
+timeout 120 "$DOCKER_BIN" exec "$CONTAINER_NAME" /etc/init.d/tachyon start
 
 echo "Waiting for services to stabilize..."
 sleep 5
@@ -216,7 +216,22 @@ for f in tests/*.sh; do
   if [ "$f" != "tests/docker_e2e_test.sh" ] && [ "$f" != "tests/container_entrypoint.sh" ] &&
     [ "$f" != "tests/run_all.sh" ] && [ "$f" != "tests/ucode_syntax_lint.sh" ]; then
     echo "Running $f inside container..."
-    "$DOCKER_BIN" exec -w /work -e SB_REQUIRED_VERSION="1.11.0" "$CONTAINER_NAME" bash "$f"
+    # Docker exec on shared runners occasionally hangs indefinitely (observed
+    # on three different tests). Bound each exec and retry once on timeout.
+    attempt=1
+    while true; do
+      if timeout 300 "$DOCKER_BIN" exec -w /work -e SB_REQUIRED_VERSION="1.11.0" "$CONTAINER_NAME" bash "$f"; then
+        break
+      fi
+      code=$?
+      if [ "$code" -eq 124 ] && [ "$attempt" -eq 1 ]; then
+        echo "RETRY: $f timed out (exec attempt 1), retrying..."
+        attempt=2
+        continue
+      fi
+      echo "FAIL: $f inside container (exit $code)"
+      exit 1
+    done
   fi
 done
 
