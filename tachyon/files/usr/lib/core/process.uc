@@ -319,7 +319,7 @@ if (mode == "selftest") {
     // Test 4: process_start_ticks from raw stat
     let ticks = process_start_ticks(self_stat);
     _test_assert(ticks != null, "process_start_ticks should parse /proc/self/stat");
-    _test_assert(typeof(ticks) == "int", "process_start_ticks should return int");
+    _test_assert(type(ticks) == "int", "process_start_ticks should return int");
 
     // Test 5: process_age_seconds
     let age = process_age_seconds(self_pid);
