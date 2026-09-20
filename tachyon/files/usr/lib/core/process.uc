@@ -290,7 +290,7 @@ if (mode == "selftest") {
     let assert = function(cond, msg) {
         if (cond) { pass++; }
         else { fail++; print("FAIL: " + msg + "\n"); }
-    }
+    };
 
     // Test 1: boot_id is read and non-empty
     assert(boot_id() != null && boot_id() != "", "boot_id should be non-empty");
