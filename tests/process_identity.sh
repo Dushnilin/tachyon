@@ -117,7 +117,9 @@ $TACHYON_UCODE -L "$TACHYON_LIB" "$TACHYON_LIB/core/process.uc" alive 999999 && 
 printf '%s\n' '--- runtime: make_identity + identity_matches ---'
 RESULT=$($TACHYON_UCODE -L "$TACHYON_LIB" -e '
 let proc = require("core.process");
-let self_pid = "" + getpid();
+let fs = require("fs");
+let self_stat = trim("" + fs.readfile("/proc/self/stat"));
+let self_pid = substr(self_stat, 0, index(self_stat, " "));
 let id = proc.make_identity(self_pid, "test-worker");
 assert(id.pid == self_pid, "pid should match");
 assert(id.command == "test-worker", "command should match");
@@ -142,7 +144,9 @@ assert_eq "runtime identity test" "PASS" "$RESULT"
 printf '%s\n' '--- runtime: pid_alive_raw ---'
 RESULT=$($TACHYON_UCODE -L "$TACHYON_LIB" -e '
 let proc = require("core.process");
-let self_pid = "" + getpid();
+let fs = require("fs");
+let self_stat = trim("" + fs.readfile("/proc/self/stat"));
+let self_pid = substr(self_stat, 0, index(self_stat, " "));
 let r1 = proc.pid_alive_raw(self_pid);
 let r2 = proc.pid_alive_raw("999999");
 let r3 = proc.pid_alive_raw("abc");
@@ -163,7 +167,7 @@ let proc = require("core.process");
 let fs = require("fs");
 let self_stat = trim("" + fs.readfile("/proc/self/stat"));
 let ticks = proc.process_start_ticks(self_stat);
-if (ticks != null && typeof(ticks) == "int" && ticks > 0)
+if (ticks != null && type(ticks) == "int" && ticks > 0)
     print("PASS\n");
 else
     print("FAIL: ticks=" + ticks + "\n");
@@ -194,10 +198,13 @@ assert_eq "age calculation test" "PASS" "$RESULT"
 printf '%s\n' '--- runtime: is_sing_box ---'
 RESULT=$($TACHYON_UCODE -L "$TACHYON_LIB" -e '
 let proc = require("core.process");
+let fs = require("fs");
+let self_stat = trim("" + fs.readfile("/proc/self/stat"));
+let self_pid = substr(self_stat, 0, index(self_stat, " "));
 // Nonexistent PID should not be sing-box
 let r1 = proc.is_sing_box("999999");
 // Current process is not sing-box
-let r2 = proc.is_sing_box("" + getpid());
+let r2 = proc.is_sing_box(self_pid);
 if (!r1 && !r2)
     print("PASS\n");
 else
