@@ -155,7 +155,8 @@ export function renderStrategyFuzzerModal(
   });
 
   const selectStyle = 'width: 100%; height: 36px; font-size: 13px;';
-  const labelStyle = 'font-size: 11px; font-weight: 600; color: var(--text-color-secondary, rgba(255,255,255,0.65)); letter-spacing: 0.02em;';
+  const labelStyle =
+    'font-size: 11px; font-weight: 600; color: var(--text-color-secondary, rgba(255,255,255,0.65)); letter-spacing: 0.02em;';
   const groupStyle = 'display: flex; flex-direction: column; gap: 5px;';
 
   // 1. Engine Select
@@ -174,14 +175,10 @@ export function renderStrategyFuzzerModal(
       .value as Tachyon.FuzzerEngine;
   });
 
-  const engineGroup = E(
-    'div',
-    { style: groupStyle },
-    [
-      E('label', { style: labelStyle }, _('DPI Engine')),
-      engineSelect,
-    ],
-  );
+  const engineGroup = E('div', { style: groupStyle }, [
+    E('label', { style: labelStyle }, _('DPI Engine')),
+    engineSelect,
+  ]);
 
   // 2. Target Preset Select
   const targetSelect = E(
@@ -245,15 +242,11 @@ export function renderStrategyFuzzerModal(
     customUrl = (customUrlInput as HTMLTextAreaElement).value.trim();
   });
 
-  const targetGroup = E(
-    'div',
-    { style: groupStyle },
-    [
-      E('label', { style: labelStyle }, _('Target Service / Suite')),
-      targetSelect,
-      customUrlInput,
-    ],
-  );
+  const targetGroup = E('div', { style: groupStyle }, [
+    E('label', { style: labelStyle }, _('Target Service / Suite')),
+    targetSelect,
+    customUrlInput,
+  ]);
 
   // 3. Search Mode Select
   const modeSelect = E(
@@ -283,54 +276,34 @@ export function renderStrategyFuzzerModal(
       .value as Tachyon.FuzzerMode;
   });
 
-  const modeGroup = E(
-    'div',
-    { style: groupStyle },
-    [
-      E('label', { style: labelStyle }, _('Search Mode')),
-      modeSelect,
-    ],
-  );
+  const modeGroup = E('div', { style: groupStyle }, [
+    E('label', { style: labelStyle }, _('Search Mode')),
+    modeSelect,
+  ]);
 
   // 4. Timeout Select
   const timeoutSelect = E(
     'select',
     { class: 'cbi-input-select', style: selectStyle },
     [
-      E(
-        'option',
-        { value: '900' },
-        _('15 min — Quick'),
-      ),
-      E(
-        'option',
-        { value: '1800' },
-        _('30 min — Standard'),
-      ),
+      E('option', { value: '900' }, _('15 min — Quick')),
+      E('option', { value: '1800' }, _('30 min — Standard')),
       E(
         'option',
         { value: '2700', selected: true },
         _('45 min — Deep (Recommended)'),
       ),
-      E(
-        'option',
-        { value: '3600' },
-        _('60 min — Exhaustive'),
-      ),
+      E('option', { value: '3600' }, _('60 min — Exhaustive')),
     ],
   );
   timeoutSelect.addEventListener('change', () => {
     selectedTimeout = parseInt((timeoutSelect as HTMLSelectElement).value, 10);
   });
 
-  const timeoutGroup = E(
-    'div',
-    { style: groupStyle },
-    [
-      E('label', { style: labelStyle }, _('Benchmark Timeout')),
-      timeoutSelect,
-    ],
-  );
+  const timeoutGroup = E('div', { style: groupStyle }, [
+    E('label', { style: labelStyle }, _('Benchmark Timeout')),
+    timeoutSelect,
+  ]);
 
   // 5. Rule Apply Target Select
   const ruleSelect = E(
@@ -352,18 +325,20 @@ export function renderStrategyFuzzerModal(
     selectedRuleSection = (ruleSelect as HTMLSelectElement).value;
   });
 
-  const ruleGroup = E(
-    'div',
-    { style: groupStyle },
-    [
-      E('label', { style: labelStyle }, _('Apply Strategy To')),
-      ruleSelect,
-    ],
-  );
+  const ruleGroup = E('div', { style: groupStyle }, [
+    E('label', { style: labelStyle }, _('Apply Strategy To')),
+    ruleSelect,
+  ]);
 
   // Make rule group span full width
   ruleGroup.style.gridColumn = '1 / -1';
-  controlsGrid.append(engineGroup, targetGroup, modeGroup, timeoutGroup, ruleGroup);
+  controlsGrid.append(
+    engineGroup,
+    targetGroup,
+    modeGroup,
+    timeoutGroup,
+    ruleGroup,
+  );
 
   // Auto-Apply Toggle
   const autoApplyCheckbox = E('input', {

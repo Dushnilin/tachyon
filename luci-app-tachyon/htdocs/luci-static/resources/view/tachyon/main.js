@@ -13189,14 +13189,10 @@ function renderStrategyFuzzerModal(ruleNames = []) {
   engineSelect.addEventListener("change", () => {
     selectedEngine = engineSelect.value;
   });
-  const engineGroup = E(
-    "div",
-    { style: groupStyle },
-    [
-      E("label", { style: labelStyle }, _("DPI Engine")),
-      engineSelect
-    ]
-  );
+  const engineGroup = E("div", { style: groupStyle }, [
+    E("label", { style: labelStyle }, _("DPI Engine")),
+    engineSelect
+  ]);
   const targetSelect = E(
     "select",
     { class: "cbi-input-select", style: selectStyle },
@@ -13250,15 +13246,11 @@ function renderStrategyFuzzerModal(ruleNames = []) {
   customUrlInput.addEventListener("input", () => {
     customUrl = customUrlInput.value.trim();
   });
-  const targetGroup = E(
-    "div",
-    { style: groupStyle },
-    [
-      E("label", { style: labelStyle }, _("Target Service / Suite")),
-      targetSelect,
-      customUrlInput
-    ]
-  );
+  const targetGroup = E("div", { style: groupStyle }, [
+    E("label", { style: labelStyle }, _("Target Service / Suite")),
+    targetSelect,
+    customUrlInput
+  ]);
   const modeSelect = E(
     "select",
     { class: "cbi-input-select", style: selectStyle },
@@ -13284,51 +13276,31 @@ function renderStrategyFuzzerModal(ruleNames = []) {
   modeSelect.addEventListener("change", () => {
     selectedMode = modeSelect.value;
   });
-  const modeGroup = E(
-    "div",
-    { style: groupStyle },
-    [
-      E("label", { style: labelStyle }, _("Search Mode")),
-      modeSelect
-    ]
-  );
+  const modeGroup = E("div", { style: groupStyle }, [
+    E("label", { style: labelStyle }, _("Search Mode")),
+    modeSelect
+  ]);
   const timeoutSelect = E(
     "select",
     { class: "cbi-input-select", style: selectStyle },
     [
-      E(
-        "option",
-        { value: "900" },
-        _("15 min — Quick")
-      ),
-      E(
-        "option",
-        { value: "1800" },
-        _("30 min — Standard")
-      ),
+      E("option", { value: "900" }, _("15 min — Quick")),
+      E("option", { value: "1800" }, _("30 min — Standard")),
       E(
         "option",
         { value: "2700", selected: true },
         _("45 min — Deep (Recommended)")
       ),
-      E(
-        "option",
-        { value: "3600" },
-        _("60 min — Exhaustive")
-      )
+      E("option", { value: "3600" }, _("60 min — Exhaustive"))
     ]
   );
   timeoutSelect.addEventListener("change", () => {
     selectedTimeout = parseInt(timeoutSelect.value, 10);
   });
-  const timeoutGroup = E(
-    "div",
-    { style: groupStyle },
-    [
-      E("label", { style: labelStyle }, _("Benchmark Timeout")),
-      timeoutSelect
-    ]
-  );
+  const timeoutGroup = E("div", { style: groupStyle }, [
+    E("label", { style: labelStyle }, _("Benchmark Timeout")),
+    timeoutSelect
+  ]);
   const ruleSelect = E(
     "select",
     { class: "cbi-input-select", style: selectStyle },
@@ -13347,16 +13319,18 @@ function renderStrategyFuzzerModal(ruleNames = []) {
   ruleSelect.addEventListener("change", () => {
     selectedRuleSection = ruleSelect.value;
   });
-  const ruleGroup = E(
-    "div",
-    { style: groupStyle },
-    [
-      E("label", { style: labelStyle }, _("Apply Strategy To")),
-      ruleSelect
-    ]
-  );
+  const ruleGroup = E("div", { style: groupStyle }, [
+    E("label", { style: labelStyle }, _("Apply Strategy To")),
+    ruleSelect
+  ]);
   ruleGroup.style.gridColumn = "1 / -1";
-  controlsGrid.append(engineGroup, targetGroup, modeGroup, timeoutGroup, ruleGroup);
+  controlsGrid.append(
+    engineGroup,
+    targetGroup,
+    modeGroup,
+    timeoutGroup,
+    ruleGroup
+  );
   const autoApplyCheckbox = E("input", {
     type: "checkbox",
     id: "tachyon-fuzzer-auto-apply",
