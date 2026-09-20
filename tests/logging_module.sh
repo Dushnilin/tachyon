@@ -113,7 +113,7 @@ printf '%s\n' '--- runtime: job_log_append ---'
 RESULT=$($TACHYON_UCODE -L "$TACHYON_LIB" -e '
 let log = require("core.logging");
 let fs = require("fs");
-let tmp = "/tmp/tachyon-test-log." + getpid();
+let tmp = "/tmp/tachyon-test-log." + int(clock());
 let r1 = log.job_log_append(tmp, "entry 1", "info");
 let r2 = log.job_log_append(tmp, "entry 2", "error");
 let content = trim("" + fs.readfile(tmp));
@@ -195,7 +195,7 @@ let common = require("core.common");
 let jobs = require("core.jobs");
 let exec = require("core.exec");
 // All should import without errors
-if (typeof(log.write) == "function" && typeof(common.log_message) == "function")
+if (type(log.write) == "function" && type(common.log_message) == "function")
     print("PASS\n");
 else
     print("FAIL\n");
