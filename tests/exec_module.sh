@@ -93,24 +93,24 @@ ALIVE=$(ucode -e '
 ')
 assert_eq "dead" "$ALIVE" "nonexistent PID should not be alive"
 
-# ── is_alive for init ────────────────────────────────────────────────────────
+# ── is_alive for current process ──────────────────────────────────────────────
 ALIVE=$(ucode -e '
   let exec = require("core.exec");
-  print(exec.is_alive("1") ? "alive" : "dead");
+  print(exec.is_alive("'"$$"'") ? "alive" : "dead");
 ')
-assert_eq "alive" "$ALIVE" "PID 1 should always be alive"
+assert_eq "alive" "$ALIVE" "current shell PID should be alive"
 
 # ── Identity matching ────────────────────────────────────────────────────────
 ID_MATCH=$(ucode -e '
   let exec = require("core.exec");
-  let id = exec.make_identity("1", "init");
-  print(exec.identity_matches(id, "1") ? "match" : "nomatch");
+  let id = exec.make_identity("'"$$"'", "test");
+  print(exec.identity_matches(id, "'"$$"'") ? "match" : "nomatch");
 ')
 assert_eq "match" "$ID_MATCH" "identity should match correct PID"
 
 ID_NOMATCH=$(ucode -e '
   let exec = require("core.exec");
-  let id = exec.make_identity("1", "init");
+  let id = exec.make_identity("'"$$"'", "test");
   print(exec.identity_matches(id, "999999") ? "match" : "nomatch");
 ')
 assert_eq "nomatch" "$ID_NOMATCH" "identity should not match wrong PID"
