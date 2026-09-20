@@ -71,7 +71,7 @@ assert_match() {
 # ---------------------------------------------------------------------------
 
 printf '%s\n' '--- process.uc selftest ---'
-if $TACHYON_UCODE "$TACHYON_LIB/core/process.uc" selftest; then
+if $TACHYON_UCODE -L "$TACHYON_LIB" "$TACHYON_LIB/core/process.uc" selftest; then
     pass=$((pass + 1))
 else
     fail_test "process.uc selftest failed"
@@ -82,33 +82,33 @@ fi
 # ---------------------------------------------------------------------------
 
 printf '%s\n' '--- boot-id ---'
-BOOT_ID=$($TACHYON_UCODE "$TACHYON_LIB/core/process.uc" boot-id)
+BOOT_ID=$($TACHYON_UCODE -L "$TACHYON_LIB" "$TACHYON_LIB/core/process.uc" boot-id)
 assert_true "boot-id should be non-empty" test -n "$BOOT_ID"
 assert_match "boot-id should look like UUID" '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' "$BOOT_ID"
 
 printf '%s\n' '--- starttime ---'
 SELF_PID=$$
-STARTTIME=$($TACHYON_UCODE "$TACHYON_LIB/core/process.uc" starttime "$SELF_PID")
+STARTTIME=$($TACHYON_UCODE -L "$TACHYON_LIB" "$TACHYON_LIB/core/process.uc" starttime "$SELF_PID")
 assert_true "starttime for self should be readable" test -n "$STARTTIME"
 assert_match "starttime should be numeric" '^[0-9]+$' "$STARTTIME"
 
 # Nonexistent PID should fail
-assert_false "starttime for nonexistent PID should fail" $TACHYON_UCODE "$TACHYON_LIB/core/process.uc" starttime 999999
+assert_false "starttime for nonexistent PID should fail" $TACHYON_UCODE -L "$TACHYON_LIB" "$TACHYON_LIB/core/process.uc" starttime 999999
 
 printf '%s\n' '--- age ---'
-AGE=$($TACHYON_UCODE "$TACHYON_LIB/core/process.uc" age "$SELF_PID")
+AGE=$($TACHYON_UCODE -L "$TACHYON_LIB" "$TACHYON_LIB/core/process.uc" age "$SELF_PID")
 assert_true "age for self should be readable" test -n "$AGE"
 assert_match "age should be numeric" '^[0-9]+$' "$AGE"
 
 # Nonexistent PID should fail
-assert_false "age for nonexistent PID should fail" $TACHYON_UCODE "$TACHYON_LIB/core/process.uc" age 999999
+assert_false "age for nonexistent PID should fail" $TACHYON_UCODE -L "$TACHYON_LIB" "$TACHYON_LIB/core/process.uc" age 999999
 
 printf '%s\n' '--- alive ---'
 # Current process should be alive
-$TACHYON_UCODE "$TACHYON_LIB/core/process.uc" alive "$SELF_PID" && pass=$((pass + 1)) || fail_test "self should be alive"
+$TACHYON_UCODE -L "$TACHYON_LIB" "$TACHYON_LIB/core/process.uc" alive "$SELF_PID" && pass=$((pass + 1)) || fail_test "self should be alive"
 
 # Nonexistent PID should not be alive
-$TACHYON_UCODE "$TACHYON_LIB/core/process.uc" alive 999999 && fail_test "nonexistent PID should not be alive" || pass=$((pass + 1))
+$TACHYON_UCODE -L "$TACHYON_LIB" "$TACHYON_LIB/core/process.uc" alive 999999 && fail_test "nonexistent PID should not be alive" || pass=$((pass + 1))
 
 # ---------------------------------------------------------------------------
 # Runtime tests: PID identity via ucode require
