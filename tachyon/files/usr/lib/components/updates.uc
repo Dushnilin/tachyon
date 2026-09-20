@@ -2606,6 +2606,46 @@ function import_community_srs_file(service, settings) {
     return ok;
 }
 
+function import_remote_lists_from_all_sections(settings) {
+    log_message("Pre-caching remote domain and subnet lists from all sections", "info");
+    let ok = true;
+    let sections = uci_sections("section");
+
+    for (let section in sections) {
+        let domain_refs = list_option_values(section, "remote_domain_lists");
+        if (length(domain_refs) > 0)
+            log_message("Pre-caching remote domain lists from section '" + section_name(section) + "'", "info");
+        for (let url in domain_refs) {
+            let extension = singbox_rulesets_module().file_extension(url);
+            if (extension == "json" || extension == "srs") {
+                log_message("Skipping " + extension + " remote domain list (sing-box manages it): " + as_string(url), "debug");
+                continue;
+            }
+            if (!import_domains_from_remote_plain_file(url, section, settings))
+                ok = false;
+        }
+
+        let subnet_refs = list_option_values(section, "remote_subnet_lists");
+        if (length(subnet_refs) > 0)
+            log_message("Pre-caching remote subnet lists from section '" + section_name(section) + "'", "info");
+        for (let url in subnet_refs) {
+            let extension = singbox_rulesets_module().file_extension(url);
+            if (extension == "json") {
+                if (!import_subnets_from_remote_json_file(url, section, settings))
+                    ok = false;
+            } else if (extension == "srs") {
+                if (!import_subnets_from_remote_srs_file(url, section, settings))
+                    ok = false;
+            } else {
+                if (!import_subnets_from_remote_plain_file(url, section, settings))
+                    ok = false;
+            }
+        }
+    }
+
+    return ok;
+}
+
 function import_all_preset_lists(settings) {
     log_message("Pre-downloading all preset lists and databases", "info");
     let ok = true;
@@ -2666,46 +2706,6 @@ function import_all_preset_lists(settings) {
     // goes offline.
     if (!import_remote_lists_from_all_sections(settings))
         ok = false;
-
-    return ok;
-}
-
-function import_remote_lists_from_all_sections(settings) {
-    log_message("Pre-caching remote domain and subnet lists from all sections", "info");
-    let ok = true;
-    let sections = uci_sections("section");
-
-    for (let section in sections) {
-        let domain_refs = list_option_values(section, "remote_domain_lists");
-        if (length(domain_refs) > 0)
-            log_message("Pre-caching remote domain lists from section '" + section_name(section) + "'", "info");
-        for (let url in domain_refs) {
-            let extension = singbox_rulesets_module().file_extension(url);
-            if (extension == "json" || extension == "srs") {
-                log_message("Skipping " + extension + " remote domain list (sing-box manages it): " + as_string(url), "debug");
-                continue;
-            }
-            if (!import_domains_from_remote_plain_file(url, section, settings))
-                ok = false;
-        }
-
-        let subnet_refs = list_option_values(section, "remote_subnet_lists");
-        if (length(subnet_refs) > 0)
-            log_message("Pre-caching remote subnet lists from section '" + section_name(section) + "'", "info");
-        for (let url in subnet_refs) {
-            let extension = singbox_rulesets_module().file_extension(url);
-            if (extension == "json") {
-                if (!import_subnets_from_remote_json_file(url, section, settings))
-                    ok = false;
-            } else if (extension == "srs") {
-                if (!import_subnets_from_remote_srs_file(url, section, settings))
-                    ok = false;
-            } else {
-                if (!import_subnets_from_remote_plain_file(url, section, settings))
-                    ok = false;
-            }
-        }
-    }
 
     return ok;
 }
