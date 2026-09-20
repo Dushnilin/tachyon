@@ -186,8 +186,8 @@ function stop_runtime() {
 
     // Kill orphaned logread -f processes. These accumulate when watchdog is
     // killed without proper cleanup (e.g. SIGTERM from procd during restart).
-    // Anchor with $ to avoid killing system logremote/logfile processes.
-    system("pkill -f 'logread -f$' 2>/dev/null; true");
+    // BusyBox lacks pkill, so we use pgrep + kill via common.kill_orphaned_logread().
+    system(common.kill_orphaned_logread());
 
     // Stop Honeypot listener
     let hp_pid = trim(fs.readfile("/var/run/tachyon_honeypot_listener.pid") || "");
@@ -1678,7 +1678,8 @@ function setup_syslog_listener() {
     // logread pipe read-end, keeping old logread alive. Over N restarts,
     // watchdog accumulates N inherited FDs → hits 1024 limit → config generator fails.
     // Anchor with $ to avoid killing system logremote/logfile processes.
-    system("pkill -f 'logread -f$' 2>/dev/null; true");
+    // BusyBox lacks pkill, so we use pgrep + kill via common.kill_orphaned_logread().
+    system(common.kill_orphaned_logread());
     let log_pipe = fs.popen("logread -f 2>/dev/null", "r");
     if (!log_pipe) return null;
 

@@ -1499,7 +1499,8 @@ function restart_tachyon_after_successful_change() {
     // Kill orphaned logread -f processes before restart to prevent FD cascade.
     // Anchor with $ to avoid killing system logremote/logfile processes (which
     // have extra flags like -r/-F after -f).
-    system("pkill -f 'logread -f$' 2>/dev/null; true");
+    // BusyBox lacks pkill, so we use pgrep + kill via common.kill_orphaned_logread().
+    system(common.kill_orphaned_logread());
     system("rm -f /var/run/tachyon.reload.lock 2>/dev/null; true");
 
     // If sing-box was NOT stopped for this component change (e.g. WDTT, Zapret, ByeDPI,

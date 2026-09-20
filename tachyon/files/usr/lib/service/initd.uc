@@ -642,8 +642,8 @@ function stop_service(owner_pid) {
     let status = command_status_from_args([ BIN_PATH, "stop" ]);
     // These survive tachyon stop because background subprocesses (reload_firewall,
     // restart) inherit the logread pipe read-end, preventing SIGPIPE delivery.
-    // Use pkill to target only logread in follow mode, not one-shot logread calls.
-    system("pkill -f 'logread -f$' 2>/dev/null; true");
+    // BusyBox lacks pkill, so we use pgrep + kill via common.kill_orphaned_logread().
+    system(common.kill_orphaned_logread());
     return stop_finish(job_id, status);
 }
 

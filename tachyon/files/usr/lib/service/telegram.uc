@@ -3524,6 +3524,9 @@ function stop_runtime() {
             command_success_from_args([ "kill", "-9", pid ]);
         }
     }
+    // Also kill any orphaned telegram workers not tracked by the PID file.
+    // These accumulate when the PID file is stale after a crash/restart.
+    command_success_from_args([ "sh", "-c", "pgrep -f 'telegram.uc worker$' 2>/dev/null | xargs kill 2>/dev/null; true" ]);
     // Absent file already satisfies the caller; fs.unlink throws on ENOENT.
     try { fs.unlink(PID_FILE); } catch(e) {}
     return 0;

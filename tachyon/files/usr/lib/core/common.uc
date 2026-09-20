@@ -527,6 +527,13 @@ function kill_matching_command(grep_args) {
         "kill -9 \"$_pid\" 2>/dev/null; done; true";
 }
 
+// Kill orphaned logread -f processes. BusyBox OpenWrt lacks pkill, so we use
+// pgrep (which IS available) piped to kill. The $ anchor avoids matching
+// one-shot "logread -l N" calls from check_logs / diagnostics.
+function kill_orphaned_logread() {
+    return "pgrep -f 'logread -f$' 2>/dev/null | xargs kill 2>/dev/null; true";
+}
+
 function ensure_dir(path) {
     path = as_string(path);
     if (path == "") return false;
@@ -729,5 +736,6 @@ return {
     timeout_prefix,
     bounded_command,
     kill_matching_command,
+    kill_orphaned_logread,
     ipv6_supported
 };

@@ -930,7 +930,9 @@ function check_logs() {
         nolog("Error: logread command not found");
         return 1;
     }
-    let rendered = status_capture([ "tachyon-logs" ], command_output_from_args([ "logread", "-l", LOGREAD_LINE_LIMIT ]));
+    // Use bounded_command to prevent logread from hanging and leaking a zombie process.
+    let cmd = common.bounded_command("logread -l " + LOGREAD_LINE_LIMIT + " 2>/dev/null", "5");
+    let rendered = status_capture([ "tachyon-logs" ], command_output(cmd));
     if (rendered.output != "")
         print(rendered.output);
     else
@@ -943,7 +945,9 @@ function check_sing_box_logs() {
         nolog("Error: logread command not found");
         return 1;
     }
-    let rendered = status_capture([ "matching-log-tail", "sing-box", "100" ], command_output_from_args([ "logread", "-l", LOGREAD_LINE_LIMIT ]));
+    // Use bounded_command to prevent logread from hanging and leaking a zombie process.
+    let cmd = common.bounded_command("logread -l " + LOGREAD_LINE_LIMIT + " 2>/dev/null", "5");
+    let rendered = status_capture([ "matching-log-tail", "sing-box", "100" ], command_output(cmd));
     if (rendered.output != "")
         print(rendered.output);
     else
