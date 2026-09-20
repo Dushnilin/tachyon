@@ -287,7 +287,7 @@ if (mode == "selftest") {
     let pass = 0;
     let fail = 0;
 
-    function assert(cond, msg) {
+    let assert = function(cond, msg) {
         if (cond) { pass++; }
         else { fail++; print("FAIL: " + msg + "\n"); }
     }
