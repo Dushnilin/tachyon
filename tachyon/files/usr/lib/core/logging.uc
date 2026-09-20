@@ -235,7 +235,7 @@ if (mode == "selftest") {
     let assert = function(cond, msg) {
         if (cond) { pass++; }
         else { fail++; print("FAIL: " + msg + "\n"); }
-    }
+    };
 
     // Test 1: log_message works (writes to syslog)
     assert(log_message("test message") === true, "log_message should return true");
