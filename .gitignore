@@ -20,3 +20,5 @@ tmp_test*.uc
 test_out.txt
 uc.out
 filtered-bin/
+build-*.log
+build-out/
