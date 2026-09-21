@@ -22955,6 +22955,171 @@ function isComponentCardVisible(card, systemInfo) {
   }
   return String(val) === "1" || val === 1;
 }
+function renderEngineSelector() {
+  const info = engineInfoCache;
+  if (!info) {
+    return null;
+  }
+  const steerInstalled = info.engines.some(
+    (entry) => (entry.engine === "steer" || entry.engine === "steer-extended") && entry.installed
+  );
+  if (!steerInstalled) {
+    return null;
+  }
+  const select = E("select", {
+    class: "cbi-input-select",
+    style: "min-width: 180px;"
+  });
+  info.engines.filter((entry) => entry.known && entry.installed).forEach((entry) => {
+    const option = E("option", { value: entry.engine }, engineLabel(entry.engine));
+    option.selected = entry.engine === info.active;
+    select.appendChild(option);
+  });
+  const warning = E("div", {
+    style: "font-size: 12px; color: var(--text-color-medium, #b58900); margin-top: 6px; display: none;"
+  });
+  const apply = renderButton({
+    text: _("Apply"),
+    classNames: ["cbi-button-action"],
+    onClick: () => void applyEngineSelection(select.value, info.active, warning)
+  });
+  return E("div", { class: "tachyon_updates-page__component" }, [
+    E("div", { class: "tachyon_updates-page__component__header" }, [
+      E("b", { class: "tachyon_updates-page__component__title" }, _("Routing Engine")),
+      E(
+        "span",
+        { class: "tachyon_updates-page__component__header-version" },
+        engineLabel(info.active)
+      )
+    ]),
+    E(
+      "div",
+      { style: "display: flex; gap: 8px; align-items: center; flex-wrap: wrap;" },
+      [select, apply]
+    ),
+    warning
+  ]);
+}
+var engineInfoCache = null;
+async function refreshEngineInfo() {
+  const response = await TachyonShellMethods.getEngineInfo();
+  engineInfoCache = response.success ? response.data : null;
+}
+async function applyEngineSelection(engine, current, warning) {
+  if (engine === current) {
+    return;
+  }
+  const planResponse = await TachyonShellMethods.getEnginePlan(engine);
+  const parked = planResponse.success ? parkedFeatures(planResponse.data) : [];
+  if (parked.length > 0) {
+    warning.style.display = "block";
+    warning.textContent = `${_("These features will be parked and restored when you switch back")}: ${parked.join(", ")}`;
+  } else {
+    warning.style.display = "none";
+  }
+  const result = await TachyonShellMethods.switchEngine(engine, true);
+  if (!result.success || !result.data.ok) {
+    warning.style.display = "block";
+    warning.textContent = `${_("Switch failed")}: ${result.success ? result.data.reason : result.error}`;
+    return;
+  }
+  await refreshEngineInfo();
+  renderUpdatesComponents();
+  showToast(`${_("Active engine")}: ${engineLabel(engine)}`, "success");
+}
+function renderSteerCard() {
+  const info = engineInfoCache;
+  const base = info?.engines.find((e) => e.engine === "steer");
+  const extended = info?.engines.find((e) => e.engine === "steer-extended");
+  const baseInstalled = Boolean(base?.installed);
+  const extendedInstalled = Boolean(extended?.installed);
+  const installed = baseInstalled || extendedInstalled;
+  const active = info?.active || "";
+  const version = installed ? extendedInstalled ? "steer-extended" : "steer" : _("Not installed");
+  const installing = steerBusy;
+  const actions = [];
+  actions.push(
+    renderButton({
+      text: _("Check for update"),
+      classNames: ["cbi-button-neutral"],
+      disabled: installing,
+      onClick: () => void runSteerAction("steer-extended", "check_update")
+    })
+  );
+  if (!baseInstalled || active !== "steer") {
+    actions.push(
+      renderButton({
+        text: "Steer",
+        classNames: ["cbi-button-action"],
+        disabled: installing,
+        onClick: () => void runSteerAction("steer", baseInstalled ? "install" : "install")
+      })
+    );
+  }
+  if (!extendedInstalled || active !== "steer-extended") {
+    actions.push(
+      renderButton({
+        text: "Steer extended",
+        classNames: ["cbi-button-action"],
+        disabled: installing,
+        onClick: () => void runSteerAction("steer-extended", "install")
+      })
+    );
+  }
+  if (installed) {
+    actions.push(
+      renderButton({
+        text: _("Remove"),
+        classNames: ["cbi-button-negative"],
+        disabled: installing,
+        onClick: () => void runSteerAction(
+          extendedInstalled ? "steer-extended" : "steer",
+          "remove"
+        )
+      })
+    );
+  }
+  return E("div", { class: "tachyon_updates-page__component" }, [
+    E("div", { class: "tachyon_updates-page__component__header" }, [
+      E("b", { class: "tachyon_updates-page__component__title" }, "Steer"),
+      E(
+        "span",
+        { class: "tachyon_updates-page__component__header-version" },
+        version
+      )
+    ]),
+    E(
+      "div",
+      { style: "font-size: 12px; opacity: 0.8;" },
+      _("Alternative routing engine with its own VLESS/Reality client.")
+    ),
+    E("div", { style: "display: flex; flex-wrap: wrap; gap: 8px;" }, actions)
+  ]);
+}
+var steerBusy = false;
+async function runSteerAction(component, action) {
+  steerBusy = true;
+  renderUpdatesComponents();
+  try {
+    await TachyonShellMethods.componentActionStart(
+      component,
+      action
+    );
+    if (action === "install") {
+      await TachyonShellMethods.switchEngine(component, true);
+    }
+    await refreshEngineInfo();
+    showToast(`${_("Steer")}: ${action}`, "success");
+  } catch (error) {
+    showToast(
+      `${_("Steer")}: ${error instanceof Error ? error.message : String(error)}`,
+      "error"
+    );
+  } finally {
+    steerBusy = false;
+    renderUpdatesComponents();
+  }
+}
 function renderUpdatesComponents() {
   const container = document.getElementById("tachyon_updates-components");
   if (!container) {
@@ -22963,9 +23128,8 @@ function renderUpdatesComponents() {
   const systemInfo = normalizeSingBoxVariantFields(
     store.get().diagnosticsSystemInfo
   );
-  const visibleCards = getComponentCards().filter(
-    (card) => isComponentCardVisible(card, systemInfo)
-  );
+  const steerActive = engineInfoCache?.active === "steer" || engineInfoCache?.active === "steer-extended";
+  const visibleCards = getComponentCards().filter((card) => !(steerActive && card.component === "sing_box")).filter((card) => isComponentCardVisible(card, systemInfo));
   const columns = [[], [], []];
   const colCounts = [0, 0, 0];
   visibleCards.forEach((card) => {
@@ -22976,8 +23140,21 @@ function renderUpdatesComponents() {
     const colIdx = hasEmptyColumn ? idx % 3 : card.column;
     columns[colIdx]?.push(renderComponentCard(card));
   });
+  if (steerActive) {
+    columns[0]?.unshift(renderSteerCard());
+  } else {
+    columns[0]?.push(renderSteerCard());
+  }
+  const engineSelector = renderEngineSelector();
   return preserveScrollForPage(() => {
     container.replaceChildren(
+      ...engineSelector ? [
+        E(
+          "div",
+          { class: "tachyon_updates-page__engine-card" },
+          [engineSelector]
+        )
+      ] : [],
       ...columns.map(
         (columnNodes) => E(
           "div",
@@ -23021,6 +23198,11 @@ async function onPageMount4() {
     applyComponentUpdateCheckCache(prefetchedComponentUpdateCheckCache);
   }
   renderUpdatesComponents();
+  void refreshEngineInfo().then(() => {
+    if (updatesMounted && mountId === updatesMountId) {
+      renderUpdatesComponents();
+    }
+  });
   const componentUpdateCheckCache = await loadComponentUpdateCheckCache({
     force: Boolean(prefetchedComponentUpdateCheckCache)
   });
@@ -23118,7 +23300,13 @@ var styles6 = `
         flex-direction: column;
     }
 
-    .tachyon_updates-page__components-column {
+.tachyon_updates-page__engine-card {
+    flex: 1 1 100%;
+    width: 100%;
+    margin-bottom: 10px;
+}
+
+.tachyon_updates-page__components-column {
         width: 100%;
         min-width: 0;
     }

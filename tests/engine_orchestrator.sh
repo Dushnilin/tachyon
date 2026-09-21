@@ -200,9 +200,9 @@ let g = require("steer.generator");
 let sections = [
     { ".name": "main", ".type": "section", "action": "connection", "enabled": "1",
       "label": "Main", "outbound_interfaces": [ "wg0", "awg0" ],
-      "domain": [ "example.org" ], "remote_subnet_lists": [ "/etc/tachyon/lists/x.lst" ] },
+      "user_domains": [ "example.org" ], "domain_ip_lists": [ "/etc/tachyon/lists/x.lst" ] },
     { ".name": "kids", ".type": "section", "action": "bypass", "enabled": "1",
-      "label": "Kids", "client_addresses": [ "192.168.1.50" ], "domain": [ "kids.example" ] },
+      "label": "Kids", "client_addresses": [ "192.168.1.50" ], "user_domains": [ "kids.example" ] },
     { ".name": "unsupported", ".type": "section", "action": "wdtt", "enabled": "1" }
 ];
 let spec = g.build_spec(sections, { "source_network_interfaces": [ "br-lan", "tailscale0" ] });

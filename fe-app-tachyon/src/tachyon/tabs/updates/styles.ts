@@ -35,7 +35,13 @@ export const styles = `
         flex-direction: column;
     }
 
-    .tachyon_updates-page__components-column {
+.tachyon_updates-page__engine-card {
+    flex: 1 1 100%;
+    width: 100%;
+    margin-bottom: 10px;
+}
+
+.tachyon_updates-page__components-column {
         width: 100%;
         min-width: 0;
     }

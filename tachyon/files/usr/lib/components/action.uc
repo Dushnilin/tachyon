@@ -894,7 +894,7 @@ function install_steer(action, target_tag, extended) {
         action_fail(component, action, "Failed to detect package architecture");
     let release = null;
     retry_resolve("Resolving " + label + " package", function() {
-        release = resolve_steer_release(arch, target_tag, extended);
+        release = cmp_cat.resolve_steer_release(arch, target_tag, extended);
         return release != null;
     });
     if (release == null)

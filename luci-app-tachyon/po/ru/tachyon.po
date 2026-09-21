@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-21 17:56+0300\n"
-"PO-Revision-Date: 2026-09-21 17:56+0300\n"
+"POT-Creation-Date: 2026-09-21 19:05+0300\n"
+"PO-Revision-Date: 2026-09-21 19:05+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -491,6 +491,9 @@ msgstr "ALPN"
 msgid "Alter ID"
 msgstr "Alter ID"
 
+msgid "Alternative routing engine with its own VLESS/Reality client."
+msgstr ""
+
 msgid "Always Active (24/7)"
 msgstr "Всегда активно (24/7)"
 
@@ -940,6 +943,9 @@ msgstr "Проверить подключение"
 
 msgid "Check domain"
 msgstr "Проверить домен"
+
+msgid "Check for update"
+msgstr ""
 
 msgid "Check interval"
 msgstr "Интервал проверки"
@@ -4991,6 +4997,9 @@ msgstr "Статус"
 msgid "Status / Suite"
 msgstr "Статус / Набор"
 
+msgid "Steer"
+msgstr ""
+
 msgid "Stop"
 msgstr "Стоп"
 
@@ -6103,6 +6112,18 @@ msgstr "Правила маршрутизации sing-box для Zapret2 не �
 
 msgid "Zero config mesh VPN daemon"
 msgstr "Mesh VPN-демон с нулевой конфигурацией"
+
+msgid "Loading engines..."
+msgstr ""
+
+msgid "Switch back"
+msgstr ""
+
+msgid "Switched back"
+msgstr ""
+
+msgid "Tachyon can drive sing-box or steer. Switching parks configuration the target engine cannot express, so you can switch back without losing settings."
+msgstr ""
 
 msgid "Provider Global Default"
 msgstr "Глобальные настройки провайдера"
