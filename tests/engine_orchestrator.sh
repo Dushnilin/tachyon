@@ -14,6 +14,7 @@ set -eo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 TACHYON_LIB="${TACHYON_LIB:-$SCRIPT_DIR/../tachyon/files/usr/lib}"
+TACHYON_BIN="${TACHYON_BIN:-$SCRIPT_DIR/../tachyon/files/usr/bin/tachyon}"
 TACHYON_UCODE="${TACHYON_UCODE:-ucode}"
 WORK_DIR="$(mktemp -d)"
 trap 'rm -rf "$WORK_DIR"' EXIT
@@ -260,6 +261,36 @@ assert_match "engine-plan targets steer" '"to_engine": *"steer"' "$out"
 
 out="$($TACHYON_UCODE -L "$TACHYON_LIB" "$TACHYON_LIB/service/engine_runtime.uc" engine-diag 2>&1 || true)"
 assert_match "engine-diag refuses without engine" 'engine_not_installed|not installed|No such file' "$out"
+
+printf '%s\n' '--- lifecycle engine branches ---'
+LIFECYCLE_UC="$TACHYON_LIB/service/lifecycle.uc"
+grep -Fq 'start_steer_main' "$LIFECYCLE_UC" ||
+    fail_test "lifecycle must have a steer start branch"
+grep -Fq 'reload_steer' "$LIFECYCLE_UC" ||
+    fail_test "lifecycle must have a steer reload branch"
+grep -Fq 'get_active()' "$LIFECYCLE_UC" ||
+    fail_test "lifecycle must consult the active engine"
+# The steer branches must not run the sing-box start pipeline.
+steer_branch="$(sed -n '/^function start_steer_main/,/^}/p' "$LIFECYCLE_UC")"
+grep -Fq 'generate_steer_spec' <<<"$steer_branch" ||
+    fail_test "steer start must generate the spec"
+if grep -Fq 'nft_rebuild_runtime' <<<"$steer_branch"; then
+    fail_test "steer start must not run the sing-box nft pipeline"
+fi
+reload_branch="$(sed -n '/^function reload_steer/,/^}/p' "$LIFECYCLE_UC")"
+grep -Fq 'generate_steer_spec' <<<"$reload_branch" ||
+    fail_test "steer reload must regenerate the spec"
+pass=$((pass + 1))
+
+printf '%s\n' '--- engine status is engine-aware ---'
+RUNTIME_UC="$TACHYON_LIB/diagnostics/runtime.uc"
+grep -Fq 'function get_engine_status' "$RUNTIME_UC" ||
+    fail_test "diagnostics/runtime.uc must define get_engine_status"
+grep -Fq 'get-engine-status' "$RUNTIME_UC" ||
+    fail_test "diagnostics/runtime.uc must dispatch get-engine-status"
+grep -Fq 'get_engine_status:' "$TACHYON_BIN" ||
+    fail_test "tachyon entrypoint must expose get_engine_status"
+pass=$((pass + 1))
 
 printf '\n--- engine_orchestrator.sh summary ---\n'
 printf 'passed: %d\n' "$pass"

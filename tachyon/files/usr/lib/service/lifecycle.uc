@@ -864,6 +864,38 @@ function prepare_community_rulesets() {
     }
 }
 
+// Start the steer engine. Tachyon's job here is to make sure sing-box is not
+// running and holding the same dataplane, generate the spec from the current
+// configuration, and let the steer init script bring the engine up.
+function start_steer_main(active_engine) {
+    log_message("Starting Tachyon with the " + active_engine + " engine", "info");
+
+    // Make sure the sing-box service is not left running: two engines must not
+    // fight over nftables and policy routing.
+    if (fs.stat("/etc/init.d/sing-box") != null)
+        command_status_from_args([ "/etc/init.d/sing-box", "stop" ]);
+
+    let engine_runtime = require("service.engine_runtime");
+    let generated = engine_runtime.generate_steer_spec({});
+    if (!generated.ok) {
+        log_message("Failed to generate the steer spec: " + as_string(generated.reason), "fatal");
+        return 1;
+    }
+
+    if (!engine_runtime.init_script_present(active_engine)) {
+        log_message("steer is not installed; cannot start the " + active_engine + " engine", "fatal");
+        return 1;
+    }
+
+    let started = engine_runtime.run_init(active_engine, "start");
+    if (!started.ok) {
+        log_message("Failed to start the " + active_engine + " engine", "fatal");
+        return 1;
+    }
+
+    return 0;
+}
+
 function start_main() {
     let status;
 
@@ -872,6 +904,19 @@ function start_main() {
     status = validate_start_config();
     if (status != 0)
         return status;
+
+    // steer owns the dataplane through its own nftables table and policy
+    // routing. Tachyon's sing-box nft rules and sing-box itself must stay out
+    // of the way, so the steer branch never touches NFT_UC or sing-box.
+    let active_engine = "sing-box";
+    try {
+        active_engine = require("core.engine").get_active();
+    }
+    catch (e) {
+        active_engine = "sing-box";
+    }
+    if (active_engine != "sing-box")
+        return start_steer_main(active_engine);
 
     startup_config_fingerprint = external_config_fingerprint();
 
@@ -1041,6 +1086,21 @@ function stop_main() {
     let status = 0;
 
     log_message("Stopping Tachyon", "info");
+
+    // Stop the steer engine first when it is the active one; its init script
+    // removes its own nftables table and policy routing.
+    let active_engine = "sing-box";
+    try {
+        active_engine = require("core.engine").get_active();
+    }
+    catch (e) {
+        active_engine = "sing-box";
+    }
+    if (active_engine != "sing-box") {
+        let engine_runtime = require("service.engine_runtime");
+        engine_runtime.run_init(active_engine, "stop");
+    }
+
     if (!module_success(DNS_FAILOVER_UC, [ "stop-runtime" ]))
         log_message("DNS failover stop failed (non-fatal)", "warn");
     if (!module_success(PRIORITY_UC, [ "stop-runtime" ]))
@@ -1379,6 +1439,32 @@ function dns_failover_apply(candidate_state_path) {
     return status;
 }
 
+// Reload the steer engine: regenerate the spec from the current configuration
+// and let steer reload itself. No sing-box config, DNS or nft work happens here.
+function reload_steer(active_engine, reason, initial_fingerprint) {
+    if (as_string(reason || "") != "force" && current_config_hash() == last_completed_reload_hash()) {
+        log_message("Reload skipped: configuration is unchanged", "info");
+        return 0;
+    }
+
+    let engine_runtime = require("service.engine_runtime");
+    let generated = engine_runtime.generate_steer_spec({});
+    if (!generated.ok) {
+        log_message("Failed to generate the steer spec: " + as_string(generated.reason), "error");
+        return finish_reload_status(1, initial_fingerprint);
+    }
+
+    let reloaded = engine_runtime.run_init(active_engine, "reload");
+    if (!reloaded.ok)
+        reloaded = engine_runtime.run_init(active_engine, "restart");
+    if (!reloaded.ok) {
+        log_message("Failed to reload the " + active_engine + " engine", "error");
+        return finish_reload_status(1, initial_fingerprint);
+    }
+
+    return finish_reload_status(0, initial_fingerprint);
+}
+
 function reload(reason) {
     let status;
     let force_runtime_reload = as_string(reason || "") == "on_config_change" ? 0 : 1;
@@ -1386,6 +1472,18 @@ function reload(reason) {
     rule_condition_cache_enabled = force_runtime_reload;
 
     log_message("Reloading Tachyon", "info");
+
+    // steer reloads by regenerating its spec and reloading its own service;
+    // the sing-box reload pipeline below never runs while steer is active.
+    let active_engine = "sing-box";
+    try {
+        active_engine = require("core.engine").get_active();
+    }
+    catch (e) {
+        active_engine = "sing-box";
+    }
+    if (active_engine != "sing-box")
+        return reload_steer(active_engine, reason, reload_config_fingerprint);
 
     // Skip all work when config fingerprint is unchanged since the last reload.
     // Applies to user-triggered reloads as well as on_config_change; saves ~4

@@ -65,6 +65,12 @@ export namespace Tachyon {
     CHECK_SING_BOX = 'check_sing_box',
     CHECK_INBOUNDS = 'check_inbounds',
     GET_SING_BOX_STATUS = 'get_sing_box_status',
+    GET_ENGINE_STATUS = 'get_engine_status',
+    ENGINE_INFO = 'engine_info',
+    ENGINE_FEATURES = 'engine_features',
+    ENGINE_PLAN = 'engine_plan',
+    ENGINE_SWITCH = 'engine_switch',
+    ENGINE_SWITCH_BACK = 'engine_switch_back',
     GET_ZAPRET_STATUS = 'get_zapret_status',
     GET_TAILSCALE_PEERS = 'get_tailscale_peers',
     GET_ZAPRET2_STATUS = 'get_zapret2_status',
@@ -638,6 +644,44 @@ export namespace Tachyon {
     enabled: number;
     status: string;
     memory_rss_mb?: number;
+  }
+
+  export interface EngineDescriptor {
+    engine: string;
+    known: boolean;
+    installed: boolean;
+    binary?: string;
+    init?: string;
+    package?: string;
+    note?: string;
+  }
+
+  export interface EngineInfo {
+    active: string;
+    previous: string;
+    engines: EngineDescriptor[];
+    capabilities: string[];
+  }
+
+  export interface EngineSwitchPlan {
+    ok: boolean;
+    reason: string;
+    from_engine: string;
+    to_engine: string;
+    loses_features?: boolean;
+    plan?: {
+      unsupported: string[];
+      parked?: Record<string, unknown>;
+    };
+    installable?: boolean;
+  }
+
+  export interface EngineStatus {
+    running: number;
+    enabled: number;
+    engine?: string;
+    status: string;
+    dns_configured: number;
   }
 
   export interface GetSystemInfo {

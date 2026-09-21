@@ -455,6 +455,41 @@ export const TachyonShellMethods = {
     callBaseMethod<Tachyon.GetSystemInfo>(
       Tachyon.AvailableMethods.GET_SYSTEM_INFO,
     ),
+  getEngineStatus: async () =>
+    callBaseMethod<Tachyon.EngineStatus>(
+      Tachyon.AvailableMethods.GET_ENGINE_STATUS,
+      [],
+      '/usr/bin/tachyon',
+      { timeout: GET_UI_STATE_RPC_TIMEOUT_MS },
+    ),
+  getEngineInfo: async () =>
+    callBaseMethod<Tachyon.EngineInfo>(
+      Tachyon.AvailableMethods.ENGINE_INFO,
+      [],
+      '/usr/bin/tachyon',
+      { timeout: GET_UI_STATE_RPC_TIMEOUT_MS },
+    ),
+  getEnginePlan: async (engine: string) =>
+    callBaseMethod<Tachyon.EngineSwitchPlan>(
+      Tachyon.AvailableMethods.ENGINE_PLAN,
+      [engine],
+      '/usr/bin/tachyon',
+      { timeout: UI_ACTION_RPC_TIMEOUT_MS },
+    ),
+  switchEngine: async (engine: string, allowInstall = false) =>
+    callBaseMethod<Tachyon.EngineSwitchPlan>(
+      Tachyon.AvailableMethods.ENGINE_SWITCH,
+      [engine, ...(allowInstall ? ['--allow-install'] : [])],
+      '/usr/bin/tachyon',
+      { timeout: UI_ACTION_RPC_TIMEOUT_MS },
+    ),
+  switchEngineBack: async () =>
+    callBaseMethod<Tachyon.EngineSwitchPlan>(
+      Tachyon.AvailableMethods.ENGINE_SWITCH_BACK,
+      [],
+      '/usr/bin/tachyon',
+      { timeout: UI_ACTION_RPC_TIMEOUT_MS },
+    ),
   getServerCapabilities: async () =>
     callBaseMethod<Tachyon.GetServerCapabilities>(
       Tachyon.AvailableMethods.GET_SERVER_CAPABILITIES,

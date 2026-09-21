@@ -2887,7 +2887,7 @@
     "key": "Component action timed out",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:3860",
-      "src/tachyon/methods/shell/index.ts:966"
+      "src/tachyon/methods/shell/index.ts:1001"
     ]
   },
   {
@@ -2977,7 +2977,7 @@
     "key": "Configuration applied",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:4419",
-      "src/tachyon/methods/shell/index.ts:1705"
+      "src/tachyon/methods/shell/index.ts:1740"
     ]
   },
   {
@@ -5137,7 +5137,7 @@
     "key": "Failed to apply DNS configuration",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:4413",
-      "src/tachyon/methods/shell/index.ts:1699"
+      "src/tachyon/methods/shell/index.ts:1734"
     ]
   },
   {
@@ -5162,7 +5162,7 @@
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:14864",
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:4128",
-      "src/tachyon/methods/shell/index.ts:1300",
+      "src/tachyon/methods/shell/index.ts:1335",
       "src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2112"
     ]
   },
@@ -5171,7 +5171,7 @@
     "key": "Failed to auto-apply strategy",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:4305",
-      "src/tachyon/methods/shell/index.ts:1552"
+      "src/tachyon/methods/shell/index.ts:1587"
     ]
   },
   {
@@ -5179,7 +5179,7 @@
     "key": "Failed to clear fuzzer history",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:4343",
-      "src/tachyon/methods/shell/index.ts:1597"
+      "src/tachyon/methods/shell/index.ts:1632"
     ]
   },
   {
@@ -5247,7 +5247,7 @@
     "key": "Failed to detect DPI type",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:4282",
-      "src/tachyon/methods/shell/index.ts:1524"
+      "src/tachyon/methods/shell/index.ts:1559"
     ]
   },
   {
@@ -5273,8 +5273,8 @@
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:4459",
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:4480",
-      "src/tachyon/methods/shell/index.ts:1766",
-      "src/tachyon/methods/shell/index.ts:1792"
+      "src/tachyon/methods/shell/index.ts:1801",
+      "src/tachyon/methods/shell/index.ts:1827"
     ]
   },
   {
@@ -5282,7 +5282,7 @@
     "key": "Failed to fetch releases",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:3714",
-      "src/tachyon/methods/shell/index.ts:751"
+      "src/tachyon/methods/shell/index.ts:786"
     ]
   },
   {
@@ -5306,7 +5306,7 @@
     "key": "Failed to get DNS benchmark status",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:4381",
-      "src/tachyon/methods/shell/index.ts:1651"
+      "src/tachyon/methods/shell/index.ts:1686"
     ]
   },
   {
@@ -5314,7 +5314,7 @@
     "key": "Failed to get fuzzer history",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:4325",
-      "src/tachyon/methods/shell/index.ts:1574"
+      "src/tachyon/methods/shell/index.ts:1609"
     ]
   },
   {
@@ -5322,7 +5322,7 @@
     "key": "Failed to get fuzzer patterns",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:4211",
-      "src/tachyon/methods/shell/index.ts:1428"
+      "src/tachyon/methods/shell/index.ts:1463"
     ]
   },
   {
@@ -5330,7 +5330,7 @@
     "key": "Failed to get fuzzer status",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:4086",
-      "src/tachyon/methods/shell/index.ts:1252"
+      "src/tachyon/methods/shell/index.ts:1287"
     ]
   },
   {
@@ -5338,7 +5338,7 @@
     "key": "Failed to get fuzzer strategies",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:4155",
-      "src/tachyon/methods/shell/index.ts:1352"
+      "src/tachyon/methods/shell/index.ts:1387"
     ]
   },
   {
@@ -5346,7 +5346,7 @@
     "key": "Failed to install version",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:3738",
-      "src/tachyon/methods/shell/index.ts:780"
+      "src/tachyon/methods/shell/index.ts:815"
     ]
   },
   {
@@ -5399,7 +5399,7 @@
     "key": "Failed to read operation log",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:3687",
-      "src/tachyon/methods/shell/index.ts:718"
+      "src/tachyon/methods/shell/index.ts:753"
     ]
   },
   {
@@ -5415,7 +5415,7 @@
     "key": "Failed to reset fuzzer patterns",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:4263",
-      "src/tachyon/methods/shell/index.ts:1503"
+      "src/tachyon/methods/shell/index.ts:1538"
     ]
   },
   {
@@ -5455,7 +5455,7 @@
     "key": "Failed to save fuzzer patterns",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:4237",
-      "src/tachyon/methods/shell/index.ts:1461"
+      "src/tachyon/methods/shell/index.ts:1496"
     ]
   },
   {
@@ -5495,7 +5495,7 @@
     "key": "Failed to start DNS benchmark",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:4361",
-      "src/tachyon/methods/shell/index.ts:1627"
+      "src/tachyon/methods/shell/index.ts:1662"
     ]
   },
   {
@@ -5503,7 +5503,7 @@
     "key": "Failed to start fuzzer",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:4063",
-      "src/tachyon/methods/shell/index.ts:1226"
+      "src/tachyon/methods/shell/index.ts:1261"
     ]
   },
   {
@@ -5535,7 +5535,7 @@
     "key": "Failed to stop DNS benchmark",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:4400",
-      "src/tachyon/methods/shell/index.ts:1671"
+      "src/tachyon/methods/shell/index.ts:1706"
     ]
   },
   {
@@ -5543,7 +5543,7 @@
     "key": "Failed to stop fuzzer",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:4100",
-      "src/tachyon/methods/shell/index.ts:1267"
+      "src/tachyon/methods/shell/index.ts:1302"
     ]
   },
   {
@@ -5568,7 +5568,7 @@
     "key": "Failed to synthesize AI strategies",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:4188",
-      "src/tachyon/methods/shell/index.ts:1397"
+      "src/tachyon/methods/shell/index.ts:1432"
     ]
   },
   {
@@ -6397,7 +6397,7 @@
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:14099",
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:4348",
-      "src/tachyon/methods/shell/index.ts:1602",
+      "src/tachyon/methods/shell/index.ts:1637",
       "src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:1213"
     ]
   },
@@ -7601,7 +7601,7 @@
     "key": "IP and DNS leak check timed out",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:4466",
-      "src/tachyon/methods/shell/index.ts:1774"
+      "src/tachyon/methods/shell/index.ts:1809"
     ]
   },
   {
@@ -7974,8 +7974,8 @@
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:3569",
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:3588",
-      "src/tachyon/methods/shell/index.ts:568",
-      "src/tachyon/methods/shell/index.ts:589"
+      "src/tachyon/methods/shell/index.ts:603",
+      "src/tachyon/methods/shell/index.ts:624"
     ]
   },
   {
@@ -9513,7 +9513,7 @@
     "key": "Operation log is not available",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:3687",
-      "src/tachyon/methods/shell/index.ts:717"
+      "src/tachyon/methods/shell/index.ts:752"
     ]
   },
   {
@@ -9532,8 +9532,8 @@
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:3549",
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:3617",
       "src/helpers/withTimeout.ts:7",
-      "src/tachyon/methods/shell/index.ts:538",
-      "src/tachyon/methods/shell/index.ts:626"
+      "src/tachyon/methods/shell/index.ts:573",
+      "src/tachyon/methods/shell/index.ts:661"
     ]
   },
   {
@@ -9824,7 +9824,7 @@
     "key": "Patterns reset to factory defaults",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:4256",
-      "src/tachyon/methods/shell/index.ts:1493"
+      "src/tachyon/methods/shell/index.ts:1528"
     ]
   },
   {
@@ -9832,7 +9832,7 @@
     "key": "Patterns saved successfully",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:4232",
-      "src/tachyon/methods/shell/index.ts:1455"
+      "src/tachyon/methods/shell/index.ts:1490"
     ]
   },
   {
@@ -12196,8 +12196,8 @@
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:16936",
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:3508",
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:3527",
-      "src/tachyon/methods/shell/index.ts:489",
-      "src/tachyon/methods/shell/index.ts:510",
+      "src/tachyon/methods/shell/index.ts:524",
+      "src/tachyon/methods/shell/index.ts:545",
       "src/tachyon/tabs/diagnostic/initController.ts:607"
     ]
   },
@@ -13075,8 +13075,8 @@
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:3939",
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:3957",
-      "src/tachyon/methods/shell/index.ts:1078",
-      "src/tachyon/methods/shell/index.ts:1098"
+      "src/tachyon/methods/shell/index.ts:1113",
+      "src/tachyon/methods/shell/index.ts:1133"
     ]
   },
   {
@@ -13287,7 +13287,7 @@
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:21676",
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:3820",
-      "src/tachyon/methods/shell/index.ts:903",
+      "src/tachyon/methods/shell/index.ts:938",
       "src/tachyon/tabs/updates/initController.ts:703"
     ]
   },
@@ -13363,7 +13363,7 @@
     "key": "Tachyon update did not complete within the timeout",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:3849",
-      "src/tachyon/methods/shell/index.ts:951"
+      "src/tachyon/methods/shell/index.ts:986"
     ]
   },
   {

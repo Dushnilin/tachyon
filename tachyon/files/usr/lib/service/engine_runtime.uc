@@ -401,6 +401,7 @@ if ((sourcepath(1) != null && sourcepath(1) != "") || ARGV[0] == null)
     return {
         init_script,
         init_script_present,
+        run_init,
         stop_other_engines,
         start_active,
         stop_active,
