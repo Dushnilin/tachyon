@@ -23004,7 +23004,12 @@ function renderEngineCard() {
     if (badge) singBoxRow.push(badge);
   }
   [
-    singBoxVariant("Stable", "singBoxInstallStable", "install_stable", singBoxStable),
+    singBoxVariant(
+      "Stable",
+      "singBoxInstallStable",
+      "install_stable",
+      singBoxStable
+    ),
     singBoxVariant("Tiny", "singBoxInstallTiny", "install_tiny", singBoxTiny),
     singBoxVariant(
       "Extended",
@@ -23060,7 +23065,11 @@ function renderEngineCard() {
   }
   const body = [
     sectionTitle("sing-box"),
-    E("div", { style: "font-size: 12px; opacity: 0.8;" }, formatSingBoxVersion(systemInfo)),
+    E(
+      "div",
+      { style: "font-size: 12px; opacity: 0.8;" },
+      formatSingBoxVersion(systemInfo)
+    ),
     row(singBoxRow.length > 0 ? singBoxRow : [E("span", {}, _("installed"))]),
     sectionTitle("steer"),
     E(

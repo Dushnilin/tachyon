@@ -2151,7 +2151,12 @@ function renderEngineCard(): Node {
     if (badge) singBoxRow.push(badge);
   }
   [
-    singBoxVariant('Stable', 'singBoxInstallStable', 'install_stable', singBoxStable),
+    singBoxVariant(
+      'Stable',
+      'singBoxInstallStable',
+      'install_stable',
+      singBoxStable,
+    ),
     singBoxVariant('Tiny', 'singBoxInstallTiny', 'install_tiny', singBoxTiny),
     singBoxVariant(
       'Extended',
@@ -2163,7 +2168,8 @@ function renderEngineCard(): Node {
       'Extended compressed',
       'singBoxInstallExtendedCompressed',
       'install_extended_compressed',
-      Boolean(systemInfo.sing_box_extended) && Boolean(systemInfo.sing_box_compressed),
+      Boolean(systemInfo.sing_box_extended) &&
+        Boolean(systemInfo.sing_box_compressed),
     ),
     singBoxVariant('Leadaxe (lx)', 'singBoxInstallLx', 'install_lx', singBoxLx),
   ].forEach((node) => node && singBoxRow.push(node));
@@ -2214,7 +2220,11 @@ function renderEngineCard(): Node {
 
   const body: Node[] = [
     sectionTitle('sing-box'),
-    E('div', { style: 'font-size: 12px; opacity: 0.8;' }, formatSingBoxVersion(systemInfo)),
+    E(
+      'div',
+      { style: 'font-size: 12px; opacity: 0.8;' },
+      formatSingBoxVersion(systemInfo),
+    ),
     row(singBoxRow.length > 0 ? singBoxRow : [E('span', {}, _('installed'))]),
     sectionTitle('steer'),
     E(
