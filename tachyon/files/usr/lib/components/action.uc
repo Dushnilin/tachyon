@@ -9,6 +9,7 @@ let cmp = require("components.helpers");
 let cmp_ver = require("components.versions");
 let cmp_verify = require("components.verifier");
 let cmp_dl = require("components.downloader");
+let cmp_inst = require("components.installer");
 
 function core_url_module_or_null() {
     try {
@@ -203,270 +204,46 @@ function run_logged(description, command, timeout_seconds) { return cmp.run_logg
 function is_apk() { return cmp.is_apk(); }
 
 
-function pkg_tx_run_with_lock(description, command, timeout_seconds) {
-    update_job_phase("waiting_package_lock", "Waiting for package manager lock");
-    let lock_waited = 0;
-    let attempt = 0;
-    let max_lock_attempts = 12;
-    while (attempt < max_lock_attempts) {
-        if (attempt > 0) {
-            if (is_apk()) {
-                updates_log("APK database still locked (" + lock_waited + "s), waiting...");
-            } else {
-                updates_log("opkg lock still held (" + lock_waited + "s), waiting...");
-            }
-            job_heartbeat();
-            command_success("sleep 5");
-            lock_waited += 5;
-            if (lock_waited >= PKG_LOCK_WAIT_MAX_SECONDS) {
-                updates_log("Package manager lock timeout after " + lock_waited + "s", "error");
-                if (is_apk())
-                    diagnose_apk_lock_holder();
-                return { success: false, exit_code: 227, message: "Package manager lock timeout after " + lock_waited + "s" };
-            }
-        }
-        let output_file = make_tmp_file("pkg-tx");
-        if (output_file == "")
-            output_file = "/tmp/tachyon-updates-pkg-tx." + owner_pid();
-        let pipe_cmd = command + " >" + shell_quote(output_file) + " 2>&1";
-        let pipe = fs.popen(pipe_cmd, "r");
-        if (!pipe) {
-            attempt++;
-            continue;
-        }
-        let last_activity = now_seconds();
-        let last_heartbeat = now_seconds();
-        while (true) {
-            let line = pipe.read("line");
-            if (line == null)
-                break;
-            line = trim(as_string(line));
-            if (line != "") {
-                updates_log(line);
-                last_activity = now_seconds();
-            }
-            // Periodic heartbeat during long operations
-            if (now_seconds() - last_heartbeat >= JOB_HEARTBEAT_INTERVAL) {
-                job_heartbeat();
-                last_heartbeat = now_seconds();
-            }
-            if (now_seconds() - last_activity > timeout_seconds) {
-                updates_log("Package operation timed out after " + timeout_seconds + "s of inactivity", "error");
-                pipe.close("kill");
-                remove_file(output_file);
-                return { success: false, exit_code: -1, message: "Package operation timed out" };
-            }
-        }
-        let close_status = pipe.close();
-        let rc = normalize_stream_exit(close_status);
-        remove_file(output_file);
-        if (rc == 0) {
-            update_job_phase("package_transaction", "Package transaction completed");
-            return { success: true, exit_code: 0, message: "" };
-        }
-        let is_locked = detect_apk_lock("", rc);
-        if (attempt == 0 && is_locked)
-            diagnose_apk_lock_holder();
-        if (!is_locked) {
-            return { success: false, exit_code: rc, message: "Package operation failed with exit code " + rc };
-        }
-        attempt++;
-    }
-    return { success: false, exit_code: 227, message: "Package manager lock retry limit exceeded" };
-}
+// Delegated to components/installer.uc (branch 4 god-module split).
+function pkg_tx_run_with_lock(description, command, timeout_seconds) { return cmp_inst.pkg_tx_run_with_lock(description, command, timeout_seconds); }
 
-function pkg_tx_remove(package_name, description) {
-    update_job_phase("package_transaction", description || ("Removing " + package_name));
-    let cmd;
-    if (is_apk()) {
-        cmd = command_from_args([ "apk", "del", "--force-broken-world", package_name ]) + " </dev/null";
-    } else {
-        cmd = command_from_args([ "opkg", "remove", "--force-depends", package_name ]) + " </dev/null";
-    }
-    return pkg_tx_run_with_lock(description || ("Removing " + package_name), cmd, PKG_TX_REMOVE_TIMEOUT);
-}
+function pkg_tx_remove(package_name, description) { return cmp_inst.pkg_tx_remove(package_name, description); }
 
-// Delegated to components/* modules (branch 4 god-module split).
 function pkg_is_installed(package_name) { return cmp.pkg_is_installed(package_name); }
 
 
-function pkg_tx_downgrade(package_name, package_version) {
-    package_name = as_string(package_name);
-    package_version = as_string(package_version);
-    update_job_phase("package_transaction", "Downgrading " + package_name + " to " + package_version);
-    let cmd;
-    if (is_apk()) {
-        if (package_version == "")
-            return { success: false, exit_code: 1, message: "Version required for APK downgrade" };
-        let package_spec = package_name + "=" + package_version;
-        if (pkg_is_installed(package_name))
-            cmd = command_from_args([ "apk", "fix", "--reinstall", "--upgrade", package_spec ]) + " </dev/null";
-        else
-            cmd = command_from_args([ "apk", "add", package_spec ]) + " </dev/null";
-    } else {
-        cmd = command_from_args([ "opkg", "install", "--force-overwrite", "--force-reinstall", "--force-downgrade", package_name ]) + " </dev/null";
-    }
-    return pkg_tx_run_with_lock("Downgrading " + package_name, cmd, PKG_TX_INSTALL_TIMEOUT);
-}
+// Delegated to components/installer.uc (branch 4 god-module split).
+function pkg_tx_downgrade(package_name, package_version) { return cmp_inst.pkg_tx_downgrade(package_name, package_version); }
 
-// Delegated to components/* modules (branch 4 god-module split).
 function installed_package_version(package_name) { return cmp_ver.installed_package_version(package_name); }
 function verify_package_post_install(package_name, expected_version) { return cmp_verify.verify_package_post_install(package_name, expected_version); }
-
 function opkg_package_version_from_list(package_name, output) { return cmp_ver.opkg_package_version_from_list(package_name, output); }
 function available_package_version(package_name) { return cmp_ver.available_package_version(package_name); }
-
 function service_proxy_address() { return cmp.service_proxy_address(); }
 
+function pkg_list_update_command(proxy_address) { return cmp_inst.pkg_list_update_command(proxy_address); }
 
-function pkg_list_update_command(proxy_address) {
-    if (proxy_address == null)
-        proxy_address = service_proxy_address();
-    let cmd = is_apk() ? "apk update </dev/null" : "opkg update </dev/null";
-    if (as_string(proxy_address) != "") {
-        let p = "http://" + proxy_address;
-        cmd = command_env({ http_proxy: p, https_proxy: p, HTTP_PROXY: p, HTTPS_PROXY: p }) + " " + cmd;
-    }
-    return cmd;
-}
+function pkg_install_name_command(package_name, proxy_address) { return cmp_inst.pkg_install_name_command(package_name, proxy_address); }
 
-function pkg_install_name_command(package_name, proxy_address) {
-    if (proxy_address == null)
-        proxy_address = service_proxy_address();
-    let cmd = is_apk() ? command_from_args([ "apk", "add", package_name ]) + " </dev/null" :
-        command_from_args([ "opkg", "install", package_name ]) + " </dev/null";
-    if (as_string(proxy_address) != "") {
-        let p = "http://" + proxy_address;
-        cmd = command_env({ http_proxy: p, https_proxy: p, HTTP_PROXY: p, HTTPS_PROXY: p }) + " " + cmd;
-    }
-    return cmd;
-}
+function pkg_install_name_downgrade(package_name, package_version) { return cmp_inst.pkg_install_name_downgrade(package_name, package_version); }
 
-function pkg_install_name_downgrade(package_name, package_version) {
-    package_name = as_string(package_name);
-    if (is_apk()) {
-        package_version = as_string(package_version);
-        if (package_version == "")
-            return false;
-        let package_spec = package_name + "=" + package_version;
-        if (pkg_is_installed(package_name))
-            return command_success(command_from_args([ "apk", "fix", "--reinstall", "--upgrade", package_spec ]) + " </dev/null");
-        return command_success(command_from_args([ "apk", "add", package_spec ]) + " </dev/null");
-    }
-
-    return command_success(command_from_args([ "opkg", "install", "--force-overwrite", "--force-reinstall", "--force-downgrade", package_name ]) + " </dev/null") ||
-        command_success(command_from_args([ "opkg", "install", "--force-downgrade", package_name ]) + " </dev/null");
-}
-
-function pkg_install_files_command(files, force_reinstall) {
-    if (is_apk()) {
-        let add_args = [ "apk", "add", "--allow-untrusted" ];
-        for (let file in files)
-            push(add_args, file);
-        return command_from_args(add_args) + " </dev/null";
-    }
-    let args = [ "opkg", "install", "--force-overwrite", "--force-downgrade", "--force-depends" ];
-    if (force_reinstall)
-        push(args, "--force-reinstall");
-    for (let file in files)
-        push(args, file);
-    return command_from_args(args) + " </dev/null";
-}
-
-// Delegated to components/* modules (branch 4 god-module split).
+function pkg_install_files_command(files, force_reinstall) { return cmp_inst.pkg_install_files_command(files, force_reinstall); }
 function sanitize_apk_world() { return cmp.sanitize_apk_world(); }
 
+function pkg_tx_update_index(proxy_address) { return cmp_inst.pkg_tx_update_index(proxy_address); }
 
-function pkg_tx_update_index(proxy_address) {
-    sanitize_apk_world();
-    let cmd = pkg_list_update_command(proxy_address);
-    update_job_phase("package_index", "Refreshing package index");
-    let rc = stream_command_output(cmd, "Updating package index");
-    if (rc != 0)
-        updates_log("Package index update failed with exit code " + rc, "warn");
-    return rc == 0;
-}
+function pkg_tx_install_files(files, force_reinstall) { return cmp_inst.pkg_tx_install_files(files, force_reinstall); }
 
-function pkg_tx_install_files(files, force_reinstall) {
-    sanitize_apk_world();
-    update_job_phase("package_transaction", "Installing package files");
-    let args = [];
-    let timeout = PKG_TX_INSTALL_TIMEOUT;
-    if (is_apk()) {
-        push(args, "apk", "add", "--allow-untrusted");
-        for (let f in files)
-            push(args, f);
-    } else {
-        push(args, "opkg", "install", "--force-overwrite", "--force-downgrade", "--force-depends");
-        if (force_reinstall)
-            push(args, "--force-reinstall");
-        for (let f in files)
-            push(args, f);
-    }
-    let proxy = service_proxy_address();
-    let cmd = command_from_args(args) + " </dev/null";
-    if (as_string(proxy) != "") {
-        let p = "http://" + proxy;
-        cmd = command_env({ http_proxy: p, https_proxy: p, HTTP_PROXY: p, HTTPS_PROXY: p }) + " " + cmd;
-    }
-    return pkg_tx_run_with_lock("Installing packages", cmd, timeout);
-}
+function pkg_tx_install_name(package_name, proxy_address) { return cmp_inst.pkg_tx_install_name(package_name, proxy_address); }
 
-// force_reinstall matters only for opkg: installing an .ipk whose version equals
-// the installed one is a no-op unless --force-reinstall is passed, so a rebuild
-// published under the same tag would silently not be applied. apk always writes
-// the file it is handed, so its argument list stays untouched.
-// IMPORTANT: No fallback to raw tar/apk-extract. Package manager failure means
-// the operation must fail. Direct extraction bypasses package DB, maintainer
-// scripts, and dependency tracking.
-function pkg_tx_install_name(package_name, proxy_address) {
-    sanitize_apk_world();
-    update_job_phase("package_transaction", "Installing " + package_name);
-    let cmd = pkg_install_name_command(package_name, proxy_address);
-    return pkg_tx_run_with_lock("Installing " + package_name, cmd, PKG_TX_DEPS_TIMEOUT);
-}
-
-function pkg_install_files(files, force_reinstall) {
-    init_tmp_dir();
-    let result = pkg_tx_install_files(files, force_reinstall);
-    return result.success;
-}
-
-// Delegated to components/* modules (branch 4 god-module split).
+function pkg_install_files(files, force_reinstall) { return cmp_inst.pkg_install_files(files, force_reinstall); }
 function run_logged_retrying(description, command) { return cmp.run_logged_retrying(description, command); }
 
-function pkg_remove_sing_box_conflict(package_name) {
-    package_name = as_string(package_name);
-    if (is_apk()) {
-        if (file_exists("/etc/apk/world"))
-            command_success("sed -i -E " + shell_quote("/^" + package_name + "([><= ].*)?$/d") + " /etc/apk/world 2>/dev/null");
-        if (!pkg_is_installed(package_name))
-            return true;
-        return command_success(command_from_args([ "apk", "del", "--force-broken-world", package_name ]) + " </dev/null");
-    }
-    if (!pkg_is_installed(package_name))
-        return true;
-    return command_success(command_from_args([ "opkg", "remove", "--force-depends", package_name ]) + " </dev/null");
-}
-
-function run_logged_pkg_remove_sing_box_conflict(package_name, description) {
-    if (is_apk() && file_exists("/etc/apk/world"))
-        command_success("sed -i -E " + shell_quote("/^" + package_name + "([><= ].*)?$/d") + " /etc/apk/world 2>/dev/null");
-
-    if (!pkg_is_installed(package_name)) {
-        updates_log(description);
-        return true;
-    }
-
-    let command = is_apk() ?
-        command_from_args([ "apk", "del", "--force-broken-world", package_name ]) + " </dev/null" :
-        command_from_args([ "opkg", "remove", "--force-depends", package_name ]) + " </dev/null";
-    return run_logged(description, command, 60);
-}
-
-// Delegated to components/* modules (branch 4 god-module split).
+function pkg_remove_sing_box_conflict(package_name) { return cmp_inst.pkg_remove_sing_box_conflict(package_name); }
+function run_logged_pkg_remove_sing_box_conflict(package_name, description) { return cmp_inst.run_logged_pkg_remove_sing_box_conflict(package_name, description); }
 function compare_versions(lhs, rhs) { return cmp_ver.compare_versions(lhs, rhs); }
 function status_from_compare(compare_result) { return cmp_ver.status_from_compare(compare_result); }
+
 
 
 function check_success_compared(component, current_version, latest_version, compare_current_version, compare_latest_version, release_url) {
@@ -624,49 +401,10 @@ function retry_resolve(description, fn) {
     return false;
 }
 
-function ensure_package_tool(tool_name, package_name, component, action) {
-    if (command_exists(tool_name))
-        return true;
-    run_logged("Updating package lists before installing " + as_string(package_name), pkg_list_update_command(), 30);
-    return run_logged("Installing bootstrap package " + as_string(package_name), pkg_install_name_command(package_name), 60);
-}
+// Delegated to components/installer.uc (branch 4 god-module split).
+function ensure_package_tool(tool_name, package_name, component, action) { return cmp_inst.ensure_package_tool(tool_name, package_name, component, action); }
+function ensure_sing_box_dependencies() { return cmp_inst.ensure_sing_box_dependencies(); }
 
-function ensure_sing_box_dependencies() {
-    let kmods = [ "kmod-inet-diag", "kmod-netlink-diag", "kmod-tun", "kmod-nft-tproxy", "kmod-nft-nat", "ca-bundle" ];
-    let missing = [];
-    for (let kmod in kmods) {
-        if (!pkg_is_installed(kmod)) {
-            if (kmod == "kmod-tun" && file_exists("/dev/net/tun"))
-                continue;
-            push(missing, kmod);
-        }
-    }
-
-    if (length(missing) > 0) {
-        updates_log("Installing missing dependencies for sing-box: " + join(", ", missing));
-        run_logged("Updating package lists for sing-box dependencies", pkg_list_update_command(), 30);
-
-        for (let kmod in missing) {
-            if (!run_logged("Installing dependency " + kmod, pkg_install_name_command(kmod), 60)) {
-                if (kmod == "kmod-tun" && file_exists("/dev/net/tun"))
-                    continue;
-                updates_log("Could not install " + kmod + " (may be built-in or custom firmware)", "warn");
-            }
-        }
-    }
-
-    command_success_from_args([ "modprobe", "tun" ]);
-    command_success_from_args([ "modprobe", "inet_diag" ]);
-    command_success_from_args([ "modprobe", "netlink_diag" ]);
-    command_success_from_args([ "modprobe", "nft_tproxy" ]);
-    command_success_from_args([ "modprobe", "nft_nat" ]);
-    if (!file_exists("/dev/net/tun")) {
-        command_success_from_args([ "mkdir", "-p", "/dev/net" ]);
-        command_success_from_args([ "mknod", "/dev/net/tun", "c", "10", "200" ]);
-        command_success_from_args([ "chmod", "0666", "/dev/net/tun" ]);
-    }
-    return true;
-}
 
 function clear_version_caches() {
     remove_file("/tmp/tachyon.latest-version.cache");

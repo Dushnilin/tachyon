@@ -8,6 +8,7 @@ CLI_UC="$TACHYON_BIN"
 UPDATER="$ROOT_DIR/tachyon/files/usr/lib/components/updater.uc"
 UPDATES_UC="$ROOT_DIR/tachyon/files/usr/lib/components/updates.uc"
 ACTION_UC="$ROOT_DIR/tachyon/files/usr/lib/components/action.uc"
+INSTALLER_UC="$ROOT_DIR/tachyon/files/usr/lib/components/installer.uc"
 WORK_DIR="$(mktemp -d)"
 
 ucode() {
@@ -116,7 +117,7 @@ grep -Fq 'tachyon_status_running_with_timeout()' "$ACTION_UC" ||
   fail "components/action.uc must use bounded Tachyon status checks for component actions"
 grep -Fq 'restore_sing_box_after_failed_package_install' "$ACTION_UC" ||
   fail "stable and tiny sing-box package installs must restore the previous variant after validation failures"
-grep -Fq 'let package_spec = package_name + "=" + package_version;' "$ACTION_UC" ||
+grep -Fq 'let package_spec = package_name + "=" + package_version;' "$INSTALLER_UC" ||
   fail "APK sing-box installs must pin the concrete package version instead of selecting a provider"
 grep -Fq 'Package rollback failed; restored the previous sing-box binary backup' "$ACTION_UC" ||
   fail "package rollback must accept a successfully restored binary backup"
@@ -194,6 +195,7 @@ cp "$TACHYON_LIB/components/helpers.uc" "$package_runtime_lib/components/helpers
 cp "$TACHYON_LIB/components/versions.uc" "$package_runtime_lib/components/versions.uc"
 cp "$TACHYON_LIB/components/verifier.uc" "$package_runtime_lib/components/verifier.uc"
 cp "$TACHYON_LIB/components/downloader.uc" "$package_runtime_lib/components/downloader.uc"
+cp "$TACHYON_LIB/components/installer.uc" "$package_runtime_lib/components/installer.uc"
 cp "$TACHYON_LIB/core/common.uc" "$package_runtime_lib/core/common.uc"
 cp "$TACHYON_LIB/core/helpers.uc" "$package_runtime_lib/core/helpers.uc"
 cat >"$package_runtime_lib/core/constants.uc" <<'UCODE'
