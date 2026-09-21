@@ -234,21 +234,6 @@ function preflight(job) {
 
 // Start the background worker. Returns shell fragment to execute.
 // The caller should use exec.run_background() with this as the command.
-function start_shell(job, command, opts) {
-    let options = (type(opts) == "object") ? opts : {};
-    let timeout = int(options.timeout || job.hard_deadline);
-    let stdout = as_string(options.stdout || "/dev/null");
-    let pid_file = as_string(options.pid_file || "");
-
-    // Build the worker shell fragment that wraps the command with heartbeat
-    let wrapped = build_worker_wrapper(job, command, timeout);
-
-    transition(job, PHASE_RUNNING);
-
-    return wrapped;
-}
-
-// Build a shell wrapper that runs the command and writes heartbeat + result.
 function build_worker_wrapper(job, command, timeout) {
     let state_file = job_state_path(job.id);
     let hb_interval = as_string(job.heartbeat_interval);
@@ -288,7 +273,30 @@ function build_worker_wrapper(job, command, timeout) {
     return wrapper;
 }
 
+function start_shell(job, command, opts) {
+    let options = (type(opts) == "object") ? opts : {};
+    let timeout = int(options.timeout || job.hard_deadline);
+    let stdout = as_string(options.stdout || "/dev/null");
+    let pid_file = as_string(options.pid_file || "");
+
+    // Build the worker shell fragment that wraps the command with heartbeat
+    let wrapped = build_worker_wrapper(job, command, timeout);
+
+    transition(job, PHASE_RUNNING);
+
+    return wrapped;
+}
+
 // Update heartbeat from within the worker process.
+// Report failure.
+function fail(job, error) {
+    let extra = {
+        error: as_string(error),
+        result: { exit_code: 1, error: as_string(error) }
+    };
+    return transition(job, PHASE_FAILED, extra);
+}
+
 function heartbeat(job) {
     let now = now_seconds();
 
@@ -311,15 +319,6 @@ function complete(job, result) {
         progress: 100
     };
     return transition(job, PHASE_SUCCESS, extra);
-}
-
-// Report failure.
-function fail(job, error) {
-    let extra = {
-        error: as_string(error),
-        result: { exit_code: 1, error: as_string(error) }
-    };
-    return transition(job, PHASE_FAILED, extra);
 }
 
 // Cancel a job.

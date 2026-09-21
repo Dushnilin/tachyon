@@ -46,6 +46,34 @@ EOF
 node "$LINTER_DIR/ucode_forward_refs.js" "$tmp_dir/good.uc" >/dev/null 2>&1 ||
   fail "linter rejected a correctly ordered snippet (self-test)"
 
+# Regression: regex literals containing unbalanced braces must not break the
+# scanner (previously the linter went blind after a line like /[-=~_]{4,}/).
+cat >"$tmp_dir/regex_braces.uc" <<'EOF'
+function caller() { callee(); }
+function helper() {
+    if (match(last, /^[-=~_]{4,}$/) || match(other, /^(\d{1,3}\.){3}\d{1,3}$/))
+        return 1;
+    return 0;
+}
+function callee() { print("ok\n"); }
+EOF
+
+if node "$LINTER_DIR/ucode_forward_refs.js" "$tmp_dir/regex_braces.uc" >/dev/null 2>&1; then
+  fail "linter went blind after a regex with braces (self-test)"
+fi
+
+# Regression: a top-level object literal must not make the linter skip every
+# function declared after it.
+cat >"$tmp_dir/top_level_object.uc" <<'EOF'
+const LIMITS = { soft: 10, hard: 20 };
+function caller() { callee(); }
+function callee() { print("ok\n"); }
+EOF
+
+if node "$LINTER_DIR/ucode_forward_refs.js" "$tmp_dir/top_level_object.uc" >/dev/null 2>&1; then
+  fail "linter skipped functions after a top-level object literal (self-test)"
+fi
+
 node "$LINTER_DIR/ucode_forward_refs.js" "$LIB_DIR" ||
   fail "forward references found in backend ucode"
 

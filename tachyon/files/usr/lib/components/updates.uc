@@ -2330,6 +2330,11 @@ function url_to_hash_key(url) {
     return substr(safe, 0, 80);
 }
 
+function read_file_text(path) {
+    let data = fs.readfile(as_string(path));
+    return data == null ? "" : as_string(data);
+}
+
 function cached_hash_matches(url, content_path) {
     let key = url_to_hash_key(url);
     if (key == "")
@@ -2340,11 +2345,6 @@ function cached_hash_matches(url, content_path) {
         return false;
     let current_hash = file_sha256(content_path);
     return current_hash != "" && cached_hash == current_hash;
-}
-
-function read_file_text(path) {
-    let data = fs.readfile(as_string(path));
-    return data == null ? "" : as_string(data);
 }
 
 function save_content_hash(url, content_path) {
@@ -2602,6 +2602,90 @@ function import_community_srs_file(service, settings) {
         ok = false;
     }
 
+    remove_file(tmpfile);
+    return ok;
+}
+
+function import_domains_from_remote_plain_file(url, section, settings) {
+    let tmpfile = temp_path();
+    if (tmpfile == "")
+        return false;
+
+    if (!download_to_file(url, tmpfile, service_proxy_address(settings, "lists")) || !file_nonempty(tmpfile)) {
+        log_message("Failed to download remote domain list " + as_string(url) + "; skipping it until the next successful update", "warn");
+        remove_file(tmpfile);
+        return true;
+    }
+
+    convert_crlf_to_lf(tmpfile);
+    let ruleset_path = remote_ruleset_path(section, "domains");
+    let ok = ensure_ruleset_source(ruleset_path) &&
+        ruleset_module_success([ "import-plain-list", tmpfile, ruleset_path, "domain_suffix", "domains", "5000" ]);
+    remove_file(tmpfile);
+    return ok;
+}
+
+function import_subnets_from_remote_json_file(url, section, settings) {
+    let json_tmpfile = temp_path();
+    if (json_tmpfile == "")
+        return false;
+
+    if (!download_to_file(url, json_tmpfile, service_proxy_address(settings, "lists")) || !file_nonempty(json_tmpfile)) {
+        log_message("Failed to download remote JSON subnet list " + as_string(url) + "; skipping it until the next successful update", "warn");
+        remove_file(json_tmpfile);
+        return true;
+    }
+
+    let ok = add_json_ruleset_subnets_to_nft_for_section(section, json_tmpfile, "Remote JSON rule set " + as_string(url));
+    if (!ok)
+        log_message("Failed to add subnets from remote JSON list " + as_string(url) + " to nftables", "error");
+    remove_file(json_tmpfile);
+    return ok;
+}
+
+function import_subnets_from_remote_srs_file(url, section, settings) {
+    let binary_tmpfile = temp_path();
+    let json_tmpfile = temp_path();
+    if (binary_tmpfile == "" || json_tmpfile == "") {
+        remove_files([ binary_tmpfile, json_tmpfile ]);
+        return false;
+    }
+
+    if (!download_to_file(url, binary_tmpfile, service_proxy_address(settings, "lists")) || !file_nonempty(binary_tmpfile)) {
+        log_message("Failed to download remote SRS subnet list " + as_string(url) + "; skipping it until the next successful update", "warn");
+        remove_files([ binary_tmpfile, json_tmpfile ]);
+        return true;
+    }
+
+    let ok = command_success_from_args([ "sing-box", "rule-set", "decompile", binary_tmpfile, "-o", json_tmpfile ]);
+    if (!ok)
+        log_message("Failed to decompile binary rule set file", "error");
+    if (ok && !add_json_ruleset_subnets_to_nft_for_section(section, json_tmpfile, "Remote SRS rule set " + as_string(url))) {
+        log_message("Failed to add subnets from remote SRS list " + as_string(url) + " to nftables", "error");
+        ok = false;
+    }
+
+    remove_files([ binary_tmpfile, json_tmpfile ]);
+    return ok;
+}
+
+function import_subnets_from_remote_plain_file(url, section, settings) {
+    let tmpfile = temp_path();
+    if (tmpfile == "")
+        return false;
+
+    if (!download_to_file(url, tmpfile, service_proxy_address(settings, "lists")) || !file_nonempty(tmpfile)) {
+        log_message("Failed to download remote plain subnet list " + as_string(url) + "; skipping it until the next successful update", "warn");
+        remove_file(tmpfile);
+        return true;
+    }
+
+    convert_crlf_to_lf(tmpfile);
+    let ruleset_path = remote_ruleset_path(section, "subnets");
+    let ok = ensure_ruleset_source(ruleset_path) &&
+        ruleset_module_success([ "import-plain-list", tmpfile, ruleset_path, "ip_cidr", "subnets", "5000" ]);
+    if (ok)
+        ok = add_plain_subnet_file_to_nft_for_section(section, tmpfile);
     remove_file(tmpfile);
     return ok;
 }
@@ -2969,25 +3053,6 @@ function update_remote_plain_rulesets_from_rule(section, settings) {
     return ok;
 }
 
-function import_domains_from_remote_plain_file(url, section, settings) {
-    let tmpfile = temp_path();
-    if (tmpfile == "")
-        return false;
-
-    if (!download_to_file(url, tmpfile, service_proxy_address(settings, "lists")) || !file_nonempty(tmpfile)) {
-        log_message("Failed to download remote domain list " + as_string(url) + "; skipping it until the next successful update", "warn");
-        remove_file(tmpfile);
-        return true;
-    }
-
-    convert_crlf_to_lf(tmpfile);
-    let ruleset_path = remote_ruleset_path(section, "domains");
-    let ok = ensure_ruleset_source(ruleset_path) &&
-        ruleset_module_success([ "import-plain-list", tmpfile, ruleset_path, "domain_suffix", "domains", "5000" ]);
-    remove_file(tmpfile);
-    return ok;
-}
-
 function import_domains_from_remote_domain_lists(section, settings) {
     if (!bool_option(section, "enabled", true))
         return true;
@@ -3011,71 +3076,6 @@ function import_domains_from_remote_domain_lists(section, settings) {
             ok = false;
     }
     cleanup_empty_ruleset(remote_ruleset_path(section, "domains"));
-    return ok;
-}
-
-function import_subnets_from_remote_json_file(url, section, settings) {
-    let json_tmpfile = temp_path();
-    if (json_tmpfile == "")
-        return false;
-
-    if (!download_to_file(url, json_tmpfile, service_proxy_address(settings, "lists")) || !file_nonempty(json_tmpfile)) {
-        log_message("Failed to download remote JSON subnet list " + as_string(url) + "; skipping it until the next successful update", "warn");
-        remove_file(json_tmpfile);
-        return true;
-    }
-
-    let ok = add_json_ruleset_subnets_to_nft_for_section(section, json_tmpfile, "Remote JSON rule set " + as_string(url));
-    if (!ok)
-        log_message("Failed to add subnets from remote JSON list " + as_string(url) + " to nftables", "error");
-    remove_file(json_tmpfile);
-    return ok;
-}
-
-function import_subnets_from_remote_srs_file(url, section, settings) {
-    let binary_tmpfile = temp_path();
-    let json_tmpfile = temp_path();
-    if (binary_tmpfile == "" || json_tmpfile == "") {
-        remove_files([ binary_tmpfile, json_tmpfile ]);
-        return false;
-    }
-
-    if (!download_to_file(url, binary_tmpfile, service_proxy_address(settings, "lists")) || !file_nonempty(binary_tmpfile)) {
-        log_message("Failed to download remote SRS subnet list " + as_string(url) + "; skipping it until the next successful update", "warn");
-        remove_files([ binary_tmpfile, json_tmpfile ]);
-        return true;
-    }
-
-    let ok = command_success_from_args([ "sing-box", "rule-set", "decompile", binary_tmpfile, "-o", json_tmpfile ]);
-    if (!ok)
-        log_message("Failed to decompile binary rule set file", "error");
-    if (ok && !add_json_ruleset_subnets_to_nft_for_section(section, json_tmpfile, "Remote SRS rule set " + as_string(url))) {
-        log_message("Failed to add subnets from remote SRS list " + as_string(url) + " to nftables", "error");
-        ok = false;
-    }
-
-    remove_files([ binary_tmpfile, json_tmpfile ]);
-    return ok;
-}
-
-function import_subnets_from_remote_plain_file(url, section, settings) {
-    let tmpfile = temp_path();
-    if (tmpfile == "")
-        return false;
-
-    if (!download_to_file(url, tmpfile, service_proxy_address(settings, "lists")) || !file_nonempty(tmpfile)) {
-        log_message("Failed to download remote plain subnet list " + as_string(url) + "; skipping it until the next successful update", "warn");
-        remove_file(tmpfile);
-        return true;
-    }
-
-    convert_crlf_to_lf(tmpfile);
-    let ruleset_path = remote_ruleset_path(section, "subnets");
-    let ok = ensure_ruleset_source(ruleset_path) &&
-        ruleset_module_success([ "import-plain-list", tmpfile, ruleset_path, "ip_cidr", "subnets", "5000" ]);
-    if (ok)
-        ok = add_plain_subnet_file_to_nft_for_section(section, tmpfile);
-    remove_file(tmpfile);
     return ok;
 }
 

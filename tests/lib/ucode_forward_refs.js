@@ -67,6 +67,35 @@ function stripCommentsAndStrings(source) {
       continue;
     }
 
+    // Regex literals: a '/' that is not a comment opener and not preceded by
+    // a value (identifier/number/closing bracket) starts a regex. Regexes may
+    // contain unbalanced braces ({4,}), which would break brace tracking.
+    if (c === '/') {
+      let p = i - 1;
+      while (p >= 0 && /\s/.test(source[p])) p--;
+      const prev = p >= 0 ? source[p] : '';
+      const afterValue = /[A-Za-z0-9_)%\]]/.test(prev);
+      if (!afterValue) {
+        let j = i + 1;
+        let inClass = false;
+        while (j < n && source[j] !== '\n') {
+          if (source[j] === '\\') {
+            j += 2;
+            continue;
+          }
+          if (source[j] === '[') inClass = true;
+          else if (source[j] === ']') inClass = false;
+          else if (source[j] === '/' && !inClass) break;
+          j++;
+        }
+        if (j < n && source[j] === '/') {
+          blank(i, j + 1);
+          i = j + 1;
+          continue;
+        }
+      }
+    }
+
     i++;
   }
 
@@ -118,6 +147,12 @@ function collectTopLevelFunctions(source) {
     const delta = braceDelta(line);
     if (delta !== 0) started = true;
     depth += delta;
+    // Back at top level (e.g. after a top-level object literal like
+    // `const X = { ... };`): allow collecting the next function declaration.
+    if (depth <= 0) {
+      depth = 0;
+      started = false;
+    }
   }
 
   return functions;
