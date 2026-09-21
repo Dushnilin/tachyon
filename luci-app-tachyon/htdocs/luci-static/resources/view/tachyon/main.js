@@ -22971,7 +22971,11 @@ function renderEngineSelector() {
     style: "min-width: 180px;"
   });
   info.engines.filter((entry) => entry.known && entry.installed).forEach((entry) => {
-    const option = E("option", { value: entry.engine }, engineLabel(entry.engine));
+    const option = E(
+      "option",
+      { value: entry.engine },
+      engineLabel(entry.engine)
+    );
     option.selected = entry.engine === info.active;
     select.appendChild(option);
   });
@@ -22985,7 +22989,11 @@ function renderEngineSelector() {
   });
   return E("div", { class: "tachyon_updates-page__component" }, [
     E("div", { class: "tachyon_updates-page__component__header" }, [
-      E("b", { class: "tachyon_updates-page__component__title" }, _("Routing Engine")),
+      E(
+        "b",
+        { class: "tachyon_updates-page__component__title" },
+        _("Routing Engine")
+      ),
       E(
         "span",
         { class: "tachyon_updates-page__component__header-version" },
@@ -22994,7 +23002,9 @@ function renderEngineSelector() {
     ]),
     E(
       "div",
-      { style: "display: flex; gap: 8px; align-items: center; flex-wrap: wrap;" },
+      {
+        style: "display: flex; gap: 8px; align-items: center; flex-wrap: wrap;"
+      },
       [select, apply]
     ),
     warning
@@ -23149,11 +23159,9 @@ function renderUpdatesComponents() {
   return preserveScrollForPage(() => {
     container.replaceChildren(
       ...engineSelector ? [
-        E(
-          "div",
-          { class: "tachyon_updates-page__engine-card" },
-          [engineSelector]
-        )
+        E("div", { class: "tachyon_updates-page__engine-card" }, [
+          engineSelector
+        ])
       ] : [],
       ...columns.map(
         (columnNodes) => E(

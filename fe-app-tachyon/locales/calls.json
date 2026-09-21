@@ -613,10 +613,10 @@
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:15759",
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:15825",
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23028",
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23038",
       "src/tachyon/tabs/diagnostic/partials/renderEngineSwitchModal.ts:126",
       "src/tachyon/tabs/diagnostic/partials/renderEngineSwitchModal.ts:52",
-      "src/tachyon/tabs/updates/initController.ts:2161"
+      "src/tachyon/tabs/updates/initController.ts:2172"
     ]
   },
   {
@@ -1246,8 +1246,8 @@
     "call": "Alternative routing engine with its own VLESS/Reality client.",
     "key": "Alternative routing engine with its own VLESS/Reality client.",
     "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23094",
-      "src/tachyon/tabs/updates/initController.ts:2246"
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23104",
+      "src/tachyon/tabs/updates/initController.ts:2257"
     ]
   },
   {
@@ -1452,9 +1452,9 @@
     "key": "Apply",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:14520",
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:22982",
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:22986",
       "src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:1657",
-      "src/tachyon/tabs/updates/initController.ts:2105"
+      "src/tachyon/tabs/updates/initController.ts:2109"
     ]
   },
   {
@@ -2427,8 +2427,8 @@
     "call": "Check for update",
     "key": "Check for update",
     "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23043",
-      "src/tachyon/tabs/updates/initController.ts:2188"
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23053",
+      "src/tachyon/tabs/updates/initController.ts:2199"
     ]
   },
   {
@@ -9195,7 +9195,7 @@
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:22544",
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:22555",
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:22566",
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23038",
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23048",
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:6604",
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:6609",
       "src/tachyon/helpers/singBoxVariant.ts:34",
@@ -9210,7 +9210,7 @@
       "src/tachyon/tabs/updates/initController.ts:1580",
       "src/tachyon/tabs/updates/initController.ts:1595",
       "src/tachyon/tabs/updates/initController.ts:1610",
-      "src/tachyon/tabs/updates/initController.ts:2181"
+      "src/tachyon/tabs/updates/initController.ts:2192"
     ]
   },
   {
@@ -10886,10 +10886,10 @@
     "key": "Remove",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:22250",
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23072",
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23082",
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8983",
       "src/tachyon/tabs/updates/initController.ts:1214",
-      "src/tachyon/tabs/updates/initController.ts:2222"
+      "src/tachyon/tabs/updates/initController.ts:2233"
     ]
   },
   {
@@ -11323,9 +11323,9 @@
     "key": "Routing Engine",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:15847",
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:22988",
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:22995",
       "src/tachyon/tabs/diagnostic/partials/renderEngineSwitchModal.ts:151",
-      "src/tachyon/tabs/updates/initController.ts:2112"
+      "src/tachyon/tabs/updates/initController.ts:2120"
     ]
   },
   {
@@ -12974,10 +12974,10 @@
     "call": "Steer",
     "key": "Steer",
     "places": [
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23112",
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23115",
-      "src/tachyon/tabs/updates/initController.ts:2271",
-      "src/tachyon/tabs/updates/initController.ts:2274"
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23122",
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23125",
+      "src/tachyon/tabs/updates/initController.ts:2282",
+      "src/tachyon/tabs/updates/initController.ts:2285"
     ]
   },
   {
@@ -13303,9 +13303,9 @@
     "key": "Switch failed",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:15819",
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23023",
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23033",
       "src/tachyon/tabs/diagnostic/partials/renderEngineSwitchModal.ts:119",
-      "src/tachyon/tabs/updates/initController.ts:2156"
+      "src/tachyon/tabs/updates/initController.ts:2167"
     ]
   },
   {
@@ -13973,9 +13973,9 @@
     "key": "These features will be parked and restored when you switch back",
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:15812",
-      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23016",
+      "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23026",
       "src/tachyon/tabs/diagnostic/partials/renderEngineSwitchModal.ts:111",
-      "src/tachyon/tabs/updates/initController.ts:2148"
+      "src/tachyon/tabs/updates/initController.ts:2159"
     ]
   },
   {

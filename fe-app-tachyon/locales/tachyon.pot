@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-21 16:05+0300\n"
-"PO-Revision-Date: 2026-09-21 16:05+0300\n"
+"POT-Creation-Date: 2026-09-21 16:06+0300\n"
+"PO-Revision-Date: 2026-09-21 16:06+0300\n"
 "Last-Translator: Dushnilin <dushnilin@gmail.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -404,10 +404,10 @@ msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:15759
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:15825
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23028
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23038
 #: src/tachyon/tabs/diagnostic/partials/renderEngineSwitchModal.ts:126
 #: src/tachyon/tabs/diagnostic/partials/renderEngineSwitchModal.ts:52
-#: src/tachyon/tabs/updates/initController.ts:2161
+#: src/tachyon/tabs/updates/initController.ts:2172
 msgid "Active engine"
 msgstr ""
 
@@ -785,8 +785,8 @@ msgstr ""
 msgid "Alter ID"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23094
-#: src/tachyon/tabs/updates/initController.ts:2246
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23104
+#: src/tachyon/tabs/updates/initController.ts:2257
 msgid "Alternative routing engine with its own VLESS/Reality client."
 msgstr ""
 
@@ -910,9 +910,9 @@ msgid "Applied"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:14520
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:22982
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:22986
 #: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:1657
-#: src/tachyon/tabs/updates/initController.ts:2105
+#: src/tachyon/tabs/updates/initController.ts:2109
 msgid "Apply"
 msgstr ""
 
@@ -1513,8 +1513,8 @@ msgstr ""
 msgid "Check domain"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23043
-#: src/tachyon/tabs/updates/initController.ts:2188
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23053
+#: src/tachyon/tabs/updates/initController.ts:2199
 msgid "Check for update"
 msgstr ""
 
@@ -5701,7 +5701,7 @@ msgstr ""
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:22544
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:22555
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:22566
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23038
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23048
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:6604
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:6609
 #: src/tachyon/helpers/singBoxVariant.ts:34
@@ -5716,7 +5716,7 @@ msgstr ""
 #: src/tachyon/tabs/updates/initController.ts:1580
 #: src/tachyon/tabs/updates/initController.ts:1595
 #: src/tachyon/tabs/updates/initController.ts:1610
-#: src/tachyon/tabs/updates/initController.ts:2181
+#: src/tachyon/tabs/updates/initController.ts:2192
 msgid "Not installed"
 msgstr ""
 
@@ -6735,10 +6735,10 @@ msgid "Removal completed successfully!"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:22250
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23072
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23082
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8983
 #: src/tachyon/tabs/updates/initController.ts:1214
-#: src/tachyon/tabs/updates/initController.ts:2222
+#: src/tachyon/tabs/updates/initController.ts:2233
 msgid "Remove"
 msgstr ""
 
@@ -7001,9 +7001,9 @@ msgid "Router Traffic Target Section"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:15847
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:22988
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:22995
 #: src/tachyon/tabs/diagnostic/partials/renderEngineSwitchModal.ts:151
-#: src/tachyon/tabs/updates/initController.ts:2112
+#: src/tachyon/tabs/updates/initController.ts:2120
 msgid "Routing Engine"
 msgstr ""
 
@@ -8007,10 +8007,10 @@ msgstr ""
 msgid "Status / Suite"
 msgstr ""
 
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23112
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23115
-#: src/tachyon/tabs/updates/initController.ts:2271
-#: src/tachyon/tabs/updates/initController.ts:2274
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23122
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23125
+#: src/tachyon/tabs/updates/initController.ts:2282
+#: src/tachyon/tabs/updates/initController.ts:2285
 msgid "Steer"
 msgstr ""
 
@@ -8210,9 +8210,9 @@ msgid "Switch DNS to DoH"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:15819
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23023
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23033
 #: src/tachyon/tabs/diagnostic/partials/renderEngineSwitchModal.ts:119
-#: src/tachyon/tabs/updates/initController.ts:2156
+#: src/tachyon/tabs/updates/initController.ts:2167
 msgid "Switch failed"
 msgstr ""
 
@@ -8628,9 +8628,9 @@ msgid "There are rules using Zapret2"
 msgstr ""
 
 #: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:15812
-#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23016
+#: ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23026
 #: src/tachyon/tabs/diagnostic/partials/renderEngineSwitchModal.ts:111
-#: src/tachyon/tabs/updates/initController.ts:2148
+#: src/tachyon/tabs/updates/initController.ts:2159
 msgid "These features will be parked and restored when you switch back"
 msgstr ""
 

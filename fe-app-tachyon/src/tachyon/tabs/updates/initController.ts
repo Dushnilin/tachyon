@@ -2091,7 +2091,11 @@ function renderEngineSelector(): Node | null {
   info.engines
     .filter((entry) => entry.known && entry.installed)
     .forEach((entry) => {
-      const option = E('option', { value: entry.engine }, engineLabel(entry.engine));
+      const option = E(
+        'option',
+        { value: entry.engine },
+        engineLabel(entry.engine),
+      );
       (option as HTMLOptionElement).selected = entry.engine === info.active;
       select.appendChild(option);
     });
@@ -2104,12 +2108,17 @@ function renderEngineSelector(): Node | null {
   const apply = renderButton({
     text: _('Apply'),
     classNames: ['cbi-button-action'],
-    onClick: () => void applyEngineSelection(select.value, info.active, warning),
+    onClick: () =>
+      void applyEngineSelection(select.value, info.active, warning),
   });
 
   return E('div', { class: 'tachyon_updates-page__component' }, [
     E('div', { class: 'tachyon_updates-page__component__header' }, [
-      E('b', { class: 'tachyon_updates-page__component__title' }, _('Routing Engine')),
+      E(
+        'b',
+        { class: 'tachyon_updates-page__component__title' },
+        _('Routing Engine'),
+      ),
       E(
         'span',
         { class: 'tachyon_updates-page__component__header-version' },
@@ -2118,7 +2127,9 @@ function renderEngineSelector(): Node | null {
     ]),
     E(
       'div',
-      { style: 'display: flex; gap: 8px; align-items: center; flex-wrap: wrap;' },
+      {
+        style: 'display: flex; gap: 8px; align-items: center; flex-wrap: wrap;',
+      },
       [select, apply],
     ),
     warning,
@@ -2325,11 +2336,9 @@ function renderUpdatesComponents() {
     container.replaceChildren(
       ...(engineSelector
         ? [
-            E(
-              'div',
-              { class: 'tachyon_updates-page__engine-card' },
-              [engineSelector],
-            ),
+            E('div', { class: 'tachyon_updates-page__engine-card' }, [
+              engineSelector,
+            ]),
           ]
         : []),
       ...columns.map((columnNodes) =>
