@@ -196,6 +196,7 @@ cp "$TACHYON_LIB/components/versions.uc" "$package_runtime_lib/components/versio
 cp "$TACHYON_LIB/components/verifier.uc" "$package_runtime_lib/components/verifier.uc"
 cp "$TACHYON_LIB/components/downloader.uc" "$package_runtime_lib/components/downloader.uc"
 cp "$TACHYON_LIB/components/installer.uc" "$package_runtime_lib/components/installer.uc"
+cp "$TACHYON_LIB/components/catalog.uc" "$package_runtime_lib/components/catalog.uc"
 cp "$TACHYON_LIB/core/common.uc" "$package_runtime_lib/core/common.uc"
 cp "$TACHYON_LIB/core/helpers.uc" "$package_runtime_lib/core/helpers.uc"
 cat >"$package_runtime_lib/core/constants.uc" <<'UCODE'

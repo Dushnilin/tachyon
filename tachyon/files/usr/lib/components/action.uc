@@ -10,6 +10,7 @@ let cmp_ver = require("components.versions");
 let cmp_verify = require("components.verifier");
 let cmp_dl = require("components.downloader");
 let cmp_inst = require("components.installer");
+let cmp_cat = require("components.catalog");
 
 function core_url_module_or_null() {
     try {
@@ -286,131 +287,49 @@ function format_fingerprint_human(fp) { return cmp_verify.format_fingerprint_hum
 function fetch_github_releases_json(owner, repo, per_page) { return cmp_dl.fetch_github_releases_json(owner, repo, per_page); }
 
 
-function latest_tachyon_release_json() {
-    let parts = split(TACHYON_RELEASE_REPO, "/");
-    if (length(parts) != 2 || as_string(parts[0]) == "" || as_string(parts[1]) == "")
-        return "";
-    return fetch_github_release_json(parts[0], parts[1]);
-}
+// Delegated to components/catalog.uc (branch 4 god-module split).
+function latest_tachyon_release_json() { return cmp_cat.latest_tachyon_release_json(); }
 
 // Delegated to components/* modules (branch 4 god-module split).
 function fetch_github_release_tag_fallback(owner, repo) { return cmp_dl.fetch_github_release_tag_fallback(owner, repo); }
 function url_exists(url) { return cmp_dl.url_exists(url); }
 
 
-function latest_tachyon_version() {
-    let response = latest_tachyon_release_json();
-    let version = "";
-    if (response != "") {
-        version = trim(helper_output_input(response, "object-get-default", [ "tag_name", "" ]));
-    }
-    if (version == "") {
-        let parts = split(TACHYON_RELEASE_REPO, "/");
-        if (length(parts) == 2 && parts[0] != "" && parts[1] != "") {
-            version = fetch_github_release_tag_fallback(parts[0], parts[1]);
-        }
-    }
-    return version;
-}
+// Delegated to components/catalog.uc (branch 4 god-module split).
+function latest_tachyon_version() { return cmp_cat.latest_tachyon_version(); }
 
-function fetch_tachyon_latest_release_metadata() {
-    let parts = split(TACHYON_RELEASE_REPO, "/");
-    let response = latest_tachyon_release_json();
-    if (response != "") {
-        let metadata = trim(helper_output_input(response, "release-metadata-tsv", []));
-        if (metadata != "")
-            return metadata;
-    }
+// Delegated to components/catalog.uc (branch 4 god-module split).
+function fetch_tachyon_latest_release_metadata() { return cmp_cat.fetch_tachyon_latest_release_metadata(); }
 
-    if (length(parts) == 2 && as_string(parts[0]) != "" && as_string(parts[1]) != "") {
-        let fallback_tag = fetch_github_release_tag_fallback(parts[0], parts[1]);
-        if (fallback_tag != "")
-            return fallback_tag + "\thttps://github.com/" + parts[0] + "/" + parts[1] + "/releases/tag/" + fallback_tag;
-    }
+// Delegated to components/catalog.uc (branch 4 god-module split).
+function write_tachyon_latest_version_cache(value, timestamp) { return cmp_cat.write_tachyon_latest_version_cache(value, timestamp); }
 
-    return "";
-}
-
-function write_tachyon_latest_version_cache(value, timestamp) {
-    if (as_string(value) == "")
-        return;
-    write_file("/tmp/tachyon.latest-version.cache", as_string(value) + "\n" + as_string(timestamp) + "\n");
-}
-
-function read_tachyon_build_fingerprint() {
-    let fields = split(trim(read_file(TACHYON_BUILD_STATE_FILE)), "\t");
-    if (length(fields) < 2 || trim(as_string(fields[0])) != trim(as_string(TACHYON_VERSION)))
-        return "";
-    return trim(as_string(fields[1]));
-}
+// Delegated to components/catalog.uc (branch 4 god-module split).
+function read_tachyon_build_fingerprint() { return cmp_cat.read_tachyon_build_fingerprint(); }
 
 // A release tag can be rebuilt, so the version alone cannot answer "is the build
 // on disk the build the release publishes now?". The fingerprint recorded at
 // install time answers it, including for releases that carry no commit SHA.
-function write_tachyon_build_fingerprint(version, fingerprint) {
-    if (as_string(version) == "" || as_string(fingerprint) == "")
-        return;
-    let dir = replace(TACHYON_BUILD_STATE_FILE, /\/[^\/]*$/, "");
-    if (dir != "")
-        ensure_dir(dir);
-    write_file(TACHYON_BUILD_STATE_FILE, as_string(version) + "\t" + as_string(fingerprint) + "\n");
-}
+// Delegated to components/catalog.uc (branch 4 god-module split).
+function write_tachyon_build_fingerprint(version, fingerprint) { return cmp_cat.write_tachyon_build_fingerprint(version, fingerprint); }
 
-function record_tachyon_installed_build(version, release_ctx) {
-    let sha = "";
-    let fingerprint = "";
-
-    if (type(release_ctx) == "object") {
-        sha = as_string(release_ctx.source_sha || "");
-        fingerprint = as_string(release_ctx.fingerprint || "");
-    }
-
-    if (sha == "" && fingerprint == "") {
-        let release_json = latest_tachyon_release_json();
-        if (release_json != "") {
-            sha = trim(helper_output_input(release_json, "release-commit-sha", []));
-            if (sha != "" && match(sha, /^[0-9a-fA-F]{7,40}$/) == null)
-                sha = "";
-            fingerprint = trim(helper_output_input(release_json, "release-build-fingerprint", []));
-        }
-    }
-
-    write_tachyon_build_fingerprint(version, fingerprint);
-
-    if (sha == "" && fingerprint == "")
-        return null;
-    let extra = { current_sha: sha, latest_sha: sha };
-    if (fingerprint != "") {
-        extra.current_build = fingerprint;
-        extra.latest_build = fingerprint;
-    }
-    return extra;
-}
+// Delegated to components/catalog.uc (branch 4 god-module split).
+function record_tachyon_installed_build(version, release_ctx) { return cmp_cat.record_tachyon_installed_build(version, release_ctx); }
 
 // Called after a successful install/reinstall. Uses the release context from the
 // operation rather than re-fetching latest release metadata. This is critical
 // for install_version where the installed tag may differ from the latest release.
 // release_ctx is an optional object with {source_sha, fingerprint} from the resolved release.
-function retry_resolve(description, fn) {
-    for (let attempt = 1; attempt <= 3; attempt++) {
-        if (fn())
-            return true;
-        updates_log(as_string(description) + " failed (" + attempt + "/3)", "warn");
-        command_success_from_args([ "sleep", "2" ]);
-    }
-    return false;
-}
+// Delegated to components/catalog.uc (branch 4 god-module split).
+function retry_resolve(description, fn) { return cmp_cat.retry_resolve(description, fn); }
 
 // Delegated to components/installer.uc (branch 4 god-module split).
 function ensure_package_tool(tool_name, package_name, component, action) { return cmp_inst.ensure_package_tool(tool_name, package_name, component, action); }
 function ensure_sing_box_dependencies() { return cmp_inst.ensure_sing_box_dependencies(); }
 
 
-function clear_version_caches() {
-    remove_file("/tmp/tachyon.latest-version.cache");
-    remove_file(SYSTEM_INFO_CACHE_FILE);
-    remove_file("/tmp/tachyon/system-info.json");
-}
+// Delegated to components/catalog.uc (branch 4 god-module split).
+function clear_version_caches() { return cmp_cat.clear_version_caches(); }
 
 function managed_sing_box_service_installed() {
     let data = fs.readfile("/etc/init.d/sing-box");
@@ -583,38 +502,11 @@ function wait_tachyon_running_after_sing_box_change() {
     return false;
 }
 
-function opkg_arch_list() {
-    return trim(helper_output_input(command_output_from_args([ "opkg", "print-architecture" ]), "updates-opkg-arch-list", []));
-}
+// Delegated to components/catalog.uc (branch 4 god-module split).
+function opkg_arch_list() { return cmp_cat.opkg_arch_list(); }
 
-function resolve_arch_candidates() {
-    let arch_list = "";
-    if (is_apk()) {
-        if (file_exists("/etc/apk/arch"))
-            arch_list += " " + trim(helper_output("file-whitespace-list", [ "/etc/apk/arch" ]));
-        arch_list += " " + trim(command_output_from_args([ "apk", "--print-arch" ]));
-    }
-    else {
-        arch_list = opkg_arch_list();
-    }
-
-    let release_arch = read_openwrt_release_value("DISTRIB_ARCH");
-    if (release_arch != "")
-        arch_list += " " + release_arch;
-    if (!helper_success("string-has-whitespace-field", [ arch_list ]))
-        arch_list = trim(command_output_from_args([ "uname", "-m" ]));
-
-    let resolved = trim(helper_output("updates-arch-candidates", [ arch_list ]));
-    let fields = split(resolved, "\t");
-    if (length(fields) < 2 || as_string(fields[0]) == "" || as_string(fields[1]) == "")
-        return null;
-
-    updates_log("Detected package architecture candidates: " + fields[1]);
-    return {
-        target: as_string(fields[0]),
-        candidates: as_string(fields[1])
-    };
-}
+// Delegated to components/catalog.uc (branch 4 god-module split).
+function resolve_arch_candidates() { return cmp_cat.resolve_arch_candidates(); }
 
 function select_inner_package_path(bundle_file, component, arch, ext) {
     return trim(helper_output_input(command_output_from_args([ "unzip", "-l", bundle_file ]), "updates-zip-inner-package-path", [ component, arch, ext ]));
@@ -632,80 +524,11 @@ function normalize_zapret_version(value) { return cmp_ver.normalize_zapret_versi
 function normalize_sing_box_version(value) { return cmp_ver.normalize_sing_box_version(value); }
 
 
-function resolve_zapret_release(arch, tag) {
-    let release_json = (tag != null && tag != "") ?
-        fetch_github_release_by_tag_json("remittor", "zapret-openwrt", tag) :
-        fetch_github_release_json("remittor", "zapret-openwrt");
-    if (release_json != "") {
-        let resolved = trim(helper_output_input(release_json, "release-select-arch-suffix-asset", [ "zip", arch.candidates ]));
-        let fields = split(resolved, "\t");
-        if (length(fields) >= 4) {
-            let version = extract_zapret_bundle_version(fields[1]);
-            if (version == "")
-                version = trim(helper_output("string-remove-suffix", [ fields[1], ".zip" ]));
-            return {
-                arch: fields[0],
-                bundle_name: fields[1],
-                bundle_url: fields[2],
-                release_url: fields[3],
-                version
-            };
-        }
-    }
-    if (tag != null && tag != "") {
-        let tag_clean = replace(tag, /^v/, "");
-        let tag_with_v = "v" + tag_clean;
-        let bundle_name = "zapret_" + tag_with_v + "_" + arch.candidates + ".zip";
-        return {
-            arch: arch.candidates,
-            bundle_name: bundle_name,
-            bundle_url: "https://github.com/remittor/zapret-openwrt/releases/download/" + tag_with_v + "/" + bundle_name,
-            release_url: "https://github.com/remittor/zapret-openwrt/releases/tag/" + tag_with_v,
-            version: tag
-        };
-    }
-    return { fetch_failed: true };
-}
+// Delegated to components/catalog.uc (branch 4 god-module split).
+function resolve_zapret_release(arch, tag) { return cmp_cat.resolve_zapret_release(arch, tag); }
 
-function resolve_zapret2_release(arch, tag) {
-    let resolved_tag = (tag != null && tag != "") ? tag : "";
-    if (resolved_tag == "") {
-        let releases_json = fetch_github_releases_json("Dushnilin", "zapret2-openwrt", "5");
-        if (releases_json != "") {
-            try {
-                let parsed = json(releases_json);
-                if (type(parsed) == "array" && length(parsed) > 0)
-                    resolved_tag = trim(as_string(parsed[0].tag_name || ""));
-            } catch (e) {}
-        }
-    }
-    if (resolved_tag == "")
-        resolved_tag = fetch_github_release_tag_fallback("Dushnilin", "zapret2-openwrt");
-    if (resolved_tag == "")
-        return { fetch_failed: true };
-    
-    let asset_ext = is_apk() ? "apk" : "ipk";
-    let base_dl = "https://github.com/Dushnilin/zapret2-openwrt/releases/download/" + resolved_tag + "/";
-    let release_url = "https://github.com/Dushnilin/zapret2-openwrt/releases/tag/" + resolved_tag;
-    let version = replace(resolved_tag, /^v/, "");
-
-    let candidate_list = split(arch.candidates, " ");
-    for (let candidate in candidate_list) {
-        if (candidate == "") continue;
-        let pkg_name = "zapret2_" + candidate + "." + asset_ext;
-        let url = base_dl + pkg_name;
-        if (url_exists(url)) {
-            return {
-                arch: candidate,
-                package_name: pkg_name,
-                package_url: url,
-                release_url: release_url,
-                version: version
-            };
-        }
-    }
-    return null;
-}
+// Delegated to components/catalog.uc (branch 4 god-module split).
+function resolve_zapret2_release(arch, tag) { return cmp_cat.resolve_zapret2_release(arch, tag); }
 
 function download_and_extract_zip_package(release, component) {
     let bundle_file = tmp_dir + "/" + release.bundle_name;
@@ -737,174 +560,17 @@ function download_and_extract_zip_package(release, component) {
     };
 }
 
-function resolve_byedpi_release(arch, tag) {
-    let asset_ext = is_apk() ? "apk" : "ipk";
-    let release_series = trim(helper_output("openwrt-release-series", [ "/etc/openwrt_release" ]));
-    let releases_json = (tag != null && tag != "") ?
-        fetch_github_release_by_tag_json("DPITrickster", "ByeDPI-OpenWrt", tag) :
-        fetch_github_releases_json("DPITrickster", "ByeDPI-OpenWrt", "30");
-    if (releases_json != "") {
-        let resolved = trim(helper_output_input(releases_json, "byedpi-select-asset", [ release_series, asset_ext, arch.candidates ]));
-        let fields = split(resolved, "\t");
-        if (length(fields) >= 4) {
-            return {
-                arch: fields[0],
-                package_name: fields[1],
-                package_url: fields[2],
-                release_url: fields[3],
-                version: extract_arch_package_version(fields[1], fields[0])
-            };
-        }
-    }
-    if (tag != null && tag != "") {
-        let distrib_arch = read_openwrt_release_value("DISTRIB_ARCH");
-        let tag_clean = replace(tag, /^v/, "");
-        let pkg_name = "byedpi_" + tag_clean + "_openwrt_" + distrib_arch + "." + asset_ext;
-        return {
-            arch: distrib_arch,
-            package_name: pkg_name,
-            package_url: "https://github.com/DPITrickster/ByeDPI-OpenWrt/releases/download/" + tag + "/" + pkg_name,
-            release_url: "https://github.com/DPITrickster/ByeDPI-OpenWrt/releases/tag/" + tag,
-            version: tag
-        };
-    }
-    return null;
-}
+// Delegated to components/catalog.uc (branch 4 god-module split).
+function resolve_byedpi_release(arch, tag) { return cmp_cat.resolve_byedpi_release(arch, tag); }
 
-function resolve_wdtt_release(arch, tag) {
-    let asset_ext = is_apk() ? "apk" : "ipk";
-    let release_series = trim(helper_output("openwrt-release-series", [ "/etc/openwrt_release" ]));
-    let owner = "Dushnilin";
-    let repo = "qwdtt-openwrt";
-    let releases_json = (tag != null && tag != "") ?
-        fetch_github_release_by_tag_json(owner, repo, tag) :
-        fetch_github_releases_json(owner, repo, "30");
-    if (releases_json == "" || releases_json == "[]") {
-        owner = "SpaceNeuroX";
-        releases_json = (tag != null && tag != "") ?
-            fetch_github_release_by_tag_json(owner, repo, tag) :
-            fetch_github_releases_json(owner, repo, "30");
-    }
-    if (releases_json != "" && releases_json != "[]") {
-        let resolved = trim(helper_output_input(releases_json, "wdtt-select-asset", [ release_series, asset_ext, arch.candidates ]));
-        let fields = split(resolved, "\t");
-        if (length(fields) >= 4) {
-            return {
-                arch: fields[0],
-                package_name: fields[1],
-                package_url: fields[2],
-                release_url: fields[3],
-                version: extract_arch_package_version(fields[1], fields[0])
-            };
-        }
-    }
-    if (tag != null && tag != "") {
-        let distrib_arch = read_openwrt_release_value("DISTRIB_ARCH");
-        let tag_clean = replace(tag, /^v/, "");
-        let pkg_name = "wdtt_" + tag_clean + "_openwrt_" + distrib_arch + "." + asset_ext;
-        let dushnilin_url = "https://github.com/Dushnilin/qwdtt-openwrt/releases/download/" + tag + "/" + pkg_name;
-        let target_owner = url_exists(dushnilin_url) ? "Dushnilin" : "SpaceNeuroX";
-        return {
-            arch: distrib_arch,
-            package_name: pkg_name,
-            package_url: "https://github.com/" + target_owner + "/qwdtt-openwrt/releases/download/" + tag + "/" + pkg_name,
-            release_url: "https://github.com/" + target_owner + "/qwdtt-openwrt/releases/tag/" + tag,
-            version: tag
-        };
-    }
-    return null;
-}
+// Delegated to components/catalog.uc (branch 4 god-module split).
+function resolve_wdtt_release(arch, tag) { return cmp_cat.resolve_wdtt_release(arch, tag); }
 
-function resolve_olcrtc_release(arch, tag) {
-    let asset_ext = is_apk() ? "apk" : "ipk";
-    let release_series = trim(helper_output("openwrt-release-series", [ "/etc/openwrt_release" ]));
-    let owner = "Dushnilin";
-    let repo = "openwrt-olcrtc";
-    let releases_json = (tag != null && tag != "") ?
-        fetch_github_release_by_tag_json(owner, repo, tag) :
-        fetch_github_releases_json(owner, repo, "30");
-    if (releases_json == "" || releases_json == "[]") {
-        owner = "alekvol";
-        releases_json = (tag != null && tag != "") ?
-            fetch_github_release_by_tag_json(owner, repo, tag) :
-            fetch_github_releases_json(owner, repo, "30");
-    }
-    if (releases_json != "" && releases_json != "[]") {
-        let resolved = trim(helper_output_input(releases_json, "olcrtc-select-asset", [ release_series, asset_ext, arch.candidates ]));
-        let fields = split(resolved, "\t");
-        if (length(fields) >= 4) {
-            return {
-                arch: fields[0],
-                package_name: fields[1],
-                package_url: fields[2],
-                release_url: fields[3],
-                version: extract_arch_package_version(fields[1], fields[0])
-            };
-        }
-    }
-    if (tag != null && tag != "") {
-        let distrib_arch = read_openwrt_release_value("DISTRIB_ARCH");
-        let tag_clean = replace(tag, /^v/, "");
-        let pkg_name = "olcrtc_" + tag_clean + "_openwrt_" + distrib_arch + "." + asset_ext;
-        let dushnilin_url = "https://github.com/Dushnilin/openwrt-olcrtc/releases/download/" + tag + "/" + pkg_name;
-        let target_owner = url_exists(dushnilin_url) ? "Dushnilin" : "alekvol";
-        return {
-            arch: distrib_arch,
-            package_name: pkg_name,
-            package_url: "https://github.com/" + target_owner + "/openwrt-olcrtc/releases/download/" + tag + "/" + pkg_name,
-            release_url: "https://github.com/" + target_owner + "/openwrt-olcrtc/releases/tag/" + tag,
-            version: tag
-        };
-    }
-    return null;
-}
+// Delegated to components/catalog.uc (branch 4 god-module split).
+function resolve_olcrtc_release(arch, tag) { return cmp_cat.resolve_olcrtc_release(arch, tag); }
 
-function resolve_fptn_release(arch, tag) {
-    let asset_ext = is_apk() ? "apk" : "ipk";
-    let release_series = trim(helper_output("openwrt-release-series", [ "/etc/openwrt_release" ]));
-    let owner = "Dushnilin";
-    let repo = "fptn";
-    let releases_json = (tag != null && tag != "") ?
-        fetch_github_release_by_tag_json(owner, repo, tag) :
-        fetch_github_releases_json(owner, repo, "30");
-    if (releases_json == "" || releases_json == "[]") {
-        owner = "fptn-project";
-        releases_json = (tag != null && tag != "") ?
-            fetch_github_release_by_tag_json(owner, repo, tag) :
-            fetch_github_releases_json(owner, repo, "30");
-    }
-    if (releases_json != "" && releases_json != "[]") {
-        let resolved = trim(helper_output_input(releases_json, "fptn-select-asset", [ release_series, asset_ext, arch.candidates ]));
-        let fields = split(resolved, "\t");
-        if (length(fields) >= 4) {
-            let ver = extract_arch_package_version(fields[1], fields[0]);
-            let m = match(ver, /^([0-9]+\.[0-9]+\.[0-9]+)/);
-            if (m) ver = m[1];
-            return {
-                arch: fields[0],
-                package_name: fields[1],
-                package_url: fields[2],
-                release_url: fields[3],
-                version: ver
-            };
-        }
-    }
-    if (tag != null && tag != "") {
-        let distrib_arch = read_openwrt_release_value("DISTRIB_ARCH");
-        let tag_clean = replace(tag, /^v/, "");
-        let pkg_name = "fptn-client-" + tag_clean + "-openwrt-" + (release_series != "" ? release_series + ".x" : "24.10.x") + "-" + distrib_arch + "." + asset_ext;
-        let dushnilin_url = "https://github.com/Dushnilin/fptn/releases/download/" + tag + "/" + pkg_name;
-        let target_owner = url_exists(dushnilin_url) ? "Dushnilin" : "fptn-project";
-        return {
-            arch: distrib_arch,
-            package_name: pkg_name,
-            package_url: "https://github.com/" + target_owner + "/fptn/releases/download/" + tag + "/" + pkg_name,
-            release_url: "https://github.com/" + target_owner + "/fptn/releases/tag/" + tag,
-            version: tag_clean
-        };
-    }
-    return null;
-}
+// Delegated to components/catalog.uc (branch 4 god-module split).
+function resolve_fptn_release(arch, tag) { return cmp_cat.resolve_fptn_release(arch, tag); }
 
 function download_direct_package(release) {
     let package_file = tmp_dir + "/" + release.package_name;
@@ -2355,54 +2021,8 @@ function check_tachyon() {
     action_success("tachyon", "check_update", "Installed version is newer than release", TACHYON_VERSION, latest_version, 0, status, release_url, sha_extra);
 }
 
-function resolve_tachyon_release(latest_version) {
-    let asset_ext = is_apk() ? "apk" : "ipk";
-    let i18n_required = pkg_is_installed("luci-i18n-tachyon-ru") ? "1" : "0";
-    let release_json = latest_tachyon_release_json();
-    let source_sha = "";
-    let fingerprint = "";
-
-    if (release_json != "") {
-        source_sha = trim(helper_output_input(release_json, "release-commit-sha", []));
-        if (source_sha != "" && match(source_sha, /^[0-9a-fA-F]{7,40}$/) == null)
-            source_sha = "";
-        fingerprint = trim(helper_output_input(release_json, "release-build-fingerprint", []));
-
-        let plan = trim(helper_output_input(release_json, "tachyon-release-plan", [ latest_version, asset_ext, i18n_required ]));
-        let fields = split(plan, "\t");
-        if (length(fields) >= 7 && as_string(fields[1]) != "" && as_string(fields[2]) != "" && as_string(fields[3]) != "" && as_string(fields[4]) != "") {
-            return {
-                release_url: fields[0],
-                backend_name: fields[1],
-                backend_url: fields[2],
-                app_name: fields[3],
-                app_url: fields[4],
-                i18n_name: fields[5],
-                i18n_url: fields[6],
-                source_sha: source_sha,
-                fingerprint: fingerprint
-            };
-        }
-    }
-
-    let ver_clean = replace(as_string(latest_version), /^v/, "");
-    let backend_name = "tachyon_" + ver_clean + "." + asset_ext;
-    let app_name = "luci-app-tachyon_" + ver_clean + "." + asset_ext;
-    let i18n_name = "luci-i18n-tachyon-ru_" + ver_clean + "." + asset_ext;
-    let base_dl = "https://github.com/" + TACHYON_RELEASE_REPO + "/releases/download/" + latest_version + "/";
-
-    return {
-        release_url: "https://github.com/" + TACHYON_RELEASE_REPO + "/releases/tag/" + latest_version,
-        backend_name: backend_name,
-        backend_url: base_dl + backend_name,
-        app_name: app_name,
-        app_url: base_dl + app_name,
-        i18n_name: i18n_required == "1" ? i18n_name : "",
-        i18n_url: i18n_required == "1" ? (base_dl + i18n_name) : "",
-        source_sha: source_sha,
-        fingerprint: fingerprint
-    };
-}
+// Delegated to components/catalog.uc (branch 4 god-module split).
+function resolve_tachyon_release(latest_version) { return cmp_cat.resolve_tachyon_release(latest_version); }
 
 function reinstall_tachyon() {
     let latest_version = latest_tachyon_version();
