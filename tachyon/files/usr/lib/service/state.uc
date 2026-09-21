@@ -8,6 +8,7 @@ let zapret_validator = require("providers.zapret.validator");
 let zapret2_validator = require("providers.zapret2.validator");
 let byedpi_validator = require("providers.byedpi.validator");
 let common = require("core.common");
+let process_identity = require("core.process");
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
 const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
 const DEFAULT_PENDING_RELOAD_FILE = getenv("TACHYON_PENDING_RELOAD_FILE") || "/var/run/tachyon/reload.pending";
@@ -237,13 +238,7 @@ function first_line_value(path) {
 }
 
 function pid_alive(pid) {
-    pid = as_string(pid);
-    if (match(pid, /^[0-9]+$/) == null || !command_success_from_args([ "kill", "-0", pid ]))
-        return false;
-    let cmd = fs.readfile("/proc/" + pid + "/cmdline");
-    if (cmd != null && match(cmd, /ucode|tachyon|sh|sing-box/) == null)
-        return false;
-    return true;
+    return process_identity.is_tachyon_process(pid);
 }
 
 function lock_dir_write_owner(lock_dir, owner_pid) {
@@ -422,26 +417,8 @@ function sing_box_service_pid() {
         print(pid, "\n");
 }
 
-function path_basename(path) {
-    path = as_string(path);
-    let slash = rindex(path, "/");
-    return slash >= 0 ? substr(path, slash + 1) : path;
-}
-
 function pid_is_sing_box(pid) {
-    pid = as_string(pid);
-    if (match(pid, /^[0-9]+$/) == null)
-        return false;
-
-    let exe = fs.readlink("/proc/" + pid + "/exe");
-    if (exe != null && exe != "")
-        return path_basename(exe) == "sing-box";
-
-    let comm = fs.readfile("/proc/" + pid + "/comm");
-    if (comm != null)
-        return trim(comm) == "sing-box";
-
-    return path_basename(command_trimmed_output_from_args([ "readlink", "/proc/" + pid + "/exe" ])) == "sing-box";
+    return process_identity.is_sing_box(pid);
 }
 
 function sing_box_service_pid_runtime() {
@@ -479,47 +456,15 @@ function hup_sing_box_runtime() {
 }
 
 function process_start_ticks(stat) {
-    stat = as_string(stat);
-    let marker = index(stat, ") ");
-    if (marker < 0)
-        return null;
-
-    let fields = split(trim(substr(stat, marker + 2)), /[ \t\r\n]+/);
-    if (length(fields) < 20)
-        return null;
-
-    let start_ticks = fields[19];
-    if (match(start_ticks, /^[0-9]+$/) == null)
-        return null;
-
-    return int(start_ticks);
+    return process_identity.process_start_ticks(stat);
 }
 
 function process_age_seconds_from_ticks(start_ticks, current_ticks) {
-    start_ticks = as_string(start_ticks);
-    current_ticks = as_string(current_ticks);
-    if (match(start_ticks, /^[0-9]+$/) == null || match(current_ticks, /^[0-9]+$/) == null)
-        return null;
-
-    start_ticks = int(start_ticks);
-    current_ticks = int(current_ticks);
-    if (current_ticks < start_ticks)
-        return null;
-
-    return int((current_ticks - start_ticks) / 100);
+    return process_identity.process_age_seconds_from_ticks(start_ticks, current_ticks);
 }
 
 function process_age_seconds(pid) {
-    pid = as_string(pid);
-    if (match(pid, /^[0-9]+$/) == null)
-        return null;
-
-    let start_ticks = process_start_ticks(fs.readfile("/proc/" + pid + "/stat"));
-    if (start_ticks == null)
-        return null;
-
-    let current_ticks = process_start_ticks(command_output_from_args([ "cat", "/proc/self/stat" ]));
-    return process_age_seconds_from_ticks(start_ticks, current_ticks);
+    return process_identity.process_age_seconds(pid);
 }
 
 const SING_BOX_PROVENANCE_FILE = getenv("TACHYON_SING_BOX_PROVENANCE_FILE") || "/var/run/tachyon/sing-box.provenance";
