@@ -22955,119 +22955,88 @@ function isComponentCardVisible(card, systemInfo) {
   }
   return String(val) === "1" || val === 1;
 }
-function renderEngineSelector() {
-  const info = engineInfoCache;
-  if (!info) {
-    return null;
-  }
-  const steerInstalled = info.engines.some(
-    (entry) => (entry.engine === "steer" || entry.engine === "steer-extended") && entry.installed
-  );
-  if (!steerInstalled) {
-    return null;
-  }
-  const select = E("select", {
-    class: "cbi-input-select",
-    style: "min-width: 180px;"
-  });
-  info.engines.filter((entry) => entry.known && entry.installed).forEach((entry) => {
-    const option = E(
-      "option",
-      { value: entry.engine },
-      engineLabel(entry.engine)
-    );
-    option.selected = entry.engine === info.active;
-    select.appendChild(option);
-  });
-  const warning = E("div", {
-    style: "font-size: 12px; color: var(--text-color-medium, #b58900); margin-top: 6px; display: none;"
-  });
-  const apply = renderButton({
-    text: _("Apply"),
-    classNames: ["cbi-button-action"],
-    onClick: () => void applyEngineSelection(select.value, info.active, warning)
-  });
-  return E("div", { class: "tachyon_updates-page__component" }, [
-    E("div", { class: "tachyon_updates-page__component__header" }, [
-      E(
-        "b",
-        { class: "tachyon_updates-page__component__title" },
-        _("Routing Engine")
-      ),
-      E(
-        "span",
-        { class: "tachyon_updates-page__component__header-version" },
-        engineLabel(info.active)
-      )
-    ]),
-    E(
-      "div",
-      {
-        style: "display: flex; gap: 8px; align-items: center; flex-wrap: wrap;"
-      },
-      [select, apply]
-    ),
-    warning
-  ]);
-}
 var engineInfoCache = null;
 async function refreshEngineInfo() {
   const response = await TachyonShellMethods.getEngineInfo();
   engineInfoCache = response.success ? response.data : null;
 }
-async function applyEngineSelection(engine, current, warning) {
-  if (engine === current) {
-    return;
-  }
-  const planResponse = await TachyonShellMethods.getEnginePlan(engine);
-  const parked = planResponse.success ? parkedFeatures(planResponse.data) : [];
-  if (parked.length > 0) {
-    warning.style.display = "block";
-    warning.textContent = `${_("These features will be parked and restored when you switch back")}: ${parked.join(", ")}`;
-  } else {
-    warning.style.display = "none";
-  }
-  const result = await TachyonShellMethods.switchEngine(engine, true);
-  if (!result.success || !result.data.ok) {
-    warning.style.display = "block";
-    warning.textContent = `${_("Switch failed")}: ${result.success ? result.data.reason : result.error}`;
-    return;
-  }
-  await refreshEngineInfo();
-  renderUpdatesComponents();
-  showToast(`${_("Active engine")}: ${engineLabel(engine)}`, "success");
-}
-function renderSteerCard() {
+function renderEngineCard() {
   const info = engineInfoCache;
+  const systemInfo = normalizeSingBoxVariantFields(
+    store.get().diagnosticsSystemInfo
+  );
+  const active = info?.active || "sing-box";
+  const installing = steerBusy;
+  const singBoxLoading = isSystemInfoLoading();
   const base = info?.engines.find((e) => e.engine === "steer");
   const extended = info?.engines.find((e) => e.engine === "steer-extended");
   const baseInstalled = Boolean(base?.installed);
   const extendedInstalled = Boolean(extended?.installed);
-  const installed = baseInstalled || extendedInstalled;
-  const active = info?.active || "";
-  const version = installed ? extendedInstalled ? "steer-extended" : "steer" : _("Not installed");
-  const installing = steerBusy;
-  const actions = [];
-  actions.push(
-    renderButton({
-      text: _("Check for update"),
-      classNames: ["cbi-button-neutral"],
-      disabled: installing,
-      onClick: () => void runSteerAction("steer-extended", "check_update")
-    })
+  const steerInstalled = baseInstalled || extendedInstalled;
+  const sectionTitle = (text) => E(
+    "div",
+    {
+      style: "font-size: 11px; text-transform: uppercase; opacity: 0.6; margin: 4px 0 2px;"
+    },
+    text
   );
+  const row = (children) => E("div", { style: "display: flex; flex-wrap: wrap; gap: 8px;" }, children);
+  const activeBadge = (engine, variant) => active === engine ? E("span", { style: "font-size: 12px; opacity: 0.8;" }, _("active")) : variant === "" ? E("span", { style: "font-size: 12px; opacity: 0.4;" }, _("idle")) : null;
+  const singBoxRow = [];
+  const singBoxInstalled = !isNotInstalled(systemInfo.sing_box_version);
+  const singBoxStable = singBoxInstalled && !systemInfo.sing_box_extended && !systemInfo.sing_box_tiny;
+  const singBoxTiny = Boolean(systemInfo.sing_box_tiny);
+  const singBoxExtended = Boolean(systemInfo.sing_box_extended) && !systemInfo.sing_box_lx;
+  const singBoxLx = Boolean(systemInfo.sing_box_lx);
+  const singBoxVariant = (label, key, action, alreadyInstalled) => {
+    if (alreadyInstalled) {
+      return null;
+    }
+    return renderButton({
+      text: label,
+      classNames: ["cbi-button-action"],
+      disabled: singBoxLoading,
+      onClick: () => void runComponentAction("sing_box", action, key)
+    });
+  };
+  if (singBoxInstalled) {
+    const badge = activeBadge("sing-box", systemInfo.sing_box_version || "");
+    if (badge) singBoxRow.push(badge);
+  }
+  [
+    singBoxVariant("Stable", "singBoxInstallStable", "install_stable", singBoxStable),
+    singBoxVariant("Tiny", "singBoxInstallTiny", "install_tiny", singBoxTiny),
+    singBoxVariant(
+      "Extended",
+      "singBoxInstallExtended",
+      "install_extended",
+      singBoxExtended
+    ),
+    singBoxVariant(
+      "Extended compressed",
+      "singBoxInstallExtendedCompressed",
+      "install_extended_compressed",
+      Boolean(systemInfo.sing_box_extended) && Boolean(systemInfo.sing_box_compressed)
+    ),
+    singBoxVariant("Leadaxe (lx)", "singBoxInstallLx", "install_lx", singBoxLx)
+  ].forEach((node) => node && singBoxRow.push(node));
+  const steerRow = [];
+  if (steerInstalled) {
+    const activeSteer = active === "steer" || active === "steer-extended" ? activeBadge(active, "installed") : null;
+    if (activeSteer) steerRow.push(activeSteer);
+  }
   if (!baseInstalled || active !== "steer") {
-    actions.push(
+    steerRow.push(
       renderButton({
         text: "Steer",
         classNames: ["cbi-button-action"],
         disabled: installing,
-        onClick: () => void runSteerAction("steer", baseInstalled ? "install" : "install")
+        onClick: () => void runSteerAction("steer", "install")
       })
     );
   }
   if (!extendedInstalled || active !== "steer-extended") {
-    actions.push(
+    steerRow.push(
       renderButton({
         text: "Steer extended",
         classNames: ["cbi-button-action"],
@@ -23076,8 +23045,8 @@ function renderSteerCard() {
       })
     );
   }
-  if (installed) {
-    actions.push(
+  if (steerInstalled) {
+    steerRow.push(
       renderButton({
         text: _("Remove"),
         classNames: ["cbi-button-negative"],
@@ -23089,24 +23058,51 @@ function renderSteerCard() {
       })
     );
   }
-  return E("div", { class: "tachyon_updates-page__component" }, [
-    E("div", { class: "tachyon_updates-page__component__header" }, [
-      E("b", { class: "tachyon_updates-page__component__title" }, "Steer"),
-      E(
-        "span",
-        { class: "tachyon_updates-page__component__header-version" },
-        version
-      )
-    ]),
+  const body = [
+    sectionTitle("sing-box"),
+    E("div", { style: "font-size: 12px; opacity: 0.8;" }, formatSingBoxVersion(systemInfo)),
+    row(singBoxRow.length > 0 ? singBoxRow : [E("span", {}, _("installed"))]),
+    sectionTitle("steer"),
     E(
       "div",
       { style: "font-size: 12px; opacity: 0.8;" },
-      _("Alternative routing engine with its own VLESS/Reality client.")
+      steerInstalled ? _("installed") : _("Not installed")
     ),
-    E("div", { style: "display: flex; flex-wrap: wrap; gap: 8px;" }, actions)
+    row(steerRow.length > 0 ? steerRow : [E("span", {}, "")])
+  ];
+  return E("div", { class: "tachyon_updates-page__component" }, [
+    E("div", { class: "tachyon_updates-page__component__header" }, [
+      E(
+        "b",
+        { class: "tachyon_updates-page__component__title" },
+        _("Routing Engine")
+      ),
+      E(
+        "span",
+        { class: "tachyon_updates-page__component__header-version" },
+        engineLabel(active)
+      )
+    ]),
+    ...body
   ]);
 }
 var steerBusy = false;
+async function runComponentAction(component, action, _key) {
+  steerBusy = true;
+  renderUpdatesComponents();
+  try {
+    await TachyonShellMethods.componentActionStart(component, action);
+    showToast(`${component}: ${action}`, "success");
+  } catch (error) {
+    showToast(
+      `${component}: ${error instanceof Error ? error.message : String(error)}`,
+      "error"
+    );
+  } finally {
+    steerBusy = false;
+    renderUpdatesComponents();
+  }
+}
 async function runSteerAction(component, action) {
   steerBusy = true;
   renderUpdatesComponents();
@@ -23138,8 +23134,7 @@ function renderUpdatesComponents() {
   const systemInfo = normalizeSingBoxVariantFields(
     store.get().diagnosticsSystemInfo
   );
-  const steerActive = engineInfoCache?.active === "steer" || engineInfoCache?.active === "steer-extended";
-  const visibleCards = getComponentCards().filter((card) => !(steerActive && card.component === "sing_box")).filter((card) => isComponentCardVisible(card, systemInfo));
+  const visibleCards = getComponentCards().filter((card) => card.component !== "sing_box").filter((card) => isComponentCardVisible(card, systemInfo));
   const columns = [[], [], []];
   const colCounts = [0, 0, 0];
   visibleCards.forEach((card) => {
@@ -23149,20 +23144,12 @@ function renderUpdatesComponents() {
   visibleCards.forEach((card, idx) => {
     const colIdx = hasEmptyColumn ? idx % 3 : card.column;
     columns[colIdx]?.push(renderComponentCard(card));
+    if (idx === 0) {
+      columns[colIdx]?.push(renderEngineCard());
+    }
   });
-  if (steerActive) {
-    columns[0]?.unshift(renderSteerCard());
-  } else {
-    columns[0]?.push(renderSteerCard());
-  }
-  const engineSelector = renderEngineSelector();
   return preserveScrollForPage(() => {
     container.replaceChildren(
-      ...engineSelector ? [
-        E("div", { class: "tachyon_updates-page__engine-card" }, [
-          engineSelector
-        ])
-      ] : [],
       ...columns.map(
         (columnNodes) => E(
           "div",

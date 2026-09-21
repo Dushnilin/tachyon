@@ -136,6 +136,155 @@ function download_list(manifest, entry, subdir) {
     return dest;
 }
 
+// ============================================================================
+// Section list materialisation (steer-specific plain text)
+// ============================================================================
+//
+// steer does not read sing-box rule-set JSON, so a section's domain/IP sources
+// are converted into plain-text lists under the steer list directory. Sources:
+//   user_domains / user_domains_text  -> inline domains
+//   domain_ip_lists                   -> URL or local file with domains/CIDRs
+//   community_lists / community_subnets -> catalog entries
+// Domains match by suffix, prefixes are written as-is; both files are plain
+// text, one entry per line.
+
+const SECTION_LISTS_DIR = STEER_LISTS_DIR + "/channels";
+
+function section_dir(section_name) {
+    let safe = as_string(section_name);
+    safe = replace(safe, /[^A-Za-z0-9_.-]/g, "_");
+    if (safe == "")
+        safe = "channel";
+    return SECTION_LISTS_DIR + "/" + safe;
+}
+
+function text_list_values(value) {
+    value = trim(as_string(value));
+    if (value == "")
+        return [];
+    return split(value, /[,\s]+/);
+}
+
+function list_option(section, key) {
+    if (section == null || section[key] == null)
+        return [];
+    let value = section[key];
+    if (type(value) == "array")
+        return value;
+    return text_list_values(value);
+}
+
+function looks_like_domain(value) {
+    value = as_string(value);
+    if (value == "")
+        return false;
+    if (match(value, /^[0-9a-fA-F:.]+(\/[0-9]+)?$/) != null)
+        return false;   // address or CIDR
+    if (index(value, "/") == 0)
+        return false;   // local path
+    if (match(value, /^https?:\/\//) != null)
+        return false;   // url
+    return index(value, ".") >= 0 || index(value, "*") >= 0;
+}
+
+function looks_like_prefix(value) {
+    value = as_string(value);
+    return match(value, /^[0-9a-fA-F:.]+(\/[0-9]+)?$/) != null;
+}
+
+// Read a reference: local file if it starts with "/", otherwise download it.
+function read_reference(reference) {
+    reference = as_string(reference);
+    if (reference == "")
+        return "";
+    if (substr(reference, 0, 1) == "/") {
+        let data = fs.readfile(reference);
+        return data != null ? as_string(data) : "";
+    }
+    return downloader.http_get(reference);
+}
+
+function option(section, key, fallback) {
+    if (section == null || section[key] == null)
+        return fallback;
+    let value = section[key];
+    if (type(value) == "array")
+        return length(value) > 0 ? value[0] : fallback;
+    return value;
+}
+
+// Collect domains and prefixes for one section and write the plain-text lists.
+// Returns { domains: path|"", prefixes: path|"" }.
+function materialize_section_lists(section, catalog) {
+    catalog = type(catalog) == "object" ? catalog : {};
+    let name = as_string(section[".name"] || section.label || "channel");
+    let dir = section_dir(name);
+    common.ensure_dir(dir);
+
+    let domains = {};
+    let prefixes = {};
+
+    // Inline user domains.
+    for (let value in list_option(section, "user_domains"))
+        domains[trim(as_string(value))] = true;
+    for (let value in text_list_values(option(section, "user_domains_text", "")))
+        domains[trim(as_string(value))] = true;
+    for (let value in list_option(section, "user_subnets"))
+        prefixes[trim(as_string(value))] = true;
+
+    // External references: URLs or local files, split by entry type.
+    for (let reference in list_option(section, "domain_ip_lists")) {
+        let text = read_reference(reference);
+        for (let line in split(as_string(text), "\n")) {
+            line = trim(line);
+            if (line == "" || substr(line, 0, 1) == "#" || substr(line, 0, 1) == ";")
+                continue;
+            if (looks_like_prefix(line))
+                prefixes[line] = true;
+            else if (looks_like_domain(line))
+                domains[line] = true;
+        }
+    }
+
+    // Community ids resolve to catalog files (already plain text); reference
+    // them in place instead of copying.
+    for (let value in list_option(section, "community_lists")) {
+        let mapped = catalog[value];
+        if (mapped != null) {
+            let text = read_reference(mapped);
+            for (let line in split(as_string(text), "\n")) {
+                line = trim(line);
+                if (line != "" && substr(line, 0, 1) != "#")
+                    domains[line] = true;
+            }
+        }
+    }
+    for (let value in list_option(section, "community_subnets")) {
+        let mapped = catalog[value];
+        if (mapped != null) {
+            let text = read_reference(mapped);
+            for (let line in split(as_string(text), "\n")) {
+                line = trim(line);
+                if (line != "" && substr(line, 0, 1) != "#")
+                    prefixes[line] = true;
+            }
+        }
+    }
+
+    let result = { domains: "", prefixes: "" };
+    if (length(keys(domains)) > 0) {
+        let path = dir + "/domains.lst";
+        if (common.write_file(path, join("\n", sort(keys(domains))) + "\n"))
+            result.domains = path;
+    }
+    if (length(keys(prefixes)) > 0) {
+        let path = dir + "/prefixes.lst";
+        if (common.write_file(path, join("\n", sort(keys(prefixes))) + "\n"))
+            result.prefixes = path;
+    }
+    return result;
+}
+
 // Download the selected catalog entries. Returns { prefixes: [...], domains: [...] }
 // with absolute file paths suitable for a steer channel's prefixes_files /
 // domains_files.
@@ -177,6 +326,8 @@ function module_exports() {
         select_categories,
         select_domain_lists,
         category_url,
+        materialize_section_lists,
+        SECTION_LISTS_DIR,
         download_list,
         sync
     };

@@ -181,18 +181,57 @@ assert_match "bad manifest rejected" 'bad=true' "$out"
 printf '%s\n' '--- catalog ids map into channels ---'
 out="$(run_uc '
 let g = require("steer.generator");
-let catalog = { "telegram": "/etc/steer/lists/telegram.lst", "porn": "/etc/steer/lists/domains/porn.lst" };
 let sections = [
     { ".name": "tg", ".type": "section", "action": "connection", "enabled": "1", "label": "TG",
-      "outbound_interfaces": [ "wg0" ],
-      "community_lists": [ "porn" ], "community_subnets": [ "telegram" ] }
+      "outbound_interfaces": [ "wg0" ] }
 ];
-let spec = g.build_spec(sections, {}, catalog);
+// The generator delegates list materialisation; assert it is invoked and its
+// paths land in the channel match.
+g.set_list_materializer(function(section, catalog) {
+    return { domains: "/etc/steer/lists/channels/tg/domains.lst",
+             prefixes: "/etc/steer/lists/channels/tg/prefixes.lst" };
+});
+let spec = g.build_spec(sections, {}, {});
 print("domains=" + join(",", spec.channels[0].match.domains_files) + "\n");
 print("prefixes=" + join(",", spec.channels[0].match.prefixes_files) + "\n");
 ')"
-assert_match "community domain list mapped" 'domains=/etc/steer/lists/domains/porn.lst' "$out"
-assert_match "community subnet list mapped" 'prefixes=/etc/steer/lists/telegram.lst' "$out"
+assert_match "materialised domain list referenced" 'domains=/etc/steer/lists/channels/tg/domains.lst' "$out"
+assert_match "materialised prefix list referenced" 'prefixes=/etc/steer/lists/channels/tg/prefixes.lst' "$out"
+
+printf '%s\n' '--- steer list materialisation ---'
+MAT_DIR="$WORK_DIR/steer-lists"
+mkdir -p "$MAT_DIR/channels"
+cat >"$MAT_DIR/ref.lst" <<'EOF'
+example.org
+10.0.0.0/8
+1.2.3.4
+# comment
+EOF
+out="$(TACHYON_STEER_LISTS_DIR="$MAT_DIR" run_uc '
+let l = require("steer.lists");
+let section = { ".name": "kids", "user_domains": [ "inline.example" ],
+    "user_domains_text": "text1.example text2.example",
+    "domain_ip_lists": [ "'"$MAT_DIR"'/ref.lst" ] };
+let res = l.materialize_section_lists(section, {});
+print("domains_path=" + res.domains + "\n");
+print("prefixes_path=" + res.prefixes + "\n");
+')"
+assert_match "domain list written" 'domains_path=.*channels/kids/domains.lst' "$out"
+assert_match "prefix list written" 'prefixes_path=.*channels/kids/prefixes.lst' "$out"
+if [ -f "$MAT_DIR/channels/kids/domains.lst" ]; then
+    grep -q 'inline.example' "$MAT_DIR/channels/kids/domains.lst" &&
+        grep -q 'example.org' "$MAT_DIR/channels/kids/domains.lst" &&
+        grep -q 'text1.example' "$MAT_DIR/channels/kids/domains.lst" ||
+        fail_test "materialised domains file is missing inline or referenced domains"
+    grep -q '10.0.0.0/8' "$MAT_DIR/channels/kids/prefixes.lst" &&
+        grep -q '1.2.3.4' "$MAT_DIR/channels/kids/prefixes.lst" ||
+        fail_test "materialised prefixes file is missing CIDRs"
+    grep -q 'comment' "$MAT_DIR/channels/kids/domains.lst" &&
+        fail_test "materialised list must skip comments" || true
+    pass=$((pass + 1))
+else
+    fail_test "domains.lst was not written"
+fi
 
 printf '%s\n' '--- steer spec generator ---'
 out="$(run_uc '
@@ -205,6 +244,14 @@ let sections = [
       "label": "Kids", "client_addresses": [ "192.168.1.50" ], "user_domains": [ "kids.example" ] },
     { ".name": "unsupported", ".type": "section", "action": "wdtt", "enabled": "1" }
 ];
+g.set_list_materializer(function(section, catalog) {
+    let d = [];
+    for (let v in (section.user_domains || [])) push(d, v);
+    let p = [];
+    for (let v in (section.domain_ip_lists || [])) push(p, v);
+    return { domains: length(d) ? "/tmp/" + section[".name"] + ".domains" : "",
+             prefixes: length(p) ? "/tmp/" + section[".name"] + ".prefixes" : "" };
+});
 let spec = g.build_spec(sections, { "source_network_interfaces": [ "br-lan", "tailscale0" ] });
 print("schema=" + spec.schema + "\n");
 print("lan=" + join(",", spec.lan_devices) + "\n");
@@ -227,8 +274,8 @@ assert_match "device preference order kept" 'out_main_devices=wg0,awg0' "$out"
 assert_match "direct output always present" 'has_direct=true' "$out"
 assert_match "two channels generated" 'channels=2' "$out"
 assert_match "first channel targets Main" 'ch0_out=Main' "$out"
-assert_match "domain refs mapped" 'ch0_domains=example.org' "$out"
-assert_match "subnet refs mapped" 'ch0_prefixes=/etc/tachyon/lists/x.lst' "$out"
+assert_match "domain refs mapped" 'ch0_domains=/tmp/main.domains' "$out"
+assert_match "subnet refs mapped" 'ch0_prefixes=/tmp/main.prefixes' "$out"
 assert_match "client filter mapped" 'ch1_from=192.168.1.50' "$out"
 assert_match "bypass channel goes direct" 'ch1_out=direct' "$out"
 assert_match "unsupported section skipped" 'no_wdtt=true' "$out"

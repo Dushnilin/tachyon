@@ -181,47 +181,35 @@ function build_outputs(sections, settings) {
 // Channels
 // ============================================================================
 
-// Split a free-form text list (comma/space separated) into entries.
-function text_list_values(value) {
-    value = trim(as_string(value));
-    if (value == "")
-        return [];
-    return split(value, /[,\s]+/);
+// Injected by the runtime so the generator stays free of filesystem/network
+// dependencies in tests. Signature: (section, catalog) -> { domains, prefixes }.
+let materialize_lists = null;
+
+function set_list_materializer(fn) {
+    materialize_lists = fn;
 }
 
 function channel_match(section, catalog) {
     let match_obj = {};
-    catalog = type(catalog) == "object" ? catalog : {};
 
-    // Domain sources: inline user domains plus catalog-backed community lists.
-    // The old field names (domain/remote_domain_lists) are not what Tachyon
-    // sections actually carry, so they produced garbage channels.
+    // Materialise this section's lists as steer plain-text files. steer cannot
+    // read sing-box rule-set JSON, so the conversion happens here rather than
+    // pointing the spec at sing-box artefacts.
+    let lists = null;
+    if (materialize_lists != null)
+        lists = materialize_lists(section, catalog);
+
     let domains = [];
-    for (let value in list_option(section, "user_domains"))
-        push(domains, value);
-    for (let value in text_list_values(option(section, "user_domains_text", "")))
-        push(domains, value);
-    // Catalog-backed domain lists: community/category ids resolve to files in
-    // the steer list directory (see steer/lists.uc).
-    for (let value in list_option(section, "community_lists")) {
-        let mapped = catalog[value];
-        if (mapped != null)
-            push(domains, mapped);
+    let prefixes = [];
+    if (lists != null) {
+        if (as_string(lists.domains) != "")
+            push(domains, lists.domains);
+        if (as_string(lists.prefixes) != "")
+            push(prefixes, lists.prefixes);
     }
+
     if (length(domains) > 0)
         match_obj.domains_files = domains;
-
-    // Prefix sources: local/remote files plus catalog-backed subnets.
-    let prefixes = [];
-    for (let value in list_option(section, "domain_ip_lists"))
-        push(prefixes, value);
-    for (let value in list_option(section, "user_subnets"))
-        push(prefixes, value);
-    for (let value in list_option(section, "community_subnets")) {
-        let mapped = catalog[value];
-        if (mapped != null)
-            push(prefixes, mapped);
-    }
     if (length(prefixes) > 0)
         match_obj.prefixes_files = prefixes;
 
@@ -308,7 +296,8 @@ function module_exports() {
         build_outputs,
         build_channels,
         build_spec,
-        serialize_spec
+        serialize_spec,
+        set_list_materializer
     };
 }
 

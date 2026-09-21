@@ -169,6 +169,12 @@ function read_sections() {
 
 function build_steer_spec() {
     let settings = uci_core.get_all(CONFIG_NAME, "settings") || {};
+    // steer cannot read sing-box rule-set JSON, so sections' lists are
+    // materialised as steer plain-text files via steer/lists.uc.
+    let steer_lists = require("steer.lists");
+    steer_generator.set_list_materializer(function(section, catalog) {
+        return steer_lists.materialize_section_lists(section, catalog);
+    });
     return steer_generator.build_spec(read_sections(), settings);
 }
 

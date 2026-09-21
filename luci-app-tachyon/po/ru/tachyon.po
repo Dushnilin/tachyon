@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-21 19:06+0300\n"
-"PO-Revision-Date: 2026-09-21 19:06+0300\n"
+"POT-Creation-Date: 2026-09-21 19:51+0300\n"
+"PO-Revision-Date: 2026-09-21 19:51+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -180,16 +180,16 @@ msgid "🟣 Twitch Suite (Live Stream + HLS CDN)"
 msgstr "🟣 Twitch (Прямой эфир + HLS CDN)"
 
 msgid "15 min — Quick"
-msgstr ""
+msgstr "15 мин — быстрый"
 
 msgid "30 min — Standard"
-msgstr ""
+msgstr "30 мин — стандартный"
 
 msgid "45 min — Deep (Recommended)"
-msgstr ""
+msgstr "45 мин — глубокий (рекомендуется)"
 
 msgid "60 min — Exhaustive"
-msgstr ""
+msgstr "60 мин — исчерпывающий"
 
 msgid "Accept external proxy connections and route them with sing-box."
 msgstr "Принимать внешние прокси-подключения и маршрутизировать их через sing-box."
@@ -219,7 +219,7 @@ msgid "Actions"
 msgstr "Действия"
 
 msgid "active"
-msgstr ""
+msgstr "активен"
 
 msgid "Active"
 msgstr "Активные"
@@ -240,7 +240,7 @@ msgid "Active Connections"
 msgstr "Активные соединения"
 
 msgid "Active engine"
-msgstr ""
+msgstr "Активный движок"
 
 msgid "Active Hours Mode"
 msgstr "Режим часов активности"
@@ -491,9 +491,6 @@ msgstr "ALPN"
 msgid "Alter ID"
 msgstr "Alter ID"
 
-msgid "Alternative routing engine with its own VLESS/Reality client."
-msgstr ""
-
 msgid "Always Active (24/7)"
 msgstr "Всегда активно (24/7)"
 
@@ -594,7 +591,7 @@ msgid "Applying fix"
 msgstr "Применение исправления"
 
 msgid "Applying rules"
-msgstr ""
+msgstr "Применение правил"
 
 msgid "Applying..."
 msgstr "Применение..."
@@ -744,7 +741,7 @@ msgid "Benchmark stopped"
 msgstr "Бенчмарк остановлен"
 
 msgid "Benchmark Timeout"
-msgstr ""
+msgstr "Таймаут теста"
 
 msgid "Benchmarking in progress..."
 msgstr "Выполняется бенчмарк..."
@@ -894,7 +891,7 @@ msgid "Cache"
 msgstr "Кэш"
 
 msgid "Cache all built-in lists, databases, and remote lists configured in sections. Recommended if you have plenty of storage space or USB drive."
-msgstr ""
+msgstr "Кэшировать все встроенные списки, базы данных и удалённые списки из секций. Рекомендуется при большом объёме памяти или наличии USB-накопителя."
 
 msgid "Cache File Path"
 msgstr "Путь к файлу кэша"
@@ -943,9 +940,6 @@ msgstr "Проверить подключение"
 
 msgid "Check domain"
 msgstr "Проверить домен"
-
-msgid "Check for update"
-msgstr ""
 
 msgid "Check interval"
 msgstr "Интервал проверки"
@@ -1242,7 +1236,7 @@ msgid "Country code (e.g. ru, us, de)"
 msgstr "Код страны (напр. ru, us, de)"
 
 msgid "Creating backup"
-msgstr ""
+msgstr "Создание резервной копии"
 
 msgid "Credit Cards / SBP / Tinkoff Pay"
 msgstr "Карты РФ / СБП / Tinkoff Pay"
@@ -1680,10 +1674,10 @@ msgid "Downloaded"
 msgstr "Загружено"
 
 msgid "Downloading"
-msgstr ""
+msgstr "Скачивание"
 
 msgid "Downloading lists"
-msgstr ""
+msgstr "Скачивание списков"
 
 msgid "DPI bandwidth throttling or delay detected — connection throttled during data transfer."
 msgstr "Обнаружено замедление DPI — соединение заблокировано или задушено при передаче данных."
@@ -1989,7 +1983,7 @@ msgid "External nfqws2 config files bypass Tachyon queue management and explicit
 msgstr "Внешние файлы конфигурации nfqws2 обходят управление очередями Tachyon и явную проверку."
 
 msgid "Extracting"
-msgstr ""
+msgstr "Распаковка"
 
 msgid "FAILED"
 msgstr "СБОЙ"
@@ -2070,7 +2064,7 @@ msgid "Failed to install version"
 msgstr "Не удалось установить версию"
 
 msgid "Failed to load engine information."
-msgstr ""
+msgstr "Не удалось загрузить информацию о движке."
 
 msgid "Failed to load history"
 msgstr "Не удалось загрузить историю"
@@ -2534,6 +2528,9 @@ msgstr "ℹ️ Прямое подключение (WAN): Публичный IP 
 msgid "ℹ️ ISP DNS detected: DNS queries are handled by your local Internet Service Provider. If you use selective routing, this is standard behavior for direct connections."
 msgstr "ℹ️ Обнаружен DNS провайдера: DNS-запросы обрабатываются вашим интернет-провайдером. При выборочной маршрутизации это стандартное поведение для прямого трафика."
 
+msgid "idle"
+msgstr "простой"
+
 msgid "Idle timeout"
 msgstr "Таймаут простоя"
 
@@ -2643,7 +2640,7 @@ msgid "Install another build:"
 msgstr "Установить другую сборку:"
 
 msgid "installed"
-msgstr ""
+msgstr "установлен"
 
 msgid "Installed"
 msgstr "Установлен"
@@ -2655,7 +2652,7 @@ msgid "Installed version is newer than release"
 msgstr "Установлена версия новее релиза"
 
 msgid "Installing packages"
-msgstr ""
+msgstr "Установка пакетов"
 
 msgid "Interface"
 msgstr "Интерфейс"
@@ -3165,7 +3162,7 @@ msgid "Loading connections"
 msgstr "Загрузка подключений"
 
 msgid "Loading engine information..."
-msgstr ""
+msgstr "Загрузка информации о движке..."
 
 msgid "Loading service list..."
 msgstr "Получение списка сервисов..."
@@ -3522,7 +3519,7 @@ msgid "Not implement yet"
 msgstr "Ещё не реализовано"
 
 msgid "not installed"
-msgstr ""
+msgstr "не установлен"
 
 msgid "Not installed"
 msgstr "Не установлено"
@@ -3921,7 +3918,7 @@ msgid "Prefix text"
 msgstr "Текст префикса"
 
 msgid "Preparing"
-msgstr ""
+msgstr "Подготовка"
 
 msgid "Preparing strategies and isolated nftables queue..."
 msgstr "Подготовка стратегий и изолированной очереди nftables..."
@@ -4146,7 +4143,7 @@ msgid "Refresh Device List"
 msgstr "Обновить список устройств"
 
 msgid "Refreshing package index"
-msgstr ""
+msgstr "Обновление индекса пакетов"
 
 msgid "Registration Detour"
 msgstr "Маршрут регистрации"
@@ -4353,7 +4350,7 @@ msgid "Router Traffic Target Section"
 msgstr "Секция для трафика роутера"
 
 msgid "Routing Engine"
-msgstr ""
+msgstr "Маршрутизирующий движок"
 
 msgid "Routing mode"
 msgstr "Режим маршрутизации"
@@ -4983,7 +4980,7 @@ msgid "Starting DNS benchmark..."
 msgstr "Запуск бенчмарка DNS..."
 
 msgid "Starting lists update..."
-msgstr ""
+msgstr "Запуск обновления списков..."
 
 msgid "Starting…"
 msgstr "Запуск…"
@@ -4998,7 +4995,7 @@ msgid "Status / Suite"
 msgstr "Статус / Набор"
 
 msgid "Steer"
-msgstr ""
+msgstr "Steer"
 
 msgid "Stop"
 msgstr "Стоп"
@@ -5118,13 +5115,13 @@ msgid "Sweden (se)"
 msgstr "Швеция (se)"
 
 msgid "Switch"
-msgstr ""
+msgstr "Переключить"
 
 msgid "Switch DNS to DoH"
 msgstr "Переключить DNS на DoH"
 
 msgid "Switch failed"
-msgstr ""
+msgstr "Не удалось переключить"
 
 msgid "Switch to auto-selection"
 msgstr "Вернуть автовыбор"
@@ -5151,7 +5148,7 @@ msgid "Tachyon"
 msgstr "Tachyon"
 
 msgid "Tachyon can drive more than one routing engine. Switching preserves configuration the target engine cannot express, so you can switch back without losing settings."
-msgstr ""
+msgstr "Tachyon может использовать несколько движков маршрутизации. При переключении сохраняется конфигурация, которую целевой движок не умеет выразить, поэтому можно вернуться без потери настроек."
 
 msgid "Tachyon Core"
 msgstr "Ядро Tachyon"
@@ -5196,7 +5193,7 @@ msgid "Tachyon update did not complete within the timeout"
 msgstr "Обновление Tachyon не завершилось в течение таймаута"
 
 msgid "Tachyon updated to"
-msgstr ""
+msgstr "Tachyon обновлён до"
 
 msgid "Tachyon will not modify your DHCP configuration"
 msgstr "Tachyon не будет изменять вашу конфигурацию DHCP"
@@ -5376,7 +5373,7 @@ msgid "There are rules using Zapret2"
 msgstr "Есть правила, использующие Zapret2"
 
 msgid "These features will be parked and restored when you switch back"
-msgstr ""
+msgstr "Эти возможности будут сохранены и восстановлены при возврате обратно"
 
 msgid "Thinking..."
 msgstr "Думаю..."
@@ -5871,7 +5868,7 @@ msgid "Verdict"
 msgstr "Статус"
 
 msgid "Verifying installation"
-msgstr ""
+msgstr "Проверка установки"
 
 msgid "Verifying router and service readiness..."
 msgstr "Проверка готовности роутера и служб..."
@@ -5907,7 +5904,7 @@ msgid "vless://, vmess://, ss://, trojan://, socks4/5://, http/s://, hy2/hysteri
 msgstr "Ссылки vless://, vmess://, ss://, trojan://, socks4/5://, http/s://, hy2/hysteria2://"
 
 msgid "Waiting for package manager"
-msgstr ""
+msgstr "Ожидание менеджера пакетов"
 
 msgid "Waiting for router services to restart..."
 msgstr "Ожидание перезапуска служб роутера..."
@@ -6113,17 +6110,23 @@ msgstr "Правила маршрутизации sing-box для Zapret2 не �
 msgid "Zero config mesh VPN daemon"
 msgstr "Mesh VPN-демон с нулевой конфигурацией"
 
+msgid "Alternative routing engine with its own VLESS/Reality client."
+msgstr "Альтернативный движок маршрутизации со своим клиентом VLESS/Reality."
+
+msgid "Check for update"
+msgstr "Проверить обновление"
+
 msgid "Loading engines..."
-msgstr ""
+msgstr "Загрузка движков..."
 
 msgid "Switch back"
-msgstr ""
+msgstr "Вернуться обратно"
 
 msgid "Switched back"
-msgstr ""
+msgstr "Возвращено обратно"
 
 msgid "Tachyon can drive sing-box or steer. Switching parks configuration the target engine cannot express, so you can switch back without losing settings."
-msgstr ""
+msgstr "Tachyon может использовать sing-box или steer. При переключении сохраняется конфигурация, которую целевой движок не умеет выразить, поэтому можно вернуться без потери настроек."
 
 msgid "Provider Global Default"
 msgstr "Глобальные настройки провайдера"
