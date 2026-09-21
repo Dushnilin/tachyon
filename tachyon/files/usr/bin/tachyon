@@ -116,6 +116,19 @@ function show_help() {
     print("    get_olcrtc_status       Get OlcRTC provider and Tachyon-managed olcrtc status\n");
     print("    get_fptn_status         Get FPTN provider and Tachyon-managed fptn status\n");
     print("    get_system_info         Get system information in JSON format\n");
+    print("    engine_info             Get active routing engine and installed engines (JSON)\n");
+    print("    engine_features         List engine features the current config needs (JSON)\n");
+    print("    engine_plan <engine>    Show what switching engines would keep or park (JSON)\n");
+    print("    engine_switch <engine>  Switch the active routing engine (--allow-install, --dry-run)\n");
+    print("    engine_switch_back      Switch back to the previously active engine\n");
+    print("    engine_start            Start the active engine, stopping the others\n");
+    print("    engine_stop             Stop the active engine\n");
+    print("    engine_reload [reason]  Reload the active engine\n");
+    print("    engine_status           Active engine status (steer passes through verbatim)\n");
+    print("    engine_apply [--dry-run] Compile and apply the active engine's rules\n");
+    print("    engine_generate [--dry-run] Generate the steer spec.json from Tachyon config\n");
+    print("    engine_diag             Active engine diagnostics (steer diag)\n");
+    print("    engine_explain <target> Which channel/output a name or address takes (steer)\n");
     print("    get_server_capabilities Get server UI capabilities in JSON format\n");
     print("    get_ui_capabilities     Get lightweight UI capabilities in JSON format\n");
     print("    get_ui_state            Get lightweight UI service/action state in JSON format\n");
@@ -226,6 +239,7 @@ function command_spec(command) {
         get_outbound_metadata: [ "diagnostics/runtime.uc", "get-outbound-metadata", 1 ],
         get_subscription_metadata: [ "diagnostics/runtime.uc", "get-subscription-metadata", 1 ],
         get_sing_box_status: [ "diagnostics/runtime.uc", "get-sing-box-status", 0 ],
+        get_engine_status: [ "diagnostics/runtime.uc", "get-engine-status", 0 ],
         get_zapret_status: [ "diagnostics/runtime.uc", "get-zapret-status", 0 ],
         get_zapret2_status: [ "diagnostics/runtime.uc", "get-zapret2-status", 0 ],
         get_byedpi_status: [ "diagnostics/runtime.uc", "get-byedpi-status", 0 ],
@@ -312,6 +326,19 @@ function command_spec(command) {
         package_prerm: [ "service/package.uc", "prerm", 1 ],
         package_postinst: [ "service/package.uc", "postinst", 0 ],
         luci_postinst: [ "service/package.uc", "luci-postinst", 0 ],
+        engine_info: [ "service/engine_runtime.uc", "engine-info", 0 ],
+        engine_features: [ "service/engine_runtime.uc", "engine-features", 0 ],
+        engine_plan: [ "service/engine_runtime.uc", "engine-plan", 1 ],
+        engine_switch: [ "service/engine_runtime.uc", "engine-switch", 3 ],
+        engine_switch_back: [ "service/engine_runtime.uc", "engine-switch-back", 0 ],
+        engine_start: [ "service/engine_runtime.uc", "engine-start", 0 ],
+        engine_stop: [ "service/engine_runtime.uc", "engine-stop", 0 ],
+        engine_reload: [ "service/engine_runtime.uc", "engine-reload", 1 ],
+        engine_status: [ "service/engine_runtime.uc", "engine-status", 0 ],
+        engine_apply: [ "service/engine_runtime.uc", "engine-apply", 1 ],
+        engine_generate: [ "service/engine_runtime.uc", "engine-generate", 1 ],
+        engine_diag: [ "service/engine_runtime.uc", "engine-diag", 0 ],
+        engine_explain: [ "service/engine_runtime.uc", "engine-explain", 1 ],
         snapshot_list: [ "service/snapshot.uc", "snapshot-list", 0 ],
         snapshot_save: [ "service/snapshot.uc", "snapshot-save", 1 ],
         snapshot_restore: [ "service/snapshot.uc", "snapshot-restore", 1 ],

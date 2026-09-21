@@ -3042,6 +3042,12 @@ var Tachyon;
     AvailableMethods2["CHECK_SING_BOX"] = "check_sing_box";
     AvailableMethods2["CHECK_INBOUNDS"] = "check_inbounds";
     AvailableMethods2["GET_SING_BOX_STATUS"] = "get_sing_box_status";
+    AvailableMethods2["GET_ENGINE_STATUS"] = "get_engine_status";
+    AvailableMethods2["ENGINE_INFO"] = "engine_info";
+    AvailableMethods2["ENGINE_FEATURES"] = "engine_features";
+    AvailableMethods2["ENGINE_PLAN"] = "engine_plan";
+    AvailableMethods2["ENGINE_SWITCH"] = "engine_switch";
+    AvailableMethods2["ENGINE_SWITCH_BACK"] = "engine_switch_back";
     AvailableMethods2["GET_ZAPRET_STATUS"] = "get_zapret_status";
     AvailableMethods2["GET_TAILSCALE_PEERS"] = "get_tailscale_peers";
     AvailableMethods2["GET_ZAPRET2_STATUS"] = "get_zapret2_status";
@@ -3481,6 +3487,36 @@ var TachyonShellMethods = {
   checkSingBoxLogs: async () => callBaseMethod(Tachyon.AvailableMethods.CHECK_SING_BOX_LOGS),
   getSystemInfo: async () => callBaseMethod(
     Tachyon.AvailableMethods.GET_SYSTEM_INFO
+  ),
+  getEngineStatus: async () => callBaseMethod(
+    Tachyon.AvailableMethods.GET_ENGINE_STATUS,
+    [],
+    "/usr/bin/tachyon",
+    { timeout: GET_UI_STATE_RPC_TIMEOUT_MS }
+  ),
+  getEngineInfo: async () => callBaseMethod(
+    Tachyon.AvailableMethods.ENGINE_INFO,
+    [],
+    "/usr/bin/tachyon",
+    { timeout: GET_UI_STATE_RPC_TIMEOUT_MS }
+  ),
+  getEnginePlan: async (engine) => callBaseMethod(
+    Tachyon.AvailableMethods.ENGINE_PLAN,
+    [engine],
+    "/usr/bin/tachyon",
+    { timeout: UI_ACTION_RPC_TIMEOUT_MS }
+  ),
+  switchEngine: async (engine, allowInstall = false) => callBaseMethod(
+    Tachyon.AvailableMethods.ENGINE_SWITCH,
+    [engine, ...allowInstall ? ["--allow-install"] : []],
+    "/usr/bin/tachyon",
+    { timeout: UI_ACTION_RPC_TIMEOUT_MS }
+  ),
+  switchEngineBack: async () => callBaseMethod(
+    Tachyon.AvailableMethods.ENGINE_SWITCH_BACK,
+    [],
+    "/usr/bin/tachyon",
+    { timeout: UI_ACTION_RPC_TIMEOUT_MS }
   ),
   getServerCapabilities: async () => callBaseMethod(
     Tachyon.AvailableMethods.GET_SERVER_CAPABILITIES

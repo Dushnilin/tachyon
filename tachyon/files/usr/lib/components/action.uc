@@ -11,6 +11,7 @@ let cmp_verify = require("components.verifier");
 let cmp_dl = require("components.downloader");
 let cmp_inst = require("components.installer");
 let cmp_cat = require("components.catalog");
+let engine = require("core.engine");
 
 function core_url_module_or_null() {
     try {
@@ -882,6 +883,45 @@ function install_fptn(action, target_tag) {
     if (current_version == "")
         current_version = pkg.version || "unknown";
     action_success("fptn", action, "FPTN package has been installed", current_version, pkg.version, 1, "latest", release.release_url || "");
+}
+
+function install_steer(action, target_tag, extended) {
+    let component = extended ? "steer-extended" : "steer";
+    let label = extended ? "steer-extended" : "steer";
+    init_tmp_dir() || action_fail(component, action, "Failed to create temporary directory");
+    let arch = resolve_arch_candidates();
+    if (arch == null)
+        action_fail(component, action, "Failed to detect package architecture");
+    let release = null;
+    retry_resolve("Resolving " + label + " package", function() {
+        release = resolve_steer_release(arch, target_tag, extended);
+        return release != null;
+    });
+    if (release == null)
+        action_fail(component, action, "Failed to resolve " + label + " package for this router architecture");
+
+    if (action == "check_update") {
+        if (!engine.binary_present(component))
+            action_success(component, action, label + " is not installed", "", release.version, 0, "", release.release_url || "");
+        check_success(component, "unknown", release.version, release.release_url || "");
+    }
+
+    let pkg = download_direct_package(release);
+    if (pkg == null)
+        action_fail(component, action, "Failed to download " + label + " package");
+
+    run_logged("Updating package lists before " + label + " package installation", pkg_list_update_command(), 30);
+
+    if (!run_logged("Installing " + label + " package " + pkg.name, pkg_install_files_command([ pkg.file ]), 60))
+        action_fail(component, action, "Failed to install " + label + " package");
+
+    // steer-extended supersedes the base package: both own /usr/sbin/steer, so
+    // the base one is removed after a successful extended install.
+    if (extended && pkg_is_installed("steer"))
+        pkg_remove_sing_box_conflict("steer");
+
+    clear_version_caches();
+    action_success(component, action, label + " package has been installed", release.version, release.version, 1, "latest", release.release_url || "");
 }
 
 function install_tailscale(action) {
@@ -2762,6 +2802,10 @@ function component_action(component, action, extra) {
         install_fptn(action);
     else if (component == "fptn" && action == "remove")
         remove_optional_component("fptn", "fptn-client", "FPTN", LIB_DIR + "/providers/fptn/runtime.uc");
+    else if (component == "steer" && (action == "check_update" || action == "install"))
+        install_steer(action, extra, false);
+    else if (component == "steer-extended" && (action == "check_update" || action == "install"))
+        install_steer(action, extra, true);
     else if (component == "tailscale" && (action == "check_update" || action == "install"))
         install_tailscale(action);
     else if (component == "tailscale" && action == "remove")

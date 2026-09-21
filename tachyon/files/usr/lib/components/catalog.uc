@@ -411,6 +411,67 @@ function resolve_fptn_release(arch, tag) {
     return null;
 }
 
+// steer / steer-extended from xyzmean/steer. Asset names look like
+// "steer-1.5.4-1_aarch64_cortex-a53.ipk" and
+// "steer-extended-1.5.4-1_aarch64_cortex-a53.apk". The extended build is a
+// separate package that supersedes the base one.
+function resolve_steer_release(arch, tag, extended) {
+    let asset_ext = helpers.is_apk() ? "apk" : "ipk";
+    let prefix = extended ? "steer-extended-" : "steer-";
+    let distrib_arch = arch != null && as_string(arch.target) != "" ?
+        as_string(arch.target) : helpers.read_openwrt_release_value("DISTRIB_ARCH");
+    if (distrib_arch == "")
+        return null;
+
+    let owner = "xyzmean";
+    let repo = "steer";
+    let releases_json = (tag != null && tag != "") ?
+        downloader.fetch_github_release_by_tag_json(owner, repo, tag) :
+        downloader.fetch_github_release_json(owner, repo);
+    if (releases_json == "")
+        return null;
+
+    let tag_name = trim(helpers.helper_output_input(releases_json, "object-get-default", [ "tag_name", "" ]));
+    let release_url = trim(helpers.helper_output_input(releases_json, "object-get-default", [ "html_url", "" ]));
+    let suffix = "-1_" + distrib_arch + "." + asset_ext;
+
+    // Walk the asset list and pick the first match for this build variant.
+    let assets = [];
+    try {
+        let parsed = json(releases_json);
+        if (type(parsed) == "object" && type(parsed.assets) == "array")
+            assets = parsed.assets;
+    }
+    catch (e) {
+        return null;
+    }
+
+    for (let asset in assets) {
+        let name = as_string(asset.name || "");
+        if (!helpers.str_startswith(name, prefix))
+            continue;
+        if (substr(name, length(name) - length(suffix)) != suffix)
+            continue;
+        // Guard against "steer-extended-" matching the "steer-" prefix.
+        if (!extended && helpers.str_startswith(name, "steer-extended-"))
+            continue;
+        let ver = versions.extract_arch_package_version(name, distrib_arch);
+        if (ver == "")
+            ver = replace(tag_name, /^v/, "");
+        return {
+            arch: distrib_arch,
+            package_name: name,
+            package_url: as_string(asset.browser_download_url || ""),
+            release_url: release_url,
+            version: ver,
+            tag: tag_name,
+            extended: !!extended
+        };
+    }
+
+    return null;
+}
+
 function resolve_tachyon_release(latest_version) {
     let asset_ext = helpers.is_apk() ? "apk" : "ipk";
     let i18n_required = helpers.pkg_is_installed("luci-i18n-tachyon-ru") ? "1" : "0";
@@ -479,6 +540,7 @@ function module_exports() {
         resolve_wdtt_release,
         resolve_olcrtc_release,
         resolve_fptn_release,
+        resolve_steer_release,
         resolve_tachyon_release
     };
 }
