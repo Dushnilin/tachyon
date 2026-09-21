@@ -215,6 +215,40 @@ function option(section, key, fallback) {
 
 // Collect domains and prefixes for one section and write the plain-text lists.
 // Returns { domains: path|"", prefixes: path|"" }.
+// Plain-text upstream for a community id, when we know one. steer cannot read
+// sing-box .srs, but the same lists are published as text by their upstreams:
+// itdoginfo/allow-domains for service categories, MetaCubeX .list for geoip/
+// geosite. Returns "" when there is no known text source.
+const ITDOGINFO_BASE = "https://raw.githubusercontent.com/itdoginfo/allow-domains/main";
+const METACUBEX_BASE = "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo";
+
+function community_text_url(name) {
+    name = as_string(name);
+
+    let geoip = match(name, /^geoip_([a-z]{2})$/);
+    if (geoip)
+        return METACUBEX_BASE + "/geoip/" + geoip[1] + ".list";
+    let geosite = match(name, /^geosite_([a-z]{2})$/);
+    if (geosite)
+        return METACUBEX_BASE + "/geosite/" + geosite[1] + ".list";
+
+    if (name == "supercell")
+        return "";
+    if (name == "ads_hagezi_pro")
+        return "";
+
+    // Service categories live in Categories/ for lists like
+    // block/porn/news/anime, and in Services/ for youtube/tiktok/etc.
+    // Try Categories first; callers fall back to Services on a failed fetch.
+    return ITDOGINFO_BASE + "/Categories/" + name + ".lst";
+}
+
+function community_text_url_alt(name) {
+    name = as_string(name);
+    return ITDOGINFO_BASE + "/Services/" + name + ".lst";
+}
+
+
 function materialize_section_lists(section, catalog) {
     catalog = type(catalog) == "object" ? catalog : {};
     let name = as_string(section[".name"] || section.label || "channel");
@@ -246,28 +280,47 @@ function materialize_section_lists(section, catalog) {
         }
     }
 
-    // Community ids resolve to catalog files (already plain text); reference
-    // them in place instead of copying.
+    // Community ids: prefer an explicit catalog file, otherwise fetch the
+    // upstream plain-text list (steer cannot read .srs).
     for (let value in list_option(section, "community_lists")) {
         let mapped = catalog[value];
-        if (mapped != null) {
-            let text = read_reference(mapped);
-            for (let line in split(as_string(text), "\n")) {
-                line = trim(line);
-                if (line != "" && substr(line, 0, 1) != "#")
-                    domains[line] = true;
+        let text = "";
+        if (mapped != null)
+            text = read_reference(mapped);
+        if (trim(as_string(text)) == "") {
+            let url = community_text_url(value);
+            if (url != "")
+                text = downloader.http_get(url);
+            if (trim(as_string(text)) == "") {
+                let alt = community_text_url_alt(value);
+                if (alt != "")
+                    text = downloader.http_get(alt);
             }
+        }
+        for (let line in split(as_string(text), "\n")) {
+            line = trim(line);
+            if (line != "" && substr(line, 0, 1) != "#")
+                domains[line] = true;
         }
     }
     for (let value in list_option(section, "community_subnets")) {
         let mapped = catalog[value];
-        if (mapped != null) {
-            let text = read_reference(mapped);
-            for (let line in split(as_string(text), "\n")) {
-                line = trim(line);
-                if (line != "" && substr(line, 0, 1) != "#")
-                    prefixes[line] = true;
-            }
+        let text = "";
+        if (mapped != null)
+            text = read_reference(mapped);
+        if (trim(as_string(text)) == "") {
+            let url = community_text_url(value);
+            if (url != "")
+                text = downloader.http_get(url);
+        }
+        for (let line in split(as_string(text), "\n")) {
+            line = trim(line);
+            if (line == "" || substr(line, 0, 1) == "#")
+                continue;
+            if (looks_like_prefix(line))
+                prefixes[line] = true;
+            else if (looks_like_domain(line))
+                domains[line] = true;
         }
     }
 
@@ -285,9 +338,6 @@ function materialize_section_lists(section, catalog) {
     return result;
 }
 
-// Download the selected catalog entries. Returns { prefixes: [...], domains: [...] }
-// with absolute file paths suitable for a steer channel's prefixes_files /
-// domains_files.
 function sync(opts) {
     opts = type(opts) == "object" ? opts : {};
     let manifest = fetch_manifest();

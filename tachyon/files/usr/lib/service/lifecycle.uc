@@ -875,6 +875,11 @@ function start_steer_main(active_engine) {
     if (fs.stat("/etc/init.d/sing-box") != null)
         command_status_from_args([ "/etc/init.d/sing-box", "stop" ]);
 
+    // Watchdog first, so auto-healing is active through a failed boot.
+    let wd_status = module_status(WATCHDOG_UC, [ "start-runtime" ]);
+    if (wd_status != 0)
+        log_message("Watchdog start-runtime failed (status " + as_string(wd_status) + ")", "warn");
+
     let engine_runtime = require("service.engine_runtime");
     let generated = engine_runtime.generate_steer_spec({});
     if (!generated.ok) {
@@ -892,6 +897,18 @@ function start_steer_main(active_engine) {
         log_message("Failed to start the " + active_engine + " engine", "fatal");
         return 1;
     }
+
+    // DPI-bypass providers and other optional runtimes work alongside the
+    // routing engine: they are independent processes, not part of sing-box.
+    module_success(ZAPRET_UC, [ "start-runtime" ]);
+    module_success(ZAPRET2_UC, [ "start-runtime" ]);
+    module_success(BYEDPI_UC, [ "start-runtime" ]);
+    module_success(WDTT_UC, [ "start-runtime" ]);
+    module_success(OLCRTC_UC, [ "start-runtime" ]);
+    module_success(FPTN_UC, [ "start-runtime" ]);
+    module_success(TAILSCALE_UC, [ "start-runtime" ]);
+
+    module_background(TELEGRAM_UC, [ "start-runtime" ]);
 
     return 0;
 }
