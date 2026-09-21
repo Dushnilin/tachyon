@@ -214,22 +214,24 @@ echo "=== Normalizing line endings for test scripts ==="
 echo "=== Running unit and integration tests inside OpenWrt container ==="
 for f in tests/*.sh; do
   if [ "$f" != "tests/docker_e2e_test.sh" ] && [ "$f" != "tests/container_entrypoint.sh" ] &&
-    [ "$f" != "tests/run_all.sh" ] && [ "$f" != "tests/ucode_syntax_lint.sh" ]; then
+    [ "$f" != "tests/run_all.sh" ] && [ "$f" != "tests/ucode_syntax_lint.sh" ] &&
+    [ "$f" != "tests/inside_docker.sh" ]; then
     echo "Running $f inside container..."
     # Docker exec on shared runners occasionally hangs indefinitely (observed
     # on three different tests). Bound each exec and retry once on timeout.
     attempt=1
     while true; do
-      if timeout 300 "$DOCKER_BIN" exec -w /work -e SB_REQUIRED_VERSION="1.11.0" "$CONTAINER_NAME" bash "$f"; then
+      rc=0
+      timeout 300 "$DOCKER_BIN" exec -w /work -e SB_REQUIRED_VERSION="1.11.0" "$CONTAINER_NAME" bash "$f" || rc=$?
+      if [ "$rc" -eq 0 ]; then
         break
       fi
-      code=$?
-      if [ "$code" -eq 124 ] && [ "$attempt" -eq 1 ]; then
+      if [ "$rc" -eq 124 ] && [ "$attempt" -eq 1 ]; then
         echo "RETRY: $f timed out (exec attempt 1), retrying..."
         attempt=2
         continue
       fi
-      echo "FAIL: $f inside container (exit $code)"
+      echo "FAIL: $f inside container (exit $rc)"
       exit 1
     done
   fi
