@@ -616,7 +616,7 @@
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23148",
       "src/tachyon/tabs/diagnostic/partials/renderEngineSwitchModal.ts:126",
       "src/tachyon/tabs/diagnostic/partials/renderEngineSwitchModal.ts:52",
-      "src/tachyon/tabs/updates/initController.ts:2320"
+      "src/tachyon/tabs/updates/initController.ts:2334"
     ]
   },
   {
@@ -1446,7 +1446,7 @@
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:14520",
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23010",
       "src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:1657",
-      "src/tachyon/tabs/updates/initController.ts:2149"
+      "src/tachyon/tabs/updates/initController.ts:2150"
     ]
   },
   {
@@ -6845,7 +6845,7 @@
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:15781",
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23031",
       "src/tachyon/tabs/diagnostic/partials/renderEngineSwitchModal.ts:76",
-      "src/tachyon/tabs/updates/initController.ts:2174"
+      "src/tachyon/tabs/updates/initController.ts:2190"
     ]
   },
   {
@@ -10873,7 +10873,7 @@
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23056",
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/section.js:8983",
       "src/tachyon/tabs/updates/initController.ts:1214",
-      "src/tachyon/tabs/updates/initController.ts:2199"
+      "src/tachyon/tabs/updates/initController.ts:2215"
     ]
   },
   {
@@ -11309,7 +11309,7 @@
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:15847",
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23077",
       "src/tachyon/tabs/diagnostic/partials/renderEngineSwitchModal.ts:151",
-      "src/tachyon/tabs/updates/initController.ts:2226"
+      "src/tachyon/tabs/updates/initController.ts:2240"
     ]
   },
   {
@@ -12960,8 +12960,8 @@
     "places": [
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23117",
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23120",
-      "src/tachyon/tabs/updates/initController.ts:2282",
-      "src/tachyon/tabs/updates/initController.ts:2285"
+      "src/tachyon/tabs/updates/initController.ts:2296",
+      "src/tachyon/tabs/updates/initController.ts:2299"
     ]
   },
   {
@@ -13289,7 +13289,7 @@
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:15819",
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23143",
       "src/tachyon/tabs/diagnostic/partials/renderEngineSwitchModal.ts:119",
-      "src/tachyon/tabs/updates/initController.ts:2315"
+      "src/tachyon/tabs/updates/initController.ts:2329"
     ]
   },
   {
@@ -13959,7 +13959,7 @@
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:15812",
       "../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/main.js:23136",
       "src/tachyon/tabs/diagnostic/partials/renderEngineSwitchModal.ts:111",
-      "src/tachyon/tabs/updates/initController.ts:2307"
+      "src/tachyon/tabs/updates/initController.ts:2321"
     ]
   },
   {

@@ -1479,6 +1479,16 @@ function get_engine_status() {
 }
 
 function get_status() {
+    // On steer the sing-box runtime checks do not apply: liveness comes from
+    // the steer init script and its own nftables table.
+    if (active_engine_is_steer()) {
+        let running = command_success_from_args([ "/etc/init.d/steer", "status" ]) ? 1 : 0;
+        let enabled = file_executable("/etc/rc.d/S99steer") ? 1 : 0;
+        let dns_configured = dnsmasq_has_tachyon_dns() ? 1 : 0;
+        write_service_status(running, enabled, dns_configured);
+        return 0;
+    }
+
     let running = module_success(SERVICE_STATE_UC, [
         "tachyon-stably-running", RT_TABLE_NAME, NFT_TABLE_NAME, NFT_FAKEIP_MARK, RUNTIME_STABLE_MIN_AGE
     ]) ? 1 : 0;

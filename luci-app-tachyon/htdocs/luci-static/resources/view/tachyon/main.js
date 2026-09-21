@@ -22990,7 +22990,8 @@ function renderEngineCard() {
     });
   };
   const selectableEngines = [];
-  if (singBoxInstalled) selectableEngines.push({ id: "sing-box", label: "sing-box" });
+  if (singBoxInstalled)
+    selectableEngines.push({ id: "sing-box", label: "sing-box" });
   if (baseInstalled) selectableEngines.push({ id: "steer", label: "Steer" });
   if (extendedInstalled)
     selectableEngines.push({ id: "steer-extended", label: "Steer extended" });
@@ -23016,16 +23017,31 @@ function renderEngineCard() {
   const variantRow = [];
   if (selectedEngine === "sing-box") {
     [
-      singBoxVariant("Stable", "singBoxInstallStable", "install_stable", singBoxStable),
+      singBoxVariant(
+        "Stable",
+        "singBoxInstallStable",
+        "install_stable",
+        singBoxStable
+      ),
       singBoxVariant("Tiny", "singBoxInstallTiny", "install_tiny", singBoxTiny),
-      singBoxVariant("Extended", "singBoxInstallExtended", "install_extended", singBoxExtended),
+      singBoxVariant(
+        "Extended",
+        "singBoxInstallExtended",
+        "install_extended",
+        singBoxExtended
+      ),
       singBoxVariant(
         "Extended compressed",
         "singBoxInstallExtendedCompressed",
         "install_extended_compressed",
         Boolean(systemInfo.sing_box_extended) && Boolean(systemInfo.sing_box_compressed)
       ),
-      singBoxVariant("Leadaxe (lx)", "singBoxInstallLx", "install_lx", singBoxLx)
+      singBoxVariant(
+        "Leadaxe (lx)",
+        "singBoxInstallLx",
+        "install_lx",
+        singBoxLx
+      )
     ].forEach((node) => node && variantRow.push(node));
     if (variantRow.length === 0) {
       variantRow.push(E("span", { style: "opacity: 0.7;" }, _("installed")));
